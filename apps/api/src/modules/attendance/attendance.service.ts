@@ -1,5 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import type { AttendanceDay, AttendanceDayKind, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import type { AttendanceDay, AttendanceDayKind } from '@prisma/client';
 import type { Readable } from 'stream';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -254,13 +255,15 @@ export class AttendanceService {
       await tx.$queryRaw`SELECT id FROM attendance_days WHERE id = ${day.id} FOR UPDATE`;
       const cur = await tx.attendanceDay.findUnique({ where: { id: day.id } });
       if (!cur || cur.deletedAt) throw new NotFoundException('ไม่พบแถววันทำงาน');
+      // ตอกเข้าบนแถวที่ตั้งล่วงหน้าย้าย branchId ไปสาขาที่ตอกจริง — ตรวจขอบเขตสาขากับแถวล่าสุดอีกครั้ง
+      assertBranchScope(actor, cur.branchId);
       const clockIn = dtoIn === undefined ? cur.clockIn : dtoIn;
       const clockOut = dtoOut === undefined ? cur.clockOut : dtoOut;
       const dayKind = dto.dayKind ?? cur.dayKind;
       if (clockIn && clockOut && clockOut.getTime() <= clockIn.getTime()) throw new BadRequestException('เวลาออกต้องหลังเวลาเข้า');
       if (!clockIn && clockOut) throw new BadRequestException('มีเวลาออกต้องมีเวลาเข้า');
 
-      const rules = await this.settings.getRules(cur.branchId);
+      const rules = await this.settings.getRules(cur.branchId, tx);
       const summary = computeDaySummary({ workDate: fromDbDate(cur.workDate), dayKind, clockIn, clockOut, rules });
       const kept = cur.flags.filter((f) => f !== FLAG_MISSING_OUT && f !== 'WORKED_ON_OFF_DAY');
       const flags = Array.from(new Set([...kept, ...summary.flags, FLAG_CORRECTED]));
@@ -307,6 +310,9 @@ export class AttendanceService {
     await this.prisma.$transaction(async (tx) => {
       await lockAttendancePairs(tx, parsed);
       await assertNotPaid(tx, parsed);
+      // ล็อกแถวที่มีอยู่ (เรียง user, วัน) ก่อนตรวจ "ตอกเข้าแล้ว" — IN จากตู้ตอกบัตรที่ตามมาจะรอ แล้วอ่านประเภทวันใหม่ที่เรา commit
+      const keys = [...parsed].sort((a, b) => (a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : a.workDate.getTime() - b.workDate.getTime()));
+      if (keys.length > 0) await tx.$queryRaw(Prisma.sql`SELECT id FROM attendance_days WHERE (user_id, work_date) IN (${Prisma.join(keys.map((e) => Prisma.sql`(${e.userId}, ${e.workDate}::date)`))}) ORDER BY user_id, work_date FOR UPDATE`);
       // วันที่ตอกเข้าแล้ว: เปลี่ยนประเภทวันกระทบสาย/OT = เป็นการแก้ไขที่ต้องมีเหตุผลและประวัติ (สเปก §6 · รีวิวรอบ 2 C6) — ตรวจหลังล็อก
       for (const e of parsed) {
         const existing = await tx.attendanceDay.findUnique({ where: { userId_workDate: { userId: e.userId, workDate: e.workDate } }, select: { clockIn: true, deletedAt: true } });
@@ -341,7 +347,13 @@ export class AttendanceService {
     if (actor.role !== 'OWNER') throw new ForbiddenException('เฉพาะเจ้าของปิดธงเครื่องถูกใช้ซ้อนได้');
     const day = await this.prisma.attendanceDay.findUnique({ where: { id: dayId } });
     if (!day || day.deletedAt) throw new NotFoundException('ไม่พบแถววันทำงาน');
-    const updated = await this.prisma.attendanceDay.update({ where: { id: day.id }, data: { flags: day.flags.filter((f) => f !== DEVICE_CONFLICT_FLAG) } });
+    // ล็อกแถว → อ่านใหม่ → เขียน ใน tx เดียว: ไม่ทับ CORRECTED/MISSING_OUT ที่เพิ่ง commit และไม่ลบธงใหม่ที่ lockForConflict เพิ่งดันเข้าไปหลังเจ้าของตรวจ
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM attendance_days WHERE id = ${day.id} FOR UPDATE`;
+      const cur = await tx.attendanceDay.findUnique({ where: { id: day.id } });
+      if (!cur || cur.deletedAt) throw new NotFoundException('ไม่พบแถววันทำงาน');
+      return tx.attendanceDay.update({ where: { id: cur.id }, data: { flags: cur.flags.filter((f) => f !== DEVICE_CONFLICT_FLAG) } });
+    });
     await this.audit.log({ userId: actor.id, action: 'ATTENDANCE_CONFLICT_CLEARED', entity: 'attendance_day', entityId: day.id, oldValue: { flags: day.flags }, newValue: { flags: updated.flags } });
     return updated;
   }

@@ -24,6 +24,8 @@ function harness() {
       return delegates.get(key);
     },
   });
+  client.$queryRaw = jest.fn(async () => []);
+  client.$executeRaw = jest.fn(async () => 0);
   client.$transaction = jest.fn(async (cb: (tx: unknown) => unknown) => cb(proxy));
   const settings = { getRules: jest.fn().mockResolvedValue(RULES) };
   const storage = { upload: jest.fn(async (key: string) => key), delete: jest.fn(async () => undefined) };
@@ -33,7 +35,7 @@ function harness() {
   d('attendancePunch').create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: 'p-' + data.kind, ...data }));
   d('attendanceDay').create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: 'day1', flags: [], ...data }));
   d('attendanceDay').update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: 'day1', ...data }));
-  return { service, d, settings, storage };
+  return { service, d, settings, storage, raw: client.$queryRaw as jest.Mock, exec: client.$executeRaw as jest.Mock };
 }
 
 describe('KioskPunchService.punch', () => {
@@ -110,7 +112,9 @@ describe('KioskPunchService.punch', () => {
     await h.service.punch({ device: DEVICE, userId: 'u1', kind: 'IN' }, at(23, 50));
     expect(h.d('attendanceDay').findUnique).toHaveBeenLastCalledWith(expect.objectContaining({ where: { userId_workDate: { userId: 'u1', workDate: DB } } }));
     h.d('attendanceDay').findUnique.mockResolvedValueOnce(null); // ไม่มีแถวของ "วันถัดไป"
-    h.d('attendanceDay').findFirst.mockResolvedValueOnce({ id: 'day1', userId: 'u1', branchId: 'br1', workDate: DB, dayKind: 'WORK', clockIn: at(23, 50), clockOut: null, flags: [] });
+    const open = { id: 'day1', userId: 'u1', branchId: 'br1', workDate: DB, dayKind: 'WORK', clockIn: at(23, 50), clockOut: null, flags: [] };
+    h.d('attendanceDay').findFirst.mockResolvedValueOnce(open);
+    h.d('attendanceDay').findUnique.mockResolvedValueOnce(open); // อ่านใหม่ใต้ล็อกแถว
     const res = await h.service.punch({ device: DEVICE, userId: 'u1', kind: 'OUT' }, at(24, 20));
     expect(res).toMatchObject({ kind: 'OUT', otHours: 0.5 }); // OT นับเฉพาะเวลาที่ทำจริงหลังเลิกงาน (รีวิว I7)
     // วันถัดไป 00:20 → ค้นแถวเปิดค้างของ "เมื่อวาน" = 27 ต.ค. (DAY) ตามปฏิทินไทย
@@ -200,5 +204,45 @@ describe('KioskPunchService.punch', () => {
     const res = await h.service.punch({ device: DEVICE, userId: 'u1', kind: 'IN', ip: '9.9.9.9' }, at(10, 2));
     expect(res.flags).toContain('NETWORK_CHANGED');
     expect(h.d('attendanceDay').create.mock.calls[0][0].data.flags).toContain('NETWORK_CHANGED');
+  });
+
+  const ROW = { id: 'day1', userId: 'u1', branchId: 'br1', workDate: DB, dayKind: 'WORK', clockIn: at(10, 30), clockOut: null, flags: [] as string[], correctedCount: 0 };
+
+  it('K13 the day is recomputed from the row re-read under the lock: a correction committed after the pre-read (clockIn 10:00, DAY_OFF→WORK, CORRECTED) survives an OUT punch; device row is locked before the day row', async () => {
+    const h = harness();
+    const v1 = { ...ROW, clockIn: at(10, 0), dayKind: 'DAY_OFF', flags: ['CORRECTED'], correctedCount: 1 };
+    h.d('attendanceDay').findUnique.mockResolvedValueOnce(ROW).mockResolvedValueOnce(v1); // pre-read, แล้วอ่านใหม่ใต้ล็อก
+    const res = await h.service.punch({ device: DEVICE, userId: 'u1', kind: 'OUT' }, at(20, 0));
+    expect(res.lateMinutes).toBe(0); // 10:00 ไม่ใช่ 10:30
+    const data = h.d('attendanceDay').update.mock.calls[0][0].data;
+    expect(data).toMatchObject({ dayKind: 'DAY_OFF', lateMinutes: 0 });
+    expect(data.flags).toEqual(expect.arrayContaining(['CORRECTED']));
+    expect(h.raw).toHaveBeenCalledTimes(2); // แถวเครื่อง แล้วแถววัน
+    expect(String((h.raw.mock.calls[0][0] as string[]).join(''))).toContain('attendance_devices');
+    expect(String((h.raw.mock.calls[1][0] as string[]).join(''))).toContain('attendance_days');
+  });
+
+  it('K14 the 409 rules apply to the re-read state: a concurrent IN landed first → this IN is refused and its photo is deleted', async () => {
+    const h = harness();
+    h.d('attendanceDay').findUnique.mockResolvedValueOnce({ ...ROW, clockIn: null }).mockResolvedValueOnce({ ...ROW, clockIn: at(10, 2) });
+    await expect(h.service.punch({ device: DEVICE, userId: 'u1', kind: 'IN', photo: { buffer: JPEG, mimeType: 'image/jpeg' } }, at(10, 3))).rejects.toThrow('ตอกเข้าแล้วเมื่อ 10:02');
+    expect(h.d('attendanceDay').update).not.toHaveBeenCalled();
+    expect(h.storage.delete).toHaveBeenCalled();
+  });
+
+  it('K15 no row yet and a concurrent insert wins the unique (user, date): savepoint rolled back, the row is locked and updated instead of a 500', async () => {
+    const h = harness();
+    h.d('attendanceDay').create.mockRejectedValueOnce(Object.assign(new Error('unique'), { code: 'P2002' }));
+    h.d('attendanceDay').findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ ...ROW, clockIn: null, dayKind: 'DAY_OFF' }); // pre-read null · หลังชน: แถวที่อีกฝั่งสร้าง (วันหยุดที่ตั้งไว้)
+    const res = await h.service.punch({ device: DEVICE, userId: 'u1', kind: 'IN' }, at(10, 0));
+    expect(res.flags).toContain('WORKED_ON_OFF_DAY');
+    expect(h.exec).toHaveBeenCalledTimes(2); // SAVEPOINT · ROLLBACK TO SAVEPOINT
+    expect(h.d('attendanceDay').update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'day1' }, data: expect.objectContaining({ dayKind: 'DAY_OFF', clockIn: at(10, 0), branchId: 'br1' }) }));
+  });
+
+  it('K16 a non-unique error on the day insert is not swallowed', async () => {
+    const h = harness();
+    h.d('attendanceDay').create.mockRejectedValueOnce(new Error('db down'));
+    await expect(h.service.punch({ device: DEVICE, userId: 'u1', kind: 'IN' }, at(10, 0))).rejects.toThrow('db down');
   });
 });

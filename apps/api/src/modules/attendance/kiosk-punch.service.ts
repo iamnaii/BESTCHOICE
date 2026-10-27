@@ -110,28 +110,60 @@ export class KioskPunchService {
     const photoKey = await this.uploadPhoto(punchId, input.photo, now);
     if (!photoKey) punchFlags.push(FLAG_NO_PHOTO);
 
-    const workDate = day ? fromDbDate(day.workDate) : workDateOf(now); // เที่ยงคืนไทย สำหรับคำนวณ
-    const dayKind = day?.dayKind ?? 'WORK';
-    const nextClockIn = kind === 'IN' ? (day?.clockIn && day.clockOut ? day.clockIn : now) : day!.clockIn;
-    const nextClockOut = kind === 'OUT' ? now : null;
-    const summary = computeDaySummary({ workDate, dayKind, clockIn: nextClockIn, clockOut: nextClockOut, rules });
+    // คำนวณแถววัน/สถานะจาก "แถวที่อ่านใหม่ใต้ล็อกแถว" ใน tx — ไม่ใช้สำเนาที่อ่านก่อนอัปโหลดรูป (กันทับการแก้ไขของเจ้าของ/ผจก. ที่ commit คั่น)
+    const plan = (current: AttendanceDay | null) => {
+      if (kind === 'IN' && current?.clockIn && !current.clockOut) throw new ConflictException(`ตอกเข้าแล้วเมื่อ ${hhmm(current.clockIn)}`);
+      if (kind === 'OUT' && !current?.clockIn) throw new ConflictException('ยังไม่ได้ตอกเข้างานวันนี้');
+      const workDate = current ? fromDbDate(current.workDate) : workDateOf(now); // เที่ยงคืนไทย สำหรับคำนวณ
+      const dayKind = current?.dayKind ?? 'WORK';
+      const nextClockIn = kind === 'IN' ? (current?.clockIn && current.clockOut ? current.clockIn : now) : current!.clockIn;
+      const nextClockOut = kind === 'OUT' ? now : null;
+      const summary = computeDaySummary({ workDate, dayKind, clockIn: nextClockIn, clockOut: nextClockOut, rules });
 
-    const eventFlags = new Set((day?.flags ?? []).filter((f) => !RECOMPUTED_FLAGS.has(f) && f !== FLAG_MISSING_OUT));
-    if (kind === 'IN' && day?.clockOut) eventFlags.add(FLAG_REOPENED);
-    if (kind === 'OUT' && day?.clockOut) eventFlags.add(FLAG_OUT_UPDATED);
-    if (!photoKey) eventFlags.add(FLAG_NO_PHOTO);
-    if (punchFlags.includes(FLAG_LOCATION_CHANGED)) eventFlags.add(FLAG_LOCATION_CHANGED);
-    if (punchFlags.includes(FLAG_NETWORK_CHANGED)) eventFlags.add(FLAG_NETWORK_CHANGED);
-    if (punchFlags.includes(FLAG_AFTER_PIN_LOCKOUT)) eventFlags.add(FLAG_AFTER_PIN_LOCKOUT);
-    const dayFlags = [...eventFlags, ...summary.flags];
-    const status: PunchStatus = kind === 'IN' ? (summary.lateMinutes > 0 ? 'LATE' : 'ON_TIME') : summary.otHours > 0 ? 'OUT_OT' : 'OUT';
-    const result: PunchResult = { nickname, kind, at: now, status, lateMinutes: summary.lateMinutes, otHours: summary.otHours, flags: dayFlags };
+      const eventFlags = new Set((current?.flags ?? []).filter((f) => !RECOMPUTED_FLAGS.has(f) && f !== FLAG_MISSING_OUT));
+      if (kind === 'IN' && current?.clockOut) eventFlags.add(FLAG_REOPENED);
+      if (kind === 'OUT' && current?.clockOut) eventFlags.add(FLAG_OUT_UPDATED);
+      if (!photoKey) eventFlags.add(FLAG_NO_PHOTO);
+      if (punchFlags.includes(FLAG_LOCATION_CHANGED)) eventFlags.add(FLAG_LOCATION_CHANGED);
+      if (punchFlags.includes(FLAG_NETWORK_CHANGED)) eventFlags.add(FLAG_NETWORK_CHANGED);
+      if (punchFlags.includes(FLAG_AFTER_PIN_LOCKOUT)) eventFlags.add(FLAG_AFTER_PIN_LOCKOUT);
+      const dayFlags = [...eventFlags, ...summary.flags];
+      const status: PunchStatus = kind === 'IN' ? (summary.lateMinutes > 0 ? 'LATE' : 'ON_TIME') : summary.otHours > 0 ? 'OUT_OT' : 'OUT';
+      const result: PunchResult = { nickname, kind, at: now, status, lateMinutes: summary.lateMinutes, otHours: summary.otHours, flags: dayFlags };
+      return { workDate, dayKind, summary, dayFlags, result };
+    };
 
     try {
       return await this.prisma.$transaction(async (tx) => {
-        await this.writePunch(tx, { input, punchId, now, photoKey, punchFlags, day, workDate, dayKind, summary, dayFlags });
-        const nextToken = finalize ? await finalize(tx, result) : undefined;
-        return { ...result, nextToken };
+        // ลำดับล็อกของงานลงเวลา: แถวเครื่อง (attendance_devices) → แถววัน (attendance_days) — lockForConflict เริ่มที่แถวเครื่องเช่นกัน ⇒ ไม่เกิด deadlock
+        await tx.$queryRaw`SELECT id FROM attendance_devices WHERE id = ${device.id} FOR UPDATE`;
+        const punch = await this.createPunch(tx, { input, punchId, now, photoKey, punchFlags });
+        let current: AttendanceDay | null = null;
+        if (day) {
+          current = await this.lockDay(tx, { id: day.id });
+          if (!current) throw new ConflictException('แถววันทำงานเปลี่ยนไประหว่างตอกบัตร — ลองอีกครั้ง');
+        }
+        let planned = plan(current);
+        if (!current) {
+          // ยังไม่มีแถว: INSERT · ถ้าอีกฝั่งแทรกแถวก่อน (unique user+วัน) กลับไปแถวนั้นแล้วอัปเดตแทน — ไม่ให้เป็น 500
+          const key = { userId, workDate: dbDate(planned.workDate) };
+          await tx.$executeRaw`SAVEPOINT attendance_day_insert`;
+          try {
+            await tx.attendanceDay.create({ data: { userId, branchId: device.branchId, workDate: key.workDate, dayKind: planned.dayKind, clockIn: now, clockInPunchId: punch.id, clockOut: null, clockOutPunchId: null, ...this.computed(planned) } });
+            await tx.$executeRaw`RELEASE SAVEPOINT attendance_day_insert`;
+            const nextToken = finalize ? await finalize(tx, planned.result) : undefined;
+            return { ...planned.result, nextToken };
+          } catch (err) {
+            if ((err as { code?: string }).code !== 'P2002') throw err;
+            await tx.$executeRaw`ROLLBACK TO SAVEPOINT attendance_day_insert`;
+            current = await this.lockDay(tx, { key });
+            if (!current) throw new ConflictException('แถววันทำงานเปลี่ยนไประหว่างตอกบัตร — ลองอีกครั้ง');
+            planned = plan(current);
+          }
+        }
+        await this.updateDay(tx, { input, now, punchId: punch.id, current, planned });
+        const nextToken = finalize ? await finalize(tx, planned.result) : undefined;
+        return { ...planned.result, nextToken };
       });
     } catch (err) {
       if (photoKey) await this.deletePhoto(photoKey);
@@ -139,24 +171,27 @@ export class KioskPunchService {
     }
   }
 
-  private async writePunch(
+  private computed(p: { summary: ReturnType<typeof computeDaySummary>; dayFlags: string[] }) {
+    return { workedMinutes: p.summary.workedMinutes, lateMinutes: p.summary.lateMinutes, earlyLeaveMinutes: p.summary.earlyLeaveMinutes, otHours: p.summary.otHours, flags: p.dayFlags };
+  }
+
+  /** ล็อกแถววัน (FOR UPDATE) แล้วอ่านใหม่ — ผู้แก้ไข/ล้างธงที่ commit ก่อนหน้าเห็นครบ · แถวถูกลบแล้ว/ไม่มี = null */
+  private async lockDay(tx: Prisma.TransactionClient, by: { id: string } | { key: { userId: string; workDate: Date } }): Promise<AttendanceDay | null> {
+    if ('id' in by) {
+      await tx.$queryRaw`SELECT id FROM attendance_days WHERE id = ${by.id} FOR UPDATE`;
+      return tx.attendanceDay.findUnique({ where: { id: by.id } });
+    }
+    await tx.$queryRaw`SELECT id FROM attendance_days WHERE user_id = ${by.key.userId} AND work_date = ${by.key.workDate}::date FOR UPDATE`;
+    return tx.attendanceDay.findUnique({ where: { userId_workDate: by.key } });
+  }
+
+  private createPunch(
     tx: Prisma.TransactionClient,
-    w: {
-      input: PunchInput;
-      punchId: string;
-      now: Date;
-      photoKey: string | null;
-      punchFlags: string[];
-      day: AttendanceDay | null;
-      workDate: Date;
-      dayKind: AttendanceDay['dayKind'];
-      summary: ReturnType<typeof computeDaySummary>;
-      dayFlags: string[];
-    },
-  ): Promise<void> {
-    const { input, punchId, now, photoKey, punchFlags, day, workDate, dayKind, summary, dayFlags } = w;
+    w: { input: PunchInput; punchId: string; now: Date; photoKey: string | null; punchFlags: string[] },
+  ) {
+    const { input, punchId, now, photoKey, punchFlags } = w;
     const { device, userId, kind } = input;
-    const punch = await tx.attendancePunch.create({
+    return tx.attendancePunch.create({
       data: {
         id: punchId,
         deviceId: device.id,
@@ -172,30 +207,24 @@ export class KioskPunchService {
         flags: punchFlags,
       },
     });
-    const computed = {
-      workedMinutes: summary.workedMinutes,
-      lateMinutes: summary.lateMinutes,
-      earlyLeaveMinutes: summary.earlyLeaveMinutes,
-      otHours: summary.otHours,
-      flags: dayFlags,
-    };
-    if (!day) {
-      await tx.attendanceDay.create({
-        data: { userId, branchId: device.branchId, workDate: dbDate(workDate), dayKind, clockIn: now, clockInPunchId: punch.id, clockOut: null, clockOutPunchId: null, ...computed },
-      });
-      return;
-    }
+  }
+
+  private async updateDay(
+    tx: Prisma.TransactionClient,
+    w: { input: PunchInput; now: Date; punchId: string; current: AttendanceDay; planned: { summary: ReturnType<typeof computeDaySummary>; dayFlags: string[]; dayKind: AttendanceDay['dayKind'] } },
+  ): Promise<void> {
+    const { input, now, punchId, current, planned } = w;
     // ใช้ฟิลด์ตรง (clockInPunchId/clockOutPunchId) แทน relation API — ตรงสัญญาในแผนและอ่านง่ายในเทส
-    const data: Prisma.AttendanceDayUncheckedUpdateInput = { ...computed, dayKind };
-    if (kind === 'IN') {
-      if (day.clockOut) { data.clockOut = null; data.clockOutPunchId = null; }
+    const data: Prisma.AttendanceDayUncheckedUpdateInput = { ...this.computed(planned), dayKind: planned.dayKind };
+    if (input.kind === 'IN') {
+      if (current.clockOut) { data.clockOut = null; data.clockOutPunchId = null; }
       // แถวที่ตั้งไว้ล่วงหน้า (ยังไม่มี IN) ย้ายไปสาขาที่ตอกจริง (สเปก §9 · รีวิวรอบ 2 C10)
-      if (!day.clockIn) { data.clockIn = now; data.clockInPunchId = punch.id; data.branchId = device.branchId; }
+      if (!current.clockIn) { data.clockIn = now; data.clockInPunchId = punchId; data.branchId = input.device.branchId; }
     } else {
       data.clockOut = now;
-      data.clockOutPunchId = punch.id;
+      data.clockOutPunchId = punchId;
     }
-    await tx.attendanceDay.update({ where: { id: day.id }, data });
+    await tx.attendanceDay.update({ where: { id: current.id }, data });
   }
 
   /** ห่างจากจุดตอกครั้งก่อน (ที่มีพิกัด) ของเครื่องนี้เกิน LOCATION_CHANGE_METERS */

@@ -228,6 +228,7 @@ export class AttendanceDeviceService {
     const since = staleToken.usedAt ?? device.lastCleanHeartbeatAt ?? device.createdAt;
     const flaggedPairs: Array<{ userId: string; workDate: Date }> = [];
     await this.prisma.$transaction(async (tx) => {
+      // ลำดับล็อก: แถวเครื่อง → แถววัน (เหมือน tx ตอกบัตรของ kiosk-punch ที่ล็อกแถวเครื่องก่อน) ⇒ สองฝั่งไม่ deadlock
       await tx.attendanceDevice.update({ where: { id: device.id }, data: { status: 'LOCKED' } });
       await tx.attendanceDeviceEvent.create({
         data: {

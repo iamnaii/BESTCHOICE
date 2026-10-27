@@ -18,22 +18,33 @@ type Delegate = Record<string, jest.Mock>;
 function harness() {
   const delegates = new Map<string, Delegate>();
   const calls: string[] = [];
-  const client: Record<string, unknown> = {};
-  const proxy: any = new Proxy(client, {
-    get(target, key: string) {
-      if (key in target) return target[key];
-      if (!delegates.has(key)) delegates.set(key, new Proxy({} as Delegate, { get(d, m: string) { if (!(m in d)) d[m] = jest.fn(async () => { calls.push(`${key}.${m}`); return m === 'findMany' ? [] : m.startsWith('find') ? null : m.endsWith('Many') ? { count: 0 } : {}; }); return d[m]; } }));
-      return delegates.get(key);
-    },
-  });
-  client.$queryRaw = jest.fn(async () => { calls.push('rowlock'); return []; });
-  client.$executeRaw = jest.fn(async () => { calls.push('lock'); return 0; });
-  client.$transaction = jest.fn(async (cb: (tx: unknown) => unknown) => { calls.push('tx:start'); const out = await cb(proxy); calls.push('tx:end'); return out; });
+  /** `root:`/`tx:` + delegate.method ตามลำดับที่เรียกจริง — ใช้ตรวจว่าอ่านใหม่ผ่าน tx หลัง FOR UPDATE */
+  const where: string[] = [];
+  const raw = (key: string): Delegate => {
+    if (!delegates.has(key)) delegates.set(key, new Proxy({} as Delegate, { get(d, m: string) { if (!(m in d)) d[m] = jest.fn(async () => { calls.push(`${key}.${m}`); return m === 'findMany' ? [] : m.startsWith('find') ? null : m.endsWith('Many') ? { count: 0 } : {}; }); return d[m]; } }));
+    return delegates.get(key)!;
+  };
+  const make = (label: 'root' | 'tx') => {
+    const client: Record<string, unknown> = {
+      $queryRaw: jest.fn(async () => { calls.push('rowlock'); where.push(`${label}:$queryRaw`); return []; }),
+      $executeRaw: jest.fn(async () => { calls.push('lock'); where.push(`${label}:$executeRaw`); return 0; }),
+    };
+    return new Proxy(client, {
+      get(target, key: string) {
+        if (key in target) return target[key];
+        const d = raw(key);
+        return new Proxy(d, { get: (t, m: string) => (typeof t[m] === 'function' ? (...a: unknown[]) => { where.push(`${label}:${key}.${m}`); return (t[m] as jest.Mock)(...a); } : t[m]) });
+      },
+    }) as any;
+  };
+  const proxy: any = make('root');
+  const txClient: any = make('tx');
+  proxy.$transaction = jest.fn(async (cb: (tx: unknown) => unknown) => { calls.push('tx:start'); const out = await cb(txClient); calls.push('tx:end'); return out; });
   const audit = { log: jest.fn(async () => { calls.push('audit'); }) };
   const settings = { getRules: jest.fn().mockResolvedValue(RULES) };
   const storage = { getStream: jest.fn(async () => Readable.from(['img'])) };
   const service = new AttendanceService(proxy, audit as never, settings as never, storage as never);
-  return { service, d: (k: string) => proxy[k] as Delegate, audit, calls, storage };
+  return { service, d: raw, audit, calls, where, storage, settings, tx: txClient };
 }
 
 const users = [
@@ -340,6 +351,12 @@ describe('AttendanceService', () => {
     expect(h.d('attendanceCorrection').create.mock.calls[0][0].data.before).toMatchObject({ clockOut: at(20, 0) });
     expect(h.audit.log).toHaveBeenCalledWith(expect.objectContaining({ oldValue: expect.objectContaining({ clockOut: at(20, 0) }) }));
     expect(h.calls.indexOf('rowlock')).toBeGreaterThan(h.calls.indexOf('lock'));
+    // อ่านใหม่ต้องผ่าน tx หลัง FOR UPDATE (ไม่ใช่ this.prisma) · กติกาอ่านผ่าน tx เดียวกัน (item 5)
+    const reads = h.where.filter((w) => w.endsWith('attendanceDay.findUnique'));
+    expect(reads).toEqual(['root:attendanceDay.findUnique', 'tx:attendanceDay.findUnique']);
+    expect(h.where.indexOf('tx:$queryRaw')).toBeLessThan(h.where.indexOf('tx:attendanceDay.findUnique'));
+    expect(h.settings.getRules.mock.calls[0][0]).toBe('br1');
+    expect(h.settings.getRules.mock.calls[0][1]).toBe(h.tx);
   });
 
   it('S27 correctDay: the row soft-deleted between the pre-read and the lock → 404 and nothing written', async () => {
@@ -357,5 +374,52 @@ describe('AttendanceService', () => {
     expect(h.calls).toContain('lock');
     expect(h.d('attendanceDay').findUnique).toHaveBeenCalledTimes(1);
     expect(h.d('attendanceDay').upsert).not.toHaveBeenCalled();
+  });
+
+  it('S29 setDayKinds row-locks the existing target rows in (user, date) order after the advisory locks and before the clocked-in check', async () => {
+    const h = harness();
+    h.d('user').findMany.mockResolvedValue([{ id: 'u1', branchId: 'br1' }, { id: 'u3', branchId: 'br1' }]);
+    await h.service.setDayKinds(OWNER, { branchId: 'br1', entries: [{ userId: 'u3', date: '2026-10-29', dayKind: 'DAY_OFF' }, { userId: 'u1', date: '2026-10-30', dayKind: 'DAY_OFF' }, { userId: 'u1', date: '2026-10-29', dayKind: 'DAY_OFF' }] }, at(14, 0));
+    const rowLock = h.tx.$queryRaw as jest.Mock;
+    expect(rowLock).toHaveBeenCalledTimes(1);
+    const sql = rowLock.mock.calls[0][0];
+    expect(sql.sql).toContain('ORDER BY user_id, work_date FOR UPDATE');
+    expect(sql.values).toEqual(['u1', dbDate(bangkokMidnight(2026, 9, 29)), 'u1', dbDate(bangkokMidnight(2026, 9, 30)), 'u3', dbDate(bangkokMidnight(2026, 9, 29))]);
+    const order = h.where.filter((w) => w.startsWith('tx:'));
+    expect(order.indexOf('tx:$executeRaw')).toBeLessThan(order.indexOf('tx:$queryRaw'));
+    expect(order.indexOf('tx:$queryRaw')).toBeLessThan(order.indexOf('tx:attendanceDay.findUnique'));
+  });
+
+  it('S30 clearConflictFlag locks the row and filters the flags of the row re-read in the tx: CORRECTED added after the owner opened the dialog survives; a row deleted meanwhile → 404', async () => {
+    const h = harness();
+    h.d('attendanceDay').findUnique
+      .mockResolvedValueOnce(dayRow({ userId: 'u1', flags: ['DEVICE_CONFLICT'] }))
+      .mockResolvedValueOnce(dayRow({ userId: 'u1', flags: ['DEVICE_CONFLICT', 'CORRECTED'] }));
+    h.d('attendanceDay').update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => dayRow({ userId: 'u1', ...data }));
+    const out = await h.service.clearConflictFlag(OWNER, 'd-u1');
+    expect(out.flags).toEqual(['CORRECTED']);
+    expect(h.where.indexOf('tx:$queryRaw')).toBeLessThan(h.where.lastIndexOf('tx:attendanceDay.findUnique'));
+    expect(h.where).not.toContain('root:attendanceDay.update');
+    const h2 = harness();
+    h2.d('attendanceDay').findUnique.mockResolvedValueOnce(dayRow({ userId: 'u1', flags: ['DEVICE_CONFLICT'] })).mockResolvedValueOnce(dayRow({ userId: 'u1', deletedAt: new Date() }));
+    await expect(h2.service.clearConflictFlag(OWNER, 'd-u1')).rejects.toThrow(NotFoundException);
+    expect(h2.d('attendanceDay').update).not.toHaveBeenCalled();
+  });
+
+  it('S31 correctDay re-checks branch scope against the re-read row: a kiosk IN moved the pre-scheduled row to another branch → 403 and nothing written', async () => {
+    const h = harness();
+    h.d('attendanceDay').findUnique.mockResolvedValueOnce(dayRow({ userId: 'u5', branchId: 'br1', clockIn: null })).mockResolvedValueOnce(dayRow({ userId: 'u5', branchId: 'br2', clockIn: at(10, 1) }));
+    await expect(h.service.correctDay(BM, 'd-u5', { clockOut: at(20, 0).toISOString(), reason: 'ลืมตอกออก มีลูกค้าทำสัญญา' })).rejects.toThrow(ForbiddenException);
+    expect(h.d('attendanceDay').update).not.toHaveBeenCalled();
+    expect(h.d('attendanceCorrection').create).not.toHaveBeenCalled();
+  });
+
+  it('S32 the branch rules follow the re-read row\'s branch (cur.branchId) and are read through the tx', async () => {
+    const h = harness();
+    h.d('attendanceDay').findUnique.mockResolvedValueOnce(dayRow({ userId: 'u5', branchId: 'br1', clockIn: null })).mockResolvedValueOnce(dayRow({ userId: 'u5', branchId: 'br2', clockIn: at(10, 1) }));
+    h.d('attendanceDay').update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => dayRow({ userId: 'u5', ...data }));
+    await h.service.correctDay(OWNER, 'd-u5', { clockOut: at(20, 0).toISOString(), reason: 'ลืมตอกออก มีลูกค้าทำสัญญา' });
+    expect(h.settings.getRules.mock.calls[0][0]).toBe('br2');
+    expect(h.settings.getRules.mock.calls[0][1]).toBe(h.tx);
   });
 });

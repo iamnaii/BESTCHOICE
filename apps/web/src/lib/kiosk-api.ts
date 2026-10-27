@@ -24,9 +24,13 @@ export class KioskApiError extends Error {
     this.status = opts.status;
     this.network = !!opts.network;
   }
-  /** ยังไม่รู้ผลแน่นอน — ส่งซ้ำด้วย requestId เดิมได้ */
+  /**
+   * ยังไม่รู้ผลแน่นอน — ส่งซ้ำด้วย requestId เดิมได้
+   * 5xx/429/408 นับเป็น "ไม่รู้ผล" ด้วย: proxy ตอบ 502 ได้ทั้งที่เซิร์ฟเวอร์ commit แล้ว (รีวิวรอบ 2 C2)
+   */
   get retryable(): boolean {
-    return this.network || this.code === 'REQUEST_BUSY';
+    const s = this.status ?? 0;
+    return this.network || this.code === 'REQUEST_BUSY' || s >= 500 || s === 429 || s === 408;
   }
 }
 
@@ -106,8 +110,13 @@ async function post<T>(path: string, body: FormData | Record<string, unknown>, r
   }
 }
 
+/** คิวคำขอของเครื่อง: ข้ามแท็บด้วย Web Locks (สองแท็บใช้ token เดียวกัน — รีวิวรอบ 2 C3) · ไม่มี = คิวในแท็บ */
+const LOCK_NAME = 'bc-kiosk-device';
 let queue: Promise<unknown> = Promise.resolve();
 function serialize<T>(task: () => Promise<T>): Promise<T> {
+  const locks = typeof navigator !== 'undefined' ? (navigator as Partial<Navigator>).locks : undefined;
+  // request() คืน promise ของค่าที่ callback resolve (type ของ DOM ห่อ Promise ซ้อนหนึ่งชั้น)
+  if (locks?.request) return locks.request(LOCK_NAME, () => task()) as unknown as Promise<T>;
   const run = queue.then(task, task);
   queue = run.catch(() => undefined);
   return run;
@@ -145,7 +154,13 @@ function deviceCall<T>(path: string, build: (token: string, requestId: string) =
     let device = loadDevice();
     if (!device) throw new KioskApiError('เครื่องนี้ยังไม่ได้ลงทะเบียน', { code: 'DEVICE_REVOKED' });
     if (device.pendingRequestId && device.pendingRequestId !== requestId) {
-      await recoverPending(device.token, device.pendingRequestId);
+      try {
+        await recoverPending(device.token, device.pendingRequestId);
+      } catch (err) {
+        // error ของการกู้ต้องไม่พา requestId ของคำขอเก่าไปให้คำขอนี้ "ลองใหม่" — ไม่งั้นได้ผลการตอกของคนก่อน (รีวิวรอบ 2 C1)
+        if (err instanceof KioskApiError) err.requestId = requestId;
+        throw err;
+      }
       device = loadDevice() ?? device;
     }
     const rid = requestId ?? newRequestId();
@@ -154,8 +169,16 @@ function deviceCall<T>(path: string, build: (token: string, requestId: string) =
 }
 
 export const kioskApi = {
+  /** ไม่ส่งซ้ำอัตโนมัติ: รหัสใช้ได้ครั้งเดียว ครั้งที่สองจะได้ "รหัสไม่ถูกต้อง" ทั้งที่ครั้งแรกอาจสำเร็จ (รีวิวรอบ 2 C5) */
   async register(code: string, deviceName: string): Promise<RegisterResponse> {
-    return post<RegisterResponse>('/kiosk/register', { code, deviceName });
+    try {
+      return await post<RegisterResponse>('/kiosk/register', { code, deviceName }, false);
+    } catch (err) {
+      if (err instanceof KioskApiError && err.network) {
+        throw new KioskApiError('ไม่แน่ใจว่าลงทะเบียนสำเร็จหรือไม่ (เน็ตหลุด) — ลองกดอีกครั้ง ถ้าขึ้นว่ารหัสใช้ไม่ได้ ให้ขอรหัสใหม่จากเจ้าของ และยกเลิกเครื่องที่ซ้ำที่ ตั้งค่า › บริษัท & สาขา › เครื่องตอกบัตร', { network: true });
+      }
+      throw err;
+    }
   },
 
   heartbeat(): Promise<HeartbeatResponse> {

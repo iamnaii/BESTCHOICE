@@ -183,7 +183,8 @@ export default function KioskPage() {
       setRetryRequestId(null);
       const message = err instanceof KioskApiError ? err.message : 'ยังไม่ได้บันทึก — ลองใหม่';
       setError({ message, retryable: false });
-      setPin('');
+      // NOT_RECORDED = ให้กดยืนยันอีกครั้ง ⇒ คงรหัสไว้ (รีวิวรอบ 2 C15) · error อื่น (รหัสผิด ฯลฯ) ล้างรหัส
+      if (!(err instanceof KioskApiError && err.code === 'NOT_RECORDED')) setPin('');
       setPhase('ready');
     }
   };

@@ -303,4 +303,15 @@ describe('AttendanceDeviceService', () => {
     expect(h.d('attendanceDeviceEvent').create).toHaveBeenCalledWith({ data: expect.objectContaining({ kind: 'UNLOCKED' }) });
     expect(h.audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'ATTENDANCE_DEVICE_UNLOCKED' }));
   });
+  it('TD15 replayIfCached: when a business 409 races a slow first attempt that has since committed, the cached reply is replayed with a re-keyed token (รีวิวรอบ 2 C17)', async () => {
+    const h = harness();
+    h.d('attendanceDevice').findUnique.mockResolvedValue({ ...DEVICE, currentGeneration: 4 });
+    h.d('attendanceDeviceRequest').findUnique.mockResolvedValue({ deviceId: 'dev1', requestId: 'r1', responseJson: { status: 200, body: { result: 'first' }, consumedGeneration: 3 } });
+    h.d('attendanceDeviceToken').updateMany.mockResolvedValue({ count: 1 });
+    const auth = { device: DEVICE as never, token: { id: 't3', generation: 3, usedAt: null } };
+    const replay = await h.service.replayIfCached(auth, 'r1');
+    expect(replay).toMatchObject({ status: 200, body: { result: 'first', nextDeviceToken: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/) } });
+    h.d('attendanceDeviceRequest').findUnique.mockResolvedValue(null);
+    expect(await h.service.replayIfCached(auth, 'r2')).toBeNull();
+  });
 });

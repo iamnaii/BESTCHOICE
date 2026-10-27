@@ -121,6 +121,7 @@ export class KioskPunchService {
     if (kind === 'OUT' && day?.clockOut) eventFlags.add(FLAG_OUT_UPDATED);
     if (!photoKey) eventFlags.add(FLAG_NO_PHOTO);
     if (punchFlags.includes(FLAG_LOCATION_CHANGED)) eventFlags.add(FLAG_LOCATION_CHANGED);
+    if (punchFlags.includes(FLAG_NETWORK_CHANGED)) eventFlags.add(FLAG_NETWORK_CHANGED);
     if (punchFlags.includes(FLAG_AFTER_PIN_LOCKOUT)) eventFlags.add(FLAG_AFTER_PIN_LOCKOUT);
     const dayFlags = [...eventFlags, ...summary.flags];
     const status: PunchStatus = kind === 'IN' ? (summary.lateMinutes > 0 ? 'LATE' : 'ON_TIME') : summary.otHours > 0 ? 'OUT_OT' : 'OUT';
@@ -188,7 +189,8 @@ export class KioskPunchService {
     const data: Prisma.AttendanceDayUncheckedUpdateInput = { ...computed, dayKind };
     if (kind === 'IN') {
       if (day.clockOut) { data.clockOut = null; data.clockOutPunchId = null; }
-      if (!day.clockIn) { data.clockIn = now; data.clockInPunchId = punch.id; }
+      // แถวที่ตั้งไว้ล่วงหน้า (ยังไม่มี IN) ย้ายไปสาขาที่ตอกจริง (สเปก §9 · รีวิวรอบ 2 C10)
+      if (!day.clockIn) { data.clockIn = now; data.clockInPunchId = punch.id; data.branchId = device.branchId; }
     } else {
       data.clockOut = now;
       data.clockOutPunchId = punch.id;

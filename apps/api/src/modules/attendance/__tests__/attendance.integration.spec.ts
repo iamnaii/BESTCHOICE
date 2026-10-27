@@ -10,6 +10,7 @@ import { AttendanceService } from '../attendance.service';
 import { KioskPunchService } from '../kiosk-punch.service';
 import { KioskPublicController } from '../kiosk-public.controller';
 import { AttendanceCloseDayCron } from '../crons/attendance-close-day.cron';
+import { AttendanceRetentionCron } from '../crons/attendance-retention.cron';
 import { dbDate } from '../attendance-rules';
 
 /**
@@ -32,6 +33,7 @@ const punchService = new KioskPunchService(prisma as never, settings, storage as
 const attendance = new AttendanceService(prisma as never, audit, settings, storage as never);
 const closeDay = new AttendanceCloseDayCron(prisma as never, devices);
 const kiosk = new KioskPublicController(devices, punchService);
+const retention = new AttendanceRetentionCron(prisma as never, storage as never, settings, devices);
 const reqFrom = (ip: string, ua = 'vitest') => ({ headers: { 'user-agent': ua }, ip, socket: { remoteAddress: ip } }) as never;
 /** เรียก endpoint ของเครื่องตอนเวลา `when` (controller ใช้ new Date()) */
 async function atTime<T>(when: Date, fn: () => Promise<T>): Promise<T> {
@@ -205,6 +207,23 @@ describe('attendance บน Postgres จริง', () => {
     expect(await devices.checkPin(dev.id, '111111', t(30))).toBe('LOCKED'); // รหัสถูกก็ยังพักอยู่
     expect(await prisma.attendanceDeviceEvent.count({ where: { deviceId: dev.id, kind: 'PIN_LOCKOUT' } })).toBe(1);
     expect(await devices.checkPin(dev.id, '111111', t(40))).toEqual({ userId: staffA }); // พ้น 15 นาที
+  });
+
+  it('I8 retention keeps each device\'s latest rotation reply: a tablet back days later with its last reply lost still recovers instead of locking (รีวิวรอบ 2 C4)', async () => {
+    const D7 = bangkokMidnight(2026, 10, 3);
+    const dev = await newDevice('เครื่อง I8', at(8, 0, D7));
+    const hb1 = await heartbeatAt(at(9, 0, D7), dev.token);
+    const lostRequestId = uuid();
+    await heartbeatAt(at(9, 10, D7), hb1.nextDeviceToken!, { requestId: lostRequestId }); // คำตอบนี้หาย
+    await prisma.attendanceDeviceRequest.updateMany({ where: { deviceId: dev.id }, data: { createdAt: new Date(at(9, 0, D7).getTime() - 3 * 24 * 3600_000) } });
+    const out = await retention.run(new Date(at(9, 30, D7).getTime() + 3 * 24 * 3600_000));
+    expect(out.requestsDeleted).toBeGreaterThanOrEqual(1);
+    const left = await prisma.attendanceDeviceRequest.findMany({ where: { deviceId: dev.id } });
+    expect(left.map((r) => r.requestId)).toEqual([lostRequestId]);
+    // สามวันต่อมา แท็บเล็ตกู้คำขอที่ค้างด้วย token ก่อนหน้า + requestId เดิม → ได้ token ใหม่ ไม่ล็อก
+    const recovered = await heartbeatAt(at(9, 40, D7), hb1.nextDeviceToken!, { requestId: lostRequestId });
+    expect(recovered.nextDeviceToken).toBeTruthy();
+    expect(await statusOf(dev.id)).toBe('ACTIVE');
   });
 
   it('I3 a copied token used while the tablet is off — even with the copier\'s heartbeats in between — locks the device on the real tablet\'s return and flags the copier\'s punches and days from the fork (รีวิว C4)', async () => {

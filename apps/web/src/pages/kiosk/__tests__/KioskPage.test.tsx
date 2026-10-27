@@ -183,4 +183,15 @@ describe('KioskPage', () => {
     expect(apiMock.punch.mock.calls[0][0].geo).toEqual({ lat: 14.7995, lng: 100.6534 });
     Object.defineProperty(navigator, 'geolocation', { configurable: true, value: undefined });
   });
+  it('W11 NOT_RECORDED keeps the PIN so "กดยืนยันอีกครั้ง" is actually possible (รีวิวรอบ 2 C15)', async () => {
+    saveDevice(DEVICE);
+    apiMock.punch.mockRejectedValueOnce(new KioskApiError('ยังไม่ได้บันทึก — กดยืนยันอีกครั้ง', { code: 'NOT_RECORDED' }));
+    render(<KioskPage />);
+    await screen.findByRole('button', { name: /^เข้างาน$/ });
+    fireEvent.click(screen.getByRole('button', { name: /^เข้างาน$/ }));
+    typePin('123456');
+    fireEvent.click(screen.getByRole('button', { name: /ยืนยันเข้างาน/ }));
+    await screen.findByRole('alert');
+    expect(screen.getByRole('button', { name: /ยืนยันเข้างาน/ })).toBeEnabled();
+  });
 });

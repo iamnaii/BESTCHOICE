@@ -65,15 +65,20 @@ export class AttendanceCloseDayCron {
           const existing = await this.prisma.attendanceDay.findMany({ where: { workDate: key, deletedAt: null, userId: { in: staff.map((u) => u.id) } }, select: { userId: true } });
           const haveRow = new Set(existing.map((r) => r.userId));
           const missing = staff.filter((u) => !haveRow.has(u.id));
-          if (!missing.length) continue;
 
           const punches = await this.prisma.attendancePunch.count({ where: { branchId: branch.id, at: { gte: dayStart, lt: dayEnd } } });
           const unavailable = punches === 0;
+          if (!unavailable && !missing.length) continue;
           for (const u of missing) {
             await this.prisma.attendanceDay.create({ data: { userId: u.id, branchId: branch.id, workDate: key, dayKind: 'WORK', flags: unavailable ? [FLAG_DEVICE_UNAVAILABLE] : [] } });
             if (!unavailable) result.absent++;
           }
           if (unavailable) {
+            // แถว WORK ที่ตั้งไว้ล่วงหน้า (ตารางหยุด/ลา) แต่ไม่มีการตอกเลยทั้งสาขา = เครื่องใช้ไม่ได้ ไม่ใช่ขาด (รีวิวรอบ 2 C7)
+            await this.prisma.attendanceDay.updateMany({
+              where: { workDate: key, branchId: branch.id, deletedAt: null, dayKind: 'WORK', clockIn: null, NOT: { flags: { has: FLAG_DEVICE_UNAVAILABLE } } },
+              data: { flags: { push: FLAG_DEVICE_UNAVAILABLE } },
+            });
             result.unavailableBranches.push(branch.id);
             await this.devices.createOwnerTodo({
               title: `สาขา ${branch.name} ไม่มีการตอกบัตรวันที่ ${targetDate}`,

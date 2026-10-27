@@ -239,4 +239,24 @@ describe('AttendancePage', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: /บันทึกการแก้ไข/ }));
     await waitFor(() => expect(apiMock.patch).toHaveBeenCalledWith('/attendance/days/d-u1', expect.objectContaining({ clockOut: '2026-10-27T17:20:00.000Z' })));
   });
+  it('A14 a branch manager gets no แก้ไข on their own employee\'s day recorded at another branch, with a note instead of a dead-end 403 (รีวิวรอบ 2 C9)', async () => {
+    authMock.user = { id: 'u-bm', role: 'BRANCH_MANAGER', branchId: 'br2' };
+    const custom = { ...TODAY, rows: [row({ userId: 'u1', nickname: 'นุ๊ก', name: 'วรรณา ส.', status: 'ON_TIME', clockIn: '2026-10-27T03:02:00.000Z', dayId: 'd-u1', dayBranchId: 'br1' })] };
+    apiMock.get.mockImplementation(async (path: string) => ({ data: path === '/attendance/today' ? custom : null }));
+    wrap();
+    await screen.findByText('วรรณา ส.');
+    const tr = screen.getByText('วรรณา ส.').closest('tr')!;
+    expect(within(tr).queryByRole('button', { name: /แก้ไข/ })).not.toBeInTheDocument();
+    expect(within(tr).getByText(/ตอกที่สาขาอื่น/)).toBeInTheDocument();
+  });
+
+  it('A15 the no-PIN hint tells a branch manager to ask the owner (the user page is owner-only) — รีวิวรอบ 2 C14', async () => {
+    authMock.user = { id: 'u-bm', role: 'BRANCH_MANAGER', branchId: 'br2' };
+    const custom = { ...TODAY, rows: [row({ userId: 'u7', nickname: 'ใหม่', name: 'พนักงานใหม่', hasPin: false, status: 'NO_PIN' })] };
+    apiMock.get.mockImplementation(async (path: string) => ({ data: path === '/attendance/today' ? custom : null }));
+    wrap();
+    await screen.findByText('พนักงานใหม่');
+    expect(screen.getByText(/ให้เจ้าของตั้งรหัส/)).toBeInTheDocument();
+    expect(screen.queryByText(/หน้าผู้ใช้/)).not.toBeInTheDocument();
+  });
 });

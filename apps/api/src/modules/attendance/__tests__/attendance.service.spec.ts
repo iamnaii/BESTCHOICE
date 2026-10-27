@@ -235,14 +235,35 @@ describe('AttendanceService', () => {
     await expect(h.service.photoStream(BM, 'p2')).rejects.toThrow(ForbiddenException);
   });
 
-  it('S18 setDayKinds on today\'s row that already has a clock-in recomputes with the new kind (day off: no lateness, WORKED_ON_OFF_DAY) instead of only flipping the kind (รีวิว minor)', async () => {
+  it('S18 setDayKinds refuses a row that already has a clock-in (changing its kind changes pay) — the message points at แก้ไข with a reason (รีวิวรอบ 2 C6)', async () => {
     const h = harness();
     h.d('user').findMany.mockResolvedValue([{ id: 'u1', branchId: 'br1' }]);
     h.d('attendanceDay').findUnique.mockResolvedValue(dayRow({ userId: 'u1', clockIn: at(10, 30), lateMinutes: 30 }));
-    await h.service.setDayKinds(BM, { branchId: 'br1', entries: [{ userId: 'u1', date: '2026-10-27', dayKind: 'DAY_OFF' }] }, at(14, 0));
+    const err = await h.service.setDayKinds(BM, { branchId: 'br1', entries: [{ userId: 'u1', date: '2026-10-27', dayKind: 'DAY_OFF' }] }, at(14, 0)).catch((e) => e);
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect(err.message).toContain('แก้ไข');
+    expect(h.d('attendanceDay').update).not.toHaveBeenCalled();
     expect(h.d('attendanceDay').upsert).not.toHaveBeenCalled();
-    const data = h.d('attendanceDay').update.mock.calls[0][0].data;
-    expect(data).toMatchObject({ dayKind: 'DAY_OFF', lateMinutes: 0 });
-    expect(data.flags).toContain('WORKED_ON_OFF_DAY');
+  });
+  it('S19 month keeps staff who were deactivated or left during the month when they have rows in it — their OT/late/absent stay in the export (รีวิวรอบ 2 C8)', async () => {
+    const h = harness();
+    await h.service.month(OWNER, 'br1', '2026-10', at(14, 0));
+    const where = h.d('user').findMany.mock.calls[0][0].where;
+    const inMonth = { gte: dbDate(bangkokMidnight(2026, 9, 1)), lt: dbDate(bangkokMidnight(2026, 10, 1)) };
+    expect(where.OR).toEqual(expect.arrayContaining([
+      { branchId: 'br1', deletedAt: null, isActive: true },
+      { attendanceDays: { some: { workDate: inMonth, branchId: 'br1', deletedAt: null } } },
+      { branchId: 'br1', attendanceDays: { some: { workDate: inMonth, deletedAt: null } } },
+    ]));
+    expect(where).not.toHaveProperty('isActive');
+    expect(where).not.toHaveProperty('deletedAt');
+  });
+
+  it('S20 today rows carry the day row\'s branch so the page can tell a home employee who punched at another branch (รีวิวรอบ 2 C9)', async () => {
+    const h = harness();
+    h.d('user').findMany.mockResolvedValue([users[0]]);
+    h.d('attendanceDay').findMany.mockResolvedValue([dayRow({ userId: 'u1', branchId: 'br2', clockIn: at(10, 2) })]);
+    const out = await h.service.today(OWNER, 'br1', at(14, 0));
+    expect(out.rows[0]).toMatchObject({ userId: 'u1', dayBranchId: 'br2' });
   });
 });

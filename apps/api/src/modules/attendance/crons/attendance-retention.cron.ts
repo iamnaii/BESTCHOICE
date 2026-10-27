@@ -58,8 +58,14 @@ export class AttendanceRetentionCron {
         }
       }
 
-      const requests = await this.prisma.attendanceDeviceRequest.deleteMany({ where: { createdAt: { lt: new Date(now.getTime() - DAY_MS) } } });
-      result.requestsDeleted = requests.count;
+      // คงคำตอบของการหมุนครั้งล่าสุดของแต่ละเครื่องไว้เสมอ: แท็บเล็ตที่ปิดไปหลายวันพร้อมคำขอค้าง ต้องกู้คำตอบได้ ไม่ใช่ถูกนับว่าชน (รีวิวรอบ 2 C4)
+      const cutoff = new Date(now.getTime() - DAY_MS);
+      result.requestsDeleted = await this.prisma.$executeRaw`
+        DELETE FROM "attendance_device_requests" r
+         USING "attendance_devices" d
+         WHERE r."device_id" = d."id"
+           AND r."created_at" < ${cutoff}
+           AND COALESCE((r."response_json"->>'consumedGeneration')::int, -1) <> d."current_generation" - 1`;
 
       const silent = await this.prisma.attendanceDevice.findMany({
         where: { status: 'ACTIVE', deletedAt: null, lastSeenAt: { lt: new Date(now.getTime() - DAY_MS) } },

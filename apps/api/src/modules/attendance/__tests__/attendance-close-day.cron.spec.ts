@@ -108,4 +108,17 @@ describe('AttendanceCloseDayCron.run', () => {
     expect(h.devices.createOwnerTodo).not.toHaveBeenCalled();
     expect(out.unavailableBranches).toEqual([]);
   });
+  it('C10 on a day with no punches at the branch, staff who already had a WORK row (pre-set by the schedule) get DEVICE_UNAVAILABLE too, not ABSENT (รีวิวรอบ 2 C7)', async () => {
+    const h = harness();
+    h.d('attendancePunch').count.mockResolvedValue(0);
+    h.d('attendanceDay').findMany.mockResolvedValue([{ userId: 'u1' }, { userId: 'u2' }]); // ทุกคนมีแถวแล้ว (ตั้งจากตาราง)
+    h.d('attendanceDay').updateMany.mockResolvedValue({ count: 2 });
+    const out = await h.cron.run(RUN_AT);
+    expect(h.d('attendanceDay').updateMany).toHaveBeenCalledWith({
+      where: { workDate: YKEY, branchId: 'br1', deletedAt: null, dayKind: 'WORK', clockIn: null, NOT: { flags: { has: 'DEVICE_UNAVAILABLE' } } },
+      data: { flags: { push: 'DEVICE_UNAVAILABLE' } },
+    });
+    expect(out.unavailableBranches).toEqual(['br1']);
+    expect(h.devices.createOwnerTodo).toHaveBeenCalledTimes(1);
+  });
 });

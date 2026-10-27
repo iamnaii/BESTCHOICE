@@ -22,6 +22,8 @@ export interface TodayRow {
   hasPin: boolean;
   visiting: boolean;
   dayId: string | null;
+  /** สาขาของแถววัน (สาขาที่ตอกเข้า) — ผจก.แก้ได้เฉพาะแถวที่อยู่สาขาตัวเอง */
+  dayBranchId?: string | null;
   dayKind: DayKind;
   status: TodayStatus;
   clockIn: string | null;

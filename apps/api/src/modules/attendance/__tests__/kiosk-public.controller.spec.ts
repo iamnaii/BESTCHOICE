@@ -132,4 +132,15 @@ describe('KioskPublicController', () => {
       expect(manifest[key]).toMatchObject({ classification: 'public', permission: null });
     }
   });
+  it('KC8 a business 409 from the punch is first checked against the request cache: if the first attempt committed meanwhile, its reply is returned (no stale token on the tablet — รีวิวรอบ 2 C17)', async () => {
+    const h = harness();
+    const { ConflictException } = await import('@nestjs/common');
+    h.punch.punch.mockRejectedValueOnce(new ConflictException('ตอกเข้าแล้วเมื่อ 10:02'));
+    (h.devices as Record<string, jest.Mock>).replayIfCached = jest.fn(async () => ({ status: 200, body: { nextDeviceToken: 'rekeyed', serverTime: 'x', result: { status: 'ON_TIME' } } }));
+    expect(await h.controller.punch(punchDto(), undefined, req)).toEqual({ nextDeviceToken: 'rekeyed', serverTime: 'x', result: { status: 'ON_TIME' } });
+    h.punch.punch.mockRejectedValueOnce(new ConflictException('ตอกเข้าแล้วเมื่อ 10:02'));
+    (h.devices as Record<string, jest.Mock>).replayIfCached = jest.fn(async () => null);
+    const err = await h.controller.punch(punchDto(), undefined, req).catch((e) => e);
+    expect(err.getStatus()).toBe(409);
+  });
 });

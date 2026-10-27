@@ -36,6 +36,8 @@ export interface TodayRow {
   hasPin: boolean;
   visiting: boolean;
   dayId: string | null;
+  /** สาขาของแถววัน (= สาขาที่ตอกเข้า) — ผจก.แก้ได้เฉพาะแถวที่อยู่สาขาตัวเอง */
+  dayBranchId: string | null;
   dayKind: AttendanceDayKind;
   status: TodayStatus;
   clockIn: Date | null;
@@ -168,6 +170,7 @@ export class AttendanceService {
         hasPin: !!u.attendancePinHash,
         visiting: u.branchId !== branchId,
         dayId: day?.id ?? null,
+        dayBranchId: day?.branchId ?? null,
         dayKind: day?.dayKind ?? 'WORK',
         // ยังไม่มีรหัสตอกบัตร = ยังไม่เริ่มใช้ระบบ ไม่ใช่ "ยังไม่มา" (รีวิว minor)
         status: !day && !u.attendancePinHash ? 'NO_PIN' : todayStatusOf(day),
@@ -202,8 +205,18 @@ export class AttendanceService {
     assertBranchScope(actor, branchId);
     const { from, to, days } = parseMonth(month);
     const today = workDateOf(now);
+    // คนที่ออก/ถูกปิดใช้ระหว่างเดือนยังต้องอยู่ ถ้ามีแถวในเดือนนี้ (OT/สาย/ขาดใช้คิดเงินเดือนงวดสุดท้าย — รีวิวรอบ 2 C8)
+    const inMonth = { gte: from, lt: to };
     const staff = await this.prisma.user.findMany({
-      where: { deletedAt: null, isActive: true, isSystemUser: false, role: { in: STAFF_ROLES as never }, OR: [{ branchId }, { attendanceDays: { some: { workDate: { gte: from, lt: to }, branchId, deletedAt: null } } }] },
+      where: {
+        isSystemUser: false,
+        role: { in: STAFF_ROLES as never },
+        OR: [
+          { branchId, deletedAt: null, isActive: true },
+          { attendanceDays: { some: { workDate: inMonth, branchId, deletedAt: null } } },
+          { branchId, attendanceDays: { some: { workDate: inMonth, deletedAt: null } } },
+        ],
+      },
       select: { id: true, nickname: true, name: true, role: true, branchId: true, attendancePinHash: true },
       orderBy: { name: 'asc' },
     });
@@ -302,27 +315,13 @@ export class AttendanceService {
       return { ...e, workDate: dbDate(midnight) };
     });
     if (actor.role !== 'OWNER') await this.assertEntriesInBranch(dto.branchId, parsed);
+    // วันที่ตอกเข้าแล้ว: เปลี่ยนประเภทวันกระทบสาย/OT = เป็นการแก้ไขที่ต้องมีเหตุผลและประวัติ (สเปก §6 · รีวิวรอบ 2 C6)
+    for (const e of parsed) {
+      const existing = await this.prisma.attendanceDay.findUnique({ where: { userId_workDate: { userId: e.userId, workDate: e.workDate } }, select: { clockIn: true, deletedAt: true } });
+      if (existing?.clockIn && !existing.deletedAt) throw new BadRequestException(`วันที่ ${e.date} พนักงานตอกเข้าแล้ว — เปลี่ยนประเภทวันที่แท็บ วันนี้ › แก้ไข พร้อมเหตุผล`);
+    }
     await this.prisma.$transaction(async (tx) => {
       for (const e of parsed) {
-        const existing = await tx.attendanceDay.findUnique({ where: { userId_workDate: { userId: e.userId, workDate: e.workDate } } });
-        if (existing?.clockIn && !existing.deletedAt) {
-          // แถวที่ตอกเข้าแล้ว (วันนี้): คำนวณสาย/OT/ธงใหม่ตามประเภทวัน — กติกาชุดเดียวกับตอนตอก (รีวิว minor)
-          const rules = await this.settings.getRules(existing.branchId);
-          const summary = computeDaySummary({ workDate: fromDbDate(existing.workDate), dayKind: e.dayKind, clockIn: existing.clockIn, clockOut: existing.clockOut, rules });
-          const kept = existing.flags.filter((f) => f !== 'WORKED_ON_OFF_DAY');
-          await tx.attendanceDay.update({
-            where: { id: existing.id },
-            data: {
-              dayKind: e.dayKind,
-              workedMinutes: summary.workedMinutes,
-              lateMinutes: summary.lateMinutes,
-              earlyLeaveMinutes: summary.earlyLeaveMinutes,
-              otHours: existing.flags.includes(FLAG_MISSING_OUT) ? 0 : summary.otHours,
-              flags: Array.from(new Set([...kept, ...summary.flags])),
-            },
-          });
-          continue;
-        }
         await tx.attendanceDay.upsert({
           where: { userId_workDate: { userId: e.userId, workDate: e.workDate } },
           create: { userId: e.userId, branchId: dto.branchId, workDate: e.workDate, dayKind: e.dayKind },

@@ -188,4 +188,17 @@ describe('KioskPunchService.punch', () => {
     await h2.service.punch({ device: DEVICE, userId: 'u1', kind: 'IN', photo: { buffer: JPEG, mimeType: 'text/html' } }, at(10, 2));
     expect(h2.storage.upload).toHaveBeenCalledWith(expect.stringMatching(/\.jpg$/), JPEG, 'image/jpeg');
   });
+  it('K17 an IN at another branch onto a row pre-set by the schedule moves the row to the punching branch (spec §9 — รีวิวรอบ 2 C10)', async () => {
+    const h = harness();
+    h.d('attendanceDay').findUnique.mockResolvedValue({ id: 'day1', userId: 'u1', branchId: 'br-home', workDate: DB, dayKind: 'WORK', clockIn: null, clockOut: null, flags: [] });
+    await h.service.punch({ device: DEVICE, userId: 'u1', kind: 'IN' }, at(10, 2));
+    expect(h.d('attendanceDay').update.mock.calls[0][0].data).toMatchObject({ clockIn: at(10, 2), branchId: 'br1' });
+  });
+
+  it('K18 NETWORK_CHANGED is also written to the day row so the chip and the review list can show it (รีวิวรอบ 2 C16)', async () => {
+    const h = harness();
+    const res = await h.service.punch({ device: DEVICE, userId: 'u1', kind: 'IN', ip: '9.9.9.9' }, at(10, 2));
+    expect(res.flags).toContain('NETWORK_CHANGED');
+    expect(h.d('attendanceDay').create.mock.calls[0][0].data.flags).toContain('NETWORK_CHANGED');
+  });
 });

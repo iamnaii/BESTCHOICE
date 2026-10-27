@@ -32,7 +32,8 @@ export default function TodayTab({ branchId, date, onDateChange, actorId, isOwne
   const today = useAttendanceToday(branchId, date);
   const data = today.data;
   const shownDate = data?.date ?? date;
-  const canEdit = (row: TodayRow) => !!row.dayId && (isOwner || row.userId !== actorId);
+  const elsewhere = (row: TodayRow) => !!row.dayBranchId && row.dayBranchId !== branchId;
+  const canEdit = (row: TodayRow) => !!row.dayId && (isOwner || (row.userId !== actorId && !elsewhere(row)));
 
   return (
     <div className="flex flex-col gap-4">
@@ -94,7 +95,8 @@ export default function TodayTab({ branchId, date, onDateChange, actorId, isOwne
                               const Icon = v.icon;
                               return <span key={f} className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs ${flagChipClass(f)}`}><Icon className="size-3" aria-hidden="true" />{v.label}</span>;
                             })}
-                            {!row.hasPin && <span className="text-xs text-muted-foreground">ตั้งรหัสที่หน้าผู้ใช้ › รหัสตอกบัตร</span>}
+                            {!row.hasPin && <span className="text-xs text-muted-foreground">{isOwner ? 'ตั้งรหัสที่หน้าผู้ใช้ › รหัสตอกบัตร' : 'ให้เจ้าของตั้งรหัสตอกบัตร'}</span>}
+                            {!isOwner && elsewhere(row) && <span className="text-xs text-muted-foreground">ตอกที่สาขาอื่น — ให้ผู้จัดการสาขานั้นหรือเจ้าของแก้</span>}
                             {row.status === 'NOT_IN' && row.hasPin && <span className="text-xs text-muted-foreground">ถ้าไม่มาทั้งวันจะนับขาดตอนเที่ยงคืน</span>}
                             {row.status === 'MISSING_OUT' && <span className="text-xs text-muted-foreground">ถ้าทำ OT จริง แก้เวลาออกพร้อมเหตุผล</span>}
                           </div>

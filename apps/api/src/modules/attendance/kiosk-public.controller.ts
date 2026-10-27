@@ -99,6 +99,11 @@ export class KioskPublicController {
       const { nextToken, ...result } = outcome;
       return { nextDeviceToken: nextToken, serverTime: ctx.now.toISOString(), result: { ...result, at: result.at.toISOString() } };
     } catch (err) {
+      // 409 ทางธุรกิจ (ตอกซ้ำ) อาจเกิดเพราะคำขอเดียวกันครั้งแรกเพิ่ง commit — ส่งคำตอบของครั้งแรกถ้ามี (รีวิวรอบ 2 C17)
+      if (err instanceof HttpException && err.getStatus() < 500) {
+        const late = await this.devices.replayIfCached(auth, dto.requestId);
+        if (late) return this.replay({ ...auth, replay: late }) as unknown as KioskPunchResponse;
+      }
       throw asKioskRetryable(err);
     }
   }

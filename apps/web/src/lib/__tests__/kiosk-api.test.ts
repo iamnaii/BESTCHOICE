@@ -112,4 +112,47 @@ describe('kiosk-api', () => {
     expect(err).toMatchObject({ code: 'NOT_RECORDED', retryable: false });
     expect(err.message).toContain('ยังไม่ได้บันทึก');
   });
+  it('KA8 when recovering an old pending request fails, the error never carries that old id — a different person\'s retry must not replay someone else\'s punch (รีวิวรอบ 2 C1)', async () => {
+    vi.useFakeTimers();
+    setPendingRequest('55555555-5555-4555-8555-555555555555');
+    postMock.mockRejectedValue(networkError());
+    const failing = kioskApi.punch({ pin: '222222', kind: 'IN' }).catch((e) => e);
+    await vi.advanceTimersByTimeAsync(1600);
+    const err = await failing;
+    expect(err).toMatchObject({ network: true, retryable: true });
+    expect(err.requestId).not.toBe('55555555-5555-4555-8555-555555555555');
+    expect(err.requestId).toBeUndefined(); // คำขอใหม่ยังไม่ได้ส่ง — ลองใหม่ = กู้คำขอเดิมก่อนแล้วส่งของตัวเอง
+    expect(loadDevice()?.pendingRequestId).toBe('55555555-5555-4555-8555-555555555555');
+    expect(postMock.mock.calls.every((c) => c[0] === '/kiosk/heartbeat')).toBe(true);
+  });
+
+  it('KA9 a 5xx, 429 or 408 is an unknown outcome like a network error: retryable, pending kept, token unchanged (รีวิวรอบ 2 C2)', async () => {
+    vi.useFakeTimers();
+    for (const status of [502, 500, 429, 408]) {
+      postMock.mockReset();
+      saveDevice(DEVICE);
+      postMock.mockRejectedValue(httpError(status, { statusCode: status, code: 'SERVER_ERROR', message: 'x' }));
+      const failing = kioskApi.heartbeat().catch((e) => e);
+      await vi.advanceTimersByTimeAsync(1600);
+      const err = await failing;
+      expect(err.retryable).toBe(true);
+      expect(loadDevice()?.pendingRequestId).toBe(err.requestId);
+      expect(loadDevice()?.token).toBe('tok-1');
+    }
+  });
+
+  it('KA10 requests run under a cross-tab Web Lock when the browser has one (two kiosk tabs must not race on the token — รีวิวรอบ 2 C3)', async () => {
+    const request = vi.fn(async (_name: string, cb: () => Promise<unknown>) => cb());
+    vi.stubGlobal('navigator', { ...navigator, locks: { request } });
+    postMock.mockResolvedValueOnce(okEnvelope({ nextDeviceToken: 'tok-2', serverTime: 'x', device: { status: 'ACTIVE', name: 'n', branchName: 'b' } }));
+    await kioskApi.heartbeat();
+    expect(request).toHaveBeenCalledWith('bc-kiosk-device', expect.any(Function));
+  });
+
+  it('KA11 register is not auto-retried (a second try would burn the one-time code) and a network failure says what to check (รีวิวรอบ 2 C5)', async () => {
+    postMock.mockRejectedValue(networkError());
+    const err = await kioskApi.register('ABCDEFGH', 'แท็บเล็ต').catch((e) => e);
+    expect(postMock).toHaveBeenCalledTimes(1);
+    expect(err.message).toContain('ไม่แน่ใจ');
+  });
 });

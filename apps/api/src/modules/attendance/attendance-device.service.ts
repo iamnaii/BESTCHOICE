@@ -143,19 +143,35 @@ export class AttendanceDeviceService {
 
     const cached = await this.prisma.attendanceDeviceRequest.findUnique({ where: { deviceId_requestId: { deviceId: device.id, requestId: input.requestId } } });
     if (cached) {
-      const reply = parseCachedReply(cached.responseJson);
-      if (reply.consumedGeneration === null) return { device, token, replay: { status: reply.status, body: reply.body } };
-      if (token.generation === device.currentGeneration) return { device, token, replay: { status: reply.status, body: reply.body } }; // เครื่องได้ token รุ่นถัดไปแล้ว
-      if (token.generation === reply.consumedGeneration && device.currentGeneration === reply.consumedGeneration + 1) {
-        const nextToken = await this.rekeyGeneration(device.id, device.currentGeneration);
-        return { device, token, replay: { status: reply.status, body: { ...reply.body, nextDeviceToken: nextToken } } };
-      }
+      const replay = await this.replayFor(device, token, parseCachedReply(cached.responseJson));
+      if (replay) return { device, token, replay };
       // ห่วงโซ่หมุนต่อไปแล้ว แต่มีคนส่งคำขอเก่าด้วย token เก่า = token ถูกคัดลอก
     } else if (token.generation === device.currentGeneration) {
       return { device, token };
     }
     await this.lockForConflict(device, token, input, now);
     throw unauthorized(DEVICE_LOCKED_CODE, 'เครื่องนี้ถูกล็อก — รหัสเครื่องถูกใช้จากสองที่');
+  }
+
+  /**
+   * งานถูกปฏิเสธ (เช่น 409 ตอกเข้าแล้ว) ขณะที่คำขอเดียวกันครั้งแรกเพิ่ง commit ไป: ส่งคำตอบของครั้งแรกแทน
+   * ไม่งั้นเครื่องค้าง token เก่าแล้วคำขอถัดไปถูกนับว่าชน (รีวิวรอบ 2 C17)
+   */
+  async replayIfCached(auth: Pick<AuthenticatedDevice, 'device' | 'token'>, requestId: string): Promise<{ status: number; body: Record<string, unknown> } | null> {
+    const cached = await this.prisma.attendanceDeviceRequest.findUnique({ where: { deviceId_requestId: { deviceId: auth.device.id, requestId } } });
+    if (!cached) return null;
+    const device = (await this.prisma.attendanceDevice.findUnique({ where: { id: auth.device.id } })) ?? auth.device;
+    return this.replayFor(device as DeviceWithBranch, auth.token, parseCachedReply(cached.responseJson));
+  }
+
+  private async replayFor(device: Pick<AttendanceDevice, 'id' | 'currentGeneration'>, token: { generation: number }, reply: CachedReply): Promise<{ status: number; body: Record<string, unknown> } | null> {
+    if (reply.consumedGeneration === null) return { status: reply.status, body: reply.body };
+    if (token.generation === device.currentGeneration) return { status: reply.status, body: reply.body }; // เครื่องได้ token รุ่นถัดไปแล้ว
+    if (token.generation === reply.consumedGeneration && device.currentGeneration === reply.consumedGeneration + 1) {
+      const nextToken = await this.rekeyGeneration(device.id, device.currentGeneration);
+      return { status: reply.status, body: { ...reply.body, nextDeviceToken: nextToken } };
+    }
+    return null;
   }
 
   /**

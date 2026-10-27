@@ -17,11 +17,12 @@ function harness() {
       return delegates.get(key);
     },
   });
+  client.$executeRaw = jest.fn(async () => 0);
   const storage = { delete: jest.fn(async () => undefined) };
   const settings = { getPhotoRetentionDays: jest.fn(async () => 365) };
   const devices = { createOwnerTodo: jest.fn(async () => undefined) };
   const cron = new AttendanceRetentionCron(proxy, storage as never, settings as never, devices as never);
-  return { cron, d: (k: string) => proxy[k] as Delegate, storage, devices };
+  return { cron, d: (k: string) => proxy[k] as Delegate, storage, devices, executeRaw: client.$executeRaw as jest.Mock };
 }
 
 describe('AttendanceRetentionCron.run', () => {
@@ -47,11 +48,15 @@ describe('AttendanceRetentionCron.run', () => {
     expect(out.photosDeleted).toBe(1);
   });
 
-  it('R2 request cache older than 1 day is deleted', async () => {
+  it('R2 request cache older than 1 day is deleted with one SQL statement that keeps each device\'s latest rotation reply (a tablet back after days must still recover — รีวิวรอบ 2 C4)', async () => {
     const h = harness();
-    h.d('attendanceDeviceRequest').deleteMany.mockResolvedValue({ count: 7 });
+    h.executeRaw.mockResolvedValue(7);
     const out = await h.cron.run(NOW);
-    expect(h.d('attendanceDeviceRequest').deleteMany).toHaveBeenCalledWith({ where: { createdAt: { lt: new Date(NOW.getTime() - DAY) } } });
+    expect(h.executeRaw).toHaveBeenCalledTimes(1);
+    const sql = (h.executeRaw.mock.calls[0][0] as string[]).join('?');
+    expect(sql).toContain('current_generation');
+    expect(sql).toContain('consumedGeneration');
+    expect(h.d('attendanceDeviceRequest').deleteMany).not.toHaveBeenCalled();
     expect(out.requestsDeleted).toBe(7);
   });
 

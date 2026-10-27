@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
-import { AlertTriangle, Check, Clock, ImageOff, Minus, MonitorOff, Stethoscope, Store, UserX, Wifi, X } from 'lucide-react';
+import { AlertTriangle, Check, Clock, ImageOff, MapPin, Minus, MonitorOff, Stethoscope, Store, UserX, Wifi, X } from 'lucide-react';
 import type { CellStatus, DayKind, MonthSummary, TodayStatus } from '@/hooks/useAttendance';
 
 /** ป้ายสถานะ = ไอคอน + คำ เสมอ (ห้ามบอกด้วยสีอย่างเดียว) · สีจาก token ของแอป */
@@ -52,6 +52,7 @@ export const nextDayKind = (current: DayKind): DayKind => DAY_KIND_CYCLE[(DAY_KI
 export const FLAG_LABEL: Record<string, { label: string; icon: LucideIcon }> = {
   NO_PHOTO: { label: 'ไม่มีรูป', icon: ImageOff },
   NETWORK_CHANGED: { label: 'เครือข่ายเปลี่ยน', icon: Wifi },
+  LOCATION_CHANGED: { label: 'ตำแหน่งเปลี่ยน', icon: MapPin },
   DEVICE_CONFLICT: { label: 'เครื่องถูกใช้ซ้อน', icon: AlertTriangle },
   REOPENED: { label: 'เปิดวันต่อ', icon: Clock },
   OUT_UPDATED: { label: 'แก้เวลาออก', icon: Clock },

@@ -52,7 +52,9 @@ describe('KioskPage', () => {
     typePin('123456');
     fireEvent.click(screen.getByRole('button', { name: /ยืนยันเข้างาน/ }));
     await waitFor(() => expect(screen.getByText(/สวัสดี นุ๊ก/)).toBeInTheDocument());
-    expect(apiMock.punch).toHaveBeenCalledWith(expect.objectContaining({ token: expect.any(String), pin: '123456', kind: 'IN' }));
+    expect(apiMock.punch).toHaveBeenCalledWith(expect.objectContaining({ pin: '123456', kind: 'IN' }));
+    expect(apiMock.punch.mock.calls[0][0]).not.toHaveProperty('token'); // client อ่าน token จาก store เองตอนส่ง (คิวเดียว)
+    expect(apiMock.punch.mock.calls[0][0].requestId).toBeUndefined(); // คำขอใหม่
     expect(screen.getByText('ตรงเวลา')).toBeInTheDocument();
   });
 
@@ -152,5 +154,33 @@ describe('KioskPage', () => {
     typePin('6');
     expect(confirm).toBeEnabled();
     await act(async () => undefined);
+  });
+  it('W9 ลองใหม่ after a network error resends the SAME request (requestId from the error) so a punch that did reach the server is not doubled; a new PIN starts a new request (รีวิว C3)', async () => {
+    saveDevice(DEVICE);
+    const lost = Object.assign(new KioskApiError('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้', { network: true }), { requestId: '22222222-2222-4222-8222-222222222222' });
+    apiMock.punch.mockRejectedValueOnce(lost).mockResolvedValueOnce(ok());
+    render(<KioskPage />);
+    await screen.findByRole('button', { name: /^เข้างาน$/ });
+    fireEvent.click(screen.getByRole('button', { name: /^เข้างาน$/ }));
+    typePin('123456');
+    fireEvent.click(screen.getByRole('button', { name: /ยืนยันเข้างาน/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /ลองใหม่/ }));
+    await screen.findByText(/สวัสดี นุ๊ก/);
+    expect(apiMock.punch.mock.calls[1][0]).toMatchObject({ pin: '123456', kind: 'IN', requestId: '22222222-2222-4222-8222-222222222222' });
+  });
+
+  it('W10 REQUEST_BUSY is shown as retryable; the current location is attached when the tablet allows it (รีวิว I4)', async () => {
+    saveDevice(DEVICE);
+    const getCurrentPosition = vi.fn((ok: (p: { coords: { latitude: number; longitude: number } }) => void) => ok({ coords: { latitude: 14.7995, longitude: 100.6534 } }));
+    Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition } });
+    apiMock.punch.mockRejectedValueOnce(Object.assign(new KioskApiError('busy', { code: 'REQUEST_BUSY', status: 409 }), { requestId: '33333333-3333-4333-8333-333333333333' }));
+    render(<KioskPage />);
+    await screen.findByRole('button', { name: /^เข้างาน$/ });
+    fireEvent.click(screen.getByRole('button', { name: /^เข้างาน$/ }));
+    typePin('123456');
+    fireEvent.click(screen.getByRole('button', { name: /ยืนยันเข้างาน/ }));
+    await screen.findByRole('button', { name: /ลองใหม่/ });
+    expect(apiMock.punch.mock.calls[0][0].geo).toEqual({ lat: 14.7995, lng: 100.6534 });
+    Object.defineProperty(navigator, 'geolocation', { configurable: true, value: undefined });
   });
 });

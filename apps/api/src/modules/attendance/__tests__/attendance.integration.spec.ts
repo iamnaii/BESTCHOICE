@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { UnauthorizedException } from '@nestjs/common';
 import { AuditService } from '../../audit/audit.service';
@@ -8,12 +8,15 @@ import { AttendanceDeviceService } from '../attendance-device.service';
 import { AttendanceSettingsService } from '../attendance-settings.service';
 import { AttendanceService } from '../attendance.service';
 import { KioskPunchService } from '../kiosk-punch.service';
+import { KioskPublicController } from '../kiosk-public.controller';
 import { AttendanceCloseDayCron } from '../crons/attendance-close-day.cron';
 import { dbDate } from '../attendance-rules';
 
 /**
  * ก้อน 10 D3 — ลงเวลาบนฐานข้อมูลจริง (สเปก §4 §5 §6 §10): ลงทะเบียน → ตอกเข้า/ออก = แถวเดียวต่อวัน · ส่งซ้ำได้ผลเดิม ·
  * token เก่าถูกใช้ซ้ำ → ล็อก+ธง+Todo · แก้ไขโดยเจ้าของมี AttendanceCorrection + AuditLog ในสาย Merkle · cron ปิดวัน · รหัสไม่ซ้ำ (unique)
+ * รีวิวรอบสุดท้าย: ยิงผ่าน KioskPublicController จริง (service จริง) — รหัสผิด/ตอกซ้ำ/คำตอบหาย/แข่งกันหมุน ต้องไม่ล็อกเครื่องเอง ·
+ * token ที่ถูกคัดลอก (แม้เครื่องคัดลอกส่ง heartbeat ต่อ) ต้องติดธงตั้งแต่จุดแยก · เวลาของ controller = new Date() ⇒ ตั้งด้วย vi.setSystemTime
  * รัน: bash tools/test-db-vitest.sh src/modules/attendance/__tests__/attendance.integration.spec.ts
  * งาน Integration บน CI ไม่ตั้ง PII_HASH_SALT (harness ในเครื่องตั้งให้) — ตั้ง fallback เองเหมือน trash.integration
  */
@@ -28,6 +31,35 @@ const devices = new AttendanceDeviceService(prisma as never, audit);
 const punchService = new KioskPunchService(prisma as never, settings, storage as never);
 const attendance = new AttendanceService(prisma as never, audit, settings, storage as never);
 const closeDay = new AttendanceCloseDayCron(prisma as never, devices);
+const kiosk = new KioskPublicController(devices, punchService);
+const reqFrom = (ip: string, ua = 'vitest') => ({ headers: { 'user-agent': ua }, ip, socket: { remoteAddress: ip } }) as never;
+/** เรียก endpoint ของเครื่องตอนเวลา `when` (controller ใช้ new Date()) */
+async function atTime<T>(when: Date, fn: () => Promise<T>): Promise<T> {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(when);
+  try {
+    return await fn();
+  } finally {
+    vi.useRealTimers();
+  }
+}
+const punchAt = (when: Date, token: string, pin: string, kind: 'IN' | 'OUT', opts: { requestId?: string; ip?: string; photo?: boolean } = {}) =>
+  atTime(when, () =>
+    kiosk.punch(
+      { deviceToken: token, requestId: opts.requestId ?? uuid(), pin, kind } as never,
+      opts.photo ? ({ buffer: Buffer.from('jpg'), mimetype: 'image/jpeg' } as never) : undefined,
+      reqFrom(opts.ip ?? '10.0.0.1'),
+    ),
+  );
+const heartbeatAt = (when: Date, token: string, opts: { requestId?: string; ip?: string } = {}) =>
+  atTime(when, () => kiosk.heartbeat({ deviceToken: token, requestId: opts.requestId ?? uuid() } as never, reqFrom(opts.ip ?? '10.0.0.1')));
+async function newDevice(name: string, when: Date): Promise<{ token: string; id: string }> {
+  const { code } = await devices.issueRegistrationCode(branchId, ownerId, when);
+  const reg = await devices.register({ code, deviceName: name, ip: '10.0.0.1', userAgent: 'vitest' }, when);
+  return { token: reg.deviceToken, id: reg.device.id };
+}
+const statusOf = async (id: string) => (await prisma.attendanceDevice.findUniqueOrThrow({ where: { id } })).status;
+afterEach(() => vi.useRealTimers());
 const stamp = Date.now();
 const DAY = bangkokMidnight(2026, 9, 27);
 const at = (h: number, m: number, d = DAY) => new Date(d.getTime() + (h * 60 + m) * 60_000);
@@ -57,23 +89,19 @@ afterAll(async () => {
 });
 
 describe('attendance บน Postgres จริง', () => {
-  it('I1 register → punch IN → punch OUT: one AttendanceDay, token rotated per request, photo key set', async () => {
-    const { code } = await devices.issueRegistrationCode(branchId, ownerId, at(9, 0));
-    const reg = await devices.register({ code, deviceName: 'แท็บเล็ตทดสอบ', ip: '10.0.0.1', userAgent: 'vitest' }, at(9, 1));
-    deviceToken = reg.deviceToken;
-    deviceId = reg.device.id;
+  it('I1 register → punch IN → punch OUT through the kiosk controller: one AttendanceDay, token rotated per successful request, photo key set, NETWORK_CHANGED on a new IP', async () => {
+    const dev = await newDevice('แท็บเล็ตทดสอบ', at(9, 0));
+    deviceToken = dev.token;
+    deviceId = dev.id;
 
-    const a1 = await devices.authenticate({ deviceToken, requestId: uuid(), ip: '10.0.0.1' }, at(10, 2));
-    expect(a1.nextToken).toBeTruthy();
-    expect(await devices.checkPin(deviceId, '111111', at(10, 2))).toEqual({ userId: staffA });
-    const inRes = await punchService.punch({ device: a1.device, userId: staffA, kind: 'IN', photo: { buffer: Buffer.from('jpg'), mimeType: 'image/jpeg' }, ip: '10.0.0.1' }, at(10, 2));
-    expect(inRes).toMatchObject({ kind: 'IN', status: 'ON_TIME', lateMinutes: 0 });
-    deviceToken = a1.nextToken!;
+    const inRes = await punchAt(at(10, 2), deviceToken, '111111', 'IN', { photo: true });
+    expect(inRes.result).toMatchObject({ kind: 'IN', status: 'ON_TIME', lateMinutes: 0 });
+    expect(inRes.nextDeviceToken).toBeTruthy();
+    deviceToken = inRes.nextDeviceToken!;
 
-    const a2 = await devices.authenticate({ deviceToken, requestId: uuid(), ip: '10.0.0.1' }, at(20, 30));
-    const outRes = await punchService.punch({ device: a2.device, userId: staffA, kind: 'OUT', ip: '10.0.0.1' }, at(20, 30));
-    expect(outRes).toMatchObject({ kind: 'OUT', status: 'OUT_OT', otHours: 1.5 });
-    deviceToken = a2.nextToken!;
+    const outRes = await punchAt(at(20, 30), deviceToken, '111111', 'OUT', { ip: '10.0.0.2' });
+    expect(outRes.result).toMatchObject({ kind: 'OUT', status: 'OUT_OT', otHours: 1.5 });
+    deviceToken = outRes.nextDeviceToken!;
 
     const days = await prisma.attendanceDay.findMany({ where: { userId: staffA } });
     expect(days).toHaveLength(1);
@@ -83,21 +111,54 @@ describe('attendance บน Postgres จริง', () => {
     const punches = await prisma.attendancePunch.findMany({ where: { userId: staffA }, orderBy: { at: 'asc' } });
     expect(punches.map((p) => p.kind)).toEqual(['IN', 'OUT']);
     expect(punches[0].photoKey).toMatch(/^attendance\/2026\/10\/.+\.jpg$/);
-    expect(punches[1].flags).toContain('NO_PHOTO');
-    const device = await prisma.attendanceDevice.findUnique({ where: { id: deviceId } });
-    expect(device?.currentGeneration).toBe(3);
+    expect(punches[1].flags).toEqual(expect.arrayContaining(['NO_PHOTO', 'NETWORK_CHANGED'])); // รีวิว I4: เดิม authenticate อัป lastIp ก่อนเทียบ ⇒ ไม่เคยติด
+    expect(punches[0].flags).not.toContain('NETWORK_CHANGED');
+    expect((await prisma.attendanceDevice.findUniqueOrThrow({ where: { id: deviceId } })).currentGeneration).toBe(3);
+    // คำตอบที่จำไว้ไม่มี token ดิบ (เก็บเฉพาะ hash)
+    const cached = await prisma.attendanceDeviceRequest.findMany({ where: { deviceId } });
+    expect(JSON.stringify(cached)).not.toContain(deviceToken);
   });
 
-  it('I2 replaying the same requestId with the already-used token returns the cached response and creates no second punch', async () => {
+  it('I2 a lost punch response: resending the same requestId with the consumed token returns the same result and a working re-keyed token, no second punch, no lock (รีวิว C3)', async () => {
+    const D2 = bangkokMidnight(2026, 9, 28);
+    const dev = await newDevice('เครื่อง I2', at(9, 0, D2));
     const requestId = uuid();
-    const first = await devices.authenticate({ deviceToken, requestId, ip: '10.0.0.1' }, at(20, 31));
-    await devices.remember(deviceId, requestId, { echo: 'first' });
-    const replay = await devices.authenticate({ deviceToken, requestId, ip: '10.0.0.1' }, at(20, 32)); // token เดิม (ถูกหมุนไปแล้ว) + requestId เดิม
-    expect(replay.cached).toEqual({ echo: 'first' });
-    expect(replay.nextToken).toBeUndefined();
-    const device = await prisma.attendanceDevice.findUnique({ where: { id: deviceId } });
-    expect(device?.status).toBe('ACTIVE');
-    deviceToken = first.nextToken!;
+    const first = await punchAt(at(10, 0, D2), dev.token, '222222', 'IN', { requestId }); // คำตอบนี้ "หายระหว่างทาง"
+    const replay = await punchAt(at(10, 1, D2), dev.token, '222222', 'IN', { requestId });
+    expect(replay.result).toEqual(first.result);
+    expect(replay.nextDeviceToken).toBeTruthy();
+    expect(replay.nextDeviceToken).not.toBe(first.nextDeviceToken);
+    expect(await prisma.attendancePunch.count({ where: { deviceId: dev.id } })).toBe(1);
+    const hb = await heartbeatAt(at(10, 5, D2), replay.nextDeviceToken!);
+    expect(hb.device.status).toBe('ACTIVE');
+    expect(await statusOf(dev.id)).toBe('ACTIVE');
+  });
+
+  it('I2b a wrong PIN, a locked-out PIN and a double-tapped IN all leave the device token valid: the next request with the same token succeeds (รีวิว C1/C2)', async () => {
+    const D3 = bangkokMidnight(2026, 9, 29);
+    const dev = await newDevice('เครื่อง I2b', at(9, 0, D3));
+    const wrong = await punchAt(at(10, 0, D3), dev.token, '999999', 'IN').catch((e) => e);
+    expect(wrong.getResponse()).toMatchObject({ code: 'PIN_INVALID' });
+    const ok = await punchAt(at(10, 1, D3), dev.token, '111111', 'IN'); // token เดิม + requestId ใหม่ — เดิมเครื่องล็อกตรงนี้
+    expect(ok.result.kind).toBe('IN');
+    const twice = await punchAt(at(10, 2, D3), ok.nextDeviceToken!, '111111', 'IN').catch((e) => e);
+    expect(twice.getStatus()).toBe(409);
+    const hb = await heartbeatAt(at(10, 12, D3), ok.nextDeviceToken!); // token เดิมยังใช้ได้หลัง 409
+    expect(hb.nextDeviceToken).toBeTruthy();
+    expect(await statusOf(dev.id)).toBe('ACTIVE');
+    expect(await prisma.attendanceDeviceEvent.count({ where: { deviceId: dev.id, kind: 'TOKEN_CONFLICT' } })).toBe(0);
+  });
+
+  it('I2c two requests that authenticated with the same token race: the loser gets 409 REQUEST_BUSY, the device is not locked (รีวิว I5)', async () => {
+    const D4 = bangkokMidnight(2026, 9, 30);
+    const dev = await newDevice('เครื่อง I2c', at(9, 0, D4));
+    const a = await devices.authenticate({ deviceToken: dev.token, requestId: uuid() }, at(10, 0, D4));
+    const b = await devices.authenticate({ deviceToken: dev.token, requestId: uuid() }, at(10, 0, D4));
+    const first = await devices.heartbeat(a, { requestId: uuid(), now: at(10, 0, D4) }, () => ({}));
+    expect(first.nextToken).toBeTruthy();
+    const err = await devices.heartbeat(b, { requestId: uuid(), now: at(10, 0, D4) }, () => ({})).catch((e) => e);
+    expect(err.getResponse()).toMatchObject({ code: 'REQUEST_BUSY' });
+    expect(await statusOf(dev.id)).toBe('ACTIVE');
   });
 
   it('I4 correctDay by OWNER writes AttendanceCorrection and an AuditLog row inside the Merkle chain', async () => {
@@ -116,15 +177,14 @@ describe('attendance บน Postgres จริง', () => {
   });
 
   it('I5 close-day cron marks a forgotten clock-out MISSING_OUT and creates an absence row for a PIN-holder with no punches', async () => {
-    const a = await devices.authenticate({ deviceToken, requestId: uuid(), ip: '10.0.0.1' }, at(10, 5));
-    await punchService.punch({ device: a.device, userId: staffB, kind: 'IN', ip: '10.0.0.1' }, at(10, 5));
-    deviceToken = a.nextToken!;
+    const b = await punchAt(at(10, 5), deviceToken, '222222', 'IN');
+    deviceToken = b.nextDeviceToken!;
     const out = await closeDay.run(new Date(bangkokMidnight(2026, 9, 28).getTime() + 5 * 60_000));
     expect(out.targetDate).toBe('2026-10-27');
-    const b = await prisma.attendanceDay.findFirstOrThrow({ where: { userId: staffB } });
-    expect(b.flags).toContain('MISSING_OUT');
-    expect(Number(b.otHours)).toBe(0);
-    const c = await prisma.attendanceDay.findFirst({ where: { userId: staffC } });
+    const bDay = await prisma.attendanceDay.findFirstOrThrow({ where: { userId: staffB, workDate: dbDate(DAY) } });
+    expect(bDay.flags).toContain('MISSING_OUT');
+    expect(Number(bDay.otHours)).toBe(0);
+    const c = await prisma.attendanceDay.findFirst({ where: { userId: staffC, workDate: dbDate(DAY) } });
     expect(c).toMatchObject({ dayKind: 'WORK', clockIn: null, flags: [] });
     expect(out.absent).toBeGreaterThanOrEqual(1);
     const again = await closeDay.run(new Date(bangkokMidnight(2026, 9, 28).getTime() + 5 * 60_000));
@@ -135,29 +195,28 @@ describe('attendance บน Postgres จริง', () => {
     await expect(prisma.user.update({ where: { id: staffC }, data: { attendancePinHash: hashPII('111111', SALT) } })).rejects.toMatchObject({ code: 'P2002' });
   });
 
-  it('I3 reusing a previous-generation token with a new requestId locks the device, flags the earlier punches DEVICE_CONFLICT and creates an owner Todo', async () => {
-    const before = await prisma.attendanceDevice.findUniqueOrThrow({ where: { id: deviceId } });
-    const stale = (await prisma.attendanceDeviceToken.findFirst({ where: { deviceId, generation: before.currentGeneration - 1 } }))!;
-    expect(stale.usedAt).not.toBeNull();
-    // เราไม่มี raw ของรุ่นเก่า (เก็บแค่ hash) — ใช้ตัวแปร deviceToken ก่อนหมุนล่าสุดแทน: ขอหมุนอีกรอบแล้วใช้ตัวเก่า
-    const latest = await devices.authenticate({ deviceToken, requestId: uuid(), ip: '10.0.0.1' }, at(21, 0));
-    const oldToken = deviceToken;
-    deviceToken = latest.nextToken!;
-    const err = await devices.authenticate({ deviceToken: oldToken, requestId: uuid(), ip: '203.0.113.9', userAgent: 'someone-else' }, at(21, 5)).catch((e) => e);
+  it('I3 a copied token used while the tablet is off — even with the copier\'s heartbeats in between — locks the device on the real tablet\'s return and flags the copier\'s punches and days from the fork (รีวิว C4)', async () => {
+    const D5 = bangkokMidnight(2026, 9, 31);
+    const dev = await newDevice('แท็บเล็ตคัดลอก', at(8, 0, D5));
+    const copied = dev.token; // คัดลอก localStorage ตอนแท็บเล็ตปิด
+    const c1 = await heartbeatAt(at(9, 30, D5), copied, { ip: '203.0.113.9' }); // เครื่องคัดลอกเปิด /kiosk
+    const c2 = await punchAt(at(9, 31, D5), c1.nextDeviceToken!, '333333', 'IN', { ip: '203.0.113.9' }); // ตอกแทนจากบ้าน
+    const c3 = await heartbeatAt(at(9, 40, D5), c2.nextDeviceToken!, { ip: '203.0.113.9' });
+    await heartbeatAt(at(9, 50, D5), c3.nextDeviceToken!, { ip: '203.0.113.9' }); // lastCleanHeartbeatAt เลื่อนไป 09:50
+    // แท็บเล็ตจริงเปิด 10:00 ด้วย token เดิม
+    const err = await heartbeatAt(at(10, 0, D5), copied).catch((e) => e);
     expect(err).toBeInstanceOf(UnauthorizedException);
     expect(err.getResponse()).toMatchObject({ code: 'DEVICE_LOCKED' });
-    const device = await prisma.attendanceDevice.findUniqueOrThrow({ where: { id: deviceId } });
-    expect(device.status).toBe('LOCKED');
-    const events = await prisma.attendanceDeviceEvent.findMany({ where: { deviceId, kind: 'TOKEN_CONFLICT' } });
-    expect(events).toHaveLength(1);
-    const flagged = await prisma.attendancePunch.findMany({ where: { deviceId, flags: { has: 'DEVICE_CONFLICT' } } });
-    expect(flagged.length).toBeGreaterThanOrEqual(3); // IN/OUT ของ A + IN ของ B ตั้งแต่ heartbeat สะอาดครั้งสุดท้าย (ตอนลงทะเบียน)
-    const day = await prisma.attendanceDay.findFirstOrThrow({ where: { userId: staffA } });
+    expect(await statusOf(dev.id)).toBe('LOCKED');
+    const flagged = await prisma.attendancePunch.findMany({ where: { deviceId: dev.id, flags: { has: 'DEVICE_CONFLICT' } } });
+    expect(flagged.map((p) => p.userId)).toEqual([staffC]); // การตอก 09:31 ติดธง (เดิมหลุดเพราะย้อนแค่ถึง heartbeat 09:50)
+    const day = await prisma.attendanceDay.findFirstOrThrow({ where: { userId: staffC, workDate: dbDate(D5) } });
     expect(day.flags).toContain('DEVICE_CONFLICT');
-    const todo = await prisma.todo.findFirst({ where: { title: { contains: 'แท็บเล็ตทดสอบ' }, tags: { has: 'attendance' } } });
+    expect(day.flags.filter((f) => f === 'DEVICE_CONFLICT')).toHaveLength(1);
+    const todo = await prisma.todo.findFirst({ where: { title: { contains: 'แท็บเล็ตคัดลอก' }, tags: { has: 'attendance' } } });
     expect(todo?.priority).toBe('HIGH');
-    // เครื่องที่ล็อกแล้วใช้ token ปัจจุบันก็ไม่ได้อีก
-    const e2 = await devices.authenticate({ deviceToken, requestId: uuid() }, at(21, 6)).catch((e) => e);
+    // เครื่องที่ล็อกแล้วใช้ token ล่าสุดของฝั่งคัดลอกก็ไม่ได้
+    const e2 = await devices.authenticate({ deviceToken: c3.nextDeviceToken!, requestId: uuid() }, at(10, 1, D5)).catch((e) => e);
     expect(e2.getResponse()).toMatchObject({ code: 'DEVICE_LOCKED' });
   });
 });

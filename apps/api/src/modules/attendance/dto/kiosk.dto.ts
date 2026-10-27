@@ -1,4 +1,4 @@
-import { IsIn, IsNumberString, IsOptional, IsString, IsUUID, Length, Matches } from 'class-validator';
+import { IsIn, IsLatitude, IsLongitude, IsOptional, IsString, IsUUID, Length, Matches, MaxLength } from 'class-validator';
 
 /** DTO ของเครื่องตอกบัตร (สาธารณะ token-gated) — ข้อความไทย · multipart ส่งทุกฟิลด์เป็นสตริง */
 export class RegisterKioskDto {
@@ -13,6 +13,7 @@ export class RegisterKioskDto {
 
 export class HeartbeatKioskDto {
   @IsString()
+  @MaxLength(200)
   deviceToken!: string;
 
   @IsUUID('4', { message: 'requestId ต้องเป็น uuid' })
@@ -27,10 +28,10 @@ export class PunchKioskDto extends HeartbeatKioskDto {
   kind!: 'IN' | 'OUT';
 
   @IsOptional()
-  @IsNumberString()
+  @IsLatitude({ message: 'พิกัดไม่ถูกต้อง' })
   geoLat?: string;
 
   @IsOptional()
-  @IsNumberString()
+  @IsLongitude({ message: 'พิกัดไม่ถูกต้อง' })
   geoLng?: string;
 }

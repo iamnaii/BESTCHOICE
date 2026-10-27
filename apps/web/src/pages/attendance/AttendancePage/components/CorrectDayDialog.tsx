@@ -49,7 +49,9 @@ export default function CorrectDayDialog({ target, isOwner, onClose }: Props) {
   const originalIn = target.clockIn ? hhmm(target.clockIn) : '';
   const originalOut = target.clockOut ? hhmm(target.clockOut) : '';
   const changed = clockIn !== originalIn || clockOut !== originalOut || dayKind !== target.dayKind;
-  const canSave = changed && reason.trim().length >= MIN_REASON && !correct.isPending;
+  const clearingIn = !clockIn && !!originalIn;
+  const outWithoutIn = !clockIn && !!clockOut;
+  const canSave = changed && !outWithoutIn && reason.trim().length >= MIN_REASON && !correct.isPending;
   const missingOut = target.flags.includes('MISSING_OUT');
   const conflict = target.flags.includes('DEVICE_CONFLICT');
 
@@ -63,8 +65,8 @@ export default function CorrectDayDialog({ target, isOwner, onClose }: Props) {
     });
 
   const save = () => {
-    const payload: { dayId: string; clockIn?: string; clockOut?: string | null; dayKind?: DayKind; reason: string } = { dayId: target.dayId, reason: reason.trim() };
-    if (clockIn !== originalIn && clockIn) payload.clockIn = toIso(target.date, clockIn);
+    const payload: { dayId: string; clockIn?: string | null; clockOut?: string | null; dayKind?: DayKind; reason: string } = { dayId: target.dayId, reason: reason.trim() };
+    if (clockIn !== originalIn) payload.clockIn = clockIn ? toIso(target.date, clockIn) : null;
     if (clockOut !== originalOut) payload.clockOut = clockOut ? toIso(target.date, clockOut) : null;
     if (dayKind !== target.dayKind) payload.dayKind = dayKind;
     correct.mutate(payload, {
@@ -115,6 +117,11 @@ export default function CorrectDayDialog({ target, isOwner, onClose }: Props) {
               <span className="text-xs text-muted-foreground">เดิม: {originalOut || '— (ไม่ได้ตอก)'}</span>
             </div>
           </div>
+          {clearingIn && (
+            <p className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning-strong leading-snug">
+              ล้างเวลาเข้า = ถือว่าไม่ได้มาทำงานวันนั้น (วันทำงานจะนับเป็นขาด){outWithoutIn && ' — ล้างเวลาออกด้วย'}
+            </p>
+          )}
           <div className="flex flex-col gap-1">
             <label htmlFor="corr-kind" className="text-sm font-medium">ประเภทวัน</label>
             <NativeSelect id="corr-kind" value={dayKind} onChange={(e) => setDayKind(e.target.value as DayKind)}>

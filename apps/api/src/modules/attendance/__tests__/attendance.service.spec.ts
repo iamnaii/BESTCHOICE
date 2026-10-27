@@ -123,7 +123,8 @@ describe('AttendanceService', () => {
 
   it('S7 setDayKinds upserts per (user, date) without touching existing clock times', async () => {
     const h = harness();
-    await h.service.setDayKinds(BM, { branchId: 'br1', entries: [{ userId: 'u1', date: '2026-10-29', dayKind: 'DAY_OFF' }, { userId: 'u3', date: '2026-10-28', dayKind: 'LEAVE_SICK' }] });
+    h.d('user').findMany.mockResolvedValue([{ id: 'u1', branchId: 'br1' }, { id: 'u3', branchId: 'br1' }]);
+    await h.service.setDayKinds(BM, { branchId: 'br1', entries: [{ userId: 'u1', date: '2026-10-29', dayKind: 'DAY_OFF' }, { userId: 'u3', date: '2026-10-28', dayKind: 'LEAVE_SICK' }] }, at(14, 0));
     expect(h.d('attendanceDay').upsert).toHaveBeenCalledWith({
       where: { userId_workDate: { userId: 'u1', workDate: dbDate(bangkokMidnight(2026, 9, 29)) } },
       create: { userId: 'u1', branchId: 'br1', workDate: dbDate(bangkokMidnight(2026, 9, 29)), dayKind: 'DAY_OFF' },
@@ -172,5 +173,41 @@ describe('AttendanceService', () => {
     expect(h.d('attendanceDay').findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ userId: 'u1', deletedAt: null }) }));
     expect(out.rows[0]).toMatchObject({ date: '2026-10-20', status: 'ON_TIME' });
     expect(out.summary).toEqual({ workDays: 1, lateCount: 0, lateMinutes: 0, absent: 0, leave: 0, otHours: 0 });
+  });
+  it('S12 setDayKinds by a branch manager only covers their own branch\'s staff and rows: another branch\'s employee or a visiting row elsewhere → 403; OWNER may (รีวิว I2)', async () => {
+    const h = harness();
+    h.d('user').findMany.mockResolvedValue([{ id: 'u9', branchId: 'br2' }]);
+    await expect(h.service.setDayKinds(BM, { branchId: 'br1', entries: [{ userId: 'u9', date: '2026-10-29', dayKind: 'LEAVE_SICK' }] }, at(14, 0))).rejects.toThrow(ForbiddenException);
+    h.d('user').findMany.mockResolvedValue([{ id: 'u1', branchId: 'br1' }]);
+    h.d('attendanceDay').findMany.mockResolvedValue([dayRow({ userId: 'u1', branchId: 'br2', workDate: dbDate(bangkokMidnight(2026, 9, 29)) })]);
+    await expect(h.service.setDayKinds(BM, { branchId: 'br1', entries: [{ userId: 'u1', date: '2026-10-29', dayKind: 'DAY_OFF' }] }, at(14, 0))).rejects.toThrow(ForbiddenException);
+    expect(h.d('attendanceDay').upsert).not.toHaveBeenCalled();
+    h.d('user').findMany.mockResolvedValue([{ id: 'u9', branchId: 'br2' }]);
+    h.d('attendanceDay').findMany.mockResolvedValue([]);
+    await h.service.setDayKinds(OWNER, { branchId: 'br1', entries: [{ userId: 'u9', date: '2026-10-29', dayKind: 'LEAVE_SICK' }] }, at(14, 0));
+    expect(h.d('attendanceDay').upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('S13 setDayKinds refuses past dates for everyone — after-the-fact leave goes through the reasoned correction (spec §6) — with a message pointing at that dialog (รีวิว I2)', async () => {
+    const h = harness();
+    h.d('user').findMany.mockResolvedValue([{ id: 'u1', branchId: 'br1' }]);
+    const err = await h.service.setDayKinds(OWNER, { branchId: 'br1', entries: [{ userId: 'u1', date: '2026-10-26', dayKind: 'LEAVE_SICK' }] }, at(14, 0)).catch((e) => e);
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect(err.message).toContain('แก้ไข');
+    expect(h.d('attendanceDay').upsert).not.toHaveBeenCalled();
+    // วันนี้ยังกำหนดได้
+    await h.service.setDayKinds(OWNER, { branchId: 'br1', entries: [{ userId: 'u1', date: '2026-10-27', dayKind: 'LEAVE_SICK' }] }, at(14, 0));
+    expect(h.d('attendanceDay').upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('S14 correctDay can clear a clock-in (null) together with the clock-out — the day becomes "not present" with punch links cleared; clearing IN while keeping OUT → 400 (รีวิว I9)', async () => {
+    const h = harness();
+    h.d('attendanceDay').findUnique.mockResolvedValue(dayRow({ userId: 'u1', clockIn: at(10, 2), clockOut: at(19, 0), clockInPunchId: 'p-in', clockOutPunchId: 'p-out', flags: ['DEVICE_CONFLICT'] }));
+    h.d('attendanceDay').update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: 'd-u1', ...data }));
+    await h.service.correctDay(OWNER, 'd-u1', { clockIn: null, clockOut: null, reason: 'ตรวจรูปแล้ว ไม่ใช่ตัวพนักงาน ตอกแทนกัน' } as never);
+    const data = h.d('attendanceDay').update.mock.calls[0][0].data;
+    expect(data).toMatchObject({ clockIn: null, clockOut: null, clockInPunchId: null, clockOutPunchId: null, workedMinutes: 0, lateMinutes: 0, otHours: 0 });
+    expect(data.flags).toEqual(expect.arrayContaining(['DEVICE_CONFLICT', 'CORRECTED'])); // ธงชนยังอยู่ ล้างได้เฉพาะ clearConflictFlag
+    await expect(h.service.correctDay(OWNER, 'd-u1', { clockIn: null, reason: 'ตรวจรูปแล้ว ไม่ใช่ตัวพนักงาน ตอกแทนกัน' } as never)).rejects.toThrow('มีเวลาออกต้องมีเวลาเข้า');
   });
 });

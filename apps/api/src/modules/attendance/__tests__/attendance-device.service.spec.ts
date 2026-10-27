@@ -81,18 +81,41 @@ describe('AttendanceDeviceService', () => {
     expect(h.d('attendanceDevice').create).not.toHaveBeenCalled();
   });
 
-  it('TD3 authenticate with the current-generation token rotates: old token usedAt, new token gen N+1, device.currentGeneration N+1, nextToken returned', async () => {
+  it('TD3 authenticate with the current-generation token does NOT rotate (rotation happens only when the operation commits — รีวิว C1/C2)', async () => {
     const h = harness();
     h.d('attendanceDeviceToken').findUnique.mockResolvedValue({ id: 't3', deviceId: 'dev1', generation: 3, usedAt: null, device: DEVICE });
-    h.d('attendanceDevice').update.mockResolvedValue({ ...DEVICE, currentGeneration: 4 });
     const out = await h.service.authenticate({ deviceToken: 'raw-gen3', requestId: 'r1', ip: '1.1.1.1', userAgent: 'ua' }, NOW);
-    expect(out.cached).toBeUndefined();
-    expect(out.nextToken).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    expect(out.device.currentGeneration).toBe(4);
+    expect(out.replay).toBeUndefined();
+    expect(out.token).toMatchObject({ id: 't3', generation: 3 });
+    expect(out.device.currentGeneration).toBe(3);
     expect(h.d('attendanceDeviceToken').findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { tokenHash: hashToken('raw-gen3') } }));
+    expect(h.d('attendanceDeviceToken').create).not.toHaveBeenCalled();
+    expect(h.d('attendanceDevice').update).not.toHaveBeenCalled();
+    expect(h.d('attendanceDevice').updateMany).not.toHaveBeenCalled();
+  });
+
+  it('TD3b commitRotation (inside the caller tx): optimistic generation bump, old token used, new token N+1, response cached with consumedGeneration — returns the new raw token', async () => {
+    const h = harness();
+    h.d('attendanceDevice').updateMany.mockResolvedValue({ count: 1 });
+    const auth = { device: DEVICE as never, token: { id: 't3', generation: 3, usedAt: null } };
+    const next = await h.service.commitRotation(h.prisma, auth, { requestId: 'r1', ip: '1.1.1.1', userAgent: 'ua', now: NOW }, { serverTime: 'x' });
+    expect(next).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(h.d('attendanceDevice').updateMany).toHaveBeenCalledWith({ where: { id: 'dev1', currentGeneration: 3, status: 'ACTIVE', deletedAt: null }, data: { currentGeneration: 4, lastSeenAt: NOW, lastIp: '1.1.1.1', lastUserAgent: 'ua' } });
     expect(h.d('attendanceDeviceToken').update).toHaveBeenCalledWith({ where: { id: 't3' }, data: { usedAt: NOW } });
-    expect(h.d('attendanceDeviceToken').create).toHaveBeenCalledWith({ data: expect.objectContaining({ deviceId: 'dev1', generation: 4, tokenHash: hashToken(out.nextToken!) }) });
-    expect(h.d('attendanceDevice').update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'dev1' }, data: expect.objectContaining({ currentGeneration: 4, lastSeenAt: NOW, lastIp: '1.1.1.1', lastUserAgent: 'ua' }) }));
+    expect(h.d('attendanceDeviceToken').create).toHaveBeenCalledWith({ data: expect.objectContaining({ deviceId: 'dev1', generation: 4, tokenHash: hashToken(next) }) });
+    expect(h.d('attendanceDeviceRequest').create).toHaveBeenCalledWith({ data: { deviceId: 'dev1', requestId: 'r1', responseJson: { status: 200, body: { serverTime: 'x' }, consumedGeneration: 3 } } });
+    // คำตอบที่จำไว้ไม่มี token ดิบ (สเปก: เก็บเฉพาะ hash)
+    expect(JSON.stringify(h.d('attendanceDeviceRequest').create.mock.calls[0])).not.toContain(next);
+  });
+
+  it('TD3c commitRotation when another request already moved the generation → 409 REQUEST_BUSY (retryable), never a conflict lock (รีวิว I5)', async () => {
+    const h = harness();
+    h.d('attendanceDevice').updateMany.mockResolvedValue({ count: 0 });
+    const auth = { device: DEVICE as never, token: { id: 't3', generation: 3, usedAt: null } };
+    const err = await h.service.commitRotation(h.prisma, auth, { requestId: 'r1', now: NOW }, {}).catch((e) => e);
+    expect(err.getStatus()).toBe(409);
+    expect(err.getResponse()).toMatchObject({ code: 'REQUEST_BUSY' });
+    expect(h.d('attendanceDeviceToken').create).not.toHaveBeenCalled();
     expect(h.d('attendanceDevice').update).not.toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'LOCKED' }) }));
   });
 
@@ -114,15 +137,38 @@ describe('AttendanceDeviceService', () => {
     expect(h.d('attendanceDeviceToken').create).not.toHaveBeenCalled();
   });
 
-  it('TD6 replaying the same requestId with the previous token returns the cached response, no rotation, no conflict', async () => {
+  it('TD6 a lost response replayed (same requestId + the token it consumed) returns the cached body with a re-keyed successor token, no lock (รีวิว C3)', async () => {
     const h = harness();
     h.d('attendanceDeviceToken').findUnique.mockResolvedValue({ id: 't2', deviceId: 'dev1', generation: 2, usedAt: NOW, device: DEVICE });
-    h.d('attendanceDeviceRequest').findUnique.mockResolvedValue({ deviceId: 'dev1', requestId: 'r-old', responseJson: { result: 'same' }, createdAt: NOW });
+    h.d('attendanceDeviceRequest').findUnique.mockResolvedValue({ deviceId: 'dev1', requestId: 'r-old', responseJson: { status: 200, body: { result: 'same' }, consumedGeneration: 2 }, createdAt: NOW });
+    h.d('attendanceDeviceToken').updateMany.mockResolvedValue({ count: 1 });
     const out = await h.service.authenticate({ deviceToken: 'raw-gen2', requestId: 'r-old' }, NOW);
-    expect(out.cached).toEqual({ result: 'same' });
-    expect(out.nextToken).toBeUndefined();
-    expect(h.d('attendanceDeviceToken').create).not.toHaveBeenCalled();
+    expect(out.replay?.status).toBe(200);
+    expect(out.replay?.body).toMatchObject({ result: 'same', nextDeviceToken: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/) });
+    const rekey = h.d('attendanceDeviceToken').updateMany.mock.calls[0][0];
+    expect(rekey).toEqual({ where: { deviceId: 'dev1', generation: 3, usedAt: null }, data: { tokenHash: hashToken(out.replay!.body.nextDeviceToken as string) } });
     expect(h.d('attendanceDevice').update).not.toHaveBeenCalled();
+  });
+
+  it('TD6b replay with the successor token already in hand returns the cached body without a token; an error replay returns its status', async () => {
+    const h = harness();
+    h.d('attendanceDeviceToken').findUnique.mockResolvedValue({ id: 't3', deviceId: 'dev1', generation: 3, usedAt: null, device: DEVICE });
+    h.d('attendanceDeviceRequest').findUnique.mockResolvedValueOnce({ deviceId: 'dev1', requestId: 'r-old', responseJson: { status: 200, body: { result: 'same' }, consumedGeneration: 2 } });
+    const a = await h.service.authenticate({ deviceToken: 'raw-gen3', requestId: 'r-old' }, NOW);
+    expect(a.replay).toEqual({ status: 200, body: { result: 'same' } });
+    h.d('attendanceDeviceRequest').findUnique.mockResolvedValueOnce({ deviceId: 'dev1', requestId: 'r-pin', responseJson: { status: 400, body: { code: 'PIN_INVALID', message: 'รหัสไม่ถูกต้อง' }, consumedGeneration: null } });
+    const b = await h.service.authenticate({ deviceToken: 'raw-gen3', requestId: 'r-pin' }, NOW);
+    expect(b.replay).toEqual({ status: 400, body: { code: 'PIN_INVALID', message: 'รหัสไม่ถูกต้อง' } });
+    expect(h.d('attendanceDeviceToken').updateMany).not.toHaveBeenCalled();
+  });
+
+  it('TD6c a replay whose chain already moved past its successor is a copied token → LOCKED', async () => {
+    const h = harness();
+    h.d('attendanceDeviceToken').findUnique.mockResolvedValue({ id: 't2', deviceId: 'dev1', generation: 2, usedAt: NOW, device: { ...DEVICE, currentGeneration: 4 } });
+    h.d('attendanceDeviceRequest').findUnique.mockResolvedValue({ deviceId: 'dev1', requestId: 'r-old', responseJson: { status: 200, body: {}, consumedGeneration: 2 } });
+    const err = await h.service.authenticate({ deviceToken: 'raw-gen2', requestId: 'r-old' }, NOW).catch((e) => e);
+    expect(err.getResponse()).toMatchObject({ code: 'DEVICE_LOCKED' });
+    expect(h.d('attendanceDevice').update).toHaveBeenCalledWith({ where: { id: 'dev1' }, data: { status: 'LOCKED' } });
   });
 
   it('TD7 an old-generation token with a new requestId → device LOCKED + TOKEN_CONFLICT event + 401 DEVICE_LOCKED', async () => {
@@ -136,16 +182,24 @@ describe('AttendanceDeviceService', () => {
     expect(h.d('attendanceDeviceToken').create).not.toHaveBeenCalled();
   });
 
-  it('TD8 a conflict flags every punch and day since lastCleanHeartbeatAt with DEVICE_CONFLICT and creates one HIGH owner Todo via the system user (after the tx)', async () => {
+  it('TD8 a conflict flags every punch since the stale token was superseded (fork point — not lastCleanHeartbeatAt, which a copier\'s heartbeats move) and their day rows by (user, work date); one HIGH owner Todo after the tx (รีวิว C4)', async () => {
     const h = harness();
-    h.d('attendanceDeviceToken').findUnique.mockResolvedValue({ id: 't2', deviceId: 'dev1', generation: 2, usedAt: NOW, device: DEVICE });
-    h.d('attendancePunch').findMany.mockResolvedValue([{ id: 'p1' }, { id: 'p2' }]);
+    const fork = new Date('2026-10-27T00:30:00.000Z'); // token รุ่น 2 ถูกใช้ (หมุนไปรุ่น 3) ตอน 07:30 ไทย — ก่อน heartbeat สะอาดล่าสุด 08:00
+    h.d('attendanceDeviceToken').findUnique.mockResolvedValue({ id: 't2', deviceId: 'dev1', generation: 2, usedAt: fork, device: DEVICE });
+    h.d('attendancePunch').findMany.mockResolvedValue([{ id: 'p1', userId: 'u1', at: new Date('2026-10-27T00:31:00.000Z') }, { id: 'p2', userId: 'u2', at: new Date('2026-10-27T02:00:00.000Z') }]);
     h.d('user').findFirst.mockResolvedValue({ id: 'sys' });
     h.d('todo').findFirst.mockResolvedValue(null);
     await h.service.authenticate({ deviceToken: 'raw-gen2', requestId: 'r-new' }, NOW).catch(() => undefined);
-    expect(h.d('attendancePunch').findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ deviceId: 'dev1', at: { gte: DEVICE.lastCleanHeartbeatAt, lte: NOW } }) }));
-    expect(h.d('attendancePunch').updateMany).toHaveBeenCalledWith({ where: { id: { in: ['p1', 'p2'] } }, data: { flags: { push: 'DEVICE_CONFLICT' } } });
-    expect(h.d('attendanceDay').updateMany).toHaveBeenCalledWith({ where: { OR: [{ clockInPunchId: { in: ['p1', 'p2'] } }, { clockOutPunchId: { in: ['p1', 'p2'] } }], deletedAt: null }, data: { flags: { push: 'DEVICE_CONFLICT' } } });
+    expect(h.d('attendancePunch').findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ deviceId: 'dev1', at: { gte: fork, lte: NOW } }) }));
+    expect(h.d('attendancePunch').updateMany).toHaveBeenCalledWith({ where: { id: { in: ['p1', 'p2'] }, NOT: { flags: { has: 'DEVICE_CONFLICT' } } }, data: { flags: { push: 'DEVICE_CONFLICT' } } });
+    const dayWhere = h.d('attendanceDay').updateMany.mock.calls[0][0].where;
+    expect(dayWhere.OR).toEqual(expect.arrayContaining([
+      { clockInPunchId: { in: ['p1', 'p2'] } },
+      { clockOutPunchId: { in: ['p1', 'p2'] } },
+      { userId: 'u1', workDate: new Date('2026-10-27T00:00:00.000Z') },
+      { userId: 'u2', workDate: new Date('2026-10-27T00:00:00.000Z') },
+    ]));
+    expect(dayWhere).toMatchObject({ deletedAt: null, NOT: { flags: { has: 'DEVICE_CONFLICT' } } });
     expect(h.d('todo').create).toHaveBeenCalledWith({ data: expect.objectContaining({ priority: 'HIGH', createdById: 'sys', title: expect.stringContaining('แท็บเล็ตเคาน์เตอร์') }) });
     // ข้อความชี้เมนูที่มีจริง (ไม่มีหมวด "บุคลากร" · หมวดตั้งค่าชื่อ "บริษัท & สาขา")
     expect(h.d('todo').create.mock.calls[0][0].data.description).toEqual(expect.stringContaining('ตั้งค่า › บริษัท & สาขา › เครื่องตอกบัตร'));
@@ -194,12 +248,26 @@ describe('AttendanceDeviceService', () => {
     expect(Sentry.captureMessage).toHaveBeenCalled();
   });
 
-  it('TD13 remember stores the response per (device, requestId) and ignores a duplicate (P2002)', async () => {
+  it('TD13 rememberError stores an error reply per (device, requestId) with no consumed generation and ignores a duplicate (P2002)', async () => {
     const h = harness();
-    await h.service.remember('dev1', 'r1', { ok: true });
-    expect(h.d('attendanceDeviceRequest').create).toHaveBeenCalledWith({ data: { deviceId: 'dev1', requestId: 'r1', responseJson: { ok: true } } });
+    await h.service.rememberError('dev1', 'r1', 400, { code: 'PIN_INVALID', message: 'รหัสไม่ถูกต้อง' });
+    expect(h.d('attendanceDeviceRequest').create).toHaveBeenCalledWith({ data: { deviceId: 'dev1', requestId: 'r1', responseJson: { status: 400, body: { code: 'PIN_INVALID', message: 'รหัสไม่ถูกต้อง' }, consumedGeneration: null } } });
     h.d('attendanceDeviceRequest').create.mockRejectedValueOnce(Object.assign(new Error('dup'), { code: 'P2002' }));
-    await expect(h.service.remember('dev1', 'r1', { ok: true })).resolves.toBeUndefined();
+    await expect(h.service.rememberError('dev1', 'r1', 400, {})).resolves.toBeUndefined();
+  });
+
+  it('TD13b heartbeat touches lastCleanHeartbeatAt and rotates in one transaction, returning the body and the next token', async () => {
+    const h = harness();
+    h.d('attendanceDevice').updateMany.mockResolvedValue({ count: 1 });
+    const auth = { device: DEVICE as never, token: { id: 't3', generation: 3, usedAt: null } };
+    const out = await h.service.heartbeat(auth, { requestId: 'r-hb', now: NOW }, (d) => ({ device: { name: d.name } }));
+    expect(out.body).toEqual({ device: { name: 'แท็บเล็ตเคาน์เตอร์' } });
+    expect(out.nextToken).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(h.d('attendanceDevice').update).toHaveBeenCalledWith({ where: { id: 'dev1' }, data: { lastCleanHeartbeatAt: NOW } });
+    const start = h.calls.indexOf('tx:start');
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(h.calls.indexOf('attendanceDeviceRequest.create')).toBeGreaterThan(start);
+    expect(h.calls.indexOf('attendanceDeviceRequest.create')).toBeLessThan(h.calls.indexOf('tx:end'));
   });
 
   it('TD14 revoke/unlock set REVOKED with the matching event and audit after the tx; unlock only applies to LOCKED devices', async () => {

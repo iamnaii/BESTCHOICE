@@ -35,11 +35,19 @@ describe('attendance rules', () => {
     expect(computeDaySummary({ ...base, clockOut: t(18, 30) })).toMatchObject({ earlyLeaveMinutes: 30, otHours: 0 });
   });
 
-  it('R7 clock-out after Thai midnight belongs to the IN day: in 23:50 out 00:20 → worked 30, OT 5.5 (counted from 19:00 of the IN day)', () => {
+  it('R7 clock-out after Thai midnight belongs to the IN day: in 23:50 out 00:20 → worked 30, OT 0.5 (OT counts only time actually worked after 19:00)', () => {
     const s = computeDaySummary({ ...base, clockIn: t(23, 50), clockOut: t(24, 20) });
     expect(s.workedMinutes).toBe(30);
-    expect(s.otHours).toBe(5.5);
+    expect(s.otHours).toBe(0.5);
     expect(s.lateMinutes).toBe(830);
+  });
+
+  it('R7b arriving after work end: in 19:30 out 21:00 → OT 1.5 (from clock-in, not from 19:00)', () => {
+    expect(computeDaySummary({ ...base, clockIn: t(19, 30), clockOut: t(21, 0) })).toMatchObject({ workedMinutes: 90, otHours: 1.5, earlyLeaveMinutes: 0 });
+  });
+
+  it('R7c a non-work day has no lateness or early leave: DAY_OFF in 13:00 out 17:00 → late 0, early 0, flag WORKED_ON_OFF_DAY', () => {
+    expect(computeDaySummary({ ...base, dayKind: 'DAY_OFF', clockIn: t(13, 0), clockOut: t(17, 0) })).toEqual({ workedMinutes: 240, lateMinutes: 0, earlyLeaveMinutes: 0, otHours: 0, flags: ['WORKED_ON_OFF_DAY'] });
   });
 
   it('R8 workDateOf uses the Bangkok calendar: 00:20 on 28 Oct → 28 Oct; 23:59 on 27 Oct → 27 Oct; 02:00Z on 28 Oct (09:00 BKK) → 28 Oct', () => {

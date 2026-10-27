@@ -25,7 +25,7 @@ function harness() {
   });
   client.$transaction = jest.fn(async (cb: (tx: unknown) => unknown) => cb(proxy));
   const settings = { getRules: jest.fn().mockResolvedValue(RULES) };
-  const storage = { upload: jest.fn(async (key: string) => key) };
+  const storage = { upload: jest.fn(async (key: string) => key), delete: jest.fn(async () => undefined) };
   const service = new KioskPunchService(proxy, settings as never, storage as never);
   const d = (k: string) => proxy[k] as Delegate;
   d('user').findUnique.mockResolvedValue({ id: 'u1', nickname: 'นุ๊ก', name: 'วรรณา ส.' });
@@ -111,7 +111,7 @@ describe('KioskPunchService.punch', () => {
     h.d('attendanceDay').findUnique.mockResolvedValueOnce(null); // ไม่มีแถวของ "วันถัดไป"
     h.d('attendanceDay').findFirst.mockResolvedValueOnce({ id: 'day1', userId: 'u1', branchId: 'br1', workDate: DB, dayKind: 'WORK', clockIn: at(23, 50), clockOut: null, flags: [] });
     const res = await h.service.punch({ device: DEVICE, userId: 'u1', kind: 'OUT' }, at(24, 20));
-    expect(res).toMatchObject({ kind: 'OUT', otHours: 5.5 });
+    expect(res).toMatchObject({ kind: 'OUT', otHours: 0.5 }); // OT นับเฉพาะเวลาที่ทำจริงหลังเลิกงาน (รีวิว I7)
     // วันถัดไป 00:20 → ค้นแถวเปิดค้างของ "เมื่อวาน" = 27 ต.ค. (DAY) ตามปฏิทินไทย
     expect(h.d('attendanceDay').findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ userId: 'u1', clockOut: null, workDate: DB }) }));
   });
@@ -120,5 +120,50 @@ describe('KioskPunchService.punch', () => {
     const h = harness();
     await h.service.punch({ device: DEVICE, userId: 'u1', kind: 'IN', ip: '9.9.9.9' }, at(10, 0));
     expect(h.d('attendancePunch').create).toHaveBeenCalledWith({ data: expect.objectContaining({ flags: expect.arrayContaining(['NETWORK_CHANGED']) }) });
+  });
+  it('K11 OUT the next evening does not attach to yesterday\'s forgotten row (open > 18 h) → 409 "ยังไม่ได้ตอกเข้างานวันนี้" (รีวิว I3)', async () => {
+    const h = harness();
+    // จันทร์ลืมตอกออก (cron ติด MISSING_OUT แต่ clockOut ยังว่าง) · อังคาร 19:05 กด OUT โดยไม่ได้ IN
+    const monday = { id: 'mon', userId: 'u1', branchId: 'br1', workDate: DB, dayKind: 'WORK', clockIn: at(10, 0), clockOut: null, flags: ['MISSING_OUT'] };
+    // mock กรองตามเงื่อนไขเวลา IN จริง (ไม่งั้นคืนแถวโดยไม่สน where)
+    h.d('attendanceDay').findFirst.mockImplementation(async ({ where }: { where: { clockIn: { gte: Date } } }) => (monday.clockIn.getTime() >= where.clockIn.gte.getTime() ? monday : null));
+    const TUE = bangkokMidnight(2026, 9, 28);
+    await expect(h.service.punch({ device: DEVICE, userId: 'u1', kind: 'OUT' }, at(19, 5, TUE))).rejects.toThrow('ยังไม่ได้ตอกเข้างานวันนี้');
+    expect(h.d('attendanceDay').update).not.toHaveBeenCalled();
+  });
+
+  it('K12 a rejected punch uploads no photo; a failed transaction deletes the uploaded photo (รีวิว I8)', async () => {
+    const h = harness();
+    h.d('attendanceDay').findUnique.mockResolvedValue({ id: 'day1', userId: 'u1', branchId: 'br1', workDate: DB, dayKind: 'WORK', clockIn: at(10, 2), clockOut: null, flags: [] });
+    await expect(h.service.punch({ device: DEVICE, userId: 'u1', kind: 'IN', photo: { buffer: Buffer.from('x'), mimeType: 'image/jpeg' } }, at(10, 30))).rejects.toThrow(ConflictException);
+    expect(h.storage.upload).not.toHaveBeenCalled();
+
+    const h2 = harness();
+    h2.d('attendancePunch').create.mockRejectedValueOnce(new Error('db down'));
+    await expect(h2.service.punch({ device: DEVICE, userId: 'u1', kind: 'IN', photo: { buffer: Buffer.from('x'), mimeType: 'image/jpeg' } }, at(10, 2))).rejects.toThrow('db down');
+    expect(h2.storage.delete).toHaveBeenCalledWith(h2.storage.upload.mock.calls[0][0]);
+  });
+
+  it('K13 a punch more than 500 m from the device\'s previous located punch gets LOCATION_CHANGED; geo is stored (รีวิว I4)', async () => {
+    const h = harness();
+    h.d('attendancePunch').findFirst.mockResolvedValueOnce({ geoLat: '14.799500', geoLng: '100.653400' }); // ลพบุรี
+    const res = await h.service.punch({ device: DEVICE, userId: 'u1', kind: 'IN', ip: '1.1.1.1', geo: { lat: 14.81, lng: 100.66 } }, at(10, 2)); // ~1.7 กม.
+    expect(res.flags).toContain('LOCATION_CHANGED');
+    expect(h.d('attendancePunch').create.mock.calls[0][0].data.flags).toContain('LOCATION_CHANGED');
+    expect(h.d('attendancePunch').findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ deviceId: 'dev1', geoLat: { not: null } }) }));
+
+    const near = harness();
+    near.d('attendancePunch').findFirst.mockResolvedValueOnce({ geoLat: '14.799500', geoLng: '100.653400' });
+    const ok = await near.service.punch({ device: DEVICE, userId: 'u1', kind: 'IN', geo: { lat: 14.7999, lng: 100.6538 } }, at(10, 2)); // ~60 ม.
+    expect(ok.flags).not.toContain('LOCATION_CHANGED');
+  });
+
+  it('K14 the finalize hook runs inside the punch transaction with the result and its return value comes back as nextToken', async () => {
+    const h = harness();
+    const finalize = jest.fn(async (_tx: unknown, result: { kind: string }) => `next-for-${result.kind}`);
+    const res = await h.service.punch({ device: DEVICE, userId: 'u1', kind: 'IN' }, at(10, 2), finalize);
+    expect(res.nextToken).toBe('next-for-IN');
+    expect(finalize).toHaveBeenCalledTimes(1);
+    expect(h.d('attendancePunch').create.mock.invocationCallOrder[0]).toBeLessThan(finalize.mock.invocationCallOrder[0]);
   });
 });

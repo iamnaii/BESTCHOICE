@@ -14,6 +14,8 @@ import { formatClock, formatThaiDate, useServerClock } from './useServerClock';
  * หน้าตอกบัตรบนเครื่องประจำสาขา (ก้อน 10 D3 · สเปก §4.2 · mockup บอร์ด 1–2) — เส้นทางสาธารณะ `/kiosk` ไม่มี session
  * - เปิดได้เฉพาะเครื่องที่ลงทะเบียน (token ใน store) · heartbeat ทุก 10 นาที · เวลาแสดงจากเซิร์ฟเวอร์
  * - ไม่มีเน็ต/เซิร์ฟเวอร์ไม่ตอบ = แดง "ยังไม่ได้บันทึก" ห้ามโชว์สำเร็จหลอก · รหัสผิดไม่บอกชื่อใคร
+ * - "ลองใหม่" = ส่งคำขอเดิม (requestId เดิม) ⇒ ถ้าคำขอแรกถึงเซิร์ฟเวอร์แล้วได้ผลเดิม ไม่ตอกซ้ำ · เปลี่ยนรหัส/ปุ่ม = คำขอใหม่
+ * - พิกัด: ถ้าแท็บเล็ตอนุญาต แนบตำแหน่งล่าสุดไปกับการตอก (สัญญาณประกอบ ไม่ใช่ด่าน — สเปก §4.3)
  * - PWA ของเครื่องนี้ใช้ manifest แยก (/kiosk/manifest.webmanifest) — สลับ <link rel=manifest> ตอน mount
  */
 type Phase = 'register' | 'ready' | 'submitting' | 'result' | 'blocked';
@@ -38,7 +40,9 @@ export default function KioskPage() {
   const [offline, setOffline] = useState(false);
   const [camera, setCamera] = useState<CameraState>('starting');
   const [lastPunch, setLastPunch] = useState<string | null>(null);
+  const [retryRequestId, setRetryRequestId] = useState<string | null>(null);
   const cameraRef = useRef<CameraHandle>(null);
+  const geoRef = useRef<{ lat: number; lng: number } | null>(null);
   const resultTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const now = useServerClock(offsetMs);
 
@@ -64,11 +68,32 @@ export default function KioskPage() {
     return false;
   }, []);
 
+  const refreshLocation = useCallback(() => {
+    const geo = typeof navigator !== 'undefined' ? navigator.geolocation : undefined;
+    if (!geo?.getCurrentPosition) return;
+    try {
+      geo.getCurrentPosition(
+        (pos) => { geoRef.current = { lat: pos.coords.latitude, lng: pos.coords.longitude }; },
+        () => undefined,
+        { maximumAge: 5 * 60_000, timeout: 10_000, enableHighAccuracy: false },
+      );
+    } catch {
+      /* ไม่มีสิทธิ์/ไม่รองรับ — ตอกต่อได้โดยไม่มีพิกัด */
+    }
+  }, []);
+
+  const chooseKind = (next: Kind) => {
+    setKind(next);
+    setError(null);
+    setRetryRequestId(null);
+    refreshLocation();
+  };
+
   const heartbeat = useCallback(async () => {
     const current = loadDevice();
     if (!current) return;
     try {
-      const out = await kioskApi.heartbeat(current.token);
+      const out = await kioskApi.heartbeat();
       syncClock(out.serverTime);
       setOffline(false);
       if (out.device?.status && out.device.status !== 'ACTIVE') {
@@ -90,6 +115,7 @@ export default function KioskPage() {
     const original = link?.getAttribute('href') ?? null;
     link?.setAttribute('href', KIOSK_MANIFEST);
     if (device) void heartbeat();
+    refreshLocation();
     const id = setInterval(() => void heartbeat(), HEARTBEAT_MS);
     return () => {
       clearInterval(id);
@@ -106,6 +132,7 @@ export default function KioskPage() {
     setKind(null);
     setPin('');
     setError(null);
+    setRetryRequestId(null);
     setPhase('ready');
   }, []);
 
@@ -132,7 +159,8 @@ export default function KioskPage() {
     setPhase('submitting');
     const photo = (await cameraRef.current?.capture()) ?? null;
     try {
-      const out = await kioskApi.punch({ token: current.token, pin, kind, photo: photo ?? undefined });
+      const out = await kioskApi.punch({ pin, kind, photo: photo ?? undefined, geo: geoRef.current ?? undefined, requestId: retryRequestId ?? undefined });
+      setRetryRequestId(null);
       syncClock(out.serverTime);
       setOffline(false);
       const noPhoto = !photo || out.result.flags.includes('NO_PHOTO');
@@ -142,12 +170,17 @@ export default function KioskPage() {
       resultTimer.current = setTimeout(resetToReady, RESULT_MS);
     } catch (err) {
       if (handleDeviceError(err)) return;
-      if (err instanceof KioskApiError && err.network) {
-        setOffline(true);
-        setError({ message: 'ยังไม่ได้บันทึก — เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ตรวจเน็ตของแท็บเล็ตแล้วกดลองใหม่', retryable: true });
+      if (err instanceof KioskApiError && err.retryable) {
+        setRetryRequestId(err.requestId ?? null);
+        if (err.network) setOffline(true);
+        setError({
+          message: err.network ? 'ยังไม่ได้บันทึก — เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ตรวจเน็ตของแท็บเล็ตแล้วกดลองใหม่' : 'ยังไม่ได้บันทึก — เครื่องกำลังบันทึกคำขอก่อนหน้า กดลองใหม่',
+          retryable: true,
+        });
         setPhase('ready');
         return;
       }
+      setRetryRequestId(null);
       const message = err instanceof KioskApiError ? err.message : 'ยังไม่ได้บันทึก — ลองใหม่';
       setError({ message, retryable: false });
       setPin('');
@@ -206,16 +239,16 @@ export default function KioskPage() {
 
           <div className="flex flex-col gap-4">
             <div className="grid grid-cols-2 gap-3">
-              <button type="button" aria-pressed={kind === 'IN'} onClick={() => { setKind('IN'); setError(null); }} disabled={phase === 'submitting'} className={`${BIG} ${kind === 'IN' ? 'border-primary bg-primary text-primary-foreground' : 'border-input bg-background text-foreground'}`}>
+              <button type="button" aria-pressed={kind === 'IN'} onClick={() => chooseKind('IN')} disabled={phase === 'submitting'} className={`${BIG} ${kind === 'IN' ? 'border-primary bg-primary text-primary-foreground' : 'border-input bg-background text-foreground'}`}>
                 <LogIn className="size-7" aria-hidden="true" />เข้างาน
               </button>
-              <button type="button" aria-pressed={kind === 'OUT'} onClick={() => { setKind('OUT'); setError(null); }} disabled={phase === 'submitting'} className={`${BIG} ${kind === 'OUT' ? 'border-primary bg-primary text-primary-foreground' : 'border-input bg-background text-foreground'}`}>
+              <button type="button" aria-pressed={kind === 'OUT'} onClick={() => chooseKind('OUT')} disabled={phase === 'submitting'} className={`${BIG} ${kind === 'OUT' ? 'border-primary bg-primary text-primary-foreground' : 'border-input bg-background text-foreground'}`}>
                 <LogOut className="size-7" aria-hidden="true" />ออกงาน
               </button>
             </div>
 
             <div className="text-center text-base font-medium">รหัสตอกบัตร 6 หลัก</div>
-            <PinPad value={pin} onChange={(v) => { setPin(v); if (error && !error.retryable) setError(null); }} disabled={phase === 'submitting'} />
+            <PinPad value={pin} onChange={(v) => { setPin(v); setRetryRequestId(null); if (error && !error.retryable) setError(null); }} disabled={phase === 'submitting'} />
 
             {error && (
               <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive leading-snug">

@@ -242,7 +242,8 @@ export class AttendanceService {
     const reason = (dto.reason ?? '').trim();
     if (reason.length < 10) throw new BadRequestException('เหตุผลต้องยาวอย่างน้อย 10 ตัวอักษร');
 
-    const clockIn = dto.clockIn !== undefined ? new Date(dto.clockIn) : day.clockIn;
+    // null = ล้างเวลา (เช่น ตรวจรูปแล้วพบว่าตอกแทนกัน → ถือว่าไม่มา) · undefined = ไม่แตะ (รีวิว I9: เดิม new Date(null) = 1970)
+    const clockIn = dto.clockIn === undefined ? day.clockIn : dto.clockIn === null ? null : new Date(dto.clockIn);
     const clockOut = dto.clockOut === undefined ? day.clockOut : dto.clockOut === null ? null : new Date(dto.clockOut);
     const dayKind = dto.dayKind ?? day.dayKind;
     if (clockIn && Number.isNaN(clockIn.getTime())) throw new BadRequestException('เวลาเข้างานไม่ถูกต้อง');
@@ -261,7 +262,20 @@ export class AttendanceService {
     const updated = await this.prisma.$transaction(async (tx) => {
       const row = await tx.attendanceDay.update({
         where: { id: day.id },
-        data: { clockIn, clockOut, dayKind, workedMinutes: summary.workedMinutes, lateMinutes: summary.lateMinutes, earlyLeaveMinutes: summary.earlyLeaveMinutes, otHours: summary.otHours, flags, correctedCount: day.correctedCount + 1 },
+        data: {
+          clockIn,
+          clockOut,
+          // ล้างเวลา = ไม่มีการตอกที่เป็นหลักฐานของเวลานั้นอีก
+          ...(clockIn === null ? { clockInPunchId: null } : {}),
+          ...(clockOut === null ? { clockOutPunchId: null } : {}),
+          dayKind,
+          workedMinutes: summary.workedMinutes,
+          lateMinutes: summary.lateMinutes,
+          earlyLeaveMinutes: summary.earlyLeaveMinutes,
+          otHours: summary.otHours,
+          flags,
+          correctedCount: day.correctedCount + 1,
+        },
       });
       await tx.attendanceCorrection.create({ data: { dayId: day.id, changedById: actor.id, reason, before: before as Prisma.InputJsonValue, after: after as Prisma.InputJsonValue } });
       return row;
@@ -270,14 +284,19 @@ export class AttendanceService {
     return updated;
   }
 
-  async setDayKinds(actor: Actor, dto: SetDayKindsDto): Promise<{ updated: number }> {
+  async setDayKinds(actor: Actor, dto: SetDayKindsDto, now: Date = new Date()): Promise<{ updated: number }> {
     assertBranchScope(actor, dto.branchId);
     if (actor.role !== 'OWNER' && dto.entries.some((e) => e.userId === actor.id)) throw new ForbiddenException('กำหนดวันหยุด/ลาของตัวเองไม่ได้ ให้เจ้าของทำ');
+    const today = workDateOf(now);
     const parsed = dto.entries.map((e) => {
       const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(e.date);
       if (!m) throw new BadRequestException(`วันที่ไม่ถูกต้อง: ${e.date}`);
-      return { ...e, workDate: dbDate(bangkokMidnight(Number(m[1]), Number(m[2]) - 1, Number(m[3]))) };
+      const midnight = bangkokMidnight(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+      // ตารางหยุด/ลาเป็นการวางแผนล่วงหน้า · ย้อนหลังต้องมีเหตุผล (สเปก §6) ⇒ ใช้ปุ่มแก้ไขรายวัน (รีวิว I2)
+      if (midnight.getTime() < today.getTime()) throw new BadRequestException(`วันที่ ${e.date} ผ่านไปแล้ว — บันทึกลา/หยุดย้อนหลังที่แท็บ วันนี้ (เลือกวันที่) › แก้ไข พร้อมเหตุผล`);
+      return { ...e, workDate: dbDate(midnight) };
     });
+    if (actor.role !== 'OWNER') await this.assertEntriesInBranch(dto.branchId, parsed);
     await this.prisma.$transaction(async (tx) => {
       for (const e of parsed) {
         await tx.attendanceDay.upsert({
@@ -289,6 +308,19 @@ export class AttendanceService {
     });
     await this.audit.log({ userId: actor.id, action: 'ATTENDANCE_DAY_KINDS_SET', entity: 'attendance_day', entityId: dto.branchId, newValue: { branchId: dto.branchId, entries: dto.entries } });
     return { updated: parsed.length };
+  }
+
+  /** ผจก.กำหนดวันได้เฉพาะพนักงานของสาขาตัวเอง และแถววันที่อยู่สาขานี้ (รีวิว I2 · security.md: service คุมขอบเขตสาขาเอง) */
+  private async assertEntriesInBranch(branchId: string, entries: Array<{ userId: string; workDate: Date }>): Promise<void> {
+    const userIds = [...new Set(entries.map((e) => e.userId))];
+    const users = await this.prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, branchId: true } });
+    const home = new Map(users.map((u) => [u.id, u.branchId]));
+    if (userIds.some((id) => home.get(id) !== branchId)) throw new ForbiddenException('กำหนดวันหยุด/ลาได้เฉพาะพนักงานของสาขาตัวเอง');
+    const rows = await this.prisma.attendanceDay.findMany({
+      where: { deletedAt: null, OR: entries.map((e) => ({ userId: e.userId, workDate: e.workDate })) },
+      select: { userId: true, branchId: true },
+    });
+    if (rows.some((r) => r.branchId !== branchId)) throw new ForbiddenException('วันนั้นพนักงานลงเวลาที่สาขาอื่น — ให้ผู้จัดการสาขานั้นหรือเจ้าของแก้');
   }
 
   async clearConflictFlag(actor: Actor, dayId: string): Promise<AttendanceDay> {

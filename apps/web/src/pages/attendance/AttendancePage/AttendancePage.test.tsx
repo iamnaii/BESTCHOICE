@@ -114,7 +114,8 @@ describe('AttendancePage', () => {
     fireEvent.click(screen.getByRole('tab', { name: /ตารางหยุด/ }));
     const grid = await screen.findByRole('table', { name: /ตารางหยุด/ });
     const firstRow = within(grid).getAllByRole('row')[1];
-    const cellBtn = within(firstRow).getAllByRole('button')[0];
+    const cells = within(firstRow).getAllByRole('button');
+    const cellBtn = cells[cells.length - 1]; // วันอาทิตย์ของสัปดาห์นี้ — ไม่มีทางเป็นวันที่ผ่านไปแล้ว
     expect(cellBtn).toHaveTextContent('ทำงาน');
     fireEvent.click(cellBtn);
     expect(cellBtn).toHaveTextContent('หยุด');
@@ -164,5 +165,35 @@ describe('AttendancePage', () => {
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText(/เจ้าของต้องตรวจ/)).toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: /ตรวจแล้ว ล้างธง/ })).not.toBeInTheDocument();
+  });
+  it('A9 schedule: days already past are locked (after-the-fact leave goes through แก้ไข with a reason) — รีวิว I2', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-28T05:00:00.000Z')); // พุธ 28 ต.ค. 12:00 ไทย
+    try {
+      wrap();
+      await screen.findByText('วรรณา ส.');
+      fireEvent.click(screen.getByRole('tab', { name: /ตารางหยุด/ }));
+      const grid = await screen.findByRole('table', { name: /ตารางหยุด/ });
+      const row = within(grid).getAllByRole('row')[1];
+      const cells = within(row).getAllByRole('button');
+      expect(cells[0]).toBeDisabled(); // จ 26
+      expect(cells[1]).toBeDisabled(); // อ 27
+      expect(cells[2]).toBeEnabled(); // พ 28 (วันนี้)
+      expect(screen.getByText(/ผ่านไปแล้ว.*แก้ไข/)).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('A10 correction dialog can clear the clock-in and clock-out (owner marks a fraudulent punch as not present) → PATCH clockIn null — รีวิว I9', async () => {
+    wrap();
+    await screen.findByText('วรรณา ส.');
+    fireEvent.click(within(screen.getByText('วรรณา ส.').closest('tr')!).getByRole('button', { name: /แก้ไข/ }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText(/เข้างาน/), { target: { value: '' } });
+    expect(within(dialog).getByText(/ถือว่าไม่ได้มาทำงาน/)).toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText(/เหตุผล/), { target: { value: 'ตรวจรูปแล้ว ไม่ใช่ตัวพนักงาน ตอกแทนกัน' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /บันทึกการแก้ไข/ }));
+    await waitFor(() => expect(apiMock.patch).toHaveBeenCalledWith('/attendance/days/d-u1', expect.objectContaining({ clockIn: null })));
   });
 });

@@ -135,7 +135,7 @@ export function useAttendanceMe(month: string) {
 export function useCorrectDay() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { dayId: string; clockIn?: string; clockOut?: string | null; dayKind?: DayKind; reason: string }) =>
+    mutationFn: async (input: { dayId: string; clockIn?: string | null; clockOut?: string | null; dayKind?: DayKind; reason: string }) =>
       (await api.patch(`/attendance/days/${input.dayId}`, { clockIn: input.clockIn, clockOut: input.clockOut, dayKind: input.dayKind, reason: input.reason })).data,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ATTENDANCE_KEY }),
   });

@@ -105,17 +105,21 @@ export function computeDaySummary(input: DaySummaryInput): DaySummary {
   const startAt = new Date(workDate.getTime() + parseClock(rules.workStart) * MINUTE_MS);
   const endAt = new Date(workDate.getTime() + parseClock(rules.workEnd) * MINUTE_MS);
 
+  // วันที่ไม่ใช่วันทำงาน (หยุด/ลา/ร้านปิด) ไม่มีเวลาเข้างานที่ต้องตรง ⇒ ไม่นับสาย/ออกก่อน (มีแต่ธง WORKED_ON_OFF_DAY)
+  const scheduled = dayKind === 'WORK';
   const minutesAfterStart = minutesBetween(startAt, clockIn);
-  const lateMinutes = minutesAfterStart > rules.lateGraceMinutes ? minutesAfterStart : 0;
+  const lateMinutes = scheduled && minutesAfterStart > rules.lateGraceMinutes ? minutesAfterStart : 0;
 
   let workedMinutes = 0;
   let earlyLeaveMinutes = 0;
   let otHours = 0;
   if (clockOut) {
     workedMinutes = Math.max(0, minutesBetween(clockIn, clockOut));
+    // OT = เวลาที่ทำจริงหลังเลิกงาน ⇒ นับจาก max(เวลาเลิกงาน, เวลาเข้า) — เข้าหลังเลิกงานไม่ได้ OT ย้อนไปถึง 19:00
+    const otFrom = clockIn.getTime() > endAt.getTime() ? clockIn : endAt;
     const pastEnd = minutesBetween(endAt, clockOut);
-    if (pastEnd >= 0) otHours = roundOtMinutes(pastEnd);
-    else earlyLeaveMinutes = -pastEnd;
+    if (pastEnd >= 0) otHours = roundOtMinutes(Math.max(0, minutesBetween(otFrom, clockOut)));
+    else if (scheduled) earlyLeaveMinutes = -pastEnd;
   }
 
   if (dayKind !== 'WORK') flags.push(WORKED_ON_OFF_DAY);

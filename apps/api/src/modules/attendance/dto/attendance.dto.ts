@@ -31,9 +31,10 @@ export class MeMonthQueryDto {
 }
 
 export class CorrectDayDto {
+  /** null = ล้างเวลาเข้า (ต้องล้างเวลาออกด้วย) — เช่น ตรวจรูปแล้วพบว่าตอกแทนกัน */
   @IsOptional()
   @IsISO8601({}, { message: 'เวลาเข้างานไม่ถูกต้อง' })
-  clockIn?: string;
+  clockIn?: string | null;
 
   /** null = ล้างเวลาออก (เปิดวันค้าง) */
   @IsOptional()

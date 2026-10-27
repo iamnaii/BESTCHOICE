@@ -216,6 +216,36 @@ enum ChatWorkKind {
   CHAT_SERVICE
 }
 
+// ลงเวลาทำงาน (ก้อน 10 D3 · spec 2026-10-27-attendance-kiosk-design.md §9)
+enum AttendanceDayKind {
+  WORK
+  DAY_OFF
+  LEAVE_SICK
+  LEAVE_PERSONAL
+  LEAVE_OTHER
+  SHOP_CLOSED
+}
+
+enum AttendanceDeviceStatus {
+  ACTIVE
+  REVOKED
+  LOCKED
+}
+
+enum AttendancePunchKind {
+  IN
+  OUT
+}
+
+enum AttendanceDeviceEventKind {
+  REGISTERED
+  TOKEN_CONFLICT
+  PIN_LOCKOUT
+  REVOKED
+  UNLOCKED
+  OFFLINE
+}
+
 enum TodoPriority {
   LOW
   MEDIUM
@@ -825,6 +855,9 @@ model Branch {
   deletedAt           DateTime? @map("deleted_at")
   shopCashAccountCode String?   @map("shop_cash_account_code")
   shopCashFloat       Decimal   @default(0) @map("shop_cash_float") @db.Decimal(12, 2)
+  /// เวลางานของสาขา 'HH:mm' · null = ใช้ค่าระบบ attendance.work_start/work_end (ลงเวลา ก้อน 10)
+  workStart           String?   @map("work_start")
+  workEnd             String?   @map("work_end")
 
   company                  CompanyInfo?              @relation(fields: [companyId], references: [id])
   users                    User[]
@@ -871,6 +904,11 @@ model Branch {
   financeApplications ExternalFinanceApplication[] @relation("BranchFinanceApplications")
 
   @@index([companyId])
+  attendanceDevices           AttendanceDevice[]
+  attendanceRegistrationCodes AttendanceRegistrationCode[]
+  attendancePunches           AttendancePunch[]
+  attendanceDays              AttendanceDay[]
+
   @@map("branches")
 }
 
@@ -930,6 +968,8 @@ model User {
   failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
   lockedUntil         DateTime? @map("locked_until")
   lastLoginAt         DateTime? @map("last_login_at")
+  /// รหัสตอกบัตร 6 หลัก = hashPII(pin, PII_HASH_SALT) — ไม่ซ้ำทั้งบริษัท · null = ยังไม่เริ่มใช้ระบบลงเวลา (ไม่ถูกนับขาด)
+  attendancePinHash   String?   @unique @map("attendance_pin_hash")
 
   /// SP7.1 — รายชื่อ companies ที่ user เข้าถึงได้
   /// OWNER/ACCOUNTANT = ["SHOP", "FINANCE"]; SALES/BM = ["SHOP"]; FM = ["FINANCE"]
@@ -1146,6 +1186,12 @@ model User {
 
   @@index([branchId])
   @@index([yeastarExtension])
+  attendanceDevicesRegistered AttendanceDevice[]           @relation("AttendanceDeviceRegisteredBy")
+  attendanceRegistrationCodes AttendanceRegistrationCode[] @relation("AttendanceRegistrationCodeCreatedBy")
+  attendancePunches           AttendancePunch[]
+  attendanceDays              AttendanceDay[]
+  attendanceCorrections       AttendanceCorrection[]       @relation("AttendanceCorrectionChangedBy")
+
   @@map("users")
 }
 
@@ -10174,4 +10220,167 @@ model AppointmentConfirmation {
   @@index([status, createdAt])
   @@index([roomId])
   @@map("appointment_confirmations")
+}
+
+// ─── ลงเวลาทำงานผ่านเครื่องประจำสาขา (ก้อน 10 D3) ──────────────────────────────
+
+/// เครื่องตอกบัตรประจำสาขา (แท็บเล็ต/มือถือเก่า) — token หมุนทุกคำขอ · ล็อกเมื่อ token ชน
+model AttendanceDevice {
+  id                   String                 @id @default(uuid())
+  branchId             String                 @map("branch_id")
+  name                 String
+  status               AttendanceDeviceStatus @default(ACTIVE)
+  currentGeneration    Int                    @default(0) @map("current_generation")
+  lastSeenAt           DateTime?              @map("last_seen_at")
+  lastCleanHeartbeatAt DateTime?              @map("last_clean_heartbeat_at")
+  lastIp               String?                @map("last_ip")
+  lastUserAgent        String?                @map("last_user_agent")
+  pinFailCount         Int                    @default(0) @map("pin_fail_count")
+  pinLockedUntil       DateTime?              @map("pin_locked_until")
+  registeredById       String                 @map("registered_by_id")
+  createdAt            DateTime               @default(now()) @map("created_at")
+  updatedAt            DateTime               @updatedAt @map("updated_at")
+  deletedAt            DateTime?              @map("deleted_at")
+  branch               Branch                 @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  registeredBy         User                   @relation("AttendanceDeviceRegisteredBy", fields: [registeredById], references: [id], onDelete: Restrict)
+  tokens               AttendanceDeviceToken[]
+  requests             AttendanceDeviceRequest[]
+  events               AttendanceDeviceEvent[]
+  punches              AttendancePunch[]
+
+  @@index([branchId, status])
+  @@map("attendance_devices")
+}
+
+/// Append-only — updatedAt/deletedAt intentionally omitted (ประวัติ token ทุกรุ่นของเครื่อง · ใช้ตรวจว่า token เก่าถูกคัดลอกไปใช้ที่อื่น)
+model AttendanceDeviceToken {
+  id         String           @id @default(uuid())
+  deviceId   String           @map("device_id")
+  generation Int
+  tokenHash  String           @unique @map("token_hash")
+  issuedAt   DateTime         @default(now()) @map("issued_at")
+  usedAt     DateTime?        @map("used_at")
+  device     AttendanceDevice @relation(fields: [deviceId], references: [id], onDelete: Restrict)
+
+  @@unique([deviceId, generation])
+  @@map("attendance_device_tokens")
+}
+
+/// Append-only — updatedAt/deletedAt intentionally omitted (แคชคำตอบต่อ requestId ให้ส่งซ้ำได้ผลเดิม · cron ลบเกิน 1 วัน)
+model AttendanceDeviceRequest {
+  id           String           @id @default(uuid())
+  deviceId     String           @map("device_id")
+  requestId    String           @map("request_id")
+  responseJson Json             @map("response_json")
+  createdAt    DateTime         @default(now()) @map("created_at")
+  device       AttendanceDevice @relation(fields: [deviceId], references: [id], onDelete: Restrict)
+
+  @@unique([deviceId, requestId])
+  @@index([createdAt])
+  @@map("attendance_device_requests")
+}
+
+/// Append-only — updatedAt/deletedAt intentionally omitted (รหัสลงทะเบียนเครื่อง ใช้ครั้งเดียว อายุ 10 นาที)
+model AttendanceRegistrationCode {
+  id          String    @id @default(uuid())
+  branchId    String    @map("branch_id")
+  codeHash    String    @unique @map("code_hash")
+  expiresAt   DateTime  @map("expires_at")
+  usedAt      DateTime? @map("used_at")
+  createdById String    @map("created_by_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  branch      Branch    @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  createdBy   User      @relation("AttendanceRegistrationCodeCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@map("attendance_registration_codes")
+}
+
+/// Append-only — updatedAt/deletedAt intentionally omitted (event log ของเครื่อง: ลงทะเบียน · token ชน · รหัสถูกเดา · ยกเลิก · ปลดล็อก · เงียบ)
+model AttendanceDeviceEvent {
+  id        String                    @id @default(uuid())
+  deviceId  String                    @map("device_id")
+  kind      AttendanceDeviceEventKind
+  ip        String?
+  userAgent String?                   @map("user_agent")
+  detail    Json?
+  createdAt DateTime                  @default(now()) @map("created_at")
+  device    AttendanceDevice          @relation(fields: [deviceId], references: [id], onDelete: Restrict)
+
+  @@index([deviceId, createdAt])
+  @@map("attendance_device_events")
+}
+
+/// Append-only — updatedAt/deletedAt intentionally omitted (ทุกการกดเข้า/ออก พร้อมรูปหลักฐาน · แถววันสรุปจากตารางนี้)
+model AttendancePunch {
+  id          String              @id @default(uuid())
+  deviceId    String              @map("device_id")
+  userId      String              @map("user_id")
+  branchId    String              @map("branch_id")
+  kind        AttendancePunchKind
+  at          DateTime
+  photoKey    String?             @map("photo_key")
+  ip          String?
+  userAgent   String?             @map("user_agent")
+  geoLat      Decimal?            @map("geo_lat") @db.Decimal(9, 6)
+  geoLng      Decimal?            @map("geo_lng") @db.Decimal(9, 6)
+  flags       String[]            @default([])
+  createdAt   DateTime            @default(now()) @map("created_at")
+  device      AttendanceDevice    @relation(fields: [deviceId], references: [id], onDelete: Restrict)
+  user        User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  branch      Branch              @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  clockInDays  AttendanceDay[]    @relation("AttendanceDayClockIn")
+  clockOutDays AttendanceDay[]    @relation("AttendanceDayClockOut")
+
+  @@index([userId, at])
+  @@index([deviceId, at])
+  @@index([branchId, at])
+  @@map("attendance_punches")
+}
+
+/// หนึ่งแถวต่อคนต่อวันไทย — เวลาเข้า/ออก + ค่าที่คำนวณ (สาย · เกินเวลา · OT ชม.) + ธง · dayKind มาจากตารางหยุด/ลา
+model AttendanceDay {
+  id                String            @id @default(uuid())
+  userId            String            @map("user_id")
+  branchId          String            @map("branch_id")
+  workDate          DateTime          @map("work_date") @db.Date
+  dayKind           AttendanceDayKind @default(WORK) @map("day_kind")
+  clockIn           DateTime?         @map("clock_in")
+  clockOut          DateTime?         @map("clock_out")
+  clockInPunchId    String?           @map("clock_in_punch_id")
+  clockOutPunchId   String?           @map("clock_out_punch_id")
+  workedMinutes     Int               @default(0) @map("worked_minutes")
+  lateMinutes       Int               @default(0) @map("late_minutes")
+  earlyLeaveMinutes Int               @default(0) @map("early_leave_minutes")
+  otHours           Decimal           @default(0) @map("ot_hours") @db.Decimal(4, 1)
+  flags             String[]          @default([])
+  note              String?
+  correctedCount    Int               @default(0) @map("corrected_count")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+  deletedAt         DateTime?         @map("deleted_at")
+  user              User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  branch            Branch            @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  clockInPunch      AttendancePunch?  @relation("AttendanceDayClockIn", fields: [clockInPunchId], references: [id], onDelete: SetNull)
+  clockOutPunch     AttendancePunch?  @relation("AttendanceDayClockOut", fields: [clockOutPunchId], references: [id], onDelete: SetNull)
+  corrections       AttendanceCorrection[]
+
+  @@unique([userId, workDate])
+  @@index([branchId, workDate])
+  @@map("attendance_days")
+}
+
+/// Append-only — updatedAt/deletedAt intentionally omitted (ประวัติแก้ไขแถววัน: ค่าเก่า → ใหม่ · ผู้แก้ · เหตุผล)
+model AttendanceCorrection {
+  id          String        @id @default(uuid())
+  dayId       String        @map("day_id")
+  changedById String        @map("changed_by_id")
+  reason      String
+  before      Json
+  after       Json
+  createdAt   DateTime      @default(now()) @map("created_at")
+  day         AttendanceDay @relation(fields: [dayId], references: [id], onDelete: Restrict)
+  changedBy   User          @relation("AttendanceCorrectionChangedBy", fields: [changedById], references: [id], onDelete: Restrict)
+
+  @@index([dayId, createdAt])
+  @@map("attendance_corrections")
 }

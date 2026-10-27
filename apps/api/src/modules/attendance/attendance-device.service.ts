@@ -155,9 +155,10 @@ export class AttendanceDeviceService {
     });
   }
 
-  async remember(deviceId: string, requestId: string, responseJson: Prisma.InputJsonValue): Promise<void> {
+  /** จำคำตอบของคำขอนี้ไว้ส่งซ้ำ (responseJson = body ที่ตอบไปจริง รวมกรณี error 400/423) */
+  async remember(deviceId: string, requestId: string, responseJson: unknown): Promise<void> {
     try {
-      await this.prisma.attendanceDeviceRequest.create({ data: { deviceId, requestId, responseJson } });
+      await this.prisma.attendanceDeviceRequest.create({ data: { deviceId, requestId, responseJson: responseJson as Prisma.InputJsonValue } });
     } catch (err) {
       if ((err as { code?: string }).code === 'P2002') return;
       throw err;

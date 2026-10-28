@@ -369,9 +369,11 @@ export class PayrollPostGateService {
 
   /**
    * กลับรายการใบเงินเดือน (ผู้เรียกถือ `post:${documentId}` + `payroll-clawback:*` ของคนในใบ · เรียกหลังรายการกลับ JE ก่อน CAS สถานะ)
-   * ใบที่ลงบัญชีแล้วเท่านั้นที่แตะแถวค่าคอม (P2-R5):
-   * - ค่าคอมของรายการ PAY ถูกหักคืนแล้วในใบอื่นที่ลงบัญชีแล้ว → 409 PAYROLL_VOID_AFTER_CLAWBACK (เลขที่ใบนั้น)
-   * - ค่าคอมของรายการ PAY เป็น PARTIALLY_CLAWED_BACK → 409 PAYROLL_VOID_PARTIAL_CLAWBACK (อ้างอิงค่าคอม)
+   * ใบที่ลงบัญชีแล้วเท่านั้นที่แตะแถวค่าคอม (P2-R5) — ลำดับการปฏิเสธตายตัว (fix round 1):
+   * - ค่าคอมของรายการ PAY ตัวใดเป็น PARTIALLY_CLAWED_BACK → 409 PAYROLL_VOID_PARTIAL_CLAWBACK (อ้างอิงค่าคอม) **ก่อนเสมอ** —
+   *   ทางตัน (spec §182): ถ้าบอกให้กลับรายการใบที่หักคืนก่อน ผู้ใช้จะกลับรายการใบที่ถูกต้องแล้วยังกลับรายการใบนี้ไม่ได้อยู่ดี
+   * - ไม่มีตัวไหนถูกเรียกคืนบางส่วน แต่ถูกหักคืนแล้วในใบอื่นที่ลงบัญชีแล้ว → 409 PAYROLL_VOID_AFTER_CLAWBACK (เลขที่ใบนั้น) —
+   *   กลับรายการใบนั้นก่อนแล้วใบนี้กลับรายการได้จริง
    * - ไม่งั้นย้อนการจ่าย (`revertCommissionPayment` — PAID → APPROVED · CLAWED_BACK ล้าง paidAt / paidAmount / clawbackAmount)
    * แล้วปล่อยรายการทุกตัวของใบ (PAY + CLAWBACK) · ใบที่ยังไม่ลงบัญชี = ปล่อยรายการอย่างเดียว · คืน id ของรายการที่ปล่อย
    */
@@ -385,6 +387,8 @@ export class PayrollPostGateService {
       });
       const commissionIds = pay.map((i) => i.salesCommission.id);
       if (commissionIds.length > 0) {
+        const partial = pay.find((i) => i.salesCommission.status === 'PARTIALLY_CLAWED_BACK');
+        if (partial) throw payrollGateConflict.voidPartialClawback(referenceOf(partial.salesCommission));
         const deducted = await tx.payrollCommissionItem.findMany({
           where: {
             kind: 'CLAWBACK',
@@ -396,8 +400,6 @@ export class PayrollPostGateService {
         });
         const holder = deducted.map((d) => d.payrollLine.payroll.document.number).sort()[0];
         if (holder) throw payrollGateConflict.voidAfterClawback(holder);
-        const partial = pay.find((i) => i.salesCommission.status === 'PARTIALLY_CLAWED_BACK');
-        if (partial) throw payrollGateConflict.voidPartialClawback(referenceOf(partial.salesCommission));
         for (const { salesCommission } of pay) await revertCommissionPayment(tx, salesCommission);
       }
     }

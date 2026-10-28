@@ -201,6 +201,12 @@ const updateDoc = (id: string, period: Period, lines: unknown[], c: ExpenseDocum
 /** R20 — `updatedAt` ของใบตามที่หน้ารายละเอียดวาด · อนุมัติใบ PAYROLL ต้องส่งกลับเป็น `expectedUpdatedAt` */
 const versionOf = async (id: string) => (await prisma.expenseDocument.findUniqueOrThrow({ where: { id }, select: { updatedAt: true } })).updatedAt.toISOString();
 const approveAsSeen = async (id: string) => lifecycle.approve(id, ownerId, 'OWNER', { expectedUpdatedAt: await versionOf(id) });
+const postAsSeen = async (id: string) => lifecycle.post(id, ownerId, undefined, { expectedUpdatedAt: await versionOf(id) });
+/** คำตอบของสร้าง/แก้ใบ (P2-R28) — รายการค่าคอมของบรรทัดพร้อมข้อมูลค่าคอม (include ชุดเดียวกับ findOne) */
+const responseItems = (doc: unknown) =>
+  (doc as { payroll: { lines: Array<{ commissionItems: Array<{ kind: string; salesCommissionId: string; amount: Prisma.Decimal; releasedAt: Date | null; salesCommission: { id: string; period: string } }> }> } })
+    .payroll.lines.flatMap((l) => l.commissionItems)
+    .map((i) => ({ kind: i.kind, salesCommissionId: i.salesCommissionId, amount: money(i.amount), released: i.releasedAt !== null, commission: { id: i.salesCommission.id, period: i.salesCommission.period } }));
 async function submitAndApprove(id: string, period: Period) {
   setNow(AFTER_CUTOFF[period]);
   await lifecycle.submitForApproval(id, ownerId);
@@ -278,8 +284,8 @@ async function cronClawback50(contractId: string) {
   return commissions.applyClawbackForContract(contractId, 5, 'ผิดนัดชำระก่อนครบ 6 งวด');
 }
 /** ยกเลิกใบขาย / คืนเครื่องเทิร์น = เรียกคืน 100% ผ่าน helper เดียว */
-async function clawBack100(commissionId: string) {
-  setNow('2026-11-10 09:00');
+async function clawBack100(commissionId: string, at = '2026-11-10 09:00') {
+  setNow(at);
   const row = await commissionOf(commissionId);
   return prisma.$transaction((tx) => clawBackCommissions(tx, [row], { reason: 'ยกเลิกใบขาย', now: new Date() }));
 }
@@ -337,6 +343,8 @@ describe('Payroll commission flow — store, gate, pay, void (Postgres)', () => 
     const u = await mkUser('pay', b);
     const c = await mkCommission(u, { amount: 1000 });
     const oct = await createDoc(b, '2026-10', [line(u)]);
+    // P2-R28 — คำตอบของสร้างใบมีรายการค่าคอม (เว็บเติมฟอร์มจากคำตอบนี้)
+    expect(responseItems(oct)).toEqual([{ kind: 'PAY', salesCommissionId: c.id, amount: '1000.00', released: false, commission: { id: c.id, period: '2026-10' } }]);
 
     const saved = await lineOf(oct.id, u);
     expect(saved.commissionIncome).toEqual([{ accountCode: COMMISSION_CODE, name: 'ค่าคอมมิชชัน (1 รายการ)', amount: '1000.00' }]);
@@ -404,7 +412,9 @@ describe('Payroll commission flow — store, gate, pay, void (Postgres)', () => 
     expect(deleted.newValue).toMatchObject({ releasedCommissionItemIds: [held[0].id] });
     expect((await commissionOf(c.id)).status).toBe('APPROVED');
 
-    await updateDoc(other.id, '2026-10', [line(u)]);
+    const updated = await updateDoc(other.id, '2026-10', [line(u)]);
+    // P2-R28 — คำตอบของแก้ใบมีรายการค่าคอมด้วย
+    expect(responseItems(updated)).toEqual([{ kind: 'PAY', salesCommissionId: c.id, amount: '800.00', released: false, commission: { id: c.id, period: '2026-10' } }]);
     const pulled = await lineOf(other.id, u);
     expect(pulled.items).toEqual([{ salesCommissionId: c.id, kind: 'PAY', accountCode: COMMISSION_CODE, amount: '800.00', released: false }]);
     expect(pulled.warnings).toEqual([]);
@@ -705,12 +715,16 @@ describe('Payroll commission flow — store, gate, pay, void (Postgres)', () => 
     expect(l.commissionIncome).toEqual([{ accountCode: COMMISSION_CODE, name: 'ค่าคอมมิชชัน (1 รายการ)', amount: '1000.00' }]);
   });
 
-  it('Review Focus 4 (a) — void of a paying document after a later deduction posted elsewhere → 409 PAYROLL_VOID_AFTER_CLAWBACK naming that document · nothing changes', async () => {
-    const { branchId, userId, contract, commission, oct } = await paidInOctober('void-after');
-    await cronClawback50(contract.id);
-    await mkCommission(userId, { period: '2026-11', amount: 1000 });
+  it('Review Focus 4 (a) — a 100% clawback deducted in a POSTED November: voiding October → 409 PAYROLL_VOID_AFTER_CLAWBACK naming November (nothing changes) · after November is voided, the October void goes through and clears paidAt / paidAmount / clawbackAmount', async () => {
+    const { branchId, userId, commission, oct } = await paidInOctober('void-after');
+    await clawBack100(commission.id); // จ่ายแล้ว 100% ⇒ CLAWED_BACK · clawbackAmount 1,000
+    const novCommission = await mkCommission(userId, { period: '2026-11', amount: 1000 });
     const nov = await createDoc(branchId, '2026-11', [line(userId)]);
+    expect((await lineOf(nov.id, userId)).deductions).toEqual([
+      { source: 'COMMISSION_CLAWBACK', accountCode: COMMISSION_CODE, name: 'หักคืนค่าคอม (1 รายการ)', amount: '1000.00' },
+    ]);
     await submitAndApprove(nov.id, '2026-11');
+    expect((await docOf(nov.id)).status).toBe('POSTED');
 
     setNow('2026-12-03 10:00');
     await expectConflict(lifecycle.voidDocument(oct.id, ownerId, VOID_DTO), {
@@ -719,10 +733,45 @@ describe('Payroll commission flow — store, gate, pay, void (Postgres)', () => 
       message: voidAfterClawback(nov.number),
     });
     expect((await docOf(oct.id)).status).toBe('POSTED');
+    const held = await commissionOf(commission.id);
+    expect(held.status).toBe('CLAWED_BACK');
+    expect(held.paidAt).not.toBeNull();
+    expect(money(held.clawbackAmount)).toBe('1000.00');
+    expect((await itemsOfDoc(oct.id)).every((i) => i.releasedAt === null)).toBe(true);
+
+    // ทางที่ข้อความบอกต้องสำเร็จจริง: กลับรายการ พ.ย. ก่อน → แล้วกลับรายการ ต.ค. ได้
+    await lifecycle.voidDocument(nov.id, ownerId, VOID_DTO);
+    expect((await docOf(nov.id)).status).toBe('VOIDED');
+    expect((await commissionOf(novCommission.id)).status).toBe('APPROVED');
+    await lifecycle.voidDocument(oct.id, ownerId, VOID_DTO);
+    expect((await docOf(oct.id)).status).toBe('VOIDED');
+    const undone = await commissionOf(commission.id);
+    expect(undone.status).toBe('CLAWED_BACK');
+    expect(undone.paidAt).toBeNull();
+    expect(undone.paidAmount).toBeNull();
+    expect(undone.clawbackAmount).toBeNull();
+    expect((await itemsOfDoc(oct.id)).every((i) => i.releasedAt !== null)).toBe(true);
+  });
+
+  it('fix round 1 — a partial clawback deducted in a POSTED November: voiding October → 409 PAYROLL_VOID_PARTIAL_CLAWBACK (terminal), not VOID_AFTER_CLAWBACK (which would send the user to reverse a correct payroll for nothing)', async () => {
+    const { branchId, userId, contract, commission, oct } = await paidInOctober('void-partial-posted');
+    await cronClawback50(contract.id);
+    await mkCommission(userId, { period: '2026-11', amount: 1000 });
+    const nov = await createDoc(branchId, '2026-11', [line(userId)]);
+    await submitAndApprove(nov.id, '2026-11');
+    expect((await docOf(nov.id)).status).toBe('POSTED');
+    expect((await itemsOfDoc(nov.id)).some((i) => i.kind === 'CLAWBACK' && i.salesCommissionId === commission.id)).toBe(true);
+
+    setNow('2026-12-03 10:00');
+    await expectConflict(lifecycle.voidDocument(oct.id, ownerId, VOID_DTO), {
+      code: 'PAYROLL_VOID_PARTIAL_CLAWBACK',
+      message: voidPartialClawback(contract.contractNumber),
+    });
+    expect((await docOf(oct.id)).status).toBe('POSTED');
+    expect((await docOf(nov.id)).status).toBe('POSTED');
     const row = await commissionOf(commission.id);
     expect(row.status).toBe('PARTIALLY_CLAWED_BACK');
     expect(row.paidAt).not.toBeNull();
-    expect((await itemsOfDoc(oct.id)).every((i) => i.releasedAt === null)).toBe(true);
   });
 
   it('Review Focus 4 (b) — void after a partial clawback (deducted only in a draft) → 409 PAYROLL_VOID_PARTIAL_CLAWBACK with the contract reference', async () => {
@@ -805,6 +854,87 @@ describe('Payroll commission flow — store, gate, pay, void (Postgres)', () => 
     const paid = await commissionOf(c.id);
     expect(paid.status).toBe('PAID');
     expect(money(paid.paidAmount)).toBe('1000.00');
+  });
+
+  it('P2-R28 (a) — approve with auto_post_on_approve off leaves the commission APPROVED (no JE) · post() of the APPROVED document pays it (PAID, paidAmount) · the JE carries Dr S51-1101 · POSTED lists the PAY item', async () => {
+    const b = await mkBranch('manual-post');
+    const u = await mkUser('manual-post', b);
+    const c = await mkCommission(u, { amount: 1200 });
+    const oct = await createDoc(b, '2026-10', [line(u)]);
+    await setConfig('auto_post_on_approve', 'false');
+    try {
+      await submitAndApprove(oct.id, '2026-10');
+      const approved = await docOf(oct.id);
+      expect(approved.status).toBe('APPROVED');
+      expect(approved.journalEntryId).toBeNull();
+      expect((await commissionOf(c.id)).status).toBe('APPROVED');
+
+      await postAsSeen(oct.id);
+      const posted = await docOf(oct.id);
+      expect(posted.status).toBe('POSTED');
+      const paid = await commissionOf(c.id);
+      expect(paid.status).toBe('PAID');
+      expect(paid.paidAt?.toISOString()).toBe(new Date(DOC_DATE['2026-10']).toISOString());
+      expect(money(paid.paidAmount)).toBe('1200.00');
+      const je = await jeLines(oct.id);
+      expect(je).toContainEqual({ accountCode: COMMISSION_CODE, dr: '1200.00', cr: '0.00' });
+      expect(je).toContainEqual({ accountCode: 'S11-1202', dr: '0.00', cr: '15350.00' }); // 15,000 + 1,200 − 750 − 100
+      const [payItem] = await itemsOfDoc(oct.id);
+      const postedAudit = await prisma.auditLog.findFirstOrThrow({ where: { action: 'POSTED', entityId: oct.id } });
+      expect(postedAudit.newValue).toMatchObject({ commissionItemIds: [payItem.id] });
+    } finally {
+      await setConfig('auto_post_on_approve', null);
+    }
+  });
+
+  it('P2-R28 (b) — clawbacks on two accounts (role remapped between the payments): one deduction row per PAY-item account, gate check (b) passes, the JE credits each account its own amount', async () => {
+    const b = await mkBranch('two-accounts');
+    const u = await mkUser('two-accounts', b);
+    const octCommission = await mkCommission(u, { period: '2026-10', amount: 1000 });
+    const oct = await createDoc(b, '2026-10', [line(u)]);
+    await submitAndApprove(oct.id, '2026-10'); // PAY item บน S51-1101
+
+    const role = await prisma.accountRoleMap.findFirstOrThrow({ where: { role: 'shop_payroll_commission', accountCode: COMMISSION_CODE, isActive: true } });
+    await prisma.accountRoleMap.update({ where: { id: role.id }, data: { accountCode: 'S51-1102' } });
+    let novCommission: { id: string };
+    try {
+      novCommission = await mkCommission(u, { period: '2026-11', amount: 600 });
+      const nov = await createDoc(b, '2026-11', [line(u)]);
+      await submitAndApprove(nov.id, '2026-11'); // PAY item บน S51-1102
+      expect((await itemsOfDoc(nov.id)).map((i) => [i.kind, i.accountCode])).toEqual([['PAY', 'S51-1102']]);
+    } finally {
+      await prisma.accountRoleMap.update({ where: { id: role.id }, data: { accountCode: COMMISSION_CODE } });
+    }
+    await clawBack100(octCommission.id, '2026-12-10 09:00');
+    await clawBack100(novCommission.id, '2026-12-10 09:00');
+
+    await mkCommission(u, { period: '2026-12', amount: 2000 });
+    const dec = await createDoc(b, '2026-12', [line(u)]);
+    const l = await lineOf(dec.id, u);
+    expect(l.commissionIncome).toEqual([{ accountCode: COMMISSION_CODE, name: 'ค่าคอมมิชชัน (1 รายการ)', amount: '2000.00' }]);
+    expect(l.deductions).toEqual([
+      { source: 'COMMISSION_CLAWBACK', accountCode: COMMISSION_CODE, name: 'หักคืนค่าคอม (1 รายการ)', amount: '1000.00' },
+      { source: 'COMMISSION_CLAWBACK', accountCode: 'S51-1102', name: 'หักคืนค่าคอม (1 รายการ)', amount: '600.00' },
+    ]);
+    expect(l.items.filter((i) => i.kind === 'CLAWBACK').map((i) => [i.salesCommissionId, i.accountCode, i.amount]).sort()).toEqual(
+      [
+        [octCommission.id, COMMISSION_CODE, '1000.00'],
+        [novCommission.id, 'S51-1102', '600.00'],
+      ].sort(),
+    );
+    expect(l.warnings).toEqual([]);
+    expect(l.netPaid).toBe('14550.00'); // 15,000 + 2,000 − 1,000 − 600 − 750 − 100
+
+    await submitAndApprove(dec.id, '2026-12'); // ด่าน (b): ยอดหักต่อบัญชี = Σ รายการ CLAWBACK ต่อบัญชี ⇒ ไม่ stale
+    const posted = await docOf(dec.id);
+    expect(posted.status).toBe('POSTED');
+    expect(money(posted.netPayment)).toBe('14550.00');
+    const je = await jeLines(dec.id);
+    expect(je).toContainEqual({ accountCode: COMMISSION_CODE, dr: '2000.00', cr: '0.00' });
+    expect(je).toContainEqual({ accountCode: COMMISSION_CODE, dr: '0.00', cr: '1000.00' });
+    expect(je).toContainEqual({ accountCode: 'S51-1102', dr: '0.00', cr: '600.00' });
+    expect(je).toContainEqual({ accountCode: 'S11-1202', dr: '0.00', cr: '14550.00' });
+    expect(je.filter((j) => j.accountCode === 'S51-1102')).toHaveLength(1);
   });
 
   it('P2-R4 — a live PAY item already held elsewhere hitting the partial unique index (create and update) → 409 PAYROLL_COMMISSION_TAKEN · nothing written', async () => {

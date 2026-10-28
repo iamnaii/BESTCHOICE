@@ -7,6 +7,30 @@ import type { CommissionStatus, Prisma } from '@prisma/client';
  * - ทุกการเขียนแถวค่าคอมเรียงตาม id (ชุดเดียวกับ `clawBackCommissions`) ⇒ ไม่ deadlock กับการยกเลิกใบขาย
  */
 
+/**
+ * include ของรายการค่าคอมบนบรรทัดใบเงินเดือน — ชุดเดียวของ findOne และคำตอบของสร้าง/แก้ใบ (Task 6 เติมฟอร์มจากคำตอบที่บันทึก) ·
+ * ไม่กรอง releasedAt (P2-R19.6): ใบที่ยังมีผลมีแต่รายการที่ยังมีผล · ใบ VOIDED ยังแสดงรายการที่เคยจ่าย/หัก ·
+ * เรียง PAY ก่อน แล้วตามงวด / วันที่สร้างของค่าคอม
+ */
+export const PAYROLL_COMMISSION_ITEMS_INCLUDE = {
+  orderBy: [{ kind: 'asc' }, { salesCommission: { period: 'asc' } }, { salesCommission: { createdAt: 'asc' } }, { salesCommissionId: 'asc' }],
+  include: {
+    salesCommission: {
+      select: {
+        id: true,
+        period: true,
+        commissionAmount: true,
+        status: true,
+        clawbackReason: true,
+        clawbackAt: true,
+        createdAt: true,
+        contract: { select: { contractNumber: true } },
+        sale: { select: { saleNumber: true } },
+      },
+    },
+  },
+} satisfies Prisma.PayrollLine$commissionItemsArgs;
+
 /** ข้อความเดียวกับ helper เรียกคืนค่าคอม (Task 2) — แถวค่าคอมเปลี่ยนระหว่างธุรกรรม */
 const STATUS_CHANGED_MSG = 'สถานะค่าคอมเปลี่ยนแล้ว กรุณาตรวจใหม่';
 

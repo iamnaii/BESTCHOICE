@@ -10,7 +10,8 @@ export const COMMISSION_PAY_VIA_PAYROLL_MSG =
   'จ่ายค่าคอมผ่านใบเงินเดือนเท่านั้น — สร้างใบเงินเดือนที่หน้ารายจ่าย › สร้างเอกสารใหม่ › เงินเดือน (PR) ระบบดึงค่าคอมที่อนุมัติแล้วให้เอง';
 export const COMMISSION_PAY_VIA_PAYROLL_CODE = 'COMMISSION_PAY_VIA_PAYROLL';
 
-const STATUS_CHANGED_MSG = 'สถานะค่าคอมเปลี่ยนแล้ว กรุณาตรวจใหม่';
+/** แถวค่าคอมเปลี่ยนสถานะหลังอ่าน (CAS ได้ 0 แถว) — ข้อความเดียวของ helper เรียกคืนและการอนุมัติค่าคอม */
+export const STATUS_CHANGED_MSG = 'สถานะค่าคอมเปลี่ยนแล้ว กรุณาตรวจใหม่';
 
 export interface ClawbackCandidate {
   id: string;

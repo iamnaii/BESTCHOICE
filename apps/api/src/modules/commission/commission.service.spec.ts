@@ -17,8 +17,10 @@ describe('CommissionService', () => {
         findMany: jest.fn(),
         findFirst: jest.fn(),
         update: jest.fn(),
-        // clawBackCommissions (commission-clawback.util) writes one conditional updateMany per row
+        // clawBackCommissions (commission-clawback.util) writes one conditional updateMany per row ·
+        // approve() is a CAS updateMany on (id, status PENDING) then re-reads the row
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUniqueOrThrow: jest.fn(),
         count: jest.fn(),
       },
       commissionRule: {
@@ -273,30 +275,48 @@ describe('CommissionService', () => {
         ForbiddenException,
       );
       expect(prisma.salesCommission.update).not.toHaveBeenCalled();
+      expect(prisma.salesCommission.updateMany).not.toHaveBeenCalled();
     });
 
-    it('flips PENDING to APPROVED with approver and timestamp', async () => {
+    it('flips PENDING to APPROVED with approver and timestamp — a CAS on (id, status PENDING), returning the stored row', async () => {
       prisma.salesCommission.findFirst.mockResolvedValue({ id: 'c1', status: 'PENDING' });
-      prisma.salesCommission.update.mockImplementation(
-        ({ data }: { data: Record<string, unknown> }) => ({ id: 'c1', ...data }),
-      );
+      prisma.salesCommission.findUniqueOrThrow.mockResolvedValue({ id: 'c1', status: 'APPROVED', approvedById: 'manager1' });
 
       const result = await service.approve('c1', 'manager1');
 
-      expect(prisma.salesCommission.update).toHaveBeenCalledWith({
-        where: { id: 'c1' },
+      expect(prisma.salesCommission.updateMany).toHaveBeenCalledWith({
+        where: { id: 'c1', status: 'PENDING' },
         data: expect.objectContaining({
           status: 'APPROVED',
           approvedById: 'manager1',
           approvedAt: expect.any(Date),
         }),
       });
+      expect(prisma.salesCommission.update).not.toHaveBeenCalled();
+      expect(prisma.salesCommission.findUniqueOrThrow).toHaveBeenCalledWith({ where: { id: 'c1' } });
       expect(result.status).toBe('APPROVED');
+    });
+
+    it('race (P2-R28): the row became CLAWED_BACK between the read and the write → 409 สถานะค่าคอมเปลี่ยนแล้ว, nothing written', async () => {
+      // อ่านได้ PENDING แต่ตอนเขียน helper เรียกคืนเปลี่ยนเป็น CLAWED_BACK ไปแล้ว — CAS ไม่โดนแถวไหน
+      prisma.salesCommission.findFirst.mockResolvedValue({ id: 'c1', status: 'PENDING' });
+      prisma.salesCommission.updateMany.mockResolvedValue({ count: 0 });
+
+      const err = await service.approve('c1', 'manager1').then(
+        () => { throw new Error('expected a 409'); },
+        (e: unknown) => e,
+      );
+      expect(err).toBeInstanceOf(ConflictException);
+      expect((err as ConflictException).message).toBe('สถานะค่าคอมเปลี่ยนแล้ว กรุณาตรวจใหม่');
+      expect(prisma.salesCommission.updateMany).toHaveBeenCalledTimes(1);
+      expect(prisma.salesCommission.updateMany.mock.calls[0][0].where).toEqual({ id: 'c1', status: 'PENDING' });
+      expect(prisma.salesCommission.update).not.toHaveBeenCalled();
+      expect(prisma.salesCommission.findUniqueOrThrow).not.toHaveBeenCalled();
     });
 
     it('does NOT filter soft-deleted in update (only in lookup)', async () => {
       prisma.salesCommission.findFirst.mockResolvedValue({ id: 'c1', status: 'PENDING' });
-      prisma.salesCommission.update.mockResolvedValue({ id: 'c1', status: 'APPROVED' });
+      prisma.salesCommission.findUniqueOrThrow.mockResolvedValue({ id: 'c1', status: 'APPROVED' });
 
       await service.approve('c1', 'manager1');
 
@@ -690,13 +710,11 @@ describe('CommissionService', () => {
       prisma.commissionRule.findFirst.mockResolvedValue({
         rate: new Prisma.Decimal('0.03'),
       });
-      prisma.salesCommission.update.mockImplementation(
-        ({ data }: { data: Record<string, unknown> }) => ({ id: 'c1', ...data }),
-      );
+      prisma.salesCommission.findUniqueOrThrow.mockResolvedValue({ id: 'c1', status: 'APPROVED' });
 
       const result = await service.approve('c1', 'manager-1');
       expect(result.status).toBe('APPROVED');
-      expect(prisma.salesCommission.update).toHaveBeenCalled();
+      expect(prisma.salesCommission.updateMany).toHaveBeenCalled();
     });
 
     it('approve() rejects with ConflictException when rule rate drifted from snapshot', async () => {
@@ -717,6 +735,7 @@ describe('CommissionService', () => {
       );
       await expect(service.approve('c1', 'manager-1')).rejects.toThrow(/คำนวณใหม่/);
       expect(prisma.salesCommission.update).not.toHaveBeenCalled();
+      expect(prisma.salesCommission.updateMany).not.toHaveBeenCalled();
     });
 
     it('createCommissionForSale captures ruleVersionId from rule.updatedAt', async () => {
@@ -751,11 +770,11 @@ describe('CommissionService', () => {
         commissionRuleId: null,
         commissionRate: new Prisma.Decimal('0.03'),
       });
-      prisma.salesCommission.update.mockResolvedValue({ id: 'c1', status: 'APPROVED' });
+      prisma.salesCommission.findUniqueOrThrow.mockResolvedValue({ id: 'c1', status: 'APPROVED' });
 
       await service.approve('c1', 'manager-1');
       expect(prisma.commissionRule.findFirst).not.toHaveBeenCalled();
-      expect(prisma.salesCommission.update).toHaveBeenCalled();
+      expect(prisma.salesCommission.updateMany).toHaveBeenCalled();
     });
   });
 

@@ -27,6 +27,7 @@ import {
   writeWithCommissionGuard,
   type ClientPayrollLine,
 } from '../payroll-system/payroll-save';
+import { PAYROLL_COMMISSION_ITEMS_INCLUDE } from '../payroll-system/payroll-commission-items';
 import { hasCrossBranchAccess } from '../../auth/branch-access.util';
 import { readBoolFlag, readIntFlag } from '../../../utils/config.util';
 import { CreateExpenseDocumentDto } from '../dto/create.dto';
@@ -43,7 +44,11 @@ import { CreatePettyCashDto } from '../dto/create-petty-cash.dto';
 /** PATCH ใบเงินเดือนได้ในสถานะเหล่านี้ (Payroll D4 — แก้ใบรออนุมัติ/อนุมัติแล้ว = ส่งกลับเป็นร่าง) */
 const PAYROLL_EDITABLE_STATUSES: DocumentStatus[] = ['DRAFT', 'PENDING_APPROVAL', 'APPROVED'];
 
-/** บรรทัดเงินเดือนเรียงตามลำดับที่บันทึก (lineNo) — แถวเก่าก่อนมีคอลัมน์ (lineNo 0) เรียงตาม createdAt */
+/**
+ * บรรทัดเงินเดือนเรียงตามลำดับที่บันทึก (lineNo) — แถวเก่าก่อนมีคอลัมน์ (lineNo 0) เรียงตาม createdAt ·
+ * D4 ส่วนที่ 2 (P2-R28): คำตอบของสร้าง/แก้ใบมีรายการค่าคอม (include ชุดเดียวกับ findOne) — เว็บเติมฟอร์มจากคำตอบนี้ ·
+ * ใบที่เพิ่งบันทึกมีแต่รายการที่ยังมีผล
+ */
 const PAYROLL_LINES_INCLUDE = {
   payroll: {
     include: {
@@ -52,6 +57,7 @@ const PAYROLL_LINES_INCLUDE = {
         include: {
           customIncome: { orderBy: { createdAt: 'asc' } },
           customDeduction: { orderBy: { createdAt: 'asc' } },
+          commissionItems: PAYROLL_COMMISSION_ITEMS_INCLUDE,
         },
       },
     },

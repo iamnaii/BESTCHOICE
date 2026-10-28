@@ -15,6 +15,7 @@ import { computeCommissionAmount } from '../../utils/commission.util';
 import {
   COMMISSION_PAY_VIA_PAYROLL_CODE,
   COMMISSION_PAY_VIA_PAYROLL_MSG,
+  STATUS_CHANGED_MSG,
   clawBackCommissions,
 } from './commission-clawback.util';
 
@@ -213,6 +214,11 @@ export class CommissionService {
    * T2-C5 already blocks rule rate changes while PENDING commissions exist
    * for the current period, but this is belt-and-suspenders for cross-period
    * or soft-deleted-rule edge cases.
+   *
+   * D4 Part 2 (P2-R28): payroll pulls APPROVED commissions automatically, so the
+   * write is a CAS on (id, status PENDING) — a clawback that lands between the
+   * read and the write (sale void / cron / contract cancellation) must not be
+   * overwritten back to APPROVED and paid. Count ≠ 1 → 409, nothing written.
    */
   async approve(id: string, userId: string) {
     const commission = await this.prisma.salesCommission.findFirst({
@@ -246,14 +252,16 @@ export class CommissionService {
       }
     }
 
-    return this.prisma.salesCommission.update({
-      where: { id },
+    const { count } = await this.prisma.salesCommission.updateMany({
+      where: { id, status: 'PENDING' },
       data: {
         status: 'APPROVED',
         approvedById: userId,
         approvedAt: new Date(),
       },
     });
+    if (count !== 1) throw new ConflictException(STATUS_CHANGED_MSG);
+    return this.prisma.salesCommission.findUniqueOrThrow({ where: { id } });
   }
 
   /**

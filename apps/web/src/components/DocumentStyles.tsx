@@ -19,17 +19,23 @@ export default function DocumentStyles() {
     .voucher-sheet h2 { margin-top: 8px !important; }
     .voucher-sheet footer { margin-top: 12px !important; padding-top: 8px !important; }
     .voucher-sheet .h-16 { height: 12mm !important; }
-    /* แผ่นเอกสารเป็นกระดาษขาวเสมอ — โหมดมืดเดิมทำให้ตัวหนังสือสีจาง/เส้นของธีมมืดอยู่บนพื้นขาว (อ่านแทบไม่ออก) ·
-       Tailwind แปลง --color-* ที่ :root แล้วจึงต้องทับตัว --color-* เอง (ค่าเดียวกับธีมสว่างใน index.css) */
+    /* แผ่นเอกสารเป็นกระดาษขาว (bg-white) — ในโหมดมืด ตัวหนังสือสีจาง/เส้นเป็นของธีมมืดบนพื้นขาว (อ่านแทบไม่ออก) ·
+       แผ่นเอกสารรับสีจาก --document-base-* (styles/admin-colors.css) ⇒ ตั้งตัวแปรชุดนั้นเป็นค่าธีมสว่าง (index.css :root) บนแผ่นเอง */
     .dark .voucher-sheet {
       color-scheme: light;
-      --color-background: hsl(40 23% 97%); --color-foreground: hsl(25 14% 12%);
-      --color-card: hsl(40 20% 99%); --color-card-foreground: hsl(25 14% 12%);
-      --color-muted: hsl(36 14% 93%); --color-muted-foreground: hsl(25 8% 42%);
-      --color-border: hsl(34 12% 88%); --color-input: hsl(34 12% 88%);
-      --color-primary: hsl(160 84% 26%); --color-primary-foreground: hsl(0 0% 100%);
-      --color-destructive: hsl(0 84.2% 45%); --color-warning-strong: hsl(38 92% 30%);
-      color: hsl(25 14% 12%);
+      --document-base-background: 40 23% 97%; --document-base-foreground: 25 14% 12%;
+      --document-base-card: 40 20% 99%; --document-base-card-foreground: 25 14% 12%;
+      --document-base-popover: 40 20% 99%; --document-base-popover-foreground: 25 14% 12%;
+      --document-base-primary: 160 84% 26%; --document-base-primary-foreground: 0 0% 100%;
+      --document-base-secondary: 36 14% 93%; --document-base-secondary-foreground: 25 12% 14%;
+      --document-base-muted: 36 14% 93%; --document-base-muted-foreground: 25 8% 42%;
+      --document-base-accent: 36 14% 93%; --document-base-accent-foreground: 25 12% 14%;
+      --document-base-destructive: 0 84.2% 45%; --document-base-destructive-foreground: 0 0% 98%;
+      --document-base-success: 142 71% 45%; --document-base-success-foreground: 0 0% 100%;
+      --document-base-warning: 38 92% 50%; --document-base-warning-foreground: 38 95% 12%;
+      --document-base-warning-strong: 38 92% 30%;
+      --document-base-info: 199 89% 48%; --document-base-info-foreground: 0 0% 100%;
+      --document-base-border: 34 12% 88%; --document-base-input: 34 12% 88%; --document-base-ring: 160 84% 39%;
     }
 
     .standard-voucher .voucher-meta-row { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 6px; }

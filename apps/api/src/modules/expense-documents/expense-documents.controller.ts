@@ -17,7 +17,6 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { PAYROLL_MANAGER_ROLES } from './payroll-roles';
 import { ExpenseDocumentsService } from './expense-documents.service';
 import { ExpenseVoucherPdfService } from './services/expense-voucher-pdf.service';
 import { CreateExpenseDocumentDto } from './dto/create.dto';
@@ -58,7 +57,7 @@ export class ExpenseDocumentsController {
   }
 
   @Post('payroll')
-  @Roles(...PAYROLL_MANAGER_ROLES)
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT') // payroll-roles.ts — ไม่มีผู้จัดการสาขา (เจ้าของ 2026-10-28)
   createPayroll(
     @Body() dto: CreatePayrollDto,
     @CurrentUser() user: { id: string; branchId?: string | null; role?: string | null },
@@ -69,14 +68,14 @@ export class ExpenseDocumentsController {
   // Payroll form meta (whitelist + cash accounts per scope, with CoA names).
   // Declared BEFORE @Get(':id') so the literal path wins route matching.
   @Get('payroll/meta')
-  @Roles(...PAYROLL_MANAGER_ROLES)
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT') // payroll-roles.ts — ไม่มีผู้จัดการสาขา (เจ้าของ 2026-10-28)
   payrollMeta(@Query('scope') scope?: string) {
     return this.service.getPayrollMeta(scope === 'FINANCE' ? 'FINANCE' : 'SHOP');
   }
 
   // R3-2 (2026-08-06) — แก้ไขร่างใบเงินเดือน (DRAFT เท่านั้น, แทนที่ lines ทั้งชุด)
   @Patch(':id/payroll')
-  @Roles(...PAYROLL_MANAGER_ROLES)
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT') // payroll-roles.ts — ไม่มีผู้จัดการสาขา (เจ้าของ 2026-10-28)
   updatePayroll(
     @Param('id') id: string,
     @Body() dto: UpdatePayrollDto,

@@ -614,9 +614,12 @@ function PayrollRow({
         </td>
         <td className="px-3 py-2 text-right font-mono">
           {formatNumberDecimal(row.netPaid)}
-          {row.hasExtras && (
+          {/* แสดงเฉพาะฝั่งที่มียอด — ไม่พิมพ์ "−0.00" */}
+          {row.hasExtras && (row.incomeN > 0 || row.deductionN > 0) && (
             <div className="text-[10px] text-muted-foreground mt-0.5">
-              +{formatNumberDecimal(row.incomeN)} / −{formatNumberDecimal(row.deductionN)}
+              {[row.incomeN > 0 && `+${formatNumberDecimal(row.incomeN)}`, row.deductionN > 0 && `−${formatNumberDecimal(row.deductionN)}`]
+                .filter(Boolean)
+                .join(' / ')}
             </div>
           )}
         </td>

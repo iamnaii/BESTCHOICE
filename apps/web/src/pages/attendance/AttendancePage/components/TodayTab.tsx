@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import QueryBoundary from '@/components/QueryBoundary';
+import NameWords from '@/components/ui/NameWords';
 import { useAttendanceToday, type TodayRow } from '@/hooks/useAttendance';
 import StatusChip from './StatusChip';
 import PhotoThumb from './PhotoThumb';
@@ -42,12 +43,12 @@ export default function TodayTab({ branchId, date, onDateChange, actorId, isOwne
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" aria-label="วันก่อนหน้า" onClick={() => onDateChange(shiftDate(shownDate, -1))}><ChevronLeft className="size-4" aria-hidden="true" /></Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" className="lg:size-9" aria-label="วันก่อนหน้า" onClick={() => onDateChange(shiftDate(shownDate, -1))}><ChevronLeft className="size-4" aria-hidden="true" /></Button>
           <div className="text-base font-semibold">{shownDate ? thaiShortDate(shownDate) : 'วันนี้'}</div>
-          <Button variant="outline" size="sm" aria-label="วันถัดไป" onClick={() => onDateChange(shiftDate(shownDate, 1))}><ChevronRight className="size-4" aria-hidden="true" /></Button>
-          {date && <Button variant="ghost" size="sm" onClick={() => onDateChange('')}>วันนี้</Button>}
-          {data && <span className="text-xs text-muted-foreground">เวลางาน {data.rules.workStart}–{data.rules.workEnd} · ผ่อนผันสาย {data.rules.lateGraceMinutes} นาที · OT เริ่มนับหลังเลิกงาน 15 นาที</span>}
+          <Button variant="outline" size="sm" className="lg:size-9" aria-label="วันถัดไป" onClick={() => onDateChange(shiftDate(shownDate, 1))}><ChevronRight className="size-4" aria-hidden="true" /></Button>
+          {date && <Button variant="ghost" size="sm" className="lg:h-9" onClick={() => onDateChange('')}>วันนี้</Button>}
+          {data && <span className="basis-full text-xs text-muted-foreground leading-snug sm:basis-auto">เวลางาน {data.rules.workStart}–{data.rules.workEnd} · ผ่อนผันสาย {data.rules.lateGraceMinutes} นาที · OT เริ่มนับหลังเลิกงาน 15 นาที</span>}
         </div>
       </div>
 
@@ -67,7 +68,7 @@ export default function TodayTab({ branchId, date, onDateChange, actorId, isOwne
             <PaidBanner month={shownDate.slice(0, 7)} numbers={distinctNumbers(paidRows)} people={paidRows.length} />
 
             <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-              <div className="overflow-x-auto">
+              <div className="relative overflow-x-auto">
                 <table className="w-full min-w-[960px] text-sm" aria-label="รายการวันนี้">
                   <thead className="bg-muted text-xs text-muted-foreground">
                     <tr>
@@ -87,7 +88,7 @@ export default function TodayTab({ branchId, date, onDateChange, actorId, isOwne
                         <td className="px-3 py-2"><PhotoThumb punchId={row.clockInPunchId} label={row.nickname} /></td>
                         <td className="px-3 py-2">
                           <div className="font-semibold leading-snug">{row.nickname}{row.visiting && <span className="ml-1 text-xs font-normal text-muted-foreground">(มาช่วยสาขา)</span>}</div>
-                          <div className="text-xs text-muted-foreground leading-snug">{row.name}</div>
+                          <div className="text-xs text-muted-foreground leading-snug"><NameWords name={row.name} /></div>
                         </td>
                         <td className="px-3 py-2"><StatusChip status={row.status} lateMinutes={row.lateMinutes} /></td>
                         <td className="px-3 py-2 tabular-nums">{hhmm(row.clockIn)}</td>
@@ -102,7 +103,7 @@ export default function TodayTab({ branchId, date, onDateChange, actorId, isOwne
                               return <span key={f} className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs ${flagChipClass(f)}`}><Icon className="size-3" aria-hidden="true" />{v.label}</span>;
                             })}
                             {row.paidDocumentNumber ? <PaidChip id={`paid-${row.userId}`} number={row.paidDocumentNumber} /> : paidRows.length > 0 && row.dayId ? <UnpaidChip editable={canEdit(row)} /> : null}
-                            {!row.hasPin && <span className="text-xs text-muted-foreground">{isOwner ? 'ตั้งรหัสที่หน้าผู้ใช้ › รหัสตอกบัตร' : 'ให้เจ้าของตั้งรหัสตอกบัตร'}</span>}
+                            {!row.hasPin && <span className="text-xs text-muted-foreground">{isOwner ? 'ตั้งรหัสที่ ผู้ใช้ › แท็บข้อมูลบุคคล › รหัสตอกบัตร' : 'ให้เจ้าของตั้งรหัสตอกบัตร'}</span>}
                             {!isOwner && elsewhere(row) && <span className="text-xs text-muted-foreground">ตอกที่สาขาอื่น — ให้ผู้จัดการสาขานั้นหรือเจ้าของแก้</span>}
                             {row.status === 'NOT_IN' && row.hasPin && <span className="text-xs text-muted-foreground">ถ้าไม่มาทั้งวันจะนับขาดตอนเที่ยงคืน</span>}
                             {row.status === 'MISSING_OUT' && <span className="text-xs text-muted-foreground">ถ้าทำ OT จริง แก้เวลาออกพร้อมเหตุผล</span>}
@@ -110,7 +111,7 @@ export default function TodayTab({ branchId, date, onDateChange, actorId, isOwne
                         </td>
                         <td className="px-3 py-2 text-right">
                           {canEdit(row) && (
-                            <Button variant="outline" size="sm" className="max-lg:min-h-11" disabled={paidLocked(row)} aria-describedby={paidLocked(row) ? `paid-${row.userId}` : undefined} onClick={() => onEdit({ dayId: row.dayId!, nickname: row.nickname, date: shownDate, clockIn: row.clockIn, clockOut: row.clockOut, dayKind: row.dayKind, flags: row.flags, paidDocumentNumber: row.paidDocumentNumber })}>แก้ไข</Button>
+                            <Button variant="outline" size="sm" className="max-lg:min-h-11 lg:h-9" disabled={paidLocked(row)} aria-describedby={paidLocked(row) ? `paid-${row.userId}` : undefined} onClick={() => onEdit({ dayId: row.dayId!, nickname: row.nickname, date: shownDate, clockIn: row.clockIn, clockOut: row.clockOut, dayKind: row.dayKind, flags: row.flags, paidDocumentNumber: row.paidDocumentNumber })}>แก้ไข</Button>
                           )}
                         </td>
                       </tr>

@@ -68,12 +68,12 @@ export default function AttendancePinCard({ userId, userName, hasPin: hasPinProp
           <p className="text-sm leading-snug">
             <b>แสดงครั้งเดียว</b> — แจ้งรหัสให้ {userName} แล้วกดซ่อน · รหัสเดิม (ถ้ามี) ใช้ไม่ได้แล้ว
           </p>
-          <Button variant="outline" size="sm" onClick={() => setShownPin(null)}>ซ่อนรหัส</Button>
+          <Button variant="outline" size="sm" className="lg:h-9" onClick={() => setShownPin(null)}>ซ่อนรหัส</Button>
         </div>
       )}
 
       <div className="flex flex-wrap gap-2">
-        <Button variant="outline" size="sm" onClick={() => (hasPin ? setConfirmReset(true) : runReset())} disabled={reset.isPending}>
+        <Button variant="outline" size="sm" className="lg:h-9" onClick={() => (hasPin ? setConfirmReset(true) : runReset())} disabled={reset.isPending}>
           {reset.isPending ? (
             <><Loader2 className="size-4 animate-spin" aria-hidden="true" />กำลังตั้งรหัส…</>
           ) : (

@@ -7,6 +7,7 @@ import { AlertTriangle, ArrowRightToLine, Clock, Lock, Pencil, Printer, Undo2 } 
 import api from '@/lib/api';
 import ScreenTable from '@/components/ui/ScreenTable';
 import { Button } from '@/components/ui/button';
+import NameWords from '@/components/ui/NameWords';
 import { formatNumberDecimal } from '@/utils/formatters';
 import { fmtOt, thaiShortDate } from '@/pages/attendance/attendance.util';
 import {
@@ -245,7 +246,7 @@ function PayrollLinesTable({
           {rows.map(({ line, totals, clawback, carried }) => (
             <tr key={line.id}>
               <td className="px-4 py-2 leading-snug">
-                {line.employeeName}
+                <NameWords name={line.employeeName} />
                 {(clawback || carried) && (
                   // หักคืนค่าคอม (ยอดที่เก็บ) · ยกไปงวดหน้า (CLAWBACK_CARRIED — ประโยคเต็มอยู่ในแผงตรวจ)
                   <span className="mt-0.5 flex items-center gap-1 text-xs text-warning-strong leading-snug">
@@ -325,7 +326,7 @@ function PayrollStaleAlert({
             <tbody className="divide-y divide-border">
               {diffs.map((d, i) => (
                 <tr key={`${d.userId}-${d.label}-${i}`}>
-                  <td className="px-3 py-1.5 leading-snug">{d.employeeName}</td>
+                  <td className="px-3 py-1.5 leading-snug"><NameWords name={d.employeeName} /></td>
                   <td className="px-3 py-1.5 leading-snug">{d.label}</td>
                   <td className="px-3 py-1.5 text-right tabular-nums whitespace-nowrap">{diffText(d.stored)}</td>
                   <td className="px-3 py-1.5 text-right tabular-nums whitespace-nowrap font-semibold">

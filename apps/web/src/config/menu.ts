@@ -54,7 +54,7 @@ import {
   Mail,
   // Unified contact party-master — สมุดผู้ติดต่อ
   ArrowLeft,
-  BookUser, Camera, Clock,
+  BookUser, Camera, Clock, Timer,
 } from 'lucide-react';
 
 /* ── Types ─────────────────────────────────────────── */
@@ -188,7 +188,7 @@ const SALES_CONFIG: RoleMenuConfig = {
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
         { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
-        { label: 'เวลาทำงานของฉัน', path: '/attendance/me', icon: Clock },
+        { label: 'เวลาทำงานของฉัน', path: '/attendance/me', icon: Timer },
       ],
     },
   ],
@@ -215,7 +215,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'รายการขาย', path: '/sales', icon: TrendingUp },
         { label: 'สรุปเงินรายวัน', path: '/shop/daily-cash', icon: Banknote },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
-        { label: 'เวลาทำงานของฉัน', path: '/attendance/me', icon: Clock },
+        { label: 'เวลาทำงานของฉัน', path: '/attendance/me', icon: Timer },
         { label: 'ลงเวลา', path: '/attendance', icon: Clock },
         // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
         { label: 'กำไร-ขาดทุน (P&L)', path: '/profit-loss', icon: PieChart },
@@ -304,7 +304,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       items: [
         { label: NAV_LABELS.home, path: '/finance-portfolio', icon: CircleDollarSign },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
-        { label: 'เวลาทำงานของฉัน', path: '/attendance/me', icon: Clock },
+        { label: 'เวลาทำงานของฉัน', path: '/attendance/me', icon: Timer },
       ],
     },
     {
@@ -505,7 +505,7 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         { label: 'รับเครื่องคืน / ยึดคืน', path: '/repossessions', icon: Lock },
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
-        { label: 'เวลาทำงานของฉัน', path: '/attendance/me', icon: Clock },
+        { label: 'เวลาทำงานของฉัน', path: '/attendance/me', icon: Timer },
         // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
         { label: 'เอกสารยกเลิกสัญญา', path: '/finance/contract-cancellation', icon: FileText },
         { label: 'ใบเสร็จอิเล็กทรอนิกส์อัตโนมัติ', path: '/finance/e-receipt-auto', icon: Receipt },
@@ -659,7 +659,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       zone: 'shop',
       items: [
         { label: 'ลงเวลา', path: '/attendance', icon: Clock },
-        { label: 'เวลาทำงานของฉัน', path: '/attendance/me', icon: Clock },
+        { label: 'เวลาทำงานของฉัน', path: '/attendance/me', icon: Timer },
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: 'ตรวจเครดิต', path: '/credit-checks', icon: ShieldCheck },
         { label: NAV_LABELS.sales, path: '/pos', icon: ShoppingCart },

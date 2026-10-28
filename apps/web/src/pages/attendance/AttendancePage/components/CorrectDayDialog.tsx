@@ -111,7 +111,7 @@ export default function CorrectDayDialog({ target, isOwner, onClose }: Props) {
                 <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />เครื่องตอกบัตรถูกใช้ซ้อนช่วงเวลานี้ — ดูรูปและเวลาก่อนเชื่อรายการนี้
               </span>
               {isOwner ? (
-                <Button variant="outline" size="sm" className="self-start max-lg:min-h-11" onClick={markChecked} disabled={clearConflict.isPending}>
+                <Button variant="outline" size="sm" className="self-start max-lg:min-h-11 lg:h-9" onClick={markChecked} disabled={clearConflict.isPending}>
                   <ShieldCheck className="size-4" aria-hidden="true" />{clearConflict.isPending ? 'กำลังล้างธง…' : 'ตรวจแล้ว ล้างธง'}
                 </Button>
               ) : (

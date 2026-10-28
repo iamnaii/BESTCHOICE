@@ -365,6 +365,15 @@ describe('PayrollLinesSection — fix round 1', () => {
     expect(line.systemNotes).toBeNull();
   });
 
+  it('the net sub-line shows only the side that has an amount (no "−0.00")', () => {
+    const v = stored();
+    v.lines[0].customIncome = [{ uid: 'c1', accountCode: 'S52-1204', name: 'เบี้ยขยัน', amount: '500', isTaxable: true, isAdjustment: false }];
+    v.lines[0].customDeduction = [];
+    wrap(<Harness initial={v} />);
+    expect(screen.queryByText(/−0\.00/)).not.toBeInTheDocument();
+    expect(screen.getByText(/^\+[\d,]+\.\d{2}$/)).toBeInTheDocument();
+  });
+
   it('M3: the OT chip counts only attendance rows', () => {
     wrap(<Harness initial={stored()} />);
     expect(screen.getByText('OT 1 แถว')).toBeInTheDocument();

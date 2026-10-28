@@ -13,7 +13,7 @@ import { CommissionStatus, PayoutStatus, Prisma, ProductStatus, RepairStatus } f
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { clawBackCommissions, clawbackAmountOf } from '../../commission/commission-clawback.util';
-import { isCoveredByPayout } from '../../commission/commission-payout-cover.util';
+import { isCoveredByPayout, isLockedPayout } from '../../commission/commission-payout-cover.util';
 import { assertProductNotHeld } from '../../products/product-hold.util';
 import { reopenRepossessionOnUnsale } from '../../repossessions/repossession-resale.util';
 import { ExchangeCancelReversalTemplate } from '../../journal/cpa-templates/exchange-cancel-reversal.template';
@@ -83,8 +83,9 @@ const G4_COMMISSION_ACTION = {
   CLAWED_BACK: 'SKIP',
 } as const satisfies Record<CommissionStatus, 'CLAW_BACK' | 'SKIP'>;
 
-/**
- * สถานะ **รอบจ่ายค่าคอม** (`CommissionPayout`) ที่ยังไม่ผูกเงิน ⇒ ยกเลิกใบขายทับได้
+/*
+ * สถานะ **รอบจ่ายค่าคอม** (`CommissionPayout`) ที่ยังไม่ผูกเงิน ⇒ ยกเลิกใบขายทับได้ — รายการเดียว
+ * `UNPAID_PAYOUT_STATUSES` / `isLockedPayout` ใน commission-payout-cover.util.ts (P2-R27 — ห้ามมีสำเนา)
  *
  * exclude list โดยเจตนา (ค่าจริง `PayoutStatus` = DRAFT / APPROVED / PAID / CANCELLED) —
  * สถานะใหม่จะถูกนับว่า "ผูกเงินแล้ว" และบล็อกไว้ก่อน ไม่ใช่ผ่านเงียบ ๆ
@@ -98,10 +99,6 @@ const G4_COMMISSION_ACTION = {
  * **ห้ามแก้เป็นการหักยอด** (`totalCommission -= commissionAmount`) แทนการลบร่าง:
  * รอบที่ generate **ก่อน** ค่าคอมใบนี้เกิดไม่เคยนับใบนี้ ⇒ หักยอด = จ่ายพนักงานขาด
  */
-const UNPAID_PAYOUT_STATUSES: readonly PayoutStatus[] = [
-  PayoutStatus.DRAFT,
-  PayoutStatus.CANCELLED,
-];
 
 /**
  * สถานะลูกหนี้ไฟแนนซ์ที่แปลว่า **เงินเข้าจริงแล้ว** — allow-list ตามเจตนา D2
@@ -425,7 +422,7 @@ export class SaleVoidService {
         commissionsToClawBack.some((c) => isCoveredByPayout(c, p)),
       );
 
-      const lockedPayout = covering.find((p) => !UNPAID_PAYOUT_STATUSES.includes(p.status));
+      const lockedPayout = covering.find(isLockedPayout);
       if (lockedPayout) {
         throw new BadRequestException(
           `ค่าคอมของใบขายนี้ถูกนับอยู่ในรอบจ่ายค่าคอมงวด ${lockedPayout.period} ` +

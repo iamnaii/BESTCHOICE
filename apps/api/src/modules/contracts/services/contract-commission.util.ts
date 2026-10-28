@@ -2,7 +2,7 @@ import { PayoutStatus, Prisma } from '@prisma/client';
 import { computeCommissionAmount } from '../../../utils/commission.util';
 import { bangkokDateString } from '../../../utils/date.util';
 import { clawBackCommissions } from '../../commission/commission-clawback.util';
-import { isCoveredByPayout } from '../../commission/commission-payout-cover.util';
+import { isCoveredByPayout, isLockedPayout } from '../../commission/commission-payout-cover.util';
 
 /**
  * ค่าคอมพนักงานขายของสัญญาผ่อน BESTCHOICE — คำตัดสินเจ้าของ 2026-09-20:
@@ -17,8 +17,6 @@ const FALLBACK_RATE = 0.03;
 
 /** เรียกคืนได้ = ยังไม่ได้จ่าย (ชุดเดียวกับ SaleVoidService) */
 const CLAWABLE_STATUSES: readonly string[] = ['PENDING', 'APPROVED'];
-/** รอบจ่ายที่ยังไม่ผูกมัดเงิน — DRAFT ถูกลบให้สร้างใหม่ · CANCELLED ไม่เกี่ยว · ที่เหลือ = ล็อกแล้ว */
-const UNLOCKED_PAYOUT_STATUSES: readonly PayoutStatus[] = [PayoutStatus.DRAFT, PayoutStatus.CANCELLED];
 
 export async function ensureContractCommission(
   tx: Prisma.TransactionClient,
@@ -102,7 +100,8 @@ export async function clawbackContractCommission(
   });
   const covering = payouts.filter((p) => clawable.some((c) => isCoveredByPayout(c, p)));
   result.voidedDraftPayoutIds = covering.filter((p) => p.status === PayoutStatus.DRAFT).map((p) => p.id);
-  result.lockedPayoutIds = covering.filter((p) => !UNLOCKED_PAYOUT_STATUSES.includes(p.status)).map((p) => p.id);
+  // รอบจ่ายที่ยังไม่ผูกมัดเงิน — DRAFT ถูกลบให้สร้างใหม่ · CANCELLED ไม่เกี่ยว · ที่เหลือ = ล็อกแล้ว (`isLockedPayout` — P2-R27)
+  result.lockedPayoutIds = covering.filter(isLockedPayout).map((p) => p.id);
   if (result.voidedDraftPayoutIds.length) {
     await tx.commissionPayout.updateMany({ where: { id: { in: result.voidedDraftPayoutIds } }, data: { deletedAt: input.now } });
   }

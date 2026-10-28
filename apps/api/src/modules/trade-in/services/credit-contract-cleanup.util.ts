@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { creditSnapshot } from './trade-in-credit.service';
 import { clawBackCommissions } from '../../commission/commission-clawback.util';
-import { isCoveredByPayout } from '../../commission/commission-payout-cover.util';
+import { isCoveredByPayout, isLockedPayout } from '../../commission/commission-payout-cover.util';
 
 /** Keep a canceled credit purchase out of sales/receivable/commission reports.
  * Runs in the contract transaction; settled money must be unwound first.
@@ -48,7 +48,7 @@ export async function cleanupCreditContractSale(tx: Prisma.TransactionClient,
     const payouts = commissions.length ? await tx.commissionPayout.findMany({ where: { deletedAt: null,
       OR: commissions.map(c => ({ salespersonId: c.salespersonId, period: c.period })) } }) : [];
     const covering = payouts.filter(p => commissions.some(c => isCoveredByPayout(c, p)));
-    if (covering.some(p => !['DRAFT', 'CANCELLED'].includes(p.status))) {
+    if (covering.some(isLockedPayout)) {
       throw new BadRequestException('ค่าคอมรายการนี้อยู่ในรอบจ่ายที่อนุมัติแล้ว ต้องยกเลิกรอบจ่ายก่อนคืนเครดิตเทิร์น');
     }
     for (const payout of covering.filter(p => p.status === 'DRAFT')) {

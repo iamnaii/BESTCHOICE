@@ -1,3 +1,18 @@
+import { PayoutStatus } from '@prisma/client';
+
+/**
+ * Legacy payout rounds that do NOT tie money to their commissions (P2-R27 — the one list for every
+ * reader: payroll commission state, sale void G4b, contract cancellation, credit-return cleanup).
+ * `DRAFT` — not approved yet (the readers that clean up delete it in their own tx) · `CANCELLED` —
+ * void. Every other status counts as locked, so a status added to the enum later blocks by default.
+ */
+export const UNPAID_PAYOUT_STATUSES: readonly PayoutStatus[] = [PayoutStatus.DRAFT, PayoutStatus.CANCELLED];
+
+/** A payout round in a status that ties money to the commissions it covers (anything but DRAFT / CANCELLED). */
+export function isLockedPayout(p: { status: PayoutStatus }): boolean {
+  return !UNPAID_PAYOUT_STATUSES.includes(p.status);
+}
+
 /**
  * Does a legacy monthly payout round (`CommissionPayout`) count this commission?
  *

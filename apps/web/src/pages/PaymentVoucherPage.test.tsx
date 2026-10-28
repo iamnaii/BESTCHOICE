@@ -305,6 +305,8 @@ describe('PayrollSlipSheet (PAYROLL voucher)', () => {
       expect(detail.closest('td')).toHaveClass('max-w-0');
       // ไม่มีแถวตารางเพิ่มต่อค่าคอม — หนึ่งแถวในตารางรายได้
       expect(screen.queryByRole('row', { name: /^CT-20261103-0007/ })).not.toBeInTheDocument();
+      // P2-R31 — สลิปใช้ระยะพิมพ์ชุดเดียว ไม่ให้ fitPaperSpacing (beforeprint ตอน screen media) เลือกชั้นระยะ
+      expect(row.closest('article')).toHaveAttribute('data-bc-paper-fit', 'fixed');
     });
 
     it('the clawback row is one table row (no item list), and the slip prints the carry sentence with ยกไปงวดหน้า 400.00 บาท', async () => {
@@ -321,7 +323,11 @@ describe('PayrollSlipSheet (PAYROLL voucher)', () => {
       const many = ['a', 'b', 'c', 'd', 'e', 'f'].map((k) => scItem(k, 'PAY', '100.00', { sale: `SL-${k}` }));
       mountSlip({ ...commissionLine, customDeduction: [], systemNotes: null, commissionItems: many });
       const row = await screen.findByRole('row', { name: /ค่าคอมมิชชัน \(2 รายการ\)/ });
-      expect(row).toHaveTextContent('SL-a · SL-b และอีก 4 รายการ');
+      expect(within(row).getByText('SL-a · SL-b')).toHaveClass('truncate');
+      // P2-R31 — จำนวนที่เหลืออยู่นอกส่วนที่ตัด: เลขอ้างอิงยาวถูกตัดได้ แต่ "และอีก k รายการ" ไม่หาย
+      const more = within(row).getByText('และอีก 4 รายการ');
+      expect(more.closest('.truncate')).toBeNull();
+      expect(more).toHaveClass('shrink-0');
       expect(row).not.toHaveTextContent('SL-c');
       expect(screen.queryByText(/ยกไปงวดหน้า/)).not.toBeInTheDocument();
     });

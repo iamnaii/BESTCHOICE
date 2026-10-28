@@ -458,14 +458,15 @@ function PettyCashSheet({
  *   - Net paid + Thai-text amount
  *   - 2 signature slots (ผู้รับเงิน · ผู้จัดทำ)
  *
- * One A4 sheet per employee (R22 / P2-R19.5) — print is 16 pt everywhere, so a
- * "small" line costs a full line on paper. Every slip prints the meta labels in a
- * 36 mm column (no wrapped labels), the earnings label inside the table header and
- * the attendance items flowing on two lines. A slip that would still spill gets
- * `.bc-paper-compact` from fitPaperSpacing (beforeprint), whose `.payroll-slip`
- * rules in DocumentStyles tighten cell padding, section gaps, the header and the
- * signature block; slips that fit keep the normal spacing. Pinned by DOC-04
- * ("a slip with attendance OT rows … five commissions and a clawback").
+ * One A4 sheet per employee (R22 / P2-R19.5 / P2-R31) — print is 16 pt everywhere,
+ * so a "small" line costs a full line on paper. Every slip has ONE fixed print layout
+ * (`.payroll-slip` rules in DocumentStyles): tight cell padding, section gaps, header
+ * and signature block, meta labels as wide as their own text, the earnings label
+ * inside the table header and the attendance items flowing on two lines. The slip
+ * opts out of fitPaperSpacing (`data-bc-paper-fit="fixed"`): Chromium dispatches
+ * `beforeprint` for window.print() while the screen media type is still active, so
+ * spacing tiers chosen from that measurement would not match the paper. Pinned by
+ * DOC-04 ("a slip with attendance OT rows … five commissions and a clawback").
  */
 function PayrollSlipSheet({
   doc,
@@ -510,6 +511,8 @@ function PayrollSlipSheet({
 
   return (
     <article
+      // P2-R31 — ระยะพิมพ์ชุดเดียวที่พอดีหนึ่งแผ่นเอง ไม่ให้ fitPaperSpacing (วัดตอน screen media) เลือกชั้นระยะให้
+      data-bc-paper-fit="fixed"
       className="voucher-sheet bc-document standard-voucher payroll-slip bg-white border border-border rounded-md p-8 shadow-sm print:border-0 print:p-0 print:shadow-none"
       style={{
         minHeight: '270mm',
@@ -717,17 +720,19 @@ const SLIP_COMMISSION_ITEMS_MAX = 2;
 /**
  * Payroll D4 ส่วนที่ 2 (กระดาน 3) — เลขอ้างอิงของค่าคอมที่แถวนี้จ่าย: **บรรทัดเดียว** ใต้ชื่อรายการ (ตอนพิมพ์ตัวอักษรทุกตัวเป็น
  * 16 pt — "บรรทัดเล็ก" ไม่มีจริงบนกระดาษ) · "{อ้างอิง} · {อ้างอิง}" สูงสุด 2 รายการ แล้ว "และอีก k รายการ" · ไม่ตัดบรรทัด
- * (ยาวเกินช่อง = …) — ยอดต่อรายการอยู่ในใบเงินเดือน ยอดรวมอยู่ในช่องจำนวนเงินของแถว · ไม่เพิ่มแถวตาราง (P2-R19.5)
+ * (เลขอ้างอิงยาวเกินช่อง = … · จำนวนที่เหลืออยู่นอกส่วนที่ตัด) — ยอดต่อรายการอยู่ในใบเงินเดือน ยอดรวมอยู่ในช่องจำนวนเงินของแถว ·
+ * ไม่เพิ่มแถวตาราง (P2-R19.5)
  * · ช่องของแถวนี้ `max-w-0` ⇒ บรรทัดที่ไม่ตัดไม่ดันตารางให้กว้างเกินหน้า
  */
 function SlipCommissionDetail({ items }: { items: PayrollCommissionItemView[] }) {
   if (items.length === 0) return null;
   const shown = items.slice(0, SLIP_COMMISSION_ITEMS_MAX);
   const rest = items.length - shown.length;
+  // จำนวนที่เหลืออยู่นอกส่วนที่ตัด — เลขอ้างอิงยาวถูกตัดด้วย … ได้ แต่ "และอีก k รายการ" ต้องเห็นเสมอ (P2-R31)
   return (
-    <span className="block truncate text-xs text-muted-foreground leading-snug">
-      {shown.map((i) => i.reference).join(' · ')}
-      {rest > 0 && ` และอีก ${rest} รายการ`}
+    <span className="flex min-w-0 gap-1 text-xs text-muted-foreground leading-snug">
+      <span className="min-w-0 truncate">{shown.map((i) => i.reference).join(' · ')}</span>
+      {rest > 0 && <span className="shrink-0 whitespace-nowrap">{`และอีก ${rest} รายการ`}</span>}
     </span>
   );
 }

@@ -714,6 +714,23 @@ describe('DOC-04 payroll slips and annual 50 ทวิ — real workflow, real j
         for (const token of ['ทดสอบระบบ พนักงาน com-heavy', 'ค่าคอมมิชชัน (5 รายการ)', 'หักคืนค่าคอม (1 รายการ)', carry, 'สรุปเวลาทำงาน', 'OT วันหยุด (3 เท่า)']) expect(slips[0]).toContain(token);
         expect(slips[1]).toContain('ทดสอบระบบ พนักงาน com-light');
         expect(slips[1]).not.toContain('ค่าคอมมิชชัน');
+        // P2-R31 — window.print() ของ Chromium ยิง beforeprint ตอนยังเป็น screen media (page.pdf ในชุดนี้ยิงหลังสลับเป็น print)
+        // ⇒ ชั้นระยะของ fitPaperSpacing ที่เลือกจากการวัดตอนนั้นไม่ตรงกับกระดาษ — สลิปจึงไม่รับชั้นใดเลย (data-bc-paper-fit="fixed")
+        // ทั้งสอง media และ PDF ข้างล่างคือระยะพิมพ์ชุดเดียวของสลิป (ไม่มี bc-paper-relaxed / bc-paper-compact)
+        for (const media of ['screen', 'print'] as const) {
+          await page.emulateMedia({ media });
+          const tiers = await page.evaluate(() => {
+            window.dispatchEvent(new Event('beforeprint'));
+            const found = Array.from(document.querySelectorAll('article.voucher-sheet')).map((el) => ({
+              fit: el.getAttribute('data-bc-paper-fit'),
+              tier: ['bc-paper-relaxed', 'bc-paper-compact'].filter((c) => el.classList.contains(c)),
+            }));
+            window.dispatchEvent(new Event('afterprint'));
+            return found;
+          });
+          expect(tiers).toEqual(slips.map(() => ({ fit: 'fixed', tier: [] })));
+        }
+        await page.emulateMedia({ media: 'screen' });
         const printed = await printToPdf(page, 'payroll-commission-slips-print');
         const pdf = printed.pdf;
         // ที่ว่างใต้บรรทัดล่างสุดของแต่ละหน้า (baseline ต่ำสุด − ขอบล่าง 18 มม. ของ @page bc-transaction) — เก็บไว้ใน artifact

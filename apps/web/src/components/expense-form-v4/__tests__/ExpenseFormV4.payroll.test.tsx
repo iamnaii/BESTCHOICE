@@ -629,9 +629,11 @@ describe('ExpenseFormV4 payroll — commissions and clawbacks (D4 ส่วน�
     expect(within(locked).getByText('800.00')).toBeInTheDocument();
     expect(within(locked).getByText('CT-20261003-0012')).toBeInTheDocument();
     expect(within(locked).getByText('ยกไปงวดหน้า 400.00 บาท')).toBeInTheDocument();
-    // P2-R30 — หมายเหตุจริงทุกกรณี (ส่วนที่เหลือหักจากค่าคอมงวดถัดไป ไม่ใช่ "ระบบหักต่อเอง" แบบไม่มีเงื่อนไข)
+    // P2-R30/R31 — หมายเหตุจริงทุกกรณี: ส่วนที่เหลือหักจากค่าคอมงวดต่อ ๆ ไป (ยกซ้ำได้) · ลาออกแล้วไม่หักอัตโนมัติ เจ้าของตัดสิน
     expect(
-      within(locked).getByText(/หักได้ไม่เกินค่าคอมงวดนี้ — ไม่หักจากเงินเดือนฐานหรือ OT · ส่วนที่เหลือยกไปหักจากค่าคอมงวดถัดไป/),
+      within(locked).getByText(
+        /หักได้ไม่เกินค่าคอมงวดนี้ ไม่หักจากเงินเดือนฐานหรือ OT · ส่วนที่เหลือหักจากค่าคอมงวดต่อ ๆ ไป · พนักงานลาออกแล้ว ระบบไม่หักให้ เจ้าของตัดสินที่เมนู ค่าคอมมิชชัน/,
+      ),
     ).toBeInTheDocument();
     for (const role of ['textbox', 'spinbutton', 'checkbox', 'combobox', 'button'] as const) {
       expect(within(locked).queryAllByRole(role)).toHaveLength(0);

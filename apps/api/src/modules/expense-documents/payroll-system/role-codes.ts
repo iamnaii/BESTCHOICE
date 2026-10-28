@@ -20,7 +20,7 @@ export async function resolveRoleCodes(client: Prisma.TransactionClient | Prisma
   if (missing.length > 0) {
     throw new BadRequestException(
       `ไม่พบบัญชีของ role ${missing.join(', ')} ใน account_role_map (หรือถูกปิดใช้งาน) — ` +
-        'ให้เจ้าของเพิ่มหรือเปิดใช้งานที่หน้า ตั้งค่า → ผู้ใช้ & สิทธิ์ → บัญชีตาม Role',
+        'ให้เจ้าของเพิ่มหรือเปิดใช้งานที่เมนู ตั้งค่าระบบ › ผู้ใช้ & สิทธิ์ › บัญชีตาม บทบาท',
     );
   }
   return Object.fromEntries(byRole);

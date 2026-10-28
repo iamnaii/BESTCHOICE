@@ -22,7 +22,10 @@ interface Fixture {
   days: Array<{ dayKind?: 'WORK' | 'DAY_OFF' | 'LEAVE_SICK'; clockIn?: string; clockOut?: string; otHours?: number }>;
 }
 
-/** client ปลอมที่ตอบเฉพาะ query ที่ compute ใช้ · ผู้ใช้คนเดียว u1 รายเดือน เงินเดือนทะเบียน 15,000 */
+/**
+ * client ปลอมที่ตอบเฉพาะ query ที่ compute ใช้ · ผู้ใช้คนเดียว u1 รายเดือน เงินเดือนทะเบียน 15,000
+ * ส่วนที่ 2 (P2-R17): role ค่าคอมของ SHOP + ค่าคอม/รอบจ่ายเดิม/รายการค่าคอมว่าง (ไม่มีค่าคอมในชุดนี้)
+ */
 function fakeClient(f: Fixture) {
   const day = bangkokMidnight(2026, 9, 5);
   const at = (hhmm: string) => {
@@ -32,10 +35,14 @@ function fakeClient(f: Fixture) {
   return {
     accountRoleMap: {
       findMany: jest.fn().mockResolvedValue([
+        { role: 'shop_payroll_commission', accountCode: 'S51-1101' },
         { role: 'shop_payroll_holiday', accountCode: OT_CODE },
         { role: 'shop_payroll_overtime', accountCode: OT_CODE },
       ]),
     },
+    salesCommission: { findMany: jest.fn().mockResolvedValue([]) },
+    commissionPayout: { findMany: jest.fn().mockResolvedValue([]) },
+    payrollCommissionItem: { findMany: jest.fn().mockResolvedValue([]) },
     attendanceDay: {
       findMany: jest.fn().mockResolvedValue(
         f.days.map((d, i) => ({

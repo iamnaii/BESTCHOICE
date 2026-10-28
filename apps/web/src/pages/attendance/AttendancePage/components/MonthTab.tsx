@@ -2,6 +2,7 @@ import { ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import QueryBoundary from '@/components/QueryBoundary';
+import NameWords from '@/components/ui/NameWords';
 import { useAttendanceMonth, type MonthCell } from '@/hooks/useAttendance';
 import { exportToExcel } from '@/utils/excel.util';
 import { EXCEL_COLUMNS, FLAG_LABEL, REVIEW_FLAGS, flagChipClass, fmtOt, shiftMonth, statusView, summaryToExcelRow, thaiMonthLabel, thaiShortDate } from '../../attendance.util';
@@ -29,7 +30,7 @@ function CellBox({ date, cell }: { date: string; cell: MonthCell | undefined }) 
   const corrected = cell.flags.includes('CORRECTED');
   return (
     <span
-      title={`${thaiShortDate(date)} · ${view.label}${cell.flags.length ? ` · ${cell.flags.join(', ')}` : ''}`}
+      title={`${thaiShortDate(date)} · ${view.label}${cell.flags.length ? ` · ${cell.flags.map((f) => FLAG_LABEL[f]?.label ?? f).join(', ')}` : ''}`}
       className={`inline-flex size-7 items-center justify-center rounded-md border text-[11px] font-semibold ${view.className} ${corrected ? 'border-dashed' : ''} ${cell.status === 'ON_TIME' && cell.otHours > 0 ? 'bg-foreground text-background border-foreground' : ''}`}
     >
       {short ?? <Icon className="size-3.5" aria-hidden="true" />}
@@ -60,9 +61,9 @@ export default function MonthTab({ branchId, branchName, month, onMonthChange, o
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" aria-label="เดือนก่อนหน้า" onClick={() => onMonthChange(shiftMonth(month, -1))}><ChevronLeft className="size-4" aria-hidden="true" /></Button>
+          <Button variant="outline" size="sm" className="lg:size-9" aria-label="เดือนก่อนหน้า" onClick={() => onMonthChange(shiftMonth(month, -1))}><ChevronLeft className="size-4" aria-hidden="true" /></Button>
           <div className="text-base font-semibold">{thaiMonthLabel(month)}</div>
-          <Button variant="outline" size="sm" aria-label="เดือนถัดไป" onClick={() => onMonthChange(shiftMonth(month, 1))}><ChevronRight className="size-4" aria-hidden="true" /></Button>
+          <Button variant="outline" size="sm" className="lg:size-9" aria-label="เดือนถัดไป" onClick={() => onMonthChange(shiftMonth(month, 1))}><ChevronRight className="size-4" aria-hidden="true" /></Button>
         </div>
         <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
           <ul role="list" aria-label="สัญลักษณ์" className="flex flex-wrap items-center gap-2">
@@ -78,18 +79,19 @@ export default function MonthTab({ branchId, branchName, month, onMonthChange, o
             <li className="inline-flex items-center gap-1"><span className="inline-flex size-5 items-center justify-center rounded border border-foreground bg-foreground text-[10px] font-semibold text-background">1.5</span>OT (ชม.)</li>
             <li className="inline-flex items-center gap-1"><span className="inline-flex size-5 rounded border border-dashed border-border" aria-hidden="true" />แก้ไขย้อนหลัง</li>
           </ul>
-          <Button variant="outline" size="sm" onClick={() => void exportExcel()} disabled={!data}><Download className="size-4" aria-hidden="true" />ส่งออก Excel</Button>
+          <Button variant="outline" size="sm" className="lg:h-9" onClick={() => void exportExcel()} disabled={!data}><Download className="size-4" aria-hidden="true" />ส่งออก Excel</Button>
         </div>
       </div>
 
       <QueryBoundary isLoading={q.isLoading && !data} isError={q.isError} error={q.error} onRetry={q.refetch} errorTitle="โหลดข้อมูลรายเดือนไม่สำเร็จ">
         {data && (
           <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-            <div className="overflow-x-auto">
+            {/* relative: ข้อความ sr-only ในช่อง (position:absolute) ต้องอยู่ในกรอบเลื่อน ไม่งั้นทั้งหน้ายืดออกด้านข้าง */}
+            <div className="relative overflow-x-auto">
               <table className="w-full text-sm" aria-label="ตารางรายเดือน">
                 <thead className="bg-muted text-xs text-muted-foreground">
                   <tr>
-                    <th className="sticky left-0 z-10 bg-muted px-3 py-2 text-left font-medium">พนักงาน</th>
+                    <th className="sticky left-0 z-10 min-w-44 bg-muted px-3 py-2 text-left font-medium">พนักงาน</th>
                     {data.days.map((d) => <th key={d} className="px-1 py-2 text-center font-medium whitespace-nowrap">{dow(d)} {Number(d.slice(-2))}</th>)}
                     <th className="border-l border-border px-2 py-2 text-right font-medium">วันทำงาน</th>
                     <th className="px-2 py-2 text-right font-medium">สาย</th>
@@ -101,9 +103,9 @@ export default function MonthTab({ branchId, branchName, month, onMonthChange, o
                 <tbody>
                   {data.rows.map((r) => (
                     <tr key={r.userId} className="border-t border-border">
-                      <td className="sticky left-0 z-10 bg-card px-3 py-1.5">
+                      <td className="sticky left-0 z-10 min-w-44 bg-card px-3 py-1.5">
                         <div className="font-semibold leading-snug">{r.nickname}</div>
-                        <div className="text-xs text-muted-foreground leading-snug">{r.name}</div>
+                        <div className="text-xs text-muted-foreground leading-snug"><NameWords name={r.name} /></div>
                       </td>
                       {data.days.map((d) => <td key={d} className="px-0.5 py-1.5 text-center"><CellBox date={d} cell={r.cells[d]} /></td>)}
                       <td className="border-l border-border px-2 py-1.5 text-right tabular-nums">{r.summary.workDays}</td>
@@ -141,7 +143,7 @@ export default function MonthTab({ branchId, branchName, month, onMonthChange, o
             )}
             <div className="flex flex-wrap justify-between gap-2 border-t border-border px-4 py-2 text-xs text-muted-foreground">
               <span>วางเมาส์บนช่องวันเพื่อดูรายละเอียด · แก้ไขรายวันได้จากแท็บ "วันนี้" (เลือกวันที่)</span>
-              <span>ชั่วโมง OT × 1.5 × (เงินเดือน ÷ 30 ÷ 8) คิดที่หน้าเงินเดือน (ก้อน D4)</span>
+              <span>ชั่วโมง OT × 1.5 × (เงินเดือน ÷ 30 ÷ 8) คิดที่หน้าเงินเดือน</span>
             </div>
           </div>
         )}

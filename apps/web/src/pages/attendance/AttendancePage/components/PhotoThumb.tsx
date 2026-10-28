@@ -24,11 +24,11 @@ export default function PhotoThumb({ punchId, label }: Props) {
   }, [open, punchId, url]);
 
   if (!punchId) {
-    return <span className="inline-flex size-9 items-center justify-center rounded-lg border border-dashed border-input text-muted-foreground" aria-label="ไม่มีรูป"><ImageOff className="size-4" aria-hidden="true" /></span>;
+    return <span role="img" className="inline-flex size-9 items-center justify-center rounded-lg border border-dashed border-input text-muted-foreground" aria-label="ไม่มีรูป"><ImageOff className="size-4" aria-hidden="true" /></span>;
   }
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} aria-label={`ดูรูป ${label}`} className="inline-flex size-9 items-center justify-center rounded-lg bg-foreground text-background">
+      <button type="button" onClick={() => setOpen(true)} aria-label={`ดูรูป ${label}`} className="inline-flex size-11 lg:size-9 items-center justify-center rounded-lg bg-foreground text-background">
         <Camera className="size-4" aria-hidden="true" />
       </button>
       <Dialog open={open} onOpenChange={setOpen}>

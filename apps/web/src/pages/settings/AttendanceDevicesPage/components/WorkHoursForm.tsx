@@ -22,13 +22,17 @@ export default function WorkHoursForm({ initial }: Props) {
 
   const graceNum = Number(grace);
   const retentionNum = Number(retention);
-  const error =
-    !CLOCK_RE.test(workStart) || !CLOCK_RE.test(workEnd) ? 'กรอกเวลาเข้างานและเลิกงานให้ครบ'
-    : workEnd <= workStart ? 'เวลาเลิกงานต้องหลังเวลาเข้างาน'
-    : !Number.isInteger(graceNum) || graceNum < 0 || graceNum > 120 ? 'ผ่อนผันสายต้องเป็น 0–120 นาที'
-    : !Number.isInteger(retentionNum) || retentionNum < 30 || retentionNum > 3650 ? 'อายุเก็บรูปต้องเป็น 30–3650 วัน'
-    : branches.some((b) => (b.workStart && !CLOCK_RE.test(b.workStart)) || (b.workEnd && !CLOCK_RE.test(b.workEnd))) ? 'เวลาเฉพาะสาขาต้องเป็น HH:mm หรือเว้นว่าง'
-    : null;
+  // ข้อความผิดพลาดแสดงใต้ช่องที่ผิด (ไม่รวมไว้ที่ปุ่มบันทึก)
+  const errors = {
+    hours:
+      !CLOCK_RE.test(workStart) || !CLOCK_RE.test(workEnd) ? 'กรอกเวลาเข้างานและเลิกงานให้ครบ'
+      : workEnd <= workStart ? 'เวลาเลิกงานต้องหลังเวลาเข้างาน'
+      : null,
+    grace: !Number.isInteger(graceNum) || graceNum < 0 || graceNum > 120 ? 'ผ่อนผันสายต้องเป็น 0–120 นาที' : null,
+    retention: !Number.isInteger(retentionNum) || retentionNum < 30 || retentionNum > 3650 ? 'อายุเก็บรูปต้องเป็น 30–3650 วัน' : null,
+    branches: branches.some((b) => (b.workStart && !CLOCK_RE.test(b.workStart)) || (b.workEnd && !CLOCK_RE.test(b.workEnd))) ? 'เวลาเฉพาะสาขาต้องเป็น HH:mm หรือเว้นว่าง' : null,
+  };
+  const error = errors.hours ?? errors.grace ?? errors.retention ?? errors.branches;
 
   const setBranch = (branchId: string, key: 'workStart' | 'workEnd', value: string) =>
     setBranches((rows) => rows.map((r) => (r.branchId === branchId ? { ...r, [key]: value } : r)));
@@ -59,19 +63,22 @@ export default function WorkHoursForm({ initial }: Props) {
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <div className="flex flex-col gap-1">
           <label htmlFor="wh-start" className="text-sm font-medium">เวลาเข้างาน</label>
-          <input id="wh-start" type="time" value={workStart} onChange={(e) => setWorkStart(e.target.value)} className={fieldClass} />
+          <input id="wh-start" type="time" value={workStart} onChange={(e) => setWorkStart(e.target.value)} aria-invalid={!!errors.hours} aria-describedby={errors.hours ? 'wh-hours-error' : undefined} className={fieldClass} />
         </div>
         <div className="flex flex-col gap-1">
           <label htmlFor="wh-end" className="text-sm font-medium">เวลาเลิกงาน</label>
-          <input id="wh-end" type="time" value={workEnd} onChange={(e) => setWorkEnd(e.target.value)} className={fieldClass} />
+          <input id="wh-end" type="time" value={workEnd} onChange={(e) => setWorkEnd(e.target.value)} aria-invalid={!!errors.hours} aria-describedby={errors.hours ? 'wh-hours-error' : undefined} className={fieldClass} />
+          {errors.hours && <span id="wh-hours-error" role="alert" className="text-xs text-destructive leading-snug">{errors.hours}</span>}
         </div>
         <div className="flex flex-col gap-1">
           <label htmlFor="wh-grace" className="text-sm font-medium">ผ่อนผันสาย (นาที)</label>
-          <input id="wh-grace" type="number" inputMode="numeric" min={0} max={120} value={grace} onChange={(e) => setGrace(e.target.value)} className={fieldClass} />
+          <input id="wh-grace" type="number" inputMode="numeric" min={0} max={120} value={grace} onChange={(e) => setGrace(e.target.value)} aria-invalid={!!errors.grace} aria-describedby={errors.grace ? 'wh-grace-error' : undefined} className={fieldClass} />
+          {errors.grace && <span id="wh-grace-error" role="alert" className="text-xs text-destructive leading-snug">{errors.grace}</span>}
         </div>
         <div className="flex flex-col gap-1">
           <label htmlFor="wh-retention" className="text-sm font-medium">เก็บรูปหลักฐาน (วัน)</label>
-          <input id="wh-retention" type="number" inputMode="numeric" min={30} max={3650} value={retention} onChange={(e) => setRetention(e.target.value)} className={fieldClass} />
+          <input id="wh-retention" type="number" inputMode="numeric" min={30} max={3650} value={retention} onChange={(e) => setRetention(e.target.value)} aria-invalid={!!errors.retention} aria-describedby={errors.retention ? 'wh-retention-error' : undefined} className={fieldClass} />
+          {errors.retention && <span id="wh-retention-error" role="alert" className="text-xs text-destructive leading-snug">{errors.retention}</span>}
         </div>
       </div>
 
@@ -99,11 +106,11 @@ export default function WorkHoursForm({ initial }: Props) {
               ))}
             </tbody>
           </table>
+          {errors.branches && <span id="wh-branches-error" role="alert" className="text-xs text-destructive leading-snug">{errors.branches}</span>}
         </div>
       )}
 
       <div className="flex flex-wrap items-center justify-end gap-3">
-        {error && <span role="alert" className="text-sm text-destructive">{error}</span>}
         <Button onClick={save} disabled={!!error || update.isPending} className="max-lg:min-h-11">
           {update.isPending ? 'กำลังบันทึก…' : 'บันทึกเวลางาน'}
         </Button>

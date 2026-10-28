@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { getErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import QueryBoundary from '@/components/QueryBoundary';
+import NameWords from '@/components/ui/NameWords';
 import { useAttendanceMonth, useSetDayKinds, type DayKind } from '@/hooks/useAttendance';
 import { DAY_KIND_LABEL, nextDayKind, shiftDate, thaiShortDate, todayBangkok } from '../../attendance.util';
 
@@ -66,16 +67,16 @@ export default function ScheduleTab({ branchId, weekStart, onWeekChange, actorId
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" aria-label="สัปดาห์ก่อน" onClick={() => onWeekChange(shiftDate(weekStart, -7))}><ChevronLeft className="size-4" aria-hidden="true" /></Button>
+          <Button variant="outline" size="sm" className="lg:size-9" aria-label="สัปดาห์ก่อน" onClick={() => onWeekChange(shiftDate(weekStart, -7))}><ChevronLeft className="size-4" aria-hidden="true" /></Button>
           <div className="text-base font-semibold">{thaiShortDate(days[0])} – {thaiShortDate(days[6])}</div>
-          <Button variant="outline" size="sm" aria-label="สัปดาห์ถัดไป" onClick={() => onWeekChange(shiftDate(weekStart, 7))}><ChevronRight className="size-4" aria-hidden="true" /></Button>
+          <Button variant="outline" size="sm" className="lg:size-9" aria-label="สัปดาห์ถัดไป" onClick={() => onWeekChange(shiftDate(weekStart, 7))}><ChevronRight className="size-4" aria-hidden="true" /></Button>
         </div>
         <span className="text-xs text-muted-foreground">หยุดสัปดาห์ละ 1 วันสลับกัน · ไม่มีตาราง = ทุกวันเป็นวันทำงาน (ไม่มา = ขาด) · กดช่องเพื่อสลับ ทำงาน → หยุด → ลาป่วย → ลากิจ → ร้านปิด</span>
       </div>
 
       <QueryBoundary isLoading={loading} isError={first.isError} error={first.error} onRetry={first.refetch} errorTitle="โหลดตารางไม่สำเร็จ">
         <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-          <div className="overflow-x-auto">
+          <div className="relative overflow-x-auto">
             <table className="w-full min-w-[880px] text-sm" aria-label="ตารางหยุด/ลา รายสัปดาห์">
               <thead className="bg-muted text-xs text-muted-foreground">
                 <tr>
@@ -92,7 +93,7 @@ export default function ScheduleTab({ branchId, weekStart, onWeekChange, actorId
                   const offCount = days.filter((d) => kindOf(r.userId, d, r.kinds[d]) === 'DAY_OFF').length;
                   return (
                     <tr key={r.userId} className="border-t border-border">
-                      <td className="px-3 py-1.5"><div className="font-semibold leading-snug">{r.nickname}</div><div className="text-xs text-muted-foreground leading-snug">{r.name}{self && ' · ตารางของตัวเอง ให้เจ้าของแก้'}{otherBranch && ' · พนักงานสาขาอื่น ให้สาขานั้นกำหนด'}</div></td>
+                      <td className="px-3 py-1.5"><div className="font-semibold leading-snug">{r.nickname}</div><div className="text-xs text-muted-foreground leading-snug"><NameWords name={r.name} />{self && ' · ตารางของตัวเอง ให้เจ้าของแก้'}{otherBranch && ' · พนักงานสาขาอื่น ให้สาขานั้นกำหนด'}</div></td>
                       {days.map((d) => {
                         const kind = kindOf(r.userId, d, r.kinds[d]);
                         const dirty = `${r.userId}|${d}` in pending;
@@ -125,8 +126,8 @@ export default function ScheduleTab({ branchId, weekStart, onWeekChange, actorId
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-2">
             <span className="text-xs text-muted-foreground leading-snug">วันที่ผ่านไปแล้วล็อก — บันทึกลา/หยุดย้อนหลังที่แท็บ วันนี้ (เลือกวันที่) › แก้ไข พร้อมเหตุผล · เปลี่ยน {changes.length} ช่อง</span>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={!changes.length} onClick={() => setPending({})}>ยกเลิกที่แก้</Button>
-              <Button size="sm" className="max-lg:min-h-11" disabled={!changes.length || setKinds.isPending} onClick={save}>บันทึกตาราง</Button>
+              <Button variant="outline" size="sm" className="lg:h-9" disabled={!changes.length} onClick={() => setPending({})}>ยกเลิกที่แก้</Button>
+              <Button size="sm" className="lg:h-9" disabled={!changes.length || setKinds.isPending} onClick={save}>บันทึกตาราง</Button>
             </div>
           </div>
         </div>

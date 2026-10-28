@@ -2,13 +2,18 @@ import { AlertTriangle, Lock } from 'lucide-react';
 import { useAccountingPermissions } from '@/hooks/useAccountingPermissions';
 import { thaiMonthLabel } from '../../attendance.util';
 
-/** ชิป "จ่ายเงินเดือนแล้ว" — ไอคอน + คำ (ไม่ใช้สีอย่างเดียว) · `id` ให้ปุ่มที่ถูกปิดอ้างผ่าน aria-describedby */
+/**
+ * ชิป "จ่ายเงินเดือนแล้ว" — ไอคอน + คำ (ไม่ใช้สีอย่างเดียว) · `id` ให้ปุ่มที่ถูกปิดอ้างผ่าน aria-describedby ·
+ * ช่องแคบ (ช่องชื่อในตารางรายเดือน) ขึ้นบรรทัดใหม่ระหว่างสองส่วน ไม่ตัดกลางเลขใบ ("PR- / 2609-001")
+ */
 export function PaidChip({ number, id }: { number: string; id?: string }) {
   return (
-    <span id={id} className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5 text-xs leading-snug text-foreground">
-      <Lock className="size-3 shrink-0" aria-hidden="true" />
-      <span>จ่ายเงินเดือนแล้ว</span>
-      <span className="text-muted-foreground">· ใบ {number}</span>
+    <span id={id} className="inline-flex flex-wrap items-center gap-x-1 rounded-lg border border-border bg-muted px-2 py-0.5 text-xs leading-snug text-foreground">
+      <span className="inline-flex items-center gap-1 whitespace-nowrap">
+        <Lock className="size-3 shrink-0" aria-hidden="true" />
+        <span>จ่ายเงินเดือนแล้ว</span>
+      </span>
+      <span className="whitespace-nowrap text-muted-foreground">· ใบ {number}</span>
     </span>
   );
 }

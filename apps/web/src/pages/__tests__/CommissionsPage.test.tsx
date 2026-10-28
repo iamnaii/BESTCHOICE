@@ -196,17 +196,61 @@ describe('CommissionsPage — status labels and payroll chips', () => {
     expect(within(await rowOf('ปรีชา ศรีสุข')).getByText('เรียกคืน — รอหัก 400.00')).toBeInTheDocument();
     const resigned = await rowOf('มานี ใจงาม');
     expect(within(resigned).getByText('เรียกคืน — พนักงานลาออก ให้เจ้าของตัดสิน')).toBeInTheDocument();
-    expect(within(resigned).queryByText(/รอหัก/)).not.toBeInTheDocument();
+    // P2-R30 — ยอดที่ค้างยังต้องเห็น (เจ้าของตัดสินจากยอดนี้)
+    expect(within(resigned).getByText('รอหัก 300.00')).toBeInTheDocument();
+  });
+
+  it('payroll document statuses without a label fall back to Thai, never the enum (ACCRUAL / unknown)', async () => {
+    apiGet.mockImplementation((url: string) => {
+      if (url.startsWith('/commissions?')) {
+        return Promise.resolve({
+          data: {
+            data: [
+              commission('accrual', 'ก ตั้งค้าง', { payrollLinks: [{ documentId: 'd1', documentNumber: 'PR-1', status: 'ACCRUAL', kind: 'PAY' }] }),
+              commission('odd', 'ข แปลก', { payrollLinks: [{ documentId: 'd2', documentNumber: 'PR-2', status: 'SOMETHING_NEW', kind: 'PAY' }] }),
+            ],
+            total: 2,
+          },
+        });
+      }
+      return Promise.resolve({ data: { data: [], total: 0 } });
+    });
+    mount();
+    expect(within(await rowOf('ก ตั้งค้าง')).getByText('อยู่ในใบเงินเดือน PR-1 · ตั้งค้างจ่าย')).toBeInTheDocument();
+    expect(within(await rowOf('ข แปลก')).getByText('อยู่ในใบเงินเดือน PR-2 · สถานะอื่น')).toBeInTheDocument();
+    expect(screen.queryByText(/SOMETHING_NEW|ACCRUAL/)).not.toBeInTheDocument();
+  });
+
+  it('when the month has more rows than the page shows, says so above the summary (the cards are partial)', async () => {
+    apiGet.mockImplementation((url: string) => {
+      if (url.startsWith('/commissions?')) return Promise.resolve({ data: { data: ROWS, total: 250 } });
+      return Promise.resolve({ data: { data: [], total: 0 } });
+    });
+    mount();
+    expect(await screen.findByText(`แสดง ${ROWS.length} จาก 250 รายการ`)).toBeInTheDocument();
+  });
+
+  it('no partial note when every row of the month is shown', async () => {
+    mount();
+    await rowOf('กมล แสงทอง');
+    expect(screen.queryByText(/^แสดง \d+ จาก/)).not.toBeInTheDocument();
+  });
+
+  it('new controls have at least a 36 px hit area (approve, payroll links)', async () => {
+    mount();
+    expect(within(await rowOf('กมล แสงทอง')).getByRole('button', { name: 'อนุมัติ' })).toHaveClass('min-h-9');
+    for (const link of within(await rowOf('วิชัย ทองดี')).getAllByRole('link')) expect(link).toHaveClass('min-h-9');
   });
 });
 
 describe('CommissionsPage — audience (SALES cannot open หน้ารายจ่าย)', () => {
-  it.each(['OWNER', 'FINANCE_MANAGER'])('%s sees the banner', async (role) => {
+  it.each(['OWNER', 'FINANCE_MANAGER'])('%s sees the banner and the approver subtitle', async (role) => {
     auth.role = role;
     mount();
     await rowOf('กมล แสงทอง');
     expect(screen.getByText(BANNER_TITLE)).toBeInTheDocument();
     expect(screen.getByText(BANNER_BODY)).toBeInTheDocument();
+    expect(screen.getByText('อนุมัติค่าคอมพนักงานขาย — จ่ายพร้อมใบเงินเดือนเท่านั้น')).toBeInTheDocument();
   });
 
   it('SALES: no banner, no approve, no payouts tab, and the payroll chips are plain text (no link to /expenses)', async () => {
@@ -214,6 +258,9 @@ describe('CommissionsPage — audience (SALES cannot open หน้าราย�
     mount();
     const row = await rowOf('CT-three');
     expect(screen.queryByText(BANNER_TITLE)).not.toBeInTheDocument();
+    // P2-R30 — SALES อนุมัติไม่ได้ ⇒ คำบรรยายไม่พูดเรื่องอนุมัติ
+    expect(screen.getByText('ค่าคอมของคุณ — จ่ายพร้อมใบเงินเดือน')).toBeInTheDocument();
+    expect(screen.queryByText(/อนุมัติค่าคอม/)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'อนุมัติ' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /ใบจ่ายรายเดือน/ })).not.toBeInTheDocument();
     expect(within(row).getByText('อยู่ในใบเงินเดือน PR-20261031-0001 · ลงบัญชีแล้ว')).toBeInTheDocument();

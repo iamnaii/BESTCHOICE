@@ -109,11 +109,13 @@ export const clawbackPaidOutsideText = (reference: string) =>
 
 /** ส่วนท้ายของคำเตือน CLAWBACK_CARRIED — ตารางหักในฟอร์ม · หน้ารายละเอียด */
 export const carryForwardText = (carried: string) => `ยกไปงวดหน้า ${baht2(carried)} บาท`;
+/** หน้ารายละเอียด — ยอดหักคืนค่าคอมที่เก็บไว้ของบรรทัด (Σ รายการหัก COMMISSION_CLAWBACK) */
+export const clawbackDeductedText = (amount: string | number) => `หักคืนค่าคอม ${baht2(amount)} บาท`;
 
 /** กระดาน 6B — ตารางรายการหักจากระบบในฟอร์ม (คู่กับ SYSTEM_ROWS_TITLE ของรายได้) */
 export const SYSTEM_DEDUCTIONS_TITLE = 'รายการหักจากระบบ — แก้ในใบนี้ไม่ได้';
 /** หมายเหตุใต้ตารางหักเมื่อยกยอดไป — ทำไมหักไม่ครบ (Decision 2: หักได้ไม่เกินค่าคอมงวดนี้ ไม่หักจากฐาน/OT) */
-export const CLAWBACK_CAP_NOTE = 'หักได้ไม่เกินค่าคอมงวดนี้ — ไม่หักจากเงินเดือนฐานหรือ OT · ส่วนที่เหลือระบบหักต่อในงวดถัดไปเอง';
+export const CLAWBACK_CAP_NOTE = 'หักได้ไม่เกินค่าคอมงวดนี้ — ไม่หักจากเงินเดือนฐานหรือ OT · ส่วนที่เหลือยกไปหักจากค่าคอมงวดถัดไป';
 /** กระดาน 1 — ค่าคอมของงวดก่อนที่อนุมัติทีหลัง ถูกดึงเข้างวดนี้ */
 export const EARLIER_PERIOD_LABEL = 'อนุมัติค้างจากงวดก่อน';
 /** ป้าย/ปุ่มของแถวค่าคอม — n = รายการที่จ่าย */

@@ -832,7 +832,9 @@ describe('ยกเลิกใบขาย — flow จริงบน DB จ�
       expect(paid.paidAmount!.greaterThan(0)).toBe(true);
 
       const res = await saleVoidService.voidSale(sale.id, OWNER(), 'คีย์ผิด');
-      expect(res.paidCommissionClawback).toBe(paid.paidAmount!.toFixed(2));
+      // P2-R30 — ค่าคอมนี้จ่ายนอกใบเงินเดือน (ไม่มีรายการ PAY ในใบที่ลงบัญชี) ⇒ ใบเงินเดือนไม่หักคืนให้ · ยอดแยกไว้ ไม่อยู่ใน toast
+      expect(res.paidCommissionClawback).toBe('0.00');
+      expect(res.paidOutsidePayrollClawback).toBe(paid.paidAmount!.toFixed(2));
 
       const after = await prisma.salesCommission.findUniqueOrThrow({ where: { id: paid.id } });
       expect(after.status).toBe('CLAWED_BACK');
@@ -851,7 +853,8 @@ describe('ยกเลิกใบขาย — flow จริงบน DB จ�
       });
       const newValue = audit.newValue as Record<string, unknown>;
       expect(newValue.paidCommissionIds).toEqual([paid.id]);
-      expect(newValue.paidCommissionClawback).toBe(paid.paidAmount!.toFixed(2));
+      expect(newValue.paidCommissionClawback).toBe('0.00');
+      expect(newValue.paidOutsidePayrollClawback).toBe(paid.paidAmount!.toFixed(2));
     },
     180_000,
   );

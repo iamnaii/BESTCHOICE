@@ -28,6 +28,7 @@ import {
   attendanceLockedText,
   bankCsvSkippedText,
   carryForwardText,
+  clawbackDeductedText,
   deviceConflictReason,
   deviceConflictText,
   postCutoffText,
@@ -35,6 +36,7 @@ import {
   submitCutoffText,
 } from '@/components/expense-form-v4/payroll-system/payroll-copy';
 import {
+  PAYROLL_EDITABLE_STATUSES,
   isPayrollEditable,
   payrollEditPath,
   type PayrollConflict,
@@ -115,12 +117,26 @@ export function usePayrollGateRefresh(docId: string | undefined, closableAt: str
 const DEVICE_CONFLICT_FLAG = 'DEVICE_CONFLICT';
 
 /**
+ * คำเตือนที่บอกให้ทำอะไรก่อนลงบัญชี (รอฝ่ายบัญชีตอบ / ใส่รายการหักเองในใบนี้) — หมดความหมายเมื่อใบลงบัญชี/กลับรายการแล้ว
+ * (P2-R30) · ยกไปงวดหน้า และค่าคอมที่อยู่ในใบอื่น ยังเป็นข้อเท็จจริงของใบ — แสดงต่อ
+ */
+const PRE_POST_ONLY_WARNINGS = ['COMMISSION_FINANCE_BLOCKED', 'CLAWBACK_PAID_OUTSIDE_PAYROLL'];
+
+/**
  * วันที่ต้องตรวจ/คำเตือนที่เก็บไว้ตอนบันทึก เทียบกับด่านสด: เวลาปิดงวดใช้แบนเนอร์แทน · ธงเครื่องถูกใช้ซ้อนที่เจ้าของล้างแล้ว
  * (ไม่อยู่ใน `gate.deviceConflicts`) ไม่แสดง และวันที่ไม่เหลือธงก็ไม่แสดง · ไม่มีด่าน (ลงบัญชี/กลับรายการแล้ว) = ตามที่เก็บ
+ * · ใบที่ไม่อยู่ในสถานะแก้ไข/อนุมัติได้ ไม่แสดงคำเตือนก่อนลงบัญชี (PRE_POST_ONLY_WARNINGS)
  */
-function liveReviewNotes(notes: PayrollSystemNotes | null | undefined, gate: PayrollGateView | null | undefined) {
+function liveReviewNotes(
+  notes: PayrollSystemNotes | null | undefined,
+  gate: PayrollGateView | null | undefined,
+  status: string,
+) {
   if (!notes) return null;
-  const warnings = notes.warnings.filter((w) => w.code !== 'NOT_YET_CLOSABLE');
+  const beforePosting = PAYROLL_EDITABLE_STATUSES.includes(status);
+  const warnings = notes.warnings.filter(
+    (w) => w.code !== 'NOT_YET_CLOSABLE' && (beforePosting || !PRE_POST_ONLY_WARNINGS.includes(w.code)),
+  );
   if (!gate) return { ...notes, warnings };
   const stillFlagged = new Set(gate.deviceConflicts.map((d) => d.dayId));
   const review = notes.review.flatMap((day) => {
@@ -190,7 +206,16 @@ function PayrollLinesTable({
 }) {
   const titleId = useId();
   const columns = hasCommission(lines) ? ALL_COLUMNS : ALL_COLUMNS.filter(([key]) => key !== 'commission');
-  const rows = lines.map((l) => ({ line: l, totals: lineTotals(l), carried: clawbackCarriedOf(l.systemNotes)?.carried }));
+  const rows = lines.map((l) => {
+    const clawbacks = (l.customDeduction ?? []).filter((r) => r.source === 'COMMISSION_CLAWBACK');
+    return {
+      line: l,
+      totals: lineTotals(l),
+      // ยอดที่เก็บไว้ (Σ แถวหักคืนค่าคอมของบรรทัด) — ไม่คิดใหม่
+      clawback: clawbacks.length > 0 ? clawbacks.reduce((s, r) => s.plus(dec(r.amount)), new Decimal(0)).toFixed(2) : null,
+      carried: clawbackCarriedOf(l.systemNotes)?.carried,
+    };
+  });
   const grand = columns.reduce(
     (acc, [key]) => ({ ...acc, [key]: rows.reduce((s, r) => s.plus(r.totals[key]), new Decimal(0)) }),
     {} as LineTotals,
@@ -217,15 +242,15 @@ function PayrollLinesTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
-          {rows.map(({ line, totals, carried }) => (
+          {rows.map(({ line, totals, clawback, carried }) => (
             <tr key={line.id}>
               <td className="px-4 py-2 leading-snug">
                 {line.employeeName}
-                {carried && (
-                  // CLAWBACK_CARRIED — ประโยคเต็มอยู่ในแผงตรวจ · ใต้ชื่อบอกยอดที่ยังค้างหัก
+                {(clawback || carried) && (
+                  // หักคืนค่าคอม (ยอดที่เก็บ) · ยกไปงวดหน้า (CLAWBACK_CARRIED — ประโยคเต็มอยู่ในแผงตรวจ)
                   <span className="mt-0.5 flex items-center gap-1 text-xs text-warning-strong leading-snug">
                     <ArrowRightToLine className="size-3 shrink-0" aria-hidden="true" />
-                    {carryForwardText(carried)}
+                    {[clawback && clawbackDeductedText(clawback), carried && carryForwardText(carried)].filter(Boolean).join(' · ')}
                   </span>
                 )}
               </td>
@@ -359,7 +384,10 @@ export function PayrollDetailSection({
     linesHeadingRef.current?.focus();
     onDismissStale();
   };
-  const reviewLines = lines.map((l) => ({ employeeName: l.employeeName, systemNotes: liveReviewNotes(l.systemNotes, gate) }));
+  const reviewLines = lines.map((l) => ({
+    employeeName: l.employeeName,
+    systemNotes: liveReviewNotes(l.systemNotes, gate, doc.status),
+  }));
   // คนที่ผูกทะเบียน = คนที่ลงเวลาเดือนนี้ถูกล็อกเมื่อใบลงบัญชีแล้ว
   const linkedPeople = lines.filter((l) => l.userId).length;
 

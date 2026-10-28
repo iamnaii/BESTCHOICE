@@ -603,6 +603,7 @@ describe('ExpenseFormV4 payroll — commissions and clawbacks (D4 ส่วน�
     expect(within(commissionRow).getByText('1,000.00')).toBeInTheDocument();
     const toggle = within(commissionRow).getByRole('button', { name: /ค่าคอม 2 รายการ/ });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).toHaveClass('min-h-9');
     expect(within(locked).getByText('CT-20261103-0007')).not.toBeVisible();
     await user.click(toggle);
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
@@ -628,6 +629,10 @@ describe('ExpenseFormV4 payroll — commissions and clawbacks (D4 ส่วน�
     expect(within(locked).getByText('800.00')).toBeInTheDocument();
     expect(within(locked).getByText('CT-20261003-0012')).toBeInTheDocument();
     expect(within(locked).getByText('ยกไปงวดหน้า 400.00 บาท')).toBeInTheDocument();
+    // P2-R30 — หมายเหตุจริงทุกกรณี (ส่วนที่เหลือหักจากค่าคอมงวดถัดไป ไม่ใช่ "ระบบหักต่อเอง" แบบไม่มีเงื่อนไข)
+    expect(
+      within(locked).getByText(/หักได้ไม่เกินค่าคอมงวดนี้ — ไม่หักจากเงินเดือนฐานหรือ OT · ส่วนที่เหลือยกไปหักจากค่าคอมงวดถัดไป/),
+    ).toBeInTheDocument();
     for (const role of ['textbox', 'spinbutton', 'checkbox', 'combobox', 'button'] as const) {
       expect(within(locked).queryAllByRole(role)).toHaveLength(0);
     }

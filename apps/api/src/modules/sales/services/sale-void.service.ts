@@ -118,8 +118,16 @@ export interface VoidSaleResult {
   saleNumber: string;
   restoredProductIds: string[];
   reversalEntryNumbers: string[];
-  /** ยอดค่าคอมที่จ่ายไปแล้วและถูกเรียกคืน (2 ตำแหน่ง, '0.00' เมื่อไม่มี) — ใบเงินเดือนงวดถัดไปหักคืน */
+  /**
+   * ยอดค่าคอมที่จ่ายผ่านใบเงินเดือนที่ลงบัญชีแล้วและถูกเรียกคืน (2 ตำแหน่ง, '0.00' เมื่อไม่มี) — ใบเงินเดือนงวดถัดไปหักคืนให้
+   * (P2-R30: เฉพาะที่มีรายการ PAY ที่ยังมีผลในใบ POSTED — กติกาเดียวกับที่ใบเงินเดือนหัก) · หน้าประวัติการขายใช้ยอดนี้ใน toast
+   */
   paidCommissionClawback: string;
+  /**
+   * ค่าคอมที่จ่ายไปแล้วนอกใบเงินเดือน (เส้นทางจ่ายเดิม) และถูกเรียกคืน — ใบเงินเดือนไม่หักให้อัตโนมัติ (คำเตือน
+   * CLAWBACK_PAID_OUTSIDE_PAYROLL) ⇒ ไม่รวมใน toast
+   */
+  paidOutsidePayrollClawback: string;
 }
 
 /**
@@ -528,7 +536,29 @@ export class SaleVoidService {
       reason: `ยกเลิกใบขาย ${sale.saleNumber}: ${reason}`,
       now,
     });
-    const paidCommissionClawback = commissionClawback.paidTotal.toFixed(2);
+    // P2-R30 — ยอดที่บอกผู้ใช้ว่า "จะหักในเงินเดือนงวดถัดไป" ต้องเป็นยอดที่ใบเงินเดือนหักให้จริง: จ่ายแล้ว (paidAt) และมีรายการ PAY
+    // ที่ยังมีผลในใบเงินเดือนที่ลงบัญชีแล้ว (กติกาเดียวกับ compute) · จ่ายนอกใบเงินเดือนแยกไว้ (ไม่หักอัตโนมัติ)
+    const paidRows = commissionsToClawBack.filter((c) => commissionClawback.paidIds.includes(c.id));
+    const throughPayroll =
+      paidRows.length === 0
+        ? new Set<string>()
+        : new Set(
+            (
+              await tx.payrollCommissionItem.findMany({
+                where: {
+                  salesCommissionId: { in: paidRows.map((c) => c.id) },
+                  kind: 'PAY',
+                  releasedAt: null,
+                  payrollLine: { payroll: { document: { status: 'POSTED' } } },
+                },
+                select: { salesCommissionId: true },
+              })
+            ).map((i) => i.salesCommissionId),
+          );
+    const clawbackTotal = (rows: typeof paidRows) =>
+      rows.reduce((sum, c) => sum.add(clawbackAmountOf(c, 100) ?? 0), new Prisma.Decimal(0)).toFixed(2);
+    const paidCommissionClawback = clawbackTotal(paidRows.filter((c) => throughPayroll.has(c.id)));
+    const paidOutsidePayrollClawback = clawbackTotal(paidRows.filter((c) => !throughPayroll.has(c.id)));
 
     // 4b. ร่างรอบจ่ายค่าคอมที่ครอบใบนี้ → soft-delete (ยอดในร่างรวมค่าคอมที่เพิ่งถูก
     //     เรียกคืนไปแล้ว และยอดของร่างไม่ถูกคำนวณใหม่ ⇒ ปล่อยไว้ = ยอดเกินจริง
@@ -589,6 +619,7 @@ export class SaleVoidService {
           // ค่าคอมที่จ่ายแล้วและถูกเรียกคืน (ใบเงินเดือนงวดถัดไปหัก) + ยอดต่อแถว (P2-R9)
           paidCommissionIds: commissionClawback.paidIds,
           paidCommissionClawback,
+          paidOutsidePayrollClawback,
           commissionClawbacks: commissionsToClawBack.map((c) => ({
             id: c.id,
             statusBefore: c.status,
@@ -611,6 +642,7 @@ export class SaleVoidService {
       restoredProductIds: productIds,
       reversalEntryNumbers,
       paidCommissionClawback,
+      paidOutsidePayrollClawback,
     };
   }
 }

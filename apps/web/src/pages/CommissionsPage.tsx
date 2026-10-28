@@ -85,17 +85,29 @@ const BANNER_BODY =
   'อนุมัติรายการที่นี่ แล้วระบบดึงเข้าใบเงินเดือนให้เมื่อบันทึกใบ (หน้ารายจ่าย › สร้างเอกสารใหม่ › เงินเดือน (PR)) — ค่าคอมจะเป็น "จ่ายแล้ว" เมื่อใบเงินเดือนลงบัญชี';
 const RESIGNED_LABEL = 'เรียกคืน — พนักงานลาออก ให้เจ้าของตัดสิน';
 const outstandingLabel = (n: string) => `เรียกคืน — รอหัก ${n}`;
+/** P2-R30 — ใต้ป้ายพนักงานลาออก: ยอดที่ยังค้าง (เจ้าของตัดสินจากยอดนี้) */
+const resignedOutstandingLabel = (n: string) => `รอหัก ${n}`;
+/** P2-R30 — การ์ดสรุปคิดจากรายการที่ได้ (เพดาน 100 ต่อหน้า) — เดือนที่มีมากกว่านั้นต้องบอกว่าตัวเลขยังไม่ครบ */
+const partialListText = (shown: number, total: number) => `แสดง ${shown} จาก ${total} รายการ`;
+const SUBTITLE_APPROVER = 'อนุมัติค่าคอมพนักงานขาย — จ่ายพร้อมใบเงินเดือนเท่านั้น';
+const SUBTITLE_OWN = 'ค่าคอมของคุณ — จ่ายพร้อมใบเงินเดือน';
 
-/** สถานะของใบเงินเดือนบนชิป (ใบที่ปล่อยค่าคอมแล้ว — กลับรายการ/ลบ — ไม่มาถึงที่นี่: API ส่งเฉพาะรายการที่ยังมีผล) */
+/**
+ * สถานะของใบเงินเดือนบนชิป (ใบที่ปล่อยค่าคอมแล้ว — กลับรายการ/ลบ — ไม่มาถึงที่นี่: API ส่งเฉพาะรายการที่ยังมีผล) ·
+ * ค่าที่ไม่รู้จัก = คำกลาง ๆ ภาษาไทย ไม่แสดงชื่อ enum (P2-R30)
+ */
 const PAYROLL_STATUS_LABEL: Record<string, string> = {
   DRAFT: 'ร่าง',
   PENDING_APPROVAL: 'รออนุมัติ',
   APPROVED: 'อนุมัติแล้ว',
+  ACCRUAL: 'ตั้งค้างจ่าย',
   POSTED: 'ลงบัญชีแล้ว',
+  VOIDED: 'กลับรายการแล้ว',
 };
+const PAYROLL_STATUS_FALLBACK = 'สถานะอื่น';
 const payrollLinkText = (l: PayrollLink) =>
   l.kind === 'PAY'
-    ? `อยู่ในใบเงินเดือน ${l.documentNumber} · ${PAYROLL_STATUS_LABEL[l.status] ?? l.status}`
+    ? `อยู่ในใบเงินเดือน ${l.documentNumber} · ${PAYROLL_STATUS_LABEL[l.status] ?? PAYROLL_STATUS_FALLBACK}`
     : `หักคืนในใบ ${l.documentNumber}`;
 
 /** ไอคอนคู่สถานะ — สถานะห้ามบอกด้วยสีอย่างเดียว */
@@ -139,7 +151,8 @@ function PayrollLinkChip({ link, asLink }: { link: PayrollLink; asLink: boolean 
   return (
     <Link
       to={`/expenses/${link.documentId}`}
-      className={`${CHIP} ${tone} hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring`}
+      // ≥ 36 px ให้กดได้ (P2-R30) — ตัวป้ายยังเล็กเท่าเดิม
+      className={`${CHIP} ${tone} min-h-9 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring`}
     >
       {body}
     </Link>
@@ -159,11 +172,17 @@ function CommissionStatusCell({ c, linkToPayroll }: { c: Commission; linkToPayro
   if (clawedBack && outstanding > 0) {
     const resigned = c.salespersonResigned === true;
     const Icon = resigned ? UserX : Undo2;
+    const amount = formatNumberDecimal(outstanding, 2);
     primary = (
-      <span className={`${CHIP} border-warning/40 bg-warning/10 text-warning-strong`}>
-        <Icon className="size-3 shrink-0" aria-hidden="true" />
-        {resigned ? RESIGNED_LABEL : outstandingLabel(formatNumberDecimal(outstanding, 2))}
-      </span>
+      <>
+        <span className={`${CHIP} border-warning/40 bg-warning/10 text-warning-strong`}>
+          <Icon className="size-3 shrink-0" aria-hidden="true" />
+          {resigned ? RESIGNED_LABEL : outstandingLabel(amount)}
+        </span>
+        {resigned && (
+          <span className="text-xs font-medium text-warning-strong leading-snug">{resignedOutstandingLabel(amount)}</span>
+        )}
+      </>
     );
   } else if (c.status === 'APPROVED' && links.some((l) => l.kind === 'PAY')) {
     primary = null;
@@ -231,12 +250,12 @@ export default function CommissionsPage() {
   const [payoutStatusFilter, setPayoutStatusFilter] = useState('');
 
   const {
-    data: commissions = [],
+    data: listResp,
     isLoading,
     isError,
     error,
     refetch,
-  } = useQuery<Commission[]>({
+  } = useQuery<{ rows: Commission[]; total: number }>({
     queryKey: ['commissions', statusFilter, periodMonth, isSales],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -247,10 +266,13 @@ export default function CommissionsPage() {
       // เพดานต่อหน้าของ API — การ์ดสรุปคิดจากรายการที่ได้ ⇒ ขอเต็มเพดาน
       params.set('limit', '100');
       const { data } = await api.get(`/commissions?${params}`);
-      return data.data || data || [];
+      const rows: Commission[] = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+      return { rows, total: typeof data?.total === 'number' ? data.total : rows.length };
     },
     enabled: activeTab === 'commissions',
   });
+  const commissions = useMemo(() => listResp?.rows ?? [], [listResp]);
+  const commissionTotal = listResp?.total ?? 0;
 
   const {
     data: payoutsResp,
@@ -365,7 +387,7 @@ export default function CommissionsPage() {
                     onClick={() => approveMutation.mutate(c.id)}
                     disabled={approveMutation.isPending}
                     aria-busy={approveMutation.isPending && approveMutation.variables === c.id}
-                    className="px-3 py-1.5 text-xs font-medium bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors disabled:opacity-50"
+                    className="min-h-9 px-3 py-1.5 text-xs font-medium leading-snug bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors disabled:opacity-50"
                   >
                     อนุมัติ
                   </button>
@@ -432,7 +454,8 @@ export default function CommissionsPage() {
     <div>
       <PageHeader
         title="คอมมิชชัน"
-        subtitle="อนุมัติค่าคอมพนักงานขาย — จ่ายพร้อมใบเงินเดือนเท่านั้น"
+        // SALES อนุมัติไม่ได้ — คำบรรยายของคนที่อนุมัติได้เท่านั้นที่พูดเรื่องอนุมัติ (P2-R30)
+        subtitle={canManage ? SUBTITLE_APPROVER : SUBTITLE_OWN}
         icon={<DollarSign className="size-5" />}
       />
 
@@ -453,7 +476,7 @@ export default function CommissionsPage() {
           type="button"
           onClick={() => setActiveTab('commissions')}
           aria-pressed={activeTab === 'commissions'}
-          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium leading-snug border-b-2 transition-colors ${
             activeTab === 'commissions'
               ? 'border-primary text-primary'
               : 'border-transparent text-muted-foreground hover:text-foreground'
@@ -468,7 +491,7 @@ export default function CommissionsPage() {
             type="button"
             onClick={() => setActiveTab('payouts')}
             aria-pressed={activeTab === 'payouts'}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium leading-snug border-b-2 transition-colors ${
               activeTab === 'payouts'
                 ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground'
@@ -487,6 +510,12 @@ export default function CommissionsPage() {
       {/* ===== COMMISSIONS TAB ===== */}
       {activeTab === 'commissions' && (
         <>
+          {commissionTotal > commissions.length && (
+            <p role="status" className="mb-2 flex items-center gap-1.5 text-xs text-muted-foreground leading-snug">
+              <Info className="size-3.5 shrink-0" aria-hidden="true" />
+              {partialListText(commissions.length, commissionTotal)}
+            </p>
+          )}
           <div className="finance-card-grid grid grid-cols-2 md:grid-cols-4 gap-4 lg:gap-5 mb-6">
             <SummaryCard
               icon={DollarSign}

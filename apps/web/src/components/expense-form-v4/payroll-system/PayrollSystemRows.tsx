@@ -84,7 +84,8 @@ function CommissionRowGroup({
               aria-expanded={open}
               aria-controls={listId}
               onClick={() => setOpen((v) => !v)}
-              className={`${SOURCE_CHIP} min-h-6 hover:bg-primary/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring`}
+              // ≥ 36 px ให้กดได้ (P2-R30)
+              className={`${SOURCE_CHIP} min-h-9 hover:bg-primary/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring`}
             >
               <Coins className="size-3 shrink-0" aria-hidden="true" />
               {commissionCountLabel(pay.length)}
@@ -211,9 +212,9 @@ export function PayrollSystemDeductions({
       <ScreenTable className="w-full text-xs">
         <thead className="bg-muted/30 text-muted-foreground">
           <tr>
-            <th className="text-left px-2 py-1 w-40">บัญชี</th>
-            <th className="text-left px-2 py-1">รายการ</th>
-            <th className="text-right px-2 py-1 w-28">หักงวดนี้</th>
+            <th className="text-left px-2 py-1 w-40 leading-snug">บัญชี</th>
+            <th className="text-left px-2 py-1 leading-snug">รายการ</th>
+            <th className="text-right px-2 py-1 w-28 leading-snug">หักงวดนี้</th>
           </tr>
         </thead>
         <tbody>

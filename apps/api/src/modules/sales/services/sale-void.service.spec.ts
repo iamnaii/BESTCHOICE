@@ -105,6 +105,8 @@ describe('SaleVoidService.voidSale', () => {
         ]),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
+      // P2-R30 — รายการจ่ายค่าคอมในใบเงินเดือนที่ลงบัญชีแล้ว (ยอดใน toast = เฉพาะที่ใบเงินเดือนหักคืนให้) · default = ไม่มี
+      payrollCommissionItem: { findMany: jest.fn().mockResolvedValue([]) },
       // รอบจ่ายค่าคอม (`CommissionPayout`) — default = ยังไม่มีรอบจ่ายของงวดนี้
       commissionPayout: {
         findMany: jest.fn().mockResolvedValue([]),
@@ -369,11 +371,17 @@ describe('SaleVoidService.voidSale', () => {
     ...over,
   });
 
-  it('G4: ค่าคอม PAID → ยกเลิกได้ ค่าคอมเป็น CLAWED_BACK ยอด = paidAmount', async () => {
+  it('G4: ค่าคอม PAID ผ่านใบเงินเดือนที่ลงบัญชี → ยกเลิกได้ ค่าคอมเป็น CLAWED_BACK ยอด = paidAmount', async () => {
     tx.salesCommission.findMany.mockResolvedValue([paidCommission()]);
+    tx.payrollCommissionItem.findMany.mockResolvedValue([{ salesCommissionId: 'c1' }]);
     const res = await service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น');
 
-    expect(res).toEqual(expect.objectContaining({ paidCommissionClawback: '800.00' }));
+    expect(res).toEqual(expect.objectContaining({ paidCommissionClawback: '800.00', paidOutsidePayrollClawback: '0.00' }));
+    // ยอดใน toast = ค่าคอมที่ใบเงินเดือนหักคืนให้จริง: จ่ายแล้ว + รายการ PAY ที่ยังมีผลในใบที่ลงบัญชี (กติกาเดียวกับ compute)
+    expect(tx.payrollCommissionItem.findMany).toHaveBeenCalledWith({
+      where: { salesCommissionId: { in: ['c1'] }, kind: 'PAY', releasedAt: null, payrollLine: { payroll: { document: { status: 'POSTED' } } } },
+      select: { salesCommissionId: true },
+    });
     expect(tx.salesCommission.updateMany).toHaveBeenCalledTimes(1);
     const write = tx.salesCommission.updateMany.mock.calls[0][0];
     expect(write.where).toEqual({ id: 'c1', status: 'PAID' });
@@ -393,6 +401,7 @@ describe('SaleVoidService.voidSale', () => {
     expect(audit.commissionIds).toEqual(['c1']);
     expect(audit.paidCommissionIds).toEqual(['c1']);
     expect(audit.paidCommissionClawback).toBe('800.00');
+    expect(audit.paidOutsidePayrollClawback).toBe('0.00');
     expect(audit.commissionClawbacks).toEqual([
       { id: 'c1', statusBefore: 'PAID', paid: true, clawbackAmount: '800.00' },
     ]);
@@ -536,10 +545,36 @@ describe('SaleVoidService.voidSale', () => {
   });
 
   // ── G4 — สถานะค่าคอมที่เงินออกไปแล้ว ────────────────────────────────────────
+  // P2-R30 — จ่ายนอกใบเงินเดือน (เส้นทางจ่ายเดิม) ใบเงินเดือนไม่หักคืนให้ (CLAWBACK_PAID_OUTSIDE_PAYROLL) ⇒ toast ต้องไม่สัญญา
+  it('G4: ค่าคอมที่จ่ายนอกใบเงินเดือน → ยังเรียกคืน แต่ไม่นับในยอดที่ใบเงินเดือนจะหัก (แยกเป็น paidOutsidePayrollClawback)', async () => {
+    tx.salesCommission.findMany.mockResolvedValue([
+      paidCommission(),
+      paidCommission({ id: 'c2', commissionAmount: new Decimal(300), paidAmount: new Decimal(300) }),
+    ]);
+    tx.payrollCommissionItem.findMany.mockResolvedValue([{ salesCommissionId: 'c2' }]);
+    const res = await service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น');
+    expect(tx.salesCommission.updateMany).toHaveBeenCalledTimes(2);
+    expect(res.paidCommissionClawback).toBe('300.00');
+    expect(res.paidOutsidePayrollClawback).toBe('800.00');
+    const audit = tx.auditLog.create.mock.calls
+      .map((c: [{ data: { action: string; newValue: Record<string, unknown> } }]) => c[0].data)
+      .find((d: { action: string }) => d.action === 'SALE_VOIDED').newValue;
+    expect(audit.paidCommissionClawback).toBe('300.00');
+    expect(audit.paidOutsidePayrollClawback).toBe('800.00');
+  });
+
+  it('G4: ไม่มีค่าคอมที่จ่ายแล้ว → ไม่อ่านรายการในใบเงินเดือน', async () => {
+    const res = await service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น');
+    expect(tx.payrollCommissionItem.findMany).not.toHaveBeenCalled();
+    expect(res.paidCommissionClawback).toBe('0.00');
+    expect(res.paidOutsidePayrollClawback).toBe('0.00');
+  });
+
   it('G4: PARTIALLY_CLAWED_BACK ที่จ่ายแล้ว → CLAWED_BACK ยอด = paidAmount (ไม่ใช่ยอดเรียกคืนบางส่วนเดิม)', async () => {
     tx.salesCommission.findMany.mockResolvedValue([
       paidCommission({ status: 'PARTIALLY_CLAWED_BACK', commissionAmount: new Decimal(1000), paidAmount: new Decimal(1000) }),
     ]);
+    tx.payrollCommissionItem.findMany.mockResolvedValue([{ salesCommissionId: 'c1' }]);
     const res = await service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น');
     const write = tx.salesCommission.updateMany.mock.calls[0][0];
     expect(write.where).toEqual({ id: 'c1', status: 'PARTIALLY_CLAWED_BACK' });

@@ -294,30 +294,35 @@ describe('PayrollSlipSheet (PAYROLL voucher)', () => {
       );
     };
 
-    it('the commission row lists its commissions on one line (reference amount) and has no hours × rate', async () => {
+    it('the commission row lists its commission references on ONE line (no wrap) and has no hours × rate', async () => {
       mountSlip(commissionLine);
       const row = await screen.findByRole('row', { name: /ค่าคอมมิชชัน \(2 รายการ\)/ });
       expect(within(row).getByText('—')).toBeInTheDocument();
       expect(within(row).getByText('1,000.00')).toBeInTheDocument();
-      expect(row).toHaveTextContent('CT-20261103-0007 600.00 · SL-20261120-0031 400.00');
+      const detail = within(row).getByText('CT-20261103-0007 · SL-20261120-0031');
+      // ตอนพิมพ์ตัวอักษรทุกตัวเป็น 16 pt — บรรทัดเดียวเสมอ (ยาวเกิน = …) ไม่ดันสลิปล้นแผ่น
+      expect(detail).toHaveClass('truncate');
+      expect(detail.closest('td')).toHaveClass('max-w-0');
       // ไม่มีแถวตารางเพิ่มต่อค่าคอม — หนึ่งแถวในตารางรายได้
       expect(screen.queryByRole('row', { name: /^CT-20261103-0007/ })).not.toBeInTheDocument();
     });
 
-    it('the clawback row lists what it deducts, and the slip prints ยกไปงวดหน้า 400.00 บาท', async () => {
+    it('the clawback row is one table row (no item list), and the slip prints the carry sentence with ยกไปงวดหน้า 400.00 บาท', async () => {
       mountSlip(commissionLine);
       const row = await screen.findByRole('row', { name: /หักคืนค่าคอม \(2 รายการ\)/ });
-      expect(row).toHaveTextContent('SL-20261011-0045 800.00 · CT-20261003-0012 200.00');
-      expect(screen.getByText(/ยกไปงวดหน้า 400\.00 บาท/)).toBeInTheDocument();
+      expect(row).not.toHaveTextContent('SL-20261011-0045');
+      expect(
+        screen.getByText('หักคืนค่าคอมได้ 1,000.00 บาท (ไม่เกินค่าคอมงวดนี้) — ยกไปงวดหน้า 400.00 บาท'),
+      ).toBeInTheDocument();
       expect(within(screen.getByRole('row', { name: /รวมรายการหัก/ })).getByText('1,750.00')).toBeInTheDocument();
     });
 
-    it('more than four commissions → the first four and "และอีก k รายการ" (one line keeps the one-sheet budget)', async () => {
+    it('more than two commissions → the first two references and "และอีก k รายการ" (one line keeps the one-sheet budget)', async () => {
       const many = ['a', 'b', 'c', 'd', 'e', 'f'].map((k) => scItem(k, 'PAY', '100.00', { sale: `SL-${k}` }));
       mountSlip({ ...commissionLine, customDeduction: [], systemNotes: null, commissionItems: many });
       const row = await screen.findByRole('row', { name: /ค่าคอมมิชชัน \(2 รายการ\)/ });
-      expect(row).toHaveTextContent('SL-a 100.00 · SL-b 100.00 · SL-c 100.00 · SL-d 100.00 และอีก 2 รายการ');
-      expect(row).not.toHaveTextContent('SL-e');
+      expect(row).toHaveTextContent('SL-a · SL-b และอีก 4 รายการ');
+      expect(row).not.toHaveTextContent('SL-c');
       expect(screen.queryByText(/ยกไปงวดหน้า/)).not.toBeInTheDocument();
     });
 

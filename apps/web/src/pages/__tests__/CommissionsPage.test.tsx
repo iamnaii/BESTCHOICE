@@ -123,6 +123,17 @@ describe('CommissionsPage — the list query', () => {
   });
 });
 
+describe('CommissionsPage — money and rate columns', () => {
+  it('shows the rate as a percent (stored as a fraction 0.05 → 5.0%) and money with 2 decimals', async () => {
+    mount();
+    const row = await rowOf('กมล แสงทอง');
+    expect(within(row).getByText('5.0%')).toBeInTheDocument();
+    expect(within(row).queryByText('0.1%')).not.toBeInTheDocument();
+    expect(within(row).getByText('20,000.00 ฿')).toBeInTheDocument();
+    expect(within(row).getByText('650.00 ฿')).toBeInTheDocument();
+  });
+});
+
 describe('CommissionsPage — approve only, no pay buttons', () => {
   it('อนุมัติ calls POST /commissions/:id/approve (the API route is POST) and refreshes the list', async () => {
     const user = userEvent.setup();

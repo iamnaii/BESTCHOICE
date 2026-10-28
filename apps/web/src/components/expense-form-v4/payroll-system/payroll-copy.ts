@@ -101,7 +101,10 @@ export const commissionInOtherDocumentText = (count: number, name: string, docum
 
 /** warning CLAWBACK_CARRIED */
 export const clawbackCarriedText = (deducted: string, carried: string) =>
-  `หักคืนค่าคอมได้ ${baht2(deducted)} บาท (ไม่เกินค่าคอมงวดนี้) — ยกไปงวดหน้า ${baht2(carried)} บาท`;
+  parseFloat(deducted) > 0
+    ? `หักคืนค่าคอมได้ ${baht2(deducted)} บาท (ไม่เกินค่าคอมงวดนี้) — ยกไปงวดหน้า ${baht2(carried)} บาท`
+    : // งวดนี้ไม่มีค่าคอมให้หัก — "หักได้ 0.00 บาท" อ่านแล้วงง
+      `งวดนี้ไม่มีค่าคอมให้หัก — ยกยอดหักคืน ${baht2(carried)} บาท ไปงวดหน้า`;
 
 /** warning CLAWBACK_PAID_OUTSIDE_PAYROLL */
 export const clawbackPaidOutsideText = (reference: string) =>

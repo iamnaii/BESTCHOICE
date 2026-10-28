@@ -128,6 +128,7 @@ const payoutStatusMap: Record<string, StatusConfig> = {
 };
 
 const baht = (v: number | string) => `${formatNumberDecimal(v, 2)} ฿`;
+const ratePercent = (rate: string) => `${formatNumberDecimal(parseFloat(rate) * 100, 1)}%`;
 const thisMonth = () => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -351,23 +352,21 @@ export default function CommissionsPage() {
       {
         key: 'saleAmount',
         label: 'ยอดขาย',
-        render: (c: Commission) => (
-          <span className="text-sm">{parseFloat(c.saleAmount).toLocaleString()} ฿</span>
-        ),
+        align: 'right' as const,
+        render: (c: Commission) => <span className="text-sm tabular-nums">{baht(c.saleAmount)}</span>,
       },
       {
         key: 'commissionRate',
         label: 'อัตรา',
-        render: (c: Commission) => (
-          <span className="text-sm">{parseFloat(c.commissionRate).toFixed(1)}%</span>
-        ),
+        align: 'right' as const,
+        // เก็บเป็นสัดส่วน (0.0300 = 3%) — เดิมพิมพ์ตรง ๆ ได้ "0.0%" ทุกแถว
+        render: (c: Commission) => <span className="text-sm tabular-nums">{ratePercent(c.commissionRate)}</span>,
       },
       {
         key: 'commissionAmount',
         label: 'คอมมิชชัน',
-        render: (c: Commission) => (
-          <span className="text-sm font-semibold">{parseFloat(c.commissionAmount).toLocaleString()} ฿</span>
-        ),
+        align: 'right' as const,
+        render: (c: Commission) => <span className="text-sm font-semibold tabular-nums">{baht(c.commissionAmount)}</span>,
       },
       {
         key: 'status',
@@ -421,17 +420,15 @@ export default function CommissionsPage() {
       {
         key: 'totalSales',
         label: 'ยอดขายรวม',
-        render: (p: CommissionPayout) => (
-          <span className="text-sm">{parseFloat(p.totalSales).toLocaleString()} ฿</span>
-        ),
+        align: 'right' as const,
+        render: (p: CommissionPayout) => <span className="text-sm tabular-nums">{baht(p.totalSales)}</span>,
       },
       {
         key: 'totalCommission',
         label: 'คอมมิชชันรวม',
+        align: 'right' as const,
         render: (p: CommissionPayout) => (
-          <span className="text-sm font-semibold text-primary">
-            {parseFloat(p.totalCommission).toLocaleString()} ฿
-          </span>
+          <span className="text-sm font-semibold tabular-nums text-primary">{baht(p.totalCommission)}</span>
         ),
       },
       {

@@ -224,7 +224,7 @@ export default function PaymentVoucherPage() {
         onRetry={docQuery.refetch}
       >
         {docQuery.data && (
-          <div className="max-w-full overflow-x-auto print:overflow-visible" role="region" aria-label="ตัวอย่างเอกสาร" tabIndex={0}>
+          <div className="relative max-w-full overflow-x-auto print:overflow-visible" role="region" aria-label="ตัวอย่างเอกสาร" tabIndex={0}>
             <VoucherSheet doc={docQuery.data} />
           </div>
         )}
@@ -512,9 +512,10 @@ function PayrollSlipSheet({
 
   return (
     <article
+      // จอแคบ (มือถือ): สลิปกว้างขั้นต่ำ 40rem แล้วเลื่อนในกรอบตัวอย่างเอกสาร — เดิมช่องรายการค่าคอมเหลือ ~31px · ตอนพิมพ์ไม่มีขั้นต่ำ
       // P2-R31 — ระยะพิมพ์ชุดเดียวที่พอดีหนึ่งแผ่นเอง ไม่ให้ fitPaperSpacing (วัดตอน screen media) เลือกชั้นระยะให้
       data-bc-paper-fit="fixed"
-      className="voucher-sheet bc-document standard-voucher payroll-slip bg-white border border-border rounded-md p-8 shadow-sm print:border-0 print:p-0 print:shadow-none"
+      className="voucher-sheet bc-document standard-voucher payroll-slip min-w-[40rem] bg-white border border-border rounded-md p-8 shadow-sm print:min-w-0 print:border-0 print:p-0 print:shadow-none"
       style={{
         minHeight: '270mm',
         pageBreakBefore: slipNo > 1 ? 'always' : 'auto',

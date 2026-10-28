@@ -1,3 +1,4 @@
+import { clawbackCarriedText } from '../payroll-copy';
 import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it } from 'vitest';
@@ -174,6 +175,11 @@ describe('PayrollReviewPanel — warnings', () => {
       'ค่าคอม 2 รายการของ วิชัย ทองดี อยู่ในใบ PR-20261101-0003 แล้ว',
     ]);
     expect(within(items[1]).getByText('สมศรี มีสุข')).toHaveClass('font-semibold');
+  });
+
+  it('CLAWBACK_CARRIED with nothing deducted this period says so instead of "หักคืนค่าคอมได้ 0.00 บาท"', () => {
+    expect(clawbackCarriedText('0.00', '509.70')).toBe('งวดนี้ไม่มีค่าคอมให้หัก — ยกยอดหักคืน 509.70 บาท ไปงวดหน้า');
+    expect(clawbackCarriedText('629.40', '627.60')).toBe('หักคืนค่าคอมได้ 629.40 บาท (ไม่เกินค่าคอมงวดนี้) — ยกไปงวดหน้า 627.60 บาท');
   });
 
   it('a warning code the web does not know yet is skipped instead of crashing the panel', () => {

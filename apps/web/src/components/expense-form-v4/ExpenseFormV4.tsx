@@ -609,10 +609,27 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
 
   // R3-2 — edit mode: อย่าแสดงฟอร์มเปล่าระหว่างโหลดร่าง (กันผู้ใช้เริ่มกรอกผิดใบ)
   if (editDocId && !editLoaded) {
+    // โหลดไม่สำเร็จ (เครือข่าย / ไม่มีสิทธิ์ / ใบถูกลบ) — เดิมหมุนค้างไม่มีทางออก
+    if (editQuery.isError) {
+      return (
+        <div role="dialog" aria-modal="true" aria-label="โหลดใบเงินเดือนไม่สำเร็จ" className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div role="alert" className="bg-background rounded-xl shadow-modal px-6 py-5 flex max-w-md flex-col gap-3 text-sm">
+            <p className="flex items-center gap-2 font-semibold leading-snug text-destructive">
+              <AlertTriangle className="size-4 shrink-0" aria-hidden="true" /> โหลดใบเงินเดือนไม่สำเร็จ
+            </p>
+            <p className="text-muted-foreground leading-snug">{getErrorMessage(editQuery.error)}</p>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button type="button" variant="outline" className="min-h-11 lg:min-h-9" onClick={onClose}>ปิด</Button>
+              <Button type="button" className="min-h-11 lg:min-h-9" onClick={() => void editQuery.refetch()}>ลองใหม่</Button>
+            </div>
+          </div>
+        </div>
+      );
+    }
     return (
-      <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-        <div className="bg-background rounded-xl shadow-modal px-8 py-6 flex items-center gap-3 text-sm text-muted-foreground">
-          <Clock className="size-4 animate-pulse" /> กำลังโหลดร่างใบเงินเดือน…
+      <div role="dialog" aria-modal="true" aria-label="กำลังโหลดร่างใบเงินเดือน" className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+        <div role="status" className="bg-background rounded-xl shadow-modal px-8 py-6 flex items-center gap-3 text-sm text-muted-foreground">
+          <Clock className="size-4 animate-pulse" aria-hidden="true" /> กำลังโหลดร่างใบเงินเดือน…
         </div>
       </div>
     );
@@ -642,8 +659,9 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
 
         <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-3 sm:p-6 space-y-5">
           {loadedStatus && SENT_BACK_STATUS_LABEL[loadedStatus] && (
-            <p role="status" className="flex items-start gap-2 rounded-lg border border-info/30 bg-info/10 px-3 py-2 text-sm text-info leading-snug">
-              <Clock className="size-4 mt-0.5 shrink-0" aria-hidden="true" />
+            <p role="status" className="flex items-start gap-2 rounded-lg border border-info/30 bg-info/10 px-3 py-2 text-sm text-foreground leading-snug">
+              {/* ตัวหนังสือสีฟ้าบนพื้นฟ้าอ่อนต่ำกว่า 4.5:1 — สีอยู่ที่ไอคอน ตัวหนังสือใช้สีปกติ */}
+              <Clock className="size-4 mt-0.5 shrink-0 text-info" aria-hidden="true" />
               {`ใบนี้${SENT_BACK_STATUS_LABEL[loadedStatus]} — บันทึกแล้วใบจะกลับเป็นร่าง ต้องส่งขออนุมัติอีกครั้ง`}
             </p>
           )}

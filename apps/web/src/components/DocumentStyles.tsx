@@ -19,6 +19,18 @@ export default function DocumentStyles() {
     .voucher-sheet h2 { margin-top: 8px !important; }
     .voucher-sheet footer { margin-top: 12px !important; padding-top: 8px !important; }
     .voucher-sheet .h-16 { height: 12mm !important; }
+    /* แผ่นเอกสารเป็นกระดาษขาวเสมอ — โหมดมืดเดิมทำให้ตัวหนังสือสีจาง/เส้นของธีมมืดอยู่บนพื้นขาว (อ่านแทบไม่ออก) ·
+       Tailwind แปลง --color-* ที่ :root แล้วจึงต้องทับตัว --color-* เอง (ค่าเดียวกับธีมสว่างใน index.css) */
+    .dark .voucher-sheet {
+      color-scheme: light;
+      --color-background: hsl(40 23% 97%); --color-foreground: hsl(25 14% 12%);
+      --color-card: hsl(40 20% 99%); --color-card-foreground: hsl(25 14% 12%);
+      --color-muted: hsl(36 14% 93%); --color-muted-foreground: hsl(25 8% 42%);
+      --color-border: hsl(34 12% 88%); --color-input: hsl(34 12% 88%);
+      --color-primary: hsl(160 84% 26%); --color-primary-foreground: hsl(0 0% 100%);
+      --color-destructive: hsl(0 84.2% 45%); --color-warning-strong: hsl(38 92% 30%);
+      color: hsl(25 14% 12%);
+    }
 
     .standard-voucher .voucher-meta-row { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 6px; }
     .standard-voucher .voucher-partial-cell { padding: 6px 8px; }

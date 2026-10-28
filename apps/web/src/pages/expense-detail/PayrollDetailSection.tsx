@@ -405,7 +405,7 @@ export function PayrollDetailActions({ doc, canEdit = true }: { doc: PayrollDeta
   return (
     <>
       {canEdit && isPayrollEditable(doc) && (
-        <span className="inline-flex max-w-64 flex-col items-end gap-1">
+        <span className="inline-flex w-min flex-col items-end gap-1">
           <Button asChild variant="outline" size="sm">
             <Link to={payrollEditPath(doc.id)} aria-describedby={draft ? editCaptionId : undefined}>
               <Pencil size={14} className="mr-1.5" aria-hidden="true" />
@@ -420,7 +420,7 @@ export function PayrollDetailActions({ doc, canEdit = true }: { doc: PayrollDeta
         </span>
       )}
       {slips > 0 && doc.status !== 'VOIDED' && (
-        <span className="inline-flex max-w-64 flex-col items-end gap-1">
+        <span className="inline-flex w-min flex-col items-end gap-1">
           {posted ? (
             <Button asChild size="sm">
               <Link to={`/expenses/${doc.id}/voucher`} aria-describedby={captionId}>

@@ -468,6 +468,25 @@ describe('ExpenseFormV4 payroll — fix round 1', () => {
     expect(screen.queryByRole('button', { name: 'สมศรี มีสุข' })).not.toBeInTheDocument();
   });
 
+  it('edit mode: a failed load shows the error with ลองใหม่ / ปิด instead of spinning forever', async () => {
+    const user = userEvent.setup();
+    const base = apiGet.getMockImplementation()!;
+    let fail = true;
+    apiGet.mockImplementation((path: string) =>
+      path === '/expense-documents/pr-edit' && fail
+        ? Promise.reject({ response: { data: { message: 'ไม่พบเอกสาร' } } })
+        : base(path),
+    );
+    mount({ editDocId: 'pr-edit' });
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('โหลดใบเงินเดือนไม่สำเร็จ');
+    expect(alert).toHaveTextContent('ไม่พบเอกสาร');
+    expect(screen.getByRole('button', { name: 'ปิด' })).toBeInTheDocument();
+    fail = false;
+    await user.click(screen.getByRole('button', { name: 'ลองใหม่' }));
+    await waitFor(() => expect(screen.queryByText('โหลดใบเงินเดือนไม่สำเร็จ')).not.toBeInTheDocument());
+  });
+
   it('M2: a failed reload after บันทึกร่าง + คิดยอด says the draft is saved, and the next save PATCHes it', async () => {
     const user = userEvent.setup();
     const base = apiGet.getMockImplementation()!;

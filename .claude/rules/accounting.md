@@ -1016,12 +1016,12 @@ E2E: `apps/api/src/modules/expense-documents/__tests__/payroll-shop-flow.integra
 Spec: `docs/superpowers/specs/2026-10-27-payroll-ot-commission-design.md` (§17 ชนะข้อก่อนหน้า) ·
 แผน: `docs/superpowers/plans/2026-10-27-payroll-ot-part1.md` · โค้ด: `apps/api/src/modules/expense-documents/payroll-system/`
 (`payroll-pay.ts` คณิตศาสตร์ · `payroll-system-rows.service.ts` คิดแถว · `payroll-save.ts` ทางบันทึก · `payroll-post-gate.service.ts` ด่าน · `role-codes.ts`) ·
-ล็อกการลงเวลา `apps/api/src/modules/attendance/attendance-payroll-lock.ts`. ค่าคอมผ่านเงินเดือน/หักคืนอยู่ส่วนที่ 2 (ยังไม่ทำ — ค่าคอมใช้ทางเดิม).
+ล็อกการลงเวลา `apps/api/src/modules/attendance/attendance-payroll-lock.ts`. ค่าคอมผ่านเงินเดือน/หักคืนอยู่ส่วนที่ 2 (ทำแล้ว — หัวข้อย่อย "ค่าคอม/หักคืนผ่านใบเงินเดือน (D4 ส่วนที่ 2)" ท้ายหัวข้อนี้).
 
 - **คิดใหม่ทุกครั้งที่บันทึก (always-compute)**: ทุกทางบันทึก (สร้าง · `PATCH …/payroll` · จากแม่แบบ/คัดลอกงวดก่อน · ตอนส่งขออนุมัติ)
   server สร้างแถวรายได้ `ATTENDANCE_OT` / `ATTENDANCE_HOLIDAY` / `ATTENDANCE_HOLIDAY_OT` ให้**ทุกบรรทัดที่ผูกพนักงาน** เอง —
   client ส่งเฉพาะ `MANUAL` / `ADJUSTMENT` (ถ้าส่ง `isAdjustment` หาย แถวปรับปรุงจะกลายเป็น MANUAL). ปุ่มในฟอร์ม = "บันทึกร่าง + คิดยอด" ไม่มี endpoint prefill.
-  แถวระบบล็อก แก้มือไม่ได้ · เก็บ `quantity` (ชม.) · `rate` (4 ตำแหน่ง) · `multiplier` ต่อแถว และต่อบรรทัด `attendanceSummary` (snapshot มา/สาย/ขาด/ลา/ชม./`autoOtEligible`/`attendanceTracked` — ข้อมูลประกอบ ไม่มีผลต่อยอด) · `systemNotes` (คำเตือน/รายการต้องตรวจ) · `systemPulledAt` (เวลาที่คิด). `PAYROLL_STALE` เทียบเฉพาะแถว `ATTENDANCE_*` (source · account · amount) — `systemNotes` / `attendanceSummary` เก่าได้ ⇒ หน้าผู้อนุมัติอ่านวันติดธงสดจาก `findOne.payrollGate` ไม่ใช่จากที่เก็บ.
+  แถวระบบล็อก แก้มือไม่ได้ · เก็บ `quantity` (ชม.) · `rate` (4 ตำแหน่ง) · `multiplier` ต่อแถว และต่อบรรทัด `attendanceSummary` (snapshot มา/สาย/ขาด/ลา/ชม./`autoOtEligible`/`attendanceTracked` — ข้อมูลประกอบ ไม่มีผลต่อยอด) · `systemNotes` (คำเตือน/รายการต้องตรวจ) · `systemPulledAt` (เวลาที่คิด). `PAYROLL_STALE` เทียบแถว `ATTENDANCE_*` (source · account · amount) **และ (ส่วนที่ 2) แถว `COMMISSION` + รายการหัก `COMMISSION_CLAWBACK` + รายการค่าคอมที่ยังมีผล** (ค่าคอมตรวจจากรายการที่เก็บ ไม่เทียบกับผลคิดใหม่ — ดูหัวข้อ "ค่าคอม/หักคืนผ่านใบเงินเดือน") — `systemNotes` / `attendanceSummary` เก่าได้ ⇒ หน้าผู้อนุมัติอ่านวันติดธงสดจาก `findOne.payrollGate` ไม่ใช่จากที่เก็บ.
   บรรทัดมี `lineNo` ลำดับคงที่ (สลิปไม่สลับ).
 - **สูตร** (`payroll-pay.ts`): ชม.ละ = `EmployeeProfile.baseSalary` (เงินเดือนเต็มในทะเบียน ไม่ใช่ฐานในบรรทัด) ÷ 240 ·
   ตัวคูณ OT วันทำงาน **1.5** · ทำงานวันหยุดในเวลางาน **1** (ส่วนบวกเพิ่ม — ลูกจ้างรายเดือนได้ค่าจ้างวันหยุดอยู่แล้ว) · OT วันหยุด **3** ·
@@ -1052,7 +1052,7 @@ Spec: `docs/superpowers/specs/2026-10-27-payroll-ot-commission-design.md` (§17 
   ข้อความ 409 ใส่วันที่พร้อม พ.ศ. ("1 พ.ย. 2569 18:00"). ใบที่พิมพ์ชื่อเองล้วนไม่มีด่านใดๆ. หน้ารายละเอียดได้ `payrollGate` (`inspect`) เฉพาะสถานะ DRAFT / PENDING_APPROVAL / APPROVED — POSTED/VOIDED เป็น `null`.
 - **ลำดับด่านและ 409** (`payroll-post-gate.service.ts`): ส่งขออนุมัติ → `PAYROLL_SUBMIT_CUTOFF` (`closableAt`). อนุมัติ/ลงบัญชี (`assertPostable`, `approve()` ตรวจก่อนเปลี่ยนสถานะเสมอ แม้ปิด auto-post · `post()` ตรวจครบทุกด่านซ้ำทุกครั้ง (`executePostBody` ด้วย `payrollGateDone: false`) รวมใบ APPROVED ที่ปิด auto-post และใบ DRAFT ที่ลงบัญชีตรงตอนปิดขั้นอนุมัติ):
   (0) `DOCUMENT_CHANGED` (R20 — ฉบับที่ผู้กดเห็น ดูหัวข้อถัดไป · R23: ตรวจใต้ล็อก `post:${id}` **หลัง**ด่านขออนุมัติ (`post()` ใบ DRAFT ที่ต้องขออนุมัติ = 400 "ต้องผ่านการอนุมัติก่อน") และด่านสถานะ (`assertCanPost` / `assertCanApprove`) แต่ก่อนด่านใบเงินเดือนและการเขียนใด ๆ) → (1) `PAYROLL_CUTOFF` → (2) `PAYROLL_DEVICE_CONFLICT` (D6: วันของคนในใบ เดือนของงวด ที่ยังมีธง `DEVICE_CONFLICT` — ทุกคนในใบ ไม่ว่าระบบคิด OT ให้หรือไม่; เจ้าของกด "ตรวจแล้ว ล้างธง" ที่เมนู ลงเวลา, ผจก.แก้เวลาไม่ล้างธง; ธงอื่นเตือนอย่างเดียว · ธงยังถูกติดในเดือนที่จ่ายแล้วโดย `lockForConflict` — ดู `.claude/rules/database.md`) →
-  (3) `PAYROLL_STALE` (`diffs` — คิดใหม่ด้วยทางเดียวกับตอนบันทึก ต้องเท่ากับที่เก็บ) → (4) `PAYROLL_OTHER_DOC` (`documentNumber`). ตอนส่งขออนุมัติธงชนยังส่งได้ (แผงแดงบนสุด). 409 พร้อมรายละเอียดต้องผ่าน `SentryExceptionFilter` (ส่ง `code` + field ต่อ): allow-list ใน `apps/api/src/filters/sentry-exception.filter.ts` :77 คือ `code` · `closableAt` · `days` · `diffs` · `documentNumber` และผ่านเฉพาะ status < 500 — field ใหม่ต้องเพิ่มที่นั่น. `DOCUMENT_CHANGED` (409) และ `MANUAL_OT_DUPLICATE` (400 — รวมตอนส่งขออนุมัติที่คิดใหม่แล้วชน) ใช้แค่ `code` + `message` (ปักที่ `payroll-gate.http.spec.ts` H4–H6).
+  (3) `PAYROLL_STALE` (`diffs` — แถวลงเวลา: คิดใหม่ด้วยทางเดียวกับตอนบันทึก ต้องเท่ากับที่เก็บ · ค่าคอม/หักคืน: รายการที่เก็บต้องยังจ่าย/หักได้ — ส่วนที่ 2) → (4) `PAYROLL_OTHER_DOC` (`documentNumber`). ตอนส่งขออนุมัติธงชนยังส่งได้ (แผงแดงบนสุด). 409 พร้อมรายละเอียดต้องผ่าน `SentryExceptionFilter` (ส่ง `code` + field ต่อ): allow-list ใน `apps/api/src/filters/sentry-exception.filter.ts` :77 คือ `code` · `closableAt` · `days` · `diffs` · `documentNumber` และผ่านเฉพาะ status < 500 — field ใหม่ต้องเพิ่มที่นั่น. `DOCUMENT_CHANGED` (409) และ `MANUAL_OT_DUPLICATE` (400 — รวมตอนส่งขออนุมัติที่คิดใหม่แล้วชน) ใช้แค่ `code` + `message` (ปักที่ `payroll-gate.http.spec.ts` H4–H6).
 - **ลำดับล็อก (post)**: advisory `post:${docId}` → `payroll:${branchId}:${period}:${scope}` (`payrollDocumentLockKey`) → `payroll-attendance:${userId}:${period}` **เรียง userId** (`lockPayrollAttendance`) ถือจนจบ tx
   ⇒ แก้ลงเวลา/บันทึกใบอื่นของคนเดียวกันระหว่างนั้นต้องรอ. `payroll:` ขอโดย `createPayroll` / `updatePayrollInTx` / `assertPostable`; `payroll-attendance:*` ขอโดย `attachSystemRows` (ใต้ create/update) / `assertPostable`. ทางสร้างใบขอ advisory เลขที่เอกสาร (`DocNumberService`) หลังล็อกลงเวลา — ไม่เป็นไรเพราะไม่มีผู้เขียนลงเวลาขอตัวนั้น. ผู้อ่านเงินเดือนล็อกเฉพาะ advisory แล้วอ่านแถววันแบบธรรมดา — ลำดับล็อกฝั่งลงเวลาทั้งหมดดู `.claude/rules/database.md` หัวข้อ "ลงเวลา".
 - **เดือนที่จ่ายแล้วแก้ลงเวลาไม่ได้**: (คน, เดือน) ที่มีบรรทัดในใบ PAYROLL `POSTED` (ไม่ลบ · ใบ VOIDED ปลดเอง) → `correctDay` / `setDayKinds` = 409 `ATTENDANCE_PAID` (`attendance-payroll-lock.ts`) — รวมคนที่ OT ไปอยู่ในใบสาขาอื่น ·
@@ -1068,12 +1068,12 @@ Spec: `docs/superpowers/specs/2026-10-27-payroll-ot-commission-design.md` (§17 
   ห้ามกู้ใบเงินเดือนจากถังขยะทุกกรณี (สร้างใหม่).
 - **เว็บ** (เมื่อต้องแก้ต่อ): ฟอร์มแก้ดึงข้อมูลสดและไม่ส่ง ATTENDANCE_* กลับเป็น MANUAL · ก่อนบันทึกเอาแถว OT ที่กรอกเองออก (`stripTypedOtRows` + toast) เฉพาะบรรทัดที่บันทึกแล้วและ snapshot มี `autoOtEligible` และ `attendanceTracked` เป็น true —
   snapshot ที่บันทึกก่อน R20 (ไม่มี `attendanceTracked`) ถือว่าไม่รู้ ไม่เอาออก ให้ server ตัดสิน (server คิดใหม่ทุกครั้งที่บันทึก) · ลิงก์วันที่ต้องตรวจ `/attendance?tab=today&date=YYYY-MM-DD&branchId=…` (วันของสาขาอื่นเปิดสาขานั้น; ผจก.อยู่สาขาตัวเอง; วันอนาคตถูกปฏิเสธ) ·
-  หน้ารายละเอียด poll ทุก 60 วินาทีขณะด่านยังบล็อก + ตั้ง timer ที่เวลาปิดงวด · ปุ่ม อนุมัติและลงบัญชี / บันทึกและลงบัญชี ส่ง `expectedUpdatedAt: doc.updatedAt` เฉพาะใบ PAYROLL (`lib/document-version.ts` · R21 — เอกสารชนิดอื่นส่ง `{}` เหมือนเดิม) · สลิปพิมพ์ท้ายกระดาษ `ใบจ่ายเงินเดือน v2 · {ลำดับ}/{ทั้งหมด}` (R21 — เลขสลิปในชุดที่พิมพ์) · หนึ่งคนหนึ่งแผ่น A4 (DOC-04 ปัก 3 คน = 3 หน้า): รายได้/รายการหักเรียงลงเต็มหน้า (ไม่ใช้กริด `.bc-doc-earnings`) และกล่องสรุปเวลาทำงานย่อเป็นแถวเดียวตอนพิมพ์ — เหลือที่ว่างน้อย แถวรายได้เพิ่ม ~4 แถวจะล้นหน้า
+  หน้ารายละเอียด poll ทุก 60 วินาทีขณะด่านยังบล็อก + ตั้ง timer ที่เวลาปิดงวด · ปุ่ม อนุมัติและลงบัญชี / บันทึกและลงบัญชี ส่ง `expectedUpdatedAt: doc.updatedAt` เฉพาะใบ PAYROLL (`lib/document-version.ts` · R21 — เอกสารชนิดอื่นส่ง `{}` เหมือนเดิม) · สลิปพิมพ์ท้ายกระดาษ `ใบจ่ายเงินเดือน v2 · {ลำดับ}/{ทั้งหมด}` (R21 — เลขสลิปในชุดที่พิมพ์) · หนึ่งคนหนึ่งแผ่น A4 (DOC-04 ปัก 3 คน = 3 หน้า): รายได้/รายการหักเรียงลงเต็มหน้า (ไม่ใช้กริด `.bc-doc-earnings`) และกล่องสรุปเวลาทำงานย่อเป็นแถวเดียวตอนพิมพ์ — (ส่วนที่ 2: สลิปมีเลย์เอาต์เดียวตายตัว `data-bc-paper-fit="fixed"` เหลือที่ว่างราว 21 มม. ในกรณีหนักสุดของ DOC-04 (มีค่าคอมและหักคืน) · สลิปที่หนักกว่านั้นราว 3 แถวต่อหน้าที่สอง — รายละเอียดในหัวข้อค่าคอมด้านล่าง)
   และ 409 `DOCUMENT_CHANGED` = toast ข้อความของ server + `invalidateExpenseDoc` (โหลดใบใหม่ ล้างแจ้งเตือนยอดเปลี่ยน) · ฟอร์มที่ลงบัญชีต่อทันที (ปิดขั้นอนุมัติ) ส่ง `updatedAt` ที่ได้จากการบันทึก ·
   หน้ารายการไม่มีอนุมัติ/ลงบัญชีสำหรับ PAYROLL (`ExpensesPage` — เมนูเว้น PAYROLL) · หน้าลงเวลาของเดือนที่จ่ายแล้วแสดงป้ายล็อกและปิดปุ่มแก้ (ข้อความชี้ใบเงินเดือนงวดถัดไป) — ยกเว้นเจ้าของบนแถวที่ติด `DEVICE_CONFLICT` ซึ่งเปิดได้เพื่อล้างธงเท่านั้น. ปุ่มไฟล์โอนธนาคารเปิดเฉพาะ POSTED ที่ฝั่งเว็บเท่านั้น (endpoint `bank-transfer.csv` ไม่ตรวจสถานะ).
-- **คำตัดสินเจ้าของ 2026-10-27** (ปิดประเด็น — อย่าเสนอซ้ำ): D1 นาทีสาย **เก็บแยก ไม่หักเงิน** (แสดงบนสลิปเป็นข้อมูล) · D2 ค่าคอมพนักงานจ่ายผ่านใบเงินเดือนอย่างเดียว ต้องอนุมัติก่อนดึงเข้าใบ (ส่วนที่ 2) ·
+- **คำตัดสินเจ้าของ 2026-10-27** (ปิดประเด็น — อย่าเสนอซ้ำ): D1 นาทีสาย **เก็บแยก ไม่หักเงิน** (แสดงบนสลิปเป็นข้อมูล) · D2 ค่าคอมพนักงานจ่ายผ่านใบเงินเดือนอย่างเดียว ต้องอนุมัติก่อนดึงเข้าใบ (**ทำแล้ว ส่วนที่ 2** — ทางจ่ายเดิม 3 ทางตอบ 410) ·
   D3 OT เดือน M จ่ายพร้อมเงินเดือน M ลงบัญชีได้ตั้งแต่ 18:00 วันที่ 1 ของ M+1 · D4 รายวัน/สัญญาจ้าง/ไม่มีฐานในทะเบียน ไม่คิด OT อัตโนมัติ · D5 วันหยุดจ่ายตาม ม.61–63 (1.5 / +1 / 3 เท่า) ·
-  D6 ธง "เครื่องถูกใช้ซ้อน" ค้าง = ห้ามอนุมัติจนเจ้าของตรวจ · D7 ค่าคอมที่จ่ายแล้วต้องเรียกคืน = หักงวดถัดไปอัตโนมัติ เพดาน = ค่าคอมของงวดนั้น (ม.76) เกินยกไปงวดหน้า (ส่วนที่ 2) —
+  D6 ธง "เครื่องถูกใช้ซ้อน" ค้าง = ห้ามอนุมัติจนเจ้าของตรวจ · D7 ค่าคอมที่จ่ายแล้วต้องเรียกคืน = หักงวดถัดไปอัตโนมัติ เพดาน = ค่าคอมของงวดนั้น (ม.76) เกินยกไปงวดหน้า (**ทำแล้ว ส่วนที่ 2**) —
   **แต่ยกเลิกสัญญา: ค่าคอมที่จ่ายแล้วไม่เรียกคืน** (คงคำตัดสิน 2026-09-20) · สลิปห้ามส่ง LINE/อีเมล พิมพ์กระดาษเท่านั้น.
 - **ยังเปิดอยู่ (ส่วนที่ 1 — รู้แล้ว ยังไม่แก้)**:
   - `AttendanceService.setDayKinds` ส่ง `entries: []` ได้ 500 (เว็บไม่เคยส่ง) — `attendance.service.ts`
@@ -1087,6 +1087,87 @@ Spec: `docs/superpowers/specs/2026-10-27-payroll-ot-commission-design.md` (§17 
   - `compute` อ่านกติกาสาขาด้วย root client ภายใน tx เงินเดือน (`payroll-system-rows.service.ts` :92 `getRules`)
   - `lockForConflict` `updateMany` อาจจับแถวนอกชุด FOR UPDATE (`attendance-device.service.ts`)
   - หน้าถังขยะยังเสนอปุ่มกู้คืนสำหรับใบ PAYROLL ทั้งที่ server ปฏิเสธ (`trash/trash-registry.ts` :216)
+
+### ค่าคอม/หักคืนผ่านใบเงินเดือน (D4 ส่วนที่ 2 · 2026-10-27 · migration `20261107000000_payroll_commission`)
+
+Spec: `docs/superpowers/specs/2026-10-27-payroll-ot-commission-design.md` · แผน: `docs/superpowers/plans/2026-10-27-payroll-ot-part2-commission.md` · โค้ด (เขียนจากโค้ดที่ build จริง):
+`payroll-system/payroll-commission-state.ts` (`loadCommissionState` — กติกา "จ่ายได้/หักได้" ที่เดียว) · `payroll-system-rows.service.ts` (`commissionRows` แปลงเป็นแถว) · `payroll-commission-items.ts` (`releaseCommissionItems` · `revertCommissionPayment` · `PAYROLL_COMMISSION_ITEMS_INCLUDE`) ·
+`payroll-post-gate.service.ts` (`markCommissionsPaid` · `releaseOnVoid` · `commissionDiffs`) · `payroll-save.ts` (`lockPayrollClawback` · `writeWithCommissionGuard` · `PAYROLL_CLAWBACK_DUPLICATE`) ·
+`commission/commission-clawback.util.ts` (`clawBackCommissions` — ตัวเขียนหักคืนตัวเดียว) · `commission/commission-payout-cover.util.ts` (`isCoveredByPayout` · `UNPAID_PAYOUT_STATUSES`).
+
+**วงจรค่าคอม (ไม่มีสถานะใหม่ — `CommissionStatus` เดิม):** `PENDING` → (`POST /commissions/:id/approve`, OWNER/FM, เป็น CAS `(id, status PENDING)` — ชนกับการเรียกคืน = 409 `สถานะค่าคอมเปลี่ยนแล้ว กรุณาตรวจใหม่` ไม่เขียนทับเป็น `APPROVED`) `APPROVED` →
+ถูกดึงเข้าใบเงินเดือน (เฉพาะ SHOP) → `PAID` ตอน**ลงบัญชีใบนั้น** (`paidAt` = วันที่เอกสาร `documentDate` · `paidAmount` = ยอดรายการ PAY) · **ทางจ่ายเดิมถูกปิด:** `POST /commissions/:id/pay` · `POST /commissions/payouts/generate` · `PATCH /commissions/payouts/:id/paid` ตอบ **410**
+`{ code: 'COMMISSION_PAY_VIA_PAYROLL' }` (ข้อความชี้ หน้ารายจ่าย › สร้างเอกสารใหม่ › เงินเดือน (PR) — `COMMISSION_PAY_VIA_PAYROLL_MSG`) · `PATCH payouts/:id/approve` ยังเปิดแต่ไม่มีรอบ `DRAFT` ใหม่เกิด (รอบจ่ายเดิมอ่านอย่างเดียวบนหน้าจอ แท็บ "ใบจ่ายรายเดือน · ดูอย่างเดียว").
+
+**แถวที่ระบบคิดทุกครั้งที่บันทึก (ต่อบรรทัดที่ผูกพนักงาน SHOP — ไม่ผ่าน `autoOtEligible` / `attendanceTracked` / PIN / `IN_OTHER_DOCUMENT` ซึ่งกำกับแถวลงเวลาเท่านั้น):**
+
+| เรื่อง | กติกา (ที่มา) |
+|---|---|
+| รายได้ | แถว `PayrollIncomeSource.COMMISSION` หนึ่งแถวต่อบรรทัด ชื่อ `ค่าคอมมิชชัน ({n} รายการ)` · บัญชี role `shop_payroll_commission` → **`S51-1101`** (migration INSERT ผัง + role; **ไม่มี role/บัญชีฝั่ง FINANCE**) · `isTaxable = true` · ยอด = Σ ค่าคอมที่จ่ายได้ (ไม่ใช้ตัวคูณ/ชั่วโมง) |
+| จ่ายได้เมื่อ | `status = APPROVED` · `period ≤ งวดของใบ` · `deletedAt` ว่าง · `commissionAmount > 0` · ไม่ถูกรอบจ่ายเดิมครอบ (รอบที่ไม่ใช่ `DRAFT`/`CANCELLED` และ `isCoveredByPayout`) · ไม่มีรายการ PAY ที่ยังมีผลในใบอื่น (`payroll-commission-state.ts`) — ค่าคอมที่ผ่านทุกข้อยกเว้นข้อสุดท้าย = คำเตือน `COMMISSION_IN_OTHER_DOCUMENT` (ไม่ใช่ 409) |
+| FINANCE | **ไม่ดึงค่าคอม** — ได้แค่คำเตือน `COMMISSION_FINANCE_BLOCKED` (เมื่อมีค่าคอมจ่ายได้ > 0) รอฝ่ายบัญชีตอบ ไม่มีบัญชี FINANCE ให้ลง |
+| หักคืน | ค่าคอม `CLAWED_BACK` / `PARTIALLY_CLAWED_BACK` ที่ `paidAt` ตั้งอยู่ · `clawbackAmount > 0` · มีรายการ PAY ที่ยังมีผลในใบ **POSTED** → แถวหัก `source = COMMISSION_CLAWBACK` ต่อบัญชีของรายการ PAY เดิม (**Cr บัญชีที่จ่ายจริง** ไม่ใช่ role ปัจจุบัน) ชื่อ `หักคืนค่าคอม ({n} รายการ)` ผ่านรายการหักของ `PayrollTemplate` เดิม (V19) · ลำดับ `[clawbackAt, id]` |
+| เพดาน (ตัดสิน 2) | หักได้ไม่เกิน Σ ค่าคอมงวดนี้ของคนนั้น (ป.คุ้มครองแรงงาน ม.76 — ค่าคอมเป็นค่าจ้าง ไม่หักเงินเดือนฐาน/OT) · ที่เกิน**ยกไป**งวดถัดไป = คำเตือน `CLAWBACK_CARRIED` (หนึ่งต่อบรรทัด เฉพาะเมื่อยก > 0 · `หักคืนค่าคอมได้ {x} บาท (ไม่เกินค่าคอมงวดนี้) — ยกไปงวดหน้า {y} บาท`) · ใบที่มีแต่หักคืนไม่มีค่าคอม = หัก 0 ยกทั้งก้อน |
+| กันหักซ้ำ (ตัดสิน 1) | **ไม่มี unique index/คอลัมน์ `deductedAt`** (ยกยอดต้องมีรายการ CLAWBACK หลายตัวต่อค่าคอมหนึ่งใบ) — คงเหลือ = `clawbackAmount − Σ รายการ CLAWBACK ที่ยังมีผลในใบอื่น` (ร่างก็นับ) อ่านใต้ล็อก `payroll-clawback:${userId}` และด่านตรวจซ้ำ · ≤ 0 = ข้าม |
+| ศูนย์ (P2-R6) | ยอด 0 ไม่เป็นแถว/รายการ (รายการ CLAWBACK 0.00 จะขวางการกลับรายการใบที่จ่าย) |
+| จ่ายนอกใบเงินเดือน | `paidAt` ตั้งแต่ไม่มีรายการ PAY ในใบ POSTED (ข้อมูลเก่า) → คำเตือน `CLAWBACK_PAID_OUTSIDE_PAYROLL` ระบบไม่หักให้ (ใส่รายการหักเอง) · ไม่เคยจ่าย (เช่น cron 50% บนแถว `APPROVED`) → ไม่มีอะไรให้หัก ไม่มีคำเตือน |
+| จับคู่คนขาย | `salespersonId` (ผู้เขียนทุกตัวตั้ง `snapshotSalespersonId` เท่ากันอยู่แล้ว) · อ้างอิง (`reference`) = เลขสัญญา ?? เลขใบขาย ?? id |
+
+**ตาราง `payroll_commission_items`** (`PayrollCommissionItem` — ผูก `PayrollLine` Cascade, `SalesCommission` Restrict · `kind` `PAY`/`CLAWBACK` · `accountCode` · `amount` · `releasedAt` ใช้ทั้งสองชนิด · ไม่มี `deletedAt`): "ยังมีผล" = `releasedAt` null **เท่านั้น** (ไม่กรองสถานะเอกสาร — ตรงกับดัชนี) ·
+partial unique `payroll_commission_items_one_active_pay ON (sales_commission_id) WHERE kind = 'PAY' AND released_at IS NULL` (SQL-only — ห้ามรับ diff ที่เสนอ DROP) · ชนดัชนีตอนเขียน = 409 `PAYROLL_COMMISSION_TAKEN` (P2002 จับด้วย `target` `sales_commission_id`/`modelName` — เขียนซ้อนผ่าน `expenseDocument.create` รายงาน `modelName: 'ExpenseDocument'`) ·
+`PayrollCustomDeduction.source` (`MANUAL` | `COMMISSION_CLAWBACK`, default `MANUAL`) · `findOne` / คำตอบสร้าง-แก้ใบส่ง `commissionItems` **ไม่กรอง `releasedAt` โดยตั้งใจ** (P2-R19.6) ⇒ ใบ `VOIDED` ยังแสดงว่าเคยจ่าย/หักอะไร.
+role-map: `shop_payroll_commission` อยู่ใน `REQUIRED_ROLES` / `role-map-validation` (EXPECTED_NORMAL_BALANCE = `Dr`) · `payroll_commission_items` อยู่ใน `WIPE_TABLES` ของ `factory-reset-tables.ts`.
+ถ้า role ถูกปิดใน AccountRoleMap ทุกการบันทึกใบ SHOP ที่มีบรรทัดผูกพนักงานได้ 400 — ให้เจ้าของเปิดที่ ตั้งค่าระบบ › ผู้ใช้ & สิทธิ์ › บัญชีตาม บทบาท (OWNER; ข้อความใน `role-codes.ts` และ `account-role.service.ts` ชี้เมนูนี้ตามที่ `settings-registry.tsx` ตั้งป้าย).
+
+**ฝั่งไคลเอนต์ส่งได้แต่รายการหัก `MANUAL`:** server กรอง `source: 'MANUAL'` ตอนประกอบ DTO จากที่เก็บ (`storedPayrollUpdateDto`) และตอนรับ (`preparePayrollInput`) · เว็บ (`payroll-system/payroll-lines.ts` `lineBase`) เก็บเฉพาะ `source === 'MANUAL'` ตอนแก้/คัดลอกงวดก่อน/ประกอบใหม่ตอนส่ง — แถว COMMISSION เป็น "รายได้ระบบ" ถูกทิ้งตาม source เหมือน `ATTENDANCE_*` (`stripTypedOtRows` แตะเฉพาะแถว OT) ·
+**`PAYROLL_CLAWBACK_DUPLICATE`** (400): รายการหัก MANUAL บัญชีค่าคอม (`S51-1101` หรือบัญชีของแถวหักคืนที่คิดได้) บนบรรทัด SHOP ที่ได้แถว `COMMISSION_CLAWBACK` — ไม่ผูกกับ `autoOtEligible`/`attendanceTracked`/ยอดตรงกัน (ดักแถวเก่าที่ยอดขยับ) · **แม่แบบใบเงินเดือน/บิลประจำที่มีรายการหัก `S51-1101` พิมพ์เองจะ instantiate ไม่ผ่านเมื่อพนักงานนั้นมีหักคืน** (ชนข้อนี้).
+
+**ด่านอนุมัติ/ลงบัญชี (แก้ตัวเลขที่ Part 1 เขียนไว้):** `PAYROLL_STALE` ตรวจตามนี้ — (ก) แถว `ATTENDANCE_*` เทียบกับที่คิดใหม่ (Part 1) (ข) **ค่าคอมตรวจจากรายการที่เก็บ ไม่เทียบกับผลคิดใหม่** (`commissionDiffs` ใช้ `loadCommissionState` ชุดเดียวกัน): Σ แถว COMMISSION = Σ รายการ PAY · Σ แถวหักคืนต่อบัญชี = Σ รายการ CLAWBACK ต่อบัญชี ·
+ค่าคอมของรายการ PAY ยัง `APPROVED`/ไม่ถูกลบ/ยอดเท่ารายการ · ค่าคอมของรายการ CLAWBACK ยังหักได้ (มี `paidAt`, มี PAY ในใบ POSTED **บนบัญชีเดียวกับที่หัก**, คงเหลือหลังใบอื่น ≥ รายการ) — ป้าย `ค่าคอม {อ้างอิง}` / `หักคืนค่าคอม {อ้างอิง}`.
+**ค่าคอมที่อนุมัติ/เรียกคืนใหม่หลังบันทึกไม่ทำให้ stale** (ตัดสิน 4 — เป็นคำเตือน ตกงวดถัดไปเอง `period ≤ งวด`) · ค่าคอมไม่เข้าตัวเทียบ `updatedAt` ของ `DOCUMENT_CHANGED` (เป็นเรื่องแก้เอกสาร ไม่ใช่สถานะค่าคอม).
+ลำดับตอนลงบัญชี: ล็อก `post:` → `DOCUMENT_CHANGED` → `assertPostable` (ถือ `payroll:` → `payroll-attendance:*` → `payroll-clawback:*`; ตรวจ cutoff → ธง → STALE → OTHER_DOC) → template (JE) → **`markCommissionsPaid`** (CAS `(id, APPROVED, deletedAt null, commissionAmount = ยอดรายการ)` ทีละแถว เรียงตาม id ค่าคอม ได้ ≠ 1 = `PAYROLL_STALE` พร้อม diff ของค่าคอมนั้น) ·
+audit `POSTED` / `AUTO_POSTED` มี `commissionItemIds`. ข้อความ STALE ใหม่: `ยังไม่ได้ลงบัญชี — ข้อมูลลงเวลา/ค่าคอมเปลี่ยนหลังบันทึกใบ …` (แทนของ Part 1).
+
+**ลำดับล็อก:** ทุกทางต่อ `payroll-clawback:${userId}` (เรียง userId ไม่ซ้ำ — `lockPayrollClawback`) ต่อจาก `payroll-attendance:*` ในบันทึก/ส่งขออนุมัติ (ผ่าน `updatePayrollInTx`)/อนุมัติ/ลงบัญชี และต่อจาก `post:` ในกลับรายการ (**ก่อน**ตรวจงวดและรายการกลับ JE ซึ่งถือล็อกเลข JE รายเดือน) — ผู้เขียนหักคืน (helper / cron / ยกเลิกใบขาย / ยกเลิกสัญญา / ล้างเครดิตเทิร์น) **ไม่ถือล็อกนี้** (ทุกการเขียนเป็น CAS บนสถานะและยกยอดขึ้นอย่างเดียว ด่านตรวจซ้ำ). ตารางเต็มใน `.claude/rules/database.md`.
+
+**กลับรายการใบ (`releaseOnVoid` — เรียกหลังรายการกลับ JE ก่อน CAS สถานะ):** เฉพาะใบ `POSTED` ที่แตะแถวค่าคอม · **ลำดับปฏิเสธตายตัว (partial ก่อน):**
+1. ค่าคอมของรายการ PAY ตัวใดเป็น `PARTIALLY_CLAWED_BACK` → 409 `PAYROLL_VOID_PARTIAL_CLAWBACK` (ข้อความอ้างอิงค่าคอม + ชี้ "รายการปรับปรุงงวดก่อน"/รายการหัก ในใบงวดถัดไป) — เป็นทางตัน (partial เป็นสถานะสุดท้าย) จึงตรวจก่อน ไม่งั้นข้อความจะส่งผู้ใช้ไปกลับรายการใบหักคืนที่ถูกต้องแล้วยังกลับใบนี้ไม่ได้
+2. ไม่มี partial แต่ถูกหักคืนแล้วในใบ **POSTED** อื่น → 409 `PAYROLL_VOID_AFTER_CLAWBACK` (`documentNumber` = เลขที่ใบนั้น) — กลับรายการใบนั้นก่อนแล้วใบนี้กลับได้ (ใบร่าง/ขออนุมัติที่ถือหักคืนไม่ขวาง: ปุ่มกลับรายการมีเฉพาะ POSTED)
+3. ไม่งั้น `revertCommissionPayment` (CAS): `PAID → APPROVED` ล้าง `paidAt`/`paidAmount` (**คืนเป็น `APPROVED` เสมอ ไม่ดูสถานะสัญญา** ⇒ void แล้วทำใหม่จ่ายได้อีก) · `CLAWED_BACK` ที่มี `paidAt` → ล้าง `paidAt`/`paidAmount`/`clawbackAmount` · ได้ ≠ 1 แถว = 409 `STATUS_CHANGED_MSG`
+4. ปล่อยรายการทุกตัว (PAY + CLAWBACK) `releasedAt = now` — ใบที่ยังไม่ POSTED ปล่อยอย่างเดียว · ลบร่าง (`softDelete`) ปล่อยรายการเช่นกัน (ไม่ต้องผ่านด่าน) · audit `commissionItemIds` / `releasedCommissionItemIds` · void/ลบ PAYROLL ที่ไม่ได้ต่อด่าน (`PayrollSystemRowsService not wired`) ปฏิเสธถ้ามีบรรทัดผูกพนักงาน (ไม่ fail open).
+- BM เห็นเลขที่ใบของ**สาขาอื่น**ได้ใน `PAYROLL_VOID_AFTER_CLAWBACK` และ `COMMISSION_IN_OTHER_DOCUMENT` (เลขเอกสารอย่างเดียว ไม่มียอด/ชื่อ) — ยอมรับ.
+
+**ยกเลิกใบขาย / ยกเลิกสัญญา / คืนเครดิต (ตัดสิน 3 — ตัวเขียนหักคืนตัวเดียว `clawBackCommissions`):** CAS ต่อแถว `(id, status)` เรียงตาม id · นับ ≠ 1 → 409 ทั้ง tx rollback · `status` = `CLAWED_BACK` (100%) / `PARTIALLY_CLAWED_BACK` (< 100%) · `clawbackAmount`: จ่ายแล้ว (`paidAt`) = HALF_UP(`paidAmount` × % ÷ 100) (ไม่มี `paidAmount` ใช้ `commissionAmount`) · ไม่เคยจ่ายที่ 100% = null · ไม่เคยจ่าย < 100% (cron 50% บน `APPROVED`) = HALF_UP(`commissionAmount` × %).
+- **ยกเลิกใบขาย G4 (`sale-void.service.ts`, `G4_COMMISSION_ACTION`):** `PENDING`/`APPROVED`/`PAID`/`PARTIALLY_CLAWED_BACK` → เรียกคืน 100% (ที่ `PAID` ไม่บล็อกอีก — ใบเงินเดือนงวดถัดไปหักคืน) · `CLAWED_BACK` ข้าม · สถานะอื่น 400 · G4b ยังบล็อก (ดูหัวข้อยกเลิกใบขาย) · ผลลัพธ์มี `paidCommissionClawback` (ยอดที่จ่ายผ่านใบเงินเดือน POSTED เท่านั้น 2 ตำแหน่ง) → toast `ค่าคอม {x} บาทที่จ่ายแล้วจะหักในเงินเดือนงวดถัดไป` · กล่องยืนยันมีประโยคตายตัว (ตัดสิน 6 — รายการขายไม่มีข้อมูลค่าคอม ยอดจริงอยู่ที่ toast): `ถ้าค่าคอมของใบนี้จ่ายไปแล้วในเงินเดือน ระบบจะหักคืนในเงินเดือนงวดถัดไปเอง ไม่ต้องทำอะไรเพิ่ม` — **ข้อความนี้สัญญาเกินเมื่อมียอดยก (เกินเพดาน) หรือพนักงานลาออก** (ดู "ยังเปิดอยู่").
+- **ยกเลิกสัญญา — คงเดิม (คำตัดสิน 2026-09-20):** เรียกคืนเฉพาะ `PENDING`/`APPROVED` 100% (`contract-commission.util.ts` เขียนผ่าน helper ด้วยแถวเหล่านี้เท่านั้น · `keptPaidIds` = `PAID` และ `PARTIALLY_CLAWED_BACK` ที่ไม่ถูกเรียกคืน · ผลลัพธ์/เหตุผล `ยกเลิกสัญญา {no}: {reason}` เหมือนเดิม) — **ค่าคอมที่จ่ายแล้วไม่เรียกคืน** ต่างจากยกเลิกใบขาย · เขียนเป็น CAS จึงมี 409 ใหม่เมื่อแถวเปลี่ยนระหว่างอ่าน (ลองใหม่แล้วแถวที่เพิ่ง `PAID` เข้า `keptPaidIds`) · รอบจ่าย `DRAFT` ที่ครอบถูกลบตามเดิม · `cleanupCreditContractSale` (`commissionHandledByCaller`) ยังให้ผู้เรียกจัดการค่าคอม.
+- cron ปิดสัญญาเร็ว (`applyClawbackForContract`): คง filter เดิม (`APPROVED`/`PAID`, `clawbackAt` ว่าง = idempotent) · `totalAmount` log = Σ HALF_UP(`commissionAmount` × %) คำนวณแยกจาก `clawbackAmount` ของ helper · race → 409 ล็อกเป็น warning ไม่ใช่ Sentry error รอรอบถัดไป.
+
+**ภาษี:** แถว COMMISSION เป็นเงินได้ 40(1) ที่เสียภาษี (`isTaxable`) · แถวหักคืนลดฐาน ภ.ง.ด.1 ของงวดที่หัก — `payrollTaxableGross(line)` (`payroll-pay.ts`) = ฐาน + รายได้ที่ `isTaxable !== false` − Σ รายการหักที่ `source === 'COMMISSION_CLAWBACK'` ล่างสุด 0 (รายการหัก MANUAL **ไม่ลด** · แถวที่ไม่มี source ไม่ลด) ·
+`previewPayrollWHT` และ `previewPnd1Annual` (`tax-preview.service.ts`) ใช้ตัวเดียวกัน (select `amount` + `source`) ⇒ ภ.ง.ด.1 / 1ก / 50 ทวิ ตรงกัน · **`annualWageTotal` (อ้างอิง กท.20ก) หักค่าคอมที่เรียกคืนแล้วด้วย** (ถามฝ่ายบัญชี A8/A9) · `previewSso110` ไม่เปลี่ยน (ฐานเงินเดือนอย่างเดียว) · ฟอร์ม "ฐานคำนวณ WHT" บนเว็บใช้สูตรเดียวกัน (ลบหักคืนระบบ).
+
+**เว็บ (Task 6):** `/commissions` (`CommissionsPage.tsx`) — อนุมัติผ่าน `api.post` (เดิมส่ง PATCH ไป route POST) · ส่ง `period` ไม่ใช่ `startDate`/`endDate` · ปุ่ม "จ่าย" / "สร้างใบจ่าย" / อนุมัติ-จ่ายรอบถูกถอด · แบนเนอร์และลิงก์ใบเงินเดือนเฉพาะ `canManage` (OWNER/FM — SALES สร้างใบไม่ได้) · `findAll` ส่ง `payrollLinks[]` · `clawbackOutstanding` · `salespersonResigned` ⇒ ป้าย `เรียกคืน — พนักงานลาออก ให้เจ้าของตัดสิน` (เจ้าของตัดสินเอง ระบบไม่หักอัตโนมัติ) + `แสดง {n} จาก {total} รายการ` เมื่อตัดที่ 100 ·
+`PayrollReviewPanel` มีเคสครบทุกคำเตือน (`COMMISSION_IN_OTHER_DOCUMENT` · `CLAWBACK_CARRIED` · `CLAWBACK_PAID_OUTSIDE_PAYROLL` · `COMMISSION_FINANCE_BLOCKED` ระดับเอกสารครั้งเดียว — สองตัวหลังซ่อนเมื่อใบไม่ใช่ DRAFT/PENDING_APPROVAL/APPROVED) · หน้ารายละเอียดมีคอลัมน์ค่าคอมแยกจาก "รายได้อื่น" · `invalidateExpenseDoc` และ `sale-voided` ล้างคีย์ `['commissions']`.
+**สลิปเงินเดือน (`PaymentVoucherPage.tsx`):** พิมพ์ด้วย**เลย์เอาต์เดียวตายตัวที่ลงหนึ่งแผ่น A4 ที่ 16 pt** และประกาศ `data-bc-paper-fit="fixed"` เพื่อไม่ผ่าน `fitPaperSpacing` (`packages/shared/src/document-spacing.ts` ข้ามราก `fixed` บรรทัดเดียว) — ค่าคอมแสดงเป็นรายการ (อ้างอิงสูงสุด 2 + `และอีก k รายการ`) และ `ยกไปงวดหน้า {y} บาท` ·
+งบ: DOC-04 กรณีหนักสุด (OT 3 แถว + ค่าคอม 5 + หักคืน + ยกยอด) ลง 1 แผ่นต่อสลิปเหลือประมาณ 21 มม. (`apps/api/e2e/documents/payroll.docs-spec.ts` 12/12) — **สลิปที่หนักกว่ากรณีนั้นราว 3 แถวตาราง (แถวรายได้/รายการหักเพิ่ม · บัญชีหักคืนที่สอง · หมายเหตุเอกสาร · ชื่อยาวตัดบรรทัด) จะต่อหน้าที่สอง** โดยกลุ่มยอดสุทธิ/ลายเซ็น/ท้ายกระดาษไม่ขาด (P2-R32 — ขีดจำกัดของการออกแบบ ไม่ใช่ regression; เจ้าของตัดสินว่าจะย่อตัวอักษรหรือรับสลิปสองหน้า) ·
+สลิปเบาก็พิมพ์ในเลย์เอาต์หนาแน่นเดียวกัน (ที่ว่างลายเซ็นแคบ) — เจ้าของควรดูบนกระดาษจริง · **ข้อจำกัดของ `fitPaperSpacing` ที่ยังเหลือกับเอกสารอื่น:** วัดตอน `beforeprint` ขณะ media เป็นหน้าจอ ส่วนกฎ compact ทั้งหมดอยู่ใต้ `@media print` ⇒ ระดับ compact อาจไม่ถูกคงไว้ในเบราว์เซอร์จริง (harness ที่จำลอง print media มองไม่เห็น) — เอกสารอื่นยังเสี่ยงเรื่องนี้ ยังไม่แก้.
+
+**คำตัดสิน/ข้อสมมติ Part 2 (เจ้าของรีวิวรายการนี้ — 1–6):**
+1. กันหักซ้ำโดยไม่มี unique index: คงเหลือ = `clawbackAmount` − รายการ CLAWBACK ที่ยังมีผลในใบอื่น อ่านใต้ `payroll-clawback:${userId}` และด่านตรวจซ้ำ (ไม่มีคอลัมน์ `deductedAt`).
+2. เพดาน = ค่าคอมของงวดนั้น (ม.76) ส่วนเกินยกงวดถัดไป · คนที่อยู่ในใบเงินเดือนหักตามปกติ (รวมเดือนสุดท้ายของคนลาออก) · ยอดค้างเมื่อ `resignedDate ≤ now` แสดงที่หน้าค่าคอมให้เจ้าของตัดสิน — **ไม่มีการหักอัตโนมัติจากเงินเดือนฐานที่ใด**.
+3. ตัวเขียนหักคืนตัวเดียว (`clawBackCommissions`) สำหรับยกเลิกใบขาย · คืนเครดิตเทิร์น · cron ปิดสัญญาเร็ว · ยกเลิกสัญญา (เฉพาะแถวที่ยังไม่จ่าย).
+4. ค่าคอมที่อนุมัติหลังบันทึกใบไม่ทำให้ stale — ด่านล้มเฉพาะเมื่อรายการที่เก็บใช้ไม่ได้/เปลี่ยน หรือแถวลงเวลาเปลี่ยน.
+5. กลับรายการใบปฏิเสธเมื่อค่าคอมของรายการ PAY ถูกเรียกคืนบางส่วน หรือถูกหักในใบ POSTED อื่น.
+6. กล่องยืนยันยกเลิกใบขายใช้ประโยคตายตัว ยอดจริงอยู่ที่ toast หลังสำเร็จ.
+
+**ยังเปิดอยู่ (ส่วนที่ 2 — รู้แล้ว ยังไม่แก้):**
+- **หักคืนไม่มีขอบเขตงวด** (`loadCommissionState` ไม่กรอง `period` ของแถวหักคืน): ใบที่เพิ่งบันทึกย้อนหลังของงวดก่อนหน้าจะหักคืนที่ `clawbackAt` หลังงวดนั้นด้วย — "ใบเงินเดือนที่บันทึกถัดไปเป็นคนหัก" ไม่ใช่ "งวดถัดไปตามปฏิทิน".
+- **FINANCE ไม่ดึงค่าคอม** (`COMMISSION_FINANCE_BLOCKED`) — รอฝ่ายบัญชีตอบว่าค่าคอมของ FINANCE ลงบัญชีไหน.
+- `CLAWBACK_PAID_OUTSIDE_PAYROLL` ไม่มีสถานะจบ (ขึ้นทุกใบจนกว่าหักเอง) — prod ไม่มีค่าคอมที่จ่ายนอกใบเงินเดือน (`markPaid` ตอบ 410 ตั้งแต่ส่วนที่ 2); ค่าคอม `PAID` เก่าที่ไม่มี PAY item เข้ากรณีนี้.
+- พนักงานลาออกยังมียอดเรียกคืนคงเหลือ: แสดงอย่างเดียว ไม่หักอัตโนมัติ (ตัดสิน 2) · ค่าคอม `PARTIALLY_CLAWED_BACK` ที่ไม่เคยจ่ายไม่มีขั้นต่อไป · ประโยคในกล่องยืนยันยกเลิกใบขายสัญญาเกินเมื่อยกยอด/ลาออก.
+- `wipe-payroll` (`cli/wipe-payroll.cli.ts` — เครื่องมือแอดมินออฟไลน์ ใช้บน dev/ล้างข้อมูล): คืนสถานะค่าคอมที่จ่ายผ่านใบที่ล้าง (`PAID → APPROVED` ฯลฯ ด้วย `revertCommissionPayment`) **แต่เลือกแถวนอก tx และไม่ถือ advisory lock ใด ๆ · ไม่มีเทสของ CLI (ทดสอบแค่ตัว helper)** · `PARTIALLY_CLAWED_BACK` ที่ล้าง `paidAt`/`paidAmount` เก็บ `clawbackAmount` ไว้ ⇒ ส่วนที่ยังไม่ได้หักถูกริบ (`partial: 'unpay'`).
+- ข้อมูลรายใบ (board 6B ของ mockup) ไม่ได้สร้างคอลัมน์ "เรียกคืน/ยกไปงวดหน้า" ต่อค่าคอม — เก็บเฉพาะยอดยกรวมต่อบรรทัด · สลิปแสดงไม่เกิน 2 อ้างอิงและไม่มียอดต่อค่าคอม · ยอดสรุปบนการ์ดหน้าค่าคอมตัดที่ 100 แถว · `DashboardMySales` ยังส่ง `startDate`/`endDate` ที่ API ไม่อ่าน (เดิม).
+- `FINANCE_BLOCKED` ค้างบนใบ FINANCE ที่ POSTED แล้ว (ซ่อนที่หน้ารายละเอียดเมื่อไม่ใช่สถานะแก้ได้) · ล็อกการกลับรายการ: ไม่มีการทดสอบสองคอนเนกชันของ `payroll-clawback` (เทสล็อกระดับ unit) · ด่านโหลดสถานะค่าคอมสองรอบใต้ล็อก (ประสิทธิภาพ).
+- **คำถามฝ่ายบัญชี (เพิ่ม):** A8 ฐาน กท.20ก รวมค่าคอม และ**หักค่าคอมที่เรียกคืนแล้ว** ถูกไหม (`annualWageTotal`) · A9 หักคืนค่าคอม Cr `S51-1101` ในงวดที่หัก + ลดฐาน ภ.ง.ด.1 + เพดาน ม.76 + ค่าคอมของ FINANCE ลงบัญชีไหน (เอกสาร `docs/accounting/` ยังไม่ได้ส่ง).
 
 ## SSO accounts (P0-3 — Fix Report v1.0)
 
@@ -2233,6 +2314,7 @@ template `journal/cpa-templates/shop-petty-cash.template.ts` · ตาราง 
 
 - **กติกา = เหมือนขายสด:** อัตราจาก `CommissionRule` ที่ active ล่าสุด (ไม่มีกฎ = 3%) × ราคาขายของสัญญา (`sellingPrice` —
   หลังส่วนลด/โบนัสเทิร์น) · `status: PENDING` · ผู้ได้ = `contract.salespersonId` ณ วันเปิดใช้ (`snapshotSalespersonId`)
+- **จ่ายเงิน = ผ่านใบเงินเดือนเท่านั้น (D4 ส่วนที่ 2, 2026-10-27):** `PENDING` → อนุมัติ (`POST /commissions/:id/approve`) → `APPROVED` → ถูกดึงเข้าใบเงินเดือน SHOP → `PAID` ตอนลงบัญชีใบนั้น (`paidAt` = วันที่เอกสาร) · `POST /commissions/:id/pay` · `payouts/generate` · `payouts/:id/paid` ตอบ 410 · ค่าคอมที่จ่ายแล้วแล้วถูกเรียกคืน (ยกเลิกใบขาย · คืนเครดิตเทิร์น · cron ปิดสัญญาเร็ว) หักในใบเงินเดือนถัดไปเพดานค่าคอมของงวด — กติกาเต็มที่หัวข้อ "ค่าคอม/หักคืนผ่านใบเงินเดือน (D4 ส่วนที่ 2)" ใต้ Payroll · **ยกเลิกสัญญาด้านล่างไม่เปลี่ยน (ที่จ่ายแล้วไม่เรียกคืน)**
 - **สร้างตอนเปิดใช้สัญญา** (`ContractWorkflowService.activate` → `ensureContractCommission`) ไม่ใช่ตอนร่าง —
   สัญญาที่ไม่ถูกเปิดใช้ = ยังไม่ได้ขาย. เดิมสัญญาที่ทำผ่านหน้าสัญญา**ไม่มีค่าคอมเลย** (ค่าคอมเกิดได้ทางเดียวคือเส้นทางเก่า
   `POST /sales` แบบ `INSTALLMENT` ที่สร้างตั้งแต่ตอนร่าง — **ถอดแล้ว 2026-09-20**, ดูข้อสุดท้าย) — helper ไม่สร้างซ้ำถ้าสัญญา
@@ -2317,11 +2399,13 @@ PR #1285 (2026-06-23) ทำให้ `ShopCashSaleTemplate` โพสต์ **J
 | G7 | `RepairTicket` ที่ `productId ∈ {หลัก, ของแถม}` และ `status notIn [CLOSED, CANCELLED, REPLACED]` | **`RepairTicket` ไม่มี `saleId`** (spec เดิมเขียนว่า "อ้างอิงใบขายนี้") จึงตรวจผ่าน `productId`; enum จริงคือ `RepairStatus` |
 | G5 | `assertProductNotHeld(tx, { ...p, expectedStatus }, 'RESTORE_TO_STOCK')` ทุกชิ้น | action ที่ 4 บน helper เดิม (ห้ามมีด่านชุดที่สอง). `expectedStatus` = `SOLD_CASH` (CASH) / `SOLD_INSTALLMENT` (EXTERNAL_FINANCE หลัก) — **ของแถมเป็น `SOLD_CASH` เสมอ** (`markBundleProductsSold` hardcode) จึงใบ EXTERNAL_FINANCE มีสองสถานะในใบเดียว. นับจำนวน product **ก่อน** วนด่าน |
 | G3 | `FinanceReceivable` ของใบ (ไม่ผูก saleType) | บล็อกเมื่อ `status ∈ {RECEIVED, PARTIALLY_RECEIVED}` **หรือ** `receivedAmount > 0` — allow-list ตาม D2 (`DISPUTED`/`OVERDUE` = ยังไม่ได้เงิน; สเปคเดิม `status != PENDING` ล็อกใบถาวร) |
-| G4 | `SalesCommission.status` | `CLAWABLE_COMMISSION_STATUSES = [PENDING, APPROVED]` เป็นตัวตัดสินสองงาน: ไม่อยู่ในลิสต์ (PAID / PARTIALLY_CLAWED_BACK / ค่าใหม่) = บล็อก, อยู่ = flip `CLAWED_BACK` |
-| **G4b** | `CommissionPayout` คู่ `(salespersonId, period)` ของค่าคอมที่เจอ | ดูหัวข้อถัดไป |
+| G4 | `SalesCommission.status` | **D4 ส่วนที่ 2: ที่ `PAID` ไม่บล็อกอีก** — ตาราง `G4_COMMISSION_ACTION` (`sale-void.service.ts`): `PENDING` / `APPROVED` / `PAID` / `PARTIALLY_CLAWED_BACK` → `clawBackCommissions` 100% (ยังไม่จ่าย = `CLAWED_BACK` `clawbackAmount` null · จ่ายแล้ว = `CLAWED_BACK` `clawbackAmount` = `paidAmount` ⇒ ใบเงินเดือนงวดถัดไปหักคืน ดูหัวข้อ "ค่าคอม/หักคืนผ่านใบเงินเดือน") · `CLAWED_BACK` = ข้าม (เดิมบล็อกด้วยข้อความเท็จ "เงินออกไปแล้ว") · สถานะอื่น/ค่าใหม่ = 400 (default-block). คำตอบมี `paidCommissionClawback` |
+| **G4b** | `CommissionPayout` คู่ `(salespersonId, period)` ของค่าคอมที่เจอ | ดูหัวข้อถัดไป — **ยังบล็อกตามเดิม** (รอบ legacy ที่ `APPROVED`/`PAID`) |
 | G2 | `validatePeriodOpen(tx, now, companyId)` ต่อ JE ที่จะกวาด | เฉพาะใบที่มี JE |
 
 ### G4b — รอบจ่ายค่าคอม + `CommissionPayout.generatedAt` (migration `20261000100000`)
+
+> **D4 ส่วนที่ 2 (2026-10-27):** ทางจ่ายที่ตาราง "สองเส้นทางจ่ายเงินอิสระ" ด้านล่างพูดถึง — `POST /commissions/:id/pay`, `POST /commissions/payouts/generate`, `PATCH /commissions/payouts/:id/paid` — **ตอบ 410 แล้ว** (`COMMISSION_PAY_VIA_PAYROLL`) ค่าคอมจ่ายผ่านใบเงินเดือนอย่างเดียว ⇒ ไม่มีรอบ `DRAFT` ใหม่เกิดอีก และรอบเดิมเป็นข้อมูลอ่านอย่างเดียว (แท็บ "ใบจ่ายรายเดือน · ดูอย่างเดียว"). ด่าน G4b ยังคงไว้กันรอบ legacy ที่ `APPROVED`/`PAID` (prod ไม่มี). `UNPAID_PAYOUT_STATUSES` ย้ายไปอยู่ `commission/commission-payout-cover.util.ts` เป็นรายการเดียวที่ `payroll-commission-state.ts` · `sale-void.service.ts` · `contract-commission.util.ts` · `credit-contract-cleanup.util.ts` ใช้ร่วมกัน. ข้อความปฏิเสธ G4b ถูกแก้ถ้อยคำแล้ว (ไม่พูดถึง "รอจ่ายตามยอดเดิม" อีก)
 
 มีสองเส้นทางจ่ายเงินอิสระกัน: `POST /commissions/:id/pay` เขียน `SalesCommission.status = PAID`
 (G4 เห็น) แต่ `PATCH /commissions/payouts/:id/paid` เขียน **เฉพาะ `CommissionPayout`** ไม่แตะค่าคอม
@@ -2358,8 +2442,7 @@ period])` ไม่ใช่ `saleId`.
 2. sweep JE (ด้านบน)
 3. `FinanceReceivable` → `deletedAt` (G3 การันตีว่ายังไม่มีเงินเข้า)
 4. `SalesCommission` → `CLAWED_BACK` + stamp `clawbackAt = now` / `clawbackReason = 'ยกเลิกใบขาย <saleNumber>: <reason>'`
-   / `clawbackPercent = 100` (pattern `commission.service.ts clawback()`; `clawbackAmount` ไม่ stamp เพราะ
-   `updateMany` ตั้งต่อแถวไม่ได้ และผู้อ่านตัดสินจาก `status`) · 4b. ร่างรอบจ่ายที่ครอบ → `deletedAt` + audit
+   / `clawbackPercent = 100` (ตั้งแต่ D4 ส่วนที่ 2 เขียนผ่าน `clawBackCommissions` ทีละแถวแบบ CAS `(id, status)` เรียงตาม id และ stamp `clawbackAmount` = `paidAmount` เมื่อจ่ายแล้ว (null เมื่อไม่เคยจ่าย)) · 4b. ร่างรอบจ่ายที่ครอบ → `deletedAt` + audit
 5. `Sale` → `deletedAt = now`, `voidReason`, `voidedById` (migration `20261000000000_sale_void_fields`;
    `voided_by_id TEXT` เพราะ `users.id` เป็น TEXT) — ไม่มีสถานะ `VOIDED` แยก
 6. `AuditLog { action: 'SALE_VOIDED', entity: 'sale' }` ผ่าน `tx.auditLog.create` (atomic; ห้าม
@@ -2382,7 +2465,7 @@ period])` ไม่ใช่ `saleId`.
 
 | Action | Entity | เขียนที่ | `newValue` |
 |---|---|---|---|
-| `SALE_VOIDED` | `sale` | `SaleVoidService.run` (ใน tx) | saleNumber, saleType, netAmount, reason, restoredProductIds, reversalEntryNumbers, commissionIds, financeReceivableId, voidedDraftPayoutIds |
+| `SALE_VOIDED` | `sale` | `SaleVoidService.run` (ใน tx) | saleNumber, saleType, netAmount, reason, restoredProductIds, reversalEntryNumbers, commissionIds, **paidCommissionIds · paidCommissionClawback · paidOutsidePayrollClawback · commissionClawbacks[] (id · statusBefore · paid · clawbackAmount) — ส่วนที่ 2**, financeReceivableId, voidedDraftPayoutIds |
 | `COMMISSION_PAYOUT_DRAFT_VOIDED` | `commission_payout` | เดียวกัน (หนึ่งแถวต่อร่างที่ถูกลบ) | period, salespersonId, saleId, saleNumber, reason |
 
 ### ยังเปิดอยู่ (carries — ไม่ block merge)
@@ -2393,9 +2476,9 @@ period])` ไม่ใช่ `saleId`.
 - `approvePayout` ยังเป็น READ COMMITTED — race กับ void ปิดได้บางส่วนด้วย restore-reset เท่านั้น
   (รอสัญญาณจริงก่อนยก isolation — หลักเดียวกับ P2034 ที่เส้นทางรับชำระ)
 - ค่าคอม `CLAWED_BACK` ไม่คืนยอดให้รอบ `APPROVED`/`PAID` — ไม่มีทางเกิดวันนี้เพราะถูกบล็อก แต่ถ้ามี
-  เมนูแก้ไข/ยกเลิกรอบจ่ายในอนาคต ต้องทบทวนพร้อมกัน
+  เมนูแก้ไข/ยกเลิกรอบจ่ายในอนาคต ต้องทบทวนพร้อมกัน (ส่วนที่ 2: ค่าคอมที่ `PAID` ผ่านใบเงินเดือนถูกเรียกคืนเข้าใบเงินเดือนงวดถัดไป ไม่ผ่านรอบจ่ายอีก)
 - ไม่มีเมนูยกเลิก/แก้ไขรอบจ่ายค่าคอม (`PayoutStatus.CANCELLED` ไม่มีใครตั้งได้) — ใบขายที่ค่าคอมถูกนับ
-  ในรอบ `APPROVED`/`PAID` ยกเลิกไม่ได้จนกว่าจะมี; ข้อความบอกความจริงข้อนี้ตรง ๆ
+  ในรอบ `APPROVED`/`PAID` ยกเลิกไม่ได้จนกว่าจะมี; ข้อความบอกความจริงข้อนี้ตรง ๆ (ส่วนที่ 2: รอบ legacy อ่านอย่างเดียวและไม่มีรอบใหม่เกิด — prod ไม่มีรอบเหลือ จึงเกือบไม่มีผลจริง)
 - SALES เห็นใบยกเลิก + เหตุผล + คนกด ผ่าน `findAll?includeVoided=true` (API `findAll` เปิดทุก role
   อยู่ก่อนแล้ว — pre-existing, ไม่มี PII ใหม่)
 - G6 ออเดอร์ออนไลน์ยังไม่มีเส้นทางล้างสองฝั่ง (ดูตารางด่าน)

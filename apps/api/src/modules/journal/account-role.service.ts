@@ -473,7 +473,7 @@ export class AccountRoleService implements OnModuleInit {
           'แถวชุดนี้มาจาก migration (20260919000000_add_account_role_map) — ' +
           'ตรวจว่า `npx prisma migrate deploy` รันครบแล้ว และไม่มีอะไรล้างตาราง ' +
           '(prisma/seed.ts เคย TRUNCATE ทิ้ง — ดู PRESERVED_TABLES) ' +
-          'หรือเพิ่ม/เปิดใช้งานแถวเองที่หน้า ตั้งค่า → ผู้ใช้ & สิทธิ์ → บัญชีตาม Role ' +
+          'หรือเพิ่ม/เปิดใช้งานแถวเองที่หน้า ตั้งค่าระบบ › ผู้ใช้ & สิทธิ์ › บัญชีตาม บทบาท ' +
           '(/settings/access/account-roles, OWNER เท่านั้น)',
       );
     }

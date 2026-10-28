@@ -8,6 +8,8 @@ import api from '@/lib/api';
 import ScreenTable from '@/components/ui/ScreenTable';
 import { Button } from '@/components/ui/button';
 import NameWords from '@/components/ui/NameWords';
+import ThaiDateInput from '@/components/ui/ThaiDateInput';
+import { toBangkokDateString } from '@/lib/date';
 import { formatNumberDecimal } from '@/utils/formatters';
 import { fmtOt, thaiShortDate } from '@/pages/attendance/attendance.util';
 import {
@@ -448,7 +450,8 @@ export function PayrollDetailSection({
 }
 
 /** ปุ่มเฉพาะใบเงินเดือนในแถบควบคุมภายใน: แก้ไข (ใบที่ยังไม่ลงบัญชี) + พิมพ์สลิป (เฉพาะใบที่ลงบัญชีแล้ว) */
-export function PayrollDetailActions({ doc }: { doc: PayrollDetailDoc }) {
+/** `canEdit` = ทำใบเงินเดือนได้ (ไม่ใช่ผู้จัดการสาขา — คำตัดสินเจ้าของ 2026-10-28) */
+export function PayrollDetailActions({ doc, canEdit = true }: { doc: PayrollDetailDoc; canEdit?: boolean }) {
   const captionId = useId();
   const editCaptionId = useId();
   const slips = doc.payroll?.lines.length ?? 0;
@@ -456,8 +459,8 @@ export function PayrollDetailActions({ doc }: { doc: PayrollDetailDoc }) {
   const draft = doc.status === 'DRAFT';
   return (
     <>
-      {isPayrollEditable(doc) && (
-        <span className="inline-flex max-w-64 flex-col items-end gap-1">
+      {canEdit && isPayrollEditable(doc) && (
+        <span className="inline-flex w-min flex-col items-end gap-1">
           <Button asChild variant="outline" size="sm">
             <Link to={payrollEditPath(doc.id)} aria-describedby={draft ? editCaptionId : undefined}>
               <Pencil size={14} className="mr-1.5" aria-hidden="true" />
@@ -472,7 +475,7 @@ export function PayrollDetailActions({ doc }: { doc: PayrollDetailDoc }) {
         </span>
       )}
       {slips > 0 && doc.status !== 'VOIDED' && (
-        <span className="inline-flex max-w-64 flex-col items-end gap-1">
+        <span className="inline-flex w-min flex-col items-end gap-1">
           {posted ? (
             <Button asChild size="sm">
               <Link to={`/expenses/${doc.id}/voucher`} aria-describedby={captionId}>
@@ -540,5 +543,81 @@ export function PayrollBankCsvButton({ doc, viewerRole }: { doc: PayrollDetailDo
         </span>
       )}
     </div>
+  );
+}
+
+/**
+ * สรุปยอดของใบเงินเดือน (แทนการ์ด "ยอดก่อนภาษี / VAT / หัก ณ ที่จ่าย" ของเอกสารทั่วไป ที่ใช้ฐานเงินเดือนอย่างเดียว
+ * จึงบวกลบไม่ลงกับยอดสุทธิ) — รวมรายได้ − ประกันสังคม − หัก ณ ที่จ่าย − รายการหัก = สุทธิ (ยอดที่เก็บไว้ทุกบรรทัด)
+ * + วันที่จ่ายเงิน: ลงบัญชีแล้ว = วันที่ของใบ · ยังไม่ลง = ใช้วันที่กดลงบัญชี เลือกวันอื่นได้ (คำตัดสินเจ้าของ 2026-10-28)
+ */
+export function PayrollTotalsCard({
+  lines,
+  posted,
+  documentDate,
+  payDate,
+  onPayDateChange,
+  canChoosePayDate,
+}: {
+  lines: StoredPayrollLine[];
+  posted: boolean;
+  /** วันที่ของใบ ('YYYY-MM-DD' หรือ ISO) — ใบที่ลงบัญชีแล้ว = วันที่จ่ายจริง */
+  documentDate: string;
+  payDate: string;
+  onPayDateChange: (ymd: string) => void;
+  /** ผู้ดูกดอนุมัติ/ลงบัญชีได้ และใบยังไม่ลงบัญชี */
+  canChoosePayDate: boolean;
+}) {
+  const fieldId = useId();
+  const sum = (pick: (l: StoredPayrollLine) => Decimal) => lines.reduce((s, l) => s.plus(pick(l)), new Decimal(0));
+  const income = sum((l) => (l.customIncome ?? []).reduce((s, r) => s.plus(dec(r.amount)), dec(l.baseSalary)));
+  const sso = sum((l) => dec(l.ssoEmployee));
+  const wht = sum((l) => dec(l.whtAmount));
+  const deductions = sum((l) => (l.customDeduction ?? []).reduce((s, r) => s.plus(dec(r.amount)), new Decimal(0)));
+  const net = income.minus(sso).minus(wht).minus(deductions);
+  const today = toBangkokDateString();
+  const row = (label: string, value: string, strong = false) => (
+    <div className={`flex justify-between gap-6 ${strong ? 'border-t border-border pt-1.5 font-semibold' : ''}`}>
+      <dt className={`leading-snug ${strong ? '' : 'text-muted-foreground'}`}>{label}</dt>
+      <dd className="tabular-nums leading-snug">{value}</dd>
+    </div>
+  );
+  return (
+    <section aria-label="สรุปยอดใบเงินเดือน" className="rounded-lg border border-border bg-card p-5">
+      <div className="ml-auto flex max-w-sm flex-col gap-3">
+        <dl className="space-y-1.5 text-sm">
+          {row('รวมรายได้ (ฐาน + OT + ค่าคอม + อื่น)', money(income))}
+          {row('หักประกันสังคม', `- ${money(sso)}`)}
+          {row('หัก ณ ที่จ่าย', `- ${money(wht)}`)}
+          {row('รายการหักอื่น', `- ${money(deductions)}`)}
+          {row('ยอดสุทธิที่จ่าย', money(net), true)}
+        </dl>
+        <div className="flex flex-col gap-1 border-t border-border pt-3 text-sm">
+          {posted ? (
+            <div className="flex justify-between gap-6">
+              <span className="text-muted-foreground leading-snug">วันที่จ่ายเงิน</span>
+              <span className="leading-snug">{thaiShortDate(documentDate.slice(0, 10))}</span>
+            </div>
+          ) : canChoosePayDate ? (
+            <>
+              <label htmlFor={fieldId} className="font-medium leading-snug">วันที่จ่ายเงิน</label>
+              <ThaiDateInput
+                id={fieldId}
+                value={payDate}
+                max={today}
+                onChange={(e) => onPayDateChange(e.target.value || today)}
+                aria-describedby={`${fieldId}-hint`}
+                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+              />
+              <span id={`${fieldId}-hint`} className="text-xs text-muted-foreground leading-snug">
+                ใช้วันนี้เป็นวันจ่ายเงินตอนกดอนุมัติ/ลงบัญชี — เปลี่ยนได้ถ้าโอนเงินวันอื่น (บัญชี ธนาคาร และ ภ.ง.ด.1 ลงวันที่นี้)
+              </span>
+            </>
+          ) : (
+            <span className="text-xs text-muted-foreground leading-snug">วันที่จ่ายเงิน = วันที่กดลงบัญชี</span>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }

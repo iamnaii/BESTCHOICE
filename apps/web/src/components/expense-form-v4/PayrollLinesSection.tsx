@@ -46,7 +46,8 @@ interface Props {
   value: PayrollFormFields;
   onChange: (v: PayrollFormFields) => void;
   documentDate: string;
-  onDocumentDateChange: (d: string) => void;
+  /** ไม่ใช้แล้ว (วันที่จ่าย = วันที่กดลงบัญชี) — คงไว้ให้ผู้เรียกเดิม */
+  onDocumentDateChange?: (d: string) => void;
   /** สาขาของเอกสาร — ใช้ดึงใบเงินเดือนงวดล่าสุดมาเติม (R3-1 คัดลอกงวดก่อน). */
   branchId?: string;
   /** ใบที่กำลังแก้ (ถ้ามี) — "ดึงข้อมูลงวดล่าสุดมาเติม" ต้องไม่เลือกใบนี้เอง */
@@ -91,7 +92,6 @@ export function PayrollLinesSection({
   value,
   onChange,
   documentDate,
-  onDocumentDateChange,
   branchId,
   documentId,
   onSaveAndCompute,
@@ -376,15 +376,11 @@ export function PayrollLinesSection({
           </NativeSelect>
         </div>
         <div>
-          <label htmlFor={`${uiFieldId}-3`} className="block text-xs font-medium mb-1">
-            วันที่จ่ายเงิน <span className="text-destructive">*</span>
-          </label>
-          <ThaiDateInput id={`${uiFieldId}-3`}
-            value={documentDate}
-            onChange={(e) => onDocumentDateChange(e.target.value)}
-            required
-            className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background"
-          />
+          {/* คำตัดสินเจ้าของ 2026-10-28 — วันที่จ่ายเงิน = วันที่กดลงบัญชี (เลือกได้ที่หน้ารายละเอียดของใบตอนอนุมัติ/ลงบัญชี) */}
+          <span className="block text-xs font-medium mb-1">วันที่จ่ายเงิน</span>
+          <p className="rounded-lg border border-dashed border-border px-3 py-2 text-sm text-muted-foreground leading-snug">
+            ใช้วันที่กดลงบัญชี — เลือกวันอื่นได้ตอนอนุมัติ/ลงบัญชี
+          </p>
         </div>
       </div>
 
@@ -532,7 +528,7 @@ function PayrollRow({
           <button
             type="button"
             onClick={() => onUpdate({ _expanded: !expanded })}
-            className="text-muted-foreground hover:text-foreground"
+            className="inline-flex size-11 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground lg:size-9"
             aria-label={expanded ? 'ย่อ' : 'ขยาย'}
             aria-expanded={expanded}
           >
@@ -628,7 +624,7 @@ function PayrollRow({
             type="button"
             onClick={onRemove}
             disabled={disableRemove}
-            className="text-muted-foreground hover:text-destructive disabled:opacity-30"
+            className="inline-flex size-11 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-destructive disabled:opacity-30 lg:size-9"
             aria-label="ลบ"
           >
             <Trash2 className="size-4" />
@@ -752,14 +748,14 @@ function CustomIncomeSubTable({
               </td>
               <td className="px-2 py-1 text-center">
                 <label
-                  className="inline-flex items-center gap-1 cursor-pointer text-xs"
+                  className="inline-flex min-h-11 items-center gap-1.5 rounded-md px-1.5 cursor-pointer text-xs hover:bg-accent lg:min-h-9"
                   title={r.isTaxable ? 'รายได้เสียภาษี' : 'ม.42 ยกเว้นภาษี'}
                 >
                   <input
                     type="checkbox"
                     checked={r.isTaxable}
                     onChange={(e) => update(r.uid, { isTaxable: e.target.checked })}
-                    className="size-3.5"
+                    className="size-4"
                   />
                   <span className={r.isTaxable ? '' : 'text-muted-foreground line-through'}>
                     เสีย
@@ -768,12 +764,12 @@ function CustomIncomeSubTable({
               </td>
               <td className="px-2 py-1">
                 {/* Payroll D4 — แก้ OT ที่จ่ายขาดของเดือนก่อน: ส่ง isAdjustment ⇒ server ไม่นับเป็น OT ที่กรอกซ้ำ */}
-                <label className="inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap text-xs leading-snug">
+                <label className="inline-flex min-h-11 items-center gap-1.5 rounded-md px-1.5 cursor-pointer whitespace-nowrap text-xs leading-snug hover:bg-accent lg:min-h-9">
                   <input
                     type="checkbox"
                     checked={r.isAdjustment}
                     onChange={(e) => update(r.uid, { isAdjustment: e.target.checked })}
-                    className="size-3.5"
+                    className="size-4"
                   />
                   รายการปรับปรุงงวดก่อน
                 </label>
@@ -782,7 +778,7 @@ function CustomIncomeSubTable({
                 <button
                   type="button"
                   onClick={() => remove(r.uid)}
-                  className="text-muted-foreground hover:text-destructive"
+                  className="inline-flex size-11 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-destructive lg:size-9"
                   aria-label="ลบรายได้พิเศษ"
                 >
                   <Trash2 className="size-3" />
@@ -883,7 +879,7 @@ function CustomDeductionSubTable({
                 <button
                   type="button"
                   onClick={() => remove(r.uid)}
-                  className="text-muted-foreground hover:text-destructive"
+                  className="inline-flex size-11 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-destructive lg:size-9"
                   aria-label="ลบรายการหัก"
                 >
                   <Trash2 className="size-3" />

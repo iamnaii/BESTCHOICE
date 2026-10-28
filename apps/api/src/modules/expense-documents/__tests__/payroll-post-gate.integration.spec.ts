@@ -761,6 +761,56 @@ describe('Payroll submit / approve / post gate (Postgres)', () => {
     }
   });
 
+  // คำตัดสินเจ้าของ 2026-10-28 — วันที่จ่ายเงิน = วันที่กดลงบัญชี (แก้ได้ก่อนกด) · เดิมใช้วันที่สร้างร่าง
+  describe('payment date = the day it is posted', () => {
+    const bkkYmd = () => new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 10);
+    const jeDateOf = async (id: string) => {
+      const d = await prisma.expenseDocument.findUniqueOrThrow({ where: { id }, select: { documentDate: true, journalEntryId: true } });
+      const je = await prisma.journalEntry.findUniqueOrThrow({ where: { id: d.journalEntryId! }, select: { postedAt: true, entryDate: true } });
+      return { doc: d.documentDate.toISOString().slice(0, 10), je: (je.postedAt ?? je.entryDate).toISOString() };
+    };
+
+    it('approve (auto-post) without a date stamps today (Bangkok) on the document instead of the draft date', async () => {
+      setNow(SAVED);
+      const b = await mkBranch('paydate-today');
+      const u = await mkUser('paydate-today', b);
+      const doc = await createDoc(b, [{ userId: u, baseSalary: 16500 }]); // ร่างวันที่ 2026-10-31
+      setNow(AFTER);
+      await lifecycle.submitForApproval(doc.id, ownerId);
+      await approveAsSeen(doc.id);
+      expect(await statusOf(doc.id)).toBe('POSTED');
+      const dates = await jeDateOf(doc.id);
+      expect(dates.doc).toBe(bkkYmd());
+      expect(dates.doc).not.toBe('2026-10-31');
+      expect(dates.je.slice(0, 10)).toBe(dates.doc); // รายการบัญชีลงวันที่จ่ายเดียวกัน (postedAt = documentDate)
+    });
+
+    it('a chosen past date is used for the document and its journal entry', async () => {
+      setNow(SAVED);
+      const b = await mkBranch('paydate-chosen');
+      const u = await mkUser('paydate-chosen', b);
+      const doc = await createDoc(b, [{ userId: u, baseSalary: 16500 }]);
+      setNow(AFTER);
+      await lifecycle.submitForApproval(doc.id, ownerId);
+      const chosen = bkkYmd();
+      await lifecycle.approve(doc.id, ownerId, 'OWNER', { expectedUpdatedAt: await versionOf(doc.id), paymentDate: chosen });
+      expect((await jeDateOf(doc.id)).doc).toBe(chosen);
+    });
+
+    it('a date after today is refused (400) and nothing is posted', async () => {
+      setNow(SAVED);
+      const b = await mkBranch('paydate-future');
+      const u = await mkUser('paydate-future', b);
+      const doc = await createDoc(b, [{ userId: u, baseSalary: 16500 }]);
+      setNow(AFTER);
+      await lifecycle.submitForApproval(doc.id, ownerId);
+      await expect(
+        lifecycle.approve(doc.id, ownerId, 'OWNER', { expectedUpdatedAt: await versionOf(doc.id), paymentDate: '2099-01-01' }),
+      ).rejects.toThrow('วันที่จ่ายเงินต้องไม่เกินวันนี้');
+      expect(await statusOf(doc.id)).toBe('PENDING_APPROVAL');
+    });
+  });
+
   it('fail closed: without the gate / save path wired, submit, approve and post of a payroll with linked lines throw · a free-text payroll still flows', async () => {
     setNow(SAVED);
     const b = await mkBranch('unwired');

@@ -28,6 +28,8 @@ import { ExpenseFormV4 } from '@/components/expense-form-v4/ExpenseFormV4';
 import { ReopenedPeriodBanner } from '@/components/accounting/ReopenedPeriodBanner';
 import { useApprovalActions, getApprovalReason, toastActionError } from '@/hooks/useApprovalActions';
 import { invalidateExpenseDoc } from '@/lib/expense-document-cache';
+import { useAuth } from '@/contexts/AuthContext';
+import { canManagePayroll } from '@/components/expense-form-v4/payroll-system/payroll-roles';
 import { isPayrollEditable, payrollEditPath } from '@/components/expense-form-v4/payroll-system/payroll-status';
 import { OPEN_DOC_LABEL } from '@/components/expense-form-v4/payroll-system/payroll-copy';
 
@@ -133,6 +135,10 @@ export default function ExpensesPage() {
   // hidden. Default true so first paint matches legacy behaviour.
   const { templatesEnabled } = useUiFlags();
   const permissions = useAccountingPermissions();
+  const { user } = useAuth();
+  // ผู้จัดการสาขาเปิดดูใบเงินเดือนได้ แต่แก้/ส่ง/ยกเลิกไม่ได้ (คำตัดสินเจ้าของ 2026-10-28)
+  const payrollManager = canManagePayroll(user?.role);
+  const payrollReadOnly = (e: { documentType: string }) => e.documentType === 'PAYROLL' && !payrollManager;
   const [searchParams, setSearchParams] = useSearchParams();
   const tabFilter = searchParams.get('tab') || 'all';
   const statusFilter = searchParams.get('status') || '';
@@ -389,7 +395,7 @@ export default function ExpensesPage() {
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="min-w-44">
-                  {e.status === 'DRAFT' && (
+                  {e.status === 'DRAFT' && !payrollReadOnly(e) && (
                     <>
                       <DropdownMenuItem disabled={e.documentType !== 'PAYROLL'} onSelect={() => openEdit(e)} className="min-h-11 flex items-center gap-2">
                         <Pencil className="size-4" /> แก้ไข
@@ -447,7 +453,7 @@ export default function ExpensesPage() {
                       )}
                     </>
                   )}
-                  {(e.status === 'PENDING_APPROVAL' || e.status === 'APPROVED') && isPayrollEditable(e) && (
+                  {(e.status === 'PENDING_APPROVAL' || e.status === 'APPROVED') && isPayrollEditable(e) && !payrollReadOnly(e) && (
                     <DropdownMenuItem onSelect={() => openEdit(e)} className="min-h-11 flex items-center gap-2">
                       <Pencil className="size-4" /> แก้ไข
                     </DropdownMenuItem>
@@ -495,7 +501,7 @@ export default function ExpensesPage() {
                       โพสต์
                     </DropdownMenuItem>
                   )}
-                  {permissions.can('EXPENSE_CANCEL') && (
+                  {permissions.can('EXPENSE_CANCEL') && !payrollReadOnly(e) && (
                     <DropdownMenuItem
                       onSelect={() => { setReverseDialog({ open: true, id: e.id, number: e.number }); }}
                       className="min-h-11 text-destructive"
@@ -664,8 +670,10 @@ export default function ExpensesPage() {
                 className="w-full px-3 py-2 text-sm text-left hover:bg-muted">รายจ่าย (EX)</button>
               <button onClick={() => { setShowCreateMenu(false); navigate('/expenses/new?type=CN'); }}
                 className="w-full px-3 py-2 text-sm text-left hover:bg-muted">ใบลดหนี้ (CN)</button>
-              <button onClick={() => { setShowCreateMenu(false); navigate('/expenses/new?type=PR'); }}
-                className="w-full px-3 py-2 text-sm text-left hover:bg-muted">เงินเดือน (PR)</button>
+              {payrollManager && (
+                <button onClick={() => { setShowCreateMenu(false); navigate('/expenses/new?type=PR'); }}
+                  className="w-full px-3 py-2 text-sm text-left hover:bg-muted">เงินเดือน (PR)</button>
+              )}
               <button onClick={() => { setShowCreateMenu(false); navigate('/expenses/new?type=SE'); }}
                 className="w-full px-3 py-2 text-sm text-left hover:bg-muted">จ่ายเจ้าหนี้ (SE)</button>
             </div>

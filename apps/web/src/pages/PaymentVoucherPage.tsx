@@ -199,7 +199,7 @@ export default function PaymentVoucherPage() {
           <button
             type="button"
             onClick={() => navigate(-1)}
-            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+            className="-ml-2 inline-flex min-h-11 items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground lg:min-h-9"
           >
             <ArrowLeft size={14} />
             กลับ
@@ -209,7 +209,7 @@ export default function PaymentVoucherPage() {
             onClick={printDocument}
             disabled={docQuery.isLoading || (!!docQuery.data && isPayrollSlipBlocked(docQuery.data))}
             aria-describedby={docQuery.data && rendersSlipBlockedNotice(docQuery.data) ? SLIP_BLOCKED_ID : undefined}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex min-h-11 items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60 lg:min-h-9"
           >
             <Printer size={14} />
             พิมพ์ / บันทึก PDF

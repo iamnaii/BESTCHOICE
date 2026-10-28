@@ -342,13 +342,38 @@ export class ExpenseDocumentLifecycleService {
         await tx.expenseDocument.update({ where: { id }, data: { approvedById: null } });
       }
       // ด่านใบเงินเดือนรันในตัวลงบัญชีเสมอ — รวมใบ APPROVED (ปิด auto-post) ที่อนุมัติไปแล้ว (ลงเวลาอาจเปลี่ยนหลังอนุมัติ)
-      const result = await this.executePostBody(doc, tx, { payrollGateDone: false });
+      const posting = await this.applyPayrollPaymentDate(tx, doc, opts.paymentDate);
+      const result = await this.executePostBody(posting, tx, { payrollGateDone: false });
       await tx.auditLog.create({ data: {
         action: 'POSTED', entity: 'expense_document', entityId: id, userId: _userId,
         oldValue: { status: doc.status }, newValue: { postedById: _userId },
       } });
       return result;
     });
+  }
+
+  /**
+   * ใบเงินเดือน — วันที่จ่ายเงิน = วันที่กดลงบัญชี (คำตัดสินเจ้าของ 2026-10-28) หรือวันที่ผู้กดเลือก ('YYYY-MM-DD').
+   * เดิมใช้วันที่สร้างร่าง ⇒ ร่าง 28 ต.ค. ลงบัญชี 2 พ.ย. = บัญชี / ธนาคาร / ภ.ง.ด.1 ลง 28 ต.ค.
+   * เขียน `documentDate` ใต้ล็อก `post:` ก่อนด่านงวดบัญชีและรายการบัญชี (ทั้งสองอ่านวันที่ของใบ) · วันในอนาคต = 400 ·
+   * เก็บแบบเดียวกับตอนสร้าง (`new Date('YYYY-MM-DD')`) · เอกสารอื่นไม่แตะ
+   */
+  private async applyPayrollPaymentDate(
+    tx: Prisma.TransactionClient,
+    // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+    doc: Prisma.ExpenseDocumentGetPayload<{}>,
+    paymentDate: string | undefined,
+    // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+  ): Promise<Prisma.ExpenseDocumentGetPayload<{}>> {
+    if (doc.documentType !== 'PAYROLL') return doc;
+    const today = bkkBusinessDate(new Date()).toISOString().slice(0, 10);
+    const ymd = paymentDate ?? today;
+    const date = new Date(ymd);
+    if (Number.isNaN(date.getTime())) throw new BadRequestException('วันที่จ่ายเงินไม่ถูกต้อง');
+    if (ymd > today) throw new BadRequestException('วันที่จ่ายเงินต้องไม่เกินวันนี้');
+    if (doc.documentDate?.getTime() === date.getTime()) return doc;
+    await tx.expenseDocument.update({ where: { id: doc.id }, data: { documentDate: date } });
+    return { ...doc, documentDate: date };
   }
 
   /**
@@ -685,7 +710,8 @@ export class ExpenseDocumentLifecycleService {
       // integrity guards (period open, attachment threshold, WHT routing,
       // V15 ACCRUAL-no-WHT, type allow-list) run via the helper so any
       // future change to those guards lands in both paths automatically.
-      const result = await this.executePostBody(doc, tx, { payrollGateDone: true });
+      const posting = await this.applyPayrollPaymentDate(tx, doc, opts.paymentDate);
+      const result = await this.executePostBody(posting, tx, { payrollGateDone: true });
 
       // D1.2.1.6 — AUTO_POSTED audit log (only when auto_post_on_approve=true
       // and the auto-post chain completed without throwing).

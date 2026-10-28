@@ -34,7 +34,8 @@ interface Props {
   value: PayrollFormFields;
   onChange: (v: PayrollFormFields) => void;
   documentDate: string;
-  onDocumentDateChange: (d: string) => void;
+  /** ไม่ใช้แล้ว (วันที่จ่าย = วันที่กดลงบัญชี) — คงไว้ให้ผู้เรียกเดิม */
+  onDocumentDateChange?: (d: string) => void;
   /** สาขาของเอกสาร — ใช้ดึงใบเงินเดือนงวดล่าสุดมาเติม (R3-1 คัดลอกงวดก่อน). */
   branchId?: string;
   /** ใบที่กำลังแก้ (ถ้ามี) — "ดึงข้อมูลงวดล่าสุดมาเติม" ต้องไม่เลือกใบนี้เอง */
@@ -79,7 +80,6 @@ export function PayrollLinesSection({
   value,
   onChange,
   documentDate,
-  onDocumentDateChange,
   branchId,
   documentId,
   onSaveAndCompute,
@@ -372,15 +372,11 @@ export function PayrollLinesSection({
           </NativeSelect>
         </div>
         <div>
-          <label htmlFor={`${uiFieldId}-3`} className="block text-xs font-medium mb-1">
-            วันที่จ่ายเงิน <span className="text-destructive">*</span>
-          </label>
-          <ThaiDateInput id={`${uiFieldId}-3`}
-            value={documentDate}
-            onChange={(e) => onDocumentDateChange(e.target.value)}
-            required
-            className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background"
-          />
+          {/* คำตัดสินเจ้าของ 2026-10-28 — วันที่จ่ายเงิน = วันที่กดลงบัญชี (เลือกได้ที่หน้ารายละเอียดของใบตอนอนุมัติ/ลงบัญชี) */}
+          <span className="block text-xs font-medium mb-1">วันที่จ่ายเงิน</span>
+          <p className="rounded-lg border border-dashed border-border px-3 py-2 text-sm text-muted-foreground leading-snug">
+            ใช้วันที่กดลงบัญชี — เลือกวันอื่นได้ตอนอนุมัติ/ลงบัญชี
+          </p>
         </div>
       </div>
 

@@ -291,7 +291,7 @@ export class ExpenseDocumentsController {
     @Body() dto: ExpenseDocumentVersionDto,
     @CurrentUser() user: { id: string; role: string },
   ) {
-    return this.service.post(id, user.id, user.role, { expectedUpdatedAt: dto?.expectedUpdatedAt });
+    return this.service.post(id, user.id, user.role, { expectedUpdatedAt: dto?.expectedUpdatedAt, paymentDate: dto?.paymentDate });
   }
 
   /**
@@ -315,7 +315,7 @@ export class ExpenseDocumentsController {
     @Body() dto: ExpenseDocumentVersionDto,
     @CurrentUser() user: { id: string; role?: string },
   ) {
-    return this.service.approve(id, user.id, user.role, { expectedUpdatedAt: dto?.expectedUpdatedAt });
+    return this.service.approve(id, user.id, user.role, { expectedUpdatedAt: dto?.expectedUpdatedAt, paymentDate: dto?.paymentDate });
   }
 
   /** Per-user EXPENSE_CANCEL and the actual document branch are checked in the service. */

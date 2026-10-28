@@ -23,11 +23,13 @@ import { formatNumberDecimal } from '@/utils/formatters';
 import { formatThaiDateShort } from '@/lib/date';
 import { invalidateExpenseDoc } from '@/lib/expense-document-cache';
 import { documentChangedMessage, documentVersionBody } from '@/lib/document-version';
+import { toBangkokDateString } from '@/lib/date';
 import { payrollConflictOf, type PayrollConflict } from '@/components/expense-form-v4/payroll-system/payroll-status';
 import {
   PayrollBankCsvButton,
   PayrollDetailActions,
   PayrollDetailSection,
+  PayrollTotalsCard,
   payrollBlockedReasons,
   PAYROLL_GATE_POLL_MS,
   payrollGateBlocks,
@@ -176,6 +178,8 @@ export default function ExpenseDetailPage() {
 
   // Payroll D4 — 409 PAYROLL_STALE แสดงเป็นแจ้งเตือนพร้อมตาราง diff บนหน้า (ไม่ใช่ toast) จนกว่ากดสำเร็จหรือใบเปลี่ยนสถานะ
   const [staleConflict, setStaleConflict] = useState<PayrollConflict | null>(null);
+  // ใบเงินเดือน — วันที่จ่ายเงินที่จะส่งตอนอนุมัติ/ลงบัญชี (ค่าเริ่มต้นวันนี้ · คำตัดสินเจ้าของ 2026-10-28)
+  const [payDate, setPayDate] = useState(() => toBangkokDateString());
   const onActionSuccess = (message: string) => () => {
     toast.success(message);
     setStaleConflict(null);
@@ -201,9 +205,15 @@ export default function ExpenseDetailPage() {
     toast.error((err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? fallback);
   };
 
+  // ใบเงินเดือนส่งวันที่จ่ายเงินไปด้วย (server ใช้วันนี้ถ้าไม่ส่ง) · เอกสารอื่นส่งเหมือนเดิม
+  const actionBody = () => ({
+    ...documentVersionBody(docQuery.data),
+    ...(docQuery.data?.documentType === 'PAYROLL' ? { paymentDate: payDate } : {}),
+  });
+
   const postMutation = useMutation({
     // R20/R21 — ใบเงินเดือนส่งฉบับที่หน้าวาด (server บังคับ) · เอกสารอื่นส่ง {} เหมือนเดิม
-    mutationFn: () => api.post(`/expense-documents/${id}/post`, documentVersionBody(docQuery.data)),
+    mutationFn: () => api.post(`/expense-documents/${id}/post`, actionBody()),
     onSuccess: onActionSuccess('บันทึกบัญชีเรียบร้อย'),
     onError: onActionError('บันทึกบัญชีไม่สำเร็จ'),
   });
@@ -215,7 +225,7 @@ export default function ExpenseDetailPage() {
   });
 
   const approveMutation = useMutation({
-    mutationFn: () => api.post(`/expense-documents/${id}/approve`, documentVersionBody(docQuery.data)),
+    mutationFn: () => api.post(`/expense-documents/${id}/approve`, actionBody()),
     onSuccess: onActionSuccess('อนุมัติเรียบร้อย'),
     onError: onActionError('อนุมัติไม่สำเร็จ'),
   });
@@ -377,7 +387,17 @@ export default function ExpenseDetailPage() {
               />
             )}
 
-            {/* Totals */}
+            {/* Totals — ใบเงินเดือนใช้การ์ดของตัวเอง (รายได้ − ประกันสังคม − หัก ณ ที่จ่าย − รายการหัก = สุทธิ) */}
+            {isPayroll && doc.payroll ? (
+              <PayrollTotalsCard
+                lines={doc.payroll.lines}
+                posted={doc.status === 'POSTED'}
+                documentDate={doc.documentDate}
+                payDate={payDate}
+                onPayDateChange={setPayDate}
+                canChoosePayDate={payrollManager && ['DRAFT', 'PENDING_APPROVAL', 'APPROVED'].includes(doc.status)}
+              />
+            ) : (
             <section className="rounded-lg border border-border bg-card p-5">
               <dl className="space-y-1.5 text-sm max-w-xs ml-auto">
                 <div className="flex justify-between gap-6">
@@ -398,6 +418,7 @@ export default function ExpenseDetailPage() {
                 </div>
               </dl>
             </section>
+            )}
           </div>
         )}
       </QueryBoundary>

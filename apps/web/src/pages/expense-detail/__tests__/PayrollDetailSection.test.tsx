@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { toBangkokDateString } from '@/lib/date';
 
 /**
  * Payroll D4 ส่วนที่ 1 (Task 8, mockup กระดาน 2 + 6A) — หน้ารายละเอียดใบเงินเดือน: ตารางบรรทัด, วันที่ต้องตรวจ/คำเตือน,
@@ -375,14 +376,15 @@ describe('409 from approve / post', () => {
     mount(payrollDoc('PENDING_APPROVAL'));
     apiPost.mockResolvedValue({ data: {} });
     await userEvent.click(await screen.findByRole('button', { name: /อนุมัติและลงบัญชี/ }));
-    await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/expense-documents/pr-1/approve', { expectedUpdatedAt: RENDERED_AT }));
+    // วันที่จ่ายเงิน = วันนี้ (เวลาไทย) ตามค่าเริ่มต้นของการ์ดสรุป (คำตัดสินเจ้าของ 2026-10-28)
+    await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/expense-documents/pr-1/approve', { expectedUpdatedAt: RENDERED_AT, paymentDate: toBangkokDateString() }));
   });
 
   it('R20 FX2: บันทึกและลงบัญชี on an APPROVED payroll sends the version the page rendered', async () => {
     mount(payrollDoc('APPROVED'));
     apiPost.mockResolvedValue({ data: {} });
     await userEvent.click(await screen.findByRole('button', { name: /บันทึกและลงบัญชี/ }));
-    await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/expense-documents/pr-1/post', { expectedUpdatedAt: RENDERED_AT }));
+    await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/expense-documents/pr-1/post', { expectedUpdatedAt: RENDERED_AT, paymentDate: toBangkokDateString() }));
   });
 
   it('R21: a non-payroll document keeps today\'s body — approve and post send {} (no version token)', async () => {
@@ -416,7 +418,7 @@ describe('409 from approve / post', () => {
 
     apiPost.mockResolvedValueOnce({ data: {} });
     await userEvent.click(await screen.findByRole('button', { name: /อนุมัติและลงบัญชี/ }));
-    await waitFor(() => expect(apiPost).toHaveBeenLastCalledWith('/expense-documents/pr-1/approve', { expectedUpdatedAt: reloadedAt }));
+    await waitFor(() => expect(apiPost).toHaveBeenLastCalledWith('/expense-documents/pr-1/approve', { expectedUpdatedAt: reloadedAt, paymentDate: toBangkokDateString() }));
   });
 
   it('a successful approve refreshes the detail, the list and the edit form caches', async () => {
@@ -434,6 +436,26 @@ describe('409 from approve / post', () => {
         JSON.stringify(['expense-doc-voucher', 'pr-1']),
       ]),
     );
+  });
+});
+
+describe('payroll totals card (replaces ยอดก่อนภาษี / VAT for payroll)', () => {
+  it('income − SSO − WHT − deductions = net, and the old ยอดก่อนภาษี row is gone', async () => {
+    mount(payrollDoc('POSTED', null));
+    const card = await screen.findByRole('region', { name: 'สรุปยอดใบเงินเดือน' });
+    expect(within(card).getByText('รวมรายได้ (ฐาน + OT + ค่าคอม + อื่น)')).toBeInTheDocument();
+    expect(within(card).getByText('ยอดสุทธิที่จ่าย')).toBeInTheDocument();
+    expect(screen.queryByText('ยอดก่อนภาษี')).not.toBeInTheDocument();
+    expect(within(card).getByText('วันที่จ่ายเงิน')).toBeInTheDocument();
+  });
+
+  it('a chosen pay date is sent with approve', async () => {
+    const user = userEvent.setup();
+    mount(payrollDoc('PENDING_APPROVAL'));
+    const input = await screen.findByLabelText('วันที่จ่ายเงิน');
+    expect(input).toBeInTheDocument();
+    await user.click(approveButton());
+    await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/expense-documents/pr-1/approve', expect.objectContaining({ paymentDate: toBangkokDateString() })));
   });
 });
 

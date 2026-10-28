@@ -15,6 +15,8 @@ import { ConflictException } from '@nestjs/common';
 export interface DocumentVersionOpts {
   /** `updatedAt` ของใบตามที่หน้าวาด (ISO 8601) */
   expectedUpdatedAt?: string;
+  /** ใบเงินเดือน — วันที่จ่ายเงินที่เลือกตอนลงบัญชี ('YYYY-MM-DD') · ไม่ส่ง = วันนี้เวลาไทย (lifecycle.applyPayrollPaymentDate) */
+  paymentDate?: string;
 }
 
 export const DOCUMENT_CHANGED = 'DOCUMENT_CHANGED';

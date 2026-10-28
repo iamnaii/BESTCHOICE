@@ -365,7 +365,9 @@ describe('Payroll commission flow — store, gate, pay, void (Postgres)', () => 
 
     const paid = await commissionOf(c.id);
     expect(paid.status).toBe('PAID');
-    expect(paid.paidAt?.toISOString()).toBe(new Date(DOC_DATE['2026-10']).toISOString());
+    // วันที่จ่าย = วันที่กดลงบัญชี (คำตัดสินเจ้าของ 2026-10-28) — ใบถูกประทับวันที่ลงบัญชี (2 พ.ย. ตามนาฬิกาจำลอง) และค่าคอมจ่ายวันเดียวกัน
+    expect(posted.documentDate.toISOString()).toBe('2026-11-02T00:00:00.000Z');
+    expect(paid.paidAt?.toISOString()).toBe(posted.documentDate.toISOString());
     expect(money(paid.paidAmount)).toBe('1000.00');
     const items = await itemsOfDoc(oct.id);
     expect(items.map((i) => [i.kind, i.releasedAt])).toEqual([['PAY', null]]);
@@ -874,7 +876,7 @@ describe('Payroll commission flow — store, gate, pay, void (Postgres)', () => 
       expect(posted.status).toBe('POSTED');
       const paid = await commissionOf(c.id);
       expect(paid.status).toBe('PAID');
-      expect(paid.paidAt?.toISOString()).toBe(new Date(DOC_DATE['2026-10']).toISOString());
+      expect(paid.paidAt?.toISOString()).toBe(posted.documentDate.toISOString()); // วันที่กดลงบัญชี
       expect(money(paid.paidAmount)).toBe('1200.00');
       const je = await jeLines(oct.id);
       expect(je).toContainEqual({ accountCode: COMMISSION_CODE, dr: '1200.00', cr: '0.00' });

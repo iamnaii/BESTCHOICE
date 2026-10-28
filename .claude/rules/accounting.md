@@ -1018,6 +1018,14 @@ Spec: `docs/superpowers/specs/2026-10-27-payroll-ot-commission-design.md` (§17 
 (`payroll-pay.ts` คณิตศาสตร์ · `payroll-system-rows.service.ts` คิดแถว · `payroll-save.ts` ทางบันทึก · `payroll-post-gate.service.ts` ด่าน · `role-codes.ts`) ·
 ล็อกการลงเวลา `apps/api/src/modules/attendance/attendance-payroll-lock.ts`. ค่าคอมผ่านเงินเดือน/หักคืนอยู่ส่วนที่ 2 (ทำแล้ว — หัวข้อย่อย "ค่าคอม/หักคืนผ่านใบเงินเดือน (D4 ส่วนที่ 2)" ท้ายหัวข้อนี้).
 
+- **ใครทำใบเงินเดือนได้ (คำตัดสินเจ้าของ 2026-10-28 "ไม่ให้ผู้จัดการสาขาทำ ปิดเมนูเงินเดือน")**: เจ้าของ / ฝ่ายบัญชี / ผจก.การเงินเท่านั้น
+  (`payroll-roles.ts` ทั้งฝั่ง api และ web) — `POST /payroll` · `PATCH /:id/payroll` · `GET /payroll/meta` ตัด `BRANCH_MANAGER` ออกจาก `@Roles` และ
+  facade (`ExpenseDocumentsService.refusePayrollOutsideRoles`) ปฏิเสธส่งขออนุมัติ / อนุมัติ / ลงบัญชี / ยกเลิก / ลบ ใบ `PAYROLL` ของ role อื่น (403 ไทย)
+  · ผู้จัดการสาขายังเปิดดูใบของสาขาตัวเองและพิมพ์สลิปได้ · หน้าเว็บไม่มีชิป/เมนู "เงินเดือน" และหน้ารายละเอียดเป็นอ่านอย่างเดียว
+- **วันที่จ่ายเงิน = วันที่กดลงบัญชี (คำตัดสินเจ้าของ 2026-10-28)**: `POST /:id/post` และ `/:id/approve` (auto-post) รับ `paymentDate` ('YYYY-MM-DD')
+  ไม่ส่ง = วันนี้ (เวลาไทย) · lifecycle เขียน `documentDate` ใต้ล็อก `post:` ก่อนด่านงวดบัญชีและรายการบัญชี (`applyPayrollPaymentDate`) ⇒
+  สมุดรายวัน · ยอดธนาคาร · ภ.ง.ด.1 ลงวันที่จ่ายจริง · วันในอนาคต = 400 · หน้ารายละเอียดมีช่อง "วันที่จ่ายเงิน" (ค่าเริ่มต้นวันนี้ แก้ได้) ในการ์ดสรุปยอด
+  ของใบเงินเดือน · ฟอร์มไม่มีช่องวันที่จ่ายแล้ว (วันที่สร้างร่างยังใช้เลขเอกสารและเพดานประกันสังคมตอนบันทึก) · เทส DB `payroll-post-gate.integration.spec.ts`
 - **คิดใหม่ทุกครั้งที่บันทึก (always-compute)**: ทุกทางบันทึก (สร้าง · `PATCH …/payroll` · จากแม่แบบ/คัดลอกงวดก่อน · ตอนส่งขออนุมัติ)
   server สร้างแถวรายได้ `ATTENDANCE_OT` / `ATTENDANCE_HOLIDAY` / `ATTENDANCE_HOLIDAY_OT` ให้**ทุกบรรทัดที่ผูกพนักงาน** เอง —
   client ส่งเฉพาะ `MANUAL` / `ADJUSTMENT` (ถ้าส่ง `isAdjustment` หาย แถวปรับปรุงจะกลายเป็น MANUAL). ปุ่มในฟอร์ม = "บันทึกร่าง + คิดยอด" ไม่มี endpoint prefill.

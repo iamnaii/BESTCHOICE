@@ -688,8 +688,9 @@ export class TaxPreviewService {
    *   3. Payroll โพสต์ได้ทั้ง 21-3101 (FINANCE scope) และ S21-3101 (SHOP scope
    *      — นิติบุคคลเดียวกัน ยื่นรวม) — เดิมอ่านแค่ 21-3101.
    *
-   * gross = baseSalary + Σ customIncome(isTaxable=true) — โบนัส/OT ที่เสียภาษี
-   * เป็นเงินได้ตาม ม.40(1) ต้องเข้าฐาน (ม.42-exempt rows excluded by design).
+   * gross = payrollTaxableGross(line) = base + Σ taxable income − Σ COMMISSION_CLAWBACK
+   * deductions (floor 0; manual deductions do not reduce it; spec A9 / P2-R18) —
+   * โบนัส/OT ที่เสียภาษีเป็นเงินได้ตาม ม.40(1) ต้องเข้าฐาน (ม.42-exempt rows excluded by design).
    * Period keyed on paidAt (ม.50 — หักเมื่อจ่าย), documentDate fallback.
    *
    * NO branch/company gate (review fix 2026-08-06): SHOP + FINANCE are ONE
@@ -751,7 +752,7 @@ export class TaxPreviewService {
                   where: { isTaxable: true },
                   select: { amount: true },
                 },
-                customDeduction: { where: { source: 'COMMISSION_CLAWBACK' }, select: { amount: true } },
+                customDeduction: { where: { source: 'COMMISSION_CLAWBACK' }, select: { amount: true, source: true } },
               },
             },
           },
@@ -985,7 +986,7 @@ export class TaxPreviewService {
                 whtAmount: true,
                 ssoEmployee: true,
                 customIncome: { where: { isTaxable: true }, select: { amount: true } },
-                customDeduction: { where: { source: 'COMMISSION_CLAWBACK' }, select: { amount: true } },
+                customDeduction: { where: { source: 'COMMISSION_CLAWBACK' }, select: { amount: true, source: true } },
               },
             },
           },

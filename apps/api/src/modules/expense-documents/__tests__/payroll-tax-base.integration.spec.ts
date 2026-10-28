@@ -47,10 +47,10 @@ async function seedDoc(n: number, month: string, lines: Array<{ name: string; ta
               netPaid: 0,
               lineNo: i + 1,
               customIncome: {
-                create: (l.income ?? []).map((a) => ({ accountCode: 'S52-1202', name: 'ค่าคอม', amount: a, isTaxable: true, source: 'COMMISSION' as const })),
+                create: (l.income ?? []).map((a) => ({ accountCode: 'S51-1101', name: 'ค่าคอม', amount: a, isTaxable: true, source: 'COMMISSION' as const })),
               },
               customDeduction: {
-                create: (l.deductions ?? []).map((d) => ({ accountCode: 'S21-1103', name: 'หัก', amount: d.amount, source: d.source })),
+                create: (l.deductions ?? []).map((d) => ({ accountCode: 'S51-1101', name: 'หัก', amount: d.amount, source: d.source })),
               },
             })),
           },

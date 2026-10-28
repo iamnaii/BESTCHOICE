@@ -134,8 +134,8 @@ describe('payrollTaxableGross', () => {
   it('manual deduction contributes 0', () => {
     expect(payrollTaxableGross(line({ customDeduction: [{ amount: D(300), source: 'MANUAL' }] })).toFixed(2)).toBe('15000.00');
   });
-  it('pre-filtered clawback rows (no source) are subtracted', () => {
-    expect(payrollTaxableGross(line({ customDeduction: [{ amount: D(400) }] })).toFixed(2)).toBe('14600.00');
+  it('a deduction row without a clawback source contributes 0', () => {
+    expect(payrollTaxableGross(line({ customDeduction: [{ amount: D(400) } as never] })).toFixed(2)).toBe('15000.00');
   });
   it('tolerates missing arrays', () => {
     expect(payrollTaxableGross({ baseSalary: D(15000) }).toFixed(2)).toBe('15000.00');

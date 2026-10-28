@@ -1,7 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { Prisma } from '@prisma/client';
-import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, GoneException, NotFoundException } from '@nestjs/common';
 import { CommissionService } from './commission.service';
+import { COMMISSION_PAY_VIA_PAYROLL_CODE, COMMISSION_PAY_VIA_PAYROLL_MSG } from './commission-clawback.util';
 import { PrismaService } from '../../prisma/prisma.service';
 
 describe('CommissionService', () => {
@@ -16,6 +17,8 @@ describe('CommissionService', () => {
         findMany: jest.fn(),
         findFirst: jest.fn(),
         update: jest.fn(),
+        // clawBackCommissions (commission-clawback.util) writes one conditional updateMany per row
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         count: jest.fn(),
       },
       commissionRule: {
@@ -304,33 +307,29 @@ describe('CommissionService', () => {
     });
   });
 
-  describe('markPaid', () => {
-    it('throws NotFoundException when commission missing', async () => {
-      prisma.salesCommission.findFirst.mockResolvedValue(null);
-      await expect(service.markPaid('missing')).rejects.toBeInstanceOf(NotFoundException);
+  // P2-R11: commissions are paid only through payroll — the old per-row pay, payout generation and
+  // payout pay paths return 410 with a code, before touching the database
+  const expectPayViaPayroll = async (call: Promise<unknown>) => {
+    const err = await call.then(
+      () => {
+        throw new Error('expected GoneException');
+      },
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(GoneException);
+    expect((err as GoneException).getStatus()).toBe(410);
+    expect((err as GoneException).getResponse()).toEqual({
+      message: COMMISSION_PAY_VIA_PAYROLL_MSG,
+      code: COMMISSION_PAY_VIA_PAYROLL_CODE,
     });
+  };
 
-    it('refuses to pay a non-APPROVED commission', async () => {
-      prisma.salesCommission.findFirst.mockResolvedValue({ id: 'c1', status: 'PENDING' });
-      await expect(service.markPaid('c1')).rejects.toBeInstanceOf(BadRequestException);
-    });
-
-    it('uses the original commissionAmount for paidAmount', async () => {
-      const original = new Prisma.Decimal('123.45');
-      prisma.salesCommission.findFirst.mockResolvedValue({
-        id: 'c1',
-        status: 'APPROVED',
-        commissionAmount: original,
-      });
-      prisma.salesCommission.update.mockImplementation(
-        ({ data }: { data: Record<string, unknown> }) => ({ id: 'c1', ...data }),
-      );
-
-      await service.markPaid('c1');
-
-      const callArg = prisma.salesCommission.update.mock.calls[0][0];
-      expect(callArg.data.status).toBe('PAID');
-      expect(callArg.data.paidAmount).toBe(original);
+  describe('markPaid — 410 (pay through payroll only)', () => {
+    it('throws GoneException(PAY_VIA_PAYROLL) with its code and reads nothing', async () => {
+      prisma.salesCommission.findFirst.mockResolvedValue({ id: 'c1', status: 'APPROVED', commissionAmount: new Prisma.Decimal('123.45') });
+      await expectPayViaPayroll(service.markPaid('c1'));
+      expect(prisma.salesCommission.findFirst).not.toHaveBeenCalled();
+      expect(prisma.salesCommission.update).not.toHaveBeenCalled();
     });
   });
 
@@ -554,16 +553,20 @@ describe('CommissionService', () => {
   // risk appetite: the earlier a contract defaults, the more of the
   // commission should be reversed.
   describe('applyClawbackForContract — tiered clawback', () => {
+    // P2-R8: 'paid' = paidAt set — the PAID fixture carries paidAt/paidAmount like a real paid row
     const mkCommission = (overrides = {}) => ({
       id: 'sc-1',
       contractId: 'contract-1',
       salespersonId: 'sp-1',
       commissionAmount: new Prisma.Decimal('500'),
       status: 'PAID',
+      paidAt: new Date('2026-09-30T05:00:00Z'),
+      paidAmount: new Prisma.Decimal('500'),
       clawbackAt: null,
       deletedAt: null,
       ...overrides,
     });
+    const writeOf = (i = 0) => prisma.salesCommission.updateMany.mock.calls[i][0];
 
     it('claws back 100% on first-payment default (monthsPaid = 0 or 1)', async () => {
       prisma.salesCommission.findMany.mockResolvedValue([mkCommission()]);
@@ -573,16 +576,17 @@ describe('CommissionService', () => {
       expect(res.percent).toBe(100);
       expect(res.clawedBackCount).toBe(1);
       expect(res.totalAmount).toBe('500');
-      expect(prisma.salesCommission.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            status: 'CLAWED_BACK',
-            clawbackAmount: expect.any(Prisma.Decimal),
-            clawbackPercent: 100,
-            monthsPaidBeforeDefault: 0,
-          }),
-        }),
-      );
+      expect(writeOf().where).toEqual({ id: 'sc-1', status: 'PAID' });
+      expect(writeOf().data).toEqual({
+        status: 'CLAWED_BACK',
+        clawbackAmount: expect.any(Prisma.Decimal),
+        clawbackPercent: 100,
+        clawbackAt: expect.any(Date),
+        clawbackReason: 'FPD',
+        monthsPaidBeforeDefault: 0,
+      });
+      expect(writeOf().data.clawbackAmount.toFixed(2)).toBe('500.00');
+      expect(prisma.salesCommission.update).not.toHaveBeenCalled();
     });
 
     it('claws back 75% at 2-3 months paid', async () => {
@@ -591,14 +595,10 @@ describe('CommissionService', () => {
 
       expect(res.percent).toBe(75);
       expect(res.totalAmount).toBe('375');
-      expect(prisma.salesCommission.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            status: 'PARTIALLY_CLAWED_BACK',
-            clawbackPercent: 75,
-          }),
-        }),
+      expect(writeOf().data).toEqual(
+        expect.objectContaining({ status: 'PARTIALLY_CLAWED_BACK', clawbackPercent: 75, monthsPaidBeforeDefault: 3 }),
       );
+      expect(writeOf().data.clawbackAmount.toFixed(2)).toBe('375.00');
     });
 
     it('claws back 50% at 4-6 months paid', async () => {
@@ -606,6 +606,7 @@ describe('CommissionService', () => {
       const res = await service.applyClawbackForContract('contract-1', 5, 'mid default');
       expect(res.percent).toBe(50);
       expect(res.totalAmount).toBe('250');
+      expect(writeOf().data.clawbackAmount.toFixed(2)).toBe('250.00');
     });
 
     it('claws back 25% at 7-12 months paid', async () => {
@@ -613,6 +614,28 @@ describe('CommissionService', () => {
       const res = await service.applyClawbackForContract('contract-1', 10, 'late default');
       expect(res.percent).toBe(25);
       expect(res.totalAmount).toBe('125');
+      expect(writeOf().data.clawbackAmount.toFixed(2)).toBe('125.00');
+    });
+
+    it('unpaid APPROVED row at 100% → CLAWED_BACK with clawbackAmount null; totalAmount still reports Σ commission × percent', async () => {
+      prisma.salesCommission.findMany.mockResolvedValue([
+        mkCommission({ status: 'APPROVED', paidAt: null, paidAmount: null }),
+      ]);
+      const res = await service.applyClawbackForContract('contract-1', 1, 'FPD');
+      expect(res.totalAmount).toBe('500');
+      expect(writeOf().where).toEqual({ id: 'sc-1', status: 'APPROVED' });
+      expect(writeOf().data.status).toBe('CLAWED_BACK');
+      expect(writeOf().data.clawbackAmount).toBeNull();
+    });
+
+    it('unpaid APPROVED row at 50% → PARTIALLY_CLAWED_BACK 250.00 from commissionAmount', async () => {
+      prisma.salesCommission.findMany.mockResolvedValue([
+        mkCommission({ status: 'APPROVED', paidAt: null, paidAmount: null }),
+      ]);
+      const res = await service.applyClawbackForContract('contract-1', 6, 'mid default');
+      expect(res.totalAmount).toBe('250');
+      expect(writeOf().data.status).toBe('PARTIALLY_CLAWED_BACK');
+      expect(writeOf().data.clawbackAmount.toFixed(2)).toBe('250.00');
     });
 
     it('does nothing (0%) when the contract paid >12 months', async () => {
@@ -621,7 +644,7 @@ describe('CommissionService', () => {
       expect(res.percent).toBe(0);
       expect(res.clawedBackCount).toBe(0);
       expect(prisma.salesCommission.findMany).not.toHaveBeenCalled();
-      expect(prisma.salesCommission.update).not.toHaveBeenCalled();
+      expect(prisma.salesCommission.updateMany).not.toHaveBeenCalled();
     });
 
     it('is idempotent: already-clawed rows are filtered out via clawbackAt IS NULL', async () => {
@@ -637,7 +660,13 @@ describe('CommissionService', () => {
           }),
         }),
       );
-      expect(prisma.salesCommission.update).not.toHaveBeenCalled();
+      expect(prisma.salesCommission.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('a row that changed status after it was read → 409 (the cron logs it and retries next run)', async () => {
+      prisma.salesCommission.findMany.mockResolvedValue([mkCommission()]);
+      prisma.salesCommission.updateMany.mockResolvedValue({ count: 0 });
+      await expect(service.applyClawbackForContract('contract-1', 0, 'FPD')).rejects.toBeInstanceOf(ConflictException);
     });
 
     it('rejects negative or non-finite monthsPaid', async () => {
@@ -731,58 +760,24 @@ describe('CommissionService', () => {
   });
 
   // ───────────────────────────────────────────────────────────────────────────
-  // generatePayouts — restore หลัง void ต้องเริ่มวงจรอนุมัติใหม่ (Task 3 carry)
+  // รอบจ่ายค่าคอมเดิม — สร้าง/บันทึกจ่ายปิดแล้ว (P2-R11): จ่ายผ่านใบเงินเดือนเท่านั้น
   // ───────────────────────────────────────────────────────────────────────────
 
-  describe('generatePayouts — restore รอบจ่ายที่ถูก soft-delete', () => {
-    beforeEach(() => {
-      prisma.salesCommission.findMany.mockResolvedValue([
-        {
-          salespersonId: 'sp1',
-          saleAmount: new Prisma.Decimal(10000),
-          commissionAmount: new Prisma.Decimal(300),
-          salesperson: { id: 'sp1', name: 'พนักงาน 1' },
-        },
-      ]);
-      prisma.commissionPayout.upsert.mockResolvedValue({ id: 'payout-1' });
-    });
-
-    it('ขา restore รีเซ็ตเป็น DRAFT + ล้างข้อมูลอนุมัติ/จ่ายเดิม (ยอดใหม่ต้องอนุมัติใหม่)', async () => {
-      // race แคบ: void ใบขาย soft-delete ร่าง → ระหว่างนั้น approvePayout ที่อ่านไปก่อน
-      // commit เขียนทับแถวเป็น APPROVED ⇒ แถวที่ถูกลบค้างสถานะ APPROVED. generate ใหม่
-      // ต้องไม่ฟื้นแถวด้วยยอดใหม่แต่สถานะอนุมัติเดิม (= ข้ามการอนุมัติ)
-      prisma.commissionPayout.findUnique.mockResolvedValue({
-        id: 'payout-1',
-        salespersonId: 'sp1',
-        period: '2026-08',
-        status: 'APPROVED',
-        approvedById: 'owner-1',
-        approvedAt: new Date(),
-        deletedAt: new Date(),
-      });
-
-      await service.generatePayouts({ period: '2026-08' });
-
-      const update = prisma.commissionPayout.upsert.mock.calls[0][0].update;
-      expect(update.status).toBe('DRAFT');
-      expect(update.approvedById).toBeNull();
-      expect(update.approvedAt).toBeNull();
-      expect(update.paidById).toBeNull();
-      expect(update.paidAt).toBeNull();
-      expect(update.deletedAt).toBeNull();
-    });
-
-    it('ยังข้าม (skip) รอบที่มีอยู่และไม่ถูกลบ — ไม่เขียนทับ', async () => {
-      prisma.commissionPayout.findUnique.mockResolvedValue({
-        id: 'payout-1',
-        deletedAt: null,
-        status: 'APPROVED',
-      });
-
-      const result = await service.generatePayouts({ period: '2026-08' });
-
+  describe('generatePayouts — 410 (pay through payroll only)', () => {
+    it('throws GoneException(PAY_VIA_PAYROLL) with its code before reading or writing anything', async () => {
+      await expectPayViaPayroll(service.generatePayouts({ period: '2026-08' }));
+      expect(prisma.salesCommission.findMany).not.toHaveBeenCalled();
+      expect(prisma.commissionPayout.findUnique).not.toHaveBeenCalled();
       expect(prisma.commissionPayout.upsert).not.toHaveBeenCalled();
-      expect(result.skipped).toBe(1);
+    });
+  });
+
+  describe('markPayoutPaid — 410 (pay through payroll only)', () => {
+    it('throws GoneException(PAY_VIA_PAYROLL) with its code before reading or writing anything', async () => {
+      prisma.commissionPayout.findFirst.mockResolvedValue({ id: 'payout-1', status: 'APPROVED', deletedAt: null });
+      await expectPayViaPayroll(service.markPayoutPaid('payout-1', 'owner-1'));
+      expect(prisma.commissionPayout.findFirst).not.toHaveBeenCalled();
+      expect(prisma.commissionPayout.update).not.toHaveBeenCalled();
     });
   });
 });

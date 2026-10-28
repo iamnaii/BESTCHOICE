@@ -5,12 +5,26 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  GoneException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCommissionRuleDto, UpdateCommissionRuleDto } from './dto/commission.dto';
 import { GeneratePayoutDto, ApprovePayoutDto } from './dto/commission-payout.dto';
 import { computeCommissionAmount } from '../../utils/commission.util';
+import {
+  COMMISSION_PAY_VIA_PAYROLL_CODE,
+  COMMISSION_PAY_VIA_PAYROLL_MSG,
+  clawBackCommissions,
+} from './commission-clawback.util';
+
+/**
+ * D4 Part 2 (P2-R11): commissions are paid only through payroll. The old per-row pay, payout
+ * generation and payout pay paths keep their routes (decorators unchanged, access manifest unchanged)
+ * but answer 410 with a code, before any database read.
+ */
+const payViaPayroll = () =>
+  new GoneException({ message: COMMISSION_PAY_VIA_PAYROLL_MSG, code: COMMISSION_PAY_VIA_PAYROLL_CODE });
 
 @Injectable()
 export class CommissionService {
@@ -243,25 +257,10 @@ export class CommissionService {
   }
 
   /**
-   * Mark an approved commission as paid
+   * 410 — a commission is marked paid only by a posted payroll (`POST /commissions/:id/pay` is closed).
    */
-  async markPaid(id: string) {
-    const commission = await this.prisma.salesCommission.findFirst({
-      where: { id, deletedAt: null },
-    });
-    if (!commission) throw new NotFoundException('ไม่พบข้อมูลค่าคอมมิชชัน');
-    if (commission.status !== 'APPROVED') {
-      throw new BadRequestException('สามารถจ่ายได้เฉพาะรายการที่อนุมัติแล้วเท่านั้น');
-    }
-
-    return this.prisma.salesCommission.update({
-      where: { id },
-      data: {
-        status: 'PAID',
-        paidAt: new Date(),
-        paidAmount: commission.commissionAmount,
-      },
-    });
+  async markPaid(_id: string): Promise<never> {
+    throw payViaPayroll();
   }
 
   /**
@@ -282,6 +281,11 @@ export class CommissionService {
    * Reverse commissions tied to a contract that has defaulted / been
    * written off. Called by the contract or bad-debt flow; idempotent —
    * rows already clawed back are skipped via clawbackAt IS NULL.
+   *
+   * Writes through `clawBackCommissions` (the one clawback helper): a paid row records
+   * `clawbackAmount = paidAmount × percent` (deducted by the next payroll), an unpaid APPROVED row
+   * records `commissionAmount × percent` below 100% and null at 100%. `totalAmount` keeps its old
+   * meaning for the cron log — Σ HALF_UP(commissionAmount × percent, 2) over the rows touched (P2-R8).
    */
   async applyClawbackForContract(
     contractId: string,
@@ -311,28 +315,15 @@ export class CommissionService {
 
     const now = new Date();
     const factor = new Prisma.Decimal(percent).div(100);
-    let total = new Prisma.Decimal(0);
+    const total = commissions.reduce(
+      (sum, c) =>
+        sum.add(new Prisma.Decimal(c.commissionAmount).mul(factor).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP)),
+      new Prisma.Decimal(0),
+    );
 
-    await this.prisma.$transaction(async (tx) => {
-      for (const c of commissions) {
-        const amount = new Prisma.Decimal(c.commissionAmount)
-          .mul(factor)
-          .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
-        total = total.add(amount);
-
-        await tx.salesCommission.update({
-          where: { id: c.id },
-          data: {
-            status: percent === 100 ? 'CLAWED_BACK' : 'PARTIALLY_CLAWED_BACK',
-            clawbackAmount: amount,
-            clawbackPercent: percent,
-            clawbackAt: now,
-            clawbackReason: reason,
-            monthsPaidBeforeDefault: monthsPaid,
-          },
-        });
-      }
-    });
+    await this.prisma.$transaction((tx) =>
+      clawBackCommissions(tx, commissions, { reason, now, percent, monthsPaidBeforeDefault: monthsPaid }),
+    );
 
     return {
       clawedBackCount: commissions.length,
@@ -553,109 +544,12 @@ export class CommissionService {
   }
 
   /**
-   * Generate payout records for a given month.
-   * Aggregates all PENDING/APPROVED/PAID SalesCommissions for the period.
-   * Idempotent: skips salespersons who already have a payout record for that period.
+   * 410 — monthly payout rounds are no longer generated (`POST /commissions/payouts/generate` is
+   * closed); payroll pulls approved commissions itself. Existing rounds stay readable, and
+   * `approvePayout` stays live (spec §6 lists only these three paths).
    */
-  async generatePayouts(dto: GeneratePayoutDto) {
-    const { period, notes } = dto;
-
-    // Validate period format YYYY-MM
-    if (!/^\d{4}-\d{2}$/.test(period)) {
-      throw new BadRequestException('รูปแบบเดือนต้องเป็น YYYY-MM');
-    }
-
-    // Get all commissions for the period. Exclude CLAWED_BACK / PARTIALLY_CLAWED_BACK —
-    // those were reversed (clawbackAmount recovered) and must NOT be paid out again. Matches
-    // this method's documented contract ("PENDING/APPROVED/PAID").
-    const commissions = await this.prisma.salesCommission.findMany({
-      where: { period, deletedAt: null, status: { in: ['PENDING', 'APPROVED', 'PAID'] } },
-      include: { salesperson: { select: { id: true, name: true } } },
-    });
-
-    if (commissions.length === 0) {
-      return { created: 0, skipped: 0, message: 'ไม่พบคอมมิชชันในเดือนนี้' };
-    }
-
-    // Group by salesperson using Decimal for precision
-    const grouped = new Map<
-      string,
-      { salespersonId: string; totalSales: Prisma.Decimal; totalCommission: Prisma.Decimal; count: number }
-    >();
-
-    for (const c of commissions) {
-      if (!grouped.has(c.salespersonId)) {
-        grouped.set(c.salespersonId, {
-          salespersonId: c.salespersonId,
-          totalSales: new Prisma.Decimal(0),
-          totalCommission: new Prisma.Decimal(0),
-          count: 0,
-        });
-      }
-      const entry = grouped.get(c.salespersonId)!;
-      entry.totalSales = entry.totalSales.add(c.saleAmount);
-      entry.totalCommission = entry.totalCommission.add(c.commissionAmount);
-      entry.count += 1;
-    }
-
-    let created = 0;
-    let skipped = 0;
-
-    for (const entry of grouped.values()) {
-      // Upsert: if payout already exists for this salesperson+period, skip
-      const existing = await this.prisma.commissionPayout.findUnique({
-        where: {
-          salespersonId_period: { salespersonId: entry.salespersonId, period },
-        },
-      });
-
-      if (existing && existing.deletedAt === null) {
-        skipped += 1;
-        continue;
-      }
-
-      await this.prisma.commissionPayout.upsert({
-        where: {
-          salespersonId_period: { salespersonId: entry.salespersonId, period },
-        },
-        create: {
-          salespersonId: entry.salespersonId,
-          period,
-          totalSales: entry.totalSales,
-          totalCommission: entry.totalCommission,
-          commissionCount: entry.count,
-          status: 'DRAFT',
-          notes: notes || null,
-          // ประทับเวลาที่ยอด "ถูกคำนวณจริง" — ผู้อ่าน (เช่นด่านยกเลิกใบขาย) ใช้พิสูจน์ว่า
-          // ค่าคอมใบไหนถูกนับอยู่ในรอบนี้ (`commission.createdAt <= generatedAt`)
-          generatedAt: new Date(),
-        },
-        update: {
-          // restore if soft-deleted
-          deletedAt: null,
-          totalSales: entry.totalSales,
-          totalCommission: entry.totalCommission,
-          commissionCount: entry.count,
-          // ยอดถูกคำนวณใหม่ ⇒ วงจรอนุมัติต้องเริ่มใหม่เสมอ. ปิด race แคบ (Task 3 carry):
-          // approvePayout (READ COMMITTED) อาจเขียน APPROVED ทับแถวที่ void ใบขายเพิ่ง
-          // soft-delete ไป — ถ้าขานี้ไม่ reset การ restore จะฟื้นแถวด้วย "ยอดใหม่ +
-          // สถานะ APPROVED เดิม" = ข้ามการอนุมัติ. ปลอดภัยเพราะ writer ที่ลบร่างมีตัวเดียว
-          // (SaleVoidService) และลบเฉพาะ DRAFT โดยเจตนา
-          status: 'DRAFT',
-          approvedById: null,
-          approvedAt: null,
-          paidById: null,
-          paidAt: null,
-          notes: notes || null,
-          // ขานี้คำนวณยอดใหม่ ⇒ ต้องเลื่อน generatedAt ตาม (ใช้ `createdAt` แทนไม่ได้
-          // เพราะมันยังเป็นเวลาของรอบเดิมที่ถูกลบไป)
-          generatedAt: new Date(),
-        },
-      });
-      created += 1;
-    }
-
-    return { created, skipped, period, message: `สร้าง ${created} รายการ, ข้าม ${skipped} รายการ (มีอยู่แล้ว)` };
+  async generatePayouts(_dto: GeneratePayoutDto): Promise<never> {
+    throw payViaPayroll();
   }
 
   /**
@@ -694,28 +588,9 @@ export class CommissionService {
   }
 
   /**
-   * Mark a payout as paid (OWNER only)
+   * 410 — a payout round is never marked paid again (`PATCH /commissions/payouts/:id/paid` is closed).
    */
-  async markPayoutPaid(id: string, userId: string) {
-    const payout = await this.prisma.commissionPayout.findFirst({
-      where: { id, deletedAt: null },
-    });
-    if (!payout) throw new NotFoundException('ไม่พบใบจ่ายคอมมิชชัน');
-    if (payout.status !== 'APPROVED') {
-      throw new BadRequestException('สามารถบันทึกการจ่ายได้เฉพาะรายการที่อนุมัติแล้วเท่านั้น');
-    }
-
-    return this.prisma.commissionPayout.update({
-      where: { id },
-      data: {
-        status: 'PAID',
-        paidById: userId,
-        paidAt: new Date(),
-      },
-      include: {
-        salesperson: { select: { id: true, name: true } },
-        paidBy: { select: { id: true, name: true } },
-      },
-    });
+  async markPayoutPaid(_id: string, _userId: string): Promise<never> {
+    throw payViaPayroll();
   }
 }

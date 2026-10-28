@@ -1,6 +1,8 @@
 import { PayoutStatus, Prisma } from '@prisma/client';
 import { computeCommissionAmount } from '../../../utils/commission.util';
 import { bangkokDateString } from '../../../utils/date.util';
+import { clawBackCommissions } from '../../commission/commission-clawback.util';
+import { isCoveredByPayout } from '../../commission/commission-payout-cover.util';
 
 /**
  * ค่าคอมพนักงานขายของสัญญาผ่อน BESTCHOICE — คำตัดสินเจ้าของ 2026-09-20:
@@ -62,6 +64,11 @@ export interface ContractCommissionClawback {
  * ยกเลิกสัญญา (C-1/C-2) → เรียกคืนค่าคอมที่ยังไม่จ่าย. **ไม่บล็อกการยกเลิกสัญญา** (ต่างจากยกเลิกใบขาย):
  * การยกเลิกสัญญาเป็นเรื่องทางกฎหมาย/การเงินกับลูกค้า ห้ามติดเพราะรอบจ่ายค่าคอมภายใน — รอบที่ล็อกแล้วถูกรายงานกลับ
  * ให้ผู้เรียกบันทึกใน audit แทน.
+ *
+ * เขียนผ่าน `clawBackCommissions` (ตัวช่วยเดียว — P2-R10) ด้วยแถว PENDING/APPROVED เท่านั้น: ผลเหมือนเดิม
+ * (CLAWED_BACK 100% · เหตุผลเดิม · clawbackAmount null เพราะยังไม่จ่าย) แต่เขียนทีละแถวแบบมีเงื่อนไข (id, status).
+ * ค่าคอมที่ถูกจ่าย/อนุมัติระหว่างอ่านกับเขียน → 409 ทั้งทรานแซกชันยกเลิกการยกเลิกสัญญา (ลองใหม่แล้วแถวที่จ่ายไป
+ * ตกอยู่ใน keptPaidIds) — ห้ามจับ 409 แล้วเดินต่อ (= ยกเลิกสัญญาครึ่งเดียว).
  */
 export async function clawbackContractCommission(
   tx: Prisma.TransactionClient,
@@ -69,7 +76,10 @@ export async function clawbackContractCommission(
 ): Promise<ContractCommissionClawback> {
   const commissions = await tx.salesCommission.findMany({
     where: { contractId: input.contractId, deletedAt: null },
-    select: { id: true, status: true, salespersonId: true, period: true, createdAt: true },
+    select: {
+      id: true, status: true, salespersonId: true, period: true, createdAt: true,
+      commissionAmount: true, paidAt: true, paidAmount: true,
+    },
   });
   const clawable = commissions.filter((c) => CLAWABLE_STATUSES.includes(c.status));
   const result: ContractCommissionClawback = {
@@ -80,21 +90,17 @@ export async function clawbackContractCommission(
   };
   if (!clawable.length) return result;
 
-  await tx.salesCommission.updateMany({
-    where: { id: { in: result.clawedBackIds } },
-    data: {
-      status: 'CLAWED_BACK', clawbackAt: input.now, clawbackPercent: 100,
-      clawbackReason: `ยกเลิกสัญญา ${input.contractNumber}: ${input.reason}`,
-    },
+  await clawBackCommissions(tx, clawable, {
+    reason: `ยกเลิกสัญญา ${input.contractNumber}: ${input.reason}`,
+    now: input.now,
   });
 
-  // รอบจ่ายที่ "ครอบค่าคอมนี้จริง" = พนักงาน+งวดเดียวกัน และถูกสร้างหลังค่าคอมเกิด (generatedAt null = พิสูจน์ไม่ได้ ถือว่าครอบ)
+  // รอบจ่ายที่ "ครอบค่าคอมนี้จริง" — กติกาเดียว `isCoveredByPayout` (generatedAt null = พิสูจน์ไม่ได้ ถือว่าครอบ)
   const payouts = await tx.commissionPayout.findMany({
     where: { deletedAt: null, OR: clawable.map((c) => ({ salespersonId: c.salespersonId, period: c.period })) },
     select: { id: true, status: true, salespersonId: true, period: true, generatedAt: true },
   });
-  const covering = payouts.filter((p) => clawable.some((c) =>
-    c.salespersonId === p.salespersonId && c.period === p.period && (p.generatedAt === null || c.createdAt <= p.generatedAt)));
+  const covering = payouts.filter((p) => clawable.some((c) => isCoveredByPayout(c, p)));
   result.voidedDraftPayoutIds = covering.filter((p) => p.status === PayoutStatus.DRAFT).map((p) => p.id);
   result.lockedPayoutIds = covering.filter((p) => !UNLOCKED_PAYOUT_STATUSES.includes(p.status)).map((p) => p.id);
   if (result.voidedDraftPayoutIds.length) {

@@ -88,7 +88,12 @@ describe('DOC-04 payroll slips and annual 50 ทวิ — real workflow, real j
   const createPayroll = (session: Session, body: Record<string, unknown>) => api(session).post('/expense-documents/payroll', body);
   // R20 — approve / post of a PAYROLL must carry the version the page rendered (expectedUpdatedAt = updatedAt); a missing or
   // stale one is refused 409 DOCUMENT_CHANGED. Every call below reads the current version first (what the detail page shows).
-  const versionOf = async (id: string) => ({ expectedUpdatedAt: (await h.prisma.expenseDocument.findUniqueOrThrow({ where: { id }, select: { updatedAt: true } })).updatedAt.toISOString() });
+  // คำตัดสินเจ้าของ 2026-10-28 — วันที่จ่ายเงิน = วันที่กดลงบัญชี (ไม่ส่ง = วันนี้) · ชุดนี้เลือกวันที่จ่ายเป็นวันที่ของใบ
+  // เหมือนผู้ใช้เลือกในช่อง "วันที่จ่ายเงิน" ตอนลงบัญชี ⇒ งวดภาษี / สลิป / รายการบัญชีของกรณีทดสอบคงเดิม
+  const versionOf = async (id: string) => {
+    const row = await h.prisma.expenseDocument.findUniqueOrThrow({ where: { id }, select: { updatedAt: true, documentDate: true } });
+    return { expectedUpdatedAt: row.updatedAt.toISOString(), paymentDate: row.documentDate.toISOString().slice(0, 10) };
+  };
   // (supertest's Test is thenable — the helpers apply .expect(status) themselves and resolve to the response)
   const postDoc = async (session: Session, id: string, status: number) => api(session).post(`/expense-documents/${id}/post`, await versionOf(id)).expect(status);
   const approveDoc = async (session: Session, id: string, status: number) => api(session).post(`/expense-documents/${id}/approve`, await versionOf(id)).expect(status);

@@ -65,7 +65,7 @@ export default function AttendanceDevicesPage() {
           <p className="rounded-xl border border-dashed border-border py-10 text-center text-sm text-muted-foreground">ยังไม่มีเครื่อง — กด เพิ่มเครื่อง แล้วกรอกรหัสบนแท็บเล็ตของสาขา</p>
         ) : (
           <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-            <div className="overflow-x-auto">
+            <div className="relative overflow-x-auto">
               <table className="w-full min-w-[760px] text-sm" aria-label="รายการเครื่องตอกบัตร">
                 <thead className="bg-muted text-xs text-muted-foreground">
                   <tr>

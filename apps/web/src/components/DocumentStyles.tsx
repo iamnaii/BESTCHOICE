@@ -19,6 +19,8 @@ export default function DocumentStyles() {
     .voucher-sheet h2 { margin-top: 8px !important; }
     .voucher-sheet footer { margin-top: 12px !important; padding-top: 8px !important; }
     .voucher-sheet .h-16 { height: 12mm !important; }
+    /* สลิป — หัวข้อข้อมูลพนักงานกว้างเท่าข้อความ (บนจอเดิมตัดเป็นสองบรรทัด หัวข้อกับค่าไม่ตรงแนว) · ตอนพิมพ์มีกฎเดียวกันใน @media print */
+    .voucher-sheet.payroll-slip .voucher-meta-row { grid-template-columns: max-content minmax(0, 1fr); }
     /* แผ่นเอกสารเป็นกระดาษขาวเสมอ — โหมดมืดเดิมทำให้ตัวหนังสือสีจาง/เส้นของธีมมืดอยู่บนพื้นขาว (อ่านแทบไม่ออก) ·
        Tailwind แปลง --color-* ที่ :root แล้วจึงต้องทับตัว --color-* เอง (ค่าเดียวกับธีมสว่างใน index.css) */
     .dark .voucher-sheet {
@@ -123,6 +125,14 @@ export default function DocumentStyles() {
       body .bc-document.payroll-slip .bc-doc-closing > section:first-child { margin-top: 0 !important; }
       body .bc-document.payroll-slip footer { margin-top: 1.5mm !important; padding-top: 1mm !important; }
       body .bc-document.payroll-slip .h-16 { height: 9mm !important; margin-bottom: 1mm; }
+      /* คำตัดสินเจ้าของ 2026-10-28 — สลิปที่ยาวเกินหนึ่งแผ่น (payroll-slip-dense · slipLayoutWeight) ย่อตัวอักษรเฉพาะใบนั้น */
+      ${documentTypographyCss('body .voucher-sheet.payroll-slip-dense', { body: 13.5, heading: 15, footer: 10.5 }, 1.1)}
+      body .bc-document.payroll-slip.payroll-slip-dense :is(th,td) { padding-top: 0.25mm !important; padding-bottom: 0.25mm !important; }
+      body .bc-document.payroll-slip.payroll-slip-dense section { margin-top: 1mm !important; }
+      ${documentTypographyCss('body .voucher-sheet.payroll-slip-denser', { body: 12, heading: 14, footer: 10 }, 1.05)}
+      body .bc-document.payroll-slip.payroll-slip-denser :is(th,td) { padding-top: 0.15mm !important; padding-bottom: 0.15mm !important; }
+      body .bc-document.payroll-slip.payroll-slip-denser section { margin-top: 0.8mm !important; }
+      body .bc-document.payroll-slip.payroll-slip-denser .h-16 { height: 7mm !important; }
       body .bc-document.payroll-slip .bc-doc-header { padding-bottom: 1.5mm; margin-bottom: 1.5mm; }
       body .bc-document.payroll-slip .bc-doc-brand :is(img,svg) { height: 8mm; margin-bottom: 1mm; }
       body .bc-document.payroll-slip .payroll-slip-meta { row-gap: 0.5mm; }

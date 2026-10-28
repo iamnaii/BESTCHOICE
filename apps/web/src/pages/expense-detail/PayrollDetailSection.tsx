@@ -573,8 +573,12 @@ export function PayrollTotalsCard({
   const income = sum((l) => (l.customIncome ?? []).reduce((s, r) => s.plus(dec(r.amount)), dec(l.baseSalary)));
   const sso = sum((l) => dec(l.ssoEmployee));
   const wht = sum((l) => dec(l.whtAmount));
-  const deductions = sum((l) => (l.customDeduction ?? []).reduce((s, r) => s.plus(dec(r.amount)), new Decimal(0)));
-  const net = income.minus(sso).minus(wht).minus(deductions);
+  // ส่วนที่ 2 — หักคืนค่าคอม (COMMISSION_CLAWBACK) แยกบรรทัดให้เห็น · รายการหักที่กรอกเองเป็น "รายการหักอื่น"
+  const deductionOf = (pick: (source: string) => boolean) =>
+    sum((l) => (l.customDeduction ?? []).filter((r) => pick(r.source ?? 'MANUAL')).reduce((s, r) => s.plus(dec(r.amount)), new Decimal(0)));
+  const clawback = deductionOf((source) => source === 'COMMISSION_CLAWBACK');
+  const deductions = deductionOf((source) => source !== 'COMMISSION_CLAWBACK');
+  const net = income.minus(sso).minus(wht).minus(clawback).minus(deductions);
   const today = toBangkokDateString();
   const row = (label: string, value: string, strong = false) => (
     <div className={`flex justify-between gap-6 ${strong ? 'border-t border-border pt-1.5 font-semibold' : ''}`}>
@@ -589,6 +593,7 @@ export function PayrollTotalsCard({
           {row('รวมรายได้ (ฐาน + OT + ค่าคอม + อื่น)', money(income))}
           {row('หักประกันสังคม', `- ${money(sso)}`)}
           {row('หัก ณ ที่จ่าย', `- ${money(wht)}`)}
+          {clawback.gt(0) && row('หักคืนค่าคอม', `- ${money(clawback)}`)}
           {row('รายการหักอื่น', `- ${money(deductions)}`)}
           {row('ยอดสุทธิที่จ่าย', money(net), true)}
         </dl>

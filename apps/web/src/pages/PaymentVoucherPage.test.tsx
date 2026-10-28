@@ -15,7 +15,7 @@ vi.mock('@/hooks/useCompanyInfo', () => ({
 }));
 vi.mock('@/hooks/useUiFlags', () => ({ useUiFlags: () => ({ voucherPrintMode: 'single', voucherIncludeAdjustment: false }) }));
 
-import PaymentVoucherPage, { bucketWhtByRate } from './PaymentVoucherPage';
+import PaymentVoucherPage, { bucketWhtByRate, slipLayoutWeight, slipDensity, SLIP_FULL_SIZE_MAX_WEIGHT, SLIP_DENSE_MAX_WEIGHT } from './PaymentVoucherPage';
 
 /**
  * W7 (Round 2) — Form 50 ทวิ is a legal cert; per-row sums MUST equal
@@ -379,5 +379,32 @@ describe('PayrollSlipSheet (PAYROLL voucher)', () => {
     const print = screen.getByRole('button', { name: /พิมพ์ \/ บันทึก PDF/ });
     expect(print).toBeDisabled();
     expect(print).toHaveAttribute('aria-describedby', block.id);
+  });
+});
+
+// คำตัดสินเจ้าของ 2026-10-28 — สลิปที่ยาวเกินหนึ่งแผ่นย่อตัวอักษรเฉพาะใบนั้น (เกณฑ์วัดจาก PDF A4 จริง)
+describe('slip density (print font steps)', () => {
+  const weightOf = (income: number, deduction: number, extra: Partial<Parameters<typeof slipLayoutWeight>[0]> = {}) =>
+    slipLayoutWeight({
+      incomeNames: Array.from({ length: income }, (_, i) => `รายได้ ${i}`),
+      deductionNames: Array.from({ length: deduction }, (_, i) => `หัก ${i}`),
+      commissionDetail: false, carryNote: false, attendanceBox: false, note: false, ...extra,
+    });
+
+  it('counts table rows, totals, the commission line, the carry note, the attendance box (2) and the note', () => {
+    expect(weightOf(0, 0)).toBe(5); // ฐาน + รวม · ประกันสังคม + หัก ณ ที่จ่าย + รวม
+    expect(weightOf(3, 2, { commissionDetail: true, carryNote: true, attendanceBox: true, note: true })).toBe(15);
+  });
+
+  it('a long row name (wraps to two lines) counts 2', () => {
+    const long = slipLayoutWeight({ incomeNames: ['ก'.repeat(41)], deductionNames: [], commissionDetail: false, carryNote: false, attendanceBox: false, note: false });
+    expect(long).toBe(weightOf(1, 0) + 1);
+  });
+
+  it('full size up to the limit, then 13.5 pt, then 12 pt', () => {
+    expect(slipDensity(SLIP_FULL_SIZE_MAX_WEIGHT)).toBe('');
+    expect(slipDensity(SLIP_FULL_SIZE_MAX_WEIGHT + 1)).toBe('payroll-slip-dense');
+    expect(slipDensity(SLIP_DENSE_MAX_WEIGHT)).toBe('payroll-slip-dense');
+    expect(slipDensity(SLIP_DENSE_MAX_WEIGHT + 1)).toBe('payroll-slip-denser');
   });
 });

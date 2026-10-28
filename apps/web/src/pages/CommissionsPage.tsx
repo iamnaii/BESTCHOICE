@@ -191,7 +191,8 @@ function CommissionStatusCell({ c, linkToPayroll }: { c: Commission; linkToPayro
     const cfg = getStatusBadgeProps(c.status, commissionStatusMap);
     const Icon = COMMISSION_STATUS_ICON[c.status];
     primary = (
-      <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm" className="w-max whitespace-nowrap">
+      // ทรงเดียวกับชิปใบเงินเดือนข้างล่าง (มน ตัวอักษร 12px) — เดิมป้ายเหลี่ยม 11px ปนกับชิปมนในช่องเดียวกัน
+      <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm" className="w-max whitespace-nowrap rounded-full px-2 text-xs leading-snug">
         {Icon && <Icon aria-hidden="true" />}
         {cfg.label}
       </Badge>

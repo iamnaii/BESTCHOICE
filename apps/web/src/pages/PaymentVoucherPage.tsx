@@ -469,6 +469,41 @@ function PettyCashSheet({
  * spacing tiers chosen from that measurement would not match the paper. Pinned by
  * DOC-04 ("a slip with attendance OT rows … five commissions and a clawback").
  */
+/**
+ * น้ำหนักความยาวของสลิปหนึ่งคน (หน่วย ≈ หนึ่งแถวตาราง) — แถวรายได้ (ฐาน + รายการ + รวม) · แถวหัก (ประกันสังคม + หัก ณ ที่จ่าย +
+ * รายการ + รวม) · ชื่อรายการยาว (ตัดสองบรรทัด) นับ 2 · บรรทัดเลขอ้างอิงค่าคอม · ประโยคยกไปงวดหน้า · กล่องสรุปเวลา (2) · หมายเหตุ
+ */
+export function slipLayoutWeight(p: {
+  incomeNames: string[];
+  deductionNames: string[];
+  commissionDetail: boolean;
+  carryNote: boolean;
+  attendanceBox: boolean;
+  note: boolean;
+}): number {
+  const rows = (names: string[]) => names.reduce((n, name) => n + (name.length > SLIP_ROW_WRAP_CHARS ? 2 : 1), 0);
+  return (
+    1 + rows(p.incomeNames) + 1 +
+    2 + rows(p.deductionNames) + 1 +
+    (p.commissionDetail ? 1 : 0) + (p.carryNote ? 1 : 0) + (p.attendanceBox ? 2 : 0) + (p.note ? 1 : 0)
+  );
+}
+
+/** ชื่อรายการยาวเกินนี้ตัดเป็นสองบรรทัดในคอลัมน์รายการของสลิป A4 */
+const SLIP_ROW_WRAP_CHARS = 40;
+/**
+ * ชั้นขนาดตัวอักษรตอนพิมพ์ (คำตัดสินเจ้าของ 2026-10-28 "ย่อตัวอักษรคนที่ล้น") — วัดจาก PDF A4 จริง (สคริปต์ calib ของงานตรวจ UI):
+ * ขนาดเดิมพอดีหนึ่งแผ่นถึงน้ำหนัก 18 · แบบย่อ (13.5 pt) ถึง 25 · แบบย่อมาก (12 pt) ถึง 32 — ตั้งเผื่อไว้หนึ่งหน่วย ·
+ * เกิน 32 (รายการรวมราว 25 แถว) ต่อหน้า 2
+ */
+export const SLIP_FULL_SIZE_MAX_WEIGHT = 17;
+export const SLIP_DENSE_MAX_WEIGHT = 24;
+
+export function slipDensity(weight: number): '' | 'payroll-slip-dense' | 'payroll-slip-denser' {
+  if (weight <= SLIP_FULL_SIZE_MAX_WEIGHT) return '';
+  return weight <= SLIP_DENSE_MAX_WEIGHT ? 'payroll-slip-dense' : 'payroll-slip-denser';
+}
+
 function PayrollSlipSheet({
   doc,
   line,
@@ -509,13 +544,23 @@ function PayrollSlipSheet({
   const deductionsTotal = sso.plus(wht).plus(sumDeduction);
 
   const amountInText = numToThaiText(parseFloat(line.netPaid));
+  const showAttendance = !!line.attendanceSummary && line.attendanceSummary.attendanceTracked !== false && !!doc.payroll?.payrollPeriod;
+  // คำตัดสินเจ้าของ 2026-10-28 — สลิปที่ยาวเกินหนึ่งแผ่นย่อตัวอักษรตอนพิมพ์ (ใบอื่นขนาดเดิม)
+  const density = slipDensity(slipLayoutWeight({
+    incomeNames: customIncome.map((r) => r.name),
+    deductionNames: customDeduction.map((r) => r.name),
+    commissionDetail: payItems.length > 0,
+    carryNote: !!carried,
+    attendanceBox: showAttendance,
+    note: !!doc.note,
+  }));
 
   return (
     <article
       // จอแคบ (มือถือ): สลิปกว้างขั้นต่ำ 40rem แล้วเลื่อนในกรอบตัวอย่างเอกสาร — เดิมช่องรายการค่าคอมเหลือ ~31px · ตอนพิมพ์ไม่มีขั้นต่ำ
       // P2-R31 — ระยะพิมพ์ชุดเดียวที่พอดีหนึ่งแผ่นเอง ไม่ให้ fitPaperSpacing (วัดตอน screen media) เลือกชั้นระยะให้
       data-bc-paper-fit="fixed"
-      className="voucher-sheet bc-document standard-voucher payroll-slip min-w-[40rem] bg-white border border-border rounded-md p-8 shadow-sm print:min-w-0 print:border-0 print:p-0 print:shadow-none"
+      className={`voucher-sheet bc-document standard-voucher payroll-slip${density ? ` ${density}` : ''} min-w-[40rem] bg-white border border-border rounded-md p-8 shadow-sm print:min-w-0 print:border-0 print:p-0 print:shadow-none`}
       style={{
         minHeight: '270mm',
         pageBreakBefore: slipNo > 1 ? 'always' : 'auto',
@@ -662,7 +707,7 @@ function PayrollSlipSheet({
       </section>
 
       {/* คนที่ไม่ได้ตอกบัตรเดือนนั้น (attendanceTracked = false) ไม่มีกล่อง — กล่องศูนย์ทุกช่องอ่านเหมือน "ขาดงาน" */}
-      {line.attendanceSummary && line.attendanceSummary.attendanceTracked !== false && doc.payroll?.payrollPeriod && (
+      {showAttendance && doc.payroll && line.attendanceSummary && (
         <SlipAttendanceSummary summary={line.attendanceSummary} period={doc.payroll.payrollPeriod} />
       )}
 

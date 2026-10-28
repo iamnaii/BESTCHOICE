@@ -204,7 +204,7 @@ describe('SalesHistoryPage — ยกเลิกใบขาย', () => {
   });
 
   // Payroll D4 ส่วนที่ 2 (Task 6, กระดาน 6C) — ค่าคอมที่จ่ายแล้วในเงินเดือนไม่บล็อกการยกเลิกอีกต่อไป: ระบบหักคืนงวดถัดไปเอง
-  const VOID_NOTE = 'ถ้าค่าคอมของใบนี้จ่ายไปแล้วในเงินเดือน ระบบจะหักคืนในเงินเดือนงวดถัดไปเอง ไม่ต้องทำอะไรเพิ่ม';
+  const VOID_NOTE = 'ถ้าค่าคอมของใบนี้จ่ายไปแล้วในเงินเดือน ระบบจะหักคืนจากค่าคอมในใบเงินเดือนงวดถัดไป หักได้ไม่เกินค่าคอมงวดนั้น ส่วนที่เหลือยกไปงวดต่อไป · ถ้าพนักงานลาออกแล้ว เจ้าของตัดสินที่หน้าค่าคอม';
 
   it('the dialog says a commission already paid through payroll is deducted next period, and no longer points at a payout button', async () => {
     renderWithRole('OWNER');
@@ -222,7 +222,7 @@ describe('SalesHistoryPage — ยกเลิกใบขาย', () => {
     await userEvent.click(await screen.findByRole('button', { name: /ยกเลิกใบขาย/ }));
     await userEvent.type(screen.getByRole('textbox', { name: /เหตุผล/ }), 'คีย์ผิดรุ่นเครื่อง');
     await userEvent.click(screen.getByRole('button', { name: /ยืนยันยกเลิก/ }));
-    await waitFor(() => expect(toastInfo).toHaveBeenCalledWith('ค่าคอม 800.00 บาทที่จ่ายแล้วจะหักในเงินเดือนงวดถัดไป'));
+    await waitFor(() => expect(toastInfo).toHaveBeenCalledWith('ค่าคอม 800.00 บาทที่จ่ายแล้วจะหักคืนจากค่าคอมในเงินเดือนงวดถัดไป (ส่วนที่เกินค่าคอมงวดนั้นยกไปงวดต่อไป)'));
     expect(toastSuccess).toHaveBeenCalledWith(expect.stringContaining('SA-0001'));
   });
 

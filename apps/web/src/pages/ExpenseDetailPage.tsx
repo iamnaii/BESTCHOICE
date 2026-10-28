@@ -17,6 +17,7 @@ import {
 } from '@/components/accounting';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { canManagePayroll } from '@/components/expense-form-v4/payroll-system/payroll-roles';
 import { useUiFlags } from '@/hooks/useUiFlags';
 import { formatNumberDecimal } from '@/utils/formatters';
 import { formatThaiDateShort } from '@/lib/date';
@@ -247,6 +248,8 @@ export default function ExpenseDetailPage() {
   const makerCheckerEnabled = flags.approvalEnabled && doc?.status !== 'APPROVED';
   const icabStatus = doc ? mapExpenseStatusToIcab(doc.status) : 'DRAFT';
   const isPayroll = doc?.documentType === 'PAYROLL';
+  const payrollManager = canManagePayroll(user?.role);
+  const payrollReadOnly = isPayroll && !payrollManager;
   const payrollPrimary = makerCheckerEnabled ? 'submit' : 'post';
   const payrollBlocked = isPayroll ? payrollBlockedReasons(doc?.payrollGate, payrollPrimary) : {};
 
@@ -254,7 +257,8 @@ export default function ExpenseDetailPage() {
   // ReversePermissionGuard so the button only shows when the server will allow.
   const canReverse =
     permissions.can('EXPENSE_CANCEL') &&
-    icabStatus === 'POSTED';
+    icabStatus === 'POSTED' &&
+    !payrollReadOnly;
 
   const isOwnDoc = !!doc && doc.createdBy?.id === user?.id;
   // เอกสารของตัวเอง = อนุมัติได้เฉพาะระดับผู้จัดการขึ้นไป (คำตัดสินเจ้าของ 2026-09-11)
@@ -424,14 +428,15 @@ export default function ExpenseDetailPage() {
           canPost={makerCheckerEnabled || permissions.can('EXPENSE_POST')}
           postBlockedReason={payrollBlocked.primary}
           approveBlockedReason={payrollBlocked.approve}
-          extraActions={isPayroll ? <PayrollDetailActions doc={doc} /> : undefined}
+          extraActions={isPayroll ? <PayrollDetailActions doc={doc} canEdit={payrollManager} /> : undefined}
           canReverse={Boolean(canReverse)}
           onCancel={() => navigate('/expenses')}
           onClose={() => navigate('/expenses')}
-          onPost={() => postMutation.mutate()}
-          onSubmitForApproval={() => submitMutation.mutate()}
-          onApprove={() => approveMutation.mutate()}
-          onReverse={(payload) => voidMutation.mutate(payload)}
+          // ผู้จัดการสาขาเปิดดูใบเงินเดือนได้อย่างเดียว (คำตัดสินเจ้าของ 2026-10-28 · server ตรวจซ้ำ)
+          onPost={payrollReadOnly ? undefined : () => postMutation.mutate()}
+          onSubmitForApproval={payrollReadOnly ? undefined : () => submitMutation.mutate()}
+          onApprove={payrollReadOnly ? undefined : () => approveMutation.mutate()}
+          onReverse={payrollReadOnly ? undefined : (payload) => voidMutation.mutate(payload)}
           onPrint={() => setPreviewId(doc.id)}
         />
       )}

@@ -161,9 +161,9 @@ describe('ExpenseDocumentsController', () => {
     expect(service.update).toHaveBeenCalledWith('doc-1', { description: 'X' }, 'user-1');
   });
 
-  it('DELETE /:id calls softDelete', async () => {
-    await controller.delete('doc-1', { id: 'user-1' } as never);
-    expect(service.softDelete).toHaveBeenCalledWith('doc-1', 'user-1');
+  it('DELETE /:id calls softDelete with the role (PAYROLL refuses branch managers in the service)', async () => {
+    await controller.delete('doc-1', { id: 'user-1', role: 'ACCOUNTANT' } as never);
+    expect(service.softDelete).toHaveBeenCalledWith('doc-1', 'user-1', 'ACCOUNTANT');
   });
 
   it('POST /credit-note calls service.createCreditNote with userId', async () => {

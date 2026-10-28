@@ -393,7 +393,8 @@ export function PayrollDetailSection({
 }
 
 /** ปุ่มเฉพาะใบเงินเดือนในแถบควบคุมภายใน: แก้ไข (ใบที่ยังไม่ลงบัญชี) + พิมพ์สลิป (เฉพาะใบที่ลงบัญชีแล้ว) */
-export function PayrollDetailActions({ doc }: { doc: PayrollDetailDoc }) {
+/** `canEdit` = ทำใบเงินเดือนได้ (ไม่ใช่ผู้จัดการสาขา — คำตัดสินเจ้าของ 2026-10-28) */
+export function PayrollDetailActions({ doc, canEdit = true }: { doc: PayrollDetailDoc; canEdit?: boolean }) {
   const captionId = useId();
   const editCaptionId = useId();
   const slips = doc.payroll?.lines.length ?? 0;
@@ -401,7 +402,7 @@ export function PayrollDetailActions({ doc }: { doc: PayrollDetailDoc }) {
   const draft = doc.status === 'DRAFT';
   return (
     <>
-      {isPayrollEditable(doc) && (
+      {canEdit && isPayrollEditable(doc) && (
         <span className="inline-flex max-w-64 flex-col items-end gap-1">
           <Button asChild variant="outline" size="sm">
             <Link to={payrollEditPath(doc.id)} aria-describedby={draft ? editCaptionId : undefined}>

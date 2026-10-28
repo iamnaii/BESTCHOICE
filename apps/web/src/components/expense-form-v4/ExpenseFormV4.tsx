@@ -24,6 +24,7 @@ import { SHOP_CASH_ACCOUNT_CODES } from '@/components/CashAccountSelect';
 import { useFormCompute } from './useFormCompute';
 import { QuickStartPanel } from './QuickStartPanel';
 import { DocTypePicker } from './DocTypePicker';
+import { canManagePayroll } from './payroll-system/payroll-roles';
 import { VendorSection } from './VendorSection';
 import { ItemLinesSection } from './ItemLinesSection';
 import { PayrollLinesSection } from './PayrollLinesSection';
@@ -181,7 +182,8 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
     useUiFlags();
   const [showQuickStart, setShowQuickStart] = useState(true);
   const [state, setState] = useState<ExpenseFormState>(() =>
-    initial(branchId, user?.defaultCashAccountCode || '11-1101', initialDocType),
+    // ผู้จัดการสาขาทำใบเงินเดือนไม่ได้ — ?type=PR ของเขาเปิดฟอร์มรายจ่ายปกติ
+    initial(branchId, user?.defaultCashAccountCode || '11-1101', initialDocType === 'PAYROLL' && !canManagePayroll(user?.role) ? undefined : initialDocType),
   );
 
   const patch = (p: Partial<ExpenseFormState>) => setState((s) => ({ ...s, ...p }));
@@ -720,6 +722,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
                     invoiceDateIsToday={invoiceIsToday}
                     smartDoctypeSwitchEnabled={smartDoctypeSwitchEnabled}
                     pettyCashEnabled={pettyCashEnabled}
+                    payrollEnabled={canManagePayroll(user?.role)}
                   />
                 </Section>
 

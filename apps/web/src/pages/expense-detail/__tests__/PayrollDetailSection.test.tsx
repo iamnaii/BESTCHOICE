@@ -443,6 +443,15 @@ describe('payroll actions', () => {
     expect(await screen.findByRole('link', { name: 'แก้ไข' })).toHaveAttribute('href', '/expenses/new?edit=pr-1');
   });
 
+  // คำตัดสินเจ้าของ 2026-10-28 — ผู้จัดการสาขาเปิดดู/พิมพ์สลิปได้ แต่ไม่มีปุ่มแก้ไข ส่ง อนุมัติ หรือกลับรายการ
+  it('BRANCH_MANAGER: view only — no แก้ไข and no submit button on a payroll draft', async () => {
+    auth.user = { ...OWNER, id: 'bm-1', role: 'BRANCH_MANAGER', branchId: 'b1' };
+    mount(payrollDoc('DRAFT'));
+    await screen.findByText(/รายการเงินเดือน/);
+    expect(screen.queryByRole('link', { name: 'แก้ไข' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /ส่งให้อนุมัติ/ })).not.toBeInTheDocument();
+  });
+
   it('DRAFT: แก้ไข says the save recomputes (board 2), other statuses do not', async () => {
     mount(payrollDoc('DRAFT'));
     const edit = await screen.findByRole('link', { name: 'แก้ไข' });

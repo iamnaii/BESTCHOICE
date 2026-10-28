@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { ExpenseFormV4 } from '@/components/expense-form-v4/ExpenseFormV4';
 import { payrollEditPath } from '@/components/expense-form-v4/payroll-system/payroll-status';
+import { PAYROLL_ROLE_NOTICE, canManagePayroll } from '@/components/expense-form-v4/payroll-system/payroll-roles';
 import type { DocType } from '@/components/expense-form-v4/types';
 import { useAuth } from '@/contexts/AuthContext';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -48,6 +49,20 @@ export default function ExpenseDocumentNewPage() {
             <Button className="mt-4 min-h-11" variant="outline" onClick={() => void branches.refetch()}>โหลดใหม่</Button>
           </div>
         </QueryBoundary>
+      </div>
+    );
+  }
+
+  // แก้ไขใบเงินเดือน (?edit=) — ผู้จัดการสาขาทำไม่ได้ (server ตอบ 403 อยู่แล้ว) บอกตรง ๆ แทนฟอร์มที่บันทึกไม่ได้
+  if (editDocId && !canManagePayroll(user?.role)) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="แก้ไขใบเงินเดือน" onBack={() => navigate('/expenses')} />
+        <div className="rounded-xl border border-border bg-card p-6 text-center" role="status">
+          <p className="font-medium leading-snug">{PAYROLL_ROLE_NOTICE}</p>
+          <p className="mt-2 text-sm text-muted-foreground leading-snug">เปิดดูใบและพิมพ์สลิปได้ที่หน้ารายละเอียดของใบ</p>
+          <Button className="mt-4 min-h-11" variant="outline" onClick={() => navigate(`/expenses/${editDocId}`)}>เปิดใบ</Button>
+        </div>
       </div>
     );
   }

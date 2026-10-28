@@ -18,6 +18,7 @@ import { ExpenseDocumentQueryService } from './services/expense-document-query.s
 import { ExpenseDocumentLifecycleService } from './services/expense-document-lifecycle.service';
 import { ExpenseDocumentCreateService } from './services/expense-document-create.service';
 import type { DocumentVersionOpts } from './document-version';
+import { PAYROLL_MANAGER_ROLES, assertPayrollActor } from './payroll-roles';
 
 @Injectable()
 export class ExpenseDocumentsService implements OnModuleInit {
@@ -298,7 +299,8 @@ export class ExpenseDocumentsService implements OnModuleInit {
   // D1.2.1.1 — entry point of the Approval Workflow. Phase 2a decompose:
   // delegated to ExpenseDocumentLifecycleService (which owns the notification
   // fan-out). Signature + behavior unchanged.
-  async submitForApproval(id: string, userId: string) {
+  async submitForApproval(id: string, userId: string, userRole?: string) {
+    await this.refusePayrollOutsideRoles(id, userRole);
     return this.lifecycle.submitForApproval(id, userId);
   }
 
@@ -309,12 +311,14 @@ export class ExpenseDocumentsService implements OnModuleInit {
   // unchanged. executePostBody is private to the lifecycle service (shared by
   // post + approve inside their own $transaction).
   async post(id: string, _userId: string, userRole?: string, opts: DocumentVersionOpts = {}) {
+    await this.refusePayrollOutsideRoles(id, userRole);
     return this.lifecycle.post(id, _userId, userRole, opts);
   }
 
   // ─── Approve (PENDING_APPROVAL → APPROVED → optionally POSTED) ────────
   // Phase 2b decompose — delegates to ExpenseDocumentLifecycleService.approve.
   async approve(id: string, userId: string, userRole?: string, opts: DocumentVersionOpts = {}) {
+    await this.refusePayrollOutsideRoles(id, userRole);
     return this.lifecycle.approve(id, userId, userRole, opts);
   }
 
@@ -327,13 +331,28 @@ export class ExpenseDocumentsService implements OnModuleInit {
     dto: VoidExpenseDocumentDto = {},
     userRole?: string,
   ) {
+    await this.refusePayrollOutsideRoles(id, userRole);
     return this.lifecycle.voidDocument(id, userId, dto, userRole);
   }
 
   // ─── Soft delete (DRAFT only) ────────────────────────────────────────
   // Phase 2a decompose: delegated to ExpenseDocumentLifecycleService.
   // Signature + behavior unchanged.
-  async softDelete(id: string, _userId: string) {
+  async softDelete(id: string, _userId: string, userRole?: string) {
+    await this.refusePayrollOutsideRoles(id, userRole);
     return this.lifecycle.softDelete(id, _userId);
+  }
+
+  /**
+   * ใบ PAYROLL — ผู้จัดการสาขาทำอะไรกับใบไม่ได้ (คำตัดสินเจ้าของ 2026-10-28 · payroll-roles.ts).
+   * `userRole` ไม่ส่งมา = ผู้เรียกภายใน (cron/สคริปต์) — ไม่ตรวจ.
+   */
+  private async refusePayrollOutsideRoles(id: string, userRole?: string): Promise<void> {
+    if (!userRole || (PAYROLL_MANAGER_ROLES as readonly string[]).includes(userRole)) return;
+    const doc = await this.prisma.expenseDocument.findFirst({
+      where: { id, deletedAt: null },
+      select: { documentType: true },
+    });
+    if (doc?.documentType === 'PAYROLL') assertPayrollActor(userRole);
   }
 }

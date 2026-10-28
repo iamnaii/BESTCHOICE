@@ -14,6 +14,8 @@ vi.mock('@/lib/api', () => ({
 }));
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }));
 vi.mock('sonner', () => ({ toast }));
+const authUser = vi.hoisted(() => ({ current: { id: 'u-acc', role: 'ACCOUNTANT', branchId: null as string | null } }));
+vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: authUser.current }) }));
 vi.mock('@/hooks/useAccountingPermissions', () => ({ useAccountingPermissions: () => ({ can: () => allowed }) }));
 vi.mock('@/hooks/useUiFlags', () => ({ useUiFlags: () => ({
   paginationSize: 20, templatesEnabled: false, approvalEnabled,
@@ -76,6 +78,20 @@ describe('expense row menu', () => {
     expect(edit).not.toHaveAttribute('aria-disabled', 'true');
     await userEvent.click(edit);
     expect(screen.getByTestId('location')).toHaveTextContent('/expenses/new?edit=expense-1');
+  });
+  // คำตัดสินเจ้าของ 2026-10-28 — ผู้จัดการสาขาเปิดดูใบเงินเดือนได้ แต่แก้/ส่ง/ยกเลิกไม่ได้
+  it('a branch manager gets only เปิดใบ on a payroll draft — no แก้ไข / ส่งขออนุมัติ / ยกเลิก', async () => {
+    authUser.current = { id: 'u-bm', role: 'BRANCH_MANAGER', branchId: 'b1' };
+    try {
+      mount('DRAFT', 'PAYROLL'); await userEvent.click(await screen.findByRole('button', { name: 'เมนู EX-001' }));
+      await screen.findByRole('menu');
+      expect(screen.queryByRole('menuitem', { name: 'แก้ไข' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('menuitem', { name: /ส่งขออนุมัติ/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole('menuitem', { name: 'ยกเลิก' })).not.toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: /เปิดใบ/ })).toBeInTheDocument();
+    } finally {
+      authUser.current = { id: 'u-acc', role: 'ACCOUNTANT', branchId: null };
+    }
   });
   it('offers no edit on a PENDING_APPROVAL document that is not payroll', async () => {
     mount('PENDING_APPROVAL'); await userEvent.click(await screen.findByRole('button', { name: 'เมนู EX-001' }));

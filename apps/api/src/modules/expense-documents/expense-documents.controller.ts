@@ -17,6 +17,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { PAYROLL_MANAGER_ROLES } from './payroll-roles';
 import { ExpenseDocumentsService } from './expense-documents.service';
 import { ExpenseVoucherPdfService } from './services/expense-voucher-pdf.service';
 import { CreateExpenseDocumentDto } from './dto/create.dto';
@@ -57,7 +58,7 @@ export class ExpenseDocumentsController {
   }
 
   @Post('payroll')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles(...PAYROLL_MANAGER_ROLES)
   createPayroll(
     @Body() dto: CreatePayrollDto,
     @CurrentUser() user: { id: string; branchId?: string | null; role?: string | null },
@@ -68,14 +69,14 @@ export class ExpenseDocumentsController {
   // Payroll form meta (whitelist + cash accounts per scope, with CoA names).
   // Declared BEFORE @Get(':id') so the literal path wins route matching.
   @Get('payroll/meta')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles(...PAYROLL_MANAGER_ROLES)
   payrollMeta(@Query('scope') scope?: string) {
     return this.service.getPayrollMeta(scope === 'FINANCE' ? 'FINANCE' : 'SHOP');
   }
 
   // R3-2 (2026-08-06) — แก้ไขร่างใบเงินเดือน (DRAFT เท่านั้น, แทนที่ lines ทั้งชุด)
   @Patch(':id/payroll')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles(...PAYROLL_MANAGER_ROLES)
   updatePayroll(
     @Param('id') id: string,
     @Body() dto: UpdatePayrollDto,
@@ -302,8 +303,8 @@ export class ExpenseDocumentsController {
    */
   @Post(':id/submit-for-approval')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  submitForApproval(@Param('id') id: string, @CurrentUser() user: { id: string }) {
-    return this.service.submitForApproval(id, user.id);
+  submitForApproval(@Param('id') id: string, @CurrentUser() user: { id: string; role?: string }) {
+    return this.service.submitForApproval(id, user.id, user.role);
   }
 
   /** Approval permission authorizes the configured approve/auto-post action. */
@@ -331,7 +332,7 @@ export class ExpenseDocumentsController {
 
   @Delete(':id')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  delete(@Param('id') id: string, @CurrentUser() user: { id: string }) {
-    return this.service.softDelete(id, user.id);
+  delete(@Param('id') id: string, @CurrentUser() user: { id: string; role?: string }) {
+    return this.service.softDelete(id, user.id, user.role);
   }
 }

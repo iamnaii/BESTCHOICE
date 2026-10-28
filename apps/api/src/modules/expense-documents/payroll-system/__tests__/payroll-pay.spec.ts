@@ -8,6 +8,7 @@ import {
   monthPayHours,
   payrollAttendanceLockKey,
   payrollCutoff,
+  payrollTaxableGross,
   systemIncomeAmount,
   type PayDay,
 } from '../payroll-pay';
@@ -110,5 +111,36 @@ describe('payrollCutoff / lock key / eligibility', () => {
     expect(isAutoOtEligible({ employmentType: 'MONTHLY', baseSalary: null })).toBe(false);
     expect(isAutoOtEligible({ employmentType: 'MONTHLY', baseSalary: D(0) })).toBe(false);
     expect(isAutoOtEligible(null)).toBe(false);
+  });
+});
+
+describe('payrollTaxableGross', () => {
+  const line = (o: Partial<Parameters<typeof payrollTaxableGross>[0]> = {}) => ({ baseSalary: D(15000), customIncome: [], customDeduction: [], ...o });
+  it('base + taxable income - clawback; golden 15000.00', () => {
+    const g = payrollTaxableGross(
+      line({
+        customIncome: [{ amount: D(1000), isTaxable: true }],
+        customDeduction: [
+          { amount: D(1000), source: 'COMMISSION_CLAWBACK' },
+          { amount: D(300), source: 'MANUAL' },
+        ],
+      }),
+    );
+    expect(g.toFixed(2)).toBe('15000.00');
+  });
+  it('non-taxable income contributes 0; isTaxable undefined counts', () => {
+    expect(payrollTaxableGross(line({ customIncome: [{ amount: D(500), isTaxable: false }, { amount: D(200) }] })).toFixed(2)).toBe('15200.00');
+  });
+  it('manual deduction contributes 0', () => {
+    expect(payrollTaxableGross(line({ customDeduction: [{ amount: D(300), source: 'MANUAL' }] })).toFixed(2)).toBe('15000.00');
+  });
+  it('pre-filtered clawback rows (no source) are subtracted', () => {
+    expect(payrollTaxableGross(line({ customDeduction: [{ amount: D(400) }] })).toFixed(2)).toBe('14600.00');
+  });
+  it('tolerates missing arrays', () => {
+    expect(payrollTaxableGross({ baseSalary: D(15000) }).toFixed(2)).toBe('15000.00');
+  });
+  it('floors at 0', () => {
+    expect(payrollTaxableGross(line({ baseSalary: D(100), customDeduction: [{ amount: D(900), source: 'COMMISSION_CLAWBACK' }] })).toFixed(2)).toBe('0.00');
   });
 });

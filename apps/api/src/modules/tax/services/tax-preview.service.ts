@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { INSTALLMENT_INPUT_VAT_FLOW } from '../../journal/cpa-templates/installment-input-vat.template';
 import { EntityScope, ensureTaxTypeAllowedForEntity } from '../tax-entity.util';
+import { payrollTaxableGross } from '../../expense-documents/payroll-system/payroll-pay';
 import {
   PP30_MANDATORY_60DAY_VAT_ACCOUNT,
   computePp30OutputVat,
@@ -750,6 +751,7 @@ export class TaxPreviewService {
                   where: { isTaxable: true },
                   select: { amount: true },
                 },
+                customDeduction: { where: { source: 'COMMISSION_CLAWBACK' }, select: { amount: true } },
               },
             },
           },
@@ -771,14 +773,10 @@ export class TaxPreviewService {
     for (const doc of docs) {
       const payDate = doc.paidAt ?? doc.documentDate ?? new Date();
       for (const line of doc.payroll?.lines ?? []) {
-        const taxableIncome = (line.customIncome ?? []).reduce(
-          (s, r) => s.add(r.amount),
-          new Prisma.Decimal(0),
-        );
         items.push({
           employeeName: line.employeeName,
           employeeTaxId: line.employeeTaxId,
-          gross: line.baseSalary.add(taxableIncome),
+          gross: payrollTaxableGross(line),
           whtAmount: line.whtAmount,
           payDate,
           payrollDocNumber: doc.number,
@@ -987,6 +985,7 @@ export class TaxPreviewService {
                 whtAmount: true,
                 ssoEmployee: true,
                 customIncome: { where: { isTaxable: true }, select: { amount: true } },
+                customDeduction: { where: { source: 'COMMISSION_CLAWBACK' }, select: { amount: true } },
               },
             },
           },
@@ -1011,8 +1010,7 @@ export class TaxPreviewService {
       const period = doc.payroll?.payrollPeriod ?? '';
       for (const line of doc.payroll?.lines ?? []) {
         const key = line.employeeTaxId ?? `name:${line.employeeName}`;
-        const taxableIncome = (line.customIncome ?? []).reduce((s, r) => s.add(r.amount), zero);
-        const gross = line.baseSalary.add(taxableIncome);
+        const gross = payrollTaxableGross(line);
         const agg = byEmployee.get(key) ?? {
           employeeName: line.employeeName,
           employeeTaxId: line.employeeTaxId,

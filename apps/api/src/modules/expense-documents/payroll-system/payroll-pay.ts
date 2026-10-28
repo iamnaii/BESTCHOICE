@@ -121,3 +121,25 @@ export function payrollClawbackLockKey(userId: string): string {
 export function isAutoOtEligible(p: { employmentType: EmploymentType; baseSalary: Prisma.Decimal | null } | null): boolean {
   return !!p && p.employmentType === 'MONTHLY' && !!p.baseSalary && p.baseSalary.gt(0);
 }
+
+/**
+ * ฐานภาษี ภ.ง.ด.1 ของแถวเงินเดือน (D4 ส่วนที่ 2 · P2-R18) = ฐาน + รายได้ที่เสียภาษี − หักคืนค่าคอม (ขั้นต่ำ 0)
+ * - รายการหักมือ (MANUAL) ไม่กระทบฐาน · หักคืนค่าคอมคือการเรียกคืนค่าคอมที่เคยจ่าย/เสียภาษีไปแล้ว
+ * - `source` ว่าง = แถวที่ query กรอง COMMISSION_CLAWBACK มาให้แล้ว (นับ) · มี `source` อื่น ≠ CLAWBACK = ไม่นับ
+ */
+export function payrollTaxableGross(line: {
+  baseSalary: Prisma.Decimal;
+  customIncome?: Array<{ amount: Prisma.Decimal; isTaxable?: boolean }> | null;
+  customDeduction?: Array<{ amount: Prisma.Decimal; source?: string }> | null;
+}): Prisma.Decimal {
+  const income = (line.customIncome ?? []).reduce(
+    (s, r) => (r.isTaxable !== false ? s.add(r.amount) : s),
+    new Prisma.Decimal(0),
+  );
+  const clawback = (line.customDeduction ?? []).reduce(
+    (s, r) => (r.source === undefined || r.source === 'COMMISSION_CLAWBACK' ? s.add(r.amount) : s),
+    new Prisma.Decimal(0),
+  );
+  const gross = line.baseSalary.add(income).sub(clawback);
+  return gross.lt(0) ? new Prisma.Decimal(0) : gross;
+}

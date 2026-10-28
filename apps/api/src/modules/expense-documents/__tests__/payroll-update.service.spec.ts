@@ -63,11 +63,14 @@ describe('ExpenseDocumentsService.updatePayroll', () => {
         calls.push(`compute:${q.userIds.join(',')}`);
         return {
           attendanceAccountCodes: ['S52-1202'],
+          commissionAccountCodes: ['S51-1101'],
           rows: q.userIds.map((userId) => ({
             userId,
             autoOtEligible: true,
             attendanceTracked: true,
             systemIncome: [{ source: 'ATTENDANCE_OT', accountCode: 'S52-1202', name: 'OT วันทำงาน (1.5 เท่า)', quantity: '2.0', rate: '81.2500', multiplier: '1.5', amount: '162.50', isTaxable: true }],
+            systemDeductions: [],
+            commissionItems: [],
             attendanceSummary: { otHours: '2.0', autoOtEligible: true, attendanceTracked: true },
             notes: { review: [], warnings: [] },
           })),
@@ -149,9 +152,9 @@ describe('ExpenseDocumentsService.updatePayroll', () => {
     });
   });
 
-  it('lock order post: → payroll: → payroll-attendance:* and compute excludes the document itself', async () => {
+  it('lock order post: → payroll: → payroll-attendance:* → payroll-clawback:* and compute excludes the document itself', async () => {
     await service.updatePayroll(DOC_ID, { ...dto, lines: [{ userId: 'emp-1', baseSalary: 13000 }] }, OWNER);
-    expect(calls).toEqual([`post:${DOC_ID}`, 'payroll:b1:2026-08:SHOP', 'payroll-attendance:emp-1:2026-08', 'compute:emp-1']);
+    expect(calls).toEqual([`post:${DOC_ID}`, 'payroll:b1:2026-08:SHOP', 'payroll-attendance:emp-1:2026-08', 'payroll-clawback:emp-1', 'compute:emp-1']);
     expect(systemRows.compute.mock.calls[0][1]).toMatchObject({ excludeDocumentId: DOC_ID, branchId: 'b1', payrollPeriod: '2026-08' });
     const line = prisma.expenseDocument.update.mock.calls[0][0].data.payroll.create.lines.create[0];
     expect(line.netPaid.toFixed(2)).toBe('13162.50');

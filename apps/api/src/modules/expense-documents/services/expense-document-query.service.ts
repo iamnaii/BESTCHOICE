@@ -634,6 +634,26 @@ export class ExpenseDocumentQueryService {
                     include: {
                       customIncome: { orderBy: { createdAt: 'asc' } },
                       customDeduction: { orderBy: { createdAt: 'asc' } },
+                      // D4 ส่วนที่ 2 — รายการค่าคอมที่บรรทัดจ่าย (PAY) / หักคืน (CLAWBACK) ให้ตารางรายละเอียด + สลิป (Task 6) ·
+                      // ไม่กรอง releasedAt (P2-R19): ใบที่ยังมีผลมีแต่รายการที่ยังมีผล · ใบ VOIDED ยังแสดงรายการที่เคยจ่าย/หัก
+                      commissionItems: {
+                        orderBy: [{ kind: 'asc' }, { salesCommission: { period: 'asc' } }, { salesCommission: { createdAt: 'asc' } }, { salesCommissionId: 'asc' }],
+                        include: {
+                          salesCommission: {
+                            select: {
+                              id: true,
+                              period: true,
+                              commissionAmount: true,
+                              status: true,
+                              clawbackReason: true,
+                              clawbackAt: true,
+                              createdAt: true,
+                              contract: { select: { contractNumber: true } },
+                              sale: { select: { saleNumber: true } },
+                            },
+                          },
+                        },
+                      },
                     },
                   },
                 },

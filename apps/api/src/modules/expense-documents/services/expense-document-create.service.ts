@@ -24,6 +24,7 @@ import { payrollDocumentLockKey, payrollPeriodStart } from '../payroll-system/pa
 import {
   attachSystemRows,
   notInBranchMessage,
+  writeWithCommissionGuard,
   type ClientPayrollLine,
 } from '../payroll-system/payroll-save';
 import { hasCrossBranchAccess } from '../../auth/branch-access.util';
@@ -500,7 +501,8 @@ export class ExpenseDocumentCreateService {
       });
 
       const number = await this.docNumber.next(tx, 'PAYROLL', documentDate);
-      return tx.expenseDocument.create({
+      // P2-R4 — ชนดัชนีรายการ PAY ที่ยังมีผล = 409 PAYROLL_COMMISSION_TAKEN (ไม่รัน query ต่อบนธุรกรรมที่ abort แล้ว)
+      return writeWithCommissionGuard(() => tx.expenseDocument.create({
         data: {
           number,
           documentType: 'PAYROLL',
@@ -530,7 +532,7 @@ export class ExpenseDocumentCreateService {
           },
         },
         include: PAYROLL_LINES_INCLUDE,
-      });
+      }));
     });
 
     // PR-C PII — the snapshot employeeTaxId === the employee's nationalId (or
@@ -635,9 +637,11 @@ export class ExpenseDocumentCreateService {
     // APPROVED); hard-delete + recreate is the same shape
     // IntercoSettlementService.updateBatch uses. deleteMany (not delete)
     // tolerates a legacy PAYROLL doc created without a detail.
+    // ลบรายละเอียดเดิม cascade → บรรทัด → แถวรายได้/หัก + รายการค่าคอมของร่าง (ไม่ใช่ "ปล่อย" — ใบยังไม่ลงบัญชี ไม่มีค่าคอมถูกจ่าย)
     await tx.payrollDetail.deleteMany({ where: { documentId: id } });
     const sentBack = existing.status !== 'DRAFT';
-    const doc = await tx.expenseDocument.update({
+    // P2-R4 — ชนดัชนีรายการ PAY ที่ยังมีผล = 409 PAYROLL_COMMISSION_TAKEN (ไม่รัน query ต่อบนธุรกรรมที่ abort แล้ว)
+    const doc = await writeWithCommissionGuard(() => tx.expenseDocument.update({
       where: { id },
       data: {
         documentDate,
@@ -662,7 +666,7 @@ export class ExpenseDocumentCreateService {
         },
       },
       include: PAYROLL_LINES_INCLUDE,
-    });
+    }));
 
     if (sentBack) {
       // Expense lifecycle pattern — audit atomic with the status flip (tx.auditLog.create).
@@ -831,10 +835,12 @@ export class ExpenseDocumentCreateService {
           isTaxable: r.isTaxable !== false,
           source: r.isAdjustment === true ? 'ADJUSTMENT' : 'MANUAL',
         })),
+        // P2-R3 — รายการหักที่ client ส่งเป็น MANUAL เสมอ (หักคืนค่าคอมเป็นแถวของระบบเท่านั้น — payroll-save.ts)
         customDeduction: (l.customDeduction ?? []).map((r) => ({
           accountCode: r.accountCode,
           name: r.name,
           amount: new Prisma.Decimal(r.amount),
+          source: 'MANUAL' as const,
         })),
       };
     });

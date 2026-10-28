@@ -1,6 +1,6 @@
-import { Prisma, type CommissionStatus, type PayoutStatus } from '@prisma/client';
+import { Prisma, type CommissionStatus } from '@prisma/client';
 import type { PrismaService } from '../../../prisma/prisma.service';
-import { isCoveredByPayout } from '../../commission/commission-payout-cover.util';
+import { isCoveredByPayout, UNPAID_PAYOUT_STATUSES } from '../../commission/commission-payout-cover.util';
 
 /**
  * Payroll D4 ส่วนที่ 2 — สถานะค่าคอมของพนักงานต่องวด: แหล่งเดียวของกติกา "จ่ายได้" และ "หักคืนได้"
@@ -17,8 +17,6 @@ import { isCoveredByPayout } from '../../commission/commission-payout-cover.util
 
 type Client = Prisma.TransactionClient | PrismaService;
 
-/** รอบจ่ายค่าคอมรายเดือนแบบเดิมที่ "นับว่าจ่ายแล้ว" — ทุกสถานะยกเว้น DRAFT/CANCELLED (กติกาเดียวกับ G4b ของการยกเลิกใบขาย) */
-const UNPAID_PAYOUT_STATUSES: PayoutStatus[] = ['DRAFT', 'CANCELLED'];
 const CLAWBACK_STATUSES: CommissionStatus[] = ['CLAWED_BACK', 'PARTIALLY_CLAWED_BACK'];
 const ZERO = new Prisma.Decimal(0);
 
@@ -90,7 +88,8 @@ export interface UserCommissionState {
   clawbacks: ClawbackCommission[];
 }
 
-const referenceOf = (c: { id: string; contract: { contractNumber: string } | null; sale: { saleNumber: string } | null }) =>
+/** อ้างอิงของค่าคอม (P2-R21) = เลขสัญญา ?? เลขใบขาย ?? id — ใช้ร่วมกับป้าย diff / ข้อความกลับรายการ (Task 4) */
+export const referenceOf = (c: { id: string; contract: { contractNumber: string } | null; sale: { saleNumber: string } | null }) =>
   c.contract?.contractNumber ?? c.sale?.saleNumber ?? c.id;
 
 /** สถานะค่าคอมของทุกคนใน `userIds` (มีคีย์ครบทุกคน แม้ไม่มีค่าคอม) */
@@ -106,7 +105,7 @@ export async function loadCommissionState(client: Client, q: CommissionStateQuer
       orderBy: [{ period: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
     }),
     client.commissionPayout.findMany({
-      where: { salespersonId: { in: userIds }, period: { lte: q.payrollPeriod }, deletedAt: null, status: { notIn: UNPAID_PAYOUT_STATUSES } },
+      where: { salespersonId: { in: userIds }, period: { lte: q.payrollPeriod }, deletedAt: null, status: { notIn: [...UNPAID_PAYOUT_STATUSES] } }, // รอบจ่ายเดิมที่ "นับว่าจ่ายแล้ว" (P2-R27 — รายการเดียวกับ G4b ของการยกเลิกใบขาย)
       select: { salespersonId: true, period: true, generatedAt: true },
     }),
     q.payOnly

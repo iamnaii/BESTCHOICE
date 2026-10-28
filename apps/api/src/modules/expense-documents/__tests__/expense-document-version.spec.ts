@@ -55,7 +55,13 @@ function setup(doc: { documentType: string; status: string; updatedAt: string })
   };
   const template = () => ({ execute: jest.fn().mockResolvedValue({ entryNo: 'JE-1' }) });
   const templates = { sameDay: template(), accrual: template(), creditNote: template(), payroll: template() };
-  const gate = { assertPostable: jest.fn().mockResolvedValue(undefined), assertSubmittable: jest.fn(), inspect: jest.fn() };
+  // D4 ส่วนที่ 2 — ลงบัญชีใบเงินเดือนเรียก markCommissionsPaid หลัง JE (ไม่มีรายการค่าคอมในชุดนี้)
+  const gate = {
+    assertPostable: jest.fn().mockResolvedValue(undefined),
+    assertSubmittable: jest.fn(),
+    inspect: jest.fn(),
+    markCommissionsPaid: jest.fn().mockResolvedValue([]),
+  };
   const lifecycle = new ExpenseDocumentLifecycleService(
     prisma,
     new StatusTransitionService(),
@@ -116,6 +122,7 @@ describe('approve / post require the version the approver saw (R20 FX2)', () => 
       expect(gate.assertPostable).toHaveBeenCalledWith(prisma, 'doc-1', expect.any(Date));
       expect(prisma.expenseDocument.update).toHaveBeenCalledWith({ where: { id: 'doc-1' }, data: { status: 'APPROVED', approvedById: 'owner-1' } });
       expect(templates.payroll.execute).toHaveBeenCalledWith('doc-1', prisma);
+      expect(gate.markCommissionsPaid).toHaveBeenCalledWith(prisma, 'doc-1', expect.any(Date));
     });
   });
 
@@ -171,6 +178,7 @@ describe('approve / post require the version the approver saw (R20 FX2)', () => 
       await lifecycle.post('doc-1', 'owner-1', 'OWNER', { expectedUpdatedAt: SEEN });
       expect(gate.assertPostable).toHaveBeenCalled();
       expect(templates.payroll.execute).toHaveBeenCalledWith('doc-1', prisma);
+      expect(gate.markCommissionsPaid).toHaveBeenCalledWith(prisma, 'doc-1', expect.any(Date));
     });
   });
 

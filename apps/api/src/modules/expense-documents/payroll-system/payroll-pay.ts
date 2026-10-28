@@ -109,6 +109,15 @@ export function payrollAttendanceLockKey(userId: string, period: string): string
   return `payroll-attendance:${userId}:${period}`;
 }
 
+/**
+ * ล็อกค่าคอม/หักคืนค่าคอมของพนักงานขาย (D4 ส่วนที่ 2 · P2-R1) — ตัวสุดท้ายในลำดับ
+ * `post:${docId}` → `payroll:…` → `payroll-attendance:*` → นี่ (บันทึก / ส่ง / อนุมัติ / ลงบัญชี) · กลับรายการ: `post:` → นี่
+ * ไม่มีงวด: ใบงวด ต.ค. กับ พ.ย. แย่งค่าคอมตัวเดียวกันได้ (period ≤ งวด) · ผู้เขียนหักคืน (helper / cron / ยกเลิกใบขาย) ไม่ถือล็อกนี้
+ */
+export function payrollClawbackLockKey(userId: string): string {
+  return `payroll-clawback:${userId}`;
+}
+
 export function isAutoOtEligible(p: { employmentType: EmploymentType; baseSalary: Prisma.Decimal | null } | null): boolean {
   return !!p && p.employmentType === 'MONTHLY' && !!p.baseSalary && p.baseSalary.gt(0);
 }

@@ -20,11 +20,14 @@ describe('ExpenseDocumentsService.createPayroll — userId link & snapshot deriv
   const systemRows = {
     compute: jest.fn(async (_tx: unknown, q: { userIds: string[] }) => ({
       attendanceAccountCodes: ['53-1103'],
+      commissionAccountCodes: [],
       rows: q.userIds.map((userId) => ({
         userId,
         autoOtEligible: false,
         attendanceTracked: false,
         systemIncome: [],
+        systemDeductions: [],
+        commissionItems: [],
         attendanceSummary: { otHours: '0.0', autoOtEligible: false, attendanceTracked: false },
         notes: { review: [], warnings: [] },
       })),

@@ -382,6 +382,134 @@ describe('CommissionService', () => {
     });
   });
 
+  // D4 ส่วนที่ 2 (Task 6) — หน้าค่าคอมเห็นว่าค่าคอมอยู่ในใบเงินเดือนไหน (จ่าย / หักคืน), ยอดที่ยังรอหัก และพนักงานลาออก
+  describe('findAll — payroll links, clawback outstanding, resigned salesperson', () => {
+    const NOW = new Date('2026-11-05T03:00:00.000Z');
+    const doc = (id: string, number: string, status: string) => ({ payrollLine: { payroll: { document: { id, number, status } } } });
+    const item = (kind: 'PAY' | 'CLAWBACK', amount: string, d: ReturnType<typeof doc>) => ({ kind, amount: new Prisma.Decimal(amount), ...d });
+    const PR_A = doc('doc-a', 'PR-20261031-0001', 'POSTED');
+    const PR_B = doc('doc-b', 'PR-20261130-0001', 'POSTED');
+    const PR_C = doc('doc-c', 'PR-20261231-0001', 'DRAFT');
+    const row = (over: Record<string, unknown>) => ({
+      id: 'c1',
+      salespersonId: 'sp1',
+      period: '2026-10',
+      commissionAmount: new Prisma.Decimal('1200'),
+      status: 'APPROVED',
+      paidAt: null,
+      paidAmount: null,
+      clawbackAmount: null,
+      salesperson: { id: 'sp1', name: 'สมศรี มีสุข', employeeProfile: null },
+      contract: { id: 'ct1', contractNumber: 'CT-20261003-0012' },
+      sale: null,
+      approvedBy: null,
+      payrollItems: [],
+      ...over,
+    });
+    const list = async (rows: Array<Record<string, unknown>>) => {
+      prisma.salesCommission.findMany.mockResolvedValue(rows);
+      prisma.salesCommission.count.mockResolvedValue(rows.length);
+      return (await service.findAll({})).data as Array<Record<string, unknown>>;
+    };
+
+    beforeEach(() => jest.useFakeTimers({ now: NOW, doNotFake: ['nextTick', 'setImmediate'] }));
+    afterEach(() => jest.useRealTimers());
+
+    it('reads only live items (releasedAt null) in item order, with their payroll document, and the salesperson resigned date', async () => {
+      await list([]);
+      const include = prisma.salesCommission.findMany.mock.calls[0][0].include;
+      expect(include.payrollItems).toEqual({
+        where: { releasedAt: null },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        select: {
+          kind: true,
+          amount: true,
+          payrollLine: { select: { payroll: { select: { document: { select: { id: true, number: true, status: true } } } } } },
+        },
+      });
+      expect(include.salesperson).toEqual({
+        select: { id: true, name: true, employeeProfile: { select: { resignedDate: true } } },
+      });
+    });
+
+    it('a commission paid in PR-A and deducted in PR-B and PR-C → three links in item order; nothing left to deduct', async () => {
+      const [c] = await list([
+        row({
+          status: 'PARTIALLY_CLAWED_BACK',
+          paidAt: new Date('2026-11-02T00:00:00.000Z'),
+          paidAmount: new Prisma.Decimal('1200'),
+          clawbackAmount: new Prisma.Decimal('600'),
+          payrollItems: [item('PAY', '1200', PR_A), item('CLAWBACK', '200', PR_B), item('CLAWBACK', '400', PR_C)],
+        }),
+      ]);
+      expect(c.payrollLinks).toEqual([
+        { documentId: 'doc-a', documentNumber: 'PR-20261031-0001', status: 'POSTED', kind: 'PAY' },
+        { documentId: 'doc-b', documentNumber: 'PR-20261130-0001', status: 'POSTED', kind: 'CLAWBACK' },
+        { documentId: 'doc-c', documentNumber: 'PR-20261231-0001', status: 'DRAFT', kind: 'CLAWBACK' },
+      ]);
+      expect(c.clawbackOutstanding).toBe('0.00');
+      expect(c.salespersonResigned).toBe(false);
+      // ไม่ส่งของดิบออก — รายการ/วันลาออกเป็นข้อมูลภายใน
+      expect(c).not.toHaveProperty('payrollItems');
+      expect(c.salesperson).toEqual({ id: 'sp1', name: 'สมศรี มีสุข' });
+    });
+
+    it('clawbackOutstanding = clawbackAmount − Σ live CLAWBACK items (any document status), 2 dp', async () => {
+      const [c] = await list([
+        row({
+          status: 'CLAWED_BACK',
+          paidAt: new Date('2026-11-02T00:00:00.000Z'),
+          paidAmount: new Prisma.Decimal('1000'),
+          clawbackAmount: new Prisma.Decimal('1000'),
+          payrollItems: [item('PAY', '1000', PR_A), item('CLAWBACK', '600', PR_C)],
+        }),
+      ]);
+      expect(c.clawbackOutstanding).toBe('400.00');
+    });
+
+    it('a clawed-back commission paid outside payroll (no PAY item in a POSTED payroll) has no outstanding — the payroll does not deduct it', async () => {
+      const rows = await list([
+        row({ id: 'outside', status: 'CLAWED_BACK', paidAt: new Date('2026-09-01'), paidAmount: new Prisma.Decimal('1000'), clawbackAmount: new Prisma.Decimal('1000') }),
+        row({ id: 'unposted', status: 'CLAWED_BACK', paidAt: new Date('2026-09-01'), paidAmount: new Prisma.Decimal('1000'), clawbackAmount: new Prisma.Decimal('1000'), payrollItems: [item('PAY', '1000', PR_C)] }),
+        // ไม่เคยจ่าย (cron 50% บนแถว APPROVED) — ไม่มียอดให้หัก
+        row({ id: 'unpaid', status: 'PARTIALLY_CLAWED_BACK', clawbackAmount: new Prisma.Decimal('600') }),
+        row({ id: 'approved', status: 'APPROVED', payrollItems: [item('PAY', '1200', PR_C)] }),
+      ]);
+      expect(rows.map((r) => [r.id, r.clawbackOutstanding])).toEqual([
+        ['outside', null],
+        ['unposted', null],
+        ['unpaid', null],
+        ['approved', null],
+      ]);
+      expect(rows[3].payrollLinks).toEqual([{ documentId: 'doc-c', documentNumber: 'PR-20261231-0001', status: 'DRAFT', kind: 'PAY' }]);
+    });
+
+    it('salespersonResigned = resignedDate ≤ now (no profile / no date / a future date = false)', async () => {
+      const sp = (resignedDate: Date | null) => ({ id: 'sp1', name: 'ก', employeeProfile: { resignedDate } });
+      const rows = await list([
+        row({ id: 'past', salesperson: sp(new Date('2026-10-31T17:00:00.000Z')) }),
+        row({ id: 'today', salesperson: sp(NOW) }),
+        row({ id: 'future', salesperson: sp(new Date('2026-12-01T00:00:00.000Z')) }),
+        row({ id: 'no-date', salesperson: sp(null) }),
+        row({ id: 'no-profile' }),
+      ]);
+      expect(rows.map((r) => [r.id, r.salespersonResigned])).toEqual([
+        ['past', true],
+        ['today', true],
+        ['future', false],
+        ['no-date', false],
+        ['no-profile', false],
+      ]);
+    });
+
+    it('rows without the included arrays (older mocks / callers) read as no links', async () => {
+      const [c] = await list([{ id: 'bare', status: 'PENDING', paidAt: null, clawbackAmount: null, salesperson: { id: 'sp1', name: 'ก' } }]);
+      expect(c.payrollLinks).toEqual([]);
+      expect(c.clawbackOutstanding).toBeNull();
+      expect(c.salespersonResigned).toBe(false);
+    });
+  });
+
   // Segregation of Duties on commission payout approval.
   // Prevents the salesperson who earns a payout from self-approving it.
   describe('approvePayout — Segregation of Duties', () => {

@@ -49,7 +49,10 @@ export async function cleanupCreditContractSale(tx: Prisma.TransactionClient,
       OR: commissions.map(c => ({ salespersonId: c.salespersonId, period: c.period })) } }) : [];
     const covering = payouts.filter(p => commissions.some(c => isCoveredByPayout(c, p)));
     if (covering.some(isLockedPayout)) {
-      throw new BadRequestException('ค่าคอมรายการนี้อยู่ในรอบจ่ายที่อนุมัติแล้ว ต้องยกเลิกรอบจ่ายก่อนคืนเครดิตเทิร์น');
+      // P2-R26 — ไม่มีเมนูยกเลิก/แก้ไขรอบจ่าย (และรอบแบบเดิมจ่ายผ่านระบบไม่ได้แล้ว) ⇒ ห้ามบอกให้ "ยกเลิกรอบจ่ายก่อน"
+      throw new BadRequestException(
+        'ค่าคอมรายการนี้อยู่ในรอบจ่ายค่าคอมแบบเดิมที่อนุมัติหรือจ่ายแล้ว — คืนเครดิตเทิร์นไม่ได้ เพราะยังไม่มีเมนูยกเลิก/แก้ไขรอบจ่าย ให้เจ้าของหรือผจก.การเงินตัดสินใจก่อน',
+      );
     }
     for (const payout of covering.filter(p => p.status === 'DRAFT')) {
       const result = await tx.commissionPayout.updateMany({ where: { id: payout.id, status: 'DRAFT', deletedAt: null }, data: { deletedAt: now } });

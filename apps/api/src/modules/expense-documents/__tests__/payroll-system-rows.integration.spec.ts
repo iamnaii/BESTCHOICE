@@ -45,6 +45,11 @@ const userIds: string[] = [];
 const docIds: string[] = [];
 const commissionIds: string[] = [];
 const payoutIds: string[] = [];
+// Task 6 carry (Task 3) — fixture ที่ผูกสัญญา/ใบขายจริง ให้ reference ไม่ตกไปที่ id
+const saleIds: string[] = [];
+const contractIds: string[] = [];
+const productIds: string[] = [];
+const customerIds: string[] = [];
 let ownerId: string;
 let branch1: { id: string; name: string };
 let branch2: { id: string; name: string };
@@ -213,6 +218,34 @@ async function mkCommission(salespersonId: string, o: CommissionOpts = {}) {
   return c;
 }
 
+/** ใบขาย / สัญญาจริง (ฟิลด์บังคับเท่านั้น) ให้ค่าคอมผูก — reference ของรายการอ่านจากสองตารางนี้ (P2-R21) */
+async function mkSaleAndContract(tag: string, salespersonId: string) {
+  const customer = await prisma.customer.create({ data: { name: `ลูกค้า PRS-${tag} ${stamp}` } });
+  customerIds.push(customer.id);
+  const product = (n: number) =>
+    prisma.product.create({
+      data: { name: `เครื่อง PRS-${tag}-${n}`, brand: 'Apple', model: 'iPhone 15', category: 'PHONE_NEW', costPrice: 20000, branchId: branch1.id },
+    });
+  const [p1, p2] = await Promise.all([product(1), product(2)]);
+  productIds.push(p1.id, p2.id);
+  const sale = await prisma.sale.create({
+    data: {
+      saleNumber: `SL-PRS-${tag}-${stamp}`, saleType: 'CASH', customerId: customer.id, productId: p1.id,
+      branchId: branch1.id, salespersonId, sellingPrice: 24000, netAmount: 24000,
+    },
+  });
+  saleIds.push(sale.id);
+  const contract = await prisma.contract.create({
+    data: {
+      contractNumber: `CT-PRS-${tag}-${stamp}`, customerId: customer.id, productId: p2.id, branchId: branch1.id,
+      salespersonId, planType: 'STORE_WITH_INTEREST', sellingPrice: 24000, downPayment: 4000, interestRate: 0.08,
+      totalMonths: 10, interestTotal: 1600, financedAmount: 20000, monthlyPayment: 2160,
+    },
+  });
+  contractIds.push(contract.id);
+  return { sale, contract };
+}
+
 /** ค่าคอมที่จ่ายแล้ว (paidAt) แล้วถูกเรียกคืน — สถานะที่ helper ของ Task 2 ทิ้งไว้: clawbackAmount = paidAmount × % */
 async function mkPaidClawback(userId: string, o: { paid: number; clawback: number; at: Date; id?: string; period?: string }) {
   return mkCommission(userId, {
@@ -327,6 +360,11 @@ afterAll(async () => {
   if (docIds.length > 0) await prisma.expenseDocument.deleteMany({ where: { id: { in: docIds } } });
   if (commissionIds.length > 0) await prisma.salesCommission.deleteMany({ where: { id: { in: commissionIds } } });
   if (payoutIds.length > 0) await prisma.commissionPayout.deleteMany({ where: { id: { in: payoutIds } } });
+  // ค่าคอมอ้างใบขาย/สัญญา → ลบหลังค่าคอม · ใบขาย/สัญญาอ้างสินค้า + ลูกค้า + ผู้ใช้ → ลบก่อนแถวเหล่านั้น
+  if (saleIds.length > 0) await prisma.sale.deleteMany({ where: { id: { in: saleIds } } });
+  if (contractIds.length > 0) await prisma.contract.deleteMany({ where: { id: { in: contractIds } } });
+  if (productIds.length > 0) await prisma.product.deleteMany({ where: { id: { in: productIds } } });
+  if (customerIds.length > 0) await prisma.customer.deleteMany({ where: { id: { in: customerIds } } });
   await prisma.attendanceDay.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.employeeProfile.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
@@ -575,6 +613,22 @@ describe('PayrollSystemRowsService.compute — commission PAY items and clawback
     expect(row.commissionItems).toEqual([payItem(sep, '500.00'), payItem(early, '300.00'), payItem(late, '1200.50')]);
     expect(row.systemDeductions).toEqual([]);
     expect(row.notes.warnings).toEqual([]);
+  });
+
+  it('(u) Task 3 carry — reference = contract number ?? sale number ?? commission id (P2-R21), read through the real contract / sale rows', async () => {
+    const u = await mkSeller('u');
+    const { sale, contract } = await mkSaleAndContract('u', u);
+    const both = await mkCommission(u, { amount: 100, createdAt: iso('2026-10-03') });
+    const saleOnly = await mkCommission(u, { amount: 200, createdAt: iso('2026-10-04') });
+    const neither = await mkCommission(u, { amount: 300, createdAt: iso('2026-10-05') });
+    await prisma.salesCommission.update({ where: { id: both.id }, data: { contractId: contract.id, saleId: sale.id } });
+    await prisma.salesCommission.update({ where: { id: saleOnly.id }, data: { saleId: sale.id } });
+    const res = await service.compute(prisma as never, query([u]));
+    expect(res.rows[0].commissionItems.map((i) => [i.salesCommissionId, i.reference])).toEqual([
+      [both.id, contract.contractNumber],
+      [saleOnly.id, sale.saleNumber],
+      [neither.id, neither.id],
+    ]);
   });
 
   it('(s) a soft-deleted APPROVED commission is not pulled; a soft-deleted paid clawback is not deducted', async () => {

@@ -92,7 +92,8 @@ export const commissionsSeeder: DomainSeeder = {
       stat.created += 1;
     }
 
-    // รอบจ่ายร่าง 1 ใบ — ให้แท็บรอบจ่ายมีของให้กดอนุมัติ → จ่าย (approvePayout/markPayoutPaid)
+    // รอบจ่ายแบบเดิมฉบับร่าง 1 ใบ — ให้แท็บ "ใบจ่ายรายเดือน" (ดูอย่างเดียว) มีของให้ดู · ปุ่มอนุมัติ/จ่ายถูกถอดแล้ว
+    // (D4 ส่วนที่ 2: ค่าคอมจ่ายผ่านใบเงินเดือนเท่านั้น — markPayoutPaid / generatePayouts = 410)
     // @@unique([salespersonId, period]) เป็น unique เต็มตาราง (ไม่ใช่ partial) — แถวที่
     // cleanup soft delete ไปแล้วยังถือ tuple อยู่ ⇒ probe โดยไม่กรอง deletedAt แล้ว
     // "กู้คืน + คำนวณยอดใหม่" แทนการสร้างซ้ำ (mirror ขา update ของ generatePayouts เป๊ะ

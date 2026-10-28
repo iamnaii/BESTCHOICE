@@ -63,6 +63,8 @@ describe('cleanupCreditContractSale — commissions on a returned trade-in credi
       { id: 'po-1', status: 'APPROVED', salespersonId: 'sp1', period: '2026-09', generatedAt: new Date('2026-09-25T00:00:00Z') },
     ]);
     await expect(cleanupCreditContractSale(asTx(tx), CONTRACT, 'u-owner', 'r')).rejects.toThrow(/รอบจ่าย/);
+    // P2-R26 — no menu cancels a payout round, so the message must not send the user to one
+    await expect(cleanupCreditContractSale(asTx(tx), CONTRACT, 'u-owner', 'r')).rejects.not.toThrow(/ยกเลิกรอบจ่ายก่อน/);
     expect(tx.salesCommission.updateMany).not.toHaveBeenCalled();
     expect(tx.sale.updateMany).not.toHaveBeenCalled();
   });

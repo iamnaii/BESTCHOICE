@@ -27,6 +27,80 @@ import {
 const payViaPayroll = () =>
   new GoneException({ message: COMMISSION_PAY_VIA_PAYROLL_MSG, code: COMMISSION_PAY_VIA_PAYROLL_CODE });
 
+/**
+ * D4 Part 2 (Task 6) — the payroll items a commission list row shows: live items only (`releasedAt` null — the
+ * same predicate as the partial index and the payroll compute; a voided or deleted payroll has released its
+ * items), in the order they were written, each with its payroll document.
+ */
+const COMMISSION_PAYROLL_LINKS_SELECT = {
+  where: { releasedAt: null },
+  orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+  select: {
+    kind: true,
+    amount: true,
+    payrollLine: { select: { payroll: { select: { document: { select: { id: true, number: true, status: true } } } } } },
+  },
+} satisfies Prisma.SalesCommission$payrollItemsArgs;
+
+export interface CommissionPayrollLink {
+  documentId: string;
+  documentNumber: string;
+  status: string;
+  kind: 'PAY' | 'CLAWBACK';
+}
+
+type LinkItem = {
+  kind: 'PAY' | 'CLAWBACK';
+  amount: Prisma.Decimal;
+  payrollLine: { payroll: { document: { id: string; number: string; status: string } } };
+};
+
+/**
+ * One list row as the commissions page reads it (P2-R19.7):
+ * - `payrollLinks` — one entry per live item (PAY = "อยู่ในใบเงินเดือน {no} · {status}", CLAWBACK = "หักคืนในใบ {no}").
+ * - `clawbackOutstanding` — what the next payroll still deducts, only for a commission the payroll compute deducts:
+ *   clawed back, `paidAt` set and a live PAY item in a POSTED payroll (paid outside payroll → null, the payroll shows
+ *   CLAWBACK_PAID_OUTSIDE_PAYROLL instead). Value = clawbackAmount − Σ live CLAWBACK items in any document status
+ *   (the same subtraction the gate uses), floored at 0, 2 dp.
+ * - `salespersonResigned` — `resignedDate ≤ now`; the resigned date itself is not sent.
+ */
+function withPayrollView<
+  T extends {
+    status: string;
+    paidAt: Date | null;
+    clawbackAmount: Prisma.Decimal | null;
+    salesperson?: { id: string; name: string; employeeProfile?: { resignedDate: Date | null } | null } | null;
+    payrollItems?: LinkItem[];
+  },
+>(row: T, now: Date) {
+  const { payrollItems, salesperson, ...rest } = row;
+  const items = payrollItems ?? [];
+  const payrollLinks: CommissionPayrollLink[] = items.map((i) => ({
+    documentId: i.payrollLine.payroll.document.id,
+    documentNumber: i.payrollLine.payroll.document.number,
+    status: i.payrollLine.payroll.document.status,
+    kind: i.kind,
+  }));
+  const clawedBack = row.status === 'CLAWED_BACK' || row.status === 'PARTIALLY_CLAWED_BACK';
+  const paidThroughPayroll =
+    row.paidAt !== null && items.some((i) => i.kind === 'PAY' && i.payrollLine.payroll.document.status === 'POSTED');
+  const deducted = items
+    .filter((i) => i.kind === 'CLAWBACK')
+    .reduce((s, i) => s.add(i.amount), new Prisma.Decimal(0));
+  const clawbackOutstanding =
+    clawedBack && paidThroughPayroll && row.clawbackAmount !== null
+      ? Prisma.Decimal.max(0, new Prisma.Decimal(row.clawbackAmount).sub(deducted)).toFixed(2)
+      : null;
+  const resignedDate = salesperson?.employeeProfile?.resignedDate ?? null;
+  return {
+    ...rest,
+    salesperson: salesperson ? { id: salesperson.id, name: salesperson.name } : salesperson,
+    payrollLinks,
+    clawbackOutstanding,
+    salespersonResigned: resignedDate !== null && resignedDate.getTime() <= now.getTime(),
+  };
+}
+
 @Injectable()
 export class CommissionService {
   private readonly logger = new Logger(CommissionService.name);
@@ -125,22 +199,25 @@ export class CommissionService {
     if (filters.period) where.period = filters.period;
     if (filters.status) where.status = filters.status;
 
-    const [data, total] = await Promise.all([
+    const [rows, total] = await Promise.all([
       this.prisma.salesCommission.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         skip,
         take: limit,
         include: {
-          salesperson: { select: { id: true, name: true } },
+          salesperson: { select: { id: true, name: true, employeeProfile: { select: { resignedDate: true } } } },
           contract: { select: { id: true, contractNumber: true } },
           sale: { select: { id: true, saleNumber: true } },
           approvedBy: { select: { id: true, name: true } },
+          payrollItems: COMMISSION_PAYROLL_LINKS_SELECT,
         },
       }),
       this.prisma.salesCommission.count({ where }),
     ]);
 
+    const now = new Date();
+    const data = rows.map((row) => withPayrollView(row, now));
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 

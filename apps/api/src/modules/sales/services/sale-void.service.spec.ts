@@ -426,11 +426,14 @@ describe('SaleVoidService.voidSale', () => {
     expectNothingWritten();
   });
 
-  it('G4b: รอบจ่ายสถานะ APPROVED → ปฏิเสธ (อนุมัติแล้ว รอจ่ายตามยอดเดิม)', async () => {
+  // P2-R26 — รอบแบบเดิมจ่ายไม่ได้แล้ว (markPayoutPaid = 410) ⇒ ข้อความต้องไม่บอกว่า "รอจ่าย"
+  it('G4b: รอบจ่ายสถานะ APPROVED → ปฏิเสธ (อนุมัติไว้แล้ว — รอบแบบเดิมระบบไม่จ่ายแล้ว)', async () => {
     tx.commissionPayout.findMany.mockResolvedValue([payout({ status: 'APPROVED' })]);
-    await expect(service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น')).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+    const err = await service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(BadRequestException);
+    const message = (err as BadRequestException).message;
+    expect(message).toContain('อนุมัติไว้แล้ว (รอบจ่ายแบบเดิม — ระบบไม่จ่ายรอบนี้แล้ว ค่าคอมจ่ายผ่านใบเงินเดือนเท่านั้น)');
+    expect(message).not.toContain('รอจ่าย');
     expectNothingWritten();
   });
 

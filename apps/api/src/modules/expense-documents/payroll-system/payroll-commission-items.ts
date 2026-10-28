@@ -1,5 +1,6 @@
 import { ConflictException } from '@nestjs/common';
 import type { CommissionStatus, Prisma } from '@prisma/client';
+import { STATUS_CHANGED_MSG } from '../../commission/commission-clawback.util';
 
 /**
  * Payroll D4 ส่วนที่ 2 — ผู้เขียนรายการค่าคอมของใบเงินเดือน (ฟังก์ชันธรรมดา ไม่ต้องต่อ service — ลบร่างเรียกได้แม้ไม่ได้ต่อด่าน)
@@ -30,9 +31,6 @@ export const PAYROLL_COMMISSION_ITEMS_INCLUDE = {
     },
   },
 } satisfies Prisma.PayrollLine$commissionItemsArgs;
-
-/** ข้อความเดียวกับ helper เรียกคืนค่าคอม (Task 2) — แถวค่าคอมเปลี่ยนระหว่างธุรกรรม */
-const STATUS_CHANGED_MSG = 'สถานะค่าคอมเปลี่ยนแล้ว กรุณาตรวจใหม่';
 
 /**
  * ปล่อยรายการค่าคอมที่ยังมีผลทุกตัวของใบ (ทั้ง PAY และ CLAWBACK) — ลบร่าง (`softDelete`) และขั้นสุดท้ายของกลับรายการ (P2-R13)

@@ -60,6 +60,7 @@ export class RoleMapValidationService {
     shop_payroll_overtime: 'Dr',
     shop_payroll_bonus: 'Dr',
     shop_payroll_holiday: 'Dr',
+    shop_payroll_commission: 'Dr',
     shop_wht_payroll: 'Cr',
     shop_sso_employee: 'Cr',
     shop_sso_employer: 'Cr',

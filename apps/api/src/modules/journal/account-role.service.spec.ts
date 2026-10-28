@@ -141,6 +141,7 @@ describe('AccountRoleService — boot guard (D1.1.6.x)', () => {
     { role: 'shop_sso_employer', accountCode: 'S21-3106' },
     { role: 'shop_payroll_holiday', accountCode: 'S52-1202' },
     { role: 'payroll_holiday', accountCode: '53-1103' },
+    { role: 'shop_payroll_commission', accountCode: 'S51-1101' },
     { role: 'adj_underpay', accountCode: '52-1104' },
     { role: 'adj_overpay', accountCode: '53-1503' },
   ];

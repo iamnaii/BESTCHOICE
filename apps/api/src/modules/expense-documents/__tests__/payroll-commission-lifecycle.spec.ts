@@ -165,7 +165,11 @@ describe('post (PAYROLL) — markCommissionsPaid after the JE template, in the s
     const result = await made.lifecycle.post('pr-1', 'owner', undefined, { expectedUpdatedAt: SEEN });
     expect(result).toEqual({ entryNo: 'JE-202610-0001' });
     expect(calls).toEqual(['post:pr-1', 'period-check', 'gate', 'payroll-template', 'mark-paid']);
-    expect(gate.markCommissionsPaid).toHaveBeenCalledWith(made.tx, 'pr-1', DOC_DATE);
+    // คำตัดสินเจ้าของ 2026-10-28 — วันที่จ่าย = วันที่กดลงบัญชี: ใบถูกประทับวันนี้ (เวลาไทย) ก่อนลงรายการ ค่าคอมจ่ายวันเดียวกัน
+    const today = new Date(new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 10));
+    const stamped = made.tx.expenseDocument.update.mock.calls.find((c: any[]) => c[0].data?.documentDate)?.[0].data.documentDate;
+    expect(stamped).toEqual(today);
+    expect(gate.markCommissionsPaid).toHaveBeenCalledWith(made.tx, 'pr-1', today);
     const audit = made.tx.auditLog.create.mock.calls.find((c: any[]) => c[0].data.action === 'POSTED')[0];
     expect(audit.data.newValue).toEqual({ postedById: 'owner', commissionItemIds: ['item-pay-1'] });
   });

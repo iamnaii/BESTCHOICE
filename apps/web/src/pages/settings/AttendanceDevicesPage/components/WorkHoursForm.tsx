@@ -83,7 +83,7 @@ export default function WorkHoursForm({ initial }: Props) {
       </div>
 
       {branches.length > 0 && (
-        <div className="overflow-x-auto">
+        <div className="relative overflow-x-auto">
           <table className="w-full min-w-[420px] text-sm" aria-label="เวลางานเฉพาะสาขา">
             <thead className="text-xs text-muted-foreground">
               <tr>

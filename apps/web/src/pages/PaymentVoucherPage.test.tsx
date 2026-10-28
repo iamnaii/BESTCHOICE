@@ -255,6 +255,80 @@ describe('PayrollSlipSheet (PAYROLL voucher)', () => {
     for (const n of [1, 2, 3]) expect(await screen.findByText(`ใบจ่ายเงินเดือน v2 · ${n}/3`)).toBeInTheDocument();
   });
 
+  // D4 ส่วนที่ 2 (Task 6, กระดาน 3 + 6B) — แถวค่าคอม + รายการค่าคอมบรรทัดเดียว (งบ 1 แผ่น R22) · แถวหักคืน + ยอดยกไป
+  describe('commission and clawback (the 800 + 600 vs 1,000 case)', () => {
+    const scItem = (id: string, kind: 'PAY' | 'CLAWBACK', amount: string, ref: { contract?: string; sale?: string }, released: string | null = null) => ({
+      id, salesCommissionId: `sc-${id}`, kind, accountCode: 'S51-1101', amount, releasedAt: released,
+      salesCommission: {
+        id: `sc-${id}`, period: '2026-11', commissionAmount: amount, status: 'APPROVED', clawbackReason: null,
+        clawbackAt: kind === 'CLAWBACK' ? '2026-11-05T03:00:00.000Z' : null, createdAt: '2026-11-03T03:00:00.000Z',
+        contract: ref.contract ? { contractNumber: ref.contract } : null, sale: ref.sale ? { saleNumber: ref.sale } : null,
+      },
+    });
+    const commissionLine = {
+      id: 'l9', employeeName: 'วิชัย ทองดี', employeeTaxId: null,
+      baseSalary: '15000', ssoEmployee: '750', whtAmount: '0', netPaid: '14250',
+      customIncome: [
+        income({ id: 'i9', accountCode: 'S51-1101', name: 'ค่าคอมมิชชัน (2 รายการ)', amount: '1000.00', source: 'COMMISSION' }),
+      ],
+      customDeduction: [
+        { id: 'd9', accountCode: 'S51-1101', name: 'หักคืนค่าคอม (2 รายการ)', amount: '1000.00', source: 'COMMISSION_CLAWBACK' },
+      ],
+      commissionItems: [
+        scItem('p1', 'PAY', '600.00', { contract: 'CT-20261103-0007' }),
+        scItem('p2', 'PAY', '400.00', { sale: 'SL-20261120-0031' }),
+        scItem('c1', 'CLAWBACK', '800.00', { sale: 'SL-20261011-0045' }),
+        scItem('c2', 'CLAWBACK', '200.00', { contract: 'CT-20261003-0012' }),
+      ],
+      attendanceSummary: null,
+      systemNotes: { review: [], warnings: [{ code: 'CLAWBACK_CARRIED', deducted: '1000.00', carried: '400.00' }] },
+    };
+    const mountSlip = (l: unknown) => {
+      apiGet.mockResolvedValue({ data: { ...voucher('POSTED'), payroll: { payrollPeriod: '2026-11', lines: [l] } } });
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={['/expenses/pr-1/voucher']}>
+            <Routes><Route path="/expenses/:id/voucher" element={<PaymentVoucherPage />} /></Routes>
+          </MemoryRouter>
+        </QueryClientProvider>,
+      );
+    };
+
+    it('the commission row lists its commissions on one line (reference amount) and has no hours × rate', async () => {
+      mountSlip(commissionLine);
+      const row = await screen.findByRole('row', { name: /ค่าคอมมิชชัน \(2 รายการ\)/ });
+      expect(within(row).getByText('—')).toBeInTheDocument();
+      expect(within(row).getByText('1,000.00')).toBeInTheDocument();
+      expect(row).toHaveTextContent('CT-20261103-0007 600.00 · SL-20261120-0031 400.00');
+      // ไม่มีแถวตารางเพิ่มต่อค่าคอม — หนึ่งแถวในตารางรายได้
+      expect(screen.queryByRole('row', { name: /^CT-20261103-0007/ })).not.toBeInTheDocument();
+    });
+
+    it('the clawback row lists what it deducts, and the slip prints ยกไปงวดหน้า 400.00 บาท', async () => {
+      mountSlip(commissionLine);
+      const row = await screen.findByRole('row', { name: /หักคืนค่าคอม \(2 รายการ\)/ });
+      expect(row).toHaveTextContent('SL-20261011-0045 800.00 · CT-20261003-0012 200.00');
+      expect(screen.getByText(/ยกไปงวดหน้า 400\.00 บาท/)).toBeInTheDocument();
+      expect(within(screen.getByRole('row', { name: /รวมรายการหัก/ })).getByText('1,750.00')).toBeInTheDocument();
+    });
+
+    it('more than four commissions → the first four and "และอีก k รายการ" (one line keeps the one-sheet budget)', async () => {
+      const many = ['a', 'b', 'c', 'd', 'e', 'f'].map((k) => scItem(k, 'PAY', '100.00', { sale: `SL-${k}` }));
+      mountSlip({ ...commissionLine, customDeduction: [], systemNotes: null, commissionItems: many });
+      const row = await screen.findByRole('row', { name: /ค่าคอมมิชชัน \(2 รายการ\)/ });
+      expect(row).toHaveTextContent('SL-a 100.00 · SL-b 100.00 · SL-c 100.00 · SL-d 100.00 และอีก 2 รายการ');
+      expect(row).not.toHaveTextContent('SL-e');
+      expect(screen.queryByText(/ยกไปงวดหน้า/)).not.toBeInTheDocument();
+    });
+
+    it('a slip with no commission is unchanged (no detail line, no carry line)', async () => {
+      mountVoucher('POSTED');
+      await screen.findByRole('row', { name: /เบี้ยขยัน/ });
+      expect(screen.queryByText(/ยกไปงวดหน้า/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/และอีก/)).not.toBeInTheDocument();
+    });
+  });
+
   it.each([
     ['DRAFT', /ลงบัญชีก่อนจึงพิมพ์สลิปได้/],
     ['PENDING_APPROVAL', /ลงบัญชีก่อนจึงพิมพ์สลิปได้/],

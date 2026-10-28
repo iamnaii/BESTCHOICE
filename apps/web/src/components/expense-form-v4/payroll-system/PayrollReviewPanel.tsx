@@ -1,9 +1,26 @@
 import { useId, type ReactNode } from 'react';
 import { Link } from 'react-router';
-import { AlertTriangle, CalendarX, Clock, ExternalLink, KeyRound, Lock, type LucideIcon } from 'lucide-react';
+import {
+  AlertTriangle,
+  CalendarX,
+  Clock,
+  ExternalLink,
+  Info,
+  KeyRound,
+  Lock,
+  Undo2,
+  type LucideIcon,
+} from 'lucide-react';
 import { FLAG_LABEL, flagChipClass, fmtOt, statusView, thaiShortDate } from '@/pages/attendance/attendance.util';
 import type { PayrollSystemNotes, PayrollSystemWarning } from '../types';
-import { NO_ATTENDANCE_TEXT, submitCutoffText } from './payroll-copy';
+import {
+  COMMISSION_FINANCE_BLOCKED_TEXT,
+  NO_ATTENDANCE_TEXT,
+  clawbackCarriedText,
+  clawbackPaidOutsideText,
+  commissionInOtherDocumentText,
+  submitCutoffText,
+} from './payroll-copy';
 
 /**
  * Payroll D4 ส่วนที่ 1 (mockup กระดาน 1 แผงขวา) — วันที่ต้องตรวจ + คำเตือน จาก `systemNotes` ที่ server เก็บไว้ต่อบรรทัด
@@ -73,7 +90,14 @@ interface WarningItem {
   body: ReactNode;
 }
 
-function lineWarning(name: string, w: Exclude<PayrollSystemWarning, { code: 'NOT_YET_CLOSABLE' }>, key: string): WarningItem {
+/** คำเตือนระดับใบ (ทุกบรรทัดได้ค่าเดียวกัน) — รวมเป็นหนึ่งข้อ ไม่ใช่ต่อบรรทัด */
+type DocumentWarningCode = 'NOT_YET_CLOSABLE' | 'COMMISSION_FINANCE_BLOCKED';
+type LineWarning = Exclude<PayrollSystemWarning, { code: DocumentWarningCode }>;
+
+const nameOf = (name: string) => <b className="font-semibold">{name}</b>;
+
+/** คำเตือนต่อบรรทัด · code ที่เว็บยังไม่รู้จัก (server รุ่นใหม่กว่า) = ข้าม ไม่ให้แผงพัง (P2-R19.3) */
+function lineWarning(name: string, w: LineWarning, key: string): WarningItem | null {
   switch (w.code) {
     case 'NOT_MONTHLY_OR_NO_BASE':
       return {
@@ -116,6 +140,41 @@ function lineWarning(name: string, w: Exclude<PayrollSystemWarning, { code: 'NOT
           </>
         ),
       };
+    case 'COMMISSION_IN_OTHER_DOCUMENT':
+      return {
+        key,
+        icon: Lock,
+        iconClass: 'text-muted-foreground',
+        body: <span>{commissionInOtherDocumentText(w.count, name, w.documentNumber)}</span>,
+      };
+    case 'CLAWBACK_CARRIED':
+      return {
+        key,
+        icon: Undo2,
+        iconClass: 'text-warning-strong',
+        body: (
+          <>
+            {nameOf(name)} <span>{clawbackCarriedText(w.deducted, w.carried)}</span>
+          </>
+        ),
+      };
+    case 'CLAWBACK_PAID_OUTSIDE_PAYROLL':
+      return {
+        key,
+        icon: AlertTriangle,
+        iconClass: 'text-warning-strong',
+        body: (
+          <>
+            {nameOf(name)} <span>{clawbackPaidOutsideText(w.reference)}</span>
+          </>
+        ),
+      };
+    default: {
+      // ทุก code ที่รู้จักมี case แล้ว (compile บังคับ) — ค่านี้มาจาก server ที่ใหม่กว่าเว็บเท่านั้น
+      const unknown: never = w;
+      void unknown;
+      return null;
+    }
   }
 }
 
@@ -149,6 +208,8 @@ export function PayrollReviewPanel({
       ),
     ),
   ];
+  // ใบ FINANCE ไม่ดึงค่าคอมของทั้งใบ — แสดงครั้งเดียว ไม่ว่ากี่บรรทัดจะมีค่าคอมรอ (P2-R19.3)
+  const financeBlocked = lines.some((l) => (l.systemNotes?.warnings ?? []).some((w) => w.code === 'COMMISSION_FINANCE_BLOCKED'));
   const warnings: WarningItem[] = [
     ...cutoffs.map((at) => ({
       key: `cutoff-${at}`,
@@ -156,10 +217,15 @@ export function PayrollReviewPanel({
       iconClass: 'text-info',
       body: <span>{submitCutoffText(at)}</span>,
     })),
+    ...(financeBlocked
+      ? [{ key: 'commission-finance', icon: Info, iconClass: 'text-info', body: <span>{COMMISSION_FINANCE_BLOCKED_TEXT}</span> }]
+      : []),
     ...lines.flatMap((l, li) =>
-      (l.systemNotes?.warnings ?? []).flatMap((w, wi) =>
-        w.code === 'NOT_YET_CLOSABLE' ? [] : [lineWarning(l.employeeName, w, `${li}-${wi}`)],
-      ),
+      (l.systemNotes?.warnings ?? []).flatMap((w, wi) => {
+        if (w.code === 'NOT_YET_CLOSABLE' || w.code === 'COMMISSION_FINANCE_BLOCKED') return [];
+        const item = lineWarning(l.employeeName, w, `${li}-${wi}`);
+        return item ? [item] : [];
+      }),
     ),
   ];
 

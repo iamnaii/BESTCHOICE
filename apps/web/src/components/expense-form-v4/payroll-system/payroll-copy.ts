@@ -1,4 +1,5 @@
 import { THAI_MONTHS_SHORT, toBangkokDateString } from '@/lib/date';
+import { formatNumberDecimal } from '@/utils/formatters';
 import type { PayrollGateDay } from '../types';
 
 /**
@@ -78,3 +79,42 @@ export const REVERSE_UNLOCKS_TEXT = 'กลับรายการใบนี�
 
 /** ใต้ตารางบรรทัด — คอลัมน์ไม่มีภาษี/รายการหัก (ส่วนที่ 2 วางคอลัมน์เพิ่ม) */
 export const NET_FOOTNOTE = 'สุทธิ = หลังหักภาษีและรายการหักอื่น';
+
+// ─── D4 ส่วนที่ 2 — ค่าคอมในใบเงินเดือน (ตาราง copy ของ global constraints ส่วนที่ 2 — ห้ามแก้ถ้อยคำ) ───────────────
+
+/** เงินบาท 2 ตำแหน่ง — "1,000.00" */
+export const baht2 = (v: string | number) => formatNumberDecimal(v, 2);
+
+/** ISO → "3 ต.ค." (วันไทย) — วันที่ของค่าคอมในรายการ */
+export function thaiDayMonth(iso: string | null): string {
+  if (!iso) return '';
+  const [, m, d] = toBangkokDateString(new Date(iso)).split('-').map(Number);
+  return `${d} ${THAI_MONTHS_SHORT[m - 1]}`;
+}
+
+/** warning COMMISSION_FINANCE_BLOCKED — แสดงครั้งเดียวต่อใบ */
+export const COMMISSION_FINANCE_BLOCKED_TEXT = 'ใบฝั่งส่วนกลาง (FINANCE) ยังไม่ดึงค่าคอม — รอฝ่ายบัญชีตอบ';
+
+/** warning COMMISSION_IN_OTHER_DOCUMENT */
+export const commissionInOtherDocumentText = (count: number, name: string, documentNumber: string) =>
+  `ค่าคอม ${count} รายการของ ${name} อยู่ในใบ ${documentNumber} แล้ว`;
+
+/** warning CLAWBACK_CARRIED */
+export const clawbackCarriedText = (deducted: string, carried: string) =>
+  `หักคืนค่าคอมได้ ${baht2(deducted)} บาท (ไม่เกินค่าคอมงวดนี้) — ยกไปงวดหน้า ${baht2(carried)} บาท`;
+
+/** warning CLAWBACK_PAID_OUTSIDE_PAYROLL */
+export const clawbackPaidOutsideText = (reference: string) =>
+  `ค่าคอม ${reference} ถูกเรียกคืน แต่จ่ายไปนอกใบเงินเดือน — ระบบไม่หักให้อัตโนมัติ ถ้าจะหัก ให้ใส่รายการหักในใบนี้เอง`;
+
+/** ส่วนท้ายของคำเตือน CLAWBACK_CARRIED — ตารางหักในฟอร์ม · หน้ารายละเอียด */
+export const carryForwardText = (carried: string) => `ยกไปงวดหน้า ${baht2(carried)} บาท`;
+
+/** กระดาน 6B — ตารางรายการหักจากระบบในฟอร์ม (คู่กับ SYSTEM_ROWS_TITLE ของรายได้) */
+export const SYSTEM_DEDUCTIONS_TITLE = 'รายการหักจากระบบ — แก้ในใบนี้ไม่ได้';
+/** หมายเหตุใต้ตารางหักเมื่อยกยอดไป — ทำไมหักไม่ครบ (Decision 2: หักได้ไม่เกินค่าคอมงวดนี้ ไม่หักจากฐาน/OT) */
+export const CLAWBACK_CAP_NOTE = 'หักได้ไม่เกินค่าคอมงวดนี้ — ไม่หักจากเงินเดือนฐานหรือ OT · ส่วนที่เหลือระบบหักต่อในงวดถัดไปเอง';
+/** กระดาน 1 — ค่าคอมของงวดก่อนที่อนุมัติทีหลัง ถูกดึงเข้างวดนี้ */
+export const EARLIER_PERIOD_LABEL = 'อนุมัติค้างจากงวดก่อน';
+/** ป้าย/ปุ่มของแถวค่าคอม — n = รายการที่จ่าย */
+export const commissionCountLabel = (n: number) => `ค่าคอม ${n} รายการ`;

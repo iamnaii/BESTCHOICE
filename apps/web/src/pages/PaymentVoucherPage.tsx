@@ -36,8 +36,21 @@ import {
   attendanceSummaryItems,
   payrollPeriodShort,
 } from '@/components/expense-form-v4/payroll-system/PayrollSystemRows';
-import { SLIP_NEEDS_POST } from '@/components/expense-form-v4/payroll-system/payroll-copy';
-import type { PayrollAttendanceSummary } from '@/components/expense-form-v4/types';
+import {
+  SLIP_NEEDS_POST,
+  baht2,
+  clawbackCarriedText,
+} from '@/components/expense-form-v4/payroll-system/payroll-copy';
+import {
+  clawbackCarriedOf,
+  liveCommissionItems,
+  type StoredCommissionItem,
+} from '@/components/expense-form-v4/payroll-system/payroll-lines';
+import type {
+  PayrollAttendanceSummary,
+  PayrollCommissionItemView,
+  PayrollSystemNotes,
+} from '@/components/expense-form-v4/types';
 
 export interface ExpenseLine {
   lineNo: number;
@@ -89,9 +102,15 @@ export interface PayrollSlipLine {
     accountCode: string;
     name: string;
     amount: string;
+    /** Payroll D4 ส่วนที่ 2 — MANUAL | COMMISSION_CLAWBACK (ไม่มี = ข้อมูลก่อนส่วนที่ 2 กรอกเอง) */
+    source?: string;
   }>;
   /** Payroll D4 — สรุปลงเวลาที่ server เก็บไว้ (ข้อมูลประกอบ ไม่มีผลต่อยอดเงิน) */
   attendanceSummary?: PayrollAttendanceSummary | null;
+  /** Payroll D4 ส่วนที่ 2 — ค่าคอมที่บรรทัดจ่าย/หักคืน (include เดียวกับหน้ารายละเอียด) */
+  commissionItems?: StoredCommissionItem[];
+  /** Payroll D4 ส่วนที่ 2 — คำเตือนที่เก็บไว้ (สลิปอ่าน CLAWBACK_CARRIED) */
+  systemNotes?: PayrollSystemNotes | null;
 }
 
 interface VoucherDoc {
@@ -460,6 +479,12 @@ function PayrollSlipSheet({
   const net = new Decimal(line.netPaid || '0');
   const customIncome = line.customIncome ?? [];
   const customDeduction = line.customDeduction ?? [];
+  // D4 ส่วนที่ 2 — ค่าคอมที่บรรทัดจ่าย/หักคืน + ยอดที่ยกไปงวดหน้า (P2-R19.5: บรรทัดเล็กในแถวเดิม ไม่เพิ่มแถวตาราง —
+  // R22 หนึ่งคนหนึ่งแผ่น A4)
+  const commissionItems = liveCommissionItems(line.commissionItems);
+  const payItems = commissionItems.filter((i) => i.kind === 'PAY');
+  const clawbackItems = commissionItems.filter((i) => i.kind === 'CLAWBACK');
+  const carried = clawbackCarriedOf(line.systemNotes);
 
   const sumIncome = customIncome.reduce<Decimal>(
     (s, r) => s.plus(new Decimal(r.amount || '0')),
@@ -532,6 +557,7 @@ function PayrollSlipSheet({
                   </span>
                   {ci.name}
                   {ci.source === 'ADJUSTMENT' && ' (ปรับปรุงงวดก่อน)'}
+                  {ci.source === 'COMMISSION' && <SlipCommissionDetail items={payItems} />}
                   {!ci.isTaxable && (
                     <span className="ml-2 inline-block rounded bg-info/10 px-1.5 py-0.5 text-[10px] text-info">
                       ม.42 ยกเว้นภาษี
@@ -592,6 +618,9 @@ function PayrollSlipSheet({
                     {cd.accountCode}
                   </span>
                   {cd.name}
+                  {cd.source === 'COMMISSION_CLAWBACK' && (
+                    <SlipCommissionDetail items={clawbackItems.filter((i) => i.accountCode === cd.accountCode)} />
+                  )}
                 </td>
                 <td className="border border-border p-2 text-right tabular-nums">
                   {formatNumberDecimal(cd.amount)}
@@ -613,6 +642,10 @@ function PayrollSlipSheet({
             </tr>
           </tbody>
         </table>
+        {/* CLAWBACK_CARRIED — ประโยคเดียวกับแผงตรวจ (ตาราง copy) บรรทัดเดียวใต้ตารางหัก */}
+        {carried && (
+          <p className="mt-1 text-xs leading-snug">{clawbackCarriedText(carried.deducted, carried.carried)}</p>
+        )}
       </section>
 
       {line.attendanceSummary && doc.payroll?.payrollPeriod && (
@@ -668,6 +701,25 @@ function PayrollSlipSheet({
 function hoursTimesRate(row: { quantity?: string | null; rate?: string | null }): ReactNode {
   if (row.quantity == null || row.rate == null) return <NoValue />;
   return `${fmtOt(parseFloat(row.quantity))} × ${formatNumberDecimal(row.rate, 2)}`;
+}
+
+/** รายการค่าคอมที่แสดงบนสลิปได้ในบรรทัดเดียว — เกินนี้สรุปเป็น "และอีก k รายการ" (งบหนึ่งแผ่น R22) */
+const SLIP_COMMISSION_ITEMS_MAX = 4;
+
+/**
+ * Payroll D4 ส่วนที่ 2 (กระดาน 3) — ค่าคอมที่แถวนี้จ่าย/หักคืน เป็นบรรทัดเล็กบรรทัดเดียวใต้ชื่อรายการ:
+ * "{อ้างอิง} {ยอด} · …" สูงสุด 4 รายการ แล้ว "และอีก k รายการ" — ไม่เพิ่มแถวตารางต่อค่าคอม (P2-R19.5)
+ */
+function SlipCommissionDetail({ items }: { items: PayrollCommissionItemView[] }) {
+  if (items.length === 0) return null;
+  const shown = items.slice(0, SLIP_COMMISSION_ITEMS_MAX);
+  const rest = items.length - shown.length;
+  return (
+    <span className="block text-xs text-muted-foreground leading-snug">
+      {shown.map((i) => `${i.reference} ${baht2(i.amount)}`).join(' · ')}
+      {rest > 0 && ` และอีก ${rest} รายการ`}
+    </span>
+  );
 }
 
 /** "—" ในตาราง — โปรแกรมอ่านหน้าจออ่านว่า ไม่มี */

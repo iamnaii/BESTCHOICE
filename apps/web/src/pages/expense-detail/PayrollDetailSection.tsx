@@ -3,7 +3,7 @@ import { Link } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import Decimal from 'decimal.js';
 import { toast } from 'sonner';
-import { AlertTriangle, Clock, Lock, Pencil, Printer, Undo2 } from 'lucide-react';
+import { AlertTriangle, ArrowRightToLine, Clock, Lock, Pencil, Printer, Undo2 } from 'lucide-react';
 import api from '@/lib/api';
 import ScreenTable from '@/components/ui/ScreenTable';
 import { Button } from '@/components/ui/button';
@@ -15,7 +15,7 @@ import {
   type Viewer,
 } from '@/components/expense-form-v4/payroll-system/PayrollReviewPanel';
 import { isAttendanceSource, payrollPeriodShort } from '@/components/expense-form-v4/payroll-system/PayrollSystemRows';
-import type { StoredPayrollLine } from '@/components/expense-form-v4/payroll-system/payroll-lines';
+import { clawbackCarriedOf, type StoredPayrollLine } from '@/components/expense-form-v4/payroll-system/payroll-lines';
 import {
   BANK_CSV_NEEDS_POST,
   DRAFT_EDIT_CAPTION,
@@ -27,6 +27,7 @@ import {
   STALE_EDIT_HINT,
   attendanceLockedText,
   bankCsvSkippedText,
+  carryForwardText,
   deviceConflictReason,
   deviceConflictText,
   postCutoffText,
@@ -136,12 +137,18 @@ const dec = (v: string | null | undefined) => new Decimal(v || '0');
 interface LineTotals {
   base: Decimal;
   attendance: Decimal;
+  commission: Decimal;
   other: Decimal;
   sso: Decimal;
   net: Decimal;
 }
 
-/** แยกรายได้ของบรรทัดเป็น OT/วันหยุด (จากระบบลงเวลา) กับรายได้อื่น — ยอดของแต่ละแถวคือยอดที่เก็บไว้ */
+const isCommissionSource = (source: string) => source === 'COMMISSION';
+
+/**
+ * แยกรายได้ของบรรทัดเป็น OT/วันหยุด (จากระบบลงเวลา) · ค่าคอม (ส่วนที่ 2 — P2-R19.4) · รายได้อื่น —
+ * ยอดของแต่ละแถวคือยอดที่เก็บไว้ · หักคืนค่าคอมอยู่ในสุทธิแล้ว (NET_FOOTNOTE: หลังหักรายการหักอื่น)
+ */
 function lineTotals(l: PayrollDetailLine): LineTotals {
   const rows = l.customIncome ?? [];
   const sum = (pick: (source: string) => boolean) =>
@@ -149,19 +156,29 @@ function lineTotals(l: PayrollDetailLine): LineTotals {
   return {
     base: dec(l.baseSalary),
     attendance: sum(isAttendanceSource),
-    other: sum((source) => !isAttendanceSource(source)),
+    commission: sum(isCommissionSource),
+    other: sum((source) => !isAttendanceSource(source) && !isCommissionSource(source)),
     sso: dec(l.ssoEmployee),
     net: dec(l.netPaid),
   };
 }
 
-const COLUMNS: Array<[keyof LineTotals, string]> = [
+const ALL_COLUMNS: Array<[keyof LineTotals, string]> = [
   ['base', 'ฐาน'],
   ['attendance', 'OT / วันหยุด'],
+  ['commission', 'ค่าคอม'],
   ['other', 'รายได้อื่น'],
   ['sso', 'SSO'],
   ['net', 'สุทธิ'],
 ];
+
+/** ใบที่ไม่มีค่าคอมเลย (ฝั่ง FINANCE / ใบก่อนส่วนที่ 2) คงห้าคอลัมน์เดิม — งบความกว้างตารางข้างแผงตรวจ */
+const hasCommission = (lines: PayrollDetailLine[]) =>
+  lines.some(
+    (l) =>
+      (l.customIncome ?? []).some((r) => isCommissionSource(r.source ?? 'MANUAL')) ||
+      (l.customDeduction ?? []).some((r) => r.source === 'COMMISSION_CLAWBACK'),
+  );
 
 function PayrollLinesTable({
   lines,
@@ -172,8 +189,9 @@ function PayrollLinesTable({
   headingRef: RefObject<HTMLHeadingElement | null>;
 }) {
   const titleId = useId();
-  const rows = lines.map((l) => ({ line: l, totals: lineTotals(l) }));
-  const grand = COLUMNS.reduce(
+  const columns = hasCommission(lines) ? ALL_COLUMNS : ALL_COLUMNS.filter(([key]) => key !== 'commission');
+  const rows = lines.map((l) => ({ line: l, totals: lineTotals(l), carried: clawbackCarriedOf(l.systemNotes)?.carried }));
+  const grand = columns.reduce(
     (acc, [key]) => ({ ...acc, [key]: rows.reduce((s, r) => s.plus(r.totals[key]), new Decimal(0)) }),
     {} as LineTotals,
   );
@@ -191,7 +209,7 @@ function PayrollLinesTable({
         <thead className="bg-muted/50 text-muted-foreground">
           <tr>
             <th className="px-4 py-2 text-left font-medium leading-snug">พนักงาน</th>
-            {COLUMNS.map(([key, label]) => (
+            {columns.map(([key, label]) => (
               <th key={key} className="px-4 py-2 text-right font-medium leading-snug whitespace-nowrap">
                 {label}
               </th>
@@ -199,10 +217,19 @@ function PayrollLinesTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
-          {rows.map(({ line, totals }) => (
+          {rows.map(({ line, totals, carried }) => (
             <tr key={line.id}>
-              <td className="px-4 py-2 leading-snug">{line.employeeName}</td>
-              {COLUMNS.map(([key]) => (
+              <td className="px-4 py-2 leading-snug">
+                {line.employeeName}
+                {carried && (
+                  // CLAWBACK_CARRIED — ประโยคเต็มอยู่ในแผงตรวจ · ใต้ชื่อบอกยอดที่ยังค้างหัก
+                  <span className="mt-0.5 flex items-center gap-1 text-xs text-warning-strong leading-snug">
+                    <ArrowRightToLine className="size-3 shrink-0" aria-hidden="true" />
+                    {carryForwardText(carried)}
+                  </span>
+                )}
+              </td>
+              {columns.map(([key]) => (
                 <td
                   key={key}
                   className={`px-4 py-2 text-right tabular-nums whitespace-nowrap ${key === 'net' ? 'font-semibold' : ''}`}
@@ -218,7 +245,7 @@ function PayrollLinesTable({
             <th scope="row" className="px-4 py-2 text-left leading-snug">
               รวม
             </th>
-            {COLUMNS.map(([key]) => (
+            {columns.map(([key]) => (
               <td key={key} className="px-4 py-2 text-right tabular-nums whitespace-nowrap">
                 {money(grand[key])}
               </td>

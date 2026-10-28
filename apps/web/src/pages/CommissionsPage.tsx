@@ -1,5 +1,6 @@
 import { NativeSelect } from '@/components/ui/native-select';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, type ReactNode } from 'react';
+import { Link } from 'react-router';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
@@ -9,20 +10,56 @@ import DataTable from '@/components/ui/DataTable';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { getStatusBadgeProps, commissionStatusMap, contractStatusMap } from '@/lib/status-badges';
+import { getStatusBadgeProps, commissionStatusMap, type StatusConfig } from '@/lib/status-badges';
+import { formatNumberDecimal } from '@/utils/formatters';
 import { toast } from 'sonner';
-import { DollarSign, CheckCircle, Clock, Banknote, ListOrdered, Sparkles } from 'lucide-react';
+import {
+  Banknote,
+  CheckCircle,
+  Clock,
+  DollarSign,
+  Eye,
+  FileText,
+  Info,
+  ListOrdered,
+  Sparkles,
+  Undo2,
+  UserX,
+  type LucideIcon,
+} from 'lucide-react';
+
+/**
+ * Payroll D4 ส่วนที่ 2 (Task 6, mockup กระดาน 4) — ค่าคอมจ่ายผ่านใบเงินเดือนเท่านั้น:
+ * หน้านี้อนุมัติอย่างเดียว (POST) · ปุ่ม "จ่าย" / "สร้างใบจ่าย" / อนุมัติ-จ่ายใบจ่ายรายเดือน ถูกถอด (API ตอบ 410) ·
+ * แต่ละรายการบอกว่าอยู่ในใบเงินเดือนไหน (`payrollLinks`) และยอดเรียกคืนที่ยังรอหัก (`clawbackOutstanding`)
+ * · แบนเนอร์และลิงก์ไปใบเงินเดือนเฉพาะ OWNER / FINANCE_MANAGER — SALES เปิดหน้ารายจ่ายไม่ได้ (App.tsx /expenses)
+ */
+
+type CommissionStatus = 'PENDING' | 'APPROVED' | 'PAID' | 'CLAWED_BACK' | 'PARTIALLY_CLAWED_BACK';
+
+interface PayrollLink {
+  documentId: string;
+  documentNumber: string;
+  /** สถานะของใบเงินเดือน (ExpenseDocument.status) */
+  status: string;
+  kind: 'PAY' | 'CLAWBACK';
+}
 
 interface Commission {
   id: string;
   salesperson: { id: string; name: string };
   contract?: { contractNumber: string } | null;
-  sale?: { id: string } | null;
+  sale?: { id: string; saleNumber?: string } | null;
   saleAmount: string;
   commissionRate: string;
   commissionAmount: string;
-  status: 'PENDING' | 'APPROVED' | 'PAID';
+  status: CommissionStatus;
   createdAt: string;
+  /** รายการในใบเงินเดือนที่ยังมีผล (จ่าย / หักคืน) เรียงตามลำดับที่เขียน */
+  payrollLinks?: PayrollLink[];
+  /** ยอดเรียกคืนที่ใบเงินเดือนถัดไปยังต้องหัก (2 ตำแหน่ง) — null = ไม่ใช่ค่าคอมที่ใบเงินเดือนหักคืนให้ */
+  clawbackOutstanding?: string | null;
+  salespersonResigned?: boolean;
 }
 
 interface CommissionPayout {
@@ -40,27 +77,157 @@ interface CommissionPayout {
   notes?: string | null;
 }
 
-
 type Tab = 'commissions' | 'payouts';
+
+/** กระดาน 4 — แบนเนอร์ (OWNER / FINANCE_MANAGER เท่านั้น — คนที่อนุมัติได้และเปิดหน้ารายจ่ายได้) */
+const BANNER_TITLE = 'ค่าคอมไม่มีปุ่มจ่ายแยกแล้ว';
+const BANNER_BODY =
+  'อนุมัติรายการที่นี่ แล้วระบบดึงเข้าใบเงินเดือนให้เมื่อบันทึกใบ (หน้ารายจ่าย › สร้างเอกสารใหม่ › เงินเดือน (PR)) — ค่าคอมจะเป็น "จ่ายแล้ว" เมื่อใบเงินเดือนลงบัญชี';
+const RESIGNED_LABEL = 'เรียกคืน — พนักงานลาออก ให้เจ้าของตัดสิน';
+const outstandingLabel = (n: string) => `เรียกคืน — รอหัก ${n}`;
+
+/** สถานะของใบเงินเดือนบนชิป (ใบที่ปล่อยค่าคอมแล้ว — กลับรายการ/ลบ — ไม่มาถึงที่นี่: API ส่งเฉพาะรายการที่ยังมีผล) */
+const PAYROLL_STATUS_LABEL: Record<string, string> = {
+  DRAFT: 'ร่าง',
+  PENDING_APPROVAL: 'รออนุมัติ',
+  APPROVED: 'อนุมัติแล้ว',
+  POSTED: 'ลงบัญชีแล้ว',
+};
+const payrollLinkText = (l: PayrollLink) =>
+  l.kind === 'PAY'
+    ? `อยู่ในใบเงินเดือน ${l.documentNumber} · ${PAYROLL_STATUS_LABEL[l.status] ?? l.status}`
+    : `หักคืนในใบ ${l.documentNumber}`;
+
+/** ไอคอนคู่สถานะ — สถานะห้ามบอกด้วยสีอย่างเดียว */
+const COMMISSION_STATUS_ICON: Record<CommissionStatus, LucideIcon> = {
+  PENDING: Clock,
+  APPROVED: CheckCircle,
+  PAID: Banknote,
+  CLAWED_BACK: Undo2,
+  PARTIALLY_CLAWED_BACK: Undo2,
+};
+
+/** ใบจ่ายรายเดือนแบบเดิม (ดูอย่างเดียว) */
+const payoutStatusMap: Record<string, StatusConfig> = {
+  DRAFT: { variant: 'secondary', label: 'ร่าง' },
+  APPROVED: { variant: 'primary', appearance: 'light', label: 'อนุมัติแล้ว' },
+  PAID: { variant: 'success', appearance: 'light', label: 'จ่ายแล้ว' },
+  CANCELLED: { variant: 'destructive', appearance: 'light', label: 'ยกเลิก' },
+};
+
+const baht = (v: number | string) => `${formatNumberDecimal(v, 2)} ฿`;
+const thisMonth = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+};
+
+// ui-ux-pro-max "Compact Label Overflow": ป้ายอยู่บรรทัดเดียวเสมอ — ตารางเลื่อนแนวนอนได้ (DataTable) แทนการตัดบรรทัด
+const CHIP =
+  'inline-flex w-max items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium leading-snug';
+
+function PayrollLinkChip({ link, asLink }: { link: PayrollLink; asLink: boolean }) {
+  const Icon = link.kind === 'PAY' ? FileText : Undo2;
+  const tone =
+    link.kind === 'PAY' ? 'border-primary/30 bg-primary/10 text-primary' : 'border-warning/40 bg-warning/10 text-warning-strong';
+  const body = (
+    <>
+      <Icon className="size-3 shrink-0" aria-hidden="true" />
+      {payrollLinkText(link)}
+    </>
+  );
+  if (!asLink) return <span className={`${CHIP} ${tone}`}>{body}</span>;
+  return (
+    <Link
+      to={`/expenses/${link.documentId}`}
+      className={`${CHIP} ${tone} hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring`}
+    >
+      {body}
+    </Link>
+  );
+}
+
+/**
+ * สถานะของแถว (กระดาน 4): ป้ายสถานะ + ชิปหนึ่งอันต่อรายการในใบเงินเดือน
+ * - อนุมัติแล้วและอยู่ในใบเงินเดือนแล้ว → ชิป "อยู่ในใบเงินเดือน …" แทนป้าย "รอเข้าใบเงินเดือน"
+ * - เรียกคืนที่ใบเงินเดือนยังต้องหัก → "เรียกคืน — รอหัก {n}" · พนักงานลาออกแล้ว → ให้เจ้าของตัดสิน (Decision 2)
+ */
+function CommissionStatusCell({ c, linkToPayroll }: { c: Commission; linkToPayroll: boolean }) {
+  const links = c.payrollLinks ?? [];
+  const outstanding = parseFloat(c.clawbackOutstanding ?? '0') || 0;
+  const clawedBack = c.status === 'CLAWED_BACK' || c.status === 'PARTIALLY_CLAWED_BACK';
+  let primary: ReactNode;
+  if (clawedBack && outstanding > 0) {
+    const resigned = c.salespersonResigned === true;
+    const Icon = resigned ? UserX : Undo2;
+    primary = (
+      <span className={`${CHIP} border-warning/40 bg-warning/10 text-warning-strong`}>
+        <Icon className="size-3 shrink-0" aria-hidden="true" />
+        {resigned ? RESIGNED_LABEL : outstandingLabel(formatNumberDecimal(outstanding, 2))}
+      </span>
+    );
+  } else if (c.status === 'APPROVED' && links.some((l) => l.kind === 'PAY')) {
+    primary = null;
+  } else {
+    const cfg = getStatusBadgeProps(c.status, commissionStatusMap);
+    const Icon = COMMISSION_STATUS_ICON[c.status];
+    primary = (
+      <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm" className="w-max whitespace-nowrap">
+        {Icon && <Icon aria-hidden="true" />}
+        {cfg.label}
+      </Badge>
+    );
+  }
+  return (
+    <div className="flex flex-col items-start gap-1">
+      {primary}
+      {links.map((l, i) => (
+        <PayrollLinkChip key={`${l.documentId}-${l.kind}-${i}`} link={l} asLink={linkToPayroll} />
+      ))}
+    </div>
+  );
+}
+
+function SummaryCard({
+  icon: Icon,
+  iconClass,
+  border,
+  label,
+  amount,
+  note,
+}: {
+  icon: LucideIcon;
+  iconClass: string;
+  border: string;
+  label: string;
+  amount: number;
+  note: string;
+}) {
+  return (
+    <Card className={`hover:shadow-card-hover transition-all border-l-[3px] ${border}`}>
+      <CardContent className="p-5">
+        <div className="flex items-center gap-2 mb-2">
+          <Icon className={`size-4 ${iconClass}`} aria-hidden="true" />
+          <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">{label}</div>
+        </div>
+        <div className="text-2xl font-bold tabular-nums">{baht(amount)}</div>
+        <div className="mt-1 text-xs text-muted-foreground leading-snug">{note}</div>
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function CommissionsPage() {
   useDocumentTitle('คอมมิชชัน');
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const isSales = user?.role === 'SALES';
+  // อนุมัติได้ + เปิดหน้ารายจ่าย (/expenses/:id) ได้ — SALES ไม่ได้ทั้งสองอย่าง
   const canManage = user?.role === 'OWNER' || user?.role === 'FINANCE_MANAGER';
-  const isOwner = user?.role === 'OWNER';
 
   const [activeTab, setActiveTab] = useState<Tab>('commissions');
   const [statusFilter, setStatusFilter] = useState('');
-  const [periodMonth, setPeriodMonth] = useState(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  });
-  const [payoutPeriod, setPayoutPeriod] = useState(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  });
+  const [periodMonth, setPeriodMonth] = useState(thisMonth);
+  const [payoutPeriod, setPayoutPeriod] = useState(thisMonth);
   const [payoutStatusFilter, setPayoutStatusFilter] = useState('');
 
   const {
@@ -75,14 +242,10 @@ export default function CommissionsPage() {
       const params = new URLSearchParams();
       if (isSales) params.set('salespersonId', 'me');
       if (statusFilter) params.set('status', statusFilter);
-      if (periodMonth) {
-        const [year, month] = periodMonth.split('-');
-        const startDate = `${year}-${month}-01`;
-        const endDay = new Date(Number(year), Number(month), 0).getDate();
-        const endDate = `${year}-${month}-${String(endDay).padStart(2, '0')}`;
-        params.set('startDate', startDate);
-        params.set('endDate', endDate);
-      }
+      // API อ่านเฉพาะ `period` (= SalesCommission.period 'YYYY-MM') — เดิมส่ง startDate/endDate ⇒ ได้ทุกเดือน
+      if (periodMonth) params.set('period', periodMonth);
+      // เพดานต่อหน้าของ API — การ์ดสรุปคิดจากรายการที่ได้ ⇒ ขอเต็มเพดาน
+      params.set('limit', '100');
       const { data } = await api.get(`/commissions?${params}`);
       return data.data || data || [];
     },
@@ -109,9 +272,10 @@ export default function CommissionsPage() {
 
   const payouts = payoutsResp?.data || [];
 
+  // POST /commissions/:id/approve (OWNER / FINANCE_MANAGER) — เดิมส่ง PATCH ⇒ 404 ทุกครั้ง
   const approveMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { data } = await api.patch(`/commissions/${id}/approve`);
+      const { data } = await api.post(`/commissions/${id}/approve`);
       return data;
     },
     onSuccess: () => {
@@ -121,75 +285,26 @@ export default function CommissionsPage() {
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
-  const payMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const { data } = await api.patch(`/commissions/${id}/pay`);
-      return data;
-    },
-    onSuccess: () => {
-      toast.success('บันทึกการจ่ายคอมมิชชันสำเร็จ');
-      queryClient.invalidateQueries({ queryKey: ['commissions'] });
-    },
-    onError: (err: unknown) => toast.error(getErrorMessage(err)),
-  });
-
-  const generatePayoutMutation = useMutation({
-    mutationFn: async () => {
-      const { data } = await api.post('/commissions/payouts/generate', { period: payoutPeriod });
-      return data;
-    },
-    onSuccess: (data) => {
-      toast.success(data.message || 'สร้างใบจ่ายสำเร็จ');
-      queryClient.invalidateQueries({ queryKey: ['commission-payouts'] });
-    },
-    onError: (err: unknown) => toast.error(getErrorMessage(err)),
-  });
-
-  const approvePayoutMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const { data } = await api.patch(`/commissions/payouts/${id}/approve`, {});
-      return data;
-    },
-    onSuccess: () => {
-      toast.success('อนุมัติใบจ่ายสำเร็จ');
-      queryClient.invalidateQueries({ queryKey: ['commission-payouts'] });
-    },
-    onError: (err: unknown) => toast.error(getErrorMessage(err)),
-  });
-
-  const markPayoutPaidMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const { data } = await api.patch(`/commissions/payouts/${id}/paid`);
-      return data;
-    },
-    onSuccess: () => {
-      toast.success('บันทึกการจ่ายสำเร็จ');
-      queryClient.invalidateQueries({ queryKey: ['commission-payouts'] });
-    },
-    onError: (err: unknown) => toast.error(getErrorMessage(err)),
-  });
-
-  // Summary calculations
+  // กระดาน 4 — ยอดของรายการที่ยังมีผล (เรียกคืนแล้วไม่นับในรวมเดือนนี้)
   const summary = useMemo(() => {
     const list = Array.isArray(commissions) ? commissions : [];
+    const sum = (rows: Commission[]) => rows.reduce((s, c) => s + (parseFloat(c.commissionAmount) || 0), 0);
+    const active = list.filter((c) => c.status === 'PENDING' || c.status === 'APPROVED' || c.status === 'PAID');
+    const pending = list.filter((c) => c.status === 'PENDING');
+    const approved = list.filter((c) => c.status === 'APPROVED');
+    const inPayroll = approved.filter((c) => (c.payrollLinks ?? []).some((l) => l.kind === 'PAY')).length;
+    const paid = list.filter((c) => c.status === 'PAID');
     return {
-      totalCommission: list.reduce((sum, c) => sum + (parseFloat(c.commissionAmount) || 0), 0),
-      pendingCount: list.filter((c) => c.status === 'PENDING').length,
-      approvedCount: list.filter((c) => c.status === 'APPROVED').length,
-      paidCount: list.filter((c) => c.status === 'PAID').length,
+      total: sum(active),
+      totalCount: active.length,
+      pending: sum(pending),
+      pendingCount: pending.length,
+      approved: sum(approved),
+      inPayroll,
+      waiting: approved.length - inPayroll,
+      paid: sum(paid),
     };
   }, [commissions]);
-
-  // Payout summary
-  const payoutSummary = useMemo(() => {
-    const list = Array.isArray(payouts) ? payouts : [];
-    return {
-      totalPayout: list.reduce((sum, p) => sum + (parseFloat(p.totalCommission) || 0), 0),
-      draftCount: list.filter((p) => p.status === 'DRAFT').length,
-      approvedCount: list.filter((p) => p.status === 'APPROVED').length,
-      paidCount: list.filter((p) => p.status === 'PAID').length,
-    };
-  }, [payouts]);
 
   const commissionColumns = useMemo(
     () => [
@@ -199,7 +314,7 @@ export default function CommissionsPage() {
               key: 'salesperson',
               label: 'พนักงานขาย',
               render: (c: Commission) => (
-                <span className="text-sm font-medium">{c.salesperson?.name || '-'}</span>
+                <span className="text-sm font-medium leading-snug">{c.salesperson?.name || '-'}</span>
               ),
             },
           ]
@@ -208,9 +323,7 @@ export default function CommissionsPage() {
         key: 'contract',
         label: 'สัญญา/ขาย',
         render: (c: Commission) => (
-          <span className="text-sm font-mono">
-            {c.contract?.contractNumber || c.sale?.id?.slice(0, 8) || '-'}
-          </span>
+          <span className="text-sm font-mono">{c.contract?.contractNumber ?? c.sale?.saleNumber ?? '-'}</span>
         ),
       },
       {
@@ -231,51 +344,37 @@ export default function CommissionsPage() {
         key: 'commissionAmount',
         label: 'คอมมิชชัน',
         render: (c: Commission) => (
-          <span className="text-sm font-semibold">
-            {parseFloat(c.commissionAmount).toLocaleString()} ฿
-          </span>
+          <span className="text-sm font-semibold">{parseFloat(c.commissionAmount).toLocaleString()} ฿</span>
         ),
       },
       {
         key: 'status',
         label: 'สถานะ',
-        render: (c: Commission) => {
-          const cfg = getStatusBadgeProps(c.status, commissionStatusMap);
-          return <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>;
-        },
+        render: (c: Commission) => <CommissionStatusCell c={c} linkToPayroll={canManage} />,
       },
       ...(canManage
         ? [
             {
               key: 'actions',
               label: '',
-              render: (c: Commission) => (
-                <div className="flex gap-2">
-                  {c.status === 'PENDING' && (
-                    <button data-ui-control="button"
-                      onClick={() => approveMutation.mutate(c.id)}
-                      disabled={approveMutation.isPending}
-                      className="px-3 py-1.5 text-xs font-medium bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors disabled:opacity-50"
-                    >
-                      อนุมัติ
-                    </button>
-                  )}
-                  {c.status === 'APPROVED' && (
-                    <button data-ui-control="button"
-                      onClick={() => payMutation.mutate(c.id)}
-                      disabled={payMutation.isPending}
-                      className="px-3 py-1.5 text-xs font-medium bg-success/10 text-success rounded-lg hover:bg-success/20 transition-colors disabled:opacity-50"
-                    >
-                      จ่าย
-                    </button>
-                  )}
-                </div>
-              ),
+              render: (c: Commission) =>
+                c.status === 'PENDING' ? (
+                  <button
+                    data-ui-control="button"
+                    type="button"
+                    onClick={() => approveMutation.mutate(c.id)}
+                    disabled={approveMutation.isPending}
+                    aria-busy={approveMutation.isPending && approveMutation.variables === c.id}
+                    className="px-3 py-1.5 text-xs font-medium bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors disabled:opacity-50"
+                  >
+                    อนุมัติ
+                  </button>
+                ) : null,
             },
           ]
         : []),
     ],
-    [isSales, canManage, approveMutation, payMutation],
+    [isSales, canManage, approveMutation],
   );
 
   const payoutColumns = useMemo(
@@ -284,7 +383,7 @@ export default function CommissionsPage() {
         key: 'salesperson',
         label: 'พนักงานขาย',
         render: (p: CommissionPayout) => (
-          <span className="text-sm font-medium">{p.salesperson?.name || '-'}</span>
+          <span className="text-sm font-medium leading-snug">{p.salesperson?.name || '-'}</span>
         ),
       },
       {
@@ -295,9 +394,7 @@ export default function CommissionsPage() {
       {
         key: 'commissionCount',
         label: 'จำนวนรายการ',
-        render: (p: CommissionPayout) => (
-          <span className="text-sm">{p.commissionCount} รายการ</span>
-        ),
+        render: (p: CommissionPayout) => <span className="text-sm">{p.commissionCount} รายการ</span>,
       },
       {
         key: 'totalSales',
@@ -319,76 +416,70 @@ export default function CommissionsPage() {
         key: 'status',
         label: 'สถานะ',
         render: (p: CommissionPayout) => {
-          const cfg = getStatusBadgeProps(p.status, contractStatusMap);
-          return <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>;
+          const cfg = getStatusBadgeProps(p.status, payoutStatusMap);
+          return (
+            <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">
+              {cfg.label}
+            </Badge>
+          );
         },
       },
-      ...(isOwner
-        ? [
-            {
-              key: 'actions',
-              label: '',
-              render: (p: CommissionPayout) => (
-                <div className="flex gap-2">
-                  {p.status === 'DRAFT' && (
-                    <button data-ui-control="button"
-                      onClick={() => approvePayoutMutation.mutate(p.id)}
-                      disabled={approvePayoutMutation.isPending}
-                      className="px-3 py-1.5 text-xs font-medium bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors disabled:opacity-50"
-                    >
-                      อนุมัติ
-                    </button>
-                  )}
-                  {p.status === 'APPROVED' && (
-                    <button data-ui-control="button"
-                      onClick={() => markPayoutPaidMutation.mutate(p.id)}
-                      disabled={markPayoutPaidMutation.isPending}
-                      className="px-3 py-1.5 text-xs font-medium bg-success/10 text-success rounded-lg hover:bg-success/20 transition-colors disabled:opacity-50"
-                    >
-                      จ่ายแล้ว
-                    </button>
-                  )}
-                </div>
-              ),
-            },
-          ]
-        : []),
     ],
-    [isOwner, approvePayoutMutation, markPayoutPaidMutation],
+    [],
   );
 
   return (
     <div>
       <PageHeader
         title="คอมมิชชัน"
-        subtitle="จัดการคอมมิชชันและใบจ่ายพนักงานขาย"
+        subtitle="อนุมัติค่าคอมพนักงานขาย — จ่ายพร้อมใบเงินเดือนเท่านั้น"
         icon={<DollarSign className="size-5" />}
       />
 
+      {canManage && (
+        <div className="mb-4 flex items-start gap-2.5 rounded-lg border border-info/40 bg-info/10 p-3">
+          <Info className="mt-0.5 size-4 shrink-0 text-info" aria-hidden="true" />
+          <div className="flex flex-col gap-0.5">
+            <p className="text-sm font-semibold leading-snug">{BANNER_TITLE}</p>
+            <p className="text-sm leading-snug">{BANNER_BODY}</p>
+          </div>
+        </div>
+      )}
+
       {/* Tabs */}
       <div className="flex gap-1 mb-6 border-b border-border">
-        <button data-ui-control="button"
+        <button
+          data-ui-control="button"
+          type="button"
           onClick={() => setActiveTab('commissions')}
+          aria-pressed={activeTab === 'commissions'}
           className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
             activeTab === 'commissions'
               ? 'border-primary text-primary'
               : 'border-transparent text-muted-foreground hover:text-foreground'
           }`}
         >
-          <ListOrdered className="size-4" />
+          <ListOrdered className="size-4" aria-hidden="true" />
           รายการคอมมิชชัน
         </button>
         {!isSales && (
-          <button data-ui-control="button"
+          <button
+            data-ui-control="button"
+            type="button"
             onClick={() => setActiveTab('payouts')}
+            aria-pressed={activeTab === 'payouts'}
             className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
               activeTab === 'payouts'
                 ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}
           >
-            <Sparkles className="size-4" />
+            <Sparkles className="size-4" aria-hidden="true" />
             ใบจ่ายรายเดือน
+            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5 text-2xs font-medium text-muted-foreground leading-snug">
+              <Eye className="size-3 shrink-0" aria-hidden="true" />
+              ดูอย่างเดียว
+            </span>
           </button>
         )}
       </div>
@@ -396,63 +487,52 @@ export default function CommissionsPage() {
       {/* ===== COMMISSIONS TAB ===== */}
       {activeTab === 'commissions' && (
         <>
-          {/* Summary Cards */}
           <div className="finance-card-grid grid grid-cols-2 md:grid-cols-4 gap-4 lg:gap-5 mb-6">
-            <Card className="hover:shadow-card-hover transition-all border-l-[3px] border-l-primary">
-              <CardContent className="p-5">
-                <div className="flex items-center gap-2 mb-2">
-                  <DollarSign className="size-4 text-primary" />
-                  <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">
-                    รวมเดือนนี้
-                  </div>
-                </div>
-                <div className="text-2xl font-bold">{summary.totalCommission.toLocaleString()} ฿</div>
-              </CardContent>
-            </Card>
-            <Card className="hover:shadow-card-hover transition-all border-l-[3px] border-l-warning">
-              <CardContent className="p-5">
-                <div className="flex items-center gap-2 mb-2">
-                  <Clock className="size-4 text-warning-strong" />
-                  <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">
-                    รออนุมัติ
-                  </div>
-                </div>
-                <div className="text-2xl font-bold">{summary.pendingCount}</div>
-              </CardContent>
-            </Card>
-            <Card className="hover:shadow-card-hover transition-all border-l-[3px] border-l-primary">
-              <CardContent className="p-5">
-                <div className="flex items-center gap-2 mb-2">
-                  <CheckCircle className="size-4 text-primary" />
-                  <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">
-                    อนุมัติแล้ว
-                  </div>
-                </div>
-                <div className="text-2xl font-bold">{summary.approvedCount}</div>
-              </CardContent>
-            </Card>
-            <Card className="hover:shadow-card-hover transition-all border-l-[3px] border-l-success">
-              <CardContent className="p-5">
-                <div className="flex items-center gap-2 mb-2">
-                  <Banknote className="size-4 text-success" />
-                  <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">
-                    จ่ายแล้ว
-                  </div>
-                </div>
-                <div className="text-2xl font-bold">{summary.paidCount}</div>
-              </CardContent>
-            </Card>
+            <SummaryCard
+              icon={DollarSign}
+              iconClass="text-primary"
+              border="border-l-primary"
+              label="รวมเดือนนี้"
+              amount={summary.total}
+              note={`${summary.totalCount} รายการ`}
+            />
+            <SummaryCard
+              icon={Clock}
+              iconClass="text-warning-strong"
+              border="border-l-warning"
+              label="รออนุมัติ"
+              amount={summary.pending}
+              note={`${summary.pendingCount} รายการ — ยังไม่เข้าใบเงินเดือน`}
+            />
+            <SummaryCard
+              icon={CheckCircle}
+              iconClass="text-primary"
+              border="border-l-primary"
+              label="อนุมัติแล้ว"
+              amount={summary.approved}
+              note={`อยู่ในใบเงินเดือน ${summary.inPayroll} · รอดึง ${summary.waiting}`}
+            />
+            <SummaryCard
+              icon={Banknote}
+              iconClass="text-success"
+              border="border-l-success"
+              label="จ่ายแล้ว"
+              amount={summary.paid}
+              note="จ่ายเมื่อใบเงินเดือนลงบัญชี"
+            />
           </div>
 
-          {/* Filters */}
           <div className="flex gap-3 mb-4 flex-wrap">
             <input
-              type="month" aria-label="เดือนคอมมิชชั่น"
+              type="month"
+              aria-label="เดือนคอมมิชชั่น"
               value={periodMonth}
               onChange={(e) => setPeriodMonth(e.target.value)}
               className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background focus:border-transparent"
             />
-            <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="สถานะ"
+            <NativeSelect
+              wrapperClassName="max-w-full w-auto"
+              aria-label="สถานะ"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               className="px-3 py-2 border border-input rounded-lg text-sm"
@@ -461,10 +541,11 @@ export default function CommissionsPage() {
               <option value="PENDING">รออนุมัติ</option>
               <option value="APPROVED">อนุมัติแล้ว</option>
               <option value="PAID">จ่ายแล้ว</option>
+              <option value="PARTIALLY_CLAWED_BACK">เรียกคืนบางส่วน</option>
+              <option value="CLAWED_BACK">เรียกคืน</option>
             </NativeSelect>
           </div>
 
-          {/* Table */}
           <QueryBoundary
             isLoading={isLoading}
             isError={isError}
@@ -481,66 +562,20 @@ export default function CommissionsPage() {
         </>
       )}
 
-      {/* ===== PAYOUTS TAB ===== */}
+      {/* ===== PAYOUTS TAB (ดูอย่างเดียว — ใบจ่ายรายเดือนแบบเดิม) ===== */}
       {activeTab === 'payouts' && (
         <>
-          {/* Payout Summary Cards */}
-          <div className="finance-card-grid grid grid-cols-2 md:grid-cols-4 gap-4 lg:gap-5 mb-6">
-            <Card className="hover:shadow-card-hover transition-all border-l-[3px] border-l-primary">
-              <CardContent className="p-5">
-                <div className="flex items-center gap-2 mb-2">
-                  <DollarSign className="size-4 text-primary" />
-                  <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">
-                    ยอดจ่ายรวม
-                  </div>
-                </div>
-                <div className="text-2xl font-bold">{payoutSummary.totalPayout.toLocaleString()} ฿</div>
-              </CardContent>
-            </Card>
-            <Card className="hover:shadow-card-hover transition-all border-l-[3px] border-l-muted">
-              <CardContent className="p-5">
-                <div className="flex items-center gap-2 mb-2">
-                  <Clock className="size-4 text-muted-foreground" />
-                  <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">
-                    ร่าง
-                  </div>
-                </div>
-                <div className="text-2xl font-bold">{payoutSummary.draftCount}</div>
-              </CardContent>
-            </Card>
-            <Card className="hover:shadow-card-hover transition-all border-l-[3px] border-l-primary">
-              <CardContent className="p-5">
-                <div className="flex items-center gap-2 mb-2">
-                  <CheckCircle className="size-4 text-primary" />
-                  <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">
-                    อนุมัติแล้ว
-                  </div>
-                </div>
-                <div className="text-2xl font-bold">{payoutSummary.approvedCount}</div>
-              </CardContent>
-            </Card>
-            <Card className="hover:shadow-card-hover transition-all border-l-[3px] border-l-success">
-              <CardContent className="p-5">
-                <div className="flex items-center gap-2 mb-2">
-                  <Banknote className="size-4 text-success" />
-                  <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">
-                    จ่ายแล้ว
-                  </div>
-                </div>
-                <div className="text-2xl font-bold">{payoutSummary.paidCount}</div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Payout Filters & Actions */}
           <div className="flex gap-3 mb-4 flex-wrap items-center">
             <input
               type="month"
+              aria-label="เดือนของใบจ่าย"
               value={payoutPeriod}
               onChange={(e) => setPayoutPeriod(e.target.value)}
               className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background focus:border-transparent"
             />
-            <NativeSelect wrapperClassName="max-w-full w-auto"
+            <NativeSelect
+              wrapperClassName="max-w-full w-auto"
+              aria-label="สถานะใบจ่าย"
               value={payoutStatusFilter}
               onChange={(e) => setPayoutStatusFilter(e.target.value)}
               className="px-3 py-2 border border-input rounded-lg text-sm"
@@ -551,19 +586,8 @@ export default function CommissionsPage() {
               <option value="PAID">จ่ายแล้ว</option>
               <option value="CANCELLED">ยกเลิก</option>
             </NativeSelect>
-            {isOwner && (
-              <button data-ui-control="button"
-                onClick={() => generatePayoutMutation.mutate()}
-                disabled={generatePayoutMutation.isPending || !payoutPeriod}
-                className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
-              >
-                <Sparkles className="size-4" />
-                {generatePayoutMutation.isPending ? 'กำลังสร้าง...' : `สร้างใบจ่าย ${payoutPeriod}`}
-              </button>
-            )}
           </div>
 
-          {/* Payouts Table */}
           <QueryBoundary
             isLoading={payoutsLoading}
             isError={payoutsError}
@@ -571,11 +595,7 @@ export default function CommissionsPage() {
             onRetry={refetchPayouts}
             errorTitle="ไม่สามารถโหลดข้อมูลใบจ่ายได้"
           >
-            <DataTable
-              columns={payoutColumns}
-              data={payouts}
-              emptyMessage="ไม่พบข้อมูลใบจ่าย — กดปุ่ม 'สร้างใบจ่าย' เพื่อรวบรวมคอมมิชชันเดือนนี้"
-            />
+            <DataTable columns={payoutColumns} data={payouts} emptyMessage="ไม่พบข้อมูลใบจ่าย" />
           </QueryBoundary>
         </>
       )}

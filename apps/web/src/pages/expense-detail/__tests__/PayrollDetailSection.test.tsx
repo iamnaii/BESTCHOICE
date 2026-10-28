@@ -231,6 +231,55 @@ describe('payroll lines table', () => {
   });
 });
 
+// D4 ส่วนที่ 2 (P2-R19.4) — ค่าคอมมีคอลัมน์ของตัวเอง (ไม่ปนรายได้อื่น) · ยอดที่ยกไปงวดหน้าจากคำเตือน CLAWBACK_CARRIED ของบรรทัด
+describe('payroll lines table — commission column', () => {
+  const LINE_COMMISSION = {
+    ...LINE_WICHAI,
+    id: 'l3',
+    userId: 'u3',
+    employeeName: 'ปรีชา ศรีสุข',
+    netPaid: '14250',
+    customIncome: [
+      income({ id: 'i6', accountCode: 'S51-1101', name: 'ค่าคอมมิชชัน (2 รายการ)', amount: '1000.00', source: 'COMMISSION' }),
+      income({ id: 'i7', accountCode: 'S52-1204', name: 'เบี้ยขยัน', amount: '250' }),
+    ],
+    customDeduction: [
+      { id: 'd1', accountCode: 'S51-1101', name: 'หักคืนค่าคอม (2 รายการ)', amount: '1000.00', source: 'COMMISSION_CLAWBACK' },
+    ],
+    systemNotes: { review: [], warnings: [{ code: 'CLAWBACK_CARRIED', deducted: '1000.00', carried: '400.00' }] },
+  };
+  const withCommission = () => {
+    const doc = payrollDoc('POSTED', null);
+    return { ...doc, payroll: { ...doc.payroll, lines: [LINE_SOMSRI, LINE_COMMISSION] } } as unknown as ReturnType<typeof payrollDoc>;
+  };
+
+  it('COMMISSION rows leave รายได้อื่น for their own ค่าคอม column, with a total', async () => {
+    mount(withCommission());
+    const row = await screen.findByRole('row', { name: /ปรีชา ศรีสุข/ });
+    expect(screen.getByRole('columnheader', { name: 'ค่าคอม' })).toBeInTheDocument();
+    const cells = within(row).getAllByRole('cell').map((c) => c.textContent);
+    // พนักงาน · ฐาน · OT/วันหยุด · ค่าคอม · รายได้อื่น · SSO · สุทธิ
+    expect(cells.slice(1)).toEqual(['16,500.00', '0.00', '1,000.00', '250.00', '825.00', '14,250.00']);
+    const somsri = within(await screen.findByRole('row', { name: /สมศรี มีสุข/ })).getAllByRole('cell').map((c) => c.textContent);
+    expect(somsri.slice(1)).toEqual(['15,000.00', '1,484.38', '0.00', '500.00', '750.00', '16,234.38']);
+    const total = within(screen.getByRole('row', { name: /รวม/ })).getAllByRole('cell').map((c) => c.textContent);
+    expect(total).toEqual(['31,500.00', '1,484.38', '1,000.00', '750.00', '1,575.00', '30,484.38']);
+  });
+
+  it('a line whose clawback is carried says ยกไปงวดหน้า {y} บาท under the name', async () => {
+    mount(withCommission());
+    const row = await screen.findByRole('row', { name: /ปรีชา ศรีสุข/ });
+    expect(within(row).getByText(/ยกไปงวดหน้า 400\.00 บาท/)).toBeInTheDocument();
+    expect(within(await screen.findByRole('row', { name: /สมศรี มีสุข/ })).queryByText(/ยกไปงวดหน้า/)).not.toBeInTheDocument();
+  });
+
+  it('a payroll with no commission keeps the original five columns', async () => {
+    mount(payrollDoc('POSTED', null));
+    await screen.findByRole('row', { name: /สมศรี มีสุข/ });
+    expect(screen.queryByRole('columnheader', { name: 'ค่าคอม' })).not.toBeInTheDocument();
+  });
+});
+
 describe('cutoff gate (payrollGate.closableAt in the future)', () => {
   it('DRAFT with approval: info banner and ส่งให้อนุมัติ disabled with ยังไม่ถึงเวลาปิดงวด', async () => {
     mount(payrollDoc('DRAFT', { closableAt: CLOSABLE_AT, deviceConflicts: [] }));

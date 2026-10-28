@@ -16,7 +16,7 @@ export const SYSTEM_ROWS_TITLE = 'รายได้จากระบบ — �
 const hours = (v: string) => fmtOt(parseFloat(v));
 
 /** อัตราเก็บ 4 ตำแหน่ง (แสดงอย่างเดียว) — แสดงอย่างน้อย 2 ตำแหน่ง ไม่ตัดเศษที่มีจริง (103.125) */
-function rateText(rate: string): string {
+export function rateText(rate: string): string {
   const decimals = Math.min(4, Math.max(2, (rate.split('.')[1] ?? '').replace(/0+$/, '').length));
   return formatNumberDecimal(rate, decimals);
 }

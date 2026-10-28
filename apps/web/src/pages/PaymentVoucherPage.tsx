@@ -34,6 +34,7 @@ import { useUiFlags } from '@/hooks/useUiFlags';
 import { fmtOt, thaiMonthLabel } from '@/pages/attendance/attendance.util';
 import {
   attendanceSummaryItems,
+  rateText,
   payrollPeriodShort,
 } from '@/components/expense-form-v4/payroll-system/PayrollSystemRows';
 import { SLIP_NEEDS_POST } from '@/components/expense-form-v4/payroll-system/payroll-copy';
@@ -531,7 +532,7 @@ function PayrollSlipSheet({
                     {ci.accountCode}
                   </span>
                   {ci.name}
-                  {ci.source === 'ADJUSTMENT' && ' (ปรับปรุงงวดก่อน)'}
+                  {ci.source === 'ADJUSTMENT' && !ci.name.includes('ปรับปรุงงวดก่อน') && ' (ปรับปรุงงวดก่อน)'}
                   {!ci.isTaxable && (
                     <span className="ml-2 inline-block rounded bg-info/10 px-1.5 py-0.5 text-[10px] text-info">
                       ม.42 ยกเว้นภาษี
@@ -615,7 +616,8 @@ function PayrollSlipSheet({
         </table>
       </section>
 
-      {line.attendanceSummary && doc.payroll?.payrollPeriod && (
+      {/* คนที่ไม่ได้ตอกบัตรเดือนนั้น (attendanceTracked = false) ไม่มีกล่อง — กล่องศูนย์ทุกช่องอ่านเหมือน "ขาดงาน" */}
+      {line.attendanceSummary && line.attendanceSummary.attendanceTracked !== false && doc.payroll?.payrollPeriod && (
         <SlipAttendanceSummary summary={line.attendanceSummary} period={doc.payroll.payrollPeriod} />
       )}
 
@@ -662,12 +664,13 @@ function PayrollSlipSheet({
 }
 
 /**
- * Payroll D4 — "ชม. × อัตรา" ของแถวที่ระบบคิด: ชั่วโมงที่เก็บ × อัตราที่เก็บ (แสดง 2 ตำแหน่ง) · จำนวนเงินในคอลัมน์ถัดไป
+ * Payroll D4 — "ชม. × อัตรา" ของแถวที่ระบบคิด: ชั่วโมงที่เก็บ × อัตราที่เก็บ (2–4 ตำแหน่ง ไม่ตัดเศษที่มีจริง เช่น 84.375 —
+ * ปัดเหลือ 2 ตำแหน่งแล้วคูณไม่ลงกับยอด) · จำนวนเงินในคอลัมน์ถัดไป
  * คือยอดที่เก็บไว้ (ไม่คูณใหม่) · แถวที่ไม่มีชั่วโมง/อัตรา (กรอกเอง · ค่าคอม) = —
  */
 function hoursTimesRate(row: { quantity?: string | null; rate?: string | null }): ReactNode {
   if (row.quantity == null || row.rate == null) return <NoValue />;
-  return `${fmtOt(parseFloat(row.quantity))} × ${formatNumberDecimal(row.rate, 2)}`;
+  return `${fmtOt(parseFloat(row.quantity))} × ${rateText(row.rate)}`;
 }
 
 /** "—" ในตาราง — โปรแกรมอ่านหน้าจออ่านว่า ไม่มี */

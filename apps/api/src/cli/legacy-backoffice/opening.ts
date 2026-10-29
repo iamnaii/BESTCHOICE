@@ -8,7 +8,6 @@ import {
   type AccruedSoFar,
 } from '../../modules/journal/build-accrual-2a-lines';
 import type { JeLineInput } from '../../modules/journal/journal-auto.service';
-import { dRound } from '../../utils/decimal.util';
 import {
   INSTALLMENT_AMOUNT_TOLERANCE,
   LAST_INSTALLMENT_AMOUNT_TOLERANCE,
@@ -20,16 +19,22 @@ import {
  *
  * **หลัก:** จำลองสภาพที่สัญญาจะมี ณ วันตัด ถ้าเปิดใน BESTCHOICE ตั้งแต่แรก (1A + 2A + ใบรับชำระ) ด้วยตัวสร้างบรรทัด 2A
  * ของระบบ (`build-accrual-2a-lines.ts` — ไม่มีสูตรชุดที่สอง) แล้วเก็บเฉพาะบัญชียกมา (`CARRY_FORWARD_ACCOUNTS`) ส่วนต่างลง
- * `32-1101` ส่วนของเจ้าของฝั่ง FINANCE · **ไม่มีบรรทัด 41-1101 / 21-2101 / เงินสด** — PEAK รับรู้รายได้และยื่น VAT ไปแล้ว
+ * `32-1101` กำไร (ขาดทุน) สะสม ฝั่ง FINANCE · **ไม่มีบรรทัด 41-1101 / 21-2101 / เงินสด** — PEAK รับรู้รายได้และยื่น VAT ไปแล้ว
  *
  * ต่องวด ("ถึงกำหนด" = `dueDate < cutoff` แบบเดียวกับ `classify.ts` / `payments.ts` — วันตัด 30 พ.ย. 23:59:59 กรุงเทพ
  * ⇒ งวดที่ครบกำหนด 30 พ.ย. ถึงกำหนดแล้ว · 1 ธ.ค. ยังไม่ถึง) · `T` = ยอดของงวดตามตัวคำนวณ · **ชำระครบ** = `paid ≥ amountDue`
- * (ยอดเรียกเก็บ — แถวงวดเป็น `PAID`) หรือ `paid ≥ T` (ลูกหนี้ในบัญชีล้างครบ):
+ * (ยอดเรียกเก็บ — แถวงวดเป็น `PAID`):
  * - **ชำระครบ** = ตั้งครบและล้างครบ → ไม่มีอะไรยกมา ไม่มี marker · stamp `accrued: true` ยอดสะสม = ทั้งงวด
  *   (ส่วนต่างระหว่าง `T` กับยอดที่จ่ายไม่ยกมา — เหมือนใบรับชำระที่ทำให้งวดครบด้วยเศษไม่เกิน 1 บาท)
+ * - **ล้างในบัญชีครบแต่ยอดเรียกเก็บยังค้าง** (`T ≤ paid < amountDue`) = **ตัวบล็อก** `INSTALLMENT_SETTLED_BELOW_BILLING`
+ *   (คำตัดสินผู้คุมงาน I-1): ยกมาเป็น "ล้างครบ" ไม่ได้ เพราะแถวงวดยังค้างเศษ ใบรับชำระใบแรกหลังวันตัดจะถูก
+ *   `payment-receipt.template.ts` ปฏิเสธ (residual exceeds tolerance — `reconstructPriorCleared` ไม่เห็นยอดที่จ่าย) จนสัญญา
+ *   รับเงินต่อไม่ได้ · ยกมาเป็น marker ก็ไม่ได้ (marker ≥ `T` ถูกข้ามตอนอ่าน) ⇒ **เจ้าของปิดงวดแบบนี้รายสัญญาก่อนนำเข้า**
  * - **ถึงกำหนดแล้ว ยังค้าง** = รอบกลางคืนตั้ง 2A ทั้งงวดไปแล้ว → Dr 11-2103 `T` + marker ยอดที่จ่าย (ถ้ามี) · ดอกเบี้ยถือว่า
- *   รับรู้แล้ว (ไม่มีใน 11-2106) · VAT ของส่วนที่ค้าง = HALF_UP(`vatPerInst` × (`T` − ยอดที่จ่าย) ÷ `T`) **คงไว้ใน Cr 21-2102**
- *   และอยู่ใน `catchUpLines` (Dr 21-2102 / Cr 21-2101 วันที่ 1 ธ.ค. — PEAK ยื่น VAT ตามเงินรับ ส่วนนี้ยังไม่เคยยื่น · โหมดเดียว)
+ *   รับรู้แล้ว (ไม่มีใน 11-2106) · VAT ของส่วนที่ค้าง = `vatPerInst` − VAT ของ 2A บางส่วนเท่ายอดที่จ่าย
+ *   (`buildPartialAccrual2ALines(…, ยอดที่จ่าย).portion.vat` — ก1 · เท่าที่ใบรับชำระใบแรกหลังวันตัดพิมพ์ผ่าน
+ *   `receipt-tax-breakdown.ts` · ไม่ได้จ่ายเลย = `vatPerInst` เต็ม) **คงไว้ใน Cr 21-2102** และอยู่ใน `catchUpLines`
+ *   (Dr 21-2102 / Cr 21-2101 วันที่ 1 ธ.ค. — PEAK ยื่น VAT ตามเงินรับ ส่วนนี้ยังไม่เคยยื่น · โหมดเดียว)
  *   · stamp `accrued: true` ยอดสะสม = ทั้งงวด
  * - **ยังไม่ถึงกำหนด ไม่ได้จ่าย** → กลับด้านของ 2A ทั้งงวด: Dr 11-2101 / Dr 11-2105 / Cr 11-2106 / Cr 21-2102 ·
  *   stamp `accrued: false` ยอด 0
@@ -37,9 +42,11 @@ import {
  *   ใบรับชำระก่อนวันครบกำหนด) → Dr 11-2103 ส่วนที่ตั้งแล้ว + marker ยอดที่จ่าย · ส่วนที่ยังไม่ตั้ง = กลับด้านของ
  *   `buildRemainderAccrual2ALines` · stamp `accrued: false` ยอดสะสม = `accruedAfter` (รอบกลางคืนตั้งเฉพาะส่วนที่เหลือ)
  *
- * **marker** (`priorReceiptMarkers`) = ยอดที่จ่ายของงวดที่ยังไม่ชำระครบ (< `T` เสมอ) — Task 10 ลงเป็นรายการแยกต่องวด
- * Dr 32-1101 / Cr 11-2103 tag `2B` ให้ `reconstructPriorCleared` เห็นว่างวดนั้นถูกล้างไปแล้วเท่าไร (นับเพราะ < ยอดของงวด)
- * ใบเสร็จใบแรกหลังวันตัดจึงตัดแค่ส่วนที่เหลือ · รายการยกมา + marker = สภาพของสัญญาที่เปิดในระบบตั้งแต่แรก
+ * **marker** (`priorReceiptMarkers`) = ยอดที่จ่ายของงวดที่ยังไม่ชำระครบ — Task 10 ลงเป็นรายการแยกต่องวด Dr 32-1101 /
+ * Cr 11-2103 tag `2B` ให้ `reconstructPriorCleared` เห็นว่างวดนั้นถูกล้างไปแล้วเท่าไร ใบเสร็จใบแรกหลังวันตัดจึงตัดแค่ส่วนที่เหลือ ·
+ * **ต้อง < min(`T`, `amountDue`) เสมอ (ตรวจในโค้ด)**: ผู้อ่านนับรายการ `2B` ที่ flow ไม่อยู่ใน allow-list เฉพาะเมื่อ Cr 11-2103
+ * ต่ำกว่าฐาน — template / รอบกลางคืนใช้ `T` ส่วน `receipt-void-core.ts` ใช้ `payment.amountDue` · รายการยกมา + marker
+ * = สภาพของสัญญาที่เปิดในระบบตั้งแต่แรก
  *
  * **ด่าน (คำตัดสินผู้คุมงาน C1 — ทางเลือก A):** บัญชีใช้ยอดของตัวสร้าง 2A เสมอ ยอดเรียกเก็บของระบบเก่า (`amountDue` = PEAK)
  * ต่างได้แค่เศษปัด ⇒ (Σ(11-2101 + 11-2103 + 11-2105 ของรายการยกมา) − Σ marker) − `peakRemain` ต้อง = `roundingDiff`
@@ -62,7 +69,7 @@ export const CARRY_FORWARD_ACCOUNTS = [
 ] as const;
 export type CarryForwardAccount = (typeof CARRY_FORWARD_ACCOUNTS)[number];
 
-/** ส่วนต่างของรายการยกมา — ส่วนของเจ้าของฝั่ง FINANCE (ไม่ใช่ S32-1101 ของ SHOP) */
+/** ส่วนต่างของรายการยกมา — 32-1101 กำไร (ขาดทุน) สะสม ฝั่ง FINANCE (PEAK 330000 · ไม่ใช่ S32-1101 ของ SHOP) */
 export const OPENING_EQUITY_ACCOUNT = '32-1101';
 
 export type OpeningInstallment = {
@@ -127,15 +134,26 @@ export class OpeningInputError extends Error {
 }
 
 /**
- * - `GAP_NOT_ROUNDING` — ส่วนต่างบัญชีกับ PEAK ไม่เท่าส่วนต่างปัดเศษของยอดเรียกเก็บ (ยอดคงเหลือใน PEAK ≠ ยอดค้างของงวดที่ส่งมา)
+ * - `INSTALLMENT_SETTLED_BELOW_BILLING` — งวดที่ยอดจ่ายล้างลูกหนี้ในบัญชีครบแล้ว (≥ `T`) แต่ยังไม่ถึงยอดเรียกเก็บ
+ *   (`installmentNos` = เลขงวด) — เจ้าของปิดงวดแบบนี้รายสัญญาก่อนนำเข้า
+ * - `GAP_NOT_ROUNDING` — ส่วนต่างบัญชีกับ PEAK ไม่เท่าส่วนต่างปัดเศษของยอดเรียกเก็บ (ยอดคงเหลือใน PEAK ≠ ยอดค้างของงวดที่ส่งมา
+ *   เช่น PEAK หักยอดจ่ายเกินค่างวดแล้ว แต่รายการยกมาไม่ยกเงินจ่ายเกิน)
  * - `ROUNDING_BEYOND_TOLERANCE` — อธิบายได้ด้วยยอดเรียกเก็บ แต่เศษต่องวดหรือรวมทั้งสัญญาเกินเกณฑ์ของ `checkInstallmentAmounts`
+ *   (`installmentNos` = งวดที่เกินเกณฑ์ · เกินเฉพาะยอดรวม = ทุกงวดที่มีเศษ)
  */
-export type OpeningMismatchReason = 'GAP_NOT_ROUNDING' | 'ROUNDING_BEYOND_TOLERANCE';
+export type OpeningMismatchReason =
+  | 'INSTALLMENT_SETTLED_BELOW_BILLING'
+  | 'GAP_NOT_ROUNDING'
+  | 'ROUNDING_BEYOND_TOLERANCE';
 
 const MISMATCH_MESSAGE: Record<OpeningMismatchReason, string> = {
+  INSTALLMENT_SETTLED_BELOW_BILLING:
+    'OPENING_PEAK_MISMATCH: มีงวดที่ยอดจ่ายล้างลูกหนี้ในบัญชีครบแล้วแต่ยังไม่ถึงยอดเรียกเก็บ (เลขงวดอยู่ในช่อง installmentNos)' +
+    ' — ยกมาไม่ได้ เพราะใบรับชำระใบแรกหลังวันตัดของงวดนั้นจะถูกปฏิเสธ ต้องส่งเจ้าของปิดงวดเหล่านี้รายสัญญาก่อนนำเข้า',
   GAP_NOT_ROUNDING:
     'OPENING_PEAK_MISMATCH: ลูกหนี้ยกมา (11-2101 + 11-2103 + 11-2105 หักยอดรับก่อนวันตัด) ต่างจากยอดคงเหลือใบแจ้งหนี้ใน PEAK' +
-    ' มากกว่าส่วนต่างปัดเศษของยอดเรียกเก็บ — ยอดคงเหลือใน PEAK ไม่เท่ายอดค้างของงวดที่ส่งมา ต้องตรวจงวดของสัญญานี้',
+    ' มากกว่าส่วนต่างปัดเศษของยอดเรียกเก็บ — ยอดคงเหลือใน PEAK ไม่เท่ายอดค้างของงวดที่ส่งมา (เช่น งวดที่จ่ายเกินค่างวด' +
+    ' ซึ่ง PEAK หักแล้วแต่รายการยกมาไม่ยกเงินจ่ายเกิน) ต้องตรวจงวดของสัญญานี้',
   ROUNDING_BEYOND_TOLERANCE:
     'OPENING_PEAK_MISMATCH: ยอดเรียกเก็บของงวดต่างจากยอดของงวดตามตัวคำนวณเกินเกณฑ์ปัดเศษ (ต่องวดหรือรวมทั้งสัญญา' +
     ' — เกณฑ์เดียวกับ checkInstallmentAmounts) — ต้องแก้ยอดเงินของสัญญาด้วย --money-overrides หรือตรวจงวดของสัญญานี้',
@@ -152,6 +170,8 @@ export class OpeningMismatchError extends Error {
     /** Σ(`T` − `amountDue`) ของงวดที่ยังไม่ชำระครบ — ส่วนต่างที่อธิบายได้ด้วยยอดเรียกเก็บ */
     readonly expectedRoundingDiff: Decimal,
     readonly reason: OpeningMismatchReason,
+    /** เลขงวดที่เป็นต้นเหตุ (เรียงตามงวด · `GAP_NOT_ROUNDING` = ว่าง) */
+    readonly installmentNos: number[],
   ) {
     super(MISMATCH_MESSAGE[reason]);
     this.name = 'OpeningMismatchError';
@@ -181,7 +201,7 @@ const OPENING_DESCRIPTION: Record<CarryForwardAccount | typeof OPENING_EQUITY_AC
   '11-2105': 'ยกมาจากระบบเก่า: ลูกหนี้ภาษีขายรอเรียกเก็บ ส่วนที่ยังไม่ถึงกำหนด',
   '11-2106': 'ยกมาจากระบบเก่า: รายได้รอตัดบัญชี-ดอกเบี้ย ส่วนที่ยังไม่ถึงกำหนด',
   '21-2102': 'ยกมาจากระบบเก่า: ภาษีขายรอเรียกเก็บ (รวมภาษีของงวดค้างที่รอไล่ 1 ธ.ค.)',
-  '32-1101': 'ยกมาจากระบบเก่า: ส่วนของเจ้าของ (ผลต่างยอดยกมา)',
+  '32-1101': 'ยกมาจากระบบเก่า: กำไร (ขาดทุน) สะสม (ผลต่างยอดยกมา)',
 };
 
 function validate(input: OpeningInput): OpeningInstallment[] {
@@ -241,13 +261,19 @@ export function computeOpening(input: OpeningInput): OpeningResult {
   const stamps: InstallmentStamp[] = [];
   let catchUpVat = ZERO;
   let roundingDiff = ZERO;
-  let roundingBeyondTolerance = false;
+  const settledBelowBillingNos: number[] = [];
+  const beyondToleranceNos: number[] = [];
+  const roundingNos: number[] = [];
 
   for (const inst of installments) {
     const contractInput = accrual2AInputOf(money, inst.installmentNo);
     const due = inst.dueDate.getTime() < cutoff.getTime();
     const whole = buildRemainderAccrual2ALines(contractInput, NOTHING_ACCRUED);
     const installmentTotal = whole.installmentTotal;
+    // ล้างในบัญชีครบแต่ยอดเรียกเก็บยังค้าง = ตัวบล็อก (I-1) — คิดต่อแบบชำระครบเพื่อให้ช่องยอดของ error มีค่า แล้ว throw หลังวน
+    if (inst.paid.gte(installmentTotal) && inst.paid.lt(inst.amountDue)) {
+      settledBelowBillingNos.push(inst.installmentNo);
+    }
     const settled = inst.paid.gte(inst.amountDue) || inst.paid.gte(installmentTotal);
 
     // 2A ที่ระบบลงไปแล้ว ณ วันตัด: ถึงกำหนดหรือชำระครบ = ทั้งงวด · ยังไม่ถึงแต่จ่ายล่วงหน้า = ตั้งเท่ายอดที่รับ (ก1)
@@ -272,14 +298,22 @@ export function computeOpening(input: OpeningInput): OpeningResult {
     post('11-2103', accrued.amount, ZERO);
     if (settled) post('11-2103', ZERO, accrued.amount);
     else if (inst.paid.gt(0)) {
+      if (!inst.paid.lt(Prisma.Decimal.min(installmentTotal, inst.amountDue))) {
+        throw new Error(
+          `computeOpening: marker งวด ${inst.installmentNo} ต้องต่ำกว่ายอดของงวดและยอดเรียกเก็บ — ตรวจเงื่อนไขชำระครบ`,
+        );
+      }
       priorReceiptMarkers.push({ installmentNo: inst.installmentNo, amount: inst.paid });
     }
 
     // VAT ของงวดที่ถึงกำหนดแต่ยังค้าง — ยังไม่เคยยื่น: คงใน 21-2102 แล้วไล่เข้า 21-2101 วันที่ 1 ธ.ค.
+    // = VAT ของงวด − VAT ของ 2A บางส่วนเท่ายอดที่จ่าย (ก1) ⇒ เท่าที่ใบรับชำระใบแรกหลังวันตัดพิมพ์
     if (due && !settled) {
-      const vat = dRound(
-        whole.vatPerInst.times(installmentTotal.minus(inst.paid)).div(installmentTotal),
-      );
+      const vat = inst.paid.gt(0)
+        ? whole.vatPerInst.minus(
+            buildPartialAccrual2ALines(contractInput, NOTHING_ACCRUED, inst.paid).portion.vat,
+          )
+        : whole.vatPerInst;
       post('21-2102', ZERO, vat);
       catchUpVat = catchUpVat.plus(vat);
     }
@@ -292,7 +326,8 @@ export function computeOpening(input: OpeningInput): OpeningResult {
       inst.installmentNo === money.totalMonths
         ? LAST_INSTALLMENT_AMOUNT_TOLERANCE
         : INSTALLMENT_AMOUNT_TOLERANCE;
-    if (rounding.abs().gt(tolerance)) roundingBeyondTolerance = true;
+    if (rounding.abs().gt(tolerance)) beyondToleranceNos.push(inst.installmentNo);
+    if (!rounding.isZero()) roundingNos.push(inst.installmentNo);
     roundingDiff = roundingDiff.plus(rounding);
 
     stamps.push({
@@ -307,11 +342,17 @@ export function computeOpening(input: OpeningInput): OpeningResult {
   const receivable = sumOf(RECEIVABLE_ACCOUNTS.map((code) => net.get(code) ?? ZERO)).minus(
     sumOf(priorReceiptMarkers.map((m) => m.amount)),
   );
-  const mismatch = (reason: OpeningMismatchReason) =>
-    new OpeningMismatchError(receivable, peakRemain, roundingDiff, reason);
+  const mismatch = (reason: OpeningMismatchReason, installmentNos: number[] = []) =>
+    new OpeningMismatchError(receivable, peakRemain, roundingDiff, reason, installmentNos);
+  if (settledBelowBillingNos.length > 0) {
+    throw mismatch('INSTALLMENT_SETTLED_BELOW_BILLING', settledBelowBillingNos);
+  }
   if (!receivable.minus(peakRemain).eq(roundingDiff)) throw mismatch('GAP_NOT_ROUNDING');
-  if (roundingBeyondTolerance || roundingDiff.abs().gt(CONTRACT_ROUNDING_TOLERANCE)) {
-    throw mismatch('ROUNDING_BEYOND_TOLERANCE');
+  if (beyondToleranceNos.length > 0) {
+    throw mismatch('ROUNDING_BEYOND_TOLERANCE', beyondToleranceNos);
+  }
+  if (roundingDiff.abs().gt(CONTRACT_ROUNDING_TOLERANCE)) {
+    throw mismatch('ROUNDING_BEYOND_TOLERANCE', roundingNos);
   }
 
   const openingLines: JeLineInput[] = [];

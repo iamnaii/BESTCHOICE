@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import {
   accrual2AInputOf,
+  buildAccrual2ALines,
   buildPartialAccrual2ALines,
   NOTHING_ACCRUED,
 } from '../../../modules/journal/build-accrual-2a-lines';
@@ -123,6 +124,22 @@ const stampOf = (r: OpeningResult, no: number) => {
 /** บรรทัดเป็นตัวอักษร ใช้เทียบรายการทั้งชุด */
 const shape = (lines: JeLineInput[]) =>
   lines.map((l) => [l.accountCode, l.dr.toFixed(2), l.cr.toFixed(2)]);
+/**
+ * marker ต้อง < min(ยอดของงวด, ยอดเรียกเก็บ) — `reconstructPriorCleared` เทียบกับยอดของงวด (template / รอบกลางคืน)
+ * ส่วน `receipt-void-core` เทียบกับ `payment.amountDue` · ≥ ตัวใดตัวหนึ่ง = ถูกข้ามตอนอ่าน
+ */
+function expectMarkersBelowTotalAndBilling(
+  r: OpeningResult,
+  inst: OpeningInput['installments'],
+  money: ContractMoney = MONEY,
+) {
+  for (const m of r.priorReceiptMarkers) {
+    const row = inst.find((i) => i.installmentNo === m.installmentNo);
+    if (!row) throw new Error(`no installment ${m.installmentNo}`);
+    const total = buildAccrual2ALines(accrual2AInputOf(money, m.installmentNo)).installmentTotal;
+    expect(m.amount.lt(Prisma.Decimal.min(total, row.amountDue))).toBe(true);
+  }
+}
 
 const PAID_1_TO_3 = { 1: MONTHLY, 2: MONTHLY, 3: MONTHLY };
 
@@ -185,9 +202,23 @@ describe('computeOpening', () => {
     expect(markersOf(r)).toEqual([{ installmentNo: 4, amount: '300.00' }]);
     expect(net(r.openingLines, '11-2103')).toBe(MONTHLY);
     expect(stampOf(r, 4)).toMatchObject({ accrued: true });
-    // VAT ของส่วนที่ค้าง = 99.17 × 1,215.83 ÷ 1,515.83 = 79.543… → 79.54
+    // VAT ไล่ = VAT ของงวด − VAT ของ 2A บางส่วนเท่ายอดที่จ่าย (ก1) = 99.17 − HALF_UP(300 × 7/107 = 19.63) = 79.54
     expect(net(r.catchUpLines, '21-2102')).toBe('79.54');
     expect(net(r.openingLines, '21-2102')).toBe('-872.86'); // Cr 793.32 + 79.54
+  });
+
+  it('งวด 4 ถึงกำหนดจ่ายบางส่วน 700: VAT ไล่ = VAT ที่ใบรับชำระใบแรกหลังวันตัดจะพิมพ์ (99.17 − 45.79 = 53.38 ไม่ใช่สัดส่วน 53.37)', () => {
+    const r = opening({ ...PAID_1_TO_3, 4: '700' });
+    const part = buildPartialAccrual2ALines(accrual2AInputOf(MONEY, 4), NOTHING_ACCRUED, D('700'));
+
+    expect(part.portion.vat.toFixed(2)).toBe('45.79'); // HALF_UP(700 × 7/107 = 45.794…)
+    expect(net(r.catchUpLines, '21-2102')).toBe('53.38');
+    expect(net(r.catchUpLines, '21-2102')).toBe(D('99.17').minus(part.portion.vat).toFixed(2));
+    // 21-2102 ยกมา = VAT ส่วนที่เหลือของงวดอนาคต + Σ VAT ไล่ (ไม่มีสตางค์ค้างหลังลงรายการไล่)
+    expect(net(r.openingLines, '21-2102')).toBe('-846.70'); // Cr 793.32 + 53.38
+    expect(D(net(r.openingLines, '21-2102')).plus(net(r.catchUpLines, '21-2102')).toFixed(2)).toBe(
+      '-793.32',
+    );
   });
 
   it('งวด 6 (อนาคต) จ่ายล่วงหน้า 500: stamp ยังไม่ตั้งครบ ยอดสะสม = accruedAfter ของ 2A บางส่วน · marker งวด 6 = 500', () => {
@@ -292,6 +323,7 @@ describe('computeOpening', () => {
           expect(e.expectedRoundingDiff.toFixed(2)).toBe('0.00');
           expect(e.diff.toFixed(2)).toBe(D(off).negated().toFixed(2));
           expect(e.reason).toBe('GAP_NOT_ROUNDING');
+          expect(e.installmentNos).toEqual([]);
           // ข้อความไม่ยกยอดเงินมาพิมพ์
           expect(e.message).not.toContain(peakRemain.toFixed(2));
           expect(e.message).not.toContain(peakRemain.plus(off).toFixed(2));
@@ -325,6 +357,10 @@ describe('computeOpening', () => {
       expect(r.roundingDiff.toFixed(2)).toBe('-0.05');
       expect(markersOf(r)).toEqual([{ installmentNo: 4, amount: '300.00' }]);
       expect(net(r.openingLines, '11-2103')).toBe(MONTHLY);
+      expectMarkersBelowTotalAndBilling(
+        r,
+        installments({ ...PAID_LEGACY_1_TO_3, 4: '300' }, {}, legacyFlat),
+      );
     });
 
     it('ชำระครบตามยอดเรียกเก็บที่ต่ำกว่ายอดในบัญชี (งวดสุดท้าย 1,515.84 < 1,515.87): ถือว่าชำระครบ ไม่ยกมา ไม่มี marker', () => {
@@ -345,18 +381,29 @@ describe('computeOpening', () => {
       });
     });
 
-    it('จ่ายครบยอดในบัญชีแต่ยังขาดยอดเรียกเก็บ 0.01 (งวด 5 เรียกเก็บ 1,515.84 จ่าย 1,515.83): ล้างในบัญชีครบ ไม่มี marker · roundingDiff −0.01', () => {
-      const amount: Amount = (no) => (no === 5 ? LEGACY_FLAT : amountOf(no));
-      const paid = { ...PAID_1_TO_3, 5: MONTHLY };
-      const r = opening(paid, {}, amount);
+    it('จ่ายครบยอดในบัญชีแต่ยังขาดยอดเรียกเก็บ (งวด 4 และ 5 เรียกเก็บ 1,515.84 จ่าย 1,515.83) → บล็อก INSTALLMENT_SETTLED_BELOW_BILLING บอกเลขงวด', () => {
+      // ถ้ายกมาเป็น "ล้างครบ" ใบรับชำระ 0.01 ใบแรกหลังวันตัดถูกปฏิเสธ (residual exceeds tolerance) — สัญญารับเงินต่อไม่ได้
+      const amount: Amount = (no) => (no === 4 || no === 5 ? LEGACY_FLAT : amountOf(no));
+      const paid = { ...PAID_1_TO_3, 4: MONTHLY, 5: MONTHLY };
+      const call = () => opening(paid, {}, amount);
 
-      expect(r.priorReceiptMarkers).toEqual([]);
-      expect(stampOf(r, 5)).toMatchObject({ accrued: true, accruedAmount: MONTHLY });
-      expect(r.roundingDiff.toFixed(2)).toBe('-0.01');
-      expect(peakRemainOf(paid, amount).minus(receivableAfterMarkers(r)).toFixed(2)).toBe('0.01');
+      expect(call).toThrow(OpeningMismatchError);
+      try {
+        call();
+      } catch (err) {
+        const e = err as OpeningMismatchError;
+        expect(e.code).toBe('OPENING_PEAK_MISMATCH');
+        expect(e.reason).toBe('INSTALLMENT_SETTLED_BELOW_BILLING');
+        expect(e.installmentNos).toEqual([4, 5]);
+        expect(e.message).not.toMatch(/\d+\.\d{2}/);
+      }
     });
 
-    const expectRoundingBeyondTolerance = (amount: Amount, paid = PAID_1_TO_3) => {
+    const expectRoundingBeyondTolerance = (
+      amount: Amount,
+      installmentNos: number[],
+      paid: Record<number, string> = PAID_1_TO_3,
+    ) => {
       const call = () => opening(paid, {}, amount);
       expect(call).toThrow(OpeningMismatchError);
       try {
@@ -365,6 +412,7 @@ describe('computeOpening', () => {
         const e = err as OpeningMismatchError;
         expect(e.code).toBe('OPENING_PEAK_MISMATCH');
         expect(e.reason).toBe('ROUNDING_BEYOND_TOLERANCE');
+        expect(e.installmentNos).toEqual(installmentNos);
         // ช่องว่างระหว่างบัญชีกับ PEAK อธิบายได้ด้วยยอดเรียกเก็บทั้งหมด — แต่ส่วนต่างเกินเกณฑ์
         expect(e.diff.toFixed(2)).toBe(e.expectedRoundingDiff.toFixed(2));
         expect(e.message).not.toMatch(/\d+\.\d{2}/);
@@ -372,15 +420,19 @@ describe('computeOpening', () => {
     };
 
     it('งวดปกติต่างเกิน 0.01 (งวด 5 เรียกเก็บ 1,515.85) → throw', () => {
-      expectRoundingBeyondTolerance((no) => (no === 5 ? '1515.85' : amountOf(no)));
+      expectRoundingBeyondTolerance((no) => (no === 5 ? '1515.85' : amountOf(no)), [5]);
     });
 
     it('งวดสุดท้ายต่างเกิน 1.00 (เรียกเก็บ 1,514.80 · ตัวคำนวณ 1,515.87) → throw', () => {
-      expectRoundingBeyondTolerance((no) => (no === 12 ? '1514.80' : amountOf(no)));
+      expectRoundingBeyondTolerance((no) => (no === 12 ? '1514.80' : amountOf(no)), [12]);
     });
 
-    it('ทุกงวดอยู่ในเกณฑ์แต่รวมทั้งสัญญาเกิน 1.00 (งวดปกติเรียกเก็บเกิน 0.01 ทุกงวด · งวดสุดท้ายเกิน 0.95 → −1.06) → throw', () => {
-      expectRoundingBeyondTolerance((no) => (no === 12 ? '1516.82' : LEGACY_FLAT));
+    it('ทุกงวดอยู่ในเกณฑ์แต่รวมทั้งสัญญาเกิน 1.00 (งวด 4–11 เรียกเก็บเกิน 0.01 · งวดสุดท้ายเกิน 0.95 → −1.03) → throw บอกทุกงวดที่มีเศษ', () => {
+      expectRoundingBeyondTolerance(
+        (no) => (no === 12 ? '1516.82' : LEGACY_FLAT),
+        [4, 5, 6, 7, 8, 9, 10, 11, 12],
+        PAID_LEGACY_1_TO_3,
+      );
     });
 
     it('ยอดเรียกเก็บไม่เป็นบวกหรือเกิน 2 ตำแหน่ง → OpeningInputError', () => {
@@ -436,6 +488,11 @@ describe('computeOpening', () => {
     }
     // 21-2101 ของรายการไล่ = VAT ของส่วนที่ค้างของงวดที่ถึงกำหนด (งวด 4) — ส่วนที่จ่ายแล้ว PEAK ยื่นไปแล้ว
     expect(net(r.catchUpLines, '21-2101')).toBe('-79.54');
+    expect(markersOf(r)).toEqual([
+      { installmentNo: 4, amount: '300.00' },
+      { installmentNo: 6, amount: '500.00' },
+    ]);
+    expectMarkersBelowTotalAndBilling(r, installments(paid));
   });
 
   it('ยังไม่ถึงกำหนดสักงวด: รายการยกมาเท่าฝั่งลูกหนี้ของ 1A ทั้งสัญญา (งวดสุดท้ายรับเศษ)', () => {
@@ -489,6 +546,23 @@ describe('computeOpening', () => {
     expect(r.catchUpLines).toEqual([]);
     expect(r.priorReceiptMarkers).toEqual([]);
     expect(r.stamps.every((s) => s.accrued)).toBe(true);
+  });
+
+  it('งวดที่จ่ายเกินค่างวด + ยอด PEAK จริงที่หักยอดจ่ายเกินแล้ว → บล็อก GAP_NOT_ROUNDING (บัญชียกมาไม่ยกเงินจ่ายเกิน)', () => {
+    const paid = { ...PAID_1_TO_3, 3: '1600' };
+    // PEAK หักยอดจ่ายเกิน 84.17 ออกจากยอดคงเหลือแล้ว (Σ(amountDue − paid) แบบไม่ตัดยอดติดลบ)
+    const realPeak = peakRemainOf(PAID_1_TO_3).minus(D('1600').minus(MONTHLY));
+    const call = () => opening(paid, { peakRemain: realPeak });
+
+    expect(call).toThrow(OpeningMismatchError);
+    try {
+      call();
+    } catch (err) {
+      const e = err as OpeningMismatchError;
+      expect(e.reason).toBe('GAP_NOT_ROUNDING');
+      expect(e.diff.toFixed(2)).toBe('84.17');
+      expect(e.installmentNos).toEqual([]);
+    }
   });
 
   it('งวดที่จ่ายเกินค่างวด: นับเท่าค่างวด (ไม่มีลูกหนี้ติดลบ ไม่มี marker)', () => {

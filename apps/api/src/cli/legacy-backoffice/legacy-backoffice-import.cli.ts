@@ -5,7 +5,7 @@
  *
  * | คำสั่ง | ทำอะไร |
  * |---|---|
- * | `peak-recon --dump <sql> --peak-ar <csv> --out <dir>` | จับคู่ใบแจ้งหนี้ PEAK กับสัญญา → `peak-recon.csv` + `peak-recon-unmatched.csv` (ไม่แตะฐานข้อมูล) |
+ * | `peak-recon --dump <sql> --peak-ar <csv> --out <dir> [--peak-pairs <csv>]` | จับคู่ใบแจ้งหนี้ PEAK กับสัญญา → `peak-recon.csv` + `peak-recon-unmatched.csv` (ไม่แตะฐานข้อมูล) · `--peak-pairs` = คู่ที่เจ้าของกำหนดเอง หัวคอลัมน์ `invoice_code,legacy_code` |
  *
  * dump / CSV / โฟลเดอร์ผลลัพธ์ อยู่นอก repo เสมอ (มีข้อมูลลูกค้าจริง) — ส่งเข้ามาด้วย path เท่านั้น ·
  * ข้อความบนจอมีแต่จำนวน ไม่มีชื่อหรือยอดรายสัญญา
@@ -20,6 +20,7 @@ import { readDumpTables } from './dump-reader';
 import { buildLegacyBook, LEGACY_TABLES } from './legacy-book';
 import {
   parsePeakArCsv,
+  parsePeakPairsCsv,
   peakReconCsv,
   peakReconUnmatchedCsv,
   reconcileWithPeak,
@@ -46,7 +47,9 @@ async function peakRecon(values: Values): Promise<void> {
   const [dumpPath, peakArPath, outDir] = ['dump', 'peak-ar', 'out'].map((n) => required(values, n));
   const book = buildLegacyBook(await readDumpTables(dumpPath, LEGACY_TABLES));
   const invoices = parsePeakArCsv(await readFile(peakArPath, 'utf8'));
-  const recon = reconcileWithPeak(book, invoices);
+  const pairsPath = values['peak-pairs'];
+  const pairs = pairsPath ? parsePeakPairsCsv(await readFile(pairsPath, 'utf8')) : [];
+  const recon = reconcileWithPeak(book, invoices, pairs);
 
   await mkdir(outDir, { recursive: true });
   const files = {
@@ -57,11 +60,14 @@ async function peakRecon(values: Values): Promise<void> {
     await writeFile(join(outDir, name), content, 'utf8');
   }
 
-  const withDiff = [...recon.matched.values()].filter((m) => !m.diff.isZero()).length;
+  const matches = [...recon.matched.values()];
+  const withDiff = matches.filter((m) => !m.diff.isZero()).length;
+  const mismatched = matches.filter((m) => m.note === 'imei-mismatch').length;
   console.log(`${LOG} peak-recon`);
   console.log(`  สัญญาในระบบเก่า            : ${book.contracts.length}`);
   console.log(`  ใบแจ้งหนี้ PEAK            : ${invoices.length}`);
   console.log(`  จับคู่ได้                   : ${recon.matched.size} (ยอดค้างไม่ตรง ${withDiff})`);
+  console.log(`  คู่ที่กำหนดเอง              : ${pairs.length} (IMEI ไม่ตรง ${mismatched})`);
   console.log(`  สัญญาผ่อนอยู่ที่ไม่มีคู่       : ${recon.unmatchedContracts.length}`);
   console.log(`  ใบแจ้งหนี้กำกวม             : ${recon.ambiguous.length}`);
   console.log(`  ใบแจ้งหนี้ที่ไม่พบสัญญา       : ${recon.unmatchedInvoices.length}`);
@@ -72,8 +78,8 @@ const COMMANDS = new Map<string, Command>([
   [
     'peak-recon',
     {
-      usage: 'peak-recon --dump <sql> --peak-ar <csv> --out <dir>',
-      options: ['dump', 'peak-ar', 'out'],
+      usage: 'peak-recon --dump <sql> --peak-ar <csv> --out <dir> [--peak-pairs <csv>]',
+      options: ['dump', 'peak-ar', 'out', 'peak-pairs'],
       run: peakRecon,
     },
   ],

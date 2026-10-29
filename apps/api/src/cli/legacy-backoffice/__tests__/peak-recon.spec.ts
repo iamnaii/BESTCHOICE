@@ -2,13 +2,18 @@ import { Prisma } from '@prisma/client';
 import type { LegacyBook, LegacyContract, LegacyInstallment } from '../legacy-book';
 import {
   parsePeakArCsv,
+  parsePeakPairsCsv,
   peakReconCsv,
   peakReconUnmatchedCsv,
   reconcileWithPeak,
   type PeakInvoice,
+  type PeakPair,
 } from '../peak-recon';
 
-/** จับคู่ใบแจ้งหนี้ PEAK กับสัญญาระบบเก่า — ข้อมูลสังเคราะห์ทั้งหมด (รหัส TEST-*, IMEI 3500…) */
+/**
+ * จับคู่ใบแจ้งหนี้ PEAK กับสัญญาระบบเก่า — ข้อมูลสังเคราะห์ทั้งหมด (รหัส TEST-*, IMEI 3500…)
+ * IMEI ของเครื่องต่างกันต่างกันที่หลักกลาง (35000000000N001) — ต่างทั้ง 14 หลักแรกและ 14 หลักท้าย
+ */
 
 const D = (value: string) => new Prisma.Decimal(value);
 const IMEI = '350000000000001';
@@ -225,22 +230,46 @@ describe('reconcileWithPeak', () => {
       expect(recon.unmatchedContracts).toEqual(['1', '2']);
     });
 
-    it('compares IMEIs by their last 14 characters (PEAK mistypes a digit)', () => {
-      const recon = reconcileWithPeak(book(contract({ id: '1', imei: '350000000000001' })), [
-        invoice({ code: 'TEST-IV-1', imei: '850000000000001' }), // first digit differs
-        invoice({ code: 'TEST-IV-2', imei: '350000000000002' }), // last digit differs
+    it.each<[string, string, string, boolean]>([
+      ['exactly equal', '350000000000001', '350000000000001', true],
+      [
+        'first 14 digits equal (PEAK mistyped the check digit)',
+        '350000000000001',
+        '350000000000009',
+        true,
+      ],
+      ['last 14 digits equal', '350000000000001', '850000000000001', true],
+      [
+        'neither the first nor the last 14 digits equal',
+        '350000000000001',
+        '850000000000009',
+        false,
+      ],
+      [
+        'digits read through separators and a label',
+        '350000000000001',
+        'IMEI: 35-000000-000000-9',
+        true,
+      ],
+      ['a 12-digit serial equal as a whole', '123456789012', ' 1234-5678-9012 ', true],
+      ['a 12-digit serial against a part of it', '123456789012', '23456789012', false],
+      [
+        'serials that differ only in letters (fewer than 14 digits)',
+        'A123456789012',
+        'B123456789012',
+        false,
+      ],
+      [
+        'a 12-digit serial against a longer IMEI ending in it',
+        '123456789012',
+        '350123456789012',
+        false,
+      ],
+    ])('IMEI match — %s', (_label, contractImei, invoiceImei, expected) => {
+      const recon = reconcileWithPeak(book(contract({ id: '1', imei: contractImei })), [
+        invoice({ code: 'TEST-IV-1', imei: invoiceImei }),
       ]);
-      expect(pairs(recon)).toEqual({ '1': 'TEST-IV-1' });
-      expect(recon.unmatchedInvoices).toEqual(['TEST-IV-2']);
-    });
-
-    it('compares an identifier shorter than 14 characters as a whole (12-digit serials)', () => {
-      const recon = reconcileWithPeak(book(contract({ id: '1', imei: '123456789012' })), [
-        invoice({ code: 'TEST-IV-1', imei: '23456789012' }), // a suffix is not enough
-        invoice({ code: 'TEST-IV-2', imei: ' 1234-5678-9012 ' }),
-      ]);
-      expect(pairs(recon)).toEqual({ '1': 'TEST-IV-2' });
-      expect(recon.unmatchedInvoices).toEqual(['TEST-IV-1']);
+      expect(recon.matched.has('1')).toBe(expected);
     });
   });
 
@@ -248,11 +277,11 @@ describe('reconcileWithPeak', () => {
     const recon = reconcileWithPeak(
       book(
         contract({ id: '1', imei: '350000000000001' }),
-        contract({ id: '2', imei: '350000000000002' }),
+        contract({ id: '2', imei: '350000000002001' }),
       ),
       [
         invoice({ code: 'TEST-IV-1', imei: '350000000000001', net: '12001.00' }),
-        invoice({ code: 'TEST-IV-2', imei: '350000000000002', net: '11998.99' }),
+        invoice({ code: 'TEST-IV-2', imei: '350000000002001', net: '11998.99' }),
       ],
     );
     expect(pairs(recon)).toEqual({ '1': 'TEST-IV-1' });
@@ -295,7 +324,7 @@ describe('reconcileWithPeak', () => {
       const recon = reconcileWithPeak(
         book(
           contract({ id: '1', createdAt: '2026-03-01' }),
-          contract({ id: '2', imei: '350000000000002', createdAt: '2026-03-03' }),
+          contract({ id: '2', imei: '350000000002001', createdAt: '2026-03-03' }),
         ),
         [invoice({ code: 'TEST-IV-1', imei: '', issued: '2026-03-02' })],
       );
@@ -308,14 +337,14 @@ describe('reconcileWithPeak', () => {
     const recon = reconcileWithPeak(
       book(
         contract({ id: '1', status: '3', imei: '350000000000001' }),
-        contract({ id: '2', status: '4', imei: '350000000000002' }),
-        contract({ id: '3', status: '5', imei: '350000000000003' }),
-        contract({ id: '4', status: '2', imei: '350000000000004' }),
+        contract({ id: '2', status: '4', imei: '350000000002001' }),
+        contract({ id: '3', status: '5', imei: '350000000003001' }),
+        contract({ id: '4', status: '2', imei: '350000000004001' }),
       ),
       [
-        invoice({ code: 'TEST-IV-1', imei: '350000000000009', remain: '0' }), // no contract
-        invoice({ code: 'TEST-IV-2', imei: '350000000000002', net: '999', remain: '0' }), // total differs
-        invoice({ code: 'TEST-IV-3', imei: '350000000000008', remain: '10' }), // no contract
+        invoice({ code: 'TEST-IV-1', imei: '350000000009001', remain: '0' }), // no contract
+        invoice({ code: 'TEST-IV-2', imei: '350000000002001', net: '999', remain: '0' }), // total differs
+        invoice({ code: 'TEST-IV-3', imei: '350000000008001', remain: '10' }), // no contract
       ],
     );
     expect(recon.matched.size).toBe(0);
@@ -356,14 +385,113 @@ describe('reconcileWithPeak', () => {
       legacyOutstanding: match?.legacyOutstanding.toFixed(2),
       diff: match?.diff.toFixed(2),
       grossDiff: match?.grossDiff.toFixed(2),
+      source: match?.source,
+      note: match?.note,
     }).toEqual({
       invoice: 'TEST-IV-1',
       legacyInstallmentTotal: '4000.00',
       legacyOutstanding: '1600.00',
       diff: '-100.00',
       grossDiff: '0.50',
+      source: 'auto',
+      note: null,
     });
     expect(match?.diff).toBeInstanceOf(Prisma.Decimal);
+  });
+
+  describe('manual pairs (--peak-pairs)', () => {
+    const pair = (invoiceCode: string, legacyCode: string): PeakPair => ({
+      invoiceCode,
+      legacyCode,
+    });
+
+    it('wins over an ambiguous auto result', () => {
+      const recon = reconcileWithPeak(
+        book(
+          contract({ id: '1', createdAt: '2026-02-27' }),
+          contract({ id: '2', createdAt: '2026-03-05' }),
+        ),
+        [invoice({ code: 'TEST-IV-1', issued: '2026-03-02' })],
+        [pair('TEST-IV-1', 'TEST-C-0002')],
+      );
+      expect(pairs(recon)).toEqual({ '2': 'TEST-IV-1' });
+      expect(recon.matched.get('2')).toMatchObject({ source: 'manual', note: null });
+      expect(recon.ambiguous).toEqual([]);
+      expect(recon.unmatchedContracts).toEqual(['1']);
+    });
+
+    it('takes the contract out of the auto pool, so the other invoice falls to the resold one', () => {
+      // same device, same price: without the pair both invoices claim the active contract
+      const recon = reconcileWithPeak(
+        book(contract({ id: '1' }), contract({ id: '2', status: '3' })),
+        [
+          invoice({ code: 'TEST-IV-1', issued: '2025-06-05', remain: '0' }),
+          invoice({ code: 'TEST-IV-2', issued: '2026-01-05' }),
+        ],
+        [pair('TEST-IV-2', 'TEST-C-0001')],
+      );
+      expect(pairs(recon)).toEqual({ '1': 'TEST-IV-2', '2': 'TEST-IV-1' });
+      expect(recon.matched.get('2')?.source).toBe('auto');
+      expect(recon.ambiguous).toEqual([]);
+    });
+
+    it('keeps a pair whose IMEI or total differs, noting imei-mismatch for the IMEI', () => {
+      const recon = reconcileWithPeak(
+        book(contract({ id: '1', imei: '350000000000001' }), contract({ id: '2', imei: null })),
+        [
+          invoice({ code: 'TEST-IV-1', imei: '360000000000002', net: '999' }),
+          invoice({ code: 'TEST-IV-2', imei: '350000000002001' }), // nothing to compare against
+        ],
+        [pair('TEST-IV-1', 'TEST-C-0001'), pair('TEST-IV-2', 'TEST-C-0002')],
+      );
+      expect(recon.matched.get('1')).toMatchObject({ source: 'manual', note: 'imei-mismatch' });
+      expect(recon.matched.get('1')?.grossDiff.toFixed(2)).toBe('-11001.00');
+      expect(recon.matched.get('2')).toMatchObject({ source: 'manual', note: null });
+    });
+
+    it.each<[string, PeakPair[], RegExp]>([
+      [
+        'an unknown invoice_code',
+        [pair('TEST-IV-404', 'TEST-C-0001')],
+        /ไม่พบใบแจ้งหนี้ TEST-IV-404/,
+      ],
+      ['an unknown legacy_code', [pair('TEST-IV-1', 'TEST-C-0404')], /ไม่พบสัญญา TEST-C-0404/],
+      [
+        'an invoice paired twice',
+        [pair('TEST-IV-1', 'TEST-C-0001'), pair('TEST-IV-1', 'TEST-C-0002')],
+        /ใบแจ้งหนี้ TEST-IV-1 อยู่ในไฟล์จับคู่มากกว่าหนึ่งแถว/,
+      ],
+      [
+        'a contract paired twice',
+        [pair('TEST-IV-1', 'TEST-C-0001'), pair('TEST-IV-2', 'TEST-C-0001')],
+        /สัญญา TEST-C-0001 อยู่ในไฟล์จับคู่มากกว่าหนึ่งแถว/,
+      ],
+    ])('rejects %s, naming the codes', (_label, manual, error) => {
+      expect(() =>
+        reconcileWithPeak(
+          book(contract({ id: '1' }), contract({ id: '2' })),
+          [invoice({ code: 'TEST-IV-1' }), invoice({ code: 'TEST-IV-2' })],
+          manual,
+        ),
+      ).toThrow(error);
+    });
+  });
+});
+
+describe('parsePeakPairsCsv', () => {
+  it('reads the pairs by header name (any order, BOM, extra columns)', () => {
+    expect(
+      parsePeakPairsCsv('\uFEFFlegacy_code,note,invoice_code\r\nTEST-C-0001,x,TEST-IV-1\r\n'),
+    ).toEqual([{ invoiceCode: 'TEST-IV-1', legacyCode: 'TEST-C-0001' }]);
+  });
+
+  it('rejects a missing column or an empty cell with the line', () => {
+    expect(() => parsePeakPairsCsv('invoice_code\nTEST-IV-1\n')).toThrow(
+      /ไม่มีคอลัมน์ legacy_code/,
+    );
+    expect(() => parsePeakPairsCsv('invoice_code,legacy_code\nTEST-IV-1,\n')).toThrow(
+      /บรรทัด 2 ช่อง legacy_code — ไม่มีค่า/,
+    );
   });
 });
 
@@ -383,8 +511,8 @@ describe('peak-recon CSV files', () => {
     return {
       contracts: [
         active,
-        contract({ id: '2', status: '3', imei: '350000000000002' }),
-        contract({ id: '3', imei: '350000000000003', installments: [['500', '250']] }),
+        contract({ id: '2', status: '3', imei: '350000000002001' }),
+        contract({ id: '3', imei: '350000000003001', installments: [['500', '250']] }),
       ],
       members: new Map([['501', { member_id: '501', member_name: FAKE_NAME }]]),
       anomalies: [],
@@ -393,18 +521,21 @@ describe('peak-recon CSV files', () => {
 
   const invoices = [
     invoice({ code: 'TEST-IV-1', net: '2000', remain: '1000.5' }),
-    invoice({ code: 'TEST-IV-2', imei: '350000000000002', net: '1', remain: '0' }), // total differs
-    invoice({ code: 'TEST-IV-3', imei: '350000000000007', net: '1', remain: '5' }), // no contract
-    invoice({ code: 'TEST-IV-4', imei: '350000000000003', net: '700' }), // total differs
+    invoice({ code: 'TEST-IV-2', imei: '350000000002001', net: '1', remain: '0' }), // total differs
+    invoice({ code: 'TEST-IV-3', imei: '350000000007001', net: '1', remain: '5' }), // no contract
+    invoice({ code: 'TEST-IV-4', imei: '350000000003001', net: '700' }), // total differs
   ];
 
-  it('writes one row per matched contract with codes and amounts only', () => {
+  it('writes one row per matched contract with codes, amounts, source and note only', () => {
     const b = namedBook();
-    const csv = peakReconCsv(b, reconcileWithPeak(b, invoices));
+    const manual = [{ invoiceCode: 'TEST-IV-3', legacyCode: 'TEST-C-0003' }];
+    const csv = peakReconCsv(b, reconcileWithPeak(b, invoices, manual));
     expect(csv).toBe(
       'legacy_code,invoice_code,peak_contact_code,legacy_status,legacy_installment_total,' +
-        'peak_net_amount,gross_diff,legacy_outstanding,peak_remain,diff\n' +
-        'TEST-C-0001,TEST-IV-1,TEST-CT-TEST-IV-1,2,2000.00,2000.00,0.00,1000.00,1000.50,0.50\n',
+        'peak_net_amount,gross_diff,legacy_outstanding,peak_remain,diff,source,note\n' +
+        'TEST-C-0001,TEST-IV-1,TEST-CT-TEST-IV-1,2,2000.00,2000.00,0.00,1000.00,1000.50,0.50,auto,\n' +
+        'TEST-C-0003,TEST-IV-3,TEST-CT-TEST-IV-3,2,500.00,1.00,-499.00,250.00,5.00,-245.00,' +
+        'manual,imei-mismatch\n',
     );
     expect(csv).not.toContain(FAKE_NAME);
   });

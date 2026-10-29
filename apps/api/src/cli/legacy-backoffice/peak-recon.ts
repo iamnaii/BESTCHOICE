@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { bangkokDateString, bangkokMidnight } from '../../utils/date.util';
 import { csvText, formatMoney, parseMoney, readCsv } from './csv';
-import type { LegacyBook, LegacyContract } from './legacy-book';
+import type { LegacyBook, LegacyContract, LegacyInstallment } from './legacy-book';
 
 /**
  * จับคู่ใบแจ้งหนี้ใน PEAK กับสัญญาระบบเก่า (Task 2b) — ฟังก์ชันบริสุทธิ์ ไม่แตะฐานข้อมูล
@@ -167,8 +167,11 @@ function installmentTotal(c: LegacyContract): Decimal {
   return c.installments.reduce((sum, i) => sum.plus(i.amount), new Prisma.Decimal(0));
 }
 
-/** ยอดค้างระบบเก่า = Σ `balance` ของงวดที่ยังมียอดคงเหลือ (งวดที่จ่ายเกินไม่หักลบ) */
-export function legacyOutstanding(c: LegacyContract): Decimal {
+/**
+ * ยอดค้างระบบเก่า = Σ `balance` ของงวดที่ยังมียอดคงเหลือ (งวดที่จ่ายเกินไม่หักลบ)
+ * · รับเฉพาะงวด — `money.ts` `applyPeakBalance` ใช้ตัวเดียวกัน
+ */
+export function legacyOutstanding(c: { installments: readonly LegacyInstallment[] }): Decimal {
   return c.installments.reduce(
     (sum, i) => (i.balance.gt(0) ? sum.plus(i.balance) : sum),
     new Prisma.Decimal(0),

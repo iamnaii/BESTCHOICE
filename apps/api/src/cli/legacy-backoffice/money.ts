@@ -3,6 +3,7 @@ import { computeInstallmentBreakdown } from '../../modules/journal/compute-insta
 import { resolveStoreCommission } from '../../utils/store-commission.util';
 import { parseMoney, readCsv, type CsvRow } from './csv';
 import type { LegacyContract, LegacyInstallment } from './legacy-book';
+import { legacyOutstanding } from './peak-recon';
 
 /**
  * ยอดเงินของสัญญาระบบเก่า (Task 4 · ร่าง 5) — ฟังก์ชันบริสุทธิ์ ไม่แตะฐานข้อมูล
@@ -15,12 +16,17 @@ import type { LegacyContract, LegacyInstallment } from './legacy-book';
  *   (`computeInstallmentBreakdown`) · `vatPct` = 0.07 เมื่อมี VAT ไม่งั้น 0
  * - `interestTotal` = max(0, `installment_total − financed − commission − vat`) **ตามจริง** (ร่าง 5)
  * - `interestRate` = อัตราต่อเดือนแบบคงที่ของระบบใหม่ (`installment.util.ts`: ดอกเบี้ย = ยอดจัด × อัตรา × งวด)
- *   = `interestTotal ÷ financedAmount ÷ totalMonths` ปัด HALF_UP 4 ตำแหน่ง (Decimal(5,4)) · ยอดจัด 0 → 0
+ *   = `interestTotal ÷ financedAmount ÷ totalMonths` ปัด HALF_UP 4 ตำแหน่ง (Decimal(5,4))
  *   — `detail.increase` ของระบบเก่าเป็นสัดส่วนดอกเบี้ยรวม**ทั้งสัญญา** ใช้ตรงไม่ได้ (ตรวจกับ dump 29/10)
  *   · `interestTotal` ไม่คิดใหม่จากอัตราที่ปัดแล้ว
  * - `totalMonths` = `installment_number` · `monthlyPayment` = `installment_amount`
  *
- * ข้อความ error บอกได้แค่สัญญา (`contract_id`) ตาราง ช่อง และชนิดของปัญหา — ไม่ยกค่าในช่องมาพิมพ์
+ * `vatAmount` / `vatPct` **ไม่มีทางเป็น null** — ทั้งจาก dump และจาก override (null = ระบบบวก VAT 7% ซ้ำ)
+ *
+ * ยอดจัด ≤ 0 (หลังใช้ override แล้ว) หรือค่างวด ≤ 0 = `LegacyMoneyError` (`LEGACY_MONEY_INVALID`) ให้ผู้เรียก
+ * ลงเป็นตัวบล็อกของสัญญานั้น — override แก้ยอดจัดได้ แต่แก้ค่างวดไม่ได้
+ *
+ * ข้อความ error บอกได้แค่สัญญา (`contract_id` / เลขสัญญา) ตาราง ช่อง และชนิดของปัญหา — ไม่ยกค่าในช่องมาพิมพ์
  */
 
 type Decimal = Prisma.Decimal;
@@ -31,8 +37,10 @@ export type ContractMoney = {
   financedAmount: Decimal;
   storeCommission: Decimal;
   interestTotal: Decimal;
-  vatAmount: Decimal | null;
-  vatPct: Decimal | null;
+  /** 0 = ไม่มี VAT — ไม่เคยเป็น null (null ในระบบใหม่ = บวก VAT 7% ของยอดก่อน VAT) */
+  vatAmount: Decimal;
+  /** 0.07 เมื่อมี VAT ไม่งั้น 0 */
+  vatPct: Decimal;
   interestRate: Decimal;
   monthlyPayment: Decimal;
   totalMonths: number;
@@ -40,13 +48,41 @@ export type ContractMoney = {
 
 /**
  * ยอดที่เจ้าของแก้รายสัญญา (`--money-overrides`) — แทนค่าจากระบบเก่าทั้งสามช่อง · ดอกเบี้ยคิดใหม่จากยอดเหล่านี้
- * · `vatAmount` null = VAT 7% ตามค่าตั้งต้นของระบบ · 0 = ไม่มี VAT
+ * · `vatAmount` ต้องระบุเสมอ (0 = ไม่มี VAT)
  */
 export type MoneyOverride = {
   financedAmount: Decimal;
   storeCommission: Decimal;
-  vatAmount: Decimal | null;
+  vatAmount: Decimal;
 };
+
+/** ช่องของ `ContractMoney` ที่ต้องเป็นบวก */
+export type LegacyMoneyField = 'financedAmount' | 'monthlyPayment';
+
+/**
+ * ยอดจัด / ค่างวดของสัญญาไม่เป็นบวก — สัญญานำเข้าไม่ได้จนกว่าจะแก้ (ยอดจัดแก้ด้วย `--money-overrides` ได้)
+ * · ข้อความมีเลขสัญญา + `contract_id` + ชื่อช่อง ไม่มียอดเงิน
+ */
+export class LegacyMoneyError extends Error {
+  readonly code = 'LEGACY_MONEY_INVALID';
+
+  constructor(
+    readonly contractId: string,
+    readonly contractCode: string,
+    readonly fields: readonly LegacyMoneyField[],
+  ) {
+    const labels: Record<LegacyMoneyField, string> = {
+      financedAmount: 'ยอดจัด (financedAmount)',
+      monthlyPayment: 'ค่างวด (monthlyPayment · installment_amount)',
+    };
+    super(
+      `LEGACY_MONEY_INVALID: สัญญา ${contractCode} (contract_id=${contractId}) — ${fields
+        .map((f) => labels[f])
+        .join(' และ ')} ต้องมากกว่า 0`,
+    );
+    this.name = 'LegacyMoneyError';
+  }
+}
 
 export type AmountMismatch = { installmentNo: number; legacy: Decimal; computed: Decimal };
 
@@ -126,13 +162,23 @@ export function mapContractMoney(c: LegacyContract, override?: MoneyOverride): C
   const monthlyPayment = r.money(DETAIL.monthly);
 
   let financedAmount: Decimal;
-  let storeCommission: Decimal;
-  let vatAmount: Decimal | null;
   if (override) {
-    ({ financedAmount, storeCommission, vatAmount } = override);
+    financedAmount = override.financedAmount;
   } else {
     const finance = r.money(DETAIL.finance);
     financedAmount = finance.gt(0) ? finance : sellingPrice.minus(downPayment);
+  }
+  // ก่อนคิดค่าคอม — ยอดจัดติดลบจะได้ค่าคอม 10% ติดลบ
+  const invalid: LegacyMoneyField[] = [];
+  if (!financedAmount.gt(0)) invalid.push('financedAmount');
+  if (!monthlyPayment.gt(0)) invalid.push('monthlyPayment');
+  if (invalid.length > 0) throw new LegacyMoneyError(c.contractId, c.code, invalid);
+
+  let storeCommission: Decimal;
+  let vatAmount: Decimal;
+  if (override) {
+    ({ storeCommission, vatAmount } = override);
+  } else {
     const commission = r.money(DETAIL.commission);
     storeCommission = commission.gt(0)
       ? commission
@@ -141,18 +187,8 @@ export function mapContractMoney(c: LegacyContract, override?: MoneyOverride): C
     vatAmount = vat.gt(0) ? vat : new Prisma.Decimal(0);
   }
 
-  const interest = installmentTotal
-    .minus(financedAmount)
-    .minus(storeCommission)
-    .minus(vatAmount ?? ZERO);
+  const interest = installmentTotal.minus(financedAmount).minus(storeCommission).minus(vatAmount);
   const interestTotal = interest.gt(0) ? interest : new Prisma.Decimal(0);
-  const interestRate =
-    financedAmount.gt(0) && totalMonths > 0
-      ? interestTotal
-          .div(financedAmount)
-          .div(totalMonths)
-          .toDecimalPlaces(4, Prisma.Decimal.ROUND_HALF_UP)
-      : new Prisma.Decimal(0);
   return {
     sellingPrice,
     downPayment,
@@ -160,8 +196,12 @@ export function mapContractMoney(c: LegacyContract, override?: MoneyOverride): C
     storeCommission,
     interestTotal,
     vatAmount,
-    vatPct: vatAmount === null ? null : vatAmount.gt(0) ? VAT_PCT : new Prisma.Decimal(0),
-    interestRate,
+    vatPct: vatAmount.gt(0) ? VAT_PCT : new Prisma.Decimal(0),
+    // ยอดจัด > 0 และงวด ≥ 1 แล้ว (ตรวจข้างบน / `months`)
+    interestRate: interestTotal
+      .div(financedAmount)
+      .div(totalMonths)
+      .toDecimalPlaces(4, Prisma.Decimal.ROUND_HALF_UP),
     monthlyPayment,
     totalMonths,
   };
@@ -201,8 +241,8 @@ export function checkInstallmentAmounts(
 }
 
 /**
- * ทำยอดค้างของงวดให้เท่ายอดคงเหลือใน PEAK (ร่าง 4) — ยอดค้าง = Σ `balance` ที่ > 0 (นิยามเดียวกับ
- * `legacyOutstanding` ใน `peak-recon.ts` · งวดที่จ่ายเกินไม่หักลบ)
+ * ทำยอดค้างของงวดให้เท่ายอดคงเหลือใน PEAK (ร่าง 4) — ยอดค้าง = `legacyOutstanding` (`peak-recon.ts` ตัวเดียวกับ
+ * ที่จับคู่ PEAK: Σ `balance` ที่ > 0 · งวดที่จ่ายเกินไม่หักลบ)
  * - PEAK ค้างน้อยกว่า → เพิ่ม `paid` / ลด `balance` ของงวดที่ยังค้างตามลำดับในอาร์เรย์ (= วันครบกำหนด)
  *   จนยอดค้างเท่า PEAK · `adjustment` = PEAK − ระบบเก่า (≤ 0) ให้ลงรายงาน · `statusCode` ไม่เปลี่ยน
  * - PEAK ค้างมากกว่า → ไม่ปรับ คืน `blocked` (สเปกข้อ 1: ห้ามทวงงวดที่ลูกค้าจ่ายแล้วตามสลิป)
@@ -215,8 +255,7 @@ export function applyPeakBalance(
   if (peakRemain.isNegative()) {
     throw new Error(`${PEAK_ERROR}: ยอดค้างใน PEAK ติดลบ — ต้องตรวจใบแจ้งหนี้ใน PEAK ก่อน`);
   }
-  const outstanding = inst.reduce((sum, i) => (i.balance.gt(0) ? sum.plus(i.balance) : sum), ZERO);
-  const diff = peakRemain.minus(outstanding);
+  const diff = peakRemain.minus(legacyOutstanding({ installments: inst }));
   if (diff.gt(0)) return { blocked: 'PEAK_HIGHER', diff };
 
   let remaining = diff.negated();
@@ -239,8 +278,8 @@ function nonNegativeMoney(row: CsvRow<OverrideColumn>, column: OverrideColumn): 
 
 /**
  * อ่าน CSV `--money-overrides` (หัวคอลัมน์ `legacy_code,financed_amount,store_commission,vat_amount`)
- * → ยอดที่แก้ตามเลขสัญญาระบบเก่า (`LegacyContract.code`) · `vat_amount` ว่าง = null (VAT 7% ตามระบบ)
- * · 0 = ไม่มี VAT · ยอดจัดต้อง > 0 · ติดลบไม่ได้ · เลขสัญญาซ้ำ = throw
+ * → ยอดที่แก้ตามเลขสัญญาระบบเก่า (`LegacyContract.code`) · **ทุกช่องต้องมีค่า** — `vat_amount` 0 = ไม่มี VAT
+ * (ว่าง = "ไม่มีค่า" ไม่ใช่ VAT 7% ตามระบบ) · ยอดจัดต้อง > 0 · ติดลบไม่ได้ · เลขสัญญาซ้ำ = throw
  */
 export function parseMoneyOverridesCsv(text: string): Map<string, MoneyOverride> {
   const overrides = new Map<string, MoneyOverride>();
@@ -256,7 +295,7 @@ export function parseMoneyOverridesCsv(text: string): Map<string, MoneyOverride>
     overrides.set(code, {
       financedAmount,
       storeCommission: nonNegativeMoney(row, 'store_commission'),
-      vatAmount: row.cell('vat_amount') === '' ? null : nonNegativeMoney(row, 'vat_amount'),
+      vatAmount: nonNegativeMoney(row, 'vat_amount'),
     });
   }
   return overrides;

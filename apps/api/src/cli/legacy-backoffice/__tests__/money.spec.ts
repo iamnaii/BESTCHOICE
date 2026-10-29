@@ -5,9 +5,11 @@ import type { LegacyContract, LegacyInstallment } from '../legacy-book';
 import {
   applyPeakBalance,
   checkInstallmentAmounts,
+  LegacyMoneyError,
   mapContractMoney,
   parseMoneyOverridesCsv,
   type ContractMoney,
+  type MoneyOverride,
 } from '../money';
 
 /**
@@ -81,7 +83,7 @@ function money(m: ContractMoney) {
     storeCommission: fixed(m.storeCommission),
     interestTotal: fixed(m.interestTotal),
     vatAmount: fixed(m.vatAmount),
-    vatPct: m.vatPct === null ? null : m.vatPct.toFixed(4),
+    vatPct: m.vatPct.toFixed(4),
     interestRate: m.interestRate.toFixed(4),
     monthlyPayment: fixed(m.monthlyPayment),
     totalMonths: m.totalMonths,
@@ -150,15 +152,71 @@ describe('mapContractMoney', () => {
     ]);
   });
 
-  it('interestRate 0 when the financed amount is 0 (no division)', () => {
-    const m = mapContractMoney(contract({ finance: '0', ref_product_price: '2000' }));
-    expect([m.financedAmount.toFixed(2), m.interestRate.toFixed(4)]).toEqual(['0.00', '0.0000']);
+  /** error ของ `mapContractMoney` เมื่อยอดจัด / ค่างวดไม่เป็นบวก */
+  function moneyError(c: LegacyContract, override?: MoneyOverride): LegacyMoneyError {
+    try {
+      mapContractMoney(c, override);
+    } catch (error) {
+      if (error instanceof LegacyMoneyError) return error;
+      throw error;
+    }
+    throw new Error('expected LegacyMoneyError');
+  }
+
+  it('financedAmount ≤ 0 → LEGACY_MONEY_INVALID naming the contract and field, no amounts', () => {
+    // finance 0 → ราคา 1,500 − ดาวน์ 2,000 = −500 (ค่าคอม 10% จะติดลบ)
+    const error = moneyError(
+      contract({ finance: '0', ref_product_price: '1500', commission_admin: '0' }),
+    );
+    expect([error.code, error.contractId, error.contractCode, error.fields]).toEqual([
+      'LEGACY_MONEY_INVALID',
+      '1',
+      'TEST-C-0001',
+      ['financedAmount'],
+    ]);
+    expect(error.message).toContain('LEGACY_MONEY_INVALID');
+    expect(error.message).toContain('TEST-C-0001');
+    expect(error.message).toContain('contract_id=1');
+    expect(error.message).not.toMatch(/500|1500|2000/);
+    // ยอดจัด 0 พอดีก็ไม่ผ่าน
+    expect(moneyError(contract({ finance: '0', ref_product_price: '2000' })).fields).toEqual([
+      'financedAmount',
+    ]);
+  });
+
+  it('monthlyPayment ≤ 0 → LEGACY_MONEY_INVALID (both fields listed when both are bad)', () => {
+    expect(moneyError(contract({ installment_amount: '0' })).fields).toEqual(['monthlyPayment']);
+    expect(moneyError(contract({ installment_amount: '-1515.83' })).fields).toEqual([
+      'monthlyPayment',
+    ]);
+    const both = moneyError(
+      contract({ finance: '0', ref_product_price: '1500', installment_amount: null }),
+    );
+    expect(both.fields).toEqual(['financedAmount', 'monthlyPayment']);
+    expect(both.message).not.toMatch(/1515|1500/);
+  });
+
+  it('an override with a positive financedAmount rescues a contract whose legacy financed ≤ 0', () => {
+    const m = mapContractMoney(contract({ finance: '0', ref_product_price: '1500' }), {
+      financedAmount: D('10000'),
+      storeCommission: D('1000'),
+      vatAmount: D('1190'),
+    });
+    expect([m.financedAmount.toFixed(2), m.interestTotal.toFixed(2)]).toEqual([
+      '10000.00',
+      '6000.00',
+    ]);
+    // ค่างวดแก้ด้วย override ไม่ได้ — ยังไม่ผ่าน
+    const override = { financedAmount: D('10000'), storeCommission: D('1000'), vatAmount: D('0') };
+    expect(moneyError(contract({ installment_amount: '0' }), override).fields).toEqual([
+      'monthlyPayment',
+    ]);
   });
 
   it('sales_tax 0 → explicit zero VAT (vatAmount 0, vatPct 0 — not null, which means +7%)', () => {
     const m = mapContractMoney(contract({ sales_tax: '0' }));
-    expect(m.vatAmount?.toFixed(2)).toBe('0.00');
-    expect(m.vatPct?.toFixed(4)).toBe('0.0000');
+    expect(m.vatAmount.toFixed(2)).toBe('0.00');
+    expect(m.vatPct.toFixed(4)).toBe('0.0000');
     expect(m.interestTotal.toFixed(2)).toBe('7190.00');
   });
 
@@ -190,23 +248,15 @@ describe('mapContractMoney', () => {
     });
   });
 
-  it('override vat 0 = explicit no VAT (not the 7% default); empty = null', () => {
-    const noVat = mapContractMoney(contract({ sales_tax: '0' }), {
+  it('override vat 0 = explicit no VAT (vatAmount 0, vatPct 0 — never null)', () => {
+    const noVat = mapContractMoney(contract(), {
       financedAmount: D('10000'),
       storeCommission: D('1000'),
       vatAmount: D('0'),
     });
-    expect(noVat.vatAmount?.toFixed(2)).toBe('0.00');
-    expect(noVat.vatPct?.toFixed(4)).toBe('0.0000');
+    expect([noVat.vatAmount.toFixed(2), noVat.vatPct.toFixed(4)]).toEqual(['0.00', '0.0000']);
+    // ดอกเบี้ยคิดด้วย VAT ตัวเดียวกับที่คืน (0) — 18,190 − 10,000 − 1,000 − 0
     expect(noVat.interestTotal.toFixed(2)).toBe('7190.00');
-
-    const unknown = mapContractMoney(contract(), {
-      financedAmount: D('10000'),
-      storeCommission: D('1000'),
-      vatAmount: null,
-    });
-    expect(unknown.vatAmount).toBeNull();
-    expect(unknown.vatPct).toBeNull();
   });
 
   it.each([
@@ -272,19 +322,17 @@ describe('checkInstallmentAmounts', () => {
     expect(result.map((r) => [r.installmentNo, r.computed.toFixed(2)])).toEqual([[12, LAST]]);
   });
 
-  it('sales_tax 0 is checked as no VAT; an override with empty VAT (null) gets the system 7%', () => {
+  it('sales_tax 0 and an override with vat 0 are both checked as no VAT', () => {
     const amounts = [...Array(11).fill('1416.66'), '1416.74'];
     const m = mapContractMoney(
       contract({ sales_tax: '0', installment_total: '17000', installment_amount: '1416.66' }),
     );
     expect(checkInstallmentAmounts(m, installments(amounts))).toEqual([]);
-    // computeInstallmentBreakdown: vatAmount null → 7% ของยอดก่อน VAT
-    const sevenPct = mapContractMoney(contract({ sales_tax: '0', installment_total: '17000' }), {
-      financedAmount: D('10000'),
-      storeCommission: D('1000'),
-      vatAmount: null,
-    });
-    expect(checkInstallmentAmounts(sevenPct, installments(amounts))).toHaveLength(12);
+    const overridden = mapContractMoney(
+      contract({ installment_total: '17000', installment_amount: '1416.66' }),
+      { financedAmount: D('10000'), storeCommission: D('1000'), vatAmount: D('0') },
+    );
+    expect(checkInstallmentAmounts(overridden, installments(amounts))).toEqual([]);
   });
 
   it('a missing legacy installment is a mismatch (legacy 0)', () => {
@@ -390,19 +438,18 @@ describe('applyPeakBalance', () => {
 describe('parseMoneyOverridesCsv', () => {
   const HEADER = 'legacy_code,financed_amount,store_commission,vat_amount';
 
-  it('reads overrides by legacy contract code; empty vat = null, 0 = explicit 0', () => {
+  it('reads overrides by legacy contract code; vat 0 = explicit no VAT', () => {
     const map = parseMoneyOverridesCsv(
-      `\uFEFF${HEADER}\nTEST-C-0001,"9,500.00",950,1190\nTEST-C-0002,10000,1000,\nTEST-C-0003,10000,1000,0\n`,
+      `\uFEFF${HEADER}\nTEST-C-0001,"9,500.00",950,1190\nTEST-C-0003,10000,1000,0\n`,
     );
-    expect([...map.keys()]).toEqual(['TEST-C-0001', 'TEST-C-0002', 'TEST-C-0003']);
+    expect([...map.keys()]).toEqual(['TEST-C-0001', 'TEST-C-0003']);
     const one = map.get('TEST-C-0001');
-    expect([one?.financedAmount.toFixed(2), one?.storeCommission.toFixed(2)]).toEqual([
-      '9500.00',
-      '950.00',
-    ]);
-    expect(one?.vatAmount?.toFixed(2)).toBe('1190.00');
-    expect(map.get('TEST-C-0002')?.vatAmount).toBeNull();
-    expect(map.get('TEST-C-0003')?.vatAmount?.toFixed(2)).toBe('0.00');
+    expect([
+      one?.financedAmount.toFixed(2),
+      one?.storeCommission.toFixed(2),
+      one?.vatAmount.toFixed(2),
+    ]).toEqual(['9500.00', '950.00', '1190.00']);
+    expect(map.get('TEST-C-0003')?.vatAmount.toFixed(2)).toBe('0.00');
   });
 
   it('duplicate contract → throws with both lines', () => {
@@ -416,6 +463,8 @@ describe('parseMoneyOverridesCsv', () => {
     ['TEST-C-0001,0,1000,0', 'ช่อง financed_amount — ต้องมากกว่า 0'],
     ['TEST-C-0001,10000,-1,0', 'ช่อง store_commission — ติดลบไม่ได้'],
     ['TEST-C-0001,10000,1000,-5', 'ช่อง vat_amount — ติดลบไม่ได้'],
+    // ว่าง = ไม่มีค่า (ไม่ใช่ "VAT 7% ตามระบบ") — ต้องระบุ 0 เมื่อไม่มี VAT
+    ['TEST-C-0001,10000,1000,', 'ช่อง vat_amount — ไม่มีค่า'],
     ['TEST-C-0001,10000,abc,0', 'ช่อง store_commission — จำนวนเงินผิดรูปแบบ'],
   ])('%s → %s', (line, message) => {
     expect(() => parseMoneyOverridesCsv(`${HEADER}\n${line}\n`)).toThrow(`บรรทัด 2 ${message}`);

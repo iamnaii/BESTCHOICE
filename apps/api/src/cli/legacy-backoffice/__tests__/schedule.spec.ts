@@ -23,7 +23,7 @@ function money(over: Partial<ContractMoney> = {}): ContractMoney {
     interestTotal: D('6000'),
     vatAmount: D('1190'),
     vatPct: D('0.07'),
-    interestRate: D('0'),
+    interestRate: D('0.05'),
     monthlyPayment: D('1515.83'),
     totalMonths: 12,
     ...over,

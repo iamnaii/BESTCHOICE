@@ -108,9 +108,12 @@ const OVERRIDE_ERROR = 'อ่านไฟล์แก้ยอดเงิน�
 const PEAK_ERROR = 'ปรับยอดค้างตาม PEAK ไม่ได้';
 const VAT_PCT = new Prisma.Decimal('0.07');
 const ZERO = new Prisma.Decimal(0);
-/** ค่างวดที่คำนวณได้ต่างจากระบบเก่าได้ไม่เกิน 0.01 · งวดสุดท้ายรับเศษปัดได้ 1.00 */
-const TOLERANCE = new Prisma.Decimal('0.01');
-const LAST_TOLERANCE = new Prisma.Decimal('1.00');
+/**
+ * ค่างวดที่คำนวณได้ต่างจากระบบเก่าได้ไม่เกิน 0.01 · งวดสุดท้ายรับเศษปัดได้ 1.00 — ใช้ร่วมกับด่านส่วนต่างยอดเรียกเก็บ
+ * ของรายการยกมา (`opening.ts`)
+ */
+export const INSTALLMENT_AMOUNT_TOLERANCE = new Prisma.Decimal('0.01');
+export const LAST_INSTALLMENT_AMOUNT_TOLERANCE = new Prisma.Decimal('1.00');
 
 /** หัวคอลัมน์ที่ต้องมีในไฟล์ `--money-overrides` (คอลัมน์อื่นไม่อ่าน) */
 export const MONEY_OVERRIDE_COLUMNS = [
@@ -232,7 +235,10 @@ export function checkInstallmentAmounts(
         }).installmentTotal
       : ZERO;
     const legacy = legacyRow?.amount ?? ZERO;
-    const tolerance = installmentNo === m.totalMonths ? LAST_TOLERANCE : TOLERANCE;
+    const tolerance =
+      installmentNo === m.totalMonths
+        ? LAST_INSTALLMENT_AMOUNT_TOLERANCE
+        : INSTALLMENT_AMOUNT_TOLERANCE;
     if (!legacyRow || !inContract || legacy.minus(computed).abs().gt(tolerance)) {
       mismatches.push({ installmentNo, legacy, computed });
     }

@@ -48,19 +48,30 @@ const MONEY: ContractMoney = {
 const dueOf = (no: number) => bangkokMidnight(2026, 6 + no, 15);
 const amountOf = (no: number) => (no === 12 ? LAST : MONTHLY);
 
-/** 12 งวด · `paid` = ยอดจ่ายของงวด (ไม่ระบุ = 0) · `dueDates` แทนวันครบกำหนดรายงวด */
+type Amount = (no: number) => string;
+
+/**
+ * 12 งวด · `paid` = ยอดจ่ายของงวด (ไม่ระบุ = 0) · `dueDates` แทนวันครบกำหนดรายงวด · `amount` = ยอดเรียกเก็บของงวด
+ * (ระบบเก่า/PEAK — ค่าตั้งต้น = ยอดของงวดตามตัวคำนวณ ส่วนต่างปัดเศษ 0)
+ */
 function installments(
   paid: Record<number, string> = {},
   dueDates: Record<number, Date> = {},
+  amount: Amount = amountOf,
 ): OpeningInput['installments'] {
   return Array.from({ length: 12 }, (_, i) => {
     const no = i + 1;
-    return { installmentNo: no, dueDate: dueDates[no] ?? dueOf(no), paid: D(paid[no] ?? '0') };
+    return {
+      installmentNo: no,
+      dueDate: dueDates[no] ?? dueOf(no),
+      amountDue: D(amount(no)),
+      paid: D(paid[no] ?? '0'),
+    };
   });
 }
 
 /** ยอดค้างแบบ PEAK = Σ (ค่างวด − ยอดจ่าย) ของงวดที่ยังค้าง (งวดที่จ่ายเกินไม่หักลบ) */
-function peakRemainOf(paid: Record<number, string>, amount: (no: number) => string = amountOf) {
+function peakRemainOf(paid: Record<number, string>, amount: Amount = amountOf) {
   let total = D('0');
   for (let no = 1; no <= 12; no++) {
     const rest = D(amount(no)).minus(paid[no] ?? '0');
@@ -69,12 +80,16 @@ function peakRemainOf(paid: Record<number, string>, amount: (no: number) => stri
   return total;
 }
 
-function opening(paid: Record<number, string>, over: Partial<OpeningInput> = {}): OpeningResult {
+function opening(
+  paid: Record<number, string>,
+  over: Partial<OpeningInput> = {},
+  amount: Amount = amountOf,
+): OpeningResult {
   return computeOpening({
     money: MONEY,
-    installments: installments(paid),
+    installments: installments(paid, {}, amount),
     cutoff: CUTOFF,
-    peakRemain: peakRemainOf(paid),
+    peakRemain: peakRemainOf(paid, amount),
     ...over,
   });
 }
@@ -103,9 +118,11 @@ const stampOf = (r: OpeningResult, no: number) => {
     accruedAmount: s.accruedAmount.toFixed(2),
     accruedVat: s.accruedVat.toFixed(2),
     accruedInterest: s.accruedInterest.toFixed(2),
-    stampVat60: s.stampVat60,
   };
 };
+/** บรรทัดเป็นตัวอักษร ใช้เทียบรายการทั้งชุด */
+const shape = (lines: JeLineInput[]) =>
+  lines.map((l) => [l.accountCode, l.dr.toFixed(2), l.cr.toFixed(2)]);
 
 const PAID_1_TO_3 = { 1: MONTHLY, 2: MONTHLY, 3: MONTHLY };
 
@@ -140,7 +157,6 @@ describe('computeOpening', () => {
         accruedAmount: amountOf(no),
         accruedVat: '99.17',
         accruedInterest: '500.00',
-        stampVat60: true,
       });
     }
     for (const no of [5, 6, 7, 8, 9, 10, 11, 12]) {
@@ -149,10 +165,18 @@ describe('computeOpening', () => {
         accruedAmount: '0.00',
         accruedVat: '0.00',
         accruedInterest: '0.00',
-        stampVat60: false,
       });
     }
     expect(r.stamps.map((s) => s.installmentNo)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    // ไม่มีป้าย VAT 60 วัน (คำตัดสินผู้คุมงาน C2) — คอลัมน์ที่ผู้เขียนต้องเขียนมีแค่นี้
+    expect(Object.keys(r.stamps[0]).sort()).toEqual([
+      'accrued',
+      'accruedAmount',
+      'accruedInterest',
+      'accruedVat',
+      'installmentNo',
+    ]);
+    expect(r.roundingDiff.toFixed(2)).toBe('0.00');
   });
 
   it('งวด 4 จ่ายแล้ว 300: marker งวด 4 = 300 · 11-2103 ในรายการยกมา = ค่างวดเต็ม (marker เป็นตัวตัด 300)', () => {
@@ -160,7 +184,7 @@ describe('computeOpening', () => {
 
     expect(markersOf(r)).toEqual([{ installmentNo: 4, amount: '300.00' }]);
     expect(net(r.openingLines, '11-2103')).toBe(MONTHLY);
-    expect(stampOf(r, 4)).toMatchObject({ accrued: true, stampVat60: true });
+    expect(stampOf(r, 4)).toMatchObject({ accrued: true });
     // VAT ของส่วนที่ค้าง = 99.17 × 1,215.83 ÷ 1,515.83 = 79.543… → 79.54
     expect(net(r.catchUpLines, '21-2102')).toBe('79.54');
     expect(net(r.openingLines, '21-2102')).toBe('-872.86'); // Cr 793.32 + 79.54
@@ -175,7 +199,6 @@ describe('computeOpening', () => {
       accruedAmount: part.accruedAfter.amount.toFixed(2),
       accruedVat: part.accruedAfter.vat.toFixed(2),
       accruedInterest: part.accruedAfter.interest.toFixed(2),
-      stampVat60: false,
     });
     // ตัวเลขทองของ 2A บางส่วน (ก1): VAT = 500 × 7/107 = 32.71 · มูลค่า 467.29 · ดอกเบี้ย 500 × 467.29 ÷ 1,416.66 = 164.93
     expect(stampOf(r, 6)).toMatchObject({
@@ -251,9 +274,10 @@ describe('computeOpening', () => {
       expect(net(r.openingLines, '11-2106')).toBe(D(expected).negated().toFixed(2));
     });
 
-    it('Σ(11-2101 + 11-2103 + 11-2105) − marker = peakRemain · ไม่เท่า → throw OPENING_PEAK_MISMATCH', () => {
+    it('Σ(11-2101 + 11-2103 + 11-2105) − marker = peakRemain (ยอดเรียกเก็บตรงตัวคำนวณ · ส่วนต่างปัดเศษ 0) · ไม่เท่า → throw OPENING_PEAK_MISMATCH', () => {
       const peakRemain = peakRemainOf(paid);
       expect(receivableAfterMarkers(opening(paid))).toBe(peakRemain.toFixed(2));
+      expect(opening(paid).roundingDiff.toFixed(2)).toBe('0.00');
 
       for (const off of ['0.01', '-0.01']) {
         const call = () => opening(paid, { peakRemain: peakRemain.plus(off) });
@@ -265,10 +289,109 @@ describe('computeOpening', () => {
           expect(e.code).toBe('OPENING_PEAK_MISMATCH');
           expect(e.peakRemain.toFixed(2)).toBe(peakRemain.plus(off).toFixed(2));
           expect(e.receivable.toFixed(2)).toBe(peakRemain.toFixed(2));
+          expect(e.expectedRoundingDiff.toFixed(2)).toBe('0.00');
+          expect(e.diff.toFixed(2)).toBe(D(off).negated().toFixed(2));
+          expect(e.reason).toBe('GAP_NOT_ROUNDING');
           // ข้อความไม่ยกยอดเงินมาพิมพ์
           expect(e.message).not.toContain(peakRemain.toFixed(2));
           expect(e.message).not.toContain(peakRemain.plus(off).toFixed(2));
         }
+      }
+    });
+  });
+
+  describe('ยอดเรียกเก็บระบบเก่า (amountDue) ต่างจากยอดของงวดตามตัวคำนวณ — ส่วนต่างปัดเศษ', () => {
+    /** ระบบเก่า: งวดปกติปัดขึ้น 0.01 (1,515.84) และงวดสุดท้ายเท่างวดอื่น (ตัวคำนวณ 1,515.87 → −0.03) */
+    const LEGACY_FLAT = '1515.84';
+    const legacyFlat: Amount = () => LEGACY_FLAT;
+    const PAID_LEGACY_1_TO_3 = { 1: LEGACY_FLAT, 2: LEGACY_FLAT, 3: LEGACY_FLAT };
+
+    it('งวดปกติ +0.01 งวดสุดท้ายเท่างวดอื่น: ผ่าน · รายการบัญชีเท่ากับยอดตามตัวคำนวณ · roundingDiff = Σ(ยอดของงวด − ยอดเรียกเก็บ) ของงวดที่ยังไม่ชำระครบ', () => {
+      const r = opening(PAID_LEGACY_1_TO_3, {}, legacyFlat);
+
+      // งวด 4–11: 8 × (1,515.83 − 1,515.84) = −0.08 · งวด 12: 1,515.87 − 1,515.84 = +0.03 → −0.05
+      expect(r.roundingDiff.toFixed(2)).toBe('-0.05');
+      expect(peakRemainOf(PAID_LEGACY_1_TO_3, legacyFlat).toFixed(2)).toBe('13642.56');
+      expect(receivableAfterMarkers(r)).toBe('13642.51');
+      // บัญชียกมาตามตัวสร้าง 2A เหมือนสัญญาที่ยอดเรียกเก็บตรงทุกบาท — ส่วนต่างอยู่ที่ roundingDiff ไม่ใช่ในบัญชี
+      expect(shape(r.openingLines)).toEqual(shape(opening(PAID_1_TO_3).openingLines));
+      expect(shape(r.catchUpLines)).toEqual(shape(opening(PAID_1_TO_3).catchUpLines));
+      expect(r.priorReceiptMarkers).toEqual([]);
+    });
+
+    it('งวดปกติ +0.01 + งวด 4 จ่ายบางส่วน 300: marker เท่ายอดที่จ่าย · roundingDiff เท่าเดิม', () => {
+      const r = opening({ ...PAID_LEGACY_1_TO_3, 4: '300' }, {}, legacyFlat);
+
+      expect(r.roundingDiff.toFixed(2)).toBe('-0.05');
+      expect(markersOf(r)).toEqual([{ installmentNo: 4, amount: '300.00' }]);
+      expect(net(r.openingLines, '11-2103')).toBe(MONTHLY);
+    });
+
+    it('ชำระครบตามยอดเรียกเก็บที่ต่ำกว่ายอดในบัญชี (งวดสุดท้าย 1,515.84 < 1,515.87): ถือว่าชำระครบ ไม่ยกมา ไม่มี marker', () => {
+      const amount: Amount = (no) => (no === 12 ? LEGACY_FLAT : MONTHLY);
+      const paid: Record<number, string> = {};
+      for (let no = 1; no <= 12; no++) paid[no] = amount(no);
+      const r = opening(paid, {}, amount);
+
+      expect(r.openingLines).toEqual([]);
+      expect(r.priorReceiptMarkers).toEqual([]);
+      expect(r.roundingDiff.toFixed(2)).toBe('0.00');
+      // งวด 12 ยังไม่ถึงกำหนด แต่ชำระครบแล้ว = ตั้งครบ (เหมือนใบที่ทำให้งวดชำระครบ)
+      expect(stampOf(r, 12)).toEqual({
+        accrued: true,
+        accruedAmount: LAST,
+        accruedVat: '99.13',
+        accruedInterest: '500.00',
+      });
+    });
+
+    it('จ่ายครบยอดในบัญชีแต่ยังขาดยอดเรียกเก็บ 0.01 (งวด 5 เรียกเก็บ 1,515.84 จ่าย 1,515.83): ล้างในบัญชีครบ ไม่มี marker · roundingDiff −0.01', () => {
+      const amount: Amount = (no) => (no === 5 ? LEGACY_FLAT : amountOf(no));
+      const paid = { ...PAID_1_TO_3, 5: MONTHLY };
+      const r = opening(paid, {}, amount);
+
+      expect(r.priorReceiptMarkers).toEqual([]);
+      expect(stampOf(r, 5)).toMatchObject({ accrued: true, accruedAmount: MONTHLY });
+      expect(r.roundingDiff.toFixed(2)).toBe('-0.01');
+      expect(peakRemainOf(paid, amount).minus(receivableAfterMarkers(r)).toFixed(2)).toBe('0.01');
+    });
+
+    const expectRoundingBeyondTolerance = (amount: Amount, paid = PAID_1_TO_3) => {
+      const call = () => opening(paid, {}, amount);
+      expect(call).toThrow(OpeningMismatchError);
+      try {
+        call();
+      } catch (err) {
+        const e = err as OpeningMismatchError;
+        expect(e.code).toBe('OPENING_PEAK_MISMATCH');
+        expect(e.reason).toBe('ROUNDING_BEYOND_TOLERANCE');
+        // ช่องว่างระหว่างบัญชีกับ PEAK อธิบายได้ด้วยยอดเรียกเก็บทั้งหมด — แต่ส่วนต่างเกินเกณฑ์
+        expect(e.diff.toFixed(2)).toBe(e.expectedRoundingDiff.toFixed(2));
+        expect(e.message).not.toMatch(/\d+\.\d{2}/);
+      }
+    };
+
+    it('งวดปกติต่างเกิน 0.01 (งวด 5 เรียกเก็บ 1,515.85) → throw', () => {
+      expectRoundingBeyondTolerance((no) => (no === 5 ? '1515.85' : amountOf(no)));
+    });
+
+    it('งวดสุดท้ายต่างเกิน 1.00 (เรียกเก็บ 1,514.80 · ตัวคำนวณ 1,515.87) → throw', () => {
+      expectRoundingBeyondTolerance((no) => (no === 12 ? '1514.80' : amountOf(no)));
+    });
+
+    it('ทุกงวดอยู่ในเกณฑ์แต่รวมทั้งสัญญาเกิน 1.00 (งวดปกติเรียกเก็บเกิน 0.01 ทุกงวด · งวดสุดท้ายเกิน 0.95 → −1.06) → throw', () => {
+      expectRoundingBeyondTolerance((no) => (no === 12 ? '1516.82' : LEGACY_FLAT));
+    });
+
+    it('ยอดเรียกเก็บไม่เป็นบวกหรือเกิน 2 ตำแหน่ง → OpeningInputError', () => {
+      for (const bad of ['0', '-1', '1515.835']) {
+        const input: OpeningInput = {
+          money: MONEY,
+          installments: installments(PAID_1_TO_3, {}, (no) => (no === 6 ? bad : amountOf(no))),
+          cutoff: CUTOFF,
+          peakRemain: peakRemainOf(PAID_1_TO_3),
+        };
+        expect(() => computeOpening(input)).toThrow(OpeningInputError);
       }
     });
   });
@@ -324,7 +447,7 @@ describe('computeOpening', () => {
     expect(net(r.openingLines, '21-2102')).toBe('-1190.00');
     expect(codes(r.openingLines)).not.toContain('11-2103');
     expect(r.catchUpLines).toEqual([]);
-    expect(r.stamps.every((s) => !s.accrued && !s.stampVat60)).toBe(true);
+    expect(r.stamps.every((s) => !s.accrued)).toBe(true);
   });
 
   it('งวดสุดท้ายรับเศษ: เหลือแต่งวด 12 → ยอดยกมา = 1,416.74 + VAT 99.13 ดอกเบี้ย 500', () => {
@@ -343,7 +466,6 @@ describe('computeOpening', () => {
       accruedAmount: MONTHLY,
       accruedVat: '99.17',
       accruedInterest: '500.00',
-      stampVat60: false,
     });
     expect(r.priorReceiptMarkers).toEqual([]);
   });
@@ -388,9 +510,9 @@ describe('computeOpening', () => {
         peakRemain: peakRemainOf(PAID_1_TO_3),
       });
 
-    expect(stampOf(run(due30), 5)).toMatchObject({ accrued: true, stampVat60: true });
+    expect(stampOf(run(due30), 5)).toMatchObject({ accrued: true });
     expect(net(run(due30).catchUpLines, '21-2102')).toBe('198.34'); // งวด 4 + งวด 5
-    expect(stampOf(run(due1Dec), 5)).toMatchObject({ accrued: false, stampVat60: false });
+    expect(stampOf(run(due1Dec), 5)).toMatchObject({ accrued: false });
     expect(net(run(due1Dec).catchUpLines, '21-2102')).toBe('99.17');
   });
 
@@ -405,7 +527,7 @@ describe('computeOpening', () => {
     const paid = { 1: '1416.66', 2: '1416.66', 3: '1416.66', 4: '300', 6: '500' };
     const r = computeOpening({
       money,
-      installments: installments(paid),
+      installments: installments(paid, {}, amount),
       cutoff: CUTOFF,
       peakRemain: peakRemainOf(paid, amount),
     });
@@ -434,7 +556,7 @@ describe('computeOpening', () => {
     const paid = { 1: '980.83', 2: '980.83', 3: '980.83' };
     const r = computeOpening({
       money,
-      installments: installments(paid),
+      installments: installments(paid, {}, amount),
       cutoff: CUTOFF,
       peakRemain: peakRemainOf(paid, amount),
     });

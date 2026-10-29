@@ -463,6 +463,59 @@ describe('applyPeakBalance', () => {
       expect('blocked' in result && result.diff.toFixed(2)).toBe('0.40');
     });
 
+    it('PEAK lower by 0.04 that equals the invoice total − Σ legacy amounts → TRIM the last unpaid billing (no paid adjustment), satangGap −0.04', () => {
+      const inst = book();
+      // ใบแจ้งหนี้ 3,999.96 · ระบบเก่ารวม 4,000.00 ⇒ ระบบเก่าเรียกเก็บเกิน 0.04
+      const result = applyPeakBalance(inst, D('2999.96'), { invoiceTotal: D('3999.96') });
+      if ('blocked' in result) throw new Error('unexpected block');
+      expect(result.satangGap.toFixed(2)).toBe('-0.04');
+      expect(result.adjustment.toFixed(2)).toBe('0.00');
+      expect(amounts(result.installments)).toEqual(['1000.00', '1000.00', '1000.00', '999.96']);
+      expect(view(result.installments)).toEqual([
+        ['1000.00', '0.00'],
+        ['0.00', '1000.00'],
+        ['0.00', '1000.00'],
+        ['0.00', '999.96'],
+      ]);
+      expect(legacyOutstanding(result).toFixed(2)).toBe('2999.96');
+    });
+
+    it('PEAK lower by 0.04 that is NOT the invoice-total gap (receipts missing in legacy) → FIFO paid adjustment on the earliest unpaid row', () => {
+      const result = applyPeakBalance(book(), D('2999.96'), { invoiceTotal: D('4000.00') });
+      if ('blocked' in result) throw new Error('unexpected block');
+      expect(result.satangGap.toFixed(2)).toBe('0.00');
+      expect(result.adjustment.toFixed(2)).toBe('-0.04');
+      expect(view(result.installments)[1]).toEqual(['0.04', '999.96']);
+      expect(amounts(result.installments)).toEqual(['1000.00', '1000.00', '1000.00', '1000.00']);
+    });
+
+    it('PEAK lower by more than the gross gap (missing receipts + satang) → FIFO the whole diff; no trim (ruling I-2 is exact-gap only)', () => {
+      const result = applyPeakBalance(book(), D('1999.96'), { invoiceTotal: D('3999.96') });
+      if ('blocked' in result) throw new Error('unexpected block');
+      expect([result.satangGap.toFixed(2), result.adjustment.toFixed(2)]).toEqual([
+        '0.00',
+        '-1000.04',
+      ]);
+      expect(view(result.installments)).toEqual([
+        ['1000.00', '0.00'],
+        ['1000.00', '0.00'],
+        ['0.04', '999.96'],
+        ['0.00', '1000.00'],
+      ]);
+    });
+
+    it('a gross gap above 1.00 is not satang → FIFO as before; no invoice total given → FIFO as before', () => {
+      const big = applyPeakBalance(book(), D('2998.99'), { invoiceTotal: D('3998.99') });
+      if ('blocked' in big) throw new Error('unexpected block');
+      expect([big.adjustment.toFixed(2), big.satangGap.toFixed(2)]).toEqual(['-1.01', '0.00']);
+      const noTotal = applyPeakBalance(book(), D('2999.96'));
+      if ('blocked' in noTotal) throw new Error('unexpected block');
+      expect([noTotal.adjustment.toFixed(2), noTotal.satangGap.toFixed(2)]).toEqual([
+        '-0.04',
+        '0.00',
+      ]);
+    });
+
     it('PEAK lower → satangGap 0 (only the paid-side adjustment)', () => {
       const result = applyPeakBalance(book(), D('2500'));
       if ('blocked' in result) throw new Error('unexpected block');

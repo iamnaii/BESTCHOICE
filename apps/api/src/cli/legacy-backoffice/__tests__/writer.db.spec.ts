@@ -11,6 +11,7 @@ import type { LegacyContract } from '../legacy-book';
 import { planImport, type ImportPlan } from '../plan-import';
 import {
   LegacyWriteBlocked,
+  LegacyWriteError,
   legacyImportAuditEntry,
   writeLegacyImport,
   type WriteReport,
@@ -121,7 +122,12 @@ describeDb('writeLegacyImport (real DB)', () => {
 
   afterAll(async () => {
     if (!prisma) return;
-    const mine = { legacyContractCode: { startsWith: `TEST-T10-${stamp}` } };
+    const mine = {
+      OR: [
+        { legacyContractCode: { startsWith: `TEST-T10-${stamp}` } },
+        { contractNumber: { startsWith: `TEST-T10-${stamp}` } },
+      ],
+    };
     const contracts = await prisma.contract.findMany({
       where: mine,
       select: { id: true, productId: true, customerId: true },
@@ -203,7 +209,7 @@ describeDb('writeLegacyImport (real DB)', () => {
   };
 
   /** สามสัญญาของ brief — รหัสไม่ซ้ำต่อการเรียก (นำเข้าได้หลายชุดในสเปคเดียว) */
-  async function scenario(): Promise<Scenario> {
+  async function scenario(opts: { sameMember?: boolean } = {}): Promise<Scenario> {
     const run = ++seq;
     const code = (n: number) => `TEST-T10-${stamp}-${run}-${n}`;
     const memberIds = [`${run}01`, `${run}02`, `${run}03`];
@@ -249,7 +255,7 @@ describeDb('writeLegacyImport (real DB)', () => {
       id: `${run}3`,
       code: code(3),
       date: '2026-08-10',
-      memberId: memberIds[2],
+      memberId: opts.sameMember ? memberIds[0] : memberIds[2],
       firstDue: [2026, 8, 10],
       imei: imei(),
       installments: standardInstallments(full(4)),
@@ -260,7 +266,7 @@ describeDb('writeLegacyImport (real DB)', () => {
       peakRecon: syntheticRecon([
         [overdue, peakMatch(overdue, `T10${run}A`)],
         [history, peakMatch(history, `T10${run}B`, '0')],
-        [prepaid, peakMatch(prepaid, `T10${run}C`)],
+        [prepaid, peakMatch(prepaid, opts.sameMember ? `T10${run}A` : `T10${run}C`)],
       ]),
       canceledMap: new Map(),
       moneyOverrides: new Map(),
@@ -625,6 +631,53 @@ describeDb('writeLegacyImport (real DB)', () => {
       expect((entry.newValue as { customerWrites: unknown[] }).customerWrites).toHaveLength(3);
     });
 
+    it('every imported Payment carries the breakdown columns and the four sum to amountDue (ACTIVE + history)', async () => {
+      const rows = await prisma.payment.findMany({
+        where: { contractId: { in: [...report.contractIds.values()] } },
+      });
+      expect(rows).toHaveLength(30);
+      for (const row of rows) {
+        expect([
+          row.monthlyPrincipal,
+          row.monthlyInterest,
+          row.monthlyCommission,
+          row.vatAmount,
+        ]).not.toContain(null);
+        const sum = row
+          .monthlyPrincipal!.plus(row.monthlyInterest!)
+          .plus(row.monthlyCommission!)
+          .plus(row.vatAmount!);
+        expect(sum.toFixed(2)).toBe(row.amountDue.toFixed(2));
+      }
+      const first = rows.find(
+        (r) => r.contractId === report.contractIds.get(s.overdue.code) && r.installmentNo === 1,
+      )!;
+      expect(
+        [
+          first.monthlyPrincipal,
+          first.monthlyInterest,
+          first.monthlyCommission,
+          first.vatAmount,
+        ].map(money),
+      ).toEqual(['833.33', '500.00', '83.33', '99.17']);
+    });
+
+    it('signed-contract documents are immutable (upload rule) and a closed contract’s device belongs to the customer', async () => {
+      const docs = await prisma.contractDocument.findMany({
+        where: { contractId: { in: [...report.contractIds.values()] } },
+        select: { documentType: true, isImmutable: true },
+      });
+      expect(docs.length).toBeGreaterThan(0);
+      expect(docs.every((d) => d.isImmutable === (d.documentType === 'SIGNED_CONTRACT'))).toBe(
+        true,
+      );
+      const history = await prisma.contract.findUniqueOrThrow({
+        where: { legacyContractCode: s.history.code },
+        select: { product: { select: { ownedByCompanyId: true } } },
+      });
+      expect(history.product.ownedByCompanyId).toBeNull();
+    });
+
     it('a second call skips every contract (skippedExisting) and adds no JournalEntry', async () => {
       const before = await prisma.journalEntry.count();
       const again = await write(s, { ...d, importBatch: `${d.importBatch}-again` });
@@ -747,6 +800,193 @@ describeDb('writeLegacyImport (real DB)', () => {
     } finally {
       await prisma.product.delete({ where: { id: stock.id } });
     }
+  }, 120_000);
+
+  it('a second contract of the same member → LINKED with no writes (one customer per member)', async () => {
+    const s = await scenario({ sameMember: true });
+    const report = await write(s);
+    expect(report.customers.map((c) => [c.code, c.outcome, c.writes])).toEqual([
+      [s.history.code, 'CREATED', expect.arrayContaining(['customerCreated'])],
+      [s.overdue.code, 'CREATED', expect.arrayContaining(['customerCreated'])],
+      [s.prepaid.code, 'LINKED', []],
+    ]);
+    expect(report.created.customers).toBe(2);
+    expect(report.customers[1].customerId).toBe(report.customers[2].customerId);
+  }, 120_000);
+
+  /** สัญญา BESTCHOICE ที่มีอยู่แล้ว (ลูกค้า/เครื่องของตัวเอง) — ใช้จำลองการชนรหัส */
+  async function existingContract(data: {
+    contractNumber: string;
+    legacyContractCode?: string;
+    deletedAt?: Date;
+    installmentCode?: string;
+  }) {
+    const customer = await prisma.customer.create({
+      data: { name: `${TEST_NAME_PREFIX} T10 ลูกค้าเดิม`, phone: '' },
+    });
+    extraCustomerIds.push(customer.id);
+    const product = await prisma.product.create({
+      data: {
+        name: `${TEST_NAME_PREFIX} T10 เครื่องเดิม`,
+        brand: 'Apple',
+        model: 'ทดสอบ',
+        category: 'PHONE_USED',
+        costPrice: 0,
+        branchId,
+        legacyProductCode: `TEST-T10-${stamp}-existing-${++seq}`,
+      },
+    });
+    const contract = await prisma.contract.create({
+      data: {
+        contractNumber: data.contractNumber,
+        legacyContractCode: data.legacyContractCode ?? null,
+        deletedAt: data.deletedAt ?? null,
+        customerId: customer.id,
+        productId: product.id,
+        branchId,
+        salespersonId: userId,
+        planType: 'STORE_WITH_INTEREST',
+        sellingPrice: 1000,
+        downPayment: 0,
+        interestRate: 0,
+        totalMonths: 1,
+        interestTotal: 0,
+        financedAmount: 1000,
+        monthlyPayment: 1000,
+      },
+    });
+    if (data.installmentCode) {
+      await prisma.payment.create({
+        data: {
+          contractId: contract.id,
+          installmentNo: 1,
+          dueDate: new Date('2026-01-01T00:00:00+07:00'),
+          amountDue: 1000,
+          legacyInstallmentCode: data.installmentCode,
+        },
+      });
+    }
+    return contract;
+  }
+
+  it('code collisions with BESTCHOICE rows → CONTRACT_CODE_DELETED / CONTRACT_NUMBER_TAKEN / INSTALLMENT_CODE_TAKEN / PRODUCT_CODE_TAKEN', async () => {
+    const s = await scenario();
+    const d = deps(s);
+    await existingContract({
+      contractNumber: `TEST-T10-${stamp}-deleted-${++seq}`,
+      legacyContractCode: s.overdue.code,
+      deletedAt: new Date(),
+    });
+    await existingContract({
+      contractNumber: s.prepaid.code,
+      installmentCode: `TEST-I-${s.history.code}-1`,
+    });
+    const history = s.plan.items.find((i) => i.code === s.history.code)!;
+    const deletedProduct = await prisma.product.create({
+      data: {
+        name: `${TEST_NAME_PREFIX} T10 รหัสเครื่องซ้ำ`,
+        brand: 'Apple',
+        model: 'ทดสอบ',
+        category: 'PHONE_USED',
+        costPrice: 0,
+        branchId,
+        legacyProductCode: history.product.legacyProductCode,
+        deletedAt: new Date(),
+      },
+    });
+    const error = await prisma
+      .$transaction((tx) => writeLegacyImport(tx, s.plan, d), TX)
+      .then(
+        () => null,
+        (e: unknown) => e,
+      );
+    expect(error).toBeInstanceOf(LegacyWriteBlocked);
+    const rows = (error as LegacyWriteBlocked).rows;
+    expect(rows.map((r) => [r.code, r.reason]).sort()).toEqual(
+      [
+        [s.overdue.code, 'CONTRACT_CODE_DELETED'],
+        [s.prepaid.code, 'CONTRACT_NUMBER_TAKEN'],
+        [s.history.code, 'INSTALLMENT_CODE_TAKEN'],
+        [s.history.code, 'PRODUCT_CODE_TAKEN'],
+      ].sort(),
+    );
+    expect(rows.find((r) => r.reason === 'PRODUCT_CODE_TAKEN')?.detail).toEqual({
+      productId: deletedProduct.id,
+      deleted: 'yes',
+    });
+    expect(rows.find((r) => r.reason === 'INSTALLMENT_CODE_TAKEN')?.detail).toEqual({
+      installmentCodes: `TEST-I-${s.history.code}-1`,
+    });
+  }, 120_000);
+
+  /** tx ที่โยน error ของ Prisma (ข้อความมีค่าลับ) เมื่อเรียก `<model>.<method>` */
+  function failing(tx: Prisma.TransactionClient, model: string, method: string) {
+    const bind = (target: object, prop: string | symbol) => {
+      const value = Reflect.get(target, prop);
+      return typeof value === 'function' ? value.bind(target) : value;
+    };
+    return new Proxy(tx, {
+      get(target, prop) {
+        if (prop !== model) return bind(target, prop);
+        const delegate = Reflect.get(target, prop) as object;
+        return new Proxy(delegate, {
+          get(d, p) {
+            if (p !== method) return bind(d, p);
+            return async () => {
+              throw new Prisma.PrismaClientKnownRequestError('SECRET-VALUE in the failing row', {
+                code: 'P2002',
+                clientVersion: 'test',
+              });
+            };
+          },
+        });
+      },
+    }) as Prisma.TransactionClient;
+  }
+
+  it('a Prisma error while linking a customer → LegacyWriteBlocked at once (class + code only, no message)', async () => {
+    const s = await scenario();
+    const d = deps(s);
+    const error = await prisma
+      .$transaction((tx) => writeLegacyImport(failing(tx, 'customer', 'create'), s.plan, d), TX)
+      .then(
+        () => null,
+        (e: unknown) => e,
+      );
+    expect(error).toBeInstanceOf(LegacyWriteBlocked);
+    const rows = (error as LegacyWriteBlocked).rows;
+    expect(rows).toEqual([
+      {
+        code: s.history.code,
+        reason: 'CUSTOMER_LINK_ERROR',
+        detail: {
+          memberCode: s.plan.items[0].memberCode,
+          errorClass: 'PrismaClientKnownRequestError',
+          prismaCode: 'P2002',
+        },
+      },
+    ]);
+    expect(JSON.stringify(rows)).not.toContain('SECRET');
+  }, 120_000);
+
+  it('a Prisma error while writing a contract → LegacyWriteError { step, legacyCode, errorClass, prismaCode } without the message', async () => {
+    const s = await scenario();
+    const d = deps(s);
+    const error = await prisma
+      .$transaction((tx) => writeLegacyImport(failing(tx, 'contract', 'create'), s.plan, d), TX)
+      .then(
+        () => null,
+        (e: unknown) => e,
+      );
+    expect(error).toBeInstanceOf(LegacyWriteError);
+    const e = error as LegacyWriteError;
+    expect([e.step, e.legacyCode, e.errorClass, e.prismaCode]).toEqual([
+      'contract',
+      s.history.code,
+      'PrismaClientKnownRequestError',
+      'P2002',
+    ]);
+    expect(e.message).not.toContain('SECRET');
   }, 120_000);
 
   it('a plan with blockers is refused before any statement (unless allowPlanBlockers)', async () => {

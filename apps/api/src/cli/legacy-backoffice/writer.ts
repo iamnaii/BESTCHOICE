@@ -5,6 +5,7 @@ import {
   LEGACY_VAT_CATCHUP_FLOW,
 } from '../../modules/accounting/peak-export-exclusion';
 import type { AuditEntry } from '../../modules/audit/audit.service';
+import { isImmutableContractDocument } from '../../modules/contracts/contract-documents.service';
 import type { CustomerPiiService } from '../../modules/customers/customer-pii.service';
 import type { JeLineInput, JournalAutoService } from '../../modules/journal/journal-auto.service';
 import {
@@ -40,8 +41,10 @@ import type { ImportBlocker, ImportPlan, PlannedContract } from './plan-import';
  * 5. ต่อสัญญา: เครื่อง → สัญญา → ตารางงวด → งวด (Payment) → สลิป → เอกสาร → รายการยกมา → marker → รายการไล่ VAT → stamp
  *
  * **เลขสัญญา** = เลขสัญญาเดิม (`BCPyymm-NNNNN` รูปเดียวกับ `generateContractNumber` — ลูกค้าเห็นเลขเดิมบนใบเสร็จ/ไลน์) ·
- * **เครื่อง** = หนึ่งแถวต่อสัญญา (`legacyProductCode`) — มีแถวรหัสเดียวกันที่ไม่ผูกสัญญาใด = ใช้แถวนั้น · FINANCE ถือกรรมสิทธิ์
- * `SOLD_INSTALLMENT` · ราคาทุน 0 (ระบบเก่าไม่มีราคาทุนของหน้าร้าน — แบบ `MigrationService.importContracts`) · ไม่ขึ้นหน้าร้านออนไลน์
+ * **เครื่อง** = หนึ่งแถวใหม่ต่อสัญญา (`legacyProductCode` — มีแถวใดถือรหัสนี้อยู่แล้ว รวมแถวที่ถูกลบ = `PRODUCT_CODE_TAKEN`) ·
+ * `SOLD_INSTALLMENT` · กรรมสิทธิ์ FINANCE ยกเว้นสัญญา COMPLETED / EARLY_PAYOFF = null (ลูกค้าเป็นเจ้าของ) · ราคาทุน 0
+ * (ระบบเก่าไม่มีราคาทุนของหน้าร้าน — แบบ `MigrationService.importContracts`) · ไม่ขึ้นหน้าร้านออนไลน์
+ * · error ของฐานข้อมูลในขั้นนี้ = `LegacyWriteError` (ขั้น/เลขสัญญาเดิม/คลาส/รหัส — ไม่มีข้อความเดิม)
  *
  * **บัญชี (สัญญา ACTIVE เท่านั้น — สัญญาประวัติไม่มีตารางงวด ไม่มีรายการบัญชี ไม่มี stamp):**
  * - รายการยกมา: `reference` `legacy-opening:<เลขเดิม>` · `metadata { tag, flow: legacy-opening, idempotencyKey, contractId,
@@ -55,8 +58,9 @@ import type { ImportBlocker, ImportPlan, PlannedContract } from './plan-import';
  *   **ไม่เคยแตะ `vat60dayJournalEntryId`** · สัญญา ACTIVE ที่ไม่มีอะไรยกมาไม่มาถึงตัวเขียน (`planImport` บล็อก) — stamp
  *   `accrued` โดยไม่มีรายการยกมาให้ลิงก์ = throw (ห้ามเกิด)
  *
- * **งวด:** `lateFee` 0 · `recordedById` = ผู้ใช้ระบบเมื่อมียอดจ่าย · **สลิป:** `APPROVED` `imageUrl` = key ของ storage ·
- * **เอกสาร:** `fileUrl` = key · ชนิด/ขนาด/hash จาก `files` · ไฟล์ที่ไม่อยู่ใน `files` = ไม่สร้างแถว รายงานใน `missingAttachments`
+ * **งวด:** `lateFee` 0 · ยอดแยก (เงินต้น/ดอกเบี้ย/ค่าคอม/VAT) จากแผน (`paymentBreakdowns`) · `recordedById` = ผู้ใช้ระบบเมื่อมียอดจ่าย
+ * · **สลิป:** `APPROVED` `imageUrl` = key ของ storage · **เอกสาร:** `fileUrl` = key · ชนิด/ขนาด/hash จาก `files` · `isImmutable`
+ * ตาม `isImmutableContractDocument` · ไฟล์ที่ไม่อยู่ใน `files` = ไม่สร้างแถว รายงานใน `missingAttachments`
  * (ไม่ใช่ตัวบล็อก — เจ้าของตัดสินภายหลัง)
  *
  * ลูกค้าที่สร้างใหม่ไม่มี `accessCompanyCode` / `accessBranchId` (แบบ `MigrationService.importCustomers` — `customer.ts`)
@@ -64,6 +68,8 @@ import type { ImportBlocker, ImportPlan, PlannedContract } from './plan-import';
 
 const ZERO = new Prisma.Decimal(0);
 const SOURCE_NOTE = 'ยกมาจากระบบเก่า';
+/** สถานะที่ลูกค้าเป็นเจ้าของเครื่องแล้ว (ระบบปลด `ownedByCompanyId` เป็น null ตอนผ่อนครบ — `payment-helpers.ts`) */
+const CUSTOMER_OWNED_STATUSES: ReadonlySet<string> = new Set(['COMPLETED', 'EARLY_PAYOFF']);
 
 export type WriterDeps = {
   journal: Pick<JournalAutoService, 'createAndPost'>;
@@ -133,6 +139,26 @@ export class LegacyWriteBlocked extends Error {
   }
 }
 
+/**
+ * error ของฐานข้อมูลระหว่างเขียนสัญญา (หลังผ่านด่านทั้งหมดแล้ว — ธุรกรรมใช้ต่อไม่ได้) — มีแค่ขั้น เลขสัญญาเดิม ชื่อคลาส
+ * และรหัสของ Prisma · **ไม่เก็บข้อความของ error เดิม** (`PrismaClientValidationError` พิมพ์ข้อมูลทั้งแถว: หมายเหตุสัญญา IMEI ฯลฯ)
+ */
+export class LegacyWriteError extends Error {
+  readonly code = 'LEGACY_WRITE_FAILED';
+
+  constructor(
+    readonly step: string,
+    readonly legacyCode: string,
+    readonly errorClass: string,
+    readonly prismaCode: string | null,
+  ) {
+    super(
+      `LEGACY_WRITE_FAILED: สัญญา ${legacyCode} ขั้น ${step} — ${errorClass}${prismaCode ? ` ${prismaCode}` : ''}`,
+    );
+    this.name = 'LegacyWriteError';
+  }
+}
+
 const PRISMA_ERRORS = [
   Prisma.PrismaClientKnownRequestError,
   Prisma.PrismaClientUnknownRequestError,
@@ -195,10 +221,9 @@ function customerBlocker(
 async function findCollisions(
   tx: Prisma.TransactionClient,
   items: readonly PlannedContract[],
-): Promise<{ rows: ImportBlocker[]; reusable: Map<string, string> }> {
+): Promise<ImportBlocker[]> {
   const rows: ImportBlocker[] = [];
-  const reusable = new Map<string, string>();
-  if (items.length === 0) return { rows, reusable };
+  if (items.length === 0) return rows;
 
   const numbers = await tx.contract.findMany({
     where: { contractNumber: { in: items.map((i) => i.code) } },
@@ -206,22 +231,21 @@ async function findCollisions(
   });
   const takenNumbers = new Set(numbers.map((c) => c.contractNumber));
 
-  const productCodes = await tx.product.findMany({
-    where: { legacyProductCode: { in: items.map((i) => i.product.legacyProductCode) } },
-    select: { id: true, legacyProductCode: true, _count: { select: { contracts: true } } },
-  });
-  const takenProducts = new Map<string, string>();
-  for (const p of productCodes) {
-    if (!p.legacyProductCode) continue;
-    if (p._count.contracts === 0) reusable.set(p.legacyProductCode, p.id);
-    else takenProducts.set(p.legacyProductCode, p.id);
-  }
+  // unique ของ legacyProductCode ครอบแถวที่ถูกลบด้วย ⇒ แถวใดก็ตามที่ถือรหัสนี้ = ตัวบล็อก (ไม่ใช้แถวเดิมซ้ำ — M-3)
+  const takenProducts = new Map(
+    (
+      await tx.product.findMany({
+        where: { legacyProductCode: { in: items.map((i) => i.product.legacyProductCode) } },
+        select: { id: true, legacyProductCode: true, deletedAt: true },
+      })
+    ).map((p) => [p.legacyProductCode, p]),
+  );
 
   const imeis = items.flatMap((i) => (i.product.imeiSerial ? [i.product.imeiSerial] : []));
   const imeiHolders = imeis.length
     ? await tx.product.findMany({
         where: { imeiSerial: { in: imeis }, deletedAt: null },
-        select: { id: true, imeiSerial: true, legacyProductCode: true },
+        select: { id: true, imeiSerial: true },
       })
     : [];
 
@@ -243,14 +267,13 @@ async function findCollisions(
       rows.push({
         code: item.code,
         reason: 'PRODUCT_CODE_TAKEN',
-        detail: { productId: takenProduct },
+        detail: {
+          productId: takenProduct.id,
+          ...(takenProduct.deletedAt ? { deleted: 'yes' } : {}),
+        },
       });
     }
-    const holder = imeiHolders.find(
-      (h) =>
-        h.imeiSerial === item.product.imeiSerial &&
-        h.legacyProductCode !== item.product.legacyProductCode,
-    );
+    const holder = imeiHolders.find((h) => h.imeiSerial === item.product.imeiSerial);
     if (item.product.imeiSerial && holder) {
       rows.push({ code: item.code, reason: 'IMEI_TAKEN', detail: { productId: holder.id } });
     }
@@ -265,7 +288,7 @@ async function findCollisions(
       });
     }
   }
-  return { rows, reusable };
+  return rows;
 }
 
 export async function writeLegacyImport(
@@ -318,8 +341,7 @@ export async function writeLegacyImport(
   const todo = plan.items.filter((i) => !existingCodes.has(i.code));
 
   // ③ ชนกับข้อมูลเดิม (อ่านอย่างเดียว)
-  const collisions = await findCollisions(tx, todo);
-  rows.push(...collisions.rows);
+  rows.push(...(await findCollisions(tx, todo)));
 
   // ④ ลูกค้าต่อสัญญา
   const customerOf = new Map<string, string>();
@@ -354,13 +376,25 @@ export async function writeLegacyImport(
   }
   if (rows.length > 0) throw new LegacyWriteBlocked(rows);
 
-  // ⑤ ต่อสัญญา
+  // ⑤ ต่อสัญญา — error ของฐานข้อมูลเหลือแค่ขั้น/เลขสัญญาเดิม/คลาส/รหัส (M-4)
   for (const item of todo) {
-    await writeContract(tx, plan, deps, item, {
-      customerId: customerOf.get(item.code) as string,
-      reusableProductId: collisions.reusable.get(item.product.legacyProductCode) ?? null,
-      report,
-    });
+    const track = { step: 'product' };
+    try {
+      await writeContract(tx, plan, deps, item, {
+        customerId: customerOf.get(item.code) as string,
+        report,
+        track,
+      });
+    } catch (error) {
+      if (!isPrismaError(error)) throw error;
+      const code = (error as { code?: unknown }).code;
+      throw new LegacyWriteError(
+        track.step,
+        item.code,
+        (error as Error).name || (error as Error).constructor.name,
+        typeof code === 'string' ? code : null,
+      );
+    }
   }
   return report;
 }
@@ -370,46 +404,41 @@ async function writeContract(
   plan: ImportPlan,
   deps: WriterDeps,
   item: PlannedContract,
-  ctx: { customerId: string; reusableProductId: string | null; report: WriteReport },
+  ctx: { customerId: string; report: WriteReport; track: { step: string } },
 ): Promise<void> {
-  const { report } = ctx;
+  const { report, track } = ctx;
   const m = item.money;
 
-  // เครื่อง
-  let productId = ctx.reusableProductId;
-  if (productId) {
-    await tx.product.update({
-      where: { id: productId },
-      data: { status: 'SOLD_INSTALLMENT', ownedByCompanyId: deps.financeCompanyId },
-    });
-  } else {
-    const p = item.product;
-    productId = (
-      await tx.product.create({
-        data: {
-          name: p.name,
-          brand: p.brand,
-          model: p.model,
-          color: p.color,
-          storage: p.storage,
-          imeiSerial: p.imeiSerial,
-          serialNumber: p.serialNumber,
-          category: p.category,
-          costPrice: ZERO,
-          branchId: deps.branchId,
-          ownedByCompanyId: deps.financeCompanyId,
-          status: 'SOLD_INSTALLMENT',
-          isOnlineVisible: false,
-          legacyProductCode: p.legacyProductCode,
-          createdAt: item.contractDate,
-        },
-        select: { id: true },
-      })
-    ).id;
-    report.created.products++;
-  }
+  // เครื่อง — สัญญาที่ผ่อนจบ/ปิดก่อนกำหนด: ลูกค้าเป็นเจ้าของ (`ownedByCompanyId` null แบบ `checkContractCompletion`
+  // ใน `payment-helpers.ts` ที่ปลดกรรมสิทธิ์ตอนผ่อนครบ) · สถานะอื่น FINANCE ถือ
+  track.step = 'product';
+  const p = item.product;
+  const productId = (
+    await tx.product.create({
+      data: {
+        name: p.name,
+        brand: p.brand,
+        model: p.model,
+        color: p.color,
+        storage: p.storage,
+        imeiSerial: p.imeiSerial,
+        serialNumber: p.serialNumber,
+        category: p.category,
+        costPrice: ZERO,
+        branchId: deps.branchId,
+        ownedByCompanyId: CUSTOMER_OWNED_STATUSES.has(item.status) ? null : deps.financeCompanyId,
+        status: 'SOLD_INSTALLMENT',
+        isOnlineVisible: false,
+        legacyProductCode: p.legacyProductCode,
+        createdAt: item.contractDate,
+      },
+      select: { id: true },
+    })
+  ).id;
+  report.created.products++;
 
   // สัญญา
+  track.step = 'contract';
   const contractId = (
     await tx.contract.create({
       data: {
@@ -448,6 +477,7 @@ async function writeContract(
   report.contractIds.set(item.code, contractId);
 
   // ตารางงวด (ACTIVE)
+  track.step = 'schedule';
   const scheduleIdByNo = new Map<number, string>();
   if (item.schedule.length > 0) {
     await tx.installmentSchedule.createMany({
@@ -463,6 +493,7 @@ async function writeContract(
   }
 
   // งวด
+  track.step = 'payments';
   await tx.payment.createMany({
     data: item.payments.map((p) => ({
       contractId,
@@ -473,6 +504,10 @@ async function writeContract(
       paidDate: p.paidDate,
       status: p.status,
       lateFee: ZERO,
+      monthlyPrincipal: p.monthlyPrincipal,
+      monthlyInterest: p.monthlyInterest,
+      monthlyCommission: p.monthlyCommission,
+      vatAmount: p.vatAmount,
       notes: p.notes,
       legacyInstallmentCode: p.legacyInstallmentCode,
       recordedById: p.amountPaid.gt(0) ? deps.systemUserId : null,
@@ -510,6 +545,7 @@ async function writeContract(
       },
     ];
   });
+  track.step = 'evidences';
   if (evidences.length > 0) await tx.paymentEvidence.createMany({ data: evidences });
   report.created.evidences += evidences.length;
 
@@ -531,17 +567,20 @@ async function writeContract(
         mimeType: file.contentType,
         fileHash: file.sha256,
         notes: d.notes ? `${SOURCE_NOTE} · ${d.notes}` : SOURCE_NOTE,
+        // กติกาเดียวกับตอนอัปโหลด: สัญญาที่ลงนามแล้ว ฯลฯ ของสัญญาที่ยังเดิน/ปิดแล้ว ลบ/อัปโหลดทับไม่ได้ (M-1)
+        isImmutable: isImmutableContractDocument(d.documentType, item.status),
         uploadedById: deps.systemUserId,
       },
     ];
   });
+  track.step = 'documents';
   if (documents.length > 0) await tx.contractDocument.createMany({ data: documents });
   report.created.documents += documents.length;
   if (missing.size > 0)
     report.missingAttachments.push({ code: item.code, paths: [...missing].sort() });
 
   if (!item.opening) return;
-  await writeOpening(tx, plan, deps, item, contractId, scheduleIdByNo, report);
+  await writeOpening(tx, plan, deps, item, contractId, scheduleIdByNo, report, track);
 }
 
 async function writeOpening(
@@ -552,6 +591,7 @@ async function writeOpening(
   contractId: string,
   scheduleIdByNo: ReadonlyMap<number, string>,
   report: WriteReport,
+  track: { step: string },
 ): Promise<void> {
   const opening = item.opening!;
   const post = async (
@@ -587,6 +627,7 @@ async function writeOpening(
 
   const synced: string[] = [];
   let openingEntryNumber: string | null = null;
+  track.step = 'opening';
   if (opening.openingLines.length > 0) {
     const entry = await post('opening', {
       description: `ยกมาจากระบบเก่า — สัญญา ${item.code}`,
@@ -605,6 +646,7 @@ async function writeOpening(
     synced.push(entry.id);
   }
 
+  track.step = 'markers';
   for (const marker of opening.priorReceiptMarkers) {
     const installmentScheduleId = scheduleIdByNo.get(marker.installmentNo);
     if (!installmentScheduleId) {
@@ -651,6 +693,7 @@ async function writeOpening(
     });
   }
 
+  track.step = 'catch-up';
   if (opening.catchUpLines.length > 0) {
     await post('catch-up', {
       description: `ไล่ภาษีขายของงวดที่ค้างก่อนวันตัดระบบ — สัญญา ${item.code}`,
@@ -666,6 +709,7 @@ async function writeOpening(
     });
   }
 
+  track.step = 'stamps';
   for (const stamp of opening.stamps) {
     const id = scheduleIdByNo.get(stamp.installmentNo);
     if (!id) {

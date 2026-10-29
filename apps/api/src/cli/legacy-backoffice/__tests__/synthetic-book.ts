@@ -204,11 +204,15 @@ export function syntheticBook(contracts: LegacyContract[], members: DumpRow[]): 
   };
 }
 
-/** คู่ PEAK ของสัญญา — ยอดคงเหลือ = Σ คงเหลือของงวด (หรือที่ส่งมา) */
+/**
+ * คู่ PEAK ของสัญญา — ยอดคงเหลือ = Σ คงเหลือของงวด (หรือที่ส่งมา) · ยอดใบแจ้งหนี้ = Σ ค่างวดระบบเก่า (หรือที่ส่งมา —
+ * ใช้จำลองเศษของยอดผ่อนรวม)
+ */
 export function peakMatch(
   c: LegacyContract,
   contactCode: string,
   remain?: Prisma.Decimal.Value,
+  netAmount?: Prisma.Decimal.Value,
 ): PeakMatch {
   const outstanding = c.installments.reduce(
     (s, i) => (i.balance.gt(0) ? s.plus(i.balance) : s),
@@ -221,14 +225,14 @@ export function peakMatch(
       invoiceCode: `TEST-INV-${c.code}`,
       contactCode,
       issuedDate: c.createdAt,
-      netAmount: total,
+      netAmount: netAmount === undefined ? total : D(netAmount),
       remainAmount,
       imei: c.detail.mobile_imei ?? null,
     },
     legacyOutstanding: outstanding,
     diff: remainAmount.minus(outstanding),
     legacyInstallmentTotal: total,
-    grossDiff: D(0),
+    grossDiff: (netAmount === undefined ? total : D(netAmount)).minus(total),
     source: 'auto',
     note: null,
   };

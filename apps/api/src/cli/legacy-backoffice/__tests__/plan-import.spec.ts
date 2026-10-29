@@ -182,6 +182,30 @@ describe('planImport', () => {
       1, 2, 3, 4,
     ]);
 
+    // ยอดแยกของทุกงวด (สูตรของ generatePaymentSchedule) — สี่ยอดรวม = amountDue รวมงวดของสัญญาประวัติ
+    for (const planned of plan.items) {
+      for (const p of planned.payments) {
+        expect(
+          p.monthlyPrincipal
+            .plus(p.monthlyInterest)
+            .plus(p.monthlyCommission)
+            .plus(p.vatAmount)
+            .toFixed(2),
+        ).toBe(p.amountDue.toFixed(2));
+      }
+    }
+    expect(
+      [overdue.payments[0], overdue.payments[11]].map((p) => [
+        money(p.monthlyPrincipal),
+        money(p.monthlyInterest),
+        money(p.monthlyCommission),
+        money(p.vatAmount),
+      ]),
+    ).toEqual([
+      ['833.33', '500.00', '83.33', '99.17'],
+      ['833.37', '500.00', '83.37', '99.13'],
+    ]);
+
     // Σ ค้างของงวด = Σ PEAK (ด่าน 6.2) · ตัวเลขรวมของตารางเชื่อมยอด
     expect(money(plan.totals.outstanding)).toBe(money(plan.totals.peakRemain));
     expect(plan.totals.contracts).toEqual({ active: 2, history: 1, skipped: 0, blocked: 0 });
@@ -289,10 +313,11 @@ describe('planImport', () => {
     });
     const plan = planImport(syntheticBook([a], members), {
       ...options([]),
-      peakRecon: syntheticRecon([[a, peakMatch(a, 'TESTC001', '5263.36')]]),
+      peakRecon: syntheticRecon([[a, peakMatch(a, 'TESTC001', '5263.36', '18190.00')]]),
     });
     expect(plan.blockers).toEqual([]);
     const planned = item(plan, 'TEST-C-0001');
+    expect(planned.warnings.filter((w) => w.startsWith('SATANG_GAP_UNEXPLAINED'))).toEqual([]);
     expect(money(planned.peak!.satangGap)).toBe('0.04');
     expect(planned.peak!.satangGapInstallmentNo).toBe(12);
     expect(money(planned.peak!.adjustment)).toBe('0.00');
@@ -317,6 +342,286 @@ describe('planImport', () => {
         detail: { invoiceCode: 'TEST-INV-TEST-C-0001', diff: '1.01' },
       },
     ]);
+  });
+
+  it('a PEAK-higher gap that is not the invoice-total gap → absorbed but warned SATANG_GAP_UNEXPLAINED (not a blocker)', () => {
+    const a = overdueContract();
+    // ยอดใบแจ้งหนี้ = Σ ค่างวดระบบเก่า (ไม่มีเศษของยอดผ่อนรวม) แต่ PEAK ค้างสูงกว่า 0.37
+    const plan = planImport(syntheticBook([a], members), {
+      ...options([]),
+      peakRecon: syntheticRecon([[a, peakMatch(a, 'TESTC001', '5263.73')]]),
+    });
+    expect(plan.blockers).toEqual([]);
+    const planned = item(plan, 'TEST-C-0001');
+    expect(money(planned.peak!.satangGap)).toBe('0.37');
+    expect(planned.warnings.filter((w) => w.startsWith('SATANG_GAP_UNEXPLAINED'))).toHaveLength(1);
+  });
+
+  it('PEAK lower by the invoice-total satang gap → TRIM the last unpaid billing: no fake partial payment, no extra marker', () => {
+    // ระบบเก่าเรียกเก็บงวด 12 = 1,515.91 (ยอดผ่อนรวม 18,190.04) · ใบแจ้งหนี้ PEAK 18,190.00
+    const a = overdueContract({
+      installments: standardInstallments({
+        ...Object.fromEntries(
+          Array.from({ length: 8 }, (_, i) => [i + 1, { amount: MONTHLY, paid: MONTHLY }]),
+        ),
+        9: { paid: '300' },
+        11: { paid: '500', paidOn: new Date('2026-11-20T09:00:00+07:00') },
+        12: { amount: '1515.91' },
+      }),
+    });
+    const plan = planImport(syntheticBook([a], members), {
+      ...options([]),
+      peakRecon: syntheticRecon([[a, peakMatch(a, 'TESTC001', '5263.36', '18190.00')]]),
+    });
+    expect(plan.blockers).toEqual([]);
+    const planned = item(plan, 'TEST-C-0001');
+    expect(money(planned.peak!.satangGap)).toBe('-0.04');
+    expect(money(planned.peak!.adjustment)).toBe('0.00');
+    expect(planned.peak!.satangGapInstallmentNo).toBe(12);
+    expect(money(planned.payments[11].amountDue)).toBe(LAST);
+    expect(
+      planned.payments.filter((p) => p.status === 'PARTIALLY_PAID').map((p) => p.installmentNo),
+    ).toEqual([9, 11]);
+    expect(planned.payments[9].amountPaid.isZero()).toBe(true);
+    expect(planned.opening!.priorReceiptMarkers).toHaveLength(2);
+    expect(planned.notes).toContain('ค่างวด 12 ลดเศษสตางค์ 0.04 ตามยอดผ่อนรวมในใบแจ้งหนี้ PEAK');
+    expect(money(plan.totals.outstanding)).toBe('5263.36');
+    expect([money(plan.totals.satangTrim), plan.totals.satangTrimContracts]).toEqual(['-0.04', 1]);
+
+    // PEAK ต่ำกว่าแต่ไม่ใช่เศษของยอดใบแจ้งหนี้ (เงินรับที่ระบบเก่าไม่ได้บันทึก) → ยอดจ่ายเพิ่มที่งวดค้างงวดแรก (FIFO เดิม)
+    const fifo = planImport(syntheticBook([a], members), {
+      ...options([]),
+      peakRecon: syntheticRecon([[a, peakMatch(a, 'TESTC001', '5263.36')]]),
+    });
+    const fifoItem = item(fifo, 'TEST-C-0001');
+    expect([money(fifoItem.peak!.adjustment), money(fifoItem.peak!.satangGap)]).toEqual([
+      '-0.04',
+      '0.00',
+    ]);
+    expect(money(fifoItem.payments[8].amountPaid)).toBe('300.04');
+
+    // ลงบนงวดที่ไม่เคยจ่าย → งวดชำระบางส่วนเศษสตางค์ไม่มีใบรับเงิน = ข้อเตือน PEAK_LOWER_UNEXPLAINED (ไม่บล็อก)
+    const c = prepaidContract();
+    const lower = planImport(syntheticBook([c], members), {
+      ...options([]),
+      peakRecon: syntheticRecon([[c, peakMatch(c, 'TESTC003', '12126.64')]]),
+    });
+    expect(lower.blockers).toEqual([]);
+    const lowerItem = item(lower, 'TEST-C-0003');
+    expect(money(lowerItem.payments[4].amountPaid)).toBe('0.04');
+    expect(lowerItem.warnings.filter((w) => w.startsWith('PEAK_LOWER_UNEXPLAINED'))).toHaveLength(
+      1,
+    );
+  });
+
+  it('contract status uses the system OVERDUE threshold (overdue_days_threshold, default 7) — not "late by one day"', () => {
+    const paid = Object.fromEntries(
+      Array.from({ length: 4 }, (_, i) => [i + 1, { paid: MONTHLY }]),
+    );
+    // งวด 5 ครบกำหนด 28 พ.ย. ยังไม่จ่าย = ค้าง ~3 วัน ณ วันตัด
+    const a = syntheticContract({
+      id: '20',
+      code: 'TEST-C-0020',
+      date: '2026-06-28',
+      memberId: M1.id,
+      firstDue: [2026, 6, 28],
+      installments: standardInstallments(paid),
+    });
+    const plan = planImport(syntheticBook([a], members), options([[a, 'TESTC001']]));
+    expect(item(plan, 'TEST-C-0020').status).toBe('ACTIVE');
+    const strict = planImport(
+      syntheticBook([a], members),
+      options([[a, 'TESTC001']], { overdueDaysThreshold: 1 }),
+    );
+    expect(item(strict, 'TEST-C-0020').status).toBe('OVERDUE');
+  });
+
+  it('canceled resolutions other than CANCELED / CLOSED_BAD_DEBT → CANCELED_RESOLUTION_UNSUPPORTED', () => {
+    const canceled = (id: string, code: string) =>
+      syntheticContract({
+        id,
+        code,
+        statusCode: '4',
+        date: '2026-02-01',
+        memberId: M2.id,
+        firstDue: [2026, 2, 1],
+      });
+    const x = canceled('21', 'TEST-C-0021');
+    const y = canceled('22', 'TEST-C-0022');
+    const z = canceled('23', 'TEST-C-0023');
+    const plan = planImport(
+      syntheticBook([x, y, z], members),
+      options([], {
+        canceledMap: new Map([
+          ['TEST-C-0021', 'TERMINATED'],
+          ['TEST-C-0022', 'EXCHANGED'],
+          ['TEST-C-0023', 'CLOSED_BAD_DEBT'],
+        ]),
+      }),
+    );
+    expect(plan.blockers).toEqual([
+      {
+        code: 'TEST-C-0021',
+        reason: 'CANCELED_RESOLUTION_UNSUPPORTED',
+        detail: { resolution: 'TERMINATED' },
+      },
+      {
+        code: 'TEST-C-0022',
+        reason: 'CANCELED_RESOLUTION_UNSUPPORTED',
+        detail: { resolution: 'EXCHANGED' },
+      },
+    ]);
+    expect(item(plan, 'TEST-C-0023').status).toBe('CLOSED_BAD_DEBT');
+  });
+
+  it('an interest rate that does not fit Decimal(5,4) → INTEREST_RATE_OUT_OF_RANGE; a duplicated legacy code → DUPLICATE_CONTRACT_CODE', () => {
+    const a = overdueContract();
+    const tiny = planImport(
+      syntheticBook([a], members),
+      options([[a, 'TESTC001']], {
+        moneyOverrides: new Map([
+          ['TEST-C-0001', { financedAmount: D(1), storeCommission: D(1000), vatAmount: D(1190) }],
+        ]),
+      }),
+    );
+    expect(tiny.blockers).toEqual([
+      {
+        code: 'TEST-C-0001',
+        reason: 'INTEREST_RATE_OUT_OF_RANGE',
+        detail: { interestRate: '1333.25' },
+      },
+    ]);
+
+    const twin = overdueContract({ id: '24', memberId: M2.id });
+    const dup = planImport(syntheticBook([a, twin], members), options([[a, 'TESTC001']]));
+    expect(dup.blockers).toEqual([
+      { code: 'TEST-C-0001', reason: 'DUPLICATE_CONTRACT_CODE' },
+      { code: 'TEST-C-0001', reason: 'DUPLICATE_CONTRACT_CODE' },
+    ]);
+    expect(dup.items).toEqual([]);
+  });
+
+  describe('other blockers', () => {
+    it('PEAK_NEGATIVE_REMAIN', () => {
+      const a = overdueContract();
+      const plan = planImport(syntheticBook([a], members), {
+        ...options([]),
+        peakRecon: syntheticRecon([[a, peakMatch(a, 'TESTC001', '-1')]]),
+      });
+      expect(plan.blockers).toEqual([
+        {
+          code: 'TEST-C-0001',
+          reason: 'PEAK_NEGATIVE_REMAIN',
+          detail: { invoiceCode: 'TEST-INV-TEST-C-0001' },
+        },
+      ]);
+    });
+
+    it('INSTALLMENT_OVERPAID (an ACTIVE installment paid above its billing)', () => {
+      const a = overdueContract({
+        installments: standardInstallments({
+          1: { paid: MONTHLY },
+          2: { paid: MONTHLY },
+          3: { paid: '1600' },
+        }),
+      });
+      const plan = planImport(syntheticBook([a], members), options([[a, 'TESTC001']]));
+      expect(plan.blockers).toEqual([
+        { code: 'TEST-C-0001', reason: 'INSTALLMENT_OVERPAID', detail: { installmentNos: '3' } },
+      ]);
+    });
+
+    it('OPENING_INPUT_INVALID (a negative paid amount reaches computeOpening)', () => {
+      const a = overdueContract();
+      const third = a.installments[2];
+      a.installments[2] = { ...third, paid: D('-10'), balance: third.amount.plus(10) };
+      a.receipts = a.receipts.filter((r) => r.installmentLegacyId !== third.legacyId);
+      a.receipts.push({
+        ...a.receipts[0],
+        legacyId: 'NEG-1',
+        installmentLegacyId: third.legacyId,
+        amount: D('-10'),
+        installment: D('-10'),
+      });
+      const plan = planImport(syntheticBook([a], members), options([[a, 'TESTC001']]));
+      expect(plan.blockers).toHaveLength(1);
+      expect(plan.blockers[0]).toMatchObject({
+        code: 'TEST-C-0001',
+        reason: 'OPENING_INPUT_INVALID',
+      });
+      expect(plan.blockers[0].detail?.message).toContain('OPENING_INPUT_INVALID');
+    });
+
+    it('MEMBER_NOT_FOUND and CUSTOMER_INPUT_INVALID', () => {
+      const a = overdueContract({ memberId: '999' });
+      const noCode = syntheticMember({ ...M2, id: '602', code: '' });
+      const b = prepaidContract();
+      const bNoCode = { ...b, order: { ...b.order, ref_member: '602' } };
+      const plan = planImport(
+        syntheticBook([a, bNoCode], [...members, noCode]),
+        options([
+          [a, 'TESTC001'],
+          [bNoCode, 'TESTC003'],
+        ]),
+      );
+      expect(plan.blockers.map((x) => [x.code, x.reason])).toEqual([
+        ['TEST-C-0001', 'MEMBER_NOT_FOUND'],
+        ['TEST-C-0003', 'CUSTOMER_INPUT_INVALID'],
+      ]);
+      expect(plan.blockers[1].detail?.message).toContain('member_code');
+    });
+
+    it('DUPLICATE_INSTALLMENT_CODE (Payment.legacyInstallmentCode is unique across the table)', () => {
+      const a = overdueContract();
+      const c = prepaidContract();
+      c.installments[0] = { ...c.installments[0], legacyCode: a.installments[0].legacyCode };
+      const plan = planImport(
+        syntheticBook([a, c], members),
+        options([
+          [a, 'TESTC001'],
+          [c, 'TESTC003'],
+        ]),
+      );
+      expect(plan.blockers.map((x) => [x.code, x.reason, x.detail?.installmentCode])).toEqual([
+        ['TEST-C-0001', 'DUPLICATE_INSTALLMENT_CODE', a.installments[0].legacyCode],
+        ['TEST-C-0003', 'DUPLICATE_INSTALLMENT_CODE', a.installments[0].legacyCode],
+      ]);
+    });
+
+    it('a satang gap that lands on a regular installment (the last one already paid) → ROUNDING_BEYOND_TOLERANCE', () => {
+      const a = overdueContract({
+        installments: standardInstallments({
+          ...Object.fromEntries(
+            Array.from({ length: 8 }, (_, i) => [i + 1, { amount: MONTHLY, paid: MONTHLY }]),
+          ),
+          9: { paid: '300' },
+          12: { paid: LAST, paidOn: new Date('2026-11-20T09:00:00+07:00') },
+        }),
+      });
+      const plan = planImport(syntheticBook([a], members), {
+        ...options([]),
+        peakRecon: syntheticRecon([[a, peakMatch(a, 'TESTC001', '4247.53', '18190.04')]]),
+      });
+      expect(plan.blockers).toEqual([
+        {
+          code: 'TEST-C-0001',
+          reason: 'OPENING_MISMATCH',
+          detail: {
+            mismatch: 'ROUNDING_BEYOND_TOLERANCE',
+            diff: '-0.04',
+            expectedRoundingDiff: '-0.04',
+            installmentNos: '11',
+          },
+        },
+      ]);
+    });
+
+    it('MONEY_READ_ERROR (a malformed detail cell)', () => {
+      const a = overdueContract({ detail: { installment_number: 'abc' } });
+      const plan = planImport(syntheticBook([a], members), options([[a, 'TESTC001']]));
+      expect(plan.blockers).toHaveLength(1);
+      expect(plan.blockers[0]).toMatchObject({ code: 'TEST-C-0001', reason: 'MONEY_READ_ERROR' });
+    });
   });
 
   it('a HISTORY contract whose PEAK invoice still has a remain > 0 → HISTORY_WITH_PEAK_REMAIN blocker', () => {

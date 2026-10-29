@@ -91,7 +91,10 @@ export type PeakBalanceResult =
       installments: LegacyInstallment[];
       /** PEAK − ระบบเก่า ที่ลงเป็นยอดจ่ายเพิ่ม (≤ 0 · PEAK สูงกว่า = 0) */
       adjustment: Decimal;
-      /** เศษสตางค์ที่ PEAK สูงกว่า (0 < เศษ ≤ 1.00) บวกเข้าค่างวดงวดสุดท้ายที่ยังค้าง (≥ 0) */
+      /**
+       * เศษสตางค์ของยอดผ่อนรวมที่ปรับเข้าค่างวดงวดสุดท้ายที่ยังค้าง (|เศษ| ≤ 1.00): บวก = PEAK สูงกว่า (เพิ่มค่างวด) ·
+       * ลบ = PEAK ต่ำกว่าเท่าส่วนต่างของยอดใบแจ้งหนี้ (ลดค่างวด) · 0 = ไม่ได้ปรับค่างวด
+       */
       satangGap: Decimal;
     }
   | { blocked: 'PEAK_HIGHER'; diff: Decimal };
@@ -255,8 +258,11 @@ export function checkInstallmentAmounts(
 /**
  * ทำยอดค้างของงวดให้เท่ายอดคงเหลือใน PEAK (ร่าง 4) — ยอดค้าง = `legacyOutstanding` (`peak-recon.ts` ตัวเดียวกับ
  * ที่จับคู่ PEAK: Σ `balance` ที่ > 0 · งวดที่จ่ายเกินไม่หักลบ)
- * - PEAK ค้างน้อยกว่า → เพิ่ม `paid` / ลด `balance` ของงวดที่ยังค้างตามลำดับในอาร์เรย์ (= วันครบกำหนด)
- *   จนยอดค้างเท่า PEAK · `adjustment` = PEAK − ระบบเก่า (≤ 0) ให้ลงรายงาน · `statusCode` ไม่เปลี่ยน
+ * - PEAK ค้างน้อยกว่าไม่เกิน 1.00 **และ** ส่วนต่างเท่าเศษของยอดผ่อนรวม (`opts.invoiceTotal` − Σ `amount` ±0.01 — ระบบเก่า
+ *   เรียกเก็บเกินใบแจ้งหนี้ไม่กี่สตางค์ กลับด้านของข้อถัดไป · คำตัดสินผู้คุมงาน I-2 ทาง ก) → **ลด** `amount` และ `balance`
+ *   ของงวดสุดท้ายที่ยังค้าง · `satangGap` ติดลบ · ไม่มียอดจ่ายเพิ่ม (งวดไม่กลายเป็นชำระบางส่วนปลอม)
+ * - PEAK ค้างน้อยกว่าแบบอื่น (เงินรับที่ระบบเก่าไม่ได้บันทึก) → เพิ่ม `paid` / ลด `balance` ของงวดที่ยังค้างตามลำดับในอาร์เรย์
+ *   (= วันครบกำหนด) จนยอดค้างเท่า PEAK · `adjustment` = PEAK − ระบบเก่า (≤ 0) ให้ลงรายงาน · `statusCode` ไม่เปลี่ยน
  * - PEAK ค้างมากกว่าไม่เกิน 1.00 (`LAST_INSTALLMENT_AMOUNT_TOLERANCE` — คำตัดสินผู้คุมงาน 29/10) = เศษสตางค์ของยอดผ่อนรวม
  *   ที่ PEAK แจ้งหนี้แต่ระบบเก่าไม่ได้ใส่ในงวดใด (ระบบเก่าเรียกเก็บค่างวดเท่ากันทุกงวด) → บวกเข้า `amount` และ `balance`
  *   ของ**งวดสุดท้ายที่ยังค้าง** (`balance > 0` ตัวท้ายสุดในอาร์เรย์) · `satangGap` = เศษนั้น · ยอดค้างเท่า PEAK พอดี ·
@@ -267,6 +273,9 @@ export function checkInstallmentAmounts(
 export function applyPeakBalance(
   inst: readonly LegacyInstallment[],
   peakRemain: Decimal,
+  opts: {
+    /** ยอดใบแจ้งหนี้ PEAK (`net_amount`) — ไม่ส่ง = ไม่มีการลดค่างวด */ invoiceTotal?: Decimal;
+  } = {},
 ): PeakBalanceResult {
   if (peakRemain.isNegative()) {
     throw new Error(`${PEAK_ERROR}: ยอดค้างใน PEAK ติดลบ — ต้องตรวจใบแจ้งหนี้ใน PEAK ก่อน`);
@@ -285,7 +294,28 @@ export function applyPeakBalance(
     return { installments, adjustment: ZERO, satangGap: diff };
   }
 
-  let remaining = diff.negated();
+  // PEAK ต่ำกว่าเท่าเศษของยอดผ่อนรวม (ใบแจ้งหนี้ต่ำกว่า Σ ค่างวดระบบเก่า ≤ 1.00 · ส่วนต่าง = เศษ ±0.01) → ลดค่างวดงวดสุดท้าย
+  // ที่ยังค้าง · ส่วนต่างแบบอื่น (เงินรับที่ระบบเก่าไม่ได้บันทึก) = ยอดจ่ายเพิ่มไล่จากงวดค้างงวดแรก (FIFO)
+  const last = inst.map((i) => i.balance.gt(0)).lastIndexOf(true);
+  const trim = diff.negated();
+  const grossDiff = opts.invoiceTotal?.minus(inst.reduce((s, i) => s.plus(i.amount), ZERO));
+  if (
+    diff.lt(0) &&
+    trim.lte(LAST_INSTALLMENT_AMOUNT_TOLERANCE) &&
+    grossDiff !== undefined &&
+    diff.minus(grossDiff).abs().lte(INSTALLMENT_AMOUNT_TOLERANCE) &&
+    last >= 0 &&
+    inst[last].balance.gte(trim)
+  ) {
+    const installments = inst.map((i, index) =>
+      index === last
+        ? { ...i, amount: i.amount.minus(trim), balance: i.balance.minus(trim) }
+        : { ...i },
+    );
+    return { installments, adjustment: ZERO, satangGap: diff };
+  }
+
+  let remaining = trim;
   const installments = inst.map((i) => {
     if (remaining.lte(0) || i.balance.lte(0)) return { ...i };
     const take = Prisma.Decimal.min(i.balance, remaining);

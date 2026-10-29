@@ -3,6 +3,7 @@ import type { ContractStatus, ProductCategory } from '@prisma/client';
 import { isValidThaiNationalId } from '@installment/shared';
 import { bangkokCalendarParts, bangkokDateString, bangkokStartOfDay } from '../../utils/date.util';
 import { dRound } from '../../utils/decimal.util';
+import { paymentBreakdowns } from '../../utils/installment.util';
 import { classifyContract, isOldForm, type CanceledResolution } from './classify';
 import { formatMoney } from './csv';
 import { toLegacyCustomerInput, type LegacyCustomerInput } from './customer';
@@ -12,6 +13,7 @@ import type { LegacyBook, LegacyContract, LegacyInstallment } from './legacy-boo
 import {
   applyPeakBalance,
   checkInstallmentAmounts,
+  INSTALLMENT_AMOUNT_TOLERANCE,
   LegacyMoneyError,
   mapContractMoney,
   type ContractMoney,
@@ -95,15 +97,25 @@ export type ImportOptions = {
    * (ตัวเขียนตรวจกับไฟล์ที่ได้รับอีกครั้งและรายงานใน `WriteReport.missingAttachments`)
    */
   files?: ReadonlyMap<string, LegacyFileDetail>;
+  /**
+   * วันค้างที่ทำให้สัญญาเป็น OVERDUE — SystemConfig `overdue_days_threshold` (ผู้เรียกอ่านจากฐาน) · ไม่ส่ง = 7
+   * ค่าเริ่มต้นเดียวกับ `OverdueLifecycleCronService.updateContractStatuses`
+   */
+  overdueDaysThreshold?: number;
 };
+
+/** ค่าเริ่มต้นของ `overdue_days_threshold` (`overdue-lifecycle-cron.service.ts` `updateContractStatuses`) */
+export const DEFAULT_OVERDUE_DAYS_THRESHOLD = 7;
 
 export const IMPORT_BLOCKER_REASONS = [
   'CANCELED_UNCONFIRMED',
+  'CANCELED_RESOLUTION_UNSUPPORTED',
   'CANCELED_MAP_UNKNOWN_CONTRACT',
   'CANCELED_MAP_NOT_CANCELED',
   'MONEY_OVERRIDE_UNKNOWN_CONTRACT',
   'CUSTOMER_OVERRIDE_UNKNOWN_MEMBER',
   'LEGACY_MONEY_INVALID',
+  'INTEREST_RATE_OUT_OF_RANGE',
   'MONEY_READ_ERROR',
   'INSTALLMENT_AMOUNT_MISMATCH',
   'PEAK_UNMATCHED',
@@ -120,6 +132,7 @@ export const IMPORT_BLOCKER_REASONS = [
   'CUSTOMER_INPUT_INVALID',
   'CUSTOMER_INVALID_NATIONAL_ID',
   'CUSTOMER_PEAK_CODE_CONFLICT',
+  'DUPLICATE_CONTRACT_CODE',
   'DUPLICATE_ACTIVE_IMEI',
   'DUPLICATE_INSTALLMENT_CODE',
   'PLAN_ERROR',
@@ -148,11 +161,15 @@ export type ImportBlocker = {
 /** คำอธิบายภาษาไทยของตัวบล็อก — ให้ Task 13 พิมพ์ใน `blockers.csv` */
 export const BLOCKER_REASON_TEXT: Record<ImportBlockerReason, string> = {
   CANCELED_UNCONFIRMED: 'สัญญายกเลิก/หนี้เสียที่เจ้าของยังไม่ยืนยันผล (--canceled-map)',
+  CANCELED_RESOLUTION_UNSUPPORTED:
+    'ผลของสัญญายกเลิก/หนี้เสียที่นำเข้าได้มีแค่ CANCELED (ยกเลิกสัญญา) หรือ CLOSED_BAD_DEBT (ปิดเป็นหนี้สูญ) — แก้ไฟล์ --canceled-map ให้เลือกหนึ่งในสองค่านี้',
   CANCELED_MAP_UNKNOWN_CONTRACT: 'ไฟล์ --canceled-map มีเลขสัญญาที่ไม่มีในระบบเก่า',
   CANCELED_MAP_NOT_CANCELED: 'ไฟล์ --canceled-map มีสัญญาที่ไม่ใช่สถานะยกเลิก/หนี้เสีย',
   MONEY_OVERRIDE_UNKNOWN_CONTRACT: 'ไฟล์ --money-overrides มีเลขสัญญาที่ไม่มีในระบบเก่า',
   CUSTOMER_OVERRIDE_UNKNOWN_MEMBER: 'ไฟล์ --customer-overrides มีรหัสสมาชิกที่ไม่มีในระบบเก่า',
   LEGACY_MONEY_INVALID: 'ยอดจัดหรือค่างวดของสัญญาไม่เป็นบวก (แก้ยอดจัดด้วย --money-overrides)',
+  INTEREST_RATE_OUT_OF_RANGE:
+    'อัตราดอกเบี้ยต่อเดือนที่คำนวณได้อยู่นอกช่วงที่เก็บได้ (0 ถึง 9.9999) — ตรวจยอดจัดของสัญญา (--money-overrides)',
   MONEY_READ_ERROR: 'อ่านยอดเงินของสัญญาไม่ได้',
   INSTALLMENT_AMOUNT_MISMATCH:
     'ค่างวดในระบบเก่าไม่ตรงกับตัวคำนวณ (เกินเกณฑ์ปัดเศษ) — แก้ด้วย --money-overrides หรือตรวจสัญญา',
@@ -175,6 +192,7 @@ export const BLOCKER_REASON_TEXT: Record<ImportBlockerReason, string> = {
     'เลขบัตรประชาชนว่างหรือผิด checksum — ผูกลูกค้าเองด้วย --customer-overrides',
   CUSTOMER_PEAK_CODE_CONFLICT:
     'ลูกค้าคนเดียวได้รหัสผู้ติดต่อ PEAK สองรหัส — สำนักงานบัญชีต้องรวมผู้ติดต่อใน PEAK ก่อน',
+  DUPLICATE_CONTRACT_CODE: 'เลขสัญญาเดิมซ้ำกันในระบบเก่า',
   DUPLICATE_ACTIVE_IMEI: 'IMEI เดียวกันอยู่ในสัญญาผ่อนอยู่มากกว่าหนึ่งสัญญา',
   DUPLICATE_INSTALLMENT_CODE: 'รหัสงวดเดิมซ้ำกันระหว่างสัญญาที่นำเข้า',
   PLAN_ERROR: 'คำนวณแผนนำเข้าของสัญญานี้ไม่ได้',
@@ -186,7 +204,8 @@ export const BLOCKER_REASON_TEXT: Record<ImportBlockerReason, string> = {
   CONTRACT_NUMBER_TAKEN: 'เลขสัญญาเดิมถูกใช้เป็นเลขสัญญาใน BESTCHOICE แล้ว',
   CONTRACT_CODE_DELETED:
     'เลขสัญญาเดิมนี้ถูกนำเข้าแล้วและถูกลบ (soft delete) — ต้องตรวจก่อนนำเข้าใหม่',
-  PRODUCT_CODE_TAKEN: 'รหัสเครื่องเดิม (legacyProductCode) ผูกกับสัญญาอื่นใน BESTCHOICE แล้ว',
+  PRODUCT_CODE_TAKEN:
+    'รหัสเครื่องเดิม (legacyProductCode) มีอยู่แล้วใน BESTCHOICE (รวมแถวที่ถูกลบ — detail.deleted) — ตรวจแถวนั้นก่อนนำเข้า',
   IMEI_TAKEN: 'IMEI ของสัญญาผ่อนอยู่เป็นของสินค้าอื่นใน BESTCHOICE (ยังไม่ถูกลบ)',
   INSTALLMENT_CODE_TAKEN: 'รหัสงวดเดิมมีอยู่แล้วใน BESTCHOICE',
 };
@@ -214,6 +233,17 @@ export type PlannedScheduleRow = {
   amountDue: Decimal | null;
 };
 
+/**
+ * งวดที่จะเขียน — `PaymentDraft` + ยอดแยกแบบเดียวกับแถวของสัญญาที่เปิดในระบบ (`paymentBreakdowns` ตัวเดียวกับ
+ * `generatePaymentSchedule`) · สี่ยอดรวม = `amountDue` (เศษของยอดเรียกเก็บลง VAT)
+ */
+export type PlannedPayment = PaymentDraft & {
+  monthlyPrincipal: Decimal;
+  monthlyInterest: Decimal;
+  monthlyCommission: Decimal;
+  vatAmount: Decimal;
+};
+
 export type PlannedContract = {
   /** `contract_id` ของระบบเก่า */
   legacyId: string;
@@ -236,16 +266,19 @@ export type PlannedContract = {
     remain: Decimal;
     /** PEAK − ระบบเก่า (≤ 0) ที่ `applyPeakBalance` ลงเป็นยอดจ่ายเพิ่ม (HISTORY = 0) */
     adjustment: Decimal;
-    /** เศษสตางค์ที่ PEAK สูงกว่า (≤ 1.00) บวกเข้าค่างวดงวดสุดท้ายที่ยังค้าง (HISTORY = 0) */
+    /**
+     * เศษสตางค์ของยอดผ่อนรวมที่ปรับเข้าค่างวดงวดสุดท้ายที่ยังค้าง (|เศษ| ≤ 1.00 · HISTORY = 0): บวก = PEAK สูงกว่า
+     * (เพิ่มค่างวด) · ลบ = PEAK ต่ำกว่าเท่าส่วนต่างของยอดใบแจ้งหนี้ (ลดค่างวด)
+     */
     satangGap: Decimal;
-    /** งวดที่รับเศษสตางค์ (`satangGap` = 0 → null) */
+    /** งวดที่ปรับเศษสตางค์ (`satangGap` = 0 → null) */
     satangGapInstallmentNo: number | null;
   } | null;
   product: PlannedProduct;
   /** ACTIVE: ทุกงวด · HISTORY: ว่าง */
   schedule: PlannedScheduleRow[];
-  /** ACTIVE: ทุกงวด · HISTORY: เฉพาะงวดที่มียอดจ่าย — `paidDate` เติมแล้ว (ดูหัวไฟล์) */
-  payments: PaymentDraft[];
+  /** ACTIVE: ทุกงวด · HISTORY: เฉพาะงวดที่มียอดจ่าย — `paidDate` เติมแล้ว (ดูหัวไฟล์) · มียอดแยก */
+  payments: PlannedPayment[];
   evidences: EvidenceDraft[];
   documents: DocumentDraft[];
   /** ACTIVE เท่านั้น */
@@ -280,9 +313,12 @@ export type ImportTotals = {
   outstanding: Decimal;
   peakRemain: Decimal;
   peakAdjustment: Decimal;
-  /** Σ เศษสตางค์ที่บวกเข้าค่างวดตามใบแจ้งหนี้ PEAK (ตารางเชื่อมยอด) */
+  /** Σ เศษสตางค์ที่บวกเข้าค่างวดตามใบแจ้งหนี้ PEAK (ตารางเชื่อมยอด · บวกเท่านั้น) */
   satangGap: Decimal;
   satangGapContracts: number;
+  /** Σ เศษสตางค์ที่ลดออกจากค่างวด (PEAK ต่ำกว่าเท่าเศษของยอดใบแจ้งหนี้ · ติดลบ) */
+  satangTrim: Decimal;
+  satangTrimContracts: number;
   roundingDiff: Decimal;
   roundingContracts: number;
   /** งวด PAID ที่ใช้วันตัดเป็นวันชำระ */
@@ -393,6 +429,10 @@ function contractNotes(
     lines.push(
       `ค่างวด ${peak.satangGapInstallmentNo} รวมเศษสตางค์ ${formatMoney(peak.satangGap)} ตามยอดผ่อนรวมในใบแจ้งหนี้ PEAK ${peak.invoiceCode}`,
     );
+  } else if (peak && peak.satangGap.lt(0)) {
+    lines.push(
+      `ค่างวด ${peak.satangGapInstallmentNo} ลดเศษสตางค์ ${formatMoney(peak.satangGap.negated())} ตามยอดผ่อนรวมในใบแจ้งหนี้ PEAK ${peak.invoiceCode}`,
+    );
   }
   if (c.close) {
     lines.push(
@@ -414,6 +454,54 @@ function withPaidDates(payments: PaymentDraft[], cutoff: Date): PaymentDraft[] {
 }
 
 const sumOf = (values: readonly Decimal[]) => values.reduce((s, v) => s.plus(v), ZERO);
+
+/**
+ * สถานะของสัญญาผ่อนอยู่ตามเกณฑ์ของระบบเอง (`OverdueLifecycleCronService.updateContractStatuses` ขั้น ACTIVE → OVERDUE):
+ * มีงวด `PENDING` / `PARTIALLY_PAID` / `OVERDUE` ที่ `dueDate` < วันตัด − `overdue_days_threshold` วัน = OVERDUE ไม่งั้น ACTIVE
+ * (ไม่ใช่ "ค้างแม้วันเดียว" ของ `classify.ts` — กันสัญญาที่ค้างไม่กี่วันเป็น OVERDUE ตั้งแต่นำเข้า)
+ */
+function activeStatus(payments: readonly PaymentDraft[], opts: ImportOptions): ContractStatus {
+  const days = opts.overdueDaysThreshold ?? DEFAULT_OVERDUE_DAYS_THRESHOLD;
+  const threshold = opts.cutoff.getTime() - days * DAY_MS;
+  return payments.some((p) => p.status !== 'PAID' && p.dueDate.getTime() < threshold)
+    ? 'OVERDUE'
+    : 'ACTIVE';
+}
+
+/**
+ * ยอดแยกต่องวดด้วย `paymentBreakdowns` (สูตรของ `generatePaymentSchedule`) — `amounts` = ยอดเรียกเก็บของ**ทุกงวด** 1..n ตามลำดับ
+ * (สัญญาประวัติส่งค่างวดของระบบเก่าทุกงวด แม้นำเข้าเฉพาะงวดที่มียอดจ่าย — งวดสุดท้ายรับเศษตามลำดับเดียวกับระบบ)
+ */
+function withBreakdowns(
+  payments: readonly PaymentDraft[],
+  money: ContractMoney,
+  amounts: readonly Decimal[],
+): PlannedPayment[] {
+  const rows = paymentBreakdowns(
+    {
+      principal: money.financedAmount.toNumber(),
+      interestTotal: money.interestTotal.toNumber(),
+      storeCommission: money.storeCommission.toNumber(),
+      vatAmount: money.vatAmount.toNumber(),
+    },
+    money.totalMonths,
+    amounts.map((a) => a.toNumber()),
+  );
+  const D = (n: number) => new Prisma.Decimal(n.toFixed(2));
+  return payments.map((p) => {
+    const row = rows[p.installmentNo - 1];
+    if (!row) {
+      throw new Error(`planImport: ไม่มียอดแยกของงวด ${p.installmentNo} (มี ${rows.length} งวด)`);
+    }
+    return {
+      ...p,
+      monthlyPrincipal: D(row.principal),
+      monthlyInterest: D(row.interest),
+      monthlyCommission: D(row.commission),
+      vatAmount: D(row.vat),
+    };
+  });
+}
 
 type Accounting = Pick<
   PlannedContract,
@@ -446,7 +534,7 @@ function planActive(
     throw block(c.code, 'PEAK_NEGATIVE_REMAIN', { invoiceCode: match.invoice.invoiceCode });
   }
   const rounded = roundInstallments(c.installments);
-  const balanced = applyPeakBalance(rounded, remain);
+  const balanced = applyPeakBalance(rounded, remain, { invoiceTotal: match.invoice.netAmount });
   if ('blocked' in balanced) {
     throw block(c.code, 'PEAK_HIGHER', {
       invoiceCode: match.invoice.invoiceCode,
@@ -455,6 +543,26 @@ function planActive(
   }
   const installments = balanced.installments;
   const adjusted: LegacyContract = { ...c, installments };
+  // เศษที่บวกเข้าค่างวดแต่ไม่เท่าเศษของยอดผ่อนรวม (ยอดใบแจ้งหนี้ − Σ ค่างวดระบบเก่า) — ไม่ใช่เศษปัด ให้สำนักงานบัญชีดู
+  const grossDiff = match.invoice.netAmount.minus(sumOf(rounded.map((i) => i.amount)));
+  if (
+    balanced.satangGap.gt(0) &&
+    balanced.satangGap.minus(grossDiff).abs().gt(INSTALLMENT_AMOUNT_TOLERANCE)
+  ) {
+    warnings.push(
+      `SATANG_GAP_UNEXPLAINED: สัญญา ${c.code}: เศษ ${formatMoney(balanced.satangGap)} ที่บวกเข้าค่างวดไม่เท่าส่วนต่างยอดใบแจ้งหนี้ PEAK ${match.invoice.invoiceCode} กับยอดผ่อนรวมระบบเก่า (${formatMoney(grossDiff)})`,
+    );
+  }
+  // ยอดจ่ายที่ได้จากการปรับตาม PEAK ≤ 1 บาทบนงวดที่ไม่เคยจ่าย = งวดชำระบางส่วนเศษสตางค์ที่ไม่มีใบรับเงิน
+  // (PEAK ต่ำกว่าแบบที่ไม่ใช่เศษของยอดใบแจ้งหนี้พอดี) — ไม่บล็อก ให้สำนักงานบัญชีตรวจ (cron ค่าปรับข้ามงวดที่มียอดจ่าย)
+  installments.forEach((inst, i) => {
+    const added = inst.paid.minus(rounded[i].paid);
+    if (rounded[i].paid.isZero() && added.gt(0) && added.lte(1)) {
+      warnings.push(
+        `PEAK_LOWER_UNEXPLAINED: สัญญา ${c.code} งวด ${i + 1}: ยอดจ่าย ${formatMoney(added)} มาจากยอดคงเหลือ PEAK ${match.invoice.invoiceCode} ที่ต่ำกว่าระบบเก่า (ไม่ใช่เศษของยอดใบแจ้งหนี้) — งวดนี้เป็นชำระบางส่วนโดยไม่มีใบรับเงิน`,
+      );
+    }
+  });
 
   const schedule = buildImportSchedule(c.contractId, money, installments, c.createdAt).map(
     (row) => ({
@@ -515,23 +623,26 @@ function planActive(
   }
   if (opening.openingLines.length === 0) throw block(c.code, 'ACTIVE_NOTHING_OUTSTANDING');
 
-  // สถานะตามงวดหลังปรับตาม PEAK (กติกาเดียวกับ classify.ts) — งวดที่ PEAK ปิดให้ไม่ทำให้สัญญาค้าง
-  const status = classifyContract(adjusted, opts.cutoff, opts.canceledMap).status as ContractStatus;
+  const payments = withBreakdowns(
+    withPaidDates(mapping.payments, opts.cutoff),
+    money,
+    mapping.payments.map((p) => p.amountDue),
+  );
   return {
     money,
-    status,
+    status: activeStatus(payments, opts),
     peak: {
       invoiceCode: match.invoice.invoiceCode,
       contactCode: match.invoice.contactCode,
       remain,
       adjustment: balanced.adjustment,
       satangGap: balanced.satangGap,
-      satangGapInstallmentNo: balanced.satangGap.gt(0)
-        ? installments.findIndex((inst, i) => !inst.amount.eq(rounded[i].amount)) + 1
-        : null,
+      satangGapInstallmentNo: balanced.satangGap.isZero()
+        ? null
+        : installments.findIndex((inst, i) => !inst.amount.eq(rounded[i].amount)) + 1,
     },
     schedule,
-    payments: withPaidDates(mapping.payments, opts.cutoff),
+    payments,
     evidences: mapping.evidences,
     opening,
     roundingDiff: opening.roundingDiff,
@@ -578,7 +689,11 @@ function planHistory(
         }
       : null,
     schedule: [],
-    payments: withPaidDates(mapping.payments, opts.cutoff),
+    payments: withBreakdowns(
+      withPaidDates(mapping.payments, opts.cutoff),
+      money,
+      roundInstallments(c.installments).map((i) => i.amount),
+    ),
     evidences: mapping.evidences,
     opening: null,
     roundingDiff: ZERO,
@@ -591,6 +706,9 @@ export function planImport(book: LegacyBook, opts: ImportOptions): ImportPlan {
   const skipped: ImportPlan['skipped'] = [];
   const oldFormCodes: string[] = [];
   const byCode = new Map(book.contracts.map((c) => [c.code, c]));
+  // เลขสัญญาเดิมซ้ำใน book (legacy-book ตรวจตอนอ่าน dump — book สังเคราะห์/ประกอบเองอาจไม่ผ่านด่านนั้น)
+  const codeCount = new Map<string, number>();
+  for (const c of book.contracts) codeCount.set(c.code, (codeCount.get(c.code) ?? 0) + 1);
 
   // ── ไฟล์ของเจ้าของ: รหัสที่ไม่มีในระบบเก่า ──
   for (const [code] of opts.canceledMap) {
@@ -661,6 +779,24 @@ export function planImport(book: LegacyBook, opts: ImportOptions): ImportPlan {
       }
       continue;
     }
+    if ((codeCount.get(c.code) ?? 0) > 1) {
+      blockers.push({ code: c.code, reason: 'DUPLICATE_CONTRACT_CODE' });
+      continue;
+    }
+    // ผลของสัญญายกเลิกที่นำเข้าได้: CANCELED / CLOSED_BAD_DEBT เท่านั้น (TERMINATED = ค้างคิว "รอยึดเครื่อง" ถาวร ·
+    // EXCHANGED = ไม่มีสัญญาใหม่ให้ลิงก์)
+    if (
+      (c.statusCode === '4' || c.statusCode === '5') &&
+      cls.status !== 'CANCELED' &&
+      cls.status !== 'CLOSED_BAD_DEBT'
+    ) {
+      blockers.push({
+        code: c.code,
+        reason: 'CANCELED_RESOLUTION_UNSUPPORTED',
+        detail: { resolution: cls.status ?? '' },
+      });
+      continue;
+    }
     const kind = cls.kind;
     const oldForm = isOldForm(c);
     if (kind === 'ACTIVE' && oldForm) oldFormCodes.push(c.code);
@@ -725,6 +861,16 @@ export function planImport(book: LegacyBook, opts: ImportOptions): ImportPlan {
         }
         throw block(c.code, 'MONEY_READ_ERROR', {
           message: error instanceof Error ? error.message : String(error),
+        });
+      }
+      // Contract.interestRate = Decimal(5,4) — นอกช่วง = Prisma error กลางธุรกรรม แทนที่จะเป็นแถวตัวบล็อก
+      if (
+        money.interestRate.isNegative() ||
+        !money.interestRate.lt(10) ||
+        money.interestRate.decimalPlaces() > 4
+      ) {
+        throw block(c.code, 'INTEREST_RATE_OUT_OF_RANGE', {
+          interestRate: money.interestRate.toString(),
         });
       }
       accounting =
@@ -879,6 +1025,8 @@ function totalsOf(items: PlannedContract[], skipped: number, blocked: number): I
   let peakAdjustment = ZERO;
   let satangGap = ZERO;
   let satangGapContracts = 0;
+  let satangTrim = ZERO;
+  let satangTrimContracts = 0;
   let roundingDiff = ZERO;
   let roundingContracts = 0;
   let paidDateFromCutoff = 0;
@@ -901,8 +1049,13 @@ function totalsOf(items: PlannedContract[], skipped: number, blocked: number): I
     );
     peakRemain = peakRemain.plus(item.peak.remain);
     peakAdjustment = peakAdjustment.plus(item.peak.adjustment);
-    satangGap = satangGap.plus(item.peak.satangGap);
-    if (item.peak.satangGap.gt(0)) satangGapContracts++;
+    if (item.peak.satangGap.gt(0)) {
+      satangGap = satangGap.plus(item.peak.satangGap);
+      satangGapContracts++;
+    } else if (item.peak.satangGap.lt(0)) {
+      satangTrim = satangTrim.plus(item.peak.satangGap);
+      satangTrimContracts++;
+    }
     roundingDiff = roundingDiff.plus(item.roundingDiff);
     if (!item.roundingDiff.isZero()) roundingContracts++;
   }
@@ -925,6 +1078,8 @@ function totalsOf(items: PlannedContract[], skipped: number, blocked: number): I
     peakAdjustment,
     satangGap,
     satangGapContracts,
+    satangTrim,
+    satangTrimContracts,
     roundingDiff,
     roundingContracts,
     paidDateFromCutoff,

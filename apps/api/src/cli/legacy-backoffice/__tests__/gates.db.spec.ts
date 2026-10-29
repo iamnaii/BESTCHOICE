@@ -11,6 +11,7 @@ import { TEST_NAME_PREFIX } from '../../../utils/test-data-markers';
 import { legacyFileContentType, type LegacyFileDetail } from '../files';
 import type { DumpRow } from '../dump-reader';
 import type { LegacyContract } from '../legacy-book';
+import type { PeakMatch } from '../peak-recon';
 import { planImport, type ImportPlan } from '../plan-import';
 import { writeLegacyImport, type WriteReport, type WriterDeps } from '../writer';
 import {
@@ -19,6 +20,7 @@ import {
   loadContractGl,
   runGates,
   sampleForManualCheck,
+  type GateOptions,
   type GateResult,
 } from '../gates';
 import {
@@ -34,7 +36,7 @@ import {
 } from './synthetic-book';
 
 /**
- * ด่านตรวจก่อนเปิดใช้ (Task 12) — ข้อมูลสังเคราะห์ทั้งหมด (เลขสัญญา TEST-T12-<stamp>-…, เลขบัตรขึ้นต้น 09 ที่คำนวณหลักตรวจเอง,
+ * ด่านตรวจก่อนเปิดใช้ (Task 12 + รอบแก้ 1) — ข้อมูลสังเคราะห์ทั้งหมด (เลขสัญญา TEST-T12-<stamp>-…, เลขบัตรขึ้นต้น 09 ที่คำนวณหลักตรวจเอง,
  * เบอร์ 0975…, IMEI 35997…) · ทุกเทสต์เขียนแผนด้วย `writeLegacyImport` ในธุรกรรมแล้ว rollback (ไม่มีแถวค้าง) ·
  * แถวนอกธุรกรรมมีแค่สาขา + ผู้ใช้ระบบ (ลบใน afterAll)
  *
@@ -214,6 +216,8 @@ describeDb('runGates (real DB, inside the import transaction)', () => {
   let userId = '';
 
   let plan: ImportPlan;
+  let planWithFiles: ImportPlan;
+  const peakCodes: string[] = [];
   let files: Map<string, LegacyFileDetail>;
   let missingPath = '';
   const phones: string[] = [];
@@ -364,18 +368,33 @@ describeDb('runGates (real DB, inside the import transaction)', () => {
     });
     const outstanding = (x: LegacyContract) =>
       x.installments.reduce((s, i) => (i.balance.gt(0) ? s.plus(i.balance) : s), D(0));
-    plan = planImport(syntheticBook([c.overdue, c.payoff, c.prepaid, c.old, c.canceled], members), {
+    /** ยอดใบแจ้งหนี้ PEAK สูงกว่าผลรวมค่างวดเท่าเศษ (เศษของยอดผ่อนรวม — อธิบายเศษสตางค์ที่บวกเข้างวดสุดท้ายได้) */
+    const withGross = (m: PeakMatch, extra: string): PeakMatch => ({
+      ...m,
+      invoice: { ...m.invoice, netAmount: m.invoice.netAmount.plus(extra) },
+      grossDiff: m.grossDiff.plus(extra),
+    });
+    peakCodes.push(...['A', 'B', 'C', 'D'].map((x) => `T12${x}${stamp}`));
+    const book = syntheticBook([c.overdue, c.payoff, c.prepaid, c.old, c.canceled], members);
+    const opts: Parameters<typeof planImport>[1] = {
       cutoff: CUTOFF,
       peakRecon: syntheticRecon([
-        [c.overdue, peakMatch(c.overdue, `T12A${stamp}`)],
-        [c.payoff, peakMatch(c.payoff, `T12B${stamp}`, '0')],
-        [c.prepaid, peakMatch(c.prepaid, `T12C${stamp}`, outstanding(c.prepaid).plus('0.37'))],
-        [c.old, peakMatch(c.old, `T12D${stamp}`, outstanding(c.old).minus('15.87'))],
+        [c.overdue, peakMatch(c.overdue, peakCodes[0])],
+        [c.payoff, peakMatch(c.payoff, peakCodes[1], '0')],
+        [
+          c.prepaid,
+          withGross(
+            peakMatch(c.prepaid, peakCodes[2], outstanding(c.prepaid).plus('0.37')),
+            '0.37',
+          ),
+        ],
+        [c.old, peakMatch(c.old, peakCodes[3], outstanding(c.old).minus('15.87'))],
       ]),
       canceledMap: new Map([[c.canceled.code, 'CANCELED']]),
       moneyOverrides: new Map(),
       customerOverrides: new Map(),
-    });
+    };
+    plan = planImport(book, opts);
     expect(plan.blockers).toEqual([]);
     expect(plan.items.map((i) => [i.code, i.kind, i.status])).toEqual(
       expect.arrayContaining([
@@ -400,6 +419,9 @@ describeDb('runGates (real DB, inside the import transaction)', () => {
         contentType: legacyFileContentType(path),
       });
     }
+    // แผนที่รู้ผลอัปโหลด (Task 13 ส่ง `files` ให้ planImport) — สัญญา 3 ขาดไฟล์สัญญาหนึ่งไฟล์
+    planWithFiles = planImport(book, { ...opts, files });
+    expect(planWithFiles.items.flatMap((i) => i.missingAttachments)).toEqual([missingPath]);
   }, 120_000);
 
   afterAll(async () => {
@@ -422,7 +444,7 @@ describeDb('runGates (real DB, inside the import transaction)', () => {
 
   const journal = () => new JournalAutoService(prisma as unknown as PrismaService);
 
-  function deps(): WriterDeps {
+  function deps(override: Partial<WriterDeps> = {}): WriterDeps {
     return {
       journal: journal(),
       pii,
@@ -431,16 +453,18 @@ describeDb('runGates (real DB, inside the import transaction)', () => {
       systemUserId: userId,
       files,
       importBatch: `t12-${stamp.toLowerCase()}`,
+      ...override,
     };
   }
 
   /** เขียนแผนในธุรกรรม → `fn` → rollback เสมอ · คืนค่าที่ `fn` คืน */
   async function inImport<T>(
     fn: (tx: Prisma.TransactionClient, report: WriteReport) => Promise<T>,
+    setup: { plan?: ImportPlan; deps?: Partial<WriterDeps> } = {},
   ): Promise<T> {
     const outcome = await prisma
       .$transaction(async (tx) => {
-        const report = await writeLegacyImport(tx, plan, deps());
+        const report = await writeLegacyImport(tx, setup.plan ?? plan, deps(setup.deps));
         throw new Rollback(await fn(tx, report));
       }, TX)
       .then(
@@ -451,8 +475,59 @@ describeDb('runGates (real DB, inside the import transaction)', () => {
     return outcome.value as T;
   }
 
+  /** ผลของด่านต้องไม่มีข้อมูลลูกค้า / id / รหัสผู้ติดต่อ PEAK / รหัสสมาชิก (ตรวจทุกเทสต์ รวม failures) */
+  function expectNoCustomerData(results: GateResult[], report: WriteReport, extra: string[] = []) {
+    const text = JSON.stringify(results);
+    const forbidden = [
+      ...phones,
+      ...nationalIds,
+      ...peakCodes,
+      ...plan.items.map((i) => i.memberCode),
+      ...report.customers.map((x) => x.customerId),
+      ...report.contractIds.values(),
+      TEST_NAME_PREFIX,
+      ...extra,
+    ];
+    for (const value of forbidden) expect(text).not.toContain(value);
+  }
+
+  /**
+   * เขียนแผน → `mutate` → `runGates` → rollback · ตรวจว่าผลไม่มีข้อมูลลูกค้า แล้วคืนผล
+   * (`gateOpts.cutoff` = วันตัดที่ส่งให้ runGates — ค่าเริ่มต้น `CUTOFF`)
+   */
+  async function gatesAfter(
+    mutate: (tx: Prisma.TransactionClient, report: WriteReport) => Promise<unknown>,
+    setup: {
+      plan?: ImportPlan;
+      deps?: Partial<WriterDeps>;
+      cutoff?: Date;
+      gateOpts?: GateOptions;
+      forbidden?: string[];
+    } = {},
+  ): Promise<GateResult[]> {
+    const { results, report } = await inImport(async (tx, report) => {
+      await mutate(tx, report);
+      return {
+        report,
+        results: await runGates(
+          tx,
+          setup.plan ?? plan,
+          report,
+          setup.cutoff ?? CUTOFF,
+          setup.gateOpts,
+        ),
+      };
+    }, setup);
+    expect(results.map((r) => r.id)).toEqual([...GATE_IDS]);
+    expectNoCustomerData(results, report, setup.forbidden);
+    return results;
+  }
+
   const idOf = (report: WriteReport, legacy: LegacyContract) =>
     report.contractIds.get(legacy.code) as string;
+
+  const scheduleRow = (tx: Prisma.TransactionClient, contractId: string, installmentNo: number) =>
+    tx.installmentSchedule.findFirstOrThrow({ where: { contractId, installmentNo } });
 
   const post = (
     tx: Prisma.TransactionClient,
@@ -473,43 +548,78 @@ describeDb('runGates (real DB, inside the import transaction)', () => {
       tx,
     );
 
+  const codesOf = (results: GateResult[], id: GateResult['id']) =>
+    [...new Set((gate(results, id).failures ?? []).map((f) => f.code))].sort();
+  const detailsOf = (results: GateResult[], id: GateResult['id']) =>
+    (gate(results, id).failures ?? []).map((f) => f.detail).join('\n');
+
+  // ── ผ่านทุกด่าน ──────────────────────────────────────────────────────────────────────────────
+
   it('every gate passes on the freshly written book; details carry no customer data or ids', async () => {
-    const { results, report, withBook } = await inImport(async (tx, report) => ({
-      report,
-      results: await runGates(tx, plan, report, CUTOFF, { bookContracts: 5 }),
-      withBook: await runGates(tx, plan, report, CUTOFF, { bookContracts: 6 }),
-    }));
-    expect(results.map((r) => r.id)).toEqual([...GATE_IDS]);
+    const results = await gatesAfter(async () => undefined, { gateOpts: { bookContracts: 5 } });
     expect(results.filter((r) => !r.pass)).toEqual([]);
-    expect(results.every((r) => (r.failures ?? []).length === 0)).toBe(true);
-    // 6.1: dump นับ 6 แต่แผนนับได้ 5 → ไม่ผ่านเฉพาะ 6.1
-    expect(failing(withBook)).toEqual(['6.1']);
-
-    const text = JSON.stringify(results);
-    const forbidden = [
-      ...phones,
-      ...nationalIds,
-      ...report.customers.map((x) => x.customerId),
-      ...report.contractIds.values(),
-      'ทดสอบระบบ',
-    ];
-    for (const value of forbidden) expect(text).not.toContain(value);
-
+    expect(results.every((r) => r.failures === undefined)).toBe(true);
     expect(gate(results, '6.2').detail).toContain('0.37');
     expect(gate(results, '6.2').detail).toContain('-15.87');
     expect(gate(results, '6.4').detail).toContain('0.37');
+    expect(gate(results, '6.5').detail).toMatch(/ตั้งบางส่วน 1/);
     expect(gate(results, '6.10').detail).toMatch(/ผ่อนอยู่ 3 สัญญา/);
+    expect(gate(results, '6.10').detail).toContain('การส่งผ่าน PEAK API ยังไม่กรอง');
   }, 120_000);
 
-  it('a rerun report (every contract skippedExisting) — gates find the contracts by legacy code and still pass', async () => {
-    const { again, results } = await inImport(async (tx) => {
-      const again = await writeLegacyImport(tx, plan, { ...deps(), importBatch: 't12-rerun' });
-      return { again, results: await runGates(tx, plan, again, CUTOFF) };
+  it('6.1 — dump count ≠ plan count, or a cutoff other than plan.cutoff', async () => {
+    expect(
+      failing(await gatesAfter(async () => undefined, { gateOpts: { bookContracts: 6 } })),
+    ).toEqual(['6.1']);
+    const later = await gatesAfter(async () => undefined, {
+      cutoff: new Date(CUTOFF.getTime() + 86_400_000),
+    });
+    expect(failing(later)).toEqual(['6.1']);
+    expect(detailsOf(later, '6.1')).toContain('วันตัด');
+  }, 120_000);
+
+  it('a plan that knows the uploaded files: passes with planFiles; a file the writer dropped but the plan did not → 6.1', async () => {
+    expect(
+      failing(
+        await gatesAfter(async () => undefined, {
+          plan: planWithFiles,
+          gateOpts: { planFiles: true },
+        }),
+      ),
+    ).toEqual([]);
+    const slip = c.overdue.receipts[0].slipPath as string;
+    const dropped = new Map(files);
+    dropped.delete(slip);
+    const results = await gatesAfter(async () => undefined, {
+      plan: planWithFiles,
+      deps: { files: dropped },
+      gateOpts: { planFiles: true },
+    });
+    expect(failing(results)).toEqual(['6.1']);
+    expect(codesOf(results, '6.1')).toEqual([c.overdue.code]);
+    expect(detailsOf(results, '6.1')).toMatch(/ไฟล์ที่แผนพบว่าหาย/);
+  }, 120_000);
+
+  it('a rerun report (every contract skippedExisting) passes; drifted rows of an existing contract still fail 6.1', async () => {
+    const { again, clean, drifted } = await inImport(async (tx) => {
+      const again = await writeLegacyImport(tx, plan, deps({ importBatch: 't12-rerun' }));
+      const clean = await runGates(tx, plan, again, CUTOFF);
+      const id = (
+        await tx.contract.findUniqueOrThrow({ where: { legacyContractCode: c.overdue.code } })
+      ).id;
+      await tx.payment.updateMany({
+        where: { contractId: id, installmentNo: 12 },
+        data: { dueDate: new Date('2027-06-05T00:00:00+07:00') },
+      });
+      return { again, clean, drifted: await runGates(tx, plan, again, CUTOFF) };
     });
     expect(again.created.contracts).toBe(0);
     expect(again.skippedExisting.sort()).toEqual(plan.items.map((i) => i.code).sort());
-    expect(results.filter((r) => !r.pass)).toEqual([]);
-    expect(gate(results, '6.1').detail).toContain('มีอยู่แล้ว 5');
+    expect(clean.filter((r) => !r.pass)).toEqual([]);
+    expect(gate(clean, '6.1').detail).toContain('มีอยู่แล้ว 5');
+    expect(failing(drifted)).toEqual(['6.1']);
+    expect(detailsOf(drifted, '6.1')).toContain('งวด 12: dueDate');
+    expectNoCustomerData(drifted, again);
   }, 120_000);
 
   it('loadContractGl matches glContractBalance for every imported contract and carry-forward account', async () => {
@@ -529,13 +639,132 @@ describeDb('runGates (real DB, inside the import transaction)', () => {
     expect(mismatches).toEqual([]);
   }, 120_000);
 
-  it('6.2 — a Payment row off by 1.00 fails 6.2 (and the GL ↔ register check of 6.4 and the 6.1 totals)', async () => {
-    const results = await inImport(async (tx, report) => {
+  // ── review probes P1–P7 (ข้อมูลรายแถวที่รอบกลางคืน / ใบรับชำระหลังวันตัดอ่าน) ────────────────────────
+
+  it('P1 — accrued* of the partially prepaid future installment cleared → 6.5 (stamp) + 6.4 (2A run-off)', async () => {
+    const results = await gatesAfter(async (tx, report) => {
+      const row = await scheduleRow(tx, idOf(report, c.overdue), 11);
+      await tx.installmentSchedule.update({
+        where: { id: row.id },
+        data: { accruedAmount: 0, accruedVat: 0, accruedInterest: 0 },
+      });
+    });
+    expect(failing(results)).toEqual(['6.4', '6.5']);
+    expect(detailsOf(results, '6.5')).toContain('งวด 11: accruedAmount');
+    expect(codesOf(results, '6.4')).toEqual([c.overdue.code]);
+  }, 120_000);
+
+  it('P2 — accrualJournalEntryId stamped on a future unpaid installment → 6.5 (link iff accrued) + 6.4', async () => {
+    const results = await gatesAfter(async (tx, report) => {
+      const opening = report.journalEntries.find(
+        (e) => e.kind === 'opening' && e.code === c.overdue.code,
+      )!;
+      const row = await scheduleRow(tx, idOf(report, c.overdue), 12);
+      await tx.installmentSchedule.update({
+        where: { id: row.id },
+        data: { accrualJournalEntryId: opening.entryNumber },
+      });
+    });
+    expect(failing(results)).toEqual(['6.4', '6.5']);
+    expect(detailsOf(results, '6.5')).toMatch(
+      /งวด 12: ยังตั้งลูกหนี้ไม่ครบแต่มี accrualJournalEntryId/,
+    );
+  }, 120_000);
+
+  it('P3 — contract vatAmount +1.00 and storeCommission +5.00 → 6.1 (contract money) + 6.4 (2A run-off)', async () => {
+    const results = await gatesAfter(async (tx, report) => {
+      await tx.contract.update({
+        where: { id: idOf(report, c.prepaid) },
+        data: { vatAmount: { increment: 1 }, storeCommission: { increment: 5 } },
+      });
+    });
+    expect(failing(results)).toEqual(['6.1', '6.4']);
+    expect(detailsOf(results, '6.1')).toMatch(/vatAmount ในฐาน/);
+    expect(detailsOf(results, '6.1')).toMatch(/storeCommission ในฐาน/);
+    expect(codesOf(results, '6.4')).toEqual([c.prepaid.code]);
+  }, 120_000);
+
+  it('P4 — a marker pointing at another installment row → 6.4', async () => {
+    const results = await gatesAfter(async (tx, report) => {
+      const marker = report.journalEntries.find(
+        (e) => e.kind === 'marker' && e.code === c.overdue.code && e.installmentNo === 9,
+      )!;
+      const other = await scheduleRow(tx, idOf(report, c.overdue), 10);
+      const je = await tx.journalEntry.findUniqueOrThrow({ where: { id: marker.id } });
+      await tx.journalEntry.update({
+        where: { id: marker.id },
+        data: { metadata: { ...(je.metadata as object), installmentScheduleId: other.id } },
+      });
+    });
+    expect(failing(results)).toEqual(['6.4']);
+    expect(detailsOf(results, '6.4')).toMatch(/ชี้งวด 10 ซึ่งแผนไม่มี marker/);
+    expect(detailsOf(results, '6.4')).toMatch(/งวด 9: ไม่มี marker/);
+  }, 120_000);
+
+  it('P5 — 300 paid moved from installment 9 to 10 (sums unchanged) → 6.1 (payment rows) + 6.4 (marker ≠ amountPaid)', async () => {
+    const results = await gatesAfter(async (tx, report) => {
+      const id = idOf(report, c.overdue);
+      await tx.payment.updateMany({
+        where: { contractId: id, installmentNo: 9 },
+        data: { amountPaid: { decrement: 300 }, status: 'OVERDUE' },
+      });
+      await tx.payment.updateMany({
+        where: { contractId: id, installmentNo: 10 },
+        data: { amountPaid: { increment: 300 }, status: 'PARTIALLY_PAID' },
+      });
+    });
+    expect(failing(results)).toEqual(['6.1', '6.4']);
+    expect(detailsOf(results, '6.1')).toMatch(/งวด 9: amountPaid/);
+    expect(detailsOf(results, '6.1')).toMatch(/งวด 10: status/);
+    expect(detailsOf(results, '6.4')).toMatch(/งวด 9: ยอด 300.00 ≠ amountPaid/);
+  }, 120_000);
+
+  it('P6 — principal / interest split of a schedule row changed → 6.5', async () => {
+    const results = await gatesAfter(async (tx, report) => {
+      const row = await scheduleRow(tx, idOf(report, c.prepaid), 12);
+      await tx.installmentSchedule.update({
+        where: { id: row.id },
+        data: { interest: { increment: 50 }, principal: { decrement: 50 } },
+      });
+    });
+    expect(failing(results)).toEqual(['6.5']);
+    expect(detailsOf(results, '6.5')).toMatch(/งวด 12: principal/);
+    expect(detailsOf(results, '6.5')).toMatch(/งวด 12: interest/);
+  }, 120_000);
+
+  it('P7 — Payment.dueDate of an installment ≠ the schedule row → 6.1', async () => {
+    const results = await gatesAfter(async (tx, report) => {
+      await tx.payment.updateMany({
+        where: { contractId: idOf(report, c.overdue), installmentNo: 12 },
+        data: { dueDate: new Date('2027-06-05T00:00:00+07:00') },
+      });
+    });
+    expect(failing(results)).toEqual(['6.1']);
+    expect(detailsOf(results, '6.1')).toContain('งวด 12: dueDate');
+  }, 120_000);
+
+  it('Payment breakdown columns (when the plan carries them): monthlyInterest off by 1.00 → 6.1', async () => {
+    const carries = plan.items.some((i) =>
+      i.payments.some((p) => 'monthlyInterest' in (p as object)),
+    );
+    const results = await gatesAfter(async (tx, report) => {
+      await tx.payment.updateMany({
+        where: { contractId: idOf(report, c.prepaid), installmentNo: 5 },
+        data: { monthlyInterest: { increment: 1 } },
+      });
+    });
+    // แผนก่อน Task 10 รอบแก้ไม่มียอดแยก — ตัวเขียนไม่เขียนคอลัมน์เหล่านี้และด่านไม่ตรวจ
+    expect(failing(results)).toEqual(carries ? ['6.1'] : []);
+  }, 120_000);
+
+  // ── mutation ต่อด่าน ─────────────────────────────────────────────────────────────────────────
+
+  it('6.2 — a Payment row off by 1.00 fails 6.2 (and 6.1 payment rows, 6.4 register / run-off)', async () => {
+    const results = await gatesAfter(async (tx, report) => {
       await tx.payment.updateMany({
         where: { contractId: idOf(report, c.overdue), installmentNo: 10 },
         data: { amountPaid: { increment: 1 } },
       });
-      return runGates(tx, plan, report, CUTOFF);
     });
     expect(failing(results)).toEqual(['6.1', '6.2', '6.4']);
     expect(gate(results, '6.2').failures).toEqual([
@@ -543,38 +772,84 @@ describeDb('runGates (real DB, inside the import transaction)', () => {
     ]);
   }, 120_000);
 
+  it('6.1 — a soft-deleted Payment row of a history contract, and a soft-deleted slip', async () => {
+    const payment = await gatesAfter(async (tx, report) => {
+      await tx.payment.updateMany({
+        where: { contractId: idOf(report, c.payoff), installmentNo: 1 },
+        data: { deletedAt: new Date() },
+      });
+    });
+    expect(failing(payment)).toEqual(['6.1']);
+    expect(detailsOf(payment, '6.1')).toContain('งวด 1: ไม่มีแถว Payment');
+    const slip = await gatesAfter(async (tx, report) => {
+      const evidence = await tx.paymentEvidence.findFirstOrThrow({
+        where: { contractId: idOf(report, c.canceled) },
+      });
+      await tx.paymentEvidence.update({
+        where: { id: evidence.id },
+        data: { deletedAt: new Date() },
+      });
+    });
+    expect(failing(slip)).toEqual(['6.1']);
+    expect(codesOf(slip, '6.1')).toEqual([c.canceled.code]);
+  }, 120_000);
+
   it('6.5 — clearing accrualJournalEntryId of a due row: the 2A cron would pick it', async () => {
-    const results = await inImport(async (tx, report) => {
+    const results = await gatesAfter(async (tx, report) => {
       await tx.installmentSchedule.updateMany({
         where: { contractId: idOf(report, c.overdue), installmentNo: 10 },
         data: { accrualJournalEntryId: null },
       });
-      return runGates(tx, plan, report, CUTOFF);
     });
+    // แถวงวด 10 ไม่มีลิงก์ = รอบ 2A หยิบ + ไม่ตรง stamp · ยอดสะสมยังเต็มงวด ⇒ ส่วนที่เหลือ 0 (6.4 ไม่กระทบ)
     expect(failing(results)).toEqual(['6.5']);
-    expect(gate(results, '6.5').failures).toEqual([
-      { code: c.overdue.code, detail: expect.stringContaining('งวด 10') },
-    ]);
+    expect(detailsOf(results, '6.5')).toMatch(/งวด 10: รอบตั้งลูกหนี้งวด \(2A\) จะหยิบ/);
+    expect(codesOf(results, '6.5')).toEqual([c.overdue.code]);
   }, 120_000);
 
-  it('6.9 — a blank peakContactCode on the customer of an ACTIVE contract', async () => {
-    const results = await inImport(async (tx, report) => {
-      const contract = await tx.contract.findUniqueOrThrow({
-        where: { id: idOf(report, c.prepaid) },
-        select: { customer: { select: { contactId: true } } },
+  it('6.5 — a schedule row linked to a VAT-60 entry', async () => {
+    const results = await gatesAfter(async (tx, report) => {
+      await tx.installmentSchedule.updateMany({
+        where: { contractId: idOf(report, c.old), installmentNo: 12 },
+        data: { vat60dayJournalEntryId: 'JE-202611-99999' },
       });
+    });
+    expect(failing(results)).toEqual(['6.5']);
+    expect(detailsOf(results, '6.5')).toContain('งวด 12: มี vat60dayJournalEntryId');
+  }, 120_000);
+
+  it('6.9 — a blank peakContactCode, and a non-empty code that is not the invoice contact', async () => {
+    const contactOf = async (tx: Prisma.TransactionClient, report: WriteReport) =>
+      (
+        await tx.contract.findUniqueOrThrow({
+          where: { id: idOf(report, c.prepaid) },
+          select: { customer: { select: { contactId: true } } },
+        })
+      ).customer.contactId as string;
+    const blank = await gatesAfter(async (tx, report) => {
       await tx.contact.update({
-        where: { id: contract.customer.contactId as string },
+        where: { id: await contactOf(tx, report) },
         data: { peakContactCode: '  ' },
       });
-      return runGates(tx, plan, report, CUTOFF);
     });
-    expect(failing(results)).toEqual(['6.9']);
-    expect(gate(results, '6.9').failures?.map((f) => f.code)).toEqual([c.prepaid.code]);
+    expect(failing(blank)).toEqual(['6.9']);
+    expect(codesOf(blank, '6.9')).toEqual([c.prepaid.code]);
+    const other = `T12X${stamp}`;
+    const wrong = await gatesAfter(
+      async (tx, report) => {
+        await tx.contact.update({
+          where: { id: await contactOf(tx, report) },
+          data: { peakContactCode: other },
+        });
+      },
+      { forbidden: [other] },
+    );
+    expect(failing(wrong)).toEqual(['6.9']);
+    expect(detailsOf(wrong, '6.9')).toMatch(/≠ ผู้ติดต่อของใบแจ้งหนี้/);
   }, 120_000);
 
   it('6.6 + 6.3 — an opening entry without metadata.flow is no longer excluded from the PEAK export', async () => {
-    const results = await inImport(async (tx, report) => {
+    const results = await gatesAfter(async (tx, report) => {
       const opening = report.journalEntries.find(
         (e) => e.kind === 'opening' && e.code === c.overdue.code,
       )!;
@@ -582,16 +857,43 @@ describeDb('runGates (real DB, inside the import transaction)', () => {
       const metadata = { ...(row.metadata as Record<string, string>) };
       delete metadata.flow;
       await tx.journalEntry.update({ where: { id: opening.id }, data: { metadata } });
-      return runGates(tx, plan, report, CUTOFF);
     });
     // 6.1 นับรายการยกมาตาม flow ไม่ครบด้วย
     expect(failing(results)).toEqual(['6.1', '6.3', '6.6']);
-    expect(gate(results, '6.6').failures?.map((f) => f.code)).toEqual([c.overdue.code]);
-    expect(gate(results, '6.3').failures?.map((f) => f.code)).toEqual([c.overdue.code]);
+    expect(codesOf(results, '6.6')).toEqual([c.overdue.code]);
+    expect(codesOf(results, '6.3')).toEqual([c.overdue.code]);
+  }, 120_000);
+
+  it('6.6 — a marker moved after cutoff without peakSyncedAt', async () => {
+    const results = await gatesAfter(async (tx, report) => {
+      const marker = report.journalEntries.find(
+        (e) => e.kind === 'marker' && e.code === c.old.code,
+      )!;
+      const later = new Date('2026-12-05T10:00:00+07:00');
+      await tx.journalEntry.update({
+        where: { id: marker.id },
+        data: { entryDate: later, postedAt: later, peakSyncedAt: null },
+      });
+    });
+    expect(failing(results)).toEqual(['6.6']);
+    expect(detailsOf(results, '6.6')).toContain('รายการยกมา / marker ไม่มี peakSyncedAt');
+  }, 120_000);
+
+  it('6.6 — the VAT catch-up entry stamped peakSyncedAt (it must reach PEAK)', async () => {
+    const results = await gatesAfter(async (tx) => {
+      await tx.journalEntry.updateMany({
+        where: { referenceType: 'AUTO', referenceId: `legacy-vat-catchup:${c.overdue.code}` },
+        data: { peakSyncedAt: CUTOFF },
+      });
+    });
+    expect(failing(results)).toEqual(['6.6']);
+    expect(gate(results, '6.6').failures).toEqual([
+      { code: c.overdue.code, detail: expect.stringContaining('peakSyncedAt') },
+    ]);
   }, 120_000);
 
   it('6.10 — a 2A-shaped entry after cutoff passes while the contract keeps its legacy code; nulling the code fails 6.10', async () => {
-    const { kept, nulled } = await inImport(async (tx, report) => {
+    const { kept, nulled, report } = await inImport(async (tx, report) => {
       const contractId = idOf(report, c.prepaid);
       await post(tx, contractId, new Date('2026-12-10T00:00:00+07:00'), { tag: '2A' }, [
         ['11-2103', '1515.83', '0'],
@@ -602,20 +904,47 @@ describeDb('runGates (real DB, inside the import transaction)', () => {
       ]);
       const kept = await runGates(tx, plan, report, CUTOFF);
       await tx.contract.update({ where: { id: contractId }, data: { legacyContractCode: null } });
-      return { kept, nulled: await runGates(tx, plan, report, CUTOFF) };
+      return { kept, nulled: await runGates(tx, plan, report, CUTOFF), report };
     });
+    expectNoCustomerData(kept, report);
+    expectNoCustomerData(nulled, report);
     // GL ต่างจากยอดยกมาแล้ว (6.4 ตรวจ ณ คืนตัดเท่านั้น) แต่ดอกเบี้ยยังถูกตัด
     expect(failing(kept)).toEqual(['6.4']);
     expect(failing(nulled)).toEqual(['6.1', '6.4', '6.10']);
-    const f10 = gate(nulled, '6.10').failures ?? [];
-    expect(f10.every((f) => f.code === c.prepaid.code)).toBe(true);
-    expect(f10.map((f) => f.detail).join('\n')).toMatch(/11-2106/);
-    expect(f10.map((f) => f.detail).join('\n')).toMatch(/41-1101/);
-    expect(f10.map((f) => f.detail).join('\n')).toMatch(/legacyContractCode/);
+    expect(codesOf(nulled, '6.10')).toEqual([c.prepaid.code]);
+    expect(detailsOf(nulled, '6.10')).toMatch(/11-2106/);
+    expect(detailsOf(nulled, '6.10')).toMatch(/41-1101/);
+    expect(detailsOf(nulled, '6.10')).toMatch(/legacyContractCode/);
+  }, 120_000);
+
+  it('6.10 — interestTotal ≠ the legacy interest (also 6.1 contract money and the 6.4 run-off)', async () => {
+    const results = await gatesAfter(async (tx, report) => {
+      await tx.contract.update({
+        where: { id: idOf(report, c.prepaid) },
+        data: { interestTotal: { increment: 1 } },
+      });
+    });
+    expect(failing(results)).toEqual(['6.1', '6.4', '6.10']);
+    expect(detailsOf(results, '6.10')).toMatch(
+      /interestTotal 6001.00 ≠ ดอกเบี้ยตามสัญญาเดิม 6000.00/,
+    );
+  }, 120_000);
+
+  it('6.4 — a history contract with a carry-forward balance in the GL', async () => {
+    const results = await gatesAfter(async (tx, report) => {
+      await post(tx, idOf(report, c.payoff), new Date('2026-12-03T10:00:00+07:00'), {}, [
+        ['11-2101', '100.00', '0'],
+        ['32-1101', '0', '100.00'],
+      ]);
+    });
+    expect(failing(results)).toEqual(['6.4']);
+    expect(gate(results, '6.4').failures).toEqual([
+      { code: c.payoff.code, detail: expect.stringContaining('สัญญาประวัติมียอด 11-2101') },
+    ]);
   }, 120_000);
 
   it('6.7 — a 21-1101 line on an imported contract (shop payable queue)', async () => {
-    const results = await inImport(async (tx, report) => {
+    const results = await gatesAfter(async (tx, report) => {
       await post(
         tx,
         idOf(report, c.overdue),
@@ -626,7 +955,6 @@ describeDb('runGates (real DB, inside the import transaction)', () => {
           ['11-1201', '0', '100.00'],
         ],
       );
-      return runGates(tx, plan, report, CUTOFF);
     });
     expect(failing(results)).toEqual(['6.7']);
     expect(gate(results, '6.7').failures).toEqual([
@@ -635,7 +963,7 @@ describeDb('runGates (real DB, inside the import transaction)', () => {
   }, 120_000);
 
   it('6.3 — an extra entry dated before cutoff with another flow (also reaches the PEAK export → 6.6)', async () => {
-    const results = await inImport(async (tx, report) => {
+    const results = await gatesAfter(async (tx, report) => {
       await post(
         tx,
         idOf(report, c.old),
@@ -646,7 +974,6 @@ describeDb('runGates (real DB, inside the import transaction)', () => {
           ['42-1103', '0', '50.00'],
         ],
       );
-      return runGates(tx, plan, report, CUTOFF);
     });
     expect(failing(results)).toEqual(['6.3', '6.6']);
     expect(gate(results, '6.3').failures).toEqual([
@@ -654,47 +981,34 @@ describeDb('runGates (real DB, inside the import transaction)', () => {
     ]);
   }, 120_000);
 
-  it('6.6 — the VAT catch-up entry stamped peakSyncedAt (it must reach PEAK)', async () => {
+  it('a gate whose query fails is reported once as not passing (error class only) and the later gates still run', async () => {
     const results = await inImport(async (tx, report) => {
-      await tx.journalEntry.updateMany({
-        where: { referenceType: 'AUTO', referenceId: `legacy-vat-catchup:${c.overdue.code}` },
-        data: { peakSyncedAt: CUTOFF },
-      });
-      return runGates(tx, plan, report, CUTOFF);
-    });
-    expect(failing(results)).toEqual(['6.6']);
-    expect(gate(results, '6.6').failures).toEqual([
-      { code: c.overdue.code, detail: expect.stringContaining('peakSyncedAt') },
-    ]);
-  }, 120_000);
-
-  it('a gate whose query fails is reported as not passing (error class only) and the later gates still run', async () => {
-    const results = await inImport(async (tx, report) => {
-      let armed = true;
       const bind = (target: object, prop: string | symbol) => {
         const value = Reflect.get(target, prop);
         return typeof value === 'function' ? value.bind(target) : value;
       };
-      // installmentSchedule.findMany ครั้งแรก (ด่าน 6.5) → คำสั่ง SQL ที่ผิด ทำให้ธุรกรรมของ Postgres ใช้ต่อไม่ได้จนกว่าจะ rollback
+      // คิวรีเงื่อนไขรอบ 2A ของด่าน 6.5 (where.accrualJournalEntryId = null) → คำสั่ง SQL ที่ผิด ทำให้ธุรกรรมของ Postgres
+      // ใช้ต่อไม่ได้จนกว่าจะ rollback ถึง savepoint
       const failingTx = new Proxy(tx, {
         get(target, prop) {
           if (prop !== 'installmentSchedule') return bind(target, prop);
           const delegate = target.installmentSchedule;
           return new Proxy(delegate, {
             get(d, p) {
-              if (p === 'findMany' && armed) {
-                return async () => {
-                  armed = false;
+              if (p !== 'findMany') return bind(d, p);
+              return async (args: { where?: { accrualJournalEntryId?: unknown } }) => {
+                if (args?.where?.accrualJournalEntryId === null) {
                   await target.$queryRawUnsafe('SELECT 1/0');
-                };
-              }
-              return bind(d, p);
+                }
+                return d.findMany(args as Prisma.InstallmentScheduleFindManyArgs);
+              };
             },
           });
         },
       });
       return runGates(failingTx, plan, report, CUTOFF);
     });
+    expect(results.map((r) => r.id)).toEqual([...GATE_IDS]);
     expect(failing(results)).toEqual(['6.5']);
     expect(gate(results, '6.5').detail).toMatch(/PrismaClient\w*Error/);
     expect(gate(results, '6.5').detail).not.toMatch(/division/i);

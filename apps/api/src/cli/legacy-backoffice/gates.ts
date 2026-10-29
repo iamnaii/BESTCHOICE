@@ -11,10 +11,16 @@ import {
   peakExportOriginalEntryId,
 } from '../../modules/accounting/peak-export-exclusion';
 import { ACCRUAL_EXCLUDED_CONTRACT_STATUSES } from '../../modules/journal/accrual-contract-status';
+import { legacyOpeningReference } from '../../modules/journal/legacy-import-journal';
+import {
+  accrual2AInputOf,
+  accruedSoFarOf,
+  buildRemainderAccrual2ALines,
+} from '../../modules/journal/build-accrual-2a-lines';
 import { bangkokDateString, bangkokStartOfDay } from '../../utils/date.util';
 import { seededShuffle } from '../../utils/shuffle.util';
 import { formatMoney } from './csv';
-import { CARRY_FORWARD_ACCOUNTS } from './opening';
+import { CARRY_FORWARD_ACCOUNTS, OPENING_EQUITY_ACCOUNT } from './opening';
 import type { ImportPlan, PlannedContract } from './plan-import';
 import type { WriteReport } from './writer';
 
@@ -24,31 +30,34 @@ import type { WriteReport } from './writer';
  *
  * | ด่าน | ผ่านเมื่อ |
  * |---|---|
- * | 6.1 | แผน (`plan.totals` = ผลรวมรายสัญญา · ไม่มีตัวบล็อก · ครบจำนวนสัญญาใน dump ถ้าส่ง `bookContracts`) = รายงานตัวเขียน (`report.created`) = แถวในฐาน ต่อสัญญา: สัญญา (เลขเดิม / เลขสัญญา / สถานะ) · ตารางงวด · งวด (จำนวน + ยอด) · สลิป · เอกสาร (หักไฟล์ที่ไม่ได้อัปโหลด) · รายการบัญชีตาม flow · ลูกค้า (หนึ่งสมาชิก = หนึ่งลูกค้า) |
- * | 6.2 | สัญญาผ่อนอยู่ทุกสัญญา: Σ(`amountDue − amountPaid`) ของ Payment = ยอดคงเหลือใบแจ้งหนี้ PEAK (`plan.items[].peak.remain`) ตรงทุกสตางค์ — ส่วนต่างกับระบบเก่า (ปรับลดตาม PEAK / เศษสตางค์) รายงานอย่างเดียว · สัญญาประวัติไม่ตรวจ |
- * | 6.3 | ไม่มีรายการบัญชีของสัญญาที่นำเข้าลงวันที่ถึงวันตัด (`entryDate` หรือ `postedAt` ≤ `cutoff`) นอกจาก flow `legacy-opening` / `legacy-prior-receipt` |
- * | 6.4 | GL ต่อสัญญา (ความหมายเดียวกับ `glContractBalance`) ของ `CARRY_FORWARD_ACCOUNTS` = บรรทัดรายการยกมาของ `computeOpening` + marker + รายการไล่ VAT (ลงในธุรกรรมเดียวกัน ⇒ 21-2102 = ยกมา − ไล่ VAT) · ลูกหนี้ใน GL (11-2101 + 11-2103 + 11-2105) = ยอดค้างตามแถวงวด + `roundingDiff` · สัญญาประวัติไม่มียอด · รายงาน Σ `roundingDiff` / เศษสตางค์ PEAK |
- * | 6.5 | เงื่อนไขเดียวกับรอบตั้งลูกหนี้งวด 2A (`installment-accrual.cron.ts`) และรอบภาษีขาย 60 วัน (`vat-60day.cron.ts`) จำกัดเฉพาะสัญญาที่นำเข้า ไม่เจองวดที่ครบกำหนดถึงวันตัด · ไม่มีแถวงวดที่ผูก `vat60dayJournalEntryId` |
- * | 6.6 | ทุกรายการของสัญญาที่นำเข้าที่ลงวันที่ถึงวันตัด `isExcludedFromPeakExport(entry, original)` และมี `peakSyncedAt` · รายการไล่ VAT ลงหลังวันตัด **ไม่**ถูกตัดและไม่มี `peakSyncedAt` (ต้องเข้า PEAK) — ห้ามเรียก `exportJournalWithPeakCodes` ในธุรกรรม (อ่านด้วย `this.prisma` จึงไม่เห็นแถวที่ยังไม่ commit) ไฟล์ส่งออกจริงตรวจตอนซ้อม (Task 14) |
+ * | 6.1 | `cutoff` = `plan.cutoff` · แผน (`plan.totals` = ผลรวมรายสัญญา · ไม่มีตัวบล็อก · ครบจำนวนสัญญาใน dump ถ้าส่ง `bookContracts`) = รายงานตัวเขียน = ฐาน **ต่อสัญญาที่นำเข้า**: สัญญา (เลขเดิม / เลขสัญญา / สถานะ / ช่องเงินที่รอบ 2A อ่าน) · **งวดรายแถว** (`dueDate` / `amountDue` / `amountPaid` / `status` / รหัสงวดเดิม · ยอดแยกเมื่อแผนมี) · จำนวนแถวตารางงวด · สลิป / เอกสาร (หักไฟล์ที่ไม่ได้อัปโหลด — แผนเป็นตัวตั้งเมื่อแผนรู้ผลอัปโหลด) · รายการบัญชีตาม flow · ลูกค้า (หนึ่งสมาชิก = หนึ่งลูกค้า) |
+ * | 6.2 | สัญญาผ่อนอยู่ทุกสัญญา: Σ(`amountDue − amountPaid`) ของ Payment = ยอดคงเหลือใบแจ้งหนี้ PEAK (`plan.items[].peak.remain`) ตรงทุกสตางค์ — ส่วนต่างกับระบบเก่า (ปรับลดตาม PEAK / เศษสตางค์) และงวดที่ยังไม่ PAID ของสัญญาประวัติ รายงานอย่างเดียว |
+ * | 6.3 | ไม่มีรายการบัญชีของสัญญาที่นำเข้าลงวันที่ถึงวันตัด (`entryDate` หรือ `postedAt` ≤ วันตัด) นอกจาก flow `legacy-opening` / `legacy-prior-receipt` |
+ * | 6.4 | ต่อสัญญา (GL ความหมายเดียวกับ `glContractBalance`): `CARRY_FORWARD_ACCOUNTS` = บรรทัดรายการยกมาของ `computeOpening` + marker + รายการไล่ VAT · ลูกหนี้ใน GL (11-2101 + 11-2103 + 11-2105) = ยอดค้างตามแถวงวด + `roundingDiff` · **GL 11-2101 / 11-2105 / 11-2106 / 21-2102 + Σ บรรทัด 2A ที่รอบกลางคืนจะลงให้ทุกแถวที่ยังไม่ตั้งครบ (`buildRemainderAccrual2ALines(accrual2AInputOf(สัญญาในฐาน), accruedSoFarOf(แถว))`) = 0** · **marker ทุกรายการชี้แถวงวดของ (สัญญา, งวด) ที่แผนมี marker และ Cr 11-2103 = Dr 32-1101 = ยอด marker ในแผน = `amountPaid` ของงวดนั้น** · สัญญาประวัติไม่มียอด · รายงาน Σ `roundingDiff` / เศษสตางค์ PEAK |
+ * | 6.5 | เงื่อนไขเดียวกับรอบตั้งลูกหนี้งวด 2A (`installment-accrual.cron.ts`) จำกัดเฉพาะสัญญาที่นำเข้า ไม่เจองวดที่ครบกำหนดถึงวันตัด (รอบภาษีขาย 60 วันเป็นเซตย่อยของเงื่อนไขนี้) · **แถวตารางงวดรายแถว** = แผน (`dueDate` / `amountDue` / `principal` / `interest`) · `accrualJournalEntryId` = เลขที่รายการยกมา **เมื่อและเฉพาะเมื่อ** stamp `accrued` · `accrued*` = stamp · ไม่มี `vat60dayJournalEntryId` |
+ * | 6.6 | ทุกรายการของสัญญาที่นำเข้าที่ลงวันที่ถึงวันตัด `isExcludedFromPeakExport(entry, original)` และมี `peakSyncedAt` · รายการยกมา / marker มี `peakSyncedAt` เสมอ · รายการไล่ VAT ลงหลังวันตัด **ไม่**ถูกตัดและไม่มี `peakSyncedAt` (ต้องเข้า PEAK) — ห้ามเรียก `exportJournalWithPeakCodes` ในธุรกรรม (อ่านด้วย `this.prisma` จึงไม่เห็นแถวที่ยังไม่ commit) ไฟล์ส่งออกจริงตรวจตอนซ้อม (Task 14) |
  * | 6.7 | ไม่มีบรรทัด 21-1101 / 21-1102 ของสัญญาที่นำเข้า (คิวรอจ่ายร้านฝั่ง FINANCE อ่านจากสองบัญชีนี้) |
  * | 6.9 | สัญญาผ่อนอยู่ทุกสัญญา: `customer.contact.peakContactCode` ไม่ว่าง และ = รหัสผู้ติดต่อของใบแจ้งหนี้ PEAK ที่จับคู่ |
- * | 6.10 | ทุกบรรทัด 11-2106 / 41-1101 ของสัญญาที่นำเข้า: `isExcludedFromPeakExport(entry, original) \|\| isExcludedLegacyInterestLine(line, สัญญาจาก peakExportContractId)` (ตัวกรองชุดเดียวกับไฟล์ส่งออก) · ทุกสัญญาที่นำเข้ามี `legacyContractCode` · `interestTotal` = ดอกเบี้ยตามสัญญาเดิมในแผน · รายงานจำนวนสัญญาผ่อนอยู่ที่ถ้าเปลี่ยนเครื่อง รายการปิดสัญญาเดิมจะส่งออกไม่ดุล (รอสำนักงานบัญชี — ไม่ใช่เงื่อนไขผ่าน) |
+ * | 6.10 | ทุกบรรทัด 11-2106 / 41-1101 ของสัญญาที่นำเข้า: `isExcludedFromPeakExport(entry, original) \|\| isExcludedLegacyInterestLine(line, สัญญาจาก peakExportContractId)` (ตัวกรองชุดเดียวกับไฟล์ส่งออก CSV — การส่งผ่าน PEAK API ยังไม่กรอง) · ทุกสัญญาที่นำเข้ามี `legacyContractCode` · `interestTotal` = ดอกเบี้ยตามสัญญาเดิมในแผน · รายงานจำนวนสัญญาผ่อนอยู่ที่ถ้าเปลี่ยนเครื่อง รายการปิดสัญญาเดิมจะส่งออกไม่ดุล (รอสำนักงานบัญชี — ไม่ใช่เงื่อนไขผ่าน) |
  *
  * 6.8 (สุ่มเทียบด้วยตา) = `sampleForManualCheck` — คนเทียบกับ PEAK / หน้าจอระบบเก่าในคืนตัด
  *
  * **สัญญาที่นำเข้า** = id ใน `report.contractIds` (สร้างรอบนี้ — ยังเจอแม้ `legacyContractCode` ถูกล้าง) ∪ สัญญาที่
- * `legacyContractCode` อยู่ในแผน (`report.skippedExisting`) · **รายการบัญชีของสัญญา** = รายการที่ไม่ถูกลบ (ทุกสถานะ) ที่
- * `peakExportContractId(entry, original)` ชี้สัญญาเหล่านั้น — รวมรายการกลับ / กระจกที่สืบสัญญาจากรายการต้นฉบับ แบบเดียวกับไฟล์ส่งออก
+ * `legacyContractCode` อยู่ในแผน (`report.skippedExisting`) — ตรวจรายสัญญา / รายแถวเหมือนกันทั้งสองกลุ่ม ·
+ * **รายการบัญชีของสัญญา** = รายการที่ไม่ถูกลบ (ทุกสถานะ) ที่ `peakExportContractId(entry, original)` ชี้สัญญาเหล่านั้น — รวม
+ * รายการกลับ / กระจกที่สืบสัญญาจากรายการต้นฉบับ แบบเดียวกับไฟล์ส่งออก
+ *
+ * **วันตัด** = `plan.cutoff` เสมอ (พารามิเตอร์ `cutoff` ใช้ตรวจใน 6.1 ว่าผู้เรียกส่งค่าเดียวกัน)
  *
  * **6.4 ใช้ได้ ณ คืนตัดเท่านั้น** (GL ไม่กรองวันที่ เหมือน `glContractBalance`) — รันซ้ำหลังรอบกลางคืนลง 2A แล้ว (ซ้อม Task 14)
- * 6.4 จะไม่ผ่านเพราะ GL เดินต่อ · ด่านอื่นรันซ้ำได้
+ * 6.4 จะไม่ผ่านเพราะ GL เดินต่อ
  *
  * **แยกกันทุกด่าน:** แต่ละด่านอยู่ใน SAVEPOINT ของตัวเอง — ด่านที่ throw (รวม error ของ Postgres ที่ทำให้ธุรกรรมใช้ต่อไม่ได้) =
  * `pass: false` พร้อมชื่อคลาส/รหัสของ error แล้ว rollback ถึง savepoint ด่านถัดไปยังรันได้ · `tx` ที่ไม่ใช่ธุรกรรม (SAVEPOINT ไม่ได้)
- * = รันต่อโดยไม่มี savepoint
+ * = รันต่อโดยไม่มี savepoint · ผลหนึ่งรายการต่อหนึ่งด่านเสมอ
  *
- * `detail` / `failures` มีแค่จำนวน ยอดรวม เลขสัญญาเดิม เลขงวด เลขที่รายการบัญชี รหัสบัญชี และเลขใบแจ้งหนี้ PEAK — ไม่มีชื่อ เบอร์
- * เลขบัตร id ลูกค้า id สัญญา หรือรหัสผู้ติดต่อ PEAK
+ * `detail` / `failures` มีแค่จำนวน ยอดเงิน วันที่ เลขสัญญาเดิม เลขงวด เลขที่รายการบัญชี รหัสบัญชี และเลขใบแจ้งหนี้ PEAK — ไม่มีชื่อ
+ * เบอร์ เลขบัตร รหัสสมาชิก id ลูกค้า id สัญญา หรือรหัสผู้ติดต่อ PEAK
  */
 
 type Decimal = Prisma.Decimal;
@@ -56,6 +65,8 @@ type Decimal = Prisma.Decimal;
 const ZERO = new Prisma.Decimal(0);
 const DAY_MS = 86_400_000;
 const RECEIVABLE_ACCOUNTS = ['11-2101', '11-2103', '11-2105'] as const;
+/** บัญชีที่รอบ 2A ล้างจนเป็นศูนย์เมื่อทุกงวดตั้งลูกหนี้ครบ */
+const ACCRUAL_RUNOFF_ACCOUNTS = ['11-2101', '11-2105', '11-2106', '21-2102'] as const;
 const SHOP_PAYABLE_ACCOUNTS: ReadonlySet<string> = new Set(['21-1101', '21-1102']);
 const PEAK_EXCLUDED_IMPORT_FLOWS: ReadonlySet<string> = new Set([
   LEGACY_OPENING_FLOW,
@@ -72,13 +83,18 @@ const CANCELED_STATUSES: ReadonlySet<ContractStatus> = new Set<ContractStatus>([
 export const GATE_IDS = ['6.1', '6.2', '6.3', '6.4', '6.5', '6.6', '6.7', '6.9', '6.10'] as const;
 export type GateId = (typeof GATE_IDS)[number];
 
-/** `code` = เลขสัญญาเดิม (แถวของแผนที่ไม่ผูกสัญญา = รหัสในแผน / `plan`) */
+/** `code` = เลขสัญญาเดิม (แถวของแผนที่ไม่ผูกสัญญา = รหัสในแผน / `plan` / `report`) */
 export type GateFailure = { code: string; detail: string };
 export type GateResult = { id: GateId; pass: boolean; detail: string; failures?: GateFailure[] };
 
 export type GateOptions = {
   /** จำนวนสัญญาใน dump (`book.contracts.length`) — ส่งมา = 6.1 ตรวจว่าแผนนับครบ (นำเข้า + ข้าม + ตัวบล็อก) */
   bookContracts?: number;
+  /**
+   * `planImport` ได้ `files` (ผลอัปโหลด) — true = `item.missingAttachments` เป็นตัวตั้งของทุกสัญญา: ไฟล์ที่ตัวเขียนรายงานว่าหาย
+   * ต้องตรงกับแผน และสลิป / เอกสารของสัญญาที่มีอยู่แล้วก็ตรวจจำนวนได้ · ไม่ส่ง = ใช้แผนเป็นตัวตั้งเมื่อแผนพบไฟล์หายอย่างน้อยหนึ่งไฟล์
+   */
+  planFiles?: boolean;
 };
 
 /** ชื่อด่านภาษาไทย — ให้ Task 13 พิมพ์ในรายงาน */
@@ -101,7 +117,12 @@ const CONTRACT_SELECT = {
   contractNumber: true,
   legacyContractCode: true,
   status: true,
+  financedAmount: true,
+  storeCommission: true,
   interestTotal: true,
+  vatAmount: true,
+  totalMonths: true,
+  monthlyPayment: true,
   customerId: true,
   deletedAt: true,
   customer: { select: { contact: { select: { peakContactCode: true } } } },
@@ -141,6 +162,48 @@ async function loadImported(
   }
   const codeOf = new Map([...byCode].map(([code, row]) => [row.id, code]));
   return { byCode, codeOf, ids: [...codeOf.keys()] };
+}
+
+const SCHEDULE_SELECT = {
+  id: true,
+  contractId: true,
+  installmentNo: true,
+  dueDate: true,
+  amountDue: true,
+  principal: true,
+  interest: true,
+  accrualJournalEntryId: true,
+  accruedAmount: true,
+  accruedVat: true,
+  accruedInterest: true,
+  vat60dayJournalEntryId: true,
+} satisfies Prisma.InstallmentScheduleSelect;
+type ScheduleRow = Prisma.InstallmentScheduleGetPayload<{ select: typeof SCHEDULE_SELECT }>;
+
+const PAYMENT_SELECT = {
+  contractId: true,
+  installmentNo: true,
+  dueDate: true,
+  amountDue: true,
+  amountPaid: true,
+  status: true,
+  legacyInstallmentCode: true,
+  monthlyPrincipal: true,
+  monthlyInterest: true,
+  monthlyCommission: true,
+  vatAmount: true,
+} satisfies Prisma.PaymentSelect;
+type PaymentRow = Prisma.PaymentGetPayload<{ select: typeof PAYMENT_SELECT }>;
+
+/** แถวที่ไม่ถูกลบของสัญญาที่นำเข้า จัดตาม id สัญญา (เรียงตามงวด) */
+function byContract<T extends { contractId: string }>(rows: readonly T[]): Map<string, T[]> {
+  const out = new Map<string, T[]>();
+  for (const row of rows) {
+    const list = out.get(row.contractId);
+    if (list) list.push(row);
+    else out.set(row.contractId, [row]);
+  }
+  return out;
 }
 
 const ENTRY_SELECT = {
@@ -221,6 +284,10 @@ async function loadContractEntries(
   });
 }
 
+/** `metadata.contractId` ของรายการเอง = สัญญาที่สืบได้ (ไม่ใช่กระจกที่สืบจากต้นฉบับ) */
+const isOwnEntry = (entry: ContractEntry) =>
+  metaString(entry.metadata, 'contractId') === entry.contractId;
+
 /**
  * ยอด Dr − Cr ต่อสัญญาต่อบัญชี — ความหมายเดียวกับ `glContractBalance(…, 'dr')`: รายการ `POSTED` ที่ไม่ถูกลบ และ
  * `metadata.contractId` ของรายการเอง = สัญญา (ไม่สืบจากต้นฉบับ) · นับทุกบรรทัด (`glContractBalance` ไม่กรอง `deletedAt` ของบรรทัด)
@@ -229,10 +296,9 @@ function glByContract(entries: readonly ContractEntry[]): Map<string, Map<string
   const out = new Map<string, Map<string, Decimal>>();
   for (const entry of entries) {
     if (entry.status !== ('POSTED' satisfies JournalEntryStatus)) continue;
-    const contractId = metaString(entry.metadata, 'contractId');
-    if (!contractId || contractId !== entry.contractId) continue;
-    const accounts = out.get(contractId) ?? new Map<string, Decimal>();
-    out.set(contractId, accounts);
+    if (!isOwnEntry(entry)) continue;
+    const accounts = out.get(entry.contractId) ?? new Map<string, Decimal>();
+    out.set(entry.contractId, accounts);
     for (const line of entry.lines) {
       accounts.set(
         line.accountCode,
@@ -254,13 +320,23 @@ export async function loadContractGl(
 // ── ตัวช่วย ────────────────────────────────────────────────────────────────────────────────────
 
 const sumOf = (values: readonly Decimal[]) => values.reduce((s, v) => s.plus(v), ZERO);
-const money = (value: Decimal) => formatMoney(value);
+const money = (value: Decimal | null | undefined) => (value == null ? 'ว่าง' : formatMoney(value));
+const day = (value: Date | null | undefined) => (value ? bangkokDateString(value) : 'ว่าง');
+const sameMoney = (a: Decimal | null | undefined, b: Decimal | null | undefined) =>
+  a == null || b == null ? a == null && b == null : a.eq(b);
 const isOnOrBefore = (entry: Pick<EntryRow, 'entryDate' | 'postedAt'>, cutoff: Date) =>
   entry.entryDate.getTime() <= cutoff.getTime() ||
   (entry.postedAt !== null && entry.postedAt.getTime() <= cutoff.getTime());
 const liveLines = (entry: EntryRow) => entry.lines.filter((l) => l.deletedAt === null);
 const entryLabel = (entry: EntryRow) =>
   `รายการ ${entry.entryNumber} (flow ${metaString(entry.metadata, 'flow') ?? '-'} · ลงวันที่ ${bangkokDateString(entry.entryDate)})`;
+/** Σ(Dr − Cr) ของบรรทัดที่ยังไม่ถูกลบของบัญชีหนึ่งในรายการ */
+const lineNet = (entry: EntryRow, account: string) =>
+  sumOf(
+    liveLines(entry)
+      .filter((l) => l.accountCode === account)
+      .map((l) => l.debit.minus(l.credit)),
+  );
 
 /** ชื่อคลาส/รหัสของ error — ไม่ใช้ข้อความ (อาจมีค่าในแถว) */
 function errorLabel(error: unknown): string {
@@ -283,13 +359,29 @@ function once<T>(load: () => Promise<T>): () => Promise<T> {
   };
 }
 
-type GateBody = { pass?: boolean; detail: string; failures: GateFailure[] };
+type GateBody = { detail: string; failures: GateFailure[] };
 
 function result(id: GateId, body: GateBody): GateResult {
-  const pass = body.pass ?? body.failures.length === 0;
   return body.failures.length > 0
-    ? { id, pass, detail: body.detail, failures: body.failures }
-    : { id, pass, detail: body.detail };
+    ? { id, pass: false, detail: body.detail, failures: body.failures }
+    : { id, pass: true, detail: body.detail };
+}
+
+/** ยอดแยกของงวดที่แผนของ Task 10 เพิ่ม (`PlannedPayment`) — แผนรุ่นก่อนไม่มี = ไม่ตรวจ */
+type PlannedBreakdown = {
+  monthlyPrincipal: Decimal;
+  monthlyInterest: Decimal;
+  monthlyCommission: Decimal;
+  vatAmount: Decimal;
+};
+function plannedBreakdown(payment: object): PlannedBreakdown | null {
+  const p = payment as Partial<Record<keyof PlannedBreakdown, unknown>>;
+  return Prisma.Decimal.isDecimal(p.monthlyPrincipal) &&
+    Prisma.Decimal.isDecimal(p.monthlyInterest) &&
+    Prisma.Decimal.isDecimal(p.monthlyCommission) &&
+    Prisma.Decimal.isDecimal(p.vatAmount)
+    ? (p as PlannedBreakdown)
+    : null;
 }
 
 // ── ด่าน ──────────────────────────────────────────────────────────────────────────────────────
@@ -298,10 +390,15 @@ type Ctx = {
   tx: Prisma.TransactionClient;
   plan: ImportPlan;
   report: WriteReport;
+  /** = `plan.cutoff` */
   cutoff: Date;
+  /** ค่าที่ผู้เรียกส่งมา — 6.1 ตรวจว่า = `plan.cutoff` */
+  callerCutoff: Date;
   opts: GateOptions;
   imported: () => Promise<Imported>;
   entries: () => Promise<ContractEntry[]>;
+  schedules: () => Promise<ScheduleRow[]>;
+  payments: () => Promise<PaymentRow[]>;
 };
 
 async function gate61(ctx: Ctx): Promise<GateBody> {
@@ -311,6 +408,13 @@ async function gate61(ctx: Ctx): Promise<GateBody> {
   const items = plan.items;
   const active = items.filter((i) => i.kind === 'ACTIVE');
   const t = plan.totals;
+
+  if (ctx.callerCutoff.getTime() !== plan.cutoff.getTime()) {
+    fail(
+      'plan',
+      `วันตัดที่ส่งมา ${ctx.callerCutoff.toISOString()} ≠ วันตัดของแผน ${plan.cutoff.toISOString()} — ด่านใช้วันตัดของแผน`,
+    );
+  }
 
   // แผน: ยอดรวมของแผน = ผลรวมรายสัญญา · ไม่มีตัวบล็อก · ครบจำนวนใน dump
   const count = (f: (i: PlannedContract) => number) => items.reduce((n, i) => n + f(i), 0);
@@ -349,44 +453,11 @@ async function gate61(ctx: Ctx): Promise<GateBody> {
     if (!planCodes.has(code)) fail(code, 'สัญญาในรายงานตัวเขียนไม่อยู่ในแผน');
   }
 
-  // สัญญาในฐาน
   const imported = await ctx.imported();
-  const byStatus: Record<string, number> = {};
-  for (const item of items) {
-    const row = imported.byCode.get(item.code);
-    if (!row) {
-      fail(item.code, 'ไม่พบสัญญาในฐาน');
-      continue;
-    }
-    byStatus[row.status] = (byStatus[row.status] ?? 0) + 1;
-    if (row.deletedAt) fail(item.code, 'สัญญาถูกลบ (deletedAt)');
-    if (row.legacyContractCode !== item.code) fail(item.code, 'legacyContractCode ≠ เลขสัญญาเดิม');
-    if (row.contractNumber !== item.code) fail(item.code, 'เลขสัญญา ≠ เลขสัญญาเดิม');
-    if (row.status !== item.status) fail(item.code, `สถานะ ${row.status} ≠ แผน ${item.status}`);
-  }
-
-  // แถวของสัญญาที่สร้างรอบนี้ — ต่อสัญญา (ไฟล์ที่ไม่ได้อัปโหลด = ไม่มีแถว)
-  const createdItems = items.filter((i) => report.contractIds.has(i.code));
-  const createdIds = createdItems.flatMap((i) => {
-    const id = imported.byCode.get(i.code)?.id;
-    return id ? [id] : [];
-  });
-  const where = { contractId: { in: createdIds }, deletedAt: null };
-  const schedules = new Map(
-    (
-      await tx.installmentSchedule.groupBy({ by: ['contractId'], where, _count: { _all: true } })
-    ).map((g) => [g.contractId, g._count._all]),
-  );
-  const payments = new Map(
-    (
-      await tx.payment.groupBy({
-        by: ['contractId'],
-        where,
-        _count: { _all: true },
-        _sum: { amountDue: true, amountPaid: true },
-      })
-    ).map((g) => [g.contractId, g]),
-  );
+  const ids = imported.ids;
+  const where = { contractId: { in: ids }, deletedAt: null };
+  const schedules = byContract(await ctx.schedules());
+  const payments = byContract(await ctx.payments());
   const evidences = new Map(
     (
       await tx.paymentEvidence.groupBy({
@@ -409,12 +480,13 @@ async function gate61(ctx: Ctx): Promise<GateBody> {
   for (const e of entries) {
     const flow = metaString(e.metadata, 'flow');
     ownFlowById.set(e.id, flow);
-    if (flow && metaString(e.metadata, 'contractId') === e.contractId) {
+    if (flow && isOwnEntry(e)) {
       const key = flowKey(e.contractId, flow);
       flowCount.set(key, (flowCount.get(key) ?? 0) + 1);
     }
   }
-  const missingByCode = new Map(report.missingAttachments.map((m) => [m.code, new Set(m.paths)]));
+  const writerMissing = new Map(report.missingAttachments.map((m) => [m.code, new Set(m.paths)]));
+  const planKnowsFiles = ctx.opts.planFiles === true || t.missingAttachments > 0;
   const customerByCode = new Map(report.customers.map((c) => [c.code, c]));
   const kindFlow = {
     opening: LEGACY_OPENING_FLOW,
@@ -422,6 +494,7 @@ async function gate61(ctx: Ctx): Promise<GateBody> {
     'catch-up': LEGACY_VAT_CATCHUP_FLOW,
   } as const;
 
+  const byStatus: Record<string, number> = {};
   const exp = {
     schedules: 0,
     payments: 0,
@@ -431,71 +504,195 @@ async function gate61(ctx: Ctx): Promise<GateBody> {
     marker: 0,
     catchUp: 0,
     missingFiles: 0,
+    attachmentsUnchecked: 0,
   };
-  for (const item of createdItems) {
+  for (const item of items) {
     const row = imported.byCode.get(item.code);
-    if (!row) continue;
+    if (!row) {
+      fail(item.code, 'ไม่พบสัญญาในฐาน');
+      continue;
+    }
     const id = row.id;
-    const missing = missingByCode.get(item.code) ?? new Set<string>();
-    exp.missingFiles += missing.size;
-    const ev = item.evidences.filter((e) => !missing.has(e.slipPath));
-    const docs = item.documents.filter((d) => !missing.has(d.path));
+    const isCreated = report.contractIds.has(item.code);
+    byStatus[row.status] = (byStatus[row.status] ?? 0) + 1;
+
+    // สัญญา — รวมช่องเงินที่รอบ 2A / ใบรับชำระอ่าน (`accrual2AInputOf`)
+    if (row.deletedAt) fail(item.code, 'สัญญาถูกลบ (deletedAt)');
+    if (row.legacyContractCode !== item.code) fail(item.code, 'legacyContractCode ≠ เลขสัญญาเดิม');
+    if (row.contractNumber !== item.code) fail(item.code, 'เลขสัญญา ≠ เลขสัญญาเดิม');
+    if (row.status !== item.status) fail(item.code, `สถานะ ${row.status} ≠ แผน ${item.status}`);
+    const m = item.money;
+    const moneyChecks: Array<[string, Decimal | null, Decimal]> = [
+      ['financedAmount', row.financedAmount, m.financedAmount],
+      ['storeCommission', row.storeCommission, m.storeCommission],
+      ['interestTotal', row.interestTotal, m.interestTotal],
+      ['vatAmount', row.vatAmount, m.vatAmount],
+      ['monthlyPayment', row.monthlyPayment, m.monthlyPayment],
+    ];
+    for (const [field, db, want] of moneyChecks) {
+      if (!sameMoney(db, want)) fail(item.code, `${field} ในฐาน ${money(db)} ≠ แผน ${money(want)}`);
+    }
+    if (row.totalMonths !== m.totalMonths) {
+      fail(item.code, `totalMonths ในฐาน ${row.totalMonths} ≠ แผน ${m.totalMonths}`);
+    }
+
+    // งวดรายแถว
+    const dbPayments = new Map((payments.get(id) ?? []).map((p) => [p.installmentNo, p]));
+    for (const p of item.payments) {
+      const dbRow = dbPayments.get(p.installmentNo);
+      dbPayments.delete(p.installmentNo);
+      const at = `งวด ${p.installmentNo}`;
+      if (!dbRow) {
+        fail(item.code, `${at}: ไม่มีแถว Payment`);
+        continue;
+      }
+      if (dbRow.dueDate.getTime() !== p.dueDate.getTime()) {
+        fail(item.code, `${at}: dueDate ในฐาน ${day(dbRow.dueDate)} ≠ แผน ${day(p.dueDate)}`);
+      }
+      if (!dbRow.amountDue.eq(p.amountDue)) {
+        fail(
+          item.code,
+          `${at}: amountDue ในฐาน ${money(dbRow.amountDue)} ≠ แผน ${money(p.amountDue)}`,
+        );
+      }
+      if (!dbRow.amountPaid.eq(p.amountPaid)) {
+        fail(
+          item.code,
+          `${at}: amountPaid ในฐาน ${money(dbRow.amountPaid)} ≠ แผน ${money(p.amountPaid)}`,
+        );
+      }
+      if (dbRow.status !== p.status) {
+        fail(item.code, `${at}: status ในฐาน ${dbRow.status} ≠ แผน ${p.status}`);
+      }
+      if (dbRow.legacyInstallmentCode !== p.legacyInstallmentCode) {
+        fail(item.code, `${at}: รหัสงวดเดิมในฐานไม่ตรงแผน`);
+      }
+      const breakdown = plannedBreakdown(p);
+      if (breakdown) {
+        const parts: Array<[string, Decimal | null, Decimal]> = [
+          ['monthlyPrincipal', dbRow.monthlyPrincipal, breakdown.monthlyPrincipal],
+          ['monthlyInterest', dbRow.monthlyInterest, breakdown.monthlyInterest],
+          ['monthlyCommission', dbRow.monthlyCommission, breakdown.monthlyCommission],
+          ['vatAmount', dbRow.vatAmount, breakdown.vatAmount],
+        ];
+        for (const [field, db, want] of parts) {
+          if (!sameMoney(db, want)) {
+            fail(item.code, `${at}: ${field} ในฐาน ${money(db)} ≠ แผน ${money(want)}`);
+          }
+        }
+        const sum = parts.every(([, db]) => db != null)
+          ? sumOf(parts.map(([, db]) => db as Decimal))
+          : null;
+        if (!sum || !sum.eq(dbRow.amountDue)) {
+          fail(
+            item.code,
+            `${at}: ยอดแยก (ต้น + ดอก + ค่าคอม + VAT) ${money(sum)} ≠ amountDue ${money(dbRow.amountDue)}`,
+          );
+        }
+      }
+    }
+    for (const extra of dbPayments.keys())
+      fail(item.code, `งวด ${extra}: แถว Payment ไม่อยู่ในแผน`);
+
+    // จำนวนแถวตารางงวด (ค่าในแถว — 6.5)
+    const scheduleCount = schedules.get(id)?.length ?? 0;
+    if (scheduleCount !== item.schedule.length) {
+      fail(item.code, `แถวตารางงวดในฐาน ${scheduleCount} ≠ แผน ${item.schedule.length}`);
+    }
+
+    // สลิป / เอกสาร — ไฟล์ที่ไม่ได้อัปโหลด = ไม่มีแถว · แผนเป็นตัวตั้งเมื่อแผนรู้ผลอัปโหลด
+    const planMissing = new Set(item.missingAttachments);
+    const written = writerMissing.get(item.code) ?? new Set<string>();
+    if (
+      planKnowsFiles &&
+      isCreated &&
+      (written.size !== planMissing.size || [...written].some((p) => !planMissing.has(p)))
+    ) {
+      fail(
+        item.code,
+        `ไฟล์ที่ตัวเขียนไม่ได้สร้างแถว ${written.size} ไฟล์ ≠ ไฟล์ที่แผนพบว่าหาย ${planMissing.size} ไฟล์`,
+      );
+    }
+    const missing: Set<string> | null = planKnowsFiles ? planMissing : isCreated ? written : null;
     const opening = item.opening && item.opening.openingLines.length > 0 ? 1 : 0;
     const markers = item.opening?.priorReceiptMarkers.length ?? 0;
     const catchUp = item.opening && item.opening.catchUpLines.length > 0 ? 1 : 0;
     exp.schedules += item.schedule.length;
     exp.payments += item.payments.length;
-    exp.evidences += ev.length;
-    exp.documents += docs.length;
     exp.opening += opening;
     exp.marker += markers;
     exp.catchUp += catchUp;
+    if (missing) {
+      const ev = item.evidences.filter((e) => !missing.has(e.slipPath));
+      const docs = item.documents.filter((d) => !missing.has(d.path));
+      exp.missingFiles += missing.size;
+      exp.evidences += ev.length;
+      exp.documents += docs.length;
+      const e = evidences.get(id);
+      const attachmentChecks: Array<[string, string, string]> = [
+        ['สลิป', String(e?._count._all ?? 0), String(ev.length)],
+        ['ยอดสลิปรวม', money(e?._sum.amount ?? ZERO), money(sumOf(ev.map((x) => x.amount)))],
+        ['เอกสาร', String(documents.get(id) ?? 0), String(docs.length)],
+      ];
+      for (const [label, db, want] of attachmentChecks) {
+        if (db !== want) fail(item.code, `${label} ในฐาน ${db} ≠ แผน ${want}`);
+      }
+    } else exp.attachmentsUnchecked++;
 
-    const p = payments.get(id);
-    const e = evidences.get(id);
-    const checks: Array<[string, string, string]> = [
-      ['แถวตารางงวด', String(schedules.get(id) ?? 0), String(item.schedule.length)],
-      ['งวด', String(p?._count._all ?? 0), String(item.payments.length)],
-      [
-        'ยอดเรียกเก็บรวม',
-        money(p?._sum.amountDue ?? ZERO),
-        money(sumOf(item.payments.map((x) => x.amountDue))),
-      ],
-      [
-        'ยอดจ่ายรวม',
-        money(p?._sum.amountPaid ?? ZERO),
-        money(sumOf(item.payments.map((x) => x.amountPaid))),
-      ],
-      ['สลิป', String(e?._count._all ?? 0), String(ev.length)],
-      ['ยอดสลิปรวม', money(e?._sum.amount ?? ZERO), money(sumOf(ev.map((x) => x.amount)))],
-      ['เอกสาร', String(documents.get(id) ?? 0), String(docs.length)],
-      ['รายการยกมา', String(flowCount.get(flowKey(id, LEGACY_OPENING_FLOW)) ?? 0), String(opening)],
-      [
-        'marker',
-        String(flowCount.get(flowKey(id, LEGACY_PRIOR_RECEIPT_FLOW)) ?? 0),
-        String(markers),
-      ],
-      [
-        'รายการไล่ VAT',
-        String(flowCount.get(flowKey(id, LEGACY_VAT_CATCHUP_FLOW)) ?? 0),
-        String(catchUp),
-      ],
+    // รายการบัญชีตาม flow
+    const flowChecks: Array<[string, string, number]> = [
+      ['รายการยกมา', LEGACY_OPENING_FLOW, opening],
+      ['marker', LEGACY_PRIOR_RECEIPT_FLOW, markers],
+      ['รายการไล่ VAT', LEGACY_VAT_CATCHUP_FLOW, catchUp],
     ];
-    for (const [label, db, want] of checks) {
+    for (const [label, flow, want] of flowChecks) {
+      const db = flowCount.get(flowKey(id, flow)) ?? 0;
       if (db !== want) fail(item.code, `${label} ในฐาน ${db} ≠ แผน ${want}`);
     }
-    const customer = customerByCode.get(item.code);
-    if (!customer) fail(item.code, 'ไม่มีผลผูกลูกค้าในรายงานตัวเขียน');
-    else if (customer.customerId !== row.customerId) {
-      fail(item.code, 'ลูกค้าของสัญญาในฐาน ≠ รายงานตัวเขียน');
+
+    if (isCreated) {
+      const customer = customerByCode.get(item.code);
+      if (!customer) fail(item.code, 'ไม่มีผลผูกลูกค้าในรายงานตัวเขียน');
+      else if (customer.customerId !== row.customerId) {
+        fail(item.code, 'ลูกค้าของสัญญาในฐาน ≠ รายงานตัวเขียน');
+      }
     }
   }
+
+  // ยอดรวมของรายงานตัวเขียน = แผนของสัญญาที่สร้างรอบนี้
+  const createdItems = items.filter((i) => report.contractIds.has(i.code));
+  const createdMissing = (i: PlannedContract) => writerMissing.get(i.code) ?? new Set<string>();
   const totalChecks: Array<[string, number, number]> = [
-    ['แถวตารางงวด', created.schedules, exp.schedules],
-    ['งวด', created.payments, exp.payments],
-    ['สลิป', created.evidences, exp.evidences],
-    ['เอกสาร', created.documents, exp.documents],
-    ['รายการบัญชี', created.journalEntries, exp.opening + exp.marker + exp.catchUp],
+    ['แถวตารางงวด', created.schedules, createdItems.reduce((n, i) => n + i.schedule.length, 0)],
+    ['งวด', created.payments, createdItems.reduce((n, i) => n + i.payments.length, 0)],
+    [
+      'สลิป',
+      created.evidences,
+      createdItems.reduce(
+        (n, i) => n + i.evidences.filter((e) => !createdMissing(i).has(e.slipPath)).length,
+        0,
+      ),
+    ],
+    [
+      'เอกสาร',
+      created.documents,
+      createdItems.reduce(
+        (n, i) => n + i.documents.filter((d) => !createdMissing(i).has(d.path)).length,
+        0,
+      ),
+    ],
+    [
+      'รายการบัญชี',
+      created.journalEntries,
+      createdItems.reduce(
+        (n, i) =>
+          n +
+          (i.opening && i.opening.openingLines.length > 0 ? 1 : 0) +
+          (i.opening?.priorReceiptMarkers.length ?? 0) +
+          (i.opening && i.opening.catchUpLines.length > 0 ? 1 : 0),
+        0,
+      ),
+    ],
     ['ผลผูกลูกค้า', report.customers.length, created.contracts],
   ];
   for (const [label, reported, want] of totalChecks) {
@@ -518,9 +715,9 @@ async function gate61(ctx: Ctx): Promise<GateBody> {
     const c = customersOfMember.get(item.memberCode) ?? new Set<string>();
     c.add(row.customerId);
     customersOfMember.set(item.memberCode, c);
-    const m = membersOfCustomer.get(row.customerId) ?? new Set<string>();
-    m.add(item.memberCode);
-    membersOfCustomer.set(row.customerId, m);
+    const mc = membersOfCustomer.get(row.customerId) ?? new Set<string>();
+    mc.add(item.memberCode);
+    membersOfCustomer.set(row.customerId, mc);
   }
   for (const item of items) {
     if ((customersOfMember.get(item.memberCode)?.size ?? 0) > 1) {
@@ -539,8 +736,9 @@ async function gate61(ctx: Ctx): Promise<GateBody> {
       `ข้าม ${t.contracts.skipped} · ตัวบล็อก ${plan.blockers.length}` +
       (ctx.opts.bookContracts === undefined ? '' : ` · dump ${ctx.opts.bookContracts}`) +
       ` · สร้าง ${created.contracts} · มีอยู่แล้ว ${report.skippedExisting.length} · สถานะในฐาน ${statusText || '-'}` +
-      ` · ตารางงวด ${exp.schedules} · งวด ${exp.payments} · สลิป ${exp.evidences} · เอกสาร ${exp.documents}` +
-      ` (ไฟล์ไม่ได้อัปโหลด ${exp.missingFiles})` +
+      ` · ตารางงวด ${exp.schedules} · งวด ${exp.payments} (ตรวจรายแถว) · สลิป ${exp.evidences} · เอกสาร ${exp.documents}` +
+      ` (ไฟล์ไม่ได้อัปโหลด ${exp.missingFiles}${planKnowsFiles ? ' ตามแผน' : ' ตามตัวเขียน'}` +
+      `${exp.attachmentsUnchecked > 0 ? ` · ไม่ได้ตรวจสลิป/เอกสาร ${exp.attachmentsUnchecked} สัญญา` : ''})` +
       ` · รายการบัญชี: ยกมา ${exp.opening} · marker ${exp.marker} · ไล่ VAT ${exp.catchUp}` +
       ` · ลูกค้า ${membersOfCustomer.size} จากสมาชิก ${customersOfMember.size}` +
       ` (สร้างใหม่ ${created.customers} · ลูกค้าที่ถือหลายสมาชิก ${shared})`,
@@ -549,28 +747,20 @@ async function gate61(ctx: Ctx): Promise<GateBody> {
 }
 
 /** Σ(amountDue − amountPaid) ต่อสัญญาจากแถว Payment ที่ไม่ถูกลบ */
-async function outstandingByContract(
-  tx: Prisma.TransactionClient,
-  ids: readonly string[],
-): Promise<Map<string, Decimal>> {
-  const groups = await tx.payment.groupBy({
-    by: ['contractId'],
-    where: { contractId: { in: [...ids] }, deletedAt: null },
-    _sum: { amountDue: true, amountPaid: true },
-  });
-  return new Map(
-    groups.map((g) => [g.contractId, (g._sum.amountDue ?? ZERO).minus(g._sum.amountPaid ?? ZERO)]),
-  );
+function outstandingByContract(payments: readonly PaymentRow[]): Map<string, Decimal> {
+  const out = new Map<string, Decimal>();
+  for (const p of payments) {
+    out.set(p.contractId, (out.get(p.contractId) ?? ZERO).plus(p.amountDue).minus(p.amountPaid));
+  }
+  return out;
 }
 
 async function gate62(ctx: Ctx): Promise<GateBody> {
   const failures: GateFailure[] = [];
   const imported = await ctx.imported();
+  const payments = await ctx.payments();
+  const outstanding = outstandingByContract(payments);
   const active = ctx.plan.items.filter((i) => i.kind === 'ACTIVE');
-  const outstanding = await outstandingByContract(
-    ctx.tx,
-    active.flatMap((i) => imported.byCode.get(i.code)?.id ?? []),
-  );
   let total = ZERO;
   let remain = ZERO;
   let adjustment = ZERO;
@@ -593,7 +783,7 @@ async function gate62(ctx: Ctx): Promise<GateBody> {
     adjustment = adjustment.plus(item.peak.adjustment);
     if (!item.peak.adjustment.isZero()) adjusted++;
     satang = satang.plus(item.peak.satangGap);
-    if (item.peak.satangGap.gt(0)) satangContracts++;
+    if (!item.peak.satangGap.isZero()) satangContracts++;
     if (!due.eq(item.peak.remain)) {
       failures.push({
         code: item.code,
@@ -603,12 +793,22 @@ async function gate62(ctx: Ctx): Promise<GateBody> {
       });
     }
   }
+  // งวดที่ยังไม่ PAID ของสัญญาประวัติ (เช่น PARTIALLY_PAID ของสัญญายกเลิก) — คิวทวงถาม / รอบค่าปรับอาจหยิบ (รายงานอย่างเดียว)
+  const historyIds = new Set(
+    ctx.plan.items
+      .filter((i) => i.kind !== 'ACTIVE')
+      .flatMap((i) => imported.byCode.get(i.code)?.id ?? []),
+  );
+  const openHistory = payments.filter(
+    (p) => historyIds.has(p.contractId) && p.status !== 'PAID',
+  ).length;
   return {
     detail:
       `สัญญาผ่อนอยู่ ${active.length} · ยอดค้างตามงวดรวม ${money(total)} · คงเหลือ PEAK รวม ${money(remain)}` +
       ` · ต่างกับระบบเก่า (รายงานอย่างเดียว): ปรับลดตาม PEAK ${money(adjustment)} (${adjusted} สัญญา)` +
-      ` · เศษสตางค์ PEAK บวกเข้างวดสุดท้าย ${money(satang)} (${satangContracts} สัญญา)` +
-      ` · สัญญาประวัติไม่ตรวจ ${ctx.plan.items.length - active.length}`,
+      ` · เศษสตางค์ PEAK ปรับเข้างวดสุดท้าย ${money(satang)} (${satangContracts} สัญญา)` +
+      ` · สัญญาประวัติไม่ตรวจยอด ${ctx.plan.items.length - active.length}` +
+      ` (งวดที่ยังไม่ PAID ${openHistory} — รายงานอย่างเดียว)`,
     failures,
   };
 }
@@ -637,18 +837,36 @@ async function gate63(ctx: Ctx): Promise<GateBody> {
 
 async function gate64(ctx: Ctx): Promise<GateBody> {
   const failures: GateFailure[] = [];
+  const fail = (code: string, detail: string) => failures.push({ code, detail });
   const imported = await ctx.imported();
-  const gl = glByContract(await ctx.entries());
-  const outstanding = await outstandingByContract(ctx.tx, imported.ids);
+  const entries = await ctx.entries();
+  const gl = glByContract(entries);
+  const payments = await ctx.payments();
+  const outstanding = outstandingByContract(payments);
+  const paidOf = new Map(payments.map((p) => [`${p.contractId}:${p.installmentNo}`, p.amountPaid]));
+  const schedules = await ctx.schedules();
+  const scheduleById = new Map(schedules.map((s) => [s.id, s]));
+  const schedulesOf = byContract(schedules);
+  const markersOf = new Map<string, ContractEntry[]>();
+  for (const entry of entries) {
+    if (metaString(entry.metadata, 'flow') !== LEGACY_PRIOR_RECEIPT_FLOW || !isOwnEntry(entry)) {
+      continue;
+    }
+    const list = markersOf.get(entry.contractId) ?? [];
+    list.push(entry);
+    markersOf.set(entry.contractId, list);
+  }
+
   const totals = new Map<string, Decimal>(CARRY_FORWARD_ACCOUNTS.map((a) => [a, ZERO]));
   let rounding = ZERO;
   let roundingContracts = 0;
   let satang = ZERO;
   let satangContracts = 0;
+  let unaccruedRows = 0;
   for (const item of ctx.plan.items) {
     const row = imported.byCode.get(item.code);
     if (!row) {
-      failures.push({ code: item.code, detail: 'ไม่พบสัญญาในฐาน' });
+      fail(item.code, 'ไม่พบสัญญาในฐาน');
       continue;
     }
     const ledger = gl.get(row.id) ?? new Map<string, Decimal>();
@@ -659,25 +877,23 @@ async function gate64(ctx: Ctx): Promise<GateBody> {
     if (item.kind !== 'ACTIVE') {
       for (const account of CARRY_FORWARD_ACCOUNTS) {
         if (!at(account).isZero()) {
-          failures.push({
-            code: item.code,
-            detail: `สัญญาประวัติมียอด ${account} ใน GL ${money(at(account))}`,
-          });
+          fail(item.code, `สัญญาประวัติมียอด ${account} ใน GL ${money(at(account))}`);
         }
       }
       continue;
     }
     if (!item.opening) {
-      failures.push({ code: item.code, detail: 'แผนไม่มีรายการยกมาของสัญญาผ่อนอยู่' });
+      fail(item.code, 'แผนไม่มีรายการยกมาของสัญญาผ่อนอยู่');
       continue;
     }
     rounding = rounding.plus(item.roundingDiff);
     if (!item.roundingDiff.isZero()) roundingContracts++;
-    if (item.peak?.satangGap.gt(0)) {
+    if (item.peak && !item.peak.satangGap.isZero()) {
       satang = satang.plus(item.peak.satangGap);
       satangContracts++;
     }
-    // ยกมา + marker (Cr 11-2103) + ไล่ VAT (Dr 21-2102) — ลงในธุรกรรมเดียวกันทั้งหมด
+
+    // ① GL = รายการยกมา + marker (Cr 11-2103) + ไล่ VAT (Dr 21-2102) — ลงในธุรกรรมเดียวกันทั้งหมด
     const expected = new Map<string, Decimal>();
     const add = (account: string, net: Decimal) =>
       expected.set(account, (expected.get(account) ?? ZERO).plus(net));
@@ -687,22 +903,98 @@ async function gate64(ctx: Ctx): Promise<GateBody> {
     for (const account of CARRY_FORWARD_ACCOUNTS) {
       const want = expected.get(account) ?? ZERO;
       if (!at(account).eq(want)) {
-        failures.push({
-          code: item.code,
-          detail: `${account} ใน GL ${money(at(account))} ≠ ยกมา (หลัง marker / ไล่ VAT) ${money(want)} (Dr − Cr)`,
-        });
+        fail(
+          item.code,
+          `${account} ใน GL ${money(at(account))} ≠ ยกมา (หลัง marker / ไล่ VAT) ${money(want)} (Dr − Cr)`,
+        );
       }
     }
-    // ลูกหนี้ใน GL = ยอดค้างตามแถวงวด + เศษปัด (บัญชี − ยอดเรียกเก็บ)
-    const receivable = sumOf(RECEIVABLE_ACCOUNTS.map(at));
+
+    // ② ลูกหนี้ใน GL = ยอดค้างตามแถวงวด + เศษปัด (บัญชี − ยอดเรียกเก็บ)
+    const receivable = sumOf(RECEIVABLE_ACCOUNTS.map((a) => at(a)));
     const register = outstanding.get(row.id) ?? ZERO;
     if (!receivable.eq(register.plus(item.roundingDiff))) {
-      failures.push({
-        code: item.code,
-        detail: `ลูกหนี้ใน GL (11-2101 + 11-2103 + 11-2105) ${money(receivable)} ≠ ยอดค้างตามงวด ${money(
+      fail(
+        item.code,
+        `ลูกหนี้ใน GL (11-2101 + 11-2103 + 11-2105) ${money(receivable)} ≠ ยอดค้างตามงวด ${money(
           register,
         )} + เศษปัด ${money(item.roundingDiff)}`,
-      });
+      );
+    }
+
+    // ③ GL วิ่งถึงศูนย์เมื่อรอบ 2A ตั้งงวดที่เหลือครบ — ตัวสร้างบรรทัดตัวเดียวกับรอบกลางคืน ข้อมูลจากสัญญาและแถวงวดในฐาน
+    const runoff = new Map<string, Decimal>();
+    for (const sched of schedulesOf.get(row.id) ?? []) {
+      if (sched.accrualJournalEntryId !== null) continue;
+      unaccruedRows++;
+      try {
+        const part = buildRemainderAccrual2ALines(
+          accrual2AInputOf(row, sched.installmentNo),
+          accruedSoFarOf(sched),
+        );
+        for (const line of part.lines) {
+          runoff.set(
+            line.accountCode,
+            (runoff.get(line.accountCode) ?? ZERO).plus(line.dr).minus(line.cr),
+          );
+        }
+      } catch (error) {
+        fail(
+          item.code,
+          `งวด ${sched.installmentNo}: คำนวณ 2A ส่วนที่เหลือไม่ได้ (${errorLabel(error)})`,
+        );
+      }
+    }
+    for (const account of ACCRUAL_RUNOFF_ACCOUNTS) {
+      const after = at(account).plus(runoff.get(account) ?? ZERO);
+      if (!after.isZero()) {
+        fail(
+          item.code,
+          `${account}: GL ${money(at(account))} + 2A ที่รอบกลางคืนจะลง (งวดที่ยังตั้งไม่ครบ) ${money(
+            runoff.get(account) ?? ZERO,
+          )} = ${money(after)} ≠ 0`,
+        );
+      }
+    }
+
+    // ④ marker: ชี้แถวงวดของ (สัญญา, งวด) ที่แผนมี marker · ยอด = แผน = amountPaid ของงวด
+    const plannedMarkers = new Map(
+      item.opening.priorReceiptMarkers.map((mk) => [mk.installmentNo, mk.amount]),
+    );
+    const seen = new Set<number>();
+    for (const marker of markersOf.get(row.id) ?? []) {
+      const sched = scheduleById.get(metaString(marker.metadata, 'installmentScheduleId') ?? '');
+      const label = `marker ${marker.entryNumber}`;
+      if (!sched || sched.contractId !== row.id) {
+        fail(item.code, `${label}: ไม่ได้ชี้แถวตารางงวดของสัญญานี้`);
+        continue;
+      }
+      const no = sched.installmentNo;
+      const want = plannedMarkers.get(no);
+      if (want === undefined) {
+        fail(item.code, `${label}: ชี้งวด ${no} ซึ่งแผนไม่มี marker`);
+        continue;
+      }
+      if (seen.has(no)) fail(item.code, `${label}: งวด ${no} มี marker มากกว่าหนึ่งรายการ`);
+      seen.add(no);
+      const cr = lineNet(marker, '11-2103').negated();
+      const dr = lineNet(marker, OPENING_EQUITY_ACCOUNT);
+      if (!cr.eq(want) || !dr.eq(want)) {
+        fail(
+          item.code,
+          `${label} งวด ${no}: Cr 11-2103 ${money(cr)} / Dr ${OPENING_EQUITY_ACCOUNT} ${money(dr)} ≠ แผน ${money(want)}`,
+        );
+      }
+      const paid = paidOf.get(`${row.id}:${no}`);
+      if (!paid || !paid.eq(want)) {
+        fail(
+          item.code,
+          `${label} งวด ${no}: ยอด ${money(want)} ≠ amountPaid ของงวด ${money(paid)}`,
+        );
+      }
+    }
+    for (const no of plannedMarkers.keys()) {
+      if (!seen.has(no)) fail(item.code, `งวด ${no}: ไม่มี marker ที่ชี้แถวงวดนี้`);
     }
   }
   const glText = CARRY_FORWARD_ACCOUNTS.map((a) => `${a} ${money(totals.get(a) as Decimal)}`).join(
@@ -711,90 +1003,124 @@ async function gate64(ctx: Ctx): Promise<GateBody> {
   return {
     detail:
       `GL ของสัญญาที่นำเข้า (Dr − Cr): ${glText}` +
+      ` · งวดที่ยังตั้งลูกหนี้ไม่ครบ ${unaccruedRows} (GL 11-2101 / 11-2105 / 11-2106 / 21-2102 วิ่งถึงศูนย์เมื่อรอบ 2A ตั้งครบ)` +
       ` · เศษปัดบัญชี − PEAK รวม ${money(rounding)} (${roundingContracts} สัญญา — บวก: งวดสุดท้ายลง 52-1104 · ลบ: ลง 53-1503)` +
-      ` · เศษสตางค์ PEAK บวกเข้างวดสุดท้าย ${money(satang)} (${satangContracts} สัญญา)`,
+      ` · เศษสตางค์ PEAK ปรับเข้างวดสุดท้าย ${money(satang)} (${satangContracts} สัญญา)`,
     failures,
   };
 }
 
 async function gate65(ctx: Ctx): Promise<GateBody> {
   const { tx } = ctx;
+  const failures: GateFailure[] = [];
+  const fail = (code: string, detail: string) => failures.push({ code, detail });
   const imported = await ctx.imported();
-  // รอบ 2A ที่ทำงาน ณ วันตัดเลือก dueDate < เที่ยงคืนวันถัดไป (กรุงเทพ) — ครอบงวดที่ครบกำหนดถึงวันตัด
-  const dueBefore = new Date(bangkokStartOfDay(ctx.cutoff).getTime() + DAY_MS);
-  const contract = {
-    status: { notIn: [...ACCRUAL_EXCLUDED_CONTRACT_STATUSES] },
-    deletedAt: null,
-  };
   const ids = imported.ids;
+  // รอบ 2A ที่ทำงาน ณ วันตัดเลือก dueDate < เที่ยงคืนวันถัดไป (กรุงเทพ) — ครอบงวดที่ครบกำหนดถึงวันตัด ·
+  // รอบภาษีขาย 60 วันเลือกจากแถวที่ไม่มี accrualJournalEntryId เช่นกัน (+ ยอดสะสม 0 + ไม่ PAID) ⇒ เป็นเซตย่อยของคิวรีนี้
+  const dueBefore = new Date(bangkokStartOfDay(ctx.cutoff).getTime() + DAY_MS);
   const accrual = await tx.installmentSchedule.findMany({
     where: {
       contractId: { in: ids },
       dueDate: { lt: dueBefore },
       accrualJournalEntryId: null,
       deletedAt: null,
-      contract,
+      contract: { status: { notIn: [...ACCRUAL_EXCLUDED_CONTRACT_STATUSES] }, deletedAt: null },
     },
     select: { contractId: true, installmentNo: true },
     orderBy: [{ contractId: 'asc' }, { installmentNo: 'asc' }],
   });
-  // รอบ VAT 60 วัน: เงื่อนไขเดียวกับ cron (ยังไม่ตั้งลูกหนี้งวดเลย · ไม่มีงวด PAID) — หน้าต่างวันที่กว้างเป็นทุกงวดที่ถึงวันตัด
-  // (cron เลือก dueDate < วันนี้ − 60 วัน ⇒ งวดที่ไม่ถูกหยิบวันนี้แต่จะถูกหยิบภายหลังก็ไม่ผ่าน)
-  const vatCandidates = await tx.installmentSchedule.findMany({
-    where: {
-      contractId: { in: ids },
-      dueDate: { lt: dueBefore },
-      vat60dayJournalEntryId: null,
-      deletedAt: null,
-      accrualJournalEntryId: null,
-      accruedAmount: { lte: 0 },
-      accruedVat: { lte: 0 },
-      contract,
-    },
-    select: { contractId: true, installmentNo: true },
-    orderBy: [{ contractId: 'asc' }, { installmentNo: 'asc' }],
-  });
-  const paid =
-    vatCandidates.length === 0
-      ? new Set<string>()
-      : new Set(
-          (
-            await tx.payment.findMany({
-              where: {
-                contractId: { in: [...new Set(vatCandidates.map((c) => c.contractId))] },
-                installmentNo: { in: [...new Set(vatCandidates.map((c) => c.installmentNo))] },
-                status: 'PAID',
-                deletedAt: null,
-              },
-              select: { contractId: true, installmentNo: true },
-            })
-          ).map((p) => `${p.contractId}:${p.installmentNo}`),
+  for (const r of accrual) {
+    fail(
+      imported.codeOf.get(r.contractId) ?? '?',
+      `งวด ${r.installmentNo}: รอบตั้งลูกหนี้งวด (2A) จะหยิบ — ครบกำหนดถึงวันตัดแต่ไม่มี accrualJournalEntryId`,
+    );
+  }
+
+  // แถวตารางงวดรายแถว = แผน · ลิงก์ = เลขที่รายการยกมา เมื่อและเฉพาะเมื่อ stamp accrued · accrued* = stamp
+  // รายการยกมาหาด้วย reference (`legacy-opening:<เลขเดิม>`) ไม่ใช่ flow — flow ตรวจที่ 6.1 / 6.6
+  const entries = await ctx.entries();
+  const schedules = byContract(await ctx.schedules());
+  let rows = 0;
+  let linked = 0;
+  let partial = 0;
+  let vat60 = 0;
+  for (const item of ctx.plan.items) {
+    const row = imported.byCode.get(item.code);
+    if (!row) continue;
+    const dbRows = new Map((schedules.get(row.id) ?? []).map((s) => [s.installmentNo, s]));
+    const stamps = new Map((item.opening?.stamps ?? []).map((s) => [s.installmentNo, s]));
+    const openings = entries.filter(
+      (e) =>
+        isOwnEntry(e) &&
+        e.contractId === row.id &&
+        e.referenceType === 'AUTO' &&
+        e.referenceId === legacyOpeningReference(item.code),
+    );
+    const openingNo = openings.length === 1 ? openings[0].entryNumber : null;
+    for (const planned of item.schedule) {
+      const sched = dbRows.get(planned.installmentNo);
+      dbRows.delete(planned.installmentNo);
+      const at = `งวด ${planned.installmentNo}`;
+      if (!sched) {
+        fail(item.code, `${at}: ไม่มีแถวตารางงวด`);
+        continue;
+      }
+      rows++;
+      if (sched.dueDate.getTime() !== planned.dueDate.getTime()) {
+        fail(item.code, `${at}: dueDate ในฐาน ${day(sched.dueDate)} ≠ แผน ${day(planned.dueDate)}`);
+      }
+      const fields: Array<[string, Decimal | null, Decimal | null]> = [
+        ['amountDue', sched.amountDue, planned.amountDue],
+        ['principal', sched.principal, planned.principal],
+        ['interest', sched.interest, planned.interest],
+      ];
+      for (const [field, db, want] of fields) {
+        if (!sameMoney(db, want)) {
+          fail(item.code, `${at}: ${field} ในฐาน ${money(db)} ≠ แผน ${money(want)}`);
+        }
+      }
+      if (sched.vat60dayJournalEntryId !== null) {
+        vat60++;
+        fail(item.code, `${at}: มี vat60dayJournalEntryId (ตัวนำเข้าห้ามผูก)`);
+      }
+      const stamp = stamps.get(planned.installmentNo);
+      if (!stamp) {
+        fail(item.code, `${at}: แผนไม่มี stamp ของงวดนี้`);
+        continue;
+      }
+      if (stamp.accrued) {
+        linked++;
+        if (!openingNo || sched.accrualJournalEntryId !== openingNo) {
+          fail(
+            item.code,
+            `${at}: ตั้งลูกหนี้ครบแล้วแต่ accrualJournalEntryId ไม่ใช่เลขที่รายการยกมาของสัญญา`,
+          );
+        }
+      } else if (sched.accrualJournalEntryId !== null) {
+        fail(
+          item.code,
+          `${at}: ยังตั้งลูกหนี้ไม่ครบแต่มี accrualJournalEntryId — รอบ 2A จะไม่หยิบงวดนี้`,
         );
-  const vat60 = vatCandidates.filter((c) => !paid.has(`${c.contractId}:${c.installmentNo}`));
-  // ตัวนำเข้าไม่เคยผูก VAT 60 วัน (คำตัดสิน C2) — ลิงก์ที่มี = ใบรับชำระถัดไปจะกลับ VAT ที่ไม่เคยลง
-  const linked = await tx.installmentSchedule.findMany({
-    where: { contractId: { in: ids }, vat60dayJournalEntryId: { not: null }, deletedAt: null },
-    select: { contractId: true, installmentNo: true },
-    orderBy: [{ contractId: 'asc' }, { installmentNo: 'asc' }],
-  });
-  const failures: GateFailure[] = [
-    ...accrual.map((r) => ({
-      code: imported.codeOf.get(r.contractId) ?? '?',
-      detail: `งวด ${r.installmentNo}: รอบตั้งลูกหนี้งวด (2A) จะหยิบ — ครบกำหนดถึงวันตัดแต่ไม่มี accrualJournalEntryId`,
-    })),
-    ...vat60.map((r) => ({
-      code: imported.codeOf.get(r.contractId) ?? '?',
-      detail: `งวด ${r.installmentNo}: รอบภาษีขาย 60 วันจะหยิบ — ยังไม่ตั้งลูกหนี้งวดและยังไม่ชำระครบ`,
-    })),
-    ...linked.map((r) => ({
-      code: imported.codeOf.get(r.contractId) ?? '?',
-      detail: `งวด ${r.installmentNo}: มี vat60dayJournalEntryId (ตัวนำเข้าห้ามผูก)`,
-    })),
-  ];
+      }
+      if (!stamp.accrued && !stamp.accruedAmount.isZero()) partial++;
+      const accrued: Array<[string, Decimal, Decimal]> = [
+        ['accruedAmount', sched.accruedAmount, stamp.accruedAmount],
+        ['accruedVat', sched.accruedVat, stamp.accruedVat],
+        ['accruedInterest', sched.accruedInterest, stamp.accruedInterest],
+      ];
+      for (const [field, db, want] of accrued) {
+        if (!db.eq(want))
+          fail(item.code, `${at}: ${field} ในฐาน ${money(db)} ≠ แผน ${money(want)}`);
+      }
+    }
+    for (const extra of dbRows.keys()) fail(item.code, `งวด ${extra}: แถวตารางงวดไม่อยู่ในแผน`);
+  }
   return {
     detail:
-      `งวดที่ครบกำหนดก่อน ${bangkokDateString(dueBefore)} (กรุงเทพ) ของ ${ids.length} สัญญา: ` +
-      `รอบ 2A จะหยิบ ${accrual.length} · รอบภาษีขาย 60 วันจะหยิบ ${vat60.length} · ผูก VAT 60 วันอยู่ ${linked.length}`,
+      `งวดที่ครบกำหนดก่อน ${bangkokDateString(dueBefore)} (กรุงเทพ) ของ ${ids.length} สัญญา: รอบ 2A จะหยิบ ${accrual.length}` +
+      ` (รอบภาษีขาย 60 วันเป็นเซตย่อย) · แถวตารางงวด ${rows}: ตั้งลูกหนี้ครบ (ลิงก์รายการยกมา) ${linked}` +
+      ` · ตั้งบางส่วน ${partial} · ผูก VAT 60 วัน ${vat60}`,
     failures,
   };
 }
@@ -934,7 +1260,8 @@ async function gate610(ctx: Ctx): Promise<GateBody> {
       `บรรทัด 11-2106 / 41-1101 ของสัญญาที่นำเข้า ${lines} (ตัดทั้งรายการ ${byEntry} · ตัดเป็นบรรทัดดอกเบี้ย ${byLine})` +
       ` · ดอกเบี้ยตามสัญญาเดิมรวม ${money(interest)}` +
       ` · ข้อจำกัดที่รู้ (ไม่ใช่เงื่อนไขผ่าน): สัญญาผ่อนอยู่ ${active} สัญญา — ถ้าเปลี่ยนเครื่อง รายการปิดสัญญาเดิม` +
-      ` (Dr 11-2106 ไม่มีคู่ 41-1101) ส่งออก PEAK ไม่ดุล รอสำนักงานบัญชี`,
+      ` (Dr 11-2106 ไม่มีคู่ 41-1101) ส่งออก PEAK ไม่ดุล รอสำนักงานบัญชี` +
+      ` · ตรวจตามตัวกรองไฟล์ส่งออก CSV — การส่งผ่าน PEAK API ยังไม่กรอง`,
     failures,
   };
 }
@@ -952,8 +1279,8 @@ const GATES: Record<GateId, (ctx: Ctx) => Promise<GateBody>> = {
 };
 
 /**
- * รันทุกด่าน (ตามลำดับ `GATE_IDS`) ใน `tx` ของการนำเข้า — ดูหัวไฟล์ · คืนผลทุกด่านเสมอ (ไม่ throw)
- * @param cutoff วันตัด (2026-11-30 23:59:59 กรุงเทพ — ค่าเดียวกับ `plan.cutoff`)
+ * รันทุกด่าน (ตามลำดับ `GATE_IDS`) ใน `tx` ของการนำเข้า — ดูหัวไฟล์ · คืนผลหนึ่งรายการต่อด่านเสมอ (ไม่ throw)
+ * @param cutoff ต้องเท่า `plan.cutoff` (ด่านใช้วันตัดของแผน — ค่าอื่นทำให้ 6.1 ไม่ผ่าน)
  */
 export async function runGates(
   tx: Prisma.TransactionClient,
@@ -967,10 +1294,25 @@ export async function runGates(
     tx,
     plan,
     report,
-    cutoff,
+    cutoff: plan.cutoff,
+    callerCutoff: cutoff,
     opts,
     imported,
     entries: once(async () => loadContractEntries(tx, (await imported()).ids)),
+    schedules: once(async () =>
+      tx.installmentSchedule.findMany({
+        where: { contractId: { in: (await imported()).ids }, deletedAt: null },
+        select: SCHEDULE_SELECT,
+        orderBy: [{ contractId: 'asc' }, { installmentNo: 'asc' }],
+      }),
+    ),
+    payments: once(async () =>
+      tx.payment.findMany({
+        where: { contractId: { in: (await imported()).ids }, deletedAt: null },
+        select: PAYMENT_SELECT,
+        orderBy: [{ contractId: 'asc' }, { installmentNo: 'asc' }],
+      }),
+    ),
   };
   let savepoints = true;
   const results: GateResult[] = [];
@@ -985,9 +1327,11 @@ export async function runGates(
         savepoints = false; // ไม่ใช่ธุรกรรม — แต่ละคำสั่ง commit เอง error ไม่ลามไปด่านถัดไป
       }
     }
+    let outcome: GateResult;
     try {
-      results.push(result(id, await GATES[id](ctx)));
+      const body = await GATES[id](ctx);
       if (inSavepoint) await tx.$executeRawUnsafe(`RELEASE SAVEPOINT ${name}`);
+      outcome = result(id, body);
     } catch (error) {
       if (inSavepoint) {
         try {
@@ -997,12 +1341,9 @@ export async function runGates(
           // ธุรกรรมใช้ต่อไม่ได้ — ด่านถัดไปจะรายงาน error ของตัวเอง
         }
       }
-      results.push({
-        id,
-        pass: false,
-        detail: `ตรวจไม่สำเร็จ (${errorLabel(error)}) — ถือว่าไม่ผ่าน`,
-      });
+      outcome = { id, pass: false, detail: `ตรวจไม่สำเร็จ (${errorLabel(error)}) — ถือว่าไม่ผ่าน` };
     }
+    results.push(outcome);
   }
   return results;
 }
@@ -1020,7 +1361,7 @@ const SAMPLE_STRATA: ReadonlyArray<(item: PlannedContract) => boolean> = [
 /**
  * เลขสัญญาเดิม `n` สัญญาให้คนเทียบกับ PEAK / หน้าจอระบบเก่าทีละช่องในคืนตัด (สเปก 6.8) — ครอบทุกชั้น: ค้างชำระ ·
  * ปิดก่อนกำหนด · ยกเลิก/หนี้เสีย · ฉบับเก่า (แต่ละชั้นได้ `max(1, ⌊n/5⌋)` สัญญาเท่าที่มี) แล้วสุ่มส่วนที่เหลือจากทุกสัญญา ·
- * ผลเดิมทุกครั้งสำหรับแผนและ `seed` เดียวกัน (ไม่ส่ง = ผูกกับวันตัดของแผน)
+ * ผลเดิมทุกครั้งสำหรับแผนและ `seed` เดียวกัน (ไม่ส่ง = ผูกกับวันตัดของแผน — ผู้เรียกควรส่งรหัสรอบนำเข้า)
  */
 export function sampleForManualCheck(plan: ImportPlan, n = 20, seed?: string): string[] {
   if (n <= 0) return [];

@@ -98,8 +98,8 @@ describe('mapContractMoney', () => {
       interestTotal: '6000.00',
       vatAmount: '1190.00',
       vatPct: '0.0700',
-      // ระบบเก่าไม่มีคอลัมน์อัตราดอกเบี้ย — ไม่คิดอัตราขึ้นเอง
-      interestRate: '0.0000',
+      // อัตราต่อเดือนแบบคงที่ = 6,000 ÷ 10,000 ÷ 12
+      interestRate: '0.0500',
       monthlyPayment: MONTHLY,
       totalMonths: 12,
     });
@@ -130,10 +130,35 @@ describe('mapContractMoney', () => {
     ).toBe('999.90');
   });
 
-  it('sales_tax 0 → vatAmount and vatPct null; interest takes the whole remainder', () => {
+  it('interestRate = interestTotal ÷ financed ÷ months (monthly flat, HALF_UP 4 dp); interestTotal stays legacy', () => {
+    const even = mapContractMoney(contract({ finance: '10900', installment_total: '19630' }));
+    expect([even.interestTotal.toFixed(2), even.interestRate.toFixed(4)]).toEqual([
+      '6540.00',
+      '0.0500',
+    ]);
+    const rounded = mapContractMoney(contract({ installment_total: '17190' }));
+    // 5,000 ÷ 10,000 ÷ 12 = 0.041666… → 0.0417 · ดอกเบี้ยรวมไม่คิดใหม่จากอัตราที่ปัด (ไม่ใช่ 5,004)
+    expect([rounded.interestTotal.toFixed(2), rounded.interestRate.toFixed(4)]).toEqual([
+      '5000.00',
+      '0.0417',
+    ]);
+    // 7,147.20 ÷ 8,000 ÷ 12 = 0.07445 พอดี → HALF_UP 0.0745 (ROUND_DOWN / HALF_EVEN ได้ 0.0744)
+    const halfUp = mapContractMoney(contract({ finance: '8000', installment_total: '17337.20' }));
+    expect([halfUp.interestTotal.toFixed(2), halfUp.interestRate.toFixed(4)]).toEqual([
+      '7147.20',
+      '0.0745',
+    ]);
+  });
+
+  it('interestRate 0 when the financed amount is 0 (no division)', () => {
+    const m = mapContractMoney(contract({ finance: '0', ref_product_price: '2000' }));
+    expect([m.financedAmount.toFixed(2), m.interestRate.toFixed(4)]).toEqual(['0.00', '0.0000']);
+  });
+
+  it('sales_tax 0 → explicit zero VAT (vatAmount 0, vatPct 0 — not null, which means +7%)', () => {
     const m = mapContractMoney(contract({ sales_tax: '0' }));
-    expect(m.vatAmount).toBeNull();
-    expect(m.vatPct).toBeNull();
+    expect(m.vatAmount?.toFixed(2)).toBe('0.00');
+    expect(m.vatPct?.toFixed(4)).toBe('0.0000');
     expect(m.interestTotal.toFixed(2)).toBe('7190.00');
   });
 
@@ -247,19 +272,19 @@ describe('checkInstallmentAmounts', () => {
     expect(result.map((r) => [r.installmentNo, r.computed.toFixed(2)])).toEqual([[12, LAST]]);
   });
 
-  it('sales_tax 0 (vatAmount null) is checked with the system default 7% VAT', () => {
-    // computeInstallmentBreakdown: vatAmount null → 7% ของยอดก่อน VAT — สัญญาไม่มี VAT จริงจะไม่ตรง
+  it('sales_tax 0 is checked as no VAT; an override with empty VAT (null) gets the system 7%', () => {
+    const amounts = [...Array(11).fill('1416.66'), '1416.74'];
     const m = mapContractMoney(
       contract({ sales_tax: '0', installment_total: '17000', installment_amount: '1416.66' }),
     );
-    const amounts = [...Array(11).fill('1416.66'), '1416.74'];
-    expect(checkInstallmentAmounts(m, installments(amounts))).toHaveLength(12);
-    const explicit = mapContractMoney(contract({ installment_total: '17000' }), {
+    expect(checkInstallmentAmounts(m, installments(amounts))).toEqual([]);
+    // computeInstallmentBreakdown: vatAmount null → 7% ของยอดก่อน VAT
+    const sevenPct = mapContractMoney(contract({ sales_tax: '0', installment_total: '17000' }), {
       financedAmount: D('10000'),
       storeCommission: D('1000'),
-      vatAmount: D('0'),
+      vatAmount: null,
     });
-    expect(checkInstallmentAmounts(explicit, installments(amounts))).toEqual([]);
+    expect(checkInstallmentAmounts(sevenPct, installments(amounts))).toHaveLength(12);
   });
 
   it('a missing legacy installment is a mismatch (legacy 0)', () => {

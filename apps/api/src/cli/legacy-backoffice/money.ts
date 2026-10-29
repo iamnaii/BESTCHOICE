@@ -11,15 +11,14 @@ import type { LegacyContract, LegacyInstallment } from './legacy-book';
  * - `financedAmount` = `finance` (> 0) ไม่งั้น `ref_product_price − deposit`
  * - `storeCommission` = `commission_admin` (> 0) ไม่งั้น 10% ของยอดจัด (`resolveStoreCommission` ตัวเดียวกับ
  *   ระบบ) — **เขียนเป็นตัวเลขเสมอ** ห้ามว่าง: ค่าว่างทำให้ระบบคิด 10% ใหม่ทุกครั้งที่อ่าน
- * - `vatAmount` = `sales_tax` (0 → null) · `vatPct` = 0.07 เมื่อมี VAT
+ * - `vatAmount` = `sales_tax` · 0 → **0 (ไม่มี VAT)** ไม่ใช่ null — null ในระบบใหม่แปลว่า "VAT 7% ของยอดก่อน VAT"
+ *   (`computeInstallmentBreakdown`) · `vatPct` = 0.07 เมื่อมี VAT ไม่งั้น 0
  * - `interestTotal` = max(0, `installment_total − financed − commission − vat`) **ตามจริง** (ร่าง 5)
- * - `interestRate` = 0 — ระบบเก่า**ไม่มีคอลัมน์อัตราดอกเบี้ย**ที่ยืนยันความหมายได้ (มี `increase` /
- *   `increase_amount` / `increase_per_month` / `order_price_rate` แต่ไม่รู้ว่าเป็นอัตราหรือยอด) จึงไม่คิดอัตราขึ้นเอง
+ * - `interestRate` = อัตราต่อเดือนแบบคงที่ของระบบใหม่ (`installment.util.ts`: ดอกเบี้ย = ยอดจัด × อัตรา × งวด)
+ *   = `interestTotal ÷ financedAmount ÷ totalMonths` ปัด HALF_UP 4 ตำแหน่ง (Decimal(5,4)) · ยอดจัด 0 → 0
+ *   — `detail.increase` ของระบบเก่าเป็นสัดส่วนดอกเบี้ยรวม**ทั้งสัญญา** ใช้ตรงไม่ได้ (ตรวจกับ dump 29/10)
+ *   · `interestTotal` ไม่คิดใหม่จากอัตราที่ปัดแล้ว
  * - `totalMonths` = `installment_number` · `monthlyPayment` = `installment_amount`
- *
- * ⚠️ `vatAmount = null` ในระบบใหม่แปลว่า "VAT 7% ของยอดก่อน VAT" (`computeInstallmentBreakdown`) ไม่ใช่
- * "ไม่มี VAT" — สัญญาที่ `sales_tax = 0` จึงไม่ผ่าน `checkInstallmentAmounts` เว้นแต่ค่างวดเดิมรวม VAT 7% ไว้แล้ว
- * · แก้รายสัญญาด้วย `--money-overrides` ช่อง `vat_amount = 0` (ไม่มี VAT จริง)
  *
  * ข้อความ error บอกได้แค่สัญญา (`contract_id`) ตาราง ช่อง และชนิดของปัญหา — ไม่ยกค่าในช่องมาพิมพ์
  */
@@ -139,22 +138,30 @@ export function mapContractMoney(c: LegacyContract, override?: MoneyOverride): C
       ? commission
       : resolveStoreCommission({ storeCommission: null, financedAmount });
     const vat = r.money(DETAIL.vat);
-    vatAmount = vat.gt(0) ? vat : null;
+    vatAmount = vat.gt(0) ? vat : new Prisma.Decimal(0);
   }
 
   const interest = installmentTotal
     .minus(financedAmount)
     .minus(storeCommission)
     .minus(vatAmount ?? ZERO);
+  const interestTotal = interest.gt(0) ? interest : new Prisma.Decimal(0);
+  const interestRate =
+    financedAmount.gt(0) && totalMonths > 0
+      ? interestTotal
+          .div(financedAmount)
+          .div(totalMonths)
+          .toDecimalPlaces(4, Prisma.Decimal.ROUND_HALF_UP)
+      : new Prisma.Decimal(0);
   return {
     sellingPrice,
     downPayment,
     financedAmount,
     storeCommission,
-    interestTotal: interest.gt(0) ? interest : new Prisma.Decimal(0),
+    interestTotal,
     vatAmount,
     vatPct: vatAmount === null ? null : vatAmount.gt(0) ? VAT_PCT : new Prisma.Decimal(0),
-    interestRate: new Prisma.Decimal(0),
+    interestRate,
     monthlyPayment,
     totalMonths,
   };

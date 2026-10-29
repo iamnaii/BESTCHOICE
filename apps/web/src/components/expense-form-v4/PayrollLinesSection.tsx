@@ -710,9 +710,9 @@ function CustomIncomeSubTable({
         <thead className="bg-muted/30 text-muted-foreground">
           <tr>
             <th className="text-left px-2 py-1 w-40">บัญชี</th>
-            <th className="text-left px-2 py-1">รายการ</th>
-            <th className="text-right px-2 py-1 w-28">จำนวน</th>
-            <th className="text-center px-2 py-1 w-16">ภาษี</th>
+            <th className="text-left px-2 py-1 min-w-32">รายการ</th>
+            <th className="text-right px-2 py-1 w-28 whitespace-nowrap">จำนวน</th>
+            <th className="text-center px-2 py-1 w-16 whitespace-nowrap">ภาษี</th>
             <th className="w-44"></th>
             <th className="w-8"></th>
           </tr>
@@ -846,8 +846,8 @@ function CustomDeductionSubTable({
         <thead className="bg-muted/30 text-muted-foreground">
           <tr>
             <th className="text-left px-2 py-1 w-32">บัญชี</th>
-            <th className="text-left px-2 py-1">รายการ</th>
-            <th className="text-right px-2 py-1 w-28">จำนวน</th>
+            <th className="text-left px-2 py-1 min-w-32">รายการ</th>
+            <th className="text-right px-2 py-1 w-28 whitespace-nowrap">จำนวน</th>
             <th className="w-8"></th>
           </tr>
         </thead>

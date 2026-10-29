@@ -28,6 +28,8 @@ function fixture(role = 'ACCOUNTANT', permissions: string[] = []) {
     },
     $executeRawUnsafe: jest.fn().mockResolvedValue([]),
     expenseDocument: {
+      // ด่านใบเงินเดือนของ facade (ผู้จัดการสาขาทำใบ PAYROLL ไม่ได้ — 2026-10-28) อ่านประเภทใบก่อนส่งต่อ lifecycle
+      findFirst: jest.fn().mockResolvedValue(doc),
       findUniqueOrThrow: jest.fn().mockResolvedValue(doc),
       update: jest.fn().mockResolvedValue(doc),
     },

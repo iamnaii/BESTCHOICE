@@ -219,7 +219,8 @@ export function PayrollSystemDeductions({
         <thead className="bg-muted/30 text-muted-foreground">
           <tr>
             <th className="text-left px-2 py-1 w-40 leading-snug">บัญชี</th>
-            <th className="text-left px-2 py-1 leading-snug">รายการ</th>
+            {/* ความกว้างขั้นต่ำ — จอแคบตารางสลับเป็นการ์ด (ScreenTable) แทนการบีบช่องนี้จนข้อความเรียงลงทีละตัว */}
+            <th className="text-left px-2 py-1 min-w-32 leading-snug">รายการ</th>
             <th className="text-right px-2 py-1 w-28 leading-snug">หักงวดนี้</th>
           </tr>
         </thead>

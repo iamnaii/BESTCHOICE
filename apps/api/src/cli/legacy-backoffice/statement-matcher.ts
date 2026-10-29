@@ -12,14 +12,17 @@ import type { LegacyReceipt } from './legacy-book';
  * 1. คู่ได้เมื่อยอดเท่ากันพอดี (`Decimal` เท่ากัน — ไม่ปัด) และวันที่ห่างกันไม่เกิน `dayWindow` วัน
  *    (นับวันตามปฏิทินกรุงเทพ ก่อนหรือหลังก็ได้) · ฝั่งระบบเก่าใช้ `amount` (เงินที่รับจริง) และ `date` (วันโอน)
  * 2. หนึ่งบรรทัดของ statement คู่กับรายการรับเงินได้รายการเดียว และกลับกัน
- * 3. บรรทัดที่ยอดเท่ากันและวันเดียวกันแยกจากกันไม่ได้ (กลุ่ม) — ตัดสินตามลำดับ:
- *    ก. กลุ่มที่มีรายการรับเงินในช่วงวัน ≥ 1 แต่น้อยกว่าจำนวนบรรทัด → **ทั้งกลุ่ม** `ambiguous`
- *       (รู้ว่ามีบรรทัดที่ไม่มีคู่ แต่ไม่รู้ว่าบรรทัดไหน) และรายการเหล่านั้นถูกจองไว้ **ไม่ส่งต่อ** ให้บรรทัดอื่น
- *    ข. บรรทัดที่เหลือจับคู่ให้ได้ **มากที่สุด** (maximum matching — บรรทัดที่ "ไม่พบ" ปลอม เสี่ยงบันทึกซ้ำ):
- *       เริ่มแบบโลภใกล้วันก่อน (เสมอกัน = บรรทัดที่มาก่อน แล้วรายการรับเงินที่มาก่อนในอาร์เรย์) แล้วสลับคู่
- *       ให้บรรทัดที่ยังไม่มีคู่ (augmenting path) — ระยะรวมมักน้อยที่สุดแต่ไม่รับประกัน
- *    ค. กลุ่มที่ยังได้ไม่ครบหลังข้อ ข (บรรทัดวันอื่นแย่งไป) → ทั้งกลุ่ม `ambiguous` แบบข้อ ก
- *    กลุ่มที่ได้ครบ → `matched` · ไม่ได้เลย → `unmatched`
+ * 3. จับคู่ทุกบรรทัดให้ได้ **มากที่สุด** (maximum matching — บรรทัดที่ "ไม่พบ" ทั้งที่มีทางจับคู่ เสี่ยงบันทึกซ้ำ):
+ *    เริ่มแบบโลภใกล้วันก่อน (เสมอกัน = บรรทัดที่มาก่อน แล้วรายการรับเงินที่มาก่อนในอาร์เรย์) แล้วสลับคู่ให้บรรทัด
+ *    ที่ยังไม่มีคู่ (augmenting path) — ระยะรวมมักน้อยที่สุดแต่ไม่รับประกัน
+ * 4. **หลัง**จับคู่เสร็จ ตัดสินทีละกลุ่มของบรรทัดที่ยอดเท่ากันและวันเดียวกัน (แยกจากกันไม่ได้):
+ *    ก. ได้คู่ครบทุกบรรทัด → `matched`
+ *    ข. กลุ่มหลายบรรทัดที่มีรายการรับเงินในช่วงวันแต่ได้คู่ไม่ครบ (รวมไม่ได้เลยเพราะบรรทัดอื่นได้ไป) →
+ *       **ทั้งกลุ่ม** `ambiguous` (รู้ว่ามีบรรทัดที่ไม่มีคู่ แต่ไม่รู้ว่าบรรทัดไหน) และรายการที่บรรทัดในกลุ่ม
+ *       ได้ไปแล้ว **ไม่ถูกส่งต่อ** ให้บรรทัดอื่น
+ *    ค. นอกนั้น (บรรทัดเดียวที่ไม่ได้คู่ · กลุ่มที่ไม่มีรายการในช่วงวันเลย) → `unmatched`
+ *    ข้อจำกัด: เมื่อรายการรับเงินมีน้อยกว่าบรรทัดจริง ๆ คำตอบว่า "บรรทัดไหนไม่มีคู่" ไม่ได้มีคำตอบเดียว —
+ *    ตัดสินตามลำดับข้อ 3 (ใกล้วันก่อน แล้วบรรทัดที่มาก่อน)
  * ทุกรายการที่คืนเรียงตามเลขบรรทัด
  *
  * อ่านไฟล์ (`parseStatementCsv`): หัวคอลัมน์ระบุผ่าน `--cols` · เก็บเฉพาะยอดเข้า (> 0) — บรรทัดที่ช่องยอดว่าง
@@ -168,29 +171,15 @@ export function matchStatement(
     else groups.set(key, { credits: [credit], options: optionsFor(credit) });
   }
 
-  // ขั้น 1 — กลุ่มที่มีรายการรับเงินในช่วงวันน้อยกว่าจำนวนบรรทัด (แต่มีอย่างน้อยหนึ่ง) กำกวมทั้งกลุ่ม
-  // และจองรายการเหล่านั้นไว้ ก่อนจับคู่ส่วนที่เหลือ (นับจากรายการทั้งหมด ไม่ขึ้นกับลำดับกลุ่ม)
-  const reserved = new Set<LegacyReceipt>();
-  const open: CreditGroup[] = [];
-  const result: StatementMatch = { matched: [], unmatched: [], ambiguous: [] };
-  for (const group of groups.values()) {
-    const short = group.options.length > 0 && group.options.length < group.credits.length;
-    if (group.credits.length > 1 && short) {
-      result.ambiguous.push(...group.credits);
-      for (const { receipt } of group.options) reserved.add(receipt);
-    } else open.push(group);
-  }
-
-  // ขั้น 2 — จับคู่ให้ได้จำนวนบรรทัดมากที่สุด (maximum bipartite matching): เริ่มจากแบบโลภใกล้วันก่อน
+  // ขั้น 1 — จับคู่ทุกบรรทัดให้ได้จำนวนมากที่สุด (maximum bipartite matching): เริ่มจากแบบโลภใกล้วันก่อน
   // แล้วหาทางสลับคู่ (augmenting path) ให้บรรทัดที่ยังไม่มีคู่ทีละบรรทัด — ลองรายการที่ใกล้กว่าก่อนเสมอ
   // (ระยะรวมมักน้อยที่สุด แต่ไม่รับประกัน)
   const optionsOf = new Map<StatementCredit, ReceiptOption[]>();
   const pairs: { credit: StatementCredit; option: ReceiptOption }[] = [];
-  for (const group of open) {
-    const options = group.options.filter((o) => !reserved.has(o.receipt));
+  for (const group of groups.values()) {
     for (const credit of group.credits) {
-      optionsOf.set(credit, options);
-      for (const option of options) pairs.push({ credit, option });
+      optionsOf.set(credit, group.options);
+      for (const option of group.options) pairs.push({ credit, option });
     }
   }
   pairs.sort(
@@ -224,16 +213,18 @@ export function matchStatement(
     if (!receiptOf.has(credit)) augment(credit, new Set());
   }
 
-  // ขั้น 3 — กลุ่มที่ยังได้ไม่ครบแม้จับคู่ได้มากที่สุดแล้ว (บรรทัดอื่นแย่งไป) กำกวมทั้งกลุ่มเหมือนขั้น 1
-  // รายการที่กลุ่มได้ไปไม่ถูกส่งต่อ
-  for (const group of open) {
+  // ขั้น 2 — ตัดสินทีละกลุ่มหลังจับคู่เสร็จ: ได้ครบ = matched · กลุ่มหลายบรรทัดที่มีรายการในช่วงวันแต่ได้ไม่ครบ
+  // = กำกวมทั้งกลุ่ม (รายการที่บรรทัดในกลุ่มได้ไปไม่ถูกส่งต่อ) · นอกนั้น = unmatched
+  const result: StatementMatch = { matched: [], unmatched: [], ambiguous: [] };
+  for (const group of groups.values()) {
     const got = group.credits.filter((credit) => receiptOf.has(credit)).length;
     if (got === group.credits.length) {
       for (const credit of group.credits) {
         result.matched.push([credit, receiptOf.get(credit) as LegacyReceipt]);
       }
-    } else if (got === 0) result.unmatched.push(...group.credits);
-    else result.ambiguous.push(...group.credits);
+    } else if (group.credits.length > 1 && group.options.length > 0) {
+      result.ambiguous.push(...group.credits);
+    } else result.unmatched.push(...group.credits);
   }
   result.matched.sort(([a], [b]) => a.line - b.line);
   result.unmatched.sort((a, b) => a.line - b.line);

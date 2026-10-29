@@ -130,6 +130,15 @@ describe('matchStatement', () => {
     });
   });
 
+  it('decides a short group only after matching — a same-day receipt still goes to its lone credit', () => {
+    const r = matchStatement(
+      [c(1500, '2026-10-05'), c(1500, '2026-10-05'), c(1500, '2026-10-07')],
+      [rc(1500, '2026-10-07')],
+    );
+    // 10-07 ↔ 10-07 (0 วัน) ต้องได้คู่ · กลุ่ม 10-05 มีรายการในช่วงวันแต่ไม่ได้เลย ⇒ กำกวมทั้งกลุ่ม
+    expect(summary(r)).toEqual({ matched: [[4, '1']], unmatched: [], ambiguous: [2, 3] });
+  });
+
   it('marks a same-day group ambiguous when other credits leave it short even at the maximum', () => {
     const r = matchStatement(
       [c(1500, '2026-10-05'), c(1500, '2026-10-05'), c(1500, '2026-10-06')],

@@ -7,6 +7,14 @@ import {
 import type { AuditEntry } from '../../modules/audit/audit.service';
 import type { CustomerPiiService } from '../../modules/customers/customer-pii.service';
 import type { JeLineInput, JournalAutoService } from '../../modules/journal/journal-auto.service';
+import {
+  LEGACY_OPENING_TAG,
+  LEGACY_PRIOR_RECEIPT_TAG,
+  LEGACY_VAT_CATCHUP_TAG,
+  legacyOpeningReference,
+  legacyPriorReceiptReference,
+  legacyVatCatchUpReference,
+} from '../../modules/journal/legacy-import-journal';
 import { OPENING_EQUITY_ACCOUNT } from './opening';
 import {
   linkOrCreateLegacyCustomer,
@@ -582,9 +590,9 @@ async function writeOpening(
   if (opening.openingLines.length > 0) {
     const entry = await post('opening', {
       description: `ยกมาจากระบบเก่า — สัญญา ${item.code}`,
-      reference: `legacy-opening:${item.code}`,
+      reference: legacyOpeningReference(item.code),
       metadata: {
-        tag: 'legacy-opening',
+        tag: LEGACY_OPENING_TAG,
         flow: LEGACY_OPENING_FLOW,
         idempotencyKey: item.code,
         contractId,
@@ -608,9 +616,9 @@ async function writeOpening(
       'marker',
       {
         description: `ยอดรับก่อนวันตัดระบบ งวด ${marker.installmentNo} — สัญญา ${item.code}`,
-        reference: `legacy-prior:${installmentScheduleId}`,
+        reference: legacyPriorReceiptReference(installmentScheduleId),
         metadata: {
-          tag: '2B',
+          tag: LEGACY_PRIOR_RECEIPT_TAG,
           flow: LEGACY_PRIOR_RECEIPT_FLOW,
           contractId,
           installmentScheduleId,
@@ -646,9 +654,9 @@ async function writeOpening(
   if (opening.catchUpLines.length > 0) {
     await post('catch-up', {
       description: `ไล่ภาษีขายของงวดที่ค้างก่อนวันตัดระบบ — สัญญา ${item.code}`,
-      reference: `legacy-vat-catchup:${item.code}`,
+      reference: legacyVatCatchUpReference(item.code),
       metadata: {
-        tag: 'legacy-vat-catchup',
+        tag: LEGACY_VAT_CATCHUP_TAG,
         flow: LEGACY_VAT_CATCHUP_FLOW,
         contractId,
         importBatch: deps.importBatch,

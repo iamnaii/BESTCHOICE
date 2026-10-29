@@ -43,13 +43,15 @@ import { buildImportSchedule } from './schedule';
  * 3. **ACTIVE เท่านั้น:**
  *    - ค่างวดระบบเก่าไม่ตรงตัวคำนวณ (`checkInstallmentAmounts`) = ตัวบล็อก (ไม่ว่ามี override หรือไม่)
  *    - ไม่มีคู่ใบแจ้งหนี้ PEAK (ไม่พบ / กำกวม — `peakRecon.matched` ไม่มี) = ตัวบล็อก
- *    - `applyPeakBalance` ด้วยยอดคงเหลือ PEAK จริง (งวดปัด 2 ตำแหน่งก่อน — float ของระบบเก่า) — `PEAK_HIGHER` = ตัวบล็อก
+ *    - `applyPeakBalance` ด้วยยอดคงเหลือ PEAK จริง (งวดปัด 2 ตำแหน่งก่อน — float ของระบบเก่า) — PEAK สูงกว่าไม่เกิน 1.00 =
+ *      เศษสตางค์ของยอดผ่อนรวม บวกเข้าค่างวดงวดสุดท้ายที่ยังค้าง (`peak.satangGap` + หมายเหตุสัญญา) · เกินนั้น `PEAK_HIGHER` = ตัวบล็อก
  *    - `buildImportSchedule` · `mapPayments` — ข้อเตือน `BLOCK:` / งวดจ่ายเกินค่างวด / ค่างวดไม่เป็นบวก = ตัวบล็อก
  *    - `computeOpening` (ยอดเรียกเก็บ = `PaymentDraft.amountDue` · ยอดจ่าย = `amountPaid` · วันครบกำหนดเดียวกับแถวตารางงวด)
  *      — `OpeningMismatchError` / `OpeningInputError` = ตัวบล็อก (ช่อง `diff` / `expectedRoundingDiff` / `installmentNos`)
  *    - ไม่มีอะไรยกมาเลย (ทุกงวดชำระครบ) = ตัวบล็อก `ACTIVE_NOTHING_OUTSTANDING` — สถานะ 2 แต่ไม่มียอดค้าง ถ้านำเข้าเป็น
  *      ACTIVE ต้องมี stamp ทุกงวด (ไม่งั้นรอบกลางคืนตั้ง 2A ให้งวดที่จ่ายแล้ว) แต่ไม่มีรายการยกมาให้ลิงก์ — เจ้าของตัดสินก่อน
- * 4. **HISTORY:** `mapPayments(…, 'HISTORY')` (เฉพาะงวดที่มียอดจ่าย) · ไม่มีตารางงวด ไม่มีรายการยกมา ไม่มี stamp
+ * 4. **HISTORY:** `mapPayments(…, 'HISTORY')` (เฉพาะงวดที่มียอดจ่าย) · ไม่มีตารางงวด ไม่มีรายการยกมา ไม่มี stamp ·
+ *    ใบแจ้งหนี้ PEAK ที่จับคู่ได้ยังมียอดคงเหลือ > 0 = ตัวบล็อก `HISTORY_WITH_PEAK_REMAIN`
  * 5. ลูกค้า: `toLegacyCustomerInput(สมาชิก, คำสั่งซื้อล่าสุดของสมาชิกในบรรดาสัญญาที่นำเข้า, { รหัส PEAK ของใบแจ้งหนี้ของสัญญานี้,
  *    overrides })` — ตรวจแยกจากข้อ 2–4 (สัญญาหนึ่งมีตัวบล็อกได้ทั้งสองฝั่ง): เลขบัตรว่าง/ผิด checksum โดยไม่มี override ·
  *    สมาชิกหนึ่งคนที่สัญญาได้รหัส PEAK ต่างกัน (ลูกค้าหนึ่งคนมีรหัส PEAK ได้รหัสเดียว — `customer.ts` จะให้ `PEAK_CODE_CONFLICT`)
@@ -107,6 +109,7 @@ export const IMPORT_BLOCKER_REASONS = [
   'PEAK_UNMATCHED',
   'PEAK_NEGATIVE_REMAIN',
   'PEAK_HIGHER',
+  'HISTORY_WITH_PEAK_REMAIN',
   'PAYMENTS_BLOCK',
   'INSTALLMENT_OVERPAID',
   'INSTALLMENT_NONPOSITIVE',
@@ -155,7 +158,10 @@ export const BLOCKER_REASON_TEXT: Record<ImportBlockerReason, string> = {
     'ค่างวดในระบบเก่าไม่ตรงกับตัวคำนวณ (เกินเกณฑ์ปัดเศษ) — แก้ด้วย --money-overrides หรือตรวจสัญญา',
   PEAK_UNMATCHED: 'สัญญาผ่อนอยู่ที่ไม่มีคู่ใบแจ้งหนี้ใน PEAK หรือคู่กำกวม (เติม --peak-pairs)',
   PEAK_NEGATIVE_REMAIN: 'ยอดคงเหลือใบแจ้งหนี้ PEAK ติดลบ',
-  PEAK_HIGHER: 'ยอดคงเหลือใน PEAK มากกว่ายอดค้างของระบบเก่า (ห้ามทวงงวดที่จ่ายแล้ว)',
+  PEAK_HIGHER:
+    'ยอดคงเหลือใน PEAK มากกว่ายอดค้างของระบบเก่าเกิน 1.00 หรือไม่มีงวดค้างให้รับเศษ (ห้ามทวงงวดที่จ่ายแล้ว)',
+  HISTORY_WITH_PEAK_REMAIN:
+    'สัญญาปิดแล้วในระบบเก่าแต่ใบแจ้งหนี้ PEAK ยังมียอดคงเหลือ — ต้องตรวจกับสำนักงานบัญชีก่อนนำเข้า',
   PAYMENTS_BLOCK: 'ข้อมูลการรับเงินขัดกัน (เช่น สัญญาผ่อนอยู่ที่มีรายการปิดบัญชี)',
   INSTALLMENT_OVERPAID: 'งวดของสัญญาผ่อนอยู่ที่ยอดจ่ายเกินค่างวด',
   INSTALLMENT_NONPOSITIVE: 'งวดของสัญญาผ่อนอยู่ที่ค่างวดไม่เป็นบวก',
@@ -228,8 +234,12 @@ export type PlannedContract = {
     invoiceCode: string;
     contactCode: string;
     remain: Decimal;
-    /** PEAK − ระบบเก่า (≤ 0) ที่ `applyPeakBalance` ใช้ (HISTORY = 0) */
+    /** PEAK − ระบบเก่า (≤ 0) ที่ `applyPeakBalance` ลงเป็นยอดจ่ายเพิ่ม (HISTORY = 0) */
     adjustment: Decimal;
+    /** เศษสตางค์ที่ PEAK สูงกว่า (≤ 1.00) บวกเข้าค่างวดงวดสุดท้ายที่ยังค้าง (HISTORY = 0) */
+    satangGap: Decimal;
+    /** งวดที่รับเศษสตางค์ (`satangGap` = 0 → null) */
+    satangGapInstallmentNo: number | null;
   } | null;
   product: PlannedProduct;
   /** ACTIVE: ทุกงวด · HISTORY: ว่าง */
@@ -270,6 +280,9 @@ export type ImportTotals = {
   outstanding: Decimal;
   peakRemain: Decimal;
   peakAdjustment: Decimal;
+  /** Σ เศษสตางค์ที่บวกเข้าค่างวดตามใบแจ้งหนี้ PEAK (ตารางเชื่อมยอด) */
+  satangGap: Decimal;
+  satangGapContracts: number;
   roundingDiff: Decimal;
   roundingContracts: number;
   /** งวด PAID ที่ใช้วันตัดเป็นวันชำระ */
@@ -376,6 +389,11 @@ function contractNotes(
       `ยอดค้างปรับตามใบแจ้งหนี้ PEAK ${peak.invoiceCode} (${formatMoney(peak.adjustment)})`,
     );
   }
+  if (peak && peak.satangGap.gt(0)) {
+    lines.push(
+      `ค่างวด ${peak.satangGapInstallmentNo} รวมเศษสตางค์ ${formatMoney(peak.satangGap)} ตามยอดผ่อนรวมในใบแจ้งหนี้ PEAK ${peak.invoiceCode}`,
+    );
+  }
   if (c.close) {
     lines.push(
       `ปิดบัญชีก่อนกำหนดในระบบเก่า ${bangkokDateString(c.close.createdAt)} · ยอด ${formatMoney(
@@ -427,7 +445,8 @@ function planActive(
   if (remain.isNegative()) {
     throw block(c.code, 'PEAK_NEGATIVE_REMAIN', { invoiceCode: match.invoice.invoiceCode });
   }
-  const balanced = applyPeakBalance(roundInstallments(c.installments), remain);
+  const rounded = roundInstallments(c.installments);
+  const balanced = applyPeakBalance(rounded, remain);
   if ('blocked' in balanced) {
     throw block(c.code, 'PEAK_HIGHER', {
       invoiceCode: match.invoice.invoiceCode,
@@ -506,6 +525,10 @@ function planActive(
       contactCode: match.invoice.contactCode,
       remain,
       adjustment: balanced.adjustment,
+      satangGap: balanced.satangGap,
+      satangGapInstallmentNo: balanced.satangGap.gt(0)
+        ? installments.findIndex((inst, i) => !inst.amount.eq(rounded[i].amount)) + 1
+        : null,
     },
     schedule,
     payments: withPaidDates(mapping.payments, opts.cutoff),
@@ -529,9 +552,16 @@ function planHistory(
   }
   warnings.push(...mapping.warnings);
   const match = opts.peakRecon.matched.get(c.contractId);
-  if (match && !match.invoice.remainAmount.isZero()) {
+  // ปิดแล้วในระบบเก่าแต่ PEAK ยังมีลูกหนี้ = ตัวบล็อก (คำตัดสินผู้คุมงาน 29/10 — PEAK คือตัวตั้ง)
+  if (match && match.invoice.remainAmount.gt(0)) {
+    throw block(c.code, 'HISTORY_WITH_PEAK_REMAIN', {
+      invoiceCode: match.invoice.invoiceCode,
+      remain: formatMoney(match.invoice.remainAmount),
+    });
+  }
+  if (match && match.invoice.remainAmount.isNegative()) {
     warnings.push(
-      `สัญญา ${c.code}: ปิดแล้วในระบบเก่าแต่ใบแจ้งหนี้ PEAK ${match.invoice.invoiceCode} ยังมียอดคงเหลือ — นำเข้าเป็นประวัติ ไม่มียอดยกมา`,
+      `สัญญา ${c.code}: ปิดแล้วในระบบเก่าแต่ใบแจ้งหนี้ PEAK ${match.invoice.invoiceCode} ยอดคงเหลือติดลบ — นำเข้าเป็นประวัติ ไม่มียอดยกมา`,
     );
   }
   return {
@@ -543,6 +573,8 @@ function planHistory(
           contactCode: match.invoice.contactCode,
           remain: match.invoice.remainAmount,
           adjustment: ZERO,
+          satangGap: ZERO,
+          satangGapInstallmentNo: null,
         }
       : null,
     schedule: [],
@@ -845,6 +877,8 @@ function totalsOf(items: PlannedContract[], skipped: number, blocked: number): I
   let outstanding = ZERO;
   let peakRemain = ZERO;
   let peakAdjustment = ZERO;
+  let satangGap = ZERO;
+  let satangGapContracts = 0;
   let roundingDiff = ZERO;
   let roundingContracts = 0;
   let paidDateFromCutoff = 0;
@@ -867,6 +901,8 @@ function totalsOf(items: PlannedContract[], skipped: number, blocked: number): I
     );
     peakRemain = peakRemain.plus(item.peak.remain);
     peakAdjustment = peakAdjustment.plus(item.peak.adjustment);
+    satangGap = satangGap.plus(item.peak.satangGap);
+    if (item.peak.satangGap.gt(0)) satangGapContracts++;
     roundingDiff = roundingDiff.plus(item.roundingDiff);
     if (!item.roundingDiff.isZero()) roundingContracts++;
   }
@@ -887,6 +923,8 @@ function totalsOf(items: PlannedContract[], skipped: number, blocked: number): I
     outstanding,
     peakRemain,
     peakAdjustment,
+    satangGap,
+    satangGapContracts,
     roundingDiff,
     roundingContracts,
     paidDateFromCutoff,

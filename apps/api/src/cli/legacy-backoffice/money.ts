@@ -87,7 +87,13 @@ export class LegacyMoneyError extends Error {
 export type AmountMismatch = { installmentNo: number; legacy: Decimal; computed: Decimal };
 
 export type PeakBalanceResult =
-  | { installments: LegacyInstallment[]; adjustment: Decimal }
+  | {
+      installments: LegacyInstallment[];
+      /** PEAK − ระบบเก่า ที่ลงเป็นยอดจ่ายเพิ่ม (≤ 0 · PEAK สูงกว่า = 0) */
+      adjustment: Decimal;
+      /** เศษสตางค์ที่ PEAK สูงกว่า (0 < เศษ ≤ 1.00) บวกเข้าค่างวดงวดสุดท้ายที่ยังค้าง (≥ 0) */
+      satangGap: Decimal;
+    }
   | { blocked: 'PEAK_HIGHER'; diff: Decimal };
 
 const DETAIL_TABLE = 'bestchoice_order_product_detail';
@@ -251,7 +257,11 @@ export function checkInstallmentAmounts(
  * ที่จับคู่ PEAK: Σ `balance` ที่ > 0 · งวดที่จ่ายเกินไม่หักลบ)
  * - PEAK ค้างน้อยกว่า → เพิ่ม `paid` / ลด `balance` ของงวดที่ยังค้างตามลำดับในอาร์เรย์ (= วันครบกำหนด)
  *   จนยอดค้างเท่า PEAK · `adjustment` = PEAK − ระบบเก่า (≤ 0) ให้ลงรายงาน · `statusCode` ไม่เปลี่ยน
- * - PEAK ค้างมากกว่า → ไม่ปรับ คืน `blocked` (สเปกข้อ 1: ห้ามทวงงวดที่ลูกค้าจ่ายแล้วตามสลิป)
+ * - PEAK ค้างมากกว่าไม่เกิน 1.00 (`LAST_INSTALLMENT_AMOUNT_TOLERANCE` — คำตัดสินผู้คุมงาน 29/10) = เศษสตางค์ของยอดผ่อนรวม
+ *   ที่ PEAK แจ้งหนี้แต่ระบบเก่าไม่ได้ใส่ในงวดใด (ระบบเก่าเรียกเก็บค่างวดเท่ากันทุกงวด) → บวกเข้า `amount` และ `balance`
+ *   ของ**งวดสุดท้ายที่ยังค้าง** (`balance > 0` ตัวท้ายสุดในอาร์เรย์) · `satangGap` = เศษนั้น · ยอดค้างเท่า PEAK พอดี ·
+ *   ไม่มีงวดค้างเลย = `blocked`
+ * - PEAK ค้างมากกว่าเกิน 1.00 → ไม่ปรับ คืน `blocked` (สเปกข้อ 1: ห้ามทวงงวดที่ลูกค้าจ่ายแล้วตามสลิป)
  * - คืนอาร์เรย์ใหม่ ไม่แก้ของเดิม · PEAK ติดลบ = throw (ยอดค้างระบบเก่าต่ำสุด 0)
  */
 export function applyPeakBalance(
@@ -262,7 +272,18 @@ export function applyPeakBalance(
     throw new Error(`${PEAK_ERROR}: ยอดค้างใน PEAK ติดลบ — ต้องตรวจใบแจ้งหนี้ใน PEAK ก่อน`);
   }
   const diff = peakRemain.minus(legacyOutstanding({ installments: inst }));
-  if (diff.gt(0)) return { blocked: 'PEAK_HIGHER', diff };
+  if (diff.gt(0)) {
+    const last = inst.map((i) => i.balance.gt(0)).lastIndexOf(true);
+    if (diff.gt(LAST_INSTALLMENT_AMOUNT_TOLERANCE) || last < 0) {
+      return { blocked: 'PEAK_HIGHER', diff };
+    }
+    const installments = inst.map((i, index) =>
+      index === last
+        ? { ...i, amount: i.amount.plus(diff), balance: i.balance.plus(diff) }
+        : { ...i },
+    );
+    return { installments, adjustment: ZERO, satangGap: diff };
+  }
 
   let remaining = diff.negated();
   const installments = inst.map((i) => {
@@ -271,7 +292,7 @@ export function applyPeakBalance(
     remaining = remaining.minus(take);
     return { ...i, paid: i.paid.plus(take), balance: i.balance.minus(take) };
   });
-  return { installments, adjustment: diff };
+  return { installments, adjustment: diff, satangGap: ZERO };
 }
 
 type OverrideColumn = (typeof MONEY_OVERRIDE_COLUMNS)[number];

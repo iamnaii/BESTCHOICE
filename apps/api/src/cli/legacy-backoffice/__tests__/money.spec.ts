@@ -11,6 +11,7 @@ import {
   type ContractMoney,
   type MoneyOverride,
 } from '../money';
+import { legacyOutstanding } from '../peak-recon';
 
 /**
  * แปลงยอดเงินสัญญาระบบเก่า — ข้อมูลสังเคราะห์ทั้งหมด (รหัส TEST-*, ยอดตามตัวอย่าง CPA 17,000 / 12 งวด)
@@ -401,6 +402,72 @@ describe('applyPeakBalance', () => {
     expect('blocked' in result && result.blocked).toBe('PEAK_HIGHER');
     expect('blocked' in result && result.diff.toFixed(2)).toBe('400.00');
     expect(view(inst)).toEqual(view(book()));
+  });
+
+  describe('PEAK higher by a satang gap ≤ 1.00 (ค่างวดเดิมไม่รวมเศษของยอดผ่อนรวมที่ PEAK แจ้งหนี้)', () => {
+    const amounts = (list: LegacyInstallment[]) => list.map((i) => i.amount.toFixed(2));
+
+    it('gap 0.37 → absorbed on the LAST unpaid installment (amount + balance), satangGap 0.37, Σ balance = PEAK', () => {
+      const inst = book();
+      const result = applyPeakBalance(inst, D('3000.37'));
+      if ('blocked' in result) throw new Error('unexpected block');
+      expect(result.satangGap.toFixed(2)).toBe('0.37');
+      expect(result.adjustment.toFixed(2)).toBe('0.00');
+      expect(amounts(result.installments)).toEqual(['1000.00', '1000.00', '1000.00', '1000.37']);
+      expect(view(result.installments)).toEqual([
+        ['1000.00', '0.00'],
+        ['0.00', '1000.00'],
+        ['0.00', '1000.00'],
+        ['0.00', '1000.37'],
+      ]);
+      expect(legacyOutstanding(result).toFixed(2)).toBe('3000.37');
+      expect(view(inst)).toEqual(view(book())); // ไม่แก้ของเดิม
+    });
+
+    it('the last installment already paid → the gap lands on the last row that still has a balance', () => {
+      const inst = installments(
+        ['1000', '1000', '1000'],
+        [
+          ['0', '1000'],
+          ['300', '700'],
+          ['1000', '0'],
+        ],
+      );
+      const result = applyPeakBalance(inst, D('1701.00'));
+      if ('blocked' in result) throw new Error('unexpected block');
+      expect(result.satangGap.toFixed(2)).toBe('1.00');
+      expect(amounts(result.installments)).toEqual(['1000.00', '1001.00', '1000.00']);
+      expect(view(result.installments)).toEqual([
+        ['0.00', '1000.00'],
+        ['300.00', '701.00'],
+        ['1000.00', '0.00'],
+      ]);
+    });
+
+    it('gap 1.01 → blocked PEAK_HIGHER (not a satang gap)', () => {
+      const result = applyPeakBalance(book(), D('3001.01'));
+      expect('blocked' in result && result.blocked).toBe('PEAK_HIGHER');
+      expect('blocked' in result && result.diff.toFixed(2)).toBe('1.01');
+    });
+
+    it('every installment paid → nowhere to put the gap → blocked PEAK_HIGHER', () => {
+      const inst = installments(
+        ['1000', '1000'],
+        [
+          ['1000', '0'],
+          ['1000', '0'],
+        ],
+      );
+      const result = applyPeakBalance(inst, D('0.40'));
+      expect('blocked' in result && result.blocked).toBe('PEAK_HIGHER');
+      expect('blocked' in result && result.diff.toFixed(2)).toBe('0.40');
+    });
+
+    it('PEAK lower → satangGap 0 (only the paid-side adjustment)', () => {
+      const result = applyPeakBalance(book(), D('2500'));
+      if ('blocked' in result) throw new Error('unexpected block');
+      expect(result.satangGap.toFixed(2)).toBe('0.00');
+    });
   });
 
   it('equal balances → adjustment 0 and the same amounts', () => {

@@ -99,13 +99,16 @@ function prepaidContract() {
   });
 }
 
+/** คู่ PEAK ต่อสัญญา — `remain` ไม่ส่ง = ยอดค้างของงวด (สัญญาประวัติส่ง '0') */
 function options(
-  matches: Array<[LegacyContract, string]>,
+  matches: Array<[LegacyContract, string, string?]>,
   over: Partial<ImportOptions> = {},
 ): ImportOptions {
   return {
     cutoff: CUTOFF,
-    peakRecon: syntheticRecon(matches.map(([c, contact]) => [c, peakMatch(c, contact)])),
+    peakRecon: syntheticRecon(
+      matches.map(([c, contact, remain]) => [c, peakMatch(c, contact, remain)]),
+    ),
     canceledMap: new Map(),
     moneyOverrides: new Map(),
     customerOverrides: new Map(),
@@ -129,7 +132,7 @@ describe('planImport', () => {
       syntheticBook([a, b, c], members),
       options([
         [a, 'TESTC001'],
-        [b, 'TESTC002'],
+        [b, 'TESTC002', '0'],
         [c, 'TESTC003'],
       ]),
     );
@@ -270,6 +273,66 @@ describe('planImport', () => {
         detail: { invoiceCode: 'TEST-INV-TEST-C-0001', diff: '736.64' },
       },
     ]);
+  });
+
+  it('PEAK higher by a satang gap ≤ 1.00 (flat legacy last installment) → absorbed on the last unpaid installment; Σ outstanding = PEAK', () => {
+    // ระบบเก่าเก็บงวด 12 เท่างวดอื่น (1,515.83) → ยอดผ่อนรวมขาด 0.04 จากที่ PEAK แจ้งหนี้
+    const a = overdueContract({
+      installments: standardInstallments({
+        ...Object.fromEntries(
+          Array.from({ length: 8 }, (_, i) => [i + 1, { amount: MONTHLY, paid: MONTHLY }]),
+        ),
+        9: { paid: '300' },
+        11: { paid: '500', paidOn: new Date('2026-11-20T09:00:00+07:00') },
+        12: { amount: MONTHLY },
+      }),
+    });
+    const plan = planImport(syntheticBook([a], members), {
+      ...options([]),
+      peakRecon: syntheticRecon([[a, peakMatch(a, 'TESTC001', '5263.36')]]),
+    });
+    expect(plan.blockers).toEqual([]);
+    const planned = item(plan, 'TEST-C-0001');
+    expect(money(planned.peak!.satangGap)).toBe('0.04');
+    expect(planned.peak!.satangGapInstallmentNo).toBe(12);
+    expect(money(planned.peak!.adjustment)).toBe('0.00');
+    expect(money(planned.payments[11].amountDue)).toBe(LAST);
+    expect(money(planned.roundingDiff)).toBe('0.00');
+    expect(planned.notes).toContain(
+      'ค่างวด 12 รวมเศษสตางค์ 0.04 ตามยอดผ่อนรวมในใบแจ้งหนี้ PEAK TEST-INV-TEST-C-0001',
+    );
+    expect(money(plan.totals.outstanding)).toBe('5263.36');
+    expect(money(plan.totals.peakRemain)).toBe('5263.36');
+    expect(money(plan.totals.satangGap)).toBe('0.04');
+    expect(plan.totals.satangGapContracts).toBe(1);
+
+    const tooMuch = planImport(syntheticBook([a], members), {
+      ...options([]),
+      peakRecon: syntheticRecon([[a, peakMatch(a, 'TESTC001', '5264.33')]]),
+    });
+    expect(tooMuch.blockers).toEqual([
+      {
+        code: 'TEST-C-0001',
+        reason: 'PEAK_HIGHER',
+        detail: { invoiceCode: 'TEST-INV-TEST-C-0001', diff: '1.01' },
+      },
+    ]);
+  });
+
+  it('a HISTORY contract whose PEAK invoice still has a remain > 0 → HISTORY_WITH_PEAK_REMAIN blocker', () => {
+    const b = earlyPayoffContract();
+    const plan = planImport(syntheticBook([b], members), options([[b, 'TESTC002', '100']]));
+    expect(plan.blockers).toEqual([
+      {
+        code: 'TEST-C-0002',
+        reason: 'HISTORY_WITH_PEAK_REMAIN',
+        detail: { invoiceCode: 'TEST-INV-TEST-C-0002', remain: '100.00' },
+      },
+    ]);
+    expect(plan.items).toEqual([]);
+    expect(
+      planImport(syntheticBook([b], members), options([[b, 'TESTC002', '0']])).blockers,
+    ).toEqual([]);
   });
 
   it('PEAK lower → installments adjusted; Σ outstanding = PEAK and the note names the invoice', () => {
@@ -526,7 +589,7 @@ describe('planImport', () => {
       syntheticBook([a, b], members),
       options([
         [a, 'TESTC001'],
-        [b, 'TESTC002'],
+        [b, 'TESTC002', '0'],
       ]),
     );
     expect(ok.blockers).toEqual([]);

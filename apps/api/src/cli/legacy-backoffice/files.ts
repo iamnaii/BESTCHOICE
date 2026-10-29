@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { promises as fsp } from 'node:fs';
 import { extname, resolve, sep } from 'node:path';
 import type { StorageService } from '../../modules/storage/storage.service';
@@ -34,13 +35,26 @@ import type { StorageService } from '../../modules/storage/storage.service';
  *   แบบเดียวกับ `fileUrl` ของเอกสารที่ระบบสร้าง และ `imageUrl` ของสลิปปิดยอด)
  * - อัปโหลดพร้อมกันไม่เกิน `LEGACY_FILE_UPLOAD_CONCURRENCY` · ไฟล์หนึ่งอ่าน/อัปโหลดไม่ได้ไม่หยุดไฟล์อื่น
  *   → `failed` (`reason` = ขั้น + ชื่อคลาส/รหัสของ error เท่านั้น — ข้อความ error มี path ที่อาจมีข้อมูลลูกค้า)
+ * - `details` (key แบบเดียวกับ `urls`) = key + ขนาด + SHA-256 + ชนิดไฟล์ จาก bytes ที่อ่านแล้ว — Task 10 ใช้เติม
+ *   `fileSize` / `fileHash` / `mimeType` โดยไม่ต้องอ่านไฟล์ซ้ำ
+ * - ไฟล์ใหญ่กว่า `LEGACY_FILE_MAX_BYTES` → `failed` `read:TOO_LARGE` โดยไม่อ่าน (ของจริงใหญ่สุด ~12 MB)
  * - `missing` / `failed` เรียงตามตัวอักษรและไม่ซ้ำ
+ *
+ * **storage ต้องตั้งค่าแล้ว** (`storage.configured`) — backend `none` ของ `StorageService.upload` แค่เขียน log
+ * แล้วคืน key โดยไม่ได้อัปโหลด ⇒ ไม่ตั้งค่า = throw ก่อนแตะไฟล์ใด ๆ · **dry-run ให้ส่ง storage ปลอม**
+ * `{ configured: true, upload: async (key) => key }` (ได้ `missing` + key ครบ โดยไม่มีไฟล์บัตร/สลิปขึ้น bucket)
  *
  * ข้อจำกัดที่รู้: ระหว่าง `realpath` กับ `readFile` ไม่ล็อกไฟล์ — โฟลเดอร์เป็นของผู้รันบนเครื่องตัวเอง
  */
 
 /** จำนวนงาน อ่าน+อัปโหลด ที่ทำพร้อมกันสูงสุด */
 export const LEGACY_FILE_UPLOAD_CONCURRENCY = 8;
+
+/** ไฟล์ใหญ่กว่านี้ไม่อ่าน (`failed` `read:TOO_LARGE`) */
+export const LEGACY_FILE_MAX_BYTES = 50 * 1024 * 1024;
+
+/** ส่วนของ `StorageService` ที่ใช้ — dry-run ส่งตัวปลอมรูปนี้ได้ */
+export type LegacyFileStorage = Pick<StorageService, 'upload' | 'configured'>;
 
 const CONTENT_TYPES: Readonly<Record<string, string>> = {
   '.jpg': 'image/jpeg',
@@ -53,12 +67,17 @@ const CONTENT_TYPES: Readonly<Record<string, string>> = {
   '.gif': 'image/gif',
 };
 
+/** สิ่งที่รู้จากไฟล์ที่อัปโหลดแล้ว — `sha256` เป็น hex ตัวเล็ก */
+export type LegacyFileDetail = { key: string; size: number; sha256: string; contentType: string };
+
 export type LegacyFileUploadResult = {
   /** ค่า relPath เดิม → key ที่ storage คืน */
   urls: Map<string, string>;
+  /** ค่า relPath เดิม → key + ขนาด + SHA-256 + ชนิดไฟล์ (มีเฉพาะไฟล์ที่อัปโหลดสำเร็จ — ชุดเดียวกับ `urls`) */
+  details: Map<string, LegacyFileDetail>;
   /** relPath ที่ถูกปฏิเสธ / หาไม่เจอ / ไม่ใช่ไฟล์ / ลิงก์ออกนอก filesDir — เรียงแล้ว ไม่ซ้ำ */
   missing: string[];
-  /** relPath ที่อ่านหรืออัปโหลดไม่สำเร็จ — `reason` เช่น `read:EIO` · `upload:ApiError` */
+  /** relPath ที่อ่านหรืออัปโหลดไม่สำเร็จ — `reason` เช่น `read:EIO` · `read:TOO_LARGE` · `upload:ApiError` */
   failed: Array<{ path: string; reason: string }>;
 };
 
@@ -115,13 +134,13 @@ function errorLabel(error: unknown): string {
   if (typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,40}$/.test(code)) return code;
   let name = 'Error';
   if (error instanceof Error) {
-    name = error.name && error.name !== 'Error' ? error.name : error.constructor.name;
+    name = error.name && error.name !== 'Error' ? error.name : (error.constructor?.name ?? 'Error');
   }
   return /^[A-Za-z_$][\w$]{0,63}$/.test(name) ? name : 'Error';
 }
 
 type Outcome =
-  | { kind: 'uploaded'; url: string }
+  | { kind: 'uploaded'; detail: LegacyFileDetail }
   | { kind: 'missing' }
   | { kind: 'failed'; reason: string };
 
@@ -131,7 +150,7 @@ async function uploadOne(
   rootPrefix: string,
   normalized: string,
   key: string,
-  storage: Pick<StorageService, 'upload'>,
+  storage: LegacyFileStorage,
 ): Promise<Outcome> {
   const candidate = resolve(rootPrefix, normalized);
   if (!candidate.startsWith(rootPrefix)) return MISSING;
@@ -141,17 +160,19 @@ async function uploadOne(
     // ตามลิงก์ก่อนแตะเนื้อไฟล์ — ลิงก์ (ไฟล์หรือโฟลเดอร์) ที่พาออกนอก filesDir = ไม่อ่าน
     const real = await fsp.realpath(candidate);
     if (!real.startsWith(rootPrefix)) return MISSING;
-    if (!(await fsp.stat(real)).isFile()) return MISSING;
+    const stat = await fsp.stat(real);
+    if (!stat.isFile()) return MISSING;
+    if (stat.size > LEGACY_FILE_MAX_BYTES) return { kind: 'failed', reason: 'read:TOO_LARGE' };
     body = await fsp.readFile(real);
   } catch (error) {
     return isNotFound(error) ? MISSING : { kind: 'failed', reason: `read:${errorLabel(error)}` };
   }
 
+  const contentType = legacyFileContentType(normalized);
+  const sha256 = createHash('sha256').update(body).digest('hex');
   try {
-    return {
-      kind: 'uploaded',
-      url: await storage.upload(key, body, legacyFileContentType(normalized)),
-    };
+    const stored = await storage.upload(key, body, contentType);
+    return { kind: 'uploaded', detail: { key: stored, size: body.length, sha256, contentType } };
   } catch (error) {
     return { kind: 'failed', reason: `upload:${errorLabel(error)}` };
   }
@@ -178,10 +199,15 @@ async function mapPool<T, R>(
 export async function uploadLegacyFiles(
   filesDir: string,
   relPaths: readonly string[],
-  storage: Pick<StorageService, 'upload'>,
+  storage: LegacyFileStorage,
   prefix = 'legacy-import',
 ): Promise<LegacyFileUploadResult> {
   const keyPrefix = checkPrefix(prefix);
+  if (!storage.configured) {
+    throw new Error(
+      'storage ยังไม่ได้ตั้งค่า (GCS_BUCKET หรือ S3_*) — อัปโหลดไฟล์แนบไม่ได้ · dry-run ให้ส่ง storage ปลอม',
+    );
+  }
   const root = await resolveFilesDir(filesDir);
   const rootPrefix = root.endsWith(sep) ? root : root + sep;
 
@@ -205,16 +231,19 @@ export async function uploadLegacyFiles(
   );
 
   const urls = new Map<string, string>();
+  const details = new Map<string, LegacyFileDetail>();
   const failed: LegacyFileUploadResult['failed'] = [];
   jobs.forEach((normalized, index) => {
     const outcome = outcomes[index];
     for (const original of groups.get(normalized) ?? []) {
-      if (outcome.kind === 'uploaded') urls.set(original, outcome.url);
-      else if (outcome.kind === 'missing') missing.add(original);
+      if (outcome.kind === 'uploaded') {
+        urls.set(original, outcome.detail.key);
+        details.set(original, outcome.detail);
+      } else if (outcome.kind === 'missing') missing.add(original);
       else failed.push({ path: original, reason: outcome.reason });
     }
   });
 
   failed.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-  return { urls, missing: [...missing].sort(), failed };
+  return { urls, details, missing: [...missing].sort(), failed };
 }

@@ -1,7 +1,9 @@
+import { createHash } from 'node:crypto';
 import { promises as fsp } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  LEGACY_FILE_MAX_BYTES,
   LEGACY_FILE_UPLOAD_CONCURRENCY,
   legacyFileContentType,
   normalizeLegacyFilePath,
@@ -14,22 +16,66 @@ type Call = { key: string; body: Buffer; contentType: string };
 
 class UploadBoom extends Error {}
 
-/** storage ปลอม: จดทุกครั้งที่เรียก + นับงานที่ค้างพร้อมกันสูงสุด · คืน key แบบ StorageService.upload */
-function fakeStorage(opts: { delayMs?: number; failKeys?: string[] } = {}) {
+const sha256 = (text: string): string => createHash('sha256').update(text).digest('hex');
+
+/** storage ปลอม: จดทุกครั้งที่เรียก · คืน key แบบ StorageService.upload */
+function fakeStorage(opts: { configured?: boolean; failKeys?: string[] } = {}) {
   const calls: Call[] = [];
+  return {
+    configured: opts.configured ?? true,
+    calls,
+    async upload(key: string, body: Buffer, contentType: string): Promise<string> {
+      // ข้อความ error ของจริงอาจมี path/ชื่อลูกค้า — ต้องไม่หลุดไปใน `failed[].reason`
+      if (opts.failKeys?.includes(key)) throw new UploadBoom(`อัปโหลดไม่ได้ ${key} นายสมมติ`);
+      calls.push({ key, body, contentType });
+      return key;
+    },
+  };
+}
+
+/**
+ * storage ปลอมที่ทุก upload รอประตูเดียวกัน — ประตูเปิดเมื่อ upload ค้างครบเพดาน หรือทุกงานเริ่มแล้ว
+ * (ไม่ใช้เวลาเป็นตัวกำหนดลำดับ) · `onRelease` จดสถานะ ณ ตอนเปิด · ประตูไม่เปิดภายใน 2 วินาที = error ชัด ๆ
+ */
+function gatedStorage(total: number, onRelease: () => void) {
+  const calls: string[] = [];
   let inFlight = 0;
   let maxInFlight = 0;
+  let started = 0;
+  let released = false;
+  let gateError: Error | undefined;
+  let open!: () => void;
+  let fail!: (error: Error) => void;
+  const gate = new Promise<void>((resolve, reject) => {
+    open = resolve;
+    fail = reject;
+  });
+  gate.catch(() => undefined);
+  const safety = setTimeout(() => {
+    gateError = new Error(
+      `ประตูไม่เปิด: upload ค้างพร้อมกันสูงสุด ${maxInFlight} จาก ${total} งาน`,
+    );
+    fail(gateError);
+  }, 2000);
   return {
+    configured: true,
     calls,
     maxInFlight: () => maxInFlight,
-    async upload(key: string, body: Buffer, contentType: string): Promise<string> {
+    gateError: () => gateError?.message,
+    dispose: () => clearTimeout(safety),
+    async upload(key: string): Promise<string> {
       inFlight++;
+      started++;
       maxInFlight = Math.max(maxInFlight, inFlight);
       try {
-        if (opts.delayMs) await new Promise((r) => setTimeout(r, opts.delayMs));
-        // ข้อความ error ของจริงอาจมี path/ชื่อลูกค้า — ต้องไม่หลุดไปใน `failed[].reason`
-        if (opts.failKeys?.includes(key)) throw new UploadBoom(`อัปโหลดไม่ได้ ${key} นายสมมติ`);
-        calls.push({ key, body, contentType });
+        if (!released && (inFlight === LEGACY_FILE_UPLOAD_CONCURRENCY || started === total)) {
+          released = true;
+          clearTimeout(safety);
+          onRelease();
+          open();
+        }
+        await gate;
+        calls.push(key);
         return key;
       } finally {
         inFlight--;
@@ -128,6 +174,37 @@ describe('uploadLegacyFiles', () => {
     expect(byKey.get('legacy-import/uploads/identity/a.jpg')?.body.toString()).toBe('A');
     expect(byKey.get('legacy-import/uploads/income/b.PDF')?.contentType).toBe('application/pdf');
     expect(byKey.get('legacy-import/upload/payment/c.heic')?.contentType).toBe('image/heic');
+    // ขนาด/แฮช/ชนิด จาก bytes ที่อ่านแล้ว — Task 10 ไม่ต้องอ่านไฟล์ซ้ำ
+    expect(Object.fromEntries(result.details)).toEqual({
+      'uploads/identity/a.jpg': {
+        key: 'legacy-import/uploads/identity/a.jpg',
+        size: 1,
+        sha256: sha256('A'),
+        contentType: 'image/jpeg',
+      },
+      'uploads/income/b.PDF': {
+        key: 'legacy-import/uploads/income/b.PDF',
+        size: 1,
+        sha256: sha256('B'),
+        contentType: 'application/pdf',
+      },
+      'upload/payment/c.heic': {
+        key: 'legacy-import/upload/payment/c.heic',
+        size: 1,
+        sha256: sha256('C'),
+        contentType: 'image/heic',
+      },
+    });
+  });
+
+  it('refuses an unconfigured storage before reading any file (backend `none` returns keys silently)', async () => {
+    const readFile = jest.spyOn(fsp, 'readFile');
+    const storage = fakeStorage({ configured: false });
+    await expect(uploadLegacyFiles(root, ['uploads/identity/a.jpg'], storage)).rejects.toThrow(
+      /storage/,
+    );
+    expect(readFile).not.toHaveBeenCalled();
+    expect(storage.calls).toHaveLength(0);
   });
 
   it('uses the given prefix (trailing slash trimmed) and refuses an unsafe one', async () => {
@@ -203,6 +280,32 @@ describe('uploadLegacyFiles', () => {
     expect(storage.calls.some((c) => c.body.toString() === 'SENTINEL')).toBe(false);
   });
 
+  it('refuses a symlink into a sibling folder whose name starts like filesDir (`httpdocs2`)', async () => {
+    // `<base>/httpdocs2/…` ขึ้นต้นด้วยตัวอักษร `<base>/httpdocs` — ด่านต้องเทียบทั้งส่วนของ path (`+ sep`)
+    await fsp.mkdir(join(base, 'httpdocs2'));
+    await fsp.writeFile(join(base, 'httpdocs2', 'secret.jpg'), 'SIBLING');
+    await fsp.symlink(
+      join(base, 'httpdocs2', 'secret.jpg'),
+      join(root, 'uploads', 'identity', 'sib.jpg'),
+    );
+    await fsp.symlink(join(base, 'httpdocs2'), join(root, 'uploads', 'sibdir'));
+    const readFile = jest.spyOn(fsp, 'readFile');
+    const storage = fakeStorage();
+
+    const result = await uploadLegacyFiles(
+      root,
+      ['uploads/identity/sib.jpg', 'uploads/sibdir/secret.jpg'],
+      storage,
+    );
+
+    expect(result.missing).toEqual(['uploads/identity/sib.jpg', 'uploads/sibdir/secret.jpg']);
+    expect(result.urls.size).toBe(0);
+    expect(result.details.size).toBe(0);
+    expect(result.failed).toEqual([]);
+    expect(storage.calls).toHaveLength(0);
+    expect(readFile).not.toHaveBeenCalled();
+  });
+
   it('gives the same key for the same path on every call', async () => {
     const first = await uploadLegacyFiles(root, ['uploads/identity/a.jpg'], fakeStorage());
     const second = await uploadLegacyFiles(root, ['uploads/identity/a.jpg'], fakeStorage());
@@ -224,8 +327,10 @@ describe('uploadLegacyFiles', () => {
 
     expect(storage.calls).toHaveLength(1);
     expect(result.urls.size).toBe(3);
+    expect(result.details.size).toBe(3);
     for (const s of spellings) {
       expect(result.urls.get(s)).toBe('legacy-import/uploads/identity/a.jpg');
+      expect(result.details.get(s)?.key).toBe('legacy-import/uploads/identity/a.jpg');
     }
     expect(result.missing).toEqual([]);
   });
@@ -239,7 +344,7 @@ describe('uploadLegacyFiles', () => {
     expect(result.missing).toEqual(['../a.jpg', 'uploads/m.jpg', 'uploads/z.jpg']);
   });
 
-  it(`never has more than ${LEGACY_FILE_UPLOAD_CONCURRENCY} uploads in flight`, async () => {
+  it(`runs at most ${LEGACY_FILE_UPLOAD_CONCURRENCY} jobs at once — gated, no timing`, async () => {
     expect(LEGACY_FILE_UPLOAD_CONCURRENCY).toBe(8);
     const rels: string[] = [];
     for (let i = 0; i < 20; i++) {
@@ -247,12 +352,30 @@ describe('uploadLegacyFiles', () => {
       await put(rel, `P${i}`);
       rels.push(rel);
     }
-    const storage = fakeStorage({ delayMs: 30 });
-    const result = await uploadLegacyFiles(root, rels, storage);
+    // ไฟล์ที่ pool เริ่มแตะแล้ว (ขั้น fs ใดก็ได้) — pool ไม่จำกัดจะเริ่มครบ 20 งานก่อนประตูเปิด
+    const touched = new Set<string>();
+    for (const name of ['realpath', 'stat', 'readFile'] as const) {
+      const original = (fsp[name] as (...a: unknown[]) => Promise<unknown>).bind(fsp);
+      jest.spyOn(fsp, name).mockImplementation(((p: unknown, ...rest: unknown[]) => {
+        const job = /product\/(p\d\d)\.jpg$/.exec(String(p));
+        if (job) touched.add(job[1]);
+        return original(p, ...rest);
+      }) as never);
+    }
+    let touchedAtRelease = -1;
+    const storage = gatedStorage(rels.length, () => (touchedAtRelease = touched.size));
+    try {
+      const result = await uploadLegacyFiles(root, rels, storage);
 
-    expect(result.urls.size).toBe(20);
-    expect(storage.calls).toHaveLength(20);
-    expect(storage.maxInFlight()).toBe(8);
+      expect(storage.gateError()).toBeUndefined();
+      expect(result.failed).toEqual([]);
+      expect(result.urls.size).toBe(20);
+      expect(storage.calls).toHaveLength(20);
+      expect(storage.maxInFlight()).toBe(8);
+      expect(touchedAtRelease).toBe(8);
+    } finally {
+      storage.dispose();
+    }
   });
 
   it('keeps going when one upload fails — `failed` carries the error class only', async () => {
@@ -267,7 +390,31 @@ describe('uploadLegacyFiles', () => {
       'uploads/identity/d.jpg',
     ]);
     expect(result.missing).toEqual([]);
+    expect([...result.details.keys()].sort()).toEqual([
+      'uploads/identity/a.jpg',
+      'uploads/identity/d.jpg',
+    ]);
     expect(JSON.stringify(result.failed)).not.toMatch(/นายสมมติ|อัปโหลดไม่ได้/);
+  });
+
+  it(`fails a file over ${LEGACY_FILE_MAX_BYTES / 1024 / 1024} MB as read:TOO_LARGE without reading it`, async () => {
+    expect(LEGACY_FILE_MAX_BYTES).toBe(50 * 1024 * 1024);
+    await put('uploads/income/huge.pdf', '');
+    await fsp.truncate(join(root, 'uploads/income/huge.pdf'), LEGACY_FILE_MAX_BYTES + 1); // sparse
+    const readFile = jest.spyOn(fsp, 'readFile');
+    const storage = fakeStorage();
+
+    const result = await uploadLegacyFiles(
+      root,
+      ['uploads/identity/a.jpg', 'uploads/income/huge.pdf'],
+      storage,
+    );
+
+    expect(result.failed).toEqual([{ path: 'uploads/income/huge.pdf', reason: 'read:TOO_LARGE' }]);
+    expect([...result.urls.keys()]).toEqual(['uploads/identity/a.jpg']);
+    expect(readFile.mock.calls.map(([p]) => String(p))).toEqual([
+      expect.stringMatching(/identity\/a\.jpg$/),
+    ]);
   });
 
   it('records a read error (not "not found") in `failed` with the error code only', async () => {

@@ -72,7 +72,7 @@ export const employeeKeys = {
   list: (params: Record<string, unknown>) => [...employeeKeys.all, 'list', params] as const,
   detail: (id: string) => [...employeeKeys.all, 'detail', id] as const,
   provisionable: (search: string) => [...employeeKeys.all, 'provisionable', search] as const,
-  pickable: (search: string) => [...employeeKeys.all, 'pickable', search] as const,
+  pickable: (search: string, period = '') => [...employeeKeys.all, 'pickable', search, period] as const,
 };
 
 export const employeesApi = {
@@ -87,9 +87,12 @@ export const employeesApi = {
     api
       .get<ProvisionableUser[]>('/employees/provisionable', { params: search ? { search } : {} })
       .then((r) => r.data),
-  pickable: (search?: string) =>
+  /** `period` = งวดของใบเงินเดือน (YYYY-MM) — server รวมคนที่ลาออกระหว่างงวดนั้น (Payroll D4 คำตัดสิน 8) */
+  pickable: (search?: string, period?: string) =>
     api
-      .get<PickableEmployee[]>('/employees/pickable', { params: search ? { search } : {} })
+      .get<PickableEmployee[]>('/employees/pickable', {
+        params: { ...(search ? { search } : {}), ...(period ? { period } : {}) },
+      })
       .then((r) => r.data),
   provision: (input: ProvisionEmployeeInput) =>
     api.post<Employee>('/employees', input).then((r) => r.data),

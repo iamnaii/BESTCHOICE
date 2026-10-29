@@ -32,6 +32,8 @@ interface Props {
    * to true so callers that haven't yet been migrated keep existing behavior.
    */
   pettyCashEnabled?: boolean;
+  /** ผู้จัดการสาขาทำใบเงินเดือนไม่ได้ (คำตัดสินเจ้าของ 2026-10-28) — false = ไม่มีชิป "เงินเดือน" */
+  payrollEnabled?: boolean;
 }
 
 interface TabDef {
@@ -56,6 +58,7 @@ export function DocTypePicker({
   invoiceDateIsToday,
   smartDoctypeSwitchEnabled = true,
   pettyCashEnabled = true,
+  payrollEnabled = true,
 }: Props) {
   // D1.3.4.1 — when the OWNER disables smart-doctype-switch, suppress the
   // recommendation by setting the placeholder to a value no real chip uses.
@@ -67,9 +70,9 @@ export function DocTypePicker({
   // D1.1.5.1 — drop the Petty Cash chip when flag off. Grid then renders 5
   // chips instead of 6 — `md:grid-cols-6` still spans cleanly because the
   // empty slot folds into the second row only on narrow screens.
-  const visibleTabs = pettyCashEnabled
-    ? TABS
-    : TABS.filter((t) => t.type !== 'PETTY_CASH_REIMBURSEMENT');
+  const visibleTabs = TABS.filter(
+    (t) => (pettyCashEnabled || t.type !== 'PETTY_CASH_REIMBURSEMENT') && (payrollEnabled || t.type !== 'PAYROLL'),
+  );
 
   return (
     <div className="space-y-2">

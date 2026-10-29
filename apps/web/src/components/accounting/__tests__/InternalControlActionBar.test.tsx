@@ -526,3 +526,47 @@ describe('InternalControlActionBar', () => {
   });
 
 });
+
+// Payroll D4 ส่วนที่ 1 (Task 8) — ปุ่มที่ server จะปฏิเสธ (ด่านใบเงินเดือน) ปิดพร้อมเหตุผลใต้ปุ่ม + ปุ่มเฉพาะหน้า (extraActions)
+describe('InternalControlActionBar — blocked reasons and extra actions', () => {
+  beforeEach(() => {
+    queryClient.clear();
+    mockedReversePermission = 'OWNER+FINANCE_MANAGER';
+  });
+
+  it('disables บันทึกและลงบัญชี and shows the reason under it (postBlockedReason)', () => {
+    render(wrap(<InternalControlActionBar module="expense" status="DRAFT" auditLog={[]} currentUser={baseUser}
+      onCancel={vi.fn()} onPost={vi.fn()} postBlockedReason="ยังไม่ถึงเวลาปิดงวด" />));
+    const post = screen.getByRole('button', { name: /บันทึกและลงบัญชี/ });
+    expect(post).toBeDisabled();
+    const reason = screen.getByText('ยังไม่ถึงเวลาปิดงวด');
+    expect(post).toHaveAttribute('aria-describedby', reason.id);
+  });
+
+  it('disables ส่งให้อนุมัติ with the same reason under maker-checker', () => {
+    render(wrap(<InternalControlActionBar module="expense" status="DRAFT" auditLog={[]} currentUser={baseUser}
+      makerCheckerEnabled onCancel={vi.fn()} onSubmitForApproval={vi.fn()} postBlockedReason="ยังไม่ถึงเวลาปิดงวด" />));
+    expect(screen.getByRole('button', { name: /ส่งให้อนุมัติ/ })).toBeDisabled();
+    expect(screen.getByText('ยังไม่ถึงเวลาปิดงวด')).toBeVisible();
+  });
+
+  it('disables อนุมัติและลงบัญชี with approveBlockedReason, and leaves it enabled without one', () => {
+    const { unmount } = render(wrap(<InternalControlActionBar module="expense" status="READY" auditLog={[]}
+      currentUser={baseUser} isViewerApprover onCancel={vi.fn()} onApprove={vi.fn()}
+      approveBlockedReason="ติดธง เครื่องถูกใช้ซ้อน 1 วัน" />));
+    const approve = screen.getByRole('button', { name: /อนุมัติและลงบัญชี/ });
+    expect(approve).toBeDisabled();
+    expect(approve).toHaveAttribute('aria-describedby', screen.getByText('ติดธง เครื่องถูกใช้ซ้อน 1 วัน').id);
+    unmount();
+
+    render(wrap(<InternalControlActionBar module="expense" status="READY" auditLog={[]}
+      currentUser={baseUser} isViewerApprover onCancel={vi.fn()} onApprove={vi.fn()} />));
+    expect(screen.getByRole('button', { name: /อนุมัติและลงบัญชี/ })).toBeEnabled();
+  });
+
+  it.each(['DRAFT', 'READY', 'POSTED'] as const)('renders extraActions in the action row (%s)', (status) => {
+    render(wrap(<InternalControlActionBar module="expense" status={status} auditLog={[]} currentUser={baseUser}
+      docNumber="PR-1" onCancel={vi.fn()} extraActions={<button type="button">แก้ไข</button>} />));
+    expect(screen.getByRole('button', { name: 'แก้ไข' })).toBeInTheDocument();
+  });
+});

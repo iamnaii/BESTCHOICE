@@ -60,6 +60,9 @@ export class AccountRoleService implements OnModuleInit {
     'shop_wht_payroll',
     'shop_sso_employee',
     'shop_sso_employer',
+    // Payroll OT part 1 — holiday work + holiday OT rows (migration 20261106000000).
+    'shop_payroll_holiday',
+    'payroll_holiday',
     // D1.1.6.1 — rounding-tolerance routing role (≤1฿ underpay adjustment on
     // Payment). Seeded by migration 20260919000000_add_account_role_map.
     // Owner may remap via admin UI without redeploying the JE templates.

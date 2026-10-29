@@ -96,6 +96,8 @@ const safePhone = (value: unknown): string => (typeof value === 'string' && valu
 const joinParts = (...parts: Array<string | null | undefined>): string => parts.filter((p) => p && String(p).trim().length > 0).join(' · ');
 
 const BASE_SELECT = { id: true, deletedAt: true } as const;
+export const TRASH_RESTORE_PAYROLL_MESSAGE =
+  'กู้คืนใบเงินเดือนไม่ได้ — ให้สร้างใบใหม่ที่หน้ารายจ่าย › สร้างเอกสารใหม่ › เงินเดือน (PR)';
 const draftOnly = (label: string) => async (_ctx: TrashRestoreContext, row: TrashAnyRow) => {
   if (row.status !== 'DRAFT') throw new BadRequestException(`กู้ได้เฉพาะ${label}ฉบับร่าง — ใบที่ลงบัญชีแล้วใช้การกลับรายการแทน`);
 };
@@ -196,7 +198,7 @@ export const TRASH_REGISTRY: readonly TrashEntry[] = [
   // ─── เอกสารการเงิน (ร่าง) ───────────────────────────────────────────────────────────────
   {
     type: 'expense_document', label: 'ใบรายจ่าย (ร่าง)', group: 'เอกสารการเงิน (ร่าง)', model: 'expenseDocument',
-    select: { ...BASE_SELECT, number: true, status: true, vendorName: true, totalAmount: true, branchId: true, branch: { select: { name: true } } },
+    select: { ...BASE_SELECT, number: true, documentType: true, status: true, vendorName: true, totalAmount: true, branchId: true, branch: { select: { name: true } } },
     searchFields: ['number', 'vendorName'],
     extraWhere: { status: 'DRAFT' },
     auditEntities: ['expense-documents', 'expense_document'],
@@ -209,6 +211,9 @@ export const TRASH_REGISTRY: readonly TrashEntry[] = [
     restorable: true,
     // partial unique expense_documents(number) WHERE deleted_at IS NULL — เลขอาจถูกออกใหม่แล้ว
     check: async (ctx, r) => {
+      // Payroll D4 — ใบเงินเดือนกู้ไม่ได้ทุกกรณี: แถวระบบ (OT จากการลงเวลา) ที่ถือไว้อาจซ้ำกับใบที่สร้างแทนแล้ว
+      // และปิดรูงวดซ้ำ (ลบ A → สร้าง B งวดเดียวกัน → กู้ A)
+      if (r.documentType === 'PAYROLL') throw new BadRequestException(TRASH_RESTORE_PAYROLL_MESSAGE);
       await draftOnly('ใบรายจ่าย')(ctx, r);
       const dup = await ctx.tx.expenseDocument.findFirst({ where: { number: r.number, deletedAt: null, id: { not: r.id } }, select: { id: true } });
       if (dup) throw new ConflictException(`กู้ไม่ได้: เลขที่ ${r.number} ถูกออกให้ใบใหม่แล้ว — สร้างใบใหม่แทน`);

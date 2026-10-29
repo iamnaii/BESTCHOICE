@@ -3,12 +3,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useLocation } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ExpenseDocumentNewPage from './ExpenseDocumentNewPage';
-const mocks = vi.hoisted(() => ({ get: vi.fn(), user: { branchId: null as string | null } }));
+const mocks = vi.hoisted(() => ({ get: vi.fn(), user: { branchId: null as string | null, role: 'ACCOUNTANT' as string } }));
 vi.mock('@/lib/api', () => ({ default: { get: mocks.get } }));
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: mocks.user }) }));
 vi.mock('@/components/expense-form-v4/ExpenseFormV4', () => ({
-  ExpenseFormV4: ({ branchId, initialDocType, editDocId }: { branchId: string; initialDocType?: string; editDocId?: string }) =>
-    <div data-testid="expense-form">{branchId} / {initialDocType} / {editDocId}</div>,
+  ExpenseFormV4: ({ branchId, initialDocType, editDocId, onDraftSaved }: { branchId: string; initialDocType?: string; editDocId?: string; onDraftSaved?: (id: string) => void }) =>
+    <div>
+      <div data-testid="expense-form">{branchId} / {initialDocType} / {editDocId}</div>
+      <button type="button" onClick={() => onDraftSaved?.('new-1')}>บันทึกร่าง + คิดยอด</button>
+    </div>,
 }));
 function Location() { return <output data-testid="location">{useLocation().pathname}</output>; }
 function open(path = '/expenses/new') {
@@ -43,9 +46,27 @@ describe('expense creation branch resolution', () => {
     fireEvent.click(screen.getByRole('button', { name: 'โหลดใหม่' }));
     expect(await screen.findByTestId('expense-form')).toHaveTextContent('branch-c');
   });
+  it('a payroll draft saved with บันทึกร่าง + คิดยอด reopens on its edit route', () => {
+    mocks.user.branchId = 'assigned'; mocks.get.mockReturnValue(new Promise(() => {}));
+    open('/expenses/new?type=PR');
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึกร่าง + คิดยอด' }));
+    expect(screen.getByTestId('expense-form')).toHaveTextContent('assigned / PAYROLL / new-1');
+  });
   it('preserves the assigned branch and payroll edit mode', () => {
     mocks.user.branchId = 'assigned'; mocks.get.mockReturnValue(new Promise(() => {}));
     open('/expenses/new?edit=draft-1');
     expect(screen.getByTestId('expense-form')).toHaveTextContent('assigned / PAYROLL / draft-1');
+  });
+
+  it('a branch manager opening a payroll edit link gets the notice and a link to the document, not the form', () => {
+    mocks.user.branchId = 'assigned'; mocks.user.role = 'BRANCH_MANAGER'; mocks.get.mockReturnValue(new Promise(() => {}));
+    try {
+      open('/expenses/new?edit=draft-1');
+      expect(screen.queryByTestId('expense-form')).not.toBeInTheDocument();
+      expect(screen.getByText('ใบเงินเดือนทำได้เฉพาะเจ้าของ ฝ่ายบัญชี และผู้จัดการการเงิน')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'เปิดใบ' })).toBeInTheDocument();
+    } finally {
+      mocks.user.role = 'ACCOUNTANT';
+    }
   });
 });

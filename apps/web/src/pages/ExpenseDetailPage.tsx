@@ -1,5 +1,5 @@
 import ScreenTable from '@/components/ui/ScreenTable';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import PdfPreview from '@/components/PdfPreview';
 import { useAccountingPermissions } from '@/hooks/useAccountingPermissions';
 import { canApproveAccountingDoc } from '@installment/shared';
@@ -17,9 +17,25 @@ import {
 } from '@/components/accounting';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { canManagePayroll } from '@/components/expense-form-v4/payroll-system/payroll-roles';
 import { useUiFlags } from '@/hooks/useUiFlags';
 import { formatNumberDecimal } from '@/utils/formatters';
 import { formatThaiDateShort } from '@/lib/date';
+import { invalidateExpenseDoc } from '@/lib/expense-document-cache';
+import { documentChangedMessage, documentVersionBody } from '@/lib/document-version';
+import { toBangkokDateString } from '@/lib/date';
+import { payrollConflictOf, type PayrollConflict } from '@/components/expense-form-v4/payroll-system/payroll-status';
+import {
+  PayrollBankCsvButton,
+  PayrollDetailActions,
+  PayrollDetailSection,
+  PayrollTotalsCard,
+  payrollBlockedReasons,
+  PAYROLL_GATE_POLL_MS,
+  payrollGateBlocks,
+  usePayrollGateRefresh,
+  type PayrollDetailDoc,
+} from './expense-detail/PayrollDetailSection';
 
 /**
  * ExpenseDetailPage — single-document view that hosts the shared
@@ -66,6 +82,11 @@ interface ExpenseDocument {
   branch?: { id: string; name: string } | null;
   createdBy?: { id: string; name: string } | null;
   expenseDetail?: { lines: ExpenseLine[] } | null;
+  /** R20 — ฉบับที่หน้านี้วาด · ส่งกลับตอนอนุมัติ/ลงบัญชี (`expectedUpdatedAt`) */
+  updatedAt?: string;
+  /** Payroll D4 — บรรทัดเงินเดือน + ด่านส่ง/อนุมัติ/ลงบัญชี (เฉพาะ PAYROLL) */
+  payroll?: PayrollDetailDoc['payroll'];
+  payrollGate?: PayrollDetailDoc['payrollGate'];
 }
 
 const DOC_TYPE_LABELS: Record<string, string> = {
@@ -140,6 +161,11 @@ export default function ExpenseDetailPage() {
     queryKey: ['expense-document', id],
     queryFn: async () => (await api.get<ExpenseDocument>(`/expense-documents/${id}`)).data,
     enabled: !!id,
+    // Payroll D4 — ระหว่างที่ด่านปิดปุ่มอยู่ กลับมาที่หน้าต่างนี้ = ถาม server ใหม่ (เช่น เจ้าของเพิ่งล้างธงในอีกแท็บ)
+    refetchOnWindowFocus: (query) => (payrollGateBlocks(query.state.data?.payrollGate) ? 'always' : false),
+    // R16 — นาฬิกาเครื่องเร็วกว่า server (ตั้งเวลาปิดงวดยิงก่อน server ถึงเวลา) หรือเจ้าของล้างธงจากอีกหน้าต่าง/อีกเครื่อง
+    // (ไม่มี visibilitychange) ⇒ ถามทุก 60 วินาทีระหว่างที่ด่านปิดปุ่ม · ไม่มีอะไรปิด/ไม่ใช่ใบเงินเดือน/ลงบัญชีแล้ว = ไม่ถาม
+    refetchInterval: (query) => (payrollGateBlocks(query.state.data?.payrollGate) ? PAYROLL_GATE_POLL_MS : false),
   });
 
   const auditQuery = useQuery<RawAuditEntry[]>({
@@ -148,37 +174,60 @@ export default function ExpenseDetailPage() {
     enabled: !!id,
   });
 
-  const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ['expense-document', id] });
-    queryClient.invalidateQueries({ queryKey: ['expenses'] });
-    queryClient.invalidateQueries({ queryKey: ['expenses-summary'] });
+  const invalidate = () => invalidateExpenseDoc(queryClient, id);
+
+  // Payroll D4 — 409 PAYROLL_STALE แสดงเป็นแจ้งเตือนพร้อมตาราง diff บนหน้า (ไม่ใช่ toast) จนกว่ากดสำเร็จหรือใบเปลี่ยนสถานะ
+  const [staleConflict, setStaleConflict] = useState<PayrollConflict | null>(null);
+  // ใบเงินเดือน — วันที่จ่ายเงินที่จะส่งตอนอนุมัติ/ลงบัญชี (ค่าเริ่มต้นวันนี้ · คำตัดสินเจ้าของ 2026-10-28)
+  const [payDate, setPayDate] = useState(() => toBangkokDateString());
+  const onActionSuccess = (message: string) => () => {
+    toast.success(message);
+    setStaleConflict(null);
+    invalidate();
+  };
+  const onActionError = (fallback: string) => (err: unknown) => {
+    // R20 — ใบถูกแก้หลังจากหน้านี้วาด (เช่น ผู้ทำเงินเดือนกด แก้ไข แล้วส่งใหม่): แสดงข้อความของ server + โหลดใบใหม่
+    // (ยอดใหม่ขึ้นบนหน้า ผู้กดตรวจแล้วกดอีกครั้งด้วยฉบับใหม่) · แจ้งเตือนยอดเปลี่ยนเดิมไม่ใช่ของฉบับนี้แล้ว
+    const changed = documentChangedMessage(err);
+    if (changed !== null) {
+      setStaleConflict(null);
+      invalidate();
+      toast.error(changed || fallback);
+      return;
+    }
+    const conflict = payrollConflictOf(err);
+    // ด่านใบเงินเดือนอาจเปลี่ยนไปแล้ว (ถึงเวลาปิดงวด · ติดธงเพิ่ม) — โหลดใบใหม่ให้แบนเนอร์ตรงกับ server
+    if (conflict) invalidate();
+    if (conflict?.code === 'PAYROLL_STALE') {
+      setStaleConflict(conflict);
+      return;
+    }
+    toast.error((err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? fallback);
   };
 
+  // ใบเงินเดือนส่งวันที่จ่ายเงินไปด้วย (server ใช้วันนี้ถ้าไม่ส่ง) · เอกสารอื่นส่งเหมือนเดิม
+  const actionBody = () => ({
+    ...documentVersionBody(docQuery.data),
+    ...(docQuery.data?.documentType === 'PAYROLL' ? { paymentDate: payDate } : {}),
+  });
+
   const postMutation = useMutation({
-    mutationFn: () => api.post(`/expense-documents/${id}/post`, {}),
-    onSuccess: () => {
-      toast.success('บันทึกบัญชีเรียบร้อย');
-      invalidate();
-    },
-    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'บันทึกบัญชีไม่สำเร็จ'),
+    // R20/R21 — ใบเงินเดือนส่งฉบับที่หน้าวาด (server บังคับ) · เอกสารอื่นส่ง {} เหมือนเดิม
+    mutationFn: () => api.post(`/expense-documents/${id}/post`, actionBody()),
+    onSuccess: onActionSuccess('บันทึกบัญชีเรียบร้อย'),
+    onError: onActionError('บันทึกบัญชีไม่สำเร็จ'),
   });
 
   const submitMutation = useMutation({
     mutationFn: () => api.post(`/expense-documents/${id}/submit-for-approval`, {}),
-    onSuccess: () => {
-      toast.success('ส่งขออนุมัติแล้ว');
-      invalidate();
-    },
-    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'ส่งขออนุมัติไม่สำเร็จ'),
+    onSuccess: onActionSuccess('ส่งขออนุมัติแล้ว'),
+    onError: onActionError('ส่งขออนุมัติไม่สำเร็จ'),
   });
 
   const approveMutation = useMutation({
-    mutationFn: () => api.post(`/expense-documents/${id}/approve`, {}),
-    onSuccess: () => {
-      toast.success('อนุมัติเรียบร้อย');
-      invalidate();
-    },
-    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'อนุมัติไม่สำเร็จ'),
+    mutationFn: () => api.post(`/expense-documents/${id}/approve`, actionBody()),
+    onSuccess: onActionSuccess('อนุมัติเรียบร้อย'),
+    onError: onActionError('อนุมัติไม่สำเร็จ'),
   });
 
   const voidMutation = useMutation({
@@ -195,24 +244,31 @@ export default function ExpenseDetailPage() {
         reasonLabel,
         note,
       }),
-    onSuccess: () => {
-      toast.success('กลับรายการเอกสารเรียบร้อย');
-      invalidate();
-    },
-    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'กลับรายการไม่สำเร็จ'),
+    onSuccess: onActionSuccess('กลับรายการเอกสารเรียบร้อย'),
+    onError: onActionError('กลับรายการไม่สำเร็จ'),
   });
 
 
 
   const doc = docQuery.data;
+  // ใบเปลี่ยนสถานะแล้ว (เช่น ผู้ทำเงินเดือนกด แก้ไข แล้วบันทึก) — แจ้งเตือนยอดเปลี่ยนเดิมไม่ใช่ของใบนี้อีกต่อไป
+  useEffect(() => setStaleConflict(null), [doc?.status]);
+  // ถึงเวลาปิดงวดระหว่างที่เปิดหน้าค้างไว้ — โหลดใบใหม่ให้ server ตัดสินว่าปุ่มเปิดได้หรือยัง
+  usePayrollGateRefresh(id, doc?.payrollGate?.closableAt);
   const makerCheckerEnabled = flags.approvalEnabled && doc?.status !== 'APPROVED';
   const icabStatus = doc ? mapExpenseStatusToIcab(doc.status) : 'DRAFT';
+  const isPayroll = doc?.documentType === 'PAYROLL';
+  const payrollManager = canManagePayroll(user?.role);
+  const payrollReadOnly = isPayroll && !payrollManager;
+  const payrollPrimary = makerCheckerEnabled ? 'submit' : 'post';
+  const payrollBlocked = isPayroll ? payrollBlockedReasons(doc?.payrollGate, payrollPrimary) : {};
 
   // Mode-aware reverse gate (Audit Finding A) — mirrors the backend
   // ReversePermissionGuard so the button only shows when the server will allow.
   const canReverse =
     permissions.can('EXPENSE_CANCEL') &&
-    icabStatus === 'POSTED';
+    icabStatus === 'POSTED' &&
+    !payrollReadOnly;
 
   const isOwnDoc = !!doc && doc.createdBy?.id === user?.id;
   // เอกสารของตัวเอง = อนุมัติได้เฉพาะระดับผู้จัดการขึ้นไป (คำตัดสินเจ้าของ 2026-09-11)
@@ -266,41 +322,8 @@ export default function ExpenseDetailPage() {
                   <div className="text-xl font-semibold leading-snug">
                     {money(doc.netPayment ?? doc.totalAmount)}
                   </div>
-                  {/* R3-3 (2026-08-06) — ไฟล์โอนเงินเดือนเข้าธนาคาร (จากเลขบัญชี
-                      ในทะเบียนพนักงาน). แถวที่ไม่มีข้อมูลธนาคารถูกข้าม + แจ้งจำนวน. */}
-                  {doc.documentType === 'PAYROLL' && (
-                    <button data-ui-control="button"
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          const res = await api.get(
-                            `/expense-documents/${doc.id}/bank-transfer.csv`,
-                            { responseType: 'blob' },
-                          );
-                          const skipped = parseInt(
-                            (res.headers['x-skipped-lines'] as string) ?? '0',
-                            10,
-                          );
-                          const url = URL.createObjectURL(res.data as Blob);
-                          const a = document.createElement('a');
-                          a.href = url;
-                          a.download = `bank-transfer-${doc.number}.csv`;
-                          a.click();
-                          URL.revokeObjectURL(url);
-                          if (skipped > 0) {
-                            toast.warning(
-                              `ข้าม ${skipped} คนที่ไม่มีเลขบัญชีธนาคารในทะเบียนพนักงาน — เพิ่มได้ที่ ผู้ใช้ → HR/เงินเดือน`,
-                            );
-                          }
-                        } catch {
-                          toast.error('ดาวน์โหลดไฟล์โอนธนาคารไม่สำเร็จ');
-                        }
-                      }}
-                      className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs border border-border rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent"
-                    >
-                      ไฟล์โอนธนาคาร (CSV)
-                    </button>
-                  )}
+                  {/* R3-3 (2026-08-06) — ไฟล์โอนเงินเดือนเข้าธนาคาร · กระดาน 2: เฉพาะใบที่ลงบัญชีแล้ว */}
+                  {isPayroll && <PayrollBankCsvButton doc={doc} viewerRole={user?.role} />}
                 </div>
               </div>
 
@@ -353,7 +376,28 @@ export default function ExpenseDetailPage() {
               </section>
             ) : null}
 
-            {/* Totals */}
+            {isPayroll && (
+              <PayrollDetailSection
+                doc={doc}
+                primary={payrollPrimary}
+                staleConflict={staleConflict}
+                onDismissStale={() => setStaleConflict(null)}
+                viewer={user}
+                canReverse={Boolean(canReverse)}
+              />
+            )}
+
+            {/* Totals — ใบเงินเดือนใช้การ์ดของตัวเอง (รายได้ − ประกันสังคม − หัก ณ ที่จ่าย − รายการหัก = สุทธิ) */}
+            {isPayroll && doc.payroll ? (
+              <PayrollTotalsCard
+                lines={doc.payroll.lines}
+                posted={doc.status === 'POSTED'}
+                documentDate={doc.documentDate}
+                payDate={payDate}
+                onPayDateChange={setPayDate}
+                canChoosePayDate={payrollManager && ['DRAFT', 'PENDING_APPROVAL', 'APPROVED'].includes(doc.status)}
+              />
+            ) : (
             <section className="rounded-lg border border-border bg-card p-5">
               <dl className="space-y-1.5 text-sm max-w-xs ml-auto">
                 <div className="flex justify-between gap-6">
@@ -374,6 +418,7 @@ export default function ExpenseDetailPage() {
                 </div>
               </dl>
             </section>
+            )}
           </div>
         )}
       </QueryBoundary>
@@ -402,13 +447,17 @@ export default function ExpenseDetailPage() {
           isOwnDoc={isOwnDoc}
           isLoading={isActionLoading}
           canPost={makerCheckerEnabled || permissions.can('EXPENSE_POST')}
+          postBlockedReason={payrollBlocked.primary}
+          approveBlockedReason={payrollBlocked.approve}
+          extraActions={isPayroll ? <PayrollDetailActions doc={doc} canEdit={payrollManager} /> : undefined}
           canReverse={Boolean(canReverse)}
           onCancel={() => navigate('/expenses')}
           onClose={() => navigate('/expenses')}
-          onPost={() => postMutation.mutate()}
-          onSubmitForApproval={() => submitMutation.mutate()}
-          onApprove={() => approveMutation.mutate()}
-          onReverse={(payload) => voidMutation.mutate(payload)}
+          // ผู้จัดการสาขาเปิดดูใบเงินเดือนได้อย่างเดียว (คำตัดสินเจ้าของ 2026-10-28 · server ตรวจซ้ำ)
+          onPost={payrollReadOnly ? undefined : () => postMutation.mutate()}
+          onSubmitForApproval={payrollReadOnly ? undefined : () => submitMutation.mutate()}
+          onApprove={payrollReadOnly ? undefined : () => approveMutation.mutate()}
+          onReverse={payrollReadOnly ? undefined : (payload) => voidMutation.mutate(payload)}
           onPrint={() => setPreviewId(doc.id)}
         />
       )}

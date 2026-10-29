@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { Clock } from 'lucide-react';
 import api from '@/lib/api';
@@ -23,21 +24,50 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'schedule', label: 'ตารางหยุด/ลา' },
 ];
 
+const isRealDate = (v: string | null): v is string => {
+  if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+  const d = new Date(`${v}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v && v <= todayBangkok(); // วันในอนาคตยังไม่มีข้อมูล → ค่าเดิม
+};
+
+/** ลิงก์จากหน้าเงินเดือน: `/attendance?tab=today&date=YYYY-MM-DD&branchId=<id>` — อ่านครั้งเดียวตอนเปิดหน้า · ค่าไม่ถูกต้อง = พฤติกรรมเดิม */
+function readDeepLink(params: URLSearchParams) {
+  const tab = TABS.find((t) => t.id === params.get('tab'))?.id;
+  const rawDate = params.get('date');
+  return { tab, date: isRealDate(rawDate) ? rawDate : '', branchId: params.get('branchId') ?? '' };
+}
+
 export default function AttendancePage() {
   useDocumentTitle('ลงเวลา');
   const { user } = useAuth();
   const isOwner = user?.role === 'OWNER';
   const branches = useQuery<{ id: string; name: string }[]>({ queryKey: ['branches'], queryFn: async () => (await api.get('/branches')).data, enabled: isOwner });
+  const [searchParams, setSearchParams] = useSearchParams();
+  const deepLink = useRef(readDeepLink(searchParams)).current;
+  // ผจก.สาขาอยู่สาขาตัวเองเสมอ — branchId ในลิงก์ใช้กับบทบาทที่เลือกสาขาได้เท่านั้น
   const [branchId, setBranchId] = useState<string>(isOwner ? '' : user?.branchId ?? '');
-  const [tab, setTab] = useState<Tab>('today');
-  const [date, setDate] = useState('');
-  const [month, setMonth] = useState(() => todayBangkok().slice(0, 7));
+  const [tab, setTab] = useState<Tab>(deepLink.tab ?? 'today');
+  const [date, setDate] = useState(deepLink.date);
+  const [month, setMonth] = useState(() => (deepLink.date || todayBangkok()).slice(0, 7));
   const [week, setWeek] = useState(() => weekStart(todayBangkok()));
   const [target, setTarget] = useState<CorrectTarget | null>(null);
 
   useEffect(() => {
-    if (isOwner && !branchId && branches.data?.length) setBranchId(branches.data[0].id);
-  }, [isOwner, branchId, branches.data]);
+    if (isOwner && !branchId && branches.data?.length) {
+      setBranchId(branches.data.some((b) => b.id === deepLink.branchId) ? deepLink.branchId : branches.data[0].id);
+    }
+  }, [isOwner, branchId, branches.data, deepLink.branchId]);
+
+  // URL ตามสถานะ (replace — ไม่เพิ่มประวัติ) · ไม่ลบ branchId ระหว่างรอโหลดสาขา
+  useEffect(() => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', tab);
+      if (date) next.set('date', date); else next.delete('date');
+      if (isOwner && branchId) next.set('branchId', branchId); else if (!isOwner) next.delete('branchId');
+      return next.toString() === prev.toString() ? prev : next;
+    }, { replace: true });
+  }, [tab, date, branchId, isOwner, setSearchParams]);
 
   const branchName = branches.data?.find((b) => b.id === branchId)?.name ?? '';
 

@@ -269,4 +269,37 @@ describe('attendance บน Postgres จริง', () => {
     const e2 = await devices.authenticate({ deviceToken: c3.nextDeviceToken!, requestId: uuid() }, at(10, 1, D5)).catch((e) => e);
     expect(e2.getResponse()).toMatchObject({ code: 'DEVICE_LOCKED' });
   });
+
+  it('I9 a POSTED October payroll locks October attendance (correctDay → 409 ATTENDANCE_PAID) but not conflict-flag clearing or a 2 Nov kiosk punch; a VOIDED payroll unlocks it', async () => {
+    const doc = await prisma.expenseDocument.create({
+      data: {
+        number: `PR-I9-${stamp}`,
+        documentType: 'PAYROLL',
+        status: 'POSTED',
+        branchId,
+        documentDate: at(12, 0, bangkokMidnight(2026, 10, 1)),
+        subtotal: 0,
+        totalAmount: 0,
+        createdById: ownerId,
+        payroll: { create: { payrollPeriod: '2026-10', lines: { create: [{ userId: staffA, employeeName: 'พนักงาน A', baseSalary: 0, netPaid: 0 }, { userId: staffC, employeeName: 'พนักงาน C', baseSalary: 0, netPaid: 0 }] } } },
+      },
+    });
+    const owner = { id: ownerId, role: 'OWNER' };
+    const day = await prisma.attendanceDay.findFirstOrThrow({ where: { userId: staffA, workDate: dbDate(DAY) } });
+    const err = await attendance.correctDay(owner, day.id, { clockOut: at(21, 0).toISOString(), reason: 'ตรวจกล้องแล้ว ออกสามทุ่มจริง' }).catch((e) => e);
+    expect(err.getStatus()).toBe(409);
+    expect(err.getResponse()).toMatchObject({ code: 'ATTENDANCE_PAID', documentNumber: `PR-I9-${stamp}` });
+    expect((await prisma.attendanceDay.findUniqueOrThrow({ where: { id: day.id } })).clockOut).toEqual(day.clockOut);
+    const setErr = await attendance.setDayKinds(owner, { branchId, entries: [{ userId: staffA, date: '2026-10-30', dayKind: 'DAY_OFF' }] }, at(8, 0, bangkokMidnight(2026, 9, 1))).catch((e) => e);
+    expect(setErr.getResponse()).toMatchObject({ code: 'ATTENDANCE_PAID' });
+    // เดือนถัดไปยังตอกได้ (ตอก 2 พ.ย.) และธงเครื่องซ้อนของวันในเดือนที่จ่ายแล้วยังล้างได้
+    const dev = await newDevice('แท็บเล็ตหลังจ่ายเงินเดือน', at(8, 0, bangkokMidnight(2026, 10, 2)));
+    const punched = await punchAt(at(10, 1, bangkokMidnight(2026, 10, 2)), dev.token, '111111', 'IN');
+    expect(punched.result).toMatchObject({ kind: 'IN', status: 'ON_TIME' });
+    const flagged = await prisma.attendanceDay.findFirstOrThrow({ where: { userId: staffC, flags: { has: 'DEVICE_CONFLICT' } } });
+    expect((await attendance.clearConflictFlag(owner, flagged.id)).flags).not.toContain('DEVICE_CONFLICT');
+    // ใบ VOIDED ปลดล็อกเอง
+    await prisma.expenseDocument.update({ where: { id: doc.id }, data: { status: 'VOIDED' } });
+    await expect(attendance.correctDay(owner, day.id, { clockOut: at(21, 0).toISOString(), reason: 'ตรวจกล้องแล้ว ออกสามทุ่มจริง' })).resolves.toMatchObject({ id: day.id });
+  });
 });

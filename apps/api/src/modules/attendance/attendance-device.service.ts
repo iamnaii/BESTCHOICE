@@ -1,11 +1,13 @@
 import { BadRequestException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
-import type { AttendanceDevice, AttendanceDeviceEventKind, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import type { AttendanceDevice, AttendanceDeviceEventKind } from '@prisma/client';
 import { KioskBusyException } from './kiosk-errors';
 import { dbDate, workDateOf } from './attendance-rules';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { hashPII } from '../../utils/pii.util';
+import { findPaidPayroll, periodOfWorkDate } from './attendance-payroll-lock';
 import {
   PIN_LOCK_MS,
   PIN_LOCK_THRESHOLD,
@@ -225,7 +227,9 @@ export class AttendanceDeviceService {
   private async lockForConflict(device: DeviceWithBranch, staleToken: { generation: number; usedAt: Date | null }, input: { ip?: string; userAgent?: string }, now: Date): Promise<void> {
     // จุดแยก = เวลาที่ token รุ่นที่ถูกนำมาใช้ซ้ำถูกใช้ไปครั้งแรก (หลังจากนั้นมีสองฝั่งถือห่วงโซ่)
     const since = staleToken.usedAt ?? device.lastCleanHeartbeatAt ?? device.createdAt;
+    const flaggedPairs: Array<{ userId: string; workDate: Date }> = [];
     await this.prisma.$transaction(async (tx) => {
+      // ลำดับล็อก: แถวเครื่อง → แถววัน (เรียง user_id, work_date) — เหมือน tx ตอกบัตรของ kiosk-punch/setDayKinds ⇒ ไม่ deadlock
       await tx.attendanceDevice.update({ where: { id: device.id }, data: { status: 'LOCKED' } });
       await tx.attendanceDeviceEvent.create({
         data: {
@@ -247,19 +251,43 @@ export class AttendanceDeviceService {
           const workDate = dbDate(workDateOf(p.at));
           pairs.set(`${p.userId}:${workDate.toISOString()}`, { userId: p.userId, workDate });
         }
+        flaggedPairs.push(...pairs.values());
+        // ล็อกแถววันที่จะติดธงเรียง (user_id, work_date) ก่อน — setDayKinds ล็อกลำดับเดียวกัน ⇒ ไม่ deadlock (40P01)
+        await tx.$queryRaw(Prisma.sql`SELECT id FROM attendance_days WHERE deleted_at IS NULL AND (clock_in_punch_id IN (${Prisma.join(ids)}) OR clock_out_punch_id IN (${Prisma.join(ids)}) OR (user_id, work_date) IN (${Prisma.join([...pairs.values()].map((p) => Prisma.sql`(${p.userId}, ${p.workDate}::date)`))})) ORDER BY user_id, work_date FOR UPDATE`);
         await tx.attendanceDay.updateMany({
           where: { OR: [{ clockInPunchId: { in: ids } }, { clockOutPunchId: { in: ids } }, ...pairs.values()], deletedAt: null, ...notFlagged },
           data: { flags: { push: DEVICE_CONFLICT_FLAG } },
         });
       }
     });
+    const paidLines = await this.paidMonthTodoLines(flaggedPairs);
     await this.createOwnerTodo({
       title: `เครื่องตอกบัตร "${device.name}" ถูกใช้จากสองที่ — ล็อกแล้ว ตรวจรายการที่ติดธงก่อนปลด`,
       description:
         `สาขา ${device.branch?.name ?? device.branchId} · พบ token รุ่น ${staleToken.generation} ถูกใช้ซ้ำขณะรุ่นปัจจุบันคือ ${device.currentGeneration} · ${now.toISOString()}\n` +
-        `รายการตอกตั้งแต่ ${since.toISOString()} ติดธง "เครื่องถูกใช้ซ้อน" ที่เมนู ลงเวลา (เจ้าของกด แก้ไข › ตรวจแล้ว ล้างธง) · ปลดล็อก/ลงทะเบียนใหม่ที่ ตั้งค่า › บริษัท & สาขา › เครื่องตอกบัตร · deviceId: ${device.id}`,
+        `รายการตอกตั้งแต่ ${since.toISOString()} ติดธง "เครื่องถูกใช้ซ้อน" ที่เมนู ลงเวลา (เจ้าของกด แก้ไข › ตรวจแล้ว ล้างธง) · ปลดล็อก/ลงทะเบียนใหม่ที่ ตั้งค่า › บริษัท & สาขา › เครื่องตอกบัตร · deviceId: ${device.id}` +
+        paidLines,
       priority: 'HIGH',
     });
+  }
+
+  /** วันที่ติดธงที่อยู่ในเดือนซึ่งจ่ายเงินเดือนแล้ว → บรรทัดต่อท้าย Todo เจ้าของ (ล้มเหลวไม่ขวางการล็อกเครื่อง) */
+  private async paidMonthTodoLines(pairs: Array<{ userId: string; workDate: Date }>): Promise<string> {
+    try {
+      const numbers = new Set<string>();
+      const seen = new Set<string>();
+      for (const p of pairs) {
+        const period = periodOfWorkDate(p.workDate);
+        if (seen.has(`${p.userId}:${period}`)) continue;
+        seen.add(`${p.userId}:${period}`);
+        const paid = await findPaidPayroll(this.prisma, p.userId, period);
+        if (paid) numbers.add(paid.number);
+      }
+      return [...numbers].sort().map((n) => `\nวันที่ติดธงอยู่ในเดือนที่จ่ายเงินเดือนแล้ว (ใบ ${n}) — ถ้าตอกแทนกันจริง ให้ใส่รายการหักในใบเงินเดือนงวดถัดไป`).join('');
+    } catch (err) {
+      this.logger.warn(`[attendance] paid-month lookup for the conflict Todo failed: ${(err as Error).message}`);
+      return '';
+    }
   }
 
   /**

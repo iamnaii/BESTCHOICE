@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { parseClock, resolveRules, type ScheduleRules } from './attendance-rules';
 
@@ -25,12 +26,14 @@ export interface AttendanceSettings extends ScheduleRules {
   branches: Array<{ branchId: string; branchName: string; workStart: string | null; workEnd: string | null }>;
 }
 
+type Db = Prisma.TransactionClient | PrismaService;
+
 @Injectable()
 export class AttendanceSettingsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private async readSystemRules(): Promise<ScheduleRules & { photoRetentionDays: number }> {
-    const rows = await this.prisma.systemConfig.findMany({ where: { key: { in: Object.values(ATTENDANCE_CONFIG_KEYS) } } });
+  private async readSystemRules(client: Db = this.prisma): Promise<ScheduleRules & { photoRetentionDays: number }> {
+    const rows = await client.systemConfig.findMany({ where: { key: { in: Object.values(ATTENDANCE_CONFIG_KEYS) } } });
     const byKey = new Map(rows.map((r) => [r.key, r.value]));
     const str = (key: string, fallback: string) => byKey.get(key) ?? fallback;
     const num = (key: string, fallback: number) => {
@@ -47,11 +50,10 @@ export class AttendanceSettingsService {
   }
 
   /** กติกาของสาขา = ค่าระบบ ทับด้วย Branch.workStart/workEnd เมื่อตั้งไว้ */
-  async getRules(branchId: string): Promise<ScheduleRules> {
-    const [system, branch] = await Promise.all([
-      this.readSystemRules(),
-      this.prisma.branch.findUnique({ where: { id: branchId }, select: { workStart: true, workEnd: true } }),
-    ]);
+  async getRules(branchId: string, client: Db = this.prisma): Promise<ScheduleRules> {
+    // `client` = tx ของผู้เรียก (อ่านใน tx เดียวกัน ไม่ขอ connection เพิ่มจาก pool ขณะถือล็อก) ⇒ อ่านทีละคำสั่ง
+    const system = await this.readSystemRules(client);
+    const branch = await client.branch.findUnique({ where: { id: branchId }, select: { workStart: true, workEnd: true } });
     return resolveRules(system, { workStart: branch?.workStart ?? null, workEnd: branch?.workEnd ?? null });
   }
 

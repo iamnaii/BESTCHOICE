@@ -3,6 +3,7 @@ import {
   BadRequestException,
   NotFoundException,
   ForbiddenException,
+  Optional,
 } from '@nestjs/common';
 import { Prisma, DocumentStatus } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -12,6 +13,10 @@ import { hasCrossBranchAccess } from '../../auth/branch-access.util';
 import { maskPayrollTaxIds } from '../payroll-pii-mask.util';
 import { CreateExpenseDocumentDto } from '../dto/create.dto';
 import { ListExpenseDocumentsQueryDto } from '../dto/list-query.dto';
+import { PayrollPostGateService } from '../payroll-system/payroll-post-gate.service';
+
+/** สถานะที่ใบเงินเดือนยังต้องผ่านด่านส่ง/อนุมัติ/ลงบัญชี — `findOne.payrollGate` มีค่าเฉพาะสถานะเหล่านี้ */
+const PAYROLL_GATED_STATUSES: DocumentStatus[] = ['DRAFT', 'PENDING_APPROVAL', 'APPROVED'];
 
 /**
  * Phase 1 of the transactional-core decompose: the 9 READ-only methods of
@@ -26,6 +31,9 @@ export class ExpenseDocumentQueryService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jePreview: JePreviewService,
+    // Payroll D4 ส่วนที่ 1 — `payrollGate` ของหน้ารายละเอียดใบเงินเดือน · trailing @Optional() (spec ประกอบเอง) ·
+    // ไม่ได้ต่อ = `payrollGate: null` (หน้าเว็บไม่เดาว่าผ่าน — ด่านจริงอยู่ที่ส่ง/อนุมัติ/ลงบัญชี)
+    @Optional() private readonly payrollGate?: PayrollPostGateService,
   ) {}
 
   // ─── List ────────────────────────────────────────────────────────────
@@ -585,7 +593,7 @@ export class ExpenseDocumentQueryService {
     // 404, not a Prisma P2025 → 500 (DOC-03 integration scenario, issue #1562).
     const docType = await this.prisma.expenseDocument.findUnique({
       where: { id },
-      select: { documentType: true, deletedAt: true, branchId: true },
+      select: { documentType: true, deletedAt: true, branchId: true, status: true },
     });
     if (!docType) throw new NotFoundException('ไม่พบเอกสาร');
     if (docType.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
@@ -621,6 +629,8 @@ export class ExpenseDocumentQueryService {
             ? {
                 include: {
                   lines: {
+                    // Payroll D4 — ลำดับที่บันทึก (lineNo) · แถวเก่า lineNo 0 → createdAt
+                    orderBy: [{ lineNo: 'asc' }, { createdAt: 'asc' }],
                     include: {
                       customIncome: { orderBy: { createdAt: 'asc' } },
                       customDeduction: { orderBy: { createdAt: 'asc' } },
@@ -643,7 +653,14 @@ export class ExpenseDocumentQueryService {
       doc as { payroll?: { lines: Array<{ employeeTaxId: string | null }> } | null },
       viewerRole,
     );
-    return doc;
+    if (docType.documentType !== 'PAYROLL') return doc;
+    // Payroll D4 — เวลาที่ส่ง/ลงบัญชีได้ (ยังไม่ถึง) + วันติดธงเครื่องถูกใช้ซ้อน ให้หน้ารายละเอียดปิดปุ่มพร้อมเหตุผล ·
+    // เฉพาะใบที่ยังส่ง/อนุมัติ/ลงบัญชีได้ — ใบ POSTED / VOIDED ไม่มีด่านให้แสดง (และไม่เสีย query เพิ่มให้ประวัติ/ไฟล์โอนธนาคาร)
+    const payrollGate =
+      this.payrollGate && PAYROLL_GATED_STATUSES.includes(docType.status)
+        ? await this.payrollGate.inspect(this.prisma, id, new Date())
+        : null;
+    return { ...doc, payrollGate };
   }
 
   // ─── Payroll bank-transfer CSV (R3-3, 2026-08-06) ────────────────────

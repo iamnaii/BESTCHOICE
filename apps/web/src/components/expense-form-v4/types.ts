@@ -51,6 +51,98 @@ export interface PayrollCustomIncomeRow {
   name: string;
   amount: string;
   isTaxable: boolean;
+  /** Payroll D4 — ติ๊ก "รายการปรับปรุงงวดก่อน" ⇒ ส่ง `isAdjustment: true` (server เก็บ source ADJUSTMENT) */
+  isAdjustment: boolean;
+}
+
+/**
+ * Payroll D4 — แถวรายได้ที่ server คิดจากการลงเวลา (ATTENDANCE_* · ส่วนที่ 2 จะมี COMMISSION ที่ quantity/rate/multiplier = null).
+ * อ่านอย่างเดียว: ฟอร์มไม่ส่งแถวเหล่านี้กลับ — server คิดใหม่ทุกครั้งที่บันทึก
+ */
+export interface PayrollSystemIncomeRow {
+  source: string;
+  accountCode: string;
+  name: string;
+  /** ชั่วโมง */
+  quantity: string | null;
+  /** อัตราต่อชั่วโมง (แสดงอย่างเดียว) */
+  rate: string | null;
+  multiplier: string | null;
+  amount: string;
+}
+
+/** สรุปลงเวลาที่ server เก็บไว้ต่อบรรทัด (`PayrollLine.attendanceSummary`) — ข้อมูลประกอบ ไม่หักเงิน */
+export interface PayrollAttendanceSummary {
+  workDays: number;
+  lateCount: number;
+  lateMinutes: number;
+  absent: number;
+  leave: number;
+  /** ชั่วโมงเป็นสตริงทศนิยม 1 ตำแหน่ง */
+  otHours: string;
+  holidayHours: string;
+  holidayOtHours: string;
+  holidayWorkedDays: number;
+  reviewCount: number;
+  /** รายเดือน + มีเงินเดือนในทะเบียน = ระบบคิด OT ให้ */
+  autoOtEligible: boolean;
+  /**
+   * เดือนนี้มีวันที่ตอกเข้าของคนนี้ (R20 · R23: แถววางแผนวันหยุด/ลาไม่นับ) — ไม่มี = ระบบไม่คิด OT ให้ แถว OT ที่กรอกเองอยู่ได้ ·
+   * บรรทัดที่บันทึกก่อนมีช่องนี้ไม่มีค่า ⇒ ถือว่าไม่รู้ (ฟอร์มไม่เอาแถวออก ให้ server ตัดสิน)
+   */
+  attendanceTracked?: boolean;
+}
+
+/** วันที่ต้องตรวจ (`systemNotes.review`) — `date` = 'YYYY-MM-DD' วันไทย · `blocking` = เครื่องถูกใช้ซ้อน (อนุมัติไม่ได้) */
+export interface PayrollReviewDay {
+  dayId: string;
+  date: string;
+  branchId: string;
+  flags: string[];
+  blocking: boolean;
+}
+
+export type PayrollSystemWarning =
+  | { code: 'NOT_MONTHLY_OR_NO_BASE'; otHours: string }
+  | { code: 'IN_OTHER_DOCUMENT'; documentId: string; documentNumber: string; branchName: string; status: string }
+  | { code: 'NO_PIN' }
+  | { code: 'NO_ATTENDANCE' }
+  | { code: 'NOT_YET_CLOSABLE'; closableAt: string }
+  /** ใบจากปุ่มใช้แม่แบบ — ระบบเอาแถว OT ที่กรอกเองของคนที่ตอกบัตรออก (เจ้าของ 2026-10-29) */
+  | { code: 'TYPED_OT_REMOVED'; count: number; amount: string };
+
+export interface PayrollSystemNotes {
+  review: PayrollReviewDay[];
+  warnings: PayrollSystemWarning[];
+}
+
+/** วันติดธงเครื่องถูกใช้ซ้อนของพนักงานในใบ (`payrollGate.deviceConflicts`) — `date` = 'YYYY-MM-DD' วันไทย */
+export interface PayrollGateDay {
+  dayId: string;
+  userId: string;
+  employeeName: string;
+  date: string;
+  /** สาขาของวันนั้น — ลิงก์ไปหน้าลงเวลาของสาขานั้น */
+  branchId: string;
+}
+
+/**
+ * ด่านของใบเงินเดือนที่ `GET /expense-documents/:id` คืน (`payrollGate`) — มีค่าเฉพาะใบ DRAFT / PENDING_APPROVAL / APPROVED
+ * ที่มีพนักงานผูก · null = ใบลงบัญชี/กลับรายการแล้ว หรือไม่มีด่าน
+ */
+export interface PayrollGateView {
+  /** เวลาปิดงวด (ISO) เมื่อยังไม่ถึง · null = ส่ง/ลงบัญชีได้แล้ว */
+  closableAt: string | null;
+  deviceConflicts: PayrollGateDay[];
+}
+
+/** หนึ่งแถวของ 409 `PAYROLL_STALE` (`diffs`) — ยอด/ชั่วโมงในใบเทียบที่คิดใหม่ (hours = null เมื่อแถวไม่มีชั่วโมง) */
+export interface PayrollStaleDiff {
+  userId: string;
+  employeeName: string;
+  label: string;
+  stored: { amount: string; hours: string | null };
+  current: { amount: string; hours: string | null };
 }
 
 /**
@@ -77,6 +169,10 @@ export interface PayrollLineForm {
   // present as empty arrays in form state for ergonomic editing.
   customIncome: PayrollCustomIncomeRow[];
   customDeduction: PayrollCustomDeductionRow[];
+  // Payroll D4 — ที่ server เก็บไว้ตอนบันทึกครั้งล่าสุด (อ่านอย่างเดียว · ไม่ส่งกลับ). บรรทัดใหม่/คัดลอกมา = ว่าง
+  systemIncome: PayrollSystemIncomeRow[];
+  attendanceSummary: PayrollAttendanceSummary | null;
+  systemNotes: PayrollSystemNotes | null;
   // UI-only: accordion expand toggle. Excluded from POST body.
   _expanded?: boolean;
 }
@@ -221,6 +317,9 @@ export const newPayrollLine = (overrides?: Partial<PayrollLineForm>): PayrollLin
   whtAmount: '0',
   customIncome: [],
   customDeduction: [],
+  systemIncome: [],
+  attendanceSummary: null,
+  systemNotes: null,
   _expanded: false,
   ...overrides,
 });
@@ -235,6 +334,7 @@ export const newPayrollCustomIncome = (
   name: '',
   amount: '',
   isTaxable: true,
+  isAdjustment: false,
   ...overrides,
 });
 

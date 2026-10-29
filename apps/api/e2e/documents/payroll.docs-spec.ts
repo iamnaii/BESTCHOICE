@@ -36,7 +36,7 @@ const scenario = (record: Omit<ScenarioRecord, 'documents' | 'guards' | 'rendere
   documents: ['PAYROLL_SLIP'], guards: GUARDS, renderer: 'chromium', source: 'api', status: 'PASS', simulated: SIMULATED, ...record,
 });
 
-type PayrollLineRow = { id: string; userId: string | null; employeeName: string; employeeTaxId: string | null; baseSalary: string; ssoEmployee: string; whtAmount: string; netPaid: string; customIncome?: Array<{ accountCode: string; name: string; amount: string; isTaxable: boolean }>; customDeduction?: Array<{ accountCode: string; name: string; amount: string }> };
+type PayrollLineRow = { id: string; userId: string | null; employeeName: string; employeeTaxId: string | null; baseSalary: string; ssoEmployee: string; whtAmount: string; netPaid: string; customIncome?: Array<{ accountCode: string; name: string; amount: string; isTaxable: boolean; source?: string }>; customDeduction?: Array<{ accountCode: string; name: string; amount: string }> };
 type PayrollDoc = { id: string; number: string; documentType: string; status: string; branchId: string; documentDate: string; paidAt: string | null; subtotal: string; withholdingTax: string; totalAmount: string; netPayment: string | null; depositAccountCode: string | null; journalEntryId: string | null; approvedById: string | null; createdById: string; updatedAt: string; payroll: { payrollPeriod: string; entityScope: string; lines: PayrollLineRow[] } | null };
 type JeLine = { accountCode: string; debit: string; credit: string };
 type AnnualItem = { employeeName: string; employeeTaxId: string | null; monthsPaid: number; grossTotal: string; whtTotal: string; ssoTotal: string };
@@ -62,6 +62,10 @@ describe('DOC-04 payroll slips and annual 50 ทวิ — real workflow, real j
   const pace = createLoginPacer();
 
   // Independent money: the same three SHOP employees paid twice, one FINANCE employee once, one SHOP month voided.
+  // e1 is MONTHLY with a registry salary (auto OT eligible, Payroll D4) but has no attendance PIN and no attendance days in this
+  // world ⇒ the month is not tracked, the server computes no OT for it, and its typed OT row is accepted as MANUAL (R20 — the
+  // duplicate rule MANUAL_OT_DUPLICATE applies only to eligible lines that have attendance rows in the period). No system rows
+  // are added, so every amount below is unchanged.
   const p1Lines = (): PayrollLineSpec[] => [
     { baseSalary: 18000, ssoEmployee: 875, whtAmount: 150, customIncome: [{ accountCode: 'S52-1202', name: 'ค่าล่วงเวลา', amount: 1000, isTaxable: true }] },
     { baseSalary: 12000, ssoEmployee: 600, whtAmount: 0, customIncome: [{ accountCode: 'S52-1204', name: 'เบี้ยเลี้ยงเดินทาง', amount: 500, isTaxable: false }], customDeduction: [{ accountCode: 'S21-1103', name: 'คืนเงินยืม', amount: 500 }] },
@@ -79,7 +83,12 @@ describe('DOC-04 payroll slips and annual 50 ทวิ — real workflow, real j
   const getDoc = async (session: Session, id: string): Promise<PayrollDoc> => (await api(session).get(`/expense-documents/${id}`).expect(200)).body.data;
   const shopLine = (spec: PayrollLineSpec, employee: EmployeeFixture | { employeeName: string }) => ({ ...spec, ...('user' in employee ? { userId: employee.user.id } : { employeeName: employee.employeeName }) });
   const createPayroll = (session: Session, body: Record<string, unknown>) => api(session).post('/expense-documents/payroll', body);
-  const postDoc = (session: Session, id: string) => api(session).post(`/expense-documents/${id}/post`);
+  // R20 — approve / post of a PAYROLL must carry the version the page rendered (expectedUpdatedAt = updatedAt); a missing or
+  // stale one is refused 409 DOCUMENT_CHANGED. Every call below reads the current version first (what the detail page shows).
+  const versionOf = async (id: string) => ({ expectedUpdatedAt: (await h.prisma.expenseDocument.findUniqueOrThrow({ where: { id }, select: { updatedAt: true } })).updatedAt.toISOString() });
+  // (supertest's Test is thenable — the helpers apply .expect(status) themselves and resolve to the response)
+  const postDoc = async (session: Session, id: string, status: number) => api(session).post(`/expense-documents/${id}/post`, await versionOf(id)).expect(status);
+  const approveDoc = async (session: Session, id: string, status: number) => api(session).post(`/expense-documents/${id}/approve`, await versionOf(id)).expect(status);
   const journalLines = async (journalEntryId: string): Promise<JeLine[]> => {
     const rows = await h.prisma.journalLine.findMany({ where: { journalEntryId, deletedAt: null }, orderBy: [{ createdAt: 'asc' }, { accountCode: 'asc' }] });
     return rows.map((row) => ({ accountCode: row.accountCode, debit: fixed2(row.debit), credit: fixed2(row.credit) }));
@@ -226,6 +235,8 @@ describe('DOC-04 payroll slips and annual 50 ทวิ — real workflow, real j
     expect(fixed2(l1.netPaid)).toBe('17975.00');
     expect(fixed2(l2.netPaid)).toBe('11400.00');
     expect(fixed2(l3.netPaid)).toBe('8550.00');
+    // R20 — e1 has no attendance rows this month ⇒ its typed OT is kept as a MANUAL row (no system rows, no MANUAL_OT_DUPLICATE).
+    expect(l1.customIncome!.map((row) => [row.accountCode, row.source, fixed2(row.amount)])).toEqual([['S52-1202', 'MANUAL', '1000.00']]);
     expect(l2.customIncome!.map((row) => [row.accountCode, row.isTaxable])).toEqual([['S52-1204', false]]);
     expect(l2.customDeduction!.map((row) => [row.accountCode, fixed2(row.amount)])).toEqual([['S21-1103', '500.00']]);
     expect(fixed2(edited.subtotal)).toBe(fixed2(expected.subtotal));
@@ -236,9 +247,9 @@ describe('DOC-04 payroll slips and annual 50 ทวิ — real workflow, real j
     const duplicate = await createPayroll(accountant, { branchId: world.branches.a.id, documentDate: P1.date, payrollPeriod: P1.period, entityScope: 'SHOP', depositAccountCode: SHOP_BANK, lines: [shopLine({ baseSalary: 1000 }, e1)] }).expect(400);
     expect(duplicate.body.message).toContain(draft.number);
 
-    await postDoc(salesA, draft.id).expect(403);
-    await postDoc(branchManagerB, draft.id).expect(403);
-    await postDoc(accountant, draft.id).expect(201);
+    await postDoc(salesA, draft.id, 403);
+    await postDoc(branchManagerB, draft.id, 403);
+    await postDoc(accountant, draft.id, 201);
     const doc = await getDoc(accountant, draft.id);
     docs.p1 = doc;
     expect(doc.status).toBe('POSTED');
@@ -270,12 +281,12 @@ describe('DOC-04 payroll slips and annual 50 ทวิ — real workflow, real j
     await setSystemConfig(h.prisma, 'approval_enabled', 'true');
     try {
       const draft = (await createPayroll(accountant, { branchId: world.branches.a.id, documentDate: P2.date, payrollPeriod: P2.period, entityScope: 'SHOP', depositAccountCode: SHOP_BANK, paymentMethod: 'BANK_TRANSFER', lines: [shopLine(p2Lines()[0], e1), shopLine(p2Lines()[1], e2), shopLine(p2Lines()[2], { employeeName: E3_NAME() })] }).expect(201)).body.data as PayrollDoc;
-      const blocked = await postDoc(accountant, draft.id).expect(400);
+      const blocked = await postDoc(accountant, draft.id, 400);
       expect(blocked.body.message).toContain('ต้องผ่านการอนุมัติก่อน');
       await api(accountant).post(`/expense-documents/${draft.id}/submit-for-approval`).expect(201);
-      const self = await api(accountant).post(`/expense-documents/${draft.id}/approve`).expect(403);
+      const self = await approveDoc(accountant, draft.id, 403);
       expect(self.body.message).toBe(SELF_APPROVAL_DENIED_MESSAGE);
-      await api(financeManager).post(`/expense-documents/${draft.id}/approve`).expect(201);
+      await approveDoc(financeManager, draft.id, 201);
       const doc = await getDoc(accountant, draft.id);
       docs.p2 = doc;
       expect(doc.status).toBe('POSTED');
@@ -293,7 +304,7 @@ describe('DOC-04 payroll slips and annual 50 ทวิ — real workflow, real j
       // FINANCE scope: bare-digit chart, FINANCE company, FINANCE bank account.
       const fin = (await createPayroll(accountant, { branchId: world.branches.a.id, documentDate: '2026-08-28', payrollPeriod: P2.period, entityScope: 'FINANCE', depositAccountCode: FINANCE_BANK, paymentMethod: 'BANK_TRANSFER', lines: [shopLine(finLines()[0], e4)] }).expect(201)).body.data as PayrollDoc;
       await api(accountant).post(`/expense-documents/${fin.id}/submit-for-approval`).expect(201);
-      await api(financeManager).post(`/expense-documents/${fin.id}/approve`).expect(201);
+      await approveDoc(financeManager, fin.id, 201);
       const finDoc = await getDoc(accountant, fin.id);
       docs.fin = finDoc;
       expect(finDoc.status).toBe('POSTED');
@@ -320,7 +331,7 @@ describe('DOC-04 payroll slips and annual 50 ทวิ — real workflow, real j
 
   it('voids a posted month with a mirrored reversal and keeps a draft month out of the books', async () => {
     const p3 = (await createPayroll(accountant, { branchId: world.branches.a.id, documentDate: P3.date, payrollPeriod: P3.period, entityScope: 'SHOP', depositAccountCode: SHOP_BANK, paymentMethod: 'BANK_TRANSFER', lines: [shopLine(p3Lines()[0], e1)] }).expect(201)).body.data as PayrollDoc;
-    await postDoc(accountant, p3.id).expect(201);
+    await postDoc(accountant, p3.id, 201);
     const before = await getDoc(accountant, p3.id);
     await api(branchManagerA).post(`/expense-documents/${p3.id}/void`, { reasonCode: 'data_entry_error' }).expect(403);
     await api(accountant).post(`/expense-documents/${p3.id}/void`, { reasonCode: 'data_entry_error' }).expect(201);
@@ -412,7 +423,7 @@ describe('DOC-04 payroll slips and annual 50 ทวิ — real workflow, real j
       await annual(accountant);
       await api(accountant).get(`/expense-documents/${doc.id}/bank-transfer.csv`).expect(200);
     }
-    await postDoc(accountant, doc.id).expect(400);
+    await postDoc(accountant, doc.id, 400);
     expect(await payrollJeCount()).toBe(jeBefore);
     const docAfter = await h.prisma.expenseDocument.findUniqueOrThrow({ where: { id: doc.id } });
     expect(docAfter.updatedAt.toISOString()).toBe(docBefore.updatedAt.toISOString());
@@ -444,7 +455,7 @@ describe('DOC-04 payroll slips and annual 50 ทวิ — real workflow, real j
         expect(slip).toContain(names[index]);
         for (const other of names.filter((_, i) => i !== index)) expect(slip).not.toContain(other);
         for (const token of common) expect(slip).toContain(token);
-        expect(slip).toContain(`ใบจ่ายเงินเดือน v1.0 · ${index + 1}/3`);
+        expect(slip).toContain(`ใบจ่ายเงินเดือน v2 · ${index + 1}/3`);
       });
       expect(slips[0]).toContain(e1.nationalId);
       expect(slips[0]).toContain('S52-1202');

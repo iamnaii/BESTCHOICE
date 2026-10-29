@@ -7,6 +7,7 @@ import StatusChip from './StatusChip';
 import PhotoThumb from './PhotoThumb';
 import { FLAG_LABEL, flagChipClass, fmtOt, hhmm, shiftDate, thaiShortDate } from '../../attendance.util';
 import type { CorrectTarget } from './CorrectDayDialog';
+import { PaidBanner, PaidChip, UnpaidChip, distinctNumbers } from './PaidLock';
 
 interface Props {
   branchId: string;
@@ -35,6 +36,9 @@ export default function TodayTab({ branchId, date, onDateChange, actorId, isOwne
   const shownDate = data?.date ?? date;
   const elsewhere = (row: TodayRow) => !!row.dayBranchId && row.dayBranchId !== branchId;
   const canEdit = (row: TodayRow) => !!row.dayId && (isOwner || (row.userId !== actorId && !elsewhere(row)));
+  // เดือนที่จ่ายเงินเดือนแล้ว: แก้เวลา/ประเภทวันไม่ได้ · ยกเว้นเจ้าของที่ยังล้างธง "เครื่องถูกใช้ซ้อน" ได้ (ปุ่มเปิด dialog ได้เฉพาะกรณีนั้น)
+  const paidLocked = (row: TodayRow) => !!row.paidDocumentNumber && !(isOwner && row.flags.includes('DEVICE_CONFLICT'));
+  const paidRows = (data?.rows ?? []).filter((r) => r.paidDocumentNumber);
 
   return (
     <div className="flex flex-col gap-4">
@@ -60,6 +64,8 @@ export default function TodayTab({ branchId, date, onDateChange, actorId, isOwne
                 </li>
               ))}
             </ul>
+
+            <PaidBanner month={shownDate.slice(0, 7)} numbers={distinctNumbers(paidRows)} people={paidRows.length} />
 
             <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
               <div className="relative overflow-x-auto">
@@ -96,6 +102,7 @@ export default function TodayTab({ branchId, date, onDateChange, actorId, isOwne
                               const Icon = v.icon;
                               return <span key={f} className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs ${flagChipClass(f)}`}><Icon className="size-3" aria-hidden="true" />{v.label}</span>;
                             })}
+                            {row.paidDocumentNumber ? <PaidChip id={`paid-${row.userId}`} number={row.paidDocumentNumber} /> : paidRows.length > 0 && row.dayId ? <UnpaidChip editable={canEdit(row)} /> : null}
                             {!row.hasPin && <span className="text-xs text-muted-foreground">{isOwner ? 'ตั้งรหัสที่ ผู้ใช้ › แท็บข้อมูลบุคคล › รหัสตอกบัตร' : 'ให้เจ้าของตั้งรหัสตอกบัตร'}</span>}
                             {!isOwner && elsewhere(row) && <span className="text-xs text-muted-foreground">ตอกที่สาขาอื่น — ให้ผู้จัดการสาขานั้นหรือเจ้าของแก้</span>}
                             {row.status === 'NOT_IN' && row.hasPin && <span className="text-xs text-muted-foreground">ถ้าไม่มาทั้งวันจะนับขาดตอนเที่ยงคืน</span>}
@@ -104,7 +111,7 @@ export default function TodayTab({ branchId, date, onDateChange, actorId, isOwne
                         </td>
                         <td className="px-3 py-2 text-right">
                           {canEdit(row) && (
-                            <Button variant="outline" size="sm" className="max-lg:min-h-11 lg:h-9" onClick={() => onEdit({ dayId: row.dayId!, nickname: row.nickname, date: shownDate, clockIn: row.clockIn, clockOut: row.clockOut, dayKind: row.dayKind, flags: row.flags })}>แก้ไข</Button>
+                            <Button variant="outline" size="sm" className="max-lg:min-h-11 lg:h-9" disabled={paidLocked(row)} aria-describedby={paidLocked(row) ? `paid-${row.userId}` : undefined} onClick={() => onEdit({ dayId: row.dayId!, nickname: row.nickname, date: shownDate, clockIn: row.clockIn, clockOut: row.clockOut, dayKind: row.dayKind, flags: row.flags, paidDocumentNumber: row.paidDocumentNumber })}>แก้ไข</Button>
                           )}
                         </td>
                       </tr>

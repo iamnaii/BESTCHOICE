@@ -26,6 +26,8 @@ interface Props {
   onSelect: (employee: PickableEmployee) => void;
   invalid?: boolean;
   placeholder?: string;
+  /** งวดใบเงินเดือน (YYYY-MM) — ให้เลือกคนที่ลาออกระหว่างงวดนั้นได้ */
+  period?: string;
 }
 
 export default function EmployeeCombobox({
@@ -33,14 +35,15 @@ export default function EmployeeCombobox({
   onSelect,
   invalid,
   placeholder = 'เลือกพนักงาน',
+  period,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const debounced = useDebounce(search);
 
   const query = useQuery({
-    queryKey: employeeKeys.pickable(debounced || ''),
-    queryFn: () => employeesApi.pickable(debounced || undefined),
+    queryKey: employeeKeys.pickable(debounced || '', period),
+    queryFn: () => employeesApi.pickable(debounced || undefined, period),
     enabled: open,
     staleTime: 60 * 1000,
   });

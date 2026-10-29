@@ -5062,6 +5062,14 @@ model PayrollLine {
   // collapse to the legacy base+sso+wht shape.
   customIncome    PayrollCustomIncome[]
   customDeduction PayrollCustomDeduction[]
+  /// Display order within the document (server assigns; 0 for legacy rows).
+  lineNo            Int                      @default(0) @map("line_no")
+  /// When the server last computed attendance system rows for this line.
+  systemPulledAt    DateTime?                @map("system_pulled_at")
+  /// Attendance totals used for the system rows (hours per kind).
+  attendanceSummary Json?                    @map("attendance_summary")
+  /// Review days + warnings shown to the approver.
+  systemNotes       Json?                    @map("system_notes")
   createdAt       DateTime                 @default(now()) @map("created_at")
   updatedAt       DateTime                 @updatedAt @map("updated_at")
 
@@ -5071,6 +5079,14 @@ model PayrollLine {
   @@index([payrollId])
   @@index([userId])
   @@map("payroll_lines")
+}
+
+enum PayrollIncomeSource {
+  MANUAL
+  ADJUSTMENT
+  ATTENDANCE_OT
+  ATTENDANCE_HOLIDAY
+  ATTENDANCE_HOLIDAY_OT
 }
 
 /// C2 — Custom Income line (bonus, OT, per-diem allowances). One PayrollLine
@@ -5089,6 +5105,13 @@ model PayrollCustomIncome {
   /// V16: when false, this row Dr's the expense account but does NOT count
   /// toward the WHT taxable base (ม.42 exemption). Defaults to true.
   isTaxable     Boolean     @default(true) @map("is_taxable")
+  /// Where the row came from: typed by hand, prior-period adjustment, or
+  /// computed by the server from attendance.
+  source        PayrollIncomeSource @default(MANUAL)
+  /// Hours (system rows only) · hourly rate (4dp, display) · multiplier.
+  quantity      Decimal?    @db.Decimal(6, 1)
+  rate          Decimal?    @db.Decimal(12, 4)
+  multiplier    Decimal?    @db.Decimal(3, 1)
   createdAt     DateTime    @default(now()) @map("created_at")
   updatedAt     DateTime    @updatedAt @map("updated_at")
 

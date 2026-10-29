@@ -198,6 +198,20 @@ describe('ExpenseTemplatesService', () => {
       );
     });
 
+    it('PAYROLL template → createPayroll with stripTypedOt (typed OT of clocked staff is dropped, not refused — owner 2026-10-29)', async () => {
+      prisma.expenseTemplate.findUniqueOrThrow.mockResolvedValue({
+        id: 'tpl-p', documentType: 'PAYROLL', branchId: 'b1', deletedAt: null,
+        prefilledData: { entityScope: 'SHOP', lines: [{ userId: 'u9', baseSalary: 15000 }] },
+      });
+      const user = { id: 'u1', branchId: 'b1', role: 'OWNER' };
+      await service.instantiate('tpl-p', user);
+      expect(docsService.createPayroll).toHaveBeenCalledWith(
+        expect.objectContaining({ branchId: 'b1', fromTemplateId: 'tpl-p', lines: [{ userId: 'u9', baseSalary: 15000 }] }),
+        user,
+        { stripTypedOt: true },
+      );
+    });
+
     it('rejects cross-branch instantiate', async () => {
       prisma.expenseTemplate.findUniqueOrThrow.mockResolvedValue({
         id: 'tpl-1', documentType: 'EXPENSE', branchId: 'b2', deletedAt: null, prefilledData: {},

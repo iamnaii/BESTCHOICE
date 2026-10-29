@@ -30,6 +30,11 @@ const EVENT_META: Record<
   POSTED: { icon: CheckCircle2, tone: 'text-success', label: 'ลงบัญชี' },
   REJECTED: { icon: XCircle, tone: 'text-destructive', label: 'ปฏิเสธ' },
   REVERSED: { icon: Undo2, tone: 'text-destructive', label: 'ยกเลิก / กลับรายการ' },
+  // รหัสที่ฝั่งรายจ่ายเขียนจริง (expense-document-lifecycle) — เดิมขึ้นเป็นรหัสภาษาอังกฤษในประวัติ
+  APPROVAL_REQUESTED: { icon: Send, tone: 'text-warning-strong', label: 'ส่งให้อนุมัติ' },
+  AUTO_POSTED: { icon: CheckCircle2, tone: 'text-success', label: 'ลงบัญชี (อัตโนมัติหลังอนุมัติ)' },
+  SENT_BACK_TO_DRAFT: { icon: Undo2, tone: 'text-warning-strong', label: 'ส่งกลับเป็นร่างเพื่อแก้ไข' },
+  DELETED: { icon: XCircle, tone: 'text-destructive', label: 'ลบเอกสาร' },
 };
 
 function metaFor(event: string) {

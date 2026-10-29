@@ -5,6 +5,56 @@ import {
   CASH_ACCOUNT_CODES,
   SHOP_CASH_ACCOUNT_CODES,
 } from '../../../constants/cash-account.constants';
+import { resolveRoleCodes } from '../payroll-system/role-codes';
+
+type MoneyInput = number | string | Prisma.Decimal;
+
+/**
+ * V17 — every customIncome.accountCode must be on the whitelist. Runs on the rows
+ * the client sends (MANUAL / ADJUSTMENT) only — attendance system rows take their
+ * account from `account_role_map`, not from the whitelist.
+ */
+export function assertIncomeWhitelisted(
+  line: { employeeName: string; customIncome?: { accountCode: string }[] },
+  whitelist: Set<string>,
+): void {
+  const incomeRows = line.customIncome ?? [];
+  for (let i = 0; i < incomeRows.length; i++) {
+    const row = incomeRows[i];
+    if (!whitelist.has(row.accountCode)) {
+      throw new BadRequestException(
+        `V17: บัญชีรายได้พิเศษ ${row.accountCode} ของพนักงาน "${line.employeeName}" ` +
+          `แถวที่ ${i + 1} ไม่อยู่ในรายการที่อนุญาต — ` +
+          `อนุญาตเฉพาะ ${[...whitelist].sort().join(', ')} ` +
+          `(แก้ได้ที่ system_config.custom_income_accounts_whitelist)`,
+      );
+    }
+  }
+}
+
+/**
+ * V18 — Σ(deduction) ≤ base + Σ(income). The payroll save path runs it on the
+ * MERGED line (client rows + attendance system rows), so a deduction that only
+ * fits once the OT is counted is accepted.
+ */
+export function assertDeductionsWithinGross(line: {
+  employeeName: string;
+  baseSalary: MoneyInput;
+  customIncome?: { amount: MoneyInput }[];
+  customDeduction?: { amount: MoneyInput }[];
+}): void {
+  const sum = (rows: { amount: MoneyInput }[] | undefined) =>
+    (rows ?? []).reduce<Prisma.Decimal>((s, r) => s.plus(new Prisma.Decimal(r.amount)), new Prisma.Decimal(0));
+  const sumDeduction = sum(line.customDeduction);
+  const grossPay = new Prisma.Decimal(line.baseSalary).plus(sum(line.customIncome));
+  if (sumDeduction.gt(grossPay)) {
+    throw new BadRequestException(
+      `V18: ผลรวมรายการหัก (${sumDeduction.toFixed(2)} ฿) ของพนักงาน "${line.employeeName}" ` +
+        `เกินรายได้รวมก่อนหัก (${grossPay.toFixed(2)} ฿ = base + รายได้พิเศษ) — ` +
+        `ผลลัพธ์จะติดลบ ไม่สามารถจ่ายเงินเดือนได้`,
+    );
+  }
+}
 
 /**
  * C2 — Payroll Custom Income/Deduction validation helpers (V16/V17/V18).
@@ -63,6 +113,13 @@ export class PayrollCustomService {
    * accounts of the requested scope, with CoA names for display.
    */
   async getMeta(scope: 'SHOP' | 'FINANCE') {
+    // Payroll D4 — รหัสบัญชีของแถวลงเวลา (OT วันทำงาน + ทำงาน/OT วันหยุด) ให้ฟอร์มรู้ว่าแถวไหนคือ OT ·
+    // อ่านจาก account_role_map ตรง (ไม่ผ่าน cache ต่อ instance ของ AccountRoleService) — ชุดเดียวกับที่ compute ใช้
+    const prefix = scope === 'SHOP' ? 'shop_' : '';
+    const otRole = `${prefix}payroll_overtime`;
+    const holidayRole = `${prefix}payroll_holiday`;
+    const roleCodes = await resolveRoleCodes(this.prisma, [otRole, holidayRole]);
+    const attendanceAccountCodes = [...new Set([roleCodes[otRole], roleCodes[holidayRole]])];
     const whitelist = [...(await this.loadWhitelist(scope))].sort();
     const cashCodes =
       scope === 'SHOP' ? [...SHOP_CASH_ACCOUNT_CODES] : [...CASH_ACCOUNT_CODES];
@@ -75,6 +132,7 @@ export class PayrollCustomService {
       scope,
       incomeWhitelist: whitelist.map((code) => ({ code, name: nameMap.get(code) ?? code })),
       cashAccounts: cashCodes.map((code) => ({ code, name: nameMap.get(code) ?? code })),
+      attendanceAccountCodes,
     };
   }
 
@@ -138,39 +196,9 @@ export class PayrollCustomService {
   ): Promise<{ taxableBase: Prisma.Decimal }> {
     const base = new Prisma.Decimal(line.baseSalary);
     const incomeRows = line.customIncome ?? [];
-    const deductionRows = line.customDeduction ?? [];
 
-    // V17 — whitelist enforcement
-    for (let i = 0; i < incomeRows.length; i++) {
-      const row = incomeRows[i];
-      if (!whitelist.has(row.accountCode)) {
-        throw new BadRequestException(
-          `V17: บัญชีรายได้พิเศษ ${row.accountCode} ของพนักงาน "${line.employeeName}" ` +
-            `แถวที่ ${i + 1} ไม่อยู่ในรายการที่อนุญาต — ` +
-            `อนุญาตเฉพาะ ${[...whitelist].sort().join(', ')} ` +
-            `(แก้ได้ที่ system_config.custom_income_accounts_whitelist)`,
-        );
-      }
-    }
-
-    const sumIncome = incomeRows.reduce<Prisma.Decimal>(
-      (s, r) => s.plus(new Prisma.Decimal(r.amount)),
-      new Prisma.Decimal(0),
-    );
-    const sumDeduction = deductionRows.reduce<Prisma.Decimal>(
-      (s, r) => s.plus(new Prisma.Decimal(r.amount)),
-      new Prisma.Decimal(0),
-    );
-
-    // V18 — Σ(deduction) ≤ base + Σ(income)
-    const grossPay = base.plus(sumIncome);
-    if (sumDeduction.gt(grossPay)) {
-      throw new BadRequestException(
-        `V18: ผลรวมรายการหัก (${sumDeduction.toFixed(2)} ฿) ของพนักงาน "${line.employeeName}" ` +
-          `เกินรายได้รวมก่อนหัก (${grossPay.toFixed(2)} ฿ = base + รายได้พิเศษ) — ` +
-          `ผลลัพธ์จะติดลบ ไม่สามารถจ่ายเงินเดือนได้`,
-      );
-    }
+    assertIncomeWhitelisted(line, whitelist); // V17
+    assertDeductionsWithinGross(line); // V18
 
     // V16 — taxable base = base + Σ(taxable income only)
     const taxableBase = incomeRows

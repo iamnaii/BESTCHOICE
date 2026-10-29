@@ -350,7 +350,8 @@ export class ExpenseTemplatesService {
         );
       }
       case 'PAYROLL': {
-        // payrollPeriod = current month YYYY-MM
+        // payrollPeriod = current month YYYY-MM · แถว OT ที่กรอกเองในแม่แบบของคนที่ตอกบัตร = ตัดออกพร้อมคำเตือน
+        // (คำตัดสินเจ้าของ 2026-10-29 — ใบถูกสร้างทันทีโดยไม่ผ่านฟอร์ม จึงไม่มีโอกาสลบแถวเอง)
         const y = today.getFullYear();
         const m = String(today.getMonth() + 1).padStart(2, '0');
         return this.docs.createPayroll({
@@ -360,7 +361,7 @@ export class ExpenseTemplatesService {
           payrollPeriod: `${y}-${m}`,
           lines: (data.lines as unknown[]) ?? [],
           fromTemplateId: tpl.id,
-        } as never, user);
+        } as never, user, { stripTypedOt: true });
       }
       case 'VENDOR_SETTLEMENT': {
         return this.docs.createSettlement({

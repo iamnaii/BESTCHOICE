@@ -27,6 +27,7 @@ import { CreatePayrollDto, UpdatePayrollDto } from './dto/create-payroll.dto';
 import { CreateSettlementDto } from './dto/create-settlement.dto';
 import { CreatePettyCashDto } from './dto/create-petty-cash.dto';
 import { VoidExpenseDocumentDto } from './dto/void-expense.dto';
+import { ExpenseDocumentVersionDto } from './dto/document-version.dto';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
 
 @Controller('expense-documents')
@@ -56,7 +57,7 @@ export class ExpenseDocumentsController {
   }
 
   @Post('payroll')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT') // payroll-roles.ts — ไม่มีผู้จัดการสาขา (เจ้าของ 2026-10-28)
   createPayroll(
     @Body() dto: CreatePayrollDto,
     @CurrentUser() user: { id: string; branchId?: string | null; role?: string | null },
@@ -67,14 +68,14 @@ export class ExpenseDocumentsController {
   // Payroll form meta (whitelist + cash accounts per scope, with CoA names).
   // Declared BEFORE @Get(':id') so the literal path wins route matching.
   @Get('payroll/meta')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT') // payroll-roles.ts — ไม่มีผู้จัดการสาขา (เจ้าของ 2026-10-28)
   payrollMeta(@Query('scope') scope?: string) {
     return this.service.getPayrollMeta(scope === 'FINANCE' ? 'FINANCE' : 'SHOP');
   }
 
   // R3-2 (2026-08-06) — แก้ไขร่างใบเงินเดือน (DRAFT เท่านั้น, แทนที่ lines ทั้งชุด)
   @Patch(':id/payroll')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT') // payroll-roles.ts — ไม่มีผู้จัดการสาขา (เจ้าของ 2026-10-28)
   updatePayroll(
     @Param('id') id: string,
     @Body() dto: UpdatePayrollDto,
@@ -284,8 +285,13 @@ export class ExpenseDocumentsController {
    */
   @Post(':id/post')
   @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT')
-  post(@Param('id') id: string, @CurrentUser() user: { id: string; role: string }) {
-    return this.service.post(id, user.id, user.role);
+  post(
+    @Param('id') id: string,
+    // R20 — `expectedUpdatedAt` = ฉบับที่หน้าวาด (PAYROLL บังคับ · อื่นเทียบเมื่อส่งมา) — ดู document-version.ts
+    @Body() dto: ExpenseDocumentVersionDto,
+    @CurrentUser() user: { id: string; role: string },
+  ) {
+    return this.service.post(id, user.id, user.role, { expectedUpdatedAt: dto?.expectedUpdatedAt, paymentDate: dto?.paymentDate });
   }
 
   /**
@@ -296,8 +302,8 @@ export class ExpenseDocumentsController {
    */
   @Post(':id/submit-for-approval')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  submitForApproval(@Param('id') id: string, @CurrentUser() user: { id: string }) {
-    return this.service.submitForApproval(id, user.id);
+  submitForApproval(@Param('id') id: string, @CurrentUser() user: { id: string; role?: string }) {
+    return this.service.submitForApproval(id, user.id, user.role);
   }
 
   /** Approval permission authorizes the configured approve/auto-post action. */
@@ -305,9 +311,11 @@ export class ExpenseDocumentsController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   approve(
     @Param('id') id: string,
+    // R20 — ฉบับที่ผู้อนุมัติเห็น (PAYROLL บังคับ · อื่นเทียบเมื่อส่งมา) — ดู document-version.ts
+    @Body() dto: ExpenseDocumentVersionDto,
     @CurrentUser() user: { id: string; role?: string },
   ) {
-    return this.service.approve(id, user.id, user.role);
+    return this.service.approve(id, user.id, user.role, { expectedUpdatedAt: dto?.expectedUpdatedAt, paymentDate: dto?.paymentDate });
   }
 
   /** Per-user EXPENSE_CANCEL and the actual document branch are checked in the service. */
@@ -323,7 +331,7 @@ export class ExpenseDocumentsController {
 
   @Delete(':id')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  delete(@Param('id') id: string, @CurrentUser() user: { id: string }) {
-    return this.service.softDelete(id, user.id);
+  delete(@Param('id') id: string, @CurrentUser() user: { id: string; role?: string }) {
+    return this.service.softDelete(id, user.id, user.role);
   }
 }

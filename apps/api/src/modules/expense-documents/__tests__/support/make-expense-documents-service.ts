@@ -73,6 +73,10 @@ export interface ExpenseDocumentsServiceOverrides {
   // `pettyCash`, so existing create-family + update specs' mocks flow through
   // the facade's now-delegating create/update methods unchanged.
   creator?: any;
+  // Payroll D4 — PayrollSystemRowsService (trailing @Optional() on the create
+  // sub-service). Default undefined: a PAYROLL with linked lines then throws
+  // 'PayrollSystemRowsService not wired' — specs that save linked lines pass a mock.
+  systemRows?: any;
 }
 
 export interface MadeExpenseDocumentsService {
@@ -184,6 +188,7 @@ export function makeExpenseDocumentsService(
       ssoConfig,
       payrollCustom,
       pettyCash,
+      overrides.systemRows,
     );
 
   // THE single positional construction in the codebase. Phase 2b removed the 6

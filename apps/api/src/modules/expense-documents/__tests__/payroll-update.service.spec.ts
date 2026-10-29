@@ -3,13 +3,17 @@ import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { makeExpenseDocumentsService } from './support/make-expense-documents-service';
 
 /**
- * R3-2 (2026-08-06) — แก้ไขร่างใบเงินเดือน (PATCH /expense-documents/:id/payroll).
- * DRAFT เท่านั้น, แทนที่ PayrollDetail+lines ทั้งชุด, validator ชุดเดียวกับ create,
- * dup-งวด guard ยกเว้นตัวเอง.
+ * R3-2 (2026-08-06) — แก้ไขใบเงินเดือน (PATCH /expense-documents/:id/payroll).
+ * แทนที่ PayrollDetail+lines ทั้งชุด, validator ชุดเดียวกับ create, dup-งวด guard ยกเว้นตัวเอง.
+ * Payroll D4: แก้ใบรออนุมัติ/อนุมัติแล้ว = ส่งกลับเป็นร่าง (audit SENT_BACK_TO_DRAFT ใน tx) ·
+ * updatePayrollInTx ใช้ tx ของผู้เรียก (ไม่เปิด $transaction ซ้อน — Task 5 เรียกตอนส่งขออนุมัติ)
  */
 describe('ExpenseDocumentsService.updatePayroll', () => {
   let service: any;
   let prisma: any;
+  let made: any;
+  let systemRows: any;
+  const calls: string[] = [];
 
   const DOC_ID = 'pr-edit-1';
   const draftDoc = (over: Record<string, unknown> = {}) => ({
@@ -34,17 +38,43 @@ describe('ExpenseDocumentsService.updatePayroll', () => {
   };
 
   beforeEach(() => {
+    calls.length = 0;
     prisma = {
       $transaction: jest.fn(async (cb: any) => cb(prisma)),
-      $executeRaw: jest.fn().mockResolvedValue(0),
+      $executeRaw: jest.fn(async (_s: TemplateStringsArray, key: string) => {
+        calls.push(key);
+        return 0;
+      }),
       expenseDocument: {
         findUnique: jest.fn().mockResolvedValue(draftDoc()),
         findFirst: jest.fn().mockResolvedValue(null),
         update: jest.fn(async (args: any) => ({ id: DOC_ID, ...args.data })),
       },
       payrollDetail: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
+      employeeProfile: {
+        findMany: jest.fn().mockResolvedValue([
+          { userId: 'emp-1', taxIdOverride: null, user: { id: 'emp-1', name: 'สมชาย ผูกทะเบียน', nationalId: null, branchId: 'b1' } },
+        ]),
+      },
     };
-    service = makeExpenseDocumentsService({
+    systemRows = {
+      compute: jest.fn(async (_tx: unknown, q: { userIds: string[] }) => {
+        calls.push(`compute:${q.userIds.join(',')}`);
+        return {
+          attendanceAccountCodes: ['S52-1202'],
+          rows: q.userIds.map((userId) => ({
+            userId,
+            autoOtEligible: true,
+            attendanceTracked: true,
+            systemIncome: [{ source: 'ATTENDANCE_OT', accountCode: 'S52-1202', name: 'OT วันทำงาน (1.5 เท่า)', quantity: '2.0', rate: '81.2500', multiplier: '1.5', amount: '162.50', isTaxable: true }],
+            attendanceSummary: { otHours: '2.0', autoOtEligible: true, attendanceTracked: true },
+            notes: { review: [], warnings: [] },
+          })),
+        };
+      }),
+    };
+    made = makeExpenseDocumentsService({
       prisma,
       ssoConfig: { validateContribution: jest.fn().mockResolvedValue(undefined) },
       payrollCustom: {
@@ -52,7 +82,9 @@ describe('ExpenseDocumentsService.updatePayroll', () => {
         validateLine: jest.fn().mockResolvedValue({ taxableBase: undefined }),
         validateDeductionAccounts: jest.fn().mockResolvedValue(undefined),
       },
-    }).service;
+      systemRows,
+    });
+    service = made.service;
   });
 
   const OWNER = { id: 'u-owner', branchId: null, role: 'OWNER' };
@@ -66,9 +98,13 @@ describe('ExpenseDocumentsService.updatePayroll', () => {
     const arg = prisma.expenseDocument.update.mock.calls[0][0];
     expect(arg.where).toEqual({ id: DOC_ID });
     expect(arg.data.subtotal.toString()).toBe('32000'); // 13,000 + 19,000
+    expect(arg.data.totalAmount.toFixed(2)).toBe('32000.00'); // ไม่มีรายได้พิเศษ ⇒ ยอดก่อนหัก = Σ ฐาน
     expect(arg.data.withholdingTax.toString()).toBe('200');
     // net = (13000−650) + (19000−875−200) = 12,350 + 17,925 = 30,275
     expect(arg.data.netPayment.toString()).toBe('30275');
+    // DRAFT คงเป็น DRAFT — ไม่แตะ status / ไม่มี audit ส่งกลับ
+    expect(arg.data).not.toHaveProperty('status');
+    expect(prisma.auditLog.create).not.toHaveBeenCalled();
     expect(arg.data.payroll.create.entityScope).toBe('SHOP');
     expect(arg.data.payroll.create.lines.create).toHaveLength(2);
     expect(doc.id).toBe(DOC_ID);
@@ -87,9 +123,47 @@ describe('ExpenseDocumentsService.updatePayroll', () => {
     expect(prisma.payrollDetail.deleteMany).not.toHaveBeenCalled();
   });
 
-  it('rejects non-DRAFT documents (โพสต์แล้วต้อง VOID)', async () => {
-    prisma.expenseDocument.findUnique.mockResolvedValue(draftDoc({ status: 'POSTED' }));
-    await expect(service.updatePayroll(DOC_ID, dto, OWNER)).rejects.toThrow(/DRAFT/);
+  it('rejects POSTED / VOIDED / ACCRUAL documents (โพสต์แล้วต้อง VOID)', async () => {
+    for (const status of ['POSTED', 'VOIDED', 'ACCRUAL']) {
+      prisma.expenseDocument.findUnique.mockResolvedValue(draftDoc({ status }));
+      await expect(service.updatePayroll(DOC_ID, dto, OWNER)).rejects.toThrow(/DRAFT/);
+    }
+    expect(prisma.payrollDetail.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it.each(['PENDING_APPROVAL', 'APPROVED'])('editing a %s payroll sends it back to DRAFT (approver cleared) + SENT_BACK_TO_DRAFT audit in the same tx', async (from) => {
+    prisma.expenseDocument.findUnique.mockResolvedValue(draftDoc({ status: from, number: 'PR-20260805-0007' }));
+    await service.updatePayroll(DOC_ID, dto, OWNER);
+    const arg = prisma.expenseDocument.update.mock.calls[0][0];
+    expect(arg.data.status).toBe('DRAFT');
+    expect(arg.data.approvedById).toBeNull();
+    expect(prisma.auditLog.create).toHaveBeenCalledWith({
+      data: {
+        action: 'SENT_BACK_TO_DRAFT',
+        entity: 'expense_document',
+        entityId: DOC_ID,
+        userId: 'u-owner',
+        oldValue: { status: from },
+        newValue: { status: 'DRAFT', documentNumber: 'PR-20260805-0007', documentType: 'PAYROLL' },
+      },
+    });
+  });
+
+  it('lock order post: → payroll: → payroll-attendance:* and compute excludes the document itself', async () => {
+    await service.updatePayroll(DOC_ID, { ...dto, lines: [{ userId: 'emp-1', baseSalary: 13000 }] }, OWNER);
+    expect(calls).toEqual([`post:${DOC_ID}`, 'payroll:b1:2026-08:SHOP', 'payroll-attendance:emp-1:2026-08', 'compute:emp-1']);
+    expect(systemRows.compute.mock.calls[0][1]).toMatchObject({ excludeDocumentId: DOC_ID, branchId: 'b1', payrollPeriod: '2026-08' });
+    const line = prisma.expenseDocument.update.mock.calls[0][0].data.payroll.create.lines.create[0];
+    expect(line.netPaid.toFixed(2)).toBe('13162.50');
+  });
+
+  it('updatePayrollInTx runs on the caller\'s tx (no nested $transaction) and keeps the given now', async () => {
+    const now = new Date('2026-09-01T12:00:00.000Z');
+    await made.creator.updatePayrollInTx(prisma, DOC_ID, { ...dto, lines: [{ userId: 'emp-1', baseSalary: 13000 }] }, OWNER, now);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(systemRows.compute.mock.calls[0][1].now).toBe(now);
+    const line = prisma.expenseDocument.update.mock.calls[0][0].data.payroll.create.lines.create[0];
+    expect(line.systemPulledAt).toBe(now);
   });
 
   it('rejects a BRANCH_MANAGER editing another branch\'s draft', async () => {

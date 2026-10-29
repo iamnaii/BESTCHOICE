@@ -3,6 +3,9 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { ExpenseDocumentsService } from '../expense-documents.service';
 import { makeExpenseDocumentsService } from './support/make-expense-documents-service';
 
+
+/** R20 (FX2) — อนุมัติ/ลงบัญชีใบ PAYROLL ต้องส่ง `expectedUpdatedAt` = `updatedAt` ของใบที่เห็น */
+const PAYROLL_SEEN = '2026-11-02T03:15:20.123Z';
 describe('ExpenseDocumentsService', () => {
   let service: ExpenseDocumentsService;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -642,9 +645,10 @@ describe('ExpenseDocumentsService', () => {
         receiptImageUrl: null,
         withholdingTax: new Decimal('500.00'),
         whtFormType: null, // payroll WHT always ภ.ง.ด.1 → 21-3101
+        updatedAt: new Date(PAYROLL_SEEN), // R20 — PAYROLL post ต้องส่งฉบับที่เห็น
       });
       transition.resolveTargetStatus.mockReturnValue('POSTED');
-      await expect(service.post('doc-pr-c12', 'user-1')).resolves.toBeDefined();
+      await expect(service.post('doc-pr-c12', 'user-1', undefined, { expectedUpdatedAt: PAYROLL_SEEN })).resolves.toBeDefined();
       expect(payroll.execute).toHaveBeenCalled();
     });
 
@@ -855,8 +859,9 @@ describe('ExpenseDocumentsService', () => {
         withholdingTax: new Decimal('0'),
         whtFormType: null,
         deletedAt: null,
+        updatedAt: new Date(PAYROLL_SEEN),
       });
-      await expect(service.post('doc-payroll-low', 'user-1')).rejects.toThrow(
+      await expect(service.post('doc-payroll-low', 'user-1', undefined, { expectedUpdatedAt: PAYROLL_SEEN })).rejects.toThrow(
         /ต้องผ่านการอนุมัติก่อน/,
       );
       expect(payroll.execute).not.toHaveBeenCalled();
@@ -1108,9 +1113,9 @@ describe('ExpenseDocumentsService', () => {
     });
 
     it('auto-post chain dispatches PAYROLL through payroll template', async () => {
-      setupApprovableDoc({ documentType: 'PAYROLL', paymentMethod: null, depositAccountCode: null });
+      setupApprovableDoc({ documentType: 'PAYROLL', paymentMethod: null, depositAccountCode: null, updatedAt: new Date(PAYROLL_SEEN) });
       transition.assertCanApprove = jest.fn();
-      await service.approve('doc-pend', 'user-1', 'OWNER');
+      await service.approve('doc-pend', 'user-1', 'OWNER', { expectedUpdatedAt: PAYROLL_SEEN });
       expect(payroll.execute).toHaveBeenCalledWith('doc-pend', expect.anything());
     });
 

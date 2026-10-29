@@ -1,4 +1,4 @@
-import type { AttendanceDayKind } from '@prisma/client';
+import type { AttendanceDay, AttendanceDayKind } from '@prisma/client';
 import { bangkokCalendarParts, bangkokMidnight } from '../../utils/date.util';
 
 /**
@@ -124,4 +124,67 @@ export function computeDaySummary(input: DaySummaryInput): DaySummary {
 
   if (dayKind !== 'WORK') flags.push(WORKED_ON_OFF_DAY);
   return { workedMinutes, lateMinutes, earlyLeaveMinutes, otHours, flags };
+}
+
+/** ธงที่ cron ปิดวันใส่: ตอกเข้าแต่ไม่มีเวลาออก */
+export const FLAG_MISSING_OUT = 'MISSING_OUT';
+/** ธงที่ cron ปิดวันใส่: วันทำงานที่ไม่มีตอกเพราะเครื่องของสาขาใช้ไม่ได้ (ไม่นับว่าขาด) */
+export const FLAG_DEVICE_UNAVAILABLE = 'DEVICE_UNAVAILABLE';
+
+export type TodayStatus = 'ON_TIME' | 'LATE' | 'NOT_IN' | 'DAY_OFF' | 'LEAVE' | 'SHOP_CLOSED' | 'MISSING_OUT' | 'NO_PIN';
+export type CellStatus = TodayStatus | 'ABSENT' | 'UNAVAILABLE' | 'NONE';
+
+const LEAVE_KINDS: AttendanceDayKind[] = ['LEAVE_SICK', 'LEAVE_PERSONAL', 'LEAVE_OTHER'];
+
+/** สถานะของแถววัน (ไม่มีแถว = ยังไม่มา) — หน้าลงเวลา "วันนี้" */
+export function todayStatusOf(day: Pick<AttendanceDay, 'dayKind' | 'clockIn' | 'lateMinutes' | 'flags'> | null | undefined): TodayStatus {
+  if (!day) return 'NOT_IN';
+  if (day.clockIn) {
+    if (day.flags.includes(FLAG_MISSING_OUT)) return 'MISSING_OUT';
+    return day.lateMinutes > 0 ? 'LATE' : 'ON_TIME';
+  }
+  if (day.dayKind === 'DAY_OFF') return 'DAY_OFF';
+  if (day.dayKind === 'SHOP_CLOSED') return 'SHOP_CLOSED';
+  if (LEAVE_KINDS.includes(day.dayKind)) return 'LEAVE';
+  return 'NOT_IN';
+}
+
+/**
+ * สถานะช่องรายเดือน — แหล่งเดียวของ ABSENT / LEAVE ที่ `summarizeAttendanceMonth` นับ
+ * ใช้ร่วมกันโดยหน้าลงเวลา (`AttendanceService.month/me`) และสรุปที่เก็บในใบเงินเดือน (`PayrollSystemRowsService`)
+ * `today` = เที่ยงคืนไทยของวันนี้ (`workDateOf(now)`) — วันทำงานที่ไม่มีตอกก่อนวันนี้ = ขาด
+ */
+export function cellStatusOf(day: Pick<AttendanceDay, 'dayKind' | 'clockIn' | 'lateMinutes' | 'flags' | 'workDate'>, today: Date): CellStatus {
+  const base = todayStatusOf(day);
+  if (base !== 'NOT_IN') return base;
+  if (day.flags.includes(FLAG_DEVICE_UNAVAILABLE)) return 'UNAVAILABLE';
+  return fromDbDate(day.workDate).getTime() < today.getTime() ? 'ABSENT' : 'NONE';
+}
+
+export interface MonthSummary {
+  workDays: number;
+  lateCount: number;
+  lateMinutes: number;
+  absent: number;
+  leave: number;
+  otHours: number;
+}
+
+const num = (v: unknown) => (typeof v === 'number' ? v : Number(v ?? 0));
+
+/** สรุปรายเดือนของพนักงานหนึ่งคน จากช่องรายวัน — ใช้ร่วมกันโดยหน้าลงเวลา (`AttendanceService.month/me`) */
+export function summarizeAttendanceMonth(
+  cells: Array<{ status: string; clockIn: Date | null; lateMinutes: number; otHours: unknown }>,
+): MonthSummary {
+  return cells.reduce<MonthSummary>(
+    (acc, c) => ({
+      workDays: acc.workDays + (c.clockIn ? 1 : 0),
+      lateCount: acc.lateCount + (c.lateMinutes > 0 ? 1 : 0),
+      lateMinutes: acc.lateMinutes + c.lateMinutes,
+      absent: acc.absent + (c.status === 'ABSENT' ? 1 : 0),
+      leave: acc.leave + (c.status === 'LEAVE' ? 1 : 0),
+      otHours: Math.round((acc.otHours + num(c.otHours)) * 10) / 10,
+    }),
+    { workDays: 0, lateCount: 0, lateMinutes: 0, absent: 0, leave: 0, otHours: 0 },
+  );
 }

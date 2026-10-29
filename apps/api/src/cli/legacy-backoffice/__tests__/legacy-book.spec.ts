@@ -173,7 +173,81 @@ describe('buildLegacyBook', () => {
   it('leaves out receipts that were deleted in the old system (status 0)', () => {
     const [c1] = buildLegacyBook(baseTables()).contracts;
     expect(c1.receipts.map((r) => r.legacyId)).toEqual(['1', '3']);
-    expect(c1.receipts[1]).toMatchObject({ installmentLegacyId: '12', slipPath: 'TEST-3.jpg' });
+    expect(c1.receipts[1]).toMatchObject({
+      kind: 'INSTALLMENT',
+      installmentLegacyId: '12',
+      closeLegacyId: null,
+      slipPath: 'TEST-3.jpg',
+    });
+  });
+
+  it('leaves out order files that were deleted in the old system (status 0)', () => {
+    const t = baseTables();
+    t.bestchoice_order_product_file = [
+      {
+        file_id: '1',
+        ref_order: '101',
+        file_detail: 'ใบเสร็จ',
+        file_name: 'TEST-F-1.pdf',
+        status: '1',
+      },
+      {
+        file_id: '2',
+        ref_order: '101',
+        file_detail: 'ใบเสร็จ',
+        file_name: 'TEST-F-2.pdf',
+        status: '0',
+      },
+    ];
+    const [c1] = buildLegacyBook(t).contracts;
+    expect(c1.files).toEqual([
+      { kind: 'img_contract', path: 'TEST-1.jpg' },
+      { kind: 'order_product_file', path: 'TEST-F-1.pdf' },
+    ]);
+  });
+
+  describe('early-payoff receipts (type 1) point at the contract_close row, not an installment', () => {
+    it('links a type-1 receipt to its own contract close row without an anomaly', () => {
+      const t = baseTables();
+      t.bestchoice_payment_installment.push({
+        ...pay('7', '2', '1', '2026-03-01', '4750', '1'),
+        type: '1',
+      });
+      const book = buildLegacyBook(t);
+
+      expect(book.contracts[1].receipts).toEqual([
+        expect.objectContaining({
+          legacyId: '7',
+          kind: 'EARLY_PAYOFF',
+          installmentLegacyId: null,
+          closeLegacyId: '1',
+        }),
+      ]);
+      expect(book.anomalies).toEqual([]);
+    });
+
+    it('records an anomaly when a type-1 receipt points at anything else', () => {
+      const t = baseTables();
+      t.bestchoice_payment_installment.push(
+        { ...pay('8', '2', '21', '2026-03-01', '4750', '1'), type: '1' }, // งวดของสัญญาเดียวกัน
+        { ...pay('9', '1', '1', '2026-03-01', '3000', '1'), type: '1' }, // สัญญา 1 ไม่มีแถวปิด
+      );
+      const book = buildLegacyBook(t);
+
+      expect(book.contracts[1].receipts[0]).toMatchObject({
+        kind: 'EARLY_PAYOFF',
+        installmentLegacyId: null,
+        closeLegacyId: '21',
+      });
+      expect(book.anomalies).toEqual([
+        expect.stringMatching(
+          /id=9: ref_installmemnt=1 ไม่ใช่รายการปิดก่อนกำหนดของสัญญา TEST-C-0001/,
+        ),
+        expect.stringMatching(
+          /id=8: ref_installmemnt=21 ไม่ใช่รายการปิดก่อนกำหนดของสัญญา TEST-C-0002/,
+        ),
+      ]);
+    });
   });
 
   it('sorts installments by due date, not by dump order', () => {
@@ -298,6 +372,12 @@ describe('buildLegacyBook', () => {
       const t = baseTables();
       t.bestchoice_order_product = t.bestchoice_order_product.filter((o) => o.order_id !== '102');
       expect(() => buildLegacyBook(t)).toThrow('contract_id=2');
+    });
+
+    it('rejects a receipt type other than 0 (installment) or 1 (early payoff)', () => {
+      const t = baseTables();
+      t.bestchoice_payment_installment[0].type = '2';
+      expect(() => buildLegacyBook(t)).toThrow('id=1');
     });
   });
 });

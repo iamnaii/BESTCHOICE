@@ -45,11 +45,19 @@ export type LegacyInstallment = {
 
 /**
  * รายการรับเงินที่ใช้ได้ (`status = '1'`) · `date` = วันโอน · `createdAt` = วันที่บันทึก
- * · `installmentLegacyId` ว่าง หรือไม่ใช่งวดของสัญญานี้ = ลง `anomalies` (รายการยังอยู่ใน `receipts`)
+ *
+ * ระบบเก่าใช้ `ref_installmemnt` สองความหมายตาม `type`:
+ * - `'0'` ค่างวด (`INSTALLMENT`) → `ins_id` ของงวด = `installmentLegacyId` · `closeLegacyId` = null
+ * - `'1'` ปิดบัญชีก่อนกำหนด (`EARLY_PAYOFF`) → `id` ของแถว `contract_close` = `closeLegacyId`
+ *   · `installmentLegacyId` = null (ตรวจกับ dump จริง 133/133 แถวชี้แถวปิดของสัญญาเดียวกัน)
+ *
+ * ค่าตามระบบเก่าที่ไม่ใช่งวด/แถวปิดของสัญญานี้ = ลง `anomalies` (รายการยังอยู่ใน `receipts`)
  */
 export type LegacyReceipt = {
   legacyId: string;
-  installmentLegacyId: string;
+  kind: 'INSTALLMENT' | 'EARLY_PAYOFF';
+  installmentLegacyId: string | null;
+  closeLegacyId: string | null;
   date: Date;
   amount: Decimal;
   installment: Decimal;
@@ -92,11 +100,16 @@ const TABLE = {
   close: 'bestchoice_contract_close',
 } as const;
 
-/** ไฟล์แนบ — `owner` = คอลัมน์ที่อ้างถึง (`file_name` = path ทุกตาราง) */
+/**
+ * ไฟล์แนบ — `owner` = คอลัมน์ที่อ้างถึง (`file_name` = path ทุกตาราง)
+ * · `deletable` = ตารางมีช่อง `status` (DEFAULT 1) ที่ `'0'` = ถูกลบ แบบเดียวกับ `payment_installment`
+ *   (dump 29/10: `order_product_file` มี 0 อยู่ 90 แถว · 1 อยู่ 804 แถว) — ตารางอื่นไม่มีช่องนี้
+ */
 const FILE_TABLES: readonly {
   table: string;
   kind: LegacyFileKind;
   owner: 'ref_order' | 'ref_contract';
+  deletable?: true;
 }[] = [
   { table: 'bestchoice_order_product_img_contract', kind: 'img_contract', owner: 'ref_order' },
   { table: 'bestchoice_order_product_img_facebook', kind: 'img_facebook', owner: 'ref_order' },
@@ -105,7 +118,12 @@ const FILE_TABLES: readonly {
   { table: 'bestchoice_order_product_img_lock', kind: 'img_lock', owner: 'ref_order' },
   { table: 'bestchoice_order_product_img_receive', kind: 'img_receive', owner: 'ref_order' },
   { table: 'bestchoice_order_product_img_selfie', kind: 'img_selfie', owner: 'ref_order' },
-  { table: 'bestchoice_order_product_file', kind: 'order_product_file', owner: 'ref_order' },
+  {
+    table: 'bestchoice_order_product_file',
+    kind: 'order_product_file',
+    owner: 'ref_order',
+    deletable: true,
+  },
   { table: 'bestchoice_contract_file', kind: 'contract_file', owner: 'ref_contract' },
 ];
 const FILE_PATH = 'file_name';
@@ -143,6 +161,7 @@ const COL = {
     contract: 'ref_contract',
     installmentRef: 'ref_installmemnt',
     status: 'status',
+    type: 'type',
     date: 'date',
     createdAt: 'created_at',
     amount: 'amount',
@@ -152,6 +171,7 @@ const COL = {
     slip: 'slip',
   },
   close: {
+    id: 'id',
     contract: 'ref_contract',
     amount: 'amount',
     discount: 'discount',
@@ -304,8 +324,11 @@ export function buildLegacyBook(t: DumpTables): LegacyBook {
     ref_order: new Map<string, LegacyContract['files']>(),
     ref_contract: new Map<string, LegacyContract['files']>(),
   };
-  for (const { table, kind, owner } of FILE_TABLES) {
-    for (const row of rowsOf(table, { owner, path: FILE_PATH })) {
+  for (const { table, kind, owner, deletable } of FILE_TABLES) {
+    const columns: Record<string, string> = { owner, path: FILE_PATH };
+    if (deletable) columns.status = 'status';
+    for (const row of rowsOf(table, columns)) {
+      if (deletable && row.status === '0') continue; // ถูกลบในระบบเก่า
       const ownerId = row[owner]?.trim();
       const path = row[FILE_PATH]?.trim();
       if (!ownerId || !path) continue;
@@ -330,11 +353,36 @@ export function buildLegacyBook(t: DumpTables): LegacyBook {
     };
   };
 
-  const readReceipt = (row: DumpRow): LegacyReceipt => {
+  /** `links` = งวดและแถวปิดของสัญญาที่รายการนี้อยู่ — ใช้ตรวจว่า `ref_installmemnt` ชี้ถูกที่ */
+  const readReceipt = (
+    row: DumpRow,
+    links: { code: string; installmentIds: ReadonlySet<string>; closeId: string | null },
+  ): LegacyReceipt => {
     const r = reader(TABLE.receipt, row, COL.receipt.id);
+    const legacyId = r.text(COL.receipt.id);
+    const type = r.text(COL.receipt.type);
+    if (type !== '0' && type !== '1') {
+      throw r.fail(
+        COL.receipt.type,
+        `ไม่รู้จักประเภท ${type} (0 = ค่างวด · 1 = ปิดบัญชีก่อนกำหนด)`,
+      );
+    }
+    const kind = type === '1' ? 'EARLY_PAYOFF' : 'INSTALLMENT';
+    const ref = r.optionalText(COL.receipt.installmentRef);
+    const linked =
+      ref !== null &&
+      (kind === 'EARLY_PAYOFF' ? ref === links.closeId : links.installmentIds.has(ref));
+    if (!linked) {
+      const target = kind === 'EARLY_PAYOFF' ? 'รายการปิดก่อนกำหนด' : 'งวด';
+      anomalies.push(
+        `\`${TABLE.receipt}\` ${r.label}: ${COL.receipt.installmentRef}=${ref ?? 'NULL'} ไม่ใช่${target}ของสัญญา ${links.code}`,
+      );
+    }
     return {
-      legacyId: r.text(COL.receipt.id),
-      installmentLegacyId: r.optionalText(COL.receipt.installmentRef) ?? '',
+      legacyId,
+      kind,
+      installmentLegacyId: kind === 'INSTALLMENT' ? ref : null,
+      closeLegacyId: kind === 'EARLY_PAYOFF' ? ref : null,
       date: r.date(COL.receipt.date),
       amount: r.money(COL.receipt.amount),
       installment: r.money(COL.receipt.installmentAmount),
@@ -389,16 +437,6 @@ export function buildLegacyBook(t: DumpTables): LegacyBook {
       .sort(
         (a, b) => a.dueDate.getTime() - b.dueDate.getTime() || compareIds(a.legacyId, b.legacyId),
       );
-    const installmentIds = new Set(installments.map((i) => i.legacyId));
-    const receipts = (receiptsByContract.get(contractId) ?? []).map(readReceipt);
-    for (const receipt of receipts) {
-      if (!installmentIds.has(receipt.installmentLegacyId)) {
-        anomalies.push(
-          `\`${TABLE.receipt}\` ${COL.receipt.id}=${receipt.legacyId}: ${COL.receipt.installmentRef}=${receipt.installmentLegacyId || 'NULL'} ไม่ใช่งวดของสัญญา ${code}`,
-        );
-      }
-    }
-
     const closeRows = closesByContract.get(contractId) ?? [];
     if (closeRows.length > 1) {
       throw r.fail(
@@ -414,6 +452,15 @@ export function buildLegacyBook(t: DumpTables): LegacyBook {
         createdAt: c.date(COL.close.createdAt),
       };
     })[0];
+
+    const links = {
+      code,
+      installmentIds: new Set(installments.map((i) => i.legacyId)),
+      closeId: closeRows[0]?.[COL.close.id]?.trim() ?? null,
+    };
+    const receipts = (receiptsByContract.get(contractId) ?? []).map((receiptRow) =>
+      readReceipt(receiptRow, links),
+    );
 
     return {
       contractId,

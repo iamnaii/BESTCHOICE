@@ -615,6 +615,7 @@ export function planImport(book: LegacyBook, opts: ImportOptions): ImportPlan {
   }
 
   const items: PlannedContract[] = [];
+  const peakCodes: PeakCodeRequest[] = [];
   for (const { c, cls } of classified) {
     if (cls.kind === 'SKIP') {
       if (cls.reason === 'canceled-unconfirmed') {
@@ -648,6 +649,14 @@ export function planImport(book: LegacyBook, opts: ImportOptions): ImportPlan {
           overrides: opts.customerOverrides,
         });
         memberCode = customer.legacyMemberCode;
+        if (customer.peakContactCode) {
+          peakCodes.push({
+            code: c.code,
+            memberCode,
+            peakCode: customer.peakContactCode,
+            date: c.createdAt.getTime(),
+          });
+        }
         if (
           !customer.overrideCustomerId &&
           (!customer.nationalId || !isValidThaiNationalId(customer.nationalId))
@@ -740,7 +749,7 @@ export function planImport(book: LegacyBook, opts: ImportOptions): ImportPlan {
       a.contractDate.getTime() - b.contractDate.getTime() ||
       (a.code < b.code ? -1 : a.code > b.code ? 1 : 0),
   );
-  const kept = crossContractBlockers(items, blockers);
+  const kept = crossContractBlockers(items, blockers, peakCodes);
 
   return {
     cutoff: opts.cutoff,
@@ -754,33 +763,38 @@ export function planImport(book: LegacyBook, opts: ImportOptions): ImportPlan {
   };
 }
 
+/** รหัส PEAK ที่สัญญาหนึ่งจะตั้งให้ลูกค้า — เก็บจากทุกสัญญาที่นำเข้า (รวมที่ติดตัวบล็อกอื่น) */
+type PeakCodeRequest = { code: string; memberCode: string; peakCode: string; date: number };
+
 /**
  * ตัวบล็อกที่ต้องเห็นหลายสัญญาพร้อมกัน — คืนรายการที่เหลือ:
- * รหัส PEAK ของสมาชิกเดียวกันไม่ตรงกัน (สัญญาแรกตามวันที่ทำสัญญาตั้งรหัส ตัวอื่นที่ต่างเป็นตัวบล็อก) · IMEI ซ้ำระหว่าง ACTIVE ·
+ * รหัส PEAK ของสมาชิกเดียวกันไม่ตรงกัน (นับทุกสัญญาที่นำเข้า แม้ติดตัวบล็อกอื่น — สัญญาแรกตามวันที่ทำสัญญาตั้งรหัส
+ * ตัวอื่นที่ต่างเป็นตัวบล็อก) · IMEI ซ้ำระหว่าง ACTIVE ·
  * รหัสงวดเดิมซ้ำ (`Payment.legacyInstallmentCode` unique ทั้งตาราง)
  */
 function crossContractBlockers(
   items: PlannedContract[],
   blockers: ImportBlocker[],
+  peakCodes: readonly PeakCodeRequest[],
 ): PlannedContract[] {
   const out = new Set<PlannedContract>();
+  const itemByCode = new Map(items.map((i) => [i.code, i]));
   const firstPeakCode = new Map<string, string>();
-  for (const item of items) {
-    const requested = item.customer.peakContactCode;
-    if (!requested) continue;
-    const first = firstPeakCode.get(item.memberCode);
-    if (first === undefined) firstPeakCode.set(item.memberCode, requested);
-    else if (first !== requested) {
+  for (const request of [...peakCodes].sort((a, b) => a.date - b.date)) {
+    const first = firstPeakCode.get(request.memberCode);
+    if (first === undefined) firstPeakCode.set(request.memberCode, request.peakCode);
+    else if (first !== request.peakCode) {
       blockers.push({
-        code: item.code,
+        code: request.code,
         reason: 'CUSTOMER_PEAK_CODE_CONFLICT',
         detail: {
-          memberCode: item.memberCode,
-          peakContactCode: requested,
+          memberCode: request.memberCode,
+          peakContactCode: request.peakCode,
           otherPeakContactCode: first,
         },
       });
-      out.add(item);
+      const item = itemByCode.get(request.code);
+      if (item) out.add(item);
     }
   }
 

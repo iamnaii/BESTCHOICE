@@ -444,6 +444,20 @@ describe('planImport', () => {
       },
     ]);
     expect(conflict.items.map((i) => i.code)).toEqual(['TEST-C-0012']);
+
+    // สัญญาแรกของสมาชิกติดตัวบล็อกอื่น (ไม่มีคู่ PEAK ไม่ได้ — ใช้ PEAK สูงกว่า) → ยังเห็นรหัสชนกัน
+    const hidden = planImport(syntheticBook([first, sameMember], members), {
+      ...options([]),
+      peakRecon: syntheticRecon([
+        [first, peakMatch(first, 'TESTC001', '99999.00')],
+        [sameMember, peakMatch(sameMember, 'TESTC009')],
+      ]),
+    });
+    expect(hidden.blockers.map((b) => [b.code, b.reason])).toEqual([
+      ['TEST-C-0012', 'PEAK_HIGHER'],
+      ['TEST-C-0003', 'CUSTOMER_PEAK_CODE_CONFLICT'],
+    ]);
+    expect(hidden.items).toEqual([]);
   });
 
   it('owner files naming codes that do not exist → blockers tagged with the file', () => {

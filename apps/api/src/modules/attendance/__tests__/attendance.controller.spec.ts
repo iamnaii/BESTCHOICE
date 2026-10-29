@@ -45,6 +45,9 @@ describe('attendance controllers', () => {
     expect((await validate(plainToInstance(CorrectDayDto, { reason: 'ยาวพอสิบตัวอักษรแน่นอน', dayKind: 'HOLIDAY' }))).length).toBeGreaterThan(0);
     expect(await validate(plainToInstance(SetDayKindsDto, { branchId: '11111111-1111-4111-8111-111111111111', entries: [{ userId: '22222222-2222-4222-8222-222222222222', date: '2026-10-29', dayKind: 'DAY_OFF' }] }))).toEqual([]);
     expect((await validate(plainToInstance(SetDayKindsDto, { branchId: '11111111-1111-4111-8111-111111111111', entries: [{ userId: 'x', date: '29/10/2026', dayKind: 'DAY_OFF' }] }))).length).toBeGreaterThan(0);
+    // ส่งรายการว่างตรงเข้า API = 400 ภาษาไทย (เดิมหลุดถึงชั้น SQL แล้วได้ 500)
+    const empty = await validate(plainToInstance(SetDayKindsDto, { branchId: '11111111-1111-4111-8111-111111111111', entries: [] }));
+    expect(empty.flatMap((e) => Object.values(e.constraints ?? {}))).toContain('กรุณาเลือกวันอย่างน้อย 1 วัน');
     expect(await validate(plainToInstance(UpdateAttendanceSettingsDto, { workStart: '10:00', workEnd: '19:00', lateGraceMinutes: 15 }))).toEqual([]);
     expect((await validate(plainToInstance(UpdateAttendanceSettingsDto, { workStart: '25:00' }))).length).toBeGreaterThan(0);
   });

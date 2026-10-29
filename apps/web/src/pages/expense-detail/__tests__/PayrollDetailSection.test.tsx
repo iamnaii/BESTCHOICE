@@ -232,6 +232,94 @@ describe('payroll lines table', () => {
   });
 });
 
+// D4 ส่วนที่ 2 (P2-R19.4) — ค่าคอมมีคอลัมน์ของตัวเอง (ไม่ปนรายได้อื่น) · ยอดที่ยกไปงวดหน้าจากคำเตือน CLAWBACK_CARRIED ของบรรทัด
+describe('payroll lines table — commission column', () => {
+  const LINE_COMMISSION = {
+    ...LINE_WICHAI,
+    id: 'l3',
+    userId: 'u3',
+    employeeName: 'ปรีชา ศรีสุข',
+    netPaid: '14250',
+    customIncome: [
+      income({ id: 'i6', accountCode: 'S51-1101', name: 'ค่าคอมมิชชัน (2 รายการ)', amount: '1000.00', source: 'COMMISSION' }),
+      income({ id: 'i7', accountCode: 'S52-1204', name: 'เบี้ยขยัน', amount: '250' }),
+    ],
+    customDeduction: [
+      { id: 'd1', accountCode: 'S51-1101', name: 'หักคืนค่าคอม (2 รายการ)', amount: '1000.00', source: 'COMMISSION_CLAWBACK' },
+    ],
+    systemNotes: { review: [], warnings: [{ code: 'CLAWBACK_CARRIED', deducted: '1000.00', carried: '400.00' }] },
+  };
+  const withCommission = () => {
+    const doc = payrollDoc('POSTED', null);
+    return { ...doc, payroll: { ...doc.payroll, lines: [LINE_SOMSRI, LINE_COMMISSION] } } as unknown as ReturnType<typeof payrollDoc>;
+  };
+
+  it('COMMISSION rows leave รายได้อื่น for their own ค่าคอม column, with a total', async () => {
+    mount(withCommission());
+    const row = await screen.findByRole('row', { name: /ปรีชา ศรีสุข/ });
+    expect(screen.getByRole('columnheader', { name: 'ค่าคอม' })).toBeInTheDocument();
+    const cells = within(row).getAllByRole('cell').map((c) => c.textContent);
+    // พนักงาน · ฐาน · OT/วันหยุด · ค่าคอม · รายได้อื่น · SSO · สุทธิ
+    expect(cells.slice(1)).toEqual(['16,500.00', '0.00', '1,000.00', '250.00', '825.00', '14,250.00']);
+    const somsri = within(await screen.findByRole('row', { name: /สมศรี มีสุข/ })).getAllByRole('cell').map((c) => c.textContent);
+    expect(somsri.slice(1)).toEqual(['15,000.00', '1,484.38', '0.00', '500.00', '750.00', '16,234.38']);
+    const total = within(screen.getByRole('row', { name: /รวม/ })).getAllByRole('cell').map((c) => c.textContent);
+    expect(total).toEqual(['31,500.00', '1,484.38', '1,000.00', '750.00', '1,575.00', '30,484.38']);
+  });
+
+  it('a line with a commission clawback says หักคืนค่าคอม {x} บาท (stored amount) and ยกไปงวดหน้า {y} บาท under the name', async () => {
+    mount(withCommission());
+    const row = await screen.findByRole('row', { name: /ปรีชา ศรีสุข/ });
+    expect(within(row).getByText(/หักคืนค่าคอม 1,000\.00 บาท/)).toBeInTheDocument();
+    expect(within(row).getByText(/ยกไปงวดหน้า 400\.00 บาท/)).toBeInTheDocument();
+    expect(within(await screen.findByRole('row', { name: /สมศรี มีสุข/ })).queryByText(/หักคืนค่าคอม/)).not.toBeInTheDocument();
+    expect(within(await screen.findByRole('row', { name: /สมศรี มีสุข/ })).queryByText(/ยกไปงวดหน้า/)).not.toBeInTheDocument();
+  });
+
+  // P2-R30 — PAID_OUTSIDE เป็นเรื่องก่อนลงบัญชี (ใส่รายการหักเอง) — ใบลงบัญชีแล้วไม่แสดง
+  const commissionWarnings = () => {
+    const doc = withCommission();
+    const lines = doc.payroll.lines.map((l) =>
+      l.employeeName === 'ปรีชา ศรีสุข'
+        ? {
+            ...l,
+            systemNotes: {
+              review: [],
+              warnings: [
+                { code: 'CLAWBACK_CARRIED', deducted: '1000.00', carried: '400.00' },
+                { code: 'CLAWBACK_PAID_OUTSIDE_PAYROLL', reference: 'CT-20260901-0003' },
+                { code: 'COMMISSION_IN_OTHER_DOCUMENT', count: 2, documentId: 'doc-9', documentNumber: 'PR-20261101-0003' },
+              ],
+            },
+          }
+        : l,
+    );
+    return (status: string, gate: Gate) => ({ ...payrollDoc(status, gate), payroll: { ...doc.payroll, lines } }) as unknown as ReturnType<typeof payrollDoc>;
+  };
+  const PAID_OUTSIDE = /ค่าคอม CT-20260901-0003 ถูกเรียกคืน แต่จ่ายไปนอกใบเงินเดือน/;
+
+  it('POSTED: the panel drops CLAWBACK_PAID_OUTSIDE_PAYROLL, keeps CLAWBACK_CARRIED and COMMISSION_IN_OTHER_DOCUMENT', async () => {
+    mount(commissionWarnings()('POSTED', null));
+    const panel = await screen.findByRole('complementary', { name: 'ตรวจก่อนอนุมัติ' });
+    expect(within(panel).queryByText(PAID_OUTSIDE)).not.toBeInTheDocument();
+    expect(within(panel).getByText(/ยกไปงวดหน้า 400\.00 บาท/)).toBeInTheDocument();
+    expect(within(panel).getByText('ค่าคอม 2 รายการของ ปรีชา ศรีสุข อยู่ในใบ PR-20261101-0003 แล้ว')).toBeInTheDocument();
+  });
+
+  it.each(['DRAFT', 'PENDING_APPROVAL', 'APPROVED'])('%s: the panel still shows all three commission warnings', async (status) => {
+    mount(commissionWarnings()(status, { closableAt: null, deviceConflicts: [] }));
+    const panel = await screen.findByRole('complementary', { name: 'ตรวจก่อนอนุมัติ' });
+    expect(within(panel).getByText(PAID_OUTSIDE)).toBeInTheDocument();
+    expect(within(panel).getByText(/ยกไปงวดหน้า 400\.00 บาท/)).toBeInTheDocument();
+  });
+
+  it('a payroll with no commission keeps the original five columns', async () => {
+    mount(payrollDoc('POSTED', null));
+    await screen.findByRole('row', { name: /สมศรี มีสุข/ });
+    expect(screen.queryByRole('columnheader', { name: 'ค่าคอม' })).not.toBeInTheDocument();
+  });
+});
+
 describe('cutoff gate (payrollGate.closableAt in the future)', () => {
   it('DRAFT with approval: info banner and ส่งให้อนุมัติ disabled with ยังไม่ถึงเวลาปิดงวด', async () => {
     mount(payrollDoc('DRAFT', { closableAt: CLOSABLE_AT, deviceConflicts: [] }));
@@ -447,6 +535,47 @@ describe('payroll totals card (replaces ยอดก่อนภาษี / VAT 
     expect(within(card).getByText('ยอดสุทธิที่จ่าย')).toBeInTheDocument();
     expect(screen.queryByText('ยอดก่อนภาษี')).not.toBeInTheDocument();
     expect(within(card).getByText('วันที่จ่ายเงิน')).toBeInTheDocument();
+  });
+
+  // คำตัดสินเจ้าของ 2026-10-29 — ภาษีค่าคอม 3% เป็นบรรทัดของตัวเอง ภาษีเงินเดือนเปลี่ยนชื่อให้แยกกันออก · สุทธิลงตัว
+  it('a commission WHT row splits หัก ณ ที่จ่าย into เงินเดือน and ค่าคอม 3%, shows it under the name, and the card still adds up', async () => {
+    const doc = payrollDoc('POSTED', null);
+    const line = {
+      ...doc.payroll.lines[0],
+      id: 'l9',
+      employeeName: 'สมศรี มีสุข',
+      baseSalary: '15000',
+      ssoEmployee: '750',
+      whtAmount: '0',
+      netPaid: '15069.63',
+      customIncome: [
+        { id: 'w1', accountCode: 'S52-1202', name: 'ค่าล่วงเวลา', amount: '140.63', isTaxable: true, source: 'ATTENDANCE_OT', quantity: '1.5', rate: '93.75', multiplier: '1.5' },
+        { id: 'w2', accountCode: 'S51-1101', name: 'ค่าคอมมิชชัน (2 รายการ)', amount: '1000.00', isTaxable: true, source: 'COMMISSION', quantity: null, rate: null, multiplier: null },
+      ],
+      customDeduction: [
+        { id: 'w3', accountCode: 'S51-1101', name: 'หักคืนค่าคอม (1 รายการ)', amount: '300.00', source: 'COMMISSION_CLAWBACK' },
+        { id: 'w4', accountCode: 'S21-3101', name: 'หัก ณ ที่จ่ายค่าคอม 3%', amount: '21.00', source: 'COMMISSION_WHT' },
+      ],
+      systemNotes: { review: [], warnings: [] },
+    };
+    mount({ ...doc, payroll: { ...doc.payroll, lines: [line] } } as unknown as ReturnType<typeof payrollDoc>);
+    const card = await screen.findByRole('region', { name: 'สรุปยอดใบเงินเดือน' });
+    const value = (label: string) => within(card).getByText(label).nextElementSibling?.textContent;
+    expect(value('รวมรายได้ (ฐาน + OT + ค่าคอม + อื่น)')).toBe('16,140.63');
+    expect(value('หัก ณ ที่จ่าย เงินเดือน')).toBe('- 0.00');
+    expect(value('หัก ณ ที่จ่ายค่าคอม 3%')).toBe('- 21.00');
+    expect(value('หักคืนค่าคอม')).toBe('- 300.00');
+    expect(value('รายการหักอื่น')).toBe('- 0.00');
+    expect(value('ยอดสุทธิที่จ่าย')).toBe('15,069.63');
+    const row = await screen.findByRole('row', { name: /สมศรี มีสุข/ });
+    expect(within(row).getByText('หัก ณ ที่จ่ายค่าคอม 3% 21.00 บาท')).toBeInTheDocument();
+  });
+
+  it('without a commission WHT row the card keeps the single หัก ณ ที่จ่าย line', async () => {
+    mount(payrollDoc('POSTED', null));
+    const card = await screen.findByRole('region', { name: 'สรุปยอดใบเงินเดือน' });
+    expect(within(card).getByText('หัก ณ ที่จ่าย')).toBeInTheDocument();
+    expect(within(card).queryByText('หัก ณ ที่จ่ายค่าคอม 3%')).not.toBeInTheDocument();
   });
 
   it('a chosen pay date is sent with approve', async () => {

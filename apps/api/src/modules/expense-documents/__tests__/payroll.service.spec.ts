@@ -226,10 +226,13 @@ describe('ExpenseDocumentsService.createPayroll — attendance system rows (Payr
         calls.push(`compute:${q.userIds.join(',')}`);
         return {
           attendanceAccountCodes: ['53-1103'],
+          commissionAccountCodes: [],
           rows: q.userIds.map((userId) => ({
             userId,
             autoOtEligible: true,
             attendanceTracked: true,
+            systemDeductions: [],
+            commissionItems: [],
             systemIncome:
               userId === 'emp-a'
                 ? [{ source: 'ATTENDANCE_OT', accountCode: '53-1103', name: 'OT วันทำงาน (1.5 เท่า)', quantity: '1.5', rate: '93.7500', multiplier: '1.5', amount: '140.63', isTaxable: true }]
@@ -259,12 +262,14 @@ describe('ExpenseDocumentsService.createPayroll — attendance system rows (Payr
       user,
     );
 
-  it('locks payroll: then payroll-attendance:* for the linked users (sorted) before compute, on the same tx client', async () => {
+  it('locks payroll: then payroll-attendance:* then payroll-clawback:* for the linked users (sorted) before compute, on the same tx client', async () => {
     await create([{ userId: 'emp-b', baseSalary: 12000 }, { employeeName: 'ไม่ผูก', baseSalary: 5000 }, { userId: 'emp-a', baseSalary: 15000 }]);
     expect(calls).toEqual([
       'payroll:b1:2026-05:FINANCE',
       'payroll-attendance:emp-a:2026-05',
       'payroll-attendance:emp-b:2026-05',
+      'payroll-clawback:emp-a',
+      'payroll-clawback:emp-b',
       'compute:emp-a,emp-b',
     ]);
     expect(systemRows.compute).toHaveBeenCalledWith(prisma, expect.objectContaining({ branchId: 'b1', entityScope: 'FINANCE', payrollPeriod: '2026-05', userIds: ['emp-a', 'emp-b'] }));

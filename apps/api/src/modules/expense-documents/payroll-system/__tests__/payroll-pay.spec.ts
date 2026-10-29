@@ -2,12 +2,16 @@ import { Prisma } from '@prisma/client';
 import { bangkokMidnight } from '../../../../utils/date.util';
 import type { ScheduleRules } from '../../../attendance/attendance-rules';
 import {
+  COMMISSION_WHT_NAME,
+  commissionWithholding,
   displayRate,
   holidayWorkHours,
   isAutoOtEligible,
   monthPayHours,
   payrollAttendanceLockKey,
   payrollCutoff,
+  payrollLineWithheld,
+  payrollTaxableGross,
   systemIncomeAmount,
   type PayDay,
 } from '../payroll-pay';
@@ -110,5 +114,65 @@ describe('payrollCutoff / lock key / eligibility', () => {
     expect(isAutoOtEligible({ employmentType: 'MONTHLY', baseSalary: null })).toBe(false);
     expect(isAutoOtEligible({ employmentType: 'MONTHLY', baseSalary: D(0) })).toBe(false);
     expect(isAutoOtEligible(null)).toBe(false);
+  });
+});
+
+describe('payrollTaxableGross', () => {
+  const line = (o: Partial<Parameters<typeof payrollTaxableGross>[0]> = {}) => ({ baseSalary: D(15000), customIncome: [], customDeduction: [], ...o });
+  it('base + taxable income - clawback; golden 15000.00', () => {
+    const g = payrollTaxableGross(
+      line({
+        customIncome: [{ amount: D(1000), isTaxable: true }],
+        customDeduction: [
+          { amount: D(1000), source: 'COMMISSION_CLAWBACK' },
+          { amount: D(300), source: 'MANUAL' },
+        ],
+      }),
+    );
+    expect(g.toFixed(2)).toBe('15000.00');
+  });
+  it('non-taxable income contributes 0; isTaxable undefined counts', () => {
+    expect(payrollTaxableGross(line({ customIncome: [{ amount: D(500), isTaxable: false }, { amount: D(200) }] })).toFixed(2)).toBe('15200.00');
+  });
+  it('manual deduction contributes 0', () => {
+    expect(payrollTaxableGross(line({ customDeduction: [{ amount: D(300), source: 'MANUAL' }] })).toFixed(2)).toBe('15000.00');
+  });
+  it('a deduction row without a clawback source contributes 0', () => {
+    expect(payrollTaxableGross(line({ customDeduction: [{ amount: D(400) } as never] })).toFixed(2)).toBe('15000.00');
+  });
+  it('tolerates missing arrays', () => {
+    expect(payrollTaxableGross({ baseSalary: D(15000) }).toFixed(2)).toBe('15000.00');
+  });
+  it('floors at 0', () => {
+    expect(payrollTaxableGross(line({ baseSalary: D(100), customDeduction: [{ amount: D(900), source: 'COMMISSION_CLAWBACK' }] })).toFixed(2)).toBe('0.00');
+  });
+});
+
+/** คำตัดสินเจ้าของ 2026-10-29 — หัก ณ ที่จ่ายค่าคอม 3% ของ (ค่าคอมงวดนี้ − หักคืนในบรรทัดเดียวกัน) ไม่ต่ำกว่า 0 · ยื่น ภ.ง.ด.1 ใบเดียวกับภาษีเงินเดือน */
+describe('commissionWithholding / payrollLineWithheld', () => {
+  const D = (v: number | string) => new Prisma.Decimal(v);
+
+  it('3% of commission after clawback, HALF_UP to 2 dp · 0 when the clawback eats it all', () => {
+    expect(commissionWithholding(D(1000), D(300)).toFixed(2)).toBe('21.00');
+    expect(commissionWithholding(D(1000), D(0)).toFixed(2)).toBe('30.00');
+    expect(commissionWithholding(D('16.50'), D(0)).toFixed(2)).toBe('0.50'); // 0.495 → 0.50
+    expect(commissionWithholding(D('16.49'), D(0)).toFixed(2)).toBe('0.49'); // 0.4947 → 0.49
+    expect(commissionWithholding(D(500), D(500)).toFixed(2)).toBe('0.00');
+    expect(commissionWithholding(D(0), D(0)).toFixed(2)).toBe('0.00');
+    expect(COMMISSION_WHT_NAME).toBe('หัก ณ ที่จ่ายค่าคอม 3%');
+  });
+
+  it('withheld = salary WHT + COMMISSION_WHT deductions only (clawback / manual rows are not tax)', () => {
+    expect(
+      payrollLineWithheld({
+        whtAmount: D(420.83),
+        customDeduction: [
+          { amount: D(21), source: 'COMMISSION_WHT' },
+          { amount: D(300), source: 'COMMISSION_CLAWBACK' },
+          { amount: D(100), source: 'MANUAL' },
+        ],
+      }).toFixed(2),
+    ).toBe('441.83');
+    expect(payrollLineWithheld({ whtAmount: D(0), customDeduction: null }).toFixed(2)).toBe('0.00');
   });
 });

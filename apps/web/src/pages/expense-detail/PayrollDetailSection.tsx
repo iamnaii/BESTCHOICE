@@ -3,7 +3,7 @@ import { Link } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import Decimal from 'decimal.js';
 import { toast } from 'sonner';
-import { AlertTriangle, Clock, Lock, Pencil, Printer, Undo2 } from 'lucide-react';
+import { AlertTriangle, ArrowRightToLine, Clock, Lock, Pencil, Printer, Undo2 } from 'lucide-react';
 import api from '@/lib/api';
 import ScreenTable from '@/components/ui/ScreenTable';
 import { Button } from '@/components/ui/button';
@@ -18,7 +18,7 @@ import {
   type Viewer,
 } from '@/components/expense-form-v4/payroll-system/PayrollReviewPanel';
 import { isAttendanceSource, payrollPeriodShort } from '@/components/expense-form-v4/payroll-system/PayrollSystemRows';
-import type { StoredPayrollLine } from '@/components/expense-form-v4/payroll-system/payroll-lines';
+import { clawbackCarriedOf, type StoredPayrollLine } from '@/components/expense-form-v4/payroll-system/payroll-lines';
 import {
   BANK_CSV_NEEDS_POST,
   DRAFT_EDIT_CAPTION,
@@ -30,6 +30,9 @@ import {
   STALE_EDIT_HINT,
   attendanceLockedText,
   bankCsvSkippedText,
+  carryForwardText,
+  clawbackDeductedText,
+  commissionWhtDeductedText,
   deviceConflictReason,
   deviceConflictText,
   postCutoffText,
@@ -37,6 +40,7 @@ import {
   submitCutoffText,
 } from '@/components/expense-form-v4/payroll-system/payroll-copy';
 import {
+  PAYROLL_EDITABLE_STATUSES,
   isPayrollEditable,
   payrollEditPath,
   type PayrollConflict,
@@ -117,12 +121,26 @@ export function usePayrollGateRefresh(docId: string | undefined, closableAt: str
 const DEVICE_CONFLICT_FLAG = 'DEVICE_CONFLICT';
 
 /**
+ * คำเตือนที่บอกให้ทำอะไรก่อนลงบัญชี (ใส่รายการหักเองในใบนี้) — หมดความหมายเมื่อใบลงบัญชี/กลับรายการแล้ว
+ * (P2-R30) · ยกไปงวดหน้า และค่าคอมที่อยู่ในใบอื่น ยังเป็นข้อเท็จจริงของใบ — แสดงต่อ
+ */
+const PRE_POST_ONLY_WARNINGS = ['CLAWBACK_PAID_OUTSIDE_PAYROLL'];
+
+/**
  * วันที่ต้องตรวจ/คำเตือนที่เก็บไว้ตอนบันทึก เทียบกับด่านสด: เวลาปิดงวดใช้แบนเนอร์แทน · ธงเครื่องถูกใช้ซ้อนที่เจ้าของล้างแล้ว
  * (ไม่อยู่ใน `gate.deviceConflicts`) ไม่แสดง และวันที่ไม่เหลือธงก็ไม่แสดง · ไม่มีด่าน (ลงบัญชี/กลับรายการแล้ว) = ตามที่เก็บ
+ * · ใบที่ไม่อยู่ในสถานะแก้ไข/อนุมัติได้ ไม่แสดงคำเตือนก่อนลงบัญชี (PRE_POST_ONLY_WARNINGS)
  */
-function liveReviewNotes(notes: PayrollSystemNotes | null | undefined, gate: PayrollGateView | null | undefined) {
+function liveReviewNotes(
+  notes: PayrollSystemNotes | null | undefined,
+  gate: PayrollGateView | null | undefined,
+  status: string,
+) {
   if (!notes) return null;
-  const warnings = notes.warnings.filter((w) => w.code !== 'NOT_YET_CLOSABLE');
+  const beforePosting = PAYROLL_EDITABLE_STATUSES.includes(status);
+  const warnings = notes.warnings.filter(
+    (w) => w.code !== 'NOT_YET_CLOSABLE' && (beforePosting || !PRE_POST_ONLY_WARNINGS.includes(w.code)),
+  );
   if (!gate) return { ...notes, warnings };
   const stillFlagged = new Set(gate.deviceConflicts.map((d) => d.dayId));
   const review = notes.review.flatMap((day) => {
@@ -139,12 +157,18 @@ const dec = (v: string | null | undefined) => new Decimal(v || '0');
 interface LineTotals {
   base: Decimal;
   attendance: Decimal;
+  commission: Decimal;
   other: Decimal;
   sso: Decimal;
   net: Decimal;
 }
 
-/** แยกรายได้ของบรรทัดเป็น OT/วันหยุด (จากระบบลงเวลา) กับรายได้อื่น — ยอดของแต่ละแถวคือยอดที่เก็บไว้ */
+const isCommissionSource = (source: string) => source === 'COMMISSION';
+
+/**
+ * แยกรายได้ของบรรทัดเป็น OT/วันหยุด (จากระบบลงเวลา) · ค่าคอม (ส่วนที่ 2 — P2-R19.4) · รายได้อื่น —
+ * ยอดของแต่ละแถวคือยอดที่เก็บไว้ · หักคืนค่าคอมอยู่ในสุทธิแล้ว (NET_FOOTNOTE: หลังหักรายการหักอื่น)
+ */
 function lineTotals(l: PayrollDetailLine): LineTotals {
   const rows = l.customIncome ?? [];
   const sum = (pick: (source: string) => boolean) =>
@@ -152,19 +176,29 @@ function lineTotals(l: PayrollDetailLine): LineTotals {
   return {
     base: dec(l.baseSalary),
     attendance: sum(isAttendanceSource),
-    other: sum((source) => !isAttendanceSource(source)),
+    commission: sum(isCommissionSource),
+    other: sum((source) => !isAttendanceSource(source) && !isCommissionSource(source)),
     sso: dec(l.ssoEmployee),
     net: dec(l.netPaid),
   };
 }
 
-const COLUMNS: Array<[keyof LineTotals, string]> = [
+const ALL_COLUMNS: Array<[keyof LineTotals, string]> = [
   ['base', 'ฐาน'],
   ['attendance', 'OT / วันหยุด'],
+  ['commission', 'ค่าคอม'],
   ['other', 'รายได้อื่น'],
   ['sso', 'SSO'],
   ['net', 'สุทธิ'],
 ];
+
+/** ใบที่ไม่มีค่าคอมเลย (ฝั่ง FINANCE / ใบก่อนส่วนที่ 2) คงห้าคอลัมน์เดิม — งบความกว้างตารางข้างแผงตรวจ */
+const hasCommission = (lines: PayrollDetailLine[]) =>
+  lines.some(
+    (l) =>
+      (l.customIncome ?? []).some((r) => isCommissionSource(r.source ?? 'MANUAL')) ||
+      (l.customDeduction ?? []).some((r) => r.source === 'COMMISSION_CLAWBACK'),
+  );
 
 function PayrollLinesTable({
   lines,
@@ -175,8 +209,20 @@ function PayrollLinesTable({
   headingRef: RefObject<HTMLHeadingElement | null>;
 }) {
   const titleId = useId();
-  const rows = lines.map((l) => ({ line: l, totals: lineTotals(l) }));
-  const grand = COLUMNS.reduce(
+  const columns = hasCommission(lines) ? ALL_COLUMNS : ALL_COLUMNS.filter(([key]) => key !== 'commission');
+  const rows = lines.map((l) => {
+    const clawbacks = (l.customDeduction ?? []).filter((r) => r.source === 'COMMISSION_CLAWBACK');
+    const wht = (l.customDeduction ?? []).filter((r) => r.source === 'COMMISSION_WHT');
+    return {
+      line: l,
+      totals: lineTotals(l),
+      // ยอดที่เก็บไว้ (Σ แถวหักคืนค่าคอมของบรรทัด) — ไม่คิดใหม่
+      clawback: clawbacks.length > 0 ? clawbacks.reduce((s, r) => s.plus(dec(r.amount)), new Decimal(0)).toFixed(2) : null,
+      commissionWht: wht.length > 0 ? wht.reduce((s, r) => s.plus(dec(r.amount)), new Decimal(0)).toFixed(2) : null,
+      carried: clawbackCarriedOf(l.systemNotes)?.carried,
+    };
+  });
+  const grand = columns.reduce(
     (acc, [key]) => ({ ...acc, [key]: rows.reduce((s, r) => s.plus(r.totals[key]), new Decimal(0)) }),
     {} as LineTotals,
   );
@@ -194,7 +240,7 @@ function PayrollLinesTable({
         <thead className="bg-muted/50 text-muted-foreground">
           <tr>
             <th className="px-4 py-2 text-left font-medium leading-snug">พนักงาน</th>
-            {COLUMNS.map(([key, label]) => (
+            {columns.map(([key, label]) => (
               <th key={key} className="px-4 py-2 text-right font-medium leading-snug whitespace-nowrap">
                 {label}
               </th>
@@ -202,10 +248,22 @@ function PayrollLinesTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
-          {rows.map(({ line, totals }) => (
+          {rows.map(({ line, totals, clawback, commissionWht, carried }) => (
             <tr key={line.id}>
-              <td className="px-4 py-2 leading-snug"><NameWords name={line.employeeName} /></td>
-              {COLUMNS.map(([key]) => (
+              <td className="px-4 py-2 leading-snug">
+                <NameWords name={line.employeeName} />
+                {(clawback || carried) && (
+                  // หักคืนค่าคอม (ยอดที่เก็บ) · ยกไปงวดหน้า (CLAWBACK_CARRIED — ประโยคเต็มอยู่ในแผงตรวจ)
+                  <span className="mt-0.5 flex items-center gap-1 text-xs text-warning-strong leading-snug">
+                    <ArrowRightToLine className="size-3 shrink-0" aria-hidden="true" />
+                    {[clawback && clawbackDeductedText(clawback), carried && carryForwardText(carried)].filter(Boolean).join(' · ')}
+                  </span>
+                )}
+                {commissionWht && (
+                  <span className="mt-0.5 block text-xs text-muted-foreground leading-snug">{commissionWhtDeductedText(commissionWht)}</span>
+                )}
+              </td>
+              {columns.map(([key]) => (
                 <td
                   key={key}
                   className={`px-4 py-2 text-right tabular-nums whitespace-nowrap ${key === 'net' ? 'font-semibold' : ''}`}
@@ -221,7 +279,7 @@ function PayrollLinesTable({
             <th scope="row" className="px-4 py-2 text-left leading-snug">
               รวม
             </th>
-            {COLUMNS.map(([key]) => (
+            {columns.map(([key]) => (
               <td key={key} className="px-4 py-2 text-right tabular-nums whitespace-nowrap">
                 {money(grand[key])}
               </td>
@@ -335,7 +393,10 @@ export function PayrollDetailSection({
     linesHeadingRef.current?.focus();
     onDismissStale();
   };
-  const reviewLines = lines.map((l) => ({ employeeName: l.employeeName, systemNotes: liveReviewNotes(l.systemNotes, gate) }));
+  const reviewLines = lines.map((l) => ({
+    employeeName: l.employeeName,
+    systemNotes: liveReviewNotes(l.systemNotes, gate, doc.status),
+  }));
   // คนที่ผูกทะเบียน = คนที่ลงเวลาเดือนนี้ถูกล็อกเมื่อใบลงบัญชีแล้ว
   const linkedPeople = lines.filter((l) => l.userId).length;
 
@@ -518,8 +579,14 @@ export function PayrollTotalsCard({
   const income = sum((l) => (l.customIncome ?? []).reduce((s, r) => s.plus(dec(r.amount)), dec(l.baseSalary)));
   const sso = sum((l) => dec(l.ssoEmployee));
   const wht = sum((l) => dec(l.whtAmount));
-  const deductions = sum((l) => (l.customDeduction ?? []).reduce((s, r) => s.plus(dec(r.amount)), new Decimal(0)));
-  const net = income.minus(sso).minus(wht).minus(deductions);
+  // ส่วนที่ 2 — หักคืนค่าคอม (COMMISSION_CLAWBACK) แยกบรรทัดให้เห็น · รายการหักที่กรอกเองเป็น "รายการหักอื่น"
+  const deductionOf = (pick: (source: string) => boolean) =>
+    sum((l) => (l.customDeduction ?? []).filter((r) => pick(r.source ?? 'MANUAL')).reduce((s, r) => s.plus(dec(r.amount)), new Decimal(0)));
+  const clawback = deductionOf((source) => source === 'COMMISSION_CLAWBACK');
+  // หัก ณ ที่จ่ายค่าคอม 3% (COMMISSION_WHT — เจ้าของ 2026-10-29) แยกบรรทัด · มีแล้วภาษีเงินเดือนเรียกว่า "หัก ณ ที่จ่าย เงินเดือน"
+  const commissionWht = deductionOf((source) => source === 'COMMISSION_WHT');
+  const deductions = deductionOf((source) => source !== 'COMMISSION_CLAWBACK' && source !== 'COMMISSION_WHT');
+  const net = income.minus(sso).minus(wht).minus(commissionWht).minus(clawback).minus(deductions);
   const today = toBangkokDateString();
   const row = (label: string, value: string, strong = false) => (
     <div className={`flex justify-between gap-6 ${strong ? 'border-t border-border pt-1.5 font-semibold' : ''}`}>
@@ -533,7 +600,9 @@ export function PayrollTotalsCard({
         <dl className="space-y-1.5 text-sm">
           {row('รวมรายได้ (ฐาน + OT + ค่าคอม + อื่น)', money(income))}
           {row('หักประกันสังคม', `- ${money(sso)}`)}
-          {row('หัก ณ ที่จ่าย', `- ${money(wht)}`)}
+          {row(commissionWht.gt(0) ? 'หัก ณ ที่จ่าย เงินเดือน' : 'หัก ณ ที่จ่าย', `- ${money(wht)}`)}
+          {commissionWht.gt(0) && row('หัก ณ ที่จ่ายค่าคอม 3%', `- ${money(commissionWht)}`)}
+          {clawback.gt(0) && row('หักคืนค่าคอม', `- ${money(clawback)}`)}
           {row('รายการหักอื่น', `- ${money(deductions)}`)}
           {row('ยอดสุทธิที่จ่าย', money(net), true)}
         </dl>

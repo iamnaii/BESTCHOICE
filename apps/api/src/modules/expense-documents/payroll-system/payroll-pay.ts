@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import type { AttendanceDayKind, EmploymentType } from '@prisma/client';
+import type { AttendanceDayKind, EmploymentType, PayrollDeductionSource } from '@prisma/client';
 import { bangkokMidnight } from '../../../utils/date.util';
 import { computeDaySummary, parseClock, roundOtMinutes, type ScheduleRules } from '../../attendance/attendance-rules';
 
@@ -109,6 +109,63 @@ export function payrollAttendanceLockKey(userId: string, period: string): string
   return `payroll-attendance:${userId}:${period}`;
 }
 
+/**
+ * ล็อกค่าคอม/หักคืนค่าคอมของพนักงานขาย (D4 ส่วนที่ 2 · P2-R1) — ตัวสุดท้ายในลำดับ
+ * `post:${docId}` → `payroll:…` → `payroll-attendance:*` → นี่ (บันทึก / ส่ง / อนุมัติ / ลงบัญชี) · กลับรายการ: `post:` → นี่
+ * ไม่มีงวด: ใบงวด ต.ค. กับ พ.ย. แย่งค่าคอมตัวเดียวกันได้ (period ≤ งวด) · ผู้เขียนหักคืน (helper / cron / ยกเลิกใบขาย) ไม่ถือล็อกนี้
+ */
+export function payrollClawbackLockKey(userId: string): string {
+  return `payroll-clawback:${userId}`;
+}
+
 export function isAutoOtEligible(p: { employmentType: EmploymentType; baseSalary: Prisma.Decimal | null } | null): boolean {
   return !!p && p.employmentType === 'MONTHLY' && !!p.baseSalary && p.baseSalary.gt(0);
+}
+
+/**
+ * ฐานภาษี ภ.ง.ด.1 ของแถวเงินเดือน (D4 ส่วนที่ 2 · P2-R18) = ฐาน + รายได้ที่เสียภาษี − หักคืนค่าคอม (ขั้นต่ำ 0)
+ * - รายการหักมือ (MANUAL) ไม่กระทบฐาน · หักคืนค่าคอมคือการเรียกคืนค่าคอมที่เคยจ่าย/เสียภาษีไปแล้ว
+ * - นับเฉพาะแถวที่ `source === 'COMMISSION_CLAWBACK'` (ต้องส่ง `source` มาเสมอ)
+ */
+export function payrollTaxableGross(line: {
+  baseSalary: Prisma.Decimal;
+  customIncome?: Array<{ amount: Prisma.Decimal; isTaxable?: boolean }> | null;
+  customDeduction?: Array<{ amount: Prisma.Decimal; source: PayrollDeductionSource }> | null;
+}): Prisma.Decimal {
+  const income = (line.customIncome ?? []).reduce(
+    (s, r) => (r.isTaxable !== false ? s.add(r.amount) : s),
+    new Prisma.Decimal(0),
+  );
+  const clawback = (line.customDeduction ?? []).reduce(
+    (s, r) => (r.source === 'COMMISSION_CLAWBACK' ? s.add(r.amount) : s),
+    new Prisma.Decimal(0),
+  );
+  const gross = line.baseSalary.add(income).sub(clawback);
+  return gross.lt(0) ? new Prisma.Decimal(0) : gross;
+}
+
+/**
+ * หัก ณ ที่จ่ายค่าคอม (คำตัดสินเจ้าของ 2026-10-29) = 3% ของ (ค่าคอมงวดนี้ − หักคืนค่าคอมในบรรทัดเดียวกัน) ไม่ต่ำกว่า 0 ·
+ * HALF_UP 2 ตำแหน่งครั้งเดียวต่อบรรทัด · แยกแถวจากภาษีเงินเดือน (`whtAmount`) แต่ยื่น ภ.ง.ด.1 ใบเดียวกัน (`payrollLineWithheld`)
+ */
+export const COMMISSION_WHT_RATE = new Prisma.Decimal('0.03');
+export const COMMISSION_WHT_NAME = 'หัก ณ ที่จ่ายค่าคอม 3%';
+
+export function commissionWithholding(commission: Prisma.Decimal, clawback: Prisma.Decimal): Prisma.Decimal {
+  const base = commission.minus(clawback);
+  return base.lte(0) ? new Prisma.Decimal(0) : base.mul(COMMISSION_WHT_RATE).toDecimalPlaces(2, HALF_UP);
+}
+
+/**
+ * ภาษีหัก ณ ที่จ่ายของแถวเงินเดือนที่ยื่น ภ.ง.ด.1 / 50 ทวิ / นำส่ง = ภาษีเงินเดือน + รายการหัก `COMMISSION_WHT`
+ * (ต้องส่ง `source` ของรายการหักมาเสมอ — หักคืนค่าคอม/รายการหักมือไม่ใช่ภาษี)
+ */
+export function payrollLineWithheld(line: {
+  whtAmount: Prisma.Decimal;
+  customDeduction?: Array<{ amount: Prisma.Decimal; source: PayrollDeductionSource }> | null;
+}): Prisma.Decimal {
+  return (line.customDeduction ?? []).reduce(
+    (s, r) => (r.source === 'COMMISSION_WHT' ? s.add(r.amount) : s),
+    new Prisma.Decimal(line.whtAmount.toString()),
+  );
 }

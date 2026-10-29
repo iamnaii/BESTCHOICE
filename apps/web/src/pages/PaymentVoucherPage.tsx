@@ -37,8 +37,17 @@ import {
   rateText,
   payrollPeriodShort,
 } from '@/components/expense-form-v4/payroll-system/PayrollSystemRows';
-import { SLIP_NEEDS_POST } from '@/components/expense-form-v4/payroll-system/payroll-copy';
-import type { PayrollAttendanceSummary } from '@/components/expense-form-v4/types';
+import { SLIP_NEEDS_POST, clawbackCarriedText } from '@/components/expense-form-v4/payroll-system/payroll-copy';
+import {
+  clawbackCarriedOf,
+  liveCommissionItems,
+  type StoredCommissionItem,
+} from '@/components/expense-form-v4/payroll-system/payroll-lines';
+import type {
+  PayrollAttendanceSummary,
+  PayrollCommissionItemView,
+  PayrollSystemNotes,
+} from '@/components/expense-form-v4/types';
 
 export interface ExpenseLine {
   lineNo: number;
@@ -90,9 +99,15 @@ export interface PayrollSlipLine {
     accountCode: string;
     name: string;
     amount: string;
+    /** Payroll D4 ส่วนที่ 2 — MANUAL | COMMISSION_CLAWBACK (ไม่มี = ข้อมูลก่อนส่วนที่ 2 กรอกเอง) */
+    source?: string;
   }>;
   /** Payroll D4 — สรุปลงเวลาที่ server เก็บไว้ (ข้อมูลประกอบ ไม่มีผลต่อยอดเงิน) */
   attendanceSummary?: PayrollAttendanceSummary | null;
+  /** Payroll D4 ส่วนที่ 2 — ค่าคอมที่บรรทัดจ่าย/หักคืน (include เดียวกับหน้ารายละเอียด) */
+  commissionItems?: StoredCommissionItem[];
+  /** Payroll D4 ส่วนที่ 2 — คำเตือนที่เก็บไว้ (สลิปอ่าน CLAWBACK_CARRIED) */
+  systemNotes?: PayrollSystemNotes | null;
 }
 
 interface VoucherDoc {
@@ -209,7 +224,7 @@ export default function PaymentVoucherPage() {
         onRetry={docQuery.refetch}
       >
         {docQuery.data && (
-          <div className="max-w-full overflow-x-auto print:overflow-visible" role="region" aria-label="ตัวอย่างเอกสาร" tabIndex={0}>
+          <div className="relative max-w-full overflow-x-auto print:overflow-visible" role="region" aria-label="ตัวอย่างเอกสาร" tabIndex={0}>
             <VoucherSheet doc={docQuery.data} />
           </div>
         )}
@@ -428,18 +443,67 @@ function PettyCashSheet({
  * `pageBreakBefore: 'always'` from slip #2 onwards so the browser print
  * dialog renders one slip per page.
  *
- * Layout (mockup 02B Payroll Slip):
+ * Layout (mockup 02B Payroll Slip / board 3):
  *   - Company header
  *   - Title: ใบจ่ายเงินเดือน + slip n/N
  *   - Employee meta (name, tax ID, period, doc no)
  *   - Earnings table: base + custom income (with ม.42 flag if non-taxable) —
  *     Payroll D4: ชม. × อัตรา column (stored hours × stored rate at 2 dp; the
- *     amount is the stored amount, never recomputed) + (ปรับปรุงงวดก่อน) label
+ *     amount is the stored amount, never recomputed) + (ปรับปรุงงวดก่อน) label ·
+ *     Part 2: the COMMISSION row carries ONE line of commission references
+ *     (max 2, then "และอีก k รายการ", truncated, never wrapped)
+ *   - Deductions table: SSO + WHT + custom deduction (Part 2: the server's
+ *     COMMISSION_CLAWBACK row prints like any deduction, no item list) + the
+ *     CLAWBACK_CARRIED sentence on one full-width line under the table
  *   - Attendance summary box (information only, does not change pay)
- *   - Deductions table: SSO + WHT + custom deduction
  *   - Net paid + Thai-text amount
  *   - 2 signature slots (ผู้รับเงิน · ผู้จัดทำ)
+ *
+ * One A4 sheet per employee (R22 / P2-R19.5 / P2-R31) — print is 16 pt everywhere,
+ * so a "small" line costs a full line on paper. Every slip has ONE fixed print layout
+ * (`.payroll-slip` rules in DocumentStyles): tight cell padding, section gaps, header
+ * and signature block, meta labels as wide as their own text, the earnings label
+ * inside the table header and the attendance items flowing on two lines. The slip
+ * opts out of fitPaperSpacing (`data-bc-paper-fit="fixed"`): Chromium dispatches
+ * `beforeprint` for window.print() while the screen media type is still active, so
+ * spacing tiers chosen from that measurement would not match the paper. Pinned by
+ * DOC-04 ("a slip with attendance OT rows … five commissions and a clawback").
  */
+/**
+ * น้ำหนักความยาวของสลิปหนึ่งคน (หน่วย ≈ หนึ่งแถวตาราง) — แถวรายได้ (ฐาน + รายการ + รวม) · แถวหัก (ประกันสังคม + หัก ณ ที่จ่าย +
+ * รายการ + รวม) · ชื่อรายการยาว (ตัดสองบรรทัด) นับ 2 · บรรทัดเลขอ้างอิงค่าคอม · ประโยคยกไปงวดหน้า · กล่องสรุปเวลา (2) · หมายเหตุ
+ */
+export function slipLayoutWeight(p: {
+  incomeNames: string[];
+  deductionNames: string[];
+  commissionDetail: boolean;
+  carryNote: boolean;
+  attendanceBox: boolean;
+  note: boolean;
+}): number {
+  const rows = (names: string[]) => names.reduce((n, name) => n + (name.length > SLIP_ROW_WRAP_CHARS ? 2 : 1), 0);
+  return (
+    1 + rows(p.incomeNames) + 1 +
+    2 + rows(p.deductionNames) + 1 +
+    (p.commissionDetail ? 1 : 0) + (p.carryNote ? 1 : 0) + (p.attendanceBox ? 2 : 0) + (p.note ? 1 : 0)
+  );
+}
+
+/** ชื่อรายการยาวเกินนี้ตัดเป็นสองบรรทัดในคอลัมน์รายการของสลิป A4 */
+const SLIP_ROW_WRAP_CHARS = 40;
+/**
+ * ชั้นขนาดตัวอักษรตอนพิมพ์ (คำตัดสินเจ้าของ 2026-10-28 "ย่อตัวอักษรคนที่ล้น") — วัดจาก PDF A4 จริง (สคริปต์ calib ของงานตรวจ UI):
+ * ขนาดเดิมพอดีหนึ่งแผ่นถึงน้ำหนัก 18 · แบบย่อ (13.5 pt) ถึง 25 · แบบย่อมาก (12 pt) ถึง 32 — ตั้งเผื่อไว้หนึ่งหน่วย ·
+ * เกิน 32 (รายการรวมราว 25 แถว) ต่อหน้า 2
+ */
+export const SLIP_FULL_SIZE_MAX_WEIGHT = 17;
+export const SLIP_DENSE_MAX_WEIGHT = 24;
+
+export function slipDensity(weight: number): '' | 'payroll-slip-dense' | 'payroll-slip-denser' {
+  if (weight <= SLIP_FULL_SIZE_MAX_WEIGHT) return '';
+  return weight <= SLIP_DENSE_MAX_WEIGHT ? 'payroll-slip-dense' : 'payroll-slip-denser';
+}
+
 function PayrollSlipSheet({
   doc,
   line,
@@ -461,6 +525,18 @@ function PayrollSlipSheet({
   const net = new Decimal(line.netPaid || '0');
   const customIncome = line.customIncome ?? [];
   const customDeduction = line.customDeduction ?? [];
+  // D4 ส่วนที่ 2 (P2-R19.5) — ค่าคอมที่บรรทัดจ่าย: บรรทัดเดียวใต้แถวค่าคอม · หักคืนค่าคอม: แถวหักของ server (ไม่มีรายการย่อย) +
+  // ประโยคยกไปงวดหน้าบรรทัดเดียวใต้ตารางหัก — R22 หนึ่งคนหนึ่งแผ่น A4 (ปักด้วย DOC-04 สลิปค่าคอม)
+  const payItems = liveCommissionItems(line.commissionItems).filter((i) => i.kind === 'PAY');
+  const carried = clawbackCarriedOf(line.systemNotes);
+  // คำตัดสินเจ้าของ 2026-10-29 (กระดาน 7) — หัก ณ ที่จ่ายค่าคอม 3% พิมพ์ต่อจากภาษีเงินเดือน พร้อมฐาน 3% × (ค่าคอม − หักคืน)
+  const commissionWhtRows = customDeduction.filter((r) => r.source === 'COMMISSION_WHT');
+  const otherDeductions = customDeduction.filter((r) => r.source !== 'COMMISSION_WHT');
+  const sumOf = (rows: Array<{ amount: string }>) => rows.reduce<Decimal>((s, r) => s.plus(new Decimal(r.amount || '0')), new Decimal(0));
+  const commissionWht = sumOf(commissionWhtRows);
+  const commissionWhtBase = sumOf(customIncome.filter((r) => r.source === 'COMMISSION')).minus(
+    sumOf(customDeduction.filter((r) => r.source === 'COMMISSION_CLAWBACK')),
+  );
 
   const sumIncome = customIncome.reduce<Decimal>(
     (s, r) => s.plus(new Decimal(r.amount || '0')),
@@ -476,10 +552,23 @@ function PayrollSlipSheet({
   const deductionsTotal = sso.plus(wht).plus(sumDeduction);
 
   const amountInText = numToThaiText(parseFloat(line.netPaid));
+  const showAttendance = !!line.attendanceSummary && line.attendanceSummary.attendanceTracked !== false && !!doc.payroll?.payrollPeriod;
+  // คำตัดสินเจ้าของ 2026-10-28 — สลิปที่ยาวเกินหนึ่งแผ่นย่อตัวอักษรตอนพิมพ์ (ใบอื่นขนาดเดิม)
+  const density = slipDensity(slipLayoutWeight({
+    incomeNames: customIncome.map((r) => r.name),
+    deductionNames: customDeduction.map((r) => r.name),
+    commissionDetail: payItems.length > 0,
+    carryNote: !!carried,
+    attendanceBox: showAttendance,
+    note: !!doc.note,
+  }));
 
   return (
     <article
-      className="voucher-sheet bc-document standard-voucher bg-white border border-border rounded-md p-8 shadow-sm print:border-0 print:p-0 print:shadow-none"
+      // จอแคบ (มือถือ): สลิปกว้างขั้นต่ำ 40rem แล้วเลื่อนในกรอบตัวอย่างเอกสาร — เดิมช่องรายการค่าคอมเหลือ ~31px · ตอนพิมพ์ไม่มีขั้นต่ำ
+      // P2-R31 — ระยะพิมพ์ชุดเดียวที่พอดีหนึ่งแผ่นเอง ไม่ให้ fitPaperSpacing (วัดตอน screen media) เลือกชั้นระยะให้
+      data-bc-paper-fit="fixed"
+      className={`voucher-sheet bc-document standard-voucher payroll-slip${density ? ` ${density}` : ''} min-w-[40rem] bg-white border border-border rounded-md p-8 shadow-sm print:min-w-0 print:border-0 print:p-0 print:shadow-none`}
       style={{
         minHeight: '270mm',
         pageBreakBefore: slipNo > 1 ? 'always' : 'auto',
@@ -488,7 +577,7 @@ function PayrollSlipSheet({
       <DocumentHeader company={companyName} address={companyAddress} taxId={companyTaxId} logoUrl={companyLogoUrl}
         title="ใบจ่ายเงินเดือน" subtitle={`PAYROLL · ${slipNo}/${totalSlips}`} number={doc.number} date={formatThaiDateLong(doc.documentDate)} />
 
-      <section className="grid grid-cols-2 gap-x-8 gap-y-2 mt-5 text-sm">
+      <section className="payroll-slip-meta grid grid-cols-2 gap-x-8 gap-y-2 mt-5 text-sm">
         <MetaRow label="ชื่อพนักงาน" value={line.employeeName} />
         <MetaRow label="เลขประจำตัวผู้เสียภาษี" value={line.employeeTaxId ?? '—'} mono />
         {/* กระดาน 3 — "งวด ตุลาคม 2569" */}
@@ -504,13 +593,17 @@ function PayrollSlipSheet({
       <div>
       {/* Earnings */}
       <section className="mt-6">
-        <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">
+        {/* P2-R19.5 — ตอนพิมพ์ ป้ายนี้ย้ายเข้าหัวตาราง (ประหยัดหนึ่งบรรทัด — หนึ่งคนหนึ่งแผ่น A4) */}
+        <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider print:hidden">
           รายได้ (Earnings)
         </p>
         <table className="w-full text-sm border border-border">
           <thead className="bg-muted/40">
             <tr>
-              <th className="border border-border p-2 text-left font-medium leading-snug">รายการ</th>
+              <th className="border border-border p-2 text-left font-medium leading-snug">
+                <span className="print:hidden">รายการ</span>
+                <span className="hidden print:inline">รายได้ (Earnings)</span>
+              </th>
               <th className="border border-border p-2 text-right font-medium leading-snug w-36">ชม. × อัตรา</th>
               <th className="border border-border p-2 text-right font-medium leading-snug w-32">จำนวนเงิน</th>
             </tr>
@@ -527,12 +620,13 @@ function PayrollSlipSheet({
             </tr>
             {customIncome.map((ci) => (
               <tr key={ci.id}>
-                <td className="border border-border p-2">
+                <td className={`border border-border p-2${ci.source === 'COMMISSION' ? ' max-w-0' : ''}`}>
                   <span className="font-mono text-xs text-muted-foreground mr-2">
                     {ci.accountCode}
                   </span>
                   {ci.name}
                   {ci.source === 'ADJUSTMENT' && !ci.name.includes('ปรับปรุงงวดก่อน') && ' (ปรับปรุงงวดก่อน)'}
+                  {ci.source === 'COMMISSION' && <SlipCommissionDetail items={payItems} />}
                   {!ci.isTaxable && (
                     <span className="ml-2 inline-block rounded bg-info/10 px-1.5 py-0.5 text-[10px] text-info">
                       ม.42 ยกเว้นภาษี
@@ -559,7 +653,7 @@ function PayrollSlipSheet({
 
       {/* Deductions */}
       <section className="mt-5">
-        <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">
+        <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider print:mb-0.5">
           รายการหัก (Deductions)
         </p>
         {/* คอลัมน์เดียวกับตารางรายได้ (รายการ · ชม. × อัตรา · จำนวนเงิน) — ยอดตรงแนวกัน */}
@@ -578,15 +672,28 @@ function PayrollSlipSheet({
                 </td>
               </tr>
             )}
-            {wht.gt(0) && (
+            {(wht.gt(0) || commissionWhtRows.length > 0) && (
               <tr>
-                <td colSpan={2} className="border border-border p-2">หัก ณ ที่จ่าย (ภ.ง.ด. 1)</td>
+                <td colSpan={2} className="border border-border p-2">
+                  {commissionWhtRows.length > 0 ? 'หัก ณ ที่จ่าย เงินเดือน (ภ.ง.ด. 1)' : 'หัก ณ ที่จ่าย (ภ.ง.ด. 1)'}
+                </td>
                 <td className="border border-border p-2 text-right tabular-nums">
                   {formatNumberDecimal(wht.toString())}
                 </td>
               </tr>
             )}
-            {customDeduction.map((cd) => (
+            {commissionWhtRows.length > 0 && (
+              <tr>
+                <td className="border border-border p-2">หัก ณ ที่จ่ายค่าคอม 3% (ภ.ง.ด. 1)</td>
+                <td className="border border-border p-2 text-right tabular-nums text-muted-foreground">
+                  {`3% × ${formatNumberDecimal(commissionWhtBase.toString())}`}
+                </td>
+                <td className="border border-border p-2 text-right tabular-nums">
+                  {formatNumberDecimal(commissionWht.toString())}
+                </td>
+              </tr>
+            )}
+            {otherDeductions.map((cd) => (
               <tr key={cd.id}>
                 <td colSpan={2} className="border border-border p-2">
                   <span className="font-mono text-xs text-muted-foreground mr-2">
@@ -614,10 +721,14 @@ function PayrollSlipSheet({
             </tr>
           </tbody>
         </table>
+        {/* CLAWBACK_CARRIED — ประโยคเดียวกับแผงตรวจ (ตาราง copy) บรรทัดเดียวเต็มความกว้างใต้ตารางหัก */}
+        {carried && (
+          <p className="mt-1 text-xs leading-snug">{clawbackCarriedText(carried.deducted, carried.carried)}</p>
+        )}
       </section>
 
       {/* คนที่ไม่ได้ตอกบัตรเดือนนั้น (attendanceTracked = false) ไม่มีกล่อง — กล่องศูนย์ทุกช่องอ่านเหมือน "ขาดงาน" */}
-      {line.attendanceSummary && line.attendanceSummary.attendanceTracked !== false && doc.payroll?.payrollPeriod && (
+      {showAttendance && doc.payroll && line.attendanceSummary && (
         <SlipAttendanceSummary summary={line.attendanceSummary} period={doc.payroll.payrollPeriod} />
       )}
 
@@ -648,7 +759,7 @@ function PayrollSlipSheet({
 
       {/* Signatures — 2 slots only (no full grid). Employees sign on receipt;
           preparer signs on issuance. ตราประทับ unnecessary on individual slips. */}
-      <section className="grid grid-cols-2 gap-6 mt-12">
+      <section className="payroll-slip-signatures grid grid-cols-2 gap-6 mt-12">
         <SignatureSlot label="ผู้รับเงิน" />
         <SignatureSlot label="ผู้จัดทำ" />
       </section>
@@ -673,6 +784,29 @@ function hoursTimesRate(row: { quantity?: string | null; rate?: string | null })
   return `${fmtOt(parseFloat(row.quantity))} × ${rateText(row.rate)}`;
 }
 
+/** เลขอ้างอิงค่าคอมที่สลิปแสดง — เกินนี้สรุปเป็น "และอีก k รายการ" (งบหนึ่งแผ่น R22) */
+const SLIP_COMMISSION_ITEMS_MAX = 2;
+
+/**
+ * Payroll D4 ส่วนที่ 2 (กระดาน 3) — เลขอ้างอิงของค่าคอมที่แถวนี้จ่าย: **บรรทัดเดียว** ใต้ชื่อรายการ (ตอนพิมพ์ตัวอักษรทุกตัวเป็น
+ * 16 pt — "บรรทัดเล็ก" ไม่มีจริงบนกระดาษ) · "{อ้างอิง} · {อ้างอิง}" สูงสุด 2 รายการ แล้ว "และอีก k รายการ" · ไม่ตัดบรรทัด
+ * (เลขอ้างอิงยาวเกินช่อง = … · จำนวนที่เหลืออยู่นอกส่วนที่ตัด) — ยอดต่อรายการอยู่ในใบเงินเดือน ยอดรวมอยู่ในช่องจำนวนเงินของแถว ·
+ * ไม่เพิ่มแถวตาราง (P2-R19.5)
+ * · ช่องของแถวนี้ `max-w-0` ⇒ บรรทัดที่ไม่ตัดไม่ดันตารางให้กว้างเกินหน้า
+ */
+function SlipCommissionDetail({ items }: { items: PayrollCommissionItemView[] }) {
+  if (items.length === 0) return null;
+  const shown = items.slice(0, SLIP_COMMISSION_ITEMS_MAX);
+  const rest = items.length - shown.length;
+  // จำนวนที่เหลืออยู่นอกส่วนที่ตัด — เลขอ้างอิงยาวถูกตัดด้วย … ได้ แต่ "และอีก k รายการ" ต้องเห็นเสมอ (P2-R31)
+  return (
+    <span className="flex min-w-0 gap-1 text-xs text-muted-foreground leading-snug">
+      <span className="min-w-0 truncate">{shown.map((i) => i.reference).join(' · ')}</span>
+      {rest > 0 && <span className="shrink-0 whitespace-nowrap">{`และอีก ${rest} รายการ`}</span>}
+    </span>
+  );
+}
+
 /** "—" ในตาราง — โปรแกรมอ่านหน้าจออ่านว่า ไม่มี */
 function NoValue() {
   return (
@@ -685,16 +819,17 @@ function NoValue() {
 
 /** Payroll D4 — สรุปเวลาทำงานของเดือน (จาก `attendanceSummary` ที่เก็บไว้) · ข้อมูลประกอบ ไม่มีผลต่อยอดเงิน */
 function SlipAttendanceSummary({ summary, period }: { summary: PayrollAttendanceSummary; period: string }) {
-  // R21 — ตอนพิมพ์ย่อกล่อง (หัว+คำอธิบายบรรทัดเดียว · 8 ช่องแถวเดียว) ให้หนึ่งคนพอดีหนึ่งแผ่น A4 · จอคงตามกระดาน 3
+  // R21 — ตอนพิมพ์ย่อกล่อง (หัว+คำอธิบายบรรทัดเดียว) ให้หนึ่งคนพอดีหนึ่งแผ่น A4 · จอคงตามกระดาน 3
+  // P2-R19.5 — ตอนพิมพ์ "หัวข้อ ค่า" ต่อกันเป็นแถวไหล (2 บรรทัด) แทนตาราง 8 ช่องที่หัวข้อตัดเป็นสองบรรทัด (ตัวอักษร 16 pt)
   return (
-    <section className="mt-5 rounded-md border border-border p-3 text-sm print:px-2 print:py-1.5">
+    <section className="mt-5 rounded-md border border-border p-3 text-sm print:px-2 print:py-1">
       <div className="print:flex print:items-baseline print:gap-2">
         <p className="font-semibold leading-snug">{`สรุปเวลาทำงาน ${payrollPeriodShort(period)}`}</p>
-        <p className="text-xs text-muted-foreground leading-snug mb-2 print:mb-1">ข้อมูลประกอบ — ไม่มีผลต่อยอดเงิน</p>
+        <p className="text-xs text-muted-foreground leading-snug mb-2 print:mb-0">ข้อมูลประกอบ — ไม่มีผลต่อยอดเงิน</p>
       </div>
-      <dl className="grid grid-cols-4 gap-x-4 gap-y-1 print:grid-cols-8 print:gap-x-2">
+      <dl className="grid grid-cols-4 gap-x-4 gap-y-1 print:flex print:flex-wrap print:gap-x-4 print:gap-y-0">
         {attendanceSummaryItems(summary).map(([label, value]) => (
-          <div key={label}>
+          <div key={label} className="print:flex print:gap-1">
             <dt className="text-xs text-muted-foreground leading-snug">{label}</dt>
             <dd className="tabular-nums leading-snug">{value}</dd>
           </div>

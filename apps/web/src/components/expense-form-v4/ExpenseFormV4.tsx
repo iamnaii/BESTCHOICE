@@ -251,10 +251,14 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editDocId, editQuery.data, editQuery.isFetchedAfterMount, editLoaded]);
 
-  /** ใบเงินเดือนถูกเขียนแล้ว — รายการ หน้ารายละเอียด และใบที่ฟอร์มแก้ไขเคยโหลดไว้ ต้องโหลดใหม่ */
+  /**
+   * ใบเงินเดือนถูกเขียนแล้ว — รายการ หน้ารายละเอียด และใบที่ฟอร์มแก้ไขเคยโหลดไว้ ต้องโหลดใหม่ ·
+   * D4 ส่วนที่ 2: การบันทึกดึง/ปล่อยค่าคอมเข้าใบ ⇒ ชิป "อยู่ในใบเงินเดือน" ของหน้าค่าคอมเปลี่ยน
+   */
   const forgetCachedPayroll = (id: string) => {
     queryClient.invalidateQueries({ queryKey: ['expense-document', id] });
     queryClient.removeQueries({ queryKey: ['expense-doc-edit', id] });
+    queryClient.invalidateQueries({ queryKey: ['commissions'] });
   };
 
   /** หลังบันทึก: อยู่ในโหมดแก้ไขของร่างนั้น แล้วโหลดใบกลับ (แถวระบบ + วันที่ต้องตรวจที่ server คิด) */

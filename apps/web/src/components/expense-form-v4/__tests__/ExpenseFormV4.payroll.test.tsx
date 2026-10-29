@@ -148,7 +148,57 @@ const LEGACY_LINE = {
   systemNotes: { review: [], warnings: [] },
 };
 
-const storedDoc = (id: string, lines: unknown[], status = 'DRAFT') => ({
+/** D4 ส่วนที่ 2 — รายการค่าคอมที่ server เก็บไว้ต่อบรรทัด (include เดียวกับ findOne) */
+const commissionItem = (
+  id: string,
+  kind: 'PAY' | 'CLAWBACK',
+  amount: string,
+  sc: { contract?: string; sale?: string; period?: string; createdAt?: string; clawbackAt?: string; reason?: string },
+) => ({
+  id,
+  salesCommissionId: `sc-${id}`,
+  kind,
+  accountCode: 'S51-1101',
+  amount,
+  releasedAt: null,
+  salesCommission: {
+    id: `sc-${id}`,
+    period: sc.period ?? '2026-10',
+    commissionAmount: amount,
+    status: kind === 'PAY' ? 'APPROVED' : 'CLAWED_BACK',
+    clawbackReason: sc.reason ?? null,
+    clawbackAt: sc.clawbackAt ?? null,
+    createdAt: sc.createdAt ?? '2026-10-03T03:00:00.000Z',
+    contract: sc.contract ? { contractNumber: sc.contract } : null,
+    sale: sc.sale ? { saleNumber: sc.sale } : null,
+  },
+});
+
+/** กระดาน 6B — ค่าคอมงวดนี้ 1,000 · หักคืน 800 + 200 (เรียกคืน 600 แต่หักได้ไม่เกินค่าคอมงวดนี้ — ยกไป 400) */
+const COMMISSION_LINE = {
+  userId: 'u6',
+  employeeName: 'วิชัย ทองดี',
+  baseSalary: '15000',
+  ssoEmployee: '750',
+  whtAmount: '0',
+  customIncome: [
+    income({ accountCode: 'S51-1101', name: 'ค่าคอมมิชชัน (2 รายการ)', amount: '1000.00', source: 'COMMISSION' }),
+  ],
+  customDeduction: [
+    { accountCode: 'S21-1103', name: 'คืนเงินยืม', amount: '300.00', source: 'MANUAL' },
+    { accountCode: 'S51-1101', name: 'หักคืนค่าคอม (2 รายการ)', amount: '1000.00', source: 'COMMISSION_CLAWBACK' },
+  ],
+  commissionItems: [
+    commissionItem('p1', 'PAY', '600.00', { contract: 'CT-20261103-0007', createdAt: '2026-11-03T03:00:00.000Z', period: '2026-11' }),
+    commissionItem('p2', 'PAY', '400.00', { sale: 'SL-20261020-0031', createdAt: '2026-10-20T03:00:00.000Z' }),
+    commissionItem('c1', 'CLAWBACK', '800.00', { sale: 'SL-20261011-0045', clawbackAt: '2026-11-05T03:00:00.000Z', reason: 'ยกเลิกใบขาย SL-20261011-0045' }),
+    commissionItem('c2', 'CLAWBACK', '200.00', { contract: 'CT-20261003-0012', clawbackAt: '2026-11-08T03:00:00.000Z', reason: 'ลูกค้าผิดนัดเร็ว (50%)' }),
+  ],
+  attendanceSummary: { ...ELIGIBLE_LINE.attendanceSummary, reviewCount: 0 },
+  systemNotes: { review: [], warnings: [{ code: 'CLAWBACK_CARRIED', deducted: '1000.00', carried: '400.00' }] },
+};
+
+const storedDoc = (id: string, lines: unknown[], status = 'DRAFT', payrollPeriod = '2026-10') => ({
   id,
   number: 'PR-20261101-0001',
   documentType: 'PAYROLL',
@@ -159,7 +209,7 @@ const storedDoc = (id: string, lines: unknown[], status = 'DRAFT') => ({
   description: null,
   note: null,
   reference: null,
-  payroll: { entityScope: 'SHOP', payrollPeriod: '2026-10', lines },
+  payroll: { entityScope: 'SHOP', payrollPeriod, lines },
   payrollGate: null,
 });
 
@@ -534,5 +584,97 @@ describe('ExpenseFormV4 payroll — fix round 1', () => {
     await user.click(screen.getByRole('button', { name: 'บันทึกร่าง + คิดยอด' }));
     await waitFor(() => expect(apiPatch).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(client.getQueryState(['expense-document', 'doc-1'])?.isInvalidated).toBe(true));
+  });
+});
+
+describe('ExpenseFormV4 payroll — commissions and clawbacks (D4 ส่วนที่ 2 · Task 6)', () => {
+  const patchedDeductions = () =>
+    (apiPatch.mock.calls.at(-1)?.[1] as { lines: Array<{ customDeduction?: unknown[]; customIncome?: unknown[] }> }).lines[0];
+
+  it('re-saving a draft that holds a clawback sends only the typed (MANUAL) deduction — never the clawback, never the commission row', async () => {
+    docs['doc-1'] = storedDoc('doc-1', [COMMISSION_LINE], 'DRAFT', '2026-11');
+    const user = userEvent.setup();
+    mount({ editDocId: 'doc-1' });
+    await screen.findByRole('button', { name: 'วิชัย ทองดี' });
+    await user.click(screen.getByRole('button', { name: 'บันทึกร่าง' }));
+    await waitFor(() => expect(apiPatch).toHaveBeenCalledTimes(1));
+    expect(patchedDeductions().customDeduction).toEqual([{ accountCode: 'S21-1103', name: 'คืนเงินยืม', amount: 300 }]);
+    expect(patchedDeductions().customIncome).toBeUndefined();
+  });
+
+  it('net subtracts the clawback: 15,000 + 1,000 − 750 − 300 − 1,000 = 13,950.00', async () => {
+    docs['doc-1'] = storedDoc('doc-1', [COMMISSION_LINE], 'DRAFT', '2026-11');
+    mount({ editDocId: 'doc-1' });
+    const row = (await screen.findByRole('button', { name: 'วิชัย ทองดี' })).closest('tr') as HTMLElement;
+    expect(within(row).getByText('13,950.00')).toBeInTheDocument();
+    expect(within(row).getByText('ค่าคอม 2')).toBeInTheDocument();
+  });
+
+  it('the commission row has no hours/rate and an expandable list of the commissions it pays (an earlier period is labelled)', async () => {
+    docs['doc-1'] = storedDoc('doc-1', [COMMISSION_LINE], 'DRAFT', '2026-11');
+    const user = userEvent.setup();
+    mount({ editDocId: 'doc-1' });
+    await screen.findByRole('button', { name: 'วิชัย ทองดี' });
+    await expandFirstLine(user);
+    const locked = screen.getByRole('region', { name: 'รายได้จากระบบ — แก้ในใบนี้ไม่ได้' });
+    const commissionRow = within(locked).getByRole('row', { name: /ค่าคอมมิชชัน \(2 รายการ\)/ });
+    expect(within(commissionRow).getByText('—')).toBeInTheDocument();
+    expect(within(commissionRow).getByText('1,000.00')).toBeInTheDocument();
+    const toggle = within(commissionRow).getByRole('button', { name: /ค่าคอม 2 รายการ/ });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).toHaveClass('min-h-9');
+    expect(within(locked).getByText('CT-20261103-0007')).not.toBeVisible();
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    const list = document.getElementById(toggle.getAttribute('aria-controls')!) as HTMLElement;
+    expect(within(list).getByText('CT-20261103-0007')).toBeVisible();
+    expect(within(list).getByText('600.00')).toBeInTheDocument();
+    expect(within(list).getByText('SL-20261020-0031')).toBeInTheDocument();
+    expect(within(list).getByText(/อนุมัติค้างจากงวดก่อน/)).toBeInTheDocument();
+    for (const role of ['textbox', 'spinbutton', 'checkbox', 'combobox'] as const) {
+      expect(within(locked).queryAllByRole(role)).toHaveLength(0);
+    }
+  });
+
+  it('the clawback sits in its own locked table with each commission and ยกไปงวดหน้า 400.00 บาท; the typed table keeps only the typed row', async () => {
+    docs['doc-1'] = storedDoc('doc-1', [COMMISSION_LINE], 'DRAFT', '2026-11');
+    const user = userEvent.setup();
+    mount({ editDocId: 'doc-1' });
+    await screen.findByRole('button', { name: 'วิชัย ทองดี' });
+    await expandFirstLine(user);
+    const locked = screen.getByRole('region', { name: 'รายการหักจากระบบ — แก้ในใบนี้ไม่ได้' });
+    expect(within(locked).getByText('หักคืนค่าคอม (2 รายการ)')).toBeInTheDocument();
+    expect(within(locked).getByText('SL-20261011-0045')).toBeInTheDocument();
+    expect(within(locked).getByText('800.00')).toBeInTheDocument();
+    expect(within(locked).getByText('CT-20261003-0012')).toBeInTheDocument();
+    expect(within(locked).getByText('ยกไปงวดหน้า 400.00 บาท')).toBeInTheDocument();
+    // P2-R30/R31 — หมายเหตุจริงทุกกรณี: ส่วนที่เหลือหักจากค่าคอมงวดต่อ ๆ ไป (ยกซ้ำได้) · ลาออกแล้วไม่หักอัตโนมัติ เจ้าของตัดสิน
+    expect(
+      within(locked).getByText(
+        /หักได้ไม่เกินค่าคอมงวดนี้ ไม่หักจากเงินเดือนฐานหรือ OT · ส่วนที่เหลือหักจากค่าคอมงวดต่อ ๆ ไป · พนักงานลาออกแล้ว ระบบไม่หักให้ เจ้าของตัดสินที่เมนู ค่าคอมมิชชัน/,
+      ),
+    ).toBeInTheDocument();
+    for (const role of ['textbox', 'spinbutton', 'checkbox', 'combobox', 'button'] as const) {
+      expect(within(locked).queryAllByRole(role)).toHaveLength(0);
+    }
+    // ตารางกรอกเอง: แถวคืนเงินยืมแถวเดียว (หักคืนค่าคอมไม่อยู่ในช่องที่แก้ได้)
+    expect(screen.getAllByDisplayValue('คืนเงินยืม')).toHaveLength(1);
+    expect(screen.queryByDisplayValue('หักคืนค่าคอม (2 รายการ)')).not.toBeInTheDocument();
+    // คำเตือนในแผงตรวจ — ถ้อยคำเต็ม
+    expect(
+      screen.getByText('หักคืนค่าคอมได้ 1,000.00 บาท (ไม่เกินค่าคอมงวดนี้) — ยกไปงวดหน้า 400.00 บาท'),
+    ).toBeInTheDocument();
+  });
+
+  it('a payroll save also refreshes the commissions page cache', async () => {
+    docs['doc-1'] = storedDoc('doc-1', [COMMISSION_LINE], 'DRAFT', '2026-11');
+    const user = userEvent.setup();
+    const client = newClient();
+    client.setQueryData(['commissions', '', '2026-11', false], []);
+    mount({ editDocId: 'doc-1' }, client);
+    await screen.findByRole('button', { name: 'วิชัย ทองดี' });
+    await user.click(screen.getByRole('button', { name: 'บันทึกร่าง + คิดยอด' }));
+    await waitFor(() => expect(apiPatch).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(client.getQueryState(['commissions', '', '2026-11', false])?.isInvalidated).toBe(true));
   });
 });

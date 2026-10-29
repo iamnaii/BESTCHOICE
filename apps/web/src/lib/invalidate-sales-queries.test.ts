@@ -5,7 +5,8 @@ import { invalidateSalesQueries, type SalesMutationEvent } from './invalidate-sa
 describe('Sales mutations invalidate warm related caches', () => {
   it.each<[SalesMutationEvent, string[]]>([
     ['sale-created', ['bundle-products', 'bundle-quick-picks', 'sales-history', 'top-products', 'pos-products', 'pos-bundle-products', 'product', 'products-available', 'trade-in-credits']],
-    ['sale-voided', ['sales-history', 'top-products', 'pos-products', 'pos-bundle-products', 'product', 'products', 'trade-in-credits']],
+    // D4 ส่วนที่ 2 — ยกเลิกใบขายเรียกคืนค่าคอม ⇒ หน้าค่าคอม (สถานะ / ชิป / รอหัก) ต้องโหลดใหม่
+    ['sale-voided', ['sales-history', 'top-products', 'pos-products', 'pos-bundle-products', 'product', 'products', 'trade-in-credits', 'commissions']],
     ['booking-updated', ['bookings', 'booking']],
     ['booking-converted', ['bookings', 'booking', 'sales-history', 'pos-products', 'top-products']],
     ['contract-created', ['contracts', 'contract', 'products-available', 'customer-latest-credit', 'trade-in-credits']],

@@ -9,6 +9,9 @@ import { createEmployee, createLoginPacer, EmployeeFixture, payrollDocMoney, pay
 import { recordScenario, saveArtifact, ScenarioRecord } from './support/artifacts';
 import { foldThai, isA4, isA4Landscape, pageContaining, parsePdf, ParsedPdf, textSizes } from './support/pdf';
 import { startWeb, WebRuntime } from './support/web';
+import { clawBackCommissions } from '../../src/modules/commission/commission-clawback.util';
+import { dbDate } from '../../src/modules/attendance/attendance-rules';
+import { bangkokMidnight } from '../../src/utils/date.util';
 
 /**
  * DOC-04 (issue #1563): payroll → per-employee pay slips → annual ภ.ง.ด.1ก
@@ -85,7 +88,12 @@ describe('DOC-04 payroll slips and annual 50 ทวิ — real workflow, real j
   const createPayroll = (session: Session, body: Record<string, unknown>) => api(session).post('/expense-documents/payroll', body);
   // R20 — approve / post of a PAYROLL must carry the version the page rendered (expectedUpdatedAt = updatedAt); a missing or
   // stale one is refused 409 DOCUMENT_CHANGED. Every call below reads the current version first (what the detail page shows).
-  const versionOf = async (id: string) => ({ expectedUpdatedAt: (await h.prisma.expenseDocument.findUniqueOrThrow({ where: { id }, select: { updatedAt: true } })).updatedAt.toISOString() });
+  // คำตัดสินเจ้าของ 2026-10-28 — วันที่จ่ายเงิน = วันที่กดลงบัญชี (ไม่ส่ง = วันนี้) · ชุดนี้เลือกวันที่จ่ายเป็นวันที่ของใบ
+  // เหมือนผู้ใช้เลือกในช่อง "วันที่จ่ายเงิน" ตอนลงบัญชี ⇒ งวดภาษี / สลิป / รายการบัญชีของกรณีทดสอบคงเดิม
+  const versionOf = async (id: string) => {
+    const row = await h.prisma.expenseDocument.findUniqueOrThrow({ where: { id }, select: { updatedAt: true, documentDate: true } });
+    return { expectedUpdatedAt: row.updatedAt.toISOString(), paymentDate: row.documentDate.toISOString().slice(0, 10) };
+  };
   // (supertest's Test is thenable — the helpers apply .expect(status) themselves and resolve to the response)
   const postDoc = async (session: Session, id: string, status: number) => api(session).post(`/expense-documents/${id}/post`, await versionOf(id)).expect(status);
   const approveDoc = async (session: Session, id: string, status: number) => api(session).post(`/expense-documents/${id}/approve`, await versionOf(id)).expect(status);
@@ -636,6 +644,117 @@ describe('DOC-04 payroll slips and annual 50 ทวิ — real workflow, real j
       const deniedShot = saveArtifact(DOMAIN, 'wht-annual-manager-denied-1440.png', await page.screenshot({ fullPage: true })).relativePath;
       expect(pageErrors(errors)).toEqual([]);
       recordScenario(DOMAIN, scenario({ id: `${DOMAIN}/browser-manager-pii`, title: 'BRANCH_MANAGER of the payroll branch: slips render with masked tax ids (•••••••••dddd) — the API masks by role; /finance/wht-annual is not reachable (route role gate), no certificate button anywhere', routes: ['POST /api/auth/login', 'GET /api/expense-documents/:id'], renderer: 'none', artifacts: [maskedShot, deniedShot], notes: `${consoleNote(errors)}; landed on ${page.url()}` }));
+    }, 300000);
+    // D4 ส่วนที่ 2 (P2-R19.5) — สลิปที่หนักที่สุด: แถว OT จากลงเวลา + กล่องสรุปเวลา + ค่าคอม 5 รายการ + หักคืนค่าคอมที่ยกไปงวดหน้า
+    // ต้องยังหนึ่งคนหนึ่งแผ่น A4 (R22). อยู่ท้ายสุดของไฟล์และใช้สาขา B — เดือนเหล่านี้ไม่เข้าตัวเลขรายปีที่เทสต์ก่อนหน้าปักไว้
+    it('a slip with attendance OT rows, the attendance box, five commissions and a clawback carried to the next period still prints one A4 sheet per employee', async () => {
+      const branchB = world.branches.b;
+      const branchRow = await h.prisma.branch.findUniqueOrThrow({ where: { id: branchB.id }, select: { workStart: true, workEnd: true } });
+      // เวลางานของสาขาตั้งไว้ชัด ⇒ ชั่วโมงทำงานวันหยุด/OT วันหยุดไม่ขึ้นกับ SystemConfig
+      await h.prisma.branch.update({ where: { id: branchB.id }, data: { workStart: '10:00', workEnd: '19:00' } });
+      try {
+        const heavy = await createEmployee(h.prisma, world, 'com-heavy', { branchId: branchB.id, nationalId: syntheticEmployeeId(31), position: 'พนักงานขาย', baseSalary: 15000, bank: { bankName: 'ธนาคารกสิกรไทย', bankAccountNo: '0000000031' } });
+        const light = await createEmployee(h.prisma, world, 'com-light', { branchId: branchB.id, nationalId: syntheticEmployeeId(32), position: 'พนักงานขาย', baseSalary: 9000 });
+        const tag = world.prefix.slice(-8);
+        const product = await h.prisma.product.create({ data: { name: `ทดสอบระบบ เครื่องค่าคอม ${world.prefix}`, brand: 'Apple', model: 'iPhone (ทดสอบระบบ)', category: 'PHONE_NEW', branchId: branchB.id, costPrice: '6000' } });
+        const sale = async (n: number) => (await h.prisma.sale.create({ data: {
+          saleNumber: `SL-${tag}-${String(n).padStart(4, '0')}`, saleType: 'CASH', customerId: world.customer.id, productId: product.id,
+          branchId: branchB.id, salespersonId: heavy.user.id, sellingPrice: 20000, netAmount: 20000,
+        } })).id;
+        const commission = async (o: { period: string; amount: number; createdAt: string; saleId?: string; contractId?: string }) => h.prisma.salesCommission.create({ data: {
+          salespersonId: heavy.user.id, snapshotSalespersonId: heavy.user.id, period: o.period, saleAmount: 20000, commissionRate: 0.05,
+          commissionAmount: o.amount, status: 'APPROVED', saleId: o.saleId ?? null, contractId: o.contractId ?? null, createdAt: new Date(o.createdAt),
+        } });
+        const base = { branchId: branchB.id, entityScope: 'SHOP', depositAccountCode: SHOP_BANK, paymentMethod: 'BANK_TRANSFER' };
+
+        // พ.ค. — ค่าคอม 1,000 จ่ายผ่านใบเงินเดือนที่ลงบัญชี แล้วถูกเรียกคืนเต็มจำนวน (helper เดียวของระบบ)
+        const paid = await commission({ period: '2026-05', amount: 1000, createdAt: '2026-05-10T03:00:00.000Z', saleId: await sale(1) });
+        const may = (await createPayroll(accountant, { ...base, documentDate: '2026-05-25', payrollPeriod: '2026-05', lines: [shopLine({ baseSalary: 15000, ssoEmployee: 750 }, heavy)] }).expect(201)).body.data as PayrollDoc;
+        await postDoc(accountant, may.id, 201);
+        expect((await h.prisma.salesCommission.findUniqueOrThrow({ where: { id: paid.id } })).status).toBe('PAID');
+        await h.prisma.$transaction(async (tx) => {
+          const rows = await tx.salesCommission.findMany({ where: { id: paid.id }, select: { id: true, status: true, commissionAmount: true, paidAt: true, paidAmount: true } });
+          await clawBackCommissions(tx, rows, { reason: 'ทดสอบระบบ ยกเลิกใบขาย', now: new Date('2026-06-05T03:00:00.000Z') });
+        });
+
+        // มิ.ย. — ค่าคอม 5 × 150 = 750 (หักคืนได้ไม่เกินนี้ ⇒ หัก 750 ยกไป 250) · OT วันทำงาน 5 วัน + ทำงานวันหยุด/OT วันหยุด 1 วัน
+        await commission({ period: '2026-06', amount: 150, createdAt: '2026-06-02T03:00:00.000Z', contractId: world.contracts.a.id });
+        await commission({ period: '2026-06', amount: 150, createdAt: '2026-06-03T03:00:00.000Z', contractId: world.contracts.b.id });
+        for (const n of [2, 3, 4]) await commission({ period: '2026-06', amount: 150, createdAt: `2026-06-0${n + 2}T03:00:00.000Z`, saleId: await sale(n) });
+        const at = (day: number, hhmm: string) => {
+          const [hh, mm] = hhmm.split(':').map(Number);
+          return new Date(bangkokMidnight(2026, 5, day).getTime() + (hh * 60 + mm) * 60_000);
+        };
+        const attendanceDay = (day: number, kind: 'WORK' | 'DAY_OFF', clockIn: string, clockOut: string, otHours: number) => h.prisma.attendanceDay.create({ data: {
+          userId: heavy.user.id, branchId: branchB.id, workDate: dbDate(bangkokMidnight(2026, 5, day)), dayKind: kind,
+          clockIn: at(day, clockIn), clockOut: at(day, clockOut), otHours, lateMinutes: 0, flags: [],
+        } });
+        for (const day of [1, 2, 3, 4, 5]) await attendanceDay(day, 'WORK', '10:00', '20:30', 1.5);
+        await attendanceDay(7, 'DAY_OFF', '10:00', '21:00', 0);
+        const heavySpec: PayrollLineSpec = {
+          baseSalary: 15000, ssoEmployee: 750, whtAmount: 120,
+          customIncome: [{ accountCode: 'S52-1204', name: 'เบี้ยขยัน', amount: 500, isTaxable: true }],
+          customDeduction: [{ accountCode: 'S21-1103', name: 'คืนเงินยืม', amount: 300 }],
+        };
+        const june = (await createPayroll(accountant, { ...base, documentDate: '2026-06-25', payrollPeriod: '2026-06', lines: [shopLine(heavySpec, heavy), shopLine({ baseSalary: 9000, ssoEmployee: 450 }, light)] }).expect(201)).body.data as PayrollDoc;
+        await postDoc(accountant, june.id, 201);
+        const posted = await getDoc(accountant, june.id);
+        expect(posted.status).toBe('POSTED');
+        const heavyLine = posted.payroll!.lines.find((line) => line.userId === heavy.user.id)! as Omit<PayrollLineRow, 'customDeduction'> & {
+          customDeduction: Array<{ accountCode: string; name: string; amount: string; source: string }>;
+          systemNotes: { warnings: Array<Record<string, unknown>> };
+        };
+        expect(heavyLine.customIncome!.filter((row) => row.source?.startsWith('ATTENDANCE_')).map((row) => row.source)).toEqual(['ATTENDANCE_OT', 'ATTENDANCE_HOLIDAY', 'ATTENDANCE_HOLIDAY_OT']);
+        expect(heavyLine.customIncome!.filter((row) => row.source === 'COMMISSION').map((row) => [row.name, fixed2(row.amount)])).toEqual([['ค่าคอมมิชชัน (5 รายการ)', '750.00']]);
+        expect(heavyLine.customDeduction.filter((row) => row.source === 'COMMISSION_CLAWBACK').map((row) => [row.name, fixed2(row.amount)])).toEqual([['หักคืนค่าคอม (1 รายการ)', '750.00']]);
+        expect(heavyLine.systemNotes.warnings).toContainEqual({ code: 'CLAWBACK_CARRIED', deducted: '750.00', carried: '250.00' });
+
+        const opened = await openAs(world.users.accountant, `/expenses/${june.id}/voucher`);
+        context = opened.context;
+        const { page, errors } = opened;
+        await waitForText(page, 'PAYROLL · 1/2', 'payroll-commission-slips');
+        await page.waitForFunction(() => document.querySelectorAll('article.voucher-sheet').length === 2, undefined, { timeout: 30_000 });
+        const slips = await page.locator('article.voucher-sheet').allInnerTexts();
+        const carry = 'หักคืนค่าคอมได้ 750.00 บาท (ไม่เกินค่าคอมงวดนี้) — ยกไปงวดหน้า 250.00 บาท';
+        for (const token of ['ทดสอบระบบ พนักงาน com-heavy', 'ค่าคอมมิชชัน (5 รายการ)', 'หักคืนค่าคอม (1 รายการ)', carry, 'สรุปเวลาทำงาน', 'OT วันหยุด (3 เท่า)']) expect(slips[0]).toContain(token);
+        expect(slips[1]).toContain('ทดสอบระบบ พนักงาน com-light');
+        expect(slips[1]).not.toContain('ค่าคอมมิชชัน');
+        // P2-R31 — window.print() ของ Chromium ยิง beforeprint ตอนยังเป็น screen media (page.pdf ในชุดนี้ยิงหลังสลับเป็น print)
+        // ⇒ ชั้นระยะของ fitPaperSpacing ที่เลือกจากการวัดตอนนั้นไม่ตรงกับกระดาษ — สลิปจึงไม่รับชั้นใดเลย (data-bc-paper-fit="fixed")
+        // ทั้งสอง media และ PDF ข้างล่างคือระยะพิมพ์ชุดเดียวของสลิป (ไม่มี bc-paper-relaxed / bc-paper-compact)
+        for (const media of ['screen', 'print'] as const) {
+          await page.emulateMedia({ media });
+          const tiers = await page.evaluate(() => {
+            window.dispatchEvent(new Event('beforeprint'));
+            const found = Array.from(document.querySelectorAll('article.voucher-sheet')).map((el) => ({
+              fit: el.getAttribute('data-bc-paper-fit'),
+              tier: ['bc-paper-relaxed', 'bc-paper-compact'].filter((c) => el.classList.contains(c)),
+            }));
+            window.dispatchEvent(new Event('afterprint'));
+            return found;
+          });
+          expect(tiers).toEqual(slips.map(() => ({ fit: 'fixed', tier: [] })));
+        }
+        await page.emulateMedia({ media: 'screen' });
+        const printed = await printToPdf(page, 'payroll-commission-slips-print');
+        const pdf = printed.pdf;
+        // ที่ว่างใต้บรรทัดล่างสุดของแต่ละหน้า (baseline ต่ำสุด − ขอบล่าง 18 มม. ของ @page bc-transaction) — เก็บไว้ใน artifact
+        const bottomSlackMm = pdf.pages.map((p) => Math.round((Math.min(...p.items.filter((i) => i.str.trim()).map((i) => i.y)) * 25.4) / 72 - 18));
+        // R22 — หนึ่งคนหนึ่งแผ่น: จำนวนหน้า = จำนวนสลิป
+        expect(pdf.pageCount).toBe(slips.length);
+        expect(pdf.pages.every(isA4)).toBe(true);
+        expect(pageStream(pdf, 1)).toContain(foldThai('ทดสอบระบบ พนักงาน com-heavy'));
+        expect(pageStream(pdf, 1)).toContain(foldThai('ยกไปงวดหน้า 250.00 บาท'));
+        expect(pageStream(pdf, 1)).toContain(foldThai('(ผู้รับเงิน)'));
+        expect(pageStream(pdf, 1)).toContain(foldThai('ใบจ่ายเงินเดือน v2 · 1/2'));
+        expect(pageStream(pdf, 2)).toContain(foldThai('ทดสอบระบบ พนักงาน com-light'));
+        expect(pageStream(pdf, 2)).not.toContain(foldThai('ทดสอบระบบ พนักงาน com-heavy'));
+        expect(pageErrors(errors)).toEqual([]);
+        const artifacts = [printed.printMediaShot, printed.artifact, saveArtifact(DOMAIN, 'payroll-commission-slips-print.pdf.json', JSON.stringify({ ...pdfSummary(pdf), slips: slips.length, bottomSlackMm, consoleErrors: errors }, null, 2)).relativePath];
+        recordScenario(DOMAIN, scenario({ id: `${DOMAIN}/browser-payroll-commission-slip`, title: 'PaymentVoucherPage for a SHOP payroll whose first line has 3 attendance rows, the attendance box, a typed income + deduction, a 5-item commission row and a clawback deducted up to this period\'s commission (750 of 1,000, 250 carried): the commission/clawback detail and the carry sentence print, and the PDF has one A4 page per slip', routes: ['POST /api/expense-documents/payroll', 'POST /api/expense-documents/:id/post', 'GET /api/expense-documents/:id'], artifacts, notes: consoleNote(errors) }));
+      } finally {
+        await h.prisma.branch.update({ where: { id: branchB.id }, data: { workStart: branchRow.workStart, workEnd: branchRow.workEnd } });
+      }
     }, 300000);
   });
 

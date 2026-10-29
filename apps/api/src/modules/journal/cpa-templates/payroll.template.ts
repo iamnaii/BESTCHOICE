@@ -16,6 +16,7 @@ import { CompanyResolverService } from '../company-resolver.service';
  *     Dr S52-1201 เงินเดือนพนักงานสาขา        (Σ baseSalary)
  *     Dr S52-1205 เงินสมทบ ปกส. นายจ้าง-สาขา   (Σ ssoEmployee)  [if Σ > 0]
  *       Cr S21-3101 ภ.ง.ด. 1 ค้างจ่าย - SHOP   (Σ whtAmount)    [if Σ > 0]
+ *       Cr S21-3101 หัก ณ ที่จ่ายค่าคอม 3%     (Σ COMMISSION_WHT deductions — แยกบรรทัด)
  *       Cr S21-3105 ปกส. พนักงานค้างนำส่ง       (Σ ssoEmployee)  [if Σ > 0]
  *       Cr S21-3106 ปกส. นายจ้างค้างนำส่ง       (Σ ssoEmployee)  [if Σ > 0]
  *       Cr depositAccountCode (S11-XXXX)       (Σ netPaid)
@@ -189,23 +190,32 @@ export class PayrollTemplate {
       // C2 — Custom Deduction lines: Cr each accountCode for its amount.
       // Reduces net cash (already netted into sumNet upstream at service).
       // Typical use: loan repayment Cr's 11-21XX (employee AR offset).
-      const deductionByAccount = new Map<string, Decimal>();
+      // หัก ณ ที่จ่ายค่าคอม 3% (source COMMISSION_WHT — คำตัดสินเจ้าของ 2026-10-29) แยกบรรทัดของตัวเองบนบัญชี ภ.ง.ด.1
+      // ค้างจ่ายตาม role ตอนลงบัญชี (`codeWhtPayroll` — ไม่ใช่รหัสที่เก็บตอนบันทึก ⇒ role ถูกย้ายระหว่างทางก็ไม่แตกสองบัญชี)
+      // ⇒ ยอด Cr ของบัญชีนั้น = ภาษีเงินเดือน + ภาษีค่าคอม (ตรงกับ ภ.ง.ด.1 / ยอดนำส่งที่ตรวจกับบัญชี role เดียวกัน)
+      const deductionByAccount = new Map<string, { accountCode: string; commissionWht: boolean; amount: Decimal }>();
       for (const l of doc.payroll.lines) {
         for (const cd of l.customDeduction ?? []) {
-          const prev = deductionByAccount.get(cd.accountCode) ?? zero;
-          deductionByAccount.set(
-            cd.accountCode,
-            prev.plus(new Decimal(cd.amount.toString())),
-          );
+          const commissionWht = cd.source === 'COMMISSION_WHT';
+          const accountCode = commissionWht ? codeWhtPayroll : cd.accountCode;
+          const key = `${commissionWht ? 'W' : 'D'}|${accountCode}`;
+          const prev = deductionByAccount.get(key)?.amount ?? zero;
+          deductionByAccount.set(key, {
+            accountCode,
+            commissionWht,
+            amount: prev.plus(new Decimal(cd.amount.toString())),
+          });
         }
       }
-      for (const [accountCode, amount] of deductionByAccount) {
+      for (const { accountCode, commissionWht, amount } of deductionByAccount.values()) {
         if (amount.gt(zero)) {
           lines.push({
             accountCode,
             dr: zero,
             cr: amount,
-            description: `รายการหัก ${accountCode} งวด ${doc.payroll.payrollPeriod}`,
+            description: commissionWht
+              ? `หัก ณ ที่จ่ายค่าคอม 3% งวด ${doc.payroll.payrollPeriod}`
+              : `รายการหัก ${accountCode} งวด ${doc.payroll.payrollPeriod}`,
           });
         }
       }

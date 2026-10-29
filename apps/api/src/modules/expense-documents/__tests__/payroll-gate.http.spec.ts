@@ -104,7 +104,7 @@ describe('Payroll gate 409s over HTTP', () => {
       statusCode: 409,
       code: 'PAYROLL_STALE',
       diffs,
-      message: 'ยังไม่ได้ลงบัญชี — ข้อมูลลงเวลาเปลี่ยนหลังบันทึกใบ ให้ผู้ทำเงินเดือนกด "แก้ไข" แล้วบันทึกใบอีกครั้ง (ระบบคิดยอดใหม่ให้) ตรวจยอด แล้วส่งขออนุมัติอีกครั้ง',
+      message: 'ยังไม่ได้ลงบัญชี — ข้อมูลลงเวลา/ค่าคอมเปลี่ยนหลังบันทึกใบ ให้ผู้ทำเงินเดือนกด "แก้ไข" แล้วบันทึกใบอีกครั้ง (ระบบคิดยอดใหม่ให้) ตรวจยอด แล้วส่งขออนุมัติอีกครั้ง',
     });
     expect(gate.assertPostable).toHaveBeenCalledWith(tx, DOC_ID, expect.any(Date));
     expect(tx.expenseDocument.update).not.toHaveBeenCalled();

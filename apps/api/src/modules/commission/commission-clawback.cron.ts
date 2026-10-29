@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -19,6 +19,11 @@ import { CommissionService } from './commission.service';
  *
  * Sentry capture on per-contract exception — we do NOT rethrow, so one broken
  * contract does not stop the entire batch.
+ *
+ * D4 Part 2 (P2-R26): a ConflictException is the clawback helper's CAS losing a race with a
+ * sale void / payroll post on the same commission row — not a bug. It is logged as a warning,
+ * not sent to Sentry and not counted in `errors`; the next run picks the contract up again
+ * (the `clawbackAt IS NULL` filter still matches it).
  */
 @Injectable()
 export class CommissionClawbackCron {
@@ -87,6 +92,12 @@ export class CommissionClawbackCron {
             );
           }
         } catch (err) {
+          if (err instanceof ConflictException) {
+            this.logger.warn(
+              `Clawback skipped for ${contract.contractNumber}: ${err.message} — commission changed concurrently, retried next run`,
+            );
+            continue;
+          }
           errors++;
           this.logger.error(
             `Clawback failed for ${contract.contractNumber}: ${err instanceof Error ? err.message : err}`,

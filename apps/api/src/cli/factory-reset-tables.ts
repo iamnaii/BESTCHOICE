@@ -354,6 +354,7 @@ export const WIPE_TABLES: ReadonlySet<string> = new Set([
   'payment_evidences',
   'payment_links',
   'payments',
+  'payroll_commission_items',
   'payroll_custom_deduction',
   'payroll_custom_income',
   'payroll_details',

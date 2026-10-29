@@ -19,6 +19,8 @@ export default function DocumentStyles() {
     .voucher-sheet h2 { margin-top: 8px !important; }
     .voucher-sheet footer { margin-top: 12px !important; padding-top: 8px !important; }
     .voucher-sheet .h-16 { height: 12mm !important; }
+    /* สลิป — หัวข้อข้อมูลพนักงานกว้างเท่าข้อความ (บนจอเดิมตัดเป็นสองบรรทัด หัวข้อกับค่าไม่ตรงแนว) · ตอนพิมพ์มีกฎเดียวกันใน @media print */
+    .voucher-sheet.payroll-slip .voucher-meta-row { grid-template-columns: max-content minmax(0, 1fr); }
     /* แผ่นเอกสารเป็นกระดาษขาว (bg-white) — ในโหมดมืด ตัวหนังสือสีจาง/เส้นเป็นของธีมมืดบนพื้นขาว (อ่านแทบไม่ออก) ·
        แผ่นเอกสารรับสีจาก --document-base-* (styles/admin-colors.css) ⇒ ตั้งตัวแปรชุดนั้นเป็นค่าธีมสว่าง (index.css :root) บนแผ่นเอง */
     .dark .voucher-sheet {
@@ -116,6 +118,31 @@ export default function DocumentStyles() {
       body:has(.bc-document) { page: bc-transaction; }
       ${transactionDocumentCss('body .bc-document')}
       body .bc-daily-sheet :is(th,td) { padding: 0.6mm 1.5mm; }
+      /* D4 ส่วนที่ 2 (P2-R19.5 / P2-R31) — สลิปเงินเดือนหนึ่งคนหนึ่งแผ่น A4 แม้มีแถว OT + ค่าคอม + หักคืน + กล่องสรุปเวลา
+         (DOC-04 "slip with attendance OT rows … five commissions and a clawback") · ตัวอักษร 16 pt และขอบกระดาษเท่าเดิม ·
+         ระยะชุดเดียวทุกสลิป ไม่ขึ้นกับ fitPaperSpacing (สลิปมี data-bc-paper-fit="fixed") — window.print() ของ Chromium ยิง
+         beforeprint ตอนยังเป็น screen media ⇒ ชั้น relaxed/compact ที่เลือกจากการวัดตอนนั้นไม่ตรงกับกระดาษ
+         · หัวข้อข้อมูลพนักงานกว้างเท่าข้อความของตัวเอง (ไม่ตัดบรรทัด และชื่อพนักงานได้ที่มากกว่าคอลัมน์ 110 px เดิม)
+         · ช่องตาราง · ระยะระหว่างส่วน · หัวกระดาษ · แถวข้อมูลพนักงาน · ช่องเซ็น (ชื่อช่องกับวันที่บรรทัดเดียว) */
+      body .bc-document.payroll-slip .voucher-meta-row { grid-template-columns: max-content minmax(0, 1fr); }
+      body .bc-document.payroll-slip :is(th,td) { padding-top: 0.5mm !important; padding-bottom: 0.5mm !important; }
+      body .bc-document.payroll-slip section { margin-top: 1.5mm !important; }
+      body .bc-document.payroll-slip .bc-doc-closing { margin-top: 1.5mm !important; }
+      body .bc-document.payroll-slip .bc-doc-closing > section:first-child { margin-top: 0 !important; }
+      body .bc-document.payroll-slip footer { margin-top: 1.5mm !important; padding-top: 1mm !important; }
+      body .bc-document.payroll-slip .h-16 { height: 9mm !important; margin-bottom: 1mm; }
+      /* คำตัดสินเจ้าของ 2026-10-28 — สลิปที่ยาวเกินหนึ่งแผ่น (payroll-slip-dense · slipLayoutWeight) ย่อตัวอักษรเฉพาะใบนั้น */
+      ${documentTypographyCss('body .voucher-sheet.payroll-slip-dense', { body: 13.5, heading: 15, footer: 10.5 }, 1.1)}
+      body .bc-document.payroll-slip.payroll-slip-dense :is(th,td) { padding-top: 0.25mm !important; padding-bottom: 0.25mm !important; }
+      body .bc-document.payroll-slip.payroll-slip-dense section { margin-top: 1mm !important; }
+      ${documentTypographyCss('body .voucher-sheet.payroll-slip-denser', { body: 12, heading: 14, footer: 10 }, 1.05)}
+      body .bc-document.payroll-slip.payroll-slip-denser :is(th,td) { padding-top: 0.15mm !important; padding-bottom: 0.15mm !important; }
+      body .bc-document.payroll-slip.payroll-slip-denser section { margin-top: 0.8mm !important; }
+      body .bc-document.payroll-slip.payroll-slip-denser .h-16 { height: 7mm !important; }
+      body .bc-document.payroll-slip .bc-doc-header { padding-bottom: 1.5mm; margin-bottom: 1.5mm; }
+      body .bc-document.payroll-slip .bc-doc-brand :is(img,svg) { height: 8mm; margin-bottom: 1mm; }
+      body .bc-document.payroll-slip .payroll-slip-meta { row-gap: 0.5mm; }
+      body .bc-document.payroll-slip .payroll-slip-signatures .text-center > p { display: inline; margin: 0 1mm !important; }
       body .bc-daily-sheet table { margin-top: 1.5mm !important; }
       body .bc-daily-sheet .bc-doc-brand { display: flex; align-items: center; gap: 3mm; }
       body .bc-daily-sheet .bc-doc-brand img { height: 8mm; margin: 0; }

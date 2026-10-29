@@ -15,7 +15,7 @@ vi.mock('@/hooks/useCompanyInfo', () => ({
 }));
 vi.mock('@/hooks/useUiFlags', () => ({ useUiFlags: () => ({ voucherPrintMode: 'single', voucherIncludeAdjustment: false }) }));
 
-import PaymentVoucherPage, { bucketWhtByRate } from './PaymentVoucherPage';
+import PaymentVoucherPage, { bucketWhtByRate, slipLayoutWeight, slipDensity, SLIP_FULL_SIZE_MAX_WEIGHT, SLIP_DENSE_MAX_WEIGHT } from './PaymentVoucherPage';
 
 /**
  * W7 (Round 2) — Form 50 ทวิ is a legal cert; per-row sums MUST equal
@@ -280,6 +280,124 @@ describe('PayrollSlipSheet (PAYROLL voucher)', () => {
     for (const n of [1, 2, 3]) expect(await screen.findByText(`ใบจ่ายเงินเดือน v2 · ${n}/3`)).toBeInTheDocument();
   });
 
+  // D4 ส่วนที่ 2 (Task 6, กระดาน 3 + 6B) — แถวค่าคอม + รายการค่าคอมบรรทัดเดียว (งบ 1 แผ่น R22) · แถวหักคืน + ยอดยกไป
+  describe('commission and clawback (the 800 + 600 vs 1,000 case)', () => {
+    const scItem = (id: string, kind: 'PAY' | 'CLAWBACK', amount: string, ref: { contract?: string; sale?: string }, released: string | null = null) => ({
+      id, salesCommissionId: `sc-${id}`, kind, accountCode: 'S51-1101', amount, releasedAt: released,
+      salesCommission: {
+        id: `sc-${id}`, period: '2026-11', commissionAmount: amount, status: 'APPROVED', clawbackReason: null,
+        clawbackAt: kind === 'CLAWBACK' ? '2026-11-05T03:00:00.000Z' : null, createdAt: '2026-11-03T03:00:00.000Z',
+        contract: ref.contract ? { contractNumber: ref.contract } : null, sale: ref.sale ? { saleNumber: ref.sale } : null,
+      },
+    });
+    const commissionLine = {
+      id: 'l9', employeeName: 'วิชัย ทองดี', employeeTaxId: null,
+      baseSalary: '15000', ssoEmployee: '750', whtAmount: '0', netPaid: '14250',
+      customIncome: [
+        income({ id: 'i9', accountCode: 'S51-1101', name: 'ค่าคอมมิชชัน (2 รายการ)', amount: '1000.00', source: 'COMMISSION' }),
+      ],
+      customDeduction: [
+        { id: 'd9', accountCode: 'S51-1101', name: 'หักคืนค่าคอม (2 รายการ)', amount: '1000.00', source: 'COMMISSION_CLAWBACK' },
+      ],
+      commissionItems: [
+        scItem('p1', 'PAY', '600.00', { contract: 'CT-20261103-0007' }),
+        scItem('p2', 'PAY', '400.00', { sale: 'SL-20261120-0031' }),
+        scItem('c1', 'CLAWBACK', '800.00', { sale: 'SL-20261011-0045' }),
+        scItem('c2', 'CLAWBACK', '200.00', { contract: 'CT-20261003-0012' }),
+      ],
+      attendanceSummary: null,
+      systemNotes: { review: [], warnings: [{ code: 'CLAWBACK_CARRIED', deducted: '1000.00', carried: '400.00' }] },
+    };
+    const mountSlip = (l: unknown) => {
+      apiGet.mockResolvedValue({ data: { ...voucher('POSTED'), payroll: { payrollPeriod: '2026-11', lines: [l] } } });
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={['/expenses/pr-1/voucher']}>
+            <Routes><Route path="/expenses/:id/voucher" element={<PaymentVoucherPage />} /></Routes>
+          </MemoryRouter>
+        </QueryClientProvider>,
+      );
+    };
+
+    it('the commission row lists its commission references on ONE line (no wrap) and has no hours × rate', async () => {
+      mountSlip(commissionLine);
+      const row = await screen.findByRole('row', { name: /ค่าคอมมิชชัน \(2 รายการ\)/ });
+      expect(within(row).getByText('—')).toBeInTheDocument();
+      expect(within(row).getByText('1,000.00')).toBeInTheDocument();
+      const detail = within(row).getByText('CT-20261103-0007 · SL-20261120-0031');
+      // ตอนพิมพ์ตัวอักษรทุกตัวเป็น 16 pt — บรรทัดเดียวเสมอ (ยาวเกิน = …) ไม่ดันสลิปล้นแผ่น
+      expect(detail).toHaveClass('truncate');
+      expect(detail.closest('td')).toHaveClass('max-w-0');
+      // ไม่มีแถวตารางเพิ่มต่อค่าคอม — หนึ่งแถวในตารางรายได้
+      expect(screen.queryByRole('row', { name: /^CT-20261103-0007/ })).not.toBeInTheDocument();
+      // P2-R31 — สลิปใช้ระยะพิมพ์ชุดเดียว ไม่ให้ fitPaperSpacing (beforeprint ตอน screen media) เลือกชั้นระยะ
+      expect(row.closest('article')).toHaveAttribute('data-bc-paper-fit', 'fixed');
+    });
+
+    it('the clawback row is one table row (no item list), and the slip prints the carry sentence with ยกไปงวดหน้า 400.00 บาท', async () => {
+      mountSlip(commissionLine);
+      const row = await screen.findByRole('row', { name: /หักคืนค่าคอม \(2 รายการ\)/ });
+      expect(row).not.toHaveTextContent('SL-20261011-0045');
+      expect(
+        screen.getByText('หักคืนค่าคอมได้ 1,000.00 บาท (ไม่เกินค่าคอมงวดนี้) — ยกไปงวดหน้า 400.00 บาท'),
+      ).toBeInTheDocument();
+      expect(within(screen.getByRole('row', { name: /รวมรายการหัก/ })).getByText('1,750.00')).toBeInTheDocument();
+    });
+
+    // คำตัดสินเจ้าของ 2026-10-29 (กระดาน 7) — ภาษีค่าคอม 3% เป็นแถวของตัวเองต่อจากภาษีเงินเดือน · สูตรในช่องกลาง
+    it('a commission WHT row prints as หัก ณ ที่จ่ายค่าคอม 3% (ภ.ง.ด. 1) with 3% × base, next to the salary WHT row (shown even at 0.00)', async () => {
+      mountSlip({
+        ...commissionLine,
+        netPaid: '15069.63',
+        customIncome: [
+          income({ id: 'i8', accountCode: 'S52-1202', name: 'ค่าล่วงเวลา', amount: '140.63', source: 'ATTENDANCE_OT' }),
+          income({ id: 'i9', accountCode: 'S51-1101', name: 'ค่าคอมมิชชัน (2 รายการ)', amount: '1000.00', source: 'COMMISSION' }),
+        ],
+        customDeduction: [
+          { id: 'd9', accountCode: 'S51-1101', name: 'หักคืนค่าคอม (1 รายการ)', amount: '300.00', source: 'COMMISSION_CLAWBACK' },
+          { id: 'd10', accountCode: 'S21-3101', name: 'หัก ณ ที่จ่ายค่าคอม 3%', amount: '21.00', source: 'COMMISSION_WHT' },
+        ],
+        systemNotes: { review: [], warnings: [] },
+      });
+      const salary = await screen.findByRole('row', { name: /หัก ณ ที่จ่าย เงินเดือน \(ภ\.ง\.ด\. 1\)/ });
+      expect(within(salary).getByText('0.00')).toBeInTheDocument();
+      const wht = screen.getByRole('row', { name: /หัก ณ ที่จ่ายค่าคอม 3% \(ภ\.ง\.ด\. 1\)/ });
+      expect(within(wht).getByText('3% × 700.00')).toBeInTheDocument();
+      expect(within(wht).getByText('21.00')).toBeInTheDocument();
+      expect(wht).not.toHaveTextContent('S21-3101');
+      // ลำดับ: ประกันสังคม · ภาษีเงินเดือน · ภาษีค่าคอม · หักคืนค่าคอม · รวม
+      const table = wht.closest('table') as HTMLElement;
+      expect(within(table).getAllByRole('row').map((r) => (r as HTMLTableRowElement).cells[0]?.textContent)).toEqual([
+        'เงินสมทบประกันสังคม (พนักงาน)',
+        'หัก ณ ที่จ่าย เงินเดือน (ภ.ง.ด. 1)',
+        'หัก ณ ที่จ่ายค่าคอม 3% (ภ.ง.ด. 1)',
+        'S51-1101หักคืนค่าคอม (1 รายการ)',
+        'รวมรายการหัก',
+      ]);
+      expect(within(screen.getByRole('row', { name: /รวมรายการหัก/ })).getByText('1,071.00')).toBeInTheDocument();
+    });
+
+    it('more than two commissions → the first two references and "และอีก k รายการ" (one line keeps the one-sheet budget)', async () => {
+      const many = ['a', 'b', 'c', 'd', 'e', 'f'].map((k) => scItem(k, 'PAY', '100.00', { sale: `SL-${k}` }));
+      mountSlip({ ...commissionLine, customDeduction: [], systemNotes: null, commissionItems: many });
+      const row = await screen.findByRole('row', { name: /ค่าคอมมิชชัน \(2 รายการ\)/ });
+      expect(within(row).getByText('SL-a · SL-b')).toHaveClass('truncate');
+      // P2-R31 — จำนวนที่เหลืออยู่นอกส่วนที่ตัด: เลขอ้างอิงยาวถูกตัดได้ แต่ "และอีก k รายการ" ไม่หาย
+      const more = within(row).getByText('และอีก 4 รายการ');
+      expect(more.closest('.truncate')).toBeNull();
+      expect(more).toHaveClass('shrink-0');
+      expect(row).not.toHaveTextContent('SL-c');
+      expect(screen.queryByText(/ยกไปงวดหน้า/)).not.toBeInTheDocument();
+    });
+
+    it('a slip with no commission is unchanged (no detail line, no carry line)', async () => {
+      mountVoucher('POSTED');
+      await screen.findByRole('row', { name: /เบี้ยขยัน/ });
+      expect(screen.queryByText(/ยกไปงวดหน้า/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/และอีก/)).not.toBeInTheDocument();
+    });
+  });
+
   it.each([
     ['DRAFT', /ลงบัญชีก่อนจึงพิมพ์สลิปได้/],
     ['PENDING_APPROVAL', /ลงบัญชีก่อนจึงพิมพ์สลิปได้/],
@@ -294,5 +412,32 @@ describe('PayrollSlipSheet (PAYROLL voucher)', () => {
     const print = screen.getByRole('button', { name: /พิมพ์ \/ บันทึก PDF/ });
     expect(print).toBeDisabled();
     expect(print).toHaveAttribute('aria-describedby', block.id);
+  });
+});
+
+// คำตัดสินเจ้าของ 2026-10-28 — สลิปที่ยาวเกินหนึ่งแผ่นย่อตัวอักษรเฉพาะใบนั้น (เกณฑ์วัดจาก PDF A4 จริง)
+describe('slip density (print font steps)', () => {
+  const weightOf = (income: number, deduction: number, extra: Partial<Parameters<typeof slipLayoutWeight>[0]> = {}) =>
+    slipLayoutWeight({
+      incomeNames: Array.from({ length: income }, (_, i) => `รายได้ ${i}`),
+      deductionNames: Array.from({ length: deduction }, (_, i) => `หัก ${i}`),
+      commissionDetail: false, carryNote: false, attendanceBox: false, note: false, ...extra,
+    });
+
+  it('counts table rows, totals, the commission line, the carry note, the attendance box (2) and the note', () => {
+    expect(weightOf(0, 0)).toBe(5); // ฐาน + รวม · ประกันสังคม + หัก ณ ที่จ่าย + รวม
+    expect(weightOf(3, 2, { commissionDetail: true, carryNote: true, attendanceBox: true, note: true })).toBe(15);
+  });
+
+  it('a long row name (wraps to two lines) counts 2', () => {
+    const long = slipLayoutWeight({ incomeNames: ['ก'.repeat(41)], deductionNames: [], commissionDetail: false, carryNote: false, attendanceBox: false, note: false });
+    expect(long).toBe(weightOf(1, 0) + 1);
+  });
+
+  it('full size up to the limit, then 13.5 pt, then 12 pt', () => {
+    expect(slipDensity(SLIP_FULL_SIZE_MAX_WEIGHT)).toBe('');
+    expect(slipDensity(SLIP_FULL_SIZE_MAX_WEIGHT + 1)).toBe('payroll-slip-dense');
+    expect(slipDensity(SLIP_DENSE_MAX_WEIGHT)).toBe('payroll-slip-dense');
+    expect(slipDensity(SLIP_DENSE_MAX_WEIGHT + 1)).toBe('payroll-slip-denser');
   });
 });

@@ -2,26 +2,30 @@
  * Void-sale Task 5 — ยกเลิกใบขายพิสูจน์บน DB จริง
  *
  * ทุกการเปลี่ยนสถานะมาจาก service จริง (`SalesService.create` / `SaleVoidService.voidSale` /
- * `CommissionService.generatePayouts+approvePayout+approve+markPaid` /
- * `FinanceReceivableService.recordReceive`) — **ห้าม** `prisma.product.update({ status })`
- * ตั้งฉาก (pattern เดียวกับ product-lifecycle.integration.spec.ts)
+ * `CommissionService.approvePayout` / `FinanceReceivableService.recordReceive`) — **ห้าม**
+ * `prisma.product.update({ status })` ตั้งฉาก (pattern เดียวกับ product-lifecycle.integration.spec.ts)
  *
  * ข้อยกเว้นที่ตั้งใจ (documented เหมือน `contract.status = TERMINATED` ของเพื่อนบ้าน):
  *   - `salesCommission.period` ถูกย้ายไปงวดสังเคราะห์ (2905-XX) ด้วย prisma ตรง ๆ ในเคส
  *     รอบจ่าย (G4b) — period เป็นป้ายจัดกลุ่มที่คำนวณจากนาฬิกาข้อเครื่อง (`new Date()` ใน
  *     sale-writer) ไม่ใช่สถานะที่มีด่านคุม การย้ายจึงเทียบเท่า "รันเทสคนละเดือน" เท่านั้น
- *     เหตุที่จำเป็น: `generatePayouts(period)` กวาดค่าคอม **ทุกคน** ในงวดนั้นทั้ง DB —
- *     ใช้งวดจริงบน dev DB ที่แชร์กันจะสร้าง/แตะรอบจ่ายของข้อมูลคนอื่น. ความสัมพันธ์ที่
- *     ด่าน G4b ใช้จริง (period ตรงกันระหว่างค่าคอมกับรอบจ่าย + `createdAt <= generatedAt`)
- *     ถูกรักษาไว้ครบทุกเคส
+ *     เหตุที่จำเป็น: งวดสังเคราะห์เป็นของสเปคนี้คนเดียว — ใช้งวดจริงบน dev DB ที่แชร์กัน
+ *     จะแตะรอบจ่ายของข้อมูลคนอื่น. ความสัมพันธ์ที่ด่าน G4b ใช้จริง (period ตรงกันระหว่าง
+ *     ค่าคอมกับรอบจ่าย + `createdAt <= generatedAt`) ถูกรักษาไว้ครบทุกเคส
+ *   - ค่าคอม "จ่ายแล้ว" และแถวรอบจ่ายเดิม (`CommissionPayout`) ถูกตั้งตรงด้วย prisma
+ *     (`seedPaidCommission` / `seedDraftPayout`) — D4 ส่วนที่ 2: จ่ายค่าคอมผ่านใบเงินเดือนเท่านั้น
+ *     ⇒ `markPaid` / `generatePayouts` / `markPayoutPaid` ตอบ 410 แล้ว ส่วนทางจ่ายผ่านใบเงินเดือน
+ *     (Tasks 3–4) อยู่นอกไฟล์นี้. ตั้งรูปเดียวกับที่ทางเดิมเขียนทุกช่อง (PAID + paidAt + paidAmount
+ *     = commissionAmount · รอบ DRAFT + ยอดรวม + `generatedAt`) — รอบเดิมยังอยู่ในฐานได้ และ
+ *     `approvePayout` ยังเปิด ⇒ ด่าน G4b ยังต้องคุม
  *
  * เคส (ตาม task brief + คำสั่ง Task 5):
  *   1. ขายสด+ของแถม → void → คืนสต็อกทั้งสองชิ้น / JE สุทธิศูนย์ทุกบัญชี / ค่าคอม
  *      CLAWED_BACK / ขายเครื่องเดิมใหม่ได้จริง
  *   2. ขายผ่านไฟแนนซ์ภายนอก (+ของแถม) → void → receivable ถูกยกเลิก / ไม่มี JE / ไม่แตะค่าคอม
  *   3. G3 ไฟแนนซ์โอนแล้ว → ปฏิเสธ + ไม่มีอะไรถูกเขียน
- *   4. G4 ค่าคอม PAID → ปฏิเสธ + ไม่มีอะไรถูกเขียน
- *   5. G4b DRAFT → ร่างถูก soft-delete + audit + generate ใหม่ได้ยอดถูก
+ *   4. G4 ค่าคอม PAID → ยกเลิกได้ · ค่าคอม CLAWED_BACK ยอด = paidAmount (ใบเงินเดือนงวดถัดไปหักคืน)
+ *   5. G4b DRAFT → ร่างถูก soft-delete + audit (ค่าคอมใบหลังรอบไม่ถูกแตะ)
  *   6. G4b APPROVED → ปฏิเสธ + ไม่มีอะไรถูกเขียน
  *   7. G4b คีย์ขายหลังรอบ → void ได้ (generatedAt พิสูจน์ว่าไม่อยู่ในรอบ) + รอบเดิมไม่ถูกแตะ
  *   8. G1 ยกเลิกซ้ำ → ปฏิเสธ + ไม่มี JE ใบสอง
@@ -252,6 +256,46 @@ async function externalFinanceSale(opts: {
  */
 async function moveCommissionPeriod(saleId: string, period: string) {
   await prisma.salesCommission.updateMany({ where: { saleId }, data: { period } });
+}
+
+/**
+ * ค่าคอมของใบขายนี้ "จ่ายแล้ว" — ข้อยกเว้นที่ documented ไว้หัวไฟล์ (`markPaid` ตอบ 410 แล้ว):
+ * รูปเดียวกับที่ `markPaid` เดิมเขียน (PAID + paidAt + paidAmount = commissionAmount)
+ */
+async function seedPaidCommission(saleId: string) {
+  const c = await prisma.salesCommission.findFirstOrThrow({ where: { saleId } });
+  return prisma.salesCommission.update({
+    where: { id: c.id },
+    data: {
+      status: 'PAID',
+      approvedById: adminId,
+      approvedAt: new Date(),
+      paidAt: new Date(),
+      paidAmount: c.commissionAmount,
+    },
+  });
+}
+
+/**
+ * รอบจ่ายเดิมฉบับร่างของ (พนักงาน, งวด) — ข้อยกเว้นที่ documented ไว้หัวไฟล์ (`generatePayouts`
+ * ตอบ 410 แล้ว): รูปเดียวกับขา create ของ generatePayouts เดิม (ยอดรวมค่าคอม PENDING/APPROVED/PAID
+ * ของคู่นี้ + `generatedAt` = ตอนนี้)
+ */
+async function seedDraftPayout(salespersonId: string, period: string) {
+  const rows = await prisma.salesCommission.findMany({
+    where: { salespersonId, period, deletedAt: null, status: { in: ['PENDING', 'APPROVED', 'PAID'] } },
+  });
+  return prisma.commissionPayout.create({
+    data: {
+      salespersonId,
+      period,
+      totalSales: rows.reduce((sum, r) => sum.plus(r.saleAmount), new Decimal(0)),
+      totalCommission: rows.reduce((sum, r) => sum.plus(r.commissionAmount), new Decimal(0)),
+      commissionCount: rows.length,
+      status: 'DRAFT',
+      generatedAt: new Date(),
+    },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -772,7 +816,7 @@ describe('ยกเลิกใบขาย — flow จริงบน DB จ�
 
   // -------------------------------------------------------------------------
   it(
-    'เคส 4 (G4): ค่าคอม PAID → ปฏิเสธ และไม่มีอะไรถูกเขียน',
+    'เคส 4 (G4): ค่าคอม PAID → ยกเลิกได้ ค่าคอมเป็น CLAWED_BACK ยอด = paidAmount (หักคืนในใบเงินเดือนงวดถัดไป)',
     async () => {
       const s4 = await seedSalesperson('D0');
       const main = await seedProduct('D1');
@@ -783,35 +827,41 @@ describe('ยกเลิกใบขาย — flow จริงบน DB จ�
         sellingPrice: 9900,
         salespersonId: s4.id,
       });
+      const paid = await seedPaidCommission(sale.id);
+      expect(paid.status).toBe('PAID');
+      expect(paid.paidAmount!.greaterThan(0)).toBe(true);
 
-      // จ่ายค่าคอมผ่านเส้นทางจริง: approve (admin ≠ ผู้รับ — SoD) → markPaid
-      const commission = await prisma.salesCommission.findFirstOrThrow({
-        where: { saleId: sale.id },
+      const res = await saleVoidService.voidSale(sale.id, OWNER(), 'คีย์ผิด');
+      // P2-R30 — ค่าคอมนี้จ่ายนอกใบเงินเดือน (ไม่มีรายการ PAY ในใบที่ลงบัญชี) ⇒ ใบเงินเดือนไม่หักคืนให้ · ยอดแยกไว้ ไม่อยู่ใน toast
+      expect(res.paidCommissionClawback).toBe('0.00');
+      expect(res.paidOutsidePayrollClawback).toBe(paid.paidAmount!.toFixed(2));
+
+      const after = await prisma.salesCommission.findUniqueOrThrow({ where: { id: paid.id } });
+      expect(after.status).toBe('CLAWED_BACK');
+      expect(after.clawbackAmount!.toFixed(2)).toBe(paid.paidAmount!.toFixed(2));
+      expect(after.clawbackPercent).toBe(100);
+      expect(after.clawbackAt).not.toBeNull();
+      expect(after.clawbackReason).toMatch(/^ยกเลิกใบขาย .+: คีย์ผิด$/);
+      // ประวัติการจ่ายคงอยู่ — ใบเงินเดือนหักคืนจาก paidAt + clawbackAmount (Tasks 3–4)
+      expect(after.paidAt!.getTime()).toBe(paid.paidAt!.getTime());
+      expect(after.paidAmount!.toFixed(2)).toBe(paid.paidAmount!.toFixed(2));
+
+      expect((await prisma.sale.findUniqueOrThrow({ where: { id: sale.id } })).deletedAt).not.toBeNull();
+      expect((await prisma.product.findUniqueOrThrow({ where: { id: main.id } })).status).toBe('IN_STOCK');
+      const audit = await prisma.auditLog.findFirstOrThrow({
+        where: { action: 'SALE_VOIDED', entity: 'sale', entityId: sale.id },
       });
-      await commissionService.approve(commission.id, adminId);
-      await commissionService.markPaid(commission.id);
-      expect(
-        (await prisma.salesCommission.findUniqueOrThrow({ where: { id: commission.id } }))
-          .status,
-      ).toBe('PAID');
-
-      const before = await snapshotState(sale.id);
-      await expect(
-        saleVoidService.voidSale(sale.id, OWNER(), 'คีย์ผิด'),
-      ).rejects.toThrow(/ค่าคอมของใบขายนี้อยู่สถานะ PAID/);
-      const after = await snapshotState(sale.id);
-      expect(after).toEqual(before);
-      expect(
-        (await prisma.salesCommission.findUniqueOrThrow({ where: { id: commission.id } }))
-          .status,
-      ).toBe('PAID');
+      const newValue = audit.newValue as Record<string, unknown>;
+      expect(newValue.paidCommissionIds).toEqual([paid.id]);
+      expect(newValue.paidCommissionClawback).toBe('0.00');
+      expect(newValue.paidOutsidePayrollClawback).toBe(paid.paidAmount!.toFixed(2));
     },
     180_000,
   );
 
   // -------------------------------------------------------------------------
   it(
-    'เคส 5 (G4b DRAFT): ร่างรอบจ่ายถูก soft-delete + audit แล้ว generate ใหม่ได้ยอดถูก (ไม่รวมใบที่ยกเลิก)',
+    'เคส 5 (G4b DRAFT): ร่างรอบจ่ายถูก soft-delete + audit · ค่าคอมใบหลังรอบไม่ถูกแตะ',
     async () => {
       const s5 = await seedSalesperson('E0');
       const productA = await seedProduct('E1');
@@ -830,11 +880,10 @@ describe('ยกเลิกใบขาย — flow จริงบน DB จ�
       // กับ payout.generatedAt (Node) — บน Windows timer quantum ~15.6ms ทำให้ลำดับกลับ
       // ด้านได้ถ้าช่องว่างจริงแคบกว่านั้น (prod ช่องว่างเป็นนาที/วัน ไม่ใช่ประเด็นจริง)
       await sleep(150);
-      const gen1 = await commissionService.generatePayouts({ period: P5 });
-      expect(gen1.created).toBe(1);
+      const payout = await seedDraftPayout(s5.id, P5);
       const payoutKey = { salespersonId_period: { salespersonId: s5.id, period: P5 } };
-      const payout = await prisma.commissionPayout.findUniqueOrThrow({ where: payoutKey });
       expect(payout.status).toBe('DRAFT');
+      expect(payout.commissionCount).toBe(1);
       expect(payout.generatedAt).not.toBeNull();
 
       // ใบขาย B คีย์หลังรอบ (createdAt > generatedAt) — รอดจากรอบนี้ แต่ต้องเข้ารอบใหม่
@@ -873,18 +922,7 @@ describe('ยกเลิกใบขาย — flow จริงบน DB จ�
         (await prisma.salesCommission.findUniqueOrThrow({ where: { id: commissionB.id } }))
           .status,
       ).toBe('PENDING');
-
-      // ── generate ใหม่ → ขา restore คำนวณยอดใหม่ ตัด CLAWED_BACK ออกเอง ──
-      const gen2 = await commissionService.generatePayouts({ period: P5 });
-      expect(gen2.created).toBe(1);
-      const regenerated = await prisma.commissionPayout.findUniqueOrThrow({ where: payoutKey });
-      expect(regenerated.deletedAt).toBeNull();
-      expect(regenerated.status).toBe('DRAFT');
-      expect(regenerated.commissionCount).toBe(1);
-      expect(regenerated.totalCommission.toString()).toBe(
-        commissionB.commissionAmount.toString(),
-      );
-      expect(regenerated.generatedAt!.getTime()).toBeGreaterThan(payout.generatedAt!.getTime());
+      // ขา "generate ใหม่ได้ยอดถูก" ถูกถอด: สร้างรอบจ่ายตอบ 410 แล้ว — ค่าคอม B เข้าใบเงินเดือน (Tasks 3–4)
     },
     180_000,
   );
@@ -904,10 +942,7 @@ describe('ยกเลิกใบขาย — flow จริงบน DB จ�
       });
       await moveCommissionPeriod(sale.id, P6);
       await sleep(150); // กัน flake นาฬิกาสองแหล่ง — ดูคอมเมนต์ในเคส 5
-      await commissionService.generatePayouts({ period: P6 });
-      const payout = await prisma.commissionPayout.findUniqueOrThrow({
-        where: { salespersonId_period: { salespersonId: s6.id, period: P6 } },
-      });
+      const payout = await seedDraftPayout(s6.id, P6);
       await commissionService.approvePayout(payout.id, adminId, {});
       expect(
         (await prisma.commissionPayout.findUniqueOrThrow({ where: { id: payout.id } })).status,
@@ -946,10 +981,7 @@ describe('ยกเลิกใบขาย — flow จริงบน DB จ�
       });
       await moveCommissionPeriod(saleA.id, P7);
       await sleep(150); // กัน flake นาฬิกาสองแหล่ง — ดูคอมเมนต์ในเคส 5
-      await commissionService.generatePayouts({ period: P7 });
-      const payout = await prisma.commissionPayout.findUniqueOrThrow({
-        where: { salespersonId_period: { salespersonId: s7.id, period: P7 } },
-      });
+      const payout = await seedDraftPayout(s7.id, P7);
       await commissionService.approvePayout(payout.id, adminId, {});
 
       // ใบ B คีย์ผิดหลังรอบ — `commission.createdAt > payout.generatedAt` พิสูจน์ว่า

@@ -44,7 +44,10 @@ interface WhtItemPersonal {
   employeeName: string;
   employeeTaxId: string | null;
   gross: number | string;
+  /** ภาษีเงินเดือน + หัก ณ ที่จ่ายค่าคอม 3% (ยื่นใบเดียว — คำตัดสินเจ้าของ 2026-10-29) */
   whtAmount: number | string;
+  salaryWht?: number | string;
+  commissionWht?: number | string;
   payDate: string | Date;
   payrollDocNumber: string;
 }
@@ -80,7 +83,10 @@ function endpointFor(form: WhtForm): string {
   return '/tax/pnd53-preview';
 }
 
-function PersonalTable({ items }: { items: WhtItemPersonal[] }) {
+/** ภ.ง.ด.1 — งวดที่มีหัก ณ ที่จ่ายค่าคอม แยกช่องภาษีเงินเดือน / ภาษีค่าคอม 3% / รวม (กระดาน 7) · ไม่มี = ช่อง WHT เดียวเหมือนเดิม */
+export function PersonalTable({ items }: { items: WhtItemPersonal[] }) {
+  const split = items.some((it) => Number(it.commissionWht ?? 0) > 0);
+  const cols = split ? 8 : 6;
   return (
     <div className="overflow-x-auto">
       <ScreenTable className="w-full text-sm">
@@ -89,7 +95,15 @@ function PersonalTable({ items }: { items: WhtItemPersonal[] }) {
             <th className="py-2 pr-2">พนักงาน</th>
             <th className="py-2 pr-2">เลขประจำตัวผู้เสียภาษี</th>
             <th className="py-2 pr-2 text-right">เงินได้ (฿)</th>
-            <th className="py-2 pr-2 text-right">WHT (฿)</th>
+            {split ? (
+              <>
+                <th className="py-2 pr-2 text-right">ภาษีเงินเดือน (฿)</th>
+                <th className="py-2 pr-2 text-right">ภาษีค่าคอม 3% (฿)</th>
+                <th className="py-2 pr-2 text-right">ภาษีที่หักรวม (฿)</th>
+              </>
+            ) : (
+              <th className="py-2 pr-2 text-right">WHT (฿)</th>
+            )}
             <th className="py-2 pr-2">วันจ่าย</th>
             <th className="py-2 pr-2">เอกสาร</th>
           </tr>
@@ -97,7 +111,7 @@ function PersonalTable({ items }: { items: WhtItemPersonal[] }) {
         <tbody>
           {items.length === 0 && (
             <tr>
-              <td colSpan={6} className="py-4 text-center text-muted-foreground">
+              <td colSpan={cols} className="py-4 text-center text-muted-foreground">
                 ไม่มีข้อมูลในงวด
               </td>
             </tr>
@@ -107,7 +121,13 @@ function PersonalTable({ items }: { items: WhtItemPersonal[] }) {
               <td className="py-2 pr-2">{it.employeeName}</td>
               <td className="py-2 pr-2 font-mono text-xs">{it.employeeTaxId ?? '-'}</td>
               <td className="py-2 pr-2 text-right tabular-nums">{fmtNumber(it.gross)}</td>
-              <td className="py-2 pr-2 text-right tabular-nums">{fmtNumber(it.whtAmount)}</td>
+              {split && (
+                <>
+                  <td className="py-2 pr-2 text-right tabular-nums">{fmtNumber(it.salaryWht ?? it.whtAmount)}</td>
+                  <td className="py-2 pr-2 text-right tabular-nums">{fmtNumber(it.commissionWht ?? 0)}</td>
+                </>
+              )}
+              <td className={`py-2 pr-2 text-right tabular-nums ${split ? 'font-semibold' : ''}`}>{fmtNumber(it.whtAmount)}</td>
               <td className="py-2 pr-2 tabular-nums">
                 {it.payDate ? new Date(it.payDate).toLocaleDateString('th-TH') : '-'}
               </td>

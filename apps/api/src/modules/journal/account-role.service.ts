@@ -63,6 +63,8 @@ export class AccountRoleService implements OnModuleInit {
     // Payroll OT part 1 — holiday work + holiday OT rows (migration 20261106000000).
     'shop_payroll_holiday',
     'payroll_holiday',
+    // Payroll D4 part 2 — commission pulled into SHOP payroll (migration 20261107000000). SHOP only.
+    'shop_payroll_commission',
     // D1.1.6.1 — rounding-tolerance routing role (≤1฿ underpay adjustment on
     // Payment). Seeded by migration 20260919000000_add_account_role_map.
     // Owner may remap via admin UI without redeploying the JE templates.
@@ -471,7 +473,7 @@ export class AccountRoleService implements OnModuleInit {
           'แถวชุดนี้มาจาก migration (20260919000000_add_account_role_map) — ' +
           'ตรวจว่า `npx prisma migrate deploy` รันครบแล้ว และไม่มีอะไรล้างตาราง ' +
           '(prisma/seed.ts เคย TRUNCATE ทิ้ง — ดู PRESERVED_TABLES) ' +
-          'หรือเพิ่ม/เปิดใช้งานแถวเองที่หน้า ตั้งค่า → ผู้ใช้ & สิทธิ์ → บัญชีตาม Role ' +
+          'หรือเพิ่ม/เปิดใช้งานแถวเองที่หน้า ตั้งค่าระบบ › ผู้ใช้ & สิทธิ์ › บัญชีตาม บทบาท ' +
           '(/settings/access/account-roles, OWNER เท่านั้น)',
       );
     }

@@ -9,9 +9,11 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { PayoutStatus, Prisma, ProductStatus, RepairStatus } from '@prisma/client';
+import { CommissionStatus, PayoutStatus, Prisma, ProductStatus, RepairStatus } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { clawBackCommissions, clawbackAmountOf } from '../../commission/commission-clawback.util';
+import { isCoveredByPayout, isLockedPayout } from '../../commission/commission-payout-cover.util';
 import { assertProductNotHeld } from '../../products/product-hold.util';
 import { reopenRepossessionOnUnsale } from '../../repossessions/repossession-resale.util';
 import { ExchangeCancelReversalTemplate } from '../../journal/cpa-templates/exchange-cancel-reversal.template';
@@ -63,38 +65,40 @@ const CLOSED_REPAIR_STATUSES: readonly RepairStatus[] = [
 ];
 
 /**
- * สถานะค่าคอมที่ยัง "เรียกคืนได้" — เงินยังไม่ออกจากกระเป๋าพนักงาน
+ * G4 — ค่าคอมของใบขายแต่ละสถานะทำอะไรตอนยกเลิก (P2-R9 — D4 ส่วนที่ 2: ค่าคอมที่จ่ายแล้วไม่บล็อกอีก)
  *
- * ใช้เป็น **ตัวตัดสินสองงานพร้อมกัน**: สถานะที่ **ไม่อยู่** ในลิสต์นี้ = G4 บล็อก,
- * ที่อยู่ในลิสต์ = flip เป็น `CLAWED_BACK` ตอนเขียน ⇒ ไม่มีสถานะไหนหลุดทั้งสองทาง
- * (เดิมเป็น include-list ที่ใช้แค่ตอนเขียน ⇒ `PARTIALLY_CLAWED_BACK` ไม่ถูกบล็อก
- * **และ** ไม่ถูกเรียกคืน = ผ่านฉลุยเงียบ ๆ ทั้งที่เงินออกไปแล้ว)
+ * - `CLAW_BACK` → `clawBackCommissions` 100%: ยังไม่จ่าย = CLAWED_BACK ยอด null · จ่ายแล้ว (paidAt) =
+ *   CLAWED_BACK ยอด = paidAmount แล้วใบเงินเดือนงวดถัดไปหักคืน (Tasks 3–4) — รวม PARTIALLY_CLAWED_BACK
+ *   (เคยถูกเรียกคืนบางส่วน → เรียกคืนเต็ม)
+ * - `SKIP` → CLAWED_BACK อยู่แล้ว ไม่มีอะไรให้เรียกคืนอีก (เดิมบล็อกด้วยข้อความเท็จ "เงินออกไปแล้ว")
  *
- * ค่าใหม่ที่เพิ่มใน `CommissionStatus` วันหลังจะถูก **บล็อก** โดยปริยาย ไม่ใช่ผ่านเงียบ ๆ
- * — เจตนาเดียวกับ `CLOSED_REPAIR_STATUSES` / `FINISHED_CONTRACT_STATUSES`
+ * `satisfies Record<CommissionStatus, …>` ⇒ ค่าใหม่ใน enum compile ไม่ผ่านจนกว่าจะตัดสินใจ · ค่าที่ไม่อยู่ใน
+ * ตาราง ณ runtime ยังถูก **บล็อก** (หลัก exclude list เดียวกับ `CLOSED_REPAIR_STATUSES`) ไม่ใช่ผ่านเงียบ ๆ
  */
-const CLAWABLE_COMMISSION_STATUSES: readonly string[] = ['PENDING', 'APPROVED'];
+const G4_COMMISSION_ACTION = {
+  PENDING: 'CLAW_BACK',
+  APPROVED: 'CLAW_BACK',
+  PAID: 'CLAW_BACK',
+  PARTIALLY_CLAWED_BACK: 'CLAW_BACK',
+  CLAWED_BACK: 'SKIP',
+} as const satisfies Record<CommissionStatus, 'CLAW_BACK' | 'SKIP'>;
 
-/**
- * สถานะ **รอบจ่ายค่าคอม** (`CommissionPayout`) ที่ยังไม่ผูกเงิน ⇒ ยกเลิกใบขายทับได้
+/*
+ * สถานะ **รอบจ่ายค่าคอม** (`CommissionPayout`) ที่ยังไม่ผูกเงิน ⇒ ยกเลิกใบขายทับได้ — รายการเดียว
+ * `UNPAID_PAYOUT_STATUSES` / `isLockedPayout` ใน commission-payout-cover.util.ts (P2-R27 — ห้ามมีสำเนา)
  *
  * exclude list โดยเจตนา (ค่าจริง `PayoutStatus` = DRAFT / APPROVED / PAID / CANCELLED) —
  * สถานะใหม่จะถูกนับว่า "ผูกเงินแล้ว" และบล็อกไว้ก่อน ไม่ใช่ผ่านเงียบ ๆ
  *
  * - `DRAFT` — **คำตัดสินเจ้าของ 2026-08-23: ร่างยกเลิกได้** ⇒ ไม่บล็อก แต่ต้อง
- *   **soft-delete ร่างนั้นทิ้งใน tx เดียวกัน** เพราะ `generatePayouts` ข้ามรอบที่มีอยู่แล้ว
- *   (`if (existing && existing.deletedAt === null) continue`) ⇒ ปล่อยร่างไว้ = ยอดค้างเกินจริง
- *   แล้วถูกอนุมัติ/จ่ายตามยอดเก่า. ลบทิ้งแล้วกดสร้างใหม่ได้ยอดถูก เพราะขา `upsert.update`
- *   ตั้ง `deletedAt: null` + คำนวณยอดใหม่ ซึ่งตัด `CLAWED_BACK` ออกเองอยู่แล้ว
+ *   **soft-delete ร่างนั้นทิ้งใน tx เดียวกัน** — ยอดของร่างไม่ถูกคำนวณใหม่ ⇒ ปล่อยร่างไว้ = ยอดค้าง
+ *   เกินจริงแล้วถูกอนุมัติตามยอดเก่า. (D4 ส่วนที่ 2: สร้างรอบจ่ายตอบ 410 แล้ว — ค่าคอมที่เหลือของคู่
+ *   พนักงาน+งวดนั้นเข้าใบเงินเดือนแทน)
  * - `CANCELLED` — รอบถูกยกเลิก ไม่ผูกเงิน ⇒ ปล่อยผ่านเฉย ๆ ไม่ต้องลบ
  *
  * **ห้ามแก้เป็นการหักยอด** (`totalCommission -= commissionAmount`) แทนการลบร่าง:
  * รอบที่ generate **ก่อน** ค่าคอมใบนี้เกิดไม่เคยนับใบนี้ ⇒ หักยอด = จ่ายพนักงานขาด
  */
-const UNPAID_PAYOUT_STATUSES: readonly PayoutStatus[] = [
-  PayoutStatus.DRAFT,
-  PayoutStatus.CANCELLED,
-];
 
 /**
  * สถานะลูกหนี้ไฟแนนซ์ที่แปลว่า **เงินเข้าจริงแล้ว** — allow-list ตามเจตนา D2
@@ -114,6 +118,16 @@ export interface VoidSaleResult {
   saleNumber: string;
   restoredProductIds: string[];
   reversalEntryNumbers: string[];
+  /**
+   * ยอดค่าคอมที่จ่ายผ่านใบเงินเดือนที่ลงบัญชีแล้วและถูกเรียกคืน (2 ตำแหน่ง, '0.00' เมื่อไม่มี) — ใบเงินเดือนงวดถัดไปหักคืนให้
+   * (P2-R30: เฉพาะที่มีรายการ PAY ที่ยังมีผลในใบ POSTED — กติกาเดียวกับที่ใบเงินเดือนหัก) · หน้าประวัติการขายใช้ยอดนี้ใน toast
+   */
+  paidCommissionClawback: string;
+  /**
+   * ค่าคอมที่จ่ายไปแล้วนอกใบเงินเดือน (เส้นทางจ่ายเดิม) และถูกเรียกคืน — ใบเงินเดือนไม่หักให้อัตโนมัติ (คำเตือน
+   * CLAWBACK_PAID_OUTSIDE_PAYROLL) ⇒ ไม่รวมใน toast
+   */
+  paidOutsidePayrollClawback: string;
 }
 
 /**
@@ -357,36 +371,47 @@ export class SaleVoidService {
       }
     }
 
-    // ── G4 — ค่าคอมจ่ายออกไปแล้ว ────────────────────────────────────────────
-    // อ่านครั้งเดียวใช้สองงาน: ตัดสิน G4 และเก็บรหัสที่จะเรียกคืนในขั้นเขียน
+    // ── G4 — ค่าคอมของใบขายนี้ (ตาราง `G4_COMMISSION_ACTION`) ─────────────────
+    // อ่านครั้งเดียวใช้สองงาน: ตัดสิน G4 และเก็บแถวที่จะเรียกคืนในขั้นเขียน (พร้อมยอดเงินที่ตัวช่วยต้องใช้)
     const commissions = await tx.salesCommission.findMany({
       where: { saleId: sale.id, deletedAt: null },
-      select: { id: true, status: true, period: true, salespersonId: true, createdAt: true },
+      select: {
+        id: true,
+        status: true,
+        period: true,
+        salespersonId: true,
+        createdAt: true,
+        commissionAmount: true,
+        paidAt: true,
+        paidAmount: true,
+      },
     });
-    const stuckCommission = commissions.find(
-      (c) => !CLAWABLE_COMMISSION_STATUSES.includes(c.status),
+    const unknownCommission = commissions.find(
+      (c) => !Object.prototype.hasOwnProperty.call(G4_COMMISSION_ACTION, c.status),
     );
-    if (stuckCommission) {
+    if (unknownCommission) {
       throw new BadRequestException(
-        `ค่าคอมของใบขายนี้อยู่สถานะ ${stuckCommission.status} (งวด ${stuckCommission.period}) ` +
-          '⇒ เงินออกไปแล้ว ยกเลิกใบขายไม่ได้ — ' +
-          'ระบบยังไม่มีเมนูเรียกคืนค่าคอมที่จ่ายแล้ว (หน้าค่าคอมมิชชันมีแค่ "อนุมัติ" กับ ' +
-          '"บันทึกจ่าย" ไม่มีปุ่มกลับรายการ) ⇒ ให้เจ้าของ/ผจก.การเงินตัดสินใจวิธีเรียกคืนก่อน',
+        `ค่าคอมของใบขายนี้อยู่สถานะ ${unknownCommission.status} (งวด ${unknownCommission.period}) ` +
+          'ซึ่งระบบยังไม่รองรับการยกเลิกที่นี่ — ให้แจ้งผู้ดูแลระบบ',
       );
     }
+    const commissionsToClawBack = commissions.filter(
+      (c) => G4_COMMISSION_ACTION[c.status] === 'CLAW_BACK',
+    );
 
     // ── G4b — รอบจ่ายค่าคอมที่ผูกเงินไว้แล้ว ────────────────────────────────
     // `markPayoutPaid` อัปเดต **เฉพาะแถว `CommissionPayout`** ไม่แตะ `SalesCommission.status`
-    // ⇒ ด่าน G4 ข้างบน (ที่ดูสถานะค่าคอมอย่างเดียว) ปิดประตูเงินได้แค่บานเดียว:
-    // ขายสด → ค่าคอม PENDING → generate + approve + paid (พนักงานได้เงินจริง) → ค่าคอมยัง
-    // PENDING → G4 ผ่าน → flip CLAWED_BACK ทั้งที่เงินออกไปแล้ว. รอบจ่ายผูกกับคู่
-    // (salespersonId, period) ไม่ใช่ saleId จึงต้องค้นด้วยคู่นั้นของค่าคอมที่เจอ
+    // ⇒ ด่านสถานะค่าคอมอย่างเดียวปิดประตูเงินได้แค่บานเดียว: ขายสด → ค่าคอม PENDING →
+    // generate + approve + paid ที่รอบจ่ายเดิม (พนักงานได้เงินจริง) → ค่าคอมยัง PENDING ไม่มี paidAt
+    // ⇒ ตัวช่วยเรียกคืนเห็นเป็น "ยังไม่จ่าย" ไม่มีอะไรให้ใบเงินเดือนหักคืน. รอบจ่ายเดิมยังอยู่ในฐานได้
+    // (สร้าง/บันทึกจ่ายรอบตอบ 410 แล้ว แต่อนุมัติรอบยังเปิด) จึงยังต้องบล็อก. รอบจ่ายผูกกับคู่
+    // (salespersonId, period) ไม่ใช่ saleId จึงต้องค้นด้วยคู่นั้นของค่าคอมที่จะเรียกคืน
     let draftPayoutsToVoid: { id: string; period: string; salespersonId: string }[] = [];
-    if (commissions.length > 0) {
+    if (commissionsToClawBack.length > 0) {
       const payouts = await tx.commissionPayout.findMany({
         where: {
           deletedAt: null,
-          OR: commissions.map((c) => ({ salespersonId: c.salespersonId, period: c.period })),
+          OR: commissionsToClawBack.map((c) => ({ salespersonId: c.salespersonId, period: c.period })),
         },
         select: {
           id: true,
@@ -400,21 +425,17 @@ export class SaleVoidService {
       // รอบที่ "ครอบค่าคอมใบนี้จริง" เท่านั้นที่เกี่ยว — `generatePayouts` ไม่คำนวณรอบที่
       // สร้างไปแล้วใหม่ ⇒ ค่าคอมที่เกิด **หลัง** กดสร้างรอบไม่เคยอยู่ในยอดของรอบนั้น
       // (เคสจริง: สร้างรอบ 20 ส.ค. → คีย์ใบขายผิด 21 ส.ค. → ต้องยกเลิกได้)
-      // `generatedAt = null` = รอบยุคก่อนมีคอลัมน์ ⇒ พิสูจน์ไม่ได้ = ถือว่าครอบไว้ก่อน
+      // `generatedAt = null` = รอบยุคก่อนมีคอลัมน์ ⇒ พิสูจน์ไม่ได้ = ถือว่าครอบไว้ก่อน (กติกาเดียว `isCoveredByPayout`)
       const covering = payouts.filter((p) =>
-        commissions.some(
-          (c) =>
-            c.salespersonId === p.salespersonId &&
-            c.period === p.period &&
-            (p.generatedAt === null || c.createdAt <= p.generatedAt),
-        ),
+        commissionsToClawBack.some((c) => isCoveredByPayout(c, p)),
       );
 
-      const lockedPayout = covering.find((p) => !UNPAID_PAYOUT_STATUSES.includes(p.status));
+      const lockedPayout = covering.find(isLockedPayout);
       if (lockedPayout) {
         throw new BadRequestException(
           `ค่าคอมของใบขายนี้ถูกนับอยู่ในรอบจ่ายค่าคอมงวด ${lockedPayout.period} ` +
-            `ซึ่ง${lockedPayout.status === PayoutStatus.PAID ? 'จ่ายเงินไปแล้ว' : 'อนุมัติแล้ว รอจ่ายตามยอดเดิม'} — ` +
+            // D4 ส่วนที่ 2 (P2-R26): รอบจ่ายแบบเดิมจ่ายไม่ได้แล้ว (markPayoutPaid = 410) — ห้ามเขียนว่า "รอจ่าย"
+            `ซึ่ง${lockedPayout.status === PayoutStatus.PAID ? 'จ่ายเงินไปแล้ว' : 'อนุมัติไว้แล้ว (รอบจ่ายแบบเดิม — ระบบไม่จ่ายรอบนี้แล้ว ค่าคอมจ่ายผ่านใบเงินเดือนเท่านั้น)'} — ` +
             'ยกเลิกใบขายไม่ได้ เพราะระบบไม่คำนวณยอดของรอบที่สร้างไปแล้วใหม่ ' +
             'และยังไม่มีเมนูยกเลิก/แก้ไขรอบจ่าย ⇒ ให้เจ้าของ/ผจก.การเงินตัดสินใจก่อน ' +
             '(ถ้ารอบนั้นจ่ายไปแล้ว = ต้องเรียกคืนจากพนักงาน)',
@@ -427,9 +448,7 @@ export class SaleVoidService {
         .map((p) => ({ id: p.id, period: p.period, salespersonId: p.salespersonId }));
     }
 
-    // ทุกแถวที่มาถึงบรรทัดนี้อยู่ใน `CLAWABLE_COMMISSION_STATUSES` แล้ว (ด่านข้างบนบล็อก
-    // ที่เหลือทั้งหมด) ⇒ เรียกคืนได้ทุกแถว ไม่ต้องกรองซ้ำ
-    const clawbackIds = commissions.map((c) => c.id);
+    const clawbackIds = commissionsToClawBack.map((c) => c.id);
 
     // ── G2 — งวดบัญชีของวันที่จะโพสต์กลับรายการ (เฉพาะใบที่มี JE) ─────────────
     const saleJes = await tx.journalEntry.findMany({
@@ -510,26 +529,40 @@ export class SaleVoidService {
       });
     }
 
-    // 4. ค่าคอม → CLAWED_BACK (เรียกคืนตามรหัสที่อ่านไว้ในด่าน G4 — ไม่ยิงเมื่อไม่มี
-    //    เพราะขายผ่านไฟแนนซ์ภายนอกไม่สร้างค่าคอมตั้งแต่แรก)
-    if (clawbackIds.length > 0) {
-      //    stamp ฟิลด์ clawback ตาม pattern `commission.service.ts clawback()` — เรียกคืนเต็ม 100%
-      //    (`clawbackAmount` ไม่ stamp: updateMany ตั้งค่าต่อแถวไม่ได้ และผู้อ่านทุกตัว
-      //    (`generatePayouts`) ตัดสินจาก `status` เท่านั้น)
-      await tx.salesCommission.updateMany({
-        where: { id: { in: clawbackIds } },
-        data: {
-          status: 'CLAWED_BACK',
-          clawbackAt: now,
-          clawbackReason: `ยกเลิกใบขาย ${sale.saleNumber}: ${reason}`,
-          clawbackPercent: 100,
-        },
-      });
-    }
+    // 4. ค่าคอม → CLAWED_BACK 100% ผ่านตัวช่วยเดียว (เขียนทีละแถวแบบมีเงื่อนไข (id, status) — สถานะเปลี่ยน
+    //    ระหว่างทาง เช่นใบเงินเดือนลงบัญชีพร้อมกัน = 409 ทั้งใบ). ที่จ่ายแล้ว = clawbackAmount = paidAmount ⇒
+    //    ใบเงินเดือนงวดถัดไปหักคืน. ขายผ่านไฟแนนซ์ภายนอกไม่สร้างค่าคอมตั้งแต่แรก ⇒ ไม่มีแถว
+    const commissionClawback = await clawBackCommissions(tx, commissionsToClawBack, {
+      reason: `ยกเลิกใบขาย ${sale.saleNumber}: ${reason}`,
+      now,
+    });
+    // P2-R30 — ยอดที่บอกผู้ใช้ว่า "จะหักในเงินเดือนงวดถัดไป" ต้องเป็นยอดที่ใบเงินเดือนหักให้จริง: จ่ายแล้ว (paidAt) และมีรายการ PAY
+    // ที่ยังมีผลในใบเงินเดือนที่ลงบัญชีแล้ว (กติกาเดียวกับ compute) · จ่ายนอกใบเงินเดือนแยกไว้ (ไม่หักอัตโนมัติ)
+    const paidRows = commissionsToClawBack.filter((c) => commissionClawback.paidIds.includes(c.id));
+    const throughPayroll =
+      paidRows.length === 0
+        ? new Set<string>()
+        : new Set(
+            (
+              await tx.payrollCommissionItem.findMany({
+                where: {
+                  salesCommissionId: { in: paidRows.map((c) => c.id) },
+                  kind: 'PAY',
+                  releasedAt: null,
+                  payrollLine: { payroll: { document: { status: 'POSTED' } } },
+                },
+                select: { salesCommissionId: true },
+              })
+            ).map((i) => i.salesCommissionId),
+          );
+    const clawbackTotal = (rows: typeof paidRows) =>
+      rows.reduce((sum, c) => sum.add(clawbackAmountOf(c, 100) ?? 0), new Prisma.Decimal(0)).toFixed(2);
+    const paidCommissionClawback = clawbackTotal(paidRows.filter((c) => throughPayroll.has(c.id)));
+    const paidOutsidePayrollClawback = clawbackTotal(paidRows.filter((c) => !throughPayroll.has(c.id)));
 
     // 4b. ร่างรอบจ่ายค่าคอมที่ครอบใบนี้ → soft-delete (ยอดในร่างรวมค่าคอมที่เพิ่งถูก
-    //     เรียกคืนไปแล้ว และ `generatePayouts` จะข้ามร่างที่ยังอยู่ ⇒ ปล่อยไว้ = ยอดเกินจริง
-    //     ลบแล้วกดสร้างใหม่ได้ยอดถูก เพราะขา `upsert.update` คำนวณใหม่ + ตัด CLAWED_BACK ออก)
+    //     เรียกคืนไปแล้ว และยอดของร่างไม่ถูกคำนวณใหม่ ⇒ ปล่อยไว้ = ยอดเกินจริง
+    //     — สร้างรอบจ่ายใหม่ตอบ 410 แล้ว ค่าคอมที่เหลือเข้าใบเงินเดือน (D4 ส่วนที่ 2))
     if (draftPayoutsToVoid.length > 0) {
       await tx.commissionPayout.updateMany({
         where: { id: { in: draftPayoutsToVoid.map((p) => p.id) } },
@@ -583,6 +616,16 @@ export class SaleVoidService {
           restoredProductIds: productIds,
           reversalEntryNumbers,
           commissionIds: clawbackIds,
+          // ค่าคอมที่จ่ายแล้วและถูกเรียกคืน (ใบเงินเดือนงวดถัดไปหัก) + ยอดต่อแถว (P2-R9)
+          paidCommissionIds: commissionClawback.paidIds,
+          paidCommissionClawback,
+          paidOutsidePayrollClawback,
+          commissionClawbacks: commissionsToClawBack.map((c) => ({
+            id: c.id,
+            statusBefore: c.status,
+            paid: c.paidAt !== null,
+            clawbackAmount: clawbackAmountOf(c, 100)?.toFixed(2) ?? null,
+          })),
           financeReceivableId: receivable?.id ?? null,
           voidedDraftPayoutIds: draftPayoutsToVoid.map((p) => p.id),
         },
@@ -598,6 +641,8 @@ export class SaleVoidService {
       saleNumber: sale.saleNumber,
       restoredProductIds: productIds,
       reversalEntryNumbers,
+      paidCommissionClawback,
+      paidOutsidePayrollClawback,
     };
   }
 }

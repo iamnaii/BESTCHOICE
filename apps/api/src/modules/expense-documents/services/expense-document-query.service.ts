@@ -14,6 +14,7 @@ import { maskPayrollTaxIds } from '../payroll-pii-mask.util';
 import { CreateExpenseDocumentDto } from '../dto/create.dto';
 import { ListExpenseDocumentsQueryDto } from '../dto/list-query.dto';
 import { PayrollPostGateService } from '../payroll-system/payroll-post-gate.service';
+import { PAYROLL_COMMISSION_ITEMS_INCLUDE } from '../payroll-system/payroll-commission-items';
 
 /** สถานะที่ใบเงินเดือนยังต้องผ่านด่านส่ง/อนุมัติ/ลงบัญชี — `findOne.payrollGate` มีค่าเฉพาะสถานะเหล่านี้ */
 const PAYROLL_GATED_STATUSES: DocumentStatus[] = ['DRAFT', 'PENDING_APPROVAL', 'APPROVED'];
@@ -634,6 +635,9 @@ export class ExpenseDocumentQueryService {
                     include: {
                       customIncome: { orderBy: { createdAt: 'asc' } },
                       customDeduction: { orderBy: { createdAt: 'asc' } },
+                      // D4 ส่วนที่ 2 — รายการค่าคอมที่บรรทัดจ่าย (PAY) / หักคืน (CLAWBACK) ให้ตารางรายละเอียด + สลิป (Task 6) ·
+                      // include ชุดเดียวกับคำตอบของสร้าง/แก้ใบ (ไม่กรอง releasedAt — P2-R19)
+                      commissionItems: PAYROLL_COMMISSION_ITEMS_INCLUDE,
                     },
                   },
                 },

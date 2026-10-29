@@ -26,7 +26,8 @@ export function expenseLineCreateData(
   };
 }
 
-// Payroll D4 — บรรทัดที่รวมแถวระบบแล้ว (payroll-system/payroll-save.ts) · JSON snapshot เก็บตามที่ compute คืน
+// Payroll D4 — บรรทัดที่รวมแถวระบบแล้ว (payroll-system/payroll-save.ts) · JSON snapshot เก็บตามที่ compute คืน ·
+// ส่วนที่ 2: รายการหักเก็บ `source` (MANUAL / COMMISSION_CLAWBACK) + รายการค่าคอม PAY/CLAWBACK ของบรรทัด (ยังมีผล — releasedAt ว่าง)
 export function payrollLineCreateData(
   l: SavedPayrollLine,
 ): Prisma.PayrollLineUncheckedCreateWithoutPayrollInput {
@@ -45,5 +46,6 @@ export function payrollLineCreateData(
     systemNotes: l.systemNotes ? (l.systemNotes as unknown as Prisma.InputJsonObject) : undefined,
     customIncome: l.customIncome.length > 0 ? { create: l.customIncome } : undefined,
     customDeduction: l.customDeduction.length > 0 ? { create: l.customDeduction } : undefined,
+    commissionItems: l.commissionItems.length > 0 ? { create: l.commissionItems } : undefined,
   };
 }

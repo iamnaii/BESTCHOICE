@@ -71,6 +71,32 @@ export interface PayrollSystemIncomeRow {
   amount: string;
 }
 
+/**
+ * Payroll D4 ส่วนที่ 2 — รายการหักที่ server คิด (`COMMISSION_CLAWBACK` หักคืนค่าคอม · `COMMISSION_WHT` หัก ณ ที่จ่ายค่าคอม 3%) ·
+ * อ่านอย่างเดียว ไม่ส่งกลับ (server บังคับรายการหักที่ส่งมาเป็น MANUAL — P2-R3)
+ */
+export interface PayrollSystemDeductionRow {
+  source: string;
+  accountCode: string;
+  name: string;
+  amount: string;
+}
+
+/**
+ * Payroll D4 ส่วนที่ 2 — ค่าคอมหนึ่งรายการที่บรรทัดจ่าย (PAY) หรือหักคืน (CLAWBACK) ตามที่ server เก็บ (P2-R21) ·
+ * reference = เลขสัญญา ?? เลขใบขาย ?? id ของค่าคอม · date = ISO วันสร้างค่าคอม (PAY) / วันเรียกคืน (CLAWBACK) ·
+ * period = งวดของค่าคอม 'YYYY-MM' · reason = เหตุผลเรียกคืน (CLAWBACK เท่านั้น)
+ */
+export interface PayrollCommissionItemView {
+  kind: 'PAY' | 'CLAWBACK';
+  accountCode: string;
+  amount: string;
+  reference: string;
+  date: string | null;
+  period: string;
+  reason: string | null;
+}
+
 /** สรุปลงเวลาที่ server เก็บไว้ต่อบรรทัด (`PayrollLine.attendanceSummary`) — ข้อมูลประกอบ ไม่หักเงิน */
 export interface PayrollAttendanceSummary {
   workDays: number;
@@ -108,6 +134,12 @@ export type PayrollSystemWarning =
   | { code: 'NO_PIN' }
   | { code: 'NO_ATTENDANCE' }
   | { code: 'NOT_YET_CLOSABLE'; closableAt: string }
+  /** ค่าคอม {count} รายการมีรายการจ่ายที่ยังมีผลอยู่ในใบอื่น (คำเตือนที่เก็บไว้ ไม่ใช่ 409) */
+  | { code: 'COMMISSION_IN_OTHER_DOCUMENT'; count: number; documentId: string; documentNumber: string }
+  /** หนึ่งคำเตือนต่อบรรทัด เมื่อหักคืนได้ไม่ครบ — หักได้ไม่เกินค่าคอมงวดนี้ ส่วนที่เหลือยกไปงวดหน้า */
+  | { code: 'CLAWBACK_CARRIED'; deducted: string; carried: string }
+  /** ค่าคอมที่จ่ายนอกใบเงินเดือนถูกเรียกคืน — ระบบไม่หักให้อัตโนมัติ */
+  | { code: 'CLAWBACK_PAID_OUTSIDE_PAYROLL'; reference: string }
   /** ใบจากปุ่มใช้แม่แบบ — ระบบเอาแถว OT ที่กรอกเองของคนที่ตอกบัตรออก (เจ้าของ 2026-10-29) */
   | { code: 'TYPED_OT_REMOVED'; count: number; amount: string };
 
@@ -171,6 +203,10 @@ export interface PayrollLineForm {
   customDeduction: PayrollCustomDeductionRow[];
   // Payroll D4 — ที่ server เก็บไว้ตอนบันทึกครั้งล่าสุด (อ่านอย่างเดียว · ไม่ส่งกลับ). บรรทัดใหม่/คัดลอกมา = ว่าง
   systemIncome: PayrollSystemIncomeRow[];
+  /** ส่วนที่ 2 — หักคืนค่าคอม (P2-R19.1: ไม่ส่งกลับ · ล้างพร้อมแถวระบบเมื่อเปลี่ยนคน/งวด/ฝั่ง) */
+  systemDeductions: PayrollSystemDeductionRow[];
+  /** ส่วนที่ 2 — ค่าคอมที่บรรทัดจ่าย/หักคืน (ข้อมูลแสดงผล ไม่ส่งกลับ) */
+  commissionItems: PayrollCommissionItemView[];
   attendanceSummary: PayrollAttendanceSummary | null;
   systemNotes: PayrollSystemNotes | null;
   // UI-only: accordion expand toggle. Excluded from POST body.
@@ -318,6 +354,8 @@ export const newPayrollLine = (overrides?: Partial<PayrollLineForm>): PayrollLin
   customIncome: [],
   customDeduction: [],
   systemIncome: [],
+  systemDeductions: [],
+  commissionItems: [],
   attendanceSummary: null,
   systemNotes: null,
   _expanded: false,

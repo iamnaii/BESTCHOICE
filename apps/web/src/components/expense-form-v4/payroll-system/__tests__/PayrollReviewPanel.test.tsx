@@ -1,3 +1,4 @@
+import { clawbackCarriedText } from '../payroll-copy';
 import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it } from 'vitest';
@@ -140,6 +141,53 @@ describe('PayrollReviewPanel — warnings', () => {
       'มานี สาขาใหม่ เดือนนี้ไม่มีข้อมูลลงเวลา ระบบจึงไม่คิด OT ให้ — กรอก OT เองได้ที่ รายได้พิเศษ',
     );
     expect(within(items[1]).getByText('มานี สาขาใหม่')).toHaveClass('font-semibold');
+  });
+
+  // D4 ส่วนที่ 2 (P2-R19.3) — คำเตือนค่าคอมสามแบบ (ถ้อยคำตามตาราง copy) · ใบ FINANCE ไม่มีค่าคอม (2026-10-29) — คำเตือนเก่าที่ยังเก็บอยู่ในร่างไม่แสดง
+  it('commission warnings: IN_OTHER_DOCUMENT with name/count/number, CLAWBACK_CARRIED and PAID_OUTSIDE with the name; a stored legacy FINANCE_BLOCKED is not shown', () => {
+    mount({ role: 'OWNER', branchId: null }, [
+      {
+        employeeName: 'สมศรี มีสุข',
+        systemNotes: notes({
+          warnings: [
+            { code: 'COMMISSION_FINANCE_BLOCKED', count: 2 } as never,
+            { code: 'CLAWBACK_CARRIED', deducted: '1000.00', carried: '400.00' },
+            { code: 'CLAWBACK_PAID_OUTSIDE_PAYROLL', reference: 'CT-20260901-0003' },
+          ],
+        }),
+      },
+      {
+        employeeName: 'วิชัย ทองดี',
+        systemNotes: notes({
+          warnings: [
+            { code: 'COMMISSION_IN_OTHER_DOCUMENT', count: 2, documentId: 'doc-9', documentNumber: 'PR-20261101-0003' },
+          ],
+        }),
+      },
+    ]);
+    const heading = screen.getByRole('heading', { name: 'คำเตือน (3)' });
+    const items = within(heading.closest('section') as HTMLElement).getAllByRole('listitem');
+    expect(items.map((li) => li.textContent)).toEqual([
+      'สมศรี มีสุข หักคืนค่าคอมได้ 1,000.00 บาท (ไม่เกินค่าคอมงวดนี้) — ยกไปงวดหน้า 400.00 บาท',
+      'สมศรี มีสุข ค่าคอม CT-20260901-0003 ถูกเรียกคืน แต่จ่ายไปนอกใบเงินเดือน — ระบบไม่หักให้อัตโนมัติ ถ้าจะหัก ให้ใส่รายการหักในใบนี้เอง',
+      'ค่าคอม 2 รายการของ วิชัย ทองดี อยู่ในใบ PR-20261101-0003 แล้ว',
+    ]);
+    expect(within(items[1]).getByText('สมศรี มีสุข')).toHaveClass('font-semibold');
+  });
+
+  it('CLAWBACK_CARRIED with nothing deducted this period says so instead of "หักคืนค่าคอมได้ 0.00 บาท"', () => {
+    expect(clawbackCarriedText('0.00', '509.70')).toBe('งวดนี้ไม่มีค่าคอมให้หัก — ยกยอดหักคืน 509.70 บาท ไปงวดหน้า');
+    expect(clawbackCarriedText('629.40', '627.60')).toBe('หักคืนค่าคอมได้ 629.40 บาท (ไม่เกินค่าคอมงวดนี้) — ยกไปงวดหน้า 627.60 บาท');
+  });
+
+  it('a warning code the web does not know yet is skipped instead of crashing the panel', () => {
+    mount({ role: 'OWNER', branchId: null }, [
+      {
+        employeeName: 'ใหม่',
+        systemNotes: notes({ warnings: [{ code: 'SOMETHING_NEW' } as never, { code: 'NO_PIN' }] }),
+      },
+    ]);
+    expect(screen.getByRole('heading', { name: 'คำเตือน (1)' })).toBeInTheDocument();
   });
 
   // คำตัดสินเจ้าของ 2026-10-29 — ใบจากปุ่มใช้แม่แบบตัดแถว OT ที่กรอกเองของคนที่ตอกบัตรออก แล้วบอกในแผงตรวจ

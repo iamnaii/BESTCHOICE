@@ -39,7 +39,7 @@ describe('PayrollGateDay carries the day branch', () => {
           payrollPeriod: '2026-10',
           entityScope: 'SHOP',
           document: { branchId: 'doc-branch' },
-          lines: [{ userId: 'u1', employeeName: 'สมศรี มีสุข', customIncome: [] }],
+          lines: [{ userId: 'u1', employeeName: 'สมศรี มีสุข', customIncome: [], customDeduction: [], commissionItems: [] }],
         }),
       },
       attendanceDay: {

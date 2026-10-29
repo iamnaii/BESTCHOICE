@@ -24,9 +24,11 @@ import { payrollDocumentLockKey, payrollPeriodStart } from '../payroll-system/pa
 import {
   attachSystemRows,
   notInBranchMessage,
+  writeWithCommissionGuard,
   type ClientPayrollLine,
   type MergePayrollOptions,
 } from '../payroll-system/payroll-save';
+import { PAYROLL_COMMISSION_ITEMS_INCLUDE } from '../payroll-system/payroll-commission-items';
 import { hasCrossBranchAccess } from '../../auth/branch-access.util';
 import { readBoolFlag, readIntFlag } from '../../../utils/config.util';
 import { CreateExpenseDocumentDto } from '../dto/create.dto';
@@ -43,7 +45,11 @@ import { CreatePettyCashDto } from '../dto/create-petty-cash.dto';
 /** PATCH ใบเงินเดือนได้ในสถานะเหล่านี้ (Payroll D4 — แก้ใบรออนุมัติ/อนุมัติแล้ว = ส่งกลับเป็นร่าง) */
 const PAYROLL_EDITABLE_STATUSES: DocumentStatus[] = ['DRAFT', 'PENDING_APPROVAL', 'APPROVED'];
 
-/** บรรทัดเงินเดือนเรียงตามลำดับที่บันทึก (lineNo) — แถวเก่าก่อนมีคอลัมน์ (lineNo 0) เรียงตาม createdAt */
+/**
+ * บรรทัดเงินเดือนเรียงตามลำดับที่บันทึก (lineNo) — แถวเก่าก่อนมีคอลัมน์ (lineNo 0) เรียงตาม createdAt ·
+ * D4 ส่วนที่ 2 (P2-R28): คำตอบของสร้าง/แก้ใบมีรายการค่าคอม (include ชุดเดียวกับ findOne) — เว็บเติมฟอร์มจากคำตอบนี้ ·
+ * ใบที่เพิ่งบันทึกมีแต่รายการที่ยังมีผล
+ */
 const PAYROLL_LINES_INCLUDE = {
   payroll: {
     include: {
@@ -52,6 +58,7 @@ const PAYROLL_LINES_INCLUDE = {
         include: {
           customIncome: { orderBy: { createdAt: 'asc' } },
           customDeduction: { orderBy: { createdAt: 'asc' } },
+          commissionItems: PAYROLL_COMMISSION_ITEMS_INCLUDE,
         },
       },
     },
@@ -503,7 +510,8 @@ export class ExpenseDocumentCreateService {
       );
 
       const number = await this.docNumber.next(tx, 'PAYROLL', documentDate);
-      return tx.expenseDocument.create({
+      // P2-R4 — ชนดัชนีรายการ PAY ที่ยังมีผล = 409 PAYROLL_COMMISSION_TAKEN (ไม่รัน query ต่อบนธุรกรรมที่ abort แล้ว)
+      return writeWithCommissionGuard(() => tx.expenseDocument.create({
         data: {
           number,
           documentType: 'PAYROLL',
@@ -533,7 +541,7 @@ export class ExpenseDocumentCreateService {
           },
         },
         include: PAYROLL_LINES_INCLUDE,
-      });
+      }));
     });
 
     // PR-C PII — the snapshot employeeTaxId === the employee's nationalId (or
@@ -638,9 +646,11 @@ export class ExpenseDocumentCreateService {
     // APPROVED); hard-delete + recreate is the same shape
     // IntercoSettlementService.updateBatch uses. deleteMany (not delete)
     // tolerates a legacy PAYROLL doc created without a detail.
+    // ลบรายละเอียดเดิม cascade → บรรทัด → แถวรายได้/หัก + รายการค่าคอมของร่าง (ไม่ใช่ "ปล่อย" — ใบยังไม่ลงบัญชี ไม่มีค่าคอมถูกจ่าย)
     await tx.payrollDetail.deleteMany({ where: { documentId: id } });
     const sentBack = existing.status !== 'DRAFT';
-    const doc = await tx.expenseDocument.update({
+    // P2-R4 — ชนดัชนีรายการ PAY ที่ยังมีผล = 409 PAYROLL_COMMISSION_TAKEN (ไม่รัน query ต่อบนธุรกรรมที่ abort แล้ว)
+    const doc = await writeWithCommissionGuard(() => tx.expenseDocument.update({
       where: { id },
       data: {
         documentDate,
@@ -665,7 +675,7 @@ export class ExpenseDocumentCreateService {
         },
       },
       include: PAYROLL_LINES_INCLUDE,
-    });
+    }));
 
     if (sentBack) {
       // Expense lifecycle pattern — audit atomic with the status flip (tx.auditLog.create).
@@ -834,10 +844,12 @@ export class ExpenseDocumentCreateService {
           isTaxable: r.isTaxable !== false,
           source: r.isAdjustment === true ? 'ADJUSTMENT' : 'MANUAL',
         })),
+        // P2-R3 — รายการหักที่ client ส่งเป็น MANUAL เสมอ (หักคืนค่าคอมเป็นแถวของระบบเท่านั้น — payroll-save.ts)
         customDeduction: (l.customDeduction ?? []).map((r) => ({
           accountCode: r.accountCode,
           name: r.name,
           amount: new Prisma.Decimal(r.amount),
+          source: 'MANUAL' as const,
         })),
       };
     });

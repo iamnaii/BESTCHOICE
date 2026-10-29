@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PayrollLinesSection } from '../PayrollLinesSection';
 import { newPayrollLine, type PayrollFormFields } from '../types';
 import type { PickableEmployee } from '@/lib/api/employees';
+import { suggestMonthlyWht } from '@/utils/pit-withholding';
+import { formatNumberDecimal } from '@/utils/formatters';
 
 vi.mock('@/lib/api/employees', () => ({
   employeeKeys: { all: ['employees'], pickable: (s: string) => ['employees', 'pickable', s] },
@@ -210,6 +212,107 @@ describe('PayrollLinesSection — Payroll D4 system rows', () => {
     expect(line.userId).toBe('u1');
     expect(line.systemIncome).toEqual([]);
     expect(line.systemNotes).toBeNull();
+  });
+
+  it('picking another employee also clears the stored clawback deductions and commission items (P2-R19.1)', async () => {
+    const { employeesApi } = await import('@/lib/api/employees');
+    vi.mocked(employeesApi.pickable).mockResolvedValue([EMP]);
+    const onValue = vi.fn();
+    const user = userEvent.setup();
+    wrap(
+      <Harness
+        onValue={onValue}
+        initial={{
+          year: 2569, month: 11, payrollPeriod: '2026-11', entityScope: 'SHOP',
+          lines: [
+            newPayrollLine({
+              userId: 'u-old', employeeName: 'คนเดิม', baseSalary: '15000',
+              systemDeductions: [{ source: 'COMMISSION_CLAWBACK', accountCode: 'S51-1101', name: 'หักคืนค่าคอม (1 รายการ)', amount: '500.00' }],
+              commissionItems: [{ kind: 'CLAWBACK', accountCode: 'S51-1101', amount: '500.00', reference: 'SL-1', date: '2026-11-05T03:00:00.000Z', period: '2026-10', reason: 'ยกเลิกใบขาย' }],
+            }),
+          ],
+        }}
+      />,
+    );
+    await user.click(screen.getAllByRole('combobox').find((el) => el.tagName === 'BUTTON')!);
+    await user.type(screen.getByPlaceholderText(/ค้นหาพนักงาน/), 'สมชาย');
+    await user.click(await screen.findByText('สมชาย ใจดี'));
+    const line = (onValue.mock.calls.at(-1)![0] as PayrollFormFields).lines[0];
+    expect(line.systemDeductions).toEqual([]);
+    expect(line.commissionItems).toEqual([]);
+  });
+
+  it('copy previous drops the stored clawback deduction (and the commission items), keeps typed deductions', async () => {
+    apiGet.mockImplementation((path: string) => {
+      if (path.startsWith('/expense-documents?')) {
+        return Promise.resolve({ data: { data: [{ id: 'prev-1', status: 'POSTED', documentDate: '2026-11-01' }] } });
+      }
+      if (path === '/expense-documents/prev-1') {
+        return Promise.resolve({
+          data: {
+            number: 'PR-20261101-0001',
+            payroll: {
+              entityScope: 'SHOP',
+              payrollPeriod: '2026-10',
+              lines: [
+                {
+                  userId: 'u1', employeeName: 'สมชาย ใจดี', baseSalary: '16000', ssoEmployee: '800', whtAmount: '0',
+                  customIncome: [{ accountCode: 'S51-1101', name: 'ค่าคอมมิชชัน (1 รายการ)', amount: '1000.00', isTaxable: true, source: 'COMMISSION' }],
+                  customDeduction: [
+                    { accountCode: 'S21-1103', name: 'คืนเงินยืม', amount: '300.00', source: 'MANUAL' },
+                    { accountCode: 'S51-1101', name: 'หักคืนค่าคอม (1 รายการ)', amount: '500.00', source: 'COMMISSION_CLAWBACK' },
+                  ],
+                  commissionItems: [],
+                },
+              ],
+            },
+          },
+        });
+      }
+      return Promise.resolve({ data: { incomeWhitelist: [], cashAccounts: [] } });
+    });
+    const onValue = vi.fn();
+    const user = userEvent.setup();
+    wrap(<Harness onValue={onValue} />);
+    await user.click(screen.getByRole('button', { name: /ดึงข้อมูลงวดล่าสุดมาเติม/ }));
+    await waitFor(() => expect(onValue).toHaveBeenCalled());
+    const line = (onValue.mock.calls.at(-1)![0] as PayrollFormFields).lines[0];
+    expect(line.customDeduction.map((r) => [r.accountCode, r.name, r.amount])).toEqual([['S21-1103', 'คืนเงินยืม', '300']]);
+    expect(line.systemDeductions).toEqual([]);
+    expect(line.commissionItems).toEqual([]);
+    expect(line.customIncome).toEqual([]);
+  });
+
+  it('owner 2026-10-29 — the salary WHT advisory leaves commission out (it is withheld 3% separately); the expanded line names the salary base', async () => {
+    const user = userEvent.setup();
+    wrap(
+      <Harness
+        initial={{
+          year: 2569, month: 11, payrollPeriod: '2026-11', entityScope: 'SHOP',
+          lines: [
+            newPayrollLine({
+              userId: 'u1', employeeName: 'สมศรี มีสุข', baseSalary: '30000', ssoEmployee: '750',
+              systemIncome: [{ source: 'COMMISSION', accountCode: 'S51-1101', name: 'ค่าคอมมิชชัน (1 รายการ)', quantity: null, rate: null, multiplier: null, amount: '2000.00' }],
+              systemDeductions: [
+                { source: 'COMMISSION_CLAWBACK', accountCode: 'S51-1101', name: 'หักคืนค่าคอม (1 รายการ)', amount: '600.00' },
+                { source: 'COMMISSION_WHT', accountCode: 'S21-3101', name: 'หัก ณ ที่จ่ายค่าคอม 3%', amount: '42.00' },
+              ],
+            }),
+          ],
+        }}
+      />,
+    );
+    // ภาษีเงินเดือนคิดจาก 30,000 (ไม่ใช่ 31,400 ที่รวมค่าคอมหลังหักคืน)
+    const suggested = suggestMonthlyWht(30000, 750);
+    expect(suggested).not.toBe(suggestMonthlyWht(31400, 750));
+    expect(screen.getByRole('button', { name: `แนะนำ ~${formatNumberDecimal(suggested)} (ไม่รวมค่าคอม)` })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'ขยาย' }));
+    expect(screen.getByText('ฐานภาษีเงินเดือน = 30,000.00 (ไม่รวมค่าคอม — ค่าคอมหัก ณ ที่จ่าย 3% แยกแถว)')).toBeInTheDocument();
+    const wht = screen.getByText('หัก ณ ที่จ่ายค่าคอม 3%').closest('tr') as HTMLElement;
+    expect(within(wht).getByText('42.00')).toBeInTheDocument();
+    expect(screen.getByText('3% × (ค่าคอม 2,000.00 − หักคืน 600.00)')).toBeInTheDocument();
+    // สุทธิ = 30,000 + 2,000 − 750 − 600 − 42
+    expect(screen.getAllByText('30,608.00').length).toBeGreaterThan(0);
   });
 });
 

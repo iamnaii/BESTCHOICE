@@ -2,7 +2,7 @@ import { NumberInput } from '@/components/ui/NumberInput';
 import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useId as useUiFieldId, useState } from 'react';
-import { AlertTriangle, ChevronDown, ChevronRight, Clock, CopyPlus, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, Clock, Coins, CopyPlus, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { suggestMonthlyWht } from '@/utils/pit-withholding';
 import {
@@ -14,10 +14,23 @@ import {
   newPayrollCustomIncome,
   newPayrollCustomDeduction,
 } from './types';
-import { AttendanceSummaryBox, isAttendanceSource, PayrollSystemRows } from './payroll-system/PayrollSystemRows';
+import {
+  AttendanceSummaryBox,
+  isAttendanceSource,
+  PayrollSystemDeductions,
+  PayrollSystemRows,
+} from './payroll-system/PayrollSystemRows';
 import { PayrollReviewPanel } from './payroll-system/PayrollReviewPanel';
-import { copiedLineFromStored, withoutStoredSystemData, type StoredPayrollLine } from './payroll-system/payroll-lines';
+import {
+  clawbackCarriedOf,
+  clearedSystemData,
+  copiedLineFromStored,
+  payrollLineTotals,
+  withoutStoredSystemData,
+  type StoredPayrollLine,
+} from './payroll-system/payroll-lines';
 import { payrollMetaQuery } from './payroll-system/payroll-meta';
+import { salaryTaxBaseText, whtSuggestionLabel } from './payroll-system/payroll-copy';
 import { formatNumberDecimal } from '@/utils/formatters';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { THAI_MONTHS_FULL } from '@/lib/date';
@@ -205,8 +218,8 @@ export function PayrollLinesSection({
       employeeName: emp.name,
       // taxId snapshot is derived server-side on save — clear any stale value.
       employeeTaxId: '',
-      // Payroll D4 — แถวระบบ/สรุป/วันที่ต้องตรวจที่เก็บไว้เป็นของคนเดิม · คนใหม่คิดตอนบันทึก
-      ...(current?.userId !== emp.userId ? { systemIncome: [], attendanceSummary: null, systemNotes: null } : {}),
+      // Payroll D4 — แถวระบบ/หักคืนค่าคอม/รายการค่าคอม/สรุป/วันที่ต้องตรวจที่เก็บไว้เป็นของคนเดิม · คนใหม่คิดตอนบันทึก
+      ...(current?.userId !== emp.userId ? clearedSystemData() : {}),
     };
     if (!Number.isNaN(base)) patch.baseSalary = String(base);
     // F5 — only pre-fill SSO with a CAPPED value. If the period cap hasn't
@@ -227,41 +240,35 @@ export function PayrollLinesSection({
   const addLine = () => onChange({ ...value, lines: [...value.lines, newPayrollLine()] });
 
   const computed = value.lines.map((l) => {
-    const base = parseFloat(l.baseSalary) || 0;
-    const sso = parseFloat(l.ssoEmployee) || 0;
-    const wht = parseFloat(l.whtAmount) || 0;
-    // Payroll D4 — รายได้พิเศษ = แถวระบบที่เก็บไว้ (ตามที่บันทึกครั้งล่าสุด) + แถวที่กรอกเอง
-    const systemIncome = (l.systemIncome ?? []).reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
-    const income =
-      systemIncome + (l.customIncome ?? []).reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
-    const deduction = (l.customDeduction ?? []).reduce(
-      (s, r) => s + (parseFloat(r.amount) || 0),
-      0,
-    );
-    // แถวระบบเสียภาษีเสมอ
-    const taxableBase = (l.customIncome ?? [])
-      .filter((r) => r.isTaxable)
-      .reduce((s, r) => s + (parseFloat(r.amount) || 0), base + systemIncome);
-    const netPaid = Math.max(0, base + income - sso - wht - deduction);
-    const hasExtras = (l.customIncome?.length ?? 0) + (l.customDeduction?.length ?? 0) > 0;
+    // Payroll D4 — รายได้พิเศษ = แถวระบบที่เก็บไว้ (ตามที่บันทึกครั้งล่าสุด) + แถวที่กรอกเอง · ส่วนที่ 2: รายการหัก = กรอกเอง +
+    // หักคืนค่าคอม และฐาน WHT หักคืนค่าคอมแล้ว (สูตรเดียวกับ payrollTaxableGross ของ ภ.ง.ด.1 — P2-R18 / P2-R19.2)
+    const t = payrollLineTotals(l);
+    const hasExtras =
+      (l.customIncome?.length ?? 0) + (l.customDeduction?.length ?? 0) + (l.systemDeductions?.length ?? 0) > 0;
     const reviewDays = l.systemNotes?.review.length ?? 0;
     // ป้าย "OT n แถว" นับเฉพาะแถวจากลงเวลา (ส่วนที่ 2 มีแถวค่าคอมใน systemIncome ด้วย)
     const attendanceRows = (l.systemIncome ?? []).filter((r) => isAttendanceSource(r.source)).length;
-    // R3-4 — WHT แนะนำ (ขั้นบันได ม.48, ลดหย่อนมาตรฐาน) — advisory เท่านั้น
-    const suggestedWht = suggestMonthlyWht(taxableBase, sso);
+    // ป้าย "ค่าคอม n" = จำนวนค่าคอมที่บรรทัดนี้จ่าย (กระดาน 1)
+    const commissionCount = (l.commissionItems ?? []).filter((i) => i.kind === 'PAY').length;
+    // R3-4 — WHT แนะนำ (ขั้นบันได ม.48, ลดหย่อนมาตรฐาน) — advisory เท่านั้น · ไม่รวมค่าคอม (หัก 3% แยกแถว — เจ้าของ 2026-10-29)
+    const suggestedWht = suggestMonthlyWht(t.salaryTaxableBase, t.sso);
     return {
       ...l,
-      baseN: base,
-      ssoN: sso,
-      whtN: wht,
-      incomeN: income,
-      systemIncomeN: systemIncome,
+      baseN: t.base,
+      ssoN: t.sso,
+      whtN: t.wht,
+      incomeN: t.income,
+      systemIncomeN: t.systemIncome,
       reviewDays,
       attendanceRows,
-      deductionN: deduction,
-      taxableBaseN: taxableBase,
+      commissionCount,
+      deductionN: t.deduction,
+      clawbackN: t.clawback,
+      taxableBaseN: t.taxableBase,
+      salaryTaxableBaseN: t.salaryTaxableBase,
+      commissionIncomeN: t.commissionIncome,
       suggestedWht,
-      netPaid,
+      netPaid: t.netPaid,
       hasExtras,
     };
   });
@@ -495,8 +502,12 @@ function PayrollRow({
     systemIncomeN: number;
     reviewDays: number;
     attendanceRows: number;
+    commissionCount: number;
     deductionN: number;
+    clawbackN: number;
     taxableBaseN: number;
+    salaryTaxableBaseN: number;
+    commissionIncomeN: number;
     suggestedWht: number;
     hasExtras: boolean;
   };
@@ -536,12 +547,18 @@ function PayrollRow({
             placeholder="เลือกพนักงาน"
             period={period}
           />
-          {(row.attendanceRows > 0 || row.reviewDays > 0) && (
+          {(row.attendanceRows > 0 || row.commissionCount > 0 || row.reviewDays > 0) && (
             <div className="mt-1 flex flex-wrap gap-1">
               {row.attendanceRows > 0 && (
                 <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary leading-snug">
                   <Clock className="size-3 shrink-0" aria-hidden="true" />
                   {`OT ${row.attendanceRows} แถว`}
+                </span>
+              )}
+              {row.commissionCount > 0 && (
+                <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary leading-snug">
+                  <Coins className="size-3 shrink-0" aria-hidden="true" />
+                  {`ค่าคอม ${row.commissionCount}`}
                 </span>
               )}
               {row.reviewDays > 0 && (
@@ -592,7 +609,7 @@ function PayrollRow({
               className="block w-full text-right text-[10px] text-muted-foreground hover:text-primary mt-0.5"
               title="ภาษีแนะนำจากขั้นบันได ม.48 หักลดหย่อนมาตรฐาน (ส่วนตัว 60,000 + ค่าใช้จ่าย 50% + ปกส.) — กดเพื่อใช้ค่านี้"
             >
-              แนะนำ ~{formatNumberDecimal(row.suggestedWht)}
+              {whtSuggestionLabel(formatNumberDecimal(row.suggestedWht), row.commissionIncomeN > 0)}
             </button>
           )}
         </td>
@@ -623,18 +640,37 @@ function PayrollRow({
         <tr className="border-t border-border bg-muted/10">
           <td></td>
           <td colSpan={8} className="px-3 py-3 space-y-3">
-            <PayrollSystemRows rows={row.systemIncome} accountLabel={accountLabel} />
+            <PayrollSystemRows
+              rows={row.systemIncome}
+              commissionItems={row.commissionItems}
+              period={period}
+              accountLabel={accountLabel}
+            />
             <CustomIncomeSubTable
               rows={row.customIncome ?? []}
               options={incomeOptions}
               onChange={updateIncome}
             />
+            <PayrollSystemDeductions
+              rows={row.systemDeductions ?? []}
+              commissionItems={row.commissionItems}
+              commissionIncome={row.commissionIncomeN}
+              carried={clawbackCarriedOf(row.systemNotes)?.carried}
+              accountLabel={accountLabel}
+            />
             <CustomDeductionSubTable rows={row.customDeduction ?? []} onChange={updateDeduction} />
             {row.attendanceSummary && <AttendanceSummaryBox summary={row.attendanceSummary} period={period} />}
-            {row.taxableBaseN !== row.baseN && (
-              <div className="text-xs text-muted-foreground italic">
-                ฐานคำนวณ WHT = {formatNumberDecimal(row.taxableBaseN)} (รวมรายได้พิเศษที่เสียภาษี)
+            {row.commissionIncomeN > 0 ? (
+              <div className="text-xs text-muted-foreground italic leading-snug">
+                {salaryTaxBaseText(formatNumberDecimal(row.salaryTaxableBaseN))}
               </div>
+            ) : (
+              row.taxableBaseN !== row.baseN && (
+                <div className="text-xs text-muted-foreground italic leading-snug">
+                  ฐานคำนวณ WHT = {formatNumberDecimal(row.taxableBaseN)} (รวมรายได้พิเศษที่เสียภาษี
+                  {row.clawbackN > 0 && ' − หักคืนค่าคอม'})
+                </div>
+              )
             )}
           </td>
         </tr>

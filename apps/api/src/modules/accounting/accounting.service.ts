@@ -311,13 +311,24 @@ export class AccountingService implements OnModuleInit {
    * `unresolvedSubCodeCount` (mapping v5 round 2): contact-source lines whose
    * party has no PEAK contact code yet — exported with an empty sub-code cell.
    *
+   * `excludedEntryCount` / `excludedLegacyInterestLineCount` (legacy backoffice
+   * import · spec ร่าง 5): legacy opening / prior-receipt entries and 11-2106 /
+   * 41-1101 lines of legacy contracts never go to PEAK (see peak-export-exclusion.ts).
+   *
    * Money values are emitted via `.toString()` to preserve Decimal precision
    * (matches the "DO NOT Number() on Prisma.Decimal in export" rule).
    */
   async exportJournalWithPeakCodes(
     periodStart: Date,
     periodEnd: Date,
-  ): Promise<{ csv: string; rowCount: number; skippedLineCount: number; unresolvedSubCodeCount: number }> {
+  ): Promise<{
+    csv: string;
+    rowCount: number;
+    skippedLineCount: number;
+    unresolvedSubCodeCount: number;
+    excludedEntryCount: number;
+    excludedLegacyInterestLineCount: number;
+  }> {
     return this.peakExport.exportJournalWithPeakCodes(periodStart, periodEnd);
   }
 

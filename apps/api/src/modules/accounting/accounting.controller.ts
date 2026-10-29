@@ -199,10 +199,17 @@ export class AccountingController {
     res.setHeader('X-Row-Count', String(result.rowCount));
     // mapping v5: contact-source lines whose party has no PEAK contact code yet
     res.setHeader('X-Unresolved-Sub-Codes', String(result.unresolvedSubCodeCount));
+    // legacy backoffice import (spec ร่าง 5): opening / prior-receipt entries and the
+    // 11-2106 / 41-1101 lines of legacy contracts left out of the file on purpose
+    res.setHeader('X-Excluded-Legacy-Entries', String(result.excludedEntryCount));
+    res.setHeader(
+      'X-Excluded-Legacy-Interest-Lines',
+      String(result.excludedLegacyInterestLineCount),
+    );
     // Expose custom headers so the browser fetch() sees them through CORS.
     res.setHeader(
       'Access-Control-Expose-Headers',
-      'X-Skipped-Lines, X-Row-Count, X-Unresolved-Sub-Codes',
+      'X-Skipped-Lines, X-Row-Count, X-Unresolved-Sub-Codes, X-Excluded-Legacy-Entries, X-Excluded-Legacy-Interest-Lines',
     );
     res.end(result.csv);
   }

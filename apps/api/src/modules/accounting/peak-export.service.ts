@@ -2,6 +2,11 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CompanyResolverService } from '../journal/company-resolver.service';
+import {
+  LEGACY_INTEREST_ACCOUNTS,
+  isExcludedFromPeakExport,
+  isExcludedLegacyInterestLine,
+} from './peak-export-exclusion';
 
 // ============================================================
 // P3-SP3: PEAK CSV export (journal lines tagged with PEAK code)
@@ -65,13 +70,28 @@ export class PeakExportService {
    * `bank` / `cashbox` sources have no per-line resolver (cash and bank
    * accounts are mapped `fixed`) and count as unresolved too.
    *
+   * Legacy-backoffice contracts (spec ร่าง 5 §5.6 · `peak-export-exclusion.ts`): PEAK already holds
+   * them (receivable + the full revenue incl. interest, booked at signing), so the file never carries
+   *   - whole entries whose `metadata.flow` is a legacy opening / prior-receipt marker
+   *     → `excludedEntryCount` (distinct entries)
+   *   - 11-2106 / 41-1101 lines of an entry whose `metadata.contractId` is a contract with
+   *     `legacyContractCode` → `excludedLegacyInterestLineCount`
+   * Excluded lines are counted there only — never in `skippedLineCount` / `unresolvedSubCodeCount`.
+   *
    * Money values are emitted via `.toString()` to preserve Decimal precision
    * (matches the "DO NOT Number() on Prisma.Decimal in export" rule).
    */
   async exportJournalWithPeakCodes(
     periodStart: Date,
     periodEnd: Date,
-  ): Promise<{ csv: string; rowCount: number; skippedLineCount: number; unresolvedSubCodeCount: number }> {
+  ): Promise<{
+    csv: string;
+    rowCount: number;
+    skippedLineCount: number;
+    unresolvedSubCodeCount: number;
+    excludedEntryCount: number;
+    excludedLegacyInterestLineCount: number;
+  }> {
     // Guard: max 186 days (~6 months) per spec — protects DB + filesystem.
     const ms = periodEnd.getTime() - periodStart.getTime();
     const MAX_DAYS = 186;
@@ -145,10 +165,27 @@ export class PeakExportService {
       ],
     });
 
+    // 2b) Legacy-backoffice entries (spec ร่าง 5 §5.6): filtered AFTER the query so the query and
+    //     every non-legacy row stay exactly as before. Opening entries and prior-receipt markers
+    //     are dropped whole (by `flow`, never `tag` — markers carry tag 2B like real receipts).
+    const excludedEntryNumbers = new Set<string>();
+    const kept = lines.filter((ln) => {
+      if (!isExcludedFromPeakExport(ln.journalEntry)) return true;
+      excludedEntryNumbers.add(ln.journalEntry.entryNumber); // entryNumber is @unique
+      return false;
+    });
+
     // 3) Resolve per-line contact sub-codes in two batched lookups (never per line).
+    //    The contract lookup also returns `legacyContractCode` for the interest-line filter (3b),
+    //    so 11-2106 / 41-1101 lines add their contract to the same batch — mapped or not.
     const contractIds = new Set<string>();
     const documentIds = new Set<string>();
-    for (const ln of lines) {
+    const legacyInterestAccounts: ReadonlySet<string> = new Set(LEGACY_INTEREST_ACCOUNTS);
+    for (const ln of kept) {
+      if (legacyInterestAccounts.has(ln.accountCode)) {
+        const id = metaString(ln.journalEntry.metadata as JsonMeta, 'contractId');
+        if (id) contractIds.add(id);
+      }
       const mapping = peakByCode.get(ln.accountCode);
       if (!mapping || mapping.peakSubCodeSource !== 'contact') continue;
       const meta = ln.journalEntry.metadata as JsonMeta;
@@ -161,13 +198,19 @@ export class PeakExportService {
       }
     }
     const contactByContract = new Map<string, string | null>();
+    const legacyByContract = new Map<string, { legacyContractCode: string | null }>();
     if (contractIds.size > 0) {
       const contracts = await this.prisma.contract.findMany({
         where: { id: { in: [...contractIds] } },
-        select: { id: true, customer: { select: { contact: { select: { peakContactCode: true } } } } },
+        select: {
+          id: true,
+          legacyContractCode: true,
+          customer: { select: { contact: { select: { peakContactCode: true } } } },
+        },
       });
       for (const c of contracts) {
         contactByContract.set(c.id, c.customer?.contact?.peakContactCode ?? null);
+        legacyByContract.set(c.id, { legacyContractCode: c.legacyContractCode ?? null });
       }
     }
     const contactByDocument = new Map<string, string | null>();
@@ -206,6 +249,22 @@ export class PeakExportService {
       }
     };
 
+    // 3b) Interest lines of legacy contracts (spec ร่าง 5): 11-2106 / 41-1101 never go to PEAK —
+    //     PEAK recognised that interest in full when the contract was signed. Checked before the
+    //     PEAK-code mapping so the count is the same whether or not those accounts are mapped yet.
+    //     Balance: in the 2A / JP4 / JP5 / write-off / void-reversal templates the two lines are an
+    //     equal Dr 11-2106 / Cr 41-1101 pair, so the rest of the entry still balances. Where a
+    //     template uses 11-2106 without a matching 41-1101 (exchange-close-old-21-1106) the entry
+    //     is INTENDED to export unbalanced: the other side already sits in PEAK (113101 holds the
+    //     full interest). Nothing in this export path asserts per-entry balance.
+    let excludedLegacyInterestLines = 0;
+    const exportable = kept.filter((ln) => {
+      const id = metaString(ln.journalEntry.metadata as JsonMeta, 'contractId');
+      if (!isExcludedLegacyInterestLine(ln, id ? legacyByContract.get(id) : null)) return true;
+      excludedLegacyInterestLines++;
+      return false;
+    });
+
     // 4) Render rows; skip un-mapped accounts.
     const escape = (v: string | null | undefined) => {
       if (v == null) return '';
@@ -231,7 +290,7 @@ export class PeakExportService {
 
     const body: string[] = [];
     let skipped = 0;
-    for (const ln of lines) {
+    for (const ln of exportable) {
       const mapping = peakByCode.get(ln.accountCode);
       if (!mapping) {
         skipped++;
@@ -263,6 +322,8 @@ export class PeakExportService {
       rowCount: body.length,
       skippedLineCount: skipped,
       unresolvedSubCodeCount: unresolvedSubCodes,
+      excludedEntryCount: excludedEntryNumbers.size,
+      excludedLegacyInterestLineCount: excludedLegacyInterestLines,
     };
   }
 }

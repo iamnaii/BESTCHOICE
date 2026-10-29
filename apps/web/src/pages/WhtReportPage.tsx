@@ -99,7 +99,8 @@ export function PersonalTable({ items }: { items: WhtItemPersonal[] }) {
               <>
                 <th className="py-2 pr-2 text-right">ภาษีเงินเดือน (฿)</th>
                 <th className="py-2 pr-2 text-right">ภาษีค่าคอม 3% (฿)</th>
-                <th className="py-2 pr-2 text-right">ภาษีที่หักรวม (฿)</th>
+                {/* เว้นระยะก่อนวันจ่าย — ยอดตัวหนาชิดวันที่อ่านเป็นตัวเลขต่อกัน */}
+                <th className="py-2 pr-6 text-right">ภาษีที่หักรวม (฿)</th>
               </>
             ) : (
               <th className="py-2 pr-2 text-right">WHT (฿)</th>
@@ -127,7 +128,7 @@ export function PersonalTable({ items }: { items: WhtItemPersonal[] }) {
                   <td className="py-2 pr-2 text-right tabular-nums">{fmtNumber(it.commissionWht ?? 0)}</td>
                 </>
               )}
-              <td className={`py-2 pr-2 text-right tabular-nums ${split ? 'font-semibold' : ''}`}>{fmtNumber(it.whtAmount)}</td>
+              <td className={`py-2 text-right tabular-nums ${split ? 'pr-6 font-semibold' : 'pr-2'}`}>{fmtNumber(it.whtAmount)}</td>
               <td className="py-2 pr-2 tabular-nums">
                 {it.payDate ? new Date(it.payDate).toLocaleDateString('th-TH') : '-'}
               </td>

@@ -18,6 +18,8 @@ import { legacyOutstanding } from '../peak-recon';
 const D = (value: string) => new Prisma.Decimal(value);
 const CUTOFF = new Date('2026-11-30T23:59:59+07:00');
 const day = (date: string) => new Date(`${date}T00:00:00+07:00`);
+/** ป้ายใน notes ของงวดที่ยอดจ่ายมาจากบันทึกงวด (ins_paid / ปรับตาม PEAK) ไม่ใช่ผลรวมใบรับเงิน */
+const UNBACKED_NOTE = 'ยอดจ่ายตามบันทึกงวดของระบบเก่าหรือยอดที่ปรับตาม PEAK ไม่ใช่ผลรวมใบรับเงิน';
 
 function inst(legacyId: string, due: string, paid = '0', amount = '1000'): LegacyInstallment {
   return {
@@ -92,6 +94,7 @@ function summary(p: PaymentDraft) {
     status: p.status,
     paidDate: p.paidDate,
     lateFee: p.lateFee.toFixed(2),
+    lateFeePaid: p.lateFeePaid.toFixed(2),
   };
 }
 
@@ -116,6 +119,7 @@ describe('mapPayments', () => {
         status: 'PAID',
         paidDate: day('2026-02-10'),
         lateFee: '0.00',
+        lateFeePaid: '0.00',
       },
     ]);
     expect(payments[0].dueDate).toEqual(day('2026-02-05'));
@@ -157,12 +161,15 @@ describe('mapPayments', () => {
     ]);
   });
 
-  it('งวดที่ครบกำหนดตรงวินาทีวันตัดยังไม่ค้าง (dueDate < cutoff เท่านั้นที่เป็น OVERDUE)', () => {
+  it('ขอบวันตัด: ครบกำหนด 30 พ.ย. (เที่ยงคืนกรุงเทพ) ค้าง = OVERDUE · 1 ธ.ค. = PENDING (เหมือน classify.ts)', () => {
     const c = contract({
-      installments: [{ ...inst('11', '2026-11-30'), dueDate: CUTOFF }],
+      installments: [inst('11', '2026-11-30'), inst('12', '2026-12-01')],
     });
 
-    expect(mapPayments(c, 'ACTIVE', CUTOFF).payments[0].status).toBe('PENDING');
+    expect(mapPayments(c, 'ACTIVE', CUTOFF).payments.map((p) => p.status)).toEqual([
+      'OVERDUE',
+      'PENDING',
+    ]);
   });
 
   it('ยอดเป็น Decimal ไม่ใช่ float — 333.33 + 333.33 + 333.34 = 1000.00 พอดี', () => {
@@ -208,7 +215,7 @@ describe('mapPayments', () => {
     expect(history.evidences.map((e) => e.installmentNo)).toEqual([1, 3]);
   });
 
-  it('lateFee = ผลรวม mulct ของใบรับเงินของงวดนั้น', () => {
+  it('ค่าปรับที่เก็บแล้วในระบบเก่า → lateFeePaid = Σ mulct · lateFee = 0 เสมอ · notes มียอด', () => {
     const c = contract({
       installments: [inst('11', '2026-02-05', '1000'), inst('12', '2026-03-05', '0')],
       receipts: [
@@ -219,9 +226,55 @@ describe('mapPayments', () => {
 
     const { payments, evidences } = mapPayments(c, 'ACTIVE', CUTOFF);
 
-    expect(payments.map((p) => p.lateFee.toFixed(2))).toEqual(['150.00', '0.00']);
+    expect(payments.map((p) => [p.lateFee.toFixed(2), p.lateFeePaid.toFixed(2)])).toEqual([
+      ['0.00', '150.00'],
+      ['0.00', '0.00'],
+    ]);
+    expect(payments[0].notes).toContain('ค่าปรับที่เก็บแล้วในระบบเก่า 150.00');
+    expect(payments[1].notes).not.toContain('ค่าปรับ');
     // หลักฐานใช้ยอดในสลิป (ค่างวด + ค่าปรับ)
     expect(evidences.map((e) => e.amount.toFixed(2))).toEqual(['450.00', '700.00']);
+  });
+
+  it('งวดจ่ายบางส่วนที่มีค่าปรับ: lateFee = 0 (ยอดค้าง = ค่างวด − ยอดจ่าย ไม่เรียกค่าปรับซ้ำ) · amountPaid ไม่รวมค่าปรับ', () => {
+    const c = contract({
+      installments: [inst('11', '2026-02-05', '300')],
+      receipts: [receipt('901', '11', '2026-02-10', '300', { mulct: D('50') })],
+    });
+
+    const [payment] = mapPayments(c, 'ACTIVE', CUTOFF).payments;
+
+    expect(summary(payment)).toEqual({
+      installmentNo: 1,
+      amountDue: '1000.00',
+      amountPaid: '300.00',
+      status: 'PARTIALLY_PAID',
+      paidDate: null,
+      lateFee: '0.00',
+      lateFeePaid: '50.00',
+    });
+    expect(payment.notes).toContain('ค่าปรับที่เก็บแล้วในระบบเก่า 50.00');
+    expect(payment.amountDue.plus(payment.lateFee).minus(payment.amountPaid).toFixed(2)).toBe(
+      '700.00',
+    );
+  });
+
+  it('paidDate = วันของใบล่าสุดที่จ่ายค่างวด (ใบที่จ่ายแต่ค่าปรับไม่นับ)', () => {
+    const c = contract({
+      installments: [inst('11', '2026-02-05', '1000')],
+      receipts: [
+        receipt('901', '11', '2026-02-05', '1000'),
+        receipt('902', '11', '2026-02-20', '0', { mulct: D('50') }),
+      ],
+    });
+
+    const [payment] = mapPayments(c, 'ACTIVE', CUTOFF).payments;
+
+    expect([payment.status, payment.paidDate, payment.lateFeePaid.toFixed(2)]).toEqual([
+      'PAID',
+      day('2026-02-05'),
+      '50.00',
+    ]);
   });
 
   it('notes ขึ้นต้นด้วย "ยกมาจากระบบเก่า" และมีรหัสงวดเดิม + รหัสใบรับเงินเดิม', () => {
@@ -300,15 +353,18 @@ describe('mapPayments', () => {
           amountPaid: '1000.00',
           status: 'PAID',
           paidDate: day('2026-02-05'),
-          lateFee: '50.00',
+          lateFee: '0.00',
+          lateFeePaid: '50.00',
         },
         {
           installmentNo: 2,
           amountDue: '1000.00',
           amountPaid: '300.00',
-          status: 'PARTIALLY_PAID',
-          paidDate: null,
+          // ส่วนที่เหลือปิดด้วยการปิดบัญชี → PAID ณ วันปิดบัญชี (แบบที่ระบบปิดบัญชีก่อนกำหนดเอง)
+          status: 'PAID',
+          paidDate: day('2026-03-20'),
           lateFee: '0.00',
+          lateFeePaid: '0.00',
         },
       ]);
       const paid = payments.reduce((sum, p) => sum.plus(p.amountPaid), D('0'));
@@ -318,15 +374,41 @@ describe('mapPayments', () => {
       expect(payments[1].notes).toContain('ปิดบัญชีก่อนกำหนด');
     });
 
-    it("kind 'ACTIVE' ก็ไม่ใช้ ins_paid ของงวดที่ไม่มีสลิปเมื่อสัญญามีรายการปิดบัญชี", () => {
-      const { payments } = mapPayments(payoff(), 'ACTIVE', CUTOFF);
+    it('HISTORY: งวดจ่ายบางส่วนของสัญญาปิดบัญชี → PAID · paidDate = วันปิดบัญชี · amountPaid = สลิปเท่าเดิม', () => {
+      const closedAt = new Date('2026-03-20T14:30:00+07:00');
+      const c = {
+        ...payoff(),
+        close: { amount: D('2500'), discount: D('200'), createdAt: closedAt },
+      };
 
-      expect(payments.map((p) => p.amountPaid.toFixed(2))).toEqual([
-        '1000.00',
+      const [, second] = mapPayments(c, 'HISTORY', CUTOFF).payments;
+
+      expect([second.status, second.paidDate, second.amountPaid.toFixed(2)]).toEqual([
+        'PAID',
+        closedAt,
         '300.00',
-        '0.00',
-        '0.00',
       ]);
+      expect(second.notes).toContain('ส่วนที่เหลือปิดด้วยการปิดบัญชีก่อนกำหนด');
+    });
+
+    it("kind 'ACTIVE' ก็ไม่ใช้ ins_paid ของงวดที่ไม่มีสลิปเมื่อสัญญามีรายการปิดบัญชี · ไม่ปิดงวดให้ · เตือน BLOCK:", () => {
+      const { payments, warnings } = mapPayments(payoff(), 'ACTIVE', CUTOFF);
+
+      expect(payments.map((p) => [p.amountPaid.toFixed(2), p.status])).toEqual([
+        ['1000.00', 'PAID'],
+        ['300.00', 'PARTIALLY_PAID'],
+        ['0.00', 'OVERDUE'],
+        ['0.00', 'OVERDUE'],
+      ]);
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0].startsWith('BLOCK:')).toBe(true);
+      expect(warnings[0]).toContain('TEST-C-0001');
+    });
+
+    it("kind 'HISTORY' ของสัญญาปิดบัญชีไม่มีข้อเตือน BLOCK:", () => {
+      const { warnings } = mapPayments(payoff(), 'HISTORY', CUTOFF);
+
+      expect(warnings.some((w) => w.startsWith('BLOCK:'))).toBe(false);
     });
 
     it('สลิปค่างวดมากกว่า ins_paid ในสัญญาที่ปิดบัญชี = เตือน', () => {
@@ -356,10 +438,11 @@ describe('mapPayments', () => {
           status: 'PARTIALLY_PAID',
           paidDate: null,
           lateFee: '0.00',
+          lateFeePaid: '0.00',
         },
       ]);
       expect(payments[0].notes.startsWith('ยกมาจากระบบเก่า')).toBe(true);
-      expect(payments[0].notes).toContain('ไม่มีใบรับเงิน');
+      expect(payments[0].notes).toContain(UNBACKED_NOTE);
       expect(evidences).toEqual([]);
       expect(warnings).toHaveLength(1);
       expect(warnings[0]).toContain('TEST-I-11');
@@ -382,6 +465,7 @@ describe('mapPayments', () => {
       const { payments, warnings } = mapPayments(c, 'ACTIVE', CUTOFF);
 
       expect(payments[0].amountPaid.toFixed(2)).toBe('500.00');
+      expect(payments[0].notes).toContain(UNBACKED_NOTE);
       expect(warnings).toHaveLength(1);
       expect(warnings[0]).toContain('TEST-C-0001');
       expect(warnings[0]).toContain('TEST-I-11');
@@ -448,18 +532,28 @@ describe('mapPayments', () => {
       expect(warnings[0]).toContain('TEST-I-11');
     });
 
-    it('ค่างวดไม่เป็นบวก → เตือนว่าค่างวดผิด (ไม่ใช่ "จ่ายเกิน") · HISTORY ไม่นำเข้า', () => {
+    it('ค่างวดไม่เป็นบวก → เตือนว่าค่างวดผิด (ไม่ใช่ "จ่ายเกิน")', () => {
+      const c = contract({ installments: [inst('11', '2026-02-05', '0', '-500')] });
+
+      const { warnings } = mapPayments(c, 'ACTIVE', CUTOFF);
+
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain('ไม่เป็นบวก');
+      expect(warnings[0]).not.toContain('เกิน');
+    });
+
+    it('HISTORY: งวดที่ไม่นำเข้าไม่มีข้อเตือน (เช่นค่างวดติดลบของสัญญายกเลิก)', () => {
       const c = contract({
         statusCode: '4',
-        installments: [inst('11', '2026-02-05', '0', '-500')],
+        installments: [inst('11', '2026-02-05', '0', '-500'), inst('12', '2026-03-05', '200')],
       });
 
       const { payments, warnings } = mapPayments(c, 'HISTORY', CUTOFF);
 
-      expect(payments).toEqual([]);
+      expect(payments.map((p) => p.installmentNo)).toEqual([2]);
+      // งวด 2 นำเข้า (ยอดจ่ายไม่มีใบรับเงิน → เตือน) · งวด 1 ไม่นำเข้า → ไม่เตือน
       expect(warnings).toHaveLength(1);
-      expect(warnings[0]).toContain('ไม่เป็นบวก');
-      expect(warnings[0]).not.toContain('เกิน');
+      expect(warnings[0]).toContain('TEST-I-12');
     });
   });
 
@@ -501,7 +595,8 @@ describe('mapPayments', () => {
 
       expect(payments[0].amountDue.toString()).toBe('1000');
       expect(payments[0].status).toBe('PAID');
-      expect(payments[0].lateFee.toString()).toBe('50');
+      expect(payments[0].lateFee.toString()).toBe('0');
+      expect(payments[0].lateFeePaid.toString()).toBe('50');
       expect(evidences[0].amount.toString()).toBe('1050');
     });
   });

@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import type { ContractDocumentType, PaymentStatus } from '@prisma/client';
+import { dRound } from '../../utils/decimal.util';
 import { formatMoney } from './csv';
 import type {
   LegacyContract,
@@ -23,10 +24,23 @@ import type {
  *   Σ ใบ > `ins_paid` = เตือน
  *
  * **สถานะ** (ไม่ใช้ `statusCode` ของระบบเก่า — `applyPeakBalance` ไม่แก้ค่านี้): จ่าย ≥ ค่างวด = `PAID` ·
- * จ่ายบางส่วน = `PARTIALLY_PAID` · ไม่ได้จ่ายและครบกำหนดก่อน `cutoff` = `OVERDUE` · นอกนั้น `PENDING`
- * · `paidDate` = วันโอนของใบรับเงินล่าสุดเมื่อ `PAID` (ไม่มีใบรับเงิน = ว่าง) · `lateFee` = Σ `mulct` ของใบรับเงินค่างวด
+ * จ่ายบางส่วน = `PARTIALLY_PAID` · ไม่ได้จ่ายและครบกำหนดก่อน `cutoff` = `OVERDUE` (เหมือน `classify.ts` — งวดครบกำหนด
+ * วันตัดเองค้างได้) · นอกนั้น `PENDING` · `paidDate` = วันโอนของใบรับเงินล่าสุดที่จ่ายค่างวด (`installment > 0` —
+ * ใบที่จ่ายแต่ค่าปรับไม่นับ) เมื่อ `PAID` · ไม่มีใบรับเงินแบบนั้น = ว่าง
+ * - `kind 'HISTORY'` + สัญญามีรายการปิดบัญชี: งวดที่จ่ายบางส่วน → `PAID` · `paidDate = close.createdAt` · `amountPaid`
+ *   คงเป็นยอดใบรับเงิน (ส่วนที่เหลืออยู่ใน `close.amount`) — แบบเดียวกับที่ระบบปิดบัญชีก่อนกำหนดเองตั้งงวดที่เหลือเป็น
+ *   `PAID` (ไม่งั้นงวดเปิดค้างบนสัญญาที่ปิดแล้วไปโผล่ในรายงานอายุหนี้)
  *
- * **`kind 'HISTORY'`** (สัญญาปิด/ยกเลิก — สเปก 5.7) คืนเฉพาะงวดที่ `amountPaid > 0` เลขงวดคงเดิม
+ * **ค่าปรับ** — `lateFee` = 0 เสมอ: ใน BESTCHOICE `lateFee` คือค่าปรับที่ยังต้องเก็บ และยอดค้างของงวด =
+ * `amountDue + lateFee − amountPaid` ⇒ ใส่ค่าปรับที่ระบบเก่าเก็บไปแล้วจะเรียกเก็บซ้ำ (และลงรายได้ค่าปรับซ้ำ — PEAK
+ * ลงไปแล้ว) · `lateFeePaid` = Σ `mulct` ของใบรับเงินค่างวด เก็บไว้เป็นประวัติ (และเขียนใน `notes`) · `amountPaid`
+ * ไม่รวมค่าปรับ ⇒ Σ(`amountDue − amountPaid`) ของสัญญาผ่อนอยู่ = PEAK ยังเป็นจริง
+ *
+ * **`kind 'HISTORY'`** (สัญญาปิด/ยกเลิก — สเปก 5.7) คืนเฉพาะงวดที่ `amountPaid > 0` เลขงวดคงเดิม · งวดที่ไม่นำเข้าไม่มี
+ * ข้อเตือนเรื่องยอดของงวด (เช่นค่างวดติดลบของสัญญายกเลิก) — มีแค่ข้อเตือนว่าสลิปของงวดนั้นแนบระดับสัญญา
+ *
+ * **`kind 'ACTIVE'` + สัญญามีรายการปิดบัญชี** = ข้อมูลขัดกัน (ยอดจ่ายใช้ใบรับเงินอย่างเดียว ไม่สนยอดที่ปรับตาม PEAK)
+ * → ข้อเตือนขึ้นต้น `BLOCK:` ให้ Task 10 ทำเป็นตัวบล็อก
  *
  * **หลักฐาน** = หนึ่งแถวต่อใบรับเงินที่มีสลิป (ยอด = `receipt.amount` ยอดในสลิป) · `installmentNo = null` =
  * หลักฐานระดับสัญญา: ใบปิดบัญชีก่อนกำหนด (`EARLY_PAYOFF` — ไม่กระจายเข้างวด ยอดอยู่ใน `close.amount`) ·
@@ -49,7 +63,10 @@ export type PaymentDraft = {
   amountPaid: Decimal;
   status: PaymentStatus;
   paidDate: Date | null;
+  /** 0 เสมอ — ค่าปรับที่ยังต้องเก็บ (ของเก่าเก็บแล้ว) */
   lateFee: Decimal;
+  /** ค่าปรับที่ระบบเก่าเก็บไปแล้ว (Σ `mulct`) — ประวัติเท่านั้น ไม่เข้ายอดค้าง */
+  lateFeePaid: Decimal;
   notes: string;
   legacyInstallmentCode: string;
 };
@@ -78,12 +95,9 @@ export type PaymentMapping = {
 };
 
 const NOTE_PREFIX = 'ยกมาจากระบบเก่า';
+const UNBACKED_NOTE = 'ยอดจ่ายตามบันทึกงวดของระบบเก่าหรือยอดที่ปรับตาม PEAK ไม่ใช่ผลรวมใบรับเงิน';
+const PAYOFF_NOTE = 'ส่วนที่เหลือปิดด้วยการปิดบัญชีก่อนกำหนด';
 const ZERO = new Prisma.Decimal(0);
-
-/** ยอดจาก dump (float/double) → 2 ตำแหน่ง */
-function money(value: Decimal): Decimal {
-  return value.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
-}
 
 /** ไฟล์แนบระบบเก่า → ประเภทเอกสารสัญญา — `Record` ครบทุกชนิด: ชนิดใหม่ใน `LegacyFileKind` = compile ไม่ผ่าน */
 const DOCUMENT_TYPE: Record<
@@ -114,11 +128,16 @@ function latestDate(receipts: readonly LegacyReceipt[]): Date | null {
   return latest;
 }
 
-function statusOf(amountDue: Decimal, amountPaid: Decimal, dueDate: Date, cutoff: Date) {
-  if (amountPaid.gte(amountDue)) return 'PAID' satisfies PaymentStatus;
-  if (amountPaid.gt(0)) return 'PARTIALLY_PAID' satisfies PaymentStatus;
-  if (dueDate.getTime() < cutoff.getTime()) return 'OVERDUE' satisfies PaymentStatus;
-  return 'PENDING' satisfies PaymentStatus;
+function statusOf(
+  amountDue: Decimal,
+  amountPaid: Decimal,
+  dueDate: Date,
+  cutoff: Date,
+): PaymentStatus {
+  if (amountPaid.gte(amountDue)) return 'PAID';
+  if (amountPaid.gt(0)) return 'PARTIALLY_PAID';
+  if (dueDate.getTime() < cutoff.getTime()) return 'OVERDUE';
+  return 'PENDING';
 }
 
 /**
@@ -131,8 +150,13 @@ export function mapPayments(
   cutoff: Date,
 ): PaymentMapping {
   const warnings: string[] = [];
-  const hasPayoff = c.close !== null;
+  const close = c.close;
   const installmentNoById = new Map(c.installments.map((inst, i) => [inst.legacyId, i + 1]));
+  if (kind === 'ACTIVE' && close !== null) {
+    warnings.push(
+      `BLOCK: สัญญา ${c.code}: สัญญาผ่อนอยู่แต่มีรายการปิดบัญชีก่อนกำหนดในระบบเก่า — ยอดจ่ายของงวดใช้ใบรับเงินอย่างเดียว ยอดค้างอาจไม่เท่า PEAK`,
+    );
+  }
 
   const receiptsByInstallment = new Map<string, LegacyReceipt[]>();
   for (const r of c.receipts) {
@@ -148,84 +172,98 @@ export function mapPayments(
     else receiptsByInstallment.set(r.installmentLegacyId, [r]);
   }
 
-  const toPayment = (inst: LegacyInstallment, index: number): PaymentDraft => {
+  /** แถวงวด + ข้อเตือนของงวดนั้น (ใช้เฉพาะเมื่องวดถูกนำเข้า) */
+  const toPayment = (
+    inst: LegacyInstallment,
+    index: number,
+  ): { payment: PaymentDraft; issues: string[] } => {
     const where = `สัญญา ${c.code} งวด ${inst.legacyCode}`;
+    const issues: string[] = [];
     const receipts = receiptsByInstallment.get(inst.legacyId) ?? [];
-    const amountDue = money(inst.amount);
-    const legacyPaid = money(inst.paid);
-    const fromReceipts = sum(receipts.map((r) => money(r.installment)));
+    const amountDue = dRound(inst.amount);
+    const legacyPaid = dRound(inst.paid);
+    const fromReceipts = sum(receipts.map((r) => dRound(r.installment)));
 
     let amountPaid: Decimal;
     let unbacked = false; // ยอดจ่ายส่วนที่ไม่มีใบรับเงินหนุน
-    if (hasPayoff) {
+    if (close !== null) {
       amountPaid = fromReceipts;
       if (fromReceipts.gt(legacyPaid)) {
-        warnings.push(
-          `${where}: ยอดใบรับเงินค่างวดมากกว่ายอดจ่ายของงวดในระบบเก่า — ใช้ยอดใบรับเงิน`,
-        );
+        issues.push(`${where}: ยอดใบรับเงินค่างวดมากกว่ายอดจ่ายของงวดในระบบเก่า — ใช้ยอดใบรับเงิน`);
       }
     } else {
       amountPaid = Prisma.Decimal.max(fromReceipts, legacyPaid);
       unbacked = legacyPaid.gt(fromReceipts);
       if (receipts.length === 0 && unbacked) {
-        warnings.push(`${where}: มียอดจ่ายในระบบเก่าแต่ไม่มีใบรับเงิน — ใช้ยอดจ่ายของงวด`);
+        issues.push(`${where}: มียอดจ่ายในระบบเก่าแต่ไม่มีใบรับเงิน — ใช้ยอดจ่ายของงวด`);
       } else if (unbacked) {
-        warnings.push(
+        issues.push(
           `${where}: ยอดจ่ายของงวด (ins_paid หรือที่ปรับตาม PEAK) มากกว่าใบรับเงิน — ใช้ยอดจ่ายของงวด`,
         );
       } else if (fromReceipts.gt(legacyPaid)) {
-        warnings.push(`${where}: ยอดใบรับเงินมากกว่ายอดจ่ายของงวด (ins_paid) — ใช้ยอดใบรับเงิน`);
+        issues.push(`${where}: ยอดใบรับเงินมากกว่ายอดจ่ายของงวด (ins_paid) — ใช้ยอดใบรับเงิน`);
       }
     }
     if (!amountDue.gt(0)) {
-      warnings.push(`${where}: ค่างวดในระบบเก่าไม่เป็นบวก`);
+      issues.push(`${where}: ค่างวดในระบบเก่าไม่เป็นบวก`);
     } else if (amountPaid.gt(amountDue)) {
-      warnings.push(`${where}: ยอดจ่ายเกินค่างวด`);
+      issues.push(`${where}: ยอดจ่ายเกินค่างวด`);
     }
 
-    const status = statusOf(amountDue, amountPaid, inst.dueDate, cutoff);
-    const discount = sum(receipts.map((r) => money(r.discount)));
-    const receiptIds = receipts.map((r) => r.legacyId).join(', ');
+    let status = statusOf(amountDue, amountPaid, inst.dueDate, cutoff);
+    let paidDate =
+      status === 'PAID' ? latestDate(receipts.filter((r) => dRound(r.installment).gt(0))) : null;
+    const closedByPayoff =
+      kind === 'HISTORY' && close !== null && amountPaid.gt(0) && amountPaid.lt(amountDue);
+    if (closedByPayoff) {
+      status = 'PAID';
+      paidDate = close.createdAt;
+    }
+
+    const lateFeePaid = sum(receipts.map((r) => dRound(r.mulct)));
+    const discount = sum(receipts.map((r) => dRound(r.discount)));
     const notes = [`${NOTE_PREFIX} · งวด ${inst.legacyCode}`];
-    if (receipts.length > 0) notes.push(`ใบรับเงินเดิม ${receiptIds}`);
-    if (unbacked) {
-      notes.push(
-        receipts.length === 0
-          ? 'ไม่มีใบรับเงินในระบบเก่า ใช้ยอดจ่ายของงวด'
-          : 'ยอดจ่ายรวมส่วนที่ไม่มีใบรับเงิน',
-      );
-    }
+    if (receipts.length > 0)
+      notes.push(`ใบรับเงินเดิม ${receipts.map((r) => r.legacyId).join(', ')}`);
+    if (unbacked) notes.push(UNBACKED_NOTE);
+    if (lateFeePaid.gt(0)) notes.push(`ค่าปรับที่เก็บแล้วในระบบเก่า ${formatMoney(lateFeePaid)}`);
     if (discount.gt(0)) notes.push(`ส่วนลด ${formatMoney(discount)}`);
-    if (hasPayoff && amountPaid.lt(amountDue)) {
-      notes.push('ส่วนที่เหลือปิดด้วยการปิดบัญชีก่อนกำหนด');
-    }
+    if (closedByPayoff) notes.push(PAYOFF_NOTE);
 
     return {
-      installmentNo: index + 1,
-      dueDate: inst.dueDate,
-      amountDue,
-      amountPaid,
-      status,
-      paidDate: status === 'PAID' ? latestDate(receipts) : null,
-      lateFee: sum(receipts.map((r) => money(r.mulct))),
-      notes: notes.join(' · '),
-      legacyInstallmentCode: inst.legacyCode,
+      payment: {
+        installmentNo: index + 1,
+        dueDate: inst.dueDate,
+        amountDue,
+        amountPaid,
+        status,
+        paidDate,
+        lateFee: ZERO,
+        lateFeePaid,
+        notes: notes.join(' · '),
+        legacyInstallmentCode: inst.legacyCode,
+      },
+      issues,
     };
   };
 
-  const all = c.installments.map(toPayment);
-  const payments = kind === 'HISTORY' ? all.filter((p) => p.amountPaid.gt(0)) : all;
-  const imported = new Set(payments.map((p) => p.installmentNo));
-
-  // งวดที่มีใบรับเงินแต่ไม่ถูกนำเข้า (ยอดจ่ายค่างวด 0 เช่นจ่ายแต่ค่าปรับ) — ค่าปรับของงวดนั้นไม่ถูกนำเข้าด้วย
+  const payments: PaymentDraft[] = [];
   c.installments.forEach((inst, i) => {
-    const receipts = receiptsByInstallment.get(inst.legacyId);
-    if (!receipts || imported.has(i + 1)) return;
-    const receiptIds = receipts.map((r) => r.legacyId).join(', ');
-    warnings.push(
-      `สัญญา ${c.code} งวด ${inst.legacyCode}: มีใบรับเงิน ${receiptIds} แต่ยอดจ่ายค่างวดเป็น 0 — งวดนี้ไม่นำเข้า (สเปก 5.7) สลิปแนบระดับสัญญา`,
-    );
+    const { payment, issues } = toPayment(inst, i);
+    if (kind === 'HISTORY' && !payment.amountPaid.gt(0)) {
+      // ไม่นำเข้า (สเปก 5.7) — ไม่เตือนเรื่องยอดของงวด · สลิปของงวดนี้ (ถ้ามี) แนบระดับสัญญา
+      const receipts = receiptsByInstallment.get(inst.legacyId);
+      if (receipts) {
+        warnings.push(
+          `สัญญา ${c.code}: ใบรับเงิน ${receipts.map((r) => r.legacyId).join(', ')} ของงวด ${inst.legacyCode} ไม่มียอดค่างวด — งวดนี้ไม่นำเข้า (สเปก 5.7) สลิปแนบระดับสัญญา ค่าปรับของใบเหล่านี้ไม่ถูกนำเข้า`,
+        );
+      }
+      return;
+    }
+    payments.push(payment);
+    warnings.push(...issues);
   });
+  const imported = new Set(payments.map((p) => p.installmentNo));
 
   const evidences: EvidenceDraft[] = [];
   for (const r of c.receipts) {
@@ -238,7 +276,7 @@ export function mapPayments(
     evidences.push({
       installmentNo,
       slipPath: r.slipPath,
-      amount: money(r.amount),
+      amount: dRound(r.amount),
       legacyReceiptId: r.legacyId,
       date: r.date,
     });

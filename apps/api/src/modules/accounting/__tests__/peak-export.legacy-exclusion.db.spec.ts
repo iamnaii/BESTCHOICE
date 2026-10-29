@@ -13,16 +13,20 @@ import { PeakExportService } from '../peak-export.service';
  * เพื่อให้มีบรรทัด "ไม่ได้จับคู่" แล้วคืนค่าเดิมตอนจบ · แถวอื่นที่สร้าง (บริษัท FINANCE ถ้ายังไม่มี, สาขา, ผู้ใช้,
  * ผู้ติดต่อ, ลูกค้า, สินค้า, สัญญา, รายการบัญชี) ลบเฉพาะของสเปคนี้
  *
+ * ทุกเคสลงวันที่ปี 2099 (กติกาไม่ขึ้นกับวันที่) — รายการที่ spec / worker อื่นทิ้งไว้ในฐาน `*_test` ไม่ชนช่วงส่งออก
+ *
  * รัน: DATABASE_URL=<ฐานทดสอบ test_db หรือ *_test> npx jest <ไฟล์นี้> --runInBand · ไม่มี DATABASE_URL = ข้าม
  */
 const describeDb = process.env.DATABASE_URL ? describe : describe.skip;
 
-/** ช่วงส่งออกของทุกเคส: 1 พ.ย. – 1 ธ.ค. 2026 (วันตัด 30 พ.ย.) */
-const FROM = new Date('2026-11-01T00:00:00.000Z');
-const TO = new Date('2026-12-01T23:59:59.999Z');
-const NOV20 = new Date('2026-11-20T00:00:00.000Z');
-const NOV30 = new Date('2026-11-30T00:00:00.000Z');
-const DEC1 = new Date('2026-12-01T00:00:00.000Z');
+/** ช่วงส่งออกของทุกเคส: 1 พ.ย. – 1 ธ.ค. (วันตัด 30 พ.ย.) ของปี 2099 */
+const FROM = new Date('2099-11-01T00:00:00.000Z');
+const TO = new Date('2099-12-01T23:59:59.999Z');
+/** ก่อนช่วงส่งออก — ต้นฉบับของรายการกลับ / กระจกอยู่นอกช่วงได้ */
+const OCT15 = new Date('2099-10-15T00:00:00.000Z');
+const NOV20 = new Date('2099-11-20T00:00:00.000Z');
+const NOV30 = new Date('2099-11-30T00:00:00.000Z');
+const DEC1 = new Date('2099-12-01T00:00:00.000Z');
 
 /** รหัส PEAK ทดสอบของบัญชีดอกเบี้ย (สำนักงานบัญชียังไม่ให้รหัสจริง) */
 const PEAK_2106 = 'T10B-2106';
@@ -31,7 +35,10 @@ const UNMAPPED_ACCOUNT = '21-5101';
 
 type Line = [accountCode: string, debit: string, credit: string, description?: string];
 
-/** 2A เต็มงวดของสัญญามาตรฐาน 17k/12 เดือน — 7 บรรทัดเดียวกับ `build-accrual-2a-lines.ts` */
+/**
+ * 2A เต็มงวด — บัญชีและคำอธิบาย 7 บรรทัดเดียวกับ `build-accrual-2a-lines.ts` แต่ยอดเป็นตัวเลขสังเคราะห์ที่ดุลในตัว
+ * (1515.84 / 1416.67) ไม่ใช่ตัวเลขทองของสัญญามาตรฐาน 17k/12 (1515.83 / 1416.66) — เทสต์ดูแค่บัญชีกับการดุล
+ */
 const ACCRUAL_2A_LINES: Line[] = [
   ['11-2103', '1515.84', '0', 'ลูกหนี้ค้างชำระ (Accrual)'],
   ['21-2102', '99.17', '0', 'ล้าง ภาษีขายรอเรียกเก็บ'],
@@ -41,6 +48,29 @@ const ACCRUAL_2A_LINES: Line[] = [
   ['41-1101', '0', '500.00', 'รายได้ดอกเบี้ย (รับรู้)'],
   ['21-2101', '0', '99.17', 'ภาษีขาย ภ.พ.30'],
 ];
+
+/**
+ * รูปของ `exchange-close-old-21-1106.template.ts` (วิธีสุทธิ): Dr 11-2106 ไม่มี 41-1101 คู่ · 21-1106 ไม่มีรหัส PEAK
+ * Dr 8000 + 3000 + 595 + 126.64 = Cr 10531.64 + 595 + 595
+ */
+const CLOSE_OLD_LINES: Line[] = [
+  ['21-1106', '8000.00', '0'],
+  ['11-2106', '3000.00', '0'],
+  ['21-2102', '595.00', '0'],
+  ['51-1102', '126.64', '0'],
+  ['11-2101', '0', '10531.64'],
+  ['11-2105', '0', '595.00'],
+  ['21-2101', '0', '595.00'],
+];
+
+/** กระจกของรายการ (สลับ Dr / Cr) — แบบ `JournalService.void` และเทมเพลตกลับรายการ */
+const mirrorOf = (lines: Line[]): Line[] =>
+  lines.map(([accountCode, debit, credit, description]) => [
+    accountCode,
+    credit,
+    debit,
+    description,
+  ]);
 
 describeDb('PeakExportService — legacy backoffice exclusion (real DB)', () => {
   let prisma: PrismaClient;
@@ -216,11 +246,19 @@ describeDb('PeakExportService — legacy backoffice exclusion (real DB)', () => 
   }
 
   /** ลงรายการ POSTED ฝั่ง FINANCE · คืนเลขรายการ (เรียงตามลำดับที่สร้าง) */
+  /** entryNumber → id ของรายการที่ spec สร้าง (ใช้ชี้ต้นฉบับของรายการกลับ / กระจก) */
+  const idOf = new Map<string, string>();
+
   async function post(
     entryDate: Date,
     description: string,
-    metadata: Prisma.InputJsonValue,
+    metadata: Prisma.InputJsonValue | null,
     lines: Line[],
+    opts: {
+      status?: 'POSTED' | 'VOIDED';
+      referenceType?: string;
+      referenceId?: string;
+    } = {},
   ): Promise<string> {
     seq += 1;
     const entry = await prisma.journalEntry.create({
@@ -229,10 +267,12 @@ describeDb('PeakExportService — legacy backoffice exclusion (real DB)', () => 
         companyId: financeCompanyId,
         entryDate,
         description,
-        status: 'POSTED',
+        status: opts.status ?? 'POSTED',
         postedAt: entryDate,
         createdById: userId,
-        metadata,
+        metadata: metadata ?? Prisma.DbNull,
+        referenceType: opts.referenceType ?? null,
+        referenceId: opts.referenceId ?? null,
         lines: {
           create: lines.map(([accountCode, debit, credit, desc]) => ({
             accountCode,
@@ -245,6 +285,7 @@ describeDb('PeakExportService — legacy backoffice exclusion (real DB)', () => 
       select: { id: true, entryNumber: true },
     });
     entryIds.push(entry.id);
+    idOf.set(entry.entryNumber, entry.id);
     return entry.entryNumber;
   }
 
@@ -300,8 +341,8 @@ describeDb('PeakExportService — legacy backoffice exclusion (real DB)', () => 
     expect(rowsOf(res.csv, opening)).toEqual([]);
     expect(rowsOf(res.csv, receipt).sort()).toEqual(
       [
-        `2026-11-30,${receipt},111101,CSH001,11-1101,เงินสด - สุทธินีย์ คงเดช,1515.84,0,รับชำระค่างวด,`,
-        `2026-11-30,${receipt},113101,C90002,11-2103,ลูกหนี้ค้างชำระ (Overdue),0,1515.84,รับชำระค่างวด,`,
+        `2099-11-30,${receipt},111101,CSH001,11-1101,เงินสด - สุทธินีย์ คงเดช,1515.84,0,รับชำระค่างวด,`,
+        `2099-11-30,${receipt},113101,C90002,11-2103,ลูกหนี้ค้างชำระ (Overdue),0,1515.84,รับชำระค่างวด,`,
       ].sort(),
     );
     expect(res).toMatchObject({
@@ -310,6 +351,7 @@ describeDb('PeakExportService — legacy backoffice exclusion (real DB)', () => 
       unresolvedSubCodeCount: 0,
       excludedEntryCount: 1,
       excludedLegacyInterestLineCount: 0,
+      legacyUnbalancedEntryCount: 0,
     });
   });
 
@@ -344,14 +386,15 @@ describeDb('PeakExportService — legacy backoffice exclusion (real DB)', () => 
     expect(rowsOf(res.csv, marker)).toEqual([]);
     expect(rowsOf(res.csv, receipt).sort()).toEqual(
       [
-        `2026-12-01,${receipt},111101,CSH001,11-1101,เงินสด - สุทธินีย์ คงเดช,1215.84,0,รับชำระค่างวด,`,
-        `2026-12-01,${receipt},113101,C90001,11-2103,ลูกหนี้ค้างชำระ (Overdue),0,1215.84,รับชำระค่างวด,`,
+        `2099-12-01,${receipt},111101,CSH001,11-1101,เงินสด - สุทธินีย์ คงเดช,1215.84,0,รับชำระค่างวด,`,
+        `2099-12-01,${receipt},113101,C90001,11-2103,ลูกหนี้ค้างชำระ (Overdue),0,1215.84,รับชำระค่างวด,`,
       ].sort(),
     );
     expect(res).toMatchObject({
       rowCount: 2,
       excludedEntryCount: 1,
       excludedLegacyInterestLineCount: 0,
+      legacyUnbalancedEntryCount: 0,
     });
   });
 
@@ -382,8 +425,8 @@ describeDb('PeakExportService — legacy backoffice exclusion (real DB)', () => 
       '21-2102',
       '41-1101',
     ]);
-    expect(res.csv).toContain(`2026-12-01,${plain2A},${PEAK_2106},,11-2106,`);
-    expect(res.csv).toContain(`2026-12-01,${plain2A},${PEAK_4101},,41-1101,`);
+    expect(res.csv).toContain(`2099-12-01,${plain2A},${PEAK_2106},,11-2106,`);
+    expect(res.csv).toContain(`2099-12-01,${plain2A},${PEAK_4101},,41-1101,`);
     expect(res.csv).not.toContain(`${legacy2A},${PEAK_2106}`);
     expect(res.csv).not.toContain(`${legacy2A},${PEAK_4101}`);
     // The kept lines still carry the legacy contract's PEAK contact code.
@@ -402,6 +445,7 @@ describeDb('PeakExportService — legacy backoffice exclusion (real DB)', () => 
       unresolvedSubCodeCount: 0,
       excludedEntryCount: 0,
       excludedLegacyInterestLineCount: 2,
+      legacyUnbalancedEntryCount: 0,
     });
   });
 
@@ -429,6 +473,7 @@ describeDb('PeakExportService — legacy backoffice exclusion (real DB)', () => 
         skippedLineCount: 2, // the new contract's 11-2106 / 41-1101 — unmapped, as before
         excludedEntryCount: 0,
         excludedLegacyInterestLineCount: 2,
+        legacyUnbalancedEntryCount: 0,
       });
     } finally {
       await setPeakCode('11-2106', PEAK_2106);
@@ -476,17 +521,17 @@ describeDb('PeakExportService — legacy backoffice exclusion (real DB)', () => 
     ]);
     expect(body(res.csv).sort()).toEqual(
       [
-        `2026-11-20,${manual},212203,ADV001,11-6101,ภาษีจ่ายแทน SHOP - ภ.พ.30,100,0,d,`,
-        `2026-11-20,${manual},113101,,11-2101,ลูกหนี้ผ่อนชำระ (Gross),0,100,d,`,
-        `2026-12-01,${accrual},113101,C90002,11-2103,ลูกหนี้ค้างชำระ (Overdue),1515.84,0,ลูกหนี้ค้างชำระ (Accrual),`,
-        `2026-12-01,${accrual},215102,,21-2102,ภาษีขายรอเรียกเก็บ,99.17,0,ล้าง ภาษีขายรอเรียกเก็บ,`,
-        `2026-12-01,${accrual},${PEAK_2106},,11-2106,รายได้รอตัดบัญชี-ดอกเบี้ย,500,0,ล้าง รายได้รอตัดบัญชี-ดอกเบี้ย,`,
-        `2026-12-01,${accrual},113101,C90002,11-2101,ลูกหนี้ผ่อนชำระ (Gross),0,1416.67,ลูกหนี้ Gross (ลด excl.VAT),`,
-        `2026-12-01,${accrual},113101,C90002,11-2105,ลูกหนี้ภาษีขายรอเรียกเก็บ,0,99.17,ลูกหนี้ภาษีขายรอฯ (ล้าง),`,
-        `2026-12-01,${accrual},${PEAK_4101},,41-1101,รายได้ดอกเบี้ย (รับรู้ตามงวด),0,500,รายได้ดอกเบี้ย (รับรู้),`,
-        `2026-12-01,${accrual},215101,,21-2101,ภาษีขาย ภ.พ.30,0,99.17,ภาษีขาย ภ.พ.30,`,
-        `2026-12-01,${receipt},111101,CSH001,11-1101,เงินสด - สุทธินีย์ คงเดช,1515.84,0,"รับเงินสด, หน้าร้าน",`,
-        `2026-12-01,${receipt},113101,C90002,11-2103,ลูกหนี้ค้างชำระ (Overdue),0,1515.84,รับชำระค่างวด,`,
+        `2099-11-20,${manual},212203,ADV001,11-6101,ภาษีจ่ายแทน SHOP - ภ.พ.30,100,0,d,`,
+        `2099-11-20,${manual},113101,,11-2101,ลูกหนี้ผ่อนชำระ (Gross),0,100,d,`,
+        `2099-12-01,${accrual},113101,C90002,11-2103,ลูกหนี้ค้างชำระ (Overdue),1515.84,0,ลูกหนี้ค้างชำระ (Accrual),`,
+        `2099-12-01,${accrual},215102,,21-2102,ภาษีขายรอเรียกเก็บ,99.17,0,ล้าง ภาษีขายรอเรียกเก็บ,`,
+        `2099-12-01,${accrual},${PEAK_2106},,11-2106,รายได้รอตัดบัญชี-ดอกเบี้ย,500,0,ล้าง รายได้รอตัดบัญชี-ดอกเบี้ย,`,
+        `2099-12-01,${accrual},113101,C90002,11-2101,ลูกหนี้ผ่อนชำระ (Gross),0,1416.67,ลูกหนี้ Gross (ลด excl.VAT),`,
+        `2099-12-01,${accrual},113101,C90002,11-2105,ลูกหนี้ภาษีขายรอเรียกเก็บ,0,99.17,ลูกหนี้ภาษีขายรอฯ (ล้าง),`,
+        `2099-12-01,${accrual},${PEAK_4101},,41-1101,รายได้ดอกเบี้ย (รับรู้ตามงวด),0,500,รายได้ดอกเบี้ย (รับรู้),`,
+        `2099-12-01,${accrual},215101,,21-2101,ภาษีขาย ภ.พ.30,0,99.17,ภาษีขาย ภ.พ.30,`,
+        `2099-12-01,${receipt},111101,CSH001,11-1101,เงินสด - สุทธินีย์ คงเดช,1515.84,0,"รับเงินสด, หน้าร้าน",`,
+        `2099-12-01,${receipt},113101,C90002,11-2103,ลูกหนี้ค้างชำระ (Overdue),0,1515.84,รับชำระค่างวด,`,
       ].sort(),
     );
     expect(res).toEqual({
@@ -496,6 +541,191 @@ describeDb('PeakExportService — legacy backoffice exclusion (real DB)', () => 
       unresolvedSubCodeCount: 1,
       excludedEntryCount: 0,
       excludedLegacyInterestLineCount: 0,
+      legacyUnbalancedEntryCount: 0,
+    });
+  });
+  it('(5) flags a legacy entry that the interest drop leaves unbalanced (exchange close-old · known gap)', async () => {
+    const legacyClose = await post(
+      DEC1,
+      'ปิดสัญญาเดิม (เปลี่ยนเครื่อง)',
+      { flow: 'exchange-close-old-21-1106', contractId: legacyContractId },
+      CLOSE_OLD_LINES,
+    );
+    const plainClose = await post(
+      DEC1,
+      'ปิดสัญญาเดิม (เปลี่ยนเครื่อง)',
+      { flow: 'exchange-close-old-21-1106', contractId: plainContractId },
+      CLOSE_OLD_LINES,
+    );
+    // A legacy 2A drops an equal 11-2106 / 41-1101 pair → still balanced → not flagged.
+    const legacy2A = await post(
+      DEC1,
+      'ตั้งลูกหนี้งวดที่ 1',
+      { tag: '2A', contractId: legacyContractId },
+      ACCRUAL_2A_LINES,
+    );
+
+    const res = await service.exportJournalWithPeakCodes(FROM, TO);
+
+    expect(accountsOf(rowsOf(res.csv, legacyClose))).toEqual([
+      '11-2101',
+      '11-2105',
+      '21-2101',
+      '21-2102',
+      '51-1102',
+    ]);
+    expect(accountsOf(rowsOf(res.csv, legacy2A))).not.toContain('11-2106');
+    // The new contract's close-old keeps 11-2106. Its 21-1106 line is unmapped (skipped), so it is
+    // unbalanced in the file too — but that is the old unmapped-account behaviour, not this filter's.
+    expect(accountsOf(rowsOf(res.csv, plainClose))).toContain('11-2106');
+    expect(res).toMatchObject({
+      skippedLineCount: 2,
+      excludedEntryCount: 0,
+      excludedLegacyInterestLineCount: 3,
+      legacyUnbalancedEntryCount: 1,
+    });
+  });
+
+  it('(6) a JournalService.void reversal (no metadata) inherits flow and contractId from its original', async () => {
+    // Originals voided before the window — VOIDED entries never export; their reversals do.
+    const opening = await post(
+      OCT15,
+      'ยกยอดสัญญาจากระบบเก่า',
+      { tag: 'legacy-opening', flow: 'legacy-opening', contractId: legacyContractId },
+      [
+        ['11-2101', '8500.00', '0'],
+        ['11-2106', '0', '3000.00'],
+        ['32-1101', '0', '5500.00'],
+      ],
+      { status: 'VOIDED' },
+    );
+    const legacy2A = await post(
+      OCT15,
+      'ตั้งลูกหนี้งวดที่ 1',
+      { tag: '2A', contractId: legacyContractId },
+      ACCRUAL_2A_LINES,
+      { status: 'VOIDED' },
+    );
+    const plain2A = await post(
+      OCT15,
+      'ตั้งลูกหนี้งวดที่ 1',
+      { tag: '2A', contractId: plainContractId },
+      ACCRUAL_2A_LINES,
+      { status: 'VOIDED' },
+    );
+    const voidOf = (original: string, lines: Line[]) =>
+      post(DEC1, `Reversal of ${original}`, null, mirrorOf(lines), {
+        referenceType: 'REVERSAL',
+        referenceId: idOf.get(original),
+      });
+    const openingRev = await voidOf(opening, [
+      ['11-2101', '8500.00', '0'],
+      ['11-2106', '0', '3000.00'],
+      ['32-1101', '0', '5500.00'],
+    ]);
+    const legacy2ARev = await voidOf(legacy2A, ACCRUAL_2A_LINES);
+    const plain2ARev = await voidOf(plain2A, ACCRUAL_2A_LINES);
+
+    const res = await service.exportJournalWithPeakCodes(FROM, TO);
+
+    expect(rowsOf(res.csv, openingRev)).toEqual([]);
+    expect(accountsOf(rowsOf(res.csv, legacy2ARev))).toEqual([
+      '11-2101',
+      '11-2103',
+      '11-2105',
+      '21-2101',
+      '21-2102',
+    ]);
+    expect(rowsOf(res.csv, plain2ARev)).toHaveLength(7);
+    // Contact sub-codes still come from the entry's own metadata only (none on a void reversal).
+    expect(rowsOf(res.csv, plain2ARev).filter((r) => r.includes(',113101,,'))).toHaveLength(3);
+    expect(res).toMatchObject({
+      rowCount: 12,
+      excludedEntryCount: 1,
+      excludedLegacyInterestLineCount: 2,
+      legacyUnbalancedEntryCount: 0,
+    });
+  });
+
+  it('(7) a template mirror with metadata.originalEntryId inherits flow and contractId from its original', async () => {
+    const marker = await post(
+      OCT15,
+      'ยอดรับก่อนวันตัด (ระบบเก่า)',
+      { tag: '2B', flow: 'legacy-prior-receipt', contractId: legacyContractId },
+      [
+        ['32-1101', '300.00', '0'],
+        ['11-2103', '0', '300.00'],
+      ],
+    );
+    const legacy2A = await post(
+      OCT15,
+      'ตั้งลูกหนี้งวดที่ 1',
+      { tag: '2A', contractId: legacyContractId },
+      ACCRUAL_2A_LINES,
+    );
+    const plainReceipt = await post(
+      OCT15,
+      'รับชำระค่างวด',
+      { tag: '2B', flow: 'payment-receipt', contractId: plainContractId },
+      [
+        ['11-1101', '1515.84', '0'],
+        ['11-2103', '0', '1515.84'],
+      ],
+    );
+    // Mirror of the marker: own flow / contractId (as exchange-cancel-reversal writes them).
+    const markerMirror = await post(
+      DEC1,
+      'ยกเลิกสัญญา กลับรายการ',
+      {
+        tag: 'REVERSAL',
+        flow: 'contract-cancellation',
+        originalEntryId: idOf.get(marker) as string,
+        contractId: legacyContractId,
+      },
+      [
+        ['32-1101', '0', '300.00'],
+        ['11-2103', '300.00', '0'],
+      ],
+    );
+    // Mirror of the legacy 2A without its own contractId → inherits the legacy contract.
+    const accrualMirror = await post(
+      DEC1,
+      'กลับรายการ',
+      { tag: 'REVERSAL', flow: 'defect-exchange', originalEntryId: idOf.get(legacy2A) as string },
+      mirrorOf(ACCRUAL_2A_LINES),
+    );
+    // Mirror of a normal receipt → exports in full.
+    const receiptMirror = await post(
+      DEC1,
+      'กลับรายการ',
+      {
+        tag: 'REVERSAL',
+        flow: 'receipt-void',
+        originalEntryId: idOf.get(plainReceipt) as string,
+        contractId: plainContractId,
+      },
+      [
+        ['11-1101', '0', '1515.84'],
+        ['11-2103', '1515.84', '0'],
+      ],
+    );
+
+    const res = await service.exportJournalWithPeakCodes(FROM, TO);
+
+    expect(rowsOf(res.csv, markerMirror)).toEqual([]);
+    expect(accountsOf(rowsOf(res.csv, accrualMirror))).toEqual([
+      '11-2101',
+      '11-2103',
+      '11-2105',
+      '21-2101',
+      '21-2102',
+    ]);
+    expect(rowsOf(res.csv, receiptMirror)).toHaveLength(2);
+    expect(res).toMatchObject({
+      rowCount: 7,
+      excludedEntryCount: 1,
+      excludedLegacyInterestLineCount: 2,
+      legacyUnbalancedEntryCount: 0,
     });
   });
 });

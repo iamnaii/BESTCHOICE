@@ -170,9 +170,13 @@ export class AccountingController {
 
   /**
    * Stream a CSV of journal lines (within the date range) tagged with their
-   * mapped PEAK code. Lines whose account has no PEAK mapping are skipped —
-   * the count is returned via the `X-Skipped-Lines` response header so the UI
-   * can surface a warning banner.
+   * mapped PEAK code. Counts come back as response headers (all CORS-exposed):
+   *   - `X-Row-Count` — rows in the file
+   *   - `X-Skipped-Lines` — lines whose account has no PEAK mapping (skipped)
+   *   - `X-Unresolved-Sub-Codes` — contact lines whose party has no PEAK contact code
+   *   - `X-Excluded-Legacy-Entries` — legacy opening / prior-receipt entries left out
+   *   - `X-Excluded-Legacy-Interest-Lines` — 11-2106 / 41-1101 lines of legacy contracts left out
+   *   - `X-Legacy-Unbalanced-Entries` — entries the interest drop left unbalanced (known gap)
    */
   @Get('journal/export-peak')
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
@@ -206,10 +210,12 @@ export class AccountingController {
       'X-Excluded-Legacy-Interest-Lines',
       String(result.excludedLegacyInterestLineCount),
     );
+    // known gap (exchange close-old of a legacy contract) — awaiting the accounting firm
+    res.setHeader('X-Legacy-Unbalanced-Entries', String(result.legacyUnbalancedEntryCount));
     // Expose custom headers so the browser fetch() sees them through CORS.
     res.setHeader(
       'Access-Control-Expose-Headers',
-      'X-Skipped-Lines, X-Row-Count, X-Unresolved-Sub-Codes, X-Excluded-Legacy-Entries, X-Excluded-Legacy-Interest-Lines',
+      'X-Skipped-Lines, X-Row-Count, X-Unresolved-Sub-Codes, X-Excluded-Legacy-Entries, X-Excluded-Legacy-Interest-Lines, X-Legacy-Unbalanced-Entries',
     );
     res.end(result.csv);
   }

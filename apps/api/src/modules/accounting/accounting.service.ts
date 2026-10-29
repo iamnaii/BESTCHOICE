@@ -313,7 +313,8 @@ export class AccountingService implements OnModuleInit {
    *
    * `excludedEntryCount` / `excludedLegacyInterestLineCount` (legacy backoffice
    * import · spec ร่าง 5): legacy opening / prior-receipt entries and 11-2106 /
-   * 41-1101 lines of legacy contracts never go to PEAK (see peak-export-exclusion.ts).
+   * 41-1101 lines of legacy contracts never go to PEAK (see peak-export-exclusion.ts);
+   * `legacyUnbalancedEntryCount` = entries that interest drop left unbalanced (known gap).
    *
    * Money values are emitted via `.toString()` to preserve Decimal precision
    * (matches the "DO NOT Number() on Prisma.Decimal in export" rule).
@@ -328,6 +329,7 @@ export class AccountingService implements OnModuleInit {
     unresolvedSubCodeCount: number;
     excludedEntryCount: number;
     excludedLegacyInterestLineCount: number;
+    legacyUnbalancedEntryCount: number;
   }> {
     return this.peakExport.exportJournalWithPeakCodes(periodStart, periodEnd);
   }

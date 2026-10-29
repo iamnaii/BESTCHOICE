@@ -3003,9 +3003,24 @@ ACC role cannot reach the tab (settings page is OWNER-only) but the API endpoint
 
 Guards:
 - Date range capped at 186 days (~6 months). Longer ranges → `BadRequestException`.
-- Lines whose account has no PEAK mapping are SKIPPED. The skipped count returns via header `X-Skipped-Lines` (total rows via `X-Row-Count`; contact lines whose party has no PEAK contact code via `X-Unresolved-Sub-Codes`). All three headers are CORS-exposed via `Access-Control-Expose-Headers`. `/finance/peak-export` shows the unresolved count as a second warning line linking to `/contacts` (where OWNER / ACCOUNTANT type the code).
+- Lines whose account has no PEAK mapping are SKIPPED. The skipped count returns via header `X-Skipped-Lines` (total rows via `X-Row-Count`; contact lines whose party has no PEAK contact code via `X-Unresolved-Sub-Codes`). All six headers (these three + the three legacy headers below) are CORS-exposed via `Access-Control-Expose-Headers`. `/finance/peak-export` shows the unresolved count as a second warning line linking to `/contacts` (where OWNER / ACCOUNTANT type the code).
 
-Frontend `/finance/peak-export` (OWNER, FM, ACC) wraps the call with a date-range picker and surfaces the skipped count as a warning banner with a deep link back to the mapping settings.
+Frontend `/finance/peak-export` (OWNER, FM, ACC) wraps the call with a date-range picker and surfaces the skipped count as a warning banner with a deep link back to the mapping settings. The page does not read the three legacy headers yet (mockup first).
+
+### สัญญาที่ย้ายจากระบบเก่า — ไม่ส่งเข้า PEAK (29/10/2026 · สเปคย้ายสัญญา ร่าง 5)
+
+PEAK รับรู้ลูกหนี้และรายได้ทั้งก้อน (รวมดอกเบี้ย) ของสัญญาเก่าไปแล้วตอนทำสัญญา ⇒ ไฟล์ส่งออกตัดสองอย่าง (โค้ด `accounting/peak-export-exclusion.ts` — ด่านตรวจของตัวนำเข้าต้องเรียกฟังก์ชันชุดเดียวกัน ห้ามเขียนกติกาชุดที่สอง):
+
+| กติกา | ตัดอะไร | header |
+|---|---|---|
+| ทั้งรายการ | `metadata.flow` ∈ `legacy-opening` / `legacy-prior-receipt` (ดู `flow` เท่านั้น ไม่ใช่ `tag` — marker ใช้ tag `2B` เหมือนใบรับเงินจริง) | `X-Excluded-Legacy-Entries` (นับรายการ) |
+| บรรทัด | 11-2106 / 41-1101 ของรายการที่ `metadata.contractId` ชี้สัญญาที่ `legacyContractCode` ไม่ว่าง — ตัดก่อนเช็ครหัส PEAK จึงไม่นับใน `X-Skipped-Lines` | `X-Excluded-Legacy-Interest-Lines` |
+
+- **`Contract.legacyContractCode` ไม่ว่าง = "PEAK รับรู้รายได้ของสัญญานี้ไปแล้ว"** — งานนำเข้าอื่นห้ามตั้งค่านี้ให้สัญญาที่ PEAK ยังไม่ได้รับรู้ ไม่งั้นดอกเบี้ยของสัญญานั้นหายจาก PEAK แบบเงียบ.
+- **รายการกลับ / กระจก** ใช้ flow ของรายการต้นฉบับ และใช้ contractId ของต้นฉบับเมื่อไม่มีของตัวเอง — ต้นฉบับ = `metadata.originalEntryId` หรือ `referenceId` ของรายการกลับจาก `JournalService.void` (`referenceType = 'REVERSAL'`, ไม่มี metadata) · ดูชั้นเดียว · ไม่สนช่วงวันที่/สถานะของต้นฉบับ. ใช้กับตัวกรองสองข้อนี้เท่านั้น — รหัสย่อยผู้ติดต่อยังอ่าน metadata ของรายการเอง.
+- รายการไล่ VAT `legacy-vat-catchup` **ไม่ตัด** — VAT ส่วนนั้น PEAK ยังไม่เคยยื่น ต้องเข้า PEAK.
+- **ช่องว่างที่รู้ — รอสำนักงานบัญชี:** เทมเพลตส่วนใหญ่ลง 11-2106 / 41-1101 เป็นคู่ยอดเท่ากัน (2A, กลับรายการ 2A, JP4, JP5, ตัดหนี้สูญ) ตัดคู่แล้วรายการยังดุล · ยกเว้น `exchange-close-old-21-1106` (Dr 11-2106 ไม่มี 41-1101 คู่) — เปลี่ยนเครื่องของสัญญาเก่าส่งออกเป็นรายการไม่ดุลเท่าดอกเบี้ยรอตัด (กระจกตอนยกเลิกเปลี่ยนเครื่องก็เช่นกัน). header `X-Legacy-Unbalanced-Entries` นับรายการที่ดุลก่อนตัดแต่ไม่ดุลหลังตัด (รายการที่ไม่ดุลเพราะบรรทัดไม่มีรหัส PEAK อยู่แล้วไม่นับ). วิธีลงฝั่ง PEAK ยังไม่ได้ตัดสิน. ไม่มีด่านตรวจการดุลในเส้นทางส่งออก.
+- ยังไม่ครอบ: รายการปิดบัญชีสิ้นปี (41-1101 รวมทั้งปี ไม่มี contractId) · ตัวส่ง PEAK อัตโนมัติ `peak.service.ts` (กรองแค่ `peakSyncedAt`).
 
 ### Audit
 

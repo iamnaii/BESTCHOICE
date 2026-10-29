@@ -1,0 +1,256 @@
+import { Prisma } from '@prisma/client';
+import { computeInstallmentBreakdown } from '../../modules/journal/compute-installment-breakdown';
+import { resolveStoreCommission } from '../../utils/store-commission.util';
+import { parseMoney, readCsv, type CsvRow } from './csv';
+import type { LegacyContract, LegacyInstallment } from './legacy-book';
+
+/**
+ * ยอดเงินของสัญญาระบบเก่า (Task 4 · ร่าง 5) — ฟังก์ชันบริสุทธิ์ ไม่แตะฐานข้อมูล
+ *
+ * สูตรตามสคริปต์เดิม `scripts/import-legacy/index.ts` (แถว `bestchoice_order_product_detail`):
+ * - `financedAmount` = `finance` (> 0) ไม่งั้น `ref_product_price − deposit`
+ * - `storeCommission` = `commission_admin` (> 0) ไม่งั้น 10% ของยอดจัด (`resolveStoreCommission` ตัวเดียวกับ
+ *   ระบบ) — **เขียนเป็นตัวเลขเสมอ** ห้ามว่าง: ค่าว่างทำให้ระบบคิด 10% ใหม่ทุกครั้งที่อ่าน
+ * - `vatAmount` = `sales_tax` (0 → null) · `vatPct` = 0.07 เมื่อมี VAT
+ * - `interestTotal` = max(0, `installment_total − financed − commission − vat`) **ตามจริง** (ร่าง 5)
+ * - `interestRate` = 0 — ระบบเก่า**ไม่มีคอลัมน์อัตราดอกเบี้ย**ที่ยืนยันความหมายได้ (มี `increase` /
+ *   `increase_amount` / `increase_per_month` / `order_price_rate` แต่ไม่รู้ว่าเป็นอัตราหรือยอด) จึงไม่คิดอัตราขึ้นเอง
+ * - `totalMonths` = `installment_number` · `monthlyPayment` = `installment_amount`
+ *
+ * ⚠️ `vatAmount = null` ในระบบใหม่แปลว่า "VAT 7% ของยอดก่อน VAT" (`computeInstallmentBreakdown`) ไม่ใช่
+ * "ไม่มี VAT" — สัญญาที่ `sales_tax = 0` จึงไม่ผ่าน `checkInstallmentAmounts` เว้นแต่ค่างวดเดิมรวม VAT 7% ไว้แล้ว
+ * · แก้รายสัญญาด้วย `--money-overrides` ช่อง `vat_amount = 0` (ไม่มี VAT จริง)
+ *
+ * ข้อความ error บอกได้แค่สัญญา (`contract_id`) ตาราง ช่อง และชนิดของปัญหา — ไม่ยกค่าในช่องมาพิมพ์
+ */
+
+type Decimal = Prisma.Decimal;
+
+export type ContractMoney = {
+  sellingPrice: Decimal;
+  downPayment: Decimal;
+  financedAmount: Decimal;
+  storeCommission: Decimal;
+  interestTotal: Decimal;
+  vatAmount: Decimal | null;
+  vatPct: Decimal | null;
+  interestRate: Decimal;
+  monthlyPayment: Decimal;
+  totalMonths: number;
+};
+
+/**
+ * ยอดที่เจ้าของแก้รายสัญญา (`--money-overrides`) — แทนค่าจากระบบเก่าทั้งสามช่อง · ดอกเบี้ยคิดใหม่จากยอดเหล่านี้
+ * · `vatAmount` null = VAT 7% ตามค่าตั้งต้นของระบบ · 0 = ไม่มี VAT
+ */
+export type MoneyOverride = {
+  financedAmount: Decimal;
+  storeCommission: Decimal;
+  vatAmount: Decimal | null;
+};
+
+export type AmountMismatch = { installmentNo: number; legacy: Decimal; computed: Decimal };
+
+export type PeakBalanceResult =
+  | { installments: LegacyInstallment[]; adjustment: Decimal }
+  | { blocked: 'PEAK_HIGHER'; diff: Decimal };
+
+const DETAIL_TABLE = 'bestchoice_order_product_detail';
+/** ชื่อคอลัมน์จริงตาม CREATE TABLE ของ dump 29/10 */
+const DETAIL = {
+  sellingPrice: 'ref_product_price',
+  downPayment: 'deposit',
+  finance: 'finance',
+  commission: 'commission_admin',
+  vat: 'sales_tax',
+  installmentTotal: 'installment_total',
+  months: 'installment_number',
+  monthly: 'installment_amount',
+} as const;
+
+const MONEY_ERROR = 'อ่านยอดเงินสัญญาไม่ได้';
+const OVERRIDE_ERROR = 'อ่านไฟล์แก้ยอดเงินสัญญาไม่ได้';
+const PEAK_ERROR = 'ปรับยอดค้างตาม PEAK ไม่ได้';
+const VAT_PCT = new Prisma.Decimal('0.07');
+const ZERO = new Prisma.Decimal(0);
+/** ค่างวดที่คำนวณได้ต่างจากระบบเก่าได้ไม่เกิน 0.01 · งวดสุดท้ายรับเศษปัดได้ 1.00 */
+const TOLERANCE = new Prisma.Decimal('0.01');
+const LAST_TOLERANCE = new Prisma.Decimal('1.00');
+
+/** หัวคอลัมน์ที่ต้องมีในไฟล์ `--money-overrides` (คอลัมน์อื่นไม่อ่าน) */
+export const MONEY_OVERRIDE_COLUMNS = [
+  'legacy_code',
+  'financed_amount',
+  'store_commission',
+  'vat_amount',
+] as const;
+
+/** อ่านช่องของแถว detail — ช่องว่าง/NULL = 0 แบบ `legacy-book` · คอลัมน์ไม่มีในแถว = throw */
+function detailReader(c: LegacyContract) {
+  const fail = (column: string, what: string) =>
+    new Error(
+      `${MONEY_ERROR}: สัญญา contract_id=${c.contractId} ตาราง \`${DETAIL_TABLE}\` ช่อง ${column} — ${what}`,
+    );
+  const raw = (column: string): string | null => {
+    if (!(column in c.detail)) throw fail(column, 'ไม่มีคอลัมน์');
+    const value = c.detail[column]?.trim();
+    return value ? value : null;
+  };
+  const money = (column: string): Decimal => {
+    const value = raw(column);
+    if (value === null) return new Prisma.Decimal(0);
+    let parsed: Decimal;
+    try {
+      parsed = new Prisma.Decimal(value);
+    } catch {
+      throw fail(column, 'จำนวนเงินผิดรูปแบบ');
+    }
+    if (!parsed.isFinite()) throw fail(column, 'จำนวนเงินผิดรูปแบบ');
+    return parsed;
+  };
+  const months = (column: string): number => {
+    const value = raw(column);
+    if (value === null) throw fail(column, 'ไม่มีค่า');
+    if (!/^\d+$/.test(value) || Number(value) <= 0) throw fail(column, 'ไม่ใช่จำนวนเต็มบวก');
+    return Number(value);
+  };
+  return { money, months };
+}
+
+/** แปลงแถว detail ของสัญญาเป็นยอดเงินในระบบใหม่ · `override` แทนยอดจัด / ค่าคอม / VAT */
+export function mapContractMoney(c: LegacyContract, override?: MoneyOverride): ContractMoney {
+  const r = detailReader(c);
+  const sellingPrice = r.money(DETAIL.sellingPrice);
+  const downPayment = r.money(DETAIL.downPayment);
+  const installmentTotal = r.money(DETAIL.installmentTotal);
+  const totalMonths = r.months(DETAIL.months);
+  const monthlyPayment = r.money(DETAIL.monthly);
+
+  let financedAmount: Decimal;
+  let storeCommission: Decimal;
+  let vatAmount: Decimal | null;
+  if (override) {
+    ({ financedAmount, storeCommission, vatAmount } = override);
+  } else {
+    const finance = r.money(DETAIL.finance);
+    financedAmount = finance.gt(0) ? finance : sellingPrice.minus(downPayment);
+    const commission = r.money(DETAIL.commission);
+    storeCommission = commission.gt(0)
+      ? commission
+      : resolveStoreCommission({ storeCommission: null, financedAmount });
+    const vat = r.money(DETAIL.vat);
+    vatAmount = vat.gt(0) ? vat : null;
+  }
+
+  const interest = installmentTotal
+    .minus(financedAmount)
+    .minus(storeCommission)
+    .minus(vatAmount ?? ZERO);
+  return {
+    sellingPrice,
+    downPayment,
+    financedAmount,
+    storeCommission,
+    interestTotal: interest.gt(0) ? interest : new Prisma.Decimal(0),
+    vatAmount,
+    vatPct: vatAmount === null ? null : vatAmount.gt(0) ? VAT_PCT : new Prisma.Decimal(0),
+    interestRate: new Prisma.Decimal(0),
+    monthlyPayment,
+    totalMonths,
+  };
+}
+
+/**
+ * เทียบค่างวดระบบเก่ากับ `computeInstallmentBreakdown` ของระบบใหม่ (ตัวเดียวกับ 2A / 2B) ทีละงวด
+ * — ต่างเกิน 0.01 (งวดสุดท้าย 1.00) = ไม่ตรง · งวดที่มีฝั่งเดียว (จำนวนงวดไม่เท่า `totalMonths`) = ไม่ตรงเสมอ
+ * โดยฝั่งที่ไม่มีเป็น 0 · `inst` เรียงตามวันครบกำหนด (งวดที่ = ลำดับในอาร์เรย์ + 1)
+ */
+export function checkInstallmentAmounts(
+  m: ContractMoney,
+  inst: readonly LegacyInstallment[],
+): AmountMismatch[] {
+  const mismatches: AmountMismatch[] = [];
+  const count = Math.max(m.totalMonths, inst.length);
+  for (let installmentNo = 1; installmentNo <= count; installmentNo++) {
+    const legacyRow = inst[installmentNo - 1];
+    const inContract = installmentNo <= m.totalMonths;
+    const computed = inContract
+      ? computeInstallmentBreakdown({
+          financedAmount: m.financedAmount,
+          storeCommission: m.storeCommission,
+          interestTotal: m.interestTotal,
+          vatAmount: m.vatAmount,
+          totalMonths: m.totalMonths,
+          installmentNo,
+        }).installmentTotal
+      : ZERO;
+    const legacy = legacyRow?.amount ?? ZERO;
+    const tolerance = installmentNo === m.totalMonths ? LAST_TOLERANCE : TOLERANCE;
+    if (!legacyRow || !inContract || legacy.minus(computed).abs().gt(tolerance)) {
+      mismatches.push({ installmentNo, legacy, computed });
+    }
+  }
+  return mismatches;
+}
+
+/**
+ * ทำยอดค้างของงวดให้เท่ายอดคงเหลือใน PEAK (ร่าง 4) — ยอดค้าง = Σ `balance` ที่ > 0 (นิยามเดียวกับ
+ * `legacyOutstanding` ใน `peak-recon.ts` · งวดที่จ่ายเกินไม่หักลบ)
+ * - PEAK ค้างน้อยกว่า → เพิ่ม `paid` / ลด `balance` ของงวดที่ยังค้างตามลำดับในอาร์เรย์ (= วันครบกำหนด)
+ *   จนยอดค้างเท่า PEAK · `adjustment` = PEAK − ระบบเก่า (≤ 0) ให้ลงรายงาน · `statusCode` ไม่เปลี่ยน
+ * - PEAK ค้างมากกว่า → ไม่ปรับ คืน `blocked` (สเปกข้อ 1: ห้ามทวงงวดที่ลูกค้าจ่ายแล้วตามสลิป)
+ * - คืนอาร์เรย์ใหม่ ไม่แก้ของเดิม · PEAK ติดลบ = throw (ยอดค้างระบบเก่าต่ำสุด 0)
+ */
+export function applyPeakBalance(
+  inst: readonly LegacyInstallment[],
+  peakRemain: Decimal,
+): PeakBalanceResult {
+  if (peakRemain.isNegative()) {
+    throw new Error(`${PEAK_ERROR}: ยอดค้างใน PEAK ติดลบ — ต้องตรวจใบแจ้งหนี้ใน PEAK ก่อน`);
+  }
+  const outstanding = inst.reduce((sum, i) => (i.balance.gt(0) ? sum.plus(i.balance) : sum), ZERO);
+  const diff = peakRemain.minus(outstanding);
+  if (diff.gt(0)) return { blocked: 'PEAK_HIGHER', diff };
+
+  let remaining = diff.negated();
+  const installments = inst.map((i) => {
+    if (remaining.lte(0) || i.balance.lte(0)) return { ...i };
+    const take = Prisma.Decimal.min(i.balance, remaining);
+    remaining = remaining.minus(take);
+    return { ...i, paid: i.paid.plus(take), balance: i.balance.minus(take) };
+  });
+  return { installments, adjustment: diff };
+}
+
+type OverrideColumn = (typeof MONEY_OVERRIDE_COLUMNS)[number];
+
+function nonNegativeMoney(row: CsvRow<OverrideColumn>, column: OverrideColumn): Decimal {
+  const value = parseMoney(row, column);
+  if (value.isNegative()) throw row.fail(column, 'ติดลบไม่ได้');
+  return value;
+}
+
+/**
+ * อ่าน CSV `--money-overrides` (หัวคอลัมน์ `legacy_code,financed_amount,store_commission,vat_amount`)
+ * → ยอดที่แก้ตามเลขสัญญาระบบเก่า (`LegacyContract.code`) · `vat_amount` ว่าง = null (VAT 7% ตามระบบ)
+ * · 0 = ไม่มี VAT · ยอดจัดต้อง > 0 · ติดลบไม่ได้ · เลขสัญญาซ้ำ = throw
+ */
+export function parseMoneyOverridesCsv(text: string): Map<string, MoneyOverride> {
+  const overrides = new Map<string, MoneyOverride>();
+  const lineOfCode = new Map<string, number>();
+  for (const row of readCsv(text, MONEY_OVERRIDE_COLUMNS, OVERRIDE_ERROR)) {
+    const code = row.text('legacy_code');
+    const previous = lineOfCode.get(code);
+    if (previous !== undefined) throw row.fail('legacy_code', `สัญญาซ้ำกับบรรทัด ${previous}`);
+    lineOfCode.set(code, row.line);
+
+    const financedAmount = nonNegativeMoney(row, 'financed_amount');
+    if (financedAmount.isZero()) throw row.fail('financed_amount', 'ต้องมากกว่า 0');
+    overrides.set(code, {
+      financedAmount,
+      storeCommission: nonNegativeMoney(row, 'store_commission'),
+      vatAmount: row.cell('vat_amount') === '' ? null : nonNegativeMoney(row, 'vat_amount'),
+    });
+  }
+  return overrides;
+}

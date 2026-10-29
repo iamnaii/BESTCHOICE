@@ -1418,12 +1418,18 @@ function usage(): string {
 
 const isHelp = (arg: string | undefined) => arg === '--help' || arg === '-h' || arg === 'help';
 
+/**
+ * จุดเข้าของ CLI · `ensureTz` = ด่านเขตเวลา ทำเป็นอย่างแรก (ค่าเริ่มต้น `ensureBangkokTimeZone` — ตั้ง `TZ` แล้วตรวจกับ Intl) ·
+ * เทสต์ส่งตัวแทน: jest ให้แต่ละไฟล์ใช้สำเนาของ `process.env` การตั้ง `TZ` ในเทสต์จึงไม่เปลี่ยนเขตเวลาจริงของโปรเซส
+ * (เครื่อง UTC เช่น CI = ด่าน throw) — พฤติกรรมของด่านเองทดสอบผ่านตัวอ่านเขตเวลาที่ส่งเข้าไป (`import-preflight.ts`)
+ */
 export async function main(
   argv: readonly string[] = process.argv.slice(2),
   log: (line: string) => void = (line) => console.log(line),
+  ensureTz: () => void = ensureBangkokTimeZone,
 ): Promise<void> {
   // ก่อน Date ตัวแรก — เลขที่รายการบัญชี/งวดบัญชีอ่านเดือนตามเขตเวลาของโปรเซส (คำตัดสิน I-2)
-  ensureBangkokTimeZone();
+  ensureTz();
   const [name, ...rest] = argv;
   if (isHelp(name)) {
     log(usage());

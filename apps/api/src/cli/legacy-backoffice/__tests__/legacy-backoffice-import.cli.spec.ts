@@ -16,7 +16,9 @@ describe('legacy-backoffice-import CLI', () => {
       ['--dump', `${missing}.sql`, '--statement', `${missing}.csv`, '--cols', 'date=d,amount=a'],
     ],
   ])('%s refuses --out inside the repo before reading anything', async (command, args) => {
-    await expect(main([command, ...args, '--out', insideRepo])).rejects.toThrow(
+    // ด่านเขตเวลาตัวแทน — jest ให้สำเนา process.env จึงตั้ง TZ จริงไม่ได้บนเครื่อง UTC (cli.spec.ts ทดสอบตัวด่าน)
+    const noTz = () => undefined;
+    await expect(main([command, ...args, '--out', insideRepo], undefined, noTz)).rejects.toThrow(
       /ห้ามเขียนผลลัพธ์ลงในโฟลเดอร์ของ repo/,
     );
     expect(existsSync(insideRepo)).toBe(false);

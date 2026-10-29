@@ -1325,17 +1325,32 @@ describe('legacy-backoffice-import CLI — report / import (Task 13)', () => {
   // ─── main ────────────────────────────────────────────────────────────────────────────────────
 
   describe('main', () => {
-    it('ตั้ง TZ=Asia/Bangkok ก่อนทำงาน · --help พิมพ์ทุกคำสั่ง · <คำสั่ง> --help พิมพ์ env และไฟล์ผลลัพธ์', async () => {
+    /** ด่านเขตเวลาตัวแทน — jest ให้สำเนา process.env การตั้ง TZ จริงจึงไม่มีผล (ตัวด่านเองทดสอบใน "ตัวช่วย") */
+    const harness = () => {
+      const order: string[] = [];
+      const ensureTz = jest.fn(() => {
+        order.push('tz');
+      });
+      const log = (line: string) => {
+        order.push('log');
+        lines.push(line);
+      };
       const lines: string[] = [];
-      await main(['--help'], (l) => lines.push(l));
-      expect(process.env.TZ).toBe('Asia/Bangkok');
-      expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe('Asia/Bangkok');
-      expect(lines.join('\n')).toMatch(/report --dump/);
-      expect(lines.join('\n')).toMatch(/import --dump/);
+      return { order, ensureTz, log, lines };
+    };
 
-      lines.length = 0;
-      await main(['import', '--help'], (l) => lines.push(l));
-      const text = lines.join('\n');
+    it('ด่านเขตเวลาทำเป็นอย่างแรก · --help พิมพ์ทุกคำสั่ง · <คำสั่ง> --help พิมพ์ env และไฟล์ผลลัพธ์', async () => {
+      const h = harness();
+      await main(['--help'], h.log, h.ensureTz);
+      expect(h.ensureTz).toHaveBeenCalledTimes(1);
+      expect(h.order[0]).toBe('tz');
+      expect(h.lines.join('\n')).toMatch(/report --dump/);
+      expect(h.lines.join('\n')).toMatch(/import --dump/);
+
+      const imp = harness();
+      await main(['import', '--help'], imp.log, imp.ensureTz);
+      expect(imp.order[0]).toBe('tz');
+      const text = imp.lines.join('\n');
       for (const env of [
         'EXPECTED_DB_NAME',
         'CONFIRM_LEGACY_IMPORT',
@@ -1349,50 +1364,82 @@ describe('legacy-backoffice-import CLI — report / import (Task 13)', () => {
       }
       expect(text).toMatch(/rollback ทิ้งแถวนี้ไว้/);
 
-      lines.length = 0;
-      await main(['report', '--help'], (l) => lines.push(l));
-      expect(lines.join('\n')).toMatch(/CANCELED \(ยกเลิกสัญญา\) หรือ CLOSED_BAD_DEBT/);
-      expect(lines.join('\n')).not.toMatch(/TERMINATED/);
+      const rep = harness();
+      await main(['report', '--help'], rep.log, rep.ensureTz);
+      expect(rep.order[0]).toBe('tz');
+      expect(rep.lines.join('\n')).toMatch(/CANCELED \(ยกเลิกสัญญา\) หรือ CLOSED_BAD_DEBT/);
+      expect(rep.lines.join('\n')).not.toMatch(/TERMINATED/);
+    });
+
+    it('ด่านเขตเวลา throw → main หยุดทันที ไม่พิมพ์/ไม่อ่านอะไร', async () => {
+      const lines: string[] = [];
+      await expect(
+        main(
+          ['--help'],
+          (l) => lines.push(l),
+          () => {
+            throw new Error('เขตเวลาของโปรเซสเป็น UTC ไม่ใช่ Asia/Bangkok');
+          },
+        ),
+      ).rejects.toThrow(/UTC ไม่ใช่ Asia\/Bangkok/);
+      expect(lines).toEqual([]);
+    });
+
+    it('ค่าเริ่มต้นของด่านคือ ensureBangkokTimeZone (CLI จริง)', () => {
+      expect(main.length).toBe(0); // ทุกพารามิเตอร์มีค่าเริ่มต้น — require.main เรียก main() ตรง ๆ
+      expect(String(main)).toMatch(/ensureBangkokTimeZone/);
     });
 
     it('report: --out ในโฟลเดอร์ของ repo ถูกปฏิเสธก่อนอ่าน --dump (ไฟล์ไม่มีจริง)', async () => {
+      const h = harness();
       const insideRepo = resolve(__dirname, '..', '__out-must-not-exist__');
       await expect(
-        main([
-          'report',
-          '--dump',
-          join(base, 'missing.sql'),
-          '--peak-ar',
-          peakAr,
-          '--cutoff',
-          '2026-11-30',
-          '--out',
-          insideRepo,
-        ]),
+        main(
+          [
+            'report',
+            '--dump',
+            join(base, 'missing.sql'),
+            '--peak-ar',
+            peakAr,
+            '--cutoff',
+            '2026-11-30',
+            '--out',
+            insideRepo,
+          ],
+          h.log,
+          h.ensureTz,
+        ),
       ).rejects.toThrow(/ห้ามเขียนผลลัพธ์ลงในโฟลเดอร์ของ repo/);
+      expect(h.ensureTz).toHaveBeenCalledTimes(1);
       expect(existsSync(insideRepo)).toBe(false);
     });
 
     it('import: ตัวเลือกตัวเลขผิดรูป → throw ก่อนต่อฐาน', async () => {
+      const h = harness();
       await expect(
-        main([
-          'import',
-          '--dump',
-          'd.sql',
-          '--peak-ar',
-          'p.csv',
-          '--files-dir',
-          filesDir,
-          '--cutoff',
-          '2026-11-30',
-          '--branch-id',
-          'b',
-          '--out',
-          out,
-          '--tx-timeout-min',
-          '0',
-        ]),
+        main(
+          [
+            'import',
+            '--dump',
+            'd.sql',
+            '--peak-ar',
+            'p.csv',
+            '--files-dir',
+            filesDir,
+            '--cutoff',
+            '2026-11-30',
+            '--branch-id',
+            'b',
+            '--out',
+            out,
+            '--tx-timeout-min',
+            '0',
+          ],
+          h.log,
+          h.ensureTz,
+        ),
       ).rejects.toThrow(/--tx-timeout-min/);
+      expect(h.ensureTz).toHaveBeenCalledTimes(1);
     });
   });
 });

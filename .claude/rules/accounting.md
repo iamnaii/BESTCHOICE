@@ -1047,6 +1047,11 @@ Spec: `docs/superpowers/specs/2026-10-27-payroll-ot-commission-design.md` (§17 
   **ไม่มีวันที่ตอกเข้าเลยในเดือน** (ไม่มีรหัสตอกบัตร · สาขาไม่มีเครื่อง · พนักงานส่วนกลาง FINANCE · ก่อนเริ่มใช้ระบบลงเวลา · มีแค่แถววางแผนวันหยุด/ลา) ⇒ ระบบไม่คิด OT ให้ แถว OT ที่กรอกเองรับเป็น `MANUAL` + คำเตือน
   `NO_PIN` (ไม่มีรหัส + ไม่มีวันที่ตอก — ไม่ขึ้นกับ autoOtEligible) หรือ `NO_ATTENDANCE` (autoOtEligible + มีรหัส + ไม่มีวันที่ตอก) · เว็บ: "…เดือนนี้ไม่มีข้อมูลลงเวลา ระบบจึงไม่คิด OT ให้ — กรอก OT เองได้ที่ รายได้พิเศษ" (`NO_ATTENDANCE_TEXT`).
   มีวันที่ตอกทีหลัง: ระหว่างเดือน (ก่อนส่ง) → บันทึกครั้งถัดไปหรือตอนส่งขออนุมัติ (คิดใหม่) ได้ 400 `MANUAL_OT_DUPLICATE` (ข้อความมีชื่อ · ร่างไม่ถูกแตะ — ไม่ใช่ 500).
+  **ปุ่มใช้แม่แบบ (คำตัดสินเจ้าของ 2026-10-29)**: `ExpenseTemplatesService.instantiate` สร้างใบทันทีโดยไม่ผ่านฟอร์ม จึงส่ง `{ stripTypedOt: true }` → `createPayroll` → `attachSystemRows` → `mergePayrollLines` —
+  บรรทัดที่เข้ากติกาข้างบนถูก**ตัดแถว OT ที่กรอกเองออก** (ไม่ปฏิเสธ) + คำเตือน `TYPED_OT_REMOVED {count, amount}` ใน `systemNotes` ของบรรทัดนั้น (แถว ADJUSTMENT และรายได้พิเศษบัญชีอื่นคงไว้) ·
+  เว็บ: "{ชื่อ} ระบบเอาแถว OT ที่กรอกไว้ในแม่แบบออก {n} แถว ({ยอด} บาท) เพราะคิด OT จากลงเวลาให้แล้ว — ถ้าเป็นการแก้ OT ของเดือนก่อน ให้เพิ่มแถวใหม่แล้วติ๊ก "รายการปรับปรุงงวดก่อน"" (`typedOtRemovedText`) ·
+  คำเตือนอยู่จนบันทึกครั้งถัดไป (รวมตอนส่งขออนุมัติที่คิดใหม่ — แถวหายไปแล้ว ไม่มีอะไรให้ตัดอีก) · แม่แบบเองไม่ถูกแก้ (ตัดใหม่ทุกครั้งที่ใช้) · ฟอร์ม/แก้ร่าง/ส่งขออนุมัติยังปฏิเสธตามเดิม ·
+  แม่แบบเงินเดือนตั้งเป็นบิลประจำไม่ได้ (`expense-templates.service.ts` "บิลประจำสร้างได้เฉพาะใบรายจ่าย") ⇒ ทางเข้ามีแค่ปุ่มนี้ (ปักที่ `payroll-save.spec.ts` · `payroll-save-system-rows.integration.spec.ts` · `expense-templates.service.spec.ts`).
   **หลังส่งเป็นเพียงด่านสำรอง**: ส่งได้หลังเวลาปิดงวดเท่านั้น และหลังจากนั้นแอปสร้างวันที่ตอกใหม่ของเดือนที่ผ่านแล้วไม่ได้ (ตอกบัตรลงเดือนใหม่ · แท็บตารางงานสร้างแค่แถววางแผนไม่มีเวลาเข้า) —
   ถ้ามีข้อมูลเข้ามาด้วยทางอื่น (เช่นแก้เวลาให้แถวเดิม) แล้วเกิดแถว `ATTENDANCE_*` ใหม่ อนุมัติ/ลงบัญชีชน `PAYROLL_STALE` แล้วบันทึกใหม่ชนกติกาแถวซ้ำ (ปักที่ `payroll-post-gate.integration.spec.ts` "R20 FX1" โดยใส่แถวตรงในฐานข้อมูล) ·
   ถ้าไม่เกิดยอด (OT/ทำงานวันหยุด 0) ใบผ่านด่านพร้อมแถว OT ที่กรอกเอง (ไม่จ่ายซ้ำ — ระบบคิด 0).
@@ -1090,7 +1095,6 @@ Spec: `docs/superpowers/specs/2026-10-27-payroll-ot-commission-design.md` (§17 
   - `clearConflictFlag` แยกไม่ได้ว่า `DEVICE_CONFLICT` ถูกดันเข้ามาหลังเจ้าของตรวจ (ล้างทิ้งเสมอ) — ต้องมี version token
   - ด่านธงเครื่องถูกใช้ซ้อนตอนลงบัญชี (2) เป็น TOCTOU เทียบ `lockForConflict` ระหว่าง tx (`lockForConflict` ไม่ถือ advisory lock ของเงินเดือน)
   - BRANCH_MANAGER สร้าง/แก้ใบเงินเดือนได้ (`expense-documents.controller.ts`) แต่ `GET /employees/pickable` (`employees.controller.ts`) ไม่รับ BM ⇒ BM เลือกพนักงานผูกไม่ได้ จึงไม่ได้ OT อัตโนมัติ — รอเจ้าของตัดสิน
-  - แม่แบบใบเงินเดือน / บิลประจำที่มีแถว OT พิมพ์เองบนบัญชี OT ตอนนี้ instantiate ไม่ผ่านสำหรับพนักงานรายเดือนที่เดือนนั้นมีแถวลงเวลา (`expense-templates.service.ts` :356, `recurring-bills/recurring-bills.service.ts` :471 → `createPayroll` → `MANUAL_OT_DUPLICATE` · คนที่ไม่มีแถวลงเวลาผ่านแล้วตั้งแต่ R20)
   - role `payroll_overtime` / `payroll_holiday` (และ `shop_`) ต้องคง active ใน AccountRoleMap ไม่งั้นทุกการบันทึกที่มีบรรทัดผูกพนักงานได้ 400 (`payroll-system/role-codes.ts`)
   - `compute` อ่านกติกาสาขาด้วย root client ภายใน tx เงินเดือน (`payroll-system-rows.service.ts` :92 `getRules`)
   - `lockForConflict` `updateMany` อาจจับแถวนอกชุด FOR UPDATE (`attendance-device.service.ts`)

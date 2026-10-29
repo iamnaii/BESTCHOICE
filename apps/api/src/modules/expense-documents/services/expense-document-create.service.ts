@@ -25,6 +25,7 @@ import {
   attachSystemRows,
   notInBranchMessage,
   type ClientPayrollLine,
+  type MergePayrollOptions,
 } from '../payroll-system/payroll-save';
 import { hasCrossBranchAccess } from '../../auth/branch-access.util';
 import { readBoolFlag, readIntFlag } from '../../../utils/config.util';
@@ -456,6 +457,7 @@ export class ExpenseDocumentCreateService {
   async createPayroll(
     dto: CreatePayrollDto,
     user: { id: string; branchId?: string | null; role?: string | null },
+    opts: MergePayrollOptions = {},
   ) {
     // Branch access enforcement: users without cross-branch role
     // can only create payroll documents for their own branch.
@@ -492,12 +494,13 @@ export class ExpenseDocumentCreateService {
       }
 
       // Payroll D4 — แถว OT/ทำงานวันหยุดจากการลงเวลา (server คิดเองทุกครั้ง) → netPaid + ยอดหัวใบ
-      const { lines, totals } = await attachSystemRows(tx, this.systemRows, clientLines, {
-        branchId: dto.branchId,
-        entityScope,
-        payrollPeriod: dto.payrollPeriod,
-        now,
-      });
+      const { lines, totals } = await attachSystemRows(
+        tx,
+        this.systemRows,
+        clientLines,
+        { branchId: dto.branchId, entityScope, payrollPeriod: dto.payrollPeriod, now },
+        opts,
+      );
 
       const number = await this.docNumber.next(tx, 'PAYROLL', documentDate);
       return tx.expenseDocument.create({

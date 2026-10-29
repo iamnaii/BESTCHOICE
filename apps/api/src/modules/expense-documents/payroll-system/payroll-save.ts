@@ -5,7 +5,7 @@ import type { UpdatePayrollDto } from '../dto/create-payroll.dto';
 import { assertDeductionsWithinGross } from '../services/payroll-custom.service';
 import { payrollAttendanceLockKey } from './payroll-pay';
 import type { PayrollSystemRowsService } from './payroll-system-rows.service';
-import type { AttendanceSummarySnapshot, SystemNotes, SystemRowsQuery, SystemRowsResult } from './payroll-system.types';
+import type { AttendanceSummarySnapshot, SystemNotes, SystemRowsQuery, SystemRowsResult, SystemWarning } from './payroll-system.types';
 
 /**
  * Payroll D4 ส่วนที่ 1 — ทางบันทึกใบเงินเดือน (สร้าง / แก้ / สร้างจากแม่แบบ / ตอนส่งขออนุมัติ) เป็นเจ้าของแถวระบบ:
@@ -65,6 +65,15 @@ export interface PayrollTotals {
   netPayment: Prisma.Decimal;
 }
 
+export interface MergePayrollOptions {
+  /**
+   * ใบจากปุ่มใช้แม่แบบ (คำตัดสินเจ้าของ 2026-10-29 · แม่แบบเงินเดือนตั้งเป็นบิลประจำไม่ได้): แถว OT ที่กรอกเอง (MANUAL บนบัญชีลงเวลา) ของบรรทัดที่ระบบคิด OT ให้
+   * ถูกตัดออกพร้อมคำเตือน `TYPED_OT_REMOVED` แทนการปฏิเสธ MANUAL_OT_DUPLICATE — ไม่มีคนอยู่หน้าฟอร์มให้ลบแถวเอง ·
+   * ทางฟอร์ม/แก้ร่าง/ส่งขออนุมัติไม่ส่งค่านี้ (ยังปฏิเสธตามเดิม)
+   */
+  stripTypedOt?: boolean;
+}
+
 /** ล็อก `payroll-attendance:${userId}:${period}` เรียง userId + ไม่ซ้ำ (ลำดับเดียวกับผู้เขียนลงเวลา) */
 export async function lockPayrollAttendance(tx: Prisma.TransactionClient, userIds: string[], period: string): Promise<void> {
   for (const userId of [...new Set(userIds)].sort()) {
@@ -81,6 +90,7 @@ export async function attachSystemRows(
   service: PayrollSystemRowsService | undefined,
   lines: ClientPayrollLine[],
   q: Omit<SystemRowsQuery, 'userIds'>,
+  opts: MergePayrollOptions = {},
 ): Promise<{ lines: SavedPayrollLine[]; totals: PayrollTotals }> {
   const userIds = [...new Set(lines.flatMap((l) => (l.userId ? [l.userId] : [])))].sort();
   let system: SystemRowsResult | null = null;
@@ -89,17 +99,20 @@ export async function attachSystemRows(
     await lockPayrollAttendance(tx, userIds, q.payrollPeriod);
     system = await service.compute(tx, { ...q, userIds });
   }
-  return mergePayrollLines(lines, system, q.now);
+  return mergePayrollLines(lines, system, q.now, opts);
 }
 
 const sum = (rows: Array<{ amount: Prisma.Decimal }>) => rows.reduce((s, r) => s.plus(r.amount), ZERO);
+const withRemovedWarning = (notes: SystemNotes, w: SystemWarning | undefined): SystemNotes =>
+  w ? { ...notes, warnings: [w, ...notes.warnings] } : notes;
 const dec = (v: string | null) => (v == null ? null : new Prisma.Decimal(v));
 
-/** ฟังก์ชันบริสุทธิ์ — รวมแถวระบบเข้าบรรทัด · MANUAL_OT_DUPLICATE · V18 · สุทธิไม่ติดลบ · ยอดหัวใบ */
+/** ฟังก์ชันบริสุทธิ์ — รวมแถวระบบเข้าบรรทัด · MANUAL_OT_DUPLICATE (หรือตัดแถวเมื่อ `stripTypedOt`) · V18 · สุทธิไม่ติดลบ · ยอดหัวใบ */
 export function mergePayrollLines(
-  lines: ClientPayrollLine[],
+  input: ClientPayrollLine[],
   system: SystemRowsResult | null,
   now: Date,
+  opts: MergePayrollOptions = {},
 ): { lines: SavedPayrollLine[]; totals: PayrollTotals } {
   const byUser = new Map((system?.rows ?? []).map((r) => [r.userId, r]));
   const attendanceCodes = new Set(system?.attendanceAccountCodes ?? []);
@@ -107,10 +120,21 @@ export function mergePayrollLines(
   // บรรทัดที่ระบบคิด OT ให้ (รายเดือน + มีเงินเดือนในทะเบียน) **และ** เดือนนี้มีวันที่ตอกเข้าของคนนั้น ห้ามมีแถว OT กรอกเอง —
   // เว้นแต่ติ๊ก "รายการปรับปรุงงวดก่อน" (ADJUSTMENT) · R20/R23: ไม่มีวันที่ตอกเลย (ไม่มีรหัส / สาขาไม่มีเครื่อง / ส่วนกลาง / ก่อนเริ่มใช้ /
   // มีแค่แถววางแผนวันหยุด-ลา) ระบบไม่คิด OT ให้ ⇒ แถวที่กรอกเองรับเป็น MANUAL · มีวันที่ตอกทีหลัง = ตอนส่ง/บันทึกครั้งถัดไปกติกานี้กลับมาใช้
-  const duplicated = lines.filter((l) => {
+  const isTypedOt = (i: ClientPayrollLine['customIncome'][number]) => i.source === 'MANUAL' && attendanceCodes.has(i.accountCode);
+  const otCounted = (l: ClientPayrollLine) => {
     const r = l.userId ? byUser.get(l.userId) : undefined;
-    return !!r?.autoOtEligible && !!r.attendanceTracked && l.customIncome.some((i) => i.source === 'MANUAL' && attendanceCodes.has(i.accountCode));
-  });
+    return !!r?.autoOtEligible && !!r.attendanceTracked;
+  };
+  const removed = new Map<number, SystemWarning>();
+  const lines = opts.stripTypedOt
+    ? input.map((l, idx) => {
+        const typed = otCounted(l) ? l.customIncome.filter(isTypedOt) : [];
+        if (typed.length === 0) return l;
+        removed.set(idx, { code: 'TYPED_OT_REMOVED', count: typed.length, amount: sum(typed).toFixed(2) });
+        return { ...l, customIncome: l.customIncome.filter((i) => !isTypedOt(i)) };
+      })
+    : input;
+  const duplicated = lines.filter((l) => otCounted(l) && l.customIncome.some(isTypedOt));
   if (duplicated.length > 0) {
     throw new BadRequestException({
       code: 'MANUAL_OT_DUPLICATE',
@@ -152,7 +176,7 @@ export function mergePayrollLines(
       customIncome,
       systemPulledAt: r ? now : null,
       attendanceSummary: r ? r.attendanceSummary : null,
-      systemNotes: r ? r.notes : null,
+      systemNotes: r ? withRemovedWarning(r.notes, removed.get(idx)) : null,
     };
   });
 

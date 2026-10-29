@@ -107,7 +107,9 @@ export type PayrollSystemWarning =
   | { code: 'IN_OTHER_DOCUMENT'; documentId: string; documentNumber: string; branchName: string; status: string }
   | { code: 'NO_PIN' }
   | { code: 'NO_ATTENDANCE' }
-  | { code: 'NOT_YET_CLOSABLE'; closableAt: string };
+  | { code: 'NOT_YET_CLOSABLE'; closableAt: string }
+  /** ใบจากปุ่มใช้แม่แบบ — ระบบเอาแถว OT ที่กรอกเองของคนที่ตอกบัตรออก (เจ้าของ 2026-10-29) */
+  | { code: 'TYPED_OT_REMOVED'; count: number; amount: string };
 
 export interface PayrollSystemNotes {
   review: PayrollReviewDay[];

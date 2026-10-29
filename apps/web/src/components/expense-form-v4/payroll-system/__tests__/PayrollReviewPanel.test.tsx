@@ -142,6 +142,18 @@ describe('PayrollReviewPanel — warnings', () => {
     expect(within(items[1]).getByText('มานี สาขาใหม่')).toHaveClass('font-semibold');
   });
 
+  // คำตัดสินเจ้าของ 2026-10-29 — ใบจากปุ่มใช้แม่แบบตัดแถว OT ที่กรอกเองของคนที่ตอกบัตรออก แล้วบอกในแผงตรวจ
+  it('TYPED_OT_REMOVED names the person, the row count and the amount, and how to keep a previous-month fix', () => {
+    mount({ role: 'OWNER', branchId: null }, [
+      { employeeName: 'สมศรี มีสุข', systemNotes: notes({ warnings: [{ code: 'TYPED_OT_REMOVED', count: 2, amount: '1250.50' }] }) },
+    ]);
+    const items = within(screen.getByRole('heading', { name: 'คำเตือน (1)' }).closest('section') as HTMLElement).getAllByRole('listitem');
+    expect(items[0]).toHaveTextContent(
+      'สมศรี มีสุข ระบบเอาแถว OT ที่กรอกไว้ในแม่แบบออก 2 แถว (1,250.50 บาท) เพราะคิด OT จากลงเวลาให้แล้ว — ถ้าเป็นการแก้ OT ของเดือนก่อน ให้เพิ่มแถวใหม่แล้วติ๊ก "รายการปรับปรุงงวดก่อน"',
+    );
+    expect(within(items[0]).getByText('สมศรี มีสุข')).toHaveClass('font-semibold');
+  });
+
   it('renders nothing when no line has stored notes', () => {
     const { container } = mount({ role: 'OWNER', branchId: null }, [
       { employeeName: 'ใหม่', systemNotes: null },

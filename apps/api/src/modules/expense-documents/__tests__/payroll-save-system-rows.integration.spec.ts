@@ -291,6 +291,23 @@ describe('Payroll save path owns attendance system rows (Postgres)', () => {
     expect(dLine.systemNotes).toEqual({ review: [], warnings: [{ code: 'NOT_MONTHLY_OR_NO_BASE', otHours: '1.5' }] });
   });
 
+  it('from a template (stripTypedOt): typed OT of a clocked line is dropped and stored with TYPED_OT_REMOVED · system OT kept · other typed income kept', async () => {
+    const u = await mkUser('tpl-strip');
+    await otDay(u, 1, 1.5);
+    const b = await mkBranch('tpl-strip');
+    const doc = await creator.createPayroll(
+      dto(b, [{ userId: u, baseSalary: 15000, customIncome: [{ accountCode: 'S52-1202', name: 'OT ตามแม่แบบ', amount: 500 }, { accountCode: 'S52-1204', name: 'เบี้ยขยัน', amount: 300 }] }]) as never,
+      OWNER(),
+      { stripTypedOt: true },
+    );
+    const line = doc.payroll!.lines[0];
+    expect(incomeView(line.customIncome as never)).toEqual(sorted([manualRow('MANUAL', 'S52-1204', 'เบี้ยขยัน', '300.00'), otRow('1.5', '140.63')]));
+    expect(money(line.netPaid)).toBe('15440.63'); // 15,000 + 300 + 140.63 (dto ไม่มี SSO)
+    expect(line.systemNotes).toEqual({ review: [], warnings: [{ code: 'TYPED_OT_REMOVED', count: 1, amount: '500.00' }] });
+    const stored = await prisma.payrollLine.findFirstOrThrow({ where: { payroll: { documentId: doc.id } }, select: { systemNotes: true } });
+    expect(stored.systemNotes).toEqual({ review: [], warnings: [{ code: 'TYPED_OT_REMOVED', count: 1, amount: '500.00' }] });
+  });
+
   it('R23: planning-only days (DAY_OFF / LEAVE from the schedule tab, no clock-in) leave the month untracked → typed OT kept as MANUAL (NO_ATTENDANCE) · after one punched day the next save refuses MANUAL_OT_DUPLICATE', async () => {
     const u = await mkUser('planned');
     await mkDay(u, 6, { kind: 'DAY_OFF' });

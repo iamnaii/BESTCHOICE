@@ -1,9 +1,9 @@
 import { useId, type ReactNode } from 'react';
 import { Link } from 'react-router';
-import { AlertTriangle, CalendarX, Clock, ExternalLink, KeyRound, Lock, type LucideIcon } from 'lucide-react';
+import { AlertTriangle, CalendarX, Clock, Eraser, ExternalLink, KeyRound, Lock, type LucideIcon } from 'lucide-react';
 import { FLAG_LABEL, flagChipClass, fmtOt, statusView, thaiShortDate } from '@/pages/attendance/attendance.util';
 import type { PayrollSystemNotes, PayrollSystemWarning } from '../types';
-import { NO_ATTENDANCE_TEXT, submitCutoffText } from './payroll-copy';
+import { NO_ATTENDANCE_TEXT, submitCutoffText, typedOtRemovedText } from './payroll-copy';
 
 /**
  * Payroll D4 ส่วนที่ 1 (mockup กระดาน 1 แผงขวา) — วันที่ต้องตรวจ + คำเตือน จาก `systemNotes` ที่ server เก็บไว้ต่อบรรทัด
@@ -113,6 +113,17 @@ function lineWarning(name: string, w: Exclude<PayrollSystemWarning, { code: 'NOT
         body: (
           <>
             <b className="font-semibold">{name}</b> <span>{NO_ATTENDANCE_TEXT}</span>
+          </>
+        ),
+      };
+    case 'TYPED_OT_REMOVED':
+      return {
+        key,
+        icon: Eraser,
+        iconClass: 'text-info',
+        body: (
+          <>
+            <b className="font-semibold">{name}</b> <span>{typedOtRemovedText(w.count, w.amount)}</span>
           </>
         ),
       };

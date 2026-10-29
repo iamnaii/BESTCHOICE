@@ -1,4 +1,5 @@
 import { THAI_MONTHS_SHORT, toBangkokDateString } from '@/lib/date';
+import { formatNumberDecimal } from '@/utils/formatters';
 import type { PayrollGateDay } from '../types';
 
 /**
@@ -37,6 +38,13 @@ export const deviceConflictText = (days: PayrollGateDay[]) =>
  * ⇒ บอกให้กรอกเองที่ส่วน "รายได้พิเศษ" ของฟอร์มใบเงินเดือน (หัวคอลัมน์/ปุ่ม "เพิ่มรายได้พิเศษ" ใน PayrollLinesSection)
  */
 export const NO_ATTENDANCE_TEXT = 'เดือนนี้ไม่มีข้อมูลลงเวลา ระบบจึงไม่คิด OT ให้ — กรอก OT เองได้ที่ รายได้พิเศษ';
+
+/**
+ * warning TYPED_OT_REMOVED (ใบจากปุ่มใช้แม่แบบ) — ช่องติ๊ก "รายการปรับปรุงงวดก่อน" อยู่ที่แถวรายได้พิเศษของ PayrollLinesSection
+ * (ข้อความเดียวกับ MANUAL_OT_DUPLICATE ของ server)
+ */
+export const typedOtRemovedText = (count: number, amount: string) =>
+  `ระบบเอาแถว OT ที่กรอกไว้ในแม่แบบออก ${count} แถว (${formatNumberDecimal(amount, 2)} บาท) เพราะคิด OT จากลงเวลาให้แล้ว — ถ้าเป็นการแก้ OT ของเดือนก่อน ให้เพิ่มแถวใหม่แล้วติ๊ก "รายการปรับปรุงงวดก่อน"`;
 
 /** เหตุผลใต้ปุ่มส่ง/อนุมัติ/ลงบัญชีที่ถูกปิด */
 export const NOT_YET_CLOSABLE_REASON = 'ยังไม่ถึงเวลาปิดงวด';

@@ -55,7 +55,9 @@ export type SystemWarning =
   | { code: 'NO_PIN' }
   /** ระบบคิด OT ให้ (รายเดือน + เงินเดือนทะเบียน) และมีรหัสตอกบัตร แต่เดือนนี้ไม่มีวันที่ตอกเข้า (เช่น สาขาไม่มีเครื่อง) — R20/R23 */
   | { code: 'NO_ATTENDANCE' }
-  | { code: 'NOT_YET_CLOSABLE'; closableAt: string };
+  | { code: 'NOT_YET_CLOSABLE'; closableAt: string }
+  /** ใบจากปุ่มใช้แม่แบบ — ตัดแถว OT ที่กรอกเอง {count} แถว รวม {amount} ออก เพราะระบบคิด OT จากลงเวลาให้แล้ว (เก็บจนบันทึกครั้งถัดไป) */
+  | { code: 'TYPED_OT_REMOVED'; count: number; amount: string };
 
 export interface AttendanceSummarySnapshot extends Omit<MonthSummary, 'otHours'> {
   /** OT วันทำงาน (WORK + LEAVE_* ที่มีการตอก) */

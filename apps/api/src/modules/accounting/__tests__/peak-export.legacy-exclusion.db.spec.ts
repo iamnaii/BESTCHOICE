@@ -298,7 +298,10 @@ describeDb('PeakExportService — legacy backoffice exclusion (real DB)', () => 
 
   /** แถวข้อมูลของไฟล์ (ไม่มี BOM / หัวตาราง) */
   function body(csv: string): string[] {
-    const rows = csv.replace(/^﻿/, '').split('\n').slice(1);
+    const rows = csv
+      .replace(/^\uFEFF/, '')
+      .split('\n')
+      .slice(1);
     return rows.filter((r) => r.length > 0);
   }
   const entryOf = (row: string) => row.split(',')[1];

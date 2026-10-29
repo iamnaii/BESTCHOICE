@@ -58,7 +58,8 @@ const IMMUTABLE_CONTRACT_STATUSES = ['ACTIVE', 'OVERDUE', 'DEFAULT', 'COMPLETED'
 /** เอกสารที่ลบ/อัปโหลดทับไม่ได้ — กติกาเดียวกับตอนอัปโหลด (ตัวนำเข้าระบบเก่าใช้ตัวเดียวกัน) */
 export function isImmutableContractDocument(documentType: string, contractStatus: string): boolean {
   return (
-    IMMUTABLE_DOC_TYPES.includes(documentType) && IMMUTABLE_CONTRACT_STATUSES.includes(contractStatus)
+    IMMUTABLE_DOC_TYPES.includes(documentType) &&
+    IMMUTABLE_CONTRACT_STATUSES.includes(contractStatus)
   );
 }
 type LegacyDocumentStream = { stream: Readable; filename: string; contentType: string };

@@ -1,3 +1,16 @@
+import {
+  LEGACY_OPENING_FLOW,
+  LEGACY_PRIOR_RECEIPT_FLOW,
+  LEGACY_VAT_CATCHUP_FLOW,
+} from '../accounting/peak-export-exclusion';
+import {
+  LEGACY_OPENING_TAG,
+  LEGACY_PRIOR_RECEIPT_TAG,
+  LEGACY_VAT_CATCHUP_TAG,
+  legacyOpeningReference,
+  legacyPriorReceiptReference,
+  legacyVatCatchUpReference,
+} from '../journal/legacy-import-journal';
 // Synthetic owned-PostgreSQL fixtures. Every JE is emitted by its canonical producer.
 import { Prisma, PrismaClient } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -885,20 +898,6 @@ export async function journalClearedExchangeHistoryFixture(
   });
   return { request: fixture.request, original, reversalId: reversed.reversalJeIds[0] };
 }
-
-import {
-  LEGACY_OPENING_FLOW,
-  LEGACY_PRIOR_RECEIPT_FLOW,
-  LEGACY_VAT_CATCHUP_FLOW,
-} from '../accounting/peak-export-exclusion';
-import {
-  LEGACY_OPENING_TAG,
-  LEGACY_PRIOR_RECEIPT_TAG,
-  LEGACY_VAT_CATCHUP_TAG,
-  legacyOpeningReference,
-  legacyPriorReceiptReference,
-  legacyVatCatchUpReference,
-} from '../journal/legacy-import-journal';
 
 /**
  * รายการบัญชีสามชนิดของตัวนำเข้าระบบเก่า (`cli/legacy-backoffice/writer.ts`) — tag/flow/reference/metadata ชุดเดียวกับที่

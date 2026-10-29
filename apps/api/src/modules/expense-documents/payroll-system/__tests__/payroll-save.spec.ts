@@ -152,3 +152,45 @@ describe('mergePayrollLines — typed OT when the month has no attendance data (
     expect(merged().lines[0].customIncome.map((i) => i.source)).toEqual(['ADJUSTMENT', 'ATTENDANCE_OT']);
   });
 });
+
+/**
+ * คำตัดสินเจ้าของ 2026-10-29 — ใบจากปุ่มใช้แม่แบบ (สร้างทันทีไม่ผ่านฟอร์ม ไม่มีโอกาสลบแถวเอง) ตัดแถว OT ที่กรอกเองของบรรทัดที่ระบบคิด OT ให้
+ * ออกเอง + คำเตือน TYPED_OT_REMOVED บนบรรทัดนั้น · ทางฟอร์มยังปฏิเสธ MANUAL_OT_DUPLICATE ตามเดิม
+ */
+describe('mergePayrollLines — stripTypedOt (use template)', () => {
+  const tracked = { pin: true, days: [{ clockIn: '10:00', clockOut: '20:30', otHours: 1.5 }] };
+
+  it('tracked user + typed OT on an attendance account → typed rows removed, system OT kept, TYPED_OT_REMOVED {count, amount} on that line', async () => {
+    const line: ClientPayrollLine = {
+      ...typedOtLine(),
+      customIncome: [
+        { accountCode: OT_CODE, name: 'OT ที่กรอกเอง', amount: D(500), isTaxable: true, source: 'MANUAL' },
+        { accountCode: OT_CODE, name: 'OT วันหยุด', amount: D(250.5), isTaxable: true, source: 'MANUAL' },
+        { accountCode: 'S52-1204', name: 'เบี้ยขยัน', amount: D(300), isTaxable: true, source: 'MANUAL' },
+        { accountCode: OT_CODE, name: 'ปรับ OT เดือนก่อน', amount: D(100), isTaxable: true, source: 'ADJUSTMENT' },
+      ],
+    };
+    const { system } = await computeAndMerge(tracked, line);
+    const { lines, totals } = mergePayrollLines([line], system, NOW, { stripTypedOt: true });
+    expect(lines[0].customIncome.map((i) => [i.source, i.name])).toEqual([
+      ['MANUAL', 'เบี้ยขยัน'],
+      ['ADJUSTMENT', 'ปรับ OT เดือนก่อน'],
+      ['ATTENDANCE_OT', expect.any(String)],
+    ]);
+    expect(lines[0].systemNotes?.warnings).toEqual([{ code: 'TYPED_OT_REMOVED', count: 2, amount: '750.50' }]);
+    const systemOt = lines[0].customIncome.find((i) => i.source === 'ATTENDANCE_OT')!.amount;
+    expect(totals.totalAmount.toFixed(2)).toBe(D(15000).plus(300).plus(100).plus(systemOt).toFixed(2));
+  });
+
+  it('untracked user keeps the typed OT as MANUAL (nothing to strip, no TYPED_OT_REMOVED)', async () => {
+    const { system } = await computeAndMerge({ pin: true, days: [] });
+    const { lines } = mergePayrollLines([typedOtLine()], system, NOW, { stripTypedOt: true });
+    expect(lines[0].customIncome.map((i) => [i.source, i.amount.toFixed(2)])).toEqual([['MANUAL', '500.00']]);
+    expect(lines[0].systemNotes?.warnings).toEqual([{ code: 'NO_ATTENDANCE' }]);
+  });
+
+  it('without the option the same tracked line is still refused MANUAL_OT_DUPLICATE', async () => {
+    const { merged } = await computeAndMerge(tracked);
+    expect(merged).toThrow(BadRequestException);
+  });
+});

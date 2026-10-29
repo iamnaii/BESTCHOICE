@@ -19,6 +19,7 @@ import { ExpenseDocumentLifecycleService } from './services/expense-document-lif
 import { ExpenseDocumentCreateService } from './services/expense-document-create.service';
 import type { DocumentVersionOpts } from './document-version';
 import { PAYROLL_MANAGER_ROLES, assertPayrollActor } from './payroll-roles';
+import type { MergePayrollOptions } from './payroll-system/payroll-save';
 
 @Injectable()
 export class ExpenseDocumentsService implements OnModuleInit {
@@ -130,8 +131,9 @@ export class ExpenseDocumentsService implements OnModuleInit {
   async createPayroll(
     dto: CreatePayrollDto,
     user: { id: string; branchId?: string | null; role?: string | null },
+    opts?: MergePayrollOptions,
   ) {
-    return this.creator.createPayroll(dto, user);
+    return this.creator.createPayroll(dto, user, opts);
   }
 
   // ─── Vendor Settlement create — multi-line clears ACCRUAL EXs ────────

@@ -26,6 +26,7 @@ import {
   notInBranchMessage,
   writeWithCommissionGuard,
   type ClientPayrollLine,
+  type MergePayrollOptions,
 } from '../payroll-system/payroll-save';
 import { PAYROLL_COMMISSION_ITEMS_INCLUDE } from '../payroll-system/payroll-commission-items';
 import { hasCrossBranchAccess } from '../../auth/branch-access.util';
@@ -463,6 +464,7 @@ export class ExpenseDocumentCreateService {
   async createPayroll(
     dto: CreatePayrollDto,
     user: { id: string; branchId?: string | null; role?: string | null },
+    opts: MergePayrollOptions = {},
   ) {
     // Branch access enforcement: users without cross-branch role
     // can only create payroll documents for their own branch.
@@ -499,12 +501,13 @@ export class ExpenseDocumentCreateService {
       }
 
       // Payroll D4 — แถว OT/ทำงานวันหยุดจากการลงเวลา (server คิดเองทุกครั้ง) → netPaid + ยอดหัวใบ
-      const { lines, totals } = await attachSystemRows(tx, this.systemRows, clientLines, {
-        branchId: dto.branchId,
-        entityScope,
-        payrollPeriod: dto.payrollPeriod,
-        now,
-      });
+      const { lines, totals } = await attachSystemRows(
+        tx,
+        this.systemRows,
+        clientLines,
+        { branchId: dto.branchId, entityScope, payrollPeriod: dto.payrollPeriod, now },
+        opts,
+      );
 
       const number = await this.docNumber.next(tx, 'PAYROLL', documentDate);
       // P2-R4 — ชนดัชนีรายการ PAY ที่ยังมีผล = 409 PAYROLL_COMMISSION_TAKEN (ไม่รัน query ต่อบนธุรกรรมที่ abort แล้ว)

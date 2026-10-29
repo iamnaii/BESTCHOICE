@@ -139,7 +139,9 @@ export type PayrollSystemWarning =
   /** หนึ่งคำเตือนต่อบรรทัด เมื่อหักคืนได้ไม่ครบ — หักได้ไม่เกินค่าคอมงวดนี้ ส่วนที่เหลือยกไปงวดหน้า */
   | { code: 'CLAWBACK_CARRIED'; deducted: string; carried: string }
   /** ค่าคอมที่จ่ายนอกใบเงินเดือนถูกเรียกคืน — ระบบไม่หักให้อัตโนมัติ */
-  | { code: 'CLAWBACK_PAID_OUTSIDE_PAYROLL'; reference: string };
+  | { code: 'CLAWBACK_PAID_OUTSIDE_PAYROLL'; reference: string }
+  /** ใบจากปุ่มใช้แม่แบบ — ระบบเอาแถว OT ที่กรอกเองของคนที่ตอกบัตรออก (เจ้าของ 2026-10-29) */
+  | { code: 'TYPED_OT_REMOVED'; count: number; amount: string };
 
 export interface PayrollSystemNotes {
   review: PayrollReviewDay[];

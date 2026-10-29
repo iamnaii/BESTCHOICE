@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   CalendarX,
   Clock,
+  Eraser,
   ExternalLink,
   KeyRound,
   Lock,
@@ -18,6 +19,7 @@ import {
   clawbackPaidOutsideText,
   commissionInOtherDocumentText,
   submitCutoffText,
+  typedOtRemovedText,
 } from './payroll-copy';
 
 /**
@@ -164,6 +166,17 @@ function lineWarning(name: string, w: LineWarning, key: string): WarningItem | n
         body: (
           <>
             {nameOf(name)} <span>{clawbackPaidOutsideText(w.reference)}</span>
+          </>
+        ),
+      };
+    case 'TYPED_OT_REMOVED':
+      return {
+        key,
+        icon: Eraser,
+        iconClass: 'text-info',
+        body: (
+          <>
+            {nameOf(name)} <span>{typedOtRemovedText(w.count, w.amount)}</span>
           </>
         ),
       };

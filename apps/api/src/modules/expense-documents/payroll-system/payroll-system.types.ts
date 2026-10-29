@@ -104,7 +104,9 @@ export type SystemWarning =
   /** หนึ่งคำเตือนต่อบรรทัด เฉพาะเมื่อ carried > 0 — หักได้ไม่เกินค่าคอมงวดนี้ ส่วนที่เหลือยกไปงวดหน้า */
   | { code: 'CLAWBACK_CARRIED'; deducted: string; carried: string }
   /** ค่าคอมที่จ่ายแล้ว (paidAt) ถูกเรียกคืน แต่ไม่มีรายการ PAY ในใบเงินเดือนที่ลงบัญชีแล้ว — ระบบไม่หักให้ */
-  | { code: 'CLAWBACK_PAID_OUTSIDE_PAYROLL'; reference: string };
+  | { code: 'CLAWBACK_PAID_OUTSIDE_PAYROLL'; reference: string }
+  /** ใบจากปุ่มใช้แม่แบบ — ตัดแถว OT ที่กรอกเอง {count} แถว รวม {amount} ออก เพราะระบบคิด OT จากลงเวลาให้แล้ว (เก็บจนบันทึกครั้งถัดไป) */
+  | { code: 'TYPED_OT_REMOVED'; count: number; amount: string };
 
 export interface AttendanceSummarySnapshot extends Omit<MonthSummary, 'otHours'> {
   /** OT วันทำงาน (WORK + LEAVE_* ที่มีการตอก) */

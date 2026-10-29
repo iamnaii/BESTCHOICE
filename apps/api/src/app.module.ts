@@ -116,6 +116,7 @@ import { MdmModule } from './modules/mdm/mdm.module';
 import { YeastarModule } from './modules/yeastar/yeastar.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { TrashModule } from './modules/trash/trash.module';
+import { AttendanceModule } from './modules/attendance/attendance.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { SearchModule } from './modules/search/search.module';
 import { LoyaltyModule } from './modules/loyalty/loyalty.module';
@@ -386,6 +387,7 @@ import { AppCacheModule } from './cache/cache.module';
     ReverseReasonsModule,
     WebhooksModule,
     TrashModule,
+    AttendanceModule,
     AnalyticsModule,
     SearchModule,
     // Data Audit — automated DB health checks (OWNER only)

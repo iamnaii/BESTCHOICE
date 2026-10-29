@@ -13,6 +13,7 @@ const SmsTemplatesPage = lazy(() => import('@/pages/SmsTemplatesPage'));
 const ChannelSettingsPage = lazy(() => import('@/pages/ChannelSettingsPage'));
 const DunningSettingsPage = lazy(() => import('@/pages/DunningSettingsPage'));
 const TrashPage = lazy(() => import('@/pages/settings/TrashPage'));
+const AttendanceDevicesPage = lazy(() => import('@/pages/settings/AttendanceDevicesPage'));
 const CollectionsSettingsPage = lazy(() => import('@/pages/SettingsPage/CollectionsPage'));
 const PricingTemplatesPage = lazy(() => import('@/pages/PricingTemplatesPage'));
 const StickersSettingsPage = lazy(() => import('@/pages/SettingsPage/StickersPage'));
@@ -106,6 +107,7 @@ export const settingsRegistry: SettingsCategory[] = [
       { id: 'company-info', label: 'ข้อมูลบริษัท', group: 'บริษัท', roles: ['OWNER'], kind: 'inline', component: CompanyTab, keywords: ['ที่อยู่', 'โลโก้', 'ผู้เซ็น', 'tax id'] },
       { id: 'entities', label: 'บริษัทในเครือ', group: 'บริษัท', roles: ['OWNER'], kind: 'route', component: CompanySettingsPage, path: '/settings/company/entities' },
       { id: 'branches', label: 'สาขา', group: 'สาขา', roles: ['OWNER'], kind: 'external', path: '/branches' },
+      { id: 'attendance-devices', label: 'เครื่องตอกบัตร', group: 'สาขา', roles: ['OWNER'], kind: 'route', component: AttendanceDevicesPage, path: '/settings/company/attendance-devices', keywords: ['ลงเวลา', 'ตอกบัตร', 'kiosk', 'OT', 'เวลางาน'] },
     ],
   },
   {

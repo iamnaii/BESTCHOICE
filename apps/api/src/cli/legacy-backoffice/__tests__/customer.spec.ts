@@ -106,6 +106,7 @@ describe('toLegacyCustomerInput', () => {
       nickname: 'ทด',
       nationalId: NID,
       phone: '0977000001',
+      phoneInvalid: false,
       phoneSecondary: '0977000002',
       birthDate: new Date(Date.UTC(1990, 4, 17)),
       addressIdCard: '99/9 หมู่ 1 ต.พระบรมมหาราชวัง อ.เขตพระนคร จ.กรุงเทพมหานคร 10200',
@@ -213,7 +214,34 @@ describe('toLegacyCustomerInput', () => {
     );
     expect(input.name).toBe('ไม่ระบุชื่อ (ระบบเก่า TEST-M-501)');
     expect(input.phone).toBeNull();
+    expect(input.phoneInvalid).toBe(false);
     expect(input.birthDate).toBeNull();
+  });
+
+  it('accepts only 0 + 9 digits after normalizing: a 9-digit phone becomes no phone + phoneInvalid', () => {
+    const nineDigits = toLegacyCustomerInput(
+      member({ member_tel: '036-41 2345', member_tel2: '097-700 0002' }),
+      order(),
+    );
+    expect(nineDigits.phone).toBeNull();
+    expect(nineDigits.phoneInvalid).toBe(true);
+    expect(nineDigits.phoneSecondary).toBe('0977000002');
+
+    // ช่องแรกผิดรูปแบบแต่สำเนาในคำสั่งซื้อถูก = ใช้ตัวที่ถูก ไม่ติดธง · หลายเบอร์ในช่องเดียว = ผิดรูปแบบ
+    const fallback = toLegacyCustomerInput(
+      member({ member_tel: '097-700 0001 / 097-700 0009' }),
+      order({ member_tel: '0977000003' }),
+    );
+    expect(fallback).toMatchObject({ phone: '0977000003', phoneInvalid: false });
+  });
+
+  it('drops a secondary phone that is invalid or equal to the primary', () => {
+    expect(
+      toLegacyCustomerInput(member({ member_tel2: '+66977000001' }), order()).phoneSecondary,
+    ).toBeNull();
+    expect(
+      toLegacyCustomerInput(member({ member_tel2: '12345' }), order()).phoneSecondary,
+    ).toBeNull();
   });
 
   it('carries the PEAK contact code (trimmed, blank = null) and the owner override by member code', () => {

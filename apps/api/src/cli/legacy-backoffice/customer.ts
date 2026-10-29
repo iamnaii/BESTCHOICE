@@ -2,7 +2,10 @@ import { Prisma } from '@prisma/client';
 import { isValidThaiNationalId } from '@installment/shared';
 import { ContactResolverService } from '../../modules/contacts/contact-resolver.service';
 import type { CustomerPiiService } from '../../modules/customers/customer-pii.service';
-import { lockCustomerPhone } from '../../modules/customers/customer-phone-lock';
+import {
+  customerPhoneLockKey,
+  lockCustomerPhone,
+} from '../../modules/customers/customer-phone-lock';
 import { findLivePhoneOwner } from '../../modules/customers/customer-phone-owner';
 import type { PrismaService } from '../../prisma/prisma.service';
 import { normalizeThaiPhone } from '../../utils/thai-phone.util';
@@ -20,27 +23,41 @@ import { formatFullAddress } from './thai-address';
  * 1. ไม่มี override: เลขบัตรว่างหรือ checksum ผิด → `INVALID_NATIONAL_ID` (ยังไม่ส่งคำสั่งใดถึงฐาน)
  * 2. ล็อกเบอร์ (`lockCustomerPhone`) เป็นคำสั่งแรกของทรานแซกชัน
  * 3. ลูกค้าเป้าหมาย = แถวที่ถือเลขบัตรนี้ (plaintext หรือ hash — รวมแถวที่ถูกลบ เพราะ unique ครอบทั้งหมด)
- *    หรือแถวที่ถือ `legacyMemberCode` นี้ (นำเข้ารอบก่อน) หรือ stub บน Contact ที่ถือ hash เลขบัตรนี้
- *    (ลูกค้าจาก `ensureRole` ที่ยังไม่มีเลขบัตร — คนเดียวกันตามกติกาของ `CustomerWriteService.create`)
- *    · เลขบัตรอยู่หลายแถว / แถวที่ถือถูกลบ / รหัสสมาชิกอยู่กับคนอื่น / stub หลายแถว → `NATIONAL_ID_CONFLICT`
- * 4. มีเป้าหมาย → `LINKED`: ไม่แตะชื่อ เบอร์ ที่อยู่ หรือ PII ใดของลูกค้าเดิม · ตั้ง `legacyMemberCode` เฉพาะเมื่อว่าง
- *    (ไม่ตรวจเบอร์ — ไม่ได้เขียนเบอร์)
+ *    หรือแถวที่ถือ `legacyMemberCode` นี้ (นำเข้ารอบก่อน — เลขบัตรในระบบเก่าเปลี่ยนได้) หรือ stub บน Contact ที่ถือ hash
+ *    เลขบัตรนี้ (ลูกค้าจาก `ensureRole` ที่**ไม่มีเลขบัตรเลย** — คนเดียวกันตามกติกาของ `CustomerWriteService.create`)
+ *    · เลขบัตรอยู่หลายแถว / แถวที่ถือถูกลบ / รหัสสมาชิกอยู่กับคนอื่น / stub หลายแถว / ลูกค้าบน Contact นั้นมีเลขบัตร
+ *    / Contact ของลูกค้าเป้าหมายถูกลบ (ไม่ย้าย `contactId` ให้เอง) → `NATIONAL_ID_CONFLICT`
+ * 4. มีเป้าหมาย → `LINKED`: ไม่แตะชื่อ เบอร์ ที่อยู่ หรือ PII ใดของลูกค้าเดิม · เติมเฉพาะช่องที่ว่าง: `legacyMemberCode`,
+ *    `contactId` และเลขบัตร (`nationalId` / `*_hash` / `*_encrypted` — เมื่อลูกค้าไม่มีเลขบัตรเลย เลขของ input ถูก checksum
+ *    และไม่มีแถวใด รวมแถวที่ถูกลบ ถือเลขนี้) · ไม่ตรวจเบอร์ (ไม่ได้เขียนเบอร์)
  * 5. ไม่มีเป้าหมาย: เบอร์เป็นเบอร์หลักของลูกค้าคนอื่นที่ยังไม่ถูกลบ (`findLivePhoneOwner`) → `PHONE_TAKEN`
  *    · ไม่งั้น `CREATED`: dual-write plaintext + `*_encrypted` / `*_hash` (`encryptCustomerFields`) + `legacyMemberCode`
  * 6. ทั้ง `CREATED` และ `LINKED` ได้ `Contact` (party master) ที่ผูกกับลูกค้า: ของเดิมของลูกค้า → Contact ที่ถือ hash
  *    เลขบัตร → สร้างใหม่ (`ContactResolverService.findOrCreateByNaturalKey` — ถือล็อก `contact:code` หลังล็อกเบอร์) ·
- *    `peakContactCode` ตั้งเมื่อ Contact ยังไม่มี · มีรหัสอื่นอยู่แล้ว → `PEAK_CODE_CONFLICT`
+ *    `peakContactCode` ตั้งเมื่อ Contact ยังไม่มี · มีรหัสอื่นอยู่แล้ว → `PEAK_CODE_CONFLICT` (ผลบอกรหัสทั้งสองฝั่ง)
+ * 7. ผล `CREATED` / `LINKED` มี `writes` = ช่องที่เขียนจริง (`LEGACY_CUSTOMER_WRITES` · LINKED ที่ไม่ได้เขียนอะไร = `[]`)
+ *    ให้ผู้เรียกเขียน audit / รายงานหลัง commit · input ที่เบอร์ผิดรูปแบบ (`phoneInvalid`) → ผลทุกแบบติด `phoneInvalid: true`
  *
  * **override** (`--customer-overrides`, เจ้าของกรอก): ผูกกับ `customer_id` ที่ระบุ ข้ามการตรวจเลขบัตร/เบอร์ แต่ยังใช้กติกา
- * PEAK code · ลูกค้าไม่มี/ถูกลบ หรือรหัสสมาชิกอยู่กับลูกค้าคนอื่น = throw (แก้ไฟล์)
+ * PEAK code และกติกาเติมช่องว่างข้อ 4 · ลูกค้าไม่มี/ถูกลบ หรือรหัสสมาชิกอยู่กับลูกค้าคนอื่น = throw (แก้ไฟล์)
  *
  * ## สัญญากับผู้เรียก (Task 10)
- * - **หนึ่งลูกค้าต่อหนึ่งทรานแซกชัน** — ล็อกเบอร์ต้องเป็นคำสั่งแรก และหนึ่งเบอร์ต่อทรานแซกชัน
- *   (`.claude/rules/database.md` "ล็อกเบอร์หลักของลูกค้า") ⇒ ห้ามเรียกซ้ำในทรานแซกชันเดียว และห้ามเรียกหลังคำสั่งอื่น
- *   (โดยเฉพาะล็อกแถวลูกค้า หรือล็อก `contact:code`)
+ * - **เรียกหนึ่งครั้งต่อหนึ่งสัญญา ไม่ใช่ต่อสมาชิก** — สัญญาที่สองของสมาชิกเดิมได้ `LINKED` ที่ `writes` ว่าง หรือ
+ *   `PEAK_CODE_CONFLICT` (รหัส PEAK ของสองสัญญาไม่ตรงกัน — ลูกค้าหนึ่งคนมีรหัส PEAK ได้รหัสเดียว)
+ * - กติกาล็อกเบอร์ (`.claude/rules/database.md` "ล็อกเบอร์หลักของลูกค้า") มีสองแบบ:
+ *   - **ทรานแซกชันหลักเดียว (แนะนำ — ด่านไม่ผ่าน = rollback ทั้งก้อน):** `lockLegacyCustomerPhones(tx, pii, ทุก input)`
+ *     เป็นคำสั่งแรกของทรานแซกชัน (ล็อกทุกเบอร์แบบไม่ซ้ำ เรียงคีย์ — กติกาข้อ 2) แล้วเรียกทีละสัญญาด้วย
+ *     `{ phoneLocked: true }` — ผู้เรียกรับประกันว่าเบอร์ของทุก input ที่ส่งเข้ามาถูกล็อกแล้ว · ล็อกเบอร์ทั้งหมดมาก่อน
+ *     `contact:code` ทุกครั้ง (กติกาข้อ 3) · ราว 700 ล็อกในทรานแซกชันเดียวใช้ lock table ร่วม
+ *     (`max_locks_per_transaction × max_connections`) — ตรวจค่าบน Cloud SQL ตอนซ้อม
+ *   - **หนึ่งลูกค้าต่อหนึ่งทรานแซกชัน (ค่าเริ่มต้น):** การเรียกต้องเป็นคำสั่งแรกของทรานแซกชัน (ล็อกเบอร์ของ input เอง)
+ *     ห้ามเรียกซ้ำในทรานแซกชันเดียว และห้ามเรียกหลังคำสั่งอื่น (โดยเฉพาะล็อกแถวลูกค้า หรือล็อก `contact:code`)
  * - ต้องตั้ง `PII_ENCRYPTION_KEY` / `PII_HASH_SALT` (ไม่มี = throw ไม่เขียน plaintext ลงช่องเข้ารหัส)
  * - error ของฐาน (เช่น P2002 เมื่อพนักงานสร้างลูกค้าเลขบัตรเดียวกันพร้อมกัน) ไม่ถูกแปลง — ทรานแซกชันล้ม ให้ลงเป็นตัวบล็อก
  * - ลูกค้าที่สร้างไม่มี `accessCompanyCode` / `accessBranchId` (แบบ `MigrationService.importCustomers`)
+ *
+ * เบอร์: หลัง `normalizeThaiPhone` รับเฉพาะ `^0\d{9}$` (ตรงกับ DTO ของ API และการค้นเบอร์ของ LINE OTP) — ไม่มีช่องไหนถูกรูปแบบ
+ * = ไม่มีเบอร์ (`phone: null` · `phoneInvalid: true` เมื่อมีค่าแต่ผิดรูปแบบ) · เบอร์สำรองที่ผิดรูปแบบหรือเท่าเบอร์หลัก = null
  *
  * LINE ของระบบเก่าเป็น LINE ID ที่พิมพ์เอง ไม่ใช่ LINE userId ของ OA ระบบนี้ ⇒ ไม่ลง `lineIdFinance` (ช่องที่ระบบใช้ส่งข้อความ)
  * แต่เติม `Contact.lineId` ตอน `CREATED` เมื่อยังว่าง
@@ -61,8 +78,11 @@ export type LegacyCustomerInput = {
   nickname: string | null;
   /** ตัดช่องว่าง/ขีดแล้ว — ยังไม่ตรวจ checksum */
   nationalId: string | null;
-  /** `normalizeThaiPhone` แล้ว · ไม่มี = null (สร้างลูกค้าด้วยเบอร์ `''` แบบ stub) */
+  /** `normalizeThaiPhone` แล้วและตรง `^0\d{9}$` · ไม่มี/ผิดรูปแบบ = null (สร้างลูกค้าด้วยเบอร์ `''` แบบ stub) */
   phone: string | null;
+  /** ระบบเก่ามีเบอร์แต่ไม่มีช่องไหนถูกรูปแบบ — นำเข้าแบบไม่มีเบอร์ (T13 ลงรายการรหัสสมาชิก) */
+  phoneInvalid: boolean;
+  /** ถูกรูปแบบและไม่เท่าเบอร์หลัก */
   phoneSecondary: string | null;
   /** เที่ยงคืน UTC ของวันเกิด (รูปเดียวกับที่หน้าเว็บส่ง) */
   birthDate: Date | null;
@@ -77,18 +97,45 @@ export type LegacyCustomerInput = {
   salary: Decimal | null;
 };
 
-export type CustomerLinkResult =
-  | { outcome: 'CREATED' | 'LINKED'; customerId: string }
-  | {
-      outcome:
-        | 'PHONE_TAKEN'
-        | 'INVALID_NATIONAL_ID'
-        | 'NATIONAL_ID_CONFLICT'
-        | 'PEAK_CODE_CONFLICT';
-      customerId: null;
-      /** ลูกค้าที่ทำให้บล็อก (เจ้าของเบอร์ / แถวที่ถือเลขบัตร / ลูกค้าที่ Contact มีรหัส PEAK อื่น) — ใช้กรอก override */
-      relatedCustomerId?: string;
-    };
+/** ช่องที่ `linkOrCreateLegacyCustomer` เขียนได้ — ลำดับนี้คือลำดับใน `writes` */
+export const LEGACY_CUSTOMER_WRITES = [
+  /** สร้างแถวลูกค้า (รวม `legacyMemberCode` + `contactId` ของแถวใหม่) */
+  'customerCreated',
+  'contactCreated',
+  /** ผูก `contactId` ให้ลูกค้าเดิมที่ยังไม่มี Contact */
+  'contactId',
+  'legacyMemberCode',
+  /** เติมเลขบัตร (plaintext + hash + ciphertext) ให้ลูกค้าเดิมที่ไม่มีเลขบัตร */
+  'nationalId',
+  'peakContactCode',
+  'contactLineId',
+] as const;
+export type LegacyCustomerWrite = (typeof LEGACY_CUSTOMER_WRITES)[number];
+
+/** input มีเบอร์แต่ผิดรูปแบบ — ติดกับผลทุกแบบ */
+type PhoneFlag = { phoneInvalid?: true };
+
+export type CustomerLinkResult = PhoneFlag &
+  (
+    | { outcome: 'CREATED' | 'LINKED'; customerId: string; writes: LegacyCustomerWrite[] }
+    | {
+        outcome: 'PHONE_TAKEN' | 'INVALID_NATIONAL_ID' | 'NATIONAL_ID_CONFLICT';
+        customerId: null;
+        /** ลูกค้าที่ทำให้บล็อก (เจ้าของเบอร์ / แถวที่ถือเลขบัตร / ลูกค้าที่ Contact ถูกลบ) — ใช้กรอก override */
+        relatedCustomerId?: string;
+      }
+    | {
+        outcome: 'PEAK_CODE_CONFLICT';
+        customerId: null;
+        /** ลูกค้าเป้าหมาย (ไม่มีเมื่อ Contact ที่ถือเลขบัตรยังไม่มีลูกค้า) */
+        relatedCustomerId?: string;
+        existingPeakContactCode: string;
+        requestedPeakContactCode: string;
+      }
+  );
+
+/** `{ phoneLocked: true }` = ผู้เรียกล็อกเบอร์ของ input นี้ไว้แล้วด้วย `lockLegacyCustomerPhones` (ทรานแซกชันหลักเดียว) */
+export type LinkLegacyCustomerOptions = { phoneLocked?: boolean };
 
 /** ทางเลือกของ `toLegacyCustomerInput` — รหัส PEAK จาก Task 2b และไฟล์ override ที่ parse แล้ว */
 export type LegacyCustomerLink = {
@@ -165,6 +212,8 @@ const OVERRIDE_ERROR = 'อ่านไฟล์ผูกลูกค้าเ�
 /** กติกาเดียวกับ `ContactsService.setPeakContactCode` */
 const PEAK_CONTACT_CODE = /^[A-Za-z0-9\-_.]{1,20}$/;
 const DATE_PREFIX = /^(\d{4})-(\d{2})-(\d{2})/;
+/** รูปแบบเดียวกับ DTO ของลูกค้า (`^0[0-9]{9}$`) */
+const VALID_PHONE = /^0\d{9}$/;
 
 /** อ่านช่องของแถว dump — ตัดช่องว่าง · ว่าง/NULL = null · คอลัมน์ไม่มีในแถว = throw (ชื่อคอลัมน์ผิด / schema เปลี่ยน) */
 function cellReader(table: string, row: DumpRow, labelColumn: string) {
@@ -206,13 +255,19 @@ function birthDate(raw: string | null): Date | null {
     : null;
 }
 
-/** เบอร์แรกที่ normalize แล้วไม่ว่าง — ช่องที่มีแต่ขีด/ช่องว่างไม่บังช่องสำรอง */
-function firstPhone(...raws: Array<string | null>): string | null {
+/**
+ * เบอร์แรกที่ถูกรูปแบบหลัง normalize · `invalid` = มีช่องที่มีค่าแต่ไม่มีช่องไหนถูกรูปแบบ
+ * (ช่องที่มีแต่ขีด/ช่องว่างนับเป็นว่าง และไม่บังช่องสำรอง)
+ */
+function pickPhone(...raws: Array<string | null>): { phone: string | null; invalid: boolean } {
+  let invalid = false;
   for (const raw of raws) {
     const phone = normalizeThaiPhone(raw);
-    if (phone) return phone;
+    if (!phone) continue;
+    if (VALID_PHONE.test(phone)) return { phone, invalid: false };
+    invalid = true;
   }
-  return null;
+  return { phone: null, invalid };
 }
 
 function salary(raw: string | null): Decimal | null {
@@ -258,6 +313,8 @@ export function toLegacyCustomerInput(
 
   const nationalId = (m(MEMBER.nationalId) ?? o(ORDER.nationalId))?.replace(/[\s-]/g, '') || null;
   const peakContactCode = link.peakContactCode?.trim() || null;
+  const primary = pickPhone(m(MEMBER.phone), o(ORDER.phone), o(ORDER.mobile));
+  const secondary = pickPhone(m(MEMBER.phone2), o(ORDER.phone2)).phone;
 
   return {
     legacyMemberCode: memberCode,
@@ -269,8 +326,9 @@ export function toLegacyCustomerInput(
       `ไม่ระบุชื่อ (ระบบเก่า ${memberCode})`,
     nickname: m(MEMBER.nickname) ?? o(ORDER.nickname),
     nationalId,
-    phone: firstPhone(m(MEMBER.phone), o(ORDER.phone), o(ORDER.mobile)),
-    phoneSecondary: firstPhone(m(MEMBER.phone2), o(ORDER.phone2)),
+    phone: primary.phone,
+    phoneInvalid: primary.invalid,
+    phoneSecondary: secondary && secondary !== primary.phone ? secondary : null,
     birthDate: birthDate(m(MEMBER.birthDate)) ?? birthDate(o(ORDER.birthDate)),
     addressIdCard: memberAddress(MEMBER.address, MEMBER.tambon, MEMBER.zip),
     addressCurrent:
@@ -308,6 +366,7 @@ const TARGET_SELECT = {
   id: true,
   name: true,
   phone: true,
+  nationalId: true,
   nationalIdHash: true,
   legacyMemberCode: true,
   contactId: true,
@@ -319,10 +378,11 @@ const CONTACT_SELECT = {
   id: true,
   peakContactCode: true,
   lineId: true,
+  deletedAt: true,
 } satisfies Prisma.ContactSelect;
 type ContactRow = Prisma.ContactGetPayload<{ select: typeof CONTACT_SELECT }>;
 
-type Blocked = Exclude<CustomerLinkResult['outcome'], 'CREATED' | 'LINKED'>;
+type Blocked = 'PHONE_TAKEN' | 'INVALID_NATIONAL_ID' | 'NATIONAL_ID_CONFLICT';
 
 function blocked(outcome: Blocked, relatedCustomerId?: string): CustomerLinkResult {
   return relatedCustomerId
@@ -330,9 +390,26 @@ function blocked(outcome: Blocked, relatedCustomerId?: string): CustomerLinkResu
     : { outcome, customerId: null };
 }
 
-/** Contact มีรหัส PEAK อื่นอยู่แล้ว — ว่าง หรือรหัสเดียวกัน = ไม่ชน */
-const peakConflict = (contact: ContactRow | null, peakCode: string | null) =>
-  !!contact?.peakContactCode && !!peakCode && contact.peakContactCode !== peakCode;
+/** Contact มีรหัส PEAK อื่นอยู่แล้ว → ผล `PEAK_CODE_CONFLICT` · ว่าง หรือรหัสเดียวกัน = null (ไม่ชน) */
+function peakConflict(
+  contact: ContactRow | null,
+  peakCode: string | null,
+  relatedCustomerId?: string,
+): CustomerLinkResult | null {
+  const existing = contact?.peakContactCode;
+  if (!existing || !peakCode || existing === peakCode) return null;
+  return {
+    outcome: 'PEAK_CODE_CONFLICT',
+    customerId: null,
+    ...(relatedCustomerId ? { relatedCustomerId } : {}),
+    existingPeakContactCode: existing,
+    requestedPeakContactCode: peakCode,
+  };
+}
+
+/** `writes` ตามลำดับของ `LEGACY_CUSTOMER_WRITES` */
+const orderedWrites = (writes: ReadonlySet<LegacyCustomerWrite>) =>
+  LEGACY_CUSTOMER_WRITES.filter((w) => writes.has(w));
 
 /** Contact ที่ `findOrCreateByNaturalKey` จะคืนสำหรับ hash นี้ (ไม่มี taxId) — อ่านก่อนเขียนเพื่อตัดสินกติกา PEAK */
 function liveContactByHash(tx: Prisma.TransactionClient, nationalIdHash: string | null) {
@@ -347,13 +424,47 @@ function contactResolver(tx: Prisma.TransactionClient, pii: CustomerPiiService) 
 }
 
 /**
+ * ล็อกเบอร์ของทุก input ในทรานแซกชันหลักเดียว — **ต้องเป็นคำสั่งแรกของทรานแซกชัน** แล้วเรียก
+ * `linkOrCreateLegacyCustomer(…, { phoneLocked: true })` ทีละสัญญา
+ *
+ * คีย์เดียวกับ `lockCustomerPhone` (`customerPhoneLockKey`) · ไม่ซ้ำ · เรียงคีย์ก่อนล็อก (`database.md` กติกาข้อ 2 —
+ * ผู้ล็อกหลายเบอร์ทุกรายเรียงแบบเดียวกันจึงไม่วนรอกัน) · input ที่ไม่มีเบอร์ไม่ล็อก
+ */
+export async function lockLegacyCustomerPhones(
+  tx: Prisma.TransactionClient,
+  pii: CustomerPiiService,
+  inputs: readonly LegacyCustomerInput[],
+): Promise<void> {
+  const phoneOfKey = new Map<string, string>();
+  for (const { phone } of inputs) {
+    const key = customerPhoneLockKey(pii, phone);
+    if (key && phone && !phoneOfKey.has(key)) phoneOfKey.set(key, phone);
+  }
+  for (const key of [...phoneOfKey.keys()].sort()) {
+    await lockCustomerPhone(tx, pii, phoneOfKey.get(key));
+  }
+}
+
+/**
  * ผูกลูกค้าระบบเก่ากับลูกค้าเดิม หรือสร้างใหม่ — กติกาและสัญญากับผู้เรียกอยู่ในหัวไฟล์
- * (**หนึ่งลูกค้าต่อหนึ่งทรานแซกชัน · เรียกเป็นคำสั่งแรกของทรานแซกชัน**)
+ * (**หนึ่งครั้งต่อสัญญา** · ค่าเริ่มต้นล็อกเบอร์เองเป็นคำสั่งแรกของทรานแซกชัน · `phoneLocked: true` = ไม่ล็อก ผู้เรียก
+ * ล็อกไว้แล้วด้วย `lockLegacyCustomerPhones`)
  */
 export async function linkOrCreateLegacyCustomer(
   tx: Prisma.TransactionClient,
   pii: CustomerPiiService,
   input: LegacyCustomerInput,
+  options: LinkLegacyCustomerOptions = {},
+): Promise<CustomerLinkResult> {
+  const result = await resolveLegacyCustomer(tx, pii, input, options.phoneLocked === true);
+  return input.phoneInvalid ? { ...result, phoneInvalid: true } : result;
+}
+
+async function resolveLegacyCustomer(
+  tx: Prisma.TransactionClient,
+  pii: CustomerPiiService,
+  input: LegacyCustomerInput,
+  phoneLocked: boolean,
 ): Promise<CustomerLinkResult> {
   const peakCode = input.peakContactCode?.trim() || null;
   if (peakCode && !PEAK_CONTACT_CODE.test(peakCode)) {
@@ -361,14 +472,18 @@ export async function linkOrCreateLegacyCustomer(
       `${INPUT_ERROR}: รหัสผู้ติดต่อ PEAK ของสมาชิก ${input.legacyMemberCode} ต้องเป็น A-Z 0-9 - _ . ยาว 1–20 ตัว`,
     );
   }
-  if (input.overrideCustomerId)
+  // ① คำสั่งแรกของทรานแซกชัน — ก่อน contact:code (findOrCreateByNaturalKey) ตามกติกาลำดับล็อก
+  const lockPhone = () =>
+    phoneLocked ? Promise.resolve() : lockCustomerPhone(tx, pii, input.phone);
+
+  if (input.overrideCustomerId) {
+    await lockPhone();
     return linkOverride(tx, pii, input, input.overrideCustomerId, peakCode);
+  }
 
   const nationalId = input.nationalId;
   if (!nationalId || !isValidThaiNationalId(nationalId)) return blocked('INVALID_NATIONAL_ID');
-
-  // ① คำสั่งแรกของทรานแซกชัน — ก่อน contact:code (findOrCreateByNaturalKey) ตามกติกาลำดับล็อก
-  await lockCustomerPhone(tx, pii, input.phone);
+  await lockPhone();
 
   const enc = pii.encryptCustomerFields({
     nationalId,
@@ -395,28 +510,33 @@ export async function linkOrCreateLegacyCustomer(
   if (byIdentity.length > 1) return blocked('NATIONAL_ID_CONFLICT', byIdentity[1].id);
   if (holder?.deletedAt) return blocked('NATIONAL_ID_CONFLICT', holder.id);
   if (byCode?.deletedAt) return blocked('NATIONAL_ID_CONFLICT', byCode.id);
-  if (holder && byCode && holder.id !== byCode.id)
+  if (holder && byCode && holder.id !== byCode.id) {
     return blocked('NATIONAL_ID_CONFLICT', byCode.id);
+  }
 
+  const link = { peakCode, legacyMemberCode: input.legacyMemberCode, fillNationalId: nationalId };
   if (holder ?? byCode) {
     const target = (holder ?? byCode) as Target;
     // จับคู่ด้วยเลขบัตร (แถวเก่าอาจมีแต่ plaintext) → Contact ใช้ hash ของเลขนี้ · จับคู่ด้วยรหัสสมาชิกอย่างเดียว → hash ของแถว
     const contactKey = target.nationalIdHash ?? (holder ? nationalIdHash : null);
-    return linkExisting(tx, pii, target, contactKey, peakCode, input.legacyMemberCode);
+    return linkExisting(tx, pii, { ...link, target, contactKey });
   }
 
   const identityContact = await liveContactByHash(tx, nationalIdHash);
   if (identityContact) {
-    // stub ของ ensureRole บน Contact ที่ถือเลขบัตรนี้ = คนเดียวกัน (CustomerWriteService.create upgrade แทน 409)
-    const stubs = await tx.customer.findMany({
+    // stub ของ ensureRole (ไม่มีเลขบัตรเลย) บน Contact ที่ถือเลขบัตรนี้ = คนเดียวกัน (CustomerWriteService.create upgrade
+    // แทน 409) · ลูกค้าบน Contact นั้นที่มีเลขบัตร (ซึ่งไม่ใช่เลขนี้ — ไม่งั้นเจอใน byIdentity) = ข้อมูลขัดกันเอง
+    const onContact = await tx.customer.findMany({
       where: { contactId: identityContact.id, deletedAt: null },
       select: TARGET_SELECT,
       orderBy: { createdAt: 'asc' },
       take: 2,
     });
-    if (stubs.length > 1) return blocked('NATIONAL_ID_CONFLICT', stubs[1].id);
-    if (stubs.length === 1) {
-      return linkExisting(tx, pii, stubs[0], nationalIdHash, peakCode, input.legacyMemberCode);
+    const keyed = onContact.find((c) => c.nationalId || c.nationalIdHash);
+    if (keyed) return blocked('NATIONAL_ID_CONFLICT', keyed.id);
+    if (onContact.length > 1) return blocked('NATIONAL_ID_CONFLICT', onContact[1].id);
+    if (onContact.length === 1) {
+      return linkExisting(tx, pii, { ...link, target: onContact[0], contactKey: nationalIdHash });
     }
   }
 
@@ -424,9 +544,11 @@ export async function linkOrCreateLegacyCustomer(
     const owner = await findLivePhoneOwner(tx, input.phone, enc.phoneHash);
     if (owner) return blocked('PHONE_TAKEN', owner.id);
   }
-  if (peakConflict(identityContact, peakCode)) return blocked('PEAK_CODE_CONFLICT');
+  const conflict = peakConflict(identityContact, peakCode);
+  if (conflict) return conflict;
 
   // ── เขียน ──
+  const writes = new Set<LegacyCustomerWrite>(['customerCreated']);
   const contact = await contactResolver(tx, pii).findOrCreateByNaturalKey(tx, {
     name: input.name,
     taxId: null,
@@ -434,6 +556,7 @@ export async function linkOrCreateLegacyCustomer(
     phone: input.phone,
     role: 'CUSTOMER',
   });
+  if (!identityContact) writes.add('contactCreated');
   const created = await tx.customer.create({
     data: {
       name: input.name,
@@ -463,17 +586,22 @@ export async function linkOrCreateLegacyCustomer(
     },
     select: { id: true },
   });
-  const contactPatch: Prisma.ContactUpdateInput = {
-    ...(peakCode && !contact.peakContactCode ? { peakContactCode: peakCode } : {}),
-    ...(input.lineId && !contact.lineId ? { lineId: input.lineId } : {}),
-  };
+  const contactPatch: Prisma.ContactUpdateInput = {};
+  if (peakCode && !contact.peakContactCode) {
+    contactPatch.peakContactCode = peakCode;
+    writes.add('peakContactCode');
+  }
+  if (input.lineId && !contact.lineId) {
+    contactPatch.lineId = input.lineId;
+    writes.add('contactLineId');
+  }
   if (Object.keys(contactPatch).length > 0) {
     await tx.contact.update({ where: { id: contact.id }, data: contactPatch });
   }
-  return { outcome: 'CREATED', customerId: created.id };
+  return { outcome: 'CREATED', customerId: created.id, writes: orderedWrites(writes) };
 }
 
-/** override จากเจ้าของ — ผูกกับลูกค้าที่ระบุ ข้ามการตรวจเลขบัตร/เบอร์ */
+/** override จากเจ้าของ — ผูกกับลูกค้าที่ระบุ ข้ามการตรวจเลขบัตร/เบอร์ (ผู้เรียกล็อกเบอร์แล้ว) */
 async function linkOverride(
   tx: Prisma.TransactionClient,
   pii: CustomerPiiService,
@@ -481,8 +609,6 @@ async function linkOverride(
   customerId: string,
   peakCode: string | null,
 ): Promise<CustomerLinkResult> {
-  // ล็อกเบอร์เป็นคำสั่งแรกเหมือนทางปกติ — ผู้เรียกถือสัญญาเดียวกันทุกทาง
-  await lockCustomerPhone(tx, pii, input.phone);
   const where = `${OVERRIDE_ERROR}: legacy_member_code ${input.legacyMemberCode}`;
   const target = await tx.customer.findFirst({
     where: { id: customerId, deletedAt: null },
@@ -496,49 +622,93 @@ async function linkOverride(
   if (codeHolder && codeHolder.id !== target.id) {
     throw new Error(`${where} — รหัสสมาชิกนี้ผูกกับลูกค้า ${codeHolder.id} อยู่แล้ว`);
   }
-  return linkExisting(tx, pii, target, target.nationalIdHash, peakCode, input.legacyMemberCode);
+  const validId =
+    input.nationalId && isValidThaiNationalId(input.nationalId) ? input.nationalId : null;
+  return linkExisting(tx, pii, {
+    target,
+    contactKey: target.nationalIdHash,
+    peakCode,
+    legacyMemberCode: input.legacyMemberCode,
+    fillNationalId: validId,
+  });
 }
 
 /**
- * ผูกกับลูกค้าที่มีอยู่ — ไม่แตะข้อมูลของลูกค้า · `legacyMemberCode` เฉพาะเมื่อว่าง · Contact: ของลูกค้า → ที่ถือ `contactKey`
- * → สร้างใหม่จากชื่อ/เบอร์ของลูกค้าเดิม · ตัดสินกติกา PEAK ก่อนเขียน
+ * เลขบัตรที่เติมให้ลูกค้าเดิมได้ — ลูกค้าไม่มีเลขบัตรเลย (plaintext และ hash ว่าง) และไม่มีแถวใด (รวมแถวที่ถูกลบ) ถือเลขนี้
+ * · ไม่เข้าเงื่อนไข = null (ไม่เติม ไม่บล็อก)
+ */
+async function nationalIdFill(
+  tx: Prisma.TransactionClient,
+  pii: CustomerPiiService,
+  target: Target,
+  nationalId: string | null,
+) {
+  if (!nationalId || target.nationalId || target.nationalIdHash) return null;
+  const enc = pii.encryptCustomerFields({ nationalId });
+  const nationalIdHash = enc.nationalIdHash as string;
+  const holders = await tx.customer.count({
+    where: { OR: [{ nationalId }, { nationalIdHash }] },
+  });
+  return holders > 0
+    ? null
+    : { nationalId, nationalIdHash, nationalIdEncrypted: enc.nationalIdEncrypted ?? null };
+}
+
+/**
+ * ผูกกับลูกค้าที่มีอยู่ — ไม่แตะข้อมูลของลูกค้า · เติมเฉพาะช่องที่ว่าง (`legacyMemberCode`, `contactId`, เลขบัตร) ·
+ * Contact: ของลูกค้า (ถูกลบ = `NATIONAL_ID_CONFLICT` ไม่ย้ายให้) → ที่ถือ `contactKey` → สร้างใหม่จากชื่อ/เบอร์ของลูกค้าเดิม ·
+ * ตัดสินทุกอย่างก่อนเขียน
  */
 async function linkExisting(
   tx: Prisma.TransactionClient,
   pii: CustomerPiiService,
-  target: Target,
-  contactKey: string | null,
-  peakCode: string | null,
-  legacyMemberCode: string,
+  args: {
+    target: Target;
+    contactKey: string | null;
+    peakCode: string | null;
+    legacyMemberCode: string;
+    /** เลขบัตรของ input ที่ผ่าน checksum แล้ว — เติมเมื่อลูกค้าไม่มีเลขบัตร (`nationalIdFill`) */
+    fillNationalId: string | null;
+  },
 ): Promise<CustomerLinkResult> {
-  const own = target.contactId
-    ? await tx.contact.findFirst({
-        where: { id: target.contactId, deletedAt: null },
-        select: CONTACT_SELECT,
-      })
-    : null;
+  const { target, contactKey, peakCode, legacyMemberCode } = args;
+  let own: ContactRow | null = null;
+  if (target.contactId) {
+    own = await tx.contact.findUnique({ where: { id: target.contactId }, select: CONTACT_SELECT });
+    if (!own || own.deletedAt) return blocked('NATIONAL_ID_CONFLICT', target.id);
+  }
   const known = own ?? (await liveContactByHash(tx, contactKey));
-  if (peakConflict(known, peakCode)) return blocked('PEAK_CODE_CONFLICT', target.id);
+  const conflict = peakConflict(known, peakCode, target.id);
+  if (conflict) return conflict;
+  const fill = await nationalIdFill(tx, pii, target, args.fillNationalId);
 
   // ── เขียน ──
-  const contact: ContactRow = own
-    ? own
-    : await contactResolver(tx, pii).findOrCreateByNaturalKey(tx, {
-        name: target.name,
-        taxId: null,
-        nationalIdHash: contactKey,
-        phone: normalizeThaiPhone(target.phone) || null,
-        role: 'CUSTOMER',
-      });
+  const writes = new Set<LegacyCustomerWrite>();
+  let contact = own;
+  if (!contact) {
+    contact = await contactResolver(tx, pii).findOrCreateByNaturalKey(tx, {
+      name: target.name,
+      taxId: null,
+      nationalIdHash: contactKey,
+      phone: normalizeThaiPhone(target.phone) || null,
+      role: 'CUSTOMER',
+    });
+    if (!known) writes.add('contactCreated');
+    writes.add('contactId');
+  }
+  if (!target.legacyMemberCode) writes.add('legacyMemberCode');
+  if (fill) writes.add('nationalId');
   const customerPatch: Prisma.CustomerUncheckedUpdateInput = {
-    ...(target.legacyMemberCode ? {} : { legacyMemberCode }),
-    ...(own ? {} : { contactId: contact.id }),
+    ...(writes.has('contactId') ? { contactId: contact.id } : {}),
+    ...(writes.has('legacyMemberCode') ? { legacyMemberCode } : {}),
+    ...(fill ?? {}),
   };
   if (Object.keys(customerPatch).length > 0) {
     await tx.customer.update({ where: { id: target.id }, data: customerPatch });
   }
   if (peakCode && !contact.peakContactCode) {
     await tx.contact.update({ where: { id: contact.id }, data: { peakContactCode: peakCode } });
+    writes.add('peakContactCode');
   }
-  return { outcome: 'LINKED', customerId: target.id };
+  return { outcome: 'LINKED', customerId: target.id, writes: orderedWrites(writes) };
 }

@@ -8,7 +8,7 @@ import { legacyOutstanding } from './peak-recon';
 /**
  * ยอดเงินของสัญญาระบบเก่า (Task 4 · ร่าง 5) — ฟังก์ชันบริสุทธิ์ ไม่แตะฐานข้อมูล
  *
- * สูตรตามสคริปต์เดิม `scripts/import-legacy/index.ts` (แถว `bestchoice_order_product_detail`):
+ * สูตรตามสคริปต์เดิม `scripts/import-legacy/index.ts` (ลบใน Task 8 — ดู git history) (แถว `bestchoice_order_product_detail`):
  * - `financedAmount` = `finance` (> 0) ไม่งั้น `ref_product_price − deposit`
  * - `storeCommission` = `commission_admin` (> 0) ไม่งั้น 10% ของยอดจัด (`resolveStoreCommission` ตัวเดียวกับ
  *   ระบบ) — **เขียนเป็นตัวเลขเสมอ** ห้ามว่าง: ค่าว่างทำให้ระบบคิด 10% ใหม่ทุกครั้งที่อ่าน

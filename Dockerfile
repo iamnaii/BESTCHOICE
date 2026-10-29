@@ -109,8 +109,9 @@ COPY --from=builder --chown=appuser:appgroup /app/apps/api/prisma ./apps/api/pri
 COPY --from=builder --chown=appuser:appgroup /app/apps/api/node_modules/@prisma/client-finance ./apps/api/node_modules/@prisma/client-finance
 COPY --from=builder --chown=appuser:appgroup /app/apps/api/prisma-finance ./apps/api/prisma-finance
 
-# ⚠️ TEMPORARY: Legacy migration data — remove after migration done
-COPY --chown=appuser:appgroup apps/api/scripts/import-legacy/data ./apps/api/scripts/import-legacy/data
+# Legacy tambon data moved to apps/api/src/cli/legacy-backoffice/data (2026-10-29) — the
+# legacy-backoffice importer runs from source via tsx (laptop + cloud-sql-proxy), never from
+# this image, so nothing at runtime reads it here.
 # Note: the "ข้อมูลโปรแกรมเขียว4-7-2026" data dump was deleted from the repo in
 # PR #1048 (build context no longer contains the folder, so the COPY would
 # fail). The data lives in Cloud SQL now — no longer needed at build time.

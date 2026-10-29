@@ -2,6 +2,10 @@
  * Thai address resolver
  * รับรหัส tambon 6 หลัก (มาตรฐาน TIS 1099) → คืนชื่อจังหวัด/อำเภอ/ตำบล
  *
+ * ย้ายมาจาก `scripts/import-legacy/thai-address.ts` (Task 8 ของตัวนำเข้าระบบเก่า) — ระบบเก่าเก็บรหัสตำบล
+ * มาตรฐานในช่อง `*_districts` ส่วน `*_amphures` / `*_province` เป็น PK ภายในของระบบเก่า ใช้ไม่ได้
+ * · ข้อมูลอ่านด้วย fs จาก `data/` ข้างไฟล์นี้ (ตัวนำเข้ารันด้วย tsx จาก `src/` — ไม่ได้อยู่ใน `dist`)
+ *
  * Data source: https://github.com/kongvut/thai-province-data
  * (sub_district_with_district_and_province.json)
  */
@@ -65,7 +69,11 @@ export function resolveTambon(tambonCode: string | null): ResolvedAddress {
  * Format ที่อยู่เต็มจาก raw line + รหัสตำบล
  * ตัวอย่าง: "319/144 หมู่ 8 ต.นิคมสร้างตนเอง อ.เมืองลพบุรี จ.ลพบุรี 15000"
  */
-export function formatFullAddress(addressLine: string | null, tambonCode: string | null, fallbackZip: string | null): string | null {
+export function formatFullAddress(
+  addressLine: string | null,
+  tambonCode: string | null,
+  fallbackZip: string | null,
+): string | null {
   const parts: string[] = [];
   if (addressLine && addressLine.trim()) parts.push(addressLine.trim());
   const r = resolveTambon(tambonCode);

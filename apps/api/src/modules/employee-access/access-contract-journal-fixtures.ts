@@ -1,3 +1,4 @@
+// Synthetic owned-PostgreSQL fixtures. Every JE is emitted by its canonical producer.
 import {
   LEGACY_OPENING_FLOW,
   LEGACY_PRIOR_RECEIPT_FLOW,
@@ -11,7 +12,6 @@ import {
   legacyPriorReceiptReference,
   legacyVatCatchUpReference,
 } from '../journal/legacy-import-journal';
-// Synthetic owned-PostgreSQL fixtures. Every JE is emitted by its canonical producer.
 import { Prisma, PrismaClient } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';

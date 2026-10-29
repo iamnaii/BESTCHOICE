@@ -12,8 +12,8 @@ import {
   type MoneyOverride,
 } from './money';
 import { CARRY_FORWARD_ACCOUNTS, OPENING_EQUITY_ACCOUNT } from './opening';
-import { GATE_LABELS, type GateResult } from './gates';
-import type { PeakRecon } from './peak-recon';
+import { GATE_LABELS, type GateId, type GateResult } from './gates';
+import type { PeakInvoice, PeakRecon } from './peak-recon';
 import {
   BLOCKER_REASON_TEXT,
   type ImportBlocker,
@@ -40,13 +40,19 @@ const ZERO = new Prisma.Decimal(0);
 
 // ─── --canceled-map ──────────────────────────────────────────────────────────────────────────────
 
-/** ผลที่เจ้าของเลือกได้ (`classify.ts` `CanceledResolution`) */
-export const CANCELED_RESOLUTIONS: readonly CanceledResolution[] = [
-  'TERMINATED',
-  'CANCELED',
-  'CLOSED_BAD_DEBT',
-  'EXCHANGED',
-];
+/**
+ * ผลที่เจ้าของเลือกได้ — **สองค่าเท่านั้น** (คำตัดสิน M-7 ของ Task 10: `TERMINATED` ค้างคิว "รอยึดเครื่อง" ถาวร ·
+ * `EXCHANGED` ไม่มีสัญญาใหม่ให้ลิงก์ → `planImport` บล็อก `CANCELED_RESOLUTION_UNSUPPORTED`) · ค่าภาษาไทยใช้ในข้อความถึงเจ้าของ
+ */
+export const CANCELED_RESOLUTIONS = ['CANCELED', 'CLOSED_BAD_DEBT'] as const;
+export const CANCELED_RESOLUTION_TEXT: Record<(typeof CANCELED_RESOLUTIONS)[number], string> = {
+  CANCELED: 'ยกเลิกสัญญา',
+  CLOSED_BAD_DEBT: 'ปิดเป็นหนี้สูญ',
+};
+/** ข้อความแนะนำช่อง `resolution` (บรรทัดบนจอ · หมายเหตุใน `canceled.csv` · `summary.json`) */
+export const CANCELED_RESOLUTION_GUIDE = `${CANCELED_RESOLUTIONS.map(
+  (r) => `${r} (${CANCELED_RESOLUTION_TEXT[r]})`,
+).join(' หรือ ')} · ว่าง = ยังไม่ยืนยัน`;
 
 /** หัวคอลัมน์ที่ต้องมีในไฟล์ `--canceled-map` (= `canceled.csv` ที่กรอกแล้ว) */
 export const CANCELED_MAP_COLUMNS = ['legacy_code', 'resolution'] as const;
@@ -54,13 +60,26 @@ export const CANCELED_MAP_COLUMNS = ['legacy_code', 'resolution'] as const;
 const CANCELED_MAP_ERROR = 'อ่านไฟล์ --canceled-map ไม่ได้';
 
 /**
+ * บรรทัดหมายเหตุ `#` ด้านบนของไฟล์ (เช่น `canceled.csv`) → บรรทัดว่าง — เลขบรรทัดใน error ยังตรงกับไฟล์ · รับ BOM และ
+ * หมายเหตุที่ Excel ครอบด้วย `"`
+ */
+export function blankCommentLines(text: string): string {
+  return text
+    .replace(/^\uFEFF/, '')
+    .split('\n')
+    .map((line) => (/^"?#/.test(line) ? (line.endsWith('\r') ? '\r' : '') : line))
+    .join('\n');
+}
+
+/**
  * อ่าน `--canceled-map` → เลขสัญญาเดิม → ผลที่เจ้าของยืนยัน · `resolution` ว่าง = ยังไม่ยืนยัน (ข้าม — สัญญายังเป็นตัวบล็อก)
- * · ค่าไม่อยู่ใน `CANCELED_RESOLUTIONS` (ไม่สนตัวเล็ก/ใหญ่) หรือเลขสัญญาซ้ำ = throw บอกบรรทัด (ไม่ยกค่าในช่อง)
+ * · รับเฉพาะ `CANCELED_RESOLUTIONS` (ไม่สนตัวเล็ก/ใหญ่) · ค่าอื่น / เลขสัญญาซ้ำ = throw บอกบรรทัด (ไม่ยกค่าในช่อง) ·
+ * บรรทัด `#` ข้าม (ไฟล์ `canceled.csv` ที่ส่งกลับมา)
  */
 export function parseCanceledMapCsv(text: string): Map<string, CanceledResolution> {
   const out = new Map<string, CanceledResolution>();
   const lineOfCode = new Map<string, number>();
-  for (const row of readCsv(text, CANCELED_MAP_COLUMNS, CANCELED_MAP_ERROR)) {
+  for (const row of readCsv(blankCommentLines(text), CANCELED_MAP_COLUMNS, CANCELED_MAP_ERROR)) {
     const code = row.text('legacy_code');
     const previous = lineOfCode.get(code);
     if (previous !== undefined) throw row.fail('legacy_code', `สัญญาซ้ำกับบรรทัด ${previous}`);
@@ -68,21 +87,47 @@ export function parseCanceledMapCsv(text: string): Map<string, CanceledResolutio
     const raw = row.cell('resolution').toUpperCase();
     if (raw === '') continue;
     if (!(CANCELED_RESOLUTIONS as readonly string[]).includes(raw)) {
-      throw row.fail('resolution', `ต้องเป็น ${CANCELED_RESOLUTIONS.join(' / ')} หรือเว้นว่าง`);
+      throw row.fail('resolution', `ต้องเป็น ${CANCELED_RESOLUTION_GUIDE}`);
     }
     out.set(code, raw as CanceledResolution);
   }
   return out;
 }
 
+const MONEY_OVERRIDE_AMOUNT_COLUMNS = [
+  'financed_amount',
+  'store_commission',
+  'vat_amount',
+] as const;
+
+/**
+ * `--money-overrides` ยอดเงินต้องไม่เกินทศนิยม 2 ตำแหน่ง (ตรวจก่อน `parseMoneyOverridesCsv` — ยอดจัด/ค่าคอม/VAT เป็น
+ * Decimal(12,2) และตัวคำนวณค่างวดปัดจากยอดเหล่านี้) · ผิด = throw บอกบรรทัด + คอลัมน์ ไม่ยกค่า
+ */
+export function assertMoneyOverridesTwoDecimals(text: string): void {
+  for (const row of readCsv(
+    text,
+    ['legacy_code', ...MONEY_OVERRIDE_AMOUNT_COLUMNS],
+    'อ่านไฟล์แก้ยอดเงินสัญญาไม่ได้',
+  )) {
+    for (const column of MONEY_OVERRIDE_AMOUNT_COLUMNS) {
+      const raw = row.cell(column).replace(/[,\s]/g, '');
+      if (/\.\d{3,}$/.test(raw)) throw row.fail(column, 'ทศนิยมเกิน 2 ตำแหน่ง');
+    }
+  }
+}
+
 // ─── ตัวช่วย ─────────────────────────────────────────────────────────────────────────────────────
 
 const byCodeAsc = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
-/** ตัวเลขยาว 9 หลักขึ้นไป (มีขีด/ช่องว่างคั่นได้) ในข้อความอิสระ → `[ตัดตัวเลข]` — เบอร์ / เลขบัตร / เลขบัญชี */
+/**
+ * ตัวเลขยาว 9 หลักขึ้นไปในข้อความอิสระ → `[ตัดตัวเลข]` — เบอร์ / เลขบัตร / เลขบัญชี · ตัวคั่น ช่องว่าง `-` `.` `(` `)` `/` ·
+ * เลขไทย ๐–๙ · `+` นำหน้า (`+66…`) ตัดไปด้วย
+ */
 export function redactDigits(text: string | null | undefined): string {
   if (!text) return '';
-  return text.replace(/\d(?:[\s-]*\d){8,}/g, '[ตัดตัวเลข]');
+  return text.replace(/\+?[0-9๐-๙](?:[\s\-.()/]*[0-9๐-๙]){8,}/g, '[ตัดตัวเลข]');
 }
 
 /** ค่าที่ JSON.stringify ได้ตรง ๆ — Decimal → สตริง 2 ตำแหน่ง · Map → object · Date → ISO */
@@ -173,55 +218,98 @@ export const CUSTOMER_BLOCKER_REASONS: ReadonlySet<ImportBlockerReason> = new Se
 ]);
 
 /**
- * `customers-blocked.csv` — หัว `legacy_member_code,customer_id` ตรงกับ `--customer-overrides` (คอลัมน์อื่นไม่อ่าน):
- * เจ้าของกรอก `customer_id` (ลูกค้าใน BESTCHOICE ที่จะผูก) แล้ว**ลบแถวที่ไม่ได้กรอก**ก่อนส่งกลับ (ช่องว่าง = ไฟล์อ่านไม่ผ่าน) ·
- * override ที่ส่งมารอบนี้อยู่ด้วย (`outcome` `OVERRIDE_APPLIED`) — ส่งกลับแล้วไม่หาย (เลขบัตรผิดที่ผูกเองต้องอยู่ทุกรอบ)
+ * `customers-blocked.csv` — **หนึ่งแถวต่อรหัสสมาชิก** (สมาชิกที่ติดหลายสัญญา/หลายเหตุรวมเป็นแถวเดียว) · หัว
+ * `legacy_member_code,customer_id` ตรงกับ `--customer-overrides` (คอลัมน์อื่นไม่อ่าน): เจ้าของกรอก `customer_id` (ลูกค้าใน
+ * BESTCHOICE ที่จะผูก) แล้ว**ลบแถวที่ไม่ได้กรอก**ก่อนส่งกลับ (ช่องว่าง = ไฟล์อ่านไม่ผ่าน) · override ที่ส่งมารอบนี้อยู่ด้วย
+ * (`OVERRIDE_APPLIED`) — ส่งกลับแล้วไม่หาย (เลขบัตรผิดที่ผูกเองต้องอยู่ทุกรอบ) · แถวที่ไม่มีรหัสสมาชิก (ไม่พบสมาชิก) =
+ * หนึ่งแถวต่อสัญญา แก้ด้วย override ไม่ได้
  *
- * มีแค่รหัส ผล และธง — `related_customer_id` = ลูกค้าใน BESTCHOICE ที่ชน (เจ้าของเบอร์ / ผู้ถือเลขบัตร) ·
- * `related_has_national_id` (เฉพาะคำสั่ง `import` ที่เห็นฐาน) = ลูกค้าที่ชนมีเลขบัตรแล้วหรือไม่ (ธงเท่านั้น ไม่มีค่า)
+ * มีแค่รหัส ผล และธง (คั่นด้วยช่องว่าง) — `related_customer_ids` = ลูกค้าใน BESTCHOICE ที่ชน (เจ้าของเบอร์ / ผู้ถือเลขบัตร) ·
+ * `related_has_national_id` (เฉพาะคำสั่ง `import` ที่เห็นฐาน — ลำดับเดียวกับ id) = ลูกค้าที่ชนมีเลขบัตรแล้วหรือไม่
  */
 export function customersBlockedCsv(
   rows: readonly ImportBlocker[],
   overrides: ReadonlyMap<string, string>,
   relatedWithNationalId?: ReadonlySet<string>,
 ): string {
-  const lines: string[][] = [];
+  type Group = {
+    memberCode: string;
+    codes: Set<string>;
+    outcomes: Set<string>;
+    related: Set<string>;
+    phoneInvalid: boolean;
+    peak: Set<string>;
+    otherPeak: Set<string>;
+  };
+  const groups = new Map<string, Group>();
   for (const row of rows) {
     if (!CUSTOMER_BLOCKER_REASONS.has(row.reason)) continue;
     const d = row.detail ?? {};
-    const memberCode =
-      row.reason === 'CUSTOMER_OVERRIDE_UNKNOWN_MEMBER' ? row.code : (d.memberCode ?? '');
-    const related = d.relatedCustomerId ?? '';
-    lines.push([
-      memberCode,
-      overrides.get(memberCode) ?? '',
-      row.reason === 'CUSTOMER_OVERRIDE_UNKNOWN_MEMBER' ? '' : row.code,
-      row.reason,
-      related,
-      related && relatedWithNationalId ? (relatedWithNationalId.has(related) ? 'yes' : 'no') : '',
-      d.phoneInvalid === 'yes' ? 'yes' : '',
-      d.peakContactCode ?? '',
-      d.otherPeakContactCode ?? '',
-    ]);
+    const unknownMember = row.reason === 'CUSTOMER_OVERRIDE_UNKNOWN_MEMBER';
+    const memberCode = unknownMember ? row.code : (d.memberCode ?? '');
+    const key = memberCode || `#contract:${row.code}`;
+    let group = groups.get(key);
+    if (!group) {
+      group = {
+        memberCode,
+        codes: new Set(),
+        outcomes: new Set(),
+        related: new Set(),
+        phoneInvalid: false,
+        peak: new Set(),
+        otherPeak: new Set(),
+      };
+      groups.set(key, group);
+    }
+    if (!unknownMember) group.codes.add(row.code);
+    group.outcomes.add(row.reason);
+    if (d.relatedCustomerId) group.related.add(d.relatedCustomerId);
+    if (d.phoneInvalid === 'yes') group.phoneInvalid = true;
+    if (d.peakContactCode) group.peak.add(d.peakContactCode);
+    if (d.otherPeakContactCode) group.otherPeak.add(d.otherPeakContactCode);
   }
-  const listed = new Set(lines.map((l) => l[0]));
-  for (const [memberCode, customerId] of overrides) {
-    if (!listed.has(memberCode)) {
-      lines.push([memberCode, customerId, '', 'OVERRIDE_APPLIED', '', '', '', '', '']);
+  for (const [memberCode] of overrides) {
+    if (!groups.has(memberCode)) {
+      groups.set(memberCode, {
+        memberCode,
+        codes: new Set(),
+        outcomes: new Set(['OVERRIDE_APPLIED']),
+        related: new Set(),
+        phoneInvalid: false,
+        peak: new Set(),
+        otherPeak: new Set(),
+      });
     }
   }
+  const join = (values: Iterable<string>) => [...values].sort(byCodeAsc).join(' ');
+  const lines = [...groups.values()].map((g) => {
+    const related = [...g.related].sort(byCodeAsc);
+    return [
+      g.memberCode,
+      g.memberCode ? (overrides.get(g.memberCode) ?? '') : '',
+      join(g.codes),
+      join(g.outcomes),
+      related.join(' '),
+      relatedWithNationalId
+        ? related.map((id) => (relatedWithNationalId.has(id) ? 'yes' : 'no')).join(' ')
+        : '',
+      g.phoneInvalid ? 'yes' : '',
+      join(g.peak),
+      join(g.otherPeak),
+    ];
+  });
   lines.sort((a, b) => byCodeAsc(a[0], b[0]) || byCodeAsc(a[2], b[2]));
   return csvText(
     [
       'legacy_member_code',
       'customer_id',
-      'legacy_code',
-      'outcome',
-      'related_customer_id',
+      'legacy_codes',
+      'outcomes',
+      'related_customer_ids',
       'related_has_national_id',
       'phone_invalid',
-      'peak_contact_code',
-      'other_peak_contact_code',
+      'peak_contact_codes',
+      'other_peak_contact_codes',
     ],
     lines,
   );
@@ -241,10 +329,83 @@ function openingNet(item: PlannedContract): Record<string, Decimal> {
 }
 
 /**
- * `bridge.csv` ตารางเชื่อมยอด (ส่งสำนักงานบัญชีเซ็นรับ) — หนึ่งแถวต่อสัญญาผ่อนอยู่ในแผน + แถว `TOTAL` ·
- * บรรทัด `#` ด้านบนอธิบายเครื่องหมาย · ยอดบัญชี = Dr − Cr (ติดลบ = ฝั่งเครดิต)
+ * ส่วนท้ายของ `bridge.csv` — ผูกยอดทั้งไฟล์ `--peak-ar` กับยอดที่นำเข้า (สำนักงานบัญชีติ๊ก 113101 จากไฟล์ได้ตรง ๆ):
+ * Σ remain ทุกใบ − ใบที่ไม่พบสัญญา/กำกวม − ใบของสัญญาที่ติดตัวบล็อก − ใบของสัญญาที่ข้าม − ใบของสัญญาประวัติ
+ * − ใบที่ไม่มีคู่และยอดคงเหลือ 0 = Σ `peak_remain` ของสัญญาผ่อนอยู่ที่นำเข้า (= แถว TOTAL)
  */
-export function bridgeCsv(book: LegacyBook, recon: PeakRecon, plan: ImportPlan): string {
+function bridgeFooter(
+  book: LegacyBook,
+  recon: PeakRecon,
+  plan: ImportPlan,
+  invoices: readonly PeakInvoice[],
+  importedRemain: Decimal,
+): string[][] {
+  const remainOf = new Map(invoices.map((i) => [i.invoiceCode, i.remainAmount]));
+  const itemOf = new Map(plan.items.map((i) => [i.code, i]));
+  const skipped = new Set(plan.skipped.map((s) => s.code));
+  const unmatched = new Set([...recon.unmatchedInvoices, ...recon.ambiguous]);
+  const buckets = {
+    unmatched: [] as Decimal[],
+    blocked: [] as Decimal[],
+    skipped: [] as Decimal[],
+    history: [] as Decimal[],
+    active: [] as Decimal[],
+  };
+  const matchedCodes = new Set<string>();
+  for (const c of book.contracts) {
+    const match = recon.matched.get(c.contractId);
+    if (!match) continue;
+    matchedCodes.add(match.invoice.invoiceCode);
+    const item = itemOf.get(c.code);
+    const remain = match.invoice.remainAmount;
+    if (item?.kind === 'ACTIVE') buckets.active.push(remain);
+    else if (item) buckets.history.push(remain);
+    else if (skipped.has(c.code)) buckets.skipped.push(remain);
+    else buckets.blocked.push(remain);
+  }
+  for (const code of unmatched) buckets.unmatched.push(remainOf.get(code) ?? ZERO);
+  const unlisted = invoices.filter(
+    (i) => !matchedCodes.has(i.invoiceCode) && !unmatched.has(i.invoiceCode),
+  );
+  const all = sum(invoices.map((i) => i.remainAmount));
+  const derived = all
+    .minus(sum(buckets.unmatched))
+    .minus(sum(buckets.blocked))
+    .minus(sum(buckets.skipped))
+    .minus(sum(buckets.history))
+    .minus(sum(unlisted.map((i) => i.remainAmount)));
+  const row = (label: string, count: number, amount: Decimal) => [
+    label,
+    String(count),
+    '',
+    '',
+    '',
+    '',
+    formatMoney(amount),
+  ];
+  const diff = derived.minus(importedRemain);
+  return [
+    row('PEAK_AR_ALL_INVOICES', invoices.length, all),
+    row('LESS_UNMATCHED_OR_AMBIGUOUS', buckets.unmatched.length, sum(buckets.unmatched)),
+    row('LESS_BLOCKED_CONTRACTS', buckets.blocked.length, sum(buckets.blocked)),
+    row('LESS_SKIPPED_CONTRACTS', buckets.skipped.length, sum(buckets.skipped)),
+    row('LESS_HISTORY_CONTRACTS', buckets.history.length, sum(buckets.history)),
+    row('LESS_UNPAIRED_ZERO_REMAIN', unlisted.length, sum(unlisted.map((i) => i.remainAmount))),
+    row('EQUALS_IMPORTED_PEAK_REMAIN', buckets.active.length, derived),
+    [diff.isZero() ? 'CHECK_OK' : `CHECK_MISMATCH ${formatMoney(diff)}`],
+  ];
+}
+
+/**
+ * `bridge.csv` ตารางเชื่อมยอด (ส่งสำนักงานบัญชีเซ็นรับ) — หนึ่งแถวต่อสัญญาผ่อนอยู่ในแผน + แถว `TOTAL` + ส่วนท้ายที่ผูกกับ
+ * ยอดทั้งไฟล์ `--peak-ar` (`bridgeFooter`) · บรรทัด `#` ด้านบนอธิบายเครื่องหมาย · ยอดบัญชี = Dr − Cr (ติดลบ = ฝั่งเครดิต)
+ */
+export function bridgeCsv(
+  book: LegacyBook,
+  recon: PeakRecon,
+  plan: ImportPlan,
+  invoices: readonly PeakInvoice[],
+): string {
   const byCode = new Map(book.contracts.map((c) => [c.code, c]));
   const items = plan.items
     .filter((i) => i.kind === 'ACTIVE' && i.opening && i.peak)
@@ -288,8 +449,9 @@ export function bridgeCsv(book: LegacyBook, recon: PeakRecon, plan: ImportPlan):
   const notes = [
     `# ตารางเชื่อมยอดยกมา (บัญชี BESTCHOICE ฝั่ง FINANCE) กับยอดคงเหลือใบแจ้งหนี้ PEAK (113101) ณ วันตัด ${bangkokDateString(plan.cutoff)} — ยอดบัญชี = Dr − Cr (ติดลบ = ฝั่งเครดิต) · แถว TOTAL = ผลรวมทุกสัญญา`,
     '# rounding_diff = receivable_after_markers − peak_remain (เศษปัดค่างวด): บวก → ลูกค้าจ่ายตาม PEAK แล้วลูกหนี้ในบัญชียังเหลือเศษ ระบบลง 52-1104 ส่วนลดเศษสตางค์ตอนรับงวดนั้น · ลบ → ลง 53-1503 กำไรจากการปัดเศษ',
-    '# legacy_outstanding = ยอดค้างระบบเก่าก่อนปรับ · peak_adjustment (≤ 0) = ส่วนที่ PEAK ค้างน้อยกว่า (ลงเป็นยอดจ่าย) · satang_gap (≥ 0) = เศษสตางค์ที่ PEAK สูงกว่า บวกเข้างวดสุดท้ายที่ค้าง',
+    '# legacy_outstanding = ยอดค้างระบบเก่าก่อนปรับ · peak_adjustment (≤ 0) = ส่วนที่ PEAK ค้างน้อยกว่า (ลงเป็นยอดจ่าย) · satang_gap = เศษสตางค์ของยอดผ่อนรวมที่ปรับเข้าค่างวดงวดสุดท้ายที่ค้าง (บวก = PEAK สูงกว่า เพิ่มค่างวด · ลบ = PEAK ต่ำกว่า ลดค่างวด)',
     '# 21-2102_after_catch_up เทียบ 215102 ของ PEAK — catch_up_vat = Dr 21-2102 / Cr 21-2101 ลงวันถัดจากวันตัด 00:05 (VAT ของงวดที่ถึงกำหนดแล้วยังไม่ได้รับเงิน)',
+    '# ส่วนท้าย (หลัง TOTAL): ยอดคงเหลือทุกใบในไฟล์ --peak-ar หักใบที่ไม่ได้นำเข้าเป็นยอดยกมา = peak_remain ของ TOTAL (คอลัมน์ peak_remain · คอลัมน์ status = จำนวนใบ)',
   ];
   return (
     notes.map((n) => csvLine([n])).join('\n') +
@@ -323,6 +485,7 @@ export function bridgeCsv(book: LegacyBook, recon: PeakRecon, plan: ImportPlan):
           ...values.map(formatMoney),
         ]),
         ['TOTAL', String(items.length), '', ...totals.map(formatMoney)],
+        ...bridgeFooter(book, recon, plan, invoices, totals[3]),
       ],
     )
   );
@@ -340,10 +503,17 @@ const CANCELED_FIELDS = [
   'canceled_at',
 ] as const;
 
+/** บรรทัด `#` ด้านบนของ `canceled.csv` — `parseCanceledMapCsv` ข้ามให้ (ไม่มี `,` — Excel ไม่แตกเป็นหลายช่อง) */
+export const CANCELED_CSV_NOTES = [
+  '# ข้อมูลส่วนบุคคล — เจ้าของเท่านั้น ห้ามส่งสำนักงานบัญชี/แชท (ชื่อแอดมินและข้อความอิสระของระบบเก่า)',
+  `# กรอกช่อง resolution: ${CANCELED_RESOLUTION_GUIDE} — แล้วส่งไฟล์นี้กลับด้วย --canceled-map`,
+];
+
 /**
  * `canceled.csv` — สัญญายกเลิก (4) / หนี้เสีย (5) ทุกสัญญา + ช่อง `canceled_*` ของระบบเก่า (`canceled_ip` ไม่ใส่) ·
- * `resolution` = ค่าใน `--canceled-map` รอบนี้ (ว่าง = ยังไม่ยืนยัน — เจ้าของกรอก `CANCELED_RESOLUTIONS`) ·
- * ข้อความอิสระตัดตัวเลขยาวออก (`redactDigits`)
+ * `resolution` = ค่าใน `--canceled-map` รอบนี้ (ว่าง = ยังไม่ยืนยัน — เจ้าของกรอก `CANCELED_RESOLUTIONS` สองค่า) ·
+ * ข้อความอิสระตัดตัวเลขยาวออก (`redactDigits`) · **ไฟล์ข้อมูลส่วนบุคคล** (`canceled_by` = ชื่อแอดมิน · ข้อความอิสระอาจมีชื่อ)
+ * — เจ้าของเท่านั้น (`CANCELED_CSV_NOTES`)
  */
 export function canceledCsv(
   book: LegacyBook,
@@ -367,18 +537,22 @@ export function canceledCsv(
         canceledMap.get(c.code) ?? '',
       ];
     });
-  return csvText(
-    [
-      'legacy_code',
-      'legacy_status',
-      'contract_date',
-      ...CANCELED_FIELDS,
-      'canceled_remark',
-      'baddebt_at',
-      'baddebt_remark',
-      'resolution',
-    ],
-    rows,
+  return (
+    CANCELED_CSV_NOTES.join('\n') +
+    '\n' +
+    csvText(
+      [
+        'legacy_code',
+        'legacy_status',
+        'contract_date',
+        ...CANCELED_FIELDS,
+        'canceled_remark',
+        'baddebt_at',
+        'baddebt_remark',
+        'resolution',
+      ],
+      rows,
+    )
   );
 }
 
@@ -531,11 +705,18 @@ export function sampleCsv(plan: ImportPlan, codes: readonly string[]): string {
   );
 }
 
+/** ข้อเตือนของ `plan-import.ts` ที่ขึ้นต้นด้วยรหัส — สำนักงานบัญชีต้องดูทุกแถว (นับแยกใน `summary.json` / `import-result.json`) */
+export const UNEXPLAINED_WARNING_KINDS = [
+  'SATANG_GAP_UNEXPLAINED',
+  'PEAK_LOWER_UNEXPLAINED',
+] as const;
+
 /**
  * ชนิดของข้อเตือน (ข้อความจาก `payments.ts` / `plan-import.ts`) — "ยอดจ่ายของงวดมากกว่าใบรับเงิน" ของสัญญาที่ปรับยอดตาม PEAK
  * แยกเป็น `PAID_ABOVE_RECEIPTS_PEAK_ADJUSTED` (ยอดจ่ายเพิ่มมาจาก PEAK ไม่ใช่ระบบเก่าผิด — carry ของ Task 5)
  */
 export function warningKind(message: string, item: PlannedContract): string {
+  for (const kind of UNEXPLAINED_WARNING_KINDS) if (message.startsWith(`${kind}:`)) return kind;
   if (message.includes('มียอดจ่ายในระบบเก่าแต่ไม่มีใบรับเงิน')) return 'PAID_WITHOUT_RECEIPT';
   if (message.includes('มากกว่ายอดจ่ายของงวด')) return 'RECEIPTS_ABOVE_PAID';
   if (message.includes('มากกว่าใบรับเงิน')) {
@@ -615,4 +796,36 @@ export function gateFailuresCsv(gates: readonly GateResult[]): string {
     for (const f of failures) rows.push([g.id, GATE_LABELS[g.id], f.code, f.detail]);
   }
   return csvText(['gate', 'label', 'legacy_code', 'detail'], rows);
+}
+
+/** จำนวนข้อเตือนต่อชนิด + จำนวนของ `UNEXPLAINED_WARNING_KINDS` (0 เมื่อไม่มี) */
+export function warningSummary(warnings: ReadonlyArray<{ kind: string }>) {
+  const byKind = countBy(warnings, (w) => w.kind);
+  return {
+    count: warnings.length,
+    byKind,
+    unexplained: Object.fromEntries(UNEXPLAINED_WARNING_KINDS.map((k) => [k, byKind[k] ?? 0])),
+  };
+}
+
+/**
+ * ผลด่านที่ id ซ้ำรวมเป็นแถวเดียว (ผ่านเมื่อทุกแถวผ่าน · รายละเอียดต่อกัน · failures รวม) — ลำดับตามที่พบครั้งแรก
+ */
+export function dedupeGates(gates: readonly GateResult[]): GateResult[] {
+  const byId = new Map<GateId, GateResult>();
+  for (const g of gates) {
+    const prev = byId.get(g.id);
+    if (!prev) {
+      byId.set(g.id, g);
+      continue;
+    }
+    const failures = [...(prev.failures ?? []), ...(g.failures ?? [])];
+    byId.set(g.id, {
+      ...prev,
+      pass: prev.pass && g.pass,
+      detail: prev.detail === g.detail ? prev.detail : `${prev.detail} · ${g.detail}`,
+      ...(failures.length > 0 ? { failures } : {}),
+    });
+  }
+  return [...byId.values()];
 }

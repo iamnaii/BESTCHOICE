@@ -1,8 +1,8 @@
-import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
+import { Injectable, OnModuleInit, OnApplicationShutdown, Logger } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client-finance';
 
 @Injectable()
-export class PrismaFinanceService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+export class PrismaFinanceService extends PrismaClient implements OnModuleInit, OnApplicationShutdown {
   private readonly logger = new Logger(PrismaFinanceService.name);
   /**
    * SP7.1 hotfix — bc_finance DB is optional until provisioned.
@@ -43,7 +43,12 @@ export class PrismaFinanceService extends PrismaClient implements OnModuleInit, 
     this.logger.log('Finance database connected');
   }
 
-  async onModuleDestroy() {
+  /**
+   * ตัด DB ใน onApplicationShutdown (เฟสสุดท้าย) ไม่ใช่ onModuleDestroy —
+   * เพื่อให้ CronLifecycleService.beforeApplicationShutdown หยุด cron และรองานค้าง
+   * ให้จบก่อน (เดิม DB ถูกตัดก่อน cron หยุด → error ตอน instance ปิด)
+   */
+  async onApplicationShutdown() {
     if (!this.isEnabled) return;
     await this.$disconnect();
     this.logger.log('Finance database disconnected');

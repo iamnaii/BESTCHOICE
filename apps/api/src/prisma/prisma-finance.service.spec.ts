@@ -22,7 +22,7 @@ describeOrSkip('PrismaFinanceService', () => {
   });
 
   afterAll(async () => {
-    if (service) await service.onModuleDestroy();
+    if (service) await service.onApplicationShutdown();
   });
 
   it('connects to bc_finance DB', async () => {

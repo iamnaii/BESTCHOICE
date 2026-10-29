@@ -1,8 +1,8 @@
-import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
+import { Injectable, OnModuleInit, OnApplicationShutdown, Logger } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 
 @Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+export class PrismaService extends PrismaClient implements OnModuleInit, OnApplicationShutdown {
   private readonly logger = new Logger(PrismaService.name);
 
   constructor() {
@@ -28,7 +28,12 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     this.logger.log('Database connected');
   }
 
-  async onModuleDestroy() {
+  /**
+   * ตัด DB ใน onApplicationShutdown (เฟสสุดท้าย) ไม่ใช่ onModuleDestroy —
+   * เพื่อให้ CronLifecycleService.beforeApplicationShutdown หยุด cron และรองานค้าง
+   * ให้จบก่อน (เดิม DB ถูกตัดก่อน cron หยุด → error ตอน instance ปิด)
+   */
+  async onApplicationShutdown() {
     await this.$disconnect();
     this.logger.log('Database disconnected');
   }

@@ -24,7 +24,8 @@ import { EquityModule } from '../../modules/equity/equity.module';
  * R3 — ห้าม import AppModule เด็ดขาด: app.module.ts:170 มี ScheduleModule.forRoot()
  * ซึ่งจะลงทะเบียน cron ทั้ง 17 ตัว (2A accrual 00:01, ECL 00:30, VAT 60 วัน 02:00, ฯลฯ)
  * ตอน onApplicationBootstrap — และไม่มี env flag ปิด cron (grep DISABLE_CRON /
- * CRON_ENABLED แล้วไม่พบ). ScheduleModule.forRoot() อยู่ที่ app.module.ts ที่เดียว
+ * CRON_ENABLED แล้วไม่พบ — ปัจจุบันมี CRON_ENABLED แล้ว แต่กฎนี้ยังคงอยู่).
+ * ScheduleModule.forRoot*() อยู่ที่ app.module.ts ที่เดียว
  * ⇒ ไม่ import AppModule = ไม่มี timer ใดถูกตั้ง. คลาส *Cron ที่ติดมากับ feature module
  * (GhostSaleCron, BookingExpireCron, RecurringBillsCron ฯลฯ) ถูก instantiate ได้
  * แต่ @Cron decorator เป็นแค่ metadata — ไม่มี SchedulerOrchestrator ก็ไม่มี timer.

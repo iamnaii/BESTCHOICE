@@ -3,6 +3,8 @@ import { EmployeeAccessModule } from './modules/employee-access/employee-access.
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
+import { scheduleModuleOptions } from './common/cron/cron-enabled';
+import { CronLifecycleService } from './common/cron/cron-lifecycle.service';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { clientIp } from './utils/client-ip.util';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
@@ -171,7 +173,9 @@ import { AppCacheModule } from './cache/cache.module';
         '.env',
       ],
     }),
-    ScheduleModule.forRoot(),
+    // CRON_ENABLED=false → ไม่ลงทะเบียน @Cron/@Interval/@Timeout เลย (ใช้กับ bestchoice-api
+    // หลังแยก bestchoice-worker). forRootAsync ให้ factory อ่าน env หลัง ConfigModule โหลด .env แล้ว
+    ScheduleModule.forRootAsync({ useFactory: () => scheduleModuleOptions() }),
     ThrottlerModule.forRoot({
       throttlers: [
         {
@@ -408,6 +412,7 @@ import { AppCacheModule } from './cache/cache.module';
   ],
   controllers: [AppController],
   providers: [
+    CronLifecycleService,
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,

@@ -13,6 +13,7 @@ import { AppModule } from './app.module';
 import { configureApp } from './app.setup';
 import { validateEnv } from './utils/env-validation';
 import { GcpJsonLogger } from './common/logger/gcp-json.logger';
+import { CronLifecycleService } from './common/cron/cron-lifecycle.service';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -32,6 +33,8 @@ async function bootstrap() {
 
   const port = process.env.PORT || 3000;
   await app.listen(port);
+  // ห่อ cron ที่อาจลงทะเบียนหลัง CronLifecycleService.onApplicationBootstrap (idempotent)
+  app.get(CronLifecycleService).instrumentJobs();
   logger.log(`API server running on http://localhost:${port}`);
 }
 bootstrap().catch((err) => {

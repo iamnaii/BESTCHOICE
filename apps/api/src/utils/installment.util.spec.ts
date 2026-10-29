@@ -1,4 +1,10 @@
-import { calculateInstallment, calculateInstallmentWithInterest, roundBaht } from './installment.util';
+import {
+  calculateInstallment,
+  calculateInstallmentWithInterest,
+  generatePaymentSchedule,
+  paymentBreakdowns,
+  roundBaht,
+} from './installment.util';
 
 describe('calculateInstallment ↔ calculateInstallmentWithInterest equivalence', () => {
   it('produces identical output for the same (rate × months) interest', () => {
@@ -72,3 +78,34 @@ describe('Contract math — feature flag off (legacy preserved)', () => {
   it('keeps separate CPA rounding when rounding the gross monthly total would add one satang', () => {
     expect(calculateInstallmentWithInterest(10000, 2000, 2400, 12, 0.10, 0.07).monthlyPayment).toBe(998.66);
   });
+
+describe('paymentBreakdowns — per-row principal / interest / commission / VAT (shared with generatePaymentSchedule)', () => {
+  const totals = { principal: 10000, interestTotal: 6000, storeCommission: 1000, vatAmount: 1190 };
+
+  it('equals the breakdown columns generatePaymentSchedule writes (CPA 17,000 / 12)', () => {
+    const schedule = generatePaymentSchedule('c', 12, 18190, 1515.83, 1, totals, new Date('2026-01-05T03:00:00Z'));
+    const rows = paymentBreakdowns(
+      totals,
+      12,
+      schedule.map((p) => p.amountDue),
+    );
+    expect(rows).toEqual(
+      schedule.map((p) => ({
+        principal: p.monthlyPrincipal,
+        interest: p.monthlyInterest,
+        commission: p.monthlyCommission,
+        vat: p.vatAmount,
+      })),
+    );
+    expect(rows[0]).toEqual({ principal: 833.33, interest: 500, commission: 83.33, vat: 99.17 });
+  });
+
+  it('the four columns always sum to the row amount — VAT absorbs billing satang', () => {
+    const amounts = [...Array(11).fill(1515.84), 1515.83];
+    const rows = paymentBreakdowns(totals, 12, amounts);
+    rows.forEach((row, i) =>
+      expect(roundBaht(row.principal + row.interest + row.commission + row.vat)).toBe(amounts[i]),
+    );
+    expect(rows[0].vat).toBe(99.18);
+  });
+});

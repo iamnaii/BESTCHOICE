@@ -286,8 +286,10 @@ export class PeakExportService {
     //     11-2106 with no 41-1101 pair, so a legacy contract's close-old entry (and its
     //     exchange-cancel mirror) exports unbalanced by the unearned interest. How PEAK should book
     //     that side is open. `legacyUnbalancedEntryCount` / X-Legacy-Unbalanced-Entries flags every
-    //     entry that balanced before this drop and not after; entries already unbalanced in the file
-    //     because of unmapped (skipped) lines are not counted. Nothing in this path asserts balance.
+    //     entry whose journal lines balanced before this drop and not after (checked before the
+    //     PEAK-code mapping). Imbalance caused only by lines without a PEAK code is not counted; an
+    //     entry that the interest drop unbalances is always counted, even if it also has unmapped
+    //     lines. Nothing in this path asserts balance.
     let excludedLegacyInterestLines = 0;
     const droppedNetByEntry = new Map<string, Prisma.Decimal>();
     const exportable = kept.filter((ln) => {

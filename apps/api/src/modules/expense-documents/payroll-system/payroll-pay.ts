@@ -143,3 +143,29 @@ export function payrollTaxableGross(line: {
   const gross = line.baseSalary.add(income).sub(clawback);
   return gross.lt(0) ? new Prisma.Decimal(0) : gross;
 }
+
+/**
+ * หัก ณ ที่จ่ายค่าคอม (คำตัดสินเจ้าของ 2026-10-29) = 3% ของ (ค่าคอมงวดนี้ − หักคืนค่าคอมในบรรทัดเดียวกัน) ไม่ต่ำกว่า 0 ·
+ * HALF_UP 2 ตำแหน่งครั้งเดียวต่อบรรทัด · แยกแถวจากภาษีเงินเดือน (`whtAmount`) แต่ยื่น ภ.ง.ด.1 ใบเดียวกัน (`payrollLineWithheld`)
+ */
+export const COMMISSION_WHT_RATE = new Prisma.Decimal('0.03');
+export const COMMISSION_WHT_NAME = 'หัก ณ ที่จ่ายค่าคอม 3%';
+
+export function commissionWithholding(commission: Prisma.Decimal, clawback: Prisma.Decimal): Prisma.Decimal {
+  const base = commission.minus(clawback);
+  return base.lte(0) ? new Prisma.Decimal(0) : base.mul(COMMISSION_WHT_RATE).toDecimalPlaces(2, HALF_UP);
+}
+
+/**
+ * ภาษีหัก ณ ที่จ่ายของแถวเงินเดือนที่ยื่น ภ.ง.ด.1 / 50 ทวิ / นำส่ง = ภาษีเงินเดือน + รายการหัก `COMMISSION_WHT`
+ * (ต้องส่ง `source` ของรายการหักมาเสมอ — หักคืนค่าคอม/รายการหักมือไม่ใช่ภาษี)
+ */
+export function payrollLineWithheld(line: {
+  whtAmount: Prisma.Decimal;
+  customDeduction?: Array<{ amount: Prisma.Decimal; source: PayrollDeductionSource }> | null;
+}): Prisma.Decimal {
+  return (line.customDeduction ?? []).reduce(
+    (s, r) => (r.source === 'COMMISSION_WHT' ? s.add(r.amount) : s),
+    new Prisma.Decimal(line.whtAmount.toString()),
+  );
+}

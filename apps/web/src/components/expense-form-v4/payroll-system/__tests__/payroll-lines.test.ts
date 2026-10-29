@@ -170,6 +170,28 @@ describe('payrollLineTotals — net and the WHT base subtract system deductions 
     expect(t.netPaid).toBe(0);
   });
 
+  it('owner 2026-10-29 — commission WHT 3% is a system deduction: net subtracts it, the ภ.ง.ด.1 gross keeps the commission, the salary WHT base leaves commission and clawback out', () => {
+    const line = newPayrollLine({
+      baseSalary: '15000',
+      ssoEmployee: '750',
+      systemIncome: [
+        { source: 'ATTENDANCE_OT', accountCode: 'S52-1202', name: 'OT', quantity: '1.5', rate: '93.75', multiplier: '1.5', amount: '140.63' },
+        { source: 'COMMISSION', accountCode: 'S51-1101', name: 'ค่าคอมมิชชัน (2 รายการ)', quantity: null, rate: null, multiplier: null, amount: '1000.00' },
+      ],
+      systemDeductions: [
+        { source: 'COMMISSION_CLAWBACK', accountCode: 'S51-1101', name: 'หักคืนค่าคอม (1 รายการ)', amount: '300.00' },
+        { source: 'COMMISSION_WHT', accountCode: 'S21-3101', name: 'หัก ณ ที่จ่ายค่าคอม 3%', amount: '21.00' },
+      ],
+    });
+    const t = payrollLineTotals(line);
+    expect(t.commissionIncome).toBe(1000);
+    expect(t.clawback).toBe(300);
+    expect(t.commissionWht).toBe(21);
+    expect(t.taxableBase).toBe(15840.63); // ภ.ง.ด.1: 15,000 + 140.63 + 1,000 − 300
+    expect(t.salaryTaxableBase).toBe(15140.63); // ภาษีเงินเดือน: ไม่รวมค่าคอมและหักคืน
+    expect(t.netPaid).toBe(15069.63); // 15,000 + 140.63 + 1,000 − 300 − 21 − 750
+  });
+
   it('only COMMISSION_CLAWBACK system deductions reduce the WHT base (a future system deduction source would not)', () => {
     const line = newPayrollLine({
       baseSalary: '10000',

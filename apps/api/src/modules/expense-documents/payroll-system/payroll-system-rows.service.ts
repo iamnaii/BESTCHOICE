@@ -6,11 +6,21 @@ import { bangkokMidnight } from '../../../utils/date.util';
 import { AttendanceSettingsService } from '../../attendance/attendance-settings.service';
 import { cellStatusOf, dbDate, fromDbDate, summarizeAttendanceMonth, workDateOf, workDateString, type ScheduleRules } from '../../attendance/attendance-rules';
 import { loadCommissionState, type UserCommissionState } from './payroll-commission-state';
-import { displayRate, isAutoOtEligible, monthPayHours, payrollCutoff, systemIncomeAmount, type PayDay } from './payroll-pay';
+import {
+  COMMISSION_WHT_NAME,
+  commissionWithholding,
+  displayRate,
+  isAutoOtEligible,
+  monthPayHours,
+  payrollCutoff,
+  systemIncomeAmount,
+  type PayDay,
+} from './payroll-pay';
 import { resolveRoleCodes } from './role-codes';
 import {
   ATTENDANCE_INCOME_SOURCES,
   SHOP_COMMISSION_ROLE,
+  SHOP_WHT_PAYROLL_ROLE,
   type CommissionItemOut,
   type ReviewDay,
   type SystemDeductionRow,
@@ -31,6 +41,7 @@ const ROW_NAME = { ot: 'OT วันทำงาน (1.5 เท่า)', holiday
 type DayRow = Pick<AttendanceDay, 'id' | 'userId' | 'branchId' | 'workDate' | 'dayKind' | 'clockIn' | 'clockOut' | 'otHours' | 'lateMinutes' | 'flags'>;
 
 const ZERO = new Prisma.Decimal(0);
+const isClawbackRow = (d: SystemDeductionRow) => d.source === 'COMMISSION_CLAWBACK';
 
 interface CommissionRows {
   income: SystemIncomeRow | null;
@@ -43,8 +54,9 @@ interface CommissionRows {
  * สถานะค่าคอมของคนหนึ่ง → แถว COMMISSION + หักคืน + รายการ + คำเตือน (ฟังก์ชันบริสุทธิ์ — กติกาเลือกค่าคอมอยู่ใน loadCommissionState)
  * - หักคืนตามลำดับ [clawbackAt, id] ได้ไม่เกิน Σ ค่าคอมงวดนี้ (Decision 2 — ม.76: ไม่หักจากเงินเดือน) · ส่วนที่เหลือยกไปงวดหน้า
  * - P2-R6: ยอด 0 ไม่เป็นแถว/รายการ · CLAWBACK_CARRIED หนึ่งคำเตือนต่อบรรทัด เฉพาะเมื่อมียอดยก
+ * - หัก ณ ที่จ่ายค่าคอม 3% ของ (ค่าคอมงวดนี้ − หักคืนงวดนี้) — แถวเดียวบนบัญชี `whtCode` ต่อท้ายหักคืน (ยอด 0 = ไม่มีแถว)
  */
-function commissionRows(s: UserCommissionState, commissionCode: string): CommissionRows {
+function commissionRows(s: UserCommissionState, commissionCode: string, whtCode: string): CommissionRows {
   const warnings: SystemWarning[] = s.heldElsewhere.map((g) => ({
     code: 'COMMISSION_IN_OTHER_DOCUMENT',
     count: g.commissionIds.length,
@@ -111,7 +123,9 @@ function commissionRows(s: UserCommissionState, commissionCode: string): Commiss
 
   const deductions: SystemDeductionRow[] = [...byAccount.entries()]
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([accountCode, g]) => ({ source: 'COMMISSION_CLAWBACK', accountCode, name: `หักคืนค่าคอม (${g.count} รายการ)`, amount: g.amount.toFixed(2) }));
+    .map(([accountCode, g]): SystemDeductionRow => ({ source: 'COMMISSION_CLAWBACK', accountCode, name: `หักคืนค่าคอม (${g.count} รายการ)`, amount: g.amount.toFixed(2) }));
+  const wht = commissionWithholding(payTotal, deducted);
+  if (wht.gt(0)) deductions.push({ source: 'COMMISSION_WHT', accountCode: whtCode, name: COMMISSION_WHT_NAME, amount: wht.toFixed(2) });
   return { income, deductions, items, warnings };
 }
 
@@ -148,7 +162,7 @@ export class PayrollSystemRowsService {
     const otRole = `${prefix}payroll_overtime`;
     const holidayRole = `${prefix}payroll_holiday`;
     // P2-R15 — role ค่าคอมมีเฉพาะ SHOP (ขอ role ฝั่ง FINANCE = BadRequest ทุกครั้งที่บันทึกใบ FINANCE)
-    const codes = await resolveRoleCodes(client, shop ? [otRole, holidayRole, SHOP_COMMISSION_ROLE] : [otRole, holidayRole]);
+    const codes = await resolveRoleCodes(client, shop ? [otRole, holidayRole, SHOP_COMMISSION_ROLE, SHOP_WHT_PAYROLL_ROLE] : [otRole, holidayRole]);
     const attendanceAccountCodes = [...new Set([codes[otRole], codes[holidayRole]])];
     const commissionCode = shop ? codes[SHOP_COMMISSION_ROLE] : null;
 
@@ -247,7 +261,9 @@ export class PayrollSystemRowsService {
       if (!hasPin.get(userId) && !attendanceTracked) warnings.push({ code: 'NO_PIN' });
       else if (autoOtEligible && !attendanceTracked) warnings.push({ code: 'NO_ATTENDANCE' });
       const commission: CommissionRows =
-        commissions && commissionCode ? commissionRows(commissions.get(userId)!, commissionCode) : { income: null, deductions: [], items: [], warnings: [] };
+        commissions && commissionCode
+          ? commissionRows(commissions.get(userId)!, commissionCode, codes[SHOP_WHT_PAYROLL_ROLE])
+          : { income: null, deductions: [], items: [], warnings: [] };
       warnings.push(...commission.warnings);
       if (q.now.getTime() < cutoff.getTime()) warnings.push({ code: 'NOT_YET_CLOSABLE', closableAt: cutoff.toISOString() });
 
@@ -305,7 +321,7 @@ export class PayrollSystemRowsService {
     });
 
     const commissionAccountCodes = commissionCode
-      ? [...new Set([commissionCode, ...rows.flatMap((r) => r.systemDeductions.map((d) => d.accountCode))])]
+      ? [...new Set([commissionCode, ...rows.flatMap((r) => r.systemDeductions.filter(isClawbackRow).map((d) => d.accountCode))])]
       : [];
     return { attendanceAccountCodes, commissionAccountCodes, rows };
   }

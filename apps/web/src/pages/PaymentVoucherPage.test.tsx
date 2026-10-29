@@ -344,6 +344,39 @@ describe('PayrollSlipSheet (PAYROLL voucher)', () => {
       expect(within(screen.getByRole('row', { name: /รวมรายการหัก/ })).getByText('1,750.00')).toBeInTheDocument();
     });
 
+    // คำตัดสินเจ้าของ 2026-10-29 (กระดาน 7) — ภาษีค่าคอม 3% เป็นแถวของตัวเองต่อจากภาษีเงินเดือน · สูตรในช่องกลาง
+    it('a commission WHT row prints as หัก ณ ที่จ่ายค่าคอม 3% (ภ.ง.ด. 1) with 3% × base, next to the salary WHT row (shown even at 0.00)', async () => {
+      mountSlip({
+        ...commissionLine,
+        netPaid: '15069.63',
+        customIncome: [
+          income({ id: 'i8', accountCode: 'S52-1202', name: 'ค่าล่วงเวลา', amount: '140.63', source: 'ATTENDANCE_OT' }),
+          income({ id: 'i9', accountCode: 'S51-1101', name: 'ค่าคอมมิชชัน (2 รายการ)', amount: '1000.00', source: 'COMMISSION' }),
+        ],
+        customDeduction: [
+          { id: 'd9', accountCode: 'S51-1101', name: 'หักคืนค่าคอม (1 รายการ)', amount: '300.00', source: 'COMMISSION_CLAWBACK' },
+          { id: 'd10', accountCode: 'S21-3101', name: 'หัก ณ ที่จ่ายค่าคอม 3%', amount: '21.00', source: 'COMMISSION_WHT' },
+        ],
+        systemNotes: { review: [], warnings: [] },
+      });
+      const salary = await screen.findByRole('row', { name: /หัก ณ ที่จ่าย เงินเดือน \(ภ\.ง\.ด\. 1\)/ });
+      expect(within(salary).getByText('0.00')).toBeInTheDocument();
+      const wht = screen.getByRole('row', { name: /หัก ณ ที่จ่ายค่าคอม 3% \(ภ\.ง\.ด\. 1\)/ });
+      expect(within(wht).getByText('3% × 700.00')).toBeInTheDocument();
+      expect(within(wht).getByText('21.00')).toBeInTheDocument();
+      expect(wht).not.toHaveTextContent('S21-3101');
+      // ลำดับ: ประกันสังคม · ภาษีเงินเดือน · ภาษีค่าคอม · หักคืนค่าคอม · รวม
+      const table = wht.closest('table') as HTMLElement;
+      expect(within(table).getAllByRole('row').map((r) => (r as HTMLTableRowElement).cells[0]?.textContent)).toEqual([
+        'เงินสมทบประกันสังคม (พนักงาน)',
+        'หัก ณ ที่จ่าย เงินเดือน (ภ.ง.ด. 1)',
+        'หัก ณ ที่จ่ายค่าคอม 3% (ภ.ง.ด. 1)',
+        'S51-1101หักคืนค่าคอม (1 รายการ)',
+        'รวมรายการหัก',
+      ]);
+      expect(within(screen.getByRole('row', { name: /รวมรายการหัก/ })).getByText('1,071.00')).toBeInTheDocument();
+    });
+
     it('more than two commissions → the first two references and "และอีก k รายการ" (one line keeps the one-sheet budget)', async () => {
       const many = ['a', 'b', 'c', 'd', 'e', 'f'].map((k) => scItem(k, 'PAY', '100.00', { sale: `SL-${k}` }));
       mountSlip({ ...commissionLine, customDeduction: [], systemNotes: null, commissionItems: many });

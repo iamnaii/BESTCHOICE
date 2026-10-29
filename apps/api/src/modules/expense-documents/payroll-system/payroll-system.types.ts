@@ -14,6 +14,8 @@ export const ATTENDANCE_INCOME_SOURCES = ['ATTENDANCE_OT', 'ATTENDANCE_HOLIDAY',
 
 /** role ของบัญชีค่าคอม — มีเฉพาะฝั่ง SHOP (ไม่มี role ฝั่ง FINANCE: ใบ FINANCE ไม่ดึงค่าคอม) */
 export const SHOP_COMMISSION_ROLE = 'shop_payroll_commission';
+/** บัญชีของแถวหัก ณ ที่จ่ายค่าคอม = บัญชี ภ.ง.ด.1 ค้างจ่ายฝั่ง SHOP (role เดียวกับภาษีเงินเดือนใน PayrollTemplate) */
+export const SHOP_WHT_PAYROLL_ROLE = 'shop_wht_payroll';
 
 export interface SystemRowsQuery {
   branchId: string;
@@ -41,12 +43,14 @@ export interface SystemIncomeRow {
 }
 
 /**
- * รายการหักที่ระบบคิด — หักคืนค่าคอมที่จ่ายผ่านใบเงินเดือนที่ลงบัญชีแล้วแต่ถูกเรียกคืน
- * หนึ่งแถวต่อบัญชีของรายการ PAY ที่จ่ายไป (Cr บัญชีนั้น ไม่ใช่ role ปัจจุบัน) · ชื่อ `หักคืนค่าคอม ({n} รายการ)`
- * (n = รายการ CLAWBACK บนบัญชีนั้น) · ยอด > 0 เสมอ · เรียงตามรหัสบัญชี
+ * รายการหักที่ระบบคิด (ยอด > 0 เสมอ):
+ * - `COMMISSION_CLAWBACK` หักคืนค่าคอมที่จ่ายผ่านใบเงินเดือนที่ลงบัญชีแล้วแต่ถูกเรียกคืน — หนึ่งแถวต่อบัญชีของรายการ PAY ที่จ่ายไป
+ *   (Cr บัญชีนั้น ไม่ใช่ role ปัจจุบัน) · ชื่อ `หักคืนค่าคอม ({n} รายการ)` (n = รายการ CLAWBACK บนบัญชีนั้น) · เรียงตามรหัสบัญชี
+ * - `COMMISSION_WHT` หัก ณ ที่จ่ายค่าคอม 3% (`commissionWithholding` — คำตัดสินเจ้าของ 2026-10-29) — แถวเดียว ต่อท้ายหักคืน ·
+ *   บัญชี role `shop_wht_payroll` · ชื่อ `COMMISSION_WHT_NAME`
  */
 export interface SystemDeductionRow {
-  source: 'COMMISSION_CLAWBACK';
+  source: 'COMMISSION_CLAWBACK' | 'COMMISSION_WHT';
   accountCode: string;
   name: string;
   amount: string;

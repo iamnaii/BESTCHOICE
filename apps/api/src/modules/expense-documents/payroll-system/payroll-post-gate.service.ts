@@ -7,7 +7,7 @@ import { DEVICE_CONFLICT_FLAG } from '../../attendance/attendance-device.service
 import { fromDbDate, workDateString } from '../../attendance/attendance-rules';
 import { loadCommissionState, referenceOf, type UserCommissionState } from './payroll-commission-state';
 import { releaseCommissionItems, revertCommissionPayment } from './payroll-commission-items';
-import { payrollCutoff, payrollDocumentLockKey } from './payroll-pay';
+import { COMMISSION_WHT_NAME, commissionWithholding, payrollCutoff, payrollDocumentLockKey } from './payroll-pay';
 import { lockPayrollAttendance, lockPayrollClawback } from './payroll-save';
 import { PayrollSystemRowsService, periodRange } from './payroll-system-rows.service';
 import { ATTENDANCE_INCOME_SOURCES, type StaleDiff, type SystemIncomeRow, type SystemWarning } from './payroll-system.types';
@@ -134,6 +134,8 @@ interface GateLine {
   commissionIncome: StoredMoneyRow[];
   /** รายการหัก COMMISSION_CLAWBACK ที่เก็บไว้ (หนึ่งแถวต่อบัญชี) */
   clawbackDeductions: StoredMoneyRow[];
+  /** รายการหัก COMMISSION_WHT ที่เก็บไว้ (มากสุดหนึ่งแถว) */
+  commissionWht: StoredMoneyRow[];
   items: GateItem[];
 }
 
@@ -225,7 +227,8 @@ const moneyDiff = (line: Pick<GateLine, 'userId' | 'employeeName'>, label: strin
  * P2-R2 — รายการค่าคอมของบรรทัดที่เก็บไว้ยังถูกต้องไหม (ไม่เทียบกับ compute — กติกาจ่ายได้/หักได้มาจาก `loadCommissionState` ชุดเดียว)
  * (a) Σ แถว COMMISSION = Σ รายการ PAY · (b) Σ แถว COMMISSION_CLAWBACK ต่อบัญชี = Σ รายการ CLAWBACK ต่อบัญชี ·
  * (c) ค่าคอมของรายการ PAY ยังจ่ายได้ (APPROVED · ไม่ถูกลบ · ยอดเท่ารายการ) · (d) ค่าคอมของรายการ CLAWBACK ยังหักได้
- * (CLAWED_BACK / PARTIALLY_CLAWED_BACK · มี paidAt · มีรายการ PAY ในใบที่ลงบัญชีแล้วบนบัญชีนี้ · คงเหลือหลังใบอื่น ≥ รายการ)
+ * (CLAWED_BACK / PARTIALLY_CLAWED_BACK · มี paidAt · มีรายการ PAY ในใบที่ลงบัญชีแล้วบนบัญชีนี้ · คงเหลือหลังใบอื่น ≥ รายการ) ·
+ * (e) แถว COMMISSION_WHT = `commissionWithholding(Σ แถว COMMISSION, Σ แถว COMMISSION_CLAWBACK)` ของที่เก็บไว้ (คำตัดสินเจ้าของ 2026-10-29)
  * ป้าย: ชื่อแถว (a)/(b) · `ค่าคอม {อ้างอิง}` / `หักคืนค่าคอม {อ้างอิง}` (c)/(d) · ไม่มีชั่วโมง · ยอดปัจจุบัน = ที่จ่าย/หักได้ตอนนี้ (ไม่มี = 0.00)
  */
 function commissionDiffs(line: GateLine, state: UserCommissionState | undefined): StaleDiff[] {
@@ -246,6 +249,9 @@ function commissionDiffs(line: GateLine, state: UserCommissionState | undefined)
     const current = total(onAccount);
     if (!stored.equals(current)) diffs.push(moneyDiff(line, rows[0]?.name ?? `หักคืนค่าคอม (${onAccount.length} รายการ)`, stored, current));
   }
+  const storedWht = total(line.commissionWht);
+  const expectedWht = commissionWithholding(storedIncome, total(line.clawbackDeductions));
+  if (!storedWht.equals(expectedWht)) diffs.push(moneyDiff(line, COMMISSION_WHT_NAME, storedWht, expectedWht));
 
   for (const item of pay) {
     const payable = state?.payable.find((p) => p.id === item.salesCommissionId);
@@ -436,8 +442,8 @@ export class PayrollPostGateService {
               select: { source: true, accountCode: true, name: true, amount: true, quantity: true },
             },
             customDeduction: {
-              where: { source: 'COMMISSION_CLAWBACK' },
-              select: { accountCode: true, name: true, amount: true },
+              where: { source: { in: ['COMMISSION_CLAWBACK', 'COMMISSION_WHT'] } },
+              select: { source: true, accountCode: true, name: true, amount: true },
             },
             commissionItems: {
               where: { releasedAt: null },
@@ -459,7 +465,8 @@ export class PayrollPostGateService {
         employeeName: l.employeeName,
         stored: l.customIncome.filter((i) => i.source !== 'COMMISSION'),
         commissionIncome: l.customIncome.filter((i) => i.source === 'COMMISSION'),
-        clawbackDeductions: l.customDeduction,
+        clawbackDeductions: l.customDeduction.filter((d) => d.source === 'COMMISSION_CLAWBACK'),
+        commissionWht: l.customDeduction.filter((d) => d.source === 'COMMISSION_WHT'),
         items: l.commissionItems.map((i) => ({
           salesCommissionId: i.salesCommissionId,
           kind: i.kind,

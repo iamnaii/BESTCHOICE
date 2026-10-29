@@ -236,6 +236,9 @@ async function lineOf(documentId: string, userId: string) {
 const itemsOfDoc = (documentId: string) =>
   prisma.payrollCommissionItem.findMany({ where: { payrollLine: { payroll: { documentId } } }, orderBy: { id: 'asc' } });
 
+/** หัก ณ ที่จ่ายค่าคอม 3% ของ (ค่าคอม − หักคืน) — คำตัดสินเจ้าของ 2026-10-29 · Cr บัญชี ภ.ง.ด.1 ค้างจ่ายฝั่ง SHOP */
+const whtDeduction = (amount: string) => ({ source: 'COMMISSION_WHT', accountCode: 'S21-3101', name: 'หัก ณ ที่จ่ายค่าคอม 3%', amount });
+
 async function jeLines(documentId: string) {
   const doc = await docOf(documentId);
   if (!doc.journalEntryId) return [];
@@ -349,10 +352,11 @@ describe('Payroll commission flow — store, gate, pay, void (Postgres)', () => 
     const saved = await lineOf(oct.id, u);
     expect(saved.commissionIncome).toEqual([{ accountCode: COMMISSION_CODE, name: 'ค่าคอมมิชชัน (1 รายการ)', amount: '1000.00' }]);
     expect(saved.items).toEqual([{ salesCommissionId: c.id, kind: 'PAY', accountCode: COMMISSION_CODE, amount: '1000.00', released: false }]);
-    expect(saved.deductions).toEqual([]);
-    expect(saved.netPaid).toBe('15150.00'); // 15,000 + 1,000 − 750 − 100
+    expect(saved.deductions).toEqual([whtDeduction('30.00')]);
+    expect(saved.netPaid).toBe('15120.00'); // 15,000 + 1,000 − 750 − 100 − ภาษีค่าคอม 30
     expect(money((await docOf(oct.id)).totalAmount)).toBe('16000.00');
-    expect(money((await docOf(oct.id)).netPayment)).toBe('15150.00');
+    expect(money((await docOf(oct.id)).netPayment)).toBe('15120.00');
+    expect(money((await docOf(oct.id)).withholdingTax)).toBe('130.00'); // ภาษีเงินเดือน 100 + ภาษีค่าคอม 30 (ใบสำคัญจ่ายพิมพ์ยอดนี้)
     expect((await commissionOf(c.id)).status).toBe('APPROVED'); // บันทึกร่างไม่แตะสถานะค่าคอม
 
     await submitAndApprove(oct.id, '2026-10');
@@ -360,8 +364,10 @@ describe('Payroll commission flow — store, gate, pay, void (Postgres)', () => 
     expect(posted.status).toBe('POSTED');
     const je = await jeLines(oct.id);
     expect(je).toContainEqual({ accountCode: COMMISSION_CODE, dr: '1000.00', cr: '0.00' });
-    expect(je).toContainEqual({ accountCode: 'S11-1202', dr: '0.00', cr: '15150.00' });
-    expect(money(posted.netPayment)).toBe('15150.00');
+    expect(je).toContainEqual({ accountCode: 'S11-1202', dr: '0.00', cr: '15120.00' });
+    expect(je).toContainEqual({ accountCode: 'S21-3101', dr: '0.00', cr: '100.00' }); // ภาษีเงินเดือน
+    expect(je).toContainEqual({ accountCode: 'S21-3101', dr: '0.00', cr: '30.00' }); // ภาษีค่าคอม — แยกบรรทัด
+    expect(money(posted.netPayment)).toBe('15120.00');
 
     const paid = await commissionOf(c.id);
     expect(paid.status).toBe('PAID');
@@ -437,7 +443,10 @@ describe('Payroll commission flow — store, gate, pay, void (Postgres)', () => 
       const nov = await createDoc(branchId, '2026-11', [line(userId)]);
       const l = await lineOf(nov.id, userId);
       expect(l.commissionIncome).toEqual([{ accountCode: 'S51-1102', name: 'ค่าคอมมิชชัน (1 รายการ)', amount: '1000.00' }]);
-      expect(l.deductions).toEqual([{ source: 'COMMISSION_CLAWBACK', accountCode: COMMISSION_CODE, name: 'หักคืนค่าคอม (1 รายการ)', amount: '500.00' }]);
+      expect(l.deductions).toEqual([
+        { source: 'COMMISSION_CLAWBACK', accountCode: COMMISSION_CODE, name: 'หักคืนค่าคอม (1 รายการ)', amount: '500.00' },
+        whtDeduction('15.00'), // 3% × (1,000 − 500)
+      ]);
       expect(l.items).toEqual(
         [
           { salesCommissionId: commission.id, kind: 'CLAWBACK', accountCode: COMMISSION_CODE, amount: '500.00', released: false },
@@ -445,10 +454,10 @@ describe('Payroll commission flow — store, gate, pay, void (Postgres)', () => 
         ].sort((a, b) => `${a.kind}|${a.salesCommissionId}`.localeCompare(`${b.kind}|${b.salesCommissionId}`)),
       );
       expect(l.warnings).toEqual([]); // ยกไป 0 ⇒ ไม่มี CLAWBACK_CARRIED
-      expect(l.netPaid).toBe('14650.00'); // 15,000 + 1,000 − 500 − 750 − 100
+      expect(l.netPaid).toBe('14635.00'); // 15,000 + 1,000 − 500 − 750 − 100 − 15
       const stored = await docOf(nov.id);
       expect(money(stored.totalAmount)).toBe('16000.00');
-      expect(money(stored.netPayment)).toBe('14650.00');
+      expect(money(stored.netPayment)).toBe('14635.00');
 
       const view = (await query.findOne(nov.id, 'OWNER')) as unknown as {
         payroll: { lines: Array<{ commissionItems: Array<{ kind: string; releasedAt: Date | null; salesCommission: Record<string, unknown> }> }> };
@@ -469,11 +478,12 @@ describe('Payroll commission flow — store, gate, pay, void (Postgres)', () => 
       await submitAndApprove(nov.id, '2026-11');
       const posted = await docOf(nov.id);
       expect(posted.status).toBe('POSTED');
-      expect(money(posted.netPayment)).toBe('14650.00');
+      expect(money(posted.netPayment)).toBe('14635.00');
       const je = await jeLines(nov.id);
       expect(je).toContainEqual({ accountCode: 'S51-1102', dr: '1000.00', cr: '0.00' });
       expect(je).toContainEqual({ accountCode: COMMISSION_CODE, dr: '0.00', cr: '500.00' });
-      expect(je).toContainEqual({ accountCode: 'S11-1202', dr: '0.00', cr: '14650.00' });
+      expect(je).toContainEqual({ accountCode: 'S21-3101', dr: '0.00', cr: '15.00' });
+      expect(je).toContainEqual({ accountCode: 'S11-1202', dr: '0.00', cr: '14635.00' });
       expect((await commissionOf(novCommission.id)).status).toBe('PAID');
       const oct = await commissionOf(commission.id);
       expect(oct.status).toBe('PARTIALLY_CLAWED_BACK'); // หักคืนไม่แตะแถวค่าคอม — ยอดคงเหลือ = clawbackAmount − Σ รายการ CLAWBACK
@@ -499,16 +509,17 @@ describe('Payroll commission flow — store, gate, pay, void (Postgres)', () => 
     const nov = await createDoc(branchId, '2026-11', [line(userId)]);
     expect((await lineOf(nov.id, userId)).deductions).toEqual([
       { source: 'COMMISSION_CLAWBACK', accountCode: COMMISSION_CODE, name: 'หักคืนค่าคอม (1 รายการ)', amount: '500.00' },
+      whtDeduction('15.00'),
     ]);
 
     const decCommission = await mkCommission(userId, { period: '2026-12', amount: 800 });
     const dec = await createDoc(branchId, '2026-12', [line(userId)]);
     const l = await lineOf(dec.id, userId);
     expect(l.commissionIncome).toEqual([{ accountCode: COMMISSION_CODE, name: 'ค่าคอมมิชชัน (1 รายการ)', amount: '800.00' }]);
-    expect(l.deductions).toEqual([]);
+    expect(l.deductions).toEqual([whtDeduction('24.00')]); // ไม่มีหักคืน — 3% × 800
     expect(l.items).toEqual([{ salesCommissionId: decCommission.id, kind: 'PAY', accountCode: COMMISSION_CODE, amount: '800.00', released: false }]);
     expect(l.warnings).toEqual([{ code: 'COMMISSION_IN_OTHER_DOCUMENT', count: 1, documentId: nov.id, documentNumber: nov.number }]);
-    expect(l.netPaid).toBe('14950.00');
+    expect(l.netPaid).toBe('14926.00'); // 15,000 + 800 − 750 − 100 − 24
     expect((await itemsOfDoc(dec.id)).some((i) => i.salesCommissionId === commission.id)).toBe(false);
     expect((await itemsOfDoc(nov.id)).some((i) => i.salesCommissionId === novCommission.id)).toBe(true);
   });
@@ -520,7 +531,7 @@ describe('Payroll commission flow — store, gate, pay, void (Postgres)', () => 
     const v = await mkUser('edit-v', branchId);
     await mkCommission(v, { period: '2026-11', amount: 400 });
     const nov = await createDoc(branchId, '2026-11', [line(userId), line(v)]);
-    expect((await lineOf(nov.id, userId)).deductions).toHaveLength(1);
+    expect((await lineOf(nov.id, userId)).deductions).toHaveLength(2); // หักคืน + ภาษีค่าคอม
 
     // Task 6 payload: รายการหักที่ฟอร์มส่ง = เฉพาะ MANUAL ที่เก็บไว้ (ไม่ส่งแถวหักคืนของระบบ) + รายได้ที่กรอกเอง
     const formLines = [
@@ -535,12 +546,14 @@ describe('Payroll commission flow — store, gate, pay, void (Postgres)', () => 
     await updateDoc(nov.id, '2026-11', formLines);
     const expectedDeductions = [
       { source: 'COMMISSION_CLAWBACK', accountCode: COMMISSION_CODE, name: 'หักคืนค่าคอม (1 รายการ)', amount: '500.00' },
+      whtDeduction('15.00'),
       { source: 'MANUAL', accountCode: 'S21-1103', name: 'หักคืนเงินยืม', amount: '200.00' },
     ];
     const edited = await lineOf(nov.id, userId);
     expect(edited.deductions).toEqual(expectedDeductions);
-    expect(edited.netPaid).toBe('14750.00'); // 15,000 + 300 + 1,000 − 500 − 200 − 750 − 100
+    expect(edited.netPaid).toBe('14735.00'); // 15,000 + 300 + 1,000 − 500 − 200 − 750 − 100 − 15
     expect((await lineOf(nov.id, v)).deductions).toEqual([
+      whtDeduction('12.00'), // 3% × 400
       { source: 'MANUAL', accountCode: COMMISSION_CODE, name: 'หักค่าคอมจ่ายเกิน (กรอกเอง)', amount: '100.00' },
     ]);
 
@@ -552,8 +565,9 @@ describe('Payroll commission flow — store, gate, pay, void (Postgres)', () => 
     expect(submitted.items.filter((i) => i.kind === 'CLAWBACK')).toEqual([
       { salesCommissionId: expect.any(String), kind: 'CLAWBACK', accountCode: COMMISSION_CODE, amount: '500.00', released: false },
     ]);
-    expect(submitted.netPaid).toBe('14750.00');
+    expect(submitted.netPaid).toBe('14735.00');
     expect((await lineOf(nov.id, v)).deductions).toEqual([
+      whtDeduction('12.00'), // 3% × 400
       { source: 'MANUAL', accountCode: COMMISSION_CODE, name: 'หักค่าคอมจ่ายเกิน (กรอกเอง)', amount: '100.00' },
     ]);
 
@@ -617,7 +631,7 @@ describe('Payroll commission flow — store, gate, pay, void (Postgres)', () => 
     expect(await lineOf(oct.id, u)).toMatchObject({ commissionIncome: [], items: [], netPaid: '14150.00' });
   });
 
-  it('stored COMMISSION income / COMMISSION_CLAWBACK deduction tampered in the DB → PAYROLL_STALE labelled with the row name · restored → approve posts', async () => {
+  it('stored COMMISSION income / COMMISSION_CLAWBACK / COMMISSION_WHT deduction tampered in the DB → PAYROLL_STALE labelled with the row name (the WHT check (e) recomputes from the stored rows) · restored → approve posts', async () => {
     const { branchId, userId, name, contract } = await paidInOctober('tamper');
     await cronClawback50(contract.id);
     await mkCommission(userId, { period: '2026-11', amount: 1000 });
@@ -629,7 +643,8 @@ describe('Payroll commission flow — store, gate, pay, void (Postgres)', () => 
     await prisma.payrollCustomIncome.updateMany({ where: { ...where, source: 'COMMISSION' }, data: { amount: 900 } });
     await expectConflict(approveAsSeen(nov.id), {
       code: 'PAYROLL_STALE',
-      diffs: [diff(userId, name, 'ค่าคอมมิชชัน (1 รายการ)', '900.00', '1000.00')],
+      // (e) ภาษีค่าคอมที่เก็บ 15.00 ไม่ตรง 3% × (900 − 500) = 12.00 ด้วย
+      diffs: [diff(userId, name, 'ค่าคอมมิชชัน (1 รายการ)', '900.00', '1000.00'), diff(userId, name, 'หัก ณ ที่จ่ายค่าคอม 3%', '15.00', '12.00')],
       message: STALE,
     });
     await prisma.payrollCustomIncome.updateMany({ where: { ...where, source: 'COMMISSION' }, data: { amount: 1000 } });
@@ -637,10 +652,18 @@ describe('Payroll commission flow — store, gate, pay, void (Postgres)', () => 
     await prisma.payrollCustomDeduction.updateMany({ where: { ...where, source: 'COMMISSION_CLAWBACK' }, data: { amount: 450 } });
     await expectConflict(approveAsSeen(nov.id), {
       code: 'PAYROLL_STALE',
-      diffs: [diff(userId, name, 'หักคืนค่าคอม (1 รายการ)', '450.00', '500.00')],
+      diffs: [diff(userId, name, 'หักคืนค่าคอม (1 รายการ)', '450.00', '500.00'), diff(userId, name, 'หัก ณ ที่จ่ายค่าคอม 3%', '15.00', '16.50')],
       message: STALE,
     });
     await prisma.payrollCustomDeduction.updateMany({ where: { ...where, source: 'COMMISSION_CLAWBACK' }, data: { amount: 500 } });
+
+    await prisma.payrollCustomDeduction.updateMany({ where: { ...where, source: 'COMMISSION_WHT' }, data: { amount: 20 } });
+    await expectConflict(approveAsSeen(nov.id), {
+      code: 'PAYROLL_STALE',
+      diffs: [diff(userId, name, 'หัก ณ ที่จ่ายค่าคอม 3%', '20.00', '15.00')],
+      message: STALE,
+    });
+    await prisma.payrollCustomDeduction.updateMany({ where: { ...where, source: 'COMMISSION_WHT' }, data: { amount: 15 } });
 
     await approveAsSeen(nov.id);
     expect((await docOf(nov.id)).status).toBe('POSTED');
@@ -713,7 +736,10 @@ describe('Payroll commission flow — store, gate, pay, void (Postgres)', () => 
 
     const redo = await createDoc(branchId, '2026-11', [line(userId)]);
     const l = await lineOf(redo.id, userId);
-    expect(l.deductions).toEqual([{ source: 'COMMISSION_CLAWBACK', accountCode: COMMISSION_CODE, name: 'หักคืนค่าคอม (1 รายการ)', amount: '500.00' }]);
+    expect(l.deductions).toEqual([
+      { source: 'COMMISSION_CLAWBACK', accountCode: COMMISSION_CODE, name: 'หักคืนค่าคอม (1 รายการ)', amount: '500.00' },
+      whtDeduction('15.00'),
+    ]);
     expect(l.commissionIncome).toEqual([{ accountCode: COMMISSION_CODE, name: 'ค่าคอมมิชชัน (1 รายการ)', amount: '1000.00' }]);
   });
 
@@ -781,7 +807,7 @@ describe('Payroll commission flow — store, gate, pay, void (Postgres)', () => 
     await cronClawback50(contract.id);
     await mkCommission(userId, { period: '2026-11', amount: 1000 });
     const nov = await createDoc(branchId, '2026-11', [line(userId)]); // ร่าง (ไม่ได้ลงบัญชี) ถือรายการ CLAWBACK
-    expect((await lineOf(nov.id, userId)).deductions).toHaveLength(1);
+    expect((await lineOf(nov.id, userId)).deductions).toHaveLength(2); // หักคืน + ภาษีค่าคอม
 
     setNow('2026-12-03 10:00');
     await expectConflict(lifecycle.voidDocument(oct.id, ownerId, VOID_DTO), {
@@ -817,8 +843,8 @@ describe('Payroll commission flow — store, gate, pay, void (Postgres)', () => 
     });
     await updateDoc(nov.id, '2026-11', [line(userId)]);
     const l = await lineOf(nov.id, userId);
-    expect(l.deductions).toEqual([]);
-    expect(l.netPaid).toBe('15150.00');
+    expect(l.deductions).toEqual([whtDeduction('30.00')]); // หักคืนหายไป ⇒ ภาษีค่าคอมคิดจาก 1,000 เต็ม
+    expect(l.netPaid).toBe('15120.00');
   });
 
   it('void of a non-posted payroll only releases its items (the commission stays APPROVED) and a new document pulls it', async () => {
@@ -880,7 +906,8 @@ describe('Payroll commission flow — store, gate, pay, void (Postgres)', () => 
       expect(money(paid.paidAmount)).toBe('1200.00');
       const je = await jeLines(oct.id);
       expect(je).toContainEqual({ accountCode: COMMISSION_CODE, dr: '1200.00', cr: '0.00' });
-      expect(je).toContainEqual({ accountCode: 'S11-1202', dr: '0.00', cr: '15350.00' }); // 15,000 + 1,200 − 750 − 100
+      expect(je).toContainEqual({ accountCode: 'S11-1202', dr: '0.00', cr: '15314.00' }); // 15,000 + 1,200 − 750 − 100 − ภาษีค่าคอม 36
+      expect(je).toContainEqual({ accountCode: 'S21-3101', dr: '0.00', cr: '36.00' });
       const [payItem] = await itemsOfDoc(oct.id);
       const postedAudit = await prisma.auditLog.findFirstOrThrow({ where: { action: 'POSTED', entityId: oct.id } });
       expect(postedAudit.newValue).toMatchObject({ commissionItemIds: [payItem.id] });
@@ -917,6 +944,7 @@ describe('Payroll commission flow — store, gate, pay, void (Postgres)', () => 
     expect(l.deductions).toEqual([
       { source: 'COMMISSION_CLAWBACK', accountCode: COMMISSION_CODE, name: 'หักคืนค่าคอม (1 รายการ)', amount: '1000.00' },
       { source: 'COMMISSION_CLAWBACK', accountCode: 'S51-1102', name: 'หักคืนค่าคอม (1 รายการ)', amount: '600.00' },
+      whtDeduction('12.00'), // 3% × (2,000 − 1,000 − 600)
     ]);
     expect(l.items.filter((i) => i.kind === 'CLAWBACK').map((i) => [i.salesCommissionId, i.accountCode, i.amount]).sort()).toEqual(
       [
@@ -925,17 +953,18 @@ describe('Payroll commission flow — store, gate, pay, void (Postgres)', () => 
       ].sort(),
     );
     expect(l.warnings).toEqual([]);
-    expect(l.netPaid).toBe('14550.00'); // 15,000 + 2,000 − 1,000 − 600 − 750 − 100
+    expect(l.netPaid).toBe('14538.00'); // 15,000 + 2,000 − 1,000 − 600 − 750 − 100 − 12
 
     await submitAndApprove(dec.id, '2026-12'); // ด่าน (b): ยอดหักต่อบัญชี = Σ รายการ CLAWBACK ต่อบัญชี ⇒ ไม่ stale
     const posted = await docOf(dec.id);
     expect(posted.status).toBe('POSTED');
-    expect(money(posted.netPayment)).toBe('14550.00');
+    expect(money(posted.netPayment)).toBe('14538.00');
     const je = await jeLines(dec.id);
     expect(je).toContainEqual({ accountCode: COMMISSION_CODE, dr: '2000.00', cr: '0.00' });
     expect(je).toContainEqual({ accountCode: COMMISSION_CODE, dr: '0.00', cr: '1000.00' });
     expect(je).toContainEqual({ accountCode: 'S51-1102', dr: '0.00', cr: '600.00' });
-    expect(je).toContainEqual({ accountCode: 'S11-1202', dr: '0.00', cr: '14550.00' });
+    expect(je).toContainEqual({ accountCode: 'S21-3101', dr: '0.00', cr: '12.00' });
+    expect(je).toContainEqual({ accountCode: 'S11-1202', dr: '0.00', cr: '14538.00' });
     expect(je.filter((j) => j.accountCode === 'S51-1102')).toHaveLength(1);
   });
 

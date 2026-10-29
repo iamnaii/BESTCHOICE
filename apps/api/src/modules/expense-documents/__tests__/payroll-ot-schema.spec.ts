@@ -39,7 +39,7 @@ describe('payroll OT part 1 schema contract', () => {
 
   it('PayrollDeductionSource enum + PayrollCustomDeduction.source', () => {
     const e = Prisma.dmmf.datamodel.enums.find((x) => x.name === 'PayrollDeductionSource');
-    expect(e?.values.map((v) => v.name)).toEqual(['MANUAL', 'COMMISSION_CLAWBACK']);
+    expect(e?.values.map((v) => v.name)).toEqual(['MANUAL', 'COMMISSION_CLAWBACK', 'COMMISSION_WHT']);
     expect(field('PayrollCustomDeduction', 'source')).toMatchObject({ type: 'PayrollDeductionSource', isRequired: true, hasDefaultValue: true, default: 'MANUAL' });
   });
 

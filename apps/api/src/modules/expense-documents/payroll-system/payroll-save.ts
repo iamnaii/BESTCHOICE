@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import type { PayrollCommissionItemKind, PayrollDeductionSource, PayrollIncomeSource } from '@prisma/client';
 import type { UpdatePayrollDto } from '../dto/create-payroll.dto';
 import { assertDeductionsWithinGross } from '../services/payroll-custom.service';
-import { payrollAttendanceLockKey, payrollClawbackLockKey } from './payroll-pay';
+import { payrollAttendanceLockKey, payrollClawbackLockKey, payrollLineWithheld } from './payroll-pay';
 import type { PayrollSystemRowsService } from './payroll-system-rows.service';
 import type { AttendanceSummarySnapshot, SystemNotes, SystemRowsQuery, SystemRowsResult, SystemWarning } from './payroll-system.types';
 
@@ -70,7 +70,7 @@ export interface SavedPayrollLine extends Omit<ClientPayrollLine, 'customIncome'
   lineNo: number;
   netPaid: Prisma.Decimal;
   customIncome: SavedPayrollIncome[];
-  /** MANUAL ของ client ตามลำดับที่ส่ง แล้วตามด้วยหักคืนค่าคอมของระบบ (COMMISSION_CLAWBACK) */
+  /** MANUAL ของ client ตามลำดับที่ส่ง แล้วตามด้วยรายการหักของระบบ (หักคืนค่าคอม COMMISSION_CLAWBACK แล้วหัก ณ ที่จ่ายค่าคอม COMMISSION_WHT) */
   customDeduction: SavedPayrollDeduction[];
   commissionItems: SavedCommissionItem[];
   /** เวลาที่คิดแถวระบบให้บรรทัดนี้ (บรรทัดไม่ผูกพนักงาน = null) */
@@ -84,6 +84,7 @@ export interface PayrollTotals {
   subtotal: Prisma.Decimal;
   /** Σ (ฐาน + รายได้พิเศษทั้งหมด) — ยอดก่อนหัก ใช้กับเกณฑ์อนุมัติ */
   totalAmount: Prisma.Decimal;
+  /** Σ ภาษีเงินเดือน + หัก ณ ที่จ่ายค่าคอม 3% (`payrollLineWithheld`) */
   withholdingTax: Prisma.Decimal;
   /** Σ netPaid — ขา Cr เงินสดของ PayrollTemplate */
   netPayment: Prisma.Decimal;
@@ -212,7 +213,11 @@ export function mergePayrollLines(
   const commissionCodes = new Set(system?.commissionAccountCodes ?? []);
   const clawbackDuplicated = lines.filter((l) => {
     const r = l.userId ? byUser.get(l.userId) : undefined;
-    return !!r && r.systemDeductions.length > 0 && l.customDeduction.some((d) => d.source === 'MANUAL' && commissionCodes.has(d.accountCode));
+    return (
+      !!r &&
+      r.systemDeductions.some((d) => d.source === 'COMMISSION_CLAWBACK') &&
+      l.customDeduction.some((d) => d.source === 'MANUAL' && commissionCodes.has(d.accountCode))
+    );
   });
   if (clawbackDuplicated.length > 0) {
     throw new BadRequestException({
@@ -281,7 +286,8 @@ export function mergePayrollLines(
     totals: {
       subtotal: saved.reduce((s, l) => s.plus(l.baseSalary), ZERO),
       totalAmount: saved.reduce((s, l) => s.plus(l.baseSalary).plus(sum(l.customIncome)), ZERO),
-      withholdingTax: saved.reduce((s, l) => s.plus(l.whtAmount), ZERO),
+      // ภาษีที่หักรวมของใบ = ภาษีเงินเดือน + หัก ณ ที่จ่ายค่าคอม 3% (ใบสำคัญจ่าย PDF พิมพ์ "หัก ณ ที่จ่าย" จากช่องนี้)
+      withholdingTax: saved.reduce((s, l) => s.plus(payrollLineWithheld(l)), ZERO),
       netPayment: saved.reduce((s, l) => s.plus(l.netPaid), ZERO),
     },
   };

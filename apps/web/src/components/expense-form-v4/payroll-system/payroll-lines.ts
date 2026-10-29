@@ -219,7 +219,9 @@ const sumAmounts = (rows: Array<{ amount: string }>) => rows.reduce((s, r) => s 
  * - รายได้พิเศษ = แถวระบบที่เก็บไว้ + แถวที่กรอกเอง · รายการหัก = ที่กรอกเอง + รายการหักจากระบบ (P2-R19.2)
  * - ฐาน WHT = max(0, ฐาน + แถวระบบ (เสียภาษีเสมอ) + รายได้กรอกเองที่เสียภาษี − หักคืนค่าคอม) — สูตรเดียวกับ
  *   `payrollTaxableGross` (payroll-pay.ts ฝั่ง server) ที่ ภ.ง.ด.1 ใช้ (P2-R18) · ไม่ import ไฟล์ server — เขียนซ้ำและปักด้วยเทส
- * - สุทธิ = max(0, ฐาน + รายได้พิเศษ − SSO − WHT − รายการหัก)
+ * - สุทธิ = max(0, ฐาน + รายได้พิเศษ − SSO − WHT − รายการหัก) — รายการหักรวมหัก ณ ที่จ่ายค่าคอม 3% (COMMISSION_WHT) แล้ว
+ * - ฐานภาษีเงินเดือนที่แนะนำ (`salaryTaxableBase`) = ฐาน WHT ที่ไม่รวมค่าคอมและหักคืน — ค่าคอมหัก ณ ที่จ่าย 3% แยกแถว
+ *   (คำตัดสินเจ้าของ 2026-10-29) ส่วน `taxableBase` ยังเป็นเงินได้ที่ยื่น ภ.ง.ด.1
  */
 export function payrollLineTotals(l: PayrollLineForm) {
   const base = num(l.baseSalary);
@@ -231,6 +233,8 @@ export function payrollLineTotals(l: PayrollLineForm) {
   const deduction = sumAmounts(l.customDeduction ?? []) + systemDeduction;
   const taxReducing = sumAmounts((l.systemDeductions ?? []).filter((r) => TAX_REDUCING_DEDUCTION_SOURCES.includes(r.source)));
   const taxableTyped = sumAmounts((l.customIncome ?? []).filter((r) => r.isTaxable));
+  const commissionIncome = sumAmounts((l.systemIncome ?? []).filter((r) => r.source === 'COMMISSION'));
+  const commissionWht = sumAmounts((l.systemDeductions ?? []).filter((r) => r.source === 'COMMISSION_WHT'));
   const round2 = (n: number) => Math.round(n * 100) / 100;
   return {
     base,
@@ -241,7 +245,10 @@ export function payrollLineTotals(l: PayrollLineForm) {
     systemDeduction,
     deduction,
     clawback: taxReducing,
+    commissionIncome,
+    commissionWht,
     taxableBase: round2(Math.max(0, base + systemIncome + taxableTyped - taxReducing)),
+    salaryTaxableBase: round2(Math.max(0, base + systemIncome - commissionIncome + taxableTyped)),
     netPaid: round2(Math.max(0, base + income - sso - wht - deduction)),
   };
 }

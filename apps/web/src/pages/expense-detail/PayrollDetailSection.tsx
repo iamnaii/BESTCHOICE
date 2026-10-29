@@ -32,6 +32,7 @@ import {
   bankCsvSkippedText,
   carryForwardText,
   clawbackDeductedText,
+  commissionWhtDeductedText,
   deviceConflictReason,
   deviceConflictText,
   postCutoffText,
@@ -211,11 +212,13 @@ function PayrollLinesTable({
   const columns = hasCommission(lines) ? ALL_COLUMNS : ALL_COLUMNS.filter(([key]) => key !== 'commission');
   const rows = lines.map((l) => {
     const clawbacks = (l.customDeduction ?? []).filter((r) => r.source === 'COMMISSION_CLAWBACK');
+    const wht = (l.customDeduction ?? []).filter((r) => r.source === 'COMMISSION_WHT');
     return {
       line: l,
       totals: lineTotals(l),
       // ยอดที่เก็บไว้ (Σ แถวหักคืนค่าคอมของบรรทัด) — ไม่คิดใหม่
       clawback: clawbacks.length > 0 ? clawbacks.reduce((s, r) => s.plus(dec(r.amount)), new Decimal(0)).toFixed(2) : null,
+      commissionWht: wht.length > 0 ? wht.reduce((s, r) => s.plus(dec(r.amount)), new Decimal(0)).toFixed(2) : null,
       carried: clawbackCarriedOf(l.systemNotes)?.carried,
     };
   });
@@ -245,7 +248,7 @@ function PayrollLinesTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
-          {rows.map(({ line, totals, clawback, carried }) => (
+          {rows.map(({ line, totals, clawback, commissionWht, carried }) => (
             <tr key={line.id}>
               <td className="px-4 py-2 leading-snug">
                 <NameWords name={line.employeeName} />
@@ -255,6 +258,9 @@ function PayrollLinesTable({
                     <ArrowRightToLine className="size-3 shrink-0" aria-hidden="true" />
                     {[clawback && clawbackDeductedText(clawback), carried && carryForwardText(carried)].filter(Boolean).join(' · ')}
                   </span>
+                )}
+                {commissionWht && (
+                  <span className="mt-0.5 block text-xs text-muted-foreground leading-snug">{commissionWhtDeductedText(commissionWht)}</span>
                 )}
               </td>
               {columns.map(([key]) => (
@@ -577,8 +583,10 @@ export function PayrollTotalsCard({
   const deductionOf = (pick: (source: string) => boolean) =>
     sum((l) => (l.customDeduction ?? []).filter((r) => pick(r.source ?? 'MANUAL')).reduce((s, r) => s.plus(dec(r.amount)), new Decimal(0)));
   const clawback = deductionOf((source) => source === 'COMMISSION_CLAWBACK');
-  const deductions = deductionOf((source) => source !== 'COMMISSION_CLAWBACK');
-  const net = income.minus(sso).minus(wht).minus(clawback).minus(deductions);
+  // หัก ณ ที่จ่ายค่าคอม 3% (COMMISSION_WHT — เจ้าของ 2026-10-29) แยกบรรทัด · มีแล้วภาษีเงินเดือนเรียกว่า "หัก ณ ที่จ่าย เงินเดือน"
+  const commissionWht = deductionOf((source) => source === 'COMMISSION_WHT');
+  const deductions = deductionOf((source) => source !== 'COMMISSION_CLAWBACK' && source !== 'COMMISSION_WHT');
+  const net = income.minus(sso).minus(wht).minus(commissionWht).minus(clawback).minus(deductions);
   const today = toBangkokDateString();
   const row = (label: string, value: string, strong = false) => (
     <div className={`flex justify-between gap-6 ${strong ? 'border-t border-border pt-1.5 font-semibold' : ''}`}>
@@ -592,7 +600,8 @@ export function PayrollTotalsCard({
         <dl className="space-y-1.5 text-sm">
           {row('รวมรายได้ (ฐาน + OT + ค่าคอม + อื่น)', money(income))}
           {row('หักประกันสังคม', `- ${money(sso)}`)}
-          {row('หัก ณ ที่จ่าย', `- ${money(wht)}`)}
+          {row(commissionWht.gt(0) ? 'หัก ณ ที่จ่าย เงินเดือน' : 'หัก ณ ที่จ่าย', `- ${money(wht)}`)}
+          {commissionWht.gt(0) && row('หัก ณ ที่จ่ายค่าคอม 3%', `- ${money(commissionWht)}`)}
           {clawback.gt(0) && row('หักคืนค่าคอม', `- ${money(clawback)}`)}
           {row('รายการหักอื่น', `- ${money(deductions)}`)}
           {row('ยอดสุทธิที่จ่าย', money(net), true)}

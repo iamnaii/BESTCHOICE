@@ -529,6 +529,14 @@ function PayrollSlipSheet({
   // ประโยคยกไปงวดหน้าบรรทัดเดียวใต้ตารางหัก — R22 หนึ่งคนหนึ่งแผ่น A4 (ปักด้วย DOC-04 สลิปค่าคอม)
   const payItems = liveCommissionItems(line.commissionItems).filter((i) => i.kind === 'PAY');
   const carried = clawbackCarriedOf(line.systemNotes);
+  // คำตัดสินเจ้าของ 2026-10-29 (กระดาน 7) — หัก ณ ที่จ่ายค่าคอม 3% พิมพ์ต่อจากภาษีเงินเดือน พร้อมฐาน 3% × (ค่าคอม − หักคืน)
+  const commissionWhtRows = customDeduction.filter((r) => r.source === 'COMMISSION_WHT');
+  const otherDeductions = customDeduction.filter((r) => r.source !== 'COMMISSION_WHT');
+  const sumOf = (rows: Array<{ amount: string }>) => rows.reduce<Decimal>((s, r) => s.plus(new Decimal(r.amount || '0')), new Decimal(0));
+  const commissionWht = sumOf(commissionWhtRows);
+  const commissionWhtBase = sumOf(customIncome.filter((r) => r.source === 'COMMISSION')).minus(
+    sumOf(customDeduction.filter((r) => r.source === 'COMMISSION_CLAWBACK')),
+  );
 
   const sumIncome = customIncome.reduce<Decimal>(
     (s, r) => s.plus(new Decimal(r.amount || '0')),
@@ -664,15 +672,28 @@ function PayrollSlipSheet({
                 </td>
               </tr>
             )}
-            {wht.gt(0) && (
+            {(wht.gt(0) || commissionWhtRows.length > 0) && (
               <tr>
-                <td colSpan={2} className="border border-border p-2">หัก ณ ที่จ่าย (ภ.ง.ด. 1)</td>
+                <td colSpan={2} className="border border-border p-2">
+                  {commissionWhtRows.length > 0 ? 'หัก ณ ที่จ่าย เงินเดือน (ภ.ง.ด. 1)' : 'หัก ณ ที่จ่าย (ภ.ง.ด. 1)'}
+                </td>
                 <td className="border border-border p-2 text-right tabular-nums">
                   {formatNumberDecimal(wht.toString())}
                 </td>
               </tr>
             )}
-            {customDeduction.map((cd) => (
+            {commissionWhtRows.length > 0 && (
+              <tr>
+                <td className="border border-border p-2">หัก ณ ที่จ่ายค่าคอม 3% (ภ.ง.ด. 1)</td>
+                <td className="border border-border p-2 text-right tabular-nums text-muted-foreground">
+                  {`3% × ${formatNumberDecimal(commissionWhtBase.toString())}`}
+                </td>
+                <td className="border border-border p-2 text-right tabular-nums">
+                  {formatNumberDecimal(commissionWht.toString())}
+                </td>
+              </tr>
+            )}
+            {otherDeductions.map((cd) => (
               <tr key={cd.id}>
                 <td colSpan={2} className="border border-border p-2">
                   <span className="font-mono text-xs text-muted-foreground mr-2">

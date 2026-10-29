@@ -13,13 +13,18 @@ const taxPreview = new TaxPreviewService(prisma as never);
 const YEAR = 2098;
 const TAX_CLAW = '9800000000011';
 const TAX_PLAIN = '9800000000022';
+const TAX_WHT = '9800000000033';
 const stamp = Date.now();
 let branchId: string;
 let shopCompanyId: string;
 let ownerId: string;
 const docIds: string[] = [];
 
-async function seedDoc(n: number, month: string, lines: Array<{ name: string; taxId: string; income?: number[]; deductions?: Array<{ amount: number; source: 'MANUAL' | 'COMMISSION_CLAWBACK' }> }>) {
+async function seedDoc(
+  n: number,
+  month: string,
+  lines: Array<{ name: string; taxId: string; wht?: number; income?: number[]; deductions?: Array<{ amount: number; source: 'MANUAL' | 'COMMISSION_CLAWBACK' | 'COMMISSION_WHT' }> }>,
+) {
   const doc = await prisma.expenseDocument.create({
     data: {
       number: `PR-TAXBASE-${stamp}-${n}`,
@@ -44,13 +49,14 @@ async function seedDoc(n: number, month: string, lines: Array<{ name: string; ta
               employeeName: l.name,
               employeeTaxId: l.taxId,
               baseSalary: 15000,
+              whtAmount: l.wht ?? 0,
               netPaid: 0,
               lineNo: i + 1,
               customIncome: {
                 create: (l.income ?? []).map((a) => ({ accountCode: 'S51-1101', name: 'ค่าคอม', amount: a, isTaxable: true, source: 'COMMISSION' as const })),
               },
               customDeduction: {
-                create: (l.deductions ?? []).map((d) => ({ accountCode: 'S51-1101', name: 'หัก', amount: d.amount, source: d.source })),
+                create: (l.deductions ?? []).map((d) => ({ accountCode: d.source === 'COMMISSION_WHT' ? 'S21-3101' : 'S51-1101', name: 'หัก', amount: d.amount, source: d.source })),
               },
             })),
           },
@@ -85,6 +91,17 @@ beforeAll(async () => {
       ],
     },
     { name: 'พนง ทดสอบปกติ', taxId: TAX_PLAIN, income: [1000], deductions: [{ amount: 300, source: 'MANUAL' }] },
+    // คำตัดสินเจ้าของ 2026-10-29 — ภาษีเงินเดือน 100 + หัก ณ ที่จ่ายค่าคอม 3% × (1,000 − 300) = 21 ยื่น ภ.ง.ด.1 ใบเดียว
+    {
+      name: 'พนง ทดสอบภาษีค่าคอม',
+      taxId: TAX_WHT,
+      wht: 100,
+      income: [1000],
+      deductions: [
+        { amount: 300, source: 'COMMISSION_CLAWBACK' },
+        { amount: 21, source: 'COMMISSION_WHT' },
+      ],
+    },
   ]);
 }, 120_000);
 
@@ -115,5 +132,27 @@ describe('ฐานภาษี ภ.ง.ด.1 สุทธิจากหัก�
     const plain = r.items.find((e) => e.employeeTaxId === TAX_PLAIN)!;
     expect(claw.grossTotal.toFixed(2)).toBe('15000.00');
     expect(plain.grossTotal.toFixed(2)).toBe('16000.00');
+  });
+
+  it('previewPND1: ภาษีที่หัก = ภาษีเงินเดือน + ภาษีค่าคอม (แยกช่อง salaryWht / commissionWht) · ภาษีค่าคอมไม่ลดเงินได้', async () => {
+    const r = await taxPreview.previewPND1(shopCompanyId, YEAR, 3);
+    const w = r.items.find((i) => i.employeeTaxId === TAX_WHT)!;
+    expect(w.gross.toFixed(2)).toBe('15700.00'); // 15,000 + 1,000 − หักคืน 300
+    expect(w.salaryWht.toFixed(2)).toBe('100.00');
+    expect(w.commissionWht.toFixed(2)).toBe('21.00');
+    expect(w.whtAmount.toFixed(2)).toBe('121.00');
+    const plain = r.items.find((i) => i.employeeTaxId === TAX_PLAIN)!;
+    expect([plain.salaryWht.toFixed(2), plain.commissionWht.toFixed(2), plain.whtAmount.toFixed(2)]).toEqual(['0.00', '0.00', '0.00']);
+    // ยอดของรายงาน (ยื่น/สร้างรายงาน) รวมภาษีค่าคอม — ปีทดสอบ 2098 มีเฉพาะสามคนนี้
+    expect(r.whtTotal.toFixed(2)).toBe('121.00');
+    expect(r.totalWht.toFixed(2)).toBe('121.00');
+    expect(r.grossIncome.toFixed(2)).toBe('46700.00'); // 15,000 + 16,000 + 15,700
+  });
+
+  it('previewPnd1Annual (50 ทวิ): whtTotal รวมภาษีค่าคอม', async () => {
+    const r = await taxPreview.previewPnd1Annual(YEAR);
+    const w = r.items.find((e) => e.employeeTaxId === TAX_WHT)!;
+    expect(w.grossTotal.toFixed(2)).toBe('15700.00');
+    expect(w.whtTotal.toFixed(2)).toBe('121.00');
   });
 });

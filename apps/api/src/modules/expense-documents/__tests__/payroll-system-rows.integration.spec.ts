@@ -331,6 +331,8 @@ const commissionRow = (n: number, amount: string, accountCode = COMMISSION_CODE)
 const clawbackRow = (n: number, amount: string, accountCode = COMMISSION_CODE) => ({
   source: 'COMMISSION_CLAWBACK', accountCode, name: `หักคืนค่าคอม (${n} รายการ)`, amount,
 });
+/** หัก ณ ที่จ่ายค่าคอม 3% ของ (ค่าคอม − หักคืน) — คำตัดสินเจ้าของ 2026-10-29 · บัญชี role shop_wht_payroll */
+const whtRow = (amount: string) => ({ source: 'COMMISSION_WHT', accountCode: 'S21-3101', name: 'หัก ณ ที่จ่ายค่าคอม 3%', amount });
 const payItem = (c: { id: string; createdAt: Date }, amount: string, accountCode = COMMISSION_CODE) => ({
   salesCommissionId: c.id, kind: 'PAY', accountCode, amount, reference: c.id, date: c.createdAt.toISOString(), reason: null, carriedForward: null,
 });
@@ -611,7 +613,7 @@ describe('PayrollSystemRowsService.compute — commission PAY items and clawback
     const row = res.rows[0];
     expect(row.systemIncome).toEqual([commissionRow(3, '2000.50')]);
     expect(row.commissionItems).toEqual([payItem(sep, '500.00'), payItem(early, '300.00'), payItem(late, '1200.50')]);
-    expect(row.systemDeductions).toEqual([]);
+    expect(row.systemDeductions).toEqual([whtRow('60.02')]);
     expect(row.notes.warnings).toEqual([]);
   });
 
@@ -641,7 +643,7 @@ describe('PayrollSystemRowsService.compute — commission PAY items and clawback
     const row = await computeOne(u);
     expect(row.systemIncome).toEqual([commissionRow(1, '1000.00')]);
     expect(row.commissionItems).toEqual([payItem(live, '1000.00')]);
-    expect(row.systemDeductions).toEqual([]);
+    expect(row.systemDeductions).toEqual([whtRow('30.00')]);
     expect(row.notes.warnings).toEqual([]);
   });
 
@@ -784,7 +786,7 @@ describe('PayrollSystemRowsService.compute — commission PAY items and clawback
       clawItem(x, '300.00'),
       clawItem(y, '200.00'),
     ]);
-    expect(row.systemDeductions).toEqual([clawbackRow(2, '500.00'), clawbackRow(1, '100.00', 'S51-1102')]);
+    expect(row.systemDeductions).toEqual([clawbackRow(2, '500.00'), clawbackRow(1, '100.00', 'S51-1102'), whtRow('12.00')]);
     expect(row.notes.warnings).toEqual([]);
   });
 
@@ -805,7 +807,7 @@ describe('PayrollSystemRowsService.compute — commission PAY items and clawback
 
     const row = await computeOne(u, { excludeDocumentId: self.id });
     expect(row.commissionItems).toEqual([payItem(pay, '1000.00'), clawItem(c, '500.00')]); // 800 − 300 (ร่างอื่น)
-    expect(row.systemDeductions).toEqual([clawbackRow(1, '500.00')]);
+    expect(row.systemDeductions).toEqual([clawbackRow(1, '500.00'), whtRow('15.00')]);
     expect(row.notes.warnings).toEqual([]);
 
     // ทางสร้างใบใหม่ (ไม่มี excludeDocumentId): ร่าง t-self เป็น "ใบอื่น" — ถือค่าคอมงวดนี้และหักไว้แล้ว 100
@@ -859,7 +861,7 @@ describe('PayrollSystemRowsService.compute — commission PAY items and clawback
     const row = await computeOne(u);
     expect(row.systemIncome).toEqual([commissionRow(1, '1000.00')]);
     expect(row.commissionItems).toEqual([payItem(pay, '1000.00')]);
-    expect(row.systemDeductions).toEqual([]);
+    expect(row.systemDeductions).toEqual([whtRow('30.00')]);
     expect(row.notes.warnings).toEqual([
       { code: 'CLAWBACK_PAID_OUTSIDE_PAYROLL', reference: outside.id },
       { code: 'CLAWBACK_PAID_OUTSIDE_PAYROLL', reference: unposted.id },
@@ -880,7 +882,7 @@ describe('PayrollSystemRowsService.compute — commission PAY items and clawback
     const row = await computeOne(u);
     expect(row.systemIncome).toEqual([commissionRow(1, '1000.00')]);
     expect(row.commissionItems).toEqual([payItem(pay, '1000.00')]);
-    expect(row.systemDeductions).toEqual([]);
+    expect(row.systemDeductions).toEqual([whtRow('30.00')]);
     expect(row.notes.warnings).toEqual([]);
   });
 
@@ -897,7 +899,7 @@ describe('PayrollSystemRowsService.compute — commission PAY items and clawback
       const row = res.rows[0];
       expect(row.systemIncome).toEqual([commissionRow(1, '1000.00', 'S51-1102')]);
       expect(row.commissionItems).toEqual([payItem(pay, '1000.00', 'S51-1102'), clawItem(c, '400.00')]);
-      expect(row.systemDeductions).toEqual([clawbackRow(1, '400.00')]);
+      expect(row.systemDeductions).toEqual([clawbackRow(1, '400.00'), whtRow('18.00')]);
     } finally {
       await prisma.accountRoleMap.update({ where: { id: role.id }, data: { accountCode: COMMISSION_CODE } });
     }

@@ -72,7 +72,7 @@ export interface PayrollSystemIncomeRow {
 }
 
 /**
- * Payroll D4 ส่วนที่ 2 — รายการหักที่ server คิด (ปัจจุบันมีแหล่งเดียว `COMMISSION_CLAWBACK` หักคืนค่าคอม) ·
+ * Payroll D4 ส่วนที่ 2 — รายการหักที่ server คิด (`COMMISSION_CLAWBACK` หักคืนค่าคอม · `COMMISSION_WHT` หัก ณ ที่จ่ายค่าคอม 3%) ·
  * อ่านอย่างเดียว ไม่ส่งกลับ (server บังคับรายการหักที่ส่งมาเป็น MANUAL — P2-R3)
  */
 export interface PayrollSystemDeductionRow {

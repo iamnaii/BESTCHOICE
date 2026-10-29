@@ -537,6 +537,47 @@ describe('payroll totals card (replaces ยอดก่อนภาษี / VAT 
     expect(within(card).getByText('วันที่จ่ายเงิน')).toBeInTheDocument();
   });
 
+  // คำตัดสินเจ้าของ 2026-10-29 — ภาษีค่าคอม 3% เป็นบรรทัดของตัวเอง ภาษีเงินเดือนเปลี่ยนชื่อให้แยกกันออก · สุทธิลงตัว
+  it('a commission WHT row splits หัก ณ ที่จ่าย into เงินเดือน and ค่าคอม 3%, shows it under the name, and the card still adds up', async () => {
+    const doc = payrollDoc('POSTED', null);
+    const line = {
+      ...doc.payroll.lines[0],
+      id: 'l9',
+      employeeName: 'สมศรี มีสุข',
+      baseSalary: '15000',
+      ssoEmployee: '750',
+      whtAmount: '0',
+      netPaid: '15069.63',
+      customIncome: [
+        { id: 'w1', accountCode: 'S52-1202', name: 'ค่าล่วงเวลา', amount: '140.63', isTaxable: true, source: 'ATTENDANCE_OT', quantity: '1.5', rate: '93.75', multiplier: '1.5' },
+        { id: 'w2', accountCode: 'S51-1101', name: 'ค่าคอมมิชชัน (2 รายการ)', amount: '1000.00', isTaxable: true, source: 'COMMISSION', quantity: null, rate: null, multiplier: null },
+      ],
+      customDeduction: [
+        { id: 'w3', accountCode: 'S51-1101', name: 'หักคืนค่าคอม (1 รายการ)', amount: '300.00', source: 'COMMISSION_CLAWBACK' },
+        { id: 'w4', accountCode: 'S21-3101', name: 'หัก ณ ที่จ่ายค่าคอม 3%', amount: '21.00', source: 'COMMISSION_WHT' },
+      ],
+      systemNotes: { review: [], warnings: [] },
+    };
+    mount({ ...doc, payroll: { ...doc.payroll, lines: [line] } } as unknown as ReturnType<typeof payrollDoc>);
+    const card = await screen.findByRole('region', { name: 'สรุปยอดใบเงินเดือน' });
+    const value = (label: string) => within(card).getByText(label).nextElementSibling?.textContent;
+    expect(value('รวมรายได้ (ฐาน + OT + ค่าคอม + อื่น)')).toBe('16,140.63');
+    expect(value('หัก ณ ที่จ่าย เงินเดือน')).toBe('- 0.00');
+    expect(value('หัก ณ ที่จ่ายค่าคอม 3%')).toBe('- 21.00');
+    expect(value('หักคืนค่าคอม')).toBe('- 300.00');
+    expect(value('รายการหักอื่น')).toBe('- 0.00');
+    expect(value('ยอดสุทธิที่จ่าย')).toBe('15,069.63');
+    const row = await screen.findByRole('row', { name: /สมศรี มีสุข/ });
+    expect(within(row).getByText('หัก ณ ที่จ่ายค่าคอม 3% 21.00 บาท')).toBeInTheDocument();
+  });
+
+  it('without a commission WHT row the card keeps the single หัก ณ ที่จ่าย line', async () => {
+    mount(payrollDoc('POSTED', null));
+    const card = await screen.findByRole('region', { name: 'สรุปยอดใบเงินเดือน' });
+    expect(within(card).getByText('หัก ณ ที่จ่าย')).toBeInTheDocument();
+    expect(within(card).queryByText('หัก ณ ที่จ่ายค่าคอม 3%')).not.toBeInTheDocument();
+  });
+
   it('a chosen pay date is sent with approve', async () => {
     const user = userEvent.setup();
     mount(payrollDoc('PENDING_APPROVAL'));

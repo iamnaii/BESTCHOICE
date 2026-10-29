@@ -5134,7 +5134,9 @@ model PayrollCustomDeduction {
   name          String
   amount        Decimal     @db.Decimal(12, 2)
   /// MANUAL = typed by the user; COMMISSION_CLAWBACK = written by the server
-  /// (commission clawback netted against pay). Client rows are always MANUAL.
+  /// (commission clawback netted against pay); COMMISSION_WHT = written by the
+  /// server (3% of commission after clawback, filed on ภ.ง.ด.1 with the salary
+  /// WHT — owner 2026-10-29). Client rows are always MANUAL.
   source        PayrollDeductionSource @default(MANUAL)
   createdAt     DateTime    @default(now()) @map("created_at")
   updatedAt     DateTime    @updatedAt @map("updated_at")
@@ -5146,6 +5148,7 @@ model PayrollCustomDeduction {
 enum PayrollDeductionSource {
   MANUAL
   COMMISSION_CLAWBACK
+  COMMISSION_WHT
 }
 
 enum PayrollCommissionItemKind {

@@ -190,6 +190,53 @@ describe('PayrollTemplate', () => {
     expect(cr.toString()).toBe('13600');
   });
 
+  // คำตัดสินเจ้าของ 2026-10-29 — หัก ณ ที่จ่ายค่าคอม 3% (COMMISSION_WHT) Cr บัญชี ภ.ง.ด.1 ตาม role ตอนลงบัญชี (เหมือนภาษีเงินเดือน —
+  // ไม่ใช่รหัสที่เก็บตอนบันทึก) บรรทัดของตัวเอง แยกจากภาษีเงินเดือนและจากรายการหักมือบนบัญชีเดียวกัน
+  it('COMMISSION_WHT credits the wht role code at post on its own line (separate from salary WHT and a MANUAL S21-3101 row) and the JE balances', async () => {
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+      id: docId,
+      number: 'PR-2611-003',
+      documentType: 'PAYROLL',
+      documentDate: new Date('2026-12-01'),
+      totalAmount: new Decimal('16000.00'),
+      depositAccountCode: 'S11-1202',
+      journalEntryId: null,
+      payroll: {
+        payrollPeriod: '2026-11',
+        entityScope: 'SHOP',
+        lines: [
+          {
+            id: '1',
+            baseSalary: new Decimal('15000.00'),
+            ssoEmployee: new Decimal('750.00'),
+            whtAmount: new Decimal('100.00'),
+            // 15,000 + 1,000 − 750 − 100 − 300 − 21 − 50 = 14,779
+            netPaid: new Decimal('14779.00'),
+            customIncome: [{ accountCode: 'S51-1101', name: 'ค่าคอม', amount: new Decimal('1000.00'), isTaxable: true, source: 'COMMISSION' }],
+            customDeduction: [
+              { accountCode: 'S51-1101', name: 'หักคืนค่าคอม (1 รายการ)', amount: new Decimal('300.00'), source: 'COMMISSION_CLAWBACK' },
+              // รหัสที่เก็บตอนบันทึก (role ถูกย้ายทีหลัง) — JE ต้องใช้รหัส role ปัจจุบัน S21-3101
+              { accountCode: 'S21-9999', name: 'หัก ณ ที่จ่ายค่าคอม 3%', amount: new Decimal('21.00'), source: 'COMMISSION_WHT' },
+              { accountCode: 'S21-3101', name: 'หักภาษีงวดก่อน (กรอกเอง)', amount: new Decimal('50.00'), source: 'MANUAL' },
+            ],
+          },
+        ],
+      },
+    });
+
+    await template.execute(docId);
+    const [args] = journal.createAndPost.mock.calls[0];
+    const onWht = args.lines.filter((l: { accountCode: string }) => l.accountCode === 'S21-3101');
+    expect(onWht.map((l: { cr: Decimal; description: string }) => [l.cr.toString(), l.description])).toEqual([
+      ['100', 'หัก ณ ที่จ่าย ภงด.1'],
+      ['21', 'หัก ณ ที่จ่ายค่าคอม 3% งวด 2026-11'],
+      ['50', 'รายการหัก S21-3101 งวด 2026-11'],
+    ]);
+    expect(args.lines.some((l: { accountCode: string }) => l.accountCode === 'S21-9999')).toBe(false);
+    const { dr, cr } = sumDrCr(args.lines);
+    expect(dr.toString()).toBe(cr.toString());
+  });
+
   it('rejects a SHOP-scope doc whose deposit account is a FINANCE code (scope-mismatch defense in depth)', async () => {
     prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
       id: docId,

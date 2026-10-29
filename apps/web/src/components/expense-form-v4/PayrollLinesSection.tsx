@@ -30,6 +30,7 @@ import {
   type StoredPayrollLine,
 } from './payroll-system/payroll-lines';
 import { payrollMetaQuery } from './payroll-system/payroll-meta';
+import { salaryTaxBaseText, whtSuggestionLabel } from './payroll-system/payroll-copy';
 import { formatNumberDecimal } from '@/utils/formatters';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { THAI_MONTHS_FULL } from '@/lib/date';
@@ -249,8 +250,8 @@ export function PayrollLinesSection({
     const attendanceRows = (l.systemIncome ?? []).filter((r) => isAttendanceSource(r.source)).length;
     // ป้าย "ค่าคอม n" = จำนวนค่าคอมที่บรรทัดนี้จ่าย (กระดาน 1)
     const commissionCount = (l.commissionItems ?? []).filter((i) => i.kind === 'PAY').length;
-    // R3-4 — WHT แนะนำ (ขั้นบันได ม.48, ลดหย่อนมาตรฐาน) — advisory เท่านั้น
-    const suggestedWht = suggestMonthlyWht(t.taxableBase, t.sso);
+    // R3-4 — WHT แนะนำ (ขั้นบันได ม.48, ลดหย่อนมาตรฐาน) — advisory เท่านั้น · ไม่รวมค่าคอม (หัก 3% แยกแถว — เจ้าของ 2026-10-29)
+    const suggestedWht = suggestMonthlyWht(t.salaryTaxableBase, t.sso);
     return {
       ...l,
       baseN: t.base,
@@ -264,6 +265,8 @@ export function PayrollLinesSection({
       deductionN: t.deduction,
       clawbackN: t.clawback,
       taxableBaseN: t.taxableBase,
+      salaryTaxableBaseN: t.salaryTaxableBase,
+      commissionIncomeN: t.commissionIncome,
       suggestedWht,
       netPaid: t.netPaid,
       hasExtras,
@@ -503,6 +506,8 @@ function PayrollRow({
     deductionN: number;
     clawbackN: number;
     taxableBaseN: number;
+    salaryTaxableBaseN: number;
+    commissionIncomeN: number;
     suggestedWht: number;
     hasExtras: boolean;
   };
@@ -604,7 +609,7 @@ function PayrollRow({
               className="block w-full text-right text-[10px] text-muted-foreground hover:text-primary mt-0.5"
               title="ภาษีแนะนำจากขั้นบันได ม.48 หักลดหย่อนมาตรฐาน (ส่วนตัว 60,000 + ค่าใช้จ่าย 50% + ปกส.) — กดเพื่อใช้ค่านี้"
             >
-              แนะนำ ~{formatNumberDecimal(row.suggestedWht)}
+              {whtSuggestionLabel(formatNumberDecimal(row.suggestedWht), row.commissionIncomeN > 0)}
             </button>
           )}
         </td>
@@ -649,16 +654,23 @@ function PayrollRow({
             <PayrollSystemDeductions
               rows={row.systemDeductions ?? []}
               commissionItems={row.commissionItems}
+              commissionIncome={row.commissionIncomeN}
               carried={clawbackCarriedOf(row.systemNotes)?.carried}
               accountLabel={accountLabel}
             />
             <CustomDeductionSubTable rows={row.customDeduction ?? []} onChange={updateDeduction} />
             {row.attendanceSummary && <AttendanceSummaryBox summary={row.attendanceSummary} period={period} />}
-            {row.taxableBaseN !== row.baseN && (
+            {row.commissionIncomeN > 0 ? (
               <div className="text-xs text-muted-foreground italic leading-snug">
-                ฐานคำนวณ WHT = {formatNumberDecimal(row.taxableBaseN)} (รวมรายได้พิเศษที่เสียภาษี
-                {row.clawbackN > 0 && ' − หักคืนค่าคอม'})
+                {salaryTaxBaseText(formatNumberDecimal(row.salaryTaxableBaseN))}
               </div>
+            ) : (
+              row.taxableBaseN !== row.baseN && (
+                <div className="text-xs text-muted-foreground italic leading-snug">
+                  ฐานคำนวณ WHT = {formatNumberDecimal(row.taxableBaseN)} (รวมรายได้พิเศษที่เสียภาษี
+                  {row.clawbackN > 0 && ' − หักคืนค่าคอม'})
+                </div>
+              )
             )}
           </td>
         </tr>

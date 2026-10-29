@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { INSTALLMENT_INPUT_VAT_FLOW } from '../../journal/cpa-templates/installment-input-vat.template';
 import { EntityScope, ensureTaxTypeAllowedForEntity } from '../tax-entity.util';
-import { payrollTaxableGross } from '../../expense-documents/payroll-system/payroll-pay';
+import { payrollLineWithheld, payrollTaxableGross } from '../../expense-documents/payroll-system/payroll-pay';
 import {
   PP30_MANDATORY_60DAY_VAT_ACCOUNT,
   computePp30OutputVat,
@@ -689,7 +689,9 @@ export class TaxPreviewService {
    *      — นิติบุคคลเดียวกัน ยื่นรวม) — เดิมอ่านแค่ 21-3101.
    *
    * gross = payrollTaxableGross(line) = base + Σ taxable income − Σ COMMISSION_CLAWBACK
-   * deductions (floor 0; manual deductions do not reduce it; spec A9 / P2-R18) —
+   * deductions (floor 0; manual deductions do not reduce it; spec A9 / P2-R18) ·
+   * whtAmount = payrollLineWithheld(line) = salaryWht (line.whtAmount) + commissionWht
+   * (COMMISSION_WHT deductions — 3% of commission after clawback, owner 2026-10-29: one ภ.ง.ด.1) —
    * โบนัส/OT ที่เสียภาษีเป็นเงินได้ตาม ม.40(1) ต้องเข้าฐาน (ม.42-exempt rows excluded by design).
    * Period keyed on paidAt (ม.50 — หักเมื่อจ่าย), documentDate fallback.
    *
@@ -708,6 +710,8 @@ export class TaxPreviewService {
         employeeName: string;
         employeeTaxId: string | null;
         gross: Prisma.Decimal;
+        salaryWht: Prisma.Decimal;
+        commissionWht: Prisma.Decimal;
         whtAmount: Prisma.Decimal;
         payDate: Date;
         payrollDocNumber: string;
@@ -752,7 +756,7 @@ export class TaxPreviewService {
                   where: { isTaxable: true },
                   select: { amount: true },
                 },
-                customDeduction: { where: { source: 'COMMISSION_CLAWBACK' }, select: { amount: true, source: true } },
+                customDeduction: { where: { source: { in: ['COMMISSION_CLAWBACK', 'COMMISSION_WHT'] } }, select: { amount: true, source: true } },
               },
             },
           },
@@ -766,6 +770,8 @@ export class TaxPreviewService {
       employeeName: string;
       employeeTaxId: string | null;
       gross: Prisma.Decimal;
+      salaryWht: Prisma.Decimal;
+      commissionWht: Prisma.Decimal;
       whtAmount: Prisma.Decimal;
       payDate: Date;
       payrollDocNumber: string;
@@ -774,11 +780,14 @@ export class TaxPreviewService {
     for (const doc of docs) {
       const payDate = doc.paidAt ?? doc.documentDate ?? new Date();
       for (const line of doc.payroll?.lines ?? []) {
+        const withheld = payrollLineWithheld(line);
         items.push({
           employeeName: line.employeeName,
           employeeTaxId: line.employeeTaxId,
           gross: payrollTaxableGross(line),
-          whtAmount: line.whtAmount,
+          salaryWht: line.whtAmount,
+          commissionWht: withheld.sub(line.whtAmount),
+          whtAmount: withheld,
           payDate,
           payrollDocNumber: doc.number,
         });
@@ -986,7 +995,7 @@ export class TaxPreviewService {
                 whtAmount: true,
                 ssoEmployee: true,
                 customIncome: { where: { isTaxable: true }, select: { amount: true } },
-                customDeduction: { where: { source: 'COMMISSION_CLAWBACK' }, select: { amount: true, source: true } },
+                customDeduction: { where: { source: { in: ['COMMISSION_CLAWBACK', 'COMMISSION_WHT'] } }, select: { amount: true, source: true } },
               },
             },
           },
@@ -1022,7 +1031,7 @@ export class TaxPreviewService {
         };
         agg.monthsPaid.add(period);
         agg.grossTotal = agg.grossTotal.add(gross);
-        agg.whtTotal = agg.whtTotal.add(line.whtAmount);
+        agg.whtTotal = agg.whtTotal.add(payrollLineWithheld(line));
         agg.ssoTotal = agg.ssoTotal.add(line.ssoEmployee);
         byEmployee.set(key, agg);
       }

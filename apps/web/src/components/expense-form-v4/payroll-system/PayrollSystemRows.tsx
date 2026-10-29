@@ -1,5 +1,5 @@
 import { Fragment, useId, useState } from 'react';
-import { ChevronDown, ChevronRight, Clock, Coins, Lock, Undo2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Clock, Coins, Lock, Percent, Undo2 } from 'lucide-react';
 import ScreenTable from '@/components/ui/ScreenTable';
 import { formatNumberDecimal } from '@/utils/formatters';
 import { THAI_MONTHS_SHORT } from '@/lib/date';
@@ -17,6 +17,7 @@ import {
   baht2,
   carryForwardText,
   commissionCountLabel,
+  commissionWhtFormulaText,
   thaiDayMonth,
 } from './payroll-copy';
 
@@ -186,15 +187,19 @@ export function PayrollSystemRows({
  * กระดาน 6B — รายการหักจากระบบ (หักคืนค่าคอม) ล็อก ไม่มีช่องกรอก · ใต้แต่ละแถวคือค่าคอมที่หักคืน (อ้างอิง · เหตุผล · วันที่)
  * · ท้ายตาราง "ยกไปงวดหน้า {y} บาท" จากคำเตือน CLAWBACK_CARRIED ของบรรทัด (หักได้ไม่เกินค่าคอมงวดนี้)
  * · ไม่มีแถวหักแต่ยกไป (งวดนี้ไม่มีค่าคอม) = ยังแสดงตาราง พร้อมยอดที่ยกไป
+ * · หัก ณ ที่จ่ายค่าคอม 3% (COMMISSION_WHT — เจ้าของ 2026-10-29) ใต้แถวคือสูตร (ค่าคอมของบรรทัด − หักคืนในตารางนี้)
  */
 export function PayrollSystemDeductions({
   rows,
   commissionItems = [],
   carried,
   accountLabel,
+  commissionIncome = 0,
 }: {
   rows: PayrollSystemDeductionRow[];
   commissionItems?: PayrollCommissionItemView[];
+  /** Σ แถวรายได้ COMMISSION ของบรรทัด — ใช้แสดงสูตรภาษีค่าคอม */
+  commissionIncome?: number;
   /** ยอดที่ยกไปงวดหน้า (2 ตำแหน่ง) — ไม่มี = หักครบ */
   carried?: string | null;
   accountLabel: (code: string) => string;
@@ -202,6 +207,7 @@ export function PayrollSystemDeductions({
   const titleId = useId();
   if (rows.length === 0 && !carried) return null;
   const clawbacks = commissionItems.filter((i) => i.kind === 'CLAWBACK');
+  const clawbackTotal = rows.filter((r) => r.source === 'COMMISSION_CLAWBACK').reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
   return (
     <section aria-labelledby={titleId} className="rounded-lg border border-warning/40 bg-card overflow-hidden">
       <div className="flex items-center gap-1.5 bg-warning/10 px-3 py-1.5 text-xs font-medium text-warning-strong leading-snug">
@@ -231,13 +237,25 @@ export function PayrollSystemDeductions({
                 <td className="px-2 py-1.5 text-muted-foreground leading-snug">{accountLabel(r.accountCode)}</td>
                 <td className="px-2 py-1.5 leading-snug">
                   <span className="inline-flex items-center gap-1">
-                    <Undo2 className="size-3 shrink-0 text-warning-strong" aria-hidden="true" />
+                    {r.source === 'COMMISSION_WHT' ? (
+                      <Percent className="size-3 shrink-0 text-warning-strong" aria-hidden="true" />
+                    ) : (
+                      <Undo2 className="size-3 shrink-0 text-warning-strong" aria-hidden="true" />
+                    )}
                     {r.name}
                   </span>
                 </td>
                 <td className="px-2 py-1.5 text-right font-mono tabular-nums">{baht2(r.amount)}</td>
               </tr>
-              {clawbacks
+              {r.source === 'COMMISSION_WHT' && commissionIncome > 0 && (
+                <tr className="bg-muted/20">
+                  <td></td>
+                  <td colSpan={2} className="px-2 py-1 pl-6 text-muted-foreground leading-snug">
+                    {commissionWhtFormulaText(commissionIncome, clawbackTotal)}
+                  </td>
+                </tr>
+              )}
+              {r.source === 'COMMISSION_CLAWBACK' && clawbacks
                 .filter((c) => c.accountCode === r.accountCode)
                 .map((c, n) => (
                   <tr key={`${c.reference}-${n}`} className="bg-muted/20">

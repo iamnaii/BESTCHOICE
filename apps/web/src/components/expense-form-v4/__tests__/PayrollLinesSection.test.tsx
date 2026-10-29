@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -283,7 +283,7 @@ describe('PayrollLinesSection — Payroll D4 system rows', () => {
     expect(line.customIncome).toEqual([]);
   });
 
-  it('the WHT advisory uses payrollTaxableGross: base + taxable income − commission clawback (P2-R18)', async () => {
+  it('owner 2026-10-29 — the salary WHT advisory leaves commission out (it is withheld 3% separately); the expanded line names the salary base', async () => {
     const user = userEvent.setup();
     wrap(
       <Harness
@@ -293,20 +293,26 @@ describe('PayrollLinesSection — Payroll D4 system rows', () => {
             newPayrollLine({
               userId: 'u1', employeeName: 'สมศรี มีสุข', baseSalary: '30000', ssoEmployee: '750',
               systemIncome: [{ source: 'COMMISSION', accountCode: 'S51-1101', name: 'ค่าคอมมิชชัน (1 รายการ)', quantity: null, rate: null, multiplier: null, amount: '2000.00' }],
-              systemDeductions: [{ source: 'COMMISSION_CLAWBACK', accountCode: 'S51-1101', name: 'หักคืนค่าคอม (1 รายการ)', amount: '600.00' }],
+              systemDeductions: [
+                { source: 'COMMISSION_CLAWBACK', accountCode: 'S51-1101', name: 'หักคืนค่าคอม (1 รายการ)', amount: '600.00' },
+                { source: 'COMMISSION_WHT', accountCode: 'S21-3101', name: 'หัก ณ ที่จ่ายค่าคอม 3%', amount: '42.00' },
+              ],
             }),
           ],
         }}
       />,
     );
-    // 30,000 + 2,000 − 600 = 31,400 (ไม่ใช่ 32,000)
-    const suggested = suggestMonthlyWht(31400, 750);
-    expect(suggested).not.toBe(suggestMonthlyWht(32000, 750));
-    expect(screen.getByRole('button', { name: `แนะนำ ~${formatNumberDecimal(suggested)}` })).toBeInTheDocument();
+    // ภาษีเงินเดือนคิดจาก 30,000 (ไม่ใช่ 31,400 ที่รวมค่าคอมหลังหักคืน)
+    const suggested = suggestMonthlyWht(30000, 750);
+    expect(suggested).not.toBe(suggestMonthlyWht(31400, 750));
+    expect(screen.getByRole('button', { name: `แนะนำ ~${formatNumberDecimal(suggested)} (ไม่รวมค่าคอม)` })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'ขยาย' }));
-    expect(screen.getByText(/ฐานคำนวณ WHT = 31,400\.00/)).toBeInTheDocument();
-    // สุทธิ = 30,000 + 2,000 − 750 − 600
-    expect(screen.getAllByText('30,650.00').length).toBeGreaterThan(0);
+    expect(screen.getByText('ฐานภาษีเงินเดือน = 30,000.00 (ไม่รวมค่าคอม — ค่าคอมหัก ณ ที่จ่าย 3% แยกแถว)')).toBeInTheDocument();
+    const wht = screen.getByText('หัก ณ ที่จ่ายค่าคอม 3%').closest('tr') as HTMLElement;
+    expect(within(wht).getByText('42.00')).toBeInTheDocument();
+    expect(screen.getByText('3% × (ค่าคอม 2,000.00 − หักคืน 600.00)')).toBeInTheDocument();
+    // สุทธิ = 30,000 + 2,000 − 750 − 600 − 42
+    expect(screen.getAllByText('30,608.00').length).toBeGreaterThan(0);
   });
 });
 

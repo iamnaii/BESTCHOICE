@@ -36,6 +36,7 @@ function fakeClient(f: Fixture) {
     accountRoleMap: {
       findMany: jest.fn().mockResolvedValue([
         { role: 'shop_payroll_commission', accountCode: 'S51-1101' },
+        { role: 'shop_wht_payroll', accountCode: 'S21-3101' },
         { role: 'shop_payroll_holiday', accountCode: OT_CODE },
         { role: 'shop_payroll_overtime', accountCode: OT_CODE },
       ]),

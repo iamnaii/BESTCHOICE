@@ -92,8 +92,6 @@ export function thaiDayMonth(iso: string | null): string {
   return `${d} ${THAI_MONTHS_SHORT[m - 1]}`;
 }
 
-/** warning COMMISSION_FINANCE_BLOCKED — แสดงครั้งเดียวต่อใบ */
-export const COMMISSION_FINANCE_BLOCKED_TEXT = 'ใบฝั่งส่วนกลาง (FINANCE) ยังไม่ดึงค่าคอม — รอฝ่ายบัญชีตอบ';
 
 /** warning COMMISSION_IN_OTHER_DOCUMENT */
 export const commissionInOtherDocumentText = (count: number, name: string, documentNumber: string) =>

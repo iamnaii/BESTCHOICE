@@ -120,10 +120,10 @@ export function usePayrollGateRefresh(docId: string | undefined, closableAt: str
 const DEVICE_CONFLICT_FLAG = 'DEVICE_CONFLICT';
 
 /**
- * คำเตือนที่บอกให้ทำอะไรก่อนลงบัญชี (รอฝ่ายบัญชีตอบ / ใส่รายการหักเองในใบนี้) — หมดความหมายเมื่อใบลงบัญชี/กลับรายการแล้ว
+ * คำเตือนที่บอกให้ทำอะไรก่อนลงบัญชี (ใส่รายการหักเองในใบนี้) — หมดความหมายเมื่อใบลงบัญชี/กลับรายการแล้ว
  * (P2-R30) · ยกไปงวดหน้า และค่าคอมที่อยู่ในใบอื่น ยังเป็นข้อเท็จจริงของใบ — แสดงต่อ
  */
-const PRE_POST_ONLY_WARNINGS = ['COMMISSION_FINANCE_BLOCKED', 'CLAWBACK_PAID_OUTSIDE_PAYROLL'];
+const PRE_POST_ONLY_WARNINGS = ['CLAWBACK_PAID_OUTSIDE_PAYROLL'];
 
 /**
  * วันที่ต้องตรวจ/คำเตือนที่เก็บไว้ตอนบันทึก เทียบกับด่านสด: เวลาปิดงวดใช้แบนเนอร์แทน · ธงเครื่องถูกใช้ซ้อนที่เจ้าของล้างแล้ว

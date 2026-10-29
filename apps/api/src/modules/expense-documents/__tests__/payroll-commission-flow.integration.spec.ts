@@ -93,7 +93,7 @@ const voidAfterClawback = (documentNumber: string) =>
   `กลับรายการใบนี้ไม่ได้ — ค่าคอมที่ใบนี้จ่ายถูกหักคืนแล้วในใบ ${documentNumber} ให้กลับรายการใบนั้นก่อน`;
 const voidPartialClawback = (reference: string) =>
   `กลับรายการใบนี้ไม่ได้ — ค่าคอม ${reference} ที่ใบนี้จ่ายถูกเรียกคืนบางส่วนแล้ว ถ้าต้องแก้ยอดของคนอื่นในใบนี้ ให้ใส่แถว "รายการปรับปรุงงวดก่อน" (จ่ายเพิ่ม) หรือรายการหัก (หักคืน) ในใบเงินเดือนงวดถัดไป`;
-const COMMISSION_WARNINGS = new Set(['COMMISSION_IN_OTHER_DOCUMENT', 'CLAWBACK_CARRIED', 'CLAWBACK_PAID_OUTSIDE_PAYROLL', 'COMMISSION_FINANCE_BLOCKED']);
+const COMMISSION_WARNINGS = new Set(['COMMISSION_IN_OTHER_DOCUMENT', 'CLAWBACK_CARRIED', 'CLAWBACK_PAID_OUTSIDE_PAYROLL']);
 const VOID_DTO = { reasonCode: 'data_entry_error' };
 
 const userIds: string[] = [];

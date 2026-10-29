@@ -99,8 +99,6 @@ export type SystemWarning =
   /** ระบบคิด OT ให้ (รายเดือน + เงินเดือนทะเบียน) และมีรหัสตอกบัตร แต่เดือนนี้ไม่มีวันที่ตอกเข้า (เช่น สาขาไม่มีเครื่อง) — R20/R23 */
   | { code: 'NO_ATTENDANCE' }
   | { code: 'NOT_YET_CLOSABLE'; closableAt: string }
-  /** ใบ FINANCE — พนักงานมีค่าคอมที่จ่ายได้ {count} รายการ แต่ใบฝั่งนี้ไม่ดึง (เฉพาะ count > 0) */
-  | { code: 'COMMISSION_FINANCE_BLOCKED'; count: number }
   /** ค่าคอม {count} รายการมีรายการ PAY ที่ยังมีผลอยู่ในใบอื่น — หนึ่งคำเตือนต่อใบ (เป็นคำเตือน ไม่ใช่ 409) */
   | { code: 'COMMISSION_IN_OTHER_DOCUMENT'; count: number; documentId: string; documentNumber: string }
   /** หนึ่งคำเตือนต่อบรรทัด เฉพาะเมื่อ carried > 0 — หักได้ไม่เกินค่าคอมงวดนี้ ส่วนที่เหลือยกไปงวดหน้า */

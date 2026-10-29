@@ -134,8 +134,6 @@ export type PayrollSystemWarning =
   | { code: 'NO_PIN' }
   | { code: 'NO_ATTENDANCE' }
   | { code: 'NOT_YET_CLOSABLE'; closableAt: string }
-  /** ใบ FINANCE — พนักงานมีค่าคอมที่จ่ายได้ แต่ใบฝั่งนี้ไม่ดึง (แผงตรวจแสดงครั้งเดียวต่อใบ) */
-  | { code: 'COMMISSION_FINANCE_BLOCKED'; count: number }
   /** ค่าคอม {count} รายการมีรายการจ่ายที่ยังมีผลอยู่ในใบอื่น (คำเตือนที่เก็บไว้ ไม่ใช่ 409) */
   | { code: 'COMMISSION_IN_OTHER_DOCUMENT'; count: number; documentId: string; documentNumber: string }
   /** หนึ่งคำเตือนต่อบรรทัด เมื่อหักคืนได้ไม่ครบ — หักได้ไม่เกินค่าคอมงวดนี้ ส่วนที่เหลือยกไปงวดหน้า */

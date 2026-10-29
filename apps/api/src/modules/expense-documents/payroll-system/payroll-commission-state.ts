@@ -43,8 +43,6 @@ export interface CommissionStateQuery {
   payrollPeriod: string;
   /** ใบที่กำลังบันทึก/ตรวจ — รายการของใบนี้เองไม่นับเป็น "ใบอื่น" */
   excludeDocumentId?: string;
-  /** ใบ FINANCE: อ่านเฉพาะชุดจ่ายได้ (นับให้คำเตือน COMMISSION_FINANCE_BLOCKED) ไม่อ่านหักคืน — P2-R15 */
-  payOnly?: boolean;
 }
 
 /** ค่าคอมที่จ่ายได้ในใบนี้ — APPROVED · period ≤ งวด · ไม่ถูกลบ · ยอด > 0 · ไม่อยู่ในรอบจ่ายเดิม · ไม่มีรายการ PAY ที่ยังมีผลในใบอื่น */
@@ -84,7 +82,7 @@ export interface UserCommissionState {
   /** เรียง [period, createdAt, id] */
   payable: PayableCommission[];
   heldElsewhere: CommissionHeldElsewhere[];
-  /** เรียง [clawbackAt, id] — ลำดับที่หักก่อน · `payOnly` = [] */
+  /** เรียง [clawbackAt, id] — ลำดับที่หักก่อน */
   clawbacks: ClawbackCommission[];
 }
 
@@ -108,13 +106,11 @@ export async function loadCommissionState(client: Client, q: CommissionStateQuer
       where: { salespersonId: { in: userIds }, period: { lte: q.payrollPeriod }, deletedAt: null, status: { notIn: [...UNPAID_PAYOUT_STATUSES] } }, // รอบจ่ายเดิมที่ "นับว่าจ่ายแล้ว" (P2-R27 — รายการเดียวกับ G4b ของการยกเลิกใบขาย)
       select: { salespersonId: true, period: true, generatedAt: true },
     }),
-    q.payOnly
-      ? Promise.resolve([])
-      : client.salesCommission.findMany({
-          where: { salespersonId: { in: userIds }, status: { in: CLAWBACK_STATUSES }, clawbackAmount: { gt: 0 }, paidAt: { not: null }, deletedAt: null },
-          select: { ...REFERENCE_SELECT, clawbackAmount: true, clawbackAt: true, clawbackReason: true },
-          orderBy: [{ clawbackAt: 'asc' }, { id: 'asc' }],
-        }),
+    client.salesCommission.findMany({
+      where: { salespersonId: { in: userIds }, status: { in: CLAWBACK_STATUSES }, clawbackAmount: { gt: 0 }, paidAt: { not: null }, deletedAt: null },
+      select: { ...REFERENCE_SELECT, clawbackAmount: true, clawbackAt: true, clawbackReason: true },
+      orderBy: [{ clawbackAt: 'asc' }, { id: 'asc' }],
+    }),
   ]);
 
   const candidates = approved.filter((c) => !payouts.some((p) => isCoveredByPayout(c, p)));

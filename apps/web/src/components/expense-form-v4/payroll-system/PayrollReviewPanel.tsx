@@ -5,7 +5,6 @@ import {
   CalendarX,
   Clock,
   ExternalLink,
-  Info,
   KeyRound,
   Lock,
   Undo2,
@@ -14,7 +13,6 @@ import {
 import { FLAG_LABEL, flagChipClass, fmtOt, statusView, thaiShortDate } from '@/pages/attendance/attendance.util';
 import type { PayrollSystemNotes, PayrollSystemWarning } from '../types';
 import {
-  COMMISSION_FINANCE_BLOCKED_TEXT,
   NO_ATTENDANCE_TEXT,
   clawbackCarriedText,
   clawbackPaidOutsideText,
@@ -91,7 +89,7 @@ interface WarningItem {
 }
 
 /** คำเตือนระดับใบ (ทุกบรรทัดได้ค่าเดียวกัน) — รวมเป็นหนึ่งข้อ ไม่ใช่ต่อบรรทัด */
-type DocumentWarningCode = 'NOT_YET_CLOSABLE' | 'COMMISSION_FINANCE_BLOCKED';
+type DocumentWarningCode = 'NOT_YET_CLOSABLE';
 type LineWarning = Exclude<PayrollSystemWarning, { code: DocumentWarningCode }>;
 
 const nameOf = (name: string) => <b className="font-semibold">{name}</b>;
@@ -208,8 +206,6 @@ export function PayrollReviewPanel({
       ),
     ),
   ];
-  // ใบ FINANCE ไม่ดึงค่าคอมของทั้งใบ — แสดงครั้งเดียว ไม่ว่ากี่บรรทัดจะมีค่าคอมรอ (P2-R19.3)
-  const financeBlocked = lines.some((l) => (l.systemNotes?.warnings ?? []).some((w) => w.code === 'COMMISSION_FINANCE_BLOCKED'));
   const warnings: WarningItem[] = [
     ...cutoffs.map((at) => ({
       key: `cutoff-${at}`,
@@ -217,12 +213,9 @@ export function PayrollReviewPanel({
       iconClass: 'text-info',
       body: <span>{submitCutoffText(at)}</span>,
     })),
-    ...(financeBlocked
-      ? [{ key: 'commission-finance', icon: Info, iconClass: 'text-info', body: <span>{COMMISSION_FINANCE_BLOCKED_TEXT}</span> }]
-      : []),
     ...lines.flatMap((l, li) =>
       (l.systemNotes?.warnings ?? []).flatMap((w, wi) => {
-        if (w.code === 'NOT_YET_CLOSABLE' || w.code === 'COMMISSION_FINANCE_BLOCKED') return [];
+        if (w.code === 'NOT_YET_CLOSABLE') return [];
         const item = lineWarning(l.employeeName, w, `${li}-${wi}`);
         return item ? [item] : [];
       }),

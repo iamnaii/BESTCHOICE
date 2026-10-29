@@ -930,7 +930,7 @@ describe('PayrollSystemRowsService.compute — commission PAY items and clawback
     expect(row.notes.warnings).toEqual([{ code: 'IN_OTHER_DOCUMENT', documentId: docA.id, documentNumber: docA.number, branchName: branch1.name, status: 'DRAFT' }]);
   });
 
-  it('(d) FINANCE → no commission rows, items or deductions (clawbacks not read); COMMISSION_FINANCE_BLOCKED {count} only when there are payable commissions; commissionAccountCodes empty', async () => {
+  it('(d) FINANCE → no commission rows, items, deductions or commission warnings even with payable commissions + clawbacks (central staff earn no commission); commissionAccountCodes empty', async () => {
     const u = await mkSeller('d');
     await mkCommission(u, { period: '2026-09', amount: 500 });
     await mkCommission(u, { amount: 1000 });
@@ -944,7 +944,7 @@ describe('PayrollSystemRowsService.compute — commission PAY items and clawback
       expect(row.systemDeductions).toEqual([]);
       expect(row.commissionItems).toEqual([]);
     }
-    expect(res.rows[0].notes.warnings).toEqual([{ code: 'COMMISSION_FINANCE_BLOCKED', count: 2 }]);
+    expect(res.rows[0].notes.warnings).toEqual([]);
     expect(res.rows[1].notes.warnings).toEqual([]);
   });
 });

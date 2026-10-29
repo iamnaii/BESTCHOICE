@@ -143,14 +143,14 @@ describe('PayrollReviewPanel — warnings', () => {
     expect(within(items[1]).getByText('มานี สาขาใหม่')).toHaveClass('font-semibold');
   });
 
-  // D4 ส่วนที่ 2 (P2-R19.3) — คำเตือนค่าคอมสี่แบบ (ถ้อยคำตามตาราง copy) · ใบ FINANCE แสดงครั้งเดียวต่อใบ
-  it('commission warnings: FINANCE_BLOCKED once per document, IN_OTHER_DOCUMENT with name/count/number, CLAWBACK_CARRIED and PAID_OUTSIDE with the name', () => {
+  // D4 ส่วนที่ 2 (P2-R19.3) — คำเตือนค่าคอมสามแบบ (ถ้อยคำตามตาราง copy) · ใบ FINANCE ไม่มีค่าคอม (2026-10-29) — คำเตือนเก่าที่ยังเก็บอยู่ในร่างไม่แสดง
+  it('commission warnings: IN_OTHER_DOCUMENT with name/count/number, CLAWBACK_CARRIED and PAID_OUTSIDE with the name; a stored legacy FINANCE_BLOCKED is not shown', () => {
     mount({ role: 'OWNER', branchId: null }, [
       {
         employeeName: 'สมศรี มีสุข',
         systemNotes: notes({
           warnings: [
-            { code: 'COMMISSION_FINANCE_BLOCKED', count: 2 },
+            { code: 'COMMISSION_FINANCE_BLOCKED', count: 2 } as never,
             { code: 'CLAWBACK_CARRIED', deducted: '1000.00', carried: '400.00' },
             { code: 'CLAWBACK_PAID_OUTSIDE_PAYROLL', reference: 'CT-20260901-0003' },
           ],
@@ -160,16 +160,14 @@ describe('PayrollReviewPanel — warnings', () => {
         employeeName: 'วิชัย ทองดี',
         systemNotes: notes({
           warnings: [
-            { code: 'COMMISSION_FINANCE_BLOCKED', count: 1 },
             { code: 'COMMISSION_IN_OTHER_DOCUMENT', count: 2, documentId: 'doc-9', documentNumber: 'PR-20261101-0003' },
           ],
         }),
       },
     ]);
-    const heading = screen.getByRole('heading', { name: 'คำเตือน (4)' });
+    const heading = screen.getByRole('heading', { name: 'คำเตือน (3)' });
     const items = within(heading.closest('section') as HTMLElement).getAllByRole('listitem');
     expect(items.map((li) => li.textContent)).toEqual([
-      'ใบฝั่งส่วนกลาง (FINANCE) ยังไม่ดึงค่าคอม — รอฝ่ายบัญชีตอบ',
       'สมศรี มีสุข หักคืนค่าคอมได้ 1,000.00 บาท (ไม่เกินค่าคอมงวดนี้) — ยกไปงวดหน้า 400.00 บาท',
       'สมศรี มีสุข ค่าคอม CT-20260901-0003 ถูกเรียกคืน แต่จ่ายไปนอกใบเงินเดือน — ระบบไม่หักให้อัตโนมัติ ถ้าจะหัก ให้ใส่รายการหักในใบนี้เอง',
       'ค่าคอม 2 รายการของ วิชัย ทองดี อยู่ในใบ PR-20261101-0003 แล้ว',

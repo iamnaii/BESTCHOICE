@@ -276,7 +276,7 @@ describe('payroll lines table — commission column', () => {
     expect(within(await screen.findByRole('row', { name: /สมศรี มีสุข/ })).queryByText(/ยกไปงวดหน้า/)).not.toBeInTheDocument();
   });
 
-  // P2-R30 — FINANCE_BLOCKED / PAID_OUTSIDE เป็นเรื่องก่อนลงบัญชี (รอฝ่ายบัญชี / ใส่รายการหักเอง) — ใบลงบัญชีแล้วไม่แสดง
+  // P2-R30 — PAID_OUTSIDE เป็นเรื่องก่อนลงบัญชี (ใส่รายการหักเอง) — ใบลงบัญชีแล้วไม่แสดง
   const commissionWarnings = () => {
     const doc = withCommission();
     const lines = doc.payroll.lines.map((l) =>
@@ -287,7 +287,6 @@ describe('payroll lines table — commission column', () => {
               review: [],
               warnings: [
                 { code: 'CLAWBACK_CARRIED', deducted: '1000.00', carried: '400.00' },
-                { code: 'COMMISSION_FINANCE_BLOCKED', count: 1 },
                 { code: 'CLAWBACK_PAID_OUTSIDE_PAYROLL', reference: 'CT-20260901-0003' },
                 { code: 'COMMISSION_IN_OTHER_DOCUMENT', count: 2, documentId: 'doc-9', documentNumber: 'PR-20261101-0003' },
               ],
@@ -297,22 +296,19 @@ describe('payroll lines table — commission column', () => {
     );
     return (status: string, gate: Gate) => ({ ...payrollDoc(status, gate), payroll: { ...doc.payroll, lines } }) as unknown as ReturnType<typeof payrollDoc>;
   };
-  const FINANCE_BLOCKED = 'ใบฝั่งส่วนกลาง (FINANCE) ยังไม่ดึงค่าคอม — รอฝ่ายบัญชีตอบ';
   const PAID_OUTSIDE = /ค่าคอม CT-20260901-0003 ถูกเรียกคืน แต่จ่ายไปนอกใบเงินเดือน/;
 
-  it('POSTED: the panel drops FINANCE_BLOCKED and CLAWBACK_PAID_OUTSIDE_PAYROLL, keeps CLAWBACK_CARRIED and COMMISSION_IN_OTHER_DOCUMENT', async () => {
+  it('POSTED: the panel drops CLAWBACK_PAID_OUTSIDE_PAYROLL, keeps CLAWBACK_CARRIED and COMMISSION_IN_OTHER_DOCUMENT', async () => {
     mount(commissionWarnings()('POSTED', null));
     const panel = await screen.findByRole('complementary', { name: 'ตรวจก่อนอนุมัติ' });
-    expect(within(panel).queryByText(FINANCE_BLOCKED)).not.toBeInTheDocument();
     expect(within(panel).queryByText(PAID_OUTSIDE)).not.toBeInTheDocument();
     expect(within(panel).getByText(/ยกไปงวดหน้า 400\.00 บาท/)).toBeInTheDocument();
     expect(within(panel).getByText('ค่าคอม 2 รายการของ ปรีชา ศรีสุข อยู่ในใบ PR-20261101-0003 แล้ว')).toBeInTheDocument();
   });
 
-  it.each(['DRAFT', 'PENDING_APPROVAL', 'APPROVED'])('%s: the panel still shows all four commission warnings', async (status) => {
+  it.each(['DRAFT', 'PENDING_APPROVAL', 'APPROVED'])('%s: the panel still shows all three commission warnings', async (status) => {
     mount(commissionWarnings()(status, { closableAt: null, deviceConflicts: [] }));
     const panel = await screen.findByRole('complementary', { name: 'ตรวจก่อนอนุมัติ' });
-    expect(within(panel).getByText(FINANCE_BLOCKED)).toBeInTheDocument();
     expect(within(panel).getByText(PAID_OUTSIDE)).toBeInTheDocument();
     expect(within(panel).getByText(/ยกไปงวดหน้า 400\.00 บาท/)).toBeInTheDocument();
   });

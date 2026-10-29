@@ -41,14 +41,10 @@ interface CommissionRows {
 
 /**
  * สถานะค่าคอมของคนหนึ่ง → แถว COMMISSION + หักคืน + รายการ + คำเตือน (ฟังก์ชันบริสุทธิ์ — กติกาเลือกค่าคอมอยู่ใน loadCommissionState)
- * - FINANCE (`commissionCode` null): ไม่มีแถว/รายการ — นับค่าคอมที่จ่ายได้เป็น COMMISSION_FINANCE_BLOCKED (เฉพาะ > 0) เท่านั้น
  * - หักคืนตามลำดับ [clawbackAt, id] ได้ไม่เกิน Σ ค่าคอมงวดนี้ (Decision 2 — ม.76: ไม่หักจากเงินเดือน) · ส่วนที่เหลือยกไปงวดหน้า
  * - P2-R6: ยอด 0 ไม่เป็นแถว/รายการ · CLAWBACK_CARRIED หนึ่งคำเตือนต่อบรรทัด เฉพาะเมื่อมียอดยก
  */
-function commissionRows(s: UserCommissionState, commissionCode: string | null): CommissionRows {
-  if (commissionCode === null) {
-    return { income: null, deductions: [], items: [], warnings: s.payable.length > 0 ? [{ code: 'COMMISSION_FINANCE_BLOCKED', count: s.payable.length }] : [] };
-  }
+function commissionRows(s: UserCommissionState, commissionCode: string): CommissionRows {
   const warnings: SystemWarning[] = s.heldElsewhere.map((g) => ({
     code: 'COMMISSION_IN_OTHER_DOCUMENT',
     count: g.commissionIds.length,
@@ -138,7 +134,7 @@ export function periodRange(period: string): { from: Date; to: Date } {
  *
  * ส่วนที่ 2 — ค่าคอม (ทุกบรรทัด SHOP ที่ผูกพนักงาน ไม่ขึ้นกับเกณฑ์ OT / ใบอื่นถือ OT / รหัสตอกบัตร — สามอย่างนั้นมีผลกับแถวลงเวลาเท่านั้น):
  * แถว COMMISSION (role `shop_payroll_commission`) + หักคืนค่าคอม + รายการ PAY/CLAWBACK จาก `loadCommissionState`
- * (กติกาจ่ายได้/หักคืนได้อยู่ที่นั่นที่เดียว) · FINANCE ไม่ดึงค่าคอม — ได้แค่คำเตือน COMMISSION_FINANCE_BLOCKED
+ * (กติกาจ่ายได้/หักคืนได้อยู่ที่นั่นที่เดียว) · FINANCE ไม่ดึงค่าคอมและไม่อ่านค่าคอมเลย (คำตัดสินเจ้าของ 2026-10-29 — พนักงานส่วนกลางไม่มีค่าคอม)
  * - ไม่ล็อกเอง: ผู้เรียก (บันทึก/ส่ง/อนุมัติ/ลงบัญชี — Task 4) ถือ `payroll-attendance:*` และ `payroll-clawback:${userId}` แล้ว
  */
 @Injectable()
@@ -187,7 +183,7 @@ export class PayrollSystemRowsService {
         select: { userId: true, payroll: { select: { document: { select: { id: true, number: true, status: true, branch: { select: { name: true } } } } } } },
         orderBy: { payroll: { document: { number: 'asc' } } },
       }),
-      loadCommissionState(client, { userIds, payrollPeriod: q.payrollPeriod, excludeDocumentId: q.excludeDocumentId, payOnly: !shop }),
+      shop ? loadCommissionState(client, { userIds, payrollPeriod: q.payrollPeriod, excludeDocumentId: q.excludeDocumentId }) : null,
     ]);
 
     const branchIds = [...new Set(days.map((d) => d.branchId))];
@@ -250,7 +246,8 @@ export class PayrollSystemRowsService {
       const attendanceTracked = userDays.some((d) => d.clockIn != null);
       if (!hasPin.get(userId) && !attendanceTracked) warnings.push({ code: 'NO_PIN' });
       else if (autoOtEligible && !attendanceTracked) warnings.push({ code: 'NO_ATTENDANCE' });
-      const commission = commissionRows(commissions.get(userId)!, commissionCode);
+      const commission: CommissionRows =
+        commissions && commissionCode ? commissionRows(commissions.get(userId)!, commissionCode) : { income: null, deductions: [], items: [], warnings: [] };
       warnings.push(...commission.warnings);
       if (q.now.getTime() < cutoff.getTime()) warnings.push({ code: 'NOT_YET_CLOSABLE', closableAt: cutoff.toISOString() });
 

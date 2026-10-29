@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsISO8601, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsIn, IsInt, IsISO8601, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 
 /** DTO หลังบ้านของการลงเวลา (สเปก §6 §8) — ข้อความไทย */
 export const DAY_KINDS = ['WORK', 'DAY_OFF', 'LEAVE_SICK', 'LEAVE_PERSONAL', 'LEAVE_OTHER', 'SHOP_CLOSED'] as const;
@@ -67,6 +67,7 @@ export class SetDayKindsDto {
   branchId!: string;
 
   @IsArray()
+  @ArrayMinSize(1, { message: 'กรุณาเลือกวันอย่างน้อย 1 วัน' })
   @ArrayMaxSize(400, { message: 'ส่งได้ไม่เกิน 400 รายการต่อครั้ง' })
   @ValidateNested({ each: true })
   @Type(() => DayKindEntryDto)

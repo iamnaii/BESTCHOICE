@@ -7,13 +7,14 @@ import type { DumpRow, DumpTables } from './dump-reader';
  *
  * การเชื่อมตาราง: `contract.ref_order` = `order_product.order_id` = `order_product_detail.ref_order_id`
  * · งวด `order_product_installment.ref_contract_id` · รับเงิน `payment_installment.ref_contract` +
- * `ref_installmemnt` (สะกดตามของจริง) · ปิดก่อนกำหนด `contract_close.ref_contract` · ไฟล์แนบอ้างคำสั่งซื้อ
+ * `ref_installmemnt` (สะกดตามของจริง) · ปิดก่อนกำหนด `contract_close.ref_contract`
+ * · รูป/ไฟล์ของคำสั่งซื้อ `ref_order` · ไฟล์ของสัญญา (`contract_file`) `ref_contract`
  *
  * - วันที่ในระบบเก่าเป็นเวลากรุงเทพไม่มี timezone → อ่านเป็น +07:00 · ปี > 2400 = พ.ศ. → ลบ 543 + ลง `anomalies`
  * - จำนวนเงินเป็น `Prisma.Decimal` ตามที่ dump เขียน ไม่ปัด (ช่องว่าง = 0)
  * - รับเงินที่ `status = '0'` ถูกลบในระบบเก่าแล้ว ไม่อยู่ใน `receipts`
- * - แถวที่อ้างสัญญา/งวดที่ไม่มี → ลง `anomalies` (ไม่ทิ้งเงียบ)
- * - ข้อมูลที่โครงสร้างนี้แทนไม่ได้ (คอลัมน์ไม่มี, สัญญาไม่มีคำสั่งซื้อ, เลขสัญญาซ้ำ, วันที่ผิดรูป) = throw
+ * - แถวลูกที่อ้างสัญญาที่ไม่มี (รวม NULL / 0) ไม่ถูกอ่านค่า → ลง `anomalies` เป็นกลุ่มพร้อมจำนวนแถว
+ * - ข้อมูลของสัญญาที่โครงสร้างนี้แทนไม่ได้ (คอลัมน์ไม่มี, ไม่มีคำสั่งซื้อ, เลขสัญญาซ้ำ, วันที่ผิดรูป) = throw
  *   ข้อความบอกตาราง คอลัมน์ และรหัสแถว ไม่มีค่าในแถว (dump มีข้อมูลส่วนบุคคล)
  */
 
@@ -60,10 +61,11 @@ export type LegacyReceipt = {
 
 export type LegacyContract = {
   contractId: string;
+  /** `contract_code` · สัญญาสถานะ 0 ที่ไม่มีเลข = `contract_id=<id>` (ลง `anomalies`) */
   code: string;
-  /** `contract_status` ตามระบบเก่า · ไม่มีสถานะ (NULL/ว่าง) = `'0'` */
+  /** `contract_status` ตามระบบเก่า */
   statusCode: string;
-  /** `contract.created_at` = วันที่ทำสัญญา */
+  /** `contract.created_at` = วันที่ทำสัญญา · สัญญาสถานะ 0 ที่ไม่มีค่า = วันที่สร้างคำสั่งซื้อ (ลง `anomalies`) */
   createdAt: Date;
   order: DumpRow;
   detail: DumpRow;
@@ -75,7 +77,7 @@ export type LegacyContract = {
 
 export type LegacyBook = {
   contracts: LegacyContract[];
-  /** ลูกค้าตาม id ของ `member_master` (= `order_product.ref_member`) */
+  /** ลูกค้าตาม `member_master.member_id` (= `order_product.ref_member`) */
   members: Map<string, DumpRow>;
   anomalies: string[];
 };
@@ -90,17 +92,23 @@ const TABLE = {
   close: 'bestchoice_contract_close',
 } as const;
 
-const FILE_TABLES: readonly { table: string; kind: LegacyFileKind }[] = [
-  { table: 'bestchoice_order_product_img_contract', kind: 'img_contract' },
-  { table: 'bestchoice_order_product_img_facebook', kind: 'img_facebook' },
-  { table: 'bestchoice_order_product_img_income', kind: 'img_income' },
-  { table: 'bestchoice_order_product_img_line', kind: 'img_line' },
-  { table: 'bestchoice_order_product_img_lock', kind: 'img_lock' },
-  { table: 'bestchoice_order_product_img_receive', kind: 'img_receive' },
-  { table: 'bestchoice_order_product_img_selfie', kind: 'img_selfie' },
-  { table: 'bestchoice_order_product_file', kind: 'order_product_file' },
-  { table: 'bestchoice_contract_file', kind: 'contract_file' },
+/** ไฟล์แนบ — `owner` = คอลัมน์ที่อ้างถึง (`file_name` = path ทุกตาราง) */
+const FILE_TABLES: readonly {
+  table: string;
+  kind: LegacyFileKind;
+  owner: 'ref_order' | 'ref_contract';
+}[] = [
+  { table: 'bestchoice_order_product_img_contract', kind: 'img_contract', owner: 'ref_order' },
+  { table: 'bestchoice_order_product_img_facebook', kind: 'img_facebook', owner: 'ref_order' },
+  { table: 'bestchoice_order_product_img_income', kind: 'img_income', owner: 'ref_order' },
+  { table: 'bestchoice_order_product_img_line', kind: 'img_line', owner: 'ref_order' },
+  { table: 'bestchoice_order_product_img_lock', kind: 'img_lock', owner: 'ref_order' },
+  { table: 'bestchoice_order_product_img_receive', kind: 'img_receive', owner: 'ref_order' },
+  { table: 'bestchoice_order_product_img_selfie', kind: 'img_selfie', owner: 'ref_order' },
+  { table: 'bestchoice_order_product_file', kind: 'order_product_file', owner: 'ref_order' },
+  { table: 'bestchoice_contract_file', kind: 'contract_file', owner: 'ref_contract' },
 ];
+const FILE_PATH = 'file_name';
 
 /** ตารางที่ต้องอ่านจาก dump — ส่งให้ `readDumpTables(path, LEGACY_TABLES)` */
 export const LEGACY_TABLES: readonly string[] = [
@@ -108,99 +116,62 @@ export const LEGACY_TABLES: readonly string[] = [
   ...FILE_TABLES.map((f) => f.table),
 ];
 
-/**
- * ชื่อคอลัมน์ที่ยอมรับ ใช้ชื่อแรกที่ตารางมี — ช่องที่มีชื่อเดียวตรวจกับ dump จริงแล้ว ช่องที่มีหลายชื่อยังไม่ได้ตรวจ
- * ไม่มีสักชื่อ = throw พร้อมรายชื่อคอลัมน์ที่ตารางมีจริง ⇒ เติมชื่อที่ถูกตรงนี้ที่เดียว
- */
-const COLUMNS = {
+/** ชื่อคอลัมน์จริงตาม CREATE TABLE ของ dump 29/10 */
+const COL = {
   contract: {
-    id: ['contract_id', 'id'],
-    code: ['contract_code'],
-    order: ['ref_order'],
-    status: ['contract_status'],
-    createdAt: ['created_at'],
+    id: 'contract_id',
+    code: 'contract_code',
+    order: 'ref_order',
+    status: 'contract_status',
+    createdAt: 'created_at',
   },
-  order: { id: ['order_id'] },
-  detail: { order: ['ref_order_id'] },
-  member: { id: ['member_id', 'id'] },
+  order: { id: 'order_id', createdAt: 'created_at' },
+  detail: { order: 'ref_order_id' },
+  member: { id: 'member_id' },
   installment: {
-    id: ['ins_id', 'installment_id', 'id'],
-    code: ['ins_code', 'installment_code', 'code'],
-    contract: ['ref_contract_id'],
-    dueDate: ['ins_due_date'],
-    amount: ['ins_amount'],
-    paid: ['ins_paid'],
-    balance: ['ins_balance'],
-    status: ['ins_status'],
+    id: 'ins_id',
+    code: 'ins_payment_code',
+    contract: 'ref_contract_id',
+    dueDate: 'ins_due_date',
+    amount: 'ins_amount',
+    paid: 'ins_paid',
+    balance: 'ins_balance',
+    status: 'ins_status',
   },
   receipt: {
-    id: ['payment_id', 'id'],
-    contract: ['ref_contract'],
-    installmentRef: ['ref_installmemnt'],
-    status: ['status'],
-    date: ['date'],
-    createdAt: ['created_at'],
-    amount: ['amount', 'payment_amount'],
-    installmentAmount: ['installment', 'installment_amount'],
-    mulct: ['mulct', 'mulct_amount'],
-    discount: ['discount', 'discount_amount'],
-    slip: ['slip', 'slip_img', 'slip_image', 'img_slip', 'payment_slip', 'image', 'img', 'file'],
+    id: 'id',
+    contract: 'ref_contract',
+    installmentRef: 'ref_installmemnt',
+    status: 'status',
+    date: 'date',
+    createdAt: 'created_at',
+    amount: 'amount',
+    installmentAmount: 'installment',
+    mulct: 'mulct',
+    discount: 'discount',
+    slip: 'slip',
   },
   close: {
-    contract: ['ref_contract'],
-    amount: ['amount', 'close_amount', 'total'],
-    discount: ['discount', 'close_discount', 'discount_amount'],
-    createdAt: ['created_at'],
+    contract: 'ref_contract',
+    amount: 'amount',
+    discount: 'discount',
+    createdAt: 'created_at',
   },
 } as const;
-
-/** คอลัมน์ path ของไฟล์แนบ — ชื่อต่างกันในแต่ละตาราง */
-function fileColumns(kind: LegacyFileKind) {
-  return {
-    order: ['ref_order_id', 'ref_order'],
-    path: [
-      kind,
-      `${kind}_name`,
-      `${kind}_path`,
-      'img',
-      'image',
-      'img_name',
-      'image_name',
-      'img_path',
-      'image_path',
-      'img_url',
-      'file',
-      'file_name',
-      'file_path',
-      'filename',
-      'file_url',
-      'path',
-    ],
-  } as const;
-}
 
 const ERROR_PREFIX = 'อ่านข้อมูลระบบเก่าไม่ได้';
 const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?)?$/;
 
-/** เลือกชื่อคอลัมน์จริงของแต่ละช่อง — ตารางว่างไม่มีแถวให้อ่าน จึงใช้ชื่อแรก */
-function resolveColumns<S extends Record<string, readonly string[]>>(
-  table: string,
-  rows: readonly DumpRow[],
-  spec: S,
-): { [K in keyof S]: string } {
-  const present = rows.length > 0 ? Object.keys(rows[0]) : null;
-  const resolved = {} as { [K in keyof S]: string };
-  for (const key of Object.keys(spec) as (keyof S)[]) {
-    const candidates = spec[key];
-    const found = present ? candidates.find((c) => present.includes(c)) : candidates[0];
-    if (!found) {
-      throw new Error(
-        `${ERROR_PREFIX}: ตาราง \`${table}\` ไม่มีคอลัมน์ ${candidates.join(' / ')} — คอลัมน์ที่มี: ${present?.join(', ')}`,
-      );
-    }
-    resolved[key] = found;
+/** คอลัมน์ที่ต้องใช้ต้องมีในตาราง ไม่งั้น throw พร้อมรายชื่อคอลัมน์ที่มีจริง (ตารางว่างไม่ต้องตรวจ) */
+function requireColumns(table: string, rows: readonly DumpRow[], columns: readonly string[]): void {
+  if (rows.length === 0) return;
+  const present = Object.keys(rows[0]);
+  const missing = columns.filter((c) => !present.includes(c));
+  if (missing.length > 0) {
+    throw new Error(
+      `${ERROR_PREFIX}: ตาราง \`${table}\` ไม่มีคอลัมน์ ${missing.join(', ')} — คอลัมน์ที่มี: ${present.join(', ')}`,
+    );
   }
-  return resolved;
 }
 
 /** อ่านค่าในแถวพร้อมบอกตำแหน่งเมื่ออ่านไม่ได้ (ตาราง + รหัสแถว + คอลัมน์ ไม่มีค่า) */
@@ -266,16 +237,23 @@ class RowReader {
         ((hour * 60 + minute) * 60 + second) * 1000,
     );
     const sameDay = bangkokDateString(instant) === `${String(year).padStart(4, '0')}-${mo}-${d}`;
-    if (!sameDay || hour > 23 || minute > 59 || second > 59)
+    if (!sameDay || hour > 23 || minute > 59 || second > 59) {
       throw this.fail(column, 'วันที่ไม่มีจริง');
+    }
     return instant;
   }
 }
 
-function push<V>(map: Map<string, V[]>, key: string, value: V): void {
-  const list = map.get(key);
-  if (list) list.push(value);
-  else map.set(key, [value]);
+/** จัดแถวเป็นกลุ่มตามค่าในคอลัมน์ — ค่าว่าง/NULL ได้คีย์ `''` */
+function groupBy(rows: readonly DumpRow[], column: string): Map<string, DumpRow[]> {
+  const groups = new Map<string, DumpRow[]>();
+  for (const row of rows) {
+    const key = row[column]?.trim() ?? '';
+    const list = groups.get(key);
+    if (list) list.push(row);
+    else groups.set(key, [row]);
+  }
+  return groups;
 }
 
 /** เรียงรหัสแถวเป็นตัวเลขเมื่อเป็นตัวเลขทั้งคู่ (`'9'` ก่อน `'10'`) */
@@ -288,167 +266,187 @@ function compareIds(a: string, b: string): number {
 /** จัดกลุ่มตาราง `LEGACY_TABLES` (ผลของ `readDumpTables`) เป็นรายสัญญา */
 export function buildLegacyBook(t: DumpTables): LegacyBook {
   const anomalies: string[] = [];
-  const rowsOf = (table: string): DumpRow[] => {
+  const rowsOf = (table: string, columns: Record<string, string>): DumpRow[] => {
     const rows = t[table];
     if (!rows) throw new Error(`${ERROR_PREFIX}: ไม่มีตาราง \`${table}\` (อ่านด้วย LEGACY_TABLES)`);
+    requireColumns(table, rows, Object.values(columns));
     return rows;
   };
+  const reader = (table: string, row: DumpRow, labelColumn: string) =>
+    new RowReader(table, row, labelColumn, anomalies);
 
-  const orderRows = rowsOf(TABLE.order);
-  const orderCol = resolveColumns(TABLE.order, orderRows, COLUMNS.order);
   const orders = new Map(
-    orderRows.map((row) => [
-      new RowReader(TABLE.order, row, orderCol.id, anomalies).text(orderCol.id),
-      row,
-    ]),
+    rowsOf(TABLE.order, COL.order).map((row) => [row[COL.order.id] ?? '', row]),
   );
-
-  const detailRows = rowsOf(TABLE.detail);
-  const detailCol = resolveColumns(TABLE.detail, detailRows, COLUMNS.detail);
-  const detailByOrder = new Map<string, DumpRow>();
-  for (const row of detailRows) {
-    const r = new RowReader(TABLE.detail, row, detailCol.order, anomalies);
-    const orderId = r.text(detailCol.order);
-    if (detailByOrder.has(orderId))
-      throw r.fail(detailCol.order, 'คำสั่งซื้อมีรายละเอียดสินค้ามากกว่า 1 แถว');
-    detailByOrder.set(orderId, row);
-  }
-
-  const memberRows = rowsOf(TABLE.member);
-  const memberCol = resolveColumns(TABLE.member, memberRows, COLUMNS.member);
   const members = new Map(
-    memberRows.map((row) => [
-      new RowReader(TABLE.member, row, memberCol.id, anomalies).text(memberCol.id),
-      row,
-    ]),
+    rowsOf(TABLE.member, COL.member).map((row) => [row[COL.member.id] ?? '', row]),
   );
+  const detailsByOrder = groupBy(rowsOf(TABLE.detail, COL.detail), COL.detail.order);
+  const installmentsByContract = groupBy(
+    rowsOf(TABLE.installment, COL.installment),
+    COL.installment.contract,
+  );
+  const closesByContract = groupBy(rowsOf(TABLE.close, COL.close), COL.close.contract);
 
-  const installmentRows = rowsOf(TABLE.installment);
-  const insCol = resolveColumns(TABLE.installment, installmentRows, COLUMNS.installment);
-  const installmentsByContract = new Map<string, LegacyInstallment[]>();
-  for (const row of installmentRows) {
-    const r = new RowReader(TABLE.installment, row, insCol.id, anomalies);
-    push(installmentsByContract, r.text(insCol.contract), {
-      legacyId: r.text(insCol.id),
-      legacyCode: r.text(insCol.code),
-      dueDate: r.date(insCol.dueDate),
-      amount: r.money(insCol.amount),
-      paid: r.money(insCol.paid),
-      balance: r.money(insCol.balance),
-      statusCode: r.text(insCol.status),
-    });
-  }
-
-  const receiptRows = rowsOf(TABLE.receipt);
-  const recCol = resolveColumns(TABLE.receipt, receiptRows, COLUMNS.receipt);
-  const receiptsByContract = new Map<string, LegacyReceipt[]>();
-  for (const row of receiptRows) {
-    const r = new RowReader(TABLE.receipt, row, recCol.id, anomalies);
-    const status = row[recCol.status];
-    if (status === '0') continue; // ถูกลบในระบบเก่า
-    if (status !== '1') {
-      anomalies.push(
-        `\`${TABLE.receipt}\` ${r.label}: สถานะ ${status ?? 'NULL'} ไม่ใช่ 0/1 — ไม่นำเข้า`,
-      );
-      continue;
-    }
-    push(receiptsByContract, r.text(recCol.contract), {
-      legacyId: r.text(recCol.id),
-      installmentLegacyId: r.optionalText(recCol.installmentRef) ?? '',
-      date: r.date(recCol.date),
-      amount: r.money(recCol.amount),
-      installment: r.money(recCol.installmentAmount),
-      mulct: r.money(recCol.mulct),
-      discount: r.money(recCol.discount),
-      slipPath: r.optionalText(recCol.slip),
-      createdAt: r.date(recCol.createdAt),
-    });
-  }
-
-  const closeRows = rowsOf(TABLE.close);
-  const closeCol = resolveColumns(TABLE.close, closeRows, COLUMNS.close);
-  const closeByContract = new Map<string, NonNullable<LegacyContract['close']>>();
-  for (const row of closeRows) {
-    const r = new RowReader(TABLE.close, row, closeCol.contract, anomalies);
-    const contractId = r.text(closeCol.contract);
-    if (closeByContract.has(contractId))
-      throw r.fail(closeCol.contract, 'สัญญามีรายการปิดก่อนกำหนดมากกว่า 1 แถว');
-    closeByContract.set(contractId, {
-      amount: r.money(closeCol.amount),
-      discount: r.money(closeCol.discount),
-      createdAt: r.date(closeCol.createdAt),
-    });
-  }
-
-  // แถวไฟล์ของคำสั่งซื้อที่ไม่ได้ทำสัญญา (ไม่อนุมัติ/ยกเลิก) เป็นเรื่องปกติ — ไม่ลง anomalies
-  const filesByOrder = new Map<string, LegacyContract['files']>();
-  for (const { table, kind } of FILE_TABLES) {
-    const rows = rowsOf(table);
-    const fileCol = resolveColumns(table, rows, fileColumns(kind));
-    for (const row of rows) {
-      const orderId = row[fileCol.order]?.trim();
-      const path = row[fileCol.path]?.trim();
-      if (orderId && path) push(filesByOrder, orderId, { kind, path });
-    }
-  }
-
-  const contractRows = rowsOf(TABLE.contract);
-  const conCol = resolveColumns(TABLE.contract, contractRows, COLUMNS.contract);
-  const codes = new Set<string>();
-  const contracts = contractRows.map((row): LegacyContract => {
-    const r = new RowReader(TABLE.contract, row, conCol.id, anomalies);
-    const contractId = r.text(conCol.id);
-    const code = r.text(conCol.code);
-    if (codes.has(code)) throw r.fail(conCol.code, `เลขสัญญาซ้ำ ${code}`);
-    codes.add(code);
-    const orderId = r.text(conCol.order);
-    const order = orders.get(orderId);
-    if (!order) throw r.fail(conCol.order, `ไม่พบ \`${TABLE.order}\` ${orderCol.id}=${orderId}`);
-    const detail = detailByOrder.get(orderId);
-    if (!detail)
-      throw r.fail(conCol.order, `ไม่พบ \`${TABLE.detail}\` ${detailCol.order}=${orderId}`);
-
-    const installments = (installmentsByContract.get(contractId) ?? []).sort(
-      (a, b) => a.dueDate.getTime() - b.dueDate.getTime() || compareIds(a.legacyId, b.legacyId),
+  const validReceipts = rowsOf(TABLE.receipt, COL.receipt).filter((row) => {
+    const status = row[COL.receipt.status];
+    if (status === '0') return false; // ถูกลบในระบบเก่า
+    if (status === '1') return true;
+    anomalies.push(
+      `\`${TABLE.receipt}\` ${COL.receipt.id}=${row[COL.receipt.id]}: สถานะ ${status ?? 'NULL'} ไม่ใช่ 0/1 — ไม่นำเข้า`,
     );
+    return false;
+  });
+  const receiptsByContract = groupBy(validReceipts, COL.receipt.contract);
+
+  // รูป/ไฟล์ของคำสั่งซื้อที่ไม่ได้ทำสัญญา (ไม่อนุมัติ/ยกเลิก) เป็นเรื่องปกติ — ไม่ลง anomalies
+  const filesByOwner = {
+    ref_order: new Map<string, LegacyContract['files']>(),
+    ref_contract: new Map<string, LegacyContract['files']>(),
+  };
+  for (const { table, kind, owner } of FILE_TABLES) {
+    for (const row of rowsOf(table, { owner, path: FILE_PATH })) {
+      const ownerId = row[owner]?.trim();
+      const path = row[FILE_PATH]?.trim();
+      if (!ownerId || !path) continue;
+      const files = filesByOwner[owner].get(ownerId);
+      if (files) files.push({ kind, path });
+      else filesByOwner[owner].set(ownerId, [{ kind, path }]);
+    }
+  }
+
+  const readInstallment = (row: DumpRow): LegacyInstallment => {
+    const r = reader(TABLE.installment, row, COL.installment.id);
+    const legacyId = r.text(COL.installment.id);
+    return {
+      legacyId,
+      // ins_payment_code เป็น NULL ได้ใน schema จริง → ใช้ ins_id แทน (ยังไม่ซ้ำภายในตาราง)
+      legacyCode: r.optionalText(COL.installment.code) ?? legacyId,
+      dueDate: r.date(COL.installment.dueDate),
+      amount: r.money(COL.installment.amount),
+      paid: r.money(COL.installment.paid),
+      balance: r.money(COL.installment.balance),
+      statusCode: r.text(COL.installment.status),
+    };
+  };
+
+  const readReceipt = (row: DumpRow): LegacyReceipt => {
+    const r = reader(TABLE.receipt, row, COL.receipt.id);
+    return {
+      legacyId: r.text(COL.receipt.id),
+      installmentLegacyId: r.optionalText(COL.receipt.installmentRef) ?? '',
+      date: r.date(COL.receipt.date),
+      amount: r.money(COL.receipt.amount),
+      installment: r.money(COL.receipt.installmentAmount),
+      mulct: r.money(COL.receipt.mulct),
+      discount: r.money(COL.receipt.discount),
+      slipPath: r.optionalText(COL.receipt.slip),
+      createdAt: r.date(COL.receipt.createdAt),
+    };
+  };
+
+  const codes = new Set<string>();
+  const contracts = rowsOf(TABLE.contract, COL.contract).map((row): LegacyContract => {
+    const r = reader(TABLE.contract, row, COL.contract.id);
+    const contractId = r.text(COL.contract.id);
+    const statusCode = r.text(COL.contract.status);
+    // สัญญาสถานะ 0 (ไม่มีสถานะ — classify ให้ SKIP 'status-0') ที่ไม่มีเลขสัญญาหรือวันที่ ไม่ throw:
+    // ลง anomalies แล้วใช้ค่าแทน (คำตัดสินผู้คุมงาน 29/10) · สถานะอื่นยังเคร่งเหมือนเดิม
+    const lenient = statusCode === '0';
+
+    const orderId = r.text(COL.contract.order);
+    const order = orders.get(orderId);
+    if (!order) throw r.fail(COL.contract.order, `ไม่พบ \`${TABLE.order}\` order_id=${orderId}`);
+    const details = detailsByOrder.get(orderId) ?? [];
+    if (details.length !== 1) {
+      throw r.fail(
+        COL.contract.order,
+        `\`${TABLE.detail}\` ของคำสั่งซื้อนี้มี ${details.length} แถว (ต้องมี 1)`,
+      );
+    }
+
+    let code = r.optionalText(COL.contract.code);
+    if (code === null) {
+      if (!lenient) throw r.fail(COL.contract.code, 'ไม่มีค่า');
+      code = `${COL.contract.id}=${contractId}`;
+      anomalies.push(`\`${TABLE.contract}\` ${r.label}: สถานะ 0 ไม่มีเลขสัญญา — ใช้ "${code}"`);
+    }
+    if (codes.has(code)) throw r.fail(COL.contract.code, `เลขสัญญาซ้ำ ${code}`);
+    codes.add(code);
+
+    let createdAt: Date;
+    if (lenient && r.optionalText(COL.contract.createdAt) === null) {
+      createdAt = reader(TABLE.order, order, COL.order.id).date(COL.order.createdAt);
+      anomalies.push(
+        `\`${TABLE.contract}\` ${r.label}: สถานะ 0 ไม่มี created_at — ใช้วันที่สร้างคำสั่งซื้อ`,
+      );
+    } else {
+      createdAt = r.date(COL.contract.createdAt);
+    }
+
+    const installments = (installmentsByContract.get(contractId) ?? [])
+      .map(readInstallment)
+      .sort(
+        (a, b) => a.dueDate.getTime() - b.dueDate.getTime() || compareIds(a.legacyId, b.legacyId),
+      );
     const installmentIds = new Set(installments.map((i) => i.legacyId));
-    const receipts = receiptsByContract.get(contractId) ?? [];
+    const receipts = (receiptsByContract.get(contractId) ?? []).map(readReceipt);
     for (const receipt of receipts) {
       if (!installmentIds.has(receipt.installmentLegacyId)) {
         anomalies.push(
-          `\`${TABLE.receipt}\` ${recCol.id}=${receipt.legacyId}: ${recCol.installmentRef}=${receipt.installmentLegacyId || 'NULL'} ไม่ใช่งวดของสัญญา ${code}`,
+          `\`${TABLE.receipt}\` ${COL.receipt.id}=${receipt.legacyId}: ${COL.receipt.installmentRef}=${receipt.installmentLegacyId || 'NULL'} ไม่ใช่งวดของสัญญา ${code}`,
         );
       }
     }
 
+    const closeRows = closesByContract.get(contractId) ?? [];
+    if (closeRows.length > 1) {
+      throw r.fail(
+        COL.contract.id,
+        `\`${TABLE.close}\` มี ${closeRows.length} แถวของสัญญานี้ (ต้องไม่เกิน 1)`,
+      );
+    }
+    const close = closeRows.map((closeRow) => {
+      const c = reader(TABLE.close, closeRow, COL.close.contract);
+      return {
+        amount: c.money(COL.close.amount),
+        discount: c.money(COL.close.discount),
+        createdAt: c.date(COL.close.createdAt),
+      };
+    })[0];
+
     return {
       contractId,
       code,
-      statusCode: r.optionalText(conCol.status) ?? '0',
-      createdAt: r.date(conCol.createdAt),
+      statusCode,
+      createdAt,
       order,
-      detail,
+      detail: details[0],
       installments,
       receipts,
-      close: closeByContract.get(contractId) ?? null,
-      files: filesByOrder.get(orderId) ?? [],
+      close: close ?? null,
+      files: [
+        ...(filesByOwner.ref_order.get(orderId) ?? []),
+        ...(filesByOwner.ref_contract.get(contractId) ?? []),
+      ],
     };
   });
 
+  // แถวลูกที่อ้างสัญญาที่ไม่มี (รวม NULL/0) — ไม่ได้อ่านค่า ไม่นำเข้า ลงเป็นกลุ่ม
   const contractIds = new Set(contracts.map((c) => c.contractId));
-  const orphan = (table: string, column: string, contractId: string, what: string) => {
-    if (!contractIds.has(contractId)) {
-      anomalies.push(`\`${table}\` ${column}=${contractId}: ไม่พบสัญญา — ${what}ไม่นำเข้า`);
+  const orphans: [string, string, Map<string, unknown[]>, string][] = [
+    [TABLE.installment, COL.installment.contract, installmentsByContract, 'งวด'],
+    [TABLE.receipt, COL.receipt.contract, receiptsByContract, 'รายการรับเงิน'],
+    [TABLE.close, COL.close.contract, closesByContract, 'รายการปิดก่อนกำหนด'],
+    ['bestchoice_contract_file', 'ref_contract', filesByOwner.ref_contract, 'ไฟล์สัญญา'],
+  ];
+  for (const [table, column, groups, what] of orphans) {
+    for (const [contractId, rows] of groups) {
+      if (contractIds.has(contractId)) continue;
+      anomalies.push(
+        `\`${table}\` ${column}=${contractId || 'NULL'}: ไม่พบสัญญา — ${what} ${rows.length} แถวไม่นำเข้า`,
+      );
     }
-  };
-  for (const [id, rows] of installmentsByContract) {
-    orphan(TABLE.installment, insCol.contract, id, `งวด ${rows.length} แถว`);
-  }
-  for (const [id, rows] of receiptsByContract) {
-    orphan(TABLE.receipt, recCol.contract, id, `รายการรับเงิน ${rows.length} แถว`);
-  }
-  for (const id of closeByContract.keys()) {
-    orphan(TABLE.close, closeCol.contract, id, 'รายการปิดก่อนกำหนด 1 แถว');
   }
 
   return { contracts, members, anomalies };

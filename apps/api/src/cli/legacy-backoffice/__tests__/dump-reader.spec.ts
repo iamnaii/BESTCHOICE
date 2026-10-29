@@ -47,18 +47,18 @@ describe('readDumpTables', () => {
       'bestchoice_payment_installment',
     ]);
     expect(rows[0].ref_installmemnt).toBe('11');
-    expect(rows[0].payment_amount).toBe('100.00');
-    expect(rows[0].payment_slip).toBe('uploads\\slip\\TEST-0001.jpg');
-    expect(rows[0].payment_remark).toBe('แท็บ\tคั่น "อ้าง"');
-    expect(rows[1].payment_remark).toBe('ยกเลิก\r\nรายการ\0จบ');
+    expect(rows[0].amount).toBe('100.00');
+    expect(rows[0].slip).toBe('uploads\\slip\\TEST-0001.jpg');
+    expect(rows[0].remark).toBe('แท็บ\tคั่น "อ้าง"');
+    expect(rows[1].remark).toBe('ยกเลิก\r\nรายการ\0จบ');
   });
 
   it('appends rows from repeated INSERTs and keeps a raw line break inside a quoted value', async () => {
     const { bestchoice_payment_installment: rows } = await readDumpTables(FIXTURE, [
       'bestchoice_payment_installment',
     ]);
-    expect(rows.map((r) => r.payment_id)).toEqual(['1', '2', '3']);
-    expect(rows[2].payment_remark).toBe('บรรทัดแรก\nบรรทัดที่สอง (ขึ้นบรรทัดจริง)');
+    expect(rows.map((r) => r.id)).toEqual(['1', '2', '3']);
+    expect(rows[2].remark).toBe('บรรทัดแรก\nบรรทัดที่สอง (ขึ้นบรรทัดจริง)');
     expect(rows[2].created_at).toBe('2026-01-12 09:00:00');
   });
 

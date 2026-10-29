@@ -75,15 +75,15 @@ DROP TABLE IF EXISTS `bestchoice_payment_installment`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8mb4 */;
 CREATE TABLE `bestchoice_payment_installment` (
-  `payment_id` int(11) NOT NULL AUTO_INCREMENT,
+  `id` int(12) NOT NULL AUTO_INCREMENT,
   `ref_contract` int(11) DEFAULT NULL,
   `ref_installmemnt` int(11) DEFAULT NULL,
-  `payment_amount` decimal(10,2) DEFAULT NULL,
-  `payment_slip` varchar(255) DEFAULT NULL,
-  `payment_remark` text DEFAULT NULL,
+  `amount` double NOT NULL DEFAULT 0,
+  `slip` varchar(120) DEFAULT NULL,
+  `remark` text DEFAULT NULL,
   `status` char(1) DEFAULT '1',
   `created_at` datetime DEFAULT NULL,
-  PRIMARY KEY (`payment_id`)
+  PRIMARY KEY (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 

@@ -9,13 +9,16 @@ describe('legacy-backoffice-import CLI', () => {
   const insideRepo = resolve(__dirname, '..', '__out-must-not-exist__');
   const missing = join(__dirname, '__missing__');
 
-  it.each([['peak-recon', ['--dump', `${missing}.sql`, '--peak-ar', `${missing}.csv`]]])(
-    '%s refuses --out inside the repo before reading anything',
-    async (command, args) => {
-      await expect(main([command, ...args, '--out', insideRepo])).rejects.toThrow(
-        /ห้ามเขียนผลลัพธ์ลงในโฟลเดอร์ของ repo/,
-      );
-      expect(existsSync(insideRepo)).toBe(false);
-    },
-  );
+  it.each([
+    ['peak-recon', ['--dump', `${missing}.sql`, '--peak-ar', `${missing}.csv`]],
+    [
+      'match-statement',
+      ['--dump', `${missing}.sql`, '--statement', `${missing}.csv`, '--cols', 'date=d,amount=a'],
+    ],
+  ])('%s refuses --out inside the repo before reading anything', async (command, args) => {
+    await expect(main([command, ...args, '--out', insideRepo])).rejects.toThrow(
+      /ห้ามเขียนผลลัพธ์ลงในโฟลเดอร์ของ repo/,
+    );
+    expect(existsSync(insideRepo)).toBe(false);
+  });
 });

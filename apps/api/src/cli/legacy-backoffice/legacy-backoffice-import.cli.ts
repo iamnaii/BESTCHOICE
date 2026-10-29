@@ -6,6 +6,7 @@
  * | คำสั่ง | ทำอะไร |
  * |---|---|
  * | `peak-recon --dump <sql> --peak-ar <csv> --out <dir> [--peak-pairs <csv>]` | จับคู่ใบแจ้งหนี้ PEAK กับสัญญา → `peak-recon.csv` + `peak-recon-unmatched.csv` (ไม่แตะฐานข้อมูล) · `--peak-pairs` = คู่ที่เจ้าของกำหนดเอง หัวคอลัมน์ `invoice_code,legacy_code` |
+ * | `match-statement --dump <sql> --statement <csv> --cols date=<หัว>,amount=<หัว>[,description=<หัว>] --out <dir>` | จับคู่เงินเข้าใน statement ธนาคารกับรายการรับเงินของระบบเก่า (ยอดเท่ากัน ±3 วัน) → `unmatched.csv` + `ambiguous.csv` (ไม่แตะฐานข้อมูล) · `--cols` = ชื่อหัวคอลัมน์ในไฟล์ statement |
  *
  * dump / CSV / โฟลเดอร์ผลลัพธ์ อยู่นอก repo เสมอ (มีข้อมูลลูกค้าจริง) — ส่งเข้ามาด้วย path เท่านั้น ·
  * `--out` ที่อยู่ในโฟลเดอร์ของ repo ถูกปฏิเสธก่อนอ่านไฟล์ใด (`repo-guard.ts`) ·
@@ -28,6 +29,12 @@ import {
   reconcileWithPeak,
 } from './peak-recon';
 import { assertOutsideRepo } from './repo-guard';
+import {
+  matchStatement,
+  parseStatementCols,
+  parseStatementCsv,
+  statementCreditsCsv,
+} from './statement-matcher';
 
 const LOG = '[legacy-backoffice-import]';
 
@@ -84,6 +91,31 @@ async function peakRecon(values: Values): Promise<void> {
   console.log(`  เขียนไฟล์                  : ${written.join(', ')} → ${outDir}`);
 }
 
+async function matchStatementCommand(values: Values): Promise<void> {
+  const [dumpPath, statementPath, colsSpec, outDir] = ['dump', 'statement', 'cols', 'out'].map(
+    (n) => required(values, n),
+  );
+  assertOutsideRepo(outDir);
+  const cols = parseStatementCols(colsSpec);
+  const book = buildLegacyBook(await readDumpTables(dumpPath, LEGACY_TABLES));
+  const credits = parseStatementCsv(await readFile(statementPath, 'utf8'), cols);
+  const receipts = book.contracts.flatMap((c) => c.receipts);
+  const result = matchStatement(credits, receipts);
+
+  const written = await writeOutputs(outDir, {
+    'unmatched.csv': statementCreditsCsv(result.unmatched),
+    'ambiguous.csv': statementCreditsCsv(result.ambiguous),
+  });
+
+  console.log(`${LOG} match-statement`);
+  console.log(`  เงินเข้าใน statement          : ${credits.length}`);
+  console.log(`  รายการรับเงินในระบบเก่า        : ${receipts.length}`);
+  console.log(`  จับคู่ได้                      : ${result.matched.length}`);
+  console.log(`  ไม่พบในระบบเก่า               : ${result.unmatched.length}`);
+  console.log(`  กำกวม (ยอดและวันเดียวกัน)      : ${result.ambiguous.length}`);
+  console.log(`  เขียนไฟล์                     : ${written.join(', ')} → ${outDir}`);
+}
+
 const COMMANDS = new Map<string, Command>([
   [
     'peak-recon',
@@ -91,6 +123,16 @@ const COMMANDS = new Map<string, Command>([
       usage: 'peak-recon --dump <sql> --peak-ar <csv> --out <dir> [--peak-pairs <csv>]',
       options: ['dump', 'peak-ar', 'out', 'peak-pairs'],
       run: peakRecon,
+    },
+  ],
+  [
+    'match-statement',
+    {
+      usage:
+        'match-statement --dump <sql> --statement <csv> ' +
+        '--cols date=<หัว>,amount=<หัว>[,description=<หัว>] --out <dir>',
+      options: ['dump', 'statement', 'cols', 'out'],
+      run: matchStatementCommand,
     },
   ],
 ]);

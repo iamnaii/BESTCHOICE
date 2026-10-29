@@ -193,6 +193,25 @@ describe('attendance บน Postgres จริง', () => {
     expect(again.absent).toBe(0);
   });
 
+  it('I5b a second instance at 00:05 (the close-day advisory lock is held elsewhere) skips the run: nothing is written', async () => {
+    const runAt = new Date(bangkokMidnight(2026, 9, 29).getTime() + 5 * 60_000); // เป้าหมาย 28 ต.ค.
+    const target = dbDate(bangkokMidnight(2026, 9, 28));
+    const before = await prisma.attendanceDay.count({ where: { workDate: target } });
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${AttendanceCloseDayCron.LOCK_KEY}))`;
+      const out = await closeDay.run(runAt);
+      expect(out).toMatchObject({ skipped: true, closed: 0, absent: 0 });
+    });
+    expect(await prisma.attendanceDay.count({ where: { workDate: target } })).toBe(before);
+    // ปล่อยล็อกแล้ว — รอบถัดไปทำงานตามปกติ และรันซ้ำไม่สร้างแถวซ้ำ
+    const first = await closeDay.run(runAt);
+    expect(first.skipped).toBeUndefined();
+    const again = await closeDay.run(runAt);
+    expect(again.absent).toBe(0);
+    const perUser = await prisma.attendanceDay.groupBy({ by: ['userId'], where: { workDate: target }, _count: { _all: true } });
+    expect(perUser.every((g) => g._count._all === 1)).toBe(true);
+  });
+
   it('I6 attendancePinHash is unique company-wide: a second user cannot take the same pin', async () => {
     await expect(prisma.user.update({ where: { id: staffC }, data: { attendancePinHash: hashPII('111111', SALT) } })).rejects.toMatchObject({ code: 'P2002' });
   });

@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
-import { parse, type Info } from 'csv-parse/sync';
 import { bangkokDateString, bangkokMidnight } from '../../utils/date.util';
+import { csvText, formatMoney, parseMoney, readCsv } from './csv';
 import type { LegacyBook, LegacyContract } from './legacy-book';
 
 /**
@@ -97,79 +97,11 @@ const NO_IMEI_DAY_WINDOW = 3;
 const IMEI_PARTIAL_DIGITS = 14;
 /** `yyyyMMdd` หรือ `yyyy-mm-dd` — ตัวคั่นต้องเหมือนกันทั้งสองที่ */
 const DATE_PATTERN = /^(\d{4})(-?)(\d{2})\2(\d{2})$/;
-const AMOUNT_PATTERN = /^-?\d+(\.\d+)?$/;
-
-/** แถวของ CSV จาก `csv-parse` โหมด `info: true` — overload ของ type ไม่ครอบโหมดนี้ */
-type ParsedRecord = { info: Info; record: string[] };
-
-type CsvRow<C extends string> = {
-  line: number;
-  /** ค่าในช่อง (ตัดช่องว่างหัวท้ายแล้ว) · ช่องว่าง = `''` */
-  cell(column: C): string;
-  /** ค่าในช่องที่ต้องมี — ว่าง = throw */
-  text(column: C): string;
-  fail(column: C, what: string): Error;
-};
-
-/**
- * อ่าน CSV (UTF-8 มี BOM ได้) ที่ต้องมีหัวคอลัมน์ `columns` (ลำดับใดก็ได้ คอลัมน์อื่นไม่อ่าน)
- * — error บอกบรรทัดและคอลัมน์ ไม่มีค่าในช่อง
- */
-function readCsv<C extends string>(
-  text: string,
-  columns: readonly C[],
-  prefix: string,
-): CsvRow<C>[] {
-  let records: ParsedRecord[];
-  try {
-    records = parse(text, {
-      bom: true,
-      info: true,
-      skip_empty_lines: true,
-      trim: true,
-    }) as unknown as ParsedRecord[];
-  } catch (error) {
-    throw new Error(`${prefix}: ${error instanceof Error ? error.message : String(error)}`);
-  }
-  const [header, ...rows] = records;
-  if (!header) throw new Error(`${prefix}: ไฟล์ว่าง`);
-
-  const index = new Map<string, number>();
-  header.record.forEach((name, i) => {
-    if (index.has(name)) throw new Error(`${prefix}: หัวคอลัมน์ ${name} ซ้ำ`);
-    index.set(name, i);
-  });
-  const missing = columns.filter((name) => !index.has(name));
-  if (missing.length > 0) {
-    throw new Error(
-      `${prefix}: ไม่มีคอลัมน์ ${missing.join(', ')} — คอลัมน์ที่มี: ${header.record.join(', ')}`,
-    );
-  }
-
-  return rows.map(({ info, record }) => {
-    const line = info.lines;
-    const fail = (column: C, what: string) =>
-      new Error(`${prefix}: บรรทัด ${line} ช่อง ${column} — ${what}`);
-    const cell = (column: C) => record[index.get(column) as number] ?? '';
-    const required = (column: C) => {
-      const value = cell(column);
-      if (value === '') throw fail(column, 'ไม่มีค่า');
-      return value;
-    };
-    return { line, cell, text: required, fail };
-  });
-}
 
 /** อ่าน CSV ยอดลูกหนี้จาก PEAK (`--peak-ar`) */
 export function parsePeakArCsv(text: string): PeakInvoice[] {
   const lineOfInvoice = new Map<string, number>();
   return readCsv(text, PEAK_AR_COLUMNS, AR_ERROR).map((row) => {
-    const money = (column: (typeof PEAK_AR_COLUMNS)[number]): Decimal => {
-      const raw = row.text(column).replace(/[,\s]/g, '');
-      if (!AMOUNT_PATTERN.test(raw)) throw row.fail(column, 'จำนวนเงินผิดรูปแบบ');
-      return new Prisma.Decimal(raw);
-    };
-
     const invoiceCode = row.text('invoice_code');
     const previous = lineOfInvoice.get(invoiceCode);
     if (previous !== undefined) {
@@ -189,8 +121,8 @@ export function parsePeakArCsv(text: string): PeakInvoice[] {
       invoiceCode,
       contactCode: row.text('contact_code'),
       issuedDate,
-      netAmount: money('net_amount'),
-      remainAmount: money('remain_amount'),
+      netAmount: parseMoney(row, 'net_amount'),
+      remainAmount: parseMoney(row, 'remain_amount'),
       imei: row.cell('imei') || null,
     };
   });
@@ -236,7 +168,7 @@ function installmentTotal(c: LegacyContract): Decimal {
 }
 
 /** ยอดค้างระบบเก่า = Σ `balance` ของงวดที่ยังมียอดคงเหลือ (งวดที่จ่ายเกินไม่หักลบ) */
-function legacyOutstanding(c: LegacyContract): Decimal {
+export function legacyOutstanding(c: LegacyContract): Decimal {
   return c.installments.reduce(
     (sum, i) => (i.balance.gt(0) ? sum.plus(i.balance) : sum),
     new Prisma.Decimal(0),
@@ -388,16 +320,16 @@ export function reconcileWithPeak(
   };
 }
 
-/** หนึ่งบรรทัดของ CSV (RFC 4180) */
-function csvLine(fields: readonly string[]): string {
-  return fields.map((f) => (/[",\r\n]/.test(f) ? `"${f.replace(/"/g, '""')}"` : f)).join(',');
+/**
+ * จำนวนสัญญาผ่อนอยู่ (สถานะ 2) ที่จับคู่ได้แต่ยอดค้างไม่ตรง PEAK (`diff ≠ 0`) — ตัวเลขสรุปบนจอ
+ * (สัญญาที่ปิดแล้วไม่นำเข้ายอดค้าง จึงไม่นับ)
+ */
+export function activeOutstandingMismatches(book: LegacyBook, recon: PeakRecon): number {
+  return book.contracts.filter((c) => {
+    const match = c.statusCode === ACTIVE_STATUS ? recon.matched.get(c.contractId) : undefined;
+    return match !== undefined && !match.diff.isZero();
+  }).length;
 }
-
-function csvText(header: readonly string[], rows: readonly string[][]): string {
-  return [header, ...rows].map(csvLine).join('\n') + '\n';
-}
-
-const money = (value: Decimal) => value.toFixed(2);
 
 /**
  * `peak-recon.csv` — หนึ่งแถวต่อคู่ที่จับได้ เรียงตามเลขสัญญาเดิม · มีแต่รหัสและยอดเงิน ไม่มีชื่อลูกค้า
@@ -413,12 +345,12 @@ export function peakReconCsv(book: LegacyBook, recon: PeakRecon): string {
         m.invoice.invoiceCode,
         m.invoice.contactCode,
         c.statusCode,
-        money(m.legacyInstallmentTotal),
-        money(m.invoice.netAmount),
-        money(m.grossDiff),
-        money(m.legacyOutstanding),
-        money(m.invoice.remainAmount),
-        money(m.diff),
+        formatMoney(m.legacyInstallmentTotal),
+        formatMoney(m.invoice.netAmount),
+        formatMoney(m.grossDiff),
+        formatMoney(m.legacyOutstanding),
+        formatMoney(m.invoice.remainAmount),
+        formatMoney(m.diff),
         m.source,
         m.note ?? '',
       ];
@@ -452,7 +384,7 @@ export function peakReconUnmatchedCsv(book: LegacyBook, recon: PeakRecon): strin
     [
       ...recon.unmatchedContracts.map((id) => {
         const c = byId.get(id) as LegacyContract;
-        return ['unmatched-contract', c.code, money(legacyOutstanding(c))];
+        return ['unmatched-contract', c.code, formatMoney(legacyOutstanding(c))];
       }),
       ...recon.ambiguous.map((code) => ['ambiguous-invoice', code, '']),
       ...recon.unmatchedInvoices.map((code) => ['unmatched-invoice', code, '']),

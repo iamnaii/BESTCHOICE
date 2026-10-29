@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import type { LegacyBook, LegacyContract, LegacyInstallment } from '../legacy-book';
 import {
+  activeOutstandingMismatches,
   parsePeakArCsv,
   parsePeakPairsCsv,
   peakReconCsv,
@@ -397,6 +398,21 @@ describe('reconcileWithPeak', () => {
       note: null,
     });
     expect(match?.diff).toBeInstanceOf(Prisma.Decimal);
+  });
+
+  it('counts outstanding mismatches only on active contracts (status 2) for the summary', () => {
+    const b = book(
+      contract({ id: '1', imei: '350000000001001' }), // active, remain ≠ outstanding
+      contract({ id: '2', imei: '350000000002001', status: '3' }), // closed, remain ≠ outstanding
+      contract({ id: '3', imei: '350000000003001' }), // active, equal
+    );
+    const recon = reconcileWithPeak(b, [
+      invoice({ code: 'TEST-IV-1', imei: '350000000001001', remain: '5000' }),
+      invoice({ code: 'TEST-IV-2', imei: '350000000002001', remain: '5000' }),
+      invoice({ code: 'TEST-IV-3', imei: '350000000003001', remain: '6000' }),
+    ]);
+    expect(recon.matched.size).toBe(3);
+    expect(activeOutstandingMismatches(b, recon)).toBe(1);
   });
 
   describe('manual pairs (--peak-pairs)', () => {

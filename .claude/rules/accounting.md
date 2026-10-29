@@ -1089,8 +1089,6 @@ Spec: `docs/superpowers/specs/2026-10-27-payroll-ot-commission-design.md` (§17 
   D6 ธง "เครื่องถูกใช้ซ้อน" ค้าง = ห้ามอนุมัติจนเจ้าของตรวจ · D7 ค่าคอมที่จ่ายแล้วต้องเรียกคืน = หักงวดถัดไปอัตโนมัติ เพดาน = ค่าคอมของงวดนั้น (ม.76) เกินยกไปงวดหน้า (ส่วนที่ 2) —
   **แต่ยกเลิกสัญญา: ค่าคอมที่จ่ายแล้วไม่เรียกคืน** (คงคำตัดสิน 2026-09-20) · สลิปห้ามส่ง LINE/อีเมล พิมพ์กระดาษเท่านั้น.
 - **ยังเปิดอยู่ (ส่วนที่ 1 — รู้แล้ว ยังไม่แก้)**:
-  - `AttendanceService.setDayKinds` ส่ง `entries: []` ได้ 500 (เว็บไม่เคยส่ง) — `attendance.service.ts`
-  - cron ปิดวัน `crons/attendance-close-day.cron.ts`: `create()` แถวขาดงานไม่ idempotent ข้าม 2 instance และ `updateMany` หลายแถวไม่เรียงลำดับเทียบกับ `lockForConflict`
   - kiosk ถูกจัดลำดับกับการลงบัญชีเงินเดือนได้เพราะ `MAX_OPEN_SHIFT_HOURS` (18, `kiosk-punch.service.ts`) = ชั่วโมงเวลาปิดงวด (18, `CUTOFF_HOUR` ใน `payroll-pay.ts`) — เปลี่ยนค่าใดค่าหนึ่งต้องทบทวนทั้งคู่
   - `clearConflictFlag` แยกไม่ได้ว่า `DEVICE_CONFLICT` ถูกดันเข้ามาหลังเจ้าของตรวจ (ล้างทิ้งเสมอ) — ต้องมี version token
   - ด่านธงเครื่องถูกใช้ซ้อนตอนลงบัญชี (2) เป็น TOCTOU เทียบ `lockForConflict` ระหว่าง tx (`lockForConflict` ไม่ถือ advisory lock ของเงินเดือน)

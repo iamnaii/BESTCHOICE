@@ -87,13 +87,57 @@ describe('matchStatement', () => {
     );
   });
 
-  it('takes the nearest receipt first, not the first one listed', () => {
+  it('takes the nearest receipt when nothing else needs it, not the first one listed', () => {
+    const r = matchStatement(
+      [c(1500, '2026-10-05')],
+      [rc(1500, '2026-10-02'), rc(1500, '2026-10-06')],
+    );
+    expect(summary(r)).toEqual({ matched: [[2, '2']], unmatched: [], ambiguous: [] });
+  });
+
+  it('matches as many credits as possible — moves a pick to a farther receipt inside the window', () => {
     const r = matchStatement(
       [c(1500, '2026-10-05'), c(1500, '2026-10-08')],
       [rc(1500, '2026-10-02'), rc(1500, '2026-10-06')],
     );
-    // 10-05 ↔ 10-06 (1 วัน) ก่อน · 10-08 เหลือ 10-02 (6 วัน) นอกช่วง
-    expect(summary(r)).toEqual({ matched: [[2, '2']], unmatched: [3], ambiguous: [] });
+    // ใกล้สุดก่อนจะได้ 10-05 ↔ 10-06 แล้ว 10-08 ไม่มีคู่ (10-02 ห่าง 6 วัน) — แต่ 10-05 ↔ 10-02 (3 วัน)
+    // + 10-08 ↔ 10-06 (2 วัน) จับได้ครบ ⇒ ต้องได้ทั้งสองบรรทัด (บรรทัดที่ "ไม่พบ" ปลอม = เสี่ยงบันทึกซ้ำ)
+    expect(summary(r)).toEqual({
+      matched: [
+        [2, '1'],
+        [3, '2'],
+      ],
+      unmatched: [],
+      ambiguous: [],
+    });
+  });
+
+  it('follows a chain of three re-assignments to match every credit', () => {
+    const r = matchStatement(
+      [c(1500, '2026-10-10'), c(1500, '2026-10-13'), c(1500, '2026-10-17')],
+      [rc(1500, '2026-10-07'), rc(1500, '2026-10-11'), rc(1500, '2026-10-14')],
+    );
+    // ใกล้สุดก่อน: 10-10↔10-11 · 10-13↔10-14 · 10-17 เหลือแต่ 10-14 ที่ถูกใช้แล้ว
+    // ⇒ 10-17 เอา 10-14 · 10-13 ย้ายไป 10-11 · 10-10 ย้ายไป 10-07 (3 วัน)
+    expect(summary(r)).toEqual({
+      matched: [
+        [2, '1'],
+        [3, '2'],
+        [4, '3'],
+      ],
+      unmatched: [],
+      ambiguous: [],
+    });
+  });
+
+  it('marks a same-day group ambiguous when other credits leave it short even at the maximum', () => {
+    const r = matchStatement(
+      [c(1500, '2026-10-05'), c(1500, '2026-10-05'), c(1500, '2026-10-06')],
+      [rc(1500, '2026-10-05'), rc(1500, '2026-10-07')],
+    );
+    // 3 บรรทัด 2 รายการรับเงิน — กลุ่ม 10-05 มีรายการให้ครบ 2 แต่ 10-06 แย่งไป 1 (ใกล้กว่า)
+    // ⇒ กลุ่ม 10-05 กำกวมทั้งกลุ่ม และรายการที่กลุ่มได้ไปไม่ถูกส่งต่อ
+    expect(summary(r)).toEqual({ matched: [[4, '2']], unmatched: [], ambiguous: [2, 3] });
   });
 
   it('leaves same-amount same-day credits ambiguous', () => {

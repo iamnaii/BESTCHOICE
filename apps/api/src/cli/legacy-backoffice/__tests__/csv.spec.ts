@@ -39,6 +39,30 @@ describe('readCsv', () => {
     expect(readCsv('a,,\n1,,\n', ['a'], PREFIX).map((r) => r.cell('a'))).toEqual(['1']);
   });
 
+  it.each<[string, string, RegExp]>([
+    [
+      'a stray quote inside a memo',
+      'วันที่,ฝาก,รายการ\n05/10/2569,100,โอนจาก "นาย สมมุติ"\n',
+      /: รูปแบบ CSV ผิด \(INVALID_OPENING_QUOTE\) บรรทัด 2$/,
+    ],
+    [
+      'a quote that never closes',
+      'วันที่,ฝาก,รายการ\n05/10/2569,100,"โอนจาก นาย สมมุติ\n',
+      /: รูปแบบ CSV ผิด \(CSV_QUOTE_NOT_CLOSED\) บรรทัด 2$/,
+    ],
+  ])('reports %s by error code and line only — never the cell text', (_label, text, error) => {
+    let message = '';
+    try {
+      readCsv(text, ['วันที่', 'ฝาก'], PREFIX);
+    } catch (e) {
+      message = e instanceof Error ? e.message : String(e);
+    }
+    expect(message).toMatch(error);
+    for (const leaked of ['โอนจาก', 'นาย', 'สมมุติ', '05/10/2569', 'value is']) {
+      expect(message).not.toContain(leaked);
+    }
+  });
+
   it('rejects a column it reads appearing twice, naming that column', () => {
     expect(() => readCsv('a,b,a\n1,2,3\n', ['a', 'b'], PREFIX)).toThrow(
       `${PREFIX}: หัวคอลัมน์ a ซ้ำ`,

@@ -42,7 +42,12 @@ export function readCsv<C extends string>(
       trim: true,
     }) as unknown as ParsedRecord[];
   } catch (error) {
-    throw new Error(`${prefix}: ${error instanceof Error ? error.message : String(error)}`);
+    // ห้ามใช้ error.message ของ csv-parse — ยกค่าในช่องมาพิมพ์ได้ (เช่น `value is "โอนจาก …"`)
+    const { code, lines } = (error ?? {}) as { code?: unknown; lines?: unknown };
+    const where = typeof lines === 'number' ? ` บรรทัด ${lines}` : '';
+    throw new Error(
+      `${prefix}: รูปแบบ CSV ผิด (${typeof code === 'string' ? code : 'UNKNOWN'})${where}`,
+    );
   }
   const [header, ...rows] = records;
   if (!header) throw new Error(`${prefix}: ไฟล์ว่าง`);

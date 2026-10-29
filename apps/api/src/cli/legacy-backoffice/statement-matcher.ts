@@ -12,12 +12,14 @@ import type { LegacyReceipt } from './legacy-book';
  * 1. คู่ได้เมื่อยอดเท่ากันพอดี (`Decimal` เท่ากัน — ไม่ปัด) และวันที่ห่างกันไม่เกิน `dayWindow` วัน
  *    (นับวันตามปฏิทินกรุงเทพ ก่อนหรือหลังก็ได้) · ฝั่งระบบเก่าใช้ `amount` (เงินที่รับจริง) และ `date` (วันโอน)
  * 2. หนึ่งบรรทัดของ statement คู่กับรายการรับเงินได้รายการเดียว และกลับกัน
- * 3. บรรทัดที่ยอดเท่ากันและวันเดียวกันแยกจากกันไม่ได้ จึงจับเป็นกลุ่ม: เลือกรายการรับเงินให้แบบโลภ
- *    ใกล้วันที่สุดก่อน (เสมอกัน = กลุ่มที่บรรทัดแรกมาก่อน แล้วรายการรับเงินที่มาก่อนในอาร์เรย์)
- *    - ได้ครบทุกบรรทัด → `matched` (บรรทัดเรียงตามลำดับ คู่กับรายการที่ได้มาตามลำดับความใกล้)
- *    - ไม่ได้เลย → `unmatched`
- *    - ได้น้อยกว่าจำนวนบรรทัด → **ทั้งกลุ่ม** `ambiguous` (รู้ว่ามีบรรทัดที่ไม่มีคู่ แต่ไม่รู้ว่าบรรทัดไหน)
- *      และรายการรับเงินที่กลุ่มนั้นได้ไปแล้ว **ไม่ถูกส่งต่อ** ให้บรรทัดอื่น
+ * 3. บรรทัดที่ยอดเท่ากันและวันเดียวกันแยกจากกันไม่ได้ (กลุ่ม) — ตัดสินตามลำดับ:
+ *    ก. กลุ่มที่มีรายการรับเงินในช่วงวัน ≥ 1 แต่น้อยกว่าจำนวนบรรทัด → **ทั้งกลุ่ม** `ambiguous`
+ *       (รู้ว่ามีบรรทัดที่ไม่มีคู่ แต่ไม่รู้ว่าบรรทัดไหน) และรายการเหล่านั้นถูกจองไว้ **ไม่ส่งต่อ** ให้บรรทัดอื่น
+ *    ข. บรรทัดที่เหลือจับคู่ให้ได้ **มากที่สุด** (maximum matching — บรรทัดที่ "ไม่พบ" ปลอม เสี่ยงบันทึกซ้ำ):
+ *       เริ่มแบบโลภใกล้วันก่อน (เสมอกัน = บรรทัดที่มาก่อน แล้วรายการรับเงินที่มาก่อนในอาร์เรย์) แล้วสลับคู่
+ *       ให้บรรทัดที่ยังไม่มีคู่ (augmenting path) — ระยะรวมมักน้อยที่สุดแต่ไม่รับประกัน
+ *    ค. กลุ่มที่ยังได้ไม่ครบหลังข้อ ข (บรรทัดวันอื่นแย่งไป) → ทั้งกลุ่ม `ambiguous` แบบข้อ ก
+ *    กลุ่มที่ได้ครบ → `matched` · ไม่ได้เลย → `unmatched`
  * ทุกรายการที่คืนเรียงตามเลขบรรทัด
  *
  * อ่านไฟล์ (`parseStatementCsv`): หัวคอลัมน์ระบุผ่าน `--cols` · เก็บเฉพาะยอดเข้า (> 0) — บรรทัดที่ช่องยอดว่าง
@@ -129,23 +131,11 @@ export function parseStatementCols(spec: string): StatementCols {
   };
 }
 
-/** บรรทัดที่ยอดเท่ากันและวันเดียวกัน (ตามปฏิทินกรุงเทพ) — เรียงตามเลขบรรทัด */
-type CreditGroup = {
-  credits: StatementCredit[];
-  amountKey: string;
-  date: Date;
-  /** รายการรับเงินที่กลุ่มได้ไป เรียงตามลำดับที่ได้ (ใกล้วันก่อน) */
-  claimed: LegacyReceipt[];
-};
+/** รายการรับเงินที่อยู่ในช่วงวันของบรรทัด — เรียงใกล้วันก่อน แล้วตามลำดับในอาร์เรย์ */
+type ReceiptOption = { receipt: LegacyReceipt; receiptOrder: number; distance: number };
 
-/** คู่ที่เป็นไปได้ระหว่างกลุ่มกับรายการรับเงิน · `*Order` = ลำดับไว้ตัดสินเมื่อระยะเท่ากัน */
-type Candidate = {
-  group: CreditGroup;
-  groupOrder: number;
-  receipt: LegacyReceipt;
-  receiptOrder: number;
-  distance: number;
-};
+/** บรรทัดที่ยอดเท่ากันและวันเดียวกัน (ตามปฏิทินกรุงเทพ) — เรียงตามเลขบรรทัด · ทุกบรรทัดมีตัวเลือกชุดเดียวกัน */
+type CreditGroup = { credits: StatementCredit[]; options: ReceiptOption[] };
 
 /** ยอดในรูปที่เทียบได้ตรง ๆ — `Decimal` ตัดศูนย์ท้ายแล้ว (`1500.00` = `1500`) ไม่ใช้รูปเลขยกกำลัง */
 const amountKey = (amount: Decimal) => amount.toFixed();
@@ -156,22 +146,6 @@ export function matchStatement(
   receipts: readonly LegacyReceipt[],
   dayWindow = 3,
 ): StatementMatch {
-  const byLine = [...credits].sort((a, b) => a.line - b.line);
-  const groups = new Map<string, CreditGroup>();
-  for (const credit of byLine) {
-    const key = `${amountKey(credit.amount)}|${bangkokDateString(credit.date)}`;
-    const group = groups.get(key);
-    if (group) group.credits.push(credit);
-    else {
-      groups.set(key, {
-        credits: [credit],
-        amountKey: amountKey(credit.amount),
-        date: credit.date,
-        claimed: [],
-      });
-    }
-  }
-
   const receiptsByAmount = new Map<string, { receipt: LegacyReceipt; receiptOrder: number }[]>();
   receipts.forEach((receipt, receiptOrder) => {
     const key = amountKey(receipt.amount);
@@ -179,34 +153,86 @@ export function matchStatement(
     if (list) list.push({ receipt, receiptOrder });
     else receiptsByAmount.set(key, [{ receipt, receiptOrder }]);
   });
+  const optionsFor = (credit: StatementCredit): ReceiptOption[] =>
+    (receiptsByAmount.get(amountKey(credit.amount)) ?? [])
+      .map((r) => ({ ...r, distance: Math.abs(bangkokDayDiff(credit.date, r.receipt.date)) }))
+      .filter((o) => o.distance <= dayWindow)
+      .sort((a, b) => a.distance - b.distance || a.receiptOrder - b.receiptOrder);
 
-  // คู่ที่เป็นไปได้ทั้งหมด เรียงใกล้วันที่สุดก่อน · Map วนกลุ่มตามบรรทัดแรก ⇒ groupOrder = ลำดับบรรทัด
-  const candidates: Candidate[] = [];
-  [...groups.values()].forEach((group, groupOrder) => {
-    for (const { receipt, receiptOrder } of receiptsByAmount.get(group.amountKey) ?? []) {
-      const distance = Math.abs(bangkokDayDiff(group.date, receipt.date));
-      if (distance <= dayWindow) {
-        candidates.push({ group, groupOrder, receipt, receiptOrder, distance });
-      }
-    }
-  });
-  candidates.sort(
-    (a, b) =>
-      a.distance - b.distance || a.groupOrder - b.groupOrder || a.receiptOrder - b.receiptOrder,
-  );
-
-  const taken = new Set<LegacyReceipt>();
-  for (const { group, receipt } of candidates) {
-    if (taken.has(receipt) || group.claimed.length >= group.credits.length) continue;
-    group.claimed.push(receipt);
-    taken.add(receipt);
+  // Map วนตามบรรทัดแรกของกลุ่ม ⇒ ลำดับกลุ่ม = ลำดับบรรทัด
+  const groups = new Map<string, CreditGroup>();
+  for (const credit of [...credits].sort((a, b) => a.line - b.line)) {
+    const key = `${amountKey(credit.amount)}|${bangkokDateString(credit.date)}`;
+    const group = groups.get(key);
+    if (group) group.credits.push(credit);
+    else groups.set(key, { credits: [credit], options: optionsFor(credit) });
   }
 
+  // ขั้น 1 — กลุ่มที่มีรายการรับเงินในช่วงวันน้อยกว่าจำนวนบรรทัด (แต่มีอย่างน้อยหนึ่ง) กำกวมทั้งกลุ่ม
+  // และจองรายการเหล่านั้นไว้ ก่อนจับคู่ส่วนที่เหลือ (นับจากรายการทั้งหมด ไม่ขึ้นกับลำดับกลุ่ม)
+  const reserved = new Set<LegacyReceipt>();
+  const open: CreditGroup[] = [];
   const result: StatementMatch = { matched: [], unmatched: [], ambiguous: [] };
   for (const group of groups.values()) {
-    if (group.claimed.length === group.credits.length) {
-      group.credits.forEach((credit, i) => result.matched.push([credit, group.claimed[i]]));
-    } else if (group.claimed.length === 0) result.unmatched.push(...group.credits);
+    const short = group.options.length > 0 && group.options.length < group.credits.length;
+    if (group.credits.length > 1 && short) {
+      result.ambiguous.push(...group.credits);
+      for (const { receipt } of group.options) reserved.add(receipt);
+    } else open.push(group);
+  }
+
+  // ขั้น 2 — จับคู่ให้ได้จำนวนบรรทัดมากที่สุด (maximum bipartite matching): เริ่มจากแบบโลภใกล้วันก่อน
+  // แล้วหาทางสลับคู่ (augmenting path) ให้บรรทัดที่ยังไม่มีคู่ทีละบรรทัด — ลองรายการที่ใกล้กว่าก่อนเสมอ
+  // (ระยะรวมมักน้อยที่สุด แต่ไม่รับประกัน)
+  const optionsOf = new Map<StatementCredit, ReceiptOption[]>();
+  const pairs: { credit: StatementCredit; option: ReceiptOption }[] = [];
+  for (const group of open) {
+    const options = group.options.filter((o) => !reserved.has(o.receipt));
+    for (const credit of group.credits) {
+      optionsOf.set(credit, options);
+      for (const option of options) pairs.push({ credit, option });
+    }
+  }
+  pairs.sort(
+    (a, b) =>
+      a.option.distance - b.option.distance ||
+      a.credit.line - b.credit.line ||
+      a.option.receiptOrder - b.option.receiptOrder,
+  );
+  const receiptOf = new Map<StatementCredit, LegacyReceipt>();
+  const creditOf = new Map<LegacyReceipt, StatementCredit>();
+  const assign = (credit: StatementCredit, receipt: LegacyReceipt) => {
+    receiptOf.set(credit, receipt);
+    creditOf.set(receipt, credit);
+  };
+  for (const { credit, option } of pairs) {
+    if (!receiptOf.has(credit) && !creditOf.has(option.receipt)) assign(credit, option.receipt);
+  }
+  const augment = (credit: StatementCredit, visited: Set<LegacyReceipt>): boolean => {
+    for (const { receipt } of optionsOf.get(credit) ?? []) {
+      if (visited.has(receipt)) continue;
+      visited.add(receipt);
+      const holder = creditOf.get(receipt);
+      if (holder === undefined || augment(holder, visited)) {
+        assign(credit, receipt);
+        return true;
+      }
+    }
+    return false;
+  };
+  for (const credit of [...optionsOf.keys()].sort((a, b) => a.line - b.line)) {
+    if (!receiptOf.has(credit)) augment(credit, new Set());
+  }
+
+  // ขั้น 3 — กลุ่มที่ยังได้ไม่ครบแม้จับคู่ได้มากที่สุดแล้ว (บรรทัดอื่นแย่งไป) กำกวมทั้งกลุ่มเหมือนขั้น 1
+  // รายการที่กลุ่มได้ไปไม่ถูกส่งต่อ
+  for (const group of open) {
+    const got = group.credits.filter((credit) => receiptOf.has(credit)).length;
+    if (got === group.credits.length) {
+      for (const credit of group.credits) {
+        result.matched.push([credit, receiptOf.get(credit) as LegacyReceipt]);
+      }
+    } else if (got === 0) result.unmatched.push(...group.credits);
     else result.ambiguous.push(...group.credits);
   }
   result.matched.sort(([a], [b]) => a.line - b.line);

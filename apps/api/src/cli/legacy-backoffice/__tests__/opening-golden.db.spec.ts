@@ -4,12 +4,14 @@ import { PeakExportService } from '../../../modules/accounting/peak-export.servi
 import { ContractPaymentService } from '../../../modules/contracts/contract-payment.service';
 import { CustomerPiiService } from '../../../modules/customers/customer-pii.service';
 import { CompanyResolverService } from '../../../modules/journal/company-resolver.service';
+import { BadDebtWriteOffTemplate } from '../../../modules/journal/cpa-templates/bad-debt-writeoff.template';
 import { ContractActivation1ATemplate } from '../../../modules/journal/cpa-templates/contract-activation-1a.template';
 import { EarlyPayoffJP4Template } from '../../../modules/journal/cpa-templates/early-payoff-jp4.template';
 import { EclStageReverseTemplate } from '../../../modules/journal/cpa-templates/ecl-stage-reverse.template';
 import { InstallmentAccrual2ATemplate } from '../../../modules/journal/cpa-templates/installment-accrual-2a.template';
 import { PaymentReceiptTemplate } from '../../../modules/journal/cpa-templates/payment-receipt.template';
 import { ReceiptVoidReversalTemplate } from '../../../modules/journal/cpa-templates/receipt-void-reversal.template';
+import { RepossessionJP5Template } from '../../../modules/journal/cpa-templates/repossession-jp5.template';
 import { ShopCollectSettlementTemplate } from '../../../modules/journal/cpa-templates/shop-collect-settlement.template';
 import { Vat60dayReversalTemplate } from '../../../modules/journal/cpa-templates/vat-60day-reversal.template';
 import { glContractBalance } from '../../../modules/journal/gl-contract-balance';
@@ -20,6 +22,7 @@ import { ReceiptsService } from '../../../modules/receipts/receipts.service';
 import type { PrismaService } from '../../../prisma/prisma.service';
 import { bangkokCalendarParts, bangkokMidnight } from '../../../utils/date.util';
 import { buildInstallmentScheduleRows } from '../../../utils/installment-schedule.util';
+import { generatePaymentSchedule } from '../../../utils/installment.util';
 import { hashPII } from '../../../utils/pii.util';
 import { TEST_NAME_PREFIX } from '../../../utils/test-data-markers';
 import { legacyFileContentType, type LegacyFileDetail } from '../files';
@@ -53,15 +56,17 @@ import { earlyPayoffApproved, voidReceiptApproved } from './approval-fixture';
  *
  * - A = เส้นทางจริงของระบบ: รายการเปิดสัญญา 1A (`ContractActivation1ATemplate` — รายการบัญชีที่ `ContractWorkflowService.activate`
  *   ลง · ตัว activate เองต้องมี PDPA / ลายเซ็น / ใบจอง / SHOP ซึ่งไม่แตะบัญชียกมาแม้แต่บัญชีเดียว) + ตารางงวด
- *   `buildInstallmentScheduleRows` (ตัวเดียวกับ activate) + 2A รอบกลางคืน (`InstallmentAccrual2ATemplate.execute`) ทีละงวด
- *   + ใบรับชำระผ่าน `PaymentReceiptOrchestrator.recordPayment` (เส้นทางหน้าจอรับชำระ — เรียก `PaymentReceiptTemplate` พร้อม
- *   `contractStatusBeforeReceipt` และแก้แถว Payment ในธุรกรรมเดียวกัน)
- * - B = `planImport` + `writeLegacyImport` (PEAK คงเหลือ = ยอดค้างของระบบเก่าพอดี) แล้วเดินต่อด้วยเทมเพลตชุดเดียวกับ A
+ *   `buildInstallmentScheduleRows` และแถว Payment `generatePaymentSchedule` (ตัวเดียวกับการสร้างสัญญา — มียอดแยกครบ) + 2A
+ *   รอบกลางคืน (`InstallmentAccrual2ATemplate.execute`) ทีละงวด + ใบรับชำระผ่าน `PaymentReceiptOrchestrator.recordPayment`
+ *   (เส้นทางหน้าจอรับชำระ — เรียก `PaymentReceiptTemplate` พร้อม `contractStatusBeforeReceipt` และแก้แถว Payment ในธุรกรรมเดียวกัน)
+ * - B = `planImport` + `writeLegacyImport` แล้วเดินต่อด้วยเทมเพลตชุดเดียวกับ A
+ * - ตัวเลขที่คาดหวังเป็น literal ที่คำนวณมือจากสูตร CPA เสมอ — ไม่เอาค่าจาก B มาเป็นค่าคาดหวัง
  *
  * ช่วงเวลา: เส้นทางรับชำระปฏิเสธวันที่ในอนาคต — ชุดหลักจึงใช้ปฏิทินปี 2025 (วันตัด 30 เม.ย. 2025 23:59:59 กรุงเทพ)
  * กติกาไม่ขึ้นกับวันที่ · ชุดปิดก่อนกำหนด (JP4) ผูกกับวันนี้ เพราะสูตรยอดปิดนับงวดที่ "ยังไม่ถึงกำหนด" จากวันนี้
  *
- * รัน: DATABASE_URL=<ฐานทดสอบ test_db หรือ *_test> npx jest <ไฟล์นี้> --runInBand · ไม่มี DATABASE_URL = ข้าม
+ * รัน: DATABASE_URL=<ฐานทดสอบ test_db หรือ *_test> NODE_OPTIONS=--max-old-space-size=6144 npx jest <ไฟล์นี้> --runInBand
+ * · ไม่มี DATABASE_URL = ข้าม · ทุกเทสต์รันเดี่ยวด้วย `-t` ได้ (ดูหมายเหตุลำดับที่หัวชุดหลัก)
  */
 const KEY = 'c9'.repeat(32);
 const SALT = 'legacy-t11-opening-golden-salt-001';
@@ -86,6 +91,17 @@ const ALL_ZERO: Carry = {
   '11-2106': '0.00',
   '21-2102': '0.00',
 };
+/**
+ * ยอดยกมาทองคำ ณ วันตัดหลังงวด 4 (งวด 1–3 ชำระครบ · งวด 4 ค้าง): 11-2101 = 17,000 − 4 × 1,416.66 · 11-2105 = 1,190 − 4 × 99.17 ·
+ * 11-2106 = 500 × 8 · 21-2102 = VAT งวด 5–12 · 11-2103 = 1,515.83 − ยอดที่จ่ายของงวด 4
+ */
+const cutoffCarry = (installment4Outstanding: string): Carry => ({
+  '11-2101': '11333.36',
+  '11-2103': installment4Outstanding,
+  '11-2105': '793.32',
+  '11-2106': '4000.00',
+  '21-2102': '793.32',
+});
 
 /** ปฏิทินหลัก: ทำสัญญา 5 ธ.ค. 2024 · งวด 1 = 5 ม.ค. 2025 … งวด 12 = 5 ธ.ค. 2025 · วันตัดหลังงวด 4 */
 const P1 = {
@@ -95,6 +111,8 @@ const P1 = {
   cutoff: new Date('2025-04-30T23:59:59+07:00'),
   due: (no: number) => bangkokMidnight(2025, no - 1, 5),
 };
+/** ก่อนวันตัด ก่อนงวด 5 ครบกำหนด — วันรับเงินล่วงหน้าบางส่วนของงวด 5 */
+const APR20 = new Date('2025-04-20T10:00:00+07:00');
 /** หลังวันตัด ก่อนงวด 5 — วันรับเงินของงวด 4 ส่วนที่เหลือ */
 const MAY2 = new Date('2025-05-02T10:00:00+07:00');
 const MAY3 = new Date('2025-05-03T10:00:00+07:00');
@@ -106,13 +124,39 @@ const PEAK_2106 = 'T11-2106';
 const PEAK_4101 = 'T11-4101';
 
 const installmentAmount = (no: number) => (no === 12 ? LAST : MONTHLY);
-/** ระบบเก่า: งวด 1–3 จ่ายครบ งวด 4 จ่าย 300 (ใบรับเงินลงวันครบกำหนด) */
-const LEGACY_STATE: Record<number, InstallmentSpec> = {
-  1: { paid: MONTHLY },
-  2: { paid: MONTHLY },
-  3: { paid: MONTHLY },
-  4: { paid: '300' },
+/** ระบบเก่า ณ วันตัด: งวด 1–3 จ่ายครบ · งวด 4 จ่าย `installment4Paid` (ใบรับเงินลงวันครบกำหนด · '0' = ไม่ได้จ่าย) */
+const legacyState = (installment4Paid = '300'): Record<number, InstallmentSpec> => {
+  const state: Record<number, InstallmentSpec> = {
+    1: { paid: MONTHLY },
+    2: { paid: MONTHLY },
+    3: { paid: MONTHLY },
+  };
+  if (installment4Paid !== '0') state[4] = { paid: installment4Paid };
+  return state;
 };
+
+/** แยกคอลัมน์ CSV แบบรู้จักเครื่องหมายคำพูด (ชื่อบัญชี/คำอธิบายอาจมี comma) */
+function csvCells(line: string): string[] {
+  const out: string[] = [];
+  let cur = '';
+  let quoted = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (quoted) {
+      if (ch === '"' && line[i + 1] === '"') {
+        cur += '"';
+        i++;
+      } else if (ch === '"') quoted = false;
+      else cur += ch;
+    } else if (ch === '"') quoted = true;
+    else if (ch === ',') {
+      out.push(cur);
+      cur = '';
+    } else cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
 
 describeDb('legacy opening state runs on the real templates — golden (real DB)', () => {
   let prisma: PrismaClient;
@@ -139,6 +183,15 @@ describeDb('legacy opening state runs on the real templates — golden (real DB)
   const nativeContractIds: string[] = [];
   const nativeCustomerIds: string[] = [];
   const savedPeakCodes: Array<{ code: string; peakCode: string | null }> = [];
+
+  async function restorePeakCodes() {
+    for (const m of savedPeakCodes.splice(0)) {
+      await prisma.chartOfAccount.update({
+        where: { code: m.code },
+        data: { peakCode: m.peakCode },
+      });
+    }
+  }
 
   beforeAll(async () => {
     const dbName = new URL(process.env.DATABASE_URL as string).pathname.slice(1);
@@ -253,84 +306,87 @@ describeDb('legacy opening state runs on the real templates — golden (real DB)
   afterAll(async () => {
     if (!prisma) return;
     try {
-      const legacy = await prisma.contract.findMany({
-        where: { legacyContractCode: { startsWith: `TEST-T11-${stamp}` } },
-        select: { id: true },
-      });
-      const contracts = await prisma.contract.findMany({
-        where: { id: { in: [...nativeContractIds, ...legacy.map((c) => c.id)] } },
-        select: { id: true, productId: true, customerId: true },
-      });
-      const contractIds = contracts.map((c) => c.id);
-      const byContract = contractIds.map((id) => ({
-        metadata: { path: ['contractId'], equals: id },
-      }));
-      const entries = await prisma.journalEntry.findMany({
-        where: {
-          OR: [...byContract, { metadata: { path: ['importBatch'], string_starts_with: batch } }],
-        },
-        select: { id: true },
-      });
-      const entryIds = entries.map((e) => e.id);
-      // ใบลดหนี้อ้างใบเสร็จที่ถูกยกเลิก — ลบก่อน
-      await prisma.receipt.deleteMany({
-        where: { contractId: { in: contractIds }, voidedReceiptId: { not: null } },
-      });
-      await prisma.receipt.deleteMany({ where: { contractId: { in: contractIds } } });
-      await prisma.journalPostAuditLog.deleteMany({ where: { journalEntryId: { in: entryIds } } });
-      await prisma.journalLine.deleteMany({ where: { journalEntryId: { in: entryIds } } });
-      await prisma.journalEntry.deleteMany({ where: { id: { in: entryIds } } });
-      await prisma.paymentEvidence.deleteMany({ where: { contractId: { in: contractIds } } });
-      await prisma.payment.deleteMany({ where: { contractId: { in: contractIds } } });
-      await prisma.installmentSchedule.deleteMany({ where: { contractId: { in: contractIds } } });
-      await prisma.contractDocument.deleteMany({ where: { contractId: { in: contractIds } } });
-      await prisma.contract.deleteMany({ where: { id: { in: contractIds } } });
-      await prisma.product.deleteMany({
-        where: { id: { in: contracts.map((c) => c.productId) } },
-      });
-      const customers = await prisma.customer.findMany({
-        where: {
-          OR: [
-            { legacyMemberCode: { startsWith: `TEST-T11M-${stamp}` } },
-            { id: { in: [...nativeCustomerIds, ...contracts.map((c) => c.customerId)] } },
-          ],
-        },
-        select: { id: true, contactId: true },
-      });
-      await prisma.customer.deleteMany({ where: { id: { in: customers.map((c) => c.id) } } });
-      await prisma.contact.deleteMany({
-        where: {
-          id: { in: customers.map((c) => c.contactId).filter((id): id is string => !!id) },
-        },
-      });
-      for (const m of savedPeakCodes) {
-        await prisma.chartOfAccount.update({
-          where: { code: m.code },
-          data: { peakCode: m.peakCode },
-        });
-      }
-      // AuditLog เป็นแบบเขียนครั้งเดียว (trigger) — ผู้ใช้ที่ถูกอ้างลบไม่ได้: ปิดใช้งานแทน · ผู้ใช้ระบบ admin ที่สร้างให้ลบเมื่อลบได้
-      // ไม่งั้นคงไว้ (ปิดใช้งานแล้วรอบถัดไปสร้างใหม่ไม่ได้เพราะอีเมลซ้ำ)
-      if (createdAdminId) {
-        await prisma.user.delete({ where: { id: createdAdminId } }).catch(() => undefined);
-      }
-      for (const id of [userId, approverId].filter(Boolean)) {
-        await prisma.user.delete({ where: { id } }).catch(async () => {
-          await prisma.user.update({
-            where: { id },
-            data: { isActive: false, deletedAt: new Date() },
-          });
-        });
-      }
-      await prisma.branch.delete({ where: { id: branchId } }).catch(async () => {
-        await prisma.branch.update({ where: { id: branchId }, data: { deletedAt: new Date() } });
-      });
+      // รหัส PEAK ทดสอบคืนก่อนและไม่ขึ้นกับการลบแถว (ฐานทดสอบอาจใช้ร่วมกับสเปคอื่น)
+      await restorePeakCodes();
     } finally {
-      await prisma.$disconnect();
-      if (saved.key === undefined) delete process.env.PII_ENCRYPTION_KEY;
-      else process.env.PII_ENCRYPTION_KEY = saved.key;
-      if (saved.salt === undefined) delete process.env.PII_HASH_SALT;
-      else process.env.PII_HASH_SALT = saved.salt;
+      try {
+        const legacy = await prisma.contract.findMany({
+          where: { legacyContractCode: { startsWith: `TEST-T11-${stamp}` } },
+          select: { id: true },
+        });
+        const contracts = await prisma.contract.findMany({
+          where: { id: { in: [...nativeContractIds, ...legacy.map((c) => c.id)] } },
+          select: { id: true, productId: true, customerId: true },
+        });
+        const contractIds = contracts.map((c) => c.id);
+        const byContract = contractIds.map((id) => ({
+          metadata: { path: ['contractId'], equals: id },
+        }));
+        const entries = await prisma.journalEntry.findMany({
+          where: {
+            OR: [...byContract, { metadata: { path: ['importBatch'], string_starts_with: batch } }],
+          },
+          select: { id: true },
+        });
+        const entryIds = entries.map((e) => e.id);
+        // ใบลดหนี้อ้างใบเสร็จที่ถูกยกเลิก — ลบก่อน
+        await prisma.receipt.deleteMany({
+          where: { contractId: { in: contractIds }, voidedReceiptId: { not: null } },
+        });
+        await prisma.receipt.deleteMany({ where: { contractId: { in: contractIds } } });
+        await prisma.journalPostAuditLog.deleteMany({
+          where: { journalEntryId: { in: entryIds } },
+        });
+        await prisma.journalLine.deleteMany({ where: { journalEntryId: { in: entryIds } } });
+        await prisma.journalEntry.deleteMany({ where: { id: { in: entryIds } } });
+        await prisma.paymentEvidence.deleteMany({ where: { contractId: { in: contractIds } } });
+        await prisma.payment.deleteMany({ where: { contractId: { in: contractIds } } });
+        await prisma.installmentSchedule.deleteMany({
+          where: { contractId: { in: contractIds } },
+        });
+        await prisma.contractDocument.deleteMany({ where: { contractId: { in: contractIds } } });
+        await prisma.contract.deleteMany({ where: { id: { in: contractIds } } });
+        await prisma.product.deleteMany({
+          where: { id: { in: contracts.map((c) => c.productId) } },
+        });
+        const customers = await prisma.customer.findMany({
+          where: {
+            OR: [
+              { legacyMemberCode: { startsWith: `TEST-T11M-${stamp}` } },
+              { id: { in: [...nativeCustomerIds, ...contracts.map((c) => c.customerId)] } },
+            ],
+          },
+          select: { id: true, contactId: true },
+        });
+        await prisma.customer.deleteMany({ where: { id: { in: customers.map((c) => c.id) } } });
+        await prisma.contact.deleteMany({
+          where: {
+            id: { in: customers.map((c) => c.contactId).filter((id): id is string => !!id) },
+          },
+        });
+        // AuditLog เป็นแบบเขียนครั้งเดียว (trigger) — ผู้ใช้ที่ถูกอ้างลบไม่ได้: ปิดใช้งานแทน · ผู้ใช้ระบบ admin ที่สร้างให้ลบเมื่อลบได้
+        // ไม่งั้นคงไว้ (ปิดใช้งานแล้วรอบถัดไปสร้างใหม่ไม่ได้เพราะอีเมลซ้ำ)
+        if (createdAdminId) {
+          await prisma.user.delete({ where: { id: createdAdminId } }).catch(() => undefined);
+        }
+        for (const id of [userId, approverId].filter(Boolean)) {
+          await prisma.user.delete({ where: { id } }).catch(async () => {
+            await prisma.user.update({
+              where: { id },
+              data: { isActive: false, deletedAt: new Date() },
+            });
+          });
+        }
+        await prisma.branch.delete({ where: { id: branchId } }).catch(async () => {
+          await prisma.branch.update({ where: { id: branchId }, data: { deletedAt: new Date() } });
+        });
+      } finally {
+        await prisma.$disconnect();
+        if (saved.key === undefined) delete process.env.PII_ENCRYPTION_KEY;
+        else process.env.PII_ENCRYPTION_KEY = saved.key;
+        if (saved.salt === undefined) delete process.env.PII_HASH_SALT;
+        else process.env.PII_HASH_SALT = saved.salt;
+      }
     }
   }, LONG);
 
@@ -383,7 +439,7 @@ describeDb('legacy opening state runs on the real templates — golden (real DB)
   const paymentOf = (contractId: string, installmentNo: number) =>
     prisma.payment.findFirstOrThrow({ where: { contractId, installmentNo, deletedAt: null } });
 
-  /** 2A รอบกลางคืนของงวด (ลงวันครบกำหนด) */
+  /** 2A รอบกลางคืนของงวด (ลงวันครบกำหนด) · null = งวดตั้งครบแล้ว */
   async function nightly2A(contractId: string, installmentNo: number) {
     return accrual2A.execute((await scheduleOf(contractId, installmentNo)).id);
   }
@@ -417,6 +473,12 @@ describeDb('legacy opening state runs on the real templates — golden (real DB)
     );
   }
 
+  /** ยอดที่ยังค้างบนแถว Payment ของงวด (ยอดเรียกเก็บ − ยอดจ่าย) */
+  async function owedOn(contractId: string, installmentNo: number): Promise<string> {
+    const p = await paymentOf(contractId, installmentNo);
+    return p.amountDue.minus(p.amountPaid).toFixed(2);
+  }
+
   /** รายการบัญชีของสัญญา (POSTED) */
   const entriesOf = (contractId: string, where: Prisma.JournalEntryWhereInput = {}) =>
     prisma.journalEntry.findMany({
@@ -429,10 +491,10 @@ describeDb('legacy opening state runs on the real templates — golden (real DB)
       orderBy: { entryNumber: 'asc' },
     });
 
-  const tagOf = (e: { metadata: Prisma.JsonValue }) =>
-    (e.metadata as Record<string, unknown> | null)?.tag;
-  const flowOf = (e: { metadata: Prisma.JsonValue }) =>
-    (e.metadata as Record<string, unknown> | null)?.flow;
+  const metaOf = (e: { metadata: Prisma.JsonValue }) =>
+    (e.metadata ?? {}) as Record<string, unknown>;
+  const tagOf = (e: { metadata: Prisma.JsonValue }) => metaOf(e).tag;
+  const flowOf = (e: { metadata: Prisma.JsonValue }) => metaOf(e).flow;
 
   const sortedLines = (e: {
     lines: Array<{ accountCode: string; debit: unknown; credit: unknown }>;
@@ -444,9 +506,17 @@ describeDb('legacy opening state runs on the real templates — golden (real DB)
       )
       .sort();
 
+  /** รายการ tag 2A ของงวด (ทุกสัญญา) */
+  async function accrualEntriesOf(contractId: string, installmentNo: number) {
+    const s = await scheduleOf(contractId, installmentNo);
+    return (await entriesOf(contractId)).filter(
+      (e) => tagOf(e) === '2A' && metaOf(e).installmentScheduleId === s.id,
+    );
+  }
+
   /**
-   * สัญญา A — เส้นทางเปิดสัญญาของระบบ (1A + ตารางงวด `buildInstallmentScheduleRows`) · แถว Payment ใช้ยอดเรียกเก็บชุดเดียวกับ B
-   * เพื่อให้สองสัญญารับเงินก้อนเดียวกันทุกงวด
+   * สัญญา A — เส้นทางเปิดสัญญาของระบบ: ตารางงวด `buildInstallmentScheduleRows` + แถว Payment `generatePaymentSchedule` (ยอดแยก
+   * เงินต้น/ดอกเบี้ย/ค่าคอม/VAT แบบการสร้างสัญญาจริง) + 1A
    */
   async function createNative(key: string, date: string, dueDay: number): Promise<string> {
     const contractDate = new Date(`${date}T10:00:00+07:00`);
@@ -503,25 +573,49 @@ describeDb('legacy opening state runs on the real templates — golden (real DB)
       createdAt: contractDate,
     });
     await prisma.installmentSchedule.createMany({ data: rows });
-    await prisma.payment.createMany({
-      data: rows.map((r) => ({
-        contractId: contract.id,
-        installmentNo: r.installmentNo,
-        dueDate: r.dueDate as Date,
-        amountDue: D(installmentAmount(r.installmentNo)),
-        status: 'PENDING' as const,
-      })),
-    });
+    // ยอดผ่อนรวม 18,190 = ยอดจัด + ค่าคอม + ดอกเบี้ย + VAT (แบบ credit-approval.fixture / การสร้างสัญญา)
+    const payments = generatePaymentSchedule(
+      contract.id,
+      12,
+      18190,
+      Number(MONTHLY),
+      dueDay,
+      { principal: 10000, storeCommission: 1000, interestTotal: 6000, vatAmount: 1190 },
+      contractDate,
+    );
+    if (payments.some((p, i) => p.dueDate.getTime() !== (rows[i].dueDate as Date).getTime())) {
+      throw new Error('createNative: วันครบกำหนดของแถว Payment ไม่ตรงตารางงวด');
+    }
+    await prisma.payment.createMany({ data: payments });
     await activation1A.execute(contract.id, undefined, contractDate);
     return contract.id;
   }
 
-  /** A ถึงวันตัด: 2A งวด 1–4 · ใบรับชำระงวด 1–3 เต็มงวด · งวด 4 บางส่วน 300 — ทุกใบลงวันครบกำหนด */
-  async function runNativeToCutoff(contractId: string, due: (no: number) => Date) {
+  /** A ถึงวันตัด: 2A งวด 1–4 · ใบรับชำระงวด 1–3 เต็มงวด · งวด 4 = `installment4Paid` — ทุกใบลงวันครบกำหนด */
+  async function runNativeToCutoff(
+    contractId: string,
+    due: (no: number) => Date,
+    installment4Paid = '300',
+  ) {
     for (let no = 1; no <= 4; no++) {
       await nightly2A(contractId, no);
-      if (no < 4) await pay(contractId, no, MONTHLY, due(no));
-      else await pay(contractId, no, '300', due(no), true);
+      const amount = no < 4 ? MONTHLY : installment4Paid;
+      if (D(amount).isZero()) continue;
+      await pay(contractId, no, amount, due(no), D(amount).lt(installmentAmount(no)));
+    }
+  }
+
+  /**
+   * จ่ายงวด 4..`through` ของทุกสัญญาใน `ids` ให้ครบตามลำดับ (ข้ามงวดที่ PAID แล้ว) — งวด 4 ส่วนที่เหลือรับ 3 พ.ค.
+   * · งวด 5+ ตั้ง 2A รอบกลางคืนแล้วรับวันครบกำหนด — ให้เทสต์ในชุดหลักรันเดี่ยว (`-t`) ได้
+   */
+  async function settleThrough(ids: string[], through: number) {
+    for (let no = 4; no <= through; no++) {
+      for (const id of ids) {
+        if ((await paymentOf(id, no)).status === 'PAID') continue;
+        await nightly2A(id, no);
+        await pay(id, no, await owedOn(id, no), no === 4 ? MAY3 : P1.due(no));
+      }
     }
   }
 
@@ -529,12 +623,17 @@ describeDb('legacy opening state runs on the real templates — golden (real DB)
     key: string;
     installments: InstallmentSpec[];
     detail?: Record<string, string | null>;
+    /** ยอดคงเหลือ PEAK = ยอดค้างของระบบเก่า + ค่านี้ (ไม่ส่ง = เท่ากัน) */
+    peakRemainOffset?: string;
+    /** ยอดใบแจ้งหนี้ PEAK (ไม่ส่ง = Σ ค่างวดระบบเก่า) */
+    peakNetAmount?: string;
   };
   type Imported = {
     plan: ImportPlan;
     report: WriteReport;
     item: (key: string) => PlannedContract;
     contractId: (key: string) => string;
+    code: (key: string) => string;
   };
 
   /** สัญญา B — สมุดระบบเก่าสังเคราะห์ → `planImport` → `writeLegacyImport` (ธุรกรรมเดียว) */
@@ -572,7 +671,19 @@ describeDb('legacy opening state runs on the real templates — golden (real DB)
     }
     const plan = planImport(syntheticBook(contracts, members), {
       cutoff: timeline.cutoff,
-      peakRecon: syntheticRecon(contracts.map((c, i) => [c, peakMatch(c, `T11${stamp}${r}${i}`)])),
+      peakRecon: syntheticRecon(
+        contracts.map((c, i) => {
+          const spec = specs[i];
+          const outstanding = c.installments.reduce(
+            (s, inst) => (inst.balance.gt(0) ? s.plus(inst.balance) : s),
+            D(0),
+          );
+          const remain = spec.peakRemainOffset
+            ? outstanding.plus(spec.peakRemainOffset)
+            : undefined;
+          return [c, peakMatch(c, `T11${stamp}${r}${i}`, remain, spec.peakNetAmount)];
+        }),
+      ),
       canceledMap: new Map(),
       moneyOverrides: new Map(),
       customerOverrides: new Map(),
@@ -605,10 +716,15 @@ describeDb('legacy opening state runs on the real templates — golden (real DB)
       report,
       item: (key) => plan.items.find((i) => i.code === code(key)) as PlannedContract,
       contractId: (key) => report.contractIds.get(code(key)) as string,
+      code,
     };
   }
 
-  // ── ชุดหลัก: A1 (ปกติ) · B1 (นำเข้า) · B3 (ยอดเรียกเก็บ +0.01 / งวดสุดท้ายเท่ากัน) · B4 (ยกเลิกใบเสร็จหลังวันตัด) ─────────
+  // ── ชุดหลัก (ปฏิทิน 2025): A1 (ปกติ) · B1 (นำเข้า) · B3 (ยอดเรียกเก็บ +0.01 / งวดสุดท้ายเท่ากัน) · B4 (ยกเลิกใบเสร็จหลังวันตัด)
+  //
+  // ลำดับ: เทสต์ "receipt after cutoff" → "contract runs to zero" → "peak export" ใช้ A1/B1 ร่วมกันตามลำดับในไฟล์ (งวด 4 →
+  // 5–12 → ส่งออกช่วงที่มี 2A งวด 5–6) · แต่ละเทสต์เรียก `settleThrough` ให้ได้สภาพที่ต้องการเองก่อน จึงรันเดี่ยวด้วย `-t` ได้
+  // ("imported state equals native state" ต้องรันก่อนเทสต์ที่จ่ายงวด 4 ของ A1/B1 — ลำดับในไฟล์รับประกัน) · เทสต์อื่นสร้างสัญญาของตัวเอง
 
   describe('imported B vs native A (calendar 2025, cutoff after installment 4)', () => {
     let a1 = '';
@@ -622,7 +738,7 @@ describeDb('legacy opening state runs on the real templates — golden (real DB)
       await runNativeToCutoff(a1, P1.due);
       const flat = Array.from({ length: 12 }, () => ({ amount: '1515.84' }));
       imported = await importLegacy(P1, [
-        { key: 'B1', installments: standardInstallments(LEGACY_STATE) },
+        { key: 'B1', installments: standardInstallments(legacyState()) },
         {
           key: 'B3',
           // ระบบเก่าเรียกเก็บ 1,515.84 ทุกงวด: งวด 1–11 = ตัวคำนวณ + 0.01 · งวด 12 = เท่ากัน (ตัวคำนวณ 1,515.87)
@@ -631,7 +747,7 @@ describeDb('legacy opening state runs on the real templates — golden (real DB)
           ),
           detail: { installment_amount: '1515.84' },
         },
-        { key: 'B4', installments: standardInstallments(LEGACY_STATE) },
+        { key: 'B4', installments: standardInstallments(legacyState()) },
       ]);
       b1 = imported.contractId('B1');
       b3 = imported.contractId('B3');
@@ -641,30 +757,28 @@ describeDb('legacy opening state runs on the real templates — golden (real DB)
     it(
       'imported state equals native state',
       async () => {
-        const golden: Carry = {
-          '11-2101': '11333.36',
-          '11-2103': '1215.83',
-          '11-2105': '793.32',
-          '11-2106': '4000.00',
-          '21-2102': '793.32',
-        };
+        const golden = cutoffCarry('1215.83');
         expect(await carry(a1)).toEqual(golden);
         expect(await carry(b1)).toEqual(golden);
 
-        // 21-2102 เท่ากันหลังรายการไล่ VAT เท่านั้น: ก่อนไล่ B ยังถือ VAT ของงวด 4 ส่วนที่ค้าง (1,515.83 − 300) ที่ A
-        // ส่งเข้า 21-2101 ไปแล้วตอน 2A งวด 4 = 99.17 − VAT ของ 300 (19.63) = 79.54
-        const catchUp = imported.report.journalEntries.filter(
-          (e) => e.contractId === b1 && e.kind === 'catch-up',
-        );
-        expect(catchUp).toHaveLength(1);
-        const catchUpEntry = await prisma.journalEntry.findUniqueOrThrow({
-          where: { id: catchUp[0].id },
+        // 21-2102 เท่ากันหลังรายการไล่ VAT เท่านั้น: รายการยกมาลง Cr 21-2102 = VAT งวด 5–12 (793.32) + VAT ของงวด 4 ส่วนที่ค้าง
+        // (99.17 − VAT ของ 300 = 19.63 → 79.54) = 872.86 · A ส่งส่วนนั้นเข้า 21-2101 ไปแล้วตอน 2A งวด 4
+        const legacyOf = (kind: string) =>
+          imported.report.journalEntries.filter((e) => e.contractId === b1 && e.kind === kind);
+        const [openingRef] = legacyOf('opening');
+        const opening = await prisma.journalEntry.findUniqueOrThrow({
+          where: { id: openingRef.id },
           include: { lines: true },
         });
-        expect(sortedLines(catchUpEntry)).toEqual(['21-2101:0.00:79.54', '21-2102:79.54:0.00']);
-        const b1Before2102 = D(await bal(b1, '21-2102', 'cr')).plus('79.54');
-        expect(b1Before2102.toFixed(2)).toBe('872.86');
-        expect(b1Before2102.minus(golden['21-2102']).toFixed(2)).toBe('79.54');
+        expect(sortedLines(opening).filter((l) => l.startsWith('21-2102:'))).toEqual([
+          '21-2102:0.00:872.86',
+        ]);
+        const [catchUpRef] = legacyOf('catch-up');
+        const catchUp = await prisma.journalEntry.findUniqueOrThrow({
+          where: { id: catchUpRef.id },
+          include: { lines: true },
+        });
+        expect(sortedLines(catchUp)).toEqual(['21-2101:0.00:79.54', '21-2102:79.54:0.00']);
 
         // A รับรู้ดอกเบี้ย / VAT งวด 1–4 ในระบบ · B ไม่มี (PEAK รับรู้แล้ว) — นอกบัญชียกมา
         expect([await bal(a1, '41-1101', 'cr'), await bal(a1, '21-2101', 'cr')]).toEqual([
@@ -677,22 +791,26 @@ describeDb('legacy opening state runs on the real templates — golden (real DB)
         ]);
 
         // งวด 1–4 ของ B ประทับว่าตั้งลูกหนี้แล้ว (ลิงก์รายการยกมา) · 5–12 ยังไม่ตั้ง · marker งวด 4 = 300
-        const opening = imported.report.journalEntries.find(
-          (e) => e.contractId === b1 && e.kind === 'opening',
-        )!;
         const rows = await prisma.installmentSchedule.findMany({
           where: { contractId: b1 },
           orderBy: { installmentNo: 'asc' },
         });
         expect(rows.map((r) => r.accrualJournalEntryId)).toEqual([
-          ...Array(4).fill(opening.entryNumber),
+          ...Array(4).fill(openingRef.entryNumber),
           ...Array(8).fill(null),
         ]);
-        const markers = imported.report.journalEntries.filter(
-          (e) => e.contractId === b1 && e.kind === 'marker',
-        );
-        expect(markers.map((m) => m.installmentNo)).toEqual([4]);
+        expect(legacyOf('marker').map((m) => m.installmentNo)).toEqual([4]);
         expect(imported.item('B1').roundingDiff.toFixed(2)).toBe('0.00');
+
+        // ลิงก์ประทับต้องมีผลจริง: รอบกลางคืนบนงวด 1–4 ของ B ไม่ลงอะไร (คืน null · ไม่มีรายการ 2A · จำนวนรายการเท่าเดิม)
+        const before = (await entriesOf(b1)).length;
+        for (let no = 1; no <= 4; no++) {
+          expect({ no, result: await nightly2A(b1, no) }).toEqual({ no, result: null });
+        }
+        const after = await entriesOf(b1);
+        expect(after).toHaveLength(before);
+        expect(after.filter((e) => tagOf(e) === '2A')).toEqual([]);
+        expect(await carry(b1)).toEqual(golden);
       },
       LONG,
     );
@@ -723,16 +841,12 @@ describeDb('legacy opening state runs on the real templates — golden (real DB)
           ['11-1101:700.00:0.00', '11-2103:0.00:700.00'],
           ['11-1101:515.83:0.00', '11-2103:0.00:515.83'],
         ]);
-        // VAT ที่ใบเสร็จหลังวันตัดพิมพ์รวมกัน = รายการไล่ VAT (79.54) — ภาษีของงวด 4 ไม่ถูกพิมพ์ซ้ำ/ขาด
-        const vatPrinted = receipts4.reduce(
-          (s, e) =>
-            s.plus(
-              ((e.metadata as Record<string, Record<string, string>>).receiptTax ?? {}).vatAmount ??
-                '0',
-            ),
-          D(0),
-        );
-        expect(vatPrinted.toFixed(2)).toBe('79.54');
+        // VAT ที่ใบเสร็จหลังวันตัดพิมพ์ (45.79 + 33.75) = รายการไล่ VAT (79.54) — ภาษีของงวด 4 ไม่ถูกพิมพ์ซ้ำ/ขาด
+        expect(
+          receipts4.map(
+            (e) => (metaOf(e).receiptTax as Record<string, string> | undefined)?.vatAmount,
+          ),
+        ).toEqual(['45.79', '33.75']);
       },
       LONG,
     );
@@ -740,7 +854,8 @@ describeDb('legacy opening state runs on the real templates — golden (real DB)
     it(
       'contract runs to zero',
       async () => {
-        const a1At4 = await bal(a1, '41-1101', 'cr');
+        await settleThrough([a1, b1], 4);
+        expect(await bal(a1, '41-1101', 'cr')).toBe('2000.00');
         for (let no = 5; no <= 12; no++) {
           for (const id of [a1, b1]) await nightly2A(id, no);
           const accrued = await carry(b1);
@@ -756,13 +871,9 @@ describeDb('legacy opening state runs on the real templates — golden (real DB)
         expect(await carry(b1)).toEqual(ALL_ZERO);
         expect(await carry(a1)).toEqual(ALL_ZERO);
 
-        // ดอกเบี้ยงวด 5–12: 500 × 8 = 4,000 (งวด 12 ดอกเบี้ย 500 พอดี — เศษปัดอยู่ในเงินต้น/VAT)
+        // ดอกเบี้ยงวด 5–12: 500 × 8 = 4,000 · A ทั้งสัญญา 6,000
         expect(await bal(b1, '41-1101', 'cr')).toBe('4000.00');
-        expect(
-          D(await bal(a1, '41-1101', 'cr'))
-            .minus(a1At4)
-            .toFixed(2),
-        ).toBe('4000.00');
+        expect(await bal(a1, '41-1101', 'cr')).toBe('6000.00');
         // VAT: B = ไล่ VAT งวด 4 (79.54) + 2A งวด 5–12 (793.32) · A = ทั้งสัญญา 1,190
         expect(await bal(b1, '21-2101', 'cr')).toBe('872.86');
         expect(await bal(a1, '21-2101', 'cr')).toBe('1190.00');
@@ -783,59 +894,97 @@ describeDb('legacy opening state runs on the real templates — golden (real DB)
     it(
       'peak export excludes legacy interest',
       async () => {
-        for (const [code, peakCode] of [
-          ['11-2106', PEAK_2106],
-          ['41-1101', PEAK_4101],
-        ] as const) {
-          const row = await prisma.chartOfAccount.findUniqueOrThrow({
-            where: { code },
-            select: { code: true, peakCode: true },
-          });
-          if (!savedPeakCodes.some((s) => s.code === code)) savedPeakCodes.push(row);
-          await prisma.chartOfAccount.update({ where: { code }, data: { peakCode } });
+        await settleThrough([a1, b1], 6);
+        const a2A = [...(await accrualEntriesOf(a1, 5)), ...(await accrualEntriesOf(a1, 6))];
+        const b2A = [...(await accrualEntriesOf(b1, 5)), ...(await accrualEntriesOf(b1, 6))];
+        expect([a2A.length, b2A.length]).toEqual([2, 2]);
+        const scheduleIds = await Promise.all(
+          [4, 5, 6].map(async (no) => (await scheduleOf(b1, no)).id),
+        );
+        const bReceipts = (await entriesOf(b1)).filter(
+          (e) =>
+            flowOf(e) === 'payment-receipt' &&
+            scheduleIds.includes(metaOf(e).installmentScheduleId as string),
+        );
+        expect(bReceipts.length).toBeGreaterThanOrEqual(3);
+        const legacyOf = (kind: string) =>
+          imported.report.journalEntries.filter((e) => e.contractId === b1 && e.kind === kind);
+        const [catchUp] = legacyOf('catch-up');
+        const hidden = [...legacyOf('opening'), ...legacyOf('marker')].map((e) => e.entryNumber);
+        expect(hidden).toHaveLength(2);
+
+        let csv = '';
+        try {
+          for (const [code, peakCode] of [
+            ['11-2106', PEAK_2106],
+            ['41-1101', PEAK_4101],
+          ] as const) {
+            const row = await prisma.chartOfAccount.findUniqueOrThrow({
+              where: { code },
+              select: { code: true, peakCode: true },
+            });
+            if (!savedPeakCodes.some((s) => s.code === code)) savedPeakCodes.push(row);
+            await prisma.chartOfAccount.update({ where: { code }, data: { peakCode } });
+          }
+          csv = (await peakExport.exportJournalWithPeakCodes(PEAK_FROM, PEAK_TO)).csv;
+        } finally {
+          await restorePeakCodes();
         }
 
-        const res = await peakExport.exportJournalWithPeakCodes(PEAK_FROM, PEAK_TO);
-        const rows = res.csv
+        // อ่านเฉพาะแถวของรายการที่เทสต์นี้สร้าง (ไฟล์มีทุกรายการ FINANCE ในช่วง — แถวของสเปคอื่นไม่ถูกแปลงเป็นตัวเลข)
+        const mine = new Set([
+          ...a2A.map((e) => e.entryNumber),
+          ...b2A.map((e) => e.entryNumber),
+          ...bReceipts.map((e) => e.entryNumber),
+          catchUp.entryNumber,
+          ...hidden,
+        ]);
+        const rows = csv
           .replace(/^\uFEFF/, '')
-          .split('\n')
+          .split(/\r?\n/)
           .slice(1)
-          .filter((r) => r.length > 0)
-          .map((r) => {
-            const cols = r.split(',');
-            return { entry: cols[1], account: cols[4], debit: D(cols[6]), credit: D(cols[7]) };
-          });
+          .map(csvCells)
+          .filter((cols) => mine.has(cols[1]))
+          .map((cols) => ({
+            entry: cols[1],
+            account: cols[4],
+            debit: D(cols[6]),
+            credit: D(cols[7]),
+          }));
         const rowsOf = (entryNumber: string) => rows.filter((r) => r.entry === entryNumber);
-        const inWindow = (e: { entryDate: Date }) =>
-          e.entryDate.getTime() >= PEAK_FROM.getTime() &&
-          e.entryDate.getTime() <= PEAK_TO.getTime();
+        const accountsOf = (entryNumber: string) =>
+          rowsOf(entryNumber)
+            .map((r) => r.account)
+            .sort();
 
-        // A: 2A งวด 5 และ 6 ส่งดอกเบี้ยครบทั้งคู่
-        const a2A = (await entriesOf(a1)).filter((e) => tagOf(e) === '2A' && inWindow(e));
-        expect(a2A.length).toBeGreaterThanOrEqual(2);
+        // A: 2A งวด 5 และ 6 ส่งดอกเบี้ยครบ (ตัวเทียบ — บัญชีดอกเบี้ยมีรหัส PEAK ในการส่งออกครั้งนี้)
         for (const e of a2A) {
-          expect(
-            rowsOf(e.entryNumber)
-              .map((r) => r.account)
-              .sort(),
-          ).toEqual(['11-2101', '11-2103', '11-2105', '11-2106', '21-2101', '21-2102', '41-1101']);
+          expect(accountsOf(e.entryNumber)).toEqual([
+            '11-2101',
+            '11-2103',
+            '11-2105',
+            '11-2106',
+            '21-2101',
+            '21-2102',
+            '41-1101',
+          ]);
         }
-
-        // B: ไม่มีบรรทัด 11-2106 / 41-1101 เลย · รายการที่ส่งออกของ B ยังดุลทุกใบ
-        const bEntries = (await entriesOf(b1)).filter(inWindow);
-        const b2A = bEntries.filter((e) => tagOf(e) === '2A');
-        expect(b2A.length).toBe(2);
+        // B: 2A ไม่มี 11-2106 / 41-1101 · ทุกรายการของ B ที่ส่งออกยังดุล
         for (const e of b2A) {
-          expect(
-            rowsOf(e.entryNumber)
-              .map((r) => r.account)
-              .sort(),
-          ).toEqual(['11-2101', '11-2103', '11-2105', '21-2101', '21-2102']);
+          expect(accountsOf(e.entryNumber)).toEqual([
+            '11-2101',
+            '11-2103',
+            '11-2105',
+            '21-2101',
+            '21-2102',
+          ]);
         }
-        const exportedB = bEntries.filter((e) => rowsOf(e.entryNumber).length > 0);
-        expect(exportedB.length).toBeGreaterThan(0);
-        for (const e of exportedB) {
+        for (const e of [...b2A, ...bReceipts, catchUp]) {
           const r = rowsOf(e.entryNumber);
+          expect({ entry: e.entryNumber, exported: r.length > 0 }).toEqual({
+            entry: e.entryNumber,
+            exported: true,
+          });
           expect(r.filter((x) => x.account === '11-2106' || x.account === '41-1101')).toEqual([]);
           const dr = r.reduce((s, x) => s.plus(x.debit), D(0));
           const cr = r.reduce((s, x) => s.plus(x.credit), D(0));
@@ -844,25 +993,51 @@ describeDb('legacy opening state runs on the real templates — golden (real DB)
             dr: cr.toFixed(2),
           });
         }
-
         // รายการยกมา + marker ไม่อยู่ในไฟล์ · รายการไล่ VAT อยู่ (ภาษีของงวดค้างยังไม่เคยยื่นใน PEAK)
-        const legacyOf = (kind: string) =>
-          imported.report.journalEntries.filter((e) => e.contractId === b1 && e.kind === kind);
-        for (const e of [...legacyOf('opening'), ...legacyOf('marker')]) {
-          expect({ entry: e.entryNumber, rows: rowsOf(e.entryNumber) }).toEqual({
-            entry: e.entryNumber,
-            rows: [],
-          });
+        for (const entry of hidden) {
+          expect({ entry, rows: rowsOf(entry) }).toEqual({ entry, rows: [] });
         }
-        const [catchUp] = legacyOf('catch-up');
         expect(
           rowsOf(catchUp.entryNumber)
             .map((r) => `${r.account}:${r.debit.toFixed(2)}:${r.credit.toFixed(2)}`)
             .sort(),
         ).toEqual(['21-2101:0.00:79.54', '21-2102:79.54:0.00']);
-        expect(res.excludedEntryCount).toBeGreaterThanOrEqual(2);
-        expect(res.excludedLegacyInterestLineCount).toBeGreaterThanOrEqual(4);
-        expect(res.legacyUnbalancedEntryCount).toBe(0);
+      },
+      LONG,
+    );
+
+    it(
+      'imported Payment rows carry the native breakdown columns (principal + interest + commission + VAT = amountDue)',
+      async () => {
+        const rowsOf = (contractId: string) =>
+          prisma.payment.findMany({ where: { contractId }, orderBy: { installmentNo: 'asc' } });
+        const split = (p: Awaited<ReturnType<typeof rowsOf>>[number]) =>
+          [p.monthlyPrincipal, p.monthlyInterest, p.monthlyCommission, p.vatAmount].map((v) =>
+            v === null ? null : v.toFixed(2),
+          );
+        // generatePaymentSchedule: ดอกเบี้ย 500 · ค่าคอม 1,000 ÷ 12 = 83.33 · เงินต้น 1,416.66 − 500 − 83.33 = 833.33 ·
+        // VAT = ค่างวด − สามยอด · งวด 12 รับเศษ: เงินต้น 10,000 − 833.33 × 11 = 833.37 · ค่าคอม 83.37 · VAT 99.13
+        const golden = Array.from({ length: 12 }, (_, i) =>
+          i === 11
+            ? [12, LAST, ['833.37', '500.00', '83.37', '99.13']]
+            : [i + 1, MONTHLY, ['833.33', '500.00', '83.33', '99.17']],
+        );
+        for (const id of [a1, b1]) {
+          expect(
+            (await rowsOf(id)).map((p) => [p.installmentNo, p.amountDue.toFixed(2), split(p)]),
+          ).toEqual(golden);
+        }
+        // ยอดเรียกเก็บของระบบเก่าที่ต่างจากตัวคำนวณ (B3: 1,515.84 ทุกงวด) — สี่ยอดยังรวมเท่ายอดเรียกเก็บ (เศษลง VAT)
+        for (const p of await rowsOf(b3)) {
+          const [principal, interest, commission, vat] = split(p);
+          expect([principal, interest, commission, vat].includes(null)).toBe(false);
+          expect(D(principal!).plus(interest!).plus(commission!).plus(vat!).toFixed(2)).toBe(
+            p.amountDue.toFixed(2),
+          );
+          expect(p.amountDue.toFixed(2)).toBe('1515.84');
+        }
+        expect(split((await rowsOf(b3))[0])).toEqual(['833.33', '500.00', '83.33', '99.18']);
+        expect(split((await rowsOf(b3))[11])).toEqual(['833.37', '500.00', '83.37', '99.10']);
       },
       LONG,
     );
@@ -874,13 +1049,7 @@ describeDb('legacy opening state runs on the real templates — golden (real DB)
         // ⇒ roundingDiff (บัญชี − PEAK) = −0.08 + 0.03 = −0.05
         const item = imported.item('B3');
         expect(item.roundingDiff.toFixed(2)).toBe('-0.05');
-        expect(await carry(b3)).toEqual({
-          '11-2101': '11333.36',
-          '11-2103': '1215.83',
-          '11-2105': '793.32',
-          '11-2106': '4000.00',
-          '21-2102': '793.32',
-        });
+        expect(await carry(b3)).toEqual(cutoffCarry('1215.83'));
 
         await pay(b3, 4, '1215.84', MAY2);
         expect({ step: 'receipt 4', c: negatives(await carry(b3)) }).toEqual({
@@ -910,11 +1079,11 @@ describeDb('legacy opening state runs on the real templates — golden (real DB)
         });
         expect(payments.every((p) => p.status === 'PAID')).toBe(true);
         // เก็บเกิน 0.01 × 8 ใบ → Cr 53-1503 0.08 · งวด 12 ขาด 0.03 (ยอดเรียกเก็บ < ตัวคำนวณ) → Dr 52-1104 0.03 อนุมัติอัตโนมัติ
-        // (ผู้จ่ายครบยอดเรียกเก็บ) · สุทธิ = −roundingDiff = 0.05
-        const gain = D(await bal(b3, '53-1503', 'cr'));
-        const loss = D(await bal(b3, '52-1104', 'dr'));
-        expect([gain.toFixed(2), loss.toFixed(2)]).toEqual(['0.08', '0.03']);
-        expect(gain.minus(loss).toFixed(2)).toBe(item.roundingDiff.negated().toFixed(2));
+        // (ผู้จ่ายครบยอดเรียกเก็บ) · สุทธิ 0.05 = −roundingDiff
+        expect([await bal(b3, '53-1503', 'cr'), await bal(b3, '52-1104', 'dr')]).toEqual([
+          '0.08',
+          '0.03',
+        ]);
         expect(await bal(b3, '41-1101', 'cr')).toBe('4000.00');
       },
       LONG,
@@ -950,7 +1119,7 @@ describeDb('legacy opening state runs on the real templates — golden (real DB)
         expect(await bal(b4, '11-2103', 'dr')).toBe('1215.83');
         const markers = (await entriesOf(b4)).filter((e) => flowOf(e) === 'legacy-prior-receipt');
         expect(markers).toHaveLength(1);
-        expect((markers[0].metadata as Record<string, unknown>).reversed).toBeUndefined();
+        expect(metaOf(markers[0]).reversed).toBeUndefined();
         expect(sortedLines(markers[0])).toEqual(['11-2103:0.00:300.00', '32-1101:300.00:0.00']);
 
         // รับใหม่หลังยกเลิก — ล้างเฉพาะส่วนที่เหลือได้อีกครั้ง
@@ -960,30 +1129,295 @@ describeDb('legacy opening state runs on the real templates — golden (real DB)
       },
       LONG,
     );
+
+    // ── เคสจาก carry ของ Task 7 / 10 — แต่ละเคสสร้างสัญญาของตัวเอง ─────────────────────────────────────────────
+
+    it(
+      'bad-debt write-off on imported B with a due-unpaid installment equals native A (CN Dr 21-2101 79.54 via the stamped link)',
+      async () => {
+        const a = await createNative('A6', P1.date, P1.dueDay);
+        await runNativeToCutoff(a, P1.due);
+        const b = (
+          await importLegacy(P1, [{ key: 'B6', installments: standardInstallments(legacyState()) }])
+        ).contractId('B6');
+        expect(await carry(b)).toEqual(cutoffCarry('1215.83'));
+
+        const writeOff = new BadDebtWriteOffTemplate(journal, prisma as unknown as PrismaService);
+        for (const id of [a, b]) await writeOff.execute({ contractId: id });
+        const entryOf = async (id: string) => {
+          const list = (await entriesOf(id)).filter((e) => flowOf(e) === 'write-off');
+          expect(list).toHaveLength(1);
+          return list[0];
+        };
+        const woA = await entryOf(a);
+        const woB = await entryOf(b);
+        // ใบลดหนี้ ม.82/5 ของงวด 4 ส่วนที่ค้าง (1,215.83) = VAT 79.54 — เห็นได้เพราะงวด 4 ของ B ประทับลิงก์ตั้งลูกหนี้แล้ว ·
+        // หนี้สูญ = ลูกหนี้รวม VAT 13,342.51 − 79.54 = 13,262.97
+        const golden = [
+          '11-2101:0.00:11333.36',
+          '11-2103:0.00:1215.83',
+          '11-2105:0.00:793.32',
+          '11-2106:4000.00:0.00',
+          '21-2101:0.00:793.32',
+          '21-2101:79.54:0.00',
+          '21-2102:793.32:0.00',
+          '41-1101:0.00:4000.00',
+          '51-1102:13262.97:0.00',
+        ];
+        expect(sortedLines(woA)).toEqual(golden);
+        expect(sortedLines(woB)).toEqual(golden);
+        expect(await carry(b)).toEqual(ALL_ZERO);
+        expect(await carry(a)).toEqual(ALL_ZERO);
+      },
+      LONG,
+    );
+
+    it(
+      'JP5 repossession on imported B with a due-unpaid installment equals native A',
+      async () => {
+        const a = await createNative('A7', P1.date, P1.dueDay);
+        await runNativeToCutoff(a, P1.due);
+        const b = (
+          await importLegacy(P1, [{ key: 'B7', installments: standardInstallments(legacyState()) }])
+        ).contractId('B7');
+        expect(await carry(b)).toEqual(cutoffCarry('1215.83'));
+
+        const jp5 = new RepossessionJP5Template(journal, prisma as unknown as PrismaService);
+        for (const id of [a, b]) {
+          await jp5.execute({
+            contractId: id,
+            depositAccountCode: '11-1101',
+            repossessionValue: D('5000.00'),
+          });
+        }
+        const entryOf = async (id: string) => {
+          const list = (await entriesOf(id)).filter((e) => flowOf(e) === 'repossession');
+          expect(list).toHaveLength(1);
+          return list[0];
+        };
+        const jp5A = await entryOf(a);
+        const jp5B = await entryOf(b);
+        // ราคาเครื่อง 5,000 · ใบลดหนี้ VAT 79.54 · ขาดทุน = 13,342.51 − 5,000 − 79.54 = 8,262.97
+        const golden = [
+          '11-1101:5000.00:0.00',
+          '11-2101:0.00:11333.36',
+          '11-2103:0.00:1215.83',
+          '11-2105:0.00:793.32',
+          '11-2106:4000.00:0.00',
+          '21-2101:0.00:793.32',
+          '21-2101:79.54:0.00',
+          '21-2102:793.32:0.00',
+          '41-1101:0.00:4000.00',
+          '51-1102:8262.97:0.00',
+        ];
+        expect(sortedLines(jp5A)).toEqual(golden);
+        expect(sortedLines(jp5B)).toEqual(golden);
+        expect(await carry(b)).toEqual(ALL_ZERO);
+        expect(await carry(a)).toEqual(ALL_ZERO);
+      },
+      LONG,
+    );
+
+    it(
+      'future installment partially prepaid before cutover (marker + accrued columns) equals native A and runs to zero',
+      async () => {
+        // งวด 1–4 จ่ายครบ · งวด 5 (ครบ 5 พ.ค.) จ่ายล่วงหน้า 500 วันที่ 20 เม.ย. — native ตั้ง 2A เท่ายอดที่รับ (ก1)
+        const a = await createNative('A5', P1.date, P1.dueDay);
+        await runNativeToCutoff(a, P1.due, MONTHLY);
+        await pay(a, 5, '500', APR20, true);
+        const b = (
+          await importLegacy(P1, [
+            {
+              key: 'B5',
+              installments: standardInstallments({
+                ...legacyState(MONTHLY),
+                5: { paid: '500', paidOn: APR20 },
+              }),
+            },
+          ])
+        ).contractId('B5');
+
+        // 2A บางส่วน 500: VAT 32.71 · มูลค่า 467.29 · ดอกเบี้ย 164.93 ⇒ 11-2101 = 11,333.36 − 467.29 · 11-2105 = 793.32 − 32.71 ·
+        // 11-2106 = 4,000 − 164.93 · 21-2102 = 793.32 − 32.71 · 11-2103 = 500 − 500
+        const atCutoff: Carry = {
+          '11-2101': '10866.07',
+          '11-2103': '0.00',
+          '11-2105': '760.61',
+          '11-2106': '3835.07',
+          '21-2102': '760.61',
+        };
+        expect(await carry(a)).toEqual(atCutoff);
+        expect(await carry(b)).toEqual(atCutoff);
+        for (const id of [a, b]) {
+          const s = await scheduleOf(id, 5);
+          expect([
+            s.accrualJournalEntryId,
+            s.accruedAmount.toFixed(2),
+            s.accruedVat.toFixed(2),
+            s.accruedInterest.toFixed(2),
+          ]).toEqual([null, '500.00', '32.71', '164.93']);
+        }
+        const bRefs = (await entriesOf(b)).filter((e) => flowOf(e) === 'legacy-prior-receipt');
+        expect(bRefs.map(sortedLines)).toEqual([['11-2103:0.00:500.00', '32-1101:500.00:0.00']]);
+        expect((await entriesOf(b)).filter((e) => flowOf(e) === 'legacy-vat-catchup')).toEqual([]);
+
+        // วันครบกำหนดงวด 5: รอบกลางคืนตั้งส่วนที่เหลือ 1,015.83 (VAT 66.46 · ดอกเบี้ย 335.07) แล้วรับส่วนที่เหลือ
+        for (const id of [a, b]) await nightly2A(id, 5);
+        expect(await carry(b)).toEqual(await carry(a));
+        expect(await bal(b, '11-2103', 'dr')).toBe('1015.83');
+        const [rest] = await accrualEntriesOf(b, 5);
+        expect(sortedLines(rest)).toEqual([
+          '11-2101:0.00:949.37',
+          '11-2103:1015.83:0.00',
+          '11-2105:0.00:66.46',
+          '11-2106:335.07:0.00',
+          '21-2101:0.00:66.46',
+          '21-2102:66.46:0.00',
+          '41-1101:0.00:335.07',
+        ]);
+        for (const id of [a, b]) await pay(id, 5, '1015.83', P1.due(5));
+        expect(await bal(b, '11-2103', 'dr')).toBe('0.00');
+        expect((await paymentOf(b, 5)).status).toBe('PAID');
+
+        for (let no = 6; no <= 12; no++) {
+          for (const id of [a, b]) await nightly2A(id, no);
+          for (const id of [a, b]) await pay(id, no, installmentAmount(no), P1.due(no));
+          const c = await carry(b);
+          expect({ no, negatives: negatives(c) }).toEqual({ no, negatives: [] });
+          expect(c).toEqual(await carry(a));
+        }
+        expect(await carry(b)).toEqual(ALL_ZERO);
+        // B รับรู้ดอกเบี้ย / VAT ตั้งแต่ส่วนที่เหลือของงวด 5: 335.07 + 500 × 7 · 66.46 + 99.17 × 6 + 99.13
+        expect([await bal(b, '41-1101', 'cr'), await bal(b, '21-2101', 'cr')]).toEqual([
+          '3835.07',
+          '760.61',
+        ]);
+      },
+      LONG,
+    );
+
+    it(
+      'PEAK lower by the invoice satang → last installment billing trimmed (satangGap −0.04, roundingDiff +0.04) and the satang lands in 52-1104',
+      async () => {
+        // PEAK ใบแจ้งหนี้ 18,189.96 (1,515.83 × 12) ต่ำกว่า Σ ค่างวดระบบเก่า 18,190.00 อยู่ 0.04 · ยอดคงเหลือ PEAK ต่ำกว่าเท่ากัน
+        const imp = await importLegacy(P1, [
+          {
+            key: 'B8',
+            installments: standardInstallments(legacyState()),
+            peakRemainOffset: '-0.04',
+            peakNetAmount: '18189.96',
+          },
+        ]);
+        const b = imp.contractId('B8');
+        const item = imp.item('B8');
+        expect([
+          item.peak?.satangGap.toFixed(2),
+          item.peak?.satangGapInstallmentNo,
+          item.peak?.adjustment.toFixed(2),
+          item.roundingDiff.toFixed(2),
+        ]).toEqual(['-0.04', 12, '0.00', '0.04']);
+        expect(imp.plan.totals.satangTrim.toFixed(2)).toBe('-0.04');
+        // บัญชีคงยอดของตัวคำนวณ (เท่าสัญญาปกติ) · แถวงวด 12 เรียกเก็บ 1,515.83 · VAT ของแถวรับเศษ (1,515.83 − 1,416.74)
+        expect(await carry(b)).toEqual(cutoffCarry('1215.83'));
+        const last = await paymentOf(b, 12);
+        expect([
+          last.amountDue.toFixed(2),
+          last.monthlyPrincipal?.toFixed(2),
+          last.monthlyInterest?.toFixed(2),
+          last.monthlyCommission?.toFixed(2),
+          last.vatAmount?.toFixed(2),
+        ]).toEqual(['1515.83', '833.37', '500.00', '83.37', '99.09']);
+
+        await pay(b, 4, await owedOn(b, 4), MAY2);
+        for (let no = 5; no <= 12; no++) {
+          await nightly2A(b, no);
+          await pay(b, no, await owedOn(b, no), P1.due(no));
+          const c = await carry(b);
+          expect({ no, negatives: negatives(c), r: c['11-2103'] }).toEqual({
+            no,
+            negatives: [],
+            r: '0.00',
+          });
+        }
+        expect(await carry(b)).toEqual(ALL_ZERO);
+        // งวด 12 รับ 1,515.83 ต่ำกว่าตัวคำนวณ 1,515.87 → Dr 52-1104 0.04 (อนุมัติอัตโนมัติ — จ่ายครบยอดเรียกเก็บ) = roundingDiff
+        expect([await bal(b, '52-1104', 'dr'), await bal(b, '53-1503', 'cr')]).toEqual([
+          '0.04',
+          '0.00',
+        ]);
+        expect((await paymentOf(b, 12)).status).toBe('PAID');
+      },
+      LONG,
+    );
+
+    it(
+      'PEAK_LOWER_UNEXPLAINED FIFO leftover (0.50 on an unpaid due installment) equals native A and the first receipt after cutover closes the row',
+      async () => {
+        // ระบบเก่า: งวด 4 ไม่ได้จ่าย · PEAK ค้างน้อยกว่า 0.50 (ไม่ใช่เศษของยอดใบแจ้งหนี้) → ไล่ FIFO เป็นยอดจ่าย 0.50 ของงวด 4
+        const a = await createNative('A9', P1.date, P1.dueDay);
+        await runNativeToCutoff(a, P1.due, '0.50');
+        const imp = await importLegacy(P1, [
+          {
+            key: 'B9',
+            installments: standardInstallments(legacyState('0')),
+            peakRemainOffset: '-0.50',
+          },
+        ]);
+        const b = imp.contractId('B9');
+        expect(
+          imp.plan.warnings.filter(
+            (w) => w.startsWith('PEAK_LOWER_UNEXPLAINED') && w.includes(imp.code('B9')),
+          ),
+        ).toHaveLength(1);
+        const row4 = await paymentOf(b, 4);
+        expect([row4.status, row4.amountPaid.toFixed(2)]).toEqual(['PARTIALLY_PAID', '0.50']);
+
+        // marker 0.50 · ไล่ VAT = 99.17 − VAT ของ 0.50 (0.03) = 99.14
+        const golden = cutoffCarry('1515.33');
+        expect(await carry(a)).toEqual(golden);
+        expect(await carry(b)).toEqual(golden);
+        const catchUp = (await entriesOf(b)).filter((e) => flowOf(e) === 'legacy-vat-catchup');
+        expect(catchUp.map(sortedLines)).toEqual([['21-2101:0.00:99.14', '21-2102:99.14:0.00']]);
+
+        for (const id of [a, b]) await pay(id, 4, '1515.33', MAY2);
+        for (const id of [a, b]) {
+          expect(await bal(id, '11-2103', 'dr')).toBe('0.00');
+          const p = await paymentOf(id, 4);
+          expect([p.status, p.amountPaid.toFixed(2)]).toEqual(['PAID', '1515.83']);
+        }
+        expect(await carry(b)).toEqual(await carry(a));
+        expect([await bal(b, '52-1104', 'dr'), await bal(b, '53-1503', 'cr')]).toEqual([
+          '0.00',
+          '0.00',
+        ]);
+      },
+      LONG,
+    );
   });
 
   // ── ปิดก่อนกำหนด (JP4) — ปฏิทินผูกกับวันนี้: งวด 6 ครบกำหนดวันที่ 1 ของเดือนนี้ · งวด 7–12 ยังไม่ถึงกำหนด ─────────────
 
   describe('early payoff after cutover (calendar anchored to today)', () => {
-    const { year: Y, month: M } = bangkokCalendarParts(new Date());
-    const ymd = (y: number, m: number, d: number) =>
-      new Date(Date.UTC(y, m, d)).toISOString().slice(0, 10);
-    const due = (no: number) => bangkokMidnight(Y, M - 6 + no, 1);
-    const P2 = {
-      date: ymd(Y, M - 6, 1),
-      dueDay: 1,
-      firstDue: [Y, M - 5, 1] as [number, number, number],
-      // วินาทีสุดท้ายของเดือนที่งวด 4 ครบกำหนด (งวด 5 ครบวันที่ 1 ของเดือนถัดไป)
-      cutoff: new Date(bangkokMidnight(Y, M - 1, 1).getTime() - 1000),
-    };
     let a2 = '';
     let b2 = '';
 
     beforeAll(async () => {
+      // อ่านวันนี้ตอนเริ่มชุด (ไม่ใช่ตอนเก็บ describe) — ช่วงคร่อมเที่ยงคืนวันสิ้นเดือนเหลือแค่เวลาของชุดนี้
+      const { year: Y, month: M } = bangkokCalendarParts(new Date());
+      const ymd = (y: number, m: number, d: number) =>
+        new Date(Date.UTC(y, m, d)).toISOString().slice(0, 10);
+      const due = (no: number) => bangkokMidnight(Y, M - 6 + no, 1);
+      const P2 = {
+        date: ymd(Y, M - 6, 1),
+        dueDay: 1,
+        firstDue: [Y, M - 5, 1] as [number, number, number],
+        // วินาทีสุดท้ายของเดือนที่งวด 4 ครบกำหนด (งวด 5 ครบวันที่ 1 ของเดือนถัดไป)
+        cutoff: new Date(bangkokMidnight(Y, M - 1, 1).getTime() - 1000),
+      };
       a2 = await createNative('A2', P2.date, P2.dueDay);
       await runNativeToCutoff(a2, due);
       const imported = await importLegacy(P2, [
-        { key: 'B2', installments: standardInstallments(LEGACY_STATE) },
+        { key: 'B2', installments: standardInstallments(legacyState()) },
       ]);
       b2 = imported.contractId('B2');
       // หลังวันตัด: งวด 4 ส่วนที่เหลือ + งวด 5 + งวด 6 (ลงวันครบกำหนด — ไม่เกินวันนี้)
@@ -1042,6 +1476,8 @@ describeDb('legacy opening state runs on the real templates — golden (real DB)
         const jp4A = await jp4Of(a2);
         const jp4B = await jp4Of(b2);
         expect(sortedLines(jp4B)).toEqual(sortedLines(jp4A));
+        // ส่วนลด: ฐานยอดปิด = ส่วนลดของสูตรยอดปิดตัวเดียวกับสัญญาปกติ (1,499.99) · 52-1106 ในรายการ = ลูกหนี้ตามบัญชี
+        // (8,500.04 + 594.98) − เงินที่รับ 7,594.99 = 1,500.03 — ต่างจากสูตรเฉพาะเศษงวดสุดท้าย 0.04 เหมือนสัญญาปกติทุกตัวอักษร
         expect(sortedLines(jp4B)).toEqual([
           '11-1201:7594.99:0.00',
           '11-2101:0.00:8500.04',
@@ -1052,20 +1488,12 @@ describeDb('legacy opening state runs on the real templates — golden (real DB)
           '41-1101:0.00:3000.00',
           '52-1106:1500.03:0.00',
         ]);
-
-        const lineOf = (e: typeof jp4B, code: string) =>
-          e.lines
-            .filter((l) => l.accountCode === code)
-            .map((l) => `${D(String(l.debit)).toFixed(2)}:${D(String(l.credit)).toFixed(2)}`);
-        expect(lineOf(jp4B, '11-2106')).toEqual(['3000.00:0.00']);
-        expect(lineOf(jp4B, '41-1101')).toEqual(['0.00:3000.00']);
-        // ส่วนลด: ฐานยอดปิด = ส่วนลดของสูตรยอดปิดตัวเดียวกับสัญญาปกติ (1,499.99) · 52-1106 ในรายการ = ลูกหนี้ตามบัญชี
-        // (8,500.04 + 594.98) − เงินที่รับ 7,594.99 = 1,500.03 — ต่างจากสูตรเฉพาะเศษงวดสุดท้าย 0.04 เหมือนสัญญาปกติทุกตัวอักษร
         const meta = jp4B.metadata as Record<string, string>;
-        expect(D(meta.quoteDiscountAmount).toFixed(2)).toBe(D(quoteB.discountAmount).toFixed(2));
-        expect(D(meta.cashReceived).toFixed(2)).toBe(D(quoteB.totalPayoff).toFixed(2));
-        expect(lineOf(jp4B, '52-1106')).toEqual(lineOf(jp4A, '52-1106'));
-        expect(lineOf(jp4B, '52-1106')).toEqual([`${D(meta.discount).toFixed(2)}:0.00`]);
+        expect([meta.quoteDiscountAmount, meta.cashReceived, meta.discount]).toEqual([
+          '1499.99',
+          '7594.99',
+          '1500.03',
+        ]);
 
         expect(await carry(b2)).toEqual(ALL_ZERO);
         expect(await carry(a2)).toEqual(ALL_ZERO);

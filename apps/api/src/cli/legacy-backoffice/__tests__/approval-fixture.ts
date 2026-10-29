@@ -96,7 +96,11 @@ export function earlyPayoffApproved(
   });
 }
 
-/** ยกเลิกใบเสร็จผ่านคำขออนุมัติจริง — ผู้อนุมัติต้องไม่ใช่ผู้ขอ */
+/**
+ * ยกเลิกใบเสร็จผ่านคำขออนุมัติจริง — ผู้อนุมัติต้องไม่ใช่ผู้ขอ · แถวคำขอรูปเดียวกับสาขา VOID_RECEIPT ของ
+ * `PaymentApprovalController.create` (payment-approval.controller.ts) แต่ไม่มีด่านชนิดใบเสร็จ / role / สาขาของผู้ขอ —
+ * `consumePaymentApproval` ใน `ReceiptVoidService.voidReceipt` ตรวจ snapshot + สิทธิ์ + สาขาซ้ำ จึงล้มดังถ้าเพี้ยนจาก controller
+ */
 export function voidReceiptApproved(
   prisma: PrismaClient,
   receipts: ReceiptsService,

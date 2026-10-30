@@ -8,13 +8,14 @@ import { EmployeesService } from '../employees/employees.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
+import { LEGACY_SYSTEM_USER_EMAIL } from '../journal/legacy-import-journal';
 import * as bcrypt from 'bcrypt';
 
 type Actor = { userId?: string; ipAddress?: string; userAgent?: string };
 
 // Emails of service accounts used by scripts/migrations — hidden from the
 // standard user list so they don't inflate headcount or clutter the UI.
-const SYSTEM_USER_EMAILS = ['legacy-import@bestchoice.com'];
+const SYSTEM_USER_EMAILS = [LEGACY_SYSTEM_USER_EMAIL];
 
 @Injectable()
 export class UsersService {

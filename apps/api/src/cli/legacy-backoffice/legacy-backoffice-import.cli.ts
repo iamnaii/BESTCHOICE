@@ -28,6 +28,7 @@ import { parseArgs } from 'node:util';
 import { AuditService } from '../../modules/audit/audit.service';
 import { CustomerPiiService } from '../../modules/customers/customer-pii.service';
 import { JournalAutoService } from '../../modules/journal/journal-auto.service';
+import { LEGACY_SYSTEM_USER_EMAIL } from '../../modules/journal/legacy-import-journal';
 import type { PrismaService } from '../../prisma/prisma.service';
 import { bangkokDateString } from '../../utils/date.util';
 import {
@@ -114,8 +115,11 @@ import {
 export type { ImportStorage } from './import-preflight';
 
 const LOG = '[legacy-backoffice-import]';
-/** บัญชี "ย้ายจากระบบเก่า" (ล็อกอินไม่ได้ — migration `20260520000000` · ซ่อนจากรายชื่อผู้ใช้ด้วยอีเมล `users.service.ts`) */
-export const LEGACY_SYSTEM_USER_EMAIL = 'legacy-import@bestchoice.com';
+/**
+ * บัญชี "ย้ายจากระบบเก่า" (ล็อกอินไม่ได้ — migration `20260520000000` · ซ่อนจากรายชื่อผู้ใช้ด้วยอีเมล `users.service.ts`) —
+ * ค่าอยู่ที่ `modules/journal/legacy-import-journal.ts` ตัวเดียว (ตรวจกลางคืนอ่านค่านี้ด้วย)
+ */
+export { LEGACY_SYSTEM_USER_EMAIL };
 const DISABLED_PASSWORD = 'DISABLED_SERVICE_ACCOUNT_NOT_LOGIN_CAPABLE';
 const AUDIT_ACTION = 'LEGACY_IMPORT_COMMITTED';
 const DEFAULT_TX_TIMEOUT_MIN = 20;

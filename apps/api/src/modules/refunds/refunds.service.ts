@@ -497,6 +497,16 @@ export class RefundsService {
     },
   ): Promise<{ amount: Prisma.Decimal; latestReceiptAt: Date | null; blockedReason?: string }> {
     const { liveReceiptEntries } = await this.assertCashOnlyRefund(tx, payment.id);
+    // ทุกงวด (Task 18 R-1): ไม่มีรายการรับชำระที่ผูกงวดนี้และยังมีผลให้ markReversed กลับรายการ = เงินจะออกจากธนาคารโดยสมุดไม่ขยับ —
+    // ปฏิเสธตั้งแต่ขอคืน/อนุมัติ (ก่อนพนักงานโทรให้ธนาคารคืนเงิน) แม้ใบเสร็จยังไม่ถูกยกเลิก (เช่น รายการถูก JournalService.void
+    // เป็น VOIDED) · ด่านใน markReversed คงไว้กันจังหวะแข่ง
+    if (liveReceiptEntries === 0) {
+      return {
+        amount: new Prisma.Decimal(0),
+        latestReceiptAt: null,
+        blockedReason: NO_REFUNDABLE_RECEIPT_MESSAGE,
+      };
+    }
     const receipts = await tx.receipt.findMany({
       where: {
         paymentId: payment.id,
@@ -508,12 +518,10 @@ export class RefundsService {
     // Existing voided/deleted receipt history is authoritative too: zero active
     // receipts means zero refundable cash, not a fallback to settled debt.
     if (receipts.length === 0) {
-      // ไม่มีใบเสร็จ → ถอยไป amountPaid ได้เฉพาะเมื่อมีรายการรับชำระที่ผูกงวดนี้ให้กลับ (แถวรุ่นก่อนมีใบเสร็จ) — ไม่งั้นเงินจะ
-      // ออกจากธนาคารโดยสมุดไม่ขยับ (Task 17 A + I-1):
-      // - งวดนำเข้าจากระบบเก่า: ยอดก่อนวันตัดระบบเก่ารับไว้ (marker ไม่มี paymentId) — ปฏิเสธแม้มีรายการ (ใบหลังวันตัดออกไม่สำเร็จ
-      //   = amountPaid ยังรวมยอดก่อนวันตัด)
-      // - ทุกงวด: ล้างด้วยรายการที่ไม่มี paymentId เท่านั้น (รอบกลางคืนหักเงินรับล่วงหน้า / เงินพัก · JP4 ระดับสัญญา)
-      if (payment.legacyInstallmentCode || liveReceiptEntries === 0) {
+      // ไม่มีใบเสร็จ (มีรายการรับชำระที่ยังมีผลแล้ว — ด่านข้างบน) → ถอยไป amountPaid (แถวรุ่นก่อนมีใบเสร็จ) ยกเว้น
+      // งวดนำเข้าจากระบบเก่า (Task 17 A): ยอดก่อนวันตัดระบบเก่ารับไว้ (marker ไม่มี paymentId) — ปฏิเสธแม้มีรายการ (ใบหลังวันตัด
+      // ออกไม่สำเร็จ = amountPaid ยังรวมยอดก่อนวันตัด)
+      if (payment.legacyInstallmentCode) {
         return {
           amount: new Prisma.Decimal(0),
           latestReceiptAt: null,

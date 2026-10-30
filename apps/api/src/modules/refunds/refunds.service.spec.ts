@@ -213,6 +213,34 @@ describe('RefundsService', () => {
       expect(prisma.refund.create).not.toHaveBeenCalled();
     });
 
+    it('Task 18 R-1 — a live receipt but no live receipt JE bound to the payment: refused at request (not only after the bank call)', async () => {
+      prisma.payment.findUnique.mockResolvedValue(
+        paidPayment({ amountPaid: new Prisma.Decimal(500) }),
+      );
+      prisma.receipt.findMany.mockResolvedValue([
+        {
+          amount: new Prisma.Decimal(500),
+          isVoided: false,
+          deletedAt: null,
+          createdAt: new Date(),
+        },
+      ]);
+      // รายการรับชำระของงวดไม่มี (เช่น ถูก JournalService.void เป็น VOIDED) หรือถูกกลับหมดแล้วโดยใบเสร็จยังไม่ถูกยกเลิก
+      for (const entries of [
+        [],
+        [{ ...receiptEntry, metadata: { tag: 'receipt', paymentId: 'pay-1', reversed: true } }],
+      ]) {
+        prisma.journalEntry.findMany.mockResolvedValue(entries);
+        await expect(
+          service.requestRefund(
+            { paymentId: 'pay-1', amount: 500, reason: 'customer double-paid ชำระซ้ำ' },
+            'u-staff',
+          ),
+        ).rejects.toThrow(noRefundableMoney);
+      }
+      expect(prisma.refund.create).not.toHaveBeenCalled();
+    });
+
     it('Task 17 A — a legacy installment WITH a receipt after cutover refunds only that receipt (not the pre-cutover money)', async () => {
       prisma.payment.findUnique.mockResolvedValue(
         paidPayment({
@@ -320,6 +348,22 @@ describe('RefundsService', () => {
       prisma.payment.findUnique.mockResolvedValue(
         paidPayment({ legacyInstallmentCode: 'LEG-INST-1', amountPaid: new Prisma.Decimal(500) }),
       );
+      await expect(service.approveRefund('rf-1', 'u-owner', 'OWNER')).rejects.toThrow(
+        noRefundableMoney,
+      );
+      expect(prisma.refund.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('Task 18 R-1 — a request whose receipt JE stopped being live cannot be approved (same Thai 400, before staff calls the bank)', async () => {
+      prisma.receipt.findMany.mockResolvedValue([
+        {
+          amount: new Prisma.Decimal(500),
+          isVoided: false,
+          deletedAt: null,
+          createdAt: new Date(0),
+        },
+      ]);
+      prisma.journalEntry.findMany.mockResolvedValue([]);
       await expect(service.approveRefund('rf-1', 'u-owner', 'OWNER')).rejects.toThrow(
         noRefundableMoney,
       );

@@ -57,8 +57,13 @@ export function calculateInstallment(
   const financedAmount = roundBaht(principal + storeCommission + interestTotal + vatAmount);
   // Monthly payment at satang precision (no ceil). Last installment absorbs rounding
   // remainder in generatePaymentSchedule.
-  const monthlyPayment = computeInstallmentBreakdown({ financedAmount: principal, storeCommission,
-    interestTotal, vatAmount, totalMonths }).installmentTotal.toNumber();
+  const monthlyPayment = computeInstallmentBreakdown({
+    financedAmount: principal,
+    storeCommission,
+    interestTotal,
+    vatAmount,
+    totalMonths,
+  }).installmentTotal.toNumber();
 
   return { principal, interestTotal, storeCommission, vatAmount, financedAmount, monthlyPayment };
 }
@@ -90,8 +95,13 @@ export function calculateInstallmentWithInterest(
   const interestRounded = roundBaht(interestTotal);
   const vatAmount = roundBaht((principal + storeCommission + interestRounded) * vatPct);
   const financedAmount = roundBaht(principal + storeCommission + interestRounded + vatAmount);
-  const monthlyPayment = computeInstallmentBreakdown({ financedAmount: principal, storeCommission,
-    interestTotal: interestRounded, vatAmount, totalMonths }).installmentTotal.toNumber();
+  const monthlyPayment = computeInstallmentBreakdown({
+    financedAmount: principal,
+    storeCommission,
+    interestTotal: interestRounded,
+    vatAmount,
+    totalMonths,
+  }).installmentTotal.toNumber();
 
   return {
     principal,
@@ -122,6 +132,60 @@ export interface BreakdownTotals {
   vatAmount: number;
 }
 
+export interface PaymentBreakdownRow {
+  principal: number;
+  interest: number;
+  commission: number;
+  vat: number;
+}
+
+/**
+ * ยอดแยกต่องวด (เงินต้น / ดอกเบี้ย / ค่าคอม / VAT) ของ `amounts` (amountDue ของงวด 1..n ตามลำดับ) — สูตรเดียวที่
+ * `generatePaymentSchedule` ใช้เขียน `Payment.monthlyPrincipal / monthlyInterest / monthlyCommission / vatAmount`
+ * (ตัวนำเข้าระบบเก่าใช้ตัวเดียวกัน — ห้ามมีสูตรชุดที่สอง):
+ * - ดอกเบี้ย = `computeInstallmentBreakdown().interestPerInst` · ค่าคอม = `roundBaht(storeCommission / n)` ·
+ *   เงินต้น = `installmentExclVat − ดอกเบี้ย − ค่าคอม` (ปัดแยกก่อน/หลัง VAT แบบเดียวกับบัญชี)
+ * - งวดที่ `totalMonths` รับเศษของสามยอดแรก (ยอดรวม − ที่ใช้ไปในงวดก่อนหน้า)
+ * - VAT = `amountDue − (เงินต้น + ดอกเบี้ย + ค่าคอม)` ⇒ สี่ยอดรวมเท่า amountDue ของแถวเสมอ (เศษของยอดเรียกเก็บลง VAT)
+ */
+export function paymentBreakdowns(
+  totals: BreakdownTotals,
+  totalMonths: number,
+  amounts: readonly number[],
+): PaymentBreakdownRow[] {
+  // Match the ledger's separate pre-VAT / VAT rounding; the final row carries residuals.
+  const base = computeInstallmentBreakdown({
+    financedAmount: totals.principal,
+    storeCommission: totals.storeCommission,
+    interestTotal: totals.interestTotal,
+    vatAmount: totals.vatAmount,
+    totalMonths,
+  });
+  const mpInterest = base.interestPerInst.toNumber();
+  const mpCommission = roundBaht(totals.storeCommission / totalMonths);
+  const mpPrincipal = base.installmentExclVat.minus(mpInterest).minus(mpCommission).toNumber();
+
+  let usedPrincipal = 0;
+  let usedInterest = 0;
+  let usedCommission = 0;
+  return amounts.map((amount, index) => {
+    const isLast = index + 1 === totalMonths;
+    const principal = isLast ? roundBaht(totals.principal - usedPrincipal) : mpPrincipal;
+    const interest = isLast ? roundBaht(totals.interestTotal - usedInterest) : mpInterest;
+    const commission = isLast ? roundBaht(totals.storeCommission - usedCommission) : mpCommission;
+    usedPrincipal += principal;
+    usedInterest += interest;
+    usedCommission += commission;
+    // VAT absorbs rounding: amountDue - (principal + interest + commission)
+    return {
+      principal,
+      interest,
+      commission,
+      vat: roundBaht(amount - principal - interest - commission),
+    };
+  });
+}
+
 /**
  * Generate payment schedule with custom due day and optional breakdown
  * When breakdownTotals is provided, each payment includes principal/interest/commission/VAT split
@@ -137,60 +201,49 @@ export function generatePaymentSchedule(
   anchor?: Date,
 ): PaymentScheduleItem[] {
   const now = anchor ?? new Date();
-  const calendar = anchor ? new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Bangkok', year: 'numeric', month: 'numeric' }).formatToParts(now) : null;
-  const year = calendar ? Number(calendar.find(part => part.type === 'year')!.value) : now.getFullYear();
-  const month = calendar ? Number(calendar.find(part => part.type === 'month')!.value) - 1 : now.getMonth();
+  const calendar = anchor
+    ? new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Bangkok',
+        year: 'numeric',
+        month: 'numeric',
+      }).formatToParts(now)
+    : null;
+  const year = calendar
+    ? Number(calendar.find((part) => part.type === 'year')!.value)
+    : now.getFullYear();
+  const month = calendar
+    ? Number(calendar.find((part) => part.type === 'month')!.value) - 1
+    : now.getMonth();
   const dueDay = paymentDueDay || 1;
   const payments: PaymentScheduleItem[] = [];
 
-  // Match the ledger's separate pre-VAT / VAT rounding; the final row carries residuals.
-  const hasBreakdown = !!breakdownTotals;
-  const base = breakdownTotals ? computeInstallmentBreakdown({ financedAmount: breakdownTotals.principal,
-    storeCommission: breakdownTotals.storeCommission, interestTotal: breakdownTotals.interestTotal,
-    vatAmount: breakdownTotals.vatAmount, totalMonths }) : null;
-  const mpInterest = base?.interestPerInst.toNumber() ?? 0;
-  const mpCommission = hasBreakdown ? roundBaht(breakdownTotals.storeCommission / totalMonths) : 0;
-  const mpPrincipal = base ? base.installmentExclVat.minus(mpInterest).minus(mpCommission).toNumber() : 0;
-
-  let usedPrincipal = 0;
-  let usedInterest = 0;
-  let usedCommission = 0;
+  const amounts = Array.from({ length: totalMonths }, (_, index) =>
+    index === totalMonths - 1
+      ? financedAmount - monthlyPayment * (totalMonths - 1)
+      : monthlyPayment,
+  );
+  const breakdowns = breakdownTotals
+    ? paymentBreakdowns(breakdownTotals, totalMonths, amounts)
+    : null;
 
   for (let i = 1; i <= totalMonths; i++) {
     const targetMonth = month + i;
     const lastDay = new Date(Date.UTC(year, targetMonth + 1, 0)).getUTCDate();
     // An explicit anchor uses the Thai business calendar; omitted preserves legacy callers.
-    const dueDate = anchor ? new Date(Date.UTC(year, targetMonth, Math.min(dueDay, lastDay)) - 7 * 60 * 60 * 1000)
+    const dueDate = anchor
+      ? new Date(Date.UTC(year, targetMonth, Math.min(dueDay, lastDay)) - 7 * 60 * 60 * 1000)
       : new Date(year, targetMonth, Math.min(dueDay, lastDay));
-    const isLast = i === totalMonths;
-    const amount = isLast ? financedAmount - monthlyPayment * (totalMonths - 1) : monthlyPayment;
-
-    let principal: number | null = null;
-    let interest: number | null = null;
-    let commission: number | null = null;
-    let vat: number | null = null;
-
-    if (hasBreakdown) {
-      principal = isLast ? roundBaht(breakdownTotals.principal - usedPrincipal) : mpPrincipal;
-      interest = isLast ? roundBaht(breakdownTotals.interestTotal - usedInterest) : mpInterest;
-      commission = isLast ? roundBaht(breakdownTotals.storeCommission - usedCommission) : mpCommission;
-      // VAT absorbs rounding: amountDue - (principal + interest + commission)
-      vat = roundBaht(amount - principal - interest - commission);
-
-      usedPrincipal += principal;
-      usedInterest += interest;
-      usedCommission += commission;
-    }
+    const breakdown = breakdowns?.[i - 1] ?? null;
 
     payments.push({
       contractId,
       installmentNo: i,
       dueDate,
-      amountDue: amount,
-      monthlyPrincipal: principal,
-      monthlyInterest: interest,
-      monthlyCommission: commission,
-      vatAmount: vat,
+      amountDue: amounts[i - 1],
+      monthlyPrincipal: breakdown?.principal ?? null,
+      monthlyInterest: breakdown?.interest ?? null,
+      monthlyCommission: breakdown?.commission ?? null,
+      vatAmount: breakdown?.vat ?? null,
       status: 'PENDING' as const,
     });
   }
@@ -199,7 +252,9 @@ export function generatePaymentSchedule(
   const sumPayments = payments.reduce((sum, p) => sum + p.amountDue, 0);
   const diff = Math.abs(sumPayments - financedAmount);
   if (diff > 0.01) {
-    throw new BadRequestException(`Payment schedule total mismatch: sum=${roundBaht(sumPayments)}, expected=${roundBaht(financedAmount)}, diff=${roundBaht(diff)}`);
+    throw new BadRequestException(
+      `Payment schedule total mismatch: sum=${roundBaht(sumPayments)}, expected=${roundBaht(financedAmount)}, diff=${roundBaht(diff)}`,
+    );
   }
 
   return payments;

@@ -191,6 +191,7 @@ export async function loadContractJournalSources(
       customerId: true,
       parentContractId: true,
       inputVatJournalEntryId: true,
+      legacyContractCode: true,
     },
   });
   const customers = await lock(

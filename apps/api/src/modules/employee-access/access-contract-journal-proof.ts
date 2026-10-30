@@ -10,6 +10,19 @@ import {
   INSTALLMENT_INPUT_VAT_TAG,
   installmentInputVatKey,
 } from '../journal/cpa-templates/installment-input-vat.template';
+import {
+  LEGACY_OPENING_FLOW,
+  LEGACY_PRIOR_RECEIPT_FLOW,
+  LEGACY_VAT_CATCHUP_FLOW,
+} from '../accounting/peak-export-exclusion';
+import {
+  LEGACY_OPENING_TAG,
+  LEGACY_PRIOR_RECEIPT_TAG,
+  LEGACY_VAT_CATCHUP_TAG,
+  legacyOpeningReference,
+  legacyPriorReceiptReference,
+  legacyVatCatchUpReference,
+} from '../journal/legacy-import-journal';
 
 export interface ProvenContractJournal {
   entry: JournalIdentity;
@@ -271,6 +284,28 @@ export class ContractJournalProof {
         auto(`${schedule.id}:${m.flow}`)
       )
         return result('ตัดเงินรับล่วงหน้า');
+      // ตัวนำเข้าระบบเก่า (cli/legacy-backoffice/writer.ts) — สัญญาที่มีเลขสัญญาเดิมเท่านั้น · reference ผูกเลขเดิม/แถวงวดของสัญญานี้
+      const legacyCode = contract.legacyContractCode;
+      if (legacyCode) {
+        if (
+          is(LEGACY_OPENING_TAG, LEGACY_OPENING_FLOW) &&
+          m.idempotencyKey === legacyCode &&
+          auto(legacyOpeningReference(legacyCode))
+        )
+          return result('ยอดยกมาจากระบบเก่า');
+        if (
+          schedule &&
+          is(LEGACY_PRIOR_RECEIPT_TAG, LEGACY_PRIOR_RECEIPT_FLOW) &&
+          !m.paymentId &&
+          auto(legacyPriorReceiptReference(schedule.id))
+        )
+          return result('ยอดรับก่อนวันตัดระบบ (ระบบเก่า)');
+        if (
+          is(LEGACY_VAT_CATCHUP_TAG, LEGACY_VAT_CATCHUP_FLOW) &&
+          auto(legacyVatCatchUpReference(legacyCode))
+        )
+          return result('ไล่ภาษีขายงวดค้างก่อนวันตัดระบบ');
+      }
       if (
         is('receipt', 'payment-receipt') &&
         e.referenceType === 'AUTO' &&

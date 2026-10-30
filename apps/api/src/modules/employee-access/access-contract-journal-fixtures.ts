@@ -1,4 +1,17 @@
 // Synthetic owned-PostgreSQL fixtures. Every JE is emitted by its canonical producer.
+import {
+  LEGACY_OPENING_FLOW,
+  LEGACY_PRIOR_RECEIPT_FLOW,
+  LEGACY_VAT_CATCHUP_FLOW,
+} from '../accounting/peak-export-exclusion';
+import {
+  LEGACY_OPENING_TAG,
+  LEGACY_PRIOR_RECEIPT_TAG,
+  LEGACY_VAT_CATCHUP_TAG,
+  legacyOpeningReference,
+  legacyPriorReceiptReference,
+  legacyVatCatchUpReference,
+} from '../journal/legacy-import-journal';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
@@ -884,4 +897,68 @@ export async function journalClearedExchangeHistoryFixture(
     data: { accrualJournalEntryId: null },
   });
   return { request: fixture.request, original, reversalId: reversed.reversalJeIds[0] };
+}
+
+/**
+ * รายการบัญชีสามชนิดของตัวนำเข้าระบบเก่า (`cli/legacy-backoffice/writer.ts`) — tag/flow/reference/metadata ชุดเดียวกับที่
+ * ตัวเขียนลง (ตัวเขียนใช้ `legacy-import-journal.ts` + flow จาก `peak-export-exclusion.ts` และ `writer.db.spec.ts` ปักรูปเต็ม)
+ * · ยอดเป็นตัวเลขสังเคราะห์ที่ดุล (การพิสูจน์ดูเฉพาะตัวตน ไม่ดูยอด)
+ */
+export async function journalLegacyImportFixture(db: PrismaClient, id: string, legacyCode: string) {
+  const journal = new JournalAutoService(db as PrismaService);
+  const d = (n: number) => new Prisma.Decimal(n);
+  const zero = d(0);
+  const importBatch = 'legacy-fixture';
+  const schedule = await db.installmentSchedule.findFirstOrThrow({
+    where: { contractId: id, installmentNo: 3 },
+  });
+  const cutoff = new Date('2026-11-30T23:59:59+07:00');
+  const opening = await journal.createAndPost({
+    description: 'legacy opening',
+    reference: legacyOpeningReference(legacyCode),
+    metadata: {
+      tag: LEGACY_OPENING_TAG,
+      flow: LEGACY_OPENING_FLOW,
+      idempotencyKey: legacyCode,
+      contractId: id,
+      importBatch,
+    },
+    postedAt: cutoff,
+    lines: [
+      { accountCode: '11-2101', dr: d(1000), cr: zero },
+      { accountCode: '32-1101', dr: zero, cr: d(1000) },
+    ],
+  });
+  const marker = await journal.createAndPost({
+    description: 'legacy prior receipt',
+    reference: legacyPriorReceiptReference(schedule.id),
+    metadata: {
+      tag: LEGACY_PRIOR_RECEIPT_TAG,
+      flow: LEGACY_PRIOR_RECEIPT_FLOW,
+      contractId: id,
+      installmentScheduleId: schedule.id,
+      importBatch,
+    },
+    postedAt: cutoff,
+    lines: [
+      { accountCode: '32-1101', dr: d(100), cr: zero },
+      { accountCode: '11-2103', dr: zero, cr: d(100) },
+    ],
+  });
+  const catchUp = await journal.createAndPost({
+    description: 'legacy VAT catch-up',
+    reference: legacyVatCatchUpReference(legacyCode),
+    metadata: {
+      tag: LEGACY_VAT_CATCHUP_TAG,
+      flow: LEGACY_VAT_CATCHUP_FLOW,
+      contractId: id,
+      importBatch,
+    },
+    postedAt: new Date('2026-12-01T00:05:00+07:00'),
+    lines: [
+      { accountCode: '21-2102', dr: d(7), cr: zero },
+      { accountCode: '21-2101', dr: zero, cr: d(7) },
+    ],
+  });
+  return { opening, marker, catchUp };
 }

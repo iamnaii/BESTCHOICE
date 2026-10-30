@@ -1,0 +1,708 @@
+import { Prisma } from '@prisma/client';
+import {
+  accrual2AInputOf,
+  buildAccrual2ALines,
+  buildPartialAccrual2ALines,
+  NOTHING_ACCRUED,
+} from '../../../modules/journal/build-accrual-2a-lines';
+import type { JeLineInput } from '../../../modules/journal/journal-auto.service';
+import { bangkokMidnight } from '../../../utils/date.util';
+import type { ContractMoney } from '../money';
+import {
+  CARRY_FORWARD_ACCOUNTS,
+  computeOpening,
+  OPENING_EQUITY_ACCOUNT,
+  OpeningInputError,
+  OpeningMismatchError,
+  type OpeningInput,
+  type OpeningResult,
+} from '../opening';
+
+/**
+ * รายการยกมารายสัญญา — ข้อมูลสังเคราะห์ทั้งหมด (ยอดตามตัวอย่าง CPA 17,000 / 12 งวด)
+ *
+ * สัญญามาตรฐาน: ยอดจัด 10,000 · ค่าคอม 1,000 · ดอกเบี้ย 6,000 · VAT 1,190 · 12 งวด
+ * → งวด 1–11 = 1,416.66 + VAT 99.17 = 1,515.83 (ดอกเบี้ย 500) · งวด 12 รับเศษ = 1,416.74 + 99.13 = 1,515.87
+ * ครบกำหนดวันที่ 15 ทุกเดือน งวด 1 = 15 ส.ค. 2026 … งวด 4 = 15 พ.ย. (ก่อนวันตัด) · งวด 5 = 15 ธ.ค. (หลังวันตัด)
+ * วันตัด 2026-11-30 23:59:59 กรุงเทพ
+ */
+
+const D = (value: string) => new Prisma.Decimal(value);
+const CUTOFF = new Date('2026-11-30T23:59:59+07:00');
+const MONTHLY = '1515.83';
+const LAST = '1515.87';
+
+const MONEY: ContractMoney = {
+  sellingPrice: D('12000'),
+  downPayment: D('2000'),
+  financedAmount: D('10000'),
+  storeCommission: D('1000'),
+  interestTotal: D('6000'),
+  vatAmount: D('1190'),
+  vatPct: D('0.07'),
+  interestRate: D('0.05'),
+  monthlyPayment: D(MONTHLY),
+  totalMonths: 12,
+};
+
+/** งวดที่ `no` ครบกำหนดเที่ยงคืนกรุงเทพวันที่ 15 (งวด 1 = ส.ค. 2026) */
+const dueOf = (no: number) => bangkokMidnight(2026, 6 + no, 15);
+const amountOf = (no: number) => (no === 12 ? LAST : MONTHLY);
+
+type Amount = (no: number) => string;
+
+/**
+ * 12 งวด · `paid` = ยอดจ่ายของงวด (ไม่ระบุ = 0) · `dueDates` แทนวันครบกำหนดรายงวด · `amount` = ยอดเรียกเก็บของงวด
+ * (ระบบเก่า/PEAK — ค่าตั้งต้น = ยอดของงวดตามตัวคำนวณ ส่วนต่างปัดเศษ 0)
+ */
+function installments(
+  paid: Record<number, string> = {},
+  dueDates: Record<number, Date> = {},
+  amount: Amount = amountOf,
+): OpeningInput['installments'] {
+  return Array.from({ length: 12 }, (_, i) => {
+    const no = i + 1;
+    return {
+      installmentNo: no,
+      dueDate: dueDates[no] ?? dueOf(no),
+      amountDue: D(amount(no)),
+      paid: D(paid[no] ?? '0'),
+    };
+  });
+}
+
+/** ยอดค้างแบบ PEAK = Σ (ค่างวด − ยอดจ่าย) ของงวดที่ยังค้าง (งวดที่จ่ายเกินไม่หักลบ) */
+function peakRemainOf(paid: Record<number, string>, amount: Amount = amountOf) {
+  let total = D('0');
+  for (let no = 1; no <= 12; no++) {
+    const rest = D(amount(no)).minus(paid[no] ?? '0');
+    if (rest.gt(0)) total = total.plus(rest);
+  }
+  return total;
+}
+
+function opening(
+  paid: Record<number, string>,
+  over: Partial<OpeningInput> = {},
+  amount: Amount = amountOf,
+): OpeningResult {
+  return computeOpening({
+    money: MONEY,
+    installments: installments(paid, {}, amount),
+    cutoff: CUTOFF,
+    peakRemain: peakRemainOf(paid, amount),
+    ...over,
+  });
+}
+
+const sum = (values: Prisma.Decimal[]) => values.reduce((s, v) => s.plus(v), D('0'));
+/** ยอดสุทธิ Dr − Cr ของบัญชีในชุดบรรทัด (2 ตำแหน่ง) */
+const net = (lines: JeLineInput[], code: string) =>
+  sum(lines.filter((l) => l.accountCode === code).map((l) => l.dr.minus(l.cr))).toFixed(2);
+const codes = (lines: JeLineInput[]) => lines.map((l) => l.accountCode);
+const markersOf = (r: OpeningResult) =>
+  r.priorReceiptMarkers.map((m) => ({
+    installmentNo: m.installmentNo,
+    amount: m.amount.toFixed(2),
+  }));
+/** ลูกหนี้หลังลง marker = Σ(11-2101 + 11-2103 + 11-2105) ของรายการยกมา − Σ marker */
+const receivableAfterMarkers = (r: OpeningResult) =>
+  ['11-2101', '11-2103', '11-2105']
+    .reduce((s, code) => s.plus(net(r.openingLines, code)), D('0'))
+    .minus(sum(r.priorReceiptMarkers.map((m) => m.amount)))
+    .toFixed(2);
+const stampOf = (r: OpeningResult, no: number) => {
+  const s = r.stamps.find((x) => x.installmentNo === no);
+  if (!s) throw new Error(`no stamp for installment ${no}`);
+  return {
+    accrued: s.accrued,
+    accruedAmount: s.accruedAmount.toFixed(2),
+    accruedVat: s.accruedVat.toFixed(2),
+    accruedInterest: s.accruedInterest.toFixed(2),
+  };
+};
+/** บรรทัดเป็นตัวอักษร ใช้เทียบรายการทั้งชุด */
+const shape = (lines: JeLineInput[]) =>
+  lines.map((l) => [l.accountCode, l.dr.toFixed(2), l.cr.toFixed(2)]);
+/**
+ * marker ต้อง < min(ยอดของงวด, ยอดเรียกเก็บ) — `reconstructPriorCleared` เทียบกับยอดของงวด (template / รอบกลางคืน)
+ * ส่วน `receipt-void-core` เทียบกับ `payment.amountDue` · ≥ ตัวใดตัวหนึ่ง = ถูกข้ามตอนอ่าน
+ */
+function expectMarkersBelowTotalAndBilling(
+  r: OpeningResult,
+  inst: OpeningInput['installments'],
+  money: ContractMoney = MONEY,
+) {
+  for (const m of r.priorReceiptMarkers) {
+    const row = inst.find((i) => i.installmentNo === m.installmentNo);
+    if (!row) throw new Error(`no installment ${m.installmentNo}`);
+    const total = buildAccrual2ALines(accrual2AInputOf(money, m.installmentNo)).installmentTotal;
+    expect(m.amount.lt(Prisma.Decimal.min(total, row.amountDue))).toBe(true);
+  }
+}
+
+const PAID_1_TO_3 = { 1: MONTHLY, 2: MONTHLY, 3: MONTHLY };
+
+describe('computeOpening', () => {
+  it('งวด 1–3 จ่ายครบ งวด 4 ค้างเต็ม: สมดุล · มีแต่บัญชียกมา + 32-1101 · 11-2103 = ค่างวดงวด 4', () => {
+    const r = opening(PAID_1_TO_3);
+
+    expect(codes(r.openingLines)).toEqual([
+      '11-2101',
+      '11-2103',
+      '11-2105',
+      '11-2106',
+      '21-2102',
+      OPENING_EQUITY_ACCOUNT,
+    ]);
+    expect(sum(r.openingLines.map((l) => l.dr)).toFixed(2)).toBe(
+      sum(r.openingLines.map((l) => l.cr)).toFixed(2),
+    );
+    // ส่วนที่ยังไม่ถึงกำหนด (งวด 5–12) = กลับด้านของ 2A ทั้งงวด · งวด 12 รับเศษ
+    expect(net(r.openingLines, '11-2101')).toBe('11333.36'); // 7 × 1,416.66 + 1,416.74
+    expect(net(r.openingLines, '11-2105')).toBe('793.32'); // 7 × 99.17 + 99.13
+    expect(net(r.openingLines, '11-2106')).toBe('-4000.00'); // Cr 8 × 500
+    // งวด 4 ถึงกำหนดแล้ว = ลูกหนี้ค้างชำระเต็มงวด · VAT ของงวด 4 คงอยู่ใน 21-2102 รอไล่ 1 ธ.ค.
+    expect(net(r.openingLines, '11-2103')).toBe(MONTHLY);
+    expect(net(r.openingLines, '21-2102')).toBe('-892.49'); // Cr 793.32 + 99.17
+    expect(net(r.openingLines, OPENING_EQUITY_ACCOUNT)).toBe('-8750.02');
+    expect(r.priorReceiptMarkers).toEqual([]);
+
+    for (const no of [1, 2, 3, 4]) {
+      expect(stampOf(r, no)).toEqual({
+        accrued: true,
+        accruedAmount: amountOf(no),
+        accruedVat: '99.17',
+        accruedInterest: '500.00',
+      });
+    }
+    for (const no of [5, 6, 7, 8, 9, 10, 11, 12]) {
+      expect(stampOf(r, no)).toEqual({
+        accrued: false,
+        accruedAmount: '0.00',
+        accruedVat: '0.00',
+        accruedInterest: '0.00',
+      });
+    }
+    expect(r.stamps.map((s) => s.installmentNo)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    // ไม่มีป้าย VAT 60 วัน (คำตัดสินผู้คุมงาน C2) — คอลัมน์ที่ผู้เขียนต้องเขียนมีแค่นี้
+    expect(Object.keys(r.stamps[0]).sort()).toEqual([
+      'accrued',
+      'accruedAmount',
+      'accruedInterest',
+      'accruedVat',
+      'installmentNo',
+    ]);
+    expect(r.roundingDiff.toFixed(2)).toBe('0.00');
+  });
+
+  it('งวด 4 จ่ายแล้ว 300: marker งวด 4 = 300 · 11-2103 ในรายการยกมา = ค่างวดเต็ม (marker เป็นตัวตัด 300)', () => {
+    const r = opening({ ...PAID_1_TO_3, 4: '300' });
+
+    expect(markersOf(r)).toEqual([{ installmentNo: 4, amount: '300.00' }]);
+    expect(net(r.openingLines, '11-2103')).toBe(MONTHLY);
+    expect(stampOf(r, 4)).toMatchObject({ accrued: true });
+    // VAT ไล่ = VAT ของงวด − VAT ของ 2A บางส่วนเท่ายอดที่จ่าย (ก1) = 99.17 − HALF_UP(300 × 7/107 = 19.63) = 79.54
+    expect(net(r.catchUpLines, '21-2102')).toBe('79.54');
+    expect(net(r.openingLines, '21-2102')).toBe('-872.86'); // Cr 793.32 + 79.54
+  });
+
+  it('งวด 4 ถึงกำหนดจ่ายบางส่วน 700: VAT ไล่ = VAT ที่ใบรับชำระใบแรกหลังวันตัดจะพิมพ์ (99.17 − 45.79 = 53.38 ไม่ใช่สัดส่วน 53.37)', () => {
+    const r = opening({ ...PAID_1_TO_3, 4: '700' });
+    const part = buildPartialAccrual2ALines(accrual2AInputOf(MONEY, 4), NOTHING_ACCRUED, D('700'));
+
+    expect(part.portion.vat.toFixed(2)).toBe('45.79'); // HALF_UP(700 × 7/107 = 45.794…)
+    expect(net(r.catchUpLines, '21-2102')).toBe('53.38');
+    expect(net(r.catchUpLines, '21-2102')).toBe(D('99.17').minus(part.portion.vat).toFixed(2));
+    // 21-2102 ยกมา = VAT ส่วนที่เหลือของงวดอนาคต + Σ VAT ไล่ (ไม่มีสตางค์ค้างหลังลงรายการไล่)
+    expect(net(r.openingLines, '21-2102')).toBe('-846.70'); // Cr 793.32 + 53.38
+    expect(D(net(r.openingLines, '21-2102')).plus(net(r.catchUpLines, '21-2102')).toFixed(2)).toBe(
+      '-793.32',
+    );
+  });
+
+  it('งวด 6 (อนาคต) จ่ายล่วงหน้า 500: stamp ยังไม่ตั้งครบ ยอดสะสม = accruedAfter ของ 2A บางส่วน · marker งวด 6 = 500', () => {
+    const r = opening({ ...PAID_1_TO_3, 6: '500' });
+    const part = buildPartialAccrual2ALines(accrual2AInputOf(MONEY, 6), NOTHING_ACCRUED, D('500'));
+
+    expect(stampOf(r, 6)).toEqual({
+      accrued: false,
+      accruedAmount: part.accruedAfter.amount.toFixed(2),
+      accruedVat: part.accruedAfter.vat.toFixed(2),
+      accruedInterest: part.accruedAfter.interest.toFixed(2),
+    });
+    // ตัวเลขทองของ 2A บางส่วน (ก1): VAT = 500 × 7/107 = 32.71 · มูลค่า 467.29 · ดอกเบี้ย 500 × 467.29 ÷ 1,416.66 = 164.93
+    expect(stampOf(r, 6)).toMatchObject({
+      accruedAmount: '500.00',
+      accruedVat: '32.71',
+      accruedInterest: '164.93',
+    });
+    expect(markersOf(r)).toEqual([{ installmentNo: 6, amount: '500.00' }]);
+    // ส่วนที่ตั้งแล้วของงวด 6 อยู่ใน 11-2103 (marker ล้าง) · ส่วนที่เหลือของงวด 6 อยู่ในบัญชีของส่วนที่ยังไม่ตั้ง
+    expect(net(r.openingLines, '11-2103')).toBe('2015.83'); // งวด 4 1,515.83 + งวด 6 500
+    expect(net(r.openingLines, '11-2101')).toBe('10866.07'); // 11,333.36 − 467.29
+    expect(net(r.openingLines, '11-2105')).toBe('760.61'); // 793.32 − 32.71
+    expect(net(r.openingLines, '11-2106')).toBe('-3835.07'); // 4,000 − 164.93
+    expect(net(r.openingLines, '21-2102')).toBe('-859.78'); // 760.61 + VAT งวด 4 99.17
+    // งวดอนาคตไม่มี VAT ไล่ — มีแค่งวด 4
+    expect(net(r.catchUpLines, '21-2102')).toBe('99.17');
+  });
+
+  it('งวด 4 ค้างเต็ม (ถึงกำหนดก่อนวันตัด): 21-2102 รวม VAT งวด 4 · catchUpLines = Dr 21-2102 / Cr 21-2101 เท่า VAT งวด 4', () => {
+    const r = opening(PAID_1_TO_3);
+
+    expect(r.catchUpLines.map((l) => [l.accountCode, l.dr.toFixed(2), l.cr.toFixed(2)])).toEqual([
+      ['21-2102', '99.17', '0.00'],
+      ['21-2101', '0.00', '99.17'],
+    ]);
+    const futureVat = D('793.32');
+    expect(net(r.openingLines, '21-2102')).toBe(futureVat.plus('99.17').negated().toFixed(2));
+  });
+
+  describe.each([
+    ['งวด 1–3 จ่ายครบ งวด 4 ค้างเต็ม', PAID_1_TO_3, '4000.00'],
+    ['งวด 4 จ่าย 300', { ...PAID_1_TO_3, 4: '300' }, '4000.00'],
+    ['งวด 6 จ่ายล่วงหน้า 500', { ...PAID_1_TO_3, 6: '500' }, '3835.07'],
+    ['ยังไม่จ่ายเลย', {}, '4000.00'],
+    [
+      'จ่ายล่วงหน้างวด 5 ครบ + งวด 7 บางส่วน',
+      { ...PAID_1_TO_3, 4: MONTHLY, 5: MONTHLY, 7: '1000' },
+      null,
+    ],
+  ])('ทุกกรณี — %s', (_name, paid: Record<number, string>, unaccruedInterest: string | null) => {
+    it('ไม่มีบรรทัด 41-1101 · มีแต่บัญชียกมา + 32-1101 · บัญชีละบรรทัด · ไม่มีบรรทัดยอดศูนย์ · สมดุล', () => {
+      const r = opening(paid);
+      const allowed = new Set<string>([...CARRY_FORWARD_ACCOUNTS, OPENING_EQUITY_ACCOUNT]);
+
+      expect(codes(r.openingLines)).not.toContain('41-1101');
+      expect(codes(r.catchUpLines)).not.toContain('41-1101');
+      expect(codes(r.openingLines).every((c) => allowed.has(c))).toBe(true);
+      expect(new Set(codes(r.openingLines)).size).toBe(r.openingLines.length);
+      for (const line of [...r.openingLines, ...r.catchUpLines]) {
+        // ฝั่งเดียวต่อบรรทัด ยอดบวก
+        expect(line.dr.isZero() !== line.cr.isZero()).toBe(true);
+        expect(line.dr.isNegative() || line.cr.isNegative()).toBe(false);
+        expect(line.description).toBeTruthy();
+      }
+      expect(sum(r.openingLines.map((l) => l.dr)).eq(sum(r.openingLines.map((l) => l.cr)))).toBe(
+        true,
+      );
+      expect(sum(r.catchUpLines.map((l) => l.dr)).eq(sum(r.catchUpLines.map((l) => l.cr)))).toBe(
+        true,
+      );
+    });
+
+    it('11-2106 = Σ ดอกเบี้ยของส่วนที่ยังไม่ตั้ง (Cr)', () => {
+      const r = opening(paid);
+      const part7 = buildPartialAccrual2ALines(
+        accrual2AInputOf(MONEY, 7),
+        NOTHING_ACCRUED,
+        D('1000'),
+      );
+      // งวด 6, 8–12 ทั้งงวด + ส่วนที่เหลือของงวด 7
+      const expected =
+        unaccruedInterest ?? D('3000').plus(D('500').minus(part7.accruedAfter.interest)).toFixed(2);
+      expect(net(r.openingLines, '11-2106')).toBe(D(expected).negated().toFixed(2));
+    });
+
+    it('Σ(11-2101 + 11-2103 + 11-2105) − marker = peakRemain (ยอดเรียกเก็บตรงตัวคำนวณ · ส่วนต่างปัดเศษ 0) · ไม่เท่า → throw OPENING_PEAK_MISMATCH', () => {
+      const peakRemain = peakRemainOf(paid);
+      expect(receivableAfterMarkers(opening(paid))).toBe(peakRemain.toFixed(2));
+      expect(opening(paid).roundingDiff.toFixed(2)).toBe('0.00');
+
+      for (const off of ['0.01', '-0.01']) {
+        const call = () => opening(paid, { peakRemain: peakRemain.plus(off) });
+        expect(call).toThrow(OpeningMismatchError);
+        try {
+          call();
+        } catch (err) {
+          const e = err as OpeningMismatchError;
+          expect(e.code).toBe('OPENING_PEAK_MISMATCH');
+          expect(e.peakRemain.toFixed(2)).toBe(peakRemain.plus(off).toFixed(2));
+          expect(e.receivable.toFixed(2)).toBe(peakRemain.toFixed(2));
+          expect(e.expectedRoundingDiff.toFixed(2)).toBe('0.00');
+          expect(e.diff.toFixed(2)).toBe(D(off).negated().toFixed(2));
+          expect(e.reason).toBe('GAP_NOT_ROUNDING');
+          expect(e.installmentNos).toEqual([]);
+          // ข้อความไม่ยกยอดเงินมาพิมพ์
+          expect(e.message).not.toContain(peakRemain.toFixed(2));
+          expect(e.message).not.toContain(peakRemain.plus(off).toFixed(2));
+        }
+      }
+    });
+  });
+
+  describe('ยอดเรียกเก็บระบบเก่า (amountDue) ต่างจากยอดของงวดตามตัวคำนวณ — ส่วนต่างปัดเศษ', () => {
+    /** ระบบเก่า: งวดปกติปัดขึ้น 0.01 (1,515.84) และงวดสุดท้ายเท่างวดอื่น (ตัวคำนวณ 1,515.87 → −0.03) */
+    const LEGACY_FLAT = '1515.84';
+    const legacyFlat: Amount = () => LEGACY_FLAT;
+    const PAID_LEGACY_1_TO_3 = { 1: LEGACY_FLAT, 2: LEGACY_FLAT, 3: LEGACY_FLAT };
+
+    it('งวดปกติ +0.01 งวดสุดท้ายเท่างวดอื่น: ผ่าน · รายการบัญชีเท่ากับยอดตามตัวคำนวณ · roundingDiff = Σ(ยอดของงวด − ยอดเรียกเก็บ) ของงวดที่ยังไม่ชำระครบ', () => {
+      const r = opening(PAID_LEGACY_1_TO_3, {}, legacyFlat);
+
+      // งวด 4–11: 8 × (1,515.83 − 1,515.84) = −0.08 · งวด 12: 1,515.87 − 1,515.84 = +0.03 → −0.05
+      expect(r.roundingDiff.toFixed(2)).toBe('-0.05');
+      expect(peakRemainOf(PAID_LEGACY_1_TO_3, legacyFlat).toFixed(2)).toBe('13642.56');
+      expect(receivableAfterMarkers(r)).toBe('13642.51');
+      // บัญชียกมาตามตัวสร้าง 2A เหมือนสัญญาที่ยอดเรียกเก็บตรงทุกบาท — ส่วนต่างอยู่ที่ roundingDiff ไม่ใช่ในบัญชี
+      expect(shape(r.openingLines)).toEqual(shape(opening(PAID_1_TO_3).openingLines));
+      expect(shape(r.catchUpLines)).toEqual(shape(opening(PAID_1_TO_3).catchUpLines));
+      expect(r.priorReceiptMarkers).toEqual([]);
+    });
+
+    it('งวดปกติ +0.01 + งวด 4 จ่ายบางส่วน 300: marker เท่ายอดที่จ่าย · roundingDiff เท่าเดิม', () => {
+      const r = opening({ ...PAID_LEGACY_1_TO_3, 4: '300' }, {}, legacyFlat);
+
+      expect(r.roundingDiff.toFixed(2)).toBe('-0.05');
+      expect(markersOf(r)).toEqual([{ installmentNo: 4, amount: '300.00' }]);
+      expect(net(r.openingLines, '11-2103')).toBe(MONTHLY);
+      expectMarkersBelowTotalAndBilling(
+        r,
+        installments({ ...PAID_LEGACY_1_TO_3, 4: '300' }, {}, legacyFlat),
+      );
+    });
+
+    it('ชำระครบตามยอดเรียกเก็บที่ต่ำกว่ายอดในบัญชี (งวดสุดท้าย 1,515.84 < 1,515.87): ถือว่าชำระครบ ไม่ยกมา ไม่มี marker', () => {
+      const amount: Amount = (no) => (no === 12 ? LEGACY_FLAT : MONTHLY);
+      const paid: Record<number, string> = {};
+      for (let no = 1; no <= 12; no++) paid[no] = amount(no);
+      const r = opening(paid, {}, amount);
+
+      expect(r.openingLines).toEqual([]);
+      expect(r.priorReceiptMarkers).toEqual([]);
+      expect(r.roundingDiff.toFixed(2)).toBe('0.00');
+      // งวด 12 ยังไม่ถึงกำหนด แต่ชำระครบแล้ว = ตั้งครบ (เหมือนใบที่ทำให้งวดชำระครบ)
+      expect(stampOf(r, 12)).toEqual({
+        accrued: true,
+        accruedAmount: LAST,
+        accruedVat: '99.13',
+        accruedInterest: '500.00',
+      });
+    });
+
+    it('จ่ายครบยอดในบัญชีแต่ยังขาดยอดเรียกเก็บ (งวด 4 และ 5 เรียกเก็บ 1,515.84 จ่าย 1,515.83) → บล็อก INSTALLMENT_SETTLED_BELOW_BILLING บอกเลขงวด', () => {
+      // ถ้ายกมาเป็น "ล้างครบ" ใบรับชำระ 0.01 ใบแรกหลังวันตัดถูกปฏิเสธ (residual exceeds tolerance) — สัญญารับเงินต่อไม่ได้
+      const amount: Amount = (no) => (no === 4 || no === 5 ? LEGACY_FLAT : amountOf(no));
+      const paid = { ...PAID_1_TO_3, 4: MONTHLY, 5: MONTHLY };
+      const call = () => opening(paid, {}, amount);
+
+      expect(call).toThrow(OpeningMismatchError);
+      try {
+        call();
+      } catch (err) {
+        const e = err as OpeningMismatchError;
+        expect(e.code).toBe('OPENING_PEAK_MISMATCH');
+        expect(e.reason).toBe('INSTALLMENT_SETTLED_BELOW_BILLING');
+        expect(e.installmentNos).toEqual([4, 5]);
+        expect(e.message).not.toMatch(/\d+\.\d{2}/);
+      }
+    });
+
+    const expectRoundingBeyondTolerance = (
+      amount: Amount,
+      installmentNos: number[],
+      paid: Record<number, string> = PAID_1_TO_3,
+    ) => {
+      const call = () => opening(paid, {}, amount);
+      expect(call).toThrow(OpeningMismatchError);
+      try {
+        call();
+      } catch (err) {
+        const e = err as OpeningMismatchError;
+        expect(e.code).toBe('OPENING_PEAK_MISMATCH');
+        expect(e.reason).toBe('ROUNDING_BEYOND_TOLERANCE');
+        expect(e.installmentNos).toEqual(installmentNos);
+        // ช่องว่างระหว่างบัญชีกับ PEAK อธิบายได้ด้วยยอดเรียกเก็บทั้งหมด — แต่ส่วนต่างเกินเกณฑ์
+        expect(e.diff.toFixed(2)).toBe(e.expectedRoundingDiff.toFixed(2));
+        expect(e.message).not.toMatch(/\d+\.\d{2}/);
+      }
+    };
+
+    it('งวดปกติต่างเกิน 0.01 (งวด 5 เรียกเก็บ 1,515.85) → throw', () => {
+      expectRoundingBeyondTolerance((no) => (no === 5 ? '1515.85' : amountOf(no)), [5]);
+    });
+
+    it('งวดสุดท้ายต่างเกิน 1.00 (เรียกเก็บ 1,514.80 · ตัวคำนวณ 1,515.87) → throw', () => {
+      expectRoundingBeyondTolerance((no) => (no === 12 ? '1514.80' : amountOf(no)), [12]);
+    });
+
+    it('ทุกงวดอยู่ในเกณฑ์แต่รวมทั้งสัญญาเกิน 1.00 (งวด 4–11 เรียกเก็บเกิน 0.01 · งวดสุดท้ายเกิน 0.95 → −1.03) → throw บอกทุกงวดที่มีเศษ', () => {
+      expectRoundingBeyondTolerance(
+        (no) => (no === 12 ? '1516.82' : LEGACY_FLAT),
+        [4, 5, 6, 7, 8, 9, 10, 11, 12],
+        PAID_LEGACY_1_TO_3,
+      );
+    });
+
+    it('ยอดเรียกเก็บไม่เป็นบวกหรือเกิน 2 ตำแหน่ง → OpeningInputError', () => {
+      for (const bad of ['0', '-1', '1515.835']) {
+        const input: OpeningInput = {
+          money: MONEY,
+          installments: installments(PAID_1_TO_3, {}, (no) => (no === 6 ? bad : amountOf(no))),
+          cutoff: CUTOFF,
+          peakRemain: peakRemainOf(PAID_1_TO_3),
+        };
+        expect(() => computeOpening(input)).toThrow(OpeningInputError);
+      }
+    });
+  });
+
+  it('รายการยกมา + marker + VAT ไล่ = สัญญาที่เปิดในระบบตั้งแต่แรก (1A + 2A + ใบรับชำระ) ทุกบัญชียกมา', () => {
+    // งวด 1–2 ครบ · งวด 3 จ่ายเกิน · งวด 4 บางส่วน 300 · งวด 5 ล่วงหน้าครบ · งวด 6 ล่วงหน้าบางส่วน 500
+    const paid = { 1: MONTHLY, 2: MONTHLY, 3: '1600', 4: '300', 5: MONTHLY, 6: '500' };
+    const r = opening(paid);
+
+    // สัญญาที่เปิดในระบบ: 1A ทั้งสัญญา (เฉพาะบัญชียกมา) → 2A ที่ระบบลงถึงวันตัด → ใบรับชำระ Cr 11-2103
+    const native = new Map<string, Prisma.Decimal>();
+    const add = (code: string, amount: Prisma.Decimal) =>
+      native.set(code, (native.get(code) ?? D('0')).plus(amount));
+    add('11-2101', D('17000'));
+    add('11-2105', D('1190'));
+    add('11-2106', D('-6000'));
+    add('21-2102', D('-1190'));
+    for (const inst of installments(paid)) {
+      const input = accrual2AInputOf(MONEY, inst.installmentNo);
+      const due = inst.dueDate.getTime() < CUTOFF.getTime();
+      const part = due
+        ? buildPartialAccrual2ALines(input, NOTHING_ACCRUED, D('999999')) // ทั้งงวด
+        : inst.paid.gt(0)
+          ? buildPartialAccrual2ALines(input, NOTHING_ACCRUED, inst.paid)
+          : null;
+      for (const l of part?.lines ?? []) add(l.accountCode, l.dr.minus(l.cr));
+      add('11-2103', Prisma.Decimal.min(inst.paid, part?.installmentTotal ?? inst.paid).negated());
+    }
+
+    const imported = [
+      ...r.openingLines,
+      ...r.priorReceiptMarkers.map((m) => ({
+        accountCode: '11-2103',
+        dr: D('0'),
+        cr: m.amount,
+        description: 'marker',
+      })),
+      ...r.catchUpLines,
+    ];
+    for (const code of CARRY_FORWARD_ACCOUNTS) {
+      expect([code, net(imported, code)]).toEqual([code, (native.get(code) ?? D('0')).toFixed(2)]);
+    }
+    // 21-2101 ของรายการไล่ = VAT ของส่วนที่ค้างของงวดที่ถึงกำหนด (งวด 4) — ส่วนที่จ่ายแล้ว PEAK ยื่นไปแล้ว
+    expect(net(r.catchUpLines, '21-2101')).toBe('-79.54');
+    expect(markersOf(r)).toEqual([
+      { installmentNo: 4, amount: '300.00' },
+      { installmentNo: 6, amount: '500.00' },
+    ]);
+    expectMarkersBelowTotalAndBilling(r, installments(paid));
+  });
+
+  it('ยังไม่ถึงกำหนดสักงวด: รายการยกมาเท่าฝั่งลูกหนี้ของ 1A ทั้งสัญญา (งวดสุดท้ายรับเศษ)', () => {
+    const r = opening({}, { cutoff: new Date('2026-08-01T00:00:00+07:00') });
+
+    expect(net(r.openingLines, '11-2101')).toBe('17000.00');
+    expect(net(r.openingLines, '11-2105')).toBe('1190.00');
+    expect(net(r.openingLines, '11-2106')).toBe('-6000.00');
+    expect(net(r.openingLines, '21-2102')).toBe('-1190.00');
+    expect(codes(r.openingLines)).not.toContain('11-2103');
+    expect(r.catchUpLines).toEqual([]);
+    expect(r.stamps.every((s) => !s.accrued)).toBe(true);
+  });
+
+  it('งวดสุดท้ายรับเศษ: เหลือแต่งวด 12 → ยอดยกมา = 1,416.74 + VAT 99.13 ดอกเบี้ย 500', () => {
+    const paid: Record<number, string> = {};
+    for (let no = 1; no <= 11; no++) paid[no] = MONTHLY;
+    const r = opening(paid);
+
+    expect(net(r.openingLines, '11-2101')).toBe('1416.74');
+    expect(net(r.openingLines, '11-2105')).toBe('99.13');
+    expect(net(r.openingLines, '11-2106')).toBe('-500.00');
+    expect(net(r.openingLines, '21-2102')).toBe('-99.13');
+    expect(receivableAfterMarkers(r)).toBe(LAST);
+    // งวด 5–11 จ่ายล่วงหน้าครบ = ตั้งครบแล้ว ไม่ใช่งวดถึงกำหนด
+    expect(stampOf(r, 11)).toEqual({
+      accrued: true,
+      accruedAmount: MONTHLY,
+      accruedVat: '99.17',
+      accruedInterest: '500.00',
+    });
+    expect(r.priorReceiptMarkers).toEqual([]);
+  });
+
+  it('ทุกงวดถึงกำหนดและค้างเต็ม: 11-2103 = ยอดผ่อนรวม · VAT ทั้งสัญญาไล่ 1 ธ.ค. · ไม่มี 11-2106', () => {
+    const r = opening({}, { cutoff: new Date('2027-08-01T00:00:00+07:00') });
+
+    expect(net(r.openingLines, '11-2103')).toBe('18190.00');
+    expect(codes(r.openingLines)).toEqual(['11-2103', '21-2102', OPENING_EQUITY_ACCOUNT]);
+    expect(net(r.openingLines, '21-2102')).toBe('-1190.00');
+    expect(net(r.catchUpLines, '21-2101')).toBe('-1190.00');
+    expect(net(r.openingLines, OPENING_EQUITY_ACCOUNT)).toBe('-17000.00');
+  });
+
+  it('จ่ายครบทุกงวด: ไม่มีรายการยกมา ไม่มี marker ไม่มี VAT ไล่', () => {
+    const paid: Record<number, string> = {};
+    for (let no = 1; no <= 12; no++) paid[no] = amountOf(no);
+    const r = opening(paid);
+
+    expect(r.openingLines).toEqual([]);
+    expect(r.catchUpLines).toEqual([]);
+    expect(r.priorReceiptMarkers).toEqual([]);
+    expect(r.stamps.every((s) => s.accrued)).toBe(true);
+  });
+
+  it('งวดที่จ่ายเกินค่างวด + ยอด PEAK จริงที่หักยอดจ่ายเกินแล้ว → บล็อก GAP_NOT_ROUNDING (บัญชียกมาไม่ยกเงินจ่ายเกิน)', () => {
+    const paid = { ...PAID_1_TO_3, 3: '1600' };
+    // PEAK หักยอดจ่ายเกิน 84.17 ออกจากยอดคงเหลือแล้ว (Σ(amountDue − paid) แบบไม่ตัดยอดติดลบ)
+    const realPeak = peakRemainOf(PAID_1_TO_3).minus(D('1600').minus(MONTHLY));
+    const call = () => opening(paid, { peakRemain: realPeak });
+
+    expect(call).toThrow(OpeningMismatchError);
+    try {
+      call();
+    } catch (err) {
+      const e = err as OpeningMismatchError;
+      expect(e.reason).toBe('GAP_NOT_ROUNDING');
+      expect(e.diff.toFixed(2)).toBe('84.17');
+      expect(e.installmentNos).toEqual([]);
+    }
+  });
+
+  it('งวดที่จ่ายเกินค่างวด: นับเท่าค่างวด (ไม่มีลูกหนี้ติดลบ ไม่มี marker)', () => {
+    const r = opening({ ...PAID_1_TO_3, 3: '1600' });
+
+    expect(r.priorReceiptMarkers).toEqual([]);
+    expect(net(r.openingLines, '11-2103')).toBe(MONTHLY); // งวด 4 อย่างเดียว
+    expect(receivableAfterMarkers(r)).toBe(peakRemainOf(PAID_1_TO_3).toFixed(2));
+  });
+
+  it('วันครบกำหนด = วันตัด (30 พ.ย.) ถือว่าถึงกำหนด · 1 ธ.ค. ยังไม่ถึง', () => {
+    const due30 = bangkokMidnight(2026, 10, 30);
+    const due1Dec = bangkokMidnight(2026, 11, 1);
+    const run = (dueDate: Date) =>
+      computeOpening({
+        money: MONEY,
+        installments: installments(PAID_1_TO_3, { 5: dueDate }),
+        cutoff: CUTOFF,
+        peakRemain: peakRemainOf(PAID_1_TO_3),
+      });
+
+    expect(stampOf(run(due30), 5)).toMatchObject({ accrued: true });
+    expect(net(run(due30).catchUpLines, '21-2102')).toBe('198.34'); // งวด 4 + งวด 5
+    expect(stampOf(run(due1Dec), 5)).toMatchObject({ accrued: false });
+    expect(net(run(due1Dec).catchUpLines, '21-2102')).toBe('99.17');
+  });
+
+  it('สัญญาไม่มี VAT (vatAmount 0): ไม่มีบรรทัด 11-2105 / 21-2102 และไม่มี VAT ไล่', () => {
+    const money: ContractMoney = {
+      ...MONEY,
+      vatAmount: D('0'),
+      vatPct: D('0'),
+      monthlyPayment: D('1416.66'),
+    };
+    const amount = (no: number) => (no === 12 ? '1416.74' : '1416.66');
+    const paid = { 1: '1416.66', 2: '1416.66', 3: '1416.66', 4: '300', 6: '500' };
+    const r = computeOpening({
+      money,
+      installments: installments(paid, {}, amount),
+      cutoff: CUTOFF,
+      peakRemain: peakRemainOf(paid, amount),
+    });
+
+    expect(codes(r.openingLines)).not.toContain('11-2105');
+    expect(codes(r.openingLines)).not.toContain('21-2102');
+    expect(r.catchUpLines).toEqual([]);
+    expect(r.stamps.every((s) => s.accruedVat.isZero())).toBe(true);
+    expect(markersOf(r)).toEqual([
+      { installmentNo: 4, amount: '300.00' },
+      { installmentNo: 6, amount: '500.00' },
+    ]);
+    expect(receivableAfterMarkers(r)).toBe(peakRemainOf(paid, amount).toFixed(2));
+  });
+
+  it('สัญญาไม่มีดอกเบี้ย: ไม่มีบรรทัด 11-2106', () => {
+    // ยอดก่อน VAT 11,000 · VAT 770 → งวด 916.66 + 64.17 = 980.83 · งวด 12 = 916.74 + 64.13 = 980.87
+    const money: ContractMoney = {
+      ...MONEY,
+      interestTotal: D('0'),
+      vatAmount: D('770'),
+      interestRate: D('0'),
+      monthlyPayment: D('980.83'),
+    };
+    const amount = (no: number) => (no === 12 ? '980.87' : '980.83');
+    const paid = { 1: '980.83', 2: '980.83', 3: '980.83' };
+    const r = computeOpening({
+      money,
+      installments: installments(paid, {}, amount),
+      cutoff: CUTOFF,
+      peakRemain: peakRemainOf(paid, amount),
+    });
+
+    expect(codes(r.openingLines)).not.toContain('11-2106');
+    expect(r.stamps.every((s) => s.accruedInterest.isZero())).toBe(true);
+    expect(receivableAfterMarkers(r)).toBe(peakRemainOf(paid, amount).toFixed(2));
+  });
+
+  describe('ข้อมูลเข้าผิด → OpeningInputError (OPENING_INPUT_INVALID)', () => {
+    const base = (): OpeningInput => ({
+      money: MONEY,
+      installments: installments(PAID_1_TO_3),
+      cutoff: CUTOFF,
+      peakRemain: peakRemainOf(PAID_1_TO_3),
+    });
+    const expectInvalid = (input: OpeningInput) => {
+      expect(() => computeOpening(input)).toThrow(OpeningInputError);
+      try {
+        computeOpening(input);
+      } catch (err) {
+        expect((err as OpeningInputError).code).toBe('OPENING_INPUT_INVALID');
+      }
+    };
+
+    it('จำนวนงวดไม่เท่า totalMonths', () => {
+      expectInvalid({ ...base(), installments: base().installments.slice(0, 11) });
+    });
+
+    it('เลขงวดซ้ำ / นอกช่วง 1..totalMonths', () => {
+      const dup = base().installments.map((i) =>
+        i.installmentNo === 12 ? { ...i, installmentNo: 11 } : i,
+      );
+      expectInvalid({ ...base(), installments: dup });
+      const out = base().installments.map((i) =>
+        i.installmentNo === 12 ? { ...i, installmentNo: 13 } : i,
+      );
+      expectInvalid({ ...base(), installments: out });
+    });
+
+    it('ยอดจ่ายติดลบ หรือเกิน 2 ตำแหน่ง', () => {
+      const negative = base().installments.map((i) =>
+        i.installmentNo === 5 ? { ...i, paid: D('-1') } : i,
+      );
+      expectInvalid({ ...base(), installments: negative });
+      const fractional = base().installments.map((i) =>
+        i.installmentNo === 5 ? { ...i, paid: D('0.001') } : i,
+      );
+      expectInvalid({ ...base(), installments: fractional });
+    });
+
+    it('วันครบกำหนด / วันตัดไม่ใช่วันที่', () => {
+      const badDue = base().installments.map((i) =>
+        i.installmentNo === 5 ? { ...i, dueDate: new Date('x') } : i,
+      );
+      expectInvalid({ ...base(), installments: badDue });
+      expectInvalid({ ...base(), cutoff: new Date('x') });
+    });
+  });
+
+  it('ไม่แก้ข้อมูลเข้า และลำดับงวดในข้อมูลเข้าไม่มีผล', () => {
+    const input: OpeningInput = {
+      money: MONEY,
+      installments: installments({ ...PAID_1_TO_3, 6: '500' }).reverse(),
+      cutoff: CUTOFF,
+      peakRemain: peakRemainOf({ ...PAID_1_TO_3, 6: '500' }),
+    };
+    const before = input.installments.map((i) => i.installmentNo);
+    const r = computeOpening(input);
+
+    expect(input.installments.map((i) => i.installmentNo)).toEqual(before);
+    expect(r.stamps.map((s) => s.installmentNo)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    expect(net(r.openingLines, '11-2103')).toBe('2015.83');
+  });
+});

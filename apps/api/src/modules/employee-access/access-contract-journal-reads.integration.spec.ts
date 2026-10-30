@@ -16,6 +16,7 @@ import {
   journalCancellationEclFixture,
   journalExchangeRecallFixture,
   journalClearedExchangeHistoryFixture,
+  journalLegacyImportFixture,
 } from './access-contract-journal-fixtures';
 import { AuditInterceptor } from '../audit/audit.interceptor';
 import { AuditService } from '../audit/audit.service';
@@ -506,6 +507,37 @@ it('input VAT exact backlink and live tax source survive legitimate REVERSED sta
     data: { deletedAt: new Date() },
   });
   expect((await http(path(id, 'journal-entries'), fullFinance).expect(200)).body.data).toEqual([]);
+});
+it('legacy-import opening, prior-receipt marker and VAT catch-up are proven by the legacy contract code and schedule; poisoned shapes are not', async () => {
+  const id = await contract();
+  const legacyCode = `TEST-LEGACY-${randomUUID()}`;
+  await db.contract.update({ where: { id }, data: { legacyContractCode: legacyCode } });
+  const { opening, marker, catchUp } = await journalLegacyImportFixture(db, id, legacyCode);
+  const ids = async () =>
+    (await http(path(id, 'journal-entries'), fullFinance).expect(200)).body.data
+      .map((entry: { id: string }) => entry.id)
+      .sort();
+  expect(await ids()).toEqual([opening.id, marker.id, catchUp.id].sort());
+
+  // opening ของเลขสัญญาเดิมอื่น · marker ที่ติด paymentId (รูปของใบรับเงิน) → ไม่ถูกพิสูจน์
+  const openingRow = await db.journalEntry.findUniqueOrThrow({ where: { id: opening.id } });
+  await db.journalEntry.update({
+    where: { id: opening.id },
+    data: {
+      metadata: { ...(openingRow.metadata as Prisma.JsonObject), idempotencyKey: 'OTHER-CODE' },
+    },
+  });
+  const markerRow = await db.journalEntry.findUniqueOrThrow({ where: { id: marker.id } });
+  const payment = await db.payment.findFirstOrThrow({ where: { contractId: id } });
+  await db.journalEntry.update({
+    where: { id: marker.id },
+    data: { metadata: { ...(markerRow.metadata as Prisma.JsonObject), paymentId: payment.id } },
+  });
+  expect(await ids()).toEqual([catchUp.id]);
+
+  // สัญญาที่ไม่มีเลขสัญญาเดิม = ไม่ใช่สัญญานำเข้า → รายการชนิดนี้ไม่มีสิทธิ์
+  await db.contract.update({ where: { id }, data: { legacyContractCode: null } });
+  expect(await ids()).toEqual([]);
 });
 it('canonical writeoff and JP4 remain readable without invented universal receipt/CN backlinks', async () => {
   const writeoffId = await contract(),

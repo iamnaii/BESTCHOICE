@@ -1,0 +1,598 @@
+import { Prisma } from '@prisma/client';
+import { bangkokMidnight } from '../../../utils/date.util';
+import type { DumpRow } from '../dump-reader';
+import type { LegacyContract, LegacyInstallment } from '../legacy-book';
+import {
+  applyPeakBalance,
+  checkInstallmentAmounts,
+  LegacyMoneyError,
+  mapContractMoney,
+  parseMoneyOverridesCsv,
+  type ContractMoney,
+  type MoneyOverride,
+} from '../money';
+import { legacyOutstanding } from '../peak-recon';
+
+/**
+ * แปลงยอดเงินสัญญาระบบเก่า — ข้อมูลสังเคราะห์ทั้งหมด (รหัส TEST-*, ยอดตามตัวอย่าง CPA 17,000 / 12 งวด)
+ *
+ * สัญญามาตรฐาน: ยอดจัด 10,000 · ค่าคอม 1,000 · ดอกเบี้ย 6,000 · VAT 1,190 (7% ของ 17,000) · 12 งวด
+ * → งวด 1–11 = 1,416.66 + 99.17 = 1,515.83 · งวด 12 รับเศษ = 1,416.74 + 99.13 = 1,515.87
+ */
+
+const D = (value: string) => new Prisma.Decimal(value);
+const MONTHLY = '1515.83';
+const LAST = '1515.87';
+
+function detail(over: Record<string, string | null> = {}): DumpRow {
+  return {
+    ref_order_id: '101',
+    ref_product_price: '12000',
+    deposit: '2000',
+    finance: '10000',
+    commission_admin: '1000',
+    sales_tax: '1190',
+    installment_total: '18190',
+    installment_number: '12',
+    installment_amount: MONTHLY,
+    ...over,
+  };
+}
+
+/** งวดตามค่างวดที่ให้ — ครบกำหนดวันที่ 5 ทุกเดือนตั้งแต่ ก.พ. 2026 · `paid`/`balance` = [จ่ายแล้ว, คงเหลือ] */
+function installments(amounts: string[], paidBalance?: [string, string][]): LegacyInstallment[] {
+  return amounts.map((amount, i) => {
+    const [paid, balance] = paidBalance?.[i] ?? ['0', amount];
+    return {
+      legacyId: String(1000 + i),
+      legacyCode: `TEST-I-${1000 + i}`,
+      dueDate: bangkokMidnight(2026, 1 + i, 5),
+      amount: D(amount),
+      paid: D(paid),
+      balance: D(balance),
+      statusCode: '0',
+    };
+  });
+}
+
+function standardAmounts(): string[] {
+  return [...Array(11).fill(MONTHLY), LAST];
+}
+
+function contract(over: Record<string, string | null> = {}): LegacyContract {
+  return {
+    contractId: '1',
+    code: 'TEST-C-0001',
+    statusCode: '2',
+    createdAt: new Date('2026-01-05T10:00:00+07:00'),
+    order: { order_id: '101', ref_member: '501' },
+    detail: detail(over),
+    installments: installments(standardAmounts()),
+    receipts: [],
+    close: null,
+    files: [],
+  };
+}
+
+/** ค่าเงินเป็นข้อความทศนิยม 2 ตำแหน่ง — อ่านผลง่ายและไม่ขึ้นกับรูปของ Decimal */
+function money(m: ContractMoney) {
+  const fixed = (v: Prisma.Decimal | null) => (v === null ? null : v.toFixed(2));
+  return {
+    sellingPrice: fixed(m.sellingPrice),
+    downPayment: fixed(m.downPayment),
+    financedAmount: fixed(m.financedAmount),
+    storeCommission: fixed(m.storeCommission),
+    interestTotal: fixed(m.interestTotal),
+    vatAmount: fixed(m.vatAmount),
+    vatPct: m.vatPct.toFixed(4),
+    interestRate: m.interestRate.toFixed(4),
+    monthlyPayment: fixed(m.monthlyPayment),
+    totalMonths: m.totalMonths,
+  };
+}
+
+describe('mapContractMoney', () => {
+  it('maps the legacy detail row with the real interest (installment_total − financed − commission − vat)', () => {
+    expect(money(mapContractMoney(contract()))).toEqual({
+      sellingPrice: '12000.00',
+      downPayment: '2000.00',
+      financedAmount: '10000.00',
+      storeCommission: '1000.00',
+      interestTotal: '6000.00',
+      vatAmount: '1190.00',
+      vatPct: '0.0700',
+      // อัตราต่อเดือนแบบคงที่ = 6,000 ÷ 10,000 ÷ 12
+      interestRate: '0.0500',
+      monthlyPayment: MONTHLY,
+      totalMonths: 12,
+    });
+  });
+
+  it('falls back to selling price − deposit when finance is 0', () => {
+    const m = mapContractMoney(contract({ finance: '0', ref_product_price: '11500' }));
+    expect(m.financedAmount.toFixed(2)).toBe('9500.00');
+    expect(m.interestTotal.toFixed(2)).toBe('6500.00');
+  });
+
+  it('commission_admin 0 → a concrete 10% of the original financed amount (never null)', () => {
+    const m = mapContractMoney(contract({ commission_admin: '0' }));
+    expect(m.storeCommission).not.toBeNull();
+    expect(m.storeCommission.toFixed(2)).toBe('1000.00');
+    // 10% ของยอดจัดเดิม ไม่ใช่ของยอดที่รวมดอก — ดอกเบี้ยยังเท่าเดิม และค่างวดยังตรงทุกงวด
+    expect(m.interestTotal.toFixed(2)).toBe('6000.00');
+    expect(checkInstallmentAmounts(m, installments(standardAmounts()))).toEqual([]);
+  });
+
+  it('commission fallback rounds 10% to 2 decimals', () => {
+    const m = mapContractMoney(contract({ commission_admin: '0', finance: '9999.95' }));
+    expect(m.storeCommission.toFixed(2)).toBe('1000.00');
+    expect(
+      mapContractMoney(
+        contract({ commission_admin: '0', finance: '9999' }),
+      ).storeCommission.toFixed(2),
+    ).toBe('999.90');
+  });
+
+  it('interestRate = interestTotal ÷ financed ÷ months (monthly flat, HALF_UP 4 dp); interestTotal stays legacy', () => {
+    const even = mapContractMoney(contract({ finance: '10900', installment_total: '19630' }));
+    expect([even.interestTotal.toFixed(2), even.interestRate.toFixed(4)]).toEqual([
+      '6540.00',
+      '0.0500',
+    ]);
+    const rounded = mapContractMoney(contract({ installment_total: '17190' }));
+    // 5,000 ÷ 10,000 ÷ 12 = 0.041666… → 0.0417 · ดอกเบี้ยรวมไม่คิดใหม่จากอัตราที่ปัด (ไม่ใช่ 5,004)
+    expect([rounded.interestTotal.toFixed(2), rounded.interestRate.toFixed(4)]).toEqual([
+      '5000.00',
+      '0.0417',
+    ]);
+    // 7,147.20 ÷ 8,000 ÷ 12 = 0.07445 พอดี → HALF_UP 0.0745 (ROUND_DOWN / HALF_EVEN ได้ 0.0744)
+    const halfUp = mapContractMoney(contract({ finance: '8000', installment_total: '17337.20' }));
+    expect([halfUp.interestTotal.toFixed(2), halfUp.interestRate.toFixed(4)]).toEqual([
+      '7147.20',
+      '0.0745',
+    ]);
+  });
+
+  /** error ของ `mapContractMoney` เมื่อยอดจัด / ค่างวดไม่เป็นบวก */
+  function moneyError(c: LegacyContract, override?: MoneyOverride): LegacyMoneyError {
+    try {
+      mapContractMoney(c, override);
+    } catch (error) {
+      if (error instanceof LegacyMoneyError) return error;
+      throw error;
+    }
+    throw new Error('expected LegacyMoneyError');
+  }
+
+  it('financedAmount ≤ 0 → LEGACY_MONEY_INVALID naming the contract and field, no amounts', () => {
+    // finance 0 → ราคา 1,500 − ดาวน์ 2,000 = −500 (ค่าคอม 10% จะติดลบ)
+    const error = moneyError(
+      contract({ finance: '0', ref_product_price: '1500', commission_admin: '0' }),
+    );
+    expect([error.code, error.contractId, error.contractCode, error.fields]).toEqual([
+      'LEGACY_MONEY_INVALID',
+      '1',
+      'TEST-C-0001',
+      ['financedAmount'],
+    ]);
+    expect(error.message).toContain('LEGACY_MONEY_INVALID');
+    expect(error.message).toContain('TEST-C-0001');
+    expect(error.message).toContain('contract_id=1');
+    expect(error.message).not.toMatch(/500|1500|2000/);
+    // ยอดจัด 0 พอดีก็ไม่ผ่าน
+    expect(moneyError(contract({ finance: '0', ref_product_price: '2000' })).fields).toEqual([
+      'financedAmount',
+    ]);
+  });
+
+  it('monthlyPayment ≤ 0 → LEGACY_MONEY_INVALID (both fields listed when both are bad)', () => {
+    expect(moneyError(contract({ installment_amount: '0' })).fields).toEqual(['monthlyPayment']);
+    expect(moneyError(contract({ installment_amount: '-1515.83' })).fields).toEqual([
+      'monthlyPayment',
+    ]);
+    const both = moneyError(
+      contract({ finance: '0', ref_product_price: '1500', installment_amount: null }),
+    );
+    expect(both.fields).toEqual(['financedAmount', 'monthlyPayment']);
+    expect(both.message).not.toMatch(/1515|1500/);
+  });
+
+  it('an override with a positive financedAmount rescues a contract whose legacy financed ≤ 0', () => {
+    const m = mapContractMoney(contract({ finance: '0', ref_product_price: '1500' }), {
+      financedAmount: D('10000'),
+      storeCommission: D('1000'),
+      vatAmount: D('1190'),
+    });
+    expect([m.financedAmount.toFixed(2), m.interestTotal.toFixed(2)]).toEqual([
+      '10000.00',
+      '6000.00',
+    ]);
+    // ค่างวดแก้ด้วย override ไม่ได้ — ยังไม่ผ่าน
+    const override = { financedAmount: D('10000'), storeCommission: D('1000'), vatAmount: D('0') };
+    expect(moneyError(contract({ installment_amount: '0' }), override).fields).toEqual([
+      'monthlyPayment',
+    ]);
+  });
+
+  it('sales_tax 0 → explicit zero VAT (vatAmount 0, vatPct 0 — not null, which means +7%)', () => {
+    const m = mapContractMoney(contract({ sales_tax: '0' }));
+    expect(m.vatAmount.toFixed(2)).toBe('0.00');
+    expect(m.vatPct.toFixed(4)).toBe('0.0000');
+    expect(m.interestTotal.toFixed(2)).toBe('7190.00');
+  });
+
+  it('interest never goes below 0', () => {
+    const m = mapContractMoney(contract({ installment_total: '11000' }));
+    expect(m.interestTotal.toFixed(2)).toBe('0.00');
+  });
+
+  it('empty money cells read as 0 (finance → fallback, commission → 10%)', () => {
+    const m = mapContractMoney(contract({ finance: null, commission_admin: '' }));
+    expect(m.financedAmount.toFixed(2)).toBe('10000.00');
+    expect(m.storeCommission.toFixed(2)).toBe('1000.00');
+  });
+
+  it('uses the override instead of the legacy financed / commission / vat', () => {
+    const m = mapContractMoney(contract(), {
+      financedAmount: D('9500'),
+      storeCommission: D('950'),
+      vatAmount: D('1190'),
+    });
+    expect(money(m)).toMatchObject({
+      sellingPrice: '12000.00',
+      downPayment: '2000.00',
+      financedAmount: '9500.00',
+      storeCommission: '950.00',
+      vatAmount: '1190.00',
+      vatPct: '0.0700',
+      interestTotal: '6550.00',
+    });
+  });
+
+  it('override vat 0 = explicit no VAT (vatAmount 0, vatPct 0 — never null)', () => {
+    const noVat = mapContractMoney(contract(), {
+      financedAmount: D('10000'),
+      storeCommission: D('1000'),
+      vatAmount: D('0'),
+    });
+    expect([noVat.vatAmount.toFixed(2), noVat.vatPct.toFixed(4)]).toEqual(['0.00', '0.0000']);
+    // ดอกเบี้ยคิดด้วย VAT ตัวเดียวกับที่คืน (0) — 18,190 − 10,000 − 1,000 − 0
+    expect(noVat.interestTotal.toFixed(2)).toBe('7190.00');
+  });
+
+  it.each([
+    ['0', 'ไม่ใช่จำนวนเต็มบวก'],
+    ['12.5', 'ไม่ใช่จำนวนเต็มบวก'],
+    [null, 'ไม่มีค่า'],
+  ])('installment_number %p → throws naming contract and column', (value, what) => {
+    expect(() => mapContractMoney(contract({ installment_number: value }))).toThrow(
+      `contract_id=1 ตาราง \`bestchoice_order_product_detail\` ช่อง installment_number — ${what}`,
+    );
+  });
+
+  it('malformed money → throws without echoing the cell', () => {
+    let message = '';
+    try {
+      mapContractMoney(contract({ finance: '12,5x9' }));
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toContain('ช่อง finance — จำนวนเงินผิดรูปแบบ');
+    expect(message).not.toContain('12,5x9');
+  });
+
+  it('missing column → throws (the dump structure changed)', () => {
+    const c = contract();
+    delete c.detail.sales_tax;
+    expect(() => mapContractMoney(c)).toThrow('ช่อง sales_tax — ไม่มีคอลัมน์');
+  });
+});
+
+describe('checkInstallmentAmounts', () => {
+  it('12 installments whose principal + interest + VAT equal the legacy amounts → []', () => {
+    const m = mapContractMoney(contract());
+    expect(checkInstallmentAmounts(m, installments(standardAmounts()))).toEqual([]);
+  });
+
+  it('installment 5 off by 3 baht → one mismatch at installmentNo 5', () => {
+    const m = mapContractMoney(contract());
+    const amounts = standardAmounts();
+    amounts[4] = '1518.83';
+    const result = checkInstallmentAmounts(m, installments(amounts));
+    expect(
+      result.map((r) => [r.installmentNo, r.legacy.toFixed(2), r.computed.toFixed(2)]),
+    ).toEqual([[5, '1518.83', MONTHLY]]);
+  });
+
+  it('tolerates 0.01 on a middle installment, not 0.02', () => {
+    const m = mapContractMoney(contract());
+    const amounts = standardAmounts();
+    amounts[2] = '1515.84';
+    amounts[3] = '1515.81';
+    expect(checkInstallmentAmounts(m, installments(amounts)).map((r) => r.installmentNo)).toEqual([
+      4,
+    ]);
+  });
+
+  it('the last installment may absorb up to 1.00 of rounding', () => {
+    const m = mapContractMoney(contract());
+    const within = [...Array(11).fill(MONTHLY), '1516.87'];
+    expect(checkInstallmentAmounts(m, installments(within))).toEqual([]);
+    const beyond = [...Array(11).fill(MONTHLY), '1516.88'];
+    const result = checkInstallmentAmounts(m, installments(beyond));
+    expect(result.map((r) => [r.installmentNo, r.computed.toFixed(2)])).toEqual([[12, LAST]]);
+  });
+
+  it('sales_tax 0 and an override with vat 0 are both checked as no VAT', () => {
+    const amounts = [...Array(11).fill('1416.66'), '1416.74'];
+    const m = mapContractMoney(
+      contract({ sales_tax: '0', installment_total: '17000', installment_amount: '1416.66' }),
+    );
+    expect(checkInstallmentAmounts(m, installments(amounts))).toEqual([]);
+    const overridden = mapContractMoney(
+      contract({ installment_total: '17000', installment_amount: '1416.66' }),
+      { financedAmount: D('10000'), storeCommission: D('1000'), vatAmount: D('0') },
+    );
+    expect(checkInstallmentAmounts(overridden, installments(amounts))).toEqual([]);
+  });
+
+  it('a missing legacy installment is a mismatch (legacy 0)', () => {
+    const m = mapContractMoney(contract());
+    const result = checkInstallmentAmounts(m, installments(standardAmounts().slice(0, 11)));
+    expect(
+      result.map((r) => [r.installmentNo, r.legacy.toFixed(2), r.computed.toFixed(2)]),
+    ).toEqual([[12, '0.00', LAST]]);
+  });
+
+  it('an extra legacy installment is a mismatch (computed 0) whatever its amount', () => {
+    const m = mapContractMoney(contract());
+    const result = checkInstallmentAmounts(m, installments([...standardAmounts(), '0']));
+    expect(
+      result.map((r) => [r.installmentNo, r.legacy.toFixed(2), r.computed.toFixed(2)]),
+    ).toEqual([[13, '0.00', '0.00']]);
+  });
+});
+
+describe('applyPeakBalance', () => {
+  /** งวด 1 จ่ายครบ · งวด 2–4 ค้างงวดละ 1,000 → ระบบเก่าค้าง 3,000 */
+  function book(): LegacyInstallment[] {
+    return installments(
+      ['1000', '1000', '1000', '1000'],
+      [
+        ['1000', '0'],
+        ['0', '1000'],
+        ['0', '1000'],
+        ['0', '1000'],
+      ],
+    );
+  }
+  const view = (list: LegacyInstallment[]) =>
+    list.map((i) => [i.paid.toFixed(2), i.balance.toFixed(2)]);
+
+  it('PEAK 2,500 vs legacy 3,000 → first unpaid installment gets +500 paid, adjustment −500', () => {
+    const inst = book();
+    const result = applyPeakBalance(inst, D('2500'));
+    if ('blocked' in result) throw new Error('unexpected block');
+    expect(result.adjustment.toFixed(2)).toBe('-500.00');
+    expect(view(result.installments)).toEqual([
+      ['1000.00', '0.00'],
+      ['500.00', '500.00'],
+      ['0.00', '1000.00'],
+      ['0.00', '1000.00'],
+    ]);
+    // ไม่แก้ของเดิม
+    expect(view(inst)).toEqual(view(book()));
+  });
+
+  it('a larger gap walks on through the next installments in due-date order', () => {
+    const result = applyPeakBalance(book(), D('800'));
+    if ('blocked' in result) throw new Error('unexpected block');
+    expect(result.adjustment.toFixed(2)).toBe('-2200.00');
+    expect(view(result.installments)).toEqual([
+      ['1000.00', '0.00'],
+      ['1000.00', '0.00'],
+      ['1000.00', '0.00'],
+      ['200.00', '800.00'],
+    ]);
+  });
+
+  it('PEAK 3,400 → blocked PEAK_HIGHER diff 400, installments untouched', () => {
+    const inst = book();
+    const result = applyPeakBalance(inst, D('3400'));
+    expect('blocked' in result && result.blocked).toBe('PEAK_HIGHER');
+    expect('blocked' in result && result.diff.toFixed(2)).toBe('400.00');
+    expect(view(inst)).toEqual(view(book()));
+  });
+
+  describe('PEAK higher by a satang gap ≤ 1.00 (ค่างวดเดิมไม่รวมเศษของยอดผ่อนรวมที่ PEAK แจ้งหนี้)', () => {
+    const amounts = (list: LegacyInstallment[]) => list.map((i) => i.amount.toFixed(2));
+
+    it('gap 0.37 → absorbed on the LAST unpaid installment (amount + balance), satangGap 0.37, Σ balance = PEAK', () => {
+      const inst = book();
+      const result = applyPeakBalance(inst, D('3000.37'));
+      if ('blocked' in result) throw new Error('unexpected block');
+      expect(result.satangGap.toFixed(2)).toBe('0.37');
+      expect(result.adjustment.toFixed(2)).toBe('0.00');
+      expect(amounts(result.installments)).toEqual(['1000.00', '1000.00', '1000.00', '1000.37']);
+      expect(view(result.installments)).toEqual([
+        ['1000.00', '0.00'],
+        ['0.00', '1000.00'],
+        ['0.00', '1000.00'],
+        ['0.00', '1000.37'],
+      ]);
+      expect(legacyOutstanding(result).toFixed(2)).toBe('3000.37');
+      expect(view(inst)).toEqual(view(book())); // ไม่แก้ของเดิม
+    });
+
+    it('the last installment already paid → the gap lands on the last row that still has a balance', () => {
+      const inst = installments(
+        ['1000', '1000', '1000'],
+        [
+          ['0', '1000'],
+          ['300', '700'],
+          ['1000', '0'],
+        ],
+      );
+      const result = applyPeakBalance(inst, D('1701.00'));
+      if ('blocked' in result) throw new Error('unexpected block');
+      expect(result.satangGap.toFixed(2)).toBe('1.00');
+      expect(amounts(result.installments)).toEqual(['1000.00', '1001.00', '1000.00']);
+      expect(view(result.installments)).toEqual([
+        ['0.00', '1000.00'],
+        ['300.00', '701.00'],
+        ['1000.00', '0.00'],
+      ]);
+    });
+
+    it('gap 1.01 → blocked PEAK_HIGHER (not a satang gap)', () => {
+      const result = applyPeakBalance(book(), D('3001.01'));
+      expect('blocked' in result && result.blocked).toBe('PEAK_HIGHER');
+      expect('blocked' in result && result.diff.toFixed(2)).toBe('1.01');
+    });
+
+    it('every installment paid → nowhere to put the gap → blocked PEAK_HIGHER', () => {
+      const inst = installments(
+        ['1000', '1000'],
+        [
+          ['1000', '0'],
+          ['1000', '0'],
+        ],
+      );
+      const result = applyPeakBalance(inst, D('0.40'));
+      expect('blocked' in result && result.blocked).toBe('PEAK_HIGHER');
+      expect('blocked' in result && result.diff.toFixed(2)).toBe('0.40');
+    });
+
+    it('PEAK lower by 0.04 that equals the invoice total − Σ legacy amounts → TRIM the last unpaid billing (no paid adjustment), satangGap −0.04', () => {
+      const inst = book();
+      // ใบแจ้งหนี้ 3,999.96 · ระบบเก่ารวม 4,000.00 ⇒ ระบบเก่าเรียกเก็บเกิน 0.04
+      const result = applyPeakBalance(inst, D('2999.96'), { invoiceTotal: D('3999.96') });
+      if ('blocked' in result) throw new Error('unexpected block');
+      expect(result.satangGap.toFixed(2)).toBe('-0.04');
+      expect(result.adjustment.toFixed(2)).toBe('0.00');
+      expect(amounts(result.installments)).toEqual(['1000.00', '1000.00', '1000.00', '999.96']);
+      expect(view(result.installments)).toEqual([
+        ['1000.00', '0.00'],
+        ['0.00', '1000.00'],
+        ['0.00', '1000.00'],
+        ['0.00', '999.96'],
+      ]);
+      expect(legacyOutstanding(result).toFixed(2)).toBe('2999.96');
+    });
+
+    it('PEAK lower by 0.04 that is NOT the invoice-total gap (receipts missing in legacy) → FIFO paid adjustment on the earliest unpaid row', () => {
+      const result = applyPeakBalance(book(), D('2999.96'), { invoiceTotal: D('4000.00') });
+      if ('blocked' in result) throw new Error('unexpected block');
+      expect(result.satangGap.toFixed(2)).toBe('0.00');
+      expect(result.adjustment.toFixed(2)).toBe('-0.04');
+      expect(view(result.installments)[1]).toEqual(['0.04', '999.96']);
+      expect(amounts(result.installments)).toEqual(['1000.00', '1000.00', '1000.00', '1000.00']);
+    });
+
+    it('PEAK lower by more than the gross gap (missing receipts + satang) → FIFO the whole diff; no trim (ruling I-2 is exact-gap only)', () => {
+      const result = applyPeakBalance(book(), D('1999.96'), { invoiceTotal: D('3999.96') });
+      if ('blocked' in result) throw new Error('unexpected block');
+      expect([result.satangGap.toFixed(2), result.adjustment.toFixed(2)]).toEqual([
+        '0.00',
+        '-1000.04',
+      ]);
+      expect(view(result.installments)).toEqual([
+        ['1000.00', '0.00'],
+        ['1000.00', '0.00'],
+        ['0.04', '999.96'],
+        ['0.00', '1000.00'],
+      ]);
+    });
+
+    it('a gross gap above 1.00 is not satang → FIFO as before; no invoice total given → FIFO as before', () => {
+      const big = applyPeakBalance(book(), D('2998.99'), { invoiceTotal: D('3998.99') });
+      if ('blocked' in big) throw new Error('unexpected block');
+      expect([big.adjustment.toFixed(2), big.satangGap.toFixed(2)]).toEqual(['-1.01', '0.00']);
+      const noTotal = applyPeakBalance(book(), D('2999.96'));
+      if ('blocked' in noTotal) throw new Error('unexpected block');
+      expect([noTotal.adjustment.toFixed(2), noTotal.satangGap.toFixed(2)]).toEqual([
+        '-0.04',
+        '0.00',
+      ]);
+    });
+
+    it('PEAK lower → satangGap 0 (only the paid-side adjustment)', () => {
+      const result = applyPeakBalance(book(), D('2500'));
+      if ('blocked' in result) throw new Error('unexpected block');
+      expect(result.satangGap.toFixed(2)).toBe('0.00');
+    });
+  });
+
+  it('equal balances → adjustment 0 and the same amounts', () => {
+    const result = applyPeakBalance(book(), D('3000'));
+    if ('blocked' in result) throw new Error('unexpected block');
+    expect(result.adjustment.toFixed(2)).toBe('0.00');
+    expect(view(result.installments)).toEqual(view(book()));
+  });
+
+  it('counts only positive balances (like legacyOutstanding) and never touches an overpaid installment', () => {
+    const inst = installments(
+      ['1000', '1000', '1000'],
+      [
+        ['1200', '-200'],
+        ['300', '700'],
+        ['0', '1000'],
+      ],
+    );
+    // ค้าง 1,700 (ไม่หัก −200) · PEAK 1,000 → ปรับ −700 ที่งวด 2 ซึ่งจ่ายมาบางส่วนแล้ว
+    const result = applyPeakBalance(inst, D('1000'));
+    if ('blocked' in result) throw new Error('unexpected block');
+    expect(result.adjustment.toFixed(2)).toBe('-700.00');
+    expect(view(result.installments)).toEqual([
+      ['1200.00', '-200.00'],
+      ['1000.00', '0.00'],
+      ['0.00', '1000.00'],
+    ]);
+  });
+
+  it('negative PEAK remain → throws', () => {
+    expect(() => applyPeakBalance(book(), D('-1'))).toThrow('ยอดค้างใน PEAK ติดลบ');
+  });
+});
+
+describe('parseMoneyOverridesCsv', () => {
+  const HEADER = 'legacy_code,financed_amount,store_commission,vat_amount';
+
+  it('reads overrides by legacy contract code; vat 0 = explicit no VAT', () => {
+    const map = parseMoneyOverridesCsv(
+      `\uFEFF${HEADER}\nTEST-C-0001,"9,500.00",950,1190\nTEST-C-0003,10000,1000,0\n`,
+    );
+    expect([...map.keys()]).toEqual(['TEST-C-0001', 'TEST-C-0003']);
+    const one = map.get('TEST-C-0001');
+    expect([
+      one?.financedAmount.toFixed(2),
+      one?.storeCommission.toFixed(2),
+      one?.vatAmount.toFixed(2),
+    ]).toEqual(['9500.00', '950.00', '1190.00']);
+    expect(map.get('TEST-C-0003')?.vatAmount.toFixed(2)).toBe('0.00');
+  });
+
+  it('duplicate contract → throws with both lines', () => {
+    expect(() =>
+      parseMoneyOverridesCsv(`${HEADER}\nTEST-C-0001,1,1,1\nTEST-C-0001,2,2,2\n`),
+    ).toThrow('บรรทัด 3 ช่อง legacy_code — สัญญาซ้ำกับบรรทัด 2');
+  });
+
+  it.each([
+    ['TEST-C-0001,,1000,0', 'ช่อง financed_amount — ไม่มีค่า'],
+    ['TEST-C-0001,0,1000,0', 'ช่อง financed_amount — ต้องมากกว่า 0'],
+    ['TEST-C-0001,10000,-1,0', 'ช่อง store_commission — ติดลบไม่ได้'],
+    ['TEST-C-0001,10000,1000,-5', 'ช่อง vat_amount — ติดลบไม่ได้'],
+    // ว่าง = ไม่มีค่า (ไม่ใช่ "VAT 7% ตามระบบ") — ต้องระบุ 0 เมื่อไม่มี VAT
+    ['TEST-C-0001,10000,1000,', 'ช่อง vat_amount — ไม่มีค่า'],
+    ['TEST-C-0001,10000,abc,0', 'ช่อง store_commission — จำนวนเงินผิดรูปแบบ'],
+  ])('%s → %s', (line, message) => {
+    expect(() => parseMoneyOverridesCsv(`${HEADER}\n${line}\n`)).toThrow(`บรรทัด 2 ${message}`);
+  });
+
+  it('missing column → throws listing it', () => {
+    expect(() => parseMoneyOverridesCsv('legacy_code,financed_amount\nTEST-C-0001,1\n')).toThrow(
+      'ไม่มีคอลัมน์ store_commission, vat_amount',
+    );
+  });
+});

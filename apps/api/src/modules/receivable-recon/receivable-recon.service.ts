@@ -2,83 +2,76 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  CONTRACT_RECEIVABLE_TOLERANCE,
+  isReceivableGapBreached,
+  loadContractReceivableGaps,
+  type ContractReceivableGap,
+} from '../journal/contract-receivable-recon';
 
 /**
- * Per-branch reconciliation between the journal "HP Receivable" balance
- * (account 11-2102) and the aggregated Payment outstanding for active
- * contracts. Built for T1-C4 — the existing data-audit check is company-wide,
- * which hides which branch is drifting.
+ * Per-branch snapshot of the HP receivable reconciliation (T1-C4), written daily by
+ * `ReceivableReconCron` (02:00 Asia/Bangkok) into `receivable_recon_logs`.
  *
- * Threshold policy: branch considered "breached" when
- *   |gap| > max(outstanding × 0.001, 1000฿)
- * — 0.1% for large branches, minimum ฿1,000 for small ones. Mirrors the
- * existing data-audit.service.ts convention.
+ * **2026-10-30 (Task 16 — before the legacy back-office import of 1 Dec) the definition changed;
+ * rows written before this date are not comparable with rows after it.** The old version summed
+ * account 11-2102 (the allowance for doubtful accounts — a contra account, not the receivable)
+ * over entries joined by `reference_type = 'CONTRACT'`, which no code writes (every automatic
+ * entry is `'AUTO'`), so its journal side was always 0 and every branch with > ฿1,000 outstanding
+ * "breached" nightly. It also counted only PENDING / PARTIALLY_PAID rows (overdue rows are
+ * OVERDUE) and used a per-branch threshold max(0.1 %, ฿1,000) that hides a single bad contract.
+ *
+ * Now each branch row aggregates the per-contract calculator in
+ * `journal/contract-receivable-recon.ts` (ledger 11-2101 + 11-2103 + 11-2105 by
+ * `metadata.contractId` vs register Σ(amountDue − amountPaid) + fees/rounding inside amountPaid,
+ * contracts ACTIVE / OVERDUE / DEFAULT only — TERMINATED is a known gap documented there):
+ *   - `journalBalance` / `contractOutstanding` / `gap` = sums over the branch's contracts
+ *   - `threshold` = the **per-contract** tolerance `CONTRACT_RECEIVABLE_TOLERANCE` (1.00 THB) —
+ *     no longer a branch-level amount
+ *   - `breached` = at least one contract of the branch is beyond that tolerance; the breaching
+ *     contracts (id / number / gap — no personal data) go to the Sentry warning
  */
 @Injectable()
 export class ReceivableReconService {
   private readonly logger = new Logger(ReceivableReconService.name);
-  static readonly MIN_THRESHOLD_BAHT = 1000;
-  static readonly THRESHOLD_PCT = 0.001;
   static readonly RETENTION_DAYS = 90;
+  /** สัญญาที่เกินเกณฑ์ที่ส่งไป Sentry ต่อรอบ */
+  static readonly SENTRY_CONTRACT_LIMIT = 50;
 
   constructor(private readonly prisma: PrismaService) {}
 
   async reconcileBranches(): Promise<{
     rows: number;
-    breached: Array<{ branchId: string; gap: number }>;
+    breached: Array<{ branchId: string; gap: number; contracts: number }>;
   }> {
-    // Journal side: SUM(debit - credit) per branch for HP Receivable account.
-    // Only include journal entries whose referenced Contract has a branchId —
-    // orphan MANUAL journal lines without a contract aren't allocatable to
-    // a branch and end up in the data-audit's company-wide check, not here.
-    const journalRows = await this.prisma.$queryRaw<
-      Array<{ branch_id: string; balance: Prisma.Decimal }>
-    >`
-      SELECT c.branch_id, COALESCE(SUM(jl.debit - jl.credit), 0)::decimal AS balance
-      FROM journal_lines jl
-      JOIN journal_entries je ON je.id = jl.journal_entry_id
-      JOIN contracts c ON c.id = je.reference_id AND je.reference_type = 'CONTRACT'
-      WHERE jl.account_code = '11-2102'
-        AND je.status = 'POSTED'
-        AND je.deleted_at IS NULL
-        AND jl.deleted_at IS NULL
-        AND c.branch_id IS NOT NULL
-      GROUP BY c.branch_id
-    `;
-
-    const paymentRows = await this.prisma.$queryRaw<
-      Array<{ branch_id: string; outstanding: Prisma.Decimal }>
-    >`
-      SELECT c.branch_id, COALESCE(SUM(p.amount_due - p.amount_paid), 0)::decimal AS outstanding
-      FROM payments p
-      JOIN contracts c ON c.id = p.contract_id
-      WHERE p.deleted_at IS NULL
-        AND c.deleted_at IS NULL
-        AND c.status IN ('ACTIVE', 'OVERDUE', 'DEFAULT')
-        AND p.status IN ('PENDING', 'PARTIALLY_PAID')
-        AND c.branch_id IS NOT NULL
-      GROUP BY c.branch_id
-    `;
-
-    const journalMap = new Map<string, Prisma.Decimal>();
-    for (const r of journalRows) journalMap.set(r.branch_id, new Prisma.Decimal(r.balance));
-    const paymentMap = new Map<string, Prisma.Decimal>();
-    for (const r of paymentRows) paymentMap.set(r.branch_id, new Prisma.Decimal(r.outstanding));
-
-    const allBranchIds = new Set<string>([...journalMap.keys(), ...paymentMap.keys()]);
+    const gaps = await loadContractReceivableGaps(this.prisma);
+    const byBranch = new Map<string, ContractReceivableGap[]>();
+    for (const row of gaps) {
+      // Contracts without a branch aren't allocatable here — the company-wide data-audit
+      // check (`hp_receivable_reconciliation`) still covers them.
+      if (!row.branchId) continue;
+      const list = byBranch.get(row.branchId) ?? [];
+      list.push(row);
+      byBranch.set(row.branchId, list);
+    }
 
     const runDate = this.todayDateOnly();
-    const breached: Array<{ branchId: string; gap: number }> = [];
+    const zero = new Prisma.Decimal(0);
+    const threshold = new Prisma.Decimal(CONTRACT_RECEIVABLE_TOLERANCE);
+    const breached: Array<{ branchId: string; gap: number; contracts: number }> = [];
+    const breachedContracts: Array<{
+      branchId: string;
+      contractId: string;
+      contractNumber: string;
+      gap: string;
+    }> = [];
 
-    for (const branchId of allBranchIds) {
-      const journalBalance = journalMap.get(branchId) ?? new Prisma.Decimal(0);
-      const contractOutstanding = paymentMap.get(branchId) ?? new Prisma.Decimal(0);
+    for (const [branchId, rows] of byBranch) {
+      const journalBalance = rows.reduce((s, r) => s.plus(r.glReceivable), zero);
+      const contractOutstanding = rows.reduce((s, r) => s.plus(r.registerOutstanding), zero);
       const gap = journalBalance.minus(contractOutstanding);
-      const threshold = Prisma.Decimal.max(
-        contractOutstanding.mul(ReceivableReconService.THRESHOLD_PCT),
-        new Prisma.Decimal(ReceivableReconService.MIN_THRESHOLD_BAHT),
-      );
-      const isBreached = gap.abs().gt(threshold);
+      const over = rows.filter(isReceivableGapBreached);
+      const isBreached = over.length > 0;
 
       await this.prisma.receivableReconLog.upsert({
         where: { runDate_branchId: { runDate, branchId } },
@@ -101,26 +94,39 @@ export class ReceivableReconService {
       });
 
       if (isBreached) {
-        breached.push({ branchId, gap: gap.toNumber() });
+        breached.push({ branchId, gap: gap.toNumber(), contracts: over.length });
+        for (const r of over) {
+          breachedContracts.push({
+            branchId,
+            contractId: r.contractId,
+            contractNumber: r.contractNumber,
+            gap: r.gap.toFixed(2),
+          });
+        }
       }
     }
 
     if (breached.length > 0) {
       this.logger.warn(
-        `Receivable recon breaches: ${breached.length} branch(es) — ` +
-          breached.map((b) => `${b.branchId}:${b.gap.toFixed(2)}`).join(', '),
+        `Receivable recon breaches: ${breached.length} branch(es), ${breachedContracts.length} contract(s) — ` +
+          breached.map((b) => `${b.branchId}:${b.contracts}`).join(', '),
       );
       Sentry.captureMessage(
-        `Receivable↔Payment reconciliation breach: ${breached.length} branch(es)`,
+        `Receivable↔Payment reconciliation breach: ${breachedContracts.length} contract(s) in ${breached.length} branch(es)`,
         {
           level: 'warning',
           tags: { kind: 'cron-job', cron: 'receivable-recon' },
-          extra: { breached, runDate },
+          extra: {
+            breached,
+            contracts: breachedContracts.slice(0, ReceivableReconService.SENTRY_CONTRACT_LIMIT),
+            tolerancePerContract: threshold.toFixed(2),
+            runDate,
+          },
         },
       );
     }
 
-    return { rows: allBranchIds.size, breached };
+    return { rows: byBranch.size, breached };
   }
 
   async purgeOldLogs(): Promise<{ deleted: number }> {

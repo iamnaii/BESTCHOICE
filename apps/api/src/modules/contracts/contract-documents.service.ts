@@ -53,6 +53,15 @@ const VALID_DOCUMENT_TYPES = [
 
 // Document types that become immutable once signed contract is active
 const IMMUTABLE_DOC_TYPES = ['SIGNED_CONTRACT', 'PDPA_CONSENT', 'PAYMENT_RECEIPT'];
+const IMMUTABLE_CONTRACT_STATUSES = ['ACTIVE', 'OVERDUE', 'DEFAULT', 'COMPLETED', 'EARLY_PAYOFF'];
+
+/** เอกสารที่ลบ/อัปโหลดทับไม่ได้ — กติกาเดียวกับตอนอัปโหลด (ตัวนำเข้าระบบเก่าใช้ตัวเดียวกัน) */
+export function isImmutableContractDocument(documentType: string, contractStatus: string): boolean {
+  return (
+    IMMUTABLE_DOC_TYPES.includes(documentType) &&
+    IMMUTABLE_CONTRACT_STATUSES.includes(contractStatus)
+  );
+}
 type LegacyDocumentStream = { stream: Readable; filename: string; contentType: string };
 
 @Injectable()
@@ -551,11 +560,7 @@ export class ContractDocumentsService {
       }
 
       // Determine if this document should be immutable
-      const isImmutable =
-        IMMUTABLE_DOC_TYPES.includes(dto.documentType) &&
-        ['ACTIVE', 'OVERDUE', 'DEFAULT', 'COMPLETED', 'EARLY_PAYOFF'].includes(
-          currentContract.status,
-        );
+      const isImmutable = isImmutableContractDocument(dto.documentType, currentContract.status);
 
       const doc = await tx.contractDocument.create({
         data: {

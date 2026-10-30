@@ -541,7 +541,7 @@ snapshot ปิดงวด `MonthlyCloseService.generateReportSnapshots` → `r
 | ภาษีซื้อ | **ไม่อยู่ในตัวคำนวณนี้** — `previewPP30` (เดบิต 11-4101 flow `expense-*` ของสาขาในบริษัท) คงกติกาเดิมทั้งหมด (ไม่กันรายการปิดภาษีออก) · `getVatMonthly` (11-4101 สุทธิทุก flow ไม่กรองบริษัทเมื่อไม่ส่ง) คงกติกาเดิมเช่นกัน **ยกเว้นข้อเดียว**: ตั้งแต่ fix round 1 กันบรรทัด 11-4101 ของรายการปิด/ชำระภาษีขาย (ผ่าน 21-3201) ออกด้วยแล้ว (ดูแถว "รายการปิด/ชำระภาษีขาย" ด้านบน) ส่วนภาษีซื้อของไฟล์ ภ.พ.30/รายงานภาษีที่กดสร้าง (Excel/TaxReport, `previewPP30`) ยังไม่เปลี่ยน ⇒ "ภาษีที่ต้องชำระ" สองที่ยังต่างกันได้ จนกว่าจะได้คำตอบฝ่ายบัญชีเรื่องภาษีซื้อ |
 | field เดิมที่ความหมายเปลี่ยน | `previewPP30.totalVatOutput` = 21-2101 สุทธิ **+ 21-2103 สุทธิ** (รวมตั้งแต่ 16/10/2569 — ระหว่าง 30/09–16/10 ไม่รวม) · `totalVatSettled` = 21-2101 **สุทธิ** · `totalVatMandatory60Day` = 21-2103 **สุทธิ** (แสดงแยก และรวมอยู่ใน `totalVatOutput`) · `lineItems.mandatoryVat60Day[].vatAmount` = เครดิต − เดบิต · `vatOutputBySource` = 21-2101 **สุทธิ** ตาม `referenceType` (รวมกัน = `totalVatSettled`) · `getVatMonthly` คืนยอดเป็นสตริงทศนิยม 2 ตำแหน่ง, `vatOutput` = 21-2101 สุทธิ + 21-2103 สุทธิ ของ FINANCE และตาราง `lines` มีแถว 21-2103 |
 
-**ยังเปิดอยู่:** ~~ฝ่ายบัญชีต้องตอบเรื่องภาษีขาย 60 วัน~~ — **ตอบแล้ว 16/10/2569 = (ค)** รวมเฉพาะงวดที่ยังไม่ตั้งลูกหนี้งวด และไม่ตั้งกับสัญญาที่ยึดคืน/ปิดแล้ว (ทำแล้ว — หัวข้อ "VAT 60-Day Rule"; `JE-202609-00055` ที่ลงหลังยึดคืนเป็นข้อมูลทดสอบ) · หน้า `VatReportPage` (ผู้เรียก `/tax/pp30-preview` + ไฟล์ส่งออก) ยังไม่มีเส้นทางในเว็บ — ป้าย "ภาษีขาย (Cr 21-2101)" บนหน้านั้นต้องแก้ตอนเปิดใช้ · ปุ่ม Excel/XML บน `/finance/vat` ยังเป็นปุ่มเปล่า · ตรวจข้อมูล `checkVatMismatch` / `checkLateFeeVatLeak` / `traceVatTotal` ยังเทียบเครดิต 21-2101 กับ `Payment.vatAmount` (คนละตัววัด — ต้องออกแบบใหม่) · ยกเลิกรายการบัญชีด้วยมือ (`JournalService.void`) ยังเปลี่ยนรายการเดิมเป็น `VOIDED` ⇒ ภาษีขายของเดือนเดิมถูกแก้ย้อนหลังและเดือนที่ยกเลิกถูกหักอีกครั้ง — งานแยกถัดไป (prod ยังไม่เคยมีการยกเลิกแบบนี้)
+**ยังเปิดอยู่:** ~~ฝ่ายบัญชีต้องตอบเรื่องภาษีขาย 60 วัน~~ — **ตอบแล้ว 16/10/2569 = (ค)** รวมเฉพาะงวดที่ยังไม่ตั้งลูกหนี้งวด และไม่ตั้งกับสัญญาที่ยึดคืน/ปิดแล้ว (ทำแล้ว — หัวข้อ "VAT 60-Day Rule"; `JE-202609-00055` ที่ลงหลังยึดคืนเป็นข้อมูลทดสอบ) · หน้า `VatReportPage` (ผู้เรียก `/tax/pp30-preview` + ไฟล์ส่งออก) ยังไม่มีเส้นทางในเว็บ — ป้าย "ภาษีขาย (Cr 21-2101)" บนหน้านั้นต้องแก้ตอนเปิดใช้ · ปุ่ม Excel/XML บน `/finance/vat` ยังเป็นปุ่มเปล่า · ตรวจข้อมูล `checkVatMismatch` ออกแบบใหม่แล้ว 30/10/2569 (Task 16 — `data-audit-checks.service.ts`): ต่อสัญญา ACTIVE/OVERDUE/DEFAULT เทียบ Dr 11-2105 − Cr 21-2102 กับภาษีของเงินรับล่วงหน้าที่ยังค้าง (`advanceVatOutstanding`) ± 0.01 — ไม่อ่าน 21-2101 / `Payment.vatAmount` แล้ว (สัญญาที่ปิดแล้วไม่ถูกตรวจ) · `checkLateFeeVatLeak` (MEDIUM) / `traceVatTotal` ยังเทียบเครดิต 21-2101 กับ `Payment.vatAmount` (คนละตัววัด — ต้องออกแบบใหม่) · ยกเลิกรายการบัญชีด้วยมือ (`JournalService.void`) ยังเปลี่ยนรายการเดิมเป็น `VOIDED` ⇒ ภาษีขายของเดือนเดิมถูกแก้ย้อนหลังและเดือนที่ยกเลิกถูกหักอีกครั้ง — งานแยกถัดไป (prod ยังไม่เคยมีการยกเลิกแบบนี้)
 
 ---
 
@@ -3179,9 +3179,24 @@ ACC role cannot reach the tab (settings page is OWNER-only) but the API endpoint
 
 Guards:
 - Date range capped at 186 days (~6 months). Longer ranges → `BadRequestException`.
-- Lines whose account has no PEAK mapping are SKIPPED. The skipped count returns via header `X-Skipped-Lines` (total rows via `X-Row-Count`; contact lines whose party has no PEAK contact code via `X-Unresolved-Sub-Codes`). All three headers are CORS-exposed via `Access-Control-Expose-Headers`. `/finance/peak-export` shows the unresolved count as a second warning line linking to `/contacts` (where OWNER / ACCOUNTANT type the code).
+- Lines whose account has no PEAK mapping are SKIPPED. The skipped count returns via header `X-Skipped-Lines` (total rows via `X-Row-Count`; contact lines whose party has no PEAK contact code via `X-Unresolved-Sub-Codes`). All six headers (these three + the three legacy headers below) are CORS-exposed via `Access-Control-Expose-Headers`. `/finance/peak-export` shows the unresolved count as a second warning line linking to `/contacts` (where OWNER / ACCOUNTANT type the code).
 
-Frontend `/finance/peak-export` (OWNER, FM, ACC) wraps the call with a date-range picker and surfaces the skipped count as a warning banner with a deep link back to the mapping settings.
+Frontend `/finance/peak-export` (OWNER, FM, ACC) wraps the call with a date-range picker and surfaces the skipped count as a warning banner with a deep link back to the mapping settings. The page does not read the three legacy headers yet (mockup first).
+
+### สัญญาที่ย้ายจากระบบเก่า — ไม่ส่งเข้า PEAK (29/10/2026 · สเปคย้ายสัญญา ร่าง 5)
+
+PEAK รับรู้ลูกหนี้และรายได้ทั้งก้อน (รวมดอกเบี้ย) ของสัญญาเก่าไปแล้วตอนทำสัญญา ⇒ ไฟล์ส่งออกตัดสองอย่าง (โค้ด `accounting/peak-export-exclusion.ts` — ด่านตรวจของตัวนำเข้าต้องเรียกฟังก์ชันชุดเดียวกัน ห้ามเขียนกติกาชุดที่สอง):
+
+| กติกา | ตัดอะไร | header |
+|---|---|---|
+| ทั้งรายการ | `metadata.flow` ∈ `legacy-opening` / `legacy-prior-receipt` (ดู `flow` เท่านั้น ไม่ใช่ `tag` — marker ใช้ tag `2B` เหมือนใบรับเงินจริง) | `X-Excluded-Legacy-Entries` (นับรายการ) |
+| บรรทัด | 11-2106 / 41-1101 ของรายการที่ `metadata.contractId` ชี้สัญญาที่ `legacyContractCode` ไม่ว่าง — ตัดก่อนเช็ครหัส PEAK จึงไม่นับใน `X-Skipped-Lines` | `X-Excluded-Legacy-Interest-Lines` |
+
+- **`Contract.legacyContractCode` ไม่ว่าง = "PEAK รับรู้รายได้ของสัญญานี้ไปแล้ว"** — งานนำเข้าอื่นห้ามตั้งค่านี้ให้สัญญาที่ PEAK ยังไม่ได้รับรู้ ไม่งั้นดอกเบี้ยของสัญญานั้นหายจาก PEAK แบบเงียบ.
+- **รายการกลับ / กระจก** ใช้ flow ของรายการต้นฉบับ และใช้ contractId ของต้นฉบับเมื่อไม่มีของตัวเอง — ต้นฉบับ = `metadata.originalEntryId` หรือ `referenceId` ของรายการกลับจาก `JournalService.void` (`referenceType = 'REVERSAL'`, ไม่มี metadata) · ดูชั้นเดียว · ไม่สนช่วงวันที่/สถานะของต้นฉบับ. ใช้กับตัวกรองสองข้อนี้เท่านั้น — รหัสย่อยผู้ติดต่อยังอ่าน metadata ของรายการเอง.
+- รายการไล่ VAT `legacy-vat-catchup` **ไม่ตัด** — VAT ส่วนนั้น PEAK ยังไม่เคยยื่น ต้องเข้า PEAK.
+- **ช่องว่างที่รู้ — รอสำนักงานบัญชี:** เทมเพลตส่วนใหญ่ลง 11-2106 / 41-1101 เป็นคู่ยอดเท่ากัน (2A, กลับรายการ 2A, JP4, JP5, ตัดหนี้สูญ) ตัดคู่แล้วรายการยังดุล · ยกเว้น `exchange-close-old-21-1106` (Dr 11-2106 ไม่มี 41-1101 คู่) — เปลี่ยนเครื่องของสัญญาเก่าส่งออกเป็นรายการไม่ดุลเท่าดอกเบี้ยรอตัด (กระจกตอนยกเลิกเปลี่ยนเครื่องก็เช่นกัน). header `X-Legacy-Unbalanced-Entries` นับรายการที่บรรทัดบัญชีดุลก่อนตัดแต่ไม่ดุลหลังตัด (ตรวจก่อนแมปรหัส PEAK — รายการที่ไม่ดุลเพราะบรรทัดไม่มีรหัส PEAK อย่างเดียวไม่นับ แต่รายการที่การตัดดอกเบี้ยทำให้ไม่ดุลนับเสมอแม้มีบรรทัดไม่มีรหัสด้วย). วิธีลงฝั่ง PEAK ยังไม่ได้ตัดสิน. ไม่มีด่านตรวจการดุลในเส้นทางส่งออก.
+- ยังไม่ครอบ: รายการปิดบัญชีสิ้นปี (41-1101 รวมทั้งปี ไม่มี contractId) · ตัวส่ง PEAK อัตโนมัติ `peak.service.ts` (กรองแค่ `peakSyncedAt`).
 
 ### Audit
 

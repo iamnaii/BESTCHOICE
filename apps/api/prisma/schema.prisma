@@ -7227,8 +7227,8 @@ model ReceivableReconLog {
   journalBalance      Decimal  @map("journal_balance") @db.Decimal(14, 2)
   contractOutstanding Decimal  @map("contract_outstanding") @db.Decimal(14, 2)
   gap                 Decimal  @db.Decimal(14, 2) // signed: journal - outstanding
-  threshold           Decimal  @db.Decimal(14, 2)
-  breached            Boolean // |gap| > threshold
+  threshold           Decimal  @db.Decimal(14, 2) // since 2026-10-30: per-contract tolerance (1.00), not a branch amount
+  breached            Boolean // since 2026-10-30: any contract of the branch has |gap| > threshold (receivable-recon.service.ts)
   createdAt           DateTime @default(now()) @map("created_at")
 
   branch Branch? @relation("ReceivableReconBranch", fields: [branchId], references: [id], onDelete: SetNull)

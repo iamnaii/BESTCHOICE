@@ -26,36 +26,31 @@ describe('ReceivableReconService.reconcileBranches', () => {
     };
 
     const mod: TestingModule = await Test.createTestingModule({
-      providers: [
-        ReceivableReconService,
-        { provide: PrismaService, useValue: prisma },
-      ],
+      providers: [ReceivableReconService, { provide: PrismaService, useValue: prisma }],
     }).compile();
     service = mod.get(ReceivableReconService);
   });
 
-  /**
-   * The service runs 2 $queryRaw calls — journal first, payment second.
-   * Mock them in order.
-   */
-  const queueQueries = (
-    journalRows: Array<{ branch_id: string; balance: string | number }>,
-    paymentRows: Array<{ branch_id: string; outstanding: string | number }>,
+  /** The service runs one $queryRaw (per-contract gaps — `loadContractReceivableGaps`). */
+  const queueContracts = (
+    rows: Array<{ id: string; branch: string | null; gl: string; register: string }>,
   ) => {
-    prisma.$queryRaw
-      .mockResolvedValueOnce(
-        journalRows.map((r) => ({ ...r, balance: new Prisma.Decimal(r.balance) })),
-      )
-      .mockResolvedValueOnce(
-        paymentRows.map((r) => ({ ...r, outstanding: new Prisma.Decimal(r.outstanding) })),
-      );
+    prisma.$queryRaw.mockResolvedValueOnce(
+      rows.map((r) => ({
+        contract_id: r.id,
+        contract_number: `BC-${r.id}`,
+        branch_id: r.branch,
+        gl_receivable: new Prisma.Decimal(r.gl),
+        register_outstanding: new Prisma.Decimal(r.register),
+      })),
+    );
   };
 
-  it('records 0 breaches when journal matches payment per branch', async () => {
-    queueQueries(
-      [{ branch_id: 'b-1', balance: 100000 }],
-      [{ branch_id: 'b-1', outstanding: 100000 }],
-    );
+  it('records 0 breaches when every contract of the branch reconciles', async () => {
+    queueContracts([
+      { id: '1', branch: 'b-1', gl: '12849.19', register: '12849.19' },
+      { id: '2', branch: 'b-1', gl: '9093.00', register: '9092.00' }, // rounding ≤ 1.00
+    ]);
 
     const result = await service.reconcileBranches();
     expect(result.rows).toBe(1);
@@ -63,69 +58,63 @@ describe('ReceivableReconService.reconcileBranches', () => {
     expect(Sentry.captureMessage).not.toHaveBeenCalled();
   });
 
-  it('flags breach when gap exceeds threshold (min ฿1000)', async () => {
-    queueQueries(
-      [{ branch_id: 'b-1', balance: 100000 }],
-      [{ branch_id: 'b-1', outstanding: 98000 }], // gap = 2000 > max(100k*0.001=100, 1000)
-    );
+  it('flags the branch when a single contract is beyond 1.00 (a large branch no longer hides it)', async () => {
+    queueContracts([
+      { id: '1', branch: 'b-big', gl: '10000000.00', register: '10000000.00' },
+      { id: '2', branch: 'b-big', gl: '1515.83', register: '1415.83' },
+    ]);
 
     const result = await service.reconcileBranches();
-    expect(result.breached).toHaveLength(1);
-    expect(result.breached[0].branchId).toBe('b-1');
-    expect(Sentry.captureMessage).toHaveBeenCalled();
+    expect(result.breached).toEqual([{ branchId: 'b-big', gap: 100, contracts: 1 }]);
+    expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+    const extra = (Sentry.captureMessage as jest.Mock).mock.calls[0][1].extra;
+    expect(extra.contracts).toEqual([
+      { branchId: 'b-big', contractId: '2', contractNumber: 'BC-2', gap: '100.00' },
+    ]);
   });
 
-  it('does NOT flag tiny gap below ฿1000 minimum', async () => {
-    queueQueries(
-      [{ branch_id: 'b-1', balance: 100000 }],
-      [{ branch_id: 'b-1', outstanding: 99500 }], // gap = 500 < 1000 minimum
-    );
-
+  it('flags offsetting contracts even when the branch total nets to zero', async () => {
+    queueContracts([
+      { id: '1', branch: 'b-1', gl: '1100.00', register: '1000.00' },
+      { id: '2', branch: 'b-1', gl: '1000.00', register: '1100.00' },
+    ]);
     const result = await service.reconcileBranches();
-    expect(result.breached).toHaveLength(0);
+    expect(result.breached).toEqual([{ branchId: 'b-1', gap: 0, contracts: 2 }]);
   });
 
-  it('applies 0.1% threshold for large branches', async () => {
-    // outstanding 10M → threshold = max(10M * 0.001 = 10k, 1k) = 10k
-    // gap 5000 < 10000 → no breach (min floor doesn't help when branch is huge)
-    queueQueries(
-      [{ branch_id: 'b-big', balance: 10_005_000 }],
-      [{ branch_id: 'b-big', outstanding: 10_000_000 }],
-    );
-    const withinPct = await service.reconcileBranches();
-    expect(withinPct.breached).toHaveLength(0);
-
-    // gap 15000 > threshold 10000 → breach
-    queueQueries(
-      [{ branch_id: 'b-big', balance: 10_015_000 }],
-      [{ branch_id: 'b-big', outstanding: 10_000_000 }],
-    );
-    const overPct = await service.reconcileBranches();
-    expect(overPct.breached).toHaveLength(1);
-  });
-
-  it('handles branches present in one table but not the other', async () => {
-    queueQueries(
-      [{ branch_id: 'b-journal-only', balance: 5000 }],
-      [{ branch_id: 'b-payment-only', outstanding: 7000 }],
-    );
-
+  it('skips contracts without a branch', async () => {
+    queueContracts([{ id: '1', branch: null, gl: '500.00', register: '0.00' }]);
     const result = await service.reconcileBranches();
-    // Both branches get a row written (gap = full amount each)
-    expect(result.rows).toBe(2);
-    expect(result.breached.length).toBe(2);
+    expect(result.rows).toBe(0);
+    expect(prisma.receivableReconLog.upsert).not.toHaveBeenCalled();
   });
 
-  it('persists each branch row with correct fields', async () => {
-    queueQueries(
-      [{ branch_id: 'b-1', balance: 100000 }],
-      [{ branch_id: 'b-1', outstanding: 95000 }],
-    );
+  it('persists each branch row with the per-contract tolerance as threshold', async () => {
+    queueContracts([
+      { id: '1', branch: 'b-1', gl: '100000.00', register: '95000.00' },
+      { id: '2', branch: 'b-2', gl: '300.00', register: '300.00' },
+    ]);
     await service.reconcileBranches();
-    const upsertArgs = prisma.receivableReconLog.upsert.mock.calls[0][0];
-    expect(upsertArgs.create.branchId).toBe('b-1');
-    expect(Number(upsertArgs.create.gap)).toBe(5000);
-    expect(upsertArgs.create.breached).toBe(true);
+    expect(prisma.receivableReconLog.upsert).toHaveBeenCalledTimes(2);
+    const created = prisma.receivableReconLog.upsert.mock.calls.map(
+      (c: [{ create: Record<string, unknown> }]) => c[0].create,
+    );
+    const b1 = created.find((c: Record<string, unknown>) => c.branchId === 'b-1');
+    expect(Number(b1.journalBalance)).toBe(100000);
+    expect(Number(b1.contractOutstanding)).toBe(95000);
+    expect(Number(b1.gap)).toBe(5000);
+    expect(Number(b1.threshold)).toBe(1);
+    expect(b1.breached).toBe(true);
+    expect(created.find((c: Record<string, unknown>) => c.branchId === 'b-2').breached).toBe(false);
+  });
+
+  it('reads the receivable accounts, never the allowance 11-2102 or reference_type CONTRACT', async () => {
+    queueContracts([]);
+    await service.reconcileBranches();
+    const sql = JSON.stringify(prisma.$queryRaw.mock.calls[0]);
+    expect(sql).toContain('11-2101');
+    expect(sql).not.toContain('11-2102');
+    expect(sql).not.toContain("'CONTRACT'");
   });
 });
 
@@ -140,10 +129,7 @@ describe('ReceivableReconService.purgeOldLogs', () => {
       $queryRaw: jest.fn(),
     };
     const mod: TestingModule = await Test.createTestingModule({
-      providers: [
-        ReceivableReconService,
-        { provide: PrismaService, useValue: prisma },
-      ],
+      providers: [ReceivableReconService, { provide: PrismaService, useValue: prisma }],
     }).compile();
     service = mod.get(ReceivableReconService);
   });

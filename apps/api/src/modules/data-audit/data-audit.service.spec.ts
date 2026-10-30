@@ -160,19 +160,53 @@ describe('DataAuditService', () => {
       expect(result.status).toBe('PASS');
     });
 
-    it('should FAIL when overpaid contracts found', async () => {
-      prisma.$queryRaw.mockResolvedValueOnce([
-        {
-          id: 'c-1',
-          contract_number: 'BC-001',
-          total_expected: new Prisma.Decimal('10000.00'),
-          total_paid: new Prisma.Decimal('10500.00'),
-          overpay: new Prisma.Decimal('500.00'),
-        },
-      ]);
+    const candidate = (amountPaid: string) => ({
+      payment_id: 'p-1',
+      contract_id: 'c-1',
+      contract_number: 'BC-001',
+      installment_no: 3,
+      amount_due: new Prisma.Decimal('1515.83'),
+      amount_paid: new Prisma.Decimal(amountPaid),
+    });
+
+    it('should FAIL when an installment is paid beyond its billing + 1.00 and no fee explains it', async () => {
+      prisma.$queryRaw.mockResolvedValueOnce([candidate('1600.00')]);
       const result = await service.checkOverpaidContracts();
       expect(result.status).toBe('FAIL');
       expect(result.count).toBe(1);
+      expect(result.details).toEqual([
+        { id: 'c-1', contract_number: 'BC-001', installment_nos: [3], overpay: '84.17' },
+      ]);
+    });
+
+    it('should PASS when the excess is the late fee received on that installment (amountPaid includes fees)', async () => {
+      prisma.$queryRaw.mockResolvedValueOnce([candidate('1615.83')]);
+      prisma.journalEntry.findMany.mockResolvedValueOnce([
+        {
+          status: 'POSTED',
+          deletedAt: null,
+          metadata: { tag: 'receipt', paymentId: 'p-1' },
+          lines: [
+            {
+              accountCode: '42-1103',
+              debit: new Prisma.Decimal(0),
+              credit: new Prisma.Decimal(100),
+              deletedAt: null,
+            },
+          ],
+        },
+      ]);
+      const result = await service.checkOverpaidContracts();
+      expect(result.status).toBe('PASS');
+      expect(result.count).toBe(0);
+    });
+
+    it('excludes imported rows untouched since the cutover in SQL', async () => {
+      prisma.$queryRaw.mockResolvedValueOnce([]);
+      await service.checkOverpaidContracts();
+      const sql = JSON.stringify(prisma.$queryRaw.mock.calls[0]);
+      expect(sql).toContain('legacy_installment_code IS NOT NULL');
+      expect(sql).toContain('legacy-import@bestchoice.com');
     });
   });
 
@@ -210,28 +244,35 @@ describe('DataAuditService', () => {
   // ═══════════════════════════════════════════════════════════════
 
   describe('checkVatMismatch', () => {
-    it('should PASS when VAT matches', async () => {
-      prisma.$queryRaw
-        .mockResolvedValueOnce([{ total: new Prisma.Decimal('700.00') }])
-        .mockResolvedValueOnce([{ total: new Prisma.Decimal('700.00') }]);
+    const vatRow = (vatReceivable: string, vatDeferred: string) => ({
+      contract_id: 'c-1',
+      contract_number: 'BC-001',
+      vat_receivable: new Prisma.Decimal(vatReceivable),
+      vat_deferred: new Prisma.Decimal(vatDeferred),
+    });
+
+    it('should PASS when no contract has the deferred VAT legs apart', async () => {
+      prisma.$queryRaw.mockResolvedValueOnce([]);
       const result = await service.checkVatMismatch();
       expect(result.status).toBe('PASS');
+      expect(result.count).toBe(0);
     });
 
-    it('should WARN when VAT diff is between 1 and 10', async () => {
-      prisma.$queryRaw
-        .mockResolvedValueOnce([{ total: new Prisma.Decimal('700.00') }])
-        .mockResolvedValueOnce([{ total: new Prisma.Decimal('695.00') }]);
-      const result = await service.checkVatMismatch();
-      expect(result.status).toBe('WARN');
-    });
-
-    it('should FAIL when VAT diff exceeds 10', async () => {
-      prisma.$queryRaw
-        .mockResolvedValueOnce([{ total: new Prisma.Decimal('700.00') }])
-        .mockResolvedValueOnce([{ total: new Prisma.Decimal('650.00') }]);
+    it('should FAIL when 11-2105 and 21-2102 differ and no advance VAT explains it', async () => {
+      prisma.$queryRaw.mockResolvedValueOnce([vatRow('793.32', '693.32')]);
       const result = await service.checkVatMismatch();
       expect(result.status).toBe('FAIL');
+      expect(result.count).toBe(1);
+      expect(result.details[0]).toMatchObject({ contractId: 'c-1', diff: '100.00' });
+    });
+
+    it('should PASS when the gap equals the VAT of customer advances still outstanding', async () => {
+      prisma.$queryRaw.mockResolvedValueOnce([vatRow('793.32', '760.61')]);
+      prisma.journalEntry.findMany.mockResolvedValueOnce([
+        { metadata: { contractId: 'c-1', advanceVatPark: '32.71' } },
+      ]);
+      const result = await service.checkVatMismatch();
+      expect(result.status).toBe('PASS');
     });
   });
 
@@ -240,20 +281,41 @@ describe('DataAuditService', () => {
   // ═══════════════════════════════════════════════════════════════
 
   describe('checkHpReceivableReconciliation', () => {
-    it('should PASS when HP Receivable matches', async () => {
-      prisma.$queryRaw
-        .mockResolvedValueOnce([{ balance: new Prisma.Decimal('50000.00') }])
-        .mockResolvedValueOnce([{ outstanding: new Prisma.Decimal('50000.00') }]);
-      const result = await service.checkHpReceivableReconciliation();
-      expect(result.status).toBe('PASS');
+    const gapRow = (id: string, gl: string, register: string) => ({
+      contract_id: id,
+      contract_number: `BC-${id}`,
+      branch_id: 'b-1',
+      gl_receivable: new Prisma.Decimal(gl),
+      register_outstanding: new Prisma.Decimal(register),
     });
 
-    it('should FAIL when HP Receivable differs beyond threshold', async () => {
-      prisma.$queryRaw
-        .mockResolvedValueOnce([{ balance: new Prisma.Decimal('50000.00') }])
-        .mockResolvedValueOnce([{ outstanding: new Prisma.Decimal('45000.00') }]);
+    it('should PASS when every contract is within 1.00 (rounding)', async () => {
+      prisma.$queryRaw.mockResolvedValueOnce([
+        gapRow('1', '12849.19', '12849.19'),
+        gapRow('2', '9093.00', '9092.00'),
+      ]);
+      const result = await service.checkHpReceivableReconciliation();
+      expect(result.status).toBe('PASS');
+      expect(result.details[0]).toMatchObject({ contractsChecked: 2, gap: '1.00', breaches: [] });
+    });
+
+    it('should FAIL per contract beyond 1.00 even when the company total nets out', async () => {
+      prisma.$queryRaw.mockResolvedValueOnce([
+        gapRow('1', '1100.00', '1000.00'),
+        gapRow('2', '1000.00', '1100.00'),
+      ]);
       const result = await service.checkHpReceivableReconciliation();
       expect(result.status).toBe('FAIL');
+      expect(result.count).toBe(2);
+      expect(result.details[0]).toMatchObject({ gap: '0.00' });
+    });
+
+    it('reads the receivable accounts, never the allowance 11-2102', async () => {
+      prisma.$queryRaw.mockResolvedValueOnce([]);
+      await service.checkHpReceivableReconciliation();
+      const sql = JSON.stringify(prisma.$queryRaw.mock.calls[0]);
+      expect(sql).toContain('11-2103');
+      expect(sql).not.toContain('11-2102');
     });
   });
 
@@ -383,25 +445,12 @@ describe('DataAuditService', () => {
 
   describe('runAllChecks', () => {
     it('should return 12 results', async () => {
-      // Since Promise.all doesn't guarantee mock call order, use a smart mock
-      // that returns appropriate data based on the SQL content
-      prisma.$queryRaw.mockImplementation((...args: unknown[]) => {
-        const sql = String(args[0]);
-        // VAT check returns [{total}], HP receivable returns [{balance}] or [{outstanding}]
-        if (sql.includes('21-2101') || sql.includes('vat_amount')) {
-          return Promise.resolve([{ total: new Prisma.Decimal('0') }]);
-        }
-        if (sql.includes('11-2102') && sql.includes('balance')) {
-          return Promise.resolve([{ balance: new Prisma.Decimal('0') }]);
-        }
-        if (sql.includes('outstanding')) {
-          return Promise.resolve([{ outstanding: new Prisma.Decimal('0') }]);
-        }
-        return Promise.resolve([]);
-      });
+      // Every check reads a row list (none indexes [0] any more) — an empty DB passes all of them.
+      prisma.$queryRaw.mockResolvedValue([]);
 
       const results = await service.runAllChecks();
       expect(results).toHaveLength(12);
+      expect(results.every((r) => r.status === 'PASS')).toBe(true);
     });
   });
 

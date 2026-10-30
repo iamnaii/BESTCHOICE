@@ -97,6 +97,7 @@
     "bot:eval": "npx -y tsx src/cli/bot-eval.cli.ts",
     "import:tooltify": "npx -y tsx src/cli/import-tooltify.cli.ts",
     "import:tooltify:help": "echo 'Dry-run default: TOOLTIFY_IMPORT_DIR=<folder> EXPECTED_DB_NAME=<db> npm --prefix apps/api run import:tooltify. To write: CONFIRM_IMPORT=YES_I_AM_SURE TOOLTIFY_IMPORT_DIR=<folder> EXPECTED_DB_NAME=<db> [ALLOW_PROD_IMPORT=YES_I_AM_SURE NODE_ENV=production] npm --prefix apps/api run import:tooltify'",
+    "import:legacy-backoffice": "tsx src/cli/legacy-backoffice/legacy-backoffice-import.cli.ts",
     "import:tooltify-stock": "npx -y tsx src/cli/import-tooltify-stock.cli.ts",
     "import:tooltify-stock:help": "echo 'Dry-run default: TOOLTIFY_IMPORT_DIR=<folder> EXPECTED_DB_NAME=<db> npm --prefix apps/api run import:tooltify-stock. To write: CONFIRM_IMPORT_STOCK=YES_I_AM_SURE TOOLTIFY_IMPORT_DIR=<folder> EXPECTED_DB_NAME=<db> [ALLOW_PROD_IMPORT_STOCK=YES_I_AM_SURE NODE_ENV=production] npm --prefix apps/api run import:tooltify-stock'",
     "wipe:test-stock": "npx -y tsx src/cli/wipe-test-stock.cli.ts",
@@ -186,6 +187,7 @@
     "supertest": "^7.2.2",
     "ts-jest": "^29.4.9",
     "ts-node": "^10.9.2",
+    "tsx": "4.23.12",
     "typescript": "^5.6.0",
     "typescript-eslint": "^8.59.2"
   },

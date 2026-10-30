@@ -2,6 +2,13 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CompanyResolverService } from '../journal/company-resolver.service';
+import {
+  isExcludedFromPeakExport,
+  isExcludedLegacyInterestLine,
+  isLegacyInterestAccount,
+  peakExportContractId,
+  peakExportOriginalEntryId,
+} from './peak-export-exclusion';
 
 // ============================================================
 // P3-SP3: PEAK CSV export (journal lines tagged with PEAK code)
@@ -65,13 +72,33 @@ export class PeakExportService {
    * `bank` / `cashbox` sources have no per-line resolver (cash and bank
    * accounts are mapped `fixed`) and count as unresolved too.
    *
+   * Legacy-backoffice contracts (spec ร่าง 5 §5.6 · `peak-export-exclusion.ts`): PEAK already holds
+   * them (receivable + the full revenue incl. interest, booked at signing), so the file never carries
+   *   - whole entries whose `metadata.flow` is a legacy opening / prior-receipt marker
+   *     → `excludedEntryCount` (distinct entries)
+   *   - 11-2106 / 41-1101 lines of an entry whose `metadata.contractId` is a contract with
+   *     `legacyContractCode` → `excludedLegacyInterestLineCount`
+   * A reversal / mirror (`metadata.originalEntryId`, or a `JournalService.void` reversal with
+   * `referenceType = 'REVERSAL'`) inherits its ORIGINAL entry's flow, and its contractId when it
+   * has none of its own, for both rules. Excluded lines are counted there only — never in
+   * `skippedLineCount` / `unresolvedSubCodeCount`. `legacyUnbalancedEntryCount` = entries that
+   * balanced before the interest drop and do not after (known gap — see step 3b).
+   *
    * Money values are emitted via `.toString()` to preserve Decimal precision
    * (matches the "DO NOT Number() on Prisma.Decimal in export" rule).
    */
   async exportJournalWithPeakCodes(
     periodStart: Date,
     periodEnd: Date,
-  ): Promise<{ csv: string; rowCount: number; skippedLineCount: number; unresolvedSubCodeCount: number }> {
+  ): Promise<{
+    csv: string;
+    rowCount: number;
+    skippedLineCount: number;
+    unresolvedSubCodeCount: number;
+    excludedEntryCount: number;
+    excludedLegacyInterestLineCount: number;
+    legacyUnbalancedEntryCount: number;
+  }> {
     // Guard: max 186 days (~6 months) per spec — protects DB + filesystem.
     const ms = periodEnd.getTime() - periodStart.getTime();
     const MAX_DAYS = 186;
@@ -145,10 +172,48 @@ export class PeakExportService {
       ],
     });
 
+    // 2b) Legacy-backoffice entries (spec ร่าง 5 §5.6): filtered AFTER the query so the query and
+    //     every non-legacy row stay exactly as before. Opening entries and prior-receipt markers
+    //     are dropped whole (by `flow`, never `tag` — markers carry tag 2B like real receipts).
+    //     Reversals / mirrors are judged by their ORIGINAL entry (one level), loaded in one batch
+    //     regardless of the window, status or soft-delete (a voided original is VOIDED).
+    const originalIds = new Set<string>();
+    for (const ln of lines) {
+      const id = peakExportOriginalEntryId(ln.journalEntry);
+      if (id) originalIds.add(id);
+    }
+    const originalById = new Map<string, { metadata: unknown }>();
+    if (originalIds.size > 0) {
+      const originals = await this.prisma.journalEntry.findMany({
+        where: { id: { in: [...originalIds] } },
+        select: { id: true, metadata: true },
+      });
+      for (const o of originals) originalById.set(o.id, { metadata: o.metadata });
+    }
+    const originalOf = (je: (typeof lines)[number]['journalEntry']) => {
+      const id = peakExportOriginalEntryId(je);
+      return id ? (originalById.get(id) ?? null) : null;
+    };
+    const excludedEntryNumbers = new Set<string>();
+    const kept = lines.filter((ln) => {
+      if (!isExcludedFromPeakExport(ln.journalEntry, originalOf(ln.journalEntry))) return true;
+      excludedEntryNumbers.add(ln.journalEntry.entryNumber); // entryNumber is @unique
+      return false;
+    });
+
     // 3) Resolve per-line contact sub-codes in two batched lookups (never per line).
+    //    The contract lookup also returns `legacyContractCode` for the interest-line filter (3b),
+    //    so 11-2106 / 41-1101 lines add their contract to the same batch — mapped or not. Contact
+    //    sub-codes still read the entry's OWN metadata only (unchanged output for non-legacy data).
     const contractIds = new Set<string>();
     const documentIds = new Set<string>();
-    for (const ln of lines) {
+    const interestContractIdOf = (je: (typeof lines)[number]['journalEntry']) =>
+      peakExportContractId(je, originalOf(je));
+    for (const ln of kept) {
+      if (isLegacyInterestAccount(ln.accountCode)) {
+        const id = interestContractIdOf(ln.journalEntry);
+        if (id) contractIds.add(id);
+      }
       const mapping = peakByCode.get(ln.accountCode);
       if (!mapping || mapping.peakSubCodeSource !== 'contact') continue;
       const meta = ln.journalEntry.metadata as JsonMeta;
@@ -161,13 +226,19 @@ export class PeakExportService {
       }
     }
     const contactByContract = new Map<string, string | null>();
+    const legacyByContract = new Map<string, { legacyContractCode: string | null }>();
     if (contractIds.size > 0) {
       const contracts = await this.prisma.contract.findMany({
         where: { id: { in: [...contractIds] } },
-        select: { id: true, customer: { select: { contact: { select: { peakContactCode: true } } } } },
+        select: {
+          id: true,
+          legacyContractCode: true,
+          customer: { select: { contact: { select: { peakContactCode: true } } } },
+        },
       });
       for (const c of contracts) {
         contactByContract.set(c.id, c.customer?.contact?.peakContactCode ?? null);
+        legacyByContract.set(c.id, { legacyContractCode: c.legacyContractCode ?? null });
       }
     }
     const contactByDocument = new Map<string, string | null>();
@@ -206,6 +277,45 @@ export class PeakExportService {
       }
     };
 
+    // 3b) Interest lines of legacy contracts (spec ร่าง 5): 11-2106 / 41-1101 never go to PEAK —
+    //     PEAK recognised that interest in full when the contract was signed. Checked before the
+    //     PEAK-code mapping so the count is the same whether or not those accounts are mapped yet.
+    //     Balance: in the 2A / JP4 / JP5 / write-off / void-reversal templates the two lines are an
+    //     equal Dr 11-2106 / Cr 41-1101 pair, so the rest of the entry still balances.
+    //     KNOWN GAP — awaiting the accounting firm (not decided): exchange-close-old-21-1106 debits
+    //     11-2106 with no 41-1101 pair, so a legacy contract's close-old entry (and its
+    //     exchange-cancel mirror) exports unbalanced by the unearned interest. How PEAK should book
+    //     that side is open. `legacyUnbalancedEntryCount` / X-Legacy-Unbalanced-Entries flags every
+    //     entry whose journal lines balanced before this drop and not after (checked before the
+    //     PEAK-code mapping). Imbalance caused only by lines without a PEAK code is not counted; an
+    //     entry that the interest drop unbalances is always counted, even if it also has unmapped
+    //     lines. Nothing in this path asserts balance.
+    let excludedLegacyInterestLines = 0;
+    const droppedNetByEntry = new Map<string, Prisma.Decimal>();
+    const exportable = kept.filter((ln) => {
+      const id = interestContractIdOf(ln.journalEntry);
+      if (!isExcludedLegacyInterestLine(ln, id ? legacyByContract.get(id) : null)) return true;
+      excludedLegacyInterestLines++;
+      const no = ln.journalEntry.entryNumber;
+      const net = new Prisma.Decimal(ln.debit).minus(new Prisma.Decimal(ln.credit));
+      droppedNetByEntry.set(no, (droppedNetByEntry.get(no) ?? new Prisma.Decimal(0)).plus(net));
+      return false;
+    });
+    let legacyUnbalancedEntries = 0;
+    if (droppedNetByEntry.size > 0) {
+      const keptNetByEntry = new Map<string, Prisma.Decimal>();
+      for (const ln of kept) {
+        const no = ln.journalEntry.entryNumber;
+        if (!droppedNetByEntry.has(no)) continue;
+        const net = new Prisma.Decimal(ln.debit).minus(new Prisma.Decimal(ln.credit));
+        keptNetByEntry.set(no, (keptNetByEntry.get(no) ?? new Prisma.Decimal(0)).plus(net));
+      }
+      for (const [no, dropped] of droppedNetByEntry) {
+        const before = keptNetByEntry.get(no) ?? new Prisma.Decimal(0);
+        if (before.isZero() && !before.minus(dropped).isZero()) legacyUnbalancedEntries++;
+      }
+    }
+
     // 4) Render rows; skip un-mapped accounts.
     const escape = (v: string | null | undefined) => {
       if (v == null) return '';
@@ -231,7 +341,7 @@ export class PeakExportService {
 
     const body: string[] = [];
     let skipped = 0;
-    for (const ln of lines) {
+    for (const ln of exportable) {
       const mapping = peakByCode.get(ln.accountCode);
       if (!mapping) {
         skipped++;
@@ -263,6 +373,9 @@ export class PeakExportService {
       rowCount: body.length,
       skippedLineCount: skipped,
       unresolvedSubCodeCount: unresolvedSubCodes,
+      excludedEntryCount: excludedEntryNumbers.size,
+      excludedLegacyInterestLineCount: excludedLegacyInterestLines,
+      legacyUnbalancedEntryCount: legacyUnbalancedEntries,
     };
   }
 }

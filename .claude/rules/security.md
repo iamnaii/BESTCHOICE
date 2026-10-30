@@ -38,7 +38,8 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
 - Error messages เป็นภาษาไทย เช่น `{ message: 'กรุณาระบุชื่อ' }`
 
 ## Intentionally Public Endpoints (ไม่มี JwtAuthGuard)
-- `chatbot-finance-liff` + `line-oa/liff/*` — LINE LIFF endpoints สำหรับลูกค้าเข้าถึงผ่าน LINE (ใช้ LIFF token แทน JWT) · LIFF token พิสูจน์แค่ว่า "เป็น LINE user คนนี้" ไม่ได้พิสูจน์ว่าเป็นลูกค้าคนไหน ⇒ **การผูก LINE กับลูกค้า (`customers.line_id_finance` / `customer_line_links`) ต้องผ่าน OTP ทาง SMS ไปเบอร์ของลูกค้าเท่านั้น** (`POST chatbot/finance/liff/request-otp` → `verify-otp` → `VerificationService.linkVerifiedLine` — ทางเดียว ทำผลข้างเคียงครบ: ดูดห้องผู้สนใจ · link row · journey · rich menu) · `POST line-oa/liff/register/lookup|confirm` (เดิมผูกด้วยเบอร์อย่างเดียว · lookup คืน `customerId` ของเจ้าของเบอร์) **ตอบ 410 ถาวร** และหน้า `/liff/register` พาไป `/liff/finance-verify` (Task 19, 2026-10-30) · endpoint ใหม่ที่เขียน `line_id_finance`/`customer_line_links` หรือคืน `customerId`/ชื่อของเจ้าของเบอร์ให้ผู้ที่ยังไม่ผ่าน OTP = security bug · กติกา OA ร้าน / redirect / เพดาน OTP / โหมดทดสอบ และ**ข้อยกเว้นที่ยังเหลือ** (login CSRF I-A, ทางพนักงาน I3, ไม่มีปุ่มยกเลิกผูก I4, quick reply ฝั่งร้าน I-C) อยู่หัวข้อ "LINE — ตัวตนลูกค้า · OTP · redirect" ด้านล่าง
+- `chatbot-finance-liff` + `line-oa/liff/*` — LINE LIFF endpoints สำหรับลูกค้าเข้าถึงผ่าน LINE (ใช้ LIFF token แทน JWT) · LIFF token พิสูจน์แค่ว่า "เป็น LINE user คนนี้" ไม่ได้พิสูจน์ว่าเป็นลูกค้าคนไหน ⇒ **การผูก LINE กับลูกค้า (`customers.line_id_finance` / `customer_line_links`) ต้องผ่าน OTP ทาง SMS ไปเบอร์ของลูกค้าเท่านั้น** (`POST chatbot/finance/liff/request-otp` → `verify-otp` → `VerificationService.linkVerifiedLine` — ทางเดียว ทำผลข้างเคียงครบ: ดูดห้องผู้สนใจ · link row · journey · rich menu) · `POST line-oa/liff/register/lookup|confirm` (เดิมผูกด้วยเบอร์อย่างเดียว · lookup คืน `customerId` ของเจ้าของเบอร์) **ตอบ 410 ถาวร** และหน้า `/liff/register` พาไป `/liff/finance-verify` (Task 19, 2026-10-30) · endpoint ใหม่ที่เขียน `line_id_finance`/`customer_line_links` หรือคืน `customerId`/ชื่อของเจ้าของเบอร์ให้ผู้ที่ยังไม่ผ่าน OTP = security bug · กติกา OA ร้าน / redirect / LINE Login nonce / เพดาน OTP / โหมดทดสอบ และ**ข้อยกเว้นที่ยังเหลือ** (ทางพนักงาน I3, ไม่มีปุ่มยกเลิกผูก I4, quick reply ฝั่งร้าน I-C, ทดสอบเครื่องจริงของ I-A) อยู่หัวข้อ "LINE — ตัวตนลูกค้า · OTP · redirect" ด้านล่าง
+- `line-oa/line-login` (`GET authorize`, `GET callback`, `POST verify`) — LINE Login สำหรับหน้า LIFF ที่เปิดนอก LIFF (เบราว์เซอร์ / in-app browser) · `@SkipCsrf()` (ไม่มี session) · `verify` throttle 20/นาที/IP ยืนยัน id_token กับ LINE + nonce ของแท็บ แล้วคืนตัวตนจาก token เท่านั้น (ไม่เขียนอะไร) — กติกาข้อ 3 ของหัวข้อ LINE ด้านล่าง
 - `sms-webhook` — รับ SMS delivery callback จาก provider
 - `paysolutions` — รับ payment webhook จาก PaySolutions gateway (verify ด้วย merchantId)
 - `address` — ข้อมูล static จังหวัด/อำเภอ/ตำบล (read-only, ไม่มี sensitive data)
@@ -52,7 +53,7 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
 
 **หมายเหตุ**: ถ้าพบ controller ที่ไม่มี guard ที่ไม่อยู่ในรายการนี้ → ถือว่าเป็น security bug
 
-## LINE — ตัวตนลูกค้า · OTP · redirect (Task 20, 2026-10-31)
+## LINE — ตัวตนลูกค้า · OTP · redirect (Task 20 + 21, 2026-10-31)
 
 **OTP ทาง SMS คือหลักฐานตัวตนเดียวของลูกค้าฝั่ง LINE** — LIFF token / LINE webhook บอกแค่ "เป็น LINE user คนนี้"
 ไม่ได้บอกว่าเป็นลูกค้าคนไหน. กติกาด้านล่างบังคับในโค้ดแล้ว เขียน endpoint/บอทใหม่ต้องทำตาม:
@@ -69,17 +70,35 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
    `/..//evil` = `//evil` ไม่ผ่าน · allowlist `^/(liff|pay)(/|$)`) แล้ว `buildFrontendReturnUrl` = `new URL(path, FRONTEND_URL ค่าแรก)` +
    ยืนยัน `origin` ตรง · ไม่ผ่าน = `/liff/contract` (`utils/line-login.util.ts`) · ทั้งทางสำเร็จ (`#id_token=`) และทาง `login_error`
    (FRONTEND_URL ใช้ไม่ได้ = 500 ข้อความกลาง ไม่ throw) · **ห้ามต่อสตริง `${FRONTEND_URL}${path}` เพื่อ redirect อีก**
-   (`'https://web' + '@evil/'` = host `evil`) · **ไม่ได้กัน login CSRF** — ดูข้อยกเว้นข้างล่าง
-3. **OTP (`VerificationService`)**: 3 ครั้งต่อรหัส (ช่วงละ 5 นาที) กินแบบ atomic ก่อนเทียบรหัส (`updateManyAndReturn` … `WHERE attempts < 3
+   (`'https://web' + '@evil/'` = host `evil`) · redirect ปลอดภัยอย่างเดียว**ไม่กัน login CSRF** — ข้อ 3 กัน
+3. **LINE Login ผูก id_token กับแท็บที่เริ่มล็อกอินด้วย OIDC `nonce`** (Task 21 I-A — ปิด login CSRF / identity injection ทั้งสองทาง):
+   `useLiffInit.redirectToLineLogin` สุ่ม nonce 32 ไบต์ (base64url) เก็บ `sessionStorage` (`bc_ll_nonce`) แล้วส่ง `authorize?nonce=` →
+   API ส่งต่อให้ LINE (รูปแบบ `LINE_LOGIN_NONCE_PATTERN` ไม่ตรง = ไม่ส่ง) → LINE ฝังเป็น claim ใน id_token · callback คืน
+   **เฉพาะ** `?line_login=true#id_token=` (ไม่มี userId/ชื่อ/รูปใน query อีก) · หน้าเว็บรับ token จาก URL **เฉพาะเมื่อแท็บนี้มี nonce ค้างอยู่**
+   และ `POST line-oa/line-login/verify {idToken, nonce}` ผ่าน (API ยืนยันกับ LINE `/oauth2/v2.1/verify` — ลายเซ็น/aud/exp/nonce — แล้วเทียบ
+   claim `nonce` (timing-safe) + `aud` + `sub` เอง) · nonce ใช้ครั้งเดียว · **ตัวตน (sub/ชื่อ/รูป) มาจาก payload ที่ยืนยันแล้วเท่านั้น** ·
+   ไม่มี/ไม่ตรง = ล้าง URL ทิ้ง token แล้วเริ่มล็อกอินของแท็บนี้ใหม่**หนึ่งครั้งต่อ 2 นาที** (`bc_ll_retry_at` — ในแอป LINE เป็นการล็อกอินอัตโนมัติ)
+   ครั้งที่สองบอกให้เปิดลิงก์ใหม่จากแชท · เก็บ nonce ไม่ได้ = ไม่เริ่มล็อกอิน ⇒ code ของผู้โจมตี (ลิงก์ callback) และลิงก์หน้าเว็บที่ฝัง
+   `#id_token=` ของผู้โจมตี ใช้ไม่ได้ทั้งคู่ · `buildBrowserUrl` (ลิงก์ที่บอทส่ง) ชี้**หน้าเว็บ** ให้หน้าเว็บเริ่มล็อกอินพร้อม nonce เอง
+   (ลิงก์ authorize รุ่นเก่าในประวัติแชทยังใช้ได้ — เสียหนึ่งรอบ) · token จาก LIFF SDK (`liff.getIDToken()` — ไม่ผ่าน URL) ไม่เกี่ยว ·
+   **ห้ามอ่านตัวตนจาก query/fragment ของ URL ที่ไหนอีก** และห้ามเพิ่มทางรับ id_token จาก URL ที่ไม่ผ่าน `verify` ·
+   ไม่ใช้ cookie ผูก state ฝั่ง API: บน prod หน้าเว็บเรียก authorize ผ่าน rewrite `/api/**` ของ Firebase Hosting (host เว็บ — ส่งต่อเฉพาะ cookie
+   `__session`) แต่ callback อยู่ host ของ API (`API_BASE_URL`) ⇒ cookie host-only ไปไม่ถึง · HMAC state อย่างเดียวไม่ช่วย (ผู้โจมตีขอ state ที่ลงนามเองได้)
+4. **OTP (`VerificationService`)**: 3 ครั้งต่อรหัส (ช่วงละ 5 นาที) กินแบบ atomic ก่อนเทียบรหัส (`updateManyAndReturn` … `WHERE attempts < 3
    AND expires_at > now`) · ขอรหัสใหม่ในช่วงเดิม **ไม่รีเซ็ต** attempts · ผิดครบแล้วล็อกจนหมดช่วง (แถวไม่ถูกลบ) ·
    **cooldown 60 วิ/LINE แบบ atomic**: อ่านแถว→ตรวจ→เพดาน→เขียนแถว อยู่ในทรานแซกชันที่เริ่มด้วย
-   `pg_advisory_xact_lock(hashtext('otp-request:'||lineUserId))` (ยิงขนานจาก LINE เดียวผ่านได้คำขอเดียว) · ส่ง SMS หลัง commit ·
+   `pg_try_advisory_xact_lock(hashtext('otp-request:'||lineUserId))` (ยิงขนานจาก LINE เดียวผ่านได้คำขอเดียว · ล็อกไม่ได้ = ตอบ cooldown ทันที
+   ไม่เข้าคิวถือ connection ของ pool — R-2) · ส่ง SMS หลัง commit ·
    **เพดานต่อวันไทย** (แถวนับใน `chatbot_otp_requests` คีย์ `otp-quota:…`): ต่อ LINE ข้ามทุกเบอร์ (นับทั้งจริงและ decoy) **5** · ต่อ (ลูกค้า, LINE) **2**
    (กินก่อน) · ต่อลูกค้ารวมทุก LINE **8** ⇒ เดาได้ ≤ 24 ครั้ง/ลูกค้า/วัน · LINE ผู้โจมตี 3 บัญชีเผาได้ 6 เจ้าของเบอร์ยังได้รหัส (ต้อง ≥ 4 บัญชีถึงล็อกได้ทั้งวัน) ·
-   ส่ง SMS ไม่สำเร็จ = log + Sentry + ทิ้งรหัส + ปลด cooldown + คืนโควตาลูกค้า/(ลูกค้า, LINE) · `requestOtp` **ตอบเหมือนกันทุกไบต์** ทั้งเบอร์ที่พบ/ไม่พบ/
+   ส่ง SMS ไม่สำเร็จ = log + Sentry + ทิ้งรหัส + ปลด cooldown + คืนโควตาลูกค้า/(ลูกค้า, LINE) **เฉพาะเมื่อรหัสนั้นยังไม่ถูกเดาเลย**
+   (`UPDATE … WHERE hash = รหัสที่ออก AND attempts = attempts ตอนออก` คำสั่งเดียว — ถูกเดาแล้ว = ทิ้งรหัสแต่ไม่คืน ⇒ ≤ 24 ครั้ง/ลูกค้า/วัน จริงแม้ provider ล่ม — R-1) ·
+   งานส่ง SMS ที่ไม่ await ปิดท้ายด้วย `.catch` (logger/Sentry ที่โยนเองไม่เป็น unhandled rejection — R-3) · cron ล้างแถวหมดอายุลบผ่าน
+   `FOR UPDATE SKIP LOCKED` (ไม่รอล็อกแถวของใคร ⇒ ไม่มีวงจร deadlock กับคำขอ OTP · เทียบ `now() AT TIME ZONE 'UTC'` — R-2) ·
+   `requestOtp` **ตอบเหมือนกันทุกไบต์** ทั้งเบอร์ที่พบ/ไม่พบ/
    ถึงเพดาน (แถว decoy `customer_id = ''` ไม่มีรหัสที่ใช้ได้ · ไม่ส่ง SMS) และ **ไม่ await SMS + รอเวลาตอบขั้นต่ำ 1 วิ ทุกทางที่สำเร็จ** (timing) ·
    หน้า OTP บอก "ไม่ได้รับ SMS ภายใน 2 นาที? … โทรหาสาขา" (คำตอบเหมือนส่งแล้วเสมอ) · lock ในหน่วยความจำนับเฉพาะเบอร์ผิดรูปแบบ (นับ "ไม่พบ" = oracle)
-4. **`TEST_MODE_BYPASS` มีผลบน `NODE_ENV=production` เฉพาะเมื่อตั้ง env `ALLOW_TEST_MODE_BYPASS=YES_I_AM_SURE`** — ไม่ตั้ง = flag ถูกเมิน
+5. **`TEST_MODE_BYPASS` มีผลบน `NODE_ENV=production` เฉพาะเมื่อตั้ง env `ALLOW_TEST_MODE_BYPASS=YES_I_AM_SURE`** — ไม่ตั้ง = flag ถูกเมิน
    (log + Sentry warning ทุก 10 นาที) และ `PUT settings/test-mode` เปิดไม่ได้ (400 ไทย) · dev/UAT (non-production) ทำงานเหมือนเดิม
 
 **ข้อยกเว้นที่ยังเหลือ (รู้ตัว — ยังไม่ได้ปิด อย่าอ่านกติกาข้างบนว่า "ปิดหมดแล้ว"):**
@@ -92,14 +111,15 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
   ฝั่งร้าน (ใบเสร็จขายสด, ประกัน, ออเดอร์ออนไลน์, PaySolutions, หลังการขาย, แคมเปญ) ยังอ่าน `line_id_shop` · ลูกค้าเขียนคอลัมน์นี้เองไม่ได้แล้ว
   (เหลือพนักงาน + บอทขายตอนสร้างลูกค้าใหม่จากแชท) ⇒ หน้า "ประกันของฉัน" ที่บอกให้ "พิมพ์เบอร์ในแชท" จะวนไม่จบจนกว่าจะเลือก (ก) ให้หน้าเหล่านี้อ่าน
   ตัวตนจากแถว OTP หรือ (ข) ให้ OTP เขียน `line_id_shop` ด้วย · ค่า `line_id_shop` ที่ผูกด้วยเบอร์ไปก่อนหน้านี้ (ถ้ามี) ยังอยู่ — ตรวจ/ล้างก่อนเชื่อม
-- **I-A Login CSRF — ยังเปิด (Important สูง · ต้องปิดก่อนเปิด LIFF ให้ลูกค้า · งานแยก)** มีสองทาง: (1) `state` ของ LINE Login ไม่ลงนามและไม่ผูก session ⇒
-  ผู้โจมตีส่งลิงก์ callback (โดเมน API จริง) ที่มี `code` ของ LINE ตัวเอง — หน้าเว็บของผู้โจมตีขอ `code` ใหม่ได้ทุกครั้งที่เหยื่อกด จึง**ไม่มีกรอบเวลาจำกัด**
-  (2) **ไม่ผ่าน API เลย**: `useLiffInit.ts` เชื่อ `?line_login=true&line_user_id=…&line_display_name=…#id_token=…` จาก URL ตรง ๆ ⇒ ส่งลิงก์หน้าเว็บที่ฝัง id_token
-  ของผู้โจมตี (ปลอมชื่อ/รูปบนการ์ดได้ด้วย) · ทั้งสองทางพาเหยื่อเข้าหน้า OTP ในนาม LINE ผู้โจมตี → เหยื่อกรอกเบอร์+OTP ของตัวเอง = ผูก LINE ผู้โจมตีกับลูกค้าเหยื่อ
-  (และเหยื่อผูกเองไม่ได้ — 409 + ไม่มีปุ่มพนักงาน I4) · **nonce/cookie ฝั่ง API อย่างเดียวปิดได้แค่ทาง (1)** — ทางแก้ที่ถูกคือ **OIDC `nonce` ฝั่งหน้าเว็บ**:
-  `redirectToLineLogin` สุ่ม nonce เก็บ `sessionStorage` แล้วส่งไป `authorize` → ส่งต่อให้ LINE (ฝังใน claim ของ id_token) → หน้าเว็บรับ id_token เฉพาะเมื่อ
-  `payload.nonce` ตรงค่าใน `sessionStorage` (ลบทันที) และเอา `sub`/`name`/`picture` จาก payload แทน query · cookie `__Host-` `SameSite=Lax` host-only บน API
-  เป็นชั้นเสริม · HMAC state อย่างเดียวไม่ช่วย · ต้องทดสอบบน LINE iOS/Android + Safari/Chrome ก่อนเปิด · เสริมการตรวจจับ: SMS แจ้งเบอร์ลูกค้าหลังผูก LINE สำเร็จ
+- **I-A Login CSRF — ปิดในโค้ดแล้ว (Task 21, 2026-10-31 · กติกาข้อ 3) · ที่ยังเหลือ:** (ก) **ยังไม่ได้ทดสอบบนเครื่องจริง** — ก่อนเปิด LIFF ให้ลูกค้า (1 ธ.ค.)
+  ต้องผ่านครบ 4 แบบ (แอป LINE iOS · แอป LINE Android · Safari · Chrome): เปิดลิงก์ยืนยันตัวตนจากแชท → ล็อกอิน → หน้า OTP แสดงชื่อ/รูป LINE ของตัวเอง ·
+  เปิดลิงก์หน้าเว็บที่ฝัง `#id_token=` ของบัญชีอื่น → ไม่ขึ้นชื่อนั้น ได้ล็อกอินเป็นบัญชีตัวเอง · ลิงก์ authorize รุ่นเก่า → ได้หน้า OTP (ล็อกอินเพิ่มหนึ่งรอบ) ·
+  ไปหน้า LIFF อื่น/รีเฟรชในแท็บเดิมไม่ต้องล็อกอินซ้ำ · `/liff/contract` ใน LIFF จริง (liff.line.me) ไม่ผ่านทางนี้และต้องทำงานเหมือนเดิม (ข) ล็อกอินที่ข้ามบริบทกลางทาง (เปิดจากเบราว์เซอร์ภายนอก →
+  สลับไปแอป LINE → กลับมาเปิด callback ในแท็บ/เบราว์เซอร์อื่น) **fail closed**: แท็บใหม่ไม่มี nonce ⇒ ทิ้ง token แล้วเริ่มล็อกอินใหม่ในแท็บนั้น (ผู้ใช้อาจต้องกดล็อกอิน
+  LINE อีกครั้ง) — ไม่รั่ว แต่ UX อาจวนถ้าระบบเปิดแท็บใหม่ทุกครั้ง (ตรวจในข้อ ก) (ค) เบราว์เซอร์ที่ปิด storage (เช่น Safari "Block All Cookies") ล็อกอินนอก LIFF
+  ไม่ได้ — หน้าจอบอกให้เปิดในแอป LINE (ง) ยังไม่มี SMS แจ้งเบอร์ลูกค้าหลังผูก LINE สำเร็จ (มาตรการตรวจจับเสริมที่รีวิวเสนอ — ใช้กับ I3 ได้ด้วย)
+  (จ) deploy: เว็บ (26.10.70) กับ API ต้องขึ้นพร้อมกัน — เว็บรุ่นเก่ากับ API ใหม่ = ล็อกอินนอก LIFF ล้ม ("ข้อมูลเข้าสู่ระบบ LINE ไม่ครบ") จนเว็บใหม่ขึ้น ·
+  เว็บใหม่กับ API เก่า = verify 404 → "ยืนยันการเข้าสู่ระบบ LINE ไม่ได้ในขณะนี้" (ไม่รั่วทั้งสองแบบ)
 - **I-C — OA ร้าน: ปุ่ม quick reply (postback `TEMPLATE:`) เติมตัวแปรลูกค้า** (`{customerName}` `{contractNumber}` `{amountDue}` …) จาก `chat_rooms.customer_id`
   (`canned-response-variable.service.ts`) ซึ่งบอทขาย (`capture_lead` `LINKED_BY_PHONE`) ผูกห้องได้ด้วยเบอร์อย่างเดียว — ไม่ผ่าน `findOtpVerifiedCustomerId` ⇒
   ก่อนเปิดบอทขายบน OA ร้าน (และตรวจ Facebook ที่อาจเปิดอยู่): เติมตัวแปรลูกค้าเฉพาะห้อง LINE ที่ `findOtpVerifiedCustomerId(room.lineUserId) === room.customerId`

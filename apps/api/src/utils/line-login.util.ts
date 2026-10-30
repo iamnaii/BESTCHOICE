@@ -1,10 +1,39 @@
+import { timingSafeEqual } from 'crypto';
+
 /**
- * Build browser-friendly URL that uses LINE Login OAuth.
- * Works outside LINE app — redirects through LINE Login → back to LIFF page.
+ * ลิงก์หน้า LIFF ที่บอทส่งให้ลูกค้า — เปิดได้ทั้งในแอป LINE และเบราว์เซอร์ทั่วไป.
+ *
+ * Task 21 I-A: ชี้ **หน้าเว็บ** (ไม่ใช่ `line-login/authorize` ของ API ตรง ๆ) — หน้าเว็บ (`useLiffInit`) เป็นคนเริ่ม
+ * LINE Login พร้อม nonce ของแท็บเอง. ลิงก์เดิมที่ชี้ authorize ตรง ๆ (ยังค้างในประวัติแชท) ยังใช้ได้: token ที่ได้ไม่มี
+ * nonce ของแท็บ ⇒ หน้าเว็บไม่รับ แล้วเริ่มล็อกอินใหม่หนึ่งรอบ (ในแอป LINE เป็นการล็อกอินอัตโนมัติเงียบ ๆ)
  */
 export function buildBrowserUrl(path: string): string {
-  const apiBase = process.env.API_BASE_URL || 'http://localhost:3000';
-  return `${apiBase}/api/line-oa/line-login/authorize?returnPath=${encodeURIComponent(path)}`;
+  try {
+    return buildFrontendReturnUrl(primaryFrontendUrl(process.env.FRONTEND_URL), path).toString();
+  } catch {
+    // FRONTEND_URL ใช้ไม่ได้ — ถอยไปลิงก์ authorize เดิม (หน้าเว็บยังรับ token เฉพาะที่ nonce ตรงเหมือนเดิม)
+    const apiBase = process.env.API_BASE_URL || 'http://localhost:3000';
+    return `${apiBase}/api/line-oa/line-login/authorize?returnPath=${encodeURIComponent(path)}`;
+  }
+}
+
+/**
+ * Task 21 I-A — nonce ของ OIDC ที่หน้าเว็บสุ่มต่อแท็บ (base64url 32 ไบต์ = 43 ตัว) · รับช่วงกว้างพอสำหรับรูปแบบอื่น
+ * แต่ไม่ยอมอักขระที่ต้อง encode (ส่งต่อใน URL ของ LINE ตรง ๆ)
+ */
+export const LINE_LOGIN_NONCE_PATTERN = /^[A-Za-z0-9_-]{22,128}$/;
+
+/** nonce ที่รูปแบบถูกต้อง หรือ undefined (ไม่ใช่ string / array จาก query ซ้ำ / รูปแบบผิด) */
+export function sanitizeLoginNonce(raw: unknown): string | undefined {
+  return typeof raw === 'string' && LINE_LOGIN_NONCE_PATTERN.test(raw) ? raw : undefined;
+}
+
+/** เทียบ nonce แบบเวลาคงที่ (ความยาวต่างกัน = ไม่ตรง) */
+export function loginNonceMatches(expected: string, actual: unknown): boolean {
+  if (typeof actual !== 'string') return false;
+  const a = Buffer.from(expected);
+  const b = Buffer.from(actual);
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 /** หน้าที่ LINE Login พากลับเมื่อ returnPath ไม่มี/ไม่ปลอดภัย */

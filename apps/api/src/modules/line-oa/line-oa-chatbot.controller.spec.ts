@@ -160,7 +160,7 @@ describe('LineOaChatbotController — WS2 staged AI gate', () => {
       'rt-1',
       [
         expect.objectContaining({
-          text: expect.stringContaining('returnPath=%2Fliff%2Ffinance-verify'),
+          text: expect.stringContaining('/liff/finance-verify'),
         }),
       ],
       'line-shop',

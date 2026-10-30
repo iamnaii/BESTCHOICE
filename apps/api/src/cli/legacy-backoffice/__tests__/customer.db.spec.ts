@@ -13,6 +13,7 @@ import {
   type LegacyCustomerInput,
   type LinkLegacyCustomerOptions,
 } from '../customer';
+import { shopCompanyForTest } from './synthetic-book';
 
 /**
  * ผูกหรือสร้างลูกค้าจากระบบเก่าบน Postgres จริง (Task 8) — ข้อมูลสังเคราะห์ทั้งหมด (ชื่อขึ้นต้น "ทดสอบระบบ",
@@ -61,23 +62,8 @@ describeDb('linkOrCreateLegacyCustomer (real DB)', () => {
     await Promise.all([prisma.$connect(), logged.$connect()]);
     pii = new CustomerPiiService(prisma as unknown as PrismaService);
 
-    let shop = await prisma.companyInfo.findFirst({
-      where: { companyCode: 'SHOP' },
-      select: { id: true },
-    });
-    if (!shop) {
-      shop = await prisma.companyInfo.create({
-        data: {
-          nameTh: `${TEST_NAME_PREFIX} SHOP T15`,
-          taxId: '0000000000000',
-          companyCode: 'SHOP',
-          address: '1 Test Rd.',
-          directorName: `${TEST_NAME_PREFIX} กรรมการ`,
-        },
-        select: { id: true },
-      });
-      createdShopId = shop.id;
-    }
+    const shop = await shopCompanyForTest(prisma, 'T15');
+    if (shop.created) createdShopId = shop.id;
     shopBranchId = (
       await prisma.branch.create({
         data: { name: `${TEST_NAME_PREFIX} T15 SHOP ${stamp}`, companyId: shop.id },

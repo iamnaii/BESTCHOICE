@@ -35,6 +35,7 @@ import {
   LAST,
   MONTHLY,
   peakMatch,
+  shopCompanyForTest,
   standardInstallments,
   syntheticBook,
   syntheticContract,
@@ -176,7 +177,9 @@ describeDb('legacy opening state runs on the real templates — golden (real DB)
   let refSeq = 0;
 
   let financeCompanyId = '';
+  /** สาขาใต้ SHOP (ต้นทางสิทธิ์ของลูกค้าที่นำเข้า) */
   let branchId = '';
+  let createdShopId: string | null = null;
   let userId = '';
   let approverId = '';
   let createdAdminId: string | null = null;
@@ -232,9 +235,11 @@ describeDb('legacy opening state runs on the real templates — golden (real DB)
         })
       ).id;
     }
+    const shop = await shopCompanyForTest(prisma, 'T11');
+    if (shop.created) createdShopId = shop.id;
     branchId = (
       await prisma.branch.create({
-        data: { name: `${TEST_NAME_PREFIX} T11 ${stamp}`, companyId: financeCompanyId },
+        data: { name: `${TEST_NAME_PREFIX} T11 ${stamp}`, companyId: shop.id },
       })
     ).id;
     userId = (
@@ -380,6 +385,9 @@ describeDb('legacy opening state runs on the real templates — golden (real DB)
         await prisma.branch.delete({ where: { id: branchId } }).catch(async () => {
           await prisma.branch.update({ where: { id: branchId }, data: { deletedAt: new Date() } });
         });
+        if (createdShopId) {
+          await prisma.companyInfo.delete({ where: { id: createdShopId } }).catch(() => undefined);
+        }
       } finally {
         await prisma.$disconnect();
         if (saved.key === undefined) delete process.env.PII_ENCRYPTION_KEY;

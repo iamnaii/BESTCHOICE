@@ -302,8 +302,16 @@ describe('legacy-backoffice-import CLI — report / import (Task 13)', () => {
           findFirst: jest.fn(async () => ({
             id: 'branch-1',
             name: 'สาขาสังเคราะห์',
+            isActive: true,
+            deletedAt: null,
             company:
-              over.branchCompany === undefined ? { companyCode: 'SHOP' } : over.branchCompany,
+              over.branchCompany === null
+                ? null
+                : {
+                    isActive: true,
+                    deletedAt: null,
+                    ...(over.branchCompany ?? { companyCode: 'SHOP' }),
+                  },
           })),
         },
         user: {

@@ -27,6 +27,7 @@ import {
   CUTOFF,
   MONTHLY,
   peakMatch,
+  shopCompanyForTest,
   standardInstallments,
   syntheticBook,
   syntheticContract,
@@ -211,8 +212,12 @@ describeDb('runGates (real DB, inside the import transaction)', () => {
 
   let financeCompanyId = '';
   let createdCompanyId: string | null = null;
+  /** สาขาใต้ SHOP (ต้นทางสิทธิ์ของลูกค้าที่นำเข้า) */
   let branchId = '';
+  let createdShopId: string | null = null;
   let userId = '';
+  /** รหัสสมาชิกที่มีแต่สัญญายกเลิก — ต้องไม่ได้แถวลูกค้า */
+  let canceledMemberCode = '';
 
   let plan: ImportPlan;
   let planWithFiles: ImportPlan;
@@ -258,9 +263,11 @@ describeDb('runGates (real DB, inside the import transaction)', () => {
       financeCompanyId = created.id;
       createdCompanyId = created.id;
     }
+    const shop = await shopCompanyForTest(prisma, 'T12');
+    if (shop.created) createdShopId = shop.id;
     branchId = (
       await prisma.branch.create({
-        data: { name: `${TEST_NAME_PREFIX} T12 ${stamp}`, companyId: financeCompanyId },
+        data: { name: `${TEST_NAME_PREFIX} T12 ${stamp}`, companyId: shop.id },
       })
     ).id;
     userId = (
@@ -394,6 +401,7 @@ describeDb('runGates (real DB, inside the import transaction)', () => {
       phone: null,
       name: `${TEST_NAME_PREFIX} T12 สมาชิก`,
     });
+    canceledMemberCode = canceledMember.member_code as string;
     const book = syntheticBook(
       [c.overdue, c.payoff, c.prepaid, c.old, c.completed, c.canceled],
       [...members, canceledMember],
@@ -458,6 +466,7 @@ describeDb('runGates (real DB, inside the import transaction)', () => {
     await prisma.user.deleteMany({ where: { id: userId } });
     await prisma.branch.deleteMany({ where: { id: branchId } });
     if (createdCompanyId) await prisma.companyInfo.deleteMany({ where: { id: createdCompanyId } });
+    if (createdShopId) await prisma.companyInfo.deleteMany({ where: { id: createdShopId } });
     await prisma.$disconnect();
     if (saved.key === undefined) delete process.env.PII_ENCRYPTION_KEY;
     else process.env.PII_ENCRYPTION_KEY = saved.key;
@@ -589,6 +598,19 @@ describeDb('runGates (real DB, inside the import transaction)', () => {
     expect(gate(results, '6.5').detail).toMatch(/ตั้งบางส่วน 1/);
     expect(gate(results, '6.10').detail).toMatch(/ผ่อนอยู่ 3 สัญญา/);
     expect(gate(results, '6.10').detail).toContain('การส่งผ่าน PEAK API ยังไม่กรอง');
+  }, 120_000);
+
+  it('a member whose only contract is canceled gets no Customer row in the written book', async () => {
+    const counts = await inImport(async (tx, report) => ({
+      canceledMember: await tx.customer.count({
+        where: { legacyMemberCode: canceledMemberCode },
+      }),
+      importedMembers: await tx.customer.count({
+        where: { legacyMemberCode: { in: plan.items.map((i) => i.memberCode) } },
+      }),
+      inReport: report.customers.some((x) => x.legacyMemberCode === canceledMemberCode),
+    }));
+    expect(counts).toEqual({ canceledMember: 0, importedMembers: 5, inReport: false });
   }, 120_000);
 
   it('6.1 — dump count ≠ plan count, or a cutoff other than plan.cutoff', async () => {

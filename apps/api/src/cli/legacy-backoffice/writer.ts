@@ -67,8 +67,8 @@ import type { ImportBlocker, ImportPlan, PlannedContract } from './plan-import';
  * (ไม่ใช่ตัวบล็อก — เจ้าของตัดสินภายหลัง)
  *
  * **ลูกค้าที่สร้างใหม่** ได้ต้นทางสิทธิ์ของสาขา `--branch-id` (คำตัดสินเจ้าของ 30/10): `accessBranchId` = สาขานั้น ·
- * `accessCompanyCode` = บริษัทของสาขา หรือ `'SHOP'` เมื่อสาขาไม่ผูกบริษัท (`report.customerOrigin.companyFallback`) ·
- * ลูกค้าเดิมที่ LINKED ไม่ถูกแตะ (`customer.ts`)
+ * `accessCompanyCode` = `'SHOP'` เสมอ (สาขาไม่ผูกบริษัท = ค่าแทน — `report.customerOrigin.companyFallback`) · สาขา/บริษัทที่
+ * ใช้ไม่ได้ = throw ก่อนคำสั่งเขียนแรก (`resolveLegacyCustomerOrigin`) · ลูกค้าเดิมที่ LINKED ไม่ถูกแตะ (`customer.ts`)
  */
 
 const ZERO = new Prisma.Decimal(0);

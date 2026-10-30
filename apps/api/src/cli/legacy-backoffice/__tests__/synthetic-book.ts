@@ -1,5 +1,6 @@
-import { Prisma } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
 import { bangkokMidnight } from '../../../utils/date.util';
+import { TEST_NAME_PREFIX } from '../../../utils/test-data-markers';
 import { LEGACY_CUSTOMER_COLUMNS } from '../customer';
 import type { DumpRow } from '../dump-reader';
 import type {
@@ -249,3 +250,29 @@ export function syntheticRecon(matches: Array<[LegacyContract, PeakMatch]>): Pea
 
 /** วันตัด 2026-11-30 23:59:59 กรุงเทพ */
 export const CUTOFF = new Date('2026-11-30T23:59:59+07:00');
+
+/**
+ * บริษัท SHOP ที่ใช้งานได้สำหรับผูกสาขาของสเปคฐานข้อมูล (ต้นทางสิทธิ์ของลูกค้าที่นำเข้าต้องเป็นสาขาใต้ SHOP — Task 15) —
+ * ใช้แถวที่มีอยู่ (migration สร้างไว้) ไม่งั้นสร้างใหม่ · `created` = สเปคลบเองตอนจบ (หลังลบลูกค้า/สาขาที่อ้างแล้ว)
+ */
+export async function shopCompanyForTest(
+  prisma: PrismaClient,
+  label: string,
+): Promise<{ id: string; created: boolean }> {
+  const existing = await prisma.companyInfo.findFirst({
+    where: { companyCode: 'SHOP' },
+    select: { id: true },
+  });
+  if (existing) return { id: existing.id, created: false };
+  const created = await prisma.companyInfo.create({
+    data: {
+      nameTh: `${TEST_NAME_PREFIX} SHOP ${label}`,
+      taxId: '0000000000000',
+      companyCode: 'SHOP',
+      address: '1 Test Rd.',
+      directorName: `${TEST_NAME_PREFIX} กรรมการ`,
+    },
+    select: { id: true },
+  });
+  return { id: created.id, created: true };
+}

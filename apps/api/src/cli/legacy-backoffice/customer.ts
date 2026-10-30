@@ -139,9 +139,9 @@ export type CustomerLinkResult = PhoneFlag &
   );
 
 /**
- * ต้นทางสิทธิ์ (immutable origin) ของลูกค้าที่การนำเข้าสร้าง — `accessBranchId` = `--branch-id` เสมอ ·
- * `accessCompanyCode` = รหัสบริษัทของสาขา (`Branch.company.companyCode`) · สาขาไม่ผูกบริษัท (`company_id` ว่าง) หรือบริษัทไม่มีรหัส =
- * `'SHOP'` (ทุกสาขาอยู่ใต้ SHOP — คำตัดสินผู้คุมงาน 30/10) และ `companyFallback: true` ให้ผู้เรียกเตือน
+ * ต้นทางสิทธิ์ (immutable origin) ของลูกค้าที่การนำเข้าสร้าง — **SHOP + สาขา `--branch-id` เสมอ** (ทุกสาขาอยู่ใต้ SHOP ·
+ * `AccessPartySourceService.origin` รับเฉพาะสาขาใต้ SHOP) · สาขาไม่ผูกบริษัท (`company_id` ว่าง — สาขาบน prod 30/10) = ค่าแทน SHOP
+ * และ `companyFallback: true` ให้ผู้เรียกเตือน (คำตัดสินผู้คุมงาน 30/10)
  */
 export type LegacyCustomerOrigin = {
   accessCompanyCode: Company;
@@ -149,49 +149,75 @@ export type LegacyCustomerOrigin = {
   companyFallback: boolean;
 };
 
-/** รหัสบริษัทที่ใช้เมื่อสาขาไม่ผูกบริษัท */
+/** รหัสบริษัทของต้นทางสิทธิ์ทุกแถวที่การนำเข้าสร้าง (ทางปกติและค่าแทน) */
 export const LEGACY_ORIGIN_FALLBACK_COMPANY: Company = 'SHOP';
 /** ข้อความเตือนเมื่อใช้ค่าแทน (บนจอ + `import-result.json`) */
 export const LEGACY_ORIGIN_FALLBACK_WARNING =
   'สาขา --branch-id ไม่ผูกบริษัท (branches.company_id ว่าง) — ลูกค้าที่สร้างใหม่ได้ accessCompanyCode SHOP แทน (ทุกสาขาอยู่ใต้ SHOP)';
 
-const ORIGIN_ERROR = 'หาต้นทางสิทธิ์ของลูกค้าที่นำเข้าไม่ได้ (--branch-id)';
+const ORIGIN_ERROR = 'ตั้งต้นทางสิทธิ์ของลูกค้าที่นำเข้าไม่ได้ (--branch-id)';
+/** ต่อท้ายทุกข้อความ throw — บอกว่าทำไมต้องหยุดก่อนเขียน แทนที่จะเขียนแล้วค่อยแก้ */
+const ORIGIN_IMMUTABLE_NOTE =
+  'ต้นทางสิทธิ์ของลูกค้า/ผู้ติดต่อเขียนแล้วแก้ไม่ได้ (trigger immutable_party_access_origin) — แก้สาขา/บริษัทก่อนแล้วรันใหม่';
+
+const originError = (reason: string) =>
+  new Error(`${ORIGIN_ERROR}: ${reason} — ${ORIGIN_IMMUTABLE_NOTE}`);
 
 /**
- * ต้นทางสิทธิ์ของลูกค้าที่สร้างจากการนำเข้า (ดู `LegacyCustomerOrigin`) — อ่านอย่างเดียว · ไม่พบสาขา (หรือถูกลบ) / รหัสบริษัทของสาขา
- * ไม่ใช่ SHOP หรือ FINANCE / ใช้ค่าแทน SHOP แต่ไม่มีบริษัท SHOP ในฐาน (FK ของ `access_company_code`) = throw ก่อนเขียน
+ * ต้นทางสิทธิ์ของลูกค้าที่สร้างจากการนำเข้า (ดู `LegacyCustomerOrigin`) — อ่านอย่างเดียว · ทุกกรณีที่ไม่ใช่สองทางนี้ = throw
+ * ก่อนเขียน (ข้อความไทยบอกเหตุ):
+ * - สาขา active + ยังไม่ลบ · บริษัทของสาขาเป็น SHOP ที่ active + ยังไม่ลบ → `{ SHOP, สาขา, companyFallback: false }`
+ * - สาขา active + ยังไม่ลบ · ไม่ผูกบริษัท · มีบริษัท SHOP ที่ active + ยังไม่ลบ → `{ SHOP, สาขา, companyFallback: true }`
+ *
+ * ปฏิเสธ: ไม่พบสาขา / สาขาถูกลบ / สาขาปิดใช้งาน / บริษัทของสาขาไม่ใช่ SHOP (รวม FINANCE และรหัสว่าง) / บริษัท SHOP ปิดใช้งาน
+ * หรือถูกลบ / ต้องใช้ค่าแทนแต่ไม่มีบริษัท SHOP ที่ใช้งานได้
  */
 export async function resolveLegacyCustomerOrigin(
   db: Pick<Prisma.TransactionClient, 'branch' | 'companyInfo'>,
   branchId: string,
 ): Promise<LegacyCustomerOrigin> {
   const branch = await db.branch.findFirst({
-    where: { id: branchId, deletedAt: null },
-    select: { id: true, company: { select: { companyCode: true } } },
+    where: { id: branchId },
+    select: {
+      id: true,
+      isActive: true,
+      deletedAt: true,
+      company: { select: { companyCode: true, isActive: true, deletedAt: true } },
+    },
   });
-  if (!branch) throw new Error(`${ORIGIN_ERROR}: ไม่พบสาขา ${branchId} (หรือถูกลบแล้ว)`);
-  const code = branch.company?.companyCode ?? null;
-  if (code !== null) {
-    if (code !== 'SHOP' && code !== 'FINANCE') {
-      throw new Error(
-        `${ORIGIN_ERROR}: บริษัทของสาขา ${branchId} มีรหัส ${code} (ต้องเป็น SHOP หรือ FINANCE)`,
+  if (!branch) throw originError(`ไม่พบสาขา ${branchId}`);
+  if (branch.deletedAt) throw originError(`สาขา ${branchId} ถูกลบแล้ว`);
+  if (!branch.isActive) throw originError(`สาขา ${branchId} ปิดใช้งานอยู่`);
+
+  const company = branch.company;
+  if (company === null) {
+    const shop = await db.companyInfo.findFirst({
+      where: { companyCode: LEGACY_ORIGIN_FALLBACK_COMPANY, isActive: true, deletedAt: null },
+      select: { id: true },
+    });
+    if (!shop) {
+      throw originError(
+        `สาขา ${branchId} ไม่ผูกบริษัท และไม่มีบริษัท ${LEGACY_ORIGIN_FALLBACK_COMPANY} ที่ใช้งานได้ในฐานให้ใช้แทน`,
       );
     }
-    return { accessCompanyCode: code, accessBranchId: branch.id, companyFallback: false };
+    return {
+      accessCompanyCode: LEGACY_ORIGIN_FALLBACK_COMPANY,
+      accessBranchId: branch.id,
+      companyFallback: true,
+    };
   }
-  const fallback = await db.companyInfo.findFirst({
-    where: { companyCode: LEGACY_ORIGIN_FALLBACK_COMPANY },
-    select: { id: true },
-  });
-  if (!fallback) {
-    throw new Error(
-      `${ORIGIN_ERROR}: สาขา ${branchId} ไม่ผูกบริษัท และไม่มีบริษัท ${LEGACY_ORIGIN_FALLBACK_COMPANY} ในฐานให้ใช้แทน`,
+  if (company.companyCode !== LEGACY_ORIGIN_FALLBACK_COMPANY) {
+    throw originError(
+      `สาขา ${branchId} ผูกบริษัทรหัส ${company.companyCode ?? '(ว่าง)'} — ต้นทางสิทธิ์ต้องเป็นสาขาใต้ SHOP (ทุกสาขาอยู่ใต้ SHOP · FINANCE ไม่มีสาขา)`,
     );
+  }
+  if (company.deletedAt || !company.isActive) {
+    throw originError(`บริษัท SHOP ของสาขา ${branchId} ปิดใช้งานหรือถูกลบแล้ว`);
   }
   return {
     accessCompanyCode: LEGACY_ORIGIN_FALLBACK_COMPANY,
     accessBranchId: branch.id,
-    companyFallback: true,
+    companyFallback: false,
   };
 }
 

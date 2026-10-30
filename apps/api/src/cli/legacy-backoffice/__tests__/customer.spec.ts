@@ -306,40 +306,81 @@ describe('parseCustomerOverridesCsv', () => {
 });
 
 describe('resolveLegacyCustomerOrigin (mocked reads)', () => {
-  /** ฐานปลอม: สาขา (`branch`) และว่ามีบริษัท SHOP หรือไม่ (`shop`) */
-  function db(branch: { company: { companyCode: string | null } | null } | null, shop = true) {
+  type BranchRow = {
+    isActive?: boolean;
+    deletedAt?: Date | null;
+    company: { companyCode: string | null; isActive?: boolean; deletedAt?: Date | null } | null;
+  };
+  /** ฐานปลอม: สาขา (`branch`) และว่ามีบริษัท SHOP ที่ใช้งานได้หรือไม่ (`shop`) */
+  function db(branch: BranchRow | null, shop = true) {
     return {
-      branch: { findFirst: jest.fn(async () => (branch ? { id: 'br-1', ...branch } : null)) },
+      branch: {
+        findFirst: jest.fn(async () =>
+          branch
+            ? {
+                id: 'br-1',
+                isActive: branch.isActive ?? true,
+                deletedAt: branch.deletedAt ?? null,
+                company: branch.company
+                  ? { isActive: true, deletedAt: null, ...branch.company }
+                  : null,
+              }
+            : null,
+        ),
+      },
       companyInfo: { findFirst: jest.fn(async () => (shop ? { id: 'shop-co' } : null)) },
-    } as never;
+    };
   }
+  const resolve = (d: ReturnType<typeof db>) => resolveLegacyCustomerOrigin(d as never, 'br-1');
 
-  it.each([
-    ['SHOP', { accessCompanyCode: 'SHOP', companyFallback: false }],
-    ['FINANCE', { accessCompanyCode: 'FINANCE', companyFallback: false }],
-  ])('the branch company code %s is used as is', async (code, expected) => {
-    expect(
-      await resolveLegacyCustomerOrigin(db({ company: { companyCode: code } }), 'br-1'),
-    ).toEqual({ ...expected, accessBranchId: 'br-1' });
+  it('a live branch under a live SHOP company → SHOP + the branch, no fallback', async () => {
+    expect(await resolve(db({ company: { companyCode: 'SHOP' } }))).toEqual({
+      accessCompanyCode: 'SHOP',
+      accessBranchId: 'br-1',
+      companyFallback: false,
+    });
   });
 
-  it('no company (branches.company_id NULL) or a company without a code → SHOP fallback, flagged', async () => {
-    for (const company of [null, { companyCode: null }]) {
-      expect(await resolveLegacyCustomerOrigin(db({ company }), 'br-1')).toEqual({
-        accessCompanyCode: 'SHOP',
-        accessBranchId: 'br-1',
-        companyFallback: true,
-      });
-    }
-  });
-
-  it('throws: branch missing/deleted · a code other than SHOP/FINANCE · fallback with no SHOP company', async () => {
-    await expect(resolveLegacyCustomerOrigin(db(null), 'br-x')).rejects.toThrow(/ไม่พบสาขา br-x/);
-    await expect(
-      resolveLegacyCustomerOrigin(db({ company: { companyCode: 'OTHER' } }), 'br-1'),
-    ).rejects.toThrow(/ต้องเป็น SHOP หรือ FINANCE/);
-    await expect(resolveLegacyCustomerOrigin(db({ company: null }, false), 'br-1')).rejects.toThrow(
-      /ไม่มีบริษัท SHOP/,
+  it('a live branch with no company (branches.company_id NULL) → SHOP fallback, flagged · fallback needs a live SHOP row', async () => {
+    const d = db({ company: null });
+    expect(await resolve(d)).toEqual({
+      accessCompanyCode: 'SHOP',
+      accessBranchId: 'br-1',
+      companyFallback: true,
+    });
+    expect(d.companyInfo.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { companyCode: 'SHOP', isActive: true, deletedAt: null },
+      }),
+    );
+    await expect(resolve(db({ company: null }, false))).rejects.toThrow(
+      /ไม่ผูกบริษัท และไม่มีบริษัท SHOP ที่ใช้งานได้/,
     );
   });
+
+  it.each<[string, BranchRow | null, RegExp]>([
+    ['branch missing', null, /ไม่พบสาขา br-1/],
+    ['branch deleted', { deletedAt: new Date(), company: { companyCode: 'SHOP' } }, /ถูกลบแล้ว/],
+    ['branch inactive', { isActive: false, company: { companyCode: 'SHOP' } }, /ปิดใช้งานอยู่/],
+    ['branch under FINANCE', { company: { companyCode: 'FINANCE' } }, /ผูกบริษัทรหัส FINANCE/],
+    ['company without a code', { company: { companyCode: null } }, /ผูกบริษัทรหัส \(ว่าง\)/],
+    ['another company code', { company: { companyCode: 'OTHER' } }, /ผูกบริษัทรหัส OTHER/],
+    [
+      'SHOP company inactive',
+      { company: { companyCode: 'SHOP', isActive: false } },
+      /บริษัท SHOP ของสาขา br-1 ปิดใช้งานหรือถูกลบแล้ว/,
+    ],
+    [
+      'SHOP company deleted',
+      { company: { companyCode: 'SHOP', deletedAt: new Date() } },
+      /บริษัท SHOP ของสาขา br-1 ปิดใช้งานหรือถูกลบแล้ว/,
+    ],
+  ])(
+    'throws before any write: %s — the message says why (origin is immutable)',
+    async (_label, branch, reason) => {
+      const failure = resolve(db(branch));
+      await expect(failure).rejects.toThrow(reason);
+      await expect(failure).rejects.toThrow(/แก้ไม่ได้ \(trigger immutable_party_access_origin\)/);
+    },
+  );
 });

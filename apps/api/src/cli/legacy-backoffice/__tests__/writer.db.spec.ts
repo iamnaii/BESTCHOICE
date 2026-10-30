@@ -21,6 +21,7 @@ import {
   CUTOFF,
   MONTHLY,
   peakMatch,
+  shopCompanyForTest,
   standardInstallments,
   syntheticBook,
   syntheticContract,
@@ -60,6 +61,7 @@ describeDb('writeLegacyImport (real DB)', () => {
 
   let financeCompanyId = '';
   let createdCompanyId: string | null = null;
+  /** สาขาใต้ SHOP (ต้นทางสิทธิ์ของลูกค้าที่นำเข้า) */
   let branchId = '';
   /** สาขาที่ไม่ผูกบริษัท (`company_id` ว่าง — แบบสาขาบน prod 30/10) · บริษัท SHOP ที่สเปคสร้างเอง (ฐานไม่มี) */
   let bareBranchId = '';
@@ -105,25 +107,13 @@ describeDb('writeLegacyImport (real DB)', () => {
       financeCompanyId = created.id;
       createdCompanyId = created.id;
     }
+    const shop = await shopCompanyForTest(prisma, 'T10');
+    if (shop.created) createdShopId = shop.id;
     branchId = (
       await prisma.branch.create({
-        data: { name: `${TEST_NAME_PREFIX} T10 ${stamp}`, companyId: financeCompanyId },
+        data: { name: `${TEST_NAME_PREFIX} T10 ${stamp}`, companyId: shop.id },
       })
     ).id;
-    // ค่าแทน SHOP ของต้นทางสิทธิ์ต้องมีบริษัท SHOP (FK ของ access_company_code)
-    if (!(await prisma.companyInfo.findFirst({ where: { companyCode: 'SHOP' } }))) {
-      createdShopId = (
-        await prisma.companyInfo.create({
-          data: {
-            nameTh: `${TEST_NAME_PREFIX} SHOP T10`,
-            taxId: '0000000000000',
-            companyCode: 'SHOP',
-            address: '1 Test Rd.',
-            directorName: `${TEST_NAME_PREFIX} กรรมการ`,
-          },
-        })
-      ).id;
-    }
     bareBranchId = (
       await prisma.branch.create({
         data: { name: `${TEST_NAME_PREFIX} T10 ไม่ผูกบริษัท ${stamp}` },
@@ -864,9 +854,8 @@ describeDb('writeLegacyImport (real DB)', () => {
     extraCustomerIds.push(before.id);
 
     const report = await write(s);
-    // สาขาของสเปคนี้ผูกบริษัท FINANCE — ใช้รหัสของบริษัทของสาขาตรง ๆ
     expect(report.customerOrigin).toEqual({
-      accessCompanyCode: 'FINANCE',
+      accessCompanyCode: 'SHOP',
       accessBranchId: branchId,
       companyFallback: false,
     });
@@ -880,7 +869,7 @@ describeDb('writeLegacyImport (real DB)', () => {
       const expected =
         row.id === before.id
           ? { accessCompanyCode: null, accessBranchId: null }
-          : { accessCompanyCode: 'FINANCE', accessBranchId: branchId };
+          : { accessCompanyCode: 'SHOP', accessBranchId: branchId };
       expect(row).toMatchObject({ ...expected, contact: expected });
     }
     expect(
@@ -902,6 +891,53 @@ describeDb('writeLegacyImport (real DB)', () => {
       Array(3).fill(['SHOP', bareBranchId]),
     );
     expect(rows.every((r) => r.contact?.accessBranchId === bareBranchId)).toBe(true);
+  }, 120_000);
+
+  it('an unusable --branch-id (branch under FINANCE / inactive branch) → throws before the first write — no INSERT/UPDATE/DELETE reached the DB', async () => {
+    const financeBranch = await prisma.branch.create({
+      data: { name: `${TEST_NAME_PREFIX} T15 ใต้ FINANCE ${stamp}`, companyId: financeCompanyId },
+    });
+    const inactiveBranch = await prisma.branch.create({
+      data: { name: `${TEST_NAME_PREFIX} T15 ปิดใช้งาน ${stamp}`, isActive: false },
+    });
+    try {
+      for (const [badBranchId, reason] of [
+        [financeBranch.id, /ผูกบริษัทรหัส FINANCE/],
+        [inactiveBranch.id, /ปิดใช้งานอยู่/],
+      ] as const) {
+        const s = await scenario();
+        statements.length = 0;
+        capture = true;
+        const failure = await logged
+          .$transaction(
+            (tx) => writeLegacyImport(tx, s.plan, { ...deps(s), branchId: badBranchId }),
+            TX,
+          )
+          .then(
+            () => null,
+            (e: unknown) => e,
+          );
+        capture = false;
+        expect(failure).toBeInstanceOf(Error);
+        expect((failure as Error).message).toMatch(reason);
+        expect((failure as Error).message).toMatch(/immutable_party_access_origin/);
+        // อ่านอย่างเดียวก่อน throw: ล็อกเบอร์ + อ่านสาขา — ไม่มีคำสั่งเขียนใดถึงฐาน
+        expect(statements.some((st) => /"branches"/.test(st.query))).toBe(true);
+        expect(statements.filter((st) => /^\s*(INSERT|UPDATE|DELETE)\b/i.test(st.query))).toEqual(
+          [],
+        );
+        expect(
+          await prisma.customer.count({
+            where: { legacyMemberCode: { in: s.plan.items.map((i) => i.memberCode) } },
+          }),
+        ).toBe(0);
+      }
+    } finally {
+      capture = false;
+      await prisma.branch.deleteMany({
+        where: { id: { in: [financeBranch.id, inactiveBranch.id] } },
+      });
+    }
   }, 120_000);
 
   /** สัญญา BESTCHOICE ที่มีอยู่แล้ว (ลูกค้า/เครื่องของตัวเอง) — ใช้จำลองการชนรหัส */

@@ -10,6 +10,8 @@ export function buildBrowserUrl(path: string): string {
 /** หน้าที่ LINE Login พากลับเมื่อ returnPath ไม่มี/ไม่ปลอดภัย */
 export const DEFAULT_LIFF_RETURN_PATH = '/liff/contract';
 const MAX_RETURN_PATH_LENGTH = 2048;
+/** หน้าที่ LINE Login พากลับได้ — หน้า LIFF ทั้งหมดและหน้าชำระผ่านลิงก์ (`/pay/:token`) */
+const RETURN_PATH_ALLOWLIST = /^\/(liff|pay)(\/|$)/;
 
 /**
  * Task 20 C2 — returnPath ของ LINE Login ต้องเป็น path สัมพัทธ์บนโดเมนเว็บเท่านั้น.
@@ -29,7 +31,14 @@ export function sanitizeReturnPath(raw: unknown): string {
     // อักขระควบคุม + ช่องว่าง (≤ 0x20) · DEL · backslash
     if (code <= 0x20 || code === 0x7f || code === 0x5c) return DEFAULT_LIFF_RETURN_PATH;
   }
-  return raw;
+  // fix round 1 M2: ตัดสินบน path ที่ normalize แล้ว (dot-segment) — `/..//evil` → `//evil` ·
+  // รับเฉพาะหน้าที่ใช้ LINE Login จริง (`useLiffInit`: `/liff/*` และ `/pay/:token`) ไม่ใช่ทุก path ของโดเมน
+  // (เช่น `/api/*` ที่ hosting rewrite ไป API) · คืนรูปที่ normalize แล้ว ⇒ ปลายทางตรงกับที่ตรวจ
+  const normalized = new URL(raw, 'https://return-path.invalid');
+  if (normalized.pathname.startsWith('//') || !RETURN_PATH_ALLOWLIST.test(normalized.pathname)) {
+    return DEFAULT_LIFF_RETURN_PATH;
+  }
+  return `${normalized.pathname}${normalized.search}${normalized.hash}`;
 }
 
 /**
@@ -41,4 +50,12 @@ export function buildFrontendReturnUrl(frontendBaseUrl: string, rawReturnPath: u
   const url = new URL(sanitizeReturnPath(rawReturnPath), base);
   if (url.origin !== base.origin) return new URL(DEFAULT_LIFF_RETURN_PATH, base);
   return url;
+}
+
+/**
+ * fix round 1 M3: FRONTEND_URL บน prod เป็นรายการ origin คั่น comma ได้ (ชุดเดียวกับ CORS ใน app.setup.ts) —
+ * ปลายทางของ LINE Login ใช้ค่าแรก (แบบเดียวกับ staff-notify)
+ */
+export function primaryFrontendUrl(raw: string | undefined): string {
+  return (raw || 'http://localhost:5173').split(',')[0].trim();
 }

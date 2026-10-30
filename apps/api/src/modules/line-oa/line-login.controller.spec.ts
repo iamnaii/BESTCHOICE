@@ -12,20 +12,22 @@ jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn(), captureMessage
 const FRONTEND = 'https://web.example';
 const API = 'https://api.example';
 
-function makeController(): LineLoginController {
+function makeController(frontendUrl = FRONTEND): LineLoginController {
   const values: Record<string, string> = {
     LINE_LOGIN_CHANNEL_ID: '2009442540',
     LINE_LOGIN_CHANNEL_SECRET: 'secret',
-    FRONTEND_URL: FRONTEND,
+    FRONTEND_URL: frontendUrl,
     API_BASE_URL: API,
   };
   const config = { get: (k: string) => values[k] } as unknown as ConfigService;
   return new LineLoginController(config);
 }
 
-function makeRes(): { res: Response; redirect: jest.Mock } {
+function makeRes(): { res: Response; redirect: jest.Mock; status: jest.Mock; send: jest.Mock } {
   const redirect = jest.fn();
-  return { res: { redirect } as unknown as Response, redirect };
+  const send = jest.fn();
+  const status = jest.fn(() => ({ send }));
+  return { res: { redirect, status } as unknown as Response, redirect, status, send };
 }
 
 /** state ที่ LINE ส่งกลับ = ค่าที่ authorize ใส่ไว้ (encodeURIComponent ของ path) */
@@ -43,6 +45,11 @@ const MALICIOUS = [
   '/\t/evil.example/x',
   ':8080@evil.example/',
   '',
+  // fix round 1 M2: dot-segment ที่ normalize แล้วกลายเป็น `//evil` + path นอก allowlist (`/liff/`, `/pay/`)
+  '/..//evil.example/x',
+  '/liff/../..//evil.example/x',
+  '/api/line-oa/x',
+  '/settings',
 ];
 
 describe('LineLoginController — returnPath must stay on the frontend origin (C2)', () => {
@@ -146,5 +153,23 @@ describe('LineLoginController — returnPath must stay on the frontend origin (C
     expect(decodeURIComponent(lineUrl.searchParams.get('state') as string)).toBe(
       '/liff/finance-verify',
     );
+  });
+
+  // fix round 1 M3 — FRONTEND_URL บน prod เป็นรายการ CORS คั่น comma ได้ (app.setup.ts ใช้แบบนั้น)
+  it('FRONTEND_URL as a comma list → redirects to the first origin', async () => {
+    const ctl = makeController('https://web.example, https://admin.example');
+    const { res, redirect } = makeRes();
+    await ctl.callback(res, 'CODE', stateOf('/liff/finance-verify'));
+    const target = new URL(redirect.mock.calls[0][0] as string);
+    expect(target.origin).toBe(FRONTEND);
+    expect(target.pathname).toBe('/liff/finance-verify');
+  });
+
+  it('unparseable FRONTEND_URL → the error path answers 500 instead of throwing', async () => {
+    const ctl = makeController('not a url');
+    const { res, redirect, status } = makeRes();
+    await expect(ctl.callback(res, undefined, undefined, 'access_denied')).resolves.toBeUndefined();
+    expect(redirect).not.toHaveBeenCalled();
+    expect(status).toHaveBeenCalledWith(500);
   });
 });

@@ -3,7 +3,11 @@ import { ConfigService } from '@nestjs/config';
 import { Response } from 'express';
 import * as Sentry from '@sentry/nestjs';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
-import { buildFrontendReturnUrl, sanitizeReturnPath } from '../../utils/line-login.util';
+import {
+  buildFrontendReturnUrl,
+  primaryFrontendUrl,
+  sanitizeReturnPath,
+} from '../../utils/line-login.util';
 
 /**
  * LINE Login OAuth Controller — fallback for LIFF pages opened in regular browsers.
@@ -31,7 +35,8 @@ export class LineLoginController {
       this.config.get<string>('LIFF_CHANNEL_ID') ||
       '';
     this.channelSecret = this.config.get<string>('LINE_LOGIN_CHANNEL_SECRET') || '';
-    this.frontendBaseUrl = this.config.get<string>('FRONTEND_URL') || 'http://localhost:5173';
+    // M3: FRONTEND_URL อาจเป็นรายการ origin คั่น comma (ชุดเดียวกับ CORS) — ปลายทางใช้ค่าแรก
+    this.frontendBaseUrl = primaryFrontendUrl(this.config.get<string>('FRONTEND_URL'));
     this.apiBaseUrl = this.config.get<string>('API_BASE_URL') || 'http://localhost:3000';
   }
 
@@ -73,9 +78,18 @@ export class LineLoginController {
     // buildFrontendReturnUrl เท่านั้น (path สัมพัทธ์ + origin ต้องเป็นเว็บของเรา) ทั้งทางสำเร็จและทาง error
     const returnPath = this.decodeState(state);
     const redirectLoginError = () => {
-      const url = buildFrontendReturnUrl(this.frontendBaseUrl, returnPath);
-      url.searchParams.set('login_error', 'true');
-      res.redirect(url.toString());
+      try {
+        const url = buildFrontendReturnUrl(this.frontendBaseUrl, returnPath);
+        url.searchParams.set('login_error', 'true');
+        res.redirect(url.toString());
+      } catch (err) {
+        // M3: FRONTEND_URL ใช้ไม่ได้ ⇒ ไม่มีที่ redirect — ตอบ 500 ข้อความกลาง (เดิม throw ออกนอก try = 500 ดิบ)
+        this.logger.error(
+          `[LineLogin] Cannot build redirect (FRONTEND_URL?): ${err instanceof Error ? err.message : err}`,
+        );
+        Sentry.captureException(err, { tags: { module: 'line-login', reason: 'frontend-url' } });
+        res.status(500).send('ระบบเข้าสู่ระบบด้วย LINE ขัดข้อง กรุณาลองใหม่ภายหลัง');
+      }
     };
 
     if (error || !code) {

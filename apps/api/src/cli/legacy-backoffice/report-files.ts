@@ -87,6 +87,59 @@ export function countBy<T>(items: readonly T[], key: (item: T) => string): Recor
 
 const sum = (values: readonly Decimal[]) => values.reduce((s, v) => s.plus(v), ZERO);
 
+// ─── สัญญาที่ข้าม (summary.json / import-result.json) ────────────────────────────────────────────
+
+export type SkippedSummary = {
+  count: number;
+  /** เหตุผล → จำนวน (`status-0` · `status-4-canceled` …) */
+  byReason: Record<string, number>;
+  /**
+   * สัญญาที่ข้ามแต่ใบแจ้งหนี้ PEAK ที่จับคู่ได้ยังมียอดคงเหลือ ≠ 0 — ยอดนี้ไม่เข้ายอดยกมาของ BESTCHOICE (ตกถัง
+   * `LESS_SKIPPED_CONTRACTS` ของ bridge.csv) คืนตัดต้องเห็นก่อนกด commit · จำนวน + ยอดรวมเท่านั้น (ไม่มีรายสัญญา)
+   */
+  withPeakRemain: { contracts: number; remain: Decimal };
+};
+
+/** สรุปสัญญาที่ข้ามของแผน — ใช้ร่วมกันโดย `report` / `import` (บนจอ + ไฟล์ผล) */
+export function skippedSummary(
+  book: LegacyBook,
+  recon: PeakRecon,
+  plan: ImportPlan,
+): SkippedSummary {
+  const contractOf = new Map(book.contracts.map((c) => [c.code, c]));
+  const remains = plan.skipped.flatMap((s) => {
+    const contract = contractOf.get(s.code);
+    const remain = contract
+      ? recon.matched.get(contract.contractId)?.invoice.remainAmount
+      : undefined;
+    return remain && !remain.isZero() ? [remain] : [];
+  });
+  return {
+    count: plan.skipped.length,
+    byReason: countBy(plan.skipped, (s) => s.reason),
+    withPeakRemain: { contracts: remains.length, remain: sum(remains) },
+  };
+}
+
+/** บรรทัดบนจอ: `42 (status-0 3 · status-4-canceled 39)` + บรรทัดเตือนเมื่อมีสัญญาที่ข้ามแต่ PEAK ยังค้าง */
+export function skippedLogLines(s: SkippedSummary): {
+  summary: string;
+  peakWarning: string | null;
+} {
+  const reasons = Object.entries(s.byReason)
+    .map(([reason, n]) => `${reason} ${n}`)
+    .join(' · ');
+  return {
+    summary: `${s.count} (${reasons || '-'})`,
+    peakWarning:
+      s.withPeakRemain.contracts > 0
+        ? `⚠ สัญญาที่ข้ามแต่ใบแจ้งหนี้ PEAK ยังมียอดคงเหลือ ${s.withPeakRemain.contracts} สัญญา · รวม ${formatMoney(
+            s.withPeakRemain.remain,
+          )} — ยอดนี้ไม่เข้ายอดยกมา ตรวจกับสำนักงานบัญชีก่อน commit (peak-recon.csv / bridge.csv LESS_SKIPPED_CONTRACTS)`
+        : null,
+  };
+}
+
 // ─── blockers.csv ────────────────────────────────────────────────────────────────────────────────
 
 /** ช่องของ `ImportBlocker.detail` ที่มีคอลัมน์ของตัวเอง — ช่องอื่นรวมใน `detail` (`key=value; …`) */

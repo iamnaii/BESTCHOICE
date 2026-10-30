@@ -769,7 +769,11 @@ describe('legacy-backoffice-import CLI — report / import (Task 13)', () => {
       expect(result()).toMatchObject({
         outcome: 'PLAN_BLOCKED',
         blockers: { count: outcome.blockers.length },
-        skipped: { count: 1, byReason: { 'status-4-canceled': 1 } },
+        skipped: {
+          count: 1,
+          byReason: { 'status-4-canceled': 1 },
+          withPeakRemain: { contracts: 0, remain: '0.00' },
+        },
       });
       const printed = h.deps.log.mock.calls.map((c) => String(c[0])).join('\n');
       expect(printed).toMatch(/ข้าม 1 \(status-4-canceled 1\)/);
@@ -1051,6 +1055,21 @@ describe('legacy-backoffice-import CLI — report / import (Task 13)', () => {
       expect(result().customerOrigin).toMatchObject({ ...fallback, warning: expect.any(String) });
     });
 
+    it('import-result.json skipped.withPeakRemain + ⚠ บนจอ เมื่อสัญญายกเลิกยังค้างใน PEAK', async () => {
+      writeFileSync(peakAr, peakArText([ACTIVE, HISTORY, OLD_FORM, CANCELED]));
+      const remain = peakMatch(CANCELED, 'x').invoice.remainAmount.toFixed(2);
+      const h = harness();
+      h.deps.loadBook.mockResolvedValue({ book: REPORT_BOOK });
+      expect((await run(h)).outcome).toBe('PLAN_BLOCKED');
+      expect(result().skipped).toEqual({
+        count: 1,
+        byReason: { 'status-4-canceled': 1 },
+        withPeakRemain: { contracts: 1, remain },
+      });
+      const printed = h.deps.log.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(printed).toMatch(/⚠ สัญญาที่ข้ามแต่ใบแจ้งหนี้ PEAK ยังมียอดคงเหลือ 1 สัญญา/);
+    });
+
     it('import-result.json ไม่มีข้อมูลลูกค้า · นับข้อเตือน SATANG_GAP_UNEXPLAINED / PEAK_LOWER_UNEXPLAINED', async () => {
       await run(harness());
       const text = readOut('import-result.json');
@@ -1166,7 +1185,11 @@ describe('legacy-backoffice-import CLI — report / import (Task 13)', () => {
         book: { contracts: 5 },
         plan: { contracts: { active: 2, history: 1, skipped: 1, blocked: 1 } },
         blockers: { contracts: 1, byReason: { INSTALLMENT_AMOUNT_MISMATCH: 1 } },
-        skipped: { count: 1, byReason: { 'status-4-canceled': 1 } },
+        skipped: {
+          count: 1,
+          byReason: { 'status-4-canceled': 1 },
+          withPeakRemain: { contracts: 0, remain: '0.00' },
+        },
         oldForm: 1,
         files: { missing: 0, failed: 0 },
         overdueDaysThreshold: { value: 7, source: 'default' },
@@ -1191,6 +1214,7 @@ describe('legacy-backoffice-import CLI — report / import (Task 13)', () => {
       const printed = log.mock.calls.map((c) => String(c[0])).join('\n');
       expect(printed).toMatch(/ข้าม \(ไม่นำเข้า\) +: 1 \(status-4-canceled 1\)/);
       expect(printed).not.toMatch(/canceled-map|canceled\.csv/);
+      expect(printed).not.toMatch(/ข้ามแต่ใบแจ้งหนี้ PEAK/); // สัญญายกเลิกไม่มีคู่ PEAK ในไฟล์นี้
 
       for (const name of readdirSync(out)) {
         const text = read(name);
@@ -1198,6 +1222,24 @@ describe('legacy-backoffice-import CLI — report / import (Task 13)', () => {
           expect({ name, leaked: text.includes(secret) }).toEqual({ name, leaked: false });
         }
       }
+    });
+
+    it('สัญญายกเลิกที่ใบแจ้งหนี้ PEAK ยังค้าง → summary.json skipped.withPeakRemain (จำนวน + ยอดรวม ไม่มีรายสัญญา) + ⚠ บนจอ · bridge ยังปิด', async () => {
+      writeFileSync(peakAr, peakArText([ACTIVE, HISTORY, OLD_FORM, CANCELED]));
+      const remain = peakMatch(CANCELED, 'x').invoice.remainAmount.toFixed(2);
+      expect(Number(remain)).toBeGreaterThan(0);
+      const log = jest.fn();
+      await runReport(reportArgs(), { ...deps, log } as never);
+      const summary = JSON.parse(read('summary.json'));
+      expect(summary.skipped.withPeakRemain).toEqual({ contracts: 1, remain });
+      expect(JSON.stringify(summary.skipped)).not.toContain(CANCELED.code);
+      const printed = log.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(printed).toContain(
+        `⚠ สัญญาที่ข้ามแต่ใบแจ้งหนี้ PEAK ยังมียอดคงเหลือ 1 สัญญา · รวม ${remain}`,
+      );
+      const bridge = stripBom(read('bridge.csv')).trimEnd().split('\n');
+      expect(bridge).toContain(`LESS_SKIPPED_CONTRACTS,1,,,,,${remain}`);
+      expect(bridge.at(-1)).toBe('CHECK_OK');
     });
 
     it('ไม่ส่ง --files-dir → ไม่มี missing-files.csv และไม่อ่านไฟล์แนบ', async () => {
@@ -1381,28 +1423,32 @@ describe('legacy-backoffice-import CLI — report / import (Task 13)', () => {
       expect(existsSync(insideRepo)).toBe(false);
     });
 
-    it('report / import: --canceled-map ถอดแล้ว → ตัวเลือกที่ไม่รู้จัก throw ก่อนอ่านไฟล์ใด', async () => {
+    it('report / import: --canceled-map (ทั้ง `--x ค่า` และ `--x=ค่า`) → ข้อความไทยว่าถอดแล้ว ก่อนอ่านไฟล์ใด', async () => {
+      const removed = join(base, 'canceled.csv');
       for (const command of ['report', 'import']) {
-        const h = harness();
-        await expect(
-          main(
-            [
-              command,
-              '--dump',
-              join(base, 'missing.sql'),
-              '--peak-ar',
-              peakAr,
-              '--cutoff',
-              '2026-11-30',
-              '--out',
-              out,
-              '--canceled-map',
-              join(base, 'canceled.csv'),
-            ],
-            h.log,
-            h.ensureTz,
-          ),
-        ).rejects.toThrow(/canceled-map/);
+        for (const option of [['--canceled-map', removed], [`--canceled-map=${removed}`]]) {
+          const h = harness();
+          await expect(
+            main(
+              [
+                command,
+                '--dump',
+                join(base, 'missing.sql'),
+                '--peak-ar',
+                peakAr,
+                '--cutoff',
+                '2026-11-30',
+                '--out',
+                out,
+                ...option,
+              ],
+              h.log,
+              h.ensureTz,
+            ),
+          ).rejects.toThrow(
+            /^--canceled-map: ตัวเลือกนี้ถอดแล้ว 30\/10\/2026 — สัญญายกเลิก \(status 4\) ถูกข้ามอัตโนมัติ/,
+          );
+        }
       }
     });
 

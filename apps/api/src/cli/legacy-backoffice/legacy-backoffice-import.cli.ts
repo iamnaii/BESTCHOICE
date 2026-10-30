@@ -89,9 +89,12 @@ import {
   oldFormCsv,
   planWarnings,
   sampleCsv,
+  skippedLogLines,
+  skippedSummary,
   toJsonSafe,
   warningsCsv,
   warningSummary,
+  type SkippedSummary,
 } from './report-files';
 import {
   matchStatement,
@@ -346,15 +349,6 @@ const attachmentPathsOf = (plan: ImportPlan) => [
   ...new Set(plan.items.flatMap((i) => i.attachmentPaths)),
 ];
 
-/** จำนวนสัญญาที่ข้ามตามเหตุผล เช่น `status-0 <n> · status-4-canceled <n>` */
-function skippedText(byReason: Record<string, number>): string {
-  return (
-    Object.entries(byReason)
-      .map(([reason, n]) => `${reason} ${n}`)
-      .join(' · ') || '-'
-  );
-}
-
 function blockerSummary(rows: readonly ImportBlocker[]) {
   return {
     count: rows.length,
@@ -415,7 +409,8 @@ export async function runReport(
   const sampleSeed = args.sampleSeed ?? defaultSampleSeed(plan.cutoff);
   const sampleCodes = d.sampleForManualCheck(plan, SAMPLE_SIZE, sampleSeed);
   const warnings = planWarnings(plan);
-  const skippedByReason = countBy(plan.skipped, (s) => s.reason);
+  const skipped = skippedSummary(book, recon, plan);
+  const skippedLines = skippedLogLines(skipped);
 
   const summary = {
     command: 'report',
@@ -446,7 +441,7 @@ export async function runReport(
     },
     plan: plan.totals,
     blockers: blockerSummary(plan.blockers),
-    skipped: { count: plan.skipped.length, byReason: skippedByReason },
+    skipped,
     oldForm: plan.oldFormCodes.length,
     warnings: warningSummary(warnings),
     files: upload
@@ -485,9 +480,8 @@ export async function runReport(
   d.log(
     `  ติดตัวบล็อก                 : ${t.contracts.blocked} สัญญา (${plan.blockers.length} แถว)`,
   );
-  d.log(
-    `  ข้าม (ไม่นำเข้า)              : ${t.contracts.skipped} (${skippedText(skippedByReason)})`,
-  );
+  d.log(`  ข้าม (ไม่นำเข้า)              : ${skippedLines.summary}`);
+  if (skippedLines.peakWarning) d.log(`  ${skippedLines.peakWarning}`);
   d.log(`  สัญญาฉบับเก่า (ผ่อนอยู่)     : ${plan.oldFormCodes.length}`);
   d.log(
     `  ข้อเตือน                    : ${warnings.length} (${Object.entries(unexplained)
@@ -628,6 +622,8 @@ type ImportContext = {
   branch: { id: string; name: string };
   /** ต้นทางสิทธิ์ของลูกค้าที่จะสร้าง (ตัวเขียนอ่านซ้ำในธุรกรรม — `WriteReport.customerOrigin`) */
   customerOrigin: LegacyCustomerOrigin;
+  /** สัญญาที่ข้าม — คำนวณครั้งเดียวจากแผนแรก (แผนที่คำนวณซ้ำหลังอัปโหลดไฟล์ได้ชุดข้ามเดิม) */
+  skipped: SkippedSummary;
   systemUser: { id: string } | null;
   overdueDaysThreshold: number;
   inputs: Inputs;
@@ -769,6 +765,7 @@ async function preflightImport(
     plan,
     sampleSeed,
     sampleCodes: d.sampleForManualCheck(plan, SAMPLE_SIZE, sampleSeed),
+    skipped: skippedSummary(inputs.book, inputs.recon, plan),
   };
 }
 
@@ -1034,7 +1031,7 @@ async function finishImport(
     storage: ctx.storageInfo,
     plan: plan.totals,
     blockers: { ...blockerSummary(state.blockers), rows: state.blockers },
-    skipped: { count: plan.skipped.length, byReason: countBy(plan.skipped, (s) => s.reason) },
+    skipped: ctx.skipped,
     customerOrigin: {
       ...origin,
       warning: origin.companyFallback ? LEGACY_ORIGIN_FALLBACK_WARNING : null,
@@ -1155,9 +1152,11 @@ export async function runImport(
     extraFiles: {},
   };
   const plan = ctx.plan;
+  const skippedLines = skippedLogLines(ctx.skipped);
   d.log(
-    `  แผน                        : นำเข้า ${plan.items.length} · ตัวบล็อก ${plan.blockers.length} แถว · ข้าม ${plan.skipped.length} (${skippedText(countBy(plan.skipped, (s) => s.reason))})`,
+    `  แผน                        : นำเข้า ${plan.items.length} · ตัวบล็อก ${plan.blockers.length} แถว · ข้าม ${skippedLines.summary}`,
   );
+  if (skippedLines.peakWarning) d.log(`  ${skippedLines.peakWarning}`);
 
   try {
     if (plan.blockers.length > 0) {
@@ -1423,6 +1422,25 @@ function usage(): string {
 const isHelp = (arg: string | undefined) => arg === '--help' || arg === '-h' || arg === 'help';
 
 /**
+ * ตัวเลือกที่ถอดแล้ว → ข้อความไทยที่บอกว่าทำไม (คนรันตาม runbook เก่าไม่เจอแค่ `Unknown option` ของ `parseArgs`) ·
+ * ตรวจก่อน `parseArgs` ทั้งรูป `--ชื่อ ค่า` และ `--ชื่อ=ค่า`
+ */
+const REMOVED_OPTIONS: ReadonlyMap<string, string> = new Map([
+  [
+    'canceled-map',
+    'ตัวเลือกนี้ถอดแล้ว 30/10/2026 — สัญญายกเลิก (status 4) ถูกข้ามอัตโนมัติ (ดู summary.json skipped.byReason)',
+  ],
+]);
+
+function assertNoRemovedOptions(args: readonly string[]): void {
+  for (const arg of args) {
+    const name = /^--([^=]+)/.exec(arg)?.[1];
+    const reason = name === undefined ? undefined : REMOVED_OPTIONS.get(name);
+    if (reason) throw new Error(`--${name}: ${reason}`);
+  }
+}
+
+/**
  * จุดเข้าของ CLI · `ensureTz` = ด่านเขตเวลา ทำเป็นอย่างแรก (ค่าเริ่มต้น `ensureBangkokTimeZone` — ตั้ง `TZ` แล้วตรวจกับ Intl) ·
  * เทสต์ส่งตัวแทน: jest ให้แต่ละไฟล์ใช้สำเนาของ `process.env` การตั้ง `TZ` ในเทสต์จึงไม่เปลี่ยนเขตเวลาจริงของโปรเซส
  * (เครื่อง UTC เช่น CI = ด่าน throw) — พฤติกรรมของด่านเองทดสอบผ่านตัวอ่านเขตเวลาที่ส่งเข้าไป (`import-preflight.ts`)
@@ -1456,6 +1474,7 @@ export async function main(
     );
     return;
   }
+  assertNoRemovedOptions(rest);
   const { values } = parseArgs({
     args: [...rest],
     options: Object.fromEntries([

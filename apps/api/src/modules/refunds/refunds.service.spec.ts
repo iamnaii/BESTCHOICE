@@ -280,6 +280,12 @@ describe('RefundsService', () => {
       expect(prisma.refund.create).not.toHaveBeenCalled();
     });
 
+    it('Task 18 m-1 — the re-issue message points to what staff can do today (tell accounting; no button yet), not to an admin role or a rules file', () => {
+      expect(RECEIPT_NOT_ISSUED_REFUND_MESSAGE).toContain('แจ้งฝ่ายบัญชี');
+      expect(RECEIPT_NOT_ISSUED_REFUND_MESSAGE).toContain('ยังไม่มีปุ่มในระบบ');
+      expect(RECEIPT_NOT_ISSUED_REFUND_MESSAGE).not.toMatch(/ผู้ดูแลระบบ|ออกใบเสร็จซ้ำ|\.claude/);
+    });
+
     it('Task 17 A — a legacy installment WITH a receipt after cutover refunds only that receipt (not the pre-cutover money)', async () => {
       prisma.payment.findUnique.mockResolvedValue(
         paidPayment({

@@ -1,4 +1,4 @@
-import { randomBytes } from 'crypto';
+import { randomBytes, randomUUID } from 'crypto';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { seedFinanceCoa } from '../../../../prisma/seed-coa-finance';
 import { CARRY_FORWARD_ACCOUNTS } from '../opening';
@@ -622,6 +622,48 @@ describeDb('runGates (real DB, inside the import transaction)', () => {
     });
     expect(failing(later)).toEqual(['6.1']);
     expect(detailsOf(later, '6.1')).toContain('วันตัด');
+  }, 120_000);
+
+  it('6.1 — access origin of the customers created this run (and their new Contacts) = report.customerOrigin', async () => {
+    // ผ่าน: สร้างใหม่ 5 คน + Contact ใหม่ ได้ SHOP + สาขา --branch-id ตามรายงาน
+    const clean = await gatesAfter(async (_tx, report) => {
+      expect(report.customers.map((x) => [x.outcome, x.writes.includes('contactCreated')])).toEqual(
+        Array.from({ length: 5 }, () => ['CREATED', true]),
+      );
+    });
+    expect(failing(clean)).toEqual([]);
+    expect(gate(clean, '6.1').detail).toContain('ต้นทางสิทธิ์ลูกค้าใหม่ SHOP');
+
+    // รายงานไม่ตรงฐาน (สาขาอื่น) — ทุกลูกค้าและ Contact ที่สร้างรอบนี้ไม่ผ่าน
+    const drifted = await gatesAfter(async (_tx, report) => {
+      report.customerOrigin = { ...report.customerOrigin, accessBranchId: randomUUID() };
+    });
+    expect(failing(drifted)).toEqual(['6.1']);
+    expect(codesOf(drifted, '6.1')).toEqual(plan.items.map((i) => i.code).sort());
+    expect(detailsOf(drifted, '6.1')).toContain(
+      'ต้นทางสิทธิ์ของลูกค้าที่สร้างรอบนี้ในฐาน SHOP/สาขาอื่น ≠ รายงานตัวเขียน SHOP/สาขาที่รายงาน',
+    );
+    expect(detailsOf(drifted, '6.1')).toContain(
+      'ต้นทางสิทธิ์ของContactที่สร้างรอบนี้ในฐาน SHOP/สาขาอื่น',
+    );
+
+    // ทางสร้างลูกค้าที่ลืมส่ง origin (ถดถอยในอนาคต): ลูกค้าของสัญญา 1 ไม่มีต้นทางสิทธิ์ในฐาน — trigger
+    // immutable_party_access_origin ห้ามแก้ จึงปิด trigger ในธุรกรรมนำเข้าที่ rollback อยู่แล้ว (คืนเองตอน rollback)
+    const forgotten = await gatesAfter(async (tx, report) => {
+      const target = report.customers.find((x) => x.code === c.overdue.code);
+      await tx.$executeRawUnsafe(
+        'ALTER TABLE "customers" DISABLE TRIGGER "customers_immutable_access_origin"',
+      );
+      await tx.customer.update({
+        where: { id: target!.customerId },
+        data: { accessCompanyCode: null, accessBranchId: null },
+      });
+    });
+    expect(failing(forgotten)).toEqual(['6.1']);
+    expect(codesOf(forgotten, '6.1')).toEqual([c.overdue.code]);
+    expect(detailsOf(forgotten, '6.1')).toBe(
+      'ต้นทางสิทธิ์ของลูกค้าที่สร้างรอบนี้ในฐาน ว่าง/ไม่มีสาขา ≠ รายงานตัวเขียน SHOP/สาขาที่รายงาน',
+    );
   }, 120_000);
 
   it('a plan that knows the uploaded files: passes with planFiles; a file the writer dropped but the plan did not → 6.1', async () => {

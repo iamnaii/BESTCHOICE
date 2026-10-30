@@ -6,94 +6,85 @@ import { mockLiffSdk, mockLiffApi, MOCK_DISPLAY_NAME } from './helpers/liff-mock
 // intercept service-worker-originated requests — mockLiffApi would never fire.
 test.use({ serviceWorkers: 'block' });
 
-test.describe('LIFF Register Flow', () => {
+/**
+ * Task 19 — /liff/register (ผูก LINE การเงินด้วยเบอร์อย่างเดียว ไม่มี OTP) ปิดแล้ว.
+ * URL เดิมพาไป /liff/finance-verify (เบอร์ + OTP SMS) โดยคง query string และไม่เรียก
+ * API เดิม `line-oa/liff/register/lookup|confirm` (ตอบ 410) อีกเลย.
+ */
+test.describe('LIFF Register → OTP verification', () => {
   test.beforeEach(async ({ page }) => {
     await mockLiffSdk(page);
   });
 
-  test('shows phone input form when not linked', async ({ page }) => {
+  test('redirects /liff/register to /liff/finance-verify keeping the query string', async ({
+    page,
+  }) => {
     await mockLiffApi(page, [
-      // Check contracts → 404 = not linked yet
-      { method: 'GET', path: '/line-oa/liff/contracts', status: 404, body: { message: 'ไม่พบ' } },
+      { method: 'GET', path: '/chatbot/finance/liff/status', body: { linked: false } },
     ]);
 
-    await page.goto('/liff/register');
-    await expect(page.getByText('ลงทะเบียนผูก LINE')).toBeVisible({ timeout: 10000 });
+    await page.goto('/liff/register?src=sms1');
+    await expect(page).toHaveURL(/\/liff\/finance-verify\?src=sms1$/);
+    await expect(page.getByText('ยืนยันตัวตน', { exact: true })).toBeVisible({ timeout: 10000 });
     await expect(page.getByText(MOCK_DISPLAY_NAME)).toBeVisible();
     await expect(page.getByPlaceholder('0812345678')).toBeVisible();
   });
 
-  test('shows already linked state when contracts exist', async ({ page }) => {
+  test('already linked LINE sees the verified state', async ({ page }) => {
     await mockLiffApi(page, [
       {
         method: 'GET',
-        path: '/line-oa/liff/contracts',
-        body: { customer: { name: 'สมชาย' }, contracts: [] },
+        path: '/chatbot/finance/liff/status',
+        body: { linked: true, customerName: 'สมชาย' },
       },
     ]);
 
     await page.goto('/liff/register');
-    await expect(page.getByText('ลงทะเบียนแล้ว')).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText('ดูสัญญาของฉัน')).toBeVisible();
+    await expect(page.getByText('ยืนยันแล้ว', { exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('คุณสมชาย')).toBeVisible();
   });
 
-  test('lookup by phone → confirm → success', async ({ page }) => {
+  test('phone → OTP → linked, without touching the retired register API', async ({ page }) => {
+    const retired: string[] = [];
+    page.on('request', (req) => {
+      if (req.url().includes('/line-oa/liff/register/')) retired.push(req.url());
+    });
     await mockLiffApi(page, [
-      { method: 'GET', path: '/line-oa/liff/contracts', status: 404, body: { message: 'ไม่พบ' } },
+      { method: 'GET', path: '/chatbot/finance/liff/status', body: { linked: false } },
       {
         method: 'POST',
-        path: '/line-oa/liff/register/lookup',
-        body: { customerId: 'cust1', maskedName: 'สม*** จั***' },
+        path: '/chatbot/finance/liff/request-otp',
+        body: { maskedPhone: '081-xxx-5678', expiresInSeconds: 300 },
       },
       {
         method: 'POST',
-        path: '/line-oa/liff/register/confirm',
-        body: { success: true, message: 'ลงทะเบียนสำเร็จ' },
+        path: '/chatbot/finance/liff/verify-otp',
+        body: { customerId: 'cust1', customerName: 'สมชาย' },
       },
     ]);
 
     await page.goto('/liff/register');
-    await expect(page.getByPlaceholder('0812345678')).toBeVisible({ timeout: 10000 });
-
-    // Enter phone
     await page.getByPlaceholder('0812345678').fill('0812345678');
-    await page.getByRole('button', { name: 'ค้นหาบัญชี' }).click();
+    await page.getByRole('button', { name: 'ส่งรหัส OTP' }).click();
 
-    // Confirm step
-    await expect(page.getByText('สม*** จั***')).toBeVisible({ timeout: 5000 });
-    await page.getByRole('button', { name: /ยืนยัน/ }).click();
+    await expect(page.getByText('081-xxx-5678')).toBeVisible({ timeout: 5000 });
+    await page.getByPlaceholder('000000').fill('123456');
+    await page.getByRole('button', { name: 'ยืนยัน', exact: true }).click();
 
-    // Success
-    await expect(page.getByText('ลงทะเบียนสำเร็จ')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('ยืนยันสำเร็จ', { exact: true })).toBeVisible({ timeout: 5000 });
+    expect(retired).toEqual([]);
   });
 
-  test('blocks lookup while the phone number is incomplete', async ({ page }) => {
+  test('blocks OTP request while the phone number is incomplete', async ({ page }) => {
     await mockLiffApi(page, [
-      { method: 'GET', path: '/line-oa/liff/contracts', status: 404, body: { message: 'ไม่พบ' } },
+      { method: 'GET', path: '/chatbot/finance/liff/status', body: { linked: false } },
     ]);
 
     await page.goto('/liff/register');
     await expect(page.getByPlaceholder('0812345678')).toBeVisible({ timeout: 10000 });
 
-    // LiffRegister.tsx disables the button until 10 digits are entered
-    // (`disabled={phone.length < 10 || submitting}`), so a short number can
-    // never reach handlePhoneLookup — the guard IS the disabled button.
+    // LiffFinanceVerify disables the button until 10 digits are entered
     await page.getByPlaceholder('0812345678').fill('123');
-    await expect(page.getByRole('button', { name: 'ค้นหาบัญชี' })).toBeDisabled();
-  });
-
-  test('shows error for invalid phone format', async ({ page }) => {
-    await mockLiffApi(page, [
-      { method: 'GET', path: '/line-oa/liff/contracts', status: 404, body: { message: 'ไม่พบ' } },
-    ]);
-
-    await page.goto('/liff/register');
-    await expect(page.getByPlaceholder('0812345678')).toBeVisible({ timeout: 10000 });
-
-    // 10 digits enables the button, but /^0\d{8,9}$/ still rejects it
-    // (does not start with 0) → handlePhoneLookup sets the inline error.
-    await page.getByPlaceholder('0812345678').fill('1234567890');
-    await page.getByRole('button', { name: 'ค้นหาบัญชี' }).click();
-    await expect(page.getByText('กรุณากรอกเบอร์โทรให้ถูกต้อง')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'ส่งรหัส OTP' })).toBeDisabled();
   });
 });

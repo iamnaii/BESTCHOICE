@@ -928,8 +928,11 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
     }, LONG);
 
     it(
-      'rows paid by the contract-level JP4 entry are backed (no paymentId on JP4)',
+      'rows paid by the contract-level JP4 entry are backed (no paymentId on JP4) — incl. a late fee collected by JP4',
       async () => {
+        // งวด 6 ครบกำหนดวันที่ 1 ของเดือนนี้และยังค้าง — จำลอง cron ค่าปรับ (ตั้ง lateFee ให้งวดค้าง)
+        const row6 = await paymentOf(a3, 6);
+        await prisma.payment.update({ where: { id: row6.id }, data: { lateFee: D(100) } });
         await earlyPayoffApproved(prisma, contractPayments, a3, userId, {
           paymentMethod: 'BANK_TRANSFER',
           discountPct: 50,
@@ -937,6 +940,10 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
         });
         const rows = await prisma.payment.findMany({ where: { contractId: a3 } });
         expect(rows.every((p) => p.status === 'PAID')).toBe(true);
+        // JP4 กระจายยอดปิด FIFO ด้วย owed = amountDue + lateFee − amountPaid ⇒ ค่าปรับอยู่ใน amountPaid ของงวด 6 ขณะที่
+        // Cr 42-1103 อยู่ในรายการ JP4 ระดับสัญญา (ไม่มี paymentId) — overpaid ต้องไม่นับเป็นรับเกิน
+        const paid6 = await paymentOf(a3, 6);
+        expect(paid6.amountPaid.toFixed(2)).toBe(paid6.amountDue.plus(100).toFixed(2));
         const jp4 = await prisma.journalEntry.count({
           where: {
             AND: [

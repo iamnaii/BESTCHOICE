@@ -211,7 +211,9 @@ export class DataAuditChecksService {
    * Check 4: no installment row may be paid beyond its billing — `amountPaid` minus the late fee
    * actually received (it rides in `amountPaid`; read from the ledger with the same reader the
    * receipt paths use) must not exceed `amountDue` by more than the ≤1 THB closing tolerance.
-   * Reported per contract. Imported rows untouched since the cutover are exempt (closed legacy data).
+   * On a contract closed by JP4 the row's charged late fee counts as received (JP4 books the fee on
+   * its contract-level entry). Reported per contract. Imported rows untouched since the cutover are
+   * exempt (closed legacy data).
    */
   async checkOverpaidContracts(scope?: ContractScope): Promise<AuditCheckResult> {
     const candidates = await this.prisma.$queryRaw<
@@ -222,10 +224,19 @@ export class DataAuditChecksService {
         installment_no: number;
         amount_due: Prisma.Decimal;
         amount_paid: Prisma.Decimal;
+        late_fee: Prisma.Decimal;
+        late_fee_waived: boolean;
+        early_payoff: boolean;
       }[]
     >`
       SELECT p.id AS payment_id, c.id AS contract_id, c.contract_number, p.installment_no,
-             p.amount_due, p.amount_paid
+             p.amount_due, p.amount_paid, p.late_fee, p.late_fee_waived,
+             EXISTS (
+               SELECT 1 FROM journal_entries je
+               WHERE je.metadata->>'contractId' = p.contract_id
+                 AND je.metadata->>'flow' = ${EARLY_PAYOFF_FLOW}
+                 AND je.status = 'POSTED' AND je.deleted_at IS NULL
+             ) AS early_payoff
       FROM payments p
       JOIN contracts c ON c.id = p.contract_id
       WHERE p.deleted_at IS NULL
@@ -247,9 +258,16 @@ export class DataAuditChecksService {
       { id: string; contract_number: string; installment_nos: number[]; overpay: Prisma.Decimal }
     >();
     for (const r of candidates) {
-      const over = new Prisma.Decimal(r.amount_paid)
-        .minus(fees.get(r.payment_id) ?? 0)
-        .minus(r.amount_due);
+      const receiptFee = new Prisma.Decimal(fees.get(r.payment_id) ?? 0);
+      // JP4 (early payoff) spreads the payoff FIFO with owed = amountDue + lateFee − amountPaid, so the
+      // fee lands in amountPaid while its Cr 42-1103 sits on the contract-level JP4 entry (no paymentId —
+      // invisible to the receipt reader). The fee stops accruing once money comes in, so earlier receipts
+      // of the row are a subset of late_fee ⇒ allow the full charged fee on a contract that has a JP4.
+      const fee =
+        r.early_payoff && !r.late_fee_waived
+          ? Prisma.Decimal.max(receiptFee, r.late_fee)
+          : receiptFee;
+      const over = new Prisma.Decimal(r.amount_paid).minus(fee).minus(r.amount_due);
       if (!over.gt(INSTALLMENT_OVERPAY_TOLERANCE)) continue;
       const row = byContract.get(r.contract_id) ?? {
         id: r.contract_id,

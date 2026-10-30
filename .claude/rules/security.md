@@ -80,10 +80,16 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
    ไม่มี/ไม่ตรง = ล้าง URL ทิ้ง token แล้วเริ่มล็อกอินของแท็บนี้ใหม่**หนึ่งครั้งต่อ 2 นาที** (`bc_ll_retry_at` — ในแอป LINE เป็นการล็อกอินอัตโนมัติ)
    ครั้งที่สองบอกให้เปิดลิงก์ใหม่จากแชท · เก็บ nonce ไม่ได้ = ไม่เริ่มล็อกอิน ⇒ code ของผู้โจมตี (ลิงก์ callback) และลิงก์หน้าเว็บที่ฝัง
    `#id_token=` ของผู้โจมตี ใช้ไม่ได้ทั้งคู่ · `buildBrowserUrl` (ลิงก์ที่บอทส่ง) ชี้**หน้าเว็บ** ให้หน้าเว็บเริ่มล็อกอินพร้อม nonce เอง
-   (ลิงก์ authorize รุ่นเก่าในประวัติแชทยังใช้ได้ — เสียหนึ่งรอบ) · token จาก LIFF SDK (`liff.getIDToken()` — ไม่ผ่าน URL) ไม่เกี่ยว ·
+   (ลิงก์ authorize รุ่นเก่าในประวัติแชทยังใช้ได้ — เสียหนึ่งรอบ) · ทาง LIFF SDK (`liff.init` → `liff.getProfile()`/`getIDToken()` ใต้ `/liff/contract`)
+   ไม่ผ่าน nonce นี้ — **และ SDK เองอ่าน `#access_token`/`#id_token` จาก fragment ของ URL ได้** (`@line/liff` บางเวอร์ชัน/UA แอป LINE เก่า) ⇒
+   ตัวตนฝั่ง API ปลอดภัยเพราะ **`LiffTokenGuard` ยืนยัน id_token กับ LINE ทุกคำขอ** (ลายเซ็น LINE ปลอมไม่ได้) ไม่ใช่เพราะ SDK ไม่แตะ URL · ห้ามเชื่อ
+   `liff.getProfile()`/ค่าจาก SDK เป็นตัวตนฝั่ง server โดยไม่ verify ·
    **ห้ามอ่านตัวตนจาก query/fragment ของ URL ที่ไหนอีก** และห้ามเพิ่มทางรับ id_token จาก URL ที่ไม่ผ่าน `verify` ·
    ไม่ใช้ cookie ผูก state ฝั่ง API: บน prod หน้าเว็บเรียก authorize ผ่าน rewrite `/api/**` ของ Firebase Hosting (host เว็บ — ส่งต่อเฉพาะ cookie
-   `__session`) แต่ callback อยู่ host ของ API (`API_BASE_URL`) ⇒ cookie host-only ไปไม่ถึง · HMAC state อย่างเดียวไม่ช่วย (ผู้โจมตีขอ state ที่ลงนามเองได้)
+   `__session`) แต่ callback อยู่ host ของ API (`API_BASE_URL`) ⇒ cookie host-only ไปไม่ถึง · HMAC state อย่างเดียวไม่ช่วย (ผู้โจมตีขอ state ที่ลงนามเองได้) ·
+   **id_token/nonce ห้ามถึง Sentry/log** (fix round 1 I-1 — id_token ใช้ยืนยันกับ LINE ได้จนหมดอายุ): `sentry.ts` redact body key `idToken`/`id_token`/`nonce`
+   (error event + transaction ที่ถูก sample) · header `x-liff-id-token` · `redactShareToken` ล้างพารามิเตอร์ `?idToken=`/`id_token=` ในทุก string ของ event
+   (url · query_string · span attributes · breadcrumb · ข้อความ error) — endpoint/ฟิลด์ใหม่ที่พก id_token ต้องเติมในรายการเหล่านี้
 4. **OTP (`VerificationService`)**: 3 ครั้งต่อรหัส (ช่วงละ 5 นาที) กินแบบ atomic ก่อนเทียบรหัส (`updateManyAndReturn` … `WHERE attempts < 3
    AND expires_at > now`) · ขอรหัสใหม่ในช่วงเดิม **ไม่รีเซ็ต** attempts · ผิดครบแล้วล็อกจนหมดช่วง (แถวไม่ถูกลบ) ·
    **cooldown 60 วิ/LINE แบบ atomic**: อ่านแถว→ตรวจ→เพดาน→เขียนแถว อยู่ในทรานแซกชันที่เริ่มด้วย
@@ -114,10 +120,14 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
 - **I-A Login CSRF — ปิดในโค้ดแล้ว (Task 21, 2026-10-31 · กติกาข้อ 3) · ที่ยังเหลือ:** (ก) **ยังไม่ได้ทดสอบบนเครื่องจริง** — ก่อนเปิด LIFF ให้ลูกค้า (1 ธ.ค.)
   ต้องผ่านครบ 4 แบบ (แอป LINE iOS · แอป LINE Android · Safari · Chrome): เปิดลิงก์ยืนยันตัวตนจากแชท → ล็อกอิน → หน้า OTP แสดงชื่อ/รูป LINE ของตัวเอง ·
   เปิดลิงก์หน้าเว็บที่ฝัง `#id_token=` ของบัญชีอื่น → ไม่ขึ้นชื่อนั้น ได้ล็อกอินเป็นบัญชีตัวเอง · ลิงก์ authorize รุ่นเก่า → ได้หน้า OTP (ล็อกอินเพิ่มหนึ่งรอบ) ·
-  ไปหน้า LIFF อื่น/รีเฟรชในแท็บเดิมไม่ต้องล็อกอินซ้ำ · `/liff/contract` ใน LIFF จริง (liff.line.me) ไม่ผ่านทางนี้และต้องทำงานเหมือนเดิม (ข) ล็อกอินที่ข้ามบริบทกลางทาง (เปิดจากเบราว์เซอร์ภายนอก →
+  ไปหน้า LIFF อื่น/รีเฟรชในแท็บเดิมไม่ต้องล็อกอินซ้ำ · `/liff/contract` ใน LIFF จริง (liff.line.me) ไม่ผ่านทางนี้และต้องทำงานเหมือนเดิม ·
+  ใน **Sentry** event ของ `/line-login/verify` (503 และ transaction ที่ถูก sample) ไม่มี `idToken`/`nonce` และไม่มี token ใน header/`?idToken=` (ข) ล็อกอินที่ข้ามบริบทกลางทาง (เปิดจากเบราว์เซอร์ภายนอก →
   สลับไปแอป LINE → กลับมาเปิด callback ในแท็บ/เบราว์เซอร์อื่น) **fail closed**: แท็บใหม่ไม่มี nonce ⇒ ทิ้ง token แล้วเริ่มล็อกอินใหม่ในแท็บนั้น (ผู้ใช้อาจต้องกดล็อกอิน
   LINE อีกครั้ง) — ไม่รั่ว แต่ UX อาจวนถ้าระบบเปิดแท็บใหม่ทุกครั้ง (ตรวจในข้อ ก) (ค) เบราว์เซอร์ที่ปิด storage (เช่น Safari "Block All Cookies") ล็อกอินนอก LIFF
   ไม่ได้ — หน้าจอบอกให้เปิดในแอป LINE (ง) ยังไม่มี SMS แจ้งเบอร์ลูกค้าหลังผูก LINE สำเร็จ (มาตรการตรวจจับเสริมที่รีวิวเสนอ — ใช้กับ I3 ได้ด้วย)
+  (ฉ) ของเดิมที่ยังไม่แก้ (M-2/M-3): session cache ของหน้า LIFF เก็บ id_token ใน sessionStorage (`bcp_liff_session_v1` — กติกา "ห้ามเก็บ token
+  ใน sessionStorage" ข้างบนหมายถึง access token ของพนักงาน) · ลิงก์ดาวน์โหลดใส่ id_token ใน `?idToken=` (`withLiffToken` → `LiffTokenGuard`) ⇒ ยังเข้า
+  access log ของ Cloud Run/Firebase ได้ (Sentry ล้างแล้ว) — งานต่อ: ลิงก์ดาวน์โหลดแบบไม่ใส่ token ใน URL
   (จ) deploy: เว็บ (26.10.70) กับ API ต้องขึ้นพร้อมกัน — เว็บรุ่นเก่ากับ API ใหม่ = ล็อกอินนอก LIFF ล้ม ("ข้อมูลเข้าสู่ระบบ LINE ไม่ครบ") จนเว็บใหม่ขึ้น ·
   เว็บใหม่กับ API เก่า = verify 404 → "ยืนยันการเข้าสู่ระบบ LINE ไม่ได้ในขณะนี้" (ไม่รั่วทั้งสองแบบ)
 - **I-C — OA ร้าน: ปุ่ม quick reply (postback `TEMPLATE:`) เติมตัวแปรลูกค้า** (`{customerName}` `{contractNumber}` `{amountDue}` …) จาก `chat_rooms.customer_id`

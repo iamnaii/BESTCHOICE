@@ -82,7 +82,8 @@ export function clearLiffSessionCache(): void {
 // 2. id_token ที่มากับ URL ใช้ได้เฉพาะเมื่อแท็บนี้มี nonce ค้างอยู่ และ API ยืนยันกับ LINE ว่า token ถูกต้อง + claim nonce
 //    ตรง (POST line-oa/line-login/verify) — nonce ใช้ครั้งเดียว · ตัวตน (sub/ชื่อ/รูป) มาจาก payload ที่ยืนยันแล้ว ไม่ใช่ query
 // 3. ไม่ตรง/ไม่มี nonce = ทิ้ง token ล้าง URL แล้วเริ่มล็อกอินของแท็บนี้ใหม่หนึ่งครั้ง (ในแอป LINE เป็นการล็อกอินอัตโนมัติ)
-// token จาก LIFF SDK (`liff.getIDToken()` ภายใน LIFF — ไม่ผ่าน URL) ไม่เกี่ยว
+// ทาง LIFF SDK (`liff.init` ใต้ /liff/contract) ไม่ผ่าน nonce นี้ — SDK อ่าน `#access_token`/`#id_token` จาก URL ได้เองในบางเวอร์ชัน
+// (fix round 1 M-1) ⇒ ตัวตนปลอดภัยเพราะ `LiffTokenGuard` ยืนยัน token กับ LINE ทุกคำขอ ไม่ใช่เพราะ SDK ไม่อ่าน URL
 const LOGIN_NONCE_KEY = 'bc_ll_nonce';
 /** เวลาที่แท็บนี้เริ่มล็อกอินใหม่อัตโนมัติครั้งล่าสุด — กันวนไม่รู้จบ */
 const LOGIN_RETRY_KEY = 'bc_ll_retry_at';

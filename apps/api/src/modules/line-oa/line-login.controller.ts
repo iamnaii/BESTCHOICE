@@ -205,7 +205,8 @@ export class LineLoginController {
    * Step 3 (I-A): หน้าเว็บส่ง id_token ที่มากับ URL + nonce ของแท็บที่เริ่มล็อกอิน → ยืนยันกับ LINE
    * (`/oauth2/v2.1/verify` ตรวจลายเซ็น · aud = channel นี้ · exp · nonce) แล้วเทียบ `nonce`/`aud` ซ้ำเอง ·
    * คืนตัวตนจาก payload ที่ยืนยันแล้ว — หน้าเว็บห้ามใช้ token ที่มากับ URL โดยไม่ผ่านทางนี้.
-   * token จาก LIFF SDK (`liff.getIDToken()` ในแอป LINE — ไม่ผ่าน redirect) ไม่ใช้ทางนี้ (`LiffTokenGuard` ตามเดิม)
+   * ทาง LIFF SDK (`liff.getIDToken()` ใต้ /liff/contract) ไม่ใช้ทางนี้ — ปลอดภัยเพราะ `LiffTokenGuard` ยืนยันกับ LINE ทุกคำขอ
+   * (SDK อ่าน token จาก fragment ของ URL ได้เองในบางเวอร์ชัน — ไม่ได้ปลอดภัยเพราะ SDK ไม่แตะ URL)
    */
   @Post('verify')
   @HttpCode(200)

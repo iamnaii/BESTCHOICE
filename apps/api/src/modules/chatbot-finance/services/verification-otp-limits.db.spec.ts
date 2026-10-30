@@ -9,9 +9,18 @@
  *   5. LINE เดียวขอ 6 เบอร์ในวันเดียว → ครั้งที่ 6 ไม่ส่ง SMS แม้เป็นเบอร์ลูกค้าจริง (เพดานต่อ LINE)
  *   6. ส่ง SMS ไม่สำเร็จ → คืนโควตา + ขอใหม่ได้ทันที
  *   7. ขอใหม่ในช่วงเวลาเดิมไม่รีเซ็ต attempts
+ *
+ * Task 21 (R-1, R-2):
+ *   8. SMS ล้มหลังรหัสถูกเดาไปแล้ว → ไม่คืนโควตา (ขอบเขต ≤ 24 ครั้ง/ลูกค้า/วัน จริงทุกกรณี) · รหัสยังถูกทิ้ง
+ *   9. มีคำขอของ LINE เดียวกันถือล็อกอยู่ → คำขอที่ซ้อนตอบ cooldown ทันที ไม่เข้าคิวถือ connection
+ *  10. cron ล้างแถวหมดอายุข้ามแถวที่ทรานแซกชันอื่นล็อกอยู่ (SKIP LOCKED) แทนการรอ
  */
 import { PrismaClient } from '@prisma/client';
-import { OTP_QUOTA_KEY_PREFIX, VerificationService } from './verification.service';
+import {
+  OTP_QUOTA_KEY_PREFIX,
+  OTP_REQUEST_LOCK_PREFIX,
+  VerificationService,
+} from './verification.service';
 
 jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn(), captureMessage: jest.fn() }));
 
@@ -34,6 +43,42 @@ const resetCooldown = (lineUserId: string) =>
   });
 /** ปล่อยงานส่ง SMS ที่ไม่ได้ await (fire-and-forget) ให้จบ */
 const settle = () => new Promise((resolve) => setTimeout(resolve, 50));
+/** ผลของ promise ภายในเวลาที่กำหนด — ยังไม่จบ = 'still-waiting' (ไม่รอให้เทสค้าง) */
+async function within<T>(p: Promise<T>, ms: number): Promise<T | 'still-waiting'> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<'still-waiting'>((r) => {
+    timer = setTimeout(() => r('still-waiting'), ms);
+  });
+  try {
+    return await Promise.race([p, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+/** ทรานแซกชันที่ถือล็อกไว้จนกว่าจะเรียก release() — ใช้จำลองคำขอ/คำสั่งอื่นที่กำลังทำงานอยู่ */
+async function holdInTransaction(
+  lock: (tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0]) => Promise<unknown>,
+): Promise<{ release: () => Promise<void> }> {
+  let release!: () => void;
+  const released = new Promise<void>((r) => (release = r));
+  let locked!: () => void;
+  const isLocked = new Promise<void>((r) => (locked = r));
+  const done = prisma.$transaction(
+    async (tx) => {
+      await lock(tx);
+      locked();
+      await released;
+    },
+    { timeout: 30_000, maxWait: 10_000 },
+  );
+  await isLocked;
+  return {
+    release: async () => {
+      release();
+      await done;
+    },
+  };
+}
 const myRows = () => ({
   OR: [{ lineUserId: { contains: tag } }, { lineUserId: { contains: customerId } }],
 });
@@ -201,5 +246,97 @@ describe('OTP limits on real Postgres (Task 20 I1 + fix round 1)', () => {
     await expect(verification.verifyOtp({ lineUserId, otp: lastOtp() })).resolves.toMatchObject({
       customerId,
     });
+  });
+
+  it('8. R-1: SMS failure after the issued code was guessed does not refund the quota (code still dropped)', async () => {
+    const lineUserId = line('guessed-then-fail');
+    let failSms!: (err: Error) => void;
+    sms.sendSmsFromQueue.mockImplementationOnce(
+      () => new Promise((_resolve, reject) => (failSms = reject)),
+    );
+    await verification.requestOtp({ lineUserId, phone: PHONE });
+    const otp = lastOtp();
+    // ผู้ถือ LINE เดาไปแล้วหนึ่งครั้งก่อนที่ provider จะตอบว่าส่งไม่สำเร็จ
+    await expect(verification.verifyOtp({ lineUserId, otp: wrongOf(otp) })).rejects.toThrow(
+      'เหลือ 2 ครั้ง',
+    );
+    failSms(new Error('provider down'));
+    await settle();
+
+    const customerQuota = await prisma.chatbotOtpRequest.findUniqueOrThrow({
+      where: { lineUserId: `${OTP_QUOTA_KEY_PREFIX}${customerId}` },
+    });
+    const pairQuota = await prisma.chatbotOtpRequest.findUniqueOrThrow({
+      where: { lineUserId: `${OTP_QUOTA_KEY_PREFIX}${customerId}:line:${lineUserId}` },
+    });
+    expect(customerQuota.attempts).toBe(1);
+    expect(pairQuota.attempts).toBe(1);
+    // รหัสที่ออกยังถูกทิ้ง (SMS ไม่ถึงเจ้าของเบอร์) — รหัสที่ถูกใช้ไม่ได้อีก
+    await expect(verification.verifyOtp({ lineUserId, otp })).rejects.toThrow('OTP ไม่ถูกต้อง');
+  });
+
+  it('9. R-2: a request that finds its LINE lock taken answers the cooldown at once instead of queueing', async () => {
+    const lineUserId = line('trylock');
+    const holder = await holdInTransaction(
+      (tx) =>
+        tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${OTP_REQUEST_LOCK_PREFIX + lineUserId}))`,
+    );
+    const pending = verification.requestOtp({ lineUserId, phone: PHONE }).then(
+      () => 'issued',
+      (err: Error) => err.message,
+    );
+    const outcome = await within(pending, 2_000);
+    await holder.release();
+    await pending; // โค้ดเดิมรอคิวจนผู้ถือปล่อย — เก็บให้จบก่อนตรวจ
+    await settle();
+
+    expect(outcome).toMatch(/^รบกวนรอ \d+ วินาทีก่อนขอ OTP ใหม่$/);
+    expect(sms.sendSmsFromQueue).not.toHaveBeenCalled();
+    expect(await prisma.chatbotOtpRequest.count({ where: { lineUserId } })).toBe(0);
+  });
+
+  it('10. R-2: OTP cleanup skips expired rows another transaction holds instead of waiting on them', async () => {
+    const expiredAt = new Date(Date.now() - 60_000);
+    const row = (name: string) => ({
+      lineUserId: line(name),
+      customerId: '',
+      phone: '',
+      hash: '',
+      expiresAt: expiredAt,
+      attempts: 0,
+      lastRequestAt: expiredAt,
+    });
+    await prisma.chatbotOtpRequest.createMany({
+      data: [
+        row('expired-held'),
+        row('expired-free'),
+        // ยังไม่หมดอายุ (อีก 1 ชม.) — ต้องรอดเสมอ ไม่ว่า timezone ของ session ฐานข้อมูลจะเป็นอะไร
+        { ...row('fresh'), expiresAt: new Date(Date.now() + 3_600_000) },
+      ],
+    });
+    const holder = await holdInTransaction(
+      (tx) =>
+        tx.$queryRaw`SELECT id FROM chatbot_otp_requests WHERE line_user_id = ${line('expired-held')} FOR UPDATE`,
+    );
+
+    const outcome = await within(
+      verification.cleanupExpiredOtps().then(() => 'done'),
+      2_000,
+    );
+    const afterFirstPass = await prisma.chatbotOtpRequest.findMany({
+      where: { lineUserId: { in: [line('expired-held'), line('expired-free')] } },
+      select: { lineUserId: true },
+    });
+    await holder.release();
+    await verification.cleanupExpiredOtps();
+
+    expect(outcome).toBe('done');
+    expect(afterFirstPass.map((r) => r.lineUserId)).toEqual([line('expired-held')]);
+    expect(
+      await prisma.chatbotOtpRequest.count({
+        where: { lineUserId: { in: [line('expired-held'), line('expired-free')] } },
+      }),
+    ).toBe(0);
+    expect(await prisma.chatbotOtpRequest.count({ where: { lineUserId: line('fresh') } })).toBe(1);
   });
 });

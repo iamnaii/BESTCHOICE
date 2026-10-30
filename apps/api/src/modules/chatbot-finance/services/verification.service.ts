@@ -46,8 +46,11 @@ export const OTP_DAILY_REQUESTS_PER_LINE = 5;
  */
 export const OTP_QUOTA_KEY_PREFIX = 'otp-quota:customer:';
 export const OTP_LINE_QUOTA_KEY_PREFIX = 'otp-quota:line:';
-/** คีย์ advisory lock ต่อ LINE ของขั้นขอ OTP (cooldown atomic — I-B) */
-const OTP_REQUEST_LOCK_PREFIX = 'otp-request:';
+/**
+ * คีย์ advisory lock ต่อ LINE ของขั้นขอ OTP (cooldown atomic — I-B) · Task 21 R-2: ใช้ `pg_try_advisory_xact_lock`
+ * — คำขอที่ซ้อนได้คำตอบ cooldown ทันที ไม่เข้าคิวถือ connection ของ pool
+ */
+export const OTP_REQUEST_LOCK_PREFIX = 'otp-request:';
 /**
  * M1 — เวลาตอบขั้นต่ำของ requestOtp ที่สำเร็จ (ทั้งเบอร์จริงและ decoy) · SMS ไม่ถูก await จึงไม่ทำให้เวลาตอบต่างกัน
  * และค่านี้ให้เวลาส่ง SMS จบระหว่างที่ request ยังเปิดอยู่ (Cloud Run ลด CPU หลังตอบ)
@@ -56,8 +59,17 @@ const OTP_RESPONSE_FLOOR_MS = 1000;
 /** แถว OTP ที่ไม่ผูกลูกค้า (เบอร์ไม่พบ / เกินเพดาน) — ตอบเหมือนจริงทุกอย่าง แต่ไม่มีรหัสที่ใช้ได้ */
 const DECOY_CUSTOMER_ID = '';
 
-/** รหัสที่ออกในขั้นขอ OTP (หลัง commit จึงส่ง SMS) — quotaKeys = แถวนับที่ต้องคืนถ้าส่ง SMS ไม่สำเร็จ */
-type IssuedOtp = { otp: string; hash: string; phone: string; quotaKeys: string[] };
+/**
+ * รหัสที่ออกในขั้นขอ OTP (หลัง commit จึงส่ง SMS) — quotaKeys = แถวนับที่ต้องคืนถ้าส่ง SMS ไม่สำเร็จ ·
+ * attemptsAtIssue = attempts ของแถวหลังเขียนรหัสนี้ (Task 21 R-1: คืนโควตาเฉพาะเมื่อยังไม่มีใครเดารหัสนี้)
+ */
+type IssuedOtp = {
+  otp: string;
+  hash: string;
+  phone: string;
+  quotaKeys: string[];
+  attemptsAtIssue: number;
+};
 
 // T4-C9: per-lineUserId lock — เดิมนับ "เบอร์ไม่พบ" ซึ่งกลายเป็น oracle ว่าเบอร์ไหนเป็นลูกค้า (M4)
 // ตอนนี้นับเฉพาะเบอร์ผิดรูปแบบ (ไม่บอกอะไรเกี่ยวกับลูกค้า) · lock 30 นาทีหลังผิด 3 ครั้งใน 30 นาที
@@ -221,10 +233,11 @@ export class VerificationService {
   ): Promise<IssuedOtp | null> {
     const existing = await tx.chatbotOtpRequest.findUnique({ where: { lineUserId } });
     if (existing && now.getTime() - existing.lastRequestAt.getTime() < OTP_REQUEST_COOLDOWN_MS) {
-      const waitSeconds = Math.ceil(
-        (OTP_REQUEST_COOLDOWN_MS - (now.getTime() - existing.lastRequestAt.getTime())) / 1000,
+      throw new BadRequestException(
+        this.cooldownMessage(
+          OTP_REQUEST_COOLDOWN_MS - (now.getTime() - existing.lastRequestAt.getTime()),
+        ),
       );
-      throw new BadRequestException(`รบกวนรอ ${waitSeconds} วินาทีก่อนขอ OTP ใหม่`);
     }
     // I1: ผิดครบแล้วในช่วงเดิม → ขอรหัสใหม่ไม่ได้จนหมดช่วง (เดิม upsert รีเซ็ต attempts เป็น 0 ทุกครั้ง)
     if (existing && existing.expiresAt > now && existing.attempts >= OTP_MAX_ATTEMPTS) {
@@ -311,12 +324,12 @@ export class VerificationService {
 
     const otp = this.generateOtp();
     const hash = this.hashOtp(otp);
-    await this.writeOtpRow(tx, lineUserId, existing, now, {
+    const attemptsAtIssue = await this.writeOtpRow(tx, lineUserId, existing, now, {
       customerId: customer.id,
       phone: customerPhone,
       hash,
     });
-    return { otp, hash, phone: customerPhone, quotaKeys };
+    return { otp, hash, phone: customerPhone, quotaKeys, attemptsAtIssue };
   }
 
   /**
@@ -454,14 +467,24 @@ export class VerificationService {
 
   // ─── Cleanup cron ─────────────────────────────────────────
 
+  /**
+   * Task 21 R-2: ลบเฉพาะแถวที่ล็อกได้ทันที (`FOR UPDATE SKIP LOCKED`) — แถวที่คำขอ OTP/เพดานกำลังถืออยู่ถูกข้าม
+   * (รอบถัดไปใน 10 นาทีลบเอง) ⇒ cron ไม่รอล็อกแถวของใคร จึงไม่มีวงจร deadlock กับทรานแซกชันขอ OTP ช่วงข้ามเที่ยงคืน.
+   * `expires_at` เป็น timestamp ไม่มี timezone (Prisma เก็บเวลา UTC) ⇒ เทียบกับ `now() AT TIME ZONE 'UTC'`
+   * ไม่ขึ้นกับ timezone ของ session
+   */
   @Cron(CronExpression.EVERY_10_MINUTES)
   async cleanupExpiredOtps(): Promise<void> {
     try {
-      const result = await this.prisma.chatbotOtpRequest.deleteMany({
-        where: { expiresAt: { lt: new Date() } },
-      });
-      if (result.count > 0) {
-        this.logger.debug(`[Verify] Cleaned ${result.count} expired OTP(s)`);
+      const count = await this.prisma.$executeRaw`
+        DELETE FROM chatbot_otp_requests
+        WHERE id IN (
+          SELECT id FROM chatbot_otp_requests
+          WHERE expires_at < (now() AT TIME ZONE 'UTC')
+          FOR UPDATE SKIP LOCKED
+        )`;
+      if (count > 0) {
+        this.logger.debug(`[Verify] Cleaned ${count} expired OTP(s)`);
       }
     } catch (error) {
       this.logger.error(`OTP cleanup failed: ${error instanceof Error ? error.message : error}`);
@@ -631,7 +654,8 @@ export class VerificationService {
 
   /**
    * เขียนแถว OTP ของ lineUserId — ขอใหม่ในช่วงเดิม (แถวยังไม่หมดอายุ) **ไม่รีเซ็ต attempts** (ไม่ใส่ฟิลด์ใน
-   * update ⇒ คงค่าใน DB แม้มี verify ขนานมา increment) · แถวหมดอายุแล้ว = ช่วงใหม่ เริ่ม 0
+   * update ⇒ คงค่าใน DB แม้มี verify ขนานมา increment) · แถวหมดอายุแล้ว = ช่วงใหม่ เริ่ม 0 ·
+   * คืน attempts ของแถวหลังเขียน (ค่าจริงจาก RETURNING — ไม่ใช่ค่าที่อ่านไว้ก่อนซึ่ง verify ขนานอาจเปลี่ยนไปแล้ว)
    */
   private async writeOtpRow(
     client: Prisma.TransactionClient,
@@ -639,29 +663,40 @@ export class VerificationService {
     existing: { expiresAt: Date } | null,
     now: Date,
     data: { customerId: string; phone: string; hash: string },
-  ): Promise<void> {
+  ): Promise<number> {
     const expiresAt = new Date(now.getTime() + OTP_TTL_MS);
     const sameWindow = !!existing && existing.expiresAt > now;
-    await client.chatbotOtpRequest.upsert({
+    const row = await client.chatbotOtpRequest.upsert({
       where: { lineUserId },
       create: { lineUserId, ...data, expiresAt, attempts: 0, lastRequestAt: now },
       update: { ...data, expiresAt, lastRequestAt: now, ...(sameWindow ? {} : { attempts: 0 }) },
+      select: { attempts: true },
     });
+    return row.attempts;
   }
 
   /**
-   * I-B: ขั้นขอ OTP ของ LINE เดียวกันเข้าคิวทีละคำขอ — `pg_advisory_xact_lock` เป็นคำสั่งแรกของทรานแซกชัน
-   * ⇒ คำขอที่สองเห็นแถวที่คำขอแรก commit แล้วและชน cooldown · ปล่อยเองตอนทรานแซกชันจบ · ส่ง SMS หลัง commit
+   * I-B: ขั้นขอ OTP ของ LINE เดียวกันทำทีละคำขอ — ล็อกเป็นคำสั่งแรกของทรานแซกชัน ⇒ อ่านแถว→cooldown→เพดาน→เขียนแถว
+   * ไม่ซ้อนกัน · ปล่อยเองตอนทรานแซกชันจบ · ส่ง SMS หลัง commit.
+   * Task 21 R-2: `pg_try_advisory_xact_lock` (ไม่รอ) — ล็อกไม่ได้ = มีคำขอของ LINE นี้กำลังออกรหัสอยู่ ⇒ ตอบ cooldown
+   * ทันที (เดิม `pg_advisory_xact_lock` ให้คำขอซ้อนเข้าคิวถือ connection ของ pool ไว้ระหว่างรอ — pool prod = 10)
    */
   private withOtpRequestLock<T>(
     lineUserId: string,
     fn: (tx: Prisma.TransactionClient) => Promise<T>,
   ): Promise<T> {
     return this.prisma.$transaction(async (tx) => {
-      // $executeRaw ไม่ใช่ $queryRaw — pg_advisory_xact_lock คืน void ที่ Prisma deserialize ไม่ได้
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${OTP_REQUEST_LOCK_PREFIX + lineUserId}))`;
+      const [lock] = await tx.$queryRaw<{ locked: boolean }[]>`
+        SELECT pg_try_advisory_xact_lock(hashtext(${OTP_REQUEST_LOCK_PREFIX + lineUserId})) AS locked`;
+      if (!lock?.locked) {
+        throw new BadRequestException(this.cooldownMessage(OTP_REQUEST_COOLDOWN_MS));
+      }
       return fn(tx);
     });
+  }
+
+  private cooldownMessage(waitMs: number): string {
+    return `รบกวนรอ ${Math.ceil(waitMs / 1000)} วินาทีก่อนขอ OTP ใหม่`;
   }
 
   /** M1: ส่ง SMS โดยไม่ให้ requestOtp รอผล — ล้มเมื่อไร handleSmsFailure เก็บกวาด (ไม่ throw ออกไป) */
@@ -675,15 +710,21 @@ export class VerificationService {
     } catch (err) {
       sending = Promise.reject(err);
     }
-    void sending.then(
-      () => this.logger.log(`[Verify] OTP sent to ${maskPhone(issued.phone)}`),
-      (err: unknown) => this.handleSmsFailure(lineUserId, issued, err),
-    );
+    void sending
+      .then(
+        () => this.logger.log(`[Verify] OTP sent to ${maskPhone(issued.phone)}`),
+        (err: unknown) => this.handleSmsFailure(lineUserId, issued, err),
+      )
+      // Task 21 R-3: logger/Sentry ที่โยนเองต้องไม่กลายเป็น unhandled rejection (งานนี้ไม่มีใครรอ)
+      .catch(() => undefined);
   }
 
   /**
    * ส่ง SMS ไม่สำเร็จ: log + Sentry · ทิ้งรหัสที่เพิ่งออก (เฉพาะแถวที่ยังถือ hash นี้) + ปลด cooldown ให้ขอใหม่ได้ทันที ·
-   * คืนโควตาลูกค้า/(ลูกค้า, LINE) 1 ครั้ง — provider สะดุดต้องไม่เผาโควตาของลูกค้าจริง (ผู้โจมตีสั่งให้ล้มไม่ได้)
+   * คืนโควตาลูกค้า/(ลูกค้า, LINE) 1 ครั้ง — provider สะดุดต้องไม่เผาโควตาของลูกค้าจริง (ผู้โจมตีสั่งให้ล้มไม่ได้).
+   * Task 21 R-1: คืนเฉพาะเมื่อรหัสนี้ **ยังไม่ถูกเดาเลย** (แถวยังถือ hash นี้และ attempts เท่าตอนออก — ตัดสินใน UPDATE
+   * คำสั่งเดียวกับการทิ้งรหัส ⇒ verify ขนานแทรกไม่ได้) · ถูกเดาแล้ว = ทิ้งรหัสแต่ไม่คืน ⇒ เดาได้ ≤ 24 ครั้ง/ลูกค้า/วัน
+   * จริงทุกกรณี แม้ provider ล่ม
    */
   private async handleSmsFailure(
     lineUserId: string,
@@ -693,10 +734,19 @@ export class VerificationService {
     this.logger.error(`[Verify] SMS send failed: ${err instanceof Error ? err.message : err}`);
     Sentry.captureException(err, { tags: { kind: 'otp-sms', flow: 'finance-verify' } });
     try {
-      await this.prisma.chatbotOtpRequest.updateMany({
-        where: { lineUserId, hash: issued.hash },
-        data: { hash: this.decoyHash(), lastRequestAt: new Date(0) },
+      const discard = { hash: this.decoyHash(), lastRequestAt: new Date(0) };
+      const unguessed = await this.prisma.chatbotOtpRequest.updateMany({
+        where: { lineUserId, hash: issued.hash, attempts: issued.attemptsAtIssue },
+        data: discard,
       });
+      if (unguessed.count !== 1) {
+        // รหัสถูกเดาไปแล้ว (หรือถูกแทนด้วยรหัสใหม่) — ยังทิ้งรหัสนี้ถ้าแถวยังถืออยู่ แต่ไม่คืนโควตา
+        await this.prisma.chatbotOtpRequest.updateMany({
+          where: { lineUserId, hash: issued.hash },
+          data: discard,
+        });
+        return;
+      }
       for (const key of issued.quotaKeys) {
         await this.prisma.chatbotOtpRequest.updateMany({
           where: { lineUserId: key, attempts: { gt: 0 } },

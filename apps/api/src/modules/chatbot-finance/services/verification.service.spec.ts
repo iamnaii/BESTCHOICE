@@ -80,7 +80,8 @@ describe('VerificationService', () => {
     prisma = {
       chatbotOtpRequest: withOtpRowMocks({
         findUnique: jest.fn().mockResolvedValue(null),
-        upsert: jest.fn().mockResolvedValue({ id: 'otp-1' }),
+        // upsert … RETURNING — writeOtpRow อ่าน attempts ของแถวหลังเขียน (Task 21 R-1)
+        upsert: jest.fn().mockResolvedValue({ id: 'otp-1', attempts: 0 }),
         delete: jest.fn().mockResolvedValue({}),
         deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         update: jest.fn(),
@@ -920,8 +921,9 @@ describe('VerificationService', () => {
       const calls = prisma.chatbotOtpRequest.updateMany.mock.calls
         .map((c: [unknown]) => c[0])
         .slice(3);
-      expect(calls[0]).toEqual({
-        where: { lineUserId: 'U123', hash: issuedHash },
+      // R-1: ทิ้งรหัส + คืนโควตาเฉพาะเมื่อ attempts ยังเท่าตอนออกรหัส (ยังไม่มีใครเดา)
+      expect(calls[0]).toStrictEqual({
+        where: { lineUserId: 'U123', hash: issuedHash, attempts: 0 },
         data: { hash: expect.stringMatching(/^decoy:/), lastRequestAt: new Date(0) },
       });
       expect(calls.slice(1)).toEqual([
@@ -934,6 +936,64 @@ describe('VerificationService', () => {
           data: { attempts: { decrement: 1 } },
         },
       ]);
+    });
+
+    it('R-1: SMS failure after the issued code was guessed drops the code but refunds nothing', async () => {
+      prisma.customer.findFirst.mockResolvedValue(KNOWN);
+      prisma.chatbotOtpRequest.upsert.mockResolvedValue({ id: 'otp-1', attempts: 1 });
+      let failSms!: (err: Error) => void;
+      notifications.sendSmsFromQueue.mockReturnValue(
+        new Promise((_resolve, reject) => (failSms = reject)),
+      );
+
+      await service.requestOtp({ lineUserId: 'U123', phone: '0891234567' });
+      const issuedHash = prisma.chatbotOtpRequest.upsert.mock.calls[0][0].create.hash;
+      // ระหว่างรอ provider มีการเดารหัส ⇒ attempts ไม่เท่าตอนออก ⇒ UPDATE แบบมีเงื่อนไขไม่โดนแถวไหน
+      prisma.chatbotOtpRequest.updateMany.mockResolvedValueOnce({ count: 0 });
+      failSms(new Error('provider down'));
+      await flushSmsDispatch();
+
+      const calls = prisma.chatbotOtpRequest.updateMany.mock.calls
+        .map((c: [unknown]) => c[0])
+        .slice(3);
+      expect(calls).toStrictEqual([
+        {
+          where: { lineUserId: 'U123', hash: issuedHash, attempts: 1 },
+          data: { hash: expect.stringMatching(/^decoy:/), lastRequestAt: new Date(0) },
+        },
+        {
+          where: { lineUserId: 'U123', hash: issuedHash },
+          data: { hash: expect.stringMatching(/^decoy:/), lastRequestAt: new Date(0) },
+        },
+      ]);
+    });
+
+    it('R-3: a logger that throws in the SMS callback does not leave an unhandled rejection', async () => {
+      prisma.customer.findFirst.mockResolvedValue(KNOWN);
+      const unhandled: unknown[] = [];
+      const onUnhandled = (reason: unknown) => unhandled.push(reason);
+      process.on('unhandledRejection', onUnhandled);
+      const logger = (service as unknown as { logger: { log: jest.Mock; error: jest.Mock } })
+        .logger;
+      const logSpy = jest.spyOn(logger, 'log').mockImplementation(() => {
+        throw new Error('logger down');
+      });
+      const errorSpy = jest.spyOn(logger, 'error').mockImplementation(() => {
+        throw new Error('logger down');
+      });
+      try {
+        // ทางส่งสำเร็จ (logger.log โยน) และทางส่งไม่สำเร็จ (logger.error โยนก่อนเก็บกวาด)
+        await service.requestOtp({ lineUserId: 'U-ok', phone: '0891234567' });
+        notifications.sendSmsFromQueue.mockRejectedValueOnce(new Error('provider down'));
+        await service.requestOtp({ lineUserId: 'U-fail', phone: '0891234567' });
+        await flushSmsDispatch();
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(unhandled).toEqual([]);
+      } finally {
+        process.off('unhandledRejection', onUnhandled);
+        logSpy.mockRestore();
+        errorSpy.mockRestore();
+      }
     });
 
     it('SMS that throws synchronously is still cleaned up (never escapes requestOtp)', async () => {

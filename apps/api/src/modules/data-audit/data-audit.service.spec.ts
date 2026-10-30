@@ -533,16 +533,36 @@ describe('DataAuditService', () => {
           {
             referenceType: 'CONTRACT',
             lines: [
-              { accountCode: '11-2102', debit: new Prisma.Decimal('19795.00'), credit: new Prisma.Decimal('0') },
-              { accountCode: '41-1101', debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('18500.00') },
-              { accountCode: '21-2101', debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('1295.00') },
+              {
+                accountCode: '11-2102',
+                debit: new Prisma.Decimal('19795.00'),
+                credit: new Prisma.Decimal('0'),
+              },
+              {
+                accountCode: '41-1101',
+                debit: new Prisma.Decimal('0'),
+                credit: new Prisma.Decimal('18500.00'),
+              },
+              {
+                accountCode: '21-2101',
+                debit: new Prisma.Decimal('0'),
+                credit: new Prisma.Decimal('1295.00'),
+              },
             ],
           },
           {
             referenceType: 'CONTRACT_COGS',
             lines: [
-              { accountCode: '51-1101', debit: new Prisma.Decimal('18000.00'), credit: new Prisma.Decimal('0') },
-              { accountCode: '11-3101', debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('18000.00') },
+              {
+                accountCode: '51-1101',
+                debit: new Prisma.Decimal('18000.00'),
+                credit: new Prisma.Decimal('0'),
+              },
+              {
+                accountCode: '11-3101',
+                debit: new Prisma.Decimal('0'),
+                credit: new Prisma.Decimal('18000.00'),
+              },
             ],
           },
         ])
@@ -551,10 +571,26 @@ describe('DataAuditService', () => {
           {
             referenceId: 'p-1',
             lines: [
-              { accountCode: '11-1101', debit: new Prisma.Decimal('3299.17'), credit: new Prisma.Decimal('0') },
-              { accountCode: '11-2102', debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('2833.34') },
-              { accountCode: '42-1105', debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('250.00') },
-              { accountCode: '21-2101', debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('215.83') },
+              {
+                accountCode: '11-1101',
+                debit: new Prisma.Decimal('3299.17'),
+                credit: new Prisma.Decimal('0'),
+              },
+              {
+                accountCode: '11-2102',
+                debit: new Prisma.Decimal('0'),
+                credit: new Prisma.Decimal('2833.34'),
+              },
+              {
+                accountCode: '42-1105',
+                debit: new Prisma.Decimal('0'),
+                credit: new Prisma.Decimal('250.00'),
+              },
+              {
+                accountCode: '21-2101',
+                debit: new Prisma.Decimal('0'),
+                credit: new Prisma.Decimal('215.83'),
+              },
             ],
           },
         ]);
@@ -608,15 +644,31 @@ describe('DataAuditService', () => {
           {
             referenceType: 'CONTRACT',
             lines: [
-              { accountCode: '11-2102', debit: new Prisma.Decimal('19795.00'), credit: new Prisma.Decimal('0') },
-              { accountCode: '41-1101', debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('19795.00') },
+              {
+                accountCode: '11-2102',
+                debit: new Prisma.Decimal('19795.00'),
+                credit: new Prisma.Decimal('0'),
+              },
+              {
+                accountCode: '41-1101',
+                debit: new Prisma.Decimal('0'),
+                credit: new Prisma.Decimal('19795.00'),
+              },
             ],
           },
           {
             referenceType: 'CONTRACT_COGS',
             lines: [
-              { accountCode: '51-1101', debit: new Prisma.Decimal('18000.00'), credit: new Prisma.Decimal('0') },
-              { accountCode: '11-3101', debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('18000.00') },
+              {
+                accountCode: '51-1101',
+                debit: new Prisma.Decimal('18000.00'),
+                credit: new Prisma.Decimal('0'),
+              },
+              {
+                accountCode: '11-3101',
+                debit: new Prisma.Decimal('0'),
+                credit: new Prisma.Decimal('18000.00'),
+              },
             ],
           },
         ])
@@ -626,14 +678,33 @@ describe('DataAuditService', () => {
             referenceId: 'random-uuid-not-the-payment-id',
             metadata: { paymentId: 'p-1', tag: 'receipt', flow: 'payment-receipt' },
             lines: [
-              { accountCode: '11-1101', debit: new Prisma.Decimal('3299.17'), credit: new Prisma.Decimal('0') },
-              { accountCode: '11-2102', debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('2833.34') },
-              { accountCode: '42-1105', debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('250.00') },
-              { accountCode: '21-2101', debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('215.83') },
+              {
+                accountCode: '11-1101',
+                debit: new Prisma.Decimal('3299.17'),
+                credit: new Prisma.Decimal('0'),
+              },
+              {
+                accountCode: '11-2102',
+                debit: new Prisma.Decimal('0'),
+                credit: new Prisma.Decimal('2833.34'),
+              },
+              {
+                accountCode: '42-1105',
+                debit: new Prisma.Decimal('0'),
+                credit: new Prisma.Decimal('250.00'),
+              },
+              {
+                accountCode: '21-2101',
+                debit: new Prisma.Decimal('0'),
+                credit: new Prisma.Decimal('215.83'),
+              },
             ],
           },
         ]);
-      prisma.interCompanyTransaction.findFirst.mockResolvedValueOnce({ id: 'ic-1', contractId: 'c-1' });
+      prisma.interCompanyTransaction.findFirst.mockResolvedValueOnce({
+        id: 'ic-1',
+        contractId: 'c-1',
+      });
 
       const result = await service.traceContract('c-1');
 
@@ -649,8 +720,16 @@ describe('DataAuditService', () => {
           {
             referenceType: 'CONTRACT',
             lines: [
-              { accountCode: '11-2102', debit: new Prisma.Decimal('19795.00'), credit: new Prisma.Decimal('0') },
-              { accountCode: '41-1101', debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('19795.00') },
+              {
+                accountCode: '11-2102',
+                debit: new Prisma.Decimal('19795.00'),
+                credit: new Prisma.Decimal('0'),
+              },
+              {
+                accountCode: '41-1101',
+                debit: new Prisma.Decimal('0'),
+                credit: new Prisma.Decimal('19795.00'),
+              },
             ],
           },
         ])
@@ -660,12 +739,23 @@ describe('DataAuditService', () => {
             referenceId: 'p-1',
             metadata: { tag: '2B', paymentId: 'p-1' },
             lines: [
-              { accountCode: '11-1101', debit: new Prisma.Decimal('3299.17'), credit: new Prisma.Decimal('0') },
-              { accountCode: '11-2102', debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('3299.17') },
+              {
+                accountCode: '11-1101',
+                debit: new Prisma.Decimal('3299.17'),
+                credit: new Prisma.Decimal('0'),
+              },
+              {
+                accountCode: '11-2102',
+                debit: new Prisma.Decimal('0'),
+                credit: new Prisma.Decimal('3299.17'),
+              },
             ],
           },
         ]);
-      prisma.interCompanyTransaction.findFirst.mockResolvedValueOnce({ id: 'ic-1', contractId: 'c-1' });
+      prisma.interCompanyTransaction.findFirst.mockResolvedValueOnce({
+        id: 'ic-1',
+        contractId: 'c-1',
+      });
 
       const result = await service.traceContract('c-1');
       expect(result.checks.payments[0].status).toBe('PASS');
@@ -683,9 +773,21 @@ describe('DataAuditService', () => {
             metadata: { paymentId: 'p-1', tag: 'receipt' },
             // partial: 1500 cash, of which 100 is VAT
             lines: [
-              { accountCode: '11-1101', debit: new Prisma.Decimal('1500.00'), credit: new Prisma.Decimal('0') },
-              { accountCode: '11-2103', debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('1400.00') },
-              { accountCode: '21-2101', debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('100.00') },
+              {
+                accountCode: '11-1101',
+                debit: new Prisma.Decimal('1500.00'),
+                credit: new Prisma.Decimal('0'),
+              },
+              {
+                accountCode: '11-2103',
+                debit: new Prisma.Decimal('0'),
+                credit: new Prisma.Decimal('1400.00'),
+              },
+              {
+                accountCode: '21-2101',
+                debit: new Prisma.Decimal('0'),
+                credit: new Prisma.Decimal('100.00'),
+              },
             ],
           },
           {
@@ -693,13 +795,28 @@ describe('DataAuditService', () => {
             metadata: { paymentId: 'p-1', tag: 'receipt' },
             // completion: 1799.17 cash, of which 115.83 is VAT
             lines: [
-              { accountCode: '11-1101', debit: new Prisma.Decimal('1799.17'), credit: new Prisma.Decimal('0') },
-              { accountCode: '11-2103', debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('1683.34') },
-              { accountCode: '21-2101', debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('115.83') },
+              {
+                accountCode: '11-1101',
+                debit: new Prisma.Decimal('1799.17'),
+                credit: new Prisma.Decimal('0'),
+              },
+              {
+                accountCode: '11-2103',
+                debit: new Prisma.Decimal('0'),
+                credit: new Prisma.Decimal('1683.34'),
+              },
+              {
+                accountCode: '21-2101',
+                debit: new Prisma.Decimal('0'),
+                credit: new Prisma.Decimal('115.83'),
+              },
             ],
           },
         ]);
-      prisma.interCompanyTransaction.findFirst.mockResolvedValueOnce({ id: 'ic-1', contractId: 'c-1' });
+      prisma.interCompanyTransaction.findFirst.mockResolvedValueOnce({
+        id: 'ic-1',
+        contractId: 'c-1',
+      });
 
       const result = await service.traceContract('c-1');
 
@@ -717,10 +834,9 @@ describe('DataAuditService', () => {
       // VAT reconciliation: vatTotal sums 21-2101 across BOTH receipt JEs
       // (100 + 115.83 = 215.83) and matches p-1's payment.vatAmount (215.83).
       expect(result.checks.vatTotal.status).toBe('PASS');
-      expect((result.checks.vatTotal.details as { journalVatSum: number }).journalVatSum).toBeCloseTo(
-        215.83,
-        2,
-      );
+      expect(
+        (result.checks.vatTotal.details as { journalVatSum: number }).journalVatSum,
+      ).toBeCloseTo(215.83, 2);
     });
 
     it('MULTI-RECEIPT — broadened query passes referenceType AUTO + OR(referenceId, metadata.paymentId) for every payment', async () => {
@@ -830,9 +946,7 @@ describe('DataAuditService', () => {
         status: 'PASS',
         acknowledgedAt: null,
       });
-      await expect(
-        service.acknowledgeFinding('da-1', 'u-1'),
-      ).rejects.toThrow();
+      await expect(service.acknowledgeFinding('da-1', 'u-1')).rejects.toThrow();
     });
 
     it('acknowledgeFinding writes acknowledgedBy + At + notes', async () => {

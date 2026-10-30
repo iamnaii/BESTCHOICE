@@ -84,7 +84,17 @@ export class ContractTraceService {
     const commissionTotal = this.traceCommissionTotal(contract, paymentJournals);
     const completion = this.traceCompletion(contract);
 
-    const allChecks = [creation, activation, cogs, interCompanyCheck, ...payments, hpReceivable, vatTotal, commissionTotal, completion];
+    const allChecks = [
+      creation,
+      activation,
+      cogs,
+      interCompanyCheck,
+      ...payments,
+      hpReceivable,
+      vatTotal,
+      commissionTotal,
+      completion,
+    ];
     const passed = allChecks.filter((c) => c.status === 'PASS').length;
     const failed = allChecks.filter((c) => c.status === 'FAIL').length;
     const warnings = allChecks.filter((c) => c.status === 'WARN').length;
@@ -155,7 +165,11 @@ export class ContractTraceService {
     const hasSchedule = contract.payments.length > 0;
     const isPostDraft = contract.status !== 'DRAFT';
     if (!isPostDraft) {
-      return { name: 'creation', status: 'PASS', details: 'Contract is DRAFT — no schedule expected yet' };
+      return {
+        name: 'creation',
+        status: 'PASS',
+        details: 'Contract is DRAFT — no schedule expected yet',
+      };
     }
     return {
       name: 'creation',
@@ -168,16 +182,34 @@ export class ContractTraceService {
 
   private traceActivation(
     contract: { status: string },
-    journals: { referenceType: string | null; lines: { debit: Prisma.Decimal; credit: Prisma.Decimal }[] }[],
+    journals: {
+      referenceType: string | null;
+      lines: { debit: Prisma.Decimal; credit: Prisma.Decimal }[];
+    }[],
   ): ContractTraceCheck {
-    const activationStatuses = ['ACTIVE', 'OVERDUE', 'DEFAULT', 'COMPLETED', 'EARLY_PAYOFF', 'CLOSED_BAD_DEBT'];
+    const activationStatuses = [
+      'ACTIVE',
+      'OVERDUE',
+      'DEFAULT',
+      'COMPLETED',
+      'EARLY_PAYOFF',
+      'CLOSED_BAD_DEBT',
+    ];
     if (!activationStatuses.includes(contract.status)) {
-      return { name: 'activation', status: 'PASS', details: 'สัญญายังไม่ active — ไม่ต้องมี journal' };
+      return {
+        name: 'activation',
+        status: 'PASS',
+        details: 'สัญญายังไม่ active — ไม่ต้องมี journal',
+      };
     }
 
     const activationJournal = journals.find((j) => j.referenceType === 'CONTRACT');
     if (!activationJournal) {
-      return { name: 'activation', status: 'FAIL', details: 'ไม่พบ journal entry สำหรับ CONTRACT activation' };
+      return {
+        name: 'activation',
+        status: 'FAIL',
+        details: 'ไม่พบ journal entry สำหรับ CONTRACT activation',
+      };
     }
 
     const totalDebit = activationJournal.lines.reduce((sum, l) => sum + Number(l.debit), 0);
@@ -193,9 +225,19 @@ export class ContractTraceService {
 
   private traceCogs(
     contract: { status: string; product: { costPrice: Prisma.Decimal } | null },
-    journals: { referenceType: string | null; lines: { debit: Prisma.Decimal; credit: Prisma.Decimal }[] }[],
+    journals: {
+      referenceType: string | null;
+      lines: { debit: Prisma.Decimal; credit: Prisma.Decimal }[];
+    }[],
   ): ContractTraceCheck {
-    const activationStatuses = ['ACTIVE', 'OVERDUE', 'DEFAULT', 'COMPLETED', 'EARLY_PAYOFF', 'CLOSED_BAD_DEBT'];
+    const activationStatuses = [
+      'ACTIVE',
+      'OVERDUE',
+      'DEFAULT',
+      'COMPLETED',
+      'EARLY_PAYOFF',
+      'CLOSED_BAD_DEBT',
+    ];
     if (!activationStatuses.includes(contract.status)) {
       return { name: 'cogs', status: 'PASS', details: 'สัญญายังไม่ active' };
     }
@@ -207,7 +249,11 @@ export class ContractTraceService {
 
     const cogsJournal = journals.find((j) => j.referenceType === 'CONTRACT_COGS');
     if (!cogsJournal) {
-      return { name: 'cogs', status: 'FAIL', details: `costPrice = ${costPrice} แต่ไม่พบ COGS journal` };
+      return {
+        name: 'cogs',
+        status: 'FAIL',
+        details: `costPrice = ${costPrice} แต่ไม่พบ COGS journal`,
+      };
     }
 
     const totalDebit = cogsJournal.lines.reduce((sum, l) => sum + Number(l.debit), 0);
@@ -225,7 +271,14 @@ export class ContractTraceService {
     contract: { status: string },
     interCompany: unknown | null,
   ): ContractTraceCheck {
-    const activationStatuses = ['ACTIVE', 'OVERDUE', 'DEFAULT', 'COMPLETED', 'EARLY_PAYOFF', 'CLOSED_BAD_DEBT'];
+    const activationStatuses = [
+      'ACTIVE',
+      'OVERDUE',
+      'DEFAULT',
+      'COMPLETED',
+      'EARLY_PAYOFF',
+      'CLOSED_BAD_DEBT',
+    ];
     if (!activationStatuses.includes(contract.status)) {
       return { name: 'interCompany', status: 'PASS', details: 'สัญญายังไม่ active' };
     }
@@ -279,18 +332,35 @@ export class ContractTraceService {
     return {
       name: `payment_${payment.installmentNo}`,
       status: balanced ? 'PASS' : 'FAIL',
-      details: { installmentNo: payment.installmentNo, journalCount: journals.length, totalDebit, totalCredit, balanced },
+      details: {
+        installmentNo: payment.installmentNo,
+        journalCount: journals.length,
+        totalDebit,
+        totalCredit,
+        balanced,
+      },
     };
   }
 
   private traceHpBalance(
-    contract: { status: string; payments: { status: string; amountDue: Prisma.Decimal; amountPaid: Prisma.Decimal }[] },
-    contractJournals: { lines: { accountCode: string; debit: Prisma.Decimal; credit: Prisma.Decimal }[] }[],
-    paymentJournals: { lines: { accountCode: string; debit: Prisma.Decimal; credit: Prisma.Decimal }[] }[],
+    contract: {
+      status: string;
+      payments: { status: string; amountDue: Prisma.Decimal; amountPaid: Prisma.Decimal }[];
+    },
+    contractJournals: {
+      lines: { accountCode: string; debit: Prisma.Decimal; credit: Prisma.Decimal }[];
+    }[],
+    paymentJournals: {
+      lines: { accountCode: string; debit: Prisma.Decimal; credit: Prisma.Decimal }[];
+    }[],
   ): ContractTraceCheck {
     const activationStatuses = ['ACTIVE', 'OVERDUE', 'DEFAULT'];
     if (!activationStatuses.includes(contract.status)) {
-      return { name: 'hpReceivable', status: 'PASS', details: `สถานะ ${contract.status} — ไม่ reconcile` };
+      return {
+        name: 'hpReceivable',
+        status: 'PASS',
+        details: `สถานะ ${contract.status} — ไม่ reconcile`,
+      };
     }
 
     // HP Receivable from journals (debit - credit for account 11-2102)
@@ -309,7 +379,12 @@ export class ContractTraceService {
     return {
       name: 'hpReceivable',
       status: diff < threshold ? 'PASS' : 'FAIL',
-      details: { journalHpReceivable: journalHp, contractOutstanding: outstanding, diff, threshold },
+      details: {
+        journalHpReceivable: journalHp,
+        contractOutstanding: outstanding,
+        diff,
+        threshold,
+      },
     };
   }
 
@@ -317,7 +392,9 @@ export class ContractTraceService {
     contract: { payments: { status: string; vatAmount: Prisma.Decimal | null }[] },
     paymentJournals: { lines: { accountCode: string; credit: Prisma.Decimal }[] }[],
   ): ContractTraceCheck {
-    const paidPayments = contract.payments.filter((p) => ['PAID', 'PARTIALLY_PAID'].includes(p.status));
+    const paidPayments = contract.payments.filter((p) =>
+      ['PAID', 'PARTIALLY_PAID'].includes(p.status),
+    );
     const paymentVat = paidPayments.reduce((sum, p) => sum + Number(p.vatAmount ?? 0), 0);
 
     const journalVat = paymentJournals
@@ -361,7 +438,11 @@ export class ContractTraceService {
     product: { ownedByCompanyId: string | null } | null;
   }): ContractTraceCheck {
     if (contract.status !== 'COMPLETED') {
-      return { name: 'completion', status: 'PASS', details: `สถานะ ${contract.status} — ยังไม่ complete` };
+      return {
+        name: 'completion',
+        status: 'PASS',
+        details: `สถานะ ${contract.status} — ยังไม่ complete`,
+      };
     }
 
     const allPaid = contract.payments.every((p) => p.status === 'PAID');

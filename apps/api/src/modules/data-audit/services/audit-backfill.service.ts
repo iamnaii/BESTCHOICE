@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException, InternalServerErrorException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { JournalAutoService } from '../../journal/journal-auto.service';
@@ -25,7 +30,8 @@ export class AuditBackfillService {
     payments: { total: number; backfilled: number; skipped: number; errors: number };
     details: { contractNumber: string; action: string; status: string; error?: string }[];
   }> {
-    const details: { contractNumber: string; action: string; status: string; error?: string }[] = [];
+    const details: { contractNumber: string; action: string; status: string; error?: string }[] =
+      [];
     const stats = {
       contracts: { total: 0, backfilled: 0, skipped: 0, errors: 0 },
       payments: { total: 0, backfilled: 0, skipped: 0, errors: 0 },

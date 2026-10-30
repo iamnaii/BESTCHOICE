@@ -217,9 +217,7 @@ export class DataAuditService {
     try {
       await this.scanForSlaBreaches();
     } catch (err) {
-      this.logger.error(
-        `Data audit SLA cron failed: ${err instanceof Error ? err.message : err}`,
-      );
+      this.logger.error(`Data audit SLA cron failed: ${err instanceof Error ? err.message : err}`);
       Sentry.captureException(err, {
         tags: { kind: 'cron-job', cron: 'data-audit-sla' },
       });

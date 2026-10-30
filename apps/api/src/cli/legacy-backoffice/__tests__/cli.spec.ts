@@ -1242,6 +1242,28 @@ describe('legacy-backoffice-import CLI — report / import (Task 13)', () => {
       expect(bridge.at(-1)).toBe('CHECK_OK');
     });
 
+    it('--money-overrides ชี้สัญญายกเลิก (ข้าม) → ไม่ทิ้งเงียบ: warnings.csv ชนิด OVERRIDE_FOR_SKIPPED + summary.json byKind + ⚠ บนจอ', async () => {
+      const file = join(base, 'money-skipped.csv');
+      writeFileSync(
+        file,
+        `legacy_code,financed_amount,store_commission,vat_amount\n${CANCELED.code},10000,1000,1190\n`,
+      );
+      const log = jest.fn();
+      const outcome = await runReport(reportArgs({ moneyOverrides: file }), {
+        ...deps,
+        log,
+      } as never);
+      expect(outcome.plan.blockers.map((b) => b.code)).not.toContain(CANCELED.code);
+      expect(stripBom(read('warnings.csv'))).toContain(
+        `${CANCELED.code},OVERRIDE_FOR_SKIPPED,OVERRIDE_FOR_SKIPPED: --money-overrides สัญญา ${CANCELED.code} ไม่นำเข้า (ข้าม status-4-canceled) — ยอดที่แก้ไม่ถูกใช้`,
+      );
+      expect(JSON.parse(read('summary.json')).warnings.byKind.OVERRIDE_FOR_SKIPPED).toBe(1);
+      const printed = log.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(printed).toContain(
+        '⚠ ไฟล์ของเจ้าของมีแถวที่ไม่ถูกใช้ (ชี้สัญญาที่ข้าม): --money-overrides 1 แถว',
+      );
+    });
+
     it('ไม่ส่ง --files-dir → ไม่มี missing-files.csv และไม่อ่านไฟล์แนบ', async () => {
       const uploadFiles = jest.fn();
       const outcome = await runReport(reportArgs(), { ...deps, uploadFiles } as never);
@@ -1378,6 +1400,7 @@ describe('legacy-backoffice-import CLI — report / import (Task 13)', () => {
       expect(rep.order[0]).toBe('tz');
       expect(rep.lines.join('\n')).toMatch(/status-4-canceled/);
       expect(rep.lines.join('\n')).not.toMatch(/canceled-map|canceled\.csv/);
+      expect(rep.lines.join('\n')).toContain('OVERRIDE_FOR_SKIPPED');
     });
 
     it('ด่านเขตเวลา throw → main หยุดทันที ไม่พิมพ์/ไม่อ่านอะไร', async () => {

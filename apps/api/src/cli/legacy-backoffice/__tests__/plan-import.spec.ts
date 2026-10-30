@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import type { LegacyFileDetail } from '../files';
 import type { LegacyContract } from '../legacy-book';
 import { planImport, type ImportOptions, type ImportPlan } from '../plan-import';
+import { overrideForSkippedLogLine, planWarnings } from '../report-files';
 import {
   CUTOFF,
   LAST,
@@ -839,6 +840,107 @@ describe('planImport', () => {
       },
     ]);
     expect(plan.totals.contracts).toEqual({ active: 1, history: 0, skipped: 0, blocked: 0 });
+    expect(plan.overrideWarnings).toEqual([]);
+  });
+
+  it('owner-file rows pointing at skipped contracts → OVERRIDE_FOR_SKIPPED warnings (reported, not blockers, not dropped silently)', () => {
+    const a = overdueContract();
+    const M4: MemberSpec = {
+      id: '504',
+      code: 'TEST-M-0504',
+      nationalId: thaiId('091234567893'),
+      phone: '0977000004',
+    };
+    const M5: MemberSpec = {
+      id: '505',
+      code: 'TEST-M-0505',
+      nationalId: thaiId('091234567894'),
+      phone: '0977000005',
+    };
+    const contract = (id: string, statusCode: string, memberId: string) =>
+      syntheticContract({
+        id,
+        code: `TEST-C-000${id}`,
+        statusCode,
+        date: '2026-02-01',
+        memberId,
+        firstDue: [2026, 2, 1],
+      });
+    const canceled = contract('4', '4', M4.id); // M4 มีแต่สัญญายกเลิก
+    const canceledOfM1 = contract('9', '4', M1.id); // M1 มีสัญญานำเข้าด้วย
+    const stub = contract('5', '0', M3.id); // M3 มีแต่สัญญาสถานะ 0
+    const badDebt = contract('8', '5', M2.id); // M2 มีแต่สัญญาหนี้เสีย = ตัวบล็อก (ไม่ใช่ข้าม)
+    const override = { financedAmount: D(9000), storeCommission: D(0), vatAmount: D(0) };
+    const plan = planImport(
+      syntheticBook(
+        [a, canceled, canceledOfM1, stub, badDebt],
+        [...members, syntheticMember(M4), syntheticMember(M5)],
+      ),
+      options([[a, 'TESTC001']], {
+        moneyOverrides: new Map([
+          [canceled.code, override],
+          [stub.code, override],
+          [badDebt.code, override],
+        ]),
+        customerOverrides: new Map([
+          [M4.code, 'cust-4'],
+          [M1.code, 'cust-1'],
+          [M3.code, 'cust-3'],
+          [M2.code, 'cust-2'],
+          [M5.code, 'cust-5'],
+        ]),
+      }),
+    );
+    expect(plan.blockers).toEqual([
+      { code: badDebt.code, reason: 'BAD_DEBT_UNSUPPORTED', detail: { legacyStatus: '5' } },
+    ]);
+    expect(plan.items.map((i) => [i.code, i.customer.overrideCustomerId])).toEqual([
+      [a.code, 'cust-1'],
+    ]);
+    const tag = 'OVERRIDE_FOR_SKIPPED: ';
+    expect(plan.overrideWarnings).toEqual([
+      {
+        code: canceled.code,
+        source: 'money-overrides',
+        message: `${tag}--money-overrides สัญญา ${canceled.code} ไม่นำเข้า (ข้าม status-4-canceled) — ยอดที่แก้ไม่ถูกใช้`,
+      },
+      {
+        code: stub.code,
+        source: 'money-overrides',
+        message: `${tag}--money-overrides สัญญา ${stub.code} ไม่นำเข้า (ข้าม status-0) — ยอดที่แก้ไม่ถูกใช้`,
+      },
+      {
+        code: M4.code,
+        source: 'customer-overrides',
+        message: `${tag}--customer-overrides สมาชิก ${M4.code} ไม่มีสัญญาที่นำเข้า (ข้ามทุกสัญญา: ${canceled.code} status-4-canceled) — การผูกลูกค้าไม่ถูกใช้`,
+      },
+      {
+        code: M3.code,
+        source: 'customer-overrides',
+        message: `${tag}--customer-overrides สมาชิก ${M3.code} ไม่มีสัญญาที่นำเข้า (ข้ามทุกสัญญา: ${stub.code} status-0) — การผูกลูกค้าไม่ถูกใช้`,
+      },
+      {
+        code: M5.code,
+        source: 'customer-overrides',
+        message: `${tag}--customer-overrides สมาชิก ${M5.code} ไม่มีสัญญาที่นำเข้า (ไม่มีสัญญาในระบบเก่า) — การผูกลูกค้าไม่ถูกใช้`,
+      },
+    ]);
+    // ไม่มีข้อมูลลูกค้า (id ลูกค้าในไฟล์ / เลขบัตร / เบอร์) ในข้อความ
+    const text = JSON.stringify(plan.overrideWarnings);
+    for (const value of ['cust-', M4.nationalId as string, M4.phone as string]) {
+      expect(text).not.toContain(value);
+    }
+    expect(plan.warnings).toEqual(
+      expect.arrayContaining(plan.overrideWarnings.map((w) => w.message)),
+    );
+    // warnings.csv / summary.json นับเป็นชนิดของตัวเอง · บรรทัดเตือนบนจอ
+    const kinds = planWarnings(plan).filter((w) => w.kind === 'OVERRIDE_FOR_SKIPPED');
+    expect(kinds.map((w) => w.code)).toEqual([canceled.code, stub.code, M4.code, M3.code, M5.code]);
+    expect(overrideForSkippedLogLine(plan)).toBe(
+      '⚠ ไฟล์ของเจ้าของมีแถวที่ไม่ถูกใช้ (ชี้สัญญาที่ข้าม): --money-overrides 2 แถว · ' +
+        '--customer-overrides 3 แถว — ข้อเตือนชนิด OVERRIDE_FOR_SKIPPED (warnings.csv ของคำสั่ง report)',
+    );
+    expect(plan.totals.contracts).toEqual({ active: 1, history: 0, skipped: 3, blocked: 1 });
   });
 
   it('two ACTIVE contracts on one IMEI → both blocked; ACTIVE + HISTORY on one IMEI is fine (HISTORY has no imeiSerial)', () => {

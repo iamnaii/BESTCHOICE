@@ -71,6 +71,7 @@ import {
 } from './peak-recon';
 import {
   DEFAULT_OVERDUE_DAYS_THRESHOLD,
+  OVERRIDE_FOR_SKIPPED,
   planImport,
   type ImportBlocker,
   type ImportOptions,
@@ -88,6 +89,7 @@ import {
   missingFilesCsv,
   moneyMismatchCsv,
   oldFormCsv,
+  overrideForSkippedLogLine,
   planWarnings,
   sampleCsv,
   skippedLogLines,
@@ -486,6 +488,8 @@ export async function runReport(
   );
   d.log(`  ข้าม (ไม่นำเข้า)              : ${skippedLines.summary}`);
   if (skippedLines.peakWarning) d.log(`  ${skippedLines.peakWarning}`);
+  const overrideLine = overrideForSkippedLogLine(plan);
+  if (overrideLine) d.log(`  ${overrideLine}`);
   d.log(`  สัญญาฉบับเก่า (ผ่อนอยู่)     : ${plan.oldFormCodes.length}`);
   d.log(
     `  ข้อเตือน                    : ${warnings.length} (${Object.entries(unexplained)
@@ -1161,6 +1165,8 @@ export async function runImport(
     `  แผน                        : นำเข้า ${plan.items.length} · ตัวบล็อก ${plan.blockers.length} แถว · ข้าม ${skippedLines.summary}`,
   );
   if (skippedLines.peakWarning) d.log(`  ${skippedLines.peakWarning}`);
+  const overrideLine = overrideForSkippedLogLine(plan);
+  if (overrideLine) d.log(`  ${overrideLine}`);
 
   try {
     if (plan.blockers.length > 0) {
@@ -1373,6 +1379,8 @@ const COMMANDS = new Map<string, Command>([
         'สัญญายกเลิก (สถานะ 4) ไม่นำเข้า — นับใน summary.json skipped.byReason (status-4-canceled)',
         'ไฟล์ที่กรอกแล้วส่งกลับได้: money-mismatch.csv → --money-overrides · ' +
           'customers-blocked.csv → --customer-overrides (ลบแถวที่ไม่ได้กรอกก่อน)',
+        `แถวของ --money-overrides / --customer-overrides ที่ชี้สัญญาที่ข้าม (หรือสมาชิกที่ไม่มีสัญญานำเข้า) ไม่ถูกใช้ — ` +
+          `ข้อเตือน ${OVERRIDE_FOR_SKIPPED} ใน warnings.csv`,
       ].join('\n'),
       options: [...COMMON_OPTIONS, 'files-dir'],
       run: reportCommand,

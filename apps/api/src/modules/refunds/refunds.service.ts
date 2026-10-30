@@ -268,13 +268,13 @@ export class RefundsService {
       const matchedEntries = await tx.journalEntry.findMany({
         where: {
           AND: [
-            { metadata: { path: ['paymentId'], equals: refund.paymentId } } as any,
+            { metadata: { path: ['paymentId'], equals: refund.paymentId } },
             {
               OR: [
-                { metadata: { path: ['tag'], equals: 'receipt' } } as any,
-                { metadata: { path: ['tag'], equals: '2B' } } as any,
+                { metadata: { path: ['tag'], equals: 'receipt' } },
+                { metadata: { path: ['tag'], equals: '2B' } },
                 // legacy credit-funded clears (applyCreditBalance credit-allocation JE)
-                { metadata: { path: ['tag'], equals: 'credit-allocation' } } as any,
+                { metadata: { path: ['tag'], equals: 'credit-allocation' } },
               ],
             },
             { status: 'POSTED' },
@@ -287,7 +287,9 @@ export class RefundsService {
       // reversal template throws "already reversed" and the whole refund
       // aborts. JS filter, not SQL: JSON-path equality on a missing key is
       // NULL in Postgres, so a SQL NOT(...) would drop never-reversed JEs too.
-      const originalEntries = matchedEntries.filter((e) => (e.metadata as any)?.reversed !== true);
+      const originalEntries = matchedEntries.filter(
+        (e) => (e.metadata as Prisma.JsonObject | null)?.reversed !== true,
+      );
 
       // The reversal posts to the current period of the payment's company — guard it
       // open (companyId-aware: runs the Tier-1 AccountingPeriod check, not just Tier-2).
@@ -410,10 +412,12 @@ export class RefundsService {
     const limit = Math.min(100, Math.max(1, filters.limit ?? 50));
     const where: Prisma.RefundWhereInput = {
       deletedAt: null,
-      payment: { contract: {
-        deletedAt: null,
-        ...(!hasCrossBranchAccess(actor) ? { branchId: actor.branchId ?? '__unassigned__' } : {}),
-      } },
+      payment: {
+        contract: {
+          deletedAt: null,
+          ...(!hasCrossBranchAccess(actor) ? { branchId: actor.branchId ?? '__unassigned__' } : {}),
+        },
+      },
     };
     if (filters.status) where.status = filters.status as Prisma.EnumRefundStatusFilter['equals'];
     if (filters.contractId) where.contractId = filters.contractId;
@@ -460,16 +464,24 @@ export class RefundsService {
   ) {
     await this.assertCashOnlyRefund(tx, payment.id);
     const receipts = await tx.receipt.findMany({
-      where: { paymentId: payment.id, contractId: payment.contractId, receiptType: { in: [...INSTALLMENT_MONEY_RECEIPT_TYPES] } },
+      where: {
+        paymentId: payment.id,
+        contractId: payment.contractId,
+        receiptType: { in: [...INSTALLMENT_MONEY_RECEIPT_TYPES] },
+      },
       select: { amount: true, isVoided: true, deletedAt: true, createdAt: true },
     });
     // Existing voided/deleted receipt history is authoritative too: zero active
     // receipts means zero refundable cash, not a fallback to settled debt.
-    if (receipts.length === 0) return { amount: new Prisma.Decimal(payment.amountPaid), latestReceiptAt: null };
+    if (receipts.length === 0)
+      return { amount: new Prisma.Decimal(payment.amountPaid), latestReceiptAt: null };
     const active = receipts.filter((receipt) => !receipt.isVoided && !receipt.deletedAt);
     return {
       amount: active.reduce((sum, receipt) => sum.plus(receipt.amount), new Prisma.Decimal(0)),
-      latestReceiptAt: active.reduce<Date | null>((latest, receipt) => !latest || receipt.createdAt > latest ? receipt.createdAt : latest, null),
+      latestReceiptAt: active.reduce<Date | null>(
+        (latest, receipt) => (!latest || receipt.createdAt > latest ? receipt.createdAt : latest),
+        null,
+      ),
     };
   }
 
@@ -479,11 +491,13 @@ export class RefundsService {
       where: {
         AND: [
           { metadata: { path: ['paymentId'], equals: paymentId } },
-          { OR: [
-            { metadata: { path: ['tag'], equals: 'receipt' } },
-            { metadata: { path: ['tag'], equals: '2B' } },
-            { metadata: { path: ['tag'], equals: 'credit-allocation' } },
-          ] },
+          {
+            OR: [
+              { metadata: { path: ['tag'], equals: 'receipt' } },
+              { metadata: { path: ['tag'], equals: '2B' } },
+              { metadata: { path: ['tag'], equals: 'credit-allocation' } },
+            ],
+          },
           { status: 'POSTED' },
           { deletedAt: null },
         ],
@@ -496,10 +510,13 @@ export class RefundsService {
         },
       },
     });
-    if (entries.some((entry) =>
-      (entry.metadata as Prisma.JsonObject | null)?.reversed !== true &&
-      entry.lines.some((line) => !line.debit.isZero() || !line.credit.isZero()),
-    )) {
+    if (
+      entries.some(
+        (entry) =>
+          (entry.metadata as Prisma.JsonObject | null)?.reversed !== true &&
+          entry.lines.some((line) => !line.debit.isZero() || !line.credit.isZero()),
+      )
+    ) {
       throw new BadRequestException(
         'งวดนี้มีเงินรับล่วงหน้าหรือเครดิตลูกค้าร่วมด้วย — กรุณาส่งคำขอยกเลิกใบเสร็จให้ผู้มีสิทธิอนุมัติแทน เพื่อคืนยอดเงินรับล่วงหน้าและเครดิตให้ถูกต้อง',
       );
@@ -514,13 +531,19 @@ export class RefundsService {
       where: { id: refund.paymentId },
       select: { id: true, contractId: true, amountPaid: true, deletedAt: true, status: true },
     });
-    if (!payment || payment.deletedAt) throw new NotFoundException('ไม่พบรายการชำระเงินของคำขอคืนเงิน');
-    if (payment.contractId !== refund.contractId || !['PAID', 'PARTIALLY_PAID'].includes(payment.status)) {
+    if (!payment || payment.deletedAt)
+      throw new NotFoundException('ไม่พบรายการชำระเงินของคำขอคืนเงิน');
+    if (
+      payment.contractId !== refund.contractId ||
+      !['PAID', 'PARTIALLY_PAID'].includes(payment.status)
+    ) {
       throw new ConflictException('รายการชำระเงินเปลี่ยนแล้ว — กรุณาส่งคำขอคืนเงินใหม่');
     }
     const current = await this.refundableCash(tx, payment);
     if (current.amount.lte(0) || !current.amount.equals(refund.amount)) {
-      throw new BadRequestException('ยอดคืนต้องเท่ากับเงินที่รับจริงตามใบเสร็จของงวด — กรุณาส่งคำขอคืนเงินใหม่');
+      throw new BadRequestException(
+        'ยอดคืนต้องเท่ากับเงินที่รับจริงตามใบเสร็จของงวด — กรุณาส่งคำขอคืนเงินใหม่',
+      );
     }
     if (current.latestReceiptAt && current.latestReceiptAt > refund.requestedAt) {
       throw new ConflictException('มีใบเสร็จใหม่หลังส่งคำขอคืนเงิน — กรุณาส่งคำขอใหม่');

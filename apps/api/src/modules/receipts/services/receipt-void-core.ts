@@ -280,13 +280,13 @@ export async function voidReceiptInTx(
     const matchedEntries = await tx.journalEntry.findMany({
       where: {
         AND: [
-          { metadata: { path: ['paymentId'], equals: receipt.paymentId } } as any,
+          { metadata: { path: ['paymentId'], equals: receipt.paymentId } },
           {
             OR: [
-              { metadata: { path: ['tag'], equals: 'receipt' } } as any,
-              { metadata: { path: ['tag'], equals: '2B' } } as any,
+              { metadata: { path: ['tag'], equals: 'receipt' } },
+              { metadata: { path: ['tag'], equals: '2B' } },
               // legacy credit-funded clears (applyCreditBalance credit-allocation JE)
-              { metadata: { path: ['tag'], equals: 'credit-allocation' } } as any,
+              { metadata: { path: ['tag'], equals: 'credit-allocation' } },
             ],
           },
           { status: 'POSTED' },
@@ -302,13 +302,14 @@ export async function voidReceiptInTx(
     // in JS, not SQL: a Postgres JSON-path equality on a missing key yields
     // NULL, so a SQL NOT(...) would silently drop never-reversed JEs too.
     const originalEntries = matchedEntries.filter(
-      (e) => (e.metadata as any)?.reversed !== true,
+      (e) => (e.metadata as Prisma.JsonObject | null)?.reversed !== true,
     );
     // R-2: total Cr 21-1103 across this receipt's JEs — the 6b park sweep is
     // reconciled against it after the loop (see the block below).
     let totalCr21 = new Prisma.Decimal(0);
     for (const originalEntry of originalEntries) {
-      if (policy.redirect) await deps.reversal.voidReceipt(originalEntry.id, tx, { redirect: policy.redirect });
+      if (policy.redirect)
+        await deps.reversal.voidReceipt(originalEntry.id, tx, { redirect: policy.redirect });
       else await deps.reversal.voidReceipt(originalEntry.id, tx);
       // Denormalized-balance restore: the reversal flips the 21-1103 /
       // 21-5101 LEDGER legs, but Contract.advanceBalance /
@@ -325,7 +326,7 @@ export async function voidReceiptInTx(
       // stamp is per-JE and must not be applied to another JE's debit.
       let entryDr21 = new Prisma.Decimal(0);
       let entryCr21 = new Prisma.Decimal(0);
-      for (const line of (originalEntry as any).lines ?? []) {
+      for (const line of originalEntry.lines ?? []) {
         if (line.accountCode === '21-1103') {
           entryDr21 = entryDr21.plus(new Prisma.Decimal(line.debit ?? 0));
           entryCr21 = entryCr21.plus(new Prisma.Decimal(line.credit ?? 0));
@@ -455,19 +456,16 @@ export async function voidReceiptInTx(
         updatedContract.rescheduleAdvanceBalance != null &&
         new Prisma.Decimal(updatedContract.rescheduleAdvanceBalance).isNegative()
       ) {
-        Sentry.captureMessage(
-          'Receipt void drove Contract.rescheduleAdvanceBalance negative',
-          {
-            level: 'warning',
-            tags: { subsystem: 'reschedule-park' },
-            extra: {
-              contractId: receipt.contractId,
-              receiptId: receipt.id,
-              rescheduleAdvanceBalance: updatedContract.rescheduleAdvanceBalance.toString(),
-              parkAdj: parkAdj.toString(),
-            },
+        Sentry.captureMessage('Receipt void drove Contract.rescheduleAdvanceBalance negative', {
+          level: 'warning',
+          tags: { subsystem: 'reschedule-park' },
+          extra: {
+            contractId: receipt.contractId,
+            receiptId: receipt.id,
+            rescheduleAdvanceBalance: updatedContract.rescheduleAdvanceBalance.toString(),
+            parkAdj: parkAdj.toString(),
           },
-        );
+        });
       }
     }
 
@@ -535,10 +533,7 @@ export async function voidReceiptInTx(
       // วันครบกำหนด ให้กลับรายการเหล่านั้นด้วย (เงื่อนไขข้อ 2–3 อยู่ใน template). ไม่จับ error:
       // ล้มแล้วการยกเลิกล้มทั้งรายการ. สัญญาณเตือนของ template ส่งหลัง commit
       if (fullyReverted && schedule) {
-        const accrualVoid = await deps.reversal.voidAccrualPostedAtReceipt(
-          schedule.id,
-          tx,
-        );
+        const accrualVoid = await deps.reversal.voidAccrualPostedAtReceipt(schedule.id, tx);
         accrualReversal = accrualVoid.result;
         accrualWarnings = accrualVoid.warnings;
       }
@@ -660,7 +655,6 @@ export async function voidReceiptInTx(
       },
     },
   });
-
 
   return {
     voidedReceipt: receipt,

@@ -57,7 +57,8 @@ import { DataAuditChecksService } from '../services/data-audit-checks.service';
  *   สัญญาปกติ — ห้าข้อไม่มี finding · receivable-recon ไม่ breach
  * - ขั้น 2 หลังวันตัด: รับเงินพร้อมค่าปรับ · เศษปัด 53-1503 · เงินรับล่วงหน้า (พักภาษี PR4 แล้วหักโดยรอบกลางคืน) — ยังไม่มี finding
  * - ขั้น 3 ทำให้เพี้ยน (prisma ตรง): ต้องติดทุกข้อ ทั้งสัญญาปกติและงวดหลังวันตัดของสัญญานำเข้า (ไม่อ่อนลง)
- * - ปิดยอดก่อนกำหนด (JP4) ของสัญญาปกติ: งวดที่ JP4 ปิดไม่ติด orphan_payments (ปฏิทินผูกกับวันนี้ — สูตรยอดปิดนับงวดจากวันนี้)
+ * - ปิดยอดก่อนกำหนด (JP4) ของสัญญาปกติ: งวดที่ JP4 ปิดไม่ติด orphan_payments (ปฏิทินผูกกับวันนี้ — สูตรยอดปิดนับงวดจากวันนี้) ·
+ *   ส่วนเผื่อค่าปรับของ overpaid_contracts ให้เฉพาะงวดที่ JP4 จ่าย (Task 17 ข้อ B)
  *
  * ทุกข้อเรียกด้วย `scope.contractIds` ของสเปคนี้ (ฐานทดสอบอาจมีแถวของสเปคอื่น) · receivable-recon รันทั้งฐานแล้วดูเฉพาะสาขาของสเปคนี้
  *
@@ -1015,6 +1016,57 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
         expect((await run('orphan_payments', [a3])).count).toBe(0);
         expect((await run('overpaid', [a3])).count).toBe(0);
         expect((await run('orphan_contracts', [a3])).count).toBe(0);
+      },
+      LONG,
+    );
+
+    it(
+      'the JP4 late-fee allowance covers only the rows JP4 paid — a row PAID before the payoff overpaid within its leftover fee is caught',
+      async () => {
+        // ต่อจากเทสต์ก่อนหน้า (JP4 ลงแล้ว) — งวด 5 ชำระครบด้วยใบรับชำระก่อนปิดยอด · ภายหลังพนักงานเพิ่มค่าปรับ 100 ให้แถวที่จ่ายแล้ว
+        // และยอดจ่ายถูกแก้เกิน 50 (ไม่เกินค่าปรับ) — เดิมส่วนเผื่อของ JP4 ครอบทุกแถวของสัญญาจึงไม่ติด
+        const [entry] = await prisma.journalEntry.findMany({
+          where: {
+            AND: [
+              { metadata: { path: ['contractId'], equals: a3 } },
+              { metadata: { path: ['flow'], equals: 'early-payoff' } },
+            ],
+          },
+          select: { id: true, postedAt: true, metadata: true },
+        });
+        const { firstUnpaidInstallmentNo, lastUnpaidInstallmentNo, ...withoutRange } =
+          entry.metadata as Record<string, unknown>;
+        expect([firstUnpaidInstallmentNo, lastUnpaidInstallmentNo]).toEqual([6, 12]);
+        const row5 = await paymentOf(a3, 5);
+        expect(row5.status).toBe('PAID');
+        expect(row5.paidDate?.getTime()).not.toBe(entry.postedAt?.getTime());
+        await prisma.payment.update({
+          where: { id: row5.id },
+          data: { lateFee: D(100), amountPaid: row5.amountDue.plus(50) },
+        });
+        const caught = [
+          {
+            id: a3,
+            contract_number: `TEST-T16N-${stamp}-A3`,
+            installment_nos: [5],
+            overpay: '50.00',
+          },
+        ];
+        // งวด 6 (JP4 เก็บค่าปรับ 100 ไว้ใน amountPaid) ยังได้ส่วนเผื่อ — ไม่อยู่ใน installment_nos
+        expect((await run('overpaid', [a3])).details).toEqual(caught);
+
+        // แถวที่รับเงินวันเดียวกับวันปิดยอด (หน้ารับชำระกับหน้าปิดยอดส่งวันที่ YYYY-MM-DD ⇒ เวลาเท่ากันทุกตัว) — วันที่อย่างเดียว
+        // แยกไม่ได้ · ช่วงงวดที่ JP4 ปิด (firstUnpaidInstallmentNo..lastUnpaidInstallmentNo) แยกได้
+        await prisma.payment.update({ where: { id: row5.id }, data: { paidDate: entry.postedAt } });
+        expect((await run('overpaid', [a3])).details).toEqual(caught);
+
+        // รายการ JP4 ก่อน 2026-10-18 ไม่มีช่วงงวด — เหลือวันที่เป็นตัวแยก (แถวที่ JP4 จ่ายยังได้ส่วนเผื่อ)
+        await prisma.journalEntry.update({
+          where: { id: entry.id },
+          data: { metadata: withoutRange as Prisma.InputJsonObject },
+        });
+        await prisma.payment.update({ where: { id: row5.id }, data: { paidDate: row5.paidDate } });
+        expect((await run('overpaid', [a3])).details).toEqual(caught);
       },
       LONG,
     );

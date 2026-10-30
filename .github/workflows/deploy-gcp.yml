@@ -672,6 +672,7 @@ jobs:
           JWT_REFRESH_EXPIRATION=7d,\
           DATABASE_CONNECTION_LIMIT=10,\
           DATABASE_POOL_TIMEOUT=15,\
+          CRON_ENABLED=${{ vars.CRON_WORKER_ENABLED == 'true' && 'false' || 'true' }},\
           PAYSOLUTIONS_MERCHANT_ID=09753259,\
           PAYSOLUTIONS_API_URL=https://apis.paysolutions.asia,\
           PAYSOLUTIONS_RETURN_URL=https://liff.line.me/2009442540-d9XnzWwl/contract,\
@@ -724,6 +725,61 @@ jobs:
             --format='value(status.url)')
           echo "API deployed to: ${API_URL}"
           curl -sf "${API_URL}/api/health" || (echo "Health check failed" && exit 1)
+
+      # ----------------------------------------------------------------
+      # Cron worker (bestchoice-worker) — ปิดไว้จนกว่าจะตั้ง repo variable
+      # CRON_WORKER_ENABLED=true (Settings → Variables). เมื่อเปิด:
+      #   * bestchoice-api ได้ CRON_ENABLED=false (ดู --set-env-vars ด้านบน)
+      #   * worker ได้ image เดียวกัน + env/secrets/SA/Cloud SQL "คัดลอกจาก
+      #     bestchoice-api ที่เพิ่ง deploy" (ไม่ต้องดูแล list ซ้ำสองที่)
+      #     แล้ว override CRON_ENABLED=true
+      #   * 1 instance คงที่, CPU always allocated (--no-cpu-throttling),
+      #     ingress internal + ไม่เปิด unauthenticated (ไม่รับ traffic ภายนอก)
+      # ----------------------------------------------------------------
+      - name: Deploy cron worker (bestchoice-worker)
+        if: vars.CRON_WORKER_ENABLED == 'true'
+        env:
+          PROJECT: ${{ secrets.GCP_PROJECT_ID }}
+          REGION: ${{ secrets.GCP_REGION || 'asia-southeast1' }}
+        run: |
+          set -euo pipefail
+          gcloud run services describe bestchoice-api --project="$PROJECT" --region="$REGION" \
+            --format=json > /tmp/api-svc.json
+          SA=$(jq -r '.spec.template.spec.serviceAccountName' /tmp/api-svc.json)
+          SQL=$(jq -r '.spec.template.metadata.annotations["run.googleapis.com/cloudsql-instances"]' /tmp/api-svc.json)
+          # plain env → YAML file (ค่าอย่าง SMTP_FROM มีช่องว่าง/; จึงไม่ใช้ --set-env-vars)
+          jq -r '.spec.template.spec.containers[0].env[]
+                 | select(.value != null)
+                 | select(.name != "CRON_ENABLED" and .name != "DATABASE_CONNECTION_LIMIT")
+                 | "\(.name): \(.value | @json)"' /tmp/api-svc.json > /tmp/worker-env.yaml
+          echo 'CRON_ENABLED: "true"' >> /tmp/worker-env.yaml
+          # Cloud SQL db-g1-small: max_connections=50 (ใช้ได้ 47) — worker ใช้ pool เล็ก
+          echo 'DATABASE_CONNECTION_LIMIT: "5"' >> /tmp/worker-env.yaml
+          # secret refs (ชื่อ:เวอร์ชัน เท่านั้น — ไม่มีค่า secret ใน log)
+          SECRETS=$(jq -r '[.spec.template.spec.containers[0].env[]
+                 | select(.valueFrom.secretKeyRef != null)
+                 | "\(.name)=\(.valueFrom.secretKeyRef.name):\(.valueFrom.secretKeyRef.key)"] | join(",")' /tmp/api-svc.json)
+          gcloud run deploy bestchoice-worker \
+            --project="$PROJECT" \
+            --region="$REGION" \
+            --image=${{ env.API_IMAGE }}:${{ github.sha }} \
+            --platform=managed \
+            --port=3000 \
+            --min-instances=1 \
+            --max-instances=1 \
+            --no-cpu-throttling \
+            --cpu=1 \
+            --memory=1Gi \
+            --cpu-boost \
+            --timeout=3600 \
+            --execution-environment=gen2 \
+            --service-account="$SA" \
+            --set-cloudsql-instances="$SQL" \
+            --env-vars-file=/tmp/worker-env.yaml \
+            --set-secrets="$SECRETS" \
+            --ingress=internal \
+            --no-allow-unauthenticated
+          rm -f /tmp/api-svc.json /tmp/worker-env.yaml
 
   # ============================================
   # Job 5: Deploy Frontend to Firebase Hosting

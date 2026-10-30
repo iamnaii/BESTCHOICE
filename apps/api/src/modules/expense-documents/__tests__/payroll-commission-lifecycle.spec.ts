@@ -12,7 +12,10 @@ import { PayrollPostGateService } from '../payroll-system/payroll-post-gate.serv
  * - ด่านอนุมัติ/ลงบัญชี: `payroll:` → `payroll-attendance:*` → `payroll-clawback:*`
  */
 
-const DOC_DATE = new Date('2026-10-31T00:00:00.000Z');
+// A fixed past date — never "today": post() re-stamps documentDate to today (Bangkok) and skips the
+// update when the stored date already equals today, so a fixture equal to the run date made the
+// re-stamp assertion fail on exactly that day (2026-10-31).
+const DOC_DATE = new Date('2026-10-01T00:00:00.000Z');
 const SEEN = '2026-11-02T03:00:00.000Z';
 
 function build(o: { gate?: any; calls?: string[] } = {}) {

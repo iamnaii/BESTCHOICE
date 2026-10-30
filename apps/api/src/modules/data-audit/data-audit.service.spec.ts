@@ -330,19 +330,57 @@ describe('DataAuditService', () => {
       expect(result.status).toBe('PASS');
     });
 
-    it('should FAIL when VAT leak found on late fee', async () => {
-      prisma.$queryRaw.mockResolvedValueOnce([
-        {
-          payment_id: 'p-1',
-          contract_number: 'BC-001',
-          installment_no: 3,
-          late_fee: new Prisma.Decimal('100.00'),
-          payment_vat: new Prisma.Decimal('200.00'),
-          journal_vat: new Prisma.Decimal('207.00'),
-        },
-      ]);
+    const receiptVatRow = (
+      outputVat: string,
+      park: string | null = null,
+      consume: string | null = null,
+    ) => ({
+      payment_id: 'p-1',
+      contract_number: 'BC-001',
+      installment_no: 3,
+      late_fee: new Prisma.Decimal('100.00'),
+      entry_number: 'JE-202605-00001',
+      output_vat: new Prisma.Decimal(outputVat),
+      advance_vat_park: park,
+      advance_vat_consume: consume,
+    });
+
+    it('Task 18 — should FAIL when a receipt entry of a late-fee row books 21-2101 beyond its stamped advance VAT (VAT on the fee)', async () => {
+      prisma.$queryRaw.mockResolvedValueOnce([receiptVatRow('6.54')]);
       const result = await service.checkLateFeeVatLeak();
       expect(result.status).toBe('FAIL');
+      expect(result.count).toBe(1);
+      expect(result.details[0]).toMatchObject({
+        payment_id: 'p-1',
+        installment_no: 3,
+        output_vat: '6.54',
+        advance_vat: '0.00',
+        unexplained_vat: '6.54',
+      });
+    });
+
+    it('Task 18 — should PASS when the receipt entry moves 21-2101 only by its stamped advance VAT (park − consume)', async () => {
+      prisma.$queryRaw.mockResolvedValueOnce([
+        receiptVatRow('32.71', '32.71'),
+        receiptVatRow('-16.36', null, '16.36'),
+        receiptVatRow('16.35', '32.71', '16.36'),
+      ]);
+      const result = await service.checkLateFeeVatLeak();
+      expect(result.status).toBe('PASS');
+      expect(result.count).toBe(0);
+    });
+
+    it('Task 18 — reads the receipt entries bound by metadata.paymentId (not Payment.vatAmount) and exempts imported rows untouched since the cutover', async () => {
+      prisma.$queryRaw.mockResolvedValueOnce([]);
+      await service.checkLateFeeVatLeak();
+      const sql = JSON.stringify(prisma.$queryRaw.mock.calls[0]);
+      expect(sql).toContain("je.metadata->>'paymentId' = p.id");
+      expect(sql).toContain("jl.account_code = '21-2101'");
+      expect(sql).not.toContain('vat_amount');
+      expect(sql).toContain('legacy_installment_code IS NOT NULL');
+      expect(prisma.$queryRaw.mock.calls[0]).toEqual(
+        expect.arrayContaining(['advanceVatPark', 'advanceVatConsume']),
+      );
     });
   });
 

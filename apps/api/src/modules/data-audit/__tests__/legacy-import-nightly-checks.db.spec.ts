@@ -94,7 +94,14 @@ const full = (n: number): Record<number, InstallmentSpec> =>
 /** ระบบเก่า ณ วันตัด: งวด 1–3 จ่ายครบ · งวด 4 จ่าย 300 */
 const legacyState = () => standardInstallments({ ...full(3), 4: { paid: '300' } });
 
-type Check = 'orphan_contracts' | 'orphan_payments' | 'overpaid' | 'vat' | 'hp' | 'missing_cogs';
+type Check =
+  | 'orphan_contracts'
+  | 'orphan_payments'
+  | 'overpaid'
+  | 'vat'
+  | 'hp'
+  | 'missing_cogs'
+  | 'late_fee_vat_leak';
 
 describeDb('nightly data-audit + receivable-recon on imported legacy contracts (real DB)', () => {
   let prisma: PrismaClient;
@@ -692,6 +699,8 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
         return checks.checkHpReceivableReconciliation(scope);
       case 'missing_cogs':
         return checks.checkMissingCogs(scope);
+      case 'late_fee_vat_leak':
+        return checks.checkLateFeeVatLeak(scope);
     }
   }
 
@@ -707,6 +716,7 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
       'vat',
       'hp',
       'missing_cogs',
+      'late_fee_vat_leak',
     ] as Check[]) {
       const r = await run(check, contractIds);
       results[check] = r.count === 0 && r.status === 'PASS' ? 'PASS' : r.details;
@@ -718,6 +728,7 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
       vat: 'PASS',
       hp: 'PASS',
       missing_cogs: 'PASS',
+      late_fee_vat_leak: 'PASS',
     });
   }
 
@@ -812,6 +823,9 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
         const p5 = await paymentOf(id, 5);
         expect(p5.amountPaid.toFixed(2)).toBe(D(MONTHLY).plus(lateFee).toFixed(2));
         expect(p5.status).toBe('PAID');
+        // late_fee_vat_leak (Task 18): แถวมีค่าปรับ และ VAT ของงวดมาจาก 2A ไม่ใช่จากใบรับชำระ — ข้อเดิมเทียบ Cr 21-2101 ของใบรับ
+        // (0) กับ Payment.vatAmount ⇒ ติดทุกงวดที่มีค่าปรับ
+        expect([p5.lateFee.toFixed(2), p5.vatAmount?.gt(0)]).toEqual([lateFee.toFixed(2), true]);
       }
       // L2: 2A งวด 5 ส่วนที่เหลือ แล้วรับส่วนที่เหลือวันครบกำหนด
       const l2 = legacy.get('L2')!;
@@ -1079,6 +1093,24 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
           })
         ).count,
       ).toBe(1);
+      // A1 ปกติ (Task 18 · late_fee_vat_leak): รายการรับชำระของงวด 5 (มีค่าปรับ) ลงภาษีขายของค่าปรับ — จำลองรูปรายการที่ผิด:
+      // ย้ายส่วน 7/107 ของค่าปรับจาก Cr 42-1103 ไป Cr 21-2101 ในรายการที่ผูก paymentId (ไม่มี stamp ภาษีของเงินรับล่วงหน้า)
+      const a1Row5 = await paymentOf(a1, 5);
+      const feeVat = a1Row5.lateFee
+        .times(7)
+        .div(107)
+        .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+      await journal.createAndPost({
+        description: 'T18 receipt with VAT on the late fee',
+        reference: `t18-fee-vat:${a1Row5.id}`,
+        metadata: { tag: 'receipt', flow: 'payment-receipt', paymentId: a1Row5.id, contractId: a1 },
+        lines: [
+          { accountCode: '42-1103', dr: feeVat, cr: D(0) },
+          { accountCode: '21-2101', dr: D(0), cr: feeVat },
+        ],
+        postedAt: P1.due(5),
+        createdById: userId,
+      });
 
       const flagged = async (check: Check, contractId: string) =>
         (await run(check, [contractId])).count;
@@ -1119,6 +1151,12 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
           (await hpBreaches(l9)).map((b) => b.gap),
         ],
         a1: ((await run('missing_cogs', [a1])).details as Array<{ id: string }>).map((r) => r.id),
+        a1FeeVat: (
+          (await run('late_fee_vat_leak', [a1])).details as Array<{
+            installment_no: number;
+            unexplained_vat: string;
+          }>
+        ).map((r) => [r.installment_no, r.unexplained_vat]),
       }).toEqual({
         c1: [1, 1],
         c2: [[2], ['100.00']],
@@ -1144,6 +1182,7 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
         l8: [[[[4], '5.00']], []],
         l9: [[], 0, ['1215.83']],
         a1: [a1],
+        a1FeeVat: [[5, feeVat.toFixed(2)]],
       });
       // สาขาที่มีสัญญาเพี้ยน breach ทั้งสองสาขา (สัญญาปกติ C1–C4 · สัญญานำเข้า L4/L5/L7/L8/L9)
       const breached = await reconBreachesOf([nativeBranchId, legacyBranchId]);

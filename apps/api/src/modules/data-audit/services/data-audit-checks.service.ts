@@ -5,7 +5,7 @@ import {
   LEGACY_OPENING_FLOW,
   LEGACY_PRIOR_RECEIPT_FLOW,
 } from '../../accounting/peak-export-exclusion';
-import { advanceVatOutstanding } from '../../journal/advance-vat';
+import { ADVANCE_VAT_META, advanceVatOutstanding } from '../../journal/advance-vat';
 import {
   CONTRACT_RECEIVABLE_TOLERANCE,
   contractScopeFilter,
@@ -33,6 +33,20 @@ const VAT_DEFERRED_TOLERANCE = new Prisma.Decimal('0.01');
 const DETAIL_LIMIT = 50;
 
 const money = (v: Prisma.Decimal.Value) => new Prisma.Decimal(v).toFixed(2);
+
+/**
+ * stamp ยอดเงินใน metadata ของรายการ (สตริง 2 ตำแหน่ง เช่น `advanceVatPark`) — ว่าง/อ่านไม่ได้ = 0 ⇒ รายการที่ stamp เสีย
+ * ถูกนับเป็นยอดที่อธิบายไม่ได้ (ไม่ทำให้รอบตรวจทั้งรอบล้ม)
+ */
+const stampAmount = (raw: string | null): Prisma.Decimal => {
+  if (raw == null || raw.trim() === '') return new Prisma.Decimal(0);
+  try {
+    const value = new Prisma.Decimal(raw);
+    return value.isFinite() ? value : new Prisma.Decimal(0);
+  } catch {
+    return new Prisma.Decimal(0);
+  }
+};
 
 /**
  * ตรวจข้อมูลกลางคืน 12 ข้อ (data-audit 06:00 — `DataAuditService.dailyHealthCheck`)
@@ -461,50 +475,82 @@ export class DataAuditChecksService {
     };
   }
 
-  /** Check 8: Payments with late fee should not have VAT charged on the late fee portion */
-  async checkLateFeeVatLeak(): Promise<AuditCheckResult> {
-    const leaks = await this.prisma.$queryRaw<
+  /**
+   * Check 8: a late fee carries no output VAT (penalties are outside the VAT base — `.claude/rules/accounting.md`
+   * "VAT Policy"). Since Phase A.4 a receipt never books VAT on the cash it collects: the fee goes to
+   * `Cr 42-1103` with no VAT line, and the installment's output VAT is recognised by 2A from the
+   * schedule (`build-accrual-2a-lines.ts`), not from cash. The only `21-2101` movement a receipt entry
+   * may carry is the VAT of customer advances recognised at receipt, which it stamps
+   * (`advanceVatPark` / `advanceVatConsume` — `payment-receipt.template.ts:106-117, 472-478` ·
+   * `advance-vat.ts:45-60`). So: on a row with a late fee, every receipt entry bound to the row
+   * (`metadata.paymentId`) must move `21-2101` by exactly its stamped advance VAT (± 0.01) —
+   * anything else is VAT booked on the receipt's own cash, i.e. on the fee.
+   *
+   * 2026-10-30 (Task 18): the check used to compare `Cr 21-2101` of the receipt entries with
+   * `Payment.vatAmount` (different measures since A.4 — the receipt books no 21-2101) ⇒ every paid
+   * row with a fee was a daily MEDIUM FAIL. Imported rows untouched since the cutover
+   * (`LEGACY_UNTOUCHED_PAYMENT`) have no receipt entry of their own; post-cutover receipts of imported
+   * rows are checked like native ones.
+   */
+  async checkLateFeeVatLeak(scope?: ContractScope): Promise<AuditCheckResult> {
+    const rows = await this.prisma.$queryRaw<
       {
         payment_id: string;
         contract_number: string;
         installment_no: number;
         late_fee: Prisma.Decimal;
-        payment_vat: Prisma.Decimal;
-        journal_vat: Prisma.Decimal;
+        entry_number: string;
+        output_vat: Prisma.Decimal;
+        advance_vat_park: string | null;
+        advance_vat_consume: string | null;
       }[]
     >`
-      SELECT p.id as payment_id, c.contract_number, p.installment_no,
-        p.late_fee, p.vat_amount as payment_vat,
-        (SELECT COALESCE(SUM(jl.credit), 0) FROM journal_lines jl
-         JOIN journal_entries je ON je.id = jl.journal_entry_id
-         WHERE (je.reference_id = p.id::text OR je.metadata->>'paymentId' = p.id::text)
-         AND je.reference_type = 'AUTO'
-         AND jl.account_code = '21-2101' AND je.deleted_at IS NULL AND jl.deleted_at IS NULL
-         AND je.status = 'POSTED'
-        ) as journal_vat
+      SELECT p.id AS payment_id, c.contract_number, p.installment_no, p.late_fee,
+        je.entry_number,
+        SUM(jl.credit - jl.debit) AS output_vat,
+        je.metadata->>${ADVANCE_VAT_META.park} AS advance_vat_park,
+        je.metadata->>${ADVANCE_VAT_META.consume} AS advance_vat_consume
       FROM payments p
       JOIN contracts c ON c.id = p.contract_id
+      JOIN journal_entries je ON je.metadata->>'paymentId' = p.id
+      JOIN journal_lines jl ON jl.journal_entry_id = je.id
+        AND jl.deleted_at IS NULL
+        AND jl.account_code = '21-2101'
       WHERE p.deleted_at IS NULL
         AND p.late_fee > 0
         AND p.status IN ('PAID', 'PARTIALLY_PAID')
         AND p.amount_paid > 0
-        AND ABS(
-          COALESCE((SELECT SUM(jl2.credit) FROM journal_lines jl2
-           JOIN journal_entries je2 ON je2.id = jl2.journal_entry_id
-           WHERE (je2.reference_id = p.id::text OR je2.metadata->>'paymentId' = p.id::text)
-           AND je2.reference_type = 'AUTO'
-           AND jl2.account_code = '21-2101' AND je2.deleted_at IS NULL AND jl2.deleted_at IS NULL
-           AND je2.status = 'POSTED'), 0)
-          - COALESCE(p.vat_amount, 0)
-        ) > 0.01
-      LIMIT 50
+        AND je.status = 'POSTED'
+        AND je.deleted_at IS NULL
+        AND je.metadata->>'tag' IN ('receipt', '2B', 'credit-allocation')
+        ${contractScopeFilter('p.contract_id', scope)}
+        AND NOT ${LEGACY_UNTOUCHED_PAYMENT}
+      GROUP BY p.id, c.id, je.id
+      ORDER BY c.contract_number, p.installment_no, je.entry_number
     `;
+    const leaks = rows.flatMap((r) => {
+      const advanceVat = stampAmount(r.advance_vat_park).minus(stampAmount(r.advance_vat_consume));
+      const unexplained = new Prisma.Decimal(r.output_vat).minus(advanceVat);
+      if (!unexplained.abs().gt(VAT_DEFERRED_TOLERANCE)) return [];
+      return [
+        {
+          payment_id: r.payment_id,
+          contract_number: r.contract_number,
+          installment_no: r.installment_no,
+          late_fee: money(r.late_fee),
+          entry_number: r.entry_number,
+          output_vat: money(r.output_vat),
+          advance_vat: money(advanceVat),
+          unexplained_vat: money(unexplained),
+        },
+      ];
+    });
     return {
       name: 'late_fee_vat_leak',
       severity: 'MEDIUM',
       status: leaks.length === 0 ? 'PASS' : 'FAIL',
       count: leaks.length,
-      details: leaks,
+      details: leaks.slice(0, DETAIL_LIMIT),
       executedAt: new Date(),
     };
   }

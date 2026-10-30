@@ -192,6 +192,11 @@ describe('LineLoginController — OIDC nonce binds the id_token to the tab that 
       await expect(makeController().verify({ idToken: ID_TOKEN, nonce: NONCE })).rejects.toThrow(
         ServiceUnavailableException,
       );
+      // LINE ตอบ 5xx = ขัดข้อง ไม่ใช่ token ผิด
+      global.fetch = lineVerifyReturns(502, {}) as unknown as typeof fetch;
+      await expect(makeController().verify({ idToken: ID_TOKEN, nonce: NONCE })).rejects.toThrow(
+        ServiceUnavailableException,
+      );
     });
 
     it('DTO: idToken and nonce are required and shaped', async () => {

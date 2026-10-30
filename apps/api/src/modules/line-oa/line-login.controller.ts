@@ -235,6 +235,9 @@ export class LineLoginController {
         body: new URLSearchParams({ id_token: idToken, client_id: this.channelId, nonce }),
         signal: AbortSignal.timeout(10_000),
       });
+      if (verifyRes.status >= 500) {
+        throw new Error(`LINE verify answered ${verifyRes.status}`); // LINE ขัดข้อง ≠ token ผิด → 503 ด้านล่าง
+      }
       if (!verifyRes.ok) {
         // ไม่ log token/nonce — สถานะพอสำหรับไล่ปัญหา (LINE ตอบ 400 เมื่อ nonce/exp/ลายเซ็นไม่ผ่าน)
         this.logger.warn(`[LineLogin] id_token rejected by LINE verify: ${verifyRes.status}`);

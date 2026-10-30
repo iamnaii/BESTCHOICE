@@ -95,17 +95,15 @@ export class RefundsService {
         );
       }
 
-      // Total not-yet-failed/rejected refunds + this request must not exceed paid.
-      const alreadyRefunded = payment.refunds
-        .filter((r) => r.status === 'PROCESSED')
-        .reduce((sum, r) => sum.plus(r.amount), new Prisma.Decimal(0));
+      // ยอดคงเหลือที่คืนได้ = ใบเสร็จของงวดที่ยังมีผล (refundableCash) — ไม่หัก Σ คืนเงิน PROCESSED อีก (Task 18 M-3): คืนเงินที่
+      // PROCESSED แล้วยกเลิกใบเสร็จของงวดทุกใบใน tx เดียวกับการกลับรายการ (markReversed) ใบเหล่านั้นจึงหลุดจากยอดนี้อยู่แล้ว ·
+      // หักซ้ำทำให้คืนเงินรอบสองหลังรับเงินใหม่ได้ 0 เสมอ · กันคืนซ้ำของเงินก้อนเดิมด้วยใบที่ถูกยกเลิก + ต้นฉบับ reversed (ด่าน R-1)
       const refundable = await this.refundableCash(tx, payment);
       if (refundable.blockedReason) throw new BadRequestException(refundable.blockedReason);
-      const remaining = refundable.amount.minus(alreadyRefunded);
-      if (new Prisma.Decimal(dto.amount).gt(remaining)) {
+      if (new Prisma.Decimal(dto.amount).gt(refundable.amount)) {
         throw new BadRequestException(
           `จำนวนเงินคืน (${dto.amount.toLocaleString()}) เกินยอดคงเหลือที่คืนได้ ` +
-            `(${remaining.toFixed(2)} บาท)`,
+            `(${refundable.amount.toFixed(2)} บาท)`,
         );
       }
       // Full refunds return the actual cash shown on the installment receipts.

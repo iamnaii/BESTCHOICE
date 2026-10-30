@@ -308,16 +308,69 @@ describe('RefundsService', () => {
       expect(prisma.refund.create).toHaveBeenCalledTimes(1);
     });
 
-    it('rejects when total refunds would exceed amount paid', async () => {
-      prisma.payment.findUnique.mockResolvedValue(
+    // Task 18 M-3: คืนเงินที่ PROCESSED แล้วยกเลิกใบเสร็จของงวดทุกใบ (markReversed `receipt.updateMany`) และกลับรายการรับชำระ
+    // (ต้นฉบับ `reversed: true`) — ยอดคืนได้ (ใบที่ยังมีผล) จึงไม่รวมเงินก้อนที่คืนไปแล้วอยู่แล้ว · การหัก Σ คืนเงิน PROCESSED ซ้ำอีกที
+    // ทำให้คืนเงินรอบสองหลังรับเงินใหม่ได้ 400 เสมอ
+    const firstCycle = {
+      payment: () =>
         paidPayment({
-          amountPaid: new Prisma.Decimal(1000),
-          refunds: [{ ...refundRecord(), status: 'PROCESSED', amount: new Prisma.Decimal(600) }],
+          amountPaid: new Prisma.Decimal('1515.83'),
+          refunds: [refundRecord({ status: 'PROCESSED', amount: new Prisma.Decimal('1515.83') })],
+        }),
+      voidedReceipt: {
+        amount: new Prisma.Decimal('1515.83'),
+        isVoided: true,
+        deletedAt: null,
+        createdAt: new Date('2025-05-02T10:00:00+07:00'),
+      },
+      reversedEntry: {
+        ...receiptEntry,
+        id: 'je-receipt-1',
+        metadata: { tag: 'receipt', paymentId: 'pay-1', reversed: true },
+      },
+    };
+
+    it('Task 18 M-3 — pay → refund → pay again → refund again: the second refund is the new receipt in full', async () => {
+      prisma.payment.findUnique.mockResolvedValue(firstCycle.payment());
+      prisma.receipt.findMany.mockResolvedValue([
+        firstCycle.voidedReceipt,
+        {
+          amount: new Prisma.Decimal('1515.83'),
+          isVoided: false,
+          deletedAt: null,
+          createdAt: new Date('2025-05-03T10:00:00+07:00'),
+        },
+      ]);
+      prisma.journalEntry.findMany.mockResolvedValue([
+        firstCycle.reversedEntry,
+        { ...receiptEntry, id: 'je-receipt-2' },
+      ]);
+      const refund = await service.requestRefund(
+        { paymentId: 'pay-1', amount: 1515.83, reason: 'ลูกค้าโอนซ้ำรอบที่สอง' },
+        'u-staff',
+      );
+      expect(refund.status).toBe('REQUESTED');
+      expect(prisma.refund.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ amount: new Prisma.Decimal('1515.83') }),
         }),
       );
-      await expect(
-        service.requestRefund({ paymentId: 'pay-1', amount: 500, reason: 'xxxxxxxxxx' }, 'u-staff'),
-      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('Task 18 M-3 — the money of a PROCESSED refund cannot be refunded again (its receipts are voided, its JE reversed)', async () => {
+      prisma.payment.findUnique.mockResolvedValue({
+        ...firstCycle.payment(),
+        status: 'PARTIALLY_PAID',
+        amountPaid: new Prisma.Decimal(300), // ยอดที่ล้างงวดโดยไม่มีใบเสร็จคงอยู่ (marker งวดนำเข้า)
+      });
+      prisma.receipt.findMany.mockResolvedValue([firstCycle.voidedReceipt]);
+      prisma.journalEntry.findMany.mockResolvedValue([firstCycle.reversedEntry]);
+      for (const amount of [1515.83, 300]) {
+        await expect(
+          service.requestRefund({ paymentId: 'pay-1', amount, reason: 'xxxxxxxxxx' }, 'u-staff'),
+        ).rejects.toThrow(noRefundableMoney);
+      }
+      expect(prisma.refund.create).not.toHaveBeenCalled();
     });
   });
 

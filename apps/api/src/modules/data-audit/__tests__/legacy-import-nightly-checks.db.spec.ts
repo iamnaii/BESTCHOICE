@@ -875,6 +875,17 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
         'PAID',
         'PAID',
       ]);
+      // Task 18 M-3: คืนเงินรอบสองของเงินที่รับใหม่ได้เต็มใบ — ใบ/รายการของรอบแรกถูกยกเลิก/กลับแล้ว จึงไม่ถูกหักซ้ำ
+      // (เดิม remaining = ใบที่ยังมีผล − Σ คืนเงิน PROCESSED = 0 ⇒ 400)
+      await refundInFull((await paymentOf(l9r, 4)).id, '1215.83');
+      const l9rAgain = await paymentOf(l9r, 4);
+      expect([l9rAgain.status, l9rAgain.amountPaid.toFixed(2)]).toEqual([
+        'PARTIALLY_PAID',
+        '300.00',
+      ]);
+      expect(
+        await prisma.refund.count({ where: { paymentId: l9rAgain.id, status: 'PROCESSED' } }),
+      ).toBe(2);
       await expectClean(ids(native, ['A4']).concat(ids(legacy, ['L9R'])));
     },
     LONG,

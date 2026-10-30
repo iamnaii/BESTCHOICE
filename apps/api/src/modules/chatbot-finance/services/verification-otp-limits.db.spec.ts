@@ -1,17 +1,17 @@
 /**
  * รัน: DATABASE_URL=<ฐานทดสอบ> npx jest src/modules/chatbot-finance/services/verification-otp-limits.db.spec.ts --runInBand
  *
- * Task 20 I1 — พิสูจน์บน Postgres จริง (mock มองไม่เห็นการแข่งกันของคำสั่งขนาน):
+ * Task 20 I1 + fix round 1 (I-B, M1) — พิสูจน์บน Postgres จริง (mock มองไม่เห็นการแข่งกันของคำสั่งขนาน):
  *   1. ยิง verify ผิดพร้อมกัน 10 ครั้ง → กิน attempt ได้แค่ 3 · หลังจากนั้นรหัสที่ถูกก็ใช้ไม่ได้
- *   2. LINE 8 บัญชีขอ OTP เบอร์เดียวพร้อมกัน → SMS ออกไม่เกินเพดานต่อลูกค้าต่อวัน (5)
- *   3. ขอใหม่ในช่วงเวลาเดิมไม่รีเซ็ต attempts · ผิดครบแล้วขอใหม่ไม่ได้จนหมดช่วง
+ *   2. LINE เดียวยิงขอ OTP พร้อมกัน 5 คำขอ → ผ่าน cooldown ตัวเดียว · SMS ≤ 1 (cooldown atomic)
+ *   3. LINE ผู้โจมตี 3 บัญชีเผาได้ไม่เกินเพดานย่อย (2 ต่อบัญชี) → LINE เจ้าของเบอร์ยังได้ SMS
+ *   4. LINE 10 บัญชีขอเบอร์เดียว → SMS เท่าเพดานต่อลูกค้า (8)
+ *   5. LINE เดียวขอ 6 เบอร์ในวันเดียว → ครั้งที่ 6 ไม่ส่ง SMS แม้เป็นเบอร์ลูกค้าจริง (เพดานต่อ LINE)
+ *   6. ส่ง SMS ไม่สำเร็จ → คืนโควตา + ขอใหม่ได้ทันที
+ *   7. ขอใหม่ในช่วงเวลาเดิมไม่รีเซ็ต attempts
  */
 import { PrismaClient } from '@prisma/client';
-import {
-  OTP_DAILY_REQUESTS_PER_CUSTOMER,
-  OTP_QUOTA_KEY_PREFIX,
-  VerificationService,
-} from './verification.service';
+import { OTP_QUOTA_KEY_PREFIX, VerificationService } from './verification.service';
 
 jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn(), captureMessage: jest.fn() }));
 
@@ -19,7 +19,7 @@ const prisma = new PrismaClient();
 const tag = `t20-${Date.now()}`;
 const digits = String(Date.now()).slice(-8);
 const PHONE = `09${digits}`;
-const lines = Array.from({ length: 8 }, (_, i) => `U${tag}-${i}`);
+const line = (name: string) => `U${tag}-${name}`;
 let customerId = '';
 
 const sms = { sendSmsFromQueue: jest.fn().mockResolvedValue(undefined) };
@@ -28,10 +28,15 @@ let verification: VerificationService;
 const lastOtp = () => (sms.sendSmsFromQueue.mock.calls.at(-1)?.[1] as string).match(/(\d{6})/)![1];
 const wrongOf = (otp: string) => String((Number(otp) + 1) % 1_000_000).padStart(6, '0');
 const resetCooldown = (lineUserId: string) =>
-  prisma.chatbotOtpRequest.update({
+  prisma.chatbotOtpRequest.updateMany({
     where: { lineUserId },
     data: { lastRequestAt: new Date(Date.now() - 120_000) },
   });
+/** ปล่อยงานส่ง SMS ที่ไม่ได้ await (fire-and-forget) ให้จบ */
+const settle = () => new Promise((resolve) => setTimeout(resolve, 50));
+const myRows = () => ({
+  OR: [{ lineUserId: { contains: tag } }, { lineUserId: { contains: customerId } }],
+});
 
 beforeAll(async () => {
   const dbName = new URL(process.env.DATABASE_URL ?? 'postgresql://unset/unset').pathname.slice(1);
@@ -46,89 +51,155 @@ beforeAll(async () => {
     { isEnabled: jest.fn().mockResolvedValue(false) } as never,
     { log: jest.fn().mockResolvedValue(undefined) } as never,
   );
+  // เวลาตอบขั้นต่ำ (M1) — ปิดในสเปคนี้ (ทดสอบแยกใน unit spec)
+  (
+    verification as unknown as { _setResponseFloorForTests?: (ms: number) => void }
+  )._setResponseFloorForTests?.(0);
 });
 
 beforeEach(async () => {
-  sms.sendSmsFromQueue.mockClear();
-  await prisma.chatbotOtpRequest.deleteMany({
-    where: { lineUserId: { in: [...lines, `${OTP_QUOTA_KEY_PREFIX}${customerId}`] } },
-  });
+  sms.sendSmsFromQueue.mockReset().mockResolvedValue(undefined);
+  await prisma.chatbotOtpRequest.deleteMany({ where: myRows() });
 });
 
 afterAll(async () => {
-  await prisma.chatbotOtpRequest.deleteMany({
-    where: { lineUserId: { in: [...lines, `${OTP_QUOTA_KEY_PREFIX}${customerId}`] } },
-  });
+  await prisma.chatbotOtpRequest.deleteMany({ where: myRows() });
   await prisma.customerLineLink.deleteMany({ where: { customerId } });
-  await prisma.chatRoom.deleteMany({ where: { lineUserId: { in: lines } } });
+  await prisma.chatRoom.deleteMany({ where: { lineUserId: { contains: tag } } });
   await prisma.customer.delete({ where: { id: customerId } });
   await prisma.$disconnect();
 });
 
-describe('OTP limits on real Postgres (Task 20 I1)', () => {
+describe('OTP limits on real Postgres (Task 20 I1 + fix round 1)', () => {
   it('1. 10 parallel wrong guesses consume exactly 3 attempts; the right code is then refused', async () => {
-    await verification.requestOtp({ lineUserId: lines[0], phone: PHONE });
+    const lineUserId = line('guess');
+    await verification.requestOtp({ lineUserId, phone: PHONE });
     const otp = lastOtp();
 
     const results = await Promise.allSettled(
-      Array.from({ length: 10 }, () =>
-        verification.verifyOtp({ lineUserId: lines[0], otp: wrongOf(otp) }),
-      ),
+      Array.from({ length: 10 }, () => verification.verifyOtp({ lineUserId, otp: wrongOf(otp) })),
     );
-    const messages = results.map((r) => (r.status === 'rejected' ? (r.reason as Error).message : 'OK'));
+    const messages = results.map((r) =>
+      r.status === 'rejected' ? (r.reason as Error).message : 'OK',
+    );
     expect(messages.filter((m) => m === 'OK')).toHaveLength(0);
-    // ครั้งที่ 1–2 บอกจำนวนที่เหลือ ครั้งที่ 3 + ที่เหลือทั้งหมด = ล็อก (ไม่มีการเทียบรหัสเกิน 3 ครั้ง)
     expect(messages.filter((m) => m.startsWith('OTP ไม่ถูกต้อง'))).toHaveLength(2);
-    const row = await prisma.chatbotOtpRequest.findUniqueOrThrow({ where: { lineUserId: lines[0] } });
+    const row = await prisma.chatbotOtpRequest.findUniqueOrThrow({ where: { lineUserId } });
     expect(row.attempts).toBe(3);
 
-    await expect(verification.verifyOtp({ lineUserId: lines[0], otp })).rejects.toThrow(
+    await expect(verification.verifyOtp({ lineUserId, otp })).rejects.toThrow(
       'ใส่ OTP ผิดครบ 3 ครั้งแล้ว',
     );
     expect(await prisma.customerLineLink.count({ where: { customerId } })).toBe(0);
 
     // ล็อกค้างจนหมดช่วง — ขอใหม่ (พ้น cooldown แล้ว) ก็ไม่ได้รหัสใหม่ ไม่ส่ง SMS
-    await resetCooldown(lines[0]);
+    await resetCooldown(lineUserId);
     sms.sendSmsFromQueue.mockClear();
-    await expect(verification.requestOtp({ lineUserId: lines[0], phone: PHONE })).rejects.toThrow(
+    await expect(verification.requestOtp({ lineUserId, phone: PHONE })).rejects.toThrow(
       /ขอรหัสใหม่ได้ในอีก \d+ นาที/,
     );
     expect(sms.sendSmsFromQueue).not.toHaveBeenCalled();
   });
 
-  it('2. 8 LINE accounts requesting the same phone at once → at most 5 SMS (per-customer daily cap)', async () => {
-    const results = await Promise.all(
-      lines.map((lineUserId) => verification.requestOtp({ lineUserId, phone: PHONE })),
+  it('2. one LINE firing 5 requests at once passes the cooldown once → at most 1 SMS', async () => {
+    const lineUserId = line('burst');
+    const results = await Promise.allSettled(
+      Array.from({ length: 5 }, () => verification.requestOtp({ lineUserId, phone: PHONE })),
     );
+    await settle();
 
-    // ทุกคำขอได้คำตอบเหมือนกัน (M4) แต่ SMS ออกแค่เพดาน
-    expect(new Set(results.map((r) => JSON.stringify(r))).size).toBe(1);
-    expect(sms.sendSmsFromQueue).toHaveBeenCalledTimes(OTP_DAILY_REQUESTS_PER_CUSTOMER);
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(sms.sendSmsFromQueue.mock.calls.length).toBeLessThanOrEqual(1);
+  });
+
+  it('3. three attacker LINE accounts burn at most 2 each — the owner LINE still gets an SMS', async () => {
+    for (const name of ['atk-a', 'atk-b', 'atk-c']) {
+      const lineUserId = line(name);
+      for (let i = 0; i < 4; i++) {
+        await verification.requestOtp({ lineUserId, phone: PHONE });
+        await resetCooldown(lineUserId);
+      }
+    }
+    await settle();
+    expect(sms.sendSmsFromQueue.mock.calls.length).toBeLessThanOrEqual(6);
+
+    sms.sendSmsFromQueue.mockClear();
+    const owner = line('owner');
+    await verification.requestOtp({ lineUserId: owner, phone: PHONE });
+    await settle();
+    expect(sms.sendSmsFromQueue).toHaveBeenCalledTimes(1);
+    const row = await prisma.chatbotOtpRequest.findUniqueOrThrow({ where: { lineUserId: owner } });
+    expect(row.customerId).toBe(customerId);
+  });
+
+  it('4. ten LINE accounts asking for the same phone → SMS capped at 8 per customer per day', async () => {
+    const results = await Promise.all(
+      Array.from({ length: 10 }, (_, i) =>
+        verification.requestOtp({ lineUserId: line(`many-${i}`), phone: PHONE }),
+      ),
+    );
+    await settle();
+
+    expect(new Set(results.map((r) => JSON.stringify(r))).size).toBe(1); // M4: ทุกคนได้คำตอบเดียวกัน
+    expect(sms.sendSmsFromQueue).toHaveBeenCalledTimes(8);
     const quota = await prisma.chatbotOtpRequest.findUniqueOrThrow({
       where: { lineUserId: `${OTP_QUOTA_KEY_PREFIX}${customerId}` },
     });
-    expect(quota.attempts).toBe(OTP_DAILY_REQUESTS_PER_CUSTOMER);
-    expect(quota.expiresAt.getTime()).toBeGreaterThan(Date.now());
-    // แถวของบัญชีที่เกินเพดาน = decoy (ไม่ผูกลูกค้า)
-    const decoys = await prisma.chatbotOtpRequest.count({
-      where: { lineUserId: { in: lines }, customerId: '' },
-    });
-    expect(decoys).toBe(lines.length - OTP_DAILY_REQUESTS_PER_CUSTOMER);
+    expect(quota.attempts).toBe(8);
   });
 
-  it('3. re-request inside the window keeps attempts; the new code still verifies', async () => {
-    await verification.requestOtp({ lineUserId: lines[1], phone: PHONE });
-    await expect(
-      verification.verifyOtp({ lineUserId: lines[1], otp: wrongOf(lastOtp()) }),
-    ).rejects.toThrow('เหลือ 2 ครั้ง');
+  it('5. one LINE asking for 6 numbers in a day — the 6th sends nothing even for a real customer', async () => {
+    const lineUserId = line('prober');
+    for (let i = 0; i < 5; i++) {
+      await verification.requestOtp({ lineUserId, phone: `0810000${String(i).padStart(3, '0')}` });
+      await resetCooldown(lineUserId);
+    }
+    await verification.requestOtp({ lineUserId, phone: PHONE });
+    await settle();
 
-    await resetCooldown(lines[1]);
-    await verification.requestOtp({ lineUserId: lines[1], phone: PHONE });
-    const row = await prisma.chatbotOtpRequest.findUniqueOrThrow({ where: { lineUserId: lines[1] } });
+    expect(sms.sendSmsFromQueue).not.toHaveBeenCalled();
+    const row = await prisma.chatbotOtpRequest.findUniqueOrThrow({ where: { lineUserId } });
+    expect(row.customerId).toBe(''); // decoy
+  });
+
+  it('6. SMS provider failure refunds the quota and allows an immediate retry', async () => {
+    const lineUserId = line('smsfail');
+    sms.sendSmsFromQueue.mockRejectedValueOnce(new Error('provider down'));
+
+    await expect(verification.requestOtp({ lineUserId, phone: PHONE })).resolves.toBeDefined();
+    await settle();
+
+    const quota = await prisma.chatbotOtpRequest.findUniqueOrThrow({
+      where: { lineUserId: `${OTP_QUOTA_KEY_PREFIX}${customerId}` },
+    });
+    expect(quota.attempts).toBe(0);
+    // ขอใหม่ได้ทันที (ไม่ติด cooldown) และรอบนี้ส่งได้
+    await expect(verification.requestOtp({ lineUserId, phone: PHONE })).resolves.toBeDefined();
+    await settle();
+    expect(sms.sendSmsFromQueue).toHaveBeenCalledTimes(2);
+    await expect(verification.verifyOtp({ lineUserId, otp: lastOtp() })).resolves.toMatchObject({
+      customerId,
+    });
+    await prisma.customerLineLink.deleteMany({ where: { customerId } });
+    await prisma.customer.update({ where: { id: customerId }, data: { lineIdFinance: null } });
+  });
+
+  it('7. re-request inside the window keeps attempts; the new code still verifies', async () => {
+    const lineUserId = line('rereq');
+    await verification.requestOtp({ lineUserId, phone: PHONE });
+    await settle();
+    await expect(verification.verifyOtp({ lineUserId, otp: wrongOf(lastOtp()) })).rejects.toThrow(
+      'เหลือ 2 ครั้ง',
+    );
+
+    await resetCooldown(lineUserId);
+    await verification.requestOtp({ lineUserId, phone: PHONE });
+    await settle();
+    const row = await prisma.chatbotOtpRequest.findUniqueOrThrow({ where: { lineUserId } });
     expect(row.attempts).toBe(1);
 
-    await expect(
-      verification.verifyOtp({ lineUserId: lines[1], otp: lastOtp() }),
-    ).resolves.toMatchObject({ customerId });
+    await expect(verification.verifyOtp({ lineUserId, otp: lastOtp() })).resolves.toMatchObject({
+      customerId,
+    });
   });
 });

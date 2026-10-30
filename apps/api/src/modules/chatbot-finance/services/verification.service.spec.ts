@@ -45,6 +45,26 @@ function withOtpRowMocks<T extends OtpRowMock>(otp: T): T {
   return otp;
 }
 
+type LockSeam = {
+  withOtpRequestLock: (id: string, fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>;
+};
+
+/**
+ * Task 20 fix round 1 — unit spec ไม่มี Postgres: ข้าม advisory lock (I-B — พิสูจน์ใน
+ * verification-otp-limits.db.spec.ts) โดยส่ง mock prisma เป็น tx · ปิดเวลาตอบขั้นต่ำ (M1 — มีเทสแยก)
+ */
+function useUnitSeams(service: VerificationService, prisma: unknown): void {
+  jest
+    .spyOn(service as unknown as LockSeam, 'withOtpRequestLock')
+    .mockImplementation((_id, fn) => fn(prisma));
+  service._setResponseFloorForTests(0);
+}
+
+/** ปล่อยงานส่ง SMS ที่ไม่ได้ await (M1) ให้จบก่อนตรวจ */
+async function flushSmsDispatch(): Promise<void> {
+  for (let i = 0; i < 5; i++) await new Promise((resolve) => setImmediate(resolve));
+}
+
 describe('VerificationService', () => {
   let service: VerificationService;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -108,6 +128,7 @@ describe('VerificationService', () => {
     }).compile();
 
     service = module.get(VerificationService);
+    useUnitSeams(service, prisma);
   });
 
   describe('requestOtp', () => {
@@ -131,7 +152,11 @@ describe('VerificationService', () => {
       const upsert = prisma.chatbotOtpRequest.upsert.mock.calls[0][0];
       expect(upsert.create.customerId).toBe('');
       expect(upsert.create.hash).not.toMatch(/^[0-9a-f]{64}$/); // ไม่ใช่ sha256 ของรหัสใด ๆ
-      expect(prisma.chatbotOtpRequest.updateMany).not.toHaveBeenCalled(); // ไม่กินเพดานของใคร
+      // กินแค่เพดานต่อ LINE (นับทั้งเบอร์จริงและ decoy) — ไม่แตะเพดานของลูกค้าคนไหน
+      const quotaKeys = prisma.chatbotOtpRequest.updateMany.mock.calls.map(
+        (c: [{ where: { lineUserId: string } }]) => c[0].where.lineUserId,
+      );
+      expect(quotaKeys).toEqual(['otp-quota:line:U123']);
     });
 
     it('M4: known and unknown phones return byte-identical responses', async () => {
@@ -424,6 +449,7 @@ describe('VerificationService', () => {
         }).compile();
 
         mergedService = module.get(VerificationService);
+        useUnitSeams(mergedService, mergedPrisma);
       });
 
       it('real-verify branch: เรียก absorbRoomsOfLineUser(lineUserId, LINE_FINANCE, customerId, SYSTEM_ACTOR) ก่อน bind() เสมอ', async () => {
@@ -781,7 +807,7 @@ describe('VerificationService', () => {
       expect(notifications.sendSmsFromQueue).not.toHaveBeenCalled();
     });
 
-    it('each real OTP consumes the per-customer daily quota row (namespaced, conditional increment)', async () => {
+    it('each real OTP consumes three daily quota rows in order: LINE (5) → customer+LINE (2) → customer (8)', async () => {
       prisma.customer.findFirst.mockResolvedValue(KNOWN);
 
       await service.requestOtp({ lineUserId: 'U123', phone: '0891234567' });
@@ -797,10 +823,60 @@ describe('VerificationService', () => {
         ],
         skipDuplicates: true,
       });
-      expect(prisma.chatbotOtpRequest.updateMany).toHaveBeenCalledWith({
-        where: { lineUserId: 'otp-quota:customer:c1', attempts: { lt: 5 } },
-        data: { attempts: { increment: 1 }, lastRequestAt: expect.any(Date) },
-      });
+      expect(prisma.chatbotOtpRequest.updateMany.mock.calls.map((c: [unknown]) => c[0])).toEqual([
+        {
+          where: { lineUserId: 'otp-quota:line:U123', attempts: { lt: 5 } },
+          data: { attempts: { increment: 1 }, lastRequestAt: expect.any(Date) },
+        },
+        {
+          where: { lineUserId: 'otp-quota:customer:c1:line:U123', attempts: { lt: 2 } },
+          data: { attempts: { increment: 1 }, lastRequestAt: expect.any(Date) },
+        },
+        {
+          where: { lineUserId: 'otp-quota:customer:c1', attempts: { lt: 8 } },
+          data: { attempts: { increment: 1 }, lastRequestAt: expect.any(Date) },
+        },
+      ]);
+    });
+
+    it.each([
+      ['otp-quota:line:U-6th', 'LINE'],
+      ['otp-quota:customer:c1:line:U-6th', 'customer+LINE'],
+      ['otp-quota:customer:c1', 'customer'],
+    ])('quota row %s full (%s) → identical response, no SMS, decoy row', async (fullKey) => {
+      prisma.customer.findFirst.mockResolvedValue(KNOWN);
+      prisma.chatbotOtpRequest.updateMany.mockImplementation(
+        async (args: { where: { lineUserId: string } }) => ({
+          count: args.where.lineUserId === fullKey ? 0 : 1,
+        }),
+      );
+
+      const result = await service.requestOtp({ lineUserId: 'U-6th', phone: '0891234567' });
+      await flushSmsDispatch();
+
+      expect(result).toEqual({ maskedPhone: '089-***-4567', expiresInSeconds: 300 });
+      expect(notifications.sendSmsFromQueue).not.toHaveBeenCalled();
+      expect(prisma.chatbotOtpRequest.upsert.mock.calls[0][0].create.customerId).toBe('');
+    });
+
+    it('M1: SMS is not awaited — a slow provider does not delay the answer, both paths wait the same floor', async () => {
+      service._setResponseFloorForTests(60);
+      notifications.sendSmsFromQueue.mockReturnValue(new Promise(() => undefined)); // ไม่จบเลย
+
+      prisma.customer.findFirst.mockResolvedValueOnce(KNOWN);
+      let t0 = Date.now();
+      await service.requestOtp({ lineUserId: 'U-real', phone: '0891234567' });
+      const realMs = Date.now() - t0;
+
+      prisma.customer.findFirst.mockResolvedValueOnce(null);
+      t0 = Date.now();
+      await service.requestOtp({ lineUserId: 'U-fake', phone: '0899999999' });
+      const decoyMs = Date.now() - t0;
+
+      expect(notifications.sendSmsFromQueue).toHaveBeenCalledTimes(1);
+      expect(realMs).toBeGreaterThanOrEqual(55);
+      expect(decoyMs).toBeGreaterThanOrEqual(55);
+      expect(realMs).toBeLessThan(1000);
     });
 
     it('daily quota reached → identical response, no SMS, no usable code (decoy row)', async () => {
@@ -828,18 +904,54 @@ describe('VerificationService', () => {
       expect(prisma.$transaction).not.toHaveBeenCalled();
     });
 
-    it('SMS failure invalidates the code but keeps the attempt counter (no delete)', async () => {
+    it('SMS failure (after answering) invalidates only the issued code, frees the cooldown and refunds the customer quotas', async () => {
       prisma.customer.findFirst.mockResolvedValue(KNOWN);
       notifications.sendSmsFromQueue.mockRejectedValue(new Error('provider down'));
 
+      // M1: ไม่รอผลส่ง ⇒ คำตอบเหมือนสำเร็จ (ไม่มี 400 เฉพาะเบอร์จริง)
       await expect(
         service.requestOtp({ lineUserId: 'U123', phone: '0891234567' }),
-      ).rejects.toThrow('ส่ง SMS ไม่สำเร็จ');
+      ).resolves.toEqual({ maskedPhone: '089-***-4567', expiresInSeconds: 300 });
+      const issuedHash = prisma.chatbotOtpRequest.upsert.mock.calls[0][0].create.hash;
+      await flushSmsDispatch();
+
       expect(prisma.chatbotOtpRequest.delete).not.toHaveBeenCalled();
-      const update = prisma.chatbotOtpRequest.update.mock.calls[0][0];
-      expect(update.where).toEqual({ lineUserId: 'U123' });
-      expect(update.data.hash).not.toMatch(/^[0-9a-f]{64}$/);
-      expect(update.data).not.toHaveProperty('attempts');
+      // 3 แถวแรกคือการกินเพดาน (LINE → ลูกค้า+LINE → ลูกค้า) · ที่เหลือคือการเก็บกวาดหลังส่งไม่สำเร็จ
+      const calls = prisma.chatbotOtpRequest.updateMany.mock.calls
+        .map((c: [unknown]) => c[0])
+        .slice(3);
+      expect(calls[0]).toEqual({
+        where: { lineUserId: 'U123', hash: issuedHash },
+        data: { hash: expect.stringMatching(/^decoy:/), lastRequestAt: new Date(0) },
+      });
+      expect(calls.slice(1)).toEqual([
+        {
+          where: { lineUserId: 'otp-quota:customer:c1:line:U123', attempts: { gt: 0 } },
+          data: { attempts: { decrement: 1 } },
+        },
+        {
+          where: { lineUserId: 'otp-quota:customer:c1', attempts: { gt: 0 } },
+          data: { attempts: { decrement: 1 } },
+        },
+      ]);
+    });
+
+    it('SMS that throws synchronously is still cleaned up (never escapes requestOtp)', async () => {
+      prisma.customer.findFirst.mockResolvedValue(KNOWN);
+      notifications.sendSmsFromQueue.mockImplementation(() => {
+        throw new Error('sync boom');
+      });
+
+      await expect(
+        service.requestOtp({ lineUserId: 'U123', phone: '0891234567' }),
+      ).resolves.toBeDefined();
+      await flushSmsDispatch();
+      expect(
+        prisma.chatbotOtpRequest.updateMany.mock.calls.some(
+          (c: [{ data: { lastRequestAt?: Date } }]) =>
+            c[0].data.lastRequestAt?.getTime() === 0,
+        ),
+      ).toBe(true);
     });
 
     it('test mode does not consume the daily quota (UAT skips SMS anyway)', async () => {
@@ -891,6 +1003,7 @@ describe('VerificationService', () => {
         ],
       }).compile();
       tService = module.get(VerificationService);
+      useUnitSeams(tService, tPrisma);
     };
 
     /** ขอ OTP จริงแล้วคืนรหัสที่ส่งทาง SMS — เส้นยืนยันจริง (ไม่ใช่ test-mode) */

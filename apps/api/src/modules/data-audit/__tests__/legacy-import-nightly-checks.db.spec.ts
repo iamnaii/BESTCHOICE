@@ -13,6 +13,7 @@ import {
   thaiId,
   type ContractSpec,
   type InstallmentSpec,
+  shopCompanyForTest,
 } from '../../../cli/legacy-backoffice/__tests__/synthetic-book';
 import type { DumpRow } from '../../../cli/legacy-backoffice/dump-reader';
 import { legacyFileContentType, type LegacyFileDetail } from '../../../cli/legacy-backoffice/files';
@@ -110,6 +111,7 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
   let importUserId = '';
   let createdImportUser = false;
   let createdAdminId: string | null = null;
+  let createdShopId: string | null = null;
   const nativeContractIds: string[] = [];
   const nativeCustomerIds: string[] = [];
   const legacy = new Map<string, string>();
@@ -179,9 +181,12 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
         data: { name: `${TEST_NAME_PREFIX} T16 ปกติ ${stamp}`, companyId: financeCompanyId },
       })
     ).id;
+    // Task 15: ต้นทางสิทธิ์ของลูกค้าที่นำเข้าต้องเป็นสาขาใต้ SHOP — สาขานำเข้าจึงผูก SHOP
+    const shop = await shopCompanyForTest(prisma, 'T16');
+    if (shop.created) createdShopId = shop.id;
     legacyBranchId = (
       await prisma.branch.create({
-        data: { name: `${TEST_NAME_PREFIX} T16 นำเข้า ${stamp}`, companyId: financeCompanyId },
+        data: { name: `${TEST_NAME_PREFIX} T16 นำเข้า ${stamp}`, companyId: shop.id },
       })
     ).id;
     userId = (
@@ -353,6 +358,9 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
         await prisma.branch.delete({ where: { id } }).catch(async () => {
           await prisma.branch.update({ where: { id }, data: { deletedAt: new Date() } });
         });
+      }
+      if (createdShopId) {
+        await prisma.companyInfo.delete({ where: { id: createdShopId } }).catch(() => undefined);
       }
     } finally {
       await prisma.$disconnect();
@@ -564,7 +572,6 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
       peakRecon: syntheticRecon(
         contracts.map((c, i) => [c, peakMatch(c, `T16${stamp}${i}`, specs[i].peakRemain)]),
       ),
-      canceledMap: new Map(),
       moneyOverrides: new Map(),
       customerOverrides: new Map(),
     });

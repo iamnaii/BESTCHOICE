@@ -77,6 +77,8 @@ describe('RefundsService', () => {
       // PR-843/I2 Phase 3 PR 3.1: markReversed now finds ALL receipt JEs of the payment
       // via metadata.paymentId (findMany) and reverses EACH — not a single findFirst.
       journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
+      // Task 17 A: markReversed คืนแถวงวดจากยอดในบัญชี (revertPaymentFromLedger) — ไม่มีแถวตารางงวด = ไม่เหลือยอด
+      installmentSchedule: { findUnique: jest.fn().mockResolvedValue(null) },
       receipt: {
         findMany: jest.fn().mockResolvedValue([]),
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -161,6 +163,53 @@ describe('RefundsService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
+    it('Task 17 A — an imported legacy installment with no receipt in this system: refundable 0, Thai 400, no request', async () => {
+      for (const status of ['PAID', 'PARTIALLY_PAID']) {
+        prisma.payment.findUnique.mockResolvedValue(
+          paidPayment({
+            status,
+            legacyInstallmentCode: 'LEG-INST-1',
+            amountPaid: new Prisma.Decimal(1000),
+          }),
+        );
+        await expect(
+          service.requestRefund(
+            { paymentId: 'pay-1', amount: 1000, reason: 'customer double-paid ชำระซ้ำ' },
+            'u-staff',
+          ),
+        ).rejects.toThrow(/รับในระบบเก่าก่อนย้ายเข้าระบบ/);
+      }
+      expect(prisma.refund.create).not.toHaveBeenCalled();
+    });
+
+    it('Task 17 A — a legacy installment WITH a receipt after cutover refunds only that receipt (not the pre-cutover money)', async () => {
+      prisma.payment.findUnique.mockResolvedValue(
+        paidPayment({
+          legacyInstallmentCode: 'LEG-INST-1',
+          amountPaid: new Prisma.Decimal('1515.83'),
+        }),
+      );
+      prisma.receipt.findMany.mockResolvedValue([
+        {
+          amount: new Prisma.Decimal('1215.83'),
+          isVoided: false,
+          deletedAt: null,
+          createdAt: new Date(),
+        },
+      ]);
+      await expect(
+        service.requestRefund(
+          { paymentId: 'pay-1', amount: 1515.83, reason: 'customer double-paid ชำระซ้ำ' },
+          'u-staff',
+        ),
+      ).rejects.toThrow(BadRequestException);
+      await service.requestRefund(
+        { paymentId: 'pay-1', amount: 1215.83, reason: 'customer double-paid ชำระซ้ำ' },
+        'u-staff',
+      );
+      expect(prisma.refund.create).toHaveBeenCalledTimes(1);
+    });
+
     it('rejects when total refunds would exceed amount paid', async () => {
       prisma.payment.findUnique.mockResolvedValue(
         paidPayment({
@@ -234,6 +283,16 @@ describe('RefundsService', () => {
       await expect(service.approveRefund('rf-1', 'u-other', 'BRANCH_MANAGER')).rejects.toThrow(
         ForbiddenException,
       );
+    });
+
+    it('Task 17 A — a request left on a legacy installment without receipts cannot be approved (same Thai 400)', async () => {
+      prisma.payment.findUnique.mockResolvedValue(
+        paidPayment({ legacyInstallmentCode: 'LEG-INST-1', amountPaid: new Prisma.Decimal(500) }),
+      );
+      await expect(service.approveRefund('rf-1', 'u-owner', 'OWNER')).rejects.toThrow(
+        /รับในระบบเก่าก่อนย้ายเข้าระบบ/,
+      );
+      expect(prisma.refund.updateMany).not.toHaveBeenCalled();
     });
 
     it('rejects non-REQUESTED status', async () => {
@@ -450,6 +509,97 @@ describe('RefundsService', () => {
       );
       expect(template.voidReceipt).not.toHaveBeenCalled();
       expect(prisma.payment.update).toHaveBeenCalled();
+    });
+
+    it('Task 17 A — money that cleared the installment without a receipt (marker / advance consume) survives: PARTIALLY_PAID from the ledger, not 0', async () => {
+      prisma.refund.findUnique.mockResolvedValue(refundRecord({ status: 'APPROVED' }));
+      prisma.payment.findUnique.mockResolvedValue(
+        paidPayment({
+          amountPaid: new Prisma.Decimal(800),
+          amountDue: new Prisma.Decimal('1515.83'),
+          installmentNo: 4,
+          dueDate: new Date('2025-04-05T00:00:00+07:00'),
+        }),
+      );
+      // ใบเสร็จหลังวันตัด 500 (= ยอดคืน) · ยอดอีก 300 มาจากรายการที่ไม่มี paymentId (marker ของงวดนำเข้า)
+      prisma.receipt.findMany.mockResolvedValue([
+        {
+          amount: new Prisma.Decimal(500),
+          isVoided: false,
+          deletedAt: null,
+          createdAt: new Date('2025-05-02T10:00:00+07:00'),
+        },
+      ]);
+      prisma.installmentSchedule.findUnique.mockResolvedValue({ id: 'sch-4' });
+      const marker = {
+        id: 'je-marker',
+        metadata: { tag: '2B', flow: 'legacy-prior-receipt', installmentScheduleId: 'sch-4' },
+        lines: [
+          { accountCode: '32-1101', debit: new Prisma.Decimal(300), credit: new Prisma.Decimal(0) },
+          { accountCode: '11-2103', debit: new Prisma.Decimal(0), credit: new Prisma.Decimal(300) },
+        ],
+      };
+      prisma.journalEntry.findMany.mockImplementation(async (args: unknown) => {
+        const text = JSON.stringify(args);
+        if (text.includes('installmentScheduleId')) return [marker]; // reconstructPriorCleared
+        if (text.includes('"paymentId"'))
+          return [{ id: 'je-receipt', companyId: 'co-finance', lines: [] }];
+        return [];
+      });
+
+      await service.markReversed(
+        'rf-1',
+        { bankReversalRef: 'KBANK-9', notes: 'rev' },
+        'u-owner',
+        'OWNER',
+      );
+
+      expect(template.voidReceipt).toHaveBeenCalledWith('je-receipt', prisma, {
+        flow: 'refund-reversal',
+      });
+      expect(prisma.installmentSchedule.findUnique).toHaveBeenCalledWith({
+        where: { contractId_installmentNo: { contractId: 'con-1', installmentNo: 4 } },
+        select: { id: true },
+      });
+      const [update] = prisma.payment.update.mock.calls.map((c: unknown[]) => c[0]);
+      expect(update.where).toEqual({ id: 'pay-1' });
+      expect([update.data.status, update.data.amountPaid.toFixed(2), update.data.paidDate]).toEqual(
+        ['PARTIALLY_PAID', '300.00', null],
+      );
+      const audit = prisma.auditLog.create.mock.calls
+        .map((c: unknown[]) => (c[0] as { data: { action: string; newValue: unknown } }).data)
+        .find((d: { action: string }) => d.action === 'REFUND_PROCESSED');
+      expect(audit.newValue).toMatchObject({
+        paymentReverted: {
+          fromStatus: 'PAID',
+          toStatus: 'PARTIALLY_PAID',
+          previousAmountPaid: '800',
+          survivingAmountPaid: '300',
+        },
+      });
+    });
+
+    it('Task 17 A — nothing survives on a past-due installment → OVERDUE with amountPaid 0 (same rule as receipt void)', async () => {
+      prisma.refund.findUnique.mockResolvedValue(refundRecord({ status: 'APPROVED' }));
+      prisma.payment.findUnique.mockResolvedValue(
+        paidPayment({
+          amountPaid: new Prisma.Decimal(500),
+          amountDue: new Prisma.Decimal(500),
+          installmentNo: 2,
+          dueDate: new Date('2025-02-05T00:00:00+07:00'),
+        }),
+      );
+      prisma.installmentSchedule.findUnique.mockResolvedValue({ id: 'sch-2' });
+      await service.markReversed(
+        'rf-1',
+        { bankReversalRef: 'KBANK-10', notes: 'rev' },
+        'u-owner',
+        'OWNER',
+      );
+      expect(prisma.payment.update).toHaveBeenCalledWith({
+        where: { id: 'pay-1' },
+        data: { status: 'OVERDUE', amountPaid: 0, paidDate: null },
+      });
     });
 
     it('closed period: throws and reverts nothing', async () => {

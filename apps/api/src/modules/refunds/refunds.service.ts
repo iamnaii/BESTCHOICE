@@ -19,6 +19,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { ReceiptVoidReversalTemplate } from '../journal/cpa-templates/receipt-void-reversal.template';
 import { assertNoAdvanceExcessIncome } from '../journal/advance-excess-income.util';
+import { revertPaymentFromLedger } from '../journal/revert-payment-from-ledger';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 import {
   RequestRefundDto,
@@ -26,6 +27,10 @@ import {
   RejectRefundDto,
   MarkRefundFailedDto,
 } from './dto/refund.dto';
+
+/** งวดนำเข้าจากระบบเก่าที่ไม่มีใบเสร็จในระบบนี้ — ไม่มีรายการรับเงินให้กลับ (Task 17 A) */
+export const LEGACY_NO_RECEIPT_REFUND_MESSAGE =
+  'ยอดชำระของงวดนี้รับในระบบเก่าก่อนย้ายเข้าระบบ (ไม่มีใบเสร็จในระบบนี้) — คืนเงินผ่านระบบนี้ไม่ได้ กรุณาติดต่อฝ่ายบัญชี';
 
 /**
  * Refund workflow — T1-C1 / P2Q7=F (bank reversal policy).
@@ -84,6 +89,7 @@ export class RefundsService {
         .filter((r) => r.status === 'PROCESSED')
         .reduce((sum, r) => sum.plus(r.amount), new Prisma.Decimal(0));
       const refundable = await this.refundableCash(tx, payment);
+      if (refundable.blockedReason) throw new BadRequestException(refundable.blockedReason);
       const remaining = refundable.amount.minus(alreadyRefunded);
       if (new Prisma.Decimal(dto.amount).gt(remaining)) {
         throw new BadRequestException(
@@ -339,13 +345,26 @@ export class RefundsService {
         );
       }
 
-      // Restore the installment to its true unpaid state and void its receipt (the
-      // booking was wrong). Planned-schedule fields (monthlyPrincipal/Interest/
-      // Commission, amountDue) and lateFee describe the plan, not this reverted payment.
-      await tx.payment.update({
+      // Restore the installment from the LEDGER (Task 17 A — same helper as receipt void) and
+      // void its receipts. Not a blind 0: part of amountPaid may have cleared 11-2103 without a
+      // receipt (nightly advance / park consume · the legacy-import pre-cutover marker) — none
+      // of it carries paymentId, so it survives the reversal above and must stay on the row.
+      // Planned-schedule fields (monthlyPrincipal/Interest/Commission, amountDue) and lateFee
+      // describe the plan, not this reverted payment.
+      const payment = await tx.payment.findUnique({
         where: { id: refund.paymentId },
-        data: { status: 'PENDING', amountPaid: 0, paidDate: null },
+        select: {
+          id: true,
+          contractId: true,
+          installmentNo: true,
+          amountDue: true,
+          dueDate: true,
+          amountPaid: true,
+          status: true,
+        },
       });
+      if (!payment) throw new NotFoundException('ไม่พบรายการชำระเงินของคำขอคืนเงิน');
+      const reverted = await revertPaymentFromLedger(tx, payment);
       await tx.receipt.updateMany({
         where: { paymentId: refund.paymentId, isVoided: false, deletedAt: null },
         data: {
@@ -367,6 +386,13 @@ export class RefundsService {
             status: 'PROCESSED',
             bankReversalRef: dto.bankReversalRef,
             reversalEntryNo,
+            paymentReverted: {
+              paymentId: payment.id,
+              fromStatus: payment.status,
+              toStatus: reverted.status,
+              previousAmountPaid: payment.amountPaid.toString(),
+              survivingAmountPaid: reverted.survivingPaid.toString(),
+            },
           },
         },
       });
@@ -457,11 +483,19 @@ export class RefundsService {
     return refund;
   }
 
-  /** Receipt.amount is cash. Payment.amountPaid may also contain non-cash debt relief. */
+  /**
+   * Receipt.amount is cash. Payment.amountPaid may also contain non-cash debt relief.
+   * `blockedReason` = ผู้เรียกต้องปฏิเสธด้วยข้อความนี้ (ยอดคืนได้ 0)
+   */
   private async refundableCash(
     tx: Prisma.TransactionClient,
-    payment: { id: string; contractId: string; amountPaid: Prisma.Decimal },
-  ) {
+    payment: {
+      id: string;
+      contractId: string;
+      amountPaid: Prisma.Decimal;
+      legacyInstallmentCode?: string | null;
+    },
+  ): Promise<{ amount: Prisma.Decimal; latestReceiptAt: Date | null; blockedReason?: string }> {
     await this.assertCashOnlyRefund(tx, payment.id);
     const receipts = await tx.receipt.findMany({
       where: {
@@ -473,8 +507,18 @@ export class RefundsService {
     });
     // Existing voided/deleted receipt history is authoritative too: zero active
     // receipts means zero refundable cash, not a fallback to settled debt.
-    if (receipts.length === 0)
+    if (receipts.length === 0) {
+      // งวดนำเข้าจากระบบเก่า (Task 17 A): ยอดที่จ่ายก่อนวันตัด ระบบเก่ารับไว้ — ไม่มีใบเสร็จ/รายการรับเงินในระบบนี้ให้กลับ
+      // ทางถอยไป amountPaid จะ "คืน" เงินนั้นโดยไม่มีรายการบัญชี (งวด PAID ก่อนวันตัด gap เต็มงวด · สัญญาประวัติไม่มีตัวตรวจเห็น)
+      if (payment.legacyInstallmentCode) {
+        return {
+          amount: new Prisma.Decimal(0),
+          latestReceiptAt: null,
+          blockedReason: LEGACY_NO_RECEIPT_REFUND_MESSAGE,
+        };
+      }
       return { amount: new Prisma.Decimal(payment.amountPaid), latestReceiptAt: null };
+    }
     const active = receipts.filter((receipt) => !receipt.isVoided && !receipt.deletedAt);
     return {
       amount: active.reduce((sum, receipt) => sum.plus(receipt.amount), new Prisma.Decimal(0)),
@@ -529,7 +573,14 @@ export class RefundsService {
   ) {
     const payment = await tx.payment.findUnique({
       where: { id: refund.paymentId },
-      select: { id: true, contractId: true, amountPaid: true, deletedAt: true, status: true },
+      select: {
+        id: true,
+        contractId: true,
+        amountPaid: true,
+        deletedAt: true,
+        status: true,
+        legacyInstallmentCode: true,
+      },
     });
     if (!payment || payment.deletedAt)
       throw new NotFoundException('ไม่พบรายการชำระเงินของคำขอคืนเงิน');
@@ -540,6 +591,7 @@ export class RefundsService {
       throw new ConflictException('รายการชำระเงินเปลี่ยนแล้ว — กรุณาส่งคำขอคืนเงินใหม่');
     }
     const current = await this.refundableCash(tx, payment);
+    if (current.blockedReason) throw new BadRequestException(current.blockedReason);
     if (current.amount.lte(0) || !current.amount.equals(refund.amount)) {
       throw new BadRequestException(
         'ยอดคืนต้องเท่ากับเงินที่รับจริงตามใบเสร็จของงวด — กรุณาส่งคำขอคืนเงินใหม่',

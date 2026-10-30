@@ -50,6 +50,8 @@ function fixture(role = 'SALES', branchId: string | null = 'branch-a') {
     journalEntry: {
       findMany: jest.fn().mockResolvedValue([{ id: 'je', companyId: 'company', lines: [] }]),
     },
+    // Task 17 A: markReversed คืนแถวงวดจากยอดในบัญชี (revertPaymentFromLedger) — ไม่มีแถวตารางงวด = ไม่เหลือยอด
+    installmentSchedule: { findUnique: jest.fn().mockResolvedValue(null) },
     receipt: {
       findMany: jest.fn().mockResolvedValue([]),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),

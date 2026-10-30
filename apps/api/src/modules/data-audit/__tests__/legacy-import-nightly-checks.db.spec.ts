@@ -45,6 +45,7 @@ import { LEGACY_SYSTEM_USER_EMAIL } from '../../journal/legacy-import-journal';
 import { PaymentReceiptOrchestrator } from '../../payments/services/payment-receipt-orchestrator';
 import { ProductsService } from '../../products/products.service';
 import { ReceiptsService } from '../../receipts/receipts.service';
+import { RefundsService } from '../../refunds/refunds.service';
 import { ReceivableReconService } from '../../receivable-recon/receivable-recon.service';
 import type { AuditCheckResult } from '../data-audit.types';
 import { DataAuditChecksService } from '../services/data-audit-checks.service';
@@ -103,6 +104,7 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
   let receipts: ReceiptsService;
   let checks: DataAuditChecksService;
   let recon: ReceivableReconService;
+  let refunds: RefundsService;
 
   const saved = { key: process.env.PII_ENCRYPTION_KEY, salt: process.env.PII_HASH_SALT };
   const stamp = Date.now().toString(36).toUpperCase();
@@ -259,11 +261,16 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
     );
     checks = new DataAuditChecksService(asService);
     recon = new ReceivableReconService(asService);
+    refunds = new RefundsService(
+      asService,
+      {} as never,
+      new ReceiptVoidReversalTemplate(journal, asService),
+    );
 
     // สัญญาปกติ — A1 (ถึงวันตัดแบบเดียวกับสัญญานำเข้า) · A2 (เงินรับล่วงหน้า) · C1–C5 (เป้าทำให้เพี้ยนในขั้น 3)
     native.set('A1', await createNative('A1', P1.date, P1.dueDay));
     await runNativeToCutoff(native.get('A1')!);
-    for (const key of ['A2', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6']) {
+    for (const key of ['A2', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'A4']) {
       native.set(key, await createNative(key, P1.date, P1.dueDay));
     }
 
@@ -309,6 +316,7 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
       { key: 'L8', installments: legacyState() },
       { key: 'L9', installments: legacyState() },
       { key: 'L9B', installments: legacyState() },
+      { key: 'L9R', installments: legacyState() },
     ]);
   }, LONG);
 
@@ -342,6 +350,7 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
       await prisma.journalLine.deleteMany({ where: { journalEntryId: { in: entryIds } } });
       await prisma.journalEntry.deleteMany({ where: { id: { in: entryIds } } });
       await prisma.paymentEvidence.deleteMany({ where: { contractId: { in: contractIds } } });
+      await prisma.refund.deleteMany({ where: { contractId: { in: contractIds } } });
       await prisma.payment.deleteMany({ where: { contractId: { in: contractIds } } });
       await prisma.installmentSchedule.deleteMany({ where: { contractId: { in: contractIds } } });
       await prisma.contractDocument.deleteMany({ where: { contractId: { in: contractIds } } });
@@ -685,8 +694,22 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
       .sort((a, b) => a - b);
 
   const cleanKeys = () => [
-    ...ids(native, ['A1', 'A2', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6']),
-    ...ids(legacy, ['L1', 'L2', 'L3', 'H1', 'H2', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L9B']),
+    ...ids(native, ['A1', 'A2', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'A4']),
+    ...ids(legacy, [
+      'L1',
+      'L2',
+      'L3',
+      'H1',
+      'H2',
+      'L4',
+      'L5',
+      'L6',
+      'L7',
+      'L8',
+      'L9',
+      'L9B',
+      'L9R',
+    ]),
   ];
 
   // ── ขั้น 1–3 (ลำดับในไฟล์ = ลำดับเวลา) ─────────────────────────────────────────────────────────
@@ -778,6 +801,76 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
 
       await expectClean(cleanKeys());
       expect(await reconBreachesOf([nativeBranchId, legacyBranchId])).toEqual([]);
+    },
+    LONG,
+  );
+
+  /** คืนเงินผ่านเส้นทางจริง: ขอ (ฝ่ายบัญชี) → อนุมัติ (OWNER คนละคน) → ยืนยันธนาคาร (OWNER) */
+  async function refundInFull(paymentId: string, amount: string) {
+    const refund = await refunds.requestRefund(
+      { paymentId, amount: Number(amount), reason: 'ทดสอบคืนเงินหลังวันตัดระบบ (T17)' },
+      approverId,
+    );
+    await refunds.approveRefund(refund.id, userId, 'OWNER');
+    await refunds.markReversed(
+      refund.id,
+      { bankReversalRef: `T17-${stamp}-${++refSeq}`, notes: 'ทดสอบ' },
+      userId,
+      'OWNER',
+    );
+  }
+
+  it(
+    'stage 2b — refunds after cutover: money that cleared the row without a receipt survives (legacy marker · advance consume); legacy money has nothing to refund',
+    async () => {
+      const legacyRefundError = /รับในระบบเก่าก่อนย้ายเข้าระบบ/;
+      // งวดนำเข้าที่ไม่มีใบเสร็จในระบบ — PAID ก่อนวันตัด (L1 งวด 1) และจ่ายบางส่วนก่อนวันตัด (L9R งวด 4) → คืนไม่ได้
+      const l1Row1 = await paymentOf(legacy.get('L1')!, 1);
+      const l9r = legacy.get('L9R')!;
+      for (const row of [l1Row1, await paymentOf(l9r, 4)]) {
+        await expect(
+          refunds.requestRefund(
+            { paymentId: row.id, amount: Number(row.amountPaid), reason: 'ทดสอบ (T17)' },
+            approverId,
+          ),
+        ).rejects.toThrow(legacyRefundError);
+      }
+
+      // L9R: งวด 4 (marker 300) รับ 1,215.83 หลังวันตัด → คืนเงินใบนั้น → เหลือ 300 PARTIALLY_PAID · รับ 1,215.83 ใหม่ได้
+      await pay(l9r, 4, await owedOn(l9r, 4), MAY2);
+      await refundInFull((await paymentOf(l9r, 4)).id, '1215.83');
+      const l9rRow4 = await paymentOf(l9r, 4);
+      expect([l9rRow4.status, l9rRow4.amountPaid.toFixed(2), l9rRow4.paidDate]).toEqual([
+        'PARTIALLY_PAID',
+        '300.00',
+        null,
+      ]);
+      expect((await run('hp', [l9r])).count).toBe(0);
+
+      // A4 ปกติ: งวด 1 รับเกิน 500 (พักเป็นเงินรับล่วงหน้า) → 2A งวด 2 หัก 500 เข้างวด (ไม่มี paymentId) → รับส่วนที่เหลือ
+      // 1,015.83 → คืนเงินใบนั้น → ยอดจากเงินรับล่วงหน้ายังอยู่ 500
+      const a4 = native.get('A4')!;
+      await nightly2A(a4, 1);
+      await pay(a4, 1, D(MONTHLY).plus(500).toFixed(2), P1.due(1));
+      await nightly2A(a4, 2);
+      expect((await paymentOf(a4, 2)).amountPaid.toFixed(2)).toBe('500.00');
+      await pay(a4, 2, await owedOn(a4, 2), P1.due(2));
+      expect((await paymentOf(a4, 2)).status).toBe('PAID');
+      await refundInFull((await paymentOf(a4, 2)).id, '1015.83');
+      const a4Row2 = await paymentOf(a4, 2);
+      expect([a4Row2.status, a4Row2.amountPaid.toFixed(2)]).toEqual(['PARTIALLY_PAID', '500.00']);
+
+      await expectClean(ids(native, ['A4']).concat(ids(legacy, ['L1', 'L9R'])));
+      expect(await reconBreachesOf([nativeBranchId, legacyBranchId])).toEqual([]);
+
+      // งวดที่คืนเงินแล้วรับเต็มส่วนที่เหลือได้อีก (ไม่ชนเกณฑ์ ≤ 1 บาท)
+      await pay(l9r, 4, await owedOn(l9r, 4), MAY3);
+      await pay(a4, 2, await owedOn(a4, 2), P1.due(2));
+      expect([(await paymentOf(l9r, 4)).status, (await paymentOf(a4, 2)).status]).toEqual([
+        'PAID',
+        'PAID',
+      ]);
+      await expectClean(ids(native, ['A4']).concat(ids(legacy, ['L9R'])));
     },
     LONG,
   );

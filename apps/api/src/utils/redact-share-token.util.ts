@@ -35,13 +35,22 @@
  * 43-char run after it becomes `[redacted]`).
  */
 const BARE_TOKEN_PATTERN = /(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])/g;
+/**
+ * Task 21 fix round 1 (I-1 / M-3): LIFF download links carry the LINE id_token as `?idToken=`
+ * (`withLiffToken` → `LiffTokenGuard`). Matches the param at the start of a bare query string
+ * (`request.query_string` has no leading `?`) or after `?`/`&` anywhere in a URL / message.
+ */
+const ID_TOKEN_QUERY_PATTERN = /((?:^|[?&])(?:idToken|id_token)=)[^&#\s"']*/gi;
 
 export function redactShareToken(url: string): string {
   if (typeof url !== 'string') return url;
-  const scrub = (text: string) => text.replace(BARE_TOKEN_PATTERN, '[redacted]')
-    .replace(/(?<![a-f0-9])[a-f0-9]{64}(?![a-f0-9])/gi, '[redacted]')
-    .replace(/(\/customer-access\/)[^/?\s]+/gi, '$1[redacted]')
-    .replace(/([?&]hash=)[^&\s]*/gi, '$1[redacted]');
+  const scrub = (text: string) =>
+    text
+      .replace(BARE_TOKEN_PATTERN, '[redacted]')
+      .replace(/(?<![a-f0-9])[a-f0-9]{64}(?![a-f0-9])/gi, '[redacted]')
+      .replace(/(\/customer-access\/)[^/?\s]+/gi, '$1[redacted]')
+      .replace(/([?&]hash=)[^&\s]*/gi, '$1[redacted]')
+      .replace(ID_TOKEN_QUERY_PATTERN, '$1[redacted]');
   let decoded = url;
   for (let i = 0; i < 2; i++) {
     try {
@@ -166,6 +175,7 @@ function scrubErrorOwnProperties(err: Error, seen: WeakSet<object>, depth: numbe
  * is carried over by reference, untouched).
  */
 export function redactDynamicSamplingContext<T>(event: T): T {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- SDK event read loosely; hook must never throw on odd shapes
   const e = event as unknown as Record<string, any>;
   const meta = e.sdkProcessingMetadata;
   if (!meta || typeof meta !== 'object') return event;
@@ -187,10 +197,12 @@ export function redactDynamicSamplingContext<T>(event: T): T {
  * rest from being scrubbed.
  */
 export function shallowScrubShareTokens<T>(event: T): T {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- SDK event read loosely; hook must never throw on odd shapes
   const e = event as unknown as Record<string, any>;
   const guard = (fn: () => void) => {
     try { fn(); } catch { /* keep going — scrub whatever else we can */ }
   };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see above
   const redactField = (holder: Record<string, any> | undefined, key: string) => {
     if (holder && typeof holder[key] === 'string') holder[key] = redactShareToken(holder[key]);
   };
@@ -198,6 +210,7 @@ export function shallowScrubShareTokens<T>(event: T): T {
   guard(() => { redactDynamicSamplingContext(e); }); // fix round 5 — envelope header `trace`
   guard(() => redactField(e, 'message'));
   guard(() => redactField(e.request, 'url'));
+  guard(() => redactField(e.request, 'query_string')); // Task 21 fix round 1 — ?idToken=
   guard(() => redactField(e.extra, 'url'));
   guard(() => {
     const data = e.contexts?.trace?.data;

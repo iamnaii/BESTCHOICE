@@ -43,7 +43,52 @@ type SentryInitOptions = NonNullable<Parameters<typeof Sentry.init>[0]>;
 type BeforeSendHook = NonNullable<SentryInitOptions['beforeSend']>;
 type BeforeSendTransactionHook = NonNullable<SentryInitOptions['beforeSendTransaction']>;
 
-const SENSITIVE_REQUEST_KEYS = ['nationalId', 'password', 'phone', 'signatureImage'];
+/**
+ * Task 21 fix round 1 (I-1): `idToken`/`id_token`/`nonce` — the web POSTs the LINE id_token +
+ * the tab nonce to `POST /line-oa/line-login/verify`; a LINE id_token can be replayed against
+ * LINE /verify until it expires, so it must never ride along on a captured body.
+ */
+const SENSITIVE_REQUEST_KEYS = [
+  'nationalId',
+  'password',
+  'phone',
+  'signatureImage',
+  'idToken',
+  'id_token',
+  'nonce',
+];
+/**
+ * Credential headers — the SDK copies every request header except cookies/IP headers onto
+ * `event.request.headers`. `x-liff-id-token` = the LINE id_token every LIFF request carries
+ * (`LiffTokenGuard`, Task 21 fix round 1).
+ */
+const SENSITIVE_REQUEST_HEADERS = new Set(['x-appointment-token', 'x-liff-id-token']);
+/**
+ * Query params whose value is a credential (`?idToken=` on LIFF download links — `LiffTokenGuard`).
+ * The string forms (`request.url`, `request.query_string`, span `http.target`/`url.full`/`url.query`)
+ * are scrubbed by `redactShareToken`; this covers `query_string` in object / `[key, value][]` form.
+ */
+const SENSITIVE_QUERY_PARAMS = new Set(['idtoken', 'id_token']);
+
+function redactSensitiveQueryParams(request: NonNullable<Sentry.Event['request']>): void {
+  const query = request.query_string as unknown;
+  if (Array.isArray(query)) {
+    for (const pair of query) {
+      if (
+        Array.isArray(pair) &&
+        typeof pair[0] === 'string' &&
+        SENSITIVE_QUERY_PARAMS.has(pair[0].toLowerCase())
+      ) {
+        pair[1] = '[REDACTED]';
+      }
+    }
+  } else if (query && typeof query === 'object') {
+    const record = query as Record<string, unknown>;
+    for (const key of Object.keys(record)) {
+      if (SENSITIVE_QUERY_PARAMS.has(key.toLowerCase())) record[key] = '[REDACTED]';
+    }
+  }
+}
 
 /**
  * Don't send PII (Thai national IDs, phone numbers, ...) in the captured request body.
@@ -59,7 +104,12 @@ const SENSITIVE_REQUEST_KEYS = ['nationalId', 'password', 'phone', 'signatureIma
  */
 function redactSensitiveRequestData(event: Sentry.Event): void {
   const request = event.request;
-  if(request?.headers)for(const key of Object.keys(request.headers))if(key.toLowerCase()==='x-appointment-token')request.headers[key]='[REDACTED]';
+  if (request?.headers) {
+    for (const key of Object.keys(request.headers)) {
+      if (SENSITIVE_REQUEST_HEADERS.has(key.toLowerCase())) request.headers[key] = '[REDACTED]';
+    }
+  }
+  if (request) redactSensitiveQueryParams(request);
   if (!request || request.data == null) return;
   if (typeof request.data === 'string') {
     const body = request.data;

@@ -245,6 +245,8 @@ describe('sentry.ts — beforeSend/beforeSendTransaction scrub the GFIN share to
     expect(result).toBeNull();
   });
 
+  // real SDK event shapes are built loosely on purpose (live Scope / getters / Error instances)
+  /* eslint-disable @typescript-eslint/no-explicit-any */
   describe('fix round 4 finding 1 — hooks never throw on real SDK event shapes and fail closed', () => {
     /**
      * Mirrors the real chain the re-reviewer hit: `sdkProcessingMetadata.capturedSpanScope`
@@ -449,6 +451,157 @@ describe('sentry.ts — beforeSend/beforeSendTransaction scrub the GFIN share to
       // unrelated body untouched
       const plain = config.beforeSend({ request: { data: '{"action":"ACK"}' } });
       expect(plain.request.data).toBe('{"action":"ACK"}');
+    });
+  });
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+
+  /**
+   * Task 21 fix round 1 (I-1): the web POSTs the LINE id_token (+ the tab nonce) to
+   * `POST /line-oa/line-login/verify`; a sampled transaction (prod 20%) and the 503 capture
+   * carry that body. LIFF pages also send the id_token as the `X-Liff-Id-Token` header and as
+   * `?idToken=` on download links (LiffTokenGuard) — headers + query reach `request.headers`,
+   * `request.url`, `request.query_string`, root-span `http.target`/`url.full`/`url.query` and
+   * `spans[].data`. A LINE id_token can be replayed against LINE /verify until it expires.
+   * The nonce here is 46 chars on purpose — NOT the 43-char share-token shape the deep scrub
+   * already catches — so these tests prove the key/param redaction itself.
+   */
+  describe('Task 21 fix round 1 (I-1) — LINE id_token / nonce never reach Sentry', () => {
+    const SIGNATURE = 'S'.repeat(86);
+    const JWT = `eyJhbGciOiJFUzI1NiJ9.eyJzdWIiOiJVMTIzNCIsIm5vbmNlIjoiYWJjIn0.${SIGNATURE}`;
+    const NONCE = `tab-nonce_${'N'.repeat(36)}`;
+    const leaks = (value: unknown) => {
+      const text = JSON.stringify(value);
+      return text.includes(SIGNATURE) || text.includes(NONCE);
+    };
+    const VERIFY_URL = 'https://api.example/api/line-oa/line-login/verify';
+    const PDF_PATH = `/api/line-oa/liff/receipts/r1/pdf?idToken=${JWT}&download=1`;
+
+    it('verify body (raw JSON string, the real shape) is redacted on error events', () => {
+      const config = loadSentryInitConfig();
+      const event = config.beforeSend({
+        request: {
+          url: VERIFY_URL,
+          method: 'POST',
+          data: JSON.stringify({ idToken: JWT, nonce: NONCE }),
+        },
+      });
+      expect(JSON.parse(event.request.data)).toEqual({
+        idToken: '[REDACTED]',
+        nonce: '[REDACTED]',
+      });
+      expect(leaks(event)).toBe(false);
+    });
+
+    it('verify body is redacted on the sampled transaction too (object and form-encoded shapes)', () => {
+      const config = loadSentryInitConfig();
+      const tx = (data: unknown) => ({
+        type: 'transaction' as const,
+        transaction: 'POST /api/line-oa/line-login/verify',
+        request: { url: VERIFY_URL, method: 'POST', data },
+        contexts: {
+          trace: { trace_id: 't', span_id: 's', data: { url: '/api/line-oa/line-login/verify' } },
+        },
+      });
+      const fromString = config.beforeSendTransaction(
+        tx(JSON.stringify({ idToken: JWT, nonce: NONCE })),
+      );
+      expect(fromString).not.toBeNull();
+      expect(JSON.parse(fromString.request.data)).toEqual({
+        idToken: '[REDACTED]',
+        nonce: '[REDACTED]',
+      });
+      const fromObject = config.beforeSendTransaction(
+        tx({ idToken: JWT, nonce: NONCE, keep: 'ok' }),
+      );
+      expect(fromObject.request.data).toEqual({
+        idToken: '[REDACTED]',
+        nonce: '[REDACTED]',
+        keep: 'ok',
+      });
+      const form = config.beforeSendTransaction(
+        tx(`id_token=${JWT}&client_id=2009442540&nonce=${NONCE}`),
+      );
+      expect(form.request.data).toBe('[REDACTED]');
+      expect([fromString, fromObject, form].some(leaks)).toBe(false);
+    });
+
+    it('?idToken= in the URL / query string / span attributes is redacted on transactions (M-3 download links)', () => {
+      const config = loadSentryInitConfig();
+      const event = config.beforeSendTransaction({
+        type: 'transaction' as const,
+        transaction: 'GET /api/line-oa/liff/receipts/:id/pdf',
+        request: {
+          url: `https://api.example${PDF_PATH}`,
+          method: 'GET',
+          query_string: `idToken=${JWT}&download=1`,
+        },
+        contexts: {
+          trace: {
+            trace_id: 't',
+            span_id: 's',
+            data: {
+              'http.target': PDF_PATH,
+              'url.full': `https://api.example${PDF_PATH}`,
+              'url.query': `idToken=${JWT}&download=1`,
+            },
+          },
+        },
+        spans: [{ span_id: 'c', data: { 'http.url': `https://api.example${PDF_PATH}` } }],
+      });
+      expect(event).not.toBeNull();
+      expect(leaks(event)).toBe(false);
+      expect(event.request.query_string).toBe('idToken=[redacted]&download=1');
+      expect(event.request.url).toBe(
+        'https://api.example/api/line-oa/liff/receipts/r1/pdf?idToken=[redacted]&download=1',
+      );
+    });
+
+    it('?idToken= / id_token= is redacted on error events (url, query string, breadcrumbs) and in object query form', () => {
+      const config = loadSentryInitConfig();
+      const event = config.beforeSend({
+        request: {
+          url: `https://api.example${PDF_PATH}`,
+          query_string: `download=1&id_token=${JWT}`,
+        },
+        breadcrumbs: [{ category: 'http', data: { url: `https://api.example${PDF_PATH}` } }],
+        exception: { values: [{ type: 'Error', value: `GET ${PDF_PATH} failed` }] },
+      });
+      expect(leaks(event)).toBe(false);
+      expect(event.request.query_string).toBe('download=1&id_token=[redacted]');
+      const objectForm = config.beforeSend({
+        request: { query_string: { idToken: JWT, download: '1' } },
+      });
+      expect(objectForm.request.query_string).toEqual({ idToken: '[REDACTED]', download: '1' });
+      const pairForm = config.beforeSend({
+        request: {
+          query_string: [
+            ['idToken', JWT],
+            ['download', '1'],
+          ],
+        },
+      });
+      expect(pairForm.request.query_string).toEqual([
+        ['idToken', '[REDACTED]'],
+        ['download', '1'],
+      ]);
+    });
+
+    it('the X-Liff-Id-Token header is redacted (any case) on error events and transactions', () => {
+      const config = loadSentryInitConfig();
+      const error = config.beforeSend({
+        request: { headers: { 'x-liff-id-token': JWT, accept: 'application/json' } },
+      });
+      expect(error.request.headers).toEqual({
+        'x-liff-id-token': '[REDACTED]',
+        accept: 'application/json',
+      });
+      const tx = config.beforeSendTransaction({
+        type: 'transaction' as const,
+        transaction: 'POST /api/chatbot/finance/liff/request-otp',
+        request: { headers: { 'X-Liff-Id-Token': JWT } },
+      });
+      expect(tx.request.headers['X-Liff-Id-Token']).toBe('[REDACTED]');
+      expect([error, tx].some(leaks)).toBe(false);
     });
   });
 });

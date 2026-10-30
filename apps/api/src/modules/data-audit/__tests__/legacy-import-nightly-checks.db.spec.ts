@@ -1,6 +1,9 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import { seedFinanceCoa } from '../../../../prisma/seed-coa-finance';
-import { earlyPayoffApproved } from '../../../cli/legacy-backoffice/__tests__/approval-fixture';
+import {
+  earlyPayoffApproved,
+  voidReceiptApproved,
+} from '../../../cli/legacy-backoffice/__tests__/approval-fixture';
 import {
   LAST,
   MONTHLY,
@@ -96,6 +99,7 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
   let activation1A: ContractActivation1ATemplate;
   let orchestrator: PaymentReceiptOrchestrator;
   let contractPayments: ContractPaymentService;
+  let receipts: ReceiptsService;
   let checks: DataAuditChecksService;
   let recon: ReceivableReconService;
 
@@ -108,6 +112,7 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
   let nativeBranchId = '';
   let legacyBranchId = '';
   let userId = '';
+  let approverId = '';
   let importUserId = '';
   let createdImportUser = false;
   let createdAdminId: string | null = null;
@@ -200,11 +205,22 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
         },
       })
     ).id;
+    approverId = (
+      await prisma.user.create({
+        data: {
+          email: `t16-approver-${stamp.toLowerCase()}@bestchoice-test.internal`,
+          password: 'hashed_placeholder',
+          name: `${TEST_NAME_PREFIX} ผู้อนุมัติ T16`,
+          role: 'ACCOUNTANT',
+          isActive: true,
+        },
+      })
+    ).id;
 
     journal = new JournalAutoService(asService);
     accrual2A = new InstallmentAccrual2ATemplate(journal, asService);
     activation1A = new ContractActivation1ATemplate(journal, asService);
-    const receipts = new ReceiptsService(
+    receipts = new ReceiptsService(
       asService,
       journal,
       new ReceiptVoidReversalTemplate(journal, asService),
@@ -290,6 +306,8 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
       { key: 'L6', installments: legacyState() },
       { key: 'L7', installments: legacyState() },
       { key: 'L8', installments: legacyState() },
+      { key: 'L9', installments: legacyState() },
+      { key: 'L9B', installments: legacyState() },
     ]);
   }, LONG);
 
@@ -345,7 +363,12 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
         where: { branchId: { in: [nativeBranchId, legacyBranchId] } },
       });
       // AuditLog เป็นแบบเขียนครั้งเดียว — ผู้ใช้ที่ถูกอ้างลบไม่ได้: ปิดใช้งานแทน
-      for (const id of [createdAdminId, createdImportUser ? importUserId : null, userId]) {
+      for (const id of [
+        createdAdminId,
+        createdImportUser ? importUserId : null,
+        userId,
+        approverId,
+      ]) {
         if (!id) continue;
         await prisma.user.delete({ where: { id } }).catch(async () => {
           await prisma.user.update({
@@ -662,7 +685,7 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
 
   const cleanKeys = () => [
     ...ids(native, ['A1', 'A2', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6']),
-    ...ids(legacy, ['L1', 'L2', 'L3', 'H1', 'H2', 'L4', 'L5', 'L6', 'L7', 'L8']),
+    ...ids(legacy, ['L1', 'L2', 'L3', 'H1', 'H2', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L9B']),
   ];
 
   // ── ขั้น 1–3 (ลำดับในไฟล์ = ลำดับเวลา) ─────────────────────────────────────────────────────────
@@ -729,6 +752,28 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
         MONTHLY,
         null,
       ]);
+      // L9B: งวด 4 (marker 300) รับส่วนที่เหลือหลังวันตัด แล้วยกเลิกใบเสร็จ — แถวกลับเป็นยอดก่อนวันตัด แต่ยังถือ
+      // payment_method / ผู้บันทึกของใบที่ยกเลิก (ไม่กลับมาเป็น "ไม่ถูกแตะ") ⇒ หนุนด้วยต้นฉบับที่ reversed=true ตาม (ก)
+      const l9b = legacy.get('L9B')!;
+      await pay(l9b, 4, await owedOn(l9b, 4), MAY2);
+      const l9bRow4 = await paymentOf(l9b, 4);
+      const l9bReceipt = await prisma.receipt.findFirstOrThrow({
+        where: { paymentId: l9bRow4.id, isVoided: false, deletedAt: null },
+      });
+      await voidReceiptApproved(
+        prisma,
+        receipts,
+        l9bReceipt.id,
+        'ทดสอบยกเลิกใบเสร็จหลังวันตัดระบบ (T16)',
+        userId,
+        approverId,
+      );
+      const reverted = await paymentOf(l9b, 4);
+      expect([reverted.status, reverted.amountPaid.toFixed(2), reverted.paymentMethod]).toEqual([
+        'PARTIALLY_PAID',
+        '300.00',
+        'CASH',
+      ]);
 
       await expectClean(cleanKeys());
       expect(await reconBreachesOf([nativeBranchId, legacyBranchId])).toEqual([]);
@@ -740,7 +785,7 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
     'stage 3 — corrupted native contracts and post-cutover rows of imported contracts are still caught',
     async () => {
       const [c1, c2, c3, c4, c5, c6] = ids(native, ['C1', 'C2', 'C3', 'C4', 'C5', 'C6']);
-      const [l4, l5, l6, l7, l8] = ids(legacy, ['L4', 'L5', 'L6', 'L7', 'L8']);
+      const [l4, l5, l6, l7, l8, l9] = ids(legacy, ['L4', 'L5', 'L6', 'L7', 'L8', 'L9']);
       const softDelete = (where: Prisma.JournalEntryWhereInput) =>
         prisma.journalEntry.updateMany({ where, data: { deletedAt: new Date() } });
       const byContract = (contractId: string) => ({
@@ -844,6 +889,14 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
         where: { id: (await paymentOf(l8, 4)).id },
         data: { amountPaid: D(MONTHLY).plus(5) },
       });
+      // L9 นำเข้า — ตาข่ายของจุดบอดตัวแยก: งวด 4 (มีเงินก่อนวันตัด 300 · ผู้บันทึก = บัญชีนำเข้า) ถูกแก้เป็นจ่ายครบตรงในฐาน
+      // โดยไม่ตั้ง payment_method ⇒ แถวยังได้ยกเว้น (ง): orphan_payments / overpaid เงียบโดยตั้งใจ — ตัวจับเดียวคือ hp รายสัญญา
+      // (ทะเบียนลด 1,215.83 แต่ลูกหนี้ใน GL ไม่ลด) · สัญญาที่ปิดแล้ว (COMPLETED / EARLY_PAYOFF) อยู่นอกขอบเขต hp จึงไม่มีตาข่ายนี้ ·
+      // ถ้าจะแก้ขอบเขต/เกณฑ์ของ hp ให้ระวังว่ากำลังถอดตาข่ายเดียวของกรณีนี้
+      await prisma.payment.update({
+        where: { id: (await paymentOf(l9, 4)).id },
+        data: { amountPaid: D(MONTHLY), status: 'PAID' },
+      });
 
       const flagged = async (check: Check, contractId: string) =>
         (await run(check, [contractId])).count;
@@ -878,6 +931,11 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
           ).map((r) => [r.installment_nos, r.overpay]),
           await orphanRowsOf(l8),
         ],
+        l9: [
+          await orphanRowsOf(l9),
+          await flagged('overpaid', l9),
+          (await hpBreaches(l9)).map((b) => b.gap),
+        ],
       }).toEqual({
         c1: [1, 1],
         c2: [[2], ['100.00']],
@@ -901,8 +959,9 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
         l6: [['-79.54'], 0],
         l7: [1, 1],
         l8: [[[[4], '5.00']], []],
+        l9: [[], 0, ['1215.83']],
       });
-      // สาขาที่มีสัญญาเพี้ยน breach ทั้งสองสาขา (สัญญาปกติ C1–C4 · สัญญานำเข้า L4/L5/L7/L8)
+      // สาขาที่มีสัญญาเพี้ยน breach ทั้งสองสาขา (สัญญาปกติ C1–C4 · สัญญานำเข้า L4/L5/L7/L8/L9)
       const breached = await reconBreachesOf([nativeBranchId, legacyBranchId]);
       expect(breached.map((b) => b.branchId).sort()).toEqual(
         [nativeBranchId, legacyBranchId].sort(),

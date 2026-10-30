@@ -155,6 +155,12 @@ export class DataAuditChecksService {
         contract_number: string;
       }[]
     >`
+      -- (a) and (b) deliberately count originals stamped metadata.reversed = true (receipt entries
+      -- carry both paymentId and installmentScheduleId, so each path sees them): after a receipt void
+      -- the row keeps the voided receipt's payment_method / recorded_by (so an imported row is no
+      -- longer "untouched" (d)) while amount_paid falls back to the pre-cutover amount — the reversed
+      -- original is its only backing. Do NOT "tighten" either path by dropping reversed originals:
+      -- every imported row with a voided post-cutover receipt would turn CRITICAL nightly (spec L9B).
       WITH backed_payment AS (
         SELECT je.reference_id AS id FROM journal_entries je
         WHERE je.reference_type = 'AUTO' AND je.status = 'POSTED' AND je.deleted_at IS NULL

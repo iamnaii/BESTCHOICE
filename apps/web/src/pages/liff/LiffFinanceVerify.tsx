@@ -95,7 +95,9 @@ export default function LiffFinanceVerify() {
       const msg =
         (err as { response?: { data?: { message?: string } } }).response?.data?.message ||
         (err instanceof Error ? err.message : 'เกิดข้อผิดพลาด');
-      setPhoneError(msg);
+      // กด "ขอรหัสใหม่" จากหน้า OTP (รอ/ล็อก) ต้องเห็นข้อความบนหน้านั้น ไม่ใช่ซ่อนไว้ที่หน้ากรอกเบอร์
+      if (step === 'otp') setOtpError(msg);
+      else setPhoneError(msg);
     },
   });
 
@@ -321,6 +323,10 @@ export default function LiffFinanceVerify() {
             >
               {resendCooldown > 0 ? `ขอรหัสใหม่อีกครั้งใน ${resendCooldown} วินาที` : 'ขอรหัสใหม่'}
             </Button>
+
+            <p className="text-xs text-muted-foreground text-center leading-snug mt-3">
+              ไม่ได้รับ SMS ภายใน 2 นาที? ตรวจเบอร์ด้านบน หรือโทรหาสาขา 063-134-6356
+            </p>
 
             <Button
               variant="ghost"

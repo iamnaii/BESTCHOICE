@@ -7075,7 +7075,7 @@ model DataAuditLog {
   runId      String   @map("run_id")
   checkName  String   @map("check_name")
   severity   String // CRITICAL, HIGH, MEDIUM
-  status     String // PASS, FAIL, WARN
+  status     String // PASS, FAIL, WARN, SKIPPED (retired assertion — not a finding; Task 18 2026-10-30)
   count      Int      @default(0)
   details    Json?
   executedAt DateTime @default(now()) @map("executed_at")

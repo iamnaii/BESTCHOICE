@@ -8,7 +8,7 @@ import {
 } from '../../journal/cpa-templates/receipt-void-reversal.template';
 import type { DeferredWarning } from '../../journal/deferred-warning';
 import { assertNoAdvanceExcessIncome } from '../../journal/advance-excess-income.util';
-import { reconstructPriorCleared } from '../../journal/reconstruct-prior';
+import { revertPaymentFromLedger } from '../../journal/revert-payment-from-ledger';
 import { ReceiptNumberService } from './receipt-number.service';
 import {
   ADVANCE_SURPLUS_RECEIPT_TYPE,
@@ -471,10 +471,10 @@ export async function voidReceiptInTx(
 
     // Un-pay the installment. The reversal above re-opened the receivable
     // for EVERY receipt JE of this Payment, so the Payment row must stop
-    // claiming PAID and the sibling receipts must not stay valid — mirrors
-    // RefundsService.markReversed. OVERDUE vs PENDING is decided here
-    // because the read side does NO due-date comparison (the cron only
-    // flips PENDING→OVERDUE at its next run).
+    // claiming PAID and the sibling receipts must not stay valid — same as
+    // RefundsService.markReversed. OVERDUE vs PENDING is decided in
+    // revertPaymentFromLedger because the read side does NO due-date
+    // comparison (the cron only flips PENDING→OVERDUE at its next run).
     const payment = await tx.payment.findUnique({
       where: { id: receipt.paymentId },
       select: {
@@ -495,45 +495,20 @@ export async function voidReceiptInTx(
       // zeroing amountPaid would then under-state the installment and the
       // next full collection would trip the ≤1฿ tolerance guard. Recompute
       // the surviving cleared amount from the ledger instead (reversed
-      // originals are skipped by reconstructPriorCleared).
-      let survivingPaid = new Prisma.Decimal(0);
-      const schedule = await tx.installmentSchedule.findUnique({
-        where: {
-          contractId_installmentNo: {
-            contractId: payment.contractId,
-            installmentNo: payment.installmentNo,
-          },
-        },
-        select: { id: true },
-      });
-      if (schedule) {
-        const prior = await reconstructPriorCleared(
-          tx,
-          schedule.id,
-          new Prisma.Decimal(payment.amountDue),
-        );
-        survivingPaid = prior.priorPrincipalCleared.plus(prior.priorLateFeeBooked);
-      }
-      const fullyReverted = survivingPaid.lte(0);
-      const revertStatus = fullyReverted
-        ? payment.dueDate < new Date()
-          ? 'OVERDUE'
-          : 'PENDING'
-        : 'PARTIALLY_PAID';
-      await tx.payment.update({
-        where: { id: payment.id },
-        data: {
-          status: revertStatus,
-          amountPaid: fullyReverted ? 0 : survivingPaid,
-          paidDate: null,
-        },
-      });
+      // originals are skipped by reconstructPriorCleared). Shared with
+      // RefundsService.markReversed — `revertPaymentFromLedger`.
+      const {
+        scheduleId,
+        survivingPaid,
+        fullyReverted,
+        status: revertStatus,
+      } = await revertPaymentFromLedger(tx, payment);
       // ตั้งลูกหนี้งวด ณ วันรับเงิน (คำตอบฝ่ายบัญชี 29/09/2569): งวดไม่เหลือการรับชำระที่มีผลแล้ว —
       // ถ้ารายการตั้งลูกหนี้งวดถูกลง ณ วันรับเงิน (ทุกใบ: บางส่วน + ใบที่ทำให้ครบ — ก1) และยังไม่ถึง
       // วันครบกำหนด ให้กลับรายการเหล่านั้นด้วย (เงื่อนไขข้อ 2–3 อยู่ใน template). ไม่จับ error:
       // ล้มแล้วการยกเลิกล้มทั้งรายการ. สัญญาณเตือนของ template ส่งหลัง commit
-      if (fullyReverted && schedule) {
-        const accrualVoid = await deps.reversal.voidAccrualPostedAtReceipt(schedule.id, tx);
+      if (fullyReverted && scheduleId) {
+        const accrualVoid = await deps.reversal.voidAccrualPostedAtReceipt(scheduleId, tx);
         accrualReversal = accrualVoid.result;
         accrualWarnings = accrualVoid.warnings;
       }

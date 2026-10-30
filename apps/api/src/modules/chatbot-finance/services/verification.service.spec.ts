@@ -13,6 +13,38 @@ import { CustomerMergeService } from '../../chat-prospects/customer-merge.servic
 import { JourneyEntryWriter } from '../../customer-journey/journey-entry-writer.service';
 import { RichMenuService } from '../../line-oa/rich-menu/rich-menu.service';
 
+type OtpRowMock = {
+  [method: string]: jest.Mock | undefined;
+  findUnique: jest.Mock;
+  updateManyAndReturn?: jest.Mock;
+  updateMany?: jest.Mock;
+  createMany?: jest.Mock;
+  deleteMany?: jest.Mock;
+};
+
+/**
+ * Task 20 I1 — ทำให้ mock ของ chatbotOtpRequest ตอบแบบ Postgres:
+ * - `updateManyAndReturn` = UPDATE … SET attempts+1 WHERE attempts < max AND expires_at > now RETURNING
+ *   (อ่านแถวจาก findUnique mock ของเทสนั้น ๆ)
+ * - `createMany` / `updateMany` / `deleteMany` = แถวนับเพดานขอ OTP ต่อลูกค้า (ค่าเริ่มต้น: ยังไม่ถึงเพดาน)
+ */
+function withOtpRowMocks<T extends OtpRowMock>(otp: T): T {
+  otp.updateManyAndReturn = jest.fn(
+    async (args: {
+      where: { lineUserId: string; attempts: { lt: number }; expiresAt: { gt: Date } };
+    }) => {
+      const row = await otp.findUnique({ where: { lineUserId: args.where.lineUserId } });
+      if (!row || row.attempts >= args.where.attempts.lt) return [];
+      if (!(row.expiresAt > args.where.expiresAt.gt)) return [];
+      return [{ ...row, attempts: row.attempts + 1 }];
+    },
+  );
+  otp.updateMany = otp.updateMany ?? jest.fn().mockResolvedValue({ count: 1 });
+  otp.createMany = otp.createMany ?? jest.fn().mockResolvedValue({ count: 1 });
+  otp.deleteMany = otp.deleteMany ?? jest.fn().mockResolvedValue({ count: 0 });
+  return otp;
+}
+
 describe('VerificationService', () => {
   let service: VerificationService;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -26,13 +58,13 @@ describe('VerificationService', () => {
 
   beforeEach(async () => {
     prisma = {
-      chatbotOtpRequest: {
+      chatbotOtpRequest: withOtpRowMocks({
         findUnique: jest.fn().mockResolvedValue(null),
         upsert: jest.fn().mockResolvedValue({ id: 'otp-1' }),
         delete: jest.fn().mockResolvedValue({}),
         deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         update: jest.fn(),
-      },
+      }),
       customer: {
         findFirst: jest.fn(),
         findUnique: jest.fn(),
@@ -89,22 +121,43 @@ describe('VerificationService', () => {
       expect(notifications.sendSmsFromQueue).toHaveBeenCalled();
     });
 
-    it('throws for unknown phone with helpful message', async () => {
+    it('M4: unknown phone → same response as a real customer (no enumeration) · decoy row · no SMS', async () => {
       prisma.customer.findFirst.mockResolvedValue(null);
 
-      await expect(
-        service.requestOtp({ lineUserId: 'U123', phone: '0899999999' }),
-      ).rejects.toThrow('ไม่พบเบอร์โทรนี้ในระบบ');
+      const result = await service.requestOtp({ lineUserId: 'U123', phone: '0899999999' });
+
+      expect(result).toEqual({ maskedPhone: '089-***-9999', expiresInSeconds: 300 });
       expect(notifications.sendSmsFromQueue).not.toHaveBeenCalled();
+      const upsert = prisma.chatbotOtpRequest.upsert.mock.calls[0][0];
+      expect(upsert.create.customerId).toBe('');
+      expect(upsert.create.hash).not.toMatch(/^[0-9a-f]{64}$/); // ไม่ใช่ sha256 ของรหัสใด ๆ
+      expect(prisma.chatbotOtpRequest.updateMany).not.toHaveBeenCalled(); // ไม่กินเพดานของใคร
     });
 
-    it('แถวที่คืนมาไม่มีเบอร์ (ผู้สนใจจากแชท) → ปฏิเสธเหมือนไม่พบ ไม่ออก OTP ไม่ส่ง SMS', async () => {
-      prisma.customer.findFirst.mockResolvedValue({ id: 'c-chat', name: 'Facebook #a1b2', phone: null });
+    it('M4: known and unknown phones return byte-identical responses', async () => {
+      prisma.customer.findFirst.mockResolvedValueOnce({
+        id: 'c1',
+        name: 'สมชาย',
+        phone: '089-123-4567',
+      });
+      const known = await service.requestOtp({ lineUserId: 'U-a', phone: '0891234567' });
+      prisma.customer.findFirst.mockResolvedValueOnce(null);
+      const unknown = await service.requestOtp({ lineUserId: 'U-b', phone: '0891234567' });
 
-      await expect(
-        service.requestOtp({ lineUserId: 'U123', phone: '0891234567' }),
-      ).rejects.toThrow('ไม่พบเบอร์โทรนี้ในระบบ');
-      expect(prisma.chatbotOtpRequest.upsert).not.toHaveBeenCalled();
+      expect(unknown).toEqual(known);
+    });
+
+    it('แถวที่คืนมาไม่มีเบอร์ (ผู้สนใจจากแชท) → ตอบเหมือนเบอร์ที่ไม่พบ (decoy) ไม่ออก OTP ไม่ส่ง SMS', async () => {
+      prisma.customer.findFirst.mockResolvedValue({
+        id: 'c-chat',
+        name: 'Facebook #a1b2',
+        phone: null,
+      });
+
+      const result = await service.requestOtp({ lineUserId: 'U123', phone: '0891234567' });
+
+      expect(result).toEqual({ maskedPhone: '089-***-4567', expiresInSeconds: 300 });
+      expect(prisma.chatbotOtpRequest.upsert.mock.calls[0][0].create.customerId).toBe('');
       expect(notifications.sendSmsFromQueue).not.toHaveBeenCalled();
     });
 
@@ -225,21 +278,21 @@ describe('VerificationService', () => {
         attempts: 3, // max
       });
 
-      await expect(
-        service.verifyOtp({ lineUserId: 'U123', otp: '123456' }),
-      ).rejects.toThrow('เกินจำนวนครั้ง');
+      await expect(service.verifyOtp({ lineUserId: 'U123', otp: '123456' })).rejects.toThrow(
+        'ใส่ OTP ผิดครบ 3 ครั้งแล้ว',
+      );
     });
 
-    it('increments attempts on wrong OTP', async () => {
+    it('increments attempts on wrong OTP (atomic conditional UPDATE … RETURNING)', async () => {
       prisma.chatbotOtpRequest.findUnique.mockResolvedValue(makeRecord('wrong-hash', 0));
-      prisma.chatbotOtpRequest.update.mockResolvedValue({ attempts: 1 });
 
-      await expect(
-        service.verifyOtp({ lineUserId: 'U123', otp: '999999' }),
-      ).rejects.toThrow('ไม่ถูกต้อง');
-      expect(prisma.chatbotOtpRequest.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: { attempts: { increment: 1 } } }),
+      await expect(service.verifyOtp({ lineUserId: 'U123', otp: '999999' })).rejects.toThrow(
+        'OTP ไม่ถูกต้อง (เหลือ 2 ครั้ง)',
       );
+      expect(prisma.chatbotOtpRequest.updateManyAndReturn).toHaveBeenCalledWith({
+        where: { lineUserId: 'U123', attempts: { lt: 3 }, expiresAt: { gt: expect.any(Date) } },
+        data: { attempts: { increment: 1 } },
+      });
     });
 
     it('throws when no OTP record exists', async () => {
@@ -274,6 +327,7 @@ describe('VerificationService', () => {
         );
         // The wrong-OTP attempt increment must NOT run (code check skipped).
         expect(prisma.chatbotOtpRequest.update).not.toHaveBeenCalled();
+        expect(prisma.chatbotOtpRequest.updateManyAndReturn).not.toHaveBeenCalled();
       });
 
       it('ON: still requires an existing pending OTP session', async () => {
@@ -334,13 +388,13 @@ describe('VerificationService', () => {
 
       beforeEach(async () => {
         mergedPrisma = {
-          chatbotOtpRequest: {
+          chatbotOtpRequest: withOtpRowMocks({
             findUnique: jest.fn().mockResolvedValue(null),
             upsert: jest.fn().mockResolvedValue({ id: 'otp-1' }),
             delete: jest.fn().mockResolvedValue({}),
             deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
             update: jest.fn(),
-          },
+          }),
           customer: { findFirst: jest.fn(), findUnique: jest.fn() },
           customerLineLink: { findUnique: jest.fn(), upsert: jest.fn().mockResolvedValue({}) },
           chatRoom: { updateMany: jest.fn().mockResolvedValue({}) },
@@ -592,15 +646,11 @@ describe('VerificationService', () => {
       expect(notifications.sendSmsFromQueue).toHaveBeenCalledTimes(3);
     });
 
-    it('locks lineUserId after 3 failed lookups', async () => {
-      // Unknown phone — service throws on each call
-      prisma.customer.findFirst.mockResolvedValue(null);
-
-      // 3 failing lookups
+    it('locks lineUserId after 3 malformed phone inputs', async () => {
       for (let i = 0; i < 3; i++) {
-        await expect(
-          service.requestOtp({ lineUserId: 'U-bad', phone: '0810000000' }),
-        ).rejects.toThrow(BadRequestException);
+        await expect(service.requestOtp({ lineUserId: 'U-bad', phone: '12345' })).rejects.toThrow(
+          'เบอร์โทรไม่ถูกต้อง',
+        );
       }
 
       // 4th attempt — locked message ("รออีก … วินาที")
@@ -609,31 +659,197 @@ describe('VerificationService', () => {
       ).rejects.toThrow(/รออีก/);
     });
 
+    it('M4: unknown phones never count toward the lock (the lock must not be an oracle)', async () => {
+      prisma.customer.findFirst.mockResolvedValue(null);
+      for (let i = 0; i < 5; i++) {
+        await expect(
+          service.requestOtp({ lineUserId: 'U-probe', phone: `081000000${i}` }),
+        ).resolves.toEqual({ maskedPhone: `081-***-000${i}`, expiresInSeconds: 300 });
+        prisma.chatbotOtpRequest.findUnique.mockResolvedValue(null); // ข้าม cooldown ของรอบก่อน
+      }
+    });
+
     it('lock expires after 30 minutes (jest fake timers)', async () => {
       jest.useFakeTimers();
       try {
-        prisma.customer.findFirst.mockResolvedValue(null);
         for (let i = 0; i < 3; i++) {
-          await expect(
-            service.requestOtp({ lineUserId: 'U-exp', phone: '0810000000' }),
-          ).rejects.toThrow(BadRequestException);
+          await expect(service.requestOtp({ lineUserId: 'U-exp', phone: '12345' })).rejects.toThrow(
+            BadRequestException,
+          );
         }
 
         // Immediately locked
-        await expect(
-          service.requestOtp({ lineUserId: 'U-exp', phone: '0810000000' }),
-        ).rejects.toThrow(/รออีก/);
+        await expect(service.requestOtp({ lineUserId: 'U-exp', phone: '12345' })).rejects.toThrow(
+          /รออีก/,
+        );
 
         // Advance 31 minutes — lock should be released
         jest.advanceTimersByTime(31 * 60 * 1000);
 
-        // Now we're back to "normal not-found" behavior
-        await expect(
-          service.requestOtp({ lineUserId: 'U-exp', phone: '0810000000' }),
-        ).rejects.toThrow(/ไม่พบเบอร์โทรนี้ในระบบ/);
+        // Now we're back to the normal format error
+        await expect(service.requestOtp({ lineUserId: 'U-exp', phone: '12345' })).rejects.toThrow(
+          'เบอร์โทรไม่ถูกต้อง',
+        );
       } finally {
         jest.useRealTimers();
       }
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────
+  // Task 20 I1 — OTP เดาไม่ได้: กิน attempt แบบ atomic ก่อนเทียบรหัส · ขอใหม่ในช่วงเวลาเดิมไม่รีเซ็ต
+  // attempts · ล็อกค้างจนหมดอายุ · เพดานขอ OTP ต่อลูกค้าต่อวันใน DB (ทุกบัญชี LINE รวมกัน)
+  // ─────────────────────────────────────────────────────────────
+  describe('Task 20 I1 — OTP brute-force limits', () => {
+    const KNOWN = { id: 'c1', name: 'สมชาย', phone: '0891234567' };
+    const row = (over: Record<string, unknown> = {}) => ({
+      id: 'otp-1',
+      lineUserId: 'U123',
+      customerId: 'c1',
+      phone: '0891234567',
+      hash: 'h',
+      expiresAt: new Date(Date.now() + 240_000),
+      attempts: 0,
+      lastRequestAt: new Date(Date.now() - 120_000),
+      ...over,
+    });
+
+    it('the correct code is rejected when the atomic UPDATE finds no attempt left (lost the race)', async () => {
+      prisma.customer.findFirst.mockResolvedValue(KNOWN);
+      await service.requestOtp({ lineUserId: 'U123', phone: '0891234567' });
+      const storedHash = prisma.chatbotOtpRequest.upsert.mock.calls[0][0].create.hash;
+      const otp = (notifications.sendSmsFromQueue.mock.calls[0][1] as string).match(/(\d{6})/)![1];
+      // คำขอขนานกินครั้งที่ 3 ไปก่อน — UPDATE … WHERE attempts < 3 ได้ 0 แถว แม้รหัสจะถูก
+      prisma.chatbotOtpRequest.findUnique.mockResolvedValue(row({ hash: storedHash, attempts: 3 }));
+      prisma.chatbotOtpRequest.updateManyAndReturn.mockResolvedValue([]);
+      prisma.customer.findUnique.mockResolvedValue({ id: 'c1', name: 'สมชาย' });
+
+      await expect(service.verifyOtp({ lineUserId: 'U123', otp })).rejects.toThrow(
+        'ใส่ OTP ผิดครบ 3 ครั้งแล้ว',
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('exhausted attempts keep the row until it expires (no delete → no fresh attempts via re-request)', async () => {
+      prisma.chatbotOtpRequest.findUnique.mockResolvedValue(row({ attempts: 3 }));
+
+      await expect(service.verifyOtp({ lineUserId: 'U123', otp: '123456' })).rejects.toThrow(
+        'ใส่ OTP ผิดครบ 3 ครั้งแล้ว',
+      );
+      expect(prisma.chatbotOtpRequest.delete).not.toHaveBeenCalled();
+    });
+
+    it('the last wrong attempt tells the user when they may request again', async () => {
+      prisma.chatbotOtpRequest.findUnique.mockResolvedValue(row({ attempts: 2 }));
+
+      await expect(service.verifyOtp({ lineUserId: 'U123', otp: '123456' })).rejects.toThrow(
+        /ใส่ OTP ผิดครบ 3 ครั้งแล้ว — ขอรหัสใหม่ได้ในอีก \d+ นาที/,
+      );
+      expect(prisma.chatbotOtpRequest.delete).not.toHaveBeenCalled();
+    });
+
+    it('re-request inside the window keeps the attempt counter (no reset)', async () => {
+      prisma.customer.findFirst.mockResolvedValue(KNOWN);
+      prisma.chatbotOtpRequest.findUnique.mockResolvedValue(row({ attempts: 2 }));
+
+      await service.requestOtp({ lineUserId: 'U123', phone: '0891234567' });
+
+      const upsert = prisma.chatbotOtpRequest.upsert.mock.calls[0][0];
+      expect(upsert.update).not.toHaveProperty('attempts');
+      expect(notifications.sendSmsFromQueue).toHaveBeenCalledTimes(1);
+    });
+
+    it('re-request after the window expired starts a fresh counter', async () => {
+      prisma.customer.findFirst.mockResolvedValue(KNOWN);
+      prisma.chatbotOtpRequest.findUnique.mockResolvedValue(
+        row({ attempts: 3, expiresAt: new Date(Date.now() - 1_000) }),
+      );
+
+      await service.requestOtp({ lineUserId: 'U123', phone: '0891234567' });
+
+      expect(prisma.chatbotOtpRequest.upsert.mock.calls[0][0].update.attempts).toBe(0);
+    });
+
+    it('re-request while locked out inside the window → refused, no new code, no SMS', async () => {
+      prisma.customer.findFirst.mockResolvedValue(KNOWN);
+      prisma.chatbotOtpRequest.findUnique.mockResolvedValue(row({ attempts: 3 }));
+
+      await expect(
+        service.requestOtp({ lineUserId: 'U123', phone: '0891234567' }),
+      ).rejects.toThrow(/ขอรหัสใหม่ได้ในอีก \d+ นาที/);
+      expect(prisma.chatbotOtpRequest.upsert).not.toHaveBeenCalled();
+      expect(notifications.sendSmsFromQueue).not.toHaveBeenCalled();
+    });
+
+    it('each real OTP consumes the per-customer daily quota row (namespaced, conditional increment)', async () => {
+      prisma.customer.findFirst.mockResolvedValue(KNOWN);
+
+      await service.requestOtp({ lineUserId: 'U123', phone: '0891234567' });
+
+      expect(prisma.chatbotOtpRequest.createMany).toHaveBeenCalledWith({
+        data: [
+          expect.objectContaining({
+            lineUserId: 'otp-quota:customer:c1',
+            customerId: 'c1',
+            attempts: 0,
+            expiresAt: expect.any(Date),
+          }),
+        ],
+        skipDuplicates: true,
+      });
+      expect(prisma.chatbotOtpRequest.updateMany).toHaveBeenCalledWith({
+        where: { lineUserId: 'otp-quota:customer:c1', attempts: { lt: 5 } },
+        data: { attempts: { increment: 1 }, lastRequestAt: expect.any(Date) },
+      });
+    });
+
+    it('daily quota reached → identical response, no SMS, no usable code (decoy row)', async () => {
+      prisma.customer.findFirst.mockResolvedValue(KNOWN);
+      prisma.chatbotOtpRequest.updateMany.mockResolvedValue({ count: 0 });
+
+      const result = await service.requestOtp({ lineUserId: 'U-6th', phone: '0891234567' });
+
+      expect(result).toEqual({ maskedPhone: '089-***-4567', expiresInSeconds: 300 });
+      expect(notifications.sendSmsFromQueue).not.toHaveBeenCalled();
+      const upsert = prisma.chatbotOtpRequest.upsert.mock.calls[0][0];
+      expect(upsert.create.customerId).toBe('');
+      expect(upsert.create.hash).not.toMatch(/^[0-9a-f]{64}$/);
+    });
+
+    it('decoy row behaves like a real one on verify (wrong code, attempts counted)', async () => {
+      prisma.customer.findFirst.mockResolvedValue(null);
+      await service.requestOtp({ lineUserId: 'U123', phone: '0899999999' });
+      const decoy = prisma.chatbotOtpRequest.upsert.mock.calls[0][0].create;
+      prisma.chatbotOtpRequest.findUnique.mockResolvedValue(row({ ...decoy, attempts: 0 }));
+
+      await expect(service.verifyOtp({ lineUserId: 'U123', otp: '123456' })).rejects.toThrow(
+        'OTP ไม่ถูกต้อง (เหลือ 2 ครั้ง)',
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('SMS failure invalidates the code but keeps the attempt counter (no delete)', async () => {
+      prisma.customer.findFirst.mockResolvedValue(KNOWN);
+      notifications.sendSmsFromQueue.mockRejectedValue(new Error('provider down'));
+
+      await expect(
+        service.requestOtp({ lineUserId: 'U123', phone: '0891234567' }),
+      ).rejects.toThrow('ส่ง SMS ไม่สำเร็จ');
+      expect(prisma.chatbotOtpRequest.delete).not.toHaveBeenCalled();
+      const update = prisma.chatbotOtpRequest.update.mock.calls[0][0];
+      expect(update.where).toEqual({ lineUserId: 'U123' });
+      expect(update.data.hash).not.toMatch(/^[0-9a-f]{64}$/);
+      expect(update.data).not.toHaveProperty('attempts');
+    });
+
+    it('test mode does not consume the daily quota (UAT skips SMS anyway)', async () => {
+      testMode.isEnabled.mockResolvedValue(true);
+      prisma.customer.findFirst.mockResolvedValue(KNOWN);
+
+      await service.requestOtp({ lineUserId: 'U123', phone: '0891234567' });
+
+      expect(prisma.chatbotOtpRequest.updateMany).not.toHaveBeenCalled();
+      expect(prisma.chatbotOtpRequest.upsert.mock.calls[0][0].create.customerId).toBe('c1');
     });
   });
 
@@ -718,12 +934,12 @@ describe('VerificationService', () => {
         customer: { update: step('line_id_finance') },
       };
       tPrisma = {
-        chatbotOtpRequest: {
+        chatbotOtpRequest: withOtpRowMocks({
           findUnique: jest.fn().mockResolvedValue(null),
           upsert: jest.fn().mockResolvedValue({ id: 'otp-1' }),
           delete: step('otp-delete'),
           update: jest.fn(),
-        },
+        }),
         customer: {
           findFirst: jest.fn().mockResolvedValue({ id: 'c1', name: 'สมชาย', phone: '0891234567' }),
           findUnique: jest.fn().mockResolvedValue({ id: 'c1', name: 'สมชาย' }),

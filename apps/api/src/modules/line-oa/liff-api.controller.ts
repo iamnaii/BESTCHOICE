@@ -10,12 +10,12 @@ import {
   UseGuards,
   Logger,
   BadRequestException,
+  GoneException,
   NotFoundException,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { LiffApiService } from './liff-api.service';
-import { RichMenuService } from './rich-menu/rich-menu.service';
 import { PaymentLinkService } from './payment-links/payment-link.service';
 import { ContractPaymentService } from '../contracts/contract-payment.service';
 import { dAdd, dRound, toNum } from '../../utils/decimal.util';
@@ -27,8 +27,6 @@ import { LiffChannel } from './guards/liff-channel.decorator';
 import { LineChannelType } from '@prisma/client';
 import { Throttle } from '@nestjs/throttler';
 import {
-  LiffRegisterLookupDto,
-  LiffRegisterConfirmDto,
   LiffCreatePaymentLinkDto,
   LiffEarlyPayoffDto,
   LiffConsentDto,
@@ -39,6 +37,13 @@ interface LiffContractResponse { customer: { name: string }; contracts: unknown[
 interface LiffHistoryResponse { customer: { name: string }; payments: unknown[]; }
 interface LiffProfileResponse { name: string; phone: string; lineDisplayName: string; contractCount: number; totalPoints: number; }
 interface LiffPaymentLinkResult { url: string; token: string; totalPayoff?: number; }
+
+/**
+ * ข้อความ 410 ของ liff/register/lookup|confirm — ผู้ที่เห็นคือหน้า /liff/register รุ่นเก่าที่ยังเปิดค้าง
+ * ใน LINE; เปิดหน้าใหม่ = โหลดเว็บรุ่นปัจจุบันที่พาไป /liff/finance-verify (ยืนยันด้วย OTP)
+ */
+export const LIFF_REGISTER_GONE_MESSAGE =
+  'ช่องทางลงทะเบียนนี้ปิดแล้ว — กรุณาปิดหน้านี้แล้วเปิดใหม่ เพื่อยืนยันตัวตนด้วยรหัส OTP ทาง SMS';
 
 @ApiTags('LIFF API')
 @Controller('line-oa')
@@ -53,7 +58,6 @@ export class LiffApiController {
 
   constructor(
     private liffApiService: LiffApiService,
-    private richMenuService: RichMenuService,
     private paymentLinkService: PaymentLinkService,
     private contractPaymentService: ContractPaymentService,
     private documentsService: DocumentsService,
@@ -74,52 +78,30 @@ export class LiffApiController {
     return result;
   }
 
-  // ─── LIFF Registration ──────────────────────────────
+  // ─── LIFF Registration (ปิดแล้ว — Task 19) ─────────────
+  //
+  // เดิม lookup คืน customerId ของเจ้าของเบอร์ และ confirm รับ customerId อะไรก็ได้แล้วเขียน
+  // customers.line_id_finance ทันที — ไม่มี OTP ⇒ ใครรู้เบอร์/UUID ของลูกค้า ผูก LINE ตัวเอง
+  // แล้วอ่านสัญญา/ยอด/ใบเสร็จของคนอื่นได้. ทางผูกเดียวคือ /liff/finance-verify (เบอร์ + OTP SMS)
+  // → POST chatbot/finance/liff/request-otp | verify-otp (VerificationService). หน้าเว็บ
+  // /liff/register เปลี่ยนเส้นทางไปหน้านั้นแล้ว — สองเส้นนี้เหลือไว้ตอบ 410 ให้หน้าเก่าที่ค้างใน
+  // LINE เท่านั้น: ไม่อ่าน body (ไม่มี validation 400 นำหน้า) และไม่แตะข้อมูลลูกค้าเลย.
+  // decorator ชุดเดิมคงไว้ทั้งหมด (access-policy manifest ผูก surface ของ route นี้)
 
   @Post('liff/register/lookup')
   @SkipCsrf()
   @UseGuards(LiffTokenGuard)
   @Throttle({ short: { ttl: 60000, limit: 5 } })
-  async liffRegisterLookup(@Req() req: Request, @Body() dto: LiffRegisterLookupDto): Promise<{ customerId: string; maskedName: string }> {
-    const lineId = (req as unknown as LiffRequest).liffUserId;
-
-    const isLinked = await this.liffApiService.isLineIdLinked(lineId);
-    if (isLinked) {
-      throw new BadRequestException('บัญชี LINE นี้เชื่อมต่อกับลูกค้าแล้ว');
-    }
-
-    const result = await this.liffApiService.lookupCustomerByPhone(dto.phone, lineId);
-    if (!result) {
-      throw new NotFoundException(
-        'ไม่พบเบอร์โทรนี้ในระบบ กรุณาตรวจสอบเบอร์โทร หรือติดต่อสาขา',
-      );
-    }
-
-    return result;
+  liffRegisterLookup(): never {
+    throw new GoneException(LIFF_REGISTER_GONE_MESSAGE);
   }
 
   @Post('liff/register/confirm')
   @SkipCsrf()
   @UseGuards(LiffTokenGuard)
   @Throttle({ short: { ttl: 60000, limit: 3 } })
-  async liffRegisterConfirm(@Req() req: Request, @Body() dto: LiffRegisterConfirmDto) {
-    const lineId = (req as unknown as LiffRequest).liffUserId;
-
-    const result = await this.liffApiService.confirmLinkLine(dto.customerId, lineId);
-    if (!result.success) {
-      throw new BadRequestException(result.error || 'ลงทะเบียนไม่สำเร็จ');
-    }
-
-    // Switch Rich Menu to verified after successful registration (non-blocking)
-    if (lineId) {
-      try {
-        await this.richMenuService.switchRichMenu(lineId, true, 'finance');
-      } catch (err) {
-        this.logger.error('Failed to switch Rich Menu after verify', err);
-      }
-    }
-
-    return { success: true, message: 'ลงทะเบียนสำเร็จ' };
+  liffRegisterConfirm(): never {
+    throw new GoneException(LIFF_REGISTER_GONE_MESSAGE);
   }
 
   // ─── LIFF History & Profile ─────────────────────────

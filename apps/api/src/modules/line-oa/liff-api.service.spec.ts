@@ -1,17 +1,17 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { LiffApiService } from './liff-api.service';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CustomerMergeService } from '../chat-prospects/customer-merge.service';
-import { JourneyEntryWriter } from '../customer-journey/journey-entry-writer.service';
 import { Prisma } from '@prisma/client';
 
 describe('LiffApiService', () => {
   let service: LiffApiService;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let merge: any;
-  let journey: { recordAfterCommit: jest.Mock };
+  // tx ของ unlinkLineAccount — แยกจาก prisma เพื่อพิสูจน์ว่าเขียนในธุรกรรมเดียวกัน
+  let tx: {
+    customer: { update: jest.Mock };
+    customerLineLink: { updateMany: jest.Mock };
+  };
 
   beforeEach(async () => {
     prisma = {
@@ -32,18 +32,16 @@ describe('LiffApiService', () => {
       receipt: {
         findMany: jest.fn().mockResolvedValue([]),
       },
+      $transaction: jest.fn(),
     };
-    // Task 10 — ดูดผู้สนใจอัตโนมัติหลังผูก LINE การเงินสำเร็จ (confirmLinkLine)
-    merge = { absorbRoomsOfLineUser: jest.fn().mockResolvedValue({ absorbed: 0, linked: 0 }) };
-    journey = { recordAfterCommit: jest.fn().mockResolvedValue(undefined) };
+    tx = {
+      customer: { update: jest.fn().mockResolvedValue({}) },
+      customerLineLink: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    };
+    prisma.$transaction.mockImplementation(async (cb: (client: typeof tx) => unknown) => cb(tx));
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        LiffApiService,
-        { provide: PrismaService, useValue: prisma },
-        { provide: CustomerMergeService, useValue: merge },
-        { provide: JourneyEntryWriter, useValue: journey },
-      ],
+      providers: [LiffApiService, { provide: PrismaService, useValue: prisma }],
     }).compile();
 
     service = module.get<LiffApiService>(LiffApiService);
@@ -144,205 +142,8 @@ describe('LiffApiService', () => {
     });
   });
 
-  // ─── lookupCustomerByPhone ──────────────────────────
-
-  describe('lookupCustomerByPhone', () => {
-    it('returns null if lineId is already linked', async () => {
-      prisma.customer.findFirst
-        .mockResolvedValueOnce({ id: 'existing' }) // already linked check
-        .mockResolvedValueOnce(null); // phone lookup (not called)
-
-      const result = await service.lookupCustomerByPhone('0812345678', 'U_line');
-      expect(result).toBeNull();
-    });
-
-    it('returns null if phone not found', async () => {
-      prisma.customer.findFirst
-        .mockResolvedValueOnce(null) // not linked
-        .mockResolvedValueOnce(null); // no phone match
-
-      const result = await service.lookupCustomerByPhone('0899999999', 'U_line');
-      expect(result).toBeNull();
-    });
-
-    it('returns masked name when phone matches', async () => {
-      prisma.customer.findFirst
-        .mockResolvedValueOnce(null) // not linked
-        .mockResolvedValueOnce({ id: 'cust1', name: 'สมชาย จันทร์ดี' });
-
-      const result = await service.lookupCustomerByPhone('0812345678', 'U_line');
-      expect(result).toEqual({
-        customerId: 'cust1',
-        maskedName: 'สม*** จั***',
-      });
-    });
-
-    it('normalizes phone with dashes for lookup', async () => {
-      prisma.customer.findFirst
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce({ id: 'cust1', name: 'ทดสอบ' });
-
-      await service.lookupCustomerByPhone('081-234-5678', 'U_line');
-
-      // Second call should search with normalized variants
-      const whereArg = prisma.customer.findFirst.mock.calls[1][0].where;
-      expect(whereArg.phone.in).toContain('0812345678');
-      expect(whereArg.phone.in).toContain('081-234-5678');
-    });
-  });
-
-  // ─── confirmLinkLine ────────────────────────────────
-
-  describe('confirmLinkLine', () => {
-    it('returns error if lineId already linked to another customer', async () => {
-      prisma.customer.findFirst.mockResolvedValue({ id: 'other_customer' });
-
-      const result = await service.confirmLinkLine('target_cust', 'U_line');
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('เชื่อมต่อกับลูกค้ารายอื่นแล้ว');
-    });
-
-    it('returns error if customer not found', async () => {
-      prisma.customer.findFirst.mockResolvedValue(null);
-      prisma.customer.findUnique.mockResolvedValue(null);
-
-      const result = await service.confirmLinkLine('nonexistent', 'U_line');
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('ไม่พบข้อมูลลูกค้า');
-    });
-
-    it('returns error if customer soft-deleted', async () => {
-      prisma.customer.findFirst.mockResolvedValue(null);
-      prisma.customer.findUnique.mockResolvedValue({ id: 'cust1', deletedAt: new Date(), lineIdFinance: null });
-
-      const result = await service.confirmLinkLine('cust1', 'U_line');
-      expect(result.success).toBe(false);
-    });
-
-    it('returns error if customer linked to different LINE', async () => {
-      prisma.customer.findFirst.mockResolvedValue(null);
-      prisma.customer.findUnique.mockResolvedValue({ id: 'cust1', deletedAt: null, lineIdFinance: 'U_other' });
-
-      const result = await service.confirmLinkLine('cust1', 'U_line');
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('เชื่อมต่อกับบัญชี LINE อื่นแล้ว');
-    });
-
-    it('links successfully and updates customer', async () => {
-      prisma.customer.findFirst.mockResolvedValue(null);
-      prisma.customer.findUnique.mockResolvedValue({ id: 'cust1', name: 'สมชาย', deletedAt: null, lineIdFinance: null });
-      prisma.customer.update.mockResolvedValue({});
-
-      const result = await service.confirmLinkLine('cust1', 'U_line');
-      expect(result.success).toBe(true);
-      expect(prisma.customer.update).toHaveBeenCalledWith({
-        where: { id: 'cust1' },
-        data: { lineIdFinance: 'U_line' },
-      });
-    });
-
-    it('allows re-linking same LINE to same customer', async () => {
-      prisma.customer.findFirst.mockResolvedValue(null);
-      prisma.customer.findUnique.mockResolvedValue({ id: 'cust1', name: 'สมชาย', deletedAt: null, lineIdFinance: 'U_line' });
-      prisma.customer.update.mockResolvedValue({});
-
-      const result = await service.confirmLinkLine('cust1', 'U_line');
-      expect(result.success).toBe(true);
-    });
-
-    it('confirmLinkLine สำเร็จ → absorbRoomsOfLineUser(lineId, LINE_FINANCE, customerId, SYSTEM)', async () => {
-      prisma.customer.findFirst.mockResolvedValue(null);
-      prisma.customer.findUnique.mockResolvedValue({ id: 'cust-1', deletedAt: null, lineIdFinance: null });
-      prisma.customer.update.mockResolvedValue({});
-
-      await expect(service.confirmLinkLine('cust-1', 'Ufin')).resolves.toEqual({ success: true });
-      expect(merge.absorbRoomsOfLineUser).toHaveBeenCalledWith('Ufin', 'LINE_FINANCE', 'cust-1', { id: 'system', role: 'SYSTEM' });
-    });
-
-    it('confirmLinkLine ล้ม (LINE ผูกคนอื่นแล้ว) → ไม่เรียก absorb', async () => {
-      prisma.customer.findFirst.mockResolvedValue({ id: 'other_customer' });
-
-      await service.confirmLinkLine('cust-1', 'Ufin');
-      expect(merge.absorbRoomsOfLineUser).not.toHaveBeenCalled();
-    });
-
-    it('absorbRoomsOfLineUser ล้ม (เช่น placeholder มีเอกสารพ่วง) → confirmLinkLine ยังคืน success (best-effort — ผูกไปแล้วจริง)', async () => {
-      prisma.customer.findFirst.mockResolvedValue(null);
-      prisma.customer.findUnique.mockResolvedValue({ id: 'cust-1', deletedAt: null, lineIdFinance: null });
-      prisma.customer.update.mockResolvedValue({});
-      merge.absorbRoomsOfLineUser.mockRejectedValue(new Error('รวมไม่ได้: ผู้สนใจคนนี้มีใบจอง 1 รายการ'));
-
-      await expect(service.confirmLinkLine('cust-1', 'Ufin')).resolves.toEqual({ success: true });
-      expect(merge.absorbRoomsOfLineUser).toHaveBeenCalledWith('Ufin', 'LINE_FINANCE', 'cust-1', { id: 'system', role: 'SYSTEM' });
-    });
-
-    it('ผูกสำเร็จ (ยังไม่เคยผูก) → LINE_LINKED {FINANCE, LIFF} · ไม่มี LINE user id ในแถว', async () => {
-      prisma.customer.findFirst.mockResolvedValue(null);
-      prisma.customer.findUnique.mockResolvedValue({ id: 'cust-1', deletedAt: null, lineIdFinance: null });
-      prisma.customer.update.mockResolvedValue({});
-
-      await service.confirmLinkLine('cust-1', 'Ufin');
-      expect(journey.recordAfterCommit).toHaveBeenCalledTimes(1);
-      const entry = journey.recordAfterCommit.mock.calls[0][0];
-      expect(entry).toMatchObject({
-        customerId: 'cust-1',
-        kind: 'LINE_LINKED',
-        actorType: 'CUSTOMER',
-        actorUserId: null,
-        data: { channel: 'FINANCE', via: 'LIFF' },
-      });
-      expect(entry.dedupeKey).toBe(`LINE_LINKED:FINANCE:cust-1:${entry.occurredAt.getTime()}`);
-      expect(JSON.stringify(entry)).not.toContain('Ufin');
-    });
-
-    it('absorb ล้ม → ยังบันทึก LINE_LINKED (ผูกสำเร็จจริง)', async () => {
-      prisma.customer.findFirst.mockResolvedValue(null);
-      prisma.customer.findUnique.mockResolvedValue({ id: 'cust-1', deletedAt: null, lineIdFinance: null });
-      prisma.customer.update.mockResolvedValue({});
-      merge.absorbRoomsOfLineUser.mockRejectedValue(new Error('รวมไม่ได้: ผู้สนใจคนนี้มีใบจอง 1 รายการ'));
-
-      await expect(service.confirmLinkLine('cust-1', 'Ufin')).resolves.toEqual({ success: true });
-      expect(journey.recordAfterCommit).toHaveBeenCalledTimes(1);
-    });
-
-    it('ลูกค้าคนเดิมกับ LINE เดิม (lineIdFinance เท่าเดิม) → ไม่นับเป็นการผูกใหม่', async () => {
-      prisma.customer.findFirst.mockResolvedValue(null);
-      prisma.customer.findUnique.mockResolvedValue({ id: 'cust-1', deletedAt: null, lineIdFinance: 'Ufin' });
-      prisma.customer.update.mockResolvedValue({});
-
-      await expect(service.confirmLinkLine('cust-1', 'Ufin')).resolves.toEqual({ success: true });
-      expect(journey.recordAfterCommit).not.toHaveBeenCalled();
-    });
-
-    it('ผูกไม่สำเร็จ (LINE ผูกคนอื่นแล้ว) → ไม่บันทึก', async () => {
-      prisma.customer.findFirst.mockResolvedValue({ id: 'other_customer' });
-      await service.confirmLinkLine('cust-1', 'Ufin');
-      expect(journey.recordAfterCommit).not.toHaveBeenCalled();
-    });
-
-    it('update ล้ม → ไม่บันทึก และโยนต่อ', async () => {
-      prisma.customer.findFirst.mockResolvedValue(null);
-      prisma.customer.findUnique.mockResolvedValue({ id: 'cust-1', deletedAt: null, lineIdFinance: null });
-      prisma.customer.update.mockRejectedValue(new Error('db down'));
-
-      await expect(service.confirmLinkLine('cust-1', 'Ufin')).rejects.toThrow('db down');
-      expect(journey.recordAfterCommit).not.toHaveBeenCalled();
-    });
-  });
-
-  // ─── isLineIdLinked ─────────────────────────────────
-
-  describe('isLineIdLinked', () => {
-    it('returns true if customer found with lineId', async () => {
-      prisma.customer.findFirst.mockResolvedValue({ id: 'cust1' });
-      expect(await service.isLineIdLinked('U_line')).toBe(true);
-    });
-
-    it('returns false if no customer with lineId', async () => {
-      prisma.customer.findFirst.mockResolvedValue(null);
-      expect(await service.isLineIdLinked('U_line')).toBe(false);
-    });
-  });
+  // การผูก LINE (lookupCustomerByPhone / confirmLinkLine / isLineIdLinked) ถูกถอดออกจาก service นี้
+  // (Task 19 — ผูกได้โดยไม่มี OTP) · ทางผูกเดียวคือ VerificationService (verification.service.spec.ts)
 
   // ─── findCustomerPaymentHistory ─────────────────────
 
@@ -449,14 +250,33 @@ describe('LiffApiService', () => {
 
     it('unlinks customer by setting lineId to null', async () => {
       prisma.customer.findFirst.mockResolvedValue({ id: 'cust1', name: 'สมชาย' });
-      prisma.customer.update.mockResolvedValue({});
 
       const result = await service.unlinkLineAccount('U_line');
       expect(result.success).toBe(true);
-      expect(prisma.customer.update).toHaveBeenCalledWith({
+      expect(tx.customer.update).toHaveBeenCalledWith({
         where: { id: 'cust1' },
         data: { lineIdFinance: null },
       });
+    });
+
+    it('ปิดแถว customer_line_links (FINANCE) ของ LINE นี้ในธุรกรรมเดียวกัน — ผูกกลับด้วย OTP ได้ (ไม่ค้าง "ยืนยันแล้ว")', async () => {
+      prisma.customer.findFirst.mockResolvedValue({ id: 'cust1', name: 'สมชาย' });
+
+      await service.unlinkLineAccount('U_line');
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(tx.customerLineLink.updateMany).toHaveBeenCalledWith({
+        where: { lineUserId: 'U_line', channel: 'FINANCE', unlinkedAt: null },
+        data: { unlinkedAt: expect.any(Date) },
+      });
+      // เขียนผ่าน tx เท่านั้น ไม่ใช่ client หลัก
+      expect(prisma.customer.update).not.toHaveBeenCalled();
+    });
+
+    it('ไม่พบลูกค้าที่ผูก LINE นี้ → ไม่เปิดธุรกรรม ไม่ปิดแถวใด', async () => {
+      prisma.customer.findFirst.mockResolvedValue(null);
+      await service.unlinkLineAccount('U_line');
+      expect(prisma.$transaction).not.toHaveBeenCalled();
     });
   });
 

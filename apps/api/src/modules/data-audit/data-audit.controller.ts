@@ -1,15 +1,7 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Post,
-  Param,
-  Query,
-  UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Get, Post, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { DataAuditService } from './data-audit.service';
-import { AuditFilterDto, TraceFilterDto, AuditHistoryDto } from './dto/audit-filter.dto';
+import { TraceFilterDto, AuditHistoryDto } from './dto/audit-filter.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -45,8 +37,10 @@ export class DataAuditController {
     const passed = results.filter((r) => r.status === 'PASS').length;
     const failed = results.filter((r) => r.status === 'FAIL').length;
     const warnings = results.filter((r) => r.status === 'WARN').length;
+    // SKIPPED = assertion retired with a dated reason (Task 18 — commission_mismatch) — not a finding
+    const skipped = results.filter((r) => r.status === 'SKIPPED').length;
     return {
-      summary: { total: results.length, passed, failed, warnings },
+      summary: { total: results.length, passed, failed, warnings, skipped },
       checks: results,
     };
   }

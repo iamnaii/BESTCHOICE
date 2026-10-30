@@ -45,17 +45,17 @@ export class DataAuditService {
     return this.checks.checkJournalBalance();
   }
 
-  /** Check 2: ACTIVE/OVERDUE/DEFAULT/COMPLETED contracts must have a CONTRACT journal */
+  /** Check 2: ACTIVE/OVERDUE/DEFAULT/COMPLETED contracts must have their opening journal (1A / A.1 / legacy opening) */
   async checkOrphanContracts(): Promise<AuditCheckResult> {
     return this.checks.checkOrphanContracts();
   }
 
-  /** Check 3: PAID/PARTIALLY_PAID payments with amountPaid > 0 must have a PAYMENT journal */
+  /** Check 3: PAID/PARTIALLY_PAID payments with amountPaid > 0 must be backed by a journal entry */
   async checkOrphanPayments(): Promise<AuditCheckResult> {
     return this.checks.checkOrphanPayments();
   }
 
-  /** Check 4: No contract should have total payments exceeding the total owed */
+  /** Check 4: no installment row paid beyond its billing (+ late fee received, ≤ 1.00 tolerance) */
   async checkOverpaidContracts(): Promise<AuditCheckResult> {
     return this.checks.checkOverpaidContracts();
   }
@@ -65,17 +65,17 @@ export class DataAuditService {
     return this.checks.checkGhostStock();
   }
 
-  /** Check 6: VAT Output from PAYMENT journals must match SUM(vatAmount) from payments */
+  /** Check 6: per contract, Dr 11-2105 − Cr 21-2102 = VAT of customer advances still outstanding */
   async checkVatMismatch(): Promise<AuditCheckResult> {
     return this.checks.checkVatMismatch();
   }
 
-  /** Check 7: HP Receivable balance from journal must match outstanding from contracts */
+  /** Check 7: per-contract HP receivable (11-2101 + 11-2103 + 11-2105) vs the installment register */
   async checkHpReceivableReconciliation(): Promise<AuditCheckResult> {
     return this.checks.checkHpReceivableReconciliation();
   }
 
-  /** Check 8: Payments with late fee should not have VAT charged on the late fee portion */
+  /** Check 8: receipt entries of a late-fee row move 21-2101 only by their stamped advance VAT */
   async checkLateFeeVatLeak(): Promise<AuditCheckResult> {
     return this.checks.checkLateFeeVatLeak();
   }
@@ -90,12 +90,12 @@ export class DataAuditService {
     return this.checks.checkDuplicatePayments();
   }
 
-  /** Check 11: Active contracts with costPrice > 0 must have a COGS journal */
+  /** Check 11: activated contracts with a device cost carry the SHOP COGS entry of activation */
   async checkMissingCogs(): Promise<AuditCheckResult> {
     return this.checks.checkMissingCogs();
   }
 
-  /** Check 12: Commission from journal must match SUM(monthlyCommission) from payments */
+  /** Check 12: SKIPPED since 2026-10-30 — commission is not recognised per installment since A.4 */
   async checkCommissionMismatch(): Promise<AuditCheckResult> {
     return this.checks.checkCommissionMismatch();
   }
@@ -168,7 +168,7 @@ export class DataAuditService {
       }
 
       this.logger.log(
-        `Data audit complete: ${results.filter((r) => r.status === 'PASS').length}/${results.length} passed (runId: ${runId})`,
+        `Data audit complete: ${results.filter((r) => r.status === 'PASS').length}/${results.length} passed, ${results.filter((r) => r.status === 'SKIPPED').length} skipped (runId: ${runId})`,
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -217,9 +217,7 @@ export class DataAuditService {
     try {
       await this.scanForSlaBreaches();
     } catch (err) {
-      this.logger.error(
-        `Data audit SLA cron failed: ${err instanceof Error ? err.message : err}`,
-      );
+      this.logger.error(`Data audit SLA cron failed: ${err instanceof Error ? err.message : err}`);
       Sentry.captureException(err, {
         tags: { kind: 'cron-job', cron: 'data-audit-sla' },
       });

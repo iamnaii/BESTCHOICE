@@ -51,31 +51,27 @@ function mockDb() {
     // Task 17: a refund needs a POSTED receipt JE bound to the payment that is not yet reversed —
     // one live entry keeps these authorization tests on the refundable path.
     journalEntry: {
-      findMany: jest
-        .fn()
-        .mockResolvedValue([
-          {
-            id: 'je1',
-            companyId: 'finance',
-            metadata: { tag: 'receipt', paymentId: 'p1' },
-            lines: [],
-          },
-        ]),
+      findMany: jest.fn().mockResolvedValue([
+        {
+          id: 'je1',
+          companyId: 'finance',
+          metadata: { tag: 'receipt', paymentId: 'p1' },
+          lines: [],
+        },
+      ]),
     },
     contract: { findFirst: jest.fn().mockResolvedValue({ branchId: 'branch-a' }) },
     refund: {
-      findUnique: jest
-        .fn()
-        .mockResolvedValue({
-          id: 'rf1',
-          paymentId: 'p1',
-          contractId: 'c1',
-          amount: new Prisma.Decimal(1000),
-          requestedAt: new Date(),
-          status: 'REQUESTED',
-          requestedById: 'maker',
-          deletedAt: null,
-        }),
+      findUnique: jest.fn().mockResolvedValue({
+        id: 'rf1',
+        paymentId: 'p1',
+        contractId: 'c1',
+        amount: new Prisma.Decimal(1000),
+        requestedAt: new Date(),
+        status: 'REQUESTED',
+        requestedById: 'maker',
+        deletedAt: null,
+      }),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     auditLog: { create: jest.fn().mockResolvedValue({}) },
@@ -166,8 +162,26 @@ describe('protected payment actions require an actual approval', () => {
 });
 
 describe('bank refund approval keeps its existing queue', () => {
-  it('authorizes the actual actor and atomically approves a pending refund', async () => {
+  /**
+   * Task 18 R-2: the refundable amount is the installment's live receipts only (no receipt = refused,
+   * no fallback to amountPaid) — the payment here was collected with one 1,000 receipt issued before
+   * the request.
+   */
+  const refundDb = () => {
     const db = mockDb();
+    db.tx.receipt.findMany.mockResolvedValue([
+      {
+        amount: new Prisma.Decimal(1000),
+        isVoided: false,
+        deletedAt: null,
+        createdAt: new Date(0),
+      },
+    ] as never);
+    return db;
+  };
+
+  it('authorizes the actual actor and atomically approves a pending refund', async () => {
+    const db = refundDb();
     db.tx.payment.findUnique.mockResolvedValue({
       id: 'p1',
       contractId: 'c1',
@@ -191,7 +205,7 @@ describe('bank refund approval keeps its existing queue', () => {
   });
 
   it('requires OWNER self-approval to have its own reason', async () => {
-    const db = mockDb();
+    const db = refundDb();
     db.tx.payment.findUnique.mockResolvedValue({
       id: 'p1',
       contractId: 'c1',
@@ -222,7 +236,7 @@ describe('bank refund approval keeps its existing queue', () => {
   });
 
   it('rejects self-approval for a non-owner even if the caller supplies an OWNER role string', async () => {
-    const db = mockDb();
+    const db = refundDb();
     db.tx.payment.findUnique.mockResolvedValue({
       id: 'p1',
       contractId: 'c1',
@@ -238,7 +252,7 @@ describe('bank refund approval keeps its existing queue', () => {
   });
 
   it('does not record approval audit after a concurrent approval wins', async () => {
-    const db = mockDb();
+    const db = refundDb();
     db.tx.payment.findUnique.mockResolvedValue({
       id: 'p1',
       contractId: 'c1',

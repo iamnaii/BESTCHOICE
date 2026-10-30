@@ -6,6 +6,15 @@ import { CHATBOT_SYSTEM_PROMPT, CHATBOT_CONTEXT_INSTRUCTIONS } from './chatbot-s
 import { CHATBOT_TOOLS, ChatbotToolName } from './chatbot/chatbot-tools';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
+import { findOtpVerifiedCustomerId } from './services/otp-verified-customer';
+import { Prisma } from '@prisma/client';
+
+/** บริบทลูกค้าของ tool (ลูกค้าที่ยืนยัน OTP แล้วเท่านั้น — Task 20 C1) */
+type ChatbotCustomerContext = Prisma.CustomerGetPayload<{
+  include: { contracts: { include: { payments: true } } };
+}>;
+/** CHATBOT_TOOLS เป็น literal const — ชนิดของ SDK ต้องการ Anthropic.Tool[] */
+const CHATBOT_TOOL_DEFS = CHATBOT_TOOLS as unknown as Anthropic.Tool[];
 
 /**
  * ChatbotService — AI-powered response generation สำหรับน้องเบส
@@ -63,11 +72,15 @@ export class ChatbotService {
 
     try {
       // Look up customer context if lineUserId is provided
-      let customerContext: any = null;
-      if (lineUserId) {
+      let customerContext: ChatbotCustomerContext | null = null;
+      // Task 20 C1: บริบทลูกค้า (สัญญา/ยอด/ประวัติชำระ → tools) เฉพาะ LINE ที่ยืนยัน OTP แล้ว — ไม่ใช่
+      // line_id_shop (เคยผูกได้ด้วยเบอร์อย่างเดียว ⇒ ถาม AI แล้วได้ยอดของเจ้าของเบอร์)
+      const verifiedCustomerId = lineUserId
+        ? await findOtpVerifiedCustomerId(this.prisma, lineUserId)
+        : null;
+      if (verifiedCustomerId) {
         customerContext = await this.prisma.customer.findFirst({
-          // line-oa is SHOP-first (channelKey='line-shop'); look up customer by SHOP LINE ID.
-          where: { lineIdShop: lineUserId, deletedAt: null },
+          where: { id: verifiedCustomerId, deletedAt: null },
           include: {
             contracts: {
               where: { status: { in: ['ACTIVE', 'OVERDUE'] }, deletedAt: null },
@@ -94,7 +107,7 @@ export class ChatbotService {
         max_tokens: ChatbotService.MAX_TOKENS,
         system: systemPrompt,
         messages: [{ role: 'user', content: userMessage }],
-        ...(customerContext ? { tools: CHATBOT_TOOLS as any } : {}),
+        ...(customerContext ? { tools: CHATBOT_TOOL_DEFS } : {}),
       };
 
       const response = (await anthropic.messages.create(createParams)) as Anthropic.Message;
@@ -107,7 +120,7 @@ export class ChatbotService {
           const toolResult = await this.executeTool(
             (toolUseBlock as Anthropic.ToolUseBlock).name as ChatbotToolName,
             customerContext,
-            (toolUseBlock as Anthropic.ToolUseBlock).input as Record<string, any>,
+            (toolUseBlock as Anthropic.ToolUseBlock).input as Record<string, unknown>,
           );
 
           // Second API call with tool result
@@ -115,7 +128,7 @@ export class ChatbotService {
             model: ChatbotService.MODEL,
             max_tokens: ChatbotService.MAX_TOKENS,
             system: systemPrompt,
-            tools: CHATBOT_TOOLS as any,
+            tools: CHATBOT_TOOL_DEFS,
             messages: [
               { role: 'user', content: userMessage },
               { role: 'assistant', content: response.content },
@@ -152,18 +165,18 @@ export class ChatbotService {
    */
   private async executeTool(
     toolName: ChatbotToolName,
-    customerContext: any,
-    input?: Record<string, any>,
+    customerContext: ChatbotCustomerContext,
+    input?: Record<string, unknown>,
   ): Promise<unknown> {
-    const contracts: any[] = customerContext?.contracts ?? [];
+    const contracts = customerContext.contracts;
 
     switch (toolName) {
       case 'getContractSummary': {
         return contracts.map((c) => {
-          const unpaidPayments = (c.payments ?? []).filter((p: any) => p.status !== 'PAID');
+          const unpaidPayments = (c.payments ?? []).filter((p) => p.status !== 'PAID');
           const nextPayment = unpaidPayments[unpaidPayments.length - 1] ?? null; // payments ordered desc, so last = earliest due
           const remainingBalance = unpaidPayments.reduce(
-            (sum: number, p: any) => sum + Number(p.amountDue ?? 0),
+            (sum: number, p) => sum + Number(p.amountDue ?? 0),
             0,
           );
           return {
@@ -179,10 +192,10 @@ export class ChatbotService {
       }
 
       case 'getPaymentHistory': {
-        const allPayments: any[] = contracts.flatMap((c) =>
+        const allPayments = contracts.flatMap((c) =>
           (c.payments ?? [])
-            .filter((p: any) => p.status === 'PAID')
-            .map((p: any) => ({
+            .filter((p) => p.status === 'PAID')
+            .map((p) => ({
               contractNumber: c.contractNumber,
               amount: Number(p.amountPaid ?? p.amountDue ?? 0),
               paidAt: p.paidAt ?? p.paidDate ?? null,
@@ -203,7 +216,7 @@ export class ChatbotService {
         if (!activeContract) return { message: 'ไม่พบสัญญาที่ใช้งานอยู่' };
 
         // payments ordered by paidAt desc — find unpaid ones; earliest due = last in array
-        const unpaid = (activeContract.payments ?? []).filter((p: any) => p.status !== 'PAID');
+        const unpaid = (activeContract.payments ?? []).filter((p) => p.status !== 'PAID');
         const next = unpaid[unpaid.length - 1] ?? null;
         if (!next) return { message: 'ชำระครบทุกงวดแล้วค่ะ' };
 
@@ -225,9 +238,9 @@ export class ChatbotService {
 
         if (!targetContract) return { message: 'ไม่พบสัญญา' };
 
-        const unpaid = (targetContract.payments ?? []).filter((p: any) => p.status !== 'PAID');
+        const unpaid = (targetContract.payments ?? []).filter((p) => p.status !== 'PAID');
         const remainingBalance = unpaid.reduce(
-          (sum: number, p: any) => sum + Number(p.amountDue ?? 0),
+          (sum: number, p) => sum + Number(p.amountDue ?? 0),
           0,
         );
 

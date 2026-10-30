@@ -38,9 +38,12 @@ function daysLeft(end: Date | null | undefined): number | null {
  *   - สัญญาผ่อน (`Contract`) — ประกันร้านอยู่บนสัญญา (ของเดิม)
  * ใบขายของสัญญาผ่อนจะถูกกรองออก (`contractId: null`) ไม่งั้นเครื่องเดียวโผล่สองแถว
  *
- * ตัวตนลูกค้ามาจาก `customer.lineIdShop` ซึ่ง `LineCustomerLinkService.selfLinkByPhone`
- * เขียนไว้ตอนลูกค้าพิมพ์เบอร์โทรคุยกับ OA ร้าน — **ไม่ใช่** ตาราง `CustomerLineLink`
- * ซึ่งวันนี้มีแต่แถวช่อง FINANCE (เขียนที่เดียวจาก OTP ของ chatbot-finance)
+ * ตัวตนลูกค้ามาจาก `customer.lineIdShop` — **ไม่ใช่** ตาราง `CustomerLineLink`
+ * ซึ่งวันนี้มีแต่แถวช่อง FINANCE (เขียนที่เดียวจาก OTP ของ chatbot-finance).
+ * ⚠️ Task 20 C1: ทางที่ลูกค้าผูก `lineIdShop` เองด้วยการพิมพ์เบอร์ (`selfLinkByPhone`, ไม่มี OTP) ถูกถอดแล้ว —
+ * ผู้เขียนที่เหลือคือพนักงาน (ฟอร์มลูกค้า) และบอทขายตอนสร้างลูกค้าใหม่จากแชท. ก่อนเชื่อม OA ร้านกับ prod
+ * ต้องตัดสินว่าหน้านี้จะอ่านตัวตนจากแถว OTP (FINANCE link) หรือให้ OTP เขียน `lineIdShop` ด้วย —
+ * ดู `.claude/rules/security.md` หัวข้อ "LINE OA ร้าน (SHOP)"
  */
 @Injectable()
 export class LiffWarrantyService {

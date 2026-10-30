@@ -1,13 +1,17 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
-import * as Sentry from '@sentry/nestjs';
+import { Injectable, Logger } from '@nestjs/common';
 import { CHATBOT_RESPONSES } from '../chatbot-system-prompt.constants';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LineMessagePayload } from '../dto/webhook-event.dto';
 import { LineApiClientService } from './line-api-client.service';
-import { CustomerMergeService, SYSTEM_ACTOR } from '../../chat-prospects/customer-merge.service';
-import { JourneyEntryWriter } from '../../customer-journey/journey-entry-writer.service';
-import { lineLinkedEntry } from '../../customer-journey/chat-identity-entries';
+import { findOtpVerifiedCustomerId } from './otp-verified-customer';
 
+/**
+ * ตัวตนลูกค้าของ OA ร้าน (SHOP).
+ *
+ * Task 20 C1 — ไม่มีทางผูก `customers.line_id_shop` ด้วยเบอร์อย่างเดียวอีกแล้ว (เดิม `selfLinkByPhone`:
+ * ใครพิมพ์เบอร์ในแชทก็ผูก LINE ตัวเองกับเจ้าของเบอร์ แล้วบอทตอบชื่อเต็ม + ยอด/งวด/ใบเสร็จของคนนั้น).
+ * การอ่านข้อมูลลูกค้าเพื่อตอบในแชทใช้ `findVerifiedCustomerByLineId` (แถว link FINANCE จาก OTP) เท่านั้น.
+ */
 @Injectable()
 export class LineCustomerLinkService {
   private readonly logger = new Logger(LineCustomerLinkService.name);
@@ -15,9 +19,6 @@ export class LineCustomerLinkService {
   constructor(
     private prisma: PrismaService,
     private apiClient: LineApiClientService,
-    @Optional() private merge?: CustomerMergeService,
-    // การเดินทางของลูกค้า — LINE_LINKED (lineIdShop ไม่มีคอลัมน์เวลาผูก)
-    @Optional() private journey?: JourneyEntryWriter,
   ) {}
 
   // ─── Customer Management ──────────────────────────────
@@ -54,56 +55,6 @@ export class LineCustomerLinkService {
   }
 
   /**
-   * Self-link: customer sends phone number to link their LINE account
-   */
-  async selfLinkByPhone(lineUserId: string, phone: string): Promise<{ success: boolean; customerName?: string }> {
-    // Check if already linked
-    const alreadyLinked = await this.prisma.customer.findFirst({
-      where: { lineIdShop: lineUserId, deletedAt: null },
-    });
-    if (alreadyLinked) {
-      return { success: true, customerName: alreadyLinked.name };
-    }
-
-    // Find customer by phone
-    const customer = await this.prisma.customer.findFirst({
-      where: { phone, deletedAt: null, lineIdShop: null },
-    });
-
-    if (!customer) {
-      return { success: false };
-    }
-
-    // Link
-    await this.prisma.customer.update({
-      where: { id: customer.id },
-      data: { lineIdShop: lineUserId },
-    });
-    const linkedAt = new Date();
-
-    this.logger.log(`[LINE] Self-linked ${lineUserId} to customer ${customer.name} via phone ${phone}`);
-    // ห้อง LINE ร้านของคนนี้ที่ถือผู้สนใจอัตโนมัติอยู่ → ดูดเข้าลูกค้าที่เพิ่งผูก (สเปค 3.3 ง)
-    // best-effort: ผูก LINE ด้วยเบอร์สำเร็จแล้ว (update ข้างบน commit ไปแล้ว) ต้องไม่ถือว่าล้ม
-    // เพราะดูด placeholder ไม่ได้ (เช่น placeholder มีเอกสารพ่วง — absorbPlaceholder โยน 409)
-    try {
-      await this.merge?.absorbRoomsOfLineUser(lineUserId, 'LINE_SHOP', customer.id, SYSTEM_ACTOR);
-    } catch (err) {
-      this.logger.warn(
-        `[prospect] absorb rooms of ${lineUserId} → ${customer.id}: ${err instanceof Error ? err.message : err}`,
-      );
-      Sentry.captureException(err, {
-        tags: { kind: 'chat-prospect' },
-        extra: { lineUserId, customerId: customer.id },
-      });
-    }
-    // LINE_LINKED หลังผูกสำเร็จ (absorb ล้มก็ยังบันทึก) · ไม่เก็บ lineUserId และเบอร์
-    await this.journey?.recordAfterCommit(
-      lineLinkedEntry({ customerId: customer.id, channel: 'SHOP', via: 'SELF_LINK_PHONE', occurredAt: linkedAt }),
-    );
-    return { success: true, customerName: customer.name };
-  }
-
-  /**
    * Unlink a LINE user ID from a customer (on unfollow event)
    */
   async unlinkLineId(lineUserId: string): Promise<void> {
@@ -115,11 +66,14 @@ export class LineCustomerLinkService {
   }
 
   /**
-   * Find customer by LINE user ID, including active contracts and payments
+   * ลูกค้าที่ LINE นี้ยืนยัน OTP แล้ว (แถว link FINANCE ที่ยังผูก) + สัญญา ACTIVE/OVERDUE + งวด —
+   * null = ยังไม่ยืนยัน ⇒ ห้ามตอบชื่อ/สัญญา/ยอด (Task 20 C1)
    */
-  async findCustomerByLineId(lineUserId: string) {
+  async findVerifiedCustomerByLineId(lineUserId: string) {
+    const customerId = await findOtpVerifiedCustomerId(this.prisma, lineUserId);
+    if (!customerId) return null;
     return this.prisma.customer.findFirst({
-      where: { lineIdShop: lineUserId, deletedAt: null },
+      where: { id: customerId, deletedAt: null },
       include: {
         contracts: {
           where: {
@@ -139,18 +93,22 @@ export class LineCustomerLinkService {
 
   // ─── Branch Contact ─────────────────────────────────
 
+  /** สาขาของสัญญาล่าสุด — เฉพาะลูกค้าที่ยืนยัน OTP แล้ว (สาขาของสัญญาบอกว่าคนนี้ซื้อที่ไหน) */
   async findBranchForCustomer(lineUserId: string) {
-    const customer = await this.prisma.customer.findFirst({
-      where: { lineIdShop: lineUserId, deletedAt: null },
-      include: {
-        contracts: {
-          where: { deletedAt: null },
-          orderBy: { createdAt: 'desc' },
-          take: 1,
-          include: { branch: { select: { name: true, phone: true, location: true } } },
-        },
-      },
-    });
+    const customerId = await findOtpVerifiedCustomerId(this.prisma, lineUserId);
+    const customer = customerId
+      ? await this.prisma.customer.findFirst({
+          where: { id: customerId, deletedAt: null },
+          include: {
+            contracts: {
+              where: { deletedAt: null },
+              orderBy: { createdAt: 'desc' },
+              take: 1,
+              include: { branch: { select: { name: true, phone: true, location: true } } },
+            },
+          },
+        })
+      : null;
 
     if (customer?.contracts?.[0]?.branch) {
       return customer.contracts[0].branch;

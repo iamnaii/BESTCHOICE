@@ -19,7 +19,13 @@ import { ChatbotService } from './chatbot.service';
 import { QuickReplyService } from './quick-reply.service';
 import { RichMenuService } from './rich-menu/rich-menu.service';
 import { LineWebhookGuard } from './line-webhook.guard';
-import { LineWebhookBody, LineMessageEvent, LinePostbackEvent, LineFollowEvent } from './dto/webhook-event.dto';
+import {
+  LineWebhookBody,
+  LineMessageEvent,
+  LinePostbackEvent,
+  LineFollowEvent,
+  LineMessagePayload,
+} from './dto/webhook-event.dto';
 import {
   CHATBOT_RESPONSES,
   ANDROID_KEYWORDS,
@@ -40,10 +46,28 @@ import { formatStickerToken } from '../chat-engine/utils/sticker-token.util';
 import { ChatChannel, MessageType } from '@prisma/client';
 import { toNum as d, calcOutstanding as sumOutstanding } from '../../utils/decimal.util';
 import { buildBrowserUrl } from '../../utils/line-login.util';
+import { buildShopVerifyPrompt } from './services/otp-verified-customer';
+
+/** ข้อความทักทายที่ OWNER ตั้งเอง (SystemConfig `line.greetingMessages`) */
+type StoredGreetingMessage = {
+  type: string;
+  content?: {
+    text?: string;
+    imageUrl?: string;
+    flexMode?: string;
+    jsonText?: string;
+    flexContents?: unknown;
+    altText?: string;
+  };
+};
 
 /**
  * SHOP OA Chatbot — webhook handler + auto-reply commands.
  * Handles LINE webhook events: text messages, images (slips), postbacks, follow/unfollow.
+ *
+ * Task 20 C1 — ชื่อเต็ม/สัญญา/ยอด/งวด/ใบเสร็จ/QR ชำระ/สลิป/สาขาของสัญญา ตอบเฉพาะ LINE ที่ยืนยัน OTP แล้ว
+ * (`findVerifiedCustomerByLineId` = แถว link FINANCE) · ที่เหลือได้ `buildShopVerifyPrompt()` ข้อความเดียว ·
+ * พิมพ์เบอร์ในแชทไม่ผูกอะไรอีกแล้ว
  */
 @ApiTags('LINE OA - Chatbot')
 @Controller('line-oa')
@@ -169,8 +193,8 @@ export class LineOaChatbotController {
     // Link LINE ID to customer (idempotent — no-op if already linked)
     await this.lineOaService.linkLineId(userId);
 
-    // Check if already verified (re-follow vs new follow)
-    const customer = await this.lineOaService.findCustomerByLineId(userId);
+    // Check if already verified (re-follow vs new follow) — OTP-verified only (C1: ห้ามทักชื่อจาก line_id_shop)
+    const customer = await this.lineOaService.findVerifiedCustomerByLineId(userId);
 
     if (customer) {
       // Re-follow: verified customer returning
@@ -203,11 +227,11 @@ export class LineOaChatbotController {
     ]);
 
     const showQuickReply = quickReplyConfig?.value !== 'false';
-    let lineMessages: any[];
+    let lineMessages: Array<Record<string, unknown>>;
 
     if (greetingConfig?.value) {
       try {
-        const stored: Array<{ type: string; content: any }> = JSON.parse(greetingConfig.value);
+        const stored: StoredGreetingMessage[] = JSON.parse(greetingConfig.value);
         lineMessages = stored.map((item, idx) => {
           const isLast = idx === stored.length - 1;
           const quickReplyObj = isLast && showQuickReply ? { quickReply: { items: this.quickReplyService.shopOnboarding() } } : {};
@@ -219,9 +243,9 @@ export class LineOaChatbotController {
             return { type: 'image', originalContentUrl: item.content?.imageUrl || '', previewImageUrl: item.content?.imageUrl || '', ...quickReplyObj };
           }
           if (item.type === 'flex') {
-            let flexContents: any;
+            let flexContents: unknown;
             if (item.content?.flexMode === 'json') {
-              try { flexContents = JSON.parse(item.content.jsonText); } catch { flexContents = null; }
+              try { flexContents = JSON.parse(item.content.jsonText ?? ''); } catch { flexContents = null; }
             } else {
               flexContents = item.content?.flexContents || null;
             }
@@ -229,7 +253,7 @@ export class LineOaChatbotController {
             return { type: 'flex', altText: item.content?.altText || 'ข้อความจาก BESTCHOICE', contents: flexContents, ...quickReplyObj };
           }
           return null;
-        }).filter(Boolean);
+        }).filter((m): m is NonNullable<typeof m> => m !== null);
       } catch {
         lineMessages = [];
       }
@@ -238,8 +262,8 @@ export class LineOaChatbotController {
     }
 
     if (lineMessages.length === 0) {
-      // Fallback: send Welcome Flex with register URL
-      const liffRegisterUrl = buildBrowserUrl('/liff/register');
+      // Fallback: send Welcome Flex with the OTP verification URL (ลงทะเบียนสัญญา = ยืนยัน OTP)
+      const liffRegisterUrl = buildBrowserUrl('/liff/finance-verify');
       const welcomeFlex = buildWelcomeFlex({ oaType: 'shop', liffRegisterUrl });
       lineMessages = [
         {
@@ -249,7 +273,12 @@ export class LineOaChatbotController {
       ];
     }
 
-    await this.lineOaService.replyMessage(event.replyToken, lineMessages, 'line-shop');
+    // ข้อความทักทายที่ตั้งเองมีชนิด image ซึ่งไม่อยู่ใน union ของ LineMessagePayload — LINE รับได้
+    await this.lineOaService.replyMessage(
+      event.replyToken,
+      lineMessages as unknown as LineMessagePayload[],
+      'line-shop',
+    );
   }
 
   // ─── Text Message Handler ─────────────────────────────
@@ -267,13 +296,13 @@ export class LineOaChatbotController {
       return;
     }
 
-    // Self-link by phone — legacy fall-through: เบอร์ที่ link ไม่สำเร็จแต่ user
-    // เคย link แล้ว จะไหลต่อเป็นข้อความปกติ (mirror ไปแล้ว)
+    // พิมพ์เบอร์มา (เดิม = ผูก line_id_shop ด้วยเบอร์อย่างเดียว — ถอดแล้ว Task 20 C1): ยังไม่ยืนยัน OTP →
+    // ตอบลิงก์ยืนยันตัวตน · ยืนยันแล้ว → ไหลต่อเป็นข้อความปกติ (mirror ไปแล้ว)
     let alreadyMirrored = false;
     if (/^0\d{9}$/.test(text)) {
       await this.mirrorText(event, text);
       alreadyMirrored = true;
-      const handled = await this.handleSelfLinkByPhone(userId, text, event.replyToken);
+      const handled = await this.handlePhoneMessage(userId, event.replyToken);
       if (handled) return;
     }
 
@@ -336,27 +365,23 @@ export class LineOaChatbotController {
     }
   }
 
-  /** @returns true = จบ flow แล้ว (ตอบลูกค้าไปแล้ว), false = fall through เป็นข้อความปกติ */
-  private async handleSelfLinkByPhone(
-    userId: string,
-    phone: string,
-    replyToken: string,
-  ): Promise<boolean> {
-    const result = await this.lineOaService.selfLinkByPhone(userId, phone);
-    if (result.success && result.customerName) {
-      await this.lineOaService.replyMessage(replyToken, [
-        { type: 'text', text: `ผูกบัญชีสำเร็จค่ะ คุณ${result.customerName} 🎉\n\nตอนนี้สามารถใช้คำสั่งต่างๆ ได้แล้วค่ะ:\n• "เช็คยอด" - ดูยอดค้างชำระ\n• "งวด" - ดูตารางค่างวด\n• "ชำระ" - ชำระเงิน` },
-      ], 'line-shop');
-      return true;
-    }
-    const existing = await this.lineOaService.findCustomerByLineId(userId);
-    if (!existing) {
-      await this.lineOaService.replyMessage(replyToken, [
-        { type: 'text', text: 'ไม่พบข้อมูลเบอร์โทรนี้ในระบบค่ะ กรุณาตรวจสอบเบอร์โทร หรือติดต่อสาขาเพื่อลงทะเบียน' },
-      ], 'line-shop');
-      return true;
-    }
-    return false;
+  /**
+   * ข้อความที่เป็นเบอร์โทรล้วน — ไม่ค้นเบอร์ ไม่เขียนอะไร (ไม่เป็น oracle ว่าเบอร์ไหนเป็นลูกค้า)
+   * @returns true = จบ flow แล้ว (ตอบลิงก์ยืนยันตัวตน), false = LINE นี้ยืนยันแล้ว → fall through เป็นข้อความปกติ
+   */
+  private async handlePhoneMessage(userId: string, replyToken: string): Promise<boolean> {
+    if (await this.lineOaService.findVerifiedCustomerByLineId(userId)) return false;
+    await this.replyVerifyPrompt(replyToken);
+    return true;
+  }
+
+  /** LINE ที่ยังไม่ยืนยัน OTP ขอข้อมูลสัญญา/ยอด — ข้อความเดียวกันทุกกรณี */
+  private replyVerifyPrompt(replyToken: string): Promise<void> {
+    return this.lineOaService.replyMessage(
+      replyToken,
+      [{ type: 'text', text: buildShopVerifyPrompt() }],
+      'line-shop',
+    );
   }
 
   /** จับคู่ keyword commands — ลำดับการเช็คต้องตรงกับ if-chain เดิมเป๊ะ */
@@ -451,11 +476,10 @@ export class LineOaChatbotController {
       this.logger.warn(`[SHOP mirror] image: ${err instanceof Error ? err.message : err}`);
     }
 
-    const customer = await this.lineOaService.findCustomerByLineId(userId);
+    const customer = await this.lineOaService.findVerifiedCustomerByLineId(userId);
     if (!customer) {
-      await this.lineOaService.replyMessage(event.replyToken, [
-        { type: 'text', text: 'ยังไม่ได้เชื่อมบัญชีค่ะ กรุณาพิมพ์เบอร์โทรศัพท์ที่ลงทะเบียนไว้เพื่อเชื่อมบัญชีก่อนนะคะ\n\nตัวอย่าง: 0812345678' },
-      ], 'line-shop');
+      // รูปยัง mirror เข้า inbox แล้ว (ข้างบน) — แค่ไม่ผูกเป็นสลิปของสัญญาใด
+      await this.replyVerifyPrompt(event.replyToken);
       return;
     }
 
@@ -499,11 +523,9 @@ export class LineOaChatbotController {
   // ─── Command Handlers ─────────────────────────────────
 
   private async handleCheckBalance(userId: string, replyToken: string): Promise<void> {
-    const customer = await this.lineOaService.findCustomerByLineId(userId);
+    const customer = await this.lineOaService.findVerifiedCustomerByLineId(userId);
     if (!customer) {
-      await this.lineOaService.replyMessage(replyToken, [
-        { type: 'text', text: 'ยังไม่ได้เชื่อมบัญชีค่ะ กรุณาพิมพ์เบอร์โทรศัพท์ที่ลงทะเบียนไว้เพื่อเชื่อมบัญชีก่อนนะคะ\n\nตัวอย่าง: 0812345678' },
-      ], 'line-shop');
+      await this.replyVerifyPrompt(replyToken);
       return;
     }
     if (customer.contracts.length === 0) {
@@ -533,8 +555,11 @@ export class LineOaChatbotController {
   }
 
   private async handleCheckInstallments(userId: string, replyToken: string, contractNumber?: string): Promise<void> {
-    const customer = await this.lineOaService.findCustomerByLineId(userId);
-    if (!customer) { await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: 'ยังไม่ได้เชื่อมบัญชีค่ะ กรุณาพิมพ์เบอร์โทรศัพท์ที่ลงทะเบียนไว้เพื่อเชื่อมบัญชีก่อนนะคะ\n\nตัวอย่าง: 0812345678' }], 'line-shop'); return; }
+    const customer = await this.lineOaService.findVerifiedCustomerByLineId(userId);
+    if (!customer) {
+      await this.replyVerifyPrompt(replyToken);
+      return;
+    }
     if (customer.contracts.length === 0) { await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: `คุณ${customer.name} ไม่มีสัญญาที่ใช้งานอยู่ค่ะ` }], 'line-shop'); return; }
 
     if (!contractNumber && customer.contracts.length > 1) {
@@ -562,8 +587,11 @@ export class LineOaChatbotController {
   }
 
   private async handlePaymentRequest(userId: string, replyToken: string, contractNumber?: string): Promise<void> {
-    const customer = await this.lineOaService.findCustomerByLineId(userId);
-    if (!customer) { await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: 'ยังไม่ได้เชื่อมบัญชีค่ะ กรุณาพิมพ์เบอร์โทรศัพท์ที่ลงทะเบียนไว้เพื่อเชื่อมบัญชีก่อนนะคะ\n\nตัวอย่าง: 0812345678' }], 'line-shop'); return; }
+    const customer = await this.lineOaService.findVerifiedCustomerByLineId(userId);
+    if (!customer) {
+      await this.replyVerifyPrompt(replyToken);
+      return;
+    }
     if (customer.contracts.length === 0) { await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: `คุณ${customer.name} ไม่มีสัญญาที่ใช้งานอยู่ค่ะ` }], 'line-shop'); return; }
 
     if (!contractNumber && customer.contracts.length > 1) {
@@ -609,8 +637,11 @@ export class LineOaChatbotController {
   }
 
   private async handleReceipt(userId: string, replyToken: string): Promise<void> {
-    const customer = await this.lineOaService.findCustomerByLineId(userId);
-    if (!customer) { await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: 'ยังไม่ได้เชื่อมบัญชีค่ะ กรุณาพิมพ์เบอร์โทรศัพท์ที่ลงทะเบียนไว้เพื่อเชื่อมบัญชีก่อนนะคะ\n\nตัวอย่าง: 0812345678' }], 'line-shop'); return; }
+    const customer = await this.lineOaService.findVerifiedCustomerByLineId(userId);
+    if (!customer) {
+      await this.replyVerifyPrompt(replyToken);
+      return;
+    }
     if (customer.contracts.length === 0) { await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: `คุณ${customer.name} ไม่มีสัญญาที่ใช้งานอยู่ค่ะ` }], 'line-shop'); return; }
 
     const contractsData = customer.contracts.map((c) => ({
@@ -683,21 +714,21 @@ export class LineOaChatbotController {
   }
 
   private async handleContractLink(userId: string, replyToken: string): Promise<void> {
-    const customer = await this.lineOaService.findCustomerByLineId(userId);
+    const customer = await this.lineOaService.findVerifiedCustomerByLineId(userId);
     if (!customer) {
-      await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: `ยังไม่ได้เชื่อมบัญชีค่ะ กรุณาลงทะเบียนก่อนนะคะ\n\n👉 ลงทะเบียน:\n${buildBrowserUrl('/liff/register')}\n\nหรือพิมพ์เบอร์โทรที่ลงทะเบียนไว้เพื่อเชื่อมบัญชี` }], 'line-shop');
+      await this.replyVerifyPrompt(replyToken);
       return;
     }
     await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: `คุณ${customer.name} สามารถดูข้อมูลสัญญาทั้งหมดได้ที่ลิงก์ด้านล่างค่ะ\n\n📋 ดูสัญญา:\n${buildBrowserUrl('/liff/contract')}` }], 'line-shop');
   }
 
   private async handleRegisterLink(userId: string, replyToken: string): Promise<void> {
-    const customer = await this.lineOaService.findCustomerByLineId(userId);
+    const customer = await this.lineOaService.findVerifiedCustomerByLineId(userId);
     if (customer) {
       await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: `คุณ${customer.name} ลงทะเบียนแล้วค่ะ\n\n📋 ดูสัญญา:\n${buildBrowserUrl('/liff/contract')}` }], 'line-shop');
       return;
     }
-    await this.lineOaService.replyMessage(replyToken, [{ type: 'text', text: `กรุณาลงทะเบียนเพื่อผูกบัญชี LINE กับระบบค่ะ\n\n👉 ลงทะเบียน:\n${buildBrowserUrl('/liff/register')}\n\nหรือพิมพ์เบอร์โทรที่ลงทะเบียนไว้เพื่อเชื่อมบัญชี` }], 'line-shop');
+    await this.replyVerifyPrompt(replyToken);
   }
 
   private async handleGreeting(replyToken: string): Promise<void> {

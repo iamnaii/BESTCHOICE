@@ -6557,6 +6557,10 @@ model ChatAutoTrigger {
 
 /// OTP request store — DB-backed for multi-instance scaling.
 /// Replaces in-memory Map. Auto-cleaned by VerificationService.
+/// Task 20 I1: also holds per-customer daily OTP quota rows — `line_user_id` =
+/// `otp-quota:customer:<customerId>`, `attempts` = requests today, `expires_at` = next Bangkok
+/// midnight (cron cleanup resets the window). Decoy rows (unknown phone / quota hit) have
+/// `customer_id = ''`. See VerificationService (OTP_QUOTA_KEY_PREFIX).
 model ChatbotOtpRequest {
   id            String   @id @default(uuid())
   lineUserId    String   @unique @map("line_user_id")

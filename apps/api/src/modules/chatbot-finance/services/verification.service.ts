@@ -9,12 +9,13 @@ import {
 import { ModuleRef } from '@nestjs/core';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import * as Sentry from '@sentry/nestjs';
-import { createHash, randomInt } from 'crypto';
+import { createHash, randomInt, randomUUID, timingSafeEqual } from 'crypto';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { bangkokCalendarParts, bangkokMidnight } from '../../../utils/date.util';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { TestModeService } from '../../test-mode/test-mode.service';
 import { AuditService } from '../../audit/audit.service';
-import { LineChannelType } from '@prisma/client';
+import { LineChannelType, Prisma } from '@prisma/client';
 import { maskPhone } from '../utils/mask-phone';
 import { CustomerMergeService, SYSTEM_ACTOR } from '../../chat-prospects/customer-merge.service';
 import { JourneyEntryWriter } from '../../customer-journey/journey-entry-writer.service';
@@ -26,10 +27,40 @@ const OTP_MAX_ATTEMPTS = 3;
 const OTP_LENGTH = 6;
 const OTP_REQUEST_COOLDOWN_MS = 60 * 1000; // 1 นาที
 
-// T4-C9: per-lineUserId phone-lookup rate limit. LIFF-level throttle above
-// (5/min/IP) caps spam from a single client IP, but a single LINE user can
-// still rotate IPs (mobile network + wifi). Count failed lookups per
-// lineUserId and lock for 30 min after 3 fails inside a 30-min window.
+/**
+ * Task 20 I1 + fix round 1 (I-B) — เพดานขอ OTP ต่อวัน (ปฏิทินไทย) สามชั้น:
+ * - ต่อลูกค้า รวมทุกบัญชี LINE = 8 ⇒ เดารหัสของลูกค้าหนึ่งคนได้ ≤ 8 × 3 = 24 ครั้ง/วัน (≈ 2.7×10⁻⁵) · SMS ≤ 8/วัน
+ * - ต่อ (ลูกค้า, LINE) = 2 กินก่อนเพดานลูกค้า ⇒ LINE หนึ่งบัญชีเผาเพดานของเจ้าของเบอร์ได้แค่ 2 — ผู้โจมตี 3 บัญชี
+ *   เผาได้ 6 เจ้าของเบอร์ยังเหลือ 2 (ต้องใช้ ≥ 4 บัญชีถึงจะล็อกเจ้าของเบอร์ได้ทั้งวัน)
+ * - ต่อ LINE ข้ามทุกเบอร์ (นับทั้งเบอร์จริงและ decoy) = 5 ⇒ ชะลอการไล่เบอร์/ไล่ล็อกหลายเหยื่อ
+ */
+export const OTP_DAILY_REQUESTS_PER_CUSTOMER = 8;
+export const OTP_DAILY_REQUESTS_PER_CUSTOMER_LINE = 2;
+export const OTP_DAILY_REQUESTS_PER_LINE = 5;
+/**
+ * แถวนับเพดานเก็บในตาราง `chatbot_otp_requests` เดิม (ไม่ต้อง migration) — คีย์ `line_user_id` ขึ้นต้นด้วย
+ * `otp-quota:` (LINE user id จริงเป็น `U` + hex 32 ตัว ชนกันไม่ได้) · `attempts` = จำนวนครั้งที่ขอวันนี้ ·
+ * `expires_at` = เที่ยงคืนไทยถัดไป ⇒ cron `cleanupExpiredOtps` ล้างให้เองเมื่อขึ้นวันใหม่
+ *   ลูกค้า `otp-quota:customer:<customerId>` · ลูกค้า+LINE `otp-quota:customer:<customerId>:line:<lineUserId>` ·
+ *   LINE `otp-quota:line:<lineUserId>`
+ */
+export const OTP_QUOTA_KEY_PREFIX = 'otp-quota:customer:';
+export const OTP_LINE_QUOTA_KEY_PREFIX = 'otp-quota:line:';
+/** คีย์ advisory lock ต่อ LINE ของขั้นขอ OTP (cooldown atomic — I-B) */
+const OTP_REQUEST_LOCK_PREFIX = 'otp-request:';
+/**
+ * M1 — เวลาตอบขั้นต่ำของ requestOtp ที่สำเร็จ (ทั้งเบอร์จริงและ decoy) · SMS ไม่ถูก await จึงไม่ทำให้เวลาตอบต่างกัน
+ * และค่านี้ให้เวลาส่ง SMS จบระหว่างที่ request ยังเปิดอยู่ (Cloud Run ลด CPU หลังตอบ)
+ */
+const OTP_RESPONSE_FLOOR_MS = 1000;
+/** แถว OTP ที่ไม่ผูกลูกค้า (เบอร์ไม่พบ / เกินเพดาน) — ตอบเหมือนจริงทุกอย่าง แต่ไม่มีรหัสที่ใช้ได้ */
+const DECOY_CUSTOMER_ID = '';
+
+/** รหัสที่ออกในขั้นขอ OTP (หลัง commit จึงส่ง SMS) — quotaKeys = แถวนับที่ต้องคืนถ้าส่ง SMS ไม่สำเร็จ */
+type IssuedOtp = { otp: string; hash: string; phone: string; quotaKeys: string[] };
+
+// T4-C9: per-lineUserId lock — เดิมนับ "เบอร์ไม่พบ" ซึ่งกลายเป็น oracle ว่าเบอร์ไหนเป็นลูกค้า (M4)
+// ตอนนี้นับเฉพาะเบอร์ผิดรูปแบบ (ไม่บอกอะไรเกี่ยวกับลูกค้า) · lock 30 นาทีหลังผิด 3 ครั้งใน 30 นาที
 // In-memory Map is fine — single-process API; if we scale to multi-node we
 // lift this to Redis (TODO).
 const LOOKUP_FAIL_WINDOW_MS = 30 * 60 * 1000;
@@ -55,9 +86,12 @@ type LinkPlan = { kind: 'upsert-by-line' } | { kind: 'repoint-customer-row'; row
  * Cleanup: cron every 10 minutes
  *
  * Security:
- *   - Same response shape for found/not-found phone (anti-enumeration)
- *   - Cooldown 60s per lineUserId
- *   - Max 3 attempts → blocks until expiry
+ *   - Same response for found/not-found phone (anti-enumeration, M4) — ไม่พบ = แถว decoy ไม่ส่ง SMS ·
+ *     SMS ไม่ถูก await + เวลาตอบขั้นต่ำคงที่ (M1)
+ *   - Cooldown 60s per lineUserId — atomic: อ่าน→ตรวจ→เขียนใต้ advisory lock ต่อ LINE (I-B)
+ *   - Max 3 attempts per window (5 นาที) — กินแบบ atomic ก่อนเทียบรหัส · ขอใหม่ในช่วงเดิมไม่รีเซ็ต ·
+ *     ผิดครบแล้วล็อกจนหมดช่วง (Task 20 I1)
+ *   - เพดานต่อวันใน DB: ต่อ LINE · ต่อ (ลูกค้า, LINE) · ต่อลูกค้า — ส่ง SMS ไม่สำเร็จคืนโควตา
  *   - SHA-256 hashed OTP, never stored plaintext
  */
 @Injectable()
@@ -66,10 +100,7 @@ export class VerificationService {
 
   // T4-C9: per-lineUserId failure timestamps + lock-until. Map key is
   // lineUserId. Entry with `lockedUntil` set is fast-rejected until expiry.
-  private readonly lookupFailTracker = new Map<
-    string,
-    { fails: number[]; lockedUntil?: number }
-  >();
+  private readonly lookupFailTracker = new Map<string, { fails: number[]; lockedUntil?: number }>();
 
   constructor(
     private prisma: PrismaService,
@@ -94,9 +125,7 @@ export class VerificationService {
     const entry = this.lookupFailTracker.get(lineUserId);
     if (entry?.lockedUntil && entry.lockedUntil > now) {
       const waitSec = Math.ceil((entry.lockedUntil - now) / 1000);
-      throw new BadRequestException(
-        `ค้นหาเบอร์ล้มเหลวหลายครั้ง กรุณารออีก ${waitSec} วินาที`,
-      );
+      throw new BadRequestException(`ค้นหาเบอร์ล้มเหลวหลายครั้ง กรุณารออีก ${waitSec} วินาที`);
     }
     if (entry?.lockedUntil && entry.lockedUntil <= now) {
       // lock expired — reset
@@ -111,15 +140,9 @@ export class VerificationService {
     entry.fails.push(now);
     if (entry.fails.length >= LOOKUP_FAIL_THRESHOLD) {
       entry.lockedUntil = now + LOOKUP_LOCK_DURATION_MS;
-      this.logger.warn(
-        `[Verify] lineUserId locked after ${entry.fails.length} failed lookups`,
-      );
+      this.logger.warn(`[Verify] lineUserId locked after ${entry.fails.length} failed lookups`);
     }
     this.lookupFailTracker.set(lineUserId, entry);
-  }
-
-  private clearLookupFails(lineUserId: string): void {
-    this.lookupFailTracker.delete(lineUserId);
   }
 
   /** T4-C9 test hook: reset the in-memory tracker between test cases. */
@@ -127,12 +150,20 @@ export class VerificationService {
     this.lookupFailTracker.clear();
   }
 
+  private responseFloorMs = OTP_RESPONSE_FLOOR_MS;
+
+  /** M1 test hook: เวลาตอบขั้นต่ำ (สเปคส่วนใหญ่ตั้ง 0 · สเปคของ M1 ตั้งค่าสั้น ๆ) */
+  _setResponseFloorForTests(ms: number): void {
+    this.responseFloorMs = ms;
+  }
+
   /**
    * Step 1: เริ่ม OTP flow
    *
-   * IMPORTANT: ตอบ shape เดียวกันทั้ง found/not-found เพื่อกัน phone enumeration
-   * - ถ้าเจอเบอร์ → ส่ง SMS จริง + return masked phone
-   * - ถ้าไม่เจอ → return masked phone (จาก input) แต่ไม่ส่ง SMS
+   * IMPORTANT (M4): ตอบเหมือนกันทุกไบต์ทั้งเจอ/ไม่เจอเบอร์ — กัน phone enumeration
+   * - เจอลูกค้า + ยังไม่ถึงเพดานวันนี้ → ส่ง SMS จริง
+   * - ไม่เจอ / ไม่มีเบอร์ / ถึงเพดานแล้ว → เขียนแถว decoy (ไม่มีรหัสที่ใช้ได้) ไม่ส่ง SMS
+   * maskedPhone มาจากเบอร์ที่ผู้ใช้กรอก (normalize แล้ว) เสมอ — ไม่ใช่รูปแบบเบอร์ใน DB
    */
   async requestOtp(params: { lineUserId: string; phone: string }): Promise<{
     maskedPhone: string;
@@ -147,15 +178,81 @@ export class VerificationService {
       throw new BadRequestException('เบอร์โทรไม่ถูกต้อง');
     }
 
-    // Cooldown check (uses lineUserId — works for both found + not-found cases)
-    const existing = await this.prisma.chatbotOtpRequest.findUnique({
-      where: { lineUserId: params.lineUserId },
-    });
-    if (existing && Date.now() - existing.lastRequestAt.getTime() < OTP_REQUEST_COOLDOWN_MS) {
+    const startedAt = Date.now();
+    const response = {
+      maskedPhone: maskPhone(phone),
+      expiresInSeconds: Math.floor(OTP_TTL_MS / 1000),
+    };
+    // Test-mode UAT skip — OWNER-gated SystemConfig (TEST_MODE_BYPASS) + env gate (Task 20 I2),
+    // default OFF, fails safe to OFF on any DB error. When ON we skip the real SMS (and the daily
+    // quotas, which only exist to bound guesses/SMS) so UAT doesn't cost money / bother real numbers.
+    // The OTP row is still written, so the verify-bypass precondition (a pending OTP session exists)
+    // + the UI countdown still hold. MUST be OFF before go-live.
+    const testMode = await this.testMode.isEnabled();
+
+    // I-B: อ่านแถว → cooldown → เพดาน → เขียนแถว ใต้ advisory lock ต่อ LINE ในทรานแซกชันเดียว
+    // (เดิมอ่าน/เขียนแยกกัน ⇒ LINE เดียวยิงขนาน 5 คำขอผ่าน cooldown หมด แล้วเผาเพดานของเจ้าของเบอร์)
+    const issued = await this.withOtpRequestLock(params.lineUserId, (tx) =>
+      this.issueOtpLocked(tx, params.lineUserId, phone, testMode, new Date()),
+    );
+
+    if (issued && testMode) {
+      this.logger.warn(
+        `[TEST MODE] Skipping real OTP SMS send for ${maskPhone(issued.phone)} (TEST_MODE_BYPASS ON)`,
+      );
+    } else if (issued) {
+      // M1: ไม่ await ผลส่ง — เวลาตอบไม่บอกว่าเบอร์มีจริงไหม · ล้ม = log + Sentry + ทิ้งรหัส + คืนโควตา
+      this.dispatchOtpSms(params.lineUserId, issued);
+    }
+    await this.waitForResponseFloor(startedAt);
+    return response;
+  }
+
+  /**
+   * ขั้นขอ OTP ภายใต้ล็อกของ LINE นี้ — คืนรหัสที่ต้องส่ง SMS หรือ null (แถว decoy: ไม่พบเบอร์ / เกินเพดาน)
+   * M4: ทุกทางที่ไม่ throw ให้คำตอบเดียวกัน · cooldown/ล็อกใช้แถวของ lineUserId ซึ่งแถว decoy ก็นับ
+   */
+  private async issueOtpLocked(
+    tx: Prisma.TransactionClient,
+    lineUserId: string,
+    phone: string,
+    testMode: boolean,
+    now: Date,
+  ): Promise<IssuedOtp | null> {
+    const existing = await tx.chatbotOtpRequest.findUnique({ where: { lineUserId } });
+    if (existing && now.getTime() - existing.lastRequestAt.getTime() < OTP_REQUEST_COOLDOWN_MS) {
       const waitSeconds = Math.ceil(
-        (OTP_REQUEST_COOLDOWN_MS - (Date.now() - existing.lastRequestAt.getTime())) / 1000,
+        (OTP_REQUEST_COOLDOWN_MS - (now.getTime() - existing.lastRequestAt.getTime())) / 1000,
       );
       throw new BadRequestException(`รบกวนรอ ${waitSeconds} วินาทีก่อนขอ OTP ใหม่`);
+    }
+    // I1: ผิดครบแล้วในช่วงเดิม → ขอรหัสใหม่ไม่ได้จนหมดช่วง (เดิม upsert รีเซ็ต attempts เป็น 0 ทุกครั้ง)
+    if (existing && existing.expiresAt > now && existing.attempts >= OTP_MAX_ATTEMPTS) {
+      throw new BadRequestException(this.lockedOutMessage(existing.expiresAt, now));
+    }
+    const decoy = async (): Promise<null> => {
+      await this.writeOtpRow(tx, lineUserId, existing, now, {
+        customerId: DECOY_CUSTOMER_ID,
+        phone,
+        hash: this.decoyHash(),
+      });
+      return null;
+    };
+
+    // I-B: เพดานต่อ LINE ข้ามทุกเบอร์ (นับก่อนค้นเบอร์ ⇒ เบอร์จริงและ decoy นับเท่ากัน)
+    const lineKey = `${OTP_LINE_QUOTA_KEY_PREFIX}${lineUserId}`;
+    if (
+      !testMode &&
+      !(await this.consumeDailyQuota(
+        tx,
+        lineKey,
+        DECOY_CUSTOMER_ID,
+        OTP_DAILY_REQUESTS_PER_LINE,
+        now,
+      ))
+    ) {
+      this.reportQuotaHit('line', lineUserId);
+      return decoy();
     }
 
     // Search with multiple Thai phone formats (DB may store 0812345678 or 081-234-5678)
@@ -165,91 +262,61 @@ export class VerificationService {
       phoneVariants.push(`${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`);
       phoneVariants.push(`${digits.slice(0, 3)}-${digits.slice(3)}`);
     }
-    const customer = await this.prisma.customer.findFirst({
+    const customer = await tx.customer.findFirst({
       where: { phone: { in: phoneVariants }, deletedAt: null },
       select: { id: true, name: true, phone: true },
     });
 
-    if (!customer) {
-      // T4-C9: failed phone→customer lookup. Record fail and maybe lock.
-      this.recordLookupFail(params.lineUserId);
-      this.logger.log(`[Verify] OTP requested for unknown phone`);
-      throw new BadRequestException(
-        'ไม่พบเบอร์โทรนี้ในระบบค่ะ กรุณาตรวจสอบเบอร์โทร หรือติดต่อสาขา 063-134-6356',
-      );
+    // ค้นเจอด้วยเบอร์ แปลว่ามีเบอร์ — กันชนิด null จาก schema (ผู้สนใจจากแชทไม่มีทางถูกค้นเจอทางนี้)
+    const customerPhone = customer?.phone;
+    if (!customer || !customerPhone) {
+      // M4: ไม่บันทึก "ค้นไม่เจอ" ใน lock (lock จะกลายเป็น oracle) — ตอบเหมือนเจอทุกอย่าง
+      this.logger.log(`[Verify] OTP requested for unknown phone (decoy)`);
+      return decoy();
     }
 
-    // ค้นด้วยเบอร์เจอแถวนี้ แปลว่ามีเบอร์แน่ — กันชนิด null จาก schema (ผู้สนใจจากแชทไม่มีทางถูกค้นเจอทางนี้)
-    const customerPhone = customer.phone;
-    if (!customerPhone) {
-      this.recordLookupFail(params.lineUserId);
-      throw new BadRequestException(
-        'ไม่พบเบอร์โทรนี้ในระบบค่ะ กรุณาตรวจสอบเบอร์โทร หรือติดต่อสาขา 063-134-6356',
-      );
+    const quotaKeys: string[] = [];
+    if (!testMode) {
+      // เพดานย่อย (ลูกค้า, LINE) กินก่อนเพดานลูกค้า — LINE เดียวเผาโควตาของเจ้าของเบอร์ได้ไม่เกิน 2
+      const customerLineKey = `${OTP_QUOTA_KEY_PREFIX}${customer.id}:line:${lineUserId}`;
+      const customerKey = `${OTP_QUOTA_KEY_PREFIX}${customer.id}`;
+      // M4: เกินเพดานต้องตอบเหมือนสำเร็จ ไม่งั้นเป็น oracle ว่าเบอร์นี้เป็นลูกค้า — ไม่มีรหัส ไม่ส่ง SMS
+      if (
+        !(await this.consumeDailyQuota(
+          tx,
+          customerLineKey,
+          customer.id,
+          OTP_DAILY_REQUESTS_PER_CUSTOMER_LINE,
+          now,
+        ))
+      ) {
+        this.reportQuotaHit('customer-line', lineUserId, customer.id);
+        return decoy();
+      }
+      quotaKeys.push(customerLineKey);
+      if (
+        !(await this.consumeDailyQuota(
+          tx,
+          customerKey,
+          customer.id,
+          OTP_DAILY_REQUESTS_PER_CUSTOMER,
+          now,
+        ))
+      ) {
+        this.reportQuotaHit('customer', lineUserId, customer.id);
+        return decoy();
+      }
+      quotaKeys.push(customerKey);
     }
 
-    // T4-C9: successful lookup clears the fail counter
-    this.clearLookupFails(params.lineUserId);
-
-    // Generate OTP + persist
     const otp = this.generateOtp();
     const hash = this.hashOtp(otp);
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + OTP_TTL_MS);
-
-    await this.prisma.chatbotOtpRequest.upsert({
-      where: { lineUserId: params.lineUserId },
-      create: {
-        lineUserId: params.lineUserId,
-        customerId: customer.id,
-        phone: customerPhone,
-        hash,
-        expiresAt,
-        attempts: 0,
-        lastRequestAt: now,
-      },
-      update: {
-        customerId: customer.id,
-        phone: customerPhone,
-        hash,
-        expiresAt,
-        attempts: 0,
-        lastRequestAt: now,
-      },
+    await this.writeOtpRow(tx, lineUserId, existing, now, {
+      customerId: customer.id,
+      phone: customerPhone,
+      hash,
     });
-
-    // Test-mode UAT skip — OWNER-gated SystemConfig (TEST_MODE_BYPASS), default OFF,
-    // fails safe to OFF on any DB error. When ON we skip the real SMS so UAT doesn't
-    // cost money / bother real numbers. The OTP row was already upserted above, so the
-    // verify-bypass precondition (a pending OTP session exists) + the UI countdown still
-    // hold, and we fall through to the normal success return. MUST be OFF before go-live.
-    if (await this.testMode.isEnabled()) {
-      this.logger.warn(
-        `[TEST MODE] Skipping real OTP SMS send for ${maskPhone(customerPhone)} (TEST_MODE_BYPASS ON)`,
-      );
-    } else {
-      try {
-        await this.notifications.sendSmsFromQueue(
-          customerPhone,
-          `BESTCHOICE: รหัส OTP ของคุณคือ ${otp} (ใช้ได้ใน 5 นาที)`,
-        );
-        this.logger.log(`[Verify] OTP sent to ${maskPhone(customerPhone)}`);
-      } catch (err) {
-        this.logger.error(
-          `[Verify] SMS send failed: ${err instanceof Error ? err.message : err}`,
-        );
-        // Cleanup record so user can retry immediately
-        await this.prisma.chatbotOtpRequest.delete({
-          where: { lineUserId: params.lineUserId },
-        });
-        throw new BadRequestException('ส่ง SMS ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง หรือติดต่อ 063-134-6356');
-      }
-    }
-
-    return {
-      maskedPhone: maskPhone(customerPhone),
-      expiresInSeconds: Math.floor(OTP_TTL_MS / 1000),
-    };
+    return { otp, hash, phone: customerPhone, quotaKeys };
   }
 
   /**
@@ -264,24 +331,22 @@ export class VerificationService {
       throw new BadRequestException(`รหัส OTP ต้องเป็นตัวเลข ${OTP_LENGTH} หลัก`);
     }
 
-    const record = await this.prisma.chatbotOtpRequest.findUnique({
-      where: { lineUserId: params.lineUserId },
-    });
-
-    if (!record) {
-      throw new BadRequestException('กรุณาขอ OTP ใหม่');
-    }
-
     // Test-mode UAT bypass — OWNER-gated SystemConfig (TEST_MODE_BYPASS), default OFF,
     // audited, app-wide banner. For pre-go-live testing only — MUST be turned OFF before
     // go-live (TestModeService.isEnabled fails safe to OFF on any DB error).
     //
-    // We still require that an OTP session exists (the `record` found above), so the LIFF
+    // We still require that an OTP session exists (the `record` below), so the LIFF
     // flow can only advance if requestOtp ran — we only skip the expiry/attempt/hash code
     // checks. The success side-effects below (resolve customer → bind → delete OTP row →
     // same return value) are byte-for-byte identical to the real success branch so the
     // downstream LIFF flow proceeds unchanged.
     if (await this.testMode.isEnabled()) {
+      const record = await this.prisma.chatbotOtpRequest.findUnique({
+        where: { lineUserId: params.lineUserId },
+      });
+      if (!record) {
+        throw new BadRequestException('กรุณาขอ OTP ใหม่');
+      }
       const customer = await this.prisma.customer.findUnique({
         where: { id: record.customerId },
         select: { id: true, name: true },
@@ -312,39 +377,57 @@ export class VerificationService {
       return { customerId: customer.id, customerName: customer.name };
     }
 
-    if (record.expiresAt < new Date()) {
-      await this.prisma.chatbotOtpRequest.delete({ where: { id: record.id } });
-      throw new BadRequestException('OTP หมดอายุ กรุณาขอใหม่');
-    }
-
-    if (record.attempts >= OTP_MAX_ATTEMPTS) {
-      await this.prisma.chatbotOtpRequest.delete({ where: { id: record.id } });
-      throw new BadRequestException('ใส่ OTP ผิดเกินจำนวนครั้ง กรุณาขอใหม่');
-    }
-
-    if (this.hashOtp(otpInput) !== record.hash) {
-      const updated = await this.prisma.chatbotOtpRequest.update({
-        where: { id: record.id },
-        data: { attempts: { increment: 1 } },
+    // I1: กิน attempt ก่อนเทียบรหัสด้วย UPDATE … WHERE attempts < max AND expires_at > now RETURNING
+    // คำสั่งเดียว — คำขอขนานกี่ตัวก็ได้ไม่เกิน OTP_MAX_ATTEMPTS ครั้งต่อรหัส (เดิมอ่าน → เทียบ → increment
+    // แยกกัน ⇒ ยิงขนานได้เกิน 3) · เทียบกับแถวที่ UPDATE คืนมา ไม่ใช่แถวที่อ่านไว้ก่อนหน้า
+    const now = new Date();
+    const [consumed] = await this.prisma.chatbotOtpRequest.updateManyAndReturn({
+      where: {
+        lineUserId: params.lineUserId,
+        attempts: { lt: OTP_MAX_ATTEMPTS },
+        expiresAt: { gt: now },
+      },
+      data: { attempts: { increment: 1 } },
+    });
+    if (!consumed) {
+      // ไม่ได้ attempt — แยกเหตุจากแถวปัจจุบัน
+      const current = await this.prisma.chatbotOtpRequest.findUnique({
+        where: { lineUserId: params.lineUserId },
       });
-      const remaining = OTP_MAX_ATTEMPTS - updated.attempts;
+      if (!current) throw new BadRequestException('กรุณาขอ OTP ใหม่');
+      if (current.expiresAt <= now) {
+        await this.prisma.chatbotOtpRequest.deleteMany({ where: { id: current.id } });
+        throw new BadRequestException('OTP หมดอายุ กรุณาขอใหม่');
+      }
+      if (current.attempts >= OTP_MAX_ATTEMPTS) {
+        // ผิดครบแล้ว — คงแถวไว้จนหมดช่วง (ลบ = ขอใหม่แล้วได้ attempts ใหม่ทันที)
+        throw new BadRequestException(this.lockedOutMessage(current.expiresAt, now));
+      }
+      // แถวถูกเขียนใหม่ระหว่างคำสั่ง (ขอรหัสใหม่พร้อมกัน) — ให้ลองอีกครั้ง ไม่เทียบรหัสโดยไม่กิน attempt
+      throw new BadRequestException('กรุณาลองใหม่อีกครั้ง');
+    }
+
+    if (!this.otpMatches(otpInput, consumed.hash)) {
+      const remaining = OTP_MAX_ATTEMPTS - consumed.attempts;
       throw new BadRequestException(
-        remaining > 0 ? `OTP ไม่ถูกต้อง (เหลือ ${remaining} ครั้ง)` : 'ใส่ผิดเกินจำนวนครั้ง',
+        remaining > 0
+          ? `OTP ไม่ถูกต้อง (เหลือ ${remaining} ครั้ง)`
+          : this.lockedOutMessage(consumed.expiresAt, now),
       );
     }
 
     // ✅ Verified — bind
     const customer = await this.prisma.customer.findUnique({
-      where: { id: record.customerId },
+      where: { id: consumed.customerId },
       select: { id: true, name: true },
     });
     if (!customer) {
-      await this.prisma.chatbotOtpRequest.delete({ where: { id: record.id } });
+      await this.prisma.chatbotOtpRequest.delete({ where: { id: consumed.id } });
       throw new NotFoundException('ไม่พบข้อมูลลูกค้า');
     }
 
     await this.linkVerifiedLine(params.lineUserId, customer.id);
-    await this.prisma.chatbotOtpRequest.delete({ where: { id: record.id } });
+    await this.prisma.chatbotOtpRequest.delete({ where: { id: consumed.id } });
 
     return { customerId: customer.id, customerName: customer.name };
   }
@@ -489,7 +572,10 @@ export class VerificationService {
       select: { customerId: true, unlinkedAt: true, deletedAt: true },
     });
     const newlyLinked =
-      !previous || previous.customerId !== customerId || previous.unlinkedAt !== null || previous.deletedAt !== null;
+      !previous ||
+      previous.customerId !== customerId ||
+      previous.unlinkedAt !== null ||
+      previous.deletedAt !== null;
     const linkedAt = new Date();
     await this.prisma.$transaction(async (tx) => {
       if (plan.kind === 'repoint-customer-row') {
@@ -525,13 +611,181 @@ export class VerificationService {
         data: { lineIdFinance: lineUserId },
       });
     });
-    this.logger.log(`[Verify] Bound ${lineUserId.slice(0, 8)}... → customer ${customerId.slice(0, 8)}...`);
+    this.logger.log(
+      `[Verify] Bound ${lineUserId.slice(0, 8)}... → customer ${customerId.slice(0, 8)}...`,
+    );
     // LINE_LINKED หลัง commit เท่านั้น — ห้ามย้ายเข้า $transaction (writer ใช้ prisma ของตัวเอง) · ไม่เก็บ lineUserId
     if (newlyLinked) {
       await this.journey?.recordAfterCommit(
-        lineLinkedEntry({ customerId, channel: 'FINANCE', via: 'VERIFICATION', occurredAt: linkedAt }),
+        lineLinkedEntry({
+          customerId,
+          channel: 'FINANCE',
+          via: 'VERIFICATION',
+          occurredAt: linkedAt,
+        }),
       );
     }
+  }
+
+  // ─── Task 20 I1 / M4 helpers ──────────────────────────────
+
+  /**
+   * เขียนแถว OTP ของ lineUserId — ขอใหม่ในช่วงเดิม (แถวยังไม่หมดอายุ) **ไม่รีเซ็ต attempts** (ไม่ใส่ฟิลด์ใน
+   * update ⇒ คงค่าใน DB แม้มี verify ขนานมา increment) · แถวหมดอายุแล้ว = ช่วงใหม่ เริ่ม 0
+   */
+  private async writeOtpRow(
+    client: Prisma.TransactionClient,
+    lineUserId: string,
+    existing: { expiresAt: Date } | null,
+    now: Date,
+    data: { customerId: string; phone: string; hash: string },
+  ): Promise<void> {
+    const expiresAt = new Date(now.getTime() + OTP_TTL_MS);
+    const sameWindow = !!existing && existing.expiresAt > now;
+    await client.chatbotOtpRequest.upsert({
+      where: { lineUserId },
+      create: { lineUserId, ...data, expiresAt, attempts: 0, lastRequestAt: now },
+      update: { ...data, expiresAt, lastRequestAt: now, ...(sameWindow ? {} : { attempts: 0 }) },
+    });
+  }
+
+  /**
+   * I-B: ขั้นขอ OTP ของ LINE เดียวกันเข้าคิวทีละคำขอ — `pg_advisory_xact_lock` เป็นคำสั่งแรกของทรานแซกชัน
+   * ⇒ คำขอที่สองเห็นแถวที่คำขอแรก commit แล้วและชน cooldown · ปล่อยเองตอนทรานแซกชันจบ · ส่ง SMS หลัง commit
+   */
+  private withOtpRequestLock<T>(
+    lineUserId: string,
+    fn: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    return this.prisma.$transaction(async (tx) => {
+      // $executeRaw ไม่ใช่ $queryRaw — pg_advisory_xact_lock คืน void ที่ Prisma deserialize ไม่ได้
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${OTP_REQUEST_LOCK_PREFIX + lineUserId}))`;
+      return fn(tx);
+    });
+  }
+
+  /** M1: ส่ง SMS โดยไม่ให้ requestOtp รอผล — ล้มเมื่อไร handleSmsFailure เก็บกวาด (ไม่ throw ออกไป) */
+  private dispatchOtpSms(lineUserId: string, issued: IssuedOtp): void {
+    let sending: Promise<unknown>;
+    try {
+      sending = this.notifications.sendSmsFromQueue(
+        issued.phone,
+        `BESTCHOICE: รหัส OTP ของคุณคือ ${issued.otp} (ใช้ได้ใน 5 นาที)`,
+      );
+    } catch (err) {
+      sending = Promise.reject(err);
+    }
+    void sending.then(
+      () => this.logger.log(`[Verify] OTP sent to ${maskPhone(issued.phone)}`),
+      (err: unknown) => this.handleSmsFailure(lineUserId, issued, err),
+    );
+  }
+
+  /**
+   * ส่ง SMS ไม่สำเร็จ: log + Sentry · ทิ้งรหัสที่เพิ่งออก (เฉพาะแถวที่ยังถือ hash นี้) + ปลด cooldown ให้ขอใหม่ได้ทันที ·
+   * คืนโควตาลูกค้า/(ลูกค้า, LINE) 1 ครั้ง — provider สะดุดต้องไม่เผาโควตาของลูกค้าจริง (ผู้โจมตีสั่งให้ล้มไม่ได้)
+   */
+  private async handleSmsFailure(
+    lineUserId: string,
+    issued: IssuedOtp,
+    err: unknown,
+  ): Promise<void> {
+    this.logger.error(`[Verify] SMS send failed: ${err instanceof Error ? err.message : err}`);
+    Sentry.captureException(err, { tags: { kind: 'otp-sms', flow: 'finance-verify' } });
+    try {
+      await this.prisma.chatbotOtpRequest.updateMany({
+        where: { lineUserId, hash: issued.hash },
+        data: { hash: this.decoyHash(), lastRequestAt: new Date(0) },
+      });
+      for (const key of issued.quotaKeys) {
+        await this.prisma.chatbotOtpRequest.updateMany({
+          where: { lineUserId: key, attempts: { gt: 0 } },
+          data: { attempts: { decrement: 1 } },
+        });
+      }
+    } catch (cleanupErr) {
+      this.logger.error(
+        `[Verify] SMS failure cleanup failed: ${cleanupErr instanceof Error ? cleanupErr.message : cleanupErr}`,
+      );
+      Sentry.captureException(cleanupErr, {
+        tags: { kind: 'otp-sms-cleanup', flow: 'finance-verify' },
+      });
+    }
+  }
+
+  /** M1: คำตอบที่สำเร็จทุกทางรออย่างน้อย responseFloorMs นับจากเริ่ม — เบอร์จริง/decoy ใช้เวลาเท่ากัน */
+  private async waitForResponseFloor(startedAt: number): Promise<void> {
+    const remaining = startedAt + this.responseFloorMs - Date.now();
+    if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
+  }
+
+  private reportQuotaHit(
+    scope: 'line' | 'customer-line' | 'customer',
+    lineUserId: string,
+    customerId?: string,
+  ): void {
+    this.logger.warn(
+      `[Verify] daily OTP quota (${scope}) reached — LINE ${lineUserId.slice(0, 8)}...`,
+    );
+    Sentry.captureMessage('[Verify] daily OTP request quota reached', {
+      level: 'warning',
+      tags: { kind: 'otp-quota', flow: 'finance-verify', scope },
+      extra: { customerId, linePrefix: lineUserId.slice(0, 8) },
+    });
+  }
+
+  /** ไม่ใช่ hex 64 ตัว ⇒ ไม่มีรหัส 6 หลักใดที่ sha256 แล้วตรง */
+  private decoyHash(): string {
+    return `decoy:${randomUUID()}`;
+  }
+
+  private otpMatches(otpInput: string, storedHash: string): boolean {
+    const input = Buffer.from(this.hashOtp(otpInput));
+    const stored = Buffer.from(storedHash);
+    return input.length === stored.length && timingSafeEqual(input, stored);
+  }
+
+  private lockedOutMessage(expiresAt: Date, now: Date): string {
+    const minutes = Math.max(1, Math.ceil((expiresAt.getTime() - now.getTime()) / 60_000));
+    return `ใส่ OTP ผิดครบ ${OTP_MAX_ATTEMPTS} ครั้งแล้ว — ขอรหัสใหม่ได้ในอีก ${minutes} นาที`;
+  }
+
+  /**
+   * กินเพดานวันนี้ของแถวนับ `key` 1 ครั้ง — false = ครบ `limit` แล้ว. แถวนับอยู่ใน chatbot_otp_requests
+   * ทุกคำสั่งเป็น statement เดียว: ลบแถวของวันก่อน → INSERT … ON CONFLICT DO NOTHING →
+   * UPDATE … WHERE attempts < limit (increment แบบมีเงื่อนไข ⇒ คำขอขนานจากหลายบัญชี LINE ผ่านได้ไม่เกินเพดาน)
+   */
+  private async consumeDailyQuota(
+    client: Prisma.TransactionClient,
+    key: string,
+    customerId: string,
+    limit: number,
+    now: Date,
+  ): Promise<boolean> {
+    const { year, month, day } = bangkokCalendarParts(now);
+    const windowEnd = bangkokMidnight(year, month, day + 1);
+    await client.chatbotOtpRequest.deleteMany({
+      where: { lineUserId: key, expiresAt: { lte: now } },
+    });
+    await client.chatbotOtpRequest.createMany({
+      data: [
+        {
+          lineUserId: key,
+          customerId,
+          phone: '',
+          hash: '',
+          expiresAt: windowEnd,
+          attempts: 0,
+          lastRequestAt: now,
+        },
+      ],
+      skipDuplicates: true,
+    });
+    const { count } = await client.chatbotOtpRequest.updateMany({
+      where: { lineUserId: key, attempts: { lt: limit } },
+      data: { attempts: { increment: 1 }, lastRequestAt: now },
+    });
+    return count > 0;
   }
 
   /** Normalize เบอร์ไทย: 089-xxx-xxxx, 0891234567, 66891234567 → 0891234567 */
@@ -550,5 +804,4 @@ export class VerificationService {
   private hashOtp(otp: string): string {
     return createHash('sha256').update(otp).digest('hex');
   }
-
 }

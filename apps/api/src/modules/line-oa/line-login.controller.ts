@@ -1,15 +1,13 @@
-import {
-  Controller,
-  Get,
-  Query,
-  Res,
-  Logger,
-  BadRequestException,
-} from '@nestjs/common';
+import { Controller, Get, Query, Res, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Response } from 'express';
 import * as Sentry from '@sentry/nestjs';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
+import {
+  buildFrontendReturnUrl,
+  primaryFrontendUrl,
+  sanitizeReturnPath,
+} from '../../utils/line-login.util';
 
 /**
  * LINE Login OAuth Controller — fallback for LIFF pages opened in regular browsers.
@@ -32,9 +30,13 @@ export class LineLoginController {
   private readonly apiBaseUrl: string;
 
   constructor(private config: ConfigService) {
-    this.channelId = this.config.get<string>('LINE_LOGIN_CHANNEL_ID') || this.config.get<string>('LIFF_CHANNEL_ID') || '';
+    this.channelId =
+      this.config.get<string>('LINE_LOGIN_CHANNEL_ID') ||
+      this.config.get<string>('LIFF_CHANNEL_ID') ||
+      '';
     this.channelSecret = this.config.get<string>('LINE_LOGIN_CHANNEL_SECRET') || '';
-    this.frontendBaseUrl = this.config.get<string>('FRONTEND_URL') || 'http://localhost:5173';
+    // M3: FRONTEND_URL อาจเป็นรายการ origin คั่น comma (ชุดเดียวกับ CORS) — ปลายทางใช้ค่าแรก
+    this.frontendBaseUrl = primaryFrontendUrl(this.config.get<string>('FRONTEND_URL'));
     this.apiBaseUrl = this.config.get<string>('API_BASE_URL') || 'http://localhost:3000';
   }
 
@@ -49,7 +51,8 @@ export class LineLoginController {
     }
 
     const callbackUrl = `${this.apiBaseUrl}/api/line-oa/line-login/callback`;
-    const state = encodeURIComponent(returnPath || '/liff/contract');
+    // C2: state เป็นข้อความธรรมดา (ไม่ลงนาม) — callback ตรวจซ้ำเสมอ ที่นี่กรองไว้ชั้นแรก
+    const state = encodeURIComponent(sanitizeReturnPath(returnPath));
 
     const lineAuthUrl = new URL('https://access.line.me/oauth2/v2.1/authorize');
     lineAuthUrl.searchParams.set('response_type', 'code');
@@ -71,11 +74,27 @@ export class LineLoginController {
     @Query('state') state?: string,
     @Query('error') error?: string,
   ) {
-    const returnPath = state ? decodeURIComponent(state) : '/liff/contract';
+    // C2: state มาจาก query ที่ใครก็ปลอมได้ (ไม่ลงนาม ไม่ผูก session) ⇒ ห้ามเชื่อ — สร้างปลายทางด้วย
+    // buildFrontendReturnUrl เท่านั้น (path สัมพัทธ์ + origin ต้องเป็นเว็บของเรา) ทั้งทางสำเร็จและทาง error
+    const returnPath = this.decodeState(state);
+    const redirectLoginError = () => {
+      try {
+        const url = buildFrontendReturnUrl(this.frontendBaseUrl, returnPath);
+        url.searchParams.set('login_error', 'true');
+        res.redirect(url.toString());
+      } catch (err) {
+        // M3: FRONTEND_URL ใช้ไม่ได้ ⇒ ไม่มีที่ redirect — ตอบ 500 ข้อความกลาง (เดิม throw ออกนอก try = 500 ดิบ)
+        this.logger.error(
+          `[LineLogin] Cannot build redirect (FRONTEND_URL?): ${err instanceof Error ? err.message : err}`,
+        );
+        Sentry.captureException(err, { tags: { module: 'line-login', reason: 'frontend-url' } });
+        res.status(500).send('ระบบเข้าสู่ระบบด้วย LINE ขัดข้อง กรุณาลองใหม่ภายหลัง');
+      }
+    };
 
     if (error || !code) {
       this.logger.warn(`[LineLogin] Callback error: ${error || 'no code'}`);
-      res.redirect(`${this.frontendBaseUrl}${returnPath}?login_error=true`);
+      redirectLoginError();
       return;
     }
 
@@ -99,11 +118,11 @@ export class LineLoginController {
       if (!tokenRes.ok) {
         const errBody = await tokenRes.text();
         this.logger.error(`[LineLogin] Token exchange failed: ${tokenRes.status} ${errBody}`);
-        res.redirect(`${this.frontendBaseUrl}${returnPath}?login_error=true`);
+        redirectLoginError();
         return;
       }
 
-      const tokenData = await tokenRes.json() as {
+      const tokenData = (await tokenRes.json()) as {
         access_token: string;
         id_token: string;
         token_type: string;
@@ -117,11 +136,11 @@ export class LineLoginController {
 
       if (!profileRes.ok) {
         this.logger.error(`[LineLogin] Profile fetch failed: ${profileRes.status}`);
-        res.redirect(`${this.frontendBaseUrl}${returnPath}?login_error=true`);
+        redirectLoginError();
         return;
       }
 
-      const profile = await profileRes.json() as {
+      const profile = (await profileRes.json()) as {
         userId: string;
         displayName: string;
         pictureUrl?: string;
@@ -135,7 +154,7 @@ export class LineLoginController {
       // - URL fragment (#) ไม่ถูกส่งไปที่ server (client-only) — ไม่ leak
       //   ใน referrer header หรือ server access logs
       // - Frontend อ่าน location.hash → clear hash ทันที → keep ใน memory
-      const redirectUrl = new URL(`${this.frontendBaseUrl}${returnPath}`);
+      const redirectUrl = buildFrontendReturnUrl(this.frontendBaseUrl, returnPath);
       redirectUrl.searchParams.set('line_login', 'true');
       redirectUrl.searchParams.set('line_user_id', profile.userId);
       redirectUrl.searchParams.set('line_display_name', profile.displayName);
@@ -155,8 +174,17 @@ export class LineLoginController {
           tags: { module: 'line-login', reason: 'timeout' },
         });
       }
-      res.redirect(`${this.frontendBaseUrl}${returnPath}?login_error=true`);
+      redirectLoginError();
     }
   }
 
+  /** state ที่ decode ไม่ได้ (เช่น `%E0%A4%A` ที่ผู้โจมตีส่งมา) = ไม่มี state ไม่ใช่ 500 */
+  private decodeState(state?: string): string | undefined {
+    if (!state) return undefined;
+    try {
+      return decodeURIComponent(state);
+    } catch {
+      return undefined;
+    }
+  }
 }

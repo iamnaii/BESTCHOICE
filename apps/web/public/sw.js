@@ -45,6 +45,9 @@ self.addEventListener('fetch', (event) => {
   // Skip non-GET requests
   if (request.method !== 'GET') return;
 
+  // เครื่องตอกบัตร (/kiosk): ปล่อยผ่านตรง ไม่แคช ไม่พาไปหน้า / ตอนออฟไลน์ — หน้านั้นต้องบอกเองว่า "ยังไม่ได้บันทึก"
+  if (url.pathname === '/kiosk' || url.pathname.startsWith('/kiosk/')) return;
+
   // API calls: network-first
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(

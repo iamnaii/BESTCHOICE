@@ -106,6 +106,24 @@ describe('PayrollRemittanceTemplate', () => {
     expect(args.metadata.idempotencyKey).toBe('pnd1-remit:FINANCE:2026-08');
   });
 
+  it('PND1 SHOP — ภาษีเงินเดือน + หัก ณ ที่จ่ายค่าคอม 3% (COMMISSION_WHT) นำส่งรวมกัน · คนที่มีแต่ภาษีค่าคอมก็ถูกดึง (owner 2026-10-29)', async () => {
+    prisma.payrollLine.findMany.mockResolvedValue([
+      { ssoEmployee: new Decimal('750.00'), whtAmount: new Decimal('0.00'), customDeduction: [{ amount: new Decimal('21.00'), source: 'COMMISSION_WHT' }] },
+      { ssoEmployee: new Decimal('875.00'), whtAmount: new Decimal('150.00'), customDeduction: [{ amount: new Decimal('9.00'), source: 'COMMISSION_WHT' }] },
+    ]);
+    const result = await template.executePnd1({ scope: 'SHOP', period: '2026-11', depositAccountCode: 'S11-1202' });
+    expect(result.total).toBe('180.00'); // 150 + 21 + 9
+    const call = prisma.payrollLine.findMany.mock.calls[0][0];
+    expect(call.where.OR).toEqual([
+      { whtAmount: { gt: 0 } },
+      { customDeduction: { some: { source: 'COMMISSION_WHT', amount: { gt: 0 } } } },
+    ]);
+    const [args] = journal.createAndPost.mock.calls[0];
+    const byCode = new Map(args.lines.map((l: { accountCode: string }) => [l.accountCode, l]));
+    expect((byCode.get('S21-3101') as { dr: Decimal }).dr.toString()).toBe('180');
+    expect((byCode.get('S11-1202') as { cr: Decimal }).cr.toString()).toBe('180');
+  });
+
   it('rejects when the period has already been remitted (idempotency pre-check)', async () => {
     prisma.journalEntry.findFirst.mockResolvedValue({ entryNumber: 'JE-OLD-001' });
     await expect(

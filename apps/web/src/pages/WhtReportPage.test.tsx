@@ -1,9 +1,9 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
-import WhtReportPage from './WhtReportPage';
+import WhtReportPage, { PersonalTable } from './WhtReportPage';
 
 vi.mock('@/lib/api', () => {
   return {
@@ -70,3 +70,27 @@ describe('WhtReportPage', () => {
     expect(document.body.textContent ?? '').toMatch(/ทป\.4\/2528/);
   });
 });
+
+// คำตัดสินเจ้าของ 2026-10-29 (กระดาน 7) — ภ.ง.ด.1 ใบเดียว แยกช่องภาษีเงินเดือน / ภาษีค่าคอม 3% / รวม
+describe('PersonalTable (ภ.ง.ด.1)', () => {
+  const item = (name: string, salaryWht: string, commissionWht: string, whtAmount: string) => ({
+    employeeName: name, employeeTaxId: null, gross: '15840.63', salaryWht, commissionWht, whtAmount,
+    payDate: '2026-12-01T03:00:00.000Z', payrollDocNumber: 'PR-20261201-0001',
+  });
+
+  it('a month with commission WHT shows salary, commission 3% and total columns', () => {
+    render(<PersonalTable items={[item('สมศรี มีสุข', '0', '21', '21'), item('อรุณี แก้วใส', '420.83', '0', '420.83')]} />);
+    expect(screen.getByRole('columnheader', { name: 'ภาษีเงินเดือน (฿)' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'ภาษีค่าคอม 3% (฿)' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'ภาษีที่หักรวม (฿)' })).toBeInTheDocument();
+    const cells = within(screen.getByRole('row', { name: /สมศรี มีสุข/ })).getAllByRole('cell').map((c) => c.textContent);
+    expect(cells.slice(2, 6)).toEqual(['15,840.63', '0.00', '21.00', '21.00']);
+  });
+
+  it('a month without commission WHT keeps the single WHT column (older previews without the split too)', () => {
+    render(<PersonalTable items={[{ employeeName: 'วิชัย', employeeTaxId: null, gross: '15000', whtAmount: '100', payDate: '2026-12-01', payrollDocNumber: 'PR-1' }]} />);
+    expect(screen.getByRole('columnheader', { name: 'WHT (฿)' })).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'ภาษีค่าคอม 3% (฿)' })).not.toBeInTheDocument();
+  });
+});
+

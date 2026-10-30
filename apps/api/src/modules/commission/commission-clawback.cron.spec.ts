@@ -1,4 +1,5 @@
 import { Test } from '@nestjs/testing';
+import { ConflictException, Logger } from '@nestjs/common';
 import { CommissionClawbackCron } from './commission-clawback.cron';
 import { CommissionService } from './commission.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -119,6 +120,29 @@ describe('CommissionClawbackCron (T1-C6)', () => {
         tags: expect.objectContaining({ contractNumber: 'HP-BAD' }),
       }),
     );
+  });
+
+  // P2-R26 — แถวค่าคอมเปลี่ยนระหว่างอ่านกับเขียน (409 จาก clawBackCommissions) = แข่งกับการยกเลิกใบขาย/ใบเงินเดือน ไม่ใช่บั๊ก
+  // ⇒ เตือนใน log แล้วรอบหน้าลองใหม่เอง ไม่ส่ง Sentry และไม่นับเป็น error
+  it('a 409 race (commission changed between read and write) is a warning, not a Sentry error — the next run retries', async () => {
+    prisma.contract.findMany.mockResolvedValue([
+      { id: 'c1', contractNumber: 'HP-RACE', status: 'DEFAULT' },
+      { id: 'c2', contractNumber: 'HP-OK', status: 'DEFAULT' },
+    ]);
+    prisma.payment.count.mockResolvedValue(2);
+    commission.applyClawbackForContract
+      .mockRejectedValueOnce(new ConflictException('สถานะค่าคอมเปลี่ยนแล้ว กรุณาตรวจใหม่'))
+      .mockResolvedValueOnce({ clawedBackCount: 1, totalAmount: '750', percent: 75 });
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const error = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+
+    const result = await cron.runDailyClawback();
+    expect(result).toEqual({ processed: 1, clawedBackCount: 1, errors: 0 });
+    expect(Sentry.captureException).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('HP-RACE'));
+    expect(error).not.toHaveBeenCalled();
+    warn.mockRestore();
+    error.mockRestore();
   });
 
   it('uses idempotency via applyClawbackForContract (returns 0 on already-clawed)', async () => {

@@ -98,10 +98,15 @@ describe('SaleVoidService.voidSale', () => {
             period: '2026-08',
             salespersonId: 'sp1',
             createdAt: new Date('2026-08-10T00:00:00Z'),
+            commissionAmount: new Decimal(297),
+            paidAt: null,
+            paidAmount: null,
           },
         ]),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
+      // P2-R30 — รายการจ่ายค่าคอมในใบเงินเดือนที่ลงบัญชีแล้ว (ยอดใน toast = เฉพาะที่ใบเงินเดือนหักคืนให้) · default = ไม่มี
+      payrollCommissionItem: { findMany: jest.fn().mockResolvedValue([]) },
       // รอบจ่ายค่าคอม (`CommissionPayout`) — default = ยังไม่มีรอบจ่ายของงวดนี้
       commissionPayout: {
         findMany: jest.fn().mockResolvedValue([]),
@@ -351,11 +356,63 @@ describe('SaleVoidService.voidSale', () => {
   });
 
   // ── G4 ────────────────────────────────────────────────────────────────────
-  it('G4: ค่าคอมจ่ายแล้ว → ปฏิเสธ', async () => {
-    tx.salesCommission.findMany.mockResolvedValue([
-      { id: 'c1', status: 'PAID', period: '2026-07' },
+  // P2-R9: ค่าคอมที่จ่ายแล้วไม่บล็อกอีก — เรียกคืน (CLAWED_BACK + clawbackAmount = paidAmount)
+  // แล้วใบเงินเดือนงวดถัดไปหักคืนให้ (Tasks 3–4)
+  const PAID_AT = new Date('2026-07-31T05:00:00Z');
+  const paidCommission = (over: Record<string, unknown> = {}) => ({
+    id: 'c1',
+    status: 'PAID',
+    period: '2026-07',
+    salespersonId: 'sp1',
+    createdAt: new Date('2026-07-10T00:00:00Z'),
+    commissionAmount: new Decimal(800),
+    paidAt: PAID_AT,
+    paidAmount: new Decimal(800),
+    ...over,
+  });
+
+  it('G4: ค่าคอม PAID ผ่านใบเงินเดือนที่ลงบัญชี → ยกเลิกได้ ค่าคอมเป็น CLAWED_BACK ยอด = paidAmount', async () => {
+    tx.salesCommission.findMany.mockResolvedValue([paidCommission()]);
+    tx.payrollCommissionItem.findMany.mockResolvedValue([{ salesCommissionId: 'c1' }]);
+    const res = await service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น');
+
+    expect(res).toEqual(expect.objectContaining({ paidCommissionClawback: '800.00', paidOutsidePayrollClawback: '0.00' }));
+    // ยอดใน toast = ค่าคอมที่ใบเงินเดือนหักคืนให้จริง: จ่ายแล้ว + รายการ PAY ที่ยังมีผลในใบที่ลงบัญชี (กติกาเดียวกับ compute)
+    expect(tx.payrollCommissionItem.findMany).toHaveBeenCalledWith({
+      where: { salesCommissionId: { in: ['c1'] }, kind: 'PAY', releasedAt: null, payrollLine: { payroll: { document: { status: 'POSTED' } } } },
+      select: { salesCommissionId: true },
+    });
+    expect(tx.salesCommission.updateMany).toHaveBeenCalledTimes(1);
+    const write = tx.salesCommission.updateMany.mock.calls[0][0];
+    expect(write.where).toEqual({ id: 'c1', status: 'PAID' });
+    expect(write.data).toEqual({
+      status: 'CLAWED_BACK',
+      clawbackAmount: expect.any(Decimal),
+      clawbackPercent: 100,
+      clawbackAt: expect.any(Date),
+      clawbackReason: 'ยกเลิกใบขาย SA-0001: คีย์ผิดรุ่น',
+    });
+    expect(write.data.clawbackAmount.toFixed(2)).toBe('800.00');
+    expect(tx.sale.update).toHaveBeenCalled();
+    // SALE_VOIDED บันทึกยอดที่จะหักคืน + ยอดต่อแถว ข้างรหัสค่าคอม
+    const audit = tx.auditLog.create.mock.calls
+      .map((c: [{ data: { action: string; newValue: Record<string, unknown> } }]) => c[0].data)
+      .find((d: { action: string }) => d.action === 'SALE_VOIDED').newValue;
+    expect(audit.commissionIds).toEqual(['c1']);
+    expect(audit.paidCommissionIds).toEqual(['c1']);
+    expect(audit.paidCommissionClawback).toBe('800.00');
+    expect(audit.paidOutsidePayrollClawback).toBe('0.00');
+    expect(audit.commissionClawbacks).toEqual([
+      { id: 'c1', statusBefore: 'PAID', paid: true, clawbackAmount: '800.00' },
     ]);
-    await expect(service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น')).rejects.toThrow(/ค่าคอม/);
+  });
+
+  it('G4b ยังบล็อก: ค่าคอม PAID ที่ถูกนับในรอบจ่ายเดิมซึ่งจ่ายไปแล้ว → ปฏิเสธ และไม่เขียนอะไร', async () => {
+    tx.salesCommission.findMany.mockResolvedValue([paidCommission()]);
+    tx.commissionPayout.findMany.mockResolvedValue([
+      { id: 'po1', period: '2026-07', salespersonId: 'sp1', status: 'PAID', generatedAt: new Date('2026-07-20T00:00:00Z') },
+    ]);
+    await expect(service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น')).rejects.toThrow(/รอบจ่ายค่าคอม/);
     expectNothingWritten();
   });
 
@@ -378,11 +435,14 @@ describe('SaleVoidService.voidSale', () => {
     expectNothingWritten();
   });
 
-  it('G4b: รอบจ่ายสถานะ APPROVED → ปฏิเสธ (อนุมัติแล้ว รอจ่ายตามยอดเดิม)', async () => {
+  // P2-R26 — รอบแบบเดิมจ่ายไม่ได้แล้ว (markPayoutPaid = 410) ⇒ ข้อความต้องไม่บอกว่า "รอจ่าย"
+  it('G4b: รอบจ่ายสถานะ APPROVED → ปฏิเสธ (อนุมัติไว้แล้ว — รอบแบบเดิมระบบไม่จ่ายแล้ว)', async () => {
     tx.commissionPayout.findMany.mockResolvedValue([payout({ status: 'APPROVED' })]);
-    await expect(service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น')).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+    const err = await service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(BadRequestException);
+    const message = (err as BadRequestException).message;
+    expect(message).toContain('อนุมัติไว้แล้ว (รอบจ่ายแบบเดิม — ระบบไม่จ่ายรอบนี้แล้ว ค่าคอมจ่ายผ่านใบเงินเดือนเท่านั้น)');
+    expect(message).not.toContain('รอจ่าย');
     expectNothingWritten();
   });
 
@@ -485,10 +545,57 @@ describe('SaleVoidService.voidSale', () => {
   });
 
   // ── G4 — สถานะค่าคอมที่เงินออกไปแล้ว ────────────────────────────────────────
-  it('G4: PARTIALLY_CLAWED_BACK (เงินออกแล้ว เรียกคืนบางส่วน) → ปฏิเสธ ไม่ใช่ผ่านเงียบ ๆ', async () => {
+  // P2-R30 — จ่ายนอกใบเงินเดือน (เส้นทางจ่ายเดิม) ใบเงินเดือนไม่หักคืนให้ (CLAWBACK_PAID_OUTSIDE_PAYROLL) ⇒ toast ต้องไม่สัญญา
+  it('G4: ค่าคอมที่จ่ายนอกใบเงินเดือน → ยังเรียกคืน แต่ไม่นับในยอดที่ใบเงินเดือนจะหัก (แยกเป็น paidOutsidePayrollClawback)', async () => {
     tx.salesCommission.findMany.mockResolvedValue([
-      { id: 'c1', status: 'PARTIALLY_CLAWED_BACK', period: '2026-08', salespersonId: 'sp1' },
+      paidCommission(),
+      paidCommission({ id: 'c2', commissionAmount: new Decimal(300), paidAmount: new Decimal(300) }),
     ]);
+    tx.payrollCommissionItem.findMany.mockResolvedValue([{ salesCommissionId: 'c2' }]);
+    const res = await service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น');
+    expect(tx.salesCommission.updateMany).toHaveBeenCalledTimes(2);
+    expect(res.paidCommissionClawback).toBe('300.00');
+    expect(res.paidOutsidePayrollClawback).toBe('800.00');
+    const audit = tx.auditLog.create.mock.calls
+      .map((c: [{ data: { action: string; newValue: Record<string, unknown> } }]) => c[0].data)
+      .find((d: { action: string }) => d.action === 'SALE_VOIDED').newValue;
+    expect(audit.paidCommissionClawback).toBe('300.00');
+    expect(audit.paidOutsidePayrollClawback).toBe('800.00');
+  });
+
+  it('G4: ไม่มีค่าคอมที่จ่ายแล้ว → ไม่อ่านรายการในใบเงินเดือน', async () => {
+    const res = await service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น');
+    expect(tx.payrollCommissionItem.findMany).not.toHaveBeenCalled();
+    expect(res.paidCommissionClawback).toBe('0.00');
+    expect(res.paidOutsidePayrollClawback).toBe('0.00');
+  });
+
+  it('G4: PARTIALLY_CLAWED_BACK ที่จ่ายแล้ว → CLAWED_BACK ยอด = paidAmount (ไม่ใช่ยอดเรียกคืนบางส่วนเดิม)', async () => {
+    tx.salesCommission.findMany.mockResolvedValue([
+      paidCommission({ status: 'PARTIALLY_CLAWED_BACK', commissionAmount: new Decimal(1000), paidAmount: new Decimal(1000) }),
+    ]);
+    tx.payrollCommissionItem.findMany.mockResolvedValue([{ salesCommissionId: 'c1' }]);
+    const res = await service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น');
+    const write = tx.salesCommission.updateMany.mock.calls[0][0];
+    expect(write.where).toEqual({ id: 'c1', status: 'PARTIALLY_CLAWED_BACK' });
+    expect(write.data.status).toBe('CLAWED_BACK');
+    expect(write.data.clawbackAmount.toFixed(2)).toBe('1000.00');
+    expect(res.paidCommissionClawback).toBe('1000.00');
+  });
+
+  it('G4: ค่าคอมที่ CLAWED_BACK อยู่แล้ว → ไม่บล็อก และไม่เขียนซ้ำ (ไม่มีอะไรให้เรียกคืนอีก)', async () => {
+    tx.salesCommission.findMany.mockResolvedValue([paidCommission({ status: 'CLAWED_BACK' })]);
+    const res = await service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น');
+    expect(tx.salesCommission.updateMany).not.toHaveBeenCalled();
+    expect(tx.commissionPayout.findMany).not.toHaveBeenCalled();
+    expect(tx.sale.update).toHaveBeenCalled();
+    expect(res.paidCommissionClawback).toBe('0.00');
+    const audit = tx.auditLog.create.mock.calls[0][0].data.newValue;
+    expect(audit.commissionIds).toEqual([]);
+  });
+
+  it('G4: สถานะค่าคอมที่ระบบยังไม่รู้จัก → ปฏิเสธ (กันไว้ก่อน) และไม่เขียนอะไร', async () => {
+    tx.salesCommission.findMany.mockResolvedValue([paidCommission({ status: 'ON_HOLD' })]);
     await expect(service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น')).rejects.toBeInstanceOf(
       BadRequestException,
     );
@@ -497,17 +604,38 @@ describe('SaleVoidService.voidSale', () => {
 
   // สเปค §3 ข้อ 4: การเรียกคืนต้องครอบ **ทั้ง PENDING และ APPROVED**
   it('ค่าคอมสถานะ APPROVED → เรียกคืนด้วย (ไม่ใช่แค่ PENDING)', async () => {
+    const unpaid = { period: '2026-08', salespersonId: 'sp1', createdAt: new Date('2026-08-10T00:00:00Z'),
+      commissionAmount: new Decimal(297), paidAt: null, paidAmount: null };
     tx.salesCommission.findMany.mockResolvedValue([
-      { id: 'c1', status: 'PENDING', period: '2026-08', salespersonId: 'sp1' },
-      { id: 'c2', status: 'APPROVED', period: '2026-08', salespersonId: 'sp1' },
+      { id: 'c1', status: 'PENDING', ...unpaid },
+      { id: 'c2', status: 'APPROVED', ...unpaid },
     ]);
-    await service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น');
-    expect(tx.salesCommission.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: { in: ['c1', 'c2'] } },
-        data: expect.objectContaining({ status: 'CLAWED_BACK', clawbackPercent: 100 }),
-      }),
+    const res = await service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น');
+    // หนึ่งคำสั่งต่อแถว แบบมีเงื่อนไข (id, status) — สถานะเปลี่ยนระหว่างทาง = 409 ไม่ใช่เขียนทับ
+    expect(tx.salesCommission.updateMany.mock.calls.map((c: [{ where: unknown }]) => c[0].where)).toEqual([
+      { id: 'c1', status: 'PENDING' },
+      { id: 'c2', status: 'APPROVED' },
+    ]);
+    for (const [call] of tx.salesCommission.updateMany.mock.calls) {
+      expect(call.data).toEqual(expect.objectContaining({ status: 'CLAWED_BACK', clawbackPercent: 100, clawbackAmount: null }));
+    }
+    expect(res.paidCommissionClawback).toBe('0.00');
+  });
+
+  it('ค่าคอมเปลี่ยนสถานะหลังอ่าน (เช่นใบเงินเดือนลงบัญชีพร้อมกัน) → 409 สถานะค่าคอมเปลี่ยนแล้ว', async () => {
+    tx.salesCommission.updateMany.mockResolvedValue({ count: 0 });
+    await expect(service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น')).rejects.toThrow(
+      new ConflictException('สถานะค่าคอมเปลี่ยนแล้ว กรุณาตรวจใหม่'),
     );
+    expect(tx.sale.update).not.toHaveBeenCalled();
+  });
+
+  it('G4: อ่านค่าคอมพร้อมยอดเงิน (commissionAmount / paidAt / paidAmount) ที่ตัวช่วยเรียกคืนต้องใช้', async () => {
+    await service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น');
+    expect(tx.salesCommission.findMany).toHaveBeenCalledWith({
+      where: { saleId: 's1', deletedAt: null },
+      select: expect.objectContaining({ commissionAmount: true, paidAt: true, paidAmount: true, status: true }),
+    });
   });
 
   // ── ชนิดการขายที่ยังไม่รู้จัก (ด่านกัน 500) ─────────────────────────────────
@@ -581,17 +709,17 @@ describe('SaleVoidService.voidSale', () => {
       }),
       tx,
     );
-    // Minor 2 (final review): stamp clawback fields ตาม pattern commission.service clawback()
-    expect(tx.salesCommission.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: {
-          status: 'CLAWED_BACK',
-          clawbackAt: expect.any(Date),
-          clawbackReason: 'ยกเลิกใบขาย SA-0001: คีย์ผิดรุ่น',
-          clawbackPercent: 100,
-        },
-      }),
-    );
+    // ตัวช่วยเรียกคืนตัวเดียว (commission-clawback.util) — ค่าคอมที่ยังไม่จ่าย = clawbackAmount null
+    expect(tx.salesCommission.updateMany).toHaveBeenCalledWith({
+      where: { id: 'c1', status: 'PENDING' },
+      data: {
+        status: 'CLAWED_BACK',
+        clawbackAmount: null,
+        clawbackAt: expect.any(Date),
+        clawbackReason: 'ยกเลิกใบขาย SA-0001: คีย์ผิดรุ่น',
+        clawbackPercent: 100,
+      },
+    });
     expect(tx.sale.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 's1' },
@@ -617,6 +745,7 @@ describe('SaleVoidService.voidSale', () => {
     expect(res.saleNumber).toBe('SA-0001');
     expect(res.restoredProductIds).toEqual(['p1', 'p2']);
     expect(res.reversalEntryNumbers).toEqual(['JE-202608-0099']);
+    expect(res.paidCommissionClawback).toBe('0.00');
   });
 
   it('สมุดเงินหน้าร้าน: ใบขายที่มีแถวรับเงิน → เขียนแถว OUT คู่กัน (ผู้จ่าย = ผู้กดยกเลิก) โดยไม่กลับรายการ JE แยกยอดซ้ำ', async () => {
@@ -650,6 +779,11 @@ describe('SaleVoidService.voidSale', () => {
     const audit = tx.auditLog.create.mock.calls[0][0].data.newValue;
     expect(audit.reversalEntryNumbers).toEqual(['JE-202608-0099']);
     expect(audit.commissionIds).toEqual(['c1']);
+    expect(audit.paidCommissionIds).toEqual([]);
+    expect(audit.paidCommissionClawback).toBe('0.00');
+    expect(audit.commissionClawbacks).toEqual([
+      { id: 'c1', statusBefore: 'PENDING', paid: false, clawbackAmount: null },
+    ]);
     expect(audit.reason).toBe('คีย์ผิดรุ่น');
   });
 

@@ -353,6 +353,9 @@ const PERMISSION_DEFINITIONS = {
   'employees.read': ['ดูพนักงาน', 'people', 'GRANT'],
   'todos.read': ['ดูรายการงาน', 'people', 'GRANT'],
   'todos.create': ['สร้างรายการงาน', 'people', 'GRANT'],
+  'attendance.read': ['ดูเวลาทำงานพนักงาน (ลงเวลา)', 'people', 'GRANT'],
+  'attendance.manage': ['แก้ไขเวลาทำงาน/กำหนดวันหยุด-ลา', 'people', 'GRANT'],
+  'attendance.devices': ['จัดการเครื่องตอกบัตรและเวลางาน', 'people', 'OWNER'],
   'todos.update': ['แก้ไขรายการงาน', 'people', 'GRANT'],
   'todos.delete': ['ลบหรือปิดใช้งานรายการงาน', 'people', 'GRANT'],
   'reports.read': ['ดูรายงาน', 'reports', 'GRANT'],
@@ -588,6 +591,8 @@ const DEFAULT_POSITION_DEFINITIONS = [
     name: 'ผู้จัดการสาขา',
     assignable: true,
     permissions: [
+      'attendance.read',
+      'attendance.manage',
       'interest-configs.read',
       'shop-tenders.read',
       'shop-tenders.count',

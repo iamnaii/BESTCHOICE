@@ -18,6 +18,7 @@ import { usersApi, userKeys, type EmploymentType } from '@/lib/api/users';
 import { roleLabels, inputClass, labelClass, MIN_PASSWORD_LENGTH } from './types';
 import PersonalFields, { type PersonalForm } from './components/PersonalFields';
 import StaffLineLinkCard from './components/StaffLineLinkCard';
+import AttendancePinCard from './components/AttendancePinCard';
 import { useAuth } from '@/contexts/AuthContext';
 
 const EMPLOYMENT: { value: EmploymentType; label: string }[] = [
@@ -265,6 +266,13 @@ export default function UserDetailPage() {
                   linkCode={detail.data.lineLinkCode}
                   linkCodeExpiresAt={detail.data.lineLinkCodeExpiresAt}
                 />
+                <div className="mt-4">
+                  <AttendancePinCard
+                    userId={detail.data.id}
+                    userName={detail.data.name}
+                    hasPin={detail.data.hasAttendancePin ?? false}
+                  />
+                </div>
               </div>
             )}
           </TabsContent>

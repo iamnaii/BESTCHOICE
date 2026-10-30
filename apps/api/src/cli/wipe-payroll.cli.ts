@@ -11,9 +11,18 @@
  *      'expense-payroll-void') + their journal_lines
  *      (รวม JE ที่อ้างโดย ExpenseDocument.journalEntryId ของเอกสาร PAYROLL)
  *   2. Every ExpenseDocument with documentType='PAYROLL' (any status, incl.
- *      soft-deleted) — cascades PayrollDetail → PayrollLine → custom rows
+ *      soft-deleted) — cascades PayrollDetail → PayrollLine → custom rows +
+ *      payroll_commission_items (D4 Part 2)
  *   3. TaxReport rows reportType='PND1' still in DRAFT (snapshots of the old
  *      wrong data — regenerable any time). SUBMITTED filings are kept.
+ *
+ * D4 Part 2 (P2-R25) — before the delete, commissions paid through a wiped payroll
+ * (a live PAY item) are restored with the void rule (`revertCommissionPayment`):
+ * PAID → APPROVED and paidAt/paidAmount cleared; CLAWED_BACK with paidAt → paidAt/
+ * paidAmount/clawbackAmount cleared; PARTIALLY_CLAWED_BACK with paidAt → paidAt/
+ * paidAmount cleared (clawbackAmount kept — the same amount the clawback helper
+ * records for an unpaid row). Otherwise the cascade would leave them PAID with no
+ * payroll behind them — unpayable forever.
  *
  * AuditLog rows are kept (immutable by design — retention cron owns them).
  *
@@ -29,6 +38,7 @@
  *   CONFIRM_WIPE=YES_I_AM_SURE EXPECTED_DB_NAME=bestchoice npm --prefix apps/api run wipe:payroll
  */
 import { PrismaClient, Prisma } from '@prisma/client';
+import { revertCommissionPayment } from '../modules/expense-documents/payroll-system/payroll-commission-items';
 
 const REQUIRED_CONSENT = 'YES_I_AM_SURE';
 
@@ -95,6 +105,16 @@ async function main(): Promise<void> {
       ? await prisma.journalLine.count({ where: { journalEntryId: { in: jeIds } } })
       : 0;
     const payrollLineCount = await prisma.payrollLine.count();
+    // D4 Part 2 — commissions whose live PAY item sits in a wiped payroll (paid through it)
+    const paidThroughPayroll = await prisma.salesCommission.findMany({
+      where: {
+        status: { in: ['PAID', 'CLAWED_BACK', 'PARTIALLY_CLAWED_BACK'] },
+        paidAt: { not: null },
+        payrollItems: { some: { kind: 'PAY', releasedAt: null, payrollLine: { payroll: { document: { documentType: 'PAYROLL' } } } } },
+      },
+      select: { id: true, status: true, paidAt: true },
+      orderBy: { id: 'asc' },
+    });
 
     console.log(`[wipe-payroll] database        : ${actualDb}${dryRun ? '  (DRY RUN)' : ''}`);
     console.log(`[wipe-payroll] PAYROLL docs    : ${payrollDocs.length}`);
@@ -105,8 +125,10 @@ async function main(): Promise<void> {
     for (const j of flowJes) console.log(`  - ${j.entry_number}`);
     console.log(`[wipe-payroll] payroll lines   : ${payrollLineCount}`);
     console.log(`[wipe-payroll] PND1 drafts     : ${draftPnd1.length}`);
+    console.log(`[wipe-payroll] commissions to un-pay : ${paidThroughPayroll.length}`);
+    for (const c of paidThroughPayroll) console.log(`  - ${c.id}  status=${c.status}`);
 
-    if (payrollDocs.length === 0 && jeIds.length === 0 && draftPnd1.length === 0) {
+    if (payrollDocs.length === 0 && jeIds.length === 0 && draftPnd1.length === 0 && paidThroughPayroll.length === 0) {
       console.log('[wipe-payroll] Nothing to wipe — done.');
       return;
     }
@@ -121,6 +143,8 @@ async function main(): Promise<void> {
     await new Promise((r) => setTimeout(r, 5000));
 
     await prisma.$transaction(async (tx) => {
+      // D4 Part 2 (P2-R25) — un-pay commissions paid through a wiped payroll BEFORE the cascade drops their items
+      for (const c of paidThroughPayroll) await revertCommissionPayment(tx, c, { partial: 'unpay' });
       if (jeIds.length > 0) {
         // Undo the FK from documents first so the JE delete can't be blocked.
         await tx.expenseDocument.updateMany({
@@ -131,7 +155,9 @@ async function main(): Promise<void> {
         await tx.journalEntry.deleteMany({ where: { id: { in: jeIds } } });
       }
       // ExpenseDocument hard-delete cascades payroll_details → payroll_lines
-      // → payroll_custom_income / payroll_custom_deduction (all ON DELETE CASCADE).
+      // → payroll_custom_income / payroll_custom_deduction / payroll_commission_items
+      // (all ON DELETE CASCADE — the commission side of an item is RESTRICT, so the
+      // sales_commissions rows stay; their paid state was restored above).
       const docIds = payrollDocs.map((d) => d.id);
       if (docIds.length > 0) {
         await tx.$executeRaw`DELETE FROM expense_documents WHERE id IN (${Prisma.join(docIds)})`;
@@ -142,7 +168,10 @@ async function main(): Promise<void> {
     });
 
     console.log('');
-    console.log(`[wipe-payroll] DONE — deleted ${payrollDocs.length} docs, ${jeIds.length} JEs, ${draftPnd1.length} PND1 drafts.`);
+    console.log(
+      `[wipe-payroll] DONE — deleted ${payrollDocs.length} docs, ${jeIds.length} JEs, ${draftPnd1.length} PND1 drafts; ` +
+        `un-paid ${paidThroughPayroll.length} commissions.`,
+    );
     console.log('[wipe-payroll] บันทึกเงินเดือนใหม่ผ่านหน้า รายจ่าย → สร้างเอกสารใหม่ → เงินเดือน (PR)');
   } finally {
     await prisma.$disconnect();

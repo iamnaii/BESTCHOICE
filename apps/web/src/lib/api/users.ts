@@ -28,6 +28,8 @@ export interface UserDetail {
   lineStaffUserId?: string | null;
   lineLinkCode?: string | null;
   lineLinkCodeExpiresAt?: string | null;
+  /** ลงเวลา (ก้อน 10 D3) — มีรหัสตอกบัตร 6 หลักแล้วหรือยัง (API ไม่ส่ง hash ออกมา) */
+  hasAttendancePin?: boolean;
   address: string | null;
   avatarUrl: string | null;
   startDate: string | null;
@@ -62,4 +64,7 @@ export const usersApi = {
   create: (body: SaveUserProfileBody) => api.post<UserDetail>('/users', body).then((r) => r.data),
   saveProfile: (id: string, body: SaveUserProfileBody) =>
     api.put<UserDetail>(`/users/${id}/profile`, body).then((r) => r.data),
+  /** OWNER — ตั้ง/รีเซ็ตรหัสตอกบัตร 6 หลัก · รหัสดิบคืนมาครั้งเดียว ห้ามเก็บลง cache */
+  resetAttendancePin: (id: string) =>
+    api.post<{ pin: string }>(`/users/${id}/attendance-pin/reset`).then((r) => r.data),
 };

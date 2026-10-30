@@ -4,13 +4,13 @@ import { useId as useFieldId } from 'react';
 import { getReportDateRange } from '@/lib/date';
 import { useAccountingPermissions } from '@/hooks/useAccountingPermissions';
 import { useState, useMemo, useRef } from 'react';
-import { useSearchParams, useNavigate } from 'react-router';
+import { useSearchParams, useNavigate, Link } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usePaginationParams } from '@/hooks/usePaginationParams';
 import { useUiFlags } from '@/hooks/useUiFlags';
 import { PaginationBar } from '@/components/ui/PaginationBar';
 import { toast } from 'sonner';
-import api, { getErrorMessage } from '@/lib/api';
+import api from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useCoaGroups } from '@/hooks/useCoa';
@@ -26,7 +26,12 @@ import { formatDateShortThai, formatNumberDecimal } from '@/utils/formatters';
 import { accountDisplayName } from '@/utils/accountName';
 import { ExpenseFormV4 } from '@/components/expense-form-v4/ExpenseFormV4';
 import { ReopenedPeriodBanner } from '@/components/accounting/ReopenedPeriodBanner';
-import { useApprovalActions, getApprovalReason } from '@/hooks/useApprovalActions';
+import { useApprovalActions, getApprovalReason, toastActionError } from '@/hooks/useApprovalActions';
+import { invalidateExpenseDoc } from '@/lib/expense-document-cache';
+import { useAuth } from '@/contexts/AuthContext';
+import { canManagePayroll } from '@/components/expense-form-v4/payroll-system/payroll-roles';
+import { isPayrollEditable, payrollEditPath } from '@/components/expense-form-v4/payroll-system/payroll-status';
+import { OPEN_DOC_LABEL } from '@/components/expense-form-v4/payroll-system/payroll-copy';
 
 // ─── Types ───
 interface ExpenseDocument {
@@ -130,6 +135,10 @@ export default function ExpensesPage() {
   // hidden. Default true so first paint matches legacy behaviour.
   const { templatesEnabled } = useUiFlags();
   const permissions = useAccountingPermissions();
+  const { user } = useAuth();
+  // ผู้จัดการสาขาเปิดดูใบเงินเดือนได้ แต่แก้/ส่ง/ยกเลิกไม่ได้ (คำตัดสินเจ้าของ 2026-10-28)
+  const payrollManager = canManagePayroll(user?.role);
+  const payrollReadOnly = (e: { documentType: string }) => e.documentType === 'PAYROLL' && !payrollManager;
   const [searchParams, setSearchParams] = useSearchParams();
   const tabFilter = searchParams.get('tab') || 'all';
   const statusFilter = searchParams.get('status') || '';
@@ -236,15 +245,17 @@ export default function ExpensesPage() {
       const newAction = action === 'void' ? 'void' : 'post';
       return api.post(`/expense-documents/${id}/${newAction}`, body || {});
     },
-    onSuccess: () => { invalidateAll(); toast.success('อัปเดตสถานะสำเร็จ'); },
-    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+    // โพสต์/ยกเลิกจากแถว — รายการ + หน้ารายละเอียด/ฟอร์มแก้ไข/หน้าสลิปของใบนั้นที่เปิดไว้ต้องโหลดใหม่
+    onSuccess: (_data, { id }) => { invalidateExpenseDoc(queryClient, id); toast.success('อัปเดตสถานะสำเร็จ'); },
+    onError: toastActionError,
   });
 
   const openCreate = () => { setShowForm(true); };
   const openEdit = (e: Expense) => {
     // The form only supports PATCH for payroll. Other document types create new records.
-    if (e.status !== 'DRAFT' || e.documentType !== 'PAYROLL') return;
-    navigate(`/expenses/new?edit=${e.id}`);
+    // Payroll D4 คำตัดสิน 6 — ใบที่รออนุมัติ/อนุมัติแล้วแก้ได้ (บันทึกแล้ว server ตั้งกลับเป็นร่าง)
+    if (!isPayrollEditable(e)) return;
+    navigate(payrollEditPath(e.id));
   };
   const handleFormSaved = () => { setShowForm(false); invalidateAll(); };
 
@@ -384,7 +395,7 @@ export default function ExpensesPage() {
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="min-w-44">
-                  {e.status === 'DRAFT' && (
+                  {e.status === 'DRAFT' && !payrollReadOnly(e) && (
                     <>
                       <DropdownMenuItem disabled={e.documentType !== 'PAYROLL'} onSelect={() => openEdit(e)} className="min-h-11 flex items-center gap-2">
                         <Pencil className="size-4" /> แก้ไข
@@ -432,7 +443,7 @@ export default function ExpensesPage() {
                       {/* Legacy direct POST — hidden when approval workflow is on so
                           users follow the new lifecycle. Backend gate also rejects
                           direct POST on DRAFT when approvalEnabled is true. */}
-                      {!uiFlags.approvalEnabled && permissions.can('EXPENSE_POST') && (
+                      {!uiFlags.approvalEnabled && permissions.can('EXPENSE_POST') && e.documentType !== 'PAYROLL' && (
                         <DropdownMenuItem
                           onSelect={() => setConfirmDialog({ open: true, message: `โพสต์ "${e.number}"?`, action: () => actionMutation.mutate({ id: e.id, action: 'post' }) })}
                           className="min-h-11"
@@ -442,10 +453,24 @@ export default function ExpensesPage() {
                       )}
                     </>
                   )}
+                  {(e.status === 'PENDING_APPROVAL' || e.status === 'APPROVED') && isPayrollEditable(e) && !payrollReadOnly(e) && (
+                    <DropdownMenuItem onSelect={() => openEdit(e)} className="min-h-11 flex items-center gap-2">
+                      <Pencil className="size-4" /> แก้ไข
+                    </DropdownMenuItem>
+                  )}
+                  {/* Payroll D4 — อนุมัติ/ลงบัญชีใบเงินเดือนต้องผ่านด่าน (เวลาปิดงวด · วันติดธง · ยอดเปลี่ยน)
+                      ซึ่งหน้ารายละเอียดแสดงเหตุผลครบ ⇒ แถวใบเงินเดือนมี "เปิดใบ" แทน "อนุมัติเอกสาร"/"โพสต์" */}
+                  {isPayrollEditable(e) && (
+                    <DropdownMenuItem asChild className="min-h-11 flex items-center gap-2">
+                      <Link to={`/expenses/${e.id}`}>
+                        <Eye className="size-4" /> {OPEN_DOC_LABEL}
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                   {/* D1.2.1.6 — APPROVE button. Visible only on PENDING_APPROVAL +
                       current user is in approversList (or OWNER). Backend
                       assertUserCanApprove() re-validates. */}
-                  {e.status === 'PENDING_APPROVAL' && isApprover && (
+                  {e.status === 'PENDING_APPROVAL' && isApprover && e.documentType !== 'PAYROLL' && (
                     <DropdownMenuItem
                       onSelect={() =>
                         setConfirmDialog({
@@ -462,7 +487,7 @@ export default function ExpensesPage() {
                   )}
                   {/* APPROVED docs that didn't auto-post fall back to the legacy
                       POST action — OWNER can still finalize them manually. */}
-                  {e.status === 'APPROVED' && permissions.can('EXPENSE_POST') && (
+                  {e.status === 'APPROVED' && permissions.can('EXPENSE_POST') && e.documentType !== 'PAYROLL' && (
                     <DropdownMenuItem
                       onSelect={() =>
                         setConfirmDialog({
@@ -476,7 +501,7 @@ export default function ExpensesPage() {
                       โพสต์
                     </DropdownMenuItem>
                   )}
-                  {permissions.can('EXPENSE_CANCEL') && (
+                  {permissions.can('EXPENSE_CANCEL') && !payrollReadOnly(e) && (
                     <DropdownMenuItem
                       onSelect={() => { setReverseDialog({ open: true, id: e.id, number: e.number }); }}
                       className="min-h-11 text-destructive"
@@ -645,8 +670,10 @@ export default function ExpensesPage() {
                 className="w-full px-3 py-2 text-sm text-left hover:bg-muted">รายจ่าย (EX)</button>
               <button onClick={() => { setShowCreateMenu(false); navigate('/expenses/new?type=CN'); }}
                 className="w-full px-3 py-2 text-sm text-left hover:bg-muted">ใบลดหนี้ (CN)</button>
-              <button onClick={() => { setShowCreateMenu(false); navigate('/expenses/new?type=PR'); }}
-                className="w-full px-3 py-2 text-sm text-left hover:bg-muted">เงินเดือน (PR)</button>
+              {payrollManager && (
+                <button onClick={() => { setShowCreateMenu(false); navigate('/expenses/new?type=PR'); }}
+                  className="w-full px-3 py-2 text-sm text-left hover:bg-muted">เงินเดือน (PR)</button>
+              )}
               <button onClick={() => { setShowCreateMenu(false); navigate('/expenses/new?type=SE'); }}
                 className="w-full px-3 py-2 text-sm text-left hover:bg-muted">จ่ายเจ้าหนี้ (SE)</button>
             </div>

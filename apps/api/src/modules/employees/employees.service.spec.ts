@@ -1,6 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConflictException, NotFoundException } from '@nestjs/common';
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
 import { EmployeesService } from './employees.service';
+import { EmployeesController } from './employees.controller';
+import { PickableEmployeesQueryDto } from './dto/pickable-employees.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 
@@ -135,6 +139,54 @@ describe('EmployeesService', () => {
       );
       expect(JSON.stringify(res)).not.toContain('nationalId');
       expect(res[0]).toEqual(expect.not.objectContaining({ nationalId: expect.anything() }));
+    });
+
+    it('without a period still hides staff whose resignedDate has passed', async () => {
+      prisma.employeeProfile.findMany.mockResolvedValue([]);
+      const before = Date.now();
+      await service.pickable();
+      const where = prisma.employeeProfile.findMany.mock.calls[0][0].where;
+      expect(where.OR[0]).toEqual({ resignedDate: null });
+      expect(Object.keys(where.OR[1].resignedDate)).toEqual(['gt']);
+      expect(where.OR[1].resignedDate.gt.getTime()).toBeGreaterThanOrEqual(before);
+    });
+
+    it('with period=YYYY-MM keeps staff who resign on/after the first day of that month (Bangkok) — Decision 8', async () => {
+      prisma.employeeProfile.findMany.mockResolvedValue([
+        { id: 'e-2', baseSalary: '12000', ssoEligible: true,
+          user: { id: 'u-2', name: 'สมหญิง', nickname: null, employeeId: 'EMP-002' } },
+      ]);
+      const res = await service.pickable(undefined, '2026-10');
+      const where = prisma.employeeProfile.findMany.mock.calls[0][0].where;
+      // 1 ต.ค. 2569 00:00 เวลาไทย = 2026-09-30T17:00:00Z — ลาออกระหว่างเดือนยังเลือกได้ในใบเงินเดือนเดือนนั้น
+      expect(where.OR).toEqual([
+        { resignedDate: null },
+        { resignedDate: { gte: new Date('2026-09-30T17:00:00.000Z') } },
+      ]);
+      expect(res[0]).toEqual(expect.objectContaining({ userId: 'u-2' }));
+    });
+  });
+
+  describe('PickableEmployeesQueryDto', () => {
+    it('accepts search + YYYY-MM period', async () => {
+      const dto = plainToInstance(PickableEmployeesQueryDto, { search: 'สม', period: '2026-10' });
+      expect(await validate(dto, { whitelist: true })).toEqual([]);
+    });
+
+    it('rejects a Buddhist-year / malformed period with a Thai message', async () => {
+      const dto = plainToInstance(PickableEmployeesQueryDto, { period: '2569-10' });
+      const errors = await validate(dto, { whitelist: true });
+      expect(errors).toHaveLength(1);
+      expect(Object.values(errors[0].constraints ?? {})).toEqual([
+        'รูปแบบงวดต้องเป็น YYYY-MM (ค.ศ. 2000-2099) — ห้ามใช้ พ.ศ.',
+      ]);
+    });
+
+    it('the pickable route forwards search + period to the service', async () => {
+      const svc = { pickable: jest.fn().mockResolvedValue([]) };
+      const controller = new EmployeesController(svc as unknown as EmployeesService);
+      await controller.pickable({ search: 'สม', period: '2026-10' });
+      expect(svc.pickable).toHaveBeenCalledWith('สม', '2026-10');
     });
   });
 

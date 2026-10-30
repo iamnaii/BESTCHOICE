@@ -16,10 +16,12 @@ import SalesHistoryPage from '../SalesHistoryPage';
 
 const toastSuccess = vi.fn();
 const toastError = vi.fn();
+const toastInfo = vi.fn();
 vi.mock('sonner', () => ({
   toast: {
     success: (...a: unknown[]) => toastSuccess(...a),
     error: (...a: unknown[]) => toastError(...a),
+    info: (...a: unknown[]) => toastInfo(...a),
     loading: vi.fn(),
   },
 }));
@@ -120,6 +122,7 @@ beforeEach(() => {
   apiPost.mockReset();
   toastSuccess.mockReset();
   toastError.mockReset();
+  toastInfo.mockReset();
   exportToExcel.mockReset();
   exportToExcel.mockResolvedValue(undefined);
 });
@@ -198,6 +201,41 @@ describe('SalesHistoryPage — ยกเลิกใบขาย', () => {
     await userEvent.click(screen.getByRole('button', { name: /ยืนยันยกเลิก/ }));
     await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/sales/s1/void', { reason: 'คีย์ผิดรุ่นเครื่อง' }));
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith(expect.stringContaining('SA-0001')));
+  });
+
+  // Payroll D4 ส่วนที่ 2 (Task 6, กระดาน 6C) — ค่าคอมที่จ่ายแล้วในเงินเดือนไม่บล็อกการยกเลิกอีกต่อไป: ระบบหักคืนงวดถัดไปเอง
+  const VOID_NOTE = 'ถ้าค่าคอมของใบนี้จ่ายไปแล้วในเงินเดือน ระบบจะหักคืนจากค่าคอมในใบเงินเดือนงวดถัดไป หักได้ไม่เกินค่าคอมงวดนั้น ส่วนที่เหลือยกไปงวดต่อไป · ถ้าพนักงานลาออกแล้ว เจ้าของตัดสินที่หน้าค่าคอม';
+
+  it('the dialog says a commission already paid through payroll is deducted next period, and no longer points at a payout button', async () => {
+    renderWithRole('OWNER');
+    await userEvent.click(await screen.findByRole('button', { name: /ยกเลิกใบขาย/ }));
+    expect(screen.getByText(VOID_NOTE)).toBeInTheDocument();
+    expect(screen.queryByText(/สร้างรอบใหม่/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/กดสร้าง/)).not.toBeInTheDocument();
+  });
+
+  it('a void that claws back a paid commission adds a toast with the amount; 0.00 adds none', async () => {
+    apiPost.mockResolvedValueOnce({
+      data: { saleNumber: 'SA-0001', restoredProductIds: ['p1'], reversalEntryNumbers: ['JE-1'], paidCommissionClawback: '800.00' },
+    });
+    renderWithRole('OWNER');
+    await userEvent.click(await screen.findByRole('button', { name: /ยกเลิกใบขาย/ }));
+    await userEvent.type(screen.getByRole('textbox', { name: /เหตุผล/ }), 'คีย์ผิดรุ่นเครื่อง');
+    await userEvent.click(screen.getByRole('button', { name: /ยืนยันยกเลิก/ }));
+    await waitFor(() => expect(toastInfo).toHaveBeenCalledWith('ค่าคอม 800.00 บาทที่จ่ายแล้วจะหักคืนจากค่าคอมในเงินเดือนงวดถัดไป (ส่วนที่เกินค่าคอมงวดนั้นยกไปงวดต่อไป)'));
+    expect(toastSuccess).toHaveBeenCalledWith(expect.stringContaining('SA-0001'));
+  });
+
+  it('paidCommissionClawback 0.00 → only the usual success toast', async () => {
+    apiPost.mockResolvedValueOnce({
+      data: { saleNumber: 'SA-0001', restoredProductIds: ['p1'], reversalEntryNumbers: ['JE-1'], paidCommissionClawback: '0.00' },
+    });
+    renderWithRole('OWNER');
+    await userEvent.click(await screen.findByRole('button', { name: /ยกเลิกใบขาย/ }));
+    await userEvent.type(screen.getByRole('textbox', { name: /เหตุผล/ }), 'คีย์ผิดรุ่นเครื่อง');
+    await userEvent.click(screen.getByRole('button', { name: /ยืนยันยกเลิก/ }));
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalled());
+    expect(toastInfo).not.toHaveBeenCalled();
   });
 
   it('server ปฏิเสธ → แสดงข้อความจาก server ตรง ๆ', async () => {

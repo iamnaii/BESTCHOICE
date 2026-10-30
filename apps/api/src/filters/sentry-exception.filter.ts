@@ -45,7 +45,21 @@ export class SentryExceptionFilter extends BaseExceptionFilter {
     //    ConflictExceptions) — R47: CustomerCreateDialog/useOcrFlow's
     //    "รวมกับลูกค้าเดิมคนนี้" merge UX never fired against the real API
     //    because both keys were dropped here.
-    const details: { errors?: unknown[]; existingCustomer?: unknown; field?: unknown } = {};
+    //  - `code` / `closableAt` / `days` / `diffs` / `documentNumber` (Payroll D4 —
+    //    payroll-post-gate.service.ts 409s + MANUAL_OT_DUPLICATE / NOT_IN_BRANCH):
+    //    the payroll page picks its message by `code`, shows when submit/post opens
+    //    (`closableAt`), the device-conflict days (`days`), the stale diff table
+    //    (`diffs`) and the other payroll holding the OT (`documentNumber`).
+    const details: {
+      errors?: unknown[];
+      existingCustomer?: unknown;
+      field?: unknown;
+      code?: unknown;
+      closableAt?: unknown;
+      days?: unknown;
+      diffs?: unknown;
+      documentNumber?: unknown;
+    } = {};
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
@@ -60,6 +74,9 @@ export class SentryExceptionFilter extends BaseExceptionFilter {
           if (Array.isArray(resp.errors)) details.errors = resp.errors;
           if (resp.existingCustomer !== undefined) details.existingCustomer = resp.existingCustomer;
           if (resp.field !== undefined) details.field = resp.field;
+          for (const key of ['code', 'closableAt', 'days', 'diffs', 'documentNumber'] as const) {
+            if (resp[key] !== undefined) details[key] = resp[key];
+          }
         }
       }
     }

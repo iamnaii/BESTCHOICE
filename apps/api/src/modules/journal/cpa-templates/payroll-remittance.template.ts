@@ -11,6 +11,7 @@ import {
   CASH_ACCOUNT_CODES,
   SHOP_CASH_ACCOUNT_CODES,
 } from '../../../constants/cash-account.constants';
+import { payrollLineWithheld } from '../../expense-documents/payroll-system/payroll-pay';
 
 /**
  * Payroll remittance JEs — นำส่ง ปกส. (สปส.1-10) + ภ.ง.ด.1 (payroll round 2,
@@ -248,7 +249,10 @@ export class PayrollRemittanceTemplate {
     }
   }
 
-  /** Σ field over PayrollLine of POSTED docs in (period, scope) + จำนวนคนที่มียอด. */
+  /**
+   * Σ field over PayrollLine of POSTED docs in (period, scope) + จำนวนคนที่มียอด.
+   * `whtAmount` = ภาษีเงินเดือน + หัก ณ ที่จ่ายค่าคอม (`payrollLineWithheld` — ยื่น ภ.ง.ด.1 ใบเดียวกัน คำตัดสินเจ้าของ 2026-10-29)
+   */
   private async periodSums(
     tx: Prisma.TransactionClient,
     scope: 'SHOP' | 'FINANCE',
@@ -257,7 +261,9 @@ export class PayrollRemittanceTemplate {
   ): Promise<{ sum: Decimal; count: number }> {
     const lines = await tx.payrollLine.findMany({
       where: {
-        [field]: { gt: 0 },
+        ...(field === 'ssoEmployee'
+          ? { ssoEmployee: { gt: 0 } }
+          : { OR: [{ whtAmount: { gt: 0 } }, { customDeduction: { some: { source: 'COMMISSION_WHT', amount: { gt: 0 } } } }] }),
         payroll: {
           payrollPeriod: period,
           entityScope: scope,
@@ -268,11 +274,14 @@ export class PayrollRemittanceTemplate {
           },
         },
       },
-      select: { ssoEmployee: true, whtAmount: true },
+      select: {
+        ssoEmployee: true,
+        whtAmount: true,
+        customDeduction: { where: { source: 'COMMISSION_WHT' }, select: { amount: true, source: true } },
+      },
     });
     const sum = lines.reduce(
-      (s, l) =>
-        s.plus((field === 'ssoEmployee' ? l.ssoEmployee : l.whtAmount).toString()),
+      (s, l) => s.plus((field === 'ssoEmployee' ? l.ssoEmployee : payrollLineWithheld(l)).toString()),
       new Decimal(0),
     );
     return { sum, count: lines.length };

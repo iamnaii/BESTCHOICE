@@ -26,7 +26,7 @@ import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { getStatusBadgeProps, saleTypeMap, contractStatusMap } from '@/lib/status-badges';
 import { Download, RotateCcw, Ban, Info, Package } from 'lucide-react';
-import { formatDateShort, formatDateTime } from '@/utils/formatters';
+import { formatDateShort, formatDateTime, formatNumberDecimal } from '@/utils/formatters';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Textarea } from '@/components/ui/textarea';
@@ -195,14 +195,22 @@ export default function SalesHistoryPage() {
   }, [salesData, page]);
   const voidMutation = useMutation({
     mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
-      const { data } = await api.post<{ saleNumber: string; restoredProductIds: string[]; reversalEntryNumbers: string[] }>(
-        `/sales/${id}/void`,
-        { reason },
-      );
+      const { data } = await api.post<{
+        saleNumber: string;
+        restoredProductIds: string[];
+        reversalEntryNumbers: string[];
+        /** D4 ส่วนที่ 2 — ค่าคอมที่จ่ายแล้วในเงินเดือนและถูกเรียกคืนจากใบนี้ (2 ตำแหน่ง · '0.00' = ไม่มี) */
+        paidCommissionClawback?: string;
+      }>(`/sales/${id}/void`, { reason });
       return data;
     },
     onSuccess: (data) => {
       toast.success(`ยกเลิกใบขาย ${data.saleNumber} แล้ว — คืนสินค้าเข้าสต็อก ${data.restoredProductIds.length} รายการ`);
+      // Decision 6 — ยอดจริงอยู่ในคำตอบเท่านั้น (รายการใบขายไม่มีข้อมูลค่าคอม) ⇒ บอกใน toast แยก
+      const clawedBack = parseFloat(data.paidCommissionClawback ?? '0') || 0;
+      if (clawedBack > 0) {
+        toast.info(`ค่าคอม ${formatNumberDecimal(clawedBack, 2)} บาทที่จ่ายแล้วจะหักคืนจากค่าคอมในเงินเดือนงวดถัดไป (ส่วนที่เกินค่าคอมงวดนั้นยกไปงวดต่อไป)`);
+      }
       setVoidTarget(null);
       setVoidReason('');
       void invalidateSalesQueries(queryClient, 'sale-voided');
@@ -872,7 +880,10 @@ export default function SalesHistoryPage() {
               <li>สินค้าในใบ (รวมของแถม) กลับเข้าสต็อกพร้อมขาย</li>
               <li>กลับรายการบัญชีฝั่ง SHOP (รายได้/ต้นทุน) ของใบนี้</li>
               <li>เรียกคืนค่าคอมมิชชันของพนักงานขายจากใบนี้</li>
-              <li>ถ้ามีร่างรอบจ่ายค่าคอม (สถานะร่าง) ที่รวมใบนี้ ร่างนั้นจะถูกลบ — กดสร้างรอบใหม่ที่หน้าค่าคอมเพื่อได้ยอดที่ถูกต้อง</li>
+              {/* D4 ส่วนที่ 2 (กระดาน 6C) — ค่าคอมที่จ่ายแล้วไม่บล็อกการยกเลิกอีกต่อไป */}
+              <li>ถ้าค่าคอมของใบนี้จ่ายไปแล้วในเงินเดือน ระบบจะหักคืนจากค่าคอมในใบเงินเดือนงวดถัดไป หักได้ไม่เกินค่าคอมงวดนั้น ส่วนที่เหลือยกไปงวดต่อไป · ถ้าพนักงานลาออกแล้ว เจ้าของตัดสินที่หน้าค่าคอม</li>
+              {/* รอบจ่ายแบบเดิมสร้างใหม่ไม่ได้แล้ว (จ่ายผ่านใบเงินเดือน) — ไม่ชี้ปุ่มที่ไม่มี */}
+              <li>ถ้ามีร่างรอบจ่ายค่าคอมแบบเดิม (สถานะร่าง) ที่รวมใบนี้ ร่างนั้นจะถูกลบไปด้วย</li>
             </ul>
           </div>
           <div className="space-y-1.5">

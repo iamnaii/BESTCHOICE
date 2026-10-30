@@ -51,6 +51,7 @@ import { ReceiptsService } from '../../receipts/receipts.service';
 import { RefundsService } from '../../refunds/refunds.service';
 import { ReceivableReconService } from '../../receivable-recon/receivable-recon.service';
 import type { AuditCheckResult } from '../data-audit.types';
+import { ContractTraceService } from '../services/contract-trace.service';
 import { DataAuditChecksService } from '../services/data-audit-checks.service';
 
 /**
@@ -824,6 +825,25 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
           },
         }),
       ).toBeGreaterThan(0);
+
+      // trace รายสัญญา (Task 18 — ใช้ตัวตรวจชุดเดียวกัน scope ที่สัญญานั้น): สัญญาปกติที่มีขา SHOP ของการเปิดสัญญา · สัญญานำเข้า
+      // ผ่อนอยู่ · สัญญาประวัติ (ไม่มีตารางงวด) — ไม่มีข้อ FAIL (เดิม 'CONTRACT' / 'CONTRACT_COGS' / 11-2102 / InterCompanyTransaction
+      // ทำให้ติดทุกสัญญา)
+      const trace = new ContractTraceService(prisma as unknown as PrismaService, checks);
+      const traced: Record<string, string[]> = {};
+      for (const [key, id] of [
+        ['A1', native.get('A1')!],
+        ['L1', legacy.get('L1')!],
+        ['H1', legacy.get('H1')!],
+      ] as const) {
+        const t = await trace.traceContract(id);
+        traced[key] = Object.values(t.checks)
+          .flat()
+          .filter((c) => c.status === 'FAIL')
+          .map((c) => c.name);
+        expect(t.checks.commissionTotal.status).toBe('SKIPPED');
+      }
+      expect(traced).toEqual({ A1: [], L1: [], H1: [] });
     },
     LONG,
   );

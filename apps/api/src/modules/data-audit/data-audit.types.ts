@@ -15,7 +15,8 @@ export interface AuditCheckResult {
 
 export interface ContractTraceCheck {
   name: string;
-  status: 'PASS' | 'FAIL' | 'WARN';
+  /** `SKIPPED` — same meaning as on `AuditCheckResult` (retired assertion, dated reason in `details`) */
+  status: 'PASS' | 'FAIL' | 'WARN' | 'SKIPPED';
   details: unknown;
 }
 
@@ -41,5 +42,6 @@ export interface ContractTraceResult {
     passed: number;
     failed: number;
     warnings: number;
+    skipped: number;
   };
 }

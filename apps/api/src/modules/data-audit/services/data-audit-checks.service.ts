@@ -24,8 +24,47 @@ const CONTRACT_ACTIVATION_TAG = '1A';
 const EXCHANGE_NEW_CONTRACT_FLOW = 'exchange-new-contract-1a';
 /** ปิดยอดก่อนกำหนด JP4 (รายการระดับสัญญา ไม่มี `paymentId`) — `contracts/contract-payment.service.ts:842-843` */
 const EARLY_PAYOFF_FLOW = 'early-payoff';
-/** ต้นทุนขายฝั่ง SHOP ตอนเปิดสัญญา — `cpa-templates/shop-inventory-transfer.template.ts:321` */
-const SHOP_INVENTORY_TRANSFER_COGS_FLOW = 'shop-inventory-transfer-cogs';
+/** ต้นทุนขายฝั่ง SHOP ตอนเปิดสัญญา (JE A) — `cpa-templates/shop-inventory-transfer.template.ts:321` */
+export const SHOP_INVENTORY_TRANSFER_COGS_FLOW = 'shop-inventory-transfer-cogs';
+/**
+ * รายได้ + ลูกหนี้ FINANCE ฝั่ง SHOP ตอนเปิดสัญญา (JE B — `Dr S11-3001 / S11-3002`) — คู่ระหว่างกิจการของ 1A (`Cr 21-1101 /
+ * 21-1102`) · `cpa-templates/shop-inventory-transfer.template.ts:346`
+ */
+export const SHOP_INVENTORY_TRANSFER_REVENUE_FLOW = 'shop-inventory-transfer-revenue';
+
+/**
+ * รายการเปิดสัญญา (ตั้งลูกหนี้ครั้งแรก) สามรูป: 1A · เปิดสัญญาใหม่ของการเปลี่ยนเครื่อง A.1 · ยอดยกมาของสัญญานำเข้า — ตัวอ่านฝั่ง TS
+ * ของเงื่อนไขเดียวกับ `CONTRACT_WITHOUT_OPENING_JOURNAL`
+ */
+export function isContractOpeningEntry(metadata: Prisma.JsonValue | null | undefined): boolean {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return false;
+  const m = metadata as Prisma.JsonObject;
+  return (
+    m.tag === CONTRACT_ACTIVATION_TAG ||
+    m.flow === EXCHANGE_NEW_CONTRACT_FLOW ||
+    m.flow === LEGACY_OPENING_FLOW
+  );
+}
+
+/**
+ * สัญญา (alias **`c`**) ที่ไม่มีรายการเปิดสัญญา (ผูก `metadata.contractId`) และไม่ใช่สัญญาประวัติที่นำเข้า (`legacy_contract_code`
+ * ไม่ว่าง + ไม่มีตารางงวด — ตัวนำเข้าไม่ลงบัญชีให้โดยตั้งใจ) — เงื่อนไขเดียวของ `checkOrphanContracts` และ dry-run ของ
+ * `AuditBackfillService`
+ */
+export const CONTRACT_WITHOUT_OPENING_JOURNAL = Prisma.sql`(
+  NOT EXISTS (
+    SELECT 1 FROM journal_entries je
+    WHERE je.metadata->>'contractId' = c.id
+      AND je.status = 'POSTED'
+      AND je.deleted_at IS NULL
+      AND (je.metadata->>'tag' = ${CONTRACT_ACTIVATION_TAG}
+           OR je.metadata->>'flow' IN (${EXCHANGE_NEW_CONTRACT_FLOW}, ${LEGACY_OPENING_FLOW}))
+  )
+  AND NOT (
+    c.legacy_contract_code IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM installment_schedules s WHERE s.contract_id = c.id)
+  )
+)`;
 /** ส่วนที่แถวงวดรับเกินยอดเรียกเก็บได้ — เศษปัดของใบที่ปิดงวด ≤ 1 บาท (Tolerance Policy `.claude/rules/accounting.md`) */
 const INSTALLMENT_OVERPAY_TOLERANCE = new Prisma.Decimal('1.00');
 /** VAT รอเรียกเก็บสองขาต้องตรงกันทุกสตางค์ (ยอด 2 ตำแหน่ง) */
@@ -132,18 +171,7 @@ export class DataAuditChecksService {
       WHERE c.deleted_at IS NULL
         AND c.status IN ('ACTIVE', 'OVERDUE', 'DEFAULT', 'COMPLETED')
         ${contractScopeFilter('c.id', scope)}
-        AND NOT EXISTS (
-          SELECT 1 FROM journal_entries je
-          WHERE je.metadata->>'contractId' = c.id
-            AND je.status = 'POSTED'
-            AND je.deleted_at IS NULL
-            AND (je.metadata->>'tag' = ${CONTRACT_ACTIVATION_TAG}
-                 OR je.metadata->>'flow' IN (${EXCHANGE_NEW_CONTRACT_FLOW}, ${LEGACY_OPENING_FLOW}))
-        )
-        AND NOT (
-          c.legacy_contract_code IS NOT NULL
-          AND NOT EXISTS (SELECT 1 FROM installment_schedules s WHERE s.contract_id = c.id)
-        )
+        AND ${CONTRACT_WITHOUT_OPENING_JOURNAL}
       ORDER BY c.created_at DESC
       LIMIT 50
     `;

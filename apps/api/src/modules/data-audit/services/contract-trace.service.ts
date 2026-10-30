@@ -1,11 +1,70 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
+import {
+  RECEIVABLE_RECON_CONTRACT_STATUSES,
+  type ContractScope,
+} from '../../journal/contract-receivable-recon';
 import { ContractTraceCheck, ContractTraceResult } from '../data-audit.types';
+import {
+  DataAuditChecksService,
+  isContractOpeningEntry,
+  SHOP_INVENTORY_TRANSFER_COGS_FLOW,
+  SHOP_INVENTORY_TRANSFER_REVENUE_FLOW,
+} from './data-audit-checks.service';
 
+/** สถานะที่ผ่านการเปิดสัญญาแล้ว (ต้องมีรายการเปิดสัญญาและขา SHOP ของการเปิดสัญญา) */
+const ACTIVATED_STATUSES = [
+  'ACTIVE',
+  'OVERDUE',
+  'DEFAULT',
+  'COMPLETED',
+  'EARLY_PAYOFF',
+  'CLOSED_BAD_DEBT',
+];
+const SHOP_FINANCE_RECEIVABLE_ACCOUNTS = ['S11-3001', 'S11-3002'];
+
+type TraceLine = { accountCode: string; debit: Prisma.Decimal; credit: Prisma.Decimal };
+type TraceJournal = {
+  referenceId?: string | null;
+  metadata?: Prisma.JsonValue;
+  lines: TraceLine[];
+};
+
+const money = (v: Prisma.Decimal) => v.toFixed(2);
+const zero = () => new Prisma.Decimal(0);
+const flowOf = (j: TraceJournal) =>
+  j.metadata && typeof j.metadata === 'object' && !Array.isArray(j.metadata)
+    ? (j.metadata as Prisma.JsonObject).flow
+    : undefined;
+const balanceOf = (lines: TraceLine[]) => {
+  const totalDebit = lines.reduce((s, l) => s.plus(l.debit), zero());
+  const totalCredit = lines.reduce((s, l) => s.plus(l.credit), zero());
+  return {
+    totalDebit: money(totalDebit),
+    totalCredit: money(totalCredit),
+    balanced: totalDebit.minus(totalCredit).abs().lt('0.01'),
+  };
+};
+
+/**
+ * ไล่ตรวจสัญญาทีละสัญญา (`GET /data-audit/trace-contract/:id` · `trace-all`) — ไม่มีหน้าเว็บเรียก (e2e smoke บันทึกผลอย่างเดียว)
+ *
+ * **2026-10-30 (Task 18):** อ่านตามแบบบัญชีปัจจุบัน (Phase A.4) และใช้ตัวตรวจกลางคืนตัวเดียวกันที่ scope ไว้ที่สัญญานี้ — ไม่มีสูตรที่สอง:
+ * - รายการของสัญญา = `metadata.contractId` (เดิมหา `referenceId` + `reference_type 'CONTRACT' / 'CONTRACT_COGS'` ที่ไม่มีผู้เขียน)
+ * - เปิดสัญญา = 1A / A.1 / ยอดยกมาของสัญญานำเข้า (`isContractOpeningEntry`) · สัญญาประวัติที่นำเข้า (ไม่มีตารางงวด) ไม่ต้องมี
+ * - ต้นทุนขาย / ระหว่างกิจการ = ขา SHOP ของการเปิดสัญญา (`ShopInventoryTransferTemplate` JE A / JE B) — เดิมอ่าน
+ *   `InterCompanyTransaction` ซึ่งเขียนเฉพาะจาก `POST /inter-company` ด้วยมือ (ไม่มีเส้นทางเปิดสัญญาเขียน) · สัญญานำเข้ายกเว้น
+ * - งวดที่ไม่มีรายการผูก `paymentId` = คำตัดสินของ `orphan_payments` (ล้าง 11-2103 ของงวด · JP4 · งวดนำเข้าที่ยังไม่ถูกแตะ)
+ * - ลูกหนี้ = `hp_receivable_reconciliation` (เดิมอ่าน 11-2102 ค่าเผื่อหนี้สงสัยจะสูญ) · VAT = `vat_mismatch` (เดิมเทียบ 21-2101
+ *   ของใบรับกับ `Payment.vatAmount`) · ค่าคอม = `commission_mismatch` (SKIPPED)
+ */
 @Injectable()
 export class ContractTraceService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private checks: DataAuditChecksService,
+  ) {}
 
   // ═══════════════════════════════════════════════════════════════
   // Contract Lifecycle Trace (Phase 2)
@@ -32,9 +91,14 @@ export class ContractTraceService {
       throw new NotFoundException(`ไม่พบสัญญา ID: ${contractId}`);
     }
 
-    // Load all journal entries for this contract (activation, COGS)
+    // Every template entry of the contract carries metadata.contractId (1A, A.1, the legacy opening,
+    // both SHOP activation legs, 2A, receipts, reversals …).
     const contractJournals = await this.prisma.journalEntry.findMany({
-      where: { referenceId: contractId, deletedAt: null, status: 'POSTED' },
+      where: {
+        metadata: { path: ['contractId'], equals: contractId },
+        deletedAt: null,
+        status: 'POSTED',
+      },
       include: { lines: { where: { deletedAt: null } } },
     });
 
@@ -68,21 +132,22 @@ export class ContractTraceService {
           })
         : [];
 
-    // Load inter-company transaction
-    const interCompany = await this.prisma.interCompanyTransaction.findFirst({
-      where: { contractId, deletedAt: null },
-    });
+    const scope: ContractScope = { contractIds: [contractId] };
+    // ตัวแยกเดียวกับตรวจกลางคืน (`legacy_contract_code IS NOT NULL` — ผู้เขียนคนเดียวคือตัวนำเข้า)
+    const imported = contract.legacyContractCode != null;
 
-    // Run lifecycle checks
     const creation = this.traceCreation(contract);
-    const activation = this.traceActivation(contract, contractJournals);
-    const cogs = this.traceCogs(contract, contractJournals);
-    const interCompanyCheck = this.traceInterCompany(contract, interCompany);
-    const payments = contract.payments.map((p) => this.tracePayment(p, paymentJournals));
-    const hpReceivable = this.traceHpBalance(contract, contractJournals, paymentJournals);
-    const vatTotal = this.traceVatTotal(contract, paymentJournals);
-    const commissionTotal = this.traceCommissionTotal(contract, paymentJournals);
-    const completion = this.traceCompletion(contract);
+    const activation = await this.traceActivation(contract, contractJournals, imported);
+    const cogs = this.traceCogs(contract, contractJournals, imported);
+    const interCompanyCheck = this.traceInterCompany(contract, contractJournals, imported);
+    const orphanPaymentIds = await this.orphanPaymentIds(scope);
+    const payments = contract.payments.map((p) =>
+      this.tracePayment(p, paymentJournals, orphanPaymentIds),
+    );
+    const hpReceivable = await this.traceHpBalance(contract, scope);
+    const vatTotal = await this.traceVatTotal(contract, scope);
+    const commissionTotal = await this.traceCommissionTotal();
+    const completion = this.traceCompletion(contract, imported);
 
     const allChecks = [
       creation,
@@ -95,9 +160,8 @@ export class ContractTraceService {
       commissionTotal,
       completion,
     ];
-    const passed = allChecks.filter((c) => c.status === 'PASS').length;
-    const failed = allChecks.filter((c) => c.status === 'FAIL').length;
-    const warnings = allChecks.filter((c) => c.status === 'WARN').length;
+    const count = (status: ContractTraceCheck['status']) =>
+      allChecks.filter((c) => c.status === status).length;
 
     return {
       contract: {
@@ -118,9 +182,10 @@ export class ContractTraceService {
       },
       summary: {
         totalChecks: allChecks.length,
-        passed,
-        failed,
-        warnings,
+        passed: count('PASS'),
+        failed: count('FAIL'),
+        warnings: count('WARN'),
+        skipped: count('SKIPPED'),
       },
     };
   }
@@ -180,129 +245,127 @@ export class ContractTraceService {
     };
   }
 
-  private traceActivation(
-    contract: { status: string },
-    journals: {
-      referenceType: string | null;
-      lines: { debit: Prisma.Decimal; credit: Prisma.Decimal }[];
-    }[],
-  ): ContractTraceCheck {
-    const activationStatuses = [
-      'ACTIVE',
-      'OVERDUE',
-      'DEFAULT',
-      'COMPLETED',
-      'EARLY_PAYOFF',
-      'CLOSED_BAD_DEBT',
-    ];
-    if (!activationStatuses.includes(contract.status)) {
+  /** รายการเปิดสัญญา: 1A / A.1 / ยอดยกมาของสัญญานำเข้า — กติกาเดียวกับ `orphan_contracts` (`CONTRACT_WITHOUT_OPENING_JOURNAL`) */
+  private async traceActivation(
+    contract: { id: string; status: string },
+    journals: TraceJournal[],
+    imported: boolean,
+  ): Promise<ContractTraceCheck> {
+    if (!ACTIVATED_STATUSES.includes(contract.status)) {
       return {
         name: 'activation',
         status: 'PASS',
         details: 'สัญญายังไม่ active — ไม่ต้องมี journal',
       };
     }
-
-    const activationJournal = journals.find((j) => j.referenceType === 'CONTRACT');
-    if (!activationJournal) {
+    const opening = journals.find((j) => isContractOpeningEntry(j.metadata ?? null));
+    if (!opening) {
+      const scheduleRows = imported
+        ? await this.prisma.installmentSchedule.count({ where: { contractId: contract.id } })
+        : 1;
+      if (scheduleRows === 0) {
+        return {
+          name: 'activation',
+          status: 'PASS',
+          details: 'สัญญาประวัติที่นำเข้า (ไม่มีตารางงวด) — ตัวนำเข้าไม่ลงรายการเปิดสัญญาโดยตั้งใจ',
+        };
+      }
       return {
         name: 'activation',
         status: 'FAIL',
-        details: 'ไม่พบ journal entry สำหรับ CONTRACT activation',
+        details:
+          'ไม่พบรายการเปิดสัญญา (1A / เปิดสัญญาใหม่ของการเปลี่ยนเครื่อง / ยอดยกมาของสัญญานำเข้า)',
       };
     }
-
-    const totalDebit = activationJournal.lines.reduce((sum, l) => sum + Number(l.debit), 0);
-    const totalCredit = activationJournal.lines.reduce((sum, l) => sum + Number(l.credit), 0);
-    const balanced = Math.abs(totalDebit - totalCredit) < 0.01;
-
-    return {
-      name: 'activation',
-      status: balanced ? 'PASS' : 'FAIL',
-      details: { totalDebit, totalCredit, balanced },
-    };
+    const balance = balanceOf(opening.lines);
+    return { name: 'activation', status: balance.balanced ? 'PASS' : 'FAIL', details: balance };
   }
 
+  /** ต้นทุนขายฝั่ง SHOP ของการเปิดสัญญา — กติกาเดียวกับ `missing_cogs` */
   private traceCogs(
     contract: { status: string; product: { costPrice: Prisma.Decimal } | null },
-    journals: {
-      referenceType: string | null;
-      lines: { debit: Prisma.Decimal; credit: Prisma.Decimal }[];
-    }[],
+    journals: TraceJournal[],
+    imported: boolean,
   ): ContractTraceCheck {
-    const activationStatuses = [
-      'ACTIVE',
-      'OVERDUE',
-      'DEFAULT',
-      'COMPLETED',
-      'EARLY_PAYOFF',
-      'CLOSED_BAD_DEBT',
-    ];
-    if (!activationStatuses.includes(contract.status)) {
+    if (!ACTIVATED_STATUSES.includes(contract.status)) {
       return { name: 'cogs', status: 'PASS', details: 'สัญญายังไม่ active' };
     }
-
-    const costPrice = Number(contract.product?.costPrice ?? 0);
-    if (costPrice <= 0) {
+    if (imported) {
+      return {
+        name: 'cogs',
+        status: 'PASS',
+        details: 'สัญญานำเข้า — การขายฝั่งหน้าร้านอยู่ใน PEAK (ตัวนำเข้าไม่ลงขา SHOP)',
+      };
+    }
+    const costPrice = new Prisma.Decimal(contract.product?.costPrice ?? 0);
+    if (costPrice.lte(0)) {
       return { name: 'cogs', status: 'PASS', details: 'costPrice = 0 — ไม่ต้องมี COGS journal' };
     }
-
-    const cogsJournal = journals.find((j) => j.referenceType === 'CONTRACT_COGS');
+    const cogsJournal = journals.find((j) => flowOf(j) === SHOP_INVENTORY_TRANSFER_COGS_FLOW);
     if (!cogsJournal) {
       return {
         name: 'cogs',
         status: 'FAIL',
-        details: `costPrice = ${costPrice} แต่ไม่พบ COGS journal`,
+        details: `costPrice = ${money(costPrice)} แต่ไม่พบต้นทุนขายฝั่ง SHOP ของการเปิดสัญญา (flow ${SHOP_INVENTORY_TRANSFER_COGS_FLOW})`,
       };
     }
-
-    const totalDebit = cogsJournal.lines.reduce((sum, l) => sum + Number(l.debit), 0);
-    const totalCredit = cogsJournal.lines.reduce((sum, l) => sum + Number(l.credit), 0);
-    const balanced = Math.abs(totalDebit - totalCredit) < 0.01;
-
+    const balance = balanceOf(cogsJournal.lines);
     return {
       name: 'cogs',
-      status: balanced ? 'PASS' : 'FAIL',
-      details: { costPrice, totalDebit, totalCredit, balanced },
+      status: balance.balanced ? 'PASS' : 'FAIL',
+      details: { costPrice: money(costPrice), ...balance },
     };
   }
 
+  /** ลูกหนี้ FINANCE ฝั่ง SHOP (S11-3001/S11-3002) ที่ตั้งตอนเปิดสัญญา — คู่ระหว่างกิจการของ 21-1101/21-1102 ใน 1A */
   private traceInterCompany(
     contract: { status: string },
-    interCompany: unknown | null,
+    journals: TraceJournal[],
+    imported: boolean,
   ): ContractTraceCheck {
-    const activationStatuses = [
-      'ACTIVE',
-      'OVERDUE',
-      'DEFAULT',
-      'COMPLETED',
-      'EARLY_PAYOFF',
-      'CLOSED_BAD_DEBT',
-    ];
-    if (!activationStatuses.includes(contract.status)) {
+    if (!ACTIVATED_STATUSES.includes(contract.status)) {
       return { name: 'interCompany', status: 'PASS', details: 'สัญญายังไม่ active' };
     }
+    if (imported) {
+      return {
+        name: 'interCompany',
+        status: 'PASS',
+        details: 'สัญญานำเข้า — ไม่มีรายการระหว่างกิจการในระบบนี้ (การขายฝั่งหน้าร้านอยู่ใน PEAK)',
+      };
+    }
+    const revenue = journals.find((j) => flowOf(j) === SHOP_INVENTORY_TRANSFER_REVENUE_FLOW);
+    if (!revenue) {
+      return {
+        name: 'interCompany',
+        status: 'FAIL',
+        details: `ไม่พบลูกหนี้ FINANCE ฝั่ง SHOP ของการเปิดสัญญา (flow ${SHOP_INVENTORY_TRANSFER_REVENUE_FLOW})`,
+      };
+    }
+    const receivable = revenue.lines
+      .filter((l) => SHOP_FINANCE_RECEIVABLE_ACCOUNTS.includes(l.accountCode))
+      .reduce((s, l) => s.plus(l.debit).minus(l.credit), zero());
+    const balance = balanceOf(revenue.lines);
     return {
       name: 'interCompany',
-      status: interCompany ? 'PASS' : 'FAIL',
-      details: interCompany ? 'InterCompanyTransaction found' : 'ไม่พบ InterCompanyTransaction',
+      status: balance.balanced ? 'PASS' : 'FAIL',
+      details: { shopReceivableFromFinance: money(receivable), ...balance },
     };
+  }
+
+  /** งวดที่ `orphan_payments` ตัดสินว่าไม่มีรายการหนุน (คำตัดสินเดียวกับตรวจกลางคืน) */
+  private async orphanPaymentIds(scope: ContractScope): Promise<Set<string>> {
+    const result = await this.checks.checkOrphanPayments(scope);
+    return new Set((result.details as { id: string }[]).map((row) => row.id));
   }
 
   private tracePayment(
     payment: { id: string; installmentNo: number; status: string; amountPaid: Prisma.Decimal },
-    paymentJournals: {
-      referenceId: string | null;
-      metadata?: Prisma.JsonValue;
-      lines: { debit: Prisma.Decimal; credit: Prisma.Decimal }[];
-    }[],
+    paymentJournals: TraceJournal[],
+    orphanPaymentIds: Set<string>,
   ): ContractTraceCheck {
-    if (payment.status === 'PENDING' || Number(payment.amountPaid) === 0) {
-      return {
-        name: `payment_${payment.installmentNo}`,
-        status: 'PASS',
-        details: 'ยังไม่ชำระ — ไม่ต้องมี journal',
-      };
+    const name = `payment_${payment.installmentNo}`;
+    if (payment.status === 'PENDING' || new Prisma.Decimal(payment.amountPaid).isZero()) {
+      return { name, status: 'PASS', details: 'ยังไม่ชำระ — ไม่ต้องมี journal' };
     }
 
     // PR-843/I2 Phase 3 PR 3.1: a payment may have MULTIPLE receipt JEs sharing
@@ -314,8 +377,17 @@ export class ContractTraceService {
         j.referenceId === payment.id,
     );
     if (journals.length === 0) {
+      // ไม่มีรายการผูก paymentId — ยังหนุนได้แบบเดียวกับ orphan_payments: รายการล้าง 11-2103 ของงวด (รอบกลางคืนหักเงินรับล่วงหน้า /
+      // เงินพัก) · JP4 ระดับสัญญา · งวดนำเข้าที่ยังไม่มีเส้นทางรับเงินแตะ
+      if (!orphanPaymentIds.has(payment.id)) {
+        return {
+          name,
+          status: 'PASS',
+          details: { installmentNo: payment.installmentNo, backedWithoutPaymentId: true },
+        };
+      }
       return {
-        name: `payment_${payment.installmentNo}`,
+        name,
         status: 'FAIL',
         details: `งวดที่ ${payment.installmentNo} ชำระแล้ว (${payment.amountPaid}) แต่ไม่พบ journal`,
       };
@@ -324,124 +396,96 @@ export class ContractTraceService {
     // Aggregate Dr/Cr across ALL matching JEs — for a multi-receipt payment the
     // combined entry must still balance (each receipt JE balances individually,
     // so the sum does too).
-    const allLines = journals.flatMap((j) => j.lines);
-    const totalDebit = allLines.reduce((sum, l) => sum + Number(l.debit), 0);
-    const totalCredit = allLines.reduce((sum, l) => sum + Number(l.credit), 0);
-    const balanced = Math.abs(totalDebit - totalCredit) < 0.01;
-
+    const balance = balanceOf(journals.flatMap((j) => j.lines));
     return {
-      name: `payment_${payment.installmentNo}`,
-      status: balanced ? 'PASS' : 'FAIL',
-      details: {
-        installmentNo: payment.installmentNo,
-        journalCount: journals.length,
-        totalDebit,
-        totalCredit,
-        balanced,
-      },
+      name,
+      status: balance.balanced ? 'PASS' : 'FAIL',
+      details: { installmentNo: payment.installmentNo, journalCount: journals.length, ...balance },
     };
   }
 
-  private traceHpBalance(
-    contract: {
-      status: string;
-      payments: { status: string; amountDue: Prisma.Decimal; amountPaid: Prisma.Decimal }[];
-    },
-    contractJournals: {
-      lines: { accountCode: string; debit: Prisma.Decimal; credit: Prisma.Decimal }[];
-    }[],
-    paymentJournals: {
-      lines: { accountCode: string; debit: Prisma.Decimal; credit: Prisma.Decimal }[];
-    }[],
-  ): ContractTraceCheck {
-    const activationStatuses = ['ACTIVE', 'OVERDUE', 'DEFAULT'];
-    if (!activationStatuses.includes(contract.status)) {
+  /** `hp_receivable_reconciliation` ของสัญญานี้ (ตัวคำนวณรายสัญญา `journal/contract-receivable-recon.ts`) */
+  private async traceHpBalance(
+    contract: { status: string },
+    scope: ContractScope,
+  ): Promise<ContractTraceCheck> {
+    if (!(RECEIVABLE_RECON_CONTRACT_STATUSES as readonly string[]).includes(contract.status)) {
       return {
         name: 'hpReceivable',
         status: 'PASS',
-        details: `สถานะ ${contract.status} — ไม่ reconcile`,
+        details: `สถานะ ${contract.status} — ไม่อยู่ในขอบเขตกระทบยอดลูกหนี้รายสัญญา`,
       };
     }
-
-    // HP Receivable from journals (debit - credit for account 11-2102)
-    const allLines = [...contractJournals, ...paymentJournals].flatMap((j) => j.lines);
-    const hpLines = allLines.filter((l) => l.accountCode === '11-2102');
-    const journalHp = hpLines.reduce((sum, l) => sum + Number(l.debit) - Number(l.credit), 0);
-
-    // Outstanding from payments
-    const outstanding = contract.payments
-      .filter((p) => ['PENDING', 'PARTIALLY_PAID'].includes(p.status))
-      .reduce((sum, p) => sum + Number(p.amountDue) - Number(p.amountPaid), 0);
-
-    const diff = Math.abs(journalHp - outstanding);
-    const threshold = Math.max(outstanding * 0.001, 10);
-
+    const result = await this.checks.checkHpReceivableReconciliation(scope);
+    const summary = result.details[0] as {
+      glReceivable: string;
+      registerOutstanding: string;
+      gap: string;
+      tolerancePerContract: string;
+    };
     return {
       name: 'hpReceivable',
-      status: diff < threshold ? 'PASS' : 'FAIL',
+      status: result.status === 'FAIL' ? 'FAIL' : 'PASS',
       details: {
-        journalHpReceivable: journalHp,
-        contractOutstanding: outstanding,
-        diff,
-        threshold,
+        glReceivable: summary.glReceivable,
+        registerOutstanding: summary.registerOutstanding,
+        gap: summary.gap,
+        tolerancePerContract: summary.tolerancePerContract,
       },
     };
   }
 
-  private traceVatTotal(
-    contract: { payments: { status: string; vatAmount: Prisma.Decimal | null }[] },
-    paymentJournals: { lines: { accountCode: string; credit: Prisma.Decimal }[] }[],
-  ): ContractTraceCheck {
-    const paidPayments = contract.payments.filter((p) =>
-      ['PAID', 'PARTIALLY_PAID'].includes(p.status),
-    );
-    const paymentVat = paidPayments.reduce((sum, p) => sum + Number(p.vatAmount ?? 0), 0);
-
-    const journalVat = paymentJournals
-      .flatMap((j) => j.lines)
-      .filter((l) => l.accountCode === '21-2101')
-      .reduce((sum, l) => sum + Number(l.credit), 0);
-
-    const diff = Math.abs(paymentVat - journalVat);
-
+  /** `vat_mismatch` ของสัญญานี้: Dr 11-2105 − Cr 21-2102 = ภาษีของเงินรับล่วงหน้าที่ยังค้าง ± 0.01 */
+  private async traceVatTotal(
+    contract: { status: string },
+    scope: ContractScope,
+  ): Promise<ContractTraceCheck> {
+    if (!(RECEIVABLE_RECON_CONTRACT_STATUSES as readonly string[]).includes(contract.status)) {
+      return {
+        name: 'vatTotal',
+        status: 'PASS',
+        details: `สถานะ ${contract.status} — ไม่อยู่ในขอบเขตตรวจ VAT รอเรียกเก็บรายสัญญา`,
+      };
+    }
+    const result = await this.checks.checkVatMismatch(scope);
     return {
       name: 'vatTotal',
-      status: diff < 1.0 ? 'PASS' : 'FAIL',
-      details: { paymentVatSum: paymentVat, journalVatSum: journalVat, diff },
+      status: result.status === 'FAIL' ? 'FAIL' : 'PASS',
+      details:
+        result.count > 0
+          ? result.details
+          : 'Dr 11-2105 − Cr 21-2102 = ภาษีของเงินรับล่วงหน้าที่ยังค้าง (± 0.01)',
     };
   }
 
-  private traceCommissionTotal(
-    contract: { payments: { status: string; monthlyCommission: Prisma.Decimal | null }[] },
-    paymentJournals: { lines: { accountCode: string; credit: Prisma.Decimal }[] }[],
+  /** `commission_mismatch` — SKIPPED ตั้งแต่ 2026-10-30 (ค่าคอมตั้งครั้งเดียวตอนเปิดสัญญา ไม่ใช่ต่องวด) */
+  private async traceCommissionTotal(): Promise<ContractTraceCheck> {
+    const result = await this.checks.checkCommissionMismatch();
+    return { name: 'commissionTotal', status: result.status, details: result.details[0] };
+  }
+
+  private traceCompletion(
+    contract: {
+      status: string;
+      payments: { status: string }[];
+      product: { ownedByCompanyId: string | null } | null;
+    },
+    imported: boolean,
   ): ContractTraceCheck {
-    const paidPayments = contract.payments.filter((p) => p.status === 'PAID');
-    const paymentComm = paidPayments.reduce((sum, p) => sum + Number(p.monthlyCommission ?? 0), 0);
-
-    const journalComm = paymentJournals
-      .flatMap((j) => j.lines)
-      .filter((l) => l.accountCode === '42-1105')
-      .reduce((sum, l) => sum + Number(l.credit), 0);
-
-    const diff = Math.abs(paymentComm - journalComm);
-
-    return {
-      name: 'commissionTotal',
-      status: diff < 1.0 ? 'PASS' : 'FAIL',
-      details: { paymentCommissionSum: paymentComm, journalCommissionSum: journalComm, diff },
-    };
-  }
-
-  private traceCompletion(contract: {
-    status: string;
-    payments: { status: string }[];
-    product: { ownedByCompanyId: string | null } | null;
-  }): ContractTraceCheck {
     if (contract.status !== 'COMPLETED') {
       return {
         name: 'completion',
         status: 'PASS',
         details: `สถานะ ${contract.status} — ยังไม่ complete`,
+      };
+    }
+    if (imported) {
+      // สถานะ COMPLETED และยอดของแถวงวดมาจากระบบเก่าตามจริง (เช่น งวดสุดท้ายรับขาดเศษสตางค์ ⇒ PARTIALLY_PAID) — ไม่ใช่การปิด
+      // สัญญาในระบบนี้
+      return {
+        name: 'completion',
+        status: 'PASS',
+        details: 'สัญญาประวัติที่นำเข้า — สถานะและแถวงวดมาจากระบบเก่า',
       };
     }
 

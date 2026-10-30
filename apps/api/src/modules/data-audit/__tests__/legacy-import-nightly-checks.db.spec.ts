@@ -1,5 +1,6 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import { seedFinanceCoa } from '../../../../prisma/seed-coa-finance';
+import { seedShopCoa } from '../../../../prisma/seed-coa-shop';
 import {
   earlyPayoffApproved,
   voidReceiptApproved,
@@ -32,6 +33,7 @@ import { hashPII } from '../../../utils/pii.util';
 import { TEST_NAME_PREFIX } from '../../../utils/test-data-markers';
 import { ContractPaymentService } from '../../contracts/contract-payment.service';
 import { CustomerPiiService } from '../../customers/customer-pii.service';
+import { CompanyResolverService } from '../../journal/company-resolver.service';
 import { ContractActivation1ATemplate } from '../../journal/cpa-templates/contract-activation-1a.template';
 import { EarlyPayoffJP4Template } from '../../journal/cpa-templates/early-payoff-jp4.template';
 import { EclStageReverseTemplate } from '../../journal/cpa-templates/ecl-stage-reverse.template';
@@ -39,6 +41,7 @@ import { InstallmentAccrual2ATemplate } from '../../journal/cpa-templates/instal
 import { PaymentReceiptTemplate } from '../../journal/cpa-templates/payment-receipt.template';
 import { ReceiptVoidReversalTemplate } from '../../journal/cpa-templates/receipt-void-reversal.template';
 import { ShopCollectSettlementTemplate } from '../../journal/cpa-templates/shop-collect-settlement.template';
+import { ShopInventoryTransferTemplate } from '../../journal/cpa-templates/shop-inventory-transfer.template';
 import { Vat60dayReversalTemplate } from '../../journal/cpa-templates/vat-60day-reversal.template';
 import { JournalAutoService } from '../../journal/journal-auto.service';
 import { LEGACY_SYSTEM_USER_EMAIL } from '../../journal/legacy-import-journal';
@@ -91,7 +94,7 @@ const full = (n: number): Record<number, InstallmentSpec> =>
 /** ระบบเก่า ณ วันตัด: งวด 1–3 จ่ายครบ · งวด 4 จ่าย 300 */
 const legacyState = () => standardInstallments({ ...full(3), 4: { paid: '300' } });
 
-type Check = 'orphan_contracts' | 'orphan_payments' | 'overpaid' | 'vat' | 'hp';
+type Check = 'orphan_contracts' | 'orphan_payments' | 'overpaid' | 'vat' | 'hp' | 'missing_cogs';
 
 describeDb('nightly data-audit + receivable-recon on imported legacy contracts (real DB)', () => {
   let prisma: PrismaClient;
@@ -140,6 +143,7 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
     pii = new CustomerPiiService(asService);
 
     await seedFinanceCoa(prisma);
+    await seedShopCoa(prisma); // ขาฝั่ง SHOP ของการเปิดสัญญา A1 (missing_cogs)
     const finance = await prisma.companyInfo.findFirst({
       where: { companyCode: 'FINANCE', deletedAt: null },
       select: { id: true },
@@ -269,6 +273,7 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
 
     // สัญญาปกติ — A1 (ถึงวันตัดแบบเดียวกับสัญญานำเข้า) · A2 (เงินรับล่วงหน้า) · C1–C5 (เป้าทำให้เพี้ยนในขั้น 3)
     native.set('A1', await createNative('A1', P1.date, P1.dueDay));
+    await bookShopActivation(native.get('A1')!);
     await runNativeToCutoff(native.get('A1')!);
     for (const key of ['A2', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'A4']) {
       native.set(key, await createNative(key, P1.date, P1.dueDay));
@@ -548,6 +553,38 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
     return contract.id;
   }
 
+  /**
+   * ขาฝั่ง SHOP ของการเปิดสัญญาที่ createNative ไม่ได้ลง (`ContractWorkflowService.activate` → ShopInventoryTransferTemplate):
+   * เครื่องต้นทุน 9,000 → ต้นทุนขาย flow `shop-inventory-transfer-cogs` + รายได้หน้าร้าน ผูก `metadata.contractId`
+   */
+  async function bookShopActivation(contractId: string) {
+    const asService = prisma as unknown as PrismaService;
+    const c = await prisma.contract.findUniqueOrThrow({
+      where: { id: contractId },
+      select: { contractNumber: true, productId: true, createdAt: true },
+    });
+    await prisma.product.update({ where: { id: c.productId }, data: { costPrice: D(9000) } });
+    await new ShopInventoryTransferTemplate(
+      journal,
+      asService,
+      new CompanyResolverService(asService),
+    ).execute({
+      idempotencyKey: `shop-inventory-transfer:${contractId}`,
+      contractId,
+      contractNumber: c.contractNumber,
+      productId: c.productId,
+      inventoryAccountCode: 'S11-2002',
+      cogsAccountCode: 'S50-1102',
+      revenueAccountCode: 'S41-1102',
+      costPrice: D(9000),
+      salePrice: D(12000),
+      downAmount: D(2000),
+      financedAmount: D(10000),
+      commission: D(1000),
+      postedAt: c.createdAt,
+    });
+  }
+
   /** ถึงวันตัด: 2A งวด 1–4 · รับงวด 1–3 เต็มงวด · งวด 4 รับ 300 — ลงวันครบกำหนด */
   async function runNativeToCutoff(contractId: string, due: (no: number) => Date = P1.due) {
     for (let no = 1; no <= 4; no++) {
@@ -653,10 +690,14 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
         return checks.checkVatMismatch(scope);
       case 'hp':
         return checks.checkHpReceivableReconciliation(scope);
+      case 'missing_cogs':
+        return checks.checkMissingCogs(scope);
     }
   }
 
-  /** ห้าข้อไม่มี finding — รายงานชื่อข้อ + รายละเอียดเมื่อมี (ให้อ่านง่ายตอนแดง) */
+  /**
+   * ห้าข้อหลัก + ข้อ MEDIUM ที่ Task 18 แก้ ไม่มี finding — รายงานชื่อข้อ + รายละเอียดเมื่อมี (ให้อ่านง่ายตอนแดง)
+   */
   async function expectClean(contractIds: string[]) {
     const results: Record<string, unknown> = {};
     for (const check of [
@@ -665,9 +706,10 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
       'overpaid',
       'vat',
       'hp',
+      'missing_cogs',
     ] as Check[]) {
       const r = await run(check, contractIds);
-      results[check] = r.count === 0 ? 'PASS' : r.details;
+      results[check] = r.count === 0 && r.status === 'PASS' ? 'PASS' : r.details;
     }
     expect(results).toEqual({
       orphan_contracts: 'PASS',
@@ -675,6 +717,7 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
       overpaid: 'PASS',
       vat: 'PASS',
       hp: 'PASS',
+      missing_cogs: 'PASS',
     });
   }
 
@@ -731,6 +774,22 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
       ).toBe(0);
       const l3 = (await run('hp', ids(legacy, ['L3']))).details[0] as { gap: string };
       expect(l3.gap).toBe('-0.05'); // roundingDiff ของสัญญา (บัญชี − ยอดเรียกเก็บ) อยู่ในเกณฑ์
+
+      // missing_cogs (Task 18): สัญญาปกติ A1 มีต้นทุนเครื่อง 9,000 และขา SHOP ของการเปิดสัญญาจริง (ข้อเดิมหา reference_type
+      // 'CONTRACT_COGS' ที่ไม่มีผู้เขียน ⇒ ติด) · สัญญานำเข้าไม่มีขา SHOP โดยตั้งใจ (การขายฝั่งหน้าร้านอยู่ใน PEAK) — เครื่องนำเข้า
+      // ต้นทุน 0 และถ้ามีคนใส่ต้นทุนให้เครื่องนำเข้าภายหลัง ก็ยังไม่ติด (ตัวแยก legacy_contract_code)
+      const a1Product = await prisma.contract.findUniqueOrThrow({
+        where: { id: native.get('A1')! },
+        select: { product: { select: { costPrice: true } } },
+      });
+      expect(a1Product.product.costPrice.toFixed(2)).toBe('9000.00');
+      const l1 = await prisma.contract.findUniqueOrThrow({
+        where: { id: legacy.get('L1')! },
+        select: { productId: true, product: { select: { costPrice: true } } },
+      });
+      expect(l1.product.costPrice.toFixed(2)).toBe('0.00');
+      await prisma.product.update({ where: { id: l1.productId }, data: { costPrice: D(8000) } });
+      expect((await run('missing_cogs', cleanKeys())).count).toBe(0);
     },
     LONG,
   );
@@ -1008,6 +1067,19 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
         data: { amountPaid: D(MONTHLY), status: 'PAID' },
       });
 
+      // A1 ปกติ (Task 18 · missing_cogs): ต้นทุนขายฝั่ง SHOP ของการเปิดสัญญาหาย ขณะที่เครื่องมีต้นทุน
+      const a1 = native.get('A1')!;
+      expect(
+        (
+          await softDelete({
+            AND: [
+              byContract(a1),
+              { metadata: { path: ['flow'], equals: 'shop-inventory-transfer-cogs' } },
+            ],
+          })
+        ).count,
+      ).toBe(1);
+
       const flagged = async (check: Check, contractId: string) =>
         (await run(check, [contractId])).count;
 
@@ -1046,6 +1118,7 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
           await flagged('overpaid', l9),
           (await hpBreaches(l9)).map((b) => b.gap),
         ],
+        a1: ((await run('missing_cogs', [a1])).details as Array<{ id: string }>).map((r) => r.id),
       }).toEqual({
         c1: [1, 1],
         c2: [[2], ['100.00']],
@@ -1070,6 +1143,7 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
         l7: [1, 1],
         l8: [[[[4], '5.00']], []],
         l9: [[], 0, ['1215.83']],
+        a1: [a1],
       });
       // สาขาที่มีสัญญาเพี้ยน breach ทั้งสองสาขา (สัญญาปกติ C1–C4 · สัญญานำเข้า L4/L5/L7/L8/L9)
       const breached = await reconBreachesOf([nativeBranchId, legacyBranchId]);

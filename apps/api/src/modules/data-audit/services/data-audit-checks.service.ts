@@ -24,6 +24,8 @@ const CONTRACT_ACTIVATION_TAG = '1A';
 const EXCHANGE_NEW_CONTRACT_FLOW = 'exchange-new-contract-1a';
 /** ปิดยอดก่อนกำหนด JP4 (รายการระดับสัญญา ไม่มี `paymentId`) — `contracts/contract-payment.service.ts:842-843` */
 const EARLY_PAYOFF_FLOW = 'early-payoff';
+/** ต้นทุนขายฝั่ง SHOP ตอนเปิดสัญญา — `cpa-templates/shop-inventory-transfer.template.ts:321` */
+const SHOP_INVENTORY_TRANSFER_COGS_FLOW = 'shop-inventory-transfer-cogs';
 /** ส่วนที่แถวงวดรับเกินยอดเรียกเก็บได้ — เศษปัดของใบที่ปิดงวด ≤ 1 บาท (Tolerance Policy `.claude/rules/accounting.md`) */
 const INSTALLMENT_OVERPAY_TOLERANCE = new Prisma.Decimal('1.00');
 /** VAT รอเรียกเก็บสองขาต้องตรงกันทุกสตางค์ (ยอด 2 ตำแหน่ง) */
@@ -558,8 +560,21 @@ export class DataAuditChecksService {
     };
   }
 
-  /** Check 11: Active contracts with costPrice > 0 must have a COGS journal */
-  async checkMissingCogs(): Promise<AuditCheckResult> {
+  /**
+   * Check 11: an activated contract whose device has a cost must carry the SHOP-side COGS entry —
+   * `ShopInventoryTransferTemplate` JE A (`Dr S50-* / Cr S11-200*`, flow `shop-inventory-transfer-cogs`,
+   * `metadata.contractId` — `shop-inventory-transfer.template.ts:315-338`), posted at activation by
+   * `ContractWorkflowService.activate` (`contract-workflow.service.ts:928`) and for an exchange's new
+   * contract by `ContractExchangeService.finalizeAfterActivation` (`contract-exchange.service.ts:1205`).
+   * FINANCE books no COGS (its income is interest).
+   *
+   * 2026-10-30 (Task 18): the check used to look for `reference_type = 'CONTRACT_COGS'`, which no code
+   * writes (every template entry is `'AUTO'`) ⇒ every native contract with a cost was flagged.
+   * Imported legacy contracts (`legacy_contract_code` — written only by the importer) are exempt: the
+   * shop side of the old sale lives in PEAK and the importer books no SHOP leg (device cost 0 —
+   * `cli/legacy-backoffice/writer.ts:440`), even if a cost is entered on the device later.
+   */
+  async checkMissingCogs(scope?: ContractScope): Promise<AuditCheckResult> {
     const missing = await this.prisma.$queryRaw<
       { id: string; contract_number: string; product_name: string; cost_price: Prisma.Decimal }[]
     >`
@@ -569,13 +584,16 @@ export class DataAuditChecksService {
       WHERE c.deleted_at IS NULL
         AND c.status IN ('ACTIVE', 'COMPLETED', 'OVERDUE', 'DEFAULT')
         AND pr.cost_price > 0
+        AND c.legacy_contract_code IS NULL
+        ${contractScopeFilter('c.id', scope)}
         AND NOT EXISTS (
           SELECT 1 FROM journal_entries je
-          WHERE je.reference_id = c.id
-            AND je.reference_type = 'CONTRACT_COGS'
+          WHERE je.metadata->>'contractId' = c.id
+            AND je.metadata->>'flow' = ${SHOP_INVENTORY_TRANSFER_COGS_FLOW}
             AND je.deleted_at IS NULL
             AND je.status = 'POSTED'
         )
+      ORDER BY c.created_at DESC
       LIMIT 50
     `;
     return {

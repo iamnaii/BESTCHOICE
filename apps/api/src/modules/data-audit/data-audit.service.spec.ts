@@ -410,6 +410,18 @@ describe('DataAuditService', () => {
       const result = await service.checkMissingCogs();
       expect(result.status).toBe('FAIL');
     });
+
+    it('Task 18 — looks for the SHOP COGS entry of activation by metadata.contractId (never reference_type CONTRACT_COGS) and exempts imported legacy contracts', async () => {
+      prisma.$queryRaw.mockResolvedValueOnce([]);
+      await service.checkMissingCogs();
+      const sql = JSON.stringify(prisma.$queryRaw.mock.calls[0]);
+      expect(sql).toContain("metadata->>'contractId' = c.id");
+      expect(sql).toContain("metadata->>'flow' = ");
+      expect(prisma.$queryRaw.mock.calls[0]).toContain('shop-inventory-transfer-cogs');
+      expect(sql).toContain('c.legacy_contract_code IS NULL');
+      expect(sql).not.toContain('CONTRACT_COGS');
+      expect(sql).not.toContain('reference_type');
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════

@@ -14,6 +14,14 @@
  * (own tx + FOR-UPDATE receipt-number lock). lineOaService is intentionally
  * undefined → no LINE push of old receipts to customers.
  *
+ * ⚠️ NEVER FOR IMPORTED LEGACY INSTALLMENTS
+ * ----------------------------------------
+ * Rows written by the legacy back-office importer (`payments.legacy_installment_code` set) are
+ * ALWAYS excluded — their pre-cutover money is booked in PEAK and must not get a tax invoice here
+ * (Task 18 review m-2, 2026-10-30). There is no flag to include them. A post-cutover receipt of an
+ * imported row that failed to issue is re-issued bound to its journal entry (runbook "ออกใบเสร็จซ้ำ"
+ * in `.claude/rules/accounting.md`), not by this CLI.
+ *
  * GUARDS
  * ------
  * - EXPECTED_DB_NAME required; SELECT current_database() must match → exit 1
@@ -50,8 +58,16 @@ interface PaidPaymentRow {
   paid_date: Date | null;
 }
 
-/** PAID payments with money received and NO receipt row at all (voided or not). */
-async function findPaidPaymentsWithoutReceipt(prisma: PrismaService): Promise<PaidPaymentRow[]> {
+/**
+ * PAID payments with money received and NO receipt row at all (voided or not) — never an installment
+ * imported from the old back office (`legacy_installment_code` — written only by the importer): its
+ * pre-cutover money was booked in PEAK and has no receipt here by design, so a catch-up tax invoice
+ * would be a second document for the same money (Task 18 review m-2, 2026-10-30). An imported row whose
+ * post-cutover receipt failed to issue goes through the bound re-issue runbook instead.
+ */
+export async function findPaidPaymentsWithoutReceipt(
+  prisma: PrismaService,
+): Promise<PaidPaymentRow[]> {
   return prisma.$queryRaw<PaidPaymentRow[]>`
     SELECT p.id, p.contract_id, p.installment_no,
            p.amount_paid::text AS amount_paid,
@@ -63,6 +79,7 @@ async function findPaidPaymentsWithoutReceipt(prisma: PrismaService): Promise<Pa
     WHERE p.deleted_at IS NULL
       AND p.status = 'PAID'
       AND p.amount_paid > 0
+      AND p.legacy_installment_code IS NULL
       AND NOT EXISTS (SELECT 1 FROM receipts r WHERE r.payment_id = p.id)
     ORDER BY c.contract_number, p.installment_no
   `;
@@ -158,26 +175,40 @@ async function main(): Promise<void> {
   const expectedDb = process.env.EXPECTED_DB_NAME;
   if (!expectedDb) {
     console.error('ERROR: EXPECTED_DB_NAME required');
-    console.error('Re-run with: EXPECTED_DB_NAME=<db-name> npm --prefix apps/api run backfill:receipts');
+    console.error(
+      'Re-run with: EXPECTED_DB_NAME=<db-name> npm --prefix apps/api run backfill:receipts',
+    );
     process.exit(1);
   }
 
   const dryRun = process.env.CONFIRM_BACKFILL !== REQUIRED_CONSENT;
   if (dryRun) {
     console.log('[backfill-receipts] DRY-RUN mode (default). To create receipts, re-run with:');
-    console.log(`  CONFIRM_BACKFILL=${REQUIRED_CONSENT} EXPECTED_DB_NAME=<db> [ALLOW_PROD_BACKFILL=${REQUIRED_CONSENT}] npm --prefix apps/api run backfill:receipts`);
+    console.log(
+      `  CONFIRM_BACKFILL=${REQUIRED_CONSENT} EXPECTED_DB_NAME=<db> [ALLOW_PROD_BACKFILL=${REQUIRED_CONSENT}] npm --prefix apps/api run backfill:receipts`,
+    );
     console.log('');
   }
 
-  if (!dryRun && process.env.NODE_ENV === 'production' && process.env.ALLOW_PROD_BACKFILL !== REQUIRED_CONSENT) {
-    console.error(`ERROR: Refusing to backfill in NODE_ENV=production without ALLOW_PROD_BACKFILL=${REQUIRED_CONSENT}`);
+  if (
+    !dryRun &&
+    process.env.NODE_ENV === 'production' &&
+    process.env.ALLOW_PROD_BACKFILL !== REQUIRED_CONSENT
+  ) {
+    console.error(
+      `ERROR: Refusing to backfill in NODE_ENV=production without ALLOW_PROD_BACKFILL=${REQUIRED_CONSENT}`,
+    );
     process.exit(1);
   }
 
   const prisma = new PrismaService();
-  const [{ current_database: actualDb }] = await (prisma as any).$queryRaw<{ current_database: string }[]>`SELECT current_database()`;
+  const [{ current_database: actualDb }] = await prisma.$queryRaw<
+    { current_database: string }[]
+  >`SELECT current_database()`;
   if (actualDb !== expectedDb) {
-    console.error(`ERROR: DB mismatch: connected="${actualDb}" expected="${expectedDb}". Aborting.`);
+    console.error(
+      `ERROR: DB mismatch: connected="${actualDb}" expected="${expectedDb}". Aborting.`,
+    );
     await prisma.$disconnect();
     process.exit(1);
   }
@@ -186,7 +217,11 @@ async function main(): Promise<void> {
 
   try {
     // lineOaService undefined → no LINE push of historical receipts.
-    const issuance = new ReceiptIssuanceService(prisma, undefined, new ReceiptNumberService(prisma));
+    const issuance = new ReceiptIssuanceService(
+      prisma,
+      undefined,
+      new ReceiptNumberService(prisma),
+    );
 
     // Fallback issuer for payments with no recorded_by_id.
     const fallback = await prisma.user.findFirst({
@@ -195,6 +230,9 @@ async function main(): Promise<void> {
     });
 
     console.log('[backfill-receipts] Scanning PAID payments (amountPaid>0) with no receipt...');
+    console.log(
+      '[backfill-receipts] Imported legacy installments (legacy_installment_code) are always excluded — never issue them a receipt.',
+    );
     console.log('');
     const result = await backfillPaymentReceipts(prisma, issuance, {
       dryRun,
@@ -213,7 +251,9 @@ async function main(): Promise<void> {
     console.log('');
 
     if (dryRun) {
-      console.log('[backfill-receipts] DRY-RUN complete — nothing created. Re-run with CONFIRM_BACKFILL=YES_I_AM_SURE to write.');
+      console.log(
+        '[backfill-receipts] DRY-RUN complete — nothing created. Re-run with CONFIRM_BACKFILL=YES_I_AM_SURE to write.',
+      );
     } else if (result.failed > 0) {
       console.error(`[backfill-receipts] WARNING: ${result.failed} failed — check logs above.`);
       process.exit(1);

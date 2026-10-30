@@ -19,6 +19,7 @@ import {
   type InstallmentSpec,
   shopCompanyForTest,
 } from '../../../cli/legacy-backoffice/__tests__/synthetic-book';
+import { findPaidPaymentsWithoutReceipt } from '../../../cli/backfill-payment-receipts.cli';
 import type { DumpRow } from '../../../cli/legacy-backoffice/dump-reader';
 import { legacyFileContentType, type LegacyFileDetail } from '../../../cli/legacy-backoffice/files';
 import type { LegacyContract } from '../../../cli/legacy-backoffice/legacy-book';
@@ -844,6 +845,18 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
         expect(t.checks.commissionTotal.status).toBe('SKIPPED');
       }
       expect(traced).toEqual({ A1: [], L1: [], H1: [] });
+
+      // backfill:receipts (Task 18 review m-2): งวดนำเข้าที่ PAID ก่อนวันตัดไม่มีใบเสร็จในระบบโดยตั้งใจ (PEAK ลงเงินยุคเก่าไปแล้ว) —
+      // ตัวออกใบตามหลังต้องไม่หยิบมาออกใบกำกับภาษี ไม่ว่าจะรันเมื่อไร
+      const importedPaid = await prisma.payment.count({
+        where: { contractId: { in: ids(legacy, ['L1', 'H1']) }, status: 'PAID' },
+      });
+      expect(importedPaid).toBeGreaterThan(0);
+      const backfillCandidates = async (contractIds: string[]) =>
+        (await findPaidPaymentsWithoutReceipt(prisma as unknown as PrismaService))
+          .filter((r) => contractIds.includes(r.contract_id))
+          .map((r) => [r.contract_number, r.installment_no]);
+      expect(await backfillCandidates(cleanKeys())).toEqual([]);
     },
     LONG,
   );
@@ -1227,6 +1240,16 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
         a1: [a1],
         a1FeeVat: [[5, feeVat.toFixed(2)]],
       });
+      // backfill:receipts (Task 18 review m-2): งวดปกติที่ PAID โดยไม่มีใบเสร็จ (C6 งวด 1–2) ยังเป็นผู้สมัครตามเดิม · งวดนำเข้าที่ถูกแก้เป็น
+      // PAID (L9 งวด 4) และงวดนำเข้าที่ PAID ก่อนวันตัด (L4–L8 งวด 1–3) ไม่ใช่
+      expect(
+        (await findPaidPaymentsWithoutReceipt(prisma as unknown as PrismaService))
+          .filter((r) => [c6, l4, l5, l6, l7, l8, l9].includes(r.contract_id))
+          .map((r) => [r.contract_number, r.installment_no]),
+      ).toEqual([
+        [`TEST-T16N-${stamp}-C6`, 1],
+        [`TEST-T16N-${stamp}-C6`, 2],
+      ]);
       // สาขาที่มีสัญญาเพี้ยน breach ทั้งสองสาขา (สัญญาปกติ C1–C4 · สัญญานำเข้า L4/L5/L7/L8/L9)
       const breached = await reconBreachesOf([nativeBranchId, legacyBranchId]);
       expect(breached.map((b) => b.branchId).sort()).toEqual(

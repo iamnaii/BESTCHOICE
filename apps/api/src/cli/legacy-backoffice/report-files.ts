@@ -14,6 +14,7 @@ import { GATE_LABELS, type GateId, type GateResult } from './gates';
 import type { PeakInvoice, PeakRecon } from './peak-recon';
 import {
   BLOCKER_REASON_TEXT,
+  OVERRIDE_FOR_SKIPPED,
   type ImportBlocker,
   type ImportBlockerReason,
   type ImportPlan,
@@ -655,16 +656,39 @@ export function warningKind(message: string, item: PlannedContract): string {
   return 'OTHER';
 }
 
-/** ข้อเตือนทุกสัญญาในแผน + ชนิด */
+/**
+ * ข้อเตือนทุกสัญญาในแผน + ชนิด · ต่อท้ายด้วยแถวในไฟล์ของเจ้าของที่ไม่ถูกใช้ (`plan.overrideWarnings` ชนิด
+ * `OVERRIDE_FOR_SKIPPED` — `code` = รหัสในไฟล์: เลขสัญญาเดิม หรือรหัสสมาชิก)
+ */
 export function planWarnings(
   plan: ImportPlan,
 ): Array<{ code: string; kind: string; message: string }> {
-  return plan.items.flatMap((item) =>
-    item.warnings.map((message) => ({
-      code: item.code,
-      kind: warningKind(message, item),
-      message,
+  return [
+    ...plan.items.flatMap((item) =>
+      item.warnings.map((message) => ({
+        code: item.code,
+        kind: warningKind(message, item),
+        message,
+      })),
+    ),
+    ...plan.overrideWarnings.map((w) => ({
+      code: w.code,
+      kind: OVERRIDE_FOR_SKIPPED,
+      message: w.message,
     })),
+  ];
+}
+
+/** บรรทัดเตือนบนจอเมื่อไฟล์ของเจ้าของมีแถวที่ไม่ถูกใช้เพราะสัญญาถูกข้าม · ไม่มี = null */
+export function overrideForSkippedLogLine(plan: ImportPlan): string | null {
+  if (plan.overrideWarnings.length === 0) return null;
+  const bySource = countBy(plan.overrideWarnings, (w) => w.source);
+  const parts = (['money-overrides', 'customer-overrides'] as const)
+    .filter((s) => bySource[s])
+    .map((s) => `--${s} ${bySource[s]} แถว`);
+  return (
+    `⚠ ไฟล์ของเจ้าของมีแถวที่ไม่ถูกใช้ (ชี้สัญญาที่ข้าม): ${parts.join(' · ')} — ` +
+    `ข้อเตือนชนิด ${OVERRIDE_FOR_SKIPPED} (warnings.csv ของคำสั่ง report)`
   );
 }
 

@@ -60,8 +60,9 @@ import { buildImportSchedule } from './schedule';
  *    สมาชิกหนึ่งคนที่สัญญาได้รหัส PEAK ต่างกัน (ลูกค้าหนึ่งคนมีรหัส PEAK ได้รหัสเดียว — `customer.ts` จะให้ `PEAK_CODE_CONFLICT`)
  *    · สมาชิกที่มีแต่สัญญาที่ข้าม (เช่น ยกเลิกทุกสัญญา) ไม่มีรายการในแผน จึงไม่ได้แถวลูกค้า
  *
- * ตรวจทั้งแผน: รหัสในไฟล์ของเจ้าของ (`moneyOverrides` / `customerOverrides`) ที่ไม่มีในระบบเก่า ·
- * IMEI ซ้ำระหว่างสัญญา ACTIVE · รหัสงวดเดิม (`Payment.legacyInstallmentCode` unique) ซ้ำ
+ * ตรวจทั้งแผน: รหัสในไฟล์ของเจ้าของ (`moneyOverrides` / `customerOverrides`) ที่ไม่มีในระบบเก่า (ตัวบล็อก) หรือชี้สัญญาที่ข้าม
+ * (ข้อเตือน `OVERRIDE_FOR_SKIPPED` — `overrideWarnings`) · IMEI ซ้ำระหว่างสัญญา ACTIVE · รหัสงวดเดิม
+ * (`Payment.legacyInstallmentCode` unique) ซ้ำ
  *
  * **เครื่อง:** `legacyProductCode = <เลขสัญญาเดิม>/<IMEI>` (unique ต่อสัญญา — เครื่องที่ขายต่อหลายสัญญาได้หนึ่งแถวต่อสัญญา) ·
  * `imeiSerial` ใส่**เฉพาะสัญญา ACTIVE** — index unique ของ IMEI (`deleted_at IS NULL`) ห้ามสองแถวที่ยังไม่ถูกลบถือ IMEI
@@ -329,9 +330,22 @@ export type ImportPlan = {
   /** เลขสัญญาฉบับเก่า (ทำสัญญาก่อน 2025-11-14) ของสัญญาผ่อนอยู่ — รายชื่อให้พนักงาน/เจ้าของเทียบกระดาษ */
   oldFormCodes: string[];
   skipped: Array<{ code: string; reason: string }>;
-  /** ข้อเตือนทุกสัญญา (ไม่ใช่ตัวบล็อก) */
+  /** ข้อเตือนทุกสัญญา + `overrideWarnings` (ไม่ใช่ตัวบล็อก) */
   warnings: string[];
+  /** แถวในไฟล์ของเจ้าของที่ไม่ถูกใช้เพราะสัญญาถูกข้าม (`overridesForSkipped`) — ไม่ผูกกับรายการในแผน */
+  overrideWarnings: OverrideWarning[];
   totals: ImportTotals;
+};
+
+/** ชนิดข้อเตือน: แถวของ `--money-overrides` / `--customer-overrides` ที่ชี้สัญญาที่ข้าม (ไม่นำเข้า) */
+export const OVERRIDE_FOR_SKIPPED = 'OVERRIDE_FOR_SKIPPED';
+
+export type OverrideWarning = {
+  /** เลขสัญญาเดิม (`money-overrides`) หรือรหัสสมาชิก (`customer-overrides`) — คีย์ของแถวในไฟล์ */
+  code: string;
+  source: 'money-overrides' | 'customer-overrides';
+  /** ขึ้นต้นด้วย `OVERRIDE_FOR_SKIPPED:` · มีแค่รหัสในไฟล์ เลขสัญญาเดิม และเหตุที่ข้าม */
+  message: string;
 };
 
 /** ตัวบล็อกที่ทำให้สัญญาหยุด — โยนภายในแล้วเก็บเป็นแถว */
@@ -889,6 +903,7 @@ export function planImport(book: LegacyBook, opts: ImportOptions): ImportPlan {
       (a.code < b.code ? -1 : a.code > b.code ? 1 : 0),
   );
   const kept = crossContractBlockers(items, blockers, peakCodes);
+  const overrideWarnings = overridesForSkipped(book, skipped, opts, memberCodes);
 
   return {
     cutoff: opts.cutoff,
@@ -897,9 +912,60 @@ export function planImport(book: LegacyBook, opts: ImportOptions): ImportPlan {
     blockers,
     oldFormCodes,
     skipped,
-    warnings: kept.flatMap((i) => i.warnings),
+    warnings: [...kept.flatMap((i) => i.warnings), ...overrideWarnings.map((w) => w.message)],
+    overrideWarnings,
     totals: totalsOf(kept, skipped.length, book.contracts.length - kept.length - skipped.length),
   };
+}
+
+/**
+ * แถวในไฟล์ของเจ้าของที่ไม่มีผลเพราะสัญญาถูกข้าม (`skipped` — สถานะ 0/1 · ยกเลิก 4 — คำตัดสินเจ้าของ 30/10) — ข้อเตือน
+ * ไม่ใช่ตัวบล็อก (การข้ามถูกต้องแล้ว แต่คนกรอกไฟล์ต้องเห็นว่าแถวนั้นไม่ถูกใช้ — Task 15 M-4):
+ * - `--money-overrides` ของสัญญาที่ข้าม
+ * - `--customer-overrides` ของสมาชิกที่ไม่มีสัญญาอื่นนอกจากสัญญาที่ข้าม (หรือไม่มีสัญญาเลย) — สมาชิกที่มีสัญญาติดตัวบล็อก
+ *   (รวมหนี้เสีย 5) ไม่เตือน: override ยังมีผลเมื่อแก้ตัวบล็อกแล้ว
+ * รหัสที่ไม่มีในระบบเก่า = ตัวบล็อก `*_UNKNOWN_*` (ไม่เตือนซ้ำ) · เรียงตามลำดับในไฟล์
+ */
+function overridesForSkipped(
+  book: LegacyBook,
+  skipped: ImportPlan['skipped'],
+  opts: ImportOptions,
+  memberCodes: ReadonlySet<string>,
+): OverrideWarning[] {
+  const skipReason = new Map(skipped.map((s) => [s.code, s.reason]));
+  const out: OverrideWarning[] = [];
+  for (const [code] of opts.moneyOverrides) {
+    const reason = skipReason.get(code);
+    if (reason === undefined) continue;
+    out.push({
+      code,
+      source: 'money-overrides',
+      message: `${OVERRIDE_FOR_SKIPPED}: --money-overrides สัญญา ${code} ไม่นำเข้า (ข้าม ${reason}) — ยอดที่แก้ไม่ถูกใช้`,
+    });
+  }
+  if (opts.customerOverrides.size === 0) return out;
+  const contractsOf = new Map<string, string[]>();
+  for (const c of book.contracts) {
+    const member = book.members.get(text(c.order, 'ref_member') ?? '');
+    const memberCode = member ? text(member, 'member_code') : null;
+    if (!memberCode) continue;
+    contractsOf.set(memberCode, [...(contractsOf.get(memberCode) ?? []), c.code]);
+  }
+  for (const [memberCode] of opts.customerOverrides) {
+    if (!memberCodes.has(memberCode)) continue;
+    const codes = contractsOf.get(memberCode) ?? [];
+    if (codes.some((code) => !skipReason.has(code))) continue;
+    const why =
+      codes.length === 0
+        ? 'ไม่มีสัญญาในระบบเก่า'
+        : `ข้ามทุกสัญญา: ${codes.map((code) => `${code} ${skipReason.get(code)}`).join(', ')}`;
+    out.push({
+      code: memberCode,
+      source: 'customer-overrides',
+      message: `${OVERRIDE_FOR_SKIPPED}: --customer-overrides สมาชิก ${memberCode} ไม่มีสัญญาที่นำเข้า (${why}) — การผูกลูกค้าไม่ถูกใช้`,
+    });
+  }
+  return out;
 }
 
 /** รหัส PEAK ที่สัญญาหนึ่งจะตั้งให้ลูกค้า — เก็บจากทุกสัญญาที่นำเข้า (รวมที่ติดตัวบล็อกอื่น) */

@@ -8,7 +8,7 @@ import {
 } from '../../journal/cpa-templates/receipt-void-reversal.template';
 import type { DeferredWarning } from '../../journal/deferred-warning';
 import { assertNoAdvanceExcessIncome } from '../../journal/advance-excess-income.util';
-import { reconstructPriorCleared } from '../../journal/reconstruct-prior';
+import { revertPaymentFromLedger } from '../../journal/revert-payment-from-ledger';
 import { ReceiptNumberService } from './receipt-number.service';
 import {
   ADVANCE_SURPLUS_RECEIPT_TYPE,
@@ -280,13 +280,13 @@ export async function voidReceiptInTx(
     const matchedEntries = await tx.journalEntry.findMany({
       where: {
         AND: [
-          { metadata: { path: ['paymentId'], equals: receipt.paymentId } } as any,
+          { metadata: { path: ['paymentId'], equals: receipt.paymentId } },
           {
             OR: [
-              { metadata: { path: ['tag'], equals: 'receipt' } } as any,
-              { metadata: { path: ['tag'], equals: '2B' } } as any,
+              { metadata: { path: ['tag'], equals: 'receipt' } },
+              { metadata: { path: ['tag'], equals: '2B' } },
               // legacy credit-funded clears (applyCreditBalance credit-allocation JE)
-              { metadata: { path: ['tag'], equals: 'credit-allocation' } } as any,
+              { metadata: { path: ['tag'], equals: 'credit-allocation' } },
             ],
           },
           { status: 'POSTED' },
@@ -302,13 +302,14 @@ export async function voidReceiptInTx(
     // in JS, not SQL: a Postgres JSON-path equality on a missing key yields
     // NULL, so a SQL NOT(...) would silently drop never-reversed JEs too.
     const originalEntries = matchedEntries.filter(
-      (e) => (e.metadata as any)?.reversed !== true,
+      (e) => (e.metadata as Prisma.JsonObject | null)?.reversed !== true,
     );
     // R-2: total Cr 21-1103 across this receipt's JEs — the 6b park sweep is
     // reconciled against it after the loop (see the block below).
     let totalCr21 = new Prisma.Decimal(0);
     for (const originalEntry of originalEntries) {
-      if (policy.redirect) await deps.reversal.voidReceipt(originalEntry.id, tx, { redirect: policy.redirect });
+      if (policy.redirect)
+        await deps.reversal.voidReceipt(originalEntry.id, tx, { redirect: policy.redirect });
       else await deps.reversal.voidReceipt(originalEntry.id, tx);
       // Denormalized-balance restore: the reversal flips the 21-1103 /
       // 21-5101 LEDGER legs, but Contract.advanceBalance /
@@ -325,7 +326,7 @@ export async function voidReceiptInTx(
       // stamp is per-JE and must not be applied to another JE's debit.
       let entryDr21 = new Prisma.Decimal(0);
       let entryCr21 = new Prisma.Decimal(0);
-      for (const line of (originalEntry as any).lines ?? []) {
+      for (const line of originalEntry.lines ?? []) {
         if (line.accountCode === '21-1103') {
           entryDr21 = entryDr21.plus(new Prisma.Decimal(line.debit ?? 0));
           entryCr21 = entryCr21.plus(new Prisma.Decimal(line.credit ?? 0));
@@ -455,28 +456,25 @@ export async function voidReceiptInTx(
         updatedContract.rescheduleAdvanceBalance != null &&
         new Prisma.Decimal(updatedContract.rescheduleAdvanceBalance).isNegative()
       ) {
-        Sentry.captureMessage(
-          'Receipt void drove Contract.rescheduleAdvanceBalance negative',
-          {
-            level: 'warning',
-            tags: { subsystem: 'reschedule-park' },
-            extra: {
-              contractId: receipt.contractId,
-              receiptId: receipt.id,
-              rescheduleAdvanceBalance: updatedContract.rescheduleAdvanceBalance.toString(),
-              parkAdj: parkAdj.toString(),
-            },
+        Sentry.captureMessage('Receipt void drove Contract.rescheduleAdvanceBalance negative', {
+          level: 'warning',
+          tags: { subsystem: 'reschedule-park' },
+          extra: {
+            contractId: receipt.contractId,
+            receiptId: receipt.id,
+            rescheduleAdvanceBalance: updatedContract.rescheduleAdvanceBalance.toString(),
+            parkAdj: parkAdj.toString(),
           },
-        );
+        });
       }
     }
 
     // Un-pay the installment. The reversal above re-opened the receivable
     // for EVERY receipt JE of this Payment, so the Payment row must stop
-    // claiming PAID and the sibling receipts must not stay valid — mirrors
-    // RefundsService.markReversed. OVERDUE vs PENDING is decided here
-    // because the read side does NO due-date comparison (the cron only
-    // flips PENDING→OVERDUE at its next run).
+    // claiming PAID and the sibling receipts must not stay valid — same as
+    // RefundsService.markReversed. OVERDUE vs PENDING is decided in
+    // revertPaymentFromLedger because the read side does NO due-date
+    // comparison (the cron only flips PENDING→OVERDUE at its next run).
     const payment = await tx.payment.findUnique({
       where: { id: receipt.paymentId },
       select: {
@@ -497,48 +495,20 @@ export async function voidReceiptInTx(
       // zeroing amountPaid would then under-state the installment and the
       // next full collection would trip the ≤1฿ tolerance guard. Recompute
       // the surviving cleared amount from the ledger instead (reversed
-      // originals are skipped by reconstructPriorCleared).
-      let survivingPaid = new Prisma.Decimal(0);
-      const schedule = await tx.installmentSchedule.findUnique({
-        where: {
-          contractId_installmentNo: {
-            contractId: payment.contractId,
-            installmentNo: payment.installmentNo,
-          },
-        },
-        select: { id: true },
-      });
-      if (schedule) {
-        const prior = await reconstructPriorCleared(
-          tx,
-          schedule.id,
-          new Prisma.Decimal(payment.amountDue),
-        );
-        survivingPaid = prior.priorPrincipalCleared.plus(prior.priorLateFeeBooked);
-      }
-      const fullyReverted = survivingPaid.lte(0);
-      const revertStatus = fullyReverted
-        ? payment.dueDate < new Date()
-          ? 'OVERDUE'
-          : 'PENDING'
-        : 'PARTIALLY_PAID';
-      await tx.payment.update({
-        where: { id: payment.id },
-        data: {
-          status: revertStatus,
-          amountPaid: fullyReverted ? 0 : survivingPaid,
-          paidDate: null,
-        },
-      });
+      // originals are skipped by reconstructPriorCleared). Shared with
+      // RefundsService.markReversed — `revertPaymentFromLedger`.
+      const {
+        scheduleId,
+        survivingPaid,
+        fullyReverted,
+        status: revertStatus,
+      } = await revertPaymentFromLedger(tx, payment);
       // ตั้งลูกหนี้งวด ณ วันรับเงิน (คำตอบฝ่ายบัญชี 29/09/2569): งวดไม่เหลือการรับชำระที่มีผลแล้ว —
       // ถ้ารายการตั้งลูกหนี้งวดถูกลง ณ วันรับเงิน (ทุกใบ: บางส่วน + ใบที่ทำให้ครบ — ก1) และยังไม่ถึง
       // วันครบกำหนด ให้กลับรายการเหล่านั้นด้วย (เงื่อนไขข้อ 2–3 อยู่ใน template). ไม่จับ error:
       // ล้มแล้วการยกเลิกล้มทั้งรายการ. สัญญาณเตือนของ template ส่งหลัง commit
-      if (fullyReverted && schedule) {
-        const accrualVoid = await deps.reversal.voidAccrualPostedAtReceipt(
-          schedule.id,
-          tx,
-        );
+      if (fullyReverted && scheduleId) {
+        const accrualVoid = await deps.reversal.voidAccrualPostedAtReceipt(scheduleId, tx);
         accrualReversal = accrualVoid.result;
         accrualWarnings = accrualVoid.warnings;
       }
@@ -660,7 +630,6 @@ export async function voidReceiptInTx(
       },
     },
   });
-
 
   return {
     voidedReceipt: receipt,

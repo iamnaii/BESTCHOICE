@@ -30,16 +30,14 @@ function fixture(role = 'SALES', branchId: string | null = 'branch-a') {
     },
     contract: { findFirst: jest.fn().mockResolvedValue({ branchId: 'branch-a' }) },
     payment: {
-      findUnique: jest
-        .fn()
-        .mockResolvedValue({
-          id: 'payment',
-          contractId: 'contract',
-          amountPaid: new Prisma.Decimal(1000),
-          status: 'PAID',
-          refunds: [],
-          deletedAt: null,
-        }),
+      findUnique: jest.fn().mockResolvedValue({
+        id: 'payment',
+        contractId: 'contract',
+        amountPaid: new Prisma.Decimal(1000),
+        status: 'PAID',
+        refunds: [],
+        deletedAt: null,
+      }),
       update: jest.fn().mockResolvedValue({}),
     },
     refund: {
@@ -49,8 +47,15 @@ function fixture(role = 'SALES', branchId: string | null = 'branch-a') {
       findMany: jest.fn().mockResolvedValue([]),
       count: jest.fn().mockResolvedValue(0),
     },
-    journalEntry: { findMany: jest.fn().mockResolvedValue([{ id: 'je', companyId: 'company', lines: [] }]) },
-    receipt: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    journalEntry: {
+      findMany: jest.fn().mockResolvedValue([{ id: 'je', companyId: 'company', lines: [] }]),
+    },
+    // Task 17 A: markReversed คืนแถวงวดจากยอดในบัญชี (revertPaymentFromLedger) — ไม่มีแถวตารางงวด = ไม่เหลือยอด
+    installmentSchedule: { findUnique: jest.fn().mockResolvedValue(null) },
+    receipt: {
+      findMany: jest.fn().mockResolvedValue([]),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
     auditLog: { create: jest.fn().mockResolvedValue({}) },
   };
   const prisma = {
@@ -263,49 +268,90 @@ describe('refund authorization uses current permission and branch', () => {
 
 describe('refund returns cash received, excluding approved settlement relief', () => {
   const cashReceipt = (amount: string, extra: Record<string, unknown> = {}) => ({
-    amount: new Prisma.Decimal(amount), isVoided: false, deletedAt: null,
-    createdAt: new Date('2026-09-07T00:00:00Z'), ...extra,
+    amount: new Prisma.Decimal(amount),
+    isVoided: false,
+    deletedAt: null,
+    createdAt: new Date('2026-09-07T00:00:00Z'),
+    ...extra,
   });
 
   it('requests 999.50 cash when a 0.50 approved shortage settled 1000.00 debt', async () => {
     const f = fixture();
     f.tx.receipt.findMany.mockResolvedValue([cashReceipt('999.50')]);
-    await f.service.requestRefund({ paymentId: 'payment', amount: 999.5, reason: 'wrong bank collection' }, 'actor');
-    expect(f.tx.refund.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ amount: new Prisma.Decimal('999.50') }) }));
+    await f.service.requestRefund(
+      { paymentId: 'payment', amount: 999.5, reason: 'wrong bank collection' },
+      'actor',
+    );
+    expect(f.tx.refund.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ amount: new Prisma.Decimal('999.50') }),
+      }),
+    );
     f.tx.refund.create.mockClear();
-    await expect(f.service.requestRefund({ paymentId: 'payment', amount: 1000, reason: 'wrong bank collection' }, 'actor')).rejects.toThrow(BadRequestException);
+    await expect(
+      f.service.requestRefund(
+        { paymentId: 'payment', amount: 1000, reason: 'wrong bank collection' },
+        'actor',
+      ),
+    ).rejects.toThrow(BadRequestException);
     expect(f.tx.refund.create).not.toHaveBeenCalled();
   });
 
   it('sums active partial cash receipts and excludes voided/deleted cash', async () => {
     const f = fixture();
-    f.tx.receipt.findMany.mockResolvedValue([cashReceipt('500'), cashReceipt('499.50'), cashReceipt('100', { isVoided: true }), cashReceipt('200', { deletedAt: new Date() })]);
+    f.tx.receipt.findMany.mockResolvedValue([
+      cashReceipt('500'),
+      cashReceipt('499.50'),
+      cashReceipt('100', { isVoided: true }),
+      cashReceipt('200', { deletedAt: new Date() }),
+    ]);
     f.refund.amount = new Prisma.Decimal('999.50');
     await f.service.approveRefund('refund', 'actor', 'SALES');
-    expect(f.tx.receipt.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { paymentId: 'payment', contractId: 'contract', receiptType: { in: ['INSTALLMENT', 'PAYMENT'] } } }));
+    expect(f.tx.receipt.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          paymentId: 'payment',
+          contractId: 'contract',
+          receiptType: { in: ['INSTALLMENT', 'PAYMENT'] },
+        },
+      }),
+    );
     expect(f.tx.refund.updateMany).toHaveBeenCalled();
   });
 
   it('refuses settled-debt amount at approval when it exceeds actual receipt cash', async () => {
     const f = fixture();
     f.tx.receipt.findMany.mockResolvedValue([cashReceipt('999.50')]);
-    await expect(f.service.approveRefund('refund', 'actor', 'SALES')).rejects.toThrow(BadRequestException);
+    await expect(f.service.approveRefund('refund', 'actor', 'SALES')).rejects.toThrow(
+      BadRequestException,
+    );
     expect(f.tx.refund.updateMany).not.toHaveBeenCalled();
   });
 
   it('never falls back to settled debt after all receipt history was voided', async () => {
     const f = fixture();
     f.tx.receipt.findMany.mockResolvedValue([cashReceipt('1000', { isVoided: true })]);
-    await expect(f.service.requestRefund({ paymentId: 'payment', amount: 1000, reason: 'wrong bank collection' }, 'actor')).rejects.toThrow(BadRequestException);
-    await expect(f.service.approveRefund('refund', 'actor', 'SALES')).rejects.toThrow(BadRequestException);
+    await expect(
+      f.service.requestRefund(
+        { paymentId: 'payment', amount: 1000, reason: 'wrong bank collection' },
+        'actor',
+      ),
+    ).rejects.toThrow(BadRequestException);
+    await expect(f.service.approveRefund('refund', 'actor', 'SALES')).rejects.toThrow(
+      BadRequestException,
+    );
     expect(f.tx.refund.create).not.toHaveBeenCalled();
     expect(f.tx.refund.updateMany).not.toHaveBeenCalled();
   });
 
   it('rejects a new receipt after the request even if its cash total is unchanged', async () => {
     const f = fixture();
-    f.tx.receipt.findMany.mockResolvedValue([cashReceipt('1000', { createdAt: new Date('2026-09-08T01:00:00Z') })]);
-    await expect(f.service.approveRefund('refund', 'actor', 'SALES')).rejects.toThrow(ConflictException);
+    f.tx.receipt.findMany.mockResolvedValue([
+      cashReceipt('1000', { createdAt: new Date('2026-09-08T01:00:00Z') }),
+    ]);
+    await expect(f.service.approveRefund('refund', 'actor', 'SALES')).rejects.toThrow(
+      ConflictException,
+    );
     expect(f.tx.refund.updateMany).not.toHaveBeenCalled();
   });
 
@@ -314,16 +360,31 @@ describe('refund returns cash received, excluding approved settlement relief', (
     f.refund.status = 'APPROVED';
     f.refund.amount = new Prisma.Decimal('999.50');
     f.tx.receipt.findMany.mockResolvedValue([cashReceipt('999.50')]);
-    await f.service.markReversed('refund', { bankReversalRef: 'bank-1', notes: 'confirmed cash' }, 'actor', 'OWNER');
+    await f.service.markReversed(
+      'refund',
+      { bankReversalRef: 'bank-1', notes: 'confirmed cash' },
+      'actor',
+      'OWNER',
+    );
     expect(f.reversal.voidReceipt).toHaveBeenCalledWith('je', f.tx, { flow: 'refund-reversal' });
-    expect(f.tx.payment.update).toHaveBeenCalledWith({ where: { id: 'payment' }, data: { status: 'PENDING', amountPaid: 0, paidDate: null } });
+    expect(f.tx.payment.update).toHaveBeenCalledWith({
+      where: { id: 'payment' },
+      data: { status: 'PENDING', amountPaid: 0, paidDate: null },
+    });
   });
 
   it('bank confirmation rejects cash history drift before reversal', async () => {
     const f = fixture('FINANCE_MANAGER');
     f.refund.status = 'APPROVED';
     f.tx.receipt.findMany.mockResolvedValue([cashReceipt('999.50')]);
-    await expect(f.service.markReversed('refund', { bankReversalRef: 'bank-1', notes: 'confirmed cash' }, 'actor', 'OWNER')).rejects.toThrow(BadRequestException);
+    await expect(
+      f.service.markReversed(
+        'refund',
+        { bankReversalRef: 'bank-1', notes: 'confirmed cash' },
+        'actor',
+        'OWNER',
+      ),
+    ).rejects.toThrow(BadRequestException);
     expect(f.reversal.voidReceipt).not.toHaveBeenCalled();
     expect(f.tx.refund.updateMany).not.toHaveBeenCalled();
   });
@@ -331,7 +392,9 @@ describe('refund returns cash received, excluding approved settlement relief', (
 
 describe('bank refund refuses advance or credit funding', () => {
   const mixedEntry = (accountCode: string, debit: string, credit: string, reversed = false) => ({
-    id: 'mixed-je', companyId: 'company', metadata: { tag: 'receipt', reversed },
+    id: 'mixed-je',
+    companyId: 'company',
+    metadata: { tag: 'receipt', reversed },
     lines: [{ accountCode, debit: new Prisma.Decimal(debit), credit: new Prisma.Decimal(credit) }],
   });
 
@@ -340,18 +403,28 @@ describe('bank refund refuses advance or credit funding', () => {
     ['21-1103', '0', '100'],
     ['21-5101', '100', '0'],
     ['21-5101', '0', '100'],
-  ])('rejects request with a nonzero %s leg (Dr %s / Cr %s)', async (accountCode, debit, credit) => {
-    const f = fixture();
-    f.tx.journalEntry.findMany.mockResolvedValue([mixedEntry(accountCode, debit, credit)]);
-    await expect(f.service.requestRefund({ paymentId: 'payment', amount: 1000, reason: 'wrong bank collection' }, 'actor')).rejects.toThrow('กรุณาส่งคำขอยกเลิกใบเสร็จ');
-    expect(f.tx.refund.create).not.toHaveBeenCalled();
-    expect(f.tx.auditLog.create).not.toHaveBeenCalled();
-  });
+  ])(
+    'rejects request with a nonzero %s leg (Dr %s / Cr %s)',
+    async (accountCode, debit, credit) => {
+      const f = fixture();
+      f.tx.journalEntry.findMany.mockResolvedValue([mixedEntry(accountCode, debit, credit)]);
+      await expect(
+        f.service.requestRefund(
+          { paymentId: 'payment', amount: 1000, reason: 'wrong bank collection' },
+          'actor',
+        ),
+      ).rejects.toThrow('กรุณาส่งคำขอยกเลิกใบเสร็จ');
+      expect(f.tx.refund.create).not.toHaveBeenCalled();
+      expect(f.tx.auditLog.create).not.toHaveBeenCalled();
+    },
+  );
 
   it('refuses approval if mixed funding is present and leaves the request pending', async () => {
     const f = fixture();
     f.tx.journalEntry.findMany.mockResolvedValue([mixedEntry('21-1103', '100', '0')]);
-    await expect(f.service.approveRefund('refund', 'actor', 'SALES')).rejects.toThrow('กรุณาส่งคำขอยกเลิกใบเสร็จ');
+    await expect(f.service.approveRefund('refund', 'actor', 'SALES')).rejects.toThrow(
+      'กรุณาส่งคำขอยกเลิกใบเสร็จ',
+    );
     expect(f.tx.refund.updateMany).not.toHaveBeenCalled();
   });
 
@@ -359,7 +432,14 @@ describe('bank refund refuses advance or credit funding', () => {
     const f = fixture('FINANCE_MANAGER');
     f.refund.status = 'APPROVED';
     f.tx.journalEntry.findMany.mockResolvedValue([mixedEntry('21-5101', '100', '0')]);
-    await expect(f.service.markReversed('refund', { bankReversalRef: 'bank-1', notes: 'confirmed' }, 'actor', 'OWNER')).rejects.toThrow('กรุณาส่งคำขอยกเลิกใบเสร็จ');
+    await expect(
+      f.service.markReversed(
+        'refund',
+        { bankReversalRef: 'bank-1', notes: 'confirmed' },
+        'actor',
+        'OWNER',
+      ),
+    ).rejects.toThrow('กรุณาส่งคำขอยกเลิกใบเสร็จ');
     expect(f.reversal.voidReceipt).not.toHaveBeenCalled();
     expect(f.tx.payment.update).not.toHaveBeenCalled();
     expect(f.tx.refund.updateMany).not.toHaveBeenCalled();
@@ -368,24 +448,33 @@ describe('bank refund refuses advance or credit funding', () => {
   it('ignores already reversed originals and permits zero-valued liability lines', async () => {
     const f = fixture();
     f.tx.journalEntry.findMany.mockResolvedValue([
-      mixedEntry('21-1103', '100', '0', true), mixedEntry('21-5101', '0', '0'),
+      mixedEntry('21-1103', '100', '0', true),
+      mixedEntry('21-5101', '0', '0'),
     ]);
     await f.service.approveRefund('refund', 'actor', 'SALES');
     expect(f.tx.refund.updateMany).toHaveBeenCalled();
     expect(f.tx.journalEntry.findMany).toHaveBeenCalledWith({
-      where: { AND: [
-        { metadata: { path: ['paymentId'], equals: 'payment' } },
-        { OR: [
-          { metadata: { path: ['tag'], equals: 'receipt' } },
-          { metadata: { path: ['tag'], equals: '2B' } },
-          { metadata: { path: ['tag'], equals: 'credit-allocation' } },
-        ] },
-        { status: 'POSTED' }, { deletedAt: null },
-      ] },
-      select: { metadata: true, lines: {
-        where: { deletedAt: null, accountCode: { in: ['21-1103', '21-5101'] } },
-        select: { debit: true, credit: true },
-      } },
+      where: {
+        AND: [
+          { metadata: { path: ['paymentId'], equals: 'payment' } },
+          {
+            OR: [
+              { metadata: { path: ['tag'], equals: 'receipt' } },
+              { metadata: { path: ['tag'], equals: '2B' } },
+              { metadata: { path: ['tag'], equals: 'credit-allocation' } },
+            ],
+          },
+          { status: 'POSTED' },
+          { deletedAt: null },
+        ],
+      },
+      select: {
+        metadata: true,
+        lines: {
+          where: { deletedAt: null, accountCode: { in: ['21-1103', '21-5101'] } },
+          select: { debit: true, credit: true },
+        },
+      },
     });
   });
 });

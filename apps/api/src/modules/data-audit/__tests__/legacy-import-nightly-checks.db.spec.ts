@@ -45,6 +45,7 @@ import { LEGACY_SYSTEM_USER_EMAIL } from '../../journal/legacy-import-journal';
 import { PaymentReceiptOrchestrator } from '../../payments/services/payment-receipt-orchestrator';
 import { ProductsService } from '../../products/products.service';
 import { ReceiptsService } from '../../receipts/receipts.service';
+import { RefundsService } from '../../refunds/refunds.service';
 import { ReceivableReconService } from '../../receivable-recon/receivable-recon.service';
 import type { AuditCheckResult } from '../data-audit.types';
 import { DataAuditChecksService } from '../services/data-audit-checks.service';
@@ -57,7 +58,8 @@ import { DataAuditChecksService } from '../services/data-audit-checks.service';
  *   สัญญาปกติ — ห้าข้อไม่มี finding · receivable-recon ไม่ breach
  * - ขั้น 2 หลังวันตัด: รับเงินพร้อมค่าปรับ · เศษปัด 53-1503 · เงินรับล่วงหน้า (พักภาษี PR4 แล้วหักโดยรอบกลางคืน) — ยังไม่มี finding
  * - ขั้น 3 ทำให้เพี้ยน (prisma ตรง): ต้องติดทุกข้อ ทั้งสัญญาปกติและงวดหลังวันตัดของสัญญานำเข้า (ไม่อ่อนลง)
- * - ปิดยอดก่อนกำหนด (JP4) ของสัญญาปกติ: งวดที่ JP4 ปิดไม่ติด orphan_payments (ปฏิทินผูกกับวันนี้ — สูตรยอดปิดนับงวดจากวันนี้)
+ * - ปิดยอดก่อนกำหนด (JP4) ของสัญญาปกติ: งวดที่ JP4 ปิดไม่ติด orphan_payments (ปฏิทินผูกกับวันนี้ — สูตรยอดปิดนับงวดจากวันนี้) ·
+ *   ส่วนเผื่อค่าปรับของ overpaid_contracts ให้เฉพาะงวดที่ JP4 จ่าย (Task 17 ข้อ B)
  *
  * ทุกข้อเรียกด้วย `scope.contractIds` ของสเปคนี้ (ฐานทดสอบอาจมีแถวของสเปคอื่น) · receivable-recon รันทั้งฐานแล้วดูเฉพาะสาขาของสเปคนี้
  *
@@ -102,6 +104,7 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
   let receipts: ReceiptsService;
   let checks: DataAuditChecksService;
   let recon: ReceivableReconService;
+  let refunds: RefundsService;
 
   const saved = { key: process.env.PII_ENCRYPTION_KEY, salt: process.env.PII_HASH_SALT };
   const stamp = Date.now().toString(36).toUpperCase();
@@ -258,11 +261,16 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
     );
     checks = new DataAuditChecksService(asService);
     recon = new ReceivableReconService(asService);
+    refunds = new RefundsService(
+      asService,
+      {} as never,
+      new ReceiptVoidReversalTemplate(journal, asService),
+    );
 
     // สัญญาปกติ — A1 (ถึงวันตัดแบบเดียวกับสัญญานำเข้า) · A2 (เงินรับล่วงหน้า) · C1–C5 (เป้าทำให้เพี้ยนในขั้น 3)
     native.set('A1', await createNative('A1', P1.date, P1.dueDay));
     await runNativeToCutoff(native.get('A1')!);
-    for (const key of ['A2', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6']) {
+    for (const key of ['A2', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'A4']) {
       native.set(key, await createNative(key, P1.date, P1.dueDay));
     }
 
@@ -308,6 +316,7 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
       { key: 'L8', installments: legacyState() },
       { key: 'L9', installments: legacyState() },
       { key: 'L9B', installments: legacyState() },
+      { key: 'L9R', installments: legacyState() },
     ]);
   }, LONG);
 
@@ -341,6 +350,7 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
       await prisma.journalLine.deleteMany({ where: { journalEntryId: { in: entryIds } } });
       await prisma.journalEntry.deleteMany({ where: { id: { in: entryIds } } });
       await prisma.paymentEvidence.deleteMany({ where: { contractId: { in: contractIds } } });
+      await prisma.refund.deleteMany({ where: { contractId: { in: contractIds } } });
       await prisma.payment.deleteMany({ where: { contractId: { in: contractIds } } });
       await prisma.installmentSchedule.deleteMany({ where: { contractId: { in: contractIds } } });
       await prisma.contractDocument.deleteMany({ where: { contractId: { in: contractIds } } });
@@ -684,8 +694,22 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
       .sort((a, b) => a - b);
 
   const cleanKeys = () => [
-    ...ids(native, ['A1', 'A2', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6']),
-    ...ids(legacy, ['L1', 'L2', 'L3', 'H1', 'H2', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9', 'L9B']),
+    ...ids(native, ['A1', 'A2', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'A4']),
+    ...ids(legacy, [
+      'L1',
+      'L2',
+      'L3',
+      'H1',
+      'H2',
+      'L4',
+      'L5',
+      'L6',
+      'L7',
+      'L8',
+      'L9',
+      'L9B',
+      'L9R',
+    ]),
   ];
 
   // ── ขั้น 1–3 (ลำดับในไฟล์ = ลำดับเวลา) ─────────────────────────────────────────────────────────
@@ -777,6 +801,81 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
 
       await expectClean(cleanKeys());
       expect(await reconBreachesOf([nativeBranchId, legacyBranchId])).toEqual([]);
+    },
+    LONG,
+  );
+
+  /** คืนเงินผ่านเส้นทางจริง: ขอ (ฝ่ายบัญชี) → อนุมัติ (OWNER คนละคน) → ยืนยันธนาคาร (OWNER) */
+  async function refundInFull(paymentId: string, amount: string) {
+    const refund = await refunds.requestRefund(
+      { paymentId, amount: Number(amount), reason: 'ทดสอบคืนเงินหลังวันตัดระบบ (T17)' },
+      approverId,
+    );
+    await refunds.approveRefund(refund.id, userId, 'OWNER');
+    await refunds.markReversed(
+      refund.id,
+      { bankReversalRef: `T17-${stamp}-${++refSeq}`, notes: 'ทดสอบ' },
+      userId,
+      'OWNER',
+    );
+  }
+
+  it(
+    'stage 2b — refunds after cutover: money that cleared the row without a receipt survives (legacy marker · advance consume); a row with no receipt / receipt JE has nothing to refund',
+    async () => {
+      const noRefundableMoney = /ไม่มีใบเสร็จ\/รายการรับชำระในระบบนี้ให้คืน/;
+      const refusesRefund = async (paymentId: string) => {
+        const row = await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
+        await expect(
+          refunds.requestRefund(
+            { paymentId, amount: Number(row.amountPaid), reason: 'ทดสอบ (T17)' },
+            approverId,
+          ),
+        ).rejects.toThrow(noRefundableMoney);
+      };
+      // งวดนำเข้าที่ไม่มีใบเสร็จในระบบ — PAID ก่อนวันตัด (L1 งวด 1) และจ่ายบางส่วนก่อนวันตัด (L9R งวด 4) → คืนไม่ได้
+      const l9r = legacy.get('L9R')!;
+      await refusesRefund((await paymentOf(legacy.get('L1')!, 1)).id);
+      await refusesRefund((await paymentOf(l9r, 4)).id);
+
+      // L9R: งวด 4 (marker 300) รับ 1,215.83 หลังวันตัด → คืนเงินใบนั้น → เหลือ 300 PARTIALLY_PAID · รับ 1,215.83 ใหม่ได้
+      await pay(l9r, 4, await owedOn(l9r, 4), MAY2);
+      await refundInFull((await paymentOf(l9r, 4)).id, '1215.83');
+      const l9rRow4 = await paymentOf(l9r, 4);
+      expect([l9rRow4.status, l9rRow4.amountPaid.toFixed(2), l9rRow4.paidDate]).toEqual([
+        'PARTIALLY_PAID',
+        '300.00',
+        null,
+      ]);
+      expect((await run('hp', [l9r])).count).toBe(0);
+
+      // A4 ปกติ: งวด 1 รับเกิน 500 (พักเป็นเงินรับล่วงหน้า) → 2A งวด 2 หัก 500 เข้างวด (ไม่มี paymentId) → รับส่วนที่เหลือ
+      // 1,015.83 → คืนเงินใบนั้น → ยอดจากเงินรับล่วงหน้ายังอยู่ 500
+      const a4 = native.get('A4')!;
+      await nightly2A(a4, 1);
+      await pay(a4, 1, D(MONTHLY).plus(500).toFixed(2), P1.due(1));
+      await nightly2A(a4, 2);
+      expect((await paymentOf(a4, 2)).amountPaid.toFixed(2)).toBe('500.00');
+      // I-1: ยอด 500 ล้างงวดด้วยรายการหักเงินรับล่วงหน้า (ไม่มีใบเสร็จ ไม่มี paymentId) — คืนผ่านระบบไม่ได้ (เดิมถอยไป amountPaid
+      // แล้วคืน 500 โดยไม่มีรายการบัญชีใด)
+      await refusesRefund((await paymentOf(a4, 2)).id);
+      await pay(a4, 2, await owedOn(a4, 2), P1.due(2));
+      expect((await paymentOf(a4, 2)).status).toBe('PAID');
+      await refundInFull((await paymentOf(a4, 2)).id, '1015.83');
+      const a4Row2 = await paymentOf(a4, 2);
+      expect([a4Row2.status, a4Row2.amountPaid.toFixed(2)]).toEqual(['PARTIALLY_PAID', '500.00']);
+
+      await expectClean(ids(native, ['A4']).concat(ids(legacy, ['L1', 'L9R'])));
+      expect(await reconBreachesOf([nativeBranchId, legacyBranchId])).toEqual([]);
+
+      // งวดที่คืนเงินแล้วรับเต็มส่วนที่เหลือได้อีก (ไม่ชนเกณฑ์ ≤ 1 บาท)
+      await pay(l9r, 4, await owedOn(l9r, 4), MAY3);
+      await pay(a4, 2, await owedOn(a4, 2), P1.due(2));
+      expect([(await paymentOf(l9r, 4)).status, (await paymentOf(a4, 2)).status]).toEqual([
+        'PAID',
+        'PAID',
+      ]);
+      await expectClean(ids(native, ['A4']).concat(ids(legacy, ['L9R'])));
     },
     LONG,
   );
@@ -1015,6 +1114,57 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
         expect((await run('orphan_payments', [a3])).count).toBe(0);
         expect((await run('overpaid', [a3])).count).toBe(0);
         expect((await run('orphan_contracts', [a3])).count).toBe(0);
+      },
+      LONG,
+    );
+
+    it(
+      'the JP4 late-fee allowance covers only the rows JP4 paid — a row PAID before the payoff overpaid within its leftover fee is caught',
+      async () => {
+        // ต่อจากเทสต์ก่อนหน้า (JP4 ลงแล้ว) — งวด 5 ชำระครบด้วยใบรับชำระก่อนปิดยอด · ภายหลังพนักงานเพิ่มค่าปรับ 100 ให้แถวที่จ่ายแล้ว
+        // และยอดจ่ายถูกแก้เกิน 50 (ไม่เกินค่าปรับ) — เดิมส่วนเผื่อของ JP4 ครอบทุกแถวของสัญญาจึงไม่ติด
+        const [entry] = await prisma.journalEntry.findMany({
+          where: {
+            AND: [
+              { metadata: { path: ['contractId'], equals: a3 } },
+              { metadata: { path: ['flow'], equals: 'early-payoff' } },
+            ],
+          },
+          select: { id: true, postedAt: true, metadata: true },
+        });
+        const { firstUnpaidInstallmentNo, lastUnpaidInstallmentNo, ...withoutRange } =
+          entry.metadata as Record<string, unknown>;
+        expect([firstUnpaidInstallmentNo, lastUnpaidInstallmentNo]).toEqual([6, 12]);
+        const row5 = await paymentOf(a3, 5);
+        expect(row5.status).toBe('PAID');
+        expect(row5.paidDate?.getTime()).not.toBe(entry.postedAt?.getTime());
+        await prisma.payment.update({
+          where: { id: row5.id },
+          data: { lateFee: D(100), amountPaid: row5.amountDue.plus(50) },
+        });
+        const caught = [
+          {
+            id: a3,
+            contract_number: `TEST-T16N-${stamp}-A3`,
+            installment_nos: [5],
+            overpay: '50.00',
+          },
+        ];
+        // งวด 6 (JP4 เก็บค่าปรับ 100 ไว้ใน amountPaid) ยังได้ส่วนเผื่อ — ไม่อยู่ใน installment_nos
+        expect((await run('overpaid', [a3])).details).toEqual(caught);
+
+        // แถวที่รับเงินวันเดียวกับวันปิดยอด (หน้ารับชำระกับหน้าปิดยอดส่งวันที่ YYYY-MM-DD ⇒ เวลาเท่ากันทุกตัว) — วันที่อย่างเดียว
+        // แยกไม่ได้ · ช่วงงวดที่ JP4 ปิด (firstUnpaidInstallmentNo..lastUnpaidInstallmentNo) แยกได้
+        await prisma.payment.update({ where: { id: row5.id }, data: { paidDate: entry.postedAt } });
+        expect((await run('overpaid', [a3])).details).toEqual(caught);
+
+        // รายการ JP4 ก่อน 2026-10-18 ไม่มีช่วงงวด — เหลือวันที่เป็นตัวแยก (แถวที่ JP4 จ่ายยังได้ส่วนเผื่อ)
+        await prisma.journalEntry.update({
+          where: { id: entry.id },
+          data: { metadata: withoutRange as Prisma.InputJsonObject },
+        });
+        await prisma.payment.update({ where: { id: row5.id }, data: { paidDate: row5.paidDate } });
+        expect((await run('overpaid', [a3])).details).toEqual(caught);
       },
       LONG,
     );

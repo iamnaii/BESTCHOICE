@@ -30,7 +30,7 @@ import type { WriteReport } from './writer';
  *
  * | ด่าน | ผ่านเมื่อ |
  * |---|---|
- * | 6.1 | `cutoff` = `plan.cutoff` · แผน (`plan.totals` = ผลรวมรายสัญญา · ไม่มีตัวบล็อก · ครบจำนวนสัญญาใน dump ถ้าส่ง `bookContracts`) = รายงานตัวเขียน = ฐาน **ต่อสัญญาที่นำเข้า**: สัญญา (เลขเดิม / เลขสัญญา / สถานะ / ช่องเงินที่รอบ 2A อ่าน) · **งวดรายแถว** (`dueDate` / `amountDue` / `amountPaid` / `status` / รหัสงวดเดิม · ยอดแยกเมื่อแผนมี) · จำนวนแถวตารางงวด · สลิป / เอกสาร (หักไฟล์ที่ไม่ได้อัปโหลด — แผนเป็นตัวตั้งเมื่อแผนรู้ผลอัปโหลด) · รายการบัญชีตาม flow · ลูกค้า (หนึ่งสมาชิก = หนึ่งลูกค้า) |
+ * | 6.1 | `cutoff` = `plan.cutoff` · แผน (`plan.totals` = ผลรวมรายสัญญา · ไม่มีตัวบล็อก · ครบจำนวนสัญญาใน dump ถ้าส่ง `bookContracts`) = รายงานตัวเขียน = ฐาน **ต่อสัญญาที่นำเข้า**: สัญญา (เลขเดิม / เลขสัญญา / สถานะ / ช่องเงินที่รอบ 2A อ่าน) · **งวดรายแถว** (`dueDate` / `amountDue` / `amountPaid` / `status` / รหัสงวดเดิม · ยอดแยกเมื่อแผนมี) · จำนวนแถวตารางงวด · สลิป / เอกสาร (หักไฟล์ที่ไม่ได้อัปโหลด — แผนเป็นตัวตั้งเมื่อแผนรู้ผลอัปโหลด) · รายการบัญชีตาม flow · ลูกค้า (หนึ่งสมาชิก = หนึ่งลูกค้า) · ต้นทางสิทธิ์ (`accessCompanyCode` / `accessBranchId`) ของลูกค้า `CREATED` รอบนี้ — และ Contact ที่สร้างให้ (`contactCreated`) — = `report.customerOrigin` (แก้ภายหลังไม่ได้ — trigger `immutable_party_access_origin`) |
  * | 6.2 | สัญญาผ่อนอยู่ทุกสัญญา: Σ(`amountDue − amountPaid`) ของ Payment = ยอดคงเหลือใบแจ้งหนี้ PEAK (`plan.items[].peak.remain`) ตรงทุกสตางค์ — ส่วนต่างกับระบบเก่า (ปรับลดตาม PEAK / เศษสตางค์) และงวดที่ยังไม่ PAID ของสัญญาประวัติ รายงานอย่างเดียว |
  * | 6.3 | ไม่มีรายการบัญชีของสัญญาที่นำเข้าลงวันที่ถึงวันตัด (`entryDate` หรือ `postedAt` ≤ วันตัด) นอกจาก flow `legacy-opening` / `legacy-prior-receipt` |
  * | 6.4 | ต่อสัญญา (GL ความหมายเดียวกับ `glContractBalance`): `CARRY_FORWARD_ACCOUNTS` = บรรทัดรายการยกมาของ `computeOpening` + marker + รายการไล่ VAT · ลูกหนี้ใน GL (11-2101 + 11-2103 + 11-2105) = ยอดค้างตามแถวงวด + `roundingDiff` · **GL 11-2101 / 11-2105 / 11-2106 / 21-2102 + Σ บรรทัด 2A ที่รอบกลางคืนจะลงให้ทุกแถวที่ยังไม่ตั้งครบ (`buildRemainderAccrual2ALines(accrual2AInputOf(สัญญาในฐาน), accruedSoFarOf(แถว))`) = 0** · **marker ทุกรายการชี้แถวงวดของ (สัญญา, งวด) ที่แผนมี marker และ Cr 11-2103 = Dr 32-1101 = ยอด marker ในแผน = `amountPaid` ของงวดนั้น** · สัญญาประวัติไม่มียอด · รายงาน Σ `roundingDiff` / เศษสตางค์ PEAK |
@@ -719,6 +719,55 @@ async function gate61(ctx: Ctx): Promise<GateBody> {
   }
   const shared = [...membersOfCustomer.values()].filter((s) => s.size > 1).length;
 
+  // ต้นทางสิทธิ์ของลูกค้าที่สร้างรอบนี้ (+ Contact ที่สร้างให้) = ค่าที่ตัวเขียนรายงาน — แก้ภายหลังไม่ได้ (trigger
+  // `immutable_party_access_origin`) ⇒ ทางสร้างลูกค้าที่ลืมส่ง origin ต้องหยุดที่นี่ · LINKED ไม่ตรวจ (ตัวนำเข้าไม่แตะต้นทางเดิม)
+  const origin = report.customerOrigin;
+  const originText = (company: string | null, branchId: string | null) =>
+    `${company ?? 'ว่าง'}/${
+      branchId === null
+        ? 'ไม่มีสาขา'
+        : branchId === origin.accessBranchId
+          ? 'สาขาที่รายงาน'
+          : 'สาขาอื่น'
+    }`;
+  type Party = { accessCompanyCode: string | null; accessBranchId: string | null };
+  const createdCustomers = report.customers.filter((x) => x.outcome === 'CREATED');
+  const originRows = new Map(
+    createdCustomers.length === 0
+      ? []
+      : (
+          await tx.customer.findMany({
+            where: { id: { in: createdCustomers.map((x) => x.customerId) } },
+            select: {
+              id: true,
+              accessCompanyCode: true,
+              accessBranchId: true,
+              contact: { select: { accessCompanyCode: true, accessBranchId: true } },
+            },
+          })
+        ).map((r) => [r.id, r]),
+  );
+  for (const x of createdCustomers) {
+    const row = originRows.get(x.customerId);
+    if (!row) {
+      fail(x.code, 'ไม่พบลูกค้าที่ตัวเขียนรายงานว่าสร้างรอบนี้');
+      continue;
+    }
+    const parties: Array<[label: string, party: Party | null]> = [['ลูกค้า', row]];
+    if (x.writes.includes('contactCreated')) parties.push(['Contact', row.contact]);
+    for (const [label, party] of parties) {
+      if (
+        party?.accessCompanyCode !== origin.accessCompanyCode ||
+        party.accessBranchId !== origin.accessBranchId
+      ) {
+        fail(
+          x.code,
+          `ต้นทางสิทธิ์ของ${label}ที่สร้างรอบนี้ในฐาน ${party ? originText(party.accessCompanyCode, party.accessBranchId) : 'ไม่มีแถว'} ≠ รายงานตัวเขียน ${originText(origin.accessCompanyCode, origin.accessBranchId)}`,
+        );
+      }
+    }
+  }
+
   const statusText = Object.entries(byStatus)
     .sort(([a], [b]) => (a < b ? -1 : 1))
     .map(([s, n]) => `${s} ${n}`)
@@ -734,7 +783,8 @@ async function gate61(ctx: Ctx): Promise<GateBody> {
       `${exp.attachmentsUnchecked > 0 ? ` · ไม่ได้ตรวจสลิป/เอกสาร ${exp.attachmentsUnchecked} สัญญา` : ''})` +
       ` · รายการบัญชี: ยกมา ${exp.opening} · marker ${exp.marker} · ไล่ VAT ${exp.catchUp}` +
       ` · ลูกค้า ${membersOfCustomer.size} จากสมาชิก ${customersOfMember.size}` +
-      ` (สร้างใหม่ ${created.customers} · ลูกค้าที่ถือหลายสมาชิก ${shared})`,
+      ` (สร้างใหม่ ${created.customers} · ลูกค้าที่ถือหลายสมาชิก ${shared}) · ต้นทางสิทธิ์ลูกค้าใหม่ ` +
+      `${origin.accessCompanyCode}${origin.companyFallback ? ' (สาขาไม่ผูกบริษัท — ค่าแทน)' : ''}`,
     failures,
   };
 }

@@ -1,12 +1,7 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
-import * as Sentry from '@sentry/nestjs';
-import { Prisma } from '@prisma/client';
+import { Injectable, Logger } from '@nestjs/common';
+import { LineChannelType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { toNum, calcOutstanding } from '../../utils/decimal.util';
-import { maskThaiName } from '../../utils/mask-name.util';
-import { CustomerMergeService, SYSTEM_ACTOR } from '../chat-prospects/customer-merge.service';
-import { JourneyEntryWriter } from '../customer-journey/journey-entry-writer.service';
-import { lineLinkedEntry } from '../customer-journey/chat-identity-entries';
 // Return types for LIFF API (mirrors packages/shared/src/liff-types.ts)
 interface LiffPaymentItem { installmentNo: number; dueDate: string; amountDue: number; amountPaid: number; lateFee: number; status: string; paidDate: string | null; paymentMethod: string | null; }
 interface LiffContractItem { id: string; contractNumber: string; status: string; dunningStage: string; daysOverdue: number; product: string; sellingPrice: number; downPayment: number; monthlyPayment: number; totalMonths: number; paidInstallments: number; totalOutstanding: number; createdAt: string; payments: LiffPaymentItem[]; }
@@ -14,18 +9,14 @@ interface LiffContractResponse { customer: { name: string }; contracts: LiffCont
 interface LiffHistoryPayment { contractNumber: string; installmentNo: number; amountPaid: number; paidDate: string | null; paymentMethod: string | null; lateFee: number; receiptId: string | null; }
 interface LiffHistoryResponse { customer: { name: string }; payments: LiffHistoryPayment[]; }
 interface LiffProfileResponse { name: string; phone: string; lineDisplayName: string; contractCount: number; totalPoints: number; }
-interface LiffRegisterLookupResponse { customerId: string; maskedName: string; }
 
 @Injectable()
 export class LiffApiService {
   private readonly logger = new Logger(LiffApiService.name);
 
-  constructor(
-    private prisma: PrismaService,
-    @Optional() private merge?: CustomerMergeService,
-    // การเดินทางของลูกค้า — LINE_LINKED ตอนลงทะเบียน LINE การเงินผ่าน LIFF
-    @Optional() private journey?: JourneyEntryWriter,
-  ) {}
+  // การผูก LINE การเงินไม่อยู่ใน service นี้แล้ว (Task 19) — ทางเดียวคือยืนยัน OTP
+  // (VerificationService ใน chatbot-finance: ดูดห้องผู้สนใจ · customer_line_links · journey · rich menu)
+  constructor(private prisma: PrismaService) {}
 
   // ─── Contracts ──────────────────────────────────────
 
@@ -127,103 +118,6 @@ export class LiffApiService {
         };
       }),
     };
-  }
-
-  // ─── Registration ───────────────────────────────────
-
-  async isLineIdLinked(lineId: string): Promise<boolean> {
-    const customer = await this.prisma.customer.findFirst({
-      where: { lineIdFinance: lineId, deletedAt: null },
-    });
-    return !!customer;
-  }
-
-  async lookupCustomerByPhone(
-    phone: string,
-    lineId: string,
-  ): Promise<LiffRegisterLookupResponse | null> {
-    // Check if this lineId is already linked
-    const alreadyLinked = await this.prisma.customer.findFirst({
-      where: { lineIdFinance: lineId, deletedAt: null },
-    });
-    if (alreadyLinked) return null;
-
-    // Normalize: strip dashes/spaces so "0922222222" matches "092-222-2222"
-    const digits = phone.replace(/\D/g, '');
-    const phoneVariants = [digits];
-    if (digits.length === 10) {
-      phoneVariants.push(`${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`);
-      phoneVariants.push(`${digits.slice(0, 3)}-${digits.slice(3)}`);
-    } else if (digits.length === 9) {
-      phoneVariants.push(`${digits.slice(0, 2)}-${digits.slice(2, 5)}-${digits.slice(5)}`);
-    }
-
-    const customer = await this.prisma.customer.findFirst({
-      where: {
-        deletedAt: null,
-        phone: { in: phoneVariants },
-      },
-    });
-
-    if (!customer) return null;
-
-    return {
-      customerId: customer.id,
-      maskedName: maskThaiName(customer.name),
-    };
-  }
-
-  async confirmLinkLine(
-    customerId: string,
-    lineId: string,
-  ): Promise<{ success: boolean; error?: string }> {
-    // Check if lineId already linked to another customer (finance OA)
-    const existingLink = await this.prisma.customer.findFirst({
-      where: { lineIdFinance: lineId, deletedAt: null },
-    });
-    if (existingLink) {
-      return { success: false, error: 'บัญชี LINE นี้เชื่อมต่อกับลูกค้ารายอื่นแล้ว' };
-    }
-
-    const customer = await this.prisma.customer.findUnique({
-      where: { id: customerId },
-    });
-    if (!customer || customer.deletedAt) {
-      return { success: false, error: 'ไม่พบข้อมูลลูกค้า' };
-    }
-    if (customer.lineIdFinance && customer.lineIdFinance !== lineId) {
-      return { success: false, error: 'ลูกค้ารายนี้เชื่อมต่อกับบัญชี LINE อื่นแล้ว' };
-    }
-
-    await this.prisma.customer.update({
-      where: { id: customerId },
-      data: { lineIdFinance: lineId },
-    });
-    const linkedAt = new Date();
-
-    // Log by customer id, not name — name is PII (PDPA). The id is enough to trace.
-    this.logger.log(`[LIFF] Linked LINE ${lineId} to customer ${customerId} via finance registration`);
-    // ห้อง LINE การเงินของคนนี้ที่ถือผู้สนใจอัตโนมัติอยู่ → ดูดเข้าลูกค้าที่เพิ่งผูก (สเปค 3.3 ง)
-    // best-effort: ผูก LINE สำเร็จแล้ว (update ข้างบน commit ไปแล้ว) ต้องไม่ถือว่าล้มเพราะดูด
-    // placeholder ไม่ได้ (เช่น placeholder มีเอกสารพ่วง — absorbPlaceholder โยน 409)
-    try {
-      await this.merge?.absorbRoomsOfLineUser(lineId, 'LINE_FINANCE', customerId, SYSTEM_ACTOR);
-    } catch (err) {
-      this.logger.warn(
-        `[prospect] absorb rooms of ${lineId} → ${customerId}: ${err instanceof Error ? err.message : err}`,
-      );
-      Sentry.captureException(err, {
-        tags: { kind: 'chat-prospect' },
-        extra: { lineId, customerId },
-      });
-    }
-    // LINE_LINKED — ลูกค้าคนเดิมกับ LINE เดิมไม่ใช่การผูกใหม่ จึงไม่บันทึกซ้ำ · ไม่เก็บ lineId
-    if (customer.lineIdFinance !== lineId) {
-      await this.journey?.recordAfterCommit(
-        lineLinkedEntry({ customerId, channel: 'FINANCE', via: 'LIFF', occurredAt: linkedAt }),
-      );
-    }
-    return { success: true };
   }
 
   // ─── History & Profile ──────────────────────────────
@@ -333,12 +227,24 @@ export class LiffApiService {
       return { success: false, error: 'ไม่พบบัญชีที่ผูกกับ LINE นี้' };
     }
 
-    await this.prisma.customer.update({
-      where: { id: customer.id },
-      data: { lineIdFinance: null },
+    // ปิดแถว customer_line_links ของ LINE นี้ในธุรกรรมเดียวกัน (Task 19) — /liff/finance-verify
+    // (ทางผูกทางเดียว) ถือแถวนี้เป็นสถานะ "ผูกแล้ว": ถ้าไม่ปิด ลูกค้าที่ยกเลิกแล้วกด "ลงทะเบียนใหม่"
+    // จะเจอหน้า "ยืนยันแล้ว" วนอยู่ ผูกกลับไม่ได้ · เตือนค่างวดของบอท (auto-trigger อ่านแถวที่
+    // unlinkedAt = null) ก็หยุดตามที่ลูกค้าขอ · ผูกใหม่ด้วย OTP เปิดแถวเดิมกลับ (VerificationService.bind)
+    const unlinkedAt = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      await tx.customer.update({
+        where: { id: customer.id },
+        data: { lineIdFinance: null },
+      });
+      await tx.customerLineLink.updateMany({
+        where: { lineUserId: lineId, channel: LineChannelType.FINANCE, unlinkedAt: null },
+        data: { unlinkedAt },
+      });
     });
 
-    this.logger.log(`[LIFF] Unlinked LINE ${lineId} from customer ${customer.name}`);
+    // log ด้วย id ไม่ใช่ชื่อ — ชื่อเป็นข้อมูลส่วนบุคคล (PDPA)
+    this.logger.log(`[LIFF] Unlinked LINE ${lineId.slice(0, 8)}... from customer ${customer.id}`);
     return { success: true };
   }
 

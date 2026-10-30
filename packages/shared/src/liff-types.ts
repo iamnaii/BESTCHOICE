@@ -82,12 +82,6 @@ export interface LiffEarlyPayoffQuote {
   customerName: string;
 }
 
-/** Response for POST /line-oa/liff/register/lookup */
-export interface LiffRegisterLookupResponse {
-  customerId: string;
-  maskedName: string;
-}
-
 /** Payment link data resolved by GET /line-oa/pay/:token */
 export interface LiffPaymentLinkData {
   valid: boolean;

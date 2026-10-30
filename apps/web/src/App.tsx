@@ -128,7 +128,6 @@ const KioskPage = lazy(() => import('@/pages/kiosk/KioskPage'));
 const AttendancePage = lazy(() => import('@/pages/attendance/AttendancePage'));
 const MyTimePage = lazy(() => import('@/pages/attendance/MyTimePage'));
 const LiffContract = lazy(() => import('@/pages/liff/LiffContract'));
-const LiffRegister = lazy(() => import('@/pages/liff/LiffRegister'));
 const LiffHistory = lazy(() => import('@/pages/liff/LiffHistory'));
 const LiffProfile = lazy(() => import('@/pages/liff/LiffProfile'));
 const LiffEarlyPayoff = lazy(() => import('@/pages/liff/LiffEarlyPayoff'));
@@ -154,14 +153,9 @@ const ExpenseDailySummaryPage = lazy(() => import('@/pages/ExpenseDailySummaryPa
 const ProfitLossPage = lazy(() => import('@/pages/ProfitLossPage'));
 // CompanySettingsPage moved to settings-registry (kind:'route') — lazy import removed
 // SP3 — split /tax-reports into 3 dedicated pages (VAT / WHT / e-Tax)
-const VatReportPage = lazy(() =>
-  import('@/pages/VatReportPage').then((m) => ({ default: m.VatReportPage })),
-);
+// VatReportPage / ETaxInvoicePage ยังไม่มี route (ไฟล์หน้ายังอยู่) — ประกาศ lazy ตอนต่อ route
 const WhtReportPage = lazy(() =>
   import('@/pages/WhtReportPage').then((m) => ({ default: m.WhtReportPage })),
-);
-const ETaxInvoicePage = lazy(() =>
-  import('@/pages/ETaxInvoicePage').then((m) => ({ default: m.ETaxInvoicePage })),
 );
 const CommissionsPage = lazy(() => import('@/pages/CommissionsPage'));
 const TradeInPage = lazy(() => import('@/pages/TradeInPage'));
@@ -245,7 +239,7 @@ const EquityListPage = lazy(() => import('@/pages/equity/EquityListPage'));
 const EquityEntryPage = lazy(() => import('@/pages/equity/EquityEntryPage'));
 const EquityViewPage = lazy(() => import('@/pages/equity/EquityViewPage'));
 const DividendRegisterPage = lazy(() => import('@/pages/equity/DividendRegisterPage'));
-const PeriodClosePage = lazy(() => import('@/pages/accounting/PeriodClosePage'));
+// PeriodClosePage ยังไม่มี route (ไฟล์หน้ายังอยู่) — ประกาศ lazy ตอนต่อ route
 const TaxDisallowedSummaryPage = lazy(
   () => import('@/pages/accounting/TaxDisallowedSummaryPage'),
 );
@@ -329,7 +323,10 @@ function App() {
         <Route path="/history" element={<LiffRedirect to="/liff/history" />} />
         <Route path="/early-payoff" element={<LiffRedirect to="/liff/early-payoff" />} />
         <Route path="/liff/contract" element={<LiffContract />} />
-        <Route path="/liff/register" element={<LiffRegister />} />
+        {/* Task 19: /liff/register (ผูก LINE การเงินด้วยเบอร์อย่างเดียว ไม่มี OTP) ปิดแล้ว — URL เดิมยังถูกชี้มา
+            (หน้า LIFF เก่า · ข้อความ OA SHOP · คู่มือ Endpoint) จึงพาไปหน้ายืนยัน OTP โดยคง query + hash
+            (callback ของ LINE Login / src= ของแคมเปญ) · API liff/register/lookup|confirm ตอบ 410 */}
+        <Route path="/liff/register" element={<LiffRedirect to="/liff/finance-verify" />} />
         <Route path="/liff/history" element={<LiffHistory />} />
         <Route path="/liff/profile" element={<LiffProfile />} />
             <Route path="/liff/early-payoff" element={<LiffEarlyPayoff />} />

@@ -1,13 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { LiffApiController } from './liff-api.controller';
+import { BadRequestException, GoneException, NotFoundException } from '@nestjs/common';
+import { LiffApiController, LIFF_REGISTER_GONE_MESSAGE } from './liff-api.controller';
 import { LiffApiService } from './liff-api.service';
 import { PaymentLinkService } from './payment-links/payment-link.service';
 import { ContractPaymentService } from '../contracts/contract-payment.service';
 import { DocumentsService } from '../contracts/documents.service';
 import { PrismaService } from '../../prisma/prisma.service';
-import { RichMenuService } from './rich-menu/rich-menu.service';
-import { LiffTokenGuard, LiffRequest } from './guards/liff-token.guard';
+import { LiffTokenGuard } from './guards/liff-token.guard';
 import { Request } from 'express';
 
 function mockReq(lineId: string): Request {
@@ -26,9 +25,6 @@ describe('LiffApiController', () => {
   beforeEach(async () => {
     liffService = {
       findCustomerContractsFull: jest.fn(),
-      isLineIdLinked: jest.fn(),
-      lookupCustomerByPhone: jest.fn(),
-      confirmLinkLine: jest.fn(),
       findCustomerPaymentHistory: jest.fn(),
       findCustomerProfile: jest.fn(),
       unlinkLineAccount: jest.fn(),
@@ -54,7 +50,6 @@ describe('LiffApiController', () => {
         { provide: PaymentLinkService, useValue: paymentLinkService },
         { provide: ContractPaymentService, useValue: contractPaymentService },
         { provide: DocumentsService, useValue: {} },
-        { provide: RichMenuService, useValue: { linkToUser: jest.fn(), switchRichMenu: jest.fn() } },
         { provide: PrismaService, useValue: {} },
       ],
     })
@@ -83,55 +78,21 @@ describe('LiffApiController', () => {
     });
   });
 
-  // ─── liffRegisterLookup ─────────────────────────────
+  // ─── liffRegisterLookup / liffRegisterConfirm (ปิดแล้ว — Task 19) ─────────
+  // ผูกด้วยเบอร์อย่างเดียวไม่มี OTP — ตอนนี้ตอบ 410 โดยไม่เรียก service ใดเลย (HTTP-level:
+  // liff-register-gone.http.spec.ts) · ทางผูกเดียวคือ /liff/finance-verify (VerificationService)
 
-  describe('liffRegisterLookup', () => {
-    it('returns lookup result for valid phone', async () => {
-      liffService.isLineIdLinked.mockResolvedValue(false);
-      liffService.lookupCustomerByPhone.mockResolvedValue({
-        customerId: 'cust1', maskedName: 'สม***',
-      });
-
-      const result = await controller.liffRegisterLookup(
-        mockReq('U_line'),
-        { phone: '0812345678' },
-      );
-      expect(result.customerId).toBe('cust1');
+  describe('liffRegisterLookup / liffRegisterConfirm', () => {
+    it('lookup → GoneException (410) ชี้ไปทางยืนยันด้วย OTP · ไม่แตะ service', () => {
+      expect(() => controller.liffRegisterLookup()).toThrow(GoneException);
+      expect(() => controller.liffRegisterLookup()).toThrow(LIFF_REGISTER_GONE_MESSAGE);
+      expect(LIFF_REGISTER_GONE_MESSAGE).toContain('OTP');
+      for (const fn of Object.values(liffService)) expect(fn).not.toHaveBeenCalled();
     });
 
-    it('throws BadRequestException if already linked', async () => {
-      liffService.isLineIdLinked.mockResolvedValue(true);
-      await expect(
-        controller.liffRegisterLookup(mockReq('U_line'), { phone: '0812345678' }),
-      ).rejects.toThrow(BadRequestException);
-    });
-
-    it('throws NotFoundException if phone not found', async () => {
-      liffService.isLineIdLinked.mockResolvedValue(false);
-      liffService.lookupCustomerByPhone.mockResolvedValue(null);
-      await expect(
-        controller.liffRegisterLookup(mockReq('U_line'), { phone: '0899999999' }),
-      ).rejects.toThrow(NotFoundException);
-    });
-  });
-
-  // ─── liffRegisterConfirm ────────────────────────────
-
-  describe('liffRegisterConfirm', () => {
-    it('returns success on valid confirm', async () => {
-      liffService.confirmLinkLine.mockResolvedValue({ success: true });
-      const result = await controller.liffRegisterConfirm(
-        mockReq('U_line'),
-        { customerId: 'cust1' },
-      );
-      expect(result.success).toBe(true);
-    });
-
-    it('throws BadRequestException if confirm fails', async () => {
-      liffService.confirmLinkLine.mockResolvedValue({ success: false, error: 'ผิดพลาด' });
-      await expect(
-        controller.liffRegisterConfirm(mockReq('U_line'), { customerId: 'cust1' }),
-      ).rejects.toThrow(BadRequestException);
+    it('confirm → GoneException (410) · ไม่แตะ service', () => {
+      expect(() => controller.liffRegisterConfirm()).toThrow(GoneException);
+      for (const fn of Object.values(liffService)) expect(fn).not.toHaveBeenCalled();
     });
   });
 

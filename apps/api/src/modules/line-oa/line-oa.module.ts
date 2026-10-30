@@ -45,11 +45,11 @@ import { CustomerJourneyModule } from '../customer-journey/customer-journey.modu
     // depends transitively on LineOaModule via ChatEngineModule, so we
     // wrap with forwardRef to break the cycle.
     forwardRef(() => StaffChatModule),
-    // ผู้สนใจอัตโนมัติจากแชท (Task 10) — LineOaService/LiffApiService inject
+    // ผู้สนใจอัตโนมัติจากแชท (Task 10) — LineOaService inject
     // CustomerMergeService เพื่อดูด placeholder ตอน LINE ถูกผูกกับลูกค้าจริง
     // (ChatProspectsModule import แค่ CustomerJourneyModule ที่ไม่ import อะไรกลับมาหา line-oa — ไม่มีวงจร ไม่ต้อง forwardRef)
     ChatProspectsModule,
-    // การเดินทางของลูกค้า — LiffApiService / LineOaService บันทึก LINE_LINKED
+    // การเดินทางของลูกค้า — LineOaService บันทึก LINE_LINKED
     // (CustomerJourneyModule ไม่ import โมดูลแชทหรือ LINE กลับมา จึงไม่มีวงจร)
     CustomerJourneyModule,
   ],

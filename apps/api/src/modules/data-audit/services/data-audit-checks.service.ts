@@ -5,7 +5,7 @@ import {
   LEGACY_OPENING_FLOW,
   LEGACY_PRIOR_RECEIPT_FLOW,
 } from '../../accounting/peak-export-exclusion';
-import { advanceVatOutstanding } from '../../journal/advance-vat';
+import { ADVANCE_VAT_META, advanceVatOutstanding } from '../../journal/advance-vat';
 import {
   CONTRACT_RECEIVABLE_TOLERANCE,
   contractScopeFilter,
@@ -24,6 +24,47 @@ const CONTRACT_ACTIVATION_TAG = '1A';
 const EXCHANGE_NEW_CONTRACT_FLOW = 'exchange-new-contract-1a';
 /** ปิดยอดก่อนกำหนด JP4 (รายการระดับสัญญา ไม่มี `paymentId`) — `contracts/contract-payment.service.ts:842-843` */
 const EARLY_PAYOFF_FLOW = 'early-payoff';
+/** ต้นทุนขายฝั่ง SHOP ตอนเปิดสัญญา (JE A) — `cpa-templates/shop-inventory-transfer.template.ts:321` */
+export const SHOP_INVENTORY_TRANSFER_COGS_FLOW = 'shop-inventory-transfer-cogs';
+/**
+ * รายได้ + ลูกหนี้ FINANCE ฝั่ง SHOP ตอนเปิดสัญญา (JE B — `Dr S11-3001 / S11-3002`) — คู่ระหว่างกิจการของ 1A (`Cr 21-1101 /
+ * 21-1102`) · `cpa-templates/shop-inventory-transfer.template.ts:346`
+ */
+export const SHOP_INVENTORY_TRANSFER_REVENUE_FLOW = 'shop-inventory-transfer-revenue';
+
+/**
+ * รายการเปิดสัญญา (ตั้งลูกหนี้ครั้งแรก) สามรูป: 1A · เปิดสัญญาใหม่ของการเปลี่ยนเครื่อง A.1 · ยอดยกมาของสัญญานำเข้า — ตัวอ่านฝั่ง TS
+ * ของเงื่อนไขเดียวกับ `CONTRACT_WITHOUT_OPENING_JOURNAL`
+ */
+export function isContractOpeningEntry(metadata: Prisma.JsonValue | null | undefined): boolean {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return false;
+  const m = metadata as Prisma.JsonObject;
+  return (
+    m.tag === CONTRACT_ACTIVATION_TAG ||
+    m.flow === EXCHANGE_NEW_CONTRACT_FLOW ||
+    m.flow === LEGACY_OPENING_FLOW
+  );
+}
+
+/**
+ * สัญญา (alias **`c`**) ที่ไม่มีรายการเปิดสัญญา (ผูก `metadata.contractId`) และไม่ใช่สัญญาประวัติที่นำเข้า (`legacy_contract_code`
+ * ไม่ว่าง + ไม่มีตารางงวด — ตัวนำเข้าไม่ลงบัญชีให้โดยตั้งใจ) — เงื่อนไขเดียวของ `checkOrphanContracts` และ dry-run ของ
+ * `AuditBackfillService`
+ */
+export const CONTRACT_WITHOUT_OPENING_JOURNAL = Prisma.sql`(
+  NOT EXISTS (
+    SELECT 1 FROM journal_entries je
+    WHERE je.metadata->>'contractId' = c.id
+      AND je.status = 'POSTED'
+      AND je.deleted_at IS NULL
+      AND (je.metadata->>'tag' = ${CONTRACT_ACTIVATION_TAG}
+           OR je.metadata->>'flow' IN (${EXCHANGE_NEW_CONTRACT_FLOW}, ${LEGACY_OPENING_FLOW}))
+  )
+  AND NOT (
+    c.legacy_contract_code IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM installment_schedules s WHERE s.contract_id = c.id)
+  )
+)`;
 /** ส่วนที่แถวงวดรับเกินยอดเรียกเก็บได้ — เศษปัดของใบที่ปิดงวด ≤ 1 บาท (Tolerance Policy `.claude/rules/accounting.md`) */
 const INSTALLMENT_OVERPAY_TOLERANCE = new Prisma.Decimal('1.00');
 /** VAT รอเรียกเก็บสองขาต้องตรงกันทุกสตางค์ (ยอด 2 ตำแหน่ง) */
@@ -31,6 +72,20 @@ const VAT_DEFERRED_TOLERANCE = new Prisma.Decimal('0.01');
 const DETAIL_LIMIT = 50;
 
 const money = (v: Prisma.Decimal.Value) => new Prisma.Decimal(v).toFixed(2);
+
+/**
+ * stamp ยอดเงินใน metadata ของรายการ (สตริง 2 ตำแหน่ง เช่น `advanceVatPark`) — ว่าง/อ่านไม่ได้ = 0 ⇒ รายการที่ stamp เสีย
+ * ถูกนับเป็นยอดที่อธิบายไม่ได้ (ไม่ทำให้รอบตรวจทั้งรอบล้ม)
+ */
+const stampAmount = (raw: string | null): Prisma.Decimal => {
+  if (raw == null || raw.trim() === '') return new Prisma.Decimal(0);
+  try {
+    const value = new Prisma.Decimal(raw);
+    return value.isFinite() ? value : new Prisma.Decimal(0);
+  } catch {
+    return new Prisma.Decimal(0);
+  }
+};
 
 /**
  * ตรวจข้อมูลกลางคืน 12 ข้อ (data-audit 06:00 — `DataAuditService.dailyHealthCheck`)
@@ -50,6 +105,13 @@ const money = (v: Prisma.Decimal.Value) => new Prisma.Decimal(v).toFixed(2);
  *   (`journal/contract-receivable-recon.ts`) เกณฑ์ 1.00 บาทต่อสัญญา
  *
  * ห้าข้อนี้รับ `scope.contractIds` (ไม่ส่ง = ทุกสัญญา — cron เรียกแบบนี้) ให้เทสบนฐานที่มีแถวของเทสอื่นปน
+ *
+ * **2026-10-30 (Task 18) ข้อ MEDIUM สามข้อ** (เดิมเตือนปลอมทุกวันกับสัญญาปกติ — ผลก่อนวันนี้เทียบไม่ได้เช่นกัน):
+ * - `missing_cogs` — เดิมหา `reference_type = 'CONTRACT_COGS'` ซึ่งไม่มีผู้เขียน ⇒ หาต้นทุนขายฝั่ง SHOP ของการเปิดสัญญา
+ *   (flow `shop-inventory-transfer-cogs` + `metadata.contractId`) · สัญญานำเข้ายกเว้น · รับ `scope`
+ * - `late_fee_vat_leak` — เดิมเทียบ 21-2101 ของใบรับกับ `Payment.vatAmount` ⇒ รายการรับชำระของงวดที่มีค่าปรับต้องขยับ
+ *   21-2101 เท่าภาษีของเงินรับล่วงหน้าที่ stamp ไว้เท่านั้น · รับ `scope`
+ * - `commission_mismatch` — `SKIPPED` (ค่าคอมไม่ได้รับรู้ต่องวดตั้งแต่ A.4 · 42-1105 เป็นบัญชีอื่นแล้ว)
  */
 @Injectable()
 export class DataAuditChecksService {
@@ -109,18 +171,7 @@ export class DataAuditChecksService {
       WHERE c.deleted_at IS NULL
         AND c.status IN ('ACTIVE', 'OVERDUE', 'DEFAULT', 'COMPLETED')
         ${contractScopeFilter('c.id', scope)}
-        AND NOT EXISTS (
-          SELECT 1 FROM journal_entries je
-          WHERE je.metadata->>'contractId' = c.id
-            AND je.status = 'POSTED'
-            AND je.deleted_at IS NULL
-            AND (je.metadata->>'tag' = ${CONTRACT_ACTIVATION_TAG}
-                 OR je.metadata->>'flow' IN (${EXCHANGE_NEW_CONTRACT_FLOW}, ${LEGACY_OPENING_FLOW}))
-        )
-        AND NOT (
-          c.legacy_contract_code IS NOT NULL
-          AND NOT EXISTS (SELECT 1 FROM installment_schedules s WHERE s.contract_id = c.id)
-        )
+        AND ${CONTRACT_WITHOUT_OPENING_JOURNAL}
       ORDER BY c.created_at DESC
       LIMIT 50
     `;
@@ -459,50 +510,82 @@ export class DataAuditChecksService {
     };
   }
 
-  /** Check 8: Payments with late fee should not have VAT charged on the late fee portion */
-  async checkLateFeeVatLeak(): Promise<AuditCheckResult> {
-    const leaks = await this.prisma.$queryRaw<
+  /**
+   * Check 8: a late fee carries no output VAT (penalties are outside the VAT base — `.claude/rules/accounting.md`
+   * "VAT Policy"). Since Phase A.4 a receipt never books VAT on the cash it collects: the fee goes to
+   * `Cr 42-1103` with no VAT line, and the installment's output VAT is recognised by 2A from the
+   * schedule (`build-accrual-2a-lines.ts`), not from cash. The only `21-2101` movement a receipt entry
+   * may carry is the VAT of customer advances recognised at receipt, which it stamps
+   * (`advanceVatPark` / `advanceVatConsume` — `payment-receipt.template.ts:106-117, 472-478` ·
+   * `advance-vat.ts:45-60`). So: on a row with a late fee, every receipt entry bound to the row
+   * (`metadata.paymentId`) must move `21-2101` by exactly its stamped advance VAT (± 0.01) —
+   * anything else is VAT booked on the receipt's own cash, i.e. on the fee.
+   *
+   * 2026-10-30 (Task 18): the check used to compare `Cr 21-2101` of the receipt entries with
+   * `Payment.vatAmount` (different measures since A.4 — the receipt books no 21-2101) ⇒ every paid
+   * row with a fee was a daily MEDIUM FAIL. Imported rows untouched since the cutover
+   * (`LEGACY_UNTOUCHED_PAYMENT`) have no receipt entry of their own; post-cutover receipts of imported
+   * rows are checked like native ones.
+   */
+  async checkLateFeeVatLeak(scope?: ContractScope): Promise<AuditCheckResult> {
+    const rows = await this.prisma.$queryRaw<
       {
         payment_id: string;
         contract_number: string;
         installment_no: number;
         late_fee: Prisma.Decimal;
-        payment_vat: Prisma.Decimal;
-        journal_vat: Prisma.Decimal;
+        entry_number: string;
+        output_vat: Prisma.Decimal;
+        advance_vat_park: string | null;
+        advance_vat_consume: string | null;
       }[]
     >`
-      SELECT p.id as payment_id, c.contract_number, p.installment_no,
-        p.late_fee, p.vat_amount as payment_vat,
-        (SELECT COALESCE(SUM(jl.credit), 0) FROM journal_lines jl
-         JOIN journal_entries je ON je.id = jl.journal_entry_id
-         WHERE (je.reference_id = p.id::text OR je.metadata->>'paymentId' = p.id::text)
-         AND je.reference_type = 'AUTO'
-         AND jl.account_code = '21-2101' AND je.deleted_at IS NULL AND jl.deleted_at IS NULL
-         AND je.status = 'POSTED'
-        ) as journal_vat
+      SELECT p.id AS payment_id, c.contract_number, p.installment_no, p.late_fee,
+        je.entry_number,
+        SUM(jl.credit - jl.debit) AS output_vat,
+        je.metadata->>${ADVANCE_VAT_META.park} AS advance_vat_park,
+        je.metadata->>${ADVANCE_VAT_META.consume} AS advance_vat_consume
       FROM payments p
       JOIN contracts c ON c.id = p.contract_id
+      JOIN journal_entries je ON je.metadata->>'paymentId' = p.id
+      JOIN journal_lines jl ON jl.journal_entry_id = je.id
+        AND jl.deleted_at IS NULL
+        AND jl.account_code = '21-2101'
       WHERE p.deleted_at IS NULL
         AND p.late_fee > 0
         AND p.status IN ('PAID', 'PARTIALLY_PAID')
         AND p.amount_paid > 0
-        AND ABS(
-          COALESCE((SELECT SUM(jl2.credit) FROM journal_lines jl2
-           JOIN journal_entries je2 ON je2.id = jl2.journal_entry_id
-           WHERE (je2.reference_id = p.id::text OR je2.metadata->>'paymentId' = p.id::text)
-           AND je2.reference_type = 'AUTO'
-           AND jl2.account_code = '21-2101' AND je2.deleted_at IS NULL AND jl2.deleted_at IS NULL
-           AND je2.status = 'POSTED'), 0)
-          - COALESCE(p.vat_amount, 0)
-        ) > 0.01
-      LIMIT 50
+        AND je.status = 'POSTED'
+        AND je.deleted_at IS NULL
+        AND je.metadata->>'tag' IN ('receipt', '2B', 'credit-allocation')
+        ${contractScopeFilter('p.contract_id', scope)}
+        AND NOT ${LEGACY_UNTOUCHED_PAYMENT}
+      GROUP BY p.id, c.id, je.id
+      ORDER BY c.contract_number, p.installment_no, je.entry_number
     `;
+    const leaks = rows.flatMap((r) => {
+      const advanceVat = stampAmount(r.advance_vat_park).minus(stampAmount(r.advance_vat_consume));
+      const unexplained = new Prisma.Decimal(r.output_vat).minus(advanceVat);
+      if (!unexplained.abs().gt(VAT_DEFERRED_TOLERANCE)) return [];
+      return [
+        {
+          payment_id: r.payment_id,
+          contract_number: r.contract_number,
+          installment_no: r.installment_no,
+          late_fee: money(r.late_fee),
+          entry_number: r.entry_number,
+          output_vat: money(r.output_vat),
+          advance_vat: money(advanceVat),
+          unexplained_vat: money(unexplained),
+        },
+      ];
+    });
     return {
       name: 'late_fee_vat_leak',
       severity: 'MEDIUM',
       status: leaks.length === 0 ? 'PASS' : 'FAIL',
       count: leaks.length,
-      details: leaks,
+      details: leaks.slice(0, DETAIL_LIMIT),
       executedAt: new Date(),
     };
   }
@@ -558,8 +641,21 @@ export class DataAuditChecksService {
     };
   }
 
-  /** Check 11: Active contracts with costPrice > 0 must have a COGS journal */
-  async checkMissingCogs(): Promise<AuditCheckResult> {
+  /**
+   * Check 11: an activated contract whose device has a cost must carry the SHOP-side COGS entry —
+   * `ShopInventoryTransferTemplate` JE A (`Dr S50-* / Cr S11-200*`, flow `shop-inventory-transfer-cogs`,
+   * `metadata.contractId` — `shop-inventory-transfer.template.ts:315-338`), posted at activation by
+   * `ContractWorkflowService.activate` (`contract-workflow.service.ts:928`) and for an exchange's new
+   * contract by `ContractExchangeService.finalizeAfterActivation` (`contract-exchange.service.ts:1205`).
+   * FINANCE books no COGS (its income is interest).
+   *
+   * 2026-10-30 (Task 18): the check used to look for `reference_type = 'CONTRACT_COGS'`, which no code
+   * writes (every template entry is `'AUTO'`) ⇒ every native contract with a cost was flagged.
+   * Imported legacy contracts (`legacy_contract_code` — written only by the importer) are exempt: the
+   * shop side of the old sale lives in PEAK and the importer books no SHOP leg (device cost 0 —
+   * `cli/legacy-backoffice/writer.ts:440`), even if a cost is entered on the device later.
+   */
+  async checkMissingCogs(scope?: ContractScope): Promise<AuditCheckResult> {
     const missing = await this.prisma.$queryRaw<
       { id: string; contract_number: string; product_name: string; cost_price: Prisma.Decimal }[]
     >`
@@ -569,13 +665,16 @@ export class DataAuditChecksService {
       WHERE c.deleted_at IS NULL
         AND c.status IN ('ACTIVE', 'COMPLETED', 'OVERDUE', 'DEFAULT')
         AND pr.cost_price > 0
+        AND c.legacy_contract_code IS NULL
+        ${contractScopeFilter('c.id', scope)}
         AND NOT EXISTS (
           SELECT 1 FROM journal_entries je
-          WHERE je.reference_id = c.id
-            AND je.reference_type = 'CONTRACT_COGS'
+          WHERE je.metadata->>'contractId' = c.id
+            AND je.metadata->>'flow' = ${SHOP_INVENTORY_TRANSFER_COGS_FLOW}
             AND je.deleted_at IS NULL
             AND je.status = 'POSTED'
         )
+      ORDER BY c.created_at DESC
       LIMIT 50
     `;
     return {
@@ -588,48 +687,37 @@ export class DataAuditChecksService {
     };
   }
 
-  /** Check 12: Commission from journal must match SUM(monthlyCommission) from payments */
+  /**
+   * Check 12 — **SKIPPED since 2026-10-30 (Task 18)**: the assertion no longer exists in the ledger.
+   *
+   * It compared each PAID installment's `monthlyCommission` with the commission revenue its receipt
+   * credited to 42-1105 — the pre-A.4 model where FINANCE recognised commission per installment.
+   * Since Phase A.4 FINANCE is an agent for the shop commission: 1A books it once, at activation, as
+   * the payable `Cr 21-1102` (`contract-activation-1a.template.ts:92-97`) and the SHOP side books its
+   * income once as `Cr S41-1201` (`shop-inventory-transfer.template.ts:244-251`) — no receipt carries
+   * commission, and 42-1105 is now "gain on asset disposal" (`asset-disposal.template.ts`). The query
+   * flagged every PAID row with a commission (native and imported) as a daily FAIL. The A.4 invariant
+   * that replaces it — the two books carry the same commission per contract — is watched by the
+   * monthly inter-co reconcile (`interco-reconcile.cron.ts` finding `PAYABLE_PAIR_MISMATCH`: FINANCE
+   * 21-1101 + 21-1102 vs SHOP S11-3001 + S11-3002 per contract, commission-only gaps labelled
+   * `COMMISSION_ONLY_GAP`), so no second query is written here. Kept in the run (name/severity) so
+   * history stays comparable.
+   */
   async checkCommissionMismatch(): Promise<AuditCheckResult> {
-    const mismatches = await this.prisma.$queryRaw<
-      {
-        id: string;
-        contract_number: string;
-        installment_no: number;
-        payment_comm: Prisma.Decimal;
-        journal_comm: Prisma.Decimal;
-        diff: Prisma.Decimal;
-      }[]
-    >`
-      WITH journal_commission AS (
-        SELECT COALESCE(je.metadata->>'paymentId', je.reference_id) as payment_id,
-          SUM(jl.credit) as journal_comm
-        FROM journal_lines jl
-        JOIN journal_entries je ON je.id = jl.journal_entry_id
-        WHERE jl.account_code = '42-1105'
-          AND je.reference_type = 'AUTO'
-          AND je.status = 'POSTED'
-          AND je.deleted_at IS NULL AND jl.deleted_at IS NULL
-        GROUP BY COALESCE(je.metadata->>'paymentId', je.reference_id)
-      )
-      SELECT p.id, c.contract_number, p.installment_no,
-        p.monthly_commission as payment_comm,
-        jc.journal_comm,
-        ABS(COALESCE(p.monthly_commission, 0) - COALESCE(jc.journal_comm, 0)) as diff
-      FROM payments p
-      JOIN contracts c ON c.id = p.contract_id
-      LEFT JOIN journal_commission jc ON jc.payment_id = p.id::text
-      WHERE p.deleted_at IS NULL
-        AND p.status = 'PAID'
-        AND ABS(COALESCE(p.monthly_commission, 0) - COALESCE(jc.journal_comm, 0)) > 0.01
-      ORDER BY diff DESC
-      LIMIT 50
-    `;
     return {
       name: 'commission_mismatch',
       severity: 'MEDIUM',
-      status: mismatches.length === 0 ? 'PASS' : 'FAIL',
-      count: mismatches.length,
-      details: mismatches,
+      status: 'SKIPPED',
+      count: 0,
+      details: [
+        {
+          skippedSince: '2026-10-30',
+          reason:
+            'commission is booked once at activation (FINANCE Cr 21-1102 payable in 1A · SHOP Cr S41-1201), never per installment receipt; 42-1105 is gain on asset disposal',
+          replacedBy:
+            'interco-reconcile cron — PAYABLE_PAIR_MISMATCH per contract (21-1101+21-1102 vs S11-3001+S11-3002; commission-only gaps = COMMISSION_ONLY_GAP)',
+        },
+      ],
       executedAt: new Date(),
     };
   }

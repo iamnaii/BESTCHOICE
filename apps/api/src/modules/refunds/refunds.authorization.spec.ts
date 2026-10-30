@@ -52,8 +52,16 @@ function fixture(role = 'SALES', branchId: string | null = 'branch-a') {
     },
     // Task 17 A: markReversed คืนแถวงวดจากยอดในบัญชี (revertPaymentFromLedger) — ไม่มีแถวตารางงวด = ไม่เหลือยอด
     installmentSchedule: { findUnique: jest.fn().mockResolvedValue(null) },
+    // Task 18 R-2: ยอดคืน = ใบเสร็จค่างวดที่ยังมีผลเท่านั้น (ไม่มีใบ = ปฏิเสธ) — งวดนี้รับ 1,000 ด้วยใบเสร็จหนึ่งใบ ออกก่อนคำขอ
     receipt: {
-      findMany: jest.fn().mockResolvedValue([]),
+      findMany: jest.fn().mockResolvedValue([
+        {
+          amount: new Prisma.Decimal(1000),
+          isVoided: false,
+          deletedAt: null,
+          createdAt: new Date('2026-09-07T00:00:00Z'),
+        },
+      ]),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     auditLog: { create: jest.fn().mockResolvedValue({}) },

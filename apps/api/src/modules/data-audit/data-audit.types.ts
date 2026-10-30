@@ -3,7 +3,11 @@
 export interface AuditCheckResult {
   name: string;
   severity: 'CRITICAL' | 'HIGH' | 'MEDIUM';
-  status: 'PASS' | 'FAIL' | 'WARN';
+  /**
+   * `SKIPPED` = the check's assertion no longer has a meaning in today's ledger model (dated reason in
+   * `details`) — never a finding: not FAIL, no Sentry, no acknowledgement queue (2026-10-30 Task 18).
+   */
+  status: 'PASS' | 'FAIL' | 'WARN' | 'SKIPPED';
   count: number;
   details: unknown[];
   executedAt: Date;
@@ -11,7 +15,8 @@ export interface AuditCheckResult {
 
 export interface ContractTraceCheck {
   name: string;
-  status: 'PASS' | 'FAIL' | 'WARN';
+  /** `SKIPPED` — same meaning as on `AuditCheckResult` (retired assertion, dated reason in `details`) */
+  status: 'PASS' | 'FAIL' | 'WARN' | 'SKIPPED';
   details: unknown;
 }
 
@@ -37,5 +42,6 @@ export interface ContractTraceResult {
     passed: number;
     failed: number;
     warnings: number;
+    skipped: number;
   };
 }

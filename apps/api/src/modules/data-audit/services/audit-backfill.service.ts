@@ -1,7 +1,13 @@
-import { Injectable, Logger, NotFoundException, InternalServerErrorException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { JournalAutoService } from '../../journal/journal-auto.service';
+import { CONTRACT_WITHOUT_OPENING_JOURNAL } from './data-audit-checks.service';
 
 @Injectable()
 export class AuditBackfillService {
@@ -25,7 +31,8 @@ export class AuditBackfillService {
     payments: { total: number; backfilled: number; skipped: number; errors: number };
     details: { contractNumber: string; action: string; status: string; error?: string }[];
   }> {
-    const details: { contractNumber: string; action: string; status: string; error?: string }[] = [];
+    const details: { contractNumber: string; action: string; status: string; error?: string }[] =
+      [];
     const stats = {
       contracts: { total: 0, backfilled: 0, skipped: 0, errors: 0 },
       payments: { total: 0, backfilled: 0, skipped: 0, errors: 0 },
@@ -40,10 +47,9 @@ export class AuditBackfillService {
       throw new NotFoundException('ไม่พบผู้ใช้ OWNER สำหรับ backfill');
     }
 
-    // F-3-027 part 2/3 follow-up: resolve FINANCE companyId once for all
-    // payment-journal backfills. HP installment receipts post to FINANCE-side
-    // accounts and must pass companyId explicitly (Task 9 will validate via
-    // allowedCompanies). Hoisted here so we don't query per payment.
+    // The replay is a TODO stub (no JE is written in either mode), but it still refuses to run on
+    // a database without the FINANCE company — the companyId the replay will need. (The resolved
+    // FINANCE/SHOP ids were never used and are no longer kept — ESLint no-unused-vars.)
     const financeCompany = await this.prisma.companyInfo.findFirst({
       where: { companyCode: 'FINANCE', deletedAt: null },
       select: { id: true },
@@ -51,30 +57,17 @@ export class AuditBackfillService {
     if (!financeCompany) {
       throw new InternalServerErrorException('FINANCE company not configured');
     }
-    const financeCompanyId = financeCompany.id;
 
-    // Phase A.1b: SHOP companyId for the SHOP-side commission JE leg.
-    // Optional — null is acceptable; JE will skip the commission entry.
-    const shopCompany = await this.prisma.companyInfo.findFirst({
-      where: { companyCode: 'SHOP', deletedAt: null },
-      select: { id: true },
-      orderBy: { createdAt: 'asc' },
-    });
-    const shopCompanyId = shopCompany?.id ?? null;
-
-    // 1. Find orphan contracts (any non-DRAFT status without CONTRACT journal)
+    // 1. Find orphan contracts — activated statuses without an opening journal (1A / exchange A.1 /
+    //    legacy opening by metadata.contractId; imported history contracts exempt): the SAME rule as
+    //    the nightly `orphan_contracts` check (Task 18 — this used to join reference_type 'CONTRACT',
+    //    which no code writes, so every contract was listed).
     const orphanContracts = await this.prisma.$queryRaw<{ id: string }[]>`
       SELECT c.id
       FROM contracts c
       WHERE c.deleted_at IS NULL
         AND c.status IN ('ACTIVE', 'OVERDUE', 'DEFAULT', 'COMPLETED', 'EARLY_PAYOFF', 'CLOSED_BAD_DEBT')
-        AND NOT EXISTS (
-          SELECT 1 FROM journal_entries je
-          WHERE je.reference_id = c.id
-            AND je.reference_type = 'CONTRACT'
-            AND je.deleted_at IS NULL
-            AND je.status = 'POSTED'
-        )
+        AND ${CONTRACT_WITHOUT_OPENING_JOURNAL}
       ORDER BY c.created_at ASC
       LIMIT ${options.limit || 100}
     `;

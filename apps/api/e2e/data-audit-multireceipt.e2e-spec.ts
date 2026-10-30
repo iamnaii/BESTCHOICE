@@ -139,10 +139,11 @@ describeOrSkip('Data-audit multi-receipt — PR-843/I2 Phase 3 PR 3.1-audit (rea
     paymentId = payment.id;
 
     template = new PaymentReceiptTemplate(journal, prisma as any);
+    const checks = new DataAuditChecksService(prisma as any);
     audit = new DataAuditService(
       prisma as any,
-      new DataAuditChecksService(prisma as any),
-      new ContractTraceService(prisma as any),
+      checks,
+      new ContractTraceService(prisma as any, checks),
       new AuditFindingsService(prisma as any),
       new AuditBackfillService(prisma as any, journal),
     );
@@ -211,7 +212,9 @@ describeOrSkip('Data-audit multi-receipt — PR-843/I2 Phase 3 PR 3.1-audit (rea
         });
         const ids = jes.map((e) => e.id);
         if (ids.length) {
-          await step(() => prisma.journalLine.deleteMany({ where: { journalEntryId: { in: ids } } }));
+          await step(() =>
+            prisma.journalLine.deleteMany({ where: { journalEntryId: { in: ids } } }),
+          );
           await step(() => prisma.journalEntry.deleteMany({ where: { id: { in: ids } } }));
         }
         // audit_logs / data_audit_logs are append-only — never deleted here.
@@ -220,7 +223,9 @@ describeOrSkip('Data-audit multi-receipt — PR-843/I2 Phase 3 PR 3.1-audit (rea
         await step(() => prisma.contract.deleteMany({ where: { id: contractId } }));
       }
       if (createdFinanceCompanyId) {
-        await step(() => prisma.companyInfo.deleteMany({ where: { id: createdFinanceCompanyId! } }));
+        await step(() =>
+          prisma.companyInfo.deleteMany({ where: { id: createdFinanceCompanyId! } }),
+        );
       }
     } finally {
       await prisma.$disconnect();
@@ -251,6 +256,11 @@ describeOrSkip('Data-audit multi-receipt — PR-843/I2 Phase 3 PR 3.1-audit (rea
 
   it('PART 2 — checkCommissionMismatch SUMS both 42-1105 JEs of the payment (no false mismatch)', async () => {
     const result = await audit.checkCommissionMismatch();
+    // 2026-10-30 (Task 18): commission is booked once at activation (1A Cr 21-1102), never per
+    // receipt, and 42-1105 is now gain on asset disposal ⇒ the check is SKIPPED, never a finding.
+    // The aggregation cross-check below still pins the multi-receipt grouping key.
+    expect(result.status).toBe('SKIPPED');
+    expect(result.count).toBe(0);
     const mismatchIds = (result.details as { id: string }[]).map((d) => d.id);
     // Σ(Cr 42-1105) over the payment's TWO JEs == payment.monthlyCommission, so
     // the broadened CTE (GROUP BY COALESCE(metadata.paymentId, reference_id))

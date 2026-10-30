@@ -463,6 +463,12 @@ describeDb('runGates (real DB, inside the import transaction)', () => {
         where: { legacyContractCode: { startsWith: `TEST-T12-${stamp}` } },
       }),
     ).toBe(0);
+    // เทสต์ต้นทางสิทธิ์ปิด trigger ในธุรกรรมนำเข้าที่ rollback — ถ้า inImport ถดถอยจนไม่ rollback trigger จะค้างปิด
+    // (อ่านก่อนเก็บกวาด · ตรวจหลังเก็บกวาด ให้ assertion ที่แดงไม่ทิ้งแถวค้าง)
+    const triggers = await prisma.$queryRaw<{ tgname: string; tgenabled: string }[]>`
+      SELECT tgname::text AS tgname, tgenabled::text AS tgenabled FROM pg_trigger
+      WHERE tgname IN ('customers_immutable_access_origin', 'contacts_immutable_access_origin')
+      ORDER BY tgname`;
     await prisma.user.deleteMany({ where: { id: userId } });
     await prisma.branch.deleteMany({ where: { id: branchId } });
     if (createdCompanyId) await prisma.companyInfo.deleteMany({ where: { id: createdCompanyId } });
@@ -472,6 +478,10 @@ describeDb('runGates (real DB, inside the import transaction)', () => {
     else process.env.PII_ENCRYPTION_KEY = saved.key;
     if (saved.salt === undefined) delete process.env.PII_HASH_SALT;
     else process.env.PII_HASH_SALT = saved.salt;
+    expect(triggers).toEqual([
+      { tgname: 'contacts_immutable_access_origin', tgenabled: 'O' },
+      { tgname: 'customers_immutable_access_origin', tgenabled: 'O' },
+    ]);
   }, 120_000);
 
   const journal = () => new JournalAutoService(prisma as unknown as PrismaService);

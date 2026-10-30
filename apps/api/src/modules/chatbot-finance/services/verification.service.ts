@@ -1,4 +1,12 @@
-import { Injectable, Logger, BadRequestException, NotFoundException, Optional } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import * as Sentry from '@sentry/nestjs';
 import { createHash, randomInt } from 'crypto';
@@ -11,6 +19,7 @@ import { maskPhone } from '../utils/mask-phone';
 import { CustomerMergeService, SYSTEM_ACTOR } from '../../chat-prospects/customer-merge.service';
 import { JourneyEntryWriter } from '../../customer-journey/journey-entry-writer.service';
 import { lineLinkedEntry } from '../../customer-journey/chat-identity-entries';
+import { RichMenuService } from '../../line-oa/rich-menu/rich-menu.service';
 
 const OTP_TTL_MS = 5 * 60 * 1000; // 5 นาที
 const OTP_MAX_ATTEMPTS = 3;
@@ -26,6 +35,18 @@ const OTP_REQUEST_COOLDOWN_MS = 60 * 1000; // 1 นาที
 const LOOKUP_FAIL_WINDOW_MS = 30 * 60 * 1000;
 const LOOKUP_FAIL_THRESHOLD = 3;
 const LOOKUP_LOCK_DURATION_MS = 30 * 60 * 1000;
+
+/**
+ * แถว customer_line_links (FINANCE) unique ทั้ง (lineUserId) และ (customerId) — ผูกลูกค้ากับ LINE
+ * ใหม่ได้เมื่อแถวเดิมของลูกค้าถูกปิดแล้วเท่านั้น (ยกเลิกผูกจากหน้าโปรไฟล์ของ LINE เดิม)
+ */
+export const CUSTOMER_LINKED_TO_OTHER_LINE_MESSAGE =
+  'ลูกค้ารายนี้ผูกกับบัญชี LINE อื่นอยู่แล้ว — เปิดหน้า "โปรไฟล์ของฉัน" จากบัญชี LINE เดิมแล้วกด "ยกเลิกผูก LINE" ก่อน หรือติดต่อสาขา 063-134-6356';
+export const LINE_LINK_NEEDS_STAFF_MESSAGE =
+  'ผูกบัญชีไม่สำเร็จ — บัญชี LINE นี้เคยผูกกับลูกค้ารายอื่นไว้ กรุณาติดต่อสาขา 063-134-6356';
+
+/** วิธีเขียนแถว customer_line_links ที่ตัดสินก่อนเริ่มผูก (ดู planLink) */
+type LinkPlan = { kind: 'upsert-by-line' } | { kind: 'repoint-customer-row'; rowId: string };
 
 /**
  * Verification — DB-backed OTP store (works across multiple instances)
@@ -58,6 +79,10 @@ export class VerificationService {
     @Optional() private merge?: CustomerMergeService,
     // การเดินทางของลูกค้า — LINE_LINKED (ผูกซ้ำรีเซ็ต customer_line_links.linkedAt ประวัติรอบก่อนจึงหาย)
     @Optional() private journey?: JourneyEntryWriter,
+    // สลับ rich menu FINANCE เป็นแบบ "ยืนยันแล้ว" หลังผูก — RichMenuService อยู่ใน LineOaModule ซึ่ง import
+    // โมดูลนี้อยู่แล้ว จึงหยิบผ่าน ModuleRef (strict: false) ตอนใช้ แทนการ import โมดูลกลับเป็นวงจร
+    // (precedent: ContractWorkflowService.resolveCreditApplier) · @Optional เพื่อ spec ที่ new service เอง
+    @Optional() private moduleRef?: ModuleRef,
   ) {}
 
   /**
@@ -144,11 +169,6 @@ export class VerificationService {
       where: { phone: { in: phoneVariants }, deletedAt: null },
       select: { id: true, name: true, phone: true },
     });
-
-    const responseShape = {
-      maskedPhone: maskPhone(phone),
-      expiresInSeconds: Math.floor(OTP_TTL_MS / 1000),
-    };
 
     if (!customer) {
       // T4-C9: failed phone→customer lookup. Record fail and maybe lock.
@@ -271,8 +291,7 @@ export class VerificationService {
         throw new NotFoundException('ไม่พบข้อมูลลูกค้า');
       }
 
-      await this.absorbRoomsBeforeBind(params.lineUserId, customer.id);
-      await this.bind(params.lineUserId, customer.id);
+      await this.linkVerifiedLine(params.lineUserId, customer.id);
       await this.prisma.chatbotOtpRequest.delete({ where: { id: record.id } });
 
       // Best-effort audit. This is a customer-facing LIFF path with no staff JWT, so no
@@ -324,8 +343,7 @@ export class VerificationService {
       throw new NotFoundException('ไม่พบข้อมูลลูกค้า');
     }
 
-    await this.absorbRoomsBeforeBind(params.lineUserId, customer.id);
-    await this.bind(params.lineUserId, customer.id);
+    await this.linkVerifiedLine(params.lineUserId, customer.id);
     await this.prisma.chatbotOtpRequest.delete({ where: { id: record.id } });
 
     return { customerId: customer.id, customerName: customer.name };
@@ -373,6 +391,73 @@ export class VerificationService {
   // ─── private ──────────────────────────────────────────────
 
   /**
+   * ผูก LINE การเงินกับลูกค้าหลังพิสูจน์การถือเบอร์ด้วย OTP แล้ว — ทางผูกทางเดียวของระบบ (Task 19:
+   * `liff/register/lookup|confirm` ที่ผูกได้โดยไม่มี OTP ตอบ 410 แล้ว) จึงต้องทำผลข้างเคียงครบทุกอย่าง
+   * ที่ทางเดิมเคยทำ: ดูดห้องผู้สนใจ → customer_line_links + chat_rooms + customers.line_id_finance (tx เดียว)
+   * → LINE_LINKED หลัง commit → rich menu "ยืนยันแล้ว". ยืนยันจริงและ test-mode bypass ใช้ helper นี้ตัวเดียว
+   *
+   * planLink ตัดสินก่อน absorb — ถ้าการผูกจะถูกปฏิเสธ ห้องของ LINE นี้ต้องไม่ถูกย้ายไปหาลูกค้า
+   */
+  private async linkVerifiedLine(lineUserId: string, customerId: string): Promise<void> {
+    const plan = await this.planLink(lineUserId, customerId);
+    await this.absorbRoomsBeforeBind(lineUserId, customerId);
+    await this.bind(lineUserId, customerId, plan);
+    await this.switchToVerifiedRichMenu(lineUserId);
+  }
+
+  /**
+   * customer_line_links (FINANCE) unique ทั้ง (lineUserId, channel) และ (customerId, channel):
+   * - ลูกค้ายังไม่มีแถว หรือแถวของลูกค้าเป็นของ LINE นี้ → upsert ตาม lineUserId (สร้าง / เปิดแถวเดิมกลับ /
+   *   ย้ายแถวของ LINE นี้จากลูกค้าเดิม — พฤติกรรมเดิมของ bind)
+   * - ลูกค้ามีแถวของ LINE อื่นที่ยังผูกอยู่ → 409 (เดิมชน unique เป็น 500) — ทางเดิมก็ปฏิเสธเคสนี้
+   * - แถวของ LINE อื่นถูกปิดแล้ว (ยกเลิกผูก) → ชี้แถวนั้นมาที่ LINE นี้ (เปลี่ยนบัญชี LINE หลังยกเลิกผูก)
+   *   เว้นแต่ LINE นี้มีแถวของตัวเองอยู่แล้วด้วย (สองแถวรวมกันไม่ได้โดยไม่ลบแถว) → 409 ให้พนักงานดู
+   */
+  private async planLink(lineUserId: string, customerId: string): Promise<LinkPlan> {
+    const customerRow = await this.prisma.customerLineLink.findUnique({
+      where: { customerId_channel: { customerId, channel: LineChannelType.FINANCE } },
+      select: { id: true, lineUserId: true, unlinkedAt: true, deletedAt: true },
+    });
+    if (!customerRow || customerRow.lineUserId === lineUserId) return { kind: 'upsert-by-line' };
+    if (customerRow.unlinkedAt === null && customerRow.deletedAt === null) {
+      throw new ConflictException(CUSTOMER_LINKED_TO_OTHER_LINE_MESSAGE);
+    }
+    const lineRow = await this.prisma.customerLineLink.findUnique({
+      where: { lineUserId_channel: { lineUserId, channel: LineChannelType.FINANCE } },
+      select: { id: true },
+    });
+    if (lineRow) throw new ConflictException(LINE_LINK_NEEDS_STAFF_MESSAGE);
+    return { kind: 'repoint-customer-row', rowId: customerRow.id };
+  }
+
+  /** หา RichMenuService ของ LineOaModule ตอนใช้ — ไม่มี (spec ที่ new เอง / โมดูลถูกแยก) = null */
+  private resolveRichMenu(): RichMenuService | null {
+    if (!this.moduleRef) return null;
+    try {
+      return this.moduleRef.get(RichMenuService, { strict: false });
+    } catch (err) {
+      this.logger.warn(
+        `[Verify] RichMenuService unavailable: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return null;
+    }
+  }
+
+  /** best-effort เหมือนทางเดิม (liff/register/confirm) — ผูกสำเร็จแล้ว เมนูสลับไม่ได้ต้องไม่ทำให้ล้ม */
+  private async switchToVerifiedRichMenu(lineUserId: string): Promise<void> {
+    const richMenu = this.resolveRichMenu();
+    if (!richMenu) return;
+    try {
+      await richMenu.switchRichMenu(lineUserId, true, 'finance');
+    } catch (err) {
+      this.logger.warn(
+        `[Verify] switch rich menu for ${lineUserId.slice(0, 8)}... failed: ${err instanceof Error ? err.message : err}`,
+      );
+      Sentry.captureException(err, { tags: { kind: 'rich-menu', flow: 'finance-verify' } });
+    }
+  }
+
+  /**
    * Ruling R11 — bind() ด้านล่างนี้ re-point ห้อง LINE_FINANCE ทั้งหมดของ lineUserId ตรงๆ
    * ผ่าน tx.chatRoom.updateMany ของตัวเอง โดยไม่ผ่าน hook ของ Task 10 เลย (ChatRoomService.
    * linkRoomToCustomer เช็ค session.customerId !== linkStatus.customerId แต่พอถึงข้อความถัดไป
@@ -397,7 +482,7 @@ export class VerificationService {
     }
   }
 
-  private async bind(lineUserId: string, customerId: string): Promise<void> {
+  private async bind(lineUserId: string, customerId: string, plan: LinkPlan): Promise<void> {
     // LINE_LINKED นับเฉพาะการผูกที่เปลี่ยนจริง — ยืนยัน OTP ซ้ำกับลูกค้าคนเดิมที่ยังผูกอยู่ไม่ใช่เหตุการณ์ใหม่
     const previous = await this.prisma.customerLineLink.findUnique({
       where: { lineUserId_channel: { lineUserId, channel: LineChannelType.FINANCE } },
@@ -407,13 +492,20 @@ export class VerificationService {
       !previous || previous.customerId !== customerId || previous.unlinkedAt !== null || previous.deletedAt !== null;
     const linkedAt = new Date();
     await this.prisma.$transaction(async (tx) => {
-      await tx.customerLineLink.upsert({
-        where: {
-          lineUserId_channel: { lineUserId, channel: LineChannelType.FINANCE },
-        },
-        create: { customerId, lineUserId, channel: LineChannelType.FINANCE },
-        update: { customerId, unlinkedAt: null, linkedAt },
-      });
+      if (plan.kind === 'repoint-customer-row') {
+        await tx.customerLineLink.update({
+          where: { id: plan.rowId },
+          data: { lineUserId, unlinkedAt: null, deletedAt: null, linkedAt },
+        });
+      } else {
+        await tx.customerLineLink.upsert({
+          where: {
+            lineUserId_channel: { lineUserId, channel: LineChannelType.FINANCE },
+          },
+          create: { customerId, lineUserId, channel: LineChannelType.FINANCE },
+          update: { customerId, unlinkedAt: null, linkedAt },
+        });
+      }
 
       await tx.chatRoom.updateMany({
         where: { lineUserId, channel: 'LINE_FINANCE' },

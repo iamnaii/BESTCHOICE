@@ -1,12 +1,17 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { VerificationService } from './verification.service';
+import { BadRequestException, ConflictException } from '@nestjs/common';
+import {
+  VerificationService,
+  CUSTOMER_LINKED_TO_OTHER_LINE_MESSAGE,
+  LINE_LINK_NEEDS_STAFF_MESSAGE,
+} from './verification.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { TestModeService } from '../../test-mode/test-mode.service';
 import { AuditService } from '../../audit/audit.service';
 import { CustomerMergeService } from '../../chat-prospects/customer-merge.service';
 import { JourneyEntryWriter } from '../../customer-journey/journey-entry-writer.service';
+import { RichMenuService } from '../../line-oa/rich-menu/rich-menu.service';
 
 describe('VerificationService', () => {
   let service: VerificationService;
@@ -318,11 +323,13 @@ describe('VerificationService', () => {
     });
 
     describe('Fix round 1 — R11: absorbRoomsOfLineUser called before bind()', () => {
+      /* eslint-disable @typescript-eslint/no-explicit-any */
       let mergedPrisma: any;
       let mergedNotifications: any;
       let mergedTestMode: any;
       let mergedAudit: any;
       let merge: any;
+      /* eslint-enable @typescript-eslint/no-explicit-any */
       let mergedService: VerificationService;
 
       beforeEach(async () => {
@@ -380,7 +387,7 @@ describe('VerificationService', () => {
           callOrder.push('absorb');
           return { absorbed: 1, linked: 0 };
         });
-        mergedPrisma.$transaction.mockImplementation((cb: any) => {
+        mergedPrisma.$transaction.mockImplementation((cb: (client: unknown) => unknown) => {
           callOrder.push('bind');
           const tx = {
             customerLineLink: { upsert: jest.fn().mockResolvedValue({}) },
@@ -416,6 +423,7 @@ describe('VerificationService', () => {
     });
 
     describe('LINE_LINKED หลัง bind() commit', () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let jPrisma: any;
       let upsert: jest.Mock;
       let journey: { recordAfterCommit: jest.Mock };
@@ -432,7 +440,7 @@ describe('VerificationService', () => {
           },
           customer: { findUnique: jest.fn().mockResolvedValue({ id: 'c1', name: 'สมชาย' }) },
           customerLineLink: { findUnique: jest.fn().mockResolvedValue(null) },
-          $transaction: jest.fn().mockImplementation(async (cb: any) => {
+          $transaction: jest.fn().mockImplementation(async (cb: (client: unknown) => unknown) => {
             const result = await cb({
               customerLineLink: { upsert },
               chatRoom: { updateMany: jest.fn().mockResolvedValue({}) },
@@ -483,18 +491,43 @@ describe('VerificationService', () => {
       });
 
       it('ยืนยันซ้ำกับลูกค้าคนเดิมที่ยังผูกอยู่ → ไม่นับเป็นการผูกใหม่ ไม่บันทึก', async () => {
-        jPrisma.customerLineLink.findUnique.mockResolvedValue({ customerId: 'c1', unlinkedAt: null, deletedAt: null });
+        // แถวเดียวกันตอบทั้งค้นด้วย LINE และด้วยลูกค้า (planLink อ่านด้วยลูกค้าก่อน)
+        jPrisma.customerLineLink.findUnique.mockResolvedValue({
+          id: 'link-1',
+          customerId: 'c1',
+          lineUserId: 'U123',
+          unlinkedAt: null,
+          deletedAt: null,
+        });
         await jService.verifyOtp({ lineUserId: 'U123', otp: '999999' });
         expect(order).toEqual(['commit']);
         expect(journey.recordAfterCommit).not.toHaveBeenCalled();
       });
 
       it('LINE นี้เคยผูกลูกค้าคนอื่น หรือเคยถูกยกเลิก → นับเป็นการผูกใหม่', async () => {
-        jPrisma.customerLineLink.findUnique.mockResolvedValueOnce({ customerId: 'c-old', unlinkedAt: null, deletedAt: null });
+        // ค้นด้วยลูกค้า (planLink) → ลูกค้า c1 ยังไม่มีแถว · ค้นด้วย LINE (bind) → แถวของลูกค้าเดิม
+        jPrisma.customerLineLink.findUnique.mockImplementation(
+          async (args: { where: Record<string, unknown> }) =>
+            'lineUserId_channel' in args.where
+              ? { customerId: 'c-old', unlinkedAt: null, deletedAt: null }
+              : null,
+        );
         await jService.verifyOtp({ lineUserId: 'U123', otp: '999999' });
-        jPrisma.customerLineLink.findUnique.mockResolvedValueOnce({ customerId: 'c1', unlinkedAt: new Date('2026-09-01T00:00:00.000Z'), deletedAt: null });
+        // ยกเลิกผูกแล้ว (LIFF unlink ปิดแถว) → ผูกกลับด้วย OTP = แถวเดิมของ LINE นี้ + ลูกค้าเดิม
+        jPrisma.customerLineLink.findUnique.mockResolvedValue({
+          id: 'link-1',
+          customerId: 'c1',
+          lineUserId: 'U123',
+          unlinkedAt: new Date('2026-09-01T00:00:00.000Z'),
+          deletedAt: null,
+        });
         await jService.verifyOtp({ lineUserId: 'U123', otp: '999999' });
         expect(journey.recordAfterCommit).toHaveBeenCalledTimes(2);
+        expect(upsert).toHaveBeenCalledTimes(2);
+        expect(upsert.mock.calls[1][0].update).toMatchObject({
+          customerId: 'c1',
+          unlinkedAt: null,
+        });
       });
 
       it('transaction ของ bind() ล้ม → ไม่บันทึก และ verifyOtp โยนต่อ', async () => {
@@ -601,6 +634,242 @@ describe('VerificationService', () => {
       } finally {
         jest.useRealTimers();
       }
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────
+  // Task 19 — /liff/finance-verify เป็นทางผูก LINE การเงินทางเดียว (liff/register ตอบ 410)
+  // ต้องทำผลข้างเคียงครบที่ทางเดิมเคยทำ: ดูดห้องผู้สนใจ · customer_line_links · line_id_finance ·
+  // LINE_LINKED หลัง commit · สลับ rich menu FINANCE เป็น "ยืนยันแล้ว" (ทางเดิมทำ ทางนี้เคยขาด — G8)
+  // ─────────────────────────────────────────────────────────────
+  describe('Task 19 — ทางผูกทางเดียว (linkVerifiedLine)', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let tPrisma: any;
+    let tx: {
+      customerLineLink: { upsert: jest.Mock; update: jest.Mock };
+      chatRoom: { updateMany: jest.Mock };
+      customer: { update: jest.Mock };
+    };
+    let order: string[];
+    let rows: { byCustomer: unknown; byLine: unknown };
+    let merge: { absorbRoomsOfLineUser: jest.Mock };
+    let journey: { recordAfterCommit: jest.Mock };
+    let richMenu: { switchRichMenu: jest.Mock };
+    let testModeOn: jest.Mock;
+    let tNotifications: { sendSmsFromQueue: jest.Mock };
+    let tService: VerificationService;
+
+    const build = async (opts: { withRichMenu?: boolean } = {}) => {
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          VerificationService,
+          { provide: PrismaService, useValue: tPrisma },
+          { provide: NotificationsService, useValue: tNotifications },
+          { provide: TestModeService, useValue: { isEnabled: testModeOn } },
+          { provide: AuditService, useValue: { log: jest.fn().mockResolvedValue(undefined) } },
+          { provide: CustomerMergeService, useValue: merge },
+          { provide: JourneyEntryWriter, useValue: journey },
+          ...(opts.withRichMenu === false
+            ? []
+            : [{ provide: RichMenuService, useValue: richMenu }]),
+        ],
+      }).compile();
+      tService = module.get(VerificationService);
+    };
+
+    /** ขอ OTP จริงแล้วคืนรหัสที่ส่งทาง SMS — เส้นยืนยันจริง (ไม่ใช่ test-mode) */
+    const requestRealOtp = async (): Promise<string> => {
+      await tService.requestOtp({ lineUserId: 'U123', phone: '0891234567' });
+      const stored = tPrisma.chatbotOtpRequest.upsert.mock.calls.at(-1)[0].create.hash;
+      tPrisma.chatbotOtpRequest.findUnique.mockResolvedValue({
+        id: 'otp-1',
+        lineUserId: 'U123',
+        customerId: 'c1',
+        hash: stored,
+        expiresAt: new Date(Date.now() + 300_000),
+        attempts: 0,
+      });
+      const sms = tNotifications.sendSmsFromQueue.mock.calls.at(-1)[1] as string;
+      return sms.match(/(\d{6})/)![1];
+    };
+
+    const LINK_SEQUENCE = [
+      'absorb',
+      'link-upsert',
+      'rooms',
+      'line_id_finance',
+      'commit',
+      'journey',
+      'rich-menu',
+      'otp-delete',
+    ];
+
+    beforeEach(async () => {
+      order = [];
+      rows = { byCustomer: null, byLine: null };
+      const step = (name: string, value: unknown = {}) =>
+        jest.fn(async () => {
+          order.push(name);
+          return value;
+        });
+      tx = {
+        customerLineLink: { upsert: step('link-upsert'), update: step('link-repoint') },
+        chatRoom: { updateMany: step('rooms') },
+        customer: { update: step('line_id_finance') },
+      };
+      tPrisma = {
+        chatbotOtpRequest: {
+          findUnique: jest.fn().mockResolvedValue(null),
+          upsert: jest.fn().mockResolvedValue({ id: 'otp-1' }),
+          delete: step('otp-delete'),
+          update: jest.fn(),
+        },
+        customer: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'c1', name: 'สมชาย', phone: '0891234567' }),
+          findUnique: jest.fn().mockResolvedValue({ id: 'c1', name: 'สมชาย' }),
+        },
+        customerLineLink: {
+          findUnique: jest.fn(async (args: { where: Record<string, unknown> }) =>
+            'customerId_channel' in args.where ? rows.byCustomer : rows.byLine,
+          ),
+        },
+        $transaction: jest.fn(async (cb: (client: typeof tx) => unknown) => {
+          const result = await cb(tx);
+          order.push('commit');
+          return result;
+        }),
+      };
+      merge = { absorbRoomsOfLineUser: step('absorb', { absorbed: 1, linked: 0 }) };
+      journey = { recordAfterCommit: step('journey', undefined) };
+      richMenu = { switchRichMenu: step('rich-menu', undefined) };
+      testModeOn = jest.fn().mockResolvedValue(false);
+      tNotifications = { sendSmsFromQueue: jest.fn().mockResolvedValue(undefined) };
+      await build();
+    });
+
+    it('(d) OTP ถูกต้อง → ผูกครบ: ดูดห้อง → link row + ห้อง + line_id_finance ใน tx เดียว → journey → rich menu "ยืนยันแล้ว" → ลบ OTP', async () => {
+      const otp = await requestRealOtp();
+
+      await expect(tService.verifyOtp({ lineUserId: 'U123', otp })).resolves.toEqual({
+        customerId: 'c1',
+        customerName: 'สมชาย',
+      });
+
+      expect(order).toEqual(LINK_SEQUENCE);
+      expect(merge.absorbRoomsOfLineUser).toHaveBeenCalledWith('U123', 'LINE_FINANCE', 'c1', {
+        id: 'system',
+        role: 'SYSTEM',
+      });
+      expect(tx.customerLineLink.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { lineUserId_channel: { lineUserId: 'U123', channel: 'FINANCE' } },
+          create: { customerId: 'c1', lineUserId: 'U123', channel: 'FINANCE' },
+        }),
+      );
+      expect(tx.customer.update).toHaveBeenCalledWith({
+        where: { id: 'c1' },
+        data: { lineIdFinance: 'U123' },
+      });
+      expect(journey.recordAfterCommit.mock.calls[0][0]).toMatchObject({
+        customerId: 'c1',
+        kind: 'LINE_LINKED',
+        data: { channel: 'FINANCE', via: 'VERIFICATION' },
+      });
+      expect(richMenu.switchRichMenu).toHaveBeenCalledWith('U123', true, 'finance');
+    });
+
+    it('(d) test-mode bypass ใช้ helper เดียวกัน → สลับ rich menu ด้วย', async () => {
+      testModeOn.mockResolvedValue(true);
+      tPrisma.chatbotOtpRequest.findUnique.mockResolvedValue({
+        id: 'otp-1',
+        lineUserId: 'U123',
+        customerId: 'c1',
+        hash: 'x',
+        expiresAt: new Date(Date.now() + 300_000),
+        attempts: 0,
+      });
+
+      await tService.verifyOtp({ lineUserId: 'U123', otp: '000000' });
+
+      expect(order).toEqual(LINK_SEQUENCE);
+    });
+
+    it('สลับ rich menu ล้ม (LINE API) → การยืนยันยังสำเร็จ (best-effort เหมือนทางเดิม)', async () => {
+      richMenu.switchRichMenu.mockRejectedValue(new Error('LINE API error 500'));
+      const otp = await requestRealOtp();
+
+      await expect(tService.verifyOtp({ lineUserId: 'U123', otp })).resolves.toMatchObject({
+        customerId: 'c1',
+      });
+      expect(tx.customer.update).toHaveBeenCalled();
+      expect(tPrisma.chatbotOtpRequest.delete).toHaveBeenCalled();
+    });
+
+    it('ไม่มี RichMenuService ใน DI (spec / โมดูลถูกแยก) → ข้ามการสลับเมนู ผูกสำเร็จตามปกติ', async () => {
+      await build({ withRichMenu: false });
+      const otp = await requestRealOtp();
+
+      await expect(tService.verifyOtp({ lineUserId: 'U123', otp })).resolves.toMatchObject({
+        customerId: 'c1',
+      });
+      expect(order).toContain('commit');
+      expect(richMenu.switchRichMenu).not.toHaveBeenCalled();
+    });
+
+    it('ลูกค้ายังผูกกับ LINE อื่นอยู่ → 409 ไทย (เดิมชน unique เป็น 500) · ไม่ดูดห้อง ไม่เขียนอะไร ไม่สลับเมนู', async () => {
+      rows.byCustomer = { id: 'link-old', lineUserId: 'U_OLD', unlinkedAt: null, deletedAt: null };
+      const otp = await requestRealOtp();
+
+      const err = await tService.verifyOtp({ lineUserId: 'U123', otp }).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ConflictException);
+      expect((err as ConflictException).message).toBe(CUSTOMER_LINKED_TO_OTHER_LINE_MESSAGE);
+      expect(merge.absorbRoomsOfLineUser).not.toHaveBeenCalled();
+      expect(tPrisma.$transaction).not.toHaveBeenCalled();
+      expect(richMenu.switchRichMenu).not.toHaveBeenCalled();
+      expect(journey.recordAfterCommit).not.toHaveBeenCalled();
+    });
+
+    it('ลูกค้ายกเลิกผูก LINE เดิมแล้ว → ผูก LINE ใหม่ได้ โดยชี้แถวเดิมของลูกค้ามาที่ LINE ใหม่ (ไม่สร้างแถวชน unique)', async () => {
+      rows.byCustomer = {
+        id: 'link-old',
+        lineUserId: 'U_OLD',
+        unlinkedAt: new Date('2026-10-01T00:00:00.000Z'),
+        deletedAt: null,
+      };
+      const otp = await requestRealOtp();
+
+      await expect(tService.verifyOtp({ lineUserId: 'U123', otp })).resolves.toMatchObject({
+        customerId: 'c1',
+      });
+
+      expect(tx.customerLineLink.upsert).not.toHaveBeenCalled();
+      expect(tx.customerLineLink.update).toHaveBeenCalledWith({
+        where: { id: 'link-old' },
+        data: { lineUserId: 'U123', unlinkedAt: null, deletedAt: null, linkedAt: expect.any(Date) },
+      });
+      expect(tx.customer.update).toHaveBeenCalledWith({
+        where: { id: 'c1' },
+        data: { lineIdFinance: 'U123' },
+      });
+      expect(journey.recordAfterCommit).toHaveBeenCalledTimes(1);
+      expect(richMenu.switchRichMenu).toHaveBeenCalledWith('U123', true, 'finance');
+    });
+
+    it('ลูกค้ายกเลิกผูก LINE เดิมแล้ว แต่ LINE นี้ก็มีแถวของลูกค้าอื่น → 409 ให้พนักงานดู (รวมสองแถวไม่ได้)', async () => {
+      rows.byCustomer = {
+        id: 'link-old',
+        lineUserId: 'U_OLD',
+        unlinkedAt: new Date('2026-10-01T00:00:00.000Z'),
+        deletedAt: null,
+      };
+      rows.byLine = { id: 'link-other', customerId: 'c-other', unlinkedAt: null, deletedAt: null };
+      const otp = await requestRealOtp();
+
+      await expect(tService.verifyOtp({ lineUserId: 'U123', otp })).rejects.toThrow(
+        LINE_LINK_NEEDS_STAFF_MESSAGE,
+      );
+      expect(merge.absorbRoomsOfLineUser).not.toHaveBeenCalled();
+      expect(tPrisma.$transaction).not.toHaveBeenCalled();
     });
   });
 });

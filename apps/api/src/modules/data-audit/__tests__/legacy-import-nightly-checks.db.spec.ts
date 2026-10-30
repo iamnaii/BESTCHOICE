@@ -101,7 +101,8 @@ type Check =
   | 'vat'
   | 'hp'
   | 'missing_cogs'
-  | 'late_fee_vat_leak';
+  | 'late_fee_vat_leak'
+  | 'commission_mismatch';
 
 describeDb('nightly data-audit + receivable-recon on imported legacy contracts (real DB)', () => {
   let prisma: PrismaClient;
@@ -701,11 +702,14 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
         return checks.checkMissingCogs(scope);
       case 'late_fee_vat_leak':
         return checks.checkLateFeeVatLeak(scope);
+      case 'commission_mismatch':
+        return checks.checkCommissionMismatch(); // ไม่มีขอบเขต — ข้อนี้ไม่อ่านฐาน (SKIPPED)
     }
   }
 
   /**
-   * ห้าข้อหลัก + ข้อ MEDIUM ที่ Task 18 แก้ ไม่มี finding — รายงานชื่อข้อ + รายละเอียดเมื่อมี (ให้อ่านง่ายตอนแดง)
+   * ห้าข้อหลัก + ข้อ MEDIUM ที่ Task 18 แก้ ไม่มี finding — รายงานชื่อข้อ + รายละเอียดเมื่อมี (ให้อ่านง่ายตอนแดง) ·
+   * `commission_mismatch` ต้องเป็น SKIPPED (ไม่ใช่ FAIL รายวัน)
    */
   async function expectClean(contractIds: string[]) {
     const results: Record<string, unknown> = {};
@@ -717,9 +721,15 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
       'hp',
       'missing_cogs',
       'late_fee_vat_leak',
+      'commission_mismatch',
     ] as Check[]) {
       const r = await run(check, contractIds);
-      results[check] = r.count === 0 && r.status === 'PASS' ? 'PASS' : r.details;
+      results[check] =
+        r.status === 'SKIPPED' && r.count === 0
+          ? 'SKIPPED'
+          : r.count === 0 && r.status === 'PASS'
+            ? 'PASS'
+            : r.details;
     }
     expect(results).toEqual({
       orphan_contracts: 'PASS',
@@ -729,6 +739,7 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
       hp: 'PASS',
       missing_cogs: 'PASS',
       late_fee_vat_leak: 'PASS',
+      commission_mismatch: 'SKIPPED',
     });
   }
 
@@ -801,6 +812,18 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
       expect(l1.product.costPrice.toFixed(2)).toBe('0.00');
       await prisma.product.update({ where: { id: l1.productId }, data: { costPrice: D(8000) } });
       expect((await run('missing_cogs', cleanKeys())).count).toBe(0);
+
+      // commission_mismatch (Task 18 → SKIPPED): ข้อเดิมเทียบค่าคอมต่องวด (monthlyCommission ของงวด PAID) กับ Cr 42-1105 ซึ่งตอนนี้คือ
+      // กำไรจากการจำหน่ายสินทรัพย์ — FINANCE ตั้งค่าคอมครั้งเดียวเป็นหนี้สิน 21-1102 ใน 1A ⇒ งวด PAID ที่มีค่าคอมติดทุกงวด (นำเข้า + ปกติ)
+      expect(
+        await prisma.payment.count({
+          where: {
+            contractId: { in: ids(legacy, ['L1', 'H1']).concat(ids(native, ['A1'])) },
+            status: 'PAID',
+            monthlyCommission: { gt: 0 },
+          },
+        }),
+      ).toBeGreaterThan(0);
     },
     LONG,
   );

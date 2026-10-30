@@ -467,25 +467,17 @@ describe('DataAuditService', () => {
   // ═══════════════════════════════════════════════════════════════
 
   describe('checkCommissionMismatch', () => {
-    it('should PASS when commission matches', async () => {
-      prisma.$queryRaw.mockResolvedValueOnce([]);
+    it('Task 18 — SKIPPED with a dated reason (commission is booked once at activation, not per receipt) — never a FAIL, reads nothing', async () => {
       const result = await service.checkCommissionMismatch();
-      expect(result.status).toBe('PASS');
-    });
-
-    it('should FAIL when commission mismatch found', async () => {
-      prisma.$queryRaw.mockResolvedValueOnce([
-        {
-          id: 'p-1',
-          contract_number: 'BC-001',
-          installment_no: 1,
-          payment_comm: new Prisma.Decimal('300.00'),
-          journal_comm: new Prisma.Decimal('0'),
-          diff: new Prisma.Decimal('300.00'),
-        },
-      ]);
-      const result = await service.checkCommissionMismatch();
-      expect(result.status).toBe('FAIL');
+      expect(result).toMatchObject({
+        name: 'commission_mismatch',
+        severity: 'MEDIUM',
+        status: 'SKIPPED',
+        count: 0,
+      });
+      expect(result.details[0]).toMatchObject({ skippedSince: '2026-10-30' });
+      expect(JSON.stringify(result.details)).toContain('21-1102');
+      expect(prisma.$queryRaw).not.toHaveBeenCalled();
     });
   });
 
@@ -495,12 +487,15 @@ describe('DataAuditService', () => {
 
   describe('runAllChecks', () => {
     it('should return 12 results', async () => {
-      // Every check reads a row list (none indexes [0] any more) — an empty DB passes all of them.
+      // Every check reads a row list (none indexes [0] any more) — an empty DB passes all of them;
+      // commission_mismatch is SKIPPED (Task 18), not a finding.
       prisma.$queryRaw.mockResolvedValue([]);
 
       const results = await service.runAllChecks();
       expect(results).toHaveLength(12);
-      expect(results.every((r) => r.status === 'PASS')).toBe(true);
+      expect(results.filter((r) => r.status !== 'PASS').map((r) => [r.name, r.status])).toEqual([
+        ['commission_mismatch', 'SKIPPED'],
+      ]);
     });
   });
 

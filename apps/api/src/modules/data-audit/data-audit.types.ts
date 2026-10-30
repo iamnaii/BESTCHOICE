@@ -3,7 +3,11 @@
 export interface AuditCheckResult {
   name: string;
   severity: 'CRITICAL' | 'HIGH' | 'MEDIUM';
-  status: 'PASS' | 'FAIL' | 'WARN';
+  /**
+   * `SKIPPED` = the check's assertion no longer has a meaning in today's ledger model (dated reason in
+   * `details`) — never a finding: not FAIL, no Sentry, no acknowledgement queue (2026-10-30 Task 18).
+   */
+  status: 'PASS' | 'FAIL' | 'WARN' | 'SKIPPED';
   count: number;
   details: unknown[];
   executedAt: Date;

@@ -66,6 +66,13 @@ const stampAmount = (raw: string | null): Prisma.Decimal => {
  *   (`journal/contract-receivable-recon.ts`) เกณฑ์ 1.00 บาทต่อสัญญา
  *
  * ห้าข้อนี้รับ `scope.contractIds` (ไม่ส่ง = ทุกสัญญา — cron เรียกแบบนี้) ให้เทสบนฐานที่มีแถวของเทสอื่นปน
+ *
+ * **2026-10-30 (Task 18) ข้อ MEDIUM สามข้อ** (เดิมเตือนปลอมทุกวันกับสัญญาปกติ — ผลก่อนวันนี้เทียบไม่ได้เช่นกัน):
+ * - `missing_cogs` — เดิมหา `reference_type = 'CONTRACT_COGS'` ซึ่งไม่มีผู้เขียน ⇒ หาต้นทุนขายฝั่ง SHOP ของการเปิดสัญญา
+ *   (flow `shop-inventory-transfer-cogs` + `metadata.contractId`) · สัญญานำเข้ายกเว้น · รับ `scope`
+ * - `late_fee_vat_leak` — เดิมเทียบ 21-2101 ของใบรับกับ `Payment.vatAmount` ⇒ รายการรับชำระของงวดที่มีค่าปรับต้องขยับ
+ *   21-2101 เท่าภาษีของเงินรับล่วงหน้าที่ stamp ไว้เท่านั้น · รับ `scope`
+ * - `commission_mismatch` — `SKIPPED` (ค่าคอมไม่ได้รับรู้ต่องวดตั้งแต่ A.4 · 42-1105 เป็นบัญชีอื่นแล้ว)
  */
 @Injectable()
 export class DataAuditChecksService {
@@ -652,48 +659,37 @@ export class DataAuditChecksService {
     };
   }
 
-  /** Check 12: Commission from journal must match SUM(monthlyCommission) from payments */
+  /**
+   * Check 12 — **SKIPPED since 2026-10-30 (Task 18)**: the assertion no longer exists in the ledger.
+   *
+   * It compared each PAID installment's `monthlyCommission` with the commission revenue its receipt
+   * credited to 42-1105 — the pre-A.4 model where FINANCE recognised commission per installment.
+   * Since Phase A.4 FINANCE is an agent for the shop commission: 1A books it once, at activation, as
+   * the payable `Cr 21-1102` (`contract-activation-1a.template.ts:92-97`) and the SHOP side books its
+   * income once as `Cr S41-1201` (`shop-inventory-transfer.template.ts:244-251`) — no receipt carries
+   * commission, and 42-1105 is now "gain on asset disposal" (`asset-disposal.template.ts`). The query
+   * flagged every PAID row with a commission (native and imported) as a daily FAIL. The A.4 invariant
+   * that replaces it — the two books carry the same commission per contract — is watched by the
+   * monthly inter-co reconcile (`interco-reconcile.cron.ts` finding `PAYABLE_PAIR_MISMATCH`: FINANCE
+   * 21-1101 + 21-1102 vs SHOP S11-3001 + S11-3002 per contract, commission-only gaps labelled
+   * `COMMISSION_ONLY_GAP`), so no second query is written here. Kept in the run (name/severity) so
+   * history stays comparable.
+   */
   async checkCommissionMismatch(): Promise<AuditCheckResult> {
-    const mismatches = await this.prisma.$queryRaw<
-      {
-        id: string;
-        contract_number: string;
-        installment_no: number;
-        payment_comm: Prisma.Decimal;
-        journal_comm: Prisma.Decimal;
-        diff: Prisma.Decimal;
-      }[]
-    >`
-      WITH journal_commission AS (
-        SELECT COALESCE(je.metadata->>'paymentId', je.reference_id) as payment_id,
-          SUM(jl.credit) as journal_comm
-        FROM journal_lines jl
-        JOIN journal_entries je ON je.id = jl.journal_entry_id
-        WHERE jl.account_code = '42-1105'
-          AND je.reference_type = 'AUTO'
-          AND je.status = 'POSTED'
-          AND je.deleted_at IS NULL AND jl.deleted_at IS NULL
-        GROUP BY COALESCE(je.metadata->>'paymentId', je.reference_id)
-      )
-      SELECT p.id, c.contract_number, p.installment_no,
-        p.monthly_commission as payment_comm,
-        jc.journal_comm,
-        ABS(COALESCE(p.monthly_commission, 0) - COALESCE(jc.journal_comm, 0)) as diff
-      FROM payments p
-      JOIN contracts c ON c.id = p.contract_id
-      LEFT JOIN journal_commission jc ON jc.payment_id = p.id::text
-      WHERE p.deleted_at IS NULL
-        AND p.status = 'PAID'
-        AND ABS(COALESCE(p.monthly_commission, 0) - COALESCE(jc.journal_comm, 0)) > 0.01
-      ORDER BY diff DESC
-      LIMIT 50
-    `;
     return {
       name: 'commission_mismatch',
       severity: 'MEDIUM',
-      status: mismatches.length === 0 ? 'PASS' : 'FAIL',
-      count: mismatches.length,
-      details: mismatches,
+      status: 'SKIPPED',
+      count: 0,
+      details: [
+        {
+          skippedSince: '2026-10-30',
+          reason:
+            'commission is booked once at activation (FINANCE Cr 21-1102 payable in 1A · SHOP Cr S41-1201), never per installment receipt; 42-1105 is gain on asset disposal',
+          replacedBy:
+            'interco-reconcile cron — PAYABLE_PAIR_MISMATCH per contract (21-1101+21-1102 vs S11-3001+S11-3002; commission-only gaps = COMMISSION_ONLY_GAP)',
+        },
+      ],
       executedAt: new Date(),
     };
   }

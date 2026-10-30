@@ -357,6 +357,7 @@ export class DataAuditChecksService {
         JOIN journal_entries je ON je.id = jl.journal_entry_id
         WHERE je.status = 'POSTED'
           AND je.deleted_at IS NULL
+          AND jl.deleted_at IS NULL
           AND jl.account_code IN ('11-2105', '21-2102')
           AND je.metadata->>'contractId' IN (SELECT id FROM scope)
         GROUP BY je.metadata->>'contractId'

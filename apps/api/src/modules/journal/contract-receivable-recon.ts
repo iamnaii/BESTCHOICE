@@ -6,7 +6,8 @@ import { Decimal } from '@prisma/client/runtime/library';
  * ตัวคำนวณเดียวของตรวจกลางคืน `hp_receivable_reconciliation` (data-audit 06:00) และ `ReceivableReconService` (02:00)
  *
  * - **GL** = Σ(Dr − Cr) ของ 11-2101 + 11-2103 + 11-2105 ในรายการ `POSTED` ที่ไม่ถูกลบและ `metadata.contractId` = สัญญา —
- *   ความหมายเดียวกับ `glContractBalance(…, 'dr')` (ไม่กรองบรรทัดที่ถูกลบ เหมือนกัน — ไม่มีโค้ดใดแก้ `journal_lines` หลังลง) ·
+ *   ความหมายเดียวกับ `glContractBalance(…, 'dr')` · ทุก CTE ในไฟล์นี้กรองบรรทัดที่ถูกลบ (`jl.deleted_at IS NULL`) — `glContractBalance`
+ *   ไม่กรอง แต่ไม่มีโค้ดใดแก้ `journal_lines` หลังลง จึงได้ยอดเท่ากัน ·
  *   รายการยกเลิกด้วยมือ (`JournalService.void`) เปลี่ยนต้นฉบับเป็น VOIDED และรายการ REVERSAL ไม่มี metadata ⇒ หลุดคู่กัน ·
  *   รายการกลับของเทมเพลต copy `contractId` ⇒ หักล้างเอง · ไม่ใช้ 11-2102 (ค่าเผื่อหนี้สงสัยจะสูญ — contra ไม่ใช่ลูกหนี้)
  * - **ทะเบียน** = Σ(`amount_due − amount_paid`) ของ**ทุกแถวงวด**ที่ไม่ถูกลบ (ทุกสถานะ — งวดค้างเป็น `OVERDUE`) +
@@ -94,6 +95,7 @@ export async function loadContractReceivableGaps(
       JOIN journal_entries je ON je.id = jl.journal_entry_id
       WHERE je.status = 'POSTED'
         AND je.deleted_at IS NULL
+        AND jl.deleted_at IS NULL
         AND jl.account_code IN (${Prisma.join([...HP_RECEIVABLE_ACCOUNTS])})
         AND je.metadata->>'contractId' IN (SELECT id FROM scope)
       GROUP BY je.metadata->>'contractId'
@@ -117,7 +119,8 @@ export async function loadContractReceivableGaps(
       SELECT p.contract_id, SUM(GREATEST(r.fee_gross - r.fee_waived, 0) + r.rounding) AS amount
       FROM receipt_entry r
       JOIN payments p ON p.id = r.payment_id
-      WHERE p.contract_id IN (SELECT id FROM scope)
+      WHERE p.deleted_at IS NULL
+        AND p.contract_id IN (SELECT id FROM scope)
       GROUP BY p.contract_id
     ),
     reg AS (

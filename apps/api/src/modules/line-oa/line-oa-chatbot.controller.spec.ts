@@ -23,6 +23,7 @@ const makeEvent = (text: string, userId = 'U-test') => ({
   message: { id: 'mid-1', type: 'text' as const, text },
 });
 
+/* eslint-disable @typescript-eslint/no-explicit-any -- jest mocks + private-method access */
 describe('LineOaChatbotController — WS2 staged AI gate', () => {
   let controller: LineOaChatbotController;
   let lineOaService: any;
@@ -39,8 +40,7 @@ describe('LineOaChatbotController — WS2 staged AI gate', () => {
     };
     lineOaService = {
       replyMessage: jest.fn().mockResolvedValue(undefined),
-      findCustomerByLineId: jest.fn().mockResolvedValue({ name: 'สมชาย', contracts: [] }),
-      selfLinkByPhone: jest.fn(),
+      findVerifiedCustomerByLineId: jest.fn().mockResolvedValue({ name: 'สมชาย', contracts: [] }),
     };
     chatbotService = { generateResponse: jest.fn().mockResolvedValue('คำตอบจากบอทเก่า') };
     messageRouter = {
@@ -153,22 +153,26 @@ describe('LineOaChatbotController — WS2 staged AI gate', () => {
     expect(messageRouter.routeInbound).not.toHaveBeenCalled();
   });
 
-  it('phone self-link success replies confirmation and stops', async () => {
-    lineOaService.selfLinkByPhone.mockResolvedValue({ success: true, customerName: 'สมชาย' });
+  it('phone from a not-yet-verified LINE → OTP verification link (no linking, no name) and stops', async () => {
+    lineOaService.findVerifiedCustomerByLineId.mockResolvedValue(null);
     await handleText('0812345678');
     expect(lineOaService.replyMessage).toHaveBeenCalledWith(
       'rt-1',
-      [expect.objectContaining({ text: expect.stringContaining('ผูกบัญชีสำเร็จค่ะ คุณสมชาย') })],
+      [
+        expect.objectContaining({
+          text: expect.stringContaining('returnPath=%2Fliff%2Ffinance-verify'),
+        }),
+      ],
       'line-shop',
     );
+    expect(JSON.stringify(lineOaService.replyMessage.mock.calls)).not.toContain('สมชาย');
     expect(chatbotService.generateResponse).not.toHaveBeenCalled();
     expect(messageRouter.routeInbound).not.toHaveBeenCalled();
     expect(messageRouter.mirrorInbound).toHaveBeenCalledTimes(1);
   });
 
-  it('phone from already-linked user falls through to legacy freeform without double mirror', async () => {
-    lineOaService.selfLinkByPhone.mockResolvedValue({ success: false });
-    lineOaService.findCustomerByLineId.mockResolvedValue({ name: 'สมชาย', contracts: [] });
+  it('phone from an OTP-verified user falls through to legacy freeform without double mirror', async () => {
+    lineOaService.findVerifiedCustomerByLineId.mockResolvedValue({ name: 'สมชาย', contracts: [] });
     await handleText('0812345678');
     expect(chatbotService.generateResponse).toHaveBeenCalled();
     expect(messageRouter.routeInbound).not.toHaveBeenCalled();

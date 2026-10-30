@@ -74,7 +74,7 @@ export class ChatProspectService {
   /**
    * หาคนเดิมก่อนสร้าง (สเปค 3.2 ข้อ 3): (ก) ห้องอื่นของคนเดียวกันในช่องทางนี้ที่ผูกแล้ว
    * (ข) LINE: CustomerLineLink ที่ยังผูกอยู่ แล้วค่อยคอลัมน์ lineIdShop / lineIdFinance — ฝั่ง LINE ร้านผูกที่คอลัมน์
-   * (line-customer-link.service.ts selfLinkByPhone) ไม่ใช่ตาราง link
+   * (พนักงาน / บอทขายตอนสร้างลูกค้าจากแชท — ทางพิมพ์เบอร์ selfLinkByPhone ถูกถอดแล้ว Task 20) ไม่ใช่ตาราง link
    * ทุกทางข้ามลูกค้าที่ถูกลบแล้ว
    * public: capture_lead ใช้หาตัวตนที่แข็งกว่าเบอร์ก่อนจับคู่ด้วยเบอร์ (R25) — เรียกด้วย root client ได้
    * (FOR SHARE นอกทรานแซกชันไม่มีผลเสีย แค่ไม่ได้รอ merge)

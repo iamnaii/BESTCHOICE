@@ -1,10 +1,8 @@
-import { Injectable, Optional } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PDPAService } from '../pdpa/pdpa.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
-import { CustomerMergeService } from '../chat-prospects/customer-merge.service';
-import { JourneyEntryWriter } from '../customer-journey/journey-entry-writer.service';
 import type { LineChannelKey } from '../notifications/dto/create-notification.dto';
 import { LineMessagePayload } from './dto/webhook-event.dto';
 import { FlexMessagePayload } from './flex-messages/base-template';
@@ -34,15 +32,10 @@ export class LineOaService {
     private prisma: PrismaService,
     private pdpaService: PDPAService,
     private integrationConfig: IntegrationConfigService,
-    // ผู้สนใจอัตโนมัติจากแชท (แผน chat-prospects) — LineCustomerLinkService ถูก `new` ขึ้นเองข้างล่าง
-    // ไม่ผ่าน Nest DI จึงต้องรับผ่าน constructor ของ facade นี้ (ตัวเดียวที่ Nest inject ให้จริง)
-    // แล้วส่งต่อ ไม่งั้น absorbRoomsOfLineUser จะไม่ถูกเรียกเลยในโปรดักชัน
-    @Optional() private merge?: CustomerMergeService,
-    // การเดินทางของลูกค้า — เหตุผลเดียวกับ merge: ส่งต่อให้ LineCustomerLinkService บันทึก LINE_LINKED
-    @Optional() private journey?: JourneyEntryWriter,
   ) {
     this.apiClient = new LineApiClientService(this.configService, this.integrationConfig);
-    this.customerLink = new LineCustomerLinkService(this.prisma, this.apiClient, this.merge, this.journey);
+    // Task 20 C1: ทางผูก line_id_shop ด้วยเบอร์ (selfLinkByPhone) ถูกถอด — ไม่ต้องส่ง merge/journey ต่ออีก
+    this.customerLink = new LineCustomerLinkService(this.prisma, this.apiClient);
     this.flexBuilder = new LineFlexBuilderService(
       this.prisma,
       this.pdpaService,
@@ -104,16 +97,13 @@ export class LineOaService {
     return this.customerLink.linkLineId(lineUserId);
   }
 
-  selfLinkByPhone(lineUserId: string, phone: string): Promise<{ success: boolean; customerName?: string }> {
-    return this.customerLink.selfLinkByPhone(lineUserId, phone);
-  }
-
   unlinkLineId(lineUserId: string): Promise<void> {
     return this.customerLink.unlinkLineId(lineUserId);
   }
 
-  findCustomerByLineId(lineUserId: string) {
-    return this.customerLink.findCustomerByLineId(lineUserId);
+  /** ลูกค้าที่ LINE นี้ยืนยัน OTP แล้วเท่านั้น (Task 20 C1) — ไม่ใช่ line_id_shop */
+  findVerifiedCustomerByLineId(lineUserId: string) {
+    return this.customerLink.findVerifiedCustomerByLineId(lineUserId);
   }
 
   findBranchForCustomer(lineUserId: string) {

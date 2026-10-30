@@ -1,0 +1,949 @@
+import { Prisma, PrismaClient } from '@prisma/client';
+import { seedFinanceCoa } from '../../../../prisma/seed-coa-finance';
+import { earlyPayoffApproved } from '../../../cli/legacy-backoffice/__tests__/approval-fixture';
+import {
+  LAST,
+  MONTHLY,
+  peakMatch,
+  standardInstallments,
+  syntheticBook,
+  syntheticContract,
+  syntheticMember,
+  syntheticRecon,
+  thaiId,
+  type ContractSpec,
+  type InstallmentSpec,
+} from '../../../cli/legacy-backoffice/__tests__/synthetic-book';
+import type { DumpRow } from '../../../cli/legacy-backoffice/dump-reader';
+import { legacyFileContentType, type LegacyFileDetail } from '../../../cli/legacy-backoffice/files';
+import type { LegacyContract } from '../../../cli/legacy-backoffice/legacy-book';
+import { planImport } from '../../../cli/legacy-backoffice/plan-import';
+import { writeLegacyImport } from '../../../cli/legacy-backoffice/writer';
+import type { PrismaService } from '../../../prisma/prisma.service';
+import { bangkokCalendarParts, bangkokMidnight } from '../../../utils/date.util';
+import { buildInstallmentScheduleRows } from '../../../utils/installment-schedule.util';
+import { generatePaymentSchedule } from '../../../utils/installment.util';
+import { loadLateFeeConfig, resolveLateFee } from '../../../utils/late-fee.util';
+import { hashPII } from '../../../utils/pii.util';
+import { TEST_NAME_PREFIX } from '../../../utils/test-data-markers';
+import { ContractPaymentService } from '../../contracts/contract-payment.service';
+import { CustomerPiiService } from '../../customers/customer-pii.service';
+import { ContractActivation1ATemplate } from '../../journal/cpa-templates/contract-activation-1a.template';
+import { EarlyPayoffJP4Template } from '../../journal/cpa-templates/early-payoff-jp4.template';
+import { EclStageReverseTemplate } from '../../journal/cpa-templates/ecl-stage-reverse.template';
+import { InstallmentAccrual2ATemplate } from '../../journal/cpa-templates/installment-accrual-2a.template';
+import { PaymentReceiptTemplate } from '../../journal/cpa-templates/payment-receipt.template';
+import { ReceiptVoidReversalTemplate } from '../../journal/cpa-templates/receipt-void-reversal.template';
+import { ShopCollectSettlementTemplate } from '../../journal/cpa-templates/shop-collect-settlement.template';
+import { Vat60dayReversalTemplate } from '../../journal/cpa-templates/vat-60day-reversal.template';
+import { JournalAutoService } from '../../journal/journal-auto.service';
+import { LEGACY_SYSTEM_USER_EMAIL } from '../../journal/legacy-import-journal';
+import { PaymentReceiptOrchestrator } from '../../payments/services/payment-receipt-orchestrator';
+import { ProductsService } from '../../products/products.service';
+import { ReceiptsService } from '../../receipts/receipts.service';
+import { ReceivableReconService } from '../../receivable-recon/receivable-recon.service';
+import type { AuditCheckResult } from '../data-audit.types';
+import { DataAuditChecksService } from '../services/data-audit-checks.service';
+
+/**
+ * Task 16 — ตรวจกลางคืน (data-audit 06:00 + receivable-recon 02:00) บนสัญญาที่นำเข้าจากระบบเก่าและสัญญาปกติ — Postgres จริง
+ * ข้อมูลสังเคราะห์ทั้งหมด (เลขสัญญา TEST-T16-<stamp>-…, เลขบัตรขึ้นต้น 09 คำนวณหลักตรวจเอง, เบอร์ 0975…, IMEI 35997…)
+ *
+ * - ขั้น 1 เช้าวันแรกหลังนำเข้า: สัญญานำเข้า (ผ่อนอยู่ · จ่ายล่วงหน้าบางส่วน · ยอดเรียกเก็บ ≠ ตัวคำนวณ · ประวัติจบ/ปิดก่อนกำหนด) และ
+ *   สัญญาปกติ — ห้าข้อไม่มี finding · receivable-recon ไม่ breach
+ * - ขั้น 2 หลังวันตัด: รับเงินพร้อมค่าปรับ · เศษปัด 53-1503 · เงินรับล่วงหน้า (พักภาษี PR4 แล้วหักโดยรอบกลางคืน) — ยังไม่มี finding
+ * - ขั้น 3 ทำให้เพี้ยน (prisma ตรง): ต้องติดทุกข้อ ทั้งสัญญาปกติและงวดหลังวันตัดของสัญญานำเข้า (ไม่อ่อนลง)
+ * - ปิดยอดก่อนกำหนด (JP4) ของสัญญาปกติ: งวดที่ JP4 ปิดไม่ติด orphan_payments (ปฏิทินผูกกับวันนี้ — สูตรยอดปิดนับงวดจากวันนี้)
+ *
+ * ทุกข้อเรียกด้วย `scope.contractIds` ของสเปคนี้ (ฐานทดสอบอาจมีแถวของสเปคอื่น) · receivable-recon รันทั้งฐานแล้วดูเฉพาะสาขาของสเปคนี้
+ *
+ * รัน: DATABASE_URL=<ฐานทดสอบ test_db หรือ *_test> NODE_OPTIONS=--max-old-space-size=6144 npx jest <ไฟล์นี้> --runInBand ·
+ * ไม่มี DATABASE_URL = ข้าม
+ */
+const KEY = 'c9'.repeat(32);
+const SALT = 'legacy-t16-nightly-checks-salt-001';
+const describeDb = process.env.DATABASE_URL ? describe : describe.skip;
+const TX = { timeout: 120_000, maxWait: 20_000 };
+const LONG = 600_000;
+const D = (v: Prisma.Decimal.Value) => new Prisma.Decimal(v);
+
+/** ปฏิทินหลัก (แบบเทสต์ทองคำ): ทำสัญญา 5 ธ.ค. 2024 · งวด n = 5 ของเดือน n ปี 2025 · วันตัดหลังงวด 4 */
+const P1 = {
+  date: '2024-12-05',
+  dueDay: 5,
+  firstDue: [2025, 0, 5] as [number, number, number],
+  cutoff: new Date('2025-04-30T23:59:59+07:00'),
+  due: (no: number) => bangkokMidnight(2025, no - 1, 5),
+};
+const APR20 = new Date('2025-04-20T10:00:00+07:00');
+const MAY2 = new Date('2025-05-02T10:00:00+07:00');
+const MAY3 = new Date('2025-05-03T10:00:00+07:00');
+const DAY = 24 * 60 * 60 * 1000;
+const installmentAmount = (no: number) => (no === 12 ? LAST : MONTHLY);
+const full = (n: number): Record<number, InstallmentSpec> =>
+  Object.fromEntries(Array.from({ length: n }, (_, i) => [i + 1, { paid: MONTHLY }]));
+/** ระบบเก่า ณ วันตัด: งวด 1–3 จ่ายครบ · งวด 4 จ่าย 300 */
+const legacyState = () => standardInstallments({ ...full(3), 4: { paid: '300' } });
+
+type Check = 'orphan_contracts' | 'orphan_payments' | 'overpaid' | 'vat' | 'hp';
+
+describeDb('nightly data-audit + receivable-recon on imported legacy contracts (real DB)', () => {
+  let prisma: PrismaClient;
+  let pii: CustomerPiiService;
+  let journal: JournalAutoService;
+  let accrual2A: InstallmentAccrual2ATemplate;
+  let activation1A: ContractActivation1ATemplate;
+  let orchestrator: PaymentReceiptOrchestrator;
+  let contractPayments: ContractPaymentService;
+  let checks: DataAuditChecksService;
+  let recon: ReceivableReconService;
+
+  const saved = { key: process.env.PII_ENCRYPTION_KEY, salt: process.env.PII_HASH_SALT };
+  const stamp = Date.now().toString(36).toUpperCase();
+  const batch = `t16-${stamp.toLowerCase()}`;
+  let refSeq = 0;
+
+  let financeCompanyId = '';
+  let nativeBranchId = '';
+  let legacyBranchId = '';
+  let userId = '';
+  let importUserId = '';
+  let createdImportUser = false;
+  let createdAdminId: string | null = null;
+  const nativeContractIds: string[] = [];
+  const nativeCustomerIds: string[] = [];
+  const legacy = new Map<string, string>();
+  const native = new Map<string, string>();
+
+  beforeAll(async () => {
+    const dbName = new URL(process.env.DATABASE_URL as string).pathname.slice(1);
+    if (!/^test_db$|_test$/.test(dbName)) {
+      throw new Error(
+        `สเปคนี้เขียนแถวจริง — ต้องรันกับฐานทดสอบ (test_db หรือ *_test) แต่ได้ "${dbName}"`,
+      );
+    }
+    process.env.PII_ENCRYPTION_KEY = KEY;
+    process.env.PII_HASH_SALT = SALT;
+    prisma = new PrismaClient();
+    await prisma.$connect();
+    const asService = prisma as unknown as PrismaService;
+    pii = new CustomerPiiService(asService);
+
+    await seedFinanceCoa(prisma);
+    const finance = await prisma.companyInfo.findFirst({
+      where: { companyCode: 'FINANCE', deletedAt: null },
+      select: { id: true },
+    });
+    if (!finance) throw new Error('ฐานทดสอบไม่มีบริษัท FINANCE (migration ควรสร้างให้)');
+    financeCompanyId = finance.id;
+
+    const admin = await prisma.user.findFirst({
+      where: { email: 'admin@bestchoice.com', deletedAt: null },
+      select: { id: true },
+    });
+    if (!admin) {
+      createdAdminId = (
+        await prisma.user.create({
+          data: {
+            email: 'admin@bestchoice.com',
+            password: 'hashed_placeholder',
+            name: `${TEST_NAME_PREFIX} System Admin T16`,
+            role: 'OWNER',
+          },
+        })
+      ).id;
+    }
+    // บัญชีนำเข้าตัวจริง (อีเมลเดียวกับตัวนำเข้า) — ตัวแยกงวดนำเข้าของตรวจกลางคืนอ่านอีเมลนี้
+    const importUser = await prisma.user.findUnique({
+      where: { email: LEGACY_SYSTEM_USER_EMAIL },
+      select: { id: true },
+    });
+    if (importUser) {
+      importUserId = importUser.id;
+    } else {
+      importUserId = (
+        await prisma.user.create({
+          data: {
+            email: LEGACY_SYSTEM_USER_EMAIL,
+            name: 'ย้ายจากระบบเก่า',
+            password: 'DISABLED_SERVICE_ACCOUNT_NOT_LOGIN_CAPABLE',
+            isActive: false,
+            isSystemUser: false,
+          },
+        })
+      ).id;
+      createdImportUser = true;
+    }
+    nativeBranchId = (
+      await prisma.branch.create({
+        data: { name: `${TEST_NAME_PREFIX} T16 ปกติ ${stamp}`, companyId: financeCompanyId },
+      })
+    ).id;
+    legacyBranchId = (
+      await prisma.branch.create({
+        data: { name: `${TEST_NAME_PREFIX} T16 นำเข้า ${stamp}`, companyId: financeCompanyId },
+      })
+    ).id;
+    userId = (
+      await prisma.user.create({
+        data: {
+          email: `t16-${stamp.toLowerCase()}@bestchoice-test.internal`,
+          password: 'hashed_placeholder',
+          name: `${TEST_NAME_PREFIX} ผู้รับเงิน T16`,
+          role: 'OWNER',
+          branchId: nativeBranchId,
+        },
+      })
+    ).id;
+
+    journal = new JournalAutoService(asService);
+    accrual2A = new InstallmentAccrual2ATemplate(journal, asService);
+    activation1A = new ContractActivation1ATemplate(journal, asService);
+    const receipts = new ReceiptsService(
+      asService,
+      journal,
+      new ReceiptVoidReversalTemplate(journal, asService),
+      undefined,
+    );
+    const noop = async () => {};
+    orchestrator = new PaymentReceiptOrchestrator(
+      asService,
+      receipts,
+      { logPaymentEvent: noop, log: noop } as never,
+      journal,
+      { transferOwnership: noop } as never,
+      { reverseStageOnPayment: noop } as never,
+      new PaymentReceiptTemplate(journal, asService),
+      new Vat60dayReversalTemplate(journal, asService),
+      {
+        awardLoyaltyPoints: noop,
+        sendPaymentSuccessLine: noop,
+        runMdmAutoUnlock: noop,
+        checkPromiseAfterPayment: noop,
+      },
+    );
+    contractPayments = new ContractPaymentService(
+      asService,
+      new ProductsService(asService),
+      journal,
+      new EarlyPayoffJP4Template(
+        journal,
+        asService,
+        new Vat60dayReversalTemplate(journal, asService),
+      ),
+      new ShopCollectSettlementTemplate(journal, asService),
+      { generateReceipt: async () => undefined } as never,
+      new EclStageReverseTemplate(journal, asService),
+    );
+    checks = new DataAuditChecksService(asService);
+    recon = new ReceivableReconService(asService);
+
+    // สัญญาปกติ — A1 (ถึงวันตัดแบบเดียวกับสัญญานำเข้า) · A2 (เงินรับล่วงหน้า) · C1–C5 (เป้าทำให้เพี้ยนในขั้น 3)
+    native.set('A1', await createNative('A1', P1.date, P1.dueDay));
+    await runNativeToCutoff(native.get('A1')!);
+    for (const key of ['A2', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6']) {
+      native.set(key, await createNative(key, P1.date, P1.dueDay));
+    }
+
+    // สัญญานำเข้า — L1–L3 + H1/H2 (ต้องสะอาด) · L4–L8 (เป้าทำให้เพี้ยนในขั้น 3)
+    const flat = Array.from({ length: 12 }, () => ({ amount: '1515.84' }));
+    await importLegacy([
+      { key: 'L1', installments: legacyState() },
+      {
+        key: 'L2',
+        installments: standardInstallments({ ...full(4), 5: { paid: '500', paidOn: APR20 } }),
+      },
+      {
+        // ระบบเก่าเรียกเก็บ 1,515.84 ทุกงวด (งวด 1–11 = ตัวคำนวณ + 0.01 · งวด 12 = ตัวคำนวณ − 0.03) ⇒ roundingDiff −0.05
+        key: 'L3',
+        installments: flat.map((inst, i) =>
+          i < 3 ? { ...inst, paid: '1515.84' } : i === 3 ? { ...inst, paid: '300' } : inst,
+        ),
+        detail: { installment_amount: '1515.84' },
+      },
+      {
+        // ประวัติจบ: ราคา − ดาวน์ (9,500) ≠ ยอดจัด finance (10,000) และงวด 1 จ่ายเกินค่างวด — สูตรหัวสัญญาเดิมขึ้น CRITICAL
+        key: 'H1',
+        statusCode: '3',
+        date: '2023-12-05',
+        firstDue: [2024, 0, 5],
+        installments: standardInstallments({ ...full(12), 1: { paid: '1600' } }),
+        detail: { ref_product_price: '11500' },
+        peakRemain: '0',
+      },
+      {
+        key: 'H2',
+        statusCode: '3',
+        date: '2024-03-01',
+        firstDue: [2024, 3, 1],
+        installments: standardInstallments(full(6)),
+        close: { amount: '7500', discount: '1595', date: new Date('2024-10-15T11:00:00+07:00') },
+        peakRemain: '0',
+      },
+      { key: 'L4', installments: legacyState() },
+      { key: 'L5', installments: legacyState() },
+      { key: 'L6', installments: legacyState() },
+      { key: 'L7', installments: legacyState() },
+      { key: 'L8', installments: legacyState() },
+    ]);
+  }, LONG);
+
+  afterAll(async () => {
+    if (!prisma) return;
+    try {
+      const legacyRows = await prisma.contract.findMany({
+        where: { legacyContractCode: { startsWith: `TEST-T16-${stamp}` } },
+        select: { id: true },
+      });
+      const contracts = await prisma.contract.findMany({
+        where: { id: { in: [...nativeContractIds, ...legacyRows.map((c) => c.id)] } },
+        select: { id: true, productId: true, customerId: true },
+      });
+      const contractIds = contracts.map((c) => c.id);
+      const entries = await prisma.journalEntry.findMany({
+        where: {
+          OR: [
+            ...contractIds.map((id) => ({ metadata: { path: ['contractId'], equals: id } })),
+            { metadata: { path: ['importBatch'], string_starts_with: batch } },
+          ],
+        },
+        select: { id: true },
+      });
+      const entryIds = entries.map((e) => e.id);
+      await prisma.receipt.deleteMany({
+        where: { contractId: { in: contractIds }, voidedReceiptId: { not: null } },
+      });
+      await prisma.receipt.deleteMany({ where: { contractId: { in: contractIds } } });
+      await prisma.journalPostAuditLog.deleteMany({ where: { journalEntryId: { in: entryIds } } });
+      await prisma.journalLine.deleteMany({ where: { journalEntryId: { in: entryIds } } });
+      await prisma.journalEntry.deleteMany({ where: { id: { in: entryIds } } });
+      await prisma.paymentEvidence.deleteMany({ where: { contractId: { in: contractIds } } });
+      await prisma.payment.deleteMany({ where: { contractId: { in: contractIds } } });
+      await prisma.installmentSchedule.deleteMany({ where: { contractId: { in: contractIds } } });
+      await prisma.contractDocument.deleteMany({ where: { contractId: { in: contractIds } } });
+      await prisma.contract.deleteMany({ where: { id: { in: contractIds } } });
+      await prisma.product.deleteMany({ where: { id: { in: contracts.map((c) => c.productId) } } });
+      const customers = await prisma.customer.findMany({
+        where: {
+          OR: [
+            { legacyMemberCode: { startsWith: `TEST-T16M-${stamp}` } },
+            { id: { in: [...nativeCustomerIds, ...contracts.map((c) => c.customerId)] } },
+          ],
+        },
+        select: { id: true, contactId: true },
+      });
+      await prisma.customer.deleteMany({ where: { id: { in: customers.map((c) => c.id) } } });
+      await prisma.contact.deleteMany({
+        where: { id: { in: customers.map((c) => c.contactId).filter((id): id is string => !!id) } },
+      });
+      await prisma.receivableReconLog.deleteMany({
+        where: { branchId: { in: [nativeBranchId, legacyBranchId] } },
+      });
+      // AuditLog เป็นแบบเขียนครั้งเดียว — ผู้ใช้ที่ถูกอ้างลบไม่ได้: ปิดใช้งานแทน
+      for (const id of [createdAdminId, createdImportUser ? importUserId : null, userId]) {
+        if (!id) continue;
+        await prisma.user.delete({ where: { id } }).catch(async () => {
+          await prisma.user.update({
+            where: { id },
+            data: { isActive: false, deletedAt: new Date() },
+          });
+        });
+      }
+      for (const id of [nativeBranchId, legacyBranchId]) {
+        await prisma.branch.delete({ where: { id } }).catch(async () => {
+          await prisma.branch.update({ where: { id }, data: { deletedAt: new Date() } });
+        });
+      }
+    } finally {
+      await prisma.$disconnect();
+      if (saved.key === undefined) delete process.env.PII_ENCRYPTION_KEY;
+      else process.env.PII_ENCRYPTION_KEY = saved.key;
+      if (saved.salt === undefined) delete process.env.PII_HASH_SALT;
+      else process.env.PII_HASH_SALT = saved.salt;
+    }
+  }, LONG);
+
+  // ── ตัวช่วย ────────────────────────────────────────────────────────────────────────────────
+
+  const hash = (v: string) => hashPII(v, SALT);
+  const imei = () => `35997${String(Math.floor(Math.random() * 1e10)).padStart(10, '0')}`;
+
+  async function freshNationalId(): Promise<string> {
+    for (let i = 0; i < 20; i++) {
+      const id = thaiId(`09${String(Math.floor(Math.random() * 1e10)).padStart(10, '0')}`);
+      const taken =
+        (await prisma.customer.count({
+          where: { OR: [{ nationalId: id }, { nationalIdHash: hash(id) }] },
+        })) + (await prisma.contact.count({ where: { nationalIdHash: hash(id) } }));
+      if (taken === 0) return id;
+    }
+    throw new Error('หาเลขบัตรทดสอบที่ว่างไม่ได้');
+  }
+
+  async function freshPhone(): Promise<string> {
+    for (let i = 0; i < 20; i++) {
+      const phone = `0975${String(Math.floor(Math.random() * 1e6)).padStart(6, '0')}`;
+      const taken = await prisma.customer.count({
+        where: { OR: [{ phone }, { phoneHash: hash(phone) }] },
+      });
+      if (taken === 0) return phone;
+    }
+    throw new Error('หาเบอร์ทดสอบที่ว่างไม่ได้');
+  }
+
+  const scheduleOf = (contractId: string, installmentNo: number) =>
+    prisma.installmentSchedule.findUniqueOrThrow({
+      where: { contractId_installmentNo: { contractId, installmentNo } },
+    });
+
+  const paymentOf = (contractId: string, installmentNo: number) =>
+    prisma.payment.findFirstOrThrow({ where: { contractId, installmentNo, deletedAt: null } });
+
+  async function nightly2A(contractId: string, installmentNo: number) {
+    return accrual2A.execute((await scheduleOf(contractId, installmentNo)).id);
+  }
+
+  /** ใบรับชำระผ่านเส้นทางหน้าจอรับชำระ (แบบเทสต์ทองคำ) · `partial` = case PARTIAL */
+  function pay(
+    contractId: string,
+    installmentNo: number,
+    amount: string,
+    paidDate: Date,
+    partial = false,
+  ) {
+    return orchestrator.recordPayment(
+      contractId,
+      installmentNo,
+      Number(amount),
+      'CASH',
+      userId,
+      undefined,
+      undefined,
+      `T16-${stamp}-${++refSeq}`,
+      '11-1101',
+      undefined,
+      partial ? 'PARTIAL' : undefined,
+      undefined,
+      paidDate,
+      undefined,
+      undefined,
+      undefined,
+      true,
+    );
+  }
+
+  async function owedOn(contractId: string, installmentNo: number): Promise<string> {
+    const p = await paymentOf(contractId, installmentNo);
+    return p.amountDue.minus(p.amountPaid).toFixed(2);
+  }
+
+  /** สัญญาปกติ — ตารางงวด + แถว Payment จริง + 1A (แบบเทสต์ทองคำ `createNative`) */
+  async function createNative(key: string, date: string, dueDay: number): Promise<string> {
+    const contractDate = new Date(`${date}T10:00:00+07:00`);
+    const customer = await prisma.customer.create({
+      data: { name: `${TEST_NAME_PREFIX} T16 สัญญาปกติ ${key}` },
+    });
+    nativeCustomerIds.push(customer.id);
+    const product = await prisma.product.create({
+      data: {
+        name: `${TEST_NAME_PREFIX} T16 ${key}`,
+        brand: 'Apple',
+        model: 'iPhone ทดสอบ 13',
+        imeiSerial: imei(),
+        category: 'PHONE_USED',
+        costPrice: D(0),
+        branchId: nativeBranchId,
+        ownedByCompanyId: financeCompanyId,
+        status: 'SOLD_INSTALLMENT',
+        isOnlineVisible: false,
+      },
+    });
+    const contract = await prisma.contract.create({
+      data: {
+        contractNumber: `TEST-T16N-${stamp}-${key}`,
+        customerId: customer.id,
+        productId: product.id,
+        branchId: nativeBranchId,
+        salespersonId: userId,
+        planType: 'STORE_WITH_INTEREST',
+        sellingPrice: D('12000'),
+        downPayment: D('2000'),
+        financedAmount: D('10000'),
+        interestRate: D('0.0500'),
+        totalMonths: 12,
+        interestTotal: D('6000'),
+        storeCommission: D('1000'),
+        vatAmount: D('1190'),
+        vatPct: D('0.07'),
+        monthlyPayment: D(MONTHLY),
+        status: 'ACTIVE',
+        workflowStatus: 'APPROVED',
+        paymentDueDay: dueDay,
+        createdAt: contractDate,
+      },
+    });
+    nativeContractIds.push(contract.id);
+    const rows = buildInstallmentScheduleRows({
+      id: contract.id,
+      totalMonths: 12,
+      financedAmount: D('10000'),
+      interestTotal: D('6000'),
+      monthlyPayment: D(MONTHLY),
+      paymentDueDay: dueDay,
+      createdAt: contractDate,
+    });
+    await prisma.installmentSchedule.createMany({ data: rows });
+    const payments = generatePaymentSchedule(
+      contract.id,
+      12,
+      18190,
+      Number(MONTHLY),
+      dueDay,
+      { principal: 10000, storeCommission: 1000, interestTotal: 6000, vatAmount: 1190 },
+      contractDate,
+    );
+    await prisma.payment.createMany({ data: payments });
+    await activation1A.execute(contract.id, undefined, contractDate);
+    return contract.id;
+  }
+
+  /** ถึงวันตัด: 2A งวด 1–4 · รับงวด 1–3 เต็มงวด · งวด 4 รับ 300 — ลงวันครบกำหนด */
+  async function runNativeToCutoff(contractId: string, due: (no: number) => Date = P1.due) {
+    for (let no = 1; no <= 4; no++) {
+      await nightly2A(contractId, no);
+      const amount = no < 4 ? MONTHLY : '300';
+      await pay(contractId, no, amount, due(no), D(amount).lt(installmentAmount(no)));
+    }
+  }
+
+  type LegacySpec = {
+    key: string;
+    installments: InstallmentSpec[];
+    detail?: Record<string, string | null>;
+    statusCode?: string;
+    date?: string;
+    firstDue?: [number, number, number];
+    close?: ContractSpec['close'];
+    /** ยอดคงเหลือ PEAK (ไม่ส่ง = ยอดค้างของระบบเก่า) */
+    peakRemain?: string;
+  };
+
+  /** สมุดระบบเก่าสังเคราะห์ → `planImport` → `writeLegacyImport` (ธุรกรรมเดียว · ผู้ใช้ = บัญชีนำเข้า) */
+  async function importLegacy(specs: LegacySpec[]) {
+    const code = (key: string) => `TEST-T16-${stamp}-${key}`;
+    const contracts: LegacyContract[] = [];
+    const members: DumpRow[] = [];
+    for (const [i, spec] of specs.entries()) {
+      const memberId = `16${i + 1}`;
+      members.push(
+        syntheticMember({
+          id: memberId,
+          code: `TEST-T16M-${stamp}-${spec.key}`,
+          nationalId: await freshNationalId(),
+          phone: await freshPhone(),
+          name: `${TEST_NAME_PREFIX} T16 สมาชิก`,
+        }),
+      );
+      contracts.push(
+        syntheticContract({
+          id: `16${i + 1}`,
+          code: code(spec.key),
+          statusCode: spec.statusCode,
+          date: spec.date ?? P1.date,
+          memberId,
+          firstDue: spec.firstDue ?? P1.firstDue,
+          imei: imei(),
+          installments: spec.installments,
+          detail: spec.detail,
+          close: spec.close,
+        }),
+      );
+    }
+    const plan = planImport(syntheticBook(contracts, members), {
+      cutoff: P1.cutoff,
+      peakRecon: syntheticRecon(
+        contracts.map((c, i) => [c, peakMatch(c, `T16${stamp}${i}`, specs[i].peakRemain)]),
+      ),
+      canceledMap: new Map(),
+      moneyOverrides: new Map(),
+      customerOverrides: new Map(),
+    });
+    expect(plan.blockers).toEqual([]);
+    const files = new Map<string, LegacyFileDetail>();
+    for (const path of plan.items.flatMap((i) => i.attachmentPaths)) {
+      files.set(path, {
+        key: `legacy-import-test/${path}`,
+        size: 1024,
+        sha256: 'd'.repeat(64),
+        contentType: legacyFileContentType(path),
+      });
+    }
+    const report = await prisma.$transaction(
+      (tx) =>
+        writeLegacyImport(tx, plan, {
+          journal,
+          pii,
+          financeCompanyId,
+          branchId: legacyBranchId,
+          systemUserId: importUserId,
+          files,
+          importBatch: batch,
+        }),
+      TX,
+    );
+    for (const spec of specs) {
+      const id = report.contractIds.get(code(spec.key));
+      if (!id) throw new Error(`ไม่พบสัญญานำเข้า ${spec.key}`);
+      legacy.set(spec.key, id);
+    }
+  }
+
+  const ids = (map: Map<string, string>, keys: string[]) => keys.map((k) => map.get(k)!);
+
+  async function run(check: Check, contractIds: string[]): Promise<AuditCheckResult> {
+    const scope = { contractIds };
+    switch (check) {
+      case 'orphan_contracts':
+        return checks.checkOrphanContracts(scope);
+      case 'orphan_payments':
+        return checks.checkOrphanPayments(scope);
+      case 'overpaid':
+        return checks.checkOverpaidContracts(scope);
+      case 'vat':
+        return checks.checkVatMismatch(scope);
+      case 'hp':
+        return checks.checkHpReceivableReconciliation(scope);
+    }
+  }
+
+  /** ห้าข้อไม่มี finding — รายงานชื่อข้อ + รายละเอียดเมื่อมี (ให้อ่านง่ายตอนแดง) */
+  async function expectClean(contractIds: string[]) {
+    const results: Record<string, unknown> = {};
+    for (const check of [
+      'orphan_contracts',
+      'orphan_payments',
+      'overpaid',
+      'vat',
+      'hp',
+    ] as Check[]) {
+      const r = await run(check, contractIds);
+      results[check] = r.count === 0 ? 'PASS' : r.details;
+    }
+    expect(results).toEqual({
+      orphan_contracts: 'PASS',
+      orphan_payments: 'PASS',
+      overpaid: 'PASS',
+      vat: 'PASS',
+      hp: 'PASS',
+    });
+  }
+
+  async function reconBreachesOf(branchIds: string[]) {
+    const result = await recon.reconcileBranches();
+    return result.breached.filter((b) => branchIds.includes(b.branchId));
+  }
+
+  const hpBreaches = async (contractId: string) => {
+    const r = await run('hp', [contractId]);
+    return (r.details[0] as { breaches: Array<{ contractId: string; gap: string }> }).breaches;
+  };
+
+  const orphanRowsOf = async (contractId: string) =>
+    ((await run('orphan_payments', [contractId])).details as Array<{ installment_no: number }>)
+      .map((r) => r.installment_no)
+      .sort((a, b) => a - b);
+
+  const cleanKeys = () => [
+    ...ids(native, ['A1', 'A2', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6']),
+    ...ids(legacy, ['L1', 'L2', 'L3', 'H1', 'H2', 'L4', 'L5', 'L6', 'L7', 'L8']),
+  ];
+
+  // ── ขั้น 1–3 (ลำดับในไฟล์ = ลำดับเวลา) ─────────────────────────────────────────────────────────
+
+  it(
+    'stage 1 — morning after the import: no finding on imported (active + history) or native contracts',
+    async () => {
+      await expectClean(cleanKeys());
+      expect(await reconBreachesOf([nativeBranchId, legacyBranchId])).toEqual([]);
+
+      // สภาพที่ทำให้ข้อเดิมเตือนปลอมมีอยู่จริง — ไม่ใช่ผ่านเพราะข้อมูลไม่มี
+      const h1Rows = await prisma.payment.findMany({ where: { contractId: legacy.get('H1') } });
+      expect(h1Rows.some((p) => p.amountPaid.gt(p.amountDue.plus(1)))).toBe(true);
+      expect(h1Rows.every((p) => p.recordedById === importUserId && p.paymentMethod === null)).toBe(
+        true,
+      );
+      expect(
+        await prisma.installmentSchedule.count({ where: { contractId: legacy.get('H1') } }),
+      ).toBe(0);
+      const l3 = (await run('hp', ids(legacy, ['L3']))).details[0] as { gap: string };
+      expect(l3.gap).toBe('-0.05'); // roundingDiff ของสัญญา (บัญชี − ยอดเรียกเก็บ) อยู่ในเกณฑ์
+    },
+    LONG,
+  );
+
+  it(
+    'stage 2 — after cutover: late fee, rounding into 53-1503, advance parked (PR4 VAT) then consumed by 2A — still clean',
+    async () => {
+      const lateFee = resolveLateFee(await loadLateFeeConfig(prisma), 10);
+      expect(lateFee.gt(1)).toBe(true);
+      // A1 / L1: งวด 4 ส่วนที่เหลือ · 2A งวด 5 · รับงวด 5 ช้า 10 วัน พร้อมค่าปรับ (amountPaid รวมค่าปรับ)
+      for (const id of [native.get('A1')!, legacy.get('L1')!]) {
+        await pay(id, 4, await owedOn(id, 4), MAY3);
+        await nightly2A(id, 5);
+        await pay(
+          id,
+          5,
+          D(MONTHLY).plus(lateFee).toFixed(2),
+          new Date(P1.due(5).getTime() + 10 * DAY),
+        );
+        const p5 = await paymentOf(id, 5);
+        expect(p5.amountPaid.toFixed(2)).toBe(D(MONTHLY).plus(lateFee).toFixed(2));
+        expect(p5.status).toBe('PAID');
+      }
+      // L2: 2A งวด 5 ส่วนที่เหลือ แล้วรับส่วนที่เหลือวันครบกำหนด
+      const l2 = legacy.get('L2')!;
+      await nightly2A(l2, 5);
+      await pay(l2, 5, await owedOn(l2, 5), P1.due(5));
+      // L3: ยอดเรียกเก็บ 1,515.84 > ตัวคำนวณ 1,515.83 → เศษ 0.01 ลง 53-1503 ทุกใบ
+      const l3 = legacy.get('L3')!;
+      await pay(l3, 4, '1215.84', MAY2);
+      await nightly2A(l3, 5);
+      await pay(l3, 5, '1515.84', P1.due(5));
+      // A2: งวด 1 รับสองงวด → เกิน 1,515.83 พักเป็นเงินรับล่วงหน้า (ภาษีพัก PR4) → 2A งวด 2 หักเข้างวด (ไม่มี paymentId)
+      const a2 = native.get('A2')!;
+      await nightly2A(a2, 1);
+      await pay(a2, 1, D(MONTHLY).times(2).toFixed(2), P1.due(1));
+      const parked = await run('vat', [a2]);
+      expect(parked.count).toBe(0); // 11-2105 − 21-2102 = ภาษีของเงินรับล่วงหน้าที่ยังค้าง (99.17)
+      await nightly2A(a2, 2);
+      const p2 = await paymentOf(a2, 2);
+      expect([p2.status, p2.amountPaid.toFixed(2), p2.paymentMethod]).toEqual([
+        'PAID',
+        MONTHLY,
+        null,
+      ]);
+
+      await expectClean(cleanKeys());
+      expect(await reconBreachesOf([nativeBranchId, legacyBranchId])).toEqual([]);
+    },
+    LONG,
+  );
+
+  it(
+    'stage 3 — corrupted native contracts and post-cutover rows of imported contracts are still caught',
+    async () => {
+      const [c1, c2, c3, c4, c5, c6] = ids(native, ['C1', 'C2', 'C3', 'C4', 'C5', 'C6']);
+      const [l4, l5, l6, l7, l8] = ids(legacy, ['L4', 'L5', 'L6', 'L7', 'L8']);
+      const softDelete = (where: Prisma.JournalEntryWhereInput) =>
+        prisma.journalEntry.updateMany({ where, data: { deletedAt: new Date() } });
+      const byContract = (contractId: string) => ({
+        metadata: { path: ['contractId'], equals: contractId },
+      });
+
+      // C1 ปกติ: รายการเปิดสัญญา 1A หาย
+      await softDelete({ AND: [byContract(c1), { metadata: { path: ['tag'], equals: '1A' } }] });
+      // C2 ปกติ: งวด 2 ตั้ง 2A แล้ว ถูกแก้ยอดจ่ายโดยไม่มีรายการบัญชี
+      await nightly2A(c2, 1);
+      await pay(c2, 1, MONTHLY, P1.due(1));
+      await nightly2A(c2, 2);
+      await prisma.payment.update({
+        where: { id: (await paymentOf(c2, 2)).id },
+        data: { amountPaid: D(100), status: 'PARTIALLY_PAID' },
+      });
+      // C3 ปกติ: งวด 1 รับเกิน 5 บาทโดยไม่มีรายการบัญชี
+      await nightly2A(c3, 1);
+      await pay(c3, 1, MONTHLY, P1.due(1));
+      await prisma.payment.update({
+        where: { id: (await paymentOf(c3, 1)).id },
+        data: { amountPaid: D(MONTHLY).plus(5) },
+      });
+      // C4 ปกติ: รายการขาเดียวเข้า 11-2103 · C5 ปกติ: VAT รอเรียกเก็บขาเดียว
+      const corrupt = (contractId: string, dr: string, cr: string) =>
+        journal.createAndPost({
+          description: 'T16 corruption',
+          reference: `t16-corrupt:${contractId}`,
+          metadata: { tag: 't16-corruption', contractId },
+          lines: [
+            { accountCode: dr, dr: D(100), cr: D(0) },
+            { accountCode: cr, dr: D(0), cr: D(100) },
+          ],
+          postedAt: P1.due(1),
+          createdById: userId,
+        });
+      await corrupt(c4, '11-2103', '32-1101');
+      await corrupt(c5, '11-2105', '11-2101');
+      // C6 ปกติ: ใบรับชำระที่ลูกค้าจ่ายเกินลูกหนี้ ≤ 1 บาท (ใบที่ผ่านผู้อนุมัติเศษ — จำลองรูปรายการของ PaymentReceiptTemplate:
+      // Cr 11-2103 เต็มงวด + Cr 53-1503 เศษ · amountPaid รวมเศษ) สองงวด 0.90 → ไม่ติด (ทะเบียนบวก 53-1503 กลับ)
+      for (const no of [1, 2]) {
+        await nightly2A(c6, no);
+        const p = await paymentOf(c6, no);
+        await journal.createAndPost({
+          description: 'T16 receipt with approved ≤1 overpay',
+          reference: `t16-overpay:${p.id}`,
+          metadata: { tag: 'receipt', flow: 'payment-receipt', paymentId: p.id, contractId: c6 },
+          lines: [
+            { accountCode: '11-1101', dr: D(MONTHLY).plus('0.90'), cr: D(0) },
+            { accountCode: '11-2103', dr: D(0), cr: D(MONTHLY) },
+            { accountCode: '53-1503', dr: D(0), cr: D('0.90') },
+          ],
+          postedAt: P1.due(no),
+          createdById: userId,
+        });
+        await prisma.payment.update({
+          where: { id: p.id },
+          data: {
+            amountPaid: D(MONTHLY).plus('0.90'),
+            status: 'PAID',
+            paidDate: P1.due(no),
+            paymentMethod: 'CASH',
+            recordedById: userId,
+          },
+        });
+      }
+
+      // L4 นำเข้า: งวด 8 (ค้าง ไม่มีผู้บันทึก) ถูกแก้ยอดจ่ายโดยไม่มีรายการบัญชี
+      await prisma.payment.update({
+        where: { id: (await paymentOf(l4, 8)).id },
+        data: { amountPaid: D(100), status: 'PARTIALLY_PAID' },
+      });
+      // L5 นำเข้า: งวด 4 (มี marker) รับส่วนที่เหลือหลังวันตัด แล้วรายการใบรับชำระหาย
+      await pay(l5, 4, await owedOn(l5, 4), MAY2);
+      const l5Row4 = await paymentOf(l5, 4);
+      const deletedReceipt = await softDelete({
+        AND: [
+          { metadata: { path: ['paymentId'], equals: l5Row4.id } },
+          { metadata: { path: ['tag'], equals: 'receipt' } },
+        ],
+      });
+      expect(deletedReceipt.count).toBe(1);
+      // L6 นำเข้า: รายการไล่ VAT หาย · L7 นำเข้า: รายการยกมาหาย
+      expect(
+        (
+          await softDelete({
+            AND: [byContract(l6), { metadata: { path: ['flow'], equals: 'legacy-vat-catchup' } }],
+          })
+        ).count,
+      ).toBe(1);
+      expect(
+        (
+          await softDelete({
+            AND: [byContract(l7), { metadata: { path: ['flow'], equals: 'legacy-opening' } }],
+          })
+        ).count,
+      ).toBe(1);
+      // L8 นำเข้า: งวด 4 รับส่วนที่เหลือหลังวันตัด แล้วถูกแก้ยอดจ่ายเกิน 5 บาท
+      await pay(l8, 4, await owedOn(l8, 4), MAY2);
+      await prisma.payment.update({
+        where: { id: (await paymentOf(l8, 4)).id },
+        data: { amountPaid: D(MONTHLY).plus(5) },
+      });
+
+      const flagged = async (check: Check, contractId: string) =>
+        (await run(check, [contractId])).count;
+
+      expect({
+        c1: [await flagged('orphan_contracts', c1), (await hpBreaches(c1)).length],
+        c2: [await orphanRowsOf(c2), (await hpBreaches(c2)).map((b) => b.gap)],
+        c3: [(await run('overpaid', [c3])).details, (await hpBreaches(c3)).map((b) => b.gap)],
+        c4: [(await hpBreaches(c4)).map((b) => b.gap), await flagged('vat', c4)],
+        c5: [
+          ((await run('vat', [c5])).details as Array<{ diff: string }>).map((r) => r.diff),
+          (await hpBreaches(c5)).length,
+        ],
+        c6: [
+          await flagged('hp', c6),
+          await flagged('overpaid', c6),
+          await flagged('orphan_payments', c6),
+        ],
+        l4: [await orphanRowsOf(l4), (await hpBreaches(l4)).map((b) => b.gap)],
+        l5: [await orphanRowsOf(l5), (await hpBreaches(l5)).map((b) => b.gap)],
+        l6: [
+          ((await run('vat', [l6])).details as Array<{ diff: string }>).map((r) => r.diff),
+          (await hpBreaches(l6)).length,
+        ],
+        l7: [await flagged('orphan_contracts', l7), (await hpBreaches(l7)).length],
+        l8: [
+          (
+            (await run('overpaid', [l8])).details as Array<{
+              installment_nos: number[];
+              overpay: string;
+            }>
+          ).map((r) => [r.installment_nos, r.overpay]),
+          await orphanRowsOf(l8),
+        ],
+      }).toEqual({
+        c1: [1, 1],
+        c2: [[2], ['100.00']],
+        c3: [
+          [
+            {
+              id: c3,
+              contract_number: `TEST-T16N-${stamp}-C3`,
+              installment_nos: [1],
+              overpay: '5.00',
+            },
+          ],
+          ['5.00'],
+        ],
+        c4: [['100.00'], 0],
+        c5: [['100.00'], 0],
+        c6: [0, 0, 0],
+        l4: [[8], ['100.00']],
+        l5: [[4], ['1215.83']],
+        // ไล่ VAT ของงวด 4 หาย ⇒ 21-2102 ค้างเกิน 11-2105 เท่าภาษีของส่วนที่ค้าง: 99.17 − HALF_UP(300 × 7/107) = 99.17 − 19.63
+        l6: [['-79.54'], 0],
+        l7: [1, 1],
+        l8: [[[[4], '5.00']], []],
+      });
+      // สาขาที่มีสัญญาเพี้ยน breach ทั้งสองสาขา (สัญญาปกติ C1–C4 · สัญญานำเข้า L4/L5/L7/L8)
+      const breached = await reconBreachesOf([nativeBranchId, legacyBranchId]);
+      expect(breached.map((b) => b.branchId).sort()).toEqual(
+        [nativeBranchId, legacyBranchId].sort(),
+      );
+    },
+    LONG,
+  );
+
+  describe('early payoff (JP4) of a native contract — calendar anchored to today', () => {
+    let a3 = '';
+
+    beforeAll(async () => {
+      const { year: Y, month: M } = bangkokCalendarParts(new Date());
+      const ymd = (y: number, m: number, d: number) =>
+        new Date(Date.UTC(y, m, d)).toISOString().slice(0, 10);
+      const due = (no: number) => bangkokMidnight(Y, M - 6 + no, 1);
+      a3 = await createNative('A3', ymd(Y, M - 6, 1), 1);
+      native.set('A3', a3);
+      await runNativeToCutoff(a3, due);
+      await nightly2A(a3, 5);
+      await pay(a3, 4, await owedOn(a3, 4), due(5));
+      await pay(a3, 5, MONTHLY, due(5));
+    }, LONG);
+
+    it(
+      'rows paid by the contract-level JP4 entry are backed (no paymentId on JP4)',
+      async () => {
+        await earlyPayoffApproved(prisma, contractPayments, a3, userId, {
+          paymentMethod: 'BANK_TRANSFER',
+          discountPct: 50,
+          depositAccountCode: '11-1201',
+        });
+        const rows = await prisma.payment.findMany({ where: { contractId: a3 } });
+        expect(rows.every((p) => p.status === 'PAID')).toBe(true);
+        const jp4 = await prisma.journalEntry.count({
+          where: {
+            AND: [
+              { metadata: { path: ['contractId'], equals: a3 } },
+              { metadata: { path: ['flow'], equals: 'early-payoff' } },
+            ],
+          },
+        });
+        expect(jp4).toBe(1);
+        expect((await run('orphan_payments', [a3])).count).toBe(0);
+        expect((await run('overpaid', [a3])).count).toBe(0);
+        expect((await run('orphan_contracts', [a3])).count).toBe(0);
+      },
+      LONG,
+    );
+  });
+});

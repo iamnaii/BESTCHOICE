@@ -28,9 +28,12 @@ import {
   MarkRefundFailedDto,
 } from './dto/refund.dto';
 
-/** งวดนำเข้าจากระบบเก่าที่ไม่มีใบเสร็จในระบบนี้ — ไม่มีรายการรับเงินให้กลับ (Task 17 A) */
-export const LEGACY_NO_RECEIPT_REFUND_MESSAGE =
-  'ยอดชำระของงวดนี้รับในระบบเก่าก่อนย้ายเข้าระบบ (ไม่มีใบเสร็จในระบบนี้) — คืนเงินผ่านระบบนี้ไม่ได้ กรุณาติดต่อฝ่ายบัญชี';
+/**
+ * งวดที่ไม่มีใบเสร็จ / รายการรับชำระในระบบนี้ให้กลับรายการ (Task 17 A + I-1) — คืนเงินแล้วเงินจะออกจากธนาคารโดยสมุดไม่ขยับ ·
+ * ข้อความเดียวทุกด่าน (ขอคืน · อนุมัติ · ยืนยันธนาคาร · ด่านสำรองของ markReversed)
+ */
+export const NO_REFUNDABLE_RECEIPT_MESSAGE =
+  'งวดนี้ไม่มีใบเสร็จ/รายการรับชำระในระบบนี้ให้คืน (เช่น ยอดที่รับในระบบเก่าก่อนย้าย หรือเงินที่ปิดผ่านรายการระดับสัญญา) — ติดต่อฝ่ายบัญชี';
 
 /**
  * Refund workflow — T1-C1 / P2Q7=F (bank reversal policy).
@@ -296,6 +299,11 @@ export class RefundsService {
       const originalEntries = matchedEntries.filter(
         (e) => (e.metadata as Prisma.JsonObject | null)?.reversed !== true,
       );
+      // ด่านสำรอง (Task 17 I-1): ไม่มีรายการรับชำระให้กลับ = ธนาคารคืนเงินโดยสมุดไม่ขยับ — ปฏิเสธก่อนเขียนอะไร
+      // (เดิม warn แล้วตั้งงวดเป็นค้างโดยไม่มีรายการกลับ)
+      if (originalEntries.length === 0) {
+        throw new BadRequestException(NO_REFUNDABLE_RECEIPT_MESSAGE);
+      }
 
       // The reversal posts to the current period of the payment's company — guard it
       // open (companyId-aware: runs the Tier-1 AccountingPeriod check, not just Tier-2).
@@ -327,23 +335,15 @@ export class RefundsService {
       const updated = await tx.refund.findUnique({ where: { id: refundId } });
 
       // Reverse EVERY receipt JE of the payment in full (A.5a mirror). One reversal
-      // JE per original; the audit log records the comma-joined list.
-      let reversalEntryNo: string | null = null;
-      if (originalEntries.length > 0) {
-        const revNos: string[] = [];
-        for (const originalEntry of originalEntries) {
-          const rev = await this.receiptVoidReversalTemplate.voidReceipt(originalEntry.id, tx, {
-            flow: 'refund-reversal',
-          });
-          revNos.push(rev.entryNo);
-        }
-        reversalEntryNo = revNos.join(',');
-      } else {
-        this.logger.warn(
-          `[refund ${refundId}] no POSTED payment JE for payment ${refund.paymentId} — ` +
-            `reverting payment without a reversal JE (legacy)`,
-        );
+      // JE per original (at least one — guarded above); the audit log records the comma-joined list.
+      const revNos: string[] = [];
+      for (const originalEntry of originalEntries) {
+        const rev = await this.receiptVoidReversalTemplate.voidReceipt(originalEntry.id, tx, {
+          flow: 'refund-reversal',
+        });
+        revNos.push(rev.entryNo);
       }
+      const reversalEntryNo = revNos.join(',');
 
       // Restore the installment from the LEDGER (Task 17 A — same helper as receipt void) and
       // void its receipts. Not a blind 0: part of amountPaid may have cleared 11-2103 without a
@@ -493,10 +493,10 @@ export class RefundsService {
       id: string;
       contractId: string;
       amountPaid: Prisma.Decimal;
-      legacyInstallmentCode?: string | null;
+      legacyInstallmentCode: string | null;
     },
   ): Promise<{ amount: Prisma.Decimal; latestReceiptAt: Date | null; blockedReason?: string }> {
-    await this.assertCashOnlyRefund(tx, payment.id);
+    const { liveReceiptEntries } = await this.assertCashOnlyRefund(tx, payment.id);
     const receipts = await tx.receipt.findMany({
       where: {
         paymentId: payment.id,
@@ -508,13 +508,16 @@ export class RefundsService {
     // Existing voided/deleted receipt history is authoritative too: zero active
     // receipts means zero refundable cash, not a fallback to settled debt.
     if (receipts.length === 0) {
-      // งวดนำเข้าจากระบบเก่า (Task 17 A): ยอดที่จ่ายก่อนวันตัด ระบบเก่ารับไว้ — ไม่มีใบเสร็จ/รายการรับเงินในระบบนี้ให้กลับ
-      // ทางถอยไป amountPaid จะ "คืน" เงินนั้นโดยไม่มีรายการบัญชี (งวด PAID ก่อนวันตัด gap เต็มงวด · สัญญาประวัติไม่มีตัวตรวจเห็น)
-      if (payment.legacyInstallmentCode) {
+      // ไม่มีใบเสร็จ → ถอยไป amountPaid ได้เฉพาะเมื่อมีรายการรับชำระที่ผูกงวดนี้ให้กลับ (แถวรุ่นก่อนมีใบเสร็จ) — ไม่งั้นเงินจะ
+      // ออกจากธนาคารโดยสมุดไม่ขยับ (Task 17 A + I-1):
+      // - งวดนำเข้าจากระบบเก่า: ยอดก่อนวันตัดระบบเก่ารับไว้ (marker ไม่มี paymentId) — ปฏิเสธแม้มีรายการ (ใบหลังวันตัดออกไม่สำเร็จ
+      //   = amountPaid ยังรวมยอดก่อนวันตัด)
+      // - ทุกงวด: ล้างด้วยรายการที่ไม่มี paymentId เท่านั้น (รอบกลางคืนหักเงินรับล่วงหน้า / เงินพัก · JP4 ระดับสัญญา)
+      if (payment.legacyInstallmentCode || liveReceiptEntries === 0) {
         return {
           amount: new Prisma.Decimal(0),
           latestReceiptAt: null,
-          blockedReason: LEGACY_NO_RECEIPT_REFUND_MESSAGE,
+          blockedReason: NO_REFUNDABLE_RECEIPT_MESSAGE,
         };
       }
       return { amount: new Prisma.Decimal(payment.amountPaid), latestReceiptAt: null };
@@ -554,17 +557,20 @@ export class RefundsService {
         },
       },
     });
+    const live = entries.filter(
+      (entry) => (entry.metadata as Prisma.JsonObject | null)?.reversed !== true,
+    );
     if (
-      entries.some(
-        (entry) =>
-          (entry.metadata as Prisma.JsonObject | null)?.reversed !== true &&
-          entry.lines.some((line) => !line.debit.isZero() || !line.credit.isZero()),
+      live.some((entry) =>
+        entry.lines.some((line) => !line.debit.isZero() || !line.credit.isZero()),
       )
     ) {
       throw new BadRequestException(
         'งวดนี้มีเงินรับล่วงหน้าหรือเครดิตลูกค้าร่วมด้วย — กรุณาส่งคำขอยกเลิกใบเสร็จให้ผู้มีสิทธิอนุมัติแทน เพื่อคืนยอดเงินรับล่วงหน้าและเครดิตให้ถูกต้อง',
       );
     }
+    /** รายการรับชำระที่ผูกงวดนี้และยังไม่ถูกกลับ — สิ่งที่ markReversed จะกลับรายการได้ */
+    return { liveReceiptEntries: live.length };
   }
 
   private async assertCurrentRefundAmount(

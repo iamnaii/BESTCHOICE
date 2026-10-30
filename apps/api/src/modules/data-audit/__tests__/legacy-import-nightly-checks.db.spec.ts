@@ -821,20 +821,22 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
   }
 
   it(
-    'stage 2b — refunds after cutover: money that cleared the row without a receipt survives (legacy marker · advance consume); legacy money has nothing to refund',
+    'stage 2b — refunds after cutover: money that cleared the row without a receipt survives (legacy marker · advance consume); a row with no receipt / receipt JE has nothing to refund',
     async () => {
-      const legacyRefundError = /รับในระบบเก่าก่อนย้ายเข้าระบบ/;
-      // งวดนำเข้าที่ไม่มีใบเสร็จในระบบ — PAID ก่อนวันตัด (L1 งวด 1) และจ่ายบางส่วนก่อนวันตัด (L9R งวด 4) → คืนไม่ได้
-      const l1Row1 = await paymentOf(legacy.get('L1')!, 1);
-      const l9r = legacy.get('L9R')!;
-      for (const row of [l1Row1, await paymentOf(l9r, 4)]) {
+      const noRefundableMoney = /ไม่มีใบเสร็จ\/รายการรับชำระในระบบนี้ให้คืน/;
+      const refusesRefund = async (paymentId: string) => {
+        const row = await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
         await expect(
           refunds.requestRefund(
-            { paymentId: row.id, amount: Number(row.amountPaid), reason: 'ทดสอบ (T17)' },
+            { paymentId, amount: Number(row.amountPaid), reason: 'ทดสอบ (T17)' },
             approverId,
           ),
-        ).rejects.toThrow(legacyRefundError);
-      }
+        ).rejects.toThrow(noRefundableMoney);
+      };
+      // งวดนำเข้าที่ไม่มีใบเสร็จในระบบ — PAID ก่อนวันตัด (L1 งวด 1) และจ่ายบางส่วนก่อนวันตัด (L9R งวด 4) → คืนไม่ได้
+      const l9r = legacy.get('L9R')!;
+      await refusesRefund((await paymentOf(legacy.get('L1')!, 1)).id);
+      await refusesRefund((await paymentOf(l9r, 4)).id);
 
       // L9R: งวด 4 (marker 300) รับ 1,215.83 หลังวันตัด → คืนเงินใบนั้น → เหลือ 300 PARTIALLY_PAID · รับ 1,215.83 ใหม่ได้
       await pay(l9r, 4, await owedOn(l9r, 4), MAY2);
@@ -854,6 +856,9 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
       await pay(a4, 1, D(MONTHLY).plus(500).toFixed(2), P1.due(1));
       await nightly2A(a4, 2);
       expect((await paymentOf(a4, 2)).amountPaid.toFixed(2)).toBe('500.00');
+      // I-1: ยอด 500 ล้างงวดด้วยรายการหักเงินรับล่วงหน้า (ไม่มีใบเสร็จ ไม่มี paymentId) — คืนผ่านระบบไม่ได้ (เดิมถอยไป amountPaid
+      // แล้วคืน 500 โดยไม่มีรายการบัญชีใด)
+      await refusesRefund((await paymentOf(a4, 2)).id);
       await pay(a4, 2, await owedOn(a4, 2), P1.due(2));
       expect((await paymentOf(a4, 2)).status).toBe('PAID');
       await refundInFull((await paymentOf(a4, 2)).id, '1015.83');

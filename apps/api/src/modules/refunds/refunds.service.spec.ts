@@ -33,10 +33,21 @@ describe('RefundsService', () => {
     contractId: 'con-1',
     amountPaid: new Prisma.Decimal(1000),
     status: 'PAID',
+    // ยังไม่ถึงวันครบกำหนด — คืนเงินที่ไม่เหลือยอดได้ PENDING (เลยกำหนด = OVERDUE · เคสของตัวเองข้างล่าง)
+    dueDate: new Date('2099-01-05T00:00:00+07:00'),
+    legacyInstallmentCode: null,
     deletedAt: null,
     refunds: [],
     ...overrides,
   });
+  /** รายการรับชำระ POSTED ที่ผูก paymentId และยังไม่ถูกกลับ — มีให้กลับรายการ (ทุก query ของ journalEntry ใช้ชุดเดียว) */
+  const receiptEntry = {
+    id: 'je-receipt',
+    companyId: 'co-finance',
+    metadata: { tag: 'receipt', paymentId: 'pay-1' },
+    lines: [],
+  };
+  const noRefundableMoney = /ไม่มีใบเสร็จ\/รายการรับชำระในระบบนี้ให้คืน/;
 
   const refundRecord = (overrides: Record<string, unknown> = {}) => ({
     id: 'rf-1',
@@ -76,7 +87,7 @@ describe('RefundsService', () => {
       },
       // PR-843/I2 Phase 3 PR 3.1: markReversed now finds ALL receipt JEs of the payment
       // via metadata.paymentId (findMany) and reverses EACH — not a single findFirst.
-      journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
+      journalEntry: { findMany: jest.fn().mockResolvedValue([receiptEntry]) },
       // Task 17 A: markReversed คืนแถวงวดจากยอดในบัญชี (revertPaymentFromLedger) — ไม่มีแถวตารางงวด = ไม่เหลือยอด
       installmentSchedule: { findUnique: jest.fn().mockResolvedValue(null) },
       receipt: {
@@ -177,7 +188,27 @@ describe('RefundsService', () => {
             { paymentId: 'pay-1', amount: 1000, reason: 'customer double-paid ชำระซ้ำ' },
             'u-staff',
           ),
-        ).rejects.toThrow(/รับในระบบเก่าก่อนย้ายเข้าระบบ/);
+        ).rejects.toThrow(noRefundableMoney);
+      }
+      expect(prisma.refund.create).not.toHaveBeenCalled();
+    });
+
+    it('Task 17 I-1 — any installment with no receipt AND no live receipt JE (paid by advance consume / a contract-level entry): refundable 0, Thai 400', async () => {
+      prisma.payment.findUnique.mockResolvedValue(
+        paidPayment({ status: 'PARTIALLY_PAID', amountPaid: new Prisma.Decimal(500) }),
+      );
+      // รายการที่ผูก paymentId มีแต่ต้นฉบับที่ถูกกลับแล้ว (ยกเลิกใบเสร็จไปก่อน) หรือไม่มีเลย — ไม่มีอะไรให้กลับรายการ
+      for (const entries of [
+        [],
+        [{ ...receiptEntry, metadata: { tag: 'receipt', reversed: true } }],
+      ]) {
+        prisma.journalEntry.findMany.mockResolvedValue(entries);
+        await expect(
+          service.requestRefund(
+            { paymentId: 'pay-1', amount: 500, reason: 'customer double-paid ชำระซ้ำ' },
+            'u-staff',
+          ),
+        ).rejects.toThrow(noRefundableMoney);
       }
       expect(prisma.refund.create).not.toHaveBeenCalled();
     });
@@ -290,7 +321,7 @@ describe('RefundsService', () => {
         paidPayment({ legacyInstallmentCode: 'LEG-INST-1', amountPaid: new Prisma.Decimal(500) }),
       );
       await expect(service.approveRefund('rf-1', 'u-owner', 'OWNER')).rejects.toThrow(
-        /รับในระบบเก่าก่อนย้ายเข้าระบบ/,
+        noRefundableMoney,
       );
       expect(prisma.refund.updateMany).not.toHaveBeenCalled();
     });
@@ -495,20 +526,51 @@ describe('RefundsService', () => {
       expect(tags).not.toContain('overpayment-credit');
     });
 
-    it('legacy payment with no POSTED JE: skips the reversal but still reverts the payment', async () => {
+    it('Task 17 I-1 — no POSTED receipt JE to reverse (even with a receipt row): refuses before anything is written — money must not leave without a ledger entry', async () => {
       prisma.refund.findUnique.mockResolvedValue(refundRecord({ status: 'APPROVED' }));
       prisma.payment.findUnique.mockResolvedValue(
         paidPayment({ amountPaid: new Prisma.Decimal(500) }),
       );
+      // ใบเสร็จ 500 มี (ยอดคืนได้ผ่าน) แต่รายการรับชำระของงวดไม่มี/ถูกกลับหมด — ด่านสำรองใน markReversed
+      prisma.receipt.findMany.mockResolvedValue([
+        {
+          amount: new Prisma.Decimal(500),
+          isVoided: false,
+          deletedAt: null,
+          createdAt: new Date('2025-05-02T10:00:00+07:00'),
+        },
+      ]);
       prisma.journalEntry.findMany.mockResolvedValue([]);
-      await service.markReversed(
-        'rf-1',
-        { bankReversalRef: 'KBANK-2', notes: 'rev' },
-        'u-owner',
-        'OWNER',
-      );
+      await expect(
+        service.markReversed(
+          'rf-1',
+          { bankReversalRef: 'KBANK-2', notes: 'rev' },
+          'u-owner',
+          'OWNER',
+        ),
+      ).rejects.toThrow(noRefundableMoney);
       expect(template.voidReceipt).not.toHaveBeenCalled();
-      expect(prisma.payment.update).toHaveBeenCalled();
+      expect(prisma.refund.updateMany).not.toHaveBeenCalled();
+      expect(prisma.payment.update).not.toHaveBeenCalled();
+      expect(prisma.receipt.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('Task 17 A — bank confirmation of a request left on a legacy installment without receipts is refused (same Thai 400)', async () => {
+      prisma.refund.findUnique.mockResolvedValue(refundRecord({ status: 'APPROVED' }));
+      prisma.payment.findUnique.mockResolvedValue(
+        paidPayment({ legacyInstallmentCode: 'LEG-INST-1', amountPaid: new Prisma.Decimal(500) }),
+      );
+      await expect(
+        service.markReversed(
+          'rf-1',
+          { bankReversalRef: 'KBANK-11', notes: 'rev' },
+          'u-owner',
+          'OWNER',
+        ),
+      ).rejects.toThrow(noRefundableMoney);
+      expect(template.voidReceipt).not.toHaveBeenCalled();
+      expect(prisma.refund.updateMany).not.toHaveBeenCalled();
+      expect(prisma.payment.update).not.toHaveBeenCalled();
     });
 
     it('Task 17 A — money that cleared the installment without a receipt (marker / advance consume) survives: PARTIALLY_PAID from the ledger, not 0', async () => {

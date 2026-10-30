@@ -36,6 +36,14 @@ export const NO_REFUNDABLE_RECEIPT_MESSAGE =
   'งวดนี้ไม่มีใบเสร็จ/รายการรับชำระในระบบนี้ให้คืน (เช่น ยอดที่รับในระบบเก่าก่อนย้าย หรือเงินที่ปิดผ่านรายการระดับสัญญา) — ติดต่อฝ่ายบัญชี';
 
 /**
+ * งวดที่มีรายการรับชำระที่ยังมีผลแต่ไม่มีแถวใบเสร็จ (Task 18 R-2 — ออกใบหลัง commit ไม่สำเร็จ / แถวรุ่นก่อนมีใบเสร็จ) — ยอดคืนต้องเป็น
+ * เงินตามใบเสร็จเท่านั้น จึงต้องออกใบเสร็จให้ครบก่อน (ขั้นตอน "ออกใบเสร็จซ้ำ" ใน `.claude/rules/accounting.md` — ทำได้โดยผู้ดูแลระบบ:
+ * ยังไม่มีปุ่ม/endpoint ให้พนักงานกดเอง) แล้วส่งคำขอใหม่ ซึ่งจะคืนเท่ายอดใบเสร็จตามทางปกติ
+ */
+export const RECEIPT_NOT_ISSUED_REFUND_MESSAGE =
+  'งวดนี้มีรายการรับชำระแต่ยังไม่มีใบเสร็จในระบบ — ให้ผู้ดูแลระบบออกใบเสร็จของงวดนี้ก่อน (ขั้นตอน "ออกใบเสร็จซ้ำ") แล้วจึงส่งคำขอคืนเงินใหม่';
+
+/**
  * Refund workflow — T1-C1 / P2Q7=F (bank reversal policy).
  *
  * The company does NOT pay refunds from its own bank. Staff call the bank to
@@ -484,17 +492,17 @@ export class RefundsService {
   }
 
   /**
-   * Receipt.amount is cash. Payment.amountPaid may also contain non-cash debt relief.
+   * Receipt.amount is cash — the only source of the refundable amount. Payment.amountPaid may also
+   * contain non-cash debt relief and money that cleared the row without a receipt.
    * `blockedReason` = ผู้เรียกต้องปฏิเสธด้วยข้อความนี้ (ยอดคืนได้ 0)
+   *
+   * งวดนำเข้าจากระบบเก่าไม่ต้องมีกติกาแยก (Task 17 A ปิดด้วย `legacyInstallmentCode` — ถูกแทนด้วยสองด่านข้างล่าง): ยอดก่อนวันตัด
+   * ไม่มีรายการผูก `paymentId` (marker ของตัวนำเข้า) และไม่มีแถวใบเสร็จ ⇒ ไม่มีรายการให้กลับ = ด่านแรก · มีรายการหลังวันตัดแต่ใบเสร็จ
+   * ออกไม่สำเร็จ = ด่านที่สอง (ออกใบซ้ำแล้วคืนเท่าใบหลังวันตัด — ยอดก่อนวันตัดไม่อยู่ในใบ)
    */
   private async refundableCash(
     tx: Prisma.TransactionClient,
-    payment: {
-      id: string;
-      contractId: string;
-      amountPaid: Prisma.Decimal;
-      legacyInstallmentCode: string | null;
-    },
+    payment: { id: string; contractId: string },
   ): Promise<{ amount: Prisma.Decimal; latestReceiptAt: Date | null; blockedReason?: string }> {
     const { liveReceiptEntries } = await this.assertCashOnlyRefund(tx, payment.id);
     // ทุกงวด (Task 18 R-1): ไม่มีรายการรับชำระที่ผูกงวดนี้และยังมีผลให้ markReversed กลับรายการ = เงินจะออกจากธนาคารโดยสมุดไม่ขยับ —
@@ -518,17 +526,15 @@ export class RefundsService {
     // Existing voided/deleted receipt history is authoritative too: zero active
     // receipts means zero refundable cash, not a fallback to settled debt.
     if (receipts.length === 0) {
-      // ไม่มีใบเสร็จ (มีรายการรับชำระที่ยังมีผลแล้ว — ด่านข้างบน) → ถอยไป amountPaid (แถวรุ่นก่อนมีใบเสร็จ) ยกเว้น
-      // งวดนำเข้าจากระบบเก่า (Task 17 A): ยอดก่อนวันตัดระบบเก่ารับไว้ (marker ไม่มี paymentId) — ปฏิเสธแม้มีรายการ (ใบหลังวันตัด
-      // ออกไม่สำเร็จ = amountPaid ยังรวมยอดก่อนวันตัด)
-      if (payment.legacyInstallmentCode) {
-        return {
-          amount: new Prisma.Decimal(0),
-          latestReceiptAt: null,
-          blockedReason: NO_REFUNDABLE_RECEIPT_MESSAGE,
-        };
-      }
-      return { amount: new Prisma.Decimal(payment.amountPaid), latestReceiptAt: null };
+      // ไม่มีใบเสร็จ แต่มีรายการรับชำระที่ยังมีผล (ด่านข้างบน) — Task 18 R-2: ไม่ถอยไป amountPaid อีก (เดิมคืนทั้งก้อน ขณะที่
+      // markReversed กลับเฉพาะรายการที่ผูก paymentId ⇒ ส่วนที่ล้างงวดโดยไม่มีใบเสร็จ เช่น รอบกลางคืนหักเงินรับล่วงหน้า / ยอดก่อนวันตัด
+      // ของงวดนำเข้า ออกจากธนาคารโดยไม่มีรายการบัญชี) และไม่คำนวณ "เงินสดของรายการ" ขึ้นใหม่ (Cr 11-2103 + 42-1103 ไม่ใช่เงินสดเมื่อมี
+      // ส่วนขาด 52-1104 / อนุโลมค่าปรับ 52-1105 / เศษ 53-1503 — สูตรที่สองของ "เงินที่รับจริง") ⇒ ออกใบเสร็จให้ครบก่อน แล้วคืนตามใบ
+      return {
+        amount: new Prisma.Decimal(0),
+        latestReceiptAt: null,
+        blockedReason: RECEIPT_NOT_ISSUED_REFUND_MESSAGE,
+      };
     }
     const active = receipts.filter((receipt) => !receipt.isVoided && !receipt.deletedAt);
     return {
@@ -587,14 +593,7 @@ export class RefundsService {
   ) {
     const payment = await tx.payment.findUnique({
       where: { id: refund.paymentId },
-      select: {
-        id: true,
-        contractId: true,
-        amountPaid: true,
-        deletedAt: true,
-        status: true,
-        legacyInstallmentCode: true,
-      },
+      select: { id: true, contractId: true, deletedAt: true, status: true },
     });
     if (!payment || payment.deletedAt)
       throw new NotFoundException('ไม่พบรายการชำระเงินของคำขอคืนเงิน');

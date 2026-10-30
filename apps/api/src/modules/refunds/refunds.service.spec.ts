@@ -13,7 +13,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Prisma } from '@prisma/client';
 import { ADVANCE_EXCESS_VOID_BLOCKED_MESSAGE } from '../journal/advance-excess-income.util';
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
-import { RefundsService } from './refunds.service';
+import { RECEIPT_NOT_ISSUED_REFUND_MESSAGE, RefundsService } from './refunds.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { ReceiptVoidReversalTemplate } from '../journal/cpa-templates/receipt-void-reversal.template';
@@ -90,8 +90,23 @@ describe('RefundsService', () => {
       journalEntry: { findMany: jest.fn().mockResolvedValue([receiptEntry]) },
       // Task 17 A: markReversed คืนแถวงวดจากยอดในบัญชี (revertPaymentFromLedger) — ไม่มีแถวตารางงวด = ไม่เหลือยอด
       installmentSchedule: { findUnique: jest.fn().mockResolvedValue(null) },
+      // Task 18 R-2: ยอดคืน = ใบเสร็จค่างวดที่ยังมีผลเท่านั้น (ไม่มีใบ = ปฏิเสธ ไม่ถอยไป amountPaid) — ค่าเริ่มต้นคือใบเดียวที่ยอด
+      // เท่า amountPaid ของแถวที่ mock ไว้ (= สภาพของงวดที่รับเงินด้วยใบเสร็จตามปกติ) · ออกก่อนคำขอเสมอ · เคสไม่มีใบ/ใบถูกยกเลิก
+      // ตั้งเองในเทสต์ของตัวเอง
       receipt: {
-        findMany: jest.fn().mockResolvedValue([]),
+        findMany: jest.fn(async () => {
+          const row = await prisma.payment.findUnique();
+          return row
+            ? [
+                {
+                  amount: new Prisma.Decimal(row.amountPaid),
+                  isVoided: false,
+                  deletedAt: null,
+                  createdAt: new Date(0),
+                },
+              ]
+            : [];
+        }),
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
       refund: {
@@ -175,6 +190,10 @@ describe('RefundsService', () => {
     });
 
     it('Task 17 A — an imported legacy installment with no receipt in this system: refundable 0, Thai 400, no request', async () => {
+      // สภาพจริงของงวดนำเข้าก่อนวันตัด: ไม่มีแถวใบเสร็จ (ตัวนำเข้าสร้างแค่หลักฐาน) และไม่มีรายการผูก paymentId (marker ผูกแค่
+      // installmentScheduleId) — งวดนำเข้าที่มีรายการหลังวันตัดแต่ใบออกไม่สำเร็จ = เคส R-2 (ออกใบซ้ำ)
+      prisma.receipt.findMany.mockResolvedValue([]);
+      prisma.journalEntry.findMany.mockResolvedValue([]);
       for (const status of ['PAID', 'PARTIALLY_PAID']) {
         prisma.payment.findUnique.mockResolvedValue(
           paidPayment({
@@ -237,6 +256,26 @@ describe('RefundsService', () => {
             'u-staff',
           ),
         ).rejects.toThrow(noRefundableMoney);
+      }
+      expect(prisma.refund.create).not.toHaveBeenCalled();
+    });
+
+    it('Task 18 R-2 — no receipt row but a live receipt JE (receipt issue failed after commit / a pre-receipt row): never falls back to amountPaid — refused with the re-issue message', async () => {
+      prisma.receipt.findMany.mockResolvedValue([]);
+      // งวดปกติ (amountPaid 1,515.83 = ใบรับชำระ 1,015.83 + รอบกลางคืนหักเงินรับล่วงหน้า 500 ไม่มี paymentId) และงวดนำเข้าที่ใบหลัง
+      // วันตัดออกไม่สำเร็จ (amountPaid รวมยอดก่อนวันตัด 300) — เดิมคืน amountPaid ทั้งก้อน ซึ่งเกินเงินของรายการที่จะถูกกลับ
+      for (const legacyInstallmentCode of [null, 'LEG-INST-1']) {
+        prisma.payment.findUnique.mockResolvedValue(
+          paidPayment({ legacyInstallmentCode, amountPaid: new Prisma.Decimal('1515.83') }),
+        );
+        for (const amount of [1515.83, 1015.83]) {
+          await expect(
+            service.requestRefund(
+              { paymentId: 'pay-1', amount, reason: 'customer double-paid ชำระซ้ำ' },
+              'u-staff',
+            ),
+          ).rejects.toThrow(RECEIPT_NOT_ISSUED_REFUND_MESSAGE);
+        }
       }
       expect(prisma.refund.create).not.toHaveBeenCalled();
     });
@@ -348,8 +387,19 @@ describe('RefundsService', () => {
       prisma.payment.findUnique.mockResolvedValue(
         paidPayment({ legacyInstallmentCode: 'LEG-INST-1', amountPaid: new Prisma.Decimal(500) }),
       );
+      // งวดนำเข้าก่อนวันตัด: ไม่มีใบเสร็จและไม่มีรายการผูก paymentId (ดูเคสขอคืนข้างบน)
+      prisma.receipt.findMany.mockResolvedValue([]);
+      prisma.journalEntry.findMany.mockResolvedValue([]);
       await expect(service.approveRefund('rf-1', 'u-owner', 'OWNER')).rejects.toThrow(
         noRefundableMoney,
+      );
+      expect(prisma.refund.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('Task 18 R-2 — a request on an installment whose receipt was never issued cannot be approved (re-issue message)', async () => {
+      prisma.receipt.findMany.mockResolvedValue([]);
+      await expect(service.approveRefund('rf-1', 'u-owner', 'OWNER')).rejects.toThrow(
+        RECEIPT_NOT_ISSUED_REFUND_MESSAGE,
       );
       expect(prisma.refund.updateMany).not.toHaveBeenCalled();
     });
@@ -604,6 +654,9 @@ describe('RefundsService', () => {
       prisma.payment.findUnique.mockResolvedValue(
         paidPayment({ legacyInstallmentCode: 'LEG-INST-1', amountPaid: new Prisma.Decimal(500) }),
       );
+      // งวดนำเข้าก่อนวันตัด: ไม่มีใบเสร็จและไม่มีรายการผูก paymentId
+      prisma.receipt.findMany.mockResolvedValue([]);
+      prisma.journalEntry.findMany.mockResolvedValue([]);
       await expect(
         service.markReversed(
           'rf-1',
@@ -612,6 +665,25 @@ describe('RefundsService', () => {
           'OWNER',
         ),
       ).rejects.toThrow(noRefundableMoney);
+      expect(template.voidReceipt).not.toHaveBeenCalled();
+      expect(prisma.refund.updateMany).not.toHaveBeenCalled();
+      expect(prisma.payment.update).not.toHaveBeenCalled();
+    });
+
+    it('Task 18 R-2 — bank confirmation of a request on an installment without a receipt row is refused before anything is written (re-issue message)', async () => {
+      prisma.refund.findUnique.mockResolvedValue(refundRecord({ status: 'APPROVED' }));
+      prisma.payment.findUnique.mockResolvedValue(
+        paidPayment({ amountPaid: new Prisma.Decimal(500) }),
+      );
+      prisma.receipt.findMany.mockResolvedValue([]);
+      await expect(
+        service.markReversed(
+          'rf-1',
+          { bankReversalRef: 'KBANK-12', notes: 'rev' },
+          'u-owner',
+          'OWNER',
+        ),
+      ).rejects.toThrow(RECEIPT_NOT_ISSUED_REFUND_MESSAGE);
       expect(template.voidReceipt).not.toHaveBeenCalled();
       expect(prisma.refund.updateMany).not.toHaveBeenCalled();
       expect(prisma.payment.update).not.toHaveBeenCalled();

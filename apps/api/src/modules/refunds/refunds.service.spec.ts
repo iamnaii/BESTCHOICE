@@ -1,5 +1,12 @@
-import { assertPaymentApprovalPermission, getPaymentApprovalPermissions } from '../payments/services/payment-approval-permissions';
-jest.mock('../payments/services/payment-approval-permissions', () => ({ ...jest.requireActual('../payments/services/payment-approval-permissions'), assertPaymentApprovalPermission: jest.fn(), getPaymentApprovalPermissions: jest.fn() }));
+import {
+  assertPaymentApprovalPermission,
+  getPaymentApprovalPermissions,
+} from '../payments/services/payment-approval-permissions';
+jest.mock('../payments/services/payment-approval-permissions', () => ({
+  ...jest.requireActual('../payments/services/payment-approval-permissions'),
+  assertPaymentApprovalPermission: jest.fn(),
+  getPaymentApprovalPermissions: jest.fn(),
+}));
 jest.mock('../../utils/period-lock.util', () => ({ validatePeriodOpen: jest.fn() }));
 
 import { Test, TestingModule } from '@nestjs/testing';
@@ -49,12 +56,19 @@ describe('RefundsService', () => {
   });
 
   beforeEach(async () => {
-    const actor = { user: { id: 'u-fm', name: 'Finance', role: 'FINANCE_MANAGER', branchId: 'branch-a' }, permissions: ['REFUND'] };
+    const actor = {
+      user: { id: 'u-fm', name: 'Finance', role: 'FINANCE_MANAGER', branchId: 'branch-a' },
+      permissions: ['REFUND'],
+    };
     (assertPaymentApprovalPermission as jest.Mock).mockReset().mockResolvedValue(actor);
     (getPaymentApprovalPermissions as jest.Mock).mockReset().mockResolvedValue(actor);
     prisma = {
       contract: { findFirst: jest.fn().mockResolvedValue({ branchId: 'branch-a' }) },
-      user: { findUnique: jest.fn().mockResolvedValue({ role: 'FINANCE_MANAGER', isActive: true, deletedAt: null }) },
+      user: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ role: 'FINANCE_MANAGER', isActive: true, deletedAt: null }),
+      },
       auditLog: { create: jest.fn().mockResolvedValue({}) },
       payment: {
         findUnique: jest.fn().mockResolvedValue(paidPayment()),
@@ -63,7 +77,10 @@ describe('RefundsService', () => {
       // PR-843/I2 Phase 3 PR 3.1: markReversed now finds ALL receipt JEs of the payment
       // via metadata.paymentId (findMany) and reverses EACH — not a single findFirst.
       journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
-      receipt: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      receipt: {
+        findMany: jest.fn().mockResolvedValue([]),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
       refund: {
         create: jest.fn((args) => Promise.resolve({ id: 'rf-1', ...args.data })),
         update: jest.fn((args) => Promise.resolve({ ...refundRecord(), ...args.data })),
@@ -96,7 +113,10 @@ describe('RefundsService', () => {
     it('rejects a partial refund (amount < amountPaid) — full refunds only', async () => {
       // paidPayment amountPaid = 1000; a 500 request is partial → rejected up front.
       await expect(
-        service.requestRefund({ paymentId: 'pay-1', amount: 500, reason: 'partial xxxxxxxx' }, 'u-staff'),
+        service.requestRefund(
+          { paymentId: 'pay-1', amount: 500, reason: 'partial xxxxxxxx' },
+          'u-staff',
+        ),
       ).rejects.toThrow(BadRequestException);
       expect(prisma.refund.create).not.toHaveBeenCalled();
     });
@@ -109,14 +129,19 @@ describe('RefundsService', () => {
       expect(result.id).toBe('rf-1');
       expect(prisma.refund.create).toHaveBeenCalled();
       expect(prisma.auditLog.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ action: 'REFUND_REQUESTED', entity: 'Refund' }) }),
+        expect.objectContaining({
+          data: expect.objectContaining({ action: 'REFUND_REQUESTED', entity: 'Refund' }),
+        }),
       );
     });
 
     it('throws NotFound when payment missing', async () => {
       prisma.payment.findUnique.mockResolvedValue(null);
       await expect(
-        service.requestRefund({ paymentId: 'missing', amount: 500, reason: 'xxxxxxxxxx' }, 'u-staff'),
+        service.requestRefund(
+          { paymentId: 'missing', amount: 500, reason: 'xxxxxxxxxx' },
+          'u-staff',
+        ),
       ).rejects.toThrow(NotFoundException);
     });
 
@@ -140,9 +165,7 @@ describe('RefundsService', () => {
       prisma.payment.findUnique.mockResolvedValue(
         paidPayment({
           amountPaid: new Prisma.Decimal(1000),
-          refunds: [
-            { ...refundRecord(), status: 'PROCESSED', amount: new Prisma.Decimal(600) },
-          ],
+          refunds: [{ ...refundRecord(), status: 'PROCESSED', amount: new Prisma.Decimal(600) }],
         }),
       );
       await expect(
@@ -173,7 +196,9 @@ describe('RefundsService', () => {
 
     it('markReversed ปฏิเสธก่อนแตะอะไร — ไม่กลับรายการ ไม่คืนงวดเป็นค้าง ไม่ flip PROCESSED', async () => {
       prisma.refund.findUnique.mockResolvedValue(refundRecord({ status: 'APPROVED' }));
-      prisma.payment.findUnique.mockResolvedValue(paidPayment({ amountPaid: new Prisma.Decimal(500) }));
+      prisma.payment.findUnique.mockResolvedValue(
+        paidPayment({ amountPaid: new Prisma.Decimal(500) }),
+      );
       prisma.journalEntry.findMany.mockResolvedValue(activeSweep);
       await expect(
         service.markReversed(
@@ -190,34 +215,46 @@ describe('RefundsService', () => {
   });
 
   describe('approveRefund', () => {
-    beforeEach(() => { prisma.payment.findUnique.mockResolvedValue(paidPayment({ amountPaid: new Prisma.Decimal(500) })); });
+    beforeEach(() => {
+      prisma.payment.findUnique.mockResolvedValue(
+        paidPayment({ amountPaid: new Prisma.Decimal(500) }),
+      );
+    });
     it('blocks self-approval', async () => {
       prisma.refund.findUnique.mockResolvedValue(refundRecord({ requestedById: 'u-same' }));
-      await expect(service.approveRefund('rf-1', 'u-same', 'OWNER')).rejects.toThrow(ForbiddenException);
+      await expect(service.approveRefund('rf-1', 'u-same', 'OWNER')).rejects.toThrow(
+        ForbiddenException,
+      );
     });
 
     it('blocks an actor without a REFUND permission grant', async () => {
-      (assertPaymentApprovalPermission as jest.Mock).mockRejectedValueOnce(new ForbiddenException('not granted'));
-      await expect(
-        service.approveRefund('rf-1', 'u-other', 'BRANCH_MANAGER'),
-      ).rejects.toThrow(ForbiddenException);
+      (assertPaymentApprovalPermission as jest.Mock).mockRejectedValueOnce(
+        new ForbiddenException('not granted'),
+      );
+      await expect(service.approveRefund('rf-1', 'u-other', 'BRANCH_MANAGER')).rejects.toThrow(
+        ForbiddenException,
+      );
     });
 
     it('rejects non-REQUESTED status', async () => {
       prisma.refund.findUnique.mockResolvedValue(refundRecord({ status: 'APPROVED' }));
-      await expect(
-        service.approveRefund('rf-1', 'u-fm', 'FINANCE_MANAGER'),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.approveRefund('rf-1', 'u-fm', 'FINANCE_MANAGER')).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('authorized actor approves using CAS and audit in the same transaction', async () => {
       await service.approveRefund('rf-1', 'u-owner', 'OWNER');
       expect(assertPaymentApprovalPermission).toHaveBeenCalledWith(prisma, 'u-owner', 'REFUND');
-      expect(prisma.refund.updateMany).toHaveBeenCalledWith(expect.objectContaining({
-        where: { id: 'rf-1', status: 'REQUESTED', deletedAt: null },
-        data: expect.objectContaining({ status: 'APPROVED', approvedById: 'u-owner' }),
-      }));
-      expect(prisma.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: 'REFUND_APPROVED' }) }));
+      expect(prisma.refund.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'rf-1', status: 'REQUESTED', deletedAt: null },
+          data: expect.objectContaining({ status: 'APPROVED', approvedById: 'u-owner' }),
+        }),
+      );
+      expect(prisma.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ action: 'REFUND_APPROVED' }) }),
+      );
     });
   });
 
@@ -230,7 +267,12 @@ describe('RefundsService', () => {
     });
 
     it('updates status REJECTED + stores reason', async () => {
-      await service.rejectRefund('rf-1', { reason: 'insufficient evidence' }, 'u-fm', 'FINANCE_MANAGER');
+      await service.rejectRefund(
+        'rf-1',
+        { reason: 'insufficient evidence' },
+        'u-fm',
+        'FINANCE_MANAGER',
+      );
       const data = prisma.refund.updateMany.mock.calls[0][0].data;
       expect(data.status).toBe('REJECTED');
       expect(data.rejectedReason).toBe('insufficient evidence');
@@ -252,7 +294,9 @@ describe('RefundsService', () => {
 
     it('sets PROCESSED with bank ref + audit', async () => {
       prisma.refund.findUnique.mockResolvedValue(refundRecord({ status: 'APPROVED' }));
-      prisma.payment.findUnique.mockResolvedValue(paidPayment({ amountPaid: new Prisma.Decimal(500) })); // = refund.amount (full)
+      prisma.payment.findUnique.mockResolvedValue(
+        paidPayment({ amountPaid: new Prisma.Decimal(500) }),
+      ); // = refund.amount (full)
       await service.markReversed(
         'rf-1',
         { bankReversalRef: 'KBANK-12345', notes: 'confirmed phone call' },
@@ -271,9 +315,16 @@ describe('RefundsService', () => {
       prisma.refund.findUnique.mockResolvedValue(
         refundRecord({ status: 'APPROVED', amount: new Prisma.Decimal(500) }),
       );
-      prisma.payment.findUnique.mockResolvedValue(paidPayment({ amountPaid: new Prisma.Decimal(1000) })); // 500 ≠ 1000
+      prisma.payment.findUnique.mockResolvedValue(
+        paidPayment({ amountPaid: new Prisma.Decimal(1000) }),
+      ); // 500 ≠ 1000
       await expect(
-        service.markReversed('rf-1', { bankReversalRef: 'KBANK-x', notes: 'partial' }, 'u-owner', 'OWNER'),
+        service.markReversed(
+          'rf-1',
+          { bankReversalRef: 'KBANK-x', notes: 'partial' },
+          'u-owner',
+          'OWNER',
+        ),
       ).rejects.toThrow(BadRequestException);
       expect(prisma.refund.updateMany).not.toHaveBeenCalled();
     });
@@ -282,7 +333,9 @@ describe('RefundsService', () => {
   describe('markReversed — ledger reversal', () => {
     it('reverses ALL receipt JEs of the payment (metadata.paymentId, flow refund-reversal), reverts the payment + voids its receipt', async () => {
       prisma.refund.findUnique.mockResolvedValue(refundRecord({ status: 'APPROVED' }));
-      prisma.payment.findUnique.mockResolvedValue(paidPayment({ amountPaid: new Prisma.Decimal(500) })); // = refund.amount
+      prisma.payment.findUnique.mockResolvedValue(
+        paidPayment({ amountPaid: new Prisma.Decimal(500) }),
+      ); // = refund.amount
       // PR-843/I2 Phase 3 PR 3.1: the epic posts MULTIPLE receipt JEs per Payment (a
       // partial then a completion), all sharing metadata.paymentId. Refunds are always
       // full (owner-confirmed #1164), so EVERY receipt JE must be reversed — return TWO.
@@ -290,7 +343,12 @@ describe('RefundsService', () => {
         { id: 'je-1', companyId: 'co-finance', lines: [] },
         { id: 'je-2', companyId: 'co-finance', lines: [] },
       ]);
-      await service.markReversed('rf-1', { bankReversalRef: 'KBANK-1', notes: 'rev' }, 'u-owner', 'OWNER');
+      await service.markReversed(
+        'rf-1',
+        { bankReversalRef: 'KBANK-1', notes: 'rev' },
+        'u-owner',
+        'OWNER',
+      );
 
       // The canonical payment→JE link is metadata.paymentId (each receipt JE now carries
       // a unique reference, so the old referenceId == paymentId findFirst found at most
@@ -319,8 +377,12 @@ describe('RefundsService', () => {
       // Reverse EACH — reversing only one would leave the other receipt's Cr 11-2103
       // un-reversed (partial reversal of a full refund = ledger defect).
       expect(template.voidReceipt).toHaveBeenCalledTimes(2);
-      expect(template.voidReceipt).toHaveBeenCalledWith('je-1', prisma, { flow: 'refund-reversal' });
-      expect(template.voidReceipt).toHaveBeenCalledWith('je-2', prisma, { flow: 'refund-reversal' });
+      expect(template.voidReceipt).toHaveBeenCalledWith('je-1', prisma, {
+        flow: 'refund-reversal',
+      });
+      expect(template.voidReceipt).toHaveBeenCalledWith('je-2', prisma, {
+        flow: 'refund-reversal',
+      });
       // Period guard uses the first found entry's companyId (all share FINANCE).
       expect(validatePeriodOpen).toHaveBeenCalledWith(prisma, expect.any(Date), 'co-finance');
       expect(prisma.payment.update).toHaveBeenCalledWith({
@@ -337,45 +399,72 @@ describe('RefundsService', () => {
 
     it('does NOT reverse the overpayment-credit JE — only the receivable-clearing receipt JE (FINAL-REVIEW BLOCKER 2)', async () => {
       prisma.refund.findUnique.mockResolvedValue(refundRecord({ status: 'APPROVED' }));
-      prisma.payment.findUnique.mockResolvedValue(paidPayment({ amountPaid: new Prisma.Decimal(500) }));
+      prisma.payment.findUnique.mockResolvedValue(
+        paidPayment({ amountPaid: new Prisma.Decimal(500) }),
+      );
       // The payment has TWO JEs sharing metadata.paymentId='pay-1': the receivable-
       // clearing receipt JE (tag:'receipt') AND the overpayment-credit JE
       // (tag:'overpayment-credit', Dr cash / Cr 21-5101). The tag OR-filter in the
       // WHERE means the DB returns ONLY the receipt JE — model that here.
-      prisma.journalEntry.findMany.mockResolvedValue([{ id: 'je-receipt', companyId: 'co-finance', lines: [] }]);
+      prisma.journalEntry.findMany.mockResolvedValue([
+        { id: 'je-receipt', companyId: 'co-finance', lines: [] },
+      ]);
 
-      await service.markReversed('rf-1', { bankReversalRef: 'KBANK-1', notes: 'rev' }, 'u-owner', 'OWNER');
+      await service.markReversed(
+        'rf-1',
+        { bankReversalRef: 'KBANK-1', notes: 'rev' },
+        'u-owner',
+        'OWNER',
+      );
 
       // Only the receipt JE is reversed — the overpayment-credit JE is never touched.
       expect(template.voidReceipt).toHaveBeenCalledTimes(1);
-      expect(template.voidReceipt).toHaveBeenCalledWith('je-receipt', prisma, { flow: 'refund-reversal' });
-      expect(template.voidReceipt).not.toHaveBeenCalledWith('je-overpay', prisma, { flow: 'refund-reversal' });
+      expect(template.voidReceipt).toHaveBeenCalledWith('je-receipt', prisma, {
+        flow: 'refund-reversal',
+      });
+      expect(template.voidReceipt).not.toHaveBeenCalledWith('je-overpay', prisma, {
+        flow: 'refund-reversal',
+      });
 
       // The WHERE's tag OR-filter must NOT include 'overpayment-credit' — that is the
       // exact exclusion that protects the customer credit balance from a phantom reversal.
       // PR4 ต6ข: findMany ครั้งแรกเป็นด่าน assertNoAdvanceExcessIncome — query ใบรับชำระคือครั้งสุดท้าย
       const whereArg = prisma.journalEntry.findMany.mock.calls.at(-1)[0].where;
-      const orClause = whereArg.AND.find((c: any) => Array.isArray(c.OR))?.OR ?? [];
-      const tags = orClause.map((c: any) => c.metadata?.equals);
+      const orClause = whereArg.AND.find((c: { OR?: unknown }) => Array.isArray(c.OR))?.OR ?? [];
+      const tags = orClause.map((c: { metadata?: { equals?: unknown } }) => c.metadata?.equals);
       expect(tags).toEqual(expect.arrayContaining(['receipt', '2B', 'credit-allocation']));
       expect(tags).not.toContain('overpayment-credit');
     });
 
     it('legacy payment with no POSTED JE: skips the reversal but still reverts the payment', async () => {
       prisma.refund.findUnique.mockResolvedValue(refundRecord({ status: 'APPROVED' }));
-      prisma.payment.findUnique.mockResolvedValue(paidPayment({ amountPaid: new Prisma.Decimal(500) }));
+      prisma.payment.findUnique.mockResolvedValue(
+        paidPayment({ amountPaid: new Prisma.Decimal(500) }),
+      );
       prisma.journalEntry.findMany.mockResolvedValue([]);
-      await service.markReversed('rf-1', { bankReversalRef: 'KBANK-2', notes: 'rev' }, 'u-owner', 'OWNER');
+      await service.markReversed(
+        'rf-1',
+        { bankReversalRef: 'KBANK-2', notes: 'rev' },
+        'u-owner',
+        'OWNER',
+      );
       expect(template.voidReceipt).not.toHaveBeenCalled();
       expect(prisma.payment.update).toHaveBeenCalled();
     });
 
     it('closed period: throws and reverts nothing', async () => {
       prisma.refund.findUnique.mockResolvedValue(refundRecord({ status: 'APPROVED' }));
-      prisma.payment.findUnique.mockResolvedValue(paidPayment({ amountPaid: new Prisma.Decimal(500) }));
+      prisma.payment.findUnique.mockResolvedValue(
+        paidPayment({ amountPaid: new Prisma.Decimal(500) }),
+      );
       (validatePeriodOpen as jest.Mock).mockRejectedValue(new Error('period closed'));
       await expect(
-        service.markReversed('rf-1', { bankReversalRef: 'KBANK-3', notes: 'rev' }, 'u-owner', 'OWNER'),
+        service.markReversed(
+          'rf-1',
+          { bankReversalRef: 'KBANK-3', notes: 'rev' },
+          'u-owner',
+          'OWNER',
+        ),
       ).rejects.toThrow('period closed');
       expect(prisma.payment.update).not.toHaveBeenCalled();
     });
@@ -389,7 +478,9 @@ describe('RefundsService', () => {
       prisma.refund.findUnique.mockResolvedValue(
         refundRecord({ status: 'APPROVED', bankReversalLockedAt: null, bankReversalRef: null }),
       );
-      prisma.payment.findUnique.mockResolvedValue(paidPayment({ amountPaid: new Prisma.Decimal(500) })); // = refund.amount (full)
+      prisma.payment.findUnique.mockResolvedValue(
+        paidPayment({ amountPaid: new Prisma.Decimal(500) }),
+      ); // = refund.amount (full)
       await service.markReversed(
         'rf-1',
         { bankReversalRef: 'SCB-00001', notes: 'first write' },

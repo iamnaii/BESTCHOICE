@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import type { ExpenseLineInput } from '../dto/expense-line-input.dto';
 import type { LineOutput } from './line-aggregator.service';
+import type { SavedPayrollLine } from '../payroll-system/payroll-save';
 
 type PreparedExpenseLine = ExpenseLineInput & LineOutput & { lineNo: number };
 
@@ -25,22 +26,10 @@ export function expenseLineCreateData(
   };
 }
 
-type PreparedPayrollLine = Pick<
-  Prisma.PayrollLineUncheckedCreateWithoutPayrollInput,
-  | 'userId'
-  | 'employeeName'
-  | 'employeeTaxId'
-  | 'baseSalary'
-  | 'ssoEmployee'
-  | 'whtAmount'
-  | 'netPaid'
-> & {
-  customIncome: Prisma.PayrollCustomIncomeCreateWithoutPayrollLineInput[];
-  customDeduction: Prisma.PayrollCustomDeductionCreateWithoutPayrollLineInput[];
-};
-
+// Payroll D4 — บรรทัดที่รวมแถวระบบแล้ว (payroll-system/payroll-save.ts) · JSON snapshot เก็บตามที่ compute คืน ·
+// ส่วนที่ 2: รายการหักเก็บ `source` (MANUAL / COMMISSION_CLAWBACK) + รายการค่าคอม PAY/CLAWBACK ของบรรทัด (ยังมีผล — releasedAt ว่าง)
 export function payrollLineCreateData(
-  l: PreparedPayrollLine,
+  l: SavedPayrollLine,
 ): Prisma.PayrollLineUncheckedCreateWithoutPayrollInput {
   return {
     userId: l.userId,
@@ -50,7 +39,13 @@ export function payrollLineCreateData(
     ssoEmployee: l.ssoEmployee,
     whtAmount: l.whtAmount,
     netPaid: l.netPaid,
+    lineNo: l.lineNo,
+    systemPulledAt: l.systemPulledAt,
+    // interface → InputJsonObject ไม่มี index signature ⇒ cast ที่ขอบเก็บข้อมูลเท่านั้น · null = ไม่เขียน (คอลัมน์ว่าง)
+    attendanceSummary: l.attendanceSummary ? (l.attendanceSummary as unknown as Prisma.InputJsonObject) : undefined,
+    systemNotes: l.systemNotes ? (l.systemNotes as unknown as Prisma.InputJsonObject) : undefined,
     customIncome: l.customIncome.length > 0 ? { create: l.customIncome } : undefined,
     customDeduction: l.customDeduction.length > 0 ? { create: l.customDeduction } : undefined,
+    commissionItems: l.commissionItems.length > 0 ? { create: l.commissionItems } : undefined,
   };
 }

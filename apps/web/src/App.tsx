@@ -124,6 +124,9 @@ const CreditNoteViewPage = lazy(() => import('@/pages/CreditNoteViewPage'));
 const SaleReceiptViewPage = lazy(() => import('@/pages/SaleReceiptViewPage'));
 const ContractVerifyPage = lazy(() => import('@/pages/ContractVerifyPage'));
 const LiffPayment = lazy(() => import('@/pages/liff/LiffPayment'));
+const KioskPage = lazy(() => import('@/pages/kiosk/KioskPage'));
+const AttendancePage = lazy(() => import('@/pages/attendance/AttendancePage'));
+const MyTimePage = lazy(() => import('@/pages/attendance/MyTimePage'));
 const LiffContract = lazy(() => import('@/pages/liff/LiffContract'));
 const LiffRegister = lazy(() => import('@/pages/liff/LiffRegister'));
 const LiffHistory = lazy(() => import('@/pages/liff/LiffHistory'));
@@ -314,6 +317,8 @@ function App() {
         {/* LIFF Pages (public, opened from LINE) */}
         <Route path="/visit" element={<PublicAppointmentPage />} />
         <Route path="/pay/:token" element={<LiffPayment />} />
+        {/* เครื่องตอกบัตรประจำสาขา — สาธารณะ token-gated ไม่มี session (ลงเวลา ก้อน 10) */}
+        <Route path="/kiosk" element={<KioskPage />} />
         {/* Bare /liff and unknown /liff/* → redirect to primary LIFF page.
             Guards against Endpoint URL mis-configs and catch-all "*→/" hijacking
             LIFF traffic into ProtectedRoute. */}
@@ -519,6 +524,9 @@ function App() {
           <Route path="/after-sales/:id" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES']}><AfterSalesCasePage /></ProtectedRoute>} />
           <Route path="/imported-sales" element={<ImportedSalesPage />} />
           <Route path="/todos" element={<TodosPage />} />
+          <Route path="/attendance" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}><AttendancePage /></ProtectedRoute>} />
+          {/* เวลาทำงานของฉัน (ก้อน 10 D3) — ทุก role อ่านของตัวเอง (API GET /attendance/me) */}
+          <Route path="/attendance/me" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES']}><MyTimePage /></ProtectedRoute>} />
           {/* เส้นทางเดียว (roomId เป็น optional segment) — สองเส้นทางแยกทำให้หน้าถูก mount ใหม่ทุกครั้งที่เปิดห้อง:
               ตัวกรอง/มุมมอง/ฟองส่งไม่สำเร็จหาย และ socket ต่อใหม่ทุกคลิก */}
           <Route path="/inbox/:roomId?" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES']}><UnifiedInboxPage /></ProtectedRoute>} />

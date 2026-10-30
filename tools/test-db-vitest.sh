@@ -47,4 +47,5 @@ if ! ./node_modules/.bin/prisma migrate deploy --schema apps/api/prisma/schema.p
 fi
 printf 'All migrations applied on isolated PostgreSQL: %s\n' "$PG_ROOT"
 cd apps/api
-exec ../../node_modules/.bin/vitest run --no-file-parallelism "$@"
+# ห้าม exec: exec แทนที่ shell ทำให้ trap cleanup ไม่ทำงาน → Postgres ชั่วคราวค้างทุกครั้งที่รัน (เคยค้าง 31 ตัวจน initdb ล้ม "No space left on device")
+../../node_modules/.bin/vitest run --no-file-parallelism "$@"

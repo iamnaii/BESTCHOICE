@@ -1,5 +1,10 @@
 /** Choose readable print spacing when it fits; leave unused paper naturally blank.
  * Self-contained so server HTML can install the same browser-side print handler.
+ *
+ * A root marked `data-bc-paper-fit="fixed"` is skipped: its print layout fits the sheet on its own. Chromium
+ * dispatches `beforeprint` for `window.print()` while the screen media type is still active, so a document whose
+ * paper budget is tight (the payroll slip — one sheet per employee) must not depend on classes chosen from a
+ * screen-media measurement.
  */
 export function fitPaperSpacing(): () => void {
   const restore: Array<() => void> = [];
@@ -7,6 +12,7 @@ export function fitPaperSpacing(): () => void {
   const pageHeight = 259 * mm; // A4 minus 18 mm top/bottom and 2 mm rounding safety.
   const roots = document.querySelectorAll<HTMLElement>('.bc-document, body[data-bc-paper]');
   for (const root of Array.from(roots)) {
+    if (root.getAttribute('data-bc-paper-fit') === 'fixed') continue;
     if (!root.getBoundingClientRect().height) continue;
     const original = root.style.cssText;
     restore.push(() => {

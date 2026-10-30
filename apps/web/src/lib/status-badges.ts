@@ -361,10 +361,14 @@ export const enabledStatusMap: Record<string, StatusConfig> = {
 
 // ─── Commission statuses ──────────────────────────────────────────────────────
 
+// D4 ส่วนที่ 2 (P2-R19.7) — ค่าคอมจ่ายผ่านใบเงินเดือนเท่านั้น: อนุมัติแล้ว = รอเข้าใบเงินเดือน · จ่ายแล้ว = ใบเงินเดือนลงบัญชี
+// (CommissionStatus ไม่มี CANCELLED — คีย์เดิมถูกถอด)
 export const commissionStatusMap: Record<string, StatusConfig> = {
-  PENDING: { variant: 'warning', appearance: 'light', label: 'รอจ่าย' },
+  PENDING: { variant: 'warning', appearance: 'light', label: 'รออนุมัติ' },
+  APPROVED: { variant: 'primary', appearance: 'light', label: 'อนุมัติแล้ว · รอเข้าใบเงินเดือน' },
   PAID: { variant: 'success', appearance: 'light', label: 'จ่ายแล้ว' },
-  CANCELLED: { variant: 'destructive', appearance: 'light', label: 'ยกเลิก' },
+  CLAWED_BACK: { variant: 'destructive', appearance: 'light', label: 'เรียกคืน' },
+  PARTIALLY_CLAWED_BACK: { variant: 'warning', appearance: 'light', label: 'เรียกคืนบางส่วน' },
 };
 
 // ─── Expense statuses ──────────────────────────────────────────────────────────

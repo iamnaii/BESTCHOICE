@@ -2,7 +2,7 @@ import { NumberInput } from '@/components/ui/NumberInput';
 import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useId as useUiFieldId, useState } from 'react';
-import { AlertTriangle, ChevronDown, ChevronRight, CopyPlus, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, Clock, Coins, CopyPlus, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { suggestMonthlyWht } from '@/utils/pit-withholding';
 import {
@@ -14,12 +14,30 @@ import {
   newPayrollCustomIncome,
   newPayrollCustomDeduction,
 } from './types';
+import {
+  AttendanceSummaryBox,
+  isAttendanceSource,
+  PayrollSystemDeductions,
+  PayrollSystemRows,
+} from './payroll-system/PayrollSystemRows';
+import { PayrollReviewPanel } from './payroll-system/PayrollReviewPanel';
+import {
+  clawbackCarriedOf,
+  clearedSystemData,
+  copiedLineFromStored,
+  payrollLineTotals,
+  withoutStoredSystemData,
+  type StoredPayrollLine,
+} from './payroll-system/payroll-lines';
+import { payrollMetaQuery } from './payroll-system/payroll-meta';
+import { salaryTaxBaseText, whtSuggestionLabel } from './payroll-system/payroll-copy';
 import { formatNumberDecimal } from '@/utils/formatters';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { THAI_MONTHS_FULL } from '@/lib/date';
 import { useUiFlags } from '@/hooks/useUiFlags';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import EmployeeCombobox from '@/components/employees/EmployeeCombobox';
 import { type PickableEmployee } from '@/lib/api/employees';
@@ -29,9 +47,18 @@ interface Props {
   value: PayrollFormFields;
   onChange: (v: PayrollFormFields) => void;
   documentDate: string;
-  onDocumentDateChange: (d: string) => void;
+  /** ไม่ใช้แล้ว (วันที่จ่าย = วันที่กดลงบัญชี) — คงไว้ให้ผู้เรียกเดิม */
+  onDocumentDateChange?: (d: string) => void;
   /** สาขาของเอกสาร — ใช้ดึงใบเงินเดือนงวดล่าสุดมาเติม (R3-1 คัดลอกงวดก่อน). */
   branchId?: string;
+  /** ใบที่กำลังแก้ (ถ้ามี) — "ดึงข้อมูลงวดล่าสุดมาเติม" ต้องไม่เลือกใบนี้เอง */
+  documentId?: string;
+  /** Payroll D4 — ปุ่ม "บันทึกร่าง + คิดยอด": บันทึกร่าง (สร้าง/แก้) แล้วโหลดยอดที่ server คิดกลับมา */
+  onSaveAndCompute?: () => void;
+  computing?: boolean;
+  computeDisabled?: boolean;
+  /** ผู้ใช้ปัจจุบัน — แผงวันที่ต้องตรวจให้ลิงก์ไปหน้าลงเวลาเฉพาะคนที่เปิดได้ */
+  viewer?: { role: string; branchId: string | null } | null;
 }
 
 export interface IncomeOption {
@@ -62,22 +89,19 @@ const SCOPE_SWAP: Record<string, string> = {
   'S52-1204': '53-1104',
 };
 
-interface PayrollMetaResponse {
-  scope: 'SHOP' | 'FINANCE';
-  incomeWhitelist: { code: string; name: string }[];
-  cashAccounts: { code: string; name: string }[];
-}
-
 export function PayrollLinesSection({
   value,
   onChange,
   documentDate,
-  onDocumentDateChange,
   branchId,
+  documentId,
+  onSaveAndCompute,
+  computing = false,
+  computeDisabled = false,
+  viewer,
 }: Props) {
   const uiFieldId = useUiFieldId();
   const { taxExemptWarningEnabled } = useUiFlags();
-  const updateField = (patch: Partial<PayrollFormFields>) => onChange({ ...value, ...patch });
   const [copyLoading, setCopyLoading] = useState(false);
 
   // R3-1 — ดึงใบเงินเดือนล่าสุดของสาขา (ไม่นับใบ VOID) มาเติมทั้งชุด: ฝั่ง +
@@ -92,7 +116,8 @@ export function PayrollLinesSection({
       const { data: list } = await api.get<{
         data: Array<{ id: string; status: string; documentDate: string }>;
       }>(`/expense-documents?type=PAYROLL&branchId=${branchId}&limit=10`);
-      const candidate = (list.data ?? []).find((d) => d.status !== 'VOIDED');
+      // ไม่เลือกใบที่กำลังแก้อยู่ (ไม่งั้นได้ร่างตัวเองแล้วรายการปรับปรุงงวดก่อนหาย)
+      const candidate = (list.data ?? []).find((d) => d.status !== 'VOIDED' && d.id !== documentId);
       if (!candidate) {
         toast.info('ยังไม่มีใบเงินเดือนเดิมของสาขานี้ให้คัดลอก');
         return;
@@ -102,15 +127,7 @@ export function PayrollLinesSection({
         payroll?: {
           entityScope: 'SHOP' | 'FINANCE';
           payrollPeriod: string;
-          lines: Array<{
-            userId: string | null;
-            employeeName: string;
-            baseSalary: string;
-            ssoEmployee: string;
-            whtAmount: string;
-            customIncome: Array<{ accountCode: string; name: string; amount: string; isTaxable: boolean }>;
-            customDeduction: Array<{ accountCode: string; name: string; amount: string }>;
-          }>;
+          lines: StoredPayrollLine[];
         } | null;
       }>(`/expense-documents/${candidate.id}`);
       if (!doc.payroll || doc.payroll.lines.length === 0) {
@@ -120,31 +137,8 @@ export function PayrollLinesSection({
       onChange({
         ...value,
         entityScope: doc.payroll.entityScope === 'FINANCE' ? 'FINANCE' : 'SHOP',
-        lines: doc.payroll.lines.map((l) =>
-          newPayrollLine({
-            userId: l.userId ?? '',
-            employeeName: l.employeeName,
-            employeeTaxId: '',
-            baseSalary: String(parseFloat(l.baseSalary)),
-            ssoEmployee: String(parseFloat(l.ssoEmployee)),
-            whtAmount: String(parseFloat(l.whtAmount)),
-            customIncome: (l.customIncome ?? []).map((r) =>
-              newPayrollCustomIncome({
-                accountCode: r.accountCode,
-                name: r.name,
-                amount: String(parseFloat(r.amount)),
-                isTaxable: r.isTaxable,
-              }),
-            ),
-            customDeduction: (l.customDeduction ?? []).map((r) =>
-              newPayrollCustomDeduction({
-                accountCode: r.accountCode,
-                name: r.name,
-                amount: String(parseFloat(r.amount)),
-              }),
-            ),
-          }),
-        ),
+        // Payroll D4 — คัดลอกเฉพาะแถวที่กรอกเอง (MANUAL) · แถวระบบคิดใหม่ตอนบันทึก
+        lines: doc.payroll.lines.map(copiedLineFromStored),
       });
       toast.success(`ดึงข้อมูลจาก ${doc.number} แล้ว (${doc.payroll.lines.length} คน) — ตรวจยอดก่อนบันทึก`);
     } catch {
@@ -158,16 +152,12 @@ export function PayrollLinesSection({
 
   // Whitelist + names come from the server (single source of truth — the old
   // hardcoded list drifted from the seed and mislabeled 53-1105 as OT).
-  const meta = useQuery<PayrollMetaResponse>({
-    queryKey: ['payroll-meta', scope],
-    queryFn: async () =>
-      (await api.get(`/expense-documents/payroll/meta?scope=${scope}`)).data,
-    staleTime: 5 * 60 * 1000,
-  });
+  const meta = useQuery(payrollMetaQuery(scope));
   const incomeOptions: IncomeOption[] =
     meta.data?.incomeWhitelist?.length
       ? meta.data.incomeWhitelist.map((r) => ({ code: r.code, label: `${r.code} ${r.name}` }))
       : FALLBACK_INCOME_WHITELIST[scope];
+  const accountLabel = (code: string) => incomeOptions.find((o) => o.code === code)?.label ?? code;
 
   // Scope toggle — swap known custom-income codes across charts; unknown codes
   // reset to '' (the sub-table re-defaults to the first whitelist option).
@@ -178,8 +168,9 @@ export function PayrollLinesSection({
     onChange({
       ...value,
       entityScope: next,
+      // แถวระบบเป็นของผังฝั่งเดิม — server คิดใหม่ตอนบันทึก
       lines: value.lines.map((l) => ({
-        ...l,
+        ...withoutStoredSystemData(l),
         customIncome: (l.customIncome ?? []).map((r) => ({
           ...r,
           accountCode: SCOPE_SWAP[r.accountCode] ?? fallbackCode,
@@ -190,6 +181,18 @@ export function PayrollLinesSection({
             (next === 'SHOP') === r.accountCode.startsWith('S') ? r.accountCode : '',
         })),
       })),
+    });
+  };
+
+  // เปลี่ยนงวด: แถวระบบ/สรุป/วันที่ต้องตรวจที่เก็บไว้เป็นของงวดเดิม — ล้างทุกบรรทัด (server คิดใหม่ตอนบันทึก)
+  const setPeriod = (year: number, month: number) => {
+    const payrollPeriod = `${year - 543}-${String(month).padStart(2, '0')}`;
+    onChange({
+      ...value,
+      year,
+      month,
+      payrollPeriod,
+      lines: payrollPeriod === value.payrollPeriod ? value.lines : value.lines.map(withoutStoredSystemData),
     });
   };
 
@@ -209,11 +212,14 @@ export function PayrollLinesSection({
 
   const handlePickEmployee = (uid: string, emp: PickableEmployee) => {
     const base = emp.baseSalary != null ? parseFloat(emp.baseSalary) : NaN;
+    const current = value.lines.find((l) => l.uid === uid);
     const patch: Partial<PayrollLineForm> = {
       userId: emp.userId,
       employeeName: emp.name,
       // taxId snapshot is derived server-side on save — clear any stale value.
       employeeTaxId: '',
+      // Payroll D4 — แถวระบบ/หักคืนค่าคอม/รายการค่าคอม/สรุป/วันที่ต้องตรวจที่เก็บไว้เป็นของคนเดิม · คนใหม่คิดตอนบันทึก
+      ...(current?.userId !== emp.userId ? clearedSystemData() : {}),
     };
     if (!Number.isNaN(base)) patch.baseSalary = String(base);
     // F5 — only pre-fill SSO with a CAPPED value. If the period cap hasn't
@@ -234,34 +240,35 @@ export function PayrollLinesSection({
   const addLine = () => onChange({ ...value, lines: [...value.lines, newPayrollLine()] });
 
   const computed = value.lines.map((l) => {
-    const base = parseFloat(l.baseSalary) || 0;
-    const sso = parseFloat(l.ssoEmployee) || 0;
-    const wht = parseFloat(l.whtAmount) || 0;
-    const income = (l.customIncome ?? []).reduce(
-      (s, r) => s + (parseFloat(r.amount) || 0),
-      0,
-    );
-    const deduction = (l.customDeduction ?? []).reduce(
-      (s, r) => s + (parseFloat(r.amount) || 0),
-      0,
-    );
-    const taxableBase = (l.customIncome ?? [])
-      .filter((r) => r.isTaxable)
-      .reduce((s, r) => s + (parseFloat(r.amount) || 0), base);
-    const netPaid = Math.max(0, base + income - sso - wht - deduction);
-    const hasExtras = (l.customIncome?.length ?? 0) + (l.customDeduction?.length ?? 0) > 0;
-    // R3-4 — WHT แนะนำ (ขั้นบันได ม.48, ลดหย่อนมาตรฐาน) — advisory เท่านั้น
-    const suggestedWht = suggestMonthlyWht(taxableBase, sso);
+    // Payroll D4 — รายได้พิเศษ = แถวระบบที่เก็บไว้ (ตามที่บันทึกครั้งล่าสุด) + แถวที่กรอกเอง · ส่วนที่ 2: รายการหัก = กรอกเอง +
+    // หักคืนค่าคอม และฐาน WHT หักคืนค่าคอมแล้ว (สูตรเดียวกับ payrollTaxableGross ของ ภ.ง.ด.1 — P2-R18 / P2-R19.2)
+    const t = payrollLineTotals(l);
+    const hasExtras =
+      (l.customIncome?.length ?? 0) + (l.customDeduction?.length ?? 0) + (l.systemDeductions?.length ?? 0) > 0;
+    const reviewDays = l.systemNotes?.review.length ?? 0;
+    // ป้าย "OT n แถว" นับเฉพาะแถวจากลงเวลา (ส่วนที่ 2 มีแถวค่าคอมใน systemIncome ด้วย)
+    const attendanceRows = (l.systemIncome ?? []).filter((r) => isAttendanceSource(r.source)).length;
+    // ป้าย "ค่าคอม n" = จำนวนค่าคอมที่บรรทัดนี้จ่าย (กระดาน 1)
+    const commissionCount = (l.commissionItems ?? []).filter((i) => i.kind === 'PAY').length;
+    // R3-4 — WHT แนะนำ (ขั้นบันได ม.48, ลดหย่อนมาตรฐาน) — advisory เท่านั้น · ไม่รวมค่าคอม (หัก 3% แยกแถว — เจ้าของ 2026-10-29)
+    const suggestedWht = suggestMonthlyWht(t.salaryTaxableBase, t.sso);
     return {
       ...l,
-      baseN: base,
-      ssoN: sso,
-      whtN: wht,
-      incomeN: income,
-      deductionN: deduction,
-      taxableBaseN: taxableBase,
+      baseN: t.base,
+      ssoN: t.sso,
+      whtN: t.wht,
+      incomeN: t.income,
+      systemIncomeN: t.systemIncome,
+      reviewDays,
+      attendanceRows,
+      commissionCount,
+      deductionN: t.deduction,
+      clawbackN: t.clawback,
+      taxableBaseN: t.taxableBase,
+      salaryTaxableBaseN: t.salaryTaxableBase,
+      commissionIncomeN: t.commissionIncome,
       suggestedWht,
-      netPaid,
+      netPaid: t.netPaid,
       hasExtras,
     };
   });
@@ -269,6 +276,7 @@ export function PayrollLinesSection({
   const sumSso = computed.reduce((s, l) => s + l.ssoN, 0);
   const sumWht = computed.reduce((s, l) => s + l.whtN, 0);
   const sumIncome = computed.reduce((s, l) => s + l.incomeN, 0);
+  const sumSystemIncome = computed.reduce((s, l) => s + l.systemIncomeN, 0);
   const sumDeduction = computed.reduce((s, l) => s + l.deductionN, 0);
   const sumNet = computed.reduce((s, l) => s + l.netPaid, 0);
 
@@ -308,16 +316,33 @@ export function PayrollLinesSection({
             ? 'ลงบัญชีเป็นค่าใช้จ่ายหน้าร้าน (ผัง SHOP: S52-1201) — จ่ายจากบัญชี SHOP'
             : 'ลงบัญชีเป็นค่าใช้จ่ายส่วนกลาง (ผัง FINANCE: 53-1101) — จ่ายจากบัญชี FINANCE'}
         </p>
-        {branchId && (
-          <button data-ui-control="button"
-            type="button"
-            onClick={copyFromLatest}
-            disabled={copyLoading}
-            className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs border border-dashed border-border rounded-lg text-muted-foreground hover:text-foreground hover:border-primary disabled:opacity-50"
-          >
-            <CopyPlus className="size-3.5" />
-            {copyLoading ? 'กำลังดึงข้อมูล…' : 'ดึงข้อมูลงวดล่าสุดมาเติม'}
-          </button>
+        {(branchId || onSaveAndCompute) && (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {branchId && (
+              <button data-ui-control="button"
+                type="button"
+                onClick={copyFromLatest}
+                disabled={copyLoading}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs border border-dashed border-border rounded-lg text-muted-foreground hover:text-foreground hover:border-primary disabled:opacity-50"
+              >
+                <CopyPlus className="size-3.5" />
+                {copyLoading ? 'กำลังดึงข้อมูล…' : 'ดึงข้อมูลงวดล่าสุดมาเติม'}
+              </button>
+            )}
+            {/* Payroll D4 — บันทึกร่างแล้วแสดงยอดที่ server คิดจากลงเวลา (ไม่มี endpoint ดูตัวอย่างแยก · สเปก §17) */}
+            {onSaveAndCompute && (
+              <Button
+                type="button"
+                size="sm"
+                onClick={onSaveAndCompute}
+                disabled={computing || computeDisabled}
+                aria-busy={computing}
+              >
+                <RefreshCw className={cn('size-3.5', computing && 'animate-spin')} aria-hidden="true" />
+                บันทึกร่าง + คิดยอด
+              </Button>
+            )}
+          </div>
         )}
       </div>
 
@@ -326,13 +351,7 @@ export function PayrollLinesSection({
           <label htmlFor={`${uiFieldId}-1`} className="block text-xs font-medium mb-1">ปี (พ.ศ.)</label>
           <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-1`}
             value={value.year}
-            onChange={(e) => {
-              const y = Number(e.target.value);
-              updateField({
-                year: y,
-                payrollPeriod: `${y - 543}-${String(value.month).padStart(2, '0')}`,
-              });
-            }}
+            onChange={(e) => setPeriod(Number(e.target.value), value.month)}
             className="px-3 py-2 border border-input rounded-lg text-sm bg-background"
           >
             {[0, 1, 2, 3, 4].map((offset) => {
@@ -349,13 +368,7 @@ export function PayrollLinesSection({
           <label htmlFor={`${uiFieldId}-2`} className="block text-xs font-medium mb-1">เดือน</label>
           <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-2`}
             value={value.month}
-            onChange={(e) => {
-              const m = Number(e.target.value);
-              updateField({
-                month: m,
-                payrollPeriod: `${value.year - 543}-${String(m).padStart(2, '0')}`,
-              });
-            }}
+            onChange={(e) => setPeriod(value.year, Number(e.target.value))}
             className="px-3 py-2 border border-input rounded-lg text-sm bg-background"
           >
             {THAI_MONTHS_FULL.map((label, idx) => (
@@ -366,90 +379,106 @@ export function PayrollLinesSection({
           </NativeSelect>
         </div>
         <div>
-          <label htmlFor={`${uiFieldId}-3`} className="block text-xs font-medium mb-1">
-            วันที่จ่ายเงิน <span className="text-destructive">*</span>
-          </label>
-          <ThaiDateInput id={`${uiFieldId}-3`}
-            value={documentDate}
-            onChange={(e) => onDocumentDateChange(e.target.value)}
-            required
-            className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background"
-          />
+          {/* คำตัดสินเจ้าของ 2026-10-28 — วันที่จ่ายเงิน = วันที่กดลงบัญชี (เลือกได้ที่หน้ารายละเอียดของใบตอนอนุมัติ/ลงบัญชี) */}
+          <span className="block text-xs font-medium mb-1">วันที่จ่ายเงิน</span>
+          <p className="rounded-lg border border-dashed border-border px-3 py-2 text-sm text-muted-foreground leading-snug">
+            ใช้วันที่กดลงบัญชี — เลือกวันอื่นได้ตอนอนุมัติ/ลงบัญชี
+          </p>
         </div>
       </div>
 
-      <div className="max-w-full overflow-x-auto rounded-xl border border-border" role="region" aria-label="รายการเงินเดือน" tabIndex={0}>
-        <ScreenTable className="w-full min-w-[52rem] text-sm">
-          <thead className="bg-muted/50">
-            <tr>
-              <th className="w-8 px-2 py-2"></th>
-              <th className="text-left px-3 py-2 font-medium">
-                ชื่อ <span className="text-destructive">*</span>
-              </th>
-              <th className="text-left px-3 py-2 font-medium">เลขบัตร</th>
-              <th className="text-right px-3 py-2 font-medium">
-                ฐาน <span className="text-destructive">*</span>
-              </th>
-              <th className="text-right px-3 py-2 font-medium">SSO</th>
-              <th className="text-right px-3 py-2 font-medium">WHT</th>
-              <th className="text-right px-3 py-2 font-medium">สุทธิ</th>
-              <th className="px-3 py-2 w-8"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {computed.map((row) => (
-              <PayrollRow
-                key={row.uid}
-                row={row}
-                disableRemove={value.lines.length === 1}
-                incomeOptions={incomeOptions}
-                onUpdate={(p) => updateLine(row.uid, p)}
-                onRemove={() => removeLine(row.uid)}
-                onPickEmployee={(emp) => handlePickEmployee(row.uid, emp)}
-              />
-            ))}
-          </tbody>
-          <tfoot className="bg-muted/30 border-t border-border">
-            <tr>
-              <td></td>
-              <td colSpan={2} className="px-3 py-2 text-right font-medium">
-                รวม
-              </td>
-              <td className="px-3 py-2 text-right font-mono font-semibold">
-                {formatNumberDecimal(sumBase)}
-              </td>
-              <td className="px-3 py-2 text-right font-mono font-semibold">
-                {formatNumberDecimal(sumSso)}
-              </td>
-              <td className="px-3 py-2 text-right font-mono font-semibold">
-                {formatNumberDecimal(sumWht)}
-              </td>
-              <td className="px-3 py-2 text-right font-mono font-semibold text-primary">
-                {formatNumberDecimal(sumNet)}
-              </td>
-              <td></td>
-            </tr>
-            {(sumIncome > 0 || sumDeduction > 0) && (
-              <tr className="text-xs">
-                <td></td>
-                <td colSpan={6} className="px-3 py-1 text-right text-muted-foreground">
-                  รวมรายได้พิเศษ {formatNumberDecimal(sumIncome)} · รวมหัก {formatNumberDecimal(sumDeduction)}
-                  {' · สุทธิ = ฐาน + รายได้พิเศษ − SSO − WHT − หัก'}
-                </td>
-                <td></td>
-              </tr>
-            )}
-          </tfoot>
-        </ScreenTable>
-      </div>
+      <div className="flex flex-wrap items-start gap-4">
+        <div className="flex min-w-0 flex-[999_1_40rem] flex-col gap-2">
+          <div className="max-w-full overflow-x-auto rounded-xl border border-border" role="region" aria-label="รายการเงินเดือน" tabIndex={0}>
+            <ScreenTable className="w-full min-w-[58rem] text-sm">
+              <thead className="bg-muted/50">
+                <tr>
+                  <th className="w-8 px-2 py-2"></th>
+                  <th className="text-left px-3 py-2 font-medium">
+                    ชื่อ <span className="text-destructive">*</span>
+                  </th>
+                  <th className="text-left px-3 py-2 font-medium">เลขบัตร</th>
+                  <th className="text-right px-3 py-2 font-medium">
+                    ฐาน <span className="text-destructive">*</span>
+                  </th>
+                  <th className="text-right px-3 py-2 font-medium">รายได้พิเศษ</th>
+                  <th className="text-right px-3 py-2 font-medium">SSO</th>
+                  <th className="text-right px-3 py-2 font-medium">WHT</th>
+                  <th className="text-right px-3 py-2 font-medium">สุทธิ</th>
+                  <th className="px-3 py-2 w-8"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {computed.map((row) => (
+                  <PayrollRow
+                    key={row.uid}
+                    row={row}
+                    disableRemove={value.lines.length === 1}
+                    incomeOptions={incomeOptions}
+                    accountLabel={accountLabel}
+                    period={value.payrollPeriod}
+                    onUpdate={(p) => updateLine(row.uid, p)}
+                    onRemove={() => removeLine(row.uid)}
+                    onPickEmployee={(emp) => handlePickEmployee(row.uid, emp)}
+                  />
+                ))}
+              </tbody>
+              <tfoot className="bg-muted/30 border-t border-border">
+                <tr>
+                  <td></td>
+                  <td colSpan={2} className="px-3 py-2 text-right font-medium">
+                    รวม
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono font-semibold">
+                    {formatNumberDecimal(sumBase)}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono font-semibold">
+                    {formatNumberDecimal(sumIncome)}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono font-semibold">
+                    {formatNumberDecimal(sumSso)}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono font-semibold">
+                    {formatNumberDecimal(sumWht)}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono font-semibold text-primary">
+                    {formatNumberDecimal(sumNet)}
+                  </td>
+                  <td></td>
+                </tr>
+                {(sumIncome > 0 || sumDeduction > 0) && (
+                  <tr className="text-xs">
+                    <td></td>
+                    <td colSpan={7} className="px-3 py-1 text-right text-muted-foreground leading-snug">
+                      รวมรายได้พิเศษ {formatNumberDecimal(sumIncome)}
+                      {sumSystemIncome > 0 &&
+                        ` (จากระบบ ${formatNumberDecimal(sumSystemIncome)} · กรอกเอง ${formatNumberDecimal(sumIncome - sumSystemIncome)})`}
+                      {' · '}รวมหัก {formatNumberDecimal(sumDeduction)}
+                      {' · สุทธิ = ฐาน + รายได้พิเศษ − SSO − WHT − หัก'}
+                    </td>
+                    <td></td>
+                  </tr>
+                )}
+              </tfoot>
+            </ScreenTable>
+          </div>
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground leading-snug">
+            <RefreshCw className="size-3.5 shrink-0" aria-hidden="true" />
+            ระบบคิด OT ใหม่ทุกครั้งที่บันทึก
+          </p>
 
-      <button data-ui-control="button"
-        type="button"
-        onClick={addLine}
-        className="w-full flex items-center justify-center gap-1.5 py-2 border-2 border-dashed border-border rounded-lg text-sm text-muted-foreground hover:text-foreground hover:border-primary"
-      >
-        <Plus className="size-4" /> เพิ่มพนักงาน
-      </button>
+          <button data-ui-control="button"
+            type="button"
+            onClick={addLine}
+            className="w-full flex items-center justify-center gap-1.5 py-2 border-2 border-dashed border-border rounded-lg text-sm text-muted-foreground hover:text-foreground hover:border-primary"
+          >
+            <Plus className="size-4" /> เพิ่มพนักงาน
+          </button>
+        </div>
+        <div className="min-w-0 flex-[1_1_18rem] empty:hidden">
+          <PayrollReviewPanel lines={value.lines} viewer={viewer} />
+        </div>
+      </div>
     </div>
   );
 }
@@ -458,6 +487,8 @@ function PayrollRow({
   row,
   disableRemove,
   incomeOptions,
+  accountLabel,
+  period,
   onUpdate,
   onRemove,
   onPickEmployee,
@@ -468,13 +499,23 @@ function PayrollRow({
     ssoN: number;
     whtN: number;
     incomeN: number;
+    systemIncomeN: number;
+    reviewDays: number;
+    attendanceRows: number;
+    commissionCount: number;
     deductionN: number;
+    clawbackN: number;
     taxableBaseN: number;
+    salaryTaxableBaseN: number;
+    commissionIncomeN: number;
     suggestedWht: number;
     hasExtras: boolean;
   };
   disableRemove: boolean;
   incomeOptions: IncomeOption[];
+  accountLabel: (code: string) => string;
+  /** งวดของใบ (YYYY-MM) — ตัวเลือกพนักงานให้คนที่ลาออกระหว่างงวดได้ + ป้ายเดือนของสรุปลงเวลา */
+  period: string;
   onUpdate: (p: Partial<PayrollLineForm>) => void;
   onRemove: () => void;
   onPickEmployee: (emp: PickableEmployee) => void;
@@ -492,7 +533,7 @@ function PayrollRow({
           <button
             type="button"
             onClick={() => onUpdate({ _expanded: !expanded })}
-            className="text-muted-foreground hover:text-foreground"
+            className="inline-flex size-11 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground lg:size-9"
             aria-label={expanded ? 'ย่อ' : 'ขยาย'}
             aria-expanded={expanded}
           >
@@ -504,7 +545,30 @@ function PayrollRow({
             value={row.employeeName}
             onSelect={onPickEmployee}
             placeholder="เลือกพนักงาน"
+            period={period}
           />
+          {(row.attendanceRows > 0 || row.commissionCount > 0 || row.reviewDays > 0) && (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {row.attendanceRows > 0 && (
+                <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary leading-snug">
+                  <Clock className="size-3 shrink-0" aria-hidden="true" />
+                  {`OT ${row.attendanceRows} แถว`}
+                </span>
+              )}
+              {row.commissionCount > 0 && (
+                <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary leading-snug">
+                  <Coins className="size-3 shrink-0" aria-hidden="true" />
+                  {`ค่าคอม ${row.commissionCount}`}
+                </span>
+              )}
+              {row.reviewDays > 0 && (
+                <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning-strong leading-snug">
+                  <AlertTriangle className="size-3 shrink-0" aria-hidden="true" />
+                  {`ต้องตรวจ ${row.reviewDays} วัน`}
+                </span>
+              )}
+            </div>
+          )}
         </td>
         <td className="px-2 py-1">
           <span className="block px-2 py-1.5 text-xs text-muted-foreground italic leading-snug">
@@ -518,6 +582,9 @@ function PayrollRow({
             onChange={(e) => onUpdate({ baseSalary: e.target.value })}
             className="w-full px-2 py-1.5 border border-input rounded text-sm bg-background text-right font-mono"
           />
+        </td>
+        <td className={cn('px-3 py-2 text-right font-mono', row.incomeN === 0 && 'text-muted-foreground')}>
+          {formatNumberDecimal(row.incomeN)}
         </td>
         <td className="px-2 py-1">
           <NumberInput unstyled aria-label="ประกันสังคมพนักงาน"
@@ -542,15 +609,18 @@ function PayrollRow({
               className="block w-full text-right text-[10px] text-muted-foreground hover:text-primary mt-0.5"
               title="ภาษีแนะนำจากขั้นบันได ม.48 หักลดหย่อนมาตรฐาน (ส่วนตัว 60,000 + ค่าใช้จ่าย 50% + ปกส.) — กดเพื่อใช้ค่านี้"
             >
-              แนะนำ ~{formatNumberDecimal(row.suggestedWht)}
+              {whtSuggestionLabel(formatNumberDecimal(row.suggestedWht), row.commissionIncomeN > 0)}
             </button>
           )}
         </td>
         <td className="px-3 py-2 text-right font-mono">
           {formatNumberDecimal(row.netPaid)}
-          {row.hasExtras && (
+          {/* แสดงเฉพาะฝั่งที่มียอด — ไม่พิมพ์ "−0.00" */}
+          {row.hasExtras && (row.incomeN > 0 || row.deductionN > 0) && (
             <div className="text-[10px] text-muted-foreground mt-0.5">
-              +{formatNumberDecimal(row.incomeN)} / −{formatNumberDecimal(row.deductionN)}
+              {[row.incomeN > 0 && `+${formatNumberDecimal(row.incomeN)}`, row.deductionN > 0 && `−${formatNumberDecimal(row.deductionN)}`]
+                .filter(Boolean)
+                .join(' / ')}
             </div>
           )}
         </td>
@@ -559,7 +629,7 @@ function PayrollRow({
             type="button"
             onClick={onRemove}
             disabled={disableRemove}
-            className="text-muted-foreground hover:text-destructive disabled:opacity-30"
+            className="inline-flex size-11 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-destructive disabled:opacity-30 lg:size-9"
             aria-label="ลบ"
           >
             <Trash2 className="size-4" />
@@ -569,17 +639,38 @@ function PayrollRow({
       {expanded && (
         <tr className="border-t border-border bg-muted/10">
           <td></td>
-          <td colSpan={7} className="px-3 py-3 space-y-3">
+          <td colSpan={8} className="px-3 py-3 space-y-3">
+            <PayrollSystemRows
+              rows={row.systemIncome}
+              commissionItems={row.commissionItems}
+              period={period}
+              accountLabel={accountLabel}
+            />
             <CustomIncomeSubTable
               rows={row.customIncome ?? []}
               options={incomeOptions}
               onChange={updateIncome}
             />
+            <PayrollSystemDeductions
+              rows={row.systemDeductions ?? []}
+              commissionItems={row.commissionItems}
+              commissionIncome={row.commissionIncomeN}
+              carried={clawbackCarriedOf(row.systemNotes)?.carried}
+              accountLabel={accountLabel}
+            />
             <CustomDeductionSubTable rows={row.customDeduction ?? []} onChange={updateDeduction} />
-            {row.taxableBaseN !== row.baseN && (
-              <div className="text-xs text-muted-foreground italic">
-                ฐานคำนวณ WHT = {formatNumberDecimal(row.taxableBaseN)} (รวมรายได้พิเศษที่เสียภาษี)
+            {row.attendanceSummary && <AttendanceSummaryBox summary={row.attendanceSummary} period={period} />}
+            {row.commissionIncomeN > 0 ? (
+              <div className="text-xs text-muted-foreground italic leading-snug">
+                {salaryTaxBaseText(formatNumberDecimal(row.salaryTaxableBaseN))}
               </div>
+            ) : (
+              row.taxableBaseN !== row.baseN && (
+                <div className="text-xs text-muted-foreground italic leading-snug">
+                  ฐานคำนวณ WHT = {formatNumberDecimal(row.taxableBaseN)} (รวมรายได้พิเศษที่เสียภาษี
+                  {row.clawbackN > 0 && ' − หักคืนค่าคอม'})
+                </div>
+              )
             )}
           </td>
         </tr>
@@ -612,23 +703,24 @@ function CustomIncomeSubTable({
 
   return (
     <div className="rounded-lg border border-border bg-card overflow-hidden">
-      <div className="bg-emerald-50 dark:bg-emerald-950/30 px-3 py-1.5 text-xs font-medium text-emerald-900 dark:text-emerald-100">
-        + รายได้พิเศษ (โบนัส / OT / เบี้ยเลี้ยง)
+      <div className="bg-muted/50 px-3 py-1.5 text-xs font-medium text-foreground leading-snug">
+        + รายได้พิเศษ (โบนัส / OT / เบี้ยเลี้ยง) — กรอกเอง
       </div>
       <ScreenTable className="w-full text-xs">
         <thead className="bg-muted/30 text-muted-foreground">
           <tr>
             <th className="text-left px-2 py-1 w-40">บัญชี</th>
-            <th className="text-left px-2 py-1">รายการ</th>
-            <th className="text-right px-2 py-1 w-28">จำนวน</th>
-            <th className="text-center px-2 py-1 w-16">ภาษี</th>
+            <th className="text-left px-2 py-1 min-w-32">รายการ</th>
+            <th className="text-right px-2 py-1 w-28 whitespace-nowrap">จำนวน</th>
+            <th className="text-center px-2 py-1 w-16 whitespace-nowrap">ภาษี</th>
+            <th className="w-44"></th>
             <th className="w-8"></th>
           </tr>
         </thead>
         <tbody>
           {rows.length === 0 && (
             <tr>
-              <td colSpan={5} className="px-2 py-2 text-center text-muted-foreground italic">
+              <td colSpan={6} className="px-2 py-2 text-center text-muted-foreground italic">
                 ไม่มี
               </td>
             </tr>
@@ -668,25 +760,37 @@ function CustomIncomeSubTable({
               </td>
               <td className="px-2 py-1 text-center">
                 <label
-                  className="inline-flex items-center gap-1 cursor-pointer text-xs"
+                  className="inline-flex min-h-11 items-center gap-1.5 rounded-md px-1.5 cursor-pointer text-xs hover:bg-accent lg:min-h-9"
                   title={r.isTaxable ? 'รายได้เสียภาษี' : 'ม.42 ยกเว้นภาษี'}
                 >
                   <input
                     type="checkbox"
                     checked={r.isTaxable}
                     onChange={(e) => update(r.uid, { isTaxable: e.target.checked })}
-                    className="size-3.5"
+                    className="size-4"
                   />
                   <span className={r.isTaxable ? '' : 'text-muted-foreground line-through'}>
                     เสีย
                   </span>
                 </label>
               </td>
+              <td className="px-2 py-1">
+                {/* Payroll D4 — แก้ OT ที่จ่ายขาดของเดือนก่อน: ส่ง isAdjustment ⇒ server ไม่นับเป็น OT ที่กรอกซ้ำ */}
+                <label className="inline-flex min-h-11 items-center gap-1.5 rounded-md px-1.5 cursor-pointer whitespace-nowrap text-xs leading-snug hover:bg-accent lg:min-h-9">
+                  <input
+                    type="checkbox"
+                    checked={r.isAdjustment}
+                    onChange={(e) => update(r.uid, { isAdjustment: e.target.checked })}
+                    className="size-4"
+                  />
+                  รายการปรับปรุงงวดก่อน
+                </label>
+              </td>
               <td className="px-1 py-1 text-center">
                 <button
                   type="button"
                   onClick={() => remove(r.uid)}
-                  className="text-muted-foreground hover:text-destructive"
+                  className="inline-flex size-11 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-destructive lg:size-9"
                   aria-label="ลบรายได้พิเศษ"
                 >
                   <Trash2 className="size-3" />
@@ -735,15 +839,15 @@ function CustomDeductionSubTable({
 
   return (
     <div className="rounded-lg border border-border bg-card overflow-hidden">
-      <div className="bg-amber-50 dark:bg-amber-950/30 px-3 py-1.5 text-xs font-medium text-amber-900 dark:text-amber-100">
+      <div className="bg-warning/10 px-3 py-1.5 text-xs font-medium text-warning-strong leading-snug">
         − รายการหัก (คืนเงินยืม / ทดรองจ่าย / ค่ายูนิฟอร์ม)
       </div>
       <ScreenTable className="w-full text-xs">
         <thead className="bg-muted/30 text-muted-foreground">
           <tr>
             <th className="text-left px-2 py-1 w-32">บัญชี</th>
-            <th className="text-left px-2 py-1">รายการ</th>
-            <th className="text-right px-2 py-1 w-28">จำนวน</th>
+            <th className="text-left px-2 py-1 min-w-32">รายการ</th>
+            <th className="text-right px-2 py-1 w-28 whitespace-nowrap">จำนวน</th>
             <th className="w-8"></th>
           </tr>
         </thead>
@@ -787,7 +891,7 @@ function CustomDeductionSubTable({
                 <button
                   type="button"
                   onClick={() => remove(r.uid)}
-                  className="text-muted-foreground hover:text-destructive"
+                  className="inline-flex size-11 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-destructive lg:size-9"
                   aria-label="ลบรายการหัก"
                 >
                   <Trash2 className="size-3" />

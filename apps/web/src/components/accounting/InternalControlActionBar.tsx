@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import {
   ArrowLeft,
   Save,
@@ -67,6 +67,16 @@ export interface InternalControlActionBarProps {
   canPost?: boolean;
   /** Pending mutation indicator — disables all buttons. */
   isLoading?: boolean;
+  /**
+   * Why the server would refuse the DRAFT primary action right now (ส่งให้อนุมัติ /
+   * บันทึกและลงบัญชี) — disables it and shows the reason under it. Payroll D4: cutoff
+   * not reached / device-conflict flag.
+   */
+  postBlockedReason?: string;
+  /** Same for the READY approve button (อนุมัติและลงบัญชี). */
+  approveBlockedReason?: string;
+  /** Page-specific buttons rendered in the action row next to ยกเลิก/ปิด (any status). */
+  extraActions?: ReactNode;
 
   /** Override print button label — defaults per module. */
   printLabel?: string;
@@ -176,6 +186,22 @@ function Stepper({
   );
 }
 
+/**
+ * A primary action the server would refuse right now: the disabled button with the
+ * reason under it (status in words, not only a greyed button). No reason = the button as is.
+ */
+function BlockedReason({ id, reason, children }: { id: string; reason?: string; children: ReactNode }) {
+  if (!reason) return <>{children}</>;
+  return (
+    <span className="inline-flex flex-col items-end gap-1">
+      <span className="cursor-not-allowed">{children}</span>
+      <span id={id} className="text-xs leading-snug text-muted-foreground">
+        {reason}
+      </span>
+    </span>
+  );
+}
+
 export function InternalControlActionBar(props: InternalControlActionBarProps) {
   const {
     module,
@@ -190,6 +216,9 @@ export function InternalControlActionBar(props: InternalControlActionBarProps) {
     errorCount = 0,
     canPost = true,
     isLoading = false,
+    postBlockedReason,
+    approveBlockedReason,
+    extraActions,
     printLabel,
     docSubtitle,
     docNumber,
@@ -207,6 +236,8 @@ export function InternalControlActionBar(props: InternalControlActionBarProps) {
 
   const flags = useUiFlags();
   const [reverseDialogOpen, setReverseDialogOpen] = useState(false);
+  const postReasonId = useId();
+  const approveReasonId = useId();
 
   const recorder =
     recorderName ?? auditLog.find((e) => e.event === 'CREATED')?.userName ??
@@ -333,7 +364,7 @@ export function InternalControlActionBar(props: InternalControlActionBarProps) {
             )}
           </div>
 
-          <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="flex flex-wrap items-start justify-end gap-2">
             {/* Universal "go back / close" button — label depends on context */}
             <Button
               type="button"
@@ -352,6 +383,8 @@ export function InternalControlActionBar(props: InternalControlActionBarProps) {
               })()}
             </Button>
 
+            {extraActions}
+
             {/* DRAFT actions */}
             {status === 'DRAFT' && (
               <>
@@ -369,26 +402,32 @@ export function InternalControlActionBar(props: InternalControlActionBarProps) {
                 )}
                 {makerCheckerEnabled
                   ? onSubmitForApproval && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={onSubmitForApproval}
-                        disabled={isLoading || !canPost}
-                      >
-                        <Send size={14} className="mr-1.5" aria-hidden />
-                        ส่งให้อนุมัติ
-                      </Button>
+                      <BlockedReason id={postReasonId} reason={postBlockedReason}>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={onSubmitForApproval}
+                          disabled={isLoading || !canPost || !!postBlockedReason}
+                          aria-describedby={postBlockedReason ? postReasonId : undefined}
+                        >
+                          <Send size={14} className="mr-1.5" aria-hidden />
+                          ส่งให้อนุมัติ
+                        </Button>
+                      </BlockedReason>
                     )
                   : onPost && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={onPost}
-                        disabled={isLoading || !canPost}
-                      >
-                        <CheckCircle2 size={14} className="mr-1.5" aria-hidden />
-                        บันทึกและลงบัญชี
-                      </Button>
+                      <BlockedReason id={postReasonId} reason={postBlockedReason}>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={onPost}
+                          disabled={isLoading || !canPost || !!postBlockedReason}
+                          aria-describedby={postBlockedReason ? postReasonId : undefined}
+                        >
+                          <CheckCircle2 size={14} className="mr-1.5" aria-hidden />
+                          บันทึกและลงบัญชี
+                        </Button>
+                      </BlockedReason>
                     )}
               </>
             )}
@@ -410,10 +449,18 @@ export function InternalControlActionBar(props: InternalControlActionBarProps) {
                   </Button>
                 )}
                 {onApprove && (
-                  <Button type="button" size="sm" onClick={onApprove} disabled={isLoading}>
-                    <CheckCircle2 size={14} className="mr-1.5" aria-hidden />
-                    อนุมัติและลงบัญชี
-                  </Button>
+                  <BlockedReason id={approveReasonId} reason={approveBlockedReason}>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={onApprove}
+                      disabled={isLoading || !!approveBlockedReason}
+                      aria-describedby={approveBlockedReason ? approveReasonId : undefined}
+                    >
+                      <CheckCircle2 size={14} className="mr-1.5" aria-hidden />
+                      อนุมัติและลงบัญชี
+                    </Button>
+                  </BlockedReason>
                 )}
               </>
             )}

@@ -1,6 +1,8 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { creditSnapshot } from './trade-in-credit.service';
+import { clawBackCommissions } from '../../commission/commission-clawback.util';
+import { isCoveredByPayout, isLockedPayout } from '../../commission/commission-payout-cover.util';
 
 /** Keep a canceled credit purchase out of sales/receivable/commission reports.
  * Runs in the contract transaction; settled money must be unwound first.
@@ -8,7 +10,10 @@ import { creditSnapshot } from './trade-in-credit.service';
  * `opts.commissionHandledByCaller` — ยกเลิกสัญญา (approveCancellation) ส่ง true: คำตัดสินเจ้าของ 2026-09-20
  * "สัญญาเครดิตเทิร์นยกเลิกได้เหมือนสัญญาทั่วไป" ⇒ ค่าคอมที่จ่ายแล้ว/อยู่ในรอบจ่ายที่อนุมัติแล้ว **ไม่บล็อก** —
  * `clawbackContractCommission` เรียกคืนเฉพาะที่ยังไม่จ่ายและรายงานรอบที่ล็อกไว้ใน audit แทน. ลบร่างสัญญา (softDelete)
- * ไม่ส่ง ⇒ ด่านค่าคอมเดิมยังคุมร่างยุคเส้นทางเก่าตามเดิม. */
+ * ไม่ส่ง ⇒ ด่านรอบจ่ายเดิมยังคุมร่างยุคเส้นทางเก่าตามเดิม.
+ *
+ * ค่าคอมที่จ่ายแล้วไม่บล็อกอีก (D4 ส่วนที่ 2): เรียกคืนผ่าน `clawBackCommissions` (ตัวช่วยเดียว) — CLAWED_BACK +
+ * `clawbackAmount = paidAmount` แล้วใบเงินเดือนงวดถัดไปหักคืน. ที่ยังบล็อกคือรอบจ่ายเดิมที่อนุมัติ/จ่ายแล้วและครอบค่าคอมนี้. */
 export async function cleanupCreditContractSale(tx: Prisma.TransactionClient,
   contract: { id: string; status: string; tradeInCreditSnapshot?: Prisma.JsonValue; bundleProductIds?: string[] | null },
   actorId: string, reason: string, opts: { commissionHandledByCaller?: boolean } = {}) {
@@ -40,26 +45,20 @@ export async function cleanupCreditContractSale(tx: Prisma.TransactionClient,
   if (!opts.commissionHandledByCaller) {
     const commissions = await tx.salesCommission.findMany({ where: {
       OR: [{ contractId: contract.id }, { saleId: { in: ids } }], deletedAt: null, status: { not: 'CLAWED_BACK' } } });
-    if (commissions.some(c => !['PENDING', 'APPROVED'].includes(c.status) || c.paidAt || Number(c.paidAmount) > 0)) {
-      throw new BadRequestException('ค่าคอมรายการนี้จ่ายแล้ว ต้องเรียกคืนค่าคอมก่อนคืนเครดิตเทิร์น');
-    }
     const payouts = commissions.length ? await tx.commissionPayout.findMany({ where: { deletedAt: null,
       OR: commissions.map(c => ({ salespersonId: c.salespersonId, period: c.period })) } }) : [];
-    const covering = payouts.filter(p => commissions.some(c => c.salespersonId === p.salespersonId
-      && c.period === p.period && (!p.generatedAt || c.createdAt <= p.generatedAt)));
-    if (covering.some(p => !['DRAFT', 'CANCELLED'].includes(p.status))) {
-      throw new BadRequestException('ค่าคอมรายการนี้อยู่ในรอบจ่ายที่อนุมัติแล้ว ต้องยกเลิกรอบจ่ายก่อนคืนเครดิตเทิร์น');
+    const covering = payouts.filter(p => commissions.some(c => isCoveredByPayout(c, p)));
+    if (covering.some(isLockedPayout)) {
+      // P2-R26 — ไม่มีเมนูยกเลิก/แก้ไขรอบจ่าย (และรอบแบบเดิมจ่ายผ่านระบบไม่ได้แล้ว) ⇒ ห้ามบอกให้ "ยกเลิกรอบจ่ายก่อน"
+      throw new BadRequestException(
+        'ค่าคอมรายการนี้อยู่ในรอบจ่ายค่าคอมแบบเดิมที่อนุมัติหรือจ่ายแล้ว — คืนเครดิตเทิร์นไม่ได้ เพราะยังไม่มีเมนูยกเลิก/แก้ไขรอบจ่าย ให้เจ้าของหรือผจก.การเงินตัดสินใจก่อน',
+      );
     }
     for (const payout of covering.filter(p => p.status === 'DRAFT')) {
       const result = await tx.commissionPayout.updateMany({ where: { id: payout.id, status: 'DRAFT', deletedAt: null }, data: { deletedAt: now } });
       if (result.count !== 1) throw new ConflictException('รอบจ่ายค่าคอมเปลี่ยนแล้ว กรุณาตรวจใหม่');
     }
-    if (commissions.length) {
-      const result = await tx.salesCommission.updateMany({ where: { id: { in: commissions.map(c => c.id) },
-        status: { in: ['PENDING', 'APPROVED'] }, paidAt: null, OR: [{ paidAmount: null }, { paidAmount: 0 }], deletedAt: null },
-        data: { status: 'CLAWED_BACK', clawbackAt: now, clawbackPercent: 100, clawbackReason: reason } });
-      if (result.count !== commissions.length) throw new ConflictException('สถานะค่าคอมเปลี่ยนแล้ว กรุณาตรวจใหม่');
-    }
+    await clawBackCommissions(tx, commissions, { reason, now });
   }
   for (const receivable of receivables) {
     const result = await tx.financeReceivable.updateMany({ where: { id: receivable.id, status: receivable.status,

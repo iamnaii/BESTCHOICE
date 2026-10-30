@@ -29,4 +29,13 @@ describe('UsersService.findOneFull — staff LINE link columns', () => {
     const select = prisma.user.findFirst.mock.calls[0][0].select;
     expect(select).toEqual(expect.objectContaining({ lineStaffUserId: true, lineLinkCode: true, lineLinkCodeExpiresAt: true, lineId: true }));
   });
+  it('U4 exposes hasAttendancePin as a boolean and never returns the PIN hash (ก้อน 10 D3)', async () => {
+    prisma.user.findFirst.mockResolvedValueOnce({ id: 'u1', name: 'สมหญิง', attendancePinHash: 'deadbeef' });
+    const row = (await service.findOneFull('u1')) as Record<string, unknown>;
+    expect(row.hasAttendancePin).toBe(true);
+    expect(row).not.toHaveProperty('attendancePinHash');
+    prisma.user.findFirst.mockResolvedValueOnce({ id: 'u2', name: 'ต้น', attendancePinHash: null });
+    const none = (await service.findOneFull('u2')) as Record<string, unknown>;
+    expect(none.hasAttendancePin).toBe(false);
+  });
 });

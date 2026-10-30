@@ -46,3 +46,16 @@ describe('AuditTimeline', () => {
     ).toBeInTheDocument();
   });
 });
+
+describe('AuditTimeline — expense lifecycle codes read in Thai', () => {
+  it('APPROVAL_REQUESTED / AUTO_POSTED / SENT_BACK_TO_DRAFT / DELETED show Thai labels, not the raw codes', () => {
+    const at = (event: string, i: number): IcabAuditEvent => ({ event, userId: 'u1', userName: 'ผู้ใช้', timestamp: `2026-10-28T0${i}:00:00.000Z` });
+    render(<AuditTimeline events={['APPROVAL_REQUESTED', 'AUTO_POSTED', 'SENT_BACK_TO_DRAFT', 'DELETED'].map(at)} />);
+    for (const label of ['ส่งให้อนุมัติ', 'ลงบัญชี (อัตโนมัติหลังอนุมัติ)', 'ส่งกลับเป็นร่างเพื่อแก้ไข', 'ลบเอกสาร']) {
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
+    for (const code of ['APPROVAL_REQUESTED', 'AUTO_POSTED', 'SENT_BACK_TO_DRAFT', 'DELETED']) {
+      expect(screen.queryByText(code)).not.toBeInTheDocument();
+    }
+  });
+});

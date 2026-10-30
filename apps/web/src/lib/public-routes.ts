@@ -54,6 +54,8 @@ const PUBLIC_SECTIONS = [
   '/pay',
   '/customer-access',
   '/verify',
+  // เครื่องตอกบัตรประจำสาขา (ลงเวลา ก้อน 10) — ตัวตน = device token ไม่ใช่ session
+  '/kiosk',
 ];
 
 /** หน้าที่ยัง "อยากรู้ว่ามี session ไหม" แต่ห้ามเด้งออกถ้าไม่มี */

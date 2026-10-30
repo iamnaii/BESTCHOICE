@@ -28,6 +28,14 @@ import { VendorSettlementTemplate } from '../../journal/cpa-templates/vendor-set
 import { PettyCashTemplate } from '../../journal/cpa-templates/petty-cash.template';
 import { ShopExpenseTemplate } from '../../journal/cpa-templates/shop-expense.template';
 import { VoidExpenseDocumentDto } from '../dto/void-expense.dto';
+import { ExpenseDocumentCreateService } from './expense-document-create.service';
+import { PayrollPostGateService, hasLinkedPayrollLines, payrollLinkedUserIds } from '../payroll-system/payroll-post-gate.service';
+import { lockPayrollClawback, storedPayrollUpdateDto } from '../payroll-system/payroll-save';
+import { releaseCommissionItems } from '../payroll-system/payroll-commission-items';
+import { assertDocumentVersion, type DocumentVersionOpts } from '../document-version';
+
+/** ส่ง/อนุมัติ/ลงบัญชีใบเงินเดือนที่มีพนักงานผูก โดยไม่ได้ต่อด่าน = ปฏิเสธ (ไม่ปล่อยผ่าน) */
+const PAYROLL_NOT_WIRED = 'PayrollSystemRowsService not wired';
 
 /**
  * Phase 2 of the transactional-core decompose: the document LIFECYCLE methods of
@@ -72,6 +80,10 @@ export class ExpenseDocumentLifecycleService {
     private readonly notifications?: NotificationsService,
     // ก้อน 7 A16 — ท่อ LINE พนักงาน (global module · optional เพื่อให้ spec/ผู้ประกอบเองไม่ต้องส่ง)
     @Optional() private readonly staffNotify?: StaffNotifyService,
+    // Payroll D4 ส่วนที่ 1 — ทางบันทึกใบเงินเดือน (ตอนส่งขออนุมัติคิดแถวระบบใหม่) + ด่านส่ง/อนุมัติ/ลงบัญชี ·
+    // trailing @Optional() เพราะหลาย spec ประกอบ service เอง · ไม่ได้ต่อ + ใบมีพนักงานผูก = throw (ไม่ปล่อยผ่าน)
+    @Optional() private readonly payrollCreator?: ExpenseDocumentCreateService,
+    @Optional() private readonly payrollGate?: PayrollPostGateService,
   ) {}
 
   // ─── Submit for approval (DRAFT → PENDING_APPROVAL) ─────────────────
@@ -85,6 +97,7 @@ export class ExpenseDocumentLifecycleService {
   // that migrates, this PR uses `as unknown as DocumentStatus` casts. At
   // merge time accept the conflict on `schema.prisma` from 1.6.
   async submitForApproval(id: string, userId: string) {
+    const now = new Date();
     const updated = await this.prisma.$transaction(async (tx) => {
       await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext($1))`, `post:${id}`);
 
@@ -103,6 +116,25 @@ export class ExpenseDocumentLifecycleService {
         throw new BadRequestException(
           `ส่งขออนุมัติได้เฉพาะเอกสาร DRAFT — สถานะปัจจุบัน ${doc.status}`,
         );
+      }
+
+      // Payroll D4 — ส่งได้ตั้งแต่เวลาปิดงวด แล้วบันทึกใบซ้ำผ่านทางบันทึก (คิดแถวระบบใหม่จากลงเวลาปัจจุบัน) ก่อนเปลี่ยนสถานะ
+      if (doc.documentType === 'PAYROLL') {
+        if (!this.payrollGate || !this.payrollCreator) {
+          if (await hasLinkedPayrollLines(tx, id)) throw new Error(PAYROLL_NOT_WIRED);
+        } else {
+          await this.payrollGate.assertSubmittable(tx, id, now);
+          // ผลลัพธ์ไม่ปิด taxId — ใช้ภายในเท่านั้น (สิ่งที่คืนผู้เรียกคือแถวเอกสารหลังเปลี่ยนสถานะ ไม่มีบรรทัด)
+          await this.payrollCreator.updatePayrollInTx(
+            tx,
+            id,
+            await storedPayrollUpdateDto(tx, id),
+            { id: actor.id, branchId: actor.branchId, role: actor.role },
+            now,
+            // ผู้ส่งไม่ได้แก้รายชื่อ — รายชื่อผ่านด่าน NOT_IN_BRANCH ตอนบันทึกแล้ว (ด่านอื่นตรวจครบ)
+            { storedLines: true },
+          );
+        }
       }
 
       const PENDING_APPROVAL = 'PENDING_APPROVAL' as unknown as DocumentStatus;
@@ -232,9 +264,14 @@ export class ExpenseDocumentLifecycleService {
         throw new BadRequestException('ลบได้เฉพาะเอกสารร่างที่ยังไม่ถูกยกเลิก');
       }
       const deleted = await tx.expenseDocument.update({ where: { id }, data: { deletedAt: new Date() } });
+      // Payroll D4 ส่วนที่ 2 (P2-R13) — ลบร่าง (soft delete ไม่ cascade) ต้องปล่อยรายการค่าคอมของร่าง ไม่งั้นค่าคอมติดใบที่ถูกลบตลอดไป ·
+      // ไม่ต้องต่อด่าน (ฟังก์ชันธรรมดา) — ร่างไม่เคยจ่ายค่าคอม จึงไม่มีสถานะค่าคอมให้ย้อน
+      const releasedCommissionItemIds =
+        existing.documentType === 'PAYROLL' ? await releaseCommissionItems(tx, id, deleted.deletedAt ?? new Date()) : null;
       await tx.auditLog.create({ data: {
         action: 'DELETED', entity: 'expense_document', entityId: id, userId,
-        oldValue: { status: 'DRAFT' }, newValue: { deletedAt: deleted.deletedAt },
+        oldValue: { status: 'DRAFT' },
+        newValue: { deletedAt: deleted.deletedAt, ...(releasedCommissionItemIds ? { releasedCommissionItemIds } : {}) },
       } });
       return deleted;
     });
@@ -248,7 +285,7 @@ export class ExpenseDocumentLifecycleService {
   // D1.2.1.6 — also accepts APPROVED → POSTED (when approval_enabled is on
   // AND auto_post_on_approve is false, OWNER manually calls post() on an
   // APPROVED doc; assertCanPost permits both DRAFT + APPROVED).
-  async post(id: string, _userId: string, _userRole?: string) {
+  async post(id: string, _userId: string, _userRole?: string, opts: DocumentVersionOpts = {}) {
     return this.prisma.$transaction(async (tx) => {
       const { user: actor } = await assertAccountingPermission(tx, _userId, 'EXPENSE_POST');
       // Per-doc advisory lock — serializes concurrent post calls on the same id.
@@ -303,17 +340,47 @@ export class ExpenseDocumentLifecycleService {
         hasPaymentMethod: !!doc.paymentMethod && !!doc.depositAccountCode,
         totalAmount: doc.totalAmount.toString(),
       });
+      // R20/R23 — ฉบับที่ผู้กดเห็น: หลังด่านขออนุมัติและด่านสถานะ (ใบที่ต้องขออนุมัติ/สถานะไม่ถูก ได้ข้อความของด่านนั้น
+      // ไม่ใช่ "ถูกแก้ไข") · ยังอยู่ใต้ล็อก post: ก่อนเขียนอะไรและก่อนด่านใบเงินเดือน · PAYROLL บังคับ เอกสารอื่นเทียบเมื่อส่งมา
+      assertDocumentVersion(doc, opts.expectedUpdatedAt, 'post');
 
       if (doc.status === 'DRAFT') {
         await tx.expenseDocument.update({ where: { id }, data: { approvedById: null } });
       }
-      const result = await this.executePostBody(doc, tx);
+      // ด่านใบเงินเดือนรันในตัวลงบัญชีเสมอ — รวมใบ APPROVED (ปิด auto-post) ที่อนุมัติไปแล้ว (ลงเวลาอาจเปลี่ยนหลังอนุมัติ)
+      const posting = await this.applyPayrollPaymentDate(tx, doc, opts.paymentDate);
+      const { result, commissionItemIds } = await this.executePostBody(posting, tx, { payrollGateDone: false });
       await tx.auditLog.create({ data: {
         action: 'POSTED', entity: 'expense_document', entityId: id, userId: _userId,
-        oldValue: { status: doc.status }, newValue: { postedById: _userId },
+        oldValue: { status: doc.status },
+        newValue: { postedById: _userId, ...(doc.documentType === 'PAYROLL' ? { commissionItemIds } : {}) },
       } });
       return result;
     });
+  }
+
+  /**
+   * ใบเงินเดือน — วันที่จ่ายเงิน = วันที่กดลงบัญชี (คำตัดสินเจ้าของ 2026-10-28) หรือวันที่ผู้กดเลือก ('YYYY-MM-DD').
+   * เดิมใช้วันที่สร้างร่าง ⇒ ร่าง 28 ต.ค. ลงบัญชี 2 พ.ย. = บัญชี / ธนาคาร / ภ.ง.ด.1 ลง 28 ต.ค.
+   * เขียน `documentDate` ใต้ล็อก `post:` ก่อนด่านงวดบัญชีและรายการบัญชี (ทั้งสองอ่านวันที่ของใบ) · วันในอนาคต = 400 ·
+   * เก็บแบบเดียวกับตอนสร้าง (`new Date('YYYY-MM-DD')`) · เอกสารอื่นไม่แตะ
+   */
+  private async applyPayrollPaymentDate(
+    tx: Prisma.TransactionClient,
+    // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+    doc: Prisma.ExpenseDocumentGetPayload<{}>,
+    paymentDate: string | undefined,
+    // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+  ): Promise<Prisma.ExpenseDocumentGetPayload<{}>> {
+    if (doc.documentType !== 'PAYROLL') return doc;
+    const today = bkkBusinessDate(new Date()).toISOString().slice(0, 10);
+    const ymd = paymentDate ?? today;
+    const date = new Date(ymd);
+    if (Number.isNaN(date.getTime())) throw new BadRequestException('วันที่จ่ายเงินไม่ถูกต้อง');
+    if (ymd > today) throw new BadRequestException('วันที่จ่ายเงินต้องไม่เกินวันนี้');
+    if (doc.documentDate?.getTime() === date.getTime()) return doc;
+    await tx.expenseDocument.update({ where: { id: doc.id }, data: { documentDate: date } });
+    return { ...doc, documentDate: date };
   }
 
   /**
@@ -333,11 +400,36 @@ export class ExpenseDocumentLifecycleService {
    *
    * Returns the JE template result (`{ journalEntryId, ... }` shape varies
    * by template) so the caller can propagate it.
+   *
+   * Payroll D4 — `payrollGateDone`: approve() runs the payroll gate itself BEFORE
+   * the APPROVED flip and passes true; post() always passes false, so posting an
+   * APPROVED document re-runs the gate (explicit flag — never inferred from status).
+   *
+   * Payroll D4 ส่วนที่ 2 — PAYROLL: หลัง JE ของ PayrollTemplate ในธุรกรรมเดียวกัน ค่าคอมของรายการ PAY → PAID
+   * (`markCommissionsPaid`) · คืน `commissionItemIds` ให้ audit POSTED / AUTO_POSTED (เอกสารอื่น = [])
    */
   private async executePostBody(
     // eslint-disable-next-line @typescript-eslint/no-empty-object-type
     doc: Prisma.ExpenseDocumentGetPayload<{}>,
     tx: Prisma.TransactionClient,
+    opts: { payrollGateDone: boolean },
+  ): Promise<{ result: unknown; commissionItemIds: string[] }> {
+    const result = await this.postDocumentTemplate(doc, tx, opts);
+    if (doc.documentType !== 'PAYROLL') return { result, commissionItemIds: [] };
+    if (!this.payrollGate) {
+      // ด่าน (assertPayrollPostable) ปฏิเสธใบที่มีพนักงานผูกไปแล้ว — ใบพิมพ์ชื่อเองล้วนไม่มีรายการค่าคอม
+      if (await hasLinkedPayrollLines(tx, doc.id)) throw new Error(PAYROLL_NOT_WIRED);
+      return { result, commissionItemIds: [] };
+    }
+    return { result, commissionItemIds: await this.payrollGate.markCommissionsPaid(tx, doc.id, doc.documentDate) };
+  }
+
+  /** ตัวลงบัญชีตามชนิดเอกสาร (ด่านงวด · ไฟล์แนบ · WHT · แม่แบบ JE) — ผู้เรียกคือ executePostBody เท่านั้น */
+  private async postDocumentTemplate(
+    // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+    doc: Prisma.ExpenseDocumentGetPayload<{}>,
+    tx: Prisma.TransactionClient,
+    opts: { payrollGateDone: boolean },
   ): Promise<unknown> {
     const id = doc.id;
 
@@ -491,6 +583,7 @@ export class ExpenseDocumentLifecycleService {
       return this.creditNoteTemplate.execute(id, tx);
     }
     if (doc.documentType === 'PAYROLL') {
+      if (!opts.payrollGateDone) await this.assertPayrollPostable(tx, id);
       return this.payrollTemplate.execute(id, tx);
     }
     if (doc.documentType === 'VENDOR_SETTLEMENT') {
@@ -583,7 +676,7 @@ export class ExpenseDocumentLifecycleService {
   //
   // userId is captured for audit logs (APPROVED + AUTO_POSTED actions written
   // inside the same tx). Signature parity with post() / voidDocument().
-  async approve(id: string, userId: string, _userRole?: string) {
+  async approve(id: string, userId: string, _userRole?: string, opts: DocumentVersionOpts = {}) {
     return this.prisma.$transaction(async (tx) => {
       // Re-use the `post:` lock key — approve always either becomes the JE
       // post (auto path) or precedes a future post(), so serializing on the
@@ -606,6 +699,12 @@ export class ExpenseDocumentLifecycleService {
         throw new ForbiddenException(SELF_APPROVAL_DENIED_MESSAGE);
       }
       this.transition.assertCanApprove({ from: doc.status });
+      // R20/R23 — ฉบับที่ผู้อนุมัติเห็น (หลังด่านสถานะ · ใต้ล็อก post: ก่อนด่านใบเงินเดือนและก่อนเขียน) — ใบที่ถูกกด แก้ไข
+      // แล้วส่งใหม่ระหว่างที่หน้าผู้อนุมัติเปิดค้างได้ 409 DOCUMENT_CHANGED แทนการลงบัญชีฉบับที่ไม่มีใครเห็น
+      assertDocumentVersion(doc, opts.expectedUpdatedAt, 'approve');
+
+      // Payroll D4 — ด่านใบเงินเดือนก่อนเปลี่ยนเป็น APPROVED เสมอ (ไม่ว่า auto_post_on_approve จะเปิดหรือปิด)
+      if (doc.documentType === 'PAYROLL') await this.assertPayrollPostable(tx, id);
 
       // Stamp APPROVED first so the auto-post branch starts from a clean
       // APPROVED row (assertCanPost permits APPROVED). When auto-post is off
@@ -638,7 +737,8 @@ export class ExpenseDocumentLifecycleService {
       // integrity guards (period open, attachment threshold, WHT routing,
       // V15 ACCRUAL-no-WHT, type allow-list) run via the helper so any
       // future change to those guards lands in both paths automatically.
-      const result = await this.executePostBody(doc, tx);
+      const posting = await this.applyPayrollPaymentDate(tx, doc, opts.paymentDate);
+      const { result, commissionItemIds } = await this.executePostBody(posting, tx, { payrollGateDone: true });
 
       // D1.2.1.6 — AUTO_POSTED audit log (only when auto_post_on_approve=true
       // and the auto-post chain completed without throwing).
@@ -648,12 +748,25 @@ export class ExpenseDocumentLifecycleService {
           entity: 'expense_document',
           entityId: id,
           userId,
-          newValue: { status: 'POSTED', autoPostedFromApproval: true },
+          newValue: {
+            status: 'POSTED',
+            autoPostedFromApproval: true,
+            ...(doc.documentType === 'PAYROLL' ? { commissionItemIds } : {}),
+          },
         },
       });
 
       return result;
     });
+  }
+
+  /** ด่านอนุมัติ/ลงบัญชีของใบเงินเดือน (ผู้เรียกถือ `post:${id}` แล้ว) — ใบพิมพ์ชื่อเองล้วนไม่มีด่าน */
+  private async assertPayrollPostable(tx: Prisma.TransactionClient, id: string): Promise<void> {
+    if (!this.payrollGate) {
+      if (await hasLinkedPayrollLines(tx, id)) throw new Error(PAYROLL_NOT_WIRED);
+      return;
+    }
+    await this.payrollGate.assertPostable(tx, id, new Date());
   }
 
   async voidDocument(
@@ -675,6 +788,16 @@ export class ExpenseDocumentLifecycleService {
       });
       if (doc.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
       assertAccountingBranch(actor, doc.branchId);
+
+      // Payroll D4 ส่วนที่ 2 (P2-R1) — ล็อกค่าคอมของคนในใบต่อจาก `post:` ก่อนตรวจงวดและก่อนรายการกลับ JE (ซึ่งถือล็อกเลข JE รายเดือน
+      // เหมือนลงบัญชี — ลงบัญชีถือ payroll-clawback ก่อนล็อกเลข JE ⇒ ลำดับเดียวกัน ไม่ deadlock) · ไม่ได้ต่อด่าน + มีพนักงานผูก = ปฏิเสธ
+      if (doc.documentType === 'PAYROLL') {
+        if (!this.payrollGate) {
+          if (await hasLinkedPayrollLines(tx, id)) throw new Error(PAYROLL_NOT_WIRED);
+        } else {
+          await lockPayrollClawback(tx, await payrollLinkedUserIds(tx, id));
+        }
+      }
 
       // D1.2.7.4 — `reverse_block_cascaded` (default true). OWNER may disable
       // via SystemConfig to allow voiding upstream docs even when downstream CN/SE
@@ -867,6 +990,11 @@ export class ExpenseDocumentLifecycleService {
         }
       }
 
+      // Payroll D4 ส่วนที่ 2 — หลังรายการกลับ JE (ลำดับล็อก: เลข JE ก่อนแถวค่าคอม เหมือนลงบัญชี / ยกเลิกใบขาย) ก่อน CAS สถานะ:
+      // ปฏิเสธเมื่อถูกหักคืนในใบที่ลงบัญชีแล้ว / เรียกคืนบางส่วน · ไม่งั้นย้อนการจ่ายค่าคอมแล้วปล่อยรายการทุกตัวของใบ
+      const releasedCommissionItemIds =
+        doc.documentType === 'PAYROLL' && this.payrollGate ? await this.payrollGate.releaseOnVoid(tx, id) : null;
+
       // Compare-and-swap on status — second concurrent caller (if it somehow
       // bypassed the advisory lock) sees count=0 and aborts. Belt-and-braces.
       const flip = await tx.expenseDocument.updateMany({
@@ -899,6 +1027,7 @@ export class ExpenseDocumentLifecycleService {
             reverseNote: dto.note ?? null,
             documentNumber: doc.number,
             documentType: doc.documentType,
+            ...(releasedCommissionItemIds ? { releasedCommissionItemIds } : {}),
           },
         },
       });

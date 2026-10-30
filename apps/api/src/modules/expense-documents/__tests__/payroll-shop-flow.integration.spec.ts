@@ -114,11 +114,13 @@ beforeAll(async () => {
   shopCompanyId = await companyResolver.getShopCompanyId();
   financeCompanyId = await companyResolver.getFinanceCompanyId();
 
-  const admin = await prisma.user.findFirst({
+  // ฐานทดสอบมีแต่ migrations (ไม่มี seed) — upsert เจ้าของเอง (pattern e2e/applycreditbalance-partial.e2e-spec.ts)
+  const admin = await prisma.user.upsert({
     where: { email: 'admin@bestchoice.com' },
+    create: { email: 'admin@bestchoice.com', password: 'x', name: 'admin', role: 'OWNER' },
+    update: {},
     select: { id: true },
   });
-  if (!admin) throw new Error('admin@bestchoice.com not seeded — run prisma seed first');
   adminId = admin.id;
 
   const branch = await prisma.branch.create({

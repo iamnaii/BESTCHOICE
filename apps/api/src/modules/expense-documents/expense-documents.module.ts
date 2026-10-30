@@ -21,6 +21,9 @@ import { ExpenseDocumentCreateService } from './services/expense-document-create
 import { ExpenseVoucherPdfService } from './services/expense-voucher-pdf.service';
 import { PettyCashService } from './services/petty-cash.service';
 import { PayrollCustomService } from './services/payroll-custom.service';
+import { PayrollSystemRowsService } from './payroll-system/payroll-system-rows.service';
+import { PayrollPostGateService } from './payroll-system/payroll-post-gate.service';
+import { AttendanceSettingsService } from '../attendance/attendance-settings.service';
 import { RecurringBillsCron } from './crons/recurring-bills.cron';
 import { RecurringBillsService } from './recurring-bills/recurring-bills.service';
 import { RecurringBillsController } from './recurring-bills/recurring-bills.controller';
@@ -62,6 +65,12 @@ import { ReversePermissionGuard } from './reverse-permission.guard';
     ExpenseVoucherPdfService,
     PettyCashService,
     PayrollCustomService,
+    // Payroll D4 ส่วนที่ 1 — แถว OT/ทำงานวันหยุดจากการลงเวลา · AttendanceSettingsService ประกาศตรงที่นี่ (ไม่มีสถานะ
+    // ฉีดแค่ PrismaService) แทนการ import AttendanceModule ที่จะลาก controller/cron/StorageModule มาด้วย (เช่นใน cli/test-pack)
+    PayrollSystemRowsService,
+    AttendanceSettingsService,
+    // ด่านส่งขออนุมัติ/อนุมัติ/ลงบัญชีใบเงินเดือน (เวลาปิดงวด · ธงเครื่องถูกใช้ซ้อน · ยอดเปลี่ยน · ใบอื่นถือ OT)
+    PayrollPostGateService,
     // ก้อน 6 — บิลประจำ (D5): cron 08:05 + งวด/ร่าง/งาน/LINE stub (แทน ExpenseRecurringCron เดิม)
     RecurringBillsCron,
     RecurringBillsService,

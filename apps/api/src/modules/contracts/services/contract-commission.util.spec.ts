@@ -1,3 +1,4 @@
+import { ConflictException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { clawbackContractCommission, ensureContractCommission } from './contract-commission.util';
 
@@ -56,7 +57,7 @@ describe('ensureContractCommission — ค่าคอมสัญญาผ่�
 describe('clawbackContractCommission — ยกเลิกสัญญา = เรียกคืนค่าคอมที่ยังไม่จ่าย', () => {
   const now = new Date('2026-09-25T03:00:00Z');
   const commission = (o: Record<string, unknown>) => ({ id: 'cm1', status: 'PENDING', salespersonId: 'u-sales', period: '2026-09',
-    createdAt: new Date('2026-09-20T05:00:00Z'), ...o });
+    createdAt: new Date('2026-09-20T05:00:00Z'), commissionAmount: D('450'), paidAt: null, paidAmount: null, ...o });
 
   function build(commissions: unknown[], payouts: unknown[] = []) {
     const tx = {
@@ -66,21 +67,47 @@ describe('clawbackContractCommission — ยกเลิกสัญญา = เ
     return tx;
   }
 
+  // P2-R10: เขียนผ่าน clawBackCommissions (ตัวช่วยเดียว) ด้วยแถว PENDING/APPROVED เท่านั้น — ผลเหมือนเดิม
+  // (สถานะ · 100% · เหตุผล · keptPaidIds · รอบจ่าย) แต่เขียนทีละแถวแบบมีเงื่อนไข (id, status) + clawbackAmount null
   it('claws back PENDING / APPROVED commission in full and stamps why', async () => {
     const tx = build([commission({ id: 'a' }), commission({ id: 'b', status: 'APPROVED' })]);
     const result = await clawbackContractCommission(asTx(tx), { contractId: 'c1', contractNumber: 'BCP-1', reason: 'ลูกค้าเปลี่ยนใจ', now });
-    expect(tx.salesCommission.updateMany).toHaveBeenCalledWith({
-      where: { id: { in: ['a', 'b'] } },
-      data: { status: 'CLAWED_BACK', clawbackAt: now, clawbackPercent: 100, clawbackReason: 'ยกเลิกสัญญา BCP-1: ลูกค้าเปลี่ยนใจ' },
-    });
+    const data = { status: 'CLAWED_BACK', clawbackAmount: null, clawbackAt: now, clawbackPercent: 100, clawbackReason: 'ยกเลิกสัญญา BCP-1: ลูกค้าเปลี่ยนใจ' };
+    expect(tx.salesCommission.updateMany.mock.calls).toEqual([
+      [{ where: { id: 'a', status: 'PENDING' }, data }],
+      [{ where: { id: 'b', status: 'APPROVED' }, data }],
+    ]);
     expect(result).toEqual({ clawedBackIds: ['a', 'b'], keptPaidIds: [], voidedDraftPayoutIds: [], lockedPayoutIds: [] });
   });
 
+  it('reads the money fields the clawback helper needs', async () => {
+    const tx = build([]);
+    await clawbackContractCommission(asTx(tx), { contractId: 'c1', contractNumber: 'BCP-1', reason: 'x', now });
+    expect(tx.salesCommission.findMany).toHaveBeenCalledWith({
+      where: { contractId: 'c1', deletedAt: null },
+      select: expect.objectContaining({ id: true, status: true, commissionAmount: true, paidAt: true, paidAmount: true }),
+    });
+  });
+
   it('leaves commission that was already paid alone — the owner chose to recall only unpaid commission', async () => {
-    const tx = build([commission({ id: 'paid', status: 'PAID' }), commission({ id: 'open' })]);
+    const tx = build([
+      commission({ id: 'paid', status: 'PAID', paidAt: new Date('2026-09-22T00:00:00Z'), paidAmount: D('450') }),
+      commission({ id: 'open' }),
+    ]);
     const result = await clawbackContractCommission(asTx(tx), { contractId: 'c1', contractNumber: 'BCP-1', reason: 'x', now });
-    expect(tx.salesCommission.updateMany.mock.calls[0][0].where).toEqual({ id: { in: ['open'] } });
+    expect(tx.salesCommission.updateMany).toHaveBeenCalledTimes(1);
+    expect(tx.salesCommission.updateMany.mock.calls[0][0].where).toEqual({ id: 'open', status: 'PENDING' });
     expect(result.keptPaidIds).toEqual(['paid']);
+  });
+
+  it('a commission paid (or approved) between the read and the write → 409 and the whole cancellation rolls back (never half-applied)', async () => {
+    const tx = build([commission({ id: 'a', status: 'APPROVED' })]);
+    tx.salesCommission.updateMany.mockResolvedValue({ count: 0 });
+    await expect(
+      clawbackContractCommission(asTx(tx), { contractId: 'c1', contractNumber: 'BCP-1', reason: 'x', now }),
+    ).rejects.toThrow(new ConflictException('สถานะค่าคอมเปลี่ยนแล้ว กรุณาตรวจใหม่'));
+    expect(tx.commissionPayout.findMany).not.toHaveBeenCalled();
+    expect(tx.commissionPayout.updateMany).not.toHaveBeenCalled();
   });
 
   it('soft-deletes a DRAFT payout round that counted this commission so it is regenerated, and reports a locked round', async () => {

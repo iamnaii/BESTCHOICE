@@ -65,6 +65,27 @@ describe('useApprovalActions', () => {
     expect(keys).toContain('expenses-summary');
   });
 
+  // Task 8 fix round 1 (R15.3) — ส่งขออนุมัติใบเงินเดือนจากหน้ารายการ = server บันทึกใบซ้ำ (คิดแถวระบบใหม่)
+  // ⇒ หน้ารายละเอียด ฟอร์มแก้ไข และหน้าสลิปที่เคยโหลดใบนี้ไว้ต้องโหลดใหม่ด้วย
+  it.each(['submitForApproval', 'approve'] as const)('%s success also refreshes the cached detail, edit form and slip of that document', async (action) => {
+    apiPost.mockResolvedValue({ data: {} });
+    const { wrapper, invalidateSpy } = makeWrapper();
+    const { result } = renderHook(() => useApprovalActions(), { wrapper });
+    await act(async () => {
+      await result.current[action].mutateAsync('ex-9');
+    });
+    const keys = invalidateSpy.mock.calls.map((c) => JSON.stringify((c[0] as { queryKey: unknown[] }).queryKey));
+    expect(keys).toEqual(
+      expect.arrayContaining([
+        JSON.stringify(['expense-document', 'ex-9']),
+        JSON.stringify(['expense-doc-edit', 'ex-9']),
+        JSON.stringify(['expense-doc-voucher', 'ex-9']),
+        JSON.stringify(['expenses']),
+        JSON.stringify(['expenses-summary']),
+      ]),
+    );
+  });
+
   it('submitForApproval surfaces API error message via sonner.error', async () => {
     apiPost.mockRejectedValue(new Error('Approval workflow is disabled'));
     const { wrapper } = makeWrapper();

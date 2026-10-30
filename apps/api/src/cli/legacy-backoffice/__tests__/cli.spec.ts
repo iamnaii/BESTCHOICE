@@ -1394,6 +1394,12 @@ describe('legacy-backoffice-import CLI — report / import (Task 13)', () => {
         expect(text).toContain(env);
       }
       expect(text).toMatch(/rollback ทิ้งแถวนี้ไว้/);
+      // ต้นทางสิทธิ์ของลูกค้าใหม่ (Task 15 M-6): SHOP + --branch-id · แก้ไม่ได้ · ค่าแทนเมื่อสาขาไม่ผูกบริษัท · LINKED ไม่แตะ
+      expect(text).toMatch(/accessCompanyCode SHOP \+ accessBranchId = --branch-id/);
+      expect(text).toContain('immutable_party_access_origin');
+      expect(text).toMatch(/สาขาไม่ผูกบริษัท = ใช้ SHOP แทน/);
+      expect(text).toContain('customerOrigin.companyFallback');
+      expect(text).toMatch(/\(LINKED\) ไม่แตะต้นทางสิทธิ์/);
 
       const rep = harness();
       await main(['report', '--help'], rep.log, rep.ensureTz);

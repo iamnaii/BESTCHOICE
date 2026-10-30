@@ -1403,6 +1403,10 @@ const COMMANDS = new Map<string, Command>([
         'ALLOW_PROD_LEGACY_IMPORT=YES_I_AM_SURE: ฐาน bestchoice หรือ NODE_ENV=production — ทั้ง dry-run และเขียนจริง',
         'ALLOW_UNVERIFIED_PII_KEYS=YES_I_AM_SURE: เขียนจริงบนฐานที่ไม่มีลูกค้าให้ตรวจกุญแจ/salt (ตรวจกุญแจเองก่อน)',
         'งวดบัญชี FINANCE ของเดือนวันตัดและเดือนถัดไป (รายการไล่ VAT) ต้องไม่ปิด (CLOSED/SYNCED) · เกณฑ์ OVERDUE จาก overdue_days_threshold',
+        'ลูกค้าที่สร้างใหม่ (และ Contact ที่สร้างให้) ได้ต้นทางสิทธิ์ accessCompanyCode SHOP + accessBranchId = --branch-id — ' +
+          'แก้ภายหลังไม่ได้ (trigger immutable_party_access_origin) · สาขาไม่ผูกบริษัท = ใช้ SHOP แทน + ⚠ บนจอ ' +
+          '(import-result.json customerOrigin.companyFallback) · สาขาหรือบริษัทที่ปิด/ถูกลบ/ไม่ใช่ SHOP = หยุดก่อนเขียน · ' +
+          'ลูกค้าเดิมที่ผูก (LINKED) ไม่แตะต้นทางสิทธิ์',
         `บัญชี ${LEGACY_SYSTEM_USER_EMAIL} (ล็อกอินไม่ได้ · ไม่ใช่ system user): ถ้ายังไม่มี รอบเขียนจริงสร้างก่อนเปิดธุรกรรม — ` +
           'รอบเขียนจริงที่ rollback ทิ้งแถวนี้ไว้ (ใช้ซ้ำรอบถัดไป)',
         'ผลลัพธ์ลง <--out>/<รหัสรอบ>/: import-result.json + bridge.csv + sample.csv ทุกครั้ง · blockers.csv + customers-blocked.csv ' +

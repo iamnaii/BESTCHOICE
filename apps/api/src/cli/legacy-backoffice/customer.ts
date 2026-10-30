@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { isValidThaiNationalId } from '@installment/shared';
+import { isValidThaiNationalId, type Company } from '@installment/shared';
 import { ContactResolverService } from '../../modules/contacts/contact-resolver.service';
 import type { CustomerPiiService } from '../../modules/customers/customer-pii.service';
 import {
@@ -27,11 +27,15 @@ import { formatFullAddress } from './thai-address';
  *    เลขบัตรนี้ (ลูกค้าจาก `ensureRole` ที่**ไม่มีเลขบัตรเลย** — คนเดียวกันตามกติกาของ `CustomerWriteService.create`)
  *    · เลขบัตรอยู่หลายแถว / แถวที่ถือถูกลบ / รหัสสมาชิกอยู่กับคนอื่น / stub หลายแถว / ลูกค้าบน Contact นั้นมีเลขบัตร
  *    / Contact ของลูกค้าเป้าหมายถูกลบ (ไม่ย้าย `contactId` ให้เอง) → `NATIONAL_ID_CONFLICT`
- * 4. มีเป้าหมาย → `LINKED`: ไม่แตะชื่อ เบอร์ ที่อยู่ หรือ PII ใดของลูกค้าเดิม · เติมเฉพาะช่องที่ว่าง: `legacyMemberCode`,
+ * 4. มีเป้าหมาย → `LINKED`: ไม่แตะชื่อ เบอร์ ที่อยู่ ต้นทางสิทธิ์ (`accessCompanyCode` / `accessBranchId` — ของลูกค้าเดิม
+ *    และ Contact ที่สร้างให้ลูกค้าเดิม) หรือ PII ใดของลูกค้าเดิม · เติมเฉพาะช่องที่ว่าง: `legacyMemberCode`,
  *    `contactId` และเลขบัตร (`nationalId` / `*_hash` / `*_encrypted` — เมื่อลูกค้าไม่มีเลขบัตรเลย เลขของ input ถูก checksum
  *    และไม่มีแถวใด รวมแถวที่ถูกลบ ถือเลขนี้) · ไม่ตรวจเบอร์ (ไม่ได้เขียนเบอร์)
  * 5. ไม่มีเป้าหมาย: เบอร์เป็นเบอร์หลักของลูกค้าคนอื่นที่ยังไม่ถูกลบ (`findLivePhoneOwner`) → `PHONE_TAKEN`
  *    · ไม่งั้น `CREATED`: dual-write plaintext + `*_encrypted` / `*_hash` (`encryptCustomerFields`) + `legacyMemberCode`
+ *    + ต้นทางสิทธิ์ `accessCompanyCode` / `accessBranchId` จาก `options.origin` (`resolveLegacyCustomerOrigin` ของ
+ *    `--branch-id` — คำตัดสินเจ้าของ 30/10) ลงทั้งแถวลูกค้าและ Contact ที่สร้างใหม่ (Contact เดิมที่ใช้ซ้ำไม่แตะ — แบบ
+ *    `CustomerWriteService.create` ที่ส่ง origin ให้ `findOrCreateByNaturalKey`) · ไม่ส่ง `origin` = สองช่องว่าง
  * 6. ทั้ง `CREATED` และ `LINKED` ได้ `Contact` (party master) ที่ผูกกับลูกค้า: ของเดิมของลูกค้า → Contact ที่ถือ hash
  *    เลขบัตร → สร้างใหม่ (`ContactResolverService.findOrCreateByNaturalKey` — ถือล็อก `contact:code` หลังล็อกเบอร์) ·
  *    `peakContactCode` ตั้งเมื่อ Contact ยังไม่มี · มีรหัสอื่นอยู่แล้ว → `PEAK_CODE_CONFLICT` (ผลบอกรหัสทั้งสองฝั่ง)
@@ -54,7 +58,7 @@ import { formatFullAddress } from './thai-address';
  *     ห้ามเรียกซ้ำในทรานแซกชันเดียว และห้ามเรียกหลังคำสั่งอื่น (โดยเฉพาะล็อกแถวลูกค้า หรือล็อก `contact:code`)
  * - ต้องตั้ง `PII_ENCRYPTION_KEY` / `PII_HASH_SALT` (ไม่มี = throw ไม่เขียน plaintext ลงช่องเข้ารหัส)
  * - error ของฐาน (เช่น P2002 เมื่อพนักงานสร้างลูกค้าเลขบัตรเดียวกันพร้อมกัน) ไม่ถูกแปลง — ในโหมดทรานแซกชันเดียว (Task 10) ทั้งรอบนำเข้าจะ rollback แล้วต้องแก้ข้อมูลและรันใหม่ (ไม่มีการลงเป็นตัวบล็อกรายคน)
- * - ลูกค้าที่สร้างไม่มี `accessCompanyCode` / `accessBranchId` (แบบ `MigrationService.importCustomers`)
+ * - ลูกค้าที่สร้าง (`CREATED`) ได้ต้นทางสิทธิ์ตาม `options.origin` — ตัวเขียนส่งผลของ `resolveLegacyCustomerOrigin(--branch-id)`
  *
  * เบอร์: หลัง `normalizeThaiPhone` รับเฉพาะ `^0\d{9}$` (ตรงกับ DTO ของ API และการค้นเบอร์ของ LINE OTP) — ไม่มีช่องไหนถูกรูปแบบ
  * = ไม่มีเบอร์ (`phone: null` · `phoneInvalid: true` เมื่อมีค่าแต่ผิดรูปแบบ) · เบอร์สำรองที่ผิดรูปแบบหรือเท่าเบอร์หลัก = null
@@ -134,8 +138,71 @@ export type CustomerLinkResult = PhoneFlag &
       }
   );
 
-/** `{ phoneLocked: true }` = ผู้เรียกล็อกเบอร์ของ input นี้ไว้แล้วด้วย `lockLegacyCustomerPhones` (ทรานแซกชันหลักเดียว) */
-export type LinkLegacyCustomerOptions = { phoneLocked?: boolean };
+/**
+ * ต้นทางสิทธิ์ (immutable origin) ของลูกค้าที่การนำเข้าสร้าง — `accessBranchId` = `--branch-id` เสมอ ·
+ * `accessCompanyCode` = รหัสบริษัทของสาขา (`Branch.company.companyCode`) · สาขาไม่ผูกบริษัท (`company_id` ว่าง) หรือบริษัทไม่มีรหัส =
+ * `'SHOP'` (ทุกสาขาอยู่ใต้ SHOP — คำตัดสินผู้คุมงาน 30/10) และ `companyFallback: true` ให้ผู้เรียกเตือน
+ */
+export type LegacyCustomerOrigin = {
+  accessCompanyCode: Company;
+  accessBranchId: string;
+  companyFallback: boolean;
+};
+
+/** รหัสบริษัทที่ใช้เมื่อสาขาไม่ผูกบริษัท */
+export const LEGACY_ORIGIN_FALLBACK_COMPANY: Company = 'SHOP';
+/** ข้อความเตือนเมื่อใช้ค่าแทน (บนจอ + `import-result.json`) */
+export const LEGACY_ORIGIN_FALLBACK_WARNING =
+  'สาขา --branch-id ไม่ผูกบริษัท (branches.company_id ว่าง) — ลูกค้าที่สร้างใหม่ได้ accessCompanyCode SHOP แทน (ทุกสาขาอยู่ใต้ SHOP)';
+
+const ORIGIN_ERROR = 'หาต้นทางสิทธิ์ของลูกค้าที่นำเข้าไม่ได้ (--branch-id)';
+
+/**
+ * ต้นทางสิทธิ์ของลูกค้าที่สร้างจากการนำเข้า (ดู `LegacyCustomerOrigin`) — อ่านอย่างเดียว · ไม่พบสาขา (หรือถูกลบ) / รหัสบริษัทของสาขา
+ * ไม่ใช่ SHOP หรือ FINANCE / ใช้ค่าแทน SHOP แต่ไม่มีบริษัท SHOP ในฐาน (FK ของ `access_company_code`) = throw ก่อนเขียน
+ */
+export async function resolveLegacyCustomerOrigin(
+  db: Pick<Prisma.TransactionClient, 'branch' | 'companyInfo'>,
+  branchId: string,
+): Promise<LegacyCustomerOrigin> {
+  const branch = await db.branch.findFirst({
+    where: { id: branchId, deletedAt: null },
+    select: { id: true, company: { select: { companyCode: true } } },
+  });
+  if (!branch) throw new Error(`${ORIGIN_ERROR}: ไม่พบสาขา ${branchId} (หรือถูกลบแล้ว)`);
+  const code = branch.company?.companyCode ?? null;
+  if (code !== null) {
+    if (code !== 'SHOP' && code !== 'FINANCE') {
+      throw new Error(
+        `${ORIGIN_ERROR}: บริษัทของสาขา ${branchId} มีรหัส ${code} (ต้องเป็น SHOP หรือ FINANCE)`,
+      );
+    }
+    return { accessCompanyCode: code, accessBranchId: branch.id, companyFallback: false };
+  }
+  const fallback = await db.companyInfo.findFirst({
+    where: { companyCode: LEGACY_ORIGIN_FALLBACK_COMPANY },
+    select: { id: true },
+  });
+  if (!fallback) {
+    throw new Error(
+      `${ORIGIN_ERROR}: สาขา ${branchId} ไม่ผูกบริษัท และไม่มีบริษัท ${LEGACY_ORIGIN_FALLBACK_COMPANY} ในฐานให้ใช้แทน`,
+    );
+  }
+  return {
+    accessCompanyCode: LEGACY_ORIGIN_FALLBACK_COMPANY,
+    accessBranchId: branch.id,
+    companyFallback: true,
+  };
+}
+
+/**
+ * `{ phoneLocked: true }` = ผู้เรียกล็อกเบอร์ของ input นี้ไว้แล้วด้วย `lockLegacyCustomerPhones` (ทรานแซกชันหลักเดียว) ·
+ * `origin` = ต้นทางสิทธิ์ของแถวที่สร้าง (`CREATED` เท่านั้น — `LINKED` ไม่แตะ)
+ */
+export type LinkLegacyCustomerOptions = {
+  phoneLocked?: boolean;
+  origin?: Pick<LegacyCustomerOrigin, 'accessCompanyCode' | 'accessBranchId'>;
+};
 
 /** ทางเลือกของ `toLegacyCustomerInput` — รหัส PEAK จาก Task 2b และไฟล์ override ที่ parse แล้ว */
 export type LegacyCustomerLink = {
@@ -456,7 +523,13 @@ export async function linkOrCreateLegacyCustomer(
   input: LegacyCustomerInput,
   options: LinkLegacyCustomerOptions = {},
 ): Promise<CustomerLinkResult> {
-  const result = await resolveLegacyCustomer(tx, pii, input, options.phoneLocked === true);
+  const result = await resolveLegacyCustomer(
+    tx,
+    pii,
+    input,
+    options.phoneLocked === true,
+    options.origin,
+  );
   return input.phoneInvalid ? { ...result, phoneInvalid: true } : result;
 }
 
@@ -465,6 +538,7 @@ async function resolveLegacyCustomer(
   pii: CustomerPiiService,
   input: LegacyCustomerInput,
   phoneLocked: boolean,
+  origin: LinkLegacyCustomerOptions['origin'],
 ): Promise<CustomerLinkResult> {
   const peakCode = input.peakContactCode?.trim() || null;
   if (peakCode && !PEAK_CONTACT_CODE.test(peakCode)) {
@@ -547,7 +621,10 @@ async function resolveLegacyCustomer(
   const conflict = peakConflict(identityContact, peakCode);
   if (conflict) return conflict;
 
-  // ── เขียน ──
+  // ── เขียน ── (ต้นทางสิทธิ์: แถวลูกค้าใหม่ + Contact ใหม่เท่านั้น — `findOrCreateByNaturalKey` ใส่ origin ตอนสร้างเท่านั้น)
+  const access = origin
+    ? { accessCompanyCode: origin.accessCompanyCode, accessBranchId: origin.accessBranchId }
+    : null;
   const writes = new Set<LegacyCustomerWrite>(['customerCreated']);
   const contact = await contactResolver(tx, pii).findOrCreateByNaturalKey(tx, {
     name: input.name,
@@ -555,6 +632,7 @@ async function resolveLegacyCustomer(
     nationalIdHash,
     phone: input.phone,
     role: 'CUSTOMER',
+    ...(access ? { origin: access } : {}),
   });
   if (!identityContact) writes.add('contactCreated');
   const created = await tx.customer.create({
@@ -583,6 +661,7 @@ async function resolveLegacyCustomer(
       addressIdCardEncrypted: enc.addressIdCardEncrypted,
       addressCurrentEncrypted: enc.addressCurrentEncrypted,
       addressWorkEncrypted: enc.addressWorkEncrypted,
+      ...(access ?? {}),
     },
     select: { id: true },
   });

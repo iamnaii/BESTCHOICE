@@ -30,7 +30,12 @@ import { CustomerPiiService } from '../../modules/customers/customer-pii.service
 import { JournalAutoService } from '../../modules/journal/journal-auto.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 import { bangkokDateString } from '../../utils/date.util';
-import { parseCustomerOverridesCsv } from './customer';
+import {
+  LEGACY_ORIGIN_FALLBACK_WARNING,
+  parseCustomerOverridesCsv,
+  resolveLegacyCustomerOrigin,
+  type LegacyCustomerOrigin,
+} from './customer';
 import { readDumpTables } from './dump-reader';
 import { uploadLegacyFiles, type LegacyFileStorage, type LegacyFileUploadResult } from './files';
 import { GATE_LABELS, runGates, sampleForManualCheck, type GateResult } from './gates';
@@ -621,6 +626,8 @@ type ImportContext = {
   actualDb: string;
   financeCompanyId: string;
   branch: { id: string; name: string };
+  /** ต้นทางสิทธิ์ของลูกค้าที่จะสร้าง (ตัวเขียนอ่านซ้ำในธุรกรรม — `WriteReport.customerOrigin`) */
+  customerOrigin: LegacyCustomerOrigin;
   systemUser: { id: string } | null;
   overdueDaysThreshold: number;
   inputs: Inputs;
@@ -707,6 +714,11 @@ async function preflightImport(
   });
   if (!branch) throw new Error('ไม่พบสาขาตาม --branch-id (หรือถูกลบแล้ว)');
   d.log(`  สาขาที่ผูกสัญญา              : ${branch.name}`);
+  const customerOrigin = await resolveLegacyCustomerOrigin(prisma, branch.id);
+  d.log(
+    `  ต้นทางสิทธิ์ลูกค้าใหม่        : ${customerOrigin.accessCompanyCode} · สาขาเดียวกับสัญญา${customerOrigin.companyFallback ? ' (ค่าแทน)' : ''}`,
+  );
+  if (customerOrigin.companyFallback) d.log(`  ⚠ ${LEGACY_ORIGIN_FALLBACK_WARNING}`);
   const systemUser = await prisma.user.findUnique({
     where: { email: LEGACY_SYSTEM_USER_EMAIL },
     select: { id: true, isActive: true, isSystemUser: true },
@@ -750,6 +762,7 @@ async function preflightImport(
     actualDb,
     financeCompanyId: finance.id,
     branch,
+    customerOrigin,
     systemUser: systemUser ? { id: systemUser.id } : null,
     overdueDaysThreshold,
     inputs,
@@ -1002,6 +1015,7 @@ async function finishImport(
   const { plan, inputs } = ctx;
   const warnings = planWarnings(plan);
   const report = state.report;
+  const origin = report?.customerOrigin ?? ctx.customerOrigin;
   const result = {
     command: 'import',
     mode: ctx.dryRun ? 'dry-run' : 'commit',
@@ -1021,6 +1035,10 @@ async function finishImport(
     plan: plan.totals,
     blockers: { ...blockerSummary(state.blockers), rows: state.blockers },
     skipped: { count: plan.skipped.length, byReason: countBy(plan.skipped, (s) => s.reason) },
+    customerOrigin: {
+      ...origin,
+      warning: origin.companyFallback ? LEGACY_ORIGIN_FALLBACK_WARNING : null,
+    },
     files: state.files,
     write: report
       ? {
@@ -1077,7 +1095,8 @@ async function finishImport(
  * 2. storage: เขียนจริง → พิมพ์ `describe()` · ปฏิเสธ `none` / `local` · bucket ต้องเท่า `EXPECTED_STORAGE_BUCKET` · dry-run ใช้
  *    storage ปลอม (**ไม่มีไฟล์บัตร/สลิปขึ้น bucket ระหว่างซ้อม**)
  * 3. ฐาน (อ่านอย่างเดียว): `current_database()` = `EXPECTED_DB_NAME` (ชื่อ `bestchoice` = prod ต้องมี `ALLOW_PROD_LEGACY_IMPORT`
- *    และเขียนจริงต้องเป็น GCS) · ด่านกุญแจ/salt จากลูกค้าตัวอย่าง · บริษัท FINANCE · สาขา · บัญชีนำเข้า ·
+ *    และเขียนจริงต้องเป็น GCS) · ด่านกุญแจ/salt จากลูกค้าตัวอย่าง · บริษัท FINANCE · สาขา + ต้นทางสิทธิ์ของลูกค้าใหม่
+ *    (`resolveLegacyCustomerOrigin` — สาขาไม่ผูกบริษัท = SHOP แทน + เตือนบนจอ/`import-result.json`) · บัญชีนำเข้า ·
  *    `overdue_days_threshold` · PEAK API ตั้งค่าอยู่ = เขียนจริงปฏิเสธ
  * 4. `planImport` (เกณฑ์ OVERDUE จาก SystemConfig) · งวดบัญชี FINANCE ของเดือนวันตัดและเดือน `catchUpAt` ต้องไม่ CLOSED/SYNCED ·
  *    มีตัวบล็อก = เขียน `blockers.csv` + `customers-blocked.csv` แล้วหยุด (ไม่เรียก `$transaction`) เว้นแต่ `--allow-blockers`

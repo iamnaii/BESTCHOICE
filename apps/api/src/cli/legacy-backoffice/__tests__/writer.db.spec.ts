@@ -8,7 +8,7 @@ import { hashPII } from '../../../utils/pii.util';
 import { TEST_NAME_PREFIX } from '../../../utils/test-data-markers';
 import { legacyFileContentType, type LegacyFileDetail } from '../files';
 import type { LegacyContract } from '../legacy-book';
-import { planImport, type ImportPlan } from '../plan-import';
+import { planImport, type ImportPlan, type PlannedContract } from '../plan-import';
 import {
   LegacyWriteBlocked,
   LegacyWriteError,
@@ -61,6 +61,9 @@ describeDb('writeLegacyImport (real DB)', () => {
   let financeCompanyId = '';
   let createdCompanyId: string | null = null;
   let branchId = '';
+  /** สาขาที่ไม่ผูกบริษัท (`company_id` ว่าง — แบบสาขาบน prod 30/10) · บริษัท SHOP ที่สเปคสร้างเอง (ฐานไม่มี) */
+  let bareBranchId = '';
+  let createdShopId: string | null = null;
   let userId = '';
   const extraCustomerIds: string[] = [];
 
@@ -105,6 +108,25 @@ describeDb('writeLegacyImport (real DB)', () => {
     branchId = (
       await prisma.branch.create({
         data: { name: `${TEST_NAME_PREFIX} T10 ${stamp}`, companyId: financeCompanyId },
+      })
+    ).id;
+    // ค่าแทน SHOP ของต้นทางสิทธิ์ต้องมีบริษัท SHOP (FK ของ access_company_code)
+    if (!(await prisma.companyInfo.findFirst({ where: { companyCode: 'SHOP' } }))) {
+      createdShopId = (
+        await prisma.companyInfo.create({
+          data: {
+            nameTh: `${TEST_NAME_PREFIX} SHOP T10`,
+            taxId: '0000000000000',
+            companyCode: 'SHOP',
+            address: '1 Test Rd.',
+            directorName: `${TEST_NAME_PREFIX} กรรมการ`,
+          },
+        })
+      ).id;
+    }
+    bareBranchId = (
+      await prisma.branch.create({
+        data: { name: `${TEST_NAME_PREFIX} T10 ไม่ผูกบริษัท ${stamp}` },
       })
     ).id;
     userId = (
@@ -163,8 +185,9 @@ describeDb('writeLegacyImport (real DB)', () => {
       where: { id: { in: customers.map((c) => c.contactId).filter((id): id is string => !!id) } },
     });
     await prisma.user.deleteMany({ where: { id: userId } });
-    await prisma.branch.deleteMany({ where: { id: branchId } });
+    await prisma.branch.deleteMany({ where: { id: { in: [branchId, bareBranchId] } } });
     if (createdCompanyId) await prisma.companyInfo.deleteMany({ where: { id: createdCompanyId } });
+    if (createdShopId) await prisma.companyInfo.deleteMany({ where: { id: createdShopId } });
     await Promise.all([prisma.$disconnect(), logged.$disconnect()]);
     if (saved.key === undefined) delete process.env.PII_ENCRYPTION_KEY;
     else process.env.PII_ENCRYPTION_KEY = saved.key;
@@ -811,6 +834,74 @@ describeDb('writeLegacyImport (real DB)', () => {
     ]);
     expect(report.created.customers).toBe(2);
     expect(report.customers[1].customerId).toBe(report.customers[2].customerId);
+  }, 120_000);
+
+  // ── ต้นทางสิทธิ์ของลูกค้าที่สร้าง (Task 15 — คำตัดสินเจ้าของ 30/10) ──────────────────────────────
+
+  const originOf = (ids: string[]) =>
+    prisma.customer.findMany({
+      where: { id: { in: ids } },
+      select: {
+        id: true,
+        accessCompanyCode: true,
+        accessBranchId: true,
+        contact: { select: { accessCompanyCode: true, accessBranchId: true } },
+      },
+    });
+
+  it('CREATED customers (+ their new Contacts) get the --branch-id branch and its company code; a LINKED customer keeps its own origin', async () => {
+    const s = await scenario();
+    const linkedItem = s.plan.items.find((i) => i.code === s.overdue.code) as PlannedContract;
+    const nid = linkedItem.customer.nationalId as string;
+    const before = await prisma.customer.create({
+      data: {
+        name: `${TEST_NAME_PREFIX} T10 ลูกค้าเดิม (ต้นทางสิทธิ์)`,
+        phone: '',
+        nationalId: nid,
+        nationalIdHash: hash(nid),
+      },
+    });
+    extraCustomerIds.push(before.id);
+
+    const report = await write(s);
+    // สาขาของสเปคนี้ผูกบริษัท FINANCE — ใช้รหัสของบริษัทของสาขาตรง ๆ
+    expect(report.customerOrigin).toEqual({
+      accessCompanyCode: 'FINANCE',
+      accessBranchId: branchId,
+      companyFallback: false,
+    });
+    expect(report.customers.map((c) => [c.code, c.outcome])).toEqual(
+      expect.arrayContaining([[s.overdue.code, 'LINKED']]),
+    );
+    expect(report.created.customers).toBe(2);
+    const rows = await originOf(report.customers.map((c) => c.customerId));
+    expect(rows).toHaveLength(3);
+    for (const row of rows) {
+      const expected =
+        row.id === before.id
+          ? { accessCompanyCode: null, accessBranchId: null }
+          : { accessCompanyCode: 'FINANCE', accessBranchId: branchId };
+      expect(row).toMatchObject({ ...expected, contact: expected });
+    }
+    expect(
+      (legacyImportAuditEntry(report, userId).newValue as { customerOrigin: unknown })
+        .customerOrigin,
+    ).toEqual(report.customerOrigin);
+  }, 120_000);
+
+  it('a --branch-id branch without a company → SHOP fallback flagged in the report; created customers carry SHOP + that branch', async () => {
+    const s = await scenario();
+    const report = await write(s, { ...deps(s), branchId: bareBranchId });
+    expect(report.customerOrigin).toEqual({
+      accessCompanyCode: 'SHOP',
+      accessBranchId: bareBranchId,
+      companyFallback: true,
+    });
+    const rows = await originOf(report.customers.map((c) => c.customerId));
+    expect(rows.map((r) => [r.accessCompanyCode, r.accessBranchId])).toEqual(
+      Array(3).fill(['SHOP', bareBranchId]),
+    );
+    expect(rows.every((r) => r.contact?.accessBranchId === bareBranchId)).toBe(true);
   }, 120_000);
 
   /** สัญญา BESTCHOICE ที่มีอยู่แล้ว (ลูกค้า/เครื่องของตัวเอง) — ใช้จำลองการชนรหัส */

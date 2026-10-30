@@ -20,7 +20,9 @@ import { OPENING_EQUITY_ACCOUNT } from './opening';
 import {
   linkOrCreateLegacyCustomer,
   lockLegacyCustomerPhones,
+  resolveLegacyCustomerOrigin,
   type CustomerLinkResult,
+  type LegacyCustomerOrigin,
   type LegacyCustomerWrite,
 } from './customer';
 import type { LegacyFileDetail } from './files';
@@ -35,7 +37,8 @@ import type { ImportBlocker, ImportPlan, PlannedContract } from './plan-import';
  * 1. `lockLegacyCustomerPhones` ของลูกค้าทุกสัญญาในแผน = **คำสั่งแรกของธุรกรรม**
  * 2. สัญญาที่ `legacyContractCode` มีอยู่แล้ว → ข้ามทั้งสัญญา (`skippedExisting`) · ถูกลบไปแล้ว = ตัวบล็อก
  * 3. ตรวจชนกับข้อมูลใน BESTCHOICE (อ่านอย่างเดียว): เลขสัญญา · รหัสเครื่องเดิม · IMEI ของสัญญา ACTIVE · รหัสงวดเดิม
- * 4. ลูกค้า**ต่อสัญญา** `linkOrCreateLegacyCustomer(…, { phoneLocked: true })` — ผลที่ไม่ใช่ CREATED/LINKED เก็บเป็นแถว
+ * 4. ลูกค้า**ต่อสัญญา** `linkOrCreateLegacyCustomer(…, { phoneLocked: true, origin })` — `origin` =
+ *    `resolveLegacyCustomerOrigin(deps.branchId)` (อ่านครั้งเดียวหลังล็อกเบอร์) · ผลที่ไม่ใช่ CREATED/LINKED เก็บเป็นแถว
  *    ตัวบล็อก · ข้อ 2–4 มีแถวใด = โยน `LegacyWriteBlocked` พร้อม**ทุกแถว** (error ของฐานข้อมูลทำให้ธุรกรรมใช้ต่อไม่ได้ → โยนทันที)
  *    · ผู้เรียกต้อง rollback ทั้งธุรกรรม (ไม่มีการนำเข้าบางส่วน)
  * 5. ต่อสัญญา: เครื่อง → สัญญา → ตารางงวด → งวด (Payment) → สลิป → เอกสาร → รายการยกมา → marker → รายการไล่ VAT → stamp
@@ -63,7 +66,9 @@ import type { ImportBlocker, ImportPlan, PlannedContract } from './plan-import';
  * ตาม `isImmutableContractDocument` · ไฟล์ที่ไม่อยู่ใน `files` = ไม่สร้างแถว รายงานใน `missingAttachments`
  * (ไม่ใช่ตัวบล็อก — เจ้าของตัดสินภายหลัง)
  *
- * ลูกค้าที่สร้างใหม่ไม่มี `accessCompanyCode` / `accessBranchId` (แบบ `MigrationService.importCustomers` — `customer.ts`)
+ * **ลูกค้าที่สร้างใหม่** ได้ต้นทางสิทธิ์ของสาขา `--branch-id` (คำตัดสินเจ้าของ 30/10): `accessBranchId` = สาขานั้น ·
+ * `accessCompanyCode` = บริษัทของสาขา หรือ `'SHOP'` เมื่อสาขาไม่ผูกบริษัท (`report.customerOrigin.companyFallback`) ·
+ * ลูกค้าเดิมที่ LINKED ไม่ถูกแตะ (`customer.ts`)
  */
 
 const ZERO = new Prisma.Decimal(0);
@@ -101,6 +106,8 @@ export type WriteReport = {
   };
   /** เลขสัญญาเดิมที่มีอยู่แล้ว — ข้ามทั้งสัญญา */
   skippedExisting: string[];
+  /** ต้นทางสิทธิ์ที่ลูกค้า CREATED ได้ (`companyFallback` = สาขาไม่ผูกบริษัท ใช้ SHOP แทน — ผู้เรียกเตือน) */
+  customerOrigin: LegacyCustomerOrigin;
   /** เลขสัญญาเดิม → id สัญญาใน BESTCHOICE (เฉพาะที่สร้างในรอบนี้) */
   contractIds: Map<string, string>;
   /** ผลผูกลูกค้าต่อสัญญา — `writes` ใช้เขียน audit หลัง commit */
@@ -305,6 +312,8 @@ export async function writeLegacyImport(
     deps.pii,
     plan.items.map((i) => i.customer),
   );
+  // ต้นทางสิทธิ์ของลูกค้าที่จะสร้าง — อ่านอย่างเดียว หลังล็อกเบอร์
+  const customerOrigin = await resolveLegacyCustomerOrigin(tx, deps.branchId);
 
   const report: WriteReport = {
     importBatch: deps.importBatch,
@@ -319,6 +328,7 @@ export async function writeLegacyImport(
       journalEntries: 0,
     },
     skippedExisting: [],
+    customerOrigin,
     contractIds: new Map(),
     customers: [],
     journalEntries: [],
@@ -348,7 +358,10 @@ export async function writeLegacyImport(
   for (const item of todo) {
     let result: CustomerLinkResult;
     try {
-      result = await linkOrCreateLegacyCustomer(tx, deps.pii, item.customer, { phoneLocked: true });
+      result = await linkOrCreateLegacyCustomer(tx, deps.pii, item.customer, {
+        phoneLocked: true,
+        origin: customerOrigin,
+      });
     } catch (error) {
       rows.push({
         code: item.code,
@@ -748,6 +761,7 @@ export function legacyImportAuditEntry(report: WriteReport, userId: string): Aud
     newValue: {
       created: report.created,
       skippedExisting: report.skippedExisting,
+      customerOrigin: report.customerOrigin,
       contracts: [...report.contractIds.entries()].map(([code, contractId]) => ({
         code,
         contractId,

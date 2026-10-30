@@ -207,6 +207,11 @@ function fakeReport(over: Partial<WriteReport> = {}): WriteReport {
       journalEntries: 4,
     },
     skippedExisting: [],
+    customerOrigin: {
+      accessCompanyCode: 'SHOP',
+      accessBranchId: 'branch-1',
+      companyFallback: false,
+    },
     contractIds: new Map([[ACTIVE.code, 'ct-1']]),
     customers: [
       {
@@ -271,6 +276,8 @@ describe('legacy-backoffice-import CLI — report / import (Task 13)', () => {
         periods?: Array<{ year: number; month: number; status: string }>;
         overdueDays?: string | null;
         auditRow?: unknown;
+        /** `Branch.company` ของ --branch-id (ไม่ส่ง = บริษัท SHOP · null = สาขาไม่ผูกบริษัท) */
+        branchCompany?: { companyCode: string | null } | null;
       } = {},
     ) {
       const txErrors: unknown[] = [];
@@ -291,7 +298,14 @@ describe('legacy-backoffice-import CLI — report / import (Task 13)', () => {
         $queryRaw: jest.fn(async () => [{ current_database: over.db ?? DB }]),
         customer: { findMany: customerFindMany },
         companyInfo: { findFirst: jest.fn(async () => ({ id: 'finance-co' })) },
-        branch: { findFirst: jest.fn(async () => ({ id: 'branch-1', name: 'สาขาสังเคราะห์' })) },
+        branch: {
+          findFirst: jest.fn(async () => ({
+            id: 'branch-1',
+            name: 'สาขาสังเคราะห์',
+            company:
+              over.branchCompany === undefined ? { companyCode: 'SHOP' } : over.branchCompany,
+          })),
+        },
         user: {
           findUnique: jest.fn(async () =>
             over.systemUser === undefined
@@ -986,6 +1000,47 @@ describe('legacy-backoffice-import CLI — report / import (Task 13)', () => {
       const text = readOut('import-result.json');
       expect(text).not.toContain(SECRET_NAME);
       expect(text).not.toContain(PHONES[0]);
+    });
+
+    it('ต้นทางสิทธิ์ลูกค้าใหม่: สาขามีบริษัท → รหัสของบริษัท ไม่เตือน · บันทึกใน import-result.json', async () => {
+      const h = harness({ branchCompany: { companyCode: 'SHOP' } });
+      await run(h);
+      const printed = h.deps.log.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(printed).toMatch(/ต้นทางสิทธิ์ลูกค้าใหม่ +: SHOP · สาขาเดียวกับสัญญา\n/);
+      expect(printed).not.toMatch(/ค่าแทน/);
+      expect(result().customerOrigin).toEqual({
+        accessCompanyCode: 'SHOP',
+        accessBranchId: 'branch-1',
+        companyFallback: false,
+        warning: null,
+      });
+    });
+
+    it('ต้นทางสิทธิ์ลูกค้าใหม่: สาขาไม่ผูกบริษัท → SHOP แทน · เตือนบนจอและใน import-result.json (ทั้ง dry-run และแผนติดตัวบล็อก)', async () => {
+      const fallback = {
+        accessCompanyCode: 'SHOP' as const,
+        accessBranchId: 'branch-1',
+        companyFallback: true,
+      };
+      const h = harness({ branchCompany: null });
+      (h.deps.write as unknown as jest.Mock).mockResolvedValueOnce(
+        fakeReport({ customerOrigin: fallback }),
+      );
+      expect((await run(h)).outcome).toBe('DRY_RUN_ROLLED_BACK');
+      const printed = h.deps.log.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(printed).toMatch(/ต้นทางสิทธิ์ลูกค้าใหม่ +: SHOP · สาขาเดียวกับสัญญา \(ค่าแทน\)/);
+      expect(printed).toMatch(/⚠ สาขา --branch-id ไม่ผูกบริษัท \(branches\.company_id ว่าง\)/);
+      expect(result().customerOrigin).toEqual({
+        ...fallback,
+        warning: expect.stringMatching(/ไม่ผูกบริษัท.*SHOP แทน/),
+      });
+
+      // แผนติดตัวบล็อก (ไม่ถึงตัวเขียน) — ผลยังบอกค่าแทนจากด่านก่อนเขียน
+      rmSync(out, { recursive: true, force: true });
+      const blocked = harness({ branchCompany: null });
+      blocked.deps.loadBook.mockResolvedValue({ book: REPORT_BOOK });
+      expect((await run(blocked)).outcome).toBe('PLAN_BLOCKED');
+      expect(result().customerOrigin).toMatchObject({ ...fallback, warning: expect.any(String) });
     });
 
     it('import-result.json ไม่มีข้อมูลลูกค้า · นับข้อเตือน SATANG_GAP_UNEXPLAINED / PEAK_LOWER_UNEXPLAINED', async () => {

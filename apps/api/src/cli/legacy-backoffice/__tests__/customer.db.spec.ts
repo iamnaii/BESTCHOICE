@@ -8,6 +8,7 @@ import { TEST_NAME_PREFIX } from '../../../utils/test-data-markers';
 import {
   linkOrCreateLegacyCustomer,
   lockLegacyCustomerPhones,
+  resolveLegacyCustomerOrigin,
   type CustomerLinkResult,
   type LegacyCustomerInput,
   type LinkLegacyCustomerOptions,
@@ -36,6 +37,10 @@ describeDb('linkOrCreateLegacyCustomer (real DB)', () => {
   const saved = { key: process.env.PII_ENCRYPTION_KEY, salt: process.env.PII_HASH_SALT };
   const stamp = Date.now().toString(36).toUpperCase();
   let seq = 0;
+  /** สาขาของต้นทางสิทธิ์ (`--branch-id`, Task 15): ผูกบริษัท SHOP · ไม่ผูกบริษัท (`company_id` ว่าง) */
+  let shopBranchId = '';
+  let bareBranchId = '';
+  let createdShopId: string | null = null;
 
   beforeAll(async () => {
     const dbName = new URL(process.env.DATABASE_URL as string).pathname.slice(1);
@@ -55,6 +60,36 @@ describeDb('linkOrCreateLegacyCustomer (real DB)', () => {
     });
     await Promise.all([prisma.$connect(), logged.$connect()]);
     pii = new CustomerPiiService(prisma as unknown as PrismaService);
+
+    let shop = await prisma.companyInfo.findFirst({
+      where: { companyCode: 'SHOP' },
+      select: { id: true },
+    });
+    if (!shop) {
+      shop = await prisma.companyInfo.create({
+        data: {
+          nameTh: `${TEST_NAME_PREFIX} SHOP T15`,
+          taxId: '0000000000000',
+          companyCode: 'SHOP',
+          address: '1 Test Rd.',
+          directorName: `${TEST_NAME_PREFIX} กรรมการ`,
+        },
+        select: { id: true },
+      });
+      createdShopId = shop.id;
+    }
+    shopBranchId = (
+      await prisma.branch.create({
+        data: { name: `${TEST_NAME_PREFIX} T15 SHOP ${stamp}`, companyId: shop.id },
+        select: { id: true },
+      })
+    ).id;
+    bareBranchId = (
+      await prisma.branch.create({
+        data: { name: `${TEST_NAME_PREFIX} T15 ไม่ผูกบริษัท ${stamp}` },
+        select: { id: true },
+      })
+    ).id;
   });
 
   afterAll(async () => {
@@ -72,6 +107,10 @@ describeDb('linkOrCreateLegacyCustomer (real DB)', () => {
         OR: [{ id: { in: [...contactIds] } }, { contactCode: { startsWith: `T8C-${stamp}` } }],
       },
     });
+    await prisma.branch.deleteMany({
+      where: { id: { in: [shopBranchId, bareBranchId].filter(Boolean) } },
+    });
+    if (createdShopId) await prisma.companyInfo.deleteMany({ where: { id: createdShopId } });
     await Promise.all([prisma.$disconnect(), logged.$disconnect()]);
     if (saved.key === undefined) delete process.env.PII_ENCRYPTION_KEY;
     else process.env.PII_ENCRYPTION_KEY = saved.key;
@@ -168,6 +207,7 @@ describeDb('linkOrCreateLegacyCustomer (real DB)', () => {
       legacyMemberCode?: string | null;
       contactId?: string | null;
       deletedAt?: Date | null;
+      accessCompanyCode?: 'SHOP' | 'FINANCE' | null;
     },
   ) {
     const store = data.store ?? 'both';
@@ -182,6 +222,7 @@ describeDb('linkOrCreateLegacyCustomer (real DB)', () => {
         legacyMemberCode: data.legacyMemberCode ?? null,
         contactId: data.contactId ?? null,
         deletedAt: data.deletedAt ?? null,
+        accessCompanyCode: data.accessCompanyCode ?? null,
       },
     });
     customerIds.add(row.id);
@@ -421,6 +462,86 @@ describeDb('linkOrCreateLegacyCustomer (real DB)', () => {
       expect(after.nationalIdHash).toBe(hash(nationalId));
       expect(decryptPII(after.nationalIdEncrypted as string, KEY)).toBe(nationalId);
       expect(after.contact?.peakContactCode).toBe(input.peakContactCode);
+    });
+  });
+
+  describe('access origin of --branch-id (Task 15) — CREATED only, LINKED never overwrites', () => {
+    it('resolveLegacyCustomerOrigin on real rows: branch company code · no company → SHOP fallback · unknown branch → throws', async () => {
+      expect(await resolveLegacyCustomerOrigin(prisma, shopBranchId)).toEqual({
+        accessCompanyCode: 'SHOP',
+        accessBranchId: shopBranchId,
+        companyFallback: false,
+      });
+      expect(await resolveLegacyCustomerOrigin(prisma, bareBranchId)).toEqual({
+        accessCompanyCode: 'SHOP',
+        accessBranchId: bareBranchId,
+        companyFallback: true,
+      });
+      await expect(
+        resolveLegacyCustomerOrigin(prisma, '00000000-0000-4000-8000-000000000000'),
+      ).rejects.toThrow(/ไม่พบสาขา/);
+    });
+
+    it.each([
+      ['a branch with a SHOP company', () => shopBranchId],
+      ['a branch without a company (SHOP fallback)', () => bareBranchId],
+    ])(
+      'CREATED via %s: the new customer and its new Contact carry SHOP + the branch',
+      async (_label, branch) => {
+        const origin = await resolveLegacyCustomerOrigin(prisma, branch());
+        const input = await legacyInput({ peakContactCode: peakCode() });
+        const result = await run(input, { origin });
+        expect(result).toMatchObject({
+          outcome: 'CREATED',
+          writes: expect.arrayContaining(['customerCreated', 'contactCreated']),
+        });
+        const row = await customerWithContact(result.customerId as string);
+        expect(row).toMatchObject({ accessCompanyCode: 'SHOP', accessBranchId: branch() });
+        expect(row.contact).toMatchObject({ accessCompanyCode: 'SHOP', accessBranchId: branch() });
+      },
+    );
+
+    it('CREATED on a reused keyed Contact: the customer gets the origin, the existing Contact is left as is', async () => {
+      const nationalId = await freshNationalId();
+      const keyed = await contact('origin-keyed', { nationalId });
+      const origin = await resolveLegacyCustomerOrigin(prisma, shopBranchId);
+      const result = await run(await legacyInput({ nationalId }), { origin });
+      expect(result.outcome).toBe('CREATED');
+      const row = await customerWithContact(result.customerId as string);
+      expect(row.contactId).toBe(keyed.id);
+      expect(row).toMatchObject({ accessCompanyCode: 'SHOP', accessBranchId: shopBranchId });
+      expect(row.contact).toMatchObject({ accessCompanyCode: null, accessBranchId: null });
+    });
+
+    it('LINKED keeps the existing origin: by national id (own origin), plaintext-only (new Contact), override', async () => {
+      const origin = await resolveLegacyCustomerOrigin(prisma, shopBranchId);
+
+      const nationalId = await freshNationalId();
+      const own = await existing('origin-own', { nationalId, accessCompanyCode: 'FINANCE' });
+      expect((await run(await legacyInput({ nationalId }), { origin })).outcome).toBe('LINKED');
+      expect(await prisma.customer.findUniqueOrThrow({ where: { id: own.id } })).toMatchObject({
+        accessCompanyCode: 'FINANCE',
+        accessBranchId: null,
+      });
+
+      const plainId = await freshNationalId();
+      const plain = await existing('origin-plain', { nationalId: plainId, store: 'plaintext' });
+      expect(await run(await legacyInput({ nationalId: plainId }), { origin })).toMatchObject({
+        outcome: 'LINKED',
+        writes: expect.arrayContaining(['contactCreated', 'contactId']),
+      });
+      const after = await customerWithContact(plain.id);
+      expect(after).toMatchObject({ accessCompanyCode: null, accessBranchId: null });
+      expect(after.contact).toMatchObject({ accessCompanyCode: null, accessBranchId: null });
+
+      const target = await existing('origin-override', {});
+      expect(
+        (await run(await legacyInput({ overrideCustomerId: target.id }), { origin })).outcome,
+      ).toBe('LINKED');
+      expect(await prisma.customer.findUniqueOrThrow({ where: { id: target.id } })).toMatchObject({
+        accessCompanyCode: null,
+        accessBranchId: null,
+      });
     });
   });
 

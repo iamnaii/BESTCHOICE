@@ -3,6 +3,7 @@ import type { DumpRow } from '../dump-reader';
 import {
   LEGACY_CUSTOMER_COLUMNS,
   parseCustomerOverridesCsv,
+  resolveLegacyCustomerOrigin,
   toLegacyCustomerInput,
 } from '../customer';
 import { formatFullAddress, resolveTambon } from '../thai-address';
@@ -300,6 +301,45 @@ describe('parseCustomerOverridesCsv', () => {
     ).toContain('บรรทัด 2 ช่อง customer_id — ไม่มีค่า');
     expect(errorOf(() => parseCustomerOverridesCsv('TEST-M-1,cust-a\n'))).toContain(
       'ไม่มีคอลัมน์ legacy_member_code, customer_id',
+    );
+  });
+});
+
+describe('resolveLegacyCustomerOrigin (mocked reads)', () => {
+  /** ฐานปลอม: สาขา (`branch`) และว่ามีบริษัท SHOP หรือไม่ (`shop`) */
+  function db(branch: { company: { companyCode: string | null } | null } | null, shop = true) {
+    return {
+      branch: { findFirst: jest.fn(async () => (branch ? { id: 'br-1', ...branch } : null)) },
+      companyInfo: { findFirst: jest.fn(async () => (shop ? { id: 'shop-co' } : null)) },
+    } as never;
+  }
+
+  it.each([
+    ['SHOP', { accessCompanyCode: 'SHOP', companyFallback: false }],
+    ['FINANCE', { accessCompanyCode: 'FINANCE', companyFallback: false }],
+  ])('the branch company code %s is used as is', async (code, expected) => {
+    expect(
+      await resolveLegacyCustomerOrigin(db({ company: { companyCode: code } }), 'br-1'),
+    ).toEqual({ ...expected, accessBranchId: 'br-1' });
+  });
+
+  it('no company (branches.company_id NULL) or a company without a code → SHOP fallback, flagged', async () => {
+    for (const company of [null, { companyCode: null }]) {
+      expect(await resolveLegacyCustomerOrigin(db({ company }), 'br-1')).toEqual({
+        accessCompanyCode: 'SHOP',
+        accessBranchId: 'br-1',
+        companyFallback: true,
+      });
+    }
+  });
+
+  it('throws: branch missing/deleted · a code other than SHOP/FINANCE · fallback with no SHOP company', async () => {
+    await expect(resolveLegacyCustomerOrigin(db(null), 'br-x')).rejects.toThrow(/ไม่พบสาขา br-x/);
+    await expect(
+      resolveLegacyCustomerOrigin(db({ company: { companyCode: 'OTHER' } }), 'br-1'),
+    ).rejects.toThrow(/ต้องเป็น SHOP หรือ FINANCE/);
+    await expect(resolveLegacyCustomerOrigin(db({ company: null }, false), 'br-1')).rejects.toThrow(
+      /ไม่มีบริษัท SHOP/,
     );
   });
 });

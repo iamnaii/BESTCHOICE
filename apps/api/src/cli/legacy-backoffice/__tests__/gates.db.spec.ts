@@ -61,7 +61,6 @@ function samplingPlan(): ImportPlan {
   const contracts: LegacyContract[] = [];
   const members: DumpRow[] = [];
   const recon: Array<[LegacyContract, ReturnType<typeof peakMatch>]> = [];
-  const canceled = new Map<string, 'CANCELED'>();
   const full = (n: number) =>
     Object.fromEntries(Array.from({ length: n }, (_, i) => [i + 1, { paid: MONTHLY }]));
   let seq = 0;
@@ -119,7 +118,6 @@ function samplingPlan(): ImportPlan {
           firstDue: [2026, 0, 1],
           installments: standardInstallments(full(2)),
         });
-        canceled.set(code, 'CANCELED');
       } else {
         c = syntheticContract({
           id,
@@ -144,11 +142,12 @@ function samplingPlan(): ImportPlan {
   const plan = planImport(syntheticBook(contracts, members), {
     cutoff: CUTOFF,
     peakRecon: syntheticRecon(recon),
-    canceledMap: canceled,
     moneyOverrides: new Map(),
     customerOverrides: new Map(),
   });
   expect(plan.blockers).toEqual([]);
+  // สัญญายกเลิก (สถานะ 4) ไม่นำเข้า — ไม่อยู่ในแผน จึงสุ่มไม่ถึง
+  expect(plan.skipped.map((x) => x.reason)).toEqual(Array(5).fill('status-4-canceled'));
   return plan;
 }
 
@@ -162,12 +161,11 @@ describe('sampleForManualCheck (6.8 — pure)', () => {
     overdue: (code: string) =>
       plan.items.some((i) => i.code === code && i.kind === 'ACTIVE' && i.status === 'OVERDUE'),
     payoff: (code: string) => kindOf(code) === 'payoff',
-    canceled: (code: string) => kindOf(code) === 'canceled',
     old: (code: string) => plan.items.some((i) => i.code === code && i.oldForm),
   };
 
-  it('20 unique plan codes, deterministic for a seed, covering every stratum', () => {
-    expect(plan.items).toHaveLength(31);
+  it('20 unique plan codes, deterministic for a seed, covering every stratum, never a canceled contract', () => {
+    expect(plan.items).toHaveLength(26);
     const a = sampleForManualCheck(plan, 20, 'seed-a');
     expect(a).toHaveLength(20);
     expect(new Set(a).size).toBe(20);
@@ -176,6 +174,7 @@ describe('sampleForManualCheck (6.8 — pure)', () => {
     for (const test of Object.values(strata)) {
       expect(a.filter(test).length).toBeGreaterThanOrEqual(4);
     }
+    expect(a.some((code) => kindOf(code) === 'canceled')).toBe(false);
     expect(sampleForManualCheck(plan, 20, 'seed-b')).not.toEqual(a);
   });
 
@@ -222,8 +221,10 @@ describeDb('runGates (real DB, inside the import transaction)', () => {
   let missingPath = '';
   const phones: string[] = [];
   const nationalIds: string[] = [];
-  const c: Record<'overdue' | 'payoff' | 'prepaid' | 'old' | 'canceled', LegacyContract> =
-    {} as never;
+  const c: Record<
+    'overdue' | 'payoff' | 'prepaid' | 'old' | 'completed' | 'canceled',
+    LegacyContract
+  > = {} as never;
 
   beforeAll(async () => {
     const dbName = new URL(process.env.DATABASE_URL as string).pathname.slice(1);
@@ -355,16 +356,27 @@ describeDb('runGates (real DB, inside the import transaction)', () => {
       imei: imei(),
       installments: standardInstallments(full(11)),
     });
-    // (5) ยกเลิก (เจ้าของยืนยัน CANCELED) — ประวัติ ไม่มีคู่ PEAK
-    c.canceled = syntheticContract({
+    // (5) ผ่อนจบ (ประวัติ) ไม่มีคู่ PEAK
+    c.completed = syntheticContract({
       id: '1205',
       code: code(5),
-      statusCode: '4',
+      statusCode: '3',
       date: '2026-01-01',
       memberId: '125',
       firstDue: [2026, 0, 1],
       imei: imei(),
       installments: standardInstallments(full(2)),
+    });
+    // (6) ยกเลิก (สถานะ 4) ของสมาชิกที่ไม่มีสัญญาอื่น — ไม่นำเข้า (ข้าม) · สมาชิกนี้ไม่ได้แถวลูกค้า
+    c.canceled = syntheticContract({
+      id: '1206',
+      code: code(6),
+      statusCode: '4',
+      date: '2026-02-01',
+      memberId: '126',
+      firstDue: [2026, 2, 1],
+      imei: imei(),
+      installments: standardInstallments(full(1)),
     });
     const outstanding = (x: LegacyContract) =>
       x.installments.reduce((s, i) => (i.balance.gt(0) ? s.plus(i.balance) : s), D(0));
@@ -375,7 +387,17 @@ describeDb('runGates (real DB, inside the import transaction)', () => {
       grossDiff: m.grossDiff.plus(extra),
     });
     peakCodes.push(...['A', 'B', 'C', 'D'].map((x) => `T12${x}${stamp}`));
-    const book = syntheticBook([c.overdue, c.payoff, c.prepaid, c.old, c.canceled], members);
+    const canceledMember = syntheticMember({
+      id: '126',
+      code: `TEST-T12M-${stamp}-6`,
+      nationalId: null,
+      phone: null,
+      name: `${TEST_NAME_PREFIX} T12 สมาชิก`,
+    });
+    const book = syntheticBook(
+      [c.overdue, c.payoff, c.prepaid, c.old, c.completed, c.canceled],
+      [...members, canceledMember],
+    );
     const opts: Parameters<typeof planImport>[1] = {
       cutoff: CUTOFF,
       peakRecon: syntheticRecon([
@@ -390,7 +412,6 @@ describeDb('runGates (real DB, inside the import transaction)', () => {
         ],
         [c.old, peakMatch(c.old, peakCodes[3], outstanding(c.old).minus('15.87'))],
       ]),
-      canceledMap: new Map([[c.canceled.code, 'CANCELED']]),
       moneyOverrides: new Map(),
       customerOverrides: new Map(),
     };
@@ -402,9 +423,11 @@ describeDb('runGates (real DB, inside the import transaction)', () => {
         [c.payoff.code, 'HISTORY', 'EARLY_PAYOFF'],
         [c.prepaid.code, 'ACTIVE', 'ACTIVE'],
         [c.old.code, 'ACTIVE', 'OVERDUE'],
-        [c.canceled.code, 'HISTORY', 'CANCELED'],
+        [c.completed.code, 'HISTORY', 'COMPLETED'],
       ]),
     );
+    expect(plan.skipped).toEqual([{ code: c.canceled.code, reason: 'status-4-canceled' }]);
+    expect(plan.items.some((i) => i.memberCode === canceledMember.member_code)).toBe(false);
     expect(plan.totals.satangGap.toFixed(2)).toBe('0.37');
     expect(plan.totals.peakAdjustment.toFixed(2)).toBe('-15.87');
 
@@ -556,8 +579,9 @@ describeDb('runGates (real DB, inside the import transaction)', () => {
   // ── ผ่านทุกด่าน ──────────────────────────────────────────────────────────────────────────────
 
   it('every gate passes on the freshly written book; details carry no customer data or ids', async () => {
-    const results = await gatesAfter(async () => undefined, { gateOpts: { bookContracts: 5 } });
+    const results = await gatesAfter(async () => undefined, { gateOpts: { bookContracts: 6 } });
     expect(results.filter((r) => !r.pass)).toEqual([]);
+    expect(gate(results, '6.1').detail).toMatch(/ข้าม 1 · ตัวบล็อก 0 · dump 6 · สร้าง 5 /);
     expect(results.every((r) => r.failures === undefined)).toBe(true);
     expect(gate(results, '6.2').detail).toContain('0.37');
     expect(gate(results, '6.2').detail).toContain('-15.87');
@@ -569,7 +593,7 @@ describeDb('runGates (real DB, inside the import transaction)', () => {
 
   it('6.1 — dump count ≠ plan count, or a cutoff other than plan.cutoff', async () => {
     expect(
-      failing(await gatesAfter(async () => undefined, { gateOpts: { bookContracts: 6 } })),
+      failing(await gatesAfter(async () => undefined, { gateOpts: { bookContracts: 7 } })),
     ).toEqual(['6.1']);
     const later = await gatesAfter(async () => undefined, {
       cutoff: new Date(CUTOFF.getTime() + 86_400_000),
@@ -783,7 +807,7 @@ describeDb('runGates (real DB, inside the import transaction)', () => {
     expect(detailsOf(payment, '6.1')).toContain('งวด 1: ไม่มีแถว Payment');
     const slip = await gatesAfter(async (tx, report) => {
       const evidence = await tx.paymentEvidence.findFirstOrThrow({
-        where: { contractId: idOf(report, c.canceled) },
+        where: { contractId: idOf(report, c.completed) },
       });
       await tx.paymentEvidence.update({
         where: { id: evidence.id },
@@ -791,7 +815,7 @@ describeDb('runGates (real DB, inside the import transaction)', () => {
       });
     });
     expect(failing(slip)).toEqual(['6.1']);
-    expect(codesOf(slip, '6.1')).toEqual([c.canceled.code]);
+    expect(codesOf(slip, '6.1')).toEqual([c.completed.code]);
   }, 120_000);
 
   it('6.5 — clearing accrualJournalEntryId of a due row: the 2A cron would pick it', async () => {

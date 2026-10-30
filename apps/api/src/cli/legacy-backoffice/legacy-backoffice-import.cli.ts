@@ -8,8 +8,8 @@
  * |---|---|
  * | `peak-recon --dump <sql> --peak-ar <csv> --out <dir> [--peak-pairs <csv>]` | จับคู่ใบแจ้งหนี้ PEAK กับสัญญา → `peak-recon.csv` + `peak-recon-unmatched.csv` (ไม่แตะฐานข้อมูล) · `--peak-pairs` = คู่ที่เจ้าของกำหนดเอง หัวคอลัมน์ `invoice_code,legacy_code` |
  * | `match-statement --dump <sql> --statement <csv> --cols date=<หัว>,amount=<หัว>[,description=<หัว>] --out <dir>` | จับคู่เงินเข้าใน statement ธนาคารกับรายการรับเงินของระบบเก่า (ยอดเท่ากัน ±3 วัน) → `unmatched.csv` + `ambiguous.csv` (ไม่แตะฐานข้อมูล) · `--cols` = ชื่อหัวคอลัมน์ในไฟล์ statement |
- * | `report --dump --peak-ar --cutoff <yyyy-mm-dd> --out [--peak-pairs --canceled-map --money-overrides --customer-overrides --files-dir --sample-seed]` | แผนนำเข้าแบบไม่แตะฐาน → รายงานให้เจ้าของ/สำนักงานบัญชี (รายชื่อไฟล์ใน `REPORT_FILES`) |
- * | `import --dump --peak-ar --files-dir --cutoff --branch-id --out [--peak-pairs --canceled-map --money-overrides --customer-overrides --tx-timeout-min 20 --max-missing-files 10 --storage-prefix legacy-import --sample-seed --allow-blockers]` | นำเข้าในธุรกรรมเดียว — **ค่าเริ่มต้น dry-run** (เขียนแล้ว rollback) · ด่านกันและลำดับอยู่ที่ `runImport` · ผลลัพธ์ลงโฟลเดอร์ย่อย `<--out>/<รหัสรอบ>/` |
+ * | `report --dump --peak-ar --cutoff <yyyy-mm-dd> --out [--peak-pairs --money-overrides --customer-overrides --files-dir --sample-seed]` | แผนนำเข้าแบบไม่แตะฐาน → รายงานให้เจ้าของ/สำนักงานบัญชี (รายชื่อไฟล์ใน `REPORT_FILES`) |
+ * | `import --dump --peak-ar --files-dir --cutoff --branch-id --out [--peak-pairs --money-overrides --customer-overrides --tx-timeout-min 20 --max-missing-files 10 --storage-prefix legacy-import --sample-seed --allow-blockers]` | นำเข้าในธุรกรรมเดียว — **ค่าเริ่มต้น dry-run** (เขียนแล้ว rollback) · ด่านกันและลำดับอยู่ที่ `runImport` · ผลลัพธ์ลงโฟลเดอร์ย่อย `<--out>/<รหัสรอบ>/` |
  *
  * dump / CSV / โฟลเดอร์ไฟล์แนบ / โฟลเดอร์ผลลัพธ์ อยู่นอก repo เสมอ (มีข้อมูลลูกค้าจริง) — ส่งเข้ามาด้วย path เท่านั้น ·
  * `--out` และ `--files-dir` ที่อยู่ในโฟลเดอร์ของ repo ถูกปฏิเสธก่อนอ่านไฟล์ใด (`repo-guard.ts`) ·
@@ -31,7 +31,7 @@ import { JournalAutoService } from '../../modules/journal/journal-auto.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 import { bangkokDateString } from '../../utils/date.util';
 import { parseCustomerOverridesCsv } from './customer';
-import { readDumpTables, type DumpRow } from './dump-reader';
+import { readDumpTables } from './dump-reader';
 import { uploadLegacyFiles, type LegacyFileStorage, type LegacyFileUploadResult } from './files';
 import { GATE_LABELS, runGates, sampleForManualCheck, type GateResult } from './gates';
 import {
@@ -75,9 +75,6 @@ import {
   assertMoneyOverridesTwoDecimals,
   blockersCsv,
   bridgeCsv,
-  CANCELED_RESOLUTION_GUIDE,
-  CANCELED_RESOLUTIONS,
-  canceledCsv,
   countBy,
   customersBlockedCsv,
   dedupeGates,
@@ -85,7 +82,6 @@ import {
   missingFilesCsv,
   moneyMismatchCsv,
   oldFormCsv,
-  parseCanceledMapCsv,
   planWarnings,
   sampleCsv,
   toJsonSafe,
@@ -129,7 +125,6 @@ export const REPORT_FILES = [
   'bridge.csv',
   'summary.json',
   'blockers.csv',
-  'canceled.csv',
   'money-mismatch.csv',
   'old-form.csv',
   'sample.csv',
@@ -274,12 +269,11 @@ const ms = (since: number) => Math.round(performance.now() - since);
 
 // ─── อ่านข้อมูลเข้า (dump · PEAK · ไฟล์ของเจ้าของ) ────────────────────────────────────────────────
 
-export type LegacyInputs = { book: LegacyBook; contractRows: DumpRow[] };
+export type LegacyInputs = { book: LegacyBook };
 
-/** dump → book + แถว `bestchoice_contract` ดิบ (ช่อง `canceled_*` ของ `canceled.csv`) */
+/** dump → book */
 export async function loadLegacyInputs(dumpPath: string): Promise<LegacyInputs> {
-  const tables = await readDumpTables(dumpPath, LEGACY_TABLES);
-  return { book: buildLegacyBook(tables), contractRows: tables.bestchoice_contract ?? [] };
+  return { book: buildLegacyBook(await readDumpTables(dumpPath, LEGACY_TABLES)) };
 }
 
 type CommonArgs = {
@@ -287,7 +281,6 @@ type CommonArgs = {
   peakAr: string;
   peakPairs?: string;
   cutoff: string;
-  canceledMap?: string;
   moneyOverrides?: string;
   customerOverrides?: string;
   /** seed ของ `sampleForManualCheck` (report ไม่ส่ง = `defaultSampleSeed(วันตัด)` · import ไม่ส่ง = รหัสรอบ) */
@@ -317,22 +310,19 @@ async function loadInputs(
   await hash('dump', args.dump);
   await hash('peak-ar', args.peakAr);
   await hash('peak-pairs', args.peakPairs);
-  await hash('canceled-map', args.canceledMap);
   await hash('money-overrides', args.moneyOverrides);
   await hash('customer-overrides', args.customerOverrides);
 
-  const { book, contractRows } = await loadBook(args.dump);
+  const { book } = await loadBook(args.dump);
   const invoices = parsePeakArCsv(await readFile(args.peakAr, 'utf8'));
   const pairs = args.peakPairs ? parsePeakPairsCsv(await readFile(args.peakPairs, 'utf8')) : [];
   const recon = reconcileWithPeak(book, invoices, pairs);
   const text = (path: string | undefined) => (path ? readFile(path, 'utf8') : null);
-  const canceledText = await text(args.canceledMap);
   const moneyText = await text(args.moneyOverrides);
   if (moneyText !== null) assertMoneyOverridesTwoDecimals(moneyText);
   const customerText = await text(args.customerOverrides);
   return {
     book,
-    contractRows,
     recon,
     invoices,
     pairCount: pairs.length,
@@ -340,7 +330,6 @@ async function loadInputs(
     opts: {
       cutoff,
       peakRecon: recon,
-      canceledMap: canceledText === null ? new Map() : parseCanceledMapCsv(canceledText),
       moneyOverrides: moneyText === null ? new Map() : parseMoneyOverridesCsv(moneyText),
       customerOverrides:
         customerText === null ? new Map() : parseCustomerOverridesCsv(customerText),
@@ -351,6 +340,15 @@ async function loadInputs(
 const attachmentPathsOf = (plan: ImportPlan) => [
   ...new Set(plan.items.flatMap((i) => i.attachmentPaths)),
 ];
+
+/** จำนวนสัญญาที่ข้ามตามเหตุผล เช่น `status-0 <n> · status-4-canceled <n>` */
+function skippedText(byReason: Record<string, number>): string {
+  return (
+    Object.entries(byReason)
+      .map(([reason, n]) => `${reason} ${n}`)
+      .join(' · ') || '-'
+  );
+}
 
 function blockerSummary(rows: readonly ImportBlocker[]) {
   return {
@@ -412,9 +410,7 @@ export async function runReport(
   const sampleSeed = args.sampleSeed ?? defaultSampleSeed(plan.cutoff);
   const sampleCodes = d.sampleForManualCheck(plan, SAMPLE_SIZE, sampleSeed);
   const warnings = planWarnings(plan);
-  const canceledCount = book.contracts.filter(
-    (c) => c.statusCode === '4' || c.statusCode === '5',
-  ).length;
+  const skippedByReason = countBy(plan.skipped, (s) => s.reason);
 
   const summary = {
     command: 'report',
@@ -425,7 +421,6 @@ export async function runReport(
     inputCounts: {
       peakInvoices: inputs.invoices.length,
       peakPairs: inputs.pairCount,
-      canceledMap: opts.canceledMap.size,
       moneyOverrides: opts.moneyOverrides.size,
       customerOverrides: opts.customerOverrides.size,
       filesDir: Boolean(args.filesDir),
@@ -446,15 +441,9 @@ export async function runReport(
     },
     plan: plan.totals,
     blockers: blockerSummary(plan.blockers),
-    skipped: { count: plan.skipped.length, byReason: countBy(plan.skipped, (s) => s.reason) },
+    skipped: { count: plan.skipped.length, byReason: skippedByReason },
     oldForm: plan.oldFormCodes.length,
     warnings: warningSummary(warnings),
-    canceled: {
-      contracts: canceledCount,
-      resolved: opts.canceledMap.size,
-      resolutions: CANCELED_RESOLUTIONS,
-      guide: CANCELED_RESOLUTION_GUIDE,
-    },
     files: upload
       ? {
           attachmentPaths: attachmentPathsOf(plan).length,
@@ -472,7 +461,6 @@ export async function runReport(
     'bridge.csv': bridgeCsv(book, recon, plan, inputs.invoices),
     'summary.json': `${JSON.stringify(toJsonSafe(summary), null, 2)}\n`,
     'blockers.csv': blockersCsv(plan.blockers),
-    'canceled.csv': canceledCsv(book, inputs.contractRows, opts.canceledMap),
     'money-mismatch.csv': moneyMismatchCsv(book, plan, opts.moneyOverrides),
     'old-form.csv': oldFormCsv(book, plan),
     'sample.csv': sampleCsv(plan, sampleCodes),
@@ -492,8 +480,9 @@ export async function runReport(
   d.log(
     `  ติดตัวบล็อก                 : ${t.contracts.blocked} สัญญา (${plan.blockers.length} แถว)`,
   );
-  d.log(`  ข้าม (สถานะ 0/1)           : ${t.contracts.skipped}`);
-  d.log(`  ยกเลิก/หนี้เสีย              : ${canceledCount} (ยืนยันแล้ว ${opts.canceledMap.size})`);
+  d.log(
+    `  ข้าม (ไม่นำเข้า)              : ${t.contracts.skipped} (${skippedText(skippedByReason)})`,
+  );
   d.log(`  สัญญาฉบับเก่า (ผ่อนอยู่)     : ${plan.oldFormCodes.length}`);
   d.log(
     `  ข้อเตือน                    : ${warnings.length} (${Object.entries(unexplained)
@@ -505,9 +494,6 @@ export async function runReport(
       `  ไฟล์แนบ                    : พบ ${upload.details.size} · หาไม่เจอ ${upload.missing.length} · อ่านไม่ได้ ${upload.failed.length}`,
     );
   }
-  d.log(
-    `  canceled.csv ช่อง resolution: ${CANCELED_RESOLUTION_GUIDE} — แล้วส่งกลับด้วย --canceled-map (ไฟล์มีข้อมูลส่วนบุคคล: เจ้าของเท่านั้น)`,
-  );
   d.log(`  เขียนไฟล์                  : ${written.join(', ')} → ${args.out}`);
   return { plan, written };
 }
@@ -1034,6 +1020,7 @@ async function finishImport(
     storage: ctx.storageInfo,
     plan: plan.totals,
     blockers: { ...blockerSummary(state.blockers), rows: state.blockers },
+    skipped: { count: plan.skipped.length, byReason: countBy(plan.skipped, (s) => s.reason) },
     files: state.files,
     write: report
       ? {
@@ -1150,7 +1137,7 @@ export async function runImport(
   };
   const plan = ctx.plan;
   d.log(
-    `  แผน                        : นำเข้า ${plan.items.length} · ตัวบล็อก ${plan.blockers.length} แถว · ข้าม ${plan.skipped.length}`,
+    `  แผน                        : นำเข้า ${plan.items.length} · ตัวบล็อก ${plan.blockers.length} แถว · ข้าม ${plan.skipped.length} (${skippedText(countBy(plan.skipped, (s) => s.reason))})`,
   );
 
   try {
@@ -1272,7 +1259,6 @@ function commonArgs(values: Values): CommonArgs {
     peakAr: required(values, 'peak-ar'),
     peakPairs: optional(values, 'peak-pairs'),
     cutoff: required(values, 'cutoff'),
-    canceledMap: optional(values, 'canceled-map'),
     moneyOverrides: optional(values, 'money-overrides'),
     customerOverrides: optional(values, 'customer-overrides'),
     sampleSeed: optional(values, 'sample-seed'),
@@ -1328,7 +1314,6 @@ const COMMON_OPTIONS = [
   'peak-pairs',
   'cutoff',
   'out',
-  'canceled-map',
   'money-overrides',
   'customer-overrides',
   'sample-seed',
@@ -1358,13 +1343,13 @@ const COMMANDS = new Map<string, Command>([
     {
       usage:
         'report --dump <sql> --peak-ar <csv> --cutoff <yyyy-mm-dd> --out <dir> [--peak-pairs <csv>] ' +
-        '[--canceled-map <csv>] [--money-overrides <csv>] [--customer-overrides <csv>] [--files-dir <httpdocs>] ' +
+        '[--money-overrides <csv>] [--customer-overrides <csv>] [--files-dir <httpdocs>] ' +
         '[--sample-seed <text>]',
       help: [
         'ไม่แตะฐานข้อมูล · --out และ --files-dir ต้องอยู่นอก repo · เกณฑ์ OVERDUE = 7 วัน (import อ่าน overdue_days_threshold จากฐาน)',
         `เขียน: ${REPORT_FILES.join(', ')} (+ missing-files.csv เมื่อส่ง --files-dir) · CSV มี UTF-8 BOM`,
-        `canceled.csv ช่อง resolution: ${CANCELED_RESOLUTION_GUIDE} · ไฟล์มีข้อมูลส่วนบุคคล — เจ้าของเท่านั้น`,
-        'ไฟล์ที่กรอกแล้วส่งกลับได้: canceled.csv → --canceled-map · money-mismatch.csv → --money-overrides · ' +
+        'สัญญายกเลิก (สถานะ 4) ไม่นำเข้า — นับใน summary.json skipped.byReason (status-4-canceled)',
+        'ไฟล์ที่กรอกแล้วส่งกลับได้: money-mismatch.csv → --money-overrides · ' +
           'customers-blocked.csv → --customer-overrides (ลบแถวที่ไม่ได้กรอกก่อน)',
       ].join('\n'),
       options: [...COMMON_OPTIONS, 'files-dir'],
@@ -1376,7 +1361,7 @@ const COMMANDS = new Map<string, Command>([
     {
       usage:
         'import --dump <sql> --peak-ar <csv> --files-dir <httpdocs> --cutoff <yyyy-mm-dd> --branch-id <id> --out <dir> ' +
-        '[--peak-pairs <csv>] [--canceled-map <csv>] [--money-overrides <csv>] [--customer-overrides <csv>] ' +
+        '[--peak-pairs <csv>] [--money-overrides <csv>] [--customer-overrides <csv>] ' +
         '[--tx-timeout-min 20] [--max-missing-files 10] [--storage-prefix legacy-import] [--sample-seed <text>] ' +
         '[--allow-blockers]',
       help: [

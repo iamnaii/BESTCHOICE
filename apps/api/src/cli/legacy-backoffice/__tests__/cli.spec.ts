@@ -15,7 +15,6 @@ import { bangkokDateString } from '../../../utils/date.util';
 import { encryptPII } from '../../../utils/crypto.util';
 import { hashPII } from '../../../utils/pii.util';
 import { parseCustomerOverridesCsv } from '../customer';
-import type { DumpRow } from '../dump-reader';
 import type { GateResult } from '../gates';
 import { ensureBangkokTimeZone } from '../import-preflight';
 import type { LegacyBook, LegacyContract } from '../legacy-book';
@@ -32,13 +31,7 @@ import {
 } from '../legacy-backoffice-import.cli';
 import { parseMoneyOverridesCsv } from '../money';
 import type { ImportPlan } from '../plan-import';
-import {
-  BLOCKERS_CSV_HEADER,
-  customersBlockedCsv,
-  dedupeGates,
-  parseCanceledMapCsv,
-  redactDigits,
-} from '../report-files';
+import { BLOCKERS_CSV_HEADER, customersBlockedCsv, dedupeGates } from '../report-files';
 import { LegacyWriteBlocked, LegacyWriteError, type WriteReport } from '../writer';
 import {
   LAST,
@@ -132,7 +125,7 @@ const OLD_FORM = syntheticContract({
   firstDue: [2025, 9, 10],
   installments: paidFirst(11),
 });
-/** ยกเลิก — เจ้าของยังไม่ยืนยัน (ตัวบล็อก) */
+/** ยกเลิก (สถานะ 4) — ไม่นำเข้า (ข้าม `status-4-canceled`) ไม่ใช่ตัวบล็อก */
 const CANCELED = syntheticContract({
   id: '1304',
   imei: '130413041304130',
@@ -152,24 +145,6 @@ const MISMATCH = syntheticContract({
   firstDue: [2026, 4, 1],
   installments: Array.from({ length: 12 }, () => ({ amount: '1600.00' })),
 });
-
-const CONTRACT_ROWS: DumpRow[] = [
-  {
-    contract_id: '1304',
-    contract_code: 'TEST-C13-X1',
-    canceled_return_phone: '1',
-    canceled_refund: '0',
-    canceled_must_pay: '500',
-    canceled_paid: '0',
-    canceled_slip: null,
-    canceled_by: 'แอดมิน',
-    canceled_at: '2026-01-15 10:00:00',
-    canceled_ip: '10.0.0.1',
-    canceled_remark: 'ลูกค้าขอยกเลิก โทร 081-234-5678',
-    baddebt_at: null,
-    baddebt_remark: null,
-  },
-];
 
 const IMPORT_BOOK = syntheticBook([ACTIVE, HISTORY, OLD_FORM], MEMBERS);
 const REPORT_BOOK = syntheticBook([ACTIVE, HISTORY, OLD_FORM, CANCELED, MISMATCH], MEMBERS);
@@ -365,9 +340,7 @@ describe('legacy-backoffice-import CLI — report / import (Task 13)', () => {
           string | undefined
         >,
         log: jest.fn(),
-        loadBook: jest.fn(
-          async (): Promise<LegacyInputs> => ({ book: IMPORT_BOOK, contractRows: [] }),
-        ),
+        loadBook: jest.fn(async (): Promise<LegacyInputs> => ({ book: IMPORT_BOOK })),
         storage: jest.fn(async () => realStorage),
         journal: {} as ImportDeps['journal'],
         pii: {} as ImportDeps['pii'],
@@ -756,31 +729,33 @@ describe('legacy-backoffice-import CLI — report / import (Task 13)', () => {
       expect(printed).toMatch(/รอบเขียนจริงจะปฏิเสธ/);
     });
 
-    it('แผนมีตัวบล็อก → ไม่เรียก $transaction · เขียน blockers.csv + customers-blocked.csv (มี BOM) แล้วหยุด', async () => {
+    it('แผนมีตัวบล็อก → ไม่เรียก $transaction · เขียน blockers.csv + customers-blocked.csv (มี BOM) แล้วหยุด · สัญญายกเลิกนับเป็นข้าม', async () => {
       const h = harness();
-      h.deps.loadBook.mockResolvedValue({ book: REPORT_BOOK, contractRows: CONTRACT_ROWS });
+      h.deps.loadBook.mockResolvedValue({ book: REPORT_BOOK });
       const outcome = await run(h);
 
       expect(outcome.outcome).toBe('PLAN_BLOCKED');
       expect(outcome.committed).toBe(false);
-      expect(outcome.blockers.map((b) => b.reason)).toEqual(
-        expect.arrayContaining(['CANCELED_UNCONFIRMED', 'INSTALLMENT_AMOUNT_MISMATCH']),
-      );
+      expect(outcome.blockers.map((b) => b.reason)).toEqual(['INSTALLMENT_AMOUNT_MISMATCH']);
       expectNoWrites(h);
       const csv = readOut('blockers.csv');
       expect(csv.startsWith(BOM)).toBe(true);
       expect(stripBom(csv).split('\n')[0]).toBe(BLOCKERS_CSV_HEADER.join(','));
-      expect(csv).toContain(`${CANCELED.code},CANCELED_UNCONFIRMED,`);
+      expect(csv).toContain(`${MISMATCH.code},INSTALLMENT_AMOUNT_MISMATCH,`);
+      expect(csv).not.toContain(CANCELED.code);
       expect(readOut('customers-blocked.csv').startsWith(BOM)).toBe(true);
       expect(result()).toMatchObject({
         outcome: 'PLAN_BLOCKED',
         blockers: { count: outcome.blockers.length },
+        skipped: { count: 1, byReason: { 'status-4-canceled': 1 } },
       });
+      const printed = h.deps.log.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(printed).toMatch(/ข้าม 1 \(status-4-canceled 1\)/);
     });
 
     it('--allow-blockers (dry-run) ซ้อมสัญญาที่ผ่าน — ส่ง allowPlanBlockers ให้ตัวเขียน · ยังไม่ commit', async () => {
       const h = harness();
-      h.deps.loadBook.mockResolvedValue({ book: REPORT_BOOK, contractRows: CONTRACT_ROWS });
+      h.deps.loadBook.mockResolvedValue({ book: REPORT_BOOK });
       const outcome = await run(h, { allowBlockers: true });
       expect(outcome.committed).toBe(false);
       expect(h.prisma.$transaction).toHaveBeenCalledTimes(1);
@@ -790,7 +765,7 @@ describe('legacy-backoffice-import CLI — report / import (Task 13)', () => {
 
     it('--allow-blockers: ด่าน 6.1 ไม่ผ่านโดยออกแบบ → พิมพ์คำอธิบาย · ผล GATES_FAILED ไม่ commit', async () => {
       const h = harness();
-      h.deps.loadBook.mockResolvedValue({ book: REPORT_BOOK, contractRows: CONTRACT_ROWS });
+      h.deps.loadBook.mockResolvedValue({ book: REPORT_BOOK });
       h.deps.runGates.mockResolvedValueOnce([
         { id: '6.1', pass: false, detail: 'แผนมีตัวบล็อก 2 แถว' },
         { id: '6.2', pass: true, detail: 'ตรง PEAK' },
@@ -1036,10 +1011,7 @@ describe('legacy-backoffice-import CLI — report / import (Task 13)', () => {
     });
     const deps = {
       log: jest.fn(),
-      loadBook: async (): Promise<LegacyInputs> => ({
-        book: REPORT_BOOK,
-        contractRows: CONTRACT_ROWS,
-      }),
+      loadBook: async (): Promise<LegacyInputs> => ({ book: REPORT_BOOK }),
       now: () => NOW,
     };
     const read = (name: string) => readFileSync(join(out, name), 'utf8');
@@ -1058,7 +1030,6 @@ describe('legacy-backoffice-import CLI — report / import (Task 13)', () => {
         'bridge.csv',
         'summary.json',
         'blockers.csv',
-        'canceled.csv',
         'money-mismatch.csv',
         'old-form.csv',
         'sample.csv',
@@ -1073,9 +1044,6 @@ describe('legacy-backoffice-import CLI — report / import (Task 13)', () => {
       expect(header('peak-recon.csv')).toMatch(/^legacy_code,invoice_code,peak_contact_code,/);
       expect(header('blockers.csv')).toBe(
         'legacy_code,reason,reason_th,member_code,invoice_code,installment_nos,diff,expected_rounding_diff,mismatch,related_customer_id,detail',
-      );
-      expect(header('canceled.csv')).toBe(
-        'legacy_code,legacy_status,contract_date,canceled_return_phone,canceled_refund,canceled_must_pay,canceled_paid,canceled_slip,canceled_by,canceled_at,canceled_remark,baddebt_at,baddebt_remark,resolution',
       );
       expect(header('money-mismatch.csv')).toMatch(
         /^legacy_code,financed_amount,store_commission,vat_amount,reason,reason_th,/,
@@ -1120,28 +1088,24 @@ describe('legacy-backoffice-import CLI — report / import (Task 13)', () => {
       expect(footer.EQUALS_IMPORTED_PEAK_REMAIN).toEqual({ count: '2', amount: totalRemain });
       expect(body.at(-1)).toBe('CHECK_OK');
 
-      expect(read('blockers.csv')).toContain(`${CANCELED.code},CANCELED_UNCONFIRMED,`);
+      expect(read('blockers.csv')).not.toContain(CANCELED.code);
       expect(read('blockers.csv')).toContain(`${MISMATCH.code},INSTALLMENT_AMOUNT_MISMATCH,`);
       expect(read('money-mismatch.csv')).toContain(
         `${MISMATCH.code},,,,INSTALLMENT_AMOUNT_MISMATCH,`,
       );
       expect(read('money-mismatch.csv')).toContain('1:1600.00/1515.83');
       expect(read('old-form.csv')).toContain(`${OLD_FORM.code},2025-09-10,yes,OVERDUE`);
-      expect(read('canceled.csv')).toContain(
-        `${CANCELED.code},4,2025-12-01,1,0,500,0,,แอดมิน,2026-01-15 10:00:00,`,
-      );
-      expect(read('canceled.csv')).not.toContain('10.0.0.1'); // canceled_ip ไม่ใส่
       expect(stripBom(read('sample.csv')).trimEnd().split('\n')).toHaveLength(4); // หัว + 3 สัญญาในแผน
 
       const summary = JSON.parse(read('summary.json'));
       expect(summary).toMatchObject({
         command: 'report',
         book: { contracts: 5 },
-        plan: { contracts: { active: 2, history: 1, blocked: 2 } },
-        blockers: { contracts: 2 },
+        plan: { contracts: { active: 2, history: 1, skipped: 1, blocked: 1 } },
+        blockers: { contracts: 1, byReason: { INSTALLMENT_AMOUNT_MISMATCH: 1 } },
+        skipped: { count: 1, byReason: { 'status-4-canceled': 1 } },
         oldForm: 1,
         files: { missing: 0, failed: 0 },
-        canceled: { resolutions: ['CANCELED', 'CLOSED_BAD_DEBT'] },
         overdueDaysThreshold: { value: 7, source: 'default' },
         warnings: { unexplained: { SATANG_GAP_UNEXPLAINED: 0, PEAK_LOWER_UNEXPLAINED: 0 } },
       });
@@ -1151,32 +1115,26 @@ describe('legacy-backoffice-import CLI — report / import (Task 13)', () => {
       });
       expect(summary.inputs['peak-ar'].sha256).toMatch(/^[0-9a-f]{64}$/);
       expect(summary.plan.outstanding).toMatch(/^\d+\.\d{2}$/);
+      expect(summary).not.toHaveProperty('canceled');
+      expect(summary.inputCounts).not.toHaveProperty('canceledMap');
     });
 
-    it('canceled.csv: หมายเหตุข้อมูลส่วนบุคคล + คำแนะนำสองค่า · บนจอบอกสองค่า · ไม่มีชื่อ/เบอร์/เลขบัตร · เลขยาวถูกตัด', async () => {
+    it('สัญญายกเลิก: ไม่มี canceled.csv · บนจอบอกจำนวนที่ข้ามตามเหตุผล · ไม่มีชื่อ/เบอร์/เลขบัตรในไฟล์ใด', async () => {
       const log = jest.fn();
-      await runReport(reportArgs({ filesDir }), { ...deps, log } as never);
-      const canceled = stripBom(read('canceled.csv')).split('\n');
-      expect(canceled[0]).toBe(
-        '# ข้อมูลส่วนบุคคล — เจ้าของเท่านั้น ห้ามส่งสำนักงานบัญชี/แชท (ชื่อแอดมินและข้อความอิสระของระบบเก่า)',
-      );
-      expect(canceled[1]).toMatch(
-        /^# กรอกช่อง resolution: CANCELED \(ยกเลิกสัญญา\) หรือ CLOSED_BAD_DEBT/,
-      );
-      for (const line of [canceled[1], log.mock.calls.map((c) => String(c[0])).join('\n')]) {
-        expect(line).not.toMatch(/TERMINATED|EXCHANGED/);
-      }
-      expect(log.mock.calls.map((c) => String(c[0])).join('\n')).toMatch(
-        /CANCELED \(ยกเลิกสัญญา\) หรือ CLOSED_BAD_DEBT \(ปิดเป็นหนี้สูญ\)/,
-      );
+      const outcome = await runReport(reportArgs({ filesDir }), { ...deps, log } as never);
+      expect(outcome.written).not.toContain('canceled.csv');
+      expect(existsSync(join(out, 'canceled.csv'))).toBe(false);
+      expect(outcome.plan.skipped).toEqual([{ code: CANCELED.code, reason: 'status-4-canceled' }]);
+      const printed = log.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(printed).toMatch(/ข้าม \(ไม่นำเข้า\) +: 1 \(status-4-canceled 1\)/);
+      expect(printed).not.toMatch(/canceled-map|canceled\.csv/);
 
       for (const name of readdirSync(out)) {
         const text = read(name);
-        for (const secret of [SECRET_NAME, ...PHONES, ...NIDS, '081-234-5678']) {
+        for (const secret of [SECRET_NAME, ...PHONES, ...NIDS]) {
           expect({ name, leaked: text.includes(secret) }).toEqual({ name, leaked: false });
         }
       }
-      expect(read('canceled.csv')).toContain('ลูกค้าขอยกเลิก โทร [ตัดตัวเลข]');
     });
 
     it('ไม่ส่ง --files-dir → ไม่มี missing-files.csv และไม่อ่านไฟล์แนบ', async () => {
@@ -1185,28 +1143,6 @@ describe('legacy-backoffice-import CLI — report / import (Task 13)', () => {
       expect(outcome.written).not.toContain('missing-files.csv');
       expect(uploadFiles).not.toHaveBeenCalled();
       expect(JSON.parse(read('summary.json')).files).toBeNull();
-    });
-
-    it('canceled.csv (มี BOM + หมายเหตุ #) ที่เจ้าของกรอก CANCELED ส่งกลับเป็น --canceled-map ได้ → สัญญาไม่ติดตัวบล็อกอีก', async () => {
-      await runReport(reportArgs(), deps as never);
-      const filled = read('canceled.csv').replace(/,\n/, ',CANCELED\n');
-      const map = join(base, 'canceled-filled.csv');
-      writeFileSync(map, filled);
-      expect(parseCanceledMapCsv(filled).get(CANCELED.code)).toBe('CANCELED');
-
-      const outcome = await runReport(reportArgs({ canceledMap: map }), deps as never);
-      expect(outcome.plan.blockers.map((b) => b.code)).not.toContain(CANCELED.code);
-      expect(read('canceled.csv')).toContain(',CANCELED\n');
-    });
-
-    it('canceled.csv ที่กรอก TERMINATED → --canceled-map ปฏิเสธ บอกบรรทัดและสองค่าที่ใช้ได้', async () => {
-      await runReport(reportArgs(), deps as never);
-      const filled = read('canceled.csv').replace(/,\n/, ',TERMINATED\n');
-      const map = join(base, 'canceled-terminated.csv');
-      writeFileSync(map, filled);
-      await expect(runReport(reportArgs({ canceledMap: map }), deps as never)).rejects.toThrow(
-        /บรรทัด 4 ช่อง resolution — ต้องเป็น CANCELED \(ยกเลิกสัญญา\) หรือ CLOSED_BAD_DEBT \(ปิดเป็นหนี้สูญ\)/,
-      );
     });
 
     it('money-mismatch.csv ที่กรอกยอดแล้ว (ลบแถวที่ไม่กรอก) ส่งกลับเป็น --money-overrides ได้', async () => {
@@ -1235,27 +1171,6 @@ describe('legacy-backoffice-import CLI — report / import (Task 13)', () => {
   // ─── ตัวช่วย ─────────────────────────────────────────────────────────────────────────────────
 
   describe('ตัวช่วย', () => {
-    it('parseCanceledMapCsv: สองค่าเท่านั้น · ว่าง = ยังไม่ยืนยัน · ไม่สนตัวเล็กใหญ่ · ค่าผิด/ซ้ำ = throw บอกบรรทัด ไม่ยกค่า', () => {
-      const map = parseCanceledMapCsv('legacy_code,resolution,extra\nA,closed_bad_debt,x\nB,,y\n');
-      expect([...map]).toEqual([['A', 'CLOSED_BAD_DEBT']]);
-      for (const value of ['TERMINATED', 'EXCHANGED', 'SECRET-VALUE']) {
-        const text = `legacy_code,resolution\nA,${value}\n`;
-        expect(() => parseCanceledMapCsv(text)).toThrow(
-          /บรรทัด 2 ช่อง resolution — ต้องเป็น CANCELED .* หรือ CLOSED_BAD_DEBT/,
-        );
-        expect(() => parseCanceledMapCsv(text)).not.toThrow(new RegExp(value));
-      }
-      expect(() => parseCanceledMapCsv('legacy_code,resolution\nA,CANCELED\nA,CANCELED\n')).toThrow(
-        /สัญญาซ้ำกับบรรทัด 2/,
-      );
-    });
-
-    it('parseCanceledMapCsv: ข้าม BOM + หมายเหตุ # (รวมที่ Excel ครอบ ") โดยเลขบรรทัดยังตรงไฟล์', () => {
-      const text = `${BOM}# หมายเหตุ\r\n"# อีกบรรทัด"\r\nlegacy_code,resolution\r\nA,CANCELED\r\nB,BAD\r\n`;
-      expect(() => parseCanceledMapCsv(text)).toThrow(/บรรทัด 5 ช่อง resolution/);
-      expect([...parseCanceledMapCsv(text.replace('B,BAD', 'B,'))]).toEqual([['A', 'CANCELED']]);
-    });
-
     it('customers-blocked.csv หนึ่งแถวต่อรหัสสมาชิก (หลายสัญญา/หลายเหตุรวมกัน) → กรอกแล้วอ่านด้วย --customer-overrides ได้', () => {
       const csv = customersBlockedCsv(
         [
@@ -1282,17 +1197,6 @@ describe('legacy-backoffice-import CLI — report / import (Task 13)', () => {
         ['MC-7', 'cu-7'],
         ['MC-9', 'cu-9'],
       ]);
-    });
-
-    it('redactDigits: ขีด ช่องว่าง จุด วงเล็บ ทับ เลขไทย และ +66 · ยอดเงินสั้นคงไว้', () => {
-      expect(
-        redactDigits(
-          'โทร 081-234-5678 · 081.234.5678 · (081)2345678 · 08/1234/5678 · ๐๘๑๒๓๔๕๖๗๘ · +66812345678 · บัตร 1 2345 67890 12 3 · ค้าง 1,500',
-        ),
-      ).toBe(
-        'โทร [ตัดตัวเลข] · [ตัดตัวเลข] · ([ตัดตัวเลข] · [ตัดตัวเลข] · [ตัดตัวเลข] · [ตัดตัวเลข] · บัตร [ตัดตัวเลข] · ค้าง 1,500',
-      );
-      expect(redactDigits(null)).toBe('');
     });
 
     it('parseCutoff: 23:59:59 กรุงเทพ · รูปแบบผิด/ไม่มีจริง = throw', () => {
@@ -1367,8 +1271,8 @@ describe('legacy-backoffice-import CLI — report / import (Task 13)', () => {
       const rep = harness();
       await main(['report', '--help'], rep.log, rep.ensureTz);
       expect(rep.order[0]).toBe('tz');
-      expect(rep.lines.join('\n')).toMatch(/CANCELED \(ยกเลิกสัญญา\) หรือ CLOSED_BAD_DEBT/);
-      expect(rep.lines.join('\n')).not.toMatch(/TERMINATED/);
+      expect(rep.lines.join('\n')).toMatch(/status-4-canceled/);
+      expect(rep.lines.join('\n')).not.toMatch(/canceled-map|canceled\.csv/);
     });
 
     it('ด่านเขตเวลา throw → main หยุดทันที ไม่พิมพ์/ไม่อ่านอะไร', async () => {
@@ -1412,6 +1316,31 @@ describe('legacy-backoffice-import CLI — report / import (Task 13)', () => {
       ).rejects.toThrow(/ห้ามเขียนผลลัพธ์ลงในโฟลเดอร์ของ repo/);
       expect(h.ensureTz).toHaveBeenCalledTimes(1);
       expect(existsSync(insideRepo)).toBe(false);
+    });
+
+    it('report / import: --canceled-map ถอดแล้ว → ตัวเลือกที่ไม่รู้จัก throw ก่อนอ่านไฟล์ใด', async () => {
+      for (const command of ['report', 'import']) {
+        const h = harness();
+        await expect(
+          main(
+            [
+              command,
+              '--dump',
+              join(base, 'missing.sql'),
+              '--peak-ar',
+              peakAr,
+              '--cutoff',
+              '2026-11-30',
+              '--out',
+              out,
+              '--canceled-map',
+              join(base, 'canceled.csv'),
+            ],
+            h.log,
+            h.ensureTz,
+          ),
+        ).rejects.toThrow(/canceled-map/);
+      }
     });
 
     it('import: ตัวเลือกตัวเลขผิดรูป → throw ก่อนต่อฐาน', async () => {

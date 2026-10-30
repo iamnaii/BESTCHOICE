@@ -109,7 +109,6 @@ function options(
     peakRecon: syntheticRecon(
       matches.map(([c, contact, remain]) => [c, peakMatch(c, contact, remain)]),
     ),
-    canceledMap: new Map(),
     moneyOverrides: new Map(),
     customerOverrides: new Map(),
     ...over,
@@ -214,15 +213,31 @@ describe('planImport', () => {
     expect(plan.totals.payments).toBe(24 + 6);
   });
 
-  it('an unconfirmed canceled contract → exactly one blocker; a status-0 contract → skipped', () => {
+  it('canceled (4) and status-0 contracts → skipped, never blockers (even with a PEAK pair) · bad debt (5) → BAD_DEBT_UNSUPPORTED', () => {
     const a = overdueContract();
+    // สมาชิก M4 มีแต่สัญญายกเลิก — ไม่มีรายการในแผน จึงไม่ได้แถวลูกค้า
+    const M4: MemberSpec = {
+      id: '504',
+      code: 'TEST-M-0504',
+      nationalId: thaiId('091234567893'),
+      phone: '0977000004',
+    };
     const canceled = syntheticContract({
       id: '4',
       code: 'TEST-C-0004',
       statusCode: '4',
       date: '2026-02-01',
-      memberId: M2.id,
+      memberId: M4.id,
       firstDue: [2026, 2, 1],
+    });
+    // สัญญายกเลิกของสมาชิกที่มีสัญญานำเข้า — ข้ามเหมือนกัน (สมาชิกยังได้ลูกค้าจากสัญญาที่นำเข้า)
+    const canceledOfM1 = syntheticContract({
+      id: '9',
+      code: 'TEST-C-0009',
+      statusCode: '4',
+      date: '2026-06-01',
+      memberId: M1.id,
+      firstDue: [2026, 6, 1],
     });
     const stub = syntheticContract({
       id: '5',
@@ -232,22 +247,32 @@ describe('planImport', () => {
       memberId: M3.id,
       firstDue: [2026, 3, 1],
     });
+    const badDebt = syntheticContract({
+      id: '8',
+      code: 'TEST-C-0008',
+      statusCode: '5',
+      date: '2026-04-01',
+      memberId: M3.id,
+      firstDue: [2026, 4, 1],
+    });
     const plan = planImport(
-      syntheticBook([a, canceled, stub], members),
-      options([[a, 'TESTC001']]),
+      syntheticBook([a, canceled, canceledOfM1, stub, badDebt], [...members, syntheticMember(M4)]),
+      options([
+        [a, 'TESTC001'],
+        [canceled, 'TESTC004'],
+      ]),
     );
     expect(plan.blockers).toEqual([
-      { code: 'TEST-C-0004', reason: 'CANCELED_UNCONFIRMED', detail: { legacyStatus: '4' } },
+      { code: 'TEST-C-0008', reason: 'BAD_DEBT_UNSUPPORTED', detail: { legacyStatus: '5' } },
     ]);
-    expect(plan.skipped).toEqual([{ code: 'TEST-C-0005', reason: 'status-0' }]);
+    expect(plan.skipped).toEqual([
+      { code: 'TEST-C-0004', reason: 'status-4-canceled' },
+      { code: 'TEST-C-0009', reason: 'status-4-canceled' },
+      { code: 'TEST-C-0005', reason: 'status-0' },
+    ]);
     expect(plan.items.map((i) => i.code)).toEqual(['TEST-C-0001']);
-
-    const confirmed = planImport(
-      syntheticBook([a, canceled], members),
-      options([[a, 'TESTC001']], { canceledMap: new Map([['TEST-C-0004', 'CANCELED']]) }),
-    );
-    expect(confirmed.blockers).toEqual([]);
-    expect(item(confirmed, 'TEST-C-0004').status).toBe('CANCELED');
+    expect(plan.items.map((i) => i.memberCode)).toEqual([M1.code]);
+    expect(plan.totals.contracts).toEqual({ active: 1, history: 0, skipped: 3, blocked: 1 });
   });
 
   it('a contract signed 2025-11-13 (Bangkok) is old-form; 2025-11-14 is not', () => {
@@ -434,44 +459,6 @@ describe('planImport', () => {
       options([[a, 'TESTC001']], { overdueDaysThreshold: 1 }),
     );
     expect(item(strict, 'TEST-C-0020').status).toBe('OVERDUE');
-  });
-
-  it('canceled resolutions other than CANCELED / CLOSED_BAD_DEBT → CANCELED_RESOLUTION_UNSUPPORTED', () => {
-    const canceled = (id: string, code: string) =>
-      syntheticContract({
-        id,
-        code,
-        statusCode: '4',
-        date: '2026-02-01',
-        memberId: M2.id,
-        firstDue: [2026, 2, 1],
-      });
-    const x = canceled('21', 'TEST-C-0021');
-    const y = canceled('22', 'TEST-C-0022');
-    const z = canceled('23', 'TEST-C-0023');
-    const plan = planImport(
-      syntheticBook([x, y, z], members),
-      options([], {
-        canceledMap: new Map([
-          ['TEST-C-0021', 'TERMINATED'],
-          ['TEST-C-0022', 'EXCHANGED'],
-          ['TEST-C-0023', 'CLOSED_BAD_DEBT'],
-        ]),
-      }),
-    );
-    expect(plan.blockers).toEqual([
-      {
-        code: 'TEST-C-0021',
-        reason: 'CANCELED_RESOLUTION_UNSUPPORTED',
-        detail: { resolution: 'TERMINATED' },
-      },
-      {
-        code: 'TEST-C-0022',
-        reason: 'CANCELED_RESOLUTION_UNSUPPORTED',
-        detail: { resolution: 'EXCHANGED' },
-      },
-    ]);
-    expect(item(plan, 'TEST-C-0023').status).toBe('CLOSED_BAD_DEBT');
   });
 
   it('an interest rate that does not fit Decimal(5,4) → INTEREST_RATE_OUT_OF_RANGE; a duplicated legacy code → DUPLICATE_CONTRACT_CODE', () => {
@@ -833,10 +820,6 @@ describe('planImport', () => {
     const plan = planImport(
       syntheticBook([a], members),
       options([[a, 'TESTC001']], {
-        canceledMap: new Map([
-          ['TEST-C-9999', 'CANCELED'],
-          ['TEST-C-0001', 'CANCELED'],
-        ]),
         moneyOverrides: new Map([
           ['TEST-C-8888', { financedAmount: D(1), storeCommission: D(0), vatAmount: D(0) }],
         ]),
@@ -844,16 +827,6 @@ describe('planImport', () => {
       }),
     );
     expect(plan.blockers).toEqual([
-      {
-        code: 'TEST-C-9999',
-        reason: 'CANCELED_MAP_UNKNOWN_CONTRACT',
-        detail: { source: 'canceled-map' },
-      },
-      {
-        code: 'TEST-C-0001',
-        reason: 'CANCELED_MAP_NOT_CANCELED',
-        detail: { source: 'canceled-map', legacyStatus: '2' },
-      },
       {
         code: 'TEST-C-8888',
         reason: 'MONEY_OVERRIDE_UNKNOWN_CONTRACT',

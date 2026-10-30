@@ -1,8 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { bangkokDateString } from '../../utils/date.util';
-import type { CanceledResolution } from './classify';
 import { csvLine, csvText, formatMoney, readCsv } from './csv';
-import type { DumpRow } from './dump-reader';
 import type { LegacyFileUploadResult } from './files';
 import type { LegacyBook, LegacyContract } from './legacy-book';
 import {
@@ -26,73 +24,17 @@ import {
  * ไฟล์ผลลัพธ์ของคำสั่ง `report` / `import` (Task 13) — ฟังก์ชันบริสุทธิ์ คืนข้อความของไฟล์ ไม่เขียนไฟล์เอง
  *
  * **ไม่มีข้อมูลส่วนบุคคลของลูกค้า:** มีแค่เลขสัญญาเดิม รหัสสมาชิก รหัส/ยอดของ PEAK id ลูกค้าใน BESTCHOICE เลขงวด path
- * ไฟล์แนบ (ชื่อสุ่ม) และยอดเงิน · ไม่อ่านชื่อ เบอร์ เลขบัตร ที่อยู่ ของสมาชิก · ช่องข้อความอิสระของระบบเก่า
- * (`canceled_remark` / `baddebt_remark`) ตัดเลขยาวออกก่อน (`redactDigits` — เบอร์/เลขบัตรที่แอดมินพิมพ์ไว้) — ชื่อคนในข้อความ
- * อิสระตัดอัตโนมัติไม่ได้ ไฟล์จึงอยู่นอก repo เสมอ (`repo-guard.ts`)
+ * ไฟล์แนบ (ชื่อสุ่ม) และยอดเงิน · ไม่อ่านชื่อ เบอร์ เลขบัตร ที่อยู่ ของสมาชิก · ไฟล์อยู่นอก repo เสมอ (`repo-guard.ts`)
  *
  * ไฟล์ที่เจ้าของกรอกแล้วส่งกลับเป็นตัวเลือกของคำสั่งได้ตรง ๆ (คอลัมน์อื่นไม่อ่าน):
- * `canceled.csv` → `--canceled-map` · `money-mismatch.csv` → `--money-overrides` · `customers-blocked.csv` →
- * `--customer-overrides` — แต่ละไฟล์มีแถวของค่าที่ส่งมารอบก่อนอยู่ด้วย (ส่งกลับแล้วค่าเดิมไม่หาย)
+ * `money-mismatch.csv` → `--money-overrides` · `customers-blocked.csv` → `--customer-overrides` — แต่ละไฟล์มีแถวของค่าที่
+ * ส่งมารอบก่อนอยู่ด้วย (ส่งกลับแล้วค่าเดิมไม่หาย) · สัญญายกเลิก (สถานะ 4) ไม่นำเข้าเลย — ไม่มีไฟล์ให้เจ้าของยืนยัน
  */
 
 type Decimal = Prisma.Decimal;
 const ZERO = new Prisma.Decimal(0);
 
-// ─── --canceled-map ──────────────────────────────────────────────────────────────────────────────
-
-/**
- * ผลที่เจ้าของเลือกได้ — **สองค่าเท่านั้น** (คำตัดสิน M-7 ของ Task 10: `TERMINATED` ค้างคิว "รอยึดเครื่อง" ถาวร ·
- * `EXCHANGED` ไม่มีสัญญาใหม่ให้ลิงก์ → `planImport` บล็อก `CANCELED_RESOLUTION_UNSUPPORTED`) · ค่าภาษาไทยใช้ในข้อความถึงเจ้าของ
- */
-export const CANCELED_RESOLUTIONS = ['CANCELED', 'CLOSED_BAD_DEBT'] as const;
-export const CANCELED_RESOLUTION_TEXT: Record<(typeof CANCELED_RESOLUTIONS)[number], string> = {
-  CANCELED: 'ยกเลิกสัญญา',
-  CLOSED_BAD_DEBT: 'ปิดเป็นหนี้สูญ',
-};
-/** ข้อความแนะนำช่อง `resolution` (บรรทัดบนจอ · หมายเหตุใน `canceled.csv` · `summary.json`) */
-export const CANCELED_RESOLUTION_GUIDE = `${CANCELED_RESOLUTIONS.map(
-  (r) => `${r} (${CANCELED_RESOLUTION_TEXT[r]})`,
-).join(' หรือ ')} · ว่าง = ยังไม่ยืนยัน`;
-
-/** หัวคอลัมน์ที่ต้องมีในไฟล์ `--canceled-map` (= `canceled.csv` ที่กรอกแล้ว) */
-export const CANCELED_MAP_COLUMNS = ['legacy_code', 'resolution'] as const;
-
-const CANCELED_MAP_ERROR = 'อ่านไฟล์ --canceled-map ไม่ได้';
-
-/**
- * บรรทัดหมายเหตุ `#` ด้านบนของไฟล์ (เช่น `canceled.csv`) → บรรทัดว่าง — เลขบรรทัดใน error ยังตรงกับไฟล์ · รับ BOM และ
- * หมายเหตุที่ Excel ครอบด้วย `"`
- */
-export function blankCommentLines(text: string): string {
-  return text
-    .replace(/^\uFEFF/, '')
-    .split('\n')
-    .map((line) => (/^"?#/.test(line) ? (line.endsWith('\r') ? '\r' : '') : line))
-    .join('\n');
-}
-
-/**
- * อ่าน `--canceled-map` → เลขสัญญาเดิม → ผลที่เจ้าของยืนยัน · `resolution` ว่าง = ยังไม่ยืนยัน (ข้าม — สัญญายังเป็นตัวบล็อก)
- * · รับเฉพาะ `CANCELED_RESOLUTIONS` (ไม่สนตัวเล็ก/ใหญ่) · ค่าอื่น / เลขสัญญาซ้ำ = throw บอกบรรทัด (ไม่ยกค่าในช่อง) ·
- * บรรทัด `#` ข้าม (ไฟล์ `canceled.csv` ที่ส่งกลับมา)
- */
-export function parseCanceledMapCsv(text: string): Map<string, CanceledResolution> {
-  const out = new Map<string, CanceledResolution>();
-  const lineOfCode = new Map<string, number>();
-  for (const row of readCsv(blankCommentLines(text), CANCELED_MAP_COLUMNS, CANCELED_MAP_ERROR)) {
-    const code = row.text('legacy_code');
-    const previous = lineOfCode.get(code);
-    if (previous !== undefined) throw row.fail('legacy_code', `สัญญาซ้ำกับบรรทัด ${previous}`);
-    lineOfCode.set(code, row.line);
-    const raw = row.cell('resolution').toUpperCase();
-    if (raw === '') continue;
-    if (!(CANCELED_RESOLUTIONS as readonly string[]).includes(raw)) {
-      throw row.fail('resolution', `ต้องเป็น ${CANCELED_RESOLUTION_GUIDE}`);
-    }
-    out.set(code, raw as CanceledResolution);
-  }
-  return out;
-}
+// ─── --money-overrides ───────────────────────────────────────────────────────────────────────────
 
 const MONEY_OVERRIDE_AMOUNT_COLUMNS = [
   'financed_amount',
@@ -120,15 +62,6 @@ export function assertMoneyOverridesTwoDecimals(text: string): void {
 // ─── ตัวช่วย ─────────────────────────────────────────────────────────────────────────────────────
 
 const byCodeAsc = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
-
-/**
- * ตัวเลขยาว 9 หลักขึ้นไปในข้อความอิสระ → `[ตัดตัวเลข]` — เบอร์ / เลขบัตร / เลขบัญชี · ตัวคั่น ช่องว่าง `-` `.` `(` `)` `/` ·
- * เลขไทย ๐–๙ · `+` นำหน้า (`+66…`) ตัดไปด้วย
- */
-export function redactDigits(text: string | null | undefined): string {
-  if (!text) return '';
-  return text.replace(/\+?[0-9๐-๙](?:[\s\-.()/]*[0-9๐-๙]){8,}/g, '[ตัดตัวเลข]');
-}
 
 /** ค่าที่ JSON.stringify ได้ตรง ๆ — Decimal → สตริง 2 ตำแหน่ง · Map → object · Date → ISO */
 export function toJsonSafe(value: unknown): unknown {
@@ -487,71 +420,6 @@ export function bridgeCsv(
         ['TOTAL', String(items.length), '', ...totals.map(formatMoney)],
         ...bridgeFooter(book, recon, plan, invoices, totals[3]),
       ],
-    )
-  );
-}
-
-// ─── canceled.csv ────────────────────────────────────────────────────────────────────────────────
-
-const CANCELED_FIELDS = [
-  'canceled_return_phone',
-  'canceled_refund',
-  'canceled_must_pay',
-  'canceled_paid',
-  'canceled_slip',
-  'canceled_by',
-  'canceled_at',
-] as const;
-
-/** บรรทัด `#` ด้านบนของ `canceled.csv` — `parseCanceledMapCsv` ข้ามให้ (ไม่มี `,` — Excel ไม่แตกเป็นหลายช่อง) */
-export const CANCELED_CSV_NOTES = [
-  '# ข้อมูลส่วนบุคคล — เจ้าของเท่านั้น ห้ามส่งสำนักงานบัญชี/แชท (ชื่อแอดมินและข้อความอิสระของระบบเก่า)',
-  `# กรอกช่อง resolution: ${CANCELED_RESOLUTION_GUIDE} — แล้วส่งไฟล์นี้กลับด้วย --canceled-map`,
-];
-
-/**
- * `canceled.csv` — สัญญายกเลิก (4) / หนี้เสีย (5) ทุกสัญญา + ช่อง `canceled_*` ของระบบเก่า (`canceled_ip` ไม่ใส่) ·
- * `resolution` = ค่าใน `--canceled-map` รอบนี้ (ว่าง = ยังไม่ยืนยัน — เจ้าของกรอก `CANCELED_RESOLUTIONS` สองค่า) ·
- * ข้อความอิสระตัดตัวเลขยาวออก (`redactDigits`) · **ไฟล์ข้อมูลส่วนบุคคล** (`canceled_by` = ชื่อแอดมิน · ข้อความอิสระอาจมีชื่อ)
- * — เจ้าของเท่านั้น (`CANCELED_CSV_NOTES`)
- */
-export function canceledCsv(
-  book: LegacyBook,
-  contractRows: readonly DumpRow[],
-  canceledMap: ReadonlyMap<string, CanceledResolution>,
-): string {
-  const rowById = new Map(contractRows.map((r) => [r.contract_id ?? '', r]));
-  const rows = book.contracts
-    .filter((c) => c.statusCode === '4' || c.statusCode === '5')
-    .sort((a, b) => byCodeAsc(a.code, b.code))
-    .map((c) => {
-      const raw = rowById.get(c.contractId) ?? {};
-      return [
-        c.code,
-        c.statusCode,
-        bangkokDateString(c.createdAt),
-        ...CANCELED_FIELDS.map((f) => raw[f] ?? ''),
-        redactDigits(raw.canceled_remark),
-        raw.baddebt_at ?? '',
-        redactDigits(raw.baddebt_remark),
-        canceledMap.get(c.code) ?? '',
-      ];
-    });
-  return (
-    CANCELED_CSV_NOTES.join('\n') +
-    '\n' +
-    csvText(
-      [
-        'legacy_code',
-        'legacy_status',
-        'contract_date',
-        ...CANCELED_FIELDS,
-        'canceled_remark',
-        'baddebt_at',
-        'baddebt_remark',
-        'resolution',
-      ],
-      rows,
     )
   );
 }

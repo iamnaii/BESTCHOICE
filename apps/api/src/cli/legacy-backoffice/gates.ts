@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import type { ContractStatus, JournalEntryStatus } from '@prisma/client';
+import type { JournalEntryStatus } from '@prisma/client';
 import {
   LEGACY_OPENING_FLOW,
   LEGACY_PRIOR_RECEIPT_FLOW,
@@ -71,13 +71,6 @@ const SHOP_PAYABLE_ACCOUNTS: ReadonlySet<string> = new Set(['21-1101', '21-1102'
 const PEAK_EXCLUDED_IMPORT_FLOWS: ReadonlySet<string> = new Set([
   LEGACY_OPENING_FLOW,
   LEGACY_PRIOR_RECEIPT_FLOW,
-]);
-/** ผลยกเลิก/หนี้เสียที่เจ้าของยืนยัน (`CanceledResolution`) — ชั้นของการสุ่ม 6.8 */
-const CANCELED_STATUSES: ReadonlySet<ContractStatus> = new Set<ContractStatus>([
-  'TERMINATED',
-  'CANCELED',
-  'CLOSED_BAD_DEBT',
-  'EXCHANGED',
 ]);
 
 export const GATE_IDS = ['6.1', '6.2', '6.3', '6.4', '6.5', '6.6', '6.7', '6.9', '6.10'] as const;
@@ -793,7 +786,7 @@ async function gate62(ctx: Ctx): Promise<GateBody> {
       });
     }
   }
-  // งวดที่ยังไม่ PAID ของสัญญาประวัติ (เช่น PARTIALLY_PAID ของสัญญายกเลิก) — คิวทวงถาม / รอบค่าปรับอาจหยิบ (รายงานอย่างเดียว)
+  // งวดที่ยังไม่ PAID ของสัญญาประวัติ (เช่น PARTIALLY_PAID) — คิวทวงถาม / รอบค่าปรับอาจหยิบ (รายงานอย่างเดียว)
   const historyIds = new Set(
     ctx.plan.items
       .filter((i) => i.kind !== 'ACTIVE')
@@ -1354,19 +1347,23 @@ export async function runGates(
 const SAMPLE_STRATA: ReadonlyArray<(item: PlannedContract) => boolean> = [
   (i) => i.kind === 'ACTIVE' && i.status === 'OVERDUE',
   (i) => i.kind === 'HISTORY' && i.status === 'EARLY_PAYOFF',
-  (i) => i.kind === 'HISTORY' && CANCELED_STATUSES.has(i.status),
   (i) => i.oldForm,
 ];
+/**
+ * โควตาต่อชั้น = `⌊n/5⌋` คงเดิมตั้งแต่ยังมีชั้น "ยกเลิก/หนี้เสีย" (สัญญายกเลิกไม่นำเข้าแล้ว — คำตัดสินเจ้าของ 30/10) ·
+ * ชั้นนั้นว่างเมื่อไม่ส่ง `--canceled-map` (ทุกรอบซ้อม) ⇒ แผนและ seed เดิมได้รายชื่อเดิม
+ */
+const SAMPLE_QUOTA_DIVISOR = 5;
 
 /**
  * เลขสัญญาเดิม `n` สัญญาให้คนเทียบกับ PEAK / หน้าจอระบบเก่าทีละช่องในคืนตัด (สเปก 6.8) — ครอบทุกชั้น: ค้างชำระ ·
- * ปิดก่อนกำหนด · ยกเลิก/หนี้เสีย · ฉบับเก่า (แต่ละชั้นได้ `max(1, ⌊n/5⌋)` สัญญาเท่าที่มี) แล้วสุ่มส่วนที่เหลือจากทุกสัญญา ·
+ * ปิดก่อนกำหนด · ฉบับเก่า (แต่ละชั้นได้ `max(1, ⌊n/5⌋)` สัญญาเท่าที่มี) แล้วสุ่มส่วนที่เหลือจากทุกสัญญา ·
  * ผลเดิมทุกครั้งสำหรับแผนและ `seed` เดียวกัน (ไม่ส่ง = ผูกกับวันตัดของแผน — ผู้เรียกควรส่งรหัสรอบนำเข้า)
  */
 export function sampleForManualCheck(plan: ImportPlan, n = 20, seed?: string): string[] {
   if (n <= 0) return [];
   const order = seededShuffle(plan.items, seed ?? `legacy-sample:${plan.cutoff.toISOString()}`);
-  const quota = Math.max(1, Math.floor(n / (SAMPLE_STRATA.length + 1)));
+  const quota = Math.max(1, Math.floor(n / SAMPLE_QUOTA_DIVISOR));
   const chosen = new Set<PlannedContract>();
   for (const inStratum of SAMPLE_STRATA) {
     let taken = 0;

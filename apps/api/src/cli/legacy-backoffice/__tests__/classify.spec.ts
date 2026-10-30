@@ -1,11 +1,10 @@
 import { Prisma } from '@prisma/client';
-import { classifyContract, isOldForm, type CanceledResolution } from '../classify';
+import { classifyContract, isOldForm } from '../classify';
 import type { LegacyContract, LegacyInstallment } from '../legacy-book';
 
 /** จัดประเภทสัญญาระบบเก่า (สเปก 5.3) — สัญญาสังเคราะห์ทั้งหมด */
 
 const CUTOFF = new Date('2026-11-30T23:59:59+07:00');
-const CONFIRMED_CANCELED = new Map<string, CanceledResolution>([['TEST-C-0004', 'TERMINATED']]);
 
 function inst(due: string, amount: string, paid: string, statusCode: string): LegacyInstallment {
   const total = new Prisma.Decimal(amount);
@@ -100,24 +99,19 @@ describe('classifyContract', () => {
       { kind: 'HISTORY', status: 'COMPLETED', reason: null },
     ],
     [
-      "'4' confirmed by the owner",
-      { statusCode: '4', code: 'TEST-C-0004' },
-      { kind: 'HISTORY', status: 'TERMINATED', reason: null },
+      "'4' (canceled) — never imported, whatever the contract holds",
+      {
+        statusCode: '4',
+        code: 'TEST-C-0004',
+        installments: [inst('2026-10-05', '1000', '0', '0')],
+        close: CLOSE,
+      },
+      { kind: 'SKIP', status: null, reason: 'status-4-canceled' },
     ],
     [
-      "'4' not confirmed",
-      { statusCode: '4', code: 'TEST-C-0009' },
-      { kind: 'SKIP', status: null, reason: 'canceled-unconfirmed' },
-    ],
-    [
-      "'5' (bad debt) confirmed by the owner",
-      { statusCode: '5', code: 'TEST-C-0004' },
-      { kind: 'HISTORY', status: 'TERMINATED', reason: null },
-    ],
-    [
-      "'5' (bad debt) not confirmed",
+      "'5' (bad debt) — SKIP reason that planImport turns into a blocker",
       { statusCode: '5', code: 'TEST-C-0009' },
-      { kind: 'SKIP', status: null, reason: 'canceled-unconfirmed' },
+      { kind: 'SKIP', status: null, reason: 'bad-debt-unsupported' },
     ],
     ["'0' (no status)", { statusCode: '0' }, { kind: 'SKIP', status: null, reason: 'status-0' }],
     [
@@ -126,14 +120,14 @@ describe('classifyContract', () => {
       { kind: 'SKIP', status: null, reason: 'status-1' },
     ],
   ])('%s', (_name, over, expected) => {
-    expect(classifyContract(contract(over), CUTOFF, CONFIRMED_CANCELED)).toEqual(expected);
+    expect(classifyContract(contract(over), CUTOFF)).toEqual(expected);
   });
 
   it('counts an installment due on the cutoff day as overdue, and one due the day after as not', () => {
     const dueOnCutoff = contract({ installments: [inst('2026-11-30', '1000', '0', '0')] });
     const dueAfter = contract({ installments: [inst('2026-12-01', '1000', '0', '0')] });
-    expect(classifyContract(dueOnCutoff, CUTOFF, CONFIRMED_CANCELED).status).toBe('OVERDUE');
-    expect(classifyContract(dueAfter, CUTOFF, CONFIRMED_CANCELED).status).toBe('ACTIVE');
+    expect(classifyContract(dueOnCutoff, CUTOFF).status).toBe('OVERDUE');
+    expect(classifyContract(dueAfter, CUTOFF).status).toBe('ACTIVE');
   });
 });
 

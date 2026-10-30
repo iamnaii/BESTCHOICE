@@ -4,7 +4,7 @@ import { isValidThaiNationalId } from '@installment/shared';
 import { bangkokCalendarParts, bangkokDateString, bangkokStartOfDay } from '../../utils/date.util';
 import { dRound } from '../../utils/decimal.util';
 import { paymentBreakdowns } from '../../utils/installment.util';
-import { classifyContract, isOldForm, type CanceledResolution } from './classify';
+import { BAD_DEBT_SKIP_REASON, classifyContract, isOldForm } from './classify';
 import { formatMoney } from './csv';
 import { toLegacyCustomerInput, type LegacyCustomerInput } from './customer';
 import type { DumpRow } from './dump-reader';
@@ -40,7 +40,8 @@ import { buildImportSchedule } from './schedule';
  * (`writer.ts`) เขียนลงฐานได้ทันที และแถวตัวบล็อก (`blockers`) ที่ต้องแก้ก่อนนำเข้า
  *
  * ต่อสัญญา (ลำดับ = ลำดับที่ตัวบล็อกแรกหยุดสัญญานั้น):
- * 1. `classifyContract` — SKIP = `skipped` (ยกเลิก/หนี้เสียที่เจ้าของยังไม่ยืนยัน = ตัวบล็อก `CANCELED_UNCONFIRMED`)
+ * 1. `classifyContract` — SKIP = `skipped` (สถานะ 0/1 · ยกเลิก 4 = `status-4-canceled` ไม่นำเข้าเลย — คำตัดสินเจ้าของ 30/10)
+ *    · หนี้เสีย 5 = ตัวบล็อก `BAD_DEBT_UNSUPPORTED` (ตัวนำเข้าไม่รองรับ — ไม่ข้ามเงียบ)
  * 2. `mapContractMoney` (+ `moneyOverrides`) — `LegacyMoneyError` = ตัวบล็อก
  * 3. **ACTIVE เท่านั้น:**
  *    - ค่างวดระบบเก่าไม่ตรงตัวคำนวณ (`checkInstallmentAmounts`) = ตัวบล็อก (ไม่ว่ามี override หรือไม่)
@@ -57,8 +58,9 @@ import { buildImportSchedule } from './schedule';
  * 5. ลูกค้า: `toLegacyCustomerInput(สมาชิก, คำสั่งซื้อล่าสุดของสมาชิกในบรรดาสัญญาที่นำเข้า, { รหัส PEAK ของใบแจ้งหนี้ของสัญญานี้,
  *    overrides })` — ตรวจแยกจากข้อ 2–4 (สัญญาหนึ่งมีตัวบล็อกได้ทั้งสองฝั่ง): เลขบัตรว่าง/ผิด checksum โดยไม่มี override ·
  *    สมาชิกหนึ่งคนที่สัญญาได้รหัส PEAK ต่างกัน (ลูกค้าหนึ่งคนมีรหัส PEAK ได้รหัสเดียว — `customer.ts` จะให้ `PEAK_CODE_CONFLICT`)
+ *    · สมาชิกที่มีแต่สัญญาที่ข้าม (เช่น ยกเลิกทุกสัญญา) ไม่มีรายการในแผน จึงไม่ได้แถวลูกค้า
  *
- * ตรวจทั้งแผน: รหัสในไฟล์ของเจ้าของ (`canceledMap` / `moneyOverrides` / `customerOverrides`) ที่ไม่มีในระบบเก่า ·
+ * ตรวจทั้งแผน: รหัสในไฟล์ของเจ้าของ (`moneyOverrides` / `customerOverrides`) ที่ไม่มีในระบบเก่า ·
  * IMEI ซ้ำระหว่างสัญญา ACTIVE · รหัสงวดเดิม (`Payment.legacyInstallmentCode` unique) ซ้ำ
  *
  * **เครื่อง:** `legacyProductCode = <เลขสัญญาเดิม>/<IMEI>` (unique ต่อสัญญา — เครื่องที่ขายต่อหลายสัญญาได้หนึ่งแถวต่อสัญญา) ·
@@ -86,8 +88,6 @@ export type ImportOptions = {
   /** วันตัด (2026-11-30 23:59:59 กรุงเทพ) */
   cutoff: Date;
   peakRecon: PeakRecon;
-  /** เลขสัญญาเดิม → ผลที่เจ้าของยืนยัน (สัญญาสถานะ 4/5) */
-  canceledMap: ReadonlyMap<string, CanceledResolution>;
   /** เลขสัญญาเดิม → ยอดที่แก้ (`--money-overrides`) */
   moneyOverrides: ReadonlyMap<string, MoneyOverride>;
   /** รหัสสมาชิก → id ลูกค้า (`--customer-overrides`) */
@@ -108,10 +108,7 @@ export type ImportOptions = {
 export const DEFAULT_OVERDUE_DAYS_THRESHOLD = 7;
 
 export const IMPORT_BLOCKER_REASONS = [
-  'CANCELED_UNCONFIRMED',
-  'CANCELED_RESOLUTION_UNSUPPORTED',
-  'CANCELED_MAP_UNKNOWN_CONTRACT',
-  'CANCELED_MAP_NOT_CANCELED',
+  'BAD_DEBT_UNSUPPORTED',
   'MONEY_OVERRIDE_UNKNOWN_CONTRACT',
   'CUSTOMER_OVERRIDE_UNKNOWN_MEMBER',
   'LEGACY_MONEY_INVALID',
@@ -160,11 +157,8 @@ export type ImportBlocker = {
 
 /** คำอธิบายภาษาไทยของตัวบล็อก — ให้ Task 13 พิมพ์ใน `blockers.csv` */
 export const BLOCKER_REASON_TEXT: Record<ImportBlockerReason, string> = {
-  CANCELED_UNCONFIRMED: 'สัญญายกเลิก/หนี้เสียที่เจ้าของยังไม่ยืนยันผล (--canceled-map)',
-  CANCELED_RESOLUTION_UNSUPPORTED:
-    'ผลของสัญญายกเลิก/หนี้เสียที่นำเข้าได้มีแค่ CANCELED (ยกเลิกสัญญา) หรือ CLOSED_BAD_DEBT (ปิดเป็นหนี้สูญ) — แก้ไฟล์ --canceled-map ให้เลือกหนึ่งในสองค่านี้',
-  CANCELED_MAP_UNKNOWN_CONTRACT: 'ไฟล์ --canceled-map มีเลขสัญญาที่ไม่มีในระบบเก่า',
-  CANCELED_MAP_NOT_CANCELED: 'ไฟล์ --canceled-map มีสัญญาที่ไม่ใช่สถานะยกเลิก/หนี้เสีย',
+  BAD_DEBT_UNSUPPORTED:
+    'สัญญาหนี้เสีย (สถานะ 5) — ตัวนำเข้าไม่รองรับ เจ้าของต้องตัดสินก่อน (อาจมียอดค้างใน PEAK)',
   MONEY_OVERRIDE_UNKNOWN_CONTRACT: 'ไฟล์ --money-overrides มีเลขสัญญาที่ไม่มีในระบบเก่า',
   CUSTOMER_OVERRIDE_UNKNOWN_MEMBER: 'ไฟล์ --customer-overrides มีรหัสสมาชิกที่ไม่มีในระบบเก่า',
   LEGACY_MONEY_INVALID: 'ยอดจัดหรือค่างวดของสัญญาไม่เป็นบวก (แก้ยอดจัดด้วย --money-overrides)',
@@ -705,30 +699,14 @@ export function planImport(book: LegacyBook, opts: ImportOptions): ImportPlan {
   const blockers: ImportBlocker[] = [];
   const skipped: ImportPlan['skipped'] = [];
   const oldFormCodes: string[] = [];
-  const byCode = new Map(book.contracts.map((c) => [c.code, c]));
+  const legacyCodes = new Set(book.contracts.map((c) => c.code));
   // เลขสัญญาเดิมซ้ำใน book (legacy-book ตรวจตอนอ่าน dump — book สังเคราะห์/ประกอบเองอาจไม่ผ่านด่านนั้น)
   const codeCount = new Map<string, number>();
   for (const c of book.contracts) codeCount.set(c.code, (codeCount.get(c.code) ?? 0) + 1);
 
   // ── ไฟล์ของเจ้าของ: รหัสที่ไม่มีในระบบเก่า ──
-  for (const [code] of opts.canceledMap) {
-    const c = byCode.get(code);
-    if (!c) {
-      blockers.push({
-        code,
-        reason: 'CANCELED_MAP_UNKNOWN_CONTRACT',
-        detail: { source: 'canceled-map' },
-      });
-    } else if (c.statusCode !== '4' && c.statusCode !== '5') {
-      blockers.push({
-        code,
-        reason: 'CANCELED_MAP_NOT_CANCELED',
-        detail: { source: 'canceled-map', legacyStatus: c.statusCode },
-      });
-    }
-  }
   for (const [code] of opts.moneyOverrides) {
-    if (!byCode.has(code)) {
+    if (!legacyCodes.has(code)) {
       blockers.push({
         code,
         reason: 'MONEY_OVERRIDE_UNKNOWN_CONTRACT',
@@ -752,10 +730,7 @@ export function planImport(book: LegacyBook, opts: ImportOptions): ImportPlan {
   }
 
   // ── จัดประเภท · คำสั่งซื้อล่าสุดของสมาชิก (ในบรรดาสัญญาที่นำเข้า) ──
-  const classified = book.contracts.map((c) => ({
-    c,
-    cls: classifyContract(c, opts.cutoff, opts.canceledMap),
-  }));
+  const classified = book.contracts.map((c) => ({ c, cls: classifyContract(c, opts.cutoff) }));
   const latestOrder = new Map<string, LegacyContract>();
   for (const { c, cls } of classified) {
     if (cls.kind === 'SKIP') continue;
@@ -768,10 +743,10 @@ export function planImport(book: LegacyBook, opts: ImportOptions): ImportPlan {
   const peakCodes: PeakCodeRequest[] = [];
   for (const { c, cls } of classified) {
     if (cls.kind === 'SKIP') {
-      if (cls.reason === 'canceled-unconfirmed') {
+      if (cls.reason === BAD_DEBT_SKIP_REASON) {
         blockers.push({
           code: c.code,
-          reason: 'CANCELED_UNCONFIRMED',
+          reason: 'BAD_DEBT_UNSUPPORTED',
           detail: { legacyStatus: c.statusCode },
         });
       } else {
@@ -781,20 +756,6 @@ export function planImport(book: LegacyBook, opts: ImportOptions): ImportPlan {
     }
     if ((codeCount.get(c.code) ?? 0) > 1) {
       blockers.push({ code: c.code, reason: 'DUPLICATE_CONTRACT_CODE' });
-      continue;
-    }
-    // ผลของสัญญายกเลิกที่นำเข้าได้: CANCELED / CLOSED_BAD_DEBT เท่านั้น (TERMINATED = ค้างคิว "รอยึดเครื่อง" ถาวร ·
-    // EXCHANGED = ไม่มีสัญญาใหม่ให้ลิงก์)
-    if (
-      (c.statusCode === '4' || c.statusCode === '5') &&
-      cls.status !== 'CANCELED' &&
-      cls.status !== 'CLOSED_BAD_DEBT'
-    ) {
-      blockers.push({
-        code: c.code,
-        reason: 'CANCELED_RESOLUTION_UNSUPPORTED',
-        detail: { resolution: cls.status ?? '' },
-      });
       continue;
     }
     const kind = cls.kind;

@@ -684,7 +684,6 @@ describeDb('legacy opening state runs on the real templates — golden (real DB)
           return [c, peakMatch(c, `T11${stamp}${r}${i}`, remain, spec.peakNetAmount)];
         }),
       ),
-      canceledMap: new Map(),
       moneyOverrides: new Map(),
       customerOverrides: new Map(),
     });

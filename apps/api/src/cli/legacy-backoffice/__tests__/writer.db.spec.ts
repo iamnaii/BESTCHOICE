@@ -268,7 +268,6 @@ describeDb('writeLegacyImport (real DB)', () => {
         [history, peakMatch(history, `T10${run}B`, '0')],
         [prepaid, peakMatch(prepaid, opts.sameMember ? `T10${run}A` : `T10${run}C`)],
       ]),
-      canceledMap: new Map(),
       moneyOverrides: new Map(),
       customerOverrides: new Map(),
     });

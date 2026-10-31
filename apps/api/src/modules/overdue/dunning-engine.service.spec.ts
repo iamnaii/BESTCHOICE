@@ -251,6 +251,52 @@ describe('DunningEngineService', () => {
     });
   });
 
+  describe('Task 30 รอบ 4 m2 — กฎตามวันเลือกงวดตามวันไทย · ทิศ triggerDay ตามหน้าจอ (ลบ = ก่อนครบกำหนด · บวก = เกินกำหนด)', () => {
+    // 1 ธ.ค. 2569 08:15 น. ไทย (รอบ 08:15) = 01:15Z
+    const now = new Date('2026-12-01T01:15:00Z');
+    beforeEach(() => {
+      jest.useFakeTimers({
+        now,
+        doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate', 'setTimeout', 'clearTimeout'],
+      });
+      mockPrisma.payment.findMany.mockResolvedValue([]);
+    });
+    afterEach(() => jest.useRealTimers());
+
+    const whereOfRule = async (triggerDay: number) => {
+      mockRuleService.findAllActiveRules.mockResolvedValueOnce([{ ...sampleRule, triggerDay }]);
+      await service.executeRules();
+      return mockPrisma.payment.findMany.mock.calls.at(-1)![0].where;
+    };
+
+    it('triggerDay -3 = งวดที่ครบกำหนดอีก 3 วัน (4 ธ.ค. ไทย) · PENDING ของสัญญา ACTIVE', async () => {
+      const where = await whereOfRule(-3);
+      expect(where.dueDate).toEqual({
+        gte: new Date('2026-12-03T17:00:00.000Z'),
+        lt: new Date('2026-12-04T17:00:00.000Z'),
+      });
+      expect(where.status).toBe('PENDING');
+      expect(where.contract.status).toBe('ACTIVE');
+    });
+
+    it('triggerDay +1 = งวดที่เกินกำหนด 1 วัน (30 พ.ย. ไทย) · ค้างของสัญญา OVERDUE/DEFAULT', async () => {
+      const where = await whereOfRule(1);
+      expect(where.dueDate).toEqual({
+        gte: new Date('2026-11-29T17:00:00.000Z'),
+        lt: new Date('2026-11-30T17:00:00.000Z'),
+      });
+      expect(where.contract.status).toEqual({ in: ['OVERDUE', 'DEFAULT'] });
+    });
+
+    it('triggerDay 0 = วันครบกำหนด (1 ธ.ค. ไทย)', async () => {
+      const where = await whereOfRule(0);
+      expect(where.dueDate).toEqual({
+        gte: new Date('2026-11-30T17:00:00.000Z'),
+        lt: new Date('2026-12-01T17:00:00.000Z'),
+      });
+    });
+  });
+
   describe('Task 30 ข้อ 2 — ผ่อนผัน 7 วันหลังผูก LINE: ข้อความถูกระงับ = SKIPPED ไม่ใช่ FAILED', () => {
     const eventRule = {
       ...sampleRule,

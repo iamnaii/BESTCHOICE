@@ -15,6 +15,7 @@ import {
   LEGACY_LINK_GRACE_BLOCK_REASON,
   LEGACY_LINK_GRACE_EXEMPT,
 } from '../notifications/legacy-link-grace';
+import { noticeDueWindow } from '../notifications/payment-notice-dedupe';
 import { formatDateShort } from '../../utils/thai-date.util';
 
 /**
@@ -107,8 +108,7 @@ export class DunningEngineService {
    * Main engine: load all active rules, find matching payments, execute.
    */
   async executeRules(): Promise<{ executed: number; skipped: number; failed: number }> {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const now = new Date();
 
     let executed = 0;
     let skipped = 0;
@@ -130,7 +130,7 @@ export class DunningEngineService {
     for (const rule of rules) {
       try {
         if (rule.triggerDay === null) continue; // event-triggered rules fire via executeEventTrigger, not this scheduled loop
-        const payments = await this.findPaymentsForRule(rule.triggerDay, today);
+        const payments = await this.findPaymentsForRule(rule.triggerDay, now);
 
         for (const payment of payments) {
           try {
@@ -308,22 +308,18 @@ export class DunningEngineService {
    * Find payments matching the rule's triggerDay offset from today.
    * - Negative triggerDay: payments due in abs(triggerDay) days (pre-due reminders, PENDING status, ACTIVE contracts)
    * - Positive triggerDay: payments overdue by triggerDay days (PENDING/OVERDUE/PARTIALLY_PAID, OVERDUE/DEFAULT contracts)
+   *
+   * Task 30 รอบ 4 m2 — วันตามปฏิทินไทย (`noticeDueWindow` นิยามเดียวของ "T±n" ของผู้ส่งข้อความเรื่องงวด) ไม่ขึ้นกับ TZ เครื่อง ·
+   * เดิมใช้ `setHours` ตาม TZ เครื่อง และ `today + triggerDay` ทำให้ทิศกลับด้านกับความหมายข้างบน (กฎ -3 ได้งวดที่ครบไปแล้ว 3 วัน ·
+   * กฎ +1 ได้งวดที่ครบพรุ่งนี้) — หน้าจอ/DTO บอก "ลบ = ก่อนครบกำหนด · บวก = หลังครบกำหนด"
    */
-  private async findPaymentsForRule(triggerDay: number, today: Date) {
-    const targetDate = new Date(today);
-    targetDate.setDate(targetDate.getDate() + triggerDay); // negative = future, positive = past
-
-    const dayStart = new Date(targetDate);
-    dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = new Date(targetDate);
-    dayEnd.setHours(23, 59, 59, 999);
-
+  private async findPaymentsForRule(triggerDay: number, now: Date) {
     const isPreDue = triggerDay < 0;
 
     return this.prisma.payment.findMany({
       where: {
         deletedAt: null,
-        dueDate: { gte: dayStart, lte: dayEnd },
+        dueDate: noticeDueWindow(now, -triggerDay),
         ...(isPreDue
           ? {
               status: 'PENDING',

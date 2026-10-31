@@ -12,6 +12,7 @@ import { buildOverdueNoticeFlex } from '../../line-oa/flex-messages/overdue-noti
 import { buildPaymentReminderFlex } from '../../line-oa/flex-messages/payment-reminder.flex';
 import { PDPAService } from '../../pdpa/pdpa.service';
 import { NotificationsService } from '../notifications.service';
+import { findContractsInLegacyLinkGrace, recordLegacyLinkGraceSkip } from '../legacy-link-grace';
 import { isSmsPaymentReminderDisabled } from '../../../utils/sms-payment-reminder.util';
 
 /**
@@ -53,11 +54,28 @@ export class CollectionsNotifierService {
       },
     });
 
+    // Task 30 ข้อ 2 — สัญญานำเข้าที่ลูกค้าผูก LINE ยังไม่ครบ 7 วัน: ไม่แจ้งสถานะค้างชำระทาง LINE
+    const legacyGrace = await findContractsInLegacyLinkGrace(
+      this.prisma,
+      contracts.map((c) => c.id),
+    );
+
     let sent = 0;
     for (const contract of contracts) {
       // ปลายทาง = แถว OTP ของลูกค้า (Task 22 I-1 ง) ไม่ใช่คอลัมน์ line_id_finance
       const lineId = financeLineRecipient(contract.customer);
       if (!lineId) continue;
+
+      if (legacyGrace.has(contract.id)) {
+        await recordLegacyLinkGraceSkip(this.prisma, {
+          recipient: lineId,
+          subject: 'แจ้งสถานะสัญญาค้างชำระ',
+          message: `สัญญา ${contract.contractNumber} เปลี่ยนสถานะ — ระงับช่วงผ่อนผันหลังผูก LINE`,
+          relatedId: contract.id,
+          customerId: contract.customer.id,
+        });
+        continue;
+      }
 
       // Check PDPA consent before sending
       if (contract.customer?.id) {

@@ -1,0 +1,324 @@
+/**
+ * รัน: DATABASE_URL=<ฐานทดสอบ> npx jest src/modules/notifications/legacy-link-grace.db.spec.ts --runInBand
+ *
+ * Task 30 ข้อ 2 (เจ้าของตัดสิน 31 ต.ค. 2026) — **ผ่อนผัน 7 วันหลังผูก LINE สำหรับสัญญาที่นำเข้าจากระบบเดิม** บน Postgres จริง
+ * (คำถามจริงคือ relation filter `legacyContractCode` + `customer.lineLinks.linkedAt` ซึ่ง mock มองไม่เห็น):
+ *   สัญญานำเข้า + ผูก 3 วันก่อน → ไม่โดนทวงทาง LINE (ทุกผู้ส่งหมวดทวง) · ผูก 8 วันก่อน → ทวงตามเดิม · ผูกครบ 7 วันพอดี → พ้นช่วง ·
+ *   สัญญาที่ไม่ได้นำเข้า → ทวงตามเดิม · ลูกค้าคนเดียวมีทั้งสองแบบ → ระงับเฉพาะสัญญานำเข้า · เตือนค่างวดยังส่งระหว่างผ่อนผัน ·
+ *   SMS ทวงไม่เปลี่ยน
+ *
+ * ปลายทางจริงถูก stub (transport ของ NotificationsService · LineOaService · LineFinanceClient) — นับข้อความต่อ LINE ที่ส่งผ่าน
+ */
+import { PrismaClient } from '@prisma/client';
+import { NotificationsService } from './notifications.service';
+import { ComplianceService } from './compliance.service';
+import { HolidayService } from './holiday.service';
+import { NotificationTemplateService } from './notification-template.service';
+import { NotificationCategory } from './notification-category.enum';
+import { CollectionsNotifierService } from './services/collections-notifier.service';
+import { PDPAService } from '../pdpa/pdpa.service';
+import { AutoTriggerService } from '../chatbot-finance/services/auto-trigger.service';
+import { DunningEngineService } from '../overdue/dunning-engine.service';
+import {
+  FinanceFixtureBase,
+  InstallmentFixture,
+  assertTestDatabase,
+  bangkokAt,
+  createFinanceFixtureBase,
+  createInstallmentFixture,
+  dueDateUtc,
+  realBangkokDate,
+  retireFixtures,
+  useFakeDate,
+} from './__tests__/finance-line-fixtures';
+
+jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn(), captureMessage: jest.fn() }));
+jest.mock('@sentry/node', () => ({ captureException: jest.fn(), captureMessage: jest.fn() }));
+
+const prisma = new PrismaClient();
+const stamp = `t30b-${Date.now()}`;
+const day = realBangkokDate();
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** เวลาปลอมของทุกเคส — 10:00 น. ไทย (ในเวลาทำการทั้งวันธรรมดาและวันหยุด) */
+const NOW = bangkokAt(day, 0, 10);
+let base: FinanceFixtureBase;
+let notifications: NotificationsService;
+let collections: CollectionsNotifierService;
+let bot: AutoTriggerService;
+let engine: DunningEngineService;
+const fixtures: InstallmentFixture[] = [];
+let seq = 0;
+
+type Via = 'flex' | 'text' | 'sms' | 'oaFlex' | 'bot';
+const delivered: { to: string; via: Via }[] = [];
+const sink = (via: Via) => async (to: string) => {
+  delivered.push({ to, via });
+};
+const lineDeliveries = (lineUserId: string) =>
+  delivered.filter((d) => d.to === lineUserId && d.via !== 'sms').length;
+
+/** สามสัญญาที่ค้างชำระงวดเดียวกัน: นำเข้า+ผูก 3 วัน · นำเข้า+ผูก 8 วัน · ไม่ได้นำเข้า+ผูก 3 วัน (+ นำเข้า+ผูกครบ 7 วันพอดี) */
+async function trio(dueInDays: number) {
+  const make = (label: string, linkedDaysAgo: number, legacy: boolean) =>
+    createInstallmentFixture(prisma, base, {
+      label: `${label}-${++seq}`,
+      dueDate: dueDateUtc(day, dueInDays),
+      linkedAt: new Date(NOW.getTime() - linkedDaysAgo * DAY_MS),
+      legacyCode: legacy ? `${stamp}-LG-${seq}` : null,
+    });
+  const legacy3 = await make('legacy3', 3, true);
+  const legacy8 = await make('legacy8', 8, true);
+  const legacy7 = await make('legacy7', 7, true);
+  const native3 = await make('native3', 3, false);
+  fixtures.push(legacy3, legacy8, legacy7, native3);
+  return { legacy3, legacy8, legacy7, native3 };
+}
+
+const graceBlocks = (relatedId: string) =>
+  prisma.notificationLog.count({
+    where: { relatedId, status: 'BLOCKED', blockReason: 'LEGACY_LINK_GRACE', category: 'DUNNING' },
+  });
+
+beforeAll(async () => {
+  assertTestDatabase();
+  base = await createFinanceFixtureBase(prisma, stamp);
+  const pdpa = new PDPAService(prisma as never);
+  const compliance = new ComplianceService(prisma as never, pdpa, new HolidayService());
+  notifications = new NotificationsService(
+    prisma as never,
+    { get: jest.fn() } as never,
+    {
+      paymentReminder: jest.fn(() => ({ type: 'flex', altText: 'เตือน', contents: {} })),
+      overdueNotice: jest.fn(() => ({ type: 'flex', altText: 'ค้างชำระ', contents: {} })),
+    } as never,
+    { afterPayment: jest.fn(() => []) } as never,
+    { getValue: jest.fn().mockResolvedValue('') } as never,
+    compliance,
+    new NotificationTemplateService(prisma as never),
+  );
+  jest.spyOn(notifications.transport, 'sendLineFlexMessage').mockImplementation(sink('flex'));
+  jest.spyOn(notifications.transport, 'sendLine').mockImplementation(sink('text'));
+  jest.spyOn(notifications.transport, 'sendSms').mockImplementation(async (to: string) => {
+    delivered.push({ to, via: 'sms' });
+    return 'sms-id';
+  });
+  collections = new CollectionsNotifierService(
+    prisma as never,
+    { sendFlexMessage: jest.fn(sink('oaFlex')) } as never,
+    pdpa,
+    notifications,
+    {} as never,
+  );
+  bot = new AutoTriggerService(
+    prisma as never,
+    { pushText: jest.fn(sink('bot')) } as never,
+    {
+      getOrCreate: jest.fn().mockResolvedValue({ id: 'room' }),
+      saveMessage: jest.fn().mockResolvedValue({ id: 'msg' }),
+    } as never,
+    { bankInfoBlock: '🏦 ทดสอบ' } as never,
+  );
+  engine = new DunningEngineService(
+    prisma as never,
+    { findAllActiveRules: jest.fn().mockResolvedValue([]) } as never,
+    notifications,
+    { createPaymentLink: jest.fn().mockResolvedValue({ url: 'https://pay.test/x' }) } as never,
+    {
+      fetchTagsForCustomer: jest.fn().mockResolvedValue([]),
+      resolve: jest.fn().mockReturnValue({ action: 'send', delayDays: 0, skipSoft: false }),
+    } as never,
+  );
+});
+
+beforeEach(() => useFakeDate(NOW));
+
+afterEach(async () => {
+  jest.useRealTimers();
+  await retireFixtures(prisma, fixtures.splice(0));
+});
+
+afterAll(async () => prisma.$disconnect());
+
+describe('Task 30 ข้อ 2 — ผ่อนผัน 7 วันหลังผูก LINE (สัญญานำเข้าจากระบบเดิม)', () => {
+  it('A2 แจ้งค้างชำระ T+1: นำเข้า+ผูก 3 วัน → ไม่ส่ง (แถว BLOCKED) · ผูก 8 วัน / ครบ 7 วันพอดี / ไม่ได้นำเข้า → ส่งตามเดิม', async () => {
+    const t = await trio(-1);
+
+    await notifications.sendOverdueNotices();
+
+    expect(lineDeliveries(t.legacy3.lineUserId)).toBe(0);
+    expect(await graceBlocks(t.legacy3.paymentId)).toBe(1);
+    expect(lineDeliveries(t.legacy8.lineUserId)).toBe(1);
+    expect(lineDeliveries(t.legacy7.lineUserId)).toBe(1);
+    expect(lineDeliveries(t.native3.lineUserId)).toBe(1);
+    // ไม่ส่ง SMS แทนระหว่างผ่อนผัน
+    expect(delivered.filter((d) => d.via === 'sms')).toHaveLength(0);
+  });
+
+  it('A8 บอททวง T+1: นำเข้า+ผูก 3 วัน → ไม่ส่ง ไม่จองแถว · อื่น ๆ ส่งตามเดิม', async () => {
+    const t = await trio(-1);
+
+    await bot.runDailyEscalations();
+
+    expect(lineDeliveries(t.legacy3.lineUserId)).toBe(0);
+    expect(
+      await prisma.chatAutoTrigger.count({ where: { customerId: t.legacy3.customerId } }),
+    ).toBe(0);
+    expect(await graceBlocks(t.legacy3.paymentId)).toBe(1);
+    expect(lineDeliveries(t.legacy8.lineUserId)).toBe(1);
+    expect(lineDeliveries(t.native3.lineUserId)).toBe(1);
+  });
+
+  it('A3 แจ้งสถานะสัญญา (ACTIVE→OVERDUE): นำเข้า+ผูก 3 วัน → ไม่ส่ง · อื่น ๆ ส่งตามเดิม', async () => {
+    const t = await trio(-10);
+    const all = [t.legacy3, t.legacy8, t.native3];
+
+    await collections.notifyStatusChangedCustomers(all.map((f) => f.contractId));
+
+    expect(lineDeliveries(t.legacy3.lineUserId)).toBe(0);
+    expect(await graceBlocks(t.legacy3.contractId)).toBe(1);
+    expect(lineDeliveries(t.legacy8.lineUserId)).toBe(1);
+    expect(lineDeliveries(t.native3.lineUserId)).toBe(1);
+  });
+
+  it('A4 ขั้นทวง dunning.* (template Flex): นำเข้า+ผูก 3 วัน → ไม่ส่ง · อื่น ๆ ส่งตามเดิม', async () => {
+    const t = await trio(-10);
+    const all = [t.legacy3, t.legacy8, t.native3];
+
+    await collections.notifyEscalatedDunning({
+      escalated: all.map((f) => ({
+        contractId: f.contractId,
+        contractNumber: f.contractNumber,
+        daysOverdue: 10,
+        to: 'REMINDER',
+      })),
+    });
+
+    expect(lineDeliveries(t.legacy3.lineUserId)).toBe(0);
+    expect(await graceBlocks(t.legacy3.contractId)).toBe(1);
+    expect(lineDeliveries(t.legacy8.lineUserId)).toBe(1);
+    expect(lineDeliveries(t.native3.lineUserId)).toBe(1);
+  });
+
+  it('กฎทวงตามเหตุการณ์ (ไม่รับสาย → LINE อัตโนมัติ): นำเข้า+ผูก 3 วัน → DunningAction SKIPPED ไม่ส่ง · อื่น ๆ SENT', async () => {
+    const t = await trio(-10);
+    // กฎของสเปคนี้ตัวเดียว: กฎ seed ที่ eventTrigger เดียวกันถูกพักไว้ระหว่างเคส · กฎของสเปคถูกลบทิ้งหลังเคส
+    // (สเปค seed `collections-foundation.seed.spec.ts` นับกฎที่มี eventTrigger ทั้งตาราง)
+    const rule = await prisma.dunningRule.create({
+      data: {
+        name: `${stamp} ไม่รับสาย`,
+        eventTrigger: 'CALL_NO_ANSWER',
+        channel: 'LINE',
+        messageTemplate: '[BESTCHOICE FINANCE] เรียน {{customerName}} กรุณาติดต่อกลับ',
+        includePaymentLink: true,
+        autoExecute: true,
+        isActive: true,
+        sortOrder: 999,
+      },
+    });
+    const seeded = await prisma.dunningRule.findMany({
+      where: { eventTrigger: 'CALL_NO_ANSWER', isActive: true, id: { not: rule.id } },
+      select: { id: true },
+    });
+    await prisma.dunningRule.updateMany({
+      where: { id: { in: seeded.map((r) => r.id) } },
+      data: { isActive: false },
+    });
+    let actions: { contractId: string; status: string; result: string | null }[] = [];
+    try {
+      for (const f of [t.legacy3, t.legacy8, t.native3]) {
+        await engine.executeEventTrigger('CALL_NO_ANSWER', f.contractId, f.paymentId, null);
+      }
+      actions = await prisma.dunningAction.findMany({
+        where: { dunningRuleId: rule.id },
+        select: { contractId: true, status: true, result: true },
+      });
+    } finally {
+      await prisma.dunningRule.updateMany({
+        where: { id: { in: seeded.map((r) => r.id) } },
+        data: { isActive: true },
+      });
+      await prisma.dunningAction.deleteMany({ where: { dunningRuleId: rule.id } });
+      await prisma.dunningRule.delete({ where: { id: rule.id } });
+    }
+
+    const action = (contractId: string) => actions.find((a) => a.contractId === contractId);
+    expect(action(t.legacy3.contractId)).toEqual({
+      contractId: t.legacy3.contractId,
+      status: 'SKIPPED',
+      result: expect.stringMatching(/^LEGACY_LINK_GRACE notificationId:/),
+    });
+    expect(action(t.legacy8.contractId)?.status).toBe('SENT');
+    expect(action(t.native3.contractId)?.status).toBe('SENT');
+    expect(lineDeliveries(t.legacy3.lineUserId)).toBe(0);
+    expect(lineDeliveries(t.legacy8.lineUserId)).toBe(1);
+    expect(lineDeliveries(t.native3.lineUserId)).toBe(1);
+  });
+
+  it('ส่ง LINE หมวดทวงด้วยมือ (คิวทวงถาม) ก็ถูกระงับ · SMS ทวงไม่เปลี่ยน', async () => {
+    const t = await trio(-10);
+    const manual = (f: InstallmentFixture, channel: 'LINE' | 'SMS') =>
+      notifications.send({
+        channel,
+        channelKey: channel === 'LINE' ? 'line-finance' : undefined,
+        recipient: channel === 'LINE' ? f.lineUserId : `sms-${f.lineUserId}`,
+        message: '[BESTCHOICE FINANCE] กรุณาชำระค่างวดที่ค้าง',
+        relatedId: f.contractId,
+        customerId: f.customerId,
+        category: NotificationCategory.DUNNING,
+      });
+
+    expect(await manual(t.legacy3, 'LINE')).toMatchObject({
+      status: 'BLOCKED',
+      blockReason: 'LEGACY_LINK_GRACE',
+    });
+    expect((await manual(t.native3, 'LINE')).status).toBe('SENT');
+    expect((await manual(t.legacy3, 'SMS')).status).toBe('SENT');
+    expect(lineDeliveries(t.legacy3.lineUserId)).toBe(0);
+    expect(delivered).toContainEqual({ to: `sms-${t.legacy3.lineUserId}`, via: 'sms' });
+  });
+
+  it('ลูกค้าคนเดียวมีสัญญานำเข้า + สัญญาใหม่ (ผูก 3 วัน) → ระงับเฉพาะสัญญานำเข้า', async () => {
+    const legacy = await createInstallmentFixture(prisma, base, {
+      label: `mixed-legacy-${++seq}`,
+      dueDate: dueDateUtc(day, -1),
+      linkedAt: new Date(NOW.getTime() - 3 * DAY_MS),
+      legacyCode: `${stamp}-LG-${seq}`,
+    });
+    const native = await createInstallmentFixture(prisma, base, {
+      label: `mixed-native-${++seq}`,
+      dueDate: dueDateUtc(day, -1),
+      customer: { customerId: legacy.customerId, lineUserId: legacy.lineUserId },
+    });
+    fixtures.push(legacy, native);
+
+    await notifications.sendOverdueNotices();
+
+    expect(await graceBlocks(legacy.paymentId)).toBe(1);
+    expect(
+      await prisma.notificationLog.count({
+        where: { relatedId: native.paymentId, status: 'SENT', channel: 'LINE' },
+      }),
+    ).toBe(1);
+    expect(lineDeliveries(legacy.lineUserId)).toBe(1);
+  });
+
+  it('เตือนค่างวดยังส่งระหว่างผ่อนผัน (A1 08:00 · บอท 09:00 ข้ามตามกติกาหนึ่งข้อความต่อวัน)', async () => {
+    const legacy3 = await createInstallmentFixture(prisma, base, {
+      label: `reminder-${++seq}`,
+      dueDate: dueDateUtc(day, 3),
+      linkedAt: new Date(NOW.getTime() - 3 * DAY_MS),
+      legacyCode: `${stamp}-LG-${seq}`,
+    });
+    fixtures.push(legacy3);
+
+    jest.setSystemTime(bangkokAt(day, 0, 8));
+    await notifications.sendPaymentReminders();
+    jest.setSystemTime(bangkokAt(day, 0, 9));
+    await bot.runDailyReminders();
+
+    expect(delivered.filter((d) => d.to === legacy3.lineUserId)).toEqual([
+      { to: legacy3.lineUserId, via: 'flex' },
+    ]);
+    expect(await graceBlocks(legacy3.paymentId)).toBe(0);
+  });
+});

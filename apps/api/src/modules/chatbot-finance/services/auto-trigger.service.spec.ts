@@ -250,6 +250,44 @@ describe('AutoTriggerService', () => {
     });
   });
 
+  describe('Task 30 ข้อ 2 — ผ่อนผัน 7 วันหลังผูก LINE (สัญญานำเข้า)', () => {
+    it('ทวง T+1/T+3 ของสัญญาในช่วงผ่อนผัน → ไม่ส่ง ไม่จองแถว · แถว BLOCKED LEGACY_LINK_GRACE', async () => {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      prisma.payment.findMany.mockResolvedValue([makePayment(3, yesterday)]);
+      prisma.contract.findMany.mockResolvedValue([{ id: 'con-1' }]);
+      prisma.notificationLog.create = jest.fn().mockResolvedValue({ id: 'log' });
+
+      await service.runDailyEscalations();
+
+      expect(lineClient.pushText).not.toHaveBeenCalled();
+      expect(prisma.chatAutoTrigger.create).not.toHaveBeenCalled();
+      expect(prisma.notificationLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          recipient: 'U123',
+          status: 'BLOCKED',
+          blockReason: 'LEGACY_LINK_GRACE',
+          category: 'DUNNING',
+          relatedId: 'pay-3',
+          customerId: 'cust-1',
+        }),
+      });
+      expect(prisma.contract.findMany.mock.calls[0][0].where.id).toEqual({ in: ['con-1'] });
+    });
+
+    it('เตือนค่างวด T-5..T0 ไม่ถามช่วงผ่อนผัน (ยังส่งระหว่างผ่อนผัน)', async () => {
+      const due = new Date();
+      due.setDate(due.getDate() + 3);
+      prisma.payment.findMany.mockResolvedValue([makePayment(3, due)]);
+      prisma.contract.findMany.mockResolvedValue([{ id: 'con-1' }]);
+
+      await service.runDailyReminders();
+
+      expect(prisma.contract.findMany).not.toHaveBeenCalled();
+      expect(lineClient.pushText).toHaveBeenCalled();
+    });
+  });
+
   it('does nothing when no payments match', async () => {
     prisma.payment.findMany.mockResolvedValue([]);
 

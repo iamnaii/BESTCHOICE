@@ -14,6 +14,7 @@ import {
   autoTriggerReminderSentToday,
   notificationReminderSentToday,
 } from '../payment-reminder-dedupe';
+import { findContractsInLegacyLinkGrace, recordLegacyLinkGraceSkip } from '../legacy-link-grace';
 import { NotificationTransportService } from './notification-transport.service';
 import { NotificationDispatchService } from './notification-dispatch.service';
 
@@ -276,15 +277,41 @@ export class NotificationReminderService {
       },
     });
 
+    // Task 30 ข้อ 2 — สัญญานำเข้าที่ลูกค้าผูก LINE ยังไม่ครบ 7 วัน: ไม่แจ้งค้างชำระทาง LINE (query เดียวต่อรอบ)
+    const legacyGrace = await findContractsInLegacyLinkGrace(
+      this.prisma,
+      overduePayments.map((p) => p.contractId),
+      now,
+    );
+
     let sent = 0;
+    let legacyGraceSkipped = 0;
     for (const payment of overduePayments) {
       const customer = payment.contract.customer;
       const daysOverdue = Math.floor(
         (now.getTime() - new Date(payment.dueDate).getTime()) / (1000 * 60 * 60 * 24),
       );
 
-      // Dedup + PDPA guards (shared with sendPaymentReminders)
+      // Dedup guard
       if (await this.alreadyNotifiedToday(payment.id, 'แจ้งค้างชำระ', today)) continue;
+
+      // ปลายทาง LINE = แถว OTP ของลูกค้า (Task 22 I-1 ง) — คอลัมน์ line_id_finance ที่ค้างไม่ทำให้ข้อความไปผิดคน
+      const financeLineId = financeLineRecipient(customer);
+
+      // Task 30 ข้อ 2 — ช่วงผ่อนผันหลังผูก LINE: ไม่ส่งทั้ง LINE และ SMS แทน (ลูกค้าผูก LINE แล้ว ทางนี้จะไปทาง LINE) · เก็บแถว BLOCKED
+      if (financeLineId && legacyGrace.has(payment.contractId)) {
+        await recordLegacyLinkGraceSkip(this.prisma, {
+          recipient: financeLineId,
+          subject: 'แจ้งค้างชำระ',
+          message: `งวด ${payment.installmentNo} สัญญา ${payment.contract.contractNumber} เลยกำหนด ${daysOverdue} วัน — ระงับช่วงผ่อนผันหลังผูก LINE`,
+          relatedId: payment.id,
+          customerId: customer.id,
+        });
+        legacyGraceSkipped++;
+        continue;
+      }
+
+      // PDPA guard (shared with sendPaymentReminders)
       if (!(await this.ensurePdpaConsentOrLogSkip(customer.id, payment.id, 'แจ้งค้างชำระ'))) {
         continue;
       }
@@ -295,8 +322,6 @@ export class NotificationReminderService {
       const smsMessage = `แจ้งเตือน: คุณ${customer.name}\nค่างวดที่ ${payment.installmentNo} สัญญา ${payment.contract.contractNumber}\nเลยกำหนดชำระ ${daysOverdue} วัน\nยอดค้างชำระ ${outstanding.toLocaleString()} บาท (รวมค่าปรับ)\nกรุณาชำระโดยเร็ว`;
 
       // Try LINE Flex Message first, fallback to template, then SMS
-      // ปลายทาง LINE = แถว OTP ของลูกค้า (Task 22 I-1 ง) — คอลัมน์ line_id_finance ที่ค้างไม่ทำให้ข้อความไปผิดคน
-      const financeLineId = financeLineRecipient(customer);
       if (financeLineId) {
         try {
           const flex = this.flexTemplates.overdueNotice({
@@ -370,8 +395,10 @@ export class NotificationReminderService {
       }
     }
 
-    this.logger.log(`Overdue notices sent: ${sent}/${overduePayments.length}`);
-    return { sent, total: overduePayments.length, timestamp: now };
+    this.logger.log(
+      `Overdue notices sent: ${sent}/${overduePayments.length} (legacy link grace: ${legacyGraceSkipped})`,
+    );
+    return { sent, total: overduePayments.length, legacyGraceSkipped, timestamp: now };
   }
 
   /**

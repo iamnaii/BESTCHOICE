@@ -59,6 +59,8 @@ export interface InstallmentFixtureInput {
   paymentStatus?: PaymentStatus;
   amountDue?: string;
   lateFee?: string;
+  /** ใช้ลูกค้าเดิม (สัญญาที่สองของลูกค้าคนเดียวกัน) — ไม่สร้างลูกค้า/แถว OTP/consent ใหม่ */
+  customer?: { customerId: string; lineUserId: string };
 }
 
 export interface InstallmentFixture {
@@ -75,17 +77,17 @@ export async function createInstallmentFixture(
   input: InstallmentFixtureInput,
 ): Promise<InstallmentFixture> {
   const { stamp, branchId, salespersonId } = base;
-  const lineUserId = `U${stamp}-${input.label}`;
-  const customer = await prisma.customer.create({
-    data: { name: `ทดสอบ ${stamp} ${input.label}` },
-  });
+  const lineUserId = input.customer?.lineUserId ?? `U${stamp}-${input.label}`;
+  const customer = input.customer
+    ? { id: input.customer.customerId }
+    : await prisma.customer.create({ data: { name: `ทดสอบ ${stamp} ${input.label}` } });
   const linkedAt = input.linkedAt === undefined ? new Date() : input.linkedAt;
-  if (linkedAt) {
+  if (linkedAt && !input.customer) {
     await prisma.customerLineLink.create({
       data: { customerId: customer.id, lineUserId, channel: LineChannelType.FINANCE, linkedAt },
     });
   }
-  if (input.consent ?? true) {
+  if ((input.consent ?? true) && !input.customer) {
     await prisma.pDPAConsent.create({
       data: {
         customerId: customer.id,

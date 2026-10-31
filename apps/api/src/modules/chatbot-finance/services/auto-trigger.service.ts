@@ -21,6 +21,10 @@ import {
   autoTriggerReferenceKey,
   notificationReminderSentToday,
 } from '../../notifications/payment-reminder-dedupe';
+import {
+  findContractsInLegacyLinkGrace,
+  recordLegacyLinkGraceSkip,
+} from '../../notifications/legacy-link-grace';
 import { AutoTriggerType, MessageRole, Payment, TriggerStatus } from '@prisma/client';
 
 const TIMEZONE = 'Asia/Bangkok';
@@ -39,6 +43,8 @@ const TIMEZONE = 'Asia/Bangkok';
  * Task 30 ข้อ 1 — เตือนค่างวด (T-5..T0) เป็นตัวสำรองของ A1 (`NotificationReminderService.sendPaymentReminders` 08:00):
  *   งวดที่ A1 ส่งแล้ววันนี้ (หรือยังถือการส่งอยู่ในคิวส่งซ้ำ) = ข้าม ไม่จองแถว ⇒ ลูกค้าได้หนึ่งข้อความต่องวดต่อวัน
  *   (`payment-reminder-dedupe.ts`) · ทวงหลังเลยกำหนด (ESCALATION_*) ไม่เกี่ยว
+ * Task 30 ข้อ 2 — ทวงหลังเลยกำหนด (ESCALATION_*) ของสัญญานำเข้าที่ลูกค้าผูก LINE ยังไม่ครบ 7 วัน = ไม่ส่ง (`legacy-link-grace.ts`) ·
+ *   เตือนค่างวดยังส่งระหว่างผ่อนผัน
  */
 @Injectable()
 export class AutoTriggerService {
@@ -143,7 +149,15 @@ export class AutoTriggerService {
     let skipped = 0;
     let failed = 0;
     let dedupedByA1 = 0;
+    let legacyGraceSkipped = 0;
     const isPaymentReminder = AUTO_TRIGGER_REMINDER_TYPES.includes(type);
+    // ทวงหลังเลยกำหนด: สัญญาในช่วงผ่อนผันหลังผูก LINE (query เดียวต่อรอบ) · เตือนค่างวดไม่ถาม
+    const legacyGrace = isPaymentReminder
+      ? new Set<string>()
+      : await findContractsInLegacyLinkGrace(
+          this.prisma,
+          payments.map((p) => p.contractId),
+        );
 
     for (const payment of payments) {
       const lineUserId = financeLineRecipient(payment.contract.customer);
@@ -155,6 +169,19 @@ export class AutoTriggerService {
       // Task 30 ข้อ 1 — A1 ส่งเตือนงวดนี้แล้ววันนี้ ⇒ ไม่ส่งซ้ำ (ไม่จองแถว: สั่งรันซ้ำก็ตัดสินเหมือนเดิม)
       if (isPaymentReminder && (await notificationReminderSentToday(this.prisma, payment.id))) {
         dedupedByA1++;
+        continue;
+      }
+
+      // Task 30 ข้อ 2 — ทวงของสัญญานำเข้าในช่วงผ่อนผันหลังผูก LINE: ไม่ส่ง ไม่จองแถว · เก็บแถว BLOCKED ให้ตรวจย้อนได้
+      if (legacyGrace.has(payment.contractId)) {
+        await recordLegacyLinkGraceSkip(this.prisma, {
+          recipient: lineUserId,
+          subject: `AutoTrigger ${type}`,
+          message: `งวด ${payment.installmentNo} — ระงับช่วงผ่อนผันหลังผูก LINE`,
+          relatedId: payment.id,
+          customerId: payment.contract.customerId,
+        });
+        legacyGraceSkipped++;
         continue;
       }
 
@@ -175,7 +202,7 @@ export class AutoTriggerService {
     }
 
     this.logger.log(
-      `[AutoTrigger] ${type}: sent=${sent} skipped=${skipped} failed=${failed} dedupedByA1=${dedupedByA1}`,
+      `[AutoTrigger] ${type}: sent=${sent} skipped=${skipped} failed=${failed} dedupedByA1=${dedupedByA1} legacyGrace=${legacyGraceSkipped}`,
     );
   }
 

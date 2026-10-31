@@ -303,5 +303,61 @@ describe('NotificationsService — reminder / overdue dunning', () => {
         expect(arg.data.recipient).not.toBe('U-stale');
       }
     });
+
+    describe('Task 30 ข้อ 2 — ผ่อนผัน 7 วันหลังผูก LINE (สัญญานำเข้า)', () => {
+      const lineOverdue = (contractId: string) => ({ ...withLine(), contractId });
+
+      it('สัญญาในช่วงผ่อนผัน → ไม่ส่ง LINE ไม่ส่ง SMS ไม่แตะ consent · แถว BLOCKED LEGACY_LINK_GRACE', async () => {
+        prisma.payment.findMany.mockResolvedValue([lineOverdue('k-legacy')]);
+        prisma.contract.findMany.mockResolvedValue([{ id: 'k-legacy' }]);
+
+        const result = await service.sendOverdueNotices();
+
+        expect(spyOf('sendLineFlexMessage')).not.toHaveBeenCalled();
+        expect(spyOf('sendFromTemplate')).not.toHaveBeenCalled();
+        expect(spyOf('send')).not.toHaveBeenCalled();
+        expect(prisma.pDPAConsent.findFirst).not.toHaveBeenCalled();
+        expect(prisma.notificationLog.create).toHaveBeenCalledWith({
+          data: expect.objectContaining({
+            channel: 'LINE',
+            recipient: 'U-line',
+            status: 'BLOCKED',
+            blockReason: 'LEGACY_LINK_GRACE',
+            category: 'DUNNING',
+            subject: SUBJECT,
+            relatedId: 'pay-1',
+            customerId: 'cust-1',
+          }),
+        });
+        expect(result.sent).toBe(0);
+        // query เดียวต่อรอบ ด้วย id สัญญาของงวดที่จะแจ้ง
+        expect(prisma.contract.findMany).toHaveBeenCalledTimes(1);
+        expect(prisma.contract.findMany.mock.calls[0][0].where.id).toEqual({ in: ['k-legacy'] });
+      });
+
+      it('สัญญานอกช่วง (ไม่นำเข้า / ผูกเกิน 7 วัน) → แจ้งค้างชำระตามเดิม', async () => {
+        prisma.payment.findMany.mockResolvedValue([lineOverdue('k-native')]);
+
+        const result = await service.sendOverdueNotices();
+
+        expect(spyOf('sendLineFlexMessage')).toHaveBeenCalledWith(
+          'U-line',
+          expect.anything(),
+          'line-finance',
+        );
+        expect(result.sent).toBe(1);
+      });
+
+      it('เตือนค่างวดไม่ถามช่วงผ่อนผัน (ยังส่งระหว่างผ่อนผัน)', async () => {
+        prisma.payment.findMany.mockResolvedValue([lineOverdue('k-legacy')]);
+        prisma.contract.findMany.mockResolvedValue([{ id: 'k-legacy' }]);
+
+        const result = await service.sendPaymentReminders();
+
+        expect(prisma.contract.findMany).not.toHaveBeenCalled();
+        expect(spyOf('sendLineFlexMessage')).toHaveBeenCalledTimes(1);
+        expect(result.sent).toBe(1);
+      });
+    });
   });
 });

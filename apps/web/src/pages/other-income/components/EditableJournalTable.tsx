@@ -6,6 +6,7 @@ import { Trash2, Plus, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { AccountSearchDropdown } from './AccountSearchDropdown';
+import { journalTotalsCents } from './journalCents';
 
 const journalAccountFilter = (a: { code: string }) =>
   a.code.startsWith('41-') ||
@@ -72,8 +73,7 @@ function validateClientSide(lines: EditableJournalLine[]): ValidationIssue[] {
     }
   }
 
-  const drTotalCents = lines.reduce((s, l) => s + Math.round((l.debit || 0) * 100), 0);
-  const crTotalCents = lines.reduce((s, l) => s + Math.round((l.credit || 0) * 100), 0);
+  const { drCents: drTotalCents, crCents: crTotalCents } = journalTotalsCents(lines);
   if (drTotalCents !== crTotalCents) {
     // exact, same as the server's isJournalBalanced (no 0.01 tolerance)
     const drTotal = drTotalCents / 100;
@@ -89,8 +89,7 @@ function validateClientSide(lines: EditableJournalLine[]): ValidationIssue[] {
 
 export function EditableJournalTable({ lines, onChange }: Props) {
   const issues = useMemo(() => validateClientSide(lines), [lines]);
-  const drTotalCents = lines.reduce((s, l) => s + Math.round((l.debit || 0) * 100), 0);
-  const crTotalCents = lines.reduce((s, l) => s + Math.round((l.credit || 0) * 100), 0);
+  const { drCents: drTotalCents, crCents: crTotalCents } = journalTotalsCents(lines);
   const drTotal = (drTotalCents / 100).toFixed(2);
   const crTotal = (crTotalCents / 100).toFixed(2);
 

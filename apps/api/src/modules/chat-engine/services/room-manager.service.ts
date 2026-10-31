@@ -49,7 +49,10 @@ import {
   LINE_FINANCE_NOT_VERIFIED_MESSAGE,
   LINE_SHOP_STAFF_SEND_DISABLED_MESSAGE,
 } from '../../line-oa/services/finance-line-link';
-import { findFinanceLineRecipient } from '../../line-oa/services/otp-verified-customer';
+import {
+  VERIFIED_FINANCE_LINK_WHERE,
+  findFinanceLineRecipient,
+} from '../../line-oa/services/otp-verified-customer';
 
 /** ตัวกรองห้องแชท — ใช้ร่วมกันระหว่างรายการห้อง (listRooms) กับตัวนับบนป้าย
  *  (getRoomBadgeCounts) เพื่อไม่ให้ "เลขบนป้าย" กับ "จำนวนแถวที่แท็บนั้นแสดง"
@@ -299,6 +302,10 @@ export class RoomManagerService {
             lineUserId: params.externalUserId,
             channel: channelType,
           },
+          // Task 24 fix round 1 M-2 — LINE การเงิน: เฉพาะแถวที่ยังผูกของลูกค้าที่ยังอยู่ (เกณฑ์เดียว VERIFIED_FINANCE_LINK_WHERE —
+          // ห้องใหม่ได้ verified_at จากค่านี้ · สมมาตรกับ unlinkFinanceLine ที่ล้าง verified_at)
+          // TODO(OA ร้าน): ช่อง SHOP ยังรับแถวทุกสถานะ — ใช้เกณฑ์เดียวกันเมื่อมี OTP ฝั่งร้าน (วันนี้ไม่มีผู้เขียนแถวช่อง SHOP)
+          ...(channelType === 'FINANCE' ? VERIFIED_FINANCE_LINK_WHERE : {}),
         },
       });
       customerId = link?.customerId;

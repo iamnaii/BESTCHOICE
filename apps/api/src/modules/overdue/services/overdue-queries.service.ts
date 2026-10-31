@@ -2,6 +2,10 @@ import { NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { PromiseService } from '../promise.service';
+import {
+  FINANCE_LINE_RECIPIENT_SELECT,
+  financeLineRecipient,
+} from '../../line-oa/services/otp-verified-customer';
 
 /**
  * Pure read-side queries for the overdue/collections module.
@@ -375,7 +379,10 @@ export class OverdueQueriesService {
             id: true,
             contractNumber: true,
             branchId: true,
-            customer: { select: { id: true, name: true, lineIdFinance: true, phone: true } },
+            // hasLine/withLine = เกณฑ์เดียวกับผู้ส่ง bulkSendLine (แถว OTP ที่ยังผูก) — Task 24 RR-M2
+            customer: {
+              select: { id: true, name: true, phone: true, ...FINANCE_LINE_RECIPIENT_SELECT },
+            },
           },
         },
       },
@@ -383,14 +390,14 @@ export class OverdueQueriesService {
 
     return {
       total: rows.length,
-      withLine: rows.filter((r) => !!r.contract.customer.lineIdFinance).length,
+      withLine: rows.filter((r) => financeLineRecipient(r.contract.customer) !== null).length,
       contractIds: rows.map((r) => r.contractId),
       data: rows.map((r) => ({
         id: r.id,
         contractId: r.contractId,
         contractNumber: r.contract.contractNumber,
         customerName: r.contract.customer.name,
-        hasLine: !!r.contract.customer.lineIdFinance,
+        hasLine: financeLineRecipient(r.contract.customer) !== null,
         createdAt: r.createdAt,
       })),
     };

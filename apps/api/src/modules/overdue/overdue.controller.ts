@@ -519,14 +519,7 @@ export class OverdueController {
     @Body() dto: SendLineAdHocDto,
     @CurrentUser() user: { id: string },
   ) {
-    return this.bulkService.bulkSendLine(
-      {
-        contractIds: [contractId],
-        templateId: dto.templateId,
-        customMessage: dto.customMessage,
-      },
-      user.id,
-    );
+    return this.bulkService.sendLineAdhoc(contractId, dto, user.id);
   }
 
   // --- Contract letters ---

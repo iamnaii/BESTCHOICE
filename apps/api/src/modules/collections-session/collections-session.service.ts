@@ -1,6 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { DailyAssignment } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  FINANCE_LINE_RECIPIENT_SELECT,
+  financeLineRecipient,
+  withVerifiedFinanceLine,
+} from '../line-oa/services/otp-verified-customer';
 import { ActionDto } from './dto/action.dto';
 import { SkipDto } from './dto/skip.dto';
 
@@ -22,7 +27,16 @@ export class CollectionsSessionService {
       include: {
         contract: {
           include: {
-            customer: { select: { id: true, name: true, phone: true, lineIdFinance: true } },
+            // lineIdFinance = แสดงในแผง 360 เท่านั้น · ปุ่มส่ง LINE / ตัวนับ LINE ใช้แถว OTP (Task 24 RR-M2)
+            customer: {
+              select: {
+                id: true,
+                name: true,
+                phone: true,
+                lineIdFinance: true,
+                ...FINANCE_LINE_RECIPIENT_SELECT,
+              },
+            },
             branch: { select: { id: true, name: true } },
             assignedTo: { select: { id: true, name: true } },
           },
@@ -60,8 +74,9 @@ export class CollectionsSessionService {
     });
 
     const callsCount = pending.filter((a) => !!a.contract.customer?.phone).length;
+    // ติดต่อได้ทาง LINE อย่างเดียว (ไม่มีเบอร์) — LINE = แถว OTP ที่ยังผูก เกณฑ์เดียวกับผู้ส่ง (Task 24 RR-M2)
     const lineCount = pending.filter(
-      (a) => !!a.contract.customer?.lineIdFinance && !a.contract.customer?.phone,
+      (a) => financeLineRecipient(a.contract.customer) !== null && !a.contract.customer?.phone,
     ).length;
 
     const summary = pending.length === 0 && done.length > 0 ? this.buildSummary(done) : undefined;
@@ -72,6 +87,7 @@ export class CollectionsSessionService {
       ...a,
       contract: {
         ...a.contract,
+        customer: withVerifiedFinanceLine(a.contract.customer),
         daysOverdue: daysOverdueMap.get(a.contractId) ?? 0,
       },
     }));

@@ -36,6 +36,18 @@ export function financeLineRecipient(
   return customer?.lineLinks?.[0]?.lineUserId ?? null;
 }
 
+/**
+ * Task 24 RR-M2 — หน้าจอพนักงานที่เปิด/ปิดปุ่ม "ส่ง LINE" การเงิน (คิวทวงถาม · โหมดโฟกัส · แบนเนอร์นัดครบกำหนด) ใช้**เกณฑ์เดียวกับผู้ส่งจริง**:
+ * เลือก `FINANCE_LINE_RECIPIENT_SELECT` ในลูกค้า แล้วส่งออกผ่านฟังก์ชันนี้ ⇒ `hasVerifiedLine` = มีแถว OTP ที่ยังผูก
+ * (`financeLineRecipient` ไม่ว่าง) · ตัด `lineLinks` ทิ้ง — U-id ของแถวไม่ต้องไปถึงหน้าเว็บ · คอลัมน์ `lineIdFinance` ไม่ใช่เกณฑ์ (กติกาข้อ 9)
+ */
+export function withVerifiedFinanceLine<T extends { lineLinks?: { lineUserId: string }[] }>(
+  customer: T,
+): Omit<T, 'lineLinks'> & { hasVerifiedLine: boolean } {
+  const { lineLinks, ...rest } = customer;
+  return { ...rest, hasVerifiedLine: financeLineRecipient({ lineLinks }) !== null };
+}
+
 /** แบบค้นเอง — สำหรับผู้ส่งที่มีแค่ `customerId` และแก้ select ของแหล่งข้อมูลไม่ได้ (เช่น source ที่ผูก revision เอกสาร) */
 export async function findFinanceLineRecipient(
   prisma: Pick<PrismaService, 'customerLineLink'>,

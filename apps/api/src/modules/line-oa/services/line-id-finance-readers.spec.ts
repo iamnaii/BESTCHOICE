@@ -30,10 +30,12 @@ const ALLOWED: Record<string, string> = {
   'modules/trash/trash-registry.ts': 'คำเตือนหลังกู้ลูกค้า (เคยผูก LINE ไหม)',
   'modules/sales-bot/tools/capture-lead.tool.ts':
     'ตรวจ "ตัวตนชนกัน" แบบระวัง — ค่าไม่ตรง = ไม่ผูกห้อง (ไม่ให้สิทธิ์)',
-  'modules/overdue/queue.service.ts': 'แสดง/กรอง "มี LINE" บนคิวทวงถาม (การส่งจริงอ่านแถว OTP)',
+  'modules/overdue/queue.service.ts':
+    'ส่งค่า LINE ID ให้แผง 360 แสดง (ป้าย/แท็บแชท) — ปุ่มส่ง LINE + ตัวกรอง "ไม่มี LINE" ใช้ hasVerifiedLine จากแถว OTP (Task 24 RR-M2)',
   'modules/overdue/services/overdue-queries.service.ts':
-    'แสดง hasLine/withLine (การส่งจริงอ่านแถว OTP)',
-  'modules/collections-session/collections-session.service.ts': 'กรองคิวงานพนักงาน (ไม่ส่งข้อความ)',
+    'รายการสัญญาค้างชำระส่งค่า LINE ID ไปแสดง — hasLine/withLine ของแบนเนอร์นัดครบกำหนดอ่านแถว OTP (Task 24 RR-M2)',
+  'modules/collections-session/collections-session.service.ts':
+    'ส่งค่า LINE ID ให้แผง 360 แสดง — ปุ่มส่ง LINE + ตัวนับ LINE ของโหมดโฟกัสใช้แถว OTP (Task 24 RR-M2)',
   'modules/reports/services/receivables-report.service.ts': 'คอลัมน์รายงาน',
   'cli/test-pack/_drive-helpers.ts':
     'test-pack ข้ามสัญญาที่อาจยิง LINE ถึงลูกค้าจริง — คอลัมน์ OR แถว OTP (ข้ามมากขึ้นแบบระวังไว้ก่อน · ไม่ตัดสินสิทธิ์ ไม่เป็นปลายทาง)',

@@ -4,6 +4,7 @@ import {
   FINANCE_LINE_RECIPIENT_SELECT,
   financeLineRecipient,
 } from '../line-oa/services/otp-verified-customer';
+import { LINE_FINANCE_NOT_VERIFIED_MESSAGE } from '../line-oa/services/finance-line-link';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationCategory } from '../notifications/notification-category.enum';
 
@@ -85,8 +86,11 @@ export class DunningRetryService {
     const recipient = channel === 'LINE' ? financeLineRecipient(customer) : customer.phone;
 
     if (!recipient) {
+      // LINE: ปลายทางมีได้ทางเดียวคือแถว OTP — บอกเหตุตรง ๆ + ทางที่มีจริง (Task 24 RR-M2)
       throw new BadRequestException(
-        `ไม่พบผู้รับสำหรับช่องทาง ${channel} (ลูกค้า: ${customer.name})`,
+        channel === 'LINE'
+          ? LINE_FINANCE_NOT_VERIFIED_MESSAGE
+          : `ไม่พบผู้รับสำหรับช่องทาง ${channel} (ลูกค้า: ${customer.name})`,
       );
     }
 

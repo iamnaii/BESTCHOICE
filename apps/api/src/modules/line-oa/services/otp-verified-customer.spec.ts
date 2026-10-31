@@ -6,6 +6,7 @@ import {
   findFinanceLineRecipient,
   findOtpVerifiedCustomerId,
   findShopLiffCustomerId,
+  withVerifiedFinanceLine,
 } from './otp-verified-customer';
 
 /**
@@ -108,5 +109,37 @@ describe('findFinanceLineRecipient (ผู้ส่งที่มีแค่ c
     });
     prisma.customerLineLink.findFirst.mockResolvedValue(null);
     await expect(findFinanceLineRecipient(prisma as never, 'c1')).resolves.toBeNull();
+  });
+});
+
+/**
+ * Task 24 RR-M2 — หน้าจอพนักงานเปิดปุ่ม "ส่ง LINE" ตามเกณฑ์เดียวกับผู้ส่งจริง (แถว OTP ที่ยังผูก) ไม่ใช่คอลัมน์ · ไม่ส่ง U-id ของแถวออกไปหน้าเว็บ
+ */
+describe('withVerifiedFinanceLine', () => {
+  it('มีแถว OTP ที่ยังผูก → hasVerifiedLine = true · ตัด lineLinks ออก (ไม่ส่ง U-id) · ช่องอื่นคงเดิม', () => {
+    const out = withVerifiedFinanceLine({
+      id: 'c1',
+      name: 'ก',
+      lineIdFinance: null,
+      lineLinks: [{ lineUserId: 'U-otp' }],
+    });
+    expect(out).toEqual({ id: 'c1', name: 'ก', lineIdFinance: null, hasVerifiedLine: true });
+    expect(JSON.stringify(out)).not.toContain('U-otp');
+  });
+
+  it('คอลัมน์มีค่าแต่ไม่มีแถว OTP → hasVerifiedLine = false (ผู้ส่งจะไม่ส่ง)', () => {
+    expect(withVerifiedFinanceLine({ id: 'c2', lineIdFinance: 'U-typed', lineLinks: [] })).toEqual({
+      id: 'c2',
+      lineIdFinance: 'U-typed',
+      hasVerifiedLine: false,
+    });
+  });
+
+  it('เกณฑ์เดียวกับ financeLineRecipient ทุกกรณี', () => {
+    for (const lineLinks of [undefined, [], [{ lineUserId: 'U1' }]]) {
+      expect(withVerifiedFinanceLine({ lineLinks }).hasVerifiedLine).toBe(
+        financeLineRecipient({ lineLinks }) !== null,
+      );
+    }
   });
 });

@@ -30,7 +30,7 @@ export enum LastContactedBucket {
   OVER_7_DAYS = 'over_7_days',
 }
 
-// LINE delivery state — derived from dunning action result + customer.lineIdFinance.
+// LINE delivery state — derived from dunning action result + the customer's active FINANCE OTP link (NO_LINE).
 export enum LineResponseState {
   RESPONDED = 'responded',
   IGNORED = 'ignored',

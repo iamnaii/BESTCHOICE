@@ -8,7 +8,9 @@ import {
 import { MdmLockService } from './mdm-lock.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationCategory } from '../notifications/notification-category.enum';
+import { LINE_FINANCE_NOT_VERIFIED_MESSAGE } from '../line-oa/services/finance-line-link';
 import { BulkAssignDto, BulkProposeLockDto, BulkSendLineDto } from './dto/bulk.dto';
+import { SendLineAdHocDto } from './dto/send-line-adhoc.dto';
 
 @Injectable()
 export class OverdueBulkService {
@@ -56,6 +58,24 @@ export class OverdueBulkService {
       requested: dto.contractIds.length,
       requestIds,
     };
+  }
+
+  /**
+   * ปุ่ม "ส่ง LINE" ของคิวทวงถาม (สัญญาเดียว) — Task 24 RR-M2: ลูกค้าที่ไม่มีแถว OTP ที่ยังผูก (ผู้ส่งไม่มีปลายทาง) = 400 ข้อความบอกเหตุ +
+   * ทางที่มีจริง แทนผล `{ sent: 0 }` ที่หน้าเว็บเดาเหตุไม่ได้ · เกณฑ์เดียวกับ `bulkSendLine` (`financeLineRecipient`) · ไม่พบสัญญา = ส่งต่อตามเดิม
+   */
+  async sendLineAdhoc(contractId: string, dto: SendLineAdHocDto, actorId: string) {
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: contractId, deletedAt: null },
+      select: { customer: { select: FINANCE_LINE_RECIPIENT_SELECT } },
+    });
+    if (contract && financeLineRecipient(contract.customer) === null) {
+      throw new BadRequestException(LINE_FINANCE_NOT_VERIFIED_MESSAGE);
+    }
+    return this.bulkSendLine(
+      { contractIds: [contractId], templateId: dto.templateId, customMessage: dto.customMessage },
+      actorId,
+    );
   }
 
   async bulkSendLine(dto: BulkSendLineDto, actorId: string) {

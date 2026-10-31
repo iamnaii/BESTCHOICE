@@ -3,6 +3,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { DunningRetryService } from './dunning-retry.service';
+import { LINE_FINANCE_NOT_VERIFIED_MESSAGE } from '../line-oa/services/finance-line-link';
 
 const mockPrisma = {
   dunningAction: {
@@ -95,7 +96,10 @@ describe('DunningRetryService', () => {
           customer: { ...baseAction.contract.customer, lineIdFinance: null, lineLinks: [] },
         },
       });
-      await expect(service.retry('action-1', 'user-1')).rejects.toThrow(/ไม่พบผู้รับ/);
+      // Task 24 RR-M2 — บอกเหตุตรง ๆ (ยังไม่ยืนยัน OTP) + ทางที่มีจริง แทน "ไม่พบผู้รับ…"
+      await expect(service.retry('action-1', 'user-1')).rejects.toThrow(
+        LINE_FINANCE_NOT_VERIFIED_MESSAGE,
+      );
       expect(mockNotifications.send).not.toHaveBeenCalled();
     });
 
@@ -108,7 +112,9 @@ describe('DunningRetryService', () => {
           customer: { ...baseAction.contract.customer, lineIdFinance: 'U-stale', lineLinks: [] },
         },
       });
-      await expect(service.retry('action-1', 'user-1')).rejects.toThrow(/ไม่พบผู้รับ/);
+      await expect(service.retry('action-1', 'user-1')).rejects.toThrow(
+        LINE_FINANCE_NOT_VERIFIED_MESSAGE,
+      );
       expect(mockNotifications.send).not.toHaveBeenCalled();
     });
 

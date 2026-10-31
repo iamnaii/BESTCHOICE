@@ -4,11 +4,13 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { MdmLockService } from './mdm-lock.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { OverdueBulkService } from './bulk.service';
+import { LINE_FINANCE_NOT_VERIFIED_MESSAGE } from '../line-oa/services/finance-line-link';
 
 const mockPrisma = {
   contract: {
     updateMany: jest.fn(),
     findMany: jest.fn(),
+    findFirst: jest.fn(),
   },
   auditLog: { createMany: jest.fn() },
   dunningRule: { findUnique: jest.fn() },
@@ -104,6 +106,43 @@ describe('OverdueBulkService', () => {
         // every call — production proposeManual returns distinct ids.
         requestIds: ['r1', 'r1'],
       });
+    });
+  });
+
+  /**
+   * Task 24 RR-M2 — ปุ่ม "ส่ง LINE" ของคิวทวงถาม (สัญญาเดียว) ลูกค้าที่ยังไม่ยืนยัน OTP = 400 ข้อความบอกเหตุ + ทางที่มีจริง
+   * (เดิมได้ 201 {sent:0} แล้วหน้าเว็บขึ้น "อาจไม่มี lineId")
+   */
+  describe('sendLineAdhoc', () => {
+    it('ลูกค้าไม่มีแถว OTP ที่ยังผูก (แม้คอลัมน์มีค่า) → 400 LINE_FINANCE_NOT_VERIFIED_MESSAGE ไม่ส่ง', async () => {
+      mockPrisma.contract.findFirst.mockResolvedValueOnce({ customer: { lineLinks: [] } });
+      await expect(
+        service.sendLineAdhoc('c1', { customMessage: 'ทดสอบ' }, 'actor-1'),
+      ).rejects.toThrow(new BadRequestException(LINE_FINANCE_NOT_VERIFIED_MESSAGE));
+      const where = mockPrisma.contract.findFirst.mock.calls[0][0].where;
+      expect(where).toEqual({ id: 'c1', deletedAt: null });
+      expect(mockPrisma.contract.findMany).not.toHaveBeenCalled();
+      expect(mockNotifications.send).not.toHaveBeenCalled();
+    });
+
+    it('มีแถว OTP → ส่งผ่าน bulkSendLine ตามเดิม', async () => {
+      mockPrisma.contract.findFirst.mockResolvedValueOnce({
+        customer: { lineLinks: [{ lineUserId: 'U1' }] },
+      });
+      mockPrisma.contract.findMany.mockResolvedValueOnce([
+        {
+          id: 'c1',
+          contractNumber: 'BC-001',
+          customer: { lineLinks: [{ lineUserId: 'U1' }], phone: '081', name: 'ก', id: 'cu1' },
+        },
+      ]);
+      mockNotifications.send.mockResolvedValueOnce({ id: 'n1', status: 'SENT' });
+      await expect(
+        service.sendLineAdhoc('c1', { customMessage: 'ทดสอบ' }, 'actor-1'),
+      ).resolves.toEqual({ sent: 1, failed: 0, total: 1 });
+      expect(mockNotifications.send).toHaveBeenCalledWith(
+        expect.objectContaining({ recipient: 'U1', channelKey: 'line-finance' }),
+      );
     });
   });
 

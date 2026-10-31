@@ -118,9 +118,12 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
    ระบบไม่มีปุ่มพนักงานส่งลิงก์ยืนยัน) · ใช้ที่ `POST/PATCH /customers` (`CustomerWriteService`) และ skip-tracing `newLineId` (ค่าใหม่ = ทั้งคำขอ 400 · **ค่าว่าง = ไม่แตะ** —
    skip-tracing เปิดให้ SALES/ACCOUNTANT/FM จึงห้ามยกเลิกผูก (fix round 1 M-1)) · **ฟอร์มบนเว็บไม่ส่ง `lineIdFinance`/`newLineId` แล้ว** (Task 27 — ช่องพิมพ์ถูกแทนด้วยแถวสถานะ/หมายเหตุ)
    ⇒ กติกานี้เหลือไว้กันการเรียก API ตรง · **ทางยกเลิกผูกของพนักงาน (OWNER/BM เท่านั้น):** ปุ่ม "ยกเลิกการผูก" ในฟอร์มแก้ไขลูกค้า →
-   `POST /customers/:id/finance-line/unlink` (Task 27 — `CustomerWriteService.unlinkFinanceLineByStaff`: ล็อกแถวลูกค้า → ปิด**แถว OTP ที่ยังผูก**แม้คอลัมน์ว่าง
+   `POST /customers/:id/finance-line/unlink` (Task 27 — `CustomerWriteService.unlinkFinanceLineByStaff`: ล็อกแถวลูกค้า `FOR NO KEY UPDATE` → ปิด**แถว OTP ที่ยังผูก**แม้คอลัมน์ว่าง
    + ล้างคอลัมน์ผ่าน `unlinkFinanceLine({ customerId })` ตัวเดิม · ไม่มีอะไรให้ล้าง = สำเร็จแบบไม่แตะ · audit `CUSTOMER_FINANCE_LINE_UNLINKED` สถานะก่อน/หลัง ไม่มี U-id ·
-   access manifest + `PARTY_WRITE_ROUTES`) · `PATCH /customers/:id {"lineIdFinance": null}` ยังรับ (API อย่างเดียว — ตัดสินด้วยคอลัมน์: คอลัมน์ว่างแต่มีแถว = ไม่แตะ ·
+   access manifest + `PARTY_WRITE_ROUTES` · ลำดับล็อก ลูกค้า → link → ห้อง เท่าทาง PATCH/LIFF ส่วน `VerificationService.bind` ล็อกกลับด้าน ⇒ ลูกค้ายืนยัน OTP
+   พร้อมพนักงานกดปุ่มกับลูกค้าคนเดียวกันอาจได้ deadlock 40P01: ฝั่งปุ่มลองทั้งทรานแซกชันใหม่เอง (legacy 3 ครั้ง · managed ตาม maxAttempts ของระบบสิทธิ์) ·
+   ฝั่ง bind ได้ error แต่แถว OTP ยังอยู่ กรอกรหัสเดิมซ้ำได้ · แก้ถาวร = ให้ bind ล็อกแถวลูกค้าก่อน (งานแยก — Task 27 fix round 1 M-2)) ·
+   `PATCH /customers/:id {"lineIdFinance": null}` ยังรับ (API อย่างเดียว — ตัดสินด้วยคอลัมน์: คอลัมน์ว่างแต่มีแถว = ไม่แตะ ·
    ไม่มี audit เฉพาะ) ⇒ ใช้ปุ่ม/endpoint ใหม่แทน ·
    นำเข้าลูกค้า (`migration.service.ts`) ตัดคอลัมน์ `lineId` ทิ้ง + แถวเตือน `IMPORT_LINE_ID_IGNORED_MSG` ใน `errors` (แถวยังนำเข้า ไม่นับ failed) ·
    **ยกเลิกผูกมีทางเดียว `unlinkFinanceLine(tx, …)`** ในทรานแซกชันเดียวกับงานของผู้เรียก: `{ lineUserId }` (ลูกค้ากดใน LIFF — ล้างคอลัมน์บนทุกลูกค้าที่ถือ
@@ -173,10 +176,11 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
 
 **ข้อยกเว้นที่ยังเหลือ (รู้ตัว — ยังไม่ได้ปิด อย่าอ่านกติกาข้างบนว่า "ปิดหมดแล้ว"):**
 - **I3 — ปิดในโค้ดแล้ว (Task 22 กติกาข้อ 6 + fix round 1 กติกาข้อ 9) · ที่ยังเหลือ (ส่วนใหญ่เป็นเรื่องการแสดงผล):** (ก) ค่า `line_id_finance` ที่พนักงาน/นำเข้า
-  เขียนไว้**ก่อน deploy Task 22** ยังอยู่ — ไม่ให้สิทธิ์ LIFF/ลิงก์ชำระ และไม่เป็นปลายทางข้อความแล้ว (ข้อ 9) แต่ยังแสดงที่ แผงข้างหน้าลูกค้า
-  (`CustomerSidePanel`) · แผง 360 ของอินบ็อกซ์ (`CustomerInfoRow` "LINE ID (Finance / น้องเบส)") · คอลัมน์รายงานลูกหนี้ · ช่อง `{customer_line_id}` ในเอกสารสัญญา
+  เขียนไว้**ก่อน deploy Task 22** ยังอยู่ — ไม่ให้สิทธิ์ LIFF/ลิงก์ชำระ และไม่เป็นปลายทางข้อความแล้ว (ข้อ 9) แต่ยังแสดงที่ แผง 360 ของอินบ็อกซ์
+  (`CustomerInfoRow` "LINE ID (Finance / น้องเบส)" — ค่า U-id ดิบ · เปลี่ยนเป็นสถานะต้อง mockup) · คอลัมน์รายงานลูกหนี้ · ช่อง `{customer_line_id}` ในเอกสารสัญญา ·
+  `GET /customers/:id` ยังคืนคอลัมน์ `lineIdFinance` คู่กับ `financeLine` (staff-only · ฟอร์ม/แผงข้างไม่ใช้แล้ว — ตัดออกได้เมื่ออินบ็อกซ์เลิกใช้)
   ⇒ พนักงานอาจเห็นว่าลูกค้า "มี LINE" ทั้งที่ข้อความไม่ถูกส่ง (ปุ่ม "ส่ง LINE" · ตัวกรอง "ไม่มี LINE" · ตัวนับ LINE ของโหมดโฟกัส · แบนเนอร์นัดครบกำหนด —
-  Task 24 RR-M2 · ป้าย/แท็บ/ช่องพิมพ์ของแผง 360 คิวทวงถาม + ฟอร์มแก้ไขลูกค้า — Task 27 ใช้แถว OTP แล้ว · ข้อ 9) · **กวาดหนึ่งครั้งก่อนเปิด LIFF ให้ลูกค้า (1 ธ.ค.)**
+  Task 24 RR-M2 · ป้าย/แท็บ/ช่องพิมพ์ของแผง 360 คิวทวงถาม + ฟอร์มแก้ไขลูกค้า + ป้ายแผงข้างหน้าลูกค้า (`CustomerSidePanel`) — Task 27 ใช้แถว OTP แล้ว · ข้อ 9) · **กวาดหนึ่งครั้งก่อนเปิด LIFF ให้ลูกค้า (1 ธ.ค.)**
   ด้วย SQL อ่านอย่างเดียวด้านล่าง (รันบน prod ได้ตอนนี้เพื่อรู้ขนาด) แล้วล้างทีละแถว: **ฟอร์มล้างค่าค้างไม่ได้แล้ว** (Task 27 — คอลัมน์ค้างที่ไม่มีแถวหนุนแสดงเป็น
   "ยังไม่ได้ผูก LINE" ไม่มีปุ่ม) ⇒ `POST /customers/:id/finance-line/unlink` ด้วยบัญชี OWNER/BM (ล้างคอลัมน์แม้ไม่มีแถว + audit `CUSTOMER_FINANCE_LINE_UNLINKED` ·
   มีหรือไม่มีสัญญาก็ได้) · แถวที่ถูกลบ (`deleted = true`): ล้างหลังกู้จากถังขยะ

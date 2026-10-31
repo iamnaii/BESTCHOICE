@@ -68,7 +68,8 @@ export interface FinanceLineStatus {
 }
 
 /**
- * ส่งออก `financeLine` ให้หน้าจอพนักงาน (ต้องเลือก `FINANCE_LINE_STATUS_SELECT`) · ตัด `lineLinks` ทิ้ง — U-id ของแถวไม่ต้องไปถึงหน้าเว็บ ·
+ * ส่งออก `financeLine` ให้หน้าจอพนักงาน (ต้องเลือก `FINANCE_LINE_STATUS_SELECT`) · ตัด `lineLinks` ทิ้ง — **ฟิลด์นี้**ไม่มี U-id ของแถว
+ * (คอลัมน์ `lineIdFinance` ที่ผู้เรียกเลือกมาเองไม่ถูกแตะ — `GET /customers/:id` ยังคืนคอลัมน์นั้นตามเดิม · Task 27 review M-5) ·
  * คอลัมน์ `lineIdFinance` ไม่ใช่เกณฑ์ (ค่าค้างที่ไม่มีแถวหนุน = verified false — กติกาข้อ 9 ของ security.md)
  */
 export function withFinanceLineStatus<

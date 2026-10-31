@@ -153,16 +153,21 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
      ปุ่มใน `ContractCard` / `Customer360Actions` / `FocusContractCard` · ตัวกรอง "ไม่มี LINE" · ตัวนับ LINE ของโหมดโฟกัส ไม่ดูคอลัมน์ ·
      ส่งไม่ได้เพราะไม่มีแถว (ณ ตอนส่ง) = 400 `LINE_FINANCE_NOT_VERIFIED_MESSAGE` (`POST /overdue/:id/send-line-adhoc` · ส่งซ้ำ dunning ช่อง LINE — บอกว่ายังไม่ยืนยัน OTP +
      ทางของลูกค้าเอง "เริ่มยืนยันตัวตน" เพราะไม่มีปุ่มพนักงานส่งลิงก์ยืนยัน) · ad-hoc ไม่พบสัญญา = 404 (ไม่ตอบ `{sent:0}` ที่หน้าเว็บแปลว่า "ลองใหม่" — fix round 1 M-4) ·
-     ส่ง ad-hoc / `bulk/send-line` ตัดขอบเขตสาขาด้วย `getBranchScope` แบบเดียวกับคิวที่อ่าน (SALES/BM = สาขาตัวเอง · ไม่มีสาขา = fail closed · ad-hoc นอกสาขา = 404 —
-     fix round 1 M-3) · คอลัมน์ `lineIdFinance` ในคำตอบเหลือไว้แสดงผล (ป้าย "LINE (งานการเงิน)") — **ห้ามใช้ตัดสินว่าส่งได้**
+     ส่ง ad-hoc / `bulk/send-line` ใช้ขอบเขตเดียว `lineSendContractScope` (`bulk.service.ts`) = ขอบเขตของหน้าจอที่ปุ่มอยู่: role ข้ามสาขา (`getBranchScope`) ทุกสัญญา ·
+     นอกนั้น **สาขาตัวเอง** (คิวทวงถาม / `queue-row` / แบนเนอร์นัดครบกำหนด — fix round 1 M-3) **หรือ สัญญาที่ผู้ใช้มีงานรายวันวันนี้** (โหมดโฟกัส `GET /collections/session/mine`
+     อ่านตามงานที่จ่าย ซึ่งจ่ายข้ามสาขาได้โดยตั้งใจ — round-robin · เติมขั้นต่ำจาก pool · ความสัมพันธ์เดิม · หยิบจาก pool · `DailyAssignment` ของ (ผู้ใช้, `collectionsSessionDay()`)
+     ที่ไม่ถูกลบ — นิยาม "วันนี้" เดียวกับหน้าจอ · fix round 2 I-R1) · นอกขอบเขต = 404 เหมือนไม่พบ · ไม่มีสาขาและไม่มีงาน = ไม่มีอะไร (ฝั่งส่ง fail closed —
+     ต่างจากคิวฝั่งอ่านที่เขียน `branchId: userBranchId ?? undefined` ซึ่ง BM/SALES ไม่มีสาขา = ไม่กรอง/fail open) ·
+     คอลัมน์ `lineIdFinance` ในคำตอบเหลือไว้แสดงผล (ป้าย "LINE (งานการเงิน)") — **ห้ามใช้ตัดสินว่าส่งได้**
    - **ทางส่งข้อความถึงลูกค้าที่เลือกปลายทางจาก `customerId` ต้องเลือกจากแถว OTP ที่ยังผูก — ห้ามเลือก "ห้อง LINE ล่าสุดของลูกค้า"** (Task 24 fix round 1 I-1):
      ห้องของ LINE ที่ลูกค้ายกเลิกแล้วยังถือ `customerId` เดิม (ข้อ 6 ล้างแค่ `verified_at`) ⇒ ผู้ถือ LINE เก่าที่ทักมาล่าสุดจะได้ข้อความของพนักงาน (ยอดหนี้ ฯลฯ) ·
      แท็บ "แชท LINE" ในแผง 360 **ส่งข้อความได้** (`POST /staff-chat/customer/:customerId/messages` → `RoomManagerService.sendCustomerMessage`): ส่งเฉพาะห้อง
      `LINE_FINANCE` ของ `findFinanceLineRecipient` · ไม่มีแถว = 400 `LINE_FINANCE_NOT_VERIFIED_MESSAGE` · มีแต่ห้อง LINE ร้าน = 400 `LINE_SHOP_STAFF_SEND_DISABLED_MESSAGE`
-     (ไม่ส่งทาง LINE ร้านจนกว่าฝั่งร้านมี OTP) · ยืนยันแล้วแต่ยังไม่เคยทัก = "รอลูกค้าทักก่อน" (ไม่ถอยไปห้องอื่น) · ประวัติแชท (`GET` เส้นเดียวกัน) แสดงห้องของแถว OTP ก่อน
-     (ไม่มีแถว = ห้อง LINE ล่าสุดตามเดิม อ่านอย่างเดียว) · เงื่อนไขเปิดแท็บ/ช่องพิมพ์ฝั่งเว็บยังดูคอลัมน์ — Task 27 เปลี่ยนเป็นสถานะยืนยัน (API ปฏิเสธอยู่แล้วไม่ว่าเว็บจะเปิดไหม) ·
-     route นี้ยังไม่มี branch scope (ลูกค้าไม่ผูกสาขาโดยตรง — รอเจ้าของตัดสิน) · บันทึกสำเนาข้อความลงห้อง (`payment-link` · `notification-dispatch`) ยังเลือก
-     "ห้องการเงินล่าสุดของลูกค้า" — ปลายทางจริงเป็นแถว OTP แล้ว (ไม่รั่ว) แต่สำเนาอาจลงห้องของ LINE เก่า (แสดงผลผิดห้อง)
+     (ไม่ส่งทาง LINE ร้านจนกว่าฝั่งร้านมี OTP) · ยืนยันแล้วแต่ยังไม่เคยทัก = "รอลูกค้าทักก่อน" (ไม่ถอยไปห้องอื่น) · ประวัติแชท (`GET` เส้นเดียวกัน):
+     **มีแถว** = ห้องของ LINE นั้นเท่านั้น (ยังไม่มีห้อง = ว่าง `roomId: null` — ไม่ถอยไปห้องของ LINE อื่น · fix round 2 m-1) · **ไม่มีแถว** = ห้อง LINE ล่าสุดตามเดิม อ่านอย่างเดียว ·
+     เงื่อนไขเปิดแท็บ/ช่องพิมพ์ฝั่งเว็บยังดูคอลัมน์ — Task 27 เปลี่ยนเป็นสถานะยืนยัน (API ปฏิเสธอยู่แล้วไม่ว่าเว็บจะเปิดไหม) ·
+     route นี้ยังไม่มี branch scope (ลูกค้าไม่ผูกสาขาโดยตรง — รอเจ้าของตัดสิน) · สำเนาข้อความที่ระบบบันทึกลงห้อง (`payment-link` · แม่แบบ Flex ของ `notification-dispatch`)
+     ลงห้องของ**ผู้รับจริง** `{ lineUserId: <LINE ที่ push ถึง>, channel }` (fix round 2 m-2 — เดิม "ห้องการเงินล่าสุดของลูกค้า" ⇒ บิลของลูกค้าไปโผล่ในห้องของ LINE เก่า)
    - **ผู้อ่านคอลัมน์ที่เหลือ** ถูกปักด้วย `line-oa/services/line-id-finance-readers.spec.ts` (allow-list พร้อมเหตุผล — แสดงผล/รายงาน/ล้างค่า/ข้ามสัญญาใน test-pack ·
      ไม่ตัดสินสิทธิ์ ไม่เป็นปลายทาง) · ไฟล์ใหม่ใต้ `apps/api/src` ทั้งหมด (รวม `src/cli` — Task 24 RR-M1) ที่อ้าง `lineIdFinance` หรือชื่อคอลัมน์ดิบ `line_id_finance`
      (raw SQL) = เทสแดง — ใช้แถว OTP หรือเพิ่มในรายการพร้อมเหตุผลในรีวิว · test-pack (`seed-test-pack` โหมดเดินเรื่อง) ข้ามสัญญาที่ลูกค้ามีแถว OTP ที่ยังผูก **หรือ**
@@ -244,6 +249,11 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
   "แถวยังผูก" = เกณฑ์เดียว `VERIFIED_FINANCE_LINK_WHERE` (`otp-verified-customer.ts` — FINANCE · unlinked/deleted ว่าง · ลูกค้าไม่ถูกลบ) ใช้ทั้ง `findOtpVerifiedCustomerId` ·
   `isLinked` · `ChatRoomService.getOrCreate` · `RoomManagerService.getOrCreateRoom` ช่อง FINANCE (fix round 1 M-1/M-2) ·
   **ช่อง SHOP ของ `RoomManagerService.getOrCreateRoom` ยังรับแถว link ทุกสถานะ** (TODO ในโค้ด — วันนี้ไม่มีผู้เขียนแถวช่อง SHOP · ต้องใช้เกณฑ์เดียวกันเมื่อเชื่อม OA ร้านพร้อม OTP ฝั่งร้าน) ·
+  `findExistingCustomerId` (chat-prospects) ใช้ค่าคงที่เดียวกัน · เตือนงวดอัตโนมัติ (`AutoTriggerService`) อ่านผู้รับด้วย `FINANCE_LINE_RECIPIENT_SELECT` (fix round 2 m-5) ·
+  **ห้องของ LINE ที่ลูกค้ายกเลิกแล้วยังถือ `customerId` เดิม** (ข้อ 6 ล้างแค่ `verified_at`) ⇒ ในกล่องข้อความรวม (`/inbox` — ส่งตามห้อง `rooms/:id/messages`) ห้องนั้นยังขึ้นเป็นของลูกค้า
+  และลิงก์แชทในรายชื่อลูกค้าพาไปห้องใหม่สุด: **ข้อความที่พนักงานพิมพ์ในห้องนั้นถึงผู้ถือ LINE เก่า** (และข้อความสำเร็จรูปที่พนักงานกดเติมตัวแปรจาก `room.customerId` —
+  ด่าน `verifiedOnly` กันได้เฉพาะแม่แบบที่ติดธง) — สำเนาบิล/ลิงก์ชำระไม่ไปลงห้องนั้นแล้ว (m-2) จึงไม่ชวนให้ตอบ แต่ทางส่งตามห้องยังไม่ตรวจแถว OTP (คลาสเดียวกับ I3 — งานต่อ:
+  ให้ทางส่งตามห้อง `LINE_FINANCE` ต้องมี `verifiedAt`/แถวที่ยังผูก หรือปลด `customerId` ของห้องตอนยกเลิกผูก — ต้องตัดสินเรื่องประวัติแชทก่อน) ·
   พนักงานกดส่งเองยังใช้ลูกค้าของห้อง (บอทขาย `LINKED_BY_PHONE`
   ทำให้พนักงานเห็นห้องเป็นลูกค้าคนนั้น — social engineering คลาสเดียวกับ I3) · Facebook: ปุ่มที่ลูกค้ากดได้คำกลางเสมอ — ตรวจแม่แบบที่ใช้ตัวแปรลูกค้าและมี
   ปุ่ม `TEMPLATE:` บน Facebook ว่ายังสื่อความได้
@@ -252,7 +262,9 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
   deploy: เว็บ 26.10.72 ขึ้นพร้อมหรือหลัง API (เว็บใหม่ + API เก่า = ไม่มี `hasVerifiedLine` ⇒ ปุ่ม "ส่ง LINE" ปิดทุกแถว — fail closed · API ใหม่ + เว็บเก่า = ปุ่มตามคอลัมน์เดิม) ·
   รีวิว Task 24 (fix round 1): I-1 (แท็บ "แชท LINE" ส่งเข้าห้องล่าสุดของลูกค้า) — **ปิดฝั่ง API** (ฝั่งเว็บ Task 27) · M-1 · M-2 (FINANCE — SHOP เป็น TODO) · M-3 (branch scope ของ
   ad-hoc/bulk) · M-4 (404/400 แทน `{sent:0}`) · M-5 (test-pack ก้าวเปิดสัญญาไม่แจ้งคนจริง — `ACTIVATION_SILENT_CUSTOMER_WHERE`) — **ปิดแล้ว** · M-6 (ตัวตัดคอมเมนต์ของ readers spec
-  เป็น regex — สตริงที่มี `/*` อาจตัดโค้ดจริง) — ยอมรับ ·
+  เป็น regex — สตริงที่มี `/*` อาจตัดโค้ดจริง) — ยอมรับ · รีวิวซ้ำ (fix round 2): I-R1 (ด่านสาขาของ M-3 ทำให้โหมดโฟกัสข้ามสาขาส่ง LINE ไม่ได้ → ยอมงานรายวันวันนี้) ·
+  m-1 (ประวัติถอยไปห้อง LINE อื่น) · m-2 (สำเนาลงห้องผู้รับ) · m-3 (เอกสาร/docblock) · m-4 (ด่านเปิดสัญญาของ test-pack ตรงรูปเบอร์ของ seeder ทุกตัวอักษร —
+  `_test-customer-phone.ts`) · m-5 (เศษเกณฑ์เดียว) — **ปิดแล้ว** ·
   **M-3 ของรีวิว Task 22 ยังเปิด — รอ mockup ที่เจ้าของอนุมัติ:** ช่อง "LINE ID (FINANCE)" บนฟอร์มสร้าง/แก้ไขลูกค้า (`CustomerCreateDialog` · `EditCustomerDialog` · `CustomerCreateModal`)
   และ skip-tracing (`SkipTracingWizard`) ยังให้พิมพ์ — ค่าใหม่ได้ 400 `LINE_FINANCE_LINK_REQUIRES_OTP_MESSAGE` ทุกครั้ง (ปลอดภัย แต่พนักงานชนกำแพง) · ห้ามแก้หน้าตาก่อนได้ mockup
 - เวลาตอบ `requestOtp`: SMS ไม่ถูก await และทุกทางที่สำเร็จรอขั้นต่ำ 1 วิ — ส่วนต่างที่เหลือคือ query เพดานของเบอร์จริง (ระดับมิลลิวินาที อยู่ใต้ขั้นต่ำ) ·

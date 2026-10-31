@@ -11,8 +11,17 @@ export type IntegrationConfig = Record<string, string>;
 /** Same shape but sensitive values are masked (e.g. `••••abcd`). */
 export type MaskedIntegrationConfig = Record<string, string>;
 
+/**
+ * State of INTEGRATION_ENCRYPTION_KEY in this process. Only `ok` is ever used to
+ * encrypt or decrypt — a malformed key is treated exactly like a missing one.
+ */
+export type IntegrationKeyStatus = 'ok' | 'missing' | 'malformed';
+
+/** Same rule as PII_ENCRYPTION_KEY (utils/env-validation.ts): 32 bytes as hex. */
+const INTEGRATION_KEY_FORMAT = /^[0-9a-f]{64}$/i;
+
 /** Why a stored credential could not be turned back into plaintext. */
-type UndecryptableReason = 'key-missing' | 'decrypt-failed';
+type UndecryptableReason = 'key-missing' | 'key-invalid' | 'decrypt-failed';
 
 /** Result of reading one stored value — never carries ciphertext. */
 type StoredRead = { ok: true; value: string } | { ok: false; reason: UndecryptableReason };
@@ -21,7 +30,7 @@ type StoredRead = { ok: true; value: string } | { ok: false; reason: Undecryptab
  * Encrypted credentials checked against the key this process holds.
  * Entries are `integrationKey.fieldKey` only — never values.
  */
-export type EncryptedFieldCheck = { ok: string[]; failed: string[] };
+export type EncryptedFieldCheck = { key: IntegrationKeyStatus; ok: string[]; failed: string[] };
 
 @Injectable()
 export class IntegrationConfigService implements OnModuleInit {
@@ -44,23 +53,32 @@ export class IntegrationConfigService implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    const key = this.configService.get<string>('INTEGRATION_ENCRYPTION_KEY');
-    if (!key) {
+    const { status } = this.resolveKey();
+    if (status === 'missing') {
       this.logger.warn(
         '[IntegrationConfig] INTEGRATION_ENCRYPTION_KEY not set — credentials stored in plaintext!',
       );
       Sentry.captureMessage('INTEGRATION_ENCRYPTION_KEY not configured', 'warning');
     }
-    await this.logEncryptedFieldCheck();
+    if (status === 'malformed') {
+      // Never the value or its length — only the rule it breaks.
+      this.logger.error(
+        '[IntegrationConfig] INTEGRATION_ENCRYPTION_KEY is malformed (need 64 hex chars) — treated as not set: encrypted credentials read as not configured and new saves are stored unencrypted',
+      );
+      Sentry.captureMessage('INTEGRATION_ENCRYPTION_KEY malformed (need 64 hex chars)', 'error');
+    }
+    await this.logEncryptedFieldCheck(status);
   }
 
   /**
    * Boot self-check: does the key this process holds open every encrypted
    * credential? One log line (field references only — never values) lets ops
-   * verify the key after a deploy without reading any secret. Never throws:
-   * a DB hiccup must not block boot.
+   * verify the key after a deploy without reading any secret. Printed whenever
+   * a key is configured (well-formed or not) or encrypted values exist, so "no
+   * line" can only mean "no key and nothing encrypted". Never throws: a DB
+   * hiccup must not block boot.
    */
-  private async logEncryptedFieldCheck(): Promise<void> {
+  private async logEncryptedFieldCheck(status: IntegrationKeyStatus): Promise<void> {
     let check: EncryptedFieldCheck;
     try {
       check = await this.checkEncryptedFields();
@@ -71,26 +89,40 @@ export class IntegrationConfigService implements OnModuleInit {
       return;
     }
     const { ok, failed } = check;
-    if (ok.length + failed.length === 0) return;
+    if (status === 'missing' && ok.length + failed.length === 0) return;
 
-    const line = `integration encrypted fields: ok=${ok.length} failed=${failed.length}`;
-    if (failed.length === 0) {
+    const line = `integration encrypted fields: key=${status} ok=${ok.length} failed=${failed.length} [${failed.join(', ')}]`;
+    if (failed.length === 0 && status === 'ok') {
       this.logger.log(line);
       return;
     }
-    this.logger.warn(`${line} [${failed.join(', ')}]`);
+    this.logger.warn(line);
+    if (failed.length === 0) return;
     Sentry.captureMessage('Integration credentials cannot be decrypted with the current key', {
       level: 'warning',
-      tags: { subsystem: 'integration-config' },
+      tags: { subsystem: 'integration-config', key: status },
       extra: { ok: ok.length, failed },
     });
   }
 
   // ─── Private helpers ──────────────────────────────────────────────────────
 
-  /** Return the encryption key from env; empty string if not set (no encryption). */
+  /**
+   * Read INTEGRATION_ENCRYPTION_KEY: trimmed, and only usable when it is 64 hex
+   * chars. A malformed key (e.g. base64 from `openssl rand -base64 32`, or 32
+   * hex chars) would otherwise pass decryptPII's length gate and throw
+   * "Invalid key length" on every save — it is treated as absent instead.
+   */
+  private resolveKey(): { status: IntegrationKeyStatus; key: string } {
+    const key = (this.configService.get<string>('INTEGRATION_ENCRYPTION_KEY') ?? '').trim();
+    if (!key) return { status: 'missing', key: '' };
+    if (!INTEGRATION_KEY_FORMAT.test(key)) return { status: 'malformed', key: '' };
+    return { status: 'ok', key };
+  }
+
+  /** The usable encryption key; empty string when missing or malformed (no encryption). */
   private get encryptionKey(): string {
-    return this.configService.get<string>('INTEGRATION_ENCRYPTION_KEY') ?? '';
+    return this.resolveKey().key;
   }
 
   /** Build the SystemConfig DB key for a given integration + field. */
@@ -127,12 +159,11 @@ export class IntegrationConfigService implements OnModuleInit {
    */
   private readStored(raw: string): StoredRead {
     if (!isEncrypted(raw)) return { ok: true, value: raw };
-    const key = this.encryptionKey;
-    if (!key) return { ok: false, reason: 'key-missing' };
+    const { status, key } = this.resolveKey();
+    if (status === 'missing') return { ok: false, reason: 'key-missing' };
+    if (status === 'malformed') return { ok: false, reason: 'key-invalid' };
     try {
-      const value = decryptPII(raw, key);
-      // decryptPII hands a too-short key's input back untouched instead of throwing.
-      return value === raw ? { ok: false, reason: 'decrypt-failed' } : { ok: true, value };
+      return { ok: true, value: decryptPII(raw, key) };
     } catch {
       return { ok: false, reason: 'decrypt-failed' };
     }
@@ -226,7 +257,8 @@ export class IntegrationConfigService implements OnModuleInit {
         if (field.sensitive) refs.set(this.dbKey(def.key, field.key), `${def.key}.${field.key}`);
       }
     }
-    if (refs.size === 0) return { ok: [], failed: [] };
+    const { status } = this.resolveKey();
+    if (refs.size === 0) return { key: status, ok: [], failed: [] };
 
     const rows = await this.prisma.systemConfig.findMany({
       where: { key: { in: [...refs.keys()] }, deletedAt: null },
@@ -239,7 +271,7 @@ export class IntegrationConfigService implements OnModuleInit {
       if (!ref || !row.value || !isEncrypted(row.value)) continue;
       (this.readStored(row.value).ok ? ok : failed).push(ref);
     }
-    return { ok: ok.sort(), failed: failed.sort() };
+    return { key: status, ok: ok.sort(), failed: failed.sort() };
   }
 
   /**

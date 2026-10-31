@@ -22,6 +22,9 @@ jest.mock('@sentry/node', () => ({
  */
 const KEY_A = 'a1'.repeat(32);
 const KEY_B = 'b2'.repeat(32);
+/** Wrong-format keys that pass decryptPII's ≥32-char gate but are not 32 bytes of hex. */
+const KEY_BASE64_44 = `${'Q'.repeat(43)}=`; // shape of `openssl rand -base64 32`
+const KEY_HEX_32 = 'c3'.repeat(16);
 const SECRET = 'test-only-line-shop-channel-secret';
 const TOKEN = 'test-only-line-shop-channel-token';
 
@@ -144,7 +147,46 @@ describe('IntegrationConfigService.getValue — undecryptable credentials fail c
 
     await expect(service.getValue('line-shop', 'channelSecret')).resolves.toBeUndefined();
     expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toContain('(key-invalid)');
   });
+
+  it.each([
+    ['base64 (44 chars)', KEY_BASE64_44],
+    ['hex, 32 chars', KEY_HEX_32],
+  ])(
+    'malformed key (%s) reads an encrypted row as not configured — reason key-invalid',
+    async (_, key) => {
+      const { service } = build(key, { [SECRET_KEY]: encryptPII(SECRET, KEY_A) });
+
+      await expect(service.getValue('line-shop', 'channelSecret')).resolves.toBeUndefined();
+      expect(String(warn.mock.calls[0][0])).toContain('(key-invalid)');
+    },
+  );
+
+  it('a well-formed key with surrounding whitespace / newline is trimmed and used', async () => {
+    const { service } = build(`  ${KEY_A}\n`, { [SECRET_KEY]: encryptPII(SECRET, KEY_A) });
+
+    await expect(service.getValue('line-shop', 'channelSecret')).resolves.toBe(SECRET);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['base64 (44 chars)', KEY_BASE64_44],
+    ['hex, 32 chars', KEY_HEX_32],
+  ])(
+    'saveConfig with a malformed key (%s) does not 500 — stores like no key and reads back',
+    async (_, key) => {
+      const { service, prisma } = build(key);
+
+      await expect(
+        service.saveConfig('line-shop', { channelSecret: SECRET, liffId: 'test-liff-id' }),
+      ).resolves.toBeUndefined();
+
+      expect(prisma.rows.get(SECRET_KEY)?.value).toBe(SECRET);
+      expect(prisma.rows.get('integration.line-shop.liffId')?.value).toBe('test-liff-id');
+      await expect(service.getValue('line-shop', 'channelSecret')).resolves.toBe(SECRET);
+    },
+  );
 
   it('repeated reads of the same field warn once (hot paths: webhook guard, every send)', async () => {
     const { service } = build(KEY_B, { [SECRET_KEY]: encryptPII(SECRET, KEY_A) });
@@ -196,7 +238,7 @@ describe('IntegrationConfigService boot self-check (onModuleInit)', () => {
       .map((c) => String(c[0]))
       .filter((m) => m.includes('integration encrypted fields'));
 
-  it('key matches → one line "ok=N failed=0", no Sentry', async () => {
+  it('key matches → one line "key=ok ok=N failed=0", no Sentry', async () => {
     const { service } = build(KEY_A, {
       [TOKEN_KEY]: encryptPII(TOKEN, KEY_A),
       [SECRET_KEY]: encryptPII(SECRET, KEY_A),
@@ -205,7 +247,7 @@ describe('IntegrationConfigService boot self-check (onModuleInit)', () => {
 
     await service.onModuleInit();
 
-    expect(selfCheckLines(log)).toEqual(['integration encrypted fields: ok=2 failed=0']);
+    expect(selfCheckLines(log)).toEqual(['integration encrypted fields: key=ok ok=2 failed=0 []']);
     expect(selfCheckLines(warn)).toEqual([]);
     expect(Sentry.captureMessage).not.toHaveBeenCalled();
   });
@@ -218,7 +260,7 @@ describe('IntegrationConfigService boot self-check (onModuleInit)', () => {
     await service.onModuleInit();
 
     expect(selfCheckLines(warn)).toEqual([
-      'integration encrypted fields: ok=0 failed=2 [line-shop.channelSecret, line-shop.channelToken]',
+      'integration encrypted fields: key=ok ok=0 failed=2 [line-shop.channelSecret, line-shop.channelToken]',
     ]);
     expect(selfCheckLines(log)).toEqual([]);
     expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
@@ -239,20 +281,65 @@ describe('IntegrationConfigService boot self-check (onModuleInit)', () => {
     await service.onModuleInit();
 
     expect(selfCheckLines(warn)).toEqual([
-      'integration encrypted fields: ok=0 failed=1 [line-shop.channelSecret]',
+      'integration encrypted fields: key=missing ok=0 failed=1 [line-shop.channelSecret]',
     ]);
     expect(warn.mock.calls.map((c) => String(c[0])).join('\n')).toContain(
       'INTEGRATION_ENCRYPTION_KEY not set',
     );
   });
 
-  it('nothing encrypted → no self-check line', async () => {
-    const { service } = build(KEY_A, { [SECRET_KEY]: 'test-only-plaintext-secret' });
+  it('no key and nothing encrypted → no self-check line', async () => {
+    const { service } = build(undefined, { [SECRET_KEY]: 'test-only-plaintext-secret' });
 
     await service.onModuleInit();
 
     expect(selfCheckLines(log)).toEqual([]);
     expect(selfCheckLines(warn)).toEqual([]);
+  });
+
+  it('key present but nothing encrypted → the line is still printed (absence is never ambiguous)', async () => {
+    const { service } = build(KEY_A, { [SECRET_KEY]: 'test-only-plaintext-secret' });
+
+    await service.onModuleInit();
+
+    expect(selfCheckLines(log)).toEqual(['integration encrypted fields: key=ok ok=0 failed=0 []']);
+  });
+
+  it.each([
+    ['base64 (44 chars)', KEY_BASE64_44],
+    ['hex, 32 chars', KEY_HEX_32],
+  ])(
+    'malformed key (%s) → error + Sentry without value or length, boot continues, line says key=malformed',
+    async (_, key) => {
+      const { service } = build(key, { [SECRET_KEY]: encryptPII(SECRET, KEY_A) });
+
+      await expect(service.onModuleInit()).resolves.toBeUndefined();
+
+      const errors = error.mock.calls.map((c) => String(c[0]));
+      expect(
+        errors.some((m) => m.includes('INTEGRATION_ENCRYPTION_KEY') && m.includes('malformed')),
+      ).toBe(true);
+      expect(Sentry.captureMessage).toHaveBeenCalledWith(
+        'INTEGRATION_ENCRYPTION_KEY malformed (need 64 hex chars)',
+        'error',
+      );
+      expect(selfCheckLines(warn)).toEqual([
+        'integration encrypted fields: key=malformed ok=0 failed=1 [line-shop.channelSecret]',
+      ]);
+      const out = emitted(warn, error, log);
+      expect(out).not.toContain(key);
+      expect(out).not.toContain(String(key.length));
+    },
+  );
+
+  it('malformed key and nothing encrypted → the line is still printed with key=malformed', async () => {
+    const { service } = build(KEY_HEX_32);
+
+    await service.onModuleInit();
+
+    expect(selfCheckLines(warn)).toEqual([
+      'integration encrypted fields: key=malformed ok=0 failed=0 []',
+    ]);
   });
 
   it('a DB error during the check never blocks boot', async () => {
@@ -272,10 +359,12 @@ describe('IntegrationConfigService boot self-check (onModuleInit)', () => {
     });
 
     await expect(service.checkEncryptedFields('peak')).resolves.toEqual({
+      key: 'ok',
       ok: ['peak.secretKey'],
       failed: [],
     });
     await expect(service.checkEncryptedFields()).resolves.toEqual({
+      key: 'ok',
       ok: ['peak.secretKey'],
       failed: ['line-shop.channelSecret'],
     });
@@ -332,6 +421,7 @@ describe('IntegrationConfigService — key × stored value matrix (round-trip th
       SECRET,
     );
     await expect(serviceOn(prisma, KEY_A).checkEncryptedFields()).resolves.toEqual({
+      key: 'ok',
       ok: ['line-shop.channelSecret'],
       failed: [],
     });
@@ -346,6 +436,7 @@ describe('IntegrationConfigService — key × stored value matrix (round-trip th
     await expect(other.getValue('line-shop', 'channelSecret')).resolves.toBeUndefined();
     await expect(other.getMaskedConfig('line-shop')).resolves.toMatchObject({ channelSecret: '' });
     await expect(other.checkEncryptedFields()).resolves.toEqual({
+      key: 'ok',
       ok: [],
       failed: ['line-shop.channelSecret'],
     });
@@ -380,6 +471,7 @@ describe('IntegrationConfigService — key × stored value matrix (round-trip th
       'test-only-re-entered-secret',
     );
     await expect(serviceOn(prisma, KEY_B).checkEncryptedFields()).resolves.toEqual({
+      key: 'ok',
       ok: ['line-shop.channelSecret'],
       failed: [],
     });

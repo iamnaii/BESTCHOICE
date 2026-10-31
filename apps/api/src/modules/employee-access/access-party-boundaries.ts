@@ -35,6 +35,8 @@ export const PARTY_DOCUMENT_ROUTES = [
 export const PARTY_WRITE_ROUTES = [
   'CustomersController.create',
   'CustomersController.update',
+  // Task 27 — ปุ่ม "ยกเลิกการผูก" LINE น้องเบส (customers.update ต่อลูกค้า · ตอบ { id } ใต้ managed)
+  'CustomersController.unlinkFinanceLine',
   'CustomersController.remove',
   'CustomersController.fillContact',
   'CustomersController.updateContact',

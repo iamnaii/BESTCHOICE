@@ -1,18 +1,29 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, MessageCircle, Send, Image as ImageIcon, FileText } from 'lucide-react';
+import { Loader2, MessageCircle, Send, Image as ImageIcon, FileText, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useLineChatPanel, useSendLineChatMessage, type LineChatMessage } from '../hooks/useLineChatPanel';
+import { FINANCE_LINE_SELF_LINK_TEXT } from '@/components/customer/FinanceLineStatusRow';
+import {
+  useLineChatPanel,
+  useSendLineChatMessage,
+  type LineChatMessage,
+} from '../hooks/useLineChatPanel';
 
 interface Props {
   customerId: string | null;
+  /**
+   * Task 27 — ส่งข้อความได้เฉพาะลูกค้าที่ยืนยัน LINE การเงินด้วย OTP แล้ว (hasVerifiedLine — เกณฑ์เดียวกับปุ่ม "ส่ง LINE") ·
+   * false = ช่องพิมพ์ถูกแทนด้วยข้อความวิธีผูกเอง (อ่านอย่างเดียว)
+   */
+  canSend: boolean;
 }
 
 /**
  * LineChatPanel — embedded LINE chat viewer inside Customer 360.
  *
  * Visibility: caller (Customer360Panel) only mounts this when the customer
- * has a `lineId`; the panel itself shows an empty state when no LINE room
- * exists (lineId set but customer never tapped the bot).
+ * has a verified FINANCE LINE (`hasVerifiedLine` — active OTP link, Task 27);
+ * the panel itself shows an empty state when no LINE room exists. The
+ * composer is gated by the same criterion (`canSend`).
  *
  * UX:
  *  - Newest at the bottom (chat-app convention). BE returns newest-first;
@@ -23,19 +34,13 @@ interface Props {
  *  - Polling 30s keeps the view fresh; instant delivery for the staff
  *    member who just sent because the mutation invalidates the query.
  */
-export default function LineChatPanel({ customerId }: Props) {
+export default function LineChatPanel({ customerId, canSend }: Props) {
   const [draft, setDraft] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevScrollHeightRef = useRef<number>(0);
 
-  const {
-    data,
-    isLoading,
-    isError,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-  } = useLineChatPanel(customerId, !!customerId);
+  const { data, isLoading, isError, fetchNextPage, hasNextPage, isFetchingNextPage } =
+    useLineChatPanel(customerId, !!customerId);
 
   const send = useSendLineChatMessage(customerId);
 
@@ -95,22 +100,18 @@ export default function LineChatPanel({ customerId }: Props) {
 
   if (isError) {
     return (
-      <div className="p-5 text-sm text-destructive leading-snug">
-        ไม่สามารถโหลดประวัติแชทได้
-      </div>
+      <div className="p-5 text-sm text-destructive leading-snug">ไม่สามารถโหลดประวัติแชทได้</div>
     );
   }
 
   return (
     <div className="flex flex-col h-[480px]">
       {/* Message list */}
-      <div
-        ref={scrollRef}
-        className="flex-1 overflow-y-auto px-4 py-3 space-y-2 bg-muted/30"
-      >
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-2 bg-muted/30">
         {hasNextPage && (
           <div className="flex justify-center pb-2">
-            <button data-ui-control="button"
+            <button
+              data-ui-control="button"
               type="button"
               onClick={() => fetchNextPage()}
               disabled={isFetchingNextPage}
@@ -136,29 +137,47 @@ export default function LineChatPanel({ customerId }: Props) {
       </div>
 
       {/* Composer */}
-      <div className="border-t border-border p-3 bg-card">
-        <div className="flex items-end gap-2">
-          <textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={handleKeyDown}
-            rows={2}
-            placeholder={roomId ? 'พิมพ์ข้อความ... (Enter ส่ง, Shift+Enter ขึ้นบรรทัดใหม่)' : 'รอลูกค้าทักเข้ามาก่อน'}
-            disabled={!roomId || send.isPending}
-            className="flex-1 resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm leading-snug focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
-            maxLength={2000}
-          />
-          <Button
-            type="button"
-            onClick={handleSend}
-            disabled={!roomId || !draft.trim() || send.isPending}
-            size="sm"
-            className="shrink-0"
+      {!canSend ? (
+        <div className="border-t border-border p-3 bg-card">
+          <div
+            role="note"
+            className="flex items-start gap-2.5 rounded-lg border border-border bg-muted px-3 py-2.5"
           >
-            <Send className="size-4" />
-          </Button>
+            <Info className="mt-px size-4 shrink-0 text-foreground/75" aria-hidden="true" />
+            <span className="text-xs leading-snug text-foreground/75">
+              {FINANCE_LINE_SELF_LINK_TEXT}
+            </span>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="border-t border-border p-3 bg-card">
+          <div className="flex items-end gap-2">
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={handleKeyDown}
+              rows={2}
+              placeholder={
+                roomId
+                  ? 'พิมพ์ข้อความ... (Enter ส่ง, Shift+Enter ขึ้นบรรทัดใหม่)'
+                  : 'รอลูกค้าทักเข้ามาก่อน'
+              }
+              disabled={!roomId || send.isPending}
+              className="flex-1 resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm leading-snug focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+              maxLength={2000}
+            />
+            <Button
+              type="button"
+              onClick={handleSend}
+              disabled={!roomId || !draft.trim() || send.isPending}
+              size="sm"
+              className="shrink-0"
+            >
+              <Send className="size-4" />
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

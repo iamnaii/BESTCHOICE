@@ -217,7 +217,14 @@ export class CustomersController {
   @Get('blacklist')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   async getBlacklistBatch(@Query('ids') ids?: string) {
-    const list = [...new Set((ids ?? '').split(',').map((x) => x.trim()).filter(Boolean))];
+    const list = [
+      ...new Set(
+        (ids ?? '')
+          .split(',')
+          .map((x) => x.trim())
+          .filter(Boolean),
+      ),
+    ];
     if (!list.length || list.length > BLACKLIST_BATCH_MAX) {
       throw new BadRequestException(`ระบุ ids 1–${BLACKLIST_BATCH_MAX} รายการ`);
     }
@@ -374,6 +381,19 @@ export class CustomersController {
   }
 
   /**
+   * Task 27 — ปุ่ม "ยกเลิกการผูก" LINE น้องเบส (การเงิน) ในฟอร์มแก้ไขลูกค้า (หน้าลูกค้า › แก้ไข · หน้าสัญญา › แก้ไขข้อมูลลูกค้า):
+   * ปิดแถว OTP ที่ยังผูก + ล้างคอลัมน์ `line_id_finance` ทันที (ไม่ต้องบันทึกฟอร์ม) ผ่าน `unlinkFinanceLine({ customerId })` ตัวเดิม ·
+   * ต่างจาก PATCH `lineIdFinance: null` ที่ตัดสินด้วยคอลัมน์ (คอลัมน์ว่าง = ไม่แตะแถว) · roles เท่าทางยกเลิกผูกของพนักงานเดิม (PATCH) ·
+   * audit `CUSTOMER_FINANCE_LINE_UNLINKED` · ผูกใหม่ได้ทาง OTP ของลูกค้าเท่านั้น ·
+   * ตอบ 201 (ค่าเริ่มต้นของ `@Post` เหมือน POST action อื่นของ `/customers/:id`) ทั้งยกเลิกจริงและไม่มีอะไรให้ล้าง (`unlinked: false`)
+   */
+  @Post(':id/finance-line/unlink')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  unlinkFinanceLine(@Param('id') id: string, @CurrentUser() user: { id: string }) {
+    return this.customersService.unlinkFinanceLineByStaff(id, { id: user.id });
+  }
+
+  /**
    * รวมผู้สนใจอัตโนมัติจากแชท (:id) เข้าลูกค้าเดิม (:targetId) — ใช้ตอนเติมเบอร์แล้วซ้ำ (สเปค 3.3 ข)
    *
    * ปลายทางเป็น "ผู้สนใจอัตโนมัติ" อีกคนได้ (Ruling R22): คำใบ้ "อาจเป็นคนเดียวกัน" ชี้ทิศทางรวม
@@ -437,8 +457,16 @@ export class CustomersController {
 
   @Post(':id/documents')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 8, fieldSize: 4096 } }))
-  uploadDocument(@Param('id') id: string, @Body() dto: UploadDocumentDto, @UploadedFile() file?: Express.Multer.File) {
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 8, fieldSize: 4096 },
+    }),
+  )
+  uploadDocument(
+    @Param('id') id: string,
+    @Body() dto: UploadDocumentDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
     return this.customersService.uploadDocument(id, dto, file);
   }
 
@@ -451,7 +479,9 @@ export class CustomersController {
   @Get(':id/documents')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   @Header('Cache-Control', 'private, no-store')
-  listDocuments(@Param('id') id: string) { return this.customersService.listDocuments(id); }
+  listDocuments(@Param('id') id: string) {
+    return this.customersService.listDocuments(id);
+  }
 
   @Get(':id/documents/:attachmentId/content')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')

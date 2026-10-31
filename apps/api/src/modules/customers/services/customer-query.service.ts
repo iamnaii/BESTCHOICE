@@ -35,6 +35,10 @@ import {
   PLACEHOLDER_FIELDS_SELECT,
 } from '../../chat-prospects/chat-placeholder';
 import { PrismaService } from '../../../prisma/prisma.service';
+import {
+  FINANCE_LINE_STATUS_SELECT,
+  withFinanceLineStatus,
+} from '../../line-oa/services/otp-verified-customer';
 import { paginatedResponse } from '../../../common/helpers/pagination.helper';
 import { decryptPII, isEncrypted } from '../../../utils/crypto.util';
 import { decryptReferencesJson } from '../../../utils/pii.util';
@@ -1126,6 +1130,8 @@ export class CustomerQueryService {
           },
         },
         referredBy: { select: { id: true, name: true, phone: true } },
+        // Task 27 — สถานะ LINE น้องเบส (การเงิน) ของฟอร์มแก้ไขลูกค้า = แถว OTP ที่ยังผูก (ไม่ใช่คอลัมน์) · U-id ถูกตัดก่อนตอบ
+        ...FINANCE_LINE_STATUS_SELECT,
       },
     });
     if (!customer || customer.deletedAt) throw new NotFoundException('ไม่พบลูกค้า');
@@ -1148,7 +1154,7 @@ export class CustomerQueryService {
       }
     }
     const result = {
-      ...decrypted,
+      ...withFinanceLineStatus(decrypted),
       ...(plan
         ? {
             warrantyContracts: await plan.warrantyContracts(id),

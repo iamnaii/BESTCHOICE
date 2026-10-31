@@ -17,10 +17,7 @@ import { getErrorMessage } from '@/lib/api';
 import type { PaymentScheduleItem } from '../hooks/useCustomer360';
 import { useCustomer360 } from '../hooks/useCustomer360';
 import { useCustomerInsights } from '../hooks/useCustomerInsights';
-import {
-  useCustomerTags,
-  useRecomputeCustomerTags,
-} from '../hooks/useCustomerTags';
+import { useCustomerTags, useRecomputeCustomerTags } from '../hooks/useCustomerTags';
 import { useUnlockContract } from '../hooks/useMdmLock';
 import Customer360Timeline from './Customer360Timeline';
 import Customer360Actions from './Customer360Actions';
@@ -99,10 +96,10 @@ export default function Customer360Panel({
 
   const isLocked = contract?.mdmState === 'LOCKED' || contract?.deviceLocked === true;
 
-  // LINE tab is only meaningful when the customer has a LINE ID. If they
-  // don't, hide the tab entirely and snap back to overview if the user was
-  // on LINE for a previously selected customer.
-  const hasLineId = !!(data?.detail.customer.lineIdFinance ?? contract?.customer.lineIdFinance);
+  // Task 27 (Task 24 ข้อกังวล 3) — ป้าย "LINE (งานการเงิน)" · แท็บ "แชท LINE" · ช่องพิมพ์ในแท็บ (ส่งข้อความจริง) ใช้เกณฑ์เดียวกับปุ่ม
+  // "ส่ง LINE": hasVerifiedLine = มีแถว OTP ที่ยังผูก (API คิดจาก customer_line_links) · คอลัมน์ lineIdFinance ไม่ใช่เกณฑ์ ·
+  // ยังไม่ยืนยัน = ไม่มีแท็บ และเด้งกลับภาพรวมถ้าอยู่ที่แท็บ LINE ของลูกค้าคนก่อน
+  const hasVerifiedLine = !!contract?.customer.hasVerifiedLine;
 
   useEffect(() => {
     setTab('overview');
@@ -114,8 +111,8 @@ export default function Customer360Panel({
   }, [contract?.id]);
 
   useEffect(() => {
-    if (tab === 'line' && !hasLineId) setTab('overview');
-  }, [tab, hasLineId]);
+    if (tab === 'line' && !hasVerifiedLine) setTab('overview');
+  }, [tab, hasVerifiedLine]);
 
   // Close on Escape
   useEffect(() => {
@@ -163,7 +160,9 @@ export default function Customer360Panel({
         {/* Header */}
         <div className="sticky top-0 flex flex-col border-b border-border bg-card z-10">
           {/* Severity accent — matches ContractCard severity panel color */}
-          <div className={`h-1 shrink-0 transition-colors ${contract ? severityAccent(contract.daysOverdue) : 'bg-muted'}`} />
+          <div
+            className={`h-1 shrink-0 transition-colors ${contract ? severityAccent(contract.daysOverdue) : 'bg-muted'}`}
+          />
           <div className="flex items-center justify-between px-5 py-3">
             <div>
               <div className="text-2xs uppercase tracking-wider text-muted-foreground">
@@ -173,7 +172,9 @@ export default function Customer360Panel({
                 {contract?.contractNumber}
               </div>
             </div>
-            <button data-ui-control="button" data-ui-icon="true"
+            <button
+              data-ui-control="button"
+              data-ui-icon="true"
               onClick={onClose}
               className="inline-flex size-11 items-center justify-center rounded-lg p-2 hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
               aria-label="ปิด"
@@ -220,7 +221,7 @@ export default function Customer360Panel({
                       />
                     </>
                   )}
-                  {(data?.detail.customer.lineIdFinance ?? contract.customer.lineIdFinance) && (
+                  {hasVerifiedLine && (
                     <span
                       className="inline-flex items-center gap-1 rounded-full bg-success/10 text-success px-2 py-0.5"
                       title="Finance OA — น้องเบส"
@@ -255,9 +256,7 @@ export default function Customer360Panel({
                     className="inline-flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground transition-colors leading-snug"
                     title="คำนวณ ป้ายกำกับอัตโนมัติ ใหม่"
                   >
-                    <RefreshCw
-                      className={`size-3 ${recompute.isPending ? 'animate-spin' : ''}`}
-                    />
+                    <RefreshCw className={`size-3 ${recompute.isPending ? 'animate-spin' : ''}`} />
                     คำนวณป้ายกำกับใหม่
                   </button>
                   {canManageTags && (
@@ -285,7 +284,7 @@ export default function Customer360Panel({
                 <TabButton active={tab === 'related'} onClick={() => setTab('related')}>
                   สัญญาทั้งหมด
                 </TabButton>
-                {hasLineId && (
+                {hasVerifiedLine && (
                   <TabButton active={tab === 'line'} onClick={() => setTab('line')}>
                     แชท LINE
                   </TabButton>
@@ -303,141 +302,154 @@ export default function Customer360Panel({
                   />
                 </section>
               ) : tab === 'line' ? (
-                <LineChatPanel customerId={customerId} />
+                <LineChatPanel customerId={customerId} canSend={hasVerifiedLine} />
               ) : (
                 <>
-              <section className="px-5 pt-3">
-                <LegalCaseBanner
-                  contractId={contract.id}
-                  contractStatus={data?.detail.status ?? contract.status}
-                  onOpen={() => setLegalCaseOpen(true)}
-                />
-              </section>
+                  <section className="px-5 pt-3">
+                    <LegalCaseBanner
+                      contractId={contract.id}
+                      contractStatus={data?.detail.status ?? contract.status}
+                      onOpen={() => setLegalCaseOpen(true)}
+                    />
+                  </section>
 
-              {/* Contract summary */}
-              <section className="p-5 border-b border-border">
-                {/* Stat blocks — severity-colored to match ContractCard */}
-                <div className="grid grid-cols-2 gap-3 mb-4">
-                  <div className="rounded-xl bg-destructive/10 px-4 py-3">
-                    <div className="text-2xs text-muted-foreground uppercase tracking-wider mb-1.5 leading-snug">
-                      ค้างชำระ
-                    </div>
-                    <div className="text-xl font-bold tabular-nums text-destructive leading-none">
-                      {contract.outstanding.toLocaleString()}
-                      <span className="text-sm font-medium ml-1">฿</span>
-                    </div>
-                  </div>
-                  {(() => {
-                    const { bg, fg } = daysOverdueStat(contract.daysOverdue);
-                    return (
-                      <div className={`rounded-xl px-4 py-3 ${bg}`}>
+                  {/* Contract summary */}
+                  <section className="p-5 border-b border-border">
+                    {/* Stat blocks — severity-colored to match ContractCard */}
+                    <div className="grid grid-cols-2 gap-3 mb-4">
+                      <div className="rounded-xl bg-destructive/10 px-4 py-3">
                         <div className="text-2xs text-muted-foreground uppercase tracking-wider mb-1.5 leading-snug">
-                          เลยกำหนด
+                          ค้างชำระ
                         </div>
-                        <div className={`text-xl font-bold tabular-nums leading-none ${fg}`}>
-                          {contract.daysOverdue}
-                          <span className="text-sm font-medium ml-1">วัน</span>
+                        <div className="text-xl font-bold tabular-nums text-destructive leading-none">
+                          {contract.outstanding.toLocaleString()}
+                          <span className="text-sm font-medium ml-1">฿</span>
                         </div>
                       </div>
-                    );
-                  })()}
-                </div>
-
-                {/* Installment progress bar */}
-                {data?.detail.payments && data.detail.payments.length > 0 && (() => {
-                  const payments = data.detail.payments as PaymentScheduleItem[];
-                  const paid = payments.filter((p) => p.status === 'PAID' || p.status === 'WAIVED').length;
-                  const total = payments.length;
-                  const percent = total > 0 ? Math.round((paid / total) * 100) : 0;
-                  const nextDue = payments.find((p) =>
-                    ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'].includes(p.status),
-                  );
-                  return (
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground leading-snug">ความคืบหน้าการผ่อน</span>
-                        <span className="tabular-nums font-medium">
-                          {paid} / {total} งวด ({percent}%)
-                        </span>
-                      </div>
-                      <div className="h-2.5 bg-muted rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-primary rounded-full transition-all duration-500"
-                          style={{ width: `${percent}%` }}
-                        />
-                      </div>
-                      {nextDue && (
-                        <div className="text-xs text-muted-foreground leading-snug">
-                          งวดถัดไป: งวด{' '}
-                          <span className="tabular-nums font-medium">{nextDue.installmentNo}</span>{' '}
-                          ครบกำหนด {formatThaiDateShort(nextDue.dueDate)}
-                        </div>
-                      )}
+                      {(() => {
+                        const { bg, fg } = daysOverdueStat(contract.daysOverdue);
+                        return (
+                          <div className={`rounded-xl px-4 py-3 ${bg}`}>
+                            <div className="text-2xs text-muted-foreground uppercase tracking-wider mb-1.5 leading-snug">
+                              เลยกำหนด
+                            </div>
+                            <div className={`text-xl font-bold tabular-nums leading-none ${fg}`}>
+                              {contract.daysOverdue}
+                              <span className="text-sm font-medium ml-1">วัน</span>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
-                  );
-                })()}
-              </section>
 
-              {/* Timeline */}
-              <section className="p-5 border-b border-border">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-xs font-semibold text-foreground leading-snug">กิจกรรม</span>
-                  <div className="flex-1 h-px bg-border" />
-                </div>
-                <Customer360Timeline events={data?.timeline ?? []} />
-              </section>
+                    {/* Installment progress bar */}
+                    {data?.detail.payments &&
+                      data.detail.payments.length > 0 &&
+                      (() => {
+                        const payments = data.detail.payments as PaymentScheduleItem[];
+                        const paid = payments.filter(
+                          (p) => p.status === 'PAID' || p.status === 'WAIVED',
+                        ).length;
+                        const total = payments.length;
+                        const percent = total > 0 ? Math.round((paid / total) * 100) : 0;
+                        const nextDue = payments.find((p) =>
+                          ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'].includes(p.status),
+                        );
+                        return (
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-muted-foreground leading-snug">
+                                ความคืบหน้าการผ่อน
+                              </span>
+                              <span className="tabular-nums font-medium">
+                                {paid} / {total} งวด ({percent}%)
+                              </span>
+                            </div>
+                            <div className="h-2.5 bg-muted rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-primary rounded-full transition-all duration-500"
+                                style={{ width: `${percent}%` }}
+                              />
+                            </div>
+                            {nextDue && (
+                              <div className="text-xs text-muted-foreground leading-snug">
+                                งวดถัดไป: งวด{' '}
+                                <span className="tabular-nums font-medium">
+                                  {nextDue.installmentNo}
+                                </span>{' '}
+                                ครบกำหนด {formatThaiDateShort(nextDue.dueDate)}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+                  </section>
 
-              {/* Actions */}
-              <section className="p-5">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-xs font-semibold text-foreground leading-snug">การดำเนินการ</span>
-                  <div className="flex-1 h-px bg-border" />
-                </div>
-                <Customer360Actions
-                  contract={contract}
-                  onSendLine={
-                    onRequestSendLine ? () => onRequestSendLine(contract) : undefined
-                  }
-                />
+                  {/* Timeline */}
+                  <section className="p-5 border-b border-border">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-xs font-semibold text-foreground leading-snug">
+                        กิจกรรม
+                      </span>
+                      <div className="flex-1 h-px bg-border" />
+                    </div>
+                    <Customer360Timeline events={data?.timeline ?? []} />
+                  </section>
 
-                {/* Late fee waiver entry — only meaningful when there's
+                  {/* Actions */}
+                  <section className="p-5">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-xs font-semibold text-foreground leading-snug">
+                        การดำเนินการ
+                      </span>
+                      <div className="flex-1 h-px bg-border" />
+                    </div>
+                    <Customer360Actions
+                      contract={contract}
+                      onSendLine={onRequestSendLine ? () => onRequestSendLine(contract) : undefined}
+                    />
+
+                    {/* Late fee waiver entry — only meaningful when there's
                     something owed. The dialog itself filters to payments
                     with a non-zero late fee, so the button can stay enabled
                     even when no individual installment is overdue yet. */}
-                <button data-ui-control="button"
-                  type="button"
-                  onClick={() => setWaiverOpen(true)}
-                  className="mt-3 w-full inline-flex items-center justify-center gap-2 rounded-lg border border-input px-3 py-2 text-sm font-medium hover:bg-accent transition-colors"
-                >
-                  <Receipt className="size-4" />
-                  ขอ ยกเว้น ค่าปรับ
-                </button>
+                    <button
+                      data-ui-control="button"
+                      type="button"
+                      onClick={() => setWaiverOpen(true)}
+                      className="mt-3 w-full inline-flex items-center justify-center gap-2 rounded-lg border border-input px-3 py-2 text-sm font-medium hover:bg-accent transition-colors"
+                    >
+                      <Receipt className="size-4" />
+                      ขอ ยกเว้น ค่าปรับ
+                    </button>
 
-                {/* Manual MDM lock/unlock — action-first flow (replaces the
+                    {/* Manual MDM lock/unlock — action-first flow (replaces the
                     deleted approval queue). Open to all collector roles
                     (OWNER + FINANCE_MANAGER + BRANCH_MANAGER + SALES) on
                     the backend; LINE notify is the safety net. */}
-                {isLocked ? (
-                  <button data-ui-control="button"
-                    type="button"
-                    onClick={() => setUnlockConfirmOpen(true)}
-                    disabled={unlock.isPending}
-                    className="mt-2 w-full inline-flex items-center justify-center gap-2 rounded-lg border border-input px-3 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <LockOpen className="size-4" />
-                    {unlock.isPending ? 'กำลังปลดล็อค...' : 'ปลดล็อคเครื่อง'}
-                  </button>
-                ) : (
-                  <button data-ui-control="button"
-                    type="button"
-                    onClick={() => setLockDialogOpen(true)}
-                    className="mt-2 w-full inline-flex items-center justify-center gap-2 rounded-lg bg-destructive text-destructive-foreground px-3 py-2 text-sm font-medium hover:bg-destructive/90 transition-colors"
-                  >
-                    <Lock className="size-4" />
-                    ล็อคเครื่อง
-                  </button>
-                )}
-              </section>
+                    {isLocked ? (
+                      <button
+                        data-ui-control="button"
+                        type="button"
+                        onClick={() => setUnlockConfirmOpen(true)}
+                        disabled={unlock.isPending}
+                        className="mt-2 w-full inline-flex items-center justify-center gap-2 rounded-lg border border-input px-3 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <LockOpen className="size-4" />
+                        {unlock.isPending ? 'กำลังปลดล็อค...' : 'ปลดล็อคเครื่อง'}
+                      </button>
+                    ) : (
+                      <button
+                        data-ui-control="button"
+                        type="button"
+                        onClick={() => setLockDialogOpen(true)}
+                        className="mt-2 w-full inline-flex items-center justify-center gap-2 rounded-lg bg-destructive text-destructive-foreground px-3 py-2 text-sm font-medium hover:bg-destructive/90 transition-colors"
+                      >
+                        <Lock className="size-4" />
+                        ล็อคเครื่อง
+                      </button>
+                    )}
+                  </section>
                 </>
               )}
             </>
@@ -508,7 +520,8 @@ interface TabButtonProps {
 
 function TabButton({ active, onClick, children }: TabButtonProps) {
   return (
-    <button data-ui-control="button"
+    <button
+      data-ui-control="button"
       type="button"
       onClick={onClick}
       className={`flex-1 px-4 py-2 text-sm leading-snug border-b-2 transition-colors ${

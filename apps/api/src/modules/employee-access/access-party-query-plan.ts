@@ -51,6 +51,8 @@ const CUSTOMER_READ_FIELDS = new Set([
   'phoneSecondary',
   'email',
   'lineIdFinance',
+  // Task 27 — สถานะ LINE น้องเบส (verified + วันที่ผูก) จากแถว OTP · ไม่มี U-id · เห็นเท่ากับ lineIdFinance
+  'financeLine',
   'lineIdShop',
   'facebookLink',
   'facebookName',
@@ -644,7 +646,7 @@ export class PartyQueryPlan {
       (source) =>
         this.allows('customers.read', source) &&
         this.allows('documents.read', source) &&
-        CUSTOMER_ATTACHMENT_SENSITIVE_KEYS.every(key => this.allows(key, source)),
+        CUSTOMER_ATTACHMENT_SENSITIVE_KEYS.every((key) => this.allows(key, source)),
     );
     if ('documents' in result && !documentsAvailable) result.documents = null;
     // Re-read canonical metadata, not an already projected null from findOne.

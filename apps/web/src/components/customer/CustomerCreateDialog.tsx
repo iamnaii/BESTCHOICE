@@ -16,12 +16,34 @@ import { formatThaiDateShort } from '@/lib/date';
 import { existingNounOf } from '@/utils/existing-person-noun';
 import { customerSchema, prospectFillSchema, type CustomerFormData } from '@/lib/schemas';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
-import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
-import AddressForm, { type AddressData, emptyAddress, serializeAddress } from '@/components/ui/AddressForm';
+import {
+  Form,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormControl,
+  FormMessage,
+} from '@/components/ui/form';
+import AddressForm, {
+  type AddressData,
+  emptyAddress,
+  serializeAddress,
+} from '@/components/ui/AddressForm';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { HeardFromChips } from '@/components/customer/journey/HeardFromChips';
+import { FinanceLineCreateNote } from '@/components/customer/FinanceLineStatusRow';
 import { postHeardFrom } from '@/hooks/customer-journey/journeyEntries';
-import { ChevronDown, CreditCard, Camera, User, MapPin, Phone, Briefcase, Users, Link2 } from 'lucide-react';
+import {
+  ChevronDown,
+  CreditCard,
+  Camera,
+  User,
+  MapPin,
+  Phone,
+  Briefcase,
+  Users,
+  Link2,
+} from 'lucide-react';
 import type { JourneyHeardFrom } from '@installment/shared';
 import type { OcrResult } from '@/types/ocr';
 
@@ -79,7 +101,13 @@ interface ReferenceData {
   relationship: string;
 }
 
-const emptyReference: ReferenceData = { prefix: '', firstName: '', lastName: '', phone: '', relationship: '' };
+const emptyReference: ReferenceData = {
+  prefix: '',
+  firstName: '',
+  lastName: '',
+  phone: '',
+  relationship: '',
+};
 
 const emptyForm: CustomerFormData = {
   prefix: '',
@@ -92,7 +120,6 @@ const emptyForm: CustomerFormData = {
   phone: '',
   phoneSecondary: '',
   email: '',
-  lineIdFinance: '',
   lineIdShop: '',
   facebookLink: '',
   facebookName: '',
@@ -103,7 +130,9 @@ const emptyForm: CustomerFormData = {
 };
 
 /** แยก "ชื่อ นามสกุล" จากชื่อห้องแชท/ชื่อโปรไฟล์ — คำแรก = ชื่อ ที่เหลือ = นามสกุล (ตรรกะเดิมของ ?new=1) */
-export function splitDisplayName(displayName: string | null | undefined): Pick<CustomerFormData, 'firstName' | 'lastName'> {
+export function splitDisplayName(
+  displayName: string | null | undefined,
+): Pick<CustomerFormData, 'firstName' | 'lastName'> {
   const parts = (displayName ?? '').trim().split(/\s+/).filter(Boolean);
   return { firstName: parts[0] ?? '', lastName: parts.slice(1).join(' ') };
 }
@@ -144,7 +173,11 @@ interface CreateResult {
   heardFromFailed: boolean;
 }
 
-export default function CustomerCreateDialog({ open, onOpenChange, ...formProps }: CustomerCreateDialogProps) {
+export default function CustomerCreateDialog({
+  open,
+  onOpenChange,
+  ...formProps
+}: CustomerCreateDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -160,7 +193,19 @@ export default function CustomerCreateDialog({ open, onOpenChange, ...formProps 
 
 type FormProps = Omit<CustomerCreateDialogProps, 'open' | 'onOpenChange'> & { onClose: () => void };
 
-function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, initialAddressIdCard, context, submitLabel = 'บันทึก', onCreated, onFilled, onUseExisting, linkedToChat = false, onClose }: FormProps) {
+function CustomerCreateForm({
+  mode = 'create',
+  fillCustomerId,
+  initialValues,
+  initialAddressIdCard,
+  context,
+  submitLabel = 'บันทึก',
+  onCreated,
+  onFilled,
+  onUseExisting,
+  linkedToChat = false,
+  onClose,
+}: FormProps) {
   const fieldId = useFieldId();
   const isFill = mode === 'fill';
   /* ถามช่องทางที่รู้จักเฉพาะลูกค้าหน้าร้านที่สร้างใหม่ — โหมด fill / ผูกห้องแชท = ทักแชทมาก่อน ระบบรู้ช่องทางแล้ว */
@@ -172,14 +217,23 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
     defaultValues: { ...emptyForm, ...initialValues },
   });
   // Extra fields not in customerSchema (managed as separate state)
-  const [formExtra, setFormExtra] = useState({ facebookFriends: '', googleMapLink: '', addressCurrentType: '' });
+  const [formExtra, setFormExtra] = useState({
+    facebookFriends: '',
+    googleMapLink: '',
+    addressCurrentType: '',
+  });
   /* ชิป "รู้จักร้านจากไหน" — ไม่อยู่ใน customerSchema (ห้ามเข้า body ของ POST /customers) · ฟอร์ม mount ตอนเปิดเท่านั้น ⇒ เปิดใหม่ = ว่าง */
   const [heardFrom, setHeardFrom] = useState<JourneyHeardFrom | null>(null);
-  const [addressIdCard, setAddressIdCard] = useState<AddressData>(initialAddressIdCard ?? emptyAddress);
+  const [addressIdCard, setAddressIdCard] = useState<AddressData>(
+    initialAddressIdCard ?? emptyAddress,
+  );
   const [addressCurrent, setAddressCurrent] = useState<AddressData>(emptyAddress);
   const [sameAddress, setSameAddress] = useState(false);
   const [addressWork, setAddressWork] = useState<AddressData>(emptyAddress);
-  const [references, setReferences] = useState<ReferenceData[]>([{ ...emptyReference }, { ...emptyReference }]);
+  const [references, setReferences] = useState<ReferenceData[]>([
+    { ...emptyReference },
+    { ...emptyReference },
+  ]);
   const [existing, setExisting] = useState<ExistingCustomerRef | null>(null);
   const [dupPhone, setDupPhone] = useState('');
   const [dupNationalId, setDupNationalId] = useState('');
@@ -194,7 +248,10 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
   const [cardReaderLoading, setCardReaderLoading] = useState(false);
 
   const createMutation = useMutation({
-    mutationFn: async ({ heardFrom: chosenHeardFrom, ...data }: CreateVariables): Promise<CreateResult> => {
+    mutationFn: async ({
+      heardFrom: chosenHeardFrom,
+      ...data
+    }: CreateVariables): Promise<CreateResult> => {
       // R43: โหมด fill นามสกุลว่างได้ (ชื่อในแชทคำเดียว) — ต้องไม่เหลือช่องว่างคั่นกลาง
       // โหมดสร้างนามสกุลบังคับอยู่แล้ว ผลลัพธ์จึงเท่าเดิมทุกไบต์
       const name = [data.firstName, data.lastName].filter(Boolean).join(' ').trim();
@@ -205,7 +262,10 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
         if (data.nickname) fillPayload.nickname = data.nickname;
         if (data.nationalId) fillPayload.nationalId = data.nationalId;
         if (data.facebookName) fillPayload.facebookName = data.facebookName;
-        const filled = await api.post<CreatedCustomer>(`/customers/${fillCustomerId}/fill-contact`, fillPayload);
+        const filled = await api.post<CreatedCustomer>(
+          `/customers/${fillCustomerId}/fill-contact`,
+          fillPayload,
+        );
         return { data: filled.data, heardFromFailed: false };
       }
       const payload: Record<string, unknown> = {
@@ -219,7 +279,7 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
       if (data.birthDate) payload.birthDate = new Date(data.birthDate).toISOString();
       if (data.phoneSecondary) payload.phoneSecondary = data.phoneSecondary;
       if (data.email) payload.email = data.email;
-      if (data.lineIdFinance) payload.lineIdFinance = data.lineIdFinance;
+      // Task 27 — ไม่ส่ง lineIdFinance: ผูก LINE การเงินได้ทาง OTP ของลูกค้าเท่านั้น (หมายเหตุ FinanceLineCreateNote)
       if (data.lineIdShop) payload.lineIdShop = data.lineIdShop;
       if (data.facebookLink) payload.facebookLink = data.facebookLink;
       if (data.facebookName) payload.facebookName = data.facebookName;
@@ -240,13 +300,15 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
       if (addrWork) payload.addressWork = addrWork;
 
       // Filter out empty references
-      const validRefs = references.filter(r => r.firstName || r.lastName || r.phone);
+      const validRefs = references.filter((r) => r.firstName || r.lastName || r.phone);
       if (validRefs.length > 0) payload.references = validRefs;
 
       const created = await api.post<CreatedCustomer>('/customers', payload);
       // ชิปบันทึกแยกหลังได้ id — รอให้เสร็จก่อนปิด: ปุ่มบันทึกยัง disabled (กันกดซ้ำ) และหน้าที่เปิดต่อได้ summary ที่ตอบแล้ว
       // postHeardFrom ไม่ throw — ล้ม = true แล้วเตือนหลัง toast สำเร็จ · 409 ของ /customers โยนก่อนถึงบรรทัดนี้
-      const heardFromFailed = chosenHeardFrom ? await postHeardFrom(created.data.id, chosenHeardFrom) : false;
+      const heardFromFailed = chosenHeardFrom
+        ? await postHeardFrom(created.data.id, chosenHeardFrom)
+        : false;
       return { data: created.data, heardFromFailed };
     },
     onSuccess: (res) => {
@@ -256,13 +318,19 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
       } else {
         toast.success('เพิ่มลูกค้าสำเร็จ');
         // ต้องยิงหลัง toast สำเร็จ ไม่งั้นป้ายเตือนจะซ้อนอยู่ใต้ป้ายสำเร็จ (บอร์ด HeardFrom d) · ไม่มีปุ่มลองใหม่
-        if (res.heardFromFailed) toast.warning('บันทึกลูกค้าแล้ว แต่บันทึกช่องทางที่รู้จักไม่สำเร็จ');
+        if (res.heardFromFailed)
+          toast.warning('บันทึกลูกค้าแล้ว แต่บันทึกช่องทางที่รู้จักไม่สำเร็จ');
         onCreated(res.data);
       }
       onClose();
     },
     onError: (err: unknown, variables: CreateVariables) => {
-      const axiosErr = err as { response?: { status?: number; data?: { existingCustomer?: ExistingCustomerRef; field?: string } } };
+      const axiosErr = err as {
+        response?: {
+          status?: number;
+          data?: { existingCustomer?: ExistingCustomerRef; field?: string };
+        };
+      };
       const body = axiosErr.response?.status === 409 ? axiosErr.response.data : undefined;
       const dup = body?.existingCustomer;
       if (dup?.id) {
@@ -300,7 +368,11 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
     setOcrLoading(true);
     try {
       const imageBase64 = await compressImageForOcr(file);
-      const { data } = await api.post<OcrResult>('/ocr/id-card', { imageBase64 }, { timeout: 90000 });
+      const { data } = await api.post<OcrResult>(
+        '/ocr/id-card',
+        { imageBase64 },
+        { timeout: 90000 },
+      );
 
       // Auto-fill form fields via react-hook-form setValue
       if (data.nationalId) {
@@ -324,7 +396,11 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
         if (match) {
           const [, y, m, d] = match.map(Number);
           const dateObj = new Date(y, m - 1, d);
-          if (dateObj.getFullYear() === y && dateObj.getMonth() === m - 1 && dateObj.getDate() === d) {
+          if (
+            dateObj.getFullYear() === y &&
+            dateObj.getMonth() === m - 1 &&
+            dateObj.getDate() === d
+          ) {
             form.setValue('birthDate', data.birthDate);
           }
         }
@@ -419,7 +495,7 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
   };
 
   const updateRef = (index: number, field: keyof ReferenceData, value: string) => {
-    setReferences(prev => prev.map((r, i) => i === index ? { ...r, [field]: value } : r));
+    setReferences((prev) => prev.map((r, i) => (i === index ? { ...r, [field]: value } : r)));
   };
 
   const inputClass = formControlClass;
@@ -453,7 +529,13 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
           <FormItem>
             <FormLabel className="text-xs font-medium">
               เลขบัตรประชาชน (13 หลัก){' '}
-              {isFill ? <span className="font-normal text-muted-foreground">ไม่บังคับ — เติมตอนทำสัญญาก็ได้</span> : <span className="text-destructive">*</span>}
+              {isFill ? (
+                <span className="font-normal text-muted-foreground">
+                  ไม่บังคับ — เติมตอนทำสัญญาก็ได้
+                </span>
+              ) : (
+                <span className="text-destructive">*</span>
+              )}
             </FormLabel>
             <FormControl>
               <input
@@ -478,9 +560,17 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
         name="phone"
         render={({ field }) => (
           <FormItem>
-            <FormLabel className="text-xs font-medium">เบอร์โทร <span className="text-destructive">*</span></FormLabel>
+            <FormLabel className="text-xs font-medium">
+              เบอร์โทร <span className="text-destructive">*</span>
+            </FormLabel>
             <FormControl>
-              <input type="tel" {...field} className={inputClass} placeholder="0XX-XXX-XXXX" autoComplete="tel" />
+              <input
+                type="tel"
+                {...field}
+                className={inputClass}
+                placeholder="0XX-XXX-XXXX"
+                autoComplete="tel"
+              />
             </FormControl>
             <FormMessage className="text-xs" />
           </FormItem>
@@ -510,564 +600,855 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
     <>
       {/* Sticky Header */}
       <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b bg-background/95 px-6 py-4 backdrop-blur-xs">
-        <button type="button" onClick={onClose} className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        <button
+          type="button"
+          onClick={onClose}
+          className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M18 6 6 18" />
+            <path d="m6 6 12 12" />
+          </svg>
           ปิด
         </button>
-        <DialogTitle className="text-lg font-semibold text-foreground">{isFill ? 'เพิ่มเบอร์/ข้อมูลผู้สนใจ' : 'เพิ่มลูกค้าใหม่'}</DialogTitle>
-        <DialogDescription className="sr-only">{isFill ? 'แก้ข้อมูลของผู้สนใจคนเดิม — ไม่สร้างลูกค้าใหม่' : 'กรอกข้อมูลลูกค้าใหม่ หรืออ่านจากบัตรประชาชน'}</DialogDescription>
+        <DialogTitle className="text-lg font-semibold text-foreground">
+          {isFill ? 'เพิ่มเบอร์/ข้อมูลผู้สนใจ' : 'เพิ่มลูกค้าใหม่'}
+        </DialogTitle>
+        <DialogDescription className="sr-only">
+          {isFill
+            ? 'แก้ข้อมูลของผู้สนใจคนเดิม — ไม่สร้างลูกค้าใหม่'
+            : 'กรอกข้อมูลลูกค้าใหม่ หรืออ่านจากบัตรประชาชน'}
+        </DialogDescription>
         <div className="w-16" />
       </div>
       {context}
       <Form {...form}>
-        <form onSubmit={form.handleSubmit((data) => createMutation.mutate({ ...data, heardFrom: askHeardFrom ? heardFrom : null }))} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          <div className="flex flex-col gap-4 p-6">
-
-          {existing && (
-            <div role="alert" className="rounded-xl border border-warning bg-warning/10 p-4 text-sm">
-              {/* R44: การชนเลขบัตรต้องไม่ถูกเล่าเป็นการชนเบอร์ — ปุ่ม "แก้เบอร์" เป็นประตูตัน
-                  (แก้เบอร์เท่าไรก็ยังชนเลขบัตรเดิม) ⇒ แยกข้อความ/ชิป/ปุ่มตาม `field` ที่ API บอก */}
-              <p className="m-0 font-semibold leading-snug">
-                {isFill
-                  ? (nidDup ? `เลขบัตรประชาชน ${dupNationalId} เป็นของ${existingNoun}เดิมอยู่แล้ว` : `เบอร์ ${dupPhone} เป็นของ${existingNoun}เดิมอยู่แล้ว`)
-                  : (nidDup ? `มี${existingNoun}เลขบัตรประชาชนนี้อยู่แล้ว: ${existing.name}` : `มี${existingNoun}เบอร์นี้หรืออีเมลนี้อยู่แล้ว: ${existing.name}`)}
-              </p>
-              <p className="m-0 mt-0.5 text-xs leading-snug text-muted-foreground">
-                {isFill
-                  ? (nidDup
-                      ? 'ระบบไม่สร้างซ้ำ — รวมแชทห้องนี้และผลเช็คเครดิตเข้าคนเดิม หรือแก้เลขบัตรแล้วบันทึกใหม่'
-                      : 'ระบบไม่สร้างซ้ำ — รวมแชทห้องนี้และผลเช็คเครดิตเข้าคนเดิม หรือแก้เบอร์แล้วบันทึกใหม่')
-                  : 'ระบบไม่สร้างซ้ำ — ใช้คนเดิม หรือแก้เบอร์/อีเมลแล้วบันทึกใหม่'}
-              </p>
-              {isFill && (
-                /* B7 (mockup บอร์ด 4): <ชื่อ> · โทร/เลขบัตร · ลูกค้า/ผู้สนใจตั้งแต่ <วันที่> + ชิป "ผ่อนอยู่ N สัญญา" */
-                <div className="mt-2.5 flex items-center gap-2.5 rounded-lg border border-border bg-card px-2.5 py-2 text-xs">
-                  <span className="grid size-7 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground"><User className="size-3.5" strokeWidth={1.5} /></span>
-                  <span className="min-w-0 flex-1 leading-snug">
-                    <span className="font-semibold">{existing.name}</span>
-                    <span className="text-muted-foreground">
-                      {nidDup ? ` · เลขบัตร ${dupNationalId}` : ` · โทร ${dupPhone}`}
-                      {existingSinceText && ` · ${existingSinceText}`}
-                    </span>
-                  </span>
-                  {existingActiveContracts > 0 && (
-                    <span className="inline-flex shrink-0 items-center rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold leading-snug text-primary">
-                      ผ่อนอยู่ {existingActiveContracts} สัญญา
-                    </span>
-                  )}
-                </div>
-              )}
-              {(onUseExisting || isFill) && (
-                <div className="mt-3 flex items-center gap-3">
-                  {onUseExisting && (
-                    <button data-ui-control="button"
-                      type="button"
-                      onClick={() => { onUseExisting(existing); onClose(); }}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90"
-                    >
-                      <Link2 className="size-4" strokeWidth={1.5} /> {isFill ? `รวมกับ${existingNoun}เดิมคนนี้` : `ใช้${existingNoun}เดิมคนนี้แทน`}
-                    </button>
-                  )}
-                  {isFill && (
-                    <button type="button" onClick={dismissExisting} className="text-sm text-muted-foreground hover:text-foreground">{nidDup ? 'แก้เลขบัตร' : 'แก้เบอร์'}</button>
-                  )}
-                </div>
-              )}
-            </div>
+        <form
+          onSubmit={form.handleSubmit((data) =>
+            createMutation.mutate({ ...data, heardFrom: askHeardFrom ? heardFrom : null }),
           )}
-
-          {/* ===== Smart Card + OCR (always visible) ===== */}
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={handleSmartCardRead}
-              disabled={cardReaderLoading || ocrLoading}
-              className="inline-flex items-center justify-center gap-2 py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold shadow-sm hover:bg-primary/90 disabled:opacity-50 transition-all"
-            >
-              {cardReaderLoading ? (
-                <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-foreground" /> กำลังอ่านบัตร...</>
-              ) : (
-                <><CreditCard className="h-4 w-4" strokeWidth={1.5} /> อ่านบัตร Smart Card</>
-              )}
-            </button>
-            <input ref={ocrFileRef} type="file" accept="image/*" capture="environment" onChange={handleOcrScan} className="hidden" />
-            <button
-              type="button"
-              onClick={() => ocrFileRef.current?.click()}
-              disabled={ocrLoading}
-              className="inline-flex items-center justify-center gap-2 py-3 bg-secondary text-secondary-foreground rounded-xl text-sm font-semibold shadow-sm hover:bg-secondary/80 disabled:opacity-50 transition-all"
-            >
-              {ocrLoading ? (
-                <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current" /> กำลังอ่าน...</>
-              ) : (
-                <><Camera className="h-4 w-4" strokeWidth={1.5} /> สแกนบัตร OCR</>
-              )}
-            </button>
-          </div>
-
-          {/* ===== Section 1: ข้อมูลหลัก (always open) ===== */}
-          <div className="rounded-xl border border-border bg-card p-5">
-            <div className="flex items-center gap-2.5 mb-4">
-              <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                <User className="size-4 text-primary" strokeWidth={1.5} />
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-foreground">ข้อมูลหลัก</h3>
-                <p className="text-xs text-muted-foreground">ชื่อ, เลขบัตร, เบอร์ติดต่อ</p>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-6">
-              <div className="min-w-0 sm:col-span-2">
-                <FormField
-                  control={form.control}
-                  name="prefix"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium">คำนำหน้า <span className="text-destructive">*</span></FormLabel>
-                      <FormControl>
-                        <NativeSelect wrapperClassName="max-w-full w-full min-w-0" {...field} className={selectClass}>
-                          <option value="">-- เลือก --</option>
-                          {THAI_NAME_PREFIXES.map(p => <option key={p} value={p}>{p}</option>)}
-                        </NativeSelect>
-                      </FormControl>
-                      <FormMessage className="text-xs" />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              <div className="min-w-0 sm:col-span-2">
-                <FormField
-                  control={form.control}
-                  name="firstName"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium">ชื่อ <span className="text-destructive">*</span></FormLabel>
-                      <FormControl>
-                        <input type="text" {...field} className={inputClass} placeholder="กรอกชื่อ" autoComplete="given-name" />
-                      </FormControl>
-                      <FormMessage className="text-xs" />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              <div className="min-w-0 sm:col-span-2">
-                <FormField
-                  control={form.control}
-                  name="lastName"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium">
-                        {isFill ? <>นามสกุล <span className="font-normal text-muted-foreground">ไม่บังคับ</span></> : <>นามสกุล <span className="text-destructive">*</span></>}
-                      </FormLabel>
-                      <FormControl>
-                        <input type="text" {...field} className={inputClass} placeholder="กรอกนามสกุล" autoComplete="family-name" />
-                      </FormControl>
-                      <FormMessage className="text-xs" />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              {isFill ? (
-                <>
-                  {phoneField}
-                  {nicknameField}
-                  {nationalIdField}
-                  <div className="min-w-0 sm:col-span-2">
-                    <FormField
-                      control={form.control}
-                      name="facebookName"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-xs font-medium">ชื่อ Facebook</FormLabel>
-                          <FormControl>
-                            <input type="text" {...field} className={inputClass} placeholder="ชื่อบน Facebook" />
-                          </FormControl>
-                          <FormMessage className="text-xs" />
-                        </FormItem>
-                      )}
-                    />
+          className="flex min-h-0 flex-1 flex-col overflow-y-auto"
+        >
+          <div className="flex flex-col gap-4 p-6">
+            {existing && (
+              <div
+                role="alert"
+                className="rounded-xl border border-warning bg-warning/10 p-4 text-sm"
+              >
+                {/* R44: การชนเลขบัตรต้องไม่ถูกเล่าเป็นการชนเบอร์ — ปุ่ม "แก้เบอร์" เป็นประตูตัน
+                  (แก้เบอร์เท่าไรก็ยังชนเลขบัตรเดิม) ⇒ แยกข้อความ/ชิป/ปุ่มตาม `field` ที่ API บอก */}
+                <p className="m-0 font-semibold leading-snug">
+                  {isFill
+                    ? nidDup
+                      ? `เลขบัตรประชาชน ${dupNationalId} เป็นของ${existingNoun}เดิมอยู่แล้ว`
+                      : `เบอร์ ${dupPhone} เป็นของ${existingNoun}เดิมอยู่แล้ว`
+                    : nidDup
+                      ? `มี${existingNoun}เลขบัตรประชาชนนี้อยู่แล้ว: ${existing.name}`
+                      : `มี${existingNoun}เบอร์นี้หรืออีเมลนี้อยู่แล้ว: ${existing.name}`}
+                </p>
+                <p className="m-0 mt-0.5 text-xs leading-snug text-muted-foreground">
+                  {isFill
+                    ? nidDup
+                      ? 'ระบบไม่สร้างซ้ำ — รวมแชทห้องนี้และผลเช็คเครดิตเข้าคนเดิม หรือแก้เลขบัตรแล้วบันทึกใหม่'
+                      : 'ระบบไม่สร้างซ้ำ — รวมแชทห้องนี้และผลเช็คเครดิตเข้าคนเดิม หรือแก้เบอร์แล้วบันทึกใหม่'
+                    : 'ระบบไม่สร้างซ้ำ — ใช้คนเดิม หรือแก้เบอร์/อีเมลแล้วบันทึกใหม่'}
+                </p>
+                {isFill && (
+                  /* B7 (mockup บอร์ด 4): <ชื่อ> · โทร/เลขบัตร · ลูกค้า/ผู้สนใจตั้งแต่ <วันที่> + ชิป "ผ่อนอยู่ N สัญญา" */
+                  <div className="mt-2.5 flex items-center gap-2.5 rounded-lg border border-border bg-card px-2.5 py-2 text-xs">
+                    <span className="grid size-7 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground">
+                      <User className="size-3.5" strokeWidth={1.5} />
+                    </span>
+                    <span className="min-w-0 flex-1 leading-snug">
+                      <span className="font-semibold">{existing.name}</span>
+                      <span className="text-muted-foreground">
+                        {nidDup ? ` · เลขบัตร ${dupNationalId}` : ` · โทร ${dupPhone}`}
+                        {existingSinceText && ` · ${existingSinceText}`}
+                      </span>
+                    </span>
+                    {existingActiveContracts > 0 && (
+                      <span className="inline-flex shrink-0 items-center rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold leading-snug text-primary">
+                        ผ่อนอยู่ {existingActiveContracts} สัญญา
+                      </span>
+                    )}
                   </div>
-                </>
-              ) : (
-                <>
-                  {nationalIdField}
-                  {phoneField}
-                  {nicknameField}
-                </>
-              )}
-              {!isFill && (
+                )}
+                {(onUseExisting || isFill) && (
+                  <div className="mt-3 flex items-center gap-3">
+                    {onUseExisting && (
+                      <button
+                        data-ui-control="button"
+                        type="button"
+                        onClick={() => {
+                          onUseExisting(existing);
+                          onClose();
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90"
+                      >
+                        <Link2 className="size-4" strokeWidth={1.5} />{' '}
+                        {isFill
+                          ? `รวมกับ${existingNoun}เดิมคนนี้`
+                          : `ใช้${existingNoun}เดิมคนนี้แทน`}
+                      </button>
+                    )}
+                    {isFill && (
+                      <button
+                        type="button"
+                        onClick={dismissExisting}
+                        className="text-sm text-muted-foreground hover:text-foreground"
+                      >
+                        {nidDup ? 'แก้เลขบัตร' : 'แก้เบอร์'}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ===== Smart Card + OCR (always visible) ===== */}
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={handleSmartCardRead}
+                disabled={cardReaderLoading || ocrLoading}
+                className="inline-flex items-center justify-center gap-2 py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold shadow-sm hover:bg-primary/90 disabled:opacity-50 transition-all"
+              >
+                {cardReaderLoading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-foreground" />{' '}
+                    กำลังอ่านบัตร...
+                  </>
+                ) : (
+                  <>
+                    <CreditCard className="h-4 w-4" strokeWidth={1.5} /> อ่านบัตร Smart Card
+                  </>
+                )}
+              </button>
+              <input
+                ref={ocrFileRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handleOcrScan}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => ocrFileRef.current?.click()}
+                disabled={ocrLoading}
+                className="inline-flex items-center justify-center gap-2 py-3 bg-secondary text-secondary-foreground rounded-xl text-sm font-semibold shadow-sm hover:bg-secondary/80 disabled:opacity-50 transition-all"
+              >
+                {ocrLoading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current" />{' '}
+                    กำลังอ่าน...
+                  </>
+                ) : (
+                  <>
+                    <Camera className="h-4 w-4" strokeWidth={1.5} /> สแกนบัตร OCR
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* ===== Section 1: ข้อมูลหลัก (always open) ===== */}
+            <div className="rounded-xl border border-border bg-card p-5">
+              <div className="flex items-center gap-2.5 mb-4">
+                <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <User className="size-4 text-primary" strokeWidth={1.5} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground">ข้อมูลหลัก</h3>
+                  <p className="text-xs text-muted-foreground">ชื่อ, เลขบัตร, เบอร์ติดต่อ</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-6">
                 <div className="min-w-0 sm:col-span-2">
                   <FormField
                     control={form.control}
-                    name="birthDate"
+                    name="prefix"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-xs font-medium">วันเกิด</FormLabel>
+                        <FormLabel className="text-xs font-medium">
+                          คำนำหน้า <span className="text-destructive">*</span>
+                        </FormLabel>
                         <FormControl>
-                          <ThaiDateInput value={field.value ?? ''} onChange={(e) => field.onChange(e.target.value)} className={inputClass} />
+                          <NativeSelect
+                            wrapperClassName="max-w-full w-full min-w-0"
+                            {...field}
+                            className={selectClass}
+                          >
+                            <option value="">-- เลือก --</option>
+                            {THAI_NAME_PREFIXES.map((p) => (
+                              <option key={p} value={p}>
+                                {p}
+                              </option>
+                            ))}
+                          </NativeSelect>
                         </FormControl>
                         <FormMessage className="text-xs" />
                       </FormItem>
                     )}
                   />
                 </div>
-              )}
-              {!isFill && (
-                <div className="sm:col-span-1 flex items-end pb-1">
-                  {form.watch('birthDate') && (() => {
-                    const bd = new Date(form.watch('birthDate') as string);
-                    const today = new Date();
-                    let age = today.getFullYear() - bd.getFullYear();
-                    if (today.getMonth() < bd.getMonth() || (today.getMonth() === bd.getMonth() && today.getDate() < bd.getDate())) age--;
-                    return <span className="inline-flex items-center gap-1 text-xs font-medium text-primary bg-primary/10 px-2.5 py-1.5 rounded-lg">อายุ {age} ปี</span>;
-                  })()}
+                <div className="min-w-0 sm:col-span-2">
+                  <FormField
+                    control={form.control}
+                    name="firstName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs font-medium">
+                          ชื่อ <span className="text-destructive">*</span>
+                        </FormLabel>
+                        <FormControl>
+                          <input
+                            type="text"
+                            {...field}
+                            className={inputClass}
+                            placeholder="กรอกชื่อ"
+                            autoComplete="given-name"
+                          />
+                        </FormControl>
+                        <FormMessage className="text-xs" />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                <div className="min-w-0 sm:col-span-2">
+                  <FormField
+                    control={form.control}
+                    name="lastName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs font-medium">
+                          {isFill ? (
+                            <>
+                              นามสกุล{' '}
+                              <span className="font-normal text-muted-foreground">ไม่บังคับ</span>
+                            </>
+                          ) : (
+                            <>
+                              นามสกุล <span className="text-destructive">*</span>
+                            </>
+                          )}
+                        </FormLabel>
+                        <FormControl>
+                          <input
+                            type="text"
+                            {...field}
+                            className={inputClass}
+                            placeholder="กรอกนามสกุล"
+                            autoComplete="family-name"
+                          />
+                        </FormControl>
+                        <FormMessage className="text-xs" />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                {isFill ? (
+                  <>
+                    {phoneField}
+                    {nicknameField}
+                    {nationalIdField}
+                    <div className="min-w-0 sm:col-span-2">
+                      <FormField
+                        control={form.control}
+                        name="facebookName"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-xs font-medium">ชื่อ Facebook</FormLabel>
+                            <FormControl>
+                              <input
+                                type="text"
+                                {...field}
+                                className={inputClass}
+                                placeholder="ชื่อบน Facebook"
+                              />
+                            </FormControl>
+                            <FormMessage className="text-xs" />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {nationalIdField}
+                    {phoneField}
+                    {nicknameField}
+                  </>
+                )}
+                {!isFill && (
+                  <div className="min-w-0 sm:col-span-2">
+                    <FormField
+                      control={form.control}
+                      name="birthDate"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs font-medium">วันเกิด</FormLabel>
+                          <FormControl>
+                            <ThaiDateInput
+                              value={field.value ?? ''}
+                              onChange={(e) => field.onChange(e.target.value)}
+                              className={inputClass}
+                            />
+                          </FormControl>
+                          <FormMessage className="text-xs" />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                )}
+                {!isFill && (
+                  <div className="sm:col-span-1 flex items-end pb-1">
+                    {form.watch('birthDate') &&
+                      (() => {
+                        const bd = new Date(form.watch('birthDate') as string);
+                        const today = new Date();
+                        let age = today.getFullYear() - bd.getFullYear();
+                        if (
+                          today.getMonth() < bd.getMonth() ||
+                          (today.getMonth() === bd.getMonth() && today.getDate() < bd.getDate())
+                        )
+                          age--;
+                        return (
+                          <span className="inline-flex items-center gap-1 text-xs font-medium text-primary bg-primary/10 px-2.5 py-1.5 rounded-lg">
+                            อายุ {age} ปี
+                          </span>
+                        );
+                      })()}
+                  </div>
+                )}
+              </div>
+              {/* ลูกค้าหน้าร้านที่สร้างใหม่ — ไม่บังคับ · แตะซ้ำ = ยกเลิก · "ข้าม" = ล้าง (บอร์ด HeardFrom a) · ซ่อนแล้วการ์ดจบที่วันเกิด ไม่มีเส้นคั่น (a2) */}
+              {askHeardFrom && (
+                <div className="mt-4 border-t border-border pt-4">
+                  <HeardFromChips
+                    value={heardFrom}
+                    onSelect={(code) => setHeardFrom((current) => (current === code ? null : code))}
+                    onSkip={() => setHeardFrom(null)}
+                    skipStyle="text"
+                    disabled={createMutation.isPending}
+                  />
                 </div>
               )}
             </div>
-            {/* ลูกค้าหน้าร้านที่สร้างใหม่ — ไม่บังคับ · แตะซ้ำ = ยกเลิก · "ข้าม" = ล้าง (บอร์ด HeardFrom a) · ซ่อนแล้วการ์ดจบที่วันเกิด ไม่มีเส้นคั่น (a2) */}
-            {askHeardFrom && (
-              <div className="mt-4 border-t border-border pt-4">
-                <HeardFromChips
-                  value={heardFrom}
-                  onSelect={(code) => setHeardFrom((current) => (current === code ? null : code))}
-                  onSkip={() => setHeardFrom(null)}
-                  skipStyle="text"
-                  disabled={createMutation.isPending}
-                />
-              </div>
-            )}
-          </div>
 
-          {/* ===== ที่อยู่ (collapsible) — ซ่อนในโหมด fill ตาม mockup ===== */}
-          {!isFill && (
-            <details className="group rounded-xl border border-border bg-card">
-              <summary className="list-none flex items-center gap-2.5 p-5 cursor-pointer select-none hover:bg-accent/50 transition-colors [&::-webkit-details-marker]:hidden">
-                <div className="size-8 rounded-lg bg-muted flex items-center justify-center">
-                  <MapPin className="size-4 text-muted-foreground" strokeWidth={1.5} />
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-sm font-semibold text-foreground">ที่อยู่</h3>
-                  <p className="text-xs text-muted-foreground">ตามบัตร + ปัจจุบัน</p>
-                </div>
-                <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
-              </summary>
-              <div className="px-5 pb-5 border-t border-border pt-4 flex flex-col gap-4">
-                <div>
-                  <h4 className="text-xs font-medium text-foreground mb-2">ที่อยู่ตามบัตรประชาชน</h4>
-                  <AddressForm value={addressIdCard} onChange={setAddressIdCard} />
-                </div>
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="text-xs font-medium text-foreground">ที่อยู่ปัจจุบัน</h4>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="checkbox" checked={sameAddress} onChange={(e) => setSameAddress(e.target.checked)} className="rounded border-input text-primary focus-visible:ring-ring/30" />
-                      <span className="text-xs text-muted-foreground">เหมือนที่อยู่ตามบัตร</span>
+            {/* ===== ที่อยู่ (collapsible) — ซ่อนในโหมด fill ตาม mockup ===== */}
+            {!isFill && (
+              <details className="group rounded-xl border border-border bg-card">
+                <summary className="list-none flex items-center gap-2.5 p-5 cursor-pointer select-none hover:bg-accent/50 transition-colors [&::-webkit-details-marker]:hidden">
+                  <div className="size-8 rounded-lg bg-muted flex items-center justify-center">
+                    <MapPin className="size-4 text-muted-foreground" strokeWidth={1.5} />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-sm font-semibold text-foreground">ที่อยู่</h3>
+                    <p className="text-xs text-muted-foreground">ตามบัตร + ปัจจุบัน</p>
+                  </div>
+                  <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="px-5 pb-5 border-t border-border pt-4 flex flex-col gap-4">
+                  <div>
+                    <h4 className="text-xs font-medium text-foreground mb-2">
+                      ที่อยู่ตามบัตรประชาชน
+                    </h4>
+                    <AddressForm value={addressIdCard} onChange={setAddressIdCard} />
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-xs font-medium text-foreground">ที่อยู่ปัจจุบัน</h4>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={sameAddress}
+                          onChange={(e) => setSameAddress(e.target.checked)}
+                          className="rounded border-input text-primary focus-visible:ring-ring/30"
+                        />
+                        <span className="text-xs text-muted-foreground">เหมือนที่อยู่ตามบัตร</span>
+                      </label>
+                    </div>
+                    <div className="mb-3">
+                      <label
+                        htmlFor={`${fieldId}-1`}
+                        className="block text-xs font-medium text-foreground mb-1.5"
+                      >
+                        ประเภทที่อยู่
+                      </label>
+                      <NativeSelect
+                        wrapperClassName="max-w-full w-full min-w-0"
+                        id={`${fieldId}-1`}
+                        value={formExtra.addressCurrentType}
+                        onChange={(e) =>
+                          setFormExtra((prev) => ({ ...prev, addressCurrentType: e.target.value }))
+                        }
+                        className={inputClass}
+                      >
+                        <option value="">-- เลือก --</option>
+                        <option value="OWN">บ้านตัวเอง</option>
+                        <option value="RELATIVE">บ้านญาติ</option>
+                        <option value="RENT">เช่าอาศัย</option>
+                      </NativeSelect>
+                    </div>
+                    {sameAddress ? (
+                      <p className="text-xs text-muted-foreground italic">
+                        ใช้ที่อยู่เดียวกับที่อยู่ตามบัตรประชาชน
+                      </p>
+                    ) : (
+                      <AddressForm value={addressCurrent} onChange={setAddressCurrent} />
+                    )}
+                  </div>
+                  <div>
+                    <label
+                      htmlFor={`${fieldId}-2`}
+                      className="block text-xs font-medium text-foreground mb-1.5"
+                    >
+                      ลิงก์ Google Map
                     </label>
+                    <input
+                      id={`${fieldId}-2`}
+                      type="url"
+                      value={formExtra.googleMapLink}
+                      onChange={(e) =>
+                        setFormExtra((prev) => ({ ...prev, googleMapLink: e.target.value }))
+                      }
+                      className={inputClass}
+                      placeholder="https://maps.google.com/..."
+                    />
                   </div>
-                  <div className="mb-3">
-                    <label htmlFor={`${fieldId}-1`} className="block text-xs font-medium text-foreground mb-1.5">ประเภทที่อยู่</label>
-                    <NativeSelect wrapperClassName="max-w-full w-full min-w-0" id={`${fieldId}-1`} value={formExtra.addressCurrentType} onChange={(e) => setFormExtra(prev => ({ ...prev, addressCurrentType: e.target.value }))} className={inputClass}>
-                      <option value="">-- เลือก --</option>
-                      <option value="OWN">บ้านตัวเอง</option>
-                      <option value="RELATIVE">บ้านญาติ</option>
-                      <option value="RENT">เช่าอาศัย</option>
-                    </NativeSelect>
-                  </div>
-                  {sameAddress ? (
-                    <p className="text-xs text-muted-foreground italic">ใช้ที่อยู่เดียวกับที่อยู่ตามบัตรประชาชน</p>
-                  ) : (
-                    <AddressForm value={addressCurrent} onChange={setAddressCurrent} />
-                  )}
                 </div>
-                <div>
-                  <label htmlFor={`${fieldId}-2`} className="block text-xs font-medium text-foreground mb-1.5">ลิงก์ Google Map</label>
-                  <input id={`${fieldId}-2`} type="url" value={formExtra.googleMapLink} onChange={(e) => setFormExtra(prev => ({ ...prev, googleMapLink: e.target.value }))} className={inputClass} placeholder="https://maps.google.com/..." />
-                </div>
-              </div>
-            </details>
-          )}
+              </details>
+            )}
 
-          {/* ===== ข้อมูลติดต่อเพิ่มเติม (collapsible) — ซ่อนในโหมด fill ตาม mockup (ชื่อ Facebook ของโหมด fill อยู่ในกริดข้อมูลหลักแล้ว) ===== */}
-          {!isFill && (
-            <details className="group rounded-xl border border-border bg-card">
-              <summary className="list-none flex items-center gap-2.5 p-5 cursor-pointer select-none hover:bg-accent/50 transition-colors [&::-webkit-details-marker]:hidden">
-                <div className="size-8 rounded-lg bg-muted flex items-center justify-center">
-                  <Phone className="size-4 text-muted-foreground" strokeWidth={1.5} />
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-sm font-semibold text-foreground">ข้อมูลติดต่อเพิ่มเติม</h3>
-                  <p className="text-xs text-muted-foreground">LINE, Facebook, เบอร์สำรอง</p>
-                </div>
-                <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
-              </summary>
-              <div className="px-5 pb-5 border-t border-border pt-4">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div>
-                    <FormField
-                      control={form.control}
-                      name="phoneSecondary"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-xs font-medium">เบอร์สำรอง</FormLabel>
-                          <FormControl>
-                            <input type="tel" {...field} className={inputClass} placeholder="0XX-XXX-XXXX" />
-                          </FormControl>
-                          <FormMessage className="text-xs" />
-                        </FormItem>
-                      )}
-                    />
+            {/* ===== ข้อมูลติดต่อเพิ่มเติม (collapsible) — ซ่อนในโหมด fill ตาม mockup (ชื่อ Facebook ของโหมด fill อยู่ในกริดข้อมูลหลักแล้ว) ===== */}
+            {!isFill && (
+              <details className="group rounded-xl border border-border bg-card">
+                <summary className="list-none flex items-center gap-2.5 p-5 cursor-pointer select-none hover:bg-accent/50 transition-colors [&::-webkit-details-marker]:hidden">
+                  <div className="size-8 rounded-lg bg-muted flex items-center justify-center">
+                    <Phone className="size-4 text-muted-foreground" strokeWidth={1.5} />
                   </div>
-                  <div>
-                    <FormField
-                      control={form.control}
-                      name="email"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-xs font-medium">อีเมล</FormLabel>
-                          <FormControl>
-                            <input type="email" {...field} className={inputClass} placeholder="email@example.com" autoComplete="email" />
-                          </FormControl>
-                          <FormMessage className="text-xs" />
-                        </FormItem>
-                      )}
-                    />
+                  <div className="flex-1">
+                    <h3 className="text-sm font-semibold text-foreground">ข้อมูลติดต่อเพิ่มเติม</h3>
+                    <p className="text-xs text-muted-foreground">LINE, Facebook, เบอร์สำรอง</p>
                   </div>
-                  <div>
-                    <FormField
-                      control={form.control}
-                      name="lineIdFinance"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-xs font-medium">LINE ID (Finance / น้องเบส)</FormLabel>
-                          <FormControl>
-                            <input type="text" {...field} className={inputClass} placeholder="U1234567890abcdef..." />
-                          </FormControl>
-                          <FormMessage className="text-xs" />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                  <div>
-                    <FormField
-                      control={form.control}
-                      name="lineIdShop"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-xs font-medium">LINE ID (Shop / ร้าน)</FormLabel>
-                          <FormControl>
-                            <input type="text" {...field} className={inputClass} placeholder="U1234567890abcdef..." />
-                          </FormControl>
-                          <FormMessage className="text-xs" />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                  <div>
-                    <FormField
-                      control={form.control}
-                      name="facebookLink"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-xs font-medium">ลิงก์ Facebook</FormLabel>
-                          <FormControl>
-                            <input type="url" {...field} className={inputClass} placeholder="https://facebook.com/..." />
-                          </FormControl>
-                          <FormMessage className="text-xs" />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                  <div>
-                    <FormField
-                      control={form.control}
-                      name="facebookName"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-xs font-medium">ชื่อ Facebook</FormLabel>
-                          <FormControl>
-                            <input type="text" {...field} className={inputClass} placeholder="ชื่อบน Facebook" />
-                          </FormControl>
-                          <FormMessage className="text-xs" />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor={`${fieldId}-3`} className="block text-xs font-medium text-foreground mb-1.5">จำนวนเพื่อน Facebook</label>
-                    <input id={`${fieldId}-3`} type="text" value={formExtra.facebookFriends} onChange={(e) => setFormExtra(prev => ({ ...prev, facebookFriends: e.target.value }))} className={inputClass} placeholder="จำนวนเพื่อน" />
-                  </div>
-                </div>
-              </div>
-            </details>
-          )}
-
-          {/* ===== ข้อมูลที่ทำงาน (collapsible) — ซ่อนในโหมด fill ตาม mockup ===== */}
-          {!isFill && (
-            <details className="group rounded-xl border border-border bg-card">
-              <summary className="list-none flex items-center gap-2.5 p-5 cursor-pointer select-none hover:bg-accent/50 transition-colors [&::-webkit-details-marker]:hidden">
-                <div className="size-8 rounded-lg bg-muted flex items-center justify-center">
-                  <Briefcase className="size-4 text-muted-foreground" strokeWidth={1.5} />
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-sm font-semibold text-foreground">ข้อมูลที่ทำงาน</h3>
-                  <p className="text-xs text-muted-foreground">อาชีพ, เงินเดือน</p>
-                </div>
-                <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
-              </summary>
-              <div className="px-5 pb-5 border-t border-border pt-4">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 mb-3">
-                  <div>
-                    <FormField
-                      control={form.control}
-                      name="workplace"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-xs font-medium">ชื่อที่ทำงาน</FormLabel>
-                          <FormControl>
-                            <input type="text" {...field} className={inputClass} placeholder="ชื่อบริษัท/สถานที่ทำงาน" />
-                          </FormControl>
-                          <FormMessage className="text-xs" />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                  <div>
-                    <FormField
-                      control={form.control}
-                      name="occupation"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-xs font-medium">อาชีพ</FormLabel>
-                          <FormControl>
-                            <NativeSelect wrapperClassName="max-w-full w-full min-w-0" {...field} className={inputClass}>
-                              <option value="">-- เลือก --</option>
-                              <option value="พนักงานบริษัท">พนักงานบริษัท</option>
-                              <option value="รับจ้างทั่วไป">รับจ้างทั่วไป</option>
-                              <option value="ค้าขาย/ธุรกิจส่วนตัว">ค้าขาย/ธุรกิจส่วนตัว</option>
-                              <option value="พนักงานโรงงาน">พนักงานโรงงาน</option>
-                              <option value="เกษตรกร">เกษตรกร</option>
-                              <option value="ข้าราชการ/รัฐวิสาหกิจ">ข้าราชการ/รัฐวิสาหกิจ</option>
-                              <option value="ขับรถ/ส่งของ">ขับรถ/ส่งของ</option>
-                              <option value="ช่างซ่อม/ช่างเทคนิค">ช่างซ่อม/ช่างเทคนิค</option>
-                              <option value="ก่อสร้าง">ก่อสร้าง</option>
-                              <option value="ร้านอาหาร/บริการ">ร้านอาหาร/บริการ</option>
-                              <option value="Freelance/อิสระ">Freelance/อิสระ</option>
-                              <option value="นักศึกษา">นักศึกษา</option>
-                              <option value="แม่บ้าน/ไม่ได้ทำงาน">แม่บ้าน/ไม่ได้ทำงาน</option>
-                              <option value="อื่นๆ">อื่นๆ</option>
-                            </NativeSelect>
-                          </FormControl>
-                          <FormMessage className="text-xs" />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                  <div>
-                    <FormField
-                      control={form.control}
-                      name="occupationDetail"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-xs font-medium">รายละเอียดอาชีพ</FormLabel>
-                          <FormControl>
-                            <input type="text" {...field} className={inputClass} placeholder="รายละเอียดเพิ่มเติม" />
-                          </FormControl>
-                          <FormMessage className="text-xs" />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                  <div>
-                    <FormField
-                      control={form.control}
-                      name="salary"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-xs font-medium">เงินเดือน</FormLabel>
-                          <FormControl>
-                            <NumberInput unstyled {...field} className={inputClass} placeholder="0.00" />
-                          </FormControl>
-                          <FormMessage className="text-xs" />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                </div>
-                <div className="mt-2">
-                  <label className="block text-xs font-medium text-foreground mb-1.5">ที่อยู่ที่ทำงาน</label>
-                  <AddressForm value={addressWork} onChange={setAddressWork} />
-                </div>
-              </div>
-            </details>
-          )}
-
-          {/* ===== บุคคลอ้างอิง (collapsible) — ซ่อนในโหมด fill ตาม mockup ===== */}
-          {!isFill && (
-            <details className="group rounded-xl border border-border bg-card">
-              <summary className="list-none flex items-center gap-2.5 p-5 cursor-pointer select-none hover:bg-accent/50 transition-colors [&::-webkit-details-marker]:hidden">
-                <div className="size-8 rounded-lg bg-muted flex items-center justify-center">
-                  <Users className="size-4 text-muted-foreground" strokeWidth={1.5} />
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-sm font-semibold text-foreground">บุคคลอ้างอิง</h3>
-                  <p className="text-xs text-muted-foreground">2 คน</p>
-                </div>
-                <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
-              </summary>
-              <div className="px-5 pb-5 border-t border-border pt-4 flex flex-col gap-4">
-                {references.map((ref, idx) => (
-                  <div key={idx} className="rounded-lg border border-dashed border-border p-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className="size-5 rounded-full bg-muted text-muted-foreground flex items-center justify-center text-xs font-semibold">{idx + 1}</span>
-                      <span className="text-xs font-medium text-foreground">บุคคลอ้างอิง {idx + 1}</span>
+                  <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="px-5 pb-5 border-t border-border pt-4">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <FormField
+                        control={form.control}
+                        name="phoneSecondary"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-xs font-medium">เบอร์สำรอง</FormLabel>
+                            <FormControl>
+                              <input
+                                type="tel"
+                                {...field}
+                                className={inputClass}
+                                placeholder="0XX-XXX-XXXX"
+                              />
+                            </FormControl>
+                            <FormMessage className="text-xs" />
+                          </FormItem>
+                        )}
+                      />
                     </div>
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-6">
-                      <div className="min-w-0 sm:col-span-2">
-                        <label htmlFor={`${fieldId}-reference-${idx}-4`} className="block text-xs font-medium text-foreground mb-1.5">คำนำหน้า</label>
-                        <NativeSelect wrapperClassName="max-w-full w-full min-w-0" id={`${fieldId}-reference-${idx}-4`} value={ref.prefix} onChange={(e) => updateRef(idx, 'prefix', e.target.value)} className={selectClass}>
-                          <option value="">-- เลือก --</option>
-                          {THAI_NAME_PREFIXES.map(p => <option key={p} value={p}>{p}</option>)}
-                        </NativeSelect>
-                      </div>
-                      <div className="min-w-0 sm:col-span-2">
-                        <label htmlFor={`${fieldId}-reference-${idx}-5`} className="block text-xs font-medium text-foreground mb-1.5">ชื่อ</label>
-                        <input id={`${fieldId}-reference-${idx}-5`} type="text" value={ref.firstName} onChange={(e) => updateRef(idx, 'firstName', e.target.value)} className={inputClass} placeholder="กรอกชื่อ" />
-                      </div>
-                      <div className="min-w-0 sm:col-span-2">
-                        <label htmlFor={`${fieldId}-reference-${idx}-6`} className="block text-xs font-medium text-foreground mb-1.5">นามสกุล</label>
-                        <input id={`${fieldId}-reference-${idx}-6`} type="text" value={ref.lastName} onChange={(e) => updateRef(idx, 'lastName', e.target.value)} className={inputClass} placeholder="กรอกนามสกุล" />
-                      </div>
-                      <div className="min-w-0 sm:col-span-3">
-                        <label htmlFor={`${fieldId}-reference-${idx}-7`} className="block text-xs font-medium text-foreground mb-1.5">เบอร์หลัก</label>
-                        <input id={`${fieldId}-reference-${idx}-7`} type="tel" value={ref.phone} onChange={(e) => updateRef(idx, 'phone', e.target.value)} className={inputClass} placeholder="0XX-XXX-XXXX" />
-                      </div>
-                      <div className="min-w-0 sm:col-span-3">
-                        <label htmlFor={`${fieldId}-reference-${idx}-8`} className="block text-xs font-medium text-foreground mb-1.5">ความสัมพันธ์</label>
-                        <NativeSelect wrapperClassName="max-w-full w-full min-w-0" id={`${fieldId}-reference-${idx}-8`} value={ref.relationship} onChange={(e) => updateRef(idx, 'relationship', e.target.value)} className={selectClass}>
-                          <option value="">-- เลือก --</option>
-                          {RELATIONSHIP_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
-                        </NativeSelect>
-                      </div>
+                    <div>
+                      <FormField
+                        control={form.control}
+                        name="email"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-xs font-medium">อีเมล</FormLabel>
+                            <FormControl>
+                              <input
+                                type="email"
+                                {...field}
+                                className={inputClass}
+                                placeholder="email@example.com"
+                                autoComplete="email"
+                              />
+                            </FormControl>
+                            <FormMessage className="text-xs" />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                    <FinanceLineCreateNote />
+                    <div>
+                      <FormField
+                        control={form.control}
+                        name="lineIdShop"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-xs font-medium">
+                              LINE ID (Shop / ร้าน)
+                            </FormLabel>
+                            <FormControl>
+                              <input
+                                type="text"
+                                {...field}
+                                className={inputClass}
+                                placeholder="U1234567890abcdef..."
+                              />
+                            </FormControl>
+                            <FormMessage className="text-xs" />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                    <div>
+                      <FormField
+                        control={form.control}
+                        name="facebookLink"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-xs font-medium">ลิงก์ Facebook</FormLabel>
+                            <FormControl>
+                              <input
+                                type="url"
+                                {...field}
+                                className={inputClass}
+                                placeholder="https://facebook.com/..."
+                              />
+                            </FormControl>
+                            <FormMessage className="text-xs" />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                    <div>
+                      <FormField
+                        control={form.control}
+                        name="facebookName"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-xs font-medium">ชื่อ Facebook</FormLabel>
+                            <FormControl>
+                              <input
+                                type="text"
+                                {...field}
+                                className={inputClass}
+                                placeholder="ชื่อบน Facebook"
+                              />
+                            </FormControl>
+                            <FormMessage className="text-xs" />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                    <div>
+                      <label
+                        htmlFor={`${fieldId}-3`}
+                        className="block text-xs font-medium text-foreground mb-1.5"
+                      >
+                        จำนวนเพื่อน Facebook
+                      </label>
+                      <input
+                        id={`${fieldId}-3`}
+                        type="text"
+                        value={formExtra.facebookFriends}
+                        onChange={(e) =>
+                          setFormExtra((prev) => ({ ...prev, facebookFriends: e.target.value }))
+                        }
+                        className={inputClass}
+                        placeholder="จำนวนเพื่อน"
+                      />
                     </div>
                   </div>
-                ))}
-              </div>
-            </details>
-          )}
+                </div>
+              </details>
+            )}
 
-          {/* ===== โน้ตท้ายฟอร์ม (fill mode — mockup บอร์ด 3: หลังชื่อ Facebook ก่อนปุ่ม) ===== */}
-          {isFill && (
-            <p className="m-0 text-xs leading-snug text-muted-foreground">ชื่อเติมให้จากห้องแชทแล้ว แก้ได้ · บันทึกแล้วผู้สนใจคนนี้จะเช็คเครดิตและทำสัญญาได้ทันที</p>
-          )}
+            {/* ===== ข้อมูลที่ทำงาน (collapsible) — ซ่อนในโหมด fill ตาม mockup ===== */}
+            {!isFill && (
+              <details className="group rounded-xl border border-border bg-card">
+                <summary className="list-none flex items-center gap-2.5 p-5 cursor-pointer select-none hover:bg-accent/50 transition-colors [&::-webkit-details-marker]:hidden">
+                  <div className="size-8 rounded-lg bg-muted flex items-center justify-center">
+                    <Briefcase className="size-4 text-muted-foreground" strokeWidth={1.5} />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-sm font-semibold text-foreground">ข้อมูลที่ทำงาน</h3>
+                    <p className="text-xs text-muted-foreground">อาชีพ, เงินเดือน</p>
+                  </div>
+                  <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="px-5 pb-5 border-t border-border pt-4">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 mb-3">
+                    <div>
+                      <FormField
+                        control={form.control}
+                        name="workplace"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-xs font-medium">ชื่อที่ทำงาน</FormLabel>
+                            <FormControl>
+                              <input
+                                type="text"
+                                {...field}
+                                className={inputClass}
+                                placeholder="ชื่อบริษัท/สถานที่ทำงาน"
+                              />
+                            </FormControl>
+                            <FormMessage className="text-xs" />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                    <div>
+                      <FormField
+                        control={form.control}
+                        name="occupation"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-xs font-medium">อาชีพ</FormLabel>
+                            <FormControl>
+                              <NativeSelect
+                                wrapperClassName="max-w-full w-full min-w-0"
+                                {...field}
+                                className={inputClass}
+                              >
+                                <option value="">-- เลือก --</option>
+                                <option value="พนักงานบริษัท">พนักงานบริษัท</option>
+                                <option value="รับจ้างทั่วไป">รับจ้างทั่วไป</option>
+                                <option value="ค้าขาย/ธุรกิจส่วนตัว">ค้าขาย/ธุรกิจส่วนตัว</option>
+                                <option value="พนักงานโรงงาน">พนักงานโรงงาน</option>
+                                <option value="เกษตรกร">เกษตรกร</option>
+                                <option value="ข้าราชการ/รัฐวิสาหกิจ">ข้าราชการ/รัฐวิสาหกิจ</option>
+                                <option value="ขับรถ/ส่งของ">ขับรถ/ส่งของ</option>
+                                <option value="ช่างซ่อม/ช่างเทคนิค">ช่างซ่อม/ช่างเทคนิค</option>
+                                <option value="ก่อสร้าง">ก่อสร้าง</option>
+                                <option value="ร้านอาหาร/บริการ">ร้านอาหาร/บริการ</option>
+                                <option value="Freelance/อิสระ">Freelance/อิสระ</option>
+                                <option value="นักศึกษา">นักศึกษา</option>
+                                <option value="แม่บ้าน/ไม่ได้ทำงาน">แม่บ้าน/ไม่ได้ทำงาน</option>
+                                <option value="อื่นๆ">อื่นๆ</option>
+                              </NativeSelect>
+                            </FormControl>
+                            <FormMessage className="text-xs" />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                    <div>
+                      <FormField
+                        control={form.control}
+                        name="occupationDetail"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-xs font-medium">รายละเอียดอาชีพ</FormLabel>
+                            <FormControl>
+                              <input
+                                type="text"
+                                {...field}
+                                className={inputClass}
+                                placeholder="รายละเอียดเพิ่มเติม"
+                              />
+                            </FormControl>
+                            <FormMessage className="text-xs" />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                    <div>
+                      <FormField
+                        control={form.control}
+                        name="salary"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-xs font-medium">เงินเดือน</FormLabel>
+                            <FormControl>
+                              <NumberInput
+                                unstyled
+                                {...field}
+                                className={inputClass}
+                                placeholder="0.00"
+                              />
+                            </FormControl>
+                            <FormMessage className="text-xs" />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-2">
+                    <label className="block text-xs font-medium text-foreground mb-1.5">
+                      ที่อยู่ที่ทำงาน
+                    </label>
+                    <AddressForm value={addressWork} onChange={setAddressWork} />
+                  </div>
+                </div>
+              </details>
+            )}
 
+            {/* ===== บุคคลอ้างอิง (collapsible) — ซ่อนในโหมด fill ตาม mockup ===== */}
+            {!isFill && (
+              <details className="group rounded-xl border border-border bg-card">
+                <summary className="list-none flex items-center gap-2.5 p-5 cursor-pointer select-none hover:bg-accent/50 transition-colors [&::-webkit-details-marker]:hidden">
+                  <div className="size-8 rounded-lg bg-muted flex items-center justify-center">
+                    <Users className="size-4 text-muted-foreground" strokeWidth={1.5} />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-sm font-semibold text-foreground">บุคคลอ้างอิง</h3>
+                    <p className="text-xs text-muted-foreground">2 คน</p>
+                  </div>
+                  <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="px-5 pb-5 border-t border-border pt-4 flex flex-col gap-4">
+                  {references.map((ref, idx) => (
+                    <div key={idx} className="rounded-lg border border-dashed border-border p-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="size-5 rounded-full bg-muted text-muted-foreground flex items-center justify-center text-xs font-semibold">
+                          {idx + 1}
+                        </span>
+                        <span className="text-xs font-medium text-foreground">
+                          บุคคลอ้างอิง {idx + 1}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-6">
+                        <div className="min-w-0 sm:col-span-2">
+                          <label
+                            htmlFor={`${fieldId}-reference-${idx}-4`}
+                            className="block text-xs font-medium text-foreground mb-1.5"
+                          >
+                            คำนำหน้า
+                          </label>
+                          <NativeSelect
+                            wrapperClassName="max-w-full w-full min-w-0"
+                            id={`${fieldId}-reference-${idx}-4`}
+                            value={ref.prefix}
+                            onChange={(e) => updateRef(idx, 'prefix', e.target.value)}
+                            className={selectClass}
+                          >
+                            <option value="">-- เลือก --</option>
+                            {THAI_NAME_PREFIXES.map((p) => (
+                              <option key={p} value={p}>
+                                {p}
+                              </option>
+                            ))}
+                          </NativeSelect>
+                        </div>
+                        <div className="min-w-0 sm:col-span-2">
+                          <label
+                            htmlFor={`${fieldId}-reference-${idx}-5`}
+                            className="block text-xs font-medium text-foreground mb-1.5"
+                          >
+                            ชื่อ
+                          </label>
+                          <input
+                            id={`${fieldId}-reference-${idx}-5`}
+                            type="text"
+                            value={ref.firstName}
+                            onChange={(e) => updateRef(idx, 'firstName', e.target.value)}
+                            className={inputClass}
+                            placeholder="กรอกชื่อ"
+                          />
+                        </div>
+                        <div className="min-w-0 sm:col-span-2">
+                          <label
+                            htmlFor={`${fieldId}-reference-${idx}-6`}
+                            className="block text-xs font-medium text-foreground mb-1.5"
+                          >
+                            นามสกุล
+                          </label>
+                          <input
+                            id={`${fieldId}-reference-${idx}-6`}
+                            type="text"
+                            value={ref.lastName}
+                            onChange={(e) => updateRef(idx, 'lastName', e.target.value)}
+                            className={inputClass}
+                            placeholder="กรอกนามสกุล"
+                          />
+                        </div>
+                        <div className="min-w-0 sm:col-span-3">
+                          <label
+                            htmlFor={`${fieldId}-reference-${idx}-7`}
+                            className="block text-xs font-medium text-foreground mb-1.5"
+                          >
+                            เบอร์หลัก
+                          </label>
+                          <input
+                            id={`${fieldId}-reference-${idx}-7`}
+                            type="tel"
+                            value={ref.phone}
+                            onChange={(e) => updateRef(idx, 'phone', e.target.value)}
+                            className={inputClass}
+                            placeholder="0XX-XXX-XXXX"
+                          />
+                        </div>
+                        <div className="min-w-0 sm:col-span-3">
+                          <label
+                            htmlFor={`${fieldId}-reference-${idx}-8`}
+                            className="block text-xs font-medium text-foreground mb-1.5"
+                          >
+                            ความสัมพันธ์
+                          </label>
+                          <NativeSelect
+                            wrapperClassName="max-w-full w-full min-w-0"
+                            id={`${fieldId}-reference-${idx}-8`}
+                            value={ref.relationship}
+                            onChange={(e) => updateRef(idx, 'relationship', e.target.value)}
+                            className={selectClass}
+                          >
+                            <option value="">-- เลือก --</option>
+                            {RELATIONSHIP_OPTIONS.map((r) => (
+                              <option key={r} value={r}>
+                                {r}
+                              </option>
+                            ))}
+                          </NativeSelect>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
+
+            {/* ===== โน้ตท้ายฟอร์ม (fill mode — mockup บอร์ด 3: หลังชื่อ Facebook ก่อนปุ่ม) ===== */}
+            {isFill && (
+              <p className="m-0 text-xs leading-snug text-muted-foreground">
+                ชื่อเติมให้จากห้องแชทแล้ว แก้ได้ ·
+                บันทึกแล้วผู้สนใจคนนี้จะเช็คเครดิตและทำสัญญาได้ทันที
+              </p>
+            )}
           </div>
           {/* Sticky Footer */}
           <div className="sticky bottom-0 flex shrink-0 justify-end gap-3 border-t bg-background/95 px-6 py-4 backdrop-blur-xs">
-            <button data-ui-control="button" type="button" onClick={onClose} className="rounded-lg border border-input px-6 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-accent">ยกเลิก</button>
-            <button data-ui-control="button" type="submit" disabled={createMutation.isPending} className="rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-50">
+            <button
+              data-ui-control="button"
+              type="button"
+              onClick={onClose}
+              className="rounded-lg border border-input px-6 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-accent"
+            >
+              ยกเลิก
+            </button>
+            <button
+              data-ui-control="button"
+              type="submit"
+              disabled={createMutation.isPending}
+              className="rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-50"
+            >
               {createMutation.isPending ? (
-                <span className="inline-flex items-center gap-2"><div className="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-foreground" /> กำลังบันทึก...</span>
-              ) : submitLabel}
+                <span className="inline-flex items-center gap-2">
+                  <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-foreground" />{' '}
+                  กำลังบันทึก...
+                </span>
+              ) : (
+                submitLabel
+              )}
             </button>
           </div>
         </form>

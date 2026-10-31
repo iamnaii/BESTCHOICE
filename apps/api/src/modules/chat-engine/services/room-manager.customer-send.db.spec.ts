@@ -140,5 +140,12 @@ describe('แผง 360 ส่ง LINE ถึงห้องของแถว O
 
     await expect(rooms.sendCustomerMessage(c.id, 'staff-1', 'x')).resolves.toEqual({ room: null });
     expect(router.sendStaffMessage).not.toHaveBeenCalled();
+    // fix round 2 m-1 — ประวัติต้องไม่ถอยไปห้องของ LINE อื่น (ช่องพิมพ์จะชี้ห้องเก่า) — มุมมองของแถว OTP: ยังไม่มีแชท
+    await expect(rooms.getCustomerMessages(c.id, 10)).resolves.toEqual({
+      roomId: null,
+      channel: null,
+      messages: [],
+      hasMore: false,
+    });
   });
 });

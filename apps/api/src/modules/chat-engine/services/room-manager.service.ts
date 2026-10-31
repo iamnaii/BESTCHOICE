@@ -1814,7 +1814,12 @@ export class RoomManagerService {
           },
         })
       : null;
-    // ไม่มีแถว/ห้อง → แสดงประวัติตามเดิม (ห้อง LINE ล่าสุดของลูกค้า — อ่านอย่างเดียว · ส่งไม่ได้ ดู sendCustomerMessage)
+    // fix round 2 m-1 — มีแถวแต่ LINE นั้นยังไม่เคยทัก (ไม่มีห้อง) → มุมมองของแถว OTP: ยังไม่มีแชท · ห้ามถอยไปห้องของ LINE อื่น
+    // (ห้อง LINE เก่า/ห้องที่ผูกมือ — ช่องพิมพ์จะดูเหมือนตอบห้องนั้น)
+    if (verifiedLine && !verifiedRoom) {
+      return { roomId: null, channel: null, messages: [], hasMore: false };
+    }
+    // ไม่มีแถว → แสดงประวัติตามเดิม (ห้อง LINE ล่าสุดของลูกค้า — อ่านอย่างเดียว · ส่งไม่ได้ ดู sendCustomerMessage)
     const room =
       verifiedRoom ??
       (await this.prisma.chatRoom.findFirst({

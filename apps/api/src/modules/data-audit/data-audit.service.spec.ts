@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import * as Sentry from '@sentry/nestjs';
 import { NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { DataAuditService } from './data-audit.service';
@@ -9,6 +10,11 @@ import { ContractTraceService } from './services/contract-trace.service';
 import { AuditFindingsService } from './services/audit-findings.service';
 import { AuditBackfillService } from './services/audit-backfill.service';
 import { EARLY_PAYOFF_PAYMENT_NOTE_PREFIX, PAID_BY_EARLY_PAYOFF } from './services/payment-backing';
+
+jest.mock('@sentry/nestjs', () => ({
+  ...jest.requireActual('@sentry/nestjs'),
+  captureMessage: jest.fn(),
+}));
 
 /**
  * DataAuditService tests — validates all 12 database health checks
@@ -650,6 +656,36 @@ describe('DataAuditService', () => {
       expect(results.filter((r) => r.status !== 'PASS').map((r) => [r.name, r.status])).toEqual([
         ['commission_mismatch', 'SKIPPED'],
       ]);
+    });
+  });
+
+  describe('dailyHealthCheck', () => {
+    it('Task 25 review nit 5 — the Sentry event groups by the failing checks (fingerprint), not by the count text that now changes nightly', async () => {
+      const fail = (name: string, severity: 'CRITICAL' | 'HIGH' | 'MEDIUM', count: number) => ({
+        name,
+        severity,
+        status: 'FAIL' as const,
+        count,
+        details: [],
+        executedAt: new Date(),
+      });
+      const capture = Sentry.captureMessage as jest.Mock;
+      capture.mockClear();
+      for (const count of [62, 70]) {
+        jest.spyOn(service, 'runAllChecks').mockResolvedValueOnce([
+          fail('journal_balance', 'CRITICAL', count),
+          fail('orphan_payments', 'CRITICAL', 3),
+          fail('missing_cogs', 'MEDIUM', 1), // MEDIUM — not alerted
+        ]);
+        await service.dailyHealthCheck();
+      }
+      expect(capture.mock.calls.map(([message]) => message)).toEqual([
+        'Data audit FAILED: journal_balance: 62 issues, orphan_payments: 3 issues',
+        'Data audit FAILED: journal_balance: 70 issues, orphan_payments: 3 issues',
+      ]);
+      for (const [, context] of capture.mock.calls) {
+        expect(context.fingerprint).toEqual(['data-audit', 'journal_balance', 'orphan_payments']);
+      }
     });
   });
 

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InterCoBatchStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SHOP_RECEIVABLE_TYPES } from '../journal/shop-receivable-type.util';
+import { isLegacyNoShop, loadShopFinanceReceivableLens } from './legacy-no-shop';
 import {
   ALL_DEDUCTION_COLUMNS,
   DEVICE_RETURN_DEDUCTION_COLUMNS,
@@ -124,12 +125,6 @@ interface FinanceRow {
   commission: unknown;
 }
 
-interface ShopRow {
-  contract_id: string | null;
-  financed: unknown;
-  commission: unknown;
-}
-
 @Injectable()
 export class IntercoPendingService {
   constructor(private readonly prisma: PrismaService) {}
@@ -178,34 +173,12 @@ export class IntercoPendingService {
     if (validFinanceRows.length === 0) return [];
 
     // SHOP lens — same shape on S11-3001 (ลูกหนี้ยอดจัด) / S11-3002 (ลูกหนี้ค่าคอม),
-    // sign flipped (Dr−Cr — these are SHOP-side receivables, not payables).
+    // sign flipped (Dr−Cr — these are SHOP-side receivables, not payables) —
+    // the one reader of `legacyNoShop` (`legacy-no-shop.ts`, shared with data-audit).
     // Not filtered to only the FINANCE contractIds — a contract with a SHOP
     // leg but somehow no FINANCE leg would never surface anyway (it's looked
     // up via the finance-side contract list below).
-    const shopRows = await client.$queryRaw<ShopRow[]>`
-      SELECT je.metadata->>'contractId' AS contract_id,
-             COALESCE(SUM(CASE WHEN jl.account_code = 'S11-3001' THEN jl.debit - jl.credit ELSE 0 END), 0)::decimal AS financed,
-             COALESCE(SUM(CASE WHEN jl.account_code = 'S11-3002' THEN jl.debit - jl.credit ELSE 0 END), 0)::decimal AS commission
-      FROM journal_lines jl
-      JOIN journal_entries je ON je.id = jl.journal_entry_id
-      WHERE jl.account_code IN ('S11-3001', 'S11-3002')
-        AND jl.deleted_at IS NULL
-        AND je.status = 'POSTED'
-        AND je.deleted_at IS NULL
-        AND je.metadata->>'contractId' IS NOT NULL
-      GROUP BY 1
-    `;
-    const shopByContract = new Map<
-      string,
-      { financed: Prisma.Decimal; commission: Prisma.Decimal }
-    >();
-    for (const row of shopRows) {
-      if (!row.contract_id) continue;
-      shopByContract.set(row.contract_id, {
-        financed: new Prisma.Decimal(String(row.financed ?? 0)),
-        commission: new Prisma.Decimal(String(row.commission ?? 0)),
-      });
-    }
+    const shopByContract = await loadShopFinanceReceivableLens(client);
 
     // SWAP_CREDIT lenses (Phase 2 — spec §4.1). เงื่อนไข type ต้องสอดคล้อง
     // `classifyShopReceivable` (shop-receivable-type.util.ts) และ SQL twins ใน
@@ -311,8 +284,8 @@ export class IntercoPendingService {
       const financedGl = new Prisma.Decimal(String(row.financed ?? 0));
       const commissionGl = new Prisma.Decimal(String(row.commission ?? 0));
       const shop = shopByContract.get(contractId);
-      const shopFinancedGl = shop?.financed ?? new Prisma.Decimal(0);
-      const shopCommissionGl = shop?.commission ?? new Prisma.Decimal(0);
+      const shopFinancedGl = shop?.shopFinancedGl ?? new Prisma.Decimal(0);
+      const shopCommissionGl = shop?.shopCommissionGl ?? new Prisma.Decimal(0);
 
       const swapCreditGl = swapCreditByContract.get(contractId) ?? new Prisma.Decimal(0);
       const shopBuybackPayableGl = shopBuybackByContract.get(contractId) ?? new Prisma.Decimal(0);
@@ -332,7 +305,7 @@ export class IntercoPendingService {
         commissionGl,
         shopFinancedGl,
         shopCommissionGl,
-        legacyNoShop: shopFinancedGl.eq(0) && shopCommissionGl.eq(0),
+        legacyNoShop: isLegacyNoShop(shop),
         swapCreditGl,
         shopBuybackPayableGl,
         swapCreditEligible,

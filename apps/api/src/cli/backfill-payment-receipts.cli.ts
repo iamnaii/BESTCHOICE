@@ -285,6 +285,8 @@ export interface BackfillReceiptsResult {
   boundReissueEntries: number;
   /** population rows skipped because their money is documented elsewhere (paths b/c) — printed, never issued */
   documentedElsewhere: number;
+  /** the same rows counted per path */
+  documentedElsewhereByPath: Record<DocumentedElsewherePath, number>;
 }
 
 export async function backfillPaymentReceipts(
@@ -303,22 +305,9 @@ export async function backfillPaymentReceipts(
     boundReissue: bound.length,
     boundReissueEntries: bound.reduce((n, b) => n + b.entries.length, 0),
     documentedElsewhere: documentedElsewhere.length,
+    documentedElsewhereByPath: { b: 0, c: 0, 'b+c': 0 },
   };
-
-  if (documentedElsewhere.length > 0) {
-    console.log(
-      `[backfill-receipts] ${documentedElsewhere.length} payment(s) skipped — money documented elsewhere` +
-        ' (orphan_payments paths, payment-backing.ts: b = cleared through the schedule row by the nightly' +
-        " advance / park consumption · c = paid by the contract's early payoff JP4). NOT issued here:",
-    );
-    for (const e of documentedElsewhere) {
-      console.log(
-        `  [documented elsewhere] paymentId=${e.id}  contract=${e.contract_number}  งวด=${e.installment_no}` +
-          `  amountPaid=฿${new Decimal(e.amount_paid).toFixed(2)}  path=${e.path}`,
-      );
-    }
-    console.log('');
-  }
+  for (const e of documentedElsewhere) result.documentedElsewhereByPath[e.path] += 1;
 
   if (bound.length > 0) {
     console.log(
@@ -402,8 +391,31 @@ export async function backfillPaymentReceipts(
     }
   }
 
+  // Printed LAST and in full (review nit 3): the set only grows (every row a payoff paid · every row the nightly
+  // run cleared) — the lists to act on (bound re-issue, the rows above) stay on screen first.
+  if (documentedElsewhere.length > 0) {
+    console.log('');
+    console.log(
+      `[backfill-receipts] ${documentedElsewhere.length} payment(s) skipped (${byPathText(result)})` +
+        ' — money documented elsewhere (orphan_payments paths, payment-backing.ts: b = cleared through the' +
+        " schedule row by the nightly advance / park consumption · c = paid by the contract's early payoff JP4)." +
+        ' NOT issued here:',
+    );
+    for (const e of documentedElsewhere) {
+      console.log(
+        `  [documented elsewhere] paymentId=${e.id}  contract=${e.contract_number}  งวด=${e.installment_no}` +
+          `  amountPaid=฿${new Decimal(e.amount_paid).toFixed(2)}  path=${e.path}`,
+      );
+    }
+  }
+
   return result;
 }
+
+const byPathText = (r: BackfillReceiptsResult): string =>
+  (['b', 'c', 'b+c'] as const)
+    .map((path) => `${path}=${r.documentedElsewhereByPath[path]}`)
+    .join(' · ');
 
 async function main(): Promise<void> {
   const expectedDb = process.env.EXPECTED_DB_NAME;
@@ -485,7 +497,9 @@ async function main(): Promise<void> {
     console.log(
       `  bound re-issue (not here) : ${result.boundReissueEntries} entr(y/ies) on ${result.boundReissue} payment(s)`,
     );
-    console.log(`  documented elsewhere      : ${result.documentedElsewhere}`);
+    console.log(
+      `  documented elsewhere      : ${result.documentedElsewhere} (${byPathText(result)})`,
+    );
     if (!dryRun) {
       console.log(`  created                   : ${result.created}`);
       console.log(`  skipped (no issuer)       : ${result.skipped}`);

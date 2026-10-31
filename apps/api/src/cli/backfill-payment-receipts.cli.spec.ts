@@ -109,7 +109,7 @@ describe('backfill-payment-receipts CLI', () => {
     ]);
 
     for (const dryRun of [true, false]) {
-      queryRaw.mockReset().mockResolvedValueOnce(population).mockResolvedValueOnce([]);
+      queryRaw.mockReset().mockResolvedValueOnce(population).mockResolvedValueOnce([boundRow]);
       const generateReceipt = jest.fn().mockResolvedValue({ id: 'r-1' });
       const lines: string[] = [];
       const log = jest.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
@@ -129,7 +129,16 @@ describe('backfill-payment-receipts CLI', () => {
         expect.stringMatching(/paymentId=p-c .*path=c$/),
         expect.stringMatching(/paymentId=p-bc .*path=b\+c$/),
       ]);
-      expect(lines.some((l) => l.includes('3 payment(s) skipped'))).toBe(true);
+      expect(lines.some((l) => l.includes('3 payment(s) skipped (b=1 · c=1 · b+c=1)'))).toBe(true);
+      expect(result.documentedElsewhereByPath).toEqual({ b: 1, c: 1, 'b+c': 1 });
+      // review nit 3: the lists to act on come first — bound re-issue, then the CLI's own rows — and the
+      // (ever-growing) documented-elsewhere block last, in full
+      const at = (needle: string) => lines.findIndex((l) => l.includes(needle));
+      const candidateLine = at(dryRun ? 'paymentId=p-1 ' : 'CREATED paymentId=p-1');
+      expect(at('[bound re-issue]')).toBeGreaterThanOrEqual(0);
+      expect(candidateLine).toBeGreaterThan(at('[bound re-issue]'));
+      expect(at('payment(s) skipped')).toBeGreaterThan(candidateLine);
+      expect(at('[documented elsewhere]')).toBeGreaterThan(at('payment(s) skipped'));
     }
   });
 

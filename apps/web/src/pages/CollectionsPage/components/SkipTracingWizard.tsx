@@ -10,6 +10,7 @@ import {
   ChevronRight,
   ChevronLeft,
   ExternalLink,
+  Info,
   UserSearch,
 } from 'lucide-react';
 import {
@@ -64,7 +65,10 @@ type ResultChoice = 'FOUND' | 'NOT_FOUND' | 'MARK_LOST';
  *     The schema has no dedicated `emergencyContact*` columns — we use the
  *     `references[]` Json (relatives/contacts) which is the de-facto
  *     emergency contact list captured at customer onboarding.
- *  2. Try new phone / LINE ID — input + client-side validation.
+ *  2. Try new phone — input + client-side validation. No LINE ID input (Task 27): the
+ *     finance LINE links only through the customer's own OTP, and the API rejected the
+ *     whole request (new phone included) whenever a LINE ID was typed — a note tells
+ *     staff how to get the customer to link instead.
  *  3. Social media check — pre-filled Facebook search URL (manual, opens in
  *     new tab; we can't scrape FB programmatically).
  *  4. Result — radio: เจอ (input new phone) / ไม่เจอ / ติดป้าย "สูญหาย".
@@ -74,7 +78,6 @@ type ResultChoice = 'FOUND' | 'NOT_FOUND' | 'MARK_LOST';
 export default function SkipTracingWizard({ open, onClose, contract }: Props) {
   const [step, setStep] = useState(1);
   const [newPhone, setNewPhone] = useState('');
-  const [newLineId, setNewLineId] = useState('');
   const [resultChoice, setResultChoice] = useState<ResultChoice | null>(null);
   const [foundPhone, setFoundPhone] = useState('');
   const [reason, setReason] = useState('');
@@ -108,7 +111,6 @@ export default function SkipTracingWizard({ open, onClose, contract }: Props) {
     if (open) {
       setStep(1);
       setNewPhone('');
-      setNewLineId('');
       setResultChoice(null);
       setFoundPhone('');
       setReason('');
@@ -140,8 +142,7 @@ export default function SkipTracingWizard({ open, onClose, contract }: Props) {
       reason: reason.trim(),
     };
     if (newPhone) payload.newPhone = newPhone;
-    if (newLineId.trim()) payload.newLineId = newLineId.trim();
-    if (!payload.newPhone && !payload.newLineId) return;
+    if (!payload.newPhone) return;
     tryUpdate(payload);
   }
 
@@ -271,7 +272,7 @@ export default function SkipTracingWizard({ open, onClose, contract }: Props) {
         {step === 2 && (
           <div className="space-y-3">
             <p className="text-xs text-muted-foreground leading-snug">
-              ถ้ามีเบอร์/LINE ใหม่จากญาติ/ที่ทำงาน — กรอกแล้วบันทึกได้เลย
+              ถ้ามีเบอร์ใหม่จากญาติหรือที่ทำงาน กรอกแล้วบันทึกได้เลย
             </p>
             <div className="space-y-1.5">
               <Label htmlFor="skip-new-phone">เบอร์ใหม่</Label>
@@ -289,15 +290,15 @@ export default function SkipTracingWizard({ open, onClose, contract }: Props) {
                 </p>
               )}
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="skip-new-line">LINE ID ใหม่ (ถ้ามี)</Label>
-              <Input
-                id="skip-new-line"
-                placeholder="เช่น @johndoe"
-                value={newLineId}
-                onChange={(e) => setNewLineId(e.target.value)}
-                maxLength={100}
-              />
+            <div
+              role="note"
+              className="flex items-start gap-2.5 rounded-lg border border-border bg-muted px-3 py-2.5"
+            >
+              <Info className="mt-px size-4.5 shrink-0 text-foreground/75" aria-hidden="true" />
+              <span className="text-xs leading-snug text-foreground/75">
+                ได้ LINE ใหม่มา? ทักลูกค้าทาง LINE นั้นแล้วชวนให้ส่งข้อความในแชท LINE น้องเบส และกด
+                “เริ่มยืนยันตัวตน” ระบบจะผูกให้เองหลังยืนยัน OTP
+              </span>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="skip-reason-2">เหตุผล (จำเป็น)</Label>
@@ -429,12 +430,7 @@ export default function SkipTracingWizard({ open, onClose, contract }: Props) {
                 </Button>
                 <Button
                   onClick={handleStep2Submit}
-                  disabled={
-                    update.isPending ||
-                    !reason.trim() ||
-                    (!newPhone && !newLineId.trim()) ||
-                    newPhoneInvalid
-                  }
+                  disabled={update.isPending || !reason.trim() || !newPhone || newPhoneInvalid}
                 >
                   บันทึก
                 </Button>

@@ -6,12 +6,13 @@ import api, { getErrorMessage } from '@/lib/api';
  * Skip-tracing contact update payload (P2 Collections — D6).
  *
  * Mirrors `UpdateCustomerContactDto` on the API side. At least one of
- * `newPhone` / `newLineId` / `markAsLost` must be set, plus a non-empty
- * `reason` for the audit trail.
+ * `newPhone` / `markAsLost` must be set, plus a non-empty `reason` for the
+ * audit trail. The web never sends `newLineId` (Task 27): the finance LINE
+ * links only through the customer's own OTP — the API still accepts the key
+ * and rejects any new value with 400 (Task 22), blank = untouched.
  */
 export interface UpdateCustomerContactPayload {
   newPhone?: string;
-  newLineId?: string;
   markAsLost?: boolean;
   reason: string;
 }
@@ -36,12 +37,8 @@ export function skipTracingSuccessMessage(
   if (data?.phoneStoredAs === 'SECONDARY') {
     const phone = data.phoneSecondary || payload.newPhone || '';
     const owner = data.phoneOwner?.name || 'ลูกค้าคนอื่น';
-    const extras = [
-      payload.newLineId ? 'บันทึก LINE ID ใหม่แล้ว' : null,
-      payload.markAsLost ? 'ทำเครื่องหมาย "สูญหาย" แล้ว' : null,
-    ].filter(Boolean);
     const base = `เบอร์ ${phone} เป็นของ ${owner} — บันทึกเป็นเบอร์สำรองของลูกค้าคนนี้แทน`;
-    return extras.length ? `${base} · ${extras.join(' · ')}` : base;
+    return payload.markAsLost ? `${base} · ทำเครื่องหมาย "สูญหาย" แล้ว` : base;
   }
   return payload.markAsLost ? 'ทำเครื่องหมาย "สูญหาย" แล้ว' : 'อัปเดตข้อมูลติดต่อแล้ว';
 }

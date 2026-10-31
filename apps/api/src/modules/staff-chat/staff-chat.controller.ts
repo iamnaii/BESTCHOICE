@@ -677,6 +677,10 @@ export class StaffChatController {
    * active FINANCE OTP link: that LINE's LINE_FINANCE room only (no room yet =
    * empty, roomId null — never another LINE's room). Without one: the
    * customer's newest LINE room, read only (sending answers 400).
+   * Branch scope (Task 29 #3 — owner decision 2026-10-31): the same rule as the
+   * collections LINE send button (lineSendCustomerScope) — cross-branch roles
+   * see every customer; others only a customer with a contract in their branch
+   * or one they hold a live DailyAssignment for today; out of scope = 404.
    * See RoomManagerService.getCustomerMessages · security.md LINE rule 9.
    *
    * Returns messages in reverse-chronological order (newest first) so
@@ -687,11 +691,12 @@ export class StaffChatController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES', 'ACCOUNTANT')
   async getCustomerMessages(
     @Param('customerId') customerId: string,
+    @Req() req: { user: { id: string; role: string; branchId: string | null } },
     @Query('limit') limit?: string,
     @Query('before') before?: string,
   ) {
     const take = Math.min(Math.max(parseInt(limit ?? '30', 10) || 30, 1), 100);
-    return this.roomManager.getCustomerMessages(customerId, take, before);
+    return this.roomManager.getCustomerMessages(customerId, req.user, take, before);
   }
 
   /**
@@ -703,22 +708,24 @@ export class StaffChatController {
    * LINE_FINANCE_NOT_VERIFIED_MESSAGE · only a LINE_SHOP room → 400
    * LINE_SHOP_STAFF_SEND_DISABLED_MESSAGE · verified but the LINE never chatted
    * (no room yet) → { success: false } "รอลูกค้าทักก่อน" below. The
-   * customer.lineIdFinance column plays no part. See
-   * RoomManagerService.sendCustomerMessage · security.md LINE rule 9.
+   * customer.lineIdFinance column plays no part. Out of the caller's
+   * collections LINE send scope (Task 29 #3, same rule as the GET) → 404
+   * before anything else. See RoomManagerService.sendCustomerMessage ·
+   * security.md LINE rule 9.
    */
   @Post('customer/:customerId/messages')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES', 'ACCOUNTANT')
   async sendCustomerMessage(
     @Param('customerId') customerId: string,
     @Body() body: { text: string },
-    @Req() req: { user: { id: string } },
+    @Req() req: { user: { id: string; role: string; branchId: string | null } },
   ) {
     const text = (body?.text ?? '').trim();
     if (!text) {
       return { success: false, error: 'กรุณาพิมพ์ข้อความก่อนส่ง' };
     }
 
-    const sent = await this.roomManager.sendCustomerMessage(customerId, req.user.id, text);
+    const sent = await this.roomManager.sendCustomerMessage(customerId, req.user, text);
 
     if (!sent.room) {
       return {

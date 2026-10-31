@@ -409,20 +409,33 @@ describe('StaffChatController', () => {
   });
 
   describe('GET /staff-chat/customer/:customerId/messages', () => {
-    it('clamps limit and delegates to roomManager.getCustomerMessages', async () => {
+    // Task 29 #3 — ผู้ใช้ทั้งก้อน (role/branchId) ส่งต่อให้ service ตัดขอบเขตเดียวกับปุ่มส่ง LINE
+    const req = { user: { id: 'user-1', role: 'SALES', branchId: 'branch-1' } };
+
+    it('clamps limit and delegates to roomManager.getCustomerMessages with the caller', async () => {
       const payload = { roomId: 'r-1', channel: 'LINE_FINANCE', messages: [], hasMore: false };
-      jest.spyOn(roomManager, 'getCustomerMessages').mockResolvedValue(payload as any);
+      jest.spyOn(roomManager, 'getCustomerMessages').mockResolvedValue(payload as never);
 
-      const result = await controller.getCustomerMessages('cust-1', '30', undefined);
+      const result = await controller.getCustomerMessages('cust-1', req, '30', undefined);
 
-      expect(roomManager.getCustomerMessages).toHaveBeenCalledWith('cust-1', 30, undefined);
+      expect(roomManager.getCustomerMessages).toHaveBeenCalledWith(
+        'cust-1',
+        req.user,
+        30,
+        undefined,
+      );
       expect(result).toEqual(payload);
     });
 
     it('clamps limit above 100 down to 100', async () => {
-      jest.spyOn(roomManager, 'getCustomerMessages').mockResolvedValue({} as any);
-      await controller.getCustomerMessages('cust-1', '999', 'msg-9');
-      expect(roomManager.getCustomerMessages).toHaveBeenCalledWith('cust-1', 100, 'msg-9');
+      jest.spyOn(roomManager, 'getCustomerMessages').mockResolvedValue({} as never);
+      await controller.getCustomerMessages('cust-1', req, '999', 'msg-9');
+      expect(roomManager.getCustomerMessages).toHaveBeenCalledWith(
+        'cust-1',
+        req.user,
+        100,
+        'msg-9',
+      );
     });
   });
 
@@ -444,7 +457,12 @@ describe('StaffChatController', () => {
         { text: 'hello' },
         { user: { id: 'user-1' } } as any,
       );
-      expect(roomManager.sendCustomerMessage).toHaveBeenCalledWith('cust-1', 'user-1', 'hello');
+      // Task 29 #3 — ส่งผู้ใช้ทั้งก้อน (service ตัดขอบเขตสาขา/งานรายวันเอง)
+      expect(roomManager.sendCustomerMessage).toHaveBeenCalledWith(
+        'cust-1',
+        { id: 'user-1' },
+        'hello',
+      );
       expect(result).toEqual({
         success: false,
         error: 'ลูกค้ายังไม่เคยทักเข้ามาในแชท LINE — รอลูกค้าทักก่อน',

@@ -22,7 +22,9 @@ export function Info({ label, value }: { label: string; value: string | null | u
 function CategoryHeader({ children, action }: { children: ReactNode; action?: ReactNode }) {
   return (
     <div className="mb-3 flex items-center justify-between gap-2">
-      <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{children}</h3>
+      <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        {children}
+      </h3>
       {action}
     </div>
   );
@@ -34,7 +36,12 @@ function EmptyBox({ canEdit, onEdit }: { canEdit: boolean; onEdit: () => void })
     <div className="rounded-lg border border-dashed border-border px-3 py-2.5 text-[13px] leading-snug text-muted-foreground">
       ยังไม่กรอก
       {canEdit && (
-        <button data-ui-control="button" type="button" onClick={onEdit} className="ml-2 inline-flex min-h-6 min-w-6 max-lg:min-h-11 max-lg:min-w-11 items-center justify-center rounded-md font-medium text-primary hover:underline">
+        <button
+          data-ui-control="button"
+          type="button"
+          onClick={onEdit}
+          className="ml-2 inline-flex min-h-6 min-w-6 max-lg:min-h-11 max-lg:min-w-11 items-center justify-center rounded-md font-medium text-primary hover:underline"
+        >
           เพิ่ม
         </button>
       )}
@@ -45,7 +52,13 @@ function EmptyBox({ canEdit, onEdit }: { canEdit: boolean; onEdit: () => void })
 const isEmptyAll = (...vals: Array<string | number | null | undefined>) =>
   vals.every((v) => v === null || v === undefined || v === '');
 
-export default function CustomerSidePanel({ customer, role, canEdit, canUploadDocuments, onEdit }: {
+export default function CustomerSidePanel({
+  customer,
+  role,
+  canEdit,
+  canUploadDocuments,
+  onEdit,
+}: {
   customer: CustomerDetail;
   role: string;
   canEdit: boolean;
@@ -97,7 +110,9 @@ export default function CustomerSidePanel({ customer, role, canEdit, canUploadDo
   });
 
   const refs = Array.isArray(customer.references)
-    ? customer.references.filter((r): r is ReferenceData => r !== null && typeof r === 'object' && !Array.isArray(r))
+    ? customer.references.filter(
+        (r): r is ReferenceData => r !== null && typeof r === 'object' && !Array.isArray(r),
+      )
     : [];
 
   const age = customer.birthDate
@@ -105,17 +120,32 @@ export default function CustomerSidePanel({ customer, role, canEdit, canUploadDo
         const bd = new Date(customer.birthDate as string);
         const today = new Date();
         let a = today.getFullYear() - bd.getFullYear();
-        if (today.getMonth() < bd.getMonth() || (today.getMonth() === bd.getMonth() && today.getDate() < bd.getDate())) a--;
+        if (
+          today.getMonth() < bd.getMonth() ||
+          (today.getMonth() === bd.getMonth() && today.getDate() < bd.getDate())
+        )
+          a--;
         return `${a} ปี`;
       })()
     : null;
 
-  const personalEmpty = isEmptyAll(customer.prefix, customer.nickname, customer.nationalId, customer.birthDate);
+  const personalEmpty = isEmptyAll(
+    customer.prefix,
+    customer.nickname,
+    customer.nationalId,
+    customer.birthDate,
+  );
   const addressIdCardText = displayAddress(customer.addressIdCard);
   const addressCurrentText = displayAddress(customer.addressCurrent);
   const addressEmpty = isEmptyAll(addressIdCardText, addressCurrentText);
   const addressWorkText = displayAddress(customer.addressWork);
-  const workEmpty = isEmptyAll(customer.workplace, customer.occupation, customer.occupationDetail, customer.salary, addressWorkText);
+  const workEmpty = isEmptyAll(
+    customer.workplace,
+    customer.occupation,
+    customer.occupationDetail,
+    customer.salary,
+    addressWorkText,
+  );
 
   return (
     <div className="overflow-hidden rounded-xl bg-card shadow-sm shadow-black/5">
@@ -124,7 +154,12 @@ export default function CustomerSidePanel({ customer, role, canEdit, canUploadDo
         <CategoryHeader
           action={
             canEdit && (
-              <button data-ui-control="button" type="button" onClick={onEdit} className="inline-flex min-h-6 min-w-6 max-lg:min-h-11 max-lg:min-w-11 items-center justify-center rounded-md text-xs font-medium text-primary hover:underline">
+              <button
+                data-ui-control="button"
+                type="button"
+                onClick={onEdit}
+                className="inline-flex min-h-6 min-w-6 max-lg:min-h-11 max-lg:min-w-11 items-center justify-center rounded-md text-xs font-medium text-primary hover:underline"
+              >
                 แก้ไข
               </button>
             )
@@ -135,24 +170,36 @@ export default function CustomerSidePanel({ customer, role, canEdit, canUploadDo
         <div className="flex flex-col gap-3">
           <div>
             <div className="mb-0.5 text-xs text-muted-foreground">เบอร์โทร</div>
-            <ProspectPhoneLine phone={customer.phone} chatPlaceholder={customer.chatPlaceholder} className="text-sm" />
+            <ProspectPhoneLine
+              phone={customer.phone}
+              chatPlaceholder={customer.chatPlaceholder}
+              className="text-sm"
+            />
           </div>
           <Info label="เบอร์สำรอง" value={customer.phoneSecondary} />
           <Info label="อีเมล" value={customer.email} />
           <div>
             <div className="mb-0.5 text-xs text-muted-foreground">LINE Finance (น้องเบส)</div>
             {customer.lineIdFinance ? (
-              <Badge variant="success" appearance="light" size="sm">ผูกแล้ว</Badge>
+              <Badge variant="success" appearance="light" size="sm">
+                ผูกแล้ว
+              </Badge>
             ) : (
-              <Badge variant="secondary" size="sm">ยังไม่ผูก</Badge>
+              <Badge variant="secondary" size="sm">
+                ยังไม่ผูก
+              </Badge>
             )}
           </div>
           <div>
             <div className="mb-0.5 text-xs text-muted-foreground">LINE Shop (ร้าน)</div>
             {customer.lineIdShop ? (
-              <Badge variant="success" appearance="light" size="sm">ผูกแล้ว</Badge>
+              <Badge variant="success" appearance="light" size="sm">
+                ผูกแล้ว
+              </Badge>
             ) : (
-              <Badge variant="secondary" size="sm">ยังไม่ผูก</Badge>
+              <Badge variant="secondary" size="sm">
+                ยังไม่ผูก
+              </Badge>
             )}
           </div>
           <div>
@@ -160,13 +207,23 @@ export default function CustomerSidePanel({ customer, role, canEdit, canUploadDo
             {customer.facebookLink || customer.facebookName ? (
               <div className="text-sm text-foreground">
                 {customer.facebookLink ? (
-                  <a href={customer.facebookLink} target="_blank" rel="noopener noreferrer" className="break-all text-primary hover:underline">
+                  <a
+                    href={customer.facebookLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="break-all text-primary hover:underline"
+                  >
                     {customer.facebookName || customer.facebookLink}
                   </a>
                 ) : (
                   customer.facebookName
                 )}
-                {customer.facebookFriends && <span className="text-muted-foreground"> · เพื่อน {customer.facebookFriends}</span>}
+                {customer.facebookFriends && (
+                  <span className="text-muted-foreground">
+                    {' '}
+                    · เพื่อน {customer.facebookFriends}
+                  </span>
+                )}
               </div>
             ) : (
               <div className="text-sm text-foreground">-</div>
@@ -175,7 +232,12 @@ export default function CustomerSidePanel({ customer, role, canEdit, canUploadDo
           {customer.googleMapLink && (
             <div>
               <div className="mb-0.5 text-xs text-muted-foreground">ลิงก์ Google Maps</div>
-              <a href={customer.googleMapLink} target="_blank" rel="noopener noreferrer" className="break-all text-sm text-primary hover:underline">
+              <a
+                href={customer.googleMapLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="break-all text-sm text-primary hover:underline"
+              >
                 {customer.googleMapLink}
               </a>
             </div>
@@ -192,8 +254,18 @@ export default function CustomerSidePanel({ customer, role, canEdit, canUploadDo
           <div className="flex flex-col gap-3">
             <Info label="คำนำหน้า" value={customer.prefix} />
             <Info label="ชื่อเล่น" value={customer.nickname} />
-            <Info label="เลขบัตร ปชช." value={role === 'OWNER' ? formatNationalId(customer.nationalId) : maskNationalId(customer.nationalId)} />
-            <Info label="วันเกิด" value={customer.birthDate ? formatDateShort(customer.birthDate) : null} />
+            <Info
+              label="เลขบัตร ปชช."
+              value={
+                role === 'OWNER'
+                  ? formatNationalId(customer.nationalId)
+                  : maskNationalId(customer.nationalId)
+              }
+            />
+            <Info
+              label="วันเกิด"
+              value={customer.birthDate ? formatDateShort(customer.birthDate) : null}
+            />
             <Info label="อายุ" value={age} />
           </div>
         )}
@@ -222,7 +294,10 @@ export default function CustomerSidePanel({ customer, role, canEdit, canUploadDo
             <Info label="ชื่อที่ทำงาน" value={customer.workplace} />
             <Info label="อาชีพ" value={customer.occupation} />
             <Info label="รายละเอียดอาชีพ" value={customer.occupationDetail} />
-            <Info label="เงินเดือน" value={customer.salary ? `${parseFloat(customer.salary).toLocaleString()} บาท` : null} />
+            <Info
+              label="เงินเดือน"
+              value={customer.salary ? `${parseFloat(customer.salary).toLocaleString()} บาท` : null}
+            />
             <Info label="ที่อยู่ที่ทำงาน" value={addressWorkText} />
           </div>
         )}
@@ -237,9 +312,14 @@ export default function CustomerSidePanel({ customer, role, canEdit, canUploadDo
           <div className="flex flex-col gap-3">
             {refs.map((ref, idx) => (
               <div key={idx} className="rounded-xl border border-border/60 bg-muted/30 p-3">
-                <div className="mb-2 text-xs font-medium text-muted-foreground">บุคคลอ้างอิง {idx + 1}</div>
+                <div className="mb-2 text-xs font-medium text-muted-foreground">
+                  บุคคลอ้างอิง {idx + 1}
+                </div>
                 <div className="flex flex-col gap-2">
-                  <Info label="ชื่อ" value={[ref.prefix, ref.firstName, ref.lastName].filter(Boolean).join(' ')} />
+                  <Info
+                    label="ชื่อ"
+                    value={[ref.prefix, ref.firstName, ref.lastName].filter(Boolean).join(' ')}
+                  />
                   <Info label="เบอร์โทร" value={ref.phone} />
                   <Info label="ความสัมพันธ์" value={ref.relationship} />
                 </div>
@@ -254,8 +334,11 @@ export default function CustomerSidePanel({ customer, role, canEdit, canUploadDo
         <div className="border-t border-border p-4">
           <CategoryHeader>เอกสาร</CategoryHeader>
           <div className="mb-3">
-            <label htmlFor={`${uiFieldId}-1`} className="mb-2 block text-xs text-muted-foreground">อัปโหลดเอกสาร (รูป/PDF ไม่เกิน 10MB)</label>
-            <input id={`${uiFieldId}-1`}
+            <label htmlFor={`${uiFieldId}-1`} className="mb-2 block text-xs text-muted-foreground">
+              อัปโหลดเอกสาร (รูป/PDF ไม่เกิน 10MB)
+            </label>
+            <input
+              id={`${uiFieldId}-1`}
               ref={docFileRef}
               type="file"
               accept="image/*,.pdf"
@@ -264,7 +347,9 @@ export default function CustomerSidePanel({ customer, role, canEdit, canUploadDo
               disabled={uploadDocumentMutation.isPending}
               className="w-full text-sm text-muted-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-primary/10 file:px-4 file:py-2 file:text-sm file:font-medium file:text-primary"
             />
-            {uploadDocumentMutation.isPending && <div className="mt-2 text-sm text-primary">กำลังอัปโหลด...</div>}
+            {uploadDocumentMutation.isPending && (
+              <div className="mt-2 text-sm text-primary">กำลังอัปโหลด...</div>
+            )}
           </div>
           {customer.documents && customer.documents.length > 0 ? (
             <div className="flex flex-col gap-3">
@@ -272,10 +357,23 @@ export default function CustomerSidePanel({ customer, role, canEdit, canUploadDo
                 const isImage = docUrl.startsWith('data:image');
                 const isPdf = docUrl.startsWith('data:application/pdf');
                 return (
-                  <div key={idx} className="flex items-start gap-3 rounded-lg border border-border p-3">
+                  <div
+                    key={idx}
+                    className="flex items-start gap-3 rounded-lg border border-border p-3"
+                  >
                     <div className="min-w-0 flex-1">
-                      {isImage && <img src={docUrl} alt={`doc-${idx}`} className="h-24 w-full rounded object-cover" />}
-                      {isPdf && <div className="rounded bg-destructive/5 px-2 py-1 text-xs font-medium text-destructive dark:bg-destructive/10">PDF</div>}
+                      {isImage && (
+                        <img
+                          src={docUrl}
+                          alt={`doc-${idx}`}
+                          className="h-24 w-full rounded object-cover"
+                        />
+                      )}
+                      {isPdf && (
+                        <div className="rounded bg-destructive/5 px-2 py-1 text-xs font-medium text-destructive dark:bg-destructive/10">
+                          PDF
+                        </div>
+                      )}
                     </div>
                     {canEdit && (
                       <button

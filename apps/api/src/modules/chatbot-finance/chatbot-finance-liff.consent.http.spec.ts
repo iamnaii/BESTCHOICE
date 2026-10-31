@@ -63,6 +63,10 @@ describe('POST /api/chatbot/finance/liff/verify-otp — consent (HTTP)', () => {
     // ชี้ทางของลูกค้าเอง: ปิดหน้านี้ → ทักแชท LINE น้องเบส → การ์ด "เริ่มยืนยันตัวตน" → ติ๊กยินยอม
     expect(message).toContain('ติ๊กยินยอม');
     expect(message).toContain('เริ่มยืนยันตัวตน');
+    // fix round 1 M6 — ลูกค้าที่มาจากลิงก์ของบอท OA ร้าน (อาจยังไม่ได้เป็นเพื่อนน้องเบส): บอทร้านตอบลิงก์ยืนยันเมื่อพิมพ์ "ลงทะเบียน"
+    // (line-oa-chatbot.controller handleRegisterLink → buildShopVerifyPrompt) · ไม่มี ID/ลิงก์เพิ่มเพื่อน OA การเงินในระบบ ⇒ ไม่อ้าง
+    expect(message).toContain('แชท LINE ร้าน');
+    expect(message).toContain('“ลงทะเบียน”');
     expect(verifyOtp).not.toHaveBeenCalled();
   };
 

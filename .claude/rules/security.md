@@ -38,7 +38,7 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
 - Error messages เป็นภาษาไทย เช่น `{ message: 'กรุณาระบุชื่อ' }`
 
 ## Intentionally Public Endpoints (ไม่มี JwtAuthGuard)
-- `chatbot-finance-liff` + `line-oa/liff/*` — LINE LIFF endpoints สำหรับลูกค้าเข้าถึงผ่าน LINE (ใช้ LIFF token แทน JWT) · LIFF token พิสูจน์แค่ว่า "เป็น LINE user คนนี้" ไม่ได้พิสูจน์ว่าเป็นลูกค้าคนไหน ⇒ **การผูก LINE กับลูกค้า (`customers.line_id_finance` / `customer_line_links`) ต้องผ่าน OTP ทาง SMS ไปเบอร์ของลูกค้าเท่านั้น** (`POST chatbot/finance/liff/request-otp` → `verify-otp` → `VerificationService.linkVerifiedLine` — ทางเดียว ทำผลข้างเคียงครบ: ดูดห้องผู้สนใจ · link row · journey · rich menu) · หน้า LIFF การเงิน/ลิงก์ชำระหาลูกค้าจาก**แถว OTP ที่ยังผูก**เท่านั้น — คอลัมน์ `line_id_finance` ไม่ให้สิทธิ์ (กติกาข้อ 9 ของหัวข้อ LINE) · `POST line-oa/liff/register/lookup|confirm` (เดิมผูกด้วยเบอร์อย่างเดียว · lookup คืน `customerId` ของเจ้าของเบอร์) **ตอบ 410 ถาวร** และหน้า `/liff/register` พาไป `/liff/finance-verify` (Task 19, 2026-10-30) · endpoint ใหม่ที่เขียน `line_id_finance`/`customer_line_links` หรือคืน `customerId`/ชื่อของเจ้าของเบอร์ให้ผู้ที่ยังไม่ผ่าน OTP = security bug · กติกา OA ร้าน / redirect / LINE Login nonce / เพดาน OTP / โหมดทดสอบ และ**ข้อยกเว้นที่ยังเหลือ** (ทดสอบเครื่องจริงของ I-A · ค่า `line_id_finance` ค้างที่ยังแสดงบนหน้าจอพนักงาน · push ฝั่งร้านที่ยังอ่าน `line_id_shop`) อยู่หัวข้อ "LINE — ตัวตนลูกค้า · OTP · redirect" ด้านล่าง
+- `chatbot-finance-liff` + `line-oa/liff/*` — LINE LIFF endpoints สำหรับลูกค้าเข้าถึงผ่าน LINE (ใช้ LIFF token แทน JWT) · LIFF token พิสูจน์แค่ว่า "เป็น LINE user คนนี้" ไม่ได้พิสูจน์ว่าเป็นลูกค้าคนไหน ⇒ **การผูก LINE กับลูกค้า (`customers.line_id_finance` / `customer_line_links`) ต้องผ่าน OTP ทาง SMS ไปเบอร์ของลูกค้าเท่านั้น** (`POST chatbot/finance/liff/request-otp` → `verify-otp` → `VerificationService.linkVerifiedLine` — ทางเดียว ทำผลข้างเคียงครบ: ดูดห้องผู้สนใจ · link row · journey · rich menu · **ความยินยอม `pdpa_consents` (Task 33 — กติกาข้อ 10)**) · หน้า LIFF การเงิน/ลิงก์ชำระหาลูกค้าจาก**แถว OTP ที่ยังผูก**เท่านั้น — คอลัมน์ `line_id_finance` ไม่ให้สิทธิ์ (กติกาข้อ 9 ของหัวข้อ LINE) · `POST line-oa/liff/register/lookup|confirm` (เดิมผูกด้วยเบอร์อย่างเดียว · lookup คืน `customerId` ของเจ้าของเบอร์) **ตอบ 410 ถาวร** และหน้า `/liff/register` พาไป `/liff/finance-verify` (Task 19, 2026-10-30) · endpoint ใหม่ที่เขียน `line_id_finance`/`customer_line_links` หรือคืน `customerId`/ชื่อของเจ้าของเบอร์ให้ผู้ที่ยังไม่ผ่าน OTP = security bug · กติกา OA ร้าน / redirect / LINE Login nonce / เพดาน OTP / โหมดทดสอบ และ**ข้อยกเว้นที่ยังเหลือ** (ทดสอบเครื่องจริงของ I-A · ค่า `line_id_finance` ค้างที่ยังแสดงบนหน้าจอพนักงาน · push ฝั่งร้านที่ยังอ่าน `line_id_shop`) อยู่หัวข้อ "LINE — ตัวตนลูกค้า · OTP · redirect" ด้านล่าง
 - `line-oa/liff/contracts/:contractId/document` + `line-oa/liff/receipts/:receiptId/download` (`GET` · `LiffDownloadController`) — **ไม่มี `LiffTokenGuard`** (เปิดเป็นแท็บใหม่ แนบ header ไม่ได้) · หลักฐานเดียวคือตั๋วครั้งเดียว `?dl=` ที่ออกโดย `POST line-oa/liff/download-ticket` (ผ่าน `LiffTokenGuard` ทาง header) — 256 บิต · เก็บเฉพาะ sha256 · อายุ 60 วิ · ผูก (LINE, ชนิด, id เอกสาร) · ใช้แล้วเผา (**เฉพาะ `GET`** — `HEAD` ตอบ 405 ไม่แตะตั๋ว · Task 24 M-5) · ตรวจเจ้าของซ้ำด้วย LINE ของตั๋ว · throttle 30/นาที (Task 22 M-3 · กติกาข้อ 7 ของหัวข้อ LINE ด้านล่าง) · ใน access manifest จัดเป็น `"classification":"public"` (fix round 1 M-4 — แบบเดียวกับเส้นที่ใช้ token ในลิงก์อื่น · ไม่มี guard ตัวตน)
 - `line-oa/line-login` (`GET authorize`, `GET callback`, `POST verify`) — LINE Login สำหรับหน้า LIFF ที่เปิดนอก LIFF (เบราว์เซอร์ / in-app browser) · `@SkipCsrf()` (ไม่มี session) · `verify` throttle 20/นาที/IP ยืนยัน id_token กับ LINE + nonce ของแท็บ แล้วคืนตัวตนจาก token เท่านั้น (ไม่เขียนอะไร) — กติกาข้อ 3 ของหัวข้อ LINE ด้านล่าง
 - `sms-webhook` — รับ SMS delivery callback จาก provider
@@ -54,7 +54,7 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
 
 **หมายเหตุ**: ถ้าพบ controller ที่ไม่มี guard ที่ไม่อยู่ในรายการนี้ → ถือว่าเป็น security bug
 
-## LINE — ตัวตนลูกค้า · OTP · redirect (Task 20 + 21 + 22 + 24 + 27 + 29, 2026-10-31)
+## LINE — ตัวตนลูกค้า · OTP · redirect (Task 20 + 21 + 22 + 24 + 27 + 29 + 33, 2026-10-31)
 
 **OTP ทาง SMS คือหลักฐานตัวตนเดียวของลูกค้าฝั่ง LINE** — LIFF token / LINE webhook บอกแค่ "เป็น LINE user คนนี้"
 ไม่ได้บอกว่าเป็นลูกค้าคนไหน. กติกาด้านล่างบังคับในโค้ดแล้ว เขียน endpoint/บอทใหม่ต้องทำตาม:
@@ -153,6 +153,7 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
    LINE นั้น รวมแถวที่ถูกลบ + ปิดแถวของ LINE นั้น) · `{ customerId }` (พนักงาน — ล้างคอลัมน์ + ปิดแถวของลูกค้าคนนั้น**เท่านั้น** ห้ามปิดตาม LINE: ค่าในคอลัมน์อาจเป็น
    U-id ที่พนักงานพิมพ์ซึ่งยืนยัน OTP ไว้กับลูกค้าอีกคน) · ไม่สลับ rich menu · writer ใหม่ของ `line_id_finance`/`customer_line_links` ต้องผ่าน OTP หรือ helper นี้ ·
    **ล้าง `chat_rooms.verified_at` ในทรานแซกชันเดียวกัน** (Task 24 M-8 — `clearFinanceRoomVerification`: ห้อง LINE การเงินของ LINE ที่หลุด + ของลูกค้าที่ไม่เหลือแถวที่ยังผูก ·
+   Task 33: ตั้ง `chat_rooms.finance_line_unlinked_at` = เวลาเดียวกับแถว link ที่ปิด (ป้าย "ยกเลิกผูกแล้ว" ในอินบ็อกซ์ — ข้อ 11) · `bind` ล้างค่านี้เมื่อห้องกลับมายืนยัน ·
    `bind` เรียกตัวเดียวกันเมื่อชี้แถวของลูกค้าไป LINE ใหม่ (ห้องของ LINE เดิม) และเมื่อ LINE ย้ายมาจากลูกค้าอื่น (ห้องของลูกค้าเดิม) ⇒ แม่แบบ `verifiedOnly` หยุดส่งเข้าห้องนั้น)
 7. **id_token ไม่อยู่ใน URL ที่ไหนอีก (Task 22 M-3)**: `LiffTokenGuard` อ่าน header `X-Liff-Id-Token` เท่านั้น (`?idToken=` ถูกถอด) · ลิงก์ดาวน์โหลด
    (สัญญา PDF / ใบเสร็จ) = เว็บกดแล้วเปิดแท็บเปล่าในจังหวะคลิก → `POST line-oa/liff/download-ticket` (header) → เปิด `…?dl=<ตั๋ว>`
@@ -220,10 +221,36 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
    - ห้องแชท LINE การเงินใหม่ไม่จับคู่ลูกค้าด้วยคอลัมน์ (`chat-prospect.service.ts` `findExistingCustomerId`: ห้องเดิมของ LINE เดียวกัน → แถว link ที่ยังผูก →
      ไม่พบ = สร้างผู้สนใจใหม่ · คอลัมน์ใช้เฉพาะ `line_id_shop` ของห้อง LINE ร้าน)
 
+10. **ความยินยอมเป็นส่วนหนึ่งของการผูก LINE การเงิน — แบบบังคับ** (Task 33 · mockup C1–C3 ที่เจ้าของอนุมัติ · canvas cRecord):
+    หน้า `/liff/finance-verify` ขั้น 1 ติ๊ก "ยินยอมให้บริษัทส่งแจ้งเตือนค่างวด ใบเสร็จ และข้อมูลสัญญาทาง LINE" (จำเป็น — ไม่ติ๊ก = ปุ่ม "ส่งรหัส OTP" disabled จริง + เหตุผลใต้ปุ่ม ·
+    ลิงก์ `/privacy`) ติดไปกับขั้น OTP · **ฝั่ง server ไม่เชื่อหน้าเว็บ**: `POST chatbot/finance/liff/verify-otp` บังคับ `consent === true` ที่ DTO (`@Equals(true)` บนช่องชนิด
+    `unknown` — ValidationPipe กลางเปิด `enableImplicitConversion` ถ้าประกาศเป็น boolean สตริง `"false"` จะกลายเป็น true) · ไม่มี/false/ค่าอื่น = 400
+    `LINE_FINANCE_CONSENT_REQUIRED_MESSAGE` (บอกหน้ารุ่นเก่าให้ปิดแล้วเปิดใหม่จากการ์ด "เริ่มยืนยันตัวตน") **ก่อนแตะ service** (ไม่กิน attempt) · `VerificationService.verifyOtp`
+    ตรวจซ้ำ (fail closed) · บันทึก `pdpa_consents` GRANTED (`pdpa/line-finance-consent.ts` `recordLineFinanceConsentInTx` — ข้อความ/วัตถุประสงค์
+    `LINE_FINANCE_CONSENT_PURPOSE`/เวอร์ชัน `LINE_FINANCE_CONSENT_VERSION` · IP + user agent เป็นหลักฐาน · `capturedById` ว่าง) **ในทรานแซกชันเดียวกับการผูก** (ท้าย `bindInTx`
+    หลังล็อกแถวลูกค้า — ลำดับล็อก ลูกค้า → link → ห้อง ของข้อ 6 คงเดิม · insert อ้าง FK ไม่ล็อกตารางอื่น) · รหัสผิด/หมดอายุ/ล็อก/409 ผูกไม่ได้ = ไม่บันทึกอะไร ·
+    **ครั้งเดียวต่อลูกค้า**: มีแถว GRANTED ที่ยังมีผล (`deletedAt` ว่าง) ของวัตถุประสงค์นี้อยู่แล้ว = ใช้แถวเดิม (อ่านภายใต้ล็อกแถวลูกค้า · ทรานแซกชันที่ `runWithTransactionRetry` ลองใหม่อ่านใหม่ — ไม่ซ้ำ) ·
+    ถูกเพิกถอนแล้วผูก + ยินยอมใหม่ = แถวใหม่ · test-mode bypass ใช้ทางเดียวกัน · คำตอบคืน `consentRecordedAt` (หน้า C3 "บันทึกความยินยอมแล้ว เมื่อ …" —
+    API รุ่นเก่าไม่ส่ง = หน้าไม่แสดงกล่องนี้) · ผู้ตรวจความยินยอมเดิมนับแถวนี้ (ปักที่ `verification-consent.db.spec.ts`): รอบเตือนค่างวด/ค้างชำระ
+    (`NotificationReminderService.ensurePdpaConsentOrLogSkip`) และ `PDPAService.hasActiveConsent` (compliance · collections-notifier · line-flex-builder) ⇒ ลูกค้าเก่าที่ไม่มี
+    ความยินยอมเดิมแต่ผูกผ่าน OTP + ยินยอม ได้รับแจ้งเตือน · **deploy:** API ก่อนหรือพร้อมเว็บ 26.10.75 (เว็บใหม่ + API เก่า = ผูกได้ แต่ไม่บันทึกความยินยอม —
+    whitelist ตัดช่องทิ้ง · หน้าไม่โชว์กล่องวันที่) · API ใหม่ + หน้า LIFF เก่า = 400 ข้อความข้างบน (ลูกค้าเปิดหน้าใหม่) · migration ไม่มีสำหรับข้อนี้
+11. **สถานะ LINE การเงินของห้องในอินบ็อกซ์คำนวณฝั่ง server — ไม่ส่ง U-id** (Task 33 · mockup A1–A3): `GET /staff-chat/rooms` (ทั้งสองทางของ `listRooms`) และ
+    `GET /staff-chat/rooms/:id` คืน `financeLineStatus: { verified, unlinkedAt } | null` (`RoomManagerService.attachFinanceLineStatus` → `findFinanceLineRoomStatuses`
+    ใน `otp-verified-customer.ts` — สอง query ต่อหน้า) · `verified` = **กติกาเดียว** `findOtpVerifiedRoomCustomerId` (แถว `VERIFIED_FINANCE_LINK_WHERE` ของ LINE ห้องนี้เป็นของ
+    ลูกค้าของห้อง — ย้ายมาจาก `CannedResponseSenderService` ซึ่งเรียกตัวเดียวกันแล้ว ⇒ ป้าย "ยืนยัน OTP แล้ว" ตรงกับห้องที่ข้อความสำเร็จรูปเติมตัวแปรลูกค้า) ·
+    ไม่ verified + `unlinkedAt` = ห้องเคยยืนยันแล้วหลุด → ป้าย "ยกเลิกผูกแล้ว" (รายชื่อแชท ป้ายแรก · หัวห้อง + คำอธิบายหนึ่งบรรทัด · บรรทัดเตือนเหนือกรอบพิมพ์ —
+    ไม่บล็อกการพิมพ์/ส่ง) · วันที่ = `chat_rooms.finance_line_unlinked_at` (ข้อ 6 — ครอบลูกค้าเปลี่ยน LINE ซึ่งแถว link ถูกชี้ไป LINE ใหม่ ประวัติของ LINE เก่าหาย)
+    แล้วถอยไปแถว link ที่ปิดของคู่ (LINE, ลูกค้าของห้อง) เดียวกัน (ห้องที่หลุดก่อน migration `20261109000000`) · ไม่ verified ไม่มีวันที่ = ไม่เคยผูก LINE นี้กับลูกค้านี้
+    (พนักงานผูกห้องเอง/ผู้สนใจ) — **ไม่อยู่ใน mockup หน้าเว็บไม่แสดงอะไร (หน้าตาเดิม — รอเจ้าของตัดสิน)** · ห้องช่องอื่น/ไม่มีลูกค้า = null · คอลัมน์ภายในถูกตัดออกจากคำตอบ ·
+    หน้าต่าง "ข้อมูลลูกค้า" ของอินบ็อกซ์ (`Customer360Panel`) แสดงแถว "LINE น้องเบส (การเงิน)" จาก `financeLine` ของ `GET /customers/:id` (ชุดเดียวกับฟอร์มแก้ไข — ข้อ 9) แทน
+    U-id ดิบ แสดงเสมอแม้ยังไม่ผูก · **ที่ยังส่งถึงหน้าเว็บ (ไม่ได้แตะ):** `lineUserId` ของห้องเอง (ฟิลด์เดิมของ room payload — หน้าเว็บใช้เป็นชื่อสำรองเมื่อไม่มีชื่อ) และคอลัมน์
+    `lineIdFinance` ของ `GET /customers/:id` (อินบ็อกซ์เลิกแสดงแล้ว — ผู้อ่านอื่นดูหัวข้อ I3)
+
 **ข้อยกเว้นที่ยังเหลือ (รู้ตัว — ยังไม่ได้ปิด อย่าอ่านกติกาข้างบนว่า "ปิดหมดแล้ว"):**
 - **I3 — ปิดในโค้ดแล้ว (Task 22 กติกาข้อ 6 + fix round 1 กติกาข้อ 9) · ที่ยังเหลือ (ส่วนใหญ่เป็นเรื่องการแสดงผล):** (ก) ค่า `line_id_finance` ที่พนักงาน/นำเข้า
-  เขียนไว้**ก่อน deploy Task 22** ยังอยู่ — ไม่ให้สิทธิ์ LIFF/ลิงก์ชำระ และไม่เป็นปลายทางข้อความแล้ว (ข้อ 9) แต่ยังแสดงที่ แผง 360 ของอินบ็อกซ์
-  (`CustomerInfoRow` "LINE ID (Finance / น้องเบส)" — ค่า U-id ดิบ · เปลี่ยนเป็นสถานะต้อง mockup) · คอลัมน์รายงานลูกหนี้ · ช่อง `{customer_line_id}` ในเอกสารสัญญา ·
+  เขียนไว้**ก่อน deploy Task 22** ยังอยู่ — ไม่ให้สิทธิ์ LIFF/ลิงก์ชำระ และไม่เป็นปลายทางข้อความแล้ว (ข้อ 9) แต่ยังแสดงที่ ~~แผง 360 ของอินบ็อกซ์
+  (`CustomerInfoRow` "LINE ID (Finance / น้องเบส)")~~ (**ปิดแล้ว Task 33** — แถวสถานะจาก `financeLine` ข้อ 11) · คอลัมน์รายงานลูกหนี้ · ช่อง `{customer_line_id}` ในเอกสารสัญญา ·
   `GET /customers/:id` ยังคืนคอลัมน์ `lineIdFinance` คู่กับ `financeLine` (staff-only · ฟอร์ม/แผงข้างไม่ใช้แล้ว — ตัดออกได้เมื่ออินบ็อกซ์เลิกใช้)
   ⇒ พนักงานอาจเห็นว่าลูกค้า "มี LINE" ทั้งที่ข้อความไม่ถูกส่ง (ปุ่ม "ส่ง LINE" · ตัวกรอง "ไม่มี LINE" · ตัวนับ LINE ของโหมดโฟกัส · แบนเนอร์นัดครบกำหนด —
   Task 24 RR-M2 · ป้าย/แท็บ/ช่องพิมพ์ของแผง 360 คิวทวงถาม + ฟอร์มแก้ไขลูกค้า + ป้ายแผงข้างหน้าลูกค้า (`CustomerSidePanel`) — Task 27 ใช้แถว OTP แล้ว · ข้อ 9) · **กวาดหนึ่งครั้งก่อนเปิด LIFF ให้ลูกค้า (1 ธ.ค.)**
@@ -302,7 +329,8 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
   ให้ทางส่งตามห้อง `LINE_FINANCE` ต้องมี `verifiedAt`/แถวที่ยังผูก หรือปลด `customerId` ของห้องตอนยกเลิกผูก — ต้องตัดสินเรื่องประวัติแชทก่อน) ·
   **ข้อความสำเร็จรูปที่พนักงานกดในห้อง `LINE_FINANCE`** เติมตัวแปรลูกค้าเฉพาะห้องที่ `otpVerifiedRoomCustomerId` ผ่าน (กติกาเดียวกับลูกค้ากดเองข้อ 8 — Task 24 round 3 ·
   m-R2-1 ทางเลือก ข) ⇒ ห้องของ LINE ที่ยกเลิกผูกได้คำกลาง ไม่ได้ยอด/สัญญาของลูกค้า · `chat_rooms.customer_id` ไม่ถูกแตะ (ไม่ใช้ทางเลือก ก) · ข้อความที่พนักงาน**พิมพ์เอง**
-  ในห้องนั้นยังส่งถึงผู้ถือ LINE เก่าได้ ⇒ งานเว็บต่อ: ป้าย "ยกเลิกผูกแล้ว/ยังไม่ยืนยัน" บนห้องใน inbox (ต้องมี mockup) ·
+  ในห้องนั้นยังส่งถึงผู้ถือ LINE เก่าได้ ⇒ ~~งานเว็บต่อ: ป้าย "ยกเลิกผูกแล้ว/ยังไม่ยืนยัน" บนห้องใน inbox~~ — **"ยกเลิกผูกแล้ว" ทำแล้ว (Task 33 · ข้อ 11 — เตือน ไม่บล็อก)** ·
+  ห้องที่ไม่เคยผูก ("ยังไม่ยืนยัน") ยังไม่มีป้าย (ไม่อยู่ใน mockup — รอเจ้าของ) ·
   พนักงานกดส่งเองยังใช้ลูกค้าของห้อง (บอทขาย `LINKED_BY_PHONE`
   ทำให้พนักงานเห็นห้องเป็นลูกค้าคนนั้น — social engineering คลาสเดียวกับ I3) · Facebook: ปุ่มที่ลูกค้ากดได้คำกลางเสมอ — ตรวจแม่แบบที่ใช้ตัวแปรลูกค้าและมี
   ปุ่ม `TEMPLATE:` บน Facebook ว่ายังสื่อความได้
@@ -324,6 +352,14 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
   fix round 1: ทางผูกห้องในกล่องข้อความ / ผลวิเคราะห์สเตทเม้นเสร็จ / ทำเครื่องหมายแชทขาย ล็อกลูกค้าก่อนห้องแล้ว + bind ลองซ้ำเป็นตาข่าย · managed `room()` ไล่แล้ว ไม่มีทางที่ล็อก) ·
   M-3 (PATCH ล้างช่องตัดสินด้วยคอลัมน์ ไม่มี audit — แกนเดียวกับปุ่ม ข้อ 6) · คำถามเจ้าของจาก Task 24 fix round 1 (branch scope ของแท็บ "แชท LINE" — ข้อ 9) ·
   ไม่ต้องอัปเดต access manifest (decorator ไม่เปลี่ยน) · ฝั่งเว็บไม่ต้องเปลี่ยนเพื่อให้ทำงาน (ข้อความ 404 ของแท็บแชทเป็นงานเว็บต่อ)
+- **Task 33 — ความยินยอมตอนผูก: ช่องว่างที่รู้ (ตรวจในโค้ดแล้ว — ไม่แก้ในงานนี้):** (1) **ลูกค้าถอนความยินยอมเองใน LIFF ไม่ได้** — ไม่มีหน้า/endpoint ที่แตะ
+  `pdpa_consents` ฝั่งลูกค้า · ทางที่มีจริง: ติดต่อเจ้าหน้าที่ → OWNER กด "ถอน" ที่เมนู PDPA (`POST /pdpa/consent/:id/revoke` — แถวของข้อ 10 แสดงเวอร์ชัน
+  `line-finance-verify-2026-10`) ⇒ หน้า C3 จึงเขียน "ติดต่อเจ้าหน้าที่ทางแชทนี้ หรือโทรหาสาขา …" · `POST line-oa/liff/consent` เป็นคนละธง (`customers.chat_consent`
+  — โมดัล "ข้อตกลงการใช้งาน" ของ `/liff/contract` · ไม่มีผู้ตรวจรอบแจ้งเตือนอ่าน · โมดัลนั้นเขียนว่า "ถอนความยินยอมได้ตลอดเวลาผ่านหน้าโปรไฟล์" แต่หน้าโปรไฟล์ไม่มีทางนั้น) ·
+  (2) **ผู้ตรวจความยินยอมดูแค่ "มี GRANTED สักแถว"** (`ensurePdpaConsentOrLogSkip` · `hasActiveConsent`) ไม่ดูวัตถุประสงค์ ⇒ ลูกค้าที่มีความยินยอมจากตอนทำสัญญาด้วย
+  เพิกถอนแถวเดียวยังได้แจ้งเตือนต่อ · และ**กลุ่มผู้รับแคมเปญ LINE ร้าน** (`line-campaign.service.ts` — `pdpaConsents: { some: GRANTED }`) นับแถวของข้อ 10
+  (วัตถุประสงค์ "แจ้งเตือนค่างวด ใบเสร็จ และข้อมูลสัญญา" ไม่ใช่การตลาด) ด้วย — รอเจ้าของตัดสิน · (3) แถว `SKIPPED` ของรอบแจ้งเตือน (ไม่มีความยินยอม) นับเป็น "แจ้งแล้ววันนี้"
+  (`alreadyNotifiedToday`) ⇒ ลูกค้าที่ยินยอมหลังรอบเช้าของวันนั้นได้แจ้งเตือนตั้งแต่รอบวันถัดไป
 - เวลาตอบ `requestOtp`: SMS ไม่ถูก await และทุกทางที่สำเร็จรอขั้นต่ำ 1 วิ — ส่วนต่างที่เหลือคือ query เพดานของเบอร์จริง (ระดับมิลลิวินาที อยู่ใต้ขั้นต่ำ) ·
   ถ้า provider ช้าเกิน 1 วิ SMS ยังส่งต่อหลังตอบ (Cloud Run ลด CPU หลังตอบ — อาจช้าลง ไม่หาย)
 

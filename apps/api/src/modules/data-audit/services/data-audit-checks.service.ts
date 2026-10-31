@@ -1,10 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
-import {
-  LEGACY_OPENING_FLOW,
-  LEGACY_PRIOR_RECEIPT_FLOW,
-} from '../../accounting/peak-export-exclusion';
+import { LEGACY_OPENING_FLOW } from '../../accounting/peak-export-exclusion';
 import { ADVANCE_VAT_META, advanceVatOutstanding } from '../../journal/advance-vat';
 import {
   CONTRACT_RECEIVABLE_TOLERANCE,
@@ -23,13 +20,16 @@ import {
 import { loadLateFeePaidByPaymentIds } from '../../payments/services/payment-late-fee-paid.util';
 import { AuditCheckResult } from '../data-audit.types';
 import { LEGACY_UNTOUCHED_PAYMENT } from './legacy-untouched-payment';
+import {
+  EARLY_PAYOFF_CONTRACTS,
+  EARLY_PAYOFF_FLOW,
+  SCHEDULE_ROWS_CLEARED_BY_ENTRY,
+} from './payment-backing';
 
 /** รายการเปิดสัญญา 1A — `cpa-templates/contract-activation-1a.template.ts:71` */
 const CONTRACT_ACTIVATION_TAG = '1A';
 /** รายการเปิดสัญญาใหม่ของการเปลี่ยนเครื่อง A.1 — `cpa-templates/exchange-new-contract-1a.template.ts:68` */
 const EXCHANGE_NEW_CONTRACT_FLOW = 'exchange-new-contract-1a';
-/** ปิดยอดก่อนกำหนด JP4 (รายการระดับสัญญา ไม่มี `paymentId`) — `contracts/contract-payment.service.ts:842-843` */
-const EARLY_PAYOFF_FLOW = 'early-payoff';
 /** ต้นทุนขายฝั่ง SHOP ตอนเปิดสัญญา (JE A) — `cpa-templates/shop-inventory-transfer.template.ts:321` */
 export const SHOP_INVENTORY_TRANSFER_COGS_FLOW = 'shop-inventory-transfer-cogs';
 /**
@@ -258,7 +258,8 @@ export class DataAuditChecksService {
    *   (b) an entry that credits 11-2103 for the installment's schedule row without a paymentId
    *       (nightly advance / park consumption, 6a/6b) — not the legacy prior-receipt marker, or
    *   (c) the contract's early payoff (JP4 is one contract-level entry for every row it pays).
-   * Imported rows still untouched since the cutover (`LEGACY_UNTOUCHED_PAYMENT`) are exempt — their
+   * (b) and (c) are `payment-backing.ts` — the same sets `backfill:receipts` uses to skip rows whose
+   * money is documented elsewhere. Imported rows still untouched since the cutover (`LEGACY_UNTOUCHED_PAYMENT`) are exempt — their
    * money was booked in PEAK. Set-based (anti-joins) so the nightly run does not rescan the journal
    * per payment row. `details` capped at 50 (`orphanPaymentRows` — the contract trace reads every row).
    */
@@ -295,22 +296,9 @@ export class DataAuditChecksService {
         WHERE je.reference_type = 'AUTO' AND je.status = 'POSTED' AND je.deleted_at IS NULL
           AND je.metadata->>'paymentId' IS NOT NULL
       ),
-      backed_schedule AS (
-        SELECT DISTINCT je.metadata->>'installmentScheduleId' AS id
-        FROM journal_entries je
-        JOIN journal_lines jl ON jl.journal_entry_id = je.id AND jl.deleted_at IS NULL
-        WHERE je.status = 'POSTED' AND je.deleted_at IS NULL
-          AND je.metadata->>'installmentScheduleId' IS NOT NULL
-          AND jl.account_code = '11-2103' AND jl.credit > 0
-          -- the legacy marker backs only the pre-cutover part, which (d) already exempts — once a
-          -- receipt touches the row it needs its own entry, so the marker must not excuse it
-          AND COALESCE(je.metadata->>'flow', '') <> ${LEGACY_PRIOR_RECEIPT_FLOW}
-      ),
-      early_payoff_contract AS (
-        SELECT DISTINCT je.metadata->>'contractId' AS id FROM journal_entries je
-        WHERE je.status = 'POSTED' AND je.deleted_at IS NULL
-          AND je.metadata->>'flow' = ${EARLY_PAYOFF_FLOW}
-      )
+      -- (b) / (c): payment-backing.ts — shared with backfill:receipts (one definition)
+      backed_schedule AS (${SCHEDULE_ROWS_CLEARED_BY_ENTRY}),
+      early_payoff_contract AS (${EARLY_PAYOFF_CONTRACTS})
       SELECT p.id, p.installment_no, p.amount_paid, p.status, p.paid_date,
              c.contract_number
       FROM payments p

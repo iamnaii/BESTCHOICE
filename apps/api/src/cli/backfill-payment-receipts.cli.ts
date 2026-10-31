@@ -30,8 +30,19 @@
  * consumed into the row) — the bound re-issue of the same money later would be a second tax document the
  * `receipts_source_journal_entry_key` index cannot stop, and refunds would pay back by the unbound amount.
  * Such rows are never issued here: they are printed as "bound re-issue" candidates with their entry
- * numbers (+ `receiptTax.amount` — the amount the bound re-issue must pass) for the runbook. The CLI keeps
- * issuing only for PAID rows with no receipt entry at all (seed / pre-receipt-automation data).
+ * numbers (+ `receiptTax.amount` — the amount the bound re-issue must pass) for the runbook.
+ *
+ * ⚠️ NEVER FOR MONEY DOCUMENTED ELSEWHERE (Task 23 review m-1)
+ * ------------------------------------------------------------
+ * A PAID row with no receipt row of its own can still be money that already has its document:
+ * - (c) a row closed by an early payoff — the payoff receipt (`EARLY_PAYOFF`) and JP4 carry no `paymentId`;
+ * - (b) a row cleared by an entry bound to its schedule row without a `paymentId` — the nightly 2A consuming
+ *   a customer advance / the reschedule park (that money got its tax document when it was received).
+ * These are exactly paths (c) and (b) of the nightly `orphan_payments` check — the same sets
+ * (`modules/data-audit/services/payment-backing.ts`), not a second definition. A row whose rest was paid in
+ * cash has that receipt row already (or, if it failed, a live entry ⇒ the bound list), so skipping the whole
+ * row is safe. What the CLI still issues for: PAID rows backed by no journal entry at all (seed "data-only"
+ * rows · payments that predate receipt automation).
  *
  * GUARDS
  * ------
@@ -53,6 +64,10 @@
 import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  EARLY_PAYOFF_CONTRACTS,
+  SCHEDULE_ROWS_CLEARED_BY_ENTRY,
+} from '../modules/data-audit/services/payment-backing';
 import { INSTALLMENT_RECEIPT_SOURCE_TAGS } from '../modules/receipts/receipt-types.constants';
 import { ReceiptIssuanceService } from '../modules/receipts/services/receipt-issuance.service';
 import { ReceiptNumberService } from '../modules/receipts/services/receipt-number.service';
@@ -96,12 +111,17 @@ const LIVE_BOUND_RECEIPT_ENTRY = Prisma.sql`je.metadata->>'paymentId' = p.id
  *   the importer): its pre-cutover money was booked in PEAK and has no receipt here by design, so a
  *   catch-up tax invoice would be a second document for the same money (Task 18 review m-2, 2026-10-30);
  * - never a payment with a live receipt entry bound to it (Task 23): that goes through the bound re-issue
- *   runbook — `findBoundReissueCandidates`.
+ *   runbook — `findBoundReissueCandidates`;
+ * - never a row closed by an early payoff (c) or cleared through its schedule row (b) — paths (b)/(c) of
+ *   `orphan_payments` (`payment-backing.ts`): that money is documented by the payoff receipt / by the receipt
+ *   that took the advance (Task 23 review m-1).
  */
 export async function findPaidPaymentsWithoutReceipt(
   prisma: PrismaService,
 ): Promise<PaidPaymentRow[]> {
   return prisma.$queryRaw<PaidPaymentRow[]>`
+    WITH cleared_schedule AS (${SCHEDULE_ROWS_CLEARED_BY_ENTRY}),
+    paid_off_contract AS (${EARLY_PAYOFF_CONTRACTS})
     SELECT p.id, p.contract_id, p.installment_no,
            p.amount_paid::text AS amount_paid,
            p.payment_method, p.gateway_ref, p.recorded_by_id,
@@ -109,9 +129,13 @@ export async function findPaidPaymentsWithoutReceipt(
            c.contract_number
     FROM payments p
     JOIN contracts c ON c.id = p.contract_id
+    LEFT JOIN installment_schedules s
+      ON s.contract_id = p.contract_id AND s.installment_no = p.installment_no
     WHERE ${PAID_WITHOUT_ANY_RECEIPT}
       AND p.legacy_installment_code IS NULL
       AND NOT EXISTS (SELECT 1 FROM journal_entries je WHERE ${LIVE_BOUND_RECEIPT_ENTRY})
+      AND NOT EXISTS (SELECT 1 FROM cleared_schedule b WHERE b.id = s.id)
+      AND NOT EXISTS (SELECT 1 FROM paid_off_contract b WHERE b.id = p.contract_id)
     ORDER BY c.contract_number, p.installment_no
   `;
 }
@@ -323,6 +347,9 @@ async function main(): Promise<void> {
     );
     console.log(
       '[backfill-receipts] Payments with a live receipt journal entry are listed for the bound re-issue runbook — never issued here.',
+    );
+    console.log(
+      '[backfill-receipts] Rows closed by an early payoff or cleared by the nightly advance / park consumption are skipped — their money is documented elsewhere.',
     );
     console.log('');
     const result = await backfillPaymentReceipts(prisma, issuance, {

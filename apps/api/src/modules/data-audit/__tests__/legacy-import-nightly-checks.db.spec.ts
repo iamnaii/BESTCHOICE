@@ -760,6 +760,22 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
     return (r.details[0] as { breaches: Array<{ contractId: string; gap: string }> }).breaches;
   };
 
+  /** รายชื่อของ `backfill:receipts` ที่ตกในสัญญาเหล่านี้ — `cli` = ออกใบที่ไม่ผูกรายการ · `bound` = ส่งไปออกซ้ำแบบผูกรายการ */
+  const backfillListsOf = async (contractIds: string[]) => {
+    const asService = prisma as unknown as PrismaService;
+    const pick = (
+      rows: { contract_id: string; contract_number: string; installment_no: number }[],
+    ) =>
+      rows
+        .filter((r) => contractIds.includes(r.contract_id))
+        .map((r) => `${r.contract_number}#${r.installment_no}`)
+        .sort();
+    return {
+      cli: pick(await findPaidPaymentsWithoutReceipt(asService)),
+      bound: pick(await findBoundReissueCandidates(asService)),
+    };
+  };
+
   const orphanRowsOf = async (contractId: string) =>
     ((await run('orphan_payments', [contractId])).details as Array<{ installment_no: number }>)
       .map((r) => r.installment_no)
@@ -933,6 +949,11 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
         MONTHLY,
         null,
       ]);
+      // backfill:receipts (Task 23 review m-1 ข): งวด 2 ของ A2 ล้างด้วยรอบกลางคืนหักเงินรับล่วงหน้าทั้งงวด — ไม่มีแถวใบเสร็จ ไม่มีรายการผูก
+      // paymentId แต่เงินนั้นออกเอกสารพร้อมภาษีแล้วตอนรับ (ใบงวด 1 แถว "พักไว้") ⇒ ไม่ใช่ผู้สมัคร CLI (เดิมได้ใบ INSTALLMENT ใบที่สอง) และไม่อยู่ใน
+      // รายชื่อออกซ้ำ (ไม่มีรายการรับชำระให้ผูก) — คำตัดสินเดียวกับทาง (b) ของ orphan_payments
+      expect(await prisma.receipt.count({ where: { paymentId: p2.id } })).toBe(0);
+      expect(await backfillListsOf([a2])).toEqual({ cli: [], bound: [] });
       // L9B: งวด 4 (marker 300) รับส่วนที่เหลือหลังวันตัด แล้วยกเลิกใบเสร็จ — แถวกลับเป็นยอดก่อนวันตัด แต่ยังถือ
       // payment_method / ผู้บันทึกของใบที่ยกเลิก (ไม่กลับมาเป็น "ไม่ถูกแตะ") ⇒ หนุนด้วยต้นฉบับที่ reversed=true ตาม (ก)
       const l9b = legacy.get('L9B')!;
@@ -1538,6 +1559,11 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
         expect((await run('orphan_payments', [a3])).count).toBe(0);
         expect((await run('overpaid', [a3])).count).toBe(0);
         expect((await run('orphan_contracts', [a3])).count).toBe(0);
+        // backfill:receipts (Task 23 review m-1 ก): งวด 6–12 ที่ JP4 ปิด ไม่มีแถวใบเสร็จของงวด (ใบ EARLY_PAYOFF ไม่ผูก paymentId · JP4 ไม่มี
+        // paymentId — ในเทสต์นี้ไม่ออกใบปิดยอดเลยด้วย) — เอกสารของเงินนั้นคือใบปิดยอด ⇒ ไม่ใช่ผู้สมัคร CLI (เดิมได้ใบ INSTALLMENT ทุกงวด) —
+        // คำตัดสินเดียวกับทาง (c) ของ orphan_payments
+        expect(await prisma.receipt.count({ where: { paymentId: paid6.id } })).toBe(0);
+        expect(await backfillListsOf([a3])).toEqual({ cli: [], bound: [] });
       },
       LONG,
     );

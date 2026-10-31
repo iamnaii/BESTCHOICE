@@ -66,6 +66,23 @@ describe('backfill-payment-receipts CLI', () => {
     );
   });
 
+  it('Task 23 review m-1 — candidate query skips rows whose money is documented elsewhere: paths (b) schedule clearing and (c) early payoff of orphan_payments (shared sets)', async () => {
+    await findPaidPaymentsWithoutReceipt(prisma);
+    const sql = sqlOf(0);
+    expect(sql).toContain('AND NOT EXISTS (SELECT 1 FROM cleared_schedule b WHERE b.id = s.id)');
+    expect(sql).toContain(
+      'AND NOT EXISTS (SELECT 1 FROM paid_off_contract b WHERE b.id = p.contract_id)',
+    );
+    expect(sql).toContain("je.metadata->>'installmentScheduleId'"); // SCHEDULE_ROWS_CLEARED_BY_ENTRY
+    expect(queryRaw.mock.calls[0]).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          values: expect.arrayContaining(['early-payoff']), // EARLY_PAYOFF_CONTRACTS
+        }),
+      ]),
+    );
+  });
+
   it('Task 23 — bound re-issue list = the same population WITH a live bound receipt entry (imported rows included — they re-issue bound too)', async () => {
     await findBoundReissueCandidates(prisma);
     const sql = sqlOf(0);

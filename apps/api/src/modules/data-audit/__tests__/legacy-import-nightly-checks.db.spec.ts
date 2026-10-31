@@ -1550,7 +1550,8 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
               { metadata: { path: ['tag'], equals: 'receipt' } },
             ],
           },
-          orderBy: { postedAt: 'asc' },
+          // M1 / M2 post both entries at P1.due(1) — postedAt alone ties (heap order decided which was "last": flaky)
+          orderBy: [{ postedAt: 'asc' }, { createdAt: 'asc' }, { entryNumber: 'asc' }],
           select: { id: true, entryNumber: true, metadata: true },
         });
       /** ใบที่ผูกรายการล่าสุดของงวดหาย (ออกไม่สำเร็จหลัง commit) — คืนเลขที่รายการนั้น */
@@ -1879,8 +1880,9 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
         expect((await backfillListsOf([a7])).cli).toEqual(
           [`TEST-T16N-${stamp}-A7#5`, `TEST-T16N-${stamp}-A7#6`].sort(),
         );
-        // JP4 ที่มีช่วงงวดตัดสินแบบเดิมทุกข้อ (วันที่ + ช่วง) — คำนำหน้าไม่ใช่ข้อยกเว้นของมัน
         await prisma.payment.update({ where: { id: row6.id }, data: { notes: row6.notes } });
+
+        // JP4 ที่มีช่วงงวดตัดสินแบบเดิมทุกข้อ (วันที่ + ช่วง) — คำนำหน้าไม่ใช่ข้อยกเว้นของมัน
         await prisma.journalEntry.update({
           where: { id: entry.id },
           data: { metadata: entry.metadata as Prisma.InputJsonObject },

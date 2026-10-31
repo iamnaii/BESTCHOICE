@@ -23,6 +23,9 @@ const ACTIVATED_STATUSES = [
   'CLOSED_BAD_DEBT',
 ];
 const SHOP_FINANCE_RECEIVABLE_ACCOUNTS = ['S11-3001', 'S11-3002'];
+/** สัญญาที่เปิดก่อนต่อขา SHOP — `DataAuditChecksService.preShopWiringContractIds` */
+const PRE_SHOP_WIRING_DETAIL =
+  'สัญญาที่เปิดก่อนต่อขา SHOP (2026-06-23 · legacyNoShop) — สมุด SHOP ไม่มีขาของการเปิดสัญญาโดยชอบ';
 
 type TraceLine = { accountCode: string; debit: Prisma.Decimal; credit: Prisma.Decimal };
 type TraceJournal = {
@@ -136,10 +139,19 @@ export class ContractTraceService {
     // ตัวแยกเดียวกับตรวจกลางคืน (`legacy_contract_code IS NOT NULL` — ผู้เขียนคนเดียวคือตัวนำเข้า)
     const imported = contract.legacyContractCode != null;
 
+    const preShopWiring = (await this.checks.preShopWiringContractIds([contractId])).has(
+      contractId,
+    );
+
     const creation = this.traceCreation(contract);
     const activation = await this.traceActivation(contract, contractJournals, imported);
-    const cogs = this.traceCogs(contract, contractJournals, imported);
-    const interCompanyCheck = this.traceInterCompany(contract, contractJournals, imported);
+    const cogs = this.traceCogs(contract, contractJournals, imported, preShopWiring);
+    const interCompanyCheck = this.traceInterCompany(
+      contract,
+      contractJournals,
+      imported,
+      preShopWiring,
+    );
     const orphanPaymentIds = await this.orphanPaymentIds(scope);
     const payments = contract.payments.map((p) =>
       this.tracePayment(p, paymentJournals, orphanPaymentIds),
@@ -286,6 +298,7 @@ export class ContractTraceService {
     contract: { status: string; product: { costPrice: Prisma.Decimal } | null },
     journals: TraceJournal[],
     imported: boolean,
+    preShopWiring: boolean,
   ): ContractTraceCheck {
     if (!ACTIVATED_STATUSES.includes(contract.status)) {
       return { name: 'cogs', status: 'PASS', details: 'สัญญายังไม่ active' };
@@ -302,6 +315,9 @@ export class ContractTraceService {
       return { name: 'cogs', status: 'PASS', details: 'costPrice = 0 — ไม่ต้องมี COGS journal' };
     }
     const cogsJournal = journals.find((j) => flowOf(j) === SHOP_INVENTORY_TRANSFER_COGS_FLOW);
+    if (!cogsJournal && preShopWiring) {
+      return { name: 'cogs', status: 'PASS', details: PRE_SHOP_WIRING_DETAIL };
+    }
     if (!cogsJournal) {
       return {
         name: 'cogs',
@@ -322,6 +338,7 @@ export class ContractTraceService {
     contract: { status: string },
     journals: TraceJournal[],
     imported: boolean,
+    preShopWiring: boolean,
   ): ContractTraceCheck {
     if (!ACTIVATED_STATUSES.includes(contract.status)) {
       return { name: 'interCompany', status: 'PASS', details: 'สัญญายังไม่ active' };
@@ -334,6 +351,9 @@ export class ContractTraceService {
       };
     }
     const revenue = journals.find((j) => flowOf(j) === SHOP_INVENTORY_TRANSFER_REVENUE_FLOW);
+    if (!revenue && preShopWiring) {
+      return { name: 'interCompany', status: 'PASS', details: PRE_SHOP_WIRING_DETAIL };
+    }
     if (!revenue) {
       return {
         name: 'interCompany',

@@ -14,6 +14,11 @@ import {
   receivableReconScopeSql,
   type ContractScope,
 } from '../../journal/contract-receivable-recon';
+import {
+  activatedBeforeShopWiring,
+  isLegacyNoShop,
+  loadShopFinanceReceivableLens,
+} from '../../interco-settlement/legacy-no-shop';
 import { loadLateFeePaidByPaymentIds } from '../../payments/services/payment-late-fee-paid.util';
 import { AuditCheckResult } from '../data-audit.types';
 import { LEGACY_UNTOUCHED_PAYMENT } from './legacy-untouched-payment';
@@ -46,6 +51,10 @@ export function isContractOpeningEntry(metadata: Prisma.JsonValue | null | undef
   );
 }
 
+/** รายการ (alias **`je`**) ที่เป็นรายการเปิดสัญญา — เงื่อนไข SQL ของ `isContractOpeningEntry` (1A · A.1 · ยอดยกมาของสัญญานำเข้า) */
+const CONTRACT_OPENING_ENTRY = Prisma.sql`(je.metadata->>'tag' = ${CONTRACT_ACTIVATION_TAG}
+           OR je.metadata->>'flow' IN (${EXCHANGE_NEW_CONTRACT_FLOW}, ${LEGACY_OPENING_FLOW}))`;
+
 /**
  * สัญญา (alias **`c`**) ที่ไม่มีรายการเปิดสัญญา (ผูก `metadata.contractId`) และไม่ใช่สัญญาประวัติที่นำเข้า (`legacy_contract_code`
  * ไม่ว่าง + ไม่มีตารางงวด — ตัวนำเข้าไม่ลงบัญชีให้โดยตั้งใจ) — เงื่อนไขเดียวของ `checkOrphanContracts` และ dry-run ของ
@@ -57,8 +66,7 @@ export const CONTRACT_WITHOUT_OPENING_JOURNAL = Prisma.sql`(
     WHERE je.metadata->>'contractId' = c.id
       AND je.status = 'POSTED'
       AND je.deleted_at IS NULL
-      AND (je.metadata->>'tag' = ${CONTRACT_ACTIVATION_TAG}
-           OR je.metadata->>'flow' IN (${EXCHANGE_NEW_CONTRACT_FLOW}, ${LEGACY_OPENING_FLOW}))
+      AND ${CONTRACT_OPENING_ENTRY}
   )
   AND NOT (
     c.legacy_contract_code IS NOT NULL
@@ -108,7 +116,8 @@ const stampAmount = (raw: string | null): Prisma.Decimal => {
  *
  * **2026-10-30 (Task 18) ข้อ MEDIUM สามข้อ** (เดิมเตือนปลอมทุกวันกับสัญญาปกติ — ผลก่อนวันนี้เทียบไม่ได้เช่นกัน):
  * - `missing_cogs` — เดิมหา `reference_type = 'CONTRACT_COGS'` ซึ่งไม่มีผู้เขียน ⇒ หาต้นทุนขายฝั่ง SHOP ของการเปิดสัญญา
- *   (flow `shop-inventory-transfer-cogs` + `metadata.contractId`) · สัญญานำเข้ายกเว้น · รับ `scope`
+ *   (flow `shop-inventory-transfer-cogs` + `metadata.contractId`) · สัญญานำเข้ายกเว้น · รับ `scope` · Task 23: สัญญาที่เปิดก่อนต่อขา
+ *   SHOP (`legacyNoShop` + วันเปิดก่อน 2026-06-24 — `preShopWiringContractIds`) ยกเว้น
  * - `late_fee_vat_leak` — เดิมเทียบ 21-2101 ของใบรับกับ `Payment.vatAmount` ⇒ รายการรับชำระของงวดที่มีค่าปรับต้องขยับ
  *   21-2101 เท่าภาษีของเงินรับล่วงหน้าที่ stamp ไว้เท่านั้น · รับ `scope`
  * - `commission_mismatch` — `SKIPPED` (ค่าคอมไม่ได้รับรู้ต่องวดตั้งแต่ A.4 · 42-1105 เป็นบัญชีอื่นแล้ว)
@@ -642,6 +651,42 @@ export class DataAuditChecksService {
   }
 
   /**
+   * สัญญาที่เปิด**ก่อนต่อขา SHOP** (PR #1280 · 2026-06-23) — สมุด SHOP ไม่มีลูกหนี้ FINANCE ของสัญญาเลย (`legacyNoShop` —
+   * `interco-settlement/legacy-no-shop.ts` ตัวเดียวกับคิวรอจ่าย INTER-CO) **และ** รายการเปิดสัญญาใบแรก (`CONTRACT_OPENING_ENTRY`) ลงก่อนสิ้น
+   * วันต่อขา SHOP (`SHOP_LEG_WIRED_BEFORE`) ⇒ ไม่มีขา SHOP ของการเปิดสัญญา (ต้นทุนขาย / ลูกหนี้ FINANCE) โดยชอบ — สภาพปกติเดียวกับที่
+   * กระทบยอด INTER-CO ข้าม (`interco-reconcile.cron.ts` `PAYABLE_PAIR_MISMATCH`)
+   *
+   * ต้องครบทั้งสองข้อ: สมุด SHOP ว่างอย่างเดียว = ทุกสัญญาที่การเปิดสัญญาไม่ได้ลงขา SHOP (สิ่งที่ `missing_cogs` มีไว้จับ — JE A กับ JE B ลงใน
+   * ธุรกรรมเดียวกัน) · วันเปิดก่อนต่อขาอย่างเดียว = สัญญาเก่าที่มีขา SHOP บางขา (เช่น ต้นทุนขายหายแต่ลูกหนี้ยังอยู่) หลุด ·
+   * ไม่มีรายการเปิดสัญญา = ไม่ทราบวันเปิด ⇒ ไม่ยกเว้น (`orphan_contracts` ติดอยู่แล้ว)
+   */
+  async preShopWiringContractIds(contractIds: readonly string[]): Promise<Set<string>> {
+    const exempt = new Set<string>();
+    if (contractIds.length === 0) return exempt;
+    const lens = await loadShopFinanceReceivableLens(this.prisma, contractIds);
+    const noShop = new Set(contractIds.filter((id) => isLegacyNoShop(lens.get(id))));
+    if (noShop.size === 0) return exempt;
+    const opened = await this.prisma.$queryRaw<
+      { contract_id: string; activated_at: Date | null }[]
+    >`
+      SELECT je.metadata->>'contractId' AS contract_id, MIN(je.posted_at) AS activated_at
+      FROM journal_entries je
+      WHERE je.status = 'POSTED'
+        AND je.deleted_at IS NULL
+        AND ${CONTRACT_OPENING_ENTRY}
+        AND je.metadata->>'contractId' IN (${Prisma.join([...noShop])})
+      GROUP BY je.metadata->>'contractId'
+    `;
+    for (const row of opened) {
+      // both halves per contract — never trust the row set alone
+      if (noShop.has(row.contract_id) && activatedBeforeShopWiring(row.activated_at)) {
+        exempt.add(row.contract_id);
+      }
+    }
+    return exempt;
+  }
+
+  /**
    * Check 11: an activated contract whose device has a cost must carry the SHOP-side COGS entry —
    * `ShopInventoryTransferTemplate` JE A (`Dr S50-* / Cr S11-200*`, flow `shop-inventory-transfer-cogs`,
    * `metadata.contractId` — `shop-inventory-transfer.template.ts:315-338`), posted at activation by
@@ -654,9 +699,15 @@ export class DataAuditChecksService {
    * Imported legacy contracts (`legacy_contract_code` — written only by the importer) are exempt: the
    * shop side of the old sale lives in PEAK and the importer books no SHOP leg (device cost 0 —
    * `cli/legacy-backoffice/writer.ts:440`), even if a cost is entered on the device later.
+   *
+   * 2026-10-31 (Task 23 · Task 18 review m-3): contracts opened before the SHOP leg was wired
+   * (`preShopWiringContractIds` — the `legacyNoShop` rule of the inter-co queue + opened before the wiring
+   * day ends) are exempt too: no SHOP activation leg exists for them by design. Exemption is decided in TS
+   * after the query, so the query has no LIMIT (a capped candidate list could hide a failing contract
+   * behind exempt ones); `details` keeps the 50-row cap.
    */
   async checkMissingCogs(scope?: ContractScope): Promise<AuditCheckResult> {
-    const missing = await this.prisma.$queryRaw<
+    const candidates = await this.prisma.$queryRaw<
       { id: string; contract_number: string; product_name: string; cost_price: Prisma.Decimal }[]
     >`
       SELECT c.id, c.contract_number, pr.name as product_name, pr.cost_price
@@ -675,14 +726,15 @@ export class DataAuditChecksService {
             AND je.status = 'POSTED'
         )
       ORDER BY c.created_at DESC
-      LIMIT 50
     `;
+    const preShopWiring = await this.preShopWiringContractIds(candidates.map((c) => c.id));
+    const missing = candidates.filter((c) => !preShopWiring.has(c.id));
     return {
       name: 'missing_cogs',
       severity: 'MEDIUM',
       status: missing.length === 0 ? 'PASS' : 'FAIL',
       count: missing.length,
-      details: missing,
+      details: missing.slice(0, DETAIL_LIMIT),
       executedAt: new Date(),
     };
   }

@@ -291,6 +291,8 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
     for (const key of ['A2', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'A4']) {
       native.set(key, await createNative(key, P1.date, P1.dueDay));
     }
+    // A6 (Task 23 · m-3): เปิดหลังต่อขา SHOP (2026-06-23) แต่ไม่มีขา SHOP ของการเปิดสัญญา — ตัวยกเว้นสัญญาก่อนต่อขา SHOP ต้องไม่ครอบ
+    native.set('A6', await createNative('A6', '2026-07-01', 1));
 
     // สัญญานำเข้า — L1–L3 + H1/H2 (ต้องสะอาด) · L4–L8 (เป้าทำให้เพี้ยนในขั้น 3)
     const flat = Array.from({ length: 12 }, () => ({ amount: '1515.84' }));
@@ -818,6 +820,21 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
       await prisma.product.update({ where: { id: l1.productId }, data: { costPrice: D(8000) } });
       expect((await run('missing_cogs', cleanKeys())).count).toBe(0);
 
+      // missing_cogs (Task 23 · m-3): สัญญาปกติที่เปิดก่อนต่อขา SHOP — C4 (1A ลง 2024-12-05 · สมุด SHOP ไม่มีลูกหนี้ FINANCE ของสัญญา =
+      // legacyNoShop) — ไม่มีต้นทุนขายฝั่ง SHOP โดยชอบ แม้มีคนใส่ต้นทุนเครื่องภายหลัง (เดิมติด) · A6 เปิดหลังต่อขา SHOP (2026-07-01) แต่ไม่มีขา
+      // SHOP ยังติด — ตัวยกเว้นต้องครบทั้งสมุด SHOP ว่างและวันเปิดก่อนต่อขา (สมุดว่างอย่างเดียว = ข้อนี้ตาบอดกับการเปิดสัญญาที่ไม่ลงขา SHOP)
+      const [c4, a6] = ids(native, ['C4', 'A6']);
+      for (const id of [c4, a6]) {
+        const { productId } = await prisma.contract.findUniqueOrThrow({
+          where: { id },
+          select: { productId: true },
+        });
+        await prisma.product.update({ where: { id: productId }, data: { costPrice: D(9000) } });
+      }
+      expect(
+        ((await run('missing_cogs', [c4, a6])).details as Array<{ id: string }>).map((r) => r.id),
+      ).toEqual([a6]);
+
       // commission_mismatch (Task 18 → SKIPPED): ข้อเดิมเทียบค่าคอมต่องวด (monthlyCommission ของงวด PAID) กับ Cr 42-1105 ซึ่งตอนนี้คือ
       // กำไรจากการจำหน่ายสินทรัพย์ — FINANCE ตั้งค่าคอมครั้งเดียวเป็นหนี้สิน 21-1102 ใน 1A ⇒ งวด PAID ที่มีค่าคอมติดทุกงวด (นำเข้า + ปกติ)
       expect(
@@ -839,6 +856,8 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
         ['A1', native.get('A1')!],
         ['L1', legacy.get('L1')!],
         ['H1', legacy.get('H1')!],
+        ['C4', c4],
+        ['A6', a6],
       ] as const) {
         const t = await trace.traceContract(id);
         traced[key] = Object.values(t.checks)
@@ -847,7 +866,8 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
           .map((c) => c.name);
         expect(t.checks.commissionTotal.status).toBe('SKIPPED');
       }
-      expect(traced).toEqual({ A1: [], L1: [], H1: [] });
+      // Task 23 · m-3: C4 (ก่อนต่อขา SHOP) ไม่ติดต้นทุนขาย / ระหว่างกิจการ · A6 (หลังต่อขา SHOP ไม่มีขา SHOP) ติดทั้งสองข้อ
+      expect(traced).toEqual({ A1: [], L1: [], H1: [], C4: [], A6: ['cogs', 'interCompany'] });
 
       // backfill:receipts (Task 18 review m-2): งวดนำเข้าที่ PAID ก่อนวันตัดไม่มีใบเสร็จในระบบโดยตั้งใจ (PEAK ลงเงินยุคเก่าไปแล้ว) —
       // ตัวออกใบตามหลังต้องไม่หยิบมาออกใบกำกับภาษี ไม่ว่าจะรันเมื่อไร

@@ -464,6 +464,68 @@ describe('DataAuditService', () => {
       expect(sql).not.toContain('CONTRACT_COGS');
       expect(sql).not.toContain('reference_type');
     });
+
+    // Task 23 (Task 18 review m-3) — contracts opened before the SHOP leg was wired (2026-06-23) carry no SHOP
+    // activation leg by design: exempt by the inter-co `legacyNoShop` rule (S11-3001 + S11-3002 of the contract = 0)
+    // AND an opening entry posted before the wiring day ended — never by one half alone.
+    const cogsCandidate = (id: string) => ({
+      id,
+      contract_number: `BC-${id}`,
+      product_name: 'iPhone 15',
+      cost_price: new Prisma.Decimal('9000.00'),
+    });
+    const routeCogs = (rows: { candidates: unknown[]; lens?: unknown[]; opened?: unknown[] }) =>
+      prisma.$queryRaw.mockImplementation(async (...args: unknown[]) => {
+        const sql = JSON.stringify(args);
+        if (sql.includes('shop-inventory-transfer-cogs')) return rows.candidates;
+        if (sql.includes('S11-3001')) return rows.lens ?? [];
+        if (sql.includes('MIN(je.posted_at)')) return rows.opened ?? [];
+        return [];
+      });
+
+    it('Task 23 — exempts a contract opened before the SHOP wiring whose SHOP book has no FINANCE receivable (legacyNoShop)', async () => {
+      routeCogs({
+        candidates: [cogsCandidate('c-1')],
+        opened: [{ contract_id: 'c-1', activated_at: new Date('2026-06-23T10:00:00+07:00') }],
+      });
+      const result = await service.checkMissingCogs();
+      expect([result.status, result.count]).toEqual(['PASS', 0]);
+      const lensSql = JSON.stringify(
+        prisma.$queryRaw.mock.calls.find((c: unknown[]) => JSON.stringify(c).includes('S11-3001')),
+      );
+      expect(lensSql).toContain("je.metadata->>'contractId' IN ("); // scoped to the candidates
+    });
+
+    it('Task 23 — still FAIL when only one half holds: SHOP leg exists (pre-wiring) · opened after the wiring · no opening entry', async () => {
+      routeCogs({
+        candidates: [cogsCandidate('c-shop'), cogsCandidate('c-late'), cogsCandidate('c-none')],
+        lens: [{ contract_id: 'c-shop', financed: '10000.00', commission: '1000.00' }],
+        opened: [
+          { contract_id: 'c-shop', activated_at: new Date('2025-01-05T10:00:00+07:00') },
+          { contract_id: 'c-late', activated_at: new Date('2026-06-24T00:00:00+07:00') },
+        ],
+      });
+      const result = await service.checkMissingCogs();
+      expect(result.status).toBe('FAIL');
+      expect((result.details as { id: string }[]).map((r) => r.id)).toEqual([
+        'c-shop',
+        'c-late',
+        'c-none',
+      ]);
+    });
+
+    it('Task 23 — exemption is decided after an uncapped candidate query (exempt rows cannot hide a failing one); details stay capped at 50', async () => {
+      const candidates = Array.from({ length: 60 }, (_, i) => cogsCandidate(`c-${i}`));
+      routeCogs({ candidates });
+      const result = await service.checkMissingCogs();
+      expect([result.count, result.details.length]).toEqual([60, 50]);
+      const candidateSql = JSON.stringify(
+        prisma.$queryRaw.mock.calls.find((c: unknown[]) =>
+          JSON.stringify(c).includes('shop-inventory-transfer-cogs'),
+        ),
+      );
+      expect(candidateSql).not.toContain('LIMIT');
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════

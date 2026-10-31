@@ -346,6 +346,18 @@ export class IntegrationConfigService implements OnModuleInit {
         continue;
       }
 
+      // Empty sensitive input = "unchanged", never "clear". The hub sends a
+      // secret field the operator typed in and then emptied as ''; storing it
+      // would empty the row, and an empty row falls back to the env var —
+      // possibly another OA's credential (prod sets LINE_CHANNEL_* from Secret
+      // Manager). There is no "clear credential" action in the UI.
+      if (field.sensitive && !rawValue?.trim()) {
+        this.logger.debug(
+          `Skipping empty value for sensitive '${integrationKey}.${fieldKey}' — value unchanged`,
+        );
+        continue;
+      }
+
       const dbKeyStr = this.dbKey(integrationKey, fieldKey);
       const storedValue =
         field.sensitive && encKey && rawValue ? encryptPII(rawValue, encKey) : rawValue;

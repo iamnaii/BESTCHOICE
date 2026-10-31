@@ -494,3 +494,57 @@ describe('IntegrationConfigService — key × stored value matrix (round-trip th
     });
   });
 });
+
+/**
+ * Review P-2: the Integration Hub sends a sensitive field the operator typed in
+ * and then cleared as `''`. Storing it would empty the row, and an empty row
+ * falls back to the env var — for LINE SHOP that is prod's LINE_CHANNEL_* of
+ * possibly another OA. An empty sensitive value now means "unchanged".
+ */
+describe('IntegrationConfigService.saveConfig — empty sensitive input keeps the stored credential', () => {
+  const envBefore = process.env.LINE_CHANNEL_SECRET;
+
+  beforeEach(() => {
+    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    jest.spyOn(Logger.prototype, 'debug').mockImplementation(() => undefined);
+    process.env.LINE_CHANNEL_SECRET = 'test-only-env-other-oa-secret';
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    if (envBefore === undefined) delete process.env.LINE_CHANNEL_SECRET;
+    else process.env.LINE_CHANNEL_SECRET = envBefore;
+  });
+
+  it.each([
+    ['empty', ''],
+    ['whitespace', '   '],
+  ])(
+    '%s sensitive value → row untouched, still reads the stored credential (not env)',
+    async (_, input) => {
+      const ciphertext = encryptPII(SECRET, KEY_A);
+      const { service, prisma } = build(KEY_A, { [SECRET_KEY]: ciphertext });
+
+      await service.saveConfig('line-shop', { channelSecret: input });
+
+      expect(prisma.rows.get(SECRET_KEY)?.value).toBe(ciphertext);
+      await expect(service.getValue('line-shop', 'channelSecret')).resolves.toBe(SECRET);
+    },
+  );
+
+  it('empty sensitive value with no stored row → no row is created', async () => {
+    const { service, prisma } = build(KEY_A);
+
+    await service.saveConfig('line-shop', { channelSecret: '' });
+
+    expect(prisma.rows.has(SECRET_KEY)).toBe(false);
+  });
+
+  it('empty NON-sensitive value is still saved (clearing e.g. a LIFF ID keeps working)', async () => {
+    const { service, prisma } = build(KEY_A, { 'integration.line-shop.liffId': 'test-liff-id' });
+
+    await service.saveConfig('line-shop', { liffId: '' });
+
+    expect(prisma.rows.get('integration.line-shop.liffId')?.value).toBe('');
+  });
+});

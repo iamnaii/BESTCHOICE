@@ -61,6 +61,25 @@ export class JournalOverrideService {
       seen.add(line.accountCode);
     }
 
+    // V1 (precision) — at most 2 decimals per amount, checked BEFORE the balance below (re-review m2, 2026-11-01):
+    // journal_lines.debit/credit are numeric(12,2), Postgres rounds each line, so raw amounts that balance exactly
+    // (Dr 50.005 + 50.005 / Cr 100.01) are stored unbalanced (100.02 / 100.01). The DTO rejects these first; this is
+    // the net for a caller that reaches the service without the DTO.
+    for (const line of nonBlank) {
+      for (const [side, amount] of [
+        ['Dr', line.debit],
+        ['Cr', line.credit],
+      ] as const) {
+        if (amount.decimalPlaces() > 2) {
+          this.fail(
+            'V1',
+            `บรรทัด ${line.accountCode} ยอด ${side} ${amount.toString()} มีทศนิยมเกิน 2 ตำแหน่ง — บัญชีเก็บยอดได้ถึงสตางค์เท่านั้น ` +
+              'ถ้าบันทึกจะถูกปัดทีละบรรทัดจนรายการไม่สมดุล · แก้ยอดในตารางให้มีทศนิยมไม่เกิน 2 ตำแหน่ง',
+          );
+        }
+      }
+    }
+
     // V1 — balanced exactly: the same rule the posting guard (`createAndPost`) applies, so a mismatch is
     // a Thai 400 here instead of a 500 from the posting path (owner decision 2026-10-31; was ±0.01)
     const drTotal = nonBlank.reduce((s, l) => s.plus(l.debit), new Decimal(0));

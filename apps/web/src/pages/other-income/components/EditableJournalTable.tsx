@@ -28,6 +28,17 @@ type Props = {
 
 type ValidationIssue = { rule: 'V1' | 'V2' | 'V5'; msg: string };
 
+/**
+ * Decimal places of a typed amount, read from its shortest round-trip string (the same reading the server's
+ * `@IsNumber({ maxDecimalPlaces: 2 })` uses) — `1.005` → 3 even though `1.005 * 100` rounds down to 100.
+ */
+function decimalPlaces(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  const [mantissa, exponent] = String(n).toLowerCase().split('e');
+  const fraction = mantissa.split('.')[1]?.length ?? 0;
+  return Math.max(0, fraction - Number(exponent ?? 0));
+}
+
 function validateClientSide(lines: EditableJournalLine[]): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
 
@@ -46,6 +57,18 @@ function validateClientSide(lines: EditableJournalLine[]): ValidationIssue[] {
       issues.push({ rule: 'V5', msg: `บรรทัด ${line.accountCode || '(ไม่ระบุ)'} มีทั้ง Dr และ Cr` });
     } else if (!hasDr && !hasCr) {
       issues.push({ rule: 'V5', msg: `บรรทัด ${line.accountCode || '(ไม่ระบุ)'} ไม่มีทั้ง Dr และ Cr` });
+    }
+    // ยอดเกิน 2 ตำแหน่ง: บัญชีเก็บถึงสตางค์ ปัดทีละบรรทัดแล้วรายการไม่สมดุล — server ปฏิเสธเหมือนกัน (DTO + V1)
+    for (const [side, amount] of [
+      ['Dr', line.debit || 0],
+      ['Cr', line.credit || 0],
+    ] as const) {
+      if (decimalPlaces(amount) > 2) {
+        issues.push({
+          rule: 'V1',
+          msg: `บรรทัด ${line.accountCode || '(ไม่ระบุ)'} ยอด ${side} ${amount} มีทศนิยมเกิน 2 ตำแหน่ง — แก้ให้มีทศนิยมไม่เกิน 2 ตำแหน่ง`,
+        });
+      }
     }
   }
 

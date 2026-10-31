@@ -497,7 +497,13 @@ Cash account dimension is required on every Payment record.
 (`MonthlyCloseService.runDataAudit` — เดิม `dClose` เผื่อ 0.01 ⇒ งวดที่ข้อกลางคืนบอกไม่สมดุลยังปิดได้โดยไม่ต้องใส่เหตุผล · fix round 1) ·
 งบทดลองรวม (`ConsolidatedService.isBalanced` — เดิม ±0.01) · V1 ของ Override JV · ด่านของทางลงบัญชีทั้งสองทาง
 · ทางลงบัญชีทั้งสองทาง (`JournalService.create` · `JournalAutoService.createAndPost`) บังคับ `Decimal.equals` อยู่แล้ว ⇒ ต่างแม้ 0.01 = รายการที่
-เขียนนอกสองทางนี้ (SQL ตรง / ข้อมูลเก่า) · เดิมข้อกลางคืนเผื่อ 0.01 (`JOURNAL_BALANCE_TOLERANCE` — ลบแล้ว) · เกณฑ์ ≤ 1 บาทข้างล่างเป็นเรื่อง
+เขียนนอกสองทางนี้ (SQL ตรง / ข้อมูลเก่า)
+· **ยอดเกิน 2 ตำแหน่งที่ทางลงบัญชีกลาง — ยังไม่ปฏิเสธ (ตั้งใจ · Task 36 2026-11-01):** `createAndPost` เทียบยอดดิบ แล้ว numeric(12,2) ปัดทีละบรรทัด ⇒
+รายการที่สมดุลพอดีก่อนเขียนอาจไม่สมดุลหลังเขียน (ข้อกลางคืน `journal_balance` + ด่านก่อนปิดงวดจับได้). ตรวจผู้เรียก 97 จุดแล้ว **11 จุดรับยอดที่ไม่ได้
+จำกัดทศนิยมจากภายนอก** (DTO `@IsNumber()` เปล่า / payload ของ PaySolutions / ค่าตั้งค่าปรับ) — รับชำระ (`RecordPaymentDto.amount` → ใบรับชำระ + 2A บางส่วน) ·
+ขายสินทรัพย์ (`proceeds`) · ใบรับโอนหน้าร้าน / รับเงินสดคืนเครื่อง inter-co (`amount`) · รับเงินไฟแนนซ์นอก (`receivedAmount`) · คืนเงินส่วนต่างยึด (legacy) ·
+Override JV (ปิดแล้วข้างล่าง) · webhook PaySolutions (`total`) · ค่าปรับขั้นบันไดจาก SystemConfig ⇒ ถ้าใส่ด่านที่ `createAndPost` ทางเหล่านี้จะได้ 400 แทน
+(และ webhook จะปฏิเสธเงินที่ตัดแล้ว) — ต้องจำกัดทศนิยมที่ต้นทางทีละทางก่อน (งานต่อ · รายชื่อไฟล์:บรรทัดใน task-36-report) · เดิมข้อกลางคืนเผื่อ 0.01 (`JOURNAL_BALANCE_TOLERANCE` — ลบแล้ว) · เกณฑ์ ≤ 1 บาทข้างล่างเป็นเรื่อง
 ยอดรับชำระ ไม่เกี่ยวกับสมดุลของรายการ
 
 ---
@@ -3350,6 +3356,7 @@ WHT: per-item `whtPct` field; WHT payable posts to `21-3101`
 
 `POST /other-income/:id/post` accepts optional `{ override: true, overrideLines: [...] }`. When provided:
 - Server validates V1 (Dr = Cr **exactly** — `isJournalBalanced`, same rule as posting · was ±0.01 until 2026-10-31 → a 0.01 gap now gets a Thai 400 instead of the posting guard's 500), V2 (≥2 lines), V5 (Dr XOR Cr per line) via `JournalOverrideService`
+- **Amounts ≤ 2 decimals** (re-review m2 · 2026-11-01): `journal_lines.debit/credit` = numeric(12,2) ปัดทีละบรรทัด ⇒ ยอดดิบที่สมดุลพอดีลงสมุดแล้วไม่สมดุลได้ (Dr 50.005 + 50.005 / Cr 100.01 → POSTED 100.02 / 100.01) · ด่าน 3 ชั้น: `OverrideJournalLineDto` `@IsNumber({ maxDecimalPlaces: 2 })` (400 ไทย "ยอดเดบิต/เครดิตต้องเป็นตัวเลขทศนิยมไม่เกิน 2 ตำแหน่ง (สตางค์)") · `JournalOverrideService.validate` V1 ก่อนเทียบสมดุล (ตาข่ายผู้เรียก service ตรง) · หน้าจอ `EditableJournalTable` (`getJournalIssues` — อ่านทศนิยมจากสตริงของตัวเลข เพราะการปัดต่อบรรทัดซ่อน 1.005) ปิดปุ่มบันทึก
 - Sets `OtherIncome.isOverridden = true`
 - Writes `AuditLog { action: 'JV_OVERRIDDEN', oldValue: { jvLines: <auto> }, newValue: { jvLines: <override>, diffSummary: <Thai> } }`
 - UI shows ✏ marker in list pages for these documents

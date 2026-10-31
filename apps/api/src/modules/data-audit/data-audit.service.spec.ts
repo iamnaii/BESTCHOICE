@@ -35,10 +35,6 @@ describe('DataAuditService', () => {
       journalEntry: {
         findMany: jest.fn().mockResolvedValue([]),
       },
-      // traceContract: imported history contracts (legacy code + no schedule) need no opening entry
-      installmentSchedule: {
-        count: jest.fn().mockResolvedValue(12),
-      },
       interCompanyTransaction: {
         findFirst: jest.fn().mockResolvedValue(null),
       },
@@ -699,14 +695,29 @@ describe('DataAuditService', () => {
       ...extra,
     });
     /** $queryRaw of the scoped nightly checks the trace reuses — routed by the SQL they send */
-    const routeChecks = (rows: { orphanPayments?: unknown[]; vat?: unknown[]; gaps?: unknown[] }) =>
+    const routeChecks = (rows: {
+      orphanContracts?: unknown[];
+      missingCogs?: unknown[];
+      orphanPayments?: unknown[];
+      vat?: unknown[];
+      gaps?: unknown[];
+    }) =>
       prisma.$queryRaw.mockImplementation(async (...args: unknown[]) => {
         const sql = JSON.stringify(args);
+        if (sql.includes('c.status, c.created_at')) return rows.orphanContracts ?? [];
+        if (sql.includes('shop-inventory-transfer-cogs')) return rows.missingCogs ?? [];
         if (sql.includes('backed_payment')) return rows.orphanPayments ?? [];
         if (sql.includes('vat_receivable')) return rows.vat ?? [];
         if (sql.includes('register_outstanding')) return rows.gaps ?? [];
         return [];
       });
+    const orphanContractRow = { id: 'c-1', contract_number: 'BC-202604-0001', status: 'ACTIVE' };
+    const missingCogsRow = {
+      id: 'c-1',
+      contract_number: 'BC-202604-0001',
+      product_name: 'iPhone 15',
+      cost_price: D('9000.00'),
+    };
     const gapRow = (gl: string, register: string) => ({
       contract_id: 'c-1',
       contract_number: 'BC-202604-0001',
@@ -767,6 +778,8 @@ describe('DataAuditService', () => {
       prisma.contract.findUnique.mockResolvedValueOnce(mockContract());
       prisma.journalEntry.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
       routeChecks({
+        orphanContracts: [orphanContractRow],
+        missingCogs: [missingCogsRow],
         orphanPayments: [
           { id: 'p-1', installment_no: 1 },
           { id: 'p-2', installment_no: 2 },
@@ -850,8 +863,7 @@ describe('DataAuditService', () => {
           },
         }),
       );
-      prisma.installmentSchedule.count.mockResolvedValueOnce(0);
-      routeChecks({}); // orphan_payments exempts the untouched imported row
+      routeChecks({}); // orphan_contracts exempts the history contract · orphan_payments the untouched imported row
 
       const result = await service.traceContract('c-1');
 
@@ -863,6 +875,65 @@ describe('DataAuditService', () => {
         result.checks.completion.status,
       ]).toEqual(['PASS', 'PASS', 'PASS', ['PASS', 'PASS'], 'PASS']);
       expect(result.summary.failed).toBe(0);
+    });
+
+    it('Task 23 (m-4) — opening / COGS verdicts are the nightly checks scoped to the contract (one rule, the nightly status set) — an EARLY_PAYOFF contract without entries is out of scope', async () => {
+      prisma.contract.findUnique.mockResolvedValueOnce(
+        mockContract({ status: 'EARLY_PAYOFF', payments: [] }),
+      );
+      prisma.journalEntry.findMany.mockResolvedValueOnce([]);
+      routeChecks({});
+
+      const result = await service.traceContract('c-1');
+
+      // เดิม trace เขียนเงื่อนไขซ้ำด้วยชุดสถานะของตัวเอง (รวม EARLY_PAYOFF / CLOSED_BAD_DEBT) ⇒ FAIL ทั้งสามข้อ
+      expect([
+        result.checks.activation.status,
+        result.checks.cogs.status,
+        result.checks.interCompany.status,
+      ]).toEqual(['PASS', 'PASS', 'PASS']);
+      expect(result.checks.activation.details).toContain('นอกขอบเขตของ orphan_contracts');
+      for (const marker of ['c.status, c.created_at', 'shop-inventory-transfer-cogs']) {
+        const call = prisma.$queryRaw.mock.calls.find((c: unknown[]) =>
+          JSON.stringify(c).includes(marker),
+        );
+        expect(JSON.stringify(call)).toContain('c-1'); // scope.contractIds = [this contract]
+        expect(JSON.stringify(call)).toContain('c.status::text IN ('); // ACTIVATED_CONTRACT_STATUSES
+      }
+    });
+
+    it('Task 23 (m-4) — the opening / COGS verdict is the check row, not a TS re-derivation: entries found but the check flags the contract ⇒ FAIL', async () => {
+      prisma.contract.findUnique.mockResolvedValueOnce(mockContract());
+      prisma.journalEntry.findMany
+        .mockResolvedValueOnce([opening1A, shopCogs, shopRevenue])
+        .mockResolvedValueOnce([receiptP1()]);
+      routeChecks({ orphanContracts: [orphanContractRow], missingCogs: [missingCogsRow] });
+
+      const result = await service.traceContract('c-1');
+
+      expect([result.checks.activation.status, result.checks.cogs.status]).toEqual([
+        'FAIL',
+        'FAIL',
+      ]);
+    });
+
+    it('Task 23 (m-4) — an entry off by exactly 0.01 is balanced (journal_balance flags > 0.01)', async () => {
+      prisma.contract.findUnique.mockResolvedValueOnce(mockContract());
+      const offByOneSatang = {
+        ...opening1A,
+        lines: [...opening1A.lines.slice(0, -1), line('21-2102', '0', '1190.01')],
+      };
+      prisma.journalEntry.findMany
+        .mockResolvedValueOnce([offByOneSatang, shopCogs, shopRevenue])
+        .mockResolvedValueOnce([receiptP1()]);
+      routeChecks({});
+
+      const result = await service.traceContract('c-1');
+
+      expect(result.checks.activation).toMatchObject({
+        status: 'PASS',
+        details: { totalDebit: '18190.00', totalCredit: '18190.01', balanced: true },
+      });
     });
 
     // ── PR-843/I2 Phase 3 PR 3.1 — receipt-JE shapes ───────────────────────

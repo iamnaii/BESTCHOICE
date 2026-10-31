@@ -7,21 +7,17 @@ import {
 } from '../../journal/contract-receivable-recon';
 import { ContractTraceCheck, ContractTraceResult } from '../data-audit.types';
 import {
+  ACTIVATED_CONTRACT_STATUSES,
   DataAuditChecksService,
   isContractOpeningEntry,
+  JOURNAL_BALANCE_TOLERANCE,
   SHOP_INVENTORY_TRANSFER_COGS_FLOW,
   SHOP_INVENTORY_TRANSFER_REVENUE_FLOW,
 } from './data-audit-checks.service';
 
-/** สถานะที่ผ่านการเปิดสัญญาแล้ว (ต้องมีรายการเปิดสัญญาและขา SHOP ของการเปิดสัญญา) */
-const ACTIVATED_STATUSES = [
-  'ACTIVE',
-  'OVERDUE',
-  'DEFAULT',
-  'COMPLETED',
-  'EARLY_PAYOFF',
-  'CLOSED_BAD_DEBT',
-];
+/** ขอบเขตของ `orphan_contracts` / `missing_cogs` — ชุดสถานะเดียวกับตรวจกลางคืน (Task 23 · m-4) */
+const isActivated = (status: string) =>
+  (ACTIVATED_CONTRACT_STATUSES as readonly string[]).includes(status);
 const SHOP_FINANCE_RECEIVABLE_ACCOUNTS = ['S11-3001', 'S11-3002'];
 /** สัญญาที่เปิดก่อนต่อขา SHOP — `DataAuditChecksService.preShopWiringContractIds` */
 const PRE_SHOP_WIRING_DETAIL =
@@ -46,7 +42,8 @@ const balanceOf = (lines: TraceLine[]) => {
   return {
     totalDebit: money(totalDebit),
     totalCredit: money(totalCredit),
-    balanced: totalDebit.minus(totalCredit).abs().lt('0.01'),
+    // เกณฑ์ของ `journal_balance` (ไม่สมดุล = ต่างกันเกิน 0.01)
+    balanced: totalDebit.minus(totalCredit).abs().lte(JOURNAL_BALANCE_TOLERANCE),
   };
 };
 
@@ -58,6 +55,11 @@ const balanceOf = (lines: TraceLine[]) => {
  * - เปิดสัญญา = 1A / A.1 / ยอดยกมาของสัญญานำเข้า (`isContractOpeningEntry`) · สัญญาประวัติที่นำเข้า (ไม่มีตารางงวด) ไม่ต้องมี
  * - ต้นทุนขาย / ระหว่างกิจการ = ขา SHOP ของการเปิดสัญญา (`ShopInventoryTransferTemplate` JE A / JE B) — เดิมอ่าน
  *   `InterCompanyTransaction` ซึ่งเขียนเฉพาะจาก `POST /inter-company` ด้วยมือ (ไม่มีเส้นทางเปิดสัญญาเขียน) · สัญญานำเข้ายกเว้น
+ *
+ * **2026-10-31 (Task 23 · m-4):** คำตัดสิน PASS/FAIL ของเปิดสัญญาและต้นทุนขายมาจาก `orphan_contracts` / `missing_cogs` (แถวของข้อนั้น
+ * scope ที่สัญญา) — เดิม trace เขียนเงื่อนไขซ้ำฝั่ง TS ด้วยชุดสถานะที่กว้างกว่า (`EARLY_PAYOFF` / `CLOSED_BAD_DEBT`) ⇒ ตอนนี้ขอบเขตเท่า
+ * ตรวจกลางคืน (`ACTIVATED_CONTRACT_STATUSES`) · ระหว่างกิจการ (ไม่มีข้อกลางคืนคู่) ใช้ประชากรเดียวกับ `missing_cogs` เพราะ JE A / JE B ลงใน
+ * ธุรกรรมเดียวกัน · รายการที่พบใช้ตรวจสมดุลด้วยเกณฑ์ของ `journal_balance`
  * - งวดที่ไม่มีรายการผูก `paymentId` = คำตัดสินของ `orphan_payments` (ล้าง 11-2103 ของงวด · JP4 · งวดนำเข้าที่ยังไม่ถูกแตะ)
  * - ลูกหนี้ = `hp_receivable_reconciliation` (เดิมอ่าน 11-2102 ค่าเผื่อหนี้สงสัยจะสูญ) · VAT = `vat_mismatch` (เดิมเทียบ 21-2101
  *   ของใบรับกับ `Payment.vatAmount`) · ค่าคอม = `commission_mismatch` (SKIPPED)
@@ -139,13 +141,18 @@ export class ContractTraceService {
     // ตัวแยกเดียวกับตรวจกลางคืน (`legacy_contract_code IS NOT NULL` — ผู้เขียนคนเดียวคือตัวนำเข้า)
     const imported = contract.legacyContractCode != null;
 
+    // คำตัดสินของตรวจกลางคืน scope ที่สัญญานี้ — ไม่มีเงื่อนไขชุดที่สองฝั่ง TS (Task 23 · m-4)
+    const orphanContract = (await this.checks.orphanContractRows(scope)).some(
+      (r) => r.id === contractId,
+    );
+    const missingCogs = (await this.checks.missingCogsRows(scope)).some((r) => r.id === contractId);
     const preShopWiring = (await this.checks.preShopWiringContractIds([contractId])).has(
       contractId,
     );
 
     const creation = this.traceCreation(contract);
-    const activation = await this.traceActivation(contract, contractJournals, imported);
-    const cogs = this.traceCogs(contract, contractJournals, imported, preShopWiring);
+    const activation = this.traceActivation(contract, contractJournals, imported, orphanContract);
+    const cogs = this.traceCogs(contract, contractJournals, imported, missingCogs, preShopWiring);
     const interCompanyCheck = this.traceInterCompany(
       contract,
       contractJournals,
@@ -257,72 +264,72 @@ export class ContractTraceService {
     };
   }
 
-  /** รายการเปิดสัญญา: 1A / A.1 / ยอดยกมาของสัญญานำเข้า — กติกาเดียวกับ `orphan_contracts` (`CONTRACT_WITHOUT_OPENING_JOURNAL`) */
-  private async traceActivation(
-    contract: { id: string; status: string },
+  /**
+   * รายการเปิดสัญญา (1A / A.1 / ยอดยกมาของสัญญานำเข้า) — คำตัดสินของ `orphan_contracts` scope ที่สัญญานี้ (`orphan`) · รายการที่พบต้องสมดุล
+   */
+  private traceActivation(
+    contract: { status: string },
     journals: TraceJournal[],
     imported: boolean,
-  ): Promise<ContractTraceCheck> {
-    if (!ACTIVATED_STATUSES.includes(contract.status)) {
-      return {
-        name: 'activation',
-        status: 'PASS',
-        details: 'สัญญายังไม่ active — ไม่ต้องมี journal',
-      };
-    }
-    const opening = journals.find((j) => isContractOpeningEntry(j.metadata ?? null));
-    if (!opening) {
-      const scheduleRows = imported
-        ? await this.prisma.installmentSchedule.count({ where: { contractId: contract.id } })
-        : 1;
-      if (scheduleRows === 0) {
-        return {
-          name: 'activation',
-          status: 'PASS',
-          details: 'สัญญาประวัติที่นำเข้า (ไม่มีตารางงวด) — ตัวนำเข้าไม่ลงรายการเปิดสัญญาโดยตั้งใจ',
-        };
-      }
+    orphan: boolean,
+  ): ContractTraceCheck {
+    if (orphan) {
       return {
         name: 'activation',
         status: 'FAIL',
         details:
-          'ไม่พบรายการเปิดสัญญา (1A / เปิดสัญญาใหม่ของการเปลี่ยนเครื่อง / ยอดยกมาของสัญญานำเข้า)',
+          'ไม่พบรายการเปิดสัญญา (1A / เปิดสัญญาใหม่ของการเปลี่ยนเครื่อง / ยอดยกมาของสัญญานำเข้า) — orphan_contracts',
+      };
+    }
+    const opening = journals.find((j) => isContractOpeningEntry(j.metadata ?? null));
+    if (!opening) {
+      return {
+        name: 'activation',
+        status: 'PASS',
+        details: !isActivated(contract.status)
+          ? `สถานะ ${contract.status} — นอกขอบเขตของ orphan_contracts`
+          : imported
+            ? 'สัญญาประวัติที่นำเข้า (ไม่มีตารางงวด) — ตัวนำเข้าไม่ลงรายการเปิดสัญญาโดยตั้งใจ'
+            : 'ไม่อยู่ในเกณฑ์ของ orphan_contracts',
       };
     }
     const balance = balanceOf(opening.lines);
     return { name: 'activation', status: balance.balanced ? 'PASS' : 'FAIL', details: balance };
   }
 
-  /** ต้นทุนขายฝั่ง SHOP ของการเปิดสัญญา — กติกาเดียวกับ `missing_cogs` */
+  /**
+   * ต้นทุนขายฝั่ง SHOP ของการเปิดสัญญา — คำตัดสินของ `missing_cogs` scope ที่สัญญานี้ (`missing`) · รายการที่พบต้องสมดุล · ไม่พบและไม่ติด =
+   * เหตุยกเว้นของข้อนั้น (เรียงตามเงื่อนไข SQL)
+   */
   private traceCogs(
     contract: { status: string; product: { costPrice: Prisma.Decimal } | null },
     journals: TraceJournal[],
     imported: boolean,
+    missing: boolean,
     preShopWiring: boolean,
   ): ContractTraceCheck {
-    if (!ACTIVATED_STATUSES.includes(contract.status)) {
-      return { name: 'cogs', status: 'PASS', details: 'สัญญายังไม่ active' };
-    }
-    if (imported) {
-      return {
-        name: 'cogs',
-        status: 'PASS',
-        details: 'สัญญานำเข้า — การขายฝั่งหน้าร้านอยู่ใน PEAK (ตัวนำเข้าไม่ลงขา SHOP)',
-      };
-    }
     const costPrice = new Prisma.Decimal(contract.product?.costPrice ?? 0);
-    if (costPrice.lte(0)) {
-      return { name: 'cogs', status: 'PASS', details: 'costPrice = 0 — ไม่ต้องมี COGS journal' };
-    }
-    const cogsJournal = journals.find((j) => flowOf(j) === SHOP_INVENTORY_TRANSFER_COGS_FLOW);
-    if (!cogsJournal && preShopWiring) {
-      return { name: 'cogs', status: 'PASS', details: PRE_SHOP_WIRING_DETAIL };
-    }
-    if (!cogsJournal) {
+    if (missing) {
       return {
         name: 'cogs',
         status: 'FAIL',
-        details: `costPrice = ${money(costPrice)} แต่ไม่พบต้นทุนขายฝั่ง SHOP ของการเปิดสัญญา (flow ${SHOP_INVENTORY_TRANSFER_COGS_FLOW})`,
+        details: `costPrice = ${money(costPrice)} แต่ไม่พบต้นทุนขายฝั่ง SHOP ของการเปิดสัญญา (flow ${SHOP_INVENTORY_TRANSFER_COGS_FLOW}) — missing_cogs`,
+      };
+    }
+    const cogsJournal = journals.find((j) => flowOf(j) === SHOP_INVENTORY_TRANSFER_COGS_FLOW);
+    if (!cogsJournal) {
+      return {
+        name: 'cogs',
+        status: 'PASS',
+        details: !isActivated(contract.status)
+          ? `สถานะ ${contract.status} — นอกขอบเขตของ missing_cogs`
+          : imported
+            ? 'สัญญานำเข้า — การขายฝั่งหน้าร้านอยู่ใน PEAK (ตัวนำเข้าไม่ลงขา SHOP)'
+            : costPrice.lte(0)
+              ? 'costPrice = 0 — ไม่ต้องมี COGS journal'
+              : preShopWiring
+                ? PRE_SHOP_WIRING_DETAIL
+                : 'ไม่อยู่ในเกณฑ์ของ missing_cogs',
       };
     }
     const balance = balanceOf(cogsJournal.lines);
@@ -333,15 +340,23 @@ export class ContractTraceService {
     };
   }
 
-  /** ลูกหนี้ FINANCE ฝั่ง SHOP (S11-3001/S11-3002) ที่ตั้งตอนเปิดสัญญา — คู่ระหว่างกิจการของ 21-1101/21-1102 ใน 1A */
+  /**
+   * ลูกหนี้ FINANCE ฝั่ง SHOP (S11-3001/S11-3002) ที่ตั้งตอนเปิดสัญญา — คู่ระหว่างกิจการของ 21-1101/21-1102 ใน 1A · ไม่มีข้อกลางคืนคู่:
+   * ประชากรเดียวกับ `missing_cogs` (สถานะ `ACTIVATED_CONTRACT_STATUSES` · ไม่ใช่สัญญานำเข้า · ไม่ใช่สัญญาก่อนต่อขา SHOP) เพราะ JE A / JE B
+   * ลงในธุรกรรมเดียวกัน
+   */
   private traceInterCompany(
     contract: { status: string },
     journals: TraceJournal[],
     imported: boolean,
     preShopWiring: boolean,
   ): ContractTraceCheck {
-    if (!ACTIVATED_STATUSES.includes(contract.status)) {
-      return { name: 'interCompany', status: 'PASS', details: 'สัญญายังไม่ active' };
+    if (!isActivated(contract.status)) {
+      return {
+        name: 'interCompany',
+        status: 'PASS',
+        details: `สถานะ ${contract.status} — นอกขอบเขตของ missing_cogs`,
+      };
     }
     if (imported) {
       return {

@@ -73,6 +73,17 @@ export const CONTRACT_WITHOUT_OPENING_JOURNAL = Prisma.sql`(
     AND NOT EXISTS (SELECT 1 FROM installment_schedules s WHERE s.contract_id = c.id)
   )
 )`;
+/**
+ * สถานะสัญญาที่ผ่านการเปิดสัญญาและยังไม่ปิด — ขอบเขตของ `orphan_contracts` และ `missing_cogs` (และของการไล่ตรวจสัญญาที่ใช้คำตัดสินสองข้อนี้
+ * + ขา SHOP ของการเปิดสัญญา) · `EARLY_PAYOFF` / `CLOSED_BAD_DEBT` / `TERMINATED` อยู่นอกขอบเขตตามตรวจกลางคืนเดิม (Task 23 · m-4 — trace
+ * เคยใช้ชุดที่กว้างกว่าของตัวเอง)
+ */
+export const ACTIVATED_CONTRACT_STATUSES = ['ACTIVE', 'OVERDUE', 'DEFAULT', 'COMPLETED'] as const;
+const activatedStatusSql = Prisma.sql`c.status::text IN (${Prisma.join([...ACTIVATED_CONTRACT_STATUSES])})`;
+/**
+ * รายการที่ Σ เดบิต กับ Σ เครดิต ต่างกันเกินนี้ = ไม่สมดุล (`journal_balance`) — การไล่ตรวจสัญญาใช้เกณฑ์เดียวกันกับรายการของสัญญา
+ */
+export const JOURNAL_BALANCE_TOLERANCE = new Prisma.Decimal('0.01');
 /** ส่วนที่แถวงวดรับเกินยอดเรียกเก็บได้ — เศษปัดของใบที่ปิดงวด ≤ 1 บาท (Tolerance Policy `.claude/rules/accounting.md`) */
 const INSTALLMENT_OVERPAY_TOLERANCE = new Prisma.Decimal('1.00');
 /** VAT รอเรียกเก็บสองขาต้องตรงกันทุกสตางค์ (ยอด 2 ตำแหน่ง) */
@@ -84,6 +95,22 @@ const DETAIL_LIMIT = 50;
  */
 const limitClause = (limit?: number): Prisma.Sql =>
   limit === undefined ? Prisma.empty : Prisma.raw(`LIMIT ${Math.trunc(limit)}`);
+
+/** แถวของ `orphan_contracts` */
+export type OrphanContractRow = {
+  id: string;
+  contract_number: string;
+  status: string;
+  created_at: Date;
+};
+
+/** แถวของ `missing_cogs` */
+export type MissingCogsRow = {
+  id: string;
+  contract_number: string;
+  product_name: string;
+  cost_price: Prisma.Decimal;
+};
 
 /** แถวของ `orphan_payments` */
 export type OrphanPaymentRow = {
@@ -167,7 +194,7 @@ export class DataAuditChecksService {
       JOIN journal_lines jl ON jl.journal_entry_id = je.id AND jl.deleted_at IS NULL
       WHERE je.deleted_at IS NULL AND je.status = 'POSTED'
       GROUP BY je.id, je.entry_number, je.reference_type, je.reference_id
-      HAVING ABS(SUM(jl.debit) - SUM(jl.credit)) > 0.01
+      HAVING ABS(SUM(jl.debit) - SUM(jl.credit)) > ${JOURNAL_BALANCE_TOLERANCE}
       ORDER BY ABS(SUM(jl.debit) - SUM(jl.credit)) DESC
       LIMIT 50
     `;
@@ -185,21 +212,11 @@ export class DataAuditChecksService {
    * Check 2: ACTIVE/OVERDUE/DEFAULT/COMPLETED contracts must have their opening journal — 1A, the
    * exchange A.1 new-contract entry, or (imported legacy contracts) the legacy opening entry, all
    * keyed by `metadata.contractId`. Imported history contracts (legacy code + no schedule rows —
-   * the importer books nothing for them by design) are exempt.
+   * the importer books nothing for them by design) are exempt. `details` capped at 50
+   * (`orphanContractRows` — the contract trace reads every row of its scope).
    */
   async checkOrphanContracts(scope?: ContractScope): Promise<AuditCheckResult> {
-    const orphans = await this.prisma.$queryRaw<
-      { id: string; contract_number: string; status: string; created_at: Date }[]
-    >`
-      SELECT c.id, c.contract_number, c.status, c.created_at
-      FROM contracts c
-      WHERE c.deleted_at IS NULL
-        AND c.status IN ('ACTIVE', 'OVERDUE', 'DEFAULT', 'COMPLETED')
-        ${contractScopeFilter('c.id', scope)}
-        AND ${CONTRACT_WITHOUT_OPENING_JOURNAL}
-      ORDER BY c.created_at DESC
-      LIMIT 50
-    `;
+    const orphans = await this.orphanContractRows(scope, DETAIL_LIMIT);
     return {
       name: 'orphan_contracts',
       severity: 'CRITICAL',
@@ -208,6 +225,20 @@ export class DataAuditChecksService {
       details: orphans,
       executedAt: new Date(),
     };
+  }
+
+  /** Rows of `orphan_contracts` (rule: `checkOrphanContracts`) — `limit` omitted = every row in `scope` */
+  async orphanContractRows(scope?: ContractScope, limit?: number): Promise<OrphanContractRow[]> {
+    return this.prisma.$queryRaw<OrphanContractRow[]>`
+      SELECT c.id, c.contract_number, c.status, c.created_at
+      FROM contracts c
+      WHERE c.deleted_at IS NULL
+        AND ${activatedStatusSql}
+        ${contractScopeFilter('c.id', scope)}
+        AND ${CONTRACT_WITHOUT_OPENING_JOURNAL}
+      ORDER BY c.created_at DESC
+      ${limitClause(limit)}
+    `;
   }
 
   /**
@@ -722,14 +753,25 @@ export class DataAuditChecksService {
    * behind exempt ones); `details` keeps the 50-row cap.
    */
   async checkMissingCogs(scope?: ContractScope): Promise<AuditCheckResult> {
-    const candidates = await this.prisma.$queryRaw<
-      { id: string; contract_number: string; product_name: string; cost_price: Prisma.Decimal }[]
-    >`
+    const missing = await this.missingCogsRows(scope);
+    return {
+      name: 'missing_cogs',
+      severity: 'MEDIUM',
+      status: missing.length === 0 ? 'PASS' : 'FAIL',
+      count: missing.length,
+      details: missing.slice(0, DETAIL_LIMIT),
+      executedAt: new Date(),
+    };
+  }
+
+  /** Rows of `missing_cogs` (rule: `checkMissingCogs`) — every row in `scope` */
+  async missingCogsRows(scope?: ContractScope): Promise<MissingCogsRow[]> {
+    const candidates = await this.prisma.$queryRaw<MissingCogsRow[]>`
       SELECT c.id, c.contract_number, pr.name as product_name, pr.cost_price
       FROM contracts c
       JOIN products pr ON pr.id = c.product_id
       WHERE c.deleted_at IS NULL
-        AND c.status IN ('ACTIVE', 'COMPLETED', 'OVERDUE', 'DEFAULT')
+        AND ${activatedStatusSql}
         AND pr.cost_price > 0
         AND c.legacy_contract_code IS NULL
         ${contractScopeFilter('c.id', scope)}
@@ -743,15 +785,7 @@ export class DataAuditChecksService {
       ORDER BY c.created_at DESC
     `;
     const preShopWiring = await this.preShopWiringContractIds(candidates.map((c) => c.id));
-    const missing = candidates.filter((c) => !preShopWiring.has(c.id));
-    return {
-      name: 'missing_cogs',
-      severity: 'MEDIUM',
-      status: missing.length === 0 ? 'PASS' : 'FAIL',
-      count: missing.length,
-      details: missing.slice(0, DETAIL_LIMIT),
-      executedAt: new Date(),
-    };
+    return candidates.filter((c) => !preShopWiring.has(c.id));
   }
 
   /**

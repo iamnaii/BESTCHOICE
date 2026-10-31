@@ -81,7 +81,8 @@ export class JournalOverrideService {
     }
 
     // V1 — balanced exactly: the same rule the posting guard (`createAndPost`) applies, so a mismatch is
-    // a Thai 400 here instead of a 500 from the posting path (owner decision 2026-10-31; was ±0.01)
+    // a Thai 400 here instead of the posting guard's 400 with the English text `Unbalanced JE: Dr=… Cr=…`
+    // plus a Sentry error (owner decision 2026-10-31; was ±0.01 — wording corrected per re-review m3)
     const drTotal = nonBlank.reduce((s, l) => s.plus(l.debit), new Decimal(0));
     const crTotal = nonBlank.reduce((s, l) => s.plus(l.credit), new Decimal(0));
     if (!isJournalBalanced(drTotal, crTotal)) {

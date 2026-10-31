@@ -3355,7 +3355,7 @@ WHT: per-item `whtPct` field; WHT payable posts to `21-3101`
 ### Override JV (manual JE edit before POST)
 
 `POST /other-income/:id/post` accepts optional `{ override: true, overrideLines: [...] }`. When provided:
-- Server validates V1 (Dr = Cr **exactly** — `isJournalBalanced`, same rule as posting · was ±0.01 until 2026-10-31 → a 0.01 gap now gets a Thai 400 instead of the posting guard's 500), V2 (≥2 lines), V5 (Dr XOR Cr per line) via `JournalOverrideService`
+- Server validates V1 (Dr = Cr **exactly** — `isJournalBalanced`, same rule as posting · was ±0.01 until 2026-10-31 → a 0.01 gap now gets a Thai 400 instead of the posting guard's 400 with the English text `Unbalanced JE: Dr=… Cr=…` plus a Sentry error — `createAndPost` throws `BadRequestException` and `SentryExceptionFilter` keeps its status; earlier docs said 500, corrected per re-review m3), V2 (≥2 lines), V5 (Dr XOR Cr per line) via `JournalOverrideService`
 - **Amounts ≤ 2 decimals** (re-review m2 · 2026-11-01): `journal_lines.debit/credit` = numeric(12,2) ปัดทีละบรรทัด ⇒ ยอดดิบที่สมดุลพอดีลงสมุดแล้วไม่สมดุลได้ (Dr 50.005 + 50.005 / Cr 100.01 → POSTED 100.02 / 100.01) · ด่าน 3 ชั้น: `OverrideJournalLineDto` `@IsNumber({ maxDecimalPlaces: 2 })` (400 ไทย "ยอดเดบิต/เครดิตต้องเป็นตัวเลขทศนิยมไม่เกิน 2 ตำแหน่ง (สตางค์)") · `JournalOverrideService.validate` V1 ก่อนเทียบสมดุล (ตาข่ายผู้เรียก service ตรง) · หน้าจอ `EditableJournalTable` (`getJournalIssues` — อ่านทศนิยมจากสตริงของตัวเลข เพราะการปัดต่อบรรทัดซ่อน 1.005) ปิดปุ่มบันทึก
 - Sets `OtherIncome.isOverridden = true`
 - Writes `AuditLog { action: 'JV_OVERRIDDEN', oldValue: { jvLines: <auto> }, newValue: { jvLines: <override>, diffSummary: <Thai> } }`

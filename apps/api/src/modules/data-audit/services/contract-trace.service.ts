@@ -97,8 +97,8 @@ const balanceOf = (lines: TraceLine[]) => {
  * **2026-10-31 (Task 23):**
  * - m-4: คำตัดสิน PASS/FAIL ของเปิดสัญญาและต้นทุนขายมาจาก `orphan_contracts` / `missing_cogs` (แถวของข้อนั้น) — เดิม trace เขียนเงื่อนไขซ้ำ
  *   ฝั่ง TS ด้วยชุดสถานะที่กว้างกว่า (`EARLY_PAYOFF` / `CLOSED_BAD_DEBT`) ⇒ ตอนนี้ขอบเขตเท่าตรวจกลางคืน (`ACTIVATED_CONTRACT_STATUSES`) ·
- *   ระหว่างกิจการ (ไม่มีข้อกลางคืนคู่) ใช้ประชากรเดียวกับ `missing_cogs` เพราะ JE A / JE B ลงในธุรกรรมเดียวกัน · รายการที่พบตรวจสมดุลด้วยเกณฑ์
- *   ของ `journal_balance`
+ *   ระหว่างกิจการ (ไม่มีข้อกลางคืนคู่) ใช้ประชากรเดียวกับ `missing_cogs` ยกเว้นเงื่อนไขต้นทุน เพราะ JE A / JE B ลงในธุรกรรมเดียวกัน (JE B
+ *   ไม่ขึ้นกับต้นทุน) · รายการที่พบตรวจสมดุลด้วยเกณฑ์ของ `journal_balance`
  * - m-3: สัญญาที่เปิดก่อนต่อขา SHOP (`preShopWiringContractIds` — `legacyNoShop` + วันเปิด) ไม่ต้องมีต้นทุนขาย / ลูกหนี้ FINANCE ฝั่ง SHOP
  * - m-5: ตรวจกลางคืนรันครั้งเดียวต่อชุดสัญญา (`traceContracts` / `loadVerdicts`) · แถวไม่ตัด 50
  */
@@ -419,8 +419,8 @@ export class ContractTraceService {
 
   /**
    * ลูกหนี้ FINANCE ฝั่ง SHOP (S11-3001/S11-3002) ที่ตั้งตอนเปิดสัญญา — คู่ระหว่างกิจการของ 21-1101/21-1102 ใน 1A · ไม่มีข้อกลางคืนคู่:
-   * ประชากรเดียวกับ `missing_cogs` (สถานะ `ACTIVATED_CONTRACT_STATUSES` · ไม่ใช่สัญญานำเข้า · ไม่ใช่สัญญาก่อนต่อขา SHOP) เพราะ JE A / JE B
-   * ลงในธุรกรรมเดียวกัน
+   * ประชากรเดียวกับ `missing_cogs` ยกเว้นเงื่อนไขต้นทุน (สถานะ `ACTIVATED_CONTRACT_STATUSES` · ไม่ใช่สัญญานำเข้า · ไม่ใช่สัญญาก่อนต่อขา SHOP)
+   * เพราะ JE A / JE B ลงในธุรกรรมเดียวกัน — JE B ไม่ขึ้นกับต้นทุน (template ปฏิเสธต้นทุน ≤ 0 ⇒ สัญญาที่เปิดจริงมี JE B เสมอ)
    */
   private traceInterCompany(
     contract: { status: string },
@@ -522,14 +522,19 @@ export class ContractTraceService {
     contract: { status: string },
     gap: ContractReceivableGap | undefined,
   ): ContractTraceCheck {
-    if (
-      !(RECEIVABLE_RECON_CONTRACT_STATUSES as readonly string[]).includes(contract.status) ||
-      !gap
-    ) {
+    if (!(RECEIVABLE_RECON_CONTRACT_STATUSES as readonly string[]).includes(contract.status)) {
       return {
         name: 'hpReceivable',
         status: 'PASS',
         details: `สถานะ ${contract.status} — ไม่อยู่ในขอบเขตกระทบยอดลูกหนี้รายสัญญา`,
+      };
+    }
+    if (!gap) {
+      // ขอบเขตของตัวคำนวณกรองสัญญาที่ถูกลบออก (`receivableReconScopeSql` — `c.deleted_at IS NULL`)
+      return {
+        name: 'hpReceivable',
+        status: 'PASS',
+        details: 'ตัวกระทบยอดลูกหนี้รายสัญญาไม่มีแถวของสัญญานี้ (สัญญาถูกลบ) — ไม่ได้ตรวจ',
       };
     }
     return {

@@ -917,6 +917,19 @@ describe('DataAuditService', () => {
       ]);
     });
 
+    it('Task 23 review nit — an in-scope contract the receivable recon has no row for (deleted) says so, not "out of scope by status"', async () => {
+      prisma.contract.findUnique.mockResolvedValueOnce(mockContract());
+      prisma.journalEntry.findMany
+        .mockResolvedValueOnce([opening1A, shopCogs, shopRevenue])
+        .mockResolvedValueOnce([receiptP1()]);
+      routeChecks({}); // no gap row
+
+      const result = await service.traceContract('c-1');
+
+      expect(result.checks.hpReceivable.status).toBe('PASS');
+      expect(result.checks.hpReceivable.details).toContain('ไม่มีแถวของสัญญานี้');
+    });
+
     it('Task 23 (m-4) — an entry off by exactly 0.01 is balanced (journal_balance flags > 0.01)', async () => {
       prisma.contract.findUnique.mockResolvedValueOnce(mockContract());
       const offByOneSatang = {

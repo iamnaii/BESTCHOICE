@@ -174,7 +174,7 @@ export class IntercoPendingService {
 
     // SHOP lens — same shape on S11-3001 (ลูกหนี้ยอดจัด) / S11-3002 (ลูกหนี้ค่าคอม),
     // sign flipped (Dr−Cr — these are SHOP-side receivables, not payables) —
-    // the one reader of `legacyNoShop` (`legacy-no-shop.ts`, shared with data-audit).
+    // read through the shared definition (`legacy-no-shop.ts`) — also read by data-audit.
     // Not filtered to only the FINANCE contractIds — a contract with a SHOP
     // leg but somehow no FINANCE leg would never surface anyway (it's looked
     // up via the finance-side contract list below).

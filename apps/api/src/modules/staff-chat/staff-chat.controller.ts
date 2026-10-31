@@ -155,20 +155,22 @@ export class StaffChatController {
   @Get('rooms/:id')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async getRoom(@Param('id') id: string, @Req() req: { user: { id: string; role: string } }) {
-    const room = await this.roomManager.findById(id);
-    if (!room) throw new NotFoundException('ไม่พบห้องแชท');
+    const found = await this.roomManager.findById(id);
+    if (!found) throw new NotFoundException('ไม่พบห้องแชท');
     // SALES may only open rooms assigned to them (or still unassigned, which they can pick up).
     // The room payload includes customer PII (phone/nationalId), so a SALES user must not be
     // able to read an arbitrary room by guessing its id. Cross-branch roles see all rooms.
-    if (req.user.role === 'SALES' && room.assignedToId && room.assignedToId !== req.user.id) {
+    if (req.user.role === 'SALES' && found.assignedToId && found.assignedToId !== req.user.id) {
       // บอกชื่อคนที่ถืออยู่ด้วย — ข้อความลอย ๆ ทำให้พนักงานไม่รู้ว่าต้องไปคุยกับใคร
       // และหน้าจอเดิมไม่แสดงอะไรเลย (ดู index.tsx: sessionQuery ไม่มี error handling)
       throw new ForbiddenException(
-        room.assignedTo?.name
-          ? `ห้องนี้ ${room.assignedTo.name} กำลังดูแลอยู่ — ขอให้เขาโอนให้ก่อนจึงจะเปิดได้`
+        found.assignedTo?.name
+          ? `ห้องนี้ ${found.assignedTo.name} กำลังดูแลอยู่ — ขอให้เขาโอนให้ก่อนจึงจะเปิดได้`
           : 'ไม่มีสิทธิ์เข้าถึงห้องแชทนี้',
       );
     }
+    // Task 33 — ป้าย "ยืนยัน OTP แล้ว"/"ยกเลิกผูกแล้ว" ที่หัวห้อง: สถานะคำนวณฝั่ง server (ไม่มี U-id) แบบเดียวกับรายชื่อแชท
+    const [room] = await this.roomManager.attachFinanceLineStatus([found]);
     // ผู้สนใจอัตโนมัติ (สเปค 3.1): ติดธง chatPlaceholder ให้การ์ดขวารู้ว่าห้องนี้ยังไม่มีคนจริงผูกอยู่
     const customer = room.customer
       ? { ...room.customer, chatPlaceholder: isChatPlaceholder(room.customer) }

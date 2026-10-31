@@ -6308,6 +6308,10 @@ model ChatRoom {
   // Verification
   verifiedAt           DateTime? @map("verified_at")
   verificationAttempts Int       @default(0) @map("verification_attempts")
+  /// Task 33 — เวลาที่ห้อง LINE การเงินนี้หลุดจากการยืนยัน OTP (ยกเลิกผูก / LINE ย้ายไปลูกค้าอื่น) — ตั้งโดย `clearFinanceRoomVerification`
+  /// (ตัวเดียวที่ล้าง verified_at) · `VerificationService.bind` ล้างเมื่อยืนยันกลับ · ใช้ทำป้าย "ยกเลิกผูกแล้ว" ในอินบ็อกซ์ — แถว
+  /// customer_line_links ไม่เก็บประวัติเมื่อลูกค้าเปลี่ยน LINE (แถวถูกชี้ไป LINE ใหม่)
+  financeLineUnlinkedAt DateTime? @map("finance_line_unlinked_at")
 
   // Handoff state
   handoffMode     Boolean   @default(false) @map("handoff_mode")

@@ -701,10 +701,14 @@ export class VerificationService {
         plan.kind === 'upsert-by-line' && lineHolderId && lineHolderId !== customerId
           ? lineHolderId
           : null;
-      await clearFinanceRoomVerification(tx, {
-        lineUserIds: plan.kind === 'repoint-customer-row' ? [plan.previousLineUserId] : [],
-        customerIds: movedFrom ? [movedFrom] : [],
-      });
+      await clearFinanceRoomVerification(
+        tx,
+        {
+          lineUserIds: plan.kind === 'repoint-customer-row' ? [plan.previousLineUserId] : [],
+          customerIds: movedFrom ? [movedFrom] : [],
+        },
+        linkedAt,
+      );
       if (plan.kind === 'repoint-customer-row') {
         await tx.customerLineLink.update({
           where: { id: plan.rowId },
@@ -726,6 +730,8 @@ export class VerificationService {
           customerId,
           verifiedAt: new Date(),
           verificationAttempts: 0,
+          // Task 33 — ยืนยันแล้ว = ไม่ใช่ห้องที่ "ยกเลิกผูกแล้ว" อีก (ล้างเวลาที่เคยหลุด)
+          financeLineUnlinkedAt: null,
         },
       });
 

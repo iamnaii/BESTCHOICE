@@ -1,4 +1,4 @@
-import { LineChannelType, Prisma } from '@prisma/client';
+import { ChatChannel, LineChannelType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { buildBrowserUrl } from '../../../utils/line-login.util';
 
@@ -118,6 +118,105 @@ export async function findOtpVerifiedCustomerId(
     select: { customerId: true },
   });
   return link?.customerId ?? null;
+}
+
+/** LINE + ลูกค้าของห้องแชท — สิ่งที่ใช้ตัดสินว่าห้องยืนยัน OTP แล้วหรือไม่ */
+export interface FinanceLineRoomRef {
+  lineUserId: string | null;
+  customerId: string | null;
+}
+
+/** กติกาเดียว: LINE ของห้องยืนยัน OTP (แถว `VERIFIED_FINANCE_LINK_WHERE`) กับ**ลูกค้าของห้อง** — ยืนยันกับคนอื่น = ไม่ใช่ */
+function verifiedRoomCustomer(
+  room: FinanceLineRoomRef,
+  verifiedCustomerIdOfLine: string | null | undefined,
+): string | undefined {
+  if (!room.lineUserId || !room.customerId) return undefined;
+  return verifiedCustomerIdOfLine === room.customerId ? room.customerId : undefined;
+}
+
+/**
+ * Task 24 round 3 (m-R2-1 ข) — ลูกค้าของห้องเมื่อ LINE ของห้องยืนยัน OTP กับลูกค้าคนนั้นแล้ว · ไม่ใช่ห้อง LINE / ยังไม่ยืนยัน / ยืนยันกับคนอื่น
+ * = undefined. ห้องของ LINE ที่ลูกค้ายกเลิกผูกแล้วยังถือ `customer_id` เดิม (ยกเลิกผูกล้างแค่ `verified_at`) ⇒ ข้อความสำเร็จรูปของห้อง
+ * การเงินใช้ตัวนี้ตัดสินว่าเติมตัวแปรลูกค้าได้ไหม (`CannedResponseSenderService`) · Task 33 ย้ายมาไว้ที่นี่ให้สถานะห้องในอินบ็อกซ์
+ * (`findFinanceLineRoomStatuses`) ใช้กติกาเดียวกัน
+ */
+export async function findOtpVerifiedRoomCustomerId(
+  prisma: Pick<PrismaService, 'customerLineLink'>,
+  room: FinanceLineRoomRef,
+): Promise<string | undefined> {
+  if (!room.lineUserId || !room.customerId) return undefined;
+  return verifiedRoomCustomer(room, await findOtpVerifiedCustomerId(prisma, room.lineUserId));
+}
+
+/**
+ * Task 33 (mockup A2/A3) — สถานะ LINE การเงินของห้องในอินบ็อกซ์ · **ไม่มี U-id**:
+ * - `verified` — กติกาเดียวกับ `findOtpVerifiedRoomCustomerId` (ข้อความสำเร็จรูปเติมตัวแปรลูกค้าได้)
+ * - ไม่ verified + `unlinkedAt` — LINE นี้เคยยืนยันกับลูกค้าของห้องแล้วหลุด (ยกเลิกผูก / ลูกค้าเปลี่ยน LINE) = ป้าย "ยกเลิกผูกแล้ว"
+ * - ไม่ verified + `unlinkedAt: null` — ไม่เคยผูก LINE นี้กับลูกค้านี้ / ไม่ทราบ (ไม่อยู่ใน mockup — หน้าเว็บไม่แสดงอะไร)
+ */
+export interface FinanceLineRoomStatus {
+  verified: boolean;
+  /** วันที่ยกเลิก (ISO) · verified หรือไม่ทราบ = null */
+  unlinkedAt: string | null;
+}
+
+/**
+ * สถานะของหลายห้องในสอง query (รายชื่อแชท 50 ห้องต่อหน้า) — เฉพาะห้อง `LINE_FINANCE` ที่มีทั้ง LINE และลูกค้า (ห้องอื่นไม่อยู่ใน Map)
+ * วันที่ยกเลิก: `chat_rooms.finance_line_unlinked_at` (ตั้งโดย `clearFinanceRoomVerification` — ครอบกรณีลูกค้าเปลี่ยน LINE ซึ่งแถว link
+ * ถูกชี้ไป LINE ใหม่) ก่อน · ห้องที่หลุดก่อนมีคอลัมน์นี้ ใช้แถว link ที่ปิดแล้วของคู่ (LINE, ลูกค้าของห้อง) เดียวกัน
+ */
+export async function findFinanceLineRoomStatuses(
+  prisma: Pick<PrismaService, 'customerLineLink'>,
+  rooms: readonly (FinanceLineRoomRef & {
+    id: string;
+    channel: ChatChannel | string;
+    financeLineUnlinkedAt?: Date | null;
+  })[],
+): Promise<Map<string, FinanceLineRoomStatus>> {
+  const result = new Map<string, FinanceLineRoomStatus>();
+  const targets = rooms.filter(
+    (room) => room.channel === ChatChannel.LINE_FINANCE && !!room.lineUserId && !!room.customerId,
+  );
+  if (targets.length === 0) return result;
+
+  const verifiedLinks = await prisma.customerLineLink.findMany({
+    where: {
+      lineUserId: { in: [...new Set(targets.map((room) => room.lineUserId!))] },
+      ...VERIFIED_FINANCE_LINK_WHERE,
+    },
+    select: { lineUserId: true, customerId: true },
+  });
+  const verifiedCustomerOf = new Map(verifiedLinks.map((l) => [l.lineUserId, l.customerId]));
+  const unverified = targets.filter(
+    (room) => !verifiedRoomCustomer(room, verifiedCustomerOf.get(room.lineUserId!)),
+  );
+  const needLegacyDate = unverified.filter((room) => !room.financeLineUnlinkedAt);
+  const closedLinks = needLegacyDate.length
+    ? await prisma.customerLineLink.findMany({
+        where: {
+          lineUserId: { in: [...new Set(needLegacyDate.map((room) => room.lineUserId!))] },
+          channel: LineChannelType.FINANCE,
+          unlinkedAt: { not: null },
+          deletedAt: null,
+        },
+        select: { lineUserId: true, customerId: true, unlinkedAt: true },
+      })
+    : [];
+  const closedAt = new Map(
+    closedLinks.map((l) => [`${l.lineUserId}\u0000${l.customerId}`, l.unlinkedAt]),
+  );
+
+  for (const room of targets) {
+    if (verifiedRoomCustomer(room, verifiedCustomerOf.get(room.lineUserId!))) {
+      result.set(room.id, { verified: true, unlinkedAt: null });
+      continue;
+    }
+    const unlinkedAt =
+      room.financeLineUnlinkedAt ?? closedAt.get(`${room.lineUserId}\u0000${room.customerId}`) ?? null;
+    result.set(room.id, { verified: false, unlinkedAt: unlinkedAt?.toISOString() ?? null });
+  }
+  return result;
 }
 
 /**

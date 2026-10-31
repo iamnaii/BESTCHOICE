@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { formatDateShort } from '../../../utils/thai-date.util';
 import { PrismaService } from '../../../prisma/prisma.service';
 import {
@@ -30,6 +31,25 @@ export const STATUS_NOTICE_SUBJECT = 'แจ้งสถานะสัญญา
 /** เวลาส่งข้อความผลรอบกลางคืน (A3/A4) — ต้องอยู่ในช่วงเวลาทำการของ `isWithinBusinessHours` */
 export const OVERNIGHT_COLLECTIONS_NOTICES_CRON = '5 8 * * *';
 
+/** งวดที่ถึงกำหนดแล้วและยังค้าง — นิยามเดียวของ A3 (แจ้งสถานะ) และ A4 (ขั้นทวง) */
+function dueUnpaidPaymentsWhere(now: Date): Prisma.PaymentWhereInput {
+  return { status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] }, dueDate: { lt: now } };
+}
+
+/**
+ * ยอดค้างที่ถึงกำหนดแล้ว (ค่างวดคงค้าง + ค่าปรับ) ของงวดจาก `dueUnpaidPaymentsWhere` — ≤ 0 = ไม่มีอะไรต้องทวง ·
+ * ใช้ตัดสินทั้ง A3 และ A4 (รีวิวรอบ 3 I1: ลูกค้าที่จ่ายระหว่างคืนสัญญายังเป็น OVERDUE/DEFAULT เพราะไม่มีทางไหนคืนสถานะเป็น ACTIVE ⇒
+ * ตัดสินจากสถานะสัญญาไม่ได้ ต้องดูยอดค้าง)
+ */
+function dueOutstanding(
+  payments: { amountDue: Prisma.Decimal; amountPaid: Prisma.Decimal; lateFee: Prisma.Decimal }[],
+): number {
+  return payments.reduce(
+    (sum, p) => sum + (Number(p.amountDue) - Number(p.amountPaid) + Number(p.lateFee)),
+    0,
+  );
+}
+
 /**
  * Collections-side LINE notification bodies extracted from the scheduler:
  * status-change overdue/default notices, dunning-stage notifications, and the
@@ -58,7 +78,8 @@ export class CollectionsNotifierService {
    * รอบกลางคืนยังเปลี่ยนสถานะ/ขั้นตามเดิม (งานอื่นตอนดึกพึ่งสถานะนั้น) — ข้อความอ่านผลจาก AuditLog `STATUS_CHANGE` / `DUNNING_ESCALATION`
    * ของรอบระบบ (`ip_address = 'system-cron'`) ตั้งแต่เที่ยงคืนไทยวันนี้:
    * - ไม่อยู่ในเวลาทำการ (ใช้กรอบวันหยุด 08:00–18:00 ซึ่งแคบกว่า) = ไม่ส่ง
-   * - สัญญาที่จ่ายแล้วระหว่างคืน (ไม่อยู่ OVERDUE/DEFAULT แล้ว) = ไม่แจ้งสถานะ · ไม่มียอดค้าง = ไม่แจ้งขั้นทวง
+   * - สัญญาที่จ่ายแล้วระหว่างคืน (ไม่มียอดค้างที่ถึงกำหนดแล้ว — `dueOutstanding` นิยามเดียวของทั้งสองทาง) = ไม่แจ้งทั้งสถานะและขั้นทวง ·
+   *   การจ่ายไม่คืนสถานะสัญญาเป็น ACTIVE (รีวิวรอบ 3 I1) · สัญญาที่ออกจาก OVERDUE/DEFAULT แล้ว (เช่น ยกเลิก/ยึดคืน) = ไม่แจ้งสถานะ
    * - สัญญาที่ได้ข้อความทวงทาง LINE แล้ววันนี้ (แถว SENT หมวด DUNNING ของสัญญา) = ข้าม — สั่งรันซ้ำไม่ส่งซ้ำ และหนึ่งสัญญาได้ไม่เกินหนึ่งข้อความ
    *   จากรอบนี้ (ตรงกับเพดานความถี่ DUNNING วันละครั้งของ `ComplianceService`)
    */
@@ -151,13 +172,7 @@ export class CollectionsNotifierService {
         customer: {
           select: { id: true, name: true, ...FINANCE_LINE_RECIPIENT_SELECT, phone: true },
         },
-        payments: {
-          where: {
-            status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] },
-            dueDate: { lt: new Date() },
-          },
-          orderBy: { installmentNo: 'asc' },
-        },
+        payments: { where: dueUnpaidPaymentsWhere(new Date()), orderBy: { installmentNo: 'asc' } },
       },
     });
 
@@ -172,6 +187,10 @@ export class CollectionsNotifierService {
       // ปลายทาง = แถว OTP ของลูกค้า (Task 22 I-1 ง) ไม่ใช่คอลัมน์ line_id_finance
       const lineId = financeLineRecipient(contract.customer);
       if (!lineId) continue;
+
+      const totalOverdue = dueOutstanding(contract.payments);
+      // จ่ายแล้วระหว่างรอ (รอบเช้า — สัญญายังเป็น OVERDUE/DEFAULT) = ไม่มีอะไรต้องแจ้ง (รอบ 4 · รีวิวรอบ 3 I1)
+      if (totalOverdue <= 0) continue;
 
       if (legacyGrace.has(contract.id)) {
         await recordLegacyLinkGraceSkip(this.prisma, {
@@ -196,10 +215,6 @@ export class CollectionsNotifierService {
       }
 
       try {
-        const totalOverdue = contract.payments.reduce(
-          (sum, p) => sum + (Number(p.amountDue) - Number(p.amountPaid) + Number(p.lateFee)),
-          0,
-        );
         const oldestDue = contract.payments[0]?.dueDate;
         const daysOverdue = oldestDue
           ? Math.floor((Date.now() - oldestDue.getTime()) / (1000 * 60 * 60 * 24))
@@ -272,13 +287,7 @@ export class CollectionsNotifierService {
           where: { id: { in: escalatedIds } },
           include: {
             customer: { select: { name: true, ...FINANCE_LINE_RECIPIENT_SELECT, phone: true } },
-            payments: {
-              where: {
-                status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] },
-                dueDate: { lt: now },
-              },
-              orderBy: { installmentNo: 'asc' },
-            },
+            payments: { where: dueUnpaidPaymentsWhere(now), orderBy: { installmentNo: 'asc' } },
           },
         })
       ).map((c) => [c.id, c]),
@@ -294,10 +303,7 @@ export class CollectionsNotifierService {
         const lineId = financeLineRecipient(contract?.customer);
         if (!contract || !lineId) continue;
 
-        const totalOverdue = contract.payments.reduce(
-          (sum, p) => sum + (Number(p.amountDue) - Number(p.amountPaid) + Number(p.lateFee)),
-          0,
-        );
+        const totalOverdue = dueOutstanding(contract.payments);
         // จ่ายแล้วระหว่างรอ (รอบเช้า — Task 30 รอบ 3) = ไม่มีอะไรต้องทวง
         if (totalOverdue <= 0) continue;
 

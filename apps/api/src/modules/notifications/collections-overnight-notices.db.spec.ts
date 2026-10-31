@@ -18,6 +18,7 @@ import {
   bangkokAt,
   createFinanceFixtureBase,
   createInstallmentFixture,
+  dec,
   dueDateBkk,
   realBangkokDate,
   retireFixtures,
@@ -99,14 +100,25 @@ it('รอบกลางคืน → ไม่มีอะไรส่งต�
   const escalated = await overdueContract('escalated');
   const both = await overdueContract('both');
   const paidOvernight = await overdueContract('paid');
+  const paidEscalated = await overdueContract('paidEsc');
   await nightAudit(flipped, 'STATUS_CHANGE', { from: 'ACTIVE', to: 'OVERDUE', reason: 'x' });
   await nightAudit(escalated, 'DUNNING_ESCALATION', { dunningStage: 'REMINDER', daysOverdue: 10 });
   await nightAudit(both, 'STATUS_CHANGE', { from: 'ACTIVE', to: 'OVERDUE', reason: 'x' });
   await nightAudit(both, 'DUNNING_ESCALATION', { dunningStage: 'REMINDER', daysOverdue: 10 });
   await nightAudit(paidOvernight, 'STATUS_CHANGE', { from: 'ACTIVE', to: 'OVERDUE', reason: 'x' });
-  await prisma.contract.update({
-    where: { id: paidOvernight.contractId },
-    data: { status: 'ACTIVE' },
+  await nightAudit(paidEscalated, 'DUNNING_ESCALATION', {
+    dunningStage: 'REMINDER',
+    daysOverdue: 10,
+  });
+  // จ่ายระหว่างคืนแบบที่ระบบทำจริง: งวดเป็น PAID แต่สัญญายังเป็น OVERDUE (ไม่มีทางไหนคืนสถานะสัญญาเป็น ACTIVE —
+  // `overdue-lifecycle-cron.service.ts` เปลี่ยนได้ทางเดียว · รีวิวรอบ 3 I1: เดิมสเปคจำลองด้วยสถานะ ACTIVE ที่ไม่มีบนข้อมูลจริง)
+  await prisma.payment.update({
+    where: { id: paidOvernight.paymentId },
+    data: { status: 'PAID', amountPaid: dec('1515.83'), paidDate: new Date() },
+  });
+  await prisma.payment.update({
+    where: { id: paidEscalated.paymentId },
+    data: { status: 'PAID', amountPaid: dec('1515.83'), paidDate: new Date() },
   });
 
   // เรียกตอนดึก (สั่งรันมือ) — นอกเวลาทำการ ไม่ส่ง
@@ -124,6 +136,7 @@ it('รอบกลางคืน → ไม่มีอะไรส่งต�
   expect(receivedBy(escalated)).toEqual(['dunningFlex']);
   expect(receivedBy(both)).toEqual(['statusFlex']); // หนึ่งข้อความทวงต่อสัญญา
   expect(receivedBy(paidOvernight)).toEqual([]);
+  expect(receivedBy(paidEscalated)).toEqual([]);
 
   // สั่งรันซ้ำ
   jest.setSystemTime(bangkokAt(day, 0, 9, 30));

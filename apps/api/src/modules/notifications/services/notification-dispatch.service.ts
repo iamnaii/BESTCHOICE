@@ -19,6 +19,7 @@ import {
 } from '../legacy-link-grace';
 import { readBoolFlag } from '../../../utils/config.util';
 import * as Sentry from '@sentry/nestjs';
+import { recordNoticeLog } from '../notice-log';
 import { NotificationTransportService } from './notification-transport.service';
 
 /**
@@ -358,15 +359,22 @@ export class NotificationDispatchService {
 
     // For Flex templates with channel=LINE, render JSON and send via lineOaService
     if (tpl.format === 'flex' && tpl.flexTemplate && tpl.channel === 'LINE' && tpl.channelKey) {
+      // Task 30 รอบ 4 m3 — try ครอบเฉพาะการสร้าง Flex + push · สำเนาลงห้องแชทและแถว log ทำหลังส่งถึงแล้ว (ลงไม่ได้ต้องไม่ตกไปทางข้อความ
+      // ⇒ ไม่ส่งข้อความที่สอง — แบบเดียวกับ A1/A2 รอบ 3 M3)
+      let resolvedFlex: FlexMessagePayload | null = null;
       try {
         const flexJson = JSON.parse(tpl.flexTemplate);
-        const resolvedFlex = this.replacePlaceholdersInJson(flexJson, data) as FlexMessagePayload;
-        await this.transport.sendLineFlexMessage(
-          recipient,
-          resolvedFlex,
-          tpl.channelKey as LineChannelKey,
+        const flex = this.replacePlaceholdersInJson(flexJson, data) as FlexMessagePayload;
+        await this.transport.sendLineFlexMessage(recipient, flex, tpl.channelKey as LineChannelKey);
+        resolvedFlex = flex;
+      } catch (err) {
+        this.logger.warn(
+          `Flex template send failed for ${eventType}, falling back to text: ${err instanceof Error ? err.message : err}`,
         );
+        // Fall through to text send below
+      }
 
+      if (resolvedFlex) {
         // Mirror to staff inbox: create a ChatMessage so the staff sees what
         // the customer received. Best-effort — failures here must not break
         // the notification send.
@@ -403,8 +411,9 @@ export class NotificationDispatchService {
           }
         }
 
-        const log = await this.prisma.notificationLog.create({
-          data: {
+        const id = await recordNoticeLog(
+          this.prisma,
+          {
             channel: 'LINE',
             channelKey: tpl.channelKey,
             recipient,
@@ -417,13 +426,9 @@ export class NotificationDispatchService {
             blockReason: null,
             sentAt: new Date(),
           },
-        });
-        return { id: log.id, status: 'SENT' };
-      } catch (err) {
-        this.logger.warn(
-          `Flex template send failed for ${eventType}, falling back to text: ${err instanceof Error ? err.message : err}`,
+          this.logger,
         );
-        // Fall through to text send below
+        return { id, status: 'SENT' };
       }
     }
 
@@ -441,7 +446,11 @@ export class NotificationDispatchService {
         bypassCompliance: options.bypassCompliance,
         fallbackPhone: options.fallbackPhone,
       },
-      { manual: options.manual },
+      // แม่แบบที่ยกเว้นช่วงผ่อนผัน (แจ้งล็อก — รอบ 3 M5) ยกเว้นต่อในทางข้อความด้วย (รอบ 4 — เดิม `send()` ถามช่วงผ่อนผันใหม่แล้วระงับ)
+      {
+        manual: options.manual,
+        legacyGraceExempt: LEGACY_LINK_GRACE_EXEMPT.templates.has(eventType),
+      },
     );
   }
 

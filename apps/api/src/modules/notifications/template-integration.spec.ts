@@ -146,8 +146,8 @@ describe('NotificationsService — sendFromTemplate integration', () => {
         channelKey: 'line-finance',
         category: 'DUNNING',
       }),
-      // Task 30 รอบ 2 ข้อ 2 — ไม่ระบุ manual = ระบบส่งเอง
-      { manual: undefined },
+      // Task 30 รอบ 2 ข้อ 2 — ไม่ระบุ manual = ระบบส่งเอง · รอบ 4 — แม่แบบทั่วไปไม่ยกเว้นช่วงผ่อนผัน
+      { manual: undefined, legacyGraceExempt: false },
     );
   });
 });

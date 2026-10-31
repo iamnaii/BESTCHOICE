@@ -52,6 +52,8 @@ interface RegistryField {
   key: string;
   label: string;
   type: 'text' | 'password' | 'number' | 'boolean';
+  /** API masks these on GET (`••••abcd`) — never prefilled, never echoed back. */
+  sensitive: boolean;
   required: boolean;
   placeholder?: string;
   description?: string;
@@ -72,6 +74,46 @@ interface Registry {
 
 interface IntegrationConfig {
   [field: string]: string;
+}
+
+/** POST /integrations/:key/test — a failed check is still 2xx with `success: false`. */
+interface TestConnectionResponse {
+  success?: boolean;
+  message?: string;
+}
+
+interface BackfillProfilesResponse {
+  updatedPicture?: number;
+  remaining?: number;
+}
+
+interface MessengerProfileResponse {
+  getStarted?: { success?: boolean; error?: string };
+  menu?: { success?: boolean; error?: string };
+}
+
+/** GET /integrations row before `configured` is normalised. */
+type RawIntegration = Omit<Integration, 'configured'> & { configured?: boolean; status?: string };
+
+/** GET /integrations/registry field (IntegrationField on the API — no `type` today). */
+interface RawRegistryField {
+  key: string;
+  label: string;
+  type?: RegistryField['type'];
+  sensitive?: boolean;
+  required?: boolean;
+  placeholder?: string;
+  defaultValue?: string;
+  description?: string;
+}
+
+interface RawRegistryEntry {
+  key: string;
+  name: string;
+  description: string;
+  webhookUrl?: string;
+  webhookNote?: string;
+  fields?: RawRegistryField[];
 }
 
 /* ── Icon map ────────────────────────────────────────── */
@@ -141,19 +183,25 @@ function IntegrationCard({
         </div>
       </div>
       {/* Connected details */}
-      {integration.configured && integration.details && Object.keys(integration.details).length > 0 && (
-        <div className="mt-3 pt-3 border-t border-border/50 space-y-1">
-          {Object.entries(integration.details).map(([label, value]) => (
-            <div key={label} className="flex justify-between text-2xs">
-              <span className="text-muted-foreground">{label}</span>
-              <span className="text-foreground font-mono truncate max-w-[180px]" title={value}>{value}</span>
-            </div>
-          ))}
-        </div>
-      )}
+      {integration.configured &&
+        integration.details &&
+        Object.keys(integration.details).length > 0 && (
+          <div className="mt-3 pt-3 border-t border-border/50 space-y-1">
+            {Object.entries(integration.details).map(([label, value]) => (
+              <div key={label} className="flex justify-between text-2xs">
+                <span className="text-muted-foreground">{label}</span>
+                <span className="text-foreground font-mono truncate max-w-[180px]" title={value}>
+                  {value}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       {/* Webhook URL */}
       {integration.webhookUrl && (
-        <div className={`${integration.configured && integration.details ? 'mt-2 pt-2' : 'mt-3 pt-3'} border-t border-border/50`}>
+        <div
+          className={`${integration.configured && integration.details ? 'mt-2 pt-2' : 'mt-3 pt-3'} border-t border-border/50`}
+        >
           <p className="text-2xs font-medium text-muted-foreground mb-1">Webhook URL</p>
           <code className="text-2xs bg-muted rounded px-1.5 py-0.5 font-mono text-foreground break-all">
             {integration.webhookUrl}
@@ -201,6 +249,42 @@ function PasswordField({
   );
 }
 
+/* ── Form values ─────────────────────────────────────── */
+
+/**
+ * What the form shows before any edit: non-secret fields carry the saved value from
+ * GET /integrations/:key/config (which may be the env/default fallback); secret fields
+ * stay empty so their masked value is only ever a placeholder.
+ */
+function savedFormValues(
+  entry: RegistryEntry | null,
+  config: IntegrationConfig | undefined,
+): IntegrationConfig {
+  const values: IntegrationConfig = {};
+  if (!entry) return values;
+  for (const field of entry.fields) {
+    const secret = field.sensitive || field.type === 'password';
+    values[field.key] = secret ? '' : (config?.[field.key] ?? '');
+  }
+  return values;
+}
+
+/**
+ * Only fields the operator actually changed. Untouched fields are left out so saving
+ * never pins an env/default fallback into the DB, and a secret typed then erased is
+ * not sent (the API treats an empty secret as "unchanged" anyway).
+ */
+function changedFormValues(
+  saved: IntegrationConfig,
+  current: IntegrationConfig,
+): IntegrationConfig {
+  const changed: IntegrationConfig = {};
+  for (const [key, value] of Object.entries(current)) {
+    if (value !== (saved[key] ?? '')) changed[key] = value;
+  }
+  return changed;
+}
+
 /* ── Config Drawer ───────────────────────────────────── */
 
 function ConfigDrawer({
@@ -215,7 +299,8 @@ function ConfigDrawer({
   registry: Registry;
 }) {
   const queryClient = useQueryClient();
-  const [formValues, setFormValues] = useState<IntegrationConfig>({});
+  // Only what the operator changed; the form shows these over the saved values.
+  const [edits, setEdits] = useState<IntegrationConfig>({});
   const [testResult, setTestResult] = useState<{
     success: boolean;
     message: string;
@@ -227,58 +312,24 @@ function ConfigDrawer({
   const configQuery = useQuery<IntegrationConfig>({
     queryKey: ['integration-config', integrationKey],
     queryFn: () =>
-      api.get(`/integrations/${integrationKey}/config`).then((r: any) => r.data?.config ?? r.data),
+      api
+        .get<{ config?: IntegrationConfig }>(`/integrations/${integrationKey}/config`)
+        .then((r) => r.data?.config ?? (r.data as IntegrationConfig)),
     enabled: open && !!integrationKey,
   });
 
-  // Pre-fill form with masked config — sensitive fields show as placeholder only
-  const getInitialValues = (): IntegrationConfig => {
-    if (!entry || !configQuery.data) return {};
-    const vals: IntegrationConfig = {};
-    for (const field of entry.fields) {
-      if (field.type === 'password') {
-        // Don't pre-fill password fields; use masked value as placeholder via configQuery
-        vals[field.key] = '';
-      } else {
-        vals[field.key] = configQuery.data[field.key] ?? '';
-      }
-    }
-    return vals;
-  };
-
-  // Initialise form once config loads
-  useState(() => {
-    if (configQuery.data && entry) {
-      setFormValues(getInitialValues());
-      setTestResult(null);
-    }
-  });
+  const savedValues = savedFormValues(entry, configQuery.data);
+  const formValues: IntegrationConfig = { ...savedValues, ...edits };
+  const setField = (key: string, value: string) => setEdits((prev) => ({ ...prev, [key]: value }));
 
   // Reset when drawer closes or key changes
   const handleOpenChange = (v: boolean) => {
     if (!v) {
-      setFormValues({});
+      setEdits({});
       setTestResult(null);
     }
     onOpenChange(v);
   };
-
-  // Also initialise when configQuery resolves
-  const prevDataRef = { current: configQuery.data };
-  if (configQuery.data !== prevDataRef.current) {
-    prevDataRef.current = configQuery.data;
-    if (configQuery.data && entry) {
-      const vals: IntegrationConfig = {};
-      for (const field of entry.fields) {
-        if (field.type !== 'password') {
-          vals[field.key] = configQuery.data[field.key] ?? '';
-        } else {
-          vals[field.key] = '';
-        }
-      }
-      setFormValues(vals);
-    }
-  }
 
   const saveMutation = useMutation({
     mutationFn: (data: IntegrationConfig) =>
@@ -295,13 +346,22 @@ function ConfigDrawer({
   });
 
   const testMutation = useMutation({
-    mutationFn: () => api.post(`/integrations/${integrationKey}/test`, formValues),
-    onSuccess: (res: any) => {
-      setTestResult({ success: true, message: res.data?.message ?? 'เชื่อมต่อสำเร็จ' });
+    mutationFn: () =>
+      api.post<TestConnectionResponse>(`/integrations/${integrationKey}/test`, formValues),
+    // A failed check still comes back as 2xx with `success: false` — trust the body, not the status.
+    onSuccess: (res) => {
+      const success = res.data?.success === true;
+      setTestResult({
+        success,
+        message:
+          res.data?.message ??
+          (success ? 'เชื่อมต่อสำเร็จ' : 'เชื่อมต่อไม่ได้ — กรุณาตรวจสอบการตั้งค่า'),
+      });
     },
-    onError: (err: any) => {
+    onError: (err) => {
       const msg =
-        err?.response?.data?.message ?? 'เชื่อมต่อไม่ได้ — กรุณาตรวจสอบการตั้งค่า';
+        (err as { response?: { data?: { message?: string } } }).response?.data?.message ??
+        'เชื่อมต่อไม่ได้ — กรุณาตรวจสอบการตั้งค่า';
       setTestResult({ success: false, message: msg });
     },
   });
@@ -310,14 +370,18 @@ function ConfigDrawer({
   const backfillMutation = useMutation({
     mutationFn: () =>
       api
-        .post('/admin/facebook/backfill-profiles?onlyMissing=true&limit=150', undefined, { timeout: 120000 })
-        .then((r: any) => r.data),
-    onSuccess: (data: any) => {
+        .post<BackfillProfilesResponse>(
+          '/admin/facebook/backfill-profiles?onlyMissing=true&limit=150',
+          undefined,
+          { timeout: 120000 },
+        )
+        .then((r) => r.data),
+    onSuccess: (data) => {
       toast.success(
         `อัปเดตรูป ${data?.updatedPicture ?? 0} ห้อง · เหลือที่ยังไม่มีรูป ${data?.remaining ?? 0}`,
       );
     },
-    onError: () => toast.error("เติมข้อมูลย้อนหลัง รูปไม่สำเร็จ"),
+    onError: () => toast.error('เติมข้อมูลย้อนหลัง รูปไม่สำเร็จ'),
   });
 
   // Facebook only — ตั้งปุ่ม Get Started + ข้อความทักทาย + เมนูของเพจ (idempotent)
@@ -326,9 +390,11 @@ function ConfigDrawer({
   const messengerProfileMutation = useMutation({
     mutationFn: () =>
       api
-        .post('/admin/facebook/setup-messenger-profile', undefined, { timeout: 60000 })
-        .then((r: any) => r.data),
-    onSuccess: (data: any) => {
+        .post<MessengerProfileResponse>('/admin/facebook/setup-messenger-profile', undefined, {
+          timeout: 60000,
+        })
+        .then((r) => r.data),
+    onSuccess: (data) => {
       const gs = data?.getStarted?.success;
       const menu = data?.menu?.success;
       if (gs && menu) toast.success('ตั้งปุ่ม Get Started + เมนู Messenger สำเร็จ');
@@ -342,7 +408,7 @@ function ConfigDrawer({
 
   function handleSave(e: React.FormEvent) {
     e.preventDefault();
-    saveMutation.mutate(formValues);
+    saveMutation.mutate(changedFormValues(savedValues, formValues));
   }
 
   if (!entry) return null;
@@ -397,10 +463,7 @@ function ConfigDrawer({
 
               {entry.fields.map((field) => (
                 <div key={field.key} className="space-y-1.5">
-                  <label
-                    htmlFor={field.key}
-                    className="text-sm font-medium text-foreground"
-                  >
+                  <label htmlFor={field.key} className="text-sm font-medium text-foreground">
                     {field.label}
                     {field.required && (
                       <span className="text-destructive ml-1" aria-hidden="true">
@@ -415,9 +478,9 @@ function ConfigDrawer({
                       placeholder={
                         configQuery.data?.[field.key]
                           ? '●●●●●●●● (กรอกใหม่เพื่อเปลี่ยน)'
-                          : field.placeholder ?? ''
+                          : (field.placeholder ?? '')
                       }
-                      onChange={(v) => setFormValues((prev) => ({ ...prev, [field.key]: v }))}
+                      onChange={(v) => setField(field.key, v)}
                     />
                   ) : field.type === 'boolean' ? (
                     <label className="flex items-center gap-2 cursor-pointer">
@@ -425,12 +488,7 @@ function ConfigDrawer({
                         id={field.key}
                         type="checkbox"
                         checked={formValues[field.key] === 'true'}
-                        onChange={(e) =>
-                          setFormValues((prev) => ({
-                            ...prev,
-                            [field.key]: e.target.checked ? 'true' : 'false',
-                          }))
-                        }
+                        onChange={(e) => setField(field.key, e.target.checked ? 'true' : 'false')}
                         className="accent-primary"
                       />
                       <span className="text-sm text-muted-foreground">
@@ -442,9 +500,7 @@ function ConfigDrawer({
                       id={field.key}
                       type={field.type === 'number' ? 'number' : 'text'}
                       value={formValues[field.key] ?? ''}
-                      onChange={(e) =>
-                        setFormValues((prev) => ({ ...prev, [field.key]: e.target.value }))
-                      }
+                      onChange={(e) => setField(field.key, e.target.value)}
                       placeholder={field.placeholder ?? ''}
                     />
                   )}
@@ -457,6 +513,7 @@ function ConfigDrawer({
               {/* Test result */}
               {testResult && (
                 <div
+                  role="status"
                   className={cn(
                     'flex items-start gap-2 p-3 rounded-lg text-sm',
                     testResult.success
@@ -635,9 +692,9 @@ export default function IntegrationHubPage() {
   const integrationsQuery = useQuery<Integration[]>({
     queryKey: ['integrations'],
     queryFn: async () => {
-      const res = await api.get('/integrations');
-      const items = Array.isArray(res.data) ? res.data : res.data?.data ?? res.data;
-      return items.map((i: any) => ({
+      const res = await api.get<RawIntegration[] | { data?: RawIntegration[] }>('/integrations');
+      const items = Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
+      return items.map((i) => ({
         ...i,
         configured: i.configured ?? i.status === 'connected',
       }));
@@ -647,7 +704,11 @@ export default function IntegrationHubPage() {
   const registryQuery = useQuery<Registry>({
     queryKey: ['integrations-registry'],
     queryFn: async () => {
-      const data = (await api.get('/integrations/registry')).data;
+      const data = (
+        await api.get<RawRegistryEntry[] | Record<string, RawRegistryEntry>>(
+          '/integrations/registry',
+        )
+      ).data;
       // API returns array of IntegrationDef, convert to { [key]: RegistryEntry }
       const list = Array.isArray(data) ? data : Object.values(data);
       const map: Registry = {};
@@ -658,10 +719,11 @@ export default function IntegrationHubPage() {
           description: entry.description,
           webhookUrl: entry.webhookUrl,
           webhookNote: entry.webhookNote,
-          fields: (entry.fields ?? []).map((f: any) => ({
+          fields: (entry.fields ?? []).map((f) => ({
             key: f.key,
             label: f.label,
             type: f.type ?? (f.sensitive ? 'password' : 'text'),
+            sensitive: f.sensitive ?? f.type === 'password',
             required: f.required ?? false,
             placeholder: f.placeholder ?? f.defaultValue ?? '',
             description: f.description,
@@ -694,10 +756,7 @@ export default function IntegrationHubPage() {
 
   return (
     <div>
-      <PageHeader
-        title="การเชื่อมต่อ"
-        subtitle="ตั้งค่าและทดสอบการเชื่อมต่อกับระบบภายนอก"
-      />
+      <PageHeader title="การเชื่อมต่อ" subtitle="ตั้งค่าและทดสอบการเชื่อมต่อกับระบบภายนอก" />
       <QueryBoundary
         isLoading={isLoading}
         isError={isError}
@@ -707,10 +766,7 @@ export default function IntegrationHubPage() {
           registryQuery.refetch();
         }}
       >
-        <IntegrationGrid
-          integrations={integrations}
-          registry={registryQuery.data ?? {}}
-        />
+        <IntegrationGrid integrations={integrations} registry={registryQuery.data ?? {}} />
       </QueryBoundary>
     </div>
   );

@@ -73,10 +73,12 @@ export class IntegrationConfigService implements OnModuleInit {
   /**
    * Boot self-check: does the key this process holds open every encrypted
    * credential? One log line (field references only — never values) lets ops
-   * verify the key after a deploy without reading any secret. Printed whenever
-   * a key is configured (well-formed or not) or encrypted values exist, so "no
-   * line" can only mean "no key and nothing encrypted". Never throws: a DB
-   * hiccup must not block boot.
+   * verify the key after a deploy without reading any secret. Fields that
+   * decrypt are named too: a credential nobody remembers entering starts
+   * working the moment its key arrives, so ops must know which ones to test.
+   * Printed whenever a key is configured (well-formed or not) or encrypted
+   * values exist, so "no line" can only mean "no key and nothing encrypted".
+   * Never throws: a DB hiccup must not block boot.
    */
   private async logEncryptedFieldCheck(status: IntegrationKeyStatus): Promise<void> {
     let check: EncryptedFieldCheck;
@@ -91,7 +93,7 @@ export class IntegrationConfigService implements OnModuleInit {
     const { ok, failed } = check;
     if (status === 'missing' && ok.length + failed.length === 0) return;
 
-    const line = `integration encrypted fields: key=${status} ok=${ok.length} failed=${failed.length} [${failed.join(', ')}]`;
+    const line = `integration encrypted fields: key=${status} ok=${ok.length} [${ok.join(', ')}] failed=${failed.length} [${failed.join(', ')}]`;
     if (failed.length === 0 && status === 'ok') {
       this.logger.log(line);
       return;

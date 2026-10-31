@@ -247,7 +247,9 @@ describe('IntegrationConfigService boot self-check (onModuleInit)', () => {
 
     await service.onModuleInit();
 
-    expect(selfCheckLines(log)).toEqual(['integration encrypted fields: key=ok ok=2 failed=0 []']);
+    expect(selfCheckLines(log)).toEqual([
+      'integration encrypted fields: key=ok ok=2 [line-shop.channelSecret, line-shop.channelToken] failed=0 []',
+    ]);
     expect(selfCheckLines(warn)).toEqual([]);
     expect(Sentry.captureMessage).not.toHaveBeenCalled();
   });
@@ -260,7 +262,7 @@ describe('IntegrationConfigService boot self-check (onModuleInit)', () => {
     await service.onModuleInit();
 
     expect(selfCheckLines(warn)).toEqual([
-      'integration encrypted fields: key=ok ok=0 failed=2 [line-shop.channelSecret, line-shop.channelToken]',
+      'integration encrypted fields: key=ok ok=0 [] failed=2 [line-shop.channelSecret, line-shop.channelToken]',
     ]);
     expect(selfCheckLines(log)).toEqual([]);
     expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
@@ -275,13 +277,26 @@ describe('IntegrationConfigService boot self-check (onModuleInit)', () => {
     }
   });
 
+  it('mixed → names both the fields that decrypt and the ones that do not', async () => {
+    const { service } = build(KEY_A, {
+      [SECRET_KEY]: encryptPII(SECRET, KEY_A),
+      'integration.peak.secretKey': encryptPII('test-only-peak-secret', KEY_B),
+    });
+
+    await service.onModuleInit();
+
+    expect(selfCheckLines(warn)).toEqual([
+      'integration encrypted fields: key=ok ok=1 [line-shop.channelSecret] failed=1 [peak.secretKey]',
+    ]);
+  });
+
   it('no key + encrypted values → keeps the "key not set" warning and reports them failed', async () => {
     const { service } = build(undefined, { [SECRET_KEY]: encryptPII(SECRET, KEY_A) });
 
     await service.onModuleInit();
 
     expect(selfCheckLines(warn)).toEqual([
-      'integration encrypted fields: key=missing ok=0 failed=1 [line-shop.channelSecret]',
+      'integration encrypted fields: key=missing ok=0 [] failed=1 [line-shop.channelSecret]',
     ]);
     expect(warn.mock.calls.map((c) => String(c[0])).join('\n')).toContain(
       'INTEGRATION_ENCRYPTION_KEY not set',
@@ -302,7 +317,9 @@ describe('IntegrationConfigService boot self-check (onModuleInit)', () => {
 
     await service.onModuleInit();
 
-    expect(selfCheckLines(log)).toEqual(['integration encrypted fields: key=ok ok=0 failed=0 []']);
+    expect(selfCheckLines(log)).toEqual([
+      'integration encrypted fields: key=ok ok=0 [] failed=0 []',
+    ]);
   });
 
   it.each([
@@ -324,7 +341,7 @@ describe('IntegrationConfigService boot self-check (onModuleInit)', () => {
         'error',
       );
       expect(selfCheckLines(warn)).toEqual([
-        'integration encrypted fields: key=malformed ok=0 failed=1 [line-shop.channelSecret]',
+        'integration encrypted fields: key=malformed ok=0 [] failed=1 [line-shop.channelSecret]',
       ]);
       const out = emitted(warn, error, log);
       expect(out).not.toContain(key);
@@ -338,7 +355,7 @@ describe('IntegrationConfigService boot self-check (onModuleInit)', () => {
     await service.onModuleInit();
 
     expect(selfCheckLines(warn)).toEqual([
-      'integration encrypted fields: key=malformed ok=0 failed=0 []',
+      'integration encrypted fields: key=malformed ok=0 [] failed=0 []',
     ]);
   });
 

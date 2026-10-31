@@ -90,7 +90,7 @@ const balanceOf = (lines: TraceLine[]) => {
  * - เปิดสัญญา = 1A / A.1 / ยอดยกมาของสัญญานำเข้า (`isContractOpeningEntry`) · สัญญาประวัติที่นำเข้า (ไม่มีตารางงวด) ไม่ต้องมี
  * - ต้นทุนขาย / ระหว่างกิจการ = ขา SHOP ของการเปิดสัญญา (`ShopInventoryTransferTemplate` JE A / JE B) — เดิมอ่าน
  *   `InterCompanyTransaction` ซึ่งเขียนเฉพาะจาก `POST /inter-company` ด้วยมือ (ไม่มีเส้นทางเปิดสัญญาเขียน) · สัญญานำเข้ายกเว้น
- * - งวดที่ไม่มีรายการผูก `paymentId` = คำตัดสินของ `orphan_payments` (ล้าง 11-2103 ของงวด · JP4 · งวดนำเข้าที่ยังไม่ถูกแตะ)
+ * - งวดที่ไม่มีรายการผูก `paymentId` = คำตัดสินของ `orphan_payments` (ล้าง 11-2103 ของงวด · งวดที่ JP4 จ่าย · งวดนำเข้าที่ยังไม่ถูกแตะ)
  * - ลูกหนี้ = `hp_receivable_reconciliation` (เดิมอ่าน 11-2102 ค่าเผื่อหนี้สงสัยจะสูญ) · VAT = `vat_mismatch` (เดิมเทียบ 21-2101
  *   ของใบรับกับ `Payment.vatAmount`) · ค่าคอม = `commission_mismatch` (SKIPPED)
  *
@@ -488,7 +488,7 @@ export class ContractTraceService {
     );
     if (journals.length === 0) {
       // ไม่มีรายการผูก paymentId — ยังหนุนได้แบบเดียวกับ orphan_payments: รายการล้าง 11-2103 ของงวด (รอบกลางคืนหักเงินรับล่วงหน้า /
-      // เงินพัก) · JP4 ระดับสัญญา · งวดนำเข้าที่ยังไม่มีเส้นทางรับเงินแตะ
+      // เงินพัก) · JP4 ของสัญญา (เฉพาะงวดที่ JP4 จ่าย — Task 25) · งวดนำเข้าที่ยังไม่มีเส้นทางรับเงินแตะ
       if (!orphanPaymentIds.has(payment.id)) {
         return {
           name,

@@ -30,19 +30,36 @@
  * consumed into the row) — the bound re-issue of the same money later would be a second tax document the
  * `receipts_source_journal_entry_key` index cannot stop, and refunds would pay back by the unbound amount.
  * Such rows are never issued here: they are printed as "bound re-issue" candidates with their entry
- * numbers (+ `receiptTax.amount` — the amount the bound re-issue must pass) for the runbook.
+ * numbers (+ `receiptTax.amount` — the amount the bound re-issue must pass) for the runbook. That list is
+ * per receipt ENTRY (Task 25 · review m-2): every live receipt entry of a PAID installment with no receipt
+ * bound to it — also on an installment that already has another receipt row (voided then re-received · an
+ * earlier partial receipt · a reschedule-fee receipt on the same paymentId).
  *
  * ⚠️ NEVER FOR MONEY DOCUMENTED ELSEWHERE (Task 23 review m-1)
  * ------------------------------------------------------------
  * A PAID row with no receipt row of its own can still be money that already has its document:
- * - (c) a row closed by an early payoff — the payoff receipt (`EARLY_PAYOFF`) and JP4 carry no `paymentId`;
- * - (b) a row cleared by an entry bound to its schedule row without a `paymentId` — the nightly 2A consuming
- *   a customer advance / the reschedule park (that money got its tax document when it was received).
- * These are exactly paths (c) and (b) of the nightly `orphan_payments` check — the same sets
+ * - (c) a row the early payoff paid — the payoff receipt (`EARLY_PAYOFF`) and JP4 carry no `paymentId`; only
+ *   the rows JP4 settled (`PAID_BY_EARLY_PAYOFF`: paid_date = the JP4's posted_at and inside the range of
+ *   installments it closed; a JP4 without the range also by the early-payoff note prefix its rows carry),
+ *   NOT a row of the same contract PAID before the payoff (Task 25 · r-1);
+ * - (b) a row cleared by an entry that credits 11-2103 for its schedule row (path (b) of `orphan_payments` —
+ *   the nightly 2A consuming a customer advance / the reschedule park: that money got its document when it
+ *   was received since PR3 / PR4ข).
+ * These are exactly paths (c) and (b) of the nightly `orphan_payments` check — the same rules
  * (`modules/data-audit/services/payment-backing.ts`), not a second definition. A row whose rest was paid in
  * cash has that receipt row already (or, if it failed, a live entry ⇒ the bound list), so skipping the whole
- * row is safe. What the CLI still issues for: PAID rows backed by no journal entry at all (seed "data-only"
- * rows · payments that predate receipt automation).
+ * row is safe. Every skipped row is printed — `[documented elsewhere] paymentId=… path=b|c|b+c` plus a count
+ * line, on dry-run and live run — so the operator sees what is not issued before a real run (Task 25).
+ * What the CLI still issues for: PAID rows backed by no journal entry at all (seed "data-only" rows ·
+ * payments that predate receipt automation) — including such a row on a contract that was later paid off
+ * early (the payoff settled only the rows still open).
+ *
+ * COST (Task 25 review m-2 — accepted, no index): the population query decides path (c) per row (a SubPlan
+ * that scans journal_entries) and its `LIVE_BOUND_RECEIPT_ENTRY` anti-join (Task 23) also runs as a per-row
+ * Nested Loop over the live receipt entries, so a run takes seconds at today's size and grows with (rows the
+ * payoff paid + rows the nightly run cleared) × journal entries (synthetic 1,200 × 86,200: (c) ≈ 4.4 s + the
+ * anti-join ≈ 2 s · ≈ 7 s in all). Manual tool only — the nightly orphan_payments check plans (c) as an
+ * anti-join.
  *
  * GUARDS
  * ------
@@ -65,10 +82,13 @@ import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../prisma/prisma.service';
 import {
-  EARLY_PAYOFF_CONTRACTS,
+  PAID_BY_EARLY_PAYOFF,
   SCHEDULE_ROWS_CLEARED_BY_ENTRY,
 } from '../modules/data-audit/services/payment-backing';
-import { INSTALLMENT_RECEIPT_SOURCE_TAGS } from '../modules/receipts/receipt-types.constants';
+import {
+  INSTALLMENT_MONEY_RECEIPT_TYPES,
+  INSTALLMENT_RECEIPT_SOURCE_TAGS,
+} from '../modules/receipts/receipt-types.constants';
 import { ReceiptIssuanceService } from '../modules/receipts/services/receipt-issuance.service';
 import { ReceiptNumberService } from '../modules/receipts/services/receipt-number.service';
 
@@ -104,29 +124,41 @@ const LIVE_BOUND_RECEIPT_ENTRY = Prisma.sql`je.metadata->>'paymentId' = p.id
         AND je.deleted_at IS NULL
         AND COALESCE(je.metadata->>'reversed', 'false') <> 'true'`;
 
+/** Paths (b)/(c) of `orphan_payments` that put a row's money under a document elsewhere (`payment-backing.ts`) */
+export type DocumentedElsewherePath = 'b' | 'c' | 'b+c';
+
+/** A row of the CLI's population with the two "documented elsewhere" paths decided per row */
+interface PopulationRow extends PaidPaymentRow {
+  /** (b) an entry credits 11-2103 for the row's schedule row (nightly advance / park consumption · 6a/6b) */
+  cleared_by_schedule: boolean;
+  /** (c) the contract's early payoff (JP4) paid this row — `PAID_BY_EARLY_PAYOFF` */
+  paid_by_payoff: boolean;
+}
+
+export interface DocumentedElsewhereRow extends PaidPaymentRow {
+  path: DocumentedElsewherePath;
+}
+
 /**
- * Rows this CLI issues an (unbound) receipt for: PAID payments with money received and NO receipt row at
- * all, and
+ * The CLI's population: PAID payments with money received and NO receipt row at all, and
  * - never an installment imported from the old back office (`legacy_installment_code` — written only by
  *   the importer): its pre-cutover money was booked in PEAK and has no receipt here by design, so a
  *   catch-up tax invoice would be a second document for the same money (Task 18 review m-2, 2026-10-30);
  * - never a payment with a live receipt entry bound to it (Task 23): that goes through the bound re-issue
- *   runbook — `findBoundReissueCandidates`;
- * - never a row closed by an early payoff (c) or cleared through its schedule row (b) — paths (b)/(c) of
- *   `orphan_payments` (`payment-backing.ts`): that money is documented by the payoff receipt / by the receipt
- *   that took the advance (Task 23 review m-1).
+ *   runbook — `findBoundReissueCandidates`.
+ * Each row carries paths (b)/(c) of `orphan_payments` (`payment-backing.ts` — the same rules, decided in one
+ * query) so the run splits it into the rows it issues for and the rows it skips and prints.
  */
-export async function findPaidPaymentsWithoutReceipt(
-  prisma: PrismaService,
-): Promise<PaidPaymentRow[]> {
-  return prisma.$queryRaw<PaidPaymentRow[]>`
-    WITH cleared_schedule AS (${SCHEDULE_ROWS_CLEARED_BY_ENTRY}),
-    paid_off_contract AS (${EARLY_PAYOFF_CONTRACTS})
+async function loadPopulation(prisma: PrismaService): Promise<PopulationRow[]> {
+  return prisma.$queryRaw<PopulationRow[]>`
+    WITH cleared_schedule AS (${SCHEDULE_ROWS_CLEARED_BY_ENTRY})
     SELECT p.id, p.contract_id, p.installment_no,
            p.amount_paid::text AS amount_paid,
            p.payment_method, p.gateway_ref, p.recorded_by_id,
            p.paid_date,
-           c.contract_number
+           c.contract_number,
+           EXISTS (SELECT 1 FROM cleared_schedule b WHERE b.id = s.id) AS cleared_by_schedule,
+           ${PAID_BY_EARLY_PAYOFF} AS paid_by_payoff
     FROM payments p
     JOIN contracts c ON c.id = p.contract_id
     LEFT JOIN installment_schedules s
@@ -134,11 +166,59 @@ export async function findPaidPaymentsWithoutReceipt(
     WHERE ${PAID_WITHOUT_ANY_RECEIPT}
       AND p.legacy_installment_code IS NULL
       AND NOT EXISTS (SELECT 1 FROM journal_entries je WHERE ${LIVE_BOUND_RECEIPT_ENTRY})
-      AND NOT EXISTS (SELECT 1 FROM cleared_schedule b WHERE b.id = s.id)
-      AND NOT EXISTS (SELECT 1 FROM paid_off_contract b WHERE b.id = p.contract_id)
     ORDER BY c.contract_number, p.installment_no
   `;
 }
+
+/** Rows this CLI issues for vs rows it skips because their money is documented elsewhere — one snapshot */
+function splitPopulation(rows: PopulationRow[]): {
+  candidates: PaidPaymentRow[];
+  documentedElsewhere: DocumentedElsewhereRow[];
+} {
+  const candidates: PaidPaymentRow[] = [];
+  const documentedElsewhere: DocumentedElsewhereRow[] = [];
+  for (const { cleared_by_schedule: b, paid_by_payoff: c, ...row } of rows) {
+    const path: DocumentedElsewherePath | null = b && c ? 'b+c' : b ? 'b' : c ? 'c' : null;
+    if (path) documentedElsewhere.push({ ...row, path });
+    else candidates.push(row);
+  }
+  return { candidates, documentedElsewhere };
+}
+
+/**
+ * Rows this CLI issues an (unbound) receipt for: the population (`loadPopulation`) minus the rows the early
+ * payoff paid (c) or cleared through their schedule row (b) — paths (b)/(c) of `orphan_payments`
+ * (`payment-backing.ts`): that money is documented by the payoff receipt / by the receipt that took the
+ * advance (Task 23 review m-1) · a row PAID before the payoff is not under (c) (Task 25).
+ */
+export async function findPaidPaymentsWithoutReceipt(
+  prisma: PrismaService,
+): Promise<PaidPaymentRow[]> {
+  return splitPopulation(await loadPopulation(prisma)).candidates;
+}
+
+/**
+ * Rows of the population the CLI skips because their money is documented elsewhere — path `b` / `c` /
+ * `b+c` (Task 25 · Task 23 re-review r-1): printed on every run (dry-run and live) with a count so the
+ * operator sees what is not issued before a real run.
+ */
+export async function findDocumentedElsewhere(
+  prisma: PrismaService,
+): Promise<DocumentedElsewhereRow[]> {
+  return splitPopulation(await loadPopulation(prisma)).documentedElsewhere;
+}
+
+/**
+ * Live receipt entry (alias `je`) of payment `p` that has no receipt bound to it — the per-entry rule of the
+ * runbook's SQL check ("ออกใบเสร็จซ้ำ" in `.claude/rules/accounting.md`): no live receipt row carries
+ * `source_journal_entry_id = je.id`. An entry from before PR3 (no `receiptTax` stamp) never had its receipt
+ * bound — that receipt was issued unbound — so it counts as missing only while the payment has no receipt row
+ * at all (the per-payment rule of Task 23, kept for that era).
+ */
+const RECEIPT_ENTRY_WITHOUT_ITS_RECEIPT = Prisma.sql`NOT EXISTS (SELECT 1 FROM receipts r
+                        WHERE r.source_journal_entry_id = je.id AND r.deleted_at IS NULL)
+        AND (je.metadata->'receiptTax' IS NOT NULL
+             OR NOT EXISTS (SELECT 1 FROM receipts r WHERE r.payment_id = p.id))`;
 
 interface BoundReissueRow {
   id: string;
@@ -146,15 +226,26 @@ interface BoundReissueRow {
   installment_no: number;
   amount_paid: string;
   contract_number: string;
-  /** live receipt entries of the payment, oldest first · `receiptAmount` = `metadata.receiptTax.amount` (null before PR3) */
+  /**
+   * the payment's live receipt entries with no receipt bound to them, oldest first — one receipt to re-issue per
+   * entry · `receiptAmount` = `metadata.receiptTax.amount` (null before PR3)
+   */
   entries: { entryNumber: string; receiptAmount: string | null }[];
+  /**
+   * live installment receipts of the payment bound to NO entry (before PR3 / issued without the entry) — > 0 on a
+   * listed entry is the runbook's known false positive (an entry posted later for money whose receipt was issued
+   * unbound, e.g. `backfill-orphan-partial-receipts`): check that receipt before re-issuing
+   */
+  unbound_receipts: number;
 }
 
 /**
- * The same population as the CLI (PAID, no receipt row) whose receipt entry IS live — the receipt failed to
- * issue after the money was booked. Never issued by this CLI; listed for the bound re-issue runbook
- * ("ออกใบเสร็จซ้ำ" — `.claude/rules/accounting.md`). Imported rows are included: a post-cutover receipt of an
- * imported row re-issues bound too.
+ * Live receipt journal entries of a PAID installment with no receipt bound to them — the receipt failed to
+ * issue after the money was booked (Task 25 · Task 23 review m-2: per ENTRY, not per payment — an installment
+ * that already has a receipt row (voided then re-received · an earlier partial receipt · a reschedule-fee
+ * receipt on the same paymentId) can still miss the receipt of another entry). Grouped per payment. Never
+ * issued by this CLI; listed for the bound re-issue runbook ("ออกใบเสร็จซ้ำ" — `.claude/rules/accounting.md`).
+ * Imported rows are included: a post-cutover receipt of an imported row re-issues bound too.
  */
 export async function findBoundReissueCandidates(
   prisma: PrismaService,
@@ -163,15 +254,23 @@ export async function findBoundReissueCandidates(
     SELECT p.id, p.contract_id, p.installment_no,
            p.amount_paid::text AS amount_paid,
            c.contract_number,
-           (SELECT json_agg(json_build_object(
-                     'entryNumber', je.entry_number,
-                     'receiptAmount', je.metadata->'receiptTax'->>'amount')
-                   ORDER BY je.posted_at, je.entry_number)
-            FROM journal_entries je WHERE ${LIVE_BOUND_RECEIPT_ENTRY}) AS entries
-    FROM payments p
+           json_agg(json_build_object(
+                      'entryNumber', je.entry_number,
+                      'receiptAmount', je.metadata->'receiptTax'->>'amount')
+                    ORDER BY je.posted_at, je.entry_number) AS entries,
+           (SELECT COUNT(*)::int FROM receipts r
+             WHERE r.payment_id = p.id AND r.deleted_at IS NULL AND NOT r.is_voided
+               AND r.source_journal_entry_id IS NULL
+               AND r."receiptType" IN (${Prisma.join([...INSTALLMENT_MONEY_RECEIPT_TYPES])})) AS unbound_receipts
+    FROM journal_entries je
+    JOIN payments p ON p.id = je.metadata->>'paymentId'
     JOIN contracts c ON c.id = p.contract_id
-    WHERE ${PAID_WITHOUT_ANY_RECEIPT}
-      AND EXISTS (SELECT 1 FROM journal_entries je WHERE ${LIVE_BOUND_RECEIPT_ENTRY})
+    WHERE p.deleted_at IS NULL
+      AND p.status = 'PAID'
+      AND p.amount_paid > 0
+      AND ${LIVE_BOUND_RECEIPT_ENTRY}
+      AND ${RECEIPT_ENTRY_WITHOUT_ITS_RECEIPT}
+    GROUP BY p.id, c.contract_number
     ORDER BY c.contract_number, p.installment_no
   `;
 }
@@ -184,6 +283,12 @@ export interface BackfillReceiptsResult {
   totalAmount: Decimal;
   /** payments listed for the bound re-issue runbook — never issued by this CLI */
   boundReissue: number;
+  /** their receipt entries with no receipt (one receipt to re-issue per entry) */
+  boundReissueEntries: number;
+  /** population rows skipped because their money is documented elsewhere (paths b/c) — printed, never issued */
+  documentedElsewhere: number;
+  /** the same rows counted per path */
+  documentedElsewhereByPath: Record<DocumentedElsewherePath, number>;
 }
 
 export async function backfillPaymentReceipts(
@@ -191,7 +296,7 @@ export async function backfillPaymentReceipts(
   issuance: ReceiptIssuanceService,
   opts: { dryRun: boolean; fallbackIssuerId: string | null },
 ): Promise<BackfillReceiptsResult> {
-  const rows = await findPaidPaymentsWithoutReceipt(prisma);
+  const { candidates: rows, documentedElsewhere } = splitPopulation(await loadPopulation(prisma));
   const bound = await findBoundReissueCandidates(prisma);
   const result: BackfillReceiptsResult = {
     candidates: rows.length,
@@ -200,12 +305,17 @@ export async function backfillPaymentReceipts(
     failed: 0,
     totalAmount: new Decimal(0),
     boundReissue: bound.length,
+    boundReissueEntries: bound.reduce((n, b) => n + b.entries.length, 0),
+    documentedElsewhere: documentedElsewhere.length,
+    documentedElsewhereByPath: { b: 0, c: 0, 'b+c': 0 },
   };
+  for (const e of documentedElsewhere) result.documentedElsewhereByPath[e.path] += 1;
 
   if (bound.length > 0) {
     console.log(
-      `[backfill-receipts] ${bound.length} payment(s) have a live receipt journal entry — NOT issued here.` +
-        ' Re-issue each receipt bound to its entry (runbook "ออกใบเสร็จซ้ำ", .claude/rules/accounting.md):',
+      `[backfill-receipts] ${result.boundReissueEntries} live receipt journal entr(y/ies) on ${bound.length}` +
+        ' payment(s) have no receipt bound to them — NOT issued here. Re-issue one receipt per entry, bound to it' +
+        ' (runbook "ออกใบเสร็จซ้ำ", .claude/rules/accounting.md):',
     );
     for (const b of bound) {
       const entries = b.entries
@@ -213,7 +323,10 @@ export async function backfillPaymentReceipts(
         .join(', ');
       console.log(
         `  [bound re-issue] paymentId=${b.id}  contract=${b.contract_number}  งวด=${b.installment_no}` +
-          `  amountPaid=฿${new Decimal(b.amount_paid).toFixed(2)}  entries=${entries}`,
+          `  amountPaid=฿${new Decimal(b.amount_paid).toFixed(2)}  entries=${entries}` +
+          (b.unbound_receipts > 0
+            ? `  ⚠ unboundReceipts=${b.unbound_receipts} — check that receipt is not this money before re-issuing`
+            : ''),
       );
     }
     console.log('');
@@ -280,8 +393,31 @@ export async function backfillPaymentReceipts(
     }
   }
 
+  // Printed LAST and in full (review nit 3): the set only grows (every row a payoff paid · every row the nightly
+  // run cleared) — the lists to act on (bound re-issue, the rows above) stay on screen first.
+  if (documentedElsewhere.length > 0) {
+    console.log('');
+    console.log(
+      `[backfill-receipts] ${documentedElsewhere.length} payment(s) skipped (${byPathText(result)})` +
+        ' — money documented elsewhere (orphan_payments paths, payment-backing.ts: b = cleared through the' +
+        " schedule row by the nightly advance / park consumption · c = paid by the contract's early payoff JP4)." +
+        ' NOT issued here:',
+    );
+    for (const e of documentedElsewhere) {
+      console.log(
+        `  [documented elsewhere] paymentId=${e.id}  contract=${e.contract_number}  งวด=${e.installment_no}` +
+          `  amountPaid=฿${new Decimal(e.amount_paid).toFixed(2)}  path=${e.path}`,
+      );
+    }
+  }
+
   return result;
 }
+
+const byPathText = (r: BackfillReceiptsResult): string =>
+  (['b', 'c', 'b+c'] as const)
+    .map((path) => `${path}=${r.documentedElsewhereByPath[path]}`)
+    .join(' · ');
 
 async function main(): Promise<void> {
   const expectedDb = process.env.EXPECTED_DB_NAME;
@@ -349,7 +485,7 @@ async function main(): Promise<void> {
       '[backfill-receipts] Payments with a live receipt journal entry are listed for the bound re-issue runbook — never issued here.',
     );
     console.log(
-      '[backfill-receipts] Rows closed by an early payoff or cleared by the nightly advance / park consumption are skipped — their money is documented elsewhere.',
+      '[backfill-receipts] Rows the early payoff paid (not rows paid before it) or cleared by the nightly advance / park consumption are skipped — their money is documented elsewhere; each is listed as [documented elsewhere] with its path.',
     );
     console.log('');
     const result = await backfillPaymentReceipts(prisma, issuance, {
@@ -360,7 +496,12 @@ async function main(): Promise<void> {
     console.log('');
     console.log('[backfill-receipts] ===== SUMMARY =====');
     console.log(`  candidates                : ${result.candidates}`);
-    console.log(`  bound re-issue (not here) : ${result.boundReissue}`);
+    console.log(
+      `  bound re-issue (not here) : ${result.boundReissueEntries} entr(y/ies) on ${result.boundReissue} payment(s)`,
+    );
+    console.log(
+      `  documented elsewhere      : ${result.documentedElsewhere} (${byPathText(result)})`,
+    );
     if (!dryRun) {
       console.log(`  created                   : ${result.created}`);
       console.log(`  skipped (no issuer)       : ${result.skipped}`);

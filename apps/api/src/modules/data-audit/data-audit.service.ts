@@ -163,6 +163,9 @@ export class DataAuditService {
         Sentry.captureMessage(`Data audit FAILED: ${summary}`, {
           level: 'error',
           tags: { kind: 'data-audit' },
+          // Group by WHICH checks fail, not by the message: `count` is the true total (Task 25 · m-5), so the
+          // text changes whenever a count does — without this every new number would open a new Sentry issue
+          fingerprint: ['data-audit', ...criticals.map((c) => c.name)],
           extra: { runId, criticals },
         });
       }

@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import * as Sentry from '@sentry/nestjs';
 import { NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { DataAuditService } from './data-audit.service';
@@ -8,6 +9,12 @@ import { DataAuditChecksService } from './services/data-audit-checks.service';
 import { ContractTraceService } from './services/contract-trace.service';
 import { AuditFindingsService } from './services/audit-findings.service';
 import { AuditBackfillService } from './services/audit-backfill.service';
+import { EARLY_PAYOFF_PAYMENT_NOTE_PREFIX, PAID_BY_EARLY_PAYOFF } from './services/payment-backing';
+
+jest.mock('@sentry/nestjs', () => ({
+  ...jest.requireActual('@sentry/nestjs'),
+  captureMessage: jest.fn(),
+}));
 
 /**
  * DataAuditService tests — validates all 12 database health checks
@@ -98,6 +105,15 @@ describe('DataAuditService', () => {
       expect(result.count).toBe(1);
       expect(result.details).toHaveLength(1);
     });
+
+    it('Task 25 (m-5) — count is the true total; only details are capped at 50 (no LIMIT in the query)', async () => {
+      prisma.$queryRaw.mockResolvedValueOnce(
+        Array.from({ length: 62 }, (_, i) => ({ id: `je-${i}`, diff: new Prisma.Decimal('1.00') })),
+      );
+      const result = await service.checkJournalBalance();
+      expect([result.status, result.count, result.details.length]).toEqual(['FAIL', 62, 50]);
+      expect(JSON.stringify(prisma.$queryRaw.mock.calls[0])).not.toContain('LIMIT');
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════
@@ -118,6 +134,15 @@ describe('DataAuditService', () => {
       const result = await service.checkOrphanContracts();
       expect(result.status).toBe('FAIL');
       expect(result.count).toBe(1);
+    });
+
+    it('Task 25 (m-5) — count is the true total; only details are capped at 50 (no LIMIT in the query)', async () => {
+      prisma.$queryRaw.mockResolvedValueOnce(
+        Array.from({ length: 62 }, (_, i) => ({ id: `c-${i}`, status: 'ACTIVE' })),
+      );
+      const result = await service.checkOrphanContracts();
+      expect([result.status, result.count, result.details.length]).toEqual(['FAIL', 62, 50]);
+      expect(JSON.stringify(prisma.$queryRaw.mock.calls[0])).not.toContain('LIMIT');
     });
   });
 
@@ -148,9 +173,13 @@ describe('DataAuditService', () => {
       expect(result.count).toBe(1);
     });
 
-    it('Task 23 — the nightly run caps details at 50; the contract trace reads every row of its scope (same SQL, no LIMIT)', async () => {
-      await service.checkOrphanPayments();
-      expect(JSON.stringify(prisma.$queryRaw.mock.calls[0])).toContain('LIMIT 50');
+    it('Task 23 · Task 25 (m-5) — the nightly run reports the true count and caps details at 50; the contract trace reads every row of its scope (same SQL, no LIMIT)', async () => {
+      prisma.$queryRaw.mockResolvedValueOnce(
+        Array.from({ length: 62 }, (_, i) => ({ id: `p-${i}`, installment_no: i + 1 })),
+      );
+      const nightly = await service.checkOrphanPayments();
+      expect([nightly.count, nightly.details.length]).toEqual([62, 50]);
+      expect(JSON.stringify(prisma.$queryRaw.mock.calls[0])).not.toContain('LIMIT');
 
       prisma.contract.findUnique.mockResolvedValueOnce({
         id: 'c-1',
@@ -169,6 +198,29 @@ describe('DataAuditService', () => {
       expect(traceCall).toEqual(
         expect.arrayContaining([expect.objectContaining({ values: ['c-1'] })]),
       );
+    });
+
+    it('Task 25 (r-1) — path (c) backs only the rows the JP4 paid (its posted_at + its stamped range · a range-less JP4 also by the note prefix), with the same fragment as the overpaid JP4 allowance', async () => {
+      await service.checkOrphanPayments();
+      await service.checkOverpaidContracts();
+      const [orphanCall, overpaidCall] = prisma.$queryRaw.mock.calls;
+      const orphanSql = JSON.stringify(orphanCall);
+      expect(orphanSql).toContain('je.posted_at = p.paid_date');
+      expect(orphanSql).toContain(
+        "p.installment_no BETWEEN (je.metadata->>'firstUnpaidInstallmentNo')::int",
+      );
+      expect(orphanSql).not.toContain('early_payoff_contract'); // no contract-level set any more
+      // one definition — both checks embed the very same SQL fragment
+      expect(orphanCall).toContain(PAID_BY_EARLY_PAYOFF);
+      expect(overpaidCall).toContain(PAID_BY_EARLY_PAYOFF);
+      // Task 25 fix round 1 (m-1): a JP4 without the range (before 2026-10-18) also accepts the early-payoff note prefix
+      // earlyPayoff stamps on every row it closes (a JP4 before 2026-07-09 was posted at posting time ≠ paid_date)
+      expect(orphanSql).toContain('starts_with(p.notes, ');
+      expect(PAID_BY_EARLY_PAYOFF.values).toEqual([
+        'early-payoff',
+        EARLY_PAYOFF_PAYMENT_NOTE_PREFIX,
+      ]);
+      expect(EARLY_PAYOFF_PAYMENT_NOTE_PREFIX).toBe('[ปิดก่อนกำหนด]'); // the literal contract-payment.service writes
     });
   });
 
@@ -259,6 +311,15 @@ describe('DataAuditService', () => {
       const result = await service.checkGhostStock();
       expect(result.status).toBe('FAIL');
       expect(result.count).toBe(1);
+    });
+
+    it('Task 25 (m-5) — count is the true total; only details are capped at 50 (no LIMIT in the query)', async () => {
+      prisma.$queryRaw.mockResolvedValueOnce(
+        Array.from({ length: 62 }, (_, i) => ({ id: `pr-${i}`, status: 'IN_STOCK' })),
+      );
+      const result = await service.checkGhostStock();
+      expect([result.status, result.count, result.details.length]).toEqual(['FAIL', 62, 50]);
+      expect(JSON.stringify(prisma.$queryRaw.mock.calls[0])).not.toContain('LIMIT');
     });
   });
 
@@ -446,6 +507,20 @@ describe('DataAuditService', () => {
       expect(result.status).toBe('FAIL');
       expect(result.count).toBe(1);
     });
+
+    it('Task 25 (m-5) — count is the true total; only details are capped at 50 (no LIMIT in the query)', async () => {
+      prisma.$queryRaw.mockResolvedValueOnce(
+        Array.from({ length: 62 }, (_, i) => ({
+          gateway_ref: `PS-${i}`,
+          count: BigInt(2),
+          payment_ids: [`p-${i}a`, `p-${i}b`],
+        })),
+      );
+      const result = await service.checkDuplicatePayments();
+      expect([result.status, result.count, result.details.length]).toEqual(['FAIL', 62, 50]);
+      expect((result.details as { count: number }[])[0].count).toBe(2);
+      expect(JSON.stringify(prisma.$queryRaw.mock.calls[0])).not.toContain('LIMIT');
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════
@@ -581,6 +656,36 @@ describe('DataAuditService', () => {
       expect(results.filter((r) => r.status !== 'PASS').map((r) => [r.name, r.status])).toEqual([
         ['commission_mismatch', 'SKIPPED'],
       ]);
+    });
+  });
+
+  describe('dailyHealthCheck', () => {
+    it('Task 25 review nit 5 — the Sentry event groups by the failing checks (fingerprint), not by the count text that now changes nightly', async () => {
+      const fail = (name: string, severity: 'CRITICAL' | 'HIGH' | 'MEDIUM', count: number) => ({
+        name,
+        severity,
+        status: 'FAIL' as const,
+        count,
+        details: [],
+        executedAt: new Date(),
+      });
+      const capture = Sentry.captureMessage as jest.Mock;
+      capture.mockClear();
+      for (const count of [62, 70]) {
+        jest.spyOn(service, 'runAllChecks').mockResolvedValueOnce([
+          fail('journal_balance', 'CRITICAL', count),
+          fail('orphan_payments', 'CRITICAL', 3),
+          fail('missing_cogs', 'MEDIUM', 1), // MEDIUM — not alerted
+        ]);
+        await service.dailyHealthCheck();
+      }
+      expect(capture.mock.calls.map(([message]) => message)).toEqual([
+        'Data audit FAILED: journal_balance: 62 issues, orphan_payments: 3 issues',
+        'Data audit FAILED: journal_balance: 70 issues, orphan_payments: 3 issues',
+      ]);
+      for (const [, context] of capture.mock.calls) {
+        expect(context.fingerprint).toEqual(['data-audit', 'journal_balance', 'orphan_payments']);
+      }
     });
   });
 

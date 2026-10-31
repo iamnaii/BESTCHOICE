@@ -21,6 +21,7 @@ import {
 } from '../../../cli/legacy-backoffice/__tests__/synthetic-book';
 import {
   findBoundReissueCandidates,
+  findDocumentedElsewhere,
   findPaidPaymentsWithoutReceipt,
 } from '../../../cli/backfill-payment-receipts.cli';
 import type { DumpRow } from '../../../cli/legacy-backoffice/dump-reader';
@@ -57,6 +58,7 @@ import { ReceivableReconService } from '../../receivable-recon/receivable-recon.
 import type { AuditCheckResult } from '../data-audit.types';
 import { ContractTraceService } from '../services/contract-trace.service';
 import { DataAuditChecksService } from '../services/data-audit-checks.service';
+import { EARLY_PAYOFF_PAYMENT_NOTE_PREFIX } from '../services/payment-backing';
 
 /**
  * Task 16 — ตรวจกลางคืน (data-audit 06:00 + receivable-recon 02:00) บนสัญญาที่นำเข้าจากระบบเก่าและสัญญาปกติ — Postgres จริง
@@ -760,7 +762,10 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
     return (r.details[0] as { breaches: Array<{ contractId: string; gap: string }> }).breaches;
   };
 
-  /** รายชื่อของ `backfill:receipts` ที่ตกในสัญญาเหล่านี้ — `cli` = ออกใบที่ไม่ผูกรายการ · `bound` = ส่งไปออกซ้ำแบบผูกรายการ */
+  /**
+   * รายชื่อของ `backfill:receipts` ที่ตกในสัญญาเหล่านี้ — `cli` = ออกใบที่ไม่ผูกรายการ · `bound` = ส่งไปออกซ้ำแบบผูกรายการ ·
+   * `elsewhere` = ข้ามเพราะเอกสารของเงินอยู่ที่อื่น (`<สัญญา>#<งวด>:<ทาง b|c|b+c>` — Task 25 · r-1)
+   */
   const backfillListsOf = async (contractIds: string[]) => {
     const asService = prisma as unknown as PrismaService;
     const pick = (
@@ -773,6 +778,10 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
     return {
       cli: pick(await findPaidPaymentsWithoutReceipt(asService)),
       bound: pick(await findBoundReissueCandidates(asService)),
+      elsewhere: (await findDocumentedElsewhere(asService))
+        .filter((r) => contractIds.includes(r.contract_id))
+        .map((r) => `${r.contract_number}#${r.installment_no}:${r.path}`)
+        .sort(),
     };
   };
 
@@ -951,9 +960,13 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
       ]);
       // backfill:receipts (Task 23 review m-1 ข): งวด 2 ของ A2 ล้างด้วยรอบกลางคืนหักเงินรับล่วงหน้าทั้งงวด — ไม่มีแถวใบเสร็จ ไม่มีรายการผูก
       // paymentId แต่เงินนั้นออกเอกสารพร้อมภาษีแล้วตอนรับ (ใบงวด 1 แถว "พักไว้") ⇒ ไม่ใช่ผู้สมัคร CLI (เดิมได้ใบ INSTALLMENT ใบที่สอง) และไม่อยู่ใน
-      // รายชื่อออกซ้ำ (ไม่มีรายการรับชำระให้ผูก) — คำตัดสินเดียวกับทาง (b) ของ orphan_payments
+      // รายชื่อออกซ้ำ (ไม่มีรายการรับชำระให้ผูก) — คำตัดสินเดียวกับทาง (b) ของ orphan_payments · CLI พิมพ์ไว้ว่าข้ามด้วยทาง b (Task 25)
       expect(await prisma.receipt.count({ where: { paymentId: p2.id } })).toBe(0);
-      expect(await backfillListsOf([a2])).toEqual({ cli: [], bound: [] });
+      expect(await backfillListsOf([a2])).toEqual({
+        cli: [],
+        bound: [],
+        elsewhere: [`TEST-T16N-${stamp}-A2#2:b`],
+      });
       // L9B: งวด 4 (marker 300) รับส่วนที่เหลือหลังวันตัด แล้วยกเลิกใบเสร็จ — แถวกลับเป็นยอดก่อนวันตัด แต่ยังถือ
       // payment_method / ผู้บันทึกของใบที่ยกเลิก (ไม่กลับมาเป็น "ไม่ถูกแตะ") ⇒ หนุนด้วยต้นฉบับที่ reversed=true ตาม (ก)
       const l9b = legacy.get('L9B')!;
@@ -1478,7 +1491,9 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
         },
       });
       expect(paid.count).toBe(62);
-      expect((await run('orphan_payments', [d1])).count).toBe(50); // ตรวจกลางคืนยังตัด details ที่ 50
+      // ตรวจกลางคืน: count = จำนวนจริง · details ตัดที่ 50 (Task 25 · m-5 — เดิม count = 50 หลัง LIMIT ทั้งที่มี 62)
+      const nightly = await run('orphan_payments', [d1]);
+      expect([nightly.count, nightly.details.length]).toEqual([62, 50]);
 
       const trace = new ContractTraceService(prisma as unknown as PrismaService, checks);
       const t = await trace.traceContract(d1);
@@ -1514,8 +1529,163 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
     LONG,
   );
 
+  it(
+    'Task 25 (m-2) — bound re-issue list is per receipt entry: a live entry with no receipt bound to it is listed even when the installment already has another receipt row',
+    async () => {
+      // ทุกสัญญาในเทสต์นี้: งวด 1 PAID ผ่านเส้นทางรับชำระจริง (ใบเสร็จออกหลัง commit และผูกรายการ) แล้วลบใบของรายการล่าสุด
+      // (= ใบออกไม่สำเร็จหลัง commit) · งวดมีแถวใบเสร็จอีกใบอยู่แล้ว ⇒ เดิม (ต่อ Payment — "ไม่มีแถวใบเสร็จเลย") ไม่อยู่ในรายชื่อใด
+      const ids5: string[] = [];
+      for (const key of ['M1', 'M2', 'M3', 'M4', 'M5']) {
+        const id = await createNative(key, P1.date, P1.dueDay);
+        native.set(key, id);
+        ids5.push(id);
+        await nightly2A(id, 1);
+      }
+      const [c1, c2, c3, c4, c5] = ids5;
+      const receiptEntryOf = (paymentId: string) =>
+        prisma.journalEntry.findMany({
+          where: {
+            AND: [
+              { metadata: { path: ['paymentId'], equals: paymentId } },
+              { metadata: { path: ['tag'], equals: 'receipt' } },
+            ],
+          },
+          // M1 / M2 post both entries at P1.due(1) — postedAt alone ties (heap order decided which was "last": flaky)
+          orderBy: [{ postedAt: 'asc' }, { createdAt: 'asc' }, { entryNumber: 'asc' }],
+          select: { id: true, entryNumber: true, metadata: true },
+        });
+      /** ใบที่ผูกรายการล่าสุดของงวดหาย (ออกไม่สำเร็จหลัง commit) — คืนเลขที่รายการนั้น */
+      const dropLastBoundReceipt = async (contractId: string) => {
+        const row = await paymentOf(contractId, 1);
+        const entries = await receiptEntryOf(row.id);
+        const last = entries[entries.length - 1];
+        expect(
+          await prisma.receipt.deleteMany({ where: { sourceJournalEntryId: last.id } }),
+        ).toEqual({ count: 1 });
+        return last.entryNumber;
+      };
+
+      // M1 ยกเลิกแล้วรับใหม่: ใบแรกถูกยกเลิก (แถวยังอยู่ · รายการแรก reversed) → รับงวดใหม่ → ใบของรายการใหม่หาย
+      await pay(c1, 1, MONTHLY, P1.due(1));
+      const m1First = await prisma.receipt.findFirstOrThrow({
+        where: { paymentId: (await paymentOf(c1, 1)).id, isVoided: false, deletedAt: null },
+      });
+      await voidReceiptApproved(
+        prisma,
+        receipts,
+        m1First.id,
+        'ทดสอบยกเลิกใบเสร็จแล้วรับใหม่ (T25)',
+        userId,
+        approverId,
+      );
+      expect((await paymentOf(c1, 1)).status).not.toBe('PAID');
+      await pay(c1, 1, MONTHLY, P1.due(1));
+      const m1Missing = await dropLastBoundReceipt(c1);
+
+      // M2 ใบบางส่วนอีกใบ: รับ 1,000 (มีใบ) → รับส่วนที่เหลือ 515.83 ปิดงวด → ใบของรายการที่สองหาย
+      await pay(c2, 1, '1000', P1.due(1), true);
+      await pay(c2, 1, await owedOn(c2, 1), P1.due(1));
+      const m2Missing = await dropLastBoundReceipt(c2);
+
+      // M3 (6b): ใบปรับดิว RESCHEDULE_FEE ผูก paymentId ของงวดเดียวกัน (ผูกรายการ tag reschedule-collect — คนละ tag กับรายการรับชำระ) →
+      // รับค่างวด → ใบค่างวดหาย
+      const m3Row = await paymentOf(c3, 1);
+      const feeEntry = await journal.createAndPost({
+        description: 'T25 reschedule fee (6b shape)',
+        reference: `t25-fee:${m3Row.id}`,
+        metadata: {
+          tag: 'reschedule-collect',
+          flow: 'reschedule-collect',
+          contractId: c3,
+          paymentId: m3Row.id,
+          variant: '6b',
+        },
+        lines: [
+          { accountCode: '11-1101', dr: D(200), cr: D(0) },
+          { accountCode: '21-1103', dr: D(0), cr: D(200) },
+        ],
+        postedAt: P1.due(1),
+        createdById: userId,
+      });
+      await receipts.generateReceipt(
+        c3,
+        m3Row.id,
+        'RESCHEDULE_FEE',
+        200,
+        1,
+        'CASH',
+        null,
+        userId,
+        P1.due(1),
+        feeEntry.entryNumber,
+      );
+      await pay(c3, 1, MONTHLY, P1.due(1));
+      const m3Missing = await dropLastBoundReceipt(c3);
+
+      // M4 รายการก่อน PR3 (ไม่มี receiptTax) ที่ใบออกแบบไม่ผูกรายการ (ยุคนั้นไม่ผูก) — ไม่ใช่ใบที่หาย ⇒ ไม่อยู่ในรายชื่อ
+      const m4Row = await paymentOf(c4, 1);
+      await journal.createAndPost({
+        description: 'T25 pre-PR3 receipt entry',
+        reference: `t25-pre-pr3:${m4Row.id}`,
+        metadata: { tag: 'receipt', flow: 'payment-receipt', paymentId: m4Row.id, contractId: c4 },
+        lines: [
+          { accountCode: '11-1101', dr: D(MONTHLY), cr: D(0) },
+          { accountCode: '11-2103', dr: D(0), cr: D(MONTHLY) },
+        ],
+        postedAt: P1.due(1),
+        createdById: userId,
+      });
+      await prisma.payment.update({
+        where: { id: m4Row.id },
+        data: {
+          amountPaid: D(MONTHLY),
+          status: 'PAID',
+          paidDate: P1.due(1),
+          paymentMethod: 'CASH',
+          recordedById: userId,
+        },
+      });
+      await receipts.generateReceipt(
+        c4,
+        m4Row.id,
+        'INSTALLMENT',
+        Number(MONTHLY),
+        1,
+        'CASH',
+        null,
+        userId,
+        P1.due(1),
+      );
+
+      // M5 ผลบวกเท็จที่รู้ของตัวตรวจต่อรายการ (runbook): รายการหลัง PR3 ที่เงินก้อนนั้นมีใบที่ไม่ผูกรายการอยู่แล้ว (เช่น
+      // backfill-orphan-partial-receipts ลงรายการให้ใบบางส่วนกำพร้ายุคก่อน PR3) — ยังอยู่ในรายชื่อ แต่ติดป้าย unboundReceipts ให้ตรวจก่อนออกซ้ำ
+      await pay(c5, 1, MONTHLY, P1.due(1));
+      const [m5Entry] = await receiptEntryOf((await paymentOf(c5, 1)).id);
+      await prisma.receipt.updateMany({
+        where: { sourceJournalEntryId: m5Entry.id },
+        data: { sourceJournalEntryId: null },
+      });
+
+      for (const id of ids5) expect((await paymentOf(id, 1)).status).toBe('PAID');
+      const bound = (await findBoundReissueCandidates(prisma as unknown as PrismaService))
+        .filter((r) => ids5.includes(r.contract_id))
+        .map((r) => [r.contract_number, r.installment_no, r.entries, r.unbound_receipts]);
+      const no = (key: string) => `TEST-T16N-${stamp}-${key}`;
+      expect(bound).toEqual([
+        [no('M1'), 1, [{ entryNumber: m1Missing, receiptAmount: MONTHLY }], 0],
+        [no('M2'), 1, [{ entryNumber: m2Missing, receiptAmount: '515.83' }], 0],
+        [no('M3'), 1, [{ entryNumber: m3Missing, receiptAmount: MONTHLY }], 0],
+        [no('M5'), 1, [{ entryNumber: m5Entry.entryNumber, receiptAmount: MONTHLY }], 1],
+      ]);
+      // งวดเหล่านี้มีแถวใบเสร็จอยู่แล้ว ⇒ ไม่ใช่ผู้สมัครของ CLI (ใบที่ไม่ผูกรายการ) ไม่ว่ากรณีใด
+      expect((await backfillListsOf(ids5)).cli).toEqual([]);
+    },
+    LONG,
+  );
+
   describe('early payoff (JP4) of a native contract — calendar anchored to today', () => {
     let a3 = '';
+    let a7 = '';
 
     beforeAll(async () => {
       const { year: Y, month: M } = bangkokCalendarParts(new Date());
@@ -1528,6 +1698,23 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
       await nightly2A(a3, 5);
       await pay(a3, 4, await owedOn(a3, 4), due(5));
       await pay(a3, 5, MONTHLY, due(5));
+      // A7 (Task 25 · r-1): ปฏิทินเดียวกับ A3 · งวด 5 ถูกตั้ง PAID ตรงในฐานก่อนปิดยอด — ไม่มีรายการรับชำระและไม่มีใบเสร็จ (รูปแถวของ
+      // seed "data-only" / ยุคก่อนมีใบเสร็จอัตโนมัติ แบบ C7) แล้วจึงปิดยอดก่อนกำหนด (ในเทสต์)
+      a7 = await createNative('A7', ymd(Y, M - 6, 1), 1);
+      native.set('A7', a7);
+      await runNativeToCutoff(a7, due);
+      await nightly2A(a7, 5);
+      await pay(a7, 4, await owedOn(a7, 4), due(5));
+      await prisma.payment.update({
+        where: { id: (await paymentOf(a7, 5)).id },
+        data: {
+          amountPaid: D(MONTHLY),
+          status: 'PAID',
+          paidDate: due(5),
+          paymentMethod: 'CASH',
+          recordedById: userId,
+        },
+      });
     }, LONG);
 
     it(
@@ -1563,7 +1750,12 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
         // paymentId — ในเทสต์นี้ไม่ออกใบปิดยอดเลยด้วย) — เอกสารของเงินนั้นคือใบปิดยอด ⇒ ไม่ใช่ผู้สมัคร CLI (เดิมได้ใบ INSTALLMENT ทุกงวด) —
         // คำตัดสินเดียวกับทาง (c) ของ orphan_payments
         expect(await prisma.receipt.count({ where: { paymentId: paid6.id } })).toBe(0);
-        expect(await backfillListsOf([a3])).toEqual({ cli: [], bound: [] });
+        // …และ CLI พิมพ์งวดเหล่านั้นว่าข้ามด้วยทาง c (Task 25) — คนรันเห็นก่อนรันจริง
+        expect(await backfillListsOf([a3])).toEqual({
+          cli: [],
+          bound: [],
+          elsewhere: [6, 7, 8, 9, 10, 11, 12].map((no) => `TEST-T16N-${stamp}-A3#${no}:c`).sort(),
+        });
       },
       LONG,
     );
@@ -1615,6 +1807,110 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
         });
         await prisma.payment.update({ where: { id: row5.id }, data: { paidDate: row5.paidDate } });
         expect((await run('overpaid', [a3])).details).toEqual(caught);
+      },
+      LONG,
+    );
+
+    it(
+      'Task 25 (r-1) — JP4 backs only the rows it settled: a row PAID before the payoff with no entry stays an orphan and a backfill:receipts candidate',
+      async () => {
+        await earlyPayoffApproved(prisma, contractPayments, a7, userId, {
+          paymentMethod: 'BANK_TRANSFER',
+          discountPct: 50,
+          depositAccountCode: '11-1201',
+        });
+        const [entry] = await prisma.journalEntry.findMany({
+          where: {
+            AND: [
+              { metadata: { path: ['contractId'], equals: a7 } },
+              { metadata: { path: ['flow'], equals: 'early-payoff' } },
+            ],
+          },
+          select: { id: true, postedAt: true, metadata: true },
+        });
+        const { firstUnpaidInstallmentNo, lastUnpaidInstallmentNo, ...withoutRange } =
+          entry.metadata as Record<string, unknown>;
+        expect([firstUnpaidInstallmentNo, lastUnpaidInstallmentNo]).toEqual([6, 12]);
+        const row5 = await paymentOf(a7, 5);
+        expect([row5.status, row5.paidDate?.getTime() === entry.postedAt?.getTime()]).toEqual([
+          'PAID',
+          false,
+        ]);
+        expect(
+          (await prisma.payment.findMany({ where: { contractId: a7 } })).every(
+            (p) => p.status === 'PAID',
+          ),
+        ).toBe(true);
+
+        // ทาง (c) ตัดสินต่อแถวที่ JP4 จ่าย (วันที่ = วันของ JP4 · งวดอยู่ในช่วงที่ JP4 stamp — ตัวเดียวกับส่วนเผื่อค่าปรับของ
+        // overpaid_contracts) ⇒ งวด 6–12 หนุนด้วย JP4 · งวด 5 (PAID ก่อนปิดยอด ไม่มีรายการ) ไม่อยู่ใต้ JP4 — เดิมทั้งสัญญาถือว่าหนุน
+        // ⇒ orphan_payments (CRITICAL) และ backfill:receipts ข้ามเงียบ
+        expect(await orphanRowsOf(a7)).toEqual([5]);
+        expect(await backfillListsOf([a7])).toEqual({
+          cli: [`TEST-T16N-${stamp}-A7#5`],
+          bound: [],
+          elsewhere: [6, 7, 8, 9, 10, 11, 12].map((no) => `TEST-T16N-${stamp}-A7#${no}:c`).sort(),
+        });
+
+        // รายการ JP4 2026-07-09…10-18 (ไม่มีช่วงงวด · postedAt = paidDate) — วันที่เป็นตัวแยก: งวด 6–12 ยังหนุนด้วย JP4 · งวด 5 (วันอื่น) ยังติด
+        await prisma.journalEntry.update({
+          where: { id: entry.id },
+          data: { metadata: withoutRange as Prisma.InputJsonObject },
+        });
+        expect(await orphanRowsOf(a7)).toEqual([5]);
+        expect((await backfillListsOf([a7])).cli).toEqual([`TEST-T16N-${stamp}-A7#5`]);
+
+        // Task 25 fix round 1 (m-1): รายการ JP4 ก่อน 2026-07-09 (`711fcfa4c`) — ไม่มีช่วงงวด และ postedAt = เวลาที่ลงรายการ (≠ Payment.paidDate)
+        // ⇒ แถวที่ JP4 จ่ายรู้จักจากคำนำหน้า notes ที่ earlyPayoff ประทับทุกแถวที่ปิด (ตั้งแต่ 2026-04-07) · งวด 5 (ไม่มีคำนำหน้า) ยังติด
+        const row6 = await paymentOf(a7, 6);
+        expect(row6.notes).toBe(EARLY_PAYOFF_PAYMENT_NOTE_PREFIX);
+        await prisma.journalEntry.update({
+          where: { id: entry.id },
+          data: { postedAt: new Date(entry.postedAt!.getTime() + 9 * 60 * 60 * 1000) },
+        });
+        expect(await orphanRowsOf(a7)).toEqual([5]);
+        expect(await backfillListsOf([a7])).toEqual({
+          cli: [`TEST-T16N-${stamp}-A7#5`],
+          bound: [],
+          elsewhere: [6, 7, 8, 9, 10, 11, 12].map((no) => `TEST-T16N-${stamp}-A7#${no}:c`).sort(),
+        });
+        // รูปเดียวกันแต่แถวไม่มีคำนำหน้า ⇒ ไม่มีอะไรบอกว่า JP4 จ่าย — ติด orphan_payments และเป็นผู้สมัคร CLI
+        await prisma.payment.update({ where: { id: row6.id }, data: { notes: null } });
+        expect(await orphanRowsOf(a7)).toEqual([5, 6]);
+        expect((await backfillListsOf([a7])).cli).toEqual(
+          [`TEST-T16N-${stamp}-A7#5`, `TEST-T16N-${stamp}-A7#6`].sort(),
+        );
+        await prisma.payment.update({ where: { id: row6.id }, data: { notes: row6.notes } });
+
+        // ส่วนเผื่อค่าปรับของ overpaid_contracts ผ่านทางคำนำหน้า (fix round 2 · re-review nit 5): JP4 รูปเดียวกัน (ไม่มีช่วง · posted_at ≠ paid_date)
+        // เก็บค่าปรับ 100 ของงวด 7 ไว้ใน amountPaid (Cr 42-1103 อยู่ในรายการ JP4 ระดับสัญญา) ⇒ ไม่ติด · ถอดคำนำหน้า ⇒ ไม่มีอะไรบอกว่า JP4 จ่าย → ติด 100
+        const row7 = await paymentOf(a7, 7);
+        expect(row7.notes).toBe(EARLY_PAYOFF_PAYMENT_NOTE_PREFIX);
+        await prisma.payment.update({
+          where: { id: row7.id },
+          data: { lateFee: D(100), amountPaid: row7.amountDue.plus(100) },
+        });
+        expect((await run('overpaid', [a7])).count).toBe(0);
+        await prisma.payment.update({ where: { id: row7.id }, data: { notes: null } });
+        expect((await run('overpaid', [a7])).details).toEqual([
+          {
+            id: a7,
+            contract_number: `TEST-T16N-${stamp}-A7`,
+            installment_nos: [7],
+            overpay: '100.00',
+          },
+        ]);
+        await prisma.payment.update({
+          where: { id: row7.id },
+          data: { notes: row7.notes, lateFee: row7.lateFee, amountPaid: row7.amountPaid },
+        });
+
+        // JP4 ที่มีช่วงงวดตัดสินแบบเดิมทุกข้อ (วันที่ + ช่วง) — คำนำหน้าไม่ใช่ข้อยกเว้นของมัน
+        await prisma.journalEntry.update({
+          where: { id: entry.id },
+          data: { metadata: entry.metadata as Prisma.InputJsonObject },
+        });
+        expect(await orphanRowsOf(a7)).toEqual([5, 6, 7, 8, 9, 10, 11, 12]);
       },
       LONG,
     );

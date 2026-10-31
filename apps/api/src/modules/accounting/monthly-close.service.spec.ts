@@ -225,6 +225,42 @@ describe('MonthlyCloseService', () => {
       );
     });
 
+    // re-review m6 (2026-11-01): the period → date-range direction uses the Bangkok calendar like
+    // `accountingPeriodOf` (date → period) — independent of the process TZ. Before: new Date(y, m-1, 1)
+    // in the process TZ ⇒ under TZ=UTC the October audit window ran 07:00 1 Oct → 06:59 1 Nov (Bangkok).
+    it('audits the period on the Bangkok calendar whatever the process TZ', async () => {
+      prisma.accountingPeriod.findUnique.mockResolvedValue(null);
+      prisma.journalEntry.count.mockResolvedValue(0);
+      prisma.journalEntry.findMany.mockResolvedValue([]);
+      prisma.payment.count.mockResolvedValue(0);
+      prisma.accountingPeriod.upsert.mockResolvedValue({ id: 'period-x', status: 'REVIEW' });
+
+      await service.startReview('company-1', 2026, 10, 'user-1');
+
+      const window = {
+        gte: new Date('2026-10-01T00:00:00+07:00'),
+        lte: new Date('2026-10-31T23:59:59.999+07:00'),
+      };
+      expect(prisma.journalEntry.count.mock.calls[0][0].where.entryDate).toEqual(window);
+      expect(prisma.journalEntry.findMany.mock.calls[0][0].where.entryDate).toEqual(window);
+      expect(prisma.payment.count.mock.calls[0][0].where.paidDate).toEqual(window);
+    });
+
+    it('rolls December over to the next year on the Bangkok calendar', async () => {
+      prisma.accountingPeriod.findUnique.mockResolvedValue(null);
+      prisma.journalEntry.count.mockResolvedValue(0);
+      prisma.journalEntry.findMany.mockResolvedValue([]);
+      prisma.payment.count.mockResolvedValue(0);
+      prisma.accountingPeriod.upsert.mockResolvedValue({ id: 'period-x', status: 'REVIEW' });
+
+      await service.startReview('company-1', 2026, 12, 'user-1');
+
+      expect(prisma.journalEntry.count.mock.calls[0][0].where.entryDate).toEqual({
+        gte: new Date('2026-12-01T00:00:00+07:00'),
+        lte: new Date('2026-12-31T23:59:59.999+07:00'),
+      });
+    });
+
     // 4. startReview — rejects on CLOSED period
     it('throws BadRequestException when period is already CLOSED', async () => {
       prisma.accountingPeriod.findUnique.mockResolvedValue({

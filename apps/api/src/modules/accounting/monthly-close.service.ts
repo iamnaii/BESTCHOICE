@@ -10,6 +10,7 @@ import { AccountingPeriodStatus, Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { d, dSum } from '../../utils/decimal.util';
+import { bangkokMidnight } from '../../utils/date.util';
 import { isJournalBalanced } from '../journal/journal-balance';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { TaxService } from '../tax/tax.service';
@@ -59,12 +60,16 @@ export class MonthlyCloseService {
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
 
+  // Period (year, month 1-12) → its instant range on the Bangkok calendar — the reverse of `accountingPeriodOf`
+  // (date → period), so the pre-close audit and the PEAK export window match the month the period guard reads,
+  // whatever the process TZ (re-review m6 · was `new Date(y, m-1, 1)` in the process TZ, 7 h off under UTC).
   private periodStart(year: number, month: number): Date {
-    return new Date(year, month - 1, 1, 0, 0, 0, 0);
+    return bangkokMidnight(year, month - 1, 1);
   }
 
+  /** Last millisecond of the period (inclusive `lte` bound): 00:00 Bangkok of the next month's 1st − 1 ms. */
   private periodEnd(year: number, month: number): Date {
-    return new Date(year, month, 0, 23, 59, 59, 999);
+    return new Date(bangkokMidnight(year, month, 1).getTime() - 1);
   }
 
   private lastDayStr(year: number, month: number): string {

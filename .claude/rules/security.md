@@ -306,11 +306,19 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
   (webhook guard ปฏิเสธบน production) · ด่านที่ "ตั้งค่าอยู่" ต้องหมายถึงปลอดภัย (เช่นด่าน PEAK ของ
   `import:legacy-backoffice`) ใช้ `checkEncryptedFields(integration).failed` นับค่าที่ถอดไม่ได้ว่าตั้งค่าอยู่
 - key ต้องเป็น hex 64 ตัว (trim) — รูปแบบผิด = ถือว่าไม่มี key (error + Sentry ไม่บอกค่า/ความยาว, บูตไม่ล้ม) ·
-  ช่องลับที่ส่งค่าว่างตอนบันทึก = ไม่เปลี่ยน (ไม่มีการ "ล้าง" ช่องลับจาก UI) · ปุ่มทดสอบการเชื่อมต่อใช้ค่าจาก
+  ช่องลับที่ส่งค่าว่างตอนบันทึก = ไม่เปลี่ยน · **ล้างช่องลับ = ปุ่ม "ล้างค่า" (web 26.10.75 —
+  `DELETE /integrations/:key/config/:field` OWNER เท่านั้น เท่ากับบันทึก)** เขียน `CLEARED_CREDENTIAL`
+  (`integration-config.service.ts`) ทับแถว ⇒ ช่องนั้น "ยังไม่ตั้งค่า" ทันที และ **ไม่ใช้ env/ค่าตั้งต้นสำรอง**
+  (แถวว่าง/ไม่มีแถว = ถอยไป env ซึ่ง prod ตั้ง `LINE_*` ไว้ — ล้างแค่ให้ว่างค่าเดิมยังใช้ต่อ) · ทุกผู้อ่าน
+  `integration.*` ต้องเช็ค `isClearedCredential` (getValue → getConfig/masked/isConfigured/ปุ่มทดสอบ ·
+  บรรทัดบูตไม่นับทั้ง ok/failed · cron หมุนรหัสข้าม) · บันทึกค่าใหม่ที่ไม่ว่าง = แทนสถานะล้างแล้ว ·
+  audit `INTEGRATION_SECRET_CLEARED` (ชื่อช่อง + ที่มาเดิม ไม่มีค่า) · ช่องที่ไม่ใช่ความลับ = 400 (ลบข้อความแล้วบันทึก
+  ตามเดิม) · ปุ่มทดสอบการเชื่อมต่อใช้ค่าจาก
   `getConfig` เท่านั้น (ห้ามเติม `|| process.env.*` — ผู้อ่านผ่าน Hub ไม่ใช้ env เมื่อแถวถอดไม่ได้) · **ข้อยกเว้นที่รู้:**
   Claude บางส่วน (`ai-usage/ai-text.service.ts`, `chat-engine/services/after-hours.service.ts`, การเช็ค key ของ AI suggest ใน
   `staff-chat`) อ่าน env `ANTHROPIC_API_KEY` ตรง และอีเมลแจ้งเตือน (`notifications/email-provider.service.ts`) อ่าน `SMTP_*` ตรง —
   ไม่ผ่าน Hub ⇒ ผลปุ่มทดสอบของการ์ด Claude / อีเมล สะท้อนเฉพาะฟีเจอร์ที่อ่านผ่าน Hub (OCR, วิเคราะห์เครดิต, บอท, `EmailService`)
+  และ "ล้างค่า" ของสองการ์ดนี้ไม่หยุดผู้อ่าน env ตรงเหล่านั้น
 - แถว `integration.*` ออกได้ทาง `/integrations/*` (masked) เท่านั้น — `GET /settings` (`SettingsWriteService.findAll`)
   กรองออกแล้ว พร้อมคีย์ลับรุ่นเก่านอก prefix นี้ (`isSecretSettingKey` ใน `settings.constants.ts` = `integration.*` หรือ
   `isSensitiveKey` ยกเว้นคีย์ที่แค่ชื่อเหมือน เช่น `customer_access_token_hours`) · endpoint ใหม่ที่คืนแถว `system_config`

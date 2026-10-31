@@ -921,6 +921,11 @@ describe('final commit barrier and disconnected transport', () => {
       where: { id: data.customer.id },
       data: { lineIdFinance: 'OWNED-NO-SEND' },
     });
+    // Task 22 fix round 1 I-1 (ง): the FINANCE LINE recipient is the active OTP link row, never the column alone
+    // (findFinanceLineRecipient) — without the row nothing is queued
+    await db.customerLineLink.create({
+      data: { customerId: data.customer.id, lineUserId: 'OWNED-NO-SEND', channel: 'FINANCE' },
+    });
     for (let i = 0; i < 2; i++)
       expect(
         (

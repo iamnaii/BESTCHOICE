@@ -79,6 +79,11 @@ export async function seedDocumentsWorld(prisma: PrismaService, options: { prefi
     name: `${TEST_NAME_PREFIX} ลูกค้าเอกสาร ${prefix}`, phone: '0800000001', nationalId: syntheticNationalId(), birthDate: new Date('1990-01-01'),
     addressIdCard: TEST_CUSTOMER_ADDRESS, addressCurrent: TEST_CUSTOMER_ADDRESS, lineIdFinance: `TEST-NOT-SENT-${prefix}`,
   } });
+  // Task 22 fix round 1 I-1 (ง): FINANCE LINE messages go to the active OTP link row (bind writes it next to the
+  // column) — the column alone no longer receives anything, so the synthetic customer gets the row too
+  await prisma.customerLineLink.create({
+    data: { customerId: customerRow.id, lineUserId: `TEST-NOT-SENT-${prefix}`, channel: 'FINANCE' },
+  });
   const customer = { id: customerRow.id, name: customerRow.name };
 
   const contracts = {

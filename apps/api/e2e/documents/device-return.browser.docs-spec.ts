@@ -328,6 +328,15 @@ describe('device-return acceptance in the real admin browser', () => {
         lineIdFinance: `TEST-NOT-SENT-${world.prefix}-${label}`,
       },
     });
+    // Task 22 fix round 1 I-1 (ง): the FINANCE LINE recipient is the active OTP link row (what bind writes next to the
+    // column) — the column alone no longer receives messages
+    await h.prisma.customerLineLink.create({
+      data: {
+        customerId: customer.id,
+        lineUserId: `TEST-NOT-SENT-${world.prefix}-${label}`,
+        channel: 'FINANCE',
+      },
+    });
     const contract = await createFinancedContract(h.prisma, {
       prefix: world.prefix,
       label,
@@ -738,6 +747,11 @@ describe('device-return acceptance in the real admin browser', () => {
           where: { id: contract.customerId },
           data: { lineIdFinance: null },
         });
+        // unlink = column cleared + link row closed (unlinkFinanceLine)
+        await h.prisma.customerLineLink.updateMany({
+          where: { customerId: contract.customerId, channel: 'FINANCE' },
+          data: { unlinkedAt: new Date() },
+        });
         const letter = await h.prisma.contractLetter.create({
           data: {
             contractId: contract.id,
@@ -785,6 +799,11 @@ describe('device-return acceptance in the real admin browser', () => {
         await h.prisma.customer.update({
           where: { id: contract.customerId },
           data: { lineIdFinance: `TEST-NOT-SENT-${world.prefix}-LEGAL` },
+        });
+        // re-verified by OTP = bind reopens the same link row
+        await h.prisma.customerLineLink.updateMany({
+          where: { customerId: contract.customerId, channel: 'FINANCE' },
+          data: { unlinkedAt: null },
         });
         await response(manager.page, `/device-returns/${intake.id}/resend-line`, () =>
           pending.getByTitle('ส่งไลน์แจ้งลูกค้าอีกครั้ง').click(),

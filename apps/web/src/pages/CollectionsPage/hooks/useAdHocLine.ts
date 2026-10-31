@@ -19,7 +19,8 @@ export function useAdHocLine() {
       if (data.sent > 0) {
         toast.success('ส่ง LINE สำเร็จ');
       } else {
-        toast.error('ส่ง LINE ไม่สำเร็จ — อาจไม่มี lineId');
+        // ลูกค้าที่ยังไม่ยืนยัน OTP ได้ 400 พร้อมเหตุจาก API แล้ว (Task 24 RR-M2) — เหลือกรณีระบบส่งไม่ผ่าน
+        toast.error('ส่ง LINE ไม่สำเร็จ — ระบบส่งข้อความไม่ผ่าน กรุณาลองใหม่');
       }
       qc.invalidateQueries({ queryKey: ['customer-360', vars.contractId] });
       qc.invalidateQueries({ queryKey: ['collections-queue'] });

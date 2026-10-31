@@ -344,12 +344,12 @@ export default function ContractCard({
               data-ui-control="button"
               data-ui-icon="true"
               onClick={() => onSendLine?.(contract)}
-              disabled={!contract.customer.lineIdFinance}
+              disabled={!contract.customer.hasVerifiedLine}
               className="rounded-lg border border-input p-2 hover:bg-accent text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
               title={
-                contract.customer.lineIdFinance
+                contract.customer.hasVerifiedLine
                   ? 'ส่ง LINE (Finance OA)'
-                  : 'ลูกค้าไม่มี LINE ID (Finance OA)'
+                  : 'ลูกค้ายังไม่ได้ยืนยัน LINE การเงินด้วย OTP — ส่ง LINE ไม่ได้'
               }
               aria-label="ส่ง LINE"
             >

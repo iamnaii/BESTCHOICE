@@ -31,6 +31,7 @@ const contract: ContractRow = {
     phone: '0812345678',
     lineIdFinance: null,
     lineIdShop: null,
+    hasVerifiedLine: false,
   },
   branch: { id: 'br-1', name: 'สาขาลาดพร้าว' },
   assignedTo: null,

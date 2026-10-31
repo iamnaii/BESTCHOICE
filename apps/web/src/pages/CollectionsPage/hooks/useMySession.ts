@@ -18,6 +18,8 @@ export interface SessionContract {
       phone: string | null;
       lineIdFinance: string | null;
       lineIdShop: string | null;
+      /** มีแถว OTP ที่ยังผูก = ส่ง LINE การเงินได้ (Task 24 RR-M2) */
+      hasVerifiedLine: boolean;
     };
     branch: { id: string; name: string };
     assignedTo: { id: string; name: string } | null;

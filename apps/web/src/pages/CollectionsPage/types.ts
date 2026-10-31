@@ -46,8 +46,11 @@ export interface ContractRow {
     id: string;
     name: string;
     phone: string;
+    /** ค่าในคอลัมน์ — แสดงผลเท่านั้น (ไม่ใช่เกณฑ์ส่ง LINE) */
     lineIdFinance: string | null;
     lineIdShop: string | null;
+    /** มีแถว OTP ที่ยังผูก = ส่ง LINE การเงินได้ (เกณฑ์เดียวกับผู้ส่งฝั่ง API — Task 24 RR-M2) */
+    hasVerifiedLine: boolean;
   };
   branch: { id: string; name: string };
   assignedTo: { id: string; name: string } | null;

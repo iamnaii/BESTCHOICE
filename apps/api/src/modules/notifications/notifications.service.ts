@@ -9,7 +9,10 @@ import { IntegrationConfigService } from '../integrations/integration-config.ser
 import { ComplianceService } from './compliance.service';
 import { NotificationTemplateService } from './notification-template.service';
 import { NotificationTransportService } from './services/notification-transport.service';
-import { NotificationDispatchService } from './services/notification-dispatch.service';
+import {
+  DispatchOptions,
+  NotificationDispatchService,
+} from './services/notification-dispatch.service';
 import { NotificationReminderService } from './services/notification-reminder.service';
 import { NotificationStatsService } from './services/notification-stats.service';
 
@@ -65,10 +68,12 @@ export class NotificationsService {
   // NOTIFICATION SENDING (→ dispatch)
   // ============================================================
 
+  /** `opts.manual` — พนักงานกดส่งเอง (ไม่ถูกระงับช่วงผ่อนผันหลังผูก LINE — `DispatchOptions`) */
   send(
     dto: SendNotificationDto,
+    opts: DispatchOptions = {},
   ): Promise<{ id: string; status: string; errorMsg?: string; blockReason?: string }> {
-    return this.dispatch.send(dto);
+    return this.dispatch.send(dto, opts);
   }
 
   sendFromTemplate(
@@ -80,13 +85,14 @@ export class NotificationsService {
       customerId?: string;
       bypassCompliance?: boolean;
       fallbackPhone?: string;
+      manual?: boolean;
     } = {},
   ): Promise<{ id: string | null; status: string; blockReason?: string }> {
     return this.dispatch.sendFromTemplate(eventType, data, recipient, options);
   }
 
-  sendBulk(eventType: string, contractIds: string[]) {
-    return this.dispatch.sendBulk(eventType, contractIds);
+  sendBulk(eventType: string, contractIds: string[], opts: DispatchOptions = {}) {
+    return this.dispatch.sendBulk(eventType, contractIds, opts);
   }
 
   processRetryQueue(): Promise<{ retried: number; succeeded: number; failed: number }> {

@@ -165,16 +165,20 @@ export class OverdueBulkService {
         });
 
       try {
-        await this.notifications.send({
-          channel: 'LINE',
-          channelKey: 'line-finance',
-          recipient: financeLineId,
-          message,
-          relatedId: c.id,
-          fallbackPhone: c.customer.phone ?? undefined,
-          customerId: c.customer.id,
-          category: NotificationCategory.DUNNING,
-        });
+        await this.notifications.send(
+          {
+            channel: 'LINE',
+            channelKey: 'line-finance',
+            recipient: financeLineId,
+            message,
+            relatedId: c.id,
+            fallbackPhone: c.customer.phone ?? undefined,
+            customerId: c.customer.id,
+            category: NotificationCategory.DUNNING,
+          },
+          // พนักงานกดส่งเองจากคิวทวงถาม — ไม่ถูกระงับช่วงผ่อนผันหลังผูก LINE ของสัญญานำเข้า (Task 30 รอบ 2 ข้อ 2)
+          { manual: true },
+        );
         sent++;
         auditEntries.push({
           userId: actorId,

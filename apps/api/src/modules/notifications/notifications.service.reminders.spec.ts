@@ -317,18 +317,20 @@ describe('NotificationsService — reminder / overdue dunning', () => {
         expect(spyOf('sendFromTemplate')).not.toHaveBeenCalled();
         expect(spyOf('send')).not.toHaveBeenCalled();
         expect(prisma.pDPAConsent.findFirst).not.toHaveBeenCalled();
-        expect(prisma.notificationLog.create).toHaveBeenCalledWith({
-          data: expect.objectContaining({
-            channel: 'LINE',
-            recipient: 'U-line',
-            status: 'BLOCKED',
-            blockReason: 'LEGACY_LINK_GRACE',
-            category: 'DUNNING',
-            subject: SUBJECT,
-            relatedId: 'pay-1',
-            customerId: 'cust-1',
+        expect(prisma.notificationLog.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({
+              channel: 'LINE',
+              recipient: 'U-line',
+              status: 'BLOCKED',
+              blockReason: 'LEGACY_LINK_GRACE',
+              category: 'DUNNING',
+              subject: SUBJECT,
+              relatedId: 'pay-1',
+              customerId: 'cust-1',
+            }),
           }),
-        });
+        );
         expect(result.sent).toBe(0);
         // query เดียวต่อรอบ ด้วย id สัญญาของงวดที่จะแจ้ง
         expect(prisma.contract.findMany).toHaveBeenCalledTimes(1);

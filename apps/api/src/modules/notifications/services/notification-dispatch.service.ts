@@ -14,10 +14,20 @@ import { NotificationTemplateService } from '../notification-template.service';
 import {
   LEGACY_LINK_GRACE_BLOCK_REASON,
   isRelatedRecordInLegacyLinkGrace,
+  recordLegacyLinkGraceSkip,
 } from '../legacy-link-grace';
 import { readBoolFlag } from '../../../utils/config.util';
 import * as Sentry from '@sentry/nestjs';
 import { NotificationTransportService } from './notification-transport.service';
+
+/**
+ * ใครเป็นคนสั่งส่ง — Task 30 รอบ 2 ข้อ 2: ช่วงผ่อนผัน 7 วันหลังผูก LINE ของสัญญานำเข้า (`legacy-link-grace.ts`) ระงับเฉพาะข้อความทวง
+ * ที่**ระบบส่งเอง** · `manual: true` = พนักงานกดส่งเอง (คิวทวงถาม · ส่งซ้ำ DunningAction · endpoint ส่งของหน้า /notifications) —
+ * ผู้เรียกต้องระบุตรง ๆ (ค่าเริ่มต้น = ระบบส่งเอง ⇒ ผู้ส่งอัตโนมัติตัวใหม่ที่ลืมระบุถูกระงับไว้ก่อน)
+ */
+export interface DispatchOptions {
+  manual?: boolean;
+}
 
 /**
  * Notification dispatch hub — owns `send()` (the IN_APP kill-switch gate, the
@@ -49,6 +59,7 @@ export class NotificationDispatchService {
    */
   async send(
     dto: SendNotificationDto,
+    opts: DispatchOptions = {},
   ): Promise<{ id: string; status: string; errorMsg?: string; blockReason?: string }> {
     // CRITICAL: IN_APP gate MUST remain at top of send() — before LINE/SMS channel
     // validators, before compliance gating, before any DB writes. Refactoring this
@@ -77,6 +88,26 @@ export class NotificationDispatchService {
       );
     }
     const channelKey = dto.channelKey as LineChannelKey;
+
+    // Task 30 — ข้อความทวงที่ระบบส่งเองทาง LINE ของสัญญานำเข้าในช่วงผ่อนผันหลังผูก LINE: ระงับถาวร (ไม่เลื่อน ไม่ส่ง SMS แทน) ก่อนด่าน
+    // compliance · พนักงานกดส่งเอง (`manual`) / ส่งทดสอบ (`bypassCompliance`) ไม่ถูกระงับ
+    if (
+      !opts.manual &&
+      !dto.bypassCompliance &&
+      dto.channel === 'LINE' &&
+      dto.category === NotificationCategory.DUNNING &&
+      (await isRelatedRecordInLegacyLinkGrace(this.prisma, dto.relatedId))
+    ) {
+      const id = await recordLegacyLinkGraceSkip(this.prisma, {
+        recipient: dto.recipient,
+        subject: dto.subject ?? null,
+        message: dto.message,
+        relatedId: dto.relatedId ?? null,
+        customerId: dto.customerId ?? null,
+        channelKey: dto.channelKey ?? null,
+      });
+      return { id, status: 'BLOCKED', blockReason: LEGACY_LINK_GRACE_BLOCK_REASON };
+    }
 
     // ===== P2 Compliance gate =====
     // Only enforce when category provided AND channel is LINE/SMS
@@ -273,6 +304,8 @@ export class NotificationDispatchService {
       customerId?: string;
       bypassCompliance?: boolean;
       fallbackPhone?: string;
+      /** พนักงานกดส่งเอง — ดู `DispatchOptions` */
+      manual?: boolean;
     } = {},
   ): Promise<{ id: string | null; status: string; blockReason?: string }> {
     const tpl = await this.templateService.findByEventType(eventType);
@@ -298,31 +331,24 @@ export class NotificationDispatchService {
 
     const message = this.replacePlaceholders(tpl.messageTemplate, data);
 
-    // Task 30 ข้อ 2 — template หมวดทวงทาง LINE ของสัญญานำเข้าที่ผูก LINE ยังไม่ครบ 7 วัน: ระงับก่อนทาง Flex (ทาง Flex ไม่ผ่าน
-    // canSend — ทางข้อความผ่าน canSend ซึ่งตัดสินแบบเดียวกัน) · bypassCompliance = ส่งตามเดิม (ตรงกับ canSend)
+    // Task 30 — template หมวดทวงทาง LINE ที่ระบบส่งเองของสัญญานำเข้าในช่วงผ่อนผันหลังผูก LINE: ระงับก่อนทาง Flex (ทาง Flex ไม่ผ่าน
+    // `send`) · พนักงานกดส่งเอง (`manual`) / `bypassCompliance` ส่งตามเดิม — กติกาเดียวกับ `send`
     if (
+      !options.manual &&
+      !options.bypassCompliance &&
       tpl.channel === 'LINE' &&
       tpl.category === NotificationCategory.DUNNING &&
-      !options.bypassCompliance &&
       (await isRelatedRecordInLegacyLinkGrace(this.prisma, options.relatedId))
     ) {
-      const log = await this.prisma.notificationLog.create({
-        data: {
-          channel: 'LINE',
-          channelKey: tpl.channelKey ?? null,
-          recipient,
-          subject: tpl.subject ?? tpl.name,
-          message,
-          status: 'BLOCKED',
-          relatedId: options.relatedId ?? null,
-          customerId: options.customerId ?? null,
-          category: tpl.category,
-          blockReason: LEGACY_LINK_GRACE_BLOCK_REASON,
-          errorMsg: `Compliance block: ${LEGACY_LINK_GRACE_BLOCK_REASON}`,
-          sentAt: null,
-        },
+      const id = await recordLegacyLinkGraceSkip(this.prisma, {
+        recipient,
+        subject: tpl.subject ?? tpl.name,
+        message,
+        relatedId: options.relatedId ?? null,
+        customerId: options.customerId ?? null,
+        channelKey: tpl.channelKey ?? null,
       });
-      return { id: log.id, status: 'BLOCKED', blockReason: LEGACY_LINK_GRACE_BLOCK_REASON };
+      return { id, status: 'BLOCKED', blockReason: LEGACY_LINK_GRACE_BLOCK_REASON };
     }
 
     // For Flex templates with channel=LINE, render JSON and send via lineOaService
@@ -397,18 +423,21 @@ export class NotificationDispatchService {
     }
 
     // Text path (default)
-    return this.send({
-      channel: tpl.channel,
-      channelKey: tpl.channelKey as LineChannelKey | undefined,
-      recipient,
-      subject: tpl.subject ?? tpl.name,
-      message,
-      relatedId: options.relatedId,
-      customerId: options.customerId,
-      category: tpl.category,
-      bypassCompliance: options.bypassCompliance,
-      fallbackPhone: options.fallbackPhone,
-    });
+    return this.send(
+      {
+        channel: tpl.channel,
+        channelKey: tpl.channelKey as LineChannelKey | undefined,
+        recipient,
+        subject: tpl.subject ?? tpl.name,
+        message,
+        relatedId: options.relatedId,
+        customerId: options.customerId,
+        category: tpl.category,
+        bypassCompliance: options.bypassCompliance,
+        fallbackPhone: options.fallbackPhone,
+      },
+      { manual: options.manual },
+    );
   }
 
   /**
@@ -416,7 +445,7 @@ export class NotificationDispatchService {
    * @param eventType — NotificationTemplate.eventType (e.g. 'dunning.line.text.t-3').
    *   Template carries channel/channelKey/category — no longer caller-passed.
    */
-  async sendBulk(eventType: string, contractIds: string[]) {
+  async sendBulk(eventType: string, contractIds: string[], opts: DispatchOptions = {}) {
     const results: { contractId: string; status: string }[] = [];
 
     // Batch load all contracts to avoid N+1 queries
@@ -450,6 +479,7 @@ export class NotificationDispatchService {
       const result = await this.sendFromTemplate(eventType, data, recipient, {
         relatedId: contractId,
         customerId: customer.id,
+        manual: opts.manual,
       });
       results.push({ contractId, status: result.status });
     }

@@ -12,7 +12,10 @@ describe('NotificationDispatchService.sendFromTemplate — ผ่อนผัน
       chatMessage: { create: jest.fn() },
       notificationLog: { create: jest.fn().mockResolvedValue({ id: 'log-1' }) },
     };
-    const transport = { sendLineFlexMessage: jest.fn().mockResolvedValue(undefined) };
+    const transport = {
+      sendLineFlexMessage: jest.fn().mockResolvedValue(undefined),
+      sendLine: jest.fn().mockResolvedValue(undefined),
+    };
     const templates = {
       findByEventType: jest.fn().mockResolvedValue({
         isActive: true,
@@ -26,14 +29,18 @@ describe('NotificationDispatchService.sendFromTemplate — ผ่อนผัน
         category: opts.category ?? 'DUNNING',
       }),
     };
-    const compliance = { canSend: jest.fn().mockResolvedValue({ allowed: true }) };
+    const compliance = {
+      canSend: jest.fn().mockResolvedValue({ allowed: true }),
+      ensureIdentificationPrefix: jest.fn((msg: string) => msg),
+      scanForbiddenContent: jest.fn(),
+    };
     const service = new NotificationDispatchService(
       transport as never,
       prisma as never,
       compliance as never,
       templates as never,
     );
-    return { prisma, transport, service };
+    return { prisma, transport, compliance, service };
   }
 
   it('DUNNING ช่อง LINE ในช่วงผ่อนผัน → ไม่ส่ง · แถว BLOCKED เหตุผล LEGACY_LINK_GRACE', async () => {
@@ -51,7 +58,7 @@ describe('NotificationDispatchService.sendFromTemplate — ผ่อนผัน
 
     expect(result).toEqual({ id: 'log-1', status: 'BLOCKED', blockReason: 'LEGACY_LINK_GRACE' });
     expect(transport.sendLineFlexMessage).not.toHaveBeenCalled();
-    expect(prisma.notificationLog.create).toHaveBeenCalledWith({
+    expect(prisma.notificationLog.create.mock.calls[0][0]).toMatchObject({
       data: expect.objectContaining({
         channel: 'LINE',
         recipient: 'U-1',
@@ -100,5 +107,55 @@ describe('NotificationDispatchService.sendFromTemplate — ผ่อนผัน
       bypassCompliance: true,
     });
     expect(transport.sendLineFlexMessage).toHaveBeenCalledTimes(1);
+  });
+
+  describe('รอบ 2 ข้อ 2 — ส่งด้วยมือ (พนักงานกด) ไม่ถูกระงับ · ระงับเฉพาะที่ระบบส่งเอง', () => {
+    const dunningLine = {
+      channel: 'LINE' as const,
+      channelKey: 'line-finance' as const,
+      recipient: 'U-1',
+      message: '[BESTCHOICE FINANCE] กรุณาชำระ',
+      relatedId: 'k1',
+      customerId: 'cust-1',
+      category: 'DUNNING' as never,
+    };
+
+    it('send() ที่ระบบส่งเอง (ไม่ระบุ manual) ในช่วงผ่อนผัน → BLOCKED ก่อนด่าน compliance ไม่ส่ง', async () => {
+      const { prisma, transport, compliance, service } = build({ inGrace: true });
+
+      const result = await service.send(dunningLine);
+
+      expect(result).toEqual({ id: 'log-1', status: 'BLOCKED', blockReason: 'LEGACY_LINK_GRACE' });
+      expect(compliance.canSend).not.toHaveBeenCalled();
+      expect(transport.sendLine).not.toHaveBeenCalled();
+      expect(prisma.notificationLog.create.mock.calls[0][0]).toMatchObject({
+        data: expect.objectContaining({ status: 'BLOCKED', blockReason: 'LEGACY_LINK_GRACE' }),
+      });
+    });
+
+    it('send(dto, { manual: true }) ในช่วงผ่อนผัน → ไม่ถามช่วงผ่อนผัน ผ่านด่าน compliance เดิมแล้วส่ง', async () => {
+      const { prisma, transport, compliance, service } = build({ inGrace: true });
+
+      const result = await service.send(dunningLine, { manual: true });
+
+      expect(result.status).toBe('SENT');
+      expect(prisma.contract.findFirst).not.toHaveBeenCalled();
+      expect(compliance.canSend).toHaveBeenCalledTimes(1);
+      expect(transport.sendLine).toHaveBeenCalledWith('U-1', expect.any(String), 'line-finance');
+    });
+
+    it('sendFromTemplate(..., { manual: true }) ในช่วงผ่อนผัน → ส่ง Flex', async () => {
+      const { prisma, transport, service } = build({ inGrace: true });
+
+      const result = await service.sendFromTemplate('dunning.reminder', { amount: '1' }, 'U-1', {
+        relatedId: 'k1',
+        customerId: 'cust-1',
+        manual: true,
+      });
+
+      expect(result.status).toBe('SENT');
+      expect(prisma.contract.findFirst).not.toHaveBeenCalled();
+      expect(transport.sendLineFlexMessage).toHaveBeenCalledTimes(1);
+    });
   });
 });

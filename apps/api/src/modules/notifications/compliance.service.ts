@@ -9,10 +9,6 @@ import {
   FREQUENCY_CAP_CATEGORIES,
 } from './notification-category.enum';
 import { isWithinBusinessHours, nextBusinessHourOpen } from '../../utils/business-hours.util';
-import {
-  LEGACY_LINK_GRACE_BLOCK_REASON,
-  isRelatedRecordInLegacyLinkGrace,
-} from './legacy-link-grace';
 import type { NotificationChannel } from '@prisma/client';
 
 /**
@@ -52,8 +48,7 @@ export type ComplianceBlockReason =
   | 'OUTSIDE_HOURS'
   | 'FREQUENCY_CAP'
   | 'NO_CONSENT'
-  | 'HOLIDAY_BLOCK'
-  | typeof LEGACY_LINK_GRACE_BLOCK_REASON;
+  | 'HOLIDAY_BLOCK';
 
 export interface CanSendResult {
   allowed: boolean;
@@ -67,14 +62,15 @@ export interface CanSendResult {
  * Gates (in order):
  * 1. Bypass flag — explicit override (e.g., manual staff send-now)
  * 2. Category bypass — TRANSACTIONAL (receipts) and STAFF skip all compliance
- * 3. Legacy link grace — LINE + DUNNING of an imported contract (`legacyContractCode`) whose customer linked
- *    the finance LINE less than `LEGACY_LINK_DUNNING_GRACE_DAYS` days ago → BLOCKED for good (Task 30 —
- *    see legacy-link-grace.ts)
- * 3b. Time-window — Asia/Bangkok 8-20 weekday, 8-18 weekend/holiday
+ * 3. Time-window — Asia/Bangkok 8-20 weekday, 8-18 weekend/holiday
  * 4. PDPA consent — required for any customer-facing send (DUNNING/REMINDER/MARKETING)
  * 5. Frequency cap — 1/day per (customer + contract) for DUNNING only
  *
  * Compliance basis: พ.ร.บ.ทวงถามหนี้ พ.ศ. 2558 มาตรา 9 + PDPA.
+ *
+ * Not here: the 7-day legacy-link grace (Task 30) — it suppresses only AUTOMATED dunning, so it is decided
+ * by the dispatch call (`NotificationDispatchService.send` / `sendFromTemplate`, `manual` option), not by
+ * this context (which the retry queue rebuilds without knowing who started the send).
  */
 @Injectable()
 export class ComplianceService {
@@ -98,16 +94,6 @@ export class ComplianceService {
 
     if (!COMPLIANCE_CHECKED_CATEGORIES.has(ctx.category)) {
       return { allowed: true };
-    }
-
-    // Task 30 ข้อ 2 — ผ่อนผันหลังผูก LINE ของสัญญานำเข้า: ระงับถาวร (ไม่เลื่อนไปส่งทีหลัง) · ก่อนช่วงเวลาทำการ
-    // เพื่อไม่ให้กลายเป็น DELAYED แล้วถูกระงับซ้ำตอนคิวส่งซ้ำ
-    if (
-      ctx.channel === 'LINE' &&
-      ctx.category === NotificationCategory.DUNNING &&
-      (await isRelatedRecordInLegacyLinkGrace(this.prisma, ctx.contractId))
-    ) {
-      return { allowed: false, reason: LEGACY_LINK_GRACE_BLOCK_REASON };
     }
 
     const now = new Date();

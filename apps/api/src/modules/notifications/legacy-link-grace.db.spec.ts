@@ -20,6 +20,7 @@ import { PDPAService } from '../pdpa/pdpa.service';
 import { AutoTriggerService } from '../chatbot-finance/services/auto-trigger.service';
 import { DunningEngineService } from '../overdue/dunning-engine.service';
 import { VerificationService } from '../chatbot-finance/services/verification.service';
+import { OverdueBulkService } from '../overdue/bulk.service';
 import { LiffApiService } from '../line-oa/liff-api.service';
 import {
   FinanceFixtureBase,
@@ -50,6 +51,7 @@ let bot: AutoTriggerService;
 let engine: DunningEngineService;
 let verification: VerificationService;
 let liff: LiffApiService;
+let collectionsQueue: OverdueBulkService;
 const sms = { sendSmsFromQueue: jest.fn().mockResolvedValue(undefined) };
 
 /** ทางผูกจริง: ขอ OTP ไปเบอร์ของลูกค้า แล้วยืนยันด้วยรหัสที่ส่งทาง SMS (VerificationService.bind) */
@@ -141,6 +143,7 @@ beforeAll(async () => {
   );
   verification._setResponseFloorForTests(0);
   liff = new LiffApiService(prisma as never);
+  collectionsQueue = new OverdueBulkService(prisma as never, {} as never, notifications);
   engine = new DunningEngineService(
     prisma as never,
     { findAllActiveRules: jest.fn().mockResolvedValue([]) } as never,
@@ -277,27 +280,43 @@ describe('Task 30 ข้อ 2 — ผ่อนผัน 7 วันหลัง�
     expect(lineDeliveries(t.native3.lineUserId)).toBe(1);
   });
 
-  it('ส่ง LINE หมวดทวงด้วยมือ (คิวทวงถาม) ก็ถูกระงับ · SMS ทวงไม่เปลี่ยน', async () => {
+  it('รอบ 2 ข้อ 2 — พนักงานกด "ส่ง LINE" จากคิวทวงถาม → ส่งถึงแม้อยู่ในช่วงผ่อนผัน · ข้อความทวงที่ระบบส่งเองยังถูกระงับ · SMS ไม่เปลี่ยน', async () => {
     const t = await trio(-10);
-    const manual = (f: InstallmentFixture, channel: 'LINE' | 'SMS') =>
+    const owner = { id: base.salespersonId, role: 'OWNER' as const, branchId: null };
+
+    await expect(
+      collectionsQueue.sendLineAdhoc(
+        t.legacy3.contractId,
+        { customMessage: '[BESTCHOICE FINANCE] กรุณาชำระค่างวดที่ค้าง' },
+        owner,
+      ),
+    ).resolves.toEqual({ sent: 1, failed: 0, total: 1 });
+    expect(lineDeliveries(t.legacy3.lineUserId)).toBe(1);
+    expect(
+      await prisma.notificationLog.count({
+        where: { relatedId: t.legacy3.contractId, status: 'SENT', channel: 'LINE' },
+      }),
+    ).toBe(1);
+
+    const automated = (f: InstallmentFixture, channel: 'LINE' | 'SMS') =>
       notifications.send({
         channel,
         channelKey: channel === 'LINE' ? 'line-finance' : undefined,
         recipient: channel === 'LINE' ? f.lineUserId : `sms-${f.lineUserId}`,
-        message: '[BESTCHOICE FINANCE] กรุณาชำระค่างวดที่ค้าง',
+        message: '[BESTCHOICE FINANCE] แจ้งค้างชำระ',
         relatedId: f.contractId,
         customerId: f.customerId,
         category: NotificationCategory.DUNNING,
       });
-
-    expect(await manual(t.legacy3, 'LINE')).toMatchObject({
+    expect(await automated(t.legacy8, 'LINE')).toMatchObject({ status: 'SENT' });
+    // สัญญาเดียวกับที่พนักงานเพิ่งส่ง — ระบบส่งเองถูกระงับ (ก่อนเพดานความถี่ ⇒ เหตุผลคือช่วงผ่อนผัน)
+    expect(await automated(t.legacy3, 'LINE')).toMatchObject({
       status: 'BLOCKED',
       blockReason: 'LEGACY_LINK_GRACE',
     });
-    expect((await manual(t.native3, 'LINE')).status).toBe('SENT');
-    expect((await manual(t.legacy3, 'SMS')).status).toBe('SENT');
-    expect(lineDeliveries(t.legacy3.lineUserId)).toBe(0);
-    expect(delivered).toContainEqual({ to: `sms-${t.legacy3.lineUserId}`, via: 'sms' });
+    expect((await automated(t.native3, 'SMS')).status).toBe('SENT');
+    expect(delivered).toContainEqual({ to: `sms-${t.native3.lineUserId}`, via: 'sms' });
+    expect(lineDeliveries(t.legacy3.lineUserId)).toBe(1);
   });
 
   it('ลูกค้าคนเดียวมีสัญญานำเข้า + สัญญาใหม่ (ผูก 3 วัน) → ระงับเฉพาะสัญญานำเข้า', async () => {

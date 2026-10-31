@@ -13,10 +13,14 @@ import { NotificationCategory } from './notification-category.enum';
  * ใบเสร็จ · ลิงก์ชำระ ยังส่งตามเดิม · สัญญาที่ไม่ได้นำเข้า (ไม่มี `legacyContractCode`) และ SMS ไม่เปลี่ยน ·
  * ข้อความที่ถูกระงับไม่ถูกเลื่อนไปส่งทีหลัง (หมดช่วงแล้วรอบทวงถัดไปเดินตามปกติ)
  *
- * จุดบังคับ (ทุกทางที่ส่งข้อความหมวดทวง `DUNNING` ทาง LINE):
- * - `ComplianceService.canSend` — ทุก `dispatch.send` หมวด DUNNING ทาง LINE (รอบกฎทวง `DunningEngineService` ตามวัน/ตามเหตุการณ์ ·
- *   ส่ง LINE จากคิวทวงถาม (พนักงาน) · ส่งซ้ำของกฎทวง · ข้อความทางสำรองของ template) + คิวส่งซ้ำแถว DELAYED
- * - `NotificationDispatchService.sendFromTemplate` — template หมวด DUNNING ช่อง LINE ก่อนทาง Flex (Flex ไม่ผ่าน `canSend`):
+ * **ระงับเฉพาะที่ระบบส่งเอง** (รอบ 2 ข้อ 2) — พนักงานกดส่งเองไม่ถูกระงับ: ผู้เรียกระบุ `{ manual: true }` ตรง ๆ (คิวทวงถาม ส่ง LINE/ส่งรวด ·
+ * ส่งซ้ำ DunningAction · `POST notifications/send|send-from-template|bulk`) — ไม่เดาจากอย่างอื่น
+ *
+ * จุดบังคับ (ทุกทางที่ระบบส่งข้อความหมวดทวง `DUNNING` ทาง LINE เอง):
+ * - `NotificationDispatchService.send` — ก่อนด่าน compliance (รอบกฎทวง `DunningEngineService` ตามวัน/ตามเหตุการณ์ · ข้อความทางสำรองของ
+ *   template) · คิวส่งซ้ำแถว DELAYED ไม่ต้องตรวจซ้ำ: ส่งทาง LINE ได้ต้องผูกอยู่แล้วตอนสร้าง ⇒ ผูกครั้งแรกอยู่ก่อนนั้น ช่วงผ่อนผันจึงเปลี่ยนจาก
+ *   "อยู่" เป็น "พ้น" ได้ทางเดียว (ที่อยู่ในช่วงถูกระงับตั้งแต่ตอนสร้าง ไม่กลายเป็น DELAYED)
+ * - `NotificationDispatchService.sendFromTemplate` — template หมวด DUNNING ช่อง LINE ก่อนทาง Flex (Flex ไม่ผ่าน `send`):
  *   `dunning.*` (A4 ขั้นทวง) · `payment.overdue_day_*` · `mdm.lock_notice` · `contract.status_*` · `payment.auto_link`
  * - ผู้ส่ง Flex/ข้อความตรงที่ไม่ผ่าน dispatch: A2 `NotificationReminderService.sendOverdueNotices` ·
  *   A3 `CollectionsNotifierService.notifyStatusChangedCustomers` · A8 ทวงหลังเลยกำหนด `AutoTriggerService` (ESCALATION_T_PLUS_1/3)
@@ -100,21 +104,22 @@ export async function isRelatedRecordInLegacyLinkGrace(
   return row !== null;
 }
 
-/** แถวหลักฐานของข้อความที่ถูกระงับ — `BLOCKED` ไม่เข้าคิวส่งซ้ำ ไม่นับเพดานความถี่ ไม่นับเป็น "ส่งแล้ว" */
+/** แถวหลักฐานของข้อความที่ถูกระงับ — `BLOCKED` ไม่เข้าคิวส่งซ้ำ ไม่นับเพดานความถี่ ไม่นับเป็น "ส่งแล้ว" · คืน id แถว */
 export async function recordLegacyLinkGraceSkip(
   prisma: Pick<PrismaService, 'notificationLog'>,
   input: {
     recipient: string;
-    subject: string;
+    subject: string | null;
     message: string;
-    relatedId: string;
-    customerId: string;
+    relatedId: string | null;
+    customerId: string | null;
+    channelKey?: string | null;
   },
-): Promise<void> {
-  await prisma.notificationLog.create({
+): Promise<string> {
+  const log = await prisma.notificationLog.create({
     data: {
       channel: 'LINE',
-      channelKey: 'line-finance',
+      channelKey: input.channelKey ?? 'line-finance',
       recipient: input.recipient,
       subject: input.subject,
       message: input.message,
@@ -126,5 +131,7 @@ export async function recordLegacyLinkGraceSkip(
       errorMsg: `Compliance block: ${LEGACY_LINK_GRACE_BLOCK_REASON}`,
       sentAt: null,
     },
+    select: { id: true },
   });
+  return log.id;
 }

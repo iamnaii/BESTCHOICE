@@ -262,16 +262,18 @@ describe('AutoTriggerService', () => {
 
       expect(lineClient.pushText).not.toHaveBeenCalled();
       expect(prisma.chatAutoTrigger.create).not.toHaveBeenCalled();
-      expect(prisma.notificationLog.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          recipient: 'U123',
-          status: 'BLOCKED',
-          blockReason: 'LEGACY_LINK_GRACE',
-          category: 'DUNNING',
-          relatedId: 'pay-3',
-          customerId: 'cust-1',
+      expect(prisma.notificationLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            recipient: 'U123',
+            status: 'BLOCKED',
+            blockReason: 'LEGACY_LINK_GRACE',
+            category: 'DUNNING',
+            relatedId: 'pay-3',
+            customerId: 'cust-1',
+          }),
         }),
-      });
+      );
       expect(prisma.contract.findMany.mock.calls[0][0].where.id).toEqual({ in: ['con-1'] });
     });
 

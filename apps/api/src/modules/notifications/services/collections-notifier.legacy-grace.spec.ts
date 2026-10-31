@@ -56,16 +56,18 @@ describe('CollectionsNotifierService.notifyStatusChangedCustomers — ผ่อ�
       expect.anything(),
       'line-finance',
     );
-    expect(prisma.notificationLog.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        recipient: 'U-legacy',
-        status: 'BLOCKED',
-        blockReason: 'LEGACY_LINK_GRACE',
-        category: 'DUNNING',
-        relatedId: 'legacy',
-        customerId: 'cust-legacy',
+    expect(prisma.notificationLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          recipient: 'U-legacy',
+          status: 'BLOCKED',
+          blockReason: 'LEGACY_LINK_GRACE',
+          category: 'DUNNING',
+          relatedId: 'legacy',
+          customerId: 'cust-legacy',
+        }),
       }),
-    });
+    );
     expect(prisma.contract.findMany.mock.calls[1][0].where.id).toEqual({
       in: ['legacy', 'native'],
     });

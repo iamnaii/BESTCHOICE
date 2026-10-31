@@ -147,8 +147,10 @@ describe('OverdueBulkService', () => {
       await expect(service.sendLineAdhoc('c1', { customMessage: 'ทดสอบ' }, OWNER)).resolves.toEqual(
         { sent: 1, failed: 0, total: 1 },
       );
+      // Task 30 รอบ 2 ข้อ 2 — พนักงานกดส่งเอง = ส่งด้วยมือ (ไม่ถูกระงับช่วงผ่อนผันหลังผูก LINE ของสัญญานำเข้า)
       expect(mockNotifications.send).toHaveBeenCalledWith(
         expect.objectContaining({ recipient: 'U1', channelKey: 'line-finance' }),
+        { manual: true },
       );
     });
 

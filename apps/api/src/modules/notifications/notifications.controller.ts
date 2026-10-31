@@ -51,7 +51,8 @@ export class NotificationsController {
   @Post('send')
   @Roles('OWNER', 'BRANCH_MANAGER')
   send(@Body() dto: SendNotificationDto) {
-    return this.notificationsService.send(dto);
+    // พนักงานกดส่งเอง — ไม่ถูกระงับช่วงผ่อนผันหลังผูก LINE ของสัญญานำเข้า (Task 30 รอบ 2 ข้อ 2)
+    return this.notificationsService.send(dto, { manual: true });
   }
 
   @Post('send-from-template')
@@ -69,6 +70,7 @@ export class NotificationsController {
     return this.notificationsService.sendFromTemplate(body.eventType, body.data, body.recipient, {
       relatedId: body.relatedId,
       customerId: body.customerId,
+      manual: true,
     });
   }
 
@@ -195,7 +197,7 @@ export class NotificationsController {
   @Post('bulk')
   @Roles('OWNER', 'BRANCH_MANAGER')
   sendBulk(@Body() dto: BulkNotificationDto) {
-    return this.notificationsService.sendBulk(dto.templateId, dto.contractIds);
+    return this.notificationsService.sendBulk(dto.templateId, dto.contractIds, { manual: true });
   }
 
   @Get('sms-status')

@@ -181,69 +181,17 @@ describe('ComplianceService', () => {
     expect(result.allowed).toBe(true);
   });
 
-  describe('Task 30 ข้อ 2 — ผ่อนผัน 7 วันหลังผูก LINE (สัญญานำเข้าจากระบบเดิม)', () => {
-    const at14 = () => jest.useFakeTimers().setSystemTime(new Date('2026-05-04T07:00:00Z'));
-
-    it('LINE + DUNNING ของสัญญาในช่วงผ่อนผัน → LEGACY_LINK_GRACE (ถาวร ไม่ใช่ DELAYED) ก่อนตรวจ consent', async () => {
-      at14();
-      prisma.contract.findFirst.mockResolvedValueOnce({ id: 'k1' });
-      const result = await service.canSend({
-        channel: 'LINE',
-        customerId: 'c1',
-        contractId: 'k1',
-        category: NotificationCategory.DUNNING,
-      });
-      expect(result).toEqual({ allowed: false, reason: 'LEGACY_LINK_GRACE' });
-      expect(pdpa.hasActiveConsent).not.toHaveBeenCalled();
-      // relatedId เป็นได้ทั้ง id สัญญาและ id งวด · สัญญาต้องนำเข้า + ผูก LINE ยังไม่ครบ 7 วัน
-      const where = prisma.contract.findFirst.mock.calls[0][0].where;
-      expect(where.OR).toEqual([{ id: 'k1' }, { payments: { some: { id: 'k1' } } }]);
-      expect(where.legacyContractCode).toEqual({ not: null });
-      const cutoff: Date = where.customer.lineLinks.none.OR[0].linkedAt.lte;
-      expect(Date.now() - cutoff.getTime()).toBe(7 * 24 * 60 * 60 * 1000);
+  it('Task 30 รอบ 2 ข้อ 2 — canSend ไม่ตัดสินช่วงผ่อนผันหลังผูก LINE (อยู่ที่ dispatch.send — ระงับเฉพาะที่ระบบส่งเอง) · ไม่อ่านสัญญา', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-05-04T07:00:00Z'));
+    prisma.contract.findFirst.mockResolvedValue({ id: 'k1' });
+    const result = await service.canSend({
+      channel: 'LINE',
+      customerId: 'c1',
+      contractId: 'k1',
+      category: NotificationCategory.DUNNING,
     });
-
-    it('LINE + DUNNING นอกช่วงผ่อนผัน (ไม่พบ) → ผ่านตามเดิม', async () => {
-      at14();
-      const result = await service.canSend({
-        channel: 'LINE',
-        customerId: 'c1',
-        contractId: 'k1',
-        category: NotificationCategory.DUNNING,
-      });
-      expect(result.allowed).toBe(true);
-      expect(prisma.contract.findFirst).toHaveBeenCalledTimes(1);
-    });
-
-    it.each([
-      ['SMS ทวง', 'SMS', NotificationCategory.DUNNING],
-      ['LINE เตือนค่างวด', 'LINE', NotificationCategory.REMINDER],
-      ['LINE ใบเสร็จ', 'LINE', NotificationCategory.TRANSACTIONAL],
-    ] as const)('%s → ไม่ถามช่วงผ่อนผัน', async (_label, channel, category) => {
-      at14();
-      prisma.contract.findFirst.mockResolvedValue({ id: 'k1' });
-      const result = await service.canSend({
-        channel,
-        customerId: 'c1',
-        contractId: 'k1',
-        category,
-      });
-      expect(result.allowed).toBe(true);
-      expect(prisma.contract.findFirst).not.toHaveBeenCalled();
-    });
-
-    it('bypassCompliance (ส่งทดสอบ) ไม่ถูกระงับ', async () => {
-      at14();
-      prisma.contract.findFirst.mockResolvedValue({ id: 'k1' });
-      const result = await service.canSend({
-        channel: 'LINE',
-        customerId: 'c1',
-        contractId: 'k1',
-        category: NotificationCategory.DUNNING,
-        bypassCompliance: true,
-      });
-      expect(result.allowed).toBe(true);
-    });
+    expect(result.allowed).toBe(true);
+    expect(prisma.contract.findFirst).not.toHaveBeenCalled();
   });
 
   describe('ensureIdentificationPrefix', () => {

@@ -32,6 +32,7 @@ describe('EarlyPayoffSlipService', () => {
       ocrThrows?: boolean;
       reused?: boolean;
       totalPayoff?: number;
+      pendingRefund?: boolean;
     } = {},
   ) {
     const prisma = {
@@ -73,6 +74,10 @@ describe('EarlyPayoffSlipService', () => {
         .fn()
         .mockResolvedValue({ totalPayoff: over.totalPayoff ?? 18135.85 }),
       earlyPayoff: jest.fn().mockResolvedValue({ status: 'EARLY_PAYOFF' }),
+      // #24 ด่านต้นทาง — ผ่านเป็นค่าเริ่มต้น
+      assertNoPendingBankRefundForPayoff: over.pendingRefund
+        ? jest.fn().mockRejectedValue(new BadRequestException('มีคำขอคืนเงินที่รอผลธนาคาร'))
+        : jest.fn().mockResolvedValue(undefined),
     };
     const config = {
       get: jest.fn((k: string) => (k === 'JWT_SECRET' ? 'test-secret' : undefined)),
@@ -103,6 +108,15 @@ describe('EarlyPayoffSlipService', () => {
     expect(storage.upload.mock.calls[0][0]).toMatch(/^early-payoff-slips\/ct-1\/.*\.jpg$/);
     expect(contractPayment.getEarlyPayoffQuote).toHaveBeenCalledWith('ct-1', 50, '11-1201');
     expect(vision.extractSlip).toHaveBeenCalledWith(expect.any(Buffer), 'image/jpeg');
+  });
+
+  // คำตัดสินเจ้าของ #24: มีคำขอคืนเงินที่อนุมัติแล้วแต่ยังไม่บันทึกผลธนาคาร → ปฏิเสธก่อนอัปโหลด/อ่านสลิป (ไม่เปลืองเครดิต OCR)
+  it('#24 คำขอคืนเงินรอผลธนาคาร → 400 ก่อนอัปโหลดและก่อน OCR', async () => {
+    const { service, storage, vision, contractPayment } = build({ pendingRefund: true });
+    await expect(service.verify('ct-1', file(), '50', 'u-1')).rejects.toThrow(BadRequestException);
+    expect(contractPayment.assertNoPendingBankRefundForPayoff).toHaveBeenCalledWith('ct-1');
+    expect(storage.upload).not.toHaveBeenCalled();
+    expect(vision.extractSlip).not.toHaveBeenCalled();
   });
 
   it('ยอดไม่ตรง → matched=false ไม่มีตั๋ว แต่ยังคืน slipUrl ให้แนบไปกับคำขออนุมัติ', async () => {

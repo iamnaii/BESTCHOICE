@@ -5,6 +5,7 @@ import { validate } from 'class-validator';
 import { randomUUID } from 'node:crypto';
 import { ContractPaymentService } from '../../contracts/contract-payment.service';
 import { EarlyPayoffDto } from '../../contracts/dto/contract.dto';
+import { assertNoPendingBankRefund } from '../../refunds/pending-bank-refund';
 import {
   approvalJson,
   MANAGED_PAYOFF_SOURCE_KEY,
@@ -56,6 +57,8 @@ export async function createEarlyPayoffRequest(
   )
     throw new ConflictException('รายการนี้มีคำขอรออนุมัติแล้ว');
   const { contract, snapshot } = await paymentApprovalSnapshot(tx, 'EARLY_PAYOFF', input.targetId);
+  // #24: คำขอที่ทำไม่ได้จริง (มีคำขอคืนเงินที่รอผลธนาคาร) ไม่เข้าคิวอนุมัติ — ด่านจริงอยู่ในธุรกรรมของ earlyPayoff
+  await assertNoPendingBankRefund(tx, contract.id, 'EARLY_PAYOFF');
   const reviewSummary = await payment.getEarlyPayoffQuote(
     contract.id,
     dto.discountPct,

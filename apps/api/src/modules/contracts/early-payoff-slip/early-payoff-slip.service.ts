@@ -125,6 +125,8 @@ export class EarlyPayoffSlipService {
       discountPct,
       PAYOFF_DEPOSIT_ACCOUNT,
     );
+    // #24: คำขอคืนเงินที่อนุมัติแล้วแต่ยังไม่บันทึกผลธนาคาร → ปฏิเสธก่อนอัปโหลด/OCR (ด่านจริงอยู่ใน earlyPayoff ตอนยืนยัน)
+    await this.contractPayment.assertNoPendingBankRefundForPayoff(contractId);
 
     const key = `early-payoff-slips/${contractId}/${Date.now()}-${randomUUID()}.${evidenceImageExtension(file.mimetype)}`;
     await this.storage.upload(key, file.buffer, file.mimetype);

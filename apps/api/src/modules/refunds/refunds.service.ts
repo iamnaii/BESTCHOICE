@@ -181,6 +181,10 @@ export class RefundsService {
       const actor = await this.refundActor(tx, userId, true);
       const refund = await tx.refund.findUnique({ where: { id: refundId } });
       if (!refund || refund.deletedAt) throw new NotFoundException('ไม่พบคำขอคืนเงิน');
+      // คำตัดสินเจ้าของ #24: ปิดยอด (JP4) / ยืนยันรับเครื่องคืน (JP5) ถือแถวสัญญา FOR UPDATE ระหว่างตรวจคำขอคืนเงินที่ APPROVED
+      // (`refunds/pending-bank-refund.ts`) — ล็อกแถวเดียวกัน FOR SHARE ก่อนอ่านสถานะ ⇒ อนุมัติกับปิดยอด/ยึดเรียงกันเสมอ:
+      // มาทีหลังกว่าการปิด = เห็นสถานะปิดแล้ว (ด่านสัญญาปิดข้างล่าง · หรือ P2034 → 409 ให้โหลดใหม่) · มาก่อน = การปิดเห็นคำขอที่อนุมัติ
+      await tx.$queryRaw`SELECT id FROM contracts WHERE id=${refund.contractId} FOR SHARE`;
       const contract = await this.assertContractAccess(tx, actor, refund.contractId);
       if (refund.status !== 'REQUESTED') {
         throw new BadRequestException(

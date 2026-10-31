@@ -59,6 +59,8 @@ describe('Payoff parity (เงินรับล่วงหน้าถัง�
   function makeServices(contract: ReturnType<typeof makeContract>) {
     const prisma = {
       systemConfig: { findUnique: jest.fn().mockResolvedValue(null) },
+      // #24: preview eligibility reads approved-but-not-bank-confirmed refunds — none here
+      refund: { findMany: jest.fn().mockResolvedValue([]) },
       repossession: { findFirst: jest.fn().mockResolvedValue(null) },
       contract: { findUnique: jest.fn().mockResolvedValue(contract) },
       installmentSchedule: {
@@ -168,6 +170,8 @@ describe('Payoff parity (เงินรับล่วงหน้าถัง�
     };
     const prisma = {
       systemConfig: { findUnique: jest.fn().mockResolvedValue(null) },
+      // #24: preview eligibility reads approved-but-not-bank-confirmed refunds — none here
+      refund: { findMany: jest.fn().mockResolvedValue([]) },
       repossession: { findFirst: jest.fn().mockResolvedValue(null) },
       contract: {
         findUnique: jest.fn().mockResolvedValue(contract),

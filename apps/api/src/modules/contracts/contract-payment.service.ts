@@ -40,6 +40,7 @@ import { JourneyEntryWriter } from '../customer-journey/journey-entry-writer.ser
 import { journeyDedupeKey } from '../customer-journey/journey-data-schemas';
 import { Decimal } from '@prisma/client/runtime/library';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
+import { assertNoPendingBankRefund } from '../refunds/pending-bank-refund';
 import { isFutureBkkDay } from '../../utils/date.util';
 import { EarlyPayoffDto, ShopCollectSettlementDto } from './dto/contract.dto';
 import {
@@ -482,6 +483,17 @@ export class ContractPaymentService {
     };
   }
 
+  /**
+   * คำตัดสินเจ้าของ #24 — ด่านต้นทางของการปิดยอด (บอกก่อนเสียเวลา: หน้า LIFF ยอดปิด/ลิงก์ปิดยอด · ตรวจสลิป) ·
+   * ด่านที่ผูกมัดอยู่ในธุรกรรมของ `earlyPayoff` · กติกาเดียว `refunds/pending-bank-refund.ts`
+   */
+  async assertNoPendingBankRefundForPayoff(
+    contractId: string,
+    audience: 'staff' | 'customer' = 'staff',
+  ): Promise<void> {
+    await assertNoPendingBankRefund(this.prisma, contractId, 'EARLY_PAYOFF', audience);
+  }
+
   async earlyPayoff(
     id: string,
     userId: string,
@@ -616,6 +628,12 @@ export class ContractPaymentService {
             },
           });
       }
+
+      // คำตัดสินเจ้าของ #24 (2026-10-31): ห้ามปิดยอดขณะมีคำขอคืนเงินที่อนุมัติแล้วแต่ยังไม่บันทึกผลธนาคาร — อ่านใต้ล็อกแถวสัญญา
+      // (managed ถือ FOR UPDATE อยู่แล้วจาก managedPayoffExecution · ทางปกติล็อกที่นี่) ซึ่ง approveRefund ล็อก FOR SHARE ก่อนอ่าน
+      // สถานะสัญญา ⇒ อนุมัติคืนเงินกับปิดยอดเรียงกันเสมอ (ตัวที่มาทีหลังเห็นผลของอีกตัว)
+      if (!managed) await tx.$queryRaw`SELECT id FROM contracts WHERE id=${id} FOR UPDATE`;
+      await assertNoPendingBankRefund(tx, id, 'EARLY_PAYOFF');
 
       const freshContract = await tx.contract.findUnique({
         where: { id },

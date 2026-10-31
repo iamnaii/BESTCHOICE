@@ -84,6 +84,8 @@ describe('RefundsService', () => {
     (assertPaymentApprovalPermission as jest.Mock).mockReset().mockResolvedValue(actor);
     (getPaymentApprovalPermissions as jest.Mock).mockReset().mockResolvedValue(actor);
     prisma = {
+      // #24: approveRefund ล็อกแถวสัญญา FOR SHARE ก่อนอ่านสถานะ (เรียงกับปิดยอด/ยึดที่ถือ FOR UPDATE)
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contract: { findFirst: jest.fn().mockResolvedValue({ branchId: 'branch-a' }) },
       user: {
         findUnique: jest
@@ -561,6 +563,28 @@ describe('RefundsService', () => {
       await expect(service.approveRefund('rf-1', 'u-fm', 'FINANCE_MANAGER')).rejects.toThrow(
         BadRequestException,
       );
+    });
+
+    // owner decision #24 (2026-10-31): approve vs early payoff / repossession must serialize — the payoff/JP5
+    // transaction holds the contract row FOR UPDATE while it checks for APPROVED refunds; approve takes the same row
+    // FOR SHARE before it reads the contract status, so whichever comes second sees the other's result
+    it('#24 locks the contract row FOR SHARE before reading the contract status', async () => {
+      const order: string[] = [];
+      prisma.$queryRaw.mockImplementation((strings: TemplateStringsArray, ...values: unknown[]) => {
+        const sql = strings.join('?');
+        if (sql.includes('FROM contracts') && sql.includes('FOR SHARE'))
+          order.push(`lock-contract:${values[0]}`);
+        return Promise.resolve([]);
+      });
+      prisma.contract.findFirst.mockImplementation(() => {
+        order.push('read-contract');
+        return Promise.resolve({ branchId: 'branch-a', status: 'ACTIVE' });
+      });
+
+      await service.approveRefund('rf-1', 'u-owner', 'OWNER');
+
+      expect(order).toEqual(['lock-contract:con-1', 'read-contract']);
+      expect(prisma.refund.updateMany).toHaveBeenCalledTimes(1);
     });
 
     it('authorized actor approves using CAS and audit in the same transaction', async () => {

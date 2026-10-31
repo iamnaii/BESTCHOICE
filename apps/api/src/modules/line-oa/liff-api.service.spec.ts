@@ -280,6 +280,73 @@ describe('LiffApiService', () => {
     });
   });
 
+  // ─── resolveDownloadDocumentId (Task 22 M-3) ─────────
+
+  describe('resolveDownloadDocumentId', () => {
+    beforeEach(() => {
+      prisma.receipt.findFirst = jest.fn();
+      prisma.eDocument = { findFirst: jest.fn() };
+    });
+
+    it('LINE ไม่ผูกลูกค้า → 404 ไม่พบข้อมูลลูกค้า', async () => {
+      prisma.customer.findFirst.mockResolvedValue(null);
+      await expect(service.resolveDownloadDocumentId('U_line', 'receipt', 'r1')).rejects.toThrow(
+        'ไม่พบข้อมูลลูกค้า',
+      );
+    });
+
+    it('ใบเสร็จ: ค้นเฉพาะใบที่ยังไม่ยกเลิกของสัญญาของลูกค้าคนนี้ → id ของ eDocument ตามไฟล์', async () => {
+      prisma.customer.findFirst.mockResolvedValue({ id: 'cust1', name: 'x' });
+      prisma.receipt.findFirst.mockResolvedValue({ id: 'r1', fileUrl: 'receipts/r1.pdf' });
+      prisma.eDocument.findFirst.mockResolvedValue({ id: 'edoc-r1' });
+      await expect(service.resolveDownloadDocumentId('U_line', 'receipt', 'r1')).resolves.toBe(
+        'edoc-r1',
+      );
+      expect(prisma.receipt.findFirst.mock.calls[0][0].where).toEqual({
+        id: 'r1',
+        contract: { customerId: 'cust1', deletedAt: null },
+        isVoided: false,
+      });
+      expect(prisma.eDocument.findFirst.mock.calls[0][0].where).toEqual({
+        fileUrl: 'receipts/r1.pdf',
+      });
+    });
+
+    it('ใบเสร็จของคนอื่น → 404 ไม่พบใบเสร็จ · ไม่มีไฟล์ → 404 ให้ติดต่อพนักงาน', async () => {
+      prisma.customer.findFirst.mockResolvedValue({ id: 'cust1', name: 'x' });
+      prisma.receipt.findFirst.mockResolvedValueOnce(null);
+      await expect(service.resolveDownloadDocumentId('U_line', 'receipt', 'r9')).rejects.toThrow(
+        'ไม่พบใบเสร็จ',
+      );
+      prisma.receipt.findFirst.mockResolvedValueOnce({ id: 'r1', fileUrl: null });
+      await expect(service.resolveDownloadDocumentId('U_line', 'receipt', 'r1')).rejects.toThrow(
+        'ใบเสร็จนี้ยังไม่มีไฟล์ PDF',
+      );
+    });
+
+    it('สัญญา: ต้องเป็นสัญญาของลูกค้าคนนี้ → เอกสาร CONTRACT ล่าสุด', async () => {
+      prisma.customer.findFirst.mockResolvedValue({ id: 'cust1', name: 'x' });
+      prisma.contract.findFirst.mockResolvedValueOnce(null);
+      await expect(
+        service.resolveDownloadDocumentId('U_line', 'contract-document', 'k9'),
+      ).rejects.toThrow('ไม่พบสัญญา');
+      prisma.contract.findFirst.mockResolvedValueOnce({ id: 'k1' });
+      prisma.eDocument.findFirst.mockResolvedValue({ id: 'edoc-k1' });
+      await expect(
+        service.resolveDownloadDocumentId('U_line', 'contract-document', 'k1'),
+      ).resolves.toBe('edoc-k1');
+      expect(prisma.contract.findFirst.mock.calls[1][0].where).toEqual({
+        id: 'k1',
+        customerId: 'cust1',
+        deletedAt: null,
+      });
+      expect(prisma.eDocument.findFirst.mock.calls[0][0]).toMatchObject({
+        where: { contractId: 'k1', documentType: 'CONTRACT' },
+        orderBy: { createdAt: 'desc' },
+      });
+    });
+  });
+
   // ─── getConsentStatus ────────────────────────────────
 
   describe('getConsentStatus', () => {

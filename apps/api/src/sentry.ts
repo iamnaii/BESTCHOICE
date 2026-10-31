@@ -64,7 +64,9 @@ const SENSITIVE_REQUEST_KEYS = [
  */
 const SENSITIVE_REQUEST_HEADERS = new Set(['x-appointment-token', 'x-liff-id-token']);
 /**
- * Query params whose value is a credential (`?idToken=` on LIFF download links — `LiffTokenGuard`).
+ * Query params whose value is a credential (`?idToken=` on LIFF download links — removed in Task 22 M-3:
+ * the guard reads the header only and downloads use a single-use `?dl=` ticket; kept for links built by
+ * LIFF pages still open from before that deploy).
  * The string forms (`request.url`, `request.query_string`, span `http.target`/`url.full`/`url.query`)
  * are scrubbed by `redactShareToken`; this covers `query_string` in object / `[key, value][]` form.
  */

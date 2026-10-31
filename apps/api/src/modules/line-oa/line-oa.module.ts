@@ -4,6 +4,7 @@ import { LineOaChatbotController } from './line-oa-chatbot.controller';
 import { LineOaPaymentController } from './line-oa-payment.controller';
 import { LineOaCampaignController } from './line-oa-campaign.controller';
 import { LiffApiController } from './liff-api.controller';
+import { LiffDownloadController } from './liff-download.controller';
 import { LiffWarrantyController } from './liff-warranty.controller';
 import { LineLinkInviteController } from './link-invite.controller';
 import { LiffWarrantyService } from './liff-warranty.service';
@@ -12,6 +13,7 @@ import { LineLoginController } from './line-login.controller';
 import { BroadcastController } from './broadcast.controller';
 import { LineOaService } from './line-oa.service';
 import { LiffApiService } from './liff-api.service';
+import { LiffDownloadTicketService } from './services/liff-download-ticket.service';
 import { LineWebhookGuard } from './line-webhook.guard';
 import { LiffTokenGuard } from './guards/liff-token.guard';
 import { PromptPayQrService } from './promptpay/promptpay-qr.service';
@@ -59,6 +61,7 @@ import { CustomerJourneyModule } from '../customer-journey/customer-journey.modu
     LineOaPaymentController,
     LineOaCampaignController,
     LiffApiController,
+    LiffDownloadController,
     LiffWarrantyController,
     LineLinkInviteController,
     LineLoginController,
@@ -67,6 +70,7 @@ import { CustomerJourneyModule } from '../customer-journey/customer-journey.modu
   providers: [
     LineOaService,
     LiffApiService,
+    LiffDownloadTicketService,
     LiffWarrantyService,
     LiffAfterSalesService,
     LineWebhookGuard,

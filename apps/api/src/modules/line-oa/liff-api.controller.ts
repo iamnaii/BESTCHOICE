@@ -3,10 +3,8 @@ import {
   Post,
   Get,
   Body,
-  Param,
   Query,
   Req,
-  Res,
   UseGuards,
   Logger,
   BadRequestException,
@@ -14,12 +12,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { Request, Response } from 'express';
+import { Request } from 'express';
 import { LiffApiService } from './liff-api.service';
 import { PaymentLinkService } from './payment-links/payment-link.service';
 import { ContractPaymentService } from '../contracts/contract-payment.service';
 import { dAdd, dRound, toNum } from '../../utils/decimal.util';
-import { DocumentsService } from '../contracts/documents.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
 import { LiffTokenGuard, LiffRequest } from './guards/liff-token.guard';
@@ -60,7 +57,6 @@ export class LiffApiController {
     private liffApiService: LiffApiService,
     private paymentLinkService: PaymentLinkService,
     private contractPaymentService: ContractPaymentService,
-    private documentsService: DocumentsService,
     private prisma: PrismaService,
   ) {}
 
@@ -288,35 +284,7 @@ export class LiffApiController {
   }
 
   // ─── LIFF Contract Document Download ────────────────
-
-  @Get('liff/contracts/:contractId/document')
-  async getLiffContractDocument(
-    @Req() req: Request,
-    @Res() res: Response,
-    @Param('contractId') contractId: string,
-  ) {
-    const lineId = (req as unknown as LiffRequest).liffUserId;
-
-    const customer = await this.liffApiService.findCustomerByLineId(lineId);
-    if (!customer) throw new NotFoundException('ไม่พบข้อมูลลูกค้า');
-
-    const contract = await this.liffApiService.findContractForCustomer(contractId, customer.id);
-    if (!contract) throw new NotFoundException('ไม่พบสัญญา');
-
-    // Find the CONTRACT type document
-    const doc = await this.prisma.eDocument.findFirst({
-      where: { contractId, documentType: 'CONTRACT' },
-      orderBy: { createdAt: 'desc' },
-    });
-    if (!doc) throw new NotFoundException('ยังไม่มีเอกสารสัญญา กรุณาติดต่อพนักงาน');
-
-    const { stream, filename, contentType } = await this.documentsService.getDocumentStream(doc.id);
-    res.set({
-      'Content-Type': contentType,
-      'Content-Disposition': `inline; filename="${encodeURIComponent(filename)}"`,
-    });
-    stream.pipe(res);
-  }
+  // ย้ายไป LiffDownloadController (Task 22 M-3) — ลิงก์ดาวน์โหลดใช้ตั๋วครั้งเดียว `?dl=` แทน id_token ใน URL
 
   // ─── LIFF Receipts ──────────────────────────────────
 
@@ -368,45 +336,7 @@ export class LiffApiController {
     }));
   }
 
-  @Get('liff/receipts/:receiptId/download')
-  async downloadLiffReceipt(
-    @Req() req: Request,
-    @Res() res: Response,
-    @Param('receiptId') receiptId: string,
-  ) {
-    const lineId = (req as unknown as LiffRequest).liffUserId;
-
-    const customer = await this.liffApiService.findCustomerByLineId(lineId);
-    if (!customer) throw new NotFoundException('ไม่พบข้อมูลลูกค้า');
-
-    // Verify receipt belongs to this customer
-    const receipt = await this.prisma.receipt.findFirst({
-      where: {
-        id: receiptId,
-        contract: { customerId: customer.id, deletedAt: null },
-        isVoided: false,
-      },
-      select: { id: true, fileUrl: true, receiptNumber: true },
-    });
-    if (!receipt) throw new NotFoundException('ไม่พบใบเสร็จ');
-
-    if (!receipt.fileUrl) {
-      throw new NotFoundException('ใบเสร็จนี้ยังไม่มีไฟล์ PDF กรุณาติดต่อพนักงาน 063-134-6356');
-    }
-
-    // Find eDocument linked to this receipt's fileUrl
-    const doc = await this.prisma.eDocument.findFirst({
-      where: { fileUrl: receipt.fileUrl },
-    });
-    if (!doc) throw new NotFoundException('ไม่พบไฟล์ใบเสร็จ กรุณาติดต่อพนักงาน 063-134-6356');
-
-    const { stream, filename, contentType } = await this.documentsService.getDocumentStream(doc.id);
-    res.set({
-      'Content-Type': contentType,
-      'Content-Disposition': `inline; filename="${encodeURIComponent(filename)}"`,
-    });
-    stream.pipe(res);
-  }
+  // GET liff/receipts/:receiptId/download → LiffDownloadController (Task 22 M-3)
 
   // ─── LIFF Branch Contact Info ───────────────────────
 

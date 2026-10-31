@@ -1,4 +1,8 @@
-import { IsString, IsOptional, IsBoolean, IsNotEmpty } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsNotEmpty, IsIn, IsUUID } from 'class-validator';
+import {
+  LIFF_DOWNLOAD_KINDS,
+  type LiffDownloadKind,
+} from '../services/liff-download-ticket.service';
 
 // ─── LIFF Shop OA DTOs ───────────────────────────────
 
@@ -70,4 +74,15 @@ export class LiffNotificationPreferencesDto {
 
   @IsBoolean({ message: 'กรุณาระบุค่า receiptNotification' })
   receiptNotification!: boolean;
+}
+
+// ─── LIFF Download Ticket (Task 22 M-3) ──────────────
+
+/** แลก id_token (header) เป็นตั๋วดาวน์โหลดครั้งเดียว — แทน `?idToken=` ในลิงก์ */
+export class LiffDownloadTicketDto {
+  @IsIn(LIFF_DOWNLOAD_KINDS, { message: 'ชนิดเอกสารไม่ถูกต้อง' })
+  kind!: LiffDownloadKind;
+
+  @IsUUID('all', { message: 'รหัสเอกสารไม่ถูกต้อง' })
+  resourceId!: string;
 }

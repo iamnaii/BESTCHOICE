@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { unlinkFinanceLine } from './services/finance-line-link';
+import type { LiffDownloadKind } from './services/liff-download-ticket.service';
 import { toNum, calcOutstanding } from '../../utils/decimal.util';
 // Return types for LIFF API (mirrors packages/shared/src/liff-types.ts)
 interface LiffPaymentItem { installmentNo: number; dueDate: string; amountDue: number; amountPaid: number; lateFee: number; status: string; paidDate: string | null; paymentMethod: string | null; }
@@ -252,6 +253,51 @@ export class LiffApiService {
     return this.prisma.contract.findFirst({
       where: { id: contractId, customerId, deletedAt: null },
     });
+  }
+
+  /**
+   * เอกสารที่ LINE นี้เปิดได้ (สัญญาของตัวเอง / ใบเสร็จที่ยังไม่ยกเลิกของตัวเอง) → id ของ eDocument ที่จะส่ง · ไม่ใช่ของตัวเอง/
+   * ไม่มีไฟล์ = 404 ข้อความไทย. ใช้ทั้งตอนออกตั๋วดาวน์โหลด (ผู้ใช้เห็น 404 บนหน้าเดิมแทนแท็บใหม่ที่เป็น JSON) และตอนใช้ตั๋ว
+   * (ตรวจซ้ำด้วย LINE ที่ผูกกับตั๋ว — ยกเลิกผูกระหว่างนั้น = เปิดไม่ได้) — Task 22 M-3
+   */
+  async resolveDownloadDocumentId(
+    lineId: string,
+    kind: LiffDownloadKind,
+    resourceId: string,
+  ): Promise<string> {
+    const customer = await this.findCustomerByLineId(lineId);
+    if (!customer) throw new NotFoundException('ไม่พบข้อมูลลูกค้า');
+
+    if (kind === 'contract-document') {
+      const contract = await this.findContractForCustomer(resourceId, customer.id);
+      if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+      const doc = await this.prisma.eDocument.findFirst({
+        where: { contractId: resourceId, documentType: 'CONTRACT' },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true },
+      });
+      if (!doc) throw new NotFoundException('ยังไม่มีเอกสารสัญญา กรุณาติดต่อพนักงาน');
+      return doc.id;
+    }
+
+    const receipt = await this.prisma.receipt.findFirst({
+      where: {
+        id: resourceId,
+        contract: { customerId: customer.id, deletedAt: null },
+        isVoided: false,
+      },
+      select: { id: true, fileUrl: true },
+    });
+    if (!receipt) throw new NotFoundException('ไม่พบใบเสร็จ');
+    if (!receipt.fileUrl) {
+      throw new NotFoundException('ใบเสร็จนี้ยังไม่มีไฟล์ PDF กรุณาติดต่อพนักงาน 063-134-6356');
+    }
+    const doc = await this.prisma.eDocument.findFirst({
+      where: { fileUrl: receipt.fileUrl },
+      select: { id: true },
+    });
+    if (!doc) throw new NotFoundException('ไม่พบไฟล์ใบเสร็จ กรุณาติดต่อพนักงาน 063-134-6356');
+    return doc.id;
   }
 
   async countRecentPaymentLinks(contractId: string): Promise<number> {

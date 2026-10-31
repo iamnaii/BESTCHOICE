@@ -33,10 +33,20 @@ const cfgRow = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+// #22: VAT ของตั้งค่าดอกเบี้ยอ่านจากบริษัท FINANCE (ไม่ใช่ interest_configs.vat_pct) — ชุดนี้ตั้ง FINANCE
+// ให้เท่าตัวเลขที่ fixture ใช้มาตลอด (vatPct ของ fixture) ⇒ golden เดิมไม่ขยับ · การแทนที่ vat_pct ด้วย FINANCE ทดสอบที่
+// interest-config.finance-vat.spec.ts
+const financeFor = (cfg: unknown) => {
+  const vat = (cfg as { vatPct?: { toString(): string } } | null)?.vatPct?.toString() ?? '0';
+  return Number(vat) > 0
+    ? { vatRegistered: true, vatRate: D(vat) }
+    : { vatRegistered: false, vatRate: null };
+};
 const makePrisma = (product: unknown, cfg: unknown) =>
   ({
     product: { findFirst: jest.fn().mockResolvedValue(product) },
     interestConfig: { findFirst: jest.fn().mockResolvedValue(cfg) },
+    companyInfo: { findFirst: jest.fn().mockResolvedValue(financeFor(cfg)) },
   }) as unknown as PrismaService;
 
 describe('CalculateInstallmentTool.run', () => {
@@ -257,6 +267,7 @@ describe('golden parity: calculate_installment === InstallmentPreviewService', (
           }),
         },
         interestConfig: { findFirst: jest.fn().mockResolvedValue(cfg) },
+        companyInfo: { findFirst: jest.fn().mockResolvedValue(financeFor(cfg)) },
       } as unknown) as PrismaService,
     );
 

@@ -1,7 +1,9 @@
 import { PrismaService } from '../../prisma/prisma.service';
+import { resolveInstallmentVat } from '../../utils/config.util';
 
+/** VAT = บริษัท FINANCE (`resolveInstallmentVat`) ทั้งกรณีมีและไม่มี config — คำตัดสินเจ้าของ #22 ไม่อ่าน `interest_configs.vat_pct` */
 export async function resolveBcConfig(
-  prisma: Pick<PrismaService, 'interestConfig'>,
+  prisma: Pick<PrismaService, 'interestConfig' | 'companyInfo' | 'systemConfig'>,
   category: string,
 ) {
   // Oldest active definition wins; the ID tie-break matches category lookup,
@@ -15,13 +17,14 @@ export async function resolveBcConfig(
     include: { rates: { where: { deletedAt: null } } },
     orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
   });
+  const { vatPct } = await resolveInstallmentVat(prisma);
 
   if (!cfg) {
     // Fallback: system defaults when no config matches the category
     return {
       minDownPct: 0.15,
       commissionPct: 0.1,
-      vatPct: 0.07,
+      vatPct,
       ratePctByMonths: {} as Record<number, number>,
       allowedMonths: [] as number[],
     };
@@ -45,7 +48,7 @@ export async function resolveBcConfig(
     return {
       minDownPct: Number(cfg.minDownPaymentPct),
       commissionPct: Number(cfg.storeCommissionPct),
-      vatPct: Number(cfg.vatPct),
+      vatPct,
       ratePctByMonths,
       allowedMonths: Array.from(
         { length: cfg.maxInstallmentMonths - cfg.minInstallmentMonths + 1 },
@@ -57,7 +60,7 @@ export async function resolveBcConfig(
   return {
     minDownPct: Number(cfg.minDownPaymentPct),
     commissionPct: Number(cfg.storeCommissionPct),
-    vatPct: Number(cfg.vatPct),
+    vatPct,
     ratePctByMonths,
     allowedMonths,
   };

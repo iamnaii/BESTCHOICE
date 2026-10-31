@@ -49,10 +49,19 @@ import { InterestConfigService } from './interest-config.service';
 
 type ResolvedConfig = Awaited<ReturnType<InterestConfigService['resolveConfig']>>;
 
-const makeSvc = (cfg: unknown) => {
+// #22: VAT ของตั้งค่าดอกเบี้ยอ่านจากบริษัท FINANCE (ไม่ใช่ interest_configs.vat_pct) — ค่าเริ่มต้นของชุดนี้
+// FINANCE จด VAT 7% (= ตัวเลขเดิมของ fixture) · ตั้งเองได้ต่อเทส
+const makeSvc = (
+  cfg: unknown,
+  finance: { vatRegistered: boolean; vatRate: number | null } = {
+    vatRegistered: true,
+    vatRate: 0.07,
+  },
+) => {
   const findFirst = jest.fn().mockResolvedValue(cfg);
   const prisma = {
     interestConfig: { findFirst },
+    companyInfo: { findFirst: jest.fn().mockResolvedValue(finance) },
   } as unknown as PrismaService;
   return { svc: new InterestConfigService(prisma), findFirst };
 };
@@ -225,22 +234,26 @@ describe('InterestConfigService.resolveConfig — precedence / no-match fallback
   });
 
   it('a matched active config OVERRIDES the hard-coded defaults with its own scalars', async () => {
-    // distinct from every default value (0.15 / 0.1 / 0.07) to prove the override path
-    const { svc } = makeSvc({
-      minDownPaymentPct: 0.3,
-      storeCommissionPct: 0.08,
-      vatPct: 0.0,
-      interestRate: 0.04,
-      minInstallmentMonths: 10,
-      maxInstallmentMonths: 10,
-      rates: [],
-    });
+    // distinct from every default value (0.15 / 0.1 / 0.07) to prove the override path ·
+    // VAT is no longer a config scalar (#22): it follows FINANCE — here not VAT-registered ⇒ 0
+    const { svc } = makeSvc(
+      {
+        minDownPaymentPct: 0.3,
+        storeCommissionPct: 0.08,
+        vatPct: 0.07,
+        interestRate: 0.04,
+        minInstallmentMonths: 10,
+        maxInstallmentMonths: 10,
+        rates: [],
+      },
+      { vatRegistered: false, vatRate: null },
+    );
 
     const r: ResolvedConfig = await svc.resolveConfig('PHONE_NEW');
 
     expect(r.minDownPct).toBe(0.3); // not 0.15
     expect(r.commissionPct).toBe(0.08); // not 0.1
-    expect(r.vatPct).toBe(0.0); // not 0.07
+    expect(r.vatPct).toBe(0); // FINANCE not VAT-registered — not the row's 0.07
     expect(r.allowedMonths).toEqual([10]);
     expect(r.ratePctByMonths).toEqual({ 10: 0.04 * 10 });
   });

@@ -1,5 +1,7 @@
 import Decimal from 'decimal.js';
+import type { Prisma } from '@prisma/client';
 import type { BcConfig } from './installment-calc.types';
+import { resolveInstallmentVat } from './config.util';
 
 /**
  * B3 §5 — resolve InterestConfig → BcConfig ที่ `calcBcInstallment` กินได้
@@ -19,17 +21,20 @@ import type { BcConfig } from './installment-calc.types';
  * `calcBcInstallment` ตรวจให้เอง (installment-calc.util.ts:33-35)
  */
 
+/** `vat_pct` ของแถวไม่อยู่ในชนิดนี้โดยตั้งใจ — VAT มาจาก FINANCE (`resolveInstallmentVat` — คำตัดสินเจ้าของ #22) */
 interface InterestConfigRow {
   minDownPaymentPct: unknown;
   storeCommissionPct: unknown;
-  vatPct: unknown;
   interestRate: unknown;
   minInstallmentMonths: number;
   maxInstallmentMonths: number;
   rates: { months: number; ratePct: unknown }[];
 }
 
-interface InterestConfigReader {
+interface InterestConfigReader extends Pick<
+  Prisma.TransactionClient,
+  'companyInfo' | 'systemConfig'
+> {
   interestConfig: { findFirst: (args: unknown) => Promise<unknown> };
 }
 
@@ -38,8 +43,11 @@ export interface BcConfigResolution {
   config?: BcConfig;
 }
 
-/** map แถว InterestConfig (+rates) → BcConfig — pure, ไม่แตะ DB (B3 Task 14) */
-export function toBcConfig(row: InterestConfigRow): BcConfig {
+/**
+ * map แถว InterestConfig (+rates) → BcConfig — pure, ไม่แตะ DB (B3 Task 14) · `vatPct` มาจากผู้เรียก = VAT ของ FINANCE
+ * (`resolveInstallmentVat` — คำตัดสินเจ้าของ #22: ไม่อ่าน `interest_configs.vat_pct`)
+ */
+export function toBcConfig(row: InterestConfigRow, vatPct: Decimal.Value): BcConfig {
   const ratePctByMonths = new Map<number, Decimal>();
   for (const r of row.rates ?? []) {
     ratePctByMonths.set(r.months, new Decimal(String(r.ratePct)));
@@ -56,7 +64,7 @@ export function toBcConfig(row: InterestConfigRow): BcConfig {
   return {
     minDownPct: new Decimal(String(row.minDownPaymentPct)),
     commissionPct: new Decimal(String(row.storeCommissionPct)),
-    vatPct: new Decimal(String(row.vatPct)),
+    vatPct: new Decimal(vatPct),
     ratePctByMonths,
     allowedMonths,
   };
@@ -79,5 +87,6 @@ export async function resolveBcConfigForCategory(
 
   if (!config) return { found: false };
 
-  return { found: true, config: toBcConfig(config) };
+  const { vatPct } = await resolveInstallmentVat(prisma);
+  return { found: true, config: toBcConfig(config, vatPct) };
 }

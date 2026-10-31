@@ -5,6 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   JOURNEY_LOST_REASON_LABELS,
@@ -18,6 +19,15 @@ import { JourneyStateService } from './journey-state.service';
 import { salesBranchWhere } from '../sales/services/sales-read-policy';
 import { chatCustomerFamily } from './chat-scoped-summary';
 import { parseBooleanFlag } from '../../utils/config.util';
+import { runWithTransactionRetry } from '../../utils/transaction-retry.util';
+import {
+  isLockOrderRetryable,
+  lockFinanceLineCustomers,
+  RoomCustomerChangedError,
+} from '../line-oa/services/finance-line-link';
+
+/** ทรานแซกชันของการทำเครื่องหมายลองซ้ำสูงสุดกี่ครั้ง (deadlock/serialization หรือลูกค้าของห้องเปลี่ยนระหว่างล็อก — Task 29 fix round 1) */
+const DISPOSITION_MAX_ATTEMPTS = 3;
 interface ManualDisposition {
   roomId: string;
   action: 'MARK_LOST' | 'REOPEN';
@@ -39,9 +49,30 @@ export class ChatSalesDispositionService {
         !Object.prototype.hasOwnProperty.call(JOURNEY_LOST_REASON_LABELS, input.reason ?? ''))
     )
       throw new BadRequestException('กรุณาเลือกเหตุผลมาตรฐาน');
-    const result = await this.prisma.$transaction(async (tx) => {
+    const result = await runWithTransactionRetry(
+      () => this.recordInTx(input, authenticated, scope),
+      DISPOSITION_MAX_ATTEMPTS,
+      isLockOrderRetryable,
+    );
+    await this.states.recompute([result.customerId]);
+    return { id: result.id, customerId: result.customerId, kind: result.kind };
+  }
+
+  /**
+   * Task 29 fix round 1 — **ลำดับล็อกเดียว ลูกค้า → ห้อง** (เท่า `VerificationService.bind` · ยกเลิกผูก LINE การเงิน · ผูกห้อง · ผลวิเคราะห์สเตทเม้น):
+   * เดิมล็อกห้อง `FOR UPDATE` แล้วค่อยล็อกลูกค้าตัวจริง ⇒ ทำเครื่องหมายห้อง LINE การเงินพร้อมลูกค้ายืนยัน OTP ของ LINE ห้องนั้น = deadlock 40P01 ·
+   * อ่านลูกค้าตัวจริงของห้อง (ไม่ล็อก) → ล็อกลูกค้า (`lockFinanceLineCustomers` — NO KEY UPDATE ยังเรียงคำตัดสินของลูกค้าคนเดียวกันข้ามห้อง และชนกับการรวมลูกค้า)
+   * → ล็อกห้อง → ตรวจทุกอย่างซ้ำตามเดิม · ลูกค้าตัวจริงเปลี่ยนระหว่างนั้น = `RoomCustomerChangedError` (ยังไม่เขียนอะไร — ผู้เรียกลองทั้งก้อนใหม่) ·
+   * ทุกขั้นอ่านใหม่ จึงลองซ้ำได้ (คำขอซ้ำ P2002 ของ `manualRequestKey` รอบใหม่ได้แถวเดิม)
+   */
+  private recordInTx(input: ManualDisposition, authenticated: ChatWorkActor, scope: WorkScope) {
+    return this.prisma.$transaction(async (tx) => {
       const actor = await this.access.currentActor(authenticated, tx);
-      await this.access.assertRoom(input.roomId, actor, scope, tx);
+      const seen = await this.access.assertRoom(input.roomId, actor, scope, tx);
+      const lockedCustomerId = seen.customerId
+        ? await this.peekCanonicalCustomer(tx, seen.customerId)
+        : null;
+      await lockFinanceLineCustomers(tx, [lockedCustomerId]);
       await tx.$queryRaw`SELECT id FROM chat_rooms WHERE id = ${input.roomId} FOR UPDATE`;
       const room = await this.access.assertRoom(input.roomId, actor, scope, tx);
       const flag = await tx.systemConfig.findFirst({
@@ -50,26 +81,12 @@ export class ChatSalesDispositionService {
       if (!parseBooleanFlag(flag?.value, false))
         throw new ForbiddenException('ยังไม่เปิดใช้งานส่วนนี้');
       if (!room.customerId) throw new BadRequestException('กรุณาผูกข้อมูลลูกค้าก่อน');
-      let customerId = room.customerId;
-      const visited = new Set<string>();
-      for (;;) {
-        if (visited.has(customerId) || visited.size >= 20)
-          throw new ConflictException('ข้อมูลการรวมลูกค้าต้องได้รับการตรวจสอบ');
-        visited.add(customerId);
-        const customer = await tx.customer.findUnique({
-          where: { id: customerId },
-          select: { id: true, deletedAt: true, mergedIntoId: true },
-        });
-        if (!customer) throw new NotFoundException('ไม่พบลูกค้า');
-        if (customer.deletedAt && customer.mergedIntoId) {
-          customerId = customer.mergedIntoId;
-          continue;
-        }
-        if (customer.deletedAt) throw new NotFoundException('ไม่พบลูกค้า');
-        break;
-      }
-      // Serialize manual decisions across rooms for the same canonical customer.
-      await tx.$queryRaw`SELECT id FROM customers WHERE id = ${customerId} FOR UPDATE`;
+      const customerId = await this.canonicalCustomer(tx, room.customerId);
+      // Serialize manual decisions across rooms for the same canonical customer — locked above, before the room.
+      if (customerId !== lockedCustomerId)
+        throw new RoomCustomerChangedError(
+          'ห้องแชทเปลี่ยนลูกค้าระหว่างบันทึก กรุณาโหลดใหม่แล้วลองอีกครั้ง',
+        );
       const current = await tx.customer.findUnique({ where: { id: customerId } });
       if (!current || current.deletedAt)
         throw new ConflictException('ข้อมูลลูกค้าเปลี่ยนไป กรุณาโหลดใหม่');
@@ -142,7 +159,37 @@ export class ChatSalesDispositionService {
       });
       return entry;
     });
-    await this.states.recompute([result.customerId]);
-    return { id: result.id, customerId: result.customerId, kind: result.kind };
+  }
+
+  /** ลูกค้าตัวจริงของห้อง (ไล่สาย merge) — ข้อผิดพลาดเดิม: วนซ้ำ/ยาวเกิน = 409 · ไม่พบ/ถูกลบโดยไม่มีปลายทาง = 404 */
+  private async canonicalCustomer(tx: Prisma.TransactionClient, start: string): Promise<string> {
+    let customerId = start;
+    const visited = new Set<string>();
+    for (;;) {
+      if (visited.has(customerId) || visited.size >= 20)
+        throw new ConflictException('ข้อมูลการรวมลูกค้าต้องได้รับการตรวจสอบ');
+      visited.add(customerId);
+      const customer = await tx.customer.findUnique({
+        where: { id: customerId },
+        select: { id: true, deletedAt: true, mergedIntoId: true },
+      });
+      if (!customer) throw new NotFoundException('ไม่พบลูกค้า');
+      if (customer.deletedAt && customer.mergedIntoId) {
+        customerId = customer.mergedIntoId;
+        continue;
+      }
+      if (customer.deletedAt) throw new NotFoundException('ไม่พบลูกค้า');
+      return customerId;
+    }
+  }
+
+  /** อ่านลูกค้าตัวจริงก่อนล็อก — ไล่ไม่ได้ = ไม่ล็อกใคร (ข้อผิดพลาดจริงเกิดหลังล็อกห้องตามลำดับการตรวจเดิม) */
+  private async peekCanonicalCustomer(tx: Prisma.TransactionClient, start: string) {
+    try {
+      return await this.canonicalCustomer(tx, start);
+    } catch (error) {
+      if (error instanceof ConflictException || error instanceof NotFoundException) return null;
+      throw error;
+    }
   }
 }

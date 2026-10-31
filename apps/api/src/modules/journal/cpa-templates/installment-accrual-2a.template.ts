@@ -17,6 +17,7 @@ import {
 } from '../build-accrual-2a-lines';
 import { feeNettedOutstanding } from '../compute-cn-breakdown';
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
+import { bangkokCalendarParts } from '../../../utils/date.util';
 import {
   ADVANCE_CONSUME_ON_ACCRUAL_FLOW,
   RESCHEDULE_PARK_CONSUME_FLOW,
@@ -380,10 +381,9 @@ export class InstallmentAccrual2ATemplate {
    * งวดบัญชี FINANCE ของรายการ 2A ต้องยังเปิด — ถ้าปิดแล้ว ปฏิเสธการรับชำระทั้งรายการ (ธุรกรรมของ
    * ผู้เรียก roll back). `periodCheckDate` คือ Date ที่ใช้ตัดสินงวด (resolveAccrualPeriodCheckDate).
    *
-   * ข้อความบอก**เฉพาะเดือนที่ปิด** อ่านจาก `periodCheckDate` ด้วย getter ชุดเดียวกับ validatePeriodOpen
-   * (เวลาของโปรเซส) จึงเป็นเดือนเดียวกับที่ถูกตรวจเสมอ. ไม่ใส่วันที่ลงรายการ: บน prod โปรเซสรันด้วย
-   * TZ=Asia/Bangkok สองค่าจึงตรงกัน แต่ในโปรเซสที่รันเป็น UTC (เช่น jest บน CI) งวดที่ครบกำหนดวันที่ 1 จะถูก
-   * ตรวจกับเดือนก่อน — ถ้าใส่ทั้งวันที่ (เวลาไทย) และเดือน ข้อความจะอ่านขัดกันเอง.
+   * ข้อความบอก**เฉพาะเดือนที่ปิด** อ่านจาก `periodCheckDate` ด้วยปฏิทินไทย (`bangkokCalendarParts`) — ตัวเดียวกับที่
+   * validatePeriodOpen ใช้ตัดสินเดือน (2026-10-31; เดิมทั้งคู่ใช้ getter เวลาของโปรเซส) จึงเป็นเดือนเดียวกับที่ถูกตรวจเสมอ
+   * ไม่ว่าโปรเซสจะรันด้วยเขตเวลาใด. ไม่ใส่วันที่ลงรายการ (เดือนพอสำหรับการขอเปิดงวด).
    * ให้ติดต่อฝ่ายบัญชี — ไม่ชี้เมนู (การเปิดงวดเป็นสิทธิ์ของเจ้าของกิจการ) และไม่รับปากว่าเปิดได้เสมอ
    * (งวดที่ส่งเข้าโปรแกรมบัญชีภายนอกแล้วเปิดไม่ได้).
    */
@@ -400,9 +400,8 @@ export class InstallmentAccrual2ATemplate {
       await validatePeriodOpen(tx, periodCheckDate, finance?.id);
     } catch (e) {
       if (e instanceof BadRequestException) {
-        const closedMonth =
-          `${String(periodCheckDate.getMonth() + 1).padStart(2, '0')}/` +
-          `${periodCheckDate.getFullYear() + 543}`;
+        const checked = bangkokCalendarParts(periodCheckDate);
+        const closedMonth = `${String(checked.month + 1).padStart(2, '0')}/${checked.year + 543}`;
         throw new BadRequestException(
           `ไม่สามารถรับชำระงวด #${installmentNo} ได้ — ระบบต้องตั้งลูกหนี้งวดนี้ในงวดบัญชีเดือน ${closedMonth} ซึ่งปิดแล้ว ` +
             'กรุณาติดต่อฝ่ายบัญชีเพื่อขอเปิดงวดบัญชีเดือนดังกล่าว เมื่อเปิดงวดแล้วจึงบันทึกรับชำระอีกครั้ง',

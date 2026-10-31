@@ -4,7 +4,9 @@ import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { InstallmentAccrual2ATemplate } from '../cpa-templates/installment-accrual-2a.template';
 import { ACCRUAL_EXCLUDED_CONTRACT_STATUSES } from '../accrual-contract-status';
-import { validatePeriodOpen } from '../../../utils/period-lock.util';
+import { lockedAccountingPeriods, validatePeriodOpen } from '../../../utils/period-lock.util';
+import { bangkokMidnight } from '../../../utils/date.util';
+import type { Prisma } from '@prisma/client';
 
 // Per-tick cap to avoid one tick processing tens of thousands of legacy
 // records and blowing the Sentry/log budget. Anything beyond this rolls
@@ -76,16 +78,41 @@ export class InstallmentAccrualCron {
     // installment missed by a previous cron run gets accrued on the next tick.
     // Bounded by BACKFILL_CAP to keep one tick predictable; remainder rolls
     // forward (oldest-first via orderBy dueDate asc).
-    const due = await this.prisma.installmentSchedule.findMany({
-      where: {
-        dueDate: { lt: tomorrow },
-        accrualJournalEntryId: null,
+    // 2A posts FINANCE entries (`createAndPost` default company) ⇒ the period that
+    // must be open is FINANCE's — same lookup as the receipt-time 2A check
+    // (`InstallmentAccrual2ATemplate.assertAccrualPeriodOpen`) and the VAT 60-day
+    // cron. It used to read the BRANCH's company: NULL = no check at all, SHOP =
+    // a closed SHOP month skipped FINANCE accruals (impact C2, 2026-10-31).
+    const financeCompany = await this.prisma.companyInfo.findFirst({
+      where: { companyCode: 'FINANCE', deletedAt: null },
+      select: { id: true },
+    });
+    // Review M5: months FINANCE has locked (validatePeriodOpen's own rule, per period) are excluded
+    // in the query — oldest-first + BACKFILL_CAP used to fetch them, skip them one by one, and never
+    // reach newer installments once a full batch sat in a locked month. They are still counted below
+    // so BACKFILL_STALLED keeps firing until the month is reopened.
+    const lockedMonths = financeCompany
+      ? await lockedAccountingPeriods(this.prisma, financeCompany.id)
+      : [];
+    const dueInLockedMonth = lockedMonths.map(({ year, month }) => ({
+      dueDate: { gte: bangkokMidnight(year, month - 1, 1), lt: bangkokMidnight(year, month, 1) },
+    }));
+    const dueWhere: Prisma.InstallmentScheduleWhereInput = {
+      dueDate: { lt: tomorrow },
+      accrualJournalEntryId: null,
+      deletedAt: null,
+      contract: {
+        status: { notIn: [...ACCRUAL_EXCLUDED_CONTRACT_STATUSES] },
         deletedAt: null,
-        contract: {
-          status: { notIn: [...ACCRUAL_EXCLUDED_CONTRACT_STATUSES] },
-          deletedAt: null,
-        },
       },
+    };
+    const stalledInLockedMonths = dueInLockedMonth.length
+      ? await this.prisma.installmentSchedule.count({
+          where: { ...dueWhere, OR: dueInLockedMonth },
+        })
+      : 0;
+    const due = await this.prisma.installmentSchedule.findMany({
+      where: dueInLockedMonth.length ? { ...dueWhere, NOT: dueInLockedMonth } : dueWhere,
       orderBy: { dueDate: 'asc' },
       take: BACKFILL_CAP,
       include: {
@@ -93,7 +120,6 @@ export class InstallmentAccrualCron {
           select: {
             id: true,
             contractNumber: true,
-            branch: { select: { companyId: true } },
           },
         },
       },
@@ -103,16 +129,24 @@ export class InstallmentAccrualCron {
 
     let processed = 0;
     let failed = 0;
-    let skippedClosedPeriod = 0;
+    let skippedClosedPeriod = stalledInLockedMonths;
+    if (stalledInLockedMonths > 0) {
+      this.logger.warn(
+        `Accrual skipped (closed period) ${stalledInLockedMonths} installment(s) due in locked FINANCE month(s): ${lockedMonths
+          .map(({ year, month }) => `${year}/${String(month).padStart(2, '0')}`)
+          .join(', ')}`,
+      );
+    }
 
     for (const inst of due) {
       // Closed-period guard: never silently post 2A into a CLOSED/SYNCED period.
       // Skip + Sentry warn so accountant can re-open the period or post a manual
       // catch-up adjustment. Without this, backfill could violate ปพพ.386 / TFRS 15
-      // by mutating an already-locked accounting period.
-      const companyId = inst.contract.branch?.companyId ?? undefined;
+      // by mutating an already-locked accounting period. (Locked months are already
+      // excluded by the query — this per-row check is the net for a month that
+      // locks between the query and this row.)
       try {
-        await validatePeriodOpen(this.prisma, inst.dueDate, companyId);
+        await validatePeriodOpen(this.prisma, inst.dueDate, financeCompany?.id);
       } catch (e) {
         skippedClosedPeriod++;
         Sentry.captureMessage(
@@ -165,7 +199,15 @@ export class InstallmentAccrualCron {
         {
           level: 'error',
           tags: { cron: 'installment-accrual', signal: 'BACKFILL_STALLED' },
-          extra: { processed, failed, skippedClosedPeriod, totalDue: due.length },
+          extra: {
+            processed,
+            failed,
+            skippedClosedPeriod,
+            totalDue: due.length + stalledInLockedMonths,
+            lockedMonths: lockedMonths.map(
+              ({ year, month }) => `${year}-${String(month).padStart(2, '0')}`,
+            ),
+          },
         },
       );
       try {
@@ -184,7 +226,7 @@ export class InstallmentAccrualCron {
                 skippedClosedPeriod,
                 processed,
                 failed,
-                totalDue: due.length,
+                totalDue: due.length + stalledInLockedMonths,
                 tickAt: new Date().toISOString(),
               },
             },

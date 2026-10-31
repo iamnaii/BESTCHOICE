@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AccountingService } from './accounting.service';
+import { isJournalBalanced } from '../journal/journal-balance';
 
 /**
  * SP7.6 — Cross-entity (SHOP+FINANCE) consolidated reports for OWNER + ACCOUNTANT.
@@ -86,7 +87,8 @@ export class ConsolidatedService {
       accounts,
       grandDrTotal,
       grandCrTotal,
-      isBalanced: grandDrTotal.sub(grandCrTotal).abs().lte(new Prisma.Decimal('0.01')),
+      // exact — the single journal-balance rule (owner decision 2026-10-31; was a 0.01 tolerance)
+      isBalanced: isJournalBalanced(grandDrTotal, grandCrTotal),
     };
   }
 

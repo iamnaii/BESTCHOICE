@@ -1,17 +1,9 @@
-import {
-  Controller,
-  Get,
-  Put,
-  Post,
-  Delete,
-  Param,
-  Body,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, Get, Put, Post, Delete, Param, Body, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { IntegrationsService } from './integrations.service';
 import { IntegrationConfigService } from './integration-config.service';
 import { getIntegrationDef, INTEGRATIONS } from './integration-registry';
@@ -42,7 +34,10 @@ export class IntegrationsController {
 
   @Get(':key/config')
   @Roles('OWNER', 'ACCOUNTANT')
-  @ApiOperation({ summary: 'ดู config ที่ masked สำหรับ integration (read-only สำหรับ ACCOUNTANT — reviewer panel)' })
+  @ApiOperation({
+    summary:
+      'ดู config ที่ masked สำหรับ integration (read-only สำหรับ ACCOUNTANT — reviewer panel)',
+  })
   async getConfig(@Param('key') key: string) {
     const def = getIntegrationDef(key);
     const masked = await this.configService.getMaskedConfig(key);
@@ -61,6 +56,20 @@ export class IntegrationsController {
   @ApiOperation({ summary: 'ทดสอบการเชื่อมต่อ integration' })
   testConnection(@Param('key') key: string) {
     return this.integrationsService.testConnection(key);
+  }
+
+  @Delete(':key/config/:field')
+  @Roles('OWNER')
+  @ApiOperation({
+    summary:
+      'ล้างค่าช่องลับ — มีผลทันที ไม่ถอยไปใช้ env · ใช้งานได้อีกเมื่อบันทึกค่าใหม่ (ช่องที่ไม่ใช่ความลับ → 400)',
+  })
+  clearSecret(
+    @Param('key') key: string,
+    @Param('field') field: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.integrationsService.clearSecret(key, field, userId);
   }
 
   @Delete(':key/config')

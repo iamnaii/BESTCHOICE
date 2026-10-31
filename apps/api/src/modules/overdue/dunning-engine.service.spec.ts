@@ -251,6 +251,76 @@ describe('DunningEngineService', () => {
     });
   });
 
+  describe('Task 30 ข้อ 2 — ผ่อนผัน 7 วันหลังผูก LINE: ข้อความถูกระงับ = SKIPPED ไม่ใช่ FAILED', () => {
+    const eventRule = {
+      ...sampleRule,
+      id: 'rule-event-1',
+      triggerDay: null,
+      eventTrigger: 'CALL_NO_ANSWER',
+    };
+
+    beforeEach(() => {
+      mockPrisma.dunningAction.findFirst.mockResolvedValue(null);
+      mockPrisma.dunningAction.create.mockResolvedValue({ id: 'a-1' });
+    });
+
+    it('รอบกฎตามวัน: send ตอบ BLOCKED LEGACY_LINK_GRACE → DunningAction SKIPPED (ไม่เข้าคิวส่งซ้ำของพนักงาน)', async () => {
+      mockRuleService.findAllActiveRules.mockResolvedValueOnce([{ ...sampleRule, triggerDay: 1 }]);
+      mockPrisma.payment.findMany.mockResolvedValueOnce([samplePayment]);
+      mockNotificationsService.send.mockResolvedValueOnce({
+        id: 'log-9',
+        status: 'BLOCKED',
+        blockReason: 'LEGACY_LINK_GRACE',
+      });
+
+      const result = await service.executeRules();
+
+      expect(mockPrisma.dunningAction.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          status: 'SKIPPED',
+          result: 'LEGACY_LINK_GRACE notificationId:log-9',
+        }),
+      });
+      expect(result.failed).toBe(0);
+    });
+
+    it('กฎตามเหตุการณ์ (ไม่รับสาย ฯลฯ): BLOCKED LEGACY_LINK_GRACE → SKIPPED', async () => {
+      mockPrisma.dunningRule.findFirst.mockResolvedValueOnce(eventRule);
+      mockPrisma.contract.findUnique.mockResolvedValueOnce(samplePayment.contract);
+      mockNotificationsService.send.mockResolvedValueOnce({
+        id: 'log-10',
+        status: 'BLOCKED',
+        blockReason: 'LEGACY_LINK_GRACE',
+      });
+
+      await service.executeEventTrigger('CALL_NO_ANSWER', 'c-1', null, 'cl-1');
+
+      expect(mockPrisma.dunningAction.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          status: 'SKIPPED',
+          result: 'LEGACY_LINK_GRACE notificationId:log-10',
+          executedAt: null,
+        }),
+      });
+    });
+
+    it('BLOCKED ด้วยเหตุอื่น (ไม่มี consent) → FAILED ตามเดิม', async () => {
+      mockRuleService.findAllActiveRules.mockResolvedValueOnce([sampleRule]);
+      mockPrisma.payment.findMany.mockResolvedValueOnce([samplePayment]);
+      mockNotificationsService.send.mockResolvedValueOnce({
+        id: 'log-11',
+        status: 'BLOCKED',
+        blockReason: 'NO_CONSENT',
+      });
+
+      await service.executeRules();
+
+      expect(mockPrisma.dunningAction.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ status: 'FAILED', result: 'notificationId:log-11' }),
+      });
+    });
+  });
+
   // --- executeEventTrigger tests ---
 
   describe('executeEventTrigger', () => {

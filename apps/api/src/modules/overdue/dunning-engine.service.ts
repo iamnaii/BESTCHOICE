@@ -11,7 +11,24 @@ import { DunningRuleResolverService } from './dunning-rule-resolver.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationCategory } from '../notifications/notification-category.enum';
 import { PaymentLinkService } from '../line-oa/payment-links/payment-link.service';
+import { LEGACY_LINK_GRACE_BLOCK_REASON } from '../notifications/legacy-link-grace';
 import { formatDateShort } from '../../utils/thai-date.util';
+
+/**
+ * ผลของ `notificationsService.send` → สถานะ `DunningAction` (+ ข้อความ `result`) — Task 30 ข้อ 2: ข้อความที่ถูกระงับเพราะช่วงผ่อนผัน
+ * หลังผูก LINE ของสัญญานำเข้า = `SKIPPED` (ตั้งใจไม่ส่ง — ไม่ให้ขึ้นเป็นรายการล้มเหลวที่พนักงานกดส่งซ้ำ) · นอกนั้นเหมือนเดิม
+ */
+function actionOutcome(sendResult: { id: string; status: string; blockReason?: string }): {
+  status: 'SENT' | 'FAILED' | 'SKIPPED';
+  result: string;
+} {
+  const result = `notificationId:${sendResult.id}`;
+  if (sendResult.status === 'SENT') return { status: 'SENT', result };
+  if (sendResult.blockReason === LEGACY_LINK_GRACE_BLOCK_REASON) {
+    return { status: 'SKIPPED', result: `${LEGACY_LINK_GRACE_BLOCK_REASON} ${result}` };
+  }
+  return { status: 'FAILED', result };
+}
 
 export interface TemplateVars {
   customerName: string;
@@ -221,8 +238,7 @@ export class DunningEngineService {
                     category: NotificationCategory.DUNNING,
                   });
 
-                  status = sendResult.status === 'SENT' ? 'SENT' : 'FAILED';
-                  result = `notificationId:${sendResult.id}`;
+                  ({ status, result } = actionOutcome(sendResult));
                 } catch (sendErr) {
                   Sentry.captureException(sendErr, {
                     tags: { service: 'DunningEngineService', method: 'send' },
@@ -454,8 +470,7 @@ export class DunningEngineService {
             customerId: contract.customer.id,
             category: NotificationCategory.DUNNING,
           });
-          status = sendResult.status === 'SENT' ? 'SENT' : 'FAILED';
-          result = `notificationId:${sendResult.id}`;
+          ({ status, result } = actionOutcome(sendResult));
         } catch (err) {
           status = 'FAILED';
           result = err instanceof Error ? err.message : 'send error';

@@ -24,6 +24,8 @@ describe('NotificationsService — sendFromTemplate integration', () => {
           .mockImplementation(({ data }) => Promise.resolve({ id: 'log1', ...data })),
         count: jest.fn().mockResolvedValue(0),
       },
+      // Task 30 ข้อ 2 — ด่านผ่อนผันหลังผูก LINE อ่านสัญญาของ relatedId (ไม่พบ = ไม่อยู่ในช่วง)
+      contract: { findFirst: jest.fn().mockResolvedValue(null) },
     };
     templateService = { findByEventType: jest.fn() };
     integrationConfig = { getValue: jest.fn().mockResolvedValue('token') };

@@ -11,6 +11,10 @@ import { FlexMessagePayload } from '../../line-oa/flex-messages/base-template';
 import { ComplianceService } from '../compliance.service';
 import { NotificationCategory } from '../notification-category.enum';
 import { NotificationTemplateService } from '../notification-template.service';
+import {
+  LEGACY_LINK_GRACE_BLOCK_REASON,
+  isRelatedRecordInLegacyLinkGrace,
+} from '../legacy-link-grace';
 import { readBoolFlag } from '../../../utils/config.util';
 import * as Sentry from '@sentry/nestjs';
 import { NotificationTransportService } from './notification-transport.service';
@@ -293,6 +297,33 @@ export class NotificationDispatchService {
     }
 
     const message = this.replacePlaceholders(tpl.messageTemplate, data);
+
+    // Task 30 ข้อ 2 — template หมวดทวงทาง LINE ของสัญญานำเข้าที่ผูก LINE ยังไม่ครบ 7 วัน: ระงับก่อนทาง Flex (ทาง Flex ไม่ผ่าน
+    // canSend — ทางข้อความผ่าน canSend ซึ่งตัดสินแบบเดียวกัน) · bypassCompliance = ส่งตามเดิม (ตรงกับ canSend)
+    if (
+      tpl.channel === 'LINE' &&
+      tpl.category === NotificationCategory.DUNNING &&
+      !options.bypassCompliance &&
+      (await isRelatedRecordInLegacyLinkGrace(this.prisma, options.relatedId))
+    ) {
+      const log = await this.prisma.notificationLog.create({
+        data: {
+          channel: 'LINE',
+          channelKey: tpl.channelKey ?? null,
+          recipient,
+          subject: tpl.subject ?? tpl.name,
+          message,
+          status: 'BLOCKED',
+          relatedId: options.relatedId ?? null,
+          customerId: options.customerId ?? null,
+          category: tpl.category,
+          blockReason: LEGACY_LINK_GRACE_BLOCK_REASON,
+          errorMsg: `Compliance block: ${LEGACY_LINK_GRACE_BLOCK_REASON}`,
+          sentAt: null,
+        },
+      });
+      return { id: log.id, status: 'BLOCKED', blockReason: LEGACY_LINK_GRACE_BLOCK_REASON };
+    }
 
     // For Flex templates with channel=LINE, render JSON and send via lineOaService
     if (tpl.format === 'flex' && tpl.flexTemplate && tpl.channel === 'LINE' && tpl.channelKey) {

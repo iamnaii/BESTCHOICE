@@ -25,6 +25,8 @@ describe('NotificationsService — compliance integration', () => {
           .mockImplementation(({ data }) => Promise.resolve({ id: 'log1', ...data })),
         count: jest.fn().mockResolvedValue(0),
       },
+      // Task 30 ข้อ 2 — ด่านผ่อนผันหลังผูก LINE อ่านสัญญาของ relatedId (ไม่พบ = ไม่อยู่ในช่วง)
+      contract: { findFirst: jest.fn().mockResolvedValue(null) },
     };
     pdpa = { hasActiveConsent: jest.fn().mockResolvedValue(true) };
     const integrationConfig = { getValue: jest.fn().mockResolvedValue('token') };

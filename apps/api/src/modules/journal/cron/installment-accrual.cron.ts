@@ -93,7 +93,6 @@ export class InstallmentAccrualCron {
           select: {
             id: true,
             contractNumber: true,
-            branch: { select: { companyId: true } },
           },
         },
       },
@@ -105,14 +104,25 @@ export class InstallmentAccrualCron {
     let failed = 0;
     let skippedClosedPeriod = 0;
 
+    // 2A posts FINANCE entries (`createAndPost` default company) ⇒ the period that
+    // must be open is FINANCE's — same lookup as the receipt-time 2A check
+    // (`InstallmentAccrual2ATemplate.assertAccrualPeriodOpen`) and the VAT 60-day
+    // cron. It used to read the BRANCH's company: NULL = no check at all, SHOP =
+    // a closed SHOP month skipped FINANCE accruals (impact C2, 2026-10-31).
+    const financeCompany = due.length
+      ? await this.prisma.companyInfo.findFirst({
+          where: { companyCode: 'FINANCE', deletedAt: null },
+          select: { id: true },
+        })
+      : null;
+
     for (const inst of due) {
       // Closed-period guard: never silently post 2A into a CLOSED/SYNCED period.
       // Skip + Sentry warn so accountant can re-open the period or post a manual
       // catch-up adjustment. Without this, backfill could violate ปพพ.386 / TFRS 15
       // by mutating an already-locked accounting period.
-      const companyId = inst.contract.branch?.companyId ?? undefined;
       try {
-        await validatePeriodOpen(this.prisma, inst.dueDate, companyId);
+        await validatePeriodOpen(this.prisma, inst.dueDate, financeCompany?.id);
       } catch (e) {
         skippedClosedPeriod++;
         Sentry.captureMessage(

@@ -140,10 +140,13 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
    อ่านลูกค้าของห้อง (ไม่ล็อก) → ล็อกลูกค้า → ล็อกห้อง → อ่านซ้ำ · ลูกค้าของห้องเปลี่ยนระหว่างนั้น = `RoomCustomerChangedError` (409 — ยังไม่เขียนอะไร) แล้วลองทั้งก้อนใหม่ ·
    เดิมทั้งสามทางล็อกห้องก่อน (`linkRoomCreditHistory` ล็อกลูกค้าตอนนำเข้าผลวิเคราะห์) จึงสวนกับ bind ลำดับใหม่ · **ตาข่าย:** `bind` · ปุ่มยกเลิกผูก · วิเคราะห์เสร็จ ·
    ทำเครื่องหมายแชท ลองทั้งทรานแซกชันใหม่ด้วย `runWithTransactionRetry` (`utils/transaction-retry.util.ts` — ตัวเดียว · 3 ครั้ง · managed ไม่ลองข้างใน) ·
-   เงื่อนไขลองซ้ำเดียว `isLockOrderRetryable` (`finance-line-link.ts` — deadlock/serialization · ชุดลูกค้าของ bind ไม่นิ่ง · ลูกค้าของห้องเปลี่ยน) · ชุดลูกค้าของ bind
+   เงื่อนไขลองซ้ำเดียว `isLockOrderRetryable` (`finance-line-link.ts` — deadlock/serialization/ชน unique P2002 · ชุดลูกค้าของ bind ไม่นิ่ง · ลูกค้าของห้องเปลี่ยน) · ชุดลูกค้าของ bind
    อ่านซ้ำครบ 5 รอบแล้วยังไม่นิ่ง = Sentry warning (ไม่มี U-id/ข้อมูลลูกค้า) + `FinanceLineLockSetUnstableError` ให้ bind ลองใหม่ (M-2 — ไม่ไปต่อแบบล็อกไม่ครบ) ·
    ทางอื่นที่ล็อก `chat_rooms FOR UPDATE` (handoff · follow-up · service request/case · note mention · response cycle · ไฟล์สเตทเม้น) ไม่ล็อก/แก้แถวลูกค้าในทรานแซกชันเดียวกัน
-   (insert ที่อ้าง FK ถือแค่ KEY SHARE ไม่ชน) · **ยังไม่ได้ไล่:** managed `AccessPartySourceService.room()` (ห้อง `FOR SHARE` เป็นแหล่งสิทธิ์ของ route ที่อ้างห้อง) ·
+   (insert ที่อ้าง FK ถือแค่ KEY SHARE ไม่ชน) · managed `AccessPartySourceService.room()` ไล่แล้ว: ไม่มีผู้เรียกที่ส่ง `lock=true` (ผู้เรียกเดียว `access-party-query-plan.ts` ไม่ล็อก)
+   ⇒ ไม่มีวงจรกับ bind — ถ้าวันหน้าเปิดล็อกห้อง ต้องล็อกลูกค้าก่อนตามลำดับนี้ ·
+   ผลข้างเคียงของ `FOR NO KEY UPDATE`: ทำเครื่องหมายแชทไม่รอ insert ที่อ้าง FK แล้ว ⇒ บันทึก "หลุด" พร้อมใบขายหน้าร้านที่กำลัง commit ได้ —
+   สถานะที่คำนวณยังถูกเพราะ `chat-scoped-summary.ts` ตัด "หลุด" ทิ้งเมื่อมีการซื้อ ·
    ทางใหม่ที่แตะแถวลูกค้า + แถว link/ห้อง (รวม `lockCreditRoom`) ในทรานแซกชันเดียวกันต้องล็อกตามลำดับนี้ ·
    นำเข้าลูกค้า (`migration.service.ts`) ตัดคอลัมน์ `lineId` ทิ้ง + แถวเตือน `IMPORT_LINE_ID_IGNORED_MSG` ใน `errors` (แถวยังนำเข้า ไม่นับ failed) ·
    **ยกเลิกผูกมีทางเดียว `unlinkFinanceLine(tx, …)`** ในทรานแซกชันเดียวกับงานของผู้เรียก: `{ lineUserId }` (ลูกค้ากดใน LIFF — ล้างคอลัมน์บนทุกลูกค้าที่ถือ
@@ -318,7 +321,7 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
   payload ของทุกฟอร์มไม่มี `lineIdFinance`/`newLineId` · ยกเลิกผูก = ปุ่ม (ข้อ 6, I4) · deploy: เว็บ 26.10.73 ขึ้นพร้อมหรือหลัง API (เว็บใหม่ + API เก่า = ไม่มี
   `financeLine` ⇒ ฟอร์มแก้ไขไม่แสดงแถวสถานะ (จึงไม่มีปุ่ม) · API ใหม่ + เว็บเก่า = ช่องพิมพ์เดิม ค่าใหม่ 400 ตามเดิม)
 - **Task 29 (เจ้าของตัดสิน 31 ต.ค. 2026) — ปิดแล้วฝั่ง API:** รีวิว Task 27 M-2 (bind ล็อกกลับด้าน → deadlock กับปุ่ม/PATCH — ลำดับล็อกเดียว ข้อ 6 ·
-  fix round 1: ทางผูกห้องในกล่องข้อความ / ผลวิเคราะห์สเตทเม้นเสร็จ / ทำเครื่องหมายแชทขาย ล็อกลูกค้าก่อนห้องแล้ว + bind ลองซ้ำเป็นตาข่าย · ยังไม่ไล่ managed `room()`) ·
+  fix round 1: ทางผูกห้องในกล่องข้อความ / ผลวิเคราะห์สเตทเม้นเสร็จ / ทำเครื่องหมายแชทขาย ล็อกลูกค้าก่อนห้องแล้ว + bind ลองซ้ำเป็นตาข่าย · managed `room()` ไล่แล้ว ไม่มีทางที่ล็อก) ·
   M-3 (PATCH ล้างช่องตัดสินด้วยคอลัมน์ ไม่มี audit — แกนเดียวกับปุ่ม ข้อ 6) · คำถามเจ้าของจาก Task 24 fix round 1 (branch scope ของแท็บ "แชท LINE" — ข้อ 9) ·
   ไม่ต้องอัปเดต access manifest (decorator ไม่เปลี่ยน) · ฝั่งเว็บไม่ต้องเปลี่ยนเพื่อให้ทำงาน (ข้อความ 404 ของแท็บแชทเป็นงานเว็บต่อ)
 - เวลาตอบ `requestOtp`: SMS ไม่ถูก await และทุกทางที่สำเร็จรอขั้นต่ำ 1 วิ — ส่วนต่างที่เหลือคือ query เพดานของเบอร์จริง (ระดับมิลลิวินาที อยู่ใต้ขั้นต่ำ) ·

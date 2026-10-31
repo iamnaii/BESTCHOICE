@@ -22,7 +22,8 @@ export function isRetryablePrismaWriteError(error: unknown): boolean {
 }
 
 /**
- * ลองทั้งทรานแซกชันใหม่เมื่อ Postgres ตัดสิน deadlock/serialization (`isRetryablePrismaWriteError`) — สูงสุด `maxAttempts` ครั้ง
+ * ลองทั้งทรานแซกชันใหม่เมื่อ Postgres ตัดสิน deadlock/serialization หรือชน unique P2002 (`isRetryablePrismaWriteError`) — สูงสุด `maxAttempts` ครั้ง
+ * (ทางที่ไม่ idempotent และใช้ P2002 เป็นด่านกันซ้ำ ต้องส่ง `isRetryable` ที่ไม่นับ P2002 เอง ไม่งั้นถูกลองซ้ำเงียบ ๆ)
  * (Task 29 fix round 1 — ตัวเดียวของปุ่มยกเลิกผูก LINE การเงิน, `VerificationService.bind` และผลวิเคราะห์สเตทเม้นจากแชท) ·
  * `run` ต้องเปิดทรานแซกชันใหม่และอ่านทุกอย่างใหม่ทุกรอบ (ห้ามพกผลอ่านจากรอบก่อน) · ห้ามใช้เมื่ออยู่ในทรานแซกชันของผู้อื่น
  * (managed/join — ให้ชั้นนอกลองทั้งก้อน) · `isRetryable` เพิ่มเงื่อนไขของผู้เรียกได้ · ครบรอบแล้ว = ส่ง error ล่าสุดต่อ

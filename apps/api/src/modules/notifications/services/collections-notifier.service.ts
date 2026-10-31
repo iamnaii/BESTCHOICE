@@ -22,12 +22,22 @@ import { NotificationsService } from '../notifications.service';
 import { recordNoticeLog } from '../notice-log';
 import { findContractsInLegacyLinkGrace, recordLegacyLinkGraceSkip } from '../legacy-link-grace';
 import { isSmsPaymentReminderDisabled } from '../../../utils/sms-payment-reminder.util';
+import { isWithinBusinessHours } from '../../../utils/business-hours.util';
+import { bangkokStartOfDay } from '../../../utils/date.util';
+
+/** หัวข้อแถว log ของ A3 (แจ้งสถานะสัญญาค้างชำระ) */
+export const STATUS_NOTICE_SUBJECT = 'แจ้งสถานะสัญญาค้างชำระ';
+/** เวลาส่งข้อความผลรอบกลางคืน (A3/A4) — ต้องอยู่ในช่วงเวลาทำการของ `isWithinBusinessHours` */
+export const OVERNIGHT_COLLECTIONS_NOTICES_CRON = '5 8 * * *';
 
 /**
  * Collections-side LINE notification bodies extracted from the scheduler:
  * status-change overdue/default notices, dunning-stage notifications, and the
  * auto payment-link reminder. The owning @Cron handlers stay on SchedulerService
  * (decorated + try/catch + reportCronFailure shell); only the inner work lives here.
+ *
+ * Task 30 รอบ 3 — A3 (แจ้งสถานะ) และ A4 (ขั้นทวง) ไม่ส่งตอนกลางคืนแล้ว: รอบ 00:30 / 01:00 เปลี่ยนสถานะ/ขั้นทวงตามเดิม
+ * แต่ข้อความออกจาก `sendOvernightCollectionsNotices` (08:05) ซึ่งอ่านผลของคืนนั้นจาก AuditLog ของรอบระบบ
  *
  * Plain class (not @Injectable) — constructed internally by SchedulerService.
  */
@@ -41,6 +51,95 @@ export class CollectionsNotifierService {
     private notificationsService: NotificationsService,
     private paymentLinkService: PaymentLinkService,
   ) {}
+
+  /**
+   * Task 30 รอบ 3 — ข้อความผลรอบกลางคืนส่งตอนเช้า (`OVERNIGHT_COLLECTIONS_NOTICES_CRON`): รอบ 00:30 (ACTIVE→OVERDUE / →DEFAULT) และ 01:00
+   * (เลื่อนขั้นทวง) เดิมส่ง Flex ทวงถึงลูกค้าทันทีกลางดึก ไม่ผ่านช่วงเวลาทำการ (พ.ร.บ.ทวงถามหนี้ · ด่านเดียวกับ dispatch `isWithinBusinessHours`).
+   * รอบกลางคืนยังเปลี่ยนสถานะ/ขั้นตามเดิม (งานอื่นตอนดึกพึ่งสถานะนั้น) — ข้อความอ่านผลจาก AuditLog `STATUS_CHANGE` / `DUNNING_ESCALATION`
+   * ของรอบระบบ (`ip_address = 'system-cron'`) ตั้งแต่เที่ยงคืนไทยวันนี้:
+   * - ไม่อยู่ในเวลาทำการ (ใช้กรอบวันหยุด 08:00–18:00 ซึ่งแคบกว่า) = ไม่ส่ง
+   * - สัญญาที่จ่ายแล้วระหว่างคืน (ไม่อยู่ OVERDUE/DEFAULT แล้ว) = ไม่แจ้งสถานะ · ไม่มียอดค้าง = ไม่แจ้งขั้นทวง
+   * - สัญญาที่ได้ข้อความทวงทาง LINE แล้ววันนี้ (แถว SENT หมวด DUNNING ของสัญญา) = ข้าม — สั่งรันซ้ำไม่ส่งซ้ำ และหนึ่งสัญญาได้ไม่เกินหนึ่งข้อความ
+   *   จากรอบนี้ (ตรงกับเพดานความถี่ DUNNING วันละครั้งของ `ComplianceService`)
+   */
+  async sendOvernightCollectionsNotices(now: Date = new Date()) {
+    if (!isWithinBusinessHours(now, true)) {
+      this.logger.warn('Overnight collections notices skipped — outside business hours');
+      return { statusNotices: 0, dunningNotices: 0 };
+    }
+    const since = bangkokStartOfDay(now);
+    const rows = await this.prisma.auditLog.findMany({
+      where: {
+        action: { in: ['STATUS_CHANGE', 'DUNNING_ESCALATION'] },
+        entity: 'contract',
+        ipAddress: 'system-cron',
+        createdAt: { gte: since },
+      },
+      select: { action: true, entityId: true, newValue: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    const valueOf = (v: unknown) =>
+      v && typeof v === 'object' ? (v as Record<string, unknown>) : {};
+    const statusIds = new Set<string>();
+    const escalations = new Map<string, { to: string; daysOverdue: number }>();
+    for (const row of rows) {
+      const value = valueOf(row.newValue);
+      if (row.action === 'STATUS_CHANGE' && (value.to === 'OVERDUE' || value.to === 'DEFAULT')) {
+        statusIds.add(row.entityId);
+      } else if (row.action === 'DUNNING_ESCALATION' && typeof value.dunningStage === 'string') {
+        escalations.set(row.entityId, {
+          to: value.dunningStage,
+          daysOverdue: Number(value.daysOverdue ?? 0),
+        });
+      }
+    }
+    const contractIds = [...new Set([...statusIds, ...escalations.keys()])];
+    if (contractIds.length === 0) return { statusNotices: 0, dunningNotices: 0 };
+
+    const contracts = await this.prisma.contract.findMany({
+      where: { id: { in: contractIds }, deletedAt: null },
+      select: { id: true, contractNumber: true, status: true },
+    });
+    const byId = new Map(contracts.map((c) => [c.id, c]));
+    const dunnedToday = async () =>
+      new Set(
+        (
+          await this.prisma.notificationLog.findMany({
+            where: {
+              relatedId: { in: contractIds },
+              channel: 'LINE',
+              category: NotificationCategory.DUNNING,
+              status: 'SENT',
+              sentAt: { gte: since },
+              deletedAt: null,
+            },
+            select: { relatedId: true },
+          })
+        ).map((r) => r.relatedId),
+      );
+
+    let skip = await dunnedToday();
+    const statusTargets = [...statusIds].filter((id) => {
+      const status = byId.get(id)?.status;
+      return (status === 'OVERDUE' || status === 'DEFAULT') && !skip.has(id);
+    });
+    if (statusTargets.length > 0) await this.notifyStatusChangedCustomers(statusTargets);
+
+    skip = await dunnedToday();
+    const escalated = [...escalations.entries()]
+      .filter(([id]) => byId.has(id) && !skip.has(id))
+      .map(([id, e]) => ({
+        contractId: id,
+        contractNumber: byId.get(id)!.contractNumber,
+        daysOverdue: e.daysOverdue,
+        to: e.to,
+      }));
+    const dunning =
+      escalated.length > 0
+        ? await this.notifyEscalatedDunning({ escalated })
+        : { escalated: 0, notified: 0, suppressed: 0 };
+    return { statusNotices: statusTargets.length, dunningNotices: dunning.notified };
+  }
 
   /**
    * Send LINE overdue/default notice to customers whose contracts just changed status
@@ -77,7 +176,7 @@ export class CollectionsNotifierService {
       if (legacyGrace.has(contract.id)) {
         await recordLegacyLinkGraceSkip(this.prisma, {
           recipient: lineId,
-          subject: 'แจ้งสถานะสัญญาค้างชำระ',
+          subject: STATUS_NOTICE_SUBJECT,
           message: `สัญญา ${contract.contractNumber} เปลี่ยนสถานะ — ระงับช่วงผ่อนผันหลังผูก LINE`,
           relatedId: contract.id,
           customerId: contract.customer.id,
@@ -120,12 +219,30 @@ export class CollectionsNotifierService {
         });
 
         await this.lineOaService.sendFlexMessage(lineId, flex, 'line-finance');
-        sent++;
       } catch (err) {
         this.logger.warn(
           `Failed to notify customer for contract ${contract.contractNumber}: ${err}`,
         );
+        continue;
       }
+      sent++;
+      // แถว SENT หมวด DUNNING — หลักฐานการส่ง + ให้รอบเช้าที่สั่งรันซ้ำไม่ส่งซ้ำ (Task 30 รอบ 3)
+      await recordNoticeLog(
+        this.prisma,
+        {
+          channel: 'LINE',
+          channelKey: 'line-finance',
+          recipient: lineId,
+          subject: STATUS_NOTICE_SUBJECT,
+          message: `สัญญา ${contract.contractNumber} สถานะ ${contract.status}`,
+          status: 'SENT',
+          relatedId: contract.id,
+          customerId: contract.customer.id,
+          category: NotificationCategory.DUNNING,
+          sentAt: new Date(),
+        },
+        this.logger,
+      );
     }
 
     this.logger.log(
@@ -181,6 +298,8 @@ export class CollectionsNotifierService {
           (sum, p) => sum + (Number(p.amountDue) - Number(p.amountPaid) + Number(p.lateFee)),
           0,
         );
+        // จ่ายแล้วระหว่างรอ (รอบเช้า — Task 30 รอบ 3) = ไม่มีอะไรต้องทวง
+        if (totalOverdue <= 0) continue;
 
         // Stage-specific messaging — template owns channel/category and
         // [BESTCHOICE FINANCE] prefix required by พ.ร.บ.การทวงถามหนี้ มาตรา 8.

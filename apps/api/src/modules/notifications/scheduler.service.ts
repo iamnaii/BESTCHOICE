@@ -15,12 +15,15 @@ import { DashboardService } from '../dashboard/dashboard.service';
 import { PDPAService } from '../pdpa/pdpa.service';
 import { DunningEngineService } from '../overdue/dunning-engine.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
-import { CollectionsNotifierService } from './services/collections-notifier.service';
+import {
+  CollectionsNotifierService,
+  OVERNIGHT_COLLECTIONS_NOTICES_CRON,
+} from './services/collections-notifier.service';
 import { RetentionService } from './services/retention.service';
 import { OwnerReportNotifierService } from './services/owner-report-notifier.service';
 
 /**
- * Cron orchestrator facade. ALL 20 @Cron-decorated handlers + their decorators +
+ * Cron orchestrator facade. ALL 21 @Cron-decorated handlers + their decorators +
  * the centralized reportCronFailure reporter stay on this DI-instantiated
  * provider class (moving decorated methods into sub-services would un-register
  * the crons from @nestjs/schedule). The ~12 pure pass-through handlers stay
@@ -105,12 +108,7 @@ export class SchedulerService {
       this.logger.log(
         `Status update complete: ${result.overdueUpdated} overdue, ${result.defaultUpdated} default`,
       );
-
-      // Send LINE notifications to customers whose contracts changed status
-      const changedIds = [...result.overdueIds, ...result.defaultIds];
-      if (changedIds.length > 0) {
-        await this.collectionsNotifier.notifyStatusChangedCustomers(changedIds);
-      }
+      // Task 30 รอบ 3 — ไม่แจ้งลูกค้าตอนกลางดึกแล้ว: ข้อความออกจาก handleOvernightCollectionsNotices (08:05)
     } catch (error) {
       this.reportCronFailure('contract-status-update', error);
     }
@@ -177,17 +175,33 @@ export class SchedulerService {
   }
 
   /**
-   * Run daily at 01:00: escalate dunning stages and send stage-specific notifications
+   * Run daily at 01:00: escalate dunning stages (customer notices go out at 08:05 — handleOvernightCollectionsNotices)
    */
   @Cron('0 1 * * *', { timeZone: 'Asia/Bangkok' })
   async handleDunningEscalation() {
     this.logger.log('Starting daily dunning escalation...');
     try {
       const result = await this.overdueService.escalateDunningStages();
-
-      await this.collectionsNotifier.notifyEscalatedDunning(result);
+      // Task 30 รอบ 3 — ไม่แจ้งลูกค้าตอนกลางดึกแล้ว: ข้อความออกจาก handleOvernightCollectionsNotices (08:05)
+      this.logger.log(`Dunning escalation complete: ${result.escalated.length} escalated`);
     } catch (error) {
       this.reportCronFailure('dunning-escalation', error);
+    }
+  }
+
+  /**
+   * Run daily at 08:05: LINE notices for what the night jobs changed — status flips (00:30) and dunning-stage
+   * escalations (01:00) — sent in business hours instead of at night (Task 30 r3 · CollectionsNotifierService).
+   */
+  @Cron(OVERNIGHT_COLLECTIONS_NOTICES_CRON, { timeZone: 'Asia/Bangkok' })
+  async handleOvernightCollectionsNotices() {
+    try {
+      const result = await this.collectionsNotifier.sendOvernightCollectionsNotices();
+      this.logger.log(
+        `Overnight collections notices: ${result.statusNotices} status · ${result.dunningNotices} dunning`,
+      );
+    } catch (error) {
+      this.reportCronFailure('overnight-collections-notices', error);
     }
   }
 

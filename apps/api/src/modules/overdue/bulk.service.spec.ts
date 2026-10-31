@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { MdmLockService } from './mdm-lock.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { OverdueBulkService } from './bulk.service';
+import { collectionsSessionDay } from '../collections-session/collections-session.service';
 import { LINE_FINANCE_NOT_VERIFIED_MESSAGE } from '../line-oa/services/finance-line-link';
 
 const mockPrisma = {
@@ -20,6 +21,13 @@ const mockPrisma = {
 const mockMdmLock = {
   proposeManual: jest.fn(),
 };
+
+/** งานรายวันวันนี้ของผู้ทวง (Task 24 fix round 2 I-R1 — นิยามวันเดียวกับโหมดโฟกัส) */
+const assignedToday = (collectorId: string) => ({
+  dailyAssignments: {
+    some: { collectorId, date: collectionsSessionDay(), deletedAt: null },
+  },
+});
 
 /** ผู้ใช้ข้ามสาขา (ไม่กรองสาขา) */
 const OWNER = { id: 'actor-1', role: 'OWNER', branchId: null };
@@ -151,7 +159,7 @@ describe('OverdueBulkService', () => {
       );
     });
 
-    it('M-3: SALES/BM ส่งได้เฉพาะสัญญาในสาขาตัวเอง — ค้นด้วย branchId ของผู้ใช้ · นอกสาขา = 404 เหมือนคิวที่อ่านไม่เห็น', async () => {
+    it('M-3 + I-R1: SALES/BM ค้นด้วย สาขาตัวเอง หรือ งานรายวันวันนี้ของผู้ใช้ · นอกขอบเขต = 404 เหมือนหน้าจอที่อ่านไม่เห็น', async () => {
       mockPrisma.contract.findMany.mockResolvedValueOnce([]);
       await expect(
         service.sendLineAdhoc(
@@ -163,7 +171,7 @@ describe('OverdueBulkService', () => {
       expect(mockPrisma.contract.findMany.mock.calls[0][0].where).toEqual({
         id: { in: ['c1'] },
         deletedAt: null,
-        branchId: 'b2',
+        OR: [{ branchId: 'b2' }, assignedToday('u-s')],
       });
       expect(mockNotifications.send).not.toHaveBeenCalled();
     });
@@ -357,18 +365,23 @@ describe('OverdueBulkService', () => {
       expect(mockPrisma.contract.findMany.mock.calls[0][0].where).toEqual({
         id: { in: ['c1', 'c2'] },
         deletedAt: null,
-        branchId: 'b1',
+        OR: [{ branchId: 'b1' }, assignedToday('u-bm')],
       });
       expect(res).toEqual({ sent: 0, failed: 0, total: 0 });
     });
 
-    it('SALES/BM ที่ไม่มีสาขา → fail closed (ไม่ค้น ไม่ส่ง)', async () => {
+    it('SALES/BM ที่ไม่มีสาขา → เฉพาะสัญญาที่มีงานรายวันวันนี้ (ไม่มีงาน = ไม่มีอะไร — fail closed)', async () => {
+      mockPrisma.contract.findMany.mockResolvedValueOnce([]);
       const res = await service.bulkSendLine(
         { contractIds: ['c1'], customMessage: 'กรุณาชำระเงิน' },
         { id: 'u-s', role: 'SALES', branchId: null },
       );
+      expect(mockPrisma.contract.findMany.mock.calls[0][0].where).toEqual({
+        id: { in: ['c1'] },
+        deletedAt: null,
+        OR: [assignedToday('u-s')],
+      });
       expect(res).toEqual({ sent: 0, failed: 0, total: 0 });
-      expect(mockPrisma.contract.findMany).not.toHaveBeenCalled();
       expect(mockNotifications.send).not.toHaveBeenCalled();
     });
   });

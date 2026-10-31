@@ -12,9 +12,31 @@ import { LINE_FINANCE_NOT_VERIFIED_MESSAGE } from '../line-oa/services/finance-l
 import { BulkAssignDto, BulkProposeLockDto, BulkSendLineDto } from './dto/bulk.dto';
 import { SendLineAdHocDto } from './dto/send-line-adhoc.dto';
 import { getBranchScope } from '../auth/branch-access.util';
+import { collectionsSessionDay } from '../collections-session/collections-session.service';
 
-/** ผู้ส่ง LINE จากคิวทวงถาม — role/branchId ใช้ตัดขอบเขตสาขา (`getBranchScope`) · id ลง audit */
+/** ผู้ส่ง LINE จากคิวทวงถาม — role/branchId ใช้ตัดขอบเขตสาขา (`getBranchScope`) · id = ผู้ทวงของงานรายวัน + ลง audit */
 export type LineSendActor = { id: string; role: string; branchId: string | null };
+
+/**
+ * สัญญาที่ผู้ใช้ส่ง LINE จากคิวทวงถามได้ (ad-hoc และส่งรวด ใช้ตัวเดียว) — ขอบเขตเดียวกับหน้าจอที่ปุ่มอยู่:
+ * - role ข้ามสาขา (`CROSS_BRANCH_ROLES`) — ทุกสัญญา
+ * - นอกนั้น — สัญญาในสาขาตัวเอง (คิวทวงถาม / `queue-row` / แบนเนอร์นัดครบกำหนด — fix round 1 M-3) **หรือ** สัญญาที่ผู้ใช้มีงานรายวันวันนี้
+ *   (โหมดโฟกัส `GET /collections/session/mine` อ่านตามงานที่จ่าย ซึ่งจ่ายข้ามสาขาได้โดยตั้งใจ: round-robin · เติมขั้นต่ำ · ความสัมพันธ์เดิม · หยิบจาก pool —
+ *   Task 24 fix round 2 I-R1) · "วันนี้" = `collectionsSessionDay` นิยามเดียวกับหน้าจอ · ไม่มีสาขาและไม่มีงาน = ไม่มีอะไร (fail closed)
+ */
+export function lineSendContractScope(
+  actor: LineSendActor,
+  now: Date = new Date(),
+): Prisma.ContractWhereInput {
+  const scope = getBranchScope(actor);
+  if (scope.all) return {};
+  const assignedToday: Prisma.ContractWhereInput = {
+    dailyAssignments: {
+      some: { collectorId: actor.id, date: collectionsSessionDay(now), deletedAt: null },
+    },
+  };
+  return { OR: scope.branchId ? [{ branchId: scope.branchId }, assignedToday] : [assignedToday] };
+}
 
 @Injectable()
 export class OverdueBulkService {
@@ -69,7 +91,7 @@ export class OverdueBulkService {
    * - Task 24 RR-M2 + fix round 1 M-4 — ลูกค้าที่ไม่มีแถว OTP ที่ยังผูก **ณ ตอนส่ง** (ผู้ส่งไม่มีปลายทาง — รวมแถวที่ถูกปิดระหว่างเปิดหน้ากับกดส่ง)
    *   = 400 `LINE_FINANCE_NOT_VERIFIED_MESSAGE` · ไม่พบสัญญา = 404 — ทั้งสองกรณีลองใหม่ไม่ช่วย จึงไม่ตอบ 201 `{ sent: 0 }` ที่หน้าเว็บแปลเป็น
    *   "ระบบส่งข้อความไม่ผ่าน กรุณาลองใหม่" (เหลือไว้เฉพาะส่งไม่ผ่านจริง ซึ่งลองใหม่ได้)
-   * - fix round 1 M-3 — SALES/BM ส่งได้เฉพาะสัญญาในสาขาตัวเอง (ขอบเขตเดียวกับคิวทวงถามที่อ่าน) · นอกสาขา = 404 เหมือนไม่พบ
+   * - ขอบเขต `lineSendContractScope` (สาขาตัวเอง หรือ มีงานรายวันวันนี้ — fix round 1 M-3 + round 2 I-R1) · นอกขอบเขต = 404 เหมือนไม่พบ
    */
   async sendLineAdhoc(contractId: string, dto: SendLineAdHocDto, actor: LineSendActor) {
     const { noRecipient, ...result } = await this.sendLineToContracts(
@@ -81,7 +103,7 @@ export class OverdueBulkService {
     return result;
   }
 
-  /** ส่ง LINE รวด (แบนเนอร์ "นัดครบกำหนดวันนี้") — สัญญานอกสาขาของ SALES/BM ไม่ถูกโหลด ไม่ถูกส่ง ไม่นับ (fix round 1 M-3) */
+  /** ส่ง LINE รวด (แบนเนอร์ "นัดครบกำหนดวันนี้") — สัญญานอก `lineSendContractScope` ไม่ถูกโหลด ไม่ถูกส่ง ไม่นับ (fix round 1 M-3 · round 2 I-R1) */
   async bulkSendLine(dto: BulkSendLineDto, actor: LineSendActor) {
     const { sent, failed, total } = await this.sendLineToContracts(dto, actor);
     return { sent, failed, total };
@@ -93,20 +115,12 @@ export class OverdueBulkService {
     }
     const actorId = actor.id;
 
-    // ขอบเขตสาขาเดียวกับคิวทวงถาม / แบนเนอร์นัดครบกำหนดที่อ่าน (SALES/BM = สาขาตัวเอง) · ไม่มีสาขา = ไม่มีอะไรในขอบเขต (fail closed)
-    const scope = getBranchScope(actor);
-    let branchId: string | undefined;
-    if (!scope.all) {
-      if (!scope.branchId) return { sent: 0, failed: 0, total: 0, noRecipient: 0 };
-      branchId = scope.branchId;
-    }
-
-    // Load contracts with customer LINE info
+    // Load contracts with customer LINE info — เฉพาะที่ผู้ใช้เห็นบนหน้าจอที่ปุ่มอยู่ (lineSendContractScope)
     const contracts = await this.prisma.contract.findMany({
       where: {
         id: { in: dto.contractIds },
         deletedAt: null,
-        ...(branchId ? { branchId } : {}),
+        ...lineSendContractScope(actor),
       },
       include: {
         customer: {

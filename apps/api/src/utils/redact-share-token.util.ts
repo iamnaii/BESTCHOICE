@@ -39,10 +39,12 @@ const BARE_TOKEN_PATTERN = /(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])
  * Task 21 fix round 1 (I-1 / M-3): LIFF download links carried the LINE id_token as `?idToken=`
  * (`withLiffToken` → `LiffTokenGuard`) — removed in Task 22 M-3 (single-use `?dl=` ticket, 43-char
  * base64url ⇒ also caught by BARE_TOKEN_PATTERN); kept for pages still open from before that deploy.
+ * `dl` itself is matched by name as well (Task 22 fix round 1 M-6) — the shape match alone would miss a
+ * ticket that is re-encoded, truncated or changes format.
  * Matches the param at the start of a bare query string
  * (`request.query_string` has no leading `?`) or after `?`/`&` anywhere in a URL / message.
  */
-const ID_TOKEN_QUERY_PATTERN = /((?:^|[?&])(?:idToken|id_token)=)[^&#\s"']*/gi;
+const ID_TOKEN_QUERY_PATTERN = /((?:^|[?&])(?:idToken|id_token|dl)=)[^&#\s"']*/gi;
 
 export function redactShareToken(url: string): string {
   if (typeof url !== 'string') return url;

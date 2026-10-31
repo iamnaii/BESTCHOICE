@@ -24,11 +24,14 @@ export const LINE_FINANCE_CONSENT_PURPOSE = 'แจ้งเตือนค่�
 export const LINE_FINANCE_CONSENT_VERSION = 'line-finance-verify-2026-10';
 
 /**
- * 400 ของ `verify-otp` ที่ไม่มี `consent: true` — หน้า LIFF รุ่นเก่าที่ค้างในเครื่องลูกค้าจะเจอทางนี้ ⇒ บอกทางของลูกค้าเอง
- * (บอทการเงินตอบการ์ด "เริ่มยืนยันตัวตน" ให้ LINE ที่ยังไม่ผูกทุกข้อความ — ตรวจแล้วใน Task 22/24 · `FINANCE_LINE_SELF_LINK_TEXT` ของเว็บ)
+ * 400 ของ `verify-otp` ที่ไม่มี `consent: true` — หน้า LIFF รุ่นเก่าที่ค้างในเครื่องลูกค้าจะเจอทางนี้ ⇒ บอกทางของลูกค้าเองทั้งสองที่มา
+ * (fix round 1 M6 — ทางที่มีจริงเท่านั้น): แชท LINE น้องเบส = บอทการเงินตอบการ์ด "เริ่มยืนยันตัวตน" ให้ LINE ที่ยังไม่ผูกทุกข้อความ
+ * (ก่อนด่าน handoff — `chatbot-finance.service.ts`) · แชท LINE ร้าน = พิมพ์ "ลงทะเบียน" แล้วบอทร้านตอบลิงก์ยืนยัน
+ * (`line-oa-chatbot.controller.ts` `handleRegisterLink` → `buildShopVerifyPrompt`) · ระบบไม่มี ID/ลิงก์เพิ่มเพื่อน OA การเงิน
+ * (มีแค่ `line-shop.oaBasicId`) ⇒ ไม่ชวนเพิ่มเพื่อนน้องเบส · หน้าเว็บ (`index.html` no-cache) เปิดลิงก์ใหม่ได้รุ่นใหม่
  */
 export const LINE_FINANCE_CONSENT_REQUIRED_MESSAGE =
-  'หน้านี้เป็นรุ่นเก่า กรุณาปิดหน้านี้ แล้วส่งข้อความใดก็ได้ในแชท LINE น้องเบส จากนั้นกด “เริ่มยืนยันตัวตน” เพื่อเปิดหน้าใหม่ และติ๊กยินยอมรับแจ้งเตือนทาง LINE ก่อนยืนยันรหัส OTP';
+  'หน้านี้เป็นรุ่นเก่า กรุณาปิดหน้านี้แล้วเปิดลิงก์ยืนยันตัวตนใหม่จากแชท — แชท LINE น้องเบส: ส่งข้อความใดก็ได้แล้วกด “เริ่มยืนยันตัวตน” · แชท LINE ร้าน: พิมพ์ “ลงทะเบียน” — จากนั้นติ๊กยินยอมรับแจ้งเตือนทาง LINE ก่อนยืนยันรหัส OTP';
 
 /** ความยินยอมที่ controller ส่งต่อ (DTO บังคับ `consent === true` แล้ว) + หลักฐานแบบเดียวกับ `PDPAService.recordConsent` */
 export interface LineFinanceConsentInput {

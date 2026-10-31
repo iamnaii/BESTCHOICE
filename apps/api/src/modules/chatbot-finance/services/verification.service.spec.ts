@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, ConflictException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import {
   VerificationService,
   CUSTOMER_LINKED_TO_OTHER_LINE_MESSAGE,
@@ -1241,6 +1242,25 @@ describe('VerificationService', () => {
         data: { channel: 'FINANCE', via: 'VERIFICATION' },
       });
       expect(richMenu.switchRichMenu).toHaveBeenCalledWith('U123', true, 'finance');
+    });
+
+    it('Task 29 fix round 1: ทรานแซกชันของ bind โดน deadlock → ลองทั้งก้อนใหม่ (ตาข่าย) · ผูกครั้งเดียว (error อื่นไม่ลองซ้ำ — transaction-retry.util.spec)', async () => {
+      const otp = await requestRealOtp();
+      const calls = tPrisma.$transaction.mock.calls.length;
+      tPrisma.$transaction.mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError('deadlock detected', {
+          code: 'P2034',
+          clientVersion: 'test',
+        }),
+      );
+
+      await expect(tService.verifyOtp({ lineUserId: 'U123', otp })).resolves.toMatchObject({
+        customerId: 'c1',
+      });
+
+      expect(tPrisma.$transaction.mock.calls.length - calls).toBe(2);
+      expect(order.filter((step) => step === 'commit')).toHaveLength(1);
+      expect(journey.recordAfterCommit).toHaveBeenCalledTimes(1);
     });
 
     it('(d) test-mode bypass ใช้ helper เดียวกัน → สลับ rich menu ด้วย', async () => {

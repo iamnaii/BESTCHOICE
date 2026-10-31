@@ -20,3 +20,23 @@ export function isRetryablePrismaWriteError(error: unknown): boolean {
   if (error instanceof Prisma.PrismaClientUnknownRequestError) return SQLSTATE_IN_MESSAGE.test(error.message);
   return false;
 }
+
+/**
+ * ลองทั้งทรานแซกชันใหม่เมื่อ Postgres ตัดสิน deadlock/serialization (`isRetryablePrismaWriteError`) — สูงสุด `maxAttempts` ครั้ง
+ * (Task 29 fix round 1 — ตัวเดียวของปุ่มยกเลิกผูก LINE การเงิน, `VerificationService.bind` และผลวิเคราะห์สเตทเม้นจากแชท) ·
+ * `run` ต้องเปิดทรานแซกชันใหม่และอ่านทุกอย่างใหม่ทุกรอบ (ห้ามพกผลอ่านจากรอบก่อน) · ห้ามใช้เมื่ออยู่ในทรานแซกชันของผู้อื่น
+ * (managed/join — ให้ชั้นนอกลองทั้งก้อน) · `isRetryable` เพิ่มเงื่อนไขของผู้เรียกได้ · ครบรอบแล้ว = ส่ง error ล่าสุดต่อ
+ */
+export async function runWithTransactionRetry<T>(
+  run: () => Promise<T>,
+  maxAttempts: number,
+  isRetryable: (error: unknown) => boolean = isRetryablePrismaWriteError,
+): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await run();
+    } catch (error) {
+      if (attempt >= maxAttempts || !isRetryable(error)) throw error;
+    }
+  }
+}

@@ -45,7 +45,7 @@ import {
   ACTIVE_FINANCE_LINK_WHERE,
   type FinanceLineStatus,
 } from '../../line-oa/services/otp-verified-customer';
-import { isRetryablePrismaWriteError } from '../../../utils/transaction-retry.util';
+import { runWithTransactionRetry } from '../../../utils/transaction-retry.util';
 
 /** ปุ่มยกเลิกผูก LINE การเงิน (legacy) — ลองทั้งทรานแซกชันใหม่เมื่อ Postgres ตัดสิน deadlock/serialization (ตาข่าย — ลำดับล็อกเดียวกับ bind แล้ว ดู `unlinkFinanceLineByStaff`) */
 const FINANCE_LINE_UNLINK_MAX_ATTEMPTS = 3;
@@ -797,21 +797,10 @@ export class CustomerWriteService {
     if (ctx && actor.id !== ctx.snapshot.userId) throw new Error('Customer actor mismatch');
     if (ctx) await this.parties!.mutation(ctx.client, 'customer', id, 'customers.update');
     const unlinkInTx = () => this.prisma.$transaction((tx) => this.unlinkFinanceLineInTx(tx, id));
-    let before: FinanceLineUnlinkBefore | null = null;
-    for (let attempt = 1; ; attempt++) {
-      try {
-        before = await unlinkInTx();
-        break;
-      } catch (error) {
-        // managed: ทรานแซกชันเป็นของระบบสิทธิ์ (join) — ลองซ้ำข้างในไม่ได้ ให้ชั้นนอกลองทั้งก้อน
-        if (
-          ctx ||
-          attempt >= FINANCE_LINE_UNLINK_MAX_ATTEMPTS ||
-          !isRetryablePrismaWriteError(error)
-        )
-          throw error;
-      }
-    }
+    // managed: ทรานแซกชันเป็นของระบบสิทธิ์ (join) — ลองซ้ำข้างในไม่ได้ ให้ชั้นนอกลองทั้งก้อน
+    const before = ctx
+      ? await unlinkInTx()
+      : await runWithTransactionRetry(unlinkInTx, FINANCE_LINE_UNLINK_MAX_ATTEMPTS);
     if (before) await this.auditFinanceLineUnlink(actor.id, id, before);
     return { id, unlinked: !!before, financeLine: { ...FINANCE_LINE_UNLINKED } };
   }

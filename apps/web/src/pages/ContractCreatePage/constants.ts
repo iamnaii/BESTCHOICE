@@ -21,7 +21,6 @@ export const emptyCustForm = {
   phone: '',
   phoneSecondary: '',
   email: '',
-  lineIdFinance: '',
   lineIdShop: '',
   facebookLink: '',
   facebookName: '',

@@ -9,6 +9,7 @@ import type { UseMutationResult } from '@tanstack/react-query';
 import type { CustReferenceData } from '../types';
 import type { emptyCustForm } from '../constants';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
+import { FinanceLineCreateNote } from '@/components/customer/FinanceLineStatusRow';
 import { useId as useExtraFieldId, useId as useUiFieldId } from 'react';
 
 export interface CustomerCreateModalProps {
@@ -462,22 +463,7 @@ export function CustomerCreateModal({
                     className="w-full px-3 py-2 border border-input rounded-lg text-sm"
                   />
                 </div>
-                <div>
-                  <label
-                    htmlFor={`${uiFieldId}-11`}
-                    className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2"
-                  >
-                    LINE ID (Finance / น้องเบส)
-                  </label>
-                  <input
-                    id={`${uiFieldId}-11`}
-                    type="text"
-                    value={custForm.lineIdFinance}
-                    onChange={(e) => setCustForm({ ...custForm, lineIdFinance: e.target.value })}
-                    className="w-full px-3 py-2 border border-input rounded-lg text-sm"
-                    placeholder="U1234567890abcdef..."
-                  />
-                </div>
+                <FinanceLineCreateNote labelClassName="text-2xs text-muted-foreground uppercase tracking-wider" />
                 <div>
                   <label
                     htmlFor={`${uiFieldId}-12`}

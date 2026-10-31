@@ -494,7 +494,7 @@ export function useContractCreateData() {
       if (custForm.birthDate) payload.birthDate = new Date(custForm.birthDate).toISOString();
       if (custForm.phoneSecondary) payload.phoneSecondary = custForm.phoneSecondary;
       if (custForm.email) payload.email = custForm.email;
-      if (custForm.lineIdFinance) payload.lineIdFinance = custForm.lineIdFinance;
+      // Task 27 — ไม่ส่ง lineIdFinance: ผูก LINE การเงินได้ทาง OTP ของลูกค้าเท่านั้น (หมายเหตุในฟอร์ม)
       if (custForm.lineIdShop) payload.lineIdShop = custForm.lineIdShop;
       if (custForm.facebookLink) payload.facebookLink = custForm.facebookLink;
       if (custForm.facebookName) payload.facebookName = custForm.facebookName;

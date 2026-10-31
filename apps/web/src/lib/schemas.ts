@@ -40,7 +40,7 @@ export const customerSchema = z.object({
   phone: phoneSchema,
   phoneSecondary: z.string().optional(),
   email: emailSchema.optional(),
-  lineIdFinance: z.string().optional(),
+  // Task 27 — ไม่มี lineIdFinance: LINE การเงินผูกได้ทาง OTP ของลูกค้าเท่านั้น (ฟอร์มแสดงหมายเหตุแทนช่องพิมพ์)
   lineIdShop: z.string().optional(),
   facebookLink: z.string().url('URL ไม่ถูกต้อง').or(z.literal('')).optional(),
   facebookName: z.string().optional(),

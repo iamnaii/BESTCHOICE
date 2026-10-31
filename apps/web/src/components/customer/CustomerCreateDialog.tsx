@@ -31,6 +31,7 @@ import AddressForm, {
 } from '@/components/ui/AddressForm';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { HeardFromChips } from '@/components/customer/journey/HeardFromChips';
+import { FinanceLineCreateNote } from '@/components/customer/FinanceLineStatusRow';
 import { postHeardFrom } from '@/hooks/customer-journey/journeyEntries';
 import {
   ChevronDown,
@@ -119,7 +120,6 @@ const emptyForm: CustomerFormData = {
   phone: '',
   phoneSecondary: '',
   email: '',
-  lineIdFinance: '',
   lineIdShop: '',
   facebookLink: '',
   facebookName: '',
@@ -279,7 +279,7 @@ function CustomerCreateForm({
       if (data.birthDate) payload.birthDate = new Date(data.birthDate).toISOString();
       if (data.phoneSecondary) payload.phoneSecondary = data.phoneSecondary;
       if (data.email) payload.email = data.email;
-      if (data.lineIdFinance) payload.lineIdFinance = data.lineIdFinance;
+      // Task 27 — ไม่ส่ง lineIdFinance: ผูก LINE การเงินได้ทาง OTP ของลูกค้าเท่านั้น (หมายเหตุ FinanceLineCreateNote)
       if (data.lineIdShop) payload.lineIdShop = data.lineIdShop;
       if (data.facebookLink) payload.facebookLink = data.facebookLink;
       if (data.facebookName) payload.facebookName = data.facebookName;
@@ -1086,28 +1086,7 @@ function CustomerCreateForm({
                         )}
                       />
                     </div>
-                    <div>
-                      <FormField
-                        control={form.control}
-                        name="lineIdFinance"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-xs font-medium">
-                              LINE ID (Finance / น้องเบส)
-                            </FormLabel>
-                            <FormControl>
-                              <input
-                                type="text"
-                                {...field}
-                                className={inputClass}
-                                placeholder="U1234567890abcdef..."
-                              />
-                            </FormControl>
-                            <FormMessage className="text-xs" />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
+                    <FinanceLineCreateNote />
                     <div>
                       <FormField
                         control={form.control}

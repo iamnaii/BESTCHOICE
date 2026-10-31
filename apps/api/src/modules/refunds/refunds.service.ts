@@ -15,6 +15,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { ReceiptVoidReversalTemplate } from '../journal/cpa-templates/receipt-void-reversal.template';
@@ -265,11 +266,18 @@ export class RefundsService {
     userId: string,
     _userRole: string,
   ) {
-    return this.financialTransaction(async (tx) => {
+    /** สถานะสัญญาที่ปิดแล้ว ณ ตอนยืนยันธนาคาร — ส่งสัญญาณเตือนหลัง commit (null = สัญญายังไม่ปิด) */
+    let closedAtProcessing: { contractId: string; status: string } | null = null;
+    const processed = await this.financialTransaction(async (tx) => {
       const actor = await this.refundActor(tx, userId, true, true);
       const refund = await tx.refund.findUnique({ where: { id: refundId } });
       if (!refund || refund.deletedAt) throw new NotFoundException('ไม่พบคำขอคืนเงิน');
-      await this.assertContractAccess(tx, actor, refund.contractId);
+      const contract = await this.assertContractAccess(tx, actor, refund.contractId);
+      // review M1 (2026-10-31): **ไม่ปฏิเสธ** สัญญาที่ปิดหลังอนุมัติ — ขั้นนี้บันทึกเงินที่ธนาคารคืนไปแล้ว ปฏิเสธ = เงินออกโดยสมุดไม่ขยับ.
+      // แต่การกลับรายการจะคืนงวดเป็นค้าง + 11-2103 ค้างบนสัญญาที่ไม่มีใครเก็บเงิน ⇒ flag ใน audit + Sentry warning หลัง commit
+      closedAtProcessing = UNPAY_BLOCKED_CONTRACT_STATUSES.includes(contract.status)
+        ? { contractId: refund.contractId, status: contract.status }
+        : null;
       // PR4 ต6ข (final review I3): ตรวจซ้ำตอนดำเนินการ — รอบกวาดอาจลงรายการระหว่างคำขอค้างคิว (วางก่อนแตะ Payment/JE ใด)
       await assertNoAdvanceExcessIncome(tx, refund.contractId);
       if (refund.status !== 'APPROVED') {
@@ -427,12 +435,25 @@ export class RefundsService {
               previousAmountPaid: payment.amountPaid.toString(),
               survivingAmountPaid: reverted.survivingPaid.toString(),
             },
+            contractClosedAtProcessing: closedAtProcessing?.status ?? null,
           },
         },
       });
 
       return updated;
     });
+    if (closedAtProcessing) {
+      const { contractId, status } = closedAtProcessing;
+      Sentry.captureMessage(
+        'Refund bank reversal recorded on a closed contract — the installment and 11-2103 were reopened on a contract nobody collects; accounting must review',
+        {
+          level: 'warning',
+          tags: { subsystem: 'refunds', action: 'refund-processed-closed-contract' },
+          extra: { refundId, contractId, contractStatus: status },
+        },
+      );
+    }
+    return processed;
   }
 
   async markFailed(refundId: string, dto: MarkRefundFailedDto, userId: string, _userRole: string) {

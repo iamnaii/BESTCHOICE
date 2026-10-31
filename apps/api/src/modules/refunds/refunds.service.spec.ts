@@ -8,8 +8,13 @@ jest.mock('../payments/services/payment-approval-permissions', () => ({
   getPaymentApprovalPermissions: jest.fn(),
 }));
 jest.mock('../../utils/period-lock.util', () => ({ validatePeriodOpen: jest.fn() }));
+jest.mock('@sentry/nestjs', () => ({
+  ...jest.requireActual('@sentry/nestjs'),
+  captureMessage: jest.fn(),
+}));
 
 import { Test, TestingModule } from '@nestjs/testing';
+import * as Sentry from '@sentry/nestjs';
 import { Prisma } from '@prisma/client';
 import { ADVANCE_EXCESS_VOID_BLOCKED_MESSAGE } from '../journal/advance-excess-income.util';
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
@@ -624,6 +629,67 @@ describe('RefundsService', () => {
       expect(prisma.auditLog.create).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ action: 'REFUND_PROCESSED' }) }),
       );
+    });
+
+    // review M1 (2026-10-31): ยืนยันธนาคาร = บันทึกเงินที่ธนาคารคืนไปแล้ว ⇒ ห้ามปฏิเสธเพราะสัญญาปิดหลังอนุมัติ (สมุดจะไม่ขยับ)
+    // แต่ต้องมองเห็นได้: งวดถูกคืนเป็นค้าง + 11-2103 ค้างบนสัญญาที่ปิดแล้ว ⇒ flag ใน audit + Sentry warning หลัง commit (ไม่มี PII)
+    it('a contract closed after approval still records the bank reversal, flagged in audit + Sentry', async () => {
+      (Sentry.captureMessage as jest.Mock).mockClear();
+      prisma.refund.findUnique.mockResolvedValue(refundRecord({ status: 'APPROVED' }));
+      prisma.payment.findUnique.mockResolvedValue(
+        paidPayment({ amountPaid: new Prisma.Decimal(500) }),
+      );
+      prisma.contract.findFirst.mockResolvedValue({ branchId: 'branch-a', status: 'EARLY_PAYOFF' });
+
+      await service.markReversed(
+        'rf-1',
+        { bankReversalRef: 'KBANK-12345', notes: 'confirmed phone call' },
+        'u-fm',
+        'FINANCE_MANAGER',
+      );
+
+      expect(prisma.refund.updateMany.mock.calls[0][0].data.status).toBe('PROCESSED');
+      expect(template.voidReceipt).toHaveBeenCalled();
+      expect(prisma.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: 'REFUND_PROCESSED',
+            newValue: expect.objectContaining({ contractClosedAtProcessing: 'EARLY_PAYOFF' }),
+          }),
+        }),
+      );
+      expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+      const [message, context] = (Sentry.captureMessage as jest.Mock).mock.calls[0];
+      expect(message).toContain('closed contract');
+      expect(context).toMatchObject({
+        level: 'warning',
+        extra: { refundId: 'rf-1', contractId: 'con-1', contractStatus: 'EARLY_PAYOFF' },
+      });
+    });
+
+    it('an open contract records no closed-contract flag and no warning', async () => {
+      (Sentry.captureMessage as jest.Mock).mockClear();
+      prisma.refund.findUnique.mockResolvedValue(refundRecord({ status: 'APPROVED' }));
+      prisma.payment.findUnique.mockResolvedValue(
+        paidPayment({ amountPaid: new Prisma.Decimal(500) }),
+      );
+      prisma.contract.findFirst.mockResolvedValue({ branchId: 'branch-a', status: 'ACTIVE' });
+
+      await service.markReversed(
+        'rf-1',
+        { bankReversalRef: 'KBANK-12345', notes: 'confirmed phone call' },
+        'u-fm',
+        'FINANCE_MANAGER',
+      );
+
+      expect(prisma.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            newValue: expect.objectContaining({ contractClosedAtProcessing: null }),
+          }),
+        }),
+      );
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
     });
 
     it('rejects a partial refund (amount ≠ amountPaid) — full refunds only', async () => {

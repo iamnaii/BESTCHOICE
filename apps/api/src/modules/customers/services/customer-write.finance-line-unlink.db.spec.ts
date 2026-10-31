@@ -2,7 +2,7 @@
  * รัน: DATABASE_URL=<ฐานทดสอบ> npx jest src/modules/customers/services/customer-write.finance-line-unlink.db.spec.ts --runInBand
  *
  * Task 27 — ปุ่ม "ยกเลิกการผูก" LINE น้องเบส (การเงิน) ในฟอร์มแก้ไขลูกค้า → `POST /customers/:id/finance-line/unlink`
- * (`CustomerWriteService.unlinkFinanceLineByStaff`). ต่างจากทาง PATCH `lineIdFinance: null` ที่ตัดสินด้วยคอลัมน์ (คอลัมน์ว่าง = ไม่แตะ)
+ * (`CustomerWriteService.unlinkFinanceLineByStaff`). (ก่อน Task 29 ต่างจากทาง PATCH `lineIdFinance: null` ที่เคยตัดสินด้วยคอลัมน์)
  * ทางนี้ปิด**แถว OTP ที่ยังผูก**แม้คอลัมน์ว่าง (ผ่าน `unlinkFinanceLine({ customerId })` ตัวเดิม) + ล้าง `chat_rooms.verified_at`
  * (helper ของ Task 24) + เขียน audit `CUSTOMER_FINANCE_LINE_UNLINKED` (Task 22 รายงานว่าทางพนักงานไม่มี audit เฉพาะ)
  *

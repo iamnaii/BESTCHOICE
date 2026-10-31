@@ -72,6 +72,10 @@ describe('NotificationsService — reminder / overdue dunning', () => {
       },
       pDPAConsent: { findFirst: jest.fn().mockResolvedValue({ id: 'consent-1' }) }, // granted
       systemConfig: { findFirst: jest.fn().mockResolvedValue(null) },
+      // Task 30 ข้อ 1 — บอทการเงิน (A8) ยังไม่ได้ส่งงวดนี้วันนี้
+      chatAutoTrigger: { findFirst: jest.fn().mockResolvedValue(null) },
+      // Task 30 ข้อ 2 — ไม่มีสัญญาในช่วงผ่อนผันหลังผูก LINE
+      contract: { findMany: jest.fn().mockResolvedValue([]) },
     };
 
     const mod: TestingModule = await Test.createTestingModule({
@@ -184,14 +188,55 @@ describe('NotificationsService — reminder / overdue dunning', () => {
       }
     });
 
-    it('dedup query filters by relatedId + subject', async () => {
+    it('dedup query filters by relatedId + (subject OR REMINDER category) — counts fallback paths too', async () => {
       prisma.payment.findMany.mockResolvedValue([payment()]);
       await service.sendPaymentReminders();
-      expect(prisma.notificationLog.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({ relatedId: 'pay-1', subject: SUBJECT }),
-        }),
-      );
+      const where = prisma.notificationLog.findFirst.mock.calls[0][0].where;
+      expect(where.relatedId).toBe('pay-1');
+      // Task 30 ข้อ 1 — ทางสำรอง template/ข้อความ/SMS ลงหัวข้อของ template หรือว่าง แต่หมวด REMINDER เสมอ
+      expect(where.AND[0]).toEqual({ OR: [{ subject: SUBJECT }, { category: 'REMINDER' }] });
+      // ส่งแล้ววันนี้ หรือ A1 ยังถือการส่งอยู่ (คิวส่งซ้ำ / รอเวลาทำการ)
+      expect(where.AND[1].OR).toEqual([
+        { status: 'SENT', sentAt: { gte: expect.any(Date) } },
+        { status: { in: ['RETRY_PENDING', 'DELAYED'] }, createdAt: { gte: expect.any(Date) } },
+      ]);
+    });
+
+    describe('Task 30 ข้อ 1 — งวดละหนึ่งข้อความต่อวัน (A1 08:00 กับบอท A8 09:00)', () => {
+      it('ข้ามงวดที่บอทการเงินส่งเตือนไปแล้ววันนี้ — ไม่ส่ง LINE ไม่ส่ง SMS ไม่แตะ consent', async () => {
+        prisma.payment.findMany.mockResolvedValue([withLine(), payment({ id: 'pay-2' })]);
+        prisma.chatAutoTrigger.findFirst.mockResolvedValue({ id: 'trig-1' });
+
+        const result = await service.sendPaymentReminders();
+
+        expect(spyOf('sendLineFlexMessage')).not.toHaveBeenCalled();
+        expect(spyOf('send')).not.toHaveBeenCalled();
+        expect(prisma.pDPAConsent.findFirst).not.toHaveBeenCalled();
+        expect(prisma.notificationLog.create).not.toHaveBeenCalled();
+        expect(result.sent).toBe(0);
+        expect(result.dedupedByBot).toBe(2);
+      });
+
+      it('ค้นแถวบอทของงวดนี้ทุกชนิดเตือน (T-5/T-3/T-1/T0) เฉพาะที่ส่ง/กำลังส่ง ตั้งแต่เที่ยงคืนไทยวันนี้', async () => {
+        prisma.payment.findMany.mockResolvedValue([withLine()]);
+
+        await service.sendPaymentReminders();
+
+        const where = prisma.chatAutoTrigger.findFirst.mock.calls[0][0].where;
+        expect(where.customerId).toBe('cust-1');
+        expect(where.referenceKey.in).toEqual([
+          'REMINDER_T_MINUS_5:pay-1',
+          'REMINDER_T_MINUS_3:pay-1',
+          'REMINDER_T_MINUS_1:pay-1',
+          'REMINDER_T_DAY:pay-1',
+        ]);
+        expect(where.status).toEqual({ in: ['SENT', 'PENDING'] });
+        // เที่ยงคืนไทย = 17:00 UTC ของวันก่อน (ไม่ขึ้นกับ TZ เครื่อง)
+        const dayStart: Date = where.createdAt.gte;
+        expect(dayStart.getUTCHours()).toBe(17);
+        expect(Date.now() - dayStart.getTime()).toBeLessThan(24 * 60 * 60 * 1000);
+        expect(spyOf('sendLineFlexMessage')).toHaveBeenCalledTimes(1);
+      });
     });
   });
 

@@ -16,6 +16,11 @@ import {
   FINANCE_LINE_RECIPIENT_SELECT,
   financeLineRecipient,
 } from '../../line-oa/services/otp-verified-customer';
+import {
+  AUTO_TRIGGER_REMINDER_TYPES,
+  autoTriggerReferenceKey,
+  notificationReminderSentToday,
+} from '../../notifications/payment-reminder-dedupe';
 import { AutoTriggerType, MessageRole, Payment, TriggerStatus } from '@prisma/client';
 
 const TIMEZONE = 'Asia/Bangkok';
@@ -30,6 +35,10 @@ const TIMEZONE = 'Asia/Bangkok';
  * Idempotency: ใช้ ChatAutoTrigger table เป็น marker
  *   - ก่อนส่ง: เช็คว่ามี trigger record (PENDING/SENT) สำหรับ payment+type นี้แล้วหรือยัง
  *   - หลังส่ง: mark SENT
+ *
+ * Task 30 ข้อ 1 — เตือนค่างวด (T-5..T0) เป็นตัวสำรองของ A1 (`NotificationReminderService.sendPaymentReminders` 08:00):
+ *   งวดที่ A1 ส่งแล้ววันนี้ (หรือยังถือการส่งอยู่ในคิวส่งซ้ำ) = ข้าม ไม่จองแถว ⇒ ลูกค้าได้หนึ่งข้อความต่องวดต่อวัน
+ *   (`payment-reminder-dedupe.ts`) · ทวงหลังเลยกำหนด (ESCALATION_*) ไม่เกี่ยว
  */
 @Injectable()
 export class AutoTriggerService {
@@ -133,11 +142,19 @@ export class AutoTriggerService {
     let sent = 0;
     let skipped = 0;
     let failed = 0;
+    let dedupedByA1 = 0;
+    const isPaymentReminder = AUTO_TRIGGER_REMINDER_TYPES.includes(type);
 
     for (const payment of payments) {
       const lineUserId = financeLineRecipient(payment.contract.customer);
       if (!lineUserId) {
         skipped++;
+        continue;
+      }
+
+      // Task 30 ข้อ 1 — A1 ส่งเตือนงวดนี้แล้ววันนี้ ⇒ ไม่ส่งซ้ำ (ไม่จองแถว: สั่งรันซ้ำก็ตัดสินเหมือนเดิม)
+      if (isPaymentReminder && (await notificationReminderSentToday(this.prisma, payment.id))) {
+        dedupedByA1++;
         continue;
       }
 
@@ -157,7 +174,9 @@ export class AutoTriggerService {
       else if (result === 'failed') failed++;
     }
 
-    this.logger.log(`[AutoTrigger] ${type}: sent=${sent} skipped=${skipped} failed=${failed}`);
+    this.logger.log(
+      `[AutoTrigger] ${type}: sent=${sent} skipped=${skipped} failed=${failed} dedupedByA1=${dedupedByA1}`,
+    );
   }
 
   private async sendReminder(args: {
@@ -189,7 +208,7 @@ export class AutoTriggerService {
     };
 
     const text = args.template(payload);
-    const referenceKey = `${args.type}:${args.payment.id}`;
+    const referenceKey = autoTriggerReferenceKey(args.type, args.payment.id);
 
     // Atomic insert ผ่าน @@unique([customerId, referenceKey])
     // ถ้า duplicate (concurrent run / re-run) → P2002 → skip ปลอดภัย

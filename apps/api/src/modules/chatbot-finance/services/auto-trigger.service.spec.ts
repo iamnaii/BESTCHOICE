@@ -42,6 +42,10 @@ describe('AutoTriggerService', () => {
       // No late-fee config rows → BUSINESS_RULES defaults (tier1=50, tier2=100, minDays=3)
       // loadLateFeeConfig uses findUnique (not findFirst)
       systemConfig: { findUnique: jest.fn().mockResolvedValue(null) },
+      // Task 30 ข้อ 1 — A1 (notification reminder 08:00) ยังไม่ได้ส่งงวดนี้วันนี้
+      notificationLog: { findFirst: jest.fn().mockResolvedValue(null) },
+      // Task 30 ข้อ 2 — ไม่มีสัญญาในช่วงผ่อนผันหลังผูก LINE
+      contract: { findMany: jest.fn().mockResolvedValue([]) },
     };
     lineClient = {
       pushText: jest.fn().mockResolvedValue(undefined),
@@ -198,6 +202,53 @@ describe('AutoTriggerService', () => {
       if (lateFee > 0) expect(sentText).toContain(`ค่าปรับ ${lateFee.toFixed(2)}`);
     },
   );
+
+  describe('Task 30 ข้อ 1 — งวดละหนึ่งข้อความต่อวัน (A1 08:00 เป็นตัวหลัก บอทเป็นตัวสำรอง)', () => {
+    it.each([5, 3, 1, 0])(
+      'T-%i: A1 ส่งเตือนงวดนี้แล้ววันนี้ → บอทไม่ส่ง และไม่จองแถว chat_auto_triggers',
+      async (offset) => {
+        const due = new Date();
+        due.setHours(0, 0, 0, 0);
+        due.setDate(due.getDate() + offset);
+        prisma.payment.findMany.mockImplementation(
+          ({ where }: { where: { dueDate: { gte: Date } } }) =>
+            Promise.resolve(
+              where.dueDate.gte.getTime() === due.getTime() ? [makePayment(3, due)] : [],
+            ),
+        );
+        prisma.notificationLog.findFirst.mockResolvedValue({ id: 'a1-log' });
+
+        await service.runDailyReminders();
+
+        expect(lineClient.pushText).not.toHaveBeenCalled();
+        expect(prisma.chatAutoTrigger.create).not.toHaveBeenCalled();
+        expect(prisma.notificationLog.findFirst.mock.calls[0][0].where.relatedId).toBe('pay-3');
+      },
+    );
+
+    it('A1 ยังไม่ได้ส่ง (ข้าม consent / ส่งไม่ผ่าน / สัญญาไม่ ACTIVE) → บอทส่งตามเดิม', async () => {
+      const due = new Date();
+      due.setDate(due.getDate() + 3);
+      prisma.payment.findMany.mockResolvedValue([makePayment(3, due)]);
+
+      await service.runDailyReminders();
+
+      expect(lineClient.pushText).toHaveBeenCalled();
+      expect(prisma.chatAutoTrigger.create).toHaveBeenCalled();
+    });
+
+    it('ทวงหลังเลยกำหนด (T+1/T+3) ไม่ถาม A1 — ไม่ใช่เตือนค่างวด', async () => {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      prisma.payment.findMany.mockResolvedValue([makePayment(3, yesterday)]);
+      prisma.notificationLog.findFirst.mockResolvedValue({ id: 'a1-log' });
+
+      await service.runDailyEscalations();
+
+      expect(prisma.notificationLog.findFirst).not.toHaveBeenCalled();
+      expect(lineClient.pushText).toHaveBeenCalled();
+    });
+  });
 
   it('does nothing when no payments match', async () => {
     prisma.payment.findMany.mockResolvedValue([]);

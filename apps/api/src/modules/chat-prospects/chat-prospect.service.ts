@@ -5,7 +5,10 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { isChatPlaceholder, placeholderName } from './chat-placeholder';
 
 type Tx = Prisma.TransactionClient;
-const LINE_CHANNELS: ReadonlySet<ChatChannel> = new Set([ChatChannel.LINE_SHOP, ChatChannel.LINE_FINANCE]);
+const LINE_CHANNELS: ReadonlySet<ChatChannel> = new Set([
+  ChatChannel.LINE_SHOP,
+  ChatChannel.LINE_FINANCE,
+]);
 
 /**
  * ผู้สนใจอัตโนมัติจากแชท — หนึ่งคน (ช่องทาง + รหัสผู้ใช้) = หนึ่งแถว customers
@@ -25,14 +28,22 @@ export class ChatProspectService {
     const room = await this.prisma.chatRoom.findUnique({
       where: { id: roomId },
       select: {
-        id: true, channel: true, lineUserId: true, externalUserId: true, customerId: true, displayName: true,
-        createdAt: true, deletedAt: true, customer: { select: { deletedAt: true } },
+        id: true,
+        channel: true,
+        lineUserId: true,
+        externalUserId: true,
+        customerId: true,
+        displayName: true,
+        createdAt: true,
+        deletedAt: true,
+        customer: { select: { deletedAt: true } },
       },
     });
     if (!room || room.deletedAt) return null;
     // เจ้าของที่ถูก soft-delete = ห้องไม่มีเจ้าของ (Ruling R23) — เดินต่อไปหา/สร้างคนใหม่แล้วชี้ห้องไปที่คนนั้น
     // ไม่งั้นห้องค้างชี้แถวที่ตายแล้วถาวร: ผูกไม่ได้ (409) รวมไม่ได้ (404) และไม่มี endpoint ปลดการผูก
-    if (room.customerId && !room.customer?.deletedAt) return { customerId: room.customerId, created: false };
+    if (room.customerId && !room.customer?.deletedAt)
+      return { customerId: room.customerId, created: false };
     const externalKey = room.lineUserId ?? room.externalUserId;
     if (!externalKey) return null;
 
@@ -44,7 +55,8 @@ export class ChatProspectService {
         where: { id: roomId },
         select: { customerId: true, customer: { select: { deletedAt: true } } },
       });
-      if (fresh?.customerId && !fresh.customer?.deletedAt) return { customerId: fresh.customerId, created: false };
+      if (fresh?.customerId && !fresh.customer?.deletedAt)
+        return { customerId: fresh.customerId, created: false };
 
       const existingId = await this.findExistingCustomerId(tx, room.channel, externalKey);
       if (existingId) {
@@ -79,7 +91,11 @@ export class ChatProspectService {
    * public: capture_lead ใช้หาตัวตนที่แข็งกว่าเบอร์ก่อนจับคู่ด้วยเบอร์ (R25) — เรียกด้วย root client ได้
    * (FOR SHARE นอกทรานแซกชันไม่มีผลเสีย แค่ไม่ได้รอ merge)
    */
-  async findExistingCustomerId(tx: Tx | PrismaService, channel: ChatChannel, externalKey: string): Promise<string | null> {
+  async findExistingCustomerId(
+    tx: Tx | PrismaService,
+    channel: ChatChannel,
+    externalKey: string,
+  ): Promise<string | null> {
     const isLine = LINE_CHANNELS.has(channel);
     const sibling = await tx.chatRoom.findFirst({
       where: {
@@ -104,7 +120,8 @@ export class ChatProspectService {
     }
     if (!isLine) return null;
 
-    const linkChannel = channel === ChatChannel.LINE_SHOP ? LineChannelType.SHOP : LineChannelType.FINANCE;
+    const linkChannel =
+      channel === ChatChannel.LINE_SHOP ? LineChannelType.SHOP : LineChannelType.FINANCE;
     const link = await tx.customerLineLink.findUnique({
       where: {
         lineUserId_channel: { lineUserId: externalKey, channel: linkChannel },
@@ -132,20 +149,37 @@ export class ChatProspectService {
     const room = await this.prisma.chatRoom.findUnique({
       where: { id: roomId },
       select: {
-        id: true, channel: true, lineUserId: true, externalUserId: true, displayName: true,
-        customer: { select: { id: true, name: true, acquisitionSource: true, phone: true, nationalId: true, deletedAt: true } },
+        id: true,
+        channel: true,
+        lineUserId: true,
+        externalUserId: true,
+        displayName: true,
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            acquisitionSource: true,
+            phone: true,
+            nationalId: true,
+            deletedAt: true,
+          },
+        },
       },
     });
     const displayName = room?.displayName?.trim();
     const customer = room?.customer;
-    if (!room || !displayName || !customer || customer.deletedAt || !isChatPlaceholder(customer)) return false;
+    if (!room || !displayName || !customer || customer.deletedAt || !isChatPlaceholder(customer))
+      return false;
     const externalKey = room.lineUserId ?? room.externalUserId;
     if (!externalKey) return false;
     if (customer.name !== placeholderName(room.channel, externalKey, null)) return false; // ถูกแก้มือแล้ว ไม่ทับ
     if (customer.name === displayName) return false;
     await this.prisma.customer.update({
       where: { id: customer.id },
-      data: { name: displayName, ...(room.channel === ChatChannel.FACEBOOK ? { facebookName: displayName } : {}) },
+      data: {
+        name: displayName,
+        ...(room.channel === ChatChannel.FACEBOOK ? { facebookName: displayName } : {}),
+      },
     });
     return true;
   }

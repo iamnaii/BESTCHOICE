@@ -37,7 +37,11 @@ export class PaymentLinkService {
   /**
    * Create a payment link for a specific contract/installment
    */
-  async createPaymentLink(contractId: string, installmentNo?: number, overrideAmount?: number): Promise<{
+  async createPaymentLink(
+    contractId: string,
+    installmentNo?: number,
+    overrideAmount?: number,
+  ): Promise<{
     token: string;
     url: string;
     expiresAt: Date;
@@ -87,7 +91,9 @@ export class PaymentLinkService {
 
     const url = `${this.baseUrl}/pay/${token}`;
 
-    this.logger.log(`Payment link created for contract ${contract.contractNumber} installment ${payment.installmentNo}`);
+    this.logger.log(
+      `Payment link created for contract ${contract.contractNumber} installment ${payment.installmentNo}`,
+    );
 
     return { token, url, expiresAt, amount };
   }
@@ -270,9 +276,7 @@ export class PaymentLinkService {
 
     // Determine overdue
     const now = new Date();
-    const overduePayments = contract.payments.filter(
-      (p) => p.dueDate && new Date(p.dueDate) < now,
-    );
+    const overduePayments = contract.payments.filter((p) => p.dueDate && new Date(p.dueDate) < now);
     const isOverdue = overduePayments.length > 0;
 
     // Create payment link

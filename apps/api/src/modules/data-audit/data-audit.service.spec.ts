@@ -99,6 +99,15 @@ describe('DataAuditService', () => {
       expect(result.count).toBe(1);
       expect(result.details).toHaveLength(1);
     });
+
+    it('Task 25 (m-5) — count is the true total; only details are capped at 50 (no LIMIT in the query)', async () => {
+      prisma.$queryRaw.mockResolvedValueOnce(
+        Array.from({ length: 62 }, (_, i) => ({ id: `je-${i}`, diff: new Prisma.Decimal('1.00') })),
+      );
+      const result = await service.checkJournalBalance();
+      expect([result.status, result.count, result.details.length]).toEqual(['FAIL', 62, 50]);
+      expect(JSON.stringify(prisma.$queryRaw.mock.calls[0])).not.toContain('LIMIT');
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════
@@ -119,6 +128,15 @@ describe('DataAuditService', () => {
       const result = await service.checkOrphanContracts();
       expect(result.status).toBe('FAIL');
       expect(result.count).toBe(1);
+    });
+
+    it('Task 25 (m-5) — count is the true total; only details are capped at 50 (no LIMIT in the query)', async () => {
+      prisma.$queryRaw.mockResolvedValueOnce(
+        Array.from({ length: 62 }, (_, i) => ({ id: `c-${i}`, status: 'ACTIVE' })),
+      );
+      const result = await service.checkOrphanContracts();
+      expect([result.status, result.count, result.details.length]).toEqual(['FAIL', 62, 50]);
+      expect(JSON.stringify(prisma.$queryRaw.mock.calls[0])).not.toContain('LIMIT');
     });
   });
 
@@ -149,9 +167,13 @@ describe('DataAuditService', () => {
       expect(result.count).toBe(1);
     });
 
-    it('Task 23 — the nightly run caps details at 50; the contract trace reads every row of its scope (same SQL, no LIMIT)', async () => {
-      await service.checkOrphanPayments();
-      expect(JSON.stringify(prisma.$queryRaw.mock.calls[0])).toContain('LIMIT 50');
+    it('Task 23 · Task 25 (m-5) — the nightly run reports the true count and caps details at 50; the contract trace reads every row of its scope (same SQL, no LIMIT)', async () => {
+      prisma.$queryRaw.mockResolvedValueOnce(
+        Array.from({ length: 62 }, (_, i) => ({ id: `p-${i}`, installment_no: i + 1 })),
+      );
+      const nightly = await service.checkOrphanPayments();
+      expect([nightly.count, nightly.details.length]).toEqual([62, 50]);
+      expect(JSON.stringify(prisma.$queryRaw.mock.calls[0])).not.toContain('LIMIT');
 
       prisma.contract.findUnique.mockResolvedValueOnce({
         id: 'c-1',

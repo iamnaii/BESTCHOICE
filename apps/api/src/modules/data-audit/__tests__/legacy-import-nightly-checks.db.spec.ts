@@ -1490,7 +1490,9 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
         },
       });
       expect(paid.count).toBe(62);
-      expect((await run('orphan_payments', [d1])).count).toBe(50); // ตรวจกลางคืนยังตัด details ที่ 50
+      // ตรวจกลางคืน: count = จำนวนจริง · details ตัดที่ 50 (Task 25 · m-5 — เดิม count = 50 หลัง LIMIT ทั้งที่มี 62)
+      const nightly = await run('orphan_payments', [d1]);
+      expect([nightly.count, nightly.details.length]).toEqual([62, 50]);
 
       const trace = new ContractTraceService(prisma as unknown as PrismaService, checks);
       const t = await trace.traceContract(d1);

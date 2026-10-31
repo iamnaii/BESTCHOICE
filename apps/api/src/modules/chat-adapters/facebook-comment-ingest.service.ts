@@ -8,8 +8,10 @@ import { IntegrationConfigService } from '../integrations/integration-config.ser
 import { FacebookCommentClient } from './facebook-comment-client';
 import {
   classifyCommentIngestFailure,
+  commentSkipAlerts,
   FacebookCommentIngestSkipped,
   receiveNotReadyFailure,
+  UNPROJECTED_COMMENT_VERBS,
 } from './facebook-comment-ingest-failure';
 export const commentIdentityKey = (pageId: string, authorId: string) =>
   `facebook-comment:${pageId}:${authorId}`;
@@ -59,8 +61,11 @@ export class FacebookCommentIngestService {
       const result = await this.persist(page, value, entry.time).catch((error: unknown) => {
         // A permanent change is never redelivered, so it must not drop the valid changes after
         // it. Any other failure stops here and the whole entry is redelivered.
-        if (classifyCommentIngestFailure(error).retry) throw error;
-        skipped ??= error as FacebookCommentIngestSkipped;
+        const failure = classifyCommentIngestFailure(error);
+        if (failure.retry) throw error;
+        // One report per entry: an alerting reason wins over an expected one (hide/unhide).
+        if (!skipped || (!commentSkipAlerts(skipped) && failure.alert))
+          skipped = error as FacebookCommentIngestSkipped;
         skippedChanges++;
         return null;
       });
@@ -70,7 +75,7 @@ export class FacebookCommentIngestService {
       if (result.reconcile)
         await this.reconcile(result.threadId, result.commentId, result.revision);
     }
-    // Reported once per entry by the webhook (reason of the first skipped change + total count).
+    // Reported once per entry by the webhook (first alerting reason, else the first reason + total).
     if (skipped)
       throw new FacebookCommentIngestSkipped(skipped.reasonCode, skipped.message, skippedChanges);
     return { persisted, ignored: changes.length - persisted };
@@ -90,12 +95,23 @@ export class FacebookCommentIngestService {
           : value.verb === 'remove'
             ? 'REMOVE'
             : null;
-    // Redelivery carries the same payload: permanent (e.g. a verb this projection does not know).
-    if (!commentId || !postId || !verb)
+    // Redelivery carries the same payload: permanent. hide/unhide are normal events this
+    // projection does not model (not malformed — no alert); any other verb is malformed.
+    if (!commentId || !postId || (!verb && typeof value.verb !== 'string'))
       throw new FacebookCommentIngestSkipped(
         'COMMENT_EVENT_MALFORMED',
         'รูปแบบเหตุการณ์คอมเมนต์ไม่ครบ',
       );
+    if (!verb)
+      throw UNPROJECTED_COMMENT_VERBS.includes(value.verb as string)
+        ? new FacebookCommentIngestSkipped(
+            'COMMENT_VERB_UNSUPPORTED',
+            'ยังไม่รองรับการซ่อน/เลิกซ่อนคอมเมนต์',
+          )
+        : new FacebookCommentIngestSkipped(
+            'COMMENT_EVENT_MALFORMED',
+            'รูปแบบเหตุการณ์คอมเมนต์ไม่ครบ',
+          );
     const parentId = string(value.parent_id, 256);
     const author = object(value.from);
     const authorId = string(author.id, 128);

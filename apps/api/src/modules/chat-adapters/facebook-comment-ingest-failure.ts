@@ -25,10 +25,29 @@ export type CommentIngestSkipReason =
   | 'COMMENT_CONFIG_INCOMPLETE'
   /** Meta answered: token invalid/expired, permission missing, or app not subscribed to feed. */
   | 'COMMENT_META_NOT_READY'
-  /** A comment change without comment_id / post_id / a known verb. */
+  /** A comment change without comment_id / post_id / a verb Meta documents for comments. */
   | 'COMMENT_EVENT_MALFORMED'
+  /** A normal Meta comment event this projection does not model (UNPROJECTED_COMMENT_VERBS). */
+  | 'COMMENT_VERB_UNSUPPORTED'
   /** The change's post differs from the post its stored thread belongs to. */
   | 'COMMENT_POST_MISMATCH';
+
+/**
+ * Comment visibility events (Meta `item: comment, verb: hide | unhide` — our own App Review panel
+ * can trigger them). Not malformed: skipped without redelivery and without an alert (review round
+ * 3 M2). Any other verb outside add / edit / edited / remove stays COMMENT_EVENT_MALFORMED so a new
+ * kind of event is noticed.
+ */
+export const UNPROJECTED_COMMENT_VERBS: readonly string[] = ['hide', 'unhide'];
+
+/** Whether a permanent skip is reported to Sentry. Expected skips are logged at info only. */
+const ALERT: Record<CommentIngestSkipReason, boolean> = {
+  COMMENT_CONFIG_INCOMPLETE: true,
+  COMMENT_META_NOT_READY: true,
+  COMMENT_EVENT_MALFORMED: true,
+  COMMENT_VERB_UNSUPPORTED: false,
+  COMMENT_POST_MISMATCH: true,
+};
 
 export class FacebookCommentIngestSkipped extends Error {
   constructor(
@@ -43,13 +62,21 @@ export class FacebookCommentIngestSkipped extends Error {
   }
 }
 
+/** Whether this permanent skip is alerted (the same table classifyCommentIngestFailure reads). */
+export const commentSkipAlerts = (skip: FacebookCommentIngestSkipped) => ALERT[skip.reasonCode];
+
 export type CommentIngestFailure =
   | { retry: true }
-  | { retry: false; reasonCode: CommentIngestSkipReason; skippedChanges: number };
+  | { retry: false; reasonCode: CommentIngestSkipReason; skippedChanges: number; alert: boolean };
 
 export function classifyCommentIngestFailure(error: unknown): CommentIngestFailure {
   return error instanceof FacebookCommentIngestSkipped
-    ? { retry: false, reasonCode: error.reasonCode, skippedChanges: error.skippedChanges }
+    ? {
+        retry: false,
+        reasonCode: error.reasonCode,
+        skippedChanges: error.skippedChanges,
+        alert: ALERT[error.reasonCode],
+      }
     : { retry: true };
 }
 

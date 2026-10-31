@@ -30,6 +30,30 @@ const answered = (result: GraphResult) => {
     NOT_READY_CODES.includes(error.code)
   );
 };
+/**
+ * debug_token answers 2xx even for a bad token — its verdict lives in `data` (Task 35 round 3).
+ * Proof only when that verdict is complete: an inner error must be a non-transient OAuth 190;
+ * an invalid verdict without an error is Meta's answer; a valid verdict must carry every field the
+ * readiness checks read. Anything else (other inner codes, missing verdict/fields) is unsure.
+ */
+const debugTokenAnswered = (debug: GraphResult, token: Json) => {
+  if (!answered(debug)) return false;
+  if (!debug.ok) return true;
+  if (token.error !== undefined) {
+    const error = object(token.error);
+    return error.code === 190 && error.is_transient !== true;
+  }
+  if (token.is_valid === false) return true;
+  return (
+    token.is_valid === true &&
+    typeof token.app_id === 'string' &&
+    typeof token.type === 'string' &&
+    typeof token.profile_id === 'string' &&
+    typeof token.expires_at === 'number' &&
+    typeof token.data_access_expires_at === 'number' &&
+    Array.isArray(token.scopes)
+  );
+};
 
 /** Fixed-origin Graph adapter. Never logs provider bodies/credentials or retries a POST. */
 @Injectable()
@@ -199,7 +223,8 @@ export class FacebookCommentGraphTransport implements FacebookCommentTransport {
     const receive = checks.slice(0, 5).every((check) => check.passed);
     const publicReply = receive && has('pages_manage_engagement');
     // Proof only when Meta answered all three readiness requests (Task 35).
-    const metaAnswered = answered(debug) && answered(identity) && subscriptionsAnswered;
+    const metaAnswered =
+      debugTokenAnswered(debug, token) && answered(identity) && subscriptionsAnswered;
     return {
       graphVersion: GRAPH_VERSION,
       verified: valid,

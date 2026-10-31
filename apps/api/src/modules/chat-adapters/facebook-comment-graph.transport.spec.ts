@@ -220,6 +220,13 @@ describe('Live Graph comment adapter (mock HTTP; no Meta calls)', () => {
         'app token rejected on debug_token (OAuth 190)',
         () => (graphFail['/v25.0/debug_token'] = { status: 400, body: { error: { code: 190 } } }),
       ],
+      [
+        'debug_token verdict: invalid with an OAuth 190 inside (round 3 M1)',
+        () => {
+          token.is_valid = false;
+          token.error = { code: 190, message: 'Session has expired' };
+        },
+      ],
     ])('Meta answered every request: %s → META_PERMISSION', async (_l, arrange) => {
       arrange();
       expect(await evidence()).toMatchObject({ receive: false, notReady: 'META_PERMISSION' });
@@ -252,6 +259,32 @@ describe('Live Graph comment adapter (mock HTTP; no Meta calls)', () => {
       ['subscriptions HTML 502', () => (graphFail['/v25.0/123/subscribed_apps'] = 'html')],
       ['network failure on me', () => (graphFail['/v25.0/me'] = 'network')],
       ['HTML 502 on debug_token', () => (graphFail['/v25.0/debug_token'] = 'html')],
+      // Round 3 M1: debug_token answers 2xx even for a bad token — its verdict lives in `data`.
+      [
+        'debug_token 2xx, inner error is not OAuth (code 1)',
+        () => {
+          token.is_valid = false;
+          token.error = { code: 1, message: 'An unknown error occurred' };
+        },
+      ],
+      [
+        'debug_token 2xx, inner OAuth error flagged transient',
+        () => {
+          token.is_valid = false;
+          token.error = { code: 190, is_transient: true };
+        },
+      ],
+      [
+        'debug_token 2xx, inner error without a code',
+        () => {
+          token.is_valid = false;
+          token.error = { message: 'x' };
+        },
+      ],
+      ['debug_token 2xx without a verdict (empty data)', () => (token = {})],
+      ['valid token missing data_access_expires_at', () => delete token.data_access_expires_at],
+      ['valid token missing expires_at', () => delete token.expires_at],
+      ['valid token without a scopes list', () => delete token.scopes],
     ])('no proof: %s → receive false, notReady absent (retryable)', async (_l, arrange) => {
       arrange();
       const result = await evidence();

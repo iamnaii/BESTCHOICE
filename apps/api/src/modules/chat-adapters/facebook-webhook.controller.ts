@@ -195,9 +195,13 @@ export class FacebookWebhookController {
         if (failure.retry) throw error;
         // ids + reason code only — never the comment text, author or payload.
         const pageId = typeof entry?.id === 'string' && entry.id.length <= 128 ? entry.id : null;
-        this.logger.warn(
-          `[FB Webhook] comment event skipped (${failure.reasonCode}) page=${pageId ?? '-'} changes=${failure.skippedChanges}`,
-        );
+        const line = `[FB Webhook] comment event skipped (${failure.reasonCode}) page=${pageId ?? '-'} changes=${failure.skippedChanges}`;
+        // Expected skips (hide/unhide) are logged only — no alert noise.
+        if (!failure.alert) {
+          this.logger.log(line);
+          continue;
+        }
+        this.logger.warn(line);
         Sentry.captureMessage('Facebook comment event skipped — not retryable', {
           level: 'warning',
           tags: {

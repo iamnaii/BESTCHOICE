@@ -4,6 +4,7 @@ import {
   classifyCommentIngestFailure,
   FacebookCommentIngestSkipped,
   receiveNotReadyFailure,
+  UNPROJECTED_COMMENT_VERBS,
 } from './facebook-comment-ingest-failure';
 
 /**
@@ -18,7 +19,24 @@ describe('classifyCommentIngestFailure — one decision for every comment-ingest
       retry: false,
       reasonCode: 'COMMENT_EVENT_MALFORMED',
       skippedChanges: 2,
+      alert: true,
     });
+  });
+
+  // Review round 3 M2: hide/unhide are normal Meta comment events the projection does not model —
+  // permanent (no redelivery) but expected, so they are logged and never alerted.
+  it('unsupported comment verb → permanent, not alerted', () => {
+    const skipped = new FacebookCommentIngestSkipped('COMMENT_VERB_UNSUPPORTED', 'x');
+    expect(classifyCommentIngestFailure(skipped)).toEqual({
+      retry: false,
+      reasonCode: 'COMMENT_VERB_UNSUPPORTED',
+      skippedChanges: 1,
+      alert: false,
+    });
+  });
+
+  it('only comment visibility verbs are "unsupported"; other unknown verbs stay malformed', () => {
+    expect(UNPROJECTED_COMMENT_VERBS).toEqual(['hide', 'unhide']);
   });
 
   it.each([
@@ -51,6 +69,7 @@ describe('receiveNotReadyFailure — capability that cannot receive', () => {
       retry: false,
       reasonCode: 'COMMENT_CONFIG_INCOMPLETE',
       skippedChanges: 3,
+      alert: true,
     });
   });
 
@@ -63,6 +82,7 @@ describe('receiveNotReadyFailure — capability that cannot receive', () => {
       retry: false,
       reasonCode: 'COMMENT_META_NOT_READY',
       skippedChanges: 1,
+      alert: true,
     });
   });
 

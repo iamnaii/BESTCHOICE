@@ -53,7 +53,10 @@ describe('FacebookWebhookController — permanent comment failures do not hold M
     };
   };
   const skipped = (
-    code: 'COMMENT_CONFIG_INCOMPLETE' | 'COMMENT_EVENT_MALFORMED' = 'COMMENT_CONFIG_INCOMPLETE',
+    code:
+      | 'COMMENT_CONFIG_INCOMPLETE'
+      | 'COMMENT_EVENT_MALFORMED'
+      | 'COMMENT_VERB_UNSUPPORTED' = 'COMMENT_CONFIG_INCOMPLETE',
   ) =>
     new FacebookCommentIngestSkipped(
       code,
@@ -96,6 +99,24 @@ describe('FacebookWebhookController — permanent comment failures do not hold M
     expect(sent).not.toContain('ข้อความคอมเมนต์ลับของลูกค้า');
     expect(sent).not.toContain('ชื่อลูกค้าลับ');
     expect(sent).not.toContain('author-1');
+  });
+
+  // Review round 3 M2: hide/unhide are expected — Messenger continues, info log, no Sentry.
+  it('unsupported comment verb → Messenger processed, 200, logged at info and not alerted', async () => {
+    const info = jest.spyOn((controller as any).logger, 'log').mockImplementation(() => undefined);
+    const warn = jest.spyOn((controller as any).logger, 'warn').mockImplementation(() => undefined);
+    ingest.ingest.mockRejectedValue(skipped('COMMENT_VERB_UNSUPPORTED'));
+    const body = { object: 'page', entry: [entry('1234', 'mid-1')] };
+    const { req, signature } = signed(body);
+    await expect(controller.handleWebhook(req, body, signature)).resolves.toBe('EVENT_RECEIVED');
+    expect(messaging).toHaveBeenCalledTimes(1);
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
+    expect(info).toHaveBeenCalledWith(
+      '[FB Webhook] comment event skipped (COMMENT_VERB_UNSUPPORTED) page=1234 changes=1',
+    );
+    expect(warn).not.toHaveBeenCalled();
+    info.mockRestore();
+    warn.mockRestore();
   });
 
   it('transient failure → non-2xx and Messenger is not processed (unchanged)', async () => {

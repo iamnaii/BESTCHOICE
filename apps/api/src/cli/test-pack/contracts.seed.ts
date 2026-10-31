@@ -9,7 +9,7 @@ import {
   seedTestContracts,
 } from '../seed-test-contracts.cli';
 import { round2, sweepBadDebtProvisions } from './_helpers';
-import { UNDIALABLE_TEST_PHONE_PREFIX } from './_drive-helpers';
+import { testDraftCustomerPhone } from './_test-customer-phone';
 
 /** จำนวน scenario ของ seeder เดิม — ตรงกับ SCENARIOS.length ใน seed-test-contracts.cli.ts */
 const CONTRACT_COUNT = 7;
@@ -200,9 +200,9 @@ async function seedDraftContract(
         name: `ทดสอบ รอเปิดสัญญา (DRAFT) ${contractSeq}`,
         // เบอร์โทรไม่ได้โดยเจตนา (S4) — สัญญาใบนี้เป็นใบเดียวที่ไปถึง activate ซึ่งส่ง
         // SMS จริงถึงเบอร์นี้บน NODE_ENV=production (ดูด่านข้อ 9 ด้านบน); คอลัมน์เป็น
-        // String ธรรมดา ไม่ unique · ก้าวเปิดสัญญาของโหมดเดินเรื่องเปิดเฉพาะลูกค้าที่เบอร์ขึ้นต้นด้วย prefix นี้
-        // และไม่มี LINE การเงิน (Task 24 fix round 1 M-5 — ACTIVATION_SILENT_CUSTOMER_WHERE ใน _drive-helpers.ts)
-        phone: `${UNDIALABLE_TEST_PHONE_PREFIX}00000${String(contractSeq % 100).padStart(2, '0')}`,
+        // String ธรรมดา ไม่ unique · ก้าวเปิดสัญญาของโหมดเดินเรื่องเปิดเฉพาะลูกค้าที่เบอร์ตรงรูปนี้ทุกตัวอักษรและไม่มี LINE การเงิน
+        // (Task 24 fix round 1 M-5 / round 2 m-4 — ACTIVATION_SILENT_CUSTOMER_WHERE ใน _drive-helpers.ts)
+        phone: testDraftCustomerPhone(contractSeq),
         prefix: 'นาย',
         occupation: 'ทดสอบ',
         addressCurrent: TEST_CUSTOMER_ADDRESS, // marker ให้ cleanup เดิมกวาดเจอ

@@ -67,7 +67,10 @@ if [ "${DRY_RUN:-}" != "1" ]; then
   fi
   export ANTHROPIC_API_KEY
   # ขั้น 1 อ่าน creds Facebook จาก Integration Hub — ค่าเข้ารหัสต้องใช้ key ตัวเดียวกับ API
-  INTEGRATION_ENCRYPTION_KEY=$(gcloud secrets versions access latest --secret=INTEGRATION_ENCRYPTION_KEY 2>/dev/null) \
+  # = เวอร์ชันที่ deploy-gcp.yml pin ไว้ (ไม่ใช่ latest — เวอร์ชันใหม่ที่ยังไม่ได้ deploy ถอดค่าเดิมไม่ได้)
+  KEY_VERSION=$(sed -n 's/.*INTEGRATION_ENCRYPTION_KEY=INTEGRATION_ENCRYPTION_KEY:\([0-9][0-9]*\).*/\1/p' \
+    .github/workflows/deploy-gcp.yml | head -1)
+  INTEGRATION_ENCRYPTION_KEY=$(gcloud secrets versions access "${KEY_VERSION:-latest}" --secret=INTEGRATION_ENCRYPTION_KEY 2>/dev/null) \
     || { INTEGRATION_ENCRYPTION_KEY=""; printf '⚠ อ่าน secret INTEGRATION_ENCRYPTION_KEY ไม่ได้ — creds ที่เข้ารหัสจะอ่านเป็น "ยังไม่ตั้งค่า"\n'; }
   export INTEGRATION_ENCRYPTION_KEY
 fi

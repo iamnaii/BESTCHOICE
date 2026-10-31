@@ -1,7 +1,8 @@
 # INTEGRATION_ENCRYPTION_KEY บน prod — ตรวจหลัง deploy (2026-10-31)
 
 ใช้กับ deploy แรกที่ `bestchoice-api` ได้ secret `INTEGRATION_ENCRYPTION_KEY` (`.github/workflows/deploy-gcp.yml`
-`--set-secrets` · worker `bestchoice-worker` คัดลอก secret ref จาก API เอง) และทุกครั้งที่สงสัยว่า key ไม่ตรงกับค่าที่เก็บไว้
+`--set-secrets` **pin เวอร์ชัน `:1`** ไม่ใช่ `:latest` · worker `bestchoice-worker` คัดลอก secret ref จาก API เอง) และทุกครั้ง
+ที่สงสัยว่า key ไม่ตรงกับค่าที่เก็บไว้
 
 ## ระบบทำอะไร
 
@@ -25,14 +26,17 @@
 
 ## หลัง deploy
 
-1. หาบรรทัดบูตของ revision ใหม่ (อ่าน log อย่างเดียว ไม่ต้องอ่าน secret):
+1. หาบรรทัดบูตของ revision ใหม่ ทั้ง API และ worker (อ่าน log อย่างเดียว ไม่ต้องอ่าน secret):
 
    ```bash
    gcloud logging read \
-     'resource.type="cloud_run_revision" AND resource.labels.service_name="bestchoice-api" AND "integration encrypted fields"' \
-     --project=bestchoice-prod --freshness=2h --limit=5 \
-     --format='value(timestamp,resource.labels.revision_name,jsonPayload.message,textPayload)'
+     'resource.type="cloud_run_revision" AND resource.labels.service_name=("bestchoice-api" OR "bestchoice-worker") AND "integration encrypted fields"' \
+     --project=bestchoice-prod --freshness=2h --limit=10 \
+     --format='value(timestamp,resource.labels.service_name,resource.labels.revision_name,jsonPayload.message,textPayload)'
    ```
+
+   ทุก instance เขียนบรรทัดของตัวเอง — ผลต้องเหมือนกันทุกบรรทัดของ revision เดียวกัน · worker มีเฉพาะเมื่อเปิด
+   `CRON_WORKER_ENABLED`
 
 2. อ่านผล (ทำข้อแรกที่ตรงก่อน):
    - `key=malformed` → **อย่ากรอกค่าใหม่ในหน้าเชื่อมต่อ** (ค่าที่บันทึกตอนนี้จะไม่ถูกเข้ารหัส) · ให้ผู้ดูแล GCP เพิ่ม version
@@ -53,13 +57,19 @@
      ช่องที่อยู่ในวงเล็บ `ok` ทำตามข้อก่อนหน้า
    - ไม่มีบรรทัดเลย → revision นี้ไม่ได้รับ key (ตรวจ `--set-secrets` ของ deploy) · ถ้าเจอ
      `integration encrypted fields: check failed` แทน = อ่าน DB ไม่ได้ตอนบูต ดู log บรรทัดนั้นแล้วรอ revision ถัดไป
-3. หลังกรอกใหม่ บรรทัดบูตครั้งถัดไปต้องเป็น `failed=0`
+3. หลังกรอกใหม่: กด "บันทึก" แล้วหน้าต่างการ์ด**ปิดเอง** — เปิดการ์ดเดิมอีกครั้งแล้วกด "ทดสอบการเชื่อมต่อ" ·
+   ถ้าขึ้น "ยังไม่ได้ตั้งค่า…" ทั้งที่เพิ่งบันทึก = คำขอไปตก instance อื่นที่ยังจำค่าเก่าไว้ (`getConfig` cache 5 นาที ล้างเฉพาะ
+   instance ที่รับการบันทึก) — รอ 5 นาทีแล้วกดใหม่ · บรรทัดบูตครั้งถัดไปต้องเป็น `failed=0`
 
 ## ห้าม
 
-- ห้ามลบ/เปลี่ยนเวอร์ชัน secret `INTEGRATION_ENCRYPTION_KEY` — ค่าที่บันทึกหลัง deploy นี้ผูกกับ key ตัวนี้
-  (ยังไม่มีสคริปต์เข้ารหัสใหม่ — หมุน key = ต้องกรอกทุกช่องที่ `failed` ใหม่)
+- ห้ามปิด/ลบเวอร์ชันที่ `deploy-gcp.yml` pin ไว้ และ**ห้ามแค่แก้เลข pin** — ค่าที่บันทึกหลัง deploy นี้ผูกกับ key ตัวนี้
+  (ยังไม่มีสคริปต์เข้ารหัสใหม่) · หมุน key = แผนครบชุด: (1) `gcloud secrets versions add` ด้วย `openssl rand -hex 32`
+  (2) จดรายการช่องในวงเล็บ `ok` ของบรรทัดบูตปัจจุบัน (3) แก้เลข pin + deploy (4) ช่องเหล่านั้นจะเป็น `failed` —
+  OWNER กรอกใหม่ทุกช่องแล้วทดสอบตามข้อ 3 (5) ปิดเวอร์ชันเก่าเมื่อบรรทัดบูตเป็น `failed=0` แล้วเท่านั้น
+- ดูเลข/สถานะเวอร์ชันได้โดยไม่อ่านค่า: `gcloud secrets versions list INTEGRATION_ENCRYPTION_KEY --project bestchoice-prod
+  --format='value(name,state)'` — **ห้าม** `versions access`
 - ห้าม log / echo ค่า secret หรือค่าใน `system_config` เพื่อ "ตรวจ" — ใช้บรรทัดบูตแทน
-- CLI ที่อ่าน creds จาก Integration Hub บนเครื่องตัวเอง (`scripts/ops/train-ai-prod.sh` ดึง key ให้แล้ว ·
+- CLI ที่อ่าน creds จาก Integration Hub บนเครื่องตัวเอง (`scripts/ops/train-ai-prod.sh` ดึงเวอร์ชันที่ `deploy-gcp.yml` pin ไว้ให้แล้ว ·
   `backfill-fb-profiles.cli.ts`) ต้องได้ key ตัวเดียวกัน ไม่งั้นค่าที่เข้ารหัสอ่านเป็น "ยังไม่ตั้งค่า" ·
   ด่าน PEAK ของ `import:legacy-backoffice` นับค่า PEAK ที่ถอดไม่ได้ว่า "ตั้งค่าอยู่" (ปฏิเสธการเขียน) ไม่ว่า CLI มี key หรือไม่

@@ -1394,11 +1394,18 @@ describe('VerificationService', () => {
           verifiedAt: { not: null },
           OR: [{ lineUserId: { in: ['U_OLD'] } }],
         },
-        data: { verifiedAt: null },
+        // Task 33 — ห้องที่หลุดจากการยืนยันจำเวลาไว้ (ป้าย "ยกเลิกผูกแล้ว" ในอินบ็อกซ์)
+        data: { verifiedAt: null, financeLineUnlinkedAt: expect.any(Date) },
       });
       expect(tx.chatRoom.updateMany).toHaveBeenNthCalledWith(2, {
         where: { lineUserId: 'U123', channel: 'LINE_FINANCE' },
-        data: { customerId: 'c1', verifiedAt: expect.any(Date), verificationAttempts: 0 },
+        // Task 33 — ยืนยันแล้ว = ล้างเวลาที่เคยหลุด
+        data: {
+          customerId: 'c1',
+          verifiedAt: expect.any(Date),
+          verificationAttempts: 0,
+          financeLineUnlinkedAt: null,
+        },
       });
     });
 
@@ -1416,11 +1423,18 @@ describe('VerificationService', () => {
           verifiedAt: { not: null },
           OR: [{ customerId: { in: ['c-other'] } }],
         },
-        data: { verifiedAt: null },
+        // Task 33 — ห้องที่หลุดจากการยืนยันจำเวลาไว้ (ป้าย "ยกเลิกผูกแล้ว" ในอินบ็อกซ์)
+        data: { verifiedAt: null, financeLineUnlinkedAt: expect.any(Date) },
       });
       expect(tx.chatRoom.updateMany).toHaveBeenNthCalledWith(2, {
         where: { lineUserId: 'U123', channel: 'LINE_FINANCE' },
-        data: { customerId: 'c1', verifiedAt: expect.any(Date), verificationAttempts: 0 },
+        // Task 33 — ยืนยันแล้ว = ล้างเวลาที่เคยหลุด
+        data: {
+          customerId: 'c1',
+          verifiedAt: expect.any(Date),
+          verificationAttempts: 0,
+          financeLineUnlinkedAt: null,
+        },
       });
     });
 

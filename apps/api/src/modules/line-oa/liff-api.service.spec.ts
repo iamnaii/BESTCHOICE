@@ -344,7 +344,7 @@ describe('LiffApiService', () => {
           verifiedAt: { not: null },
           OR: [{ lineUserId: { in: ['U_line'] } }, { customerId: { in: ['cust1'] } }],
         },
-        data: { verifiedAt: null },
+        data: { verifiedAt: null, financeLineUnlinkedAt: expect.any(Date) },
       });
     });
 

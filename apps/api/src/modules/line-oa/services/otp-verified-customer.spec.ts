@@ -5,7 +5,10 @@ import {
   LEGACY_SHOP_LINE_ID_CUTOFF,
   financeLineRecipient,
   findFinanceLineRecipient,
+  findFinanceLineRoomStatuses,
   findOtpVerifiedCustomerId,
+  findOtpVerifiedRoomCustomerId,
+  VERIFIED_FINANCE_LINK_WHERE,
   findShopLiffCustomerId,
   withFinanceLineStatus,
   withVerifiedFinanceLine,
@@ -193,5 +196,102 @@ describe('withFinanceLineStatus / FINANCE_LINE_STATUS_SELECT', () => {
         withVerifiedFinanceLine({ lineLinks }).hasVerifiedLine,
       );
     }
+  });
+});
+
+/**
+ * Task 33 (mockup A2/A3) — สถานะ LINE การเงินของห้องในอินบ็อกซ์: `verified` ใช้กติกาเดียวกับข้อความสำเร็จรูปของห้องการเงิน
+ * (Task 24 round 3 — `findOtpVerifiedRoomCustomerId` ย้ายมาจาก CannedResponseSenderService) · ไม่คืน U-id
+ */
+describe('findOtpVerifiedRoomCustomerId (กติกาเดียวของ "ห้องนี้ยืนยัน OTP กับลูกค้าของห้อง")', () => {
+  const prisma = { customerLineLink: { findFirst: jest.fn() } };
+  beforeEach(() => prisma.customerLineLink.findFirst.mockReset());
+
+  it('LINE ของห้องยืนยัน OTP กับลูกค้าของห้อง → ลูกค้าคนนั้น (เกณฑ์ VERIFIED_FINANCE_LINK_WHERE)', async () => {
+    prisma.customerLineLink.findFirst.mockResolvedValue({ customerId: 'c1' });
+    await expect(
+      findOtpVerifiedRoomCustomerId(prisma as never, { lineUserId: 'U1', customerId: 'c1' }),
+    ).resolves.toBe('c1');
+    expect(prisma.customerLineLink.findFirst).toHaveBeenCalledWith({
+      where: { lineUserId: 'U1', ...VERIFIED_FINANCE_LINK_WHERE },
+      select: { customerId: true },
+    });
+  });
+
+  it('ยืนยันกับลูกค้าคนอื่น / ไม่มีแถว / ห้องไม่มี LINE หรือลูกค้า → undefined', async () => {
+    prisma.customerLineLink.findFirst.mockResolvedValue({ customerId: 'c2' });
+    await expect(
+      findOtpVerifiedRoomCustomerId(prisma as never, { lineUserId: 'U1', customerId: 'c1' }),
+    ).resolves.toBeUndefined();
+    prisma.customerLineLink.findFirst.mockResolvedValue(null);
+    await expect(
+      findOtpVerifiedRoomCustomerId(prisma as never, { lineUserId: 'U1', customerId: 'c1' }),
+    ).resolves.toBeUndefined();
+    await expect(
+      findOtpVerifiedRoomCustomerId(prisma as never, { lineUserId: null, customerId: 'c1' }),
+    ).resolves.toBeUndefined();
+  });
+});
+
+describe('findFinanceLineRoomStatuses', () => {
+  const prisma = { customerLineLink: { findMany: jest.fn() } };
+  const at = new Date('2026-10-30T05:00:00.000Z');
+  const legacy = new Date('2026-10-20T04:00:00.000Z');
+  beforeEach(() => prisma.customerLineLink.findMany.mockReset());
+
+  const room = (over: Record<string, unknown>) => ({
+    id: 'r',
+    channel: 'LINE_FINANCE',
+    lineUserId: 'U1',
+    customerId: 'c1',
+    financeLineUnlinkedAt: null as Date | null,
+    ...over,
+  });
+
+  it('ไม่มีห้อง LINE การเงินที่มีลูกค้า → ไม่ query · ห้องช่องอื่น/ไม่มีลูกค้า/ไม่มี LINE ไม่อยู่ในผล', async () => {
+    const result = await findFinanceLineRoomStatuses(prisma as never, [
+      room({ id: 'shop', channel: 'LINE_SHOP' }),
+      room({ id: 'fb', channel: 'FACEBOOK', lineUserId: null }),
+      room({ id: 'orphan', customerId: null }),
+    ]);
+    expect(prisma.customerLineLink.findMany).not.toHaveBeenCalled();
+    expect(result.size).toBe(0);
+  });
+
+  it('verified / ยกเลิกผูก (เวลาของห้องก่อน · ถอยไปแถว link ที่ปิดของคู่ LINE-ลูกค้าเดียวกัน) / ไม่เคยผูก', async () => {
+    prisma.customerLineLink.findMany
+      // แถว OTP ที่ยังผูก (VERIFIED_FINANCE_LINK_WHERE)
+      .mockResolvedValueOnce([
+        { lineUserId: 'U-ok', customerId: 'c1' },
+        { lineUserId: 'U-moved', customerId: 'c9' },
+      ])
+      // แถวที่ปิดแล้ว (ข้อมูลก่อนห้องมีเวลาของตัวเอง)
+      .mockResolvedValueOnce([
+        { lineUserId: 'U-legacy', customerId: 'c1', unlinkedAt: legacy },
+        { lineUserId: 'U-other', customerId: 'c7', unlinkedAt: legacy },
+      ]);
+    const result = await findFinanceLineRoomStatuses(prisma as never, [
+      room({ id: 'ok', lineUserId: 'U-ok', financeLineUnlinkedAt: at }),
+      room({ id: 'stamped', lineUserId: 'U-gone', financeLineUnlinkedAt: at }),
+      room({ id: 'legacy', lineUserId: 'U-legacy' }),
+      room({ id: 'other', lineUserId: 'U-other' }),
+      room({ id: 'moved', lineUserId: 'U-moved' }),
+      room({ id: 'never', lineUserId: 'U-never' }),
+    ]);
+    expect(Object.fromEntries(result)).toEqual({
+      ok: { verified: true, unlinkedAt: null },
+      stamped: { verified: false, unlinkedAt: at.toISOString() },
+      legacy: { verified: false, unlinkedAt: legacy.toISOString() },
+      // แถวที่ปิดเป็นของลูกค้าคนอื่น — ไม่ใช่ "LINE นี้ยกเลิกผูกกับลูกค้าของห้อง"
+      other: { verified: false, unlinkedAt: null },
+      // LINE ยืนยันกับลูกค้าอื่นอยู่ (ไม่ใช่ลูกค้าของห้อง) = ไม่ verified
+      moved: { verified: false, unlinkedAt: null },
+      never: { verified: false, unlinkedAt: null },
+    });
+    expect(prisma.customerLineLink.findMany).toHaveBeenNthCalledWith(1, {
+      where: { lineUserId: { in: expect.any(Array) }, ...VERIFIED_FINANCE_LINK_WHERE },
+      select: { lineUserId: true, customerId: true },
+    });
+    expect(JSON.stringify(Object.fromEntries(result))).not.toContain('U-');
   });
 });

@@ -128,7 +128,8 @@ describe('unlinkFinanceLine', () => {
         verifiedAt: { not: null },
         OR: [{ lineUserId: { in: ['U1'] } }, { customerId: { in: ['c1'] } }],
       },
-      data: { verifiedAt: null },
+      // Task 33 — ห้องจำเวลาที่หลุดจากการยืนยัน (ป้าย "ยกเลิกผูกแล้ว" ในอินบ็อกซ์) = เวลาเดียวกับแถว link ที่ปิด
+      data: { verifiedAt: null, financeLineUnlinkedAt: at },
     });
   });
 
@@ -145,7 +146,7 @@ describe('unlinkFinanceLine', () => {
         verifiedAt: { not: null },
         OR: [{ lineUserId: { in: ['U9'] } }, { customerId: { in: ['c1'] } }],
       },
-      data: { verifiedAt: null },
+      data: { verifiedAt: null, financeLineUnlinkedAt: at },
     });
   });
 });
@@ -255,7 +256,7 @@ describe('clearFinanceRoomVerification', () => {
         verifiedAt: { not: null },
         OR: [{ lineUserId: { in: ['U1'] } }],
       },
-      data: { verifiedAt: null },
+      data: { verifiedAt: null, financeLineUnlinkedAt: expect.any(Date) },
     });
   });
 });

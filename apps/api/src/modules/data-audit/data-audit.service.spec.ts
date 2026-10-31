@@ -200,7 +200,7 @@ describe('DataAuditService', () => {
       );
     });
 
-    it('Task 25 (r-1) — path (c) backs only the rows the JP4 paid (its date + its stamped range), with the same fragment as the overpaid JP4 allowance', async () => {
+    it('Task 25 (r-1) — path (c) backs only the rows the JP4 paid (its posted_at + its stamped range · a range-less JP4 also by the note prefix), with the same fragment as the overpaid JP4 allowance', async () => {
       await service.checkOrphanPayments();
       await service.checkOverpaidContracts();
       const [orphanCall, overpaidCall] = prisma.$queryRaw.mock.calls;

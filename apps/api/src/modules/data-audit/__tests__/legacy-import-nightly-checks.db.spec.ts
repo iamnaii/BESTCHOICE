@@ -1882,6 +1882,29 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
         );
         await prisma.payment.update({ where: { id: row6.id }, data: { notes: row6.notes } });
 
+        // ส่วนเผื่อค่าปรับของ overpaid_contracts ผ่านทางคำนำหน้า (fix round 2 · re-review nit 5): JP4 รูปเดียวกัน (ไม่มีช่วง · posted_at ≠ paid_date)
+        // เก็บค่าปรับ 100 ของงวด 7 ไว้ใน amountPaid (Cr 42-1103 อยู่ในรายการ JP4 ระดับสัญญา) ⇒ ไม่ติด · ถอดคำนำหน้า ⇒ ไม่มีอะไรบอกว่า JP4 จ่าย → ติด 100
+        const row7 = await paymentOf(a7, 7);
+        expect(row7.notes).toBe(EARLY_PAYOFF_PAYMENT_NOTE_PREFIX);
+        await prisma.payment.update({
+          where: { id: row7.id },
+          data: { lateFee: D(100), amountPaid: row7.amountDue.plus(100) },
+        });
+        expect((await run('overpaid', [a7])).count).toBe(0);
+        await prisma.payment.update({ where: { id: row7.id }, data: { notes: null } });
+        expect((await run('overpaid', [a7])).details).toEqual([
+          {
+            id: a7,
+            contract_number: `TEST-T16N-${stamp}-A7`,
+            installment_nos: [7],
+            overpay: '100.00',
+          },
+        ]);
+        await prisma.payment.update({
+          where: { id: row7.id },
+          data: { notes: row7.notes, lateFee: row7.lateFee, amountPaid: row7.amountPaid },
+        });
+
         // JP4 ที่มีช่วงงวดตัดสินแบบเดิมทุกข้อ (วันที่ + ช่วง) — คำนำหน้าไม่ใช่ข้อยกเว้นของมัน
         await prisma.journalEntry.update({
           where: { id: entry.id },

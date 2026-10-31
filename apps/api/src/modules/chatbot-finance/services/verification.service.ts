@@ -21,7 +21,10 @@ import { CustomerMergeService, SYSTEM_ACTOR } from '../../chat-prospects/custome
 import { JourneyEntryWriter } from '../../customer-journey/journey-entry-writer.service';
 import { lineLinkedEntry } from '../../customer-journey/chat-identity-entries';
 import { RichMenuService } from '../../line-oa/rich-menu/rich-menu.service';
-import { clearFinanceRoomVerification } from '../../line-oa/services/finance-line-link';
+import {
+  clearFinanceRoomVerification,
+  lockCustomersForFinanceLineBind,
+} from '../../line-oa/services/finance-line-link';
 import { VERIFIED_FINANCE_LINK_WHERE } from '../../line-oa/services/otp-verified-customer';
 
 const OTP_TTL_MS = 5 * 60 * 1000; // 5 นาที
@@ -608,18 +611,19 @@ export class VerificationService {
       previous.deletedAt !== null;
     const linkedAt = new Date();
     await this.prisma.$transaction(async (tx) => {
+      // Task 29 (เจ้าของตัดสิน 31 ต.ค. — Task 27 review M-2) — ล็อกแถวลูกค้าก่อน (ลูกค้าที่ผูก + ผู้ถือแถว link ของ LINE นี้ + ผู้ถือคอลัมน์
+      // เรียง id) แล้วค่อยแถว link → ห้อง = ลำดับเดียวกับทางยกเลิกผูก (ปุ่ม/PATCH ของพนักงาน · LIFF) ⇒ ยืนยัน OTP พร้อมพนักงานกดยกเลิกผูก
+      // ไม่ deadlock อีก (เดิมล็อก ห้อง/แถว link → ลูกค้า สวนทาง)
+      const { lineHolderId } = await lockCustomersForFinanceLineBind(tx, lineUserId, customerId);
       // Task 24 M-8 — ห้องที่ verified ค้างเมื่อ LINE หลุดจากลูกค้า (helper เดียวกับยกเลิกผูก · ก่อนตั้งห้องของ LINE นี้ด้านล่าง):
       // ชี้แถวของลูกค้าไป LINE ใหม่ → LINE เดิมไม่ยืนยันแล้ว · ย้ายแถวของ LINE นี้มาจากลูกค้าอื่น → ลูกค้าเดิมไม่เหลือ LINE ที่ยืนยัน
-      const lineRow =
-        plan.kind === 'upsert-by-line'
-          ? await tx.customerLineLink.findUnique({
-              where: { lineUserId_channel: { lineUserId, channel: LineChannelType.FINANCE } },
-              select: { customerId: true },
-            })
+      const movedFrom =
+        plan.kind === 'upsert-by-line' && lineHolderId && lineHolderId !== customerId
+          ? lineHolderId
           : null;
       await clearFinanceRoomVerification(tx, {
         lineUserIds: plan.kind === 'repoint-customer-row' ? [plan.previousLineUserId] : [],
-        customerIds: lineRow && lineRow.customerId !== customerId ? [lineRow.customerId] : [],
+        customerIds: movedFrom ? [movedFrom] : [],
       });
       if (plan.kind === 'repoint-customer-row') {
         await tx.customerLineLink.update({

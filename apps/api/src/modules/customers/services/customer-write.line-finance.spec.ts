@@ -35,6 +35,7 @@ describe('CustomerWriteService — LINE การเงินจากฟอร�
       });
     return {
       $executeRaw: log('lock', 1),
+      $queryRaw: log('lockCustomer', []), // Task 29 — lockFinanceLineCustomers (แถวลูกค้าก่อนแถว link/ห้อง)
       customer: {
         findFirst: log('findFirst'),
         findUnique: log('findUnique'),
@@ -122,6 +123,7 @@ describe('CustomerWriteService — LINE การเงินจากฟอร�
       const updated = await service.update('c1', { name: 'x', lineIdFinance: requested } as never);
       expect(calls).toEqual([
         'root.$transaction',
+        'tx.lockCustomer', // Task 29 — ล็อกแถวลูกค้าก่อน (ลำดับเดียวกับ bind)
         'tx.linkRows', // LINE ของแถวที่กำลังปิด (Task 24 M-8)
         'tx.update', // unlinkFinanceLine — ล้างคอลัมน์ของลูกค้าคนนี้
         'tx.closeLink', // ปิดแถว customer_line_links ของลูกค้าคนนี้

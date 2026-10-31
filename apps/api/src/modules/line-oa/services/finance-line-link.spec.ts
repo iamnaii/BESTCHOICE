@@ -2,6 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import {
   clearFinanceRoomVerification,
   LINE_FINANCE_LINK_REQUIRES_OTP_MESSAGE,
+  lockFinanceLineCustomers,
   staffLineFinanceChange,
   unlinkFinanceLine,
 } from './finance-line-link';
@@ -51,13 +52,16 @@ describe('staffLineFinanceChange', () => {
 describe('unlinkFinanceLine', () => {
   const at = new Date('2026-11-01T03:00:00Z');
   let tx: {
-    customer: { update: jest.Mock; updateMany: jest.Mock };
+    $queryRaw: jest.Mock;
+    customer: { findMany: jest.Mock; update: jest.Mock; updateMany: jest.Mock };
     customerLineLink: { updateMany: jest.Mock; findMany: jest.Mock };
     chatRoom: { updateMany: jest.Mock };
   };
   beforeEach(() => {
     tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       customer: {
+        findMany: jest.fn().mockResolvedValue([]),
         update: jest.fn().mockResolvedValue({}),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
@@ -128,6 +132,63 @@ describe('unlinkFinanceLine', () => {
       },
       data: { verifiedAt: null },
     });
+  });
+});
+
+/** ids ที่ส่งเข้า `SELECT … FOR NO KEY UPDATE` (tagged template — อาร์กิวเมนต์ที่สองคือ Prisma.join) */
+const lockedIds = (call: unknown[]) => [...(call[1] as { values: string[] }).values].sort();
+
+describe('ลำดับล็อก ลูกค้า → link → ห้อง (Task 29)', () => {
+  const at = new Date('2026-11-01T03:00:00Z');
+  const makeTx = () => ({
+    $queryRaw: jest.fn().mockResolvedValue([]),
+    customer: {
+      findMany: jest.fn().mockResolvedValue([]),
+      update: jest.fn().mockResolvedValue({}),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
+    customerLineLink: {
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      findMany: jest.fn().mockResolvedValue([]),
+    },
+    chatRoom: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+  });
+  const before = (a: jest.Mock, b: jest.Mock) =>
+    expect(a.mock.invocationCallOrder[0]).toBeLessThan(b.mock.invocationCallOrder[0]);
+
+  it('lockFinanceLineCustomers: คำสั่งเดียวเรียง id · ตัดค่าว่าง/ซ้ำ · ไม่มีอะไร = ไม่ยิง', async () => {
+    const tx = makeTx();
+    await lockFinanceLineCustomers(tx as never, [null, '', undefined]);
+    expect(tx.$queryRaw).not.toHaveBeenCalled();
+    await lockFinanceLineCustomers(tx as never, ['c2', 'c1', 'c2', null]);
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect((tx.$queryRaw.mock.calls[0][0] as string[]).join('?')).toContain(
+      'ORDER BY id FOR NO KEY UPDATE',
+    );
+    expect(lockedIds(tx.$queryRaw.mock.calls[0])).toEqual(['c1', 'c2']);
+  });
+
+  it('ตาม LINE (LIFF): ล็อกผู้ถือแถว link + ผู้ถือคอลัมน์ทุกคนก่อนล้างคอลัมน์/ปิดแถว/ล้างห้อง', async () => {
+    const tx = makeTx();
+    tx.customerLineLink.findMany.mockResolvedValue([{ customerId: 'c1' }]);
+    tx.customer.findMany.mockResolvedValue([{ id: 'c9' }, { id: 'c1' }]);
+    await unlinkFinanceLine(tx as never, { lineUserId: 'U1' }, at);
+    expect(tx.customer.findMany).toHaveBeenCalledWith({
+      where: { lineIdFinance: 'U1' },
+      select: { id: true },
+    });
+    expect(lockedIds(tx.$queryRaw.mock.calls[0])).toEqual(['c1', 'c9']);
+    before(tx.$queryRaw, tx.customer.updateMany);
+    before(tx.$queryRaw, tx.customerLineLink.updateMany);
+    before(tx.$queryRaw, tx.chatRoom.updateMany);
+  });
+
+  it('ตามลูกค้า (พนักงาน): ล็อกแถวลูกค้าก่อนแตะแถว link/ห้อง', async () => {
+    const tx = makeTx();
+    await unlinkFinanceLine(tx as never, { customerId: 'c1' }, at);
+    expect(lockedIds(tx.$queryRaw.mock.calls[0])).toEqual(['c1']);
+    before(tx.$queryRaw, tx.customerLineLink.updateMany);
+    before(tx.$queryRaw, tx.chatRoom.updateMany);
   });
 });
 

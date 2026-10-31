@@ -37,6 +37,7 @@ import {
 } from '../../chat-prospects/chat-placeholder';
 import { JourneyEntryWriter } from '../../customer-journey/journey-entry-writer.service';
 import {
+  lockFinanceLineCustomers,
   staffLineFinanceChange,
   unlinkFinanceLine,
 } from '../../line-oa/services/finance-line-link';
@@ -46,7 +47,7 @@ import {
 } from '../../line-oa/services/otp-verified-customer';
 import { isRetryablePrismaWriteError } from '../../../utils/transaction-retry.util';
 
-/** ปุ่มยกเลิกผูก LINE การเงิน (legacy) — ลองทั้งทรานแซกชันใหม่เมื่อ Postgres ตัดสิน deadlock/serialization (ดู lock order ที่ `unlinkFinanceLineByStaff`) */
+/** ปุ่มยกเลิกผูก LINE การเงิน (legacy) — ลองทั้งทรานแซกชันใหม่เมื่อ Postgres ตัดสิน deadlock/serialization (ตาข่าย — ลำดับล็อกเดียวกับ bind แล้ว ดู `unlinkFinanceLineByStaff`) */
 const FINANCE_LINE_UNLINK_MAX_ATTEMPTS = 3;
 import { contactAddedEntry, isBlankContact } from '../../customer-journey/chat-identity-entries';
 import type { ContactField } from '../../customer-journey/journey-data-schemas';
@@ -765,12 +766,11 @@ export class CustomerWriteService {
    * audit `CUSTOMER_FINANCE_LINE_UNLINKED` (สถานะก่อน/หลัง ไม่มี U-id) — ทางเดิมไม่มี audit เฉพาะ (Task 22 รายงานข้อ 3) ·
    * ไม่สลับ rich menu (เหมือน LIFF ยกเลิกเอง) · ผูกใหม่ได้ทาง OTP ของลูกค้าเท่านั้น · ตอบ 201 เหมือน POST action อื่นของ `/customers/:id`
    *
-   * **ลำดับล็อก (fix round 1 — review M-2):** แถวลูกค้า → แถว link → ห้องแชท = ลำดับเดียวกับทางยกเลิกผูกพี่น้อง (PATCH ล้างช่อง · LIFF —
-   * `unlinkFinanceLine`) · `VerificationService.bind` ล็อกกลับด้าน (ห้องของ LINE/ลูกค้าเดิม → แถว link → ห้องของ LINE นี้ → ลูกค้า) ⇒
-   * ลูกค้ายืนยัน OTP พร้อมกับที่พนักงานกดปุ่มกับลูกค้าคนเดียวกัน Postgres อาจตัดสิน deadlock (40P01) ให้ฝ่ายหนึ่ง rollback ทั้งก้อน (ไม่มีข้อมูลค้าง):
-   * ฝั่งปุ่มลองทั้งทรานแซกชันใหม่เอง (legacy สูงสุด `FINANCE_LINE_UNLINK_MAX_ATTEMPTS` ครั้ง — ทุกขั้นอ่านใหม่ใต้ล็อก · managed = ระบบสิทธิ์ลองใหม่เอง
-   * maxAttempts 3) · ฝั่ง bind ได้ error — รหัส OTP ยังไม่ถูกลบ (กิน attempt ไป 1) ลูกค้ากรอกรหัสเดิมซ้ำได้ · **ไม่กลับลำดับที่นี่**: จะสวนกับ PATCH/LIFF
-   * แทน และ bind ล็อกห้องก่อนแถว link อยู่แล้ว (เลียนลำดับครบต้องล็อกห้องตามเงื่อนไขของ bind) — แก้ถาวรคือให้ bind ล็อกแถวลูกค้าก่อน (งานแยก)
+   * **ลำดับล็อก:** แถวลูกค้า → แถว link → ห้องแชท (`lockFinanceLineCustomers`) = ลำดับเดียวกับทางยกเลิกผูกพี่น้อง (PATCH ล้างช่อง · LIFF —
+   * `unlinkFinanceLine`) และตั้งแต่ Task 29 รวม `VerificationService.bind` (เดิม bind ล็อกกลับด้าน ⇒ ยืนยัน OTP พร้อมกดปุ่มกับลูกค้าคนเดียวกัน =
+   * deadlock 40P01 — fix round 1 review M-2 · ปักที่ `finance-line-lock-order.db.spec.ts`) · การลองทั้งทรานแซกชันใหม่เมื่อ Postgres ตัดสิน
+   * deadlock/serialization คงไว้เป็นตาข่าย (legacy สูงสุด `FINANCE_LINE_UNLINK_MAX_ATTEMPTS` ครั้ง — ทุกขั้นอ่านใหม่ใต้ล็อก · managed = ระบบสิทธิ์
+   * ลองใหม่เอง maxAttempts 3)
    */
   async unlinkFinanceLineByStaff(
     id: string,
@@ -783,7 +783,7 @@ export class CustomerWriteService {
       this.prisma.$transaction(async (tx) => {
         // ล็อกแถวลูกค้าก่อนอ่านสถานะ ⇒ กดพร้อมกันได้ audit ใบเดียว · NO KEY UPDATE พอ: บล็อกผู้เขียนแถวนี้ด้วยกัน แต่ไม่บล็อก insert แถวลูก
         // ที่อ้าง FK (KEY SHARE) · ทรานแซกชันนี้แก้แค่ line_id_finance (ไม่ใช่คอลัมน์ key) — แบบ lockCreditCustomer
-        await tx.$queryRaw`SELECT id FROM customers WHERE id = ${id} FOR NO KEY UPDATE`;
+        await lockFinanceLineCustomers(tx, [id]);
         const customer = await tx.customer.findUnique({
           where: { id },
           select: { deletedAt: true, lineIdFinance: true },

@@ -76,6 +76,61 @@ export async function clearFinanceRoomVerification(
   });
 }
 
+/**
+ * Task 29 (เจ้าของตัดสิน 31 ต.ค. 2026 — Task 27 review M-2) — **ลำดับล็อกเดียว**ของทุกทางที่ผูก/ยกเลิกผูก LINE การเงิน:
+ * **แถวลูกค้า (`customers`, เรียงตาม id ใน SQL) → แถว `customer_line_links` → `chat_rooms`**. ผู้เรียก: `VerificationService.bind`
+ * (ผ่าน `lockCustomersForFinanceLineBind`) · `unlinkFinanceLine` ทั้งสองแบบ (LIFF / พนักงาน) · ปุ่ม/PATCH ยกเลิกผูกของพนักงาน
+ * (`CustomerWriteService.unlinkFinanceLineByStaff`). เดิม `bind` ล็อกแถว link/ห้องก่อนแล้วค่อยแถวลูกค้า ⇒ ยืนยัน OTP พร้อมพนักงานกดยกเลิกผูก
+ * ลูกค้าคนเดียวกัน = deadlock 40P01 (ปักที่ `finance-line-lock-order.db.spec.ts`).
+ *
+ * ล็อกหลายแถวต้องผ่าน helper นี้เท่านั้น — `ORDER BY id` ใน SQL ตัดสินลำดับ (LockRows ทำงานหลัง Sort) ทุกผู้เรียกจึงเรียงเหมือนกันเสมอ ·
+ * `FOR NO KEY UPDATE` = ระดับเดียวกับ UPDATE ที่ไม่แตะคอลัมน์ key (ทุกทางแก้แค่ `line_id_finance`) ไม่บล็อก insert แถวลูกที่อ้าง FK ·
+ * ล็อกซ้ำแถวที่ถืออยู่แล้วไม่มีผล
+ */
+export async function lockFinanceLineCustomers(
+  tx: Prisma.TransactionClient,
+  customerIds: readonly (string | null | undefined)[],
+): Promise<void> {
+  const ids = [...new Set(customerIds.filter((id): id is string => !!id))];
+  if (ids.length === 0) return;
+  await tx.$queryRaw`SELECT id FROM customers WHERE id IN (${Prisma.join(ids)}) ORDER BY id FOR NO KEY UPDATE`;
+}
+
+/**
+ * Task 29 — ชุดลูกค้าที่ `bind` (OTP) จะแตะ ล็อกก่อนแตะแถว link/ห้อง: ลูกค้าที่กำลังผูก + ลูกค้าที่ถือแถว link ของ LINE นี้อยู่
+ * (LINE ย้ายออกจากเขา — ห้องของเขาถูกล้าง `verified_at`) + ทุกลูกค้าที่คอลัมน์ `line_id_finance` = LINE นี้ (bind ล้างค่าให้ — รวมแถวที่ถูกลบ).
+ * อ่านชุด → ล็อก (เรียง id) → อ่านซ้ำใต้ล็อก จนชุดไม่โตอีก (ปกติสองรอบ · ชุดเปลี่ยนได้เฉพาะเมื่อมี bind ของ LINE เดียวกันอีกตัว commit ระหว่างนั้น —
+ * แถวที่เพิ่มเข้ามารอบหลังล็อกช้ากว่าลำดับ แต่ทรานแซกชันที่ทำให้ชุดเปลี่ยน commit ไปแล้วจึงไม่เป็นวงจร) ·
+ * คืนเจ้าของแถว link ของ LINE นี้ตามที่อ่านใต้ล็อก (ไม่มีแถว = null)
+ */
+export async function lockCustomersForFinanceLineBind(
+  tx: Prisma.TransactionClient,
+  lineUserId: string,
+  customerId: string,
+): Promise<{ lineHolderId: string | null }> {
+  const locked = new Set<string>();
+  let lineHolderId: string | null = null;
+  for (let round = 0; round < 5; round++) {
+    const lineRow = await tx.customerLineLink.findUnique({
+      where: { lineUserId_channel: { lineUserId, channel: LineChannelType.FINANCE } },
+      select: { customerId: true },
+    });
+    // ไม่กรอง deletedAt โดยตั้งใจ — bind ล้างคอลัมน์นี้บนทุกแถว (รวมลูกค้าที่ถูกลบ)
+    const columnHolders = await tx.customer.findMany({
+      where: { lineIdFinance: lineUserId },
+      select: { id: true },
+    });
+    lineHolderId = lineRow?.customerId ?? null;
+    const ids = [customerId, lineHolderId, ...columnHolders.map((c) => c.id)].filter(
+      (id): id is string => !!id,
+    );
+    if (ids.every((id) => locked.has(id))) break;
+    await lockFinanceLineCustomers(tx, ids);
+    ids.forEach((id) => locked.add(id));
+  }
+  return { lineHolderId };
+}
+
 /** ยกเลิกผูกของ LINE หนึ่งบัญชี (ลูกค้าเป็นคนกดในหน้า LIFF) หรือของลูกค้าหนึ่งคน (พนักงานล้างช่อง LINE การเงิน) */
 export type FinanceLineUnlinkTarget = { lineUserId: string } | { customerId: string };
 
@@ -104,6 +159,16 @@ export async function unlinkFinanceLine(
       where: { lineUserId: target.lineUserId, channel: LineChannelType.FINANCE, unlinkedAt: null },
       select: { customerId: true },
     });
+    // Task 29 — ล็อกลูกค้าทุกคนที่ทางนี้จะแตะก่อน (เรียง id) แล้วค่อยแถว link → ห้อง (ลำดับเดียวกับ bind/ปุ่มพนักงาน) ·
+    // updateMany ข้างล่างล็อกตามลำดับที่สแกนเจอ ถ้าไม่ล็อกก่อนจะสวนกับ bind ที่ล็อกเรียง id ได้เมื่อมีหลายคนถือคอลัมน์นี้
+    const columnHolders = await tx.customer.findMany({
+      where: { lineIdFinance: target.lineUserId },
+      select: { id: true },
+    });
+    await lockFinanceLineCustomers(tx, [
+      ...holders.map((h) => h.customerId),
+      ...columnHolders.map((c) => c.id),
+    ]);
     // ไม่กรอง deletedAt โดยตั้งใจ — เป็นการล้างค่า ไม่ใช่การอ่าน
     await tx.customer.updateMany({
       where: { lineIdFinance: target.lineUserId },
@@ -119,6 +184,8 @@ export async function unlinkFinanceLine(
     });
     return;
   }
+  // Task 29 — แถวลูกค้าก่อนแถว link/ห้อง (ผู้เรียกที่ล็อกไว้แล้ว — ปุ่ม/PATCH ของพนักงาน — ล็อกซ้ำไม่มีผล)
+  await lockFinanceLineCustomers(tx, [target.customerId]);
   // LINE ของแถวที่กำลังปิด (M-8) — ห้องของ LINE นั้นอาจผูกลูกค้าอื่นไว้ (พนักงานผูกห้องเอง) ก็ถือว่าไม่ยืนยันแล้ว
   const closing = await tx.customerLineLink.findMany({
     where: { customerId: target.customerId, channel: LineChannelType.FINANCE, unlinkedAt: null },

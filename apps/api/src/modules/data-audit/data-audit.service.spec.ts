@@ -299,6 +299,15 @@ describe('DataAuditService', () => {
       expect(result.status).toBe('FAIL');
       expect(result.count).toBe(1);
     });
+
+    it('Task 25 (m-5) — count is the true total; only details are capped at 50 (no LIMIT in the query)', async () => {
+      prisma.$queryRaw.mockResolvedValueOnce(
+        Array.from({ length: 62 }, (_, i) => ({ id: `pr-${i}`, status: 'IN_STOCK' })),
+      );
+      const result = await service.checkGhostStock();
+      expect([result.status, result.count, result.details.length]).toEqual(['FAIL', 62, 50]);
+      expect(JSON.stringify(prisma.$queryRaw.mock.calls[0])).not.toContain('LIMIT');
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════
@@ -484,6 +493,20 @@ describe('DataAuditService', () => {
       const result = await service.checkDuplicatePayments();
       expect(result.status).toBe('FAIL');
       expect(result.count).toBe(1);
+    });
+
+    it('Task 25 (m-5) — count is the true total; only details are capped at 50 (no LIMIT in the query)', async () => {
+      prisma.$queryRaw.mockResolvedValueOnce(
+        Array.from({ length: 62 }, (_, i) => ({
+          gateway_ref: `PS-${i}`,
+          count: BigInt(2),
+          payment_ids: [`p-${i}a`, `p-${i}b`],
+        })),
+      );
+      const result = await service.checkDuplicatePayments();
+      expect([result.status, result.count, result.details.length]).toEqual(['FAIL', 62, 50]);
+      expect((result.details as { count: number }[])[0].count).toBe(2);
+      expect(JSON.stringify(prisma.$queryRaw.mock.calls[0])).not.toContain('LIMIT');
     });
   });
 

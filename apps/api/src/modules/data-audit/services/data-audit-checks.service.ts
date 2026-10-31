@@ -94,7 +94,7 @@ const VAT_DEFERRED_TOLERANCE = new Prisma.Decimal('0.01');
 /**
  * เพดาน `details` ของข้อกลางคืน — ข้อที่ใช้เพดานนี้ไม่มี `LIMIT` ในคิวรี: `count` = จำนวนจริง (ข้อความสรุป Sentry `<ข้อ>: <count> issues`
  * และ `data_audit_logs.count`) · `details` เก็บไม่เกิน 50 แถว · ไล่ตรวจสัญญาอ่านแถวของข้อเดียวกันทุกแถว (Task 25 · m-5 — เดิม
- * `orphan_contracts` / `orphan_payments` / `journal_balance` รายงาน `count` หลัง `LIMIT 50`)
+ * `orphan_contracts` / `orphan_payments` / `journal_balance` / `ghost_stock` / `duplicate_payments` รายงาน `count` หลัง `LIMIT 50`)
  */
 const DETAIL_LIMIT = 50;
 
@@ -420,14 +420,13 @@ export class DataAuditChecksService {
       WHERE pr.deleted_at IS NULL
         AND c.status IN ('ACTIVE', 'OVERDUE', 'DEFAULT')
         AND pr.status = 'IN_STOCK'
-      LIMIT 50
     `;
     return {
       name: 'ghost_stock',
       severity: 'HIGH',
       status: ghosts.length === 0 ? 'PASS' : 'FAIL',
       count: ghosts.length,
-      details: ghosts,
+      details: ghosts.slice(0, DETAIL_LIMIT),
       executedAt: new Date(),
     };
   }
@@ -677,14 +676,13 @@ export class DataAuditChecksService {
         AND gateway_ref != ''
       GROUP BY gateway_ref
       HAVING COUNT(*) > 1
-      LIMIT 50
     `;
     return {
       name: 'duplicate_payments',
       severity: 'HIGH',
       status: dupes.length === 0 ? 'PASS' : 'FAIL',
       count: dupes.length,
-      details: dupes.map((d) => ({ ...d, count: Number(d.count) })),
+      details: dupes.slice(0, DETAIL_LIMIT).map((d) => ({ ...d, count: Number(d.count) })),
       executedAt: new Date(),
     };
   }

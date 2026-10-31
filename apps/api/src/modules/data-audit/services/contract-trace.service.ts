@@ -90,14 +90,17 @@ const balanceOf = (lines: TraceLine[]) => {
  * - เปิดสัญญา = 1A / A.1 / ยอดยกมาของสัญญานำเข้า (`isContractOpeningEntry`) · สัญญาประวัติที่นำเข้า (ไม่มีตารางงวด) ไม่ต้องมี
  * - ต้นทุนขาย / ระหว่างกิจการ = ขา SHOP ของการเปิดสัญญา (`ShopInventoryTransferTemplate` JE A / JE B) — เดิมอ่าน
  *   `InterCompanyTransaction` ซึ่งเขียนเฉพาะจาก `POST /inter-company` ด้วยมือ (ไม่มีเส้นทางเปิดสัญญาเขียน) · สัญญานำเข้ายกเว้น
- *
- * **2026-10-31 (Task 23 · m-4):** คำตัดสิน PASS/FAIL ของเปิดสัญญาและต้นทุนขายมาจาก `orphan_contracts` / `missing_cogs` (แถวของข้อนั้น
- * scope ที่สัญญา) — เดิม trace เขียนเงื่อนไขซ้ำฝั่ง TS ด้วยชุดสถานะที่กว้างกว่า (`EARLY_PAYOFF` / `CLOSED_BAD_DEBT`) ⇒ ตอนนี้ขอบเขตเท่า
- * ตรวจกลางคืน (`ACTIVATED_CONTRACT_STATUSES`) · ระหว่างกิจการ (ไม่มีข้อกลางคืนคู่) ใช้ประชากรเดียวกับ `missing_cogs` เพราะ JE A / JE B ลงใน
- * ธุรกรรมเดียวกัน · รายการที่พบใช้ตรวจสมดุลด้วยเกณฑ์ของ `journal_balance`
  * - งวดที่ไม่มีรายการผูก `paymentId` = คำตัดสินของ `orphan_payments` (ล้าง 11-2103 ของงวด · JP4 · งวดนำเข้าที่ยังไม่ถูกแตะ)
  * - ลูกหนี้ = `hp_receivable_reconciliation` (เดิมอ่าน 11-2102 ค่าเผื่อหนี้สงสัยจะสูญ) · VAT = `vat_mismatch` (เดิมเทียบ 21-2101
  *   ของใบรับกับ `Payment.vatAmount`) · ค่าคอม = `commission_mismatch` (SKIPPED)
+ *
+ * **2026-10-31 (Task 23):**
+ * - m-4: คำตัดสิน PASS/FAIL ของเปิดสัญญาและต้นทุนขายมาจาก `orphan_contracts` / `missing_cogs` (แถวของข้อนั้น) — เดิม trace เขียนเงื่อนไขซ้ำ
+ *   ฝั่ง TS ด้วยชุดสถานะที่กว้างกว่า (`EARLY_PAYOFF` / `CLOSED_BAD_DEBT`) ⇒ ตอนนี้ขอบเขตเท่าตรวจกลางคืน (`ACTIVATED_CONTRACT_STATUSES`) ·
+ *   ระหว่างกิจการ (ไม่มีข้อกลางคืนคู่) ใช้ประชากรเดียวกับ `missing_cogs` เพราะ JE A / JE B ลงในธุรกรรมเดียวกัน · รายการที่พบตรวจสมดุลด้วยเกณฑ์
+ *   ของ `journal_balance`
+ * - m-3: สัญญาที่เปิดก่อนต่อขา SHOP (`preShopWiringContractIds` — `legacyNoShop` + วันเปิด) ไม่ต้องมีต้นทุนขาย / ลูกหนี้ FINANCE ฝั่ง SHOP
+ * - m-5: ตรวจกลางคืนรันครั้งเดียวต่อชุดสัญญา (`traceContracts` / `loadVerdicts`) · แถวไม่ตัด 50
  */
 @Injectable()
 export class ContractTraceService {

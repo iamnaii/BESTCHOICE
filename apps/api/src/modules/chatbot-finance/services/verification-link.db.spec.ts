@@ -82,7 +82,9 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await prisma.customerLineLink.deleteMany({ where: { customerId } });
+  await prisma.customerLineLink.deleteMany({
+    where: { customerId: { in: [customerId, ...extraCustomerIds] } },
+  });
   await prisma.chatbotOtpRequest.deleteMany({ where: { lineUserId: { in: [U1, U2, U3, U4] } } });
   await prisma.chatRoom.deleteMany({ where: { lineUserId: { in: [U1, U2, U3, U4] } } });
   await prisma.customer.deleteMany({ where: { id: { in: extraCustomerIds } } });

@@ -31,7 +31,10 @@ describe('CollectionsNotifierService.notifyStatusChangedCustomers — ผ่อ�
           .mockResolvedValueOnce([contract('legacy', 'U-legacy'), contract('native', 'U-native')])
           .mockResolvedValueOnce(inGrace.map((id) => ({ id }))),
       },
-      notificationLog: { create: jest.fn().mockResolvedValue({ id: 'log' }) },
+      notificationLog: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'log' }),
+      },
     };
     const lineOa = { sendFlexMessage: jest.fn().mockResolvedValue(undefined) };
     const pdpa = { hasActiveConsent: jest.fn().mockResolvedValue(true) };
@@ -77,5 +80,38 @@ describe('CollectionsNotifierService.notifyStatusChangedCustomers — ผ่อ�
     const { lineOa, service } = build([]);
     await service.notifyStatusChangedCustomers(['legacy', 'native']);
     expect(lineOa.sendFlexMessage).toHaveBeenCalledTimes(2);
+  });
+
+  it('รอบ 2 ข้อ 5 — A4 ขั้นทวง: ข้อความที่ถูกระงับ (BLOCKED) ไม่นับเป็น "แจ้งแล้ว"', async () => {
+    const prisma = {
+      contract: {
+        findMany: jest.fn().mockResolvedValue([
+          { ...contract('legacy', 'U-legacy'), customerId: 'cust-legacy' },
+          { ...contract('native', 'U-native'), customerId: 'cust-native' },
+        ]),
+      },
+    };
+    const notifications = {
+      sendFromTemplate: jest
+        .fn()
+        .mockResolvedValueOnce({ id: 'b', status: 'BLOCKED', blockReason: 'LEGACY_LINK_GRACE' })
+        .mockResolvedValueOnce({ id: 's', status: 'SENT' }),
+    };
+    const service = new CollectionsNotifierService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      notifications as never,
+      {} as never,
+    );
+
+    const result = await service.notifyEscalatedDunning({
+      escalated: [
+        { contractId: 'legacy', contractNumber: 'CT-legacy', daysOverdue: 10, to: 'REMINDER' },
+        { contractId: 'native', contractNumber: 'CT-native', daysOverdue: 10, to: 'REMINDER' },
+      ],
+    });
+
+    expect(result).toEqual({ escalated: 2, notified: 1, suppressed: 1 });
   });
 });

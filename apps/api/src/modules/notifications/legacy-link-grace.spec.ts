@@ -3,6 +3,7 @@ import {
   findContractsInLegacyLinkGrace,
   inLegacyLinkGraceWhere,
   legacyLinkGraceCutoff,
+  recordLegacyLinkGraceSkip,
 } from './legacy-link-grace';
 
 describe('legacy-link-grace — Task 30 ข้อ 2', () => {
@@ -44,5 +45,49 @@ describe('legacy-link-grace — Task 30 ข้อ 2', () => {
     expect(result).toEqual(new Set(['k1']));
     expect(prisma.contract.findMany).toHaveBeenCalledTimes(1);
     expect(prisma.contract.findMany.mock.calls[0][0].where.id).toEqual({ in: ['k1', 'k2'] });
+  });
+
+  describe('recordLegacyLinkGraceSkip — รอบ 2 ข้อ 5: สั่งรัน cron ซ้ำในวันเดียวไม่เขียนแถว BLOCKED ซ้ำ', () => {
+    const input = {
+      recipient: 'U-1',
+      subject: 'แจ้งค้างชำระ',
+      message: 'งวด 1 — ระงับ',
+      relatedId: 'pay-1',
+      customerId: 'cust-1',
+    };
+
+    it('มีแถวเดียวกัน (ผู้รับ/หัวข้อ/ข้อความ/งวด) ของวันนี้แล้ว → คืน id เดิม ไม่เขียนใหม่', async () => {
+      const prisma = {
+        notificationLog: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'log-earlier' }),
+          create: jest.fn(),
+        },
+      };
+
+      await expect(recordLegacyLinkGraceSkip(prisma as never, input, now)).resolves.toBe(
+        'log-earlier',
+      );
+      expect(prisma.notificationLog.create).not.toHaveBeenCalled();
+      expect(prisma.notificationLog.findFirst.mock.calls[0][0].where).toEqual({
+        relatedId: 'pay-1',
+        recipient: 'U-1',
+        subject: 'แจ้งค้างชำระ',
+        message: 'งวด 1 — ระงับ',
+        status: 'BLOCKED',
+        blockReason: 'LEGACY_LINK_GRACE',
+        createdAt: { gte: new Date('2026-12-04T17:00:00Z') }, // เที่ยงคืนไทยของวันที่ 5
+        deletedAt: null,
+      });
+    });
+
+    it('ยังไม่มี → เขียนแถวใหม่ คืน id ใหม่', async () => {
+      const prisma = {
+        notificationLog: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({ id: 'log-new' }),
+        },
+      };
+      await expect(recordLegacyLinkGraceSkip(prisma as never, input, now)).resolves.toBe('log-new');
+    });
   });
 });

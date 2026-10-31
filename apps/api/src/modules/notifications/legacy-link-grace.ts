@@ -1,5 +1,6 @@
 import { LineChannelType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { bangkokStartOfDay } from '../../utils/date.util';
 import { ACTIVE_FINANCE_LINK_WHERE } from '../line-oa/services/otp-verified-customer';
 import { NotificationCategory } from './notification-category.enum';
 
@@ -104,7 +105,10 @@ export async function isRelatedRecordInLegacyLinkGrace(
   return row !== null;
 }
 
-/** แถวหลักฐานของข้อความที่ถูกระงับ — `BLOCKED` ไม่เข้าคิวส่งซ้ำ ไม่นับเพดานความถี่ ไม่นับเป็น "ส่งแล้ว" · คืน id แถว */
+/**
+ * แถวหลักฐานของข้อความที่ถูกระงับ — `BLOCKED` ไม่เข้าคิวส่งซ้ำ ไม่นับเพดานความถี่ ไม่นับเป็น "ส่งแล้ว" · คืน id แถว ·
+ * สั่งรัน cron ซ้ำในวันเดียว (วันไทย) ไม่เขียนแถวซ้ำ (รอบ 2 ข้อ 5): ข้อความเดียวกัน (งวด/สัญญา · ผู้รับ · หัวข้อ · ข้อความ) คืนแถวเดิม
+ */
 export async function recordLegacyLinkGraceSkip(
   prisma: Pick<PrismaService, 'notificationLog'>,
   input: {
@@ -115,7 +119,22 @@ export async function recordLegacyLinkGraceSkip(
     customerId: string | null;
     channelKey?: string | null;
   },
+  now: Date = new Date(),
 ): Promise<string> {
+  const earlier = await prisma.notificationLog.findFirst({
+    where: {
+      relatedId: input.relatedId,
+      recipient: input.recipient,
+      subject: input.subject,
+      message: input.message,
+      status: 'BLOCKED',
+      blockReason: LEGACY_LINK_GRACE_BLOCK_REASON,
+      createdAt: { gte: bangkokStartOfDay(now) },
+      deletedAt: null,
+    },
+    select: { id: true },
+  });
+  if (earlier) return earlier.id;
   const log = await prisma.notificationLog.create({
     data: {
       channel: 'LINE',

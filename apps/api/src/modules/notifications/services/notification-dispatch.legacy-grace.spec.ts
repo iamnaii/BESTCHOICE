@@ -10,7 +10,10 @@ describe('NotificationDispatchService.sendFromTemplate — ผ่อนผัน
       contract: { findFirst: jest.fn().mockResolvedValue(opts.inGrace ? { id: 'k1' } : null) },
       chatRoom: { findFirst: jest.fn().mockResolvedValue(null) },
       chatMessage: { create: jest.fn() },
-      notificationLog: { create: jest.fn().mockResolvedValue({ id: 'log-1' }) },
+      notificationLog: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'log-1' }),
+      },
     };
     const transport = {
       sendLineFlexMessage: jest.fn().mockResolvedValue(undefined),

@@ -180,6 +180,30 @@ describe('Task 30 ข้อ 2 — ผ่อนผัน 7 วันหลัง�
     expect(delivered.filter((d) => d.via === 'sms')).toHaveLength(0);
   });
 
+  it('รอบ 2 ข้อ 5 — สั่งรัน A2 / บอททวง / A3 ซ้ำในวันเดียว → แถว BLOCKED ต่อข้อความไม่ซ้ำ', async () => {
+    const t = await trio(-1);
+
+    await notifications.sendOverdueNotices();
+    await notifications.sendOverdueNotices();
+    await bot.runDailyEscalations();
+    await bot.runDailyEscalations();
+    await collections.notifyStatusChangedCustomers([t.legacy3.contractId]);
+    await collections.notifyStatusChangedCustomers([t.legacy3.contractId]);
+
+    const rows = await prisma.notificationLog.findMany({
+      where: {
+        relatedId: { in: [t.legacy3.paymentId, t.legacy3.contractId] },
+        blockReason: 'LEGACY_LINK_GRACE',
+      },
+      select: { subject: true },
+    });
+    // A2 หนึ่งแถว · บอทหนึ่งแถว · A3 หนึ่งแถว
+    expect(rows.map((r) => r.subject).sort()).toEqual(
+      ['AutoTrigger ESCALATION_T_PLUS_1', 'แจ้งค้างชำระ', 'แจ้งสถานะสัญญาค้างชำระ'].sort(),
+    );
+    expect(lineDeliveries(t.legacy3.lineUserId)).toBe(0);
+  });
+
   it('A8 บอททวง T+1: นำเข้า+ผูก 3 วัน → ไม่ส่ง ไม่จองแถว · อื่น ๆ ส่งตามเดิม', async () => {
     const t = await trio(-1);
 

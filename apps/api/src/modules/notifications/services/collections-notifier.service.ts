@@ -169,6 +169,8 @@ export class CollectionsNotifierService {
 
     // Send stage-specific LINE notifications
     let notified = 0;
+    // ถูกระงับ (BLOCKED — ช่วงผ่อนผันหลังผูก LINE ของสัญญานำเข้า / template ปิด) ไม่นับเป็นแจ้งแล้ว (Task 30 รอบ 2 ข้อ 5)
+    let suppressed = 0;
     for (const esc of result.escalated) {
       try {
         const contract = contractsById.get(esc.contractId);
@@ -188,7 +190,7 @@ export class CollectionsNotifierService {
         //   FINAL_WARNING → dunning.final_warning
         //   LEGAL_ACTION → dunning.legal_action
         const eventType = `dunning.${esc.to.toLowerCase()}`;
-        await this.notificationsService.sendFromTemplate(
+        const sendResult = await this.notificationsService.sendFromTemplate(
           eventType,
           {
             name: contract.customer.name,
@@ -205,15 +207,17 @@ export class CollectionsNotifierService {
               : contract.customer.phone || undefined,
           },
         );
-        notified++;
+        if (sendResult.status === 'BLOCKED') suppressed++;
+        else notified++;
       } catch (err) {
         this.logger.warn(`Failed to send dunning notification for ${esc.contractNumber}: ${err}`);
       }
     }
 
     this.logger.log(
-      `Dunning escalation complete: ${result.escalated.length} escalated, ${notified} notified`,
+      `Dunning escalation complete: ${result.escalated.length} escalated, ${notified} notified, ${suppressed} suppressed`,
     );
+    return { escalated: result.escalated.length, notified, suppressed };
   }
 
   /** แถวผลของการ์ดลิงก์ชำระ (SENT / FAILED) — ลงไม่ได้ต้องไม่ล้มทั้งรอบ (การ์ดส่งไปแล้ว/ส่งไม่ผ่านไปแล้ว) */

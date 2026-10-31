@@ -68,3 +68,42 @@ describe('ConversationItem — ป้ายในแถว', () => {
     expect(screen.queryByText(/^รอ /)).toBeNull();
   });
 });
+
+/**
+ * Task 33 (mockup A2) — ห้อง LINE การเงินที่ LINE ในห้องไม่ใช่ LINE ที่ลูกค้ายืนยัน OTP อยู่ตอนนี้ (`financeLineStatus` จาก server — ไม่มี U-id):
+ * ป้าย "ยกเลิกผูกแล้ว" (ไอคอน + คำ ไม่ตัดบรรทัด) เป็น**ป้ายแรก**ของแถว · ห้องที่ยืนยันแล้ว/ไม่เคยผูก/ช่องอื่น ไม่มีป้ายนี้
+ */
+describe('ConversationItem — ป้าย "ยกเลิกผูกแล้ว" (Task 33 A2)', () => {
+  const unlinked = { verified: false, unlinkedAt: '2026-10-30T05:00:00.000Z' };
+
+  it('ยกเลิกผูกแล้ว → ป้ายแรกของแถว (ก่อน "รอ N") · ไม่ตัดบรรทัด · มีไอคอน', () => {
+    renderRow(room({
+      channel: 'LINE_FINANCE',
+      financeLineStatus: unlinked,
+      waitingSince: ago(12 * 60_000),
+      priority: 'HIGH',
+    }));
+    const badge = screen.getByText('ยกเลิกผูกแล้ว');
+    expect(badge.className).toMatch(/whitespace-nowrap/);
+    expect(badge.querySelector('svg')).not.toBeNull();
+    const pills = badge.parentElement!.children;
+    expect(pills[0]).toBe(badge);
+    // เพดานป้ายสองใบเดิม: ป้ายนี้ + "รอ N" · ที่เหลือยุบเป็น +N
+    expect(screen.getByText(/^รอ /)).toBeInTheDocument();
+    expect(screen.getByText('+1')).toBeInTheDocument();
+  });
+
+  it('ยกเลิกผูกแล้วโดยไม่มีป้ายอื่น → แถวป้ายยังขึ้น', () => {
+    renderRow(room({ channel: 'LINE_FINANCE', financeLineStatus: unlinked }));
+    expect(screen.getByText('ยกเลิกผูกแล้ว')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['ยืนยัน OTP แล้ว', { verified: true, unlinkedAt: null }],
+    ['ไม่เคยผูก LINE นี้ (ไม่อยู่ใน mockup — คงหน้าตาเดิม)', { verified: false, unlinkedAt: null }],
+    ['ช่องอื่น', null],
+  ])('%s → ไม่มีป้าย "ยกเลิกผูกแล้ว"', (_label, financeLineStatus) => {
+    renderRow(room({ channel: 'LINE_FINANCE', financeLineStatus }));
+    expect(screen.queryByText('ยกเลิกผูกแล้ว')).toBeNull();
+  });
+});

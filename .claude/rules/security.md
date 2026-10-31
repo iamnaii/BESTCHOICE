@@ -154,7 +154,9 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
   `staff-chat`) อ่าน env `ANTHROPIC_API_KEY` ตรง และอีเมลแจ้งเตือน (`notifications/email-provider.service.ts`) อ่าน `SMTP_*` ตรง —
   ไม่ผ่าน Hub ⇒ ผลปุ่มทดสอบของการ์ด Claude / อีเมล สะท้อนเฉพาะฟีเจอร์ที่อ่านผ่าน Hub (OCR, วิเคราะห์เครดิต, บอท, `EmailService`)
 - แถว `integration.*` ออกได้ทาง `/integrations/*` (masked) เท่านั้น — `GET /settings` (`SettingsWriteService.findAll`)
-  กรองออกแล้ว · endpoint ใหม่ที่คืนแถว `system_config` ทั้งตารางต้องกรองแบบเดียวกัน
+  กรองออกแล้ว พร้อมคีย์ลับรุ่นเก่านอก prefix นี้ (`isSecretSettingKey` ใน `settings.constants.ts` = `integration.*` หรือ
+  `isSensitiveKey` ยกเว้นคีย์ที่แค่ชื่อเหมือน เช่น `customer_access_token_hours`) · endpoint ใหม่ที่คืนแถว `system_config`
+  ทั้งตารางต้องใช้ `isSecretSettingKey` แบบเดียวกัน
 - ตรวจ key บน prod จากบรรทัดบูต `integration encrypted fields: key=… ok=N [...] failed=M [...]` (ชื่อช่องเท่านั้น) —
   ห้ามอ่าน/พิมพ์ค่า secret หรือค่าใน `system_config` · runbook: `docs/runbooks/2026-10-31-integration-encryption-key.md`
 - ⚠ dev/CI ที่ใช้ DB ชุดเดียวกับ prod แต่ไม่มี key: webhook guard ของ LINE/Yeastar เห็น "ยังไม่ตั้งค่า" แล้ว **ข้ามการตรวจ

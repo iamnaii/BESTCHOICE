@@ -17,6 +17,7 @@ import {
   AUTO_PAY_LINK_SUBJECT,
   autoPayLinkPaymentWhere,
   botNoticeSentToday,
+  findContractsDunnedToday,
   paymentNoticeSentToday,
 } from '../payment-notice-dedupe';
 import { NotificationsService } from '../notifications.service';
@@ -80,8 +81,8 @@ export class CollectionsNotifierService {
    * - ไม่อยู่ในเวลาทำการ (ใช้กรอบวันหยุด 08:00–18:00 ซึ่งแคบกว่า) = ไม่ส่ง
    * - สัญญาที่จ่ายแล้วระหว่างคืน (ไม่มียอดค้างที่ถึงกำหนดแล้ว — `dueOutstanding` นิยามเดียวของทั้งสองทาง) = ไม่แจ้งทั้งสถานะและขั้นทวง ·
    *   การจ่ายไม่คืนสถานะสัญญาเป็น ACTIVE (รีวิวรอบ 3 I1) · สัญญาที่ออกจาก OVERDUE/DEFAULT แล้ว (เช่น ยกเลิก/ยึดคืน) = ไม่แจ้งสถานะ
-   * - สัญญาที่ได้ข้อความทวงทาง LINE แล้ววันนี้ (แถว SENT หมวด DUNNING ของสัญญา) = ข้าม — สั่งรันซ้ำไม่ส่งซ้ำ และหนึ่งสัญญาได้ไม่เกินหนึ่งข้อความ
-   *   จากรอบนี้ (ตรงกับเพดานความถี่ DUNNING วันละครั้งของ `ComplianceService`)
+   * - สัญญาที่ได้ข้อความทวงระดับสัญญาแล้ววันนี้ (`findContractsDunnedToday` — SENT / คิวส่งซ้ำ ทุกช่องทาง) = ข้าม — สั่งรันซ้ำไม่ส่งซ้ำ และหนึ่งสัญญา
+   *   ได้ไม่เกินหนึ่งข้อความจากแจ้งสถานะ/ขั้นทวง · A2 09:00 / บอททวง 10:00 เว้นงวดของสัญญาที่ได้ข้อความจากรอบนี้ (รอบ 4 I2)
    */
   async sendOvernightCollectionsNotices(now: Date = new Date()) {
     if (!isWithinBusinessHours(now, true)) {
@@ -122,22 +123,8 @@ export class CollectionsNotifierService {
       select: { id: true, contractNumber: true, status: true },
     });
     const byId = new Map(contracts.map((c) => [c.id, c]));
-    const dunnedToday = async () =>
-      new Set(
-        (
-          await this.prisma.notificationLog.findMany({
-            where: {
-              relatedId: { in: contractIds },
-              channel: 'LINE',
-              category: NotificationCategory.DUNNING,
-              status: 'SENT',
-              sentAt: { gte: since },
-              deletedAt: null,
-            },
-            select: { relatedId: true },
-          })
-        ).map((r) => r.relatedId),
-      );
+    // ข้อความทวงระดับสัญญาวันนี้ — นิยามเดียวกับที่ A2/บอททวงใช้เว้นให้ (`payment-notice-dedupe.ts` รอบ 4 I2) · นับคิวส่งซ้ำด้วย
+    const dunnedToday = () => findContractsDunnedToday(this.prisma, contractIds, now);
 
     let skip = await dunnedToday();
     const statusTargets = [...statusIds].filter((id) => {

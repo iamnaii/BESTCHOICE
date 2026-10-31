@@ -15,6 +15,7 @@ import {
   autoPayLinkFailedToday,
   botNoticeSentToday,
   findAutoPayLinkPaymentIds,
+  findContractsDunnedToday,
   noticeDueWindow,
   paymentNoticeSentToday,
 } from '../payment-notice-dedupe';
@@ -286,8 +287,16 @@ export class NotificationReminderService {
       now,
     );
 
+    // รอบ 4 I2 — สัญญาที่ได้ข้อความทวงระดับสัญญาแล้ววันนี้ (แจ้งสถานะ/ขั้นทวง/แจ้งล็อก 08:05 · พนักงาน · กฎตามเหตุการณ์) — query เดียวต่อรอบ
+    const contractDunned = await findContractsDunnedToday(
+      this.prisma,
+      overduePayments.map((p) => p.contractId),
+      now,
+    );
+
     let sent = 0;
     let dedupedByBot = 0;
+    let dedupedByContractDunning = 0;
     let legacyGraceSkipped = 0;
     for (const payment of overduePayments) {
       const customer = payment.contract.customer;
@@ -297,6 +306,11 @@ export class NotificationReminderService {
       // (1) A2 เองแจ้งงวดนี้แล้ววันนี้ ทุกทาง (Flex / template / ข้อความ / SMS) หรือยังถือการส่งอยู่ในคิวส่งซ้ำ — เดิมดูแค่หัวข้อ Flex
       // (2) บอทการเงินทวง T+1/T+3 งวดนี้ไปแล้ววันนี้ — ไม่ส่งซ้ำทั้ง LINE และ SMS
       if (await paymentNoticeSentToday(this.prisma, 'OVERDUE', payment.id, now)) continue;
+      // (3) สัญญานี้ได้ข้อความทวงแล้ววันนี้ (เจ้าของ: ข้อความทวงหลังครบกำหนดวันละข้อความเดียว — เช่น T+7 วันเปลี่ยนเป็น OVERDUE ได้แจ้งสถานะ 08:05)
+      if (contractDunned.has(payment.contractId)) {
+        dedupedByContractDunning++;
+        continue;
+      }
       if (await botNoticeSentToday(this.prisma, 'OVERDUE', customer.id, payment.id, now)) {
         dedupedByBot++;
         continue;
@@ -412,12 +426,13 @@ export class NotificationReminderService {
     }
 
     this.logger.log(
-      `Overdue notices sent: ${sent}/${overduePayments.length} (already sent by finance bot today: ${dedupedByBot} · legacy link grace: ${legacyGraceSkipped})`,
+      `Overdue notices sent: ${sent}/${overduePayments.length} (already sent by finance bot today: ${dedupedByBot} · contract already dunned today: ${dedupedByContractDunning} · legacy link grace: ${legacyGraceSkipped})`,
     );
     return {
       sent,
       total: overduePayments.length,
       dedupedByBot,
+      dedupedByContractDunning,
       legacyGraceSkipped,
       timestamp: now,
     };

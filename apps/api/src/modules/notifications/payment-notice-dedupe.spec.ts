@@ -1,4 +1,8 @@
-import { autoPayLinkPaymentWhere, noticeDueWindow } from './payment-notice-dedupe';
+import {
+  autoPayLinkPaymentWhere,
+  findContractsDunnedToday,
+  noticeDueWindow,
+} from './payment-notice-dedupe';
 
 /** Task 30 รอบ 3 C1 — "T±n" ของผู้ส่งข้อความเรื่องงวดเป็นวันปฏิทินไทย ไม่ขึ้นกับ TZ เครื่อง และครอบ dueDate ที่เก็บเที่ยงคืนไทย */
 describe('noticeDueWindow', () => {
@@ -29,5 +33,32 @@ describe('noticeDueWindow', () => {
 
   it('ลิงก์ชำระอัตโนมัติใช้หน้าต่าง T-3 ตัวเดียวกัน', () => {
     expect(autoPayLinkPaymentWhere(at0800).dueDate).toEqual(noticeDueWindow(at0800, 3));
+  });
+});
+
+/** Task 30 รอบ 4 I2 — ข้อความทวงระดับสัญญาวันนี้ (A2/บอททวง/รอบเช้า 08:05 อ่าน) */
+describe('findContractsDunnedToday', () => {
+  it('ไม่มีสัญญา → ไม่ query', async () => {
+    const findMany = jest.fn();
+    await expect(
+      findContractsDunnedToday({ notificationLog: { findMany } } as never, []),
+    ).resolves.toEqual(new Set());
+    expect(findMany).not.toHaveBeenCalled();
+  });
+
+  it('วันนี้ = ตั้งแต่เที่ยงคืนไทย · id ซ้ำถามครั้งเดียว · คืนชุด id สัญญา', async () => {
+    const findMany = jest.fn().mockResolvedValue([{ relatedId: 'c1' }, { relatedId: 'c1' }]);
+    const at0030 = new Date('2026-11-30T17:30:00Z'); // 1 ธ.ค. 00:30 น. ไทย
+
+    const result = await findContractsDunnedToday(
+      { notificationLog: { findMany } } as never,
+      ['c1', 'c2', 'c1'],
+      at0030,
+    );
+
+    expect(result).toEqual(new Set(['c1']));
+    const { where } = findMany.mock.calls[0][0];
+    expect(where.relatedId).toEqual({ in: ['c1', 'c2'] });
+    expect(where.OR[0].sentAt.gte.toISOString()).toBe('2026-11-30T17:00:00.000Z');
   });
 });

@@ -47,7 +47,11 @@ describe('AutoTriggerService', () => {
       // loadLateFeeConfig uses findUnique (not findFirst)
       systemConfig: { findUnique: jest.fn().mockResolvedValue(null) },
       // Task 30 ข้อ 1 — A1 (notification reminder 08:00) ยังไม่ได้ส่งงวดนี้วันนี้
-      notificationLog: { findFirst: jest.fn().mockResolvedValue(null) },
+      notificationLog: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        // รอบ 4 I2 — ยังไม่มีสัญญาไหนได้ข้อความทวงระดับสัญญาวันนี้
+        findMany: jest.fn().mockResolvedValue([]),
+      },
       // Task 30 ข้อ 2 — ไม่มีสัญญาในช่วงผ่อนผันหลังผูก LINE
       contract: { findMany: jest.fn().mockResolvedValue([]) },
     };
@@ -259,6 +263,32 @@ describe('AutoTriggerService', () => {
         });
       },
     );
+
+    it('รอบ 4 I2: สัญญาได้ข้อความทวงระดับสัญญาแล้ววันนี้ (A2 เว้นให้) → บอทไม่ส่งแทน ไม่จองแถว', async () => {
+      const due = bkkDay(-1);
+      prisma.payment.findMany.mockImplementation(
+        ({ where }: { where: { dueDate: { gte: Date } } }) =>
+          Promise.resolve(
+            where.dueDate.gte.getTime() === due.getTime() ? [makePayment(3, due)] : [],
+          ),
+      );
+      prisma.notificationLog.findMany.mockResolvedValue([{ relatedId: 'con-1' }]);
+
+      await service.runDailyEscalations();
+
+      expect(lineClient.pushText).not.toHaveBeenCalled();
+      expect(prisma.chatAutoTrigger.create).not.toHaveBeenCalled();
+      expect(prisma.notificationLog.findMany.mock.calls[0][0].where.category).toBe('DUNNING');
+    });
+
+    it('รอบ 4 I2: เตือนค่างวด (T-5..T0) ไม่ถามข้อความทวงระดับสัญญา', async () => {
+      prisma.payment.findMany.mockResolvedValue([makePayment(3, bkkDay(1))]);
+
+      await service.runDailyReminders();
+
+      expect(prisma.notificationLog.findMany).not.toHaveBeenCalled();
+      expect(lineClient.pushText).toHaveBeenCalled();
+    });
 
     it('A2 ยังไม่ได้แจ้ง (ไม่มี consent / ส่งไม่ผ่านจนหมดรอบ) → บอทส่งตามเดิม', async () => {
       const yesterday = new Date();

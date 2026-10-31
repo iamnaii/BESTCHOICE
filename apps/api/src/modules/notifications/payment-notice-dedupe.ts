@@ -12,6 +12,8 @@ import { NotificationCategory } from './notification-category.enum';
  * | `REMINDER` เตือนค่างวด (ข้อ 1) | T-3 / T-1 / T0 | A1 `NotificationReminderService.sendPaymentReminders` 08:00 | บอท A8 `AutoTriggerService.runDailyReminders` 09:00 (T-5..T0) |
  * | `OVERDUE` แจ้งค้างชำระ (รอบ 2 ข้อ 3) | T+1 / T+3 | A2 `NotificationReminderService.sendOverdueNotices` 09:00 (T+1/+3/+7) | บอท `AutoTriggerService.runDailyEscalations` 10:00 (T+1/+3) |
  *
+ * `OVERDUE` ยังเว้นให้ข้อความทวงระดับสัญญาที่ส่งแล้ววันนี้ (`findContractsDunnedToday` — รอบ 4 I2)
+ *
  * **T-3 (รอบ 2 ข้อ 1):** งวดที่ลิงก์ชำระอัตโนมัติ (A6 `CollectionsNotifierService.sendAutoPaymentLinks` 08:30 — การ์ด "แจ้งเตือนค่างวด" +
  * ปุ่มจ่าย) จะส่งวันนี้ = การ์ดลิงก์ชำระเป็นข้อความเดียวของวัน: A1 (รันก่อน 08:00) ตัดสินจาก**เงื่อนไขของ A6 เอง** (`autoPayLinkPaymentWhere` —
  * ตัวเดียวกับที่ A6 ใช้ค้นงวด ไม่ใช่สำเนา) แล้วเว้นให้ · A6 ลงแถว SENT หมวด REMINDER ⇒ บอท 09:00 / A1 ที่สั่งรันซ้ำเห็นว่าส่งแล้ว ·
@@ -99,6 +101,37 @@ export async function paymentNoticeSentToday(
     select: { id: true },
   });
   return row !== null;
+}
+
+/**
+ * Task 30 รอบ 4 (รีวิวรอบ 3 I2 · เจ้าของ: **ข้อความทวงหลังครบกำหนดวันละข้อความเดียว**) — สัญญาในชุดนี้ที่ได้ข้อความทวง**ระดับสัญญา**แล้ววันนี้
+ * หรือยังถือการส่งอยู่: แถวหมวด DUNNING ที่ `relatedId` = id สัญญา — แจ้งสถานะ (A3) / ขั้นทวง (A4) / แจ้งล็อก ของรอบเช้า 08:05 ·
+ * พนักงานกดส่ง · กฎทวงตามเหตุการณ์ · ทุกช่องทาง (LINE / SMS แทน) · `SENT` วันนี้ หรือ `RETRY_PENDING` / `DELAYED` ที่สร้างวันนี้ (ส่งเองภายหลัง)
+ *
+ * ผู้อ่าน: A2 / บอททวง T+1/T+3 ข้ามงวดของสัญญาเหล่านี้ (เดิม T+7 = วันเปลี่ยนเป็น OVERDUE ได้แจ้งสถานะ 08:05 + แจ้งค้างชำระ 09:00 ของงวดเดียวกัน ·
+ * แถวของ A2 ผูก id งวดจึงไม่ถูกนับที่นี่) · รอบเช้า 08:05 ที่สั่งรันซ้ำไม่ส่งซ้ำ · **ไม่ใช่**เพดานความถี่ของ `ComplianceService` (คนละกติกา —
+ * เพดานนับเฉพาะแถวที่ผูกลูกค้า + สัญญา และยกเว้นแจ้งสถานะที่ไม่ได้ส่งแทนขั้นทวง — รอบ 4 m4)
+ */
+export async function findContractsDunnedToday(
+  prisma: Pick<PrismaService, 'notificationLog'>,
+  contractIds: string[],
+  now: Date = new Date(),
+): Promise<Set<string>> {
+  if (contractIds.length === 0) return new Set();
+  const dayStart = bangkokStartOfDay(now);
+  const rows = await prisma.notificationLog.findMany({
+    where: {
+      relatedId: { in: [...new Set(contractIds)] },
+      category: NotificationCategory.DUNNING,
+      deletedAt: null,
+      OR: [
+        { status: 'SENT', sentAt: { gte: dayStart } },
+        { status: { in: ['RETRY_PENDING', 'DELAYED'] }, createdAt: { gte: dayStart } },
+      ],
+    },
+    select: { relatedId: true },
+  });
+  return new Set(rows.map((row) => row.relatedId).filter((id): id is string => id !== null));
 }
 
 /**

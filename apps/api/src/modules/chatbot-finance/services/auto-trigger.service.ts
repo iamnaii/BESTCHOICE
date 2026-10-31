@@ -19,6 +19,7 @@ import {
 import {
   autoTriggerReferenceKey,
   botNoticeKind,
+  findContractsDunnedToday,
   noticeDueWindow,
   paymentNoticeSentToday,
 } from '../../notifications/payment-notice-dedupe';
@@ -147,6 +148,7 @@ export class AutoTriggerService {
     let skipped = 0;
     let failed = 0;
     let dedupedByPrimary = 0;
+    let dedupedByContractDunning = 0;
     let legacyGraceSkipped = 0;
     // Task 30 — ชนิดข้อความ (เตือนค่างวด / แจ้งค้างชำระ) ที่บอทเป็นตัวสำรองของ A1 / A2 (payment-notice-dedupe.ts)
     const noticeKind = botNoticeKind(type);
@@ -158,6 +160,14 @@ export class AutoTriggerService {
           this.prisma,
           payments.map((p) => p.contractId),
         );
+    // รอบ 4 I2 — ทวงหลังเลยกำหนด: สัญญาที่ได้ข้อความทวงระดับสัญญาแล้ววันนี้ (A2 เว้นให้แล้ว — บอทต้องไม่ส่งแทน) · เตือนค่างวดไม่ถาม
+    const contractDunned =
+      noticeKind === 'OVERDUE'
+        ? await findContractsDunnedToday(
+            this.prisma,
+            payments.map((p) => p.contractId),
+          )
+        : new Set<string>();
 
     for (const payment of payments) {
       const lineUserId = financeLineRecipient(payment.contract.customer);
@@ -169,6 +179,10 @@ export class AutoTriggerService {
       // Task 30 — ตัวหลัก (A1 เตือนค่างวด / A2 แจ้งค้างชำระ) ส่งงวดนี้แล้ววันนี้ ⇒ ไม่ส่งซ้ำ (ไม่จองแถว: สั่งรันซ้ำก็ตัดสินเหมือนเดิม)
       if (noticeKind && (await paymentNoticeSentToday(this.prisma, noticeKind, payment.id))) {
         dedupedByPrimary++;
+        continue;
+      }
+      if (contractDunned.has(payment.contractId)) {
+        dedupedByContractDunning++;
         continue;
       }
 
@@ -202,7 +216,7 @@ export class AutoTriggerService {
     }
 
     this.logger.log(
-      `[AutoTrigger] ${type}: sent=${sent} skipped=${skipped} failed=${failed} dedupedByPrimary=${dedupedByPrimary} legacyGrace=${legacyGraceSkipped}`,
+      `[AutoTrigger] ${type}: sent=${sent} skipped=${skipped} failed=${failed} dedupedByPrimary=${dedupedByPrimary} contractDunned=${dedupedByContractDunning} legacyGrace=${legacyGraceSkipped}`,
     );
   }
 

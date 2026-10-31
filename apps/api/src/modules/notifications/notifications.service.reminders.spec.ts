@@ -80,6 +80,8 @@ describe('NotificationsService — reminder / overdue dunning', () => {
       payment: { findMany: jest.fn().mockResolvedValue([]) },
       notificationLog: {
         findFirst: jest.fn().mockResolvedValue(null), // not a duplicate
+        // รอบ 4 I2 — ยังไม่มีสัญญาไหนได้ข้อความทวงระดับสัญญาวันนี้
+        findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn().mockResolvedValue({ id: 'log-1' }),
       },
       pDPAConsent: { findFirst: jest.fn().mockResolvedValue({ id: 'consent-1' }) }, // granted
@@ -357,6 +359,40 @@ describe('NotificationsService — reminder / overdue dunning', () => {
           status: { in: ['RETRY_PENDING', 'DELAYED'] },
           createdAt: { gte: expect.any(Date) },
         });
+      });
+    });
+
+    describe('Task 30 รอบ 4 I2 — ทวงหลังครบกำหนดวันละข้อความเดียวต่อสัญญา', () => {
+      it('สัญญาได้ข้อความทวงระดับสัญญาแล้ววันนี้ (แจ้งสถานะ 08:05 ฯลฯ) → A2 ไม่ส่งงวดของสัญญานั้น ไม่แตะ consent', async () => {
+        givenPayments([{ ...withLine(), contractId: 'ct-1' }]);
+        prisma.notificationLog.findMany.mockResolvedValue([{ relatedId: 'ct-1' }]);
+
+        const result = await service.sendOverdueNotices();
+
+        expect(spyOf('sendLineFlexMessage')).not.toHaveBeenCalled();
+        expect(spyOf('send')).not.toHaveBeenCalled();
+        expect(prisma.pDPAConsent.findFirst).not.toHaveBeenCalled();
+        expect(result.sent).toBe(0);
+        expect(result.dedupedByContractDunning).toBe(1);
+        // แถวหมวด DUNNING ที่ผูก id สัญญา — ส่งแล้ววันนี้ หรือยังถือการส่ง (คิวส่งซ้ำ / รอเวลาทำการ) · ทุกช่องทาง
+        const { where } = prisma.notificationLog.findMany.mock.calls[0][0];
+        expect(where.relatedId).toEqual({ in: ['ct-1'] });
+        expect(where.category).toBe('DUNNING');
+        expect(where.channel).toBeUndefined();
+        expect(where.OR).toEqual([
+          { status: 'SENT', sentAt: { gte: expect.any(Date) } },
+          { status: { in: ['RETRY_PENDING', 'DELAYED'] }, createdAt: { gte: expect.any(Date) } },
+        ]);
+      });
+
+      it('สัญญาอื่นได้ข้อความทวง → งวดของสัญญานี้ยังส่งตามเดิม', async () => {
+        givenPayments([{ ...withLine(), contractId: 'ct-1' }]);
+        prisma.notificationLog.findMany.mockResolvedValue([{ relatedId: 'ct-other' }]);
+
+        const result = await service.sendOverdueNotices();
+
+        expect(spyOf('sendLineFlexMessage')).toHaveBeenCalledTimes(1);
+        expect(result.sent).toBe(1);
       });
     });
 

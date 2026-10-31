@@ -151,8 +151,18 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
    - **ปุ่ม "ส่ง LINE" ของพนักงาน** (Task 24 RR-M2) ใช้เกณฑ์เดียวกับผู้ส่ง: API คืน `customer.hasVerifiedLine` (`withVerifiedFinanceLine` — มีแถว OTP ที่ยังผูก ·
      ตัด U-id ของแถวออกจากคำตอบ) ที่ `GET /overdue/queue` + `/overdue/contracts/:id/queue-row` · `GET /collections/session/mine` · `hasLine`/`withLine` ของ `promise-due-reminders` ⇒
      ปุ่มใน `ContractCard` / `Customer360Actions` / `FocusContractCard` · ตัวกรอง "ไม่มี LINE" · ตัวนับ LINE ของโหมดโฟกัส ไม่ดูคอลัมน์ ·
-     ส่งไม่ได้เพราะไม่มีแถว = 400 `LINE_FINANCE_NOT_VERIFIED_MESSAGE` (`POST /overdue/:id/send-line-adhoc` · ส่งซ้ำ dunning ช่อง LINE — บอกว่ายังไม่ยืนยัน OTP +
-     ทางของลูกค้าเอง "เริ่มยืนยันตัวตน" เพราะไม่มีปุ่มพนักงานส่งลิงก์ยืนยัน) · คอลัมน์ในคำตอบเหลือไว้ให้แผง 360 แสดงเท่านั้น
+     ส่งไม่ได้เพราะไม่มีแถว (ณ ตอนส่ง) = 400 `LINE_FINANCE_NOT_VERIFIED_MESSAGE` (`POST /overdue/:id/send-line-adhoc` · ส่งซ้ำ dunning ช่อง LINE — บอกว่ายังไม่ยืนยัน OTP +
+     ทางของลูกค้าเอง "เริ่มยืนยันตัวตน" เพราะไม่มีปุ่มพนักงานส่งลิงก์ยืนยัน) · ad-hoc ไม่พบสัญญา = 404 (ไม่ตอบ `{sent:0}` ที่หน้าเว็บแปลว่า "ลองใหม่" — fix round 1 M-4) ·
+     ส่ง ad-hoc / `bulk/send-line` ตัดขอบเขตสาขาด้วย `getBranchScope` แบบเดียวกับคิวที่อ่าน (SALES/BM = สาขาตัวเอง · ไม่มีสาขา = fail closed · ad-hoc นอกสาขา = 404 —
+     fix round 1 M-3) · คอลัมน์ `lineIdFinance` ในคำตอบเหลือไว้แสดงผล (ป้าย "LINE (งานการเงิน)") — **ห้ามใช้ตัดสินว่าส่งได้**
+   - **ทางส่งข้อความถึงลูกค้าที่เลือกปลายทางจาก `customerId` ต้องเลือกจากแถว OTP ที่ยังผูก — ห้ามเลือก "ห้อง LINE ล่าสุดของลูกค้า"** (Task 24 fix round 1 I-1):
+     ห้องของ LINE ที่ลูกค้ายกเลิกแล้วยังถือ `customerId` เดิม (ข้อ 6 ล้างแค่ `verified_at`) ⇒ ผู้ถือ LINE เก่าที่ทักมาล่าสุดจะได้ข้อความของพนักงาน (ยอดหนี้ ฯลฯ) ·
+     แท็บ "แชท LINE" ในแผง 360 **ส่งข้อความได้** (`POST /staff-chat/customer/:customerId/messages` → `RoomManagerService.sendCustomerMessage`): ส่งเฉพาะห้อง
+     `LINE_FINANCE` ของ `findFinanceLineRecipient` · ไม่มีแถว = 400 `LINE_FINANCE_NOT_VERIFIED_MESSAGE` · มีแต่ห้อง LINE ร้าน = 400 `LINE_SHOP_STAFF_SEND_DISABLED_MESSAGE`
+     (ไม่ส่งทาง LINE ร้านจนกว่าฝั่งร้านมี OTP) · ยืนยันแล้วแต่ยังไม่เคยทัก = "รอลูกค้าทักก่อน" (ไม่ถอยไปห้องอื่น) · ประวัติแชท (`GET` เส้นเดียวกัน) แสดงห้องของแถว OTP ก่อน
+     (ไม่มีแถว = ห้อง LINE ล่าสุดตามเดิม อ่านอย่างเดียว) · เงื่อนไขเปิดแท็บ/ช่องพิมพ์ฝั่งเว็บยังดูคอลัมน์ — Task 27 เปลี่ยนเป็นสถานะยืนยัน (API ปฏิเสธอยู่แล้วไม่ว่าเว็บจะเปิดไหม) ·
+     route นี้ยังไม่มี branch scope (ลูกค้าไม่ผูกสาขาโดยตรง — รอเจ้าของตัดสิน) · บันทึกสำเนาข้อความลงห้อง (`payment-link` · `notification-dispatch`) ยังเลือก
+     "ห้องการเงินล่าสุดของลูกค้า" — ปลายทางจริงเป็นแถว OTP แล้ว (ไม่รั่ว) แต่สำเนาอาจลงห้องของ LINE เก่า (แสดงผลผิดห้อง)
    - **ผู้อ่านคอลัมน์ที่เหลือ** ถูกปักด้วย `line-oa/services/line-id-finance-readers.spec.ts` (allow-list พร้อมเหตุผล — แสดงผล/รายงาน/ล้างค่า/ข้ามสัญญาใน test-pack ·
      ไม่ตัดสินสิทธิ์ ไม่เป็นปลายทาง) · ไฟล์ใหม่ใต้ `apps/api/src` ทั้งหมด (รวม `src/cli` — Task 24 RR-M1) ที่อ้าง `lineIdFinance` หรือชื่อคอลัมน์ดิบ `line_id_finance`
      (raw SQL) = เทสแดง — ใช้แถว OTP หรือเพิ่มในรายการพร้อมเหตุผลในรีวิว · test-pack (`seed-test-pack` โหมดเดินเรื่อง) ข้ามสัญญาที่ลูกค้ามีแถว OTP ที่ยังผูก **หรือ**
@@ -164,9 +174,9 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
 **ข้อยกเว้นที่ยังเหลือ (รู้ตัว — ยังไม่ได้ปิด อย่าอ่านกติกาข้างบนว่า "ปิดหมดแล้ว"):**
 - **I3 — ปิดในโค้ดแล้ว (Task 22 กติกาข้อ 6 + fix round 1 กติกาข้อ 9) · ที่ยังเหลือ (ส่วนใหญ่เป็นเรื่องการแสดงผล):** (ก) ค่า `line_id_finance` ที่พนักงาน/นำเข้า
   เขียนไว้**ก่อน deploy Task 22** ยังอยู่ — ไม่ให้สิทธิ์ LIFF/ลิงก์ชำระ และไม่เป็นปลายทางข้อความแล้ว (ข้อ 9) แต่ยังแสดงบนหน้าลูกค้าของพนักงาน · ป้าย
-  "LINE (งานการเงิน)" + แท็บ "แชท LINE" ในแผง 360 ของคิวทวงถาม · คอลัมน์รายงานลูกหนี้ · ช่อง `{customer_line_id}` ในเอกสารสัญญา ⇒ พนักงานอาจเห็นว่าลูกค้า
+  "LINE (งานการเงิน)" ในแผง 360 ของคิวทวงถาม · คอลัมน์รายงานลูกหนี้ · ช่อง `{customer_line_id}` ในเอกสารสัญญา ⇒ พนักงานอาจเห็นว่าลูกค้า
   "มี LINE" ทั้งที่ข้อความไม่ถูกส่ง (ปุ่ม "ส่ง LINE" · ตัวกรอง "ไม่มี LINE" · ตัวนับ LINE ของโหมดโฟกัส · แบนเนอร์นัดครบกำหนด ใช้แถว OTP แล้ว — Task 24 RR-M2 ·
-  ข้อ 9) · **กวาดหนึ่งครั้งก่อนเปิด LIFF ให้ลูกค้า (1 ธ.ค.)** ด้วย SQL อ่านอย่างเดียวด้านล่าง (รันบน prod ได้ตอนนี้เพื่อรู้ขนาด) แล้วล้างทีละแถว:
+  แท็บ "แชท LINE" **ไม่ใช่แค่แสดงผล — ส่งข้อความได้**: API ส่งเฉพาะห้องของแถว OTP แล้ว (fix round 1 I-1) ส่วนเงื่อนไขเปิดแท็บฝั่งเว็บยังดูคอลัมน์ (Task 27) · ข้อ 9) · **กวาดหนึ่งครั้งก่อนเปิด LIFF ให้ลูกค้า (1 ธ.ค.)** ด้วย SQL อ่านอย่างเดียวด้านล่าง (รันบน prod ได้ตอนนี้เพื่อรู้ขนาด) แล้วล้างทีละแถว:
   มีสัญญา = หน้าสัญญา › แก้ไขข้อมูลลูกค้า (ข้อ I4) · **ไม่มีสัญญา (`contracts = 0`) ล้างผ่านหน้าจอไม่ได้** (`EditCustomerDialog` ส่งเฉพาะช่องไม่ว่าง) ⇒
   `PATCH /customers/:id {"lineIdFinance": null}` ด้วยบัญชี OWNER (ผ่าน `unlinkFinanceLine` + audit) · แถวที่ถูกลบ (`deleted = true`): ล้างหลังกู้จากถังขยะ
   (ถังขยะเตือน "เคยผูก LINE" อยู่แล้ว) — `bind` ของ LINE เดียวกันก็ล้างให้เอง (ข้อ 9) · (ข) ~~ให้ LIFF การเงินอนุญาตจากแถว link~~ — ทำแล้ว (ข้อ 9) ·
@@ -231,14 +241,19 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
   deploy Task 22: เว็บ (26.10.71) กับ API ขึ้นพร้อมกัน — เว็บรุ่นเก่ากับ API ใหม่ = ปุ่มดาวน์โหลดได้ 401 (ไม่มีตั๋ว) จนเว็บใหม่ขึ้น
 - **I-C — ปิดแล้ว (Task 22 · ข้อ 8) · ที่ยังเหลือ:** ด่าน `verifiedOnly` ของแม่แบบดู `chat_rooms.verified_at` — ห้อง LINE การเงินได้ค่านี้จากแถว OTP ที่ยังผูกเท่านั้น
   (`bind` · `ChatRoomService.linkRoomToCustomer` หลัง `isLinked` · สร้างห้องใหม่ของ LINE ที่มีแถวยังผูก) และ**ถูกล้างเมื่อยกเลิกผูก/ย้าย LINE** (Task 24 M-8 · ข้อ 6) ·
-  ห้อง LINE ร้านที่ `RoomManagerService.getOrCreateRoom` สร้างยังรับแถว link ช่อง SHOP ทุกสถานะ (วันนี้ไม่มีแถวช่อง SHOP — แก้พร้อมงาน OA ร้าน) ·
+  "แถวยังผูก" = เกณฑ์เดียว `VERIFIED_FINANCE_LINK_WHERE` (`otp-verified-customer.ts` — FINANCE · unlinked/deleted ว่าง · ลูกค้าไม่ถูกลบ) ใช้ทั้ง `findOtpVerifiedCustomerId` ·
+  `isLinked` · `ChatRoomService.getOrCreate` · `RoomManagerService.getOrCreateRoom` ช่อง FINANCE (fix round 1 M-1/M-2) ·
+  **ช่อง SHOP ของ `RoomManagerService.getOrCreateRoom` ยังรับแถว link ทุกสถานะ** (TODO ในโค้ด — วันนี้ไม่มีผู้เขียนแถวช่อง SHOP · ต้องใช้เกณฑ์เดียวกันเมื่อเชื่อม OA ร้านพร้อม OTP ฝั่งร้าน) ·
   พนักงานกดส่งเองยังใช้ลูกค้าของห้อง (บอทขาย `LINKED_BY_PHONE`
   ทำให้พนักงานเห็นห้องเป็นลูกค้าคนนั้น — social engineering คลาสเดียวกับ I3) · Facebook: ปุ่มที่ลูกค้ากดได้คำกลางเสมอ — ตรวจแม่แบบที่ใช้ตัวแปรลูกค้าและมี
   ปุ่ม `TEMPLATE:` บน Facebook ว่ายังสื่อความได้
 - **ข้อย่อยจากรีวิว Task 22 (สถานะหลัง Task 24, 2026-10-31):** RR-M1 (test-pack ตัดสินการยิง LINE ด้วยคอลัมน์ + ตัวสแกนผู้อ่านคอลัมน์ครอบแค่ `src/modules`) ·
   RR-M2 (ปุ่ม LINE ของคิวทวงถามเปิดตามคอลัมน์ + 400 ไม่บอกเหตุ) · M-5 (`HEAD`/prefetch เผาตั๋วดาวน์โหลด) · M-8 (ยกเลิกผูกไม่ล้าง `verified_at`) — **ปิดแล้ว** ·
   deploy: เว็บ 26.10.72 ขึ้นพร้อมหรือหลัง API (เว็บใหม่ + API เก่า = ไม่มี `hasVerifiedLine` ⇒ ปุ่ม "ส่ง LINE" ปิดทุกแถว — fail closed · API ใหม่ + เว็บเก่า = ปุ่มตามคอลัมน์เดิม) ·
-  **M-3 ยังเปิด — รอ mockup ที่เจ้าของอนุมัติ:** ช่อง "LINE ID (FINANCE)" บนฟอร์มสร้าง/แก้ไขลูกค้า (`CustomerCreateDialog` · `EditCustomerDialog` · `CustomerCreateModal`)
+  รีวิว Task 24 (fix round 1): I-1 (แท็บ "แชท LINE" ส่งเข้าห้องล่าสุดของลูกค้า) — **ปิดฝั่ง API** (ฝั่งเว็บ Task 27) · M-1 · M-2 (FINANCE — SHOP เป็น TODO) · M-3 (branch scope ของ
+  ad-hoc/bulk) · M-4 (404/400 แทน `{sent:0}`) · M-5 (test-pack ก้าวเปิดสัญญาไม่แจ้งคนจริง — `ACTIVATION_SILENT_CUSTOMER_WHERE`) — **ปิดแล้ว** · M-6 (ตัวตัดคอมเมนต์ของ readers spec
+  เป็น regex — สตริงที่มี `/*` อาจตัดโค้ดจริง) — ยอมรับ ·
+  **M-3 ของรีวิว Task 22 ยังเปิด — รอ mockup ที่เจ้าของอนุมัติ:** ช่อง "LINE ID (FINANCE)" บนฟอร์มสร้าง/แก้ไขลูกค้า (`CustomerCreateDialog` · `EditCustomerDialog` · `CustomerCreateModal`)
   และ skip-tracing (`SkipTracingWizard`) ยังให้พิมพ์ — ค่าใหม่ได้ 400 `LINE_FINANCE_LINK_REQUIRES_OTP_MESSAGE` ทุกครั้ง (ปลอดภัย แต่พนักงานชนกำแพง) · ห้ามแก้หน้าตาก่อนได้ mockup
 - เวลาตอบ `requestOtp`: SMS ไม่ถูก await และทุกทางที่สำเร็จรอขั้นต่ำ 1 วิ — ส่วนต่างที่เหลือคือ query เพดานของเบอร์จริง (ระดับมิลลิวินาที อยู่ใต้ขั้นต่ำ) ·
   ถ้า provider ช้าเกิน 1 วิ SMS ยังส่งต่อหลังตอบ (Cloud Run ลด CPU หลังตอบ — อาจช้าลง ไม่หาย)

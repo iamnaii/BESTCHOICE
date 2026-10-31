@@ -67,11 +67,13 @@ describe('ClearSecretDialog — what clearing a field does', () => {
   it('Claude API Key: names what stops and what keeps running on the server key', () => {
     const dialog = open(t('claude-ai', 'Claude AI (Anthropic)', 'apiKey', 'API Key'));
     expect(dialog).toHaveTextContent(
-      'ฟีเจอร์ที่ใช้คีย์จากหน้านี้จะหยุด: บอทน้องเบส · อ่านสลิป · อ่านเอกสาร (OCR) · วิเคราะห์เครดิตด้วย AI · บอทตอบแชท LINE SHOP แบบเดิม',
+      'ฟีเจอร์ที่อ่านคีย์ผ่านหน้านี้จะหยุด: บอทน้องเบส · อ่านสลิป · อ่านเอกสาร (OCR) · วิเคราะห์เครดิตด้วย AI · บอทตอบแชท LINE SHOP แบบเดิม',
     );
     expect(dialog).toHaveTextContent(
-      'บอทขายในอินบ็อกซ์ · ข้อความตอบนอกเวลาทำการ · ผู้ช่วย AI ของพนักงานในอินบ็อกซ์ · การดึงคลังคำตอบจากแชทเก่า ใช้ ANTHROPIC_API_KEY ของเซิร์ฟเวอร์ ไม่ได้ใช้คีย์จากหน้านี้ จึงไม่หยุดตาม (ต้องให้ผู้ดูแลระบบเอาออกเอง)',
+      'บอทขายในอินบ็อกซ์ · ข้อความตอบนอกเวลาทำการ · ผู้ช่วย AI ของพนักงานในอินบ็อกซ์ · การดึงคลังคำตอบจากแชทเก่า อ่าน ANTHROPIC_API_KEY ของเซิร์ฟเวอร์โดยตรง ไม่ได้อ่านผ่านหน้านี้ จึงไม่หยุดตาม (ต้องให้ผู้ดูแลระบบเอาออกเอง)',
     );
+    // Re-review N3: the card may show that very env key, so "not the key from this page" misleads.
+    expect(dialog).not.toHaveTextContent('ไม่ได้ใช้คีย์จากหน้านี้');
     expect(dialog).not.toHaveTextContent('จะใช้งานไม่ได้');
   });
 

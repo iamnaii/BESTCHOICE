@@ -46,7 +46,7 @@ describe('SchedulerService — ข้อความผลรอบกลาง�
       .mockResolvedValue({ escalated: 1, notified: 1, suppressed: 0 });
     morning = jest
       .spyOn(CollectionsNotifierService.prototype, 'sendOvernightCollectionsNotices')
-      .mockResolvedValue({ statusNotices: 1, dunningNotices: 1, lockNotices: 1 });
+      .mockResolvedValue({ statusNotices: 1, dunningNotices: 1 });
   });
   afterEach(() => jest.restoreAllMocks());
 

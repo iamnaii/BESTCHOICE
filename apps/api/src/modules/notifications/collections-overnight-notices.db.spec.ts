@@ -2,8 +2,7 @@
  * รัน: DATABASE_URL=<ฐานทดสอบ> npx jest src/modules/notifications/collections-overnight-notices.db.spec.ts --runInBand
  *
  * Task 30 รอบ 3 — ข้อความทวงจากรอบกลางคืน (A3 แจ้งสถานะ 00:30 · A4 ขั้นทวง 01:00) ส่งตอนเช้าในเวลาทำการ:
- * `CollectionsNotifierService.sendOvernightCollectionsNotices` อ่านผลของคืนนั้นจาก AuditLog ของรอบระบบ บน Postgres จริง ·
- * รอบ 4 m1 — แจ้งล็อกเครื่องของล็อกอัตโนมัติ (`MdmAutoService` 01:30) ส่งในรอบเดียวกัน
+ * `CollectionsNotifierService.sendOvernightCollectionsNotices` อ่านผลของคืนนั้นจาก AuditLog ของรอบระบบ บน Postgres จริง
  */
 import { PrismaClient } from '@prisma/client';
 import { NotificationsService } from './notifications.service';
@@ -12,7 +11,6 @@ import { HolidayService } from './holiday.service';
 import { NotificationTemplateService } from './notification-template.service';
 import { PDPAService } from '../pdpa/pdpa.service';
 import { CollectionsNotifierService } from './services/collections-notifier.service';
-import { MdmAutoService } from '../mdm/mdm-auto.service';
 import {
   FinanceFixtureBase,
   InstallmentFixture,
@@ -42,8 +40,6 @@ const sink = (via: string) => async (to: string) => {
 };
 const receivedBy = (f: InstallmentFixture) =>
   delivered.filter((d) => d.to === f.lineUserId).map((d) => d.via);
-/** แม่แบบที่ `sendFromTemplate` กำลังส่ง (ขั้นทวง / แจ้งล็อก) — ทาง Flex ของแม่แบบใช้ transport ตัวเดียวกัน */
-let templateInFlight: string | null = null;
 
 async function overdueContract(label: string) {
   const f = await createInstallmentFixture(prisma, base, {
@@ -87,19 +83,8 @@ beforeAll(async () => {
   );
   jest
     .spyOn(notifications.transport, 'sendLineFlexMessage')
-    .mockImplementation(async (to: string) =>
-      sink(templateInFlight ? `tpl:${templateInFlight}` : 'flex')(to),
-    );
+    .mockImplementation(sink('dunningFlex'));
   jest.spyOn(notifications.transport, 'sendLine').mockImplementation(sink('text'));
-  const sendFromTemplate = notifications.sendFromTemplate.bind(notifications);
-  jest.spyOn(notifications, 'sendFromTemplate').mockImplementation(async (eventType, ...rest) => {
-    templateInFlight = eventType;
-    try {
-      return await sendFromTemplate(eventType, ...rest);
-    } finally {
-      templateInFlight = null;
-    }
-  });
   collections = new CollectionsNotifierService(
     prisma as never,
     { sendFlexMessage: jest.fn(sink('statusFlex')) } as never,
@@ -147,7 +132,6 @@ it('รอบกลางคืน → ไม่มีอะไรส่งต�
   await expect(collections.sendOvernightCollectionsNotices()).resolves.toEqual({
     statusNotices: 0,
     dunningNotices: 0,
-    lockNotices: 0,
   });
   expect(delivered.filter((d) => fixtures.some((f) => f.lineUserId === d.to))).toEqual([]);
 
@@ -155,7 +139,7 @@ it('รอบกลางคืน → ไม่มีอะไรส่งต�
   jest.setSystemTime(bangkokAt(day, 0, 8, 5));
   await collections.sendOvernightCollectionsNotices();
   expect(receivedBy(flipped)).toEqual(['statusFlex']);
-  expect(receivedBy(escalated)).toEqual(['tpl:dunning.reminder']);
+  expect(receivedBy(escalated)).toEqual(['dunningFlex']);
   expect(receivedBy(both)).toEqual(['statusFlex']); // หนึ่งข้อความทวงต่อสัญญา
   expect(receivedBy(paidOvernight)).toEqual([]);
   expect(receivedBy(paidEscalated)).toEqual([]);
@@ -177,94 +161,6 @@ it('รอบกลางคืน → ไม่มีอะไรส่งต�
   jest.setSystemTime(bangkokAt(day, 0, 9, 30));
   await collections.sendOvernightCollectionsNotices();
   expect(receivedBy(flipped)).toEqual(['statusFlex']);
-  expect(receivedBy(escalated)).toEqual(['tpl:dunning.reminder']);
+  expect(receivedBy(escalated)).toEqual(['dunningFlex']);
   expect(receivedBy(both)).toEqual(['statusFlex']);
-}, 60_000);
-
-/**
- * รอบล็อกอัตโนมัติ (`MdmAutoService.autoLockOverdueContracts`) ตัวจริงบน Postgres — เลือกเฉพาะสัญญาของสเปคนี้ (ฐานทดสอบมีสัญญาค้างของสเปคอื่น ·
- * รอบล็อกเว้น 1 วินาทีระหว่างเครื่อง) · ส่วนอื่นเป็นของจริงทั้งหมด
- */
-function scopedLockPrisma(contractIds: string[]) {
-  return {
-    contract: {
-      findMany: (args: { where: object }) =>
-        prisma.contract.findMany({
-          ...(args as object),
-          where: { ...args.where, id: { in: contractIds } },
-        } as never),
-      update: (args: unknown) => prisma.contract.update(args as never),
-    },
-    auditLog: { create: (args: unknown) => prisma.auditLog.create(args as never) },
-    user: prisma.user,
-    $transaction: (ops: never) => prisma.$transaction(ops),
-  };
-}
-
-it('รอบ 4 m1 — ล็อกอัตโนมัติ 01:30 ไม่แจ้งตอนดึก · 08:05 แจ้งเครื่องที่ยังล็อก · ปลดก่อนเช้าไม่แจ้ง · ลูกค้านำเข้าช่วงผ่อนผันยังได้ · สั่งรันซ้ำไม่ส่งซ้ำ', async () => {
-  const lockCandidate = async (label: string, extra: object = {}) => {
-    const f = await createInstallmentFixture(prisma, base, {
-      label,
-      dueDate: dueDateBkk(day, -31),
-      paymentStatus: 'OVERDUE',
-      contractStatus: 'OVERDUE',
-      ...extra,
-    });
-    fixtures.push(f);
-    return f;
-  };
-  const locked = await lockCandidate('lock');
-  const unlockedBeforeMorning = await lockCandidate('unlock');
-  const legacyInGrace = await lockCandidate('lockGrace', { legacyCode: `LEG-${stamp}` });
-  const lockedAndDefault = await lockCandidate('lockDefault');
-  await nightAudit(lockedAndDefault, 'STATUS_CHANGE', {
-    from: 'OVERDUE',
-    to: 'DEFAULT',
-    reason: 'x',
-  });
-  const mine = [locked, unlockedBeforeMorning, legacyInGrace, lockedAndDefault];
-
-  // 01:30 รอบล็อก — ล็อกครบ ไม่มีข้อความ
-  useFakeDate(bangkokAt(day, 0, 1, 30));
-  const mdmAuto = new MdmAutoService(
-    scopedLockPrisma(mine.map((f) => f.contractId)) as never,
-    { lockDeviceByImei: jest.fn(async () => ({ success: true })) } as never,
-    {} as never,
-  );
-  jest.spyOn(mdmAuto, 'getSettings').mockResolvedValue({
-    autoLockEnabled: true,
-    autoLockDays: 30,
-    autoUnlockEnabled: false,
-    notifyLine: true,
-  });
-  await expect(mdmAuto.autoLockOverdueContracts()).resolves.toEqual({
-    locked: 4,
-    skipped: 0,
-    failed: 0,
-  });
-  expect(mine.flatMap(receivedBy)).toEqual([]);
-
-  // พนักงานปลดล็อกก่อนรอบเช้า (สิ่งที่ `MdmService.unlockContract` เขียน)
-  await prisma.contract.update({
-    where: { id: unlockedBeforeMorning.contractId },
-    data: { mdmLockedAt: null, deviceLocked: false },
-  });
-
-  // 08:05
-  jest.setSystemTime(bangkokAt(day, 0, 8, 5));
-  const morning = await collections.sendOvernightCollectionsNotices();
-  expect(morning.lockNotices).toBe(3);
-  expect(receivedBy(locked)).toEqual(['tpl:mdm.lock_notice']);
-  expect(receivedBy(unlockedBeforeMorning)).toEqual([]);
-  expect(receivedBy(legacyInGrace)).toEqual(['tpl:mdm.lock_notice']); // ยกเว้นช่วงผ่อนผัน (รอบ 3 M5)
-  // ล็อกคืนเดียวกับเปลี่ยนเป็น DEFAULT: แจ้งสถานะ + แจ้งล็อก (เหมือนก่อนย้ายเวลา — คำถามเจ้าของ)
-  expect(receivedBy(lockedAndDefault)).toEqual(['statusFlex', 'tpl:mdm.lock_notice']);
-
-  // สั่งรันซ้ำ
-  jest.setSystemTime(bangkokAt(day, 0, 9, 30));
-  await expect(collections.sendOvernightCollectionsNotices()).resolves.toMatchObject({
-    lockNotices: 0,
-  });
-  expect(receivedBy(locked)).toEqual(['tpl:mdm.lock_notice']);
-  expect(receivedBy(lockedAndDefault)).toEqual(['statusFlex', 'tpl:mdm.lock_notice']);
 }, 60_000);

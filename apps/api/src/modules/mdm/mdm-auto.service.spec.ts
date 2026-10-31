@@ -4,7 +4,6 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { MdmService } from './mdm.service';
 import { LineOaService } from '../line-oa/line-oa.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { MDM_AUTO_LOCK_AUDIT } from '../notifications/services/collections-notifier.service';
 
 jest.mock('@sentry/nestjs', () => ({
   captureMessage: jest.fn(),
@@ -104,10 +103,6 @@ describe('MdmAutoService (characterization)', () => {
         update: jest.fn().mockResolvedValue({}),
       },
       payment: { count: jest.fn() },
-      // Task 30 รอบ 4 m1 — ล็อกสำเร็จ: mdmLockedAt + แถว audit ของรอบระบบใน tx เดียว (ผู้ใช้ระบบ = ผู้บันทึก)
-      user: { findFirst: jest.fn().mockResolvedValue({ id: 'sys-1' }) },
-      auditLog: { create: jest.fn().mockResolvedValue({}) },
-      $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
     };
 
     mdm = {
@@ -312,8 +307,8 @@ describe('MdmAutoService (characterization)', () => {
 
   // ─── autoLockOverdueContracts: notification on success ─────
 
-  describe('autoLockOverdueContracts — แจ้งลูกค้า (Task 30 รอบ 4 m1: ไม่ส่งกลางดึก)', () => {
-    it('ล็อกสำเร็จ → ไม่ส่ง mdm.lock_notice ตอน 01:30 · ลงแถว audit ของรอบระบบใน tx เดียวกับ mdmLockedAt (รอบเช้า 08:05 อ่าน)', async () => {
+  describe('autoLockOverdueContracts — LINE notify', () => {
+    it('sends mdm.lock_notice template when notifyLine=true and customer has lineIdFinance', async () => {
       prisma.systemConfig.findMany.mockResolvedValue(
         settingsRows({ autoLockEnabled: true, autoLockDays: 30, notifyLine: true }),
       );
@@ -322,47 +317,42 @@ describe('MdmAutoService (characterization)', () => {
 
       const result = await service.autoLockOverdueContracts();
 
-      expect(result).toEqual({ locked: 1, skipped: 0, failed: 0 });
-      expect(notifications.sendFromTemplate).not.toHaveBeenCalled();
-      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
-      expect(prisma.auditLog.create).toHaveBeenCalledWith({
-        data: {
-          userId: 'sys-1',
-          action: MDM_AUTO_LOCK_AUDIT.action,
-          entity: 'contract',
-          entityId: 'contract-1',
-          newValue: {
-            source: MDM_AUTO_LOCK_AUDIT.source,
-            reason: expect.stringContaining('C-0001'),
-            daysOverdue: 60,
-            notifyCustomer: true,
-          },
-          ipAddress: 'system-cron',
-        },
-      });
+      expect(result.locked).toBe(1);
+      expect(notifications.sendFromTemplate).toHaveBeenCalledTimes(1);
+      const [templateKey, vars, lineId, ctx] = notifications.sendFromTemplate.mock.calls[0];
+      expect(templateKey).toBe('mdm.lock_notice');
+      expect(vars.contractNumber).toBe('C-0001');
+      expect(lineId).toBe('Uline123');
+      expect(ctx).toEqual({ relatedId: 'contract-1', customerId: 'cust-1' });
     });
 
-    it('notifyLine=false → แถว audit บอกว่าไม่ต้องแจ้งลูกค้า', async () => {
+    it('Task 22 I-1 (ง): คอลัมน์ lineIdFinance ค้าง แต่ไม่มีแถว OTP → ไม่ส่ง LINE (ล็อกยังนับ)', async () => {
       prisma.systemConfig.findMany.mockResolvedValue(
-        settingsRows({ autoLockEnabled: true, autoLockDays: 30, notifyLine: false }),
+        settingsRows({ autoLockEnabled: true, autoLockDays: 30, notifyLine: true }),
       );
-      prisma.contract.findMany.mockResolvedValue([makeContract({ daysOverdue: 60 })]);
+      const stale = makeContract({ daysOverdue: 60 });
+      stale.customer.lineLinks = [];
+      prisma.contract.findMany.mockResolvedValue([stale]);
       mdm.lockDeviceByImei.mockResolvedValue({ success: true, message: 'ok' });
 
-      await service.autoLockOverdueContracts();
+      const result = await service.autoLockOverdueContracts();
 
-      expect(prisma.auditLog.create.mock.calls[0][0].data.newValue.notifyCustomer).toBe(false);
+      expect(result.locked).toBe(1);
+      expect(notifications.sendFromTemplate).not.toHaveBeenCalled();
     });
 
-    it('ไม่มีผู้ใช้ระบบ → ไม่ล็อกเลย (ล็อกโดยไม่มีแถว audit = แจ้งลูกค้าหายเงียบ) — ข้อความเดียวกับรอบ 00:30', async () => {
+    it('still counts as locked even if the LINE notify throws (notify failure does not affect lock result)', async () => {
       prisma.systemConfig.findMany.mockResolvedValue(
         settingsRows({ autoLockEnabled: true, autoLockDays: 30, notifyLine: true }),
       );
       prisma.contract.findMany.mockResolvedValue([makeContract({ daysOverdue: 60 })]);
-      prisma.user.findFirst.mockResolvedValue(null);
+      mdm.lockDeviceByImei.mockResolvedValue({ success: true, message: 'ok' });
+      notifications.sendFromTemplate.mockRejectedValue(new Error('LINE down'));
 
-      await expect(service.autoLockOverdueContracts()).rejects.toThrow('SYSTEM user not found');
-      expect(mdm.lockDeviceByImei).not.toHaveBeenCalled();
+      const result = await service.autoLockOverdueContracts();
+
+      expect(result).toEqual({ locked: 1, skipped: 0, failed: 0 });
+      expect(prisma.contract.update).toHaveBeenCalledTimes(1);
     });
   });
 

@@ -199,7 +199,7 @@ describe('ComplianceService', () => {
       const where = prisma.contract.findFirst.mock.calls[0][0].where;
       expect(where.OR).toEqual([{ id: 'k1' }, { payments: { some: { id: 'k1' } } }]);
       expect(where.legacyContractCode).toEqual({ not: null });
-      const cutoff: Date = where.customer.lineLinks.some.linkedAt.gt;
+      const cutoff: Date = where.customer.lineLinks.none.OR[0].linkedAt.lte;
       expect(Date.now() - cutoff.getTime()).toBe(7 * 24 * 60 * 60 * 1000);
     });
 

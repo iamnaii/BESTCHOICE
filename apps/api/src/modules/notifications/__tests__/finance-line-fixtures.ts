@@ -61,6 +61,8 @@ export interface InstallmentFixtureInput {
   lateFee?: string;
   /** ใช้ลูกค้าเดิม (สัญญาที่สองของลูกค้าคนเดียวกัน) — ไม่สร้างลูกค้า/แถว OTP/consent ใหม่ */
   customer?: { customerId: string; lineUserId: string };
+  /** เบอร์หลักของลูกค้า (ให้ทางยืนยัน OTP จริงค้นเจอ) */
+  phone?: string;
 }
 
 export interface InstallmentFixture {
@@ -80,11 +82,20 @@ export async function createInstallmentFixture(
   const lineUserId = input.customer?.lineUserId ?? `U${stamp}-${input.label}`;
   const customer = input.customer
     ? { id: input.customer.customerId }
-    : await prisma.customer.create({ data: { name: `ทดสอบ ${stamp} ${input.label}` } });
+    : await prisma.customer.create({
+        data: { name: `ทดสอบ ${stamp} ${input.label}`, phone: input.phone ?? null },
+      });
   const linkedAt = input.linkedAt === undefined ? new Date() : input.linkedAt;
   if (linkedAt && !input.customer) {
     await prisma.customerLineLink.create({
-      data: { customerId: customer.id, lineUserId, channel: LineChannelType.FINANCE, linkedAt },
+      // แถวถูกสร้างตอนผูกครั้งแรก — createdAt = linkedAt (ทางผูกจริง VerificationService.bind ตั้งทั้งคู่เป็นเวลาผูก)
+      data: {
+        customerId: customer.id,
+        lineUserId,
+        channel: LineChannelType.FINANCE,
+        linkedAt,
+        createdAt: linkedAt,
+      },
     });
   }
   if ((input.consent ?? true) && !input.customer) {

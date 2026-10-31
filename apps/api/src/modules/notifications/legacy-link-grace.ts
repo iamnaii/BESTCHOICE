@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { LineChannelType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ACTIVE_FINANCE_LINK_WHERE } from '../line-oa/services/otp-verified-customer';
 import { NotificationCategory } from './notification-category.enum';
@@ -7,8 +7,9 @@ import { NotificationCategory } from './notification-category.enum';
  * Task 30 ข้อ 2 (เจ้าของตัดสิน 31 ต.ค. 2026) — **ผ่อนผัน 7 วันหลังผูก LINE สำหรับสัญญาที่นำเข้าจากระบบเดิม**
  *
  * ลูกค้าระบบเดิม (~470 สัญญานำเข้า 30 พ.ย. — `Contract.legacyContractCode` · ส่วนใหญ่ OVERDUE) ผูก LINE การเงินด้วย OTP แล้ว
- * ต้องไม่โดนทวงทาง LINE ทันที: ช่วง `LEGACY_LINK_DUNNING_GRACE_DAYS` วันแรกนับจาก `customer_line_links.linkedAt` ของแถว FINANCE ที่ยังผูก
- * **ไม่ส่งข้อความทวง/แจ้งสถานะค้างชำระทาง LINE** ของสัญญานั้น — เตือนค่างวด (หนึ่งข้อความต่อวัน — `payment-reminder-dedupe.ts`) ·
+ * ต้องไม่โดนทวงทาง LINE ทันที: ช่วง `LEGACY_LINK_DUNNING_GRACE_DAYS` วันแรกนับจาก **การผูก LINE การเงินครั้งแรกของลูกค้า**
+ * (รอบ 2 ข้อ 4 — ยืนยัน OTP ซ้ำ / ยกเลิกแล้วผูกกลับ ไม่เริ่มนับใหม่ · `financeLinkAtOrBefore`) **ไม่ส่งข้อความทวง/แจ้งสถานะค้างชำระทาง LINE**
+ * ของสัญญานั้น — เตือนค่างวด (หนึ่งข้อความต่อวัน — `payment-reminder-dedupe.ts`) ·
  * ใบเสร็จ · ลิงก์ชำระ ยังส่งตามเดิม · สัญญาที่ไม่ได้นำเข้า (ไม่มี `legacyContractCode`) และ SMS ไม่เปลี่ยน ·
  * ข้อความที่ถูกระงับไม่ถูกเลื่อนไปส่งทีหลัง (หมดช่วงแล้วรอบทวงถัดไปเดินตามปกติ)
  *
@@ -30,18 +31,35 @@ export const LEGACY_LINK_GRACE_BLOCK_REASON = 'LEGACY_LINK_GRACE' as const;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** แถว OTP ที่ผูกหลังเวลานี้ = ยังอยู่ในช่วงผ่อนผัน (ครบ 7 × 24 ชม. แล้ว = พ้นช่วง) */
+/** ผูกครั้งแรกหลังเวลานี้ = ยังอยู่ในช่วงผ่อนผัน (ครบ 7 × 24 ชม. แล้ว = พ้นช่วง) */
 export function legacyLinkGraceCutoff(now: Date = new Date()): Date {
   return new Date(now.getTime() - LEGACY_LINK_DUNNING_GRACE_DAYS * DAY_MS);
 }
 
-/** เงื่อนไขสัญญาที่อยู่ในช่วงผ่อนผัน: นำเข้าจากระบบเดิม + ลูกค้าของสัญญามีแถว OTP ช่อง FINANCE ที่ยังผูก และผูกยังไม่ครบ 7 วัน */
+/**
+ * แถว FINANCE ที่แสดงว่าลูกค้าผูกแล้วตั้งแต่ `cutoff` ลงไป (`linkedAt` หรือ `createdAt` ≤ `cutoff` · **ทุกสถานะ** รวมแถวที่ยกเลิกผูก/ถูกลบ) —
+ * "ผูกครั้งแรกหลัง `cutoff`" ⇔ ไม่มีแถวแบบนี้ (`none`) · นิยามเดียวของ "ครั้งแรก": แถวมีได้หนึ่งแถวต่อลูกค้าต่อช่อง (unique `customerId + channel`) และ `VerificationService.bind` **ตั้ง `linkedAt` ใหม่ทุกครั้ง**ที่ผูก
+ * (ยืนยันซ้ำ · ผูกกลับ · เปลี่ยน LINE) แต่ไม่แตะ `createdAt` ⇒ `createdAt` ของแถว = เวลาผูกครั้งแรก
+ * (ข้อจำกัด: แถวที่ย้ายมาจากลูกค้าอื่นเพราะ LINE เดียวกันยืนยันกับลูกค้าคนใหม่ ถือ `createdAt` ของลูกค้าเดิม ⇒ ช่วงผ่อนผันสั้นลง/หมด — ทางที่ทวงตามเดิม)
+ */
+function financeLinkAtOrBefore(cutoff: Date): Prisma.CustomerLineLinkWhereInput {
+  return {
+    channel: LineChannelType.FINANCE,
+    OR: [{ linkedAt: { lte: cutoff } }, { createdAt: { lte: cutoff } }],
+  };
+}
+
+/**
+ * เงื่อนไขสัญญาที่อยู่ในช่วงผ่อนผัน: นำเข้าจากระบบเดิม + ลูกค้าของสัญญายังผูก LINE การเงินอยู่ (แถว OTP ที่ยังผูก) +
+ * ผูกครั้งแรกยังไม่ครบ 7 วัน
+ */
 export function inLegacyLinkGraceWhere(now: Date = new Date()): Prisma.ContractWhereInput {
   return {
     legacyContractCode: { not: null },
     customer: {
       lineLinks: {
-        some: { ...ACTIVE_FINANCE_LINK_WHERE, linkedAt: { gt: legacyLinkGraceCutoff(now) } },
+        some: ACTIVE_FINANCE_LINK_WHERE,
+        none: financeLinkAtOrBefore(legacyLinkGraceCutoff(now)),
       },
     },
   };

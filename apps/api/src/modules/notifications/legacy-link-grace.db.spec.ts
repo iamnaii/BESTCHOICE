@@ -19,6 +19,8 @@ import { CollectionsNotifierService } from './services/collections-notifier.serv
 import { PDPAService } from '../pdpa/pdpa.service';
 import { AutoTriggerService } from '../chatbot-finance/services/auto-trigger.service';
 import { DunningEngineService } from '../overdue/dunning-engine.service';
+import { VerificationService } from '../chatbot-finance/services/verification.service';
+import { LiffApiService } from '../line-oa/liff-api.service';
 import {
   FinanceFixtureBase,
   InstallmentFixture,
@@ -46,6 +48,16 @@ let notifications: NotificationsService;
 let collections: CollectionsNotifierService;
 let bot: AutoTriggerService;
 let engine: DunningEngineService;
+let verification: VerificationService;
+let liff: LiffApiService;
+const sms = { sendSmsFromQueue: jest.fn().mockResolvedValue(undefined) };
+
+/** ทางผูกจริง: ขอ OTP ไปเบอร์ของลูกค้า แล้วยืนยันด้วยรหัสที่ส่งทาง SMS (VerificationService.bind) */
+async function verifyWithOtp(lineUserId: string, phone: string) {
+  await verification.requestOtp({ lineUserId, phone });
+  const otp = (sms.sendSmsFromQueue.mock.calls.at(-1)?.[1] as string).match(/(\d{6})/)![1];
+  return verification.verifyOtp({ lineUserId, otp });
+}
 const fixtures: InstallmentFixture[] = [];
 let seq = 0;
 
@@ -118,6 +130,17 @@ beforeAll(async () => {
     } as never,
     { bankInfoBlock: '🏦 ทดสอบ' } as never,
   );
+  verification = new VerificationService(
+    prisma as never,
+    sms as never,
+    { isEnabled: jest.fn().mockResolvedValue(false) } as never,
+    { log: jest.fn().mockResolvedValue(undefined) } as never,
+    undefined,
+    undefined,
+    { get: jest.fn(() => ({ switchRichMenu: jest.fn().mockResolvedValue(undefined) })) } as never,
+  );
+  verification._setResponseFloorForTests(0);
+  liff = new LiffApiService(prisma as never);
   engine = new DunningEngineService(
     prisma as never,
     { findAllActiveRules: jest.fn().mockResolvedValue([]) } as never,
@@ -320,5 +343,84 @@ describe('Task 30 ข้อ 2 — ผ่อนผัน 7 วันหลัง�
       { to: legacy3.lineUserId, via: 'flex' },
     ]);
     expect(await graceBlocks(legacy3.paymentId)).toBe(0);
+  });
+});
+
+describe('Task 30 รอบ 2 ข้อ 4 — ช่วงผ่อนผันนับจากการผูก LINE การเงินครั้งแรกของลูกค้า', () => {
+  /** สัญญานำเข้าค้างชำระ T+1 ของลูกค้าที่มีเบอร์ (ยังไม่ผูก — ผูกด้วย OTP จริงในเคส) */
+  async function legacyCustomer(label: string) {
+    const phone = `08${String(Date.now() + ++seq).slice(-8)}`;
+    const f = await createInstallmentFixture(prisma, base, {
+      label: `${label}-${++seq}`,
+      dueDate: dueDateUtc(day, -1),
+      linkedAt: null,
+      legacyCode: `${stamp}-LG-${seq}`,
+      phone,
+    });
+    fixtures.push(f);
+    return { f, phone };
+  }
+  const backdateFirstLink = (customerId: string, daysAgo: number) => {
+    const at = new Date(NOW.getTime() - daysAgo * DAY_MS);
+    return prisma.customerLineLink.updateMany({
+      where: { customerId },
+      data: { linkedAt: at, createdAt: at },
+    });
+  };
+  const linkRow = (customerId: string) =>
+    prisma.customerLineLink.findFirstOrThrow({
+      where: { customerId },
+      select: { linkedAt: true, unlinkedAt: true },
+    });
+
+  it('ผูกครั้งแรก 10 วันก่อน → ยกเลิกผูก → ผูกใหม่ด้วย OTP (linkedAt ใหม่) → ไม่อยู่ในช่วง: A2 แจ้งค้างชำระตามเดิม', async () => {
+    jest.useRealTimers(); // ทาง OTP เทียบเวลาหมดอายุกับนาฬิกาฐานข้อมูล
+    const { f, phone } = await legacyCustomer('relinked');
+    await verifyWithOtp(f.lineUserId, phone);
+    await backdateFirstLink(f.customerId, 10);
+    await expect(liff.unlinkLineAccount(f.lineUserId)).resolves.toEqual({ success: true });
+    expect((await linkRow(f.customerId)).unlinkedAt).not.toBeNull();
+    await verifyWithOtp(f.lineUserId, phone);
+    const relinked = await linkRow(f.customerId);
+    expect(relinked.unlinkedAt).toBeNull();
+    // ผูกใหม่ตั้ง linkedAt เป็นตอนนี้ — นับจากแถวปัจจุบันจะได้ช่วงผ่อนผันใหม่
+    expect(relinked.linkedAt.getTime()).toBeGreaterThan(NOW.getTime() - DAY_MS);
+
+    useFakeDate(NOW);
+    await notifications.sendOverdueNotices();
+
+    expect(await graceBlocks(f.paymentId)).toBe(0);
+    expect(lineDeliveries(f.lineUserId)).toBe(1);
+  });
+
+  it('ยืนยัน OTP ซ้ำกับลูกค้าเดิม (ผูกครั้งแรก 8 วันก่อน) → ไม่เริ่มนับใหม่: ทวงตามเดิม', async () => {
+    jest.useRealTimers();
+    const { f, phone } = await legacyCustomer('reverified');
+    await verifyWithOtp(f.lineUserId, phone);
+    await backdateFirstLink(f.customerId, 8);
+    await verifyWithOtp(f.lineUserId, phone);
+    expect((await linkRow(f.customerId)).linkedAt.getTime()).toBeGreaterThan(
+      NOW.getTime() - DAY_MS,
+    );
+
+    useFakeDate(NOW);
+    await bot.runDailyEscalations();
+
+    expect(await graceBlocks(f.paymentId)).toBe(0);
+    expect(lineDeliveries(f.lineUserId)).toBe(1);
+  });
+
+  it('ผูกครั้งแรก 3 วันก่อน แล้วยืนยัน OTP ซ้ำวันนี้ → ยังอยู่ในช่วง (นับจากครั้งแรก)', async () => {
+    jest.useRealTimers();
+    const { f, phone } = await legacyCustomer('fresh');
+    await verifyWithOtp(f.lineUserId, phone);
+    await backdateFirstLink(f.customerId, 3);
+    await verifyWithOtp(f.lineUserId, phone);
+
+    useFakeDate(NOW);
+    await notifications.sendOverdueNotices();
+
+    expect(await graceBlocks(f.paymentId)).toBe(1);
+    expect(lineDeliveries(f.lineUserId)).toBe(0);
   });
 });

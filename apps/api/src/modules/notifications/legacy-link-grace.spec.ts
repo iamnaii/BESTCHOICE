@@ -13,16 +13,17 @@ describe('legacy-link-grace — Task 30 ข้อ 2', () => {
     expect(legacyLinkGraceCutoff(now)).toEqual(new Date('2026-11-28T03:00:00Z'));
   });
 
-  it('เงื่อนไข: สัญญานำเข้า + แถว OTP ช่อง FINANCE ที่ยังผูก ผูกหลังจุดตัด (gt — ไม่รวมจุดตัด)', () => {
+  it('เงื่อนไข: สัญญานำเข้า + ยังผูก LINE การเงินอยู่ + ผูกครั้งแรกหลังจุดตัด (รอบ 2 ข้อ 4 — แถว FINANCE ทุกสถานะ ไม่มีแถวไหนผูก/สร้างตั้งแต่จุดตัดลงไป)', () => {
+    const cutoff = new Date('2026-11-28T03:00:00Z');
     expect(inLegacyLinkGraceWhere(now)).toEqual({
       legacyContractCode: { not: null },
       customer: {
         lineLinks: {
-          some: {
+          some: { channel: 'FINANCE', unlinkedAt: null, deletedAt: null },
+          // ผูกซ้ำ/ผูกกลับตั้ง linkedAt ใหม่ แต่ createdAt ของแถวคือเวลาผูกครั้งแรก — ไม่กรอง unlinkedAt/deletedAt (นับแถวที่ปิดแล้วด้วย)
+          none: {
             channel: 'FINANCE',
-            unlinkedAt: null,
-            deletedAt: null,
-            linkedAt: { gt: new Date('2026-11-28T03:00:00Z') },
+            OR: [{ linkedAt: { lte: cutoff } }, { createdAt: { lte: cutoff } }],
           },
         },
       },

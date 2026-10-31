@@ -16,12 +16,22 @@ describe('staffLineFinanceChange', () => {
     ['ไม่ส่ง', undefined, 'U1'],
     ['ส่งค่าเดิม (ฟอร์มแก้ไขส่งทุกช่องกลับมา)', 'U1', 'U1'],
     ['ส่งค่าเดิมมีช่องว่างรอบ', ' U1 ', 'U1'],
-    ['ว่างทั้งคู่ (null)', null, null],
-    ['ส่งค่าว่าง ลูกค้าไม่มีค่า', '', null],
-    ['ส่ง null ลูกค้ามีค่าว่าง', null, ''],
   ])('%s → none', (_label, requested, current) => {
     expect(staffLineFinanceChange(requested, current)).toBe('none');
   });
+
+  // Task 29 #2 (เจ้าของตัดสิน 31 ต.ค.) — ล้างช่อง = ปุ่ม "ยกเลิกการผูก": ไม่ดูคอลัมน์ (คอลัมน์ว่างแต่มีแถว OTP ต้องปิดแถวได้) ·
+  // ผู้เรียกตัดสินจากแถว OTP + คอลัมน์ใต้ล็อก (ไม่มีอะไรให้ล้าง = ไม่แตะ)
+  it.each([
+    ['ว่างทั้งคู่ (null)', null, null],
+    ['ส่งค่าว่าง ลูกค้าไม่มีค่า', '', null],
+    ['ส่ง null ลูกค้ามีค่าว่าง', null, ''],
+  ])(
+    '%s → clear (คอลัมน์ว่างไม่ใช่เหตุให้ข้าม — แถว OTP อาจยังผูก)',
+    (_label, requested, current) => {
+      expect(staffLineFinanceChange(requested, current)).toBe('clear');
+    },
+  );
 
   it.each([
     ['ส่งค่าว่าง', ''],

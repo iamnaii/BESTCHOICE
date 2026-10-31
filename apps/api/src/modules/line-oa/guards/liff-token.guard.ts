@@ -143,7 +143,10 @@ export class LiffTokenGuard implements CanActivate {
       select: { channel: true },
     });
 
-    if (links.length === 0) return; // not linked yet — allow (enables registration flow)
+    // not linked yet — allow (enables the /liff/finance-verify OTP flow). Task 22 I-1 (ก): this is safe only because
+    // every FINANCE data endpoint resolves the customer from the active OTP link row (`findOtpVerifiedCustomerId`) —
+    // a LINE with no row gets null/404 there. Never authorize by `customers.line_id_finance` behind this guard.
+    if (links.length === 0) return;
 
     const hasExpected = links.some((l) => l.channel === expected);
     if (!hasExpected) {

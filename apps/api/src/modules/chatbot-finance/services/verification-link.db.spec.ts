@@ -11,7 +11,10 @@
  *   5. ลูกค้ายังผูก LINE อื่นอยู่ → 409 ไม่เปลี่ยนอะไร
  *   6. (Task 22 I3) พนักงานตั้ง U-id ในฟอร์มลูกค้า → 400 ไม่เปลี่ยนอะไร
  *   7. (Task 22 I4) พนักงานล้างช่อง LINE การเงินในฟอร์มลูกค้า → ปิดแถว ⇒ ลูกค้ายืนยัน OTP ด้วย LINE ใหม่ได้ (ไม่ติด 409)
+ *   8. (Task 22 I-1 ก) LIFF การเงินหาลูกค้าจากแถว OTP ไม่ใช่คอลัมน์: คอลัมน์ค้างบนลูกค้าอีกคน (ค่าซ้ำ/พนักงานพิมพ์ก่อน Task 22)
+ *      ไม่ให้สิทธิ์ · LINE ที่ไม่มีแถว OTP ได้ null ทุกทาง (รวมตั๋ว PDF)
  */
+import { randomUUID } from 'node:crypto';
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { LineChannelType, PrismaClient } from '@prisma/client';
 import { VerificationService } from './verification.service';
@@ -29,6 +32,7 @@ const U2 = `U${tag}-two`;
 const U3 = `U${tag}-three`;
 const U4 = `U${tag}-four`;
 let customerId = '';
+const extraCustomerIds: string[] = [];
 
 const sms = { sendSmsFromQueue: jest.fn().mockResolvedValue(undefined) };
 const richMenu = { switchRichMenu: jest.fn().mockResolvedValue(undefined) };
@@ -80,6 +84,7 @@ afterAll(async () => {
   await prisma.customerLineLink.deleteMany({ where: { customerId } });
   await prisma.chatbotOtpRequest.deleteMany({ where: { lineUserId: { in: [U1, U2, U3, U4] } } });
   await prisma.chatRoom.deleteMany({ where: { lineUserId: { in: [U1, U2, U3, U4] } } });
+  await prisma.customer.deleteMany({ where: { id: { in: extraCustomerIds } } });
   await prisma.customer.delete({ where: { id: customerId } });
   await prisma.$disconnect();
 });
@@ -152,5 +157,29 @@ describe('finance-verify is the only LINE-link path — link rows on real Postgr
     await expect(verifyWithOtp(U4)).resolves.toMatchObject({ customerId });
     expect(await linkRows()).toEqual([{ lineUserId: U4, unlinkedAt: null }]);
     expect(await lineIdFinance()).toBe(U4);
+  });
+
+  it('8. LIFF identity = the OTP link row, not line_id_finance (Task 22 I-1 ก)', async () => {
+    // ค่าซ้ำของ U4 บนลูกค้าอีกคน (สร้างก่อน → findFirst ตามคอลัมน์จะเจอคนนี้ก่อน) + U-id ที่พนักงานพิมพ์ไว้โดยไม่มีแถว OTP
+    const stale = await prisma.customer.create({
+      data: {
+        name: `ทดสอบค้าง ${tag}`,
+        phone: `08${digits}`,
+        lineIdFinance: U4,
+        createdAt: new Date('2020-01-01'),
+      },
+    });
+    const typed = await prisma.customer.create({
+      data: { name: `ทดสอบพิมพ์ ${tag}`, phone: `06${digits}`, lineIdFinance: U3 },
+    });
+    extraCustomerIds.push(stale.id, typed.id);
+
+    expect(await liff.findCustomerByLineId(U4)).toMatchObject({ id: customerId });
+    expect(await liff.findCustomerByLineId(U3)).toBeNull();
+    expect(await liff.findCustomerContractsFull(U3)).toBeNull();
+    expect(await liff.findCustomerProfile(U3)).toBeNull();
+    await expect(liff.resolveDownloadDocumentId(U3, 'receipt', randomUUID())).rejects.toThrow(
+      'ไม่พบข้อมูลลูกค้า',
+    );
   });
 });

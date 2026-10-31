@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { unlinkFinanceLine } from './services/finance-line-link';
+import { findOtpVerifiedCustomerId } from './services/otp-verified-customer';
 import type { LiffDownloadKind } from './services/liff-download-ticket.service';
 import { toNum, calcOutstanding } from '../../utils/decimal.util';
 // Return types for LIFF API (mirrors packages/shared/src/liff-types.ts)
@@ -19,11 +20,26 @@ export class LiffApiService {
   // (VerificationService ใน chatbot-finance: ดูดห้องผู้สนใจ · customer_line_links · journey · rich menu)
   constructor(private prisma: PrismaService) {}
 
+  /**
+   * Task 22 I-1 (ก) — ลูกค้าของ LINE นี้ = แถว OTP ช่อง FINANCE ที่ยังผูก (`findOtpVerifiedCustomerId` — unique ต่อ LINE ⇒ แน่นอน)
+   * **ไม่ใช่**คอลัมน์ `customers.line_id_finance` ซึ่งแยกจากแถว OTP ได้ (ค่าที่พนักงาน/นำเข้าเขียนก่อน Task 22 · กู้ลูกค้าที่ถูกลบ ·
+   * ค่าซ้ำบนสองคน + `findFirst` ไม่มี orderBy) · ไม่มีแถว = null ⇒ ทุก endpoint ของ service นี้ไม่คืน/ไม่แก้ข้อมูลใคร (fail closed —
+   * `LiffTokenGuard.enforceChannelBoundary` ปล่อย LINE ที่ยังไม่มีแถว link ผ่านโดยตั้งใจ เพื่อหน้า `/liff/finance-verify`)
+   */
+  private async linkedCustomerWhere(
+    lineId: string,
+  ): Promise<{ id: string; deletedAt: null } | null> {
+    const id = await findOtpVerifiedCustomerId(this.prisma, lineId);
+    return id ? { id, deletedAt: null } : null;
+  }
+
   // ─── Contracts ──────────────────────────────────────
 
   async findCustomerContractsFull(lineId: string): Promise<LiffContractResponse | null> {
+    const where = await this.linkedCustomerWhere(lineId);
+    if (!where) return null;
     const customer = await this.prisma.customer.findFirst({
-      where: { lineIdFinance: lineId, deletedAt: null },
+      where,
       select: {
         id: true,
         name: true,
@@ -124,8 +140,10 @@ export class LiffApiService {
   // ─── History & Profile ──────────────────────────────
 
   async findCustomerPaymentHistory(lineId: string): Promise<LiffHistoryResponse | null> {
+    const where = await this.linkedCustomerWhere(lineId);
+    if (!where) return null;
     const customer = await this.prisma.customer.findFirst({
-      where: { lineIdFinance: lineId, deletedAt: null },
+      where,
       select: {
         name: true,
         contracts: {
@@ -191,8 +209,10 @@ export class LiffApiService {
   }
 
   async findCustomerProfile(lineId: string): Promise<LiffProfileResponse | null> {
+    const where = await this.linkedCustomerWhere(lineId);
+    if (!where) return null;
     const customer = await this.prisma.customer.findFirst({
-      where: { lineIdFinance: lineId, deletedAt: null },
+      where,
       select: {
         id: true,
         name: true,
@@ -220,9 +240,15 @@ export class LiffApiService {
   // ─── Unlink ─────────────────────────────────────────
 
   async unlinkLineAccount(lineId: string): Promise<{ success: boolean; error?: string }> {
-    const customer = await this.prisma.customer.findFirst({
-      where: { lineIdFinance: lineId, deletedAt: null },
-    });
+    // ผูกอยู่ = แถว OTP (Task 22 I-1) · ไม่มีแถวแต่คอลัมน์ยังค้างค่า LINE นี้ (ข้อมูลก่อน Task 22) ก็ให้เจ้าของ LINE (LiffTokenGuard
+    // พิสูจน์แล้ว) ล้างค่าค้างของตัวเองได้ — unlinkFinanceLine ล้างตาม LINE เท่านั้น ไม่แตะลูกค้าที่ไม่ได้ถือ LINE นี้
+    const linkedId = await findOtpVerifiedCustomerId(this.prisma, lineId);
+    const customer = linkedId
+      ? { id: linkedId }
+      : await this.prisma.customer.findFirst({
+          where: { lineIdFinance: lineId },
+          select: { id: true },
+        });
 
     if (!customer) {
       return { success: false, error: 'ไม่พบบัญชีที่ผูกกับ LINE นี้' };
@@ -243,8 +269,10 @@ export class LiffApiService {
   // ─── Payment Helpers ────────────────────────────────
 
   async findCustomerByLineId(lineId: string) {
+    const where = await this.linkedCustomerWhere(lineId);
+    if (!where) return null;
     return this.prisma.customer.findFirst({
-      where: { lineIdFinance: lineId, deletedAt: null },
+      where,
       select: { id: true, name: true },
     });
   }
@@ -313,8 +341,10 @@ export class LiffApiService {
   // ─── PDPA Consent ───────────────────────────────────
 
   async getConsentStatus(lineId: string): Promise<{ consent: boolean; consentAt: string | null } | null> {
+    const where = await this.linkedCustomerWhere(lineId);
+    if (!where) return null;
     const customer = await this.prisma.customer.findFirst({
-      where: { lineIdFinance: lineId, deletedAt: null },
+      where,
       select: { chatConsent: true, chatConsentAt: true },
     });
     if (!customer) return null;
@@ -325,9 +355,10 @@ export class LiffApiService {
   }
 
   async updateConsent(lineId: string, consent: boolean): Promise<{ success: boolean; error?: string }> {
-    const customer = await this.prisma.customer.findFirst({
-      where: { lineIdFinance: lineId, deletedAt: null },
-    });
+    const where = await this.linkedCustomerWhere(lineId);
+    const customer = where
+      ? await this.prisma.customer.findFirst({ where, select: { id: true } })
+      : null;
     if (!customer) {
       return { success: false, error: 'ไม่พบข้อมูลลูกค้า' };
     }
@@ -349,8 +380,10 @@ export class LiffApiService {
   // ─── Notification Preferences ────────────────────────
 
   async getNotificationPreferences(lineId: string) {
+    const where = await this.linkedCustomerWhere(lineId);
+    if (!where) return null;
     const customer = await this.prisma.customer.findFirst({
-      where: { lineIdFinance: lineId, deletedAt: null },
+      where,
       select: {
         notifPaymentReminder: true,
         notifOverdueNotice: true,
@@ -369,9 +402,10 @@ export class LiffApiService {
     lineId: string,
     prefs: { paymentReminder: boolean; overdueNotice: boolean; receiptNotification: boolean },
   ) {
-    const customer = await this.prisma.customer.findFirst({
-      where: { lineIdFinance: lineId, deletedAt: null },
-    });
+    const where = await this.linkedCustomerWhere(lineId);
+    const customer = where
+      ? await this.prisma.customer.findFirst({ where, select: { id: true } })
+      : null;
     if (!customer) return { success: false, error: 'ไม่พบข้อมูลลูกค้า' };
 
     await this.prisma.customer.update({

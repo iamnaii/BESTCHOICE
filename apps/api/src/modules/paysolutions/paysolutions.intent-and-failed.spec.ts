@@ -372,6 +372,7 @@ describe('PaySolutionsService — intent guards + FAILED/routing callbacks (char
         contract: {
           findUnique: jest.fn().mockResolvedValue({
             id: contractId,
+            customerId: 'cust-intent-1',
             deletedAt: null,
             contractNumber: 'CT-2026-0009',
             customer: {
@@ -382,11 +383,52 @@ describe('PaySolutionsService — intent guards + FAILED/routing callbacks (char
             },
           }),
         },
+        // Task 22 I-1 (ก): LINE นี้ยืนยัน OTP กับเจ้าของสัญญา
+        customerLineLink: {
+          findFirst: jest.fn().mockResolvedValue({ customerId: 'cust-intent-1' }),
+        },
         payment: {
           findUnique: jest.fn().mockResolvedValue(paymentRow),
         },
       };
     }
+
+    describe('Task 22 I-1 (ก) — เจ้าของสัญญาต้องเป็นลูกค้าของแถว OTP ของ LINE นี้ (ไม่ใช่คอลัมน์ line_id_finance)', () => {
+      const payable = {
+        id: 'pay-own-1',
+        status: 'PENDING',
+        amountDue: new Prisma.Decimal(1000),
+        lateFee: new Prisma.Decimal(0),
+        amountPaid: new Prisma.Decimal(0),
+      };
+
+      it.each([
+        ['ไม่มีแถว OTP (คอลัมน์ของเจ้าของสัญญาถือ LINE นี้ — ค่าที่พนักงานพิมพ์/ค้าง)', null],
+        ['แถว OTP ของ LINE นี้เป็นลูกค้าอีกคน', { customerId: 'cust-other' }],
+      ])('%s → 400 ไม่ตรงบัญชี ไม่ยิง gateway', async (_label, link) => {
+        buildIntentPrisma(payable);
+        prisma.customerLineLink.findFirst.mockResolvedValue(link);
+        await buildService();
+        const fetchSpy = jest.spyOn(global, 'fetch');
+        try {
+          await expect(
+            service.createPaymentIntent(contractId, 1000, undefined, lineId, installmentNo),
+          ).rejects.toMatchObject({
+            constructor: BadRequestException,
+            message: 'สัญญานี้ไม่ตรงกับบัญชี LINE ของคุณ',
+          });
+          expect(fetchSpy).not.toHaveBeenCalled();
+          expect(prisma.customerLineLink.findFirst.mock.calls[0][0].where).toMatchObject({
+            lineUserId: lineId,
+            channel: 'FINANCE',
+            unlinkedAt: null,
+            deletedAt: null,
+          });
+        } finally {
+          fetchSpy.mockRestore();
+        }
+      });
+    });
 
     it("installment already PAID → BadRequest 'ชำระเรียบร้อยแล้ว' (before any gateway call)", async () => {
       buildIntentPrisma({
@@ -492,6 +534,7 @@ describe('PaySolutionsService — intent guards + FAILED/routing callbacks (char
         contract: {
           findUnique: jest.fn().mockResolvedValue({
             id: contractId,
+            customerId: 'cust-orphan-1',
             deletedAt: null,
             contractNumber: 'CT-2026-0011',
             customer: {
@@ -501,6 +544,9 @@ describe('PaySolutionsService — intent guards + FAILED/routing callbacks (char
               lineIdFinance: lineId,
             },
           }),
+        },
+        customerLineLink: {
+          findFirst: jest.fn().mockResolvedValue({ customerId: 'cust-orphan-1' }),
         },
         // No installmentNo passed → payment lookup skipped (paymentRecord null).
         // The orphan path is the $transaction that creates the PaymentLink.

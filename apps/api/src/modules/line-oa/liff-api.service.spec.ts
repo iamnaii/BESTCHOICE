@@ -32,6 +32,10 @@ describe('LiffApiService', () => {
       receipt: {
         findMany: jest.fn().mockResolvedValue([]),
       },
+      // Task 22 I-1 (ก) — ตัวตนของทุกหน้า LIFF การเงิน = แถว OTP ช่อง FINANCE ที่ยังผูก (ค่าเริ่ม: LINE นี้ผูกกับ cust1)
+      customerLineLink: {
+        findFirst: jest.fn().mockResolvedValue({ customerId: 'cust1' }),
+      },
       $transaction: jest.fn(),
     };
     tx = {
@@ -242,6 +246,7 @@ describe('LiffApiService', () => {
 
   describe('unlinkLineAccount', () => {
     it('returns error if no customer linked', async () => {
+      prisma.customerLineLink.findFirst.mockResolvedValue(null);
       prisma.customer.findFirst.mockResolvedValue(null);
       const result = await service.unlinkLineAccount('U_line');
       expect(result.success).toBe(false);
@@ -274,9 +279,93 @@ describe('LiffApiService', () => {
     });
 
     it('ไม่พบลูกค้าที่ผูก LINE นี้ → ไม่เปิดธุรกรรม ไม่ปิดแถวใด', async () => {
+      prisma.customerLineLink.findFirst.mockResolvedValue(null);
       prisma.customer.findFirst.mockResolvedValue(null);
       await service.unlinkLineAccount('U_line');
       expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('Task 22 I-1: ไม่มีแถว OTP แต่คอลัมน์ค้างค่า LINE นี้ → ยังล้างได้ (เจ้าของ LINE ล้างค่าค้างของตัวเอง)', async () => {
+      prisma.customerLineLink.findFirst.mockResolvedValue(null);
+      prisma.customer.findFirst.mockResolvedValue({ id: 'stale-1' });
+      await expect(service.unlinkLineAccount('U_line')).resolves.toEqual({ success: true });
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ─── Task 22 I-1 (ก): ตัวตน = แถว OTP ไม่ใช่คอลัมน์ ──────
+
+  describe('Task 22 I-1 (ก) — LIFF การเงินหาลูกค้าจากแถว OTP ที่ยังผูกเท่านั้น', () => {
+    const noLink = () => prisma.customerLineLink.findFirst.mockResolvedValue(null);
+    const byColumn = () =>
+      prisma.customer.findFirst.mock.calls.filter(
+        (c: [{ where?: Record<string, unknown> }]) => c[0]?.where && 'lineIdFinance' in c[0].where,
+      );
+
+    it('ค้นแถว OTP ช่อง FINANCE ที่ยังผูก ของลูกค้าที่ยังไม่ถูกลบ ด้วย LINE จาก LiffTokenGuard', async () => {
+      prisma.customer.findFirst.mockResolvedValue({ id: 'cust1', name: 'สมชาย' });
+      await service.findCustomerByLineId('U_line');
+      expect(prisma.customerLineLink.findFirst.mock.calls[0][0].where).toEqual({
+        lineUserId: 'U_line',
+        channel: 'FINANCE',
+        unlinkedAt: null,
+        deletedAt: null,
+        customer: { deletedAt: null },
+      });
+      expect(prisma.customer.findFirst.mock.calls[0][0].where).toEqual({
+        id: 'cust1',
+        deletedAt: null,
+      });
+      expect(byColumn()).toHaveLength(0);
+    });
+
+    it.each([
+      ['findCustomerContractsFull', (s: LiffApiService) => s.findCustomerContractsFull('U_line')],
+      ['findCustomerPaymentHistory', (s: LiffApiService) => s.findCustomerPaymentHistory('U_line')],
+      ['findCustomerProfile', (s: LiffApiService) => s.findCustomerProfile('U_line')],
+      ['findCustomerByLineId', (s: LiffApiService) => s.findCustomerByLineId('U_line')],
+      ['getConsentStatus', (s: LiffApiService) => s.getConsentStatus('U_line')],
+      ['getNotificationPreferences', (s: LiffApiService) => s.getNotificationPreferences('U_line')],
+    ])(
+      '%s: ไม่มีแถว OTP (คอลัมน์ค้าง/พนักงานพิมพ์) → null ไม่อ่านลูกค้าตามคอลัมน์',
+      async (_name, call) => {
+        noLink();
+        // ถ้ายังค้นด้วยคอลัมน์ จะได้ลูกค้าคนนี้กลับมา
+        prisma.customer.findFirst.mockResolvedValue({
+          id: 'victim',
+          name: 'เหยื่อ',
+          contracts: [],
+        });
+        await expect(call(service)).resolves.toBeNull();
+        expect(byColumn()).toHaveLength(0);
+      },
+    );
+
+    it.each([
+      ['updateConsent', (s: LiffApiService) => s.updateConsent('U_line', true)],
+      [
+        'updateNotificationPreferences',
+        (s: LiffApiService) =>
+          s.updateNotificationPreferences('U_line', {
+            paymentReminder: true,
+            overdueNotice: true,
+            receiptNotification: true,
+          }),
+      ],
+    ])('%s: ไม่มีแถว OTP → ไม่แก้ลูกค้าคนใด', async (_name, call) => {
+      noLink();
+      prisma.customer.findFirst.mockResolvedValue({ id: 'victim' });
+      await expect(call(service)).resolves.toMatchObject({ success: false });
+      expect(prisma.customer.update).not.toHaveBeenCalled();
+      expect(byColumn()).toHaveLength(0);
+    });
+
+    it('resolveDownloadDocumentId (ตั๋ว PDF): ไม่มีแถว OTP → 404 แม้คอลัมน์ของลูกค้าอื่นถือ LINE นี้', async () => {
+      noLink();
+      prisma.customer.findFirst.mockResolvedValue({ id: 'victim', name: 'เหยื่อ' });
+      await expect(
+        service.resolveDownloadDocumentId('U_line', 'contract-document', 'k1'),
+      ).rejects.toThrow('ไม่พบข้อมูลลูกค้า');
     });
   });
 

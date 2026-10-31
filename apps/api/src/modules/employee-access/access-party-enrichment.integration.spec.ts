@@ -26,6 +26,7 @@ import { CustomerWriteService } from '../customers/services/customer-write.servi
 import { CustomerQueryService } from '../customers/services/customer-query.service';
 import { CustomerAnalyticsService } from '../customers/services/customer-analytics.service';
 import { CustomerTierService } from '../customers/customer-tier.service';
+import { CustomerBlacklistService } from '../customers/customer-blacklist.service';
 import { SkipTracingService } from '../customers/skip-tracing.service';
 import { CustomerInsightsService } from '../overdue/customer-insights.service';
 import { CustomerMergeService } from '../chat-prospects/customer-merge.service';
@@ -147,6 +148,9 @@ beforeAll(async () => {
       AuditService,
       JourneyEntryWriter,
       SkipTracingService,
+      // CustomersController injects it since ก้อน 5 C3 (blacklist reads) — no route here touches it; without the
+      // provider the module never compiles and every case fails before running (pre-existing, found in Task 22 fix round 1)
+      { provide: CustomerBlacklistService, useValue: {} },
       {
         provide: CustomerMergeService,
         useValue: {

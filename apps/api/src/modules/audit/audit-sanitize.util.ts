@@ -1,3 +1,7 @@
+import { INTEGRATIONS } from '../integrations/integration-registry';
+
+// Hand-grouped name list (one group per line) — kept as written.
+// prettier-ignore
 const SENSITIVE_FIELDS = [
   // Auth credentials
   'password', 'token', 'secret', 'accessToken', 'refreshToken',
@@ -33,8 +37,19 @@ const SENSITIVE_FIELD_PATTERNS: RegExp[] = [
   /private[_-]?key/i,
 ];
 
+/**
+ * Every field the Integration Hub registry marks `sensitive: true` — the body of
+ * `PUT /integrations/:key/config` is audited through this file, and some secret
+ * names match neither list above (SMTP `pass`). Derived, so a new sensitive
+ * registry field is redacted without touching this file.
+ */
+const INTEGRATION_SENSITIVE_FIELDS = new Set(
+  INTEGRATIONS.flatMap((def) => def.fields.filter((f) => f.sensitive).map((f) => f.key)),
+);
+
 function isSensitiveKey(key: string): boolean {
   if (SENSITIVE_FIELDS.includes(key)) return true;
+  if (INTEGRATION_SENSITIVE_FIELDS.has(key)) return true;
   return SENSITIVE_FIELD_PATTERNS.some((re) => re.test(key));
 }
 

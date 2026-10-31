@@ -1,6 +1,10 @@
 import { ChatChannel, LineChannelType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { buildBrowserUrl } from '../../../utils/line-login.util';
+import {
+  PLACEHOLDER_FIELDS_SELECT,
+  isLivePlaceholder,
+} from '../../chat-prospects/chat-placeholder';
 
 /**
  * Task 20 C1 — ลูกค้าที่ LINE นี้ "พิสูจน์แล้ว" ว่าถือเบอร์ = แถว customer_line_links ช่อง FINANCE ที่ยังผูกอยู่
@@ -153,7 +157,10 @@ export async function findOtpVerifiedRoomCustomerId(
  * Task 33 (mockup A2/A3) — สถานะ LINE การเงินของห้องในอินบ็อกซ์ · **ไม่มี U-id**:
  * - `verified` — กติกาเดียวกับ `findOtpVerifiedRoomCustomerId` (ข้อความสำเร็จรูปเติมตัวแปรลูกค้าได้)
  * - ไม่ verified + `unlinkedAt` — LINE นี้เคยยืนยันกับลูกค้าของห้องแล้วหลุด (ยกเลิกผูก / ลูกค้าเปลี่ยน LINE) = ป้าย "ยกเลิกผูกแล้ว"
- * - ไม่ verified + `unlinkedAt: null` — ไม่เคยผูก LINE นี้กับลูกค้านี้ / ไม่ทราบ (ไม่อยู่ใน mockup — หน้าเว็บไม่แสดงอะไร)
+ * - ไม่ verified + `unlinkedAt: null` — พนักงานผูกห้องกับลูกค้าจริงแต่ LINE นี้ไม่เคยยืนยัน OTP กับลูกค้าคนนี้ → ป้าย "ยังไม่ยืนยันตัวตน"
+ *   (Task 33 fix round 1 — mockup A4 · คำตัดสินเจ้าของข้อ 28)
+ * - ห้องที่ไม่มีลูกค้าจริง = ไม่มีสถานะ (null): ไม่มีลูกค้า · เจ้าของถูกลบ (ห้องไม่มีเจ้าของ — Ruling R23) · ผู้สนใจอัตโนมัติที่ระบบสร้างจากห้องเอง
+ *   (`isLivePlaceholder` — ไม่ใช่การผูกของพนักงาน และไม่มีใครให้ "อาจไม่ใช่ลูกค้าคนนี้")
  */
 export interface FinanceLineRoomStatus {
   verified: boolean;
@@ -167,7 +174,7 @@ export interface FinanceLineRoomStatus {
  * ถูกชี้ไป LINE ใหม่) ก่อน · ห้องที่หลุดก่อนมีคอลัมน์นี้ ใช้แถว link ที่ปิดแล้วของคู่ (LINE, ลูกค้าของห้อง) เดียวกัน
  */
 export async function findFinanceLineRoomStatuses(
-  prisma: Pick<PrismaService, 'customerLineLink'>,
+  prisma: Pick<PrismaService, 'customerLineLink' | 'customer'>,
   rooms: readonly (FinanceLineRoomRef & {
     id: string;
     channel: ChatChannel | string;
@@ -191,6 +198,16 @@ export async function findFinanceLineRoomStatuses(
   const unverified = targets.filter(
     (room) => !verifiedRoomCustomer(room, verifiedCustomerOf.get(room.lineUserId!)),
   );
+  // เจ้าของห้องที่ยังไม่ verified ต้องเป็นลูกค้าจริงที่ยังอยู่ (ห้องที่ verified ผ่าน VERIFIED_FINANCE_LINK_WHERE ซึ่งดูลูกค้าไม่ถูกลบแล้ว)
+  const owners = unverified.length
+    ? await prisma.customer.findMany({
+        where: { id: { in: [...new Set(unverified.map((room) => room.customerId!))] } },
+        select: { id: true, ...PLACEHOLDER_FIELDS_SELECT },
+      })
+    : [];
+  const realOwner = new Set(
+    owners.filter((c) => !c.deletedAt && !isLivePlaceholder(c)).map((c) => c.id),
+  );
   const needLegacyDate = unverified.filter((room) => !room.financeLineUnlinkedAt);
   const closedLinks = needLegacyDate.length
     ? await prisma.customerLineLink.findMany({
@@ -212,6 +229,7 @@ export async function findFinanceLineRoomStatuses(
       result.set(room.id, { verified: true, unlinkedAt: null });
       continue;
     }
+    if (!realOwner.has(room.customerId!)) continue;
     const unlinkedAt =
       room.financeLineUnlinkedAt ??
       closedAt.get(`${room.lineUserId}\u0000${room.customerId}`) ??

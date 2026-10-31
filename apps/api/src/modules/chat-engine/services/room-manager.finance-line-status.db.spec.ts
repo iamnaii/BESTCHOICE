@@ -257,4 +257,3 @@ describe('Task 33 — financeLineStatus ของห้องในอินบ�
     expect(await statusOf(real.id, roomId)).toEqual({ verified: false, unlinkedAt: null });
   });
 });
-

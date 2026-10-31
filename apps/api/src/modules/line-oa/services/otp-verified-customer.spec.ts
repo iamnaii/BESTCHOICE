@@ -247,11 +247,19 @@ describe('findFinanceLineRoomStatuses', () => {
   beforeEach(() => {
     prisma.customerLineLink.findMany.mockReset();
     // fix round 1 A4 — เจ้าของห้องที่ไม่ verified: ลูกค้าจริงที่ยังไม่ถูกลบ (ผู้สนใจอัตโนมัติ/ถูกลบ = ห้องไม่มีลูกค้าจริง → null)
-    prisma.customer.findMany.mockReset().mockResolvedValue([
-      real('c1'),
-      { id: 'p1', acquisitionSource: 'CHAT_LINE_FINANCE', phone: null, nationalId: null, deletedAt: null },
-      { ...real('g1'), deletedAt: new Date('2026-10-01T00:00:00.000Z') },
-    ]);
+    prisma.customer.findMany
+      .mockReset()
+      .mockResolvedValue([
+        real('c1'),
+        {
+          id: 'p1',
+          acquisitionSource: 'CHAT_LINE_FINANCE',
+          phone: null,
+          nationalId: null,
+          deletedAt: null,
+        },
+        { ...real('g1'), deletedAt: new Date('2026-10-01T00:00:00.000Z') },
+      ]);
   });
 
   const room = (over: Record<string, unknown>) => ({

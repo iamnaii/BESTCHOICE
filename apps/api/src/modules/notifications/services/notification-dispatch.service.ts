@@ -13,6 +13,7 @@ import { NotificationCategory } from '../notification-category.enum';
 import { NotificationTemplateService } from '../notification-template.service';
 import {
   LEGACY_LINK_GRACE_BLOCK_REASON,
+  LEGACY_LINK_GRACE_EXEMPT,
   isRelatedRecordInLegacyLinkGrace,
   recordLegacyLinkGraceSkip,
 } from '../legacy-link-grace';
@@ -27,6 +28,8 @@ import { NotificationTransportService } from './notification-transport.service';
  */
 export interface DispatchOptions {
   manual?: boolean;
+  /** ข้อความแจ้งล็อก/ปลดล็อกเครื่อง — ไม่ถูกระงับช่วงผ่อนผัน (`LEGACY_LINK_GRACE_EXEMPT` · รอบ 3 M5) */
+  legacyGraceExempt?: boolean;
 }
 
 /**
@@ -93,6 +96,7 @@ export class NotificationDispatchService {
     // compliance · พนักงานกดส่งเอง (`manual`) / ส่งทดสอบ (`bypassCompliance`) ไม่ถูกระงับ
     if (
       !opts.manual &&
+      !opts.legacyGraceExempt &&
       !dto.bypassCompliance &&
       dto.channel === 'LINE' &&
       dto.category === NotificationCategory.DUNNING &&
@@ -336,6 +340,7 @@ export class NotificationDispatchService {
     if (
       !options.manual &&
       !options.bypassCompliance &&
+      !LEGACY_LINK_GRACE_EXEMPT.templates.has(eventType) &&
       tpl.channel === 'LINE' &&
       tpl.category === NotificationCategory.DUNNING &&
       (await isRelatedRecordInLegacyLinkGrace(this.prisma, options.relatedId))

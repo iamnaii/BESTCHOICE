@@ -11,7 +11,10 @@ import { DunningRuleResolverService } from './dunning-rule-resolver.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationCategory } from '../notifications/notification-category.enum';
 import { PaymentLinkService } from '../line-oa/payment-links/payment-link.service';
-import { LEGACY_LINK_GRACE_BLOCK_REASON } from '../notifications/legacy-link-grace';
+import {
+  LEGACY_LINK_GRACE_BLOCK_REASON,
+  LEGACY_LINK_GRACE_EXEMPT,
+} from '../notifications/legacy-link-grace';
 import { formatDateShort } from '../../utils/thai-date.util';
 
 /**
@@ -459,17 +462,21 @@ export class DunningEngineService {
           ? `${messageContent}\n\nชำระเงินออนไลน์: ${paymentLinkUrl}`
           : messageContent;
         try {
-          const sendResult = await this.notificationsService.send({
-            channel: rule.channel as 'LINE' | 'SMS',
-            channelKey: rule.channel === 'LINE' ? 'line-finance' : undefined,
-            recipient,
-            message: finalMessage,
-            relatedId: contractId,
-            fallbackPhone:
-              rule.channel === 'LINE' ? (contract.customer.phone ?? undefined) : undefined,
-            customerId: contract.customer.id,
-            category: NotificationCategory.DUNNING,
-          });
+          const sendResult = await this.notificationsService.send(
+            {
+              channel: rule.channel as 'LINE' | 'SMS',
+              channelKey: rule.channel === 'LINE' ? 'line-finance' : undefined,
+              recipient,
+              message: finalMessage,
+              relatedId: contractId,
+              fallbackPhone:
+                rule.channel === 'LINE' ? (contract.customer.phone ?? undefined) : undefined,
+              customerId: contract.customer.id,
+              category: NotificationCategory.DUNNING,
+            },
+            // แจ้งล็อก/ปลดล็อกเครื่องต้องถึงแม้อยู่ในช่วงผ่อนผันหลังผูก LINE (Task 30 รอบ 3 M5)
+            { legacyGraceExempt: LEGACY_LINK_GRACE_EXEMPT.dunningEvents.has(eventKey) },
+          );
           ({ status, result } = actionOutcome(sendResult));
         } catch (err) {
           status = 'FAILED';

@@ -161,4 +161,40 @@ describe('NotificationDispatchService.sendFromTemplate — ผ่อนผัน
       expect(transport.sendLineFlexMessage).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('รอบ 3 M5 — แจ้งล็อกเครื่องไม่ถูกระงับ (การล็อกยังเกิด ลูกค้าต้องรู้เหตุผล)', () => {
+    it("sendFromTemplate('mdm.lock_notice') ในช่วงผ่อนผัน → ส่ง Flex · ไม่ถามช่วงผ่อนผัน", async () => {
+      const { prisma, transport, service } = build({ inGrace: true });
+
+      const result = await service.sendFromTemplate('mdm.lock_notice', { name: 'สมชาย' }, 'U-1', {
+        relatedId: 'k1',
+        customerId: 'cust-1',
+      });
+
+      expect(result.status).toBe('SENT');
+      expect(prisma.contract.findFirst).not.toHaveBeenCalled();
+      expect(transport.sendLineFlexMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('send(dto, { legacyGraceExempt: true }) (กฎทวงแจ้งล็อก/ปลดล็อก) ในช่วงผ่อนผัน → ส่ง', async () => {
+      const { prisma, transport, service } = build({ inGrace: true });
+
+      const result = await service.send(
+        {
+          channel: 'LINE',
+          channelKey: 'line-finance',
+          recipient: 'U-1',
+          message: '[BESTCHOICE FINANCE] เครื่องของท่านถูกล็อค',
+          relatedId: 'k1',
+          customerId: 'cust-1',
+          category: 'DUNNING' as never,
+        },
+        { legacyGraceExempt: true },
+      );
+
+      expect(result.status).toBe('SENT');
+      expect(prisma.contract.findFirst).not.toHaveBeenCalled();
+      expect(transport.sendLine).toHaveBeenCalledTimes(1);
+    });
+  });
 });

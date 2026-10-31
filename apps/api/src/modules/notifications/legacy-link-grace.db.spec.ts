@@ -230,6 +230,21 @@ describe('Task 30 ข้อ 2 — ผ่อนผัน 7 วันหลัง�
     expect(lineDeliveries(t.native3.lineUserId)).toBe(1);
   });
 
+  it('รอบ 3 M5 — แจ้งล็อกเครื่อง (mdm.lock_notice) ถึงลูกค้าแม้อยู่ในช่วงผ่อนผัน', async () => {
+    const t = await trio(-30);
+
+    const result = await notifications.sendFromTemplate(
+      'mdm.lock_notice',
+      { name: 'ทดสอบ', contractNumber: t.legacy3.contractNumber, daysOverdue: '30' },
+      t.legacy3.lineUserId,
+      { relatedId: t.legacy3.contractId, customerId: t.legacy3.customerId },
+    );
+
+    expect(result.status).toBe('SENT');
+    expect(lineDeliveries(t.legacy3.lineUserId)).toBe(1);
+    expect(await graceBlocks(t.legacy3.contractId)).toBe(0);
+  });
+
   it('A4 ขั้นทวง dunning.* (template Flex): นำเข้า+ผูก 3 วัน → ไม่ส่ง · อื่น ๆ ส่งตามเดิม', async () => {
     const t = await trio(-10);
     const all = [t.legacy3, t.legacy8, t.native3];

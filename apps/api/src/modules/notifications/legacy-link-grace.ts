@@ -1,4 +1,4 @@
-import { LineChannelType, Prisma } from '@prisma/client';
+import { DunningEventTrigger, LineChannelType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { bangkokStartOfDay } from '../../utils/date.util';
 import { ACTIVE_FINANCE_LINK_WHERE } from '../line-oa/services/otp-verified-customer';
@@ -22,7 +22,7 @@ import { NotificationCategory } from './notification-category.enum';
  *   template) · คิวส่งซ้ำแถว DELAYED ไม่ต้องตรวจซ้ำ: ส่งทาง LINE ได้ต้องผูกอยู่แล้วตอนสร้าง ⇒ ผูกครั้งแรกอยู่ก่อนนั้น ช่วงผ่อนผันจึงเปลี่ยนจาก
  *   "อยู่" เป็น "พ้น" ได้ทางเดียว (ที่อยู่ในช่วงถูกระงับตั้งแต่ตอนสร้าง ไม่กลายเป็น DELAYED)
  * - `NotificationDispatchService.sendFromTemplate` — template หมวด DUNNING ช่อง LINE ก่อนทาง Flex (Flex ไม่ผ่าน `send`):
- *   `dunning.*` (A4 ขั้นทวง) · `payment.overdue_day_*` · `mdm.lock_notice` · `contract.status_*` · `payment.auto_link`
+ *   `dunning.*` (A4 ขั้นทวง) · `payment.overdue_day_*` · `contract.status_*` · `payment.auto_link` — ยกเว้นแจ้งล็อก/ปลดล็อกเครื่อง (`LEGACY_LINK_GRACE_EXEMPT`)
  * - ผู้ส่ง Flex/ข้อความตรงที่ไม่ผ่าน dispatch: A2 `NotificationReminderService.sendOverdueNotices` ·
  *   A3 `CollectionsNotifierService.notifyStatusChangedCustomers` · A8 ทวงหลังเลยกำหนด `AutoTriggerService` (ESCALATION_T_PLUS_1/3)
  * ทุกจุดทิ้งแถว `notification_logs` สถานะ `BLOCKED` เหตุผล `LEGACY_LINK_GRACE` ให้ตรวจย้อนได้
@@ -30,6 +30,18 @@ import { NotificationCategory } from './notification-category.enum';
 
 /** จำนวนวันผ่อนผันหลังผูก LINE — ค่านี้ที่เดียว */
 export const LEGACY_LINK_DUNNING_GRACE_DAYS = 7;
+
+/**
+ * ข้อความที่**ต้องถึงลูกค้าแม้อยู่ในช่วงผ่อนผัน** (รอบ 3 M5 — ผู้คุมงานตัดสิน): แจ้งว่าเครื่องถูกล็อก/ปลดล็อก — การล็อกยังเกิดตามวันค้าง
+ * (MDM ไม่ดูช่วงผ่อนผัน) ลูกค้าต้องรู้เหตุผล · นิยามเดียว ผู้อ่าน: `NotificationDispatchService.sendFromTemplate` (template) และ
+ * `DunningEngineService.executeEventTrigger` (กฎทวงตามเหตุการณ์ → `send(…, { legacyGraceExempt })`)
+ */
+export const LEGACY_LINK_GRACE_EXEMPT = {
+  /** `mdm.lock_notice` — `MdmAutoService` แจ้งล็อกอัตโนมัติ */
+  templates: new Set<string>(['mdm.lock_notice']),
+  /** กฎทวงตามเหตุการณ์ที่ส่งตอนอนุมัติล็อก/ปลดล็อก (`MdmLockService`) */
+  dunningEvents: new Set<DunningEventTrigger>(['DEVICE_LOCKED', 'DEVICE_UNLOCKED']),
+} as const;
 
 /** `notification_logs.block_reason` / `ComplianceBlockReason` ของข้อความที่ถูกระงับด้วยกติกานี้ */
 export const LEGACY_LINK_GRACE_BLOCK_REASON = 'LEGACY_LINK_GRACE' as const;

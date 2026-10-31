@@ -378,8 +378,24 @@ describe('DunningEngineService', () => {
           recipient: 'U123',
           relatedId: 'c-1',
         }),
+        // Task 30 รอบ 3 M5 — ไม่รับสาย ไม่ใช่ข้อความแจ้งล็อก ⇒ ยังถูกระงับช่วงผ่อนผันหลังผูก LINE ได้
+        { legacyGraceExempt: false },
       );
     });
+
+    it.each(['DEVICE_LOCKED', 'DEVICE_UNLOCKED'] as const)(
+      'Task 30 รอบ 3 M5 — %s (แจ้งเหตุล็อก/ปลดล็อกเครื่อง) ไม่ถูกระงับช่วงผ่อนผันหลังผูก LINE',
+      async (eventKey) => {
+        mockPrisma.dunningRule.findFirst.mockResolvedValueOnce({
+          ...eventRule,
+          eventTrigger: eventKey,
+        });
+
+        await service.executeEventTrigger(eventKey, 'c-1', null, null);
+
+        expect(mockNotificationsService.send.mock.calls[0][1]).toEqual({ legacyGraceExempt: true });
+      },
+    );
 
     it('dedups within 4h window — second call skipped', async () => {
       // First call: no recent action

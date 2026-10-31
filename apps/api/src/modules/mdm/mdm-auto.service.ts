@@ -305,7 +305,9 @@ export class MdmAutoService {
           customerId: contract.customer!.id,
         },
       );
-      this.logger.log(`MDM lock LINE notify sent to customer (contract ${contract.contractNumber})`);
+      this.logger.log(
+        `MDM lock LINE notify sent to customer (contract ${contract.contractNumber})`,
+      );
     } catch (err) {
       // Notification failure should not affect lock result
       this.logger.warn(

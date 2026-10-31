@@ -69,9 +69,7 @@ describe('MdmAutoService (characterization)', () => {
     lineId?: string | null;
   }) => {
     const oldestDue =
-      overrides.daysOverdue === null
-        ? null
-        : new Date(Date.now() - overrides.daysOverdue * DAY_MS);
+      overrides.daysOverdue === null ? null : new Date(Date.now() - overrides.daysOverdue * DAY_MS);
     // Task 22 I-1 (ง) — ปลายทาง = แถว OTP (lineLinks) · คอลัมน์เป็นแค่กระจก
     const lineId = overrides.lineId === undefined ? 'Uline123' : overrides.lineId;
     return {
@@ -79,7 +77,10 @@ describe('MdmAutoService (characterization)', () => {
       contractNumber: overrides.contractNumber ?? 'C-0001',
       createdAt: new Date('2024-01-01'),
       mdmLockedAt: null,
-      product: { id: 'prod-1', imeiSerial: overrides.imei === undefined ? '359000000000001' : overrides.imei },
+      product: {
+        id: 'prod-1',
+        imeiSerial: overrides.imei === undefined ? '359000000000001' : overrides.imei,
+      },
       customer: {
         id: 'cust-1',
         name: 'สมชาย',
@@ -222,9 +223,7 @@ describe('MdmAutoService (characterization)', () => {
       prisma.systemConfig.findMany.mockResolvedValue(
         settingsRows({ autoLockEnabled: true, autoLockDays: 30, notifyLine: false }),
       );
-      prisma.contract.findMany.mockResolvedValue([
-        makeContract({ daysOverdue: 60, imei: null }),
-      ]);
+      prisma.contract.findMany.mockResolvedValue([makeContract({ daysOverdue: 60, imei: null })]);
 
       const result = await service.autoLockOverdueContracts();
 
@@ -374,9 +373,7 @@ describe('MdmAutoService (characterization)', () => {
     };
 
     it('does nothing when autoUnlock disabled', async () => {
-      prisma.systemConfig.findMany.mockResolvedValue(
-        settingsRows({ autoUnlockEnabled: false }),
-      );
+      prisma.systemConfig.findMany.mockResolvedValue(settingsRows({ autoUnlockEnabled: false }));
 
       await service.autoUnlockAfterPayment('contract-1');
 

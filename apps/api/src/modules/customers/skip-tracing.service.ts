@@ -18,7 +18,7 @@ import { CustomerPiiService } from './customer-pii.service';
 import { lockCustomerPhone } from './customer-phone-lock';
 import { findLivePhoneOwner } from './customer-phone-owner';
 import { normalizeThaiPhone } from '../../utils/thai-phone.util';
-import { staffLineFinanceChange, unlinkFinanceLine } from '../line-oa/services/finance-line-link';
+import { staffLineFinanceChange } from '../line-oa/services/finance-line-link';
 
 const THAI_MOBILE_RE = /^0\d{9}$/;
 const INVALID_PHONE_MSG = 'เบอร์โทรต้องเป็นเลข 10 หลัก ขึ้นต้นด้วย 0';
@@ -50,7 +50,7 @@ const CUSTOMER_CONTACT_SELECT = {
  *  - ตรงกับเบอร์หลักเดิม → ไม่เปลี่ยนเบอร์ (แต่ซ่อม hash/ciphertext/รูปแบบที่เสียจากบั๊กเดิมในแถวนี้)
  *
  * LINE ID (Task 22 I3): ไม่ตั้ง `line_id_finance` ให้อีก — ผูก LINE การเงินได้ทาง OTP ของลูกค้าเท่านั้น ⇒ ค่าใหม่ = 400 ทั้งคำขอ ·
- * ค่าเดิม = ไม่แตะ · ค่าว่าง = ยกเลิกผูก (`unlinkFinanceLine` แบบ customerId ในทรานแซกชันเดียวกัน)
+ * ค่าเดิม/ค่าว่าง = ไม่แตะ — ยกเลิกผูกทำได้ที่ PATCH /customers (OWNER/BM) เท่านั้น (fix round 1 M-1)
  *
  * Managed execution joins the owned party transaction for source proof and safe
  * required audit/journey evidence; acknowledgements contain field names only.
@@ -116,9 +116,13 @@ export class SkipTracingService {
           throw new NotFoundException('ไม่พบลูกค้า');
         }
 
-        // Task 22 I3 — LINE ID ใหม่ไม่ลง line_id_finance อีก (ช่องที่ระบบใช้ส่งข้อความ/อนุญาตหน้า LIFF — ผูกได้ทาง OTP เท่านั้น):
-        // ค่าใหม่ = 400 ทั้งคำขอ · ค่าเดิม = ไม่แตะ · ว่าง = ยกเลิกผูก (ตรวจหลังด่านสิทธิ์ของ managed execution ด้านบน)
-        const lineFinance = staffLineFinanceChange(dto.newLineId, current.lineIdFinance);
+        // Task 22 I3 — LINE ID ใหม่ไม่ลง line_id_finance อีก (ผูกได้ทาง OTP เท่านั้น): ค่าใหม่ = 400 ทั้งคำขอ · ค่าเดิม = ไม่แตะ ·
+        // fix round 1 M-1: ค่าว่าง = ไม่แตะเช่นกัน — skip-tracing เปิดให้ SALES/ACCOUNTANT/FM จึงไม่ยกเลิกผูก (เหลือทางเดียว
+        // PATCH /customers ของ OWNER/BM) · ตรวจหลังด่านสิทธิ์ของ managed execution ด้านบน
+        staffLineFinanceChange(
+          dto.newLineId?.trim() ? dto.newLineId : undefined,
+          current.lineIdFinance,
+        );
 
         const canonical = ctx
           ? this.pii.decryptCustomerFields(current, {
@@ -169,8 +173,6 @@ export class SkipTracingService {
         }
         if (dto.markAsLost) data.status = 'LOST';
 
-        // ยกเลิกผูกก่อนเขียน ⇒ แถวที่คืน (และ audit ค่าใหม่) เป็นค่าหลังล้าง
-        if (lineFinance === 'clear') await unlinkFinanceLine(tx, { customerId });
         const row = await tx.customer.update({
           where: { id: customerId },
           data,
@@ -182,7 +184,6 @@ export class SkipTracingService {
           // A same-primary repair is an actual field write even when its value is unchanged.
           if (data.phone !== undefined) changedFields.push('phone');
           if (data.phoneSecondary !== undefined) changedFields.push('phoneSecondary');
-          if (lineFinance === 'clear') changedFields.push('lineIdFinance');
           if (dto.markAsLost && current.status !== 'LOST') changedFields.push('status');
           await this.audit.log(
             {

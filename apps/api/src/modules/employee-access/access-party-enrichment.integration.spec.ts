@@ -404,7 +404,7 @@ it('keeps canonical hidden-owner secondary fallback and acknowledges actual LINE
     phone: hiddenPhone,
     ...pii.encryptCustomerFields({ phone: hiddenPhone }),
   });
-  // Task 22 I3 — skip-tracing ตั้ง LINE การเงินใหม่ไม่ได้แล้ว (400 ชี้ทาง OTP) แต่ล้างได้ = ยกเลิกผูก ⇒ การเปลี่ยน LINE ที่จริงคือการล้าง
+  // Task 22 I3 + fix round 1 M-1 — skip-tracing ไม่แตะ LINE การเงินอีก (ค่าใหม่ = 400 · ค่าว่าง = ไม่แตะ — ยกเลิกผูกที่ PATCH ของ OWNER/BM)
   const c = await customer({
     phone: primary,
     lineIdFinance: 'private-line',
@@ -419,14 +419,14 @@ it('keeps canonical hidden-owner secondary fallback and acknowledges actual LINE
   ).expect(201);
   expect(response.body).toEqual({
     id: c.id,
-    changedFields: ['phoneSecondary', 'lineIdFinance', 'status'],
+    changedFields: ['phoneSecondary', 'status'],
     phoneStoredAs: 'SECONDARY',
   });
   const row = await db.customer.findUniqueOrThrow({ where: { id: c.id } });
   expect(row).toMatchObject({
     phone: primary,
     phoneSecondary: hiddenPhone,
-    lineIdFinance: null,
+    lineIdFinance: 'private-line',
     status: 'LOST',
   });
   expect(decryptPII(row.phoneSecondaryEncrypted!, process.env.PII_ENCRYPTION_KEY!)).toBe(

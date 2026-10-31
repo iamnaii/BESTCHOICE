@@ -362,32 +362,16 @@ describe('SkipTracingService', () => {
     expect(tx.customerLineLink.updateMany).not.toHaveBeenCalled();
   });
 
-  it('LINE ID ว่าง → ยกเลิกผูก LINE การเงินในทรานแซกชันเดียวกัน (ล้างคอลัมน์ + ปิดแถวของลูกค้าคนนี้) + audit หลัง commit', async () => {
+  it('LINE ID ว่าง → ไม่แตะ LINE การเงิน (Task 22 fix round 1 M-1: ยกเลิกผูกเหลือทางเดียวที่ PATCH /customers ของ OWNER/BM)', async () => {
     await legacyUpdateContact(
       'cust-1',
       { newLineId: '', reason: 'ลูกค้าเปลี่ยนเครื่อง' },
       { userId: 'user-1' },
     );
-    expect(tx.customer.update.mock.calls[0][0]).toEqual({
-      where: { id: 'cust-1' },
-      data: { lineIdFinance: null },
-    });
-    expect(tx.customerLineLink.updateMany).toHaveBeenCalledWith({
-      where: { customerId: 'cust-1', channel: 'FINANCE', unlinkedAt: null },
-      data: { unlinkedAt: expect.any(Date) },
-    });
-    // การแก้ไขของ skip-tracing ไม่ทับค่าที่เพิ่งล้าง
-    expect(tx.customer.update.mock.calls[1][0].data).not.toHaveProperty('lineIdFinance');
-    expect(events).toEqual([
-      'tx-begin',
-      'read',
-      'update',
-      'close-link',
-      'update',
-      'tx-commit',
-      'audit',
-    ]);
-    expect(audit.log.mock.calls[0][0].oldValue.lineIdFinance).toBe('old-line');
+    expect(tx.customerLineLink.updateMany).not.toHaveBeenCalled();
+    expect(tx.customer.update).toHaveBeenCalledTimes(1);
+    expect(tx.customer.update.mock.calls[0][0].data).toEqual({});
+    expect(audit.log.mock.calls[0][0].newValue.lineIdFinance).toBe('old-line');
   });
 
   it('marks customer as LOST and writes audit', async () => {

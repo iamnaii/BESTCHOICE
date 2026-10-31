@@ -20,6 +20,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatThaiDate } from '@/lib/date';
 import { cn } from '@/lib/utils';
+import { LIFF_BRANCH_PHONE as BRANCH_PHONE, LIFF_CONSENT_WITHDRAW_TEXT } from './liff-contact';
 
 type Step = 'loading' | 'phone' | 'otp' | 'success' | 'already_linked' | 'error';
 
@@ -48,9 +49,6 @@ const COOLDOWN_SECONDS = 60;
  */
 const LINE_FINANCE_CONSENT_TEXT =
   'ยินยอมให้บริษัทส่งแจ้งเตือนค่างวด ใบเสร็จ และข้อมูลสัญญาทาง LINE';
-
-/** เบอร์สาขาที่หน้านี้ใช้อยู่แล้ว (เท่า `FINANCE_CONTACT_PHONE` ของ API — บอทการเงิน/ข้อความ OTP ใช้เบอร์เดียวกัน) */
-const BRANCH_PHONE = '063-134-6356';
 
 /** นโยบายความเป็นส่วนตัวของระบบ — หน้าสาธารณะ `/privacy` (`PrivacyPolicyPage`) */
 const PRIVACY_POLICY_PATH = '/privacy';
@@ -374,7 +372,7 @@ export default function LiffFinanceVerify() {
               <div className="flex flex-col gap-0.5">
                 <span className="text-sm font-semibold leading-snug">ต้องการยกเลิกความยินยอม</span>
                 <span className="text-[13px] leading-snug text-muted-foreground">
-                  ติดต่อเจ้าหน้าที่ทางแชทนี้ หรือโทรหาสาขา {BRANCH_PHONE}
+                  {LIFF_CONSENT_WITHDRAW_TEXT}
                 </span>
               </div>
             </div>

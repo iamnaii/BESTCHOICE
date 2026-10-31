@@ -1,5 +1,9 @@
 import { BadRequestException } from '@nestjs/common';
-import { accountingPeriodOf, validatePeriodOpen } from './period-lock.util';
+import {
+  accountingPeriodOf,
+  lockedAccountingPeriods,
+  validatePeriodOpen,
+} from './period-lock.util';
 
 /**
  * Period-lock enforcement — single source of truth = AccountingPeriod.
@@ -213,5 +217,25 @@ describe('validatePeriodOpen — AccountingPeriod single source of truth', () =>
     });
     expect(accountingPeriodOf(new Date('2026-10-31T17:30:00Z'))).toEqual({ year: 2026, month: 11 });
     expect(accountingPeriodOf(new Date('2026-12-31T17:00:00Z'))).toEqual({ year: 2027, month: 1 });
+  });
+
+  // review M5: the per-period form of the same rule — a batch can exclude locked months up front
+  it('lockedAccountingPeriods returns only CLOSED/SYNCED periods already past their grace window', async () => {
+    jest.setSystemTime(new Date('2026-11-03T10:00:00+07:00'));
+    const findMany = jest.fn().mockResolvedValue([
+      { year: 2026, month: 9, status: 'CLOSED' }, // grace 5 ended 00:00 6 Oct → locked
+      { year: 2026, month: 10, status: 'SYNCED' }, // grace runs to the end of 5 Nov → still open
+    ]);
+    const prisma = {
+      systemConfig: { findUnique: jest.fn().mockResolvedValue({ value: '5' }) },
+      accountingPeriod: { findMany },
+    };
+    await expect(lockedAccountingPeriods(prisma, 'co-1')).resolves.toEqual([
+      { year: 2026, month: 9 },
+    ]);
+    expect(findMany).toHaveBeenCalledWith({
+      where: { companyId: 'co-1', status: { in: ['CLOSED', 'SYNCED'] } },
+      select: { year: true, month: true, status: true },
+    });
   });
 });

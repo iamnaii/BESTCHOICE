@@ -42,7 +42,7 @@ interface PrismaLike {
  * Default 5 (matches the project deadline reference "grace through
  * 5 มิ.ย. 2569 per period_grace_days"). Invalid/missing → default.
  */
-async function getGraceDays(prisma: PrismaLike): Promise<number> {
+async function getGraceDays(prisma: Pick<PrismaLike, 'systemConfig'>): Promise<number> {
   try {
     const row = await prisma.systemConfig.findUnique({
       where: { key: 'period_grace_days' },
@@ -77,6 +77,52 @@ export function periodGraceEnd(year: number, month: number, graceDays: number): 
   return bangkokMidnight(year, month, 1 + graceDays);
 }
 
+/** Statuses that close a period (after the grace window). OPEN / REVIEW never lock. */
+const LOCKING_STATUSES = ['CLOSED', 'SYNCED'] as const;
+const isLockingStatus = (status: string) =>
+  (LOCKING_STATUSES as readonly string[]).includes(status);
+
+/** The single "is this period locked right now" rule — `validatePeriodOpen` and `lockedAccountingPeriods` both call it. */
+function isPeriodLockedNow(
+  status: string,
+  year: number,
+  month: number,
+  graceDays: number,
+): boolean {
+  return isLockingStatus(status) && new Date() >= periodGraceEnd(year, month, graceDays);
+}
+
+interface LockedPeriodsReader {
+  systemConfig: PrismaLike['systemConfig'];
+  accountingPeriod: {
+    findMany(args: {
+      where: { companyId: string; status: { in: (typeof LOCKING_STATUSES)[number][] } };
+      select: { year: true; month: true; status: true };
+    }): Promise<{ year: number; month: number; status: string }[]>;
+  };
+}
+
+/**
+ * Every period of `companyId` that `validatePeriodOpen` would reject right now (CLOSED/SYNCED and past
+ * its grace window) — same rule, evaluated per period instead of per date. Lets a batch exclude those
+ * months up front instead of fetching rows only to have the guard skip them one by one (the 2A accrual
+ * cron — review M5, 2026-10-31).
+ */
+export async function lockedAccountingPeriods(
+  prisma: LockedPeriodsReader,
+  companyId: string,
+): Promise<{ year: number; month: number }[]> {
+  const closed = await prisma.accountingPeriod.findMany({
+    where: { companyId, status: { in: [...LOCKING_STATUSES] } },
+    select: { year: true, month: true, status: true },
+  });
+  if (closed.length === 0) return [];
+  const graceDays = await getGraceDays(prisma);
+  return closed
+    .filter((p) => isPeriodLockedNow(p.status, p.year, p.month, graceDays))
+    .map(({ year, month }) => ({ year, month }));
+}
+
 /**
  * Validate that a transaction date is not in a closed accounting period.
  *
@@ -99,14 +145,14 @@ export async function validatePeriodOpen(
     where: { companyId_year_month: { companyId, year, month } },
     select: { status: true },
   });
-  if (!period || (period.status !== 'CLOSED' && period.status !== 'SYNCED')) {
+  if (!period || !isLockingStatus(period.status)) {
     return; // OPEN / REVIEW / no row → not locked
   }
 
   // D1.2.6.2 — grace window. Allow posting INTO a closed period through the end
   // of its last day plus `graceDays` whole days (Bangkok).
   const graceDays = await getGraceDays(prisma);
-  if (new Date() >= periodGraceEnd(year, month, graceDays)) {
+  if (isPeriodLockedNow(period.status, year, month, graceDays)) {
     throw new BadRequestException(
       `ไม่สามารถบันทึกรายการในงวดที่ปิดแล้ว (${year}/${String(month).padStart(2, '0')} สถานะ: ${period.status})`,
     );

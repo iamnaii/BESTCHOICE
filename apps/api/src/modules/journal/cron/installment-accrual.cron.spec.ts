@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { PrismaClient, type AccountingPeriodStatus } from '@prisma/client';
 import { seedFinanceCoa } from '../../../../prisma/seed-coa-finance';
 import { seedStandard17k12m } from '../__tests__/scenario-helpers';
@@ -315,6 +315,43 @@ describe('InstallmentAccrualCron', () => {
           expect(await accrualOf(id)).not.toBeNull();
         },
       );
+    });
+
+    // review M5 (2026-10-31): the query is oldest-first and capped (ACCRUAL_BACKFILL_CAP) — rows due in a month FINANCE has
+    // locked used to be fetched and skipped one by one, so a full batch of them starved every newer installment. Locked
+    // months are now excluded in the query (still counted for BACKFILL_STALLED). Cap 1 makes the starvation observable.
+    it('installments due in a locked FINANCE month do not starve newer ones past the per-tick cap', async () => {
+      await newCron().tick(); // flush rows left by earlier tests so only this test's rows are pending
+      const stalled = await seedOnShopBranch(SEP_DUE);
+      const current = await seedOnShopBranch(new Date());
+      const previousCap = process.env.ACCRUAL_BACKFILL_CAP;
+      process.env.ACCRUAL_BACKFILL_CAP = '1';
+      vi.resetModules();
+      try {
+        const { InstallmentAccrualCron: CappedCron } = await import('./installment-accrual.cron');
+        const { InstallmentAccrual2ATemplate: Template } =
+          await import('../cpa-templates/installment-accrual-2a.template');
+        const { JournalAutoService: Journal } = await import('../journal-auto.service');
+        const capped = new CappedCron(
+          prisma as never,
+          new Template(new Journal(prisma as never), prisma as never),
+        );
+        await withPeriods(
+          [{ code: 'FINANCE', year: 2026, month: 9, status: 'CLOSED' }],
+          undefined,
+          async () => {
+            const result = await capped.tick();
+            expect(result.processed).toBe(1);
+            expect(result.skippedClosedPeriod).toBeGreaterThanOrEqual(1);
+            expect(await accrualOf(stalled)).toBeNull();
+            expect(await accrualOf(current)).not.toBeNull();
+          },
+        );
+      } finally {
+        if (previousCap === undefined) delete process.env.ACCRUAL_BACKFILL_CAP;
+        else process.env.ACCRUAL_BACKFILL_CAP = previousCap;
+        vi.resetModules();
+      }
     });
   });
 });

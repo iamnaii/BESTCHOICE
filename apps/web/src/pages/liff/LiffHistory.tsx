@@ -1,6 +1,7 @@
 import { LiffShell as Shell, LiffTopBar as TopBar } from './components/LiffLayout';
 import { useLiffInit } from '@/hooks/useLiffInit';
-import { liffApi, withLiffToken } from '@/lib/api';
+import { liffApi } from '@/lib/api';
+import { liffDownloadPath, onLiffDownloadClick } from '@/lib/liff-download';
 import { formatDateShortThai, formatMonthName, formatNumber } from '@/utils/formatters';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -376,7 +377,8 @@ function PaymentRow({ payment }: { payment: HistoryPayment }) {
             )}
             {payment.receiptId && (
               <a
-                href={withLiffToken(`/api/line-oa/liff/receipts/${payment.receiptId}/download`)}
+                href={liffDownloadPath('receipt', payment.receiptId)}
+                onClick={onLiffDownloadClick('receipt', payment.receiptId)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="mt-2 inline-flex items-center gap-1 rounded-full bg-emerald-50/70 border border-emerald-200 px-2 py-1 text-[10px] font-medium text-emerald-700 active:scale-[0.97] transition-transform leading-none"

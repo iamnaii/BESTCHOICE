@@ -47,6 +47,36 @@ for secret in "${SECRETS[@]}"; do
   fi
 done
 
+# --- INTEGRATION_ENCRYPTION_KEY (Integration Hub credentials at rest) ---
+# Not in SECRETS: .github/workflows/deploy-gcp.yml pins it to version 1
+# (INTEGRATION_ENCRYPTION_KEY:1, not :latest), so version 1 must BE the real key —
+# a PLACEHOLDER v1 would be "malformed" = no key, and later versions are never read.
+# Format: exactly 64 hex chars (openssl rand -hex 32); anything else counts as no key.
+# The value is generated straight into Secret Manager and never printed.
+# Runbook (post-deploy check, rotation): docs/runbooks/2026-10-31-integration-encryption-key.md
+INTEGRATION_KEY_SECRET="INTEGRATION_ENCRYPTION_KEY"
+if gcloud secrets describe "$INTEGRATION_KEY_SECRET" --project="$GCP_PROJECT_ID" &>/dev/null; then
+  # Metadata only — never `versions access` here.
+  V1_STATE=$(gcloud secrets versions describe 1 --secret="$INTEGRATION_KEY_SECRET" \
+    --project="$GCP_PROJECT_ID" --format='value(state)' 2>/dev/null || true)
+  if [ "$V1_STATE" = "ENABLED" ]; then
+    echo "  [exists] $INTEGRATION_KEY_SECRET (left untouched — version 1 ENABLED, pinned by deploy-gcp.yml)"
+  else
+    echo "  [WARN] $INTEGRATION_KEY_SECRET exists but version 1 is ${V1_STATE:-missing} —" \
+      "deploy-gcp.yml pins :1; see docs/runbooks/2026-10-31-integration-encryption-key.md"
+  fi
+else
+  command -v openssl >/dev/null || {
+    echo "openssl not found — needed to generate $INTEGRATION_KEY_SECRET" >&2
+    exit 1
+  }
+  openssl rand -hex 32 | tr -d '\n' | gcloud secrets create "$INTEGRATION_KEY_SECRET" \
+    --project="$GCP_PROJECT_ID" \
+    --replication-policy="automatic" \
+    --data-file=-
+  echo "  [created] $INTEGRATION_KEY_SECRET (version 1 = random 64-hex key, value not printed)"
+fi
+
 echo ""
 echo "============================================"
 echo "NEXT STEPS"
@@ -62,6 +92,8 @@ echo "2. Generate new JWT/Encryption secrets:"
 echo "   openssl rand -base64 32   # JWT_SECRET"
 echo "   openssl rand -base64 32   # JWT_REFRESH_SECRET"
 echo "   openssl rand -hex 16      # ENCRYPTION_KEY"
+echo "   ($INTEGRATION_KEY_SECRET was generated above as version 1 — do NOT add versions or"
+echo "    print it; rotating = full plan in docs/runbooks/2026-10-31-integration-encryption-key.md)"
 echo ""
 echo "3. Deploy Cloud Run with secrets + env vars:"
 echo ""
@@ -80,6 +112,7 @@ gcloud run deploy bestchoice-api \
 JWT_SECRET=JWT_SECRET:latest,\
 JWT_REFRESH_SECRET=JWT_REFRESH_SECRET:latest,\
 ENCRYPTION_KEY=ENCRYPTION_KEY:latest,\
+INTEGRATION_ENCRYPTION_KEY=INTEGRATION_ENCRYPTION_KEY:1,\
 DATABASE_URL=DATABASE_URL:latest,\
 ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,\
 S3_ACCESS_KEY=S3_ACCESS_KEY:latest,\

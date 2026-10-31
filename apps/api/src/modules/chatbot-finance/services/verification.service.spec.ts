@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, ConflictException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import {
   VerificationService,
   CUSTOMER_LINKED_TO_OTHER_LINE_MESSAGE,
@@ -12,6 +13,7 @@ import { AuditService } from '../../audit/audit.service';
 import { CustomerMergeService } from '../../chat-prospects/customer-merge.service';
 import { JourneyEntryWriter } from '../../customer-journey/journey-entry-writer.service';
 import { RichMenuService } from '../../line-oa/rich-menu/rich-menu.service';
+import { FinanceLineLockSetUnstableError } from '../../line-oa/services/finance-line-link';
 
 type OtpRowMock = {
   [method: string]: jest.Mock | undefined;
@@ -106,7 +108,10 @@ describe('VerificationService', () => {
             findUnique: jest.fn().mockResolvedValue(null),
           },
           chatRoom: { updateMany: jest.fn().mockResolvedValue({}) },
+          // Task 29 — bind ล็อกแถวลูกค้าก่อน (lockCustomersForFinanceLineBind)
+          $queryRaw: jest.fn().mockResolvedValue([]),
           customer: {
+            findMany: jest.fn().mockResolvedValue([]),
             update: jest.fn().mockResolvedValue({}),
             updateMany: jest.fn().mockResolvedValue({ count: 0 }),
           },
@@ -440,7 +445,10 @@ describe('VerificationService', () => {
                 findUnique: jest.fn().mockResolvedValue(null),
               },
               chatRoom: { updateMany: jest.fn().mockResolvedValue({}) },
+              // Task 29 — bind ล็อกแถวลูกค้าก่อน (lockCustomersForFinanceLineBind)
+              $queryRaw: jest.fn().mockResolvedValue([]),
               customer: {
+                findMany: jest.fn().mockResolvedValue([]),
                 update: jest.fn().mockResolvedValue({}),
                 updateMany: jest.fn().mockResolvedValue({ count: 0 }),
               },
@@ -495,7 +503,10 @@ describe('VerificationService', () => {
               findUnique: jest.fn().mockResolvedValue(null),
             },
             chatRoom: { updateMany: jest.fn().mockResolvedValue({}) },
+            // Task 29 — bind ล็อกแถวลูกค้าก่อน (lockCustomersForFinanceLineBind)
+            $queryRaw: jest.fn().mockResolvedValue([]),
             customer: {
+              findMany: jest.fn().mockResolvedValue([]),
               update: jest.fn().mockResolvedValue({}),
               updateMany: jest.fn().mockResolvedValue({ count: 0 }),
             },
@@ -554,7 +565,10 @@ describe('VerificationService', () => {
             const result = await cb({
               customerLineLink: { upsert, findUnique: jest.fn().mockResolvedValue(null) },
               chatRoom: { updateMany: jest.fn().mockResolvedValue({}) },
+              // Task 29 — bind ล็อกแถวลูกค้าก่อน (lockCustomersForFinanceLineBind)
+              $queryRaw: jest.fn().mockResolvedValue([]),
               customer: {
+                findMany: jest.fn().mockResolvedValue([]),
                 update: jest.fn().mockResolvedValue({}),
                 updateMany: jest.fn().mockResolvedValue({ count: 0 }),
               },
@@ -1077,12 +1091,14 @@ describe('VerificationService', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let tPrisma: any;
     let tx: {
+      $queryRaw: jest.Mock;
       customerLineLink: { upsert: jest.Mock; update: jest.Mock; findUnique: jest.Mock };
       chatRoom: { updateMany: jest.Mock };
-      customer: { update: jest.Mock; updateMany: jest.Mock };
+      customer: { findMany: jest.Mock; update: jest.Mock; updateMany: jest.Mock };
     };
     let order: string[];
     let rows: { byCustomer: unknown; byLine: unknown };
+    let columnHolders: { id: string }[];
     let merge: { absorbRoomsOfLineUser: jest.Mock };
     let journey: { recordAfterCommit: jest.Mock };
     let richMenu: { switchRichMenu: jest.Mock };
@@ -1127,6 +1143,7 @@ describe('VerificationService', () => {
 
     const LINK_SEQUENCE = [
       'absorb',
+      'lock-customers', // Task 29 — แถวลูกค้าก่อนแถว link/ห้อง (ลำดับเดียวกับทางยกเลิกผูก — กัน deadlock 40P01)
       'link-upsert',
       'rooms',
       'clear-others', // Task 22 I-1 (ข) — ล้าง U-id นี้ออกจากคอลัมน์ของลูกค้าคนอื่นก่อนเขียนของลูกค้าคนนี้
@@ -1140,12 +1157,14 @@ describe('VerificationService', () => {
     beforeEach(async () => {
       order = [];
       rows = { byCustomer: null, byLine: null };
+      columnHolders = [];
       const step = (name: string, value: unknown = {}) =>
         jest.fn(async () => {
           order.push(name);
           return value;
         });
       tx = {
+        $queryRaw: step('lock-customers', []),
         customerLineLink: {
           upsert: step('link-upsert'),
           update: step('link-repoint'),
@@ -1153,7 +1172,12 @@ describe('VerificationService', () => {
           findUnique: jest.fn(async () => rows.byLine),
         },
         chatRoom: { updateMany: step('rooms') },
-        customer: { update: step('line_id_finance'), updateMany: step('clear-others') },
+        customer: {
+          // ผู้ถือคอลัมน์ line_id_finance = LINE นี้ (ชุดที่ bind ล็อกก่อน — Task 29) · ไม่นับเป็นขั้น
+          findMany: jest.fn(async () => columnHolders),
+          update: step('line_id_finance'),
+          updateMany: step('clear-others'),
+        },
       };
       tPrisma = {
         chatbotOtpRequest: withOtpRowMocks({
@@ -1220,6 +1244,32 @@ describe('VerificationService', () => {
       });
       expect(richMenu.switchRichMenu).toHaveBeenCalledWith('U123', true, 'finance');
     });
+
+    it.each([
+      [
+        'deadlock',
+        new Prisma.PrismaClientKnownRequestError('deadlock detected', {
+          code: 'P2034',
+          clientVersion: 'test',
+        }),
+      ],
+      ['ชุดลูกค้าที่ต้องล็อกไม่นิ่ง (review M-2)', new FinanceLineLockSetUnstableError()],
+    ])(
+      'Task 29 fix round 1: ทรานแซกชันของ bind โดน %s → ลองทั้งก้อนใหม่ (ตาข่าย) · ผูกครั้งเดียว (error อื่นไม่ลองซ้ำ — transaction-retry.util.spec)',
+      async (_label, failure) => {
+        const otp = await requestRealOtp();
+        const calls = tPrisma.$transaction.mock.calls.length;
+        tPrisma.$transaction.mockRejectedValueOnce(failure);
+
+        await expect(tService.verifyOtp({ lineUserId: 'U123', otp })).resolves.toMatchObject({
+          customerId: 'c1',
+        });
+
+        expect(tPrisma.$transaction.mock.calls.length - calls).toBe(2);
+        expect(order.filter((step) => step === 'commit')).toHaveLength(1);
+        expect(journey.recordAfterCommit).toHaveBeenCalledTimes(1);
+      },
+    );
 
     it('(d) test-mode bypass ใช้ helper เดียวกัน → สลับ rich menu ด้วย', async () => {
       testModeOn.mockResolvedValue(true);
@@ -1331,6 +1381,25 @@ describe('VerificationService', () => {
         where: { lineUserId: 'U123', channel: 'LINE_FINANCE' },
         data: { customerId: 'c1', verifiedAt: expect.any(Date), verificationAttempts: 0 },
       });
+    });
+
+    it('Task 29: ล็อกแถวลูกค้าทุกคนที่ bind จะแตะ (ลูกค้าที่ผูก + ผู้ถือแถว link + ผู้ถือคอลัมน์) ในคำสั่งเดียวเรียง id ก่อนเขียนแถว link/ห้อง', async () => {
+      rows.byLine = { id: 'link-other', customerId: 'c-other', unlinkedAt: null, deletedAt: null };
+      columnHolders = [{ id: 'c-other' }, { id: 'c-stale' }];
+      const otp = await requestRealOtp();
+
+      await tService.verifyOtp({ lineUserId: 'U123', otp });
+
+      // ชุดไม่เปลี่ยนเมื่ออ่านซ้ำใต้ล็อก ⇒ ล็อกครั้งเดียว
+      expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+      const [strings, ids] = tx.$queryRaw.mock.calls[0] as [
+        TemplateStringsArray,
+        { values: string[] },
+      ];
+      expect(strings.join('?')).toContain('ORDER BY id FOR NO KEY UPDATE');
+      expect([...ids.values].sort()).toEqual(['c-other', 'c-stale', 'c1']);
+      expect(order.indexOf('lock-customers')).toBeLessThan(order.indexOf('link-upsert'));
+      expect(order.indexOf('lock-customers')).toBeLessThan(order.indexOf('rooms'));
     });
 
     it('ลูกค้ายกเลิกผูก LINE เดิมแล้ว แต่ LINE นี้ก็มีแถวของลูกค้าอื่น → 409 ให้พนักงานดู (รวมสองแถวไม่ได้)', async () => {

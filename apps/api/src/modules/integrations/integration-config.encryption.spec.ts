@@ -548,3 +548,53 @@ describe('IntegrationConfigService.saveConfig — empty sensitive input keeps th
     expect(prisma.rows.get('integration.line-shop.liffId')?.value).toBe('');
   });
 });
+
+/**
+ * Review M-3: fail-closed applies only to a stored value this process cannot
+ * decrypt. Without a usable row the env fallback must keep working — prod's
+ * LINE FINANCE secret, for one, comes from env (Secret Manager), not a row.
+ * ("Save with a malformed key" is pinned in the getValue describe above.)
+ */
+describe('IntegrationConfigService.getValue — env fallback when there is no usable row (pins)', () => {
+  const envBefore = process.env.LINE_FINANCE_CHANNEL_SECRET;
+  const FINANCE_SECRET_KEY = 'integration.line-finance.channelSecret';
+  const ENV_SECRET = 'test-only-env-finance-secret';
+
+  beforeEach(() => {
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    process.env.LINE_FINANCE_CHANNEL_SECRET = ENV_SECRET;
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    if (envBefore === undefined) delete process.env.LINE_FINANCE_CHANNEL_SECRET;
+    else process.env.LINE_FINANCE_CHANNEL_SECRET = envBefore;
+  });
+
+  it.each([
+    ['key set', KEY_A],
+    ['no key', undefined],
+    ['malformed key', KEY_HEX_32],
+  ])('no row → env value (%s)', async (_, key) => {
+    const { service } = build(key);
+    await expect(service.getValue('line-finance', 'channelSecret')).resolves.toBe(ENV_SECRET);
+  });
+
+  it('empty row (e.g. saved before empty sensitive input was ignored) → env value', async () => {
+    const { service } = build(KEY_A, { [FINANCE_SECRET_KEY]: '' });
+    await expect(service.getValue('line-finance', 'channelSecret')).resolves.toBe(ENV_SECRET);
+  });
+
+  it('no row and no env → the field default', async () => {
+    const before = process.env.PAYSOLUTIONS_API_URL;
+    delete process.env.PAYSOLUTIONS_API_URL;
+    try {
+      const { service } = build(KEY_A);
+      await expect(service.getValue('paysolutions', 'apiUrl')).resolves.toBe(
+        'https://apis.paysolutions.asia',
+      );
+    } finally {
+      if (before !== undefined) process.env.PAYSOLUTIONS_API_URL = before;
+    }
+  });
+});

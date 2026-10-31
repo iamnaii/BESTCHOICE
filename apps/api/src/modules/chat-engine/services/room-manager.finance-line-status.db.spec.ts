@@ -200,4 +200,24 @@ describe('Task 33 — financeLineStatus ของห้องในอินบ�
     expect(withStatus.financeLineStatus).toEqual(roomRow.financeLineStatus);
     expect(withStatus).not.toHaveProperty('financeLineUnlinkedAt');
   });
+
+  it('9. (fix round 1 M3) ห้องที่เคยยกเลิกผูกกับลูกค้า A ถูกพนักงานผูกให้ลูกค้า B (A ถูกลบ) → เวลายกเลิกเดิมไม่ค้างมาเป็นของ B', async () => {
+    const a = await customer('H', '8');
+    const b = await customer('I', '9');
+    const roomId = await room(ChatChannel.LINE_FINANCE, line('h1'), a.id);
+    await verifyWithOtp(line('h1'), a.phone!);
+    await liff.unlinkLineAccount(line('h1'));
+    expect(
+      (await prisma.chatRoom.findUniqueOrThrow({ where: { id: roomId } })).financeLineUnlinkedAt,
+    ).toBeInstanceOf(Date);
+    // เจ้าของที่ถูก soft-delete = ห้องไม่มีเจ้าของ (Ruling R23) ⇒ ผูกทับได้
+    await prisma.customer.update({ where: { id: a.id }, data: { deletedAt: new Date() } });
+
+    await rooms.linkCustomer(roomId, b.id, { id: 'staff-1', role: 'OWNER' });
+
+    const raw = await prisma.chatRoom.findUniqueOrThrow({ where: { id: roomId } });
+    expect(raw.customerId).toBe(b.id);
+    expect(raw.financeLineUnlinkedAt).toBeNull();
+    expect(await statusOf(b.id, roomId)).toEqual({ verified: false, unlinkedAt: null });
+  });
 });

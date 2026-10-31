@@ -7,7 +7,11 @@ import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import type { ContractQuote } from '@installment/shared';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { loadInstallmentConfig, resolveInstallmentParams, resolveBranchVat } from '../../../utils/config.util';
+import {
+  loadInstallmentConfig,
+  resolveInstallmentParams,
+  resolveFinanceVat,
+} from '../../../utils/config.util';
 import { getRateForMonths } from '../../../utils/get-rate-for-months.util';
 import { calculateInstallmentWithInterest, generatePaymentSchedule, roundBaht } from '../../../utils/installment.util';
 import { hasCrossBranchAccess } from '../../auth/branch-access.util';
@@ -68,7 +72,8 @@ export class ContractQuoteService {
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     });
     const params = resolveInstallmentParams(config, await loadInstallmentConfig(tx), dto.interestRate);
-    const vat = await resolveBranchVat(tx, dto.branchId, params.vatPct);
+    // สัญญาผ่อนเป็นของ FINANCE ⇒ VAT จากบริษัท FINANCE ไม่ใช่บริษัทของสาขา (สาขาหน้าร้านผูก SHOP ซึ่งไม่จด VAT — impact C1)
+    const vat = await resolveFinanceVat(tx, params.vatPct);
     if (downPayment.gte(sellingPrice)) throw new BadRequestException('เงินดาวน์รวมต้องน้อยกว่าราคาขาย');
     if (downPayment.lt(sellingPrice.mul(params.minDownPaymentPct))) {
       throw new BadRequestException(`เงินดาวน์ขั้นต่ำ ${(params.minDownPaymentPct * 100).toFixed(0)}%`);

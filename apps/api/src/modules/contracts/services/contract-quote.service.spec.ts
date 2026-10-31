@@ -18,9 +18,29 @@ describe('ContractQuoteService effective configuration and amounts', () => {
     interestConfig: { findFirst: jest.fn().mockResolvedValue(config), findUnique: jest.fn().mockResolvedValue(config) },
     interestConfigRate: { findUnique: jest.fn().mockResolvedValue({ ratePct: new D('.12'), deletedAt: null }) },
     systemConfig: { findMany: jest.fn().mockResolvedValue([]) },
-    branch: { findUnique: jest.fn().mockResolvedValue({ id: 'branch', deletedAt: null, company: { vatRegistered: false, vatRate: new D('.07') } }) },
+    // สาขาผูกบริษัท SHOP (ไม่จด VAT) — สภาพหลังตั้ง branches.company_id = SHOP (impact C1, 2026-10-31) · VAT ของสัญญาผ่อนต้องไม่อ่านจากตรงนี้
+    branch: {
+      findUnique: jest
+        .fn()
+        .mockResolvedValue({
+          id: 'branch',
+          deletedAt: null,
+          company: { vatRegistered: false, vatRate: null },
+        }),
+    },
+    // บริษัทผู้ให้สินเชื่อ — แหล่ง VAT ของสัญญาผ่อน (ค่าเริ่มต้นของชุดนี้: ไม่จด VAT ⇒ 0% · แต่ละเทสตั้งเอง)
+    companyInfo: {
+      findFirst: jest.fn(async ({ where }: { where: { companyCode: string } }) =>
+        where.companyCode === 'FINANCE' ? { vatRegistered: false, vatRate: new D('.07') } : null,
+      ),
+    },
     $transaction: jest.fn(),
   });
+  const financeVat = (vatRegistered: boolean) =>
+    db.companyInfo.findFirst.mockImplementation(
+      async ({ where }: { where: { companyCode: string } }) =>
+        where.companyCode === 'FINANCE' ? { vatRegistered, vatRate: new D('.07') } : null,
+    );
   beforeEach(() => {
     process.env.USE_NEW_RATE_LOOKUP = 'false';
     jest.useFakeTimers().setSystemTime(new Date('2026-01-31T16:30:00.000Z'));
@@ -30,17 +50,24 @@ describe('ContractQuoteService effective configuration and amounts', () => {
     jest.useRealTimers(); jest.restoreAllMocks();
     if (previousFlag === undefined) delete process.env.USE_NEW_RATE_LOOKUP; else process.env.USE_NEW_RATE_LOOKUP = previousFlag;
   });
-  it.each([false, true])('matches branch VAT registration=%s and the actual schedule residual', async registered => {
-    db.branch.findUnique.mockResolvedValue({ id: 'branch', deletedAt: null, company: { vatRegistered: registered, vatRate: new D('.07') } });
-    const quote = await service.resolve(input, actor);
-    expect(quote.effectiveVatPct).toBe(registered ? '0.0700' : '0.0000');
-    expect(quote.vatSource).toBe('BRANCH_COMPANY');
-    expect(quote.monthlyPayment).toBe(registered ? '1654.93' : '1546.66');
-    expect(quote.lastPayment).toBe(registered ? '1654.95' : '1546.70');
-    expect(quote.firstDueDate).toBe('2026-02-27T17:00:00.000Z');
-    expect(quote.schedule.reduce((sum, row) => sum.plus(row.amountDue), new D(0)).toFixed(2)).toBe(quote.totalPayable);
-    expect(db.$transaction).not.toHaveBeenCalled();
-  });
+  // เดิม: "matches branch VAT registration" — VAT อ่านจากบริษัทของสาขา ⇒ สาขาที่ผูก SHOP (ไม่จด VAT) ทำให้สัญญาผ่อนได้ VAT 0 (impact C1).
+  // สัญญาผ่อนเป็นของ FINANCE ไม่ว่าทำที่สาขาไหน ⇒ ความคาดหวังเดิมย้ายไปที่การจด VAT ของ FINANCE (ตัวเลขเดิมทุกตัว)
+  it.each([false, true])(
+    'matches FINANCE VAT registration=%s and the actual schedule residual',
+    async (registered) => {
+      financeVat(registered);
+      const quote = await service.resolve(input, actor);
+      expect(quote.effectiveVatPct).toBe(registered ? '0.0700' : '0.0000');
+      expect(quote.vatSource).toBe('FINANCE_COMPANY');
+      expect(quote.monthlyPayment).toBe(registered ? '1654.93' : '1546.66');
+      expect(quote.lastPayment).toBe(registered ? '1654.95' : '1546.70');
+      expect(quote.firstDueDate).toBe('2026-02-27T17:00:00.000Z');
+      expect(
+        quote.schedule.reduce((sum, row) => sum.plus(row.amountDue), new D(0)).toFixed(2),
+      ).toBe(quote.totalPayable);
+      expect(db.$transaction).not.toHaveBeenCalled();
+    },
+  );
   it.each([
     { price: 25000, down: 5000, months: 12, interest: '.015', principal: '20000.00', total: '27392.00', monthly: '2282.66' },
     { price: 30000, down: 6000, months: 24, interest: '.015', principal: '24000.00', total: '37492.80', monthly: '1562.20' },
@@ -48,7 +75,7 @@ describe('ContractQuoteService effective configuration and amounts', () => {
   ])('calculates the actual persisted policy for $price / $down / $months', async row => {
     const selected = { ...config, interestRate: new D(row.interest), minDownPaymentPct: new D(0), maxInstallmentMonths: 24 };
     db.interestConfig.findFirst.mockResolvedValue(selected); db.interestConfig.findUnique.mockResolvedValue(selected);
-    db.branch.findUnique.mockResolvedValue({ id: 'branch', deletedAt: null, company: { vatRegistered: true, vatRate: new D('.07') } });
+    financeVat(true);
     const quote = await service.resolve({ ...input, sellingPrice: row.price, downPayment: row.down, totalMonths: row.months }, actor);
     expect(quote.principal).toBe(row.principal); expect(quote.totalPayable).toBe(row.total); expect(quote.monthlyPayment).toBe(row.monthly);
   });
@@ -68,8 +95,27 @@ describe('ContractQuoteService effective configuration and amounts', () => {
     const first = await service.resolve(input, actor);
     jest.setSystemTime(new Date('2026-01-31T16:59:59.000Z'));
     expect((await service.resolve(input, actor)).fingerprint).toBe(first.fingerprint);
-    db.branch.findUnique.mockResolvedValue({ id: 'branch', deletedAt: null, company: { vatRegistered: true, vatRate: new D('.07') } });
+    financeVat(true);
     expect((await service.resolve(input, actor)).fingerprint).not.toBe(first.fingerprint);
+  });
+  it('branch company SHOP (not VAT-registered) + FINANCE VAT 7% ⇒ the installment quote carries 7% from FINANCE (impact C1)', async () => {
+    financeVat(true);
+    const quote = await service.resolve(input, actor);
+    expect([quote.effectiveVatPct, quote.vatSource, quote.monthlyPayment]).toEqual([
+      '0.0700',
+      'FINANCE_COMPANY',
+      '1654.93',
+    ]);
+    expect(db.companyInfo.findFirst).toHaveBeenCalledWith({
+      where: { companyCode: 'FINANCE', deletedAt: null },
+      select: { vatRegistered: true, vatRate: true },
+    });
+    expect(db.branch.findUnique).not.toHaveBeenCalled();
+  });
+  it('no FINANCE company row ⇒ the configured VAT (interest config) as before', async () => {
+    db.companyInfo.findFirst.mockResolvedValue(null);
+    const quote = await service.resolve(input, actor);
+    expect([quote.effectiveVatPct, quote.vatSource]).toEqual(['0.0700', 'CONFIG_FALLBACK']);
   });
   it.each([{ ...actor, branchId: 'other' }, { id: 'staff', role: 'SALES' }])('rejects out-of-scope actors before reading configuration', async scopedActor => {
     await expect(service.resolve(input, scopedActor)).rejects.toThrow();

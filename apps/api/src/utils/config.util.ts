@@ -279,36 +279,29 @@ export function resolveInstallmentParams(
 }
 
 /**
- * Resolve the effective VAT rate for a branch.
+ * VAT ของสัญญาผ่อน — อ่านจาก**บริษัทผู้ให้สินเชื่อ FINANCE** (`company_info.company_code = 'FINANCE'` ที่ยังไม่ถูกลบ — แถวเดียวกับที่
+ * `CompanyResolverService.getFinanceCompanyId` และด่านงวดของ 2A ใช้) ไม่ใช่บริษัทของสาขา (2026-10-31 · impact C1 ของการตั้ง
+ * `branches.company_id = SHOP`): สัญญาผ่อนเป็นของ FINANCE ไม่ว่าทำที่สาขาไหน — สาขาหน้าร้านผูก SHOP ซึ่งไม่จด VAT ⇒ เดิมสัญญาใหม่ของ
+ * สาขานั้นจะได้ VAT 0
  *
- * Business rule:
- *   - BESTCHOICE SHOP  (vatRegistered=false) → 0% VAT
- *   - BESTCHOICE FINANCE (vatRegistered=true)  → company.vatRate (default 7%)
+ *   - FINANCE ไม่จด VAT → 0 · มี `vatRate` → อัตรานั้น
+ *   - ไม่มีแถว FINANCE หรือไม่มีอัตรา → `defaultVatPct` (interest config / system config — ลำดับเดิม)
  *
- * Falls back to `defaultVatPct` when no branchId is supplied or the branch
- * record cannot be found (e.g. during seeding or unit tests).
+ * (เดิม `resolveBranchVat` / `resolveVatPctForBranch` อ่านบริษัทของสาขา — ผู้เรียกในโค้ดจริงมีแค่ใบเสนอยอดสัญญาผ่อน ซึ่งเป็นของ FINANCE
+ * ⇒ ถอดทั้งคู่ · การขายหน้าร้าน (SHOP) ไม่ได้คิด VAT ผ่านตัวนี้)
  */
-export async function resolveBranchVat(
-  prisma: Pick<Prisma.TransactionClient, 'branch'>,
-  branchId: string | null | undefined,
+export async function resolveFinanceVat(
+  prisma: Pick<Prisma.TransactionClient, 'companyInfo'>,
   defaultVatPct: number,
-): Promise<{ vatPct: number; source: 'BRANCH_COMPANY' | 'CONFIG_FALLBACK' }> {
+): Promise<{ vatPct: number; source: 'FINANCE_COMPANY' | 'CONFIG_FALLBACK' }> {
   const fallback = { vatPct: defaultVatPct, source: 'CONFIG_FALLBACK' as const };
-  if (!branchId) return fallback;
-  const branch = await prisma.branch.findUnique({
-    where: { id: branchId },
-    include: { company: { select: { vatRegistered: true, vatRate: true } } },
+  const finance = await prisma.companyInfo.findFirst({
+    where: { companyCode: 'FINANCE', deletedAt: null },
+    select: { vatRegistered: true, vatRate: true },
   });
-  if (!branch?.company) return fallback;
-  if (!branch.company.vatRegistered) return { vatPct: 0, source: 'BRANCH_COMPANY' };
-  if (branch.company.vatRate != null) return { vatPct: Number(branch.company.vatRate), source: 'BRANCH_COMPANY' };
+  if (!finance) return fallback;
+  if (!finance.vatRegistered) return { vatPct: 0, source: 'FINANCE_COMPANY' };
+  if (finance.vatRate != null)
+    return { vatPct: Number(finance.vatRate), source: 'FINANCE_COMPANY' };
   return fallback;
-}
-
-export async function resolveVatPctForBranch(
-  prisma: Pick<Prisma.TransactionClient, 'branch'>,
-  branchId: string | null | undefined,
-  defaultVatPct: number,
-): Promise<number> {
-  return (await resolveBranchVat(prisma, branchId, defaultVatPct)).vatPct;
 }

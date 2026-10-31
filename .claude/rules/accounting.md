@@ -644,6 +644,10 @@ CLI source: `apps/api/src/cli/wipe-accounting.cli.ts`
 
 - **SHOP** not VAT-registered — no VAT on SHOP transactions
 - **FINANCE** VAT-registered at 7%
+- **อัตรา VAT ของสัญญาผ่อน = ของบริษัท FINANCE เสมอ** (2026-10-31 · `resolveFinanceVat` ใน `utils/config.util.ts` ← `ContractQuoteService`):
+  อ่าน `company_info` ที่ `company_code = 'FINANCE'` (`vat_registered` → 0 ถ้าไม่จด · `vat_rate`) — **ไม่ใช่บริษัทของสาขา** (สาขาหน้าร้านผูก SHOP
+  ซึ่งไม่จด VAT ⇒ เดิม `resolveBranchVat` ทำให้สัญญาใหม่ได้ VAT 0 · impact C1 ของการตั้ง `branches.company_id = SHOP`) · ไม่มีแถว FINANCE/ไม่มีอัตรา →
+  interest config / system config ตามเดิม · ใบเสนอยอด `vatSource` = `FINANCE_COMPANY` (`BRANCH_COMPANY` เป็นป้ายเดิม ไม่มีผู้สร้างแล้ว)
 - **Late fees** (ค่าปรับล่าช้า) — NOT subject to VAT (owner policy, legally correct: penalties excluded from VAT base)
 
   **Flat-bracket late-fee model (bracket-only, permanent):** late fee = `tier1Amount` for 1..(tier2MinDays-1) days overdue, `tier2Amount` (flat, does not accumulate per day) for >= tier2MinDays days overdue, driven by SystemConfig keys `late_fee_tier1_amount`, `late_fee_tier2_amount`, `late_fee_tier2_min_days` (defaults 50/100/3). CPA ยืนยันขั้นบันไดถาวร + ถอด PER_DAY ออกจากโค้ด 2026-08-01 (เดิม D2 2026-06-25 CPA-gated ไม่เคยเปิดใช้บน prod) — the per-day model (`min(daysOverdue × ratePerDay, maxAmount, capPct% × installmentGross)`) and its config-switchable `late_fee_mode` were removed entirely; BRACKET is the only formula in the system now. Single source of truth: `resolveLateFee` in `late-fee.util.ts`; the overdue cron reproduces the same flat-bracket CASE expression in SQL, guarded by an anti-drift test (`late-fee-bracket-sql.integration.spec.ts`).

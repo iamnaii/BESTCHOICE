@@ -234,10 +234,25 @@ describe('findOtpVerifiedRoomCustomerId (กติกาเดียวของ
 });
 
 describe('findFinanceLineRoomStatuses', () => {
-  const prisma = { customerLineLink: { findMany: jest.fn() } };
+  const prisma = { customerLineLink: { findMany: jest.fn() }, customer: { findMany: jest.fn() } };
+  const real = (id: string) => ({
+    id,
+    acquisitionSource: null,
+    phone: '0800000000',
+    nationalId: null,
+    deletedAt: null,
+  });
   const at = new Date('2026-10-30T05:00:00.000Z');
   const legacy = new Date('2026-10-20T04:00:00.000Z');
-  beforeEach(() => prisma.customerLineLink.findMany.mockReset());
+  beforeEach(() => {
+    prisma.customerLineLink.findMany.mockReset();
+    // fix round 1 A4 — เจ้าของห้องที่ไม่ verified: ลูกค้าจริงที่ยังไม่ถูกลบ (ผู้สนใจอัตโนมัติ/ถูกลบ = ห้องไม่มีลูกค้าจริง → null)
+    prisma.customer.findMany.mockReset().mockResolvedValue([
+      real('c1'),
+      { id: 'p1', acquisitionSource: 'CHAT_LINE_FINANCE', phone: null, nationalId: null, deletedAt: null },
+      { ...real('g1'), deletedAt: new Date('2026-10-01T00:00:00.000Z') },
+    ]);
+  });
 
   const room = (over: Record<string, unknown>) => ({
     id: 'r',
@@ -277,6 +292,8 @@ describe('findFinanceLineRoomStatuses', () => {
       room({ id: 'other', lineUserId: 'U-other' }),
       room({ id: 'moved', lineUserId: 'U-moved' }),
       room({ id: 'never', lineUserId: 'U-never' }),
+      room({ id: 'prospect', lineUserId: 'U-prospect', customerId: 'p1' }),
+      room({ id: 'gone', lineUserId: 'U-gone2', customerId: 'g1', financeLineUnlinkedAt: at }),
     ]);
     expect(Object.fromEntries(result)).toEqual({
       ok: { verified: true, unlinkedAt: null },
@@ -287,6 +304,7 @@ describe('findFinanceLineRoomStatuses', () => {
       // LINE ยืนยันกับลูกค้าอื่นอยู่ (ไม่ใช่ลูกค้าของห้อง) = ไม่ verified
       moved: { verified: false, unlinkedAt: null },
       never: { verified: false, unlinkedAt: null },
+      // prospect (ผู้สนใจอัตโนมัติ) / gone (เจ้าของถูกลบ) = ห้องไม่มีลูกค้าจริง → ไม่อยู่ใน Map (null)
     });
     expect(prisma.customerLineLink.findMany).toHaveBeenNthCalledWith(1, {
       where: { lineUserId: { in: expect.any(Array) }, ...VERIFIED_FINANCE_LINK_WHERE },

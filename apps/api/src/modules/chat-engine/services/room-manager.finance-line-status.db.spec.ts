@@ -220,4 +220,41 @@ describe('Task 33 — financeLineStatus ของห้องในอินบ�
     expect(raw.financeLineUnlinkedAt).toBeNull();
     expect(await statusOf(b.id, roomId)).toEqual({ verified: false, unlinkedAt: null });
   });
+
+  it('10. (fix round 1 A4) ห้องของ "ผู้สนใจอัตโนมัติ" (ระบบสร้างลูกค้าจากห้องเอง — ไม่ใช่พนักงานผูก) → null ไม่ขึ้นป้าย', async () => {
+    const prospect = await prisma.customer.create({
+      data: { name: `LINE ${tag}`, acquisitionSource: 'CHAT_LINE_FINANCE' },
+    });
+    customerIds.push(prospect.id);
+    const roomId = await room(ChatChannel.LINE_FINANCE, line('p1'), prospect.id);
+
+    expect(await statusOf(prospect.id, roomId)).toBeNull();
+  });
+
+  it('11. (fix round 1 A4) ห้องที่เจ้าของถูกลบ (ห้องไม่มีเจ้าของ — Ruling R23) และไม่เคยยืนยัน → null', async () => {
+    const gone = await customer('J', '0');
+    const roomId = await room(ChatChannel.LINE_FINANCE, line('j1'), gone.id);
+    await prisma.customer.update({ where: { id: gone.id }, data: { deletedAt: new Date() } });
+
+    const [withStatus] = await rooms.attachFinanceLineStatus([
+      await prisma.chatRoom.findUniqueOrThrow({ where: { id: roomId } }),
+    ]);
+    expect(withStatus.financeLineStatus).toBeNull();
+  });
+
+  it('12. (fix round 1 A4) พนักงานผูกห้องผู้สนใจเข้ากับลูกค้าจริงโดยไม่ผ่าน OTP → { verified: false, unlinkedAt: null } (ป้าย "ยังไม่ยืนยันตัวตน")', async () => {
+    const real = await customer('K', '1');
+    const prospect = await prisma.customer.create({
+      data: { name: `LINE ${tag} k`, acquisitionSource: 'CHAT_LINE_FINANCE' },
+    });
+    customerIds.push(prospect.id);
+    const roomId = await room(ChatChannel.LINE_FINANCE, line('k1'), prospect.id);
+    expect(await statusOf(prospect.id, roomId)).toBeNull();
+    // ผู้สนใจถูกลบ (รวมเข้าคนจริงแล้ว) ⇒ ห้องว่างเจ้าของ → พนักงานผูกกับลูกค้าจริง
+    await prisma.customer.update({ where: { id: prospect.id }, data: { deletedAt: new Date() } });
+    await rooms.linkCustomer(roomId, real.id, { id: 'staff-1', role: 'OWNER' });
+
+    expect(await statusOf(real.id, roomId)).toEqual({ verified: false, unlinkedAt: null });
+  });
 });
+

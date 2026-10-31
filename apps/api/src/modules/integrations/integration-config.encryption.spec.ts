@@ -62,12 +62,17 @@ function fakePrisma(initial: Record<string, string> = {}) {
   };
 }
 
-function build(key: string | undefined, initial: Record<string, string> = {}) {
-  const prisma = fakePrisma(initial);
+/** A service instance (= one API process) holding `key`, reading/writing `prisma`. */
+function serviceOn(prisma: ReturnType<typeof fakePrisma>, key: string | undefined) {
   const config = {
     get: jest.fn((name: string) => (name === 'INTEGRATION_ENCRYPTION_KEY' ? key : undefined)),
   } as unknown as ConfigService;
-  return { prisma, service: new IntegrationConfigService(prisma as never, config) };
+  return new IntegrationConfigService(prisma as never, config);
+}
+
+function build(key: string | undefined, initial: Record<string, string> = {}) {
+  const prisma = fakePrisma(initial);
+  return { prisma, service: serviceOn(prisma, key) };
 }
 
 const SECRET_KEY = 'integration.line-shop.channelSecret';
@@ -273,6 +278,110 @@ describe('IntegrationConfigService boot self-check (onModuleInit)', () => {
     await expect(service.checkEncryptedFields()).resolves.toEqual({
       ok: ['peak.secretKey'],
       failed: ['line-shop.channelSecret'],
+    });
+  });
+});
+
+/**
+ * Behaviour proof for the prod rollout: one `system_config`, written and read by
+ * processes holding different keys (what happens when the deploy mounts a key
+ * that may or may not be the one the stored credentials were encrypted with).
+ */
+describe('IntegrationConfigService — key × stored value matrix (round-trip through saveConfig)', () => {
+  let warn: jest.SpyInstance;
+  let error: jest.SpyInstance;
+  let log: jest.SpyInstance;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    error = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    log = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    jest.spyOn(Logger.prototype, 'debug').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it('key set + plaintext stored (saved before the key existed) → unchanged value', async () => {
+    const prisma = fakePrisma();
+    await serviceOn(prisma, undefined).saveConfig('line-shop', { channelSecret: SECRET });
+    expect(prisma.rows.get(SECRET_KEY)?.value).toBe(SECRET);
+
+    await expect(serviceOn(prisma, KEY_A).getValue('line-shop', 'channelSecret')).resolves.toBe(
+      SECRET,
+    );
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('saving a sensitive field with the key set → stored encrypted, reads back with the same key', async () => {
+    const prisma = fakePrisma();
+    await serviceOn(prisma, KEY_A).saveConfig('line-shop', {
+      channelSecret: SECRET,
+      liffId: 'test-liff-id',
+    });
+
+    const stored = prisma.rows.get(SECRET_KEY)?.value ?? '';
+    expect(stored).not.toBe(SECRET);
+    expect(stored).not.toContain(SECRET);
+    expect(stored.split(':')).toHaveLength(3); // iv:authTag:ciphertext
+    // Non-sensitive fields stay plaintext.
+    expect(prisma.rows.get('integration.line-shop.liffId')?.value).toBe('test-liff-id');
+
+    // A fresh process (no cache) with the same key decrypts it.
+    await expect(serviceOn(prisma, KEY_A).getValue('line-shop', 'channelSecret')).resolves.toBe(
+      SECRET,
+    );
+    await expect(serviceOn(prisma, KEY_A).checkEncryptedFields()).resolves.toEqual({
+      ok: ['line-shop.channelSecret'],
+      failed: [],
+    });
+  });
+
+  it('key set + encrypted with another key → undefined, no throw, value never logged', async () => {
+    const prisma = fakePrisma();
+    await serviceOn(prisma, KEY_A).saveConfig('line-shop', { channelSecret: SECRET });
+    const stored = prisma.rows.get(SECRET_KEY)?.value ?? '';
+
+    const other = serviceOn(prisma, KEY_B);
+    await expect(other.getValue('line-shop', 'channelSecret')).resolves.toBeUndefined();
+    await expect(other.getMaskedConfig('line-shop')).resolves.toMatchObject({ channelSecret: '' });
+    await expect(other.checkEncryptedFields()).resolves.toEqual({
+      ok: [],
+      failed: ['line-shop.channelSecret'],
+    });
+
+    const out = emitted(warn, error, log);
+    expect(out).toContain('line-shop.channelSecret');
+    expect(out).not.toContain(SECRET);
+    expect(out).not.toContain(stored);
+  });
+
+  it('key unset + encrypted → undefined + warning', async () => {
+    const prisma = fakePrisma();
+    await serviceOn(prisma, KEY_A).saveConfig('line-shop', { channelSecret: SECRET });
+
+    await expect(
+      serviceOn(prisma, undefined).getValue('line-shop', 'channelSecret'),
+    ).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toContain('line-shop.channelSecret');
+    expect(String(warn.mock.calls[0][0])).toContain('key-missing');
+  });
+
+  it('re-entering the credential under the new key heals the field', async () => {
+    const prisma = fakePrisma();
+    await serviceOn(prisma, KEY_A).saveConfig('line-shop', { channelSecret: SECRET });
+
+    const current = serviceOn(prisma, KEY_B);
+    await expect(current.getValue('line-shop', 'channelSecret')).resolves.toBeUndefined();
+    await current.saveConfig('line-shop', { channelSecret: 'test-only-re-entered-secret' });
+
+    await expect(serviceOn(prisma, KEY_B).getValue('line-shop', 'channelSecret')).resolves.toBe(
+      'test-only-re-entered-secret',
+    );
+    await expect(serviceOn(prisma, KEY_B).checkEncryptedFields()).resolves.toEqual({
+      ok: ['line-shop.channelSecret'],
+      failed: [],
     });
   });
 });

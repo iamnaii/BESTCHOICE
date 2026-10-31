@@ -60,7 +60,11 @@ export class SchedulerService {
       this.paymentLinkService,
     );
     this.retention = new RetentionService(this.prisma);
-    this.ownerReportNotifier = new OwnerReportNotifierService(this.prisma, this.dashboardService, this.staffNotify);
+    this.ownerReportNotifier = new OwnerReportNotifierService(
+      this.prisma,
+      this.dashboardService,
+      this.staffNotify,
+    );
   }
 
   /**
@@ -98,7 +102,9 @@ export class SchedulerService {
     this.logger.log('Starting daily contract status update...');
     try {
       const result = await this.overdueService.updateContractStatuses();
-      this.logger.log(`Status update complete: ${result.overdueUpdated} overdue, ${result.defaultUpdated} default`);
+      this.logger.log(
+        `Status update complete: ${result.overdueUpdated} overdue, ${result.defaultUpdated} default`,
+      );
 
       // Send LINE notifications to customers whose contracts changed status
       const changedIds = [...result.overdueIds, ...result.defaultIds];
@@ -146,7 +152,9 @@ export class SchedulerService {
     this.logger.log('Starting manager notifications...');
     try {
       const result = await this.notificationsService.notifyManagersOverdue();
-      this.logger.log(`Manager notifications complete: ${result.sent} sent for ${result.contracts} contracts`);
+      this.logger.log(
+        `Manager notifications complete: ${result.sent} sent for ${result.contracts} contracts`,
+      );
     } catch (error) {
       this.reportCronFailure('manager-notifications', error);
     }
@@ -160,7 +168,9 @@ export class SchedulerService {
     this.logger.log('Starting owner default notifications...');
     try {
       const result = await this.notificationsService.notifyOwnerDefault();
-      this.logger.log(`Owner notifications complete: ${result.sent} sent for ${result.contracts} contracts`);
+      this.logger.log(
+        `Owner notifications complete: ${result.sent} sent for ${result.contracts} contracts`,
+      );
     } catch (error) {
       this.reportCronFailure('owner-default-notifications', error);
     }
@@ -189,7 +199,9 @@ export class SchedulerService {
     this.logger.log('Starting daily stock level check...');
     try {
       const result = await this.reorderPointsService.checkStockLevels();
-      this.logger.log(`Stock check complete: ${result.alertsCreated} alerts, ${result.notificationsSent} notifications`);
+      this.logger.log(
+        `Stock check complete: ${result.alertsCreated} alerts, ${result.notificationsSent} notifications`,
+      );
     } catch (error) {
       this.reportCronFailure('stock-level-check', error);
     }
@@ -247,7 +259,9 @@ export class SchedulerService {
     try {
       const result = await this.notificationsService.processRetryQueue();
       if (result.retried > 0) {
-        this.logger.log(`Notification retry queue: ${result.succeeded} succeeded, ${result.failed} failed out of ${result.retried}`);
+        this.logger.log(
+          `Notification retry queue: ${result.succeeded} succeeded, ${result.failed} failed out of ${result.retried}`,
+        );
       }
     } catch (error) {
       this.reportCronFailure('notification-retry-queue', error);
@@ -278,7 +292,9 @@ export class SchedulerService {
   async handleDailyReport() {
     try {
       const report = await this.reportGeneratorService.generateDailySummary();
-      this.logger.log(`Daily report: ฿${report.revenue.toLocaleString()}, ${report.paymentsCount} payments`);
+      this.logger.log(
+        `Daily report: ฿${report.revenue.toLocaleString()}, ${report.paymentsCount} payments`,
+      );
     } catch (error) {
       this.reportCronFailure('daily-report', error);
     }
@@ -368,7 +384,9 @@ export class SchedulerService {
       if (credit.credit !== undefined && credit.credit < 100) {
         // ก้อน 7 A16 — ผ่านท่อกลาง (เหตุการณ์ sms.credit_low ถึง OWNER · วันละครั้ง) แทนแม่แบบ staff.sms_credit_low + notifyTargets
         if (!this.staffNotify) {
-          this.logger.warn(`SMS credit low (${credit.credit}) — StaffNotifyService unavailable, no LINE alert`);
+          this.logger.warn(
+            `SMS credit low (${credit.credit}) — StaffNotifyService unavailable, no LINE alert`,
+          );
           return;
         }
         const r = await this.staffNotify.notify('sms.credit_low', {

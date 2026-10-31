@@ -4,6 +4,7 @@ import type { ReceiptIssuanceService } from '../modules/receipts/services/receip
 import {
   backfillPaymentReceipts,
   findBoundReissueCandidates,
+  findDocumentedElsewhere,
   findPaidPaymentsWithoutReceipt,
 } from './backfill-payment-receipts.cli';
 
@@ -33,6 +34,8 @@ describe('backfill-payment-receipts CLI', () => {
     recorded_by_id: 'u-1',
     contract_number: 'BC-1',
     paid_date: null,
+    cleared_by_schedule: false,
+    paid_by_payoff: false,
   };
   const boundRow = {
     id: 'p-2',
@@ -67,14 +70,66 @@ describe('backfill-payment-receipts CLI', () => {
     );
   });
 
-  it('Task 23 review m-1 · Task 25 r-1 — candidate query skips rows whose money is documented elsewhere: paths (b) schedule clearing and (c) rows the early payoff paid, of orphan_payments (shared rules)', async () => {
+  it('Task 23 review m-1 · Task 25 r-1 — the population query flags paths (b) schedule clearing and (c) rows the early payoff paid, of orphan_payments (shared rules)', async () => {
     await findPaidPaymentsWithoutReceipt(prisma);
     const sql = sqlOf(0);
-    expect(sql).toContain('AND NOT EXISTS (SELECT 1 FROM cleared_schedule b WHERE b.id = s.id)');
+    expect(sql).toContain(
+      'EXISTS (SELECT 1 FROM cleared_schedule b WHERE b.id = s.id) AS cleared_by_schedule',
+    );
     expect(sql).toContain("je.metadata->>'installmentScheduleId'"); // SCHEDULE_ROWS_CLEARED_BY_ENTRY
+    expect(sql).toContain('AS paid_by_payoff');
     // (c) per row — not every row of a paid-off contract (a row PAID before the payoff stays a candidate)
     expect(sql).not.toContain('paid_off_contract');
     expect(queryRaw.mock.calls[0]).toContain(PAID_BY_EARLY_PAYOFF);
+  });
+
+  it('Task 25 (r-1) — rows under path b / c / b+c are never issued: listed as [documented elsewhere] with paymentId + path, counted, on dry-run and live run alike', async () => {
+    const flagged = (id: string, no: number, b: boolean, c: boolean) => ({
+      ...cliRow,
+      id,
+      installment_no: no,
+      cleared_by_schedule: b,
+      paid_by_payoff: c,
+    });
+    const population = [
+      cliRow,
+      flagged('p-b', 2, true, false),
+      flagged('p-c', 3, false, true),
+      flagged('p-bc', 4, true, true),
+    ];
+    queryRaw.mockResolvedValueOnce(population).mockResolvedValueOnce(population);
+    expect((await findPaidPaymentsWithoutReceipt(prisma)).map((r) => r.id)).toEqual(['p-1']);
+    expect(
+      (await findDocumentedElsewhere(prisma)).map((r) => [r.id, r.installment_no, r.path]),
+    ).toEqual([
+      ['p-b', 2, 'b'],
+      ['p-c', 3, 'c'],
+      ['p-bc', 4, 'b+c'],
+    ]);
+
+    for (const dryRun of [true, false]) {
+      queryRaw.mockReset().mockResolvedValueOnce(population).mockResolvedValueOnce([]);
+      const generateReceipt = jest.fn().mockResolvedValue({ id: 'r-1' });
+      const lines: string[] = [];
+      const log = jest.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+        lines.push(args.join(' '));
+      });
+      const result = await backfillPaymentReceipts(
+        prisma,
+        { generateReceipt } as unknown as ReceiptIssuanceService,
+        { dryRun, fallbackIssuerId: null },
+      );
+      log.mockRestore();
+      expect([result.candidates, result.documentedElsewhere]).toEqual([1, 3]);
+      expect(result.totalAmount.toFixed(2)).toBe('1515.83'); // skipped rows are not CLI money
+      expect(generateReceipt.mock.calls.map((c) => c[1])).toEqual(dryRun ? [] : ['p-1']);
+      expect(lines.filter((l) => l.includes('[documented elsewhere]'))).toEqual([
+        expect.stringMatching(/paymentId=p-b .*path=b$/),
+        expect.stringMatching(/paymentId=p-c .*path=c$/),
+        expect.stringMatching(/paymentId=p-bc .*path=b\+c$/),
+      ]);
+      expect(lines.some((l) => l.includes('3 payment(s) skipped'))).toBe(true);
+    }
   });
 
   it('Task 23 — bound re-issue list = the same population WITH a live bound receipt entry (imported rows included — they re-issue bound too)', async () => {

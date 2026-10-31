@@ -44,9 +44,11 @@
  * These are exactly paths (c) and (b) of the nightly `orphan_payments` check — the same rules
  * (`modules/data-audit/services/payment-backing.ts`), not a second definition. A row whose rest was paid in
  * cash has that receipt row already (or, if it failed, a live entry ⇒ the bound list), so skipping the whole
- * row is safe. What the CLI still issues for: PAID rows backed by no journal entry at all (seed "data-only"
- * rows · payments that predate receipt automation) — including such a row on a contract that was later
- * paid off early (the payoff settled only the rows still open).
+ * row is safe. Every skipped row is printed — `[documented elsewhere] paymentId=… path=b|c|b+c` plus a count
+ * line, on dry-run and live run — so the operator sees what is not issued before a real run (Task 25).
+ * What the CLI still issues for: PAID rows backed by no journal entry at all (seed "data-only" rows ·
+ * payments that predate receipt automation) — including such a row on a contract that was later paid off
+ * early (the payoff settled only the rows still open).
  *
  * GUARDS
  * ------
@@ -108,28 +110,41 @@ const LIVE_BOUND_RECEIPT_ENTRY = Prisma.sql`je.metadata->>'paymentId' = p.id
         AND je.deleted_at IS NULL
         AND COALESCE(je.metadata->>'reversed', 'false') <> 'true'`;
 
+/** Paths (b)/(c) of `orphan_payments` that put a row's money under a document elsewhere (`payment-backing.ts`) */
+export type DocumentedElsewherePath = 'b' | 'c' | 'b+c';
+
+/** A row of the CLI's population with the two "documented elsewhere" paths decided per row */
+interface PopulationRow extends PaidPaymentRow {
+  /** (b) an entry credits 11-2103 for the row's schedule row (nightly advance / park consumption · 6a/6b) */
+  cleared_by_schedule: boolean;
+  /** (c) the contract's early payoff (JP4) paid this row — `PAID_BY_EARLY_PAYOFF` */
+  paid_by_payoff: boolean;
+}
+
+export interface DocumentedElsewhereRow extends PaidPaymentRow {
+  path: DocumentedElsewherePath;
+}
+
 /**
- * Rows this CLI issues an (unbound) receipt for: PAID payments with money received and NO receipt row at
- * all, and
+ * The CLI's population: PAID payments with money received and NO receipt row at all, and
  * - never an installment imported from the old back office (`legacy_installment_code` — written only by
  *   the importer): its pre-cutover money was booked in PEAK and has no receipt here by design, so a
  *   catch-up tax invoice would be a second document for the same money (Task 18 review m-2, 2026-10-30);
  * - never a payment with a live receipt entry bound to it (Task 23): that goes through the bound re-issue
- *   runbook — `findBoundReissueCandidates`;
- * - never a row the early payoff paid (c) or cleared through its schedule row (b) — paths (b)/(c) of
- *   `orphan_payments` (`payment-backing.ts`): that money is documented by the payoff receipt / by the receipt
- *   that took the advance (Task 23 review m-1) · a row PAID before the payoff is not under (c) (Task 25).
+ *   runbook — `findBoundReissueCandidates`.
+ * Each row carries paths (b)/(c) of `orphan_payments` (`payment-backing.ts` — the same rules, decided in one
+ * query) so the run splits it into the rows it issues for and the rows it skips and prints.
  */
-export async function findPaidPaymentsWithoutReceipt(
-  prisma: PrismaService,
-): Promise<PaidPaymentRow[]> {
-  return prisma.$queryRaw<PaidPaymentRow[]>`
+async function loadPopulation(prisma: PrismaService): Promise<PopulationRow[]> {
+  return prisma.$queryRaw<PopulationRow[]>`
     WITH cleared_schedule AS (${SCHEDULE_ROWS_CLEARED_BY_ENTRY})
     SELECT p.id, p.contract_id, p.installment_no,
            p.amount_paid::text AS amount_paid,
            p.payment_method, p.gateway_ref, p.recorded_by_id,
            p.paid_date,
-           c.contract_number
+           c.contract_number,
+           EXISTS (SELECT 1 FROM cleared_schedule b WHERE b.id = s.id) AS cleared_by_schedule,
+           ${PAID_BY_EARLY_PAYOFF} AS paid_by_payoff
     FROM payments p
     JOIN contracts c ON c.id = p.contract_id
     LEFT JOIN installment_schedules s
@@ -137,10 +152,46 @@ export async function findPaidPaymentsWithoutReceipt(
     WHERE ${PAID_WITHOUT_ANY_RECEIPT}
       AND p.legacy_installment_code IS NULL
       AND NOT EXISTS (SELECT 1 FROM journal_entries je WHERE ${LIVE_BOUND_RECEIPT_ENTRY})
-      AND NOT EXISTS (SELECT 1 FROM cleared_schedule b WHERE b.id = s.id)
-      AND NOT ${PAID_BY_EARLY_PAYOFF}
     ORDER BY c.contract_number, p.installment_no
   `;
+}
+
+/** Rows this CLI issues for vs rows it skips because their money is documented elsewhere — one snapshot */
+function splitPopulation(rows: PopulationRow[]): {
+  candidates: PaidPaymentRow[];
+  documentedElsewhere: DocumentedElsewhereRow[];
+} {
+  const candidates: PaidPaymentRow[] = [];
+  const documentedElsewhere: DocumentedElsewhereRow[] = [];
+  for (const { cleared_by_schedule: b, paid_by_payoff: c, ...row } of rows) {
+    const path: DocumentedElsewherePath | null = b && c ? 'b+c' : b ? 'b' : c ? 'c' : null;
+    if (path) documentedElsewhere.push({ ...row, path });
+    else candidates.push(row);
+  }
+  return { candidates, documentedElsewhere };
+}
+
+/**
+ * Rows this CLI issues an (unbound) receipt for: the population (`loadPopulation`) minus the rows the early
+ * payoff paid (c) or cleared through their schedule row (b) — paths (b)/(c) of `orphan_payments`
+ * (`payment-backing.ts`): that money is documented by the payoff receipt / by the receipt that took the
+ * advance (Task 23 review m-1) · a row PAID before the payoff is not under (c) (Task 25).
+ */
+export async function findPaidPaymentsWithoutReceipt(
+  prisma: PrismaService,
+): Promise<PaidPaymentRow[]> {
+  return splitPopulation(await loadPopulation(prisma)).candidates;
+}
+
+/**
+ * Rows of the population the CLI skips because their money is documented elsewhere — path `b` / `c` /
+ * `b+c` (Task 25 · Task 23 re-review r-1): printed on every run (dry-run and live) with a count so the
+ * operator sees what is not issued before a real run.
+ */
+export async function findDocumentedElsewhere(
+  prisma: PrismaService,
+): Promise<DocumentedElsewhereRow[]> {
+  return splitPopulation(await loadPopulation(prisma)).documentedElsewhere;
 }
 
 interface BoundReissueRow {
@@ -187,6 +238,8 @@ export interface BackfillReceiptsResult {
   totalAmount: Decimal;
   /** payments listed for the bound re-issue runbook — never issued by this CLI */
   boundReissue: number;
+  /** population rows skipped because their money is documented elsewhere (paths b/c) — printed, never issued */
+  documentedElsewhere: number;
 }
 
 export async function backfillPaymentReceipts(
@@ -194,7 +247,7 @@ export async function backfillPaymentReceipts(
   issuance: ReceiptIssuanceService,
   opts: { dryRun: boolean; fallbackIssuerId: string | null },
 ): Promise<BackfillReceiptsResult> {
-  const rows = await findPaidPaymentsWithoutReceipt(prisma);
+  const { candidates: rows, documentedElsewhere } = splitPopulation(await loadPopulation(prisma));
   const bound = await findBoundReissueCandidates(prisma);
   const result: BackfillReceiptsResult = {
     candidates: rows.length,
@@ -203,7 +256,23 @@ export async function backfillPaymentReceipts(
     failed: 0,
     totalAmount: new Decimal(0),
     boundReissue: bound.length,
+    documentedElsewhere: documentedElsewhere.length,
   };
+
+  if (documentedElsewhere.length > 0) {
+    console.log(
+      `[backfill-receipts] ${documentedElsewhere.length} payment(s) skipped — money documented elsewhere` +
+        ' (orphan_payments paths, payment-backing.ts: b = cleared through the schedule row by the nightly' +
+        " advance / park consumption · c = paid by the contract's early payoff JP4). NOT issued here:",
+    );
+    for (const e of documentedElsewhere) {
+      console.log(
+        `  [documented elsewhere] paymentId=${e.id}  contract=${e.contract_number}  งวด=${e.installment_no}` +
+          `  amountPaid=฿${new Decimal(e.amount_paid).toFixed(2)}  path=${e.path}`,
+      );
+    }
+    console.log('');
+  }
 
   if (bound.length > 0) {
     console.log(
@@ -352,7 +421,7 @@ async function main(): Promise<void> {
       '[backfill-receipts] Payments with a live receipt journal entry are listed for the bound re-issue runbook — never issued here.',
     );
     console.log(
-      '[backfill-receipts] Rows the early payoff paid (not rows paid before it) or cleared by the nightly advance / park consumption are skipped — their money is documented elsewhere.',
+      '[backfill-receipts] Rows the early payoff paid (not rows paid before it) or cleared by the nightly advance / park consumption are skipped — their money is documented elsewhere; each is listed as [documented elsewhere] with its path.',
     );
     console.log('');
     const result = await backfillPaymentReceipts(prisma, issuance, {
@@ -364,6 +433,7 @@ async function main(): Promise<void> {
     console.log('[backfill-receipts] ===== SUMMARY =====');
     console.log(`  candidates                : ${result.candidates}`);
     console.log(`  bound re-issue (not here) : ${result.boundReissue}`);
+    console.log(`  documented elsewhere      : ${result.documentedElsewhere}`);
     if (!dryRun) {
       console.log(`  created                   : ${result.created}`);
       console.log(`  skipped (no issuer)       : ${result.skipped}`);

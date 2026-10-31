@@ -1639,7 +1639,9 @@ Integration: `contracts/early-payoff-receipt.integration.spec.ts`. **กลไ�
      stamp — ตัวเดียวกับส่วนเผื่อค่าปรับของ `overpaid_contracts` · JP4 ก่อน 2026-10-18 ไม่มีช่วง ใช้วันที่อย่างเดียว) — **งวดของสัญญาเดียวกันที่จ่ายก่อนปิดยอด
      ไม่นับ** (Task 25 · r-1: เดิมตัดสินทั้งสัญญา งวดที่ PAID ก่อนปิดยอดโดยไม่มีรายการจึงหลุดทั้ง CLI และ `orphan_payments`) · และงวดที่ถูกล้างด้วยรายการที่
      เครดิต 11-2103 ผูกแถวตารางงวด (ทาง (b) ของ `orphan_payments` — รอบกลางคืนหักเงินรับล่วงหน้า / เงินพักค่าปรับดิว: เงินนั้นออกเอกสารแล้วตอนรับ ตั้งแต่ PR3 /
-     PR4ข) — ทาง (c) / (b) ของตรวจกลางคืน `orphan_payments` ชุดเดียวกัน (`data-audit/services/payment-backing.ts`) · ไม่อยู่ในรายชื่อใด
+     PR4ข) — ทาง (c) / (b) ของตรวจกลางคืน `orphan_payments` ชุดเดียวกัน (`data-audit/services/payment-backing.ts`) · CLI **ไม่ออกใบ** แต่พิมพ์
+     `[documented elsewhere] paymentId=… contract=… งวด=… amountPaid=… path=b|c|b+c` ทั้ง dry-run และรันจริง (สรุปท้าย `documented elsewhere`) —
+     ตรวจรายชื่อนี้ก่อนรันจริง
 
    ⇒ CLI ไม่ออกใบที่ไม่ผูกรายการให้เงินที่มีรายการรับชำระหรือเอกสารแล้ว (unique index `receipts_source_journal_entry_key` กันใบที่ไม่ผูกรายการไม่ได้ — ด่านนี้
    จึงอยู่ในคิวรีของ CLI) · **ไม่ครอบ:** งวดที่มีแถวใบเสร็จอยู่แล้วอย่างน้อยหนึ่งใบ (ใบที่ยกเลิกแล้วรับใหม่ · ใบบางส่วนอีกใบ · ใบปรับดิวที่ผูก `paymentId`

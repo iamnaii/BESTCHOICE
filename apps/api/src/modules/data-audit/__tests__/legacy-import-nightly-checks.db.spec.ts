@@ -21,6 +21,7 @@ import {
 } from '../../../cli/legacy-backoffice/__tests__/synthetic-book';
 import {
   findBoundReissueCandidates,
+  findDocumentedElsewhere,
   findPaidPaymentsWithoutReceipt,
 } from '../../../cli/backfill-payment-receipts.cli';
 import type { DumpRow } from '../../../cli/legacy-backoffice/dump-reader';
@@ -760,7 +761,10 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
     return (r.details[0] as { breaches: Array<{ contractId: string; gap: string }> }).breaches;
   };
 
-  /** รายชื่อของ `backfill:receipts` ที่ตกในสัญญาเหล่านี้ — `cli` = ออกใบที่ไม่ผูกรายการ · `bound` = ส่งไปออกซ้ำแบบผูกรายการ */
+  /**
+   * รายชื่อของ `backfill:receipts` ที่ตกในสัญญาเหล่านี้ — `cli` = ออกใบที่ไม่ผูกรายการ · `bound` = ส่งไปออกซ้ำแบบผูกรายการ ·
+   * `elsewhere` = ข้ามเพราะเอกสารของเงินอยู่ที่อื่น (`<สัญญา>#<งวด>:<ทาง b|c|b+c>` — Task 25 · r-1)
+   */
   const backfillListsOf = async (contractIds: string[]) => {
     const asService = prisma as unknown as PrismaService;
     const pick = (
@@ -773,6 +777,10 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
     return {
       cli: pick(await findPaidPaymentsWithoutReceipt(asService)),
       bound: pick(await findBoundReissueCandidates(asService)),
+      elsewhere: (await findDocumentedElsewhere(asService))
+        .filter((r) => contractIds.includes(r.contract_id))
+        .map((r) => `${r.contract_number}#${r.installment_no}:${r.path}`)
+        .sort(),
     };
   };
 
@@ -951,9 +959,13 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
       ]);
       // backfill:receipts (Task 23 review m-1 ข): งวด 2 ของ A2 ล้างด้วยรอบกลางคืนหักเงินรับล่วงหน้าทั้งงวด — ไม่มีแถวใบเสร็จ ไม่มีรายการผูก
       // paymentId แต่เงินนั้นออกเอกสารพร้อมภาษีแล้วตอนรับ (ใบงวด 1 แถว "พักไว้") ⇒ ไม่ใช่ผู้สมัคร CLI (เดิมได้ใบ INSTALLMENT ใบที่สอง) และไม่อยู่ใน
-      // รายชื่อออกซ้ำ (ไม่มีรายการรับชำระให้ผูก) — คำตัดสินเดียวกับทาง (b) ของ orphan_payments
+      // รายชื่อออกซ้ำ (ไม่มีรายการรับชำระให้ผูก) — คำตัดสินเดียวกับทาง (b) ของ orphan_payments · CLI พิมพ์ไว้ว่าข้ามด้วยทาง b (Task 25)
       expect(await prisma.receipt.count({ where: { paymentId: p2.id } })).toBe(0);
-      expect(await backfillListsOf([a2])).toEqual({ cli: [], bound: [] });
+      expect(await backfillListsOf([a2])).toEqual({
+        cli: [],
+        bound: [],
+        elsewhere: [`TEST-T16N-${stamp}-A2#2:b`],
+      });
       // L9B: งวด 4 (marker 300) รับส่วนที่เหลือหลังวันตัด แล้วยกเลิกใบเสร็จ — แถวกลับเป็นยอดก่อนวันตัด แต่ยังถือ
       // payment_method / ผู้บันทึกของใบที่ยกเลิก (ไม่กลับมาเป็น "ไม่ถูกแตะ") ⇒ หนุนด้วยต้นฉบับที่ reversed=true ตาม (ก)
       const l9b = legacy.get('L9B')!;
@@ -1581,7 +1593,12 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
         // paymentId — ในเทสต์นี้ไม่ออกใบปิดยอดเลยด้วย) — เอกสารของเงินนั้นคือใบปิดยอด ⇒ ไม่ใช่ผู้สมัคร CLI (เดิมได้ใบ INSTALLMENT ทุกงวด) —
         // คำตัดสินเดียวกับทาง (c) ของ orphan_payments
         expect(await prisma.receipt.count({ where: { paymentId: paid6.id } })).toBe(0);
-        expect(await backfillListsOf([a3])).toEqual({ cli: [], bound: [] });
+        // …และ CLI พิมพ์งวดเหล่านั้นว่าข้ามด้วยทาง c (Task 25) — คนรันเห็นก่อนรันจริง
+        expect(await backfillListsOf([a3])).toEqual({
+          cli: [],
+          bound: [],
+          elsewhere: [6, 7, 8, 9, 10, 11, 12].map((no) => `TEST-T16N-${stamp}-A3#${no}:c`).sort(),
+        });
       },
       LONG,
     );
@@ -1675,6 +1692,7 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
         expect(await backfillListsOf([a7])).toEqual({
           cli: [`TEST-T16N-${stamp}-A7#5`],
           bound: [],
+          elsewhere: [6, 7, 8, 9, 10, 11, 12].map((no) => `TEST-T16N-${stamp}-A7#${no}:c`).sort(),
         });
 
         // รายการ JP4 ก่อน 2026-10-18 (ไม่มีช่วงงวด) — วันที่เป็นตัวแยก: งวด 6–12 ยังหนุนด้วย JP4 · งวด 5 (วันอื่น) ยังติด

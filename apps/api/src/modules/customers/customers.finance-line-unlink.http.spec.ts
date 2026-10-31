@@ -92,7 +92,7 @@ describe('POST /customers/:id/finance-line/unlink (HTTP)', () => {
       unlinked: true,
       financeLine: { verified: false, linkedAt: null },
     });
-    expect(unlink).toHaveBeenCalledWith(CUSTOMER_ID, { id: `u-${role}`, role });
+    expect(unlink).toHaveBeenCalledWith(CUSTOMER_ID, { id: `u-${role}` });
   });
 
   it.each(['SALES', 'FINANCE_MANAGER', 'ACCOUNTANT'])(

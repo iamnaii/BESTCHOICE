@@ -88,10 +88,7 @@ describe('POST /customers/:id/finance-line/unlink (Task 27)', () => {
     const roomId = await room(line('1'), c.id);
     expect((await query.findOne(c.id)).financeLine.verified).toBe(true);
 
-    const out = await service.unlinkFinanceLineByStaff(c.id, {
-      id: staffId,
-      role: 'BRANCH_MANAGER',
-    });
+    const out = await service.unlinkFinanceLineByStaff(c.id, { id: staffId });
 
     expect(out).toEqual({
       id: c.id,
@@ -121,7 +118,7 @@ describe('POST /customers/:id/finance-line/unlink (Task 27)', () => {
     const c = await customer('คอลัมน์มีค่า', '2', line('2'));
     await link(c.id, line('2'));
 
-    await service.unlinkFinanceLineByStaff(c.id, { id: staffId, role: 'OWNER' });
+    await service.unlinkFinanceLineByStaff(c.id, { id: staffId });
 
     expect(
       (await prisma.customer.findUniqueOrThrow({ where: { id: c.id } })).lineIdFinance,
@@ -135,7 +132,7 @@ describe('POST /customers/:id/finance-line/unlink (Task 27)', () => {
   it('คอลัมน์ค้างไม่มีแถว OTP → ล้างคอลัมน์ (ทางกวาดค่าเก่าก่อน 1 ธ.ค.) + audit', async () => {
     const c = await customer('คอลัมน์ค้าง', '3', line('3-typed'));
 
-    const out = await service.unlinkFinanceLineByStaff(c.id, { id: staffId, role: 'OWNER' });
+    const out = await service.unlinkFinanceLineByStaff(c.id, { id: staffId });
 
     expect(out.unlinked).toBe(true);
     expect(
@@ -151,7 +148,7 @@ describe('POST /customers/:id/finance-line/unlink (Task 27)', () => {
   it('ไม่มีอะไรให้ยกเลิก (กดซ้ำ/หน้าจอค้าง) → สำเร็จแบบไม่แตะอะไร ไม่เขียน audit', async () => {
     const c = await customer('ไม่เคยผูก', '4');
 
-    const out = await service.unlinkFinanceLineByStaff(c.id, { id: staffId, role: 'OWNER' });
+    const out = await service.unlinkFinanceLineByStaff(c.id, { id: staffId });
 
     expect(out).toEqual({
       id: c.id,
@@ -167,7 +164,7 @@ describe('POST /customers/:id/finance-line/unlink (Task 27)', () => {
     const ownerRoom = await room(line('5'), owner.id);
     const typed = await customer('พิมพ์ LINE คนอื่น', '6', line('5'));
 
-    await service.unlinkFinanceLineByStaff(typed.id, { id: staffId, role: 'OWNER' });
+    await service.unlinkFinanceLineByStaff(typed.id, { id: staffId });
 
     expect((await query.findOne(owner.id)).financeLine.verified).toBe(true);
     expect(
@@ -175,18 +172,52 @@ describe('POST /customers/:id/finance-line/unlink (Task 27)', () => {
     ).toBeInstanceOf(Date);
   });
 
+  it('กดพร้อมกัน 3 คำขอ (สองแท็บ/กดซ้ำ) → ยกเลิกจริงครั้งเดียว · audit 1 แถว (ล็อกแถวลูกค้าก่อนอ่านสถานะ — fix round 1 M-6)', async () => {
+    const c = await customer('กดพร้อมกัน', '8', line('8'));
+    await link(c.id, line('8'));
+
+    // บังคับให้ซ้อนกันจริง: อีกคอนเนกชันถือล็อกแถวลูกค้าไว้ระหว่างที่ 3 คำขอเริ่ม แล้วค่อยปล่อย —
+    // มีล็อกของปุ่ม = ทั้งสามรอที่คำสั่งแรกแล้วอ่านสถานะใหม่ทีละคำขอ · ไม่มี = ทั้งสามอ่าน "ยังผูก" ก่อน แล้วไปรอที่ UPDATE ⇒ ยกเลิก 3 ครั้ง audit 3 แถว
+    let locked!: () => void;
+    let release!: () => void;
+    const lockedP = new Promise<void>((r) => (locked = r));
+    const releaseP = new Promise<void>((r) => (release = r));
+    const blocker = prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT id FROM customers WHERE id = ${c.id} FOR NO KEY UPDATE`;
+        locked();
+        await releaseP;
+      },
+      { timeout: 20_000 },
+    );
+    await lockedP;
+    const calls = Promise.all(
+      [1, 2, 3].map(() => service.unlinkFinanceLineByStaff(c.id, { id: staffId })),
+    );
+    await new Promise((r) => setTimeout(r, 500));
+    release();
+    await blocker;
+    const results = await calls;
+
+    expect(results.filter((r) => r.unlinked)).toHaveLength(1);
+    expect(results.filter((r) => !r.unlinked)).toHaveLength(2);
+    expect(await audits(c.id)).toHaveLength(1);
+    expect(
+      await prisma.customerLineLink.count({ where: { customerId: c.id, unlinkedAt: null } }),
+    ).toBe(0);
+  });
+
   it('ลูกค้าที่ถูกลบ / ไม่มี → 404 ไม่แตะแถว', async () => {
     const c = await customer('ถูกลบ', '7');
     await link(c.id, line('7'));
     await prisma.customer.update({ where: { id: c.id }, data: { deletedAt: new Date() } });
 
-    await expect(
-      service.unlinkFinanceLineByStaff(c.id, { id: staffId, role: 'OWNER' }),
-    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.unlinkFinanceLineByStaff(c.id, { id: staffId })).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
     await expect(
       service.unlinkFinanceLineByStaff('00000000-0000-4000-8000-000000000000', {
         id: staffId,
-        role: 'OWNER',
       }),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(

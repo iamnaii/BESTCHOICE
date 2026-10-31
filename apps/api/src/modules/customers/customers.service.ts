@@ -80,7 +80,7 @@ export class CustomersService {
   }
 
   /** Task 27 — ปุ่ม "ยกเลิกการผูก" LINE น้องเบส (การเงิน) ของพนักงาน — `POST /customers/:id/finance-line/unlink` */
-  unlinkFinanceLineByStaff(id: string, actor: { id: string; role: string }) {
+  unlinkFinanceLineByStaff(id: string, actor: { id: string }) {
     return this.write.unlinkFinanceLineByStaff(id, actor);
   }
 

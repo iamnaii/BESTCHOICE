@@ -44,6 +44,10 @@ import {
   ACTIVE_FINANCE_LINK_WHERE,
   type FinanceLineStatus,
 } from '../../line-oa/services/otp-verified-customer';
+import { isRetryablePrismaWriteError } from '../../../utils/transaction-retry.util';
+
+/** ปุ่มยกเลิกผูก LINE การเงิน (legacy) — ลองทั้งทรานแซกชันใหม่เมื่อ Postgres ตัดสิน deadlock/serialization (ดู lock order ที่ `unlinkFinanceLineByStaff`) */
+const FINANCE_LINE_UNLINK_MAX_ATTEMPTS = 3;
 import { contactAddedEntry, isBlankContact } from '../../customer-journey/chat-identity-entries';
 import type { ContactField } from '../../customer-journey/journey-data-schemas';
 
@@ -759,36 +763,60 @@ export class CustomerWriteService {
    * แต่ตัดสินจาก**แถว OTP ที่ยังผูก**ด้วย (PATCH ดูคอลัมน์อย่างเดียว — คอลัมน์ว่างแต่มีแถว = ไม่แตะ) ⇒ ปุ่มปิดแถวได้เสมอ ·
    * ไม่มีทั้งแถวและคอลัมน์ = สำเร็จแบบไม่แตะอะไร (กดซ้ำ/หน้าจอค้าง) ไม่เขียน audit ·
    * audit `CUSTOMER_FINANCE_LINE_UNLINKED` (สถานะก่อน/หลัง ไม่มี U-id) — ทางเดิมไม่มี audit เฉพาะ (Task 22 รายงานข้อ 3) ·
-   * ไม่สลับ rich menu (เหมือน LIFF ยกเลิกเอง) · ผูกใหม่ได้ทาง OTP ของลูกค้าเท่านั้น
+   * ไม่สลับ rich menu (เหมือน LIFF ยกเลิกเอง) · ผูกใหม่ได้ทาง OTP ของลูกค้าเท่านั้น · ตอบ 201 เหมือน POST action อื่นของ `/customers/:id`
+   *
+   * **ลำดับล็อก (fix round 1 — review M-2):** แถวลูกค้า → แถว link → ห้องแชท = ลำดับเดียวกับทางยกเลิกผูกพี่น้อง (PATCH ล้างช่อง · LIFF —
+   * `unlinkFinanceLine`) · `VerificationService.bind` ล็อกกลับด้าน (ห้องของ LINE/ลูกค้าเดิม → แถว link → ห้องของ LINE นี้ → ลูกค้า) ⇒
+   * ลูกค้ายืนยัน OTP พร้อมกับที่พนักงานกดปุ่มกับลูกค้าคนเดียวกัน Postgres อาจตัดสิน deadlock (40P01) ให้ฝ่ายหนึ่ง rollback ทั้งก้อน (ไม่มีข้อมูลค้าง):
+   * ฝั่งปุ่มลองทั้งทรานแซกชันใหม่เอง (legacy สูงสุด `FINANCE_LINE_UNLINK_MAX_ATTEMPTS` ครั้ง — ทุกขั้นอ่านใหม่ใต้ล็อก · managed = ระบบสิทธิ์ลองใหม่เอง
+   * maxAttempts 3) · ฝั่ง bind ได้ error — รหัส OTP ยังไม่ถูกลบ (กิน attempt ไป 1) ลูกค้ากรอกรหัสเดิมซ้ำได้ · **ไม่กลับลำดับที่นี่**: จะสวนกับ PATCH/LIFF
+   * แทน และ bind ล็อกห้องก่อนแถว link อยู่แล้ว (เลียนลำดับครบต้องล็อกห้องตามเงื่อนไขของ bind) — แก้ถาวรคือให้ bind ล็อกแถวลูกค้าก่อน (งานแยก)
    */
   async unlinkFinanceLineByStaff(
     id: string,
-    actor: { id: string; role: string },
+    actor: { id: string },
   ): Promise<{ id: string; unlinked: boolean; financeLine: FinanceLineStatus }> {
     const ctx = partyWriteExecution();
     if (ctx && actor.id !== ctx.snapshot.userId) throw new Error('Customer actor mismatch');
     if (ctx) await this.parties!.mutation(ctx.client, 'customer', id, 'customers.update');
-    const before = await this.prisma.$transaction(async (tx) => {
-      // ล็อกแถวลูกค้าก่อนอ่านสถานะ ⇒ กดพร้อมกันสองคนได้ audit ใบเดียว · ลำดับล็อก ลูกค้า → แถว link เท่าทาง PATCH
-      await tx.$queryRaw`SELECT id FROM customers WHERE id = ${id} FOR UPDATE`;
-      const customer = await tx.customer.findUnique({
-        where: { id },
-        select: { deletedAt: true, lineIdFinance: true },
+    const unlinkInTx = () =>
+      this.prisma.$transaction(async (tx) => {
+        // ล็อกแถวลูกค้าก่อนอ่านสถานะ ⇒ กดพร้อมกันได้ audit ใบเดียว · NO KEY UPDATE พอ: บล็อกผู้เขียนแถวนี้ด้วยกัน แต่ไม่บล็อก insert แถวลูก
+        // ที่อ้าง FK (KEY SHARE) · ทรานแซกชันนี้แก้แค่ line_id_finance (ไม่ใช่คอลัมน์ key) — แบบ lockCreditCustomer
+        await tx.$queryRaw`SELECT id FROM customers WHERE id = ${id} FOR NO KEY UPDATE`;
+        const customer = await tx.customer.findUnique({
+          where: { id },
+          select: { deletedAt: true, lineIdFinance: true },
+        });
+        if (!customer || customer.deletedAt) throw new NotFoundException('ไม่พบลูกค้า');
+        const active = await tx.customerLineLink.findFirst({
+          where: { customerId: id, ...ACTIVE_FINANCE_LINK_WHERE },
+          select: { linkedAt: true },
+        });
+        const lineIdFinanceColumnSet = !!customer.lineIdFinance?.trim();
+        if (!active && !lineIdFinanceColumnSet) return null;
+        await unlinkFinanceLine(tx, { customerId: id });
+        const financeLine: FinanceLineStatus = {
+          verified: !!active,
+          linkedAt: active ? active.linkedAt.toISOString() : null,
+        };
+        return { financeLine, lineIdFinanceColumnSet };
       });
-      if (!customer || customer.deletedAt) throw new NotFoundException('ไม่พบลูกค้า');
-      const active = await tx.customerLineLink.findFirst({
-        where: { customerId: id, ...ACTIVE_FINANCE_LINK_WHERE },
-        select: { linkedAt: true },
-      });
-      const lineIdFinanceColumnSet = !!customer.lineIdFinance?.trim();
-      if (!active && !lineIdFinanceColumnSet) return null;
-      await unlinkFinanceLine(tx, { customerId: id });
-      const financeLine: FinanceLineStatus = {
-        verified: !!active,
-        linkedAt: active ? active.linkedAt.toISOString() : null,
-      };
-      return { financeLine, lineIdFinanceColumnSet };
-    });
+    let before: Awaited<ReturnType<typeof unlinkInTx>> = null;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        before = await unlinkInTx();
+        break;
+      } catch (error) {
+        // managed: ทรานแซกชันเป็นของระบบสิทธิ์ (join) — ลองซ้ำข้างในไม่ได้ ให้ชั้นนอกลองทั้งก้อน
+        if (
+          ctx ||
+          attempt >= FINANCE_LINE_UNLINK_MAX_ATTEMPTS ||
+          !isRetryablePrismaWriteError(error)
+        )
+          throw error;
+      }
+    }
     const after: FinanceLineStatus = { verified: false, linkedAt: null };
     if (before) {
       const entry = {

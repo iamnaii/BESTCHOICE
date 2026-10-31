@@ -25,6 +25,9 @@ import { ChatWorkAccessService } from '../../staff-chat/services/chat-work-acces
 import { RoomCreditService } from '../../credit-check/services/room-credit.service';
 import { CustomerWriteService } from '../../customers/services/customer-write.service';
 
+/** Task 33 — หน้า LIFF ส่งความยินยอมมาพร้อมรหัสเสมอ (DTO บังคับ) · ความยินยอมถูกบันทึกใน tx ของ bind */
+const GRANTED_CONSENT = { granted: true } as const;
+
 jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn(), captureMessage: jest.fn() }));
 jest.setTimeout(60_000);
 
@@ -141,7 +144,7 @@ async function raceBindAgainst(
 ) {
   const [bind, staff] = await raceOnRoom(
     roomId,
-    () => verification.verifyOtp({ lineUserId: bindLine, otp }),
+    () => verification.verifyOtp({ lineUserId: bindLine, otp, consent: GRANTED_CONSENT }),
     staffUnlink,
   );
   return { bind, staff };
@@ -315,7 +318,7 @@ describe('ทาง "ห้อง → ลูกค้า" เดิม แข่
     const [linked, bind] = await raceOnRoom(
       roomId,
       () => rooms.linkCustomer(roomId, c.id, { id: staffId, role: 'OWNER' }),
-      () => verification.verifyOtp({ lineUserId: line('5'), otp }),
+      () => verification.verifyOtp({ lineUserId: line('5'), otp, consent: GRANTED_CONSENT }),
     );
 
     expect(settled(linked)).toMatchObject({ id: roomId, customerId: c.id });
@@ -349,7 +352,7 @@ describe('ทาง "ห้อง → ลูกค้า" เดิม แข่
         release();
         return analysis;
       },
-      () => verification.verifyOtp({ lineUserId: line('6'), otp }),
+      () => verification.verifyOtp({ lineUserId: line('6'), otp, consent: GRANTED_CONSENT }),
     );
 
     settled(analyzed);
@@ -377,7 +380,7 @@ describe('ทาง "ห้อง → ลูกค้า" เดิม แข่
             { id: staffId } as never,
             { company: 'FINANCE' },
           ),
-        () => verification.verifyOtp({ lineUserId: line('7'), otp }),
+        () => verification.verifyOtp({ lineUserId: line('7'), otp, consent: GRANTED_CONSENT }),
       );
 
       expect(settled(marked)).toMatchObject({ customerId: c.id, kind: 'REOPENED' });

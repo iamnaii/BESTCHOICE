@@ -222,6 +222,8 @@ describe('Task 33 — ความยินยอมตอนผูก LINE ก�
       }, opts)) as never);
 
     const result = await verification.verifyOtp({ lineUserId: LINE, otp: code, consent: CONSENT });
+    // รอบแรกล้มหลังเขียนครบ → runWithTransactionRetry เปิดทรานแซกชันใหม่ (รอบสองผ่าน)
+    expect(spy.mock.calls.length).toBeGreaterThanOrEqual(2);
     spy.mockRestore();
 
     const rows = await consents();

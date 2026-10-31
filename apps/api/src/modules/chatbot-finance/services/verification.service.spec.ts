@@ -15,6 +15,14 @@ import { JourneyEntryWriter } from '../../customer-journey/journey-entry-writer.
 import { RichMenuService } from '../../line-oa/rich-menu/rich-menu.service';
 import { FinanceLineLockSetUnstableError } from '../../line-oa/services/finance-line-link';
 
+/** Task 33 — หน้า LIFF ส่งความยินยอมมาพร้อมรหัสเสมอ (DTO บังคับ) · bind บันทึก pdpa_consents ใน tx เดียวกัน */
+const GRANTED_CONSENT = { granted: true } as const;
+const CONSENT_GRANTED_AT = new Date('2026-10-31T03:00:00.000Z');
+const CONSENT_TX_MOCK = () => ({
+  findFirst: jest.fn().mockResolvedValue(null),
+  create: jest.fn().mockResolvedValue({ id: 'consent-1', grantedAt: CONSENT_GRANTED_AT }),
+});
+
 type OtpRowMock = {
   [method: string]: jest.Mock | undefined;
   findUnique: jest.Mock;
@@ -108,6 +116,7 @@ describe('VerificationService', () => {
             findUnique: jest.fn().mockResolvedValue(null),
           },
           chatRoom: { updateMany: jest.fn().mockResolvedValue({}) },
+          pDPAConsent: CONSENT_TX_MOCK(),
           // Task 29 — bind ล็อกแถวลูกค้าก่อน (lockCustomersForFinanceLineBind)
           $queryRaw: jest.fn().mockResolvedValue([]),
           customer: {
@@ -265,6 +274,16 @@ describe('VerificationService', () => {
   });
 
   describe('verifyOtp', () => {
+    it('Task 33 — ไม่มีความยินยอม (เรียก service ตรงโดยไม่ผ่าน DTO) → 400 ไทย ไม่กิน attempt ไม่ผูก', async () => {
+      for (const consent of [undefined, { granted: false }, {}]) {
+        await expect(
+          service.verifyOtp({ lineUserId: 'U123', otp: '123456', consent: consent as never }),
+        ).rejects.toThrow('ติ๊กยินยอมรับแจ้งเตือนทาง LINE');
+      }
+      expect(prisma.chatbotOtpRequest.updateManyAndReturn).not.toHaveBeenCalled();
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
     const makeRecord = (hash: string, attempts = 0) => ({
       id: 'otp-1',
       lineUserId: 'U123',
@@ -292,7 +311,7 @@ describe('VerificationService', () => {
       const otpMatch = smsCall.match(/(\d{6})/);
       const otp = otpMatch![1];
 
-      const result = await service.verifyOtp({ lineUserId: 'U123', otp });
+      const result = await service.verifyOtp({ lineUserId: 'U123', otp, consent: GRANTED_CONSENT });
 
       expect(result.customerId).toBe('c1');
       expect(result.customerName).toBe('สมชาย');
@@ -306,7 +325,7 @@ describe('VerificationService', () => {
         attempts: 0,
       });
 
-      await expect(service.verifyOtp({ lineUserId: 'U123', otp: '123456' })).rejects.toThrow(
+      await expect(service.verifyOtp({ lineUserId: 'U123', otp: '123456', consent: GRANTED_CONSENT })).rejects.toThrow(
         'หมดอายุ',
       );
     });
@@ -318,7 +337,7 @@ describe('VerificationService', () => {
         attempts: 3, // max
       });
 
-      await expect(service.verifyOtp({ lineUserId: 'U123', otp: '123456' })).rejects.toThrow(
+      await expect(service.verifyOtp({ lineUserId: 'U123', otp: '123456', consent: GRANTED_CONSENT })).rejects.toThrow(
         'ใส่ OTP ผิดครบ 3 ครั้งแล้ว',
       );
     });
@@ -326,7 +345,7 @@ describe('VerificationService', () => {
     it('increments attempts on wrong OTP (atomic conditional UPDATE … RETURNING)', async () => {
       prisma.chatbotOtpRequest.findUnique.mockResolvedValue(makeRecord('wrong-hash', 0));
 
-      await expect(service.verifyOtp({ lineUserId: 'U123', otp: '999999' })).rejects.toThrow(
+      await expect(service.verifyOtp({ lineUserId: 'U123', otp: '999999', consent: GRANTED_CONSENT })).rejects.toThrow(
         'OTP ไม่ถูกต้อง (เหลือ 2 ครั้ง)',
       );
       expect(prisma.chatbotOtpRequest.updateManyAndReturn).toHaveBeenCalledWith({
@@ -338,7 +357,7 @@ describe('VerificationService', () => {
     it('throws when no OTP record exists', async () => {
       prisma.chatbotOtpRequest.findUnique.mockResolvedValue(null);
 
-      await expect(service.verifyOtp({ lineUserId: 'U123', otp: '123456' })).rejects.toThrow(
+      await expect(service.verifyOtp({ lineUserId: 'U123', otp: '123456', consent: GRANTED_CONSENT })).rejects.toThrow(
         'ขอ OTP ใหม่',
       );
     });
@@ -353,7 +372,7 @@ describe('VerificationService', () => {
         prisma.chatbotOtpRequest.findUnique.mockResolvedValue(makeRecord('wrong-hash'));
         prisma.customer.findUnique.mockResolvedValue({ id: 'c1', name: 'สมชาย' });
 
-        const result = await service.verifyOtp({ lineUserId: 'U123', otp: '999999' });
+        const result = await service.verifyOtp({ lineUserId: 'U123', otp: '999999', consent: GRANTED_CONSENT });
 
         // Same success return shape as the real success branch.
         expect(result.customerId).toBe('c1');
@@ -374,7 +393,7 @@ describe('VerificationService', () => {
         testMode.isEnabled.mockResolvedValue(true);
         prisma.chatbotOtpRequest.findUnique.mockResolvedValue(null);
 
-        await expect(service.verifyOtp({ lineUserId: 'U123', otp: '999999' })).rejects.toThrow(
+        await expect(service.verifyOtp({ lineUserId: 'U123', otp: '999999', consent: GRANTED_CONSENT })).rejects.toThrow(
           'ขอ OTP ใหม่',
         );
         expect(prisma.$transaction).not.toHaveBeenCalled();
@@ -386,7 +405,7 @@ describe('VerificationService', () => {
         prisma.chatbotOtpRequest.findUnique.mockResolvedValue(makeRecord('wrong-hash', 0));
         prisma.chatbotOtpRequest.update.mockResolvedValue({ attempts: 1 });
 
-        await expect(service.verifyOtp({ lineUserId: 'U123', otp: '999999' })).rejects.toThrow(
+        await expect(service.verifyOtp({ lineUserId: 'U123', otp: '999999', consent: GRANTED_CONSENT })).rejects.toThrow(
           'ไม่ถูกต้อง',
         );
         expect(audit.log).not.toHaveBeenCalled();
@@ -409,7 +428,7 @@ describe('VerificationService', () => {
       const smsCall = notifications.sendSmsFromQueue.mock.calls[0][1] as string;
       const otp = smsCall.match(/(\d{6})/)![1];
 
-      const result = await service.verifyOtp({ lineUserId: 'U123', otp });
+      const result = await service.verifyOtp({ lineUserId: 'U123', otp, consent: GRANTED_CONSENT });
 
       expect(result.customerId).toBe('c1');
       expect(prisma.$transaction).toHaveBeenCalled(); // bind() รันจริง
@@ -438,6 +457,7 @@ describe('VerificationService', () => {
           customer: { findFirst: jest.fn(), findUnique: jest.fn() },
           customerLineLink: { findUnique: jest.fn(), upsert: jest.fn().mockResolvedValue({}) },
           chatRoom: { updateMany: jest.fn().mockResolvedValue({}) },
+          pDPAConsent: CONSENT_TX_MOCK(),
           $transaction: jest.fn().mockImplementation((cb) => {
             const tx = {
               customerLineLink: {
@@ -445,6 +465,7 @@ describe('VerificationService', () => {
                 findUnique: jest.fn().mockResolvedValue(null),
               },
               chatRoom: { updateMany: jest.fn().mockResolvedValue({}) },
+              pDPAConsent: CONSENT_TX_MOCK(),
               // Task 29 — bind ล็อกแถวลูกค้าก่อน (lockCustomersForFinanceLineBind)
               $queryRaw: jest.fn().mockResolvedValue([]),
               customer: {
@@ -503,6 +524,7 @@ describe('VerificationService', () => {
               findUnique: jest.fn().mockResolvedValue(null),
             },
             chatRoom: { updateMany: jest.fn().mockResolvedValue({}) },
+            pDPAConsent: CONSENT_TX_MOCK(),
             // Task 29 — bind ล็อกแถวลูกค้าก่อน (lockCustomersForFinanceLineBind)
             $queryRaw: jest.fn().mockResolvedValue([]),
             customer: {
@@ -514,7 +536,7 @@ describe('VerificationService', () => {
           return cb(tx);
         });
 
-        await mergedService.verifyOtp({ lineUserId: 'U123', otp });
+        await mergedService.verifyOtp({ lineUserId: 'U123', otp, consent: GRANTED_CONSENT });
 
         expect(merge.absorbRoomsOfLineUser).toHaveBeenCalledWith('U123', 'LINE_FINANCE', 'c1', {
           id: 'system',
@@ -531,7 +553,7 @@ describe('VerificationService', () => {
           new Error('รวมไม่ได้: ผู้สนใจคนนี้มีใบจอง 1 รายการ'),
         );
 
-        const result = await mergedService.verifyOtp({ lineUserId: 'U123', otp: '999999' });
+        const result = await mergedService.verifyOtp({ lineUserId: 'U123', otp: '999999', consent: GRANTED_CONSENT });
 
         expect(result.customerId).toBe('c1');
         expect(merge.absorbRoomsOfLineUser).toHaveBeenCalledWith('U123', 'LINE_FINANCE', 'c1', {
@@ -565,6 +587,7 @@ describe('VerificationService', () => {
             const result = await cb({
               customerLineLink: { upsert, findUnique: jest.fn().mockResolvedValue(null) },
               chatRoom: { updateMany: jest.fn().mockResolvedValue({}) },
+              pDPAConsent: CONSENT_TX_MOCK(),
               // Task 29 — bind ล็อกแถวลูกค้าก่อน (lockCustomersForFinanceLineBind)
               $queryRaw: jest.fn().mockResolvedValue([]),
               customer: {
@@ -600,7 +623,7 @@ describe('VerificationService', () => {
       });
 
       it('ยืนยันสำเร็จ → LINE_LINKED {FINANCE, VERIFICATION} หลัง transaction commit · linkedAt ตรงกับ occurredAt · ไม่มี LINE user id ในแถว', async () => {
-        await jService.verifyOtp({ lineUserId: 'U123', otp: '999999' });
+        await jService.verifyOtp({ lineUserId: 'U123', otp: '999999', consent: GRANTED_CONSENT });
 
         expect(order).toEqual(['commit', 'journey']);
         const entry = journey.recordAfterCommit.mock.calls[0][0];
@@ -629,7 +652,7 @@ describe('VerificationService', () => {
           unlinkedAt: null,
           deletedAt: null,
         });
-        await jService.verifyOtp({ lineUserId: 'U123', otp: '999999' });
+        await jService.verifyOtp({ lineUserId: 'U123', otp: '999999', consent: GRANTED_CONSENT });
         expect(order).toEqual(['commit']);
         expect(journey.recordAfterCommit).not.toHaveBeenCalled();
       });
@@ -642,7 +665,7 @@ describe('VerificationService', () => {
               ? { customerId: 'c-old', unlinkedAt: null, deletedAt: null }
               : null,
         );
-        await jService.verifyOtp({ lineUserId: 'U123', otp: '999999' });
+        await jService.verifyOtp({ lineUserId: 'U123', otp: '999999', consent: GRANTED_CONSENT });
         // ยกเลิกผูกแล้ว (LIFF unlink ปิดแถว) → ผูกกลับด้วย OTP = แถวเดิมของ LINE นี้ + ลูกค้าเดิม
         jPrisma.customerLineLink.findUnique.mockResolvedValue({
           id: 'link-1',
@@ -651,7 +674,7 @@ describe('VerificationService', () => {
           unlinkedAt: new Date('2026-09-01T00:00:00.000Z'),
           deletedAt: null,
         });
-        await jService.verifyOtp({ lineUserId: 'U123', otp: '999999' });
+        await jService.verifyOtp({ lineUserId: 'U123', otp: '999999', consent: GRANTED_CONSENT });
         expect(journey.recordAfterCommit).toHaveBeenCalledTimes(2);
         expect(upsert).toHaveBeenCalledTimes(2);
         expect(upsert.mock.calls[1][0].update).toMatchObject({
@@ -662,7 +685,7 @@ describe('VerificationService', () => {
 
       it('transaction ของ bind() ล้ม → ไม่บันทึก และ verifyOtp โยนต่อ', async () => {
         jPrisma.$transaction.mockRejectedValue(new Error('deadlock'));
-        await expect(jService.verifyOtp({ lineUserId: 'U123', otp: '999999' })).rejects.toThrow(
+        await expect(jService.verifyOtp({ lineUserId: 'U123', otp: '999999', consent: GRANTED_CONSENT })).rejects.toThrow(
           'deadlock',
         );
         expect(journey.recordAfterCommit).not.toHaveBeenCalled();
@@ -809,7 +832,7 @@ describe('VerificationService', () => {
       prisma.chatbotOtpRequest.updateManyAndReturn.mockResolvedValue([]);
       prisma.customer.findUnique.mockResolvedValue({ id: 'c1', name: 'สมชาย' });
 
-      await expect(service.verifyOtp({ lineUserId: 'U123', otp })).rejects.toThrow(
+      await expect(service.verifyOtp({ lineUserId: 'U123', otp, consent: GRANTED_CONSENT })).rejects.toThrow(
         'ใส่ OTP ผิดครบ 3 ครั้งแล้ว',
       );
       expect(prisma.$transaction).not.toHaveBeenCalled();
@@ -818,7 +841,7 @@ describe('VerificationService', () => {
     it('exhausted attempts keep the row until it expires (no delete → no fresh attempts via re-request)', async () => {
       prisma.chatbotOtpRequest.findUnique.mockResolvedValue(row({ attempts: 3 }));
 
-      await expect(service.verifyOtp({ lineUserId: 'U123', otp: '123456' })).rejects.toThrow(
+      await expect(service.verifyOtp({ lineUserId: 'U123', otp: '123456', consent: GRANTED_CONSENT })).rejects.toThrow(
         'ใส่ OTP ผิดครบ 3 ครั้งแล้ว',
       );
       expect(prisma.chatbotOtpRequest.delete).not.toHaveBeenCalled();
@@ -827,7 +850,7 @@ describe('VerificationService', () => {
     it('the last wrong attempt tells the user when they may request again', async () => {
       prisma.chatbotOtpRequest.findUnique.mockResolvedValue(row({ attempts: 2 }));
 
-      await expect(service.verifyOtp({ lineUserId: 'U123', otp: '123456' })).rejects.toThrow(
+      await expect(service.verifyOtp({ lineUserId: 'U123', otp: '123456', consent: GRANTED_CONSENT })).rejects.toThrow(
         /ใส่ OTP ผิดครบ 3 ครั้งแล้ว — ขอรหัสใหม่ได้ในอีก \d+ นาที/,
       );
       expect(prisma.chatbotOtpRequest.delete).not.toHaveBeenCalled();
@@ -957,7 +980,7 @@ describe('VerificationService', () => {
       const decoy = prisma.chatbotOtpRequest.upsert.mock.calls[0][0].create;
       prisma.chatbotOtpRequest.findUnique.mockResolvedValue(row({ ...decoy, attempts: 0 }));
 
-      await expect(service.verifyOtp({ lineUserId: 'U123', otp: '123456' })).rejects.toThrow(
+      await expect(service.verifyOtp({ lineUserId: 'U123', otp: '123456', consent: GRANTED_CONSENT })).rejects.toThrow(
         'OTP ไม่ถูกต้อง (เหลือ 2 ครั้ง)',
       );
       expect(prisma.$transaction).not.toHaveBeenCalled();
@@ -1095,6 +1118,7 @@ describe('VerificationService', () => {
       customerLineLink: { upsert: jest.Mock; update: jest.Mock; findUnique: jest.Mock };
       chatRoom: { updateMany: jest.Mock };
       customer: { findMany: jest.Mock; update: jest.Mock; updateMany: jest.Mock };
+      pDPAConsent: { findFirst: jest.Mock; create: jest.Mock };
     };
     let order: string[];
     let rows: { byCustomer: unknown; byLine: unknown };
@@ -1148,6 +1172,7 @@ describe('VerificationService', () => {
       'rooms',
       'clear-others', // Task 22 I-1 (ข) — ล้าง U-id นี้ออกจากคอลัมน์ของลูกค้าคนอื่นก่อนเขียนของลูกค้าคนนี้
       'line_id_finance',
+      'consent', // Task 33 — pdpa_consents GRANTED ในทรานแซกชันเดียวกับการผูก (ก่อน commit)
       'commit',
       'journey',
       'rich-menu',
@@ -1177,6 +1202,11 @@ describe('VerificationService', () => {
           findMany: jest.fn(async () => columnHolders),
           update: step('line_id_finance'),
           updateMany: step('clear-others'),
+        },
+        pDPAConsent: {
+          // แถว GRANTED ของวัตถุประสงค์เดียวกันที่มีอยู่ (ครั้งเดียวต่อลูกค้า) — ไม่นับเป็นขั้น
+          findFirst: jest.fn(async () => null),
+          create: step('consent', { id: 'consent-1', grantedAt: CONSENT_GRANTED_AT }),
         },
       };
       tPrisma = {
@@ -1212,12 +1242,23 @@ describe('VerificationService', () => {
     it('(d) OTP ถูกต้อง → ผูกครบ: ดูดห้อง → link row + ห้อง + line_id_finance ใน tx เดียว → journey → rich menu "ยืนยันแล้ว" → ลบ OTP', async () => {
       const otp = await requestRealOtp();
 
-      await expect(tService.verifyOtp({ lineUserId: 'U123', otp })).resolves.toEqual({
+      await expect(tService.verifyOtp({ lineUserId: 'U123', otp, consent: GRANTED_CONSENT })).resolves.toEqual({
         customerId: 'c1',
         customerName: 'สมชาย',
+        consentRecordedAt: CONSENT_GRANTED_AT.toISOString(),
       });
 
       expect(order).toEqual(LINK_SEQUENCE);
+      // Task 33 — ความยินยอมของลูกค้าที่ผูก: ข้อความ/วัตถุประสงค์ของหน้า LIFF · GRANTED · ไม่มีพนักงานผู้บันทึก
+      expect(tx.pDPAConsent.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          customerId: 'c1',
+          status: 'GRANTED',
+          purposes: ['แจ้งเตือนค่างวด ใบเสร็จ และข้อมูลสัญญาทาง LINE'],
+          privacyNoticeText: 'ยินยอมให้บริษัทส่งแจ้งเตือนค่างวด ใบเสร็จ และข้อมูลสัญญาทาง LINE',
+        }),
+        select: { id: true, grantedAt: true },
+      });
       expect(merge.absorbRoomsOfLineUser).toHaveBeenCalledWith('U123', 'LINE_FINANCE', 'c1', {
         id: 'system',
         role: 'SYSTEM',
@@ -1261,7 +1302,7 @@ describe('VerificationService', () => {
         const calls = tPrisma.$transaction.mock.calls.length;
         tPrisma.$transaction.mockRejectedValueOnce(failure);
 
-        await expect(tService.verifyOtp({ lineUserId: 'U123', otp })).resolves.toMatchObject({
+        await expect(tService.verifyOtp({ lineUserId: 'U123', otp, consent: GRANTED_CONSENT })).resolves.toMatchObject({
           customerId: 'c1',
         });
 
@@ -1282,7 +1323,7 @@ describe('VerificationService', () => {
         attempts: 0,
       });
 
-      await tService.verifyOtp({ lineUserId: 'U123', otp: '000000' });
+      await tService.verifyOtp({ lineUserId: 'U123', otp: '000000', consent: GRANTED_CONSENT });
 
       expect(order).toEqual(LINK_SEQUENCE);
     });
@@ -1291,7 +1332,7 @@ describe('VerificationService', () => {
       richMenu.switchRichMenu.mockRejectedValue(new Error('LINE API error 500'));
       const otp = await requestRealOtp();
 
-      await expect(tService.verifyOtp({ lineUserId: 'U123', otp })).resolves.toMatchObject({
+      await expect(tService.verifyOtp({ lineUserId: 'U123', otp, consent: GRANTED_CONSENT })).resolves.toMatchObject({
         customerId: 'c1',
       });
       expect(tx.customer.update).toHaveBeenCalled();
@@ -1302,7 +1343,7 @@ describe('VerificationService', () => {
       await build({ withRichMenu: false });
       const otp = await requestRealOtp();
 
-      await expect(tService.verifyOtp({ lineUserId: 'U123', otp })).resolves.toMatchObject({
+      await expect(tService.verifyOtp({ lineUserId: 'U123', otp, consent: GRANTED_CONSENT })).resolves.toMatchObject({
         customerId: 'c1',
       });
       expect(order).toContain('commit');
@@ -1313,7 +1354,7 @@ describe('VerificationService', () => {
       rows.byCustomer = { id: 'link-old', lineUserId: 'U_OLD', unlinkedAt: null, deletedAt: null };
       const otp = await requestRealOtp();
 
-      const err = await tService.verifyOtp({ lineUserId: 'U123', otp }).catch((e: unknown) => e);
+      const err = await tService.verifyOtp({ lineUserId: 'U123', otp, consent: GRANTED_CONSENT }).catch((e: unknown) => e);
       expect(err).toBeInstanceOf(ConflictException);
       expect((err as ConflictException).message).toBe(CUSTOMER_LINKED_TO_OTHER_LINE_MESSAGE);
       expect(merge.absorbRoomsOfLineUser).not.toHaveBeenCalled();
@@ -1331,7 +1372,7 @@ describe('VerificationService', () => {
       };
       const otp = await requestRealOtp();
 
-      await expect(tService.verifyOtp({ lineUserId: 'U123', otp })).resolves.toMatchObject({
+      await expect(tService.verifyOtp({ lineUserId: 'U123', otp, consent: GRANTED_CONSENT })).resolves.toMatchObject({
         customerId: 'c1',
       });
 
@@ -1365,7 +1406,7 @@ describe('VerificationService', () => {
       rows.byLine = { id: 'link-other', customerId: 'c-other', unlinkedAt: null, deletedAt: null };
       const otp = await requestRealOtp();
 
-      await expect(tService.verifyOtp({ lineUserId: 'U123', otp })).resolves.toMatchObject({
+      await expect(tService.verifyOtp({ lineUserId: 'U123', otp, consent: GRANTED_CONSENT })).resolves.toMatchObject({
         customerId: 'c1',
       });
 
@@ -1388,7 +1429,7 @@ describe('VerificationService', () => {
       columnHolders = [{ id: 'c-other' }, { id: 'c-stale' }];
       const otp = await requestRealOtp();
 
-      await tService.verifyOtp({ lineUserId: 'U123', otp });
+      await tService.verifyOtp({ lineUserId: 'U123', otp, consent: GRANTED_CONSENT });
 
       // ชุดไม่เปลี่ยนเมื่ออ่านซ้ำใต้ล็อก ⇒ ล็อกครั้งเดียว
       expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
@@ -1412,7 +1453,7 @@ describe('VerificationService', () => {
       rows.byLine = { id: 'link-other', customerId: 'c-other', unlinkedAt: null, deletedAt: null };
       const otp = await requestRealOtp();
 
-      await expect(tService.verifyOtp({ lineUserId: 'U123', otp })).rejects.toThrow(
+      await expect(tService.verifyOtp({ lineUserId: 'U123', otp, consent: GRANTED_CONSENT })).rejects.toThrow(
         LINE_LINK_NEEDS_STAFF_MESSAGE,
       );
       expect(merge.absorbRoomsOfLineUser).not.toHaveBeenCalled();

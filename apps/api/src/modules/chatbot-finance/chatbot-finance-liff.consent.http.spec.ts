@@ -83,7 +83,8 @@ describe('POST /api/chatbot/finance/liff/verify-otp — consent (HTTP)', () => {
   it('consent: true → ส่งต่อให้ service พร้อมหลักฐาน (IP · user agent) และ LINE จาก token เท่านั้น', async () => {
     const res = await post({ otp: '123456', consent: true, lineUserId: 'U-spoofed' });
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({
+    // configureApp ห่อคำตอบเป็น { success, data, timestamp } — liffApi ของเว็บแกะ data ให้
+    expect(res.body.data).toEqual({
       customerId: 'c-1',
       customerName: 'ทดสอบ',
       consentRecordedAt: '2026-10-31T03:00:00.000Z',

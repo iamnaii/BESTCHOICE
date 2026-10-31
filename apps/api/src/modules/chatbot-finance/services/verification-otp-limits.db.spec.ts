@@ -22,6 +22,9 @@ import {
   VerificationService,
 } from './verification.service';
 
+/** Task 33 — หน้า LIFF ส่งความยินยอมมาพร้อมรหัสเสมอ (DTO บังคับ) · ความยินยอมถูกบันทึกใน tx ของ bind */
+const GRANTED_CONSENT = { granted: true } as const;
+
 jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn(), captureMessage: jest.fn() }));
 
 const prisma = new PrismaClient();
@@ -110,6 +113,7 @@ beforeEach(async () => {
 afterAll(async () => {
   await prisma.chatbotOtpRequest.deleteMany({ where: myRows() });
   await prisma.customerLineLink.deleteMany({ where: { customerId } });
+  await prisma.pDPAConsent.deleteMany({ where: { customerId } });
   await prisma.chatRoom.deleteMany({ where: { lineUserId: { contains: tag } } });
   await prisma.customer.delete({ where: { id: customerId } });
   await prisma.$disconnect();
@@ -122,7 +126,7 @@ describe('OTP limits on real Postgres (Task 20 I1 + fix round 1)', () => {
     const otp = lastOtp();
 
     const results = await Promise.allSettled(
-      Array.from({ length: 10 }, () => verification.verifyOtp({ lineUserId, otp: wrongOf(otp) })),
+      Array.from({ length: 10 }, () => verification.verifyOtp({ lineUserId, otp: wrongOf(otp), consent: GRANTED_CONSENT })),
     );
     const messages = results.map((r) =>
       r.status === 'rejected' ? (r.reason as Error).message : 'OK',
@@ -132,7 +136,7 @@ describe('OTP limits on real Postgres (Task 20 I1 + fix round 1)', () => {
     const row = await prisma.chatbotOtpRequest.findUniqueOrThrow({ where: { lineUserId } });
     expect(row.attempts).toBe(3);
 
-    await expect(verification.verifyOtp({ lineUserId, otp })).rejects.toThrow(
+    await expect(verification.verifyOtp({ lineUserId, otp, consent: GRANTED_CONSENT })).rejects.toThrow(
       'ใส่ OTP ผิดครบ 3 ครั้งแล้ว',
     );
     expect(await prisma.customerLineLink.count({ where: { customerId } })).toBe(0);
@@ -222,7 +226,7 @@ describe('OTP limits on real Postgres (Task 20 I1 + fix round 1)', () => {
     await expect(verification.requestOtp({ lineUserId, phone: PHONE })).resolves.toBeDefined();
     await settle();
     expect(sms.sendSmsFromQueue).toHaveBeenCalledTimes(2);
-    await expect(verification.verifyOtp({ lineUserId, otp: lastOtp() })).resolves.toMatchObject({
+    await expect(verification.verifyOtp({ lineUserId, otp: lastOtp(), consent: GRANTED_CONSENT })).resolves.toMatchObject({
       customerId,
     });
     await prisma.customerLineLink.deleteMany({ where: { customerId } });
@@ -233,7 +237,7 @@ describe('OTP limits on real Postgres (Task 20 I1 + fix round 1)', () => {
     const lineUserId = line('rereq');
     await verification.requestOtp({ lineUserId, phone: PHONE });
     await settle();
-    await expect(verification.verifyOtp({ lineUserId, otp: wrongOf(lastOtp()) })).rejects.toThrow(
+    await expect(verification.verifyOtp({ lineUserId, otp: wrongOf(lastOtp()), consent: GRANTED_CONSENT })).rejects.toThrow(
       'เหลือ 2 ครั้ง',
     );
 
@@ -243,7 +247,7 @@ describe('OTP limits on real Postgres (Task 20 I1 + fix round 1)', () => {
     const row = await prisma.chatbotOtpRequest.findUniqueOrThrow({ where: { lineUserId } });
     expect(row.attempts).toBe(1);
 
-    await expect(verification.verifyOtp({ lineUserId, otp: lastOtp() })).resolves.toMatchObject({
+    await expect(verification.verifyOtp({ lineUserId, otp: lastOtp(), consent: GRANTED_CONSENT })).resolves.toMatchObject({
       customerId,
     });
   });
@@ -257,7 +261,7 @@ describe('OTP limits on real Postgres (Task 20 I1 + fix round 1)', () => {
     await verification.requestOtp({ lineUserId, phone: PHONE });
     const otp = lastOtp();
     // ผู้ถือ LINE เดาไปแล้วหนึ่งครั้งก่อนที่ provider จะตอบว่าส่งไม่สำเร็จ
-    await expect(verification.verifyOtp({ lineUserId, otp: wrongOf(otp) })).rejects.toThrow(
+    await expect(verification.verifyOtp({ lineUserId, otp: wrongOf(otp), consent: GRANTED_CONSENT })).rejects.toThrow(
       'เหลือ 2 ครั้ง',
     );
     failSms(new Error('provider down'));
@@ -272,7 +276,7 @@ describe('OTP limits on real Postgres (Task 20 I1 + fix round 1)', () => {
     expect(customerQuota.attempts).toBe(1);
     expect(pairQuota.attempts).toBe(1);
     // รหัสที่ออกยังถูกทิ้ง (SMS ไม่ถึงเจ้าของเบอร์) — รหัสที่ถูกใช้ไม่ได้อีก
-    await expect(verification.verifyOtp({ lineUserId, otp })).rejects.toThrow('OTP ไม่ถูกต้อง');
+    await expect(verification.verifyOtp({ lineUserId, otp, consent: GRANTED_CONSENT })).rejects.toThrow('OTP ไม่ถูกต้อง');
   });
 
   it('9. R-2: a request that finds its LINE lock taken answers the cooldown at once instead of queueing', async () => {

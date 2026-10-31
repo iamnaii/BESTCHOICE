@@ -27,6 +27,11 @@ import {
   lockCustomersForFinanceLineBind,
 } from '../../line-oa/services/finance-line-link';
 import { VERIFIED_FINANCE_LINK_WHERE } from '../../line-oa/services/otp-verified-customer';
+import {
+  LINE_FINANCE_CONSENT_REQUIRED_MESSAGE,
+  LineFinanceConsentInput,
+  recordLineFinanceConsentInTx,
+} from '../../pdpa/line-finance-consent';
 import { runWithTransactionRetry } from '../../../utils/transaction-retry.util';
 
 const OTP_TTL_MS = 5 * 60 * 1000; // 5 นาที
@@ -345,11 +350,20 @@ export class VerificationService {
 
   /**
    * Step 2: ยืนยัน OTP + bind LINE userId กับ customer
+   *
+   * Task 33 — `consent` = ลูกค้าติ๊กยินยอมรับแจ้งเตือนทาง LINE ที่หน้า LIFF (DTO บังคับ `true`) · บันทึก `pdpa_consents` GRANTED
+   * ในทรานแซกชันเดียวกับการผูก (`bindInTx`) เฉพาะเมื่อรหัสถูก — ผิด/หมดอายุ/ล็อก = ไม่บันทึกอะไร · คืน `consentRecordedAt`
+   * (วันที่ของแถวที่มีผล — แถวเดิมเมื่อเคยยินยอมแล้ว) ให้หน้า "ผูก LINE เรียบร้อย"
    */
   async verifyOtp(params: {
     lineUserId: string;
     otp: string;
-  }): Promise<{ customerId: string; customerName: string }> {
+    consent: LineFinanceConsentInput;
+  }): Promise<{ customerId: string; customerName: string; consentRecordedAt: string }> {
+    // ตาข่ายของ DTO — ไม่มีความยินยอม = ไม่ผูก และไม่กิน attempt ของรหัส
+    if (params.consent?.granted !== true) {
+      throw new BadRequestException(LINE_FINANCE_CONSENT_REQUIRED_MESSAGE);
+    }
     const otpInput = params.otp.replace(/\D/g, '');
     if (otpInput.length !== OTP_LENGTH) {
       throw new BadRequestException(`รหัส OTP ต้องเป็นตัวเลข ${OTP_LENGTH} หลัก`);
@@ -380,7 +394,11 @@ export class VerificationService {
         throw new NotFoundException('ไม่พบข้อมูลลูกค้า');
       }
 
-      await this.linkVerifiedLine(params.lineUserId, customer.id);
+      const consentRecordedAt = await this.linkVerifiedLine(
+        params.lineUserId,
+        customer.id,
+        params.consent,
+      );
       await this.prisma.chatbotOtpRequest.delete({ where: { id: record.id } });
 
       // Best-effort audit. This is a customer-facing LIFF path with no staff JWT, so no
@@ -398,7 +416,11 @@ export class VerificationService {
         },
       });
 
-      return { customerId: customer.id, customerName: customer.name };
+      return {
+        customerId: customer.id,
+        customerName: customer.name,
+        consentRecordedAt: consentRecordedAt.toISOString(),
+      };
     }
 
     // I1: กิน attempt ก่อนเทียบรหัสด้วย UPDATE … WHERE attempts < max AND expires_at > now RETURNING
@@ -450,10 +472,18 @@ export class VerificationService {
       throw new NotFoundException('ไม่พบข้อมูลลูกค้า');
     }
 
-    await this.linkVerifiedLine(params.lineUserId, customer.id);
+    const consentRecordedAt = await this.linkVerifiedLine(
+      params.lineUserId,
+      customer.id,
+      params.consent,
+    );
     await this.prisma.chatbotOtpRequest.delete({ where: { id: consumed.id } });
 
-    return { customerId: customer.id, customerName: customer.name };
+    return {
+      customerId: customer.id,
+      customerName: customer.name,
+      consentRecordedAt: consentRecordedAt.toISOString(),
+    };
   }
 
   /** เช็คว่า lineUserId นี้ verify แล้วหรือยัง */
@@ -513,12 +543,18 @@ export class VerificationService {
    * → LINE_LINKED หลัง commit → rich menu "ยืนยันแล้ว". ยืนยันจริงและ test-mode bypass ใช้ helper นี้ตัวเดียว
    *
    * planLink ตัดสินก่อน absorb — ถ้าการผูกจะถูกปฏิเสธ ห้องของ LINE นี้ต้องไม่ถูกย้ายไปหาลูกค้า
+   * คืนวันที่บันทึกความยินยอม (Task 33 — บันทึกใน tx ของ bind)
    */
-  private async linkVerifiedLine(lineUserId: string, customerId: string): Promise<void> {
+  private async linkVerifiedLine(
+    lineUserId: string,
+    customerId: string,
+    consent: LineFinanceConsentInput,
+  ): Promise<Date> {
     const plan = await this.planLink(lineUserId, customerId);
     await this.absorbRoomsBeforeBind(lineUserId, customerId);
-    await this.bind(lineUserId, customerId, plan);
+    const consentRecordedAt = await this.bind(lineUserId, customerId, plan, consent);
     await this.switchToVerifiedRichMenu(lineUserId);
+    return consentRecordedAt;
   }
 
   /**
@@ -602,7 +638,12 @@ export class VerificationService {
     }
   }
 
-  private async bind(lineUserId: string, customerId: string, plan: LinkPlan): Promise<void> {
+  private async bind(
+    lineUserId: string,
+    customerId: string,
+    plan: LinkPlan,
+    consent: LineFinanceConsentInput,
+  ): Promise<Date> {
     // LINE_LINKED นับเฉพาะการผูกที่เปลี่ยนจริง — ยืนยัน OTP ซ้ำกับลูกค้าคนเดิมที่ยังผูกอยู่ไม่ใช่เหตุการณ์ใหม่
     const previous = await this.prisma.customerLineLink.findUnique({
       where: { lineUserId_channel: { lineUserId, channel: LineChannelType.FINANCE } },
@@ -616,8 +657,8 @@ export class VerificationService {
     const linkedAt = new Date();
     // Task 29 fix round 1 (review I-1) — ตาข่าย: ทางที่ลูกค้าเห็นไม่ควรได้ 500 จากวงจรล็อกที่ยังไม่รู้จัก ⇒ ลองทั้งทรานแซกชันใหม่
     // เมื่อ Postgres ตัดสิน deadlock/serialization หรือชุดลูกค้าที่ต้องล็อกไม่นิ่ง (helper เดียวกับปุ่มยกเลิกผูก · ทุกขั้นอ่านใหม่ใต้ล็อก)
-    await runWithTransactionRetry(
-      () => this.bindInTx(lineUserId, customerId, plan, linkedAt),
+    const consentRecordedAt = await runWithTransactionRetry(
+      () => this.bindInTx(lineUserId, customerId, plan, linkedAt, consent),
       FINANCE_LINE_BIND_MAX_ATTEMPTS,
       isLockOrderRetryable,
     );
@@ -635,10 +676,20 @@ export class VerificationService {
         }),
       );
     }
+    return consentRecordedAt;
   }
 
-  /** ทรานแซกชันของ `bind` — ลำดับล็อกเดียว ลูกค้า → link → ห้อง (Task 29) · เรียกซ้ำได้ทั้งก้อน (อ่านใหม่ทุกขั้น) */
-  private bindInTx(lineUserId: string, customerId: string, plan: LinkPlan, linkedAt: Date) {
+  /**
+   * ทรานแซกชันของ `bind` — ลำดับล็อกเดียว ลูกค้า → link → ห้อง (Task 29) · เรียกซ้ำได้ทั้งก้อน (อ่านใหม่ทุกขั้น) ·
+   * Task 33 — ปิดท้ายด้วยความยินยอม (`pdpa_consents` — ไม่ล็อกตารางอื่นเพิ่ม) · คืนวันที่บันทึกความยินยอมของแถวที่มีผล
+   */
+  private bindInTx(
+    lineUserId: string,
+    customerId: string,
+    plan: LinkPlan,
+    linkedAt: Date,
+    consent: LineFinanceConsentInput,
+  ): Promise<Date> {
     return this.prisma.$transaction(async (tx) => {
       // Task 29 (เจ้าของตัดสิน 31 ต.ค. — Task 27 review M-2) — ล็อกแถวลูกค้าก่อน (ลูกค้าที่ผูก + ผู้ถือแถว link ของ LINE นี้ + ผู้ถือคอลัมน์
       // เรียง id) แล้วค่อยแถว link → ห้อง = ลำดับเดียวกับทางยกเลิกผูก (ปุ่ม/PATCH ของพนักงาน · LIFF) ⇒ ยืนยัน OTP พร้อมพนักงานกดยกเลิกผูก
@@ -691,6 +742,10 @@ export class VerificationService {
         where: { id: customerId },
         data: { lineIdFinance: lineUserId },
       });
+
+      // Task 33 — ความยินยอมเป็นส่วนหนึ่งของการผูก: tx เดียวกัน (ล้ม = ไม่ผูกและไม่บันทึก) · ครั้งเดียวต่อลูกค้า (แถวลูกค้าถูกล็อกแล้วข้างบน)
+      const { grantedAt } = await recordLineFinanceConsentInTx(tx, customerId, consent, linkedAt);
+      return grantedAt;
     });
   }
 

@@ -20,6 +20,8 @@ import { ChatChannel, LineChannelType, PrismaClient } from '@prisma/client';
 import { AuditService } from '../../audit/audit.service';
 import { VerificationService } from '../../chatbot-finance/services/verification.service';
 import { RoomManagerService } from '../../chat-engine/services/room-manager.service';
+import { ChatSalesDispositionService } from '../../customer-journey/chat-sales-disposition.service';
+import { ChatWorkAccessService } from '../../staff-chat/services/chat-work-access.service';
 import { RoomCreditService } from '../../credit-check/services/room-credit.service';
 import { CustomerWriteService } from '../../customers/services/customer-write.service';
 
@@ -36,6 +38,7 @@ const txFailures: { side: string; error: unknown }[] = [];
 const spies: jest.SpyInstance[] = [];
 let rooms: RoomManagerService;
 let roomCredit: RoomCreditService;
+let disposition: ChatSalesDispositionService;
 /** OCR ของการวิเคราะห์สเตทเม้น — ค้างไว้จนเทสปล่อย (ให้ทรานแซกชันตอนวิเคราะห์เสร็จเริ่มในจังหวะที่กำหนด) */
 let ocrReached!: () => void;
 let ocrGate: Promise<void> = Promise.resolve();
@@ -198,6 +201,11 @@ beforeAll(async () => {
       }),
     } as never,
   );
+  disposition = new ChatSalesDispositionService(
+    roomPrisma as never,
+    { recompute: jest.fn().mockResolvedValue(undefined) } as never,
+    new ChatWorkAccessService(roomPrisma as never),
+  );
   captureTxFailures(otpPrisma, 'bind');
   captureTxFailures(staffPrisma, 'staff');
   captureTxFailures(roomPrisma, 'room');
@@ -350,5 +358,34 @@ describe('ทาง "ห้อง → ลูกค้า" เดิม แข่
     const row = await imported(roomId);
     expect(row.status).toBe('COMPLETED');
     expect(row.creditCheck).toMatchObject({ customerId: c.id });
+  });
+
+  it('พนักงานทำเครื่องหมายแชทขาย (เปิดใหม่) ในห้องที่ผูกลูกค้าแล้ว ขณะลูกค้าคนนั้นยืนยัน OTP ของ LINE ห้องนั้น → ทั้งสองสำเร็จในรอบเดียว (fix round 1 — ChatSalesDisposition)', async () => {
+    const { c, roomId, otp } = await fixture('7', 'owner');
+    // ส่วนนี้เปิดด้วยธง chat_follow_up_enabled — ตั้งเฉพาะเคสนี้แล้วคืนค่า (ฐานทดสอบ)
+    const flag = await prisma.systemConfig.upsert({
+      where: { key: 'chat_follow_up_enabled' },
+      create: { key: 'chat_follow_up_enabled', value: 'true' },
+      update: { value: 'true', deletedAt: null },
+    });
+    try {
+      const [marked, bind] = await raceOnRoom(
+        roomId,
+        () =>
+          disposition.record(
+            { roomId, action: 'REOPEN', clientRequestId: `${tag}-7` },
+            { id: staffId } as never,
+            { company: 'FINANCE' },
+          ),
+        () => verification.verifyOtp({ lineUserId: line('7'), otp }),
+      );
+
+      expect(settled(marked)).toMatchObject({ customerId: c.id, kind: 'REOPENED' });
+      expect(settled(bind)).toMatchObject({ customerId: c.id });
+      expect(txFailures).toEqual([]);
+      expect(await linkRow(line('7'))).toMatchObject({ customerId: c.id, unlinkedAt: null });
+    } finally {
+      await prisma.systemConfig.delete({ where: { id: flag.id } });
+    }
   });
 });

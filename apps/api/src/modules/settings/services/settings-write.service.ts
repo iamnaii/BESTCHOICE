@@ -16,10 +16,7 @@ import {
  * loadLateFeeConfig never reads a blank as 0). tier2_min_days has a tighter
  * bound (integer >= 1) handled inline in validateKeyValue.
  */
-const LATE_FEE_NONNEG_KEYS = new Set<string>([
-  'late_fee_tier1_amount',
-  'late_fee_tier2_amount',
-]);
+const LATE_FEE_NONNEG_KEYS = new Set<string>(['late_fee_tier1_amount', 'late_fee_tier2_amount']);
 
 /**
  * Write/mutation slice of the decomposed SettingsService (Wave-4). Owns the
@@ -34,9 +31,15 @@ export class SettingsWriteService {
     private audit: AuditService,
   ) {}
 
+  /**
+   * Every setting except Integration Hub credentials (`integration.*`): those
+   * are secrets (ciphertext, or plaintext if saved before
+   * INTEGRATION_ENCRYPTION_KEY existed) and are served only — masked — by
+   * `/integrations/*`. No web page reads them through `/settings`.
+   */
   async findAll() {
     return this.prisma.systemConfig.findMany({
-      where: { deletedAt: null },
+      where: { deletedAt: null, NOT: { key: { startsWith: 'integration.' } } },
       orderBy: { key: 'asc' },
     });
   }
@@ -53,7 +56,7 @@ export class SettingsWriteService {
    *    DocumentType additions).
    */
   private validateKeyValue(key: string, value: string): void {
-    if (key.startsWith('chat_sla_') || CHAT_WORK_FLAGS.some(flag => flag === key)) {
+    if (key.startsWith('chat_sla_') || CHAT_WORK_FLAGS.some((flag) => flag === key)) {
       throw new BadRequestException('ไม่อนุญาตให้แก้ไขการตั้งค่างานแชทผ่านช่องทางนี้');
     }
     // Approval grants require owner identity, target-user validation and dedicated auditing.
@@ -61,16 +64,16 @@ export class SettingsWriteService {
       throw new BadRequestException('กรุณาจัดการสิทธิ์รายการบัญชีผ่านหน้าตั้งค่าสิทธิ์รายการบัญชี');
     }
     if (key === 'payment_approval_permissions') {
-      throw new BadRequestException('กรุณาจัดการสิทธิ์อนุมัติรับชำระผ่านหน้าตั้งค่าสิทธิ์อนุมัติรับชำระ');
+      throw new BadRequestException(
+        'กรุณาจัดการสิทธิ์อนุมัติรับชำระผ่านหน้าตั้งค่าสิทธิ์อนุมัติรับชำระ',
+      );
     }
     if (key === 'doc_prefix_per_type') {
       let parsed: unknown;
       try {
         parsed = JSON.parse(value);
       } catch {
-        throw new BadRequestException(
-          'doc_prefix_per_type ต้องเป็น JSON object ที่ถูกต้อง',
-        );
+        throw new BadRequestException('doc_prefix_per_type ต้องเป็น JSON object ที่ถูกต้อง');
       }
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
         throw new BadRequestException(
@@ -141,9 +144,7 @@ export class SettingsWriteService {
     if (userRole === undefined) return; // system-internal / test bypass
     const allowed = await resolveSettingsAccessRoles(this.prisma);
     if (!allowed.has(userRole)) {
-      throw new ForbiddenException(
-        `ไม่มีสิทธิ์แก้ไขการตั้งค่า (role ปัจจุบัน: ${userRole})`,
-      );
+      throw new ForbiddenException(`ไม่มีสิทธิ์แก้ไขการตั้งค่า (role ปัจจุบัน: ${userRole})`);
     }
   }
 
@@ -209,11 +210,7 @@ export class SettingsWriteService {
     });
   }
 
-  async bulkUpdate(
-    items: { key: string; value: string }[],
-    userId?: string,
-    userRole?: string,
-  ) {
+  async bulkUpdate(items: { key: string; value: string }[], userId?: string, userRole?: string) {
     // D1.3.2.2 (S3) — defense-in-depth role check (mirrors SettingsAccessGuard).
     await this.assertCanWriteSettings(userRole);
     // D1.1.3.3 — reject the whole batch if any read-only key is present
@@ -258,7 +255,8 @@ export class SettingsWriteService {
         action: prior !== undefined ? 'SYSTEM_CONFIG_UPDATE' : 'SYSTEM_CONFIG_CREATE',
         entity: 'SystemConfig',
         entityId: item.key,
-        oldValue: prior !== undefined ? { key: item.key, value: redact(item.key, prior) } : undefined,
+        oldValue:
+          prior !== undefined ? { key: item.key, value: redact(item.key, prior) } : undefined,
         newValue: { key: item.key, value: redact(item.key, item.value) },
       });
     }

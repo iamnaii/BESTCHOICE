@@ -1,7 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { formatDateShort } from '../../../utils/thai-date.util';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { Prisma } from '@prisma/client';
 import {
   FINANCE_LINE_RECIPIENT_SELECT,
   financeLineRecipient,
@@ -20,6 +19,7 @@ import {
   paymentNoticeSentToday,
 } from '../payment-notice-dedupe';
 import { NotificationsService } from '../notifications.service';
+import { recordNoticeLog } from '../notice-log';
 import { findContractsInLegacyLinkGrace, recordLegacyLinkGraceSkip } from '../legacy-link-grace';
 import { isSmsPaymentReminderDisabled } from '../../../utils/sms-payment-reminder.util';
 
@@ -220,20 +220,6 @@ export class CollectionsNotifierService {
     return { escalated: result.escalated.length, notified, suppressed };
   }
 
-  /** แถวผลของการ์ดลิงก์ชำระ (SENT / FAILED) — ลงไม่ได้ต้องไม่ล้มทั้งรอบ (การ์ดส่งไปแล้ว/ส่งไม่ผ่านไปแล้ว) */
-  private async logAutoPayLink(
-    paymentId: string,
-    data: Prisma.NotificationLogUncheckedCreateInput,
-  ) {
-    try {
-      await this.prisma.notificationLog.create({ data });
-    } catch (err) {
-      this.logger.warn(
-        `Failed to log auto payment link (${data.status}) for payment ${paymentId}: ${err instanceof Error ? err.message : err}`,
-      );
-    }
-  }
-
   /**
    * Auto-send payment links 3 days before due (the body of handleAutoPaymentLinks · 08:30).
    *
@@ -307,16 +293,24 @@ export class CollectionsNotifierService {
         this.logger.warn(
           `Failed to send auto payment link for contract ${payment.contract.contractNumber}: ${errorMsg}`,
         );
-        await this.logAutoPayLink(payment.id, {
-          ...logRow,
-          status: 'FAILED',
-          errorMsg,
-          sentAt: null,
-        });
+        await recordNoticeLog(
+          this.prisma,
+          {
+            ...logRow,
+            status: 'FAILED',
+            errorMsg,
+            sentAt: null,
+          },
+          this.logger,
+        );
         continue;
       }
       sent++;
-      await this.logAutoPayLink(payment.id, { ...logRow, status: 'SENT', sentAt: new Date() });
+      await recordNoticeLog(
+        this.prisma,
+        { ...logRow, status: 'SENT', sentAt: new Date() },
+        this.logger,
+      );
     }
 
     this.logger.log(

@@ -19,6 +19,7 @@ import {
   paymentNoticeSentToday,
 } from '../payment-notice-dedupe';
 import { bangkokDayDiff } from '../../../utils/date.util';
+import { recordNoticeLog } from '../notice-log';
 import { findContractsInLegacyLinkGrace, recordLegacyLinkGraceSkip } from '../legacy-link-grace';
 import { NotificationTransportService } from './notification-transport.service';
 import { NotificationDispatchService } from './notification-dispatch.service';
@@ -143,6 +144,8 @@ export class NotificationReminderService {
       // ปลายทาง LINE = แถว OTP ของลูกค้า (Task 22 I-1 ง) — คอลัมน์ line_id_finance ที่ค้างไม่ทำให้ข้อความไปผิดคน
       const financeLineId = financeLineRecipient(customer);
       if (financeLineId) {
+        // รอบ 3 M3 — try ครอบเฉพาะการ push · ลงแถว log ทีหลัง (ลงไม่ได้ไม่เข้าทางสำรอง ⇒ ไม่ส่งข้อความที่สอง)
+        let pushed = false;
         try {
           const flex = this.flexTemplates.paymentReminder({
             contractNumber: payment.contract.contractNumber,
@@ -153,19 +156,7 @@ export class NotificationReminderService {
           // Attach Quick Reply so customer can pay quickly or see balance
           flex.quickReply = { items: this.quickReplyService.afterPayment() };
           await this.transport.sendLineFlexMessage(financeLineId, flex, 'line-finance');
-          await this.prisma.notificationLog.create({
-            data: {
-              channel: 'LINE',
-              channelKey: 'line-finance',
-              recipient: financeLineId,
-              subject: PAYMENT_REMINDER_SUBJECT,
-              message: `งวด ${payment.installmentNo} จำนวน ${Number(payment.amountDue).toLocaleString()} บาท อีก ${daysUntil} วัน`,
-              status: 'SENT',
-              relatedId: payment.id,
-              sentAt: new Date(),
-            },
-          });
-          sent++;
+          pushed = true;
         } catch (err) {
           this.logger.warn(
             `Flex message failed, falling back to template text: ${err instanceof Error ? err.message : err}`,
@@ -208,6 +199,23 @@ export class NotificationReminderService {
               category: NotificationCategory.REMINDER,
             });
           }
+          sent++;
+        }
+        if (pushed) {
+          await recordNoticeLog(
+            this.prisma,
+            {
+              channel: 'LINE',
+              channelKey: 'line-finance',
+              recipient: financeLineId,
+              subject: PAYMENT_REMINDER_SUBJECT,
+              message: `งวด ${payment.installmentNo} จำนวน ${Number(payment.amountDue).toLocaleString()} บาท อีก ${daysUntil} วัน`,
+              status: 'SENT',
+              relatedId: payment.id,
+              sentAt: new Date(),
+            },
+            this.logger,
+          );
           sent++;
         }
       } else if (customer.phone) {
@@ -324,6 +332,8 @@ export class NotificationReminderService {
 
       // Try LINE Flex Message first, fallback to template, then SMS
       if (financeLineId) {
+        // รอบ 3 M3 — try ครอบเฉพาะการ push · ลงแถว log ทีหลัง (ลงไม่ได้ไม่เข้าทางสำรอง ⇒ ไม่ส่งข้อความที่สอง)
+        let pushed = false;
         try {
           const flex = this.flexTemplates.overdueNotice({
             contractNumber: payment.contract.contractNumber,
@@ -334,19 +344,7 @@ export class NotificationReminderService {
           // Attach Quick Reply so customer can pay immediately or see balance
           flex.quickReply = { items: this.quickReplyService.afterPayment() };
           await this.transport.sendLineFlexMessage(financeLineId, flex, 'line-finance');
-          await this.prisma.notificationLog.create({
-            data: {
-              channel: 'LINE',
-              channelKey: 'line-finance',
-              recipient: financeLineId,
-              subject: OVERDUE_NOTICE_SUBJECT,
-              message: `งวด ${payment.installmentNo} ค้าง ${outstanding.toLocaleString()} บาท เลยกำหนด ${daysOverdue} วัน`,
-              status: 'SENT',
-              relatedId: payment.id,
-              sentAt: new Date(),
-            },
-          });
-          sent++;
+          pushed = true;
         } catch (err) {
           this.logger.warn(
             `Flex message failed, falling back to template text: ${err instanceof Error ? err.message : err}`,
@@ -373,6 +371,23 @@ export class NotificationReminderService {
               relatedId: payment.id,
               customerId: customer.id,
             },
+          );
+          sent++;
+        }
+        if (pushed) {
+          await recordNoticeLog(
+            this.prisma,
+            {
+              channel: 'LINE',
+              channelKey: 'line-finance',
+              recipient: financeLineId,
+              subject: OVERDUE_NOTICE_SUBJECT,
+              message: `งวด ${payment.installmentNo} ค้าง ${outstanding.toLocaleString()} บาท เลยกำหนด ${daysOverdue} วัน`,
+              status: 'SENT',
+              relatedId: payment.id,
+              sentAt: new Date(),
+            },
+            this.logger,
           );
           sent++;
         }

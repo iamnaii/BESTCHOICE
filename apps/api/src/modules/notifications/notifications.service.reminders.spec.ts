@@ -7,6 +7,9 @@ import { QuickReplyService } from '../line-oa/quick-reply.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
 import { ComplianceService } from './compliance.service';
 import { NotificationTemplateService } from './notification-template.service';
+import * as Sentry from '@sentry/nestjs';
+
+jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn(), captureMessage: jest.fn() }));
 
 /**
  * Characterization tests for the two customer-facing dunning cron methods
@@ -442,6 +445,45 @@ describe('NotificationsService — reminder / overdue dunning', () => {
         expect(spyOf('sendLineFlexMessage')).toHaveBeenCalledTimes(1);
         expect(result.sent).toBe(1);
       });
+    });
+  });
+
+  describe('Task 30 รอบ 3 M3 — push ถึงแล้วแต่ลงแถว log ไม่ได้ ⇒ ไม่ส่งข้อความที่สอง', () => {
+    beforeEach(() => (Sentry.captureMessage as jest.Mock).mockClear());
+
+    it('A1: ลง log พังครั้งแรก → ลองลงใหม่ · ไม่ส่งทางสำรอง (template/ข้อความ)', async () => {
+      givenPayments([withLine()]);
+      prisma.notificationLog.create.mockRejectedValueOnce(new Error('db hiccup'));
+
+      const result = await service.sendPaymentReminders();
+
+      expect(spyOf('sendLineFlexMessage')).toHaveBeenCalledTimes(1);
+      expect(spyOf('sendFromTemplate')).not.toHaveBeenCalled();
+      expect(spyOf('send')).not.toHaveBeenCalled();
+      expect(prisma.notificationLog.create).toHaveBeenCalledTimes(2);
+      expect(prisma.notificationLog.create.mock.calls[1][0].data).toMatchObject({
+        status: 'SENT',
+        relatedId: 'pay-1',
+      });
+      expect(result.sent).toBe(1);
+    });
+
+    it('A2: ลง log พังทั้งสองครั้ง → ไม่ส่งทางสำรอง · Sentry warning ไม่มีข้อความ/ผู้รับ', async () => {
+      givenPayments([withLine()]);
+      prisma.notificationLog.create.mockRejectedValue(new Error('db down'));
+
+      const result = await service.sendOverdueNotices();
+
+      expect(spyOf('sendLineFlexMessage')).toHaveBeenCalledTimes(1);
+      expect(spyOf('sendFromTemplate')).not.toHaveBeenCalled();
+      expect(spyOf('send')).not.toHaveBeenCalled();
+      expect(result.sent).toBe(1);
+      const [message, context] = (Sentry.captureMessage as jest.Mock).mock.calls[0];
+      expect(message).toContain('notification log');
+      expect(context.level).toBe('warning');
+      expect(JSON.stringify(context)).not.toContain('U-line');
+      expect(JSON.stringify(context)).not.toContain('สมชาย');
+      expect(context.extra).toMatchObject({ relatedId: 'pay-1', subject: 'แจ้งค้างชำระ' });
     });
   });
 });

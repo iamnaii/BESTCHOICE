@@ -1,4 +1,7 @@
+import * as Sentry from '@sentry/nestjs';
 import { CollectionsNotifierService } from './collections-notifier.service';
+
+jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn(), captureMessage: jest.fn() }));
 
 /**
  * Task 30 รอบ 2 ข้อ 1 — T-3 เหลือการ์ดลิงก์ชำระ (A6 `sendAutoPaymentLinks` 08:30) ใบเดียว: A6 ค้นงวดด้วยเงื่อนไขเดียวกับที่ A1 ใช้เว้นให้
@@ -102,5 +105,18 @@ describe('CollectionsNotifierService.sendAutoPaymentLinks — การ์ดล
       relatedId: 'pay-1',
       errorMsg: 'gateway down',
     });
+  });
+
+  it('รอบ 3 M3 — การ์ดถึงแล้วแต่ลงแถว SENT ไม่ได้ → ลองลงใหม่ · ยังไม่ได้ = Sentry warning (ไม่มี PII)', async () => {
+    const { prisma, lineOa, service } = build();
+    prisma.notificationLog.create.mockRejectedValue(new Error('db down'));
+
+    await service.sendAutoPaymentLinks(NOW);
+
+    expect(lineOa.sendFlexMessage).toHaveBeenCalledTimes(1);
+    expect(prisma.notificationLog.create).toHaveBeenCalledTimes(2);
+    const [, context] = (Sentry.captureMessage as jest.Mock).mock.calls.at(-1)!;
+    expect(context.extra).toMatchObject({ relatedId: 'pay-1', status: 'SENT' });
+    expect(JSON.stringify(context)).not.toContain('U-1');
   });
 });

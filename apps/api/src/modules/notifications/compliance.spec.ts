@@ -20,13 +20,17 @@ describe('NotificationsService — compliance integration', () => {
   beforeEach(async () => {
     prisma = {
       notificationLog: {
-        create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'log1', ...data })),
+        create: jest
+          .fn()
+          .mockImplementation(({ data }) => Promise.resolve({ id: 'log1', ...data })),
         count: jest.fn().mockResolvedValue(0),
       },
     };
     pdpa = { hasActiveConsent: jest.fn().mockResolvedValue(true) };
     const integrationConfig = { getValue: jest.fn().mockResolvedValue('token') };
-    fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }) as any);
+    fetchMock = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }) as any);
 
     const moduleRef = await Test.createTestingModule({
       providers: [

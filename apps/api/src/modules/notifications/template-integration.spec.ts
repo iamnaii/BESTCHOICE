@@ -91,9 +91,9 @@ describe('NotificationsService — sendFromTemplate integration', () => {
 
   it('throws InternalServerErrorException when template missing', async () => {
     templateService.findByEventType.mockResolvedValueOnce(null);
-    await expect(
-      service.sendFromTemplate('nonexistent.template', {}, 'Uxxx', {}),
-    ).rejects.toThrow(InternalServerErrorException);
+    await expect(service.sendFromTemplate('nonexistent.template', {}, 'Uxxx', {})).rejects.toThrow(
+      InternalServerErrorException,
+    );
   });
 
   it('returns BLOCKED when template inactive', async () => {
@@ -134,12 +134,10 @@ describe('NotificationsService — sendFromTemplate integration', () => {
     // sub-service, so spy on dispatch.send (assertion below unchanged).
     const sendSpy = jest.spyOn(service.dispatch, 'send');
 
-    await service.sendFromTemplate(
-      'dunning.reminder',
-      { name: 'John' },
-      'Uxxx',
-      { fallbackPhone: '0891234567', customerId: 'c1' },
-    );
+    await service.sendFromTemplate('dunning.reminder', { name: 'John' }, 'Uxxx', {
+      fallbackPhone: '0891234567',
+      customerId: 'c1',
+    });
 
     expect(sendSpy).toHaveBeenCalledWith(
       expect.objectContaining({

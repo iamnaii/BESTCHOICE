@@ -38,8 +38,8 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
 - Error messages เป็นภาษาไทย เช่น `{ message: 'กรุณาระบุชื่อ' }`
 
 ## Intentionally Public Endpoints (ไม่มี JwtAuthGuard)
-- `chatbot-finance-liff` + `line-oa/liff/*` — LINE LIFF endpoints สำหรับลูกค้าเข้าถึงผ่าน LINE (ใช้ LIFF token แทน JWT) · LIFF token พิสูจน์แค่ว่า "เป็น LINE user คนนี้" ไม่ได้พิสูจน์ว่าเป็นลูกค้าคนไหน ⇒ **การผูก LINE กับลูกค้า (`customers.line_id_finance` / `customer_line_links`) ต้องผ่าน OTP ทาง SMS ไปเบอร์ของลูกค้าเท่านั้น** (`POST chatbot/finance/liff/request-otp` → `verify-otp` → `VerificationService.linkVerifiedLine` — ทางเดียว ทำผลข้างเคียงครบ: ดูดห้องผู้สนใจ · link row · journey · rich menu) · `POST line-oa/liff/register/lookup|confirm` (เดิมผูกด้วยเบอร์อย่างเดียว · lookup คืน `customerId` ของเจ้าของเบอร์) **ตอบ 410 ถาวร** และหน้า `/liff/register` พาไป `/liff/finance-verify` (Task 19, 2026-10-30) · endpoint ใหม่ที่เขียน `line_id_finance`/`customer_line_links` หรือคืน `customerId`/ชื่อของเจ้าของเบอร์ให้ผู้ที่ยังไม่ผ่าน OTP = security bug · กติกา OA ร้าน / redirect / LINE Login nonce / เพดาน OTP / โหมดทดสอบ และ**ข้อยกเว้นที่ยังเหลือ** (ทดสอบเครื่องจริงของ I-A · ค่า `line_id_finance` ที่เขียนไว้ก่อน Task 22 · push ฝั่งร้านที่ยังอ่าน `line_id_shop`) อยู่หัวข้อ "LINE — ตัวตนลูกค้า · OTP · redirect" ด้านล่าง
-- `line-oa/liff/contracts/:contractId/document` + `line-oa/liff/receipts/:receiptId/download` (`GET` · `LiffDownloadController`) — **ไม่มี `LiffTokenGuard`** (เปิดเป็นแท็บใหม่ แนบ header ไม่ได้) · หลักฐานเดียวคือตั๋วครั้งเดียว `?dl=` ที่ออกโดย `POST line-oa/liff/download-ticket` (ผ่าน `LiffTokenGuard` ทาง header) — 256 บิต · เก็บเฉพาะ sha256 · อายุ 60 วิ · ผูก (LINE, ชนิด, id เอกสาร) · ใช้แล้วเผา · ตรวจเจ้าของซ้ำด้วย LINE ของตั๋ว · throttle 30/นาที (Task 22 M-3 · กติกาข้อ 7 ของหัวข้อ LINE ด้านล่าง)
+- `chatbot-finance-liff` + `line-oa/liff/*` — LINE LIFF endpoints สำหรับลูกค้าเข้าถึงผ่าน LINE (ใช้ LIFF token แทน JWT) · LIFF token พิสูจน์แค่ว่า "เป็น LINE user คนนี้" ไม่ได้พิสูจน์ว่าเป็นลูกค้าคนไหน ⇒ **การผูก LINE กับลูกค้า (`customers.line_id_finance` / `customer_line_links`) ต้องผ่าน OTP ทาง SMS ไปเบอร์ของลูกค้าเท่านั้น** (`POST chatbot/finance/liff/request-otp` → `verify-otp` → `VerificationService.linkVerifiedLine` — ทางเดียว ทำผลข้างเคียงครบ: ดูดห้องผู้สนใจ · link row · journey · rich menu) · หน้า LIFF การเงิน/ลิงก์ชำระหาลูกค้าจาก**แถว OTP ที่ยังผูก**เท่านั้น — คอลัมน์ `line_id_finance` ไม่ให้สิทธิ์ (กติกาข้อ 9 ของหัวข้อ LINE) · `POST line-oa/liff/register/lookup|confirm` (เดิมผูกด้วยเบอร์อย่างเดียว · lookup คืน `customerId` ของเจ้าของเบอร์) **ตอบ 410 ถาวร** และหน้า `/liff/register` พาไป `/liff/finance-verify` (Task 19, 2026-10-30) · endpoint ใหม่ที่เขียน `line_id_finance`/`customer_line_links` หรือคืน `customerId`/ชื่อของเจ้าของเบอร์ให้ผู้ที่ยังไม่ผ่าน OTP = security bug · กติกา OA ร้าน / redirect / LINE Login nonce / เพดาน OTP / โหมดทดสอบ และ**ข้อยกเว้นที่ยังเหลือ** (ทดสอบเครื่องจริงของ I-A · ค่า `line_id_finance` ค้างที่ยังแสดงบนหน้าจอพนักงาน · push ฝั่งร้านที่ยังอ่าน `line_id_shop`) อยู่หัวข้อ "LINE — ตัวตนลูกค้า · OTP · redirect" ด้านล่าง
+- `line-oa/liff/contracts/:contractId/document` + `line-oa/liff/receipts/:receiptId/download` (`GET` · `LiffDownloadController`) — **ไม่มี `LiffTokenGuard`** (เปิดเป็นแท็บใหม่ แนบ header ไม่ได้) · หลักฐานเดียวคือตั๋วครั้งเดียว `?dl=` ที่ออกโดย `POST line-oa/liff/download-ticket` (ผ่าน `LiffTokenGuard` ทาง header) — 256 บิต · เก็บเฉพาะ sha256 · อายุ 60 วิ · ผูก (LINE, ชนิด, id เอกสาร) · ใช้แล้วเผา · ตรวจเจ้าของซ้ำด้วย LINE ของตั๋ว · throttle 30/นาที (Task 22 M-3 · กติกาข้อ 7 ของหัวข้อ LINE ด้านล่าง) · ใน access manifest จัดเป็น `"classification":"public"` (fix round 1 M-4 — แบบเดียวกับเส้นที่ใช้ token ในลิงก์อื่น · ไม่มี guard ตัวตน)
 - `line-oa/line-login` (`GET authorize`, `GET callback`, `POST verify`) — LINE Login สำหรับหน้า LIFF ที่เปิดนอก LIFF (เบราว์เซอร์ / in-app browser) · `@SkipCsrf()` (ไม่มี session) · `verify` throttle 20/นาที/IP ยืนยัน id_token กับ LINE + nonce ของแท็บ แล้วคืนตัวตนจาก token เท่านั้น (ไม่เขียนอะไร) — กติกาข้อ 3 ของหัวข้อ LINE ด้านล่าง
 - `sms-webhook` — รับ SMS delivery callback จาก provider
 - `paysolutions` — รับ payment webhook จาก PaySolutions gateway (verify ด้วย merchantId)
@@ -93,8 +93,9 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
    ไม่ใช้ cookie ผูก state ฝั่ง API: บน prod หน้าเว็บเรียก authorize ผ่าน rewrite `/api/**` ของ Firebase Hosting (host เว็บ — ส่งต่อเฉพาะ cookie
    `__session`) แต่ callback อยู่ host ของ API (`API_BASE_URL`) ⇒ cookie host-only ไปไม่ถึง · HMAC state อย่างเดียวไม่ช่วย (ผู้โจมตีขอ state ที่ลงนามเองได้) ·
    **id_token/nonce ห้ามถึง Sentry/log** (fix round 1 I-1 — id_token ใช้ยืนยันกับ LINE ได้จนหมดอายุ): `sentry.ts` redact body key `idToken`/`id_token`/`nonce`
-   (error event + transaction ที่ถูก sample) · header `x-liff-id-token` · `redactShareToken` ล้างพารามิเตอร์ `?idToken=`/`id_token=` ในทุก string ของ event
-   (url · query_string · span attributes · breadcrumb · ข้อความ error) — endpoint/ฟิลด์ใหม่ที่พก id_token ต้องเติมในรายการเหล่านี้
+   (error event + transaction ที่ถูก sample) · header `x-liff-id-token` · `redactShareToken` ล้างพารามิเตอร์ `?idToken=`/`id_token=`/`dl=` (ตั๋วดาวน์โหลด — fix round 1 M-6 ล้างด้วยชื่อ ไม่พึ่งความยาว 43 ตัว) ในทุก string ของ event
+   (url · query_string · span attributes · breadcrumb · ข้อความ error) · `query_string` แบบ object / คู่ `[key, value]` ล้างด้วยชื่อที่ `SENSITIVE_QUERY_PARAMS`
+   (`sentry.ts`) — endpoint/ฟิลด์ใหม่ที่พก id_token หรือ credential ใน URL ต้องเติมในรายการเหล่านี้ (+ เทสใน `sentry.spec.ts`)
 4. **OTP (`VerificationService`)**: 3 ครั้งต่อรหัส (ช่วงละ 5 นาที) กินแบบ atomic ก่อนเทียบรหัส (`updateManyAndReturn` … `WHERE attempts < 3
    AND expires_at > now`) · ขอรหัสใหม่ในช่วงเดิม **ไม่รีเซ็ต** attempts · ผิดครบแล้วล็อกจนหมดช่วง (แถวไม่ถูกลบ) ·
    **cooldown 60 วิ/LINE แบบ atomic**: อ่านแถว→ตรวจ→เพดาน→เขียนแถว อยู่ในทรานแซกชันที่เริ่มด้วย
@@ -114,38 +115,76 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
 6. **พนักงาน/API ตั้ง `line_id_finance` ไม่ได้ — ล้างได้ = ยกเลิกผูก** (Task 22 I3/I4 · `line-oa/services/finance-line-link.ts`):
    `staffLineFinanceChange(ค่าที่ส่งมา, ค่าปัจจุบัน)` — ไม่ส่ง/ค่าเดิม (ฟอร์มแก้ไขส่งทุกช่องกลับมา) = ไม่แตะ · ว่าง/null ขณะมีค่า = ยกเลิกผูก ·
    ค่าใหม่ = 400 `LINE_FINANCE_LINK_REQUIRES_OTP_MESSAGE` (ชี้ทางของลูกค้าเอง: ส่งข้อความใดก็ได้ในแชท LINE การเงิน → การ์ด "เริ่มยืนยันตัวตน" —
-   ระบบไม่มีปุ่มพนักงานส่งลิงก์ยืนยัน) · ใช้ที่ `POST/PATCH /customers` (`CustomerWriteService`) และ skip-tracing `newLineId` (ค่าใหม่ = ทั้งคำขอ 400) ·
+   ระบบไม่มีปุ่มพนักงานส่งลิงก์ยืนยัน) · ใช้ที่ `POST/PATCH /customers` (`CustomerWriteService`) และ skip-tracing `newLineId` (ค่าใหม่ = ทั้งคำขอ 400 · **ค่าว่าง = ไม่แตะ** —
+   skip-tracing เปิดให้ SALES/ACCOUNTANT/FM จึงห้ามยกเลิกผูก (fix round 1 M-1) ⇒ ทางยกเลิกผูกของพนักงานเหลือ `PATCH /customers/:id` (OWNER/BM) ทางเดียว) ·
    นำเข้าลูกค้า (`migration.service.ts`) ตัดคอลัมน์ `lineId` ทิ้ง + แถวเตือน `IMPORT_LINE_ID_IGNORED_MSG` ใน `errors` (แถวยังนำเข้า ไม่นับ failed) ·
    **ยกเลิกผูกมีทางเดียว `unlinkFinanceLine(tx, …)`** ในทรานแซกชันเดียวกับงานของผู้เรียก: `{ lineUserId }` (ลูกค้ากดใน LIFF — ล้างคอลัมน์บนทุกลูกค้าที่ถือ
-   LINE นั้น + ปิดแถวของ LINE นั้น) · `{ customerId }` (พนักงาน — ล้างคอลัมน์ + ปิดแถวของลูกค้าคนนั้น**เท่านั้น** ห้ามปิดตาม LINE: ค่าในคอลัมน์อาจเป็น
+   LINE นั้น รวมแถวที่ถูกลบ + ปิดแถวของ LINE นั้น) · `{ customerId }` (พนักงาน — ล้างคอลัมน์ + ปิดแถวของลูกค้าคนนั้น**เท่านั้น** ห้ามปิดตาม LINE: ค่าในคอลัมน์อาจเป็น
    U-id ที่พนักงานพิมพ์ซึ่งยืนยัน OTP ไว้กับลูกค้าอีกคน) · ไม่สลับ rich menu · writer ใหม่ของ `line_id_finance`/`customer_line_links` ต้องผ่าน OTP หรือ helper นี้
 7. **id_token ไม่อยู่ใน URL ที่ไหนอีก (Task 22 M-3)**: `LiffTokenGuard` อ่าน header `X-Liff-Id-Token` เท่านั้น (`?idToken=` ถูกถอด) · ลิงก์ดาวน์โหลด
    (สัญญา PDF / ใบเสร็จ) = เว็บกดแล้วเปิดแท็บเปล่าในจังหวะคลิก → `POST line-oa/liff/download-ticket` (header) → เปิด `…?dl=<ตั๋ว>`
    (`web lib/liff-download.ts` · `withLiffToken`/`getLiffIdToken` ถูกลบ) · ตั๋ว (`LiffDownloadTicketService`) เก็บในตาราง `chatbot_otp_requests` เดิม คีย์
    `liff-dl:<sha256>` แบบเดียวกับแถวนับเพดาน OTP (`hash` = `<ชนิด>|<id>|<LINE>` · cron ล้างแถวหมดอายุทุก 10 นาที · ไม่ต้อง migration · ใช้ข้าม instance ได้ —
    prod ไม่มี Redis) · ใช้ตั๋ว = `findUnique` แล้ว `deleteMany` ผู้ลบได้คนเดียว (ยิงพร้อมกันผ่านคำขอเดียว) แล้วเทียบอายุ/ชนิด/id — ไม่ตรง = เผาทิ้ง ·
-   ตั๋ว 43 ตัว base64url ⇒ `redactShareToken` ล้างใน Sentry ให้อยู่แล้ว · การล้าง `?idToken=` ใน Sentry คงไว้สำหรับหน้าเว็บรุ่นเก่าที่ยังเปิดค้าง (ลิงก์จากหน้าเหล่านั้นได้ 401)
+   ตั๋ว (43 ตัว base64url) ถูกล้างใน Sentry ด้วยชื่อพารามิเตอร์ `dl` (ข้อ 3) · access manifest จัด GET สองเส้นเป็น `public` · การล้าง `?idToken=` ใน Sentry คงไว้สำหรับหน้าเว็บรุ่นเก่าที่ยังเปิดค้าง (ลิงก์จากหน้าเหล่านั้นได้ 401)
 8. **ปุ่ม quick reply ที่ลูกค้ากดเอง (postback `TEMPLATE:` → `CannedResponseSenderService.send(…, staffId = null)`) เติมตัวแปรลูกค้า**
    (`{customerName}` `{customerPhone}` `{contractNumber}` `{amountDue}` `{dueDate}` `{installmentNo}`) **เฉพาะห้อง LINE ที่
    `findOtpVerifiedCustomerId(room.lineUserId) === room.customerId`** (Task 22 I-C) — ไม่ผ่าน = คำกลาง (`ลูกค้า` / `-`) · Facebook ไม่มีทางยืนยัน OTP ⇒ คำกลางเสมอ ·
    `{branchName}` (สาขาของพนักงานที่ดูแลห้อง) ไม่ใช่ข้อมูลลูกค้า เติมตามเดิม · พนักงานกดส่งเอง (`staffId` มีค่า) ใช้ลูกค้าของห้องตามเดิม (พนักงานเห็นห้องและตัดสินเอง)
+9. **`customers.line_id_finance` ไม่ใช่หลักฐานตัวตน และไม่ใช่ปลายทางข้อความการเงิน** (Task 22 fix round 1 I-1 — คอลัมน์แยกจากแถว OTP ได้:
+   ค่าที่พนักงาน/นำเข้าเขียนก่อน Task 22 · ลูกค้าที่กู้จากถังขยะ/ชุบ ghost · ค่าที่ค้างบนลูกค้าเดิมหลัง LINE นั้นไปยืนยัน OTP กับอีกคน):
+   - **สิทธิ์** — หน้า LIFF การเงินทุกจุด (`liff-api.service.ts` — สัญญา · ประวัติชำระ · โปรไฟล์ · ลิงก์ชำระ · ยอดปิด/ปิดยอด · ใบเสร็จ · ความยินยอม ·
+     การแจ้งเตือน · สิทธิ์ออกตั๋วดาวน์โหลด PDF ผ่าน `findCustomerByLineId`)
+     และลิงก์ชำระ PaySolutions (`paysolutions-intent.service.ts` `createPaymentIntent` — สัญญาต้องเป็นของลูกค้าตามแถว) หาลูกค้าด้วย `findOtpVerifiedCustomerId`
+     ตัวเดียว · ไม่มีแถว active = ไม่มีสิทธิ์ (fail closed) · `LiffTokenGuard` ยังปล่อยผ่าน LINE ที่ไม่มีแถว link (หน้า OTP ต้องเปิดได้) — ปลอดภัย**เพราะ** service
+     ตัดสินจากแถว ⇒ endpoint LIFF ใหม่ห้ามอ่านคอลัมน์ · ยกเลิกผูกใน LIFF (`unlinkLineAccount`) ล้างตาม LINE ของผู้เรียกเท่านั้น (ค่าค้างที่ชี้ LINE ตัวเอง — ไม่ให้สิทธิ์ใคร)
+   - **ผู้รับข้อความ** — ผู้ส่งข้อความ LINE การเงินทุกตัวอ่าน U-id จากแถว: `FINANCE_LINE_RECIPIENT_SELECT` (ใน select ของลูกค้า) + `financeLineRecipient(customer)`
+     หรือ `findFinanceLineRecipient(prisma|tx, customerId)` (`otp-verified-customer.ts`) · คิวส่งกรองด้วย `lineLinks: { some: ACTIVE_FINANCE_LINK_WHERE }` ·
+     ชุดปัจจุบัน: เตือนงวด/ค้างชำระ (`notification-reminder`) · `collections-notifier` · `notification-dispatch` (sendBulk) · `overdue` `dunning-engine` /
+     `dunning-retry` / `bulk` · `payment-post-commit-hooks` · `paysolutions-webhook` · QR ของ `paysolutions-intent` · `mdm-auto` · เอกสารสัญญา
+     (`contract-workflow` / `generated-documents` / `document-persistence`) · `credit-note-delivery` · `device-return-notify` (เลิกทางสำรองคอลัมน์) ·
+     ด่านส่งใบเสร็จ (`receipt-issuance`) · `payment-link` / `payment-evidence` · `chat-commerce` (ช่อง LINE_FINANCE) — คอลัมน์ค้างแต่ไม่มีแถว = ไม่ส่ง (ไม่ไปผิดคน)
+   - **ผู้อ่านคอลัมน์ที่เหลือ** ถูกปักด้วย `line-oa/services/line-id-finance-readers.spec.ts` (allow-list พร้อมเหตุผล — แสดงผล/รายงาน/กรองคิว/ล้างค่า ·
+     ไม่ตัดสินสิทธิ์ ไม่เป็นปลายทาง) · ไฟล์ใหม่ใต้ `src/modules` ที่อ้าง `lineIdFinance` = เทสแดง — ใช้แถว OTP หรือเพิ่มในรายการพร้อมเหตุผลในรีวิว
+   - **ผูกใหม่ล้างค่าเดิม** — `bind` (`verification.service.ts`) ล้าง U-id นี้ออกจาก `line_id_finance` ของลูกค้าคนอื่นทุกคน (รวมแถวที่ถูกลบ) ในทรานแซกชันเดียวกับการผูก
+   - ห้องแชท LINE การเงินใหม่ไม่จับคู่ลูกค้าด้วยคอลัมน์ (`chat-prospect.service.ts` `findExistingCustomerId`: ห้องเดิมของ LINE เดียวกัน → แถว link ที่ยังผูก →
+     ไม่พบ = สร้างผู้สนใจใหม่ · คอลัมน์ใช้เฉพาะ `line_id_shop` ของห้อง LINE ร้าน)
 
 **ข้อยกเว้นที่ยังเหลือ (รู้ตัว — ยังไม่ได้ปิด อย่าอ่านกติกาข้างบนว่า "ปิดหมดแล้ว"):**
-- **I3 — ปิดในโค้ดแล้ว (Task 22 · กติกาข้อ 6) · ที่ยังเหลือ:** (ก) ค่า `line_id_finance` ที่พนักงาน/นำเข้าเขียนไว้**ก่อน deploy Task 22** ยังอยู่ และหน้า LIFF
-  การเงินยังอนุญาตด้วยคอลัมน์ (`liff-api.service.ts` `findCustomerByLineId`) ⇒ **ก่อนเปิด LIFF ให้ลูกค้า (1 ธ.ค.)** หาแถวที่คอลัมน์ไม่ตรงแถว OTP แล้วล้างทีละแถว
-  ผ่านฟอร์ม (ข้อ I4) (ข) งานต่อที่แนะนำ: ให้ LIFF การเงินอนุญาตจากแถว link FINANCE ที่ active (AND กับคอลัมน์) แทนคอลัมน์อย่างเดียว ⇒ ข้อ ก หมดไปเอง
+- **I3 — ปิดในโค้ดแล้ว (Task 22 กติกาข้อ 6 + fix round 1 กติกาข้อ 9) · ที่ยังเหลือ (ส่วนใหญ่เป็นเรื่องการแสดงผล):** (ก) ค่า `line_id_finance` ที่พนักงาน/นำเข้า
+  เขียนไว้**ก่อน deploy Task 22** ยังอยู่ — ไม่ให้สิทธิ์ LIFF/ลิงก์ชำระ และไม่เป็นปลายทางข้อความแล้ว (ข้อ 9) แต่ยังแสดงบนหน้าลูกค้าของพนักงาน · ป้าย/ตัวกรอง
+  "มี LINE" ของคิวทวงถาม (`overdue` / `collections-session`) · คอลัมน์รายงานลูกหนี้ · ช่อง `{customer_line_id}` ในเอกสารสัญญา ⇒ พนักงานอาจเห็นว่าลูกค้า
+  "มี LINE" ทั้งที่ข้อความไม่ถูกส่ง · **กวาดหนึ่งครั้งก่อนเปิด LIFF ให้ลูกค้า (1 ธ.ค.)** ด้วย SQL อ่านอย่างเดียวด้านล่าง (รันบน prod ได้ตอนนี้เพื่อรู้ขนาด) แล้วล้างทีละแถว:
+  มีสัญญา = หน้าสัญญา › แก้ไขข้อมูลลูกค้า (ข้อ I4) · **ไม่มีสัญญา (`contracts = 0`) ล้างผ่านหน้าจอไม่ได้** (`EditCustomerDialog` ส่งเฉพาะช่องไม่ว่าง) ⇒
+  `PATCH /customers/:id {"lineIdFinance": null}` ด้วยบัญชี OWNER (ผ่าน `unlinkFinanceLine` + audit) · แถวที่ถูกลบ (`deleted = true`): ล้างหลังกู้จากถังขยะ
+  (ถังขยะเตือน "เคยผูก LINE" อยู่แล้ว) — `bind` ของ LINE เดียวกันก็ล้างให้เอง (ข้อ 9) · (ข) ~~ให้ LIFF การเงินอนุญาตจากแถว link~~ — ทำแล้ว (ข้อ 9) ·
   (ค) `line_id_shop` ยังเขียนได้จากฟอร์มพนักงาน/บอทขาย (ไม่มีทาง OTP ฝั่งร้าน — คงไว้) · ไม่ใช่หลักฐานตัวตนแล้ว (ข้อ 1) แต่ยังเป็นปลายทาง push ฝั่งร้าน
 
   ```sql
-  -- line_id_finance ที่ไม่มีแถว OTP ของ LINE เดียวกันหนุน (เขียนโดยพนักงาน/นำเข้า ก่อน Task 22)
-  SELECT c.id FROM customers c
-  WHERE c.line_id_finance IS NOT NULL AND c.deleted_at IS NULL
-    AND NOT EXISTS (SELECT 1 FROM customer_line_links l
-      WHERE l.customer_id = c.id AND l.line_user_id = c.line_id_finance AND l.channel = 'FINANCE'
-        AND l.unlinked_at IS NULL AND l.deleted_at IS NULL);
+  -- (ค-1) คอลัมน์ที่ไม่มีแถว OTP ของ (ลูกค้าคนนี้, LINE นี้) หนุน — รวมแถวที่ถูกลบ (กู้จากถังขยะ/ชุบ ghost ได้)
+  --   link_owner ไม่ว่าง = LINE นี้ยืนยัน OTP กับลูกค้า "คนอื่น" (ก่อน fix round 1 เห็นข้อมูลแถวนี้ผ่าน LIFF ได้) ⇒ ล้างก่อน
+  --   looks_like_sub = รูปแบบ LINE userId จริง (U + 32 hex) — ค่าที่ไม่ใช่รูปนี้ไม่มีทางตรง `sub` ของ LIFF
+  SELECT c.id, c.deleted_at IS NOT NULL AS deleted, c.updated_at,
+         c.line_id_finance ~ '^U[0-9a-f]{32}$' AS looks_like_sub,
+         l.customer_id AS link_owner,
+         (SELECT count(*) FROM contracts k WHERE k.customer_id = c.id AND k.deleted_at IS NULL) AS contracts
+  FROM customers c
+  LEFT JOIN customer_line_links l
+    ON l.line_user_id = c.line_id_finance AND l.channel = 'FINANCE'
+   AND l.unlinked_at IS NULL AND l.deleted_at IS NULL
+  WHERE NULLIF(btrim(c.line_id_finance), '') IS NOT NULL
+    AND l.customer_id IS DISTINCT FROM c.id
+  ORDER BY (l.customer_id IS NOT NULL) DESC, deleted, c.updated_at DESC;
+
+  -- (ค-2) U-id เดียวกันบนลูกค้าที่ยังไม่ถูกลบมากกว่า 1 คน
+  SELECT line_id_finance, array_agg(id ORDER BY updated_at) AS customer_ids
+  FROM customers
+  WHERE deleted_at IS NULL AND NULLIF(btrim(line_id_finance), '') IS NOT NULL
+  GROUP BY line_id_finance HAVING count(*) > 1;
   ```
 
-- **I4 — ปิดแล้ว (Task 22)**: OWNER/BM ล้างช่อง "LINE ID (น้องเบส / FINANCE)" ที่หน้าสัญญา › แก้ไขข้อมูลลูกค้า (`CustomerEditModal` ส่ง `null` เมื่อช่องว่าง)
+- **I4 — ปิดแล้ว (Task 22)**: OWNER/BM ล้างช่อง "LINE ID (น้องเบส / FINANCE)" ที่หน้าสัญญา › แก้ไขข้อมูลลูกค้า (`CustomerEditModal` ส่ง `null` เมื่อช่องว่าง
+  — เฉพาะเมื่อโหลดข้อมูลลูกค้าฉบับเต็มได้: ทางสำรอง (โหลดไม่ได้) ไม่ส่งช่องที่ไม่ได้โหลดเลย ⇒ ไม่ยกเลิกผูก/ไม่ล้างอีเมล-ที่อยู่-ผู้อ้างอิงเงียบ — fix round 1 M-2)
   → ยกเลิกผูก (ปิดแถว) ⇒ ลูกค้ายืนยัน OTP ด้วย LINE ใหม่ได้ ไม่ติด 409 (พิสูจน์บน Postgres `verification-link.db.spec.ts` ข้อ 7) · หน้าลูกค้า › แก้ไข
   (`EditCustomerDialog`) **ล้างไม่ได้** (ส่งเฉพาะช่องที่ไม่ว่าง) · ไม่มีปุ่มเฉพาะ — ถ้าต้องการต้องทำ mockup ก่อน
 - **OA ร้าน — หน้า LIFF ประกัน/หลังการขายปิดแล้ว (Task 22 ทางเลือก ก · ข้อ 1) · ที่ยังเหลือก่อนเชื่อมกับ prod**: ข้อความ push ฝั่งร้าน (ใบเสร็จขายสด,
@@ -155,14 +194,20 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
 
   ```sql
   -- คอลัมน์เก็บ UTC: '2026-10-30 17:00:00' = 31 ต.ค. 00:00 เวลาไทย (LEGACY_SHOP_LINE_ID_CUTOFF)
+  -- ตัดแถวที่ LINE เดียวกันยืนยัน OTP แล้ว — หน้า LIFF ใช้แถว OTP ก่อน ไม่ได้พึ่งทางสำรอง (fix round 1 M-7)
   SELECT id FROM customers
-  WHERE line_id_shop IS NOT NULL AND deleted_at IS NULL AND updated_at < '2026-10-30 17:00:00';
+  WHERE line_id_shop IS NOT NULL AND deleted_at IS NULL AND updated_at < '2026-10-30 17:00:00'
+    AND NOT EXISTS (SELECT 1 FROM customer_line_links l
+      WHERE l.line_user_id = customers.line_id_shop AND l.channel = 'FINANCE'
+        AND l.unlinked_at IS NULL AND l.deleted_at IS NULL);
   ```
 
 - **I-A Login CSRF — ปิดในโค้ดแล้ว (Task 21, 2026-10-31 · กติกาข้อ 3) · ที่ยังเหลือ:** (ก) **ยังไม่ได้ทดสอบบนเครื่องจริง** — ก่อนเปิด LIFF ให้ลูกค้า (1 ธ.ค.)
   ต้องผ่านครบ 4 แบบ (แอป LINE iOS · แอป LINE Android · Safari · Chrome): เปิดลิงก์ยืนยันตัวตนจากแชท → ล็อกอิน → หน้า OTP แสดงชื่อ/รูป LINE ของตัวเอง ·
   เปิดลิงก์หน้าเว็บที่ฝัง `#id_token=` ของบัญชีอื่น → ไม่ขึ้นชื่อนั้น ได้ล็อกอินเป็นบัญชีตัวเอง · ลิงก์ authorize รุ่นเก่า → ได้หน้า OTP (ล็อกอินเพิ่มหนึ่งรอบ) ·
   ไปหน้า LIFF อื่น/รีเฟรชในแท็บเดิมไม่ต้องล็อกอินซ้ำ · `/liff/contract` ใน LIFF จริง (liff.line.me) ไม่ผ่านทางนี้และต้องทำงานเหมือนเดิม ·
+  กดดาวน์โหลดสัญญา PDF / ใบเสร็จในแอป LINE (iOS · Android) ได้ไฟล์ในครั้งแรก — ได้ 401 = ตัว preview/prefetch ของ in-app browser ยิง HEAD/GET ก่อนแล้วเผาตั๋ว
+  (Task 22 review M-5 — แก้: `consume` เฉพาะ `GET`) ·
   ใน **Sentry** event ของ `/line-login/verify` (503 และ transaction ที่ถูก sample) ไม่มี `idToken`/`nonce` และไม่มี token ใน header/`?idToken=` (ข) ล็อกอินที่ข้ามบริบทกลางทาง (เปิดจากเบราว์เซอร์ภายนอก →
   สลับไปแอป LINE → กลับมาเปิด callback ในแท็บ/เบราว์เซอร์อื่น) **fail closed**: แท็บใหม่ไม่มี nonce ⇒ ทิ้ง token แล้วเริ่มล็อกอินใหม่ในแท็บนั้น (ผู้ใช้อาจต้องกดล็อกอิน
   LINE อีกครั้ง) — ไม่รั่ว แต่ UX อาจวนถ้าระบบเปิดแท็บใหม่ทุกครั้ง (ตรวจในข้อ ก) (ค) เบราว์เซอร์ที่ปิด storage (เช่น Safari "Block All Cookies") ล็อกอินนอก LIFF

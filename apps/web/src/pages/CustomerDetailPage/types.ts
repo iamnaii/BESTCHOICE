@@ -133,5 +133,10 @@ export interface ContractProgress {
   mdmLocked: boolean;
   shopWarrantyEndDate: string | null;
   centerWarrantyEndDate: string | null;
-  lastCall: { calledAt: string; result: string; notes: string | null; callerName: string | null } | null;
+  lastCall: {
+    calledAt: string;
+    result: string;
+    notes: string | null;
+    callerName: string | null;
+  } | null;
 }

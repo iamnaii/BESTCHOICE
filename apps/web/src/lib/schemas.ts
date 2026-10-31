@@ -15,18 +15,18 @@ import { z } from 'zod/v4';
 const thaiPhoneRegex = /^0[689]\d{8}$/;
 
 /* ─── Shared field schemas ─── */
-export const phoneSchema = z.string()
+export const phoneSchema = z
+  .string()
   .min(1, 'กรุณากรอกเบอร์โทร')
   .regex(thaiPhoneRegex, 'เบอร์โทรไม่ถูกต้อง (ตัวอย่าง: 0812345678)');
 
-export const nationalIdSchema = z.string()
+export const nationalIdSchema = z
+  .string()
   .min(1, 'กรุณากรอกเลขบัตรประชาชน')
   .length(13, 'เลขบัตรต้องมี 13 หลัก')
   .refine(isValidThaiNationalId, 'เลขบัตรประชาชนไม่ถูกต้อง');
 
-export const emailSchema = z.string()
-  .email('อีเมลไม่ถูกต้อง')
-  .or(z.literal(''));
+export const emailSchema = z.string().email('อีเมลไม่ถูกต้อง').or(z.literal(''));
 
 /* ─── Customer schema ─── */
 export const customerSchema = z.object({
@@ -72,7 +72,10 @@ export const prospectFillSchema = customerSchema.extend({
   lastName: z.string().catch(''),
   nationalId: z
     .string()
-    .refine((v) => v === '' || (v.length === 13 && isValidThaiNationalId(v)), 'เลขบัตรประชาชนไม่ถูกต้อง (13 หลัก) — เว้นว่างได้'),
+    .refine(
+      (v) => v === '' || (v.length === 13 && isValidThaiNationalId(v)),
+      'เลขบัตรประชาชนไม่ถูกต้อง (13 หลัก) — เว้นว่างได้',
+    ),
 });
 
 /* ─── Product schema ─── */
@@ -86,10 +89,10 @@ export const productSchema = z.object({
   category: z.enum(['PHONE_NEW', 'PHONE_USED', 'TABLET_NEW', 'TABLET_USED', 'ACCESSORY'], {
     error: 'กรุณาเลือกประเภทสินค้า',
   }),
-  costPrice: z.string().min(1, 'กรุณากรอกราคาทุน').refine(
-    (v) => !isNaN(Number(v)) && Number(v) > 0,
-    'ราคาทุนต้องมากกว่า 0',
-  ),
+  costPrice: z
+    .string()
+    .min(1, 'กรุณากรอกราคาทุน')
+    .refine((v) => !isNaN(Number(v)) && Number(v) > 0, 'ราคาทุนต้องมากกว่า 0'),
   batteryHealth: z.string().optional(),
   warrantyExpireDate: z.string().optional(),
 });
@@ -100,32 +103,38 @@ export type ProductFormData = z.infer<typeof productSchema>;
 export const contractPlanSchema = z.object({
   downPayment: z.number().min(0, 'เงินดาวน์ต้องไม่ติดลบ'),
   totalMonths: z.number().min(1, 'จำนวนงวดต้องอย่างน้อย 1').max(60, 'จำนวนงวดสูงสุด 60'),
-  paymentDueDay: z.number().int('วันที่ชำระต้องเป็นจำนวนเต็ม').min(1).max(31, 'วันที่ชำระต้องระหว่าง 1-31'),
+  paymentDueDay: z
+    .number()
+    .int('วันที่ชำระต้องเป็นจำนวนเต็ม')
+    .min(1)
+    .max(31, 'วันที่ชำระต้องระหว่าง 1-31'),
   notes: z.string().optional(),
 });
 
 export type ContractPlanFormData = z.infer<typeof contractPlanSchema>;
 
 /* ─── POS Sale schema ─── */
-export const posSaleSchema = z.object({
-  saleType: z.enum(['CASH', 'EXTERNAL_FINANCE']),
-  sellingPrice: z.number().positive('กรุณาใส่ราคาขาย'),
-  discount: z.number().min(0, 'ส่วนลดต้องไม่ติดลบ').optional(),
-  paymentMethod: z.string().min(1, 'กรุณาเลือกวิธีชำระเงิน'),
-  amountReceived: z.number().optional(),
-  downPayment: z.number().min(0).optional(),
-  financeCompany: z.string().optional(),
-  contractNumber: z.string().optional(),
-  notes: z.string().optional(),
-}).superRefine((data, ctx) => {
-  if (data.saleType === 'EXTERNAL_FINANCE' && !data.financeCompany?.trim()) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'กรุณาใส่ชื่อบริษัทไฟแนนซ์',
-      path: ['financeCompany'],
-    });
-  }
-});
+export const posSaleSchema = z
+  .object({
+    saleType: z.enum(['CASH', 'EXTERNAL_FINANCE']),
+    sellingPrice: z.number().positive('กรุณาใส่ราคาขาย'),
+    discount: z.number().min(0, 'ส่วนลดต้องไม่ติดลบ').optional(),
+    paymentMethod: z.string().min(1, 'กรุณาเลือกวิธีชำระเงิน'),
+    amountReceived: z.number().optional(),
+    downPayment: z.number().min(0).optional(),
+    financeCompany: z.string().optional(),
+    contractNumber: z.string().optional(),
+    notes: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.saleType === 'EXTERNAL_FINANCE' && !data.financeCompany?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'กรุณาใส่ชื่อบริษัทไฟแนนซ์',
+        path: ['financeCompany'],
+      });
+    }
+  });
 
 export type PosSaleFormData = z.infer<typeof posSaleSchema>;
 

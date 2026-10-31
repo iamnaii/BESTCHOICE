@@ -44,7 +44,13 @@ interface Props {
   contract: {
     id: string;
     contractNumber: string;
-    customer: { id: string; name: string; phone: string; lineIdFinance: string | null; lineIdShop: string | null };
+    customer: {
+      id: string;
+      name: string;
+      phone: string;
+      lineIdFinance: string | null;
+      lineIdShop: string | null;
+    };
   } | null;
 }
 
@@ -92,8 +98,7 @@ export default function SkipTracingWizard({ open, onClose, contract }: Props) {
     const raw = customerQ.data?.references;
     if (!Array.isArray(raw)) return [];
     return raw.filter(
-      (r): r is ReferenceLike =>
-        r !== null && typeof r === 'object' && !Array.isArray(r),
+      (r): r is ReferenceLike => r !== null && typeof r === 'object' && !Array.isArray(r),
     );
   })();
   const emergency = references[0];
@@ -125,10 +130,7 @@ export default function SkipTracingWizard({ open, onClose, contract }: Props) {
   }
 
   function tryUpdate(payload: Parameters<typeof update.mutate>[0]['payload']) {
-    update.mutate(
-      { customerId: contract!.customer.id, payload },
-      { onSuccess: () => onClose() },
-    );
+    update.mutate({ customerId: contract!.customer.id, payload }, { onSuccess: () => onClose() });
   }
 
   function handleStep2Submit() {
@@ -247,9 +249,7 @@ export default function SkipTracingWizard({ open, onClose, contract }: Props) {
                     <li key={i} className="flex items-center justify-between gap-2">
                       <span className="truncate leading-snug">
                         {[r.firstName, r.lastName].filter(Boolean).join(' ')}{' '}
-                        <span className="text-muted-foreground">
-                          ({r.relationship || '—'})
-                        </span>
+                        <span className="text-muted-foreground">({r.relationship || '—'})</span>
                       </span>
                       {r.phone && (
                         <a
@@ -332,9 +332,7 @@ export default function SkipTracingWizard({ open, onClose, contract }: Props) {
                 <div className="text-sm font-medium leading-snug">
                   ค้นหา "{contract.customer.name}" ใน Facebook
                 </div>
-                <div className="text-2xs text-muted-foreground leading-snug">
-                  เปิดในแท็บใหม่
-                </div>
+                <div className="text-2xs text-muted-foreground leading-snug">เปิดในแท็บใหม่</div>
               </div>
               <ExternalLink className="size-4 text-muted-foreground" />
             </a>
@@ -348,9 +346,7 @@ export default function SkipTracingWizard({ open, onClose, contract }: Props) {
         {/* Step 4 — result */}
         {step === 4 && (
           <div className="space-y-3">
-            <p className="text-xs text-muted-foreground leading-snug">
-              สรุปผลการหาเบอร์ใหม่
-            </p>
+            <p className="text-xs text-muted-foreground leading-snug">สรุปผลการหาเบอร์ใหม่</p>
             <RadioGroup
               value={resultChoice ?? ''}
               onValueChange={(v) => setResultChoice(v as ResultChoice)}
@@ -369,9 +365,7 @@ export default function SkipTracingWizard({ open, onClose, contract }: Props) {
               <label className="flex items-center gap-3 rounded-lg border border-input bg-background p-3 cursor-pointer hover:border-destructive/40 hover:bg-destructive/5 transition-colors">
                 <RadioGroupItem value="MARK_LOST" id="result-lost" />
                 <XCircle className="size-4 text-destructive" />
-                <span className="text-sm leading-snug">
-                  ติดป้าย "สูญหาย" — เลิกตามแล้ว
-                </span>
+                <span className="text-sm leading-snug">ติดป้าย "สูญหาย" — เลิกตามแล้ว</span>
               </label>
             </RadioGroup>
 
@@ -383,9 +377,7 @@ export default function SkipTracingWizard({ open, onClose, contract }: Props) {
                   inputMode="tel"
                   placeholder="0XXXXXXXXX"
                   value={foundPhone}
-                  onChange={(e) =>
-                    setFoundPhone(e.target.value.replace(/\D/g, '').slice(0, 10))
-                  }
+                  onChange={(e) => setFoundPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
                   maxLength={10}
                 />
                 {foundPhoneInvalid && (
@@ -432,11 +424,7 @@ export default function SkipTracingWizard({ open, onClose, contract }: Props) {
             )}
             {step === 2 && (
               <>
-                <Button
-                  variant="ghost"
-                  onClick={() => setStep(3)}
-                  disabled={update.isPending}
-                >
+                <Button variant="ghost" onClick={() => setStep(3)} disabled={update.isPending}>
                   ข้าม
                 </Button>
                 <Button

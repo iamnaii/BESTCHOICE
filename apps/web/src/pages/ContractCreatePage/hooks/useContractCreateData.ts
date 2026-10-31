@@ -13,7 +13,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { serializeAddress, AddressData, emptyAddress } from '@/components/ui/AddressForm';
 import { toast } from 'sonner';
-import type { Product, Customer, InterestConfig, CustReferenceData, ContractBundleProduct } from '../types';
+import type {
+  Product,
+  Customer,
+  InterestConfig,
+  CustReferenceData,
+  ContractBundleProduct,
+} from '../types';
 import { emptyCustForm, emptyCustReference } from '../constants';
 import { useDraftStorage } from '@/hooks/useDraftStorage';
 import { useAuth } from '@/contexts/AuthContext';
@@ -28,24 +34,38 @@ export function useContractCreateData() {
   // Explicit Inbox/calculator links start a fresh proposal; only matching returns
   // restore its saved form. Never mix another customer/product's notes or amounts.
   const [entry] = useState(() => {
-    const params = new URL(contractReturnUrl(`/contracts/create?${searchParams}`)!, 'https://internal.invalid').searchParams;
+    const params = new URL(
+      contractReturnUrl(`/contracts/create?${searchParams}`)!,
+      'https://internal.invalid',
+    ).searchParams;
     const saved = draft.load();
-    const hasExplicitContext = ['customerId', 'productId', 'downAmount', 'months', 'fromRoom'].some(key => params.has(key));
-    const matches = (!params.has('customerId') || params.get('customerId') === saved?.customerId) &&
+    const hasExplicitContext = ['customerId', 'productId', 'downAmount', 'months', 'fromRoom'].some(
+      (key) => params.has(key),
+    );
+    const matches =
+      (!params.has('customerId') || params.get('customerId') === saved?.customerId) &&
       (!params.has('productId') || params.get('productId') === saved?.productId) &&
       (!params.has('fromRoom') || params.get('fromRoom') === saved?.fromRoom);
-    const restored = !hasExplicitContext || (params.get('resume') === '1' && matches) ? saved : null;
-    return { restored, customerId: params.get('customerId') ?? restored?.customerId,
+    const restored =
+      !hasExplicitContext || (params.get('resume') === '1' && matches) ? saved : null;
+    return {
+      restored,
+      customerId: params.get('customerId') ?? restored?.customerId,
       productId: params.get('productId') ?? restored?.productId,
       fromRoom: params.get('fromRoom') ?? restored?.fromRoom,
-      downAmount: params.has('downAmount') ? Number(params.get('downAmount')) : restored?.downPayment,
+      downAmount: params.has('downAmount')
+        ? Number(params.get('downAmount'))
+        : restored?.downPayment,
       months: params.has('months') ? Number(params.get('months')) : restored?.totalMonths,
       // ของแถม: จาก POS (URL) ก่อน แล้วค่อยร่างที่กู้คืน — โหลดสถานะสดด้านล่าง ไม่เชื่อ id เฉย ๆ
       bundleProductIds: params.has('bundleProductIds')
         ? params.get('bundleProductIds')!.split(',').filter(Boolean)
-        : restored?.bundleProductIds ?? [] };
+        : (restored?.bundleProductIds ?? []),
+    };
   });
-  const [step, setStep] = useState(Math.min(entry.restored?.step ?? 0, !entry.productId ? 0 : !entry.customerId ? 1 : 2));
+  const [step, setStep] = useState(
+    Math.min(entry.restored?.step ?? 0, !entry.productId ? 0 : !entry.customerId ? 1 : 2),
+  );
 
   // Form state
   const productRestored = useRef(false);
@@ -61,7 +81,8 @@ export function useContractCreateData() {
   const tradeInCreditReady = !tradeInCreditId || tradeInCredit?.id === tradeInCreditId;
   // An explicit choice (including clearing OCR selection) wins over pending restores.
   const setSelectedProduct = useCallback((value: Product | null) => {
-    setTradeInCreditId(''); setTradeInCredit(null);
+    setTradeInCreditId('');
+    setTradeInCredit(null);
     productRestored.current = true;
     setSelectedProductState(value);
   }, []);
@@ -69,8 +90,10 @@ export function useContractCreateData() {
   const [overrideAccepted, setOverrideAccepted] = useState(false);
   const [overrideReason, setOverrideReason] = useState('');
   const setSelectedCustomer = useCallback((value: Customer | null) => {
-    setTradeInCreditId(''); setTradeInCredit(null);
-    setOverrideAccepted(false); setOverrideReason('');
+    setTradeInCreditId('');
+    setTradeInCredit(null);
+    setOverrideAccepted(false);
+    setOverrideReason('');
     customerRestored.current = true;
     setSelectedCustomerState(value);
   }, []);
@@ -90,8 +113,12 @@ export function useContractCreateData() {
   const planType = 'STORE_DIRECT';
   const [downPayment, setDownPayment] = useState(entry.downAmount ?? 0);
   const [totalMonths, setTotalMonths] = useState(entry.months ?? 6);
-  const [downPaymentMethod, setDownPaymentMethod] = useState<'CASH' | 'BANK_TRANSFER' | 'QR_EWALLET'>(entry.restored?.downPaymentMethod ?? 'CASH');
-  const [downPaymentReference, setDownPaymentReference] = useState(entry.restored?.downPaymentReference ?? '');
+  const [downPaymentMethod, setDownPaymentMethod] = useState<
+    'CASH' | 'BANK_TRANSFER' | 'QR_EWALLET'
+  >(entry.restored?.downPaymentMethod ?? 'CASH');
+  const [downPaymentReference, setDownPaymentReference] = useState(
+    entry.restored?.downPaymentReference ?? '',
+  );
   // ช่องรับเงินดาวน์ (จ่ายผสมได้ โอน/QR บังคับเลขอ้างอิง) — ยอดที่ต้องรับ = เงินดาวน์ส่วนที่เป็นเงิน (ไม่นับเครดิตเครื่องเทิร์น)
   const tenders = useTenders(downPayment);
   const restoredTender = useRef(false);
@@ -99,8 +126,17 @@ export function useContractCreateData() {
     // ร่างที่กู้คืนเก็บไว้แค่วิธีเดียว + เลขอ้างอิง — ตั้งให้บรรทัดแรกครั้งเดียว
     if (restoredTender.current || !entry.restored?.downPaymentMethod) return;
     restoredTender.current = true;
-    tenders.setRows((rows) => rows.length === 1
-      ? [{ ...rows[0], method: entry.restored!.downPaymentMethod!, reference: entry.restored!.downPaymentReference ?? '' }] : rows);
+    tenders.setRows((rows) =>
+      rows.length === 1
+        ? [
+            {
+              ...rows[0],
+              method: entry.restored!.downPaymentMethod!,
+              reference: entry.restored!.downPaymentReference ?? '',
+            },
+          ]
+        : rows,
+    );
   }, [entry.restored, tenders]);
   // คอลัมน์เดิมของสัญญา + ร่างที่บันทึก = วิธีของบรรทัดแรก และเลขอ้างอิงของบรรทัดแรกที่ไม่ใช่เงินสด
   useEffect(() => {
@@ -111,7 +147,9 @@ export function useContractCreateData() {
   const [notes, setNotes] = useState(entry.restored?.notes ?? '');
   const [paymentDueDay, setPaymentDueDay] = useState<number>(entry.restored?.paymentDueDay ?? 1);
 
-  useEffect(() => { setPreviouslyDamagedAcknowledged(false); }, [selectedProduct?.id, selectedCustomer?.id]);
+  useEffect(() => {
+    setPreviouslyDamagedAcknowledged(false);
+  }, [selectedProduct?.id, selectedCustomer?.id]);
 
   // Manual customer creation modal state (Step 2)
   const [showCustomerModal, setShowCustomerModal] = useState(false);
@@ -120,7 +158,12 @@ export function useContractCreateData() {
   const [custAddrCurrent, setCustAddrCurrent] = useState<AddressData>(emptyAddress);
   const [custSameAddress, setCustSameAddress] = useState(false);
   const [custAddrWork, setCustAddrWork] = useState<AddressData>(emptyAddress);
-  const [custReferences, setCustReferences] = useState<CustReferenceData[]>([{ ...emptyCustReference }, { ...emptyCustReference }, { ...emptyCustReference }, { ...emptyCustReference }]);
+  const [custReferences, setCustReferences] = useState<CustReferenceData[]>([
+    { ...emptyCustReference },
+    { ...emptyCustReference },
+    { ...emptyCustReference },
+    { ...emptyCustReference },
+  ]);
 
   // Sync custAddrCurrent when "same as ID card" is checked
   useEffect(() => {
@@ -129,23 +172,56 @@ export function useContractCreateData() {
 
   // Reset override flag when customer changes
   useEffect(() => {
-    setOverrideAccepted(false); setOverrideReason('');
+    setOverrideAccepted(false);
+    setOverrideReason('');
   }, [selectedCustomer?.id]);
 
   useEffect(() => {
-    if (entry.restored) toast('กู้คืนร่างสัญญาแล้ว', {
-      description: 'ตรวจเครดิตและสถานะสินค้าอีกครั้งก่อนดำเนินการต่อ',
-    });
+    if (entry.restored)
+      toast('กู้คืนร่างสัญญาแล้ว', {
+        description: 'ตรวจเครดิตและสถานะสินค้าอีกครั้งก่อนดำเนินการต่อ',
+      });
   }, [entry]);
 
-  const saveDraft = useCallback(() => draft.save({
-    step, productId: selectedProduct?.id ?? (!productRestored.current ? entry.productId : undefined),
-    customerId: selectedCustomer?.id ?? (!customerRestored.current ? entry.customerId : undefined), fromRoom: entry.fromRoom,
-    downPayment, downPaymentMethod, downPaymentReference, totalMonths, paymentDueDay, notes, tradeInCreditId: tradeInCreditId || undefined,
-    bundleProductIds: bundlesTouched.current ? bundleProducts.map((p) => p.id) : entry.bundleProductIds,
-  }), [draft, step, selectedProduct?.id, selectedCustomer?.id, entry, downPayment, downPaymentMethod, downPaymentReference, totalMonths, paymentDueDay, notes, tradeInCreditId, bundleProducts]);
+  const saveDraft = useCallback(
+    () =>
+      draft.save({
+        step,
+        productId: selectedProduct?.id ?? (!productRestored.current ? entry.productId : undefined),
+        customerId:
+          selectedCustomer?.id ?? (!customerRestored.current ? entry.customerId : undefined),
+        fromRoom: entry.fromRoom,
+        downPayment,
+        downPaymentMethod,
+        downPaymentReference,
+        totalMonths,
+        paymentDueDay,
+        notes,
+        tradeInCreditId: tradeInCreditId || undefined,
+        bundleProductIds: bundlesTouched.current
+          ? bundleProducts.map((p) => p.id)
+          : entry.bundleProductIds,
+      }),
+    [
+      draft,
+      step,
+      selectedProduct?.id,
+      selectedCustomer?.id,
+      entry,
+      downPayment,
+      downPaymentMethod,
+      downPaymentReference,
+      totalMonths,
+      paymentDueDay,
+      notes,
+      tradeInCreditId,
+      bundleProducts,
+    ],
+  );
   const latestSave = useRef(saveDraft);
-  useEffect(() => { latestSave.current = saveDraft; }, [saveDraft]);
+  useEffect(() => {
+    latestSave.current = saveDraft;
+  }, [saveDraft]);
   useEffect(() => {
     const interval = setInterval(() => latestSave.current(), 30_000);
     return () => clearInterval(interval);
@@ -169,11 +245,16 @@ export function useContractCreateData() {
     setCustAddrCurrent(emptyAddress);
     setCustAddrWork(emptyAddress);
     setCustSameAddress(false);
-    setCustReferences([{ ...emptyCustReference }, { ...emptyCustReference }, { ...emptyCustReference }, { ...emptyCustReference }]);
+    setCustReferences([
+      { ...emptyCustReference },
+      { ...emptyCustReference },
+      { ...emptyCustReference },
+      { ...emptyCustReference },
+    ]);
   };
 
   const updateCustRef = (index: number, field: keyof CustReferenceData, value: string) => {
-    setCustReferences(prev => prev.map((r, i) => i === index ? { ...r, [field]: value } : r));
+    setCustReferences((prev) => prev.map((r, i) => (i === index ? { ...r, [field]: value } : r)));
   };
 
   // Edit product modal state
@@ -246,9 +327,15 @@ export function useContractCreateData() {
     staleTime: 0,
   });
   useEffect(() => {
-    if (customerRestored.current || customerQuery.isError || !customerQuery.isFetchedAfterMount || !customerQuery.data) return;
+    if (
+      customerRestored.current ||
+      customerQuery.isError ||
+      !customerQuery.isFetchedAfterMount ||
+      !customerQuery.data
+    )
+      return;
     customerRestored.current = true;
-    setSelectedCustomerState(current => current ?? customerQuery.data!);
+    setSelectedCustomerState((current) => current ?? customerQuery.data!);
   }, [customerQuery.data, customerQuery.isFetchedAfterMount, customerQuery.isError]);
 
   const productQuery = useQuery<Product | null>({
@@ -263,11 +350,21 @@ export function useContractCreateData() {
   const preselectBundlesQuery = useQuery<ContractBundleProduct[]>({
     queryKey: ['preselect-bundles', user?.id, entry.bundleProductIds],
     queryFn: async () => {
-      const rows = await Promise.all(entry.bundleProductIds.map(async (id) => {
-        try { return (await api.get(`/products/${id}`)).data as ContractBundleProduct & { status?: string }; } catch { return null; }
-      }));
-      return rows.filter((row): row is ContractBundleProduct & { status?: string } =>
-        !!row && row.category === 'ACCESSORY' && row.status === 'IN_STOCK');
+      const rows = await Promise.all(
+        entry.bundleProductIds.map(async (id) => {
+          try {
+            return (await api.get(`/products/${id}`)).data as ContractBundleProduct & {
+              status?: string;
+            };
+          } catch {
+            return null;
+          }
+        }),
+      );
+      return rows.filter(
+        (row): row is ContractBundleProduct & { status?: string } =>
+          !!row && row.category === 'ACCESSORY' && row.status === 'IN_STOCK',
+      );
     },
     enabled: entry.bundleProductIds.length > 0,
     staleTime: Infinity,
@@ -276,17 +373,26 @@ export function useContractCreateData() {
     if (!preselectBundlesQuery.data || bundlesTouched.current) return;
     setBundleProducts(preselectBundlesQuery.data);
     const dropped = entry.bundleProductIds.length - preselectBundlesQuery.data.length;
-    if (dropped > 0) toast(`ของแถม ${dropped} รายการไม่พร้อมขายแล้ว จึงไม่ถูกนำมา — เลือกใหม่ได้ในขั้นเลือกแผนผ่อน`);
+    if (dropped > 0)
+      toast(
+        `ของแถม ${dropped} รายการไม่พร้อมขายแล้ว จึงไม่ถูกนำมา — เลือกใหม่ได้ในขั้นเลือกแผนผ่อน`,
+      );
   }, [preselectBundlesQuery.data, entry.bundleProductIds.length]);
   useEffect(() => {
-    if (productRestored.current || productQuery.isError || !productQuery.isFetchedAfterMount || !productQuery.data) return;
+    if (
+      productRestored.current ||
+      productQuery.isError ||
+      !productQuery.isFetchedAfterMount ||
+      !productQuery.data
+    )
+      return;
     productRestored.current = true;
     if (productQuery.data.status !== 'IN_STOCK') {
       setStep(0);
       toast.error('สินค้าที่เลือกไว้ไม่พร้อมขายแล้ว กรุณาเลือกสินค้าใหม่');
       return;
     }
-    setSelectedProductState(current => current ?? productQuery.data!);
+    setSelectedProductState((current) => current ?? productQuery.data!);
   }, [productQuery.data, productQuery.isFetchedAfterMount, productQuery.isError]);
 
   useEffect(() => {
@@ -297,12 +403,18 @@ export function useContractCreateData() {
     }
     if (customerQuery.isError && !customerRestored.current) {
       customerRestored.current = true;
-      setStep(current => Math.min(current, 1));
+      setStep((current) => Math.min(current, 1));
       toast.error('โหลดลูกค้าที่เลือกไว้ไม่สำเร็จ กรุณาเลือกลูกค้าอีกครั้ง');
     }
   }, [productQuery.isError, customerQuery.isError]);
 
-  const latestCreditQuery = useQuery<{ id: string; status: string; checkType: string; aiScore: number | null; approvals?: ApprovedContractLimit[] } | null>({
+  const latestCreditQuery = useQuery<{
+    id: string;
+    status: string;
+    checkType: string;
+    aiScore: number | null;
+    approvals?: ApprovedContractLimit[];
+  } | null>({
     queryKey: ['customer-latest-credit', selectedCustomer?.id],
     queryFn: async () => {
       const { data } = await api.get(`/customers/${selectedCustomer!.id}/credit-check/latest`);
@@ -314,34 +426,57 @@ export function useContractCreateData() {
   // ก้อน 5 C3 — ผลตรวจ blacklist ของลูกค้าที่เลือก (API ตัดสิน) — fail-closed: โหลดอยู่/ล้ม = ไปต่อไม่ได้
   const blacklistQuery = useCustomerBlacklist(selectedCustomer?.id);
   const blacklist = blacklistQuery.data;
-  const blacklistStatus: 'idle' | 'loading' | 'error' | 'ready' = !selectedCustomer ? 'idle'
-    : blacklistQuery.isError ? 'error'
-      : blacklistQuery.isSuccess && !blacklistQuery.isFetching ? 'ready' : 'loading';
-  const refetchBlacklist = useCallback(() => { void blacklistQuery.refetch(); }, [blacklistQuery]);
+  const blacklistStatus: 'idle' | 'loading' | 'error' | 'ready' = !selectedCustomer
+    ? 'idle'
+    : blacklistQuery.isError
+      ? 'error'
+      : blacklistQuery.isSuccess && !blacklistQuery.isFetching
+        ? 'ready'
+        : 'loading';
+  const refetchBlacklist = useCallback(() => {
+    void blacklistQuery.refetch();
+  }, [blacklistQuery]);
   // A cached approval may have been consumed or revoked while staff were away.
-  const latestCreditCheck = latestCreditQuery.isFetchedAfterMount && !latestCreditQuery.isError
-    ? latestCreditQuery.data : undefined;
+  const latestCreditCheck =
+    latestCreditQuery.isFetchedAfterMount && !latestCreditQuery.isError
+      ? latestCreditQuery.data
+      : undefined;
 
-  const creditApproval = latestCreditCheck?.status === 'APPROVED' && latestCreditCheck.checkType === 'FULL'
-    ? latestCreditCheck.approvals?.[0] ?? null : null;
+  const creditApproval =
+    latestCreditCheck?.status === 'APPROVED' && latestCreditCheck.checkType === 'FULL'
+      ? (latestCreditCheck.approvals?.[0] ?? null)
+      : null;
   useEffect(() => {
     if (creditApproval && !creditApproval.supersededAt && !creditApproval.usedByContractId) {
       setPaymentDueDay(creditApproval.salaryPayDay);
     } else setPaymentDueDay(selectedCustomer?.salaryPayDay ?? 1);
   }, [creditApproval, selectedCustomer?.id, selectedCustomer?.salaryPayDay]);
 
-  const { data: interestConfig, isPending: interestConfigPending } = useQuery<InterestConfig | null>({
-    queryKey: ['interest-config', selectedProduct?.category],
+  const { data: interestConfig, isPending: interestConfigPending } =
+    useQuery<InterestConfig | null>({
+      queryKey: ['interest-config', selectedProduct?.category],
+      queryFn: async () => {
+        const { data } = await api.get(
+          `/interest-configs/by-category/${selectedProduct!.category}`,
+        );
+        return data;
+      },
+      enabled: !!selectedProduct,
+    });
+
+  const { data: posConfig, isPending: posConfigPending } = useQuery<{
+    interestRate: number;
+    minDownPaymentPct: number;
+    storeCommissionPct: number;
+    vatPct: number;
+    minInstallmentMonths: number;
+    maxInstallmentMonths: number;
+  }>({
+    queryKey: ['pos-config'],
     queryFn: async () => {
-      const { data } = await api.get(`/interest-configs/by-category/${selectedProduct!.category}`);
+      const { data } = await api.get('/sales/config');
       return data;
     },
-    enabled: !!selectedProduct,
-  });
-
-  const { data: posConfig, isPending: posConfigPending } = useQuery<{ interestRate: number; minDownPaymentPct: number; storeCommissionPct: number; vatPct: number; minInstallmentMonths: number; maxInstallmentMonths: number }>({
-    queryKey: ['pos-config'],
-    queryFn: async () => { const { data } = await api.get('/sales/config'); return data; },
   });
 
   // Create customer mutation (full form from modal)
@@ -367,7 +502,8 @@ export function useContractCreateData() {
       if (custForm.googleMapLink) payload.googleMapLink = custForm.googleMapLink;
       if (custForm.occupation) payload.occupation = custForm.occupation;
       if (custForm.occupationDetail) payload.occupationDetail = custForm.occupationDetail;
-      if (custForm.salary && !isNaN(parseFloat(custForm.salary))) payload.salary = parseFloat(custForm.salary);
+      if (custForm.salary && !isNaN(parseFloat(custForm.salary)))
+        payload.salary = parseFloat(custForm.salary);
       if (custForm.workplace) payload.workplace = custForm.workplace;
 
       const addrIdCard = serializeAddress(custAddrIdCard);
@@ -377,7 +513,7 @@ export function useContractCreateData() {
       if (addrCurrent) payload.addressCurrent = addrCurrent;
       if (addrWork) payload.addressWork = addrWork;
 
-      const validRefs = custReferences.filter(r => r.firstName || r.lastName || r.phone);
+      const validRefs = custReferences.filter((r) => r.firstName || r.lastName || r.phone);
       if (validRefs.length > 0) payload.references = validRefs;
 
       return api.post('/customers', payload);
@@ -408,10 +544,17 @@ export function useContractCreateData() {
     },
     onError: (err: unknown) => {
       // ก้อน 5 C3 — ด่าน blacklist ที่ API (สถานะเปลี่ยนระหว่างกรอก): กลับขั้นเลือกลูกค้า + โหลดผลใหม่ + บอกเหตุผลทุกข้อ
-      const body = isAxiosError(err) ? (err.response?.data as { code?: string; message?: string; reasons?: { message: string }[] } | undefined) : undefined;
+      const body = isAxiosError(err)
+        ? (err.response?.data as
+            | { code?: string; message?: string; reasons?: { message: string }[] }
+            | undefined)
+        : undefined;
       if (body?.code && (Object.values(BLACKLIST_ERROR_CODE) as string[]).includes(body.code)) {
-        toast.error([body.message, ...(body.reasons ?? []).map((r) => r.message)].filter(Boolean).join('\n'));
-        setStep(1); setOverrideAccepted(false);
+        toast.error(
+          [body.message, ...(body.reasons ?? []).map((r) => r.message)].filter(Boolean).join('\n'),
+        );
+        setStep(1);
+        setOverrideAccepted(false);
         void blacklistQuery.refetch();
         return;
       }
@@ -453,16 +596,30 @@ export function useContractCreateData() {
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
-  const customerCreditApproved = !!creditApproval && !creditApproval.supersededAt && !creditApproval.usedByContractId;
+  const customerCreditApproved =
+    !!creditApproval && !creditApproval.supersededAt && !creditApproval.usedByContractId;
 
-  const handleSubmit = (sellingPrice: number, amounts: { monthlyPayment: number; financedAmount: number }, quote?: ContractQuote) => {
+  const handleSubmit = (
+    sellingPrice: number,
+    amounts: { monthlyPayment: number; financedAmount: number },
+    quote?: ContractQuote,
+  ) => {
     if (!selectedProduct || !selectedCustomer || createMutation.isPending) return;
-    if (!quote) { toast.error('กรุณารอผลคำนวณล่าสุดก่อนยืนยัน'); return; }
+    if (!quote) {
+      toast.error('กรุณารอผลคำนวณล่าสุดก่อนยืนยัน');
+      return;
+    }
     const net = new Decimal(sellingPrice).minus(tradeInCredit?.bonusAmount ?? 0);
     const totalDown = new Decimal(downPayment).plus(tradeInCredit?.baseAmount ?? 0);
-    if (!tradeInCreditReady || totalDown.gte(net)) { toast.error('กรุณาตรวจเครดิตเทิร์นและเงินดาวน์รวมก่อน'); return; }
+    if (!tradeInCreditReady || totalDown.gte(net)) {
+      toast.error('กรุณาตรวจเครดิตเทิร์นและเงินดาวน์รวมก่อน');
+      return;
+    }
     const issue = contractCreditIssue(creditApproval, { ...amounts, totalMonths, paymentDueDay });
-    if (issue) { toast.error(issue); return; }
+    if (issue) {
+      toast.error(issue);
+      return;
+    }
     createMutation.mutate({
       customerId: selectedCustomer.id,
       productId: selectedProduct.id,
@@ -482,7 +639,9 @@ export function useContractCreateData() {
       creditApprovalId: creditApproval!.id,
       ...(bundleProducts.length ? { bundleProductIds: bundleProducts.map((p) => p.id) } : {}),
       // ก้อน 5 C3 — เหตุผลปลด SOFT (เฉพาะเมื่อผลเป็น SOFT และผู้จัดการติ๊กแล้ว) · ช่องผ่อนซ้อนเดิมถอดแล้ว
-      ...(blacklist?.level === 'SOFT' && overrideAccepted ? { blacklistOverrideReason: overrideReason.trim() } : {}),
+      ...(blacklist?.level === 'SOFT' && overrideAccepted
+        ? { blacklistOverrideReason: overrideReason.trim() }
+        : {}),
     });
   };
 
@@ -491,30 +650,56 @@ export function useContractCreateData() {
     setStep(nextStep);
   };
 
-  const canNext = (sellingPrice: number, minDownPct: number, minMonths: number, maxMonths: number) => {
+  const canNext = (
+    sellingPrice: number,
+    minDownPct: number,
+    minMonths: number,
+    maxMonths: number,
+  ) => {
     if (step === 0) return !!selectedProduct;
     if (step === 1) {
       if (!selectedCustomer || !customerCreditApproved) return false;
       // ก้อน 5 C3 — fail-closed: ต้องมีผลตรวจ blacklist แล้วเท่านั้น · HARD ไปต่อไม่ได้ · SOFT ต้องติ๊ก + เหตุผล ≥10 ตัว
       if (blacklistStatus !== 'ready' || !blacklist) return false;
       if (blacklist.level === 'HARD') return false;
-      if (blacklist.level === 'SOFT') return overrideAccepted && isValidBlacklistOverrideReason(overrideReason);
+      if (blacklist.level === 'SOFT')
+        return overrideAccepted && isValidBlacklistOverrideReason(overrideReason);
       return true;
     }
     if (step === 2) {
       const totalDown = new Decimal(downPayment).plus(tradeInCredit?.baseAmount ?? 0);
-      return tradeInCreditReady && totalDown.gte(new Decimal(sellingPrice).mul(minDownPct)) && totalDown.lt(sellingPrice)
-        && totalMonths >= minMonths && totalMonths <= maxMonths;
+      return (
+        tradeInCreditReady &&
+        totalDown.gte(new Decimal(sellingPrice).mul(minDownPct)) &&
+        totalDown.lt(sellingPrice) &&
+        totalMonths >= minMonths &&
+        totalMonths <= maxMonths
+      );
     }
     return true;
   };
 
   return {
-    bundleSearch, setBundleSearch, bundleProducts, addBundle, removeBundle,
-    tradeInCreditId, setTradeInCreditId, tradeInCredit, setTradeInCredit, tradeInCreditReady,
-    downPaymentMethod, setDownPaymentMethod, downPaymentReference, setDownPaymentReference,
-    tenderRows: tenders.rows, setTenderRows: tenders.setRows, tenderStatus: tenders.status,
-    previouslyDamagedAcknowledged, setPreviouslyDamagedAcknowledged, canSellPreviouslyDamaged: user?.role === 'OWNER',
+    bundleSearch,
+    setBundleSearch,
+    bundleProducts,
+    addBundle,
+    removeBundle,
+    tradeInCreditId,
+    setTradeInCreditId,
+    tradeInCredit,
+    setTradeInCredit,
+    tradeInCreditReady,
+    downPaymentMethod,
+    setDownPaymentMethod,
+    downPaymentReference,
+    setDownPaymentReference,
+    tenderRows: tenders.rows,
+    setTenderRows: tenders.setRows,
+    tenderStatus: tenders.status,
+    previouslyDamagedAcknowledged,
+    setPreviouslyDamagedAcknowledged,
+    canSellPreviouslyDamaged: user?.role === 'OWNER',
     navigate,
     openCustomerCredit,
     preserveDownPayment: entry.downAmount !== undefined,
@@ -522,7 +707,8 @@ export function useContractCreateData() {
     fromRoom: entry.fromRoom,
     step,
     setStep,
-    deviceOrigin, setDeviceOrigin,
+    deviceOrigin,
+    setDeviceOrigin,
     productSearch,
     setProductSearch,
     selectedProduct,

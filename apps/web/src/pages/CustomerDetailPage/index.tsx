@@ -16,7 +16,10 @@ import JourneyStageStrip from './components/JourneyStageStrip';
 import KpiTiles from './components/KpiTiles';
 import RiskBanner from './components/RiskBanner';
 import { useCustomerDetailData } from './hooks/useCustomerDetailData';
-import { invalidateCustomerJourney, useJourneySummaryRedirect } from '@/hooks/customer-journey/useCustomerJourney';
+import {
+  invalidateCustomerJourney,
+  useJourneySummaryRedirect,
+} from '@/hooks/customer-journey/useCustomerJourney';
 import ContractsTab from './tabs/ContractsTab';
 import CreditTab from './tabs/CreditTab';
 import JourneyTab from './tabs/JourneyTab';
@@ -27,7 +30,12 @@ import { canViewJourney } from './utils/journeyGroups';
 import { kpiTiles } from './utils/kpiTiles';
 
 export const DEFAULT_TAB = 'overview';
-export const LEGACY_TAB_REDIRECT: Record<string, string> = { info: DEFAULT_TAB, contact: DEFAULT_TAB, work: DEFAULT_TAB, purchases: 'sales' };
+export const LEGACY_TAB_REDIRECT: Record<string, string> = {
+  info: DEFAULT_TAB,
+  contact: DEFAULT_TAB,
+  work: DEFAULT_TAB,
+  purchases: 'sales',
+};
 const TAB_VALUES = ['overview', 'contracts', 'sales', 'credit', 'loyalty'];
 
 /** ?tab= → แท็บที่มีจริง: ลิงก์เก่าผ่าน LEGACY_TAB_REDIRECT · แท็บการเดินทางเฉพาะบทบาทที่เห็น · ค่าที่ไม่รู้จักกลับไปแท็บเริ่มต้น (ไม่ปล่อยให้หน้าว่าง) */
@@ -68,7 +76,8 @@ export default function CustomerDetailPage() {
   const canEdit = !!user && ['OWNER', 'BRANCH_MANAGER'].includes(user.role);
   const canStartCredit = ['OWNER', 'BRANCH_MANAGER', 'SALES'].includes(user?.role ?? '');
   const canUploadDocuments = ['OWNER', 'BRANCH_MANAGER', 'SALES'].includes(user?.role ?? '');
-  const canReviewCredit = !!user && ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER'].includes(user.role);
+  const canReviewCredit =
+    !!user && ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER'].includes(user.role);
   // ปุ่มบันทึกการเดินทาง (ติดป้ายหลุด / เปิดใหม่) — ตรง @Roles ของ POST /customers/:id/journey/entries · ACCOUNTANT ดูอย่างเดียว
   const canRecord = canRecordJourney(user?.role ?? '');
 
@@ -130,7 +139,13 @@ export default function CustomerDetailPage() {
       <KpiTiles tiles={kpiTiles(customer, loyaltyPoints?.balance ?? null, journeySummary)} />
 
       <CustomerAppointments customerId={customer.id} />
-      {journeySummary && <JourneyStageStrip summary={journeySummary} customerId={customer.id} canRecord={canRecord} />}
+      {journeySummary && (
+        <JourneyStageStrip
+          summary={journeySummary}
+          customerId={customer.id}
+          canRecord={canRecord}
+        />
+      )}
 
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="min-w-0">
@@ -144,13 +159,20 @@ export default function CustomerDetailPage() {
                     data-empty={tab.count === 0 ? 'true' : undefined}
                     className="data-[empty=true]:text-muted-foreground/55"
                   >
-                    {tab.label}{tab.count !== null && ` (${tab.count})`}
+                    {tab.label}
+                    {tab.count !== null && ` (${tab.count})`}
                   </TabsTrigger>
                 ))}
-                <TabsTrigger value="loyalty" data-empty={!loyaltyPoints?.balance ? 'true' : undefined} className="data-[empty=true]:text-muted-foreground/55">
+                <TabsTrigger
+                  value="loyalty"
+                  data-empty={!loyaltyPoints?.balance ? 'true' : undefined}
+                  className="data-[empty=true]:text-muted-foreground/55"
+                >
                   แต้มสะสม
                   {!!loyaltyPoints?.balance && (
-                    <span className="ml-1.5 rounded-md bg-primary/10 px-1.5 py-0.5 text-2xs font-bold text-primary">{loyaltyPoints.balance.toLocaleString()}</span>
+                    <span className="ml-1.5 rounded-md bg-primary/10 px-1.5 py-0.5 text-2xs font-bold text-primary">
+                      {loyaltyPoints.balance.toLocaleString()}
+                    </span>
                   )}
                 </TabsTrigger>
                 {journeyVisible && <TabsTrigger value="journey">การเดินทาง</TabsTrigger>}
@@ -158,7 +180,11 @@ export default function CustomerDetailPage() {
             </div>
 
             <TabsContent className="min-w-0" value="overview">
-              <OverviewTab customer={customer} role={user?.role ?? ''} onOpenTab={handleTabChange} />
+              <OverviewTab
+                customer={customer}
+                role={user?.role ?? ''}
+                onOpenTab={handleTabChange}
+              />
             </TabsContent>
 
             <TabsContent className="min-w-0" value="credit">
@@ -172,7 +198,11 @@ export default function CustomerDetailPage() {
             </TabsContent>
 
             <TabsContent className="min-w-0" value="contracts">
-              <ContractsTab customer={customer} isOwner={user?.role === 'OWNER'} activityLogs={activityLogs} />
+              <ContractsTab
+                customer={customer}
+                isOwner={user?.role === 'OWNER'}
+                activityLogs={activityLogs}
+              />
             </TabsContent>
 
             {/* ─── Sales Tab (ขายสด / ไฟแนนซ์นอก) ───────────────────────────── */}
@@ -213,23 +243,31 @@ export default function CustomerDetailPage() {
         />
       </div>
 
-      <EditCustomerDialog customer={customer} open={showEditModal} onClose={() => setShowEditModal(false)} />
+      <EditCustomerDialog
+        customer={customer}
+        open={showEditModal}
+        onClose={() => setShowEditModal(false)}
+      />
 
       <CreditCheckCreateDialog
         open={showCreditDialog}
         onClose={() => setShowCreditDialog(false)}
         onCreated={() => invalidateCustomerJourney(queryClient, customer.id)}
-        preselectedCustomer={customer ? {
-          id: customer.id,
-          name: customer.name,
-          phone: customer.phone,
-          chatPlaceholder: customer.chatPlaceholder,
-          nationalId: customer.nationalId,
-          salary: customer.salary,
-          occupation: customer.occupation,
-          addressCurrentType: null,
-          salaryPayDay: null,
-        } : null}
+        preselectedCustomer={
+          customer
+            ? {
+                id: customer.id,
+                name: customer.name,
+                phone: customer.phone,
+                chatPlaceholder: customer.chatPlaceholder,
+                nationalId: customer.nationalId,
+                salary: customer.salary,
+                occupation: customer.occupation,
+                addressCurrentType: null,
+                salaryPayDay: null,
+              }
+            : null
+        }
       />
     </div>
   );

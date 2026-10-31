@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, MessageCircle, Send, Image as ImageIcon, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useLineChatPanel, useSendLineChatMessage, type LineChatMessage } from '../hooks/useLineChatPanel';
+import {
+  useLineChatPanel,
+  useSendLineChatMessage,
+  type LineChatMessage,
+} from '../hooks/useLineChatPanel';
 
 interface Props {
   customerId: string | null;
@@ -28,14 +32,8 @@ export default function LineChatPanel({ customerId }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevScrollHeightRef = useRef<number>(0);
 
-  const {
-    data,
-    isLoading,
-    isError,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-  } = useLineChatPanel(customerId, !!customerId);
+  const { data, isLoading, isError, fetchNextPage, hasNextPage, isFetchingNextPage } =
+    useLineChatPanel(customerId, !!customerId);
 
   const send = useSendLineChatMessage(customerId);
 
@@ -95,22 +93,18 @@ export default function LineChatPanel({ customerId }: Props) {
 
   if (isError) {
     return (
-      <div className="p-5 text-sm text-destructive leading-snug">
-        ไม่สามารถโหลดประวัติแชทได้
-      </div>
+      <div className="p-5 text-sm text-destructive leading-snug">ไม่สามารถโหลดประวัติแชทได้</div>
     );
   }
 
   return (
     <div className="flex flex-col h-[480px]">
       {/* Message list */}
-      <div
-        ref={scrollRef}
-        className="flex-1 overflow-y-auto px-4 py-3 space-y-2 bg-muted/30"
-      >
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-2 bg-muted/30">
         {hasNextPage && (
           <div className="flex justify-center pb-2">
-            <button data-ui-control="button"
+            <button
+              data-ui-control="button"
               type="button"
               onClick={() => fetchNextPage()}
               disabled={isFetchingNextPage}
@@ -143,7 +137,11 @@ export default function LineChatPanel({ customerId }: Props) {
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={handleKeyDown}
             rows={2}
-            placeholder={roomId ? 'พิมพ์ข้อความ... (Enter ส่ง, Shift+Enter ขึ้นบรรทัดใหม่)' : 'รอลูกค้าทักเข้ามาก่อน'}
+            placeholder={
+              roomId
+                ? 'พิมพ์ข้อความ... (Enter ส่ง, Shift+Enter ขึ้นบรรทัดใหม่)'
+                : 'รอลูกค้าทักเข้ามาก่อน'
+            }
             disabled={!roomId || send.isPending}
             className="flex-1 resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm leading-snug focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
             maxLength={2000}

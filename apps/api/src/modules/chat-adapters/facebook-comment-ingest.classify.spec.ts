@@ -86,7 +86,7 @@ describe('FacebookCommentIngestService — which failures redelivery can fix', (
       });
       const { error, failure } = await failureOf(entry(valid, { ...valid, comment_id: '123_1_8' }));
       expect(error).toBeInstanceOf(FacebookCommentIngestSkipped);
-      expect(failure).toEqual({ retry: false, reasonCode: code, skippedChanges: 2 });
+      expect(failure).toEqual({ retry: false, reasonCode: code, skippedChanges: 2, alert: true });
       expect((error as Error).message).toBe(
         'ตั้งค่า Page ID, App ID, Page Access Token และ App Secret ให้ครบ',
       );
@@ -96,19 +96,40 @@ describe('FacebookCommentIngestService — which failures redelivery can fix', (
     it.each([
       ['no comment_id', { comment_id: undefined }],
       ['no post_id', { post_id: undefined }],
-      ['unknown verb', { verb: 'hide' }],
+      ['unknown verb', { verb: 'shuffle' }],
+      ['no verb', { verb: undefined }],
+      ['non-string verb', { verb: 7 }],
       ['comment_id too long', { comment_id: 'x'.repeat(257) }],
+      ['hide without comment_id', { verb: 'hide', comment_id: undefined }],
     ])('malformed change (%s) → COMMENT_EVENT_MALFORMED before any write', async (_l, patch) => {
       const { failure } = await failureOf(entry({ ...valid, ...patch }));
       expect(failure).toEqual({
         retry: false,
         reasonCode: 'COMMENT_EVENT_MALFORMED',
         skippedChanges: 1,
+        alert: true,
       });
       expect(prisma.$transaction).not.toHaveBeenCalled();
     });
 
-    it('a malformed change does not drop the valid changes of the same entry', async () => {
+    // Review round 3 M2: Meta sends hide/unhide for comment visibility (our App Review panel can
+    // trigger them) — not malformed; skipped without redelivery and without an alert.
+    it.each(['hide', 'unhide'])(
+      'comment visibility verb %s → COMMENT_VERB_UNSUPPORTED, no write',
+      async (verb) => {
+        const { error, failure } = await failureOf(entry({ ...valid, verb }));
+        expect(error).toBeInstanceOf(FacebookCommentIngestSkipped);
+        expect(failure).toEqual({
+          retry: false,
+          reasonCode: 'COMMENT_VERB_UNSUPPORTED',
+          skippedChanges: 1,
+          alert: false,
+        });
+        expect(prisma.$transaction).not.toHaveBeenCalled();
+      },
+    );
+
+    it('a skipped change does not drop the valid changes of the same entry; an alerting reason wins', async () => {
       const { failure } = await failureOf(
         entry({ ...valid, verb: 'hide' }, valid, { ...valid, comment_id: undefined }),
       );
@@ -117,6 +138,7 @@ describe('FacebookCommentIngestService — which failures redelivery can fix', (
         retry: false,
         reasonCode: 'COMMENT_EVENT_MALFORMED',
         skippedChanges: 2,
+        alert: true,
       });
     });
 
@@ -136,6 +158,7 @@ describe('FacebookCommentIngestService — which failures redelivery can fix', (
         retry: false,
         reasonCode: 'COMMENT_POST_MISMATCH',
         skippedChanges: 1,
+        alert: true,
       });
       expect(tx.facebookCommentEvent.create).not.toHaveBeenCalled();
     });

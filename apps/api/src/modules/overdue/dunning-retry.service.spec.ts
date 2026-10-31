@@ -128,7 +128,11 @@ describe('DunningRetryService', () => {
 
     it('keeps FAILED and throws BadRequest when send returns FAILED', async () => {
       mockPrisma.dunningAction.findUnique.mockResolvedValueOnce(baseAction);
-      mockNotifications.send.mockResolvedValueOnce({ id: 'notif-2', status: 'FAILED', errorMsg: 'LINE token invalid' });
+      mockNotifications.send.mockResolvedValueOnce({
+        id: 'notif-2',
+        status: 'FAILED',
+        errorMsg: 'LINE token invalid',
+      });
       mockPrisma.dunningAction.update.mockResolvedValueOnce({ ...baseAction });
 
       await expect(service.retry('action-1', 'user-1')).rejects.toThrow(BadRequestException);

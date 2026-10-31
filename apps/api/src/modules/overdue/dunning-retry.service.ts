@@ -72,7 +72,9 @@ export class DunningRetryService {
     }
 
     if (action.status !== 'FAILED') {
-      throw new BadRequestException('สามารถ retry ได้เฉพาะ DunningAction ที่มีสถานะ FAILED เท่านั้น');
+      throw new BadRequestException(
+        'สามารถ retry ได้เฉพาะ DunningAction ที่มีสถานะ FAILED เท่านั้น',
+      );
     }
 
     const customer = action.contract.customer;

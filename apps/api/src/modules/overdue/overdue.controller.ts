@@ -12,6 +12,7 @@ import {
   Res,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import type { LetterStatus, LetterType } from '@prisma/client';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { OverdueService } from './overdue.service';
 import { DunningRuleService } from './dunning-rule.service';
@@ -544,8 +545,8 @@ export class OverdueController {
     @CurrentUser() user?: { role: string; branchId: string | null },
   ) {
     return this.contractLetterService.list({
-      status: status as any,
-      letterType: letterType as any,
+      status: status as LetterStatus | undefined,
+      letterType: letterType as LetterType | undefined,
       branchId,
       from,
       to,
@@ -599,7 +600,7 @@ export class OverdueController {
   ) {
     return this.contractLetterService.getCountsByStatus({
       branchId,
-      letterType: letterType as any,
+      letterType: letterType as LetterType | undefined,
       from,
       to,
       q,

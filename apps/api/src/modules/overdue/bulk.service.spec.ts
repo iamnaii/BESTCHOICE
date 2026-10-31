@@ -50,10 +50,7 @@ describe('OverdueBulkService', () => {
       mockPrisma.auditLog.createMany.mockReturnValueOnce({ count: 3 });
       mockPrisma.$transaction.mockResolvedValueOnce([{ count: 3 }, { count: 3 }]);
 
-      const result = await service.bulkAssign(
-        { contractIds, assignedToId: 'user-99' },
-        'actor-1',
-      );
+      const result = await service.bulkAssign({ contractIds, assignedToId: 'user-99' }, 'actor-1');
 
       expect(result).toEqual({ updated: 3, requested: 3 });
       expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
@@ -112,9 +109,9 @@ describe('OverdueBulkService', () => {
 
   describe('bulkSendLine', () => {
     it('throws BadRequestException when neither templateId nor customMessage provided', async () => {
-      await expect(
-        service.bulkSendLine({ contractIds: ['c1'] }, 'actor-1'),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.bulkSendLine({ contractIds: ['c1'] }, 'actor-1')).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('counts contracts without lineId as failed', async () => {

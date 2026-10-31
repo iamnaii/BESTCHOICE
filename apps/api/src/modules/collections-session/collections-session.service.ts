@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import type { DailyAssignment } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ActionDto } from './dto/action.dto';
 import { SkipDto } from './dto/skip.dto';
@@ -27,10 +28,7 @@ export class CollectionsSessionService {
           },
         },
       },
-      orderBy: [
-        { escalationFlag: 'desc' },
-        { position: 'asc' },
-      ],
+      orderBy: [{ escalationFlag: 'desc' }, { position: 'asc' }],
     });
 
     const pending = assignments.filter((a) => a.status === 'PENDING' || a.status === 'IN_PROGRESS');
@@ -55,19 +53,18 @@ export class CollectionsSessionService {
       const ago = daysOverdueMap.get(a.contractId) ?? 0;
       const bgo = daysOverdueMap.get(b.contractId) ?? 0;
       if (ago !== bgo) return bgo - ago;
-      const aHasPhone = !!(a.contract as any).customer?.phone;
-      const bHasPhone = !!(b.contract as any).customer?.phone;
+      const aHasPhone = !!a.contract.customer?.phone;
+      const bHasPhone = !!b.contract.customer?.phone;
       if (aHasPhone !== bHasPhone) return aHasPhone ? -1 : 1;
       return a.position - b.position;
     });
 
-    const callsCount = pending.filter((a) => !!(a.contract as any).customer?.phone).length;
+    const callsCount = pending.filter((a) => !!a.contract.customer?.phone).length;
     const lineCount = pending.filter(
-      (a) => !!(a.contract as any).customer?.lineIdFinance && !(a.contract as any).customer?.phone,
+      (a) => !!a.contract.customer?.lineIdFinance && !a.contract.customer?.phone,
     ).length;
 
-    const summary =
-      pending.length === 0 && done.length > 0 ? this.buildSummary(done) : undefined;
+    const summary = pending.length === 0 && done.length > 0 ? this.buildSummary(done) : undefined;
 
     // Attach daysOverdue to each pending row so the frontend can render
     // severity panels without a second query.
@@ -180,7 +177,9 @@ export class CollectionsSessionService {
     return { nextContractId: next?.contractId ?? null };
   }
 
-  private buildSummary(done: any[]) {
+  private buildSummary(
+    done: Pick<DailyAssignment, 'outcome' | 'status' | 'startedAt' | 'completedAt'>[],
+  ) {
     const callsConnected = done.filter((a) => a.outcome === 'CALL_CONNECTED').length;
     const callsNoAnswer = done.filter((a) => a.outcome === 'CALL_NO_ANSWER').length;
     const lineSent = done.filter((a) => a.outcome === 'LINE_SENT').length;

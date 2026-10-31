@@ -280,7 +280,10 @@ export class OverdueQueriesService {
         branch: { select: { id: true, name: true } },
         assignedTo: { select: { id: true, name: true } },
         payments: {
-          where: { status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] }, dueDate: { lt: new Date() } },
+          where: {
+            status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] },
+            dueDate: { lt: new Date() },
+          },
           select: { amountDue: true, amountPaid: true, lateFee: true, dueDate: true },
           orderBy: { dueDate: 'asc' },
           take: 1,
@@ -397,21 +400,21 @@ export class OverdueQueriesService {
 
   async getCycleDeadline(contractId: string) {
     const active = await this.promiseService.findActivePromise(contractId);
-    const deadline = (active as any)?.cycleDeadline
-      ? (active as any).cycleDeadline
+    const deadline = active?.cycleDeadline
+      ? active.cycleDeadline
       : await this.promiseService.calcCycleDeadline(contractId);
 
-    const activeSlots: Array<{ settlementDate: Date }> = (active as any)?.slots ?? [];
+    const activeSlots: Array<{ settlementDate: Date }> = active?.slots ?? [];
     const slotsPastDue = activeSlots.some((s) => s.settlementDate < new Date());
 
     return {
       cycleDeadline: deadline.toISOString(),
       activePromise: active
         ? {
-            id: (active as any).id,
-            settlementDate: (active as any).settlementDate?.toISOString() ?? null,
-            settlementAmount: Number((active as any).settlementAmount ?? 0),
-            rescheduleCount: (active as any).rescheduleCount ?? 0,
+            id: active.id,
+            settlementDate: active.settlementDate?.toISOString() ?? null,
+            settlementAmount: Number(active.settlementAmount ?? 0),
+            rescheduleCount: active.rescheduleCount ?? 0,
             slotsPastDue,
           }
         : null,
@@ -440,7 +443,9 @@ export class OverdueQueriesService {
       id: p.id,
       installmentNumber: p.installmentNo,
       dueDate: p.dueDate.toISOString(),
-      remainingAmount: Number(new Prisma.Decimal(p.amountDue as Prisma.Decimal).sub(p.amountPaid as Prisma.Decimal)),
+      remainingAmount: Number(
+        new Prisma.Decimal(p.amountDue as Prisma.Decimal).sub(p.amountPaid as Prisma.Decimal),
+      ),
       daysOverdue: Math.max(0, Math.floor((now - p.dueDate.getTime()) / 86_400_000)),
     }));
   }

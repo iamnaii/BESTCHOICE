@@ -193,12 +193,11 @@ describe('ลำดับล็อก ลูกค้า → link → ห้อ�
     before(tx.$queryRaw, tx.chatRoom.updateMany);
   });
 
-  it('ตามลูกค้า (พนักงาน): ล็อกแถวลูกค้าก่อนแตะแถว link/ห้อง', async () => {
+  it('ตามลูกค้า (พนักงาน): คำสั่งเขียนแรก = แถวลูกค้า (ล้างคอลัมน์) ก่อนแตะแถว link/ห้อง', async () => {
     const tx = makeTx();
     await unlinkFinanceLine(tx as never, { customerId: 'c1' }, at);
-    expect(lockedIds(tx.$queryRaw.mock.calls[0])).toEqual(['c1']);
-    before(tx.$queryRaw, tx.customerLineLink.updateMany);
-    before(tx.$queryRaw, tx.chatRoom.updateMany);
+    before(tx.customer.update, tx.customerLineLink.updateMany);
+    before(tx.customer.update, tx.chatRoom.updateMany);
   });
 });
 

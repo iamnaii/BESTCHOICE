@@ -30,11 +30,13 @@ export const LINE_SHOP_STAFF_SEND_DISABLED_MESSAGE =
 
 /**
  * ตัดสินค่า LINE การเงินที่พนักงาน/API ส่งมา (ฟอร์มลูกค้า · skip-tracing) เทียบกับค่าปัจจุบันของลูกค้า:
- * - ไม่ส่ง / ส่งค่าเดิม (ฟอร์มแก้ไขส่งทุกช่องกลับมาทุกครั้ง) / ว่างทั้งคู่ → `'none'` ไม่แตะ
- * - ส่งค่าว่างหรือ null ขณะที่ลูกค้ามีค่าอยู่ → `'clear'` ยกเลิกผูก (`unlinkFinanceLine` แบบ `customerId`)
+ * - ไม่ส่ง / ส่งค่าเดิมที่ไม่ว่าง (ฟอร์มรุ่นเก่าส่งทุกช่องกลับมาทุกครั้ง) → `'none'` ไม่แตะ
+ * - ส่งค่าว่าง/null/ช่องว่างล้วน → `'clear'` ยกเลิกผูก **ไม่ว่าคอลัมน์จะมีค่าหรือไม่** (Task 29 #2 — เจ้าของตัดสิน 31 ต.ค.: ล้างช่องผ่าน PATCH
+ *   = ปุ่ม "ยกเลิกการผูก" ⇒ ผู้เรียกส่งต่อให้ `CustomerWriteService.unlinkFinanceLineInTx` ซึ่งตัดสินจากแถว OTP + คอลัมน์ใต้ล็อก ·
+ *   ไม่มีอะไรให้ล้าง = ไม่แตะ ไม่เขียน audit) · เดิมคอลัมน์ว่าง = `'none'` ⇒ แถว OTP ที่ยังผูกปิดผ่าน PATCH ไม่ได้
  * - ค่าอื่น → 400 `LINE_FINANCE_LINK_REQUIRES_OTP_MESSAGE` (ห้ามตั้ง U-id ที่ไม่ได้ผ่าน OTP)
  *
- * เทียบหลัง trim — `' U1 '` ที่ส่งกลับมาคือค่าเดิม
+ * เทียบหลัง trim — `' U1 '` ที่ส่งกลับมาคือค่าเดิม · skip-tracing ส่ง `undefined` แทนค่าว่าง (ยกเลิกผูกทางนั้นไม่ได้ — fix round 1 M-1)
  */
 export function staffLineFinanceChange(
   requested: string | null | undefined,
@@ -42,9 +44,8 @@ export function staffLineFinanceChange(
 ): 'none' | 'clear' {
   if (requested === undefined) return 'none';
   const next = requested?.trim() ?? '';
-  const cur = current?.trim() ?? '';
-  if (next === cur) return 'none';
   if (next === '') return 'clear';
+  if (next === (current?.trim() ?? '')) return 'none';
   throw new BadRequestException({
     message: LINE_FINANCE_LINK_REQUIRES_OTP_MESSAGE,
     field: 'lineIdFinance',
@@ -80,7 +81,7 @@ export async function clearFinanceRoomVerification(
  * Task 29 (เจ้าของตัดสิน 31 ต.ค. 2026 — Task 27 review M-2) — **ลำดับล็อกเดียว**ของทุกทางที่ผูก/ยกเลิกผูก LINE การเงิน:
  * **แถวลูกค้า (`customers`, เรียงตาม id ใน SQL) → แถว `customer_line_links` → `chat_rooms`**. ผู้เรียก: `VerificationService.bind`
  * (ผ่าน `lockCustomersForFinanceLineBind`) · `unlinkFinanceLine` ทั้งสองแบบ (LIFF / พนักงาน) · ปุ่ม/PATCH ยกเลิกผูกของพนักงาน
- * (`CustomerWriteService.unlinkFinanceLineByStaff`). เดิม `bind` ล็อกแถว link/ห้องก่อนแล้วค่อยแถวลูกค้า ⇒ ยืนยัน OTP พร้อมพนักงานกดยกเลิกผูก
+ * (`CustomerWriteService.unlinkFinanceLineInTx`). เดิม `bind` ล็อกแถว link/ห้องก่อนแล้วค่อยแถวลูกค้า ⇒ ยืนยัน OTP พร้อมพนักงานกดยกเลิกผูก
  * ลูกค้าคนเดียวกัน = deadlock 40P01 (ปักที่ `finance-line-lock-order.db.spec.ts`).
  *
  * ล็อกหลายแถวต้องผ่าน helper นี้เท่านั้น — `ORDER BY id` ใน SQL ตัดสินลำดับ (LockRows ทำงานหลัง Sort) ทุกผู้เรียกจึงเรียงเหมือนกันเสมอ ·
@@ -143,8 +144,8 @@ export type FinanceLineUnlinkTarget = { lineUserId: string } | { customerId: str
  * - `{ lineUserId }` (LIFF "ยกเลิกผูก LINE" — `LiffTokenGuard` พิสูจน์ว่าเป็นเจ้าของ LINE นี้): ล้างคอลัมน์บน**ทุก**ลูกค้าที่ถือ
  *   LINE นี้ **รวมแถวที่ถูกลบ** (กู้จากถังขยะ/ชุบ ghost แล้วค่าไม่กลับมา — Task 22 fix round 1) (เดิมล้างคนเดียว — Task 19 review M1)
  *   + ปิดแถวของ LINE นี้
- * - `{ customerId }` (พนักงานล้างช่องในฟอร์มลูกค้า / skip-tracing): ล้างคอลัมน์ของลูกค้าคนนี้ + ปิดแถวของ**ลูกค้าคนนี้**เท่านั้น —
- *   ห้ามปิดตาม LINE: ค่าในคอลัมน์อาจเป็น U-id ที่พนักงานพิมพ์ (I3) ซึ่งเป็น LINE ที่ยืนยัน OTP ไว้กับลูกค้าอีกคน
+ * - `{ customerId }` (พนักงาน — ปุ่ม "ยกเลิกการผูก" / PATCH ล้างช่อง ผ่านแกนเดียว `CustomerWriteService.unlinkFinanceLineInTx`):
+ *   ล้างคอลัมน์ของลูกค้าคนนี้ + ปิดแถวของ**ลูกค้าคนนี้**เท่านั้น — ห้ามปิดตาม LINE: ค่าในคอลัมน์อาจเป็น U-id ที่พนักงานพิมพ์ (I3) ซึ่งเป็น LINE ที่ยืนยัน OTP ไว้กับลูกค้าอีกคน
  *
  * ไม่สลับ rich menu กลับเป็นเมนูก่อนยืนยัน (เหมือน LIFF เดิม) · ไม่เขียน journey
  */
@@ -184,8 +185,8 @@ export async function unlinkFinanceLine(
     });
     return;
   }
-  // Task 29 — แถวลูกค้าก่อนแถว link/ห้อง (ผู้เรียกที่ล็อกไว้แล้ว — ปุ่ม/PATCH ของพนักงาน — ล็อกซ้ำไม่มีผล)
-  await lockFinanceLineCustomers(tx, [target.customerId]);
+  // Task 29 — ลำดับล็อก ลูกค้า → link → ห้อง: คำสั่งเขียนแรกของทางนี้คือแถวลูกค้า (ล้างคอลัมน์ด้านล่าง) จึงไม่ต้องล็อกแยก ·
+  // ผู้เรียกของพนักงาน (`CustomerWriteService.unlinkFinanceLineInTx`) ล็อกแถวนี้ไว้ก่อนอ่านสถานะอยู่แล้ว
   // LINE ของแถวที่กำลังปิด (M-8) — ห้องของ LINE นั้นอาจผูกลูกค้าอื่นไว้ (พนักงานผูกห้องเอง) ก็ถือว่าไม่ยืนยันแล้ว
   const closing = await tx.customerLineLink.findMany({
     where: { customerId: target.customerId, channel: LineChannelType.FINANCE, unlinkedAt: null },

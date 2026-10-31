@@ -38,12 +38,16 @@ describe('CustomerWriteService — LINE การเงินจากฟอร�
       $queryRaw: log('lockCustomer', []), // Task 29 — lockFinanceLineCustomers (แถวลูกค้าก่อนแถว link/ห้อง)
       customer: {
         findFirst: log('findFirst'),
-        findUnique: log('findUnique'),
+        // แกนยกเลิกผูก (unlinkFinanceLineInTx) อ่านสถานะลูกค้าใต้ล็อก — select lineIdFinance
+        findUnique: log('findUnique', (a: any) =>
+          a?.select?.lineIdFinance ? { deletedAt: null, lineIdFinance: 'U-verified' } : null,
+        ),
         count: log('count', 0),
         create: log('create', (a: any) => ({ id: 'new', ...a.data })),
         update: log('update', (a: any) => ({ id: a.where.id, name: 'x', ...a.data })),
       },
       customerLineLink: {
+        findFirst: log('activeLink', { linkedAt: new Date('2026-10-01T00:00:00.000Z') }),
         findMany: log('linkRows', [{ lineUserId: 'U-old' }]),
         updateMany: log('closeLink', { count: 1 }),
       },
@@ -123,7 +127,10 @@ describe('CustomerWriteService — LINE การเงินจากฟอร�
       const updated = await service.update('c1', { name: 'x', lineIdFinance: requested } as never);
       expect(calls).toEqual([
         'root.$transaction',
-        'tx.lockCustomer', // Task 29 — ล็อกแถวลูกค้าก่อน (ลำดับเดียวกับ bind)
+        // Task 29 #2 — แกนเดียวกับปุ่ม "ยกเลิกการผูก" (unlinkFinanceLineInTx)
+        'tx.lockCustomer', // ล็อกแถวลูกค้าก่อน (ลำดับเดียวกับ bind — Task 29 #1)
+        'tx.findUnique', // สถานะลูกค้าใต้ล็อก (ถูกลบ = 404 · คอลัมน์มีค่าไหม)
+        'tx.activeLink', // แถว OTP ที่ยังผูก — ตัดสินจากแถว ไม่ใช่คอลัมน์อย่างเดียว
         'tx.linkRows', // LINE ของแถวที่กำลังปิด (Task 24 M-8)
         'tx.update', // unlinkFinanceLine — ล้างคอลัมน์ของลูกค้าคนนี้
         'tx.closeLink', // ปิดแถว customer_line_links ของลูกค้าคนนี้

@@ -19,13 +19,12 @@ interface LiffRequest {
  *
  * **จงใจไม่ใส่ `@LiffChannel(SHOP)`**: `enforceChannelBoundary` อ่านตาราง
  * `CustomerLineLink` ซึ่งวันนี้ **ไม่มีแถวช่อง SHOP เลยสักแถว** (ตัวเดียวที่เขียนตารางนี้คือ
- * OTP ของ chatbot-finance และ hardcode FINANCE) ⇒ ถ้าใส่ decorator ไป ผลจะกลายเป็น:
- * ลูกค้าที่เคยผูกฝั่งไฟแนนซ์จะโดน 403 ที่หน้าประกันทั้งที่มีสิทธิ์ ส่วนคนที่ยังไม่ผูกจะผ่านฉลุย
- * — กลับหัวกลับหางจากที่ควรเป็น
+ * OTP ของ chatbot-finance และ hardcode FINANCE) ⇒ ถ้าใส่ decorator ไป ลูกค้าที่ยืนยัน OTP แล้ว (แถว FINANCE)
+ * จะโดน 403 ที่หน้าประกัน — ทั้งที่แถวนั้นคือหลักฐานตัวตนที่หน้านี้ใช้ (Task 22)
  *
- * ความปลอดภัยมาจากตัว lookup เอง: `LiffTokenGuard` ยืนยัน LINE ID token กับ LINE จริง
- * แล้ว service ค้นด้วย `customer.lineIdShop = <userId นั้น>` ⇒ คนที่ไม่เคยผูกช่อง SHOP
- * ไม่ว่าจะผูกช่องอื่นไว้หรือไม่ ก็ match ไม่ได้ (ได้ `linked: false` ข้อมูลว่าง)
+ * ความปลอดภัยมาจากตัว lookup เอง: `LiffTokenGuard` ยืนยัน LINE ID token กับ LINE จริง แล้ว service หาลูกค้าด้วย
+ * `findShopLiffCustomerId` — แถว OTP ช่อง FINANCE ของ LINE นั้น (สำรองด้วย `customer.lineIdShop` เฉพาะค่าที่เขียนก่อน Task 20)
+ * ⇒ LINE ที่ยังไม่ยืนยัน OTP ได้ `linked: false` ข้อมูลว่าง
  */
 @ApiTags('LIFF API')
 @Controller('line-oa')
@@ -53,7 +52,7 @@ export class LiffWarrantyController {
     summary: 'เคสหลังการขายของลูกค้า (ช่อง SHOP) — เคสเปิดอยู่ + เคสปิดภายใน 14 วัน',
   })
   // ไม่ใส่ @LiffChannel(SHOP) ด้วยเหตุผลเดียวกับ my-warranties ด้านบน — CustomerLineLink
-  // ยังไม่มีแถวช่อง SHOP เลยสักแถว ความปลอดภัยมาจากการ lookup ด้วย customer.lineIdShop เอง
+  // ยังไม่มีแถวช่อง SHOP เลยสักแถว ความปลอดภัยมาจาก lookup (findShopLiffCustomerId — แถว OTP) เอง
   async getMyAfterSalesCases(@Req() req: Request): Promise<LiffAfterSalesResponse> {
     return this.afterSalesService.getMyCases((req as unknown as LiffRequest).liffUserId);
   }

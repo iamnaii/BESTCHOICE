@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { act, render, screen, fireEvent, within } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import LiffFinanceVerify from './LiffFinanceVerify';
 
@@ -88,7 +88,9 @@ describe('C1 — ขั้นที่ 1 จาก 2: กรอกเบอร�
     const button = screen.getByRole('button', { name: 'ส่งรหัส OTP' });
     expect(button).toBeEnabled();
     fireEvent.click(button);
-    expect(post).toHaveBeenCalledWith('/chatbot/finance/liff/request-otp', { phone: '0812345678' });
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith('/chatbot/finance/liff/request-otp', { phone: '0812345678' }),
+    );
   });
 });
 

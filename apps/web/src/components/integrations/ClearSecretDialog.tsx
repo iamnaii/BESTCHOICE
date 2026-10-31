@@ -46,7 +46,7 @@ export function clearImpactText(target: ClearSecretTarget): string {
     // Env ANTHROPIC_API_KEY readers keep going: sales-bot ClaudeProvider, after-hours,
     // ai-text (staff inbox assistant), staff-chat sales-state, chat-history knowledge extractor.
     case 'claude-ai.apiKey':
-      return 'ฟีเจอร์ที่ใช้คีย์จากหน้านี้จะหยุด: บอทน้องเบส · อ่านสลิป · อ่านเอกสาร (OCR) · วิเคราะห์เครดิตด้วย AI · บอทตอบแชท LINE SHOP แบบเดิม — แต่บอทขายในอินบ็อกซ์ · ข้อความตอบนอกเวลาทำการ · ผู้ช่วย AI ของพนักงานในอินบ็อกซ์ · การดึงคลังคำตอบจากแชทเก่า ยังใช้ ANTHROPIC_API_KEY ของเซิร์ฟเวอร์ต่อไปจนกว่าผู้ดูแลระบบจะเอาออก';
+      return 'ฟีเจอร์ที่ใช้คีย์จากหน้านี้จะหยุด: บอทน้องเบส · อ่านสลิป · อ่านเอกสาร (OCR) · วิเคราะห์เครดิตด้วย AI · บอทตอบแชท LINE SHOP แบบเดิม — ส่วนบอทขายในอินบ็อกซ์ · ข้อความตอบนอกเวลาทำการ · ผู้ช่วย AI ของพนักงานในอินบ็อกซ์ · การดึงคลังคำตอบจากแชทเก่า ใช้ ANTHROPIC_API_KEY ของเซิร์ฟเวอร์ ไม่ได้ใช้คีย์จากหน้านี้ จึงไม่หยุดตาม (ต้องให้ผู้ดูแลระบบเอาออกเอง)';
     // EmailService (Hub) sends every email today: password reset, invites, weekly PDF report.
     // notifications/email-provider (env SMTP_PASS) has no caller yet.
     case 'email.pass':

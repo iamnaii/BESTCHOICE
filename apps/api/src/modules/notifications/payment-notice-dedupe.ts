@@ -1,6 +1,7 @@
-import { AutoTriggerType, TriggerStatus } from '@prisma/client';
+import { AutoTriggerType, Prisma, TriggerStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { bangkokStartOfDay } from '../../utils/date.util';
+import { ACTIVE_FINANCE_LINK_WHERE } from '../line-oa/services/otp-verified-customer';
 import { NotificationCategory } from './notification-category.enum';
 
 /**
@@ -10,6 +11,12 @@ import { NotificationCategory } from './notification-category.enum';
  * |---|---|---|---|
  * | `REMINDER` เตือนค่างวด (ข้อ 1) | T-3 / T-1 / T0 | A1 `NotificationReminderService.sendPaymentReminders` 08:00 | บอท A8 `AutoTriggerService.runDailyReminders` 09:00 (T-5..T0) |
  * | `OVERDUE` แจ้งค้างชำระ (รอบ 2 ข้อ 3) | T+1 / T+3 | A2 `NotificationReminderService.sendOverdueNotices` 09:00 (T+1/+3/+7) | บอท `AutoTriggerService.runDailyEscalations` 10:00 (T+1/+3) |
+ *
+ * **T-3 (รอบ 2 ข้อ 1):** งวดที่ลิงก์ชำระอัตโนมัติ (A6 `CollectionsNotifierService.sendAutoPaymentLinks` 08:30 — การ์ด "แจ้งเตือนค่างวด" +
+ * ปุ่มจ่าย) จะส่งวันนี้ = การ์ดลิงก์ชำระเป็นข้อความเดียวของวัน: A1 (รันก่อน 08:00) ตัดสินจาก**เงื่อนไขของ A6 เอง** (`autoPayLinkPaymentWhere` —
+ * ตัวเดียวกับที่ A6 ใช้ค้นงวด ไม่ใช่สำเนา) แล้วเว้นให้ · A6 ลงแถว SENT หมวด REMINDER ⇒ บอท 09:00 / A1 ที่สั่งรันซ้ำเห็นว่าส่งแล้ว ·
+ * A6 ไม่ส่งงวดที่ได้ข้อความเตือนวันนี้แล้ว · **A6 ส่งไม่ผ่าน** (สร้างลิงก์/ push พัง — แถว FAILED) ⇒ บอท 09:00 ส่งเตือนแทน (ตัวสำรองเดิม
+ * ไม่ต้องมีทางใหม่) และ A1 ที่สั่งรันซ้ำหลังจากนั้นเลิกเว้น (`autoPayLinkFailedToday`) ⇒ ลูกค้ายังได้หนึ่งข้อความ · A6 ไม่มีด่าน PDPA (เดิม)
  *
  * ตัวหลัก = ตัวที่ผ่านด่าน PDPA · ส่ง Flex (เลขสัญญา/งวด + ปุ่มตอบเร็ว) · มีบันทึกใน `notification_logs` · ไม่ผูก LINE = SMS ·
  * บอท (ข้อความล้วน + เลขบัญชี · **ไม่มีด่าน PDPA** · `chat_auto_triggers`) = ตัวสำรอง: ส่งเฉพาะเมื่อวันนี้ตัวหลักยังไม่ได้ส่งงวดนั้น
@@ -33,7 +40,7 @@ const KINDS: Record<
 > = {
   REMINDER: {
     subject: PAYMENT_REMINDER_SUBJECT,
-    // ทางสำรอง template/ข้อความ/SMS ของ A1 ลงหมวดนี้
+    // ทางสำรอง template/ข้อความ/SMS ของ A1 + การ์ดลิงก์ชำระอัตโนมัติ (A6) ลงหมวดนี้
     category: NotificationCategory.REMINDER,
     botTypes: [
       AutoTriggerType.REMINDER_T_MINUS_5,
@@ -111,6 +118,66 @@ export async function botNoticeSentToday(
         in: KINDS[kind].botTypes.map((type) => autoTriggerReferenceKey(type, paymentId)),
       },
       status: { in: [TriggerStatus.SENT, TriggerStatus.PENDING] },
+      createdAt: { gte: bangkokStartOfDay(now) },
+      deletedAt: null,
+    },
+    select: { id: true },
+  });
+  return row !== null;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** หัวข้อที่ลิงก์ชำระอัตโนมัติ (A6) ลง `notification_logs` — แถว SENT (ส่งแล้ว) / FAILED (ส่งไม่ผ่าน) */
+export const AUTO_PAY_LINK_SUBJECT = 'ลิงก์ชำระอัตโนมัติ';
+/** ลิงก์ชำระอัตโนมัติส่งก่อนวันครบกำหนดกี่วัน (ตามวันไทย) */
+export const AUTO_PAY_LINK_DAYS_BEFORE_DUE = 3;
+
+/**
+ * งวดที่ลิงก์ชำระอัตโนมัติ (A6) ส่งวันนี้ — **เงื่อนไขเดียว**: A6 ใช้ค้นงวด · A1 ใช้ตัดสินว่าจะเว้นให้ ·
+ * ครบกำหนดอีก `AUTO_PAY_LINK_DAYS_BEFORE_DUE` วันตามวันไทย · งวด PENDING · สัญญา ACTIVE · ลูกค้าไม่ถูกลบและผูก LINE การเงินด้วย OTP
+ */
+export function autoPayLinkPaymentWhere(now: Date = new Date()): Prisma.PaymentWhereInput {
+  const dueDayStart = new Date(
+    bangkokStartOfDay(now).getTime() + AUTO_PAY_LINK_DAYS_BEFORE_DUE * DAY_MS,
+  );
+  return {
+    status: 'PENDING',
+    deletedAt: null,
+    dueDate: { gte: dueDayStart, lt: new Date(dueDayStart.getTime() + DAY_MS) },
+    contract: {
+      deletedAt: null,
+      status: { in: ['ACTIVE'] },
+      customer: { lineLinks: { some: ACTIVE_FINANCE_LINK_WHERE }, deletedAt: null },
+    },
+  };
+}
+
+/** งวดในชุดนี้ที่ลิงก์ชำระอัตโนมัติจะส่งวันนี้ — query เดียวต่อรอบ */
+export async function findAutoPayLinkPaymentIds(
+  prisma: Pick<PrismaService, 'payment'>,
+  paymentIds: string[],
+  now: Date = new Date(),
+): Promise<Set<string>> {
+  if (paymentIds.length === 0) return new Set();
+  const rows = await prisma.payment.findMany({
+    where: { id: { in: paymentIds }, ...autoPayLinkPaymentWhere(now) },
+    select: { id: true },
+  });
+  return new Set(rows.map((row) => row.id));
+}
+
+/** ลิงก์ชำระอัตโนมัติของงวดนี้ส่งไม่ผ่านแล้ววันนี้ (A6 ลงแถว FAILED) ⇒ A1 ไม่ต้องเว้นให้อีก */
+export async function autoPayLinkFailedToday(
+  prisma: Pick<PrismaService, 'notificationLog'>,
+  paymentId: string,
+  now: Date = new Date(),
+): Promise<boolean> {
+  const row = await prisma.notificationLog.findFirst({
+    where: {
+      relatedId: paymentId,
+      subject: AUTO_PAY_LINK_SUBJECT,
+      status: 'FAILED',
       createdAt: { gte: bangkokStartOfDay(now) },
       deletedAt: null,
     },

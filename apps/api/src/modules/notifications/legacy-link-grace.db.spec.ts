@@ -344,10 +344,10 @@ describe('Task 30 ข้อ 2 — ผ่อนผัน 7 วันหลัง�
     expect(lineDeliveries(legacy.lineUserId)).toBe(1);
   });
 
-  it('เตือนค่างวดยังส่งระหว่างผ่อนผัน (A1 08:00 · บอท 09:00 ข้ามตามกติกาหนึ่งข้อความต่อวัน)', async () => {
+  it('เตือนค่างวดยังส่งระหว่างผ่อนผัน (T-1: A1 08:00 · บอท 09:00 ข้ามตามกติกาหนึ่งข้อความต่อวัน)', async () => {
     const legacy3 = await createInstallmentFixture(prisma, base, {
       label: `reminder-${++seq}`,
-      dueDate: dueDateUtc(day, 3),
+      dueDate: dueDateUtc(day, 1),
       linkedAt: new Date(NOW.getTime() - 3 * DAY_MS),
       legacyCode: `${stamp}-LG-${seq}`,
     });

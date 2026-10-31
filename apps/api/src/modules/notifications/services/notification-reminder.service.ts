@@ -12,7 +12,9 @@ import { NotificationCategory } from '../notification-category.enum';
 import {
   OVERDUE_NOTICE_SUBJECT,
   PAYMENT_REMINDER_SUBJECT,
+  autoPayLinkFailedToday,
   botNoticeSentToday,
+  findAutoPayLinkPaymentIds,
   paymentNoticeSentToday,
 } from '../payment-notice-dedupe';
 import { findContractsInLegacyLinkGrace, recordLegacyLinkGraceSkip } from '../legacy-link-grace';
@@ -104,8 +106,16 @@ export class NotificationReminderService {
       },
     });
 
+    // Task 30 รอบ 2 ข้อ 1 — งวดที่ลิงก์ชำระอัตโนมัติ (A6 08:30) จะส่งวันนี้ (เงื่อนไขของ A6 เอง — query เดียวต่อรอบ)
+    const payLinkIds = await findAutoPayLinkPaymentIds(
+      this.prisma,
+      upcomingPayments.map((p) => p.id),
+      now,
+    );
+
     let sent = 0;
     let dedupedByBot = 0;
+    let deferredToPayLink = 0;
     for (const payment of upcomingPayments) {
       const customer = payment.contract.customer;
       const daysUntil = Math.max(
@@ -120,6 +130,15 @@ export class NotificationReminderService {
       if (await paymentNoticeSentToday(this.prisma, 'REMINDER', payment.id, now)) continue;
       if (await botNoticeSentToday(this.prisma, 'REMINDER', customer.id, payment.id, now)) {
         dedupedByBot++;
+        continue;
+      }
+      // (3) T-3: การ์ดลิงก์ชำระ (A6) เป็นข้อความเดียวของวัน — เว้นให้ เว้นแต่ A6 ส่งงวดนี้ไม่ผ่านไปแล้ววันนี้ (สั่งรัน A1 ซ้ำหลัง 08:30) ·
+      //     A6 พังตอน 08:30 แล้ว บอท 09:00 ส่งเตือนแทน (ตัวสำรองเดิม)
+      if (
+        payLinkIds.has(payment.id) &&
+        !(await autoPayLinkFailedToday(this.prisma, payment.id, now))
+      ) {
+        deferredToPayLink++;
         continue;
       }
       // PDPA guard (shared with sendOverdueNotices)
@@ -224,9 +243,15 @@ export class NotificationReminderService {
     }
 
     this.logger.log(
-      `Payment reminders sent: ${sent}/${upcomingPayments.length} (already sent by finance bot today: ${dedupedByBot})`,
+      `Payment reminders sent: ${sent}/${upcomingPayments.length} (already sent by finance bot today: ${dedupedByBot} · left to the T-3 pay-link card: ${deferredToPayLink})`,
     );
-    return { sent, total: upcomingPayments.length, dedupedByBot, timestamp: now };
+    return {
+      sent,
+      total: upcomingPayments.length,
+      dedupedByBot,
+      deferredToPayLink,
+      timestamp: now,
+    };
   }
 
   /**

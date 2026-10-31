@@ -1,8 +1,8 @@
 import { Logger } from '@nestjs/common';
 import { formatDateShort } from '../../../utils/thai-date.util';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 import {
-  ACTIVE_FINANCE_LINK_WHERE,
   FINANCE_LINE_RECIPIENT_SELECT,
   financeLineRecipient,
 } from '../../line-oa/services/otp-verified-customer';
@@ -11,6 +11,14 @@ import { PaymentLinkService } from '../../line-oa/payment-links/payment-link.ser
 import { buildOverdueNoticeFlex } from '../../line-oa/flex-messages/overdue-notice.flex';
 import { buildPaymentReminderFlex } from '../../line-oa/flex-messages/payment-reminder.flex';
 import { PDPAService } from '../../pdpa/pdpa.service';
+import { NotificationCategory } from '../notification-category.enum';
+import {
+  AUTO_PAY_LINK_DAYS_BEFORE_DUE,
+  AUTO_PAY_LINK_SUBJECT,
+  autoPayLinkPaymentWhere,
+  botNoticeSentToday,
+  paymentNoticeSentToday,
+} from '../payment-notice-dedupe';
 import { NotificationsService } from '../notifications.service';
 import { findContractsInLegacyLinkGrace, recordLegacyLinkGraceSkip } from '../legacy-link-grace';
 import { isSmsPaymentReminderDisabled } from '../../../utils/sms-payment-reminder.util';
@@ -208,44 +216,67 @@ export class CollectionsNotifierService {
     );
   }
 
-  /**
-   * Auto-send payment links 3 days before due (the body of handleAutoPaymentLinks).
-   */
-  async sendAutoPaymentLinks() {
-    const threeDaysFromNow = new Date();
-    threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
-    const startOfDay = new Date(
-      threeDaysFromNow.getFullYear(),
-      threeDaysFromNow.getMonth(),
-      threeDaysFromNow.getDate(),
-    );
-    const endOfDay = new Date(startOfDay);
-    endOfDay.setDate(endOfDay.getDate() + 1);
+  /** แถวผลของการ์ดลิงก์ชำระ (SENT / FAILED) — ลงไม่ได้ต้องไม่ล้มทั้งรอบ (การ์ดส่งไปแล้ว/ส่งไม่ผ่านไปแล้ว) */
+  private async logAutoPayLink(
+    paymentId: string,
+    data: Prisma.NotificationLogUncheckedCreateInput,
+  ) {
+    try {
+      await this.prisma.notificationLog.create({ data });
+    } catch (err) {
+      this.logger.warn(
+        `Failed to log auto payment link (${data.status}) for payment ${paymentId}: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
 
-    // Find PENDING payments due in 3 days with LINE-linked customers
+  /**
+   * Auto-send payment links 3 days before due (the body of handleAutoPaymentLinks · 08:30).
+   *
+   * Task 30 รอบ 2 ข้อ 1 — วัน T-3 การ์ดนี้เป็นข้อความเดียวของงวด: ค้นงวดด้วย `autoPayLinkPaymentWhere` (เงื่อนไขเดียวกับที่ A1 08:00 ใช้เว้นให้) ·
+   * งวดที่ได้ข้อความเตือนวันนี้แล้ว (บอทสั่งรันก่อน / สั่งรันซ้ำ) = ข้าม · ส่งแล้วลงแถว SENT หมวด REMINDER (บอท 09:00 / A1 ที่สั่งรันซ้ำเห็น) ·
+   * ส่งไม่ผ่านลงแถว FAILED (บอท 09:00 ส่งเตือนแทน · A1 ที่สั่งรันซ้ำเลิกเว้น) — `payment-notice-dedupe.ts`
+   */
+  async sendAutoPaymentLinks(now: Date = new Date()) {
     const payments = await this.prisma.payment.findMany({
-      where: {
-        status: 'PENDING',
-        dueDate: { gte: startOfDay, lt: endOfDay },
-        contract: {
-          deletedAt: null,
-          status: { in: ['ACTIVE'] },
-          customer: { lineLinks: { some: ACTIVE_FINANCE_LINK_WHERE }, deletedAt: null },
-        },
-      },
+      where: autoPayLinkPaymentWhere(now),
       include: {
         contract: {
           include: {
-            customer: { select: { name: true, ...FINANCE_LINE_RECIPIENT_SELECT } },
+            customer: { select: { id: true, name: true, ...FINANCE_LINE_RECIPIENT_SELECT } },
           },
         },
       },
     });
 
     let sent = 0;
+    let alreadyReminded = 0;
     for (const payment of payments) {
       const lineId = financeLineRecipient(payment.contract.customer);
       if (!lineId) continue;
+      const customerId = payment.contract.customer.id;
+
+      if (
+        (await paymentNoticeSentToday(this.prisma, 'REMINDER', payment.id, now)) ||
+        (await botNoticeSentToday(this.prisma, 'REMINDER', customerId, payment.id, now))
+      ) {
+        alreadyReminded++;
+        continue;
+      }
+
+      const amountDue =
+        Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid);
+      // แถวหลักฐาน — ไม่เก็บ URL ลิงก์ชำระ (โทเคนในลิงก์ใช้จ่ายได้)
+      const logRow = {
+        channel: 'LINE' as const,
+        channelKey: 'line-finance',
+        recipient: lineId,
+        subject: AUTO_PAY_LINK_SUBJECT,
+        message: `งวด ${payment.installmentNo} สัญญา ${payment.contract.contractNumber} ยอด ${amountDue.toLocaleString()} บาท — การ์ดลิงก์ชำระ`,
+        relatedId: payment.id,
+        customerId,
+        category: NotificationCategory.REMINDER,
+      };
 
       try {
         // Create payment link
@@ -253,9 +284,6 @@ export class CollectionsNotifierService {
           payment.contractId,
           payment.installmentNo,
         );
-
-        const amountDue =
-          Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid);
 
         // Send LINE reminder with payment link
         const flex = buildPaymentReminderFlex({
@@ -265,19 +293,30 @@ export class CollectionsNotifierService {
           totalInstallments: payment.contract.totalMonths,
           amountDue,
           dueDate: formatDateShort(payment.dueDate),
-          daysUntilDue: 3,
+          daysUntilDue: AUTO_PAY_LINK_DAYS_BEFORE_DUE,
           paymentUrl: link.url,
         });
 
         await this.lineOaService.sendFlexMessage(lineId, flex, 'line-finance');
-        sent++;
       } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
         this.logger.warn(
-          `Failed to send auto payment link for contract ${payment.contract.contractNumber}: ${err}`,
+          `Failed to send auto payment link for contract ${payment.contract.contractNumber}: ${errorMsg}`,
         );
+        await this.logAutoPayLink(payment.id, {
+          ...logRow,
+          status: 'FAILED',
+          errorMsg,
+          sentAt: null,
+        });
+        continue;
       }
+      sent++;
+      await this.logAutoPayLink(payment.id, { ...logRow, status: 'SENT', sentAt: new Date() });
     }
 
-    this.logger.log(`Auto payment links complete: ${sent} sent out of ${payments.length} payments`);
+    this.logger.log(
+      `Auto payment links complete: ${sent} sent out of ${payments.length} payments (already reminded today: ${alreadyReminded})`,
+    );
   }
 }

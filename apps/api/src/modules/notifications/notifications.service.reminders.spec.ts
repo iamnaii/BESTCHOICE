@@ -63,6 +63,15 @@ describe('NotificationsService — reminder / overdue dunning', () => {
       },
     });
 
+  /**
+   * งวดที่ cron ค้นเจอ — คำค้นของ cron (include ข้อมูลสัญญา) ได้ `rows` · คำค้น "งวดที่ลิงก์ชำระอัตโนมัติจะส่งวันนี้" (select id —
+   * Task 30 รอบ 2 ข้อ 1) ได้ `payLinkIds`
+   */
+  const givenPayments = (rows: unknown[], payLinkIds: string[] = []) =>
+    prisma.payment.findMany.mockImplementation((args: { select?: unknown }) =>
+      Promise.resolve(args?.select ? payLinkIds.map((id) => ({ id })) : rows),
+    );
+
   beforeEach(async () => {
     prisma = {
       payment: { findMany: jest.fn().mockResolvedValue([]) },
@@ -127,7 +136,7 @@ describe('NotificationsService — reminder / overdue dunning', () => {
     const SUBJECT = 'แจ้งเตือนค่างวด';
 
     it('logs an IN_APP SKIPPED row and sends nothing when the customer has no PDPA consent', async () => {
-      prisma.payment.findMany.mockResolvedValue([payment()]);
+      givenPayments([payment()]);
       prisma.pDPAConsent.findFirst.mockResolvedValue(null);
 
       const result = await service.sendPaymentReminders();
@@ -148,7 +157,7 @@ describe('NotificationsService — reminder / overdue dunning', () => {
     });
 
     it('skips a payment already reminded today (dedup) without checking consent or sending', async () => {
-      prisma.payment.findMany.mockResolvedValue([payment()]);
+      givenPayments([payment()]);
       prisma.notificationLog.findFirst.mockResolvedValue({ id: 'prev-log' });
 
       const result = await service.sendPaymentReminders();
@@ -160,7 +169,7 @@ describe('NotificationsService — reminder / overdue dunning', () => {
     });
 
     it('sends a LINE flex reminder and logs SENT when the customer has lineIdFinance + consent', async () => {
-      prisma.payment.findMany.mockResolvedValue([withLine()]);
+      givenPayments([withLine()]);
 
       const result = await service.sendPaymentReminders();
 
@@ -178,7 +187,7 @@ describe('NotificationsService — reminder / overdue dunning', () => {
     });
 
     it('Task 22 I-1 (ง): คอลัมน์ lineIdFinance ค้างแต่ไม่มีแถว OTP → ไม่ส่ง LINE ไปค่านั้น', async () => {
-      prisma.payment.findMany.mockResolvedValue([withStaleColumn()]);
+      givenPayments([withStaleColumn()]);
 
       await service.sendPaymentReminders();
 
@@ -189,7 +198,7 @@ describe('NotificationsService — reminder / overdue dunning', () => {
     });
 
     it('dedup query filters by relatedId + (subject OR REMINDER category) — counts fallback paths too', async () => {
-      prisma.payment.findMany.mockResolvedValue([payment()]);
+      givenPayments([payment()]);
       await service.sendPaymentReminders();
       const where = prisma.notificationLog.findFirst.mock.calls[0][0].where;
       expect(where.relatedId).toBe('pay-1');
@@ -202,9 +211,47 @@ describe('NotificationsService — reminder / overdue dunning', () => {
       ]);
     });
 
+    describe('Task 30 รอบ 2 ข้อ 1 — T-3 เหลือการ์ดลิงก์ชำระ (A6 08:30) ใบเดียว', () => {
+      it('งวดที่ลิงก์ชำระอัตโนมัติจะส่งวันนี้ → A1 เว้นให้ (ไม่ส่ง LINE ไม่ส่ง SMS ไม่แตะ consent)', async () => {
+        givenPayments([withLine()], ['pay-1']);
+
+        const result = await service.sendPaymentReminders();
+
+        expect(spyOf('sendLineFlexMessage')).not.toHaveBeenCalled();
+        expect(spyOf('send')).not.toHaveBeenCalled();
+        expect(prisma.pDPAConsent.findFirst).not.toHaveBeenCalled();
+        expect(result.sent).toBe(0);
+        expect(result.deferredToPayLink).toBe(1);
+        // เงื่อนไขของ A6 ตัวเดียวกัน (autoPayLinkPaymentWhere) ค้นเฉพาะงวดที่ A1 เจอ — query เดียวต่อรอบ
+        const eligibility = prisma.payment.findMany.mock.calls.find(
+          ([args]: [{ select?: unknown }]) => args.select,
+        )[0];
+        expect(eligibility.where.id).toEqual({ in: ['pay-1'] });
+        expect(eligibility.where.status).toBe('PENDING');
+        expect(eligibility.where.contract.status).toEqual({ in: ['ACTIVE'] });
+      });
+
+      it('ลิงก์ชำระของงวดนี้ส่งไม่ผ่านแล้ววันนี้ (แถว FAILED) → A1 ไม่เว้นแล้ว ส่ง Flex เอง', async () => {
+        givenPayments([withLine()], ['pay-1']);
+        prisma.notificationLog.findFirst.mockImplementation(
+          ({ where }: { where: { status?: string; subject?: string } }) =>
+            Promise.resolve(
+              where.status === 'FAILED' && where.subject === 'ลิงก์ชำระอัตโนมัติ'
+                ? { id: 'a6-failed' }
+                : null,
+            ),
+        );
+
+        const result = await service.sendPaymentReminders();
+
+        expect(spyOf('sendLineFlexMessage')).toHaveBeenCalledTimes(1);
+        expect(result.sent).toBe(1);
+      });
+    });
+
     describe('Task 30 ข้อ 1 — งวดละหนึ่งข้อความต่อวัน (A1 08:00 กับบอท A8 09:00)', () => {
       it('ข้ามงวดที่บอทการเงินส่งเตือนไปแล้ววันนี้ — ไม่ส่ง LINE ไม่ส่ง SMS ไม่แตะ consent', async () => {
-        prisma.payment.findMany.mockResolvedValue([withLine(), payment({ id: 'pay-2' })]);
+        givenPayments([withLine(), payment({ id: 'pay-2' })]);
         prisma.chatAutoTrigger.findFirst.mockResolvedValue({ id: 'trig-1' });
 
         const result = await service.sendPaymentReminders();
@@ -218,7 +265,7 @@ describe('NotificationsService — reminder / overdue dunning', () => {
       });
 
       it('ค้นแถวบอทของงวดนี้ทุกชนิดเตือน (T-5/T-3/T-1/T0) เฉพาะที่ส่ง/กำลังส่ง ตั้งแต่เที่ยงคืนไทยวันนี้', async () => {
-        prisma.payment.findMany.mockResolvedValue([withLine()]);
+        givenPayments([withLine()]);
 
         await service.sendPaymentReminders();
 
@@ -244,7 +291,7 @@ describe('NotificationsService — reminder / overdue dunning', () => {
     const SUBJECT = 'แจ้งค้างชำระ';
 
     it('logs an IN_APP SKIPPED row and sends nothing when the customer has no PDPA consent', async () => {
-      prisma.payment.findMany.mockResolvedValue([payment()]);
+      givenPayments([payment()]);
       prisma.pDPAConsent.findFirst.mockResolvedValue(null);
 
       const result = await service.sendOverdueNotices();
@@ -264,7 +311,7 @@ describe('NotificationsService — reminder / overdue dunning', () => {
     });
 
     it('skips a payment already noticed today (dedup) without checking consent or sending', async () => {
-      prisma.payment.findMany.mockResolvedValue([payment()]);
+      givenPayments([payment()]);
       prisma.notificationLog.findFirst.mockResolvedValue({ id: 'prev-log' });
 
       const result = await service.sendOverdueNotices();
@@ -277,7 +324,7 @@ describe('NotificationsService — reminder / overdue dunning', () => {
 
     describe('Task 30 รอบ 2 ข้อ 3 — ทวง T+1/T+3 งวดละหนึ่งข้อความต่อวัน (A2 ตัวหลัก · บอทตัวสำรอง)', () => {
       it('ข้ามงวดที่บอทการเงินส่งทวง T+1/T+3 ไปแล้ววันนี้ — ไม่ส่ง LINE/SMS ไม่แตะ consent', async () => {
-        prisma.payment.findMany.mockResolvedValue([withLine()]);
+        givenPayments([withLine()]);
         prisma.chatAutoTrigger.findFirst.mockResolvedValue({ id: 'trig-esc' });
 
         const result = await service.sendOverdueNotices();
@@ -296,7 +343,7 @@ describe('NotificationsService — reminder / overdue dunning', () => {
       });
 
       it('กันซ้ำของ A2 เองนับทุกทาง (หัวข้อ Flex หรือหมวด DUNNING ของงวด) + แถวที่ยังรอคิวส่งซ้ำ', async () => {
-        prisma.payment.findMany.mockResolvedValue([withLine()]);
+        givenPayments([withLine()]);
 
         await service.sendOverdueNotices();
 
@@ -311,7 +358,7 @@ describe('NotificationsService — reminder / overdue dunning', () => {
     });
 
     it('sends a LINE flex overdue notice and logs SENT when the customer has lineIdFinance + consent', async () => {
-      prisma.payment.findMany.mockResolvedValue([withLine()]);
+      givenPayments([withLine()]);
 
       const result = await service.sendOverdueNotices();
 
@@ -329,7 +376,7 @@ describe('NotificationsService — reminder / overdue dunning', () => {
     });
 
     it('Task 22 I-1 (ง): คอลัมน์ lineIdFinance ค้างแต่ไม่มีแถว OTP → ไม่ส่ง LINE ไปค่านั้น', async () => {
-      prisma.payment.findMany.mockResolvedValue([withStaleColumn()]);
+      givenPayments([withStaleColumn()]);
 
       await service.sendOverdueNotices();
 
@@ -343,7 +390,7 @@ describe('NotificationsService — reminder / overdue dunning', () => {
       const lineOverdue = (contractId: string) => ({ ...withLine(), contractId });
 
       it('สัญญาในช่วงผ่อนผัน → ไม่ส่ง LINE ไม่ส่ง SMS ไม่แตะ consent · แถว BLOCKED LEGACY_LINK_GRACE', async () => {
-        prisma.payment.findMany.mockResolvedValue([lineOverdue('k-legacy')]);
+        givenPayments([lineOverdue('k-legacy')]);
         prisma.contract.findMany.mockResolvedValue([{ id: 'k-legacy' }]);
 
         const result = await service.sendOverdueNotices();
@@ -373,7 +420,7 @@ describe('NotificationsService — reminder / overdue dunning', () => {
       });
 
       it('สัญญานอกช่วง (ไม่นำเข้า / ผูกเกิน 7 วัน) → แจ้งค้างชำระตามเดิม', async () => {
-        prisma.payment.findMany.mockResolvedValue([lineOverdue('k-native')]);
+        givenPayments([lineOverdue('k-native')]);
 
         const result = await service.sendOverdueNotices();
 
@@ -386,7 +433,7 @@ describe('NotificationsService — reminder / overdue dunning', () => {
       });
 
       it('เตือนค่างวดไม่ถามช่วงผ่อนผัน (ยังส่งระหว่างผ่อนผัน)', async () => {
-        prisma.payment.findMany.mockResolvedValue([lineOverdue('k-legacy')]);
+        givenPayments([lineOverdue('k-legacy')]);
         prisma.contract.findMany.mockResolvedValue([{ id: 'k-legacy' }]);
 
         const result = await service.sendPaymentReminders();

@@ -15,6 +15,7 @@ import { HolidayService } from './holiday.service';
 import { NotificationTemplateService } from './notification-template.service';
 import { PDPAService } from '../pdpa/pdpa.service';
 import { AutoTriggerService } from '../chatbot-finance/services/auto-trigger.service';
+import { CollectionsNotifierService } from './services/collections-notifier.service';
 import {
   InstallmentFixture,
   assertTestDatabase,
@@ -36,10 +37,13 @@ const day = realBangkokDate();
 let base: FinanceFixtureBase;
 let notifications: NotificationsService;
 let bot: AutoTriggerService;
+let collections: CollectionsNotifierService;
 const pushText = jest.fn();
+/** สัญญาที่สร้างลิงก์ชำระไม่ได้ (จำลอง gateway พัง) */
+const failingPayLinkContracts = new Set<string>();
 const fixtures: InstallmentFixture[] = [];
 
-type Via = 'flex' | 'text' | 'bot';
+type Via = 'flex' | 'text' | 'bot' | 'payLink' | 'sms';
 /** ข้อความที่ถึง LINE จริง (ส่งผ่าน) — Flex ของ NotificationsService (A1/A2) · ข้อความ template/คิวส่งซ้ำ (A1/A2) · ข้อความของบอท */
 const delivered: { to: string; via: Via }[] = [];
 /** LINE ที่ตั้งให้ส่งไม่ผ่าน (จำลอง LINE API ล่ม) */
@@ -49,16 +53,26 @@ const sink = (via: Via) => async (to: string) => {
   delivered.push({ to, via });
 };
 
+/** การ์ดลิงก์ชำระอัตโนมัติ (A6) ที่ถึง LINE นี้ */
+const payLinkCards = (lineUserId: string) =>
+  delivered.filter((d) => d.to === lineUserId && d.via === 'payLink').length;
+
 function deliveredTo(lineUserId: string) {
   const count = (via: Via) => delivered.filter((d) => d.to === lineUserId && d.via === via).length;
   return { flex: count('flex'), text: count('text'), bot: count('bot') };
 }
 
-async function installment(label: string, dueInDays: number, opts: { consent?: boolean } = {}) {
+async function installment(
+  label: string,
+  dueInDays: number,
+  opts: { consent?: boolean; linked?: boolean; phone?: string } = {},
+) {
   const f = await createInstallmentFixture(prisma, base, {
     label,
     dueDate: dueDateUtc(day, dueInDays),
     consent: opts.consent,
+    linkedAt: opts.linked === false ? null : undefined,
+    phone: opts.phone,
   });
   fixtures.push(f);
   return f;
@@ -71,6 +85,10 @@ const runA1At = async (hh: number, mm = 0) => {
 const runBotAt = async (hh: number, mm = 0) => {
   jest.setSystemTime(bangkokAt(day, 0, hh, mm));
   await bot.runDailyReminders();
+};
+const runPayLinksAt = async (hh: number, mm = 0) => {
+  jest.setSystemTime(bangkokAt(day, 0, hh, mm));
+  await collections.sendAutoPaymentLinks();
 };
 const runA2At = async (hh: number, mm = 0) => {
   jest.setSystemTime(bangkokAt(day, 0, hh, mm));
@@ -121,13 +139,29 @@ beforeAll(async () => {
   );
   jest.spyOn(notifications.transport, 'sendLineFlexMessage').mockImplementation(sink('flex'));
   jest.spyOn(notifications.transport, 'sendLine').mockImplementation(sink('text'));
-  jest.spyOn(notifications.transport, 'sendSms').mockResolvedValue(undefined);
+  jest.spyOn(notifications.transport, 'sendSms').mockImplementation(async (to: string) => {
+    delivered.push({ to, via: 'sms' });
+    return 'sms-id';
+  });
   pushText.mockImplementation(sink('bot'));
+  collections = new CollectionsNotifierService(
+    prisma as never,
+    { sendFlexMessage: jest.fn(sink('payLink')) } as never,
+    new PDPAService(prisma as never),
+    notifications,
+    {
+      createPaymentLink: jest.fn(async (contractId: string) => {
+        if (failingPayLinkContracts.has(contractId)) throw new Error('gateway down');
+        return { url: 'https://pay.test/x', token: 't', amount: 1515.83, expiresAt: new Date() };
+      }),
+    } as never,
+  );
 });
 
 beforeEach(() => {
   useFakeDate(bangkokAt(day, 0, 7));
   failingLines.clear();
+  failingPayLinkContracts.clear();
 });
 
 afterEach(async () => {
@@ -138,7 +172,8 @@ afterEach(async () => {
 afterAll(async () => prisma.$disconnect());
 
 describe('Task 30 ข้อ 1 — งวดละหนึ่งข้อความต่อวัน (A1 08:00 + บอท 09:00 วันเดียวกัน)', () => {
-  it.each([3, 1, 0])(
+  // T-3 ของงวดที่ลิงก์ชำระอัตโนมัติส่ง = การ์ดลิงก์ชำระใบเดียว (รอบ 2 ข้อ 1 — describe ถัดไป)
+  it.each([1, 0])(
     'T-%i: A1 08:00 ส่ง Flex → บอท 09:00 ข้าม ไม่จองแถว (ข้อความเดียว)',
     async (dueIn) => {
       const f = await installment(`a1first-${dueIn}`, dueIn);
@@ -178,7 +213,7 @@ describe('Task 30 ข้อ 1 — งวดละหนึ่งข้อคว�
   });
 
   it('บอทส่งไม่ผ่าน (FAILED) → A1 ส่งแทนได้ → บอทรันซ้ำไม่ส่งอีก', async () => {
-    const f = await installment('botfailed', 3);
+    const f = await installment('botfailed', 1);
 
     failingLines.add(f.lineUserId);
     await runBotAt(7, 30);
@@ -197,7 +232,7 @@ describe('Task 30 ข้อ 1 — งวดละหนึ่งข้อคว�
   });
 
   it('A1 ส่งไม่ผ่านชั่วคราว → อยู่ในคิวส่งซ้ำ (A1 ยังถือการส่ง) → A1 รันซ้ำ/บอทไม่ซ้อน → คิวส่งซ้ำส่งถึง (ข้อความเดียว)', async () => {
-    const f = await installment('a1retry', 3);
+    const f = await installment('a1retry', 1);
 
     failingLines.add(f.lineUserId);
     await runA1At(8);
@@ -220,7 +255,7 @@ describe('Task 30 ข้อ 1 — งวดละหนึ่งข้อคว�
   }, 30_000);
 
   it('A1 ส่งไม่ผ่านจนหมดรอบส่งซ้ำ (FAILED) → บอทส่งแทน (ฝั่งแรกพังไม่กันฝั่งที่สอง)', async () => {
-    const f = await installment('a1exhausted', 3);
+    const f = await installment('a1exhausted', 1);
 
     failingLines.add(f.lineUserId);
     await runA1At(8, 30);
@@ -253,7 +288,7 @@ describe('Task 30 ข้อ 1 — งวดละหนึ่งข้อคว�
   });
 
   it('ไม่มี consent PDPA → A1 ข้าม (แถว SKIPPED) → บอทส่ง — พฤติกรรมเดิมของบอท (ด่าน consent ของบอทรองาน "ยินยอมตอนผูก")', async () => {
-    const f = await installment('noconsent', 3, { consent: false });
+    const f = await installment('noconsent', 1, { consent: false });
 
     await runA1At(8);
     await runBotAt(9);
@@ -347,5 +382,85 @@ describe('Task 30 รอบ 2 ข้อ 3 — ทวง T+1/T+3 งวดละ�
     await runBotEscalationsAt(10);
 
     expect(deliveredTo(f.lineUserId)).toEqual({ flex: 1, text: 0, bot: 0 });
+  });
+});
+
+describe('Task 30 รอบ 2 ข้อ 1 — T-3 เหลือการ์ดลิงก์ชำระ (A6 08:30) ใบเดียว', () => {
+  it('A1 08:00 เว้นให้ → A6 08:30 ส่งการ์ด → บอท 09:00 ข้าม (ข้อความเดียว = การ์ดลิงก์ชำระ)', async () => {
+    const f = await installment('paylink', 3);
+
+    const a1 = await runA1At(8);
+    await runPayLinksAt(8, 30);
+    await runBotAt(9);
+    await runA1At(11); // สั่งรันซ้ำ
+
+    expect(a1.deferredToPayLink).toBeGreaterThanOrEqual(1);
+    expect(payLinkCards(f.lineUserId)).toBe(1);
+    expect(deliveredTo(f.lineUserId)).toEqual({ flex: 0, text: 0, bot: 0 });
+    expect(await prisma.chatAutoTrigger.count({ where: { customerId: f.customerId } })).toBe(0);
+  });
+
+  it('สั่งรันลิงก์ชำระซ้ำในวันเดียว → การ์ดใบเดียว (ไม่สร้างลิงก์ใหม่)', async () => {
+    const f = await installment('paylink-rerun', 3);
+
+    await runPayLinksAt(8, 30);
+    await runPayLinksAt(12);
+
+    expect(payLinkCards(f.lineUserId)).toBe(1);
+  });
+
+  it('A6 สร้างลิงก์ไม่ได้ (แถว FAILED) → บอท 09:00 ส่งเตือนแทน → A1 สั่งรันซ้ำไม่ส่งอีก (ข้อความเดียว)', async () => {
+    const f = await installment('paylink-failed', 3);
+    failingPayLinkContracts.add(f.contractId);
+
+    await runA1At(8);
+    await runPayLinksAt(8, 30);
+    expect(
+      await prisma.notificationLog.findFirstOrThrow({
+        where: { relatedId: f.paymentId, subject: 'ลิงก์ชำระอัตโนมัติ' },
+        select: { status: true },
+      }),
+    ).toEqual({ status: 'FAILED' });
+    await runBotAt(9);
+    await runA1At(11);
+
+    expect(payLinkCards(f.lineUserId)).toBe(0);
+    expect(deliveredTo(f.lineUserId)).toEqual({ flex: 0, text: 0, bot: 1 });
+  });
+
+  it('A6 ส่งไม่ผ่าน + บอทส่งไม่ผ่าน → A1 ที่สั่งรันซ้ำเลิกเว้นให้ ส่ง Flex เอง (ข้อความเดียว)', async () => {
+    const f = await installment('paylink-all-failed', 3);
+
+    await runA1At(8);
+    failingLines.add(f.lineUserId);
+    await runPayLinksAt(8, 30);
+    await runBotAt(9);
+    failingLines.clear();
+    await runA1At(11);
+    await runBotAt(12);
+
+    expect(payLinkCards(f.lineUserId)).toBe(0);
+    expect(deliveredTo(f.lineUserId)).toEqual({ flex: 1, text: 0, bot: 0 });
+  });
+
+  it('สั่งรันบอทก่อน (07:30) → A1 ข้าม → A6 ไม่ส่งการ์ดซ้ำ (ข้อความเดียว = ของบอท)', async () => {
+    const f = await installment('paylink-botfirst', 3);
+
+    await runBotAt(7, 30);
+    await runA1At(8);
+    await runPayLinksAt(8, 30);
+
+    expect(payLinkCards(f.lineUserId)).toBe(0);
+    expect(deliveredTo(f.lineUserId)).toEqual({ flex: 0, text: 0, bot: 1 });
+  });
+
+  it('ลูกค้าไม่ผูก LINE (ลิงก์ชำระไม่ส่ง) → A1 ไม่เว้น ส่ง SMS ตามเดิม', async () => {
+    const phone = `08${String(Date.now()).slice(-8)}`;
+    await installment('paylink-unlinked', 3, { linked: false, phone });
+
+    await runA1At(8);
+    await runPayLinksAt(8, 30);
+
+    expect(delivered.filter((d) => d.to === phone && d.via === 'sms')).toHaveLength(1);
   });
 });

@@ -71,12 +71,15 @@ function mount(session: Record<string, unknown>) {
   );
 }
 
-describe('ChatPanel — สถานะ LINE การเงินของห้อง (Task 33 A2/A3)', () => {
-  it('A2 — หัวห้องมีป้าย "ยกเลิกผูกแล้ว" + คำอธิบายหนึ่งบรรทัดที่บอกชื่อลูกค้าและวันที่ยกเลิก', () => {
-    mount(unlinkedRoom);
-    const header = screen.getByRole('heading', { name: 'สมชาย ใจดี' }).parentElement!
-      .parentElement!;
-    expect(within(header).getByText('ยกเลิกผูกแล้ว')).toBeInTheDocument();
+/** หัวห้องจอใหญ่ (`inbox-chat-header`) และหัวห้องมือถือ (`inbox-mobile-room-header` — ซ่อนด้วย CSS ตามจอ จึงอยู่ใน DOM ทั้งคู่) */
+const desktopHeader = (c: HTMLElement) => c.querySelector<HTMLElement>('.inbox-chat-header')!;
+const mobileHeader = (c: HTMLElement) => c.querySelector<HTMLElement>('.inbox-mobile-room-header')!;
+
+describe('ChatPanel — สถานะ LINE การเงินของห้อง (Task 33 A2/A3 + fix round 1 A4)', () => {
+  it('A2 — หัวห้อง (จอใหญ่ + มือถือ) มีป้าย "ยกเลิกผูกแล้ว" + คำอธิบายหนึ่งบรรทัดที่บอกชื่อลูกค้าและวันที่ยกเลิก', () => {
+    const { container } = mount(unlinkedRoom);
+    expect(within(desktopHeader(container)).getByText('ยกเลิกผูกแล้ว')).toBeInTheDocument();
+    expect(within(mobileHeader(container)).getByText('ยกเลิกผูกแล้ว')).toBeInTheDocument();
     expect(
       screen.getByText(/LINE นี้ยกเลิกผูกกับ สมชาย ใจดี แล้วเมื่อ 30\/10\/2569/),
     ).toBeInTheDocument();
@@ -103,20 +106,45 @@ describe('ChatPanel — สถานะ LINE การเงินของห�
     expect(screen.queryByText(/ห้องนี้ยังไม่ยืนยันตัวตน/)).toBeNull();
   });
 
-  it('A3 — ห้องที่ LINE ยืนยันแล้ว: "ยืนยัน OTP แล้ว" ที่หัวห้อง · ไม่มีป้าย/คำเตือนของ A2', () => {
-    mount({ ...unlinkedRoom, financeLineStatus: { verified: true, unlinkedAt: null } });
-    expect(screen.getByText('ยืนยัน OTP แล้ว')).toBeInTheDocument();
+  it('A3 — ห้องที่ LINE ยืนยันแล้ว: "ยืนยัน OTP แล้ว" ที่หัวห้องทั้งจอใหญ่และมือถือ · ไม่มีป้าย/คำเตือน', () => {
+    const { container } = mount({
+      ...unlinkedRoom,
+      financeLineStatus: { verified: true, unlinkedAt: null },
+    });
+    expect(within(desktopHeader(container)).getByText('ยืนยัน OTP แล้ว')).toBeInTheDocument();
+    expect(within(mobileHeader(container)).getByText('ยืนยัน OTP แล้ว')).toBeInTheDocument();
     expect(screen.queryByText('ยกเลิกผูกแล้ว')).toBeNull();
+    expect(screen.queryByText('ยังไม่ยืนยันตัวตน')).toBeNull();
     expect(screen.queryByText(/ห้องนี้ยังไม่ยืนยันตัวตน/)).toBeNull();
     expect(
       screen.getByRole('textbox', { name: 'พิมพ์ข้อความ' }).getAttribute('aria-describedby'),
     ).toBeNull();
   });
 
-  it('ห้องที่ไม่เคยผูก LINE นี้ (ไม่อยู่ใน mockup) → หน้าตาเดิม ไม่มีป้ายใด ๆ', () => {
-    mount({ ...unlinkedRoom, financeLineStatus: { verified: false, unlinkedAt: null } });
+  it('A4 — ห้องที่พนักงานผูกเองแต่ LINE ไม่เคยยืนยัน: ป้าย "ยังไม่ยืนยันตัวตน" (จอใหญ่ + มือถือ) + คำอธิบาย + บรรทัดเตือนชุดเดิม', () => {
+    const { container } = mount({
+      ...unlinkedRoom,
+      financeLineStatus: { verified: false, unlinkedAt: null },
+    });
+    expect(within(desktopHeader(container)).getByText('ยังไม่ยืนยันตัวตน')).toBeInTheDocument();
+    expect(within(mobileHeader(container)).getByText('ยังไม่ยืนยันตัวตน')).toBeInTheDocument();
+    expect(screen.queryByText('ยกเลิกผูกแล้ว')).toBeNull();
+    expect(
+      screen.getByText(
+        /ห้องนี้ผูกกับ สมชาย ใจดี โดยพนักงาน แต่ LINE นี้ยังไม่เคยยืนยันตัวตนด้วยรหัส OTP/,
+      ),
+    ).toBeInTheDocument();
+    const input = screen.getByRole('textbox', { name: 'พิมพ์ข้อความ' });
+    const caution = screen.getByText(/ห้องนี้ยังไม่ยืนยันตัวตน/).closest('[role="note"]')!;
+    expect(input.getAttribute('aria-describedby')).toContain(caution.id);
+    expect(screen.getByRole('button', { name: 'แทรกข้อความแนะนำ' })).toBeInTheDocument();
+  });
+
+  it('ห้องช่องอื่น / ไม่มีลูกค้าจริง (financeLineStatus = null) → ไม่มีป้ายใด ๆ', () => {
+    mount({ ...unlinkedRoom, financeLineStatus: null });
     expect(screen.queryByText('ยกเลิกผูกแล้ว')).toBeNull();
     expect(screen.queryByText('ยืนยัน OTP แล้ว')).toBeNull();
+    expect(screen.queryByText('ยังไม่ยืนยันตัวตน')).toBeNull();
     expect(screen.queryByText(/ห้องนี้ยังไม่ยืนยันตัวตน/)).toBeNull();
   });
 });

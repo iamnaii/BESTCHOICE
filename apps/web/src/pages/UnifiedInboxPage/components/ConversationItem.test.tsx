@@ -100,12 +100,27 @@ describe('ConversationItem — ป้าย "ยกเลิกผูกแล�
     expect(screen.getByText('ยกเลิกผูกแล้ว')).toBeInTheDocument();
   });
 
+  it('fix round 1 A4 — ห้องที่พนักงานผูกเองแต่ LINE ไม่เคยยืนยัน → ป้ายแรก "ยังไม่ยืนยันตัวตน" (ไอคอน + คำ ไม่ตัดบรรทัด)', () => {
+    renderRow(
+      room({
+        channel: 'LINE_FINANCE',
+        financeLineStatus: { verified: false, unlinkedAt: null },
+        waitingSince: ago(12 * 60_000),
+      }),
+    );
+    const badge = screen.getByText('ยังไม่ยืนยันตัวตน');
+    expect(badge.className).toMatch(/whitespace-nowrap/);
+    expect(badge.querySelector('svg')).not.toBeNull();
+    expect(badge.parentElement!.children[0]).toBe(badge);
+    expect(screen.queryByText('ยกเลิกผูกแล้ว')).toBeNull();
+  });
+
   it.each([
     ['ยืนยัน OTP แล้ว', { verified: true, unlinkedAt: null }],
-    ['ไม่เคยผูก LINE นี้ (ไม่อยู่ใน mockup — คงหน้าตาเดิม)', { verified: false, unlinkedAt: null }],
-    ['ช่องอื่น', null],
-  ])('%s → ไม่มีป้าย "ยกเลิกผูกแล้ว"', (_label, financeLineStatus) => {
+    ['ช่องอื่น / ไม่มีลูกค้าจริง', null],
+  ])('%s → ไม่มีป้ายสถานะ LINE ในแถว', (_label, financeLineStatus) => {
     renderRow(room({ channel: 'LINE_FINANCE', financeLineStatus }));
     expect(screen.queryByText('ยกเลิกผูกแล้ว')).toBeNull();
+    expect(screen.queryByText('ยังไม่ยืนยันตัวตน')).toBeNull();
   });
 });

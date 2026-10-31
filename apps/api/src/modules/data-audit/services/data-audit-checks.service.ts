@@ -20,11 +20,7 @@ import {
 import { loadLateFeePaidByPaymentIds } from '../../payments/services/payment-late-fee-paid.util';
 import { AuditCheckResult } from '../data-audit.types';
 import { LEGACY_UNTOUCHED_PAYMENT } from './legacy-untouched-payment';
-import {
-  EARLY_PAYOFF_CONTRACTS,
-  EARLY_PAYOFF_FLOW,
-  SCHEDULE_ROWS_CLEARED_BY_ENTRY,
-} from './payment-backing';
+import { PAID_BY_EARLY_PAYOFF, SCHEDULE_ROWS_CLEARED_BY_ENTRY } from './payment-backing';
 
 /** รายการเปิดสัญญา 1A — `cpa-templates/contract-activation-1a.template.ts:71` */
 const CONTRACT_ACTIVATION_TAG = '1A';
@@ -163,7 +159,7 @@ const stampAmount = (raw: string | null): Prisma.Decimal => {
  * - `orphan_contracts` — เดิมหา `reference_type = 'CONTRACT'` ซึ่งไม่มีโค้ดใดเขียน (รายการอัตโนมัติทุกตัวเป็น `'AUTO'`) ⇒ หา 1A /
  *   เปิดสัญญาเปลี่ยนเครื่อง / รายการยกมาของสัญญานำเข้า ด้วย `metadata.contractId` · สัญญาประวัติที่นำเข้า (ไม่มีตารางงวด) ไม่ต้องมี
  * - `orphan_payments` — เพิ่มทางหนุนที่ไม่มี `paymentId`: รายการล้าง 11-2103 ของงวด (`installmentScheduleId` — ยกเว้น marker
- *   ยอดรับก่อนวันตัด) และ JP4 ของสัญญา ·
+ *   ยอดรับก่อนวันตัด) และ JP4 ของสัญญา (เฉพาะงวดที่ JP4 จ่าย — Task 25 · r-1) ·
  *   งวดนำเข้าที่ยังไม่มีเส้นทางรับเงินแตะ (`LEGACY_UNTOUCHED_PAYMENT`) ไม่ต้องมีรายการบัญชี
  * - `overpaid_contracts` — เดิมเทียบ Σ `amountPaid` (รวมค่าปรับ) กับหัวสัญญา (ราคา − ดาวน์ … ซึ่งไม่เท่ายอดผ่อนของสัญญานำเข้า) ⇒
  *   เทียบต่อแถวงวด: `amountPaid − ค่าปรับที่รับจริง` ≤ `amountDue + 1.00`
@@ -263,9 +259,11 @@ export class DataAuditChecksService {
    *   (a) a receipt-style entry keyed by the payment (`referenceId` or `metadata.paymentId`), or
    *   (b) an entry that credits 11-2103 for the installment's schedule row without a paymentId
    *       (nightly advance / park consumption, 6a/6b) — not the legacy prior-receipt marker, or
-   *   (c) the contract's early payoff (JP4 is one contract-level entry for every row it pays).
-   * (b) and (c) are `payment-backing.ts` — the same sets `backfill:receipts` uses to skip rows whose
-   * money is documented elsewhere. Imported rows still untouched since the cutover (`LEGACY_UNTOUCHED_PAYMENT`) are exempt — their
+   *   (c) the contract's early payoff — on the rows that JP4 paid only (`PAID_BY_EARLY_PAYOFF`: paid on the
+   *       JP4's date and inside the range of installments it closed); a row PAID before the payoff needs
+   *       its own backing (Task 25 · Task 23 re-review r-1 — (c) used to back every row of the contract).
+   * (b) and (c) are `payment-backing.ts` — the same rules `backfill:receipts` uses to skip rows whose
+   * money is documented elsewhere (and (c) is the JP4 late-fee allowance of `overpaid_contracts`). Imported rows still untouched since the cutover (`LEGACY_UNTOUCHED_PAYMENT`) are exempt — their
    * money was booked in PEAK. Set-based (anti-joins) so the nightly run does not rescan the journal
    * per payment row. `details` capped at 50 (`orphanPaymentRows` — the contract trace reads every row).
    */
@@ -303,8 +301,7 @@ export class DataAuditChecksService {
           AND je.metadata->>'paymentId' IS NOT NULL
       ),
       -- (b) / (c): payment-backing.ts — shared with backfill:receipts (one definition)
-      backed_schedule AS (${SCHEDULE_ROWS_CLEARED_BY_ENTRY}),
-      early_payoff_contract AS (${EARLY_PAYOFF_CONTRACTS})
+      backed_schedule AS (${SCHEDULE_ROWS_CLEARED_BY_ENTRY})
       SELECT p.id, p.installment_no, p.amount_paid, p.status, p.paid_date,
              c.contract_number
       FROM payments p
@@ -317,7 +314,7 @@ export class DataAuditChecksService {
         ${contractScopeFilter('p.contract_id', scope)}
         AND NOT EXISTS (SELECT 1 FROM backed_payment b WHERE b.id = p.id)
         AND NOT EXISTS (SELECT 1 FROM backed_schedule b WHERE b.id = s.id)
-        AND NOT EXISTS (SELECT 1 FROM early_payoff_contract b WHERE b.id = p.contract_id)
+        AND NOT ${PAID_BY_EARLY_PAYOFF}
         AND NOT ${LEGACY_UNTOUCHED_PAYMENT}
       ORDER BY p.paid_date DESC
       ${limitClause(limit)}
@@ -329,7 +326,8 @@ export class DataAuditChecksService {
    * actually received (it rides in `amountPaid`; read from the ledger with the same reader the
    * receipt paths use) must not exceed `amountDue` by more than the ≤1 THB closing tolerance.
    * On a row JP4 paid the row's charged late fee counts as received (JP4 books the fee on its
-   * contract-level entry) — only that row: a row already PAID before the payoff gets no allowance.
+   * contract-level entry) — only that row (`PAID_BY_EARLY_PAYOFF` — path (c) of `orphan_payments`): a row
+   * already PAID before the payoff gets no allowance.
    * Reported per contract. Imported rows untouched since the cutover are exempt (closed legacy data).
    */
   async checkOverpaidContracts(scope?: ContractScope): Promise<AuditCheckResult> {
@@ -348,22 +346,8 @@ export class DataAuditChecksService {
     >`
       SELECT p.id AS payment_id, c.id AS contract_id, c.contract_number, p.installment_no,
              p.amount_due, p.amount_paid, p.late_fee, p.late_fee_waived,
-             -- Rows this JP4 paid: ContractPaymentService.earlyPayoff stamps Payment.paidDate and the JP4
-             -- postedAt from one paidDate value (both timestamp(3)), but receipts entered the same day carry
-             -- the same UTC-midnight date, so the stamped range of the rows it closed (unpaid at payoff,
-             -- ascending) must hold too. JP4 entries without the range (before 2026-10-18) fall back to the date.
-             EXISTS (
-               SELECT 1 FROM journal_entries je
-               WHERE je.metadata->>'contractId' = p.contract_id
-                 AND je.metadata->>'flow' = ${EARLY_PAYOFF_FLOW}
-                 AND je.status = 'POSTED' AND je.deleted_at IS NULL
-                 AND je.posted_at = p.paid_date
-                 AND (
-                   je.metadata->>'firstUnpaidInstallmentNo' IS NULL
-                   OR p.installment_no BETWEEN (je.metadata->>'firstUnpaidInstallmentNo')::int
-                                           AND (je.metadata->>'lastUnpaidInstallmentNo')::int
-                 )
-             ) AS early_payoff
+             -- rows this JP4 paid — path (c) of orphan_payments (payment-backing.ts · one definition)
+             ${PAID_BY_EARLY_PAYOFF} AS early_payoff
       FROM payments p
       JOIN contracts c ON c.id = p.contract_id
       WHERE p.deleted_at IS NULL

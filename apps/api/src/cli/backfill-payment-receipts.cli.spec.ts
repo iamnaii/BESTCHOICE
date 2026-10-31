@@ -1,4 +1,5 @@
 import type { PrismaService } from '../prisma/prisma.service';
+import { PAID_BY_EARLY_PAYOFF } from '../modules/data-audit/services/payment-backing';
 import type { ReceiptIssuanceService } from '../modules/receipts/services/receipt-issuance.service';
 import {
   backfillPaymentReceipts,
@@ -66,21 +67,14 @@ describe('backfill-payment-receipts CLI', () => {
     );
   });
 
-  it('Task 23 review m-1 — candidate query skips rows whose money is documented elsewhere: paths (b) schedule clearing and (c) early payoff of orphan_payments (shared sets)', async () => {
+  it('Task 23 review m-1 · Task 25 r-1 — candidate query skips rows whose money is documented elsewhere: paths (b) schedule clearing and (c) rows the early payoff paid, of orphan_payments (shared rules)', async () => {
     await findPaidPaymentsWithoutReceipt(prisma);
     const sql = sqlOf(0);
     expect(sql).toContain('AND NOT EXISTS (SELECT 1 FROM cleared_schedule b WHERE b.id = s.id)');
-    expect(sql).toContain(
-      'AND NOT EXISTS (SELECT 1 FROM paid_off_contract b WHERE b.id = p.contract_id)',
-    );
     expect(sql).toContain("je.metadata->>'installmentScheduleId'"); // SCHEDULE_ROWS_CLEARED_BY_ENTRY
-    expect(queryRaw.mock.calls[0]).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          values: expect.arrayContaining(['early-payoff']), // EARLY_PAYOFF_CONTRACTS
-        }),
-      ]),
-    );
+    // (c) per row — not every row of a paid-off contract (a row PAID before the payoff stays a candidate)
+    expect(sql).not.toContain('paid_off_contract');
+    expect(queryRaw.mock.calls[0]).toContain(PAID_BY_EARLY_PAYOFF);
   });
 
   it('Task 23 — bound re-issue list = the same population WITH a live bound receipt entry (imported rows included — they re-issue bound too)', async () => {

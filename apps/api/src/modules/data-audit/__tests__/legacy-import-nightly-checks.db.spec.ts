@@ -1516,6 +1516,7 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
 
   describe('early payoff (JP4) of a native contract — calendar anchored to today', () => {
     let a3 = '';
+    let a7 = '';
 
     beforeAll(async () => {
       const { year: Y, month: M } = bangkokCalendarParts(new Date());
@@ -1528,6 +1529,23 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
       await nightly2A(a3, 5);
       await pay(a3, 4, await owedOn(a3, 4), due(5));
       await pay(a3, 5, MONTHLY, due(5));
+      // A7 (Task 25 · r-1): ปฏิทินเดียวกับ A3 · งวด 5 ถูกตั้ง PAID ตรงในฐานก่อนปิดยอด — ไม่มีรายการรับชำระและไม่มีใบเสร็จ (รูปแถวของ
+      // seed "data-only" / ยุคก่อนมีใบเสร็จอัตโนมัติ แบบ C7) แล้วจึงปิดยอดก่อนกำหนด (ในเทสต์)
+      a7 = await createNative('A7', ymd(Y, M - 6, 1), 1);
+      native.set('A7', a7);
+      await runNativeToCutoff(a7, due);
+      await nightly2A(a7, 5);
+      await pay(a7, 4, await owedOn(a7, 4), due(5));
+      await prisma.payment.update({
+        where: { id: (await paymentOf(a7, 5)).id },
+        data: {
+          amountPaid: D(MONTHLY),
+          status: 'PAID',
+          paidDate: due(5),
+          paymentMethod: 'CASH',
+          recordedById: userId,
+        },
+      });
     }, LONG);
 
     it(
@@ -1615,6 +1633,57 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
         });
         await prisma.payment.update({ where: { id: row5.id }, data: { paidDate: row5.paidDate } });
         expect((await run('overpaid', [a3])).details).toEqual(caught);
+      },
+      LONG,
+    );
+
+    it(
+      'Task 25 (r-1) — JP4 backs only the rows it settled: a row PAID before the payoff with no entry stays an orphan and a backfill:receipts candidate',
+      async () => {
+        await earlyPayoffApproved(prisma, contractPayments, a7, userId, {
+          paymentMethod: 'BANK_TRANSFER',
+          discountPct: 50,
+          depositAccountCode: '11-1201',
+        });
+        const [entry] = await prisma.journalEntry.findMany({
+          where: {
+            AND: [
+              { metadata: { path: ['contractId'], equals: a7 } },
+              { metadata: { path: ['flow'], equals: 'early-payoff' } },
+            ],
+          },
+          select: { id: true, postedAt: true, metadata: true },
+        });
+        const { firstUnpaidInstallmentNo, lastUnpaidInstallmentNo, ...withoutRange } =
+          entry.metadata as Record<string, unknown>;
+        expect([firstUnpaidInstallmentNo, lastUnpaidInstallmentNo]).toEqual([6, 12]);
+        const row5 = await paymentOf(a7, 5);
+        expect([row5.status, row5.paidDate?.getTime() === entry.postedAt?.getTime()]).toEqual([
+          'PAID',
+          false,
+        ]);
+        expect(
+          (await prisma.payment.findMany({ where: { contractId: a7 } })).every(
+            (p) => p.status === 'PAID',
+          ),
+        ).toBe(true);
+
+        // ทาง (c) ตัดสินต่อแถวที่ JP4 จ่าย (วันที่ = วันของ JP4 · งวดอยู่ในช่วงที่ JP4 stamp — ตัวเดียวกับส่วนเผื่อค่าปรับของ
+        // overpaid_contracts) ⇒ งวด 6–12 หนุนด้วย JP4 · งวด 5 (PAID ก่อนปิดยอด ไม่มีรายการ) ไม่อยู่ใต้ JP4 — เดิมทั้งสัญญาถือว่าหนุน
+        // ⇒ orphan_payments (CRITICAL) และ backfill:receipts ข้ามเงียบ
+        expect(await orphanRowsOf(a7)).toEqual([5]);
+        expect(await backfillListsOf([a7])).toEqual({
+          cli: [`TEST-T16N-${stamp}-A7#5`],
+          bound: [],
+        });
+
+        // รายการ JP4 ก่อน 2026-10-18 (ไม่มีช่วงงวด) — วันที่เป็นตัวแยก: งวด 6–12 ยังหนุนด้วย JP4 · งวด 5 (วันอื่น) ยังติด
+        await prisma.journalEntry.update({
+          where: { id: entry.id },
+          data: { metadata: withoutRange as Prisma.InputJsonObject },
+        });
+        expect(await orphanRowsOf(a7)).toEqual([5]);
+        expect((await backfillListsOf([a7])).cli).toEqual([`TEST-T16N-${stamp}-A7#5`]);
       },
       LONG,
     );

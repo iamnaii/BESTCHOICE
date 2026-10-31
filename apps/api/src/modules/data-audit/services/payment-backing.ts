@@ -4,10 +4,11 @@ import { LEGACY_PRIOR_RECEIPT_FLOW } from '../../accounting/peak-export-exclusio
 /**
  * ทางที่เงินของแถวงวดถูกลงบัญชี**โดยไม่มีรายการผูก `paymentId`** — ทาง (b) และ (c) ของ `orphan_payments`
  * (`DataAuditChecksService.orphanPaymentRows`) · ไฟล์เดียวของสองเงื่อนไขนี้: `backfill:receipts` (`cli/backfill-payment-receipts.cli.ts`) ใช้ชุด
- * เดียวกันตัดงวดที่เอกสารของเงินอยู่ที่อื่นแล้ว (Task 23 review m-1) — **ห้ามเขียนเงื่อนไขชุดที่สอง**
+ * เดียวกันตัดงวดที่เอกสารของเงินอยู่ที่อื่นแล้ว (Task 23 review m-1) และ `overpaid_contracts` ใช้ (c) ให้ส่วนเผื่อค่าปรับของ JP4
+ * (Task 17 ข้อ B) — **ห้ามเขียนเงื่อนไขชุดที่สอง**
  *
- * ทั้งสองเป็นตัวกำหนดเซต (`SELECT … AS id`) สำหรับวางเป็น CTE แล้ว anti-join (`NOT EXISTS (SELECT 1 FROM <cte> b WHERE b.id = …)`) —
- * คิวรีเดียวต่อรอบ ไม่สแกนสมุดบัญชีซ้ำต่อแถวงวด
+ * (b) เป็นตัวกำหนดเซต (`SELECT … AS id`) สำหรับวางเป็น CTE แล้ว anti-join (`NOT EXISTS (SELECT 1 FROM <cte> b WHERE b.id = …)`) ·
+ * (c) เป็นเงื่อนไขต่อแถว Payment (`EXISTS` แบบ correlated — Postgres ทำเป็น semi/anti-join) — คิวรีเดียวต่อรอบ ไม่สแกนสมุดบัญชีซ้ำต่อแถวงวด
  */
 
 /** ปิดยอดก่อนกำหนด JP4 (รายการระดับสัญญา ไม่มี `paymentId`) — `contracts/contract-payment.service.ts:842-843` */
@@ -32,10 +33,26 @@ export const SCHEDULE_ROWS_CLEARED_BY_ENTRY = Prisma.sql`
           AND COALESCE(je.metadata->>'flow', '') <> ${LEGACY_PRIOR_RECEIPT_FLOW}`;
 
 /**
- * (c) id ของสัญญาที่มีรายการปิดยอดก่อนกำหนด JP4 — รายการเดียวระดับสัญญาครอบทุกแถวที่มันจ่าย (ใบ `EARLY_PAYOFF` ก็ไม่ผูก `paymentId`)
- * ⇒ anti-join กับ `p.contract_id`
+ * (c) แถว Payment (alias **`p`**) ที่รายการปิดยอดก่อนกำหนด JP4 ของสัญญา**เป็นผู้จ่าย** — รายการเดียวระดับสัญญาไม่มี `paymentId` (ใบ
+ * `EARLY_PAYOFF` ก็ไม่ผูก `paymentId`) จึงตัดสินจากสองข้อ (Task 17 ข้อ B):
+ * - `je.posted_at = p.paid_date` — `ContractPaymentService.earlyPayoff` เขียน `Payment.paidDate` และ `postedAt` ของ JP4 จากตัวแปร `paidDate`
+ *   ตัวเดียว (คอลัมน์ทั้งสอง `timestamp(3)`)
+ * - งวดอยู่ในช่วง `firstUnpaidInstallmentNo..lastUnpaidInstallmentNo` ที่ JP4 stamp (งวดที่ไม่ใช่ `PAID` ตอนปิดยอด เรียงจากน้อยไปมาก) — ใบรับชำระ
+ *   ที่ลงวันเดียวกับวันปิดยอดได้เวลาเที่ยงคืน UTC เท่ากัน (หน้ารับชำระ / หน้าปิดยอดส่ง `YYYY-MM-DD`) วันที่อย่างเดียวจึงแยกไม่ได้ ·
+ *   รายการ JP4 ที่ไม่มีช่วง (ก่อน 2026-10-18) ใช้วันที่อย่างเดียว
+ *
+ * ⇒ งวดที่**จ่ายก่อนปิดยอด**ไม่ได้หนุนด้วย JP4 (Task 25 · Task 23 re-review r-1 — เดิม (c) ตัดสินทั้งสัญญา: ทุกงวด PAID ของสัญญาที่มี JP4
+ * ถือว่าหนุน รวมงวดที่จ่ายก่อนปิดยอดโดยไม่มีรายการเลย ⇒ `orphan_payments` และ `backfill:receipts` ข้ามเงียบ)
  */
-export const EARLY_PAYOFF_CONTRACTS = Prisma.sql`
-        SELECT DISTINCT je.metadata->>'contractId' AS id FROM journal_entries je
-        WHERE je.status = 'POSTED' AND je.deleted_at IS NULL
-          AND je.metadata->>'flow' = ${EARLY_PAYOFF_FLOW}`;
+export const PAID_BY_EARLY_PAYOFF = Prisma.sql`EXISTS (
+               SELECT 1 FROM journal_entries je
+               WHERE je.metadata->>'contractId' = p.contract_id
+                 AND je.metadata->>'flow' = ${EARLY_PAYOFF_FLOW}
+                 AND je.status = 'POSTED' AND je.deleted_at IS NULL
+                 AND je.posted_at = p.paid_date
+                 AND (
+                   je.metadata->>'firstUnpaidInstallmentNo' IS NULL
+                   OR p.installment_no BETWEEN (je.metadata->>'firstUnpaidInstallmentNo')::int
+                                           AND (je.metadata->>'lastUnpaidInstallmentNo')::int
+                 )
+             )`;

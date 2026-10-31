@@ -8,6 +8,7 @@ import { DataAuditChecksService } from './services/data-audit-checks.service';
 import { ContractTraceService } from './services/contract-trace.service';
 import { AuditFindingsService } from './services/audit-findings.service';
 import { AuditBackfillService } from './services/audit-backfill.service';
+import { PAID_BY_EARLY_PAYOFF } from './services/payment-backing';
 
 /**
  * DataAuditService tests — validates all 12 database health checks
@@ -169,6 +170,22 @@ describe('DataAuditService', () => {
       expect(traceCall).toEqual(
         expect.arrayContaining([expect.objectContaining({ values: ['c-1'] })]),
       );
+    });
+
+    it('Task 25 (r-1) — path (c) backs only the rows the JP4 paid (its date + its stamped range), with the same fragment as the overpaid JP4 allowance', async () => {
+      await service.checkOrphanPayments();
+      await service.checkOverpaidContracts();
+      const [orphanCall, overpaidCall] = prisma.$queryRaw.mock.calls;
+      const orphanSql = JSON.stringify(orphanCall);
+      expect(orphanSql).toContain('je.posted_at = p.paid_date');
+      expect(orphanSql).toContain(
+        "p.installment_no BETWEEN (je.metadata->>'firstUnpaidInstallmentNo')::int",
+      );
+      expect(orphanSql).not.toContain('early_payoff_contract'); // no contract-level set any more
+      // one definition — both checks embed the very same SQL fragment
+      expect(orphanCall).toContain(PAID_BY_EARLY_PAYOFF);
+      expect(overpaidCall).toContain(PAID_BY_EARLY_PAYOFF);
+      expect(PAID_BY_EARLY_PAYOFF.values).toEqual(['early-payoff']);
     });
   });
 

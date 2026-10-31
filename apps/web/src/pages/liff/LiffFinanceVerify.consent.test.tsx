@@ -5,7 +5,7 @@ import LiffFinanceVerify from './LiffFinanceVerify';
 
 /**
  * Task 33 (mockup C1–C3 "ยินยอมตอนผูก" ที่เจ้าของอนุมัติ — แบบบังคับ) — ถ้อยคำตาม `C1Phone/C2Otp/C2bOtpWrong/C3Success.dc.html`:
- * C1 ติ๊กยินยอม (จำเป็น) ไม่ติ๊ก = ปุ่ม "ส่งรหัส OTP" disabled จริง + เหตุผลใต้ปุ่ม · C2 ความยินยอมติดไปกับขั้น OTP (กด "เปลี่ยนเบอร์" ติ๊กยังอยู่) ·
+ * C1 ติ๊กยินยอม (จำเป็น) ไม่ติ๊ก = ปุ่ม "ส่งรหัส OTP" disabled จริง + เหตุผลเหนือปุ่ม (ตาม mockup C1) · C2 ความยินยอมติดไปกับขั้น OTP (กด "เปลี่ยนเบอร์" ติ๊กยังอยู่) ·
  * verify-otp ส่ง `consent: true` · C2b รหัสผิดแปลงข้อความ API "OTP ไม่ถูกต้อง (เหลือ N ครั้ง)" (N จากระบบจริง) · C3 วันที่บันทึกความยินยอมจาก API
  */
 const { get, post } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
@@ -73,7 +73,7 @@ describe('C1 — ขั้นที่ 1 จาก 2: กรอกเบอร�
     expect(link).toHaveAttribute('target', '_blank');
   });
 
-  it('ไม่ติ๊ก → ปุ่ม "ส่งรหัส OTP" disabled จริง (แม้กรอกเบอร์ครบ) + เหตุผลใต้ปุ่ม · ไม่ยิง API', async () => {
+  it('ไม่ติ๊ก → ปุ่ม "ส่งรหัส OTP" disabled จริง (แม้กรอกเบอร์ครบ) + เหตุผลเหนือปุ่ม (ตาม mockup C1) · ไม่ยิง API', async () => {
     await fillPhone();
     const button = screen.getByRole('button', { name: 'ส่งรหัส OTP' });
     expect(button).toBeDisabled();
@@ -95,6 +95,35 @@ describe('C1 — ขั้นที่ 1 จาก 2: กรอกเบอร�
         phone: '0812345678',
       }),
     );
+  });
+  it('fix round 1 M1 — ระหว่างรอคำตอบของ "ส่งรหัส OTP" เอาติ๊กออกไม่ได้ (ช่องติ๊ก disabled) · ยืนยันส่งค่าที่ติ๊กอยู่จริง', async () => {
+    let release!: (value: unknown) => void;
+    post.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    await fillPhone();
+    const checkbox = screen.getByRole('checkbox', { name: CONSENT_LABEL });
+    fireEvent.click(checkbox);
+    fireEvent.click(screen.getByRole('button', { name: 'ส่งรหัส OTP' }));
+    await waitFor(() => expect(checkbox).toBeDisabled());
+    fireEvent.click(checkbox);
+    expect(checkbox).toBeChecked();
+
+    await act(async () => {
+      release({ data: { maskedPhone: '089-***-5678', expiresInSeconds: 300 } });
+    });
+    await screen.findByText('089-***-5678');
+    expect(screen.getByText('ยินยอมรับแจ้งเตือนทาง LINE แล้ว')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('รหัส OTP 6 หลัก'), { target: { value: '482913' } });
+    fireEvent.click(screen.getByRole('button', { name: 'ยืนยัน' }));
+    await screen.findByText('ผูก LINE เรียบร้อย');
+    expect(post).toHaveBeenLastCalledWith('/chatbot/finance/liff/verify-otp', {
+      otp: '482913',
+      consent: true,
+    });
   });
 });
 

@@ -115,6 +115,23 @@ describe('FacebookAppReviewService.subscribePageWebhooks — subscribed fields',
     await expect(service.subscribePageWebhooks({})).rejects.toBeInstanceOf(BadRequestException);
     expect(fetchMock.mock.calls.filter(([, init]) => init.method === 'POST')).toHaveLength(0);
   });
+  // Task 35: Verify Token ใช้แค่ GET handshake ของ webhook — ล้างแล้วการสมัคร webhook ต้องยังทำได้
+  it.each([undefined, ''])(
+    'ไม่มี Webhook Verify Token (%p) → ยังสมัคร webhook ได้ (ค่านี้ไม่ได้ใช้ยิง Graph API)',
+    async (verifyToken) => {
+      getConfig.mockResolvedValue({
+        pageAccessToken: 'page-token',
+        pageId: '123',
+        appId: '456',
+        appSecret: 'test-secret',
+        verifyToken,
+      });
+
+      await expect(service.subscribePageWebhooks({})).resolves.toEqual({ success: true });
+      expect(sentFields()).toBe(DEFAULT_SUBSCRIBED_FIELDS);
+    },
+  );
+
   it('ยังไม่ตั้งค่าเพจ → BadRequest และไม่ยิง Graph API', async () => {
     getConfig.mockResolvedValue({});
 

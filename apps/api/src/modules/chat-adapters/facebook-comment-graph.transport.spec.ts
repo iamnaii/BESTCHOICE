@@ -136,6 +136,40 @@ describe('Live Graph comment adapter (mock HTTP; no Meta calls)', () => {
     expect(await transport.evidence('123')).toMatchObject({ verified: false });
     expect(fetchMock).not.toHaveBeenCalled();
   });
+  // Task 35 (owner 2026-10-31): the Verify Token only answers Meta's GET handshake
+  // (FacebookWebhookController.verifyWebhook). No Graph request reads it, so clearing it in the
+  // Integration Hub must not switch off comment receive / reply / feed subscription.
+  it.each([
+    ['cleared', { verifyToken: undefined }],
+    ['empty', { verifyToken: '' }],
+  ])('comment features do not need the webhook Verify Token (%s)', async (_label, override) => {
+    config.getConfig.mockResolvedValue({ ...credentials, ...override });
+    expect(await transport.evidence('123')).toMatchObject({
+      verified: true,
+      receive: true,
+      publicReply: true,
+    });
+    expect(await client().getCapabilities('123')).toMatchObject({
+      receive: true,
+      publicReply: true,
+    });
+    expect(await transport.readComment('123', '123_789')).toMatchObject({
+      commentId: '123_789',
+      exists: true,
+    });
+    expect(await client().replyPublic(reply)).toEqual({
+      status: 'CONFIRMED',
+      externalId: '123_888',
+    });
+    await transport.subscribeFeed('123');
+    expect(posts()).toHaveLength(2);
+  });
+  it('names only the fields the comment transport reads when configuration is incomplete', async () => {
+    config.getConfig.mockResolvedValue({ ...credentials, appSecret: '' });
+    const { reason } = await transport.evidence('123');
+    expect(reason).toBe('ตั้งค่า Page ID, App ID, Page Access Token และ App Secret ให้ครบ');
+    expect(reason).not.toContain('Verify Token');
+  });
   it('invalidates cached evidence when credentials change', async () => {
     await transport.evidence('123');
     config.getConfig.mockResolvedValue({

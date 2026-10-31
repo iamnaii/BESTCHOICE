@@ -18,6 +18,9 @@ export class FacebookCommentGraphTransport implements FacebookCommentTransport {
   private cache?: { key: string; until: number; value: Promise<FacebookCommentEvidence> };
   constructor(private readonly config: IntegrationConfigService) {}
 
+  // Only what Graph requests read. The webhook Verify Token answers Meta's GET handshake alone
+  // (FacebookWebhookController.verifyWebhook) — requiring it here made clearing it switch off
+  // comment receive/reply/subscribe (Task 35, owner 2026-10-31).
   private async credentials(pageId: string): Promise<Credentials | null> {
     const cfg = await this.config.getConfig('facebook');
     if (
@@ -25,8 +28,7 @@ export class FacebookCommentGraphTransport implements FacebookCommentTransport {
       cfg.pageId !== pageId ||
       !/^\d+$/.test(cfg.appId ?? '') ||
       !cfg.pageAccessToken ||
-      !cfg.appSecret ||
-      !cfg.verifyToken
+      !cfg.appSecret
     )
       return null;
     return { pageId, appId: cfg.appId, token: cfg.pageAccessToken, secret: cfg.appSecret };
@@ -89,8 +91,7 @@ export class FacebookCommentGraphTransport implements FacebookCommentTransport {
       return {
         graphVersion: GRAPH_VERSION,
         verified: false,
-        reason:
-          'ตั้งค่า Page ID, App ID, Page Access Token, App Secret และ Webhook Verify Token ให้ครบ',
+        reason: 'ตั้งค่า Page ID, App ID, Page Access Token และ App Secret ให้ครบ',
       };
     const key = createHash('sha256').update(JSON.stringify(c)).digest('hex');
     if (!refresh && this.cache?.key === key && this.cache.until > Date.now())

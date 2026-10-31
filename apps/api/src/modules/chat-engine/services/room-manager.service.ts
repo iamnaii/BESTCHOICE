@@ -1248,7 +1248,12 @@ export class RoomManagerService {
       }
       const linked = await tx.chatRoom.update({
         where: { id: roomId },
-        data: { customerId },
+        data: {
+          customerId,
+          // Task 33 fix round 1 M3 — เวลาที่ LINE ของห้องหลุดจากการยืนยันเป็นของเจ้าของเดิม: เปลี่ยนลูกค้าแล้วห้ามค้าง
+          // (ไม่งั้นป้ายบอก "LINE นี้ยกเลิกผูกกับ [ลูกค้าใหม่]" ซึ่งไม่จริง) · แถวห้องถูกล็อกแล้วข้างบน — ไม่เพิ่มล็อก
+          ...(room.customerId !== customerId ? { financeLineUnlinkedAt: null } : {}),
+        },
       });
       await linkRoomCreditHistory(tx, roomId, customerId);
       return linked;

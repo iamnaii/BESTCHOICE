@@ -288,7 +288,7 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
     native.set('A1', await createNative('A1', P1.date, P1.dueDay));
     await bookShopActivation(native.get('A1')!);
     await runNativeToCutoff(native.get('A1')!);
-    for (const key of ['A2', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'A4']) {
+    for (const key of ['A2', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'A4', 'A5']) {
       native.set(key, await createNative(key, P1.date, P1.dueDay));
     }
     // A6 (Task 23 · m-3): เปิดหลังต่อขา SHOP (2026-06-23) แต่ไม่มีขา SHOP ของการเปิดสัญญา — ตัวยกเว้นสัญญาก่อนต่อขา SHOP ต้องไม่ครอบ
@@ -766,7 +766,7 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
       .sort((a, b) => a - b);
 
   const cleanKeys = () => [
-    ...ids(native, ['A1', 'A2', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'A4']),
+    ...ids(native, ['A1', 'A2', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'A4', 'A5']),
     ...ids(legacy, [
       'L1',
       'L2',
@@ -1044,6 +1044,102 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
         await prisma.refund.count({ where: { paymentId: l9rAgain.id, status: 'PROCESSED' } }),
       ).toBe(2);
       await expectClean(ids(native, ['A4']).concat(ids(legacy, ['L9R'])));
+    },
+    LONG,
+  );
+
+  it(
+    'stage 2c (Task 23 · m-6) — late-fee rows whose receipt parks / consumes advance VAT: late_fee_vat_leak reads the 21-2101 SUM against the stamps on Postgres',
+    async () => {
+      const a5 = native.get('A5')!;
+      const lateFee = resolveLateFee(await loadLateFeeConfig(prisma), 10);
+      // ตั้งลูกหนี้งวด 1–2 ก่อนมีเงินรับล่วงหน้า (ไม่ให้รอบกลางคืนหักเงินรับล่วงหน้าเข้างวด 2 แทนใบรับชำระ)
+      await nightly2A(a5, 1);
+      await nightly2A(a5, 2);
+      // งวด 1 ช้า 10 วัน: ค่างวด + ค่าปรับ + 500 → ส่วนเกินพักเป็นเงินรับล่วงหน้า (ใบรับพักภาษี Cr 21-2101 + stamp advanceVatPark)
+      await pay(
+        a5,
+        1,
+        D(MONTHLY).plus(lateFee).plus(500).toFixed(2),
+        new Date(P1.due(1).getTime() + 10 * DAY),
+      );
+      // งวด 2 ช้า 10 วัน: จ่ายขาด 300 → ใบเดียวกันหักเงินรับล่วงหน้า 300 (ขากลับ Dr 21-2101 + stamp advanceVatConsume)
+      await pay(
+        a5,
+        2,
+        D(MONTHLY).plus(lateFee).minus(300).toFixed(2),
+        new Date(P1.due(2).getTime() + 10 * DAY),
+      );
+
+      const receiptOf = async (installmentNo: number) => {
+        const row = await paymentOf(a5, installmentNo);
+        const entry = await prisma.journalEntry.findFirstOrThrow({
+          where: {
+            AND: [
+              { metadata: { path: ['paymentId'], equals: row.id } },
+              { metadata: { path: ['tag'], equals: 'receipt' } },
+            ],
+          },
+          select: {
+            id: true,
+            metadata: true,
+            lines: { where: { accountCode: '21-2101', deletedAt: null } },
+          },
+        });
+        const meta = entry.metadata as Record<string, unknown>;
+        const outputVat = entry.lines.reduce((s, l) => s.plus(l.credit).minus(l.debit), D(0));
+        return {
+          row,
+          entry,
+          shape: [
+            row.status,
+            row.lateFee.toFixed(2),
+            outputVat.toFixed(2),
+            meta.advanceVatPark ?? null,
+            meta.advanceVatConsume ?? null,
+          ],
+        };
+      };
+      const r1 = await receiptOf(1);
+      const r2 = await receiptOf(2);
+      // ภาษีของเงินรับล่วงหน้า: 500 × 7/107 = 32.71 · 300 × 7/107 = 19.63 — ใบรับชำระของงวดที่มีค่าปรับขยับ 21-2101 จริง
+      expect([r1.shape, r2.shape]).toEqual([
+        ['PAID', lateFee.toFixed(2), '32.71', '32.71', null],
+        ['PAID', lateFee.toFixed(2), '-19.63', null, '19.63'],
+      ]);
+
+      // ทาง PASS: Σ(Cr − Dr) 21-2101 ของรายการ = park − consume ที่ stamp ไว้ (เทียบบน Postgres ด้วย `->>`) — ไม่ใช่ภาษีของค่าปรับ
+      expect((await run('late_fee_vat_leak', [a5])).details).toEqual([]);
+      await expectClean([a5]);
+
+      // ตัวตรวจอ่าน stamp จริง: ถอด stamp ออกจากทั้งสองรายการ ⇒ 21-2101 ของใบ (+32.71 / −19.63) อธิบายไม่ได้ → ติดทั้งสองงวด
+      const strip = (entryId: string, key: string) =>
+        prisma.$executeRaw`UPDATE journal_entries SET metadata = metadata - ${key} WHERE id = ${entryId}`;
+      await strip(r1.entry.id, 'advanceVatPark');
+      await strip(r2.entry.id, 'advanceVatConsume');
+      try {
+        expect(
+          (
+            (await run('late_fee_vat_leak', [a5])).details as Array<{
+              installment_no: number;
+              unexplained_vat: string;
+            }>
+          ).map((r) => [r.installment_no, r.unexplained_vat]),
+        ).toEqual([
+          [1, '32.71'],
+          [2, '-19.63'],
+        ]);
+      } finally {
+        await prisma.journalEntry.update({
+          where: { id: r1.entry.id },
+          data: { metadata: r1.entry.metadata as Prisma.InputJsonObject },
+        });
+        await prisma.journalEntry.update({
+          where: { id: r2.entry.id },
+          data: { metadata: r2.entry.metadata as Prisma.InputJsonObject },
+        });
+      }
+      await expectClean([a5]);
     },
     LONG,
   );

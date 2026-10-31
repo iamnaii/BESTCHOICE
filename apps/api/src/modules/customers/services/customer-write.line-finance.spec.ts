@@ -42,7 +42,11 @@ describe('CustomerWriteService — LINE การเงินจากฟอร�
         create: log('create', (a: any) => ({ id: 'new', ...a.data })),
         update: log('update', (a: any) => ({ id: a.where.id, name: 'x', ...a.data })),
       },
-      customerLineLink: { updateMany: log('closeLink', { count: 1 }) },
+      customerLineLink: {
+        findMany: log('linkRows', [{ lineUserId: 'U-old' }]),
+        updateMany: log('closeLink', { count: 1 }),
+      },
+      chatRoom: { updateMany: log('unverifyRooms', { count: 1 }) },
     };
   }
 
@@ -118,8 +122,10 @@ describe('CustomerWriteService — LINE การเงินจากฟอร�
       const updated = await service.update('c1', { name: 'x', lineIdFinance: requested } as never);
       expect(calls).toEqual([
         'root.$transaction',
+        'tx.linkRows', // LINE ของแถวที่กำลังปิด (Task 24 M-8)
         'tx.update', // unlinkFinanceLine — ล้างคอลัมน์ของลูกค้าคนนี้
         'tx.closeLink', // ปิดแถว customer_line_links ของลูกค้าคนนี้
+        'tx.unverifyRooms', // ล้าง verified_at ของห้อง LINE การเงิน (Task 24 M-8 — แม่แบบ verifiedOnly หยุดส่ง)
         'tx.update', // การแก้ไขของฟอร์ม (ไม่มี lineIdFinance — ไม่ทับค่าที่เพิ่งล้าง)
       ]);
       expect(tx.customer.update.mock.calls[0][0]).toEqual({

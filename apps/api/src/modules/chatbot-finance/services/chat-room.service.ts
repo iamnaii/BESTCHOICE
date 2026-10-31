@@ -57,8 +57,9 @@ export class ChatRoomService {
       return existing;
     }
 
-    // ลองหา customer ที่ link ไว้แล้วผ่าน CustomerLineLink
-    const link = await this.prisma.customerLineLink.findUnique({
+    // ลองหา customer ที่ link ไว้แล้วผ่าน CustomerLineLink — เฉพาะแถวที่ยังผูก (Task 24 M-8: แถวที่ยกเลิก/ลบแล้วไม่ทำให้ห้อง
+    // verified · สมมาตรกับ unlinkFinanceLine ที่ล้าง verified_at · เกณฑ์เดียวกับ isLinked / findExistingCustomerId)
+    const row = await this.prisma.customerLineLink.findUnique({
       where: {
         lineUserId_channel: {
           lineUserId,
@@ -66,6 +67,7 @@ export class ChatRoomService {
         },
       },
     });
+    const link = row && !row.unlinkedAt && !row.deletedAt ? row : null;
 
     const profile = await this.lineClient.getUserProfile(lineUserId);
 

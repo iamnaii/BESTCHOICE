@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { LineChannelType, Prisma } from '@prisma/client';
+import { ChatChannel, LineChannelType, Prisma } from '@prisma/client';
 
 /**
  * Task 22 I3 — พนักงาน/API ตั้ง `customers.line_id_finance` เป็นค่าใหม่ไม่ได้ (การผูก LINE การเงินต้องผ่าน OTP ทาง SMS
@@ -43,6 +43,31 @@ export function staffLineFinanceChange(
   });
 }
 
+/**
+ * Task 24 (Task 22 review M-8) — `chat_rooms.verified_at` ของห้อง LINE การเงิน = "ห้องของลูกค้าที่ยืนยัน OTP แล้ว" (ด่าน `verifiedOnly` ของแม่แบบ
+ * ข้อความ — `CannedResponseSenderService.send`). ผู้ตั้งค่า (ทั้งหมดต้องมีแถว OTP ที่ยังผูก): `VerificationService.bind` (ห้องของ LINE ที่เพิ่งผูก) ·
+ * `ChatRoomService.linkRoomToCustomer` (บอทการเงินหลัง `isLinked`) · สร้างห้องการเงินใหม่ของ LINE ที่มีแถวยังผูก (`ChatRoomService.getOrCreate` ·
+ * cron `overdue-chat` ส่งลูกค้าจากแถวที่ยังผูกเข้า `RoomManagerService.getOrCreateRoom`). ฝั่งกลับ = helper นี้ตัวเดียว เรียกในทรานแซกชันเดียวกับการปิด/ย้ายแถว:
+ * ล้างห้อง LINE การเงินของ LINE ที่หลุด (`lineUserIds`) และของลูกค้าที่ไม่เหลือ LINE ที่ยืนยันแล้ว (`customerIds` — ลูกค้ามีแถว FINANCE ได้แถวเดียว
+ * ⇒ ห้องการเงินของเขาที่ยัง verified ทุกห้องเป็นค่าค้าง รวมห้องของ LINE เก่าที่ยกเลิกไปก่อนแก้ข้อนี้) · ไม่แตะ `customerId` ของห้อง (ประวัติแชทคงเดิม)
+ */
+export async function clearFinanceRoomVerification(
+  tx: Prisma.TransactionClient,
+  lost: { lineUserIds?: readonly string[]; customerIds?: readonly string[] },
+): Promise<void> {
+  const lineUserIds = [...new Set((lost.lineUserIds ?? []).filter(Boolean))];
+  const customerIds = [...new Set((lost.customerIds ?? []).filter(Boolean))];
+  const scope: Prisma.ChatRoomWhereInput[] = [];
+  if (lineUserIds.length > 0) scope.push({ lineUserId: { in: lineUserIds } });
+  if (customerIds.length > 0) scope.push({ customerId: { in: customerIds } });
+  if (scope.length === 0) return;
+  // ไม่กรอง deletedAt โดยตั้งใจ — เป็นการล้างค่า ไม่ใช่การอ่าน
+  await tx.chatRoom.updateMany({
+    where: { channel: ChatChannel.LINE_FINANCE, verifiedAt: { not: null }, OR: scope },
+    data: { verifiedAt: null },
+  });
+}
+
 /** ยกเลิกผูกของ LINE หนึ่งบัญชี (ลูกค้าเป็นคนกดในหน้า LIFF) หรือของลูกค้าหนึ่งคน (พนักงานล้างช่อง LINE การเงิน) */
 export type FinanceLineUnlinkTarget = { lineUserId: string } | { customerId: string };
 
@@ -66,6 +91,11 @@ export async function unlinkFinanceLine(
   unlinkedAt: Date = new Date(),
 ): Promise<void> {
   if ('lineUserId' in target) {
+    // ลูกค้าที่ถือแถวของ LINE นี้อยู่ (unique ต่อ LINE — ไม่เกินหนึ่งคน) — ปิดแถวแล้วเขาไม่เหลือ LINE ที่ยืนยัน (M-8)
+    const holders = await tx.customerLineLink.findMany({
+      where: { lineUserId: target.lineUserId, channel: LineChannelType.FINANCE, unlinkedAt: null },
+      select: { customerId: true },
+    });
     // ไม่กรอง deletedAt โดยตั้งใจ — เป็นการล้างค่า ไม่ใช่การอ่าน
     await tx.customer.updateMany({
       where: { lineIdFinance: target.lineUserId },
@@ -75,8 +105,17 @@ export async function unlinkFinanceLine(
       where: { lineUserId: target.lineUserId, channel: LineChannelType.FINANCE, unlinkedAt: null },
       data: { unlinkedAt },
     });
+    await clearFinanceRoomVerification(tx, {
+      lineUserIds: [target.lineUserId],
+      customerIds: holders.map((h) => h.customerId),
+    });
     return;
   }
+  // LINE ของแถวที่กำลังปิด (M-8) — ห้องของ LINE นั้นอาจผูกลูกค้าอื่นไว้ (พนักงานผูกห้องเอง) ก็ถือว่าไม่ยืนยันแล้ว
+  const closing = await tx.customerLineLink.findMany({
+    where: { customerId: target.customerId, channel: LineChannelType.FINANCE, unlinkedAt: null },
+    select: { lineUserId: true },
+  });
   await tx.customer.update({
     where: { id: target.customerId },
     data: { lineIdFinance: null },
@@ -84,5 +123,9 @@ export async function unlinkFinanceLine(
   await tx.customerLineLink.updateMany({
     where: { customerId: target.customerId, channel: LineChannelType.FINANCE, unlinkedAt: null },
     data: { unlinkedAt },
+  });
+  await clearFinanceRoomVerification(tx, {
+    lineUserIds: closing.map((r) => r.lineUserId),
+    customerIds: [target.customerId],
   });
 }

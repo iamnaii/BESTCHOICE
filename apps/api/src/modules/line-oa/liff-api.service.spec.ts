@@ -10,7 +10,8 @@ describe('LiffApiService', () => {
   // tx ของ unlinkLineAccount — แยกจาก prisma เพื่อพิสูจน์ว่าเขียนในธุรกรรมเดียวกัน
   let tx: {
     customer: { updateMany: jest.Mock };
-    customerLineLink: { updateMany: jest.Mock };
+    customerLineLink: { updateMany: jest.Mock; findMany: jest.Mock };
+    chatRoom: { updateMany: jest.Mock };
   };
 
   beforeEach(async () => {
@@ -40,7 +41,11 @@ describe('LiffApiService', () => {
     };
     tx = {
       customer: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
-      customerLineLink: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      customerLineLink: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findMany: jest.fn().mockResolvedValue([{ customerId: 'cust1' }]),
+      },
+      chatRoom: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
     };
     prisma.$transaction.mockImplementation(async (cb: (client: typeof tx) => unknown) => cb(tx));
 
@@ -323,6 +328,18 @@ describe('LiffApiService', () => {
       });
       // เขียนผ่าน tx เท่านั้น ไม่ใช่ client หลัก
       expect(prisma.customer.update).not.toHaveBeenCalled();
+    });
+
+    it('Task 24 M-8: ล้าง verified_at ของห้อง LINE การเงิน (ของ LINE นี้ + ของลูกค้าที่ถือแถว) ในธุรกรรมเดียวกัน — แม่แบบ verifiedOnly หยุดส่ง', async () => {
+      await service.unlinkLineAccount('U_line');
+      expect(tx.chatRoom.updateMany).toHaveBeenCalledWith({
+        where: {
+          channel: 'LINE_FINANCE',
+          verifiedAt: { not: null },
+          OR: [{ lineUserId: { in: ['U_line'] } }, { customerId: { in: ['cust1'] } }],
+        },
+        data: { verifiedAt: null },
+      });
     });
 
     it('ไม่พบลูกค้าที่ผูก LINE นี้ → ไม่เปิดธุรกรรม ไม่ปิดแถวใด', async () => {

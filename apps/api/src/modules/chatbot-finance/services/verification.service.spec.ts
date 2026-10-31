@@ -100,7 +100,10 @@ describe('VerificationService', () => {
       // Separate tx mock to verify service uses tx inside transaction, not this.prisma
       $transaction: jest.fn().mockImplementation((cb) => {
         const tx = {
-          customerLineLink: { upsert: jest.fn().mockResolvedValue({}) },
+          customerLineLink: {
+            upsert: jest.fn().mockResolvedValue({}),
+            findUnique: jest.fn().mockResolvedValue(null),
+          },
           chatRoom: { updateMany: jest.fn().mockResolvedValue({}) },
           customer: {
             update: jest.fn().mockResolvedValue({}),
@@ -431,7 +434,10 @@ describe('VerificationService', () => {
           chatRoom: { updateMany: jest.fn().mockResolvedValue({}) },
           $transaction: jest.fn().mockImplementation((cb) => {
             const tx = {
-              customerLineLink: { upsert: jest.fn().mockResolvedValue({}) },
+              customerLineLink: {
+                upsert: jest.fn().mockResolvedValue({}),
+                findUnique: jest.fn().mockResolvedValue(null),
+              },
               chatRoom: { updateMany: jest.fn().mockResolvedValue({}) },
               customer: {
                 update: jest.fn().mockResolvedValue({}),
@@ -483,7 +489,10 @@ describe('VerificationService', () => {
         mergedPrisma.$transaction.mockImplementation((cb: (client: unknown) => unknown) => {
           callOrder.push('bind');
           const tx = {
-            customerLineLink: { upsert: jest.fn().mockResolvedValue({}) },
+            customerLineLink: {
+              upsert: jest.fn().mockResolvedValue({}),
+              findUnique: jest.fn().mockResolvedValue(null),
+            },
             chatRoom: { updateMany: jest.fn().mockResolvedValue({}) },
             customer: {
               update: jest.fn().mockResolvedValue({}),
@@ -542,7 +551,7 @@ describe('VerificationService', () => {
           customerLineLink: { findUnique: jest.fn().mockResolvedValue(null) },
           $transaction: jest.fn().mockImplementation(async (cb: (client: unknown) => unknown) => {
             const result = await cb({
-              customerLineLink: { upsert },
+              customerLineLink: { upsert, findUnique: jest.fn().mockResolvedValue(null) },
               chatRoom: { updateMany: jest.fn().mockResolvedValue({}) },
               customer: {
                 update: jest.fn().mockResolvedValue({}),
@@ -1060,7 +1069,7 @@ describe('VerificationService', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let tPrisma: any;
     let tx: {
-      customerLineLink: { upsert: jest.Mock; update: jest.Mock };
+      customerLineLink: { upsert: jest.Mock; update: jest.Mock; findUnique: jest.Mock };
       chatRoom: { updateMany: jest.Mock };
       customer: { update: jest.Mock; updateMany: jest.Mock };
     };
@@ -1129,7 +1138,12 @@ describe('VerificationService', () => {
           return value;
         });
       tx = {
-        customerLineLink: { upsert: step('link-upsert'), update: step('link-repoint') },
+        customerLineLink: {
+          upsert: step('link-upsert'),
+          update: step('link-repoint'),
+          // bind อ่านแถวของ LINE นี้ในทรานแซกชัน (Task 24 M-8 — ย้ายจากลูกค้าอื่นไหม) — ไม่นับเป็นขั้นใน LINK_SEQUENCE
+          findUnique: jest.fn(async () => rows.byLine),
+        },
         chatRoom: { updateMany: step('rooms') },
         customer: { update: step('line_id_finance'), updateMany: step('clear-others') },
       };
@@ -1274,6 +1288,41 @@ describe('VerificationService', () => {
       });
       expect(journey.recordAfterCommit).toHaveBeenCalledTimes(1);
       expect(richMenu.switchRichMenu).toHaveBeenCalledWith('U123', true, 'finance');
+      // Task 24 M-8 — ห้องการเงินของ LINE เดิมที่ยังค้าง verified ถูกล้างก่อนตั้งห้องของ LINE ใหม่ (ทรานแซกชันเดียวกัน)
+      expect(tx.chatRoom.updateMany).toHaveBeenNthCalledWith(1, {
+        where: {
+          channel: 'LINE_FINANCE',
+          verifiedAt: { not: null },
+          OR: [{ lineUserId: { in: ['U_OLD'] } }],
+        },
+        data: { verifiedAt: null },
+      });
+      expect(tx.chatRoom.updateMany).toHaveBeenNthCalledWith(2, {
+        where: { lineUserId: 'U123', channel: 'LINE_FINANCE' },
+        data: { customerId: 'c1', verifiedAt: expect.any(Date), verificationAttempts: 0 },
+      });
+    });
+
+    it('Task 24 M-8: LINE นี้ย้ายมาจากลูกค้าอื่น → ห้องการเงินของลูกค้าเดิมที่ค้าง verified ถูกล้าง แล้วห้องของ LINE นี้ verified ให้ลูกค้าใหม่', async () => {
+      rows.byLine = { id: 'link-other', customerId: 'c-other', unlinkedAt: null, deletedAt: null };
+      const otp = await requestRealOtp();
+
+      await expect(tService.verifyOtp({ lineUserId: 'U123', otp })).resolves.toMatchObject({
+        customerId: 'c1',
+      });
+
+      expect(tx.chatRoom.updateMany).toHaveBeenNthCalledWith(1, {
+        where: {
+          channel: 'LINE_FINANCE',
+          verifiedAt: { not: null },
+          OR: [{ customerId: { in: ['c-other'] } }],
+        },
+        data: { verifiedAt: null },
+      });
+      expect(tx.chatRoom.updateMany).toHaveBeenNthCalledWith(2, {
+        where: { lineUserId: 'U123', channel: 'LINE_FINANCE' },
+        data: { customerId: 'c1', verifiedAt: expect.any(Date), verificationAttempts: 0 },
+      });
     });
 
     it('ลูกค้ายกเลิกผูก LINE เดิมแล้ว แต่ LINE นี้ก็มีแถวของลูกค้าอื่น → 409 ให้พนักงานดู (รวมสองแถวไม่ได้)', async () => {

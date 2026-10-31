@@ -92,6 +92,7 @@ describe('VerificationService', () => {
       },
       customerLineLink: {
         findUnique: jest.fn(),
+        findFirst: jest.fn(),
         upsert: jest.fn().mockResolvedValue({}),
       },
       chatRoom: {
@@ -657,7 +658,7 @@ describe('VerificationService', () => {
 
   describe('isLinked', () => {
     it('returns linked=true for active link', async () => {
-      prisma.customerLineLink.findUnique.mockResolvedValue({
+      prisma.customerLineLink.findFirst.mockResolvedValue({
         unlinkedAt: null,
         customer: { id: 'c1', name: 'สมชาย' },
       });
@@ -667,18 +668,25 @@ describe('VerificationService', () => {
       expect(result.customerId).toBe('c1');
     });
 
-    it('returns linked=false for unlinked record', async () => {
-      prisma.customerLineLink.findUnique.mockResolvedValue({
-        unlinkedAt: new Date(),
-        customer: { id: 'c1', name: 'สมชาย' },
-      });
+    // Task 24 fix round 1 M-1 — เกณฑ์เดียวกับ findOtpVerifiedCustomerId: แถวที่ยังผูก (unlinked/deleted ว่าง) ของลูกค้าที่ยังไม่ถูกลบ
+    it('ค้นด้วยเกณฑ์เดียว VERIFIED_FINANCE_LINK_WHERE (แถวยกเลิก/ลบ หรือลูกค้าถูกลบ = ไม่พบ)', async () => {
+      prisma.customerLineLink.findFirst.mockResolvedValue(null);
 
-      const result = await service.isLinked('U123');
-      expect(result.linked).toBe(false);
+      await expect(service.isLinked('U123')).resolves.toEqual({ linked: false });
+      expect(prisma.customerLineLink.findFirst).toHaveBeenCalledWith({
+        where: {
+          lineUserId: 'U123',
+          channel: 'FINANCE',
+          unlinkedAt: null,
+          deletedAt: null,
+          customer: { deletedAt: null },
+        },
+        include: { customer: { select: { id: true, name: true } } },
+      });
     });
 
     it('returns linked=false when no record', async () => {
-      prisma.customerLineLink.findUnique.mockResolvedValue(null);
+      prisma.customerLineLink.findFirst.mockResolvedValue(null);
       const result = await service.isLinked('U123');
       expect(result.linked).toBe(false);
     });

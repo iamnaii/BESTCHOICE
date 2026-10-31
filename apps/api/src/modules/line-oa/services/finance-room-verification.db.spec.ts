@@ -16,6 +16,7 @@ import { VerificationService } from '../../chatbot-finance/services/verification
 import { CustomerWriteService } from '../../customers/services/customer-write.service';
 import { CannedResponseSenderService } from '../../staff-chat/services/canned-response-sender.service';
 import { LiffApiService } from '../liff-api.service';
+import { ChatRoomService } from '../../chatbot-finance/services/chat-room.service';
 
 jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn(), captureMessage: jest.fn() }));
 
@@ -176,5 +177,47 @@ describe('ยกเลิกผูก LINE การเงิน → ล้า�
         where: { customerId: a.id, channel: LineChannelType.FINANCE, unlinkedAt: null },
       }),
     ).toBe(0);
+  });
+
+  /**
+   * Task 24 fix round 1 M-1 — เกณฑ์เดียว "LINE นี้ยืนยัน OTP กับลูกค้าที่ยังอยู่" (แถวที่ยังผูก: unlinked/deleted ว่าง · ลูกค้าไม่ถูกลบ) ใช้ทั้ง
+   * `isLinked` (บอทการเงิน → `linkRoomToCustomer` ตั้ง verified_at) และการสร้างห้องการเงินใหม่ — แถวที่ deleted_at ไม่ว่าง (แก้ DB มือ) ไม่นับ
+   */
+  it('5. แถว link ที่ถูกลบ (deleted_at ไม่ว่าง แม้ unlinked_at ว่าง) → isLinked = false และห้องใหม่ของ LINE นั้นไม่ verified', async () => {
+    const c = await customer('แถวถูกลบ', '6');
+    await verifyWithOtp(line('5'), c.phone!);
+    expect(await verification.isLinked(line('5'))).toMatchObject({ linked: true });
+    await prisma.customerLineLink.updateMany({
+      where: { lineUserId: line('5') },
+      data: { deletedAt: new Date() },
+    });
+
+    expect(await verification.isLinked(line('5'))).toEqual({ linked: false });
+    const rooms = new ChatRoomService(
+      prisma as never,
+      {
+        getUserProfile: jest.fn().mockResolvedValue(null),
+      } as never,
+    );
+    const created = await rooms.getOrCreate(line('5'));
+    expect(created).toMatchObject({ customerId: null, verifiedAt: null });
+  });
+
+  it('6. ลูกค้าของแถวถูกลบ (ถังขยะ) → isLinked = false · ห้องใหม่ไม่ verified', async () => {
+    const c = await customer('ลูกค้าถูกลบ', '7');
+    await verifyWithOtp(line('6'), c.phone!);
+    await prisma.customer.update({ where: { id: c.id }, data: { deletedAt: new Date() } });
+
+    expect(await verification.isLinked(line('6'))).toEqual({ linked: false });
+    const rooms = new ChatRoomService(
+      prisma as never,
+      {
+        getUserProfile: jest.fn().mockResolvedValue(null),
+      } as never,
+    );
+    expect(await rooms.getOrCreate(line('6'))).toMatchObject({
+      customerId: null,
+      verifiedAt: null,
+    });
   });
 });

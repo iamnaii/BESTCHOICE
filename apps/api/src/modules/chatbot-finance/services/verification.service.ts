@@ -22,6 +22,7 @@ import { JourneyEntryWriter } from '../../customer-journey/journey-entry-writer.
 import { lineLinkedEntry } from '../../customer-journey/chat-identity-entries';
 import { RichMenuService } from '../../line-oa/rich-menu/rich-menu.service';
 import { clearFinanceRoomVerification } from '../../line-oa/services/finance-line-link';
+import { VERIFIED_FINANCE_LINK_WHERE } from '../../line-oa/services/otp-verified-customer';
 
 const OTP_TTL_MS = 5 * 60 * 1000; // 5 นาที
 const OTP_MAX_ATTEMPTS = 3;
@@ -452,15 +453,14 @@ export class VerificationService {
   async isLinked(
     lineUserId: string,
   ): Promise<{ linked: boolean; customerId?: string; customerName?: string }> {
-    const link = await this.prisma.customerLineLink.findUnique({
-      where: {
-        lineUserId_channel: { lineUserId, channel: LineChannelType.FINANCE },
-      },
+    // เกณฑ์เดียวกับ findOtpVerifiedCustomerId / ห้องการเงินใหม่ (Task 24 fix round 1 M-1 — เดิมไม่ดู deleted_at ของแถวและลูกค้า)
+    const link = await this.prisma.customerLineLink.findFirst({
+      where: { lineUserId, ...VERIFIED_FINANCE_LINK_WHERE },
       include: {
         customer: { select: { id: true, name: true } },
       },
     });
-    if (!link || link.unlinkedAt) return { linked: false };
+    if (!link) return { linked: false };
     return {
       linked: true,
       customerId: link.customer.id,

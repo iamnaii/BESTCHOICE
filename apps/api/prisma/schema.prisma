@@ -6660,8 +6660,10 @@ model WebhookDelivery {
   @@map("webhook_deliveries")
 }
 
-/// Idempotency table for LINE webhook dedup (replaces in-memory Map).
-/// Prevents duplicate event processing across multi-instance Cloud Run.
+/// Idempotency table for webhook dedup (replaces in-memory Map) — LINE event ids and, since
+/// Task 37, Facebook Messenger events (`fb:<kind>:<sha256>` — facebook-messaging-dedupe.ts).
+/// Prevents duplicate event processing across multi-instance Cloud Run. Retention: 7 days
+/// (WebhookDedupService.cleanupOldEvents).
 model ProcessedWebhookEvent {
   id          String   @id @default(uuid())
   eventId     String   @unique @map("event_id")

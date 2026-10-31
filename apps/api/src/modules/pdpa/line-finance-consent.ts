@@ -4,7 +4,7 @@ import { Prisma } from '@prisma/client';
  * Task 33 (mockup C1–C3 "ยินยอมตอนผูก" ที่เจ้าของอนุมัติ — แบบบังคับ) — ความยินยอมเป็นส่วนหนึ่งของการผูก LINE การเงิน:
  * ลูกค้าติ๊กที่หน้า `/liff/finance-verify` ขั้นกรอกเบอร์ แล้ว `POST chatbot/finance/liff/verify-otp` ส่ง `consent: true` ·
  * บันทึก `pdpa_consents` สถานะ GRANTED **ในทรานแซกชันเดียวกับการผูก** (`VerificationService.bindInTx` — หลังล็อกลูกค้า)
- * ตอนรหัส OTP ถูกเท่านั้น · ครั้งเดียวต่อลูกค้า: มีแถว GRANTED ของวัตถุประสงค์นี้อยู่แล้ว = ไม่สร้างซ้ำ
+ * ตอนรหัส OTP ถูกเท่านั้น · ครั้งเดียวต่อลูกค้าต่อเวอร์ชันข้อความ: มีแถว GRANTED ของวัตถุประสงค์ + เวอร์ชันนี้อยู่แล้ว = ไม่สร้างซ้ำ
  *
  * ถอนความยินยอม: ลูกค้าทำเองใน LIFF ไม่ได้ (ไม่มีหน้า) — ติดต่อเจ้าหน้าที่ → OWNER กด "เพิกถอน" ที่เมนู PDPA (`PDPAService.revokeConsent`)
  * แล้วผูกใหม่ + ยินยอมอีกครั้ง = แถว GRANTED ใหม่
@@ -40,13 +40,25 @@ export interface LineFinanceConsentInput {
 /** หลักฐานยาวเกินไม่มีประโยชน์ — ตัดก่อนเก็บ (user agent ของแอป LINE ~200 ตัว) */
 const EVIDENCE_MAX_LENGTH = 500;
 
-/** แถว GRANTED ที่ยังมีผลของวัตถุประสงค์นี้ — เกณฑ์ "ครั้งเดียวต่อลูกค้า" */
+/**
+ * แถว GRANTED ที่ยังมีผลของวัตถุประสงค์นี้ **ทุกเวอร์ชันข้อความ** — "ลูกค้าเคยยินยอมรับข้อความทาง LINE แล้ว"
+ * (ใช้ตัดสินว่าไม่ต้องถามซ้ำที่อื่น เช่นโมดัล `chat_consent` ของ `/liff/contract`)
+ */
+export const GRANTED_LINE_FINANCE_CONSENT_WHERE = {
+  status: 'GRANTED',
+  deletedAt: null,
+  purposes: { has: LINE_FINANCE_CONSENT_PURPOSE },
+} satisfies Prisma.PDPAConsentWhereInput;
+
+/**
+ * เกณฑ์ "ครั้งเดียวต่อลูกค้า" ของการบันทึก — **ต่อเวอร์ชันข้อความ** (fix round 1 M2): เปลี่ยนข้อความ = เปลี่ยน `LINE_FINANCE_CONSENT_VERSION`
+ * ⇒ ลูกค้าที่เคยยินยอมฉบับเก่าแล้วผูกใหม่ (ติ๊กข้อความฉบับใหม่) ได้แถวของฉบับใหม่ และหน้า C3 แสดงวันที่ของฉบับที่ติ๊กจริง
+ */
 export function grantedLineFinanceConsentWhere(customerId: string) {
   return {
     customerId,
-    status: 'GRANTED',
-    deletedAt: null,
-    purposes: { has: LINE_FINANCE_CONSENT_PURPOSE },
+    ...GRANTED_LINE_FINANCE_CONSENT_WHERE,
+    consentVersion: LINE_FINANCE_CONSENT_VERSION,
   } satisfies Prisma.PDPAConsentWhereInput;
 }
 

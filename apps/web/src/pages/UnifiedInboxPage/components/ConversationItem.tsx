@@ -9,8 +9,8 @@ import { apptState, nextAppointment, type RoomAppointment } from './appointment'
 import type { ReactNode } from 'react';
 import SearchExcerpt from './SearchExcerpt';
 import {
-  FinanceLineUnlinkedPill,
-  isFinanceLineUnlinked,
+  FinanceLineRoomPill,
+  needsFinanceLineCaution,
   type FinanceLineRoomStatus,
 } from './RoomFinanceLineStatus';
 
@@ -184,7 +184,8 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings, sear
   const enabledChannels = aiSettings?.enabledChannels ?? [];
   const aiPaused = session.aiPaused ?? false;
   const handoffMode = session.handoffMode ?? false;
-  const financeLineUnlinked = isFinanceLineUnlinked(session.financeLineStatus);
+  // Task 33 — A2 ยกเลิกผูกแล้ว / A4 ยังไม่ยืนยันตัวตน (fix round 1): คนที่คุยอาจไม่ใช่ลูกค้าของห้อง
+  const financeLineCaution = needsFinanceLineCaution(session.financeLineStatus);
 
   return (
     <div
@@ -252,7 +253,7 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings, sear
             {match && <p className="mt-1 text-[11px] text-primary">พบในข้อความ · {formatChatTimestamp(match.createdAt)}</p>}
 
             {/* Tags + priority + assigned + AI status */}
-            {(financeLineUnlinked ||
+            {(financeLineCaution ||
               session.resolvedAt ||
               session.todos?.length ||
               session.waitingSince ||
@@ -264,13 +265,15 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings, sear
               (aiAutoEnabled && enabledChannels.includes(session.channel))) && (
               <div className="inbox-room-meta flex items-center gap-1.5 mt-2 overflow-hidden whitespace-nowrap">
                 {/* ป้ายไม่เกิน 2 ใบ ที่เหลือยุบเป็น +N (สเปก §7 แก้ไข 2026-09-05) — ลำดับล็อกไว้:
-                    ยกเลิกผูกแล้ว (Task 33 A2) → ป้ายหน้าต่าง (เหลือ N / หมดเวลาตอบ / รอ N) → ด่วน → ค้างชำระ → สถานะบอท
+                    ยกเลิกผูกแล้ว/ยังไม่ยืนยันตัวตน (Task 33 A2/A4) → ป้ายหน้าต่าง (เหลือ N / หมดเวลาตอบ / รอ N) → ด่วน → ค้างชำระ → สถานะบอท
                     ป้ายหน้าต่างมาก่อนเสมอ เพราะเป็นใบเดียวที่แปลว่า "ทำงานต่อไม่ได้" · ของเดิมห้าใบเต็ม 235/235px แบบ nowrap */}
                 {(() => {
                   const pills: ReactNode[] = [];
-                  // Task 33 (mockup A2) — LINE ในห้องไม่ใช่ LINE ที่ลูกค้ายืนยัน OTP อยู่ตอนนี้: ป้ายแรกเสมอ (คนที่คุยอาจไม่ใช่ลูกค้าคนนี้)
-                  if (financeLineUnlinked) {
-                    pills.push(<FinanceLineUnlinkedPill key="finance-line" />);
+                  // Task 33 (mockup A2 + A4) — LINE ในห้องไม่ใช่ LINE ที่ลูกค้ายืนยัน OTP อยู่ตอนนี้: ป้ายแรกเสมอ (คนที่คุยอาจไม่ใช่ลูกค้าคนนี้)
+                  if (financeLineCaution) {
+                    pills.push(
+                      <FinanceLineRoomPill key="finance-line" status={session.financeLineStatus} />,
+                    );
                   }
                   if (session.resolvedAt) {
                     pills.push(<Badge key="closed" variant="secondary" appearance="light" className="text-[10px] px-1.5 py-0 h-5 leading-snug text-muted-foreground">ปิดแล้ว</Badge>);

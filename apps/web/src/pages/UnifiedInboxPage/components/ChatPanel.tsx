@@ -66,8 +66,8 @@ import { fbWindowFor, fbWindowLeftText } from './fb-window';
 import {
   FinanceLineComposerCaution,
   FinanceLineRoomHeaderBadge,
-  FinanceLineUnlinkedNote,
-  isFinanceLineUnlinked,
+  FinanceLineRoomNote,
+  needsFinanceLineCaution,
   type FinanceLineRoomStatus,
 } from './RoomFinanceLineStatus';
 import { useKeyboardShortcuts, isEditableTarget } from '../hooks/useKeyboardShortcuts';
@@ -707,7 +707,8 @@ export default function ChatPanel({
   const fbWindow = fbWindowFor(session);
   // Task 33 (mockup A2/A3) — สถานะ LINE การเงินของห้องจาก server (ไม่มี U-id) · ห้องช่องอื่น = null
   const financeLineStatus = session.financeLineStatus as FinanceLineRoomStatus | null | undefined;
-  const financeLineUnlinked = isFinanceLineUnlinked(financeLineStatus);
+  // A2 ยกเลิกผูกแล้ว / A4 ยังไม่ยืนยันตัวตน (fix round 1) — คนที่คุยอาจไม่ใช่ลูกค้าของห้อง
+  const financeLineCaution = needsFinanceLineCaution(financeLineStatus);
   const financeLineCautionId = `finance-line-caution-${session.id}`;
 
   return (
@@ -761,8 +762,8 @@ export default function ChatPanel({
             >
               {displayName}
             </h3>
-            {/* Task 33 (mockup A2) — ป้าย "ยกเลิกผูกแล้ว" ข้างชื่อ */}
-            {financeLineUnlinked && <FinanceLineRoomHeaderBadge status={financeLineStatus} />}
+            {/* Task 33 (mockup A2/A4) — ป้าย "ยกเลิกผูกแล้ว" / "ยังไม่ยืนยันตัวตน" ข้างชื่อ */}
+            {financeLineCaution && <FinanceLineRoomHeaderBadge status={financeLineStatus} />}
           </div>
           <div className="mt-0.5 flex items-center gap-1.5 overflow-hidden whitespace-nowrap text-[12px] text-muted-foreground [&>*]:shrink-0">
             <span>{channelLabel}</span>
@@ -988,8 +989,10 @@ export default function ChatPanel({
             <AvatarFallback>{displayName[0]}</AvatarFallback>
           </Avatar>
           <span className="min-w-0 text-left">
-            <span className="block truncate text-base font-semibold leading-snug">
-              {displayName}
+            {/* Task 33 fix round 1 (คำตัดสินเจ้าของข้อ 31) — ป้ายสถานะ LINE การเงินข้างชื่อบนมือถือด้วย (ทั้งสามสถานะ) · ชื่อหดก่อน */}
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="truncate text-base font-semibold leading-snug">{displayName}</span>
+              <FinanceLineRoomHeaderBadge status={financeLineStatus} />
             </span>
             <span className="block truncate text-xs leading-snug text-muted-foreground">
               {channelLabel} · <span className={roomStatus.tone}>{roomStatus.text}</span>
@@ -1112,8 +1115,8 @@ export default function ChatPanel({
         />
       )}
 
-      {/* Task 33 (mockup A2) — คำอธิบายหนึ่งบรรทัดใต้หัวห้อง (ทั้งจอใหญ่และมือถือ) */}
-      <FinanceLineUnlinkedNote status={financeLineStatus} customerName={displayName} />
+      {/* Task 33 (mockup A2/A4) — คำอธิบายหนึ่งบรรทัดใต้หัวห้อง (ทั้งจอใหญ่และมือถือ) */}
+      <FinanceLineRoomNote status={financeLineStatus} customerName={displayName} />
 
       {/* Persistent "another staff is viewing" banner */}
       {otherViewers && otherViewers.length > 0 && (
@@ -1429,7 +1432,7 @@ export default function ChatPanel({
               </button>
             )}
           </div>
-          {/* Task 33 (mockup A2) — เตือนเหนือกรอบพิมพ์ ไม่บล็อกการพิมพ์ · โน้ตภายในลูกค้าไม่เห็น จึงไม่ต้องเตือน */}
+          {/* Task 33 (mockup A2/A4) — เตือนเหนือกรอบพิมพ์ ไม่บล็อกการพิมพ์ · โน้ตภายในลูกค้าไม่เห็น จึงไม่ต้องเตือน */}
           {!isNoteMode && (
             <FinanceLineComposerCaution
               id={financeLineCautionId}
@@ -1531,7 +1534,7 @@ export default function ChatPanel({
                   placeholder="พิมพ์ข้อความ…"
                   aria-label="พิมพ์ข้อความ"
                   aria-describedby={
-                    financeLineUnlinked && !isNoteMode ? financeLineCautionId : undefined
+                    financeLineCaution && !isNoteMode ? financeLineCautionId : undefined
                   }
                   rows={1}
                   className="inbox-message-input focus-visible:ring-0 focus-visible:ring-offset-0"

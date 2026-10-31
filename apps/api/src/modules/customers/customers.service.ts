@@ -79,7 +79,11 @@ export class CustomersService {
     return this.write.update(id, dto, actor);
   }
 
-  fillPlaceholderContact(id: string, dto: FillProspectContactDto, actor: { id: string; role: string }) {
+  fillPlaceholderContact(
+    id: string,
+    dto: FillProspectContactDto,
+    actor: { id: string; role: string },
+  ) {
     return this.write.fillPlaceholderContact(id, dto, actor);
   }
 
@@ -95,8 +99,12 @@ export class CustomersService {
     return this.analytics.getRiskFlag(id);
   }
 
-  listDocuments(id: string) { return this.documents!.list(id); }
-  readDocument(id: string, attachmentId: string) { return this.documents!.content(id, attachmentId); }
+  listDocuments(id: string) {
+    return this.documents!.list(id);
+  }
+  readDocument(id: string, attachmentId: string) {
+    return this.documents!.content(id, attachmentId);
+  }
 
   uploadDocument(id: string, dto: UploadDocumentDto, file?: Express.Multer.File) {
     return this.write.uploadDocument(id, dto, file);

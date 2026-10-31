@@ -939,11 +939,33 @@ it('requires all sensitive capabilities on the same document source for unclassi
   expect(
     (await http('get', '/customers/' + c.id, undefined, id).expect(200)).body.documents,
   ).toBeNull();
-  await grant(id, ['sensitive.customer-identity.read', 'sensitive.cost.read', 'sensitive.profit.read', 'sensitive.salary.read', 'sensitive.seller-bank.read'], 'SHOP', [branchB]);
+  await grant(
+    id,
+    [
+      'sensitive.customer-identity.read',
+      'sensitive.cost.read',
+      'sensitive.profit.read',
+      'sensitive.salary.read',
+      'sensitive.seller-bank.read',
+    ],
+    'SHOP',
+    [branchB],
+  );
   expect(
     (await http('get', '/customers/' + c.id, undefined, id).expect(200)).body.documents,
   ).toBeNull();
-  await grant(id, ['sensitive.customer-identity.read', 'sensitive.cost.read', 'sensitive.profit.read', 'sensitive.salary.read', 'sensitive.seller-bank.read'], 'SHOP', [branchA]);
+  await grant(
+    id,
+    [
+      'sensitive.customer-identity.read',
+      'sensitive.cost.read',
+      'sensitive.profit.read',
+      'sensitive.salary.read',
+      'sensitive.seller-bank.read',
+    ],
+    'SHOP',
+    [branchA],
+  );
   expect(
     (await http('get', '/customers/' + c.id, undefined, id).expect(200)).body.documents,
   ).toEqual(c.documents);

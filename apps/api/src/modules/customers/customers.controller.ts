@@ -217,7 +217,14 @@ export class CustomersController {
   @Get('blacklist')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   async getBlacklistBatch(@Query('ids') ids?: string) {
-    const list = [...new Set((ids ?? '').split(',').map((x) => x.trim()).filter(Boolean))];
+    const list = [
+      ...new Set(
+        (ids ?? '')
+          .split(',')
+          .map((x) => x.trim())
+          .filter(Boolean),
+      ),
+    ];
     if (!list.length || list.length > BLACKLIST_BATCH_MAX) {
       throw new BadRequestException(`ระบุ ids 1–${BLACKLIST_BATCH_MAX} รายการ`);
     }
@@ -437,8 +444,16 @@ export class CustomersController {
 
   @Post(':id/documents')
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 8, fieldSize: 4096 } }))
-  uploadDocument(@Param('id') id: string, @Body() dto: UploadDocumentDto, @UploadedFile() file?: Express.Multer.File) {
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 8, fieldSize: 4096 },
+    }),
+  )
+  uploadDocument(
+    @Param('id') id: string,
+    @Body() dto: UploadDocumentDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
     return this.customersService.uploadDocument(id, dto, file);
   }
 
@@ -451,7 +466,9 @@ export class CustomersController {
   @Get(':id/documents')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   @Header('Cache-Control', 'private, no-store')
-  listDocuments(@Param('id') id: string) { return this.customersService.listDocuments(id); }
+  listDocuments(@Param('id') id: string) {
+    return this.customersService.listDocuments(id);
+  }
 
   @Get(':id/documents/:attachmentId/content')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')

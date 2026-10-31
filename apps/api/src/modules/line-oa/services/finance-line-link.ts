@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { ChatChannel, LineChannelType, Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 
 /**
  * Task 22 I3 — พนักงาน/API ตั้ง `customers.line_id_finance` เป็นค่าใหม่ไม่ได้ (การผูก LINE การเงินต้องผ่าน OTP ทาง SMS
@@ -97,11 +98,26 @@ export async function lockFinanceLineCustomers(
   await tx.$queryRaw`SELECT id FROM customers WHERE id IN (${Prisma.join(ids)}) ORDER BY id FOR NO KEY UPDATE`;
 }
 
+/** อ่านชุดลูกค้าของ `bind` ซ้ำใต้ล็อกได้กี่รอบก่อนยอมแพ้ (Task 29 fix round 1 — review M-2) */
+const BIND_LOCK_SET_MAX_ROUNDS = 5;
+
+/**
+ * Task 29 fix round 1 (review M-2) — ชุดลูกค้าที่ `bind` ต้องล็อกยังโตหลังอ่านซ้ำครบรอบ ⇒ **ไม่ไปต่อแบบล็อกไม่ครบ**:
+ * ทรานแซกชันถูกยกเลิกทั้งก้อน และ `VerificationService.bind` ลองใหม่ (`runWithTransactionRetry` ถือ error นี้ว่าลองซ้ำได้)
+ */
+export class FinanceLineLockSetUnstableError extends Error {
+  constructor() {
+    super('finance-line bind: customer lock set did not settle');
+    this.name = 'FinanceLineLockSetUnstableError';
+  }
+}
+
 /**
  * Task 29 — ชุดลูกค้าที่ `bind` (OTP) จะแตะ ล็อกก่อนแตะแถว link/ห้อง: ลูกค้าที่กำลังผูก + ลูกค้าที่ถือแถว link ของ LINE นี้อยู่
  * (LINE ย้ายออกจากเขา — ห้องของเขาถูกล้าง `verified_at`) + ทุกลูกค้าที่คอลัมน์ `line_id_finance` = LINE นี้ (bind ล้างค่าให้ — รวมแถวที่ถูกลบ).
  * อ่านชุด → ล็อก (เรียง id) → อ่านซ้ำใต้ล็อก จนชุดไม่โตอีก (ปกติสองรอบ · ชุดเปลี่ยนได้เฉพาะเมื่อมี bind ของ LINE เดียวกันอีกตัว commit ระหว่างนั้น —
  * แถวที่เพิ่มเข้ามารอบหลังล็อกช้ากว่าลำดับ แต่ทรานแซกชันที่ทำให้ชุดเปลี่ยน commit ไปแล้วจึงไม่เป็นวงจร) ·
+ * ครบ `BIND_LOCK_SET_MAX_ROUNDS` แล้วชุดยังโต = Sentry warning (ไม่มี U-id/ข้อมูลลูกค้า) + `FinanceLineLockSetUnstableError` (fix round 1 M-2) ·
  * คืนเจ้าของแถว link ของ LINE นี้ตามที่อ่านใต้ล็อก (ไม่มีแถว = null)
  */
 export async function lockCustomersForFinanceLineBind(
@@ -111,7 +127,7 @@ export async function lockCustomersForFinanceLineBind(
 ): Promise<{ lineHolderId: string | null }> {
   const locked = new Set<string>();
   let lineHolderId: string | null = null;
-  for (let round = 0; round < 5; round++) {
+  for (let round = 0; ; round++) {
     const lineRow = await tx.customerLineLink.findUnique({
       where: { lineUserId_channel: { lineUserId, channel: LineChannelType.FINANCE } },
       select: { customerId: true },
@@ -125,11 +141,18 @@ export async function lockCustomersForFinanceLineBind(
     const ids = [customerId, lineHolderId, ...columnHolders.map((c) => c.id)].filter(
       (id): id is string => !!id,
     );
-    if (ids.every((id) => locked.has(id))) break;
+    if (ids.every((id) => locked.has(id))) return { lineHolderId };
+    if (round >= BIND_LOCK_SET_MAX_ROUNDS) {
+      Sentry.captureMessage('[finance-line] bind customer lock set did not settle', {
+        level: 'warning',
+        tags: { subsystem: 'finance-line-lock' },
+        extra: { rounds: BIND_LOCK_SET_MAX_ROUNDS, lockedCustomers: locked.size },
+      });
+      throw new FinanceLineLockSetUnstableError();
+    }
     await lockFinanceLineCustomers(tx, ids);
     ids.forEach((id) => locked.add(id));
   }
-  return { lineHolderId };
 }
 
 /** ยกเลิกผูกของ LINE หนึ่งบัญชี (ลูกค้าเป็นคนกดในหน้า LIFF) หรือของลูกค้าหนึ่งคน (พนักงานล้างช่อง LINE การเงิน) */

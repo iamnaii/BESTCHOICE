@@ -23,10 +23,14 @@ import { lineLinkedEntry } from '../../customer-journey/chat-identity-entries';
 import { RichMenuService } from '../../line-oa/rich-menu/rich-menu.service';
 import {
   clearFinanceRoomVerification,
+  FinanceLineLockSetUnstableError,
   lockCustomersForFinanceLineBind,
 } from '../../line-oa/services/finance-line-link';
 import { VERIFIED_FINANCE_LINK_WHERE } from '../../line-oa/services/otp-verified-customer';
-import { runWithTransactionRetry } from '../../../utils/transaction-retry.util';
+import {
+  isRetryablePrismaWriteError,
+  runWithTransactionRetry,
+} from '../../../utils/transaction-retry.util';
 
 const OTP_TTL_MS = 5 * 60 * 1000; // 5 นาที
 /** ทรานแซกชันของ `bind` ลองซ้ำสูงสุดกี่ครั้งเมื่อโดน deadlock/serialization (Task 29 fix round 1 — เท่าปุ่มยกเลิกผูก) */
@@ -618,6 +622,8 @@ export class VerificationService {
     await runWithTransactionRetry(
       () => this.bindInTx(lineUserId, customerId, plan, linkedAt),
       FINANCE_LINE_BIND_MAX_ATTEMPTS,
+      (error) =>
+        isRetryablePrismaWriteError(error) || error instanceof FinanceLineLockSetUnstableError,
     );
     this.logger.log(
       `[Verify] Bound ${lineUserId.slice(0, 8)}... → customer ${customerId.slice(0, 8)}...`,

@@ -13,6 +13,7 @@ import { AuditService } from '../../audit/audit.service';
 import { CustomerMergeService } from '../../chat-prospects/customer-merge.service';
 import { JourneyEntryWriter } from '../../customer-journey/journey-entry-writer.service';
 import { RichMenuService } from '../../line-oa/rich-menu/rich-menu.service';
+import { FinanceLineLockSetUnstableError } from '../../line-oa/services/finance-line-link';
 
 type OtpRowMock = {
   [method: string]: jest.Mock | undefined;
@@ -1244,24 +1245,31 @@ describe('VerificationService', () => {
       expect(richMenu.switchRichMenu).toHaveBeenCalledWith('U123', true, 'finance');
     });
 
-    it('Task 29 fix round 1: ทรานแซกชันของ bind โดน deadlock → ลองทั้งก้อนใหม่ (ตาข่าย) · ผูกครั้งเดียว (error อื่นไม่ลองซ้ำ — transaction-retry.util.spec)', async () => {
-      const otp = await requestRealOtp();
-      const calls = tPrisma.$transaction.mock.calls.length;
-      tPrisma.$transaction.mockRejectedValueOnce(
+    it.each([
+      [
+        'deadlock',
         new Prisma.PrismaClientKnownRequestError('deadlock detected', {
           code: 'P2034',
           clientVersion: 'test',
         }),
-      );
+      ],
+      ['ชุดลูกค้าที่ต้องล็อกไม่นิ่ง (review M-2)', new FinanceLineLockSetUnstableError()],
+    ])(
+      'Task 29 fix round 1: ทรานแซกชันของ bind โดน %s → ลองทั้งก้อนใหม่ (ตาข่าย) · ผูกครั้งเดียว (error อื่นไม่ลองซ้ำ — transaction-retry.util.spec)',
+      async (_label, failure) => {
+        const otp = await requestRealOtp();
+        const calls = tPrisma.$transaction.mock.calls.length;
+        tPrisma.$transaction.mockRejectedValueOnce(failure);
 
-      await expect(tService.verifyOtp({ lineUserId: 'U123', otp })).resolves.toMatchObject({
-        customerId: 'c1',
-      });
+        await expect(tService.verifyOtp({ lineUserId: 'U123', otp })).resolves.toMatchObject({
+          customerId: 'c1',
+        });
 
-      expect(tPrisma.$transaction.mock.calls.length - calls).toBe(2);
-      expect(order.filter((step) => step === 'commit')).toHaveLength(1);
-      expect(journey.recordAfterCommit).toHaveBeenCalledTimes(1);
-    });
+        expect(tPrisma.$transaction.mock.calls.length - calls).toBe(2);
+        expect(order.filter((step) => step === 'commit')).toHaveLength(1);
+        expect(journey.recordAfterCommit).toHaveBeenCalledTimes(1);
+      },
+    );
 
     it('(d) test-mode bypass ใช้ helper เดียวกัน → สลับ rich menu ด้วย', async () => {
       testModeOn.mockResolvedValue(true);

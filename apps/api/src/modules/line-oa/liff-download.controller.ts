@@ -65,29 +65,42 @@ export class LiffDownloadController {
   @Get('liff/contracts/:contractId/document')
   @Throttle({ short: { ttl: 60000, limit: 30 } })
   async getLiffContractDocument(
+    @Req() req: Request,
     @Res() res: Response,
     @Param('contractId') contractId: string,
     @Query('dl') dl: string | undefined,
   ): Promise<void> {
-    await this.stream(res, 'contract-document', contractId, dl);
+    await this.stream(req, res, 'contract-document', contractId, dl);
   }
 
   @Get('liff/receipts/:receiptId/download')
   @Throttle({ short: { ttl: 60000, limit: 30 } })
   async downloadLiffReceipt(
+    @Req() req: Request,
     @Res() res: Response,
     @Param('receiptId') receiptId: string,
     @Query('dl') dl: string | undefined,
   ): Promise<void> {
-    await this.stream(res, 'receipt', receiptId, dl);
+    await this.stream(req, res, 'receipt', receiptId, dl);
   }
 
+  /**
+   * Task 24 (Task 22 review M-5) — Express ส่ง `HEAD` เข้า handler ของ `@Get` ด้วย ⇒ ตัว preview/prefetch ของ in-app browser ที่ยิง HEAD
+   * ก่อนเคยเผาตั๋ว (แท็บจริงได้ 401). **เฉพาะ `GET` ใช้ตั๋ว** · `HEAD` (และเมธอดอื่นที่ไหลมา) = 405 `Allow: GET` ไม่แตะตั๋ว/DB/เอกสาร:
+   * ตอบ HEAD ให้ตรงกับ GET (RFC 9110 §9.3.2) ต้องตรวจตั๋ว ซึ่งตรวจได้ทางเดียวคือใช้ (เผา) มัน — แอบดูตั๋วโดยไม่เผาจะบอกผู้ยิง prefetch ว่า
+   * ตั๋วใช้ได้ไหม และเป็นทางที่สองของการตรวจตั๋ว ⇒ ตอบว่าทรัพยากรนี้ไม่รองรับเมธอดนั้น (405 + `Allow` — RFC 9110 §15.5.6) ตอบเหมือนกันทุกตั๋ว
+   */
   private async stream(
+    req: Request,
     res: Response,
     kind: LiffDownloadKind,
     resourceId: string,
     dl: string | undefined,
   ): Promise<void> {
+    if (req.method !== 'GET') {
+      res.status(405).set('Allow', 'GET').end();
+      return;
+    }
     const lineId = await this.tickets.consume(dl, kind, resourceId);
     if (!lineId) throw new UnauthorizedException(LIFF_DOWNLOAD_TICKET_INVALID_MESSAGE);
     const documentId = await this.liffApiService.resolveDownloadDocumentId(

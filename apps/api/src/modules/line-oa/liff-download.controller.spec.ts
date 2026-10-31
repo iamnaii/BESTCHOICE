@@ -40,6 +40,7 @@ describe('LiffDownloadController', () => {
   });
 
   const req = { liffUserId: LINE } as never;
+  const getReq = { method: 'GET' } as never;
 
   describe('POST liff/download-ticket', () => {
     it('ตรวจว่าเป็นเอกสารของ LINE นี้ก่อน แล้วออกตั๋วผูก (LINE, ชนิด, id)', async () => {
@@ -79,7 +80,7 @@ describe('LiffDownloadController', () => {
   describe('GET ด้วยตั๋ว ?dl=', () => {
     it('ใบเสร็จ: ใช้ตั๋ว → ตรวจเจ้าของด้วย LINE ของตั๋ว → ส่งไฟล์', async () => {
       tickets.consume.mockResolvedValue(LINE);
-      await controller.downloadLiffReceipt(res as never, RECEIPT, 'TICKET');
+      await controller.downloadLiffReceipt(getReq, res as never, RECEIPT, 'TICKET');
       expect(tickets.consume).toHaveBeenCalledWith('TICKET', 'receipt', RECEIPT);
       expect(liff.resolveDownloadDocumentId).toHaveBeenCalledWith(LINE, 'receipt', RECEIPT);
       expect(documents.getDocumentStream).toHaveBeenCalledWith('edoc-1');
@@ -92,7 +93,7 @@ describe('LiffDownloadController', () => {
 
     it('สัญญา: ใช้ตั๋วชนิด contract-document กับ id ในพาธ', async () => {
       tickets.consume.mockResolvedValue(LINE);
-      await controller.getLiffContractDocument(res as never, CONTRACT, 'TICKET');
+      await controller.getLiffContractDocument(getReq, res as never, CONTRACT, 'TICKET');
       expect(tickets.consume).toHaveBeenCalledWith('TICKET', 'contract-document', CONTRACT);
       expect(liff.resolveDownloadDocumentId).toHaveBeenCalledWith(
         LINE,
@@ -108,7 +109,7 @@ describe('LiffDownloadController', () => {
     ])('%s → 401 ข้อความไทย ไม่แตะเอกสาร', async (_label, dl) => {
       tickets.consume.mockResolvedValue(null);
       const err = await controller
-        .downloadLiffReceipt(res as never, RECEIPT, dl)
+        .downloadLiffReceipt(getReq, res as never, RECEIPT, dl)
         .catch((e: unknown) => e);
       expect(err).toBeInstanceOf(UnauthorizedException);
       expect((err as UnauthorizedException).message).toBe(LIFF_DOWNLOAD_TICKET_INVALID_MESSAGE);
@@ -119,9 +120,9 @@ describe('LiffDownloadController', () => {
     it('LINE ของตั๋วไม่ใช่เจ้าของเอกสารแล้ว (ยกเลิกผูกระหว่างนั้น) → 404 ไม่ส่งไฟล์', async () => {
       tickets.consume.mockResolvedValue(LINE);
       liff.resolveDownloadDocumentId.mockRejectedValue(new NotFoundException('ไม่พบข้อมูลลูกค้า'));
-      await expect(controller.downloadLiffReceipt(res as never, RECEIPT, 'TICKET')).rejects.toThrow(
-        'ไม่พบข้อมูลลูกค้า',
-      );
+      await expect(
+        controller.downloadLiffReceipt(getReq, res as never, RECEIPT, 'TICKET'),
+      ).rejects.toThrow('ไม่พบข้อมูลลูกค้า');
       expect(documents.getDocumentStream).not.toHaveBeenCalled();
     });
 

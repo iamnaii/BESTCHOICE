@@ -220,4 +220,63 @@ describe('ยกเลิกผูก LINE การเงิน → ล้า�
       verifiedAt: null,
     });
   });
+
+  /**
+   * Task 24 round 3 (m-R2-1 ทางเลือก ข) — ห้องของ LINE ที่ลูกค้ายกเลิกแล้วยังถือ customerId เดิม (ข้อ 6 ไม่ปลด) ⇒ ใน inbox ห้องนั้นยังเป็นของลูกค้า.
+   * พนักงานกดข้อความสำเร็จรูปในห้อง LINE การเงิน: ตัวแปรลูกค้าเติมค่าจริงเฉพาะห้องที่ OTP ตรงลูกค้าของห้อง (`otpVerifiedRoomCustomerId` — กติกาเดียวกับ I-C)
+   * ไม่งั้นคำกลาง — ยอดหนี้ของ B ต้องไม่ไปถึงผู้ถือ L1
+   */
+  it('7. B ยกเลิก L1 แล้วยืนยัน L2 · พนักงานกดข้อความสำเร็จรูปที่มียอดหนี้: ห้อง L1 = คำกลาง · ห้อง L2 = ค่าจริงของ B', async () => {
+    const b = await customer('สำเร็จรูป', '8');
+    const l1Room = await room(line('7a'), null, null);
+    await verifyWithOtp(line('7a'), b.phone!);
+    await liff.unlinkLineAccount(line('7a'));
+    const l2Room = await room(line('7b'), null, null);
+    await verifyWithOtp(line('7b'), b.phone!);
+    expect((await prisma.chatRoom.findUniqueOrThrow({ where: { id: l1Room } })).customerId).toBe(
+      b.id,
+    );
+
+    const template = await prisma.cannedResponse.create({
+      data: {
+        shortcut: `/${tag}-debt`,
+        title: 'ยอดค้าง',
+        content: 'ยอดค้าง',
+        bubbles: {
+          create: [
+            { type: 'TEXT', text: 'คุณ{customerName} ยอดค้าง {amountDue} สัญญา {contractNumber}' },
+          ],
+        },
+      },
+    });
+    const sentTexts: string[] = [];
+    const expandVariables = jest.fn(async (probe: string, ctx: { customerId?: string }) =>
+      probe.replace(/\{(\w+)\}/g, (_m, key: string) => (ctx.customerId ? `REAL-${key}` : '-')),
+    );
+    const sender = new CannedResponseSenderService(
+      prisma as never,
+      {
+        filterByChannel: (bubbles: unknown[]) => bubbles,
+        translateQuickReplies: () => [],
+        toOutboundMessage: (bubble: { text: string }) => ({ text: bubble.text }),
+      } as never,
+      { expandVariables } as never,
+      {
+        sendStaffOutbound: jest.fn(async (_roomId: string, msg: { text: string }) => {
+          sentTexts.push(msg.text);
+          return { success: true };
+        }),
+      } as never,
+    );
+
+    await sender.send(l1Room, template.id, 'staff-1');
+    await sender.send(l2Room, template.id, 'staff-1');
+
+    expect(sentTexts[0]).toBe('คุณลูกค้า ยอดค้าง - สัญญา -');
+    expect(sentTexts[1]).toBe(
+      'คุณREAL-customerName ยอดค้าง REAL-amountDue สัญญา REAL-contractNumber',
+    );
+    await prisma.cannedResponseBubble.deleteMany({ where: { cannedResponseId: template.id } });
+    await prisma.cannedResponse.delete({ where: { id: template.id } });
+  });
 });

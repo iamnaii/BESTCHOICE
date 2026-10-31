@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { ChatChannel } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { BubbleTranslatorService, Bubble, QuickReply } from './bubble-translator.service';
 import { CannedResponseVariableService } from './canned-response-variable.service';
@@ -34,7 +35,9 @@ const CUSTOMER_VARIABLE_PLACEHOLDERS: Record<string, string> = {
  * ของห้อง LINE ร้าน/Facebook ถูกบอทขาย (`capture_lead` `LINKED_BY_PHONE`) ผูกได้ด้วยเบอร์อย่างเดียว ⇒ ผู้ใช้ที่บอกเบอร์ของคนอื่น
  * แล้วกดปุ่มจะได้ชื่อ/สัญญา/ยอดของเจ้าของเบอร์. ไม่ผ่าน (รวม Facebook ซึ่งไม่มีทางยืนยัน OTP) = คำกลาง
  * (`CUSTOMER_VARIABLE_PLACEHOLDERS`) · `{branchName}` (สาขาของพนักงานที่ดูแลห้อง) ไม่ใช่ข้อมูลลูกค้า เติมตามเดิม ·
- * พนักงานกดส่งเอง (`staffId` มีค่า) ใช้ลูกค้าของห้องตามเดิม — พนักงานเห็นห้องและตัดสินเอง
+ * พนักงานกดส่งเอง (`staffId` มีค่า) ใช้ลูกค้าของห้องตามเดิม — พนักงานเห็นห้องและตัดสินเอง — **ยกเว้นห้อง LINE การเงิน** (Task 24 round 3 ·
+ * m-R2-1 ทางเลือก ข): ห้องของ LINE ที่ลูกค้ายกเลิกผูกแล้วยังถือ `customer_id` เดิม (ยกเลิกผูกล้างแค่ `verified_at` — ไม่ปลด) ⇒ ใน inbox ห้องนั้นยังขึ้นเป็นของ
+ * ลูกค้า และผู้ที่ทักมาคือผู้ถือ LINE เก่า ⇒ ห้อง `LINE_FINANCE` ใช้กติกาเดียวกับลูกค้ากดเอง (`otpVerifiedRoomCustomerId`) ทั้งสองทาง · ช่องอื่นคงเดิม
  */
 @Injectable()
 export class CannedResponseSenderService {
@@ -168,9 +171,10 @@ export class CannedResponseSenderService {
     ] as const;
     const SEP = ''; // unlikely to appear in any resolved value
     const probe = VARIABLE_KEYS.map((k) => `{${k}}`).join(SEP);
-    // Task 22 I-C — ลูกค้ากดเอง: ข้อมูลลูกค้าเฉพาะห้อง LINE ที่ยืนยัน OTP กับลูกค้าของห้องแล้ว
+    // Task 22 I-C — ลูกค้ากดเอง: ข้อมูลลูกค้าเฉพาะห้อง LINE ที่ยืนยัน OTP กับลูกค้าของห้องแล้ว ·
+    // Task 24 round 3 (m-R2-1 ข) — พนักงานกดในห้อง LINE การเงินก็ใช้กติกาเดียวกัน (ห้องของ LINE ที่ยกเลิกผูกแล้วยังถือ customerId เดิม)
     const variableCustomerId =
-      staffId === null
+      staffId === null || room.channel === ChatChannel.LINE_FINANCE
         ? await this.otpVerifiedRoomCustomerId(room)
         : (room.customerId ?? undefined);
     const expandedProbe = await this.variableService.expandVariables(probe, {

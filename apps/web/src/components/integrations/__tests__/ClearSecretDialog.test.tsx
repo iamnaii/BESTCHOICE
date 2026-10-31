@@ -44,11 +44,13 @@ describe('ClearSecretDialog — what clearing a field does', () => {
     expect(dialog).not.toHaveTextContent('จะใช้งานไม่ได้');
   });
 
-  it('Facebook Verify Token: Messenger keeps working, only (re)subscribing the webhook needs it', () => {
+  it('Facebook Verify Token: webhook re-verify and the page-comment feature stop (review N1)', () => {
     const dialog = open(t('facebook', 'Facebook Messenger', 'verifyToken', 'Webhook Verify Token'));
     expect(dialog).toHaveTextContent(
-      'Facebook Messenger ยังรับส่งข้อความต่อได้ — Verify Token ใช้เฉพาะตอนยืนยัน webhook กับ Facebook (สมัครครั้งแรกหรือสมัครใหม่) ถ้าต้องยืนยันใหม่ต้องบันทึกค่าใหม่ก่อน · การ์ดจะขึ้น “ยังไม่ตั้งค่า” เพราะช่องนี้จำเป็น',
+      'ยืนยัน webhook กับ Facebook ใหม่ไม่ได้ และฟีเจอร์คอมเมนต์เพจหยุด: ตอบคอมเมนต์จากอินบ็อกซ์ไม่ได้ · ปุ่มสมัครรับคอมเมนต์และการสมัคร webhook ใน App Review ล้มเหลว · ถ้าเปิดรับคอมเมนต์ไว้ ระบบจะตอบคำขอ webhook ที่มีคอมเมนต์ว่าล้มเหลว คอมเมนต์ใหม่จึงไม่เข้าอินบ็อกซ์ และข้อความ Messenger ที่มาในคำขอเดียวกันก็ยังไม่ถูกรับเข้า — จนกว่าจะบันทึกค่าใหม่ · ข้อความ Messenger ที่ไม่ได้มาพร้อมคอมเมนต์ยังรับส่งได้',
     );
+    // The old copy claimed the token only matters for the webhook handshake.
+    expect(dialog).not.toHaveTextContent('ใช้เฉพาะตอนยืนยัน webhook');
   });
 
   it('Yeastar Webhook Secret: production rejects every webhook — no incoming-call popup, CDRs still polled', () => {

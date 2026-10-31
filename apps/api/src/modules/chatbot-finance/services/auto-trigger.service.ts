@@ -17,10 +17,10 @@ import {
   financeLineRecipient,
 } from '../../line-oa/services/otp-verified-customer';
 import {
-  AUTO_TRIGGER_REMINDER_TYPES,
   autoTriggerReferenceKey,
-  notificationReminderSentToday,
-} from '../../notifications/payment-reminder-dedupe';
+  botNoticeKind,
+  paymentNoticeSentToday,
+} from '../../notifications/payment-notice-dedupe';
 import {
   findContractsInLegacyLinkGrace,
   recordLegacyLinkGraceSkip,
@@ -40,9 +40,9 @@ const TIMEZONE = 'Asia/Bangkok';
  *   - ก่อนส่ง: เช็คว่ามี trigger record (PENDING/SENT) สำหรับ payment+type นี้แล้วหรือยัง
  *   - หลังส่ง: mark SENT
  *
- * Task 30 ข้อ 1 — เตือนค่างวด (T-5..T0) เป็นตัวสำรองของ A1 (`NotificationReminderService.sendPaymentReminders` 08:00):
- *   งวดที่ A1 ส่งแล้ววันนี้ (หรือยังถือการส่งอยู่ในคิวส่งซ้ำ) = ข้าม ไม่จองแถว ⇒ ลูกค้าได้หนึ่งข้อความต่องวดต่อวัน
- *   (`payment-reminder-dedupe.ts`) · ทวงหลังเลยกำหนด (ESCALATION_*) ไม่เกี่ยว
+ * Task 30 — บอทเป็นตัวสำรอง (`payment-notice-dedupe.ts`): เตือนค่างวด T-5..T0 ของ A1 (`sendPaymentReminders` 08:00 — ข้อ 1) ·
+ *   ทวง T+1/T+3 ของ A2 (`sendOverdueNotices` 09:00 — รอบ 2 ข้อ 3) — งวดที่ตัวหลักส่งแล้ววันนี้ (หรือยังถือการส่งอยู่ในคิวส่งซ้ำ) = ข้าม
+ *   ไม่จองแถว ⇒ ลูกค้าได้หนึ่งข้อความต่อชนิดต่องวดต่อวัน
  * Task 30 ข้อ 2 — ทวงหลังเลยกำหนด (ESCALATION_*) ของสัญญานำเข้าที่ลูกค้าผูก LINE ยังไม่ครบ 7 วัน = ไม่ส่ง (`legacy-link-grace.ts`) ·
  *   เตือนค่างวดยังส่งระหว่างผ่อนผัน
  */
@@ -148,9 +148,11 @@ export class AutoTriggerService {
     let sent = 0;
     let skipped = 0;
     let failed = 0;
-    let dedupedByA1 = 0;
+    let dedupedByPrimary = 0;
     let legacyGraceSkipped = 0;
-    const isPaymentReminder = AUTO_TRIGGER_REMINDER_TYPES.includes(type);
+    // Task 30 — ชนิดข้อความ (เตือนค่างวด / แจ้งค้างชำระ) ที่บอทเป็นตัวสำรองของ A1 / A2 (payment-notice-dedupe.ts)
+    const noticeKind = botNoticeKind(type);
+    const isPaymentReminder = noticeKind === 'REMINDER';
     // ทวงหลังเลยกำหนด: สัญญาในช่วงผ่อนผันหลังผูก LINE (query เดียวต่อรอบ) · เตือนค่างวดไม่ถาม
     const legacyGrace = isPaymentReminder
       ? new Set<string>()
@@ -166,9 +168,9 @@ export class AutoTriggerService {
         continue;
       }
 
-      // Task 30 ข้อ 1 — A1 ส่งเตือนงวดนี้แล้ววันนี้ ⇒ ไม่ส่งซ้ำ (ไม่จองแถว: สั่งรันซ้ำก็ตัดสินเหมือนเดิม)
-      if (isPaymentReminder && (await notificationReminderSentToday(this.prisma, payment.id))) {
-        dedupedByA1++;
+      // Task 30 — ตัวหลัก (A1 เตือนค่างวด / A2 แจ้งค้างชำระ) ส่งงวดนี้แล้ววันนี้ ⇒ ไม่ส่งซ้ำ (ไม่จองแถว: สั่งรันซ้ำก็ตัดสินเหมือนเดิม)
+      if (noticeKind && (await paymentNoticeSentToday(this.prisma, noticeKind, payment.id))) {
+        dedupedByPrimary++;
         continue;
       }
 
@@ -202,7 +204,7 @@ export class AutoTriggerService {
     }
 
     this.logger.log(
-      `[AutoTrigger] ${type}: sent=${sent} skipped=${skipped} failed=${failed} dedupedByA1=${dedupedByA1} legacyGrace=${legacyGraceSkipped}`,
+      `[AutoTrigger] ${type}: sent=${sent} skipped=${skipped} failed=${failed} dedupedByPrimary=${dedupedByPrimary} legacyGrace=${legacyGraceSkipped}`,
     );
   }
 

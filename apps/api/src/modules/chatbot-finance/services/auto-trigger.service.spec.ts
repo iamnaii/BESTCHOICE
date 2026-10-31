@@ -236,16 +236,43 @@ describe('AutoTriggerService', () => {
       expect(lineClient.pushText).toHaveBeenCalled();
       expect(prisma.chatAutoTrigger.create).toHaveBeenCalled();
     });
+  });
 
-    it('ทวงหลังเลยกำหนด (T+1/T+3) ไม่ถาม A1 — ไม่ใช่เตือนค่างวด', async () => {
+  describe('Task 30 รอบ 2 ข้อ 3 — ทวง T+1/T+3 งวดละหนึ่งข้อความต่อวัน (A2 09:00 ตัวหลัก · บอท 10:00 ตัวสำรอง)', () => {
+    it.each([1, 3])(
+      'T+%i: A2 แจ้งค้างชำระงวดนี้แล้ววันนี้ → บอทไม่ส่ง ไม่จองแถว',
+      async (daysOverdue) => {
+        const due = new Date();
+        due.setHours(0, 0, 0, 0);
+        due.setDate(due.getDate() - daysOverdue);
+        prisma.payment.findMany.mockImplementation(
+          ({ where }: { where: { dueDate: { gte: Date } } }) =>
+            Promise.resolve(
+              where.dueDate.gte.getTime() === due.getTime() ? [makePayment(3, due)] : [],
+            ),
+        );
+        prisma.notificationLog.findFirst.mockResolvedValue({ id: 'a2-log' });
+
+        await service.runDailyEscalations();
+
+        expect(lineClient.pushText).not.toHaveBeenCalled();
+        expect(prisma.chatAutoTrigger.create).not.toHaveBeenCalled();
+        // ถามแถวแจ้งค้างชำระของ A2 (หัวข้อ Flex หรือหมวด DUNNING ของงวดนี้) ไม่ใช่แถวเตือนค่างวด
+        const where = prisma.notificationLog.findFirst.mock.calls[0][0].where;
+        expect(where.relatedId).toBe('pay-3');
+        expect(where.AND[0]).toEqual({
+          OR: [{ subject: 'แจ้งค้างชำระ' }, { category: 'DUNNING' }],
+        });
+      },
+    );
+
+    it('A2 ยังไม่ได้แจ้ง (ไม่มี consent / ส่งไม่ผ่านจนหมดรอบ) → บอทส่งตามเดิม', async () => {
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
       prisma.payment.findMany.mockResolvedValue([makePayment(3, yesterday)]);
-      prisma.notificationLog.findFirst.mockResolvedValue({ id: 'a1-log' });
 
       await service.runDailyEscalations();
 
-      expect(prisma.notificationLog.findFirst).not.toHaveBeenCalled();
       expect(lineClient.pushText).toHaveBeenCalled();
     });
   });

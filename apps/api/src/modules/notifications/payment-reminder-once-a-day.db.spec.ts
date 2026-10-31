@@ -39,8 +39,8 @@ let bot: AutoTriggerService;
 const pushText = jest.fn();
 const fixtures: InstallmentFixture[] = [];
 
-type Via = 'a1Flex' | 'a1Text' | 'bot';
-/** ข้อความที่ถึง LINE จริง (ส่งผ่าน) — Flex ของ A1 · ข้อความ template/คิวส่งซ้ำของ A1 · ข้อความของบอท */
+type Via = 'flex' | 'text' | 'bot';
+/** ข้อความที่ถึง LINE จริง (ส่งผ่าน) — Flex ของ NotificationsService (A1/A2) · ข้อความ template/คิวส่งซ้ำ (A1/A2) · ข้อความของบอท */
 const delivered: { to: string; via: Via }[] = [];
 /** LINE ที่ตั้งให้ส่งไม่ผ่าน (จำลอง LINE API ล่ม) */
 const failingLines = new Set<string>();
@@ -51,7 +51,7 @@ const sink = (via: Via) => async (to: string) => {
 
 function deliveredTo(lineUserId: string) {
   const count = (via: Via) => delivered.filter((d) => d.to === lineUserId && d.via === via).length;
-  return { a1Flex: count('a1Flex'), a1Text: count('a1Text'), bot: count('bot') };
+  return { flex: count('flex'), text: count('text'), bot: count('bot') };
 }
 
 async function installment(label: string, dueInDays: number, opts: { consent?: boolean } = {}) {
@@ -72,6 +72,22 @@ const runBotAt = async (hh: number, mm = 0) => {
   jest.setSystemTime(bangkokAt(day, 0, hh, mm));
   await bot.runDailyReminders();
 };
+const runA2At = async (hh: number, mm = 0) => {
+  jest.setSystemTime(bangkokAt(day, 0, hh, mm));
+  return notifications.sendOverdueNotices();
+};
+const runBotEscalationsAt = async (hh: number, mm = 0) => {
+  jest.setSystemTime(bangkokAt(day, 0, hh, mm));
+  await bot.runDailyEscalations();
+};
+/** คิวส่งซ้ำ 5 รอบ (ถอย 5 × 3^n นาที: 5 · 15 · 45 · 135 · 405) ยังไม่ผ่าน → FAILED ถาวร · เริ่มนับจาก hh:mm */
+async function exhaustRetryQueueFrom(hh: number, mm: number) {
+  const offsetsMin = [6, 6 + 16, 6 + 16 + 46, 6 + 16 + 46 + 136, 6 + 16 + 46 + 136 + 406];
+  for (const m of offsetsMin) {
+    jest.setSystemTime(new Date(bangkokAt(day, 0, hh, mm).getTime() + m * 60_000));
+    await notifications.processRetryQueue();
+  }
+}
 
 beforeAll(async () => {
   assertTestDatabase();
@@ -103,8 +119,8 @@ beforeAll(async () => {
     } as never,
     { bankInfoBlock: '🏦 ทดสอบ' } as never,
   );
-  jest.spyOn(notifications.transport, 'sendLineFlexMessage').mockImplementation(sink('a1Flex'));
-  jest.spyOn(notifications.transport, 'sendLine').mockImplementation(sink('a1Text'));
+  jest.spyOn(notifications.transport, 'sendLineFlexMessage').mockImplementation(sink('flex'));
+  jest.spyOn(notifications.transport, 'sendLine').mockImplementation(sink('text'));
   jest.spyOn(notifications.transport, 'sendSms').mockResolvedValue(undefined);
   pushText.mockImplementation(sink('bot'));
 });
@@ -130,7 +146,7 @@ describe('Task 30 ข้อ 1 — งวดละหนึ่งข้อคว�
       await runA1At(8);
       await runBotAt(9);
 
-      expect(deliveredTo(f.lineUserId)).toEqual({ a1Flex: 1, a1Text: 0, bot: 0 });
+      expect(deliveredTo(f.lineUserId)).toEqual({ flex: 1, text: 0, bot: 0 });
       expect(await prisma.chatAutoTrigger.count({ where: { customerId: f.customerId } })).toBe(0);
     },
   );
@@ -141,7 +157,7 @@ describe('Task 30 ข้อ 1 — งวดละหนึ่งข้อคว�
     await runBotAt(7, 30);
     const a1 = await runA1At(8);
 
-    expect(deliveredTo(f.lineUserId)).toEqual({ a1Flex: 0, a1Text: 0, bot: 1 });
+    expect(deliveredTo(f.lineUserId)).toEqual({ flex: 0, text: 0, bot: 1 });
     expect(a1.dedupedByBot).toBeGreaterThanOrEqual(1);
     expect(
       await prisma.notificationLog.count({
@@ -158,7 +174,7 @@ describe('Task 30 ข้อ 1 — งวดละหนึ่งข้อคว�
     await runA1At(11);
     await runBotAt(14);
 
-    expect(deliveredTo(f.lineUserId)).toEqual({ a1Flex: 1, a1Text: 0, bot: 0 });
+    expect(deliveredTo(f.lineUserId)).toEqual({ flex: 1, text: 0, bot: 0 });
   });
 
   it('บอทส่งไม่ผ่าน (FAILED) → A1 ส่งแทนได้ → บอทรันซ้ำไม่ส่งอีก', async () => {
@@ -177,7 +193,7 @@ describe('Task 30 ข้อ 1 — งวดละหนึ่งข้อคว�
     await runA1At(8);
     await runBotAt(9);
 
-    expect(deliveredTo(f.lineUserId)).toEqual({ a1Flex: 1, a1Text: 0, bot: 0 });
+    expect(deliveredTo(f.lineUserId)).toEqual({ flex: 1, text: 0, bot: 0 });
   });
 
   it('A1 ส่งไม่ผ่านชั่วคราว → อยู่ในคิวส่งซ้ำ (A1 ยังถือการส่ง) → A1 รันซ้ำ/บอทไม่ซ้อน → คิวส่งซ้ำส่งถึง (ข้อความเดียว)', async () => {
@@ -195,12 +211,12 @@ describe('Task 30 ข้อ 1 — งวดละหนึ่งข้อคว�
     failingLines.clear();
     await runA1At(8, 30);
     await runBotAt(9);
-    expect(deliveredTo(f.lineUserId)).toEqual({ a1Flex: 0, a1Text: 0, bot: 0 });
+    expect(deliveredTo(f.lineUserId)).toEqual({ flex: 0, text: 0, bot: 0 });
 
     jest.setSystemTime(bangkokAt(day, 0, 9, 10));
     await notifications.processRetryQueue();
 
-    expect(deliveredTo(f.lineUserId)).toEqual({ a1Flex: 0, a1Text: 1, bot: 0 });
+    expect(deliveredTo(f.lineUserId)).toEqual({ flex: 0, text: 1, bot: 0 });
   }, 30_000);
 
   it('A1 ส่งไม่ผ่านจนหมดรอบส่งซ้ำ (FAILED) → บอทส่งแทน (ฝั่งแรกพังไม่กันฝั่งที่สอง)', async () => {
@@ -224,7 +240,7 @@ describe('Task 30 ข้อ 1 — งวดละหนึ่งข้อคว�
     failingLines.clear();
     await runBotAt(18, 45);
 
-    expect(deliveredTo(f.lineUserId)).toEqual({ a1Flex: 0, a1Text: 0, bot: 1 });
+    expect(deliveredTo(f.lineUserId)).toEqual({ flex: 0, text: 0, bot: 1 });
   }, 30_000);
 
   it('T-5 มีแต่บอท → ส่งตามเดิม (ข้อความเดียว)', async () => {
@@ -233,7 +249,7 @@ describe('Task 30 ข้อ 1 — งวดละหนึ่งข้อคว�
     await runA1At(8);
     await runBotAt(9);
 
-    expect(deliveredTo(f.lineUserId)).toEqual({ a1Flex: 0, a1Text: 0, bot: 1 });
+    expect(deliveredTo(f.lineUserId)).toEqual({ flex: 0, text: 0, bot: 1 });
   });
 
   it('ไม่มี consent PDPA → A1 ข้าม (แถว SKIPPED) → บอทส่ง — พฤติกรรมเดิมของบอท (ด่าน consent ของบอทรองาน "ยินยอมตอนผูก")', async () => {
@@ -242,9 +258,94 @@ describe('Task 30 ข้อ 1 — งวดละหนึ่งข้อคว�
     await runA1At(8);
     await runBotAt(9);
 
-    expect(deliveredTo(f.lineUserId)).toEqual({ a1Flex: 0, a1Text: 0, bot: 1 });
+    expect(deliveredTo(f.lineUserId)).toEqual({ flex: 0, text: 0, bot: 1 });
     expect(
       await prisma.notificationLog.count({ where: { relatedId: f.paymentId, status: 'SKIPPED' } }),
     ).toBe(1);
+  });
+});
+
+describe('Task 30 รอบ 2 ข้อ 3 — ทวง T+1/T+3 งวดละหนึ่งข้อความต่อวัน (A2 09:00 + บอท 10:00 วันเดียวกัน)', () => {
+  it.each([1, 3])(
+    'T+%i: A2 09:00 ส่ง Flex → บอท 10:00 ข้าม ไม่จองแถว (ข้อความเดียว)',
+    async (overdue) => {
+      const f = await installment(`a2first-${overdue}`, -overdue);
+
+      await runA2At(9);
+      await runBotEscalationsAt(10);
+
+      expect(deliveredTo(f.lineUserId)).toEqual({ flex: 1, text: 0, bot: 0 });
+      expect(await prisma.chatAutoTrigger.count({ where: { customerId: f.customerId } })).toBe(0);
+    },
+  );
+
+  it('สั่งรันบอทก่อน (08:00) → A2 09:00 ข้าม ทั้ง LINE และ SMS (ข้อความเดียว)', async () => {
+    const f = await installment('esc-botfirst', -1);
+
+    await runBotEscalationsAt(8);
+    const a2 = await runA2At(9);
+
+    expect(deliveredTo(f.lineUserId)).toEqual({ flex: 0, text: 0, bot: 1 });
+    expect(a2.dedupedByBot).toBeGreaterThanOrEqual(1);
+  });
+
+  it('สั่งรันซ้ำทั้งสองงานหลายรอบในวันเดียว → ยังข้อความเดียว', async () => {
+    const f = await installment('esc-reruns', -3);
+
+    await runA2At(9);
+    await runBotEscalationsAt(10);
+    await runA2At(11);
+    await runBotEscalationsAt(14);
+
+    expect(deliveredTo(f.lineUserId)).toEqual({ flex: 1, text: 0, bot: 0 });
+  });
+
+  it('บอทส่งไม่ผ่าน (FAILED) → A2 ส่งแทน → บอทรันซ้ำไม่ส่งอีก', async () => {
+    const f = await installment('esc-botfailed', -1);
+
+    failingLines.add(f.lineUserId);
+    await runBotEscalationsAt(8);
+    failingLines.clear();
+    await runA2At(9);
+    await runBotEscalationsAt(10);
+
+    expect(deliveredTo(f.lineUserId)).toEqual({ flex: 1, text: 0, bot: 0 });
+  });
+
+  it('A2 ส่งไม่ผ่านชั่วคราว (คิวส่งซ้ำ) → บอท 10:00 ไม่ซ้อน · A2 ส่งไม่ผ่านจนหมดคิว → บอทส่งแทน', async () => {
+    const retrying = await installment('esc-retry', -1);
+
+    failingLines.add(retrying.lineUserId);
+    await runA2At(9);
+    expect(
+      await prisma.notificationLog.findFirstOrThrow({
+        where: { relatedId: retrying.paymentId, channel: 'LINE', category: 'DUNNING' },
+        select: { status: true },
+      }),
+    ).toEqual({ status: 'RETRY_PENDING' });
+    await runBotEscalationsAt(10);
+    expect(deliveredTo(retrying.lineUserId).bot).toBe(0);
+
+    await exhaustRetryQueueFrom(9, 0);
+    expect(
+      await prisma.notificationLog.findFirstOrThrow({
+        where: { relatedId: retrying.paymentId, channel: 'LINE', category: 'DUNNING' },
+        select: { status: true },
+      }),
+    ).toEqual({ status: 'FAILED' });
+
+    failingLines.clear();
+    await runBotEscalationsAt(19, 30);
+
+    expect(deliveredTo(retrying.lineUserId)).toEqual({ flex: 0, text: 0, bot: 1 });
+  }, 30_000);
+
+  it('T+7 มีแต่ A2 → ส่งตามเดิม', async () => {
+    const f = await installment('esc-tplus7', -7);
+
+    await runA2At(9);
+    await runBotEscalationsAt(10);
+
+    expect(deliveredTo(f.lineUserId)).toEqual({ flex: 1, text: 0, bot: 0 });
   });
 });

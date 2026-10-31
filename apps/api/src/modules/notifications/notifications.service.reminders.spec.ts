@@ -275,6 +275,41 @@ describe('NotificationsService — reminder / overdue dunning', () => {
       expect(result.sent).toBe(0);
     });
 
+    describe('Task 30 รอบ 2 ข้อ 3 — ทวง T+1/T+3 งวดละหนึ่งข้อความต่อวัน (A2 ตัวหลัก · บอทตัวสำรอง)', () => {
+      it('ข้ามงวดที่บอทการเงินส่งทวง T+1/T+3 ไปแล้ววันนี้ — ไม่ส่ง LINE/SMS ไม่แตะ consent', async () => {
+        prisma.payment.findMany.mockResolvedValue([withLine()]);
+        prisma.chatAutoTrigger.findFirst.mockResolvedValue({ id: 'trig-esc' });
+
+        const result = await service.sendOverdueNotices();
+
+        expect(spyOf('sendLineFlexMessage')).not.toHaveBeenCalled();
+        expect(spyOf('send')).not.toHaveBeenCalled();
+        expect(prisma.pDPAConsent.findFirst).not.toHaveBeenCalled();
+        expect(result.sent).toBe(0);
+        expect(result.dedupedByBot).toBe(1);
+        const where = prisma.chatAutoTrigger.findFirst.mock.calls[0][0].where;
+        expect(where.referenceKey.in).toEqual([
+          'ESCALATION_T_PLUS_1:pay-1',
+          'ESCALATION_T_PLUS_3:pay-1',
+        ]);
+        expect(where.status).toEqual({ in: ['SENT', 'PENDING'] });
+      });
+
+      it('กันซ้ำของ A2 เองนับทุกทาง (หัวข้อ Flex หรือหมวด DUNNING ของงวด) + แถวที่ยังรอคิวส่งซ้ำ', async () => {
+        prisma.payment.findMany.mockResolvedValue([withLine()]);
+
+        await service.sendOverdueNotices();
+
+        const where = prisma.notificationLog.findFirst.mock.calls[0][0].where;
+        expect(where.relatedId).toBe('pay-1');
+        expect(where.AND[0]).toEqual({ OR: [{ subject: SUBJECT }, { category: 'DUNNING' }] });
+        expect(where.AND[1].OR[1]).toEqual({
+          status: { in: ['RETRY_PENDING', 'DELAYED'] },
+          createdAt: { gte: expect.any(Date) },
+        });
+      });
+    });
+
     it('sends a LINE flex overdue notice and logs SENT when the customer has lineIdFinance + consent', async () => {
       prisma.payment.findMany.mockResolvedValue([withLine()]);
 

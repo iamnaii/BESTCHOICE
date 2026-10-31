@@ -1,11 +1,13 @@
 import {
   ACTIVE_FINANCE_LINK_WHERE,
   FINANCE_LINE_RECIPIENT_SELECT,
+  FINANCE_LINE_STATUS_SELECT,
   LEGACY_SHOP_LINE_ID_CUTOFF,
   financeLineRecipient,
   findFinanceLineRecipient,
   findOtpVerifiedCustomerId,
   findShopLiffCustomerId,
+  withFinanceLineStatus,
   withVerifiedFinanceLine,
 } from './otp-verified-customer';
 
@@ -139,6 +141,56 @@ describe('withVerifiedFinanceLine', () => {
     for (const lineLinks of [undefined, [], [{ lineUserId: 'U1' }]]) {
       expect(withVerifiedFinanceLine({ lineLinks }).hasVerifiedLine).toBe(
         financeLineRecipient({ lineLinks }) !== null,
+      );
+    }
+  });
+});
+
+/**
+ * Task 27 — ฟอร์มแก้ไขลูกค้าแสดง "สถานะ" LINE น้องเบส (การเงิน) แทนช่องพิมพ์: `financeLine.verified` ใช้เกณฑ์เดียวกับผู้ส่ง/ปุ่ม "ส่ง LINE"
+ * (แถว OTP ที่ยังผูก — `financeLineRecipient`) + วันที่ผูกของแถวนั้น · ไม่ส่ง U-id ของแถวออกไปหน้าเว็บ
+ */
+describe('withFinanceLineStatus / FINANCE_LINE_STATUS_SELECT', () => {
+  it('select = แถว FINANCE ที่ยังผูก (ACTIVE_FINANCE_LINK_WHERE ตัวเดิม) + linkedAt · take 1', () => {
+    expect(FINANCE_LINE_STATUS_SELECT).toEqual({
+      lineLinks: {
+        where: ACTIVE_FINANCE_LINK_WHERE,
+        select: { lineUserId: true, linkedAt: true },
+        take: 1,
+      },
+    });
+  });
+
+  it('มีแถว OTP ที่ยังผูก → verified + linkedAt (ISO) · ตัด lineLinks ออก ไม่ส่ง U-id', () => {
+    const out = withFinanceLineStatus({
+      id: 'c1',
+      lineIdFinance: null,
+      lineLinks: [{ lineUserId: 'U-otp', linkedAt: new Date('2026-10-30T03:00:00.000Z') }],
+    });
+    expect(out).toEqual({
+      id: 'c1',
+      lineIdFinance: null,
+      financeLine: { verified: true, linkedAt: '2026-10-30T03:00:00.000Z' },
+    });
+    expect(JSON.stringify(out)).not.toContain('U-otp');
+  });
+
+  it.each([
+    ['ไม่มีแถว (ปิดแล้ว/ไม่เคยผูก) แม้คอลัมน์มีค่า', 'U-typed', []],
+    ['ไม่ได้เลือก lineLinks มา', 'U-typed', undefined],
+  ])('%s → verified false · linkedAt null', (_label, column, lineLinks) => {
+    expect(withFinanceLineStatus({ id: 'c2', lineIdFinance: column, lineLinks })).toEqual({
+      id: 'c2',
+      lineIdFinance: column,
+      financeLine: { verified: false, linkedAt: null },
+    });
+  });
+
+  it('เกณฑ์ verified เดียวกับ withVerifiedFinanceLine (ปุ่ม "ส่ง LINE") ทุกกรณี', () => {
+    const at = new Date('2026-10-30T03:00:00.000Z');
+    for (const lineLinks of [undefined, [], [{ lineUserId: 'U1', linkedAt: at }]]) {
+      expect(withFinanceLineStatus({ lineLinks }).financeLine.verified).toBe(
+        withVerifiedFinanceLine({ lineLinks }).hasVerifiedLine,
       );
     }
   });

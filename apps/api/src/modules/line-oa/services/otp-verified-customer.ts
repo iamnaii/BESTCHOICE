@@ -48,6 +48,43 @@ export function withVerifiedFinanceLine<T extends { lineLinks?: { lineUserId: st
   return { ...rest, hasVerifiedLine: financeLineRecipient({ lineLinks }) !== null };
 }
 
+/**
+ * Task 27 — ฟอร์มแก้ไขลูกค้าแสดงสถานะ "LINE น้องเบส (การเงิน)" แทนช่องพิมพ์ (`GET /customers/:id` · `/:id/detail`):
+ * แถวเดียวกับ `FINANCE_LINE_RECIPIENT_SELECT` (`ACTIVE_FINANCE_LINK_WHERE` · take 1) + วันที่ผูกของแถวนั้น
+ */
+export const FINANCE_LINE_STATUS_SELECT = {
+  lineLinks: {
+    where: ACTIVE_FINANCE_LINK_WHERE,
+    select: { lineUserId: true, linkedAt: true },
+    take: 1,
+  },
+} satisfies Prisma.CustomerSelect;
+
+export interface FinanceLineStatus {
+  /** มีแถว OTP ที่ยังผูก — เกณฑ์เดียวกับผู้ส่ง (`financeLineRecipient`) และปุ่ม "ส่ง LINE" (`withVerifiedFinanceLine`) */
+  verified: boolean;
+  /** วันที่ลูกค้าผูกด้วย OTP (ISO) · ไม่ผูก = null */
+  linkedAt: string | null;
+}
+
+/**
+ * ส่งออก `financeLine` ให้หน้าจอพนักงาน (ต้องเลือก `FINANCE_LINE_STATUS_SELECT`) · ตัด `lineLinks` ทิ้ง — U-id ของแถวไม่ต้องไปถึงหน้าเว็บ ·
+ * คอลัมน์ `lineIdFinance` ไม่ใช่เกณฑ์ (ค่าค้างที่ไม่มีแถวหนุน = verified false — กติกาข้อ 9 ของ security.md)
+ */
+export function withFinanceLineStatus<
+  T extends { lineLinks?: { lineUserId: string; linkedAt: Date }[] },
+>(customer: T): Omit<T, 'lineLinks'> & { financeLine: FinanceLineStatus } {
+  const { lineLinks, ...rest } = customer;
+  const verified = financeLineRecipient({ lineLinks }) !== null;
+  return {
+    ...rest,
+    financeLine: {
+      verified,
+      linkedAt: verified ? lineLinks![0].linkedAt.toISOString() : null,
+    },
+  };
+}
+
 /** แบบค้นเอง — สำหรับผู้ส่งที่มีแค่ `customerId` และแก้ select ของแหล่งข้อมูลไม่ได้ (เช่น source ที่ผูก revision เอกสาร) */
 export async function findFinanceLineRecipient(
   prisma: Pick<PrismaService, 'customerLineLink'>,

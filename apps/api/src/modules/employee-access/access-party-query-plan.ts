@@ -51,6 +51,8 @@ const CUSTOMER_READ_FIELDS = new Set([
   'phoneSecondary',
   'email',
   'lineIdFinance',
+  // Task 27 — สถานะ LINE น้องเบส (verified + วันที่ผูก) จากแถว OTP · ไม่มี U-id · เห็นเท่ากับ lineIdFinance
+  'financeLine',
   'lineIdShop',
   'facebookLink',
   'facebookName',

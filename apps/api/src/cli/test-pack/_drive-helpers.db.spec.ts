@@ -5,7 +5,7 @@
  * (`customer_line_links` ช่อง FINANCE ที่ยังผูก — Task 22 I-1 ง) ไม่ใช่คอลัมน์ ⇒ ลูกค้าที่มีแถว active แต่คอลัมน์ว่างต้องถูกข้ามด้วย
  */
 import { LineChannelType, PrismaClient } from '@prisma/client';
-import { MAY_RECEIVE_FINANCE_LINE_WHERE } from './_drive-helpers';
+import { ACTIVATION_SILENT_CUSTOMER_WHERE, MAY_RECEIVE_FINANCE_LINE_WHERE } from './_drive-helpers';
 
 const prisma = new PrismaClient();
 const tag = `t24d-${Date.now()}`;
@@ -61,4 +61,26 @@ it('ข้ามลูกค้าที่มีแถว OTP ที่ยั�
 
   expect(skipped.map((r) => r.id).sort()).toEqual([columnOnly, linkOnly].sort());
   expect(driven.map((r) => r.id).sort()).toEqual([unlinked, none].sort());
+});
+
+/**
+ * Task 24 fix round 1 M-5 — ก้าวเปิดสัญญาส่ง "สัญญาอนุมัติแล้ว" ทาง LINE (แถว OTP) หรือ SMS (customer.phone) ⇒ เปิดเฉพาะลูกค้าที่ไม่มี LINE การเงิน
+ * และเบอร์เป็นรูปโทรไม่ได้ `TEST-…` ของชุดทดสอบ
+ */
+it('ก้าวเปิดสัญญา: เปิดเฉพาะลูกค้าไม่มี LINE การเงิน + เบอร์โทรไม่ได้ (TEST-) · มีแถว OTP / มีค่าคอลัมน์ / เบอร์โทรได้ = ข้าม', async () => {
+  const silent = await customer('เงียบ', 'TEST-1', null);
+  const otp = await customer('มีแถว OTP', 'TEST-2', null);
+  await prisma.customerLineLink.create({
+    data: { customerId: otp, lineUserId: `U${tag}-act`, channel: LineChannelType.FINANCE },
+  });
+  const column = await customer('มีคอลัมน์', 'TEST-3', `U${tag}-act-col`);
+  const dialable = await customer('เบอร์โทรได้', '05', null);
+  const mine = [silent, otp, column, dialable];
+
+  const activatable = await prisma.customer.findMany({
+    where: { id: { in: mine }, ...ACTIVATION_SILENT_CUSTOMER_WHERE },
+    select: { id: true },
+  });
+
+  expect(activatable.map((r) => r.id)).toEqual([silent]);
 });

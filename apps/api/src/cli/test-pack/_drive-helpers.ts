@@ -20,6 +20,19 @@ export const MAY_RECEIVE_FINANCE_LINE_WHERE = {
   OR: [{ lineIdFinance: { not: null } }, { lineLinks: { some: ACTIVE_FINANCE_LINK_WHERE } }],
 } satisfies Prisma.CustomerWhereInput;
 
+/** เบอร์โทรไม่ได้ของลูกค้าทดสอบที่ไปถึงก้าวเปิดสัญญา (`contracts.seed.ts` ข้อ 9 / S4 — provider ปฏิเสธเบอร์รูปนี้) */
+export const UNDIALABLE_TEST_PHONE_PREFIX = 'TEST-';
+
+/**
+ * Task 24 fix round 1 M-5 — ก้าว "เปิดสัญญาผ่อน" เรียก `ContractWorkflowService.activate` ซึ่งส่ง "สัญญาอนุมัติแล้ว" ถึงลูกค้า
+ * (`sendContractActivatedNotification`: LINE ถ้ามีแถว OTP ที่ยังผูก ไม่งั้น SMS ถึง `customer.phone`) ⇒ เปิดเฉพาะสัญญาของลูกค้าที่ทั้งสองทาง
+ * ไม่ถึงคนจริง: ไม่เข้าเกณฑ์ LINE ของก้าวรับชำระ (`MAY_RECEIVE_FINANCE_LINE_WHERE`) **และ** เบอร์เป็นรูปโทรไม่ได้ของชุดทดสอบ
+ */
+export const ACTIVATION_SILENT_CUSTOMER_WHERE = {
+  NOT: MAY_RECEIVE_FINANCE_LINE_WHERE,
+  phone: { startsWith: UNDIALABLE_TEST_PHONE_PREFIX },
+} satisfies Prisma.CustomerWhereInput;
+
 /** เดือนไทย (YYYYMM) ของวันที่ — ใช้กับ month-guard ของก้าวที่คุมวันที่ลงบัญชีไม่ได้ */
 export const bkkMonthKey = (d: Date): string => bkkDateStr(d).slice(0, 6);
 

@@ -1,13 +1,19 @@
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { BubbleTranslatorService, Bubble, QuickReply } from './bubble-translator.service';
 import { CannedResponseVariableService } from './canned-response-variable.service';
 import { MessageRouterService } from '../../chat-engine/services/message-router.service';
+import { findOtpVerifiedCustomerId } from '../../line-oa/services/otp-verified-customer';
+
+/** ตัวแปรที่เปิดเผยข้อมูลของลูกค้า — ลูกค้าเป็นคนกดปุ่ม (staffId = null) ได้ค่าจริงเฉพาะ LINE ที่ยืนยัน OTP แล้ว (Task 22 I-C) */
+const CUSTOMER_VARIABLE_PLACEHOLDERS: Record<string, string> = {
+  customerName: 'ลูกค้า',
+  customerPhone: '-',
+  contractNumber: '-',
+  amountDue: '-',
+  dueDate: '-',
+  installmentNo: '-',
+};
 
 /**
  * CannedResponseSenderService — orchestrates the Phase 4 multi-bubble send.
@@ -21,6 +27,14 @@ import { MessageRouterService } from '../../chat-engine/services/message-router.
  *   6. Translate to OutboundMessage[] and attach quick replies to the LAST one
  *   7. Dispatch through MessageRouterService.sendStaffOutbound sequentially
  *      (preserves bubble order; adapter rate limits still apply per call)
+ *
+ * Task 22 I-C — ลูกค้าเป็นคนกดปุ่ม quick reply (postback `TEMPLATE:` → `staffId = null`): ตัวแปรลูกค้า
+ * (`{customerName}` `{customerPhone}` `{contractNumber}` `{amountDue}` `{dueDate}` `{installmentNo}`) เติมค่าจริง
+ * **เฉพาะ** ห้อง LINE ที่ `findOtpVerifiedCustomerId(room.lineUserId) === room.customerId` — `chat_rooms.customer_id`
+ * ของห้อง LINE ร้าน/Facebook ถูกบอทขาย (`capture_lead` `LINKED_BY_PHONE`) ผูกได้ด้วยเบอร์อย่างเดียว ⇒ ผู้ใช้ที่บอกเบอร์ของคนอื่น
+ * แล้วกดปุ่มจะได้ชื่อ/สัญญา/ยอดของเจ้าของเบอร์. ไม่ผ่าน (รวม Facebook ซึ่งไม่มีทางยืนยัน OTP) = คำกลาง
+ * (`CUSTOMER_VARIABLE_PLACEHOLDERS`) · `{branchName}` (สาขาของพนักงานที่ดูแลห้อง) ไม่ใช่ข้อมูลลูกค้า เติมตามเดิม ·
+ * พนักงานกดส่งเอง (`staffId` มีค่า) ใช้ลูกค้าของห้องตามเดิม — พนักงานเห็นห้องและตัดสินเอง
  */
 @Injectable()
 export class CannedResponseSenderService {
@@ -72,6 +86,16 @@ export class CannedResponseSenderService {
       select: { id: true },
     });
     return user.id;
+  }
+
+  /** ลูกค้าของห้องเมื่อ LINE ของห้องยืนยัน OTP กับลูกค้าคนนั้นแล้ว — ไม่ใช่ห้อง LINE / ยังไม่ยืนยัน / ยืนยันกับคนอื่น = undefined */
+  private async otpVerifiedRoomCustomerId(room: {
+    lineUserId: string | null;
+    customerId: string | null;
+  }): Promise<string | undefined> {
+    if (!room.lineUserId || !room.customerId) return undefined;
+    const verified = await findOtpVerifiedCustomerId(this.prisma, room.lineUserId);
+    return verified === room.customerId ? verified : undefined;
   }
 
   async send(
@@ -144,15 +168,21 @@ export class CannedResponseSenderService {
     ] as const;
     const SEP = ''; // unlikely to appear in any resolved value
     const probe = VARIABLE_KEYS.map((k) => `{${k}}`).join(SEP);
+    // Task 22 I-C — ลูกค้ากดเอง: ข้อมูลลูกค้าเฉพาะห้อง LINE ที่ยืนยัน OTP กับลูกค้าของห้องแล้ว
+    const variableCustomerId =
+      staffId === null
+        ? await this.otpVerifiedRoomCustomerId(room)
+        : (room.customerId ?? undefined);
     const expandedProbe = await this.variableService.expandVariables(probe, {
       roomId,
-      customerId: room.customerId ?? undefined,
+      customerId: variableCustomerId,
     });
     const resolvedParts = expandedProbe.split(SEP);
     const resolvedValues: Record<string, string> = {};
     VARIABLE_KEYS.forEach((k, i) => {
       resolvedValues[k] = resolvedParts[i] ?? '-';
     });
+    if (!variableCustomerId) Object.assign(resolvedValues, CUSTOMER_VARIABLE_PLACEHOLDERS);
 
     const expandedBubbles = applicableBubbles.map((b) => {
       if (b.type === 'TEXT' && b.text) {

@@ -43,7 +43,7 @@ export class IntegrationConfigService implements OnModuleInit {
     private readonly configService: ConfigService,
   ) {}
 
-  onModuleInit() {
+  async onModuleInit(): Promise<void> {
     const key = this.configService.get<string>('INTEGRATION_ENCRYPTION_KEY');
     if (!key) {
       this.logger.warn(
@@ -51,6 +51,39 @@ export class IntegrationConfigService implements OnModuleInit {
       );
       Sentry.captureMessage('INTEGRATION_ENCRYPTION_KEY not configured', 'warning');
     }
+    await this.logEncryptedFieldCheck();
+  }
+
+  /**
+   * Boot self-check: does the key this process holds open every encrypted
+   * credential? One log line (field references only — never values) lets ops
+   * verify the key after a deploy without reading any secret. Never throws:
+   * a DB hiccup must not block boot.
+   */
+  private async logEncryptedFieldCheck(): Promise<void> {
+    let check: EncryptedFieldCheck;
+    try {
+      check = await this.checkEncryptedFields();
+    } catch (err) {
+      this.logger.warn(
+        `integration encrypted fields: check failed — ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return;
+    }
+    const { ok, failed } = check;
+    if (ok.length + failed.length === 0) return;
+
+    const line = `integration encrypted fields: ok=${ok.length} failed=${failed.length}`;
+    if (failed.length === 0) {
+      this.logger.log(line);
+      return;
+    }
+    this.logger.warn(`${line} [${failed.join(', ')}]`);
+    Sentry.captureMessage('Integration credentials cannot be decrypted with the current key', {
+      level: 'warning',
+      tags: { subsystem: 'integration-config' },
+      extra: { ok: ok.length, failed },
+    });
   }
 
   // ─── Private helpers ──────────────────────────────────────────────────────

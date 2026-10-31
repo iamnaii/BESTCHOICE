@@ -65,7 +65,9 @@ export class NotificationsService {
   // NOTIFICATION SENDING (→ dispatch)
   // ============================================================
 
-  send(dto: SendNotificationDto): Promise<{ id: string; status: string; errorMsg?: string; blockReason?: string }> {
+  send(
+    dto: SendNotificationDto,
+  ): Promise<{ id: string; status: string; errorMsg?: string; blockReason?: string }> {
     return this.dispatch.send(dto);
   }
 

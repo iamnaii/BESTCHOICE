@@ -1,7 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { LineChannelType } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  FINANCE_LINE_RECIPIENT_SELECT,
+  financeLineRecipient,
+} from '../line-oa/services/otp-verified-customer';
 import { NotificationsService } from '../notifications/notifications.service';
 
 /** tag ของ Todo ทุกใบในโมดูลนี้ (NO_LINE fallback + cron เตือนใบค้าง) — dedup อ่านค่านี้ตัวเดียว */
@@ -19,8 +22,8 @@ const SENTRY_TAGS = { subsystem: 'device-return' } as const;
 /**
  * ไลน์แจ้งลูกค้าของใบรับเครื่องคืน (spec 2026-09-20 §5.5 — D3 ไม่มีลายเซ็น ใช้ข้อความทางเดียวแทน).
  * ส่งผ่านตัวส่งกลาง `NotificationsService.sendFromTemplate` (NotificationLog + retry + แม่แบบแก้เองได้
- * ที่ /notifications) — **ไม่ส่ง fallbackPhone** (ไลน์เท่านั้น ไม่ตก SMS). ผู้รับ = lineLinks FINANCE
- * ก่อน แล้วค่อย lineIdFinance (ตรรกะเดียวกับ credit-note-delivery.service.ts:108).
+ * ที่ /notifications) — **ไม่ส่ง fallbackPhone** (ไลน์เท่านั้น ไม่ตก SMS). ผู้รับ = แถว OTP (lineLinks FINANCE ที่ยังผูก)
+ * เท่านั้น — Task 22 I-1 (ง) ถอดทางสำรองคอลัมน์ lineIdFinance (`financeLineRecipient`)
  *
  * NEVER throws — ผู้เรียก (create/reject/cancel/resend) await ได้โดยไม่ต้อง try/catch; ทุกทางล้ม
  * (ใบไม่พบ, dispatcher throw, เขียน DB ล้ม) ถูกกลืน + Sentry. ผลส่งเก็บบนใบ
@@ -48,12 +51,7 @@ export class DeviceReturnNotifyService {
             select: {
               id: true,
               name: true,
-              lineIdFinance: true,
-              lineLinks: {
-                where: { channel: LineChannelType.FINANCE, unlinkedAt: null, deletedAt: null },
-                select: { lineUserId: true },
-                take: 1,
-              },
+              ...FINANCE_LINE_RECIPIENT_SELECT,
             },
           },
         },
@@ -65,7 +63,7 @@ export class DeviceReturnNotifyService {
         return;
       }
 
-      const lineUserId = dr.customer.lineLinks[0]?.lineUserId ?? dr.customer.lineIdFinance ?? null;
+      const lineUserId = financeLineRecipient(dr.customer);
       if (!lineUserId) {
         await this.record(dr.id, 'NO_LINE', null);
         await this.createNoLineTodo(

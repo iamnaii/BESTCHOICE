@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  FINANCE_LINE_RECIPIENT_SELECT,
+  financeLineRecipient,
+} from '../line-oa/services/otp-verified-customer';
 import { LineMessagePayload } from '../line-oa/dto/webhook-event.dto';
 import { LineOaService } from '../line-oa/line-oa.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -80,7 +84,7 @@ export class MdmAutoService {
       },
       include: {
         product: { select: { id: true, imeiSerial: true } },
-        customer: { select: { id: true, name: true, lineIdFinance: true } },
+        customer: { select: { id: true, name: true, ...FINANCE_LINE_RECIPIENT_SELECT } },
         payments: {
           where: {
             status: { in: ['OVERDUE', 'PENDING'] },
@@ -202,7 +206,7 @@ export class MdmAutoService {
         where: { id: contractId },
         include: {
           product: { select: { id: true, imeiSerial: true } },
-          customer: { select: { id: true, name: true, lineIdFinance: true } },
+          customer: { select: { id: true, name: true, ...FINANCE_LINE_RECIPIENT_SELECT } },
         },
       });
 
@@ -275,10 +279,15 @@ export class MdmAutoService {
   // ─── LINE Notifications ─────────────────────────────────
 
   private async notifyCustomerLock(
-    contract: { id: string; contractNumber: string; customer: { id: string; name: string; lineIdFinance: string | null } | null },
+    contract: {
+      id: string;
+      contractNumber: string;
+      customer: { id: string; name: string; lineLinks: { lineUserId: string }[] } | null;
+    },
     daysOverdue: number,
   ): Promise<void> {
-    const lineId = contract.customer?.lineIdFinance;
+    // ปลายทาง LINE การเงิน = แถว OTP ของลูกค้า (Task 22 I-1 ง) ไม่ใช่คอลัมน์ line_id_finance ที่อาจค้าง
+    const lineId = financeLineRecipient(contract.customer);
     if (!lineId) return;
 
     try {
@@ -305,10 +314,12 @@ export class MdmAutoService {
     }
   }
 
-  private async notifyCustomerUnlock(
-    contract: { contractNumber: string; customer: { name: string; lineIdFinance: string | null } | null },
-  ): Promise<void> {
-    const lineId = contract.customer?.lineIdFinance;
+  private async notifyCustomerUnlock(contract: {
+    contractNumber: string;
+    customer: { name: string; lineLinks: { lineUserId: string }[] } | null;
+  }): Promise<void> {
+    // ปลายทาง LINE การเงิน = แถว OTP ของลูกค้า (Task 22 I-1 ง) ไม่ใช่คอลัมน์ line_id_finance ที่อาจค้าง
+    const lineId = financeLineRecipient(contract.customer);
     if (!lineId) return;
 
     try {

@@ -10,6 +10,7 @@ import { AuditService } from '../../audit/audit.service';
 import { contractSignatureRequirements } from '../../../utils/validation.util';
 import { formatDateLong } from '../../../utils/thai-date.util';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { findFinanceLineRecipient } from '../../line-oa/services/otp-verified-customer';
 import { StorageService } from '../../storage/storage.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { NotificationCategory } from '../../notifications/notification-category.enum';
@@ -204,7 +205,7 @@ export class DocumentPersistenceService {
   }
 
   /** Generate PDF buffer directly (no S3 upload) for download */
-  async generatePdfBuffer(contractId: string, userId: string): Promise<Buffer> {
+  async generatePdfBuffer(contractId: string, _userId: string): Promise<Buffer> {
     const contract = await this.prisma.contract.findUnique({
       where: { id: contractId },
       include: {
@@ -426,7 +427,9 @@ export class DocumentPersistenceService {
           this.assertSourceCurrent(contract, results.pdpa!.sourceRevision);
           if (!contractSignatureRequirements(contract).complete)
             throw new BadRequestException('ยังลงนามไม่ครบ กรุณาตรวจสอบลายเซ็น');
-          if (!contract.customer.lineIdFinance) return;
+          // ปลายทาง LINE การเงิน = แถว OTP ของลูกค้า (Task 22 I-1 ง) ไม่ใช่คอลัมน์ line_id_finance ที่อาจค้าง
+          const financeLineId = await findFinanceLineRecipient(tx, contract.customerId);
+          if (!financeLineId) return;
           const subject = 'CONTRACT_DOCUMENTS_READY';
           const existing = await tx.notificationLog.findFirst({
             where: {
@@ -441,7 +444,7 @@ export class DocumentPersistenceService {
             data: {
               channel: 'LINE',
               channelKey: 'line-finance',
-              recipient: contract.customer.lineIdFinance,
+              recipient: financeLineId,
               subject,
               message: `เอกสารสัญญาเลขที่ ${contract.contractNumber} พร้อมดาวน์โหลดผ่าน LINE`,
               relatedId: contractId,

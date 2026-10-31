@@ -127,7 +127,12 @@ describe('OverdueBulkService', () => {
         {
           id: 'c2',
           contractNumber: 'BC-002',
-          customer: { lineIdFinance: 'U123', phone: '0812345679', name: 'ลูกค้า 2' },
+          customer: {
+            lineIdFinance: 'U123',
+            lineLinks: [{ lineUserId: 'U123' }],
+            phone: '0812345679',
+            name: 'ลูกค้า 2',
+          },
         },
       ]);
       mockNotifications.send.mockResolvedValueOnce({ id: 'n1', status: 'SENT' });
@@ -141,12 +146,35 @@ describe('OverdueBulkService', () => {
       expect(mockNotifications.send).toHaveBeenCalledTimes(1);
     });
 
+    it('Task 22 I-1 (ง): คอลัมน์ lineIdFinance ค้างแต่ไม่มีแถว OTP → นับเป็น failed ไม่ส่ง', async () => {
+      mockPrisma.contract.findMany.mockResolvedValueOnce([
+        {
+          id: 'c1',
+          contractNumber: 'BC-001',
+          customer: { lineIdFinance: 'U-stale', lineLinks: [], phone: '0812345678', name: 'ค้าง' },
+        },
+      ]);
+
+      const result = await service.bulkSendLine(
+        { contractIds: ['c1'], customMessage: 'กรุณาชำระเงินค้างชำระ' },
+        'actor-1',
+      );
+
+      expect(result).toEqual({ sent: 0, failed: 1, total: 1 });
+      expect(mockNotifications.send).not.toHaveBeenCalled();
+    });
+
     it('uses customMessage verbatim when provided', async () => {
       mockPrisma.contract.findMany.mockResolvedValueOnce([
         {
           id: 'c1',
           contractNumber: 'BC-001',
-          customer: { lineIdFinance: 'U999', phone: '0899999999', name: 'ทดสอบ' },
+          customer: {
+            lineIdFinance: 'U999',
+            lineLinks: [{ lineUserId: 'U999' }],
+            phone: '0899999999',
+            name: 'ทดสอบ',
+          },
         },
       ]);
       mockNotifications.send.mockResolvedValueOnce({ id: 'n1', status: 'SENT' });
@@ -167,7 +195,12 @@ describe('OverdueBulkService', () => {
         {
           id: 'c1',
           contractNumber: 'BC-2026-001',
-          customer: { lineIdFinance: 'U777', phone: '0811111111', name: 'สมชาย ใจดี' },
+          customer: {
+            lineIdFinance: 'U777',
+            lineLinks: [{ lineUserId: 'U777' }],
+            phone: '0811111111',
+            name: 'สมชาย ใจดี',
+          },
         },
       ]);
       mockPrisma.dunningRule.findUnique.mockResolvedValueOnce({
@@ -191,7 +224,12 @@ describe('OverdueBulkService', () => {
         {
           id: 'c1',
           contractNumber: 'BC-001',
-          customer: { lineIdFinance: 'U111', phone: '0800000000', name: 'ลูกค้า' },
+          customer: {
+            lineIdFinance: 'U111',
+            lineLinks: [{ lineUserId: 'U111' }],
+            phone: '0800000000',
+            name: 'ลูกค้า',
+          },
         },
       ]);
       mockPrisma.dunningRule.findUnique.mockResolvedValueOnce(null);
@@ -206,12 +244,22 @@ describe('OverdueBulkService', () => {
         {
           id: 'c1',
           contractNumber: 'BC-001',
-          customer: { lineIdFinance: 'U100', phone: '0800000001', name: 'ผู้ทดสอบ' },
+          customer: {
+            lineIdFinance: 'U100',
+            lineLinks: [{ lineUserId: 'U100' }],
+            phone: '0800000001',
+            name: 'ผู้ทดสอบ',
+          },
         },
         {
           id: 'c2',
           contractNumber: 'BC-002',
-          customer: { lineIdFinance: 'U200', phone: '0800000002', name: 'ผู้ทดสอบ 2' },
+          customer: {
+            lineIdFinance: 'U200',
+            lineLinks: [{ lineUserId: 'U200' }],
+            phone: '0800000002',
+            name: 'ผู้ทดสอบ 2',
+          },
         },
       ]);
       mockNotifications.send

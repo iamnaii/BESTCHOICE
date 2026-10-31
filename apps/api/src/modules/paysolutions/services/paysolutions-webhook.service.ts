@@ -4,6 +4,7 @@ import { Prisma, PaymentMethod } from '@prisma/client';
 import type { PartialPaymentLink } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { FINANCE_LINE_RECIPIENT_SELECT, financeLineRecipient } from '../../line-oa/services/otp-verified-customer';
 import { LineOaService } from '../../line-oa/line-oa.service';
 import { buildPaymentSuccessFlex } from '../../line-oa/flex-messages/payment-success.flex';
 import { buildEarlyPayoffSuccessFlex } from '../../line-oa/flex-messages/early-payoff-success.flex';
@@ -271,6 +272,7 @@ export class PaySolutionsWebhookService {
         select: { id: true },
         orderBy: { createdAt: 'asc' },
       });
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- pre-existing: query kept (SHOP leg wiring pending), value unused
       const shopCompanyId = shopCompany?.id ?? null;
       const contractForJe = await this.prisma.contract.findUnique({
         where: { id: paymentLink.contractId! },
@@ -812,12 +814,14 @@ export class PaySolutionsWebhookService {
       const contract = await this.prisma.contract.findUnique({
         where: { id: contractId },
         include: {
-          customer: { select: { name: true, lineIdFinance: true } },
+          customer: { select: { name: true, ...FINANCE_LINE_RECIPIENT_SELECT } },
           payments: { where: { deletedAt: null }, orderBy: { installmentNo: 'asc' } },
         },
       });
 
-      if (!contract?.customer.lineIdFinance) return;
+      // ปลายทาง LINE การเงิน = แถว OTP ของลูกค้า (Task 22 I-1 ง) ไม่ใช่คอลัมน์ line_id_finance ที่อาจค้าง
+      const financeLineId = financeLineRecipient(contract?.customer);
+      if (!contract || !financeLineId) return;
 
       const payment = paymentId
         ? contract.payments.find((p) => p.id === paymentId)
@@ -838,7 +842,7 @@ export class PaySolutionsWebhookService {
         remainingInstallments: contract.payments.length - paidCount,
       });
 
-      await this.lineOaService.sendFlexMessage(contract.customer.lineIdFinance, flex, 'line-finance');
+      await this.lineOaService.sendFlexMessage(financeLineId, flex, 'line-finance');
       this.logger.log(`LINE notification sent for contract ${contract.contractNumber}`);
     } catch (err) {
       // ไม่ให้ notification error ทำให้ webhook fail
@@ -859,11 +863,13 @@ export class PaySolutionsWebhookService {
       const contract = await this.prisma.contract.findUnique({
         where: { id: contractId },
         include: {
-          customer: { select: { name: true, lineIdFinance: true } },
+          customer: { select: { name: true, ...FINANCE_LINE_RECIPIENT_SELECT } },
           payments: { where: { deletedAt: null } },
         },
       });
-      if (!contract?.customer.lineIdFinance) return;
+      // ปลายทาง LINE การเงิน = แถว OTP ของลูกค้า (Task 22 I-1 ง) ไม่ใช่คอลัมน์ line_id_finance ที่อาจค้าง
+      const financeLineId = financeLineRecipient(contract?.customer);
+      if (!contract || !financeLineId) return;
 
       // "Original amount" — what the customer would have paid without the
       // early-payoff discount (sum of all installment totals incl. lateFee).
@@ -882,7 +888,7 @@ export class PaySolutionsWebhookService {
         payoffDate: formatDateLong(new Date()),
       });
 
-      await this.lineOaService.sendFlexMessage(contract.customer.lineIdFinance, flex, 'line-finance');
+      await this.lineOaService.sendFlexMessage(financeLineId, flex, 'line-finance');
       this.logger.log(
         `Early-payoff notification sent for contract ${contract.contractNumber}`,
       );

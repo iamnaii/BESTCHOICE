@@ -1,5 +1,9 @@
 import {
+  ACTIVE_FINANCE_LINK_WHERE,
+  FINANCE_LINE_RECIPIENT_SELECT,
   LEGACY_SHOP_LINE_ID_CUTOFF,
+  financeLineRecipient,
+  findFinanceLineRecipient,
   findOtpVerifiedCustomerId,
   findShopLiffCustomerId,
 } from './otp-verified-customer';
@@ -58,5 +62,51 @@ describe('findOtpVerifiedCustomerId', () => {
       deletedAt: null,
       customer: { deletedAt: null },
     });
+  });
+});
+
+/**
+ * Task 22 fix round 1 I-1 (ง) — ปลายทางข้อความการเงินทาง LINE อ่าน U-id จากแถว OTP ของลูกค้าคนนั้น ไม่ใช่คอลัมน์
+ * `line_id_finance` (ค่าค้าง/พนักงานพิมพ์ก่อน Task 22 ต้องไม่ทำให้ข้อความไปผิดคน)
+ */
+describe('financeLineRecipient / FINANCE_LINE_RECIPIENT_SELECT', () => {
+  it('select = แถว FINANCE ที่ยังผูกของลูกค้าคนนั้น (unique ต่อลูกค้า — take 1) · ไม่เลือกคอลัมน์', () => {
+    expect(ACTIVE_FINANCE_LINK_WHERE).toEqual({
+      channel: 'FINANCE',
+      unlinkedAt: null,
+      deletedAt: null,
+    });
+    expect(FINANCE_LINE_RECIPIENT_SELECT).toEqual({
+      lineLinks: { where: ACTIVE_FINANCE_LINK_WHERE, select: { lineUserId: true }, take: 1 },
+    });
+    expect(FINANCE_LINE_RECIPIENT_SELECT).not.toHaveProperty('lineIdFinance');
+  });
+
+  it('มีแถว OTP → U-id ของแถว', () => {
+    expect(financeLineRecipient({ lineLinks: [{ lineUserId: 'U-otp' }] })).toBe('U-otp');
+  });
+
+  it.each([
+    ['ไม่มีแถว OTP (คอลัมน์ค้างไม่ถูกอ่าน)', { lineIdFinance: 'U-stale', lineLinks: [] }],
+    ['ไม่ได้เลือก lineLinks', { lineIdFinance: 'U-stale' }],
+    ['ไม่มีลูกค้า', null],
+    ['undefined', undefined],
+  ])('%s → null (ไม่ส่งทาง LINE)', (_label, customer) => {
+    expect(financeLineRecipient(customer as never)).toBeNull();
+  });
+});
+
+describe('findFinanceLineRecipient (ผู้ส่งที่มีแค่ customerId)', () => {
+  it('ค้นแถว FINANCE ที่ยังผูกของลูกค้าคนนี้ → U-id · ไม่มี = null', async () => {
+    const prisma = {
+      customerLineLink: { findFirst: jest.fn().mockResolvedValue({ lineUserId: 'U-otp' }) },
+    };
+    await expect(findFinanceLineRecipient(prisma as never, 'c1')).resolves.toBe('U-otp');
+    expect(prisma.customerLineLink.findFirst.mock.calls[0][0]).toEqual({
+      where: { customerId: 'c1', channel: 'FINANCE', unlinkedAt: null, deletedAt: null },
+      select: { lineUserId: true },
+    });
+    prisma.customerLineLink.findFirst.mockResolvedValue(null);
+    await expect(findFinanceLineRecipient(prisma as never, 'c1')).resolves.toBeNull();
   });
 });

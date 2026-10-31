@@ -1,6 +1,7 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { financeLineRecipient } from '../../line-oa/services/otp-verified-customer';
 import { toNum as d, calcOutstanding as sumOutstanding } from '../../../utils/decimal.util';
 import { formatDateShort } from '../../../utils/thai-date.util';
 import { LineOaService } from '../line-oa.service';
@@ -474,7 +475,7 @@ export class PaymentEvidenceService {
         data: {
           contractId: linkContract.id,
           paymentId: link.payment!.id,
-          lineUserId: linkContract.customer.lineIdFinance || null,
+          lineUserId: financeLineRecipient(linkContract.customer),
           imageUrl,
           amount: body.amount ? new Prisma.Decimal(body.amount) : null,
           status: 'PENDING_REVIEW',
@@ -504,7 +505,8 @@ export class PaymentEvidenceService {
     });
 
     // Send LINE confirmation message to customer
-    const customerLineId = linkContract.customer.lineIdFinance;
+    // ปลายทาง LINE การเงิน = แถว OTP ของลูกค้า (Task 22 I-1 ง) ไม่ใช่คอลัมน์ line_id_finance ที่อาจค้าง
+    const customerLineId = financeLineRecipient(linkContract.customer);
     if (customerLineId) {
       try {
         const payment = link.payment!;

@@ -26,7 +26,13 @@ const baseAction = {
   contract: {
     id: 'contract-1',
     contractNumber: 'BC-2026-001',
-    customer: { id: 'cust-1', name: 'สมชาย ใจดี', phone: '0812345678', lineIdFinance: 'Uabc123' },
+    customer: {
+      id: 'cust-1',
+      name: 'สมชาย ใจดี',
+      phone: '0812345678',
+      lineIdFinance: 'Uabc123',
+      lineLinks: [{ lineUserId: 'Uabc123' }],
+    },
   },
 };
 
@@ -86,7 +92,20 @@ describe('DunningRetryService', () => {
         dunningRule: { id: 'rule-1', name: 'LINE Reminder', channel: 'LINE' },
         contract: {
           ...baseAction.contract,
-          customer: { ...baseAction.contract.customer, lineIdFinance: null },
+          customer: { ...baseAction.contract.customer, lineIdFinance: null, lineLinks: [] },
+        },
+      });
+      await expect(service.retry('action-1', 'user-1')).rejects.toThrow(/ไม่พบผู้รับ/);
+      expect(mockNotifications.send).not.toHaveBeenCalled();
+    });
+
+    it('Task 22 I-1 (ง): คอลัมน์ lineIdFinance ค้างแต่ไม่มีแถว OTP → ไม่มีผู้รับ LINE (ไม่ส่งไปค่านั้น)', async () => {
+      mockPrisma.dunningAction.findUnique.mockResolvedValueOnce({
+        ...baseAction,
+        dunningRule: { id: 'rule-1', name: 'LINE Reminder', channel: 'LINE' },
+        contract: {
+          ...baseAction.contract,
+          customer: { ...baseAction.contract.customer, lineIdFinance: 'U-stale', lineLinks: [] },
         },
       });
       await expect(service.retry('action-1', 'user-1')).rejects.toThrow(/ไม่พบผู้รับ/);

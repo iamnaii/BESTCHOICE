@@ -2,6 +2,10 @@ import { Logger } from '@nestjs/common';
 import { formatDateShort } from '../../../utils/thai-date.util';
 import { isSmsPaymentReminderDisabled } from '../../../utils/sms-payment-reminder.util';
 import { PrismaService } from '../../../prisma/prisma.service';
+import {
+  FINANCE_LINE_RECIPIENT_SELECT,
+  financeLineRecipient,
+} from '../../line-oa/services/otp-verified-customer';
 import { FlexTemplatesService } from '../../line-oa/flex-templates.service';
 import { QuickReplyService } from '../../line-oa/quick-reply.service';
 import { NotificationCategory } from '../notification-category.enum';
@@ -98,7 +102,9 @@ export class NotificationReminderService {
       include: {
         contract: {
           include: {
-            customer: { select: { id: true, name: true, phone: true, lineIdFinance: true } },
+            customer: {
+              select: { id: true, name: true, phone: true, ...FINANCE_LINE_RECIPIENT_SELECT },
+            },
             _count: { select: { payments: true } },
           },
         },
@@ -123,7 +129,9 @@ export class NotificationReminderService {
       const smsMessage = `สวัสดีค่ะ คุณ${customer.name}\nแจ้งเตือน: ค่างวดที่ ${payment.installmentNo} สัญญา ${payment.contract.contractNumber}\nจำนวน ${Number(payment.amountDue).toLocaleString()} บาท\nครบกำหนดชำระ${daysUntil === 0 ? 'วันนี้' : `อีก ${daysUntil} วัน`} (${formatDateShort(payment.dueDate)})\nกรุณาชำระตามกำหนด ขอบคุณค่ะ`;
 
       // Try LINE Flex Message first, fallback to template, then SMS
-      if (customer.lineIdFinance) {
+      // ปลายทาง LINE = แถว OTP ของลูกค้า (Task 22 I-1 ง) — คอลัมน์ line_id_finance ที่ค้างไม่ทำให้ข้อความไปผิดคน
+      const financeLineId = financeLineRecipient(customer);
+      if (financeLineId) {
         try {
           const flex = this.flexTemplates.paymentReminder({
             contractNumber: payment.contract.contractNumber,
@@ -133,12 +141,12 @@ export class NotificationReminderService {
           });
           // Attach Quick Reply so customer can pay quickly or see balance
           flex.quickReply = { items: this.quickReplyService.afterPayment() };
-          await this.transport.sendLineFlexMessage(customer.lineIdFinance, flex, 'line-finance');
+          await this.transport.sendLineFlexMessage(financeLineId, flex, 'line-finance');
           await this.prisma.notificationLog.create({
             data: {
               channel: 'LINE',
               channelKey: 'line-finance',
-              recipient: customer.lineIdFinance,
+              recipient: financeLineId,
               subject: 'แจ้งเตือนค่างวด',
               message: `งวด ${payment.installmentNo} จำนวน ${Number(payment.amountDue).toLocaleString()} บาท อีก ${daysUntil} วัน`,
               status: 'SENT',
@@ -166,7 +174,7 @@ export class NotificationReminderService {
                 installmentNo: String(payment.installmentNo),
                 dueDate: formatDateShort(payment.dueDate),
               },
-              customer.lineIdFinance,
+              financeLineId,
               {
                 relatedId: payment.id,
                 customerId: customer.id,
@@ -177,7 +185,7 @@ export class NotificationReminderService {
             await this.dispatch.send({
               channel: 'LINE',
               channelKey: 'line-finance',
-              recipient: customer.lineIdFinance,
+              recipient: financeLineId,
               message: smsMessage,
               relatedId: payment.id,
               fallbackPhone: isSmsPaymentReminderDisabled() ? undefined : (customer.phone || undefined),
@@ -233,7 +241,9 @@ export class NotificationReminderService {
       include: {
         contract: {
           include: {
-            customer: { select: { id: true, name: true, phone: true, lineIdFinance: true } },
+            customer: {
+              select: { id: true, name: true, phone: true, ...FINANCE_LINE_RECIPIENT_SELECT },
+            },
             _count: { select: { payments: true } },
           },
         },
@@ -258,7 +268,9 @@ export class NotificationReminderService {
       const smsMessage = `แจ้งเตือน: คุณ${customer.name}\nค่างวดที่ ${payment.installmentNo} สัญญา ${payment.contract.contractNumber}\nเลยกำหนดชำระ ${daysOverdue} วัน\nยอดค้างชำระ ${outstanding.toLocaleString()} บาท (รวมค่าปรับ)\nกรุณาชำระโดยเร็ว`;
 
       // Try LINE Flex Message first, fallback to template, then SMS
-      if (customer.lineIdFinance) {
+      // ปลายทาง LINE = แถว OTP ของลูกค้า (Task 22 I-1 ง) — คอลัมน์ line_id_finance ที่ค้างไม่ทำให้ข้อความไปผิดคน
+      const financeLineId = financeLineRecipient(customer);
+      if (financeLineId) {
         try {
           const flex = this.flexTemplates.overdueNotice({
             contractNumber: payment.contract.contractNumber,
@@ -268,12 +280,12 @@ export class NotificationReminderService {
           });
           // Attach Quick Reply so customer can pay immediately or see balance
           flex.quickReply = { items: this.quickReplyService.afterPayment() };
-          await this.transport.sendLineFlexMessage(customer.lineIdFinance, flex, 'line-finance');
+          await this.transport.sendLineFlexMessage(financeLineId, flex, 'line-finance');
           await this.prisma.notificationLog.create({
             data: {
               channel: 'LINE',
               channelKey: 'line-finance',
-              recipient: customer.lineIdFinance,
+              recipient: financeLineId,
               subject: 'แจ้งค้างชำระ',
               message: `งวด ${payment.installmentNo} ค้าง ${outstanding.toLocaleString()} บาท เลยกำหนด ${daysOverdue} วัน`,
               status: 'SENT',
@@ -301,7 +313,7 @@ export class NotificationReminderService {
               installmentNo: String(payment.installmentNo),
               contractNumber: payment.contract.contractNumber,
             },
-            customer.lineIdFinance,
+            financeLineId,
             {
               relatedId: payment.id,
               customerId: customer.id,

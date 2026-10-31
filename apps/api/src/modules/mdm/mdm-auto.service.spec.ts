@@ -72,6 +72,8 @@ describe('MdmAutoService (characterization)', () => {
       overrides.daysOverdue === null
         ? null
         : new Date(Date.now() - overrides.daysOverdue * DAY_MS);
+    // Task 22 I-1 (ง) — ปลายทาง = แถว OTP (lineLinks) · คอลัมน์เป็นแค่กระจก
+    const lineId = overrides.lineId === undefined ? 'Uline123' : overrides.lineId;
     return {
       id: overrides.id ?? 'contract-1',
       contractNumber: overrides.contractNumber ?? 'C-0001',
@@ -81,7 +83,8 @@ describe('MdmAutoService (characterization)', () => {
       customer: {
         id: 'cust-1',
         name: 'สมชาย',
-        lineIdFinance: overrides.lineId === undefined ? 'Uline123' : overrides.lineId,
+        lineIdFinance: lineId,
+        lineLinks: lineId ? [{ lineUserId: lineId }] : [],
       },
       payments: oldestDue ? [{ dueDate: oldestDue }] : [],
     };
@@ -324,6 +327,21 @@ describe('MdmAutoService (characterization)', () => {
       expect(ctx).toEqual({ relatedId: 'contract-1', customerId: 'cust-1' });
     });
 
+    it('Task 22 I-1 (ง): คอลัมน์ lineIdFinance ค้าง แต่ไม่มีแถว OTP → ไม่ส่ง LINE (ล็อกยังนับ)', async () => {
+      prisma.systemConfig.findMany.mockResolvedValue(
+        settingsRows({ autoLockEnabled: true, autoLockDays: 30, notifyLine: true }),
+      );
+      const stale = makeContract({ daysOverdue: 60 });
+      stale.customer.lineLinks = [];
+      prisma.contract.findMany.mockResolvedValue([stale]);
+      mdm.lockDeviceByImei.mockResolvedValue({ success: true, message: 'ok' });
+
+      const result = await service.autoLockOverdueContracts();
+
+      expect(result.locked).toBe(1);
+      expect(notifications.sendFromTemplate).not.toHaveBeenCalled();
+    });
+
     it('still counts as locked even if the LINE notify throws (notify failure does not affect lock result)', async () => {
       prisma.systemConfig.findMany.mockResolvedValue(
         settingsRows({ autoLockEnabled: true, autoLockDays: 30, notifyLine: true }),
@@ -347,7 +365,12 @@ describe('MdmAutoService (characterization)', () => {
       contractNumber: 'C-0001',
       mdmLockedAt: new Date('2024-05-01'),
       product: { id: 'prod-1', imeiSerial: '359000000000001' },
-      customer: { id: 'cust-1', name: 'สมชาย', lineIdFinance: 'Uline123' },
+      customer: {
+        id: 'cust-1',
+        name: 'สมชาย',
+        lineIdFinance: 'Uline123',
+        lineLinks: [{ lineUserId: 'Uline123' }],
+      },
     };
 
     it('does nothing when autoUnlock disabled', async () => {

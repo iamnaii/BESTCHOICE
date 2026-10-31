@@ -865,7 +865,11 @@ describe('LineOaPaymentController (characterization)', () => {
           id: 'ct1',
           contractNumber: 'C-001',
           totalMonths: 12,
-          customer: { name: 'สมชาย', lineIdFinance: 'U_line' },
+          customer: {
+            name: 'สมชาย',
+            lineIdFinance: 'U_line',
+            lineLinks: [{ lineUserId: 'U_line' }],
+          },
         },
         ...overrides,
       };
@@ -982,6 +986,33 @@ describe('LineOaPaymentController (characterization)', () => {
       expect(createArg.data.amount).toBeNull();
       expect(createArg.data.lineUserId).toBeNull();
       // no LINE confirm without customer line id
+      expect(lineOa.sendFlexMessage).not.toHaveBeenCalled();
+    });
+
+    it('Task 22 I-1 (ง): คอลัมน์ lineIdFinance ค้างแต่ไม่มีแถว OTP → lineUserId null และไม่ยืนยันทาง LINE', async () => {
+      paymentLink.getPaymentLink.mockResolvedValue(
+        activeLink({
+          contract: {
+            id: 'ct1',
+            contractNumber: 'C-001',
+            totalMonths: 12,
+            customer: { name: 'สมชาย', lineIdFinance: 'U-stale', lineLinks: [] },
+          },
+        }),
+      );
+      const tx = {
+        paymentLink: {
+          findUnique: jest.fn().mockResolvedValue({ status: 'ACTIVE' }),
+          update: jest.fn(),
+        },
+        paymentEvidence: { create: jest.fn().mockResolvedValue({ id: 'ev1' }) },
+        notificationLog: { create: jest.fn() },
+      };
+      prisma.$transaction.mockImplementation(async (cb: (t: typeof tx) => unknown) => cb(tx));
+
+      await controller.uploadSlipFromLiff(file, { token: 'tok' });
+
+      expect(tx.paymentEvidence.create.mock.calls[0][0].data.lineUserId).toBeNull();
       expect(lineOa.sendFlexMessage).not.toHaveBeenCalled();
     });
 

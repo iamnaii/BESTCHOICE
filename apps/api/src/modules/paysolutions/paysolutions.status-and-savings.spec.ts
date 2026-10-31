@@ -383,7 +383,11 @@ describe('PaySolutionsService — getPaymentStatus + early-payoff savings (chara
       buildContractPrisma({
         id: 'ct-1',
         contractNumber: 'CT-0001',
-        customer: { name: 'สมชาย ใจดี', lineIdFinance: 'Ufinance1' },
+        customer: {
+          name: 'สมชาย ใจดี',
+          lineIdFinance: 'Ufinance1',
+          lineLinks: [{ lineUserId: 'Ufinance1' }],
+        },
         payments: [
           {
             amountDue: new Prisma.Decimal('1000'),
@@ -428,7 +432,7 @@ describe('PaySolutionsService — getPaymentStatus + early-payoff savings (chara
       buildContractPrisma({
         id: 'ct-2',
         contractNumber: 'CT-0002',
-        customer: { name: 'A', lineIdFinance: 'Uf2' },
+        customer: { name: 'A', lineIdFinance: 'Uf2', lineLinks: [{ lineUserId: 'Uf2' }] },
         payments: [
           {
             amountDue: new Prisma.Decimal('1000'),
@@ -454,7 +458,7 @@ describe('PaySolutionsService — getPaymentStatus + early-payoff savings (chara
       buildContractPrisma({
         id: 'ct-3',
         contractNumber: 'CT-0003',
-        customer: { name: 'B', lineIdFinance: 'Uf3' },
+        customer: { name: 'B', lineIdFinance: 'Uf3', lineLinks: [{ lineUserId: 'Uf3' }] },
         payments: [
           {
             amountDue: new Prisma.Decimal('1416.66'),
@@ -498,6 +502,26 @@ describe('PaySolutionsService — getPaymentStatus + early-payoff savings (chara
       expect(lineOa.sendFlexMessage).not.toHaveBeenCalled();
     });
 
+    it('Task 22 I-1 (ง): คอลัมน์ lineIdFinance ค้างแต่ไม่มีแถว OTP → NOTHING sent', async () => {
+      buildContractPrisma({
+        id: 'ct-4s',
+        contractNumber: 'CT-0004S',
+        customer: { name: 'C', lineIdFinance: 'U-stale', lineLinks: [] },
+        payments: [
+          {
+            amountDue: new Prisma.Decimal('1000'),
+            lateFee: new Prisma.Decimal('0'),
+            lateFeeWaived: false,
+          },
+        ],
+      });
+      await buildService();
+
+      await invoke('ct-4s', new Prisma.Decimal('900'));
+
+      expect(lineOa.sendFlexMessage).not.toHaveBeenCalled();
+    });
+
     it('contract not found → early return (guarded by ?.customer optional chain), NOTHING sent', async () => {
       buildContractPrisma(null);
       await buildService();
@@ -513,7 +537,7 @@ describe('PaySolutionsService — getPaymentStatus + early-payoff savings (chara
       buildContractPrisma({
         id: 'ct-5',
         contractNumber: 'CT-0005',
-        customer: { name: 'D', lineIdFinance: 'Uf5' },
+        customer: { name: 'D', lineIdFinance: 'Uf5', lineLinks: [{ lineUserId: 'Uf5' }] },
         payments: [],
       });
       await buildService();
@@ -531,7 +555,7 @@ describe('PaySolutionsService — getPaymentStatus + early-payoff savings (chara
       buildContractPrisma({
         id: 'ct-6',
         contractNumber: 'CT-0006',
-        customer: { name: 'E', lineIdFinance: 'Uf6' },
+        customer: { name: 'E', lineIdFinance: 'Uf6', lineLinks: [{ lineUserId: 'Uf6' }] },
         payments: [
           {
             amountDue: new Prisma.Decimal('1000'),

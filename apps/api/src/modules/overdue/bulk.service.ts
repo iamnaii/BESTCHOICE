@@ -1,6 +1,10 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  FINANCE_LINE_RECIPIENT_SELECT,
+  financeLineRecipient,
+} from '../line-oa/services/otp-verified-customer';
 import { MdmLockService } from './mdm-lock.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationCategory } from '../notifications/notification-category.enum';
@@ -63,7 +67,9 @@ export class OverdueBulkService {
     const contracts = await this.prisma.contract.findMany({
       where: { id: { in: dto.contractIds }, deletedAt: null },
       include: {
-        customer: { select: { id: true, lineIdFinance: true, phone: true, name: true } },
+        customer: {
+          select: { id: true, ...FINANCE_LINE_RECIPIENT_SELECT, phone: true, name: true },
+        },
       },
     });
 
@@ -83,7 +89,9 @@ export class OverdueBulkService {
     let failed = 0;
     const auditEntries: Prisma.AuditLogCreateManyInput[] = [];
     for (const c of contracts) {
-      if (!c.customer.lineIdFinance) {
+      // ปลายทาง LINE การเงิน = แถว OTP ของลูกค้า (Task 22 I-1 ง) ไม่ใช่คอลัมน์ line_id_finance ที่อาจค้าง
+      const financeLineId = financeLineRecipient(c.customer);
+      if (!financeLineId) {
         failed++;
         continue;
       }
@@ -102,7 +110,7 @@ export class OverdueBulkService {
         await this.notifications.send({
           channel: 'LINE',
           channelKey: 'line-finance',
-          recipient: c.customer.lineIdFinance,
+          recipient: financeLineId,
           message,
           relatedId: c.id,
           fallbackPhone: c.customer.phone ?? undefined,

@@ -8,6 +8,7 @@ import {
   DOC_PREFIX_REGEX,
   VALID_DOC_NUMBER_FORMATS,
   VALID_DOC_NUMBER_RESET_CYCLES,
+  isSecretSettingKey,
   redact,
 } from '../settings.constants';
 
@@ -32,16 +33,20 @@ export class SettingsWriteService {
   ) {}
 
   /**
-   * Every setting except Integration Hub credentials (`integration.*`): those
-   * are secrets (ciphertext, or plaintext if saved before
-   * INTEGRATION_ENCRYPTION_KEY existed) and are served only — masked — by
-   * `/integrations/*`. No web page reads them through `/settings`.
+   * Every setting except secrets (`isSecretSettingKey`): Integration Hub
+   * credentials (`integration.*` — ciphertext, or plaintext if saved before
+   * INTEGRATION_ENCRYPTION_KEY existed; served masked by `/integrations/*`
+   * only) and legacy secret keys outside that prefix. The `integration.`
+   * prefix is filtered in SQL; the name patterns are a regex predicate, so
+   * they are applied to the (small) result in code — one rule, no SQL copy.
+   * No web page reads either group through `/settings`.
    */
   async findAll() {
-    return this.prisma.systemConfig.findMany({
+    const rows = await this.prisma.systemConfig.findMany({
       where: { deletedAt: null, NOT: { key: { startsWith: 'integration.' } } },
       orderBy: { key: 'asc' },
     });
+    return rows.filter((row) => !isSecretSettingKey(row.key));
   }
 
   /**

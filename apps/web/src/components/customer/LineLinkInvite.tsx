@@ -21,10 +21,9 @@ interface Props {
 /**
  * การ์ดชวนลูกค้าผูก LINE ร้าน — พนักงานยื่นจอให้ลูกค้าสแกนที่เคาน์เตอร์
  *
- * ทำไมต้องมี: การแจ้งประกันทาง LINE และหน้า "ประกันของฉัน" ใน LIFF ใช้
- * `customer.lineIdShop` เป็นตัวระบุ ⇒ ลูกค้าที่ยังไม่ผูกจะไม่ได้รับอะไรเลย
- * และการผูกทำได้ทางเดียวคือแอด OA ร้านแล้วพิมพ์เบอร์โทรเข้าไปในแชท
- * (`line-oa-chatbot.controller` → `selfLinkByPhone`)
+ * ทำไมต้องมี: หน้า "ประกันของฉัน" ใน LIFF อ่านตัวตนจากการยืนยัน OTP (Task 22 — แถว OTP ช่อง FINANCE ของ LINE เดียวกัน) ⇒
+ * ลูกค้าแอด OA ร้าน → พิมพ์ "ลงทะเบียน" → บอทตอบลิงก์ยืนยันตัวตน (เบอร์ + OTP) · พิมพ์เบอร์ในแชทไม่ผูกอะไรแล้ว (Task 20 C1)
+ * ⚠️ ป้าย "ผูกแล้ว" ด้านล่างยังดู `lineIdShop` (ตัวที่การแจ้งประกันทาง LINE ใช้) ไม่ใช่การยืนยัน OTP — ยังไม่ได้แก้ (ต้องมี mockup)
  */
 export default function LineLinkInvite({ lineIdShop, customerName }: Props) {
   const { data, isLoading } = useQuery<LinkInvite>({
@@ -51,8 +50,8 @@ export default function LineLinkInvite({ lineIdShop, customerName }: Props) {
     return (
       <Card>
         <CardContent className="p-4 text-sm text-muted-foreground leading-snug">
-          ยังไม่ได้ตั้ง LINE OA ID ของร้าน — ให้เจ้าของไปตั้งที่ ตั้งค่ากลาง › เชื่อมต่อ ›
-          LINE SHOP (ลูกค้า) แล้วหน้านี้จะแสดง QR ให้ลูกค้าสแกน
+          ยังไม่ได้ตั้ง LINE OA ID ของร้าน — ให้เจ้าของไปตั้งที่ ตั้งค่ากลาง › เชื่อมต่อ › LINE SHOP
+          (ลูกค้า) แล้วหน้านี้จะแสดง QR ให้ลูกค้าสแกน
         </CardContent>
       </Card>
     );
@@ -76,12 +75,12 @@ export default function LineLinkInvite({ lineIdShop, customerName }: Props) {
             <ol className="text-sm text-muted-foreground leading-snug space-y-1 list-decimal list-inside">
               <li>ให้ลูกค้าสแกน QR นี้เพื่อเพิ่มเพื่อน {data.oaBasicId}</li>
               <li>
-                พิมพ์ <span className="text-foreground font-medium">เบอร์โทรของตัวเอง</span>{' '}
-                ส่งเข้าไปในแชท ระบบจะผูกบัญชีให้อัตโนมัติ
+                พิมพ์ <span className="text-foreground font-medium">ลงทะเบียน</span> ส่งเข้าไปในแชท
+                แล้วกดลิงก์ยืนยันตัวตน (กรอกเบอร์โทร + รหัส OTP ทาง SMS)
               </li>
             </ol>
             <p className="text-xs text-muted-foreground mt-2 leading-snug">
-              ผูกแล้วลูกค้าจะได้รับแจ้งวันหมดประกันทางไลน์ และเปิดดูประกันเองได้ทุกเมื่อ
+              ยืนยันแล้วลูกค้าเปิดดูประกันเองในไลน์ได้ทุกเมื่อ
             </p>
           </div>
         </div>

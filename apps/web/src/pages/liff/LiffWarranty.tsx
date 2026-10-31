@@ -103,18 +103,20 @@ export default function LiffWarranty() {
     );
   }
 
-  // ยังไม่ผูกบัญชี — บอกวิธีที่ "ทำได้จริงตอนนี้" คือพิมพ์เบอร์โทรคุยกับ OA
-  // (line-oa-chatbot.controller `handleSelfLinkByPhone` รับข้อความที่เป็นเบอร์โทรแล้วผูกให้)
+  // ยังไม่ยืนยันตัวตน — บอกวิธีที่ "ทำได้จริงตอนนี้" (Task 22): พิมพ์ "ลงทะเบียน" ในแชท OA ร้าน → บอทตอบลิงก์ยืนยันตัวตน
+  // (line-oa-chatbot.controller `handleRegisterLink` → `buildShopVerifyPrompt` → /liff/finance-verify เบอร์ + OTP) · หน้านี้อ่านตัวตน
+  // จากแถว OTP (`findShopLiffCustomerId`) · พิมพ์เบอร์ในแชทไม่ผูกอะไรแล้ว (Task 20 C1)
   if (!data?.linked) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <Card className="max-w-md w-full">
           <CardContent className="text-center py-10">
             <MessageCircle className="size-12 text-primary mx-auto mb-4" />
-            <h2 className="text-lg font-bold mb-2 leading-snug">ยังไม่ได้ผูกบัญชี</h2>
+            <h2 className="text-lg font-bold mb-2 leading-snug">ยังไม่ได้ยืนยันตัวตน</h2>
             <p className="text-muted-foreground text-sm leading-snug">
-              พิมพ์ <span className="text-foreground font-medium">เบอร์โทรศัพท์</span> ของคุณ
-              ส่งเข้ามาในแชทนี้ ระบบจะผูกบัญชีให้อัตโนมัติ แล้วกลับมาหน้านี้อีกครั้ง
+              พิมพ์ <span className="text-foreground font-medium">ลงทะเบียน</span> ส่งเข้ามาในแชทนี้
+              แล้วกดลิงก์ยืนยันตัวตน (กรอกเบอร์โทร + รหัส OTP ทาง SMS)
+              เสร็จแล้วกลับมาหน้านี้อีกครั้ง
             </p>
           </CardContent>
         </Card>
@@ -200,7 +202,9 @@ export default function LiffWarranty() {
 
       <div className="flex items-start gap-2 px-1 pt-1 pb-6 text-xs text-muted-foreground leading-snug">
         <ShieldCheck className="size-4 shrink-0 mt-0.5" aria-hidden="true" />
-        <span>เครื่องที่อยู่ในประกันสามารถนำมาเคลมที่สาขาได้ กรุณานำเครื่องและบัตรประชาชนมาด้วย</span>
+        <span>
+          เครื่องที่อยู่ในประกันสามารถนำมาเคลมที่สาขาได้ กรุณานำเครื่องและบัตรประชาชนมาด้วย
+        </span>
       </div>
     </div>
   );

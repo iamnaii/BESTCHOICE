@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { LineChannelType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { unlinkFinanceLine } from './services/finance-line-link';
 import { toNum, calcOutstanding } from '../../utils/decimal.util';
 // Return types for LIFF API (mirrors packages/shared/src/liff-types.ts)
 interface LiffPaymentItem { installmentNo: number; dueDate: string; amountDue: number; amountPaid: number; lateFee: number; status: string; paidDate: string | null; paymentMethod: string | null; }
@@ -227,21 +227,12 @@ export class LiffApiService {
       return { success: false, error: 'ไม่พบบัญชีที่ผูกกับ LINE นี้' };
     }
 
-    // ปิดแถว customer_line_links ของ LINE นี้ในธุรกรรมเดียวกัน (Task 19) — /liff/finance-verify
+    // ล้างคอลัมน์ + ปิดแถว customer_line_links ของ LINE นี้ในธุรกรรมเดียวกัน (Task 19) — /liff/finance-verify
     // (ทางผูกทางเดียว) ถือแถวนี้เป็นสถานะ "ผูกแล้ว": ถ้าไม่ปิด ลูกค้าที่ยกเลิกแล้วกด "ลงทะเบียนใหม่"
     // จะเจอหน้า "ยืนยันแล้ว" วนอยู่ ผูกกลับไม่ได้ · เตือนค่างวดของบอท (auto-trigger อ่านแถวที่
     // unlinkedAt = null) ก็หยุดตามที่ลูกค้าขอ · ผูกใหม่ด้วย OTP เปิดแถวเดิมกลับ (VerificationService.bind)
-    const unlinkedAt = new Date();
-    await this.prisma.$transaction(async (tx) => {
-      await tx.customer.update({
-        where: { id: customer.id },
-        data: { lineIdFinance: null },
-      });
-      await tx.customerLineLink.updateMany({
-        where: { lineUserId: lineId, channel: LineChannelType.FINANCE, unlinkedAt: null },
-        data: { unlinkedAt },
-      });
-    });
+    // helper เดียวกับที่พนักงานล้างช่อง LINE การเงิน (Task 22 I3/I4)
+    await this.prisma.$transaction((tx) => unlinkFinanceLine(tx, { lineUserId: lineId }));
 
     // log ด้วย id ไม่ใช่ชื่อ — ชื่อเป็นข้อมูลส่วนบุคคล (PDPA)
     this.logger.log(`[LIFF] Unlinked LINE ${lineId.slice(0, 8)}... from customer ${customer.id}`);

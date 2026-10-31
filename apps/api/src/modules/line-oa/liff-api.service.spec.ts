@@ -9,7 +9,7 @@ describe('LiffApiService', () => {
   let prisma: any;
   // tx ของ unlinkLineAccount — แยกจาก prisma เพื่อพิสูจน์ว่าเขียนในธุรกรรมเดียวกัน
   let tx: {
-    customer: { update: jest.Mock };
+    customer: { updateMany: jest.Mock };
     customerLineLink: { updateMany: jest.Mock };
   };
 
@@ -35,7 +35,7 @@ describe('LiffApiService', () => {
       $transaction: jest.fn(),
     };
     tx = {
-      customer: { update: jest.fn().mockResolvedValue({}) },
+      customer: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
       customerLineLink: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
     };
     prisma.$transaction.mockImplementation(async (cb: (client: typeof tx) => unknown) => cb(tx));
@@ -248,13 +248,13 @@ describe('LiffApiService', () => {
       expect(result.error).toContain('ไม่พบบัญชี');
     });
 
-    it('unlinks customer by setting lineId to null', async () => {
+    it('unlinks: ล้าง lineIdFinance บนทุกลูกค้าที่ถือ LINE นี้ (ค่าซ้ำบนคนที่สองต้องไม่ค้าง — Task 19 review M1)', async () => {
       prisma.customer.findFirst.mockResolvedValue({ id: 'cust1', name: 'สมชาย' });
 
       const result = await service.unlinkLineAccount('U_line');
       expect(result.success).toBe(true);
-      expect(tx.customer.update).toHaveBeenCalledWith({
-        where: { id: 'cust1' },
+      expect(tx.customer.updateMany).toHaveBeenCalledWith({
+        where: { lineIdFinance: 'U_line', deletedAt: null },
         data: { lineIdFinance: null },
       });
     });

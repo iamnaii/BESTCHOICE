@@ -1206,8 +1206,14 @@ async function defaultStorage(): Promise<ImportStorage> {
   return new StorageService(new ConfigService());
 }
 
-/** `PeakService.isConfigured` (ค่าจาก SystemConfig หรือ env PEAK_*) — ค่าเข้ารหัสที่ถอดไม่ได้นับว่าตั้งค่าอยู่ (ปลอดภัยไว้ก่อน) */
-async function defaultPeakApiConfigured(prisma: PrismaClient): Promise<boolean> {
+/**
+ * `PeakService.isConfigured` (ค่าจาก SystemConfig หรือ env PEAK_*) — ค่าเข้ารหัสที่ถอดไม่ได้นับว่าตั้งค่าอยู่ (ปลอดภัยไว้ก่อน)
+ *
+ * `getValue` อ่านค่าที่ถอดไม่ได้เป็น "ยังไม่ตั้งค่า" (Task 26 — ไม่ส่ง ciphertext ให้โค้ดธุรกิจ) ⇒ ต้องเช็ค
+ * `checkEncryptedFields('peak').failed` แยก: CLI อาจไม่มี/ถือ INTEGRATION_ENCRYPTION_KEY คนละตัวกับ API
+ * แต่ API ที่ถือ key ถูกตัวยังส่งรายการเข้า PEAK ได้
+ */
+export async function defaultPeakApiConfigured(prisma: PrismaClient): Promise<boolean> {
   const { ConfigService } = await import('@nestjs/config');
   const { IntegrationConfigService } =
     await import('../../modules/integrations/integration-config.service');
@@ -1215,12 +1221,15 @@ async function defaultPeakApiConfigured(prisma: PrismaClient): Promise<boolean> 
   const { PeakService } = await import('../../modules/peak/peak.service');
   const service = prisma as unknown as PrismaService;
   const config = new ConfigService();
-  return new PeakService(
+  const integrationConfig = new IntegrationConfigService(service, config);
+  const peak = new PeakService(
     service,
     config,
-    new IntegrationConfigService(service, config),
+    integrationConfig,
     new CompanyResolverService(service),
-  ).isConfigured();
+  );
+  if (await peak.isConfigured()) return true;
+  return (await integrationConfig.checkEncryptedFields('peak')).failed.length > 0;
 }
 
 // ─── คำสั่งเดิม ──────────────────────────────────────────────────────────────────────────────────

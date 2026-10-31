@@ -11,12 +11,32 @@ export type IntegrationConfig = Record<string, string>;
 /** Same shape but sensitive values are masked (e.g. `••••abcd`). */
 export type MaskedIntegrationConfig = Record<string, string>;
 
+/** Why a stored credential could not be turned back into plaintext. */
+type UndecryptableReason = 'key-missing' | 'decrypt-failed';
+
+/** Result of reading one stored value — never carries ciphertext. */
+type StoredRead = { ok: true; value: string } | { ok: false; reason: UndecryptableReason };
+
+/**
+ * Encrypted credentials checked against the key this process holds.
+ * Entries are `integrationKey.fieldKey` only — never values.
+ */
+export type EncryptedFieldCheck = { ok: string[]; failed: string[] };
+
 @Injectable()
 export class IntegrationConfigService implements OnModuleInit {
   private readonly logger = new Logger(IntegrationConfigService.name);
 
   private static readonly CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
   private cache = new Map<string, { config: IntegrationConfig; cachedAt: number }>();
+
+  /**
+   * getValue runs on hot paths (webhook guards on every request, every LINE
+   * send) — one warning + one Sentry event per field per hour is enough to be
+   * seen without flooding either.
+   */
+  private static readonly UNDECRYPTABLE_WARN_INTERVAL_MS = 60 * 60 * 1000;
+  private undecryptableWarnedAt = new Map<string, number>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -26,7 +46,9 @@ export class IntegrationConfigService implements OnModuleInit {
   onModuleInit() {
     const key = this.configService.get<string>('INTEGRATION_ENCRYPTION_KEY');
     if (!key) {
-      this.logger.warn('[IntegrationConfig] INTEGRATION_ENCRYPTION_KEY not set — credentials stored in plaintext!');
+      this.logger.warn(
+        '[IntegrationConfig] INTEGRATION_ENCRYPTION_KEY not set — credentials stored in plaintext!',
+      );
       Sentry.captureMessage('INTEGRATION_ENCRYPTION_KEY not configured', 'warning');
     }
   }
@@ -65,6 +87,45 @@ export class IntegrationConfigService implements OnModuleInit {
     return value.includes('•');
   }
 
+  /**
+   * Turn a stored value back into plaintext. Plaintext rows (saved while no key
+   * was configured) pass through unchanged. Never throws and never returns
+   * ciphertext — callers decide what "unreadable" means for them.
+   */
+  private readStored(raw: string): StoredRead {
+    if (!isEncrypted(raw)) return { ok: true, value: raw };
+    const key = this.encryptionKey;
+    if (!key) return { ok: false, reason: 'key-missing' };
+    try {
+      const value = decryptPII(raw, key);
+      // decryptPII hands a too-short key's input back untouched instead of throwing.
+      return value === raw ? { ok: false, reason: 'decrypt-failed' } : { ok: true, value };
+    } catch {
+      return { ok: false, reason: 'decrypt-failed' };
+    }
+  }
+
+  /** Warn about an unreadable credential — field reference only, never the value. */
+  private reportUndecryptable(fieldRef: string, reason: UndecryptableReason): void {
+    const now = Date.now();
+    const last = this.undecryptableWarnedAt.get(fieldRef);
+    if (
+      last !== undefined &&
+      now - last < IntegrationConfigService.UNDECRYPTABLE_WARN_INTERVAL_MS
+    ) {
+      return;
+    }
+    this.undecryptableWarnedAt.set(fieldRef, now);
+    this.logger.warn(
+      `[IntegrationConfig] ${fieldRef} is stored encrypted but cannot be decrypted (${reason}) — treated as not configured; re-enter it in Integration Hub`,
+    );
+    Sentry.captureMessage('Integration credential cannot be decrypted', {
+      level: 'warning',
+      tags: { subsystem: 'integration-config', reason },
+      extra: { field: fieldRef },
+    });
+  }
+
   /** Check if cached entry is still fresh. */
   private getCached(integrationKey: string): IntegrationConfig | null {
     const entry = this.cache.get(integrationKey);
@@ -81,6 +142,10 @@ export class IntegrationConfigService implements OnModuleInit {
   /**
    * Read a single field value.
    * Priority: SystemConfig DB (decrypted) → env var → field defaultValue.
+   *
+   * A DB value that is encrypted but cannot be decrypted here (no key, wrong
+   * key, malformed key) returns `undefined` = "not configured" — never the
+   * ciphertext and never a throw into business code.
    */
   async getValue(integrationKey: string, fieldKey: string): Promise<string | undefined> {
     const def = getIntegrationDef(integrationKey);
@@ -95,9 +160,16 @@ export class IntegrationConfigService implements OnModuleInit {
     });
 
     if (record?.value) {
-      const raw = record.value;
-      const key = this.encryptionKey;
-      return key && isEncrypted(raw) ? decryptPII(raw, key) : raw;
+      const read = this.readStored(record.value);
+      if (read.ok) return read.value;
+      // Fail closed WITHOUT falling back to the env var: a DB row is the
+      // admin's explicit override of the env value, and we cannot tell whether
+      // env still holds the same credential (prod env LINE_CHANNEL_* may belong
+      // to another / older OA). Using it would verify webhooks or send as an
+      // account the admin replaced. "Not configured" stops the feature visibly;
+      // the boot self-check names the field so it can be re-entered.
+      this.reportUndecryptable(`${integrationKey}.${fieldKey}`, read.reason);
+      return undefined;
     }
 
     // 2. Env var
@@ -106,6 +178,35 @@ export class IntegrationConfigService implements OnModuleInit {
 
     // 3. Default
     return field.defaultValue;
+  }
+
+  /**
+   * Try to decrypt every encrypted sensitive credential stored in SystemConfig
+   * (optionally for one integration) with the key this process holds.
+   * Plaintext and empty rows are not listed.
+   */
+  async checkEncryptedFields(integrationKey?: string): Promise<EncryptedFieldCheck> {
+    const refs = new Map<string, string>(); // SystemConfig key → integrationKey.fieldKey
+    for (const def of INTEGRATIONS) {
+      if (integrationKey && def.key !== integrationKey) continue;
+      for (const field of def.fields) {
+        if (field.sensitive) refs.set(this.dbKey(def.key, field.key), `${def.key}.${field.key}`);
+      }
+    }
+    if (refs.size === 0) return { ok: [], failed: [] };
+
+    const rows = await this.prisma.systemConfig.findMany({
+      where: { key: { in: [...refs.keys()] }, deletedAt: null },
+      select: { key: true, value: true },
+    });
+    const ok: string[] = [];
+    const failed: string[] = [];
+    for (const row of rows) {
+      const ref = refs.get(row.key);
+      if (!ref || !row.value || !isEncrypted(row.value)) continue;
+      (this.readStored(row.value).ok ? ok : failed).push(ref);
+    }
+    return { ok: ok.sort(), failed: failed.sort() };
   }
 
   /**
@@ -160,7 +261,9 @@ export class IntegrationConfigService implements OnModuleInit {
     for (const [fieldKey, rawValue] of Object.entries(values)) {
       const field = def.fields.find((f) => f.key === fieldKey);
       if (!field) {
-        this.logger.warn(`Ignoring unknown field '${fieldKey}' for integration '${integrationKey}'`);
+        this.logger.warn(
+          `Ignoring unknown field '${fieldKey}' for integration '${integrationKey}'`,
+        );
         continue;
       }
 

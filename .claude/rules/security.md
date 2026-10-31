@@ -149,7 +149,10 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
   `import:legacy-backoffice`) ใช้ `checkEncryptedFields(integration).failed` นับค่าที่ถอดไม่ได้ว่าตั้งค่าอยู่
 - key ต้องเป็น hex 64 ตัว (trim) — รูปแบบผิด = ถือว่าไม่มี key (error + Sentry ไม่บอกค่า/ความยาว, บูตไม่ล้ม) ·
   ช่องลับที่ส่งค่าว่างตอนบันทึก = ไม่เปลี่ยน (ไม่มีการ "ล้าง" ช่องลับจาก UI) · ปุ่มทดสอบการเชื่อมต่อใช้ค่าจาก
-  `getConfig` เท่านั้น (ห้ามเติม `|| process.env.*` — runtime ไม่ใช้ env เมื่อแถวถอดไม่ได้)
+  `getConfig` เท่านั้น (ห้ามเติม `|| process.env.*` — ผู้อ่านผ่าน Hub ไม่ใช้ env เมื่อแถวถอดไม่ได้) · **ข้อยกเว้นที่รู้:**
+  Claude บางส่วน (`ai-usage/ai-text.service.ts`, `chat-engine/services/after-hours.service.ts`, การเช็ค key ของ AI suggest ใน
+  `staff-chat`) อ่าน env `ANTHROPIC_API_KEY` ตรง และอีเมลแจ้งเตือน (`notifications/email-provider.service.ts`) อ่าน `SMTP_*` ตรง —
+  ไม่ผ่าน Hub ⇒ ผลปุ่มทดสอบของการ์ด Claude / อีเมล สะท้อนเฉพาะฟีเจอร์ที่อ่านผ่าน Hub (OCR, วิเคราะห์เครดิต, บอท, `EmailService`)
 - แถว `integration.*` ออกได้ทาง `/integrations/*` (masked) เท่านั้น — `GET /settings` (`SettingsWriteService.findAll`)
   กรองออกแล้ว · endpoint ใหม่ที่คืนแถว `system_config` ทั้งตารางต้องกรองแบบเดียวกัน
 - ตรวจ key บน prod จากบรรทัดบูต `integration encrypted fields: key=… ok=N [...] failed=M [...]` (ชื่อช่องเท่านั้น) —

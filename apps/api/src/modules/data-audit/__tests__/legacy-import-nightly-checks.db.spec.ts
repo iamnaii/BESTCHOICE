@@ -1526,6 +1526,159 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
     LONG,
   );
 
+  it(
+    'Task 25 (m-2) — bound re-issue list is per receipt entry: a live entry with no receipt bound to it is listed even when the installment already has another receipt row',
+    async () => {
+      // ทุกสัญญาในเทสต์นี้: งวด 1 PAID ผ่านเส้นทางรับชำระจริง (ใบเสร็จออกหลัง commit และผูกรายการ) แล้วลบใบของรายการล่าสุด
+      // (= ใบออกไม่สำเร็จหลัง commit) · งวดมีแถวใบเสร็จอีกใบอยู่แล้ว ⇒ เดิม (ต่อ Payment — "ไม่มีแถวใบเสร็จเลย") ไม่อยู่ในรายชื่อใด
+      const ids5: string[] = [];
+      for (const key of ['M1', 'M2', 'M3', 'M4', 'M5']) {
+        const id = await createNative(key, P1.date, P1.dueDay);
+        native.set(key, id);
+        ids5.push(id);
+        await nightly2A(id, 1);
+      }
+      const [c1, c2, c3, c4, c5] = ids5;
+      const receiptEntryOf = (paymentId: string) =>
+        prisma.journalEntry.findMany({
+          where: {
+            AND: [
+              { metadata: { path: ['paymentId'], equals: paymentId } },
+              { metadata: { path: ['tag'], equals: 'receipt' } },
+            ],
+          },
+          orderBy: { postedAt: 'asc' },
+          select: { id: true, entryNumber: true, metadata: true },
+        });
+      /** ใบที่ผูกรายการล่าสุดของงวดหาย (ออกไม่สำเร็จหลัง commit) — คืนเลขที่รายการนั้น */
+      const dropLastBoundReceipt = async (contractId: string) => {
+        const row = await paymentOf(contractId, 1);
+        const entries = await receiptEntryOf(row.id);
+        const last = entries[entries.length - 1];
+        expect(
+          await prisma.receipt.deleteMany({ where: { sourceJournalEntryId: last.id } }),
+        ).toEqual({ count: 1 });
+        return last.entryNumber;
+      };
+
+      // M1 ยกเลิกแล้วรับใหม่: ใบแรกถูกยกเลิก (แถวยังอยู่ · รายการแรก reversed) → รับงวดใหม่ → ใบของรายการใหม่หาย
+      await pay(c1, 1, MONTHLY, P1.due(1));
+      const m1First = await prisma.receipt.findFirstOrThrow({
+        where: { paymentId: (await paymentOf(c1, 1)).id, isVoided: false, deletedAt: null },
+      });
+      await voidReceiptApproved(
+        prisma,
+        receipts,
+        m1First.id,
+        'ทดสอบยกเลิกใบเสร็จแล้วรับใหม่ (T25)',
+        userId,
+        approverId,
+      );
+      expect((await paymentOf(c1, 1)).status).not.toBe('PAID');
+      await pay(c1, 1, MONTHLY, P1.due(1));
+      const m1Missing = await dropLastBoundReceipt(c1);
+
+      // M2 ใบบางส่วนอีกใบ: รับ 1,000 (มีใบ) → รับส่วนที่เหลือ 515.83 ปิดงวด → ใบของรายการที่สองหาย
+      await pay(c2, 1, '1000', P1.due(1), true);
+      await pay(c2, 1, await owedOn(c2, 1), P1.due(1));
+      const m2Missing = await dropLastBoundReceipt(c2);
+
+      // M3 (6b): ใบปรับดิว RESCHEDULE_FEE ผูก paymentId ของงวดเดียวกัน (ผูกรายการ tag reschedule-collect — คนละ tag กับรายการรับชำระ) →
+      // รับค่างวด → ใบค่างวดหาย
+      const m3Row = await paymentOf(c3, 1);
+      const feeEntry = await journal.createAndPost({
+        description: 'T25 reschedule fee (6b shape)',
+        reference: `t25-fee:${m3Row.id}`,
+        metadata: {
+          tag: 'reschedule-collect',
+          flow: 'reschedule-collect',
+          contractId: c3,
+          paymentId: m3Row.id,
+          variant: '6b',
+        },
+        lines: [
+          { accountCode: '11-1101', dr: D(200), cr: D(0) },
+          { accountCode: '21-1103', dr: D(0), cr: D(200) },
+        ],
+        postedAt: P1.due(1),
+        createdById: userId,
+      });
+      await receipts.generateReceipt(
+        c3,
+        m3Row.id,
+        'RESCHEDULE_FEE',
+        200,
+        1,
+        'CASH',
+        null,
+        userId,
+        P1.due(1),
+        feeEntry.entryNumber,
+      );
+      await pay(c3, 1, MONTHLY, P1.due(1));
+      const m3Missing = await dropLastBoundReceipt(c3);
+
+      // M4 รายการก่อน PR3 (ไม่มี receiptTax) ที่ใบออกแบบไม่ผูกรายการ (ยุคนั้นไม่ผูก) — ไม่ใช่ใบที่หาย ⇒ ไม่อยู่ในรายชื่อ
+      const m4Row = await paymentOf(c4, 1);
+      await journal.createAndPost({
+        description: 'T25 pre-PR3 receipt entry',
+        reference: `t25-pre-pr3:${m4Row.id}`,
+        metadata: { tag: 'receipt', flow: 'payment-receipt', paymentId: m4Row.id, contractId: c4 },
+        lines: [
+          { accountCode: '11-1101', dr: D(MONTHLY), cr: D(0) },
+          { accountCode: '11-2103', dr: D(0), cr: D(MONTHLY) },
+        ],
+        postedAt: P1.due(1),
+        createdById: userId,
+      });
+      await prisma.payment.update({
+        where: { id: m4Row.id },
+        data: {
+          amountPaid: D(MONTHLY),
+          status: 'PAID',
+          paidDate: P1.due(1),
+          paymentMethod: 'CASH',
+          recordedById: userId,
+        },
+      });
+      await receipts.generateReceipt(
+        c4,
+        m4Row.id,
+        'INSTALLMENT',
+        Number(MONTHLY),
+        1,
+        'CASH',
+        null,
+        userId,
+        P1.due(1),
+      );
+
+      // M5 ผลบวกเท็จที่รู้ของตัวตรวจต่อรายการ (runbook): รายการหลัง PR3 ที่เงินก้อนนั้นมีใบที่ไม่ผูกรายการอยู่แล้ว (เช่น
+      // backfill-orphan-partial-receipts ลงรายการให้ใบบางส่วนกำพร้ายุคก่อน PR3) — ยังอยู่ในรายชื่อ แต่ติดป้าย unboundReceipts ให้ตรวจก่อนออกซ้ำ
+      await pay(c5, 1, MONTHLY, P1.due(1));
+      const [m5Entry] = await receiptEntryOf((await paymentOf(c5, 1)).id);
+      await prisma.receipt.updateMany({
+        where: { sourceJournalEntryId: m5Entry.id },
+        data: { sourceJournalEntryId: null },
+      });
+
+      for (const id of ids5) expect((await paymentOf(id, 1)).status).toBe('PAID');
+      const bound = (await findBoundReissueCandidates(prisma as unknown as PrismaService))
+        .filter((r) => ids5.includes(r.contract_id))
+        .map((r) => [r.contract_number, r.installment_no, r.entries, r.unbound_receipts]);
+      const no = (key: string) => `TEST-T16N-${stamp}-${key}`;
+      expect(bound).toEqual([
+        [no('M1'), 1, [{ entryNumber: m1Missing, receiptAmount: MONTHLY }], 0],
+        [no('M2'), 1, [{ entryNumber: m2Missing, receiptAmount: '515.83' }], 0],
+        [no('M3'), 1, [{ entryNumber: m3Missing, receiptAmount: MONTHLY }], 0],
+        [no('M5'), 1, [{ entryNumber: m5Entry.entryNumber, receiptAmount: MONTHLY }], 1],
+      ]);
+      // งวดเหล่านี้มีแถวใบเสร็จอยู่แล้ว ⇒ ไม่ใช่ผู้สมัครของ CLI (ใบที่ไม่ผูกรายการ) ไม่ว่ากรณีใด
+      expect((await backfillListsOf(ids5)).cli).toEqual([]);
+    },
+    LONG,
+  );
+
   describe('early payoff (JP4) of a native contract — calendar anchored to today', () => {
     let a3 = '';
     let a7 = '';

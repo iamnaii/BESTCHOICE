@@ -44,6 +44,7 @@ describe('backfill-payment-receipts CLI', () => {
     amount_paid: '1515.83',
     contract_number: 'BC-1',
     entries: [{ entryNumber: 'JE-202605-0007', receiptAmount: '1515.83' }],
+    unbound_receipts: 0,
   };
 
   beforeEach(() => queryRaw.mockReset().mockResolvedValue([]));
@@ -132,12 +133,17 @@ describe('backfill-payment-receipts CLI', () => {
     }
   });
 
-  it('Task 23 — bound re-issue list = the same population WITH a live bound receipt entry (imported rows included — they re-issue bound too)', async () => {
+  it('Task 25 (m-2) — bound re-issue list is per receipt ENTRY: a live entry of a PAID installment with no receipt bound to it (the runbook SQL rule) · before PR3 (no receiptTax) only while the payment has no receipt at all · imported rows included', async () => {
     await findBoundReissueCandidates(prisma);
     const sql = sqlOf(0);
-    expect(sql).toContain('NOT EXISTS (SELECT 1 FROM receipts r WHERE r.payment_id = p.id)');
-    expect(sql).toContain('AND EXISTS (SELECT 1 FROM journal_entries je WHERE');
+    expect(sql).toContain('FROM journal_entries je');
+    expect(sql).toContain("JOIN payments p ON p.id = je.metadata->>'paymentId'");
+    expect(sql).toContain("p.status = 'PAID'");
+    expect(sql).toContain('WHERE r.source_journal_entry_id = je.id AND r.deleted_at IS NULL)');
+    expect(sql).toContain("je.metadata->'receiptTax' IS NOT NULL");
+    expect(sql).toContain('OR NOT EXISTS (SELECT 1 FROM receipts r WHERE r.payment_id = p.id)');
     expect(sql).toContain("je.metadata->'receiptTax'->>'amount'");
+    expect(sql).toContain('AS unbound_receipts');
     expect(sql).not.toContain('legacy_installment_code');
   });
 
@@ -160,7 +166,17 @@ describe('backfill-payment-receipts CLI', () => {
   });
 
   it('Task 23 — live run issues only the rows without a receipt entry; bound re-issue rows are printed with their entry number and never issued', async () => {
-    queryRaw.mockResolvedValueOnce([cliRow]).mockResolvedValueOnce([boundRow]);
+    const boundSecond = {
+      ...boundRow,
+      id: 'p-3',
+      installment_no: 3,
+      entries: [
+        { entryNumber: 'JE-202605-0008', receiptAmount: '1000.00' },
+        { entryNumber: 'JE-202605-0009', receiptAmount: '515.83' },
+      ],
+      unbound_receipts: 1,
+    };
+    queryRaw.mockResolvedValueOnce([cliRow]).mockResolvedValueOnce([boundRow, boundSecond]);
     const generateReceipt = jest.fn().mockResolvedValue({ id: 'r-1' });
     const lines: string[] = [];
     const log = jest.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
@@ -174,11 +190,22 @@ describe('backfill-payment-receipts CLI', () => {
     log.mockRestore();
     expect(generateReceipt).toHaveBeenCalledTimes(1);
     expect(generateReceipt.mock.calls[0][1]).toBe('p-1');
-    expect([result.candidates, result.created, result.boundReissue]).toEqual([1, 1, 1]);
+    expect([
+      result.candidates,
+      result.created,
+      result.boundReissue,
+      result.boundReissueEntries,
+    ]).toEqual([1, 1, 2, 3]);
     expect(result.totalAmount.toFixed(2)).toBe('1515.83'); // bound rows are not CLI money
     const bound = lines.filter((l) => l.includes('paymentId=p-2'));
     expect(bound).toHaveLength(1);
     expect(bound[0]).toContain('JE-202605-0007');
     expect(bound[0]).toContain('1515.83');
+    expect(bound[0]).not.toContain('unboundReceipts');
+    // Task 25 (m-2): the known false positive of the per-entry rule is flagged on the line
+    const second = lines.filter((l) => l.includes('paymentId=p-3'));
+    expect(second).toHaveLength(1);
+    expect(second[0]).toContain('JE-202605-0008 (receiptTax.amount=1000.00), JE-202605-0009');
+    expect(second[0]).toContain('unboundReceipts=1');
   });
 });

@@ -30,7 +30,10 @@
  * consumed into the row) — the bound re-issue of the same money later would be a second tax document the
  * `receipts_source_journal_entry_key` index cannot stop, and refunds would pay back by the unbound amount.
  * Such rows are never issued here: they are printed as "bound re-issue" candidates with their entry
- * numbers (+ `receiptTax.amount` — the amount the bound re-issue must pass) for the runbook.
+ * numbers (+ `receiptTax.amount` — the amount the bound re-issue must pass) for the runbook. That list is
+ * per receipt ENTRY (Task 25 · review m-2): every live receipt entry of a PAID installment with no receipt
+ * bound to it — also on an installment that already has another receipt row (voided then re-received · an
+ * earlier partial receipt · a reschedule-fee receipt on the same paymentId).
  *
  * ⚠️ NEVER FOR MONEY DOCUMENTED ELSEWHERE (Task 23 review m-1)
  * ------------------------------------------------------------
@@ -74,7 +77,10 @@ import {
   PAID_BY_EARLY_PAYOFF,
   SCHEDULE_ROWS_CLEARED_BY_ENTRY,
 } from '../modules/data-audit/services/payment-backing';
-import { INSTALLMENT_RECEIPT_SOURCE_TAGS } from '../modules/receipts/receipt-types.constants';
+import {
+  INSTALLMENT_MONEY_RECEIPT_TYPES,
+  INSTALLMENT_RECEIPT_SOURCE_TAGS,
+} from '../modules/receipts/receipt-types.constants';
 import { ReceiptIssuanceService } from '../modules/receipts/services/receipt-issuance.service';
 import { ReceiptNumberService } from '../modules/receipts/services/receipt-number.service';
 
@@ -194,21 +200,44 @@ export async function findDocumentedElsewhere(
   return splitPopulation(await loadPopulation(prisma)).documentedElsewhere;
 }
 
+/**
+ * Live receipt entry (alias `je`) of payment `p` that has no receipt bound to it — the per-entry rule of the
+ * runbook's SQL check ("ออกใบเสร็จซ้ำ" in `.claude/rules/accounting.md`): no live receipt row carries
+ * `source_journal_entry_id = je.id`. An entry from before PR3 (no `receiptTax` stamp) never had its receipt
+ * bound — that receipt was issued unbound — so it counts as missing only while the payment has no receipt row
+ * at all (the per-payment rule of Task 23, kept for that era).
+ */
+const RECEIPT_ENTRY_WITHOUT_ITS_RECEIPT = Prisma.sql`NOT EXISTS (SELECT 1 FROM receipts r
+                        WHERE r.source_journal_entry_id = je.id AND r.deleted_at IS NULL)
+        AND (je.metadata->'receiptTax' IS NOT NULL
+             OR NOT EXISTS (SELECT 1 FROM receipts r WHERE r.payment_id = p.id))`;
+
 interface BoundReissueRow {
   id: string;
   contract_id: string;
   installment_no: number;
   amount_paid: string;
   contract_number: string;
-  /** live receipt entries of the payment, oldest first · `receiptAmount` = `metadata.receiptTax.amount` (null before PR3) */
+  /**
+   * the payment's live receipt entries with no receipt bound to them, oldest first — one receipt to re-issue per
+   * entry · `receiptAmount` = `metadata.receiptTax.amount` (null before PR3)
+   */
   entries: { entryNumber: string; receiptAmount: string | null }[];
+  /**
+   * live installment receipts of the payment bound to NO entry (before PR3 / issued without the entry) — > 0 on a
+   * listed entry is the runbook's known false positive (an entry posted later for money whose receipt was issued
+   * unbound, e.g. `backfill-orphan-partial-receipts`): check that receipt before re-issuing
+   */
+  unbound_receipts: number;
 }
 
 /**
- * The same population as the CLI (PAID, no receipt row) whose receipt entry IS live — the receipt failed to
- * issue after the money was booked. Never issued by this CLI; listed for the bound re-issue runbook
- * ("ออกใบเสร็จซ้ำ" — `.claude/rules/accounting.md`). Imported rows are included: a post-cutover receipt of an
- * imported row re-issues bound too.
+ * Live receipt journal entries of a PAID installment with no receipt bound to them — the receipt failed to
+ * issue after the money was booked (Task 25 · Task 23 review m-2: per ENTRY, not per payment — an installment
+ * that already has a receipt row (voided then re-received · an earlier partial receipt · a reschedule-fee
+ * receipt on the same paymentId) can still miss the receipt of another entry). Grouped per payment. Never
+ * issued by this CLI; listed for the bound re-issue runbook ("ออกใบเสร็จซ้ำ" — `.claude/rules/accounting.md`).
+ * Imported rows are included: a post-cutover receipt of an imported row re-issues bound too.
  */
 export async function findBoundReissueCandidates(
   prisma: PrismaService,
@@ -217,15 +246,23 @@ export async function findBoundReissueCandidates(
     SELECT p.id, p.contract_id, p.installment_no,
            p.amount_paid::text AS amount_paid,
            c.contract_number,
-           (SELECT json_agg(json_build_object(
-                     'entryNumber', je.entry_number,
-                     'receiptAmount', je.metadata->'receiptTax'->>'amount')
-                   ORDER BY je.posted_at, je.entry_number)
-            FROM journal_entries je WHERE ${LIVE_BOUND_RECEIPT_ENTRY}) AS entries
-    FROM payments p
+           json_agg(json_build_object(
+                      'entryNumber', je.entry_number,
+                      'receiptAmount', je.metadata->'receiptTax'->>'amount')
+                    ORDER BY je.posted_at, je.entry_number) AS entries,
+           (SELECT COUNT(*)::int FROM receipts r
+             WHERE r.payment_id = p.id AND r.deleted_at IS NULL AND NOT r.is_voided
+               AND r.source_journal_entry_id IS NULL
+               AND r."receiptType" IN (${Prisma.join([...INSTALLMENT_MONEY_RECEIPT_TYPES])})) AS unbound_receipts
+    FROM journal_entries je
+    JOIN payments p ON p.id = je.metadata->>'paymentId'
     JOIN contracts c ON c.id = p.contract_id
-    WHERE ${PAID_WITHOUT_ANY_RECEIPT}
-      AND EXISTS (SELECT 1 FROM journal_entries je WHERE ${LIVE_BOUND_RECEIPT_ENTRY})
+    WHERE p.deleted_at IS NULL
+      AND p.status = 'PAID'
+      AND p.amount_paid > 0
+      AND ${LIVE_BOUND_RECEIPT_ENTRY}
+      AND ${RECEIPT_ENTRY_WITHOUT_ITS_RECEIPT}
+    GROUP BY p.id, c.contract_number
     ORDER BY c.contract_number, p.installment_no
   `;
 }
@@ -238,6 +275,8 @@ export interface BackfillReceiptsResult {
   totalAmount: Decimal;
   /** payments listed for the bound re-issue runbook — never issued by this CLI */
   boundReissue: number;
+  /** their receipt entries with no receipt (one receipt to re-issue per entry) */
+  boundReissueEntries: number;
   /** population rows skipped because their money is documented elsewhere (paths b/c) — printed, never issued */
   documentedElsewhere: number;
 }
@@ -256,6 +295,7 @@ export async function backfillPaymentReceipts(
     failed: 0,
     totalAmount: new Decimal(0),
     boundReissue: bound.length,
+    boundReissueEntries: bound.reduce((n, b) => n + b.entries.length, 0),
     documentedElsewhere: documentedElsewhere.length,
   };
 
@@ -276,8 +316,9 @@ export async function backfillPaymentReceipts(
 
   if (bound.length > 0) {
     console.log(
-      `[backfill-receipts] ${bound.length} payment(s) have a live receipt journal entry — NOT issued here.` +
-        ' Re-issue each receipt bound to its entry (runbook "ออกใบเสร็จซ้ำ", .claude/rules/accounting.md):',
+      `[backfill-receipts] ${result.boundReissueEntries} live receipt journal entr(y/ies) on ${bound.length}` +
+        ' payment(s) have no receipt bound to them — NOT issued here. Re-issue one receipt per entry, bound to it' +
+        ' (runbook "ออกใบเสร็จซ้ำ", .claude/rules/accounting.md):',
     );
     for (const b of bound) {
       const entries = b.entries
@@ -285,7 +326,10 @@ export async function backfillPaymentReceipts(
         .join(', ');
       console.log(
         `  [bound re-issue] paymentId=${b.id}  contract=${b.contract_number}  งวด=${b.installment_no}` +
-          `  amountPaid=฿${new Decimal(b.amount_paid).toFixed(2)}  entries=${entries}`,
+          `  amountPaid=฿${new Decimal(b.amount_paid).toFixed(2)}  entries=${entries}` +
+          (b.unbound_receipts > 0
+            ? `  ⚠ unboundReceipts=${b.unbound_receipts} — check that receipt is not this money before re-issuing`
+            : ''),
       );
     }
     console.log('');
@@ -432,7 +476,9 @@ async function main(): Promise<void> {
     console.log('');
     console.log('[backfill-receipts] ===== SUMMARY =====');
     console.log(`  candidates                : ${result.candidates}`);
-    console.log(`  bound re-issue (not here) : ${result.boundReissue}`);
+    console.log(
+      `  bound re-issue (not here) : ${result.boundReissueEntries} entr(y/ies) on ${result.boundReissue} payment(s)`,
+    );
     console.log(`  documented elsewhere      : ${result.documentedElsewhere}`);
     if (!dryRun) {
       console.log(`  created                   : ${result.created}`);

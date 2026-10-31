@@ -21,6 +21,7 @@ import {
   testNote,
 } from './_context';
 import {
+  ACTIVATION_SILENT_CUSTOMER_WHERE,
   MAY_RECEIVE_FINANCE_LINE_WHERE,
   bkkMonthKey,
   remainingInstallmentDue,
@@ -207,17 +208,30 @@ export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveR
     // ── ก้าว 1: เปิดสัญญาผ่อน → JE 1A + SHOP leg → คิวรอจ่าย INTER-CO มีของ ──────
     await run('เปิดสัญญาผ่อน (JE 1A + SHOP leg)', async () => {
       if (nowOnlyGuard) return nowOnlyGuard;
+      const draftWhere: Prisma.ContractWhereInput = {
+        contractNumber: { startsWith: TEST_CONTRACT_PREFIX },
+        status: 'DRAFT',
+        workflowStatus: 'APPROVED',
+        deletedAt: null,
+      };
+      // Task 24 fix round 1 M-5 — activate ส่ง "สัญญาอนุมัติแล้ว" ถึงลูกค้า (LINE แถว OTP ไม่งั้น SMS) ⇒ เปิดเฉพาะลูกค้าที่ไม่ถึงคนจริง
       const c = await ctx.prisma.contract.findFirst({
-        where: {
-          contractNumber: { startsWith: TEST_CONTRACT_PREFIX },
-          status: 'DRAFT',
-          workflowStatus: 'APPROVED',
-          deletedAt: null,
-        },
+        where: { ...draftWhere, customer: { is: ACTIVATION_SILENT_CUSTOMER_WHERE } },
         orderBy: { contractNumber: 'asc' },
         select: { id: true, contractNumber: true },
       });
       if (!c) {
+        const reachable = await ctx.prisma.contract.findMany({
+          where: { ...draftWhere, customer: { is: { NOT: ACTIVATION_SILENT_CUSTOMER_WHERE } } },
+          orderBy: { contractNumber: 'asc' },
+          select: { contractNumber: true },
+        });
+        if (reachable.length > 0) {
+          return (
+            `ข้าม — สัญญา ${reachable.map((r) => r.contractNumber).join(', ')}: ลูกค้าผูก LINE การเงินแล้วหรือเบอร์โทรถึงได้ — ` +
+            'เปิดสัญญาจะส่งแจ้ง "สัญญาอนุมัติแล้ว" ถึงคนจริง (เปิดผ่านหน้าเว็บเองถ้าตั้งใจ)'
+          );
+        }
         return (
           'ข้าม — ไม่พบสัญญาทดสอบสถานะ DRAFT (workflow APPROVED) ให้เปิด — seeder ปัจจุบันสร้างสัญญา ' +
           'ACTIVE/TERMINATED โดยตรง (เปิดสัญญาใหม่ผ่านหน้า /contracts/create ระหว่างเทสได้)'

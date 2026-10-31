@@ -21,6 +21,17 @@ export const ACTIVE_FINANCE_LINK_WHERE = {
 } satisfies Prisma.CustomerLineLinkWhereInput;
 
 /**
+ * "LINE นี้ยืนยัน OTP กับลูกค้าที่ยังอยู่" = แถว FINANCE ที่ยังผูก (`ACTIVE_FINANCE_LINK_WHERE`) ของลูกค้าที่ไม่ถูกลบ — **เกณฑ์เดียว**ของ
+ * `findOtpVerifiedCustomerId` · `VerificationService.isLinked` (บอทการเงิน → `linkRoomToCustomer` ตั้ง verified_at) · ห้อง LINE การเงินใหม่
+ * (`ChatRoomService.getOrCreate` · `RoomManagerService.getOrCreateRoom`) — Task 24 fix round 1 M-1/M-2 (เดิม isLinked ไม่ดู deleted_at ·
+ * การสร้างห้องรับแถวทุกสถานะ) · ใช้กับ findUnique ตาม `lineUserId_channel` ได้ (กรองเพิ่มบน unique key)
+ */
+export const VERIFIED_FINANCE_LINK_WHERE = {
+  ...ACTIVE_FINANCE_LINK_WHERE,
+  customer: { deletedAt: null },
+} satisfies Prisma.CustomerLineLinkWhereInput;
+
+/**
  * Task 22 fix round 1 I-1 (ง) — ผู้ส่งข้อความการเงินทาง LINE ใส่ใน `customer: { select }` **แทน `lineIdFinance: true`** แล้วเรียก
  * `financeLineRecipient(customer)` ⇒ ปลายทาง = U-id ของแถว OTP ที่ยังผูกของ**ลูกค้าคนนั้น** (unique ต่อลูกค้า — take 1).
  * คอลัมน์ `customers.line_id_finance` แยกจากแถว OTP ได้ (ค่าที่พนักงาน/นำเข้าเขียนก่อน Task 22 · กู้ลูกค้าที่ถูกลบ) ⇒ ห้ามใช้เป็นปลายทาง
@@ -103,7 +114,7 @@ export async function findOtpVerifiedCustomerId(
   lineUserId: string,
 ): Promise<string | null> {
   const link = await prisma.customerLineLink.findFirst({
-    where: { lineUserId, ...ACTIVE_FINANCE_LINK_WHERE, customer: { deletedAt: null } },
+    where: { lineUserId, ...VERIFIED_FINANCE_LINK_WHERE },
     select: { customerId: true },
   });
   return link?.customerId ?? null;

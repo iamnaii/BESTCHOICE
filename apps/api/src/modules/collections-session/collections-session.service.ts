@@ -16,7 +16,7 @@ export class CollectionsSessionService {
   constructor(private prisma: PrismaService) {}
 
   async getMySession(userId: string) {
-    const today = startOfDay(new Date());
+    const today = collectionsSessionDay();
 
     const assignments = await this.prisma.dailyAssignment.findMany({
       where: {
@@ -113,7 +113,7 @@ export class CollectionsSessionService {
   }
 
   async startSession(userId: string) {
-    const today = startOfDay(new Date());
+    const today = collectionsSessionDay();
     await this.prisma.dailyAssignment.updateMany({
       where: { date: today, collectorId: userId, status: 'PENDING', startedAt: null },
       data: { startedAt: new Date() },
@@ -222,6 +222,14 @@ export class CollectionsSessionService {
       elapsedMinutes,
     };
   }
+}
+
+/**
+ * "วันนี้" ของงานติดตามหนี้รายวัน (`DailyAssignment.date` — โหมดโฟกัส `getMySession`) — ใช้ร่วมกับด่านส่ง LINE ของคิวทวงถาม
+ * (`OverdueBulkService` — Task 24 fix round 2 I-R1: ผู้ทวงส่ง LINE ถึงสัญญาที่ได้รับมอบหมายวันนี้ได้แม้อยู่ต่างสาขา) ⇒ นิยามเดียว ห้ามคิดใหม่ที่อื่น
+ */
+export function collectionsSessionDay(now: Date = new Date()): Date {
+  return startOfDay(now);
 }
 
 function startOfDay(d: Date): Date {

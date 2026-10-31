@@ -1,4 +1,8 @@
-import { ChatWorkAccessService, roomWorkWhere, WORK_CHANNELS } from '../../staff-chat/services/chat-work-access.service';
+import {
+  ChatWorkAccessService,
+  roomWorkWhere,
+  WORK_CHANNELS,
+} from '../../staff-chat/services/chat-work-access.service';
 import type { WorkScope } from '@installment/shared';
 import { ResponseCycleService } from './response-cycle.service';
 import type { InboundAttribution } from '../interfaces/channel-adapter.interface';
@@ -12,6 +16,7 @@ import {
   NotFoundException,
   ConflictException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import {
@@ -29,18 +34,36 @@ import { AssignmentService } from './assignment.service';
 import { MessageRouterService } from './message-router.service';
 import { StorageService } from '../../storage/storage.service';
 import { signMessageMedia } from './media-url.util';
-import { linkRoomCreditHistory, lockCreditRoom } from '../../credit-check/services/room-credit-history';
+import {
+  linkRoomCreditHistory,
+  lockCreditRoom,
+} from '../../credit-check/services/room-credit-history';
 import { ChatProspectService } from '../../chat-prospects/chat-prospect.service';
 import { CustomerMergeService } from '../../chat-prospects/customer-merge.service';
-import { PLACEHOLDER_FIELDS_SELECT, isLivePlaceholder } from '../../chat-prospects/chat-placeholder';
+import {
+  PLACEHOLDER_FIELDS_SELECT,
+  isLivePlaceholder,
+} from '../../chat-prospects/chat-placeholder';
 import * as Sentry from '@sentry/nestjs';
+import {
+  LINE_FINANCE_NOT_VERIFIED_MESSAGE,
+  LINE_SHOP_STAFF_SEND_DISABLED_MESSAGE,
+} from '../../line-oa/services/finance-line-link';
+import {
+  VERIFIED_FINANCE_LINK_WHERE,
+  findFinanceLineRecipient,
+} from '../../line-oa/services/otp-verified-customer';
 
 /** ตัวกรองห้องแชท — ใช้ร่วมกันระหว่างรายการห้อง (listRooms) กับตัวนับบนป้าย
  *  (getRoomBadgeCounts) เพื่อไม่ให้ "เลขบนป้าย" กับ "จำนวนแถวที่แท็บนั้นแสดง"
  *  เพี้ยนจากกันได้อีก */
 /** นัดถัดไปของห้อง (ยังไม่เสร็จ มีวันเวลา) — ป้ายในแถวรายชื่อ + ชิปหัวห้อง (เจ้าของเคาะ 2026-09-06 ชั้น 1) */
 const ROOM_NEXT_APPOINTMENT = {
-  where: { deletedAt: null, status: { in: [TodoStatus.TODO, TodoStatus.DOING, TodoStatus.REVIEW] }, dueDate: { not: null } },
+  where: {
+    deletedAt: null,
+    status: { in: [TodoStatus.TODO, TodoStatus.DOING, TodoStatus.REVIEW] },
+    dueDate: { not: null },
+  },
   orderBy: { dueDate: 'asc' as const },
   take: 1,
   select: { id: true, title: true, dueDate: true, status: true },
@@ -57,7 +80,11 @@ const VISIBLE_MESSAGE: Prisma.ChatMessageWhereInput = {
 };
 
 function messageSearchWhere(search: string): Prisma.ChatMessageWhereInput {
-  return { ...VISIBLE_MESSAGE, role: { not: MessageRole.SYSTEM }, text: { contains: search, mode: 'insensitive' } };
+  return {
+    ...VISIBLE_MESSAGE,
+    role: { not: MessageRole.SYSTEM },
+    text: { contains: search, mode: 'insensitive' },
+  };
 }
 
 export interface RoomFilterParams {
@@ -153,9 +180,11 @@ export class RoomManagerService {
     private storageService: StorageService,
     // ⚠️ dead code ตั้งแต่ Task 8 — ไม่มีผู้เรียกใน production แล้ว (createRoom เลิก autoAssign;
     // การรับเรื่องย้ายไป AssignmentService.claimIfUnassigned หลังคำตอบถึงลูกค้า) เก็บไว้รอรอบเก็บกวาด
-    @Optional() @Inject(forwardRef(() => AssignmentService))
+    @Optional()
+    @Inject(forwardRef(() => AssignmentService))
     private assignmentService?: AssignmentService,
-    @Optional() @Inject(forwardRef(() => MessageRouterService))
+    @Optional()
+    @Inject(forwardRef(() => MessageRouterService))
     private messageRouter?: MessageRouterService,
     @Optional()
     private chatProspects?: ChatProspectService,
@@ -183,8 +212,7 @@ export class RoomManagerService {
     ensureProspect?: boolean;
   }): Promise<ChatRoom> {
     const isLineChannel =
-      params.channel === ChatChannel.LINE_FINANCE ||
-      params.channel === ChatChannel.LINE_SHOP;
+      params.channel === ChatChannel.LINE_FINANCE || params.channel === ChatChannel.LINE_SHOP;
     const wantsProspect = params.ensureProspect ?? params.channel !== ChatChannel.WEB;
 
     // Always find existing room first — no status filter
@@ -248,9 +276,13 @@ export class RoomManagerService {
       } else if (updateData.displayName && this.chatProspects) {
         // ห้องเกิดก่อนรู้ชื่อ (mirrorOutbound) → placeholder ที่ยังใช้ชื่อ fallback ได้ชื่อจริงตาม
         const roomId = room.id;
-        await this.chatProspects.syncNameFromRoom(roomId).catch((err) =>
-          this.logger.warn(`[prospect] sync name ${roomId}: ${err instanceof Error ? err.message : err}`),
-        );
+        await this.chatProspects
+          .syncNameFromRoom(roomId)
+          .catch((err) =>
+            this.logger.warn(
+              `[prospect] sync name ${roomId}: ${err instanceof Error ? err.message : err}`,
+            ),
+          );
       }
       // ลูกค้าเก่ากดโฆษณาซ้ำ — บันทึกที่มาครั้งล่าสุดให้ห้องเดิมด้วย (เดิมบันทึกเฉพาะห้องใหม่)
       // ลิงก์สินค้า/ref อื่นที่ไม่ใช่ ADS ถูก linkAttribution ทิ้งเอง ⇒ ห้องที่ชี้โฆษณาอยู่ไม่ถูกชี้ไปที่มาอื่น
@@ -270,6 +302,10 @@ export class RoomManagerService {
             lineUserId: params.externalUserId,
             channel: channelType,
           },
+          // Task 24 fix round 1 M-2 — LINE การเงิน: เฉพาะแถวที่ยังผูกของลูกค้าที่ยังอยู่ (เกณฑ์เดียว VERIFIED_FINANCE_LINK_WHERE —
+          // ห้องใหม่ได้ verified_at จากค่านี้ · สมมาตรกับ unlinkFinanceLine ที่ล้าง verified_at)
+          // TODO(OA ร้าน): ช่อง SHOP ยังรับแถวทุกสถานะ — ใช้เกณฑ์เดียวกันเมื่อมี OTP ฝั่งร้าน (วันนี้ไม่มีผู้เขียนแถวช่อง SHOP)
+          ...(channelType === 'FINANCE' ? VERIFIED_FINANCE_LINK_WHERE : {}),
         },
       });
       customerId = link?.customerId;
@@ -459,12 +495,19 @@ export class RoomManagerService {
         deletedAt: null,
         roomId: { not: null },
         status: { in: [TodoStatus.TODO, TodoStatus.DOING, TodoStatus.REVIEW] },
-        dueDate: { gte: new Date(now.getTime() - 24 * 3600_000), lte: new Date(now.getTime() + 15 * 60_000) },
+        dueDate: {
+          gte: new Date(now.getTime() - 24 * 3600_000),
+          lte: new Date(now.getTime() + 15 * 60_000),
+        },
       },
       orderBy: { dueDate: 'asc' },
       take: 20,
       select: {
-        id: true, title: true, dueDate: true, status: true, roomId: true,
+        id: true,
+        title: true,
+        dueDate: true,
+        status: true,
+        roomId: true,
         room: { select: { id: true, displayName: true, customer: { select: { name: true } } } },
       },
     });
@@ -541,7 +584,10 @@ export class RoomManagerService {
         role: MessageRole.STAFF,
         deletedAt: null,
         text: { not: null },
-        createdAt: { gte: new Date(at.getTime() - windowMs), lte: new Date(at.getTime() + windowMs) },
+        createdAt: {
+          gte: new Date(at.getTime() - windowMs),
+          lte: new Date(at.getTime() + windowMs),
+        },
       },
       // ใหม่สุดก่อน — ไม่ใส่ = Postgres คืน 10 แถวไหนก็ได้ สคริปต์ที่เพิ่งมาอาจไม่อยู่ในชุด (RT-Q4)
       orderBy: { createdAt: 'desc' },
@@ -692,7 +738,8 @@ export class RoomManagerService {
 
   private async getPageAutoReplyMarkers(): Promise<string[]> {
     const now = Date.now();
-    if (this.autoReplyMarkers && now - this.autoReplyMarkers.readAt < 60_000) return this.autoReplyMarkers.value;
+    if (this.autoReplyMarkers && now - this.autoReplyMarkers.readAt < 60_000)
+      return this.autoReplyMarkers.value;
     let value: string[] = [];
     try {
       const row = await this.prisma.systemConfig.findFirst({
@@ -763,82 +810,92 @@ export class RoomManagerService {
     confirmedSentAt?: Date;
   }) {
     const save = async (db: Prisma.TransactionClient, tracking = false) => {
-    if (tracking) await this.responseCycles!.lock(db, params.roomId);
-    const msg = await db.chatMessage.create({
-      data: {
-        roomId: params.roomId,
-        externalMessageId: params.externalMessageId,
-        role: params.role,
-        type: params.type ?? MessageType.TEXT,
-        text: params.text,
-        mediaUrl: params.mediaUrl,
-        mediaType: params.mediaType,
-        staffId: params.staffId,
-        intent: params.intent,
-        modelUsed: params.modelUsed,
-        inputTokens: params.inputTokens,
-        outputTokens: params.outputTokens,
-        toolsUsed: params.toolsUsed ?? [],
-        costUsd: params.costUsd,
-        visionExtracted: params.visionExtracted,
-        clientMessageId: params.clientMessageId,
-        outboundSentAt: params.confirmedSentAt,
-      },
-    });
-
-    if (params.silent) return msg;
-
-    // Track first staff/bot response for SLA
-    const updateData: Prisma.ChatRoomUpdateInput = {
-      totalMessages: { increment: 1 },
-      lastMessageAt: new Date(),
-    };
-
-    if (params.role === MessageRole.CUSTOMER) {
-      // Inbound message — increment unread until staff opens the room (markAsRead resets it).
-      updateData.unreadCount = { increment: 1 };
-    } else if (params.role === MessageRole.STAFF || params.role === MessageRole.BOT) {
-      // Set firstResponseAt if not already set (SLA metric)
-      const room = await db.chatRoom.findUnique({
-        where: { id: params.roomId },
-        select: { firstResponseAt: true },
-      });
-      if (!room?.firstResponseAt) {
-        updateData.firstResponseAt = new Date();
-      }
-    }
-
-    await db.chatRoom.update({
-      where: { id: params.roomId },
-      data: updateData,
-    });
-
-    if (params.role === MessageRole.CUSTOMER) {
-      // "รอตอบตั้งแต่" (สเปก §4.2) — set-if-null แบบ atomic: เก็บเวลาข้อความ *แรก* ที่ยังไม่ได้ตอบ
-      // ไม่ใช่ใบล่าสุด และไม่ต้องอ่านก่อนเขียน (สองข้อความมาพร้อมกันได้ค่าเดียวกัน)
-      // ⚠️ ห้ามล้างที่นี่สำหรับ STAFF/BOT — การส่งที่ล้มก็ผ่าน saveMessage (save-before-send)
-      if (tracking) await this.responseCycles!.openInTx(db, { roomId: params.roomId, messageId: msg.id, receivedAt: msg.createdAt });
-      else await db.chatRoom.updateMany({
-        where: { id: params.roomId, waitingSince: null },
-        data: { waitingSince: msg.createdAt },
-      });
-      // เวลาข้อความ *ล่าสุด* ของลูกค้า (หน้าต่าง 24 ชม. ของ FB นับจากตัวนี้) — เดินหน้าอย่างเดียว
-      // ข้อความเก่าที่มาถึงช้า (retry/echo) ต้องไม่ดึงค่าถอยหลัง
-      await db.chatRoom.updateMany({
-        where: {
-          id: params.roomId,
-          OR: [{ lastCustomerAt: null }, { lastCustomerAt: { lt: msg.createdAt } }],
+      if (tracking) await this.responseCycles!.lock(db, params.roomId);
+      const msg = await db.chatMessage.create({
+        data: {
+          roomId: params.roomId,
+          externalMessageId: params.externalMessageId,
+          role: params.role,
+          type: params.type ?? MessageType.TEXT,
+          text: params.text,
+          mediaUrl: params.mediaUrl,
+          mediaType: params.mediaType,
+          staffId: params.staffId,
+          intent: params.intent,
+          modelUsed: params.modelUsed,
+          inputTokens: params.inputTokens,
+          outputTokens: params.outputTokens,
+          toolsUsed: params.toolsUsed ?? [],
+          costUsd: params.costUsd,
+          visionExtracted: params.visionExtracted,
+          clientMessageId: params.clientMessageId,
+          outboundSentAt: params.confirmedSentAt,
         },
-        data: { lastCustomerAt: msg.createdAt },
       });
-    }
 
-    if (tracking && params.role === MessageRole.BOT && params.confirmedSentAt) {
-      await this.responseCycles!.recordBotSentInTx(db, { roomId: params.roomId, sentAt: params.confirmedSentAt });
-    }
-    return msg;
+      if (params.silent) return msg;
+
+      // Track first staff/bot response for SLA
+      const updateData: Prisma.ChatRoomUpdateInput = {
+        totalMessages: { increment: 1 },
+        lastMessageAt: new Date(),
+      };
+
+      if (params.role === MessageRole.CUSTOMER) {
+        // Inbound message — increment unread until staff opens the room (markAsRead resets it).
+        updateData.unreadCount = { increment: 1 };
+      } else if (params.role === MessageRole.STAFF || params.role === MessageRole.BOT) {
+        // Set firstResponseAt if not already set (SLA metric)
+        const room = await db.chatRoom.findUnique({
+          where: { id: params.roomId },
+          select: { firstResponseAt: true },
+        });
+        if (!room?.firstResponseAt) {
+          updateData.firstResponseAt = new Date();
+        }
+      }
+
+      await db.chatRoom.update({
+        where: { id: params.roomId },
+        data: updateData,
+      });
+
+      if (params.role === MessageRole.CUSTOMER) {
+        // "รอตอบตั้งแต่" (สเปก §4.2) — set-if-null แบบ atomic: เก็บเวลาข้อความ *แรก* ที่ยังไม่ได้ตอบ
+        // ไม่ใช่ใบล่าสุด และไม่ต้องอ่านก่อนเขียน (สองข้อความมาพร้อมกันได้ค่าเดียวกัน)
+        // ⚠️ ห้ามล้างที่นี่สำหรับ STAFF/BOT — การส่งที่ล้มก็ผ่าน saveMessage (save-before-send)
+        if (tracking)
+          await this.responseCycles!.openInTx(db, {
+            roomId: params.roomId,
+            messageId: msg.id,
+            receivedAt: msg.createdAt,
+          });
+        else
+          await db.chatRoom.updateMany({
+            where: { id: params.roomId, waitingSince: null },
+            data: { waitingSince: msg.createdAt },
+          });
+        // เวลาข้อความ *ล่าสุด* ของลูกค้า (หน้าต่าง 24 ชม. ของ FB นับจากตัวนี้) — เดินหน้าอย่างเดียว
+        // ข้อความเก่าที่มาถึงช้า (retry/echo) ต้องไม่ดึงค่าถอยหลัง
+        await db.chatRoom.updateMany({
+          where: {
+            id: params.roomId,
+            OR: [{ lastCustomerAt: null }, { lastCustomerAt: { lt: msg.createdAt } }],
+          },
+          data: { lastCustomerAt: msg.createdAt },
+        });
+      }
+
+      if (tracking && params.role === MessageRole.BOT && params.confirmedSentAt) {
+        await this.responseCycles!.recordBotSentInTx(db, {
+          roomId: params.roomId,
+          sentAt: params.confirmedSentAt,
+        });
+      }
+      return msg;
     };
-    if (this.responseCycles && await this.responseCycles.enabled()) return this.prisma.$transaction(tx => save(tx, true));
+    if (this.responseCycles && (await this.responseCycles.enabled()))
+      return this.prisma.$transaction((tx) => save(tx, true));
     return save(this.prisma);
   }
 
@@ -866,10 +923,7 @@ export class RoomManagerService {
    *
    * ด่านนี้ถอดออกได้เมื่อเจ้าของปิดข้อความทักทายอัตโนมัติของเพจ (ดูคำถามค้างในสเปก §10)
    */
-  async shouldSkipFirstOutboundClear(
-    roomId: string,
-    outboundMessageId: string,
-  ): Promise<boolean> {
+  async shouldSkipFirstOutboundClear(roomId: string, outboundMessageId: string): Promise<boolean> {
     const [room, outbound, outboundCount] = await Promise.all([
       this.prisma.chatRoom.findUnique({
         where: { id: roomId },
@@ -917,21 +971,27 @@ export class RoomManagerService {
    * เราส่งเองจะกลายเป็น bubble STAFF ซ้ำเมื่อ env FACEBOOK_APP_ID ไม่ได้ตั้ง
    */
   async prepareOutboundAttempt(messageId: string, forceDeliveryTracking = false): Promise<boolean> {
-    return this.responseCycles ? this.responseCycles.prepareAttempt(messageId, forceDeliveryTracking) : true;
+    return this.responseCycles
+      ? this.responseCycles.prepareAttempt(messageId, forceDeliveryTracking)
+      : true;
   }
 
-  async failOutboundAttempt(messageId: string, definitelyNotSent: boolean, forceDeliveryTracking = false): Promise<void> {
+  async failOutboundAttempt(
+    messageId: string,
+    definitelyNotSent: boolean,
+    forceDeliveryTracking = false,
+  ): Promise<void> {
     await this.responseCycles?.failAttempt(messageId, definitelyNotSent, forceDeliveryTracking);
   }
 
   async confirmExternalEcho(messageId: string): Promise<boolean> {
-    if (!this.responseCycles || !await this.responseCycles.enabled()) return false;
+    if (!this.responseCycles || !(await this.responseCycles.enabled())) return false;
     await this.responseCycles.confirmUnknownEcho(messageId);
     return true;
   }
 
   async markOutboundSent(messageId: string, externalMessageId?: string): Promise<void> {
-    if (this.responseCycles && await this.responseCycles.enabled()) {
+    if (this.responseCycles && (await this.responseCycles.enabled())) {
       await this.responseCycles.confirm(messageId, externalMessageId);
       return;
     }
@@ -1001,19 +1061,34 @@ export class RoomManagerService {
   }
 
   /** Search the entire authorized room, including messages outside the recent-history window. */
-  async searchRoomMessages(roomId: string, query: { q: string; page: number; limit: number }, actor: { id: string }, company?: WorkScope['company']) {
+  async searchRoomMessages(
+    roomId: string,
+    query: { q: string; page: number; limit: number },
+    actor: { id: string },
+    company?: WorkScope['company'],
+  ) {
     await new ChatWorkAccessService(this.prisma).roomContext(roomId, actor, { company });
     const where = { roomId, ...messageSearchWhere(query.q) };
     const [data, total] = await this.prisma.$transaction([
-      this.prisma.chatMessage.findMany({ where, select: { id: true, text: true, role: true, createdAt: true },
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip: (query.page - 1) * query.limit, take: query.limit }),
+      this.prisma.chatMessage.findMany({
+        where,
+        select: { id: true, text: true, role: true, createdAt: true },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+      }),
       this.prisma.chatMessage.count({ where }),
     ]);
     return { data, total, page: query.page, limit: query.limit };
   }
 
   /** Bounded history around a search hit, with fresh room/company/branch authorization. */
-  async getMessageContext(roomId: string, messageId: string, actor: { id: string }, company?: WorkScope['company']) {
+  async getMessageContext(
+    roomId: string,
+    messageId: string,
+    actor: { id: string },
+    company?: WorkScope['company'],
+  ) {
     await new ChatWorkAccessService(this.prisma).roomContext(roomId, actor, { company });
     const target = await this.prisma.chatMessage.findFirst({
       where: { ...VISIBLE_MESSAGE, roomId, id: messageId },
@@ -1022,18 +1097,38 @@ export class RoomManagerService {
     const include = { staff: { select: { id: true, name: true, avatarUrl: true } } };
     const [before, after] = await Promise.all([
       this.prisma.chatMessage.findMany({
-        where: { AND: [VISIBLE_MESSAGE, { roomId }, { OR: [
-          { createdAt: { lt: target.createdAt } },
-          { createdAt: target.createdAt, id: { lt: target.id } },
-        ] }] },
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 25, include,
+        where: {
+          AND: [
+            VISIBLE_MESSAGE,
+            { roomId },
+            {
+              OR: [
+                { createdAt: { lt: target.createdAt } },
+                { createdAt: target.createdAt, id: { lt: target.id } },
+              ],
+            },
+          ],
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: 25,
+        include,
       }),
       this.prisma.chatMessage.findMany({
-        where: { AND: [VISIBLE_MESSAGE, { roomId }, { OR: [
-          { createdAt: { gt: target.createdAt } },
-          { createdAt: target.createdAt, id: { gte: target.id } },
-        ] }] },
-        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: 26, include,
+        where: {
+          AND: [
+            VISIBLE_MESSAGE,
+            { roomId },
+            {
+              OR: [
+                { createdAt: { gt: target.createdAt } },
+                { createdAt: target.createdAt, id: { gte: target.id } },
+              ],
+            },
+          ],
+        },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        take: 26,
+        include,
       }),
     ]);
     const messages = [...before.reverse(), ...after];
@@ -1046,7 +1141,9 @@ export class RoomManagerService {
     return this.prisma.chatRoom.findUnique({
       where: { id: roomId },
       include: {
-        customer: { select: { id: true, name: true, phone: true, nationalId: true, acquisitionSource: true } },
+        customer: {
+          select: { id: true, name: true, phone: true, nationalId: true, acquisitionSource: true },
+        },
         assignedTo: { select: { id: true, name: true, avatarUrl: true } },
         tags: true,
         todos: ROOM_NEXT_APPOINTMENT,
@@ -1062,7 +1159,9 @@ export class RoomManagerService {
           select: {
             firstTouch: true,
             lastTouch: true,
-            campaign: { select: { campaignId: true, campaignName: true, adName: true, adPhotoUrl: true } },
+            campaign: {
+              select: { campaignId: true, campaignName: true, adName: true, adPhotoUrl: true },
+            },
           },
         },
       },
@@ -1084,14 +1183,22 @@ export class RoomManagerService {
       const current = await this.prisma.chatRoom.findUnique({
         where: { id: roomId },
         select: {
-          id: true, customerId: true, deletedAt: true, assignedToId: true,
+          id: true,
+          customerId: true,
+          deletedAt: true,
+          assignedToId: true,
           customer: { select: PLACEHOLDER_FIELDS_SELECT },
         },
       });
       // เจ้าของที่ถูก soft-delete ไม่เข้าเงื่อนไขนี้ (isLivePlaceholder เป็นเท็จ) — ไม่มีอะไรให้รวม
       // แล้วไหลไปผูกทับในทรานแซกชันข้างล่างซึ่งข้าม 409 ให้เจ้าของที่ตายแล้วเช่นกัน (Ruling R23)
-      if (current && !current.deletedAt && current.customerId && current.customerId !== customerId
-        && isLivePlaceholder(current.customer)) {
+      if (
+        current &&
+        !current.deletedAt &&
+        current.customerId &&
+        current.customerId !== customerId &&
+        isLivePlaceholder(current.customer)
+      ) {
         // ตรวจสิทธิ์ก่อนรวม — การรวมย้ายห้องทุกห้องของ placeholder จึงห้ามเกิดก่อนด่านนี้
         if (actor.role === 'SALES' && current.assignedToId && current.assignedToId !== actor.id) {
           throw new ForbiddenException('ไม่มีสิทธิ์เข้าถึงห้องแชทนี้');
@@ -1102,46 +1209,52 @@ export class RoomManagerService {
         // ที่ค้างอยู่ (creditCheckId ว่าง) — absorb ย้ายเฉพาะผลที่นำเข้าแล้ว
       }
     }
-    const linkedRoom = await this.prisma.$transaction(async tx => {
-    await lockCreditRoom(tx, roomId);
-    const room = await tx.chatRoom.findUnique({
-      where: { id: roomId },
-      select: {
-        id: true, customerId: true, deletedAt: true, assignedToId: true,
-        customer: { select: { deletedAt: true } },
-      },
-    });
-    if (!room || room.deletedAt) {
-      throw new NotFoundException('ห้องแชทไม่พบหรือถูกลบ');
-    }
-    if (actor.role === 'SALES' && room.assignedToId && room.assignedToId !== actor.id) {
-      throw new ForbiddenException('ไม่มีสิทธิ์เข้าถึงห้องแชทนี้');
-    }
-    // เจ้าของที่ถูก soft-delete = ห้องไม่มีเจ้าของ (Ruling R23) — ผูกทับได้เลย ไม่ใช่ 409
-    // (ด่านก่อนทรานแซกชันก็ถือกติกาเดียวกัน: absorb เฉพาะ placeholder ที่ยังมีชีวิต)
-    if (room.customerId && room.customerId !== customerId && !room.customer?.deletedAt) {
-      throw new ConflictException('ห้องแชทนี้ผูกกับลูกค้ารายอื่นอยู่แล้ว');
-    }
-    const customer = await tx.customer.findUnique({
-      where: { id: customerId },
-      select: { id: true, deletedAt: true },
-    });
-    if (!customer || customer.deletedAt) {
-      throw new NotFoundException('ไม่พบลูกค้า');
-    }
-    const linked = await tx.chatRoom.update({
-      where: { id: roomId },
-      data: { customerId },
-    });
-    await linkRoomCreditHistory(tx, roomId, customerId);
-    return linked;
+    const linkedRoom = await this.prisma.$transaction(async (tx) => {
+      await lockCreditRoom(tx, roomId);
+      const room = await tx.chatRoom.findUnique({
+        where: { id: roomId },
+        select: {
+          id: true,
+          customerId: true,
+          deletedAt: true,
+          assignedToId: true,
+          customer: { select: { deletedAt: true } },
+        },
+      });
+      if (!room || room.deletedAt) {
+        throw new NotFoundException('ห้องแชทไม่พบหรือถูกลบ');
+      }
+      if (actor.role === 'SALES' && room.assignedToId && room.assignedToId !== actor.id) {
+        throw new ForbiddenException('ไม่มีสิทธิ์เข้าถึงห้องแชทนี้');
+      }
+      // เจ้าของที่ถูก soft-delete = ห้องไม่มีเจ้าของ (Ruling R23) — ผูกทับได้เลย ไม่ใช่ 409
+      // (ด่านก่อนทรานแซกชันก็ถือกติกาเดียวกัน: absorb เฉพาะ placeholder ที่ยังมีชีวิต)
+      if (room.customerId && room.customerId !== customerId && !room.customer?.deletedAt) {
+        throw new ConflictException('ห้องแชทนี้ผูกกับลูกค้ารายอื่นอยู่แล้ว');
+      }
+      const customer = await tx.customer.findUnique({
+        where: { id: customerId },
+        select: { id: true, deletedAt: true },
+      });
+      if (!customer || customer.deletedAt) {
+        throw new NotFoundException('ไม่พบลูกค้า');
+      }
+      const linked = await tx.chatRoom.update({
+        where: { id: roomId },
+        data: { customerId },
+      });
+      await linkRoomCreditHistory(tx, roomId, customerId);
+      return linked;
     });
     return { ...linkedRoom, absorbed };
   }
 
   /** ประกอบ where ของห้องแชทจากตัวกรองชุดเดียว — แหล่งเดียวของทั้งรายการและตัวนับ
    *  ห้ามเขียนสำเนาที่สอง: ป้ายที่นับด้วยตัวกรองคนละชุดกับรายการคือป้ายที่โกหก */
-  private buildRoomWhere(params: RoomFilterParams, searchMessages = false): Prisma.ChatRoomWhereInput {
+  private buildRoomWhere(
+    params: RoomFilterParams,
+    searchMessages = false,
+  ): Prisma.ChatRoomWhereInput {
     const where: Prisma.ChatRoomWhereInput = {
       deletedAt: null,
     };
@@ -1187,10 +1300,13 @@ export class RoomManagerService {
     if (params.expired) {
       where.waitingSince = { not: null };
       and.push({ channel: ChatChannel.FACEBOOK });
-      and.push({ OR: [{ lastCustomerAt: null }, { lastCustomerAt: { lt: fbWindowBounds().open } }] });
+      and.push({
+        OR: [{ lastCustomerAt: null }, { lastCustomerAt: { lt: fbWindowBounds().open } }],
+      });
     }
     // ช่องทางที่เลือกซ้อนกับเงื่อนไขอื่น (expired + LINE ⇒ ว่าง ซึ่งคือความจริง ไม่ใช่ห้อง LINE ที่ถูกป้ายว่าพ้น 24 ชม.)
-    if (params.channels && params.channels.length > 0) and.push({ channel: { in: params.channels } });
+    if (params.channels && params.channels.length > 0)
+      and.push({ channel: { in: params.channels } });
     if (params.aiStatus === 'ai') {
       where.aiPaused = false;
       where.handoffMode = false;
@@ -1205,7 +1321,10 @@ export class RoomManagerService {
   }
 
   /** List rooms for the unified inbox with pagination and filters */
-  async listRooms(params: RoomFilterParams & { page?: number; limit?: number }, actor?: { id: string }) {
+  async listRooms(
+    params: RoomFilterParams & { page?: number; limit?: number },
+    actor?: { id: string },
+  ) {
     params = { ...params, search: params.search?.trim() || undefined };
     const search = actor ? params.search : undefined;
     const page = params.page ?? 1;
@@ -1222,10 +1341,15 @@ export class RoomManagerService {
       if (!search || !rows.length) return rows;
       const matches = await this.prisma.chatRoom.findMany({
         where: { AND: [where, { id: { in: rows.map((row) => row.id) } }] },
-        select: { id: true, messages: {
-          where: messageSearchWhere(search), orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 1,
-          select: { id: true, text: true, role: true, createdAt: true },
-        } },
+        select: {
+          id: true,
+          messages: {
+            where: messageSearchWhere(search),
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            take: 1,
+            select: { id: true, text: true, role: true, createdAt: true },
+          },
+        },
       });
       const byRoom = new Map(matches.map((room) => [room.id, room.messages[0] ?? null]));
       return rows.map((row) => ({ ...row, searchMatch: byRoom.get(row.id) ?? null }));
@@ -1255,9 +1379,12 @@ export class RoomManagerService {
         select: { id: true, channel: true, lastCustomerAt: true, waitingSince: true },
       });
       const tier = (k: (typeof keys)[number]) =>
-        k.channel === ChatChannel.FACEBOOK && k.lastCustomerAt && k.lastCustomerAt < closing ? 0 : 1;
+        k.channel === ChatChannel.FACEBOOK && k.lastCustomerAt && k.lastCustomerAt < closing
+          ? 0
+          : 1;
       keys.sort((a, b) => {
-        const ta = tier(a), tb = tier(b);
+        const ta = tier(a),
+          tb = tier(b);
         if (ta !== tb) return ta - tb;
         if (ta === 0) return a.lastCustomerAt!.getTime() - b.lastCustomerAt!.getTime();
         return (a.waitingSince?.getTime() ?? 0) - (b.waitingSince?.getTime() ?? 0);
@@ -1345,7 +1472,11 @@ export class RoomManagerService {
    */
   async getRoomBadgeCounts(
     staffId?: string,
-    params?: { tab?: InboxTabKey; aiStatus?: 'ai' | 'human' | 'pending'; company?: WorkScope['company'] },
+    params?: {
+      tab?: InboxTabKey;
+      aiStatus?: 'ai' | 'human' | 'pending';
+      company?: WorkScope['company'];
+    },
   ): Promise<{
     /** ห้องที่ฉันดูแล — ทุกห้อง ไม่ใช่เฉพาะที่ยังไม่อ่าน */
     mine: number;
@@ -1431,10 +1562,7 @@ export class RoomManagerService {
   }
 
   /** Update room status */
-  async updateRoomStatus(
-    roomId: string,
-    status: ChatRoomStatus,
-  ): Promise<ChatRoom> {
+  async updateRoomStatus(roomId: string, status: ChatRoomStatus): Promise<ChatRoom> {
     const data: Prisma.ChatRoomUpdateInput = { status };
     if (status === ChatRoomStatus.IDLE) {
       data.resolvedAt = new Date();
@@ -1443,10 +1571,7 @@ export class RoomManagerService {
   }
 
   /** Mark all unread customer messages in a room as read */
-  async markMessagesRead(
-    roomId: string,
-    readAt: Date,
-  ): Promise<{ count: number }> {
+  async markMessagesRead(roomId: string, readAt: Date): Promise<{ count: number }> {
     const result = await this.prisma.chatMessage.updateMany({
       where: {
         roomId,
@@ -1580,9 +1705,10 @@ export class RoomManagerService {
       const existing = await this.findByClientMessageId(roomId, clientMessageId);
       if (existing) {
         const existingKey = existing.mediaUrl ?? '';
-        const url = this.storageService.configured && existingKey
-          ? await this.storageService.getSignedDownloadUrl(existingKey, 3600)
-          : existingKey;
+        const url =
+          this.storageService.configured && existingKey
+            ? await this.storageService.getSignedDownloadUrl(existingKey, 3600)
+            : existingKey;
         return {
           success: true,
           url,
@@ -1594,7 +1720,9 @@ export class RoomManagerService {
     }
 
     const extMap: Record<string, string> = {
-      'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp',
+      'image/jpeg': '.jpg',
+      'image/png': '.png',
+      'image/webp': '.webp',
       'application/pdf': '.pdf',
       'application/msword': '.doc',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
@@ -1644,8 +1772,8 @@ export class RoomManagerService {
         staffId: userId,
         clientMessageId,
       });
-    } catch (e: any) {
-      if (e?.code === 'P2002' && clientMessageId) {
+    } catch (e: unknown) {
+      if ((e as { code?: string } | null)?.code === 'P2002' && clientMessageId) {
         // Retry ด้วย clientMessageId เดิม (ไฟล์ non-image) — แถวก่อนหน้าถูกบันทึกแล้ว
         // จาก attempt ที่แล้ว (unique [roomId, clientMessageId]). คืนแถวเดิมแทนที่จะ
         // throw 500 ให้ frontend (idempotent) — เหมือน sendStaffMessage's P2002
@@ -1671,29 +1799,49 @@ export class RoomManagerService {
    * reverses for display.
    */
   async getCustomerMessages(customerId: string, take: number, before?: string) {
-    // Find the customer's LINE Finance room (preferred) or fall back to any
-    // LINE room. Collections is a finance-only workflow — no point pulling
-    // shop-side LINE chat here.
-    const room = await this.prisma.chatRoom.findFirst({
-      where: {
-        customerId,
-        deletedAt: null,
-        channel: { in: [ChatChannel.LINE_FINANCE, ChatChannel.LINE_SHOP] },
-      },
-      orderBy: [
-        // Prefer LINE_FINANCE if both exist (alphabetical "LINE_FINANCE" <
-        // "LINE_SHOP" so an explicit ordering by lastMessageAt is the
-        // tiebreaker that matters).
-        { lastMessageAt: 'desc' },
-      ],
-      select: {
-        id: true,
-        channel: true,
-        lineUserId: true,
-        lastMessageAt: true,
-        unreadCount: true,
-      },
-    });
+    // Task 24 fix round 1 I-1 — ห้องของแถว OTP ที่ยังผูกก่อน (ห้องเดียวกับที่ sendCustomerMessage ส่งเข้า) · ห้องของ LINE เก่าที่ลูกค้ายกเลิกแล้ว
+    // ยังถือ customerId เดิม (M-8) และอาจใหม่กว่า ⇒ ถ้าเลือก "ห้องล่าสุด" พนักงานจะเห็นแชทของผู้ถือ LINE เก่าเป็นของลูกค้า
+    const verifiedLine = await findFinanceLineRecipient(this.prisma, customerId);
+    const verifiedRoom = verifiedLine
+      ? await this.prisma.chatRoom.findFirst({
+          where: { lineUserId: verifiedLine, channel: ChatChannel.LINE_FINANCE, deletedAt: null },
+          select: {
+            id: true,
+            channel: true,
+            lineUserId: true,
+            lastMessageAt: true,
+            unreadCount: true,
+          },
+        })
+      : null;
+    // fix round 2 m-1 — มีแถวแต่ LINE นั้นยังไม่เคยทัก (ไม่มีห้อง) → มุมมองของแถว OTP: ยังไม่มีแชท · ห้ามถอยไปห้องของ LINE อื่น
+    // (ห้อง LINE เก่า/ห้องที่ผูกมือ — ช่องพิมพ์จะดูเหมือนตอบห้องนั้น)
+    if (verifiedLine && !verifiedRoom) {
+      return { roomId: null, channel: null, messages: [], hasMore: false };
+    }
+    // ไม่มีแถว → แสดงประวัติตามเดิม (ห้อง LINE ล่าสุดของลูกค้า — อ่านอย่างเดียว · ส่งไม่ได้ ดู sendCustomerMessage)
+    const room =
+      verifiedRoom ??
+      (await this.prisma.chatRoom.findFirst({
+        where: {
+          customerId,
+          deletedAt: null,
+          channel: { in: [ChatChannel.LINE_FINANCE, ChatChannel.LINE_SHOP] },
+        },
+        orderBy: [
+          // Prefer LINE_FINANCE if both exist (alphabetical "LINE_FINANCE" <
+          // "LINE_SHOP" so an explicit ordering by lastMessageAt is the
+          // tiebreaker that matters).
+          { lastMessageAt: 'desc' },
+        ],
+        select: {
+          id: true,
+          channel: true,
+          lineUserId: true,
+          lastMessageAt: true,
+          unreadCount: true,
+        },
+      }));
 
     if (!room) {
       return { roomId: null, channel: null, messages: [], hasMore: false };
@@ -1738,26 +1886,33 @@ export class RoomManagerService {
   }
 
   /**
-   * Resolve the customer's LINE room (Finance preferred) and forward the
-   * staff message through MessageRouterService. Returns `{ room: null }`
-   * when the customer has no LINE room so the caller can surface a
-   * non-throwing error; otherwise returns the resolved room + send result.
+   * แผง 360 ("แชท LINE") — ส่งข้อความพนักงานผ่าน MessageRouterService เข้า**ห้อง LINE การเงินของแถว OTP ที่ยังผูกของลูกค้าคนนี้เท่านั้น**
+   * (Task 24 fix round 1 I-1 · `findFinanceLineRecipient` — เกณฑ์เดียวกับผู้ส่งข้อความการเงินทุกตัว กติกาข้อ 9 ของ security.md).
+   * เดิมเลือก "ห้อง LINE ล่าสุดที่ customerId = ลูกค้า" ⇒ หลังลูกค้ายกเลิก LINE เก่าแล้วยืนยัน LINE ใหม่ ห้องของ LINE เก่ายังเป็นของลูกค้า
+   * ถ้าผู้ถือ LINE เก่าทักมาทีหลัง ข้อความของพนักงาน (ยอดหนี้ ฯลฯ) ไปถึงคนที่ไม่ใช่เจ้าของ.
+   * - ไม่มีแถวที่ยังผูก → 400 `LINE_FINANCE_NOT_VERIFIED_MESSAGE` (มีแต่ห้อง LINE ร้าน → `LINE_SHOP_STAFF_SEND_DISABLED_MESSAGE` —
+   *   ฝั่งร้านยังไม่มี OTP จึงไม่ส่งทาง LINE ร้านจากแผงนี้)
+   * - มีแถวแต่ลูกค้ายังไม่เคยทักแชท (ไม่มีห้องของ LINE นั้น) → `{ room: null }` ให้ผู้เรียกตอบ "รอลูกค้าทักก่อน" (ไม่ถอยไปห้องอื่นของลูกค้า)
    */
   async sendCustomerMessage(
     customerId: string,
     staffId: string,
     text: string,
   ): Promise<
-    | { room: null }
-    | { room: { id: string }; result: { success: boolean; error?: string } }
+    { room: null } | { room: { id: string }; result: { success: boolean; error?: string } }
   > {
+    const lineUserId = await findFinanceLineRecipient(this.prisma, customerId);
+    if (!lineUserId) {
+      const shopRoom = await this.prisma.chatRoom.findFirst({
+        where: { customerId, deletedAt: null, channel: ChatChannel.LINE_SHOP },
+        select: { id: true },
+      });
+      throw new BadRequestException(
+        shopRoom ? LINE_SHOP_STAFF_SEND_DISABLED_MESSAGE : LINE_FINANCE_NOT_VERIFIED_MESSAGE,
+      );
+    }
     const room = await this.prisma.chatRoom.findFirst({
-      where: {
-        customerId,
-        deletedAt: null,
-        channel: { in: [ChatChannel.LINE_FINANCE, ChatChannel.LINE_SHOP] },
-      },
-      orderBy: { lastMessageAt: 'desc' },
+      where: { lineUserId, channel: ChatChannel.LINE_FINANCE, deletedAt: null },
       select: { id: true },
     });
 
@@ -1775,7 +1930,11 @@ export class RoomManagerService {
   }
 
   /** All of a room's customer's rooms across channels, with the latest message each */
-  async getCrossChannelRooms(roomId: string, authenticated: { id: string }, selected: Partial<WorkScope> = {}) {
+  async getCrossChannelRooms(
+    roomId: string,
+    authenticated: { id: string },
+    selected: Partial<WorkScope> = {},
+  ) {
     const access = new ChatWorkAccessService(this.prisma);
     const { room, actor, scope } = await access.roomContext(roomId, authenticated, selected);
     const allowed = await access.roomWhere(actor, scope);

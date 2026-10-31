@@ -6,24 +6,19 @@ import { LineFinanceClientService } from './line-finance-client.service';
 import { ChatRoomService } from './chat-room.service';
 import { TEMPLATES, ReminderPayload } from '../constants/reminder-templates';
 import { formatThaiDateText as formatThaiDate } from '../../../utils/thai-date.util';
-import { loadLateFeeConfig, resolveLivePaymentLateFee, LateFeeConfig } from '../../../utils/late-fee.util';
+import {
+  loadLateFeeConfig,
+  resolveLivePaymentLateFee,
+  LateFeeConfig,
+} from '../../../utils/late-fee.util';
 import { FinanceConfigService } from './finance-config.service';
 import {
-  AutoTriggerType,
-  LineChannelType,
-  MessageRole,
-  Payment,
-  TriggerStatus,
-} from '@prisma/client';
+  FINANCE_LINE_RECIPIENT_SELECT,
+  financeLineRecipient,
+} from '../../line-oa/services/otp-verified-customer';
+import { AutoTriggerType, MessageRole, Payment, TriggerStatus } from '@prisma/client';
 
 const TIMEZONE = 'Asia/Bangkok';
-
-interface PaymentWithLink {
-  payment: Payment;
-  customerId: string;
-  customerName: string;
-  lineUserId: string;
-}
 
 /**
  * Auto-Trigger Service — ส่ง reminders อัตโนมัติตาม cron schedule
@@ -58,7 +53,9 @@ export class AutoTriggerService {
       await this.processOffset(1, AutoTriggerType.REMINDER_T_MINUS_1, TEMPLATES.T_MINUS_1);
       await this.processOffset(0, AutoTriggerType.REMINDER_T_DAY, TEMPLATES.T_DAY);
     } catch (error) {
-      this.logger.error(`Daily reminders failed: ${error instanceof Error ? error.message : error}`);
+      this.logger.error(
+        `Daily reminders failed: ${error instanceof Error ? error.message : error}`,
+      );
       Sentry.captureException(error, {
         tags: { kind: 'cron-job', cron: 'daily-reminders' },
       });
@@ -74,7 +71,9 @@ export class AutoTriggerService {
       await this.processOffset(-1, AutoTriggerType.ESCALATION_T_PLUS_1, TEMPLATES.T_PLUS_1);
       await this.processOffset(-3, AutoTriggerType.ESCALATION_T_PLUS_3, TEMPLATES.T_PLUS_3);
     } catch (error) {
-      this.logger.error(`Daily escalations failed: ${error instanceof Error ? error.message : error}`);
+      this.logger.error(
+        `Daily escalations failed: ${error instanceof Error ? error.message : error}`,
+      );
       Sentry.captureException(error, {
         tags: { kind: 'cron-job', cron: 'daily-escalations' },
       });
@@ -112,10 +111,8 @@ export class AutoTriggerService {
               select: {
                 id: true,
                 name: true,
-                lineLinks: {
-                  where: { channel: LineChannelType.FINANCE, unlinkedAt: null },
-                  select: { lineUserId: true },
-                },
+                // ผู้รับ = แถว OTP ที่ยังผูก — เกณฑ์เดียวกับผู้ส่งข้อความการเงินทุกตัว (Task 24 fix round 2 m-5 · เดิมไม่ดู deleted_at)
+                ...FINANCE_LINE_RECIPIENT_SELECT,
               },
             },
           },
@@ -138,8 +135,8 @@ export class AutoTriggerService {
     let failed = 0;
 
     for (const payment of payments) {
-      const lineLink = payment.contract.customer.lineLinks[0];
-      if (!lineLink) {
+      const lineUserId = financeLineRecipient(payment.contract.customer);
+      if (!lineUserId) {
         skipped++;
         continue;
       }
@@ -150,7 +147,7 @@ export class AutoTriggerService {
         template,
         customerId: payment.contract.customerId,
         customerName: payment.contract.customer.name,
-        lineUserId: lineLink.lineUserId,
+        lineUserId,
         dayOffset,
         lateFeeConfig,
       });
@@ -162,7 +159,6 @@ export class AutoTriggerService {
 
     this.logger.log(`[AutoTrigger] ${type}: sent=${sent} skipped=${skipped} failed=${failed}`);
   }
-
 
   private async sendReminder(args: {
     payment: Payment;
@@ -177,7 +173,9 @@ export class AutoTriggerService {
     const amount = Number(args.payment.amountDue) - Number(args.payment.amountPaid);
     const daysOverdue = args.dayOffset < 0 ? Math.abs(args.dayOffset) : 0;
     // Follow the same frozen-after-payment fee as collection and chatbot quotes.
-    const fineAmount = Number(resolveLivePaymentLateFee(args.payment, args.lateFeeConfig, new Date()));
+    const fineAmount = Number(
+      resolveLivePaymentLateFee(args.payment, args.lateFeeConfig, new Date()),
+    );
 
     const payload: ReminderPayload = {
       customerName: args.customerName,
@@ -253,5 +251,4 @@ export class AutoTriggerService {
       return 'failed';
     }
   }
-
 }

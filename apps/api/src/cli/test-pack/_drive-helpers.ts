@@ -4,6 +4,7 @@ import { ACTIVE_FINANCE_LINK_WHERE } from '../../modules/line-oa/services/otp-ve
 import type { LateFeeConfig } from '../../utils/late-fee.util';
 import { resolveLivePaymentLateFee } from '../../utils/late-fee.util';
 import { bkkDateStr } from './_context';
+import { TEST_DRAFT_CUSTOMER_PHONES } from './_test-customer-phone';
 
 /**
  * Pure helpers ของโหมดเดินเรื่อง (เฟส 3) — แยกไฟล์จาก _drive.ts เพื่อให้ spec
@@ -18,6 +19,17 @@ import { bkkDateStr } from './_context';
  */
 export const MAY_RECEIVE_FINANCE_LINE_WHERE = {
   OR: [{ lineIdFinance: { not: null } }, { lineLinks: { some: ACTIVE_FINANCE_LINK_WHERE } }],
+} satisfies Prisma.CustomerWhereInput;
+
+/**
+ * Task 24 fix round 1 M-5 — ก้าว "เปิดสัญญาผ่อน" เรียก `ContractWorkflowService.activate` ซึ่งส่ง "สัญญาอนุมัติแล้ว" ถึงลูกค้า
+ * (`sendContractActivatedNotification`: LINE ถ้ามีแถว OTP ที่ยังผูก ไม่งั้น SMS ถึง `customer.phone`) ⇒ เปิดเฉพาะสัญญาของลูกค้าที่ทั้งสองทาง
+ * ไม่ถึงคนจริง: ไม่เข้าเกณฑ์ LINE ของก้าวรับชำระ (`MAY_RECEIVE_FINANCE_LINE_WHERE`) **และ** เบอร์ตรงรูปโทรไม่ได้ของ seeder ทุกตัวอักษร
+ * (`TEST_DRAFT_CUSTOMER_PHONES` — ไม่ใช่แค่ prefix `TEST-`: fix round 2 m-4)
+ */
+export const ACTIVATION_SILENT_CUSTOMER_WHERE = {
+  NOT: MAY_RECEIVE_FINANCE_LINE_WHERE,
+  phone: { in: [...TEST_DRAFT_CUSTOMER_PHONES] },
 } satisfies Prisma.CustomerWhereInput;
 
 /** เดือนไทย (YYYYMM) ของวันที่ — ใช้กับ month-guard ของก้าวที่คุมวันที่ลงบัญชีไม่ได้ */

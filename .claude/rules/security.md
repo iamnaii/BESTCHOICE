@@ -142,7 +142,7 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
 8. **ปุ่ม quick reply ที่ลูกค้ากดเอง (postback `TEMPLATE:` → `CannedResponseSenderService.send(…, staffId = null)`) เติมตัวแปรลูกค้า**
    (`{customerName}` `{customerPhone}` `{contractNumber}` `{amountDue}` `{dueDate}` `{installmentNo}`) **เฉพาะห้อง LINE ที่
    `findOtpVerifiedCustomerId(room.lineUserId) === room.customerId`** (Task 22 I-C) — ไม่ผ่าน = คำกลาง (`ลูกค้า` / `-`) · Facebook ไม่มีทางยืนยัน OTP ⇒ คำกลางเสมอ ·
-   `{branchName}` (สาขาของพนักงานที่ดูแลห้อง) ไม่ใช่ข้อมูลลูกค้า เติมตามเดิม · พนักงานกดส่งเอง (`staffId` มีค่า) ใช้ลูกค้าของห้องตามเดิม (พนักงานเห็นห้องและตัดสินเอง)
+   `{branchName}` (สาขาของพนักงานที่ดูแลห้อง) ไม่ใช่ข้อมูลลูกค้า เติมตามเดิม · พนักงานกดส่งเอง (`staffId` มีค่า) ใช้ลูกค้าของห้องตามเดิม (พนักงานเห็นห้องและตัดสินเอง) — **ยกเว้นห้อง `LINE_FINANCE`** ซึ่งใช้กติกาเดียวกับลูกค้ากดเอง (Task 24 round 3 · I-C ด้านล่าง)
 9. **`customers.line_id_finance` ไม่ใช่หลักฐานตัวตน และไม่ใช่ปลายทางข้อความการเงิน** (Task 22 fix round 1 I-1 — คอลัมน์แยกจากแถว OTP ได้:
    ค่าที่พนักงาน/นำเข้าเขียนก่อน Task 22 · ลูกค้าที่กู้จากถังขยะ/ชุบ ghost · ค่าที่ค้างบนลูกค้าเดิมหลัง LINE นั้นไปยืนยัน OTP กับอีกคน):
    - **สิทธิ์** — หน้า LIFF การเงินทุกจุด (`liff-api.service.ts` — สัญญา · ประวัติชำระ · โปรไฟล์ · ลิงก์ชำระ · ยอดปิด/ปิดยอด · ใบเสร็จ · ความยินยอม ·
@@ -159,10 +159,27 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
    - **ปุ่ม "ส่ง LINE" ของพนักงาน** (Task 24 RR-M2) ใช้เกณฑ์เดียวกับผู้ส่ง: API คืน `customer.hasVerifiedLine` (`withVerifiedFinanceLine` — มีแถว OTP ที่ยังผูก ·
      ตัด U-id ของแถวออกจากคำตอบ) ที่ `GET /overdue/queue` + `/overdue/contracts/:id/queue-row` · `GET /collections/session/mine` · `hasLine`/`withLine` ของ `promise-due-reminders` ⇒
      ปุ่มใน `ContractCard` / `Customer360Actions` / `FocusContractCard` · ตัวกรอง "ไม่มี LINE" · ตัวนับ LINE ของโหมดโฟกัส ไม่ดูคอลัมน์ ·
-     ส่งไม่ได้เพราะไม่มีแถว = 400 `LINE_FINANCE_NOT_VERIFIED_MESSAGE` (`POST /overdue/:id/send-line-adhoc` · ส่งซ้ำ dunning ช่อง LINE — บอกว่ายังไม่ยืนยัน OTP +
-     ทางของลูกค้าเอง "เริ่มยืนยันตัวตน" เพราะไม่มีปุ่มพนักงานส่งลิงก์ยืนยัน) · แผง 360 ของคิวทวงถาม: ป้าย "LINE (งานการเงิน)" · แท็บ "แชท LINE" ·
-     ช่องพิมพ์ในแท็บ (`LineChatPanel` `canSend` — ส่งข้อความจริงทาง `/staff-chat/customer/:id/messages`) ใช้ `hasVerifiedLine` ด้วย (Task 27 — ยังไม่ยืนยัน = ไม่มีแท็บ ·
-     ช่องพิมพ์ถูกแทนด้วยข้อความวิธีผูกเอง) · ฝั่ง API ของ endpoint ส่งข้อความนั้นแก้แยกในสาขา Task 24
+     ส่งไม่ได้เพราะไม่มีแถว (ณ ตอนส่ง) = 400 `LINE_FINANCE_NOT_VERIFIED_MESSAGE` (`POST /overdue/:id/send-line-adhoc` · ส่งซ้ำ dunning ช่อง LINE — บอกว่ายังไม่ยืนยัน OTP +
+     ทางของลูกค้าเอง "เริ่มยืนยันตัวตน" เพราะไม่มีปุ่มพนักงานส่งลิงก์ยืนยัน) · ad-hoc ไม่พบสัญญา = 404 (ไม่ตอบ `{sent:0}` ที่หน้าเว็บแปลว่า "ลองใหม่" — fix round 1 M-4) ·
+     ส่ง ad-hoc / `bulk/send-line` ใช้ขอบเขตเดียว `lineSendContractScope` (`bulk.service.ts`) = ขอบเขตของหน้าจอที่ปุ่มอยู่: role ข้ามสาขา (`getBranchScope`) ทุกสัญญา ·
+     นอกนั้น **สาขาตัวเอง** (คิวทวงถาม / `queue-row` / แบนเนอร์นัดครบกำหนด — fix round 1 M-3) **หรือ สัญญาที่ผู้ใช้มีงานรายวันวันนี้** (โหมดโฟกัส `GET /collections/session/mine`
+     อ่านตามงานที่จ่าย ซึ่งจ่ายข้ามสาขาได้โดยตั้งใจ — round-robin · เติมขั้นต่ำจาก pool · ความสัมพันธ์เดิม · หยิบจาก pool · `DailyAssignment` ของ (ผู้ใช้, `collectionsSessionDay()`)
+     ที่ไม่ถูกลบ — นิยาม "วันนี้" เดียวกับหน้าจอ · fix round 2 I-R1 · ผู้เขียน `date` (auto-assign) / pool / cron ล็อกงาน / สรุปรายวัน ใช้ฟังก์ชันเดียวกัน — round 3) ·
+     ข้อควรรู้ของ `daily_assignments.date` (`@db.Date`): บนเครื่องที่ `TZ=Asia/Bangkok` Prisma เก็บวันที่แบบ UTC ของเที่ยงคืนไทย ⇒ วันไทย 31 ต.ค. ลงคอลัมน์เป็น
+     `2026-10-30` (ยืนยันบนฐานทดสอบ local — `TZ=UTC` ได้ `2026-10-31`) · โค้ด JS อ่าน/เขียนตรงกันเอง แต่ SQL ดิบ/รายงานที่เทียบกับ `CURRENT_DATE` จะคลาดหนึ่งวัน ·
+     นอกขอบเขต = 404 เหมือนไม่พบ · ไม่มีสาขาและไม่มีงาน = ไม่มีอะไร (ฝั่งส่ง fail closed —
+     ต่างจากคิวฝั่งอ่านที่เขียน `branchId: userBranchId ?? undefined` ซึ่ง BM/SALES ไม่มีสาขา = ไม่กรอง/fail open) ·
+      คอลัมน์ `lineIdFinance` ในคำตอบเหลือไว้แสดงผลเท่านั้น — **ห้ามใช้ตัดสินว่าส่งได้** · แผง 360 ของคิวทวงถาม: ป้าย "LINE (งานการเงิน)" · แท็บ "แชท LINE" ·
+      ช่องพิมพ์ในแท็บ (`LineChatPanel` `canSend`) ใช้ `hasVerifiedLine` (Task 27 — ยังไม่ยืนยัน = ไม่มีแท็บ · ช่องพิมพ์ถูกแทนด้วยข้อความวิธีผูกเอง)
+   - **ทางส่งข้อความถึงลูกค้าที่เลือกปลายทางจาก `customerId` ต้องเลือกจากแถว OTP ที่ยังผูก — ห้ามเลือก "ห้อง LINE ล่าสุดของลูกค้า"** (Task 24 fix round 1 I-1):
+     ห้องของ LINE ที่ลูกค้ายกเลิกแล้วยังถือ `customerId` เดิม (ข้อ 6 ล้างแค่ `verified_at`) ⇒ ผู้ถือ LINE เก่าที่ทักมาล่าสุดจะได้ข้อความของพนักงาน (ยอดหนี้ ฯลฯ) ·
+     แท็บ "แชท LINE" ในแผง 360 **ส่งข้อความได้** (`POST /staff-chat/customer/:customerId/messages` → `RoomManagerService.sendCustomerMessage`): ส่งเฉพาะห้อง
+     `LINE_FINANCE` ของ `findFinanceLineRecipient` · ไม่มีแถว = 400 `LINE_FINANCE_NOT_VERIFIED_MESSAGE` · มีแต่ห้อง LINE ร้าน = 400 `LINE_SHOP_STAFF_SEND_DISABLED_MESSAGE`
+     (ไม่ส่งทาง LINE ร้านจนกว่าฝั่งร้านมี OTP) · ยืนยันแล้วแต่ยังไม่เคยทัก = "รอลูกค้าทักก่อน" (ไม่ถอยไปห้องอื่น) · ประวัติแชท (`GET` เส้นเดียวกัน):
+     **มีแถว** = ห้องของ LINE นั้นเท่านั้น (ยังไม่มีห้อง = ว่าง `roomId: null` — ไม่ถอยไปห้องของ LINE อื่น · fix round 2 m-1) · **ไม่มีแถว** = ห้อง LINE ล่าสุดตามเดิม อ่านอย่างเดียว ·
+      เงื่อนไขเปิดแท็บ/ช่องพิมพ์ฝั่งเว็บใช้ `hasVerifiedLine` แล้ว (Task 27 — API ปฏิเสธอยู่แล้วไม่ว่าเว็บจะเปิดไหม) ·
+     route นี้ยังไม่มี branch scope (ลูกค้าไม่ผูกสาขาโดยตรง — รอเจ้าของตัดสิน) · สำเนาข้อความที่ระบบบันทึกลงห้อง (`payment-link` · แม่แบบ Flex ของ `notification-dispatch`)
+     ลงห้องของ**ผู้รับจริง** `{ lineUserId: <LINE ที่ push ถึง>, channel }` (fix round 2 m-2 — เดิม "ห้องการเงินล่าสุดของลูกค้า" ⇒ บิลของลูกค้าไปโผล่ในห้องของ LINE เก่า)
    - **ฟอร์มลูกค้า** (Task 27): `GET /customers/:id` (+ `/:id/detail`) คืน `financeLine: { verified, linkedAt }` (`withFinanceLineStatus` + `FINANCE_LINE_STATUS_SELECT` —
      แถวเดียวกับผู้ส่ง ไม่มี U-id · managed projection เปิดฟิลด์นี้) ⇒ ฟอร์มแก้ไขแสดงแถวสถานะ (ยืนยัน OTP แล้ว + วันที่ผูก + ปุ่ม "ยกเลิกการผูก" / ยังไม่ได้ผูก + วิธีผูกเอง) ·
      ฟอร์มสร้างแสดงหมายเหตุ · ไม่มีช่องพิมพ์ LINE การเงินบนเว็บอีก
@@ -246,13 +263,29 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
   deploy Task 22: เว็บ (26.10.71) กับ API ขึ้นพร้อมกัน — เว็บรุ่นเก่ากับ API ใหม่ = ปุ่มดาวน์โหลดได้ 401 (ไม่มีตั๋ว) จนเว็บใหม่ขึ้น
 - **I-C — ปิดแล้ว (Task 22 · ข้อ 8) · ที่ยังเหลือ:** ด่าน `verifiedOnly` ของแม่แบบดู `chat_rooms.verified_at` — ห้อง LINE การเงินได้ค่านี้จากแถว OTP ที่ยังผูกเท่านั้น
   (`bind` · `ChatRoomService.linkRoomToCustomer` หลัง `isLinked` · สร้างห้องใหม่ของ LINE ที่มีแถวยังผูก) และ**ถูกล้างเมื่อยกเลิกผูก/ย้าย LINE** (Task 24 M-8 · ข้อ 6) ·
-  ห้อง LINE ร้านที่ `RoomManagerService.getOrCreateRoom` สร้างยังรับแถว link ช่อง SHOP ทุกสถานะ (วันนี้ไม่มีแถวช่อง SHOP — แก้พร้อมงาน OA ร้าน) ·
+  "แถวยังผูก" = เกณฑ์เดียว `VERIFIED_FINANCE_LINK_WHERE` (`otp-verified-customer.ts` — FINANCE · unlinked/deleted ว่าง · ลูกค้าไม่ถูกลบ) ใช้ทั้ง `findOtpVerifiedCustomerId` ·
+  `isLinked` · `ChatRoomService.getOrCreate` · `RoomManagerService.getOrCreateRoom` ช่อง FINANCE (fix round 1 M-1/M-2) ·
+  **ช่อง SHOP ของ `RoomManagerService.getOrCreateRoom` ยังรับแถว link ทุกสถานะ** (TODO ในโค้ด — วันนี้ไม่มีผู้เขียนแถวช่อง SHOP · ต้องใช้เกณฑ์เดียวกันเมื่อเชื่อม OA ร้านพร้อม OTP ฝั่งร้าน) ·
+  `findExistingCustomerId` (chat-prospects) ใช้ค่าคงที่เดียวกัน · เตือนงวดอัตโนมัติ (`AutoTriggerService`) อ่านผู้รับด้วย `FINANCE_LINE_RECIPIENT_SELECT` (fix round 2 m-5) ·
+  **ห้องของ LINE ที่ลูกค้ายกเลิกแล้วยังถือ `customerId` เดิม** (ข้อ 6 ล้างแค่ `verified_at`) ⇒ ในกล่องข้อความรวม (`/inbox` — ส่งตามห้อง `rooms/:id/messages`) ห้องนั้นยังขึ้นเป็นของลูกค้า
+  และลิงก์แชทในรายชื่อลูกค้าพาไปห้องใหม่สุด: **ข้อความที่พนักงานพิมพ์ในห้องนั้นถึงผู้ถือ LINE เก่า** (และข้อความสำเร็จรูปที่พนักงานกดเติมตัวแปรจาก `room.customerId` —
+  ด่าน `verifiedOnly` กันได้เฉพาะแม่แบบที่ติดธง) — สำเนาบิล/ลิงก์ชำระไม่ไปลงห้องนั้นแล้ว (m-2) จึงไม่ชวนให้ตอบ แต่ทางส่งตามห้องยังไม่ตรวจแถว OTP (คลาสเดียวกับ I3 — งานต่อ:
+  ให้ทางส่งตามห้อง `LINE_FINANCE` ต้องมี `verifiedAt`/แถวที่ยังผูก หรือปลด `customerId` ของห้องตอนยกเลิกผูก — ต้องตัดสินเรื่องประวัติแชทก่อน) ·
+  **ข้อความสำเร็จรูปที่พนักงานกดในห้อง `LINE_FINANCE`** เติมตัวแปรลูกค้าเฉพาะห้องที่ `otpVerifiedRoomCustomerId` ผ่าน (กติกาเดียวกับลูกค้ากดเองข้อ 8 — Task 24 round 3 ·
+  m-R2-1 ทางเลือก ข) ⇒ ห้องของ LINE ที่ยกเลิกผูกได้คำกลาง ไม่ได้ยอด/สัญญาของลูกค้า · `chat_rooms.customer_id` ไม่ถูกแตะ (ไม่ใช้ทางเลือก ก) · ข้อความที่พนักงาน**พิมพ์เอง**
+  ในห้องนั้นยังส่งถึงผู้ถือ LINE เก่าได้ ⇒ งานเว็บต่อ: ป้าย "ยกเลิกผูกแล้ว/ยังไม่ยืนยัน" บนห้องใน inbox (ต้องมี mockup) ·
   พนักงานกดส่งเองยังใช้ลูกค้าของห้อง (บอทขาย `LINKED_BY_PHONE`
   ทำให้พนักงานเห็นห้องเป็นลูกค้าคนนั้น — social engineering คลาสเดียวกับ I3) · Facebook: ปุ่มที่ลูกค้ากดได้คำกลางเสมอ — ตรวจแม่แบบที่ใช้ตัวแปรลูกค้าและมี
   ปุ่ม `TEMPLATE:` บน Facebook ว่ายังสื่อความได้
 - **ข้อย่อยจากรีวิว Task 22 (สถานะหลัง Task 24, 2026-10-31):** RR-M1 (test-pack ตัดสินการยิง LINE ด้วยคอลัมน์ + ตัวสแกนผู้อ่านคอลัมน์ครอบแค่ `src/modules`) ·
   RR-M2 (ปุ่ม LINE ของคิวทวงถามเปิดตามคอลัมน์ + 400 ไม่บอกเหตุ) · M-5 (`HEAD`/prefetch เผาตั๋วดาวน์โหลด) · M-8 (ยกเลิกผูกไม่ล้าง `verified_at`) — **ปิดแล้ว** ·
   deploy: เว็บ 26.10.72 ขึ้นพร้อมหรือหลัง API (เว็บใหม่ + API เก่า = ไม่มี `hasVerifiedLine` ⇒ ปุ่ม "ส่ง LINE" ปิดทุกแถว — fail closed · API ใหม่ + เว็บเก่า = ปุ่มตามคอลัมน์เดิม) ·
+  รีวิว Task 24 (fix round 1): I-1 (แท็บ "แชท LINE" ส่งเข้าห้องล่าสุดของลูกค้า) — **ปิดฝั่ง API** (ฝั่งเว็บ Task 27) · M-1 · M-2 (FINANCE — SHOP เป็น TODO) · M-3 (branch scope ของ
+  ad-hoc/bulk) · M-4 (404/400 แทน `{sent:0}`) · M-5 (test-pack ก้าวเปิดสัญญาไม่แจ้งคนจริง — `ACTIVATION_SILENT_CUSTOMER_WHERE`) — **ปิดแล้ว** · M-6 (ตัวตัดคอมเมนต์ของ readers spec
+  เป็น regex — สตริงที่มี `/*` อาจตัดโค้ดจริง) — ยอมรับ · รีวิวซ้ำ (fix round 2): I-R1 (ด่านสาขาของ M-3 ทำให้โหมดโฟกัสข้ามสาขาส่ง LINE ไม่ได้ → ยอมงานรายวันวันนี้) ·
+  m-1 (ประวัติถอยไปห้อง LINE อื่น) · m-2 (สำเนาลงห้องผู้รับ) · m-3 (เอกสาร/docblock) · m-4 (ด่านเปิดสัญญาของ test-pack ตรงรูปเบอร์ของ seeder ทุกตัวอักษร —
+  `_test-customer-phone.ts`) · m-5 (เศษเกณฑ์เดียว) — **ปิดแล้ว** · รีวิวซ้ำ 2 = Approved · round 3: m-R2-1 (ข้อความสำเร็จรูปที่พนักงานกดในห้องการเงินใช้กติกา I-C — ฝั่ง API ·
+  ป้ายใน inbox เป็นงานเว็บ) · m-R2-2 (ทุกที่ที่คิด "วันนี้" ของงานรายวันใช้ `collectionsSessionDay`) — **ปิดแล้ว** ·
   **M-3 — ปิดแล้ว (Task 27, mockup ที่เจ้าของอนุมัติ "ช่อง LINE น้องเบสในฟอร์มลูกค้า"):** ฟอร์มแก้ไขลูกค้าแสดงแถวสถานะจาก `financeLine` (ข้อ 9) ·
   ฟอร์มสร้างลูกค้าทั้งสองที่ (`CustomerCreateDialog` · `CustomerCreateModal`) แสดงหมายเหตุ "ไม่ต้องกรอก ลูกค้าผูกเองหลังสร้างเสร็จ…" · skip-tracing ขั้น
   "ลองช่องทางใหม่" ตัดช่อง "LINE ID ใหม่ (ถ้ามี)" (เดิมกรอกพร้อมเบอร์ = ทั้งคำขอ 400 เบอร์ใหม่ไม่ถูกบันทึก) — บันทึกด้วยเบอร์ + เหตุผล + หมายเหตุชวนลูกค้าผูกเอง ·
@@ -265,3 +298,24 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
 - **ห้าม commit** `.env` files
 - **ห้าม log** tokens, passwords, หรือ PII (ข้อมูลส่วนบุคคล)
 - ใช้ environment variables สำหรับ secrets ทั้งหมด
+
+## Credentials ใน Integration Hub (`INTEGRATION_ENCRYPTION_KEY` — 2026-10-31)
+- ค่า sensitive เข้ารหัสด้วย `INTEGRATION_ENCRYPTION_KEY` (Secret Manager → `bestchoice-api` + worker) ·
+  ค่าที่ถอดไม่ได้ = **"ยังไม่ตั้งค่า"** (`IntegrationConfigService.getValue` คืน `undefined` — ไม่คืน ciphertext,
+  ไม่ throw, **ไม่ใช้ env สำรองของช่องนั้น**) ⇒ ผู้เรียกต้องรับมือ `undefined` แบบ fail closed
+  (webhook guard ปฏิเสธบน production) · ด่านที่ "ตั้งค่าอยู่" ต้องหมายถึงปลอดภัย (เช่นด่าน PEAK ของ
+  `import:legacy-backoffice`) ใช้ `checkEncryptedFields(integration).failed` นับค่าที่ถอดไม่ได้ว่าตั้งค่าอยู่
+- key ต้องเป็น hex 64 ตัว (trim) — รูปแบบผิด = ถือว่าไม่มี key (error + Sentry ไม่บอกค่า/ความยาว, บูตไม่ล้ม) ·
+  ช่องลับที่ส่งค่าว่างตอนบันทึก = ไม่เปลี่ยน (ไม่มีการ "ล้าง" ช่องลับจาก UI) · ปุ่มทดสอบการเชื่อมต่อใช้ค่าจาก
+  `getConfig` เท่านั้น (ห้ามเติม `|| process.env.*` — ผู้อ่านผ่าน Hub ไม่ใช้ env เมื่อแถวถอดไม่ได้) · **ข้อยกเว้นที่รู้:**
+  Claude บางส่วน (`ai-usage/ai-text.service.ts`, `chat-engine/services/after-hours.service.ts`, การเช็ค key ของ AI suggest ใน
+  `staff-chat`) อ่าน env `ANTHROPIC_API_KEY` ตรง และอีเมลแจ้งเตือน (`notifications/email-provider.service.ts`) อ่าน `SMTP_*` ตรง —
+  ไม่ผ่าน Hub ⇒ ผลปุ่มทดสอบของการ์ด Claude / อีเมล สะท้อนเฉพาะฟีเจอร์ที่อ่านผ่าน Hub (OCR, วิเคราะห์เครดิต, บอท, `EmailService`)
+- แถว `integration.*` ออกได้ทาง `/integrations/*` (masked) เท่านั้น — `GET /settings` (`SettingsWriteService.findAll`)
+  กรองออกแล้ว พร้อมคีย์ลับรุ่นเก่านอก prefix นี้ (`isSecretSettingKey` ใน `settings.constants.ts` = `integration.*` หรือ
+  `isSensitiveKey` ยกเว้นคีย์ที่แค่ชื่อเหมือน เช่น `customer_access_token_hours`) · endpoint ใหม่ที่คืนแถว `system_config`
+  ทั้งตารางต้องใช้ `isSecretSettingKey` แบบเดียวกัน
+- ตรวจ key บน prod จากบรรทัดบูต `integration encrypted fields: key=… ok=N [...] failed=M [...]` (ชื่อช่องเท่านั้น) —
+  ห้ามอ่าน/พิมพ์ค่า secret หรือค่าใน `system_config` · runbook: `docs/runbooks/2026-10-31-integration-encryption-key.md`
+- ⚠ dev/CI ที่ใช้ DB ชุดเดียวกับ prod แต่ไม่มี key: webhook guard ของ LINE/Yeastar เห็น "ยังไม่ตั้งค่า" แล้ว **ข้ามการตรวจ
+  ลายเซ็น (DEV ONLY, `NODE_ENV !== 'production'`)** — ห้ามเปิด dev แบบนี้ออกอินเทอร์เน็ต (tunnel) · production ปฏิเสธ 401

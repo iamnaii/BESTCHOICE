@@ -673,9 +673,11 @@ export class StaffChatController {
   // ─── Customer-scoped messages (LineChatPanel — Customer 360) ──
 
   /**
-   * Last N messages across the customer's LINE rooms (LINE_FINANCE preferred).
-   * Used by the Customer 360 LineChatPanel — collectors don't need to leave
-   * the collections workspace to see what was said in chat.
+   * Last N messages of the Customer 360 "แชท LINE" tab (LineChatPanel). With an
+   * active FINANCE OTP link: that LINE's LINE_FINANCE room only (no room yet =
+   * empty, roomId null — never another LINE's room). Without one: the
+   * customer's newest LINE room, read only (sending answers 400).
+   * See RoomManagerService.getCustomerMessages · security.md LINE rule 9.
    *
    * Returns messages in reverse-chronological order (newest first) so
    * `before=<oldest.id>` paging walks backward through history. The frontend
@@ -693,14 +695,16 @@ export class StaffChatController {
   }
 
   /**
-   * Inline send from Customer 360 LineChatPanel. Resolves the customer's
-   * LINE Finance room and forwards through `MessageRouterService` so
-   * delivery and adapter selection match the rest of staff-chat.
-   *
-   * Returns 404 when the customer has no LINE room — the FE only renders
-   * the panel when `customer.lineIdFinance` is set, but that's a customer-record
-   * field; the room is created lazily on first inbound message. Until then
-   * outbound is impossible (no LINE userId to push to).
+   * Inline send from the Customer 360 "แชท LINE" tab — this tab SENDS. The
+   * recipient is the LINE of the customer's active FINANCE OTP link only
+   * (findFinanceLineRecipient), via that LINE's LINE_FINANCE room through
+   * `MessageRouterService` — never "the customer's newest LINE room" (an
+   * unlinked LINE's room keeps customerId). No active link → 400
+   * LINE_FINANCE_NOT_VERIFIED_MESSAGE · only a LINE_SHOP room → 400
+   * LINE_SHOP_STAFF_SEND_DISABLED_MESSAGE · verified but the LINE never chatted
+   * (no room yet) → { success: false } "รอลูกค้าทักก่อน" below. The
+   * customer.lineIdFinance column plays no part. See
+   * RoomManagerService.sendCustomerMessage · security.md LINE rule 9.
    */
   @Post('customer/:customerId/messages')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES', 'ACCOUNTANT')

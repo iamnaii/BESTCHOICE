@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { AssignmentSource, ContractStatus, PaymentStatus, UserRole } from '@prisma/client';
+import { collectionsSessionDay } from './collections-session.service';
 
 // Policy constants — business rules, not tuning knobs. Keep in code.
 //
@@ -61,7 +62,7 @@ export class AutoAssignService {
 
   async runForDate(date: Date): Promise<{ assigned: number; pool: number; escalation: number }> {
     const cfg = await this.settings.getCollectionsConfig();
-    const dateOnly = startOfDay(date);
+    const dateOnly = collectionsSessionDay(date);
 
     const baseContracts = await this.prisma.contract.findMany({
       where: {
@@ -258,7 +259,7 @@ export class AutoAssignService {
 
     const poolCount = rows.filter((r) => r.collectorId === null).length - escalationCount;
 
-    await this.prisma.$transaction(async (tx: any) => {
+    await this.prisma.$transaction(async (tx) => {
       await tx.dailyAssignment.deleteMany({
         where: { date: dateOnly, status: 'PENDING' },
       });
@@ -286,12 +287,6 @@ export class AutoAssignService {
       escalation: escalationCount,
     };
   }
-}
-
-function startOfDay(d: Date): Date {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
 }
 
 function addDays(d: Date, n: number): Date {

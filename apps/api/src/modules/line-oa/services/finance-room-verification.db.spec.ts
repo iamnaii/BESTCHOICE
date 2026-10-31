@@ -16,6 +16,7 @@ import { VerificationService } from '../../chatbot-finance/services/verification
 import { CustomerWriteService } from '../../customers/services/customer-write.service';
 import { CannedResponseSenderService } from '../../staff-chat/services/canned-response-sender.service';
 import { LiffApiService } from '../liff-api.service';
+import { ChatRoomService } from '../../chatbot-finance/services/chat-room.service';
 
 jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn(), captureMessage: jest.fn() }));
 
@@ -176,5 +177,106 @@ describe('ยกเลิกผูก LINE การเงิน → ล้า�
         where: { customerId: a.id, channel: LineChannelType.FINANCE, unlinkedAt: null },
       }),
     ).toBe(0);
+  });
+
+  /**
+   * Task 24 fix round 1 M-1 — เกณฑ์เดียว "LINE นี้ยืนยัน OTP กับลูกค้าที่ยังอยู่" (แถวที่ยังผูก: unlinked/deleted ว่าง · ลูกค้าไม่ถูกลบ) ใช้ทั้ง
+   * `isLinked` (บอทการเงิน → `linkRoomToCustomer` ตั้ง verified_at) และการสร้างห้องการเงินใหม่ — แถวที่ deleted_at ไม่ว่าง (แก้ DB มือ) ไม่นับ
+   */
+  it('5. แถว link ที่ถูกลบ (deleted_at ไม่ว่าง แม้ unlinked_at ว่าง) → isLinked = false และห้องใหม่ของ LINE นั้นไม่ verified', async () => {
+    const c = await customer('แถวถูกลบ', '6');
+    await verifyWithOtp(line('5'), c.phone!);
+    expect(await verification.isLinked(line('5'))).toMatchObject({ linked: true });
+    await prisma.customerLineLink.updateMany({
+      where: { lineUserId: line('5') },
+      data: { deletedAt: new Date() },
+    });
+
+    expect(await verification.isLinked(line('5'))).toEqual({ linked: false });
+    const rooms = new ChatRoomService(
+      prisma as never,
+      {
+        getUserProfile: jest.fn().mockResolvedValue(null),
+      } as never,
+    );
+    const created = await rooms.getOrCreate(line('5'));
+    expect(created).toMatchObject({ customerId: null, verifiedAt: null });
+  });
+
+  it('6. ลูกค้าของแถวถูกลบ (ถังขยะ) → isLinked = false · ห้องใหม่ไม่ verified', async () => {
+    const c = await customer('ลูกค้าถูกลบ', '7');
+    await verifyWithOtp(line('6'), c.phone!);
+    await prisma.customer.update({ where: { id: c.id }, data: { deletedAt: new Date() } });
+
+    expect(await verification.isLinked(line('6'))).toEqual({ linked: false });
+    const rooms = new ChatRoomService(
+      prisma as never,
+      {
+        getUserProfile: jest.fn().mockResolvedValue(null),
+      } as never,
+    );
+    expect(await rooms.getOrCreate(line('6'))).toMatchObject({
+      customerId: null,
+      verifiedAt: null,
+    });
+  });
+
+  /**
+   * Task 24 round 3 (m-R2-1 ทางเลือก ข) — ห้องของ LINE ที่ลูกค้ายกเลิกแล้วยังถือ customerId เดิม (ข้อ 6 ไม่ปลด) ⇒ ใน inbox ห้องนั้นยังเป็นของลูกค้า.
+   * พนักงานกดข้อความสำเร็จรูปในห้อง LINE การเงิน: ตัวแปรลูกค้าเติมค่าจริงเฉพาะห้องที่ OTP ตรงลูกค้าของห้อง (`otpVerifiedRoomCustomerId` — กติกาเดียวกับ I-C)
+   * ไม่งั้นคำกลาง — ยอดหนี้ของ B ต้องไม่ไปถึงผู้ถือ L1
+   */
+  it('7. B ยกเลิก L1 แล้วยืนยัน L2 · พนักงานกดข้อความสำเร็จรูปที่มียอดหนี้: ห้อง L1 = คำกลาง · ห้อง L2 = ค่าจริงของ B', async () => {
+    const b = await customer('สำเร็จรูป', '8');
+    const l1Room = await room(line('7a'), null, null);
+    await verifyWithOtp(line('7a'), b.phone!);
+    await liff.unlinkLineAccount(line('7a'));
+    const l2Room = await room(line('7b'), null, null);
+    await verifyWithOtp(line('7b'), b.phone!);
+    expect((await prisma.chatRoom.findUniqueOrThrow({ where: { id: l1Room } })).customerId).toBe(
+      b.id,
+    );
+
+    const template = await prisma.cannedResponse.create({
+      data: {
+        shortcut: `/${tag}-debt`,
+        title: 'ยอดค้าง',
+        content: 'ยอดค้าง',
+        bubbles: {
+          create: [
+            { type: 'TEXT', text: 'คุณ{customerName} ยอดค้าง {amountDue} สัญญา {contractNumber}' },
+          ],
+        },
+      },
+    });
+    const sentTexts: string[] = [];
+    const expandVariables = jest.fn(async (probe: string, ctx: { customerId?: string }) =>
+      probe.replace(/\{(\w+)\}/g, (_m, key: string) => (ctx.customerId ? `REAL-${key}` : '-')),
+    );
+    const sender = new CannedResponseSenderService(
+      prisma as never,
+      {
+        filterByChannel: (bubbles: unknown[]) => bubbles,
+        translateQuickReplies: () => [],
+        toOutboundMessage: (bubble: { text: string }) => ({ text: bubble.text }),
+      } as never,
+      { expandVariables } as never,
+      {
+        sendStaffOutbound: jest.fn(async (_roomId: string, msg: { text: string }) => {
+          sentTexts.push(msg.text);
+          return { success: true };
+        }),
+      } as never,
+    );
+
+    await sender.send(l1Room, template.id, 'staff-1');
+    await sender.send(l2Room, template.id, 'staff-1');
+
+    expect(sentTexts[0]).toBe('คุณลูกค้า ยอดค้าง - สัญญา -');
+    expect(sentTexts[1]).toBe(
+      'คุณREAL-customerName ยอดค้าง REAL-amountDue สัญญา REAL-contractNumber',
+    );
+    await prisma.cannedResponseBubble.deleteMany({ where: { cannedResponseId: template.id } });
+    await prisma.cannedResponse.delete({ where: { id: template.id } });
   });
 });

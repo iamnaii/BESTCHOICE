@@ -37,7 +37,11 @@ export class PaymentLinkService {
   /**
    * Create a payment link for a specific contract/installment
    */
-  async createPaymentLink(contractId: string, installmentNo?: number, overrideAmount?: number): Promise<{
+  async createPaymentLink(
+    contractId: string,
+    installmentNo?: number,
+    overrideAmount?: number,
+  ): Promise<{
     token: string;
     url: string;
     expiresAt: Date;
@@ -87,7 +91,9 @@ export class PaymentLinkService {
 
     const url = `${this.baseUrl}/pay/${token}`;
 
-    this.logger.log(`Payment link created for contract ${contract.contractNumber} installment ${payment.installmentNo}`);
+    this.logger.log(
+      `Payment link created for contract ${contract.contractNumber} installment ${payment.installmentNo}`,
+    );
 
     return { token, url, expiresAt, amount };
   }
@@ -270,9 +276,7 @@ export class PaymentLinkService {
 
     // Determine overdue
     const now = new Date();
-    const overduePayments = contract.payments.filter(
-      (p) => p.dueDate && new Date(p.dueDate) < now,
-    );
+    const overduePayments = contract.payments.filter((p) => p.dueDate && new Date(p.dueDate) < now);
     const isOverdue = overduePayments.length > 0;
 
     // Create payment link
@@ -309,14 +313,10 @@ export class PaymentLinkService {
       throw new BadRequestException('ส่ง Flex ไม่สำเร็จ — กรุณาลองใหม่');
     }
 
-    // Save record in chat room so staff sees it in history
+    // Save record in chat room so staff sees it in history — ห้องของผู้รับจริง (LINE ของแถว OTP) ไม่ใช่ "ห้องการเงินล่าสุดของลูกค้า":
+    // ห้องของ LINE ที่ลูกค้ายกเลิกแล้วยังถือ customerId เดิม (M-8) ⇒ บิลจะไปโผล่ในห้องนั้นและพนักงานตอบถึงผู้ถือ LINE เก่า (Task 24 fix round 2 m-2)
     const room = await this.prisma.chatRoom.findFirst({
-      where: {
-        customerId: contract.customer.id,
-        channel: ChatChannel.LINE_FINANCE,
-        deletedAt: null,
-      },
-      orderBy: { lastMessageAt: 'desc' },
+      where: { lineUserId: financeLineId, channel: ChatChannel.LINE_FINANCE, deletedAt: null },
       select: { id: true },
     });
 

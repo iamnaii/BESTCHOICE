@@ -3,7 +3,11 @@ import { MigrationService } from './migration.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ImportContractDto, ImportCustomerDto } from './dto/import.dto';
 import { CustomerPiiService } from '../customers/customer-pii.service';
-import { IMPORT_NATIONAL_ID_CONFLICT_MSG, IMPORT_PHONE_TAKEN_MSG } from './migration.service';
+import {
+  IMPORT_LINE_ID_IGNORED_MSG,
+  IMPORT_NATIONAL_ID_CONFLICT_MSG,
+  IMPORT_PHONE_TAKEN_MSG,
+} from './migration.service';
 
 /**
  * #17 — importContracts must write Product + Contract + Payments atomically
@@ -13,7 +17,9 @@ import { IMPORT_NATIONAL_ID_CONFLICT_MSG, IMPORT_PHONE_TAKEN_MSG } from './migra
  */
 describe('MigrationService.importContracts — per-row atomicity (#17)', () => {
   let service: MigrationService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let txClient: any;
 
   const dto: ImportContractDto = {
@@ -45,7 +51,7 @@ describe('MigrationService.importContracts — per-row atomicity (#17)', () => {
       customer: { findUnique: jest.fn().mockResolvedValue({ id: 'cust-1' }) },
       branch: { findFirst: jest.fn().mockResolvedValue({ id: 'br-1' }) },
       user: { findFirst: jest.fn().mockResolvedValue({ id: 'sales-1' }) },
-      $transaction: jest.fn(async (cb: any) => cb(txClient)),
+      $transaction: jest.fn(async (cb: (c: unknown) => unknown) => cb(txClient)),
       // Direct (non-tx) write methods — these MUST NOT be used (would orphan).
       product: { create: jest.fn() },
       contract: { create: jest.fn(), findFirst: jest.fn() },
@@ -211,6 +217,23 @@ describe('MigrationService.importCustomers — เบอร์หลัก', () 
     expect(data.addressIdCardEncrypted).toBeUndefined();
     expect(tx.customer.update).not.toHaveBeenCalled();
     expect(prisma.customer.upsert).not.toHaveBeenCalled();
+  });
+
+  it('คอลัมน์ lineId → ไม่เขียน lineIdFinance (ผูก LINE การเงินได้ทาง OTP เท่านั้น — Task 22 I3) · แถวยังนำเข้าสำเร็จพร้อมแถวเตือน', async () => {
+    tx.customer.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 'same-person' });
+    const res = await service.importCustomers([
+      { ...base, lineId: 'U-from-csv' },
+      { ...base, phone: '0899999999', lineId: 'U-other' },
+      { ...base, phone: '0898888888', lineId: '   ' },
+    ]);
+    expect(res.success).toBe(3);
+    expect(res.failed).toBe(0);
+    expect(res.errors).toEqual([
+      { row: 1, field: 'lineId', message: IMPORT_LINE_ID_IGNORED_MSG },
+      { row: 2, field: 'lineId', message: IMPORT_LINE_ID_IGNORED_MSG },
+    ]);
+    expect(tx.customer.create.mock.calls[0][0].data).not.toHaveProperty('lineIdFinance');
+    expect(tx.customer.update.mock.calls[0][0].data).not.toHaveProperty('lineIdFinance');
   });
 
   it('หาแถวเป้าหมายด้วยเลขบัตร plaintext หรือ hash (ไม่กรอง deletedAt)', async () => {

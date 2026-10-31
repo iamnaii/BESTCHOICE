@@ -9,11 +9,14 @@
  *   3. ผูกกลับด้วย LINE เดิม → เปิดแถวเดิม
  *   4. ยกเลิกแล้วผูกด้วย LINE ใหม่ → ชี้แถวเดิมของลูกค้ามาที่ LINE ใหม่ (เดิมชน unique เป็น 500)
  *   5. ลูกค้ายังผูก LINE อื่นอยู่ → 409 ไม่เปลี่ยนอะไร
+ *   6. (Task 22 I3) พนักงานตั้ง U-id ในฟอร์มลูกค้า → 400 ไม่เปลี่ยนอะไร
+ *   7. (Task 22 I4) พนักงานล้างช่อง LINE การเงินในฟอร์มลูกค้า → ปิดแถว ⇒ ลูกค้ายืนยัน OTP ด้วย LINE ใหม่ได้ (ไม่ติด 409)
  */
-import { ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { LineChannelType, PrismaClient } from '@prisma/client';
 import { VerificationService } from './verification.service';
 import { LiffApiService } from '../../line-oa/liff-api.service';
+import { CustomerWriteService } from '../../customers/services/customer-write.service';
 
 jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn(), captureMessage: jest.fn() }));
 
@@ -24,6 +27,7 @@ const PHONE = `09${digits}`;
 const U1 = `U${tag}-one`;
 const U2 = `U${tag}-two`;
 const U3 = `U${tag}-three`;
+const U4 = `U${tag}-four`;
 let customerId = '';
 
 const sms = { sendSmsFromQueue: jest.fn().mockResolvedValue(undefined) };
@@ -31,6 +35,7 @@ const richMenu = { switchRichMenu: jest.fn().mockResolvedValue(undefined) };
 const moduleRef = { get: jest.fn(() => richMenu) };
 let verification: VerificationService;
 let liff: LiffApiService;
+let customerForm: CustomerWriteService;
 
 /** ขอ OTP ไปที่เบอร์ของลูกค้า แล้วยืนยันด้วยรหัสที่ส่งทาง SMS (เส้นจริง ไม่ใช่ test-mode) */
 async function verifyWithOtp(lineUserId: string) {
@@ -66,12 +71,15 @@ beforeAll(async () => {
     moduleRef as never,
   );
   liff = new LiffApiService(prisma as never);
+  // ฟอร์มลูกค้าของพนักงาน (PATCH /customers/:id) — update() ใช้แค่ query.findOne (ไม่แตะ contact resolver)
+  const query = { findOne: (id: string) => prisma.customer.findUniqueOrThrow({ where: { id } }) };
+  customerForm = new CustomerWriteService(prisma as never, {} as never, query as never);
 });
 
 afterAll(async () => {
   await prisma.customerLineLink.deleteMany({ where: { customerId } });
-  await prisma.chatbotOtpRequest.deleteMany({ where: { lineUserId: { in: [U1, U2, U3] } } });
-  await prisma.chatRoom.deleteMany({ where: { lineUserId: { in: [U1, U2, U3] } } });
+  await prisma.chatbotOtpRequest.deleteMany({ where: { lineUserId: { in: [U1, U2, U3, U4] } } });
+  await prisma.chatRoom.deleteMany({ where: { lineUserId: { in: [U1, U2, U3, U4] } } });
   await prisma.customer.delete({ where: { id: customerId } });
   await prisma.$disconnect();
 });
@@ -120,5 +128,29 @@ describe('finance-verify is the only LINE-link path — link rows on real Postgr
     expect(await linkRows()).toEqual([{ lineUserId: U2, unlinkedAt: null }]);
     expect(await lineIdFinance()).toBe(U2);
     expect(await verification.isLinked(U3)).toEqual({ linked: false });
+  });
+
+  it('6. staff types a U-id into the customer form → 400, nothing changes (Task 22 I3)', async () => {
+    const err = await customerForm
+      .update(customerId, { lineIdFinance: U4 } as never)
+      .catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect(await linkRows()).toEqual([{ lineUserId: U2, unlinkedAt: null }]);
+    expect(await lineIdFinance()).toBe(U2);
+  });
+
+  it('7. staff clears "LINE การเงิน" in the customer form → row closed → the customer verifies a new LINE (Task 22 I4)', async () => {
+    await customerForm.update(customerId, { lineIdFinance: null } as never);
+
+    expect(await lineIdFinance()).toBeNull();
+    const [row] = await linkRows();
+    expect(row).toMatchObject({ lineUserId: U2 });
+    expect(row.unlinkedAt).toBeInstanceOf(Date);
+    expect(await verification.isLinked(U2)).toEqual({ linked: false });
+
+    await expect(verifyWithOtp(U4)).resolves.toMatchObject({ customerId });
+    expect(await linkRows()).toEqual([{ lineUserId: U4, unlinkedAt: null }]);
+    expect(await lineIdFinance()).toBe(U4);
   });
 });

@@ -20,6 +20,10 @@ import { BOUGHT_WHERE, CustomerQueryService } from './customer-query.service';
 import { AuditService } from '../../audit/audit.service';
 import { isChatPlaceholder, PLACEHOLDER_FIELDS_SELECT } from '../../chat-prospects/chat-placeholder';
 import { JourneyEntryWriter } from '../../customer-journey/journey-entry-writer.service';
+import {
+  staffLineFinanceChange,
+  unlinkFinanceLine,
+} from '../../line-oa/services/finance-line-link';
 import { contactAddedEntry, isBlankContact } from '../../customer-journey/chat-identity-entries';
 import type { ContactField } from '../../customer-journey/journey-data-schemas';
 
@@ -344,7 +348,9 @@ export class CustomerWriteService {
   }
 
   async create(input: CreateCustomerDto) {
-    const { branchId, assignedToId, ...dto } = input;
+    // Task 22 I3 — LINE การเงินผูกได้ทางเดียวคือ OTP ของลูกค้าเอง: ส่ง U-id มา = 400 · ช่องว่าง = ไม่เขียนคอลัมน์
+    const { branchId, assignedToId, lineIdFinance, ...dto } = input;
+    staffLineFinanceChange(lineIdFinance, null);
     const ctx = partyWriteExecution();
     if (ctx) await lockCustomerPhone(ctx.client, this.piiService, dto.phone);
     const origin = ctx ? await this.parties!.destination(ctx.client, ctx.scope.company, branchId) : undefined;
@@ -501,7 +507,8 @@ export class CustomerWriteService {
   }
 
   async update(id: string, input: UpdateCustomerDto, actor?: { id: string; role: string }) {
-    const { assignedToId, ...dto } = input;
+    // lineIdFinance ไม่ไหลเข้า data ของการแก้ไขเลย — ตัดสินแยกด้วย staffLineFinanceChange ด้านล่าง (Task 22 I3/I4)
+    const { assignedToId, lineIdFinance, ...dto } = input;
     const ctx = partyWriteExecution();
     if (ctx && actor?.id !== ctx.snapshot.userId) throw new Error('Customer actor mismatch');
     if (ctx) {
@@ -532,6 +539,9 @@ export class CustomerWriteService {
     // สร้างคู่ซ้ำใหม่ และถ้าตรวจซ้ำ ลูกค้าที่มีคู่ซ้ำอยู่แล้ว (เช่น stub จาก ensureRole ที่ไม่บล็อกเบอร์) จะแก้ข้อมูลอะไรไม่ได้เลย
     const phoneChanged =
       !!normalizedPhone && this.normalizePhone(before.phone) !== normalizedPhone;
+    // Task 22 I3/I4 — LINE การเงิน: ค่าเดิม/ไม่ส่ง = ไม่แตะ · ล้างช่อง = ยกเลิกผูก (ล้างคอลัมน์ + ปิดแถว customer_line_links
+    // ของลูกค้าคนนี้ในทรานแซกชันเดียวกับการแก้ไข ⇒ ลูกค้ายืนยัน OTP ด้วย LINE ใหม่ได้) · ค่าใหม่ = 400 (ผูกได้ทาง OTP เท่านั้น)
+    const lineFinance = staffLineFinanceChange(lineIdFinance, before.lineIdFinance);
     if (!phoneChanged) {
       await this.assertContactNotDuplicate(this.prisma, null, normalizedEmail ?? null, id);
     }
@@ -568,14 +578,24 @@ export class CustomerWriteService {
         : undefined,
     };
     // เปลี่ยนเบอร์หลักเป็นเบอร์ใหม่ที่ไม่ว่าง → ล็อก + ตรวจซ้ำ (ignoreCustomerId) + เขียน ในทรานแซกชันเดียว
-    // ไม่แตะเบอร์/เบอร์เดิม = ทางเดิมไม่มีทรานแซกชัน · journey ยังบันทึกหลัง commit
-    const updated = phoneChanged
-      ? await this.prisma.$transaction(async (tx) => {
-          await lockCustomerPhone(tx, this.piiService, normalizedPhone);
-          await this.assertContactNotDuplicate(tx, normalizedPhone, normalizedEmail ?? null, id);
-          return tx.customer.update({ where: { id }, data });
-        })
-      : await this.prisma.customer.update({ where: { id }, data });
+    // ยกเลิกผูก LINE การเงิน → ทรานแซกชันเดียวกัน (ล็อกเบอร์ยังเป็นคำสั่งแรก · ยกเลิกผูกก่อนเขียน ⇒ แถวที่คืนเป็นค่าหลังล้าง)
+    // ไม่แตะเบอร์/เบอร์เดิม และไม่ยกเลิกผูก = ทางเดิมไม่มีทรานแซกชัน · journey ยังบันทึกหลัง commit
+    const updated =
+      phoneChanged || lineFinance === 'clear'
+        ? await this.prisma.$transaction(async (tx) => {
+            if (phoneChanged) {
+              await lockCustomerPhone(tx, this.piiService, normalizedPhone);
+              await this.assertContactNotDuplicate(
+                tx,
+                normalizedPhone,
+                normalizedEmail ?? null,
+                id,
+              );
+            }
+            if (lineFinance === 'clear') await unlinkFinanceLine(tx, { customerId: id });
+            return tx.customer.update({ where: { id }, data });
+          })
+        : await this.prisma.customer.update({ where: { id }, data });
 
     // CONTACT_ADDED — เบอร์จากว่าง → มีค่า เทียบในโค้ด ไม่เก็บตัวเบอร์ · เปลี่ยนเบอร์ที่มีอยู่แล้วไม่นับ
     // (nationalId ไม่อยู่ใน UpdateCustomerDto ⇒ ทางนี้ได้แค่เบอร์)

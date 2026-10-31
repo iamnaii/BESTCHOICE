@@ -523,6 +523,39 @@ describe('LiffApiService', () => {
       expect(result!.consent).toBe(true);
       expect(result!.consentAt).toBeTruthy();
     });
+
+    // Task 33 fix round 1 (คำตัดสินเจ้าของข้อ 30) — ลูกค้าที่ยินยอมตอนผูก LINE (แถว GRANTED ของวัตถุประสงค์นี้) ไม่ต้องเห็นโมดัล chat_consent ซ้ำ
+    it('ยินยอมตอนผูก LINE แล้ว (แถว pdpa_consents ของวัตถุประสงค์นี้) → consent = true แม้ chat_consent ยังเป็น false', async () => {
+      prisma.customer.findFirst.mockResolvedValue({
+        chatConsent: false,
+        chatConsentAt: null,
+        pdpaConsents: [{ grantedAt: new Date('2026-10-31T03:00:00.000Z'), createdAt: new Date() }],
+      });
+      const result = await service.getConsentStatus('U_line');
+      expect(result).toEqual({ consent: true, consentAt: '2026-10-31T03:00:00.000Z' });
+      expect(prisma.customer.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: expect.objectContaining({
+            pdpaConsents: expect.objectContaining({
+              where: {
+                status: 'GRANTED',
+                deletedAt: null,
+                purposes: { has: 'แจ้งเตือนค่างวด ใบเสร็จ และข้อมูลสัญญาทาง LINE' },
+              },
+            }),
+          }),
+        }),
+      );
+    });
+
+    it('ไม่มีทั้ง chat_consent และความยินยอมตอนผูก → consent = false (โมดัลยังขึ้น)', async () => {
+      prisma.customer.findFirst.mockResolvedValue({
+        chatConsent: false,
+        chatConsentAt: null,
+        pdpaConsents: [],
+      });
+      expect(await service.getConsentStatus('U_line')).toEqual({ consent: false, consentAt: null });
+    });
   });
 
   // ─── updateConsent ──────────────────────────────────

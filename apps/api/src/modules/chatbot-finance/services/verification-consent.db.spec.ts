@@ -317,4 +317,11 @@ describe('Task 33 — ความยินยอมตอนผูก LINE ก�
     expect(current).toHaveLength(1);
     expect(result.consentRecordedAt).toBe(current[0].grantedAt!.toISOString());
   });
+
+  it('9. (fix round 1 #30) /liff/contract ไม่ถามความยินยอม chat_consent ซ้ำกับลูกค้าที่ยินยอมตอนผูก LINE แล้ว', async () => {
+    const customer = await prisma.customer.findUniqueOrThrow({ where: { id: customerId } });
+    expect(customer.chatConsent).toBe(false);
+    const status = await liff.getConsentStatus(LINE);
+    expect(status?.consent).toBe(true);
+  });
 });

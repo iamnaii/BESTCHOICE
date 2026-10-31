@@ -61,9 +61,11 @@ if gcloud secrets describe "$INTEGRATION_KEY_SECRET" --project="$GCP_PROJECT_ID"
     --project="$GCP_PROJECT_ID" --format='value(state)' 2>/dev/null || true)
   if [ "$V1_STATE" = "ENABLED" ]; then
     echo "  [exists] $INTEGRATION_KEY_SECRET (left untouched — version 1 ENABLED, pinned by deploy-gcp.yml)"
+    INTEGRATION_KEY_NOTE="already existed; its version 1 is the key in use"
   else
     echo "  [WARN] $INTEGRATION_KEY_SECRET exists but version 1 is ${V1_STATE:-missing} —" \
       "deploy-gcp.yml pins :1; see docs/runbooks/2026-10-31-integration-encryption-key.md"
+    INTEGRATION_KEY_NOTE="already existed but version 1 is ${V1_STATE:-missing}; resolve per the runbook before deploying"
   fi
 else
   command -v openssl >/dev/null || {
@@ -75,6 +77,7 @@ else
     --replication-policy="automatic" \
     --data-file=-
   echo "  [created] $INTEGRATION_KEY_SECRET (version 1 = random 64-hex key, value not printed)"
+  INTEGRATION_KEY_NOTE="was generated above as version 1"
 fi
 
 echo ""
@@ -92,7 +95,7 @@ echo "2. Generate new JWT/Encryption secrets:"
 echo "   openssl rand -base64 32   # JWT_SECRET"
 echo "   openssl rand -base64 32   # JWT_REFRESH_SECRET"
 echo "   openssl rand -hex 16      # ENCRYPTION_KEY"
-echo "   ($INTEGRATION_KEY_SECRET was generated above as version 1 — do NOT add versions or"
+echo "   ($INTEGRATION_KEY_SECRET $INTEGRATION_KEY_NOTE — do NOT add versions or"
 echo "    print it; rotating = full plan in docs/runbooks/2026-10-31-integration-encryption-key.md)"
 echo ""
 echo "3. Deploy Cloud Run with secrets + env vars:"

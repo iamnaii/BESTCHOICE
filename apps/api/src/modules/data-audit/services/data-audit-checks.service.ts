@@ -83,6 +83,12 @@ export const ACTIVATED_CONTRACT_STATUSES = ['ACTIVE', 'OVERDUE', 'DEFAULT', 'COM
 const activatedStatusSql = Prisma.sql`c.status::text IN (${Prisma.join([...ACTIVATED_CONTRACT_STATUSES])})`;
 /**
  * รายการที่ Σ เดบิต กับ Σ เครดิต ต่างกันเกินนี้ = ไม่สมดุล (`journal_balance`) — การไล่ตรวจสัญญาใช้เกณฑ์เดียวกันกับรายการของสัญญา
+ *
+ * **ที่มา — ไม่ใช่กติกาบัญชี:** 0.01 เป็นตัวเลขดั้งเดิมของข้อกลางคืนตั้งแต่สร้าง DataAuditModule (`6ab118ca1` · 2026-04-12) ซึ่งเกิด**ก่อน**
+ * Wave-1 #10 (`2a4c59c13` · 2026-06-07) ที่ทำให้ทางลงบัญชีทั้งสองทางบังคับสมดุลพอดี — `JournalService.create` และ
+ * `JournalAutoService.createAndPost` ปฏิเสธเมื่อ `!totalDebit.equals(totalCredit)` (Decimal เทียบตรง ไม่มีเผื่อ) ⇒ รายการที่ต่างกัน 0.01 เกิดได้
+ * จากการเขียนนอกสองทางนี้เท่านั้น (SQL ตรง / ข้อมูลเก่า) และ**ข้อนี้กับการไล่ตรวจถือว่าสมดุล** (ต่าง > 0.01 จึงติด) · ลดเป็น 0 = ข้อกลางคืนระดับ
+ * CRITICAL (ยิง Sentry) จับได้ละเอียดขึ้น — ต้องให้เจ้าของรับทราบก่อนเปลี่ยนค่า (Task 23 review m-3) · ห้ามมีเกณฑ์ชุดที่สองใน trace
  */
 export const JOURNAL_BALANCE_TOLERANCE = new Prisma.Decimal('0.01');
 /** ส่วนที่แถวงวดรับเกินยอดเรียกเก็บได้ — เศษปัดของใบที่ปิดงวด ≤ 1 บาท (Tolerance Policy `.claude/rules/accounting.md`) */

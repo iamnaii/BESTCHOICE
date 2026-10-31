@@ -453,6 +453,27 @@ Cash account dimension is required on every Payment record.
 
 ---
 
+## ล็อกงวดบัญชี — ช่วงผ่อนผันนับเป็นวันเต็มหลังสิ้นเดือน เวลาไทย (คำตัดสินเจ้าของ 2026-10-31)
+
+ตัวตัดสินเดียว = `validatePeriodOpen` (`apps/api/src/utils/period-lock.util.ts`) — ทุกเส้นทางลงบัญชีเรียกตัวนี้
+
+| ข้อ | กติกา |
+|---|---|
+| สถานะที่ล็อก | `AccountingPeriod.status` = `CLOSED` / `SYNCED` ของ (บริษัท, ปี, เดือน) · `OPEN` / `REVIEW` / ไม่มีแถว = ไม่ล็อก |
+| เดือนของรายการ | อ่านตาม**ปฏิทินไทย** (`bangkokCalendarParts`) — ไม่ขึ้นกับ TZ ของโปรเซส (เดิม `getFullYear/getMonth` ของโปรเซส) |
+| ช่วงผ่อนผัน | งวดที่ปิดแล้วยังรับรายการได้จนถึง **00:00 เวลาไทยของวันที่ `1 + period_grace_days` ของเดือนถัดไป** (`periodGraceEnd`, ไม่รวมขอบ) · grace 0 = วันสุดท้ายของเดือนลงได้ทั้งวันถึง 23:59:59.999 · grace N = ลงได้ถึงสิ้นวันที่ N ของเดือนถัดไป |
+| ค่าตั้ง | SystemConfig `period_grace_days` (OWNER แก้ได้ · ไม่มีหน้าเว็บ) · ไม่มีแถว/อ่านไม่ได้/ติดลบ = 5 ⇒ งวด พ.ค. ลงได้ถึงสิ้นวัน 5 มิ.ย. |
+| ผลที่ตามมา | รายการที่ลงวันที่ "วันนี้" ไม่มีวันพ้นช่วงผ่อนผันของงวดตัวเอง ⇒ **ปิดเดือนปัจจุบันก่อนสิ้นเดือนไม่บล็อกอะไรในเดือนนั้น** (รวมวันสุดท้าย) · ด่านของเส้นทางที่ลงวันนี้ (ยกเลิกใบเสร็จ · ยกเลิกใบขาย G2 · ใบรับเครื่องคืน · รับเงินคืนเครื่อง inter-co · ปรับดิว collect · PaySolutions) ปฏิเสธจริงเฉพาะคำสั่งที่คร่อมเที่ยงคืนวันที่ 1 · เส้นทางที่ลงย้อนวันยังถูกล็อกตามปกติเมื่อพ้นช่วงผ่อนผัน |
+
+**ก่อน 2026-10-31:** ขอบคือ 00:00 **ของ**วันที่ (วันสุดท้าย + grace) ตามเวลาโปรเซส ⇒ grace 0 บล็อกรายการทั้งวันสุดท้ายของงวดที่ปิดก่อนสิ้นเดือน
+(off-by-one — main deploy ล้มวันที่ 31/10/2569) และ grace 5 จริง ๆ ให้แค่ 4 วันเต็ม · เทสต์ที่เคยปักพฤติกรรมเดิมถูกแก้ความคาดหวังโดยตั้งใจ
+(ดู `period-lock.util.spec.ts` + เคส "คร่อมเที่ยงคืน" ใน repossessions / sale-void / reschedule-collect / interco device-return / accrue-at-receipt)
+
+**ที่มีช่วงผ่อนผันของตัวเอง (ไม่ผ่านกติกานี้):** ลงย้อนวันของใบรับของ/จ่ายผู้จัดจำหน่าย (`isPeriodClosedForBackdating` — สถานะงวดล้วน ไม่มีผ่อนผัน) ·
+การนำเข้าระบบเก่า (`assertPeriodsOpen` — ไม่มีผ่อนผัน)
+
+---
+
 ## Tolerance Policy (<=1 THB)
 
 Small discrepancies on payment receipt (overpay / underpay <=1 THB):
@@ -1464,8 +1485,7 @@ QR ที่หน้าจอหักเครดิตออกให้แ�
   ภาษีของเงินสดที่รับจริง ไม่ซ้ำ · เครดิตที่ไม่เคยมีภาษีตอนตั้ง (เปลี่ยนเครื่องเสีย · เงินก่อน PR4) ไม่มี stamp ⇒ ไม่มีขากลับ (2A รับรู้เต็ม — G7)
   — หัวข้อ "ภาษีขายของเงินรับล่วงหน้า ณ วันรับเงิน (PR4)"
 - รอบตั้งลูกหนี้ปกติตรวจงวดบัญชีของ**บริษัทของสาขา** ขณะที่รายการลงฝั่ง FINANCE (มีอยู่ก่อน — ยังไม่แก้); 2A ณ วันรับเงินตรวจงวดของ FINANCE
-- `validatePeriodOpen` อ่านเดือนตามเขตเวลาของโปรเซส — บน prod ทุกทางเข้ารันด้วย `TZ=Asia/Bangkok` เดือนจึงเป็นเดือนไทย ·
-  เฉพาะโปรเซสที่รันเป็น UTC (เช่น jest บน CI) ที่ตรวจรายการเที่ยงคืนไทยของวันที่ 1 กับงวดของเดือนก่อน — ไม่มีผลบน prod
+- ~~`validatePeriodOpen` อ่านเดือนตามเขตเวลาของโปรเซส~~ — **แก้แล้ว 2026-10-31**: อ่านเดือนตามปฏิทินไทยเสมอ (หัวข้อ "ล็อกงวดบัญชี")
 - เงินเข้าทาง PaySolutions ขณะงวดบัญชีของวันที่ลง 2A ปิด (รวมใบบางส่วน): webhook ตอบปฏิเสธ · QR ของหน้ารับชำระ: error ถูกกลืน (ตอบ 200)
   ⇒ **ไม่มีการส่งซ้ำ** — ทั้งสองกรณีต้องกระทบยอดมือจาก Sentry
 - เครื่องมือ backfill (`backfill-orphan-partial-receipts.cli.ts`) ลงใบบางส่วนด้วยวันที่ตอนรัน ⇒ ถ้างวดยังไม่ถึงวันครบกำหนด จะลง 2A บางส่วน
@@ -2416,7 +2436,7 @@ Spec: `docs/superpowers/specs/2026-08-22-void-sale-design.md` · Plan:
 | mirror | สลับ Dr/Cr ทุกบรรทัด, `companyId` เดิม (SHOP), **ลงวันที่วันที่ยกเลิก** (`createAndPost` default `entryDate = postedAt = now`) |
 | metadata ของ mirror | `flow: 'shop-cash-sale-void'`, `idempotencyKey: 'shop-cash-sale-void:<jeId ต้นทาง>'`, `reversesEntryId`, `tag: 'REVERSAL'`; **จงใจไม่ carry `saleId`** — กัน sweep รอบถัดไปไปเจอ mirror ของตัวเอง (engine ข้ามใบที่ `flow === flowLabel` อยู่อีกชั้น) |
 | ใบต้นทาง | คง `POSTED` + stamp `reversed: true` / `reversedByEntryNumber` (pattern เดียวกับ `reverseBatch`) |
-| period guard | `createAndPost` **ไม่มี** period guard ⇒ service เรียก `validatePeriodOpen(tx, now, companyId)` เองต่อทุก `companyId` ของใบที่จะกวาด (G2) — เป็น no-op เกือบตลอดเพราะโพสต์วันนี้เสมอ ทำงานจริงเฉพาะปลาย grace window |
+| period guard | `createAndPost` **ไม่มี** period guard ⇒ service เรียก `validatePeriodOpen(tx, now, companyId)` เองต่อทุก `companyId` ของใบที่จะกวาด (G2) — เป็น no-op เกือบตลอดเพราะโพสต์วันนี้เสมอ (งวดที่ปิดรับรายการถึงสิ้นวันสุดท้าย + grace — คำตัดสินเจ้าของ 2026-10-31) ปฏิเสธจริงเฉพาะคำสั่งที่คร่อมเที่ยงคืนวันที่ 1 |
 | Isolation | `$transaction` Serializable ใบเดียวทั้งด่าน+เขียน; P2034 → 409 ไทย + `Sentry.captureMessage` warning เอง (`SentryExceptionFilter` จับเฉพาะ ≥500) |
 
 **ไม่มีใบลดหนี้** — SHOP ไม่จด VAT (ไม่มีภาระ ม.86/10 ต่างจากใบเสร็จ FINANCE). ไม่มีเอกสารคืนเงินแยก

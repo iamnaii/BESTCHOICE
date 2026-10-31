@@ -16,7 +16,7 @@
  *     src/modules/purchase-orders/__tests__/supplier-payment.integration.spec.ts
  * CI: glob `PO_FILES` ใน `.github/workflows/deploy-gcp.yml` ครอบไฟล์นี้แล้ว
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -33,7 +33,9 @@ import { bangkokDateString } from '../../../utils/date.util';
 import { ProductsService } from '../../products/products.service';
 import { ProductPhotosService } from '../../quality-control/product-photos.service';
 import { SupplierPaymentService, SUPPLIER_PAYMENT_PERIOD_TODO_TAG } from '../services/supplier-payment.service';
-import { bangkokCalendarParts } from '../../../utils/date.util';
+import { bangkokCalendarParts, bangkokMidnight } from '../../../utils/date.util';
+import { validatePeriodOpen } from '../../../utils/period-lock.util';
+import { isPeriodOpenFor } from '../services/supplier-doc.util';
 
 const prisma = new PrismaClient();
 const journal = new JournalAutoService(prisma as never);
@@ -687,13 +689,13 @@ describe('จ่ายเงินผู้จัดจำหน่าย — fl
       await closedPast.restore();
     }
 
-    // ฝ่ายบัญชีปิดเดือนปัจจุบันก่อนสิ้นเดือน: กติกาทั้งระบบ (`validatePeriodOpen` ช่วงผ่อนผันนับจากสิ้นเดือน) ยังให้ลงในเดือนนั้นได้
-    // พร้อม stamp periodClosed + งานแจ้ง — เหมือนการรับของ · ด่าน 400 ของ `resolvePostingDate` เป็นตาข่ายกรณีวันนี้พ้นช่วงผ่อนผันแล้ว
+    // ฝ่ายบัญชีปิดเดือนปัจจุบันก่อนสิ้นเดือน: กติกาทั้งระบบ (`validatePeriodOpen` — งวดที่ปิดแล้วรับรายการได้ถึงสิ้นวันสุดท้ายของเดือน
+    // + ช่วงผ่อนผันเป็นวันเต็ม เวลาไทย) ยังให้ลงในเดือนนั้นได้ พร้อม stamp periodClosed + งานแจ้ง — เหมือนการรับของ · ด่าน 400 ของ
+    // `resolvePostingDate` เป็นตาข่ายกรณีวันนี้พ้นช่วงผ่อนผันแล้ว (เทสต์ถัดไป). grace 0 = ค่าที่เข้มที่สุด ต้องผ่านทุกวันของเดือน รวมวันสุดท้าย
+    // (คำตัดสินเจ้าของ 2026-10-31 — เดิมต้องตั้ง grace 1 เพราะขอบเดิมคือ 00:00 ของวันสุดท้าย: main deploy ล้มวันที่ 31/10/2569)
     const now = bangkokCalendarParts(new Date());
     const closedNow = await closeShopPeriod(now.year, now.month + 1);
-    // grace 1 (not 0): `validatePeriodOpen` ends the window at 00:00 of (last day + grace), so with
-    // grace 0 this case failed on the last day of every month (2026-10-31 blocked the main deploy).
-    const grace = await setGraceDays(1);
+    const grace = await setGraceDays(0);
     try {
       const res = await service.recordSupplierPayment(po.id, { paidAt: today(), amount: 500, slipUrl: SLIP }, adminId);
       expect(res.periodClosed).toBe(true);
@@ -702,6 +704,28 @@ describe('จ่ายเงินผู้จัดจำหน่าย — fl
     } finally {
       await grace.restore();
       await closedNow.restore();
+    }
+  });
+
+  it('grace 0: งวด SHOP ที่ปิดแล้วรับรายการถึง 23:59:59.999 ของวันสุดท้าย (เวลาไทย) · วันถัดจากสิ้นเดือนปิด — ด่านเดียวกับที่การจ่าย/รับของใช้', async () => {
+    // ตัวตัดสินที่ `resolvePostingDate` (ตาข่าย 400) และการรับของใช้ = `validatePeriodOpen` ผ่าน `isPeriodOpenFor` — อ่านแถวงวดจริง +
+    // `period_grace_days` จริงจาก DB · ตรึงนาฬิกาที่สองขอบของเดือนที่ปิด (ก.ย. 2569) เพราะรายการที่ลงวันนี้ไม่มีวันพ้นช่วงผ่อนผันของงวดตัวเอง
+    const closed = await closeShopPeriod(2026, 9);
+    const grace = await setGraceDays(0);
+    const lastDay = new Date('2026-09-30T12:00:00+07:00');
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date(bangkokMidnight(2026, 9, 1).getTime() - 1)); // 30 ก.ย. 23:59:59.999
+      expect(await isPeriodOpenFor(prisma as never, lastDay, shopCompanyId)).toBe(true);
+      vi.setSystemTime(bangkokMidnight(2026, 9, 1)); // 1 ต.ค. 00:00 — วันถัดจากสิ้นเดือน
+      expect(await isPeriodOpenFor(prisma as never, lastDay, shopCompanyId)).toBe(false);
+      await expect(validatePeriodOpen(prisma as never, lastDay, shopCompanyId)).rejects.toThrow(
+        'ไม่สามารถบันทึกรายการในงวดที่ปิดแล้ว (2026/09 สถานะ: CLOSED)',
+      );
+    } finally {
+      vi.useRealTimers();
+      await grace.restore();
+      await closed.restore();
     }
   });
 

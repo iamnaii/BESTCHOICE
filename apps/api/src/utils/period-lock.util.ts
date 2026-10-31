@@ -5,6 +5,13 @@
  * Prevents posting/voiding accounting transactions into a CLOSED or SYNCED
  * period — UNLESS today is still inside the `period_grace_days` window.
  *
+ * Grace window (owner decision 2026-10-31): counted in whole Asia/Bangkok days
+ * AFTER the period's last day — grace 0 keeps the last day itself postable until
+ * 23:59:59.999 BKK (closing the current month early never blocks its own last
+ * day); grace N stays open through the N-th day of the following month. The
+ * period month is also read on the Bangkok calendar, so the verdict does not
+ * depend on the process TZ.
+ *
  * (2026-06 unify) The legacy global SystemConfig cutoff
  * `accounting_period_closed_until` was removed; AccountingPeriod is now the only
  * mechanism. Every accounting write path resolves the FINANCE/SHOP companyId and
@@ -16,6 +23,7 @@
  *          installment-accrual.cron
  */
 import { BadRequestException } from '@nestjs/common';
+import { bangkokCalendarParts, bangkokMidnight } from './date.util';
 
 interface PrismaLike {
   systemConfig: {
@@ -47,24 +55,24 @@ async function getGraceDays(prisma: PrismaLike): Promise<number> {
   }
 }
 
-/** Last day of the given calendar month (month 1-12). */
-function lastDayOfMonth(year: number, month: number): Date {
-  return new Date(year, month, 0);
-}
-
-/** Returns `base + days` as a Date. */
-function addDays(base: Date, days: number): Date {
-  const d = new Date(base);
-  d.setDate(d.getDate() + days);
-  return d;
+/**
+ * First instant at which a CLOSED/SYNCED period (`month` 1-12) stops accepting
+ * postings: 00:00 Asia/Bangkok on day `1 + graceDays` of the following month.
+ * grace 0 → 00:00 BKK on the 1st (the whole last day is still inside);
+ * grace N → 00:00 BKK on day N+1 (N whole days after month end).
+ */
+export function periodGraceEnd(year: number, month: number, graceDays: number): Date {
+  // `month` is 1-12, i.e. already the 0-based index of the FOLLOWING month (12 → next January)
+  return bangkokMidnight(year, month, 1 + graceDays);
 }
 
 /**
  * Validate that a transaction date is not in a closed accounting period.
  *
- * Looks up the AccountingPeriod for the date's (companyId, year, month). Throws
- * if its status is CLOSED or SYNCED — UNLESS today is within `period_grace_days`
- * after the period's last calendar day (D1.2.6.2).
+ * Looks up the AccountingPeriod for the date's (companyId, year, month) on the
+ * Bangkok calendar. Throws if its status is CLOSED or SYNCED — UNLESS now is
+ * before `periodGraceEnd` (the period's last day + `period_grace_days` whole
+ * Bangkok days — D1.2.6.2, boundary per owner decision 2026-10-31).
  *
  * Enforcement REQUIRES companyId: callers that do not pass one are not guarded.
  */
@@ -75,8 +83,9 @@ export async function validatePeriodOpen(
 ): Promise<void> {
   if (!companyId || !prisma.accountingPeriod) return;
 
-  const year = date.getFullYear();
-  const month = date.getMonth() + 1; // JS months are 0-indexed
+  const parts = bangkokCalendarParts(date);
+  const year = parts.year;
+  const month = parts.month + 1; // bangkokCalendarParts month is 0-indexed
   const period = await prisma.accountingPeriod.findUnique({
     where: { companyId_year_month: { companyId, year, month } },
     select: { status: true },
@@ -85,11 +94,10 @@ export async function validatePeriodOpen(
     return; // OPEN / REVIEW / no row → not locked
   }
 
-  // D1.2.6.2 — grace window. Allow posting INTO a closed period for
-  // `graceDays` after the period's last calendar day.
+  // D1.2.6.2 — grace window. Allow posting INTO a closed period through the end
+  // of its last day plus `graceDays` whole days (Bangkok).
   const graceDays = await getGraceDays(prisma);
-  const graceEnd = addDays(lastDayOfMonth(year, month), graceDays);
-  if (new Date() > graceEnd) {
+  if (new Date() >= periodGraceEnd(year, month, graceDays)) {
     throw new BadRequestException(
       `ไม่สามารถบันทึกรายการในงวดที่ปิดแล้ว (${year}/${String(month).padStart(2, '0')} สถานะ: ${period.status})`,
     );

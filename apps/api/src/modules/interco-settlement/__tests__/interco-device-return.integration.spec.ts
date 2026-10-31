@@ -1668,13 +1668,31 @@ describe('ใบรับเครื่องคืน — DEVICE_RETURN คร
     }, 120_000);
   });
   describe('DEVICE_RETURN cash accounting periods', () => {
-    // Date-only clock leaves Prisma/network timers real. At local noon on the last
-    // day, grace=0 has expired; default grace=5 still permits the closed month.
-    const postingDate = new Date(2026, 8, 30, 12);
+    // Date-only clock leaves Prisma/network timers real. DEVICE_RETURN cash posts at
+    // `new Date()`, so the September period it checks is the CURRENT month. Owner rule
+    // 2026-10-31: a CLOSED period accepts postings through the end of its last day
+    // (Bangkok) + period_grace_days whole days ⇒ grace 0 still accepts all of 30 Sep.
+    // The guard can only reject a request that straddles midnight: the posting instant
+    // is captured on 30 Sep 23:59:59.999 and the clock reaches 1 Oct 00:00 (the day
+    // AFTER month end) before the period checks run.
+    const postingDate = new Date('2026-09-30T12:00:00+07:00');
+    const lastInstant = new Date('2026-09-30T23:59:59.999+07:00');
+    const dayAfterMonthEnd = new Date('2026-10-01T00:00:00+07:00');
+    /** Advance the clock past month end right after `postedAt` is captured (first company lookup after it). */
+    function straddleMidnightAfterPostingInstant() {
+      const original = companyResolver.getShopCompanyId.bind(companyResolver);
+      return vi
+        .spyOn(companyResolver, 'getShopCompanyId')
+        .mockImplementationOnce(async (...args) => {
+          vi.setSystemTime(dayAfterMonthEnd);
+          return original(...args);
+        });
+    }
     async function withPeriods(
       closedBook: 'FINANCE' | 'SHOP' | undefined,
       grace: string,
       run: () => Promise<void>,
+      at: Date = postingDate,
     ) {
       const originals = await prisma.accountingPeriod.findMany({
         where: { companyId: { in: [financeId, shopId] }, year: 2026, month: 9 },
@@ -1707,7 +1725,7 @@ describe('ใบรับเครื่องคืน — DEVICE_RETURN คร
         });
         changedConfig = true;
         vi.useFakeTimers({ toFake: ['Date'] });
-        vi.setSystemTime(postingDate);
+        vi.setSystemTime(at);
         await run();
       } finally {
         vi.useRealTimers();
@@ -1731,16 +1749,20 @@ describe('ใบรับเครื่องคืน — DEVICE_RETURN คร
       }
     }
 
+    // Was "rejects %s CLOSED past configured grace" at local noon on 30 Sep with grace 0 — that
+    // encoded the old boundary (00:00 OF the last day), the off-by-one the owner ruled out on
+    // 2026-10-31. Split into: the last day itself still posts (both books), and the rejection
+    // (no financial writes) once the clock is past month end.
     it.each(['FINANCE', 'SHOP'] as const)(
-      'rejects %s CLOSED past configured grace with no financial writes',
+      'accepts %s CLOSED early on its own last day with grace 0 (owner rule 2026-10-31)',
       async (book) => {
-        const id = await seedBaseContract(book === 'FINANCE' ? 120 : 121, 'CLOSED_BAD_DEBT');
+        const id = await seedBaseContract(book === 'FINANCE' ? 124 : 125, 'CLOSED_BAD_DEBT');
         await seedDeviceReturnPair(id);
-        await withPeriods(book, '0', async () => {
-          const journalsBefore = await prisma.journalEntry.count();
-          const auditBefore = await prisma.auditLog.count({ where: { entityId: id } });
-          const result = await settlementService
-            .settleDeductionCash(
+        await withPeriods(
+          book,
+          '0',
+          async () => {
+            const result = await settlementService.settleDeductionCash(
               id,
               'DEVICE_RETURN',
               {
@@ -1749,22 +1771,63 @@ describe('ใบรับเครื่องคืน — DEVICE_RETURN คร
                 requestId: randomUUID(),
               },
               adminId,
-            )
-            .then(
-              () => undefined,
-              (error: unknown) => error,
             );
-          expect
-            .soft(result)
-            .toMatchObject({
-              status: 400,
-              message: expect.stringContaining(`งวดบัญชีฝั่ง ${book} ปิดแล้ว`),
-            });
-          expect.soft(await prisma.journalEntry.count()).toBe(journalsBefore);
-          expect.soft(await prisma.auditLog.count({ where: { entityId: id } })).toBe(auditBefore);
-          expect.soft((await deviceReturnFinanceBalance(prisma, id)).toFixed(2)).toBe('7000.00');
-          expect.soft((await deviceReturnShopBalance(prisma, id)).toFixed(2)).toBe('7000.00');
-        });
+            expect(result.deduped).toBe(false);
+            expect((await deviceReturnFinanceBalance(prisma, id)).toFixed(2)).toBe('0.00');
+            expect((await deviceReturnShopBalance(prisma, id)).toFixed(2)).toBe('0.00');
+          },
+          lastInstant,
+        );
+      },
+      60_000,
+    );
+
+    it.each(['FINANCE', 'SHOP'] as const)(
+      'rejects %s CLOSED once the clock passes month end (grace 0 · request straddling midnight) with no financial writes',
+      async (book) => {
+        const id = await seedBaseContract(book === 'FINANCE' ? 120 : 121, 'CLOSED_BAD_DEBT');
+        await seedDeviceReturnPair(id);
+        await withPeriods(
+          book,
+          '0',
+          async () => {
+            const journalsBefore = await prisma.journalEntry.count();
+            const auditBefore = await prisma.auditLog.count({ where: { entityId: id } });
+            const straddle = straddleMidnightAfterPostingInstant();
+            try {
+              const result = await settlementService
+                .settleDeductionCash(
+                  id,
+                  'DEVICE_RETURN',
+                  {
+                    amount: 7000,
+                    financeDepositAccountCode: '11-1201',
+                    requestId: randomUUID(),
+                  },
+                  adminId,
+                )
+                .then(
+                  () => undefined,
+                  (error: unknown) => error,
+                );
+              expect(straddle).toHaveBeenCalled();
+              expect.soft(result).toMatchObject({
+                status: 400,
+                message: expect.stringContaining(`งวดบัญชีฝั่ง ${book} ปิดแล้ว`),
+              });
+              expect.soft(result).toMatchObject({
+                message: expect.stringContaining('(2026/09 สถานะ: CLOSED)'),
+              });
+            } finally {
+              straddle.mockRestore();
+            }
+            expect.soft(await prisma.journalEntry.count()).toBe(journalsBefore);
+            expect.soft(await prisma.auditLog.count({ where: { entityId: id } })).toBe(auditBefore);
+            expect.soft((await deviceReturnFinanceBalance(prisma, id)).toFixed(2)).toBe('7000.00');
+            expect.soft((await deviceReturnShopBalance(prisma, id)).toFixed(2)).toBe('7000.00');
+          },
+          lastInstant,
+        );
       },
       60_000,
     );
@@ -1799,9 +1862,18 @@ describe('ใบรับเครื่องคืน — DEVICE_RETURN คร
             where: { companyId: { in: [financeId, shopId] }, year: 2026, month: 9 },
             data: { status: 'CLOSED' },
           });
-          expect(
-            await settlementService.settleDeductionCash(id, 'DEVICE_RETURN', dto, adminId),
-          ).toEqual({ ...result, deduped: true });
+          // Retry straddling midnight into 1 Oct (grace 0): the closed September period WOULD
+          // reject a fresh posting here (owner rule 2026-10-31 — the last day itself no longer
+          // does), so the dedupe answer proves idempotency is checked before the period guard.
+          vi.setSystemTime(lastInstant);
+          const straddle = straddleMidnightAfterPostingInstant();
+          try {
+            expect(
+              await settlementService.settleDeductionCash(id, 'DEVICE_RETURN', dto, adminId),
+            ).toEqual({ ...result, deduped: true });
+          } finally {
+            straddle.mockRestore();
+          }
           expect(
             await prisma.journalEntry.findMany({
               where: { entryNumber: { in: [result.financeEntryNo, result.shopEntryNo] } },

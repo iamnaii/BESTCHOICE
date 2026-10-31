@@ -209,10 +209,11 @@ export default function LiffFinanceVerify() {
 
   const verifyOtpMutation = useMutation({
     mutationFn: async (otpInput: string) => {
-      // Task 33 — ความยินยอมเป็นส่วนหนึ่งของการผูก: API ตรวจ `consent: true` เอง (ไม่มี = 400) และบันทึกเมื่อรหัสถูกเท่านั้น
+      // Task 33 — ความยินยอมเป็นส่วนหนึ่งของการผูก: ส่งค่าที่ติ๊กอยู่จริง (fix round 1 M1 — ไม่ใช่ true ตายตัว) ·
+      // API ตัดสินเอง (ไม่ใช่ true = 400) และบันทึกเมื่อรหัสถูกเท่านั้น
       const { data } = await liffApi.post<VerifyOtpResponse>('/chatbot/finance/liff/verify-otp', {
         otp: otpInput,
-        consent: true,
+        consent,
       });
       return data;
     },
@@ -246,6 +247,7 @@ export default function LiffFinanceVerify() {
 
   function handleSubmitOtp() {
     setOtpError('');
+    if (!consent) return;
     const cleaned = otp.replace(/\D/g, '');
     if (cleaned.length !== 6) {
       setOtpError('กรุณากรอก OTP 6 หลัก');
@@ -462,6 +464,8 @@ export default function LiffFinanceVerify() {
                 size="lg"
                 checked={consent}
                 onCheckedChange={(value) => setConsent(value === true)}
+                // fix round 1 M1 — ระหว่างส่งรหัสห้ามเปลี่ยน: ขั้น OTP แสดง "ยินยอม…แล้ว" ตามค่าที่ส่งไปจริง
+                disabled={requestOtpMutation.isPending}
                 aria-required="true"
               />
               <label

@@ -60,6 +60,19 @@ describe('ClearSecretDialog — what clearing a field does', () => {
     expect(dialog).not.toHaveTextContent('ข้อความ Messenger ที่มาในคำขอเดียวกัน');
   });
 
+  it('Facebook Page Access Token: sending and page comments stop, inbound Messenger still arrives (Task 35)', () => {
+    const dialog = open(
+      t('facebook', 'Facebook Messenger', 'pageAccessToken', 'Page Access Token'),
+    );
+    expect(dialog).toHaveTextContent(
+      'Facebook Messenger จะส่งข้อความออกไม่ได้จนกว่าจะบันทึกค่าใหม่ — ทั้งบอทและพนักงานที่ตอบจากอินบ็อกซ์ · ข้อความที่ลูกค้าส่งเข้ามายังเข้าอินบ็อกซ์ แต่ลูกค้าที่ทักมาใหม่จะไม่มีชื่อและรูปโปรไฟล์จาก Facebook · ตอบคอมเมนต์เพจไม่ได้ และถ้าเปิดรับคอมเมนต์ไว้ คอมเมนต์ใหม่จะไม่เข้าอินบ็อกซ์และ Facebook จะไม่ส่งมาซ้ำ · ปุ่ม "ตั้งค่าปุ่ม Get Started" "Backfill รูปโปรไฟล์" และการทดสอบสิทธิ์ Facebook App ตรวจสอบที่ใช้ token ของเพจใช้ไม่ได้',
+    );
+    // Inbound still works (HMAC = App Secret) — the whole integration does not stop.
+    expect(dialog).not.toHaveTextContent('จะใช้งานไม่ได้');
+    // Not the generic sentence any more.
+    expect(dialog).not.toHaveTextContent('ฟีเจอร์ที่ใช้ Page Access Token');
+  });
+
   it('Yeastar Webhook Secret: production rejects every webhook — no incoming-call popup, CDRs still polled', () => {
     const dialog = open(t('yeastar', 'Yeastar PBX', 'webhookSecret', 'Webhook Secret Token'));
     expect(dialog).toHaveTextContent(
@@ -110,6 +123,8 @@ describe('missingRequiredSecretHelp — helper under an empty required secret (r
     ['line-shop', 'channelSecret'],
     ['line-finance', 'channelSecret'],
     ['facebook', 'verifyToken'],
+    // Inbound Messenger still arrives — "การเชื่อมต่อใช้งานไม่ได้" would over-claim.
+    ['facebook', 'pageAccessToken'],
     ['peak', 'userToken'],
     ['claude-ai', 'apiKey'],
   ])('%s.%s never claims more than the dialog — neutral wording', (integrationKey, fieldKey) => {

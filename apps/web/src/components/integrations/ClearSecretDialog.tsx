@@ -42,6 +42,15 @@ export function clearImpactText(target: ClearSecretTarget): string {
     // (FacebookCommentGraphTransport.credentials()).
     case 'facebook.verifyToken':
       return 'ใช้เฉพาะตอนยืนยัน webhook กับ Facebook — ล้างแล้ว การตั้งหรือแก้ Callback URL ในหน้าแอปของ Meta จะยืนยันไม่ผ่านจนกว่าจะบันทึกค่าใหม่ · ข้อความ Messenger และคอมเมนต์เพจไม่ได้ใช้ค่านี้ จึงรับส่งได้ตามเดิม';
+    // Readers: facebook.adapter sendMessage (bot + inbox staff replies — definitelyNotSent) and
+    // getUserProfile (null ⇒ new rooms without name/avatar); inbound POSTs are checked with the
+    // App Secret, so customer messages still arrive. Comment client/transport ⇒ notReady CONFIG ⇒
+    // replies CAPABILITY_UNVERIFIED and, with comments enabled, ingest skips the event as permanent
+    // (webhook answers 200, no redelivery; Messenger in the request continues — Task 35).
+    // facebook-persistent-menu (Get Started button), backfill-profiles and the App Review panel's
+    // Page-token calls fail.
+    case 'facebook.pageAccessToken':
+      return `${integrationName} จะส่งข้อความออกไม่ได้จนกว่าจะบันทึกค่าใหม่ — ทั้งบอทและพนักงานที่ตอบจากอินบ็อกซ์ · ข้อความที่ลูกค้าส่งเข้ามายังเข้าอินบ็อกซ์ แต่ลูกค้าที่ทักมาใหม่จะไม่มีชื่อและรูปโปรไฟล์จาก Facebook · ตอบคอมเมนต์เพจไม่ได้ และถ้าเปิดรับคอมเมนต์ไว้ คอมเมนต์ใหม่จะไม่เข้าอินบ็อกซ์และ Facebook จะไม่ส่งมาซ้ำ · ปุ่ม "ตั้งค่าปุ่ม Get Started" "Backfill รูปโปรไฟล์" และการทดสอบสิทธิ์ Facebook App ตรวจสอบที่ใช้ token ของเพจใช้ไม่ได้`;
     // yeastar-webhook.controller: no secret ⇒ 401 in production (call-status popup gone);
     // yeastar-cdr.cron still pulls call records every 15 min with the API credentials.
     case 'yeastar.webhookSecret':

@@ -32,6 +32,7 @@ const stamp = `t30d-${Date.now()}`;
 const day = realBangkokDate();
 let base: FinanceFixtureBase;
 let collections: CollectionsNotifierService;
+let compliance: ComplianceService;
 const fixtures: InstallmentFixture[] = [];
 const delivered: { to: string; via: string }[] = [];
 const sink = (via: string) => async (to: string) => {
@@ -66,13 +67,18 @@ const nightAudit = (f: InstallmentFixture, action: string, newValue: object) =>
 beforeAll(async () => {
   assertTestDatabase();
   base = await createFinanceFixtureBase(prisma, stamp);
+  compliance = new ComplianceService(
+    prisma as never,
+    new PDPAService(prisma as never),
+    new HolidayService(),
+  );
   const notifications = new NotificationsService(
     prisma as never,
     { get: jest.fn() } as never,
     {} as never,
     {} as never,
     { getValue: jest.fn().mockResolvedValue('') } as never,
-    new ComplianceService(prisma as never, new PDPAService(prisma as never), new HolidayService()),
+    compliance,
     new NotificationTemplateService(prisma as never),
   );
   jest
@@ -137,6 +143,19 @@ it('รอบกลางคืน → ไม่มีอะไรส่งต�
   expect(receivedBy(both)).toEqual(['statusFlex']); // หนึ่งข้อความทวงต่อสัญญา
   expect(receivedBy(paidOvernight)).toEqual([]);
   expect(receivedBy(paidEscalated)).toEqual([]);
+
+  // รอบ 4 m4 — เพดานความถี่ DUNNING วันละครั้งของ `ComplianceService` (พนักงานกดส่ง · กฎ CALL_NO_ANSWER / DEVICE_LOCKED) เท่าก่อนย้ายเวลา:
+  // เดิมแจ้งสถานะ (00:30) ไม่ลงแถว ⇒ ไม่นับ · ขั้นทวง (01:00) ลงแถว ⇒ นับ · แจ้งสถานะที่ส่ง**แทน**ขั้นทวง = นับเหมือนแถวขั้นทวงที่มันแทน
+  const capOf = (f: InstallmentFixture) =>
+    compliance.canSend({
+      channel: 'LINE',
+      customerId: f.customerId,
+      contractId: f.contractId,
+      category: 'DUNNING',
+    });
+  expect(await capOf(flipped)).toEqual({ allowed: true });
+  expect(await capOf(escalated)).toMatchObject({ allowed: false, reason: 'FREQUENCY_CAP' });
+  expect(await capOf(both)).toMatchObject({ allowed: false, reason: 'FREQUENCY_CAP' });
 
   // สั่งรันซ้ำ
   jest.setSystemTime(bangkokAt(day, 0, 9, 30));

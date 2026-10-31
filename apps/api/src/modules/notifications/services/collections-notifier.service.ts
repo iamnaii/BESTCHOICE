@@ -15,6 +15,8 @@ import { NotificationCategory } from '../notification-category.enum';
 import {
   AUTO_PAY_LINK_DAYS_BEFORE_DUE,
   AUTO_PAY_LINK_SUBJECT,
+  STATUS_NOTICE_IN_PLACE_OF_ESCALATION_SUBJECT,
+  STATUS_NOTICE_SUBJECT,
   autoPayLinkPaymentWhere,
   botNoticeSentToday,
   findContractsDunnedToday,
@@ -27,8 +29,6 @@ import { isSmsPaymentReminderDisabled } from '../../../utils/sms-payment-reminde
 import { isWithinBusinessHours } from '../../../utils/business-hours.util';
 import { bangkokStartOfDay } from '../../../utils/date.util';
 
-/** หัวข้อแถว log ของ A3 (แจ้งสถานะสัญญาค้างชำระ) */
-export const STATUS_NOTICE_SUBJECT = 'แจ้งสถานะสัญญาค้างชำระ';
 /** เวลาส่งข้อความผลรอบกลางคืน (A3/A4) — ต้องอยู่ในช่วงเวลาทำการของ `isWithinBusinessHours` */
 export const OVERNIGHT_COLLECTIONS_NOTICES_CRON = '5 8 * * *';
 
@@ -131,7 +131,14 @@ export class CollectionsNotifierService {
       const status = byId.get(id)?.status;
       return (status === 'OVERDUE' || status === 'DEFAULT') && !skip.has(id);
     });
-    if (statusTargets.length > 0) await this.notifyStatusChangedCustomers(statusTargets);
+    // สัญญาที่เลื่อนขั้นคืนเดียวกัน: แจ้งสถานะคือข้อความเดียวของสัญญา (ขั้นทวงถูกข้ามข้างล่าง) — แถวลงหัวข้อ "แทนข้อความขั้นทวง"
+    // ให้เพดานความถี่นับเหมือนแถวขั้นทวงที่มันแทน (รอบ 4 m4)
+    if (statusTargets.length > 0) {
+      await this.notifyStatusChangedCustomers(
+        statusTargets,
+        new Set(statusTargets.filter((id) => escalations.has(id))),
+      );
+    }
 
     skip = await dunnedToday();
     const escalated = [...escalations.entries()]
@@ -151,8 +158,14 @@ export class CollectionsNotifierService {
 
   /**
    * Send LINE overdue/default notice to customers whose contracts just changed status
+   *
+   * @param inPlaceOfEscalation สัญญาที่แจ้งสถานะนี้ส่ง**แทน**ข้อความขั้นทวงของคืนเดียวกัน — แถว log ลงหัวข้อที่เพดานความถี่นับ ·
+   *   สัญญาอื่นลง `STATUS_NOTICE_SUBJECT` ที่เพดานไม่นับ (เดิมแจ้งสถานะไม่ลงแถว — `FREQUENCY_CAP_EXEMPT_SUBJECTS` รอบ 4 m4)
    */
-  async notifyStatusChangedCustomers(contractIds: string[]) {
+  async notifyStatusChangedCustomers(
+    contractIds: string[],
+    inPlaceOfEscalation: ReadonlySet<string> = new Set(),
+  ) {
     const contracts = await this.prisma.contract.findMany({
       where: { id: { in: contractIds } },
       include: {
@@ -235,7 +248,9 @@ export class CollectionsNotifierService {
           channel: 'LINE',
           channelKey: 'line-finance',
           recipient: lineId,
-          subject: STATUS_NOTICE_SUBJECT,
+          subject: inPlaceOfEscalation.has(contract.id)
+            ? STATUS_NOTICE_IN_PLACE_OF_ESCALATION_SUBJECT
+            : STATUS_NOTICE_SUBJECT,
           message: `สัญญา ${contract.contractNumber} สถานะ ${contract.status}`,
           status: 'SENT',
           relatedId: contract.id,

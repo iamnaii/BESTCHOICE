@@ -9,6 +9,7 @@ import {
   FREQUENCY_CAP_CATEGORIES,
 } from './notification-category.enum';
 import { isWithinBusinessHours, nextBusinessHourOpen } from '../../utils/business-hours.util';
+import { FREQUENCY_CAP_EXEMPT_SUBJECTS } from './payment-notice-dedupe';
 import type { NotificationChannel } from '@prisma/client';
 
 /**
@@ -64,7 +65,8 @@ export interface CanSendResult {
  * 2. Category bypass — TRANSACTIONAL (receipts) and STAFF skip all compliance
  * 3. Time-window — Asia/Bangkok 8-20 weekday, 8-18 weekend/holiday
  * 4. PDPA consent — required for any customer-facing send (DUNNING/REMINDER/MARKETING)
- * 5. Frequency cap — 1/day per (customer + contract) for DUNNING only
+ * 5. Frequency cap — 1/day per (customer + contract) for DUNNING only (status notices that did not stand in for a
+ *    dunning-stage message excluded — `FREQUENCY_CAP_EXEMPT_SUBJECTS`, Task 30 r4 m4)
  *
  * Compliance basis: พ.ร.บ.ทวงถามหนี้ พ.ศ. 2558 มาตรา 9 + PDPA.
  *
@@ -131,6 +133,10 @@ export class ComplianceService {
           OR: [
             { status: 'SENT', sentAt: { gte: todayStart } },
             { status: 'DELAYED', createdAt: { gte: todayStart } },
+          ],
+          // Task 30 รอบ 4 m4 — แจ้งสถานะ (A3) ที่ไม่ได้ส่งแทนขั้นทวงไม่นับ (เดิมไม่ลงแถว) · หัวข้อว่างนับตามเดิม
+          AND: [
+            { OR: [{ subject: null }, { subject: { notIn: [...FREQUENCY_CAP_EXEMPT_SUBJECTS] } }] },
           ],
         },
       });

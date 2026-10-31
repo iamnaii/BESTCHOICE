@@ -20,7 +20,14 @@ export interface PendingMdmRequest {
    * approval row renders an Unlock button (OWNER only). Absent for raw
    * PENDING requests (which is the common case in the approval queue).
    */
-  status?: 'PENDING' | 'APPROVED' | 'EXECUTED_MANUAL' | 'EXECUTED_API' | 'FAILED' | 'REJECTED' | 'UNLOCKED';
+  status?:
+    | 'PENDING'
+    | 'APPROVED'
+    | 'EXECUTED_MANUAL'
+    | 'EXECUTED_API'
+    | 'FAILED'
+    | 'REJECTED'
+    | 'UNLOCKED';
   contract: {
     id: string;
     contractNumber: string;
@@ -35,7 +42,16 @@ export interface ContractRow {
   contractNumber: string;
   status: string;
   dunningStage: string;
-  customer: { id: string; name: string; phone: string; lineIdFinance: string | null; lineIdShop: string | null };
+  customer: {
+    id: string;
+    name: string;
+    phone: string;
+    /** ค่าในคอลัมน์ — แสดงผลเท่านั้น (ไม่ใช่เกณฑ์ส่ง LINE) */
+    lineIdFinance: string | null;
+    lineIdShop: string | null;
+    /** มีแถว OTP ที่ยังผูก = ส่ง LINE การเงินได้ (เกณฑ์เดียวกับผู้ส่งฝั่ง API — Task 24 RR-M2) */
+    hasVerifiedLine: boolean;
+  };
   branch: { id: string; name: string };
   assignedTo: { id: string; name: string } | null;
   outstanding: number;

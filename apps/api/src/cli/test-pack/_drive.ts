@@ -20,7 +20,12 @@ import {
   bkkDateStr,
   testNote,
 } from './_context';
-import { bkkMonthKey, remainingInstallmentDue } from './_drive-helpers';
+import {
+  ACTIVATION_SILENT_CUSTOMER_WHERE,
+  MAY_RECEIVE_FINANCE_LINE_WHERE,
+  bkkMonthKey,
+  remainingInstallmentDue,
+} from './_drive-helpers';
 import { TestPackModule } from './_module';
 import type { SeedContext } from './_types';
 
@@ -203,17 +208,30 @@ export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveR
     // ── ก้าว 1: เปิดสัญญาผ่อน → JE 1A + SHOP leg → คิวรอจ่าย INTER-CO มีของ ──────
     await run('เปิดสัญญาผ่อน (JE 1A + SHOP leg)', async () => {
       if (nowOnlyGuard) return nowOnlyGuard;
+      const draftWhere: Prisma.ContractWhereInput = {
+        contractNumber: { startsWith: TEST_CONTRACT_PREFIX },
+        status: 'DRAFT',
+        workflowStatus: 'APPROVED',
+        deletedAt: null,
+      };
+      // Task 24 fix round 1 M-5 — activate ส่ง "สัญญาอนุมัติแล้ว" ถึงลูกค้า (LINE แถว OTP ไม่งั้น SMS) ⇒ เปิดเฉพาะลูกค้าที่ไม่ถึงคนจริง
       const c = await ctx.prisma.contract.findFirst({
-        where: {
-          contractNumber: { startsWith: TEST_CONTRACT_PREFIX },
-          status: 'DRAFT',
-          workflowStatus: 'APPROVED',
-          deletedAt: null,
-        },
+        where: { ...draftWhere, customer: { is: ACTIVATION_SILENT_CUSTOMER_WHERE } },
         orderBy: { contractNumber: 'asc' },
         select: { id: true, contractNumber: true },
       });
       if (!c) {
+        const reachable = await ctx.prisma.contract.findMany({
+          where: { ...draftWhere, customer: { is: { NOT: ACTIVATION_SILENT_CUSTOMER_WHERE } } },
+          orderBy: { contractNumber: 'asc' },
+          select: { contractNumber: true },
+        });
+        if (reachable.length > 0) {
+          return (
+            `ข้าม — สัญญา ${reachable.map((r) => r.contractNumber).join(', ')}: ลูกค้าผูก LINE การเงินแล้วหรือเบอร์โทรถึงได้ — ` +
+            'เปิดสัญญาจะส่งแจ้ง "สัญญาอนุมัติแล้ว" ถึงคนจริง (เปิดผ่านหน้าเว็บเองถ้าตั้งใจ)'
+          );
+        }
         return (
           'ข้าม — ไม่พบสัญญาทดสอบสถานะ DRAFT (workflow APPROVED) ให้เปิด — seeder ปัจจุบันสร้างสัญญา ' +
           'ACTIVE/TERMINATED โดยตรง (เปิดสัญญาใหม่ผ่านหน้า /contracts/create ระหว่างเทสได้)'
@@ -226,27 +244,27 @@ export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveR
 
     // ── ก้าว 2: รับชำระ 2 งวด → JE 2B + ใบเสร็จ ─────────────────────────────────
     await run('รับชำระค่างวด (JE 2B + ใบเสร็จ)', async () => {
-      // กันส่ง LINE push จริง (MINOR 5): hook หลังรับเงิน (sendPaymentSuccessLine) เช็คแค่
-      // customer.lineIdFinance + notifReceipt — ไม่มีเงื่อนไข "ข้อมูลทดสอบ" ใด ๆ. สัญญา
-      // ทดสอบที่ tester ผูก LINE ผ่าน /liff/register (สคริปต์เทสของ pack เองแนะนำให้ทำ)
-      // จึงต้องถูกข้ามทั้งใบ พร้อมบอกชื่อสัญญาที่ข้าม
+      // กันส่ง LINE push จริง (MINOR 5): hook หลังรับเงิน (sendPaymentSuccessLine) ส่งถึงแถว OTP
+      // ที่ยังผูกของลูกค้า (Task 22 I-1 ง) + notifReceipt — ไม่มีเงื่อนไข "ข้อมูลทดสอบ" ใด ๆ. สัญญา
+      // ทดสอบที่ tester ผูก LINE ผ่าน /liff/finance-verify (สคริปต์เทสของ pack เองแนะนำให้ทำ)
+      // จึงต้องถูกข้ามทั้งใบ พร้อมบอกชื่อสัญญาที่ข้าม — เกณฑ์ข้ามอยู่ที่ MAY_RECEIVE_FINANCE_LINE_WHERE (Task 24 RR-M1)
       const activeWhere: Prisma.ContractWhereInput = {
         contractNumber: { startsWith: TEST_CONTRACT_PREFIX },
         status: 'ACTIVE',
         deletedAt: null,
       };
       const candidates = await ctx.prisma.contract.findMany({
-        where: { ...activeWhere, customer: { is: { lineIdFinance: null } } },
+        where: { ...activeWhere, customer: { is: { NOT: MAY_RECEIVE_FINANCE_LINE_WHERE } } },
         orderBy: { contractNumber: 'asc' },
         select: { id: true, contractNumber: true },
       });
       const lineLinked = await ctx.prisma.contract.findMany({
-        where: { ...activeWhere, customer: { is: { lineIdFinance: { not: null } } } },
+        where: { ...activeWhere, customer: { is: MAY_RECEIVE_FINANCE_LINE_WHERE } },
         orderBy: { contractNumber: 'asc' },
         select: { contractNumber: true },
       });
       const lineSkipNote = lineLinked.length
-        ? ` · ข้ามสัญญา ${lineLinked.map((r) => r.contractNumber).join(', ')} — ลูกค้าผูก LINE (lineIdFinance) แล้ว รับชำระจะยิง Flex ถึงลูกค้าจริง`
+        ? ` · ข้ามสัญญา ${lineLinked.map((r) => r.contractNumber).join(', ')} — ลูกค้าผูก LINE การเงินแล้ว (ยืนยัน OTP หรือมีค่า LINE ID ในระบบ) รับชำระจะยิง Flex ถึงลูกค้าจริง`
         : '';
       // B1 (2026-08-26): รับชำระได้เฉพาะสัญญาที่มี JE 1A (POSTED) จริงเท่านั้น — สัญญาจาก
       // seed-test-contracts.cli ถูกสร้างเป็น ACTIVE ตรง ๆ โดย "ไม่โพสต์ activation journal"
@@ -367,7 +385,8 @@ export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveR
       });
       if (!customer) return 'ข้าม — ไม่พบลูกค้าทดสอบ (รันโดเมน contracts ก่อน)';
       const salesperson = await ctx.prisma.user.findUniqueOrThrow({
-        where: { id: ctx.refs.salespersonId }, select: { branchId: true },
+        where: { id: ctx.refs.salespersonId },
+        select: { branchId: true },
       });
       if (!salesperson.branchId) return 'ข้าม — พนักงานขายทดสอบยังไม่ได้ผูกสาขา';
       const bookedIds = await openBookingProductIds(ctx.prisma);
@@ -426,7 +445,8 @@ export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveR
       });
       if (!customer) return 'ข้าม — ไม่พบลูกค้าทดสอบ (รันโดเมน contracts ก่อน)';
       const salesperson = await ctx.prisma.user.findUniqueOrThrow({
-        where: { id: ctx.refs.salespersonId }, select: { branchId: true },
+        where: { id: ctx.refs.salespersonId },
+        select: { branchId: true },
       });
       if (!salesperson.branchId) return 'ข้าม — พนักงานขายทดสอบยังไม่ได้ผูกสาขา';
       const bookedIds = await openBookingProductIds(ctx.prisma);

@@ -92,6 +92,7 @@ describe('VerificationService', () => {
       },
       customerLineLink: {
         findUnique: jest.fn(),
+        findFirst: jest.fn(),
         upsert: jest.fn().mockResolvedValue({}),
       },
       chatRoom: {
@@ -100,7 +101,10 @@ describe('VerificationService', () => {
       // Separate tx mock to verify service uses tx inside transaction, not this.prisma
       $transaction: jest.fn().mockImplementation((cb) => {
         const tx = {
-          customerLineLink: { upsert: jest.fn().mockResolvedValue({}) },
+          customerLineLink: {
+            upsert: jest.fn().mockResolvedValue({}),
+            findUnique: jest.fn().mockResolvedValue(null),
+          },
           chatRoom: { updateMany: jest.fn().mockResolvedValue({}) },
           customer: {
             update: jest.fn().mockResolvedValue({}),
@@ -191,9 +195,9 @@ describe('VerificationService', () => {
     });
 
     it('throws on invalid phone format', async () => {
-      await expect(
-        service.requestOtp({ lineUserId: 'U123', phone: '12345' }),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.requestOtp({ lineUserId: 'U123', phone: '12345' })).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('normalizes +66 format phone number', async () => {
@@ -202,7 +206,9 @@ describe('VerificationService', () => {
       await service.requestOtp({ lineUserId: 'U123', phone: '66891234567' });
 
       expect(prisma.customer.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { phone: { in: ['0891234567', '089-123-4567', '089-1234567'] }, deletedAt: null } }),
+        expect.objectContaining({
+          where: { phone: { in: ['0891234567', '089-123-4567', '089-1234567'] }, deletedAt: null },
+        }),
       );
     });
 
@@ -211,9 +217,9 @@ describe('VerificationService', () => {
         lastRequestAt: new Date(), // just now
       });
 
-      await expect(
-        service.requestOtp({ lineUserId: 'U123', phone: '0891234567' }),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.requestOtp({ lineUserId: 'U123', phone: '0891234567' })).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     // ─── test-mode skips real SMS send (OWNER-gated UAT) ───
@@ -295,9 +301,9 @@ describe('VerificationService', () => {
         attempts: 0,
       });
 
-      await expect(
-        service.verifyOtp({ lineUserId: 'U123', otp: '123456' }),
-      ).rejects.toThrow('หมดอายุ');
+      await expect(service.verifyOtp({ lineUserId: 'U123', otp: '123456' })).rejects.toThrow(
+        'หมดอายุ',
+      );
     });
 
     it('throws on max attempts exceeded', async () => {
@@ -327,9 +333,9 @@ describe('VerificationService', () => {
     it('throws when no OTP record exists', async () => {
       prisma.chatbotOtpRequest.findUnique.mockResolvedValue(null);
 
-      await expect(
-        service.verifyOtp({ lineUserId: 'U123', otp: '123456' }),
-      ).rejects.toThrow('ขอ OTP ใหม่');
+      await expect(service.verifyOtp({ lineUserId: 'U123', otp: '123456' })).rejects.toThrow(
+        'ขอ OTP ใหม่',
+      );
     });
 
     // ─────────────────────────────────────────────────────────────
@@ -363,9 +369,9 @@ describe('VerificationService', () => {
         testMode.isEnabled.mockResolvedValue(true);
         prisma.chatbotOtpRequest.findUnique.mockResolvedValue(null);
 
-        await expect(
-          service.verifyOtp({ lineUserId: 'U123', otp: '999999' }),
-        ).rejects.toThrow('ขอ OTP ใหม่');
+        await expect(service.verifyOtp({ lineUserId: 'U123', otp: '999999' })).rejects.toThrow(
+          'ขอ OTP ใหม่',
+        );
         expect(prisma.$transaction).not.toHaveBeenCalled();
         expect(audit.log).not.toHaveBeenCalled();
       });
@@ -375,9 +381,9 @@ describe('VerificationService', () => {
         prisma.chatbotOtpRequest.findUnique.mockResolvedValue(makeRecord('wrong-hash', 0));
         prisma.chatbotOtpRequest.update.mockResolvedValue({ attempts: 1 });
 
-        await expect(
-          service.verifyOtp({ lineUserId: 'U123', otp: '999999' }),
-        ).rejects.toThrow('ไม่ถูกต้อง');
+        await expect(service.verifyOtp({ lineUserId: 'U123', otp: '999999' })).rejects.toThrow(
+          'ไม่ถูกต้อง',
+        );
         expect(audit.log).not.toHaveBeenCalled();
       });
     });
@@ -429,7 +435,10 @@ describe('VerificationService', () => {
           chatRoom: { updateMany: jest.fn().mockResolvedValue({}) },
           $transaction: jest.fn().mockImplementation((cb) => {
             const tx = {
-              customerLineLink: { upsert: jest.fn().mockResolvedValue({}) },
+              customerLineLink: {
+                upsert: jest.fn().mockResolvedValue({}),
+                findUnique: jest.fn().mockResolvedValue(null),
+              },
               chatRoom: { updateMany: jest.fn().mockResolvedValue({}) },
               customer: {
                 update: jest.fn().mockResolvedValue({}),
@@ -460,7 +469,11 @@ describe('VerificationService', () => {
       });
 
       it('real-verify branch: เรียก absorbRoomsOfLineUser(lineUserId, LINE_FINANCE, customerId, SYSTEM_ACTOR) ก่อน bind() เสมอ', async () => {
-        mergedPrisma.customer.findFirst.mockResolvedValue({ id: 'c1', name: 'สมชาย', phone: '0891234567' });
+        mergedPrisma.customer.findFirst.mockResolvedValue({
+          id: 'c1',
+          name: 'สมชาย',
+          phone: '0891234567',
+        });
         await mergedService.requestOtp({ lineUserId: 'U123', phone: '0891234567' });
         const upsertCall = mergedPrisma.chatbotOtpRequest.upsert.mock.calls[0][0];
         const storedHash = upsertCall.create.hash;
@@ -477,7 +490,10 @@ describe('VerificationService', () => {
         mergedPrisma.$transaction.mockImplementation((cb: (client: unknown) => unknown) => {
           callOrder.push('bind');
           const tx = {
-            customerLineLink: { upsert: jest.fn().mockResolvedValue({}) },
+            customerLineLink: {
+              upsert: jest.fn().mockResolvedValue({}),
+              findUnique: jest.fn().mockResolvedValue(null),
+            },
             chatRoom: { updateMany: jest.fn().mockResolvedValue({}) },
             customer: {
               update: jest.fn().mockResolvedValue({}),
@@ -489,9 +505,10 @@ describe('VerificationService', () => {
 
         await mergedService.verifyOtp({ lineUserId: 'U123', otp });
 
-        expect(merge.absorbRoomsOfLineUser).toHaveBeenCalledWith(
-          'U123', 'LINE_FINANCE', 'c1', { id: 'system', role: 'SYSTEM' },
-        );
+        expect(merge.absorbRoomsOfLineUser).toHaveBeenCalledWith('U123', 'LINE_FINANCE', 'c1', {
+          id: 'system',
+          role: 'SYSTEM',
+        });
         expect(callOrder).toEqual(['absorb', 'bind']); // absorb ก่อน bind() เสมอ ไม่ใช่ทีหลัง
       });
 
@@ -499,14 +516,17 @@ describe('VerificationService', () => {
         mergedTestMode.isEnabled.mockResolvedValue(true);
         mergedPrisma.chatbotOtpRequest.findUnique.mockResolvedValue(makeRecord('wrong-hash'));
         mergedPrisma.customer.findUnique.mockResolvedValue({ id: 'c1', name: 'สมชาย' });
-        merge.absorbRoomsOfLineUser.mockRejectedValue(new Error('รวมไม่ได้: ผู้สนใจคนนี้มีใบจอง 1 รายการ'));
+        merge.absorbRoomsOfLineUser.mockRejectedValue(
+          new Error('รวมไม่ได้: ผู้สนใจคนนี้มีใบจอง 1 รายการ'),
+        );
 
         const result = await mergedService.verifyOtp({ lineUserId: 'U123', otp: '999999' });
 
         expect(result.customerId).toBe('c1');
-        expect(merge.absorbRoomsOfLineUser).toHaveBeenCalledWith(
-          'U123', 'LINE_FINANCE', 'c1', { id: 'system', role: 'SYSTEM' },
-        );
+        expect(merge.absorbRoomsOfLineUser).toHaveBeenCalledWith('U123', 'LINE_FINANCE', 'c1', {
+          id: 'system',
+          role: 'SYSTEM',
+        });
         expect(mergedPrisma.$transaction).toHaveBeenCalled(); // bind() ยังรันต่อแม้ absorb ล้ม
         expect(mergedPrisma.chatbotOtpRequest.delete).toHaveBeenCalled();
       });
@@ -532,7 +552,7 @@ describe('VerificationService', () => {
           customerLineLink: { findUnique: jest.fn().mockResolvedValue(null) },
           $transaction: jest.fn().mockImplementation(async (cb: (client: unknown) => unknown) => {
             const result = await cb({
-              customerLineLink: { upsert },
+              customerLineLink: { upsert, findUnique: jest.fn().mockResolvedValue(null) },
               chatRoom: { updateMany: jest.fn().mockResolvedValue({}) },
               customer: {
                 update: jest.fn().mockResolvedValue({}),
@@ -554,7 +574,10 @@ describe('VerificationService', () => {
             { provide: PrismaService, useValue: jPrisma },
             { provide: NotificationsService, useValue: { sendSmsFromQueue: jest.fn() } },
             // test-mode bypass: ข้ามการเทียบ hash แต่ผ่าน bind() เส้นเดียวกับยืนยันจริง
-            { provide: TestModeService, useValue: { isEnabled: jest.fn().mockResolvedValue(true) } },
+            {
+              provide: TestModeService,
+              useValue: { isEnabled: jest.fn().mockResolvedValue(true) },
+            },
             { provide: AuditService, useValue: { log: jest.fn().mockResolvedValue(undefined) } },
             { provide: JourneyEntryWriter, useValue: journey },
           ],
@@ -625,7 +648,9 @@ describe('VerificationService', () => {
 
       it('transaction ของ bind() ล้ม → ไม่บันทึก และ verifyOtp โยนต่อ', async () => {
         jPrisma.$transaction.mockRejectedValue(new Error('deadlock'));
-        await expect(jService.verifyOtp({ lineUserId: 'U123', otp: '999999' })).rejects.toThrow('deadlock');
+        await expect(jService.verifyOtp({ lineUserId: 'U123', otp: '999999' })).rejects.toThrow(
+          'deadlock',
+        );
         expect(journey.recordAfterCommit).not.toHaveBeenCalled();
       });
     });
@@ -633,7 +658,7 @@ describe('VerificationService', () => {
 
   describe('isLinked', () => {
     it('returns linked=true for active link', async () => {
-      prisma.customerLineLink.findUnique.mockResolvedValue({
+      prisma.customerLineLink.findFirst.mockResolvedValue({
         unlinkedAt: null,
         customer: { id: 'c1', name: 'สมชาย' },
       });
@@ -643,18 +668,25 @@ describe('VerificationService', () => {
       expect(result.customerId).toBe('c1');
     });
 
-    it('returns linked=false for unlinked record', async () => {
-      prisma.customerLineLink.findUnique.mockResolvedValue({
-        unlinkedAt: new Date(),
-        customer: { id: 'c1', name: 'สมชาย' },
-      });
+    // Task 24 fix round 1 M-1 — เกณฑ์เดียวกับ findOtpVerifiedCustomerId: แถวที่ยังผูก (unlinked/deleted ว่าง) ของลูกค้าที่ยังไม่ถูกลบ
+    it('ค้นด้วยเกณฑ์เดียว VERIFIED_FINANCE_LINK_WHERE (แถวยกเลิก/ลบ หรือลูกค้าถูกลบ = ไม่พบ)', async () => {
+      prisma.customerLineLink.findFirst.mockResolvedValue(null);
 
-      const result = await service.isLinked('U123');
-      expect(result.linked).toBe(false);
+      await expect(service.isLinked('U123')).resolves.toEqual({ linked: false });
+      expect(prisma.customerLineLink.findFirst).toHaveBeenCalledWith({
+        where: {
+          lineUserId: 'U123',
+          channel: 'FINANCE',
+          unlinkedAt: null,
+          deletedAt: null,
+          customer: { deletedAt: null },
+        },
+        include: { customer: { select: { id: true, name: true } } },
+      });
     });
 
     it('returns linked=false when no record', async () => {
-      prisma.customerLineLink.findUnique.mockResolvedValue(null);
+      prisma.customerLineLink.findFirst.mockResolvedValue(null);
       const result = await service.isLinked('U123');
       expect(result.linked).toBe(false);
     });
@@ -813,9 +845,9 @@ describe('VerificationService', () => {
       prisma.customer.findFirst.mockResolvedValue(KNOWN);
       prisma.chatbotOtpRequest.findUnique.mockResolvedValue(row({ attempts: 3 }));
 
-      await expect(
-        service.requestOtp({ lineUserId: 'U123', phone: '0891234567' }),
-      ).rejects.toThrow(/ขอรหัสใหม่ได้ในอีก \d+ นาที/);
+      await expect(service.requestOtp({ lineUserId: 'U123', phone: '0891234567' })).rejects.toThrow(
+        /ขอรหัสใหม่ได้ในอีก \d+ นาที/,
+      );
       expect(prisma.chatbotOtpRequest.upsert).not.toHaveBeenCalled();
       expect(notifications.sendSmsFromQueue).not.toHaveBeenCalled();
     });
@@ -1020,8 +1052,7 @@ describe('VerificationService', () => {
       await flushSmsDispatch();
       expect(
         prisma.chatbotOtpRequest.updateMany.mock.calls.some(
-          (c: [{ data: { lastRequestAt?: Date } }]) =>
-            c[0].data.lastRequestAt?.getTime() === 0,
+          (c: [{ data: { lastRequestAt?: Date } }]) => c[0].data.lastRequestAt?.getTime() === 0,
         ),
       ).toBe(true);
     });
@@ -1046,7 +1077,7 @@ describe('VerificationService', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let tPrisma: any;
     let tx: {
-      customerLineLink: { upsert: jest.Mock; update: jest.Mock };
+      customerLineLink: { upsert: jest.Mock; update: jest.Mock; findUnique: jest.Mock };
       chatRoom: { updateMany: jest.Mock };
       customer: { update: jest.Mock; updateMany: jest.Mock };
     };
@@ -1115,7 +1146,12 @@ describe('VerificationService', () => {
           return value;
         });
       tx = {
-        customerLineLink: { upsert: step('link-upsert'), update: step('link-repoint') },
+        customerLineLink: {
+          upsert: step('link-upsert'),
+          update: step('link-repoint'),
+          // bind อ่านแถวของ LINE นี้ในทรานแซกชัน (Task 24 M-8 — ย้ายจากลูกค้าอื่นไหม) — ไม่นับเป็นขั้นใน LINK_SEQUENCE
+          findUnique: jest.fn(async () => rows.byLine),
+        },
         chatRoom: { updateMany: step('rooms') },
         customer: { update: step('line_id_finance'), updateMany: step('clear-others') },
       };
@@ -1260,6 +1296,41 @@ describe('VerificationService', () => {
       });
       expect(journey.recordAfterCommit).toHaveBeenCalledTimes(1);
       expect(richMenu.switchRichMenu).toHaveBeenCalledWith('U123', true, 'finance');
+      // Task 24 M-8 — ห้องการเงินของ LINE เดิมที่ยังค้าง verified ถูกล้างก่อนตั้งห้องของ LINE ใหม่ (ทรานแซกชันเดียวกัน)
+      expect(tx.chatRoom.updateMany).toHaveBeenNthCalledWith(1, {
+        where: {
+          channel: 'LINE_FINANCE',
+          verifiedAt: { not: null },
+          OR: [{ lineUserId: { in: ['U_OLD'] } }],
+        },
+        data: { verifiedAt: null },
+      });
+      expect(tx.chatRoom.updateMany).toHaveBeenNthCalledWith(2, {
+        where: { lineUserId: 'U123', channel: 'LINE_FINANCE' },
+        data: { customerId: 'c1', verifiedAt: expect.any(Date), verificationAttempts: 0 },
+      });
+    });
+
+    it('Task 24 M-8: LINE นี้ย้ายมาจากลูกค้าอื่น → ห้องการเงินของลูกค้าเดิมที่ค้าง verified ถูกล้าง แล้วห้องของ LINE นี้ verified ให้ลูกค้าใหม่', async () => {
+      rows.byLine = { id: 'link-other', customerId: 'c-other', unlinkedAt: null, deletedAt: null };
+      const otp = await requestRealOtp();
+
+      await expect(tService.verifyOtp({ lineUserId: 'U123', otp })).resolves.toMatchObject({
+        customerId: 'c1',
+      });
+
+      expect(tx.chatRoom.updateMany).toHaveBeenNthCalledWith(1, {
+        where: {
+          channel: 'LINE_FINANCE',
+          verifiedAt: { not: null },
+          OR: [{ customerId: { in: ['c-other'] } }],
+        },
+        data: { verifiedAt: null },
+      });
+      expect(tx.chatRoom.updateMany).toHaveBeenNthCalledWith(2, {
+        where: { lineUserId: 'U123', channel: 'LINE_FINANCE' },
+        data: { customerId: 'c1', verifiedAt: expect.any(Date), verificationAttempts: 0 },
+      });
     });
 
     it('ลูกค้ายกเลิกผูก LINE เดิมแล้ว แต่ LINE นี้ก็มีแถวของลูกค้าอื่น → 409 ให้พนักงานดู (รวมสองแถวไม่ได้)', async () => {

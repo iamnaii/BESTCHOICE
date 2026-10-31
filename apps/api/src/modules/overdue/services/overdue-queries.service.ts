@@ -2,6 +2,10 @@ import { NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { PromiseService } from '../promise.service';
+import {
+  FINANCE_LINE_RECIPIENT_SELECT,
+  financeLineRecipient,
+} from '../../line-oa/services/otp-verified-customer';
 
 /**
  * Pure read-side queries for the overdue/collections module.
@@ -280,7 +284,10 @@ export class OverdueQueriesService {
         branch: { select: { id: true, name: true } },
         assignedTo: { select: { id: true, name: true } },
         payments: {
-          where: { status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] }, dueDate: { lt: new Date() } },
+          where: {
+            status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] },
+            dueDate: { lt: new Date() },
+          },
           select: { amountDue: true, amountPaid: true, lateFee: true, dueDate: true },
           orderBy: { dueDate: 'asc' },
           take: 1,
@@ -372,7 +379,10 @@ export class OverdueQueriesService {
             id: true,
             contractNumber: true,
             branchId: true,
-            customer: { select: { id: true, name: true, lineIdFinance: true, phone: true } },
+            // hasLine/withLine = เกณฑ์เดียวกับผู้ส่ง bulkSendLine (แถว OTP ที่ยังผูก) — Task 24 RR-M2
+            customer: {
+              select: { id: true, name: true, phone: true, ...FINANCE_LINE_RECIPIENT_SELECT },
+            },
           },
         },
       },
@@ -380,14 +390,14 @@ export class OverdueQueriesService {
 
     return {
       total: rows.length,
-      withLine: rows.filter((r) => !!r.contract.customer.lineIdFinance).length,
+      withLine: rows.filter((r) => financeLineRecipient(r.contract.customer) !== null).length,
       contractIds: rows.map((r) => r.contractId),
       data: rows.map((r) => ({
         id: r.id,
         contractId: r.contractId,
         contractNumber: r.contract.contractNumber,
         customerName: r.contract.customer.name,
-        hasLine: !!r.contract.customer.lineIdFinance,
+        hasLine: financeLineRecipient(r.contract.customer) !== null,
         createdAt: r.createdAt,
       })),
     };
@@ -397,21 +407,21 @@ export class OverdueQueriesService {
 
   async getCycleDeadline(contractId: string) {
     const active = await this.promiseService.findActivePromise(contractId);
-    const deadline = (active as any)?.cycleDeadline
-      ? (active as any).cycleDeadline
+    const deadline = active?.cycleDeadline
+      ? active.cycleDeadline
       : await this.promiseService.calcCycleDeadline(contractId);
 
-    const activeSlots: Array<{ settlementDate: Date }> = (active as any)?.slots ?? [];
+    const activeSlots: Array<{ settlementDate: Date }> = active?.slots ?? [];
     const slotsPastDue = activeSlots.some((s) => s.settlementDate < new Date());
 
     return {
       cycleDeadline: deadline.toISOString(),
       activePromise: active
         ? {
-            id: (active as any).id,
-            settlementDate: (active as any).settlementDate?.toISOString() ?? null,
-            settlementAmount: Number((active as any).settlementAmount ?? 0),
-            rescheduleCount: (active as any).rescheduleCount ?? 0,
+            id: active.id,
+            settlementDate: active.settlementDate?.toISOString() ?? null,
+            settlementAmount: Number(active.settlementAmount ?? 0),
+            rescheduleCount: active.rescheduleCount ?? 0,
             slotsPastDue,
           }
         : null,
@@ -440,7 +450,9 @@ export class OverdueQueriesService {
       id: p.id,
       installmentNumber: p.installmentNo,
       dueDate: p.dueDate.toISOString(),
-      remainingAmount: Number(new Prisma.Decimal(p.amountDue as Prisma.Decimal).sub(p.amountPaid as Prisma.Decimal)),
+      remainingAmount: Number(
+        new Prisma.Decimal(p.amountDue as Prisma.Decimal).sub(p.amountPaid as Prisma.Decimal),
+      ),
       daysOverdue: Math.max(0, Math.floor((now - p.dueDate.getTime()) / 86_400_000)),
     }));
   }

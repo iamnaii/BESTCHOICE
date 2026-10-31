@@ -21,6 +21,17 @@ export const ACTIVE_FINANCE_LINK_WHERE = {
 } satisfies Prisma.CustomerLineLinkWhereInput;
 
 /**
+ * "LINE นี้ยืนยัน OTP กับลูกค้าที่ยังอยู่" = แถว FINANCE ที่ยังผูก (`ACTIVE_FINANCE_LINK_WHERE`) ของลูกค้าที่ไม่ถูกลบ — **เกณฑ์เดียว**ของ
+ * `findOtpVerifiedCustomerId` · `VerificationService.isLinked` (บอทการเงิน → `linkRoomToCustomer` ตั้ง verified_at) · ห้อง LINE การเงินใหม่
+ * (`ChatRoomService.getOrCreate` · `RoomManagerService.getOrCreateRoom`) — Task 24 fix round 1 M-1/M-2 (เดิม isLinked ไม่ดู deleted_at ·
+ * การสร้างห้องรับแถวทุกสถานะ) · ใช้กับ findUnique ตาม `lineUserId_channel` ได้ (กรองเพิ่มบน unique key)
+ */
+export const VERIFIED_FINANCE_LINK_WHERE = {
+  ...ACTIVE_FINANCE_LINK_WHERE,
+  customer: { deletedAt: null },
+} satisfies Prisma.CustomerLineLinkWhereInput;
+
+/**
  * Task 22 fix round 1 I-1 (ง) — ผู้ส่งข้อความการเงินทาง LINE ใส่ใน `customer: { select }` **แทน `lineIdFinance: true`** แล้วเรียก
  * `financeLineRecipient(customer)` ⇒ ปลายทาง = U-id ของแถว OTP ที่ยังผูกของ**ลูกค้าคนนั้น** (unique ต่อลูกค้า — take 1).
  * คอลัมน์ `customers.line_id_finance` แยกจากแถว OTP ได้ (ค่าที่พนักงาน/นำเข้าเขียนก่อน Task 22 · กู้ลูกค้าที่ถูกลบ) ⇒ ห้ามใช้เป็นปลายทาง
@@ -34,6 +45,18 @@ export function financeLineRecipient(
   customer: { lineLinks?: { lineUserId: string }[] } | null | undefined,
 ): string | null {
   return customer?.lineLinks?.[0]?.lineUserId ?? null;
+}
+
+/**
+ * Task 24 RR-M2 — หน้าจอพนักงานที่เปิด/ปิดปุ่ม "ส่ง LINE" การเงิน (คิวทวงถาม · โหมดโฟกัส · แบนเนอร์นัดครบกำหนด) ใช้**เกณฑ์เดียวกับผู้ส่งจริง**:
+ * เลือก `FINANCE_LINE_RECIPIENT_SELECT` ในลูกค้า แล้วส่งออกผ่านฟังก์ชันนี้ ⇒ `hasVerifiedLine` = มีแถว OTP ที่ยังผูก
+ * (`financeLineRecipient` ไม่ว่าง) · ตัด `lineLinks` ทิ้ง — U-id ของแถวไม่ต้องไปถึงหน้าเว็บ · คอลัมน์ `lineIdFinance` ไม่ใช่เกณฑ์ (กติกาข้อ 9)
+ */
+export function withVerifiedFinanceLine<T extends { lineLinks?: { lineUserId: string }[] }>(
+  customer: T,
+): Omit<T, 'lineLinks'> & { hasVerifiedLine: boolean } {
+  const { lineLinks, ...rest } = customer;
+  return { ...rest, hasVerifiedLine: financeLineRecipient({ lineLinks }) !== null };
 }
 
 /** แบบค้นเอง — สำหรับผู้ส่งที่มีแค่ `customerId` และแก้ select ของแหล่งข้อมูลไม่ได้ (เช่น source ที่ผูก revision เอกสาร) */
@@ -53,7 +76,7 @@ export async function findOtpVerifiedCustomerId(
   lineUserId: string,
 ): Promise<string | null> {
   const link = await prisma.customerLineLink.findFirst({
-    where: { lineUserId, ...ACTIVE_FINANCE_LINK_WHERE, customer: { deletedAt: null } },
+    where: { lineUserId, ...VERIFIED_FINANCE_LINK_WHERE },
     select: { customerId: true },
   });
   return link?.customerId ?? null;

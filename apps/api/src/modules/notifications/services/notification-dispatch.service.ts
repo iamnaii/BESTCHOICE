@@ -311,13 +311,14 @@ export class NotificationDispatchService {
         if (options.customerId) {
           try {
             const channel = tpl.channelKey === 'line-shop' ? 'LINE_SHOP' : 'LINE_FINANCE';
+            // ห้องของผู้รับจริง (`recipient` = LINE ที่ push ถึง) ไม่ใช่ "ห้องล่าสุดของลูกค้า" — ห้องของ LINE ที่ลูกค้ายกเลิกแล้วยังถือ customerId
+            // เดิม (M-8) ⇒ สำเนาจะลงห้องนั้นและพนักงานตอบถึงผู้ถือ LINE เก่า (Task 24 fix round 2 m-2)
             const room = await this.prisma.chatRoom.findFirst({
               where: {
-                customerId: options.customerId,
+                lineUserId: recipient,
                 channel: channel as 'LINE_SHOP' | 'LINE_FINANCE',
                 deletedAt: null,
               },
-              orderBy: { lastMessageAt: 'desc' },
             });
             if (room) {
               await this.prisma.chatMessage.create({

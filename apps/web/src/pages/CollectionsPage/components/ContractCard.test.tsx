@@ -21,7 +21,14 @@ const base: ContractRow = {
   contractNumber: 'BC-2026-0001',
   status: 'OVERDUE',
   dunningStage: 'NOTICE',
-  customer: { id: 'cus-1', name: 'สมชาย ใจดี', phone: '0812345678', lineIdFinance: null, lineIdShop: null },
+  customer: {
+    id: 'cus-1',
+    name: 'สมชาย ใจดี',
+    phone: '0812345678',
+    lineIdFinance: null,
+    lineIdShop: null,
+    hasVerifiedLine: false,
+  },
   branch: { id: 'br-1', name: 'สาขาลาดพร้าว' },
   assignedTo: null,
   outstanding: 5500,
@@ -43,6 +50,34 @@ const base: ContractRow = {
 };
 
 describe('<ContractCard />', () => {
+  // Task 24 RR-M2 — ปุ่ม "ส่ง LINE" เปิดตามแถว OTP ที่ยังผูก (hasVerifiedLine — เกณฑ์เดียวกับผู้ส่ง) ไม่ใช่ค่า LINE ID ในคอลัมน์
+  it('ปุ่มส่ง LINE ปิดเมื่อลูกค้ายังไม่ยืนยัน OTP แม้มีค่า LINE ID ในระบบ', () => {
+    const c: ContractRow = {
+      ...base,
+      customer: { ...base.customer, lineIdFinance: 'U-typed', hasVerifiedLine: false },
+    };
+    render(<ContractCard contract={c} onLogContact={vi.fn()} onSendLine={vi.fn()} />);
+    const btn = screen.getByRole('button', { name: 'ส่ง LINE' });
+    expect(btn).toBeDisabled();
+    expect(btn).toHaveAttribute(
+      'title',
+      'ลูกค้ายังไม่ได้ยืนยัน LINE การเงินด้วย OTP — ส่ง LINE ไม่ได้',
+    );
+  });
+
+  it('ปุ่มส่ง LINE เปิดเมื่อยืนยัน OTP แล้ว แม้คอลัมน์ LINE ID ว่าง', () => {
+    const onSendLine = vi.fn();
+    const c: ContractRow = {
+      ...base,
+      customer: { ...base.customer, lineIdFinance: null, hasVerifiedLine: true },
+    };
+    render(<ContractCard contract={c} onLogContact={vi.fn()} onSendLine={onSendLine} />);
+    const btn = screen.getByRole('button', { name: 'ส่ง LINE' });
+    expect(btn).toBeEnabled();
+    btn.click();
+    expect(onSendLine).toHaveBeenCalledWith(c);
+  });
+
   it('renders the contract number', () => {
     render(<ContractCard contract={base} onLogContact={vi.fn()} />);
     expect(screen.getByText('BC-2026-0001')).toBeInTheDocument();

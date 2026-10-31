@@ -12,6 +12,7 @@ import {
   Res,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import type { LetterStatus, LetterType } from '@prisma/client';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { OverdueService } from './overdue.service';
 import { DunningRuleService } from './dunning-rule.service';
@@ -505,8 +506,11 @@ export class OverdueController {
 
   @Post('bulk/send-line')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
-  bulkSendLine(@Body() dto: BulkSendLineDto, @CurrentUser() user: { id: string }) {
-    return this.bulkService.bulkSendLine(dto, user.id);
+  bulkSendLine(
+    @Body() dto: BulkSendLineDto,
+    @CurrentUser() user: { id: string; role: string; branchId: string | null },
+  ) {
+    return this.bulkService.bulkSendLine(dto, user);
   }
 
   // --- Ad-hoc single contract LINE send ---
@@ -516,16 +520,9 @@ export class OverdueController {
   async sendLineAdhoc(
     @Param('contractId') contractId: string,
     @Body() dto: SendLineAdHocDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string; role: string; branchId: string | null },
   ) {
-    return this.bulkService.bulkSendLine(
-      {
-        contractIds: [contractId],
-        templateId: dto.templateId,
-        customMessage: dto.customMessage,
-      },
-      user.id,
-    );
+    return this.bulkService.sendLineAdhoc(contractId, dto, user);
   }
 
   // --- Contract letters ---
@@ -544,8 +541,8 @@ export class OverdueController {
     @CurrentUser() user?: { role: string; branchId: string | null },
   ) {
     return this.contractLetterService.list({
-      status: status as any,
-      letterType: letterType as any,
+      status: status as LetterStatus | undefined,
+      letterType: letterType as LetterType | undefined,
       branchId,
       from,
       to,
@@ -599,7 +596,7 @@ export class OverdueController {
   ) {
     return this.contractLetterService.getCountsByStatus({
       branchId,
-      letterType: letterType as any,
+      letterType: letterType as LetterType | undefined,
       from,
       to,
       q,

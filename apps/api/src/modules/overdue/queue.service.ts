@@ -11,6 +11,10 @@ import {
 import { seededShuffle } from '../../utils/shuffle.util';
 import { todayQueueWhere } from './today-queue.predicate';
 import { noOpenDeviceReturnWhere } from '../device-returns/device-return.predicate';
+import {
+  FINANCE_LINE_RECIPIENT_SELECT,
+  withVerifiedFinanceLine,
+} from '../line-oa/services/otp-verified-customer';
 
 export type QueueTab = 'today' | 'promise';
 
@@ -22,7 +26,16 @@ const FETCH_CAP = 500;
 // Z2: shape of the contract include used by getQueue → enrichRows. Kept as a
 // const so we can derive a precise Prisma payload type instead of `any`.
 const queueContractInclude = {
-  customer: { select: { id: true, name: true, phone: true, lineIdFinance: true } },
+  // lineIdFinance = แสดงในแผง 360 เท่านั้น · ปุ่มส่ง LINE / ตัวกรอง "ไม่มี LINE" ใช้ hasVerifiedLine จากแถว OTP (Task 24 RR-M2)
+  customer: {
+    select: {
+      id: true,
+      name: true,
+      phone: true,
+      lineIdFinance: true,
+      ...FINANCE_LINE_RECIPIENT_SELECT,
+    },
+  },
   branch: { select: { id: true, name: true } },
   assignedTo: { select: { id: true, name: true } },
   payments: {
@@ -328,7 +341,7 @@ export class OverdueQueueService {
       brokenPromiseCount: number;
       mdmState: MdmState;
       settlementDate: Date | string | null;
-      customer: { lineIdFinance: string | null };
+      customer: { hasVerifiedLine: boolean };
       letterCount: number;
       slipReviewPending: boolean;
       latestLineDeliveryStatus?: string | null;
@@ -438,8 +451,9 @@ export class OverdueQueueService {
     // Backfill caveat: outbound messages sent before the migration land with
     // NULL status — those rows fall through all status filters and remain
     // visible regardless of which filter is active.
+    // NO_LINE = ส่ง LINE การเงินไม่ถึง (ไม่มีแถว OTP ที่ยังผูก) — เกณฑ์เดียวกับปุ่มส่ง/ผู้ส่ง ไม่ใช่คอลัมน์ (Task 24 RR-M2)
     if (f.lineResponse === LineResponseState.NO_LINE) {
-      filtered = filtered.filter((r) => !r.customer.lineIdFinance);
+      filtered = filtered.filter((r) => !r.customer.hasVerifiedLine);
     } else if (f.lineResponse === LineResponseState.RESPONDED) {
       filtered = filtered.filter((r) => r.latestLineDeliveryStatus === 'RESPONDED');
     } else if (f.lineResponse === LineResponseState.IGNORED) {
@@ -861,7 +875,7 @@ export class OverdueQueueService {
       contractNumber: c.contractNumber,
       status: c.status,
       dunningStage: c.dunningStage,
-      customer: c.customer,
+      customer: withVerifiedFinanceLine(c.customer),
       branch: c.branch,
       assignedTo: c.assignedTo,
       outstanding,

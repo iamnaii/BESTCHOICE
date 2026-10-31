@@ -2,6 +2,7 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StaffNotifyService } from '../staff-notify/staff-notify.service';
 import { bangkokDateString } from '../../utils/date.util';
+import { collectionsSessionDay } from './collections-session.service';
 
 interface CollectorSummary {
   name: string;
@@ -21,11 +22,11 @@ export class CollectionsSummaryService {
   ) {}
 
   async sendDailySummary(date: Date): Promise<{ recipients: number; sent: number }> {
-    const dateOnly = startOfDay(date);
+    const dateOnly = collectionsSessionDay(date);
 
     const collectors = await this.prisma.user.findMany({
       where: {
-        role: 'SALES' as any,
+        role: 'SALES',
         deletedAt: null,
       },
       select: { id: true, name: true },
@@ -116,10 +117,4 @@ export class CollectionsSummaryService {
 
     return lines.join('\n');
   }
-}
-
-function startOfDay(d: Date): Date {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
 }

@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { LineChannelType, Prisma } from '@prisma/client';
+import { ChatChannel, LineChannelType, Prisma } from '@prisma/client';
 
 /**
  * Task 22 I3 — พนักงาน/API ตั้ง `customers.line_id_finance` เป็นค่าใหม่ไม่ได้ (การผูก LINE การเงินต้องผ่าน OTP ทาง SMS
@@ -10,6 +10,23 @@ import { LineChannelType, Prisma } from '@prisma/client';
  */
 export const LINE_FINANCE_LINK_REQUIRES_OTP_MESSAGE =
   'การผูก LINE การเงินต้องให้ลูกค้ายืนยันเบอร์ด้วย OTP เอง — ให้ลูกค้าส่งข้อความใดก็ได้ในแชท LINE การเงิน แล้วกดปุ่ม "เริ่มยืนยันตัวตน" (กรอกเบอร์ + รหัส OTP ทาง SMS)';
+
+/**
+ * Task 24 RR-M2 — ส่งข้อความ LINE การเงินให้ลูกค้าที่ไม่มีแถว OTP ที่ยังผูกไม่ได้ (ปลายทาง = แถว OTP เท่านั้น — กติกาข้อ 9 ของ security.md)
+ * ⇒ บอกพนักงานตรง ๆ ว่าลูกค้ายังไม่ยืนยัน (ค่า LINE ID ที่หน้าลูกค้าแสดงอาจเป็นค่าที่พนักงาน/นำเข้าเขียนไว้ — ใช้ส่งไม่ได้) และชี้ทางที่มีจริง
+ * ทางเดียวกับ `LINE_FINANCE_LINK_REQUIRES_OTP_MESSAGE` (ตรวจ 2026-10-31: `ChatbotFinanceService.handleMessage` ตอบการ์ดยืนยันให้ LINE ที่ยังไม่ผูก
+ * ทุกข้อความ ปุ่ม "เริ่มยืนยันตัวตน" · ไม่มีปุ่มฝั่งพนักงานส่งลิงก์ยืนยัน)
+ */
+export const LINE_FINANCE_NOT_VERIFIED_MESSAGE =
+  'ส่ง LINE ไม่ได้ — ลูกค้ารายนี้ยังไม่ได้ยืนยัน LINE การเงินด้วย OTP (LINE ID ที่บันทึกไว้ในระบบใช้ส่งข้อความไม่ได้จนกว่าลูกค้าจะยืนยัน) · ให้ลูกค้าส่งข้อความใดก็ได้ในแชท LINE การเงิน แล้วกดปุ่ม "เริ่มยืนยันตัวตน" (กรอกเบอร์ + รหัส OTP ทาง SMS) — ระบบไม่มีปุ่มให้พนักงานส่งลิงก์ยืนยันแทน';
+
+/**
+ * Task 24 fix round 1 I-1 — แผง 360 ("แชท LINE") ส่งได้เฉพาะห้อง LINE การเงินของแถว OTP ที่ยังผูก · ห้อง LINE ร้านยังไม่มีการยืนยันตัวตน
+ * ด้วย OTP (OA ร้านยังไม่เชื่อม prod · `line_id_shop` พนักงาน/บอทขายเขียนได้) ⇒ ไม่ส่งทาง LINE ร้านจากแผงนี้ · ทางของลูกค้าเหมือน
+ * `LINE_FINANCE_NOT_VERIFIED_MESSAGE` (ไม่ชี้หน้ากล่องข้อความรวม — ACCOUNTANT เปิดแผงนี้ได้แต่เข้า `/inbox` ไม่ได้)
+ */
+export const LINE_SHOP_STAFF_SEND_DISABLED_MESSAGE =
+  'ส่งไม่ได้ — แผงนี้ส่งได้เฉพาะ LINE การเงินของลูกค้าที่ยืนยัน OTP แล้ว (แชทที่เห็นเป็นของ LINE ร้าน ซึ่งยังไม่มีการยืนยันตัวตน จึงไม่ส่งทาง LINE ร้านจากที่นี่) · ลูกค้ารายนี้ยังไม่ได้ยืนยัน LINE การเงิน — ให้ลูกค้าส่งข้อความใดก็ได้ในแชท LINE การเงิน แล้วกดปุ่ม "เริ่มยืนยันตัวตน" (กรอกเบอร์ + รหัส OTP ทาง SMS)';
 
 /**
  * ตัดสินค่า LINE การเงินที่พนักงาน/API ส่งมา (ฟอร์มลูกค้า · skip-tracing) เทียบกับค่าปัจจุบันของลูกค้า:
@@ -31,6 +48,31 @@ export function staffLineFinanceChange(
   throw new BadRequestException({
     message: LINE_FINANCE_LINK_REQUIRES_OTP_MESSAGE,
     field: 'lineIdFinance',
+  });
+}
+
+/**
+ * Task 24 (Task 22 review M-8) — `chat_rooms.verified_at` ของห้อง LINE การเงิน = "ห้องของลูกค้าที่ยืนยัน OTP แล้ว" (ด่าน `verifiedOnly` ของแม่แบบ
+ * ข้อความ — `CannedResponseSenderService.send`). ผู้ตั้งค่า (ทั้งหมดต้องมีแถว OTP ที่ยังผูก): `VerificationService.bind` (ห้องของ LINE ที่เพิ่งผูก) ·
+ * `ChatRoomService.linkRoomToCustomer` (บอทการเงินหลัง `isLinked`) · สร้างห้องการเงินใหม่ของ LINE ที่มีแถวยังผูก (`ChatRoomService.getOrCreate` ·
+ * cron `overdue-chat` ส่งลูกค้าจากแถวที่ยังผูกเข้า `RoomManagerService.getOrCreateRoom`). ฝั่งกลับ = helper นี้ตัวเดียว เรียกในทรานแซกชันเดียวกับการปิด/ย้ายแถว:
+ * ล้างห้อง LINE การเงินของ LINE ที่หลุด (`lineUserIds`) และของลูกค้าที่ไม่เหลือ LINE ที่ยืนยันแล้ว (`customerIds` — ลูกค้ามีแถว FINANCE ได้แถวเดียว
+ * ⇒ ห้องการเงินของเขาที่ยัง verified ทุกห้องเป็นค่าค้าง รวมห้องของ LINE เก่าที่ยกเลิกไปก่อนแก้ข้อนี้) · ไม่แตะ `customerId` ของห้อง (ประวัติแชทคงเดิม)
+ */
+export async function clearFinanceRoomVerification(
+  tx: Prisma.TransactionClient,
+  lost: { lineUserIds?: readonly string[]; customerIds?: readonly string[] },
+): Promise<void> {
+  const lineUserIds = [...new Set((lost.lineUserIds ?? []).filter(Boolean))];
+  const customerIds = [...new Set((lost.customerIds ?? []).filter(Boolean))];
+  const scope: Prisma.ChatRoomWhereInput[] = [];
+  if (lineUserIds.length > 0) scope.push({ lineUserId: { in: lineUserIds } });
+  if (customerIds.length > 0) scope.push({ customerId: { in: customerIds } });
+  if (scope.length === 0) return;
+  // ไม่กรอง deletedAt โดยตั้งใจ — เป็นการล้างค่า ไม่ใช่การอ่าน
+  await tx.chatRoom.updateMany({
+    where: { channel: ChatChannel.LINE_FINANCE, verifiedAt: { not: null }, OR: scope },
+    data: { verifiedAt: null },
   });
 }
 
@@ -57,6 +99,11 @@ export async function unlinkFinanceLine(
   unlinkedAt: Date = new Date(),
 ): Promise<void> {
   if ('lineUserId' in target) {
+    // ลูกค้าที่ถือแถวของ LINE นี้อยู่ (unique ต่อ LINE — ไม่เกินหนึ่งคน) — ปิดแถวแล้วเขาไม่เหลือ LINE ที่ยืนยัน (M-8)
+    const holders = await tx.customerLineLink.findMany({
+      where: { lineUserId: target.lineUserId, channel: LineChannelType.FINANCE, unlinkedAt: null },
+      select: { customerId: true },
+    });
     // ไม่กรอง deletedAt โดยตั้งใจ — เป็นการล้างค่า ไม่ใช่การอ่าน
     await tx.customer.updateMany({
       where: { lineIdFinance: target.lineUserId },
@@ -66,8 +113,17 @@ export async function unlinkFinanceLine(
       where: { lineUserId: target.lineUserId, channel: LineChannelType.FINANCE, unlinkedAt: null },
       data: { unlinkedAt },
     });
+    await clearFinanceRoomVerification(tx, {
+      lineUserIds: [target.lineUserId],
+      customerIds: holders.map((h) => h.customerId),
+    });
     return;
   }
+  // LINE ของแถวที่กำลังปิด (M-8) — ห้องของ LINE นั้นอาจผูกลูกค้าอื่นไว้ (พนักงานผูกห้องเอง) ก็ถือว่าไม่ยืนยันแล้ว
+  const closing = await tx.customerLineLink.findMany({
+    where: { customerId: target.customerId, channel: LineChannelType.FINANCE, unlinkedAt: null },
+    select: { lineUserId: true },
+  });
   await tx.customer.update({
     where: { id: target.customerId },
     data: { lineIdFinance: null },
@@ -75,5 +131,9 @@ export async function unlinkFinanceLine(
   await tx.customerLineLink.updateMany({
     where: { customerId: target.customerId, channel: LineChannelType.FINANCE, unlinkedAt: null },
     data: { unlinkedAt },
+  });
+  await clearFinanceRoomVerification(tx, {
+    lineUserIds: closing.map((r) => r.lineUserId),
+    customerIds: [target.customerId],
   });
 }

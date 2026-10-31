@@ -38,7 +38,6 @@ function severityPanel(daysOverdue: number): { bg: string; fg: string; label: st
 
 export default function FocusContractCard({
   assignment,
-  onCallEnded,
   onLogContact,
   onSendLine,
   onSkip,
@@ -58,9 +57,7 @@ export default function FocusContractCard({
             {c.daysOverdue}
           </span>
           <span className="text-base font-semibold leading-snug opacity-95">วัน</span>
-          <span className="text-sm leading-snug opacity-80 hidden sm:inline">
-            — {sev.label}
-          </span>
+          <span className="text-sm leading-snug opacity-80 hidden sm:inline">— {sev.label}</span>
         </div>
         {assignment.escalationFlag && (
           <span className="inline-flex items-center gap-1.5 text-sm font-medium leading-snug">
@@ -147,7 +144,7 @@ export default function FocusContractCard({
           <Button
             variant="outline"
             className="h-16 text-base font-semibold gap-2"
-            disabled={!c.customer.lineIdFinance}
+            disabled={!c.customer.hasVerifiedLine}
             onClick={onSendLine}
             data-line-button
           >

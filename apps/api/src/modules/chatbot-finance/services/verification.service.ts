@@ -21,6 +21,8 @@ import { CustomerMergeService, SYSTEM_ACTOR } from '../../chat-prospects/custome
 import { JourneyEntryWriter } from '../../customer-journey/journey-entry-writer.service';
 import { lineLinkedEntry } from '../../customer-journey/chat-identity-entries';
 import { RichMenuService } from '../../line-oa/rich-menu/rich-menu.service';
+import { clearFinanceRoomVerification } from '../../line-oa/services/finance-line-link';
+import { VERIFIED_FINANCE_LINK_WHERE } from '../../line-oa/services/otp-verified-customer';
 
 const OTP_TTL_MS = 5 * 60 * 1000; // 5 นาที
 const OTP_MAX_ATTEMPTS = 3;
@@ -89,7 +91,9 @@ export const LINE_LINK_NEEDS_STAFF_MESSAGE =
   'ผูกบัญชีไม่สำเร็จ — บัญชี LINE นี้เคยผูกกับลูกค้ารายอื่นไว้ กรุณาติดต่อสาขา 063-134-6356';
 
 /** วิธีเขียนแถว customer_line_links ที่ตัดสินก่อนเริ่มผูก (ดู planLink) */
-type LinkPlan = { kind: 'upsert-by-line' } | { kind: 'repoint-customer-row'; rowId: string };
+type LinkPlan =
+  | { kind: 'upsert-by-line' }
+  | { kind: 'repoint-customer-row'; rowId: string; previousLineUserId: string };
 
 /**
  * Verification — DB-backed OTP store (works across multiple instances)
@@ -449,15 +453,14 @@ export class VerificationService {
   async isLinked(
     lineUserId: string,
   ): Promise<{ linked: boolean; customerId?: string; customerName?: string }> {
-    const link = await this.prisma.customerLineLink.findUnique({
-      where: {
-        lineUserId_channel: { lineUserId, channel: LineChannelType.FINANCE },
-      },
+    // เกณฑ์เดียวกับ findOtpVerifiedCustomerId / ห้องการเงินใหม่ (Task 24 fix round 1 M-1 — เดิมไม่ดู deleted_at ของแถวและลูกค้า)
+    const link = await this.prisma.customerLineLink.findFirst({
+      where: { lineUserId, ...VERIFIED_FINANCE_LINK_WHERE },
       include: {
         customer: { select: { id: true, name: true } },
       },
     });
-    if (!link || link.unlinkedAt) return { linked: false };
+    if (!link) return { linked: false };
     return {
       linked: true,
       customerId: link.customer.id,
@@ -533,7 +536,11 @@ export class VerificationService {
       select: { id: true },
     });
     if (lineRow) throw new ConflictException(LINE_LINK_NEEDS_STAFF_MESSAGE);
-    return { kind: 'repoint-customer-row', rowId: customerRow.id };
+    return {
+      kind: 'repoint-customer-row',
+      rowId: customerRow.id,
+      previousLineUserId: customerRow.lineUserId,
+    };
   }
 
   /** หา RichMenuService ของ LineOaModule ตอนใช้ — ไม่มี (spec ที่ new เอง / โมดูลถูกแยก) = null */
@@ -601,6 +608,19 @@ export class VerificationService {
       previous.deletedAt !== null;
     const linkedAt = new Date();
     await this.prisma.$transaction(async (tx) => {
+      // Task 24 M-8 — ห้องที่ verified ค้างเมื่อ LINE หลุดจากลูกค้า (helper เดียวกับยกเลิกผูก · ก่อนตั้งห้องของ LINE นี้ด้านล่าง):
+      // ชี้แถวของลูกค้าไป LINE ใหม่ → LINE เดิมไม่ยืนยันแล้ว · ย้ายแถวของ LINE นี้มาจากลูกค้าอื่น → ลูกค้าเดิมไม่เหลือ LINE ที่ยืนยัน
+      const lineRow =
+        plan.kind === 'upsert-by-line'
+          ? await tx.customerLineLink.findUnique({
+              where: { lineUserId_channel: { lineUserId, channel: LineChannelType.FINANCE } },
+              select: { customerId: true },
+            })
+          : null;
+      await clearFinanceRoomVerification(tx, {
+        lineUserIds: plan.kind === 'repoint-customer-row' ? [plan.previousLineUserId] : [],
+        customerIds: lineRow && lineRow.customerId !== customerId ? [lineRow.customerId] : [],
+      });
       if (plan.kind === 'repoint-customer-row') {
         await tx.customerLineLink.update({
           where: { id: plan.rowId },

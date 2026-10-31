@@ -246,7 +246,9 @@ describe('CannedResponseSenderService', () => {
       tpl.replace(/\{(\w+)\}/g, (_: string, key: string) => VALUES[key] ?? '-'),
     );
 
-    prisma.chatRoom.findFirst.mockResolvedValue(baseRoom);
+    // ห้อง LINE การเงินที่ LINE ของห้องยืนยัน OTP กับลูกค้าของห้อง (Task 24 round 3 — พนักงานกดในห้องการเงินต้องผ่านเกณฑ์นี้)
+    prisma.chatRoom.findFirst.mockResolvedValue({ ...baseRoom, lineUserId: 'U123' });
+    prisma.customerLineLink.findFirst.mockResolvedValue({ customerId: 'cust-1' });
     prisma.cannedResponse.findFirst.mockResolvedValue({
       id: 'tpl-1',
       verifiedOnly: false,
@@ -479,12 +481,37 @@ describe('CannedResponseSenderService', () => {
       expect(sentText()).toBe(NEUTRAL);
     });
 
-    it('พนักงานกดส่งเอง (staffId มีค่า) → ใช้ลูกค้าของห้องตามเดิม (พนักงานเห็นห้องและตัดสินเอง)', async () => {
+    it('พนักงานกดส่งเองในห้อง LINE ร้าน (staffId มีค่า) → ใช้ลูกค้าของห้องตามเดิม (พนักงานเห็นห้องและตัดสินเอง)', async () => {
       prisma.chatRoom.findFirst.mockResolvedValue(shopRoom);
 
       await service.send('room-1', 'tpl-1', 'staff-1');
 
       expect(prisma.customerLineLink.findFirst).not.toHaveBeenCalled();
+      expect(sentText()).toBe(
+        'คุณสมชาย 0812345678 สัญญา CTR-001 ยอด 1,234.56 งวด 3 15/05/2569 สาขา ลาดพร้าว',
+      );
+    });
+
+    /**
+     * Task 24 round 3 (m-R2-1 ทางเลือก ข) — ห้อง LINE การเงินของ LINE ที่ลูกค้ายกเลิกผูกแล้วยังถือ customerId เดิม ⇒ พนักงานกดข้อความสำเร็จรูป
+     * ในห้อง LINE_FINANCE ก็ต้องผ่าน otpVerifiedRoomCustomerId (กติกาเดียวกับ I-C) — ไม่ผ่าน = คำกลาง
+     */
+    it('พนักงานกดในห้อง LINE การเงินที่ LINE ไม่ได้ยืนยัน OTP กับลูกค้าของห้อง (เช่น LINE ที่ยกเลิกผูกแล้ว) → คำกลาง', async () => {
+      prisma.chatRoom.findFirst.mockResolvedValue({ ...shopRoom, channel: 'LINE_FINANCE' });
+      prisma.customerLineLink.findFirst.mockResolvedValue(null);
+
+      await service.send('room-1', 'tpl-1', 'staff-1');
+
+      expect(prisma.customerLineLink.findFirst).toHaveBeenCalled();
+      expect(sentText()).toBe(NEUTRAL);
+    });
+
+    it('พนักงานกดในห้อง LINE การเงินที่ยืนยัน OTP กับลูกค้าของห้อง → เติมตัวแปรลูกค้า', async () => {
+      prisma.chatRoom.findFirst.mockResolvedValue({ ...shopRoom, channel: 'LINE_FINANCE' });
+      prisma.customerLineLink.findFirst.mockResolvedValue({ customerId: 'cust-1' });
+
+      await service.send('room-1', 'tpl-1', 'staff-1');
+
       expect(sentText()).toBe(
         'คุณสมชาย 0812345678 สัญญา CTR-001 ยอด 1,234.56 งวด 3 15/05/2569 สาขา ลาดพร้าว',
       );

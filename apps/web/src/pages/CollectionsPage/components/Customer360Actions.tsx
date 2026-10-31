@@ -44,9 +44,13 @@ export default function Customer360Actions({ contract, onSendLine }: Props) {
 
         <button
           onClick={onSendLine}
-          disabled={!contract.customer.lineIdFinance || !onSendLine}
+          disabled={!contract.customer.hasVerifiedLine || !onSendLine}
           className="flex flex-col items-center gap-1.5 py-3 rounded-lg border border-input hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          title={!contract.customer.lineIdFinance ? 'ลูกค้าไม่มี LINE ID (Finance OA)' : undefined}
+          title={
+            !contract.customer.hasVerifiedLine
+              ? 'ลูกค้ายังไม่ได้ยืนยัน LINE การเงินด้วย OTP — ส่ง LINE ไม่ได้'
+              : undefined
+          }
         >
           <MessageSquare className="size-5" />
           <span className="text-xs font-medium leading-snug">ส่ง LINE</span>

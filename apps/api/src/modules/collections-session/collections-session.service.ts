@@ -1,5 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import type { DailyAssignment } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  FINANCE_LINE_RECIPIENT_SELECT,
+  financeLineRecipient,
+  withVerifiedFinanceLine,
+} from '../line-oa/services/otp-verified-customer';
 import { ActionDto } from './dto/action.dto';
 import { SkipDto } from './dto/skip.dto';
 
@@ -10,7 +16,7 @@ export class CollectionsSessionService {
   constructor(private prisma: PrismaService) {}
 
   async getMySession(userId: string) {
-    const today = startOfDay(new Date());
+    const today = collectionsSessionDay();
 
     const assignments = await this.prisma.dailyAssignment.findMany({
       where: {
@@ -21,16 +27,22 @@ export class CollectionsSessionService {
       include: {
         contract: {
           include: {
-            customer: { select: { id: true, name: true, phone: true, lineIdFinance: true } },
+            // lineIdFinance = แสดงในแผง 360 เท่านั้น · ปุ่มส่ง LINE / ตัวนับ LINE ใช้แถว OTP (Task 24 RR-M2)
+            customer: {
+              select: {
+                id: true,
+                name: true,
+                phone: true,
+                lineIdFinance: true,
+                ...FINANCE_LINE_RECIPIENT_SELECT,
+              },
+            },
             branch: { select: { id: true, name: true } },
             assignedTo: { select: { id: true, name: true } },
           },
         },
       },
-      orderBy: [
-        { escalationFlag: 'desc' },
-        { position: 'asc' },
-      ],
+      orderBy: [{ escalationFlag: 'desc' }, { position: 'asc' }],
     });
 
     const pending = assignments.filter((a) => a.status === 'PENDING' || a.status === 'IN_PROGRESS');
@@ -55,19 +67,19 @@ export class CollectionsSessionService {
       const ago = daysOverdueMap.get(a.contractId) ?? 0;
       const bgo = daysOverdueMap.get(b.contractId) ?? 0;
       if (ago !== bgo) return bgo - ago;
-      const aHasPhone = !!(a.contract as any).customer?.phone;
-      const bHasPhone = !!(b.contract as any).customer?.phone;
+      const aHasPhone = !!a.contract.customer?.phone;
+      const bHasPhone = !!b.contract.customer?.phone;
       if (aHasPhone !== bHasPhone) return aHasPhone ? -1 : 1;
       return a.position - b.position;
     });
 
-    const callsCount = pending.filter((a) => !!(a.contract as any).customer?.phone).length;
+    const callsCount = pending.filter((a) => !!a.contract.customer?.phone).length;
+    // ติดต่อได้ทาง LINE อย่างเดียว (ไม่มีเบอร์) — LINE = แถว OTP ที่ยังผูก เกณฑ์เดียวกับผู้ส่ง (Task 24 RR-M2)
     const lineCount = pending.filter(
-      (a) => !!(a.contract as any).customer?.lineIdFinance && !(a.contract as any).customer?.phone,
+      (a) => financeLineRecipient(a.contract.customer) !== null && !a.contract.customer?.phone,
     ).length;
 
-    const summary =
-      pending.length === 0 && done.length > 0 ? this.buildSummary(done) : undefined;
+    const summary = pending.length === 0 && done.length > 0 ? this.buildSummary(done) : undefined;
 
     // Attach daysOverdue to each pending row so the frontend can render
     // severity panels without a second query.
@@ -75,6 +87,7 @@ export class CollectionsSessionService {
       ...a,
       contract: {
         ...a.contract,
+        customer: withVerifiedFinanceLine(a.contract.customer),
         daysOverdue: daysOverdueMap.get(a.contractId) ?? 0,
       },
     }));
@@ -100,7 +113,7 @@ export class CollectionsSessionService {
   }
 
   async startSession(userId: string) {
-    const today = startOfDay(new Date());
+    const today = collectionsSessionDay();
     await this.prisma.dailyAssignment.updateMany({
       where: { date: today, collectorId: userId, status: 'PENDING', startedAt: null },
       data: { startedAt: new Date() },
@@ -180,7 +193,9 @@ export class CollectionsSessionService {
     return { nextContractId: next?.contractId ?? null };
   }
 
-  private buildSummary(done: any[]) {
+  private buildSummary(
+    done: Pick<DailyAssignment, 'outcome' | 'status' | 'startedAt' | 'completedAt'>[],
+  ) {
     const callsConnected = done.filter((a) => a.outcome === 'CALL_CONNECTED').length;
     const callsNoAnswer = done.filter((a) => a.outcome === 'CALL_NO_ANSWER').length;
     const lineSent = done.filter((a) => a.outcome === 'LINE_SENT').length;
@@ -207,6 +222,14 @@ export class CollectionsSessionService {
       elapsedMinutes,
     };
   }
+}
+
+/**
+ * "วันนี้" ของงานติดตามหนี้รายวัน (`DailyAssignment.date` — โหมดโฟกัส `getMySession`) — ใช้ร่วมกับด่านส่ง LINE ของคิวทวงถาม
+ * (`OverdueBulkService` — Task 24 fix round 2 I-R1: ผู้ทวงส่ง LINE ถึงสัญญาที่ได้รับมอบหมายวันนี้ได้แม้อยู่ต่างสาขา) ⇒ นิยามเดียว ห้ามคิดใหม่ที่อื่น
+ */
+export function collectionsSessionDay(now: Date = new Date()): Date {
+  return startOfDay(now);
 }
 
 function startOfDay(d: Date): Date {

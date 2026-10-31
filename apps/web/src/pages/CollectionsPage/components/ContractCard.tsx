@@ -108,9 +108,7 @@ export default function ContractCard({
       {/* Severity panel — full-height colored block with day count */}
       <div className={`w-16 shrink-0 flex flex-col ${panelBg} ${panelFg}`}>
         <div className="flex-1 flex flex-col items-center justify-center gap-0.5 py-4">
-          <div className="text-3xl font-bold tabular-nums leading-none">
-            {contract.daysOverdue}
-          </div>
+          <div className="text-3xl font-bold tabular-nums leading-none">{contract.daysOverdue}</div>
           <div className="text-xs font-medium leading-snug" style={{ opacity: 0.85 }}>
             วัน
           </div>
@@ -272,7 +270,8 @@ export default function ContractCard({
           {/* Skip tracing */}
           {contract.needsSkipTracing &&
             (onSkipTrace ? (
-              <button data-ui-control="button"
+              <button
+                data-ui-control="button"
                 onClick={() => onSkipTrace(contract)}
                 className="inline-flex items-center gap-1 rounded-full bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary border border-border text-xs font-medium px-2.5 py-1 leading-snug transition-colors"
                 title="เปิดวิซาร์ดหาเบอร์ใหม่"
@@ -331,7 +330,9 @@ export default function ContractCard({
               size="icon"
               variant="outline"
             />
-            <button data-ui-control="button" data-ui-icon="true"
+            <button
+              data-ui-control="button"
+              data-ui-icon="true"
               onClick={() => onLogContact(contract)}
               className="rounded-lg border border-input p-2 hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
               title="บันทึกผลการโทร"
@@ -339,17 +340,25 @@ export default function ContractCard({
             >
               <NotebookPen className="size-4" />
             </button>
-            <button data-ui-control="button" data-ui-icon="true"
+            <button
+              data-ui-control="button"
+              data-ui-icon="true"
               onClick={() => onSendLine?.(contract)}
-              disabled={!contract.customer.lineIdFinance}
+              disabled={!contract.customer.hasVerifiedLine}
               className="rounded-lg border border-input p-2 hover:bg-accent text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
-              title={contract.customer.lineIdFinance ? 'ส่ง LINE (Finance OA)' : 'ลูกค้าไม่มี LINE ID (Finance OA)'}
+              title={
+                contract.customer.hasVerifiedLine
+                  ? 'ส่ง LINE (Finance OA)'
+                  : 'ลูกค้ายังไม่ได้ยืนยัน LINE การเงินด้วย OTP — ส่ง LINE ไม่ได้'
+              }
               aria-label="ส่ง LINE"
             >
               <MessageSquare className="size-4" />
             </button>
             {onOpen360 && (
-              <button data-ui-control="button" data-ui-icon="true"
+              <button
+                data-ui-control="button"
+                data-ui-icon="true"
                 onClick={() => onOpen360(contract)}
                 className="rounded-lg border border-input p-2 hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
                 title="เปิด ข้อมูลลูกค้ารอบด้าน"
@@ -361,7 +370,9 @@ export default function ContractCard({
             {(onSnooze || onUnsnooze || onPartialPaymentReschedule) && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button data-ui-control="button" data-ui-icon="true"
+                  <button
+                    data-ui-control="button"
+                    data-ui-icon="true"
                     className="rounded-lg border border-input p-2 hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
                     title="เพิ่มเติม"
                     aria-label="เพิ่มเติม"

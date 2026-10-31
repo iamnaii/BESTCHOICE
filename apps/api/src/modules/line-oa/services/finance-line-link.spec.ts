@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import {
+  clearFinanceRoomVerification,
   LINE_FINANCE_LINK_REQUIRES_OTP_MESSAGE,
   staffLineFinanceChange,
   unlinkFinanceLine,
@@ -51,7 +52,8 @@ describe('unlinkFinanceLine', () => {
   const at = new Date('2026-11-01T03:00:00Z');
   let tx: {
     customer: { update: jest.Mock; updateMany: jest.Mock };
-    customerLineLink: { updateMany: jest.Mock };
+    customerLineLink: { updateMany: jest.Mock; findMany: jest.Mock };
+    chatRoom: { updateMany: jest.Mock };
   };
   beforeEach(() => {
     tx = {
@@ -59,7 +61,11 @@ describe('unlinkFinanceLine', () => {
         update: jest.fn().mockResolvedValue({}),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
-      customerLineLink: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      customerLineLink: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      chatRoom: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
     };
   });
 
@@ -87,5 +93,57 @@ describe('unlinkFinanceLine', () => {
       data: { unlinkedAt: at },
     });
     expect(tx.customer.updateMany).not.toHaveBeenCalled();
+  });
+
+  // Task 24 M-8 — ห้อง LINE การเงินที่ verified ค้างหลังยกเลิกผูก ⇒ แม่แบบ verifiedOnly ยังส่งได้
+  it('ตาม LINE (LIFF): ล้าง verified_at ของห้องการเงินของ LINE นี้ + ของลูกค้าที่ถือแถวของ LINE นี้ (ในทรานแซกชันเดียวกัน)', async () => {
+    tx.customerLineLink.findMany.mockResolvedValue([{ customerId: 'c1' }]);
+    await unlinkFinanceLine(tx as never, { lineUserId: 'U1' }, at);
+    expect(tx.customerLineLink.findMany).toHaveBeenCalledWith({
+      where: { lineUserId: 'U1', channel: 'FINANCE', unlinkedAt: null },
+      select: { customerId: true },
+    });
+    expect(tx.chatRoom.updateMany).toHaveBeenCalledWith({
+      where: {
+        channel: 'LINE_FINANCE',
+        verifiedAt: { not: null },
+        OR: [{ lineUserId: { in: ['U1'] } }, { customerId: { in: ['c1'] } }],
+      },
+      data: { verifiedAt: null },
+    });
+  });
+
+  it('ตามลูกค้า (พนักงาน): ล้าง verified_at ของห้องการเงินของ LINE ในแถวที่ปิด + ห้องการเงินของลูกค้าคนนี้', async () => {
+    tx.customerLineLink.findMany.mockResolvedValue([{ lineUserId: 'U9' }]);
+    await unlinkFinanceLine(tx as never, { customerId: 'c1' }, at);
+    expect(tx.customerLineLink.findMany).toHaveBeenCalledWith({
+      where: { customerId: 'c1', channel: 'FINANCE', unlinkedAt: null },
+      select: { lineUserId: true },
+    });
+    expect(tx.chatRoom.updateMany).toHaveBeenCalledWith({
+      where: {
+        channel: 'LINE_FINANCE',
+        verifiedAt: { not: null },
+        OR: [{ lineUserId: { in: ['U9'] } }, { customerId: { in: ['c1'] } }],
+      },
+      data: { verifiedAt: null },
+    });
+  });
+});
+
+describe('clearFinanceRoomVerification', () => {
+  it('ไม่มี LINE/ลูกค้าที่หลุด → ไม่แตะห้อง · ค่าซ้ำ/ว่างถูกตัด', async () => {
+    const tx = { chatRoom: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) } };
+    await clearFinanceRoomVerification(tx as never, { lineUserIds: [''], customerIds: [] });
+    expect(tx.chatRoom.updateMany).not.toHaveBeenCalled();
+    await clearFinanceRoomVerification(tx as never, { lineUserIds: ['U1', 'U1'] });
+    expect(tx.chatRoom.updateMany).toHaveBeenCalledWith({
+      where: {
+        channel: 'LINE_FINANCE',
+        verifiedAt: { not: null },
+        OR: [{ lineUserId: { in: ['U1'] } }],
+      },
+      data: { verifiedAt: null },
+    });
   });
 });

@@ -11,6 +11,7 @@ import {
   PLACEHOLDER_FIELDS_SELECT,
   isLivePlaceholder,
 } from '../../chat-prospects/chat-placeholder';
+import { VERIFIED_FINANCE_LINK_WHERE } from '../../line-oa/services/otp-verified-customer';
 
 /**
  * จัดการ ChatRoom + ChatMessage สำหรับ Finance Bot
@@ -57,13 +58,15 @@ export class ChatRoomService {
       return existing;
     }
 
-    // ลองหา customer ที่ link ไว้แล้วผ่าน CustomerLineLink
+    // ลองหา customer ที่ link ไว้แล้วผ่าน CustomerLineLink — เฉพาะแถวที่ยังผูกของลูกค้าที่ยังอยู่ (Task 24 M-8: แถวที่ยกเลิก/ลบแล้วไม่ทำให้ห้อง
+    // verified · สมมาตรกับ unlinkFinanceLine ที่ล้าง verified_at) · เกณฑ์เดียว VERIFIED_FINANCE_LINK_WHERE (= isLinked / findOtpVerifiedCustomerId)
     const link = await this.prisma.customerLineLink.findUnique({
       where: {
         lineUserId_channel: {
           lineUserId,
           channel: 'FINANCE',
         },
+        ...VERIFIED_FINANCE_LINK_WHERE,
       },
     });
 

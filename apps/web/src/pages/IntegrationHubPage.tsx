@@ -693,7 +693,9 @@ export default function IntegrationHubPage() {
     queryKey: ['integrations'],
     queryFn: async () => {
       const res = await api.get<RawIntegration[] | { data?: RawIntegration[] }>('/integrations');
-      const items = Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
+      const items = Array.isArray(res.data) ? res.data : res.data?.data;
+      // Unknown shape = query error, so QueryBoundary shows its error + retry — never an empty grid.
+      if (!Array.isArray(items)) throw new Error('Unexpected GET /integrations response shape');
       return items.map((i) => ({
         ...i,
         configured: i.configured ?? i.status === 'connected',

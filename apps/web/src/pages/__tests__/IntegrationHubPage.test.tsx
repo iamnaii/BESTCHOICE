@@ -176,3 +176,30 @@ describe('IntegrationHubPage — ฟอร์มตั้งค่า', () => {
     expect(apiPut).toHaveBeenCalledWith('/integrations/peak/config', {});
   });
 });
+
+describe('IntegrationHubPage — โหลดรายการ', () => {
+  it.each([
+    ['an object without a list', { unexpected: true }],
+    ['an empty body', null],
+  ])(
+    'shows the page error state (not an empty grid) when GET /integrations returns %s',
+    async (_label, body) => {
+      const defaultGet = apiGet.getMockImplementation()!;
+      apiGet.mockImplementation((url: string) =>
+        url === '/integrations' ? Promise.resolve({ data: body }) : defaultGet(url),
+      );
+      render(
+        <QueryClientProvider
+          client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+        >
+          <IntegrationHubPage />
+        </QueryClientProvider>,
+      );
+
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent('ไม่สามารถโหลดข้อมูลได้');
+      expect(within(alert).getByRole('button', { name: /ลองใหม่/ })).toBeInTheDocument();
+      expect(screen.queryByText('ไม่พบการเชื่อมต่อ')).not.toBeInTheDocument();
+    },
+  );
+});

@@ -23,5 +23,6 @@ export function capabilityFromEvidence(input: FacebookCommentEvidence) {
     privateReply: input.verified && input.privateReply === true,
     reason: input.reason ?? (input.verified ? null : 'ยังไม่ยืนยันสิทธิ์การเชื่อมต่อ'),
     ...(input.checks ? { checks: input.checks } : {}),
+    ...(input.notReady ? { notReady: input.notReady } : {}),
   };
 }

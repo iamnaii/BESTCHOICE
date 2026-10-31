@@ -11,6 +11,25 @@ type Json = Record<string, unknown>;
 type Credentials = { pageId: string; appId: string; token: string; secret: string };
 const object = (value: unknown): Json =>
   value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Json) : {};
+type GraphResult = { ok: boolean; status: number; data: Json };
+/**
+ * Task 35: a Graph answer that PROVES a token/permission state rather than an outage — a clean
+ * success, or an OAuth (190) / permission (10, 200) rejection Meta does not flag transient (the
+ * codes replyPublic treats as definite). 5xx, rate limits, is_transient, other codes, network
+ * failures and non-JSON bodies prove nothing, so the comment webhook keeps Meta's redelivery.
+ */
+const NOT_READY_CODES = [190, 10, 200];
+const answered = (result: GraphResult) => {
+  if (result.ok) return true;
+  const error = object(result.data.error);
+  return (
+    result.status >= 400 &&
+    result.status < 500 &&
+    error.is_transient !== true &&
+    typeof error.code === 'number' &&
+    NOT_READY_CODES.includes(error.code)
+  );
+};
 
 /** Fixed-origin Graph adapter. Never logs provider bodies/credentials or retries a POST. */
 @Injectable()
@@ -74,7 +93,9 @@ export class FacebookCommentGraphTransport implements FacebookCommentTransport {
         ...(after ? { after } : {}),
       });
       if (!result.ok || !Array.isArray(result.data.data))
-        throw new Error('SUBSCRIPTION_UNVERIFIED');
+        throw new Error(
+          !result.ok && answered(result) ? 'SUBSCRIPTION_REFUSED' : 'SUBSCRIPTION_UNVERIFIED',
+        );
       rows.push(...result.data.data.map(object));
       const paging = object(result.data.paging);
       if (!paging.next) return rows;
@@ -92,6 +113,7 @@ export class FacebookCommentGraphTransport implements FacebookCommentTransport {
         graphVersion: GRAPH_VERSION,
         verified: false,
         reason: 'ตั้งค่า Page ID, App ID, Page Access Token และ App Secret ให้ครบ',
+        notReady: 'CONFIG',
       };
     const key = createHash('sha256').update(JSON.stringify(c)).digest('hex');
     if (!refresh && this.cache?.key === key && this.cache.until > Date.now())
@@ -106,10 +128,14 @@ export class FacebookCommentGraphTransport implements FacebookCommentTransport {
   }
 
   private async inspect(c: Credentials): Promise<FacebookCommentEvidence> {
+    let subscriptionsAnswered = true;
     const [debug, identity, subscriptions] = await Promise.all([
       this.request(c, 'debug_token', { input_token: c.token }, undefined, true),
       this.request(c, 'me', { fields: 'id' }),
-      this.subscriptions(c).catch(() => null),
+      this.subscriptions(c).catch((error: unknown) => {
+        subscriptionsAnswered = error instanceof Error && error.message === 'SUBSCRIPTION_REFUSED';
+        return null;
+      }),
     ]);
     const token = object(debug.data.data);
     const now = Math.floor(Date.now() / 1000);
@@ -172,6 +198,8 @@ export class FacebookCommentGraphTransport implements FacebookCommentTransport {
     ];
     const receive = checks.slice(0, 5).every((check) => check.passed);
     const publicReply = receive && has('pages_manage_engagement');
+    // Proof only when Meta answered all three readiness requests (Task 35).
+    const metaAnswered = answered(debug) && answered(identity) && subscriptionsAnswered;
     return {
       graphVersion: GRAPH_VERSION,
       verified: valid,
@@ -185,6 +213,7 @@ export class FacebookCommentGraphTransport implements FacebookCommentTransport {
             .filter((check) => !check.passed)
             .map((check) => check.label)
             .join(' · ')}`,
+      ...(!receive && metaAnswered ? { notReady: 'META_PERMISSION' as const } : {}),
     };
   }
 

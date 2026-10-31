@@ -1,16 +1,16 @@
 import { enqueueCommentNotice } from '../staff-chat/services/facebook-comment-inbox';
-import {
-  BadRequestException,
-  Injectable,
-  Logger,
-  ServiceUnavailableException,
-} from '@nestjs/common';
+import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { Prisma, FacebookCommentPage } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { parseBooleanFlag } from '../../utils/config.util';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
 import { FacebookCommentClient } from './facebook-comment-client';
+import {
+  classifyCommentIngestFailure,
+  FacebookCommentIngestSkipped,
+  receiveNotReadyFailure,
+} from './facebook-comment-ingest-failure';
 export const commentIdentityKey = (pageId: string, authorId: string) =>
   `facebook-comment:${pageId}:${authorId}`;
 const object = (value: unknown): Record<string, unknown> =>
@@ -48,20 +48,31 @@ export class FacebookCommentIngestService {
       return { persisted: 0, ignored: changes.length };
     }
     const capabilities = await this.client.getCapabilities(page.pageId);
-    if (!capabilities.receive)
-      throw new ServiceUnavailableException(
-        capabilities.reason || 'ยังไม่ยืนยันสิทธิ์การเชื่อมต่อ',
-      );
+    // Permanent only with proof (notReady CONFIG / META_PERMISSION); otherwise the 503 Meta
+    // redelivers. Classification: facebook-comment-ingest-failure.ts (Task 35).
+    if (!capabilities.receive) throw receiveNotReadyFailure(capabilities, changes.length);
     let persisted = 0;
+    let skipped: FacebookCommentIngestSkipped | undefined;
+    let skippedChanges = 0;
     for (const change of changes) {
       const value = object(change.value);
-      const result = await this.persist(page, value, entry.time);
+      const result = await this.persist(page, value, entry.time).catch((error: unknown) => {
+        // A permanent change is never redelivered, so it must not drop the valid changes after
+        // it. Any other failure stops here and the whole entry is redelivered.
+        if (classifyCommentIngestFailure(error).retry) throw error;
+        skipped ??= error as FacebookCommentIngestSkipped;
+        skippedChanges++;
+        return null;
+      });
       if (!result) continue;
       if (!result.replayed) persisted++;
       // Persistence has already committed. A failed provider read never loses the event/tombstone.
       if (result.reconcile)
         await this.reconcile(result.threadId, result.commentId, result.revision);
     }
+    // Reported once per entry by the webhook (reason of the first skipped change + total count).
+    if (skipped)
+      throw new FacebookCommentIngestSkipped(skipped.reasonCode, skipped.message, skippedChanges);
     return { persisted, ignored: changes.length - persisted };
   }
   private async persist(
@@ -79,8 +90,12 @@ export class FacebookCommentIngestService {
           : value.verb === 'remove'
             ? 'REMOVE'
             : null;
+    // Redelivery carries the same payload: permanent (e.g. a verb this projection does not know).
     if (!commentId || !postId || !verb)
-      throw new BadRequestException('รูปแบบเหตุการณ์คอมเมนต์ไม่ครบ');
+      throw new FacebookCommentIngestSkipped(
+        'COMMENT_EVENT_MALFORMED',
+        'รูปแบบเหตุการณ์คอมเมนต์ไม่ครบ',
+      );
     const parentId = string(value.parent_id, 256);
     const author = object(value.from);
     const authorId = string(author.id, 128);
@@ -114,6 +129,8 @@ export class FacebookCommentIngestService {
         const currentPage = await tx.facebookCommentPage.findUnique({
           where: { pageId: page.pageId },
         });
+        // Kept TRANSIENT (Task 35): the redelivery re-runs the outer Page check, which ignores a
+        // disabled Page with 200 — or persists if the Page was re-enabled meanwhile.
         if (!currentPage?.enabled)
           throw new ServiceUnavailableException('เพจถูกปิดรับคอมเมนต์แล้ว');
         const existing = await tx.facebookCommentRecord.findUnique({
@@ -155,7 +172,12 @@ export class FacebookCommentIngestService {
           update: {},
         });
         await tx.$queryRaw`SELECT id FROM facebook_comment_threads WHERE id = ${thread.id} FOR UPDATE`;
-        if (thread.postId !== postId) throw new BadRequestException('คอมเมนต์ไม่ตรงกับโพสต์เดิม');
+        // Deterministic for the same payload and stored thread: permanent (rolls back this change).
+        if (thread.postId !== postId)
+          throw new FacebookCommentIngestSkipped(
+            'COMMENT_POST_MISMATCH',
+            'คอมเมนต์ไม่ตรงกับโพสต์เดิม',
+          );
         await tx.facebookCommentEvent.create({
           data: {
             threadId: thread.id,

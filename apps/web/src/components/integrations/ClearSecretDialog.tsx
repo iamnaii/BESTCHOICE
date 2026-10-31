@@ -63,6 +63,19 @@ export function clearImpactText(target: ClearSecretTarget): string {
   }
 }
 
+/**
+ * Helper line under a required secret that has no value (never set, or cleared). Same source
+ * as `clearImpactText`, so it never claims more than the confirmation did: only LINE FINANCE's
+ * token keeps the B3 copy "การเชื่อมต่อใช้งานไม่ได้" (the dialog says the OA stops); other
+ * fields (e.g. a LINE Channel Secret — sending still works) get neutral wording.
+ */
+export function missingRequiredSecretHelp(integrationKey: string, fieldKey: string): string {
+  if (integrationKey === 'line-finance' && fieldKey === 'channelToken') {
+    return 'ช่องนี้จำเป็น — การเชื่อมต่อใช้งานไม่ได้จนกว่าจะบันทึกค่าใหม่';
+  }
+  return 'ช่องนี้จำเป็น — บันทึกค่าใหม่เพื่อให้ใช้งานได้ครบ';
+}
+
 /** Where a lost value is copied from again — LINE OAs only; elsewhere the copy stays generic. */
 function valueSource(integrationKey: string): string | null {
   return integrationKey.startsWith('line-') ? 'LINE Developers Console' : null;

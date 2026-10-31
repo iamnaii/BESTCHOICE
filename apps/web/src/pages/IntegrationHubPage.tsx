@@ -41,6 +41,7 @@ import {
 import { FacebookAppReviewPanel } from '@/components/FacebookAppReviewPanel';
 import {
   ClearSecretDialog,
+  missingRequiredSecretHelp,
   type ClearSecretTarget,
 } from '@/components/integrations/ClearSecretDialog';
 
@@ -273,7 +274,11 @@ function isSecretStored(config: IntegrationConfig | undefined, key: string): boo
 }
 
 /** Helper line under a secret input — what an empty input means, or that it is required. */
-function secretHelpText(field: RegistryField, masked: string | undefined): string | null {
+function secretHelpText(
+  integrationKey: string,
+  field: RegistryField,
+  masked: string | undefined,
+): string | null {
   if (masked) {
     // `••••` alone = a value of ≤4 chars: no tail to show.
     const tail = masked.replace(/^•+/, '');
@@ -281,7 +286,7 @@ function secretHelpText(field: RegistryField, masked: string | undefined): strin
       ? `ค่าที่ใช้อยู่ลงท้าย ${masked} · เว้นว่างไว้ = ใช้ค่าเดิม`
       : 'เว้นว่างไว้ = ใช้ค่าเดิม';
   }
-  return field.required ? 'ช่องนี้จำเป็น — การเชื่อมต่อใช้งานไม่ได้จนกว่าจะบันทึกค่าใหม่' : null;
+  return field.required ? missingRequiredSecretHelp(integrationKey, field.key) : null;
 }
 
 /* ── Form values ─────────────────────────────────────── */
@@ -543,7 +548,7 @@ function ConfigDrawer({
                 );
                 if (field.type === 'password') {
                   const stored = isSecretStored(configQuery.data, field.key);
-                  const help = secretHelpText(field, configQuery.data?.[field.key]);
+                  const help = secretHelpText(entry.key, field, configQuery.data?.[field.key]);
                   const stateId = `${field.key}-state`;
                   const helpId = `${field.key}-help`;
                   return (

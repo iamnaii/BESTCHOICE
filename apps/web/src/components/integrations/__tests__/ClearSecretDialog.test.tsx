@@ -1,6 +1,10 @@
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
-import { ClearSecretDialog, type ClearSecretTarget } from '../ClearSecretDialog';
+import {
+  ClearSecretDialog,
+  missingRequiredSecretHelp,
+  type ClearSecretTarget,
+} from '../ClearSecretDialog';
 
 /**
  * Task 32 review I2 / M1 — the first paragraph says what actually stops (and what keeps
@@ -87,5 +91,25 @@ describe('ClearSecretDialog — what clearing a field does', () => {
     expect(dialog).toHaveTextContent(
       'ล้างทันทีที่กด และย้อนกลับไม่ได้ — ถ้าล้างผิด ต้องนำค่าใหม่มากรอกเอง',
     );
+  });
+});
+
+describe('missingRequiredSecretHelp — helper under an empty required secret (re-review N2)', () => {
+  it('LINE FINANCE token keeps the approved B3 copy (the dialog says the OA stops working)', () => {
+    expect(missingRequiredSecretHelp('line-finance', 'channelToken')).toBe(
+      'ช่องนี้จำเป็น — การเชื่อมต่อใช้งานไม่ได้จนกว่าจะบันทึกค่าใหม่',
+    );
+  });
+
+  it.each([
+    ['line-shop', 'channelSecret'],
+    ['line-finance', 'channelSecret'],
+    ['facebook', 'verifyToken'],
+    ['peak', 'userToken'],
+    ['claude-ai', 'apiKey'],
+  ])('%s.%s never claims more than the dialog — neutral wording', (integrationKey, fieldKey) => {
+    const help = missingRequiredSecretHelp(integrationKey, fieldKey);
+    expect(help).toBe('ช่องนี้จำเป็น — บันทึกค่าใหม่เพื่อให้ใช้งานได้ครบ');
+    expect(help).not.toContain('ใช้งานไม่ได้');
   });
 });

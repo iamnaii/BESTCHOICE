@@ -296,8 +296,10 @@ describe('IntegrationHubPage — ล้างค่าช่องลับ (moc
     expect(within(dialog).queryByRole('button', { name: 'ล้างค่า Channel Secret' })).toBeNull();
     const secret = within(dialog).getByLabelText(/^Channel Secret/);
     expect(secret).toHaveAttribute('placeholder', 'วาง Channel Secret ใหม่');
+    // Re-review N2: a missing Channel Secret only stops inbound webhooks (sending still works),
+    // so the helper must not say the whole connection is down — same source as the dialog copy.
     expect(secret).toHaveAccessibleDescription(
-      'ยังไม่ตั้งค่า ช่องนี้จำเป็น — การเชื่อมต่อใช้งานไม่ได้จนกว่าจะบันทึกค่าใหม่',
+      'ยังไม่ตั้งค่า ช่องนี้จำเป็น — บันทึกค่าใหม่เพื่อให้ใช้งานได้ครบ',
     );
   });
 

@@ -77,12 +77,14 @@ describe('ConversationItem — ป้าย "ยกเลิกผูกแล�
   const unlinked = { verified: false, unlinkedAt: '2026-10-30T05:00:00.000Z' };
 
   it('ยกเลิกผูกแล้ว → ป้ายแรกของแถว (ก่อน "รอ N") · ไม่ตัดบรรทัด · มีไอคอน', () => {
-    renderRow(room({
-      channel: 'LINE_FINANCE',
-      financeLineStatus: unlinked,
-      waitingSince: ago(12 * 60_000),
-      priority: 'HIGH',
-    }));
+    renderRow(
+      room({
+        channel: 'LINE_FINANCE',
+        financeLineStatus: unlinked,
+        waitingSince: ago(12 * 60_000),
+        priority: 'HIGH',
+      }),
+    );
     const badge = screen.getByText('ยกเลิกผูกแล้ว');
     expect(badge.className).toMatch(/whitespace-nowrap/);
     expect(badge.querySelector('svg')).not.toBeNull();

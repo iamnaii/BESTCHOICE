@@ -307,7 +307,9 @@ describe('Customer360Panel — หน้าต่างข้อมูลลู�
   function withCustomer(customer: Record<string, unknown>) {
     const base = mocks.get.getMockImplementation()!;
     mocks.get.mockImplementation(async (url: string) =>
-      url === '/customers/customer1' ? { data: { id: 'customer1', name: 'ลูกค้าสังเคราะห์', ...customer } } : base(url),
+      url === '/customers/customer1'
+        ? { data: { id: 'customer1', name: 'ลูกค้าสังเคราะห์', ...customer } }
+        : base(url),
     );
   }
 

@@ -21,8 +21,7 @@ vi.mock('@/hooks/useLiffInit', () => ({
 vi.mock('@/lib/api', () => ({ liffApi: { get, post } }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
-const CONSENT_LABEL =
-  'ยินยอมให้บริษัทส่งแจ้งเตือนค่างวด ใบเสร็จ และข้อมูลสัญญาทาง LINE (จำเป็น)';
+const CONSENT_LABEL = 'ยินยอมให้บริษัทส่งแจ้งเตือนค่างวด ใบเสร็จ และข้อมูลสัญญาทาง LINE (จำเป็น)';
 
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -35,7 +34,9 @@ function renderPage() {
 
 async function fillPhone() {
   renderPage();
-  fireEvent.change(await screen.findByLabelText(/เบอร์โทรศัพท์/), { target: { value: '0812345678' } });
+  fireEvent.change(await screen.findByLabelText(/เบอร์โทรศัพท์/), {
+    target: { value: '0812345678' },
+  });
 }
 
 async function goToOtp() {
@@ -48,7 +49,8 @@ async function goToOtp() {
 beforeEach(() => {
   get.mockReset().mockResolvedValue({ data: { linked: false } });
   post.mockReset().mockImplementation(async (url: string) => {
-    if (url.endsWith('/request-otp')) return { data: { maskedPhone: '089-***-5678', expiresInSeconds: 300 } };
+    if (url.endsWith('/request-otp'))
+      return { data: { maskedPhone: '089-***-5678', expiresInSeconds: 300 } };
     return {
       data: {
         customerId: 'c-1',
@@ -89,7 +91,9 @@ describe('C1 — ขั้นที่ 1 จาก 2: กรอกเบอร�
     expect(button).toBeEnabled();
     fireEvent.click(button);
     await waitFor(() =>
-      expect(post).toHaveBeenCalledWith('/chatbot/finance/liff/request-otp', { phone: '0812345678' }),
+      expect(post).toHaveBeenCalledWith('/chatbot/finance/liff/request-otp', {
+        phone: '0812345678',
+      }),
     );
   });
 });
@@ -104,7 +108,9 @@ describe('C2 — ขั้นที่ 2 จาก 2: ยืนยันรห�
     expect(screen.getByRole('button', { name: /ขอรหัสใหม่ได้ในอีก 1:00/ })).toBeDisabled();
     expect(screen.getByText('ยินยอมรับแจ้งเตือนทาง LINE แล้ว')).toBeInTheDocument();
     expect(screen.getByText('ระบบจะบันทึกความยินยอมเมื่อยืนยันรหัสสำเร็จ')).toBeInTheDocument();
-    expect(screen.getByText(/ไม่ได้รับ SMS ภายใน 2 นาที\? ตรวจเบอร์ด้านบน หรือโทรหาสาขา 063-134-6356/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/ไม่ได้รับ SMS ภายใน 2 นาที\? ตรวจเบอร์ด้านบน หรือโทรหาสาขา 063-134-6356/),
+    ).toBeInTheDocument();
   });
 
   it('ยืนยัน → verify-otp ส่ง consent: true คู่กับรหัส', async () => {
@@ -145,7 +151,9 @@ describe('C2 — ขั้นที่ 2 จาก 2: ยืนยันรห�
 describe('C2b — รหัส OTP ไม่ถูกต้อง', () => {
   it('ข้อความจาก API "OTP ไม่ถูกต้อง (เหลือ N ครั้ง)" → "รหัสไม่ถูกต้อง · เหลือลองได้อีก N ครั้ง" + ทางแก้ · ยังไม่บันทึกความยินยอม', async () => {
     await goToOtp();
-    post.mockRejectedValueOnce({ response: { data: { message: 'OTP ไม่ถูกต้อง (เหลือ 1 ครั้ง)' } } });
+    post.mockRejectedValueOnce({
+      response: { data: { message: 'OTP ไม่ถูกต้อง (เหลือ 1 ครั้ง)' } },
+    });
     const input = screen.getByLabelText('รหัส OTP 6 หลัก');
     fireEvent.change(input, { target: { value: '111111' } });
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยัน' }));

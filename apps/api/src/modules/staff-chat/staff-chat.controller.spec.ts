@@ -517,7 +517,13 @@ describe('StaffChatController', () => {
         id: 'r1',
         channel: 'LINE_FINANCE',
         assignedToId: null,
-        customer: { id: 'c1', name: 'สมชาย', phone: '0812345678', nationalId: '1', acquisitionSource: 'WALK_IN' },
+        customer: {
+          id: 'c1',
+          name: 'สมชาย',
+          phone: '0812345678',
+          nationalId: '1',
+          acquisitionSource: 'WALK_IN',
+        },
       });
       samePerson.findForRoom.mockResolvedValue([]);
       (roomManager.attachFinanceLineStatus as jest.Mock).mockImplementation(
@@ -528,8 +534,11 @@ describe('StaffChatController', () => {
           })),
       );
 
-      for (const user of [{ id: 'u', role: 'OWNER' }, { id: 'sales-1', role: 'SALES' }]) {
-        const res: any = await controller.getRoom('r1', { user } as any);
+      for (const user of [
+        { id: 'u', role: 'OWNER' },
+        { id: 'sales-1', role: 'SALES' },
+      ]) {
+        const res = await controller.getRoom('r1', { user } as never);
         expect(res.financeLineStatus).toEqual({
           verified: false,
           unlinkedAt: '2026-10-30T05:00:00.000Z',

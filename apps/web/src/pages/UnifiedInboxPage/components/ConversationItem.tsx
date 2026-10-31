@@ -269,7 +269,9 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings, sear
                 {(() => {
                   const pills: ReactNode[] = [];
                   // Task 33 (mockup A2) — LINE ในห้องไม่ใช่ LINE ที่ลูกค้ายืนยัน OTP อยู่ตอนนี้: ป้ายแรกเสมอ (คนที่คุยอาจไม่ใช่ลูกค้าคนนี้)
-                  if (financeLineUnlinked) pills.push(<FinanceLineUnlinkedPill key="finance-line" />);
+                  if (financeLineUnlinked) {
+                    pills.push(<FinanceLineUnlinkedPill key="finance-line" />);
+                  }
                   if (session.resolvedAt) {
                     pills.push(<Badge key="closed" variant="secondary" appearance="light" className="text-[10px] px-1.5 py-0 h-5 leading-snug text-muted-foreground">ปิดแล้ว</Badge>);
                   }

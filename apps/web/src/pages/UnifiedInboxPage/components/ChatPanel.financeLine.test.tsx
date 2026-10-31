@@ -10,7 +10,12 @@ import ChatPanel from './ChatPanel';
  * A3 ยืนยันแล้ว = "ยืนยัน OTP แล้ว" ที่บรรทัดสถานะหัวห้อง
  */
 vi.mock('@/lib/api', () => ({
-  default: { get: vi.fn().mockResolvedValue({ data: {} }), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
+  default: {
+    get: vi.fn().mockResolvedValue({ data: {} }),
+    post: vi.fn(),
+    patch: vi.fn(),
+    delete: vi.fn(),
+  },
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/hooks/useIsMobile', () => ({ useIsMobile: () => false }));
@@ -69,7 +74,8 @@ function mount(session: Record<string, unknown>) {
 describe('ChatPanel — สถานะ LINE การเงินของห้อง (Task 33 A2/A3)', () => {
   it('A2 — หัวห้องมีป้าย "ยกเลิกผูกแล้ว" + คำอธิบายหนึ่งบรรทัดที่บอกชื่อลูกค้าและวันที่ยกเลิก', () => {
     mount(unlinkedRoom);
-    const header = screen.getByRole('heading', { name: 'สมชาย ใจดี' }).parentElement!.parentElement!;
+    const header = screen.getByRole('heading', { name: 'สมชาย ใจดี' }).parentElement!
+      .parentElement!;
     expect(within(header).getByText('ยกเลิกผูกแล้ว')).toBeInTheDocument();
     expect(
       screen.getByText(/LINE นี้ยกเลิกผูกกับ สมชาย ใจดี แล้วเมื่อ 30\/10\/2569/),
@@ -102,7 +108,9 @@ describe('ChatPanel — สถานะ LINE การเงินของห�
     expect(screen.getByText('ยืนยัน OTP แล้ว')).toBeInTheDocument();
     expect(screen.queryByText('ยกเลิกผูกแล้ว')).toBeNull();
     expect(screen.queryByText(/ห้องนี้ยังไม่ยืนยันตัวตน/)).toBeNull();
-    expect(screen.getByRole('textbox', { name: 'พิมพ์ข้อความ' }).getAttribute('aria-describedby')).toBeNull();
+    expect(
+      screen.getByRole('textbox', { name: 'พิมพ์ข้อความ' }).getAttribute('aria-describedby'),
+    ).toBeNull();
   });
 
   it('ห้องที่ไม่เคยผูก LINE นี้ (ไม่อยู่ใน mockup) → หน้าตาเดิม ไม่มีป้ายใด ๆ', () => {

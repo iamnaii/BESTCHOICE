@@ -188,10 +188,9 @@ export default function LiffFinanceVerify() {
 
   const requestOtpMutation = useMutation({
     mutationFn: async (phoneInput: string) => {
-      const { data } = await liffApi.post<RequestOtpResponse>(
-        '/chatbot/finance/liff/request-otp',
-        { phone: phoneInput },
-      );
+      const { data } = await liffApi.post<RequestOtpResponse>('/chatbot/finance/liff/request-otp', {
+        phone: phoneInput,
+      });
       return data;
     },
     onSuccess: (data) => {
@@ -298,7 +297,9 @@ export default function LiffFinanceVerify() {
           <CardContent className="text-center py-10">
             <div className="text-destructive text-5xl mb-4">!</div>
             <h2 className="text-lg font-bold mb-2">เกิดข้อผิดพลาด</h2>
-            <p className="text-muted-foreground text-sm">{error || 'ไม่สามารถเชื่อมต่อ LINE ได้'}</p>
+            <p className="text-muted-foreground text-sm">
+              {error || 'ไม่สามารถเชื่อมต่อ LINE ได้'}
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -313,7 +314,9 @@ export default function LiffFinanceVerify() {
             <div className="text-success text-5xl mb-4">&#10003;</div>
             <h2 className="text-lg font-bold mb-2">ยืนยันแล้ว</h2>
             {verifiedName && <p className="text-muted-foreground mb-2">คุณ{verifiedName}</p>}
-            <p className="text-muted-foreground text-sm mb-6">บัญชี LINE ของคุณได้รับการยืนยันแล้ว</p>
+            <p className="text-muted-foreground text-sm mb-6">
+              บัญชี LINE ของคุณได้รับการยืนยันแล้ว
+            </p>
             <Button variant="primary" size="lg" onClick={closeToChat}>
               กลับไปแชท
             </Button>
@@ -346,7 +349,10 @@ export default function LiffFinanceVerify() {
             </p>
             {consentRecordedAt && (
               <div className="flex items-start gap-2.5 self-stretch rounded-lg border border-primary/30 bg-primary/5 p-3">
-                <ShieldCheck className="mt-0.5 size-[18px] shrink-0 text-primary" aria-hidden="true" />
+                <ShieldCheck
+                  className="mt-0.5 size-[18px] shrink-0 text-primary"
+                  aria-hidden="true"
+                />
                 <div className="flex flex-col gap-0.5">
                   <span className="text-sm font-semibold leading-snug text-primary">
                     บันทึกความยินยอมแล้ว
@@ -359,7 +365,10 @@ export default function LiffFinanceVerify() {
               </div>
             )}
             <div className="flex items-start gap-2.5 self-stretch rounded-lg border border-border bg-muted p-3">
-              <Info className="mt-0.5 size-[18px] shrink-0 text-muted-foreground" aria-hidden="true" />
+              <Info
+                className="mt-0.5 size-[18px] shrink-0 text-muted-foreground"
+                aria-hidden="true"
+              />
               <div className="flex flex-col gap-0.5">
                 <span className="text-sm font-semibold leading-snug">ต้องการยกเลิกความยินยอม</span>
                 <span className="text-[13px] leading-snug text-muted-foreground">
@@ -370,7 +379,12 @@ export default function LiffFinanceVerify() {
             <PrivacyPolicyLink className="px-2" />
           </div>
         </div>
-        <Button variant="primary" size="lg" className="h-12 w-full shrink-0 text-[15px]" onClick={closeToChat}>
+        <Button
+          variant="primary"
+          size="lg"
+          className="h-12 w-full shrink-0 text-[15px]"
+          onClick={closeToChat}
+        >
           กลับไปแชท
         </Button>
       </div>
@@ -388,7 +402,11 @@ export default function LiffFinanceVerify() {
         {profile && (
           <div className="flex items-center gap-3.5 rounded-xl border border-border bg-card px-4 py-3.5">
             {profile.pictureUrl ? (
-              <img src={profile.pictureUrl} alt="รูปโปรไฟล์ LINE" className="size-11 rounded-full" />
+              <img
+                src={profile.pictureUrl}
+                alt="รูปโปรไฟล์ LINE"
+                className="size-11 rounded-full"
+              />
             ) : (
               <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
                 <User className="size-5" aria-hidden="true" />
@@ -522,18 +540,25 @@ export default function LiffFinanceVerify() {
               }}
               className={cn(
                 'h-14 w-full rounded-lg bg-background px-4 text-center text-2xl tracking-[0.5em] focus:outline-hidden focus:ring-2 focus:ring-primary/30',
-                otpErrorInfo ? 'border-2 border-destructive' : 'border border-input focus:border-primary',
+                otpErrorInfo
+                  ? 'border-2 border-destructive'
+                  : 'border border-input focus:border-primary',
               )}
             />
             {otpErrorInfo && (
               <div id={ids.otpError} role="alert" className="mt-0.5 flex items-start gap-2">
-                <CircleX className="mt-0.5 size-[18px] shrink-0 text-destructive" aria-hidden="true" />
+                <CircleX
+                  className="mt-0.5 size-[18px] shrink-0 text-destructive"
+                  aria-hidden="true"
+                />
                 <div className="flex flex-col gap-0.5">
                   <span className="text-sm font-semibold leading-snug text-destructive">
                     {otpErrorInfo.title}
                   </span>
                   {otpErrorInfo.hint && (
-                    <span className="text-[13px] leading-snug text-foreground">{otpErrorInfo.hint}</span>
+                    <span className="text-[13px] leading-snug text-foreground">
+                      {otpErrorInfo.hint}
+                    </span>
                   )}
                 </div>
               </div>
@@ -565,7 +590,12 @@ export default function LiffFinanceVerify() {
                 ขอรหัสใหม่
               </Button>
             )}
-            <Button variant="outline" size="lg" className="h-12 w-full text-sm" onClick={backToPhone}>
+            <Button
+              variant="outline"
+              size="lg"
+              className="h-12 w-full text-sm"
+              onClick={backToPhone}
+            >
               <ArrowLeft className="size-4" aria-hidden="true" />
               เปลี่ยนเบอร์
             </Button>

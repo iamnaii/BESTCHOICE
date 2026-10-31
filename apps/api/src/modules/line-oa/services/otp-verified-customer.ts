@@ -213,7 +213,9 @@ export async function findFinanceLineRoomStatuses(
       continue;
     }
     const unlinkedAt =
-      room.financeLineUnlinkedAt ?? closedAt.get(`${room.lineUserId}\u0000${room.customerId}`) ?? null;
+      room.financeLineUnlinkedAt ??
+      closedAt.get(`${room.lineUserId}\u0000${room.customerId}`) ??
+      null;
     result.set(room.id, { verified: false, unlinkedAt: unlinkedAt?.toISOString() ?? null });
   }
   return result;

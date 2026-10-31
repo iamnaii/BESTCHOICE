@@ -125,9 +125,9 @@ describe('Task 33 — financeLineStatus ของห้องในอินบ�
     const newRoom = await room(ChatChannel.LINE_FINANCE, line('c2'), null);
     await verifyWithOtp(line('c2'), c.phone!);
     // แถว link ของลูกค้าถูกชี้ไป L2 แล้ว — ประวัติของ L1 ไม่อยู่ในแถว link อีก
-    expect(
-      await prisma.customerLineLink.findMany({ where: { lineUserId: line('c1') } }),
-    ).toEqual([]);
+    expect(await prisma.customerLineLink.findMany({ where: { lineUserId: line('c1') } })).toEqual(
+      [],
+    );
 
     expect(await statusOf(c.id, oldRoom)).toEqual({
       verified: false,
@@ -156,7 +156,12 @@ describe('Task 33 — financeLineStatus ของห้องในอินบ�
     const e = await customer('E', '5');
     const unlinkedAt = new Date('2026-10-20T04:00:00.000Z');
     await prisma.customerLineLink.create({
-      data: { customerId: e.id, lineUserId: line('e1'), channel: LineChannelType.FINANCE, unlinkedAt },
+      data: {
+        customerId: e.id,
+        lineUserId: line('e1'),
+        channel: LineChannelType.FINANCE,
+        unlinkedAt,
+      },
     });
     const roomId = await room(ChatChannel.LINE_FINANCE, line('e1'), e.id);
 

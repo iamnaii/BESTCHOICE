@@ -72,7 +72,13 @@ async function seedDuePayment() {
   ids.branch = (await prisma.branch.create({ data: { name: `${tag} สาขา` } })).id;
   ids.user = (
     await prisma.user.create({
-      data: { email: `${tag}@spec.local`, password: 'x', name: tag, role: 'SALES', branchId: ids.branch },
+      data: {
+        email: `${tag}@spec.local`,
+        password: 'x',
+        name: tag,
+        role: 'SALES',
+        branchId: ids.branch,
+      },
     })
   ).id;
   ids.product = (
@@ -258,7 +264,11 @@ describe('Task 33 — ความยินยอมตอนผูก LINE ก�
 
     await reminders.sendPaymentReminders();
 
-    expect(transport.sendLineFlexMessage).toHaveBeenCalledWith(LINE, expect.anything(), 'line-finance');
+    expect(transport.sendLineFlexMessage).toHaveBeenCalledWith(
+      LINE,
+      expect.anything(),
+      'line-finance',
+    );
     const logs = await reminderLogs();
     expect(logs).toHaveLength(1);
     expect(logs[0]).toMatchObject({ status: 'SENT', channel: 'LINE', recipient: LINE });

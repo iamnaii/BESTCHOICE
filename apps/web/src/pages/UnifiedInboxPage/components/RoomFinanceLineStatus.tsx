@@ -110,8 +110,8 @@ export function FinanceLineComposerCaution({
         <span>
           <strong className="font-semibold text-warning-strong">ห้องนี้ยังไม่ยืนยันตัวตน</strong>{' '}
           ตอบได้ แต่อย่าพิมพ์ยอดค้าง เลขสัญญา หรือข้อมูลส่วนตัว ·{' '}
-          <strong className="font-semibold">ขั้นต่อไป:</strong> ขอให้เขาส่งข้อความอะไรก็ได้ในแชท LINE
-          น้องเบสนี้ แล้วกด “เริ่มยืนยันตัวตน” ในการ์ดที่บอทตอบกลับ
+          <strong className="font-semibold">ขั้นต่อไป:</strong> ขอให้เขาส่งข้อความอะไรก็ได้ในแชท
+          LINE น้องเบสนี้ แล้วกด “เริ่มยืนยันตัวตน” ในการ์ดที่บอทตอบกลับ
         </span>
         <button
           type="button"

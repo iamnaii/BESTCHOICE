@@ -1342,7 +1342,9 @@ export class RoomManagerService {
     },
   >(
     rooms: T[],
-  ): Promise<(Omit<T, 'financeLineUnlinkedAt'> & { financeLineStatus: FinanceLineRoomStatus | null })[]> {
+  ): Promise<
+    (Omit<T, 'financeLineUnlinkedAt'> & { financeLineStatus: FinanceLineRoomStatus | null })[]
+  > {
     const statuses = await findFinanceLineRoomStatuses(this.prisma, rooms);
     return rooms.map(({ financeLineUnlinkedAt: _internal, ...room }) => ({
       ...room,
@@ -1464,7 +1466,12 @@ export class RoomManagerService {
       this.prisma.chatRoom.count({ where }),
     ]);
 
-    return { data: await this.attachFinanceLineStatus(await withMatches(data)), total, page, limit };
+    return {
+      data: await this.attachFinanceLineStatus(await withMatches(data)),
+      total,
+      page,
+      limit,
+    };
   }
 
   /** Link room to a verified customer */

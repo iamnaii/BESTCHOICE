@@ -15,7 +15,9 @@
  *   DRY_RUN=1 npm --prefix apps/api run ai:train          # นับอย่างเดียว ไม่เขียน ไม่เรียก Claude
  *
  * env ที่เกี่ยว: DATABASE_URL (บังคับ) · ANTHROPIC_API_KEY (บังคับเฉพาะขั้น 2) ·
- *               EXPECTED_DB_NAME (ถ้าตั้ง จะตรวจว่าต่อ DB ถูกตัวก่อนเขียน)
+ *               EXPECTED_DB_NAME (ถ้าตั้ง จะตรวจว่าต่อ DB ถูกตัวก่อนเขียน) ·
+ *               INTEGRATION_ENCRYPTION_KEY (ตัวเดียวกับ API — creds Facebook ที่เข้ารหัสไว้
+ *               ถอดไม่ได้ = อ่านเป็น "ยังไม่ตั้งค่า"; scripts/ops/train-ai-prod.sh ดึงให้)
  */
 import { PrismaClient } from '@prisma/client';
 import type { ConfigService } from '@nestjs/config';

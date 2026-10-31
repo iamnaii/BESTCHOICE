@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import * as crypto from 'crypto';
-import { INTEGRATIONS, IntegrationDef } from './integration-registry';
+import { INTEGRATIONS } from './integration-registry';
 import { IntegrationConfigService } from './integration-config.service';
 
 export interface IntegrationStatus {
@@ -78,6 +78,13 @@ export class IntegrationsService {
     return results;
   }
 
+  /**
+   * Credentials come from `IntegrationConfigService.getConfig` only — it already
+   * falls back to env (and field defaults) when there is no row, exactly like
+   * runtime. No extra `|| process.env.*` here: a stored credential this process
+   * cannot decrypt is "not configured" at runtime, so the test must not succeed
+   * with an env value the real calls never use.
+   */
   async testConnection(integrationKey: string): Promise<TestConnectionResult> {
     switch (integrationKey) {
       case 'line-shop':
@@ -115,7 +122,10 @@ export class IntegrationsService {
       const config = await this.configService.getConfig(integrationKey);
       const token = (config as Record<string, string> | null)?.channelToken;
       if (!token) {
-        return { success: false, message: `ยังไม่ได้ตั้งค่า Channel Access Token ของ ${displayLabel}` };
+        return {
+          success: false,
+          message: `ยังไม่ได้ตั้งค่า Channel Access Token ของ ${displayLabel}`,
+        };
       }
 
       const res = await fetch('https://api.line.me/v2/bot/info', {
@@ -143,10 +153,8 @@ export class IntegrationsService {
   private async testSms(): Promise<TestConnectionResult> {
     try {
       const config = await this.configService.getConfig('sms');
-      const apiKey =
-        (config as Record<string, string> | null)?.apiKey || process.env.SMS_API_KEY;
-      const apiSecret =
-        (config as Record<string, string> | null)?.apiSecret || process.env.SMS_API_SECRET;
+      const apiKey = (config as Record<string, string> | null)?.apiKey;
+      const apiSecret = (config as Record<string, string> | null)?.apiSecret;
 
       if (!apiKey || !apiSecret) {
         return { success: false, message: 'ยังไม่ได้ตั้งค่า SMS API Key / Secret' };
@@ -178,9 +186,7 @@ export class IntegrationsService {
   private async testFacebook(): Promise<TestConnectionResult> {
     try {
       const config = await this.configService.getConfig('facebook');
-      const token =
-        (config as Record<string, string> | null)?.pageAccessToken ||
-        process.env.FB_PAGE_ACCESS_TOKEN;
+      const token = (config as Record<string, string> | null)?.pageAccessToken;
 
       if (!token) {
         return { success: false, message: 'ยังไม่ได้ตั้งค่า Facebook Page Access Token' };
@@ -196,7 +202,11 @@ export class IntegrationsService {
         return { success: false, message: `Facebook API ตอบกลับ HTTP ${res.status}` };
       }
 
-      const data = (await res.json()) as { name?: string; id?: string; error?: { message: string } };
+      const data = (await res.json()) as {
+        name?: string;
+        id?: string;
+        error?: { message: string };
+      };
       if (data.error) {
         return { success: false, message: `Facebook error: ${data.error.message}` };
       }
@@ -219,11 +229,10 @@ export class IntegrationsService {
         string,
         string
       > | null;
-      const merchantId = config?.merchantId || process.env.PAYSOLUTIONS_MERCHANT_ID;
-      const secretKey = config?.secretKey || process.env.PAYSOLUTIONS_SECRET_KEY;
-      const apiKey = config?.apiKey || process.env.PAYSOLUTIONS_API_KEY;
-      const apiUrl =
-        config?.apiUrl || process.env.PAYSOLUTIONS_API_URL || 'https://apis.paysolutions.asia';
+      const merchantId = config?.merchantId;
+      const secretKey = config?.secretKey;
+      const apiKey = config?.apiKey;
+      const apiUrl = config?.apiUrl || 'https://apis.paysolutions.asia';
 
       if (!merchantId || !secretKey || !apiKey) {
         return {
@@ -271,9 +280,7 @@ export class IntegrationsService {
       const isTimeout = err instanceof Error && err.name === 'TimeoutError';
       return {
         success: false,
-        message: isTimeout
-          ? 'PaySolutions ไม่ตอบสนองภายใน 10 วินาที'
-          : (err as Error).message,
+        message: isTimeout ? 'PaySolutions ไม่ตอบสนองภายใน 10 วินาที' : (err as Error).message,
       };
     }
   }
@@ -283,19 +290,17 @@ export class IntegrationsService {
   private async testPeak(): Promise<TestConnectionResult> {
     try {
       const config = await this.configService.getConfig('peak');
-      const userToken =
-        (config as Record<string, string> | null)?.userToken || process.env.PEAK_USER_TOKEN;
-      const connectId =
-        (config as Record<string, string> | null)?.connectId || process.env.PEAK_CONNECT_ID;
-      const secretKey =
-        (config as Record<string, string> | null)?.secretKey || process.env.PEAK_SECRET_KEY;
+      const userToken = (config as Record<string, string> | null)?.userToken;
+      const connectId = (config as Record<string, string> | null)?.connectId;
+      const secretKey = (config as Record<string, string> | null)?.secretKey;
       const baseUrl =
-        (config as Record<string, string> | null)?.baseUrl ||
-        process.env.PEAK_BASE_URL ||
-        'https://api.peakaccount.com/api/v1';
+        (config as Record<string, string> | null)?.baseUrl || 'https://api.peakaccount.com/api/v1';
 
       if (!userToken || !connectId || !secretKey) {
-        return { success: false, message: 'ยังไม่ได้ตั้งค่า PEAK ให้ครบ (User Token, Connect ID, Secret Key)' };
+        return {
+          success: false,
+          message: 'ยังไม่ได้ตั้งค่า PEAK ให้ครบ (User Token, Connect ID, Secret Key)',
+        };
       }
 
       // Generate timestamp in yyyyMMddHHmmss format (matches PeakService)
@@ -310,10 +315,7 @@ export class IntegrationsService {
       ].join('');
 
       // HMAC-SHA1(message=timeStamp, key=secretKey) — must match PeakService.generateTimeSignature
-      const timeSignature = crypto
-        .createHmac('sha1', secretKey)
-        .update(timeStamp)
-        .digest('hex');
+      const timeSignature = crypto.createHmac('sha1', secretKey).update(timeStamp).digest('hex');
 
       // Step 1: Get Client-Token
       const tokenRes = await fetch(`${baseUrl}/ClientToken`, {
@@ -352,12 +354,8 @@ export class IntegrationsService {
   private async testMdm(): Promise<TestConnectionResult> {
     try {
       const config = await this.configService.getConfig('mdm');
-      const apiKey =
-        (config as Record<string, string> | null)?.apiKey || process.env.MDM_API_KEY;
-      const baseUrl =
-        (config as Record<string, string> | null)?.baseUrl ||
-        process.env.MDM_BASE_URL ||
-        'https://mdm-th.com';
+      const apiKey = (config as Record<string, string> | null)?.apiKey;
+      const baseUrl = (config as Record<string, string> | null)?.baseUrl || 'https://mdm-th.com';
 
       if (!apiKey) {
         return { success: false, message: 'ยังไม่ได้ตั้งค่า MDM API Key' };
@@ -387,8 +385,7 @@ export class IntegrationsService {
   private async testClaudeAi(): Promise<TestConnectionResult> {
     try {
       const config = await this.configService.getConfig('claude-ai');
-      const apiKey =
-        (config as Record<string, string> | null)?.apiKey || process.env.ANTHROPIC_API_KEY;
+      const apiKey = (config as Record<string, string> | null)?.apiKey;
 
       if (!apiKey) {
         return { success: false, message: 'ยังไม่ได้ตั้งค่า Anthropic API Key' };
@@ -430,10 +427,10 @@ export class IntegrationsService {
       const config = await this.configService.getConfig('email');
       const cfg = config as Record<string, string> | null;
 
-      const host = cfg?.host || process.env.SMTP_HOST;
-      const port = parseInt(cfg?.port || process.env.SMTP_PORT || '587', 10);
-      const user = cfg?.user || process.env.SMTP_USER;
-      const pass = cfg?.pass || process.env.SMTP_PASS;
+      const host = cfg?.host;
+      const port = parseInt(cfg?.port || '587', 10);
+      const user = cfg?.user;
+      const pass = cfg?.pass;
 
       if (!host || !user || !pass) {
         return { success: false, message: 'ยังไม่ได้ตั้งค่า SMTP ให้ครบ (Host, User, Password)' };

@@ -228,3 +228,24 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
 - **ห้าม commit** `.env` files
 - **ห้าม log** tokens, passwords, หรือ PII (ข้อมูลส่วนบุคคล)
 - ใช้ environment variables สำหรับ secrets ทั้งหมด
+
+## Credentials ใน Integration Hub (`INTEGRATION_ENCRYPTION_KEY` — 2026-10-31)
+- ค่า sensitive เข้ารหัสด้วย `INTEGRATION_ENCRYPTION_KEY` (Secret Manager → `bestchoice-api` + worker) ·
+  ค่าที่ถอดไม่ได้ = **"ยังไม่ตั้งค่า"** (`IntegrationConfigService.getValue` คืน `undefined` — ไม่คืน ciphertext,
+  ไม่ throw, **ไม่ใช้ env สำรองของช่องนั้น**) ⇒ ผู้เรียกต้องรับมือ `undefined` แบบ fail closed
+  (webhook guard ปฏิเสธบน production) · ด่านที่ "ตั้งค่าอยู่" ต้องหมายถึงปลอดภัย (เช่นด่าน PEAK ของ
+  `import:legacy-backoffice`) ใช้ `checkEncryptedFields(integration).failed` นับค่าที่ถอดไม่ได้ว่าตั้งค่าอยู่
+- key ต้องเป็น hex 64 ตัว (trim) — รูปแบบผิด = ถือว่าไม่มี key (error + Sentry ไม่บอกค่า/ความยาว, บูตไม่ล้ม) ·
+  ช่องลับที่ส่งค่าว่างตอนบันทึก = ไม่เปลี่ยน (ไม่มีการ "ล้าง" ช่องลับจาก UI) · ปุ่มทดสอบการเชื่อมต่อใช้ค่าจาก
+  `getConfig` เท่านั้น (ห้ามเติม `|| process.env.*` — ผู้อ่านผ่าน Hub ไม่ใช้ env เมื่อแถวถอดไม่ได้) · **ข้อยกเว้นที่รู้:**
+  Claude บางส่วน (`ai-usage/ai-text.service.ts`, `chat-engine/services/after-hours.service.ts`, การเช็ค key ของ AI suggest ใน
+  `staff-chat`) อ่าน env `ANTHROPIC_API_KEY` ตรง และอีเมลแจ้งเตือน (`notifications/email-provider.service.ts`) อ่าน `SMTP_*` ตรง —
+  ไม่ผ่าน Hub ⇒ ผลปุ่มทดสอบของการ์ด Claude / อีเมล สะท้อนเฉพาะฟีเจอร์ที่อ่านผ่าน Hub (OCR, วิเคราะห์เครดิต, บอท, `EmailService`)
+- แถว `integration.*` ออกได้ทาง `/integrations/*` (masked) เท่านั้น — `GET /settings` (`SettingsWriteService.findAll`)
+  กรองออกแล้ว พร้อมคีย์ลับรุ่นเก่านอก prefix นี้ (`isSecretSettingKey` ใน `settings.constants.ts` = `integration.*` หรือ
+  `isSensitiveKey` ยกเว้นคีย์ที่แค่ชื่อเหมือน เช่น `customer_access_token_hours`) · endpoint ใหม่ที่คืนแถว `system_config`
+  ทั้งตารางต้องใช้ `isSecretSettingKey` แบบเดียวกัน
+- ตรวจ key บน prod จากบรรทัดบูต `integration encrypted fields: key=… ok=N [...] failed=M [...]` (ชื่อช่องเท่านั้น) —
+  ห้ามอ่าน/พิมพ์ค่า secret หรือค่าใน `system_config` · runbook: `docs/runbooks/2026-10-31-integration-encryption-key.md`
+- ⚠ dev/CI ที่ใช้ DB ชุดเดียวกับ prod แต่ไม่มี key: webhook guard ของ LINE/Yeastar เห็น "ยังไม่ตั้งค่า" แล้ว **ข้ามการตรวจ
+  ลายเซ็น (DEV ONLY, `NODE_ENV !== 'production'`)** — ห้ามเปิด dev แบบนี้ออกอินเทอร์เน็ต (tunnel) · production ปฏิเสธ 401

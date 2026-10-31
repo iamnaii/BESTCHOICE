@@ -7,13 +7,14 @@
 #       SKIP_EXTRACT=1 bash scripts/ops/train-ai-prod.sh # สกัดใหม่จากคู่ข้อความเดิม
 #
 # ทำอะไร:
-#   [0] เปิด cloud-sql-proxy เข้า prod DB + ดึง DATABASE_URL / ANTHROPIC_API_KEY
-#       จาก GCP Secret Manager (ปิด proxy ให้เองตอนจบ)
+#   [0] เปิด cloud-sql-proxy เข้า prod DB + ดึง DATABASE_URL / ANTHROPIC_API_KEY /
+#       INTEGRATION_ENCRYPTION_KEY จาก GCP Secret Manager (ปิด proxy ให้เองตอนจบ)
 #   [1] รัน apps/api/src/cli/train-ai-knowledge.cli.ts (ขั้น 1 ดูดแชท LINE+FB →
 #       ai_training_pairs, ขั้น 2 Claude สกัด FAQ → chat_knowledge_base active=false)
 #
-# หมายเหตุ: INTEGRATION_ENCRYPTION_KEY ไม่ได้ตั้งบน prod (ดู deploy-gcp.yml) —
-# creds ใน Integration Hub เป็น plaintext, CLI อ่านได้โดยไม่ต้องส่ง key
+# หมายเหตุ: API บน prod ถือ INTEGRATION_ENCRYPTION_KEY แล้ว (deploy-gcp.yml) — creds ที่บันทึกใน
+# Integration Hub ถูกเข้ารหัส ⇒ CLI ต้องถือ key ตัวเดียวกัน ไม่งั้นอ่านเป็น "ยังไม่ตั้งค่า"
+# (ขั้น 1 ข้ามแชท Facebook) · ค่าที่ยังเป็น plaintext อ่านได้ทั้งมี/ไม่มี key
 # =============================================================================
 set -u
 cd "$(dirname "$0")/../.."   # repo root
@@ -65,6 +66,13 @@ if [ "${DRY_RUN:-}" != "1" ]; then
     [ -n "$ANTHROPIC_API_KEY" ] || die "ไม่มี ANTHROPIC_API_KEY — ขั้น 2 ต้องใช้"
   fi
   export ANTHROPIC_API_KEY
+  # ขั้น 1 อ่าน creds Facebook จาก Integration Hub — ค่าเข้ารหัสต้องใช้ key ตัวเดียวกับ API
+  # = เวอร์ชันที่ deploy-gcp.yml pin ไว้ (ไม่ใช่ latest — เวอร์ชันใหม่ที่ยังไม่ได้ deploy ถอดค่าเดิมไม่ได้)
+  KEY_VERSION=$(sed -n 's/.*INTEGRATION_ENCRYPTION_KEY=INTEGRATION_ENCRYPTION_KEY:\([0-9][0-9]*\).*/\1/p' \
+    .github/workflows/deploy-gcp.yml | head -1)
+  INTEGRATION_ENCRYPTION_KEY=$(gcloud secrets versions access "${KEY_VERSION:-latest}" --secret=INTEGRATION_ENCRYPTION_KEY 2>/dev/null) \
+    || { INTEGRATION_ENCRYPTION_KEY=""; printf '⚠ อ่าน secret INTEGRATION_ENCRYPTION_KEY ไม่ได้ — creds ที่เข้ารหัสจะอ่านเป็น "ยังไม่ตั้งค่า"\n'; }
+  export INTEGRATION_ENCRYPTION_KEY
 fi
 
 cloud-sql-proxy --port $PORT bestchoice-prod:asia-southeast1:bestchoice-db >"$PROXY_LOG" 2>&1 &

@@ -9,6 +9,8 @@
  * ใช้:
  *   DATABASE_URL=... npx tsx src/cli/backfill-fb-profiles.cli.ts
  *   LIMIT=200 MAX_ROUNDS=30 ปรับได้; EXPECTED_DB_NAME=<db> กันรันผิด DB
+ *   creds Facebook ที่บันทึกใน Integration Hub แบบเข้ารหัส ต้อง export INTEGRATION_ENCRYPTION_KEY
+ *   ตัวเดียวกับ API ด้วย (ถอดไม่ได้ = อ่านเป็น "ยังไม่ตั้งค่า")
  *
  * เงื่อนไขหยุด: remaining = 0 หรือรอบล่าสุดไม่มีความคืบหน้าเลย
  * (ห้องที่ FB ไม่คืนโปรไฟล์จะค้าง pictureUrl=null ตลอด — วนต่อก็เท่านั้น)

@@ -19,7 +19,10 @@ import {
   type InstallmentSpec,
   shopCompanyForTest,
 } from '../../../cli/legacy-backoffice/__tests__/synthetic-book';
-import { findPaidPaymentsWithoutReceipt } from '../../../cli/backfill-payment-receipts.cli';
+import {
+  findBoundReissueCandidates,
+  findPaidPaymentsWithoutReceipt,
+} from '../../../cli/backfill-payment-receipts.cli';
 import type { DumpRow } from '../../../cli/legacy-backoffice/dump-reader';
 import { legacyFileContentType, type LegacyFileDetail } from '../../../cli/legacy-backoffice/files';
 import type { LegacyContract } from '../../../cli/legacy-backoffice/legacy-book';
@@ -285,7 +288,7 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
     native.set('A1', await createNative('A1', P1.date, P1.dueDay));
     await bookShopActivation(native.get('A1')!);
     await runNativeToCutoff(native.get('A1')!);
-    for (const key of ['A2', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'A4']) {
+    for (const key of ['A2', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'A4']) {
       native.set(key, await createNative(key, P1.date, P1.dueDay));
     }
 
@@ -761,7 +764,7 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
       .sort((a, b) => a - b);
 
   const cleanKeys = () => [
-    ...ids(native, ['A1', 'A2', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'A4']),
+    ...ids(native, ['A1', 'A2', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'A4']),
     ...ids(legacy, [
       'L1',
       'L2',
@@ -857,6 +860,11 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
           .filter((r) => contractIds.includes(r.contract_id))
           .map((r) => [r.contract_number, r.installment_no]);
       expect(await backfillCandidates(cleanKeys())).toEqual([]);
+      expect(
+        (await findBoundReissueCandidates(prisma as unknown as PrismaService)).filter((r) =>
+          cleanKeys().includes(r.contract_id),
+        ),
+      ).toEqual([]);
     },
     LONG,
   );
@@ -1023,7 +1031,7 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
   it(
     'stage 3 — corrupted native contracts and post-cutover rows of imported contracts are still caught',
     async () => {
-      const [c1, c2, c3, c4, c5, c6] = ids(native, ['C1', 'C2', 'C3', 'C4', 'C5', 'C6']);
+      const [c1, c2, c3, c4, c5, c6, c7] = ids(native, ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7']);
       const [l4, l5, l6, l7, l8, l9] = ids(legacy, ['L4', 'L5', 'L6', 'L7', 'L8', 'L9']);
       const softDelete = (where: Prisma.JournalEntryWhereInput) =>
         prisma.journalEntry.updateMany({ where, data: { deletedAt: new Date() } });
@@ -1064,11 +1072,13 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
       await corrupt(c4, '11-2103', '32-1101');
       await corrupt(c5, '11-2105', '11-2101');
       // C6 ปกติ: ใบรับชำระที่ลูกค้าจ่ายเกินลูกหนี้ ≤ 1 บาท (ใบที่ผ่านผู้อนุมัติเศษ — จำลองรูปรายการของ PaymentReceiptTemplate:
-      // Cr 11-2103 เต็มงวด + Cr 53-1503 เศษ · amountPaid รวมเศษ) สองงวด 0.90 → ไม่ติด (ทะเบียนบวก 53-1503 กลับ)
+      // Cr 11-2103 เต็มงวด + Cr 53-1503 เศษ · amountPaid รวมเศษ) สองงวด 0.90 → ไม่ติด (ทะเบียนบวก 53-1503 กลับ) · ไม่มีแถวใบเสร็จ
+      // (= ใบออกไม่สำเร็จหลัง commit — Task 23 backfill:receipts)
+      const c6Entries: string[] = [];
       for (const no of [1, 2]) {
         await nightly2A(c6, no);
         const p = await paymentOf(c6, no);
-        await journal.createAndPost({
+        const entry = await journal.createAndPost({
           description: 'T16 receipt with approved ≤1 overpay',
           reference: `t16-overpay:${p.id}`,
           metadata: { tag: 'receipt', flow: 'payment-receipt', paymentId: p.id, contractId: c6 },
@@ -1080,6 +1090,7 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
           postedAt: P1.due(no),
           createdById: userId,
         });
+        c6Entries.push(entry.entryNumber);
         await prisma.payment.update({
           where: { id: p.id },
           data: {
@@ -1092,6 +1103,18 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
         });
       }
 
+      // C7 ปกติ (Task 23 · backfill:receipts): งวด 1 ถูกตั้งเป็น PAID ตรงในฐาน ไม่มีรายการรับชำระและไม่มีใบเสร็จ (รูปแถวของ seed
+      // "data-only" / ยุคก่อนมีใบเสร็จอัตโนมัติ) — ผู้สมัครเดียวที่ CLI ยังออกใบให้
+      await prisma.payment.update({
+        where: { id: (await paymentOf(c7, 1)).id },
+        data: {
+          amountPaid: D(MONTHLY),
+          status: 'PAID',
+          paidDate: P1.due(1),
+          paymentMethod: 'CASH',
+          recordedById: userId,
+        },
+      });
       // L4 นำเข้า: งวด 8 (ค้าง ไม่มีผู้บันทึก) ถูกแก้ยอดจ่ายโดยไม่มีรายการบัญชี
       await prisma.payment.update({
         where: { id: (await paymentOf(l4, 8)).id },
@@ -1127,6 +1150,20 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
       await prisma.payment.update({
         where: { id: (await paymentOf(l8, 4)).id },
         data: { amountPaid: D(MONTHLY).plus(5) },
+      });
+      // L8 (Task 23 · backfill:receipts): ใบเสร็จหลังวันตัดของงวดนำเข้าหาย (= ออกไม่สำเร็จหลัง commit) — รายการรับชำระยังมีผล
+      const l8Row4 = await paymentOf(l8, 4);
+      const l8Entry = await prisma.journalEntry.findFirstOrThrow({
+        where: {
+          AND: [
+            { metadata: { path: ['paymentId'], equals: l8Row4.id } },
+            { metadata: { path: ['tag'], equals: 'receipt' } },
+          ],
+        },
+        select: { entryNumber: true },
+      });
+      expect(await prisma.receipt.deleteMany({ where: { paymentId: l8Row4.id } })).toEqual({
+        count: 1,
       });
       // L9 นำเข้า — ตาข่ายของจุดบอดตัวแยก: งวด 4 (มีเงินก่อนวันตัด 300 · ผู้บันทึก = บัญชีนำเข้า) ถูกแก้เป็นจ่ายครบตรงในฐาน
       // โดยไม่ตั้ง payment_method ⇒ แถวยังได้ยกเว้น (ง): orphan_payments / overpaid เงียบโดยตั้งใจ — ตัวจับเดียวคือ hp รายสัญญา
@@ -1240,15 +1277,33 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
         a1: [a1],
         a1FeeVat: [[5, feeVat.toFixed(2)]],
       });
-      // backfill:receipts (Task 18 review m-2): งวดปกติที่ PAID โดยไม่มีใบเสร็จ (C6 งวด 1–2) ยังเป็นผู้สมัครตามเดิม · งวดนำเข้าที่ถูกแก้เป็น
-      // PAID (L9 งวด 4) และงวดนำเข้าที่ PAID ก่อนวันตัด (L4–L8 งวด 1–3) ไม่ใช่
+      // backfill:receipts (Task 18 review m-2 · Task 23): ผู้สมัครที่ CLI ออกใบที่ไม่ผูกรายการให้ = งวดปกติที่ PAID โดยไม่มีใบเสร็จ**และไม่มี
+      // รายการรับชำระที่ยังมีผลผูก paymentId** (C7 งวด 1) · C6 งวด 1–2 มีรายการรับชำระ (ใบเสร็จออกไม่สำเร็จหลัง commit) ⇒ ไม่ใช่ผู้สมัคร
+      // อีก (เดิมได้ใบที่ไม่ผูกรายการ ยอด amount_paid — เอกสารใบที่สองของเงินก้อนเดียวกันเมื่อออกซ้ำแบบผูกรายการภายหลัง) · งวดนำเข้าที่ถูก
+      // แก้เป็น PAID (L9 งวด 4) และงวดนำเข้าที่ PAID ก่อนวันตัด (L4–L8 งวด 1–3) ไม่ใช่
+      const cliScope = [c6, c7, l4, l5, l6, l7, l8, l9];
       expect(
         (await findPaidPaymentsWithoutReceipt(prisma as unknown as PrismaService))
-          .filter((r) => [c6, l4, l5, l6, l7, l8, l9].includes(r.contract_id))
+          .filter((r) => cliScope.includes(r.contract_id))
           .map((r) => [r.contract_number, r.installment_no]),
+      ).toEqual([[`TEST-T16N-${stamp}-C7`, 1]]);
+      // …และเงินที่มีรายการรับชำระยังมีผลแต่ไม่มีใบเสร็จ ถูกส่งไปทาง "ออกใบเสร็จซ้ำ" แบบผูกรายการพร้อมเลขที่รายการ (+ receiptTax.amount
+      // ที่ต้องส่ง — รายการที่ลงเองในเทสต์ไม่มี stamp) รวมงวดนำเข้าที่รับหลังวันตัด (L8 งวด 4)
+      const key = (r: { contract_number: string; installment_no: number }) =>
+        `${r.contract_number}#${r.installment_no}`;
+      expect(
+        (await findBoundReissueCandidates(prisma as unknown as PrismaService))
+          .filter((r) => cliScope.includes(r.contract_id))
+          .sort((a, b) => key(a).localeCompare(key(b)))
+          .map((r) => [r.contract_number, r.installment_no, r.entries]),
       ).toEqual([
-        [`TEST-T16N-${stamp}-C6`, 1],
-        [`TEST-T16N-${stamp}-C6`, 2],
+        [
+          `TEST-T16-${stamp}-L8`,
+          4,
+          [{ entryNumber: l8Entry.entryNumber, receiptAmount: '1215.83' }],
+        ],
+        [`TEST-T16N-${stamp}-C6`, 1, [{ entryNumber: c6Entries[0], receiptAmount: null }]],
+        [`TEST-T16N-${stamp}-C6`, 2, [{ entryNumber: c6Entries[1], receiptAmount: null }]],
       ]);
       // สาขาที่มีสัญญาเพี้ยน breach ทั้งสองสาขา (สัญญาปกติ C1–C4 · สัญญานำเข้า L4/L5/L7/L8/L9)
       const breached = await reconBreachesOf([nativeBranchId, legacyBranchId]);

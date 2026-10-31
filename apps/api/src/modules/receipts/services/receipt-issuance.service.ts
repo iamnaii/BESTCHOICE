@@ -7,6 +7,7 @@ import {
   ADVANCE_SURPLUS_RECEIPT_TYPE,
   DOCUMENT_BALANCE_RECEIPT_TYPES,
   INSTALLMENT_MONEY_RECEIPT_TYPES,
+  INSTALLMENT_RECEIPT_SOURCE_TAGS,
 } from '../receipt-types.constants';
 import {
   advanceSurplusReceiptTax,
@@ -193,7 +194,7 @@ export class ReceiptIssuanceService {
               ? meta.tag === 'paysolutions-surplus-advance'
               : receiptType === 'EARLY_PAYOFF'
                 ? meta.tag === 'JP4' && meta.flow === 'early-payoff'
-                : ['receipt', '2B'].includes(String(meta.tag));
+                : (INSTALLMENT_RECEIPT_SOURCE_TAGS as readonly string[]).includes(String(meta.tag));
         // รายการส่วนเกินลิงก์ชำระไม่มี paymentId (เงินพักไว้ที่สัญญา) — เทียบแบบ null = ไม่มี
         if (
           !source ||

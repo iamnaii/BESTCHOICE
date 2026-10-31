@@ -339,11 +339,25 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
   (webhook guard ปฏิเสธบน production) · ด่านที่ "ตั้งค่าอยู่" ต้องหมายถึงปลอดภัย (เช่นด่าน PEAK ของ
   `import:legacy-backoffice`) ใช้ `checkEncryptedFields(integration).failed` นับค่าที่ถอดไม่ได้ว่าตั้งค่าอยู่
 - key ต้องเป็น hex 64 ตัว (trim) — รูปแบบผิด = ถือว่าไม่มี key (error + Sentry ไม่บอกค่า/ความยาว, บูตไม่ล้ม) ·
-  ช่องลับที่ส่งค่าว่างตอนบันทึก = ไม่เปลี่ยน (ไม่มีการ "ล้าง" ช่องลับจาก UI) · ปุ่มทดสอบการเชื่อมต่อใช้ค่าจาก
-  `getConfig` เท่านั้น (ห้ามเติม `|| process.env.*` — ผู้อ่านผ่าน Hub ไม่ใช้ env เมื่อแถวถอดไม่ได้) · **ข้อยกเว้นที่รู้:**
-  Claude บางส่วน (`ai-usage/ai-text.service.ts`, `chat-engine/services/after-hours.service.ts`, การเช็ค key ของ AI suggest ใน
-  `staff-chat`) อ่าน env `ANTHROPIC_API_KEY` ตรง และอีเมลแจ้งเตือน (`notifications/email-provider.service.ts`) อ่าน `SMTP_*` ตรง —
-  ไม่ผ่าน Hub ⇒ ผลปุ่มทดสอบของการ์ด Claude / อีเมล สะท้อนเฉพาะฟีเจอร์ที่อ่านผ่าน Hub (OCR, วิเคราะห์เครดิต, บอท, `EmailService`)
+  ช่องลับที่ส่งค่าว่างตอนบันทึก = ไม่เปลี่ยน · **ล้างช่องลับ = ปุ่ม "ล้างค่า" (web 26.10.75 —
+  `DELETE /integrations/:key/config/:field` OWNER เท่านั้น เท่ากับบันทึก)** เขียน `CLEARED_CREDENTIAL`
+  (`integration-config.service.ts`) ทับแถว ⇒ ช่องนั้น "ยังไม่ตั้งค่า" และ **ไม่ใช้ env/ค่าตั้งต้นสำรอง** — มีผลทันทีกับผู้อ่าน
+  `getValue` (LINE ×3 · Claude · อีเมล · PEAK · SMS · PaySolutions · MDM · e-Tax) ส่วนผู้อ่าน `getConfig` (cache 5 นาที ต่อ instance:
+  ผู้อ่าน Facebook ทุกตัว · Yeastar webhook/token/CDR · การ์ด/ปุ่มทดสอบ) บน instance อื่นยังใช้ค่าเดิมได้ถึง 5 นาที
+  (แถวว่าง/ไม่มีแถว = ถอยไป env ซึ่ง prod ตั้ง `LINE_*` ไว้ — ล้างแค่ให้ว่างค่าเดิมยังใช้ต่อ) · ทุกผู้อ่าน
+  `integration.*` ต้องเช็ค `isClearedCredential` (getValue → getConfig/masked/isConfigured/ปุ่มทดสอบ ·
+  บรรทัดบูตไม่นับทั้ง ok/failed · cron หมุนรหัสข้าม) · บันทึกค่าใหม่ที่ไม่ว่าง = แทนสถานะล้างแล้ว ·
+  audit `INTEGRATION_SECRET_CLEARED` (ชื่อช่อง + ที่มาเดิม ไม่มีค่า) · ช่องที่ไม่ใช่ความลับ = 400 (ลบข้อความแล้วบันทึก
+  ตามเดิม) · ปุ่ม "ล้างค่า" มีเฉพาะช่องที่**อ่านค่าได้** — ช่องที่ถอดรหัสไม่ได้ (`failed`) แสดงเป็น "ยังไม่ตั้งค่า" ไม่มีปุ่ม
+  ⇒ แก้ด้วยการกรอกค่าใหม่แล้วบันทึก (ทับ ciphertext) · ปุ่มทดสอบการเชื่อมต่อใช้ค่าจาก
+  `getConfig` เท่านั้น (ห้ามเติม `|| process.env.*` — ผู้อ่านผ่าน Hub ไม่ใช้ env เมื่อแถวถอดไม่ได้) · **ข้อยกเว้นที่รู้ (อ่าน env
+  ตรง ไม่ผ่าน Hub):** `ANTHROPIC_API_KEY` — บอทขาย `sales-bot/providers/claude.provider.ts` (`new Anthropic()` ไม่ส่ง apiKey ⇒ SDK
+  อ่าน env), `chat-history-extractor/knowledge-extractor.service.ts`, `staff-chat/services/sales-state.service.ts` (ทั้งสามแบบเดียวกัน),
+  `ai-usage/ai-text.service.ts` (ผู้ช่วย AI ในอินบ็อกซ์), `chat-engine/services/after-hours.service.ts`, การเช็ค key ของ AI suggest ใน
+  `staff-chat.controller.ts` · `SMTP_*` — `notifications/email-provider.service.ts` (ยังไม่มีผู้เรียก ณ 2026-10-31 — อีเมลทุกฉบับวันนี้ส่งผ่าน
+  `EmailService` ของ Hub) ⇒ ผลปุ่มทดสอบของการ์ด Claude / อีเมล สะท้อนเฉพาะฟีเจอร์ที่อ่านผ่าน Hub (บอทน้องเบส, อ่านสลิป, OCR,
+  วิเคราะห์เครดิต, บอท LINE SHOP แบบเดิม, `EmailService`) และ "ล้างค่า" ของการ์ด Claude ไม่หยุดผู้อ่าน env ตรงเหล่านั้น
+  (หยุดได้ด้วยการเอา `ANTHROPIC_API_KEY` ออกจาก env ของ API เท่านั้น)
 - แถว `integration.*` ออกได้ทาง `/integrations/*` (masked) เท่านั้น — `GET /settings` (`SettingsWriteService.findAll`)
   กรองออกแล้ว พร้อมคีย์ลับรุ่นเก่านอก prefix นี้ (`isSecretSettingKey` ใน `settings.constants.ts` = `integration.*` หรือ
   `isSensitiveKey` ยกเว้นคีย์ที่แค่ชื่อเหมือน เช่น `customer_access_token_hours`) · endpoint ใหม่ที่คืนแถว `system_config`

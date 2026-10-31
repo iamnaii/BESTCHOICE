@@ -20,13 +20,11 @@ describe('ContractQuoteService effective configuration and amounts', () => {
     systemConfig: { findMany: jest.fn().mockResolvedValue([]) },
     // สาขาผูกบริษัท SHOP (ไม่จด VAT) — สภาพหลังตั้ง branches.company_id = SHOP (impact C1, 2026-10-31) · VAT ของสัญญาผ่อนต้องไม่อ่านจากตรงนี้
     branch: {
-      findUnique: jest
-        .fn()
-        .mockResolvedValue({
-          id: 'branch',
-          deletedAt: null,
-          company: { vatRegistered: false, vatRate: null },
-        }),
+      findUnique: jest.fn().mockResolvedValue({
+        id: 'branch',
+        deletedAt: null,
+        company: { vatRegistered: false, vatRate: null },
+      }),
     },
     // บริษัทผู้ให้สินเชื่อ — แหล่ง VAT ของสัญญาผ่อน (ค่าเริ่มต้นของชุดนี้: ไม่จด VAT ⇒ 0% · แต่ละเทสตั้งเอง)
     companyInfo: {

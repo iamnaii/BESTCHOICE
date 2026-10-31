@@ -21,6 +21,7 @@ import { InstallmentAccrual2ATemplate } from '../../journal/cpa-templates/instal
 import { PaymentReceiptTemplate } from '../../journal/cpa-templates/payment-receipt.template';
 import { PaymentJournalPreviewService } from './payment-journal-preview.service';
 import type { PrismaService } from '../../../prisma/prisma.service';
+import { accountingPeriodOf } from '../../../utils/period-lock.util';
 
 const prisma = new PrismaClient();
 
@@ -221,7 +222,7 @@ describe('payment-journal-preview — 2A/2B blocks (integration)', () => {
     const journal = new JournalAutoService(prisma as PrismaService);
     const paidDate = new Date().toISOString().slice(0, 10); // YYYY-MM-DD แบบที่หน้าจอส่ง
     // เทสเตรียมงวดบัญชีที่ตัวเองใช้เอง: เปิดงวดของ FINANCE (บริษัทที่ 2A ตรวจงวด) เดือนที่จะลงรายการ
-    // (เดือนตามเวลาของเครื่อง แบบเดียวกับ validatePeriodOpen) — ไม่พึ่งว่าตารางงวดบัญชีของฐานทดสอบว่าง.
+    // (เดือนตามปฏิทินไทย — `accountingPeriodOf` ตัวเดียวกับ validatePeriodOpen) — ไม่พึ่งว่าตารางงวดบัญชีของฐานทดสอบว่าง.
     // แตะเฉพาะงวดของ FINANCE และจำสถานะเดิมไว้ให้ afterAll คืนค่า
     const postingDay = new Date(paidDate);
     const finance = await prisma.companyInfo.findFirstOrThrow({
@@ -231,8 +232,7 @@ describe('payment-journal-preview — 2A/2B blocks (integration)', () => {
       where: {
         companyId: finance.id,
         status: { in: ['CLOSED', 'SYNCED'] },
-        year: postingDay.getFullYear(),
-        month: postingDay.getMonth() + 1,
+        ...accountingPeriodOf(postingDay),
       },
       select: { id: true, status: true },
     });
@@ -312,8 +312,7 @@ describe('payment-journal-preview — 2A/2B blocks (integration)', () => {
       where: {
         companyId: finance.id,
         status: { in: ['CLOSED', 'SYNCED'] },
-        year: postingDay.getFullYear(),
-        month: postingDay.getMonth() + 1,
+        ...accountingPeriodOf(postingDay),
       },
       select: { id: true, status: true },
     });

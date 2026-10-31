@@ -54,7 +54,7 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
 
 **หมายเหตุ**: ถ้าพบ controller ที่ไม่มี guard ที่ไม่อยู่ในรายการนี้ → ถือว่าเป็น security bug
 
-## LINE — ตัวตนลูกค้า · OTP · redirect (Task 20 + 21 + 22 + 24, 2026-10-31)
+## LINE — ตัวตนลูกค้า · OTP · redirect (Task 20 + 21 + 22 + 24 + 27 + 29, 2026-10-31)
 
 **OTP ทาง SMS คือหลักฐานตัวตนเดียวของลูกค้าฝั่ง LINE** — LIFF token / LINE webhook บอกแค่ "เป็น LINE user คนนี้"
 ไม่ได้บอกว่าเป็นลูกค้าคนไหน. กติกาด้านล่างบังคับในโค้ดแล้ว เขียน endpoint/บอทใหม่ต้องทำตาม:
@@ -113,18 +113,41 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
 5. **`TEST_MODE_BYPASS` มีผลบน `NODE_ENV=production` เฉพาะเมื่อตั้ง env `ALLOW_TEST_MODE_BYPASS=YES_I_AM_SURE`** — ไม่ตั้ง = flag ถูกเมิน
    (log + Sentry warning ทุก 10 นาที) และ `PUT settings/test-mode` เปิดไม่ได้ (400 ไทย) · dev/UAT (non-production) ทำงานเหมือนเดิม
 6. **พนักงาน/API ตั้ง `line_id_finance` ไม่ได้ — ล้างได้ = ยกเลิกผูก** (Task 22 I3/I4 · `line-oa/services/finance-line-link.ts`):
-   `staffLineFinanceChange(ค่าที่ส่งมา, ค่าปัจจุบัน)` — ไม่ส่ง/ค่าเดิม (ฟอร์มแก้ไขส่งทุกช่องกลับมา) = ไม่แตะ · ว่าง/null ขณะมีค่า = ยกเลิกผูก ·
+   `staffLineFinanceChange(ค่าที่ส่งมา, ค่าปัจจุบัน)` — ไม่ส่ง/ค่าเดิมที่ไม่ว่าง (ฟอร์มรุ่นเก่าส่งทุกช่องกลับมา) = ไม่แตะ · ว่าง/null/ช่องว่างล้วน = ยกเลิกผูก
+   **ไม่ดูคอลัมน์** (Task 29 — คอลัมน์ว่างแต่มีแถว OTP ต้องปิดได้ · แกนเดียวข้างล่างตัดสินว่ามีอะไรให้ล้าง) ·
    ค่าใหม่ = 400 `LINE_FINANCE_LINK_REQUIRES_OTP_MESSAGE` (ชี้ทางของลูกค้าเอง: ส่งข้อความใดก็ได้ในแชท LINE การเงิน → การ์ด "เริ่มยืนยันตัวตน" —
    ระบบไม่มีปุ่มพนักงานส่งลิงก์ยืนยัน) · ใช้ที่ `POST/PATCH /customers` (`CustomerWriteService`) และ skip-tracing `newLineId` (ค่าใหม่ = ทั้งคำขอ 400 · **ค่าว่าง = ไม่แตะ** —
    skip-tracing เปิดให้ SALES/ACCOUNTANT/FM จึงห้ามยกเลิกผูก (fix round 1 M-1)) · **ฟอร์มบนเว็บไม่ส่ง `lineIdFinance`/`newLineId` แล้ว** (Task 27 — ช่องพิมพ์ถูกแทนด้วยแถวสถานะ/หมายเหตุ)
-   ⇒ กติกานี้เหลือไว้กันการเรียก API ตรง · **ทางยกเลิกผูกของพนักงาน (OWNER/BM เท่านั้น):** ปุ่ม "ยกเลิกการผูก" ในฟอร์มแก้ไขลูกค้า →
-   `POST /customers/:id/finance-line/unlink` (Task 27 — `CustomerWriteService.unlinkFinanceLineByStaff`: ล็อกแถวลูกค้า `FOR NO KEY UPDATE` → ปิด**แถว OTP ที่ยังผูก**แม้คอลัมน์ว่าง
-   + ล้างคอลัมน์ผ่าน `unlinkFinanceLine({ customerId })` ตัวเดิม · ไม่มีอะไรให้ล้าง = สำเร็จแบบไม่แตะ · audit `CUSTOMER_FINANCE_LINE_UNLINKED` สถานะก่อน/หลัง ไม่มี U-id ·
-   access manifest + `PARTY_WRITE_ROUTES` · ลำดับล็อก ลูกค้า → link → ห้อง เท่าทาง PATCH/LIFF ส่วน `VerificationService.bind` ล็อกกลับด้าน ⇒ ลูกค้ายืนยัน OTP
-   พร้อมพนักงานกดปุ่มกับลูกค้าคนเดียวกันอาจได้ deadlock 40P01: ฝั่งปุ่มลองทั้งทรานแซกชันใหม่เอง (legacy 3 ครั้ง · managed ตาม maxAttempts ของระบบสิทธิ์) ·
-   ฝั่ง bind ได้ error แต่แถว OTP ยังอยู่ กรอกรหัสเดิมซ้ำได้ · แก้ถาวร = ให้ bind ล็อกแถวลูกค้าก่อน (งานแยก — Task 27 fix round 1 M-2)) ·
-   `PATCH /customers/:id {"lineIdFinance": null}` ยังรับ (API อย่างเดียว — ตัดสินด้วยคอลัมน์: คอลัมน์ว่างแต่มีแถว = ไม่แตะ ·
-   ไม่มี audit เฉพาะ) ⇒ ใช้ปุ่ม/endpoint ใหม่แทน ·
+   ⇒ กติกานี้เหลือไว้กันการเรียก API ตรง · **ทางยกเลิกผูกของพนักงาน (OWNER/BM เท่านั้น · ไม่จำกัดสาขา — เจ้าของตัดสิน 31 ต.ค.):** ปุ่ม "ยกเลิกการผูก" ในฟอร์มแก้ไขลูกค้า →
+   `POST /customers/:id/finance-line/unlink` (Task 27 — `CustomerWriteService.unlinkFinanceLineByStaff`) **และ** `PATCH /customers/:id {"lineIdFinance": null}` (API อย่างเดียว ·
+   `""` / ช่องว่างล้วน เท่ากับ null) **ทำเหมือนกันทุกอย่าง** (Task 29 #2 — เจ้าของตัดสิน 31 ต.ค. · Task 27 review M-3): แกนเดียว `unlinkFinanceLineInTx`
+   (ล็อกแถวลูกค้า → ลูกค้าถูกลบ = 404 → ปิด**แถว OTP ที่ยังผูก**แม้คอลัมน์ว่าง + ล้างคอลัมน์ผ่าน `unlinkFinanceLine({ customerId })` ตัวเดิม · ไม่มีอะไรให้ล้าง = สำเร็จแบบไม่แตะ) +
+   ผู้เขียน audit เดียว `auditFinanceLineUnlink` (`CUSTOMER_FINANCE_LINE_UNLINKED` สถานะก่อน/หลัง ไม่มี U-id — legacy หลัง commit · managed ใน tx ของระบบสิทธิ์) ·
+   PATCH ทำในทรานแซกชันเดียวกับการแก้ไขช่องอื่น (ล็อกเบอร์ยังเป็นคำสั่งแรก) · ปุ่มยังลองทั้งทรานแซกชันใหม่เมื่อโดน deadlock/serialization เป็นตาข่าย (PATCH ไม่ลองซ้ำ) ·
+   access manifest + `PARTY_WRITE_ROUTES` · ข้อควรรู้ (fix round 1 M-1): แท็บเว็บรุ่นเก่า (≤26.10.72) ที่ยังเปิดค้าง — `CustomerEditModal` (หน้าสัญญา ›
+   แก้ไขข้อมูลลูกค้า) เติมช่องจากคอลัมน์แล้วส่ง `lineIdFinance: form.lineIdFinance || null` ⇒ บันทึกฟอร์มของลูกค้าที่**มีแถว OTP ที่ยังผูกแต่คอลัมน์ว่าง** = ยกเลิกผูก
+   (audit ชื่อพนักงาน · ลูกค้าผูกใหม่ด้วย OTP ได้) · คอลัมน์มีค่า = ส่งค่าเดิม = ไม่แตะ · ทางสำรองที่โหลดฉบับเต็มไม่ได้ลบคีย์ null ทิ้ง · `EditCustomerDialog` ไม่เคยส่งค่าว่าง ·
+   เว็บ 26.10.73+ ไม่ส่งคีย์นี้ · ขนาดกลุ่มนี้ (อ่านอย่างเดียว): `SELECT count(*) FROM customer_line_links l JOIN customers c ON c.id = l.customer_id
+   WHERE l.channel = 'FINANCE' AND l.unlinked_at IS NULL AND l.deleted_at IS NULL AND c.deleted_at IS NULL AND COALESCE(btrim(c.line_id_finance), '') = ''` ·
+   **ลำดับล็อกเดียว: แถวลูกค้า (เรียง id) → แถว `customer_line_links` → `chat_rooms`** (Task 29 #1 — เจ้าของตัดสิน 31 ต.ค. · Task 27 review M-2 · `finance-line-link.ts`
+   `lockFinanceLineCustomers` — `SELECT … ORDER BY id FOR NO KEY UPDATE` ตัวเดียวของการล็อกลูกค้าหลายแถว): `VerificationService.bind` ล็อกลูกค้าที่ผูก + ผู้ถือแถว link ของ LINE นั้น
+   + ผู้ถือคอลัมน์ที่เป็น LINE นั้น ก่อนแตะแถว link/ห้อง (`lockCustomersForFinanceLineBind` — อ่านซ้ำใต้ล็อกจนชุดนิ่ง) · ปุ่ม/PATCH ล็อกลูกค้าก่อนอ่านสถานะ ·
+   LIFF (`{ lineUserId }`) ล็อกผู้ถือแถว + ผู้ถือคอลัมน์เรียง id ก่อน UPDATE ⇒ ยืนยัน OTP พร้อมพนักงานยกเลิกผูกไม่ deadlock (เดิม bind ล็อก link/ห้องก่อนลูกค้า = 40P01 ·
+   ปักที่ `finance-line-lock-order.db.spec.ts`) · **ทาง "ห้อง → ลูกค้า" เดิมที่ปรับให้ตรงลำดับนี้ (fix round 1 — review I-1 · ปักด้วยสามเคสท้าย spec เดียวกัน):**
+   `RoomManagerService.linkCustomer` (ผูกห้องกับลูกค้าในกล่องข้อความ — ล็อกลูกค้าก่อน `lockCreditRoom`) · `RoomCreditService.completeAnalysis` (ผลวิเคราะห์สเตทเม้น
+   จากแชทเสร็จ) · `ChatSalesDispositionService.record` (ทำเครื่องหมายแชทขายไม่สำเร็จ/เปิดใหม่ — เดิม `chat_rooms FOR UPDATE` → ลูกค้าตัวจริง `FOR UPDATE` ·
+   ตอนนี้ลูกค้าตัวจริงผ่าน helper เดียว (`FOR NO KEY UPDATE` — ยังเรียงคำตัดสินของลูกค้าคนเดียวกันข้ามห้องและชนกับการรวมลูกค้า) ก่อนห้อง) — สองทางหลังใช้รูปเดียวกัน:
+   อ่านลูกค้าของห้อง (ไม่ล็อก) → ล็อกลูกค้า → ล็อกห้อง → อ่านซ้ำ · ลูกค้าของห้องเปลี่ยนระหว่างนั้น = `RoomCustomerChangedError` (409 — ยังไม่เขียนอะไร) แล้วลองทั้งก้อนใหม่ ·
+   เดิมทั้งสามทางล็อกห้องก่อน (`linkRoomCreditHistory` ล็อกลูกค้าตอนนำเข้าผลวิเคราะห์) จึงสวนกับ bind ลำดับใหม่ · **ตาข่าย:** `bind` · ปุ่มยกเลิกผูก · วิเคราะห์เสร็จ ·
+   ทำเครื่องหมายแชท ลองทั้งทรานแซกชันใหม่ด้วย `runWithTransactionRetry` (`utils/transaction-retry.util.ts` — ตัวเดียว · 3 ครั้ง · managed ไม่ลองข้างใน) ·
+   เงื่อนไขลองซ้ำเดียว `isLockOrderRetryable` (`finance-line-link.ts` — deadlock/serialization/ชน unique P2002 · ชุดลูกค้าของ bind ไม่นิ่ง · ลูกค้าของห้องเปลี่ยน) · ชุดลูกค้าของ bind
+   อ่านซ้ำครบ 5 รอบแล้วยังไม่นิ่ง = Sentry warning (ไม่มี U-id/ข้อมูลลูกค้า) + `FinanceLineLockSetUnstableError` ให้ bind ลองใหม่ (M-2 — ไม่ไปต่อแบบล็อกไม่ครบ) ·
+   ทางอื่นที่ล็อก `chat_rooms FOR UPDATE` (handoff · follow-up · service request/case · note mention · response cycle · ไฟล์สเตทเม้น) ไม่ล็อก/แก้แถวลูกค้าในทรานแซกชันเดียวกัน
+   (insert ที่อ้าง FK ถือแค่ KEY SHARE ไม่ชน) · managed `AccessPartySourceService.room()` ไล่แล้ว: ไม่มีผู้เรียกที่ส่ง `lock=true` (ผู้เรียกเดียว `access-party-query-plan.ts` ไม่ล็อก)
+   ⇒ ไม่มีวงจรกับ bind — ถ้าวันหน้าเปิดล็อกห้อง ต้องล็อกลูกค้าก่อนตามลำดับนี้ ·
+   ผลข้างเคียงของ `FOR NO KEY UPDATE`: ทำเครื่องหมายแชทไม่รอ insert ที่อ้าง FK แล้ว ⇒ บันทึก "หลุด" พร้อมใบขายหน้าร้านที่กำลัง commit ได้ —
+   สถานะที่คำนวณยังถูกเพราะ `chat-scoped-summary.ts` ตัด "หลุด" ทิ้งเมื่อมีการซื้อ ·
+   ทางใหม่ที่แตะแถวลูกค้า + แถว link/ห้อง (รวม `lockCreditRoom`) ในทรานแซกชันเดียวกันต้องล็อกตามลำดับนี้ ·
    นำเข้าลูกค้า (`migration.service.ts`) ตัดคอลัมน์ `lineId` ทิ้ง + แถวเตือน `IMPORT_LINE_ID_IGNORED_MSG` ใน `errors` (แถวยังนำเข้า ไม่นับ failed) ·
    **ยกเลิกผูกมีทางเดียว `unlinkFinanceLine(tx, …)`** ในทรานแซกชันเดียวกับงานของผู้เรียก: `{ lineUserId }` (ลูกค้ากดใน LIFF — ล้างคอลัมน์บนทุกลูกค้าที่ถือ
    LINE นั้น รวมแถวที่ถูกลบ + ปิดแถวของ LINE นั้น) · `{ customerId }` (พนักงาน — ล้างคอลัมน์ + ปิดแถวของลูกค้าคนนั้น**เท่านั้น** ห้ามปิดตาม LINE: ค่าในคอลัมน์อาจเป็น
@@ -161,7 +184,8 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
      ปุ่มใน `ContractCard` / `Customer360Actions` / `FocusContractCard` · ตัวกรอง "ไม่มี LINE" · ตัวนับ LINE ของโหมดโฟกัส ไม่ดูคอลัมน์ ·
      ส่งไม่ได้เพราะไม่มีแถว (ณ ตอนส่ง) = 400 `LINE_FINANCE_NOT_VERIFIED_MESSAGE` (`POST /overdue/:id/send-line-adhoc` · ส่งซ้ำ dunning ช่อง LINE — บอกว่ายังไม่ยืนยัน OTP +
      ทางของลูกค้าเอง "เริ่มยืนยันตัวตน" เพราะไม่มีปุ่มพนักงานส่งลิงก์ยืนยัน) · ad-hoc ไม่พบสัญญา = 404 (ไม่ตอบ `{sent:0}` ที่หน้าเว็บแปลว่า "ลองใหม่" — fix round 1 M-4) ·
-     ส่ง ad-hoc / `bulk/send-line` ใช้ขอบเขตเดียว `lineSendContractScope` (`bulk.service.ts`) = ขอบเขตของหน้าจอที่ปุ่มอยู่: role ข้ามสาขา (`getBranchScope`) ทุกสัญญา ·
+     ส่ง ad-hoc / `bulk/send-line` ใช้ขอบเขตเดียว `lineSendContractScope` (`overdue/line-send-scope.ts` — ย้ายออกจาก `bulk.service.ts` ใน Task 29 · แท็บ "แชท LINE"
+     ของแผง 360 ใช้ตัวเดียวกันระดับลูกค้า `lineSendCustomerScope` ข้างล่าง) = ขอบเขตของหน้าจอที่ปุ่มอยู่: role ข้ามสาขา (`getBranchScope`) ทุกสัญญา ·
      นอกนั้น **สาขาตัวเอง** (คิวทวงถาม / `queue-row` / แบนเนอร์นัดครบกำหนด — fix round 1 M-3) **หรือ สัญญาที่ผู้ใช้มีงานรายวันวันนี้** (โหมดโฟกัส `GET /collections/session/mine`
      อ่านตามงานที่จ่าย ซึ่งจ่ายข้ามสาขาได้โดยตั้งใจ — round-robin · เติมขั้นต่ำจาก pool · ความสัมพันธ์เดิม · หยิบจาก pool · `DailyAssignment` ของ (ผู้ใช้, `collectionsSessionDay()`)
      ที่ไม่ถูกลบ — นิยาม "วันนี้" เดียวกับหน้าจอ · fix round 2 I-R1 · ผู้เขียน `date` (auto-assign) / pool / cron ล็อกงาน / สรุปรายวัน ใช้ฟังก์ชันเดียวกัน — round 3) ·
@@ -178,7 +202,12 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
      (ไม่ส่งทาง LINE ร้านจนกว่าฝั่งร้านมี OTP) · ยืนยันแล้วแต่ยังไม่เคยทัก = "รอลูกค้าทักก่อน" (ไม่ถอยไปห้องอื่น) · ประวัติแชท (`GET` เส้นเดียวกัน):
      **มีแถว** = ห้องของ LINE นั้นเท่านั้น (ยังไม่มีห้อง = ว่าง `roomId: null` — ไม่ถอยไปห้องของ LINE อื่น · fix round 2 m-1) · **ไม่มีแถว** = ห้อง LINE ล่าสุดตามเดิม อ่านอย่างเดียว ·
       เงื่อนไขเปิดแท็บ/ช่องพิมพ์ฝั่งเว็บใช้ `hasVerifiedLine` แล้ว (Task 27 — API ปฏิเสธอยู่แล้วไม่ว่าเว็บจะเปิดไหม) ·
-     route นี้ยังไม่มี branch scope (ลูกค้าไม่ผูกสาขาโดยตรง — รอเจ้าของตัดสิน) · สำเนาข้อความที่ระบบบันทึกลงห้อง (`payment-link` · แม่แบบ Flex ของ `notification-dispatch`)
+     **ขอบเขตสาขา (Task 29 #3 — เจ้าของตัดสิน 31 ต.ค.): `GET` และ `POST` ใช้กติกาเดียวกับปุ่ม "ส่ง LINE"** — `RoomManagerService.assertCustomerLineChatScope` →
+     `lineSendCustomerScope(actor)` (ประกอบจาก `lineSendContractScope` ไม่มีกติกาชุดที่สอง): role ข้ามสาขาเห็นทุกลูกค้า (รวมผู้สนใจที่ไม่มีสัญญา) · นอกนั้นเฉพาะลูกค้าที่มีสัญญา
+     (ไม่ถูกลบ) ในสาขาตัวเอง **หรือ** ผู้ใช้มีงานรายวันวันนี้ (`collectionsSessionDay`) ของสัญญาใดของลูกค้า · ไม่มีสาขาและไม่มีงาน = ไม่มีอะไร · นอกขอบเขต/ไม่พบลูกค้า = 404
+     `ไม่พบลูกค้า` ทั้งอ่านและส่ง (ตรวจก่อนอย่างอื่น — ปักที่ `room-manager.customer-scope.db.spec.ts`) · controller ส่ง `req.user` (id/role/branchId) ทั้งก้อน ·
+     ยกเลิกผูก LINE ไม่ใช้ขอบเขตนี้ (เจ้าของตัดสิน) · ฝั่งเว็บ (`useLineChatPanel`) ยังไม่มีข้อความเฉพาะสำหรับ 404 — ผู้ใช้ที่คิวฝั่งอ่านไม่กรองสาขา
+     (BM/SALES ไม่มีสาขา) อาจเห็นลูกค้าที่แท็บแชทตอบ 404 · สำเนาข้อความที่ระบบบันทึกลงห้อง (`payment-link` · แม่แบบ Flex ของ `notification-dispatch`)
      ลงห้องของ**ผู้รับจริง** `{ lineUserId: <LINE ที่ push ถึง>, channel }` (fix round 2 m-2 — เดิม "ห้องการเงินล่าสุดของลูกค้า" ⇒ บิลของลูกค้าไปโผล่ในห้องของ LINE เก่า)
    - **ฟอร์มลูกค้า** (Task 27): `GET /customers/:id` (+ `/:id/detail`) คืน `financeLine: { verified, linkedAt }` (`withFinanceLineStatus` + `FINANCE_LINE_STATUS_SELECT` —
      แถวเดียวกับผู้ส่ง ไม่มี U-id · managed projection เปิดฟิลด์นี้) ⇒ ฟอร์มแก้ไขแสดงแถวสถานะ (ยืนยัน OTP แล้ว + วันที่ผูก + ปุ่ม "ยกเลิกการผูก" / ยังไม่ได้ผูก + วิธีผูกเอง) ·
@@ -200,7 +229,7 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
   Task 24 RR-M2 · ป้าย/แท็บ/ช่องพิมพ์ของแผง 360 คิวทวงถาม + ฟอร์มแก้ไขลูกค้า + ป้ายแผงข้างหน้าลูกค้า (`CustomerSidePanel`) — Task 27 ใช้แถว OTP แล้ว · ข้อ 9) · **กวาดหนึ่งครั้งก่อนเปิด LIFF ให้ลูกค้า (1 ธ.ค.)**
   ด้วย SQL อ่านอย่างเดียวด้านล่าง (รันบน prod ได้ตอนนี้เพื่อรู้ขนาด) แล้วล้างทีละแถว: **ฟอร์มล้างค่าค้างไม่ได้แล้ว** (Task 27 — คอลัมน์ค้างที่ไม่มีแถวหนุนแสดงเป็น
   "ยังไม่ได้ผูก LINE" ไม่มีปุ่ม) ⇒ `POST /customers/:id/finance-line/unlink` ด้วยบัญชี OWNER/BM (ล้างคอลัมน์แม้ไม่มีแถว + audit `CUSTOMER_FINANCE_LINE_UNLINKED` ·
-  มีหรือไม่มีสัญญาก็ได้) · แถวที่ถูกลบ (`deleted = true`): ล้างหลังกู้จากถังขยะ
+  มีหรือไม่มีสัญญาก็ได้ · ตั้งแต่ Task 29 `PATCH /customers/:id {"lineIdFinance": null}` ได้ผลเดียวกันทุกอย่าง รวม audit) · แถวที่ถูกลบ (`deleted = true`): ล้างหลังกู้จากถังขยะ
   (ถังขยะเตือน "เคยผูก LINE" อยู่แล้ว) — `bind` ของ LINE เดียวกันก็ล้างให้เอง (ข้อ 9) · (ข) ~~ให้ LIFF การเงินอนุญาตจากแถว link~~ — ทำแล้ว (ข้อ 9) ·
   (ค) `line_id_shop` ยังเขียนได้จากฟอร์มพนักงาน/บอทขาย (ไม่มีทาง OTP ฝั่งร้าน — คงไว้) · ไม่ใช่หลักฐานตัวตนแล้ว (ข้อ 1) แต่ยังเป็นปลายทาง push ฝั่งร้าน
 
@@ -227,7 +256,7 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
   GROUP BY line_id_finance HAVING count(*) > 1;
   ```
 
-- **I4 — ปิดแล้ว (Task 22 · แทนด้วยปุ่มใน Task 27)**: OWNER/BM ยกเลิกผูกด้วยปุ่ม "ยกเลิกการผูก" ในแถวสถานะ "LINE น้องเบส (การเงิน)" ของฟอร์มแก้ไขลูกค้าทั้งสองที่
+- **I4 — ปิดแล้ว (Task 22 · แทนด้วยปุ่มใน Task 27 · PATCH ล้างช่องใช้แกนเดียวกับปุ่มตั้งแต่ Task 29)**: OWNER/BM ยกเลิกผูกด้วยปุ่ม "ยกเลิกการผูก" ในแถวสถานะ "LINE น้องเบส (การเงิน)" ของฟอร์มแก้ไขลูกค้าทั้งสองที่
   (หน้าลูกค้า › แก้ไข `EditCustomerDialog` · หน้าสัญญา › แก้ไขข้อมูลลูกค้า `CustomerEditModal` — สิทธิ์ส่งมาจาก `canEdit`/`canEditMaster` ของหน้าที่เปิดฟอร์ม) →
   หน้าต่างยืนยัน → `POST /customers/:id/finance-line/unlink` ทันที (ไม่ต้องบันทึกฟอร์ม) ⇒ ลูกค้ายืนยัน OTP ด้วย LINE ใหม่ได้ ไม่ติด 409 ·
   ฟอร์มไม่ส่ง `lineIdFinance` อีกเลย ⇒ บันทึกฟอร์ม (รวมทางสำรองที่โหลดฉบับเต็มไม่ได้ — M-2) ยกเลิกผูกไม่ได้ · ทางสำรองไม่แสดงแถวสถานะ (ไม่รู้สถานะ = ไม่เดา)
@@ -291,6 +320,10 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
   "ลองช่องทางใหม่" ตัดช่อง "LINE ID ใหม่ (ถ้ามี)" (เดิมกรอกพร้อมเบอร์ = ทั้งคำขอ 400 เบอร์ใหม่ไม่ถูกบันทึก) — บันทึกด้วยเบอร์ + เหตุผล + หมายเหตุชวนลูกค้าผูกเอง ·
   payload ของทุกฟอร์มไม่มี `lineIdFinance`/`newLineId` · ยกเลิกผูก = ปุ่ม (ข้อ 6, I4) · deploy: เว็บ 26.10.73 ขึ้นพร้อมหรือหลัง API (เว็บใหม่ + API เก่า = ไม่มี
   `financeLine` ⇒ ฟอร์มแก้ไขไม่แสดงแถวสถานะ (จึงไม่มีปุ่ม) · API ใหม่ + เว็บเก่า = ช่องพิมพ์เดิม ค่าใหม่ 400 ตามเดิม)
+- **Task 29 (เจ้าของตัดสิน 31 ต.ค. 2026) — ปิดแล้วฝั่ง API:** รีวิว Task 27 M-2 (bind ล็อกกลับด้าน → deadlock กับปุ่ม/PATCH — ลำดับล็อกเดียว ข้อ 6 ·
+  fix round 1: ทางผูกห้องในกล่องข้อความ / ผลวิเคราะห์สเตทเม้นเสร็จ / ทำเครื่องหมายแชทขาย ล็อกลูกค้าก่อนห้องแล้ว + bind ลองซ้ำเป็นตาข่าย · managed `room()` ไล่แล้ว ไม่มีทางที่ล็อก) ·
+  M-3 (PATCH ล้างช่องตัดสินด้วยคอลัมน์ ไม่มี audit — แกนเดียวกับปุ่ม ข้อ 6) · คำถามเจ้าของจาก Task 24 fix round 1 (branch scope ของแท็บ "แชท LINE" — ข้อ 9) ·
+  ไม่ต้องอัปเดต access manifest (decorator ไม่เปลี่ยน) · ฝั่งเว็บไม่ต้องเปลี่ยนเพื่อให้ทำงาน (ข้อความ 404 ของแท็บแชทเป็นงานเว็บต่อ)
 - เวลาตอบ `requestOtp`: SMS ไม่ถูก await และทุกทางที่สำเร็จรอขั้นต่ำ 1 วิ — ส่วนต่างที่เหลือคือ query เพดานของเบอร์จริง (ระดับมิลลิวินาที อยู่ใต้ขั้นต่ำ) ·
   ถ้า provider ช้าเกิน 1 วิ SMS ยังส่งต่อหลังตอบ (Cloud Run ลด CPU หลังตอบ — อาจช้าลง ไม่หาย)
 

@@ -9,7 +9,8 @@ describe('LiffApiService', () => {
   let prisma: any;
   // tx ของ unlinkLineAccount — แยกจาก prisma เพื่อพิสูจน์ว่าเขียนในธุรกรรมเดียวกัน
   let tx: {
-    customer: { updateMany: jest.Mock };
+    $queryRaw: jest.Mock;
+    customer: { findMany: jest.Mock; updateMany: jest.Mock };
     customerLineLink: { updateMany: jest.Mock; findMany: jest.Mock };
     chatRoom: { updateMany: jest.Mock };
   };
@@ -40,7 +41,12 @@ describe('LiffApiService', () => {
       $transaction: jest.fn(),
     };
     tx = {
-      customer: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      // Task 29 — unlinkFinanceLine ล็อกแถวลูกค้า (ผู้ถือแถว link + ผู้ถือคอลัมน์) ก่อนแถว link/ห้อง
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      customer: {
+        findMany: jest.fn().mockResolvedValue([{ id: 'cust1' }]),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
       customerLineLink: {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         findMany: jest.fn().mockResolvedValue([{ customerId: 'cust1' }]),

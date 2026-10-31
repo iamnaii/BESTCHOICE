@@ -191,9 +191,9 @@ describe('VerificationService', () => {
     });
 
     it('throws on invalid phone format', async () => {
-      await expect(
-        service.requestOtp({ lineUserId: 'U123', phone: '12345' }),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.requestOtp({ lineUserId: 'U123', phone: '12345' })).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('normalizes +66 format phone number', async () => {
@@ -202,7 +202,9 @@ describe('VerificationService', () => {
       await service.requestOtp({ lineUserId: 'U123', phone: '66891234567' });
 
       expect(prisma.customer.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { phone: { in: ['0891234567', '089-123-4567', '089-1234567'] }, deletedAt: null } }),
+        expect.objectContaining({
+          where: { phone: { in: ['0891234567', '089-123-4567', '089-1234567'] }, deletedAt: null },
+        }),
       );
     });
 
@@ -211,9 +213,9 @@ describe('VerificationService', () => {
         lastRequestAt: new Date(), // just now
       });
 
-      await expect(
-        service.requestOtp({ lineUserId: 'U123', phone: '0891234567' }),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.requestOtp({ lineUserId: 'U123', phone: '0891234567' })).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     // ─── test-mode skips real SMS send (OWNER-gated UAT) ───
@@ -295,9 +297,9 @@ describe('VerificationService', () => {
         attempts: 0,
       });
 
-      await expect(
-        service.verifyOtp({ lineUserId: 'U123', otp: '123456' }),
-      ).rejects.toThrow('หมดอายุ');
+      await expect(service.verifyOtp({ lineUserId: 'U123', otp: '123456' })).rejects.toThrow(
+        'หมดอายุ',
+      );
     });
 
     it('throws on max attempts exceeded', async () => {
@@ -327,9 +329,9 @@ describe('VerificationService', () => {
     it('throws when no OTP record exists', async () => {
       prisma.chatbotOtpRequest.findUnique.mockResolvedValue(null);
 
-      await expect(
-        service.verifyOtp({ lineUserId: 'U123', otp: '123456' }),
-      ).rejects.toThrow('ขอ OTP ใหม่');
+      await expect(service.verifyOtp({ lineUserId: 'U123', otp: '123456' })).rejects.toThrow(
+        'ขอ OTP ใหม่',
+      );
     });
 
     // ─────────────────────────────────────────────────────────────
@@ -363,9 +365,9 @@ describe('VerificationService', () => {
         testMode.isEnabled.mockResolvedValue(true);
         prisma.chatbotOtpRequest.findUnique.mockResolvedValue(null);
 
-        await expect(
-          service.verifyOtp({ lineUserId: 'U123', otp: '999999' }),
-        ).rejects.toThrow('ขอ OTP ใหม่');
+        await expect(service.verifyOtp({ lineUserId: 'U123', otp: '999999' })).rejects.toThrow(
+          'ขอ OTP ใหม่',
+        );
         expect(prisma.$transaction).not.toHaveBeenCalled();
         expect(audit.log).not.toHaveBeenCalled();
       });
@@ -375,9 +377,9 @@ describe('VerificationService', () => {
         prisma.chatbotOtpRequest.findUnique.mockResolvedValue(makeRecord('wrong-hash', 0));
         prisma.chatbotOtpRequest.update.mockResolvedValue({ attempts: 1 });
 
-        await expect(
-          service.verifyOtp({ lineUserId: 'U123', otp: '999999' }),
-        ).rejects.toThrow('ไม่ถูกต้อง');
+        await expect(service.verifyOtp({ lineUserId: 'U123', otp: '999999' })).rejects.toThrow(
+          'ไม่ถูกต้อง',
+        );
         expect(audit.log).not.toHaveBeenCalled();
       });
     });
@@ -460,7 +462,11 @@ describe('VerificationService', () => {
       });
 
       it('real-verify branch: เรียก absorbRoomsOfLineUser(lineUserId, LINE_FINANCE, customerId, SYSTEM_ACTOR) ก่อน bind() เสมอ', async () => {
-        mergedPrisma.customer.findFirst.mockResolvedValue({ id: 'c1', name: 'สมชาย', phone: '0891234567' });
+        mergedPrisma.customer.findFirst.mockResolvedValue({
+          id: 'c1',
+          name: 'สมชาย',
+          phone: '0891234567',
+        });
         await mergedService.requestOtp({ lineUserId: 'U123', phone: '0891234567' });
         const upsertCall = mergedPrisma.chatbotOtpRequest.upsert.mock.calls[0][0];
         const storedHash = upsertCall.create.hash;
@@ -489,9 +495,10 @@ describe('VerificationService', () => {
 
         await mergedService.verifyOtp({ lineUserId: 'U123', otp });
 
-        expect(merge.absorbRoomsOfLineUser).toHaveBeenCalledWith(
-          'U123', 'LINE_FINANCE', 'c1', { id: 'system', role: 'SYSTEM' },
-        );
+        expect(merge.absorbRoomsOfLineUser).toHaveBeenCalledWith('U123', 'LINE_FINANCE', 'c1', {
+          id: 'system',
+          role: 'SYSTEM',
+        });
         expect(callOrder).toEqual(['absorb', 'bind']); // absorb ก่อน bind() เสมอ ไม่ใช่ทีหลัง
       });
 
@@ -499,14 +506,17 @@ describe('VerificationService', () => {
         mergedTestMode.isEnabled.mockResolvedValue(true);
         mergedPrisma.chatbotOtpRequest.findUnique.mockResolvedValue(makeRecord('wrong-hash'));
         mergedPrisma.customer.findUnique.mockResolvedValue({ id: 'c1', name: 'สมชาย' });
-        merge.absorbRoomsOfLineUser.mockRejectedValue(new Error('รวมไม่ได้: ผู้สนใจคนนี้มีใบจอง 1 รายการ'));
+        merge.absorbRoomsOfLineUser.mockRejectedValue(
+          new Error('รวมไม่ได้: ผู้สนใจคนนี้มีใบจอง 1 รายการ'),
+        );
 
         const result = await mergedService.verifyOtp({ lineUserId: 'U123', otp: '999999' });
 
         expect(result.customerId).toBe('c1');
-        expect(merge.absorbRoomsOfLineUser).toHaveBeenCalledWith(
-          'U123', 'LINE_FINANCE', 'c1', { id: 'system', role: 'SYSTEM' },
-        );
+        expect(merge.absorbRoomsOfLineUser).toHaveBeenCalledWith('U123', 'LINE_FINANCE', 'c1', {
+          id: 'system',
+          role: 'SYSTEM',
+        });
         expect(mergedPrisma.$transaction).toHaveBeenCalled(); // bind() ยังรันต่อแม้ absorb ล้ม
         expect(mergedPrisma.chatbotOtpRequest.delete).toHaveBeenCalled();
       });
@@ -554,7 +564,10 @@ describe('VerificationService', () => {
             { provide: PrismaService, useValue: jPrisma },
             { provide: NotificationsService, useValue: { sendSmsFromQueue: jest.fn() } },
             // test-mode bypass: ข้ามการเทียบ hash แต่ผ่าน bind() เส้นเดียวกับยืนยันจริง
-            { provide: TestModeService, useValue: { isEnabled: jest.fn().mockResolvedValue(true) } },
+            {
+              provide: TestModeService,
+              useValue: { isEnabled: jest.fn().mockResolvedValue(true) },
+            },
             { provide: AuditService, useValue: { log: jest.fn().mockResolvedValue(undefined) } },
             { provide: JourneyEntryWriter, useValue: journey },
           ],
@@ -625,7 +638,9 @@ describe('VerificationService', () => {
 
       it('transaction ของ bind() ล้ม → ไม่บันทึก และ verifyOtp โยนต่อ', async () => {
         jPrisma.$transaction.mockRejectedValue(new Error('deadlock'));
-        await expect(jService.verifyOtp({ lineUserId: 'U123', otp: '999999' })).rejects.toThrow('deadlock');
+        await expect(jService.verifyOtp({ lineUserId: 'U123', otp: '999999' })).rejects.toThrow(
+          'deadlock',
+        );
         expect(journey.recordAfterCommit).not.toHaveBeenCalled();
       });
     });
@@ -813,9 +828,9 @@ describe('VerificationService', () => {
       prisma.customer.findFirst.mockResolvedValue(KNOWN);
       prisma.chatbotOtpRequest.findUnique.mockResolvedValue(row({ attempts: 3 }));
 
-      await expect(
-        service.requestOtp({ lineUserId: 'U123', phone: '0891234567' }),
-      ).rejects.toThrow(/ขอรหัสใหม่ได้ในอีก \d+ นาที/);
+      await expect(service.requestOtp({ lineUserId: 'U123', phone: '0891234567' })).rejects.toThrow(
+        /ขอรหัสใหม่ได้ในอีก \d+ นาที/,
+      );
       expect(prisma.chatbotOtpRequest.upsert).not.toHaveBeenCalled();
       expect(notifications.sendSmsFromQueue).not.toHaveBeenCalled();
     });
@@ -1020,8 +1035,7 @@ describe('VerificationService', () => {
       await flushSmsDispatch();
       expect(
         prisma.chatbotOtpRequest.updateMany.mock.calls.some(
-          (c: [{ data: { lastRequestAt?: Date } }]) =>
-            c[0].data.lastRequestAt?.getTime() === 0,
+          (c: [{ data: { lastRequestAt?: Date } }]) => c[0].data.lastRequestAt?.getTime() === 0,
         ),
       ).toBe(true);
     });

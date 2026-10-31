@@ -78,16 +78,26 @@ describe('LiffApiService', () => {
             product: { name: 'iPhone 15', brand: 'Apple', model: 'iPhone 15' },
             payments: [
               {
-                id: 'p1', installmentNo: 1, dueDate: new Date('2026-02-15'),
-                amountDue: new Prisma.Decimal('2000'), amountPaid: new Prisma.Decimal('2000'),
-                lateFee: new Prisma.Decimal('0'), status: 'PAID',
-                paidDate: new Date('2026-02-14'), paymentMethod: 'BANK_TRANSFER',
+                id: 'p1',
+                installmentNo: 1,
+                dueDate: new Date('2026-02-15'),
+                amountDue: new Prisma.Decimal('2000'),
+                amountPaid: new Prisma.Decimal('2000'),
+                lateFee: new Prisma.Decimal('0'),
+                status: 'PAID',
+                paidDate: new Date('2026-02-14'),
+                paymentMethod: 'BANK_TRANSFER',
               },
               {
-                id: 'p2', installmentNo: 2, dueDate: new Date('2026-03-15'),
-                amountDue: new Prisma.Decimal('2000'), amountPaid: new Prisma.Decimal('0'),
-                lateFee: new Prisma.Decimal('100'), status: 'OVERDUE',
-                paidDate: null, paymentMethod: null,
+                id: 'p2',
+                installmentNo: 2,
+                dueDate: new Date('2026-03-15'),
+                amountDue: new Prisma.Decimal('2000'),
+                amountPaid: new Prisma.Decimal('0'),
+                lateFee: new Prisma.Decimal('100'),
+                status: 'OVERDUE',
+                paidDate: null,
+                paymentMethod: null,
               },
             ],
           },
@@ -117,10 +127,15 @@ describe('LiffApiService', () => {
         name: 'ทดสอบ',
         contracts: [
           {
-            id: 'con1', contractNumber: 'BC-0001', status: 'ACTIVE',
-            sellingPrice: new Prisma.Decimal('5000'), downPayment: new Prisma.Decimal('1000'),
-            monthlyPayment: new Prisma.Decimal('500'), totalMonths: 8,
-            createdAt: new Date(), product: { name: 'มือถือมือสอง', brand: null, model: null },
+            id: 'con1',
+            contractNumber: 'BC-0001',
+            status: 'ACTIVE',
+            sellingPrice: new Prisma.Decimal('5000'),
+            downPayment: new Prisma.Decimal('1000'),
+            monthlyPayment: new Prisma.Decimal('500'),
+            totalMonths: 8,
+            createdAt: new Date(),
+            product: { name: 'มือถือมือสอง', brand: null, model: null },
             payments: [],
           },
         ],
@@ -132,13 +147,22 @@ describe('LiffApiService', () => {
 
     it('handles null product gracefully', async () => {
       prisma.customer.findFirst.mockResolvedValue({
-        id: 'cust1', name: 'ทดสอบ',
-        contracts: [{
-          id: 'con1', contractNumber: 'BC-0001', status: 'ACTIVE',
-          sellingPrice: new Prisma.Decimal('5000'), downPayment: new Prisma.Decimal('1000'),
-          monthlyPayment: new Prisma.Decimal('500'), totalMonths: 8,
-          createdAt: new Date(), product: null, payments: [],
-        }],
+        id: 'cust1',
+        name: 'ทดสอบ',
+        contracts: [
+          {
+            id: 'con1',
+            contractNumber: 'BC-0001',
+            status: 'ACTIVE',
+            sellingPrice: new Prisma.Decimal('5000'),
+            downPayment: new Prisma.Decimal('1000'),
+            monthlyPayment: new Prisma.Decimal('500'),
+            totalMonths: 8,
+            createdAt: new Date(),
+            product: null,
+            payments: [],
+          },
+        ],
       });
 
       const result = await service.findCustomerContractsFull('U_line');
@@ -164,14 +188,35 @@ describe('LiffApiService', () => {
           {
             contractNumber: 'BC-001',
             payments: [
-              { id: 'pay-1', installmentNo: 1, amountPaid: new Prisma.Decimal('2000'), paidDate: new Date('2026-02-01'), paymentMethod: 'CASH', lateFee: new Prisma.Decimal('0') },
-              { id: 'pay-2', installmentNo: 2, amountPaid: new Prisma.Decimal('2000'), paidDate: new Date('2026-03-01'), paymentMethod: 'BANK_TRANSFER', lateFee: new Prisma.Decimal('50') },
+              {
+                id: 'pay-1',
+                installmentNo: 1,
+                amountPaid: new Prisma.Decimal('2000'),
+                paidDate: new Date('2026-02-01'),
+                paymentMethod: 'CASH',
+                lateFee: new Prisma.Decimal('0'),
+              },
+              {
+                id: 'pay-2',
+                installmentNo: 2,
+                amountPaid: new Prisma.Decimal('2000'),
+                paidDate: new Date('2026-03-01'),
+                paymentMethod: 'BANK_TRANSFER',
+                lateFee: new Prisma.Decimal('50'),
+              },
             ],
           },
           {
             contractNumber: 'BC-002',
             payments: [
-              { id: 'pay-3', installmentNo: 1, amountPaid: new Prisma.Decimal('1500'), paidDate: new Date('2026-02-15'), paymentMethod: 'PROMPTPAY', lateFee: new Prisma.Decimal('0') },
+              {
+                id: 'pay-3',
+                installmentNo: 1,
+                amountPaid: new Prisma.Decimal('1500'),
+                paidDate: new Date('2026-02-15'),
+                paymentMethod: 'PROMPTPAY',
+                lateFee: new Prisma.Decimal('0'),
+              },
             ],
           },
         ],
@@ -231,7 +276,9 @@ describe('LiffApiService', () => {
 
     it('handles null phone and zero points', async () => {
       prisma.customer.findFirst.mockResolvedValue({
-        id: 'cust1', name: 'ทดสอบ', phone: null,
+        id: 'cust1',
+        name: 'ทดสอบ',
+        phone: null,
         _count: { contracts: 0 },
       });
       prisma.loyaltyPoint.aggregate.mockResolvedValue({ _sum: { points: null } });

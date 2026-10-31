@@ -35,16 +35,13 @@ export function clearImpactText(target: ClearSecretTarget): string {
     return `${integrationName} จะรับข้อความที่ส่งเข้ามาไม่ได้ — ระบบจริงปฏิเสธ webhook จาก LINE ทุกครั้งจนกว่าจะบันทึกค่าใหม่ ส่วนการส่งข้อความออกยังทำงาน`;
   }
   switch (`${integrationKey}.${fieldKey}`) {
-    // Not just the GET handshake (facebook-webhook.controller verifyWebhook): the comment
-    // transport treats it as required — FacebookCommentGraphTransport.credentials() ⇒ null
-    // ⇒ capabilities receive/publicReply false ⇒ replyPublic CAPABILITY_UNVERIFIED,
-    // subscribeFields (feed button + App Review subscribe-webhooks) throws, and with
-    // chat_facebook_comments_enabled + an enabled page, ingest() throws 503 — awaited for every
-    // entry before Messenger events (facebook-webhook.controller), so a request carrying a
-    // comment change also drops its Messenger events. Messenger alone (HMAC = appSecret,
-    // send = pageAccessToken) keeps working.
+    // Only reader: the webhook GET handshake (facebook-webhook.controller verifyWebhook — no
+    // token ⇒ 400, so Meta cannot verify the Callback URL when it is set or edited). Messenger
+    // POSTs are checked with the App Secret (HMAC) and sent with the Page Access Token; the
+    // page-comment transport stopped requiring it in Task 35
+    // (FacebookCommentGraphTransport.credentials()).
     case 'facebook.verifyToken':
-      return 'ยืนยัน webhook กับ Facebook ใหม่ไม่ได้ และฟีเจอร์คอมเมนต์เพจหยุด: ตอบคอมเมนต์จากอินบ็อกซ์ไม่ได้ · ปุ่มสมัครรับคอมเมนต์และการสมัคร webhook ใน App Review ล้มเหลว · ถ้าเปิดรับคอมเมนต์ไว้ ระบบจะตอบคำขอ webhook ที่มีคอมเมนต์ว่าล้มเหลว คอมเมนต์ใหม่จึงไม่เข้าอินบ็อกซ์ และข้อความ Messenger ที่มาในคำขอเดียวกันก็ยังไม่ถูกรับเข้า — จนกว่าจะบันทึกค่าใหม่ · ข้อความ Messenger ที่ไม่ได้มาพร้อมคอมเมนต์ยังรับส่งได้';
+      return 'ใช้เฉพาะตอนยืนยัน webhook กับ Facebook — ล้างแล้ว การตั้งหรือแก้ Callback URL ในหน้าแอปของ Meta จะยืนยันไม่ผ่านจนกว่าจะบันทึกค่าใหม่ · ข้อความ Messenger และคอมเมนต์เพจไม่ได้ใช้ค่านี้ จึงรับส่งได้ตามเดิม';
     // yeastar-webhook.controller: no secret ⇒ 401 in production (call-status popup gone);
     // yeastar-cdr.cron still pulls call records every 15 min with the API credentials.
     case 'yeastar.webhookSecret':

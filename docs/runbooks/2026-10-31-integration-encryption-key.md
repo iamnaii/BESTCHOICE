@@ -84,9 +84,12 @@
 - มีผล**ทันที**เฉพาะผู้อ่านที่ใช้ `getValue` (LINE ทั้ง 3 OA · Claude · อีเมล · PEAK · SMS · PaySolutions · MDM · e-Tax) ·
   ผู้อ่านผ่าน `getConfig` cache — **ผู้อ่าน Facebook ทุกตัว** · **Yeastar** (webhook · token · ดึงประวัติการโทร) ·
   การ์ดและปุ่มทดสอบ — บน instance อื่นของ API/worker อาจยังใช้ค่าเดิมได้ถึง **5 นาที** (แบบเดียวกับการบันทึก) ⇒ ถ้าล้างเพราะค่ารั่ว
-  ให้นับว่า Facebook/Yeastar ยังรับ/ส่งด้วยค่าเดิมได้อีก 5 นาที · Facebook Verify Token ไม่ได้ใช้แค่ยืนยัน webhook: ฟีเจอร์คอมเมนต์เพจ
-  ต้องมีค่านี้ (`FacebookCommentGraphTransport.credentials()`) — ล้างแล้วตอบคอมเมนต์/สมัครรับคอมเมนต์ไม่ได้ และถ้าเปิดรับคอมเมนต์ไว้ คำขอ webhook
-  ที่มีคอมเมนต์ตอบ 503 (ข้อความ Messenger ในคำขอเดียวกันค้างด้วย) · ทดสอบหลังล้างแล้วยังผ่าน ให้รอ 5 นาทีแล้วกดใหม่
+  ให้นับว่า Facebook/Yeastar ยังรับ/ส่งด้วยค่าเดิมได้อีก 5 นาที · Facebook Verify Token ใช้เฉพาะตอน Meta ยืนยัน webhook (คำขอ GET
+  เมื่อตั้งหรือแก้ Callback URL ในหน้าแอปของ Meta — `FacebookWebhookController.verifyWebhook`) — ล้างแล้วการยืนยันนั้นไม่ผ่านจนกว่าจะบันทึกค่าใหม่ ·
+  การรับ Messenger (ตรวจลายเซ็นด้วย App Secret) และฟีเจอร์คอมเมนต์เพจไม่ใช้ค่านี้ (`FacebookCommentGraphTransport.credentials()` เลิกบังคับ
+  ตั้งแต่ Task 35) · ที่ยังเป็นจริง (ไม่เกี่ยวกับ Verify Token): ถ้าเปิดรับคอมเมนต์ไว้แล้วฝั่งคอมเมนต์ล้ม — เช่น ล้าง Page Access Token หรือสิทธิ์ Meta
+  ไม่ครบ — คำขอ webhook ที่มีคอมเมนต์ตอบ 503 และข้อความ Messenger ในคำขอเดียวกันยังไม่ถูกรับจนกว่า Meta ส่งซ้ำแล้วสำเร็จ ·
+  ทดสอบหลังล้างแล้วยังผ่าน ให้รอ 5 นาทีแล้วกดใหม่
 - การ์ด Claude: ล้างแล้วหยุดเฉพาะฟีเจอร์ที่อ่านคีย์ผ่าน Hub (บอทน้องเบส · อ่านสลิป · OCR · วิเคราะห์เครดิต · บอท LINE SHOP แบบเดิม) —
   **บอทขายในอินบ็อกซ์ (`sales-bot/providers/claude.provider.ts`) · `chat-history-extractor/knowledge-extractor.service.ts` ·
   `staff-chat/services/sales-state.service.ts` · `ai-usage/ai-text.service.ts` · `chat-engine/services/after-hours.service.ts`**

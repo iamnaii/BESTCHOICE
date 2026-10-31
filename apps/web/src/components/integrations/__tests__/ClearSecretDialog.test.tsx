@@ -48,13 +48,16 @@ describe('ClearSecretDialog — what clearing a field does', () => {
     expect(dialog).not.toHaveTextContent('จะใช้งานไม่ได้');
   });
 
-  it('Facebook Verify Token: webhook re-verify and the page-comment feature stop (review N1)', () => {
+  it('Facebook Verify Token: only the webhook handshake stops — Messenger and page comments do not use it (Task 35)', () => {
     const dialog = open(t('facebook', 'Facebook Messenger', 'verifyToken', 'Webhook Verify Token'));
     expect(dialog).toHaveTextContent(
-      'ยืนยัน webhook กับ Facebook ใหม่ไม่ได้ และฟีเจอร์คอมเมนต์เพจหยุด: ตอบคอมเมนต์จากอินบ็อกซ์ไม่ได้ · ปุ่มสมัครรับคอมเมนต์และการสมัคร webhook ใน App Review ล้มเหลว · ถ้าเปิดรับคอมเมนต์ไว้ ระบบจะตอบคำขอ webhook ที่มีคอมเมนต์ว่าล้มเหลว คอมเมนต์ใหม่จึงไม่เข้าอินบ็อกซ์ และข้อความ Messenger ที่มาในคำขอเดียวกันก็ยังไม่ถูกรับเข้า — จนกว่าจะบันทึกค่าใหม่ · ข้อความ Messenger ที่ไม่ได้มาพร้อมคอมเมนต์ยังรับส่งได้',
+      'ใช้เฉพาะตอนยืนยัน webhook กับ Facebook — ล้างแล้ว การตั้งหรือแก้ Callback URL ในหน้าแอปของ Meta จะยืนยันไม่ผ่านจนกว่าจะบันทึกค่าใหม่ · ข้อความ Messenger และคอมเมนต์เพจไม่ได้ใช้ค่านี้ จึงรับส่งได้ตามเดิม',
     );
-    // The old copy claimed the token only matters for the webhook handshake.
-    expect(dialog).not.toHaveTextContent('ใช้เฉพาะตอนยืนยัน webhook');
+    // Task 32 copy (review N1) described the comment transport requiring this token, which
+    // Task 35 removed: none of these stop any more.
+    expect(dialog).not.toHaveTextContent('ฟีเจอร์คอมเมนต์เพจหยุด');
+    expect(dialog).not.toHaveTextContent('ตอบคอมเมนต์จากอินบ็อกซ์ไม่ได้');
+    expect(dialog).not.toHaveTextContent('ข้อความ Messenger ที่มาในคำขอเดียวกัน');
   });
 
   it('Yeastar Webhook Secret: production rejects every webhook — no incoming-call popup, CDRs still polled', () => {

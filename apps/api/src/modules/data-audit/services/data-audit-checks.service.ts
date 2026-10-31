@@ -256,9 +256,10 @@ export class DataAuditChecksService {
    *   (a) a receipt-style entry keyed by the payment (`referenceId` or `metadata.paymentId`), or
    *   (b) an entry that credits 11-2103 for the installment's schedule row without a paymentId
    *       (nightly advance / park consumption, 6a/6b) — not the legacy prior-receipt marker, or
-   *   (c) the contract's early payoff — on the rows that JP4 paid only (`PAID_BY_EARLY_PAYOFF`: paid on the
-   *       JP4's date and inside the range of installments it closed); a row PAID before the payoff needs
-   *       its own backing (Task 25 · Task 23 re-review r-1 — (c) used to back every row of the contract).
+   *   (c) the contract's early payoff — on the rows that JP4 paid only (`PAID_BY_EARLY_PAYOFF`: paid_date =
+   *       the JP4's posted_at and inside the range of installments it closed; a JP4 without the range also by
+   *       the early-payoff note prefix); a row PAID before the payoff needs its own backing (Task 25 · Task 23
+   *       re-review r-1 — (c) used to back every row of the contract).
    * (b) and (c) are `payment-backing.ts` — the same rules `backfill:receipts` uses to skip rows whose
    * money is documented elsewhere (and (c) is the JP4 late-fee allowance of `overpaid_contracts`). Imported rows still untouched since the cutover (`LEGACY_UNTOUCHED_PAYMENT`) are exempt — their
    * money was booked in PEAK. Set-based (anti-joins) so the nightly run does not rescan the journal

@@ -39,8 +39,9 @@
  * ------------------------------------------------------------
  * A PAID row with no receipt row of its own can still be money that already has its document:
  * - (c) a row the early payoff paid — the payoff receipt (`EARLY_PAYOFF`) and JP4 carry no `paymentId`; only
- *   the rows JP4 settled (paid on the JP4's date, inside the range of installments it closed —
- *   `PAID_BY_EARLY_PAYOFF`), NOT a row of the same contract PAID before the payoff (Task 25 · r-1);
+ *   the rows JP4 settled (`PAID_BY_EARLY_PAYOFF`: paid_date = the JP4's posted_at and inside the range of
+ *   installments it closed; a JP4 without the range also by the early-payoff note prefix its rows carry),
+ *   NOT a row of the same contract PAID before the payoff (Task 25 · r-1);
  * - (b) a row cleared by an entry that credits 11-2103 for its schedule row (path (b) of `orphan_payments` —
  *   the nightly 2A consuming a customer advance / the reschedule park: that money got its document when it
  *   was received since PR3 / PR4ข).

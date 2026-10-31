@@ -15,6 +15,14 @@ import { LEGACY_PRIOR_RECEIPT_FLOW } from '../../accounting/peak-export-exclusio
 export const EARLY_PAYOFF_FLOW = 'early-payoff';
 
 /**
+ * คำนำหน้า `Payment.notes` ที่ `ContractPaymentService.earlyPayoff` ประทับทุกแถวงวดที่ JP4 จ่าย (`contracts/contract-payment.service.ts:669` —
+ * `'[ปิดก่อนกำหนด]'` หรือ `'[ปิดก่อนกำหนด] <หมายเหตุ>'`) — มีตั้งแต่ `f3f9395d8` (2026-04-07) ก่อน flow `early-payoff` ของ JP4 (2026-05-04) ⇒
+ * ทุกแถวที่ JP4 จ่ายมีคำนำหน้านี้ · ผู้เขียนปักด้วย `contract-payment.service.early-payoff-exec.spec.ts` และ DB spec ของตรวจกลางคืน (แถวที่ JP4 จริง
+ * จ่าย = ค่านี้) · ลิงก์ชำระ PaySolutions ที่ปิดยอดต่อท้าย ` [ปิดก่อนกำหนด]` (ไม่ใช่คำนำหน้า — แถวพวกนั้นมีรายการรับชำระของตัวเอง)
+ */
+export const EARLY_PAYOFF_PAYMENT_NOTE_PREFIX = '[ปิดก่อนกำหนด]';
+
+/**
  * (b) id ของแถวตารางงวด (`installment_schedules.id`) ที่มีรายการ `POSTED` เครดิต 11-2103 ผูก `metadata.installmentScheduleId` — รอบกลางคืน
  * หักเงินรับล่วงหน้า / เงินพักเข้างวด (`advance-consume-on-accrual` / `reschedule-park-consume` — tag `2B` ไม่มี `paymentId`) · 6a/6b ·
  * และรายการรับชำระเอง (stamp ทั้ง `paymentId` และ `installmentScheduleId` — นับต้นฉบับที่ `reversed` ด้วย ดูคอมเมนต์ใน `orphanPaymentRows`)
@@ -34,12 +42,15 @@ export const SCHEDULE_ROWS_CLEARED_BY_ENTRY = Prisma.sql`
 
 /**
  * (c) แถว Payment (alias **`p`**) ที่รายการปิดยอดก่อนกำหนด JP4 ของสัญญา**เป็นผู้จ่าย** — รายการเดียวระดับสัญญาไม่มี `paymentId` (ใบ
- * `EARLY_PAYOFF` ก็ไม่ผูก `paymentId`) จึงตัดสินจากสองข้อ (Task 17 ข้อ B):
- * - `je.posted_at = p.paid_date` — `ContractPaymentService.earlyPayoff` เขียน `Payment.paidDate` และ `postedAt` ของ JP4 จากตัวแปร `paidDate`
- *   ตัวเดียว (คอลัมน์ทั้งสอง `timestamp(3)`)
- * - งวดอยู่ในช่วง `firstUnpaidInstallmentNo..lastUnpaidInstallmentNo` ที่ JP4 stamp (งวดที่ไม่ใช่ `PAID` ตอนปิดยอด เรียงจากน้อยไปมาก) — ใบรับชำระ
- *   ที่ลงวันเดียวกับวันปิดยอดได้เวลาเที่ยงคืน UTC เท่ากัน (หน้ารับชำระ / หน้าปิดยอดส่ง `YYYY-MM-DD`) วันที่อย่างเดียวจึงแยกไม่ได้ ·
- *   รายการ JP4 ที่ไม่มีช่วง (ก่อน 2026-10-18) ใช้วันที่อย่างเดียว
+ * `EARLY_PAYOFF` ผูก JP4 ไม่ผูก `paymentId`) จึงตัดสินต่อแถว (Task 17 ข้อ B · Task 25):
+ * - **JP4 ที่มีช่วงงวด** (ตั้งแต่ 2026-10-18): `je.posted_at = p.paid_date` (timestamp เท่ากันพอดี — `ContractPaymentService.earlyPayoff` เขียน
+ *   `Payment.paidDate` และ `postedAt` ของ JP4 จากตัวแปร `paidDate` ตัวเดียว · คอลัมน์ทั้งสอง `timestamp(3)`) **และ** งวดอยู่ในช่วง
+ *   `firstUnpaidInstallmentNo..lastUnpaidInstallmentNo` ที่ JP4 stamp (งวดที่ไม่ใช่ `PAID` ตอนปิดยอด เรียงจากน้อยไปมาก) — ใบรับชำระที่ลงวันเดียวกับ
+ *   วันปิดยอดได้เวลาเที่ยงคืน UTC เท่ากัน (หน้ารับชำระ / หน้าปิดยอดส่ง `YYYY-MM-DD`) วันที่อย่างเดียวจึงแยกไม่ได้
+ * - **JP4 ที่ไม่มีช่วง** (ก่อน 2026-10-18): `je.posted_at = p.paid_date` **หรือ** แถวมีคำนำหน้า notes ที่ `earlyPayoff` ประทับทุกแถวที่ปิด
+ *   (`EARLY_PAYOFF_PAYMENT_NOTE_PREFIX` — มีตั้งแต่ 2026-04-07) — JP4 ก่อน `711fcfa4c` (2026-07-09) ลง `postedAt` = เวลาที่ลงรายการ (ไม่ได้รับ
+ *   `paidDate`) ⇒ วันที่ไม่เท่า `Payment.paidDate` เลย (Task 25 fix round 1 · review m-1) · ขอบที่รู้: แถวที่จ่ายด้วยใบรับชำระวันเดียวกับวันปิดยอด
+ *   (เที่ยงคืน UTC เท่ากัน) ของ JP4 ยุค 2026-07-09…10-18 ถือว่า JP4 จ่าย (เท็จลบ ไม่ใช่เท็จบวก — แถวนั้นมีรายการรับชำระของตัวเองอยู่แล้ว)
  *
  * ⇒ งวดที่**จ่ายก่อนปิดยอด**ไม่ได้หนุนด้วย JP4 (Task 25 · Task 23 re-review r-1 — เดิม (c) ตัดสินทั้งสัญญา: ทุกงวด PAID ของสัญญาที่มี JP4
  * ถือว่าหนุน รวมงวดที่จ่ายก่อนปิดยอดโดยไม่มีรายการเลย ⇒ `orphan_payments` และ `backfill:receipts` ข้ามเงียบ)
@@ -49,10 +60,13 @@ export const PAID_BY_EARLY_PAYOFF = Prisma.sql`EXISTS (
                WHERE je.metadata->>'contractId' = p.contract_id
                  AND je.metadata->>'flow' = ${EARLY_PAYOFF_FLOW}
                  AND je.status = 'POSTED' AND je.deleted_at IS NULL
-                 AND je.posted_at = p.paid_date
                  AND (
-                   je.metadata->>'firstUnpaidInstallmentNo' IS NULL
-                   OR p.installment_no BETWEEN (je.metadata->>'firstUnpaidInstallmentNo')::int
-                                           AND (je.metadata->>'lastUnpaidInstallmentNo')::int
+                   (je.metadata->>'firstUnpaidInstallmentNo' IS NOT NULL
+                    AND je.posted_at = p.paid_date
+                    AND p.installment_no BETWEEN (je.metadata->>'firstUnpaidInstallmentNo')::int
+                                             AND (je.metadata->>'lastUnpaidInstallmentNo')::int)
+                   OR (je.metadata->>'firstUnpaidInstallmentNo' IS NULL
+                       AND (je.posted_at = p.paid_date
+                            OR starts_with(p.notes, ${EARLY_PAYOFF_PAYMENT_NOTE_PREFIX})))
                  )
              )`;

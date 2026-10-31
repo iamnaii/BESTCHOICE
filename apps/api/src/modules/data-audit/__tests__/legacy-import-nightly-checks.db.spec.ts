@@ -58,6 +58,7 @@ import { ReceivableReconService } from '../../receivable-recon/receivable-recon.
 import type { AuditCheckResult } from '../data-audit.types';
 import { ContractTraceService } from '../services/contract-trace.service';
 import { DataAuditChecksService } from '../services/data-audit-checks.service';
+import { EARLY_PAYOFF_PAYMENT_NOTE_PREFIX } from '../services/payment-backing';
 
 /**
  * Task 16 — ตรวจกลางคืน (data-audit 06:00 + receivable-recon 02:00) บนสัญญาที่นำเข้าจากระบบเก่าและสัญญาปกติ — Postgres จริง
@@ -1850,13 +1851,41 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
           elsewhere: [6, 7, 8, 9, 10, 11, 12].map((no) => `TEST-T16N-${stamp}-A7#${no}:c`).sort(),
         });
 
-        // รายการ JP4 ก่อน 2026-10-18 (ไม่มีช่วงงวด) — วันที่เป็นตัวแยก: งวด 6–12 ยังหนุนด้วย JP4 · งวด 5 (วันอื่น) ยังติด
+        // รายการ JP4 2026-07-09…10-18 (ไม่มีช่วงงวด · postedAt = paidDate) — วันที่เป็นตัวแยก: งวด 6–12 ยังหนุนด้วย JP4 · งวด 5 (วันอื่น) ยังติด
         await prisma.journalEntry.update({
           where: { id: entry.id },
           data: { metadata: withoutRange as Prisma.InputJsonObject },
         });
         expect(await orphanRowsOf(a7)).toEqual([5]);
         expect((await backfillListsOf([a7])).cli).toEqual([`TEST-T16N-${stamp}-A7#5`]);
+
+        // Task 25 fix round 1 (m-1): รายการ JP4 ก่อน 2026-07-09 (`711fcfa4c`) — ไม่มีช่วงงวด และ postedAt = เวลาที่ลงรายการ (≠ Payment.paidDate)
+        // ⇒ แถวที่ JP4 จ่ายรู้จักจากคำนำหน้า notes ที่ earlyPayoff ประทับทุกแถวที่ปิด (ตั้งแต่ 2026-04-07) · งวด 5 (ไม่มีคำนำหน้า) ยังติด
+        const row6 = await paymentOf(a7, 6);
+        expect(row6.notes).toBe(EARLY_PAYOFF_PAYMENT_NOTE_PREFIX);
+        await prisma.journalEntry.update({
+          where: { id: entry.id },
+          data: { postedAt: new Date(entry.postedAt!.getTime() + 9 * 60 * 60 * 1000) },
+        });
+        expect(await orphanRowsOf(a7)).toEqual([5]);
+        expect(await backfillListsOf([a7])).toEqual({
+          cli: [`TEST-T16N-${stamp}-A7#5`],
+          bound: [],
+          elsewhere: [6, 7, 8, 9, 10, 11, 12].map((no) => `TEST-T16N-${stamp}-A7#${no}:c`).sort(),
+        });
+        // รูปเดียวกันแต่แถวไม่มีคำนำหน้า ⇒ ไม่มีอะไรบอกว่า JP4 จ่าย — ติด orphan_payments และเป็นผู้สมัคร CLI
+        await prisma.payment.update({ where: { id: row6.id }, data: { notes: null } });
+        expect(await orphanRowsOf(a7)).toEqual([5, 6]);
+        expect((await backfillListsOf([a7])).cli).toEqual(
+          [`TEST-T16N-${stamp}-A7#5`, `TEST-T16N-${stamp}-A7#6`].sort(),
+        );
+        // JP4 ที่มีช่วงงวดตัดสินแบบเดิมทุกข้อ (วันที่ + ช่วง) — คำนำหน้าไม่ใช่ข้อยกเว้นของมัน
+        await prisma.payment.update({ where: { id: row6.id }, data: { notes: row6.notes } });
+        await prisma.journalEntry.update({
+          where: { id: entry.id },
+          data: { metadata: entry.metadata as Prisma.InputJsonObject },
+        });
+        expect(await orphanRowsOf(a7)).toEqual([5, 6, 7, 8, 9, 10, 11, 12]);
       },
       LONG,
     );

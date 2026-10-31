@@ -8,7 +8,7 @@ import { DataAuditChecksService } from './services/data-audit-checks.service';
 import { ContractTraceService } from './services/contract-trace.service';
 import { AuditFindingsService } from './services/audit-findings.service';
 import { AuditBackfillService } from './services/audit-backfill.service';
-import { PAID_BY_EARLY_PAYOFF } from './services/payment-backing';
+import { EARLY_PAYOFF_PAYMENT_NOTE_PREFIX, PAID_BY_EARLY_PAYOFF } from './services/payment-backing';
 
 /**
  * DataAuditService tests — validates all 12 database health checks
@@ -207,7 +207,14 @@ describe('DataAuditService', () => {
       // one definition — both checks embed the very same SQL fragment
       expect(orphanCall).toContain(PAID_BY_EARLY_PAYOFF);
       expect(overpaidCall).toContain(PAID_BY_EARLY_PAYOFF);
-      expect(PAID_BY_EARLY_PAYOFF.values).toEqual(['early-payoff']);
+      // Task 25 fix round 1 (m-1): a JP4 without the range (before 2026-10-18) also accepts the early-payoff note prefix
+      // earlyPayoff stamps on every row it closes (a JP4 before 2026-07-09 was posted at posting time ≠ paid_date)
+      expect(orphanSql).toContain('starts_with(p.notes, ');
+      expect(PAID_BY_EARLY_PAYOFF.values).toEqual([
+        'early-payoff',
+        EARLY_PAYOFF_PAYMENT_NOTE_PREFIX,
+      ]);
+      expect(EARLY_PAYOFF_PAYMENT_NOTE_PREFIX).toBe('[ปิดก่อนกำหนด]'); // the literal contract-payment.service writes
     });
   });
 

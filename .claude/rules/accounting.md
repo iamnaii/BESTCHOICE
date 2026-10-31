@@ -1640,8 +1640,10 @@ Integration: `contracts/early-payoff-receipt.integration.spec.ts`. **กลไ�
      ด้วยยอด `receiptTax.amount` ของรายการนั้น (`-` = รายการก่อน PR3 ไม่มีค่าประทับ — ใบผูกรายการแต่พิมพ์ตรรกะเดิม แจ้งฝ่ายบัญชี) · บรรทัดที่มี
      `⚠ unboundReceipts=N` = งวดมีใบค่างวดที่ไม่ผูกรายการใด N ใบ (ผลบวกเท็จที่รู้ข้างล่าง) — ตรวจว่าใบนั้นไม่ใช่เงินก้อนนี้ก่อนออกซ้ำ
    - **ไม่ใช่เงินที่มีเอกสารอยู่แล้วที่อื่น** (Task 23 review m-1): งวดที่ JP4 ของการปิดยอดก่อนกำหนดเป็นผู้จ่าย (ใบ `EARLY_PAYOFF` และ JP4 ไม่ผูก
-     `paymentId` · `PAID_BY_EARLY_PAYOFF` = `paid_date` เท่าวันที่ของ JP4 **และ** งวดอยู่ในช่วง `firstUnpaidInstallmentNo..lastUnpaidInstallmentNo` ที่ JP4
-     stamp — ตัวเดียวกับส่วนเผื่อค่าปรับของ `overpaid_contracts` · JP4 ก่อน 2026-10-18 ไม่มีช่วง ใช้วันที่อย่างเดียว) — **งวดของสัญญาเดียวกันที่จ่ายก่อนปิดยอด
+     `paymentId` · `PAID_BY_EARLY_PAYOFF` — ตัวเดียวกับส่วนเผื่อค่าปรับของ `overpaid_contracts`: JP4 ที่มีช่วงงวด (ตั้งแต่ 2026-10-18) = `paid_date` =
+     `posted_at` ของ JP4 (timestamp เท่ากันพอดี — ไม่ใช่วันปฏิทินเดียวกัน) **และ** งวดอยู่ในช่วง `firstUnpaidInstallmentNo..lastUnpaidInstallmentNo`
+     ที่ JP4 stamp · JP4 ที่ไม่มีช่วง = timestamp เท่ากัน **หรือ** `Payment.notes` ขึ้นต้น `[ปิดก่อนกำหนด]` ที่ `earlyPayoff` ประทับทุกแถวที่ปิด (มีตั้งแต่
+     2026-04-07 — JP4 ก่อน `711fcfa4c` 2026-07-09 ลง `posted_at` = เวลาที่ลงรายการ จึงไม่เท่า `paid_date` · Task 25 fix round 1)) — **งวดของสัญญาเดียวกันที่จ่ายก่อนปิดยอด
      ไม่นับ** (Task 25 · r-1: เดิมตัดสินทั้งสัญญา งวดที่ PAID ก่อนปิดยอดโดยไม่มีรายการจึงหลุดทั้ง CLI และ `orphan_payments`) · และงวดที่ถูกล้างด้วยรายการที่
      เครดิต 11-2103 ผูกแถวตารางงวด (ทาง (b) ของ `orphan_payments` — รอบกลางคืนหักเงินรับล่วงหน้า / เงินพักค่าปรับดิว: เงินนั้นออกเอกสารแล้วตอนรับ ตั้งแต่ PR3 /
      PR4ข) — ทาง (c) / (b) ของตรวจกลางคืน `orphan_payments` ชุดเดียวกัน (`data-audit/services/payment-backing.ts`) · CLI **ไม่ออกใบ** แต่พิมพ์

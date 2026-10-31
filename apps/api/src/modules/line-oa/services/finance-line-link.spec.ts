@@ -1,11 +1,16 @@
 import { BadRequestException } from '@nestjs/common';
+import * as Sentry from '@sentry/nestjs';
 import {
   clearFinanceRoomVerification,
+  FinanceLineLockSetUnstableError,
   LINE_FINANCE_LINK_REQUIRES_OTP_MESSAGE,
+  lockCustomersForFinanceLineBind,
   lockFinanceLineCustomers,
   staffLineFinanceChange,
   unlinkFinanceLine,
 } from './finance-line-link';
+
+jest.mock('@sentry/nestjs', () => ({ captureMessage: jest.fn(), captureException: jest.fn() }));
 
 /**
  * Task 22 I3 — พนักงาน/API ล้าง LINE การเงินได้ (ยกเลิกผูก) แต่ตั้งค่าใหม่ไม่ได้ · การล้างปิดแถว customer_line_links ด้วย
@@ -198,6 +203,43 @@ describe('ลำดับล็อก ลูกค้า → link → ห้อ�
     await unlinkFinanceLine(tx as never, { customerId: 'c1' }, at);
     before(tx.customer.update, tx.customerLineLink.updateMany);
     before(tx.customer.update, tx.chatRoom.updateMany);
+  });
+});
+
+describe('lockCustomersForFinanceLineBind — ชุดลูกค้าไม่นิ่ง (Task 29 fix round 1 · review M-2)', () => {
+  it('อ่านซ้ำใต้ล็อกแล้วชุดยังโตครบ 5 รอบ → Sentry warning (ไม่มี U-id/ข้อมูลลูกค้า) + error ที่ bind ลองทั้งก้อนใหม่ได้ (ไม่ไปต่อแบบล็อกไม่ครบ)', async () => {
+    let round = 0;
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      customerLineLink: { findUnique: jest.fn().mockResolvedValue(null) },
+      // ทุกรอบมีผู้ถือคอลัมน์คนใหม่ (bind ของ LINE เดียวกันอีกตัว commit คั่นทุกครั้ง — สถานการณ์จำลอง)
+      customer: { findMany: jest.fn(async () => [{ id: `c-new-${++round}` }]) },
+    };
+
+    const err = await lockCustomersForFinanceLineBind(tx as never, 'U-secret', 'c1').catch(
+      (e: unknown) => e,
+    );
+
+    expect(err).toBeInstanceOf(FinanceLineLockSetUnstableError);
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(5);
+    expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+    const [message, context] = (Sentry.captureMessage as jest.Mock).mock.calls[0];
+    expect(context).toMatchObject({ level: 'warning', tags: { subsystem: 'finance-line-lock' } });
+    expect(JSON.stringify([message, context])).not.toMatch(/U-secret|c1|c-new/);
+  });
+
+  it('ชุดนิ่งในรอบที่สอง → ล็อกครั้งเดียว ไม่เตือน', async () => {
+    (Sentry.captureMessage as jest.Mock).mockClear();
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      customerLineLink: { findUnique: jest.fn().mockResolvedValue({ customerId: 'h1' }) },
+      customer: { findMany: jest.fn().mockResolvedValue([{ id: 'h1' }]) },
+    };
+    await expect(lockCustomersForFinanceLineBind(tx as never, 'U1', 'c1')).resolves.toEqual({
+      lineHolderId: 'h1',
+    });
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
   });
 });
 

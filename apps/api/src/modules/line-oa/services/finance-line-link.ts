@@ -1,6 +1,7 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { ChatChannel, LineChannelType, Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
+import { isRetryablePrismaWriteError } from '../../../utils/transaction-retry.util';
 
 /**
  * Task 22 I3 — พนักงาน/API ตั้ง `customers.line_id_finance` เป็นค่าใหม่ไม่ได้ (การผูก LINE การเงินต้องผ่าน OTP ทาง SMS
@@ -110,6 +111,25 @@ export class FinanceLineLockSetUnstableError extends Error {
     super('finance-line bind: customer lock set did not settle');
     this.name = 'FinanceLineLockSetUnstableError';
   }
+}
+
+/**
+ * Task 29 fix round 1 — ทางที่ต้องล็อกลูกค้าของห้องก่อนตัวห้อง (`RoomCreditService.completeAnalysis` · `ChatSalesDispositionService.record`):
+ * อ่านเจ้าของห้อง (ไม่ล็อก) → ล็อกลูกค้า (`lockFinanceLineCustomers`) → ล็อกห้อง → อ่านซ้ำ · เจ้าของเปลี่ยนระหว่างนั้น = error นี้ (ยังไม่เขียนอะไร)
+ * ⇒ ผู้เรียกลองทั้งทรานแซกชันใหม่ (`isLockOrderRetryable`) · ครบรอบแล้ว = 409 ด้วยข้อความของผู้เรียก
+ */
+export class RoomCustomerChangedError extends ConflictException {}
+
+/**
+ * Task 29 fix round 1 — error ที่ลองทั้งทรานแซกชันใหม่ได้สำหรับทางที่ล็อกตามลำดับเดียว ลูกค้า → link → ห้อง (`runWithTransactionRetry`):
+ * deadlock/serialization ของ Postgres · ชุดลูกค้าของ `bind` ไม่นิ่ง · เจ้าของห้องเปลี่ยนระหว่างอ่านกับล็อก
+ */
+export function isLockOrderRetryable(error: unknown): boolean {
+  return (
+    isRetryablePrismaWriteError(error) ||
+    error instanceof FinanceLineLockSetUnstableError ||
+    error instanceof RoomCustomerChangedError
+  );
 }
 
 /**

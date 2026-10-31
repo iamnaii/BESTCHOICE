@@ -13,11 +13,12 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { StorageService } from '../../storage/storage.service';
 import { OcrService } from '../../ocr/ocr.service';
 import { creditFileUrl, linkRoomCreditHistory, lockCreditRoom } from './room-credit-history';
-import { lockFinanceLineCustomers } from '../../line-oa/services/finance-line-link';
 import {
-  isRetryablePrismaWriteError,
-  runWithTransactionRetry,
-} from '../../../utils/transaction-retry.util';
+  isLockOrderRetryable,
+  lockFinanceLineCustomers,
+  RoomCustomerChangedError,
+} from '../../line-oa/services/finance-line-link';
+import { runWithTransactionRetry } from '../../../utils/transaction-retry.util';
 import { detectFile, readLimited, fetchProviderMedia } from './media-fetch.util';
 
 export type CreditRoomActor = { id: string; role: string };
@@ -25,13 +26,6 @@ const MAX_FILES = 10;
 const ANALYSIS_LEASE_MS = 5 * 60 * 1000;
 /** ทรานแซกชันตอนวิเคราะห์เสร็จลองซ้ำสูงสุดกี่ครั้ง (deadlock/serialization หรือเจ้าของห้องเปลี่ยนระหว่างล็อก — Task 29 fix round 1) */
 const ANALYSIS_COMPLETE_MAX_ATTEMPTS = 3;
-
-/** เจ้าของห้องเปลี่ยนระหว่างอ่านกับล็อก (ห้องถูกผูก/ย้ายลูกค้าพร้อมกัน) — ลองทั้งทรานแซกชันใหม่ · ครบรอบแล้ว = 409 */
-class RoomOwnerChangedError extends ConflictException {
-  constructor() {
-    super('ห้องแชทเปลี่ยนลูกค้าระหว่างบันทึกผลวิเคราะห์ กรุณาวิเคราะห์ใหม่อีกครั้ง');
-  }
-}
 
 @Injectable()
 export class RoomCreditService {
@@ -208,7 +202,7 @@ export class RoomCreditService {
   /**
    * ทรานแซกชันตอนวิเคราะห์เสร็จ — Task 29 fix round 1 (review I-1): **ลำดับล็อกเดียว ลูกค้า → ห้อง** (เท่า `VerificationService.bind` ·
    * ปุ่ม/PATCH ยกเลิกผูก · `RoomManagerService.linkCustomer`) — เดิมล็อกห้องก่อนแล้ว `linkRoomCreditHistory` ล็อกลูกค้า ⇒ วงจรกับ bind ที่ล็อก
-   * ลูกค้าก่อนห้อง (40P01) · อ่านเจ้าของห้อง (ไม่ล็อก) → ล็อกลูกค้า → ล็อกห้อง → อ่านซ้ำ: เจ้าของเปลี่ยนระหว่างนั้น = `RoomOwnerChangedError`
+   * ลูกค้าก่อนห้อง (40P01) · อ่านเจ้าของห้อง (ไม่ล็อก) → ล็อกลูกค้า → ล็อกห้อง → อ่านซ้ำ: เจ้าของเปลี่ยนระหว่างนั้น = `RoomCustomerChangedError`
    * (ยังไม่เขียนอะไร — ผู้เรียกลองทั้งก้อนใหม่) · ทุกขั้นอ่านใหม่ จึงลองซ้ำได้
    */
   private completeAnalysis(roomId: string, analysisId: string, result: Prisma.InputJsonValue) {
@@ -221,7 +215,10 @@ export class RoomCreditService {
       await lockFinanceLineCustomers(tx, [expectedOwner]);
       await lockCreditRoom(tx, roomId);
       const room = await tx.chatRoom.findFirst({ where: { id: roomId, deletedAt: null } });
-      if ((room?.customerId ?? null) !== expectedOwner) throw new RoomOwnerChangedError();
+      if ((room?.customerId ?? null) !== expectedOwner)
+        throw new RoomCustomerChangedError(
+          'ห้องแชทเปลี่ยนลูกค้าระหว่างบันทึกผลวิเคราะห์ กรุณาวิเคราะห์ใหม่อีกครั้ง',
+        );
       const updated = await tx.roomCreditAnalysis.updateMany({
         where: { id: analysisId, status: 'ANALYZING' },
         data: { status: 'COMPLETED', result },
@@ -274,7 +271,7 @@ export class RoomCreditService {
       await runWithTransactionRetry(
         () => this.completeAnalysis(roomId, analysis.id, result as Prisma.InputJsonValue),
         ANALYSIS_COMPLETE_MAX_ATTEMPTS,
-        (error) => error instanceof RoomOwnerChangedError || isRetryablePrismaWriteError(error),
+        isLockOrderRetryable,
       );
       return this.get(roomId, actor);
     } catch (error) {

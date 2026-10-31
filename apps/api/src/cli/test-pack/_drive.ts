@@ -371,7 +371,8 @@ export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveR
       });
       if (!customer) return 'ข้าม — ไม่พบลูกค้าทดสอบ (รันโดเมน contracts ก่อน)';
       const salesperson = await ctx.prisma.user.findUniqueOrThrow({
-        where: { id: ctx.refs.salespersonId }, select: { branchId: true },
+        where: { id: ctx.refs.salespersonId },
+        select: { branchId: true },
       });
       if (!salesperson.branchId) return 'ข้าม — พนักงานขายทดสอบยังไม่ได้ผูกสาขา';
       const bookedIds = await openBookingProductIds(ctx.prisma);
@@ -430,7 +431,8 @@ export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveR
       });
       if (!customer) return 'ข้าม — ไม่พบลูกค้าทดสอบ (รันโดเมน contracts ก่อน)';
       const salesperson = await ctx.prisma.user.findUniqueOrThrow({
-        where: { id: ctx.refs.salespersonId }, select: { branchId: true },
+        where: { id: ctx.refs.salespersonId },
+        select: { branchId: true },
       });
       if (!salesperson.branchId) return 'ข้าม — พนักงานขายทดสอบยังไม่ได้ผูกสาขา';
       const bookedIds = await openBookingProductIds(ctx.prisma);

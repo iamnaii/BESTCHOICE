@@ -580,7 +580,6 @@ function ConfigDrawer({
                                   integrationName: entry.name,
                                   fieldKey: field.key,
                                   fieldLabel: field.label,
-                                  required: field.required,
                                 })
                               }
                             >

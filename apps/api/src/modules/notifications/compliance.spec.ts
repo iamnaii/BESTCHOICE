@@ -13,7 +13,7 @@ import { NotificationTemplateService } from './notification-template.service';
 
 describe('NotificationsService — compliance integration', () => {
   let service: NotificationsService;
-  let prisma: any;
+  let prisma: Record<string, Record<string, jest.Mock>>;
   let pdpa: { hasActiveConsent: jest.Mock };
   let fetchMock: jest.SpyInstance;
 
@@ -30,9 +30,7 @@ describe('NotificationsService — compliance integration', () => {
     };
     pdpa = { hasActiveConsent: jest.fn().mockResolvedValue(true) };
     const integrationConfig = { getValue: jest.fn().mockResolvedValue('token') };
-    fetchMock = jest
-      .spyOn(global, 'fetch')
-      .mockResolvedValue(new Response('{}', { status: 200 }) as any);
+    fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
 
     const moduleRef = await Test.createTestingModule({
       providers: [

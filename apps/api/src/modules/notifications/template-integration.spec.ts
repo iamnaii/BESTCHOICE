@@ -11,7 +11,7 @@ import { IntegrationConfigService } from '../integrations/integration-config.ser
 
 describe('NotificationsService — sendFromTemplate integration', () => {
   let service: NotificationsService;
-  let prisma: any;
+  let prisma: Record<string, Record<string, jest.Mock>>;
   let templateService: { findByEventType: jest.Mock };
   let integrationConfig: { getValue: jest.Mock };
   let fetchMock: jest.SpyInstance;
@@ -29,9 +29,7 @@ describe('NotificationsService — sendFromTemplate integration', () => {
     };
     templateService = { findByEventType: jest.fn() };
     integrationConfig = { getValue: jest.fn().mockResolvedValue('token') };
-    fetchMock = jest
-      .spyOn(global, 'fetch')
-      .mockResolvedValue(new Response('{}', { status: 200 }) as any);
+    fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       providers: [

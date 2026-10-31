@@ -108,6 +108,16 @@ describe('peakApiRefusalFor — the refusal names what to do', () => {
     expect(message).not.toContain('User Token / Connect ID / Secret Key');
   });
 
+  it('configured and readable → explains the blank-looking form and how to confirm (re-review N-1)', async () => {
+    const message = await peakApiRefusalFor(deps(true, [], 'ok'));
+    // The hub form does not prefill non-secret fields: saving the blank-looking box sends nothing.
+    expect(message).toContain('การ์ด "PEAK (บัญชี)"');
+    expect(message).toContain('ฟอร์มไม่แสดงค่าที่ตั้งไว้');
+    expect(message).toContain('พิมพ์อักษรใดก็ได้แล้วลบออก');
+    // Exact badge text on the card (IntegrationHubPage IntegrationCard).
+    expect(message).toContain('"ยังไม่ตั้งค่า"');
+  });
+
   it('reading the encrypted-field hint fails → still refuses, with the configured message', async () => {
     const message = await peakApiRefusalFor({
       peakApiConfigured: async () => true,

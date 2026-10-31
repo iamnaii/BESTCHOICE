@@ -16,6 +16,7 @@ import {
   NotFoundException,
   ConflictException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import {
@@ -44,6 +45,11 @@ import {
   isLivePlaceholder,
 } from '../../chat-prospects/chat-placeholder';
 import * as Sentry from '@sentry/nestjs';
+import {
+  LINE_FINANCE_NOT_VERIFIED_MESSAGE,
+  LINE_SHOP_STAFF_SEND_DISABLED_MESSAGE,
+} from '../../line-oa/services/finance-line-link';
+import { findFinanceLineRecipient } from '../../line-oa/services/otp-verified-customer';
 
 /** ตัวกรองห้องแชท — ใช้ร่วมกันระหว่างรายการห้อง (listRooms) กับตัวนับบนป้าย
  *  (getRoomBadgeCounts) เพื่อไม่ให้ "เลขบนป้าย" กับ "จำนวนแถวที่แท็บนั้นแสดง"
@@ -1786,29 +1792,44 @@ export class RoomManagerService {
    * reverses for display.
    */
   async getCustomerMessages(customerId: string, take: number, before?: string) {
-    // Find the customer's LINE Finance room (preferred) or fall back to any
-    // LINE room. Collections is a finance-only workflow — no point pulling
-    // shop-side LINE chat here.
-    const room = await this.prisma.chatRoom.findFirst({
-      where: {
-        customerId,
-        deletedAt: null,
-        channel: { in: [ChatChannel.LINE_FINANCE, ChatChannel.LINE_SHOP] },
-      },
-      orderBy: [
-        // Prefer LINE_FINANCE if both exist (alphabetical "LINE_FINANCE" <
-        // "LINE_SHOP" so an explicit ordering by lastMessageAt is the
-        // tiebreaker that matters).
-        { lastMessageAt: 'desc' },
-      ],
-      select: {
-        id: true,
-        channel: true,
-        lineUserId: true,
-        lastMessageAt: true,
-        unreadCount: true,
-      },
-    });
+    // Task 24 fix round 1 I-1 — ห้องของแถว OTP ที่ยังผูกก่อน (ห้องเดียวกับที่ sendCustomerMessage ส่งเข้า) · ห้องของ LINE เก่าที่ลูกค้ายกเลิกแล้ว
+    // ยังถือ customerId เดิม (M-8) และอาจใหม่กว่า ⇒ ถ้าเลือก "ห้องล่าสุด" พนักงานจะเห็นแชทของผู้ถือ LINE เก่าเป็นของลูกค้า
+    const verifiedLine = await findFinanceLineRecipient(this.prisma, customerId);
+    const verifiedRoom = verifiedLine
+      ? await this.prisma.chatRoom.findFirst({
+          where: { lineUserId: verifiedLine, channel: ChatChannel.LINE_FINANCE, deletedAt: null },
+          select: {
+            id: true,
+            channel: true,
+            lineUserId: true,
+            lastMessageAt: true,
+            unreadCount: true,
+          },
+        })
+      : null;
+    // ไม่มีแถว/ห้อง → แสดงประวัติตามเดิม (ห้อง LINE ล่าสุดของลูกค้า — อ่านอย่างเดียว · ส่งไม่ได้ ดู sendCustomerMessage)
+    const room =
+      verifiedRoom ??
+      (await this.prisma.chatRoom.findFirst({
+        where: {
+          customerId,
+          deletedAt: null,
+          channel: { in: [ChatChannel.LINE_FINANCE, ChatChannel.LINE_SHOP] },
+        },
+        orderBy: [
+          // Prefer LINE_FINANCE if both exist (alphabetical "LINE_FINANCE" <
+          // "LINE_SHOP" so an explicit ordering by lastMessageAt is the
+          // tiebreaker that matters).
+          { lastMessageAt: 'desc' },
+        ],
+        select: {
+          id: true,
+          channel: true,
+          lineUserId: true,
+          lastMessageAt: true,
+          unreadCount: true,
+        },
+      }));
 
     if (!room) {
       return { roomId: null, channel: null, messages: [], hasMore: false };
@@ -1853,10 +1874,13 @@ export class RoomManagerService {
   }
 
   /**
-   * Resolve the customer's LINE room (Finance preferred) and forward the
-   * staff message through MessageRouterService. Returns `{ room: null }`
-   * when the customer has no LINE room so the caller can surface a
-   * non-throwing error; otherwise returns the resolved room + send result.
+   * แผง 360 ("แชท LINE") — ส่งข้อความพนักงานผ่าน MessageRouterService เข้า**ห้อง LINE การเงินของแถว OTP ที่ยังผูกของลูกค้าคนนี้เท่านั้น**
+   * (Task 24 fix round 1 I-1 · `findFinanceLineRecipient` — เกณฑ์เดียวกับผู้ส่งข้อความการเงินทุกตัว กติกาข้อ 9 ของ security.md).
+   * เดิมเลือก "ห้อง LINE ล่าสุดที่ customerId = ลูกค้า" ⇒ หลังลูกค้ายกเลิก LINE เก่าแล้วยืนยัน LINE ใหม่ ห้องของ LINE เก่ายังเป็นของลูกค้า
+   * ถ้าผู้ถือ LINE เก่าทักมาทีหลัง ข้อความของพนักงาน (ยอดหนี้ ฯลฯ) ไปถึงคนที่ไม่ใช่เจ้าของ.
+   * - ไม่มีแถวที่ยังผูก → 400 `LINE_FINANCE_NOT_VERIFIED_MESSAGE` (มีแต่ห้อง LINE ร้าน → `LINE_SHOP_STAFF_SEND_DISABLED_MESSAGE` —
+   *   ฝั่งร้านยังไม่มี OTP จึงไม่ส่งทาง LINE ร้านจากแผงนี้)
+   * - มีแถวแต่ลูกค้ายังไม่เคยทักแชท (ไม่มีห้องของ LINE นั้น) → `{ room: null }` ให้ผู้เรียกตอบ "รอลูกค้าทักก่อน" (ไม่ถอยไปห้องอื่นของลูกค้า)
    */
   async sendCustomerMessage(
     customerId: string,
@@ -1865,13 +1889,18 @@ export class RoomManagerService {
   ): Promise<
     { room: null } | { room: { id: string }; result: { success: boolean; error?: string } }
   > {
+    const lineUserId = await findFinanceLineRecipient(this.prisma, customerId);
+    if (!lineUserId) {
+      const shopRoom = await this.prisma.chatRoom.findFirst({
+        where: { customerId, deletedAt: null, channel: ChatChannel.LINE_SHOP },
+        select: { id: true },
+      });
+      throw new BadRequestException(
+        shopRoom ? LINE_SHOP_STAFF_SEND_DISABLED_MESSAGE : LINE_FINANCE_NOT_VERIFIED_MESSAGE,
+      );
+    }
     const room = await this.prisma.chatRoom.findFirst({
-      where: {
-        customerId,
-        deletedAt: null,
-        channel: { in: [ChatChannel.LINE_FINANCE, ChatChannel.LINE_SHOP] },
-      },
-      orderBy: { lastMessageAt: 'desc' },
+      where: { lineUserId, channel: ChatChannel.LINE_FINANCE, deletedAt: null },
       select: { id: true },
     });
 

@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
+import { isJournalBalanced } from '../../journal/journal-balance';
 
 export interface OverrideLine {
   accountCode: string;
@@ -12,8 +13,6 @@ export interface ValidationError {
   rule: 'V1' | 'V2' | 'V5';
   msg: string;
 }
-
-const TOLERANCE = new Decimal('0.01');
 
 @Injectable()
 export class JournalOverrideService {
@@ -62,12 +61,16 @@ export class JournalOverrideService {
       seen.add(line.accountCode);
     }
 
-    // V1 — balanced within 0.01 THB tolerance
+    // V1 — balanced exactly: the same rule the posting guard (`createAndPost`) applies, so a mismatch is
+    // a Thai 400 here instead of a 500 from the posting path (owner decision 2026-10-31; was ±0.01)
     const drTotal = nonBlank.reduce((s, l) => s.plus(l.debit), new Decimal(0));
     const crTotal = nonBlank.reduce((s, l) => s.plus(l.credit), new Decimal(0));
-    const diff = drTotal.minus(crTotal).abs();
-    if (diff.gt(TOLERANCE)) {
-      this.fail('V1', `Dr (${drTotal.toFixed(2)}) ≠ Cr (${crTotal.toFixed(2)}) — ผลต่าง ${diff.toFixed(2)} บาท`);
+    if (!isJournalBalanced(drTotal, crTotal)) {
+      const diff = drTotal.minus(crTotal).abs();
+      this.fail(
+        'V1',
+        `Dr (${drTotal.toFixed(2)}) ≠ Cr (${crTotal.toFixed(2)}) — ผลต่าง ${diff.toFixed(2)} บาท · รายการบัญชีต้องสมดุลพอดีทุกสตางค์`,
+      );
     }
   }
 

@@ -18,13 +18,25 @@ describe('JournalOverrideService', () => {
       expect(() => svc.validate([line('11-1101', 100, 0), line('42-1102', 0, 100)])).not.toThrow();
     });
 
-    it('V1: passes within 0.01 tolerance', () => {
-      expect(() =>
-        svc.validate([line('11-1101', 100.005, 0), line('42-1102', 0, 100)]),
-      ).not.toThrow();
+    // คำตัดสินเจ้าของ 2026-10-31: สมดุล = เท่ากันพอดี (กติกาเดียวกับทางลงบัญชี `createAndPost`) — เดิม V1 เผื่อ 0.01 ⇒ บรรทัดที่ต่าง 0.01
+    // ผ่าน V1 แล้วไปตายที่ด่านลงบัญชีเป็น HTTP 500 แทนข้อความ 400 ภาษาไทย (review M3)
+    it('V1: a 0.01 difference is rejected as a Thai 400 (exact, same rule as posting)', () => {
+      const attempt = () => svc.validate([line('11-1101', 100, 0), line('42-1102', 0, 99.99)]);
+      expect(attempt).toThrow(BadRequestException);
+      try {
+        attempt();
+      } catch (e) {
+        const body = (e as BadRequestException).getResponse() as {
+          errors: { rule: string; msg: string }[];
+        };
+        const [error] = body.errors;
+        expect(error.rule).toBe('V1');
+        expect(error.msg).toContain('ผลต่าง 0.01 บาท');
+        expect(error.msg).toContain('สมดุลพอดี');
+      }
     });
 
-    it('V1: throws when Dr != Cr beyond 0.01 tolerance', () => {
+    it('V1: throws when Dr != Cr', () => {
       expect(() => svc.validate([line('11-1101', 100, 0), line('42-1102', 0, 99)]))
         .toThrow(BadRequestException);
       try {

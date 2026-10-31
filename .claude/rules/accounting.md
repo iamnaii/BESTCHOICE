@@ -492,7 +492,9 @@ Cash account dimension is required on every Payment record.
 ## สมดุลรายการบัญชี — เท่ากันพอดี ไม่มีเผื่อ (คำตัดสินเจ้าของ 2026-10-31)
 
 ทุกรายการ POSTED ต้อง Σ เดบิต = Σ เครดิต **ทุกสตางค์** — กติกาเดียว `isJournalBalanced` + `JOURNAL_UNBALANCED_SQL`
-(`data-audit/services/data-audit-checks.service.ts`) ใช้ทั้งข้อกลางคืน `journal_balance` (CRITICAL → Sentry) และการไล่ตรวจสัญญา (trace)
+(`journal/journal-balance.ts`) ใช้ทั้งข้อกลางคืน `journal_balance` (CRITICAL → Sentry) · การไล่ตรวจสัญญา (trace) · **การตรวจก่อนปิดงวด**
+(`MonthlyCloseService.runDataAudit` — เดิม `dClose` เผื่อ 0.01 ⇒ งวดที่ข้อกลางคืนบอกไม่สมดุลยังปิดได้โดยไม่ต้องใส่เหตุผล · fix round 1) ·
+งบทดลองรวม (`ConsolidatedService.isBalanced` — เดิม ±0.01) · V1 ของ Override JV · ด่านของทางลงบัญชีทั้งสองทาง
 · ทางลงบัญชีทั้งสองทาง (`JournalService.create` · `JournalAutoService.createAndPost`) บังคับ `Decimal.equals` อยู่แล้ว ⇒ ต่างแม้ 0.01 = รายการที่
 เขียนนอกสองทางนี้ (SQL ตรง / ข้อมูลเก่า) · เดิมข้อกลางคืนเผื่อ 0.01 (`JOURNAL_BALANCE_TOLERANCE` — ลบแล้ว) · เกณฑ์ ≤ 1 บาทข้างล่างเป็นเรื่อง
 ยอดรับชำระ ไม่เกี่ยวกับสมดุลของรายการ
@@ -3341,7 +3343,7 @@ WHT: per-item `whtPct` field; WHT payable posts to `21-3101`
 ### Override JV (manual JE edit before POST)
 
 `POST /other-income/:id/post` accepts optional `{ override: true, overrideLines: [...] }`. When provided:
-- Server validates V1 (Dr=Cr ±0.01), V2 (≥2 lines), V5 (Dr XOR Cr per line) via `JournalOverrideService`
+- Server validates V1 (Dr = Cr **exactly** — `isJournalBalanced`, same rule as posting · was ±0.01 until 2026-10-31 → a 0.01 gap now gets a Thai 400 instead of the posting guard's 500), V2 (≥2 lines), V5 (Dr XOR Cr per line) via `JournalOverrideService`
 - Sets `OtherIncome.isOverridden = true`
 - Writes `AuditLog { action: 'JV_OVERRIDDEN', oldValue: { jvLines: <auto> }, newValue: { jvLines: <override>, diffSummary: <Thai> } }`
 - UI shows ✏ marker in list pages for these documents

@@ -5,6 +5,8 @@ import { IntegrationConfigService } from './integration-config.service';
 import { IntegrationsService } from './integrations.service';
 
 jest.mock('@sentry/node', () => ({ captureMessage: jest.fn(), captureException: jest.fn() }));
+// AuditService pulls in @sentry/nestjs, which needs the real @sentry/node mocked away above.
+jest.mock('../audit/audit.service', () => ({ AuditService: class AuditService {} }));
 
 /**
  * Review M-2: the "ทดสอบการเชื่อมต่อ" buttons must resolve credentials exactly
@@ -29,7 +31,9 @@ function serviceWith(rows: Record<string, string>, key: string | undefined) {
   const config = {
     get: jest.fn((name: string) => (name === 'INTEGRATION_ENCRYPTION_KEY' ? key : undefined)),
   } as unknown as ConfigService;
-  return new IntegrationsService(new IntegrationConfigService(prisma as never, config));
+  return new IntegrationsService(new IntegrationConfigService(prisma as never, config), {
+    log: jest.fn(),
+  } as never);
 }
 
 const enc = (value: string) => encryptPII(value, KEY_A);

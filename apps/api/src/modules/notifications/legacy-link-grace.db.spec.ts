@@ -29,7 +29,7 @@ import {
   bangkokAt,
   createFinanceFixtureBase,
   createInstallmentFixture,
-  dueDateUtc,
+  dueDateBkk,
   realBangkokDate,
   retireFixtures,
   useFakeDate,
@@ -76,7 +76,7 @@ async function trio(dueInDays: number) {
   const make = (label: string, linkedDaysAgo: number, legacy: boolean) =>
     createInstallmentFixture(prisma, base, {
       label: `${label}-${++seq}`,
-      dueDate: dueDateUtc(day, dueInDays),
+      dueDate: dueDateBkk(day, dueInDays),
       linkedAt: new Date(NOW.getTime() - linkedDaysAgo * DAY_MS),
       legacyCode: legacy ? `${stamp}-LG-${seq}` : null,
     });
@@ -346,13 +346,13 @@ describe('Task 30 ข้อ 2 — ผ่อนผัน 7 วันหลัง�
   it('ลูกค้าคนเดียวมีสัญญานำเข้า + สัญญาใหม่ (ผูก 3 วัน) → ระงับเฉพาะสัญญานำเข้า', async () => {
     const legacy = await createInstallmentFixture(prisma, base, {
       label: `mixed-legacy-${++seq}`,
-      dueDate: dueDateUtc(day, -1),
+      dueDate: dueDateBkk(day, -1),
       linkedAt: new Date(NOW.getTime() - 3 * DAY_MS),
       legacyCode: `${stamp}-LG-${seq}`,
     });
     const native = await createInstallmentFixture(prisma, base, {
       label: `mixed-native-${++seq}`,
-      dueDate: dueDateUtc(day, -1),
+      dueDate: dueDateBkk(day, -1),
       customer: { customerId: legacy.customerId, lineUserId: legacy.lineUserId },
     });
     fixtures.push(legacy, native);
@@ -371,7 +371,7 @@ describe('Task 30 ข้อ 2 — ผ่อนผัน 7 วันหลัง�
   it('เตือนค่างวดยังส่งระหว่างผ่อนผัน (T-1: A1 08:00 · บอท 09:00 ข้ามตามกติกาหนึ่งข้อความต่อวัน)', async () => {
     const legacy3 = await createInstallmentFixture(prisma, base, {
       label: `reminder-${++seq}`,
-      dueDate: dueDateUtc(day, 1),
+      dueDate: dueDateBkk(day, 1),
       linkedAt: new Date(NOW.getTime() - 3 * DAY_MS),
       legacyCode: `${stamp}-LG-${seq}`,
     });
@@ -395,7 +395,7 @@ describe('Task 30 รอบ 2 ข้อ 4 — ช่วงผ่อนผัน�
     const phone = `08${String(Date.now() + ++seq).slice(-8)}`;
     const f = await createInstallmentFixture(prisma, base, {
       label: `${label}-${++seq}`,
-      dueDate: dueDateUtc(day, -1),
+      dueDate: dueDateBkk(day, -1),
       linkedAt: null,
       legacyCode: `${stamp}-LG-${seq}`,
       phone,

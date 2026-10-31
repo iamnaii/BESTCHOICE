@@ -15,8 +15,10 @@ import {
   autoPayLinkFailedToday,
   botNoticeSentToday,
   findAutoPayLinkPaymentIds,
+  noticeDueWindow,
   paymentNoticeSentToday,
 } from '../payment-notice-dedupe';
+import { bangkokDayDiff } from '../../../utils/date.util';
 import { findContractsInLegacyLinkGrace, recordLegacyLinkGraceSkip } from '../legacy-link-grace';
 import { NotificationTransportService } from './notification-transport.service';
 import { NotificationDispatchService } from './notification-dispatch.service';
@@ -75,23 +77,12 @@ export class NotificationReminderService {
    */
   async sendPaymentReminders() {
     const now = new Date();
-    const today = new Date(now.toISOString().split('T')[0]);
 
-    // Fetch payments due in exactly 0 (today), 1, or 3 days (filter at DB level)
-    const day0End = new Date(today.getTime() + 24 * 60 * 60 * 1000);
-    const day1 = new Date(today.getTime() + 1 * 24 * 60 * 60 * 1000);
-    const day1End = new Date(day1.getTime() + 24 * 60 * 60 * 1000);
-    const day3 = new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000);
-    const day3End = new Date(day3.getTime() + 24 * 60 * 60 * 1000);
-
+    // Fetch payments due in exactly 0 (today), 1, or 3 days — Thai calendar days (`noticeDueWindow`, Task 30 r3 C1)
     const upcomingPayments = await this.prisma.payment.findMany({
       where: {
         status: 'PENDING',
-        OR: [
-          { dueDate: { gte: today, lt: day0End } },
-          { dueDate: { gte: day1, lt: day1End } },
-          { dueDate: { gte: day3, lt: day3End } },
-        ],
+        OR: [0, 1, 3].map((days) => ({ dueDate: noticeDueWindow(now, days) })),
         contract: { status: 'ACTIVE', deletedAt: null },
       },
       include: {
@@ -118,10 +109,7 @@ export class NotificationReminderService {
     let deferredToPayLink = 0;
     for (const payment of upcomingPayments) {
       const customer = payment.contract.customer;
-      const daysUntil = Math.max(
-        0,
-        Math.round((new Date(payment.dueDate).getTime() - today.getTime()) / (1000 * 60 * 60 * 24)),
-      );
+      const daysUntil = Math.max(0, bangkokDayDiff(now, new Date(payment.dueDate)));
 
       // Task 30 ข้อ 1 — งวดละหนึ่งข้อความต่อวัน (payment-notice-dedupe.ts):
       // (1) A1 เองส่งงวดนี้แล้ววันนี้ ทุกทาง (Flex / template / ข้อความ / SMS) หรือยังถือการส่งอยู่ในคิวส่งซ้ำ —
@@ -260,14 +248,10 @@ export class NotificationReminderService {
    */
   async sendOverdueNotices() {
     const now = new Date();
-    const today = new Date(now.toISOString().split('T')[0]);
 
-    // Only fetch payments overdue by exactly 1, 3, or 7 days (filter at DB level)
-    const dueDates = [1, 3, 7].map((days) => {
-      const start = new Date(today.getTime() - days * 24 * 60 * 60 * 1000);
-      const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
-      return { gte: start, lt: end };
-    });
+    // Only fetch payments overdue by exactly 1, 3, or 7 Thai calendar days (`noticeDueWindow`, Task 30 r3 C1 —
+    // the UTC-day window used to pick the due day itself on real Bangkok-midnight dueDates: "overdue 0 days")
+    const dueDates = [1, 3, 7].map((days) => noticeDueWindow(now, -days));
 
     const overduePayments = await this.prisma.payment.findMany({
       where: {
@@ -299,9 +283,7 @@ export class NotificationReminderService {
     let legacyGraceSkipped = 0;
     for (const payment of overduePayments) {
       const customer = payment.contract.customer;
-      const daysOverdue = Math.floor(
-        (now.getTime() - new Date(payment.dueDate).getTime()) / (1000 * 60 * 60 * 24),
-      );
+      const daysOverdue = bangkokDayDiff(new Date(payment.dueDate), now);
 
       // Task 30 รอบ 2 ข้อ 3 — แจ้งค้างชำระงวดละหนึ่งข้อความต่อวัน (payment-notice-dedupe.ts · A2 ตัวหลัก · บอททวง 10:00 ตัวสำรอง):
       // (1) A2 เองแจ้งงวดนี้แล้ววันนี้ ทุกทาง (Flex / template / ข้อความ / SMS) หรือยังถือการส่งอยู่ในคิวส่งซ้ำ — เดิมดูแค่หัวข้อ Flex

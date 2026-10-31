@@ -22,7 +22,7 @@ import {
   bangkokAt,
   createFinanceFixtureBase,
   createInstallmentFixture,
-  dueDateUtc,
+  dueDateBkk,
   realBangkokDate,
   retireFixtures,
   useFakeDate,
@@ -69,7 +69,7 @@ async function installment(
 ) {
   const f = await createInstallmentFixture(prisma, base, {
     label,
-    dueDate: dueDateUtc(day, dueInDays),
+    dueDate: dueDateBkk(day, dueInDays),
     consent: opts.consent,
     linkedAt: opts.linked === false ? null : undefined,
     phone: opts.phone,

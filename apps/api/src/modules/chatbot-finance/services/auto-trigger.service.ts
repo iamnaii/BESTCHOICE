@@ -19,6 +19,7 @@ import {
 import {
   autoTriggerReferenceKey,
   botNoticeKind,
+  noticeDueWindow,
   paymentNoticeSentToday,
 } from '../../notifications/payment-notice-dedupe';
 import {
@@ -105,11 +106,8 @@ export class AutoTriggerService {
     type: AutoTriggerType,
     template: (p: ReminderPayload) => string,
   ): Promise<void> {
-    const targetDate = new Date();
-    targetDate.setHours(0, 0, 0, 0);
-    targetDate.setDate(targetDate.getDate() + dayOffset);
-    const nextDay = new Date(targetDate);
-    nextDay.setDate(nextDay.getDate() + 1);
+    // วันปฏิทินไทย ไม่ขึ้นกับ TZ เครื่อง (Task 30 รอบ 3 C1 — เดิม setHours ตาม TZ เครื่อง: prod Bangkok / CI UTC คนละวัน)
+    const { gte: targetDate, lt: nextDay } = noticeDueWindow(new Date(), dayOffset);
 
     // หา payments ที่ครบกำหนดในวันนั้น + ยังไม่จ่าย
     const payments = await this.prisma.payment.findMany({

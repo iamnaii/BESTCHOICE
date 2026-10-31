@@ -11,6 +11,7 @@ import {
   Prisma,
   PrismaClient,
 } from '@prisma/client';
+import { bangkokMidnight } from '../../../utils/date.util';
 
 export const dec = (v: string) => new Prisma.Decimal(v);
 
@@ -207,7 +208,11 @@ export function bangkokAt(
   return new Date(Date.UTC(day.y, day.m, day.d + dayOffset, hh, mm) - BKK_OFFSET_MS);
 }
 
-/** วันครบกำหนดแบบที่ระบบเก็บ (เที่ยงคืน UTC ของวันที่) — ตกในหน้าต่างของทั้ง A1 (วัน UTC) และบอท (วันไทย) */
-export function dueDateUtc(day: { y: number; m: number; d: number }, dayOffset: number): Date {
-  return new Date(Date.UTC(day.y, day.m, day.d + dayOffset));
+/**
+ * วันครบกำหนดแบบที่ระบบเก็บจริง — **เที่ยงคืนไทย** (17:00 UTC ของวันก่อน): ตารางงวด `buildInstallmentScheduleRows` /
+ * `generatePaymentSchedule(…, anchor)` / สัญญานำเข้า `legacy-book.ts` ใช้ `bangkokMidnight` ทั้งหมด (รอบ 3 C1 — เดิมสร้างเที่ยงคืน UTC
+ * ซึ่งไม่มีบนข้อมูลจริงและบังหน้าต่างวัน UTC ของ A1/A2)
+ */
+export function dueDateBkk(day: { y: number; m: number; d: number }, dayOffset: number): Date {
+  return bangkokMidnight(day.y, day.m, day.d + dayOffset);
 }

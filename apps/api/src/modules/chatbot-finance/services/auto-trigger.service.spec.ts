@@ -4,6 +4,10 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { LineFinanceClientService } from './line-finance-client.service';
 import { ChatRoomService } from './chat-room.service';
 import { FinanceConfigService } from './finance-config.service';
+import { bangkokStartOfDay } from '../../../utils/date.util';
+
+/** เที่ยงคืนไทยของวันนี้ + offset วัน — หน้าต่างวันของบอทเป็นวันไทยไม่ขึ้นกับ TZ เครื่อง (Task 30 รอบ 3 C1) */
+const bkkDay = (offset: number) => new Date(bangkokStartOfDay().getTime() + offset * 86_400_000);
 
 describe('AutoTriggerService', () => {
   let service: AutoTriggerService;
@@ -136,9 +140,7 @@ describe('AutoTriggerService', () => {
     // runDailyEscalations runs processOffset(-1) then processOffset(-3). Return the
     // overdue payment ONLY for the T+3 window (dueDate strictly more than 1 day ago)
     // by matching the window start against a 3-day-old midnight boundary.
-    const dueDate = new Date();
-    dueDate.setHours(0, 0, 0, 0);
-    dueDate.setDate(dueDate.getDate() - 3);
+    const dueDate = bkkDay(-3);
     prisma.payment.findMany.mockImplementation(({ where }: { where: { dueDate: { gte: Date } } }) =>
       Promise.resolve(
         where.dueDate.gte.getTime() === dueDate.getTime() ? [makePayment(3, dueDate)] : [],
@@ -159,9 +161,7 @@ describe('AutoTriggerService', () => {
 
   it('T+3 escalation honors a configured tier2 amount from SystemConfig', async () => {
     // Configured tier2=90 (3 days overdue still >= default minDays 3 → tier2 applies)
-    const dueDate = new Date();
-    dueDate.setHours(0, 0, 0, 0);
-    dueDate.setDate(dueDate.getDate() - 3);
+    const dueDate = bkkDay(-3);
     prisma.payment.findMany.mockImplementation(({ where }: { where: { dueDate: { gte: Date } } }) =>
       Promise.resolve(
         where.dueDate.gte.getTime() === dueDate.getTime() ? [makePayment(3, dueDate)] : [],
@@ -182,9 +182,7 @@ describe('AutoTriggerService', () => {
   it.each([0, 50, 175])(
     'T+3 reminder keeps stored fee %s after partial payment',
     async (lateFee) => {
-      const dueDate = new Date();
-      dueDate.setHours(0, 0, 0, 0);
-      dueDate.setDate(dueDate.getDate() - 3);
+      const dueDate = bkkDay(-3);
       const payment = { ...makePayment(3, dueDate), amountPaid: 1000, lateFee };
       prisma.payment.findMany.mockImplementation(
         ({ where }: { where: { dueDate: { gte: Date } } }) =>
@@ -207,9 +205,7 @@ describe('AutoTriggerService', () => {
     it.each([5, 3, 1, 0])(
       'T-%i: A1 ส่งเตือนงวดนี้แล้ววันนี้ → บอทไม่ส่ง และไม่จองแถว chat_auto_triggers',
       async (offset) => {
-        const due = new Date();
-        due.setHours(0, 0, 0, 0);
-        due.setDate(due.getDate() + offset);
+        const due = bkkDay(offset);
         prisma.payment.findMany.mockImplementation(
           ({ where }: { where: { dueDate: { gte: Date } } }) =>
             Promise.resolve(
@@ -242,9 +238,7 @@ describe('AutoTriggerService', () => {
     it.each([1, 3])(
       'T+%i: A2 แจ้งค้างชำระงวดนี้แล้ววันนี้ → บอทไม่ส่ง ไม่จองแถว',
       async (daysOverdue) => {
-        const due = new Date();
-        due.setHours(0, 0, 0, 0);
-        due.setDate(due.getDate() - daysOverdue);
+        const due = bkkDay(-daysOverdue);
         prisma.payment.findMany.mockImplementation(
           ({ where }: { where: { dueDate: { gte: Date } } }) =>
             Promise.resolve(

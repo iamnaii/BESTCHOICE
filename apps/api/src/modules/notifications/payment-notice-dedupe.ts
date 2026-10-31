@@ -1,6 +1,6 @@
 import { AutoTriggerType, Prisma, TriggerStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { bangkokStartOfDay } from '../../utils/date.util';
+import { addBkkDays, bangkokStartOfDay } from '../../utils/date.util';
 import { ACTIVE_FINANCE_LINK_WHERE } from '../line-oa/services/otp-verified-customer';
 import { NotificationCategory } from './notification-category.enum';
 
@@ -126,7 +126,16 @@ export async function botNoticeSentToday(
   return row !== null;
 }
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+/**
+ * งวดที่ครบกำหนด `daysFromToday` วันจากวันนี้ตามปฏิทินไทย เป็นช่วง `dueDate` [gte, lt) — **นิยามเดียวของ "T±n"** ของผู้ส่งข้อความเรื่องงวดทุกตัว
+ * (A1 · A2 · A6 · บอท) · `dueDate` จริงเก็บที่เที่ยงคืนไทย (ตารางงวด · สัญญานำเข้า) — รอบ 3 C1: เดิม A1/A2 ใช้วัน UTC
+ * (`toISOString().split('T')[0]`) และบอทใช้ `setHours` ตาม TZ เครื่อง ⇒ บนข้อมูลจริง A1 ส่ง T-4/T-2/T-1 · A2 ส่ง T0 ("เลยกำหนด 0 วัน")/T+2/T+6 ·
+ * ไม่ขึ้นกับ TZ ของเครื่อง
+ */
+export function noticeDueWindow(now: Date, daysFromToday: number): { gte: Date; lt: Date } {
+  const gte = addBkkDays(bangkokStartOfDay(now), daysFromToday);
+  return { gte, lt: addBkkDays(gte, 1) };
+}
 
 /** หัวข้อที่ลิงก์ชำระอัตโนมัติ (A6) ลง `notification_logs` — แถว SENT (ส่งแล้ว) / FAILED (ส่งไม่ผ่าน) */
 export const AUTO_PAY_LINK_SUBJECT = 'ลิงก์ชำระอัตโนมัติ';
@@ -138,13 +147,10 @@ export const AUTO_PAY_LINK_DAYS_BEFORE_DUE = 3;
  * ครบกำหนดอีก `AUTO_PAY_LINK_DAYS_BEFORE_DUE` วันตามวันไทย · งวด PENDING · สัญญา ACTIVE · ลูกค้าไม่ถูกลบและผูก LINE การเงินด้วย OTP
  */
 export function autoPayLinkPaymentWhere(now: Date = new Date()): Prisma.PaymentWhereInput {
-  const dueDayStart = new Date(
-    bangkokStartOfDay(now).getTime() + AUTO_PAY_LINK_DAYS_BEFORE_DUE * DAY_MS,
-  );
   return {
     status: 'PENDING',
     deletedAt: null,
-    dueDate: { gte: dueDayStart, lt: new Date(dueDayStart.getTime() + DAY_MS) },
+    dueDate: noticeDueWindow(now, AUTO_PAY_LINK_DAYS_BEFORE_DUE),
     contract: {
       deletedAt: null,
       status: { in: ['ACTIVE'] },

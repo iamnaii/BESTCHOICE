@@ -422,6 +422,11 @@ function ConfigDrawer({
       setClearTarget(null);
       // sonner: polite live region, gone after 4 s (mockup B2 note: 3–5 s, role=status/polite)
       toast.success(`ล้างค่า ${target.fieldLabel} แล้ว`, { duration: 4000 });
+      // Show "ยังไม่ตั้งค่า" right away; the refetch below confirms it from the API.
+      queryClient.setQueryData<IntegrationConfig>(
+        ['integration-config', target.integrationKey],
+        (prev) => (prev ? { ...prev, [target.fieldKey]: '' } : prev),
+      );
       queryClient.invalidateQueries({ queryKey: ['integrations'] });
       queryClient.invalidateQueries({
         queryKey: ['integration-config', target.integrationKey],

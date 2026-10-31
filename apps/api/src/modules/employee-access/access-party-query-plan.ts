@@ -644,7 +644,7 @@ export class PartyQueryPlan {
       (source) =>
         this.allows('customers.read', source) &&
         this.allows('documents.read', source) &&
-        CUSTOMER_ATTACHMENT_SENSITIVE_KEYS.every(key => this.allows(key, source)),
+        CUSTOMER_ATTACHMENT_SENSITIVE_KEYS.every((key) => this.allows(key, source)),
     );
     if ('documents' in result && !documentsAvailable) result.documents = null;
     // Re-read canonical metadata, not an already projected null from findOne.

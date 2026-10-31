@@ -13,7 +13,9 @@ const TEST_FILE = /[.-](test|spec|docs-spec)\.[jt]sx?$/;
 // optional whitespace/block comments, then the tag name. Only files that match are
 // handed to the TypeScript parser — parsing all ~1.4k files made this test take
 // ~1s locally and blow vitest's 5s default on a loaded CI runner (main deploy, 31 Oct).
-const CANDIDATE = /<\s*(?:\/\*[\s\S]*?\*\/\s*)*(?:select|datalist)\b/;
+// Whitespace = what TypeScript 5.9 accepts there: JS `\s` plus U+0085 (NEL) and U+200B
+// (ZWSP) — checked by parsing `<{ch}select />` for every BMP code point.
+const CANDIDATE = /<[\s\u0085\u200b]*(?:\/\*[\s\S]*?\*\/[\s\u0085\u200b]*)*(?:select|datalist)\b/;
 // The scan is still I/O over the whole frontend tree; keep a generous ceiling so a
 // busy runner cannot turn a guard test into a deploy blocker.
 const SCAN_TIMEOUT_MS = 30_000;

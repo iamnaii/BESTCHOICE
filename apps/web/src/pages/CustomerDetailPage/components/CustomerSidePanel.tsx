@@ -180,7 +180,8 @@ export default function CustomerSidePanel({
           <Info label="อีเมล" value={customer.email} />
           <div>
             <div className="mb-0.5 text-xs text-muted-foreground">LINE Finance (น้องเบส)</div>
-            {customer.lineIdFinance ? (
+            {/* Task 27 fix round 1 (review M-1) — แถว OTP ที่ยังผูก (financeLine) เกณฑ์เดียวกับฟอร์มแก้ไข · ไม่ใช่คอลัมน์ lineIdFinance */}
+            {customer.financeLine?.verified ? (
               <Badge variant="success" appearance="light" size="sm">
                 ผูกแล้ว
               </Badge>

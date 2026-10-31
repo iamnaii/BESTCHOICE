@@ -73,7 +73,7 @@ export class ChatProspectService {
 
   /**
    * หาคนเดิมก่อนสร้าง (สเปค 3.2 ข้อ 3): (ก) ห้องอื่นของคนเดียวกันในช่องทางนี้ที่ผูกแล้ว
-   * (ข) LINE: CustomerLineLink ที่ยังผูกอยู่ แล้วค่อยคอลัมน์ lineIdShop / lineIdFinance — ฝั่ง LINE ร้านผูกที่คอลัมน์
+   * (ข) LINE: CustomerLineLink ที่ยังผูกอยู่ · LINE ร้านค่อยคอลัมน์ lineIdShop (LINE การเงินไม่ใช้คอลัมน์ — Task 22 I-1) — ฝั่ง LINE ร้านผูกที่คอลัมน์
    * (พนักงาน / บอทขายตอนสร้างลูกค้าจากแชท — ทางพิมพ์เบอร์ selfLinkByPhone ถูกถอดแล้ว Task 20) ไม่ใช่ตาราง link
    * ทุกทางข้ามลูกค้าที่ถูกลบแล้ว
    * public: capture_lead ใช้หาตัวตนที่แข็งกว่าเบอร์ก่อนจับคู่ด้วยเบอร์ (R25) — เรียกด้วย root client ได้
@@ -116,9 +116,12 @@ export class ChatProspectService {
       select: { customerId: true },
     });
     if (link) return link.customerId;
+    // Task 22 I-1 — LINE การเงิน: แถว OTP เท่านั้น · คอลัมน์ line_id_finance แยกจากแถว OTP ได้ (ค่าที่พนักงาน/นำเข้าเขียนก่อน Task 22 ·
+    // ลูกค้าที่กู้จากถังขยะ) ⇒ ไม่ผูกห้องด้วยคอลัมน์ (เดิมพนักงานจะเห็นห้องของคนที่ยังไม่ยืนยันเป็นลูกค้าคนนั้น) · LINE ร้านยังใช้คอลัมน์ (ไม่มี OTP ฝั่งร้าน)
+    if (channel !== ChatChannel.LINE_SHOP) return null;
 
     const byColumn = await tx.customer.findFirst({
-      where: { ...(channel === ChatChannel.LINE_SHOP ? { lineIdShop: externalKey } : { lineIdFinance: externalKey }), deletedAt: null },
+      where: { lineIdShop: externalKey, deletedAt: null },
       select: { id: true },
     });
     return byColumn?.id ?? null;

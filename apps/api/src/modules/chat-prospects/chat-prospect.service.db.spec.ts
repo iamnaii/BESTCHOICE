@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- jest mocks (pre-existing) */
 import { Logger } from '@nestjs/common';
 import { PrismaClient, ChatChannel } from '@prisma/client';
 import { ChatProspectService } from './chat-prospect.service';
@@ -60,7 +61,7 @@ describe('ChatProspectService.ensureForRoom (real DB, race)', () => {
     expect(await prisma.customer.count({ where: { facebookUserId: psid, deletedAt: null } })).toBe(before);
   });
 
-  it('LINE การเงิน: link ที่ยกเลิกแล้วไม่นับ → ใช้ลูกค้าที่ผูกคอลัมน์ lineIdFinance', async () => {
+  it('LINE การเงิน: link ที่ยกเลิกแล้วไม่นับ และคอลัมน์ lineIdFinance ไม่ใช่หลักฐาน (Task 22 I-1) → ผู้สนใจใหม่ ไม่ผูกกับคนที่ถือคอลัมน์', async () => {
     const unlinked = await prisma.customer.create({ data: { name: 'line spec unlinked' } });
     const byColumn = await prisma.customer.create({ data: { name: 'line spec column', lineIdFinance: lineUserId } });
     extraCustomerIds.push(unlinked.id, byColumn.id);
@@ -70,8 +71,12 @@ describe('ChatProspectService.ensureForRoom (real DB, race)', () => {
     const room = await prisma.chatRoom.create({ data: { channel: ChatChannel.LINE_FINANCE, lineUserId } });
     roomIds.push(room.id);
 
-    await expect(service.ensureForRoom(room.id)).resolves.toEqual({ customerId: byColumn.id, created: false });
-    expect((await prisma.chatRoom.findUniqueOrThrow({ where: { id: room.id } })).customerId).toBe(byColumn.id);
+    const result = await service.ensureForRoom(room.id);
+    expect(result).toMatchObject({ created: true });
+    expect(result?.customerId).not.toBe(byColumn.id);
+    expect(result?.customerId).not.toBe(unlinked.id);
+    extraCustomerIds.push(result!.customerId);
+    expect((await prisma.chatRoom.findUniqueOrThrow({ where: { id: room.id } })).customerId).toBe(result!.customerId);
   });
 
   /**

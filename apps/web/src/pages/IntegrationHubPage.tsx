@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
 import { Input } from '@/components/ui/input';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -33,8 +34,15 @@ import {
   Smartphone,
   Settings2,
   Phone,
+  Check,
+  CircleAlert,
+  Eraser,
 } from 'lucide-react';
 import { FacebookAppReviewPanel } from '@/components/FacebookAppReviewPanel';
+import {
+  ClearSecretDialog,
+  type ClearSecretTarget,
+} from '@/components/integrations/ClearSecretDialog';
 
 /* ── Types ───────────────────────────────────────────── */
 
@@ -218,11 +226,14 @@ function PasswordField({
   field,
   value,
   placeholder,
+  describedBy,
   onChange,
 }: {
   field: RegistryField;
   value: string;
   placeholder: string;
+  /** ids of the state chip + helper line under the input */
+  describedBy?: string;
   onChange: (v: string) => void;
 }) {
   const [show, setShow] = useState(false);
@@ -235,6 +246,8 @@ function PasswordField({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
+        aria-required={field.required || undefined}
+        aria-describedby={describedBy}
         className="pr-10"
       />
       <button
@@ -247,6 +260,28 @@ function PasswordField({
       </button>
     </div>
   );
+}
+
+/* ── Secret field state (mockup B1/B3) ───────────────── */
+
+/**
+ * A secret is "stored" when GET /integrations/:key/config returns a masked value for it
+ * (`••••abcd`, from the DB or the env fallback). Cleared ("ล้างค่า") or never set = ''.
+ */
+function isSecretStored(config: IntegrationConfig | undefined, key: string): boolean {
+  return Boolean(config?.[key]);
+}
+
+/** Helper line under a secret input — what an empty input means, or that it is required. */
+function secretHelpText(field: RegistryField, masked: string | undefined): string | null {
+  if (masked) {
+    // `••••` alone = a value of ≤4 chars: no tail to show.
+    const tail = masked.replace(/^•+/, '');
+    return tail
+      ? `ค่าที่ใช้อยู่ลงท้าย ${masked} · เว้นว่างไว้ = ใช้ค่าเดิม`
+      : 'เว้นว่างไว้ = ใช้ค่าเดิม';
+  }
+  return field.required ? 'ช่องนี้จำเป็น — การเชื่อมต่อใช้งานไม่ได้จนกว่าจะบันทึกค่าใหม่' : null;
 }
 
 /* ── Form values ─────────────────────────────────────── */
@@ -299,8 +334,12 @@ function ConfigDrawer({
   registry: Registry;
 }) {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  // Writes (save/clear) are OWNER-only on the API; ACCOUNTANT opens this page read-only.
+  const canClearSecrets = user?.role === 'OWNER';
   // Only what the operator changed; the form shows these over the saved values.
   const [edits, setEdits] = useState<IntegrationConfig>({});
+  const [clearTarget, setClearTarget] = useState<ClearSecretTarget | null>(null);
   const [testResult, setTestResult] = useState<{
     success: boolean;
     message: string;
@@ -364,6 +403,31 @@ function ConfigDrawer({
         'เชื่อมต่อไม่ได้ — กรุณาตรวจสอบการตั้งค่า';
       setTestResult({ success: false, message: msg });
     },
+  });
+
+  // "ล้างค่า" — immediate, no form save (DELETE …/config/:field). The API stores an explicit
+  // cleared state: the field reads "not configured" with no env fallback until a new save.
+  const clearMutation = useMutation({
+    mutationFn: (target: ClearSecretTarget) =>
+      api.delete(
+        `/integrations/${target.integrationKey}/config/${encodeURIComponent(target.fieldKey)}`,
+      ),
+    onSuccess: (_res, target) => {
+      setEdits((prev) => {
+        const next = { ...prev };
+        delete next[target.fieldKey];
+        return next;
+      });
+      setTestResult(null);
+      setClearTarget(null);
+      // sonner: polite live region, gone after 4 s (mockup B2 note: 3–5 s, role=status/polite)
+      toast.success(`ล้างค่า ${target.fieldLabel} แล้ว`, { duration: 4000 });
+      queryClient.invalidateQueries({ queryKey: ['integrations'] });
+      queryClient.invalidateQueries({
+        queryKey: ['integration-config', target.integrationKey],
+      });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
   });
 
   // Facebook only — re-fetch name/avatar for existing rooms missing a picture.
@@ -461,8 +525,8 @@ function ConfigDrawer({
                 </div>
               )}
 
-              {entry.fields.map((field) => (
-                <div key={field.key} className="space-y-1.5">
+              {entry.fields.map((field) => {
+                const label = (
                   <label htmlFor={field.key} className="text-sm font-medium text-foreground">
                     {field.label}
                     {field.required && (
@@ -471,44 +535,109 @@ function ConfigDrawer({
                       </span>
                     )}
                   </label>
-                  {field.type === 'password' ? (
-                    <PasswordField
-                      field={field}
-                      value={formValues[field.key] ?? ''}
-                      placeholder={
-                        configQuery.data?.[field.key]
-                          ? '●●●●●●●● (กรอกใหม่เพื่อเปลี่ยน)'
-                          : (field.placeholder ?? '')
-                      }
-                      onChange={(v) => setField(field.key, v)}
-                    />
-                  ) : field.type === 'boolean' ? (
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        id={field.key}
-                        type="checkbox"
-                        checked={formValues[field.key] === 'true'}
-                        onChange={(e) => setField(field.key, e.target.checked ? 'true' : 'false')}
-                        className="accent-primary"
+                );
+                if (field.type === 'password') {
+                  const stored = isSecretStored(configQuery.data, field.key);
+                  const help = secretHelpText(field, configQuery.data?.[field.key]);
+                  const stateId = `${field.key}-state`;
+                  const helpId = `${field.key}-help`;
+                  return (
+                    <div key={field.key} className="space-y-1.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        {label}
+                        <div className="flex items-center gap-1">
+                          <Badge
+                            id={stateId}
+                            // Missing + required = the integration does not work (mockup B3 amber);
+                            // an optional secret left empty is just "not set".
+                            variant={stored ? 'success' : field.required ? 'warning' : 'secondary'}
+                            appearance="light"
+                            size="md"
+                          >
+                            {stored ? (
+                              <Check aria-hidden="true" />
+                            ) : (
+                              <CircleAlert aria-hidden="true" />
+                            )}
+                            {stored ? 'ตั้งค่าแล้ว' : 'ยังไม่ตั้งค่า'}
+                          </Badge>
+                          {/* Secrets only — a non-secret is emptied in its input and saved, as before. */}
+                          {stored && field.sensitive && canClearSecrets && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="md"
+                              className="h-9 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                              aria-label={`ล้างค่า ${field.label}`}
+                              onClick={() =>
+                                setClearTarget({
+                                  integrationKey: entry.key,
+                                  integrationName: entry.name,
+                                  fieldKey: field.key,
+                                  fieldLabel: field.label,
+                                  required: field.required,
+                                })
+                              }
+                            >
+                              <Eraser aria-hidden="true" />
+                              ล้างค่า
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                      <PasswordField
+                        field={field}
+                        value={formValues[field.key] ?? ''}
+                        placeholder={
+                          stored
+                            ? '●●●●●●●● (กรอกใหม่เพื่อเปลี่ยน)'
+                            : field.placeholder || `วาง ${field.label} ใหม่`
+                        }
+                        describedBy={help ? `${stateId} ${helpId}` : stateId}
+                        onChange={(v) => setField(field.key, v)}
                       />
-                      <span className="text-sm text-muted-foreground">
-                        {field.description ?? field.label}
-                      </span>
-                    </label>
-                  ) : (
-                    <Input
-                      id={field.key}
-                      type={field.type === 'number' ? 'number' : 'text'}
-                      value={formValues[field.key] ?? ''}
-                      onChange={(e) => setField(field.key, e.target.value)}
-                      placeholder={field.placeholder ?? ''}
-                    />
-                  )}
-                  {field.description && field.type !== 'boolean' && (
-                    <p className="text-xs text-muted-foreground">{field.description}</p>
-                  )}
-                </div>
-              ))}
+                      {help && (
+                        <p id={helpId} className="text-xs leading-snug text-muted-foreground">
+                          {help}
+                        </p>
+                      )}
+                      {field.description && (
+                        <p className="text-xs text-muted-foreground">{field.description}</p>
+                      )}
+                    </div>
+                  );
+                }
+                return (
+                  <div key={field.key} className="space-y-1.5">
+                    {label}
+                    {field.type === 'boolean' ? (
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          id={field.key}
+                          type="checkbox"
+                          checked={formValues[field.key] === 'true'}
+                          onChange={(e) => setField(field.key, e.target.checked ? 'true' : 'false')}
+                          className="accent-primary"
+                        />
+                        <span className="text-sm text-muted-foreground">
+                          {field.description ?? field.label}
+                        </span>
+                      </label>
+                    ) : (
+                      <Input
+                        id={field.key}
+                        type={field.type === 'number' ? 'number' : 'text'}
+                        value={formValues[field.key] ?? ''}
+                        onChange={(e) => setField(field.key, e.target.value)}
+                        placeholder={field.placeholder ?? ''}
+                      />
+                    )}
+                    {field.description && field.type !== 'boolean' && (
+                      <p className="text-xs text-muted-foreground">{field.description}</p>
+                    )}
+                  </div>
+                );
+              })}
 
               {/* Test result */}
               {testResult && (
@@ -628,6 +757,13 @@ function ConfigDrawer({
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      <ClearSecretDialog
+        target={clearTarget}
+        pending={clearMutation.isPending}
+        onCancel={() => setClearTarget(null)}
+        onConfirm={() => clearTarget && clearMutation.mutate(clearTarget)}
+      />
     </Dialog>
   );
 }

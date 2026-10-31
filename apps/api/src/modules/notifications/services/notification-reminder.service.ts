@@ -156,7 +156,9 @@ export class NotificationReminderService {
           });
           sent++;
         } catch (err) {
-          this.logger.warn(`Flex message failed, falling back to template text: ${err instanceof Error ? err.message : err}`);
+          this.logger.warn(
+            `Flex message failed, falling back to template text: ${err instanceof Error ? err.message : err}`,
+          );
           // Pick template by daysUntil. Fall back to legacy inline send for
           // day-0 (no dedicated template exists for "due today").
           const eventType =
@@ -188,7 +190,9 @@ export class NotificationReminderService {
               recipient: financeLineId,
               message: smsMessage,
               relatedId: payment.id,
-              fallbackPhone: isSmsPaymentReminderDisabled() ? undefined : (customer.phone || undefined),
+              fallbackPhone: isSmsPaymentReminderDisabled()
+                ? undefined
+                : customer.phone || undefined,
               customerId: customer.id,
               category: NotificationCategory.REMINDER,
             });
@@ -197,7 +201,9 @@ export class NotificationReminderService {
         }
       } else if (customer.phone) {
         if (isSmsPaymentReminderDisabled()) {
-          this.logger.warn(`[SMS-REMINDER-OFF] Skipping payment reminder SMS for payment ${payment.id}`);
+          this.logger.warn(
+            `[SMS-REMINDER-OFF] Skipping payment reminder SMS for payment ${payment.id}`,
+          );
         } else {
           // SMS branch — template is LINE-only so keep raw send()
           await this.dispatch.send({
@@ -263,7 +269,8 @@ export class NotificationReminderService {
         continue;
       }
 
-      const outstanding = Number(payment.amountDue) - Number(payment.amountPaid) + Number(payment.lateFee);
+      const outstanding =
+        Number(payment.amountDue) - Number(payment.amountPaid) + Number(payment.lateFee);
       // SMS branch + flex-fallback fallback uses the same plain-text body
       const smsMessage = `แจ้งเตือน: คุณ${customer.name}\nค่างวดที่ ${payment.installmentNo} สัญญา ${payment.contract.contractNumber}\nเลยกำหนดชำระ ${daysOverdue} วัน\nยอดค้างชำระ ${outstanding.toLocaleString()} บาท (รวมค่าปรับ)\nกรุณาชำระโดยเร็ว`;
 
@@ -295,7 +302,9 @@ export class NotificationReminderService {
           });
           sent++;
         } catch (err) {
-          this.logger.warn(`Flex message failed, falling back to template text: ${err instanceof Error ? err.message : err}`);
+          this.logger.warn(
+            `Flex message failed, falling back to template text: ${err instanceof Error ? err.message : err}`,
+          );
           // Pick template by daysOverdue (1, 3, or 7) — the cron only fetches
           // payments at exactly those offsets so other values shouldn't occur,
           // but fall back defensively to the day-1 template if so.
@@ -323,7 +332,9 @@ export class NotificationReminderService {
         }
       } else if (customer.phone) {
         if (isSmsPaymentReminderDisabled()) {
-          this.logger.warn(`[SMS-REMINDER-OFF] Skipping overdue notice SMS for payment ${payment.id}`);
+          this.logger.warn(
+            `[SMS-REMINDER-OFF] Skipping overdue notice SMS for payment ${payment.id}`,
+          );
         } else {
           // SMS branch — template is LINE-only so keep raw send()
           await this.dispatch.send({
@@ -369,16 +380,19 @@ export class NotificationReminderService {
 
     let sent = 0;
     // Group by branch to send one summary per manager
-    const branchGroups = new Map<string, { manager: { name: string; email: string }; contracts: string[] }>();
+    const branchGroups = new Map<
+      string,
+      { manager: { name: string; email: string }; contracts: string[] }
+    >();
     for (const contract of overdueContracts) {
       for (const manager of contract.branch.users) {
         const key = manager.email;
         if (!branchGroups.has(key)) {
           branchGroups.set(key, { manager, contracts: [] });
         }
-        branchGroups.get(key)!.contracts.push(
-          `${contract.contractNumber}: ${contract.customer.name}`,
-        );
+        branchGroups
+          .get(key)!
+          .contracts.push(`${contract.contractNumber}: ${contract.customer.name}`);
       }
     }
 

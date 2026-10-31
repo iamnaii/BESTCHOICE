@@ -179,10 +179,7 @@ describe('ComplianceService', () => {
 
   describe('ensureIdentificationPrefix', () => {
     it('prepends [BESTCHOICE FINANCE] to DUNNING message missing it', () => {
-      const result = service.ensureIdentificationPrefix(
-        'hello',
-        NotificationCategory.DUNNING,
-      );
+      const result = service.ensureIdentificationPrefix('hello', NotificationCategory.DUNNING);
       expect(result).toBe('[BESTCHOICE FINANCE] hello');
     });
 
@@ -195,10 +192,7 @@ describe('ComplianceService', () => {
     });
 
     it('does not modify REMINDER messages', () => {
-      const result = service.ensureIdentificationPrefix(
-        'hello',
-        NotificationCategory.REMINDER,
-      );
+      const result = service.ensureIdentificationPrefix('hello', NotificationCategory.REMINDER);
       expect(result).toBe('hello');
     });
 
@@ -218,10 +212,7 @@ describe('ComplianceService', () => {
     });
 
     it('allows ดำเนินคดี in LEGAL_ACTION stage', () => {
-      const matches = service.scanForbiddenContent(
-        'จะดำเนินคดีตามกฎหมาย',
-        'LEGAL_ACTION',
-      );
+      const matches = service.scanForbiddenContent('จะดำเนินคดีตามกฎหมาย', 'LEGAL_ACTION');
       expect(matches).toEqual([]);
     });
 
@@ -231,9 +222,7 @@ describe('ComplianceService', () => {
     });
 
     it('returns empty for clean message', () => {
-      const matches = service.scanForbiddenContent(
-        'แจ้งเตือน: ครบกำหนดชำระงวดที่ 3',
-      );
+      const matches = service.scanForbiddenContent('แจ้งเตือน: ครบกำหนดชำระงวดที่ 3');
       expect(matches).toEqual([]);
     });
   });

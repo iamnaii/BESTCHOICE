@@ -98,8 +98,12 @@ export class DunningEngineService {
     try {
       rules = await this.ruleService.findAllActiveRules();
     } catch (err) {
-      Sentry.captureException(err, { tags: { service: 'DunningEngineService', method: 'executeRules' } });
-      this.logger.error(`Failed to load active dunning rules: ${err instanceof Error ? err.message : err}`);
+      Sentry.captureException(err, {
+        tags: { service: 'DunningEngineService', method: 'executeRules' },
+      });
+      this.logger.error(
+        `Failed to load active dunning rules: ${err instanceof Error ? err.message : err}`,
+      );
       throw err;
     }
 
@@ -149,10 +153,7 @@ export class DunningEngineService {
               continue;
             }
 
-            const daysOverdue =
-              rule.triggerDay > 0
-                ? rule.triggerDay
-                : 0;
+            const daysOverdue = rule.triggerDay > 0 ? rule.triggerDay : 0;
 
             const vars: TemplateVars = {
               customerName: payment.contract.customer.name,
@@ -191,8 +192,7 @@ export class DunningEngineService {
               }
             }
 
-            const isNotificationChannel =
-              rule.channel === 'LINE' || rule.channel === 'SMS';
+            const isNotificationChannel = rule.channel === 'LINE' || rule.channel === 'SMS';
 
             let status: 'PENDING' | 'SENT' | 'FAILED' | 'SKIPPED' = 'PENDING';
             let result: string | undefined;
@@ -214,7 +214,9 @@ export class DunningEngineService {
                     message: finalMessage,
                     relatedId: payment.contractId,
                     fallbackPhone:
-                      rule.channel === 'LINE' ? (payment.contract.customer.phone ?? undefined) : undefined,
+                      rule.channel === 'LINE'
+                        ? (payment.contract.customer.phone ?? undefined)
+                        : undefined,
                     customerId: payment.contract.customer.id,
                     category: NotificationCategory.DUNNING,
                   });
@@ -277,7 +279,9 @@ export class DunningEngineService {
       }
     }
 
-    this.logger.log(`DunningEngine run complete: executed=${executed}, skipped=${skipped}, failed=${failed}`);
+    this.logger.log(
+      `DunningEngine run complete: executed=${executed}, skipped=${skipped}, failed=${failed}`,
+    );
     return { executed, skipped, failed };
   }
 

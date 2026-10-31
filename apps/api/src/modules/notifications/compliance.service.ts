@@ -111,11 +111,7 @@ export class ComplianceService {
       }
     }
 
-    if (
-      FREQUENCY_CAP_CATEGORIES.has(ctx.category) &&
-      ctx.customerId &&
-      ctx.contractId
-    ) {
+    if (FREQUENCY_CAP_CATEGORIES.has(ctx.category) && ctx.customerId && ctx.contractId) {
       const todayStart = this.startOfBangkokDay(now);
       // Count both SENT (already delivered today) and DELAYED (queued for
       // delayed send today). Without DELAYED, a dunning queued at 23:00
@@ -171,14 +167,11 @@ export class ComplianceService {
     this.logger.warn(
       `Dunning message missing identification prefix — auto-prepending: "${preview}..."`,
     );
-    Sentry.captureMessage(
-      `Dunning message missing [BESTCHOICE FINANCE] prefix — auto-prepended`,
-      {
-        level: 'warning',
-        tags: { module: 'notifications', compliance: 'identification-prefix' },
-        extra: { messagePreview: preview },
-      },
-    );
+    Sentry.captureMessage(`Dunning message missing [BESTCHOICE FINANCE] prefix — auto-prepended`, {
+      level: 'warning',
+      tags: { module: 'notifications', compliance: 'identification-prefix' },
+      extra: { messagePreview: preview },
+    });
 
     return `${DUNNING_IDENTIFICATION_PREFIX} ${message}`;
   }
@@ -206,14 +199,11 @@ export class ComplianceService {
       this.logger.warn(
         `Forbidden content detected: ${matches.join(', ')} — message: "${preview.slice(0, 60)}..."`,
       );
-      Sentry.captureMessage(
-        `Notification content review needed: ${matches.join(', ')}`,
-        {
-          level: 'warning',
-          tags: { module: 'notifications', compliance: 'content-guardrails' },
-          extra: { messagePreview: preview, dunningStage: dunningStage ?? null },
-        },
-      );
+      Sentry.captureMessage(`Notification content review needed: ${matches.join(', ')}`, {
+        level: 'warning',
+        tags: { module: 'notifications', compliance: 'content-guardrails' },
+        extra: { messagePreview: preview, dunningStage: dunningStage ?? null },
+      });
     }
 
     return matches;

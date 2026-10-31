@@ -44,7 +44,10 @@ export class CollectionsNotifierService {
           select: { id: true, name: true, ...FINANCE_LINE_RECIPIENT_SELECT, phone: true },
         },
         payments: {
-          where: { status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] }, dueDate: { lt: new Date() } },
+          where: {
+            status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] },
+            dueDate: { lt: new Date() },
+          },
           orderBy: { installmentNo: 'asc' },
         },
       },
@@ -60,7 +63,9 @@ export class CollectionsNotifierService {
       if (contract.customer?.id) {
         const hasConsent = await this.pdpaService.hasActiveConsent(contract.customer.id);
         if (!hasConsent) {
-          this.logger.debug(`PDPA: skipping status notification for customer ${contract.customer.id}`);
+          this.logger.debug(
+            `PDPA: skipping status notification for customer ${contract.customer.id}`,
+          );
           continue;
         }
       }
@@ -91,11 +96,15 @@ export class CollectionsNotifierService {
         await this.lineOaService.sendFlexMessage(lineId, flex, 'line-finance');
         sent++;
       } catch (err) {
-        this.logger.warn(`Failed to notify customer for contract ${contract.contractNumber}: ${err}`);
+        this.logger.warn(
+          `Failed to notify customer for contract ${contract.contractNumber}: ${err}`,
+        );
       }
     }
 
-    this.logger.log(`Status change LINE notifications: ${sent} sent out of ${contracts.length} contracts`);
+    this.logger.log(
+      `Status change LINE notifications: ${sent} sent out of ${contracts.length} contracts`,
+    );
   }
 
   /**
@@ -103,16 +112,14 @@ export class CollectionsNotifierService {
    * overdueService.escalateDunningStages (the escalation mutation stays on the
    * facade; this is the downstream notify loop body).
    */
-  async notifyEscalatedDunning(
-    result: {
-      escalated: {
-        contractId: string;
-        contractNumber: string;
-        daysOverdue: number;
-        to: string;
-      }[];
-    },
-  ) {
+  async notifyEscalatedDunning(result: {
+    escalated: {
+      contractId: string;
+      contractNumber: string;
+      daysOverdue: number;
+      to: string;
+    }[];
+  }) {
     // Batch-fetch all escalated contracts to avoid N+1 queries
     const escalatedIds = result.escalated.map((e) => e.contractId);
     const now = new Date();
@@ -123,7 +130,10 @@ export class CollectionsNotifierService {
           include: {
             customer: { select: { name: true, ...FINANCE_LINE_RECIPIENT_SELECT, phone: true } },
             payments: {
-              where: { status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] }, dueDate: { lt: now } },
+              where: {
+                status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] },
+                dueDate: { lt: now },
+              },
               orderBy: { installmentNo: 'asc' },
             },
           },
@@ -175,7 +185,9 @@ export class CollectionsNotifierService {
       }
     }
 
-    this.logger.log(`Dunning escalation complete: ${result.escalated.length} escalated, ${notified} notified`);
+    this.logger.log(
+      `Dunning escalation complete: ${result.escalated.length} escalated, ${notified} notified`,
+    );
   }
 
   /**
@@ -184,7 +196,11 @@ export class CollectionsNotifierService {
   async sendAutoPaymentLinks() {
     const threeDaysFromNow = new Date();
     threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
-    const startOfDay = new Date(threeDaysFromNow.getFullYear(), threeDaysFromNow.getMonth(), threeDaysFromNow.getDate());
+    const startOfDay = new Date(
+      threeDaysFromNow.getFullYear(),
+      threeDaysFromNow.getMonth(),
+      threeDaysFromNow.getDate(),
+    );
     const endOfDay = new Date(startOfDay);
     endOfDay.setDate(endOfDay.getDate() + 1);
 
@@ -220,7 +236,8 @@ export class CollectionsNotifierService {
           payment.installmentNo,
         );
 
-        const amountDue = Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid);
+        const amountDue =
+          Number(payment.amountDue) + Number(payment.lateFee) - Number(payment.amountPaid);
 
         // Send LINE reminder with payment link
         const flex = buildPaymentReminderFlex({
@@ -237,7 +254,9 @@ export class CollectionsNotifierService {
         await this.lineOaService.sendFlexMessage(lineId, flex, 'line-finance');
         sent++;
       } catch (err) {
-        this.logger.warn(`Failed to send auto payment link for contract ${payment.contract.contractNumber}: ${err}`);
+        this.logger.warn(
+          `Failed to send auto payment link for contract ${payment.contract.contractNumber}: ${err}`,
+        );
       }
     }
 

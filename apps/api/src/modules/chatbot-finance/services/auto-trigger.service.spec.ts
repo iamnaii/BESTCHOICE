@@ -74,10 +74,7 @@ describe('AutoTriggerService', () => {
 
     await service.runDailyReminders();
 
-    expect(lineClient.pushText).toHaveBeenCalledWith(
-      'U123',
-      expect.stringContaining('ครบกำหนด'),
-    );
+    expect(lineClient.pushText).toHaveBeenCalledWith('U123', expect.stringContaining('ครบกำหนด'));
     expect(prisma.chatAutoTrigger.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ status: 'SENT' }) }),
     );
@@ -178,24 +175,29 @@ describe('AutoTriggerService', () => {
     );
   });
 
-  it.each([0, 50, 175])('T+3 reminder keeps stored fee %s after partial payment', async (lateFee) => {
-    const dueDate = new Date();
-    dueDate.setHours(0, 0, 0, 0);
-    dueDate.setDate(dueDate.getDate() - 3);
-    const payment = { ...makePayment(3, dueDate), amountPaid: 1000, lateFee };
-    prisma.payment.findMany.mockImplementation(({ where }: { where: { dueDate: { gte: Date } } }) =>
-      Promise.resolve(where.dueDate.gte.getTime() === dueDate.getTime() ? [payment] : []),
-    );
+  it.each([0, 50, 175])(
+    'T+3 reminder keeps stored fee %s after partial payment',
+    async (lateFee) => {
+      const dueDate = new Date();
+      dueDate.setHours(0, 0, 0, 0);
+      dueDate.setDate(dueDate.getDate() - 3);
+      const payment = { ...makePayment(3, dueDate), amountPaid: 1000, lateFee };
+      prisma.payment.findMany.mockImplementation(
+        ({ where }: { where: { dueDate: { gte: Date } } }) =>
+          Promise.resolve(where.dueDate.gte.getTime() === dueDate.getTime() ? [payment] : []),
+      );
 
-    await service.runDailyEscalations();
+      await service.runDailyEscalations();
 
-    const sentText = lineClient.pushText.mock.calls[0][1] as string;
-    const expectedTotal = (2500 + lateFee).toLocaleString('en-US', {
-      minimumFractionDigits: 2, maximumFractionDigits: 2,
-    });
-    expect(sentText).toContain(expectedTotal);
-    if (lateFee > 0) expect(sentText).toContain(`ค่าปรับ ${lateFee.toFixed(2)}`);
-  });
+      const sentText = lineClient.pushText.mock.calls[0][1] as string;
+      const expectedTotal = (2500 + lateFee).toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+      expect(sentText).toContain(expectedTotal);
+      if (lateFee > 0) expect(sentText).toContain(`ค่าปรับ ${lateFee.toFixed(2)}`);
+    },
+  );
 
   it('does nothing when no payments match', async () => {
     prisma.payment.findMany.mockResolvedValue([]);

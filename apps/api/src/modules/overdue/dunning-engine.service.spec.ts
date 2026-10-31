@@ -78,7 +78,8 @@ const sampleRule = {
   name: 'Pre-due 3 days',
   triggerDay: -3,
   channel: 'LINE',
-  messageTemplate: 'สวัสดีคุณ{{customerName}} สัญญา{{contractNumber}} งวดที่{{installmentNo}} ครบ{{dueDate}} จำนวน{{amount}} บาท',
+  messageTemplate:
+    'สวัสดีคุณ{{customerName}} สัญญา{{contractNumber}} งวดที่{{installmentNo}} ครบ{{dueDate}} จำนวน{{amount}} บาท',
   includePaymentLink: false,
   autoExecute: true,
   sortOrder: 0,
@@ -119,7 +120,8 @@ describe('DunningEngineService', () => {
 
   describe('renderTemplate', () => {
     it('should replace all known variables correctly', () => {
-      const template = 'สวัสดีคุณ{{customerName}} สัญญา{{contractNumber}} งวดที่{{installmentNo}} ครบ{{dueDate}} จำนวน{{amount}} บาท เกิน{{daysOverdue}} วัน';
+      const template =
+        'สวัสดีคุณ{{customerName}} สัญญา{{contractNumber}} งวดที่{{installmentNo}} ครบ{{dueDate}} จำนวน{{amount}} บาท เกิน{{daysOverdue}} วัน';
       const vars = {
         customerName: 'สมชาย',
         contractNumber: 'BC-001',
@@ -129,7 +131,9 @@ describe('DunningEngineService', () => {
         installmentNo: '3',
       };
       const result = service.renderTemplate(template, vars);
-      expect(result).toBe('สวัสดีคุณสมชาย สัญญาBC-001 งวดที่3 ครบ15/04/2569 จำนวน5,000 บาท เกิน3 วัน');
+      expect(result).toBe(
+        'สวัสดีคุณสมชาย สัญญาBC-001 งวดที่3 ครบ15/04/2569 จำนวน5,000 บาท เกิน3 วัน',
+      );
     });
 
     it('should leave unknown variables as-is', () => {
@@ -396,7 +400,10 @@ describe('DunningEngineService', () => {
       await service.executeEventTrigger('CALL_NO_ANSWER', 'c-1', null, 'cl-1');
 
       expect(mockNotificationsService.send).toHaveBeenCalledTimes(1);
-      expect(mockNotificationsService.send.mock.calls[0][0]).toHaveProperty('fallbackPhone', undefined);
+      expect(mockNotificationsService.send.mock.calls[0][0]).toHaveProperty(
+        'fallbackPhone',
+        undefined,
+      );
     });
 
     it('creates action with FAILED status and captures to Sentry when send throws', async () => {

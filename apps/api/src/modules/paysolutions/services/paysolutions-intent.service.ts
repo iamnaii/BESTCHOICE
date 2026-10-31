@@ -9,6 +9,11 @@ import * as Sentry from '@sentry/nestjs';
 import { ConfigService } from '@nestjs/config';
 import { PaymentMethod } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
+import {
+  FINANCE_LINE_RECIPIENT_SELECT,
+  financeLineRecipient,
+  findOtpVerifiedCustomerId,
+} from '../../line-oa/services/otp-verified-customer';
 import { LineOaService } from '../../line-oa/line-oa.service';
 import { buildEarlyPayoffQRFlex } from '../../line-oa/flex-messages/early-payoff-qr.flex';
 import { buildPartialPaymentQRFlex } from '../../line-oa/flex-messages/partial-payment-qr.flex';
@@ -67,7 +72,7 @@ export class PaySolutionsIntentService {
     const contract = await this.prisma.contract.findUnique({
       where: { id: contractId },
       include: {
-        customer: { select: { name: true, phone: true, email: true, lineIdFinance: true } },
+        customer: { select: { name: true, phone: true, email: true } },
       },
     });
 
@@ -76,10 +81,12 @@ export class PaySolutionsIntentService {
     }
 
     // ตรวจสอบว่า contract เป็นของ customer ที่ผูก LINE (บังคับ — ป้องกันสร้าง intent โดยไม่ยืนยันตัวตน)
+    // Task 22 I-1 (ก): เจ้าของ = ลูกค้าของแถว OTP ช่อง FINANCE ที่ยังผูกของ LINE นี้ (findOtpVerifiedCustomerId) — ไม่ใช่คอลัมน์
+    // `line_id_finance` (แยกจากแถว OTP ได้: ค่าที่พนักงาน/นำเข้าเขียนก่อน Task 22 · กู้ลูกค้าที่ถูกลบ) · ไม่มีแถว = ปฏิเสธ
     if (!lineId) {
       throw new BadRequestException('กรุณาระบุ LINE ID เพื่อยืนยันตัวตน');
     }
-    if (contract.customer.lineIdFinance !== lineId) {
+    if ((await findOtpVerifiedCustomerId(this.prisma, lineId)) !== contract.customerId) {
       throw new BadRequestException('สัญญานี้ไม่ตรงกับบัญชี LINE ของคุณ');
     }
 
@@ -328,7 +335,9 @@ export class PaySolutionsIntentService {
   }): Promise<{ paymentLinkId: string; paymentUrl: string; orderRef: string; sentToLine: boolean }> {
     const contract = await this.prisma.contract.findUnique({
       where: { id: input.contractId },
-      include: { customer: { select: { email: true, name: true, lineIdFinance: true } } },
+      include: {
+        customer: { select: { email: true, name: true, ...FINANCE_LINE_RECIPIENT_SELECT } },
+      },
     });
     if (!contract || contract.deletedAt) {
       throw new NotFoundException('ไม่พบสัญญา');
@@ -384,7 +393,8 @@ export class PaySolutionsIntentService {
       // Best-effort push Flex to customer's LINE OA (FINANCE channel).
       // Failure here doesn't abort — cashier can resend or fall back to in-store QR.
       let sentToLine = false;
-      const lineId = contract.customer.lineIdFinance;
+      // ปลายทาง LINE การเงิน = แถว OTP ของลูกค้า (Task 22 I-1 ง) ไม่ใช่คอลัมน์ line_id_finance ที่อาจค้าง
+      const lineId = financeLineRecipient(contract.customer);
       if (lineId && input.quoteContext) {
         try {
           const flex = buildEarlyPayoffQRFlex({
@@ -446,7 +456,11 @@ export class PaySolutionsIntentService {
       where: { id: input.paymentId },
       include: {
         contract: {
-          include: { customer: { select: { id: true, email: true, name: true, lineIdFinance: true } } },
+          include: {
+            customer: {
+              select: { id: true, email: true, name: true, ...FINANCE_LINE_RECIPIENT_SELECT },
+            },
+          },
         },
       },
     });
@@ -530,7 +544,8 @@ export class PaySolutionsIntentService {
       );
 
       let sentToLine = false;
-      const lineId = payment.contract.customer.lineIdFinance;
+      // ปลายทาง LINE การเงิน = แถว OTP ของลูกค้า (Task 22 I-1 ง) ไม่ใช่คอลัมน์ line_id_finance ที่อาจค้าง
+      const lineId = financeLineRecipient(payment.contract.customer);
       if (lineId) {
         try {
           const totalInstallments = await this.prisma.payment.count({
@@ -600,7 +615,11 @@ export class PaySolutionsIntentService {
       where: { id: input.paymentId },
       include: {
         contract: {
-          include: { customer: { select: { id: true, email: true, name: true, lineIdFinance: true } } },
+          include: {
+            customer: {
+              select: { id: true, email: true, name: true, ...FINANCE_LINE_RECIPIENT_SELECT },
+            },
+          },
         },
       },
     });
@@ -708,7 +727,8 @@ export class PaySolutionsIntentService {
       );
 
       let sentToLine = false;
-      const lineId = payment.contract.customer.lineIdFinance;
+      // ปลายทาง LINE การเงิน = แถว OTP ของลูกค้า (Task 22 I-1 ง) ไม่ใช่คอลัมน์ line_id_finance ที่อาจค้าง
+      const lineId = financeLineRecipient(payment.contract.customer);
       if (lineId) {
         try {
           const newDue = addBkkDays(payment.dueDate, input.daysToShift);

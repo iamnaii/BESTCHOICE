@@ -23,11 +23,13 @@ describe('NotificationsService — reminder / overdue dunning', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
 
+  // Task 22 I-1 (ง) — ปลายทาง LINE = แถว OTP (lineLinks) ไม่ใช่คอลัมน์ lineIdFinance
   const customer = (over: Record<string, unknown> = {}) => ({
     id: 'cust-1',
     name: 'สมชาย',
     phone: '0812345678',
     lineIdFinance: null,
+    lineLinks: over.lineIdFinance ? [{ lineUserId: over.lineIdFinance as string }] : [],
     ...over,
   });
 
@@ -47,6 +49,16 @@ describe('NotificationsService — reminder / overdue dunning', () => {
       contract: {
         contractNumber: 'CT-001',
         customer: customer({ lineIdFinance: 'U-line' }),
+        _count: { payments: 6 },
+      },
+    });
+
+  /** คอลัมน์มีค่า (พนักงานพิมพ์/ค้าง) แต่ไม่มีแถว OTP */
+  const withStaleColumn = () =>
+    payment({
+      contract: {
+        contractNumber: 'CT-001',
+        customer: customer({ lineIdFinance: 'U-stale', lineLinks: [] }),
         _count: { payments: 6 },
       },
     });
@@ -102,8 +114,10 @@ describe('NotificationsService — reminder / overdue dunning', () => {
 
   const spyOf = (name: string) =>
     (name === 'sendLineFlexMessage'
-      ? (service.transport as any)[name]
-      : (service.dispatch as any)[name]) as jest.Mock;
+      ? // eslint-disable-next-line @typescript-eslint/no-explicit-any -- private collaborator (pre-existing)
+        (service.transport as any)[name]
+      : // eslint-disable-next-line @typescript-eslint/no-explicit-any -- private collaborator (pre-existing)
+        (service.dispatch as any)[name]) as jest.Mock;
 
   describe('sendPaymentReminders', () => {
     const SUBJECT = 'แจ้งเตือนค่างวด';
@@ -157,6 +171,17 @@ describe('NotificationsService — reminder / overdue dunning', () => {
         }),
       );
       expect(result.sent).toBe(1);
+    });
+
+    it('Task 22 I-1 (ง): คอลัมน์ lineIdFinance ค้างแต่ไม่มีแถว OTP → ไม่ส่ง LINE ไปค่านั้น', async () => {
+      prisma.payment.findMany.mockResolvedValue([withStaleColumn()]);
+
+      await service.sendPaymentReminders();
+
+      expect(spyOf('sendLineFlexMessage')).not.toHaveBeenCalled();
+      for (const [arg] of prisma.notificationLog.create.mock.calls) {
+        expect(arg.data.recipient).not.toBe('U-stale');
+      }
     });
 
     it('dedup query filters by relatedId + subject', async () => {
@@ -221,6 +246,17 @@ describe('NotificationsService — reminder / overdue dunning', () => {
         }),
       );
       expect(result.sent).toBe(1);
+    });
+
+    it('Task 22 I-1 (ง): คอลัมน์ lineIdFinance ค้างแต่ไม่มีแถว OTP → ไม่ส่ง LINE ไปค่านั้น', async () => {
+      prisma.payment.findMany.mockResolvedValue([withStaleColumn()]);
+
+      await service.sendOverdueNotices();
+
+      expect(spyOf('sendLineFlexMessage')).not.toHaveBeenCalled();
+      for (const [arg] of prisma.notificationLog.create.mock.calls) {
+        expect(arg.data.recipient).not.toBe('U-stale');
+      }
     });
   });
 });

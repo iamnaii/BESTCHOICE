@@ -26,6 +26,7 @@ import { CustomerWriteService } from '../customers/services/customer-write.servi
 import { CustomerQueryService } from '../customers/services/customer-query.service';
 import { CustomerAnalyticsService } from '../customers/services/customer-analytics.service';
 import { CustomerTierService } from '../customers/customer-tier.service';
+import { CustomerBlacklistService } from '../customers/customer-blacklist.service';
 import { SkipTracingService } from '../customers/skip-tracing.service';
 import { CustomerInsightsService } from '../overdue/customer-insights.service';
 import { CustomerMergeService } from '../chat-prospects/customer-merge.service';
@@ -147,6 +148,9 @@ beforeAll(async () => {
       AuditService,
       JourneyEntryWriter,
       SkipTracingService,
+      // CustomersController injects it since ก้อน 5 C3 (blacklist reads) — no route here touches it; without the
+      // provider the module never compiles and every case fails before running (pre-existing, found in Task 22 fix round 1)
+      { provide: CustomerBlacklistService, useValue: {} },
       {
         provide: CustomerMergeService,
         useValue: {
@@ -404,17 +408,22 @@ it('keeps canonical hidden-owner secondary fallback and acknowledges actual LINE
     phone: hiddenPhone,
     ...pii.encryptCustomerFields({ phone: hiddenPhone }),
   });
-  const c = await customer({ phone: primary, ...pii.encryptCustomerFields({ phone: primary }) });
+  // Task 22 I3 + fix round 1 M-1 — skip-tracing ไม่แตะ LINE การเงินอีก (ค่าใหม่ = 400 · ค่าว่าง = ไม่แตะ — ยกเลิกผูกที่ PATCH ของ OWNER/BM)
+  const c = await customer({
+    phone: primary,
+    lineIdFinance: 'private-line',
+    ...pii.encryptCustomerFields({ phone: primary }),
+  });
   const scoped = await reader(permissions, 'SHOP', [branchA]);
   const response = await http(
     'post',
     path(c.id, 'update-contact'),
-    trace({ newPhone: hiddenPhone, newLineId: 'private-line', markAsLost: true }),
+    trace({ newPhone: hiddenPhone, newLineId: '', markAsLost: true }),
     scoped,
   ).expect(201);
   expect(response.body).toEqual({
     id: c.id,
-    changedFields: ['phoneSecondary', 'lineIdFinance', 'status'],
+    changedFields: ['phoneSecondary', 'status'],
     phoneStoredAs: 'SECONDARY',
   });
   const row = await db.customer.findUniqueOrThrow({ where: { id: c.id } });

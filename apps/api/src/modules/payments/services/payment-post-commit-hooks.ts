@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { FINANCE_LINE_RECIPIENT_SELECT, financeLineRecipient } from '../../line-oa/services/otp-verified-customer';
 import { LineOaService } from '../../line-oa/line-oa.service';
 import { FlexTemplatesService } from '../../line-oa/flex-templates.service';
 import { QuickReplyService } from '../../line-oa/quick-reply.service';
@@ -72,7 +73,7 @@ export class PaymentPostCommitHooks {
     contractId: string,
     installmentNo: number,
     amount: number,
-    paymentMethod: string,
+    _paymentMethod: string,
   ): Promise<void> {
     try {
       const contract = await this.prisma.contract.findUnique({
@@ -80,10 +81,14 @@ export class PaymentPostCommitHooks {
         select: {
           contractNumber: true,
           totalMonths: true,
-          customer: { select: { lineIdFinance: true, name: true, notifReceipt: true } },
+          customer: {
+            select: { ...FINANCE_LINE_RECIPIENT_SELECT, name: true, notifReceipt: true },
+          },
         },
       });
-      if (!contract?.customer?.lineIdFinance || !contract.customer.notifReceipt) return;
+      // ปลายทาง LINE การเงิน = แถว OTP ของลูกค้า (Task 22 I-1 ง) ไม่ใช่คอลัมน์ line_id_finance ที่อาจค้าง
+      const financeLineId = financeLineRecipient(contract?.customer);
+      if (!contract || !financeLineId || !contract.customer.notifReceipt) return;
 
       // I6 fix: include deletedAt: null so soft-deleted payments don't
       // inflate the "X / N" counter shown in the LINE receipt.
@@ -103,7 +108,7 @@ export class PaymentPostCommitHooks {
       // Attach Quick Reply so customer can quickly check balance, receipt, or contract
       flex.quickReply = { items: this.quickReplyService.afterPayment() };
 
-      await this.lineOaService.sendFlexMessage(contract.customer.lineIdFinance, flex, 'line-finance');
+      await this.lineOaService.sendFlexMessage(financeLineId, flex, 'line-finance');
 
       this.logger.log(
         `[LINE] Payment success flex sent for contract ${contract.contractNumber} ` +

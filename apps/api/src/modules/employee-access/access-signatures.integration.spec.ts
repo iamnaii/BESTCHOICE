@@ -684,6 +684,10 @@ describe('genuine canonical completion and actual outer commit', () => {
       where: { id: data.customer.id },
       data: { lineIdFinance: 'OWNED_NO_PROVIDER' },
     });
+    // Task 22 fix round 1 I-1 (ง): the FINANCE LINE recipient is the active OTP link row, never the column alone
+    await db.customerLineLink.create({
+      data: { customerId: data.customer.id, lineUserId: 'OWNED_NO_PROVIDER', channel: 'FINANCE' },
+    });
     render.mockImplementation(async () => {
       expect(
         await db.signature.count({ where: { contractId: data.contract.id, deletedAt: null } }),

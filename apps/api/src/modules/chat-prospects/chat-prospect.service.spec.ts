@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- jest mocks (pre-existing) */
 import { Logger } from '@nestjs/common';
 import { ChatProspectService } from './chat-prospect.service';
 
@@ -130,19 +131,23 @@ describe('ChatProspectService.ensureForRoom', () => {
     expect(tx.customer.findFirst).not.toHaveBeenCalled();
   });
 
-  it('ห้อง LINE การเงิน: ไม่มี link ที่ยังผูกอยู่ → ไปหาคอลัมน์ lineIdFinance', async () => {
+  it('ห้อง LINE การเงิน: ไม่มี link ที่ยังผูกอยู่ → ไม่ค้นคอลัมน์ lineIdFinance (Task 22 I-1) → สร้างผู้สนใจใหม่', async () => {
     prisma.chatRoom.findUnique.mockResolvedValue({ ...ROOM, channel: 'LINE_FINANCE', lineUserId: 'Ufin', externalUserId: null });
     tx.chatRoom.findUnique.mockResolvedValue({ customerId: null });
     tx.chatRoom.findFirst.mockResolvedValue(null);
+    // ถ้ายังค้นตามคอลัมน์ จะได้ลูกค้าที่คอลัมน์ค้าง/พนักงานพิมพ์ไว้ — ห้องจะไปผูกกับคนนั้น (พนักงานเห็นห้องเป็นคนนั้น)
     tx.customer.findFirst.mockResolvedValue({ id: 'cust-col' });
-    await expect(service.ensureForRoom('room-1')).resolves.toEqual({ customerId: 'cust-col', created: false });
+    tx.customer.create.mockResolvedValue({ id: 'cust-new' });
+    await expect(service.ensureForRoom('room-1')).resolves.toMatchObject({ customerId: 'cust-new', created: true });
     expect(tx.chatRoom.findFirst).toHaveBeenCalledWith({
       where: { deletedAt: null, channel: 'LINE_FINANCE', customerId: { not: null }, customer: { is: { deletedAt: null } }, lineUserId: 'Ufin' },
       orderBy: { createdAt: 'asc' },
       select: { customerId: true },
     });
-    expect(tx.customer.findFirst).toHaveBeenCalledWith({ where: { lineIdFinance: 'Ufin', deletedAt: null }, select: { id: true } });
-    expect(tx.chatRoom.update).toHaveBeenCalledWith({ where: { id: 'room-1' }, data: { customerId: 'cust-col' } });
+    for (const [arg] of tx.customer.findFirst.mock.calls) {
+      expect(arg.where).not.toHaveProperty('lineIdFinance');
+    }
+    expect(tx.chatRoom.update).not.toHaveBeenCalledWith({ where: { id: 'room-1' }, data: { customerId: 'cust-col' } });
   });
 
   it('ห้อง LINE ร้านสร้าง placeholder ด้วยที่มา CHAT_LINE_SHOP และไม่แตะช่อง facebook*', async () => {

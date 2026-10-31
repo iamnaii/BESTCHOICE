@@ -10,6 +10,14 @@ import { findLivePhoneOwner } from '../customers/customer-phone-owner';
 /** เบอร์หลักของแถวนำเข้าเป็นของลูกค้าคนอื่นที่ยังไม่ถูกลบ (คำตัดสินเจ้าของ 2026-09-17 — ห้ามสองคนถือเบอร์หลักเดียวกัน) */
 export const IMPORT_PHONE_TAKEN_MSG = 'เบอร์โทรนี้เป็นของลูกค้าคนอื่นในระบบแล้ว';
 
+/**
+ * Task 22 I3 — คอลัมน์ `lineId` ของไฟล์นำเข้าไม่ลง `line_id_finance` อีก (ช่องที่ระบบใช้ส่งข้อความและอนุญาตหน้า LIFF —
+ * ผูกได้ทาง OTP ของลูกค้าเท่านั้น) · แถวยังนำเข้าสำเร็จ — รายการนี้อยู่ใน `errors` (รายการเดียวที่หน้า "นำเข้าข้อมูล" แสดง)
+ * แต่ไม่นับเป็น `failed` · ทางของลูกค้า: ข้อความเดียวกับ `LINE_FINANCE_LINK_REQUIRES_OTP_MESSAGE`
+ */
+export const IMPORT_LINE_ID_IGNORED_MSG =
+  'นำเข้าแถวนี้แล้ว แต่ไม่ได้บันทึก LINE ID — การผูก LINE การเงินต้องให้ลูกค้ายืนยันเบอร์ด้วย OTP เอง (ให้ลูกค้าส่งข้อความใดก็ได้ในแชท LINE การเงิน แล้วกดปุ่ม "เริ่มยืนยันตัวตน")';
+
 /** เลขบัตรของแถวนำเข้าชนกับลูกค้าเดิมที่ข้อมูลเลขบัตรไม่ตรงกัน (plaintext กับ hash อยู่คนละแถว) */
 export const IMPORT_NATIONAL_ID_CONFLICT_MSG =
   'เลขบัตร ปชช. นี้ซ้ำกับลูกค้าในระบบที่ข้อมูลเลขบัตรไม่ตรงกัน — ต้องตรวจสอบด้วยมือ';
@@ -83,10 +91,8 @@ export class MigrationService {
           name: c.name,
           phone,
           phoneSecondary,
-          // Legacy CSV `lineId` maps to `lineIdFinance` — historical imports were
-          // all finance-side (FINANCE OA was the only customer LINE channel before
-          // SHOP OA was added). Shop LINE IDs must be backfilled separately.
-          lineIdFinance: c.lineId,
+          // `lineId` ของไฟล์ไม่ลง lineIdFinance (Task 22 I3) — เดิมแมปตรง ⇒ ค่าที่ไม่ผ่าน OTP กลายเป็นสิทธิ์อ่านสัญญาใน LIFF
+          // และปลายทางข้อความการเงิน · แถวยังนำเข้าได้ + แถวเตือน IMPORT_LINE_ID_IGNORED_MSG (ด้านล่าง)
           addressIdCard: c.addressIdCard,
           addressCurrent: c.addressCurrent,
           occupation: c.occupation,
@@ -151,6 +157,9 @@ export class MigrationService {
           continue;
         }
         result.success++;
+        if (c.lineId?.trim()) {
+          result.errors.push({ row, field: 'lineId', message: IMPORT_LINE_ID_IGNORED_MSG });
+        }
       } catch (err) {
         if ((err as { code?: string })?.code === 'P2002') {
           // unique ของ customers มีแค่ national_id / national_id_hash — เช่น แถวหนึ่งถือ plaintext อีกแถวถือ hash

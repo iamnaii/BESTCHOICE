@@ -7,7 +7,8 @@ import { normalizeThaiPhone } from '../../../utils/thai-phone.util';
  *
  * Used by collectors when a customer becomes unreachable. They can:
  *  - Replace the customer's primary phone with a verified new number
- *  - Replace/add a LINE ID
+ *  - ~~Replace/add a LINE ID~~ — Task 22 I3: `newLineId` ไม่ลง `line_id_finance` อีก (ผูกได้ทาง OTP เท่านั้น):
+ *    ค่าใหม่ = 400 · ค่าเดิม/ค่าว่าง = ไม่แตะ (ยกเลิกผูกที่ PATCH /customers ของ OWNER/BM เท่านั้น — fix round 1 M-1)
  *  - Tag the customer as `LOST` so they get filtered out of the active queue
  *
  * `reason` is required to keep the audit trail meaningful — every contact

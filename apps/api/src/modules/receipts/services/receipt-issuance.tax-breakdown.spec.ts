@@ -286,11 +286,15 @@ describe('ReceiptIssuanceService — ใบกำกับภาษีตาม�
       );
 
       expect(created).toHaveLength(1);
+      // Task 22 I-1 (ง) — "ผูก LINE การเงิน" = แถว OTP ที่ยังผูก ไม่ใช่คอลัมน์ lineIdFinance
       expect(tx.customer.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ lineIdFinance: { not: null } }),
+          where: expect.objectContaining({
+            lineLinks: { some: { channel: 'FINANCE', unlinkedAt: null, deletedAt: null } },
+          }),
         }),
       );
+      expect(tx.customer.findFirst.mock.calls[0][0].where).not.toHaveProperty('lineIdFinance');
       // ส่งต่อให้ LineOaService.sendPaymentReceipt ตัวเดียวกับหน้ารับชำระ — ตัวนั้นส่งทาง OA ของ SHOP
       // เฉพาะลูกค้าที่ผูก LINE SHOP และยินยอม PDPA (กติกาเดิม ไม่แตะ)
       expect(lineOa.sendPaymentReceipt).toHaveBeenCalledTimes(1);

@@ -1,0 +1,106 @@
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  Req,
+  Res,
+  UnauthorizedException,
+  UseGuards,
+} from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
+import { LineChannelType } from '@prisma/client';
+import { Request, Response } from 'express';
+import { SkipCsrf } from '../../guards/skip-csrf.decorator';
+import { DocumentsService } from '../contracts/documents.service';
+import { LiffDownloadTicketDto } from './dto/liff.dto';
+import { LiffChannel } from './guards/liff-channel.decorator';
+import { LiffRequest, LiffTokenGuard } from './guards/liff-token.guard';
+import { LiffApiService } from './liff-api.service';
+import {
+  LiffDownloadKind,
+  LiffDownloadTicketService,
+} from './services/liff-download-ticket.service';
+
+/** ตั๋วไม่มี / ใช้แล้ว / หมดอายุ / ไม่ใช่เอกสารนี้ — ข้อความเดียวกันทุกกรณี (ผู้ใช้เห็นในแท็บที่เปิดเอกสาร) */
+export const LIFF_DOWNLOAD_TICKET_INVALID_MESSAGE =
+  'ลิงก์ดาวน์โหลดหมดอายุหรือถูกใช้แล้ว — กลับไปหน้าเดิมในไลน์แล้วกดดาวน์โหลดอีกครั้ง';
+
+/**
+ * ดาวน์โหลดเอกสารของหน้า LIFF การเงิน (สัญญา PDF · ใบเสร็จ PDF) — Task 22 M-3
+ *
+ * ลิงก์เปิดแท็บใหม่ (`<a target="_blank">`) แนบ header `X-Liff-Id-Token` ไม่ได้ ⇒ เดิมใส่ id_token ใน `?idToken=` ซึ่งไปอยู่ใน
+ * access log ของ Cloud Run/Firebase และใช้ยืนยันตัวตนกับ LINE ได้จนหมดอายุ. ตอนนี้หน้าเว็บแลก id_token (header ผ่าน
+ * `LiffTokenGuard`) เป็นตั๋วครั้งเดียว 60 วิ ที่ผูกกับ (LINE, ชนิดเอกสาร, id) แล้วเปิด `…?dl=<ตั๋ว>`.
+ *
+ * แยก controller จาก `LiffApiController` เพราะตัวนั้นติด `LiffTokenGuard` ระดับคลาส (GET ดาวน์โหลดต้องไม่ต้องใช้ header) ·
+ * GET ไม่มี guard ตัวตน — **ตั๋วคือหลักฐานเดียว** แล้วตรวจความเป็นเจ้าของซ้ำด้วย LINE ที่ผูกกับตั๋ว (ทางเดียวกับตอนออกตั๋ว)
+ */
+@ApiTags('LIFF API')
+@Controller('line-oa')
+@SkipCsrf()
+export class LiffDownloadController {
+  constructor(
+    private readonly liffApiService: LiffApiService,
+    private readonly tickets: LiffDownloadTicketService,
+    private readonly documentsService: DocumentsService,
+  ) {}
+
+  @Post('liff/download-ticket')
+  @UseGuards(LiffTokenGuard)
+  @LiffChannel(LineChannelType.FINANCE)
+  @Throttle({ short: { ttl: 60000, limit: 30 } })
+  async issueDownloadTicket(
+    @Req() req: Request,
+    @Body() dto: LiffDownloadTicketDto,
+  ): Promise<{ ticket: string }> {
+    const lineId = (req as unknown as LiffRequest).liffUserId;
+    await this.liffApiService.resolveDownloadDocumentId(lineId, dto.kind, dto.resourceId);
+    return { ticket: await this.tickets.issue(lineId, dto.kind, dto.resourceId) };
+  }
+
+  @Get('liff/contracts/:contractId/document')
+  @Throttle({ short: { ttl: 60000, limit: 30 } })
+  async getLiffContractDocument(
+    @Res() res: Response,
+    @Param('contractId') contractId: string,
+    @Query('dl') dl: string | undefined,
+  ): Promise<void> {
+    await this.stream(res, 'contract-document', contractId, dl);
+  }
+
+  @Get('liff/receipts/:receiptId/download')
+  @Throttle({ short: { ttl: 60000, limit: 30 } })
+  async downloadLiffReceipt(
+    @Res() res: Response,
+    @Param('receiptId') receiptId: string,
+    @Query('dl') dl: string | undefined,
+  ): Promise<void> {
+    await this.stream(res, 'receipt', receiptId, dl);
+  }
+
+  private async stream(
+    res: Response,
+    kind: LiffDownloadKind,
+    resourceId: string,
+    dl: string | undefined,
+  ): Promise<void> {
+    const lineId = await this.tickets.consume(dl, kind, resourceId);
+    if (!lineId) throw new UnauthorizedException(LIFF_DOWNLOAD_TICKET_INVALID_MESSAGE);
+    const documentId = await this.liffApiService.resolveDownloadDocumentId(
+      lineId,
+      kind,
+      resourceId,
+    );
+    const { stream, filename, contentType } =
+      await this.documentsService.getDocumentStream(documentId);
+    res.set({
+      'Content-Type': contentType,
+      'Content-Disposition': `inline; filename="${encodeURIComponent(filename)}"`,
+    });
+    stream.pipe(res);
+  }
+}

@@ -1,0 +1,79 @@
+import { BadRequestException } from '@nestjs/common';
+import { LineChannelType, Prisma } from '@prisma/client';
+
+/**
+ * Task 22 I3 — พนักงาน/API ตั้ง `customers.line_id_finance` เป็นค่าใหม่ไม่ได้ (การผูก LINE การเงินต้องผ่าน OTP ทาง SMS
+ * ไปเบอร์ของลูกค้าเท่านั้น — `VerificationService.linkVerifiedLine`). ทางที่ลูกค้าทำได้จริงวันนี้: ส่งข้อความใดก็ได้ใน
+ * แชท LINE การเงิน → บอทตอบการ์ดยืนยันตัวตนให้ LINE ที่ยังไม่ผูกทุกข้อความ (`ChatbotFinanceService.handleMessage` →
+ * `replyVerifyFlexAndSave`) ปุ่ม "เริ่มยืนยันตัวตน" → `/liff/finance-verify` (เบอร์ + OTP). ระบบไม่มีปุ่มฝั่งพนักงานที่ส่ง
+ * ลิงก์ยืนยันตัวตนให้ลูกค้า ⇒ ข้อความชี้ทางของลูกค้าเอง
+ */
+export const LINE_FINANCE_LINK_REQUIRES_OTP_MESSAGE =
+  'การผูก LINE การเงินต้องให้ลูกค้ายืนยันเบอร์ด้วย OTP เอง — ให้ลูกค้าส่งข้อความใดก็ได้ในแชท LINE การเงิน แล้วกดปุ่ม "เริ่มยืนยันตัวตน" (กรอกเบอร์ + รหัส OTP ทาง SMS)';
+
+/**
+ * ตัดสินค่า LINE การเงินที่พนักงาน/API ส่งมา (ฟอร์มลูกค้า · skip-tracing) เทียบกับค่าปัจจุบันของลูกค้า:
+ * - ไม่ส่ง / ส่งค่าเดิม (ฟอร์มแก้ไขส่งทุกช่องกลับมาทุกครั้ง) / ว่างทั้งคู่ → `'none'` ไม่แตะ
+ * - ส่งค่าว่างหรือ null ขณะที่ลูกค้ามีค่าอยู่ → `'clear'` ยกเลิกผูก (`unlinkFinanceLine` แบบ `customerId`)
+ * - ค่าอื่น → 400 `LINE_FINANCE_LINK_REQUIRES_OTP_MESSAGE` (ห้ามตั้ง U-id ที่ไม่ได้ผ่าน OTP)
+ *
+ * เทียบหลัง trim — `' U1 '` ที่ส่งกลับมาคือค่าเดิม
+ */
+export function staffLineFinanceChange(
+  requested: string | null | undefined,
+  current: string | null | undefined,
+): 'none' | 'clear' {
+  if (requested === undefined) return 'none';
+  const next = requested?.trim() ?? '';
+  const cur = current?.trim() ?? '';
+  if (next === cur) return 'none';
+  if (next === '') return 'clear';
+  throw new BadRequestException({
+    message: LINE_FINANCE_LINK_REQUIRES_OTP_MESSAGE,
+    field: 'lineIdFinance',
+  });
+}
+
+/** ยกเลิกผูกของ LINE หนึ่งบัญชี (ลูกค้าเป็นคนกดในหน้า LIFF) หรือของลูกค้าหนึ่งคน (พนักงานล้างช่อง LINE การเงิน) */
+export type FinanceLineUnlinkTarget = { lineUserId: string } | { customerId: string };
+
+/**
+ * ยกเลิกผูก LINE การเงิน — ทางเดียวของการล้าง `customers.line_id_finance` + ปิดแถว `customer_line_links` ช่อง FINANCE
+ * (ต้องเรียกใน tx เดียวกับงานที่เหลือของผู้เรียก). แถวที่ปิด (`unlinkedAt`) คือสิ่งที่ `/liff/finance-verify` และบอทการเงิน
+ * (`VerificationService.isLinked`) ถือเป็น "ผูกแล้ว" — ล้างแต่คอลัมน์โดยไม่ปิดแถว = ลูกค้ายืนยัน LINE ใหม่ไม่ได้ (409
+ * `CUSTOMER_LINKED_TO_OTHER_LINE_MESSAGE`) ส่วนบอทยังถือว่าผูกอยู่. ผูกใหม่ด้วย OTP เปิด/ชี้แถวเดิมกลับ (`VerificationService.bind`)
+ *
+ * - `{ lineUserId }` (LIFF "ยกเลิกผูก LINE" — `LiffTokenGuard` พิสูจน์ว่าเป็นเจ้าของ LINE นี้): ล้างคอลัมน์บน**ทุก**ลูกค้าที่ถือ
+ *   LINE นี้ **รวมแถวที่ถูกลบ** (กู้จากถังขยะ/ชุบ ghost แล้วค่าไม่กลับมา — Task 22 fix round 1) (เดิมล้างคนเดียว — Task 19 review M1)
+ *   + ปิดแถวของ LINE นี้
+ * - `{ customerId }` (พนักงานล้างช่องในฟอร์มลูกค้า / skip-tracing): ล้างคอลัมน์ของลูกค้าคนนี้ + ปิดแถวของ**ลูกค้าคนนี้**เท่านั้น —
+ *   ห้ามปิดตาม LINE: ค่าในคอลัมน์อาจเป็น U-id ที่พนักงานพิมพ์ (I3) ซึ่งเป็น LINE ที่ยืนยัน OTP ไว้กับลูกค้าอีกคน
+ *
+ * ไม่สลับ rich menu กลับเป็นเมนูก่อนยืนยัน (เหมือน LIFF เดิม) · ไม่เขียน journey
+ */
+export async function unlinkFinanceLine(
+  tx: Prisma.TransactionClient,
+  target: FinanceLineUnlinkTarget,
+  unlinkedAt: Date = new Date(),
+): Promise<void> {
+  if ('lineUserId' in target) {
+    // ไม่กรอง deletedAt โดยตั้งใจ — เป็นการล้างค่า ไม่ใช่การอ่าน
+    await tx.customer.updateMany({
+      where: { lineIdFinance: target.lineUserId },
+      data: { lineIdFinance: null },
+    });
+    await tx.customerLineLink.updateMany({
+      where: { lineUserId: target.lineUserId, channel: LineChannelType.FINANCE, unlinkedAt: null },
+      data: { unlinkedAt },
+    });
+    return;
+  }
+  await tx.customer.update({
+    where: { id: target.customerId },
+    data: { lineIdFinance: null },
+  });
+  await tx.customerLineLink.updateMany({
+    where: { customerId: target.customerId, channel: LineChannelType.FINANCE, unlinkedAt: null },
+    data: { unlinkedAt },
+  });
+}

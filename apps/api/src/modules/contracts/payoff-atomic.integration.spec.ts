@@ -77,8 +77,13 @@ async function grant(userId: string, permissions = writes) {
   });
 }
 async function contract(ecl = 0) {
+  const lineUserId = randomUUID();
   const customer = await db.customer.create({
-    data: { name: 'PRIVATE-PAYER', phone: '0800000000', lineIdFinance: randomUUID() },
+    data: { name: 'PRIVATE-PAYER', phone: '0800000000', lineIdFinance: lineUserId },
+  });
+  // Task 22 fix round 1 I-1 (ง): the LINE receipt goes to the active OTP link row (bind writes it next to the column)
+  await db.customerLineLink.create({
+    data: { customerId: customer.id, lineUserId, channel: 'FINANCE' },
   });
   const product = await db.product.create({
     data: {

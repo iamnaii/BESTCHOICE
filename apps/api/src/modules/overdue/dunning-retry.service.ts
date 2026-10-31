@@ -1,5 +1,9 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  FINANCE_LINE_RECIPIENT_SELECT,
+  financeLineRecipient,
+} from '../line-oa/services/otp-verified-customer';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationCategory } from '../notifications/notification-category.enum';
 
@@ -24,7 +28,9 @@ export class DunningRetryService {
           select: {
             id: true,
             contractNumber: true,
-            customer: { select: { id: true, name: true, phone: true, lineIdFinance: true } },
+            customer: {
+              select: { id: true, name: true, phone: true, ...FINANCE_LINE_RECIPIENT_SELECT },
+            },
           },
         },
         dunningRule: {
@@ -50,7 +56,9 @@ export class DunningRetryService {
           select: {
             id: true,
             contractNumber: true,
-            customer: { select: { id: true, name: true, phone: true, lineIdFinance: true } },
+            customer: {
+              select: { id: true, name: true, phone: true, ...FINANCE_LINE_RECIPIENT_SELECT },
+            },
           },
         },
         dunningRule: {
@@ -71,8 +79,8 @@ export class DunningRetryService {
     const channel = action.dunningRule.channel;
 
     // Resolve recipient based on channel
-    const recipient =
-      channel === 'LINE' ? customer.lineIdFinance : customer.phone;
+    // ปลายทาง LINE การเงิน = แถว OTP ของลูกค้า (Task 22 I-1 ง) ไม่ใช่คอลัมน์ line_id_finance ที่อาจค้าง
+    const recipient = channel === 'LINE' ? financeLineRecipient(customer) : customer.phone;
 
     if (!recipient) {
       throw new BadRequestException(

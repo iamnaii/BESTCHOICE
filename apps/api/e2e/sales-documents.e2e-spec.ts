@@ -73,6 +73,10 @@ describe('Staff sales documents on isolated PostgreSQL', () => {
     branchB = (await db.branch.create({ data: { name: `${prefix}-B`, companyId: shopId } })).id;
     userId = (await db.user.create({ data: { name: prefix, email: `${prefix}@example.invalid`, password: 'unused', role: 'OWNER', branchId: branchA } })).id;
     const customer = await db.customer.create({ data: { name: prefix, phone: '0800000000', nationalId: `799${Date.now().toString().slice(-10)}`, birthDate: new Date('1990-01-01'), lineIdFinance: `TEST-NOT-SENT-${prefix}` } });
+    // Task 22 fix round 1 I-1 (ง): CONTRACT_DOCUMENTS_READY goes to the active OTP link row, never the column alone
+    await db.customerLineLink.create({
+      data: { customerId: customer.id, lineUserId: `TEST-NOT-SENT-${prefix}`, channel: 'FINANCE' },
+    });
     const make = async (branchId: string, name: string) => {
       const product = await db.product.create({ data: { name, brand: 'TEST', model: 'TEST', category: 'PHONE_NEW', branchId, costPrice: '6000', cashPrice: '10000' } });
       const consent = await db.pDPAConsent.create({ data: { customerId: customer.id, consentVersion: 'test', privacyNoticeText: 'SYNTHETIC', status: 'GRANTED', grantedAt: new Date() } });

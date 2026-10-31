@@ -1,5 +1,6 @@
 import { Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { ACTIVE_FINANCE_LINK_WHERE } from '../../line-oa/services/otp-verified-customer';
 import { Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
 import { LineOaService } from '../../line-oa/line-oa.service';
@@ -351,7 +352,8 @@ export class ReceiptIssuanceService {
           const customer = await tx.customer.findFirst({
             where: {
               contracts: { some: { id: contractId } },
-              lineIdFinance: { not: null },
+              // ผูก LINE การเงิน = แถว OTP ที่ยังผูก (Task 22 I-1 ง) ไม่ใช่คอลัมน์ line_id_finance
+              lineLinks: { some: ACTIVE_FINANCE_LINK_WHERE },
               deletedAt: null,
             },
             select: { id: true },

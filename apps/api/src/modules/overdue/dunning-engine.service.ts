@@ -1,7 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
-import { DunningEventTrigger } from '@prisma/client';
+import { ContractStatus, DunningEventTrigger, PaymentStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  FINANCE_LINE_RECIPIENT_SELECT,
+  financeLineRecipient,
+} from '../line-oa/services/otp-verified-customer';
 import { DunningRuleService } from './dunning-rule.service';
 import { DunningRuleResolverService } from './dunning-rule-resolver.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -167,7 +171,9 @@ export class DunningEngineService {
 
             let paymentLinkUrl: string | undefined;
 
-            if (rule.includePaymentLink && payment.contract.customer.lineIdFinance) {
+            // ปลายทาง LINE การเงิน = แถว OTP ของลูกค้า (Task 22 I-1 ง) ไม่ใช่คอลัมน์ line_id_finance ที่อาจค้าง
+            const financeLineId = financeLineRecipient(payment.contract.customer);
+            if (rule.includePaymentLink && financeLineId) {
               try {
                 const link = await this.paymentLinkService.createPaymentLink(
                   payment.contractId,
@@ -188,14 +194,12 @@ export class DunningEngineService {
             const isNotificationChannel =
               rule.channel === 'LINE' || rule.channel === 'SMS';
 
-            let status: 'PENDING' | 'SENT' | 'FAILED' = 'PENDING';
+            let status: 'PENDING' | 'SENT' | 'FAILED' | 'SKIPPED' = 'PENDING';
             let result: string | undefined;
 
             if (isNotificationChannel && rule.autoExecute) {
               const recipient =
-                rule.channel === 'LINE'
-                  ? payment.contract.customer.lineIdFinance
-                  : payment.contract.customer.phone;
+                rule.channel === 'LINE' ? financeLineId : payment.contract.customer.phone;
 
               if (recipient) {
                 const finalMessage = paymentLinkUrl
@@ -227,7 +231,7 @@ export class DunningEngineService {
                   failed++;
                 }
               } else {
-                status = 'SKIPPED' as any;
+                status = 'SKIPPED';
                 result = 'no recipient';
               }
             }
@@ -238,8 +242,8 @@ export class DunningEngineService {
                 dunningRuleId: rule.id,
                 contractId: payment.contractId,
                 paymentId: payment.id,
-                channel: rule.channel as any,
-                status: status as any,
+                channel: rule.channel,
+                status,
                 messageContent,
                 result: result ?? null,
                 paymentLinkUrl: paymentLinkUrl ?? null,
@@ -303,15 +307,18 @@ export class DunningEngineService {
               contract: { status: 'ACTIVE', deletedAt: null },
             }
           : {
-              status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] as any[] },
-              contract: { status: { in: ['OVERDUE', 'DEFAULT'] as any[] }, deletedAt: null },
+              status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] as PaymentStatus[] },
+              contract: {
+                status: { in: ['OVERDUE', 'DEFAULT'] as ContractStatus[] },
+                deletedAt: null,
+              },
             }),
       },
       include: {
         contract: {
           include: {
             customer: {
-              select: { id: true, name: true, lineIdFinance: true, phone: true },
+              select: { id: true, name: true, ...FINANCE_LINE_RECIPIENT_SELECT, phone: true },
             },
           },
         },
@@ -356,7 +363,11 @@ export class DunningEngineService {
 
     const contract = await this.prisma.contract.findUnique({
       where: { id: contractId },
-      include: { customer: { select: { id: true, name: true, lineIdFinance: true, phone: true } } },
+      include: {
+        customer: {
+          select: { id: true, name: true, ...FINANCE_LINE_RECIPIENT_SELECT, phone: true },
+        },
+      },
     });
     if (!contract) return;
 
@@ -398,7 +409,9 @@ export class DunningEngineService {
     const messageContent = this.renderTemplate(templateBody, vars);
 
     let paymentLinkUrl: string | undefined;
-    if (rule.includePaymentLink && payment && contract.customer.lineIdFinance) {
+    // ปลายทาง LINE การเงิน = แถว OTP ของลูกค้า (Task 22 I-1 ง) ไม่ใช่คอลัมน์ line_id_finance ที่อาจค้าง
+    const financeLineId = financeLineRecipient(contract.customer);
+    if (rule.includePaymentLink && payment && financeLineId) {
       try {
         const link = await this.paymentLinkService.createPaymentLink(
           contractId,
@@ -420,8 +433,7 @@ export class DunningEngineService {
     let result: string | null = null;
 
     if (rule.autoExecute && (rule.channel === 'LINE' || rule.channel === 'SMS')) {
-      const recipient =
-        rule.channel === 'LINE' ? contract.customer.lineIdFinance : contract.customer.phone;
+      const recipient = rule.channel === 'LINE' ? financeLineId : contract.customer.phone;
       if (recipient) {
         const finalMessage = paymentLinkUrl
           ? `${messageContent}\n\nชำระเงินออนไลน์: ${paymentLinkUrl}`
@@ -461,8 +473,8 @@ export class DunningEngineService {
         dunningRuleId: rule.id,
         contractId,
         paymentId: paymentId ?? undefined,
-        channel: rule.channel as any,
-        status: status as any,
+        channel: rule.channel,
+        status,
         messageContent,
         result,
         paymentLinkUrl: paymentLinkUrl ?? null,

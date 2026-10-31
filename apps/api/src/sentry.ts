@@ -64,11 +64,15 @@ const SENSITIVE_REQUEST_KEYS = [
  */
 const SENSITIVE_REQUEST_HEADERS = new Set(['x-appointment-token', 'x-liff-id-token']);
 /**
- * Query params whose value is a credential (`?idToken=` on LIFF download links — `LiffTokenGuard`).
+ * Query params whose value is a credential (`?idToken=` on LIFF download links — removed in Task 22 M-3:
+ * the guard reads the header only and downloads use a single-use `?dl=` ticket; kept for links built by
+ * LIFF pages still open from before that deploy). `dl` = that ticket (Task 22 fix round 1 M-6) — a minted
+ * ticket is 43-char base64url and the bare-token scrub catches it by shape, but it is redacted by name
+ * too so a re-encoded / truncated / future-format ticket cannot leak.
  * The string forms (`request.url`, `request.query_string`, span `http.target`/`url.full`/`url.query`)
  * are scrubbed by `redactShareToken`; this covers `query_string` in object / `[key, value][]` form.
  */
-const SENSITIVE_QUERY_PARAMS = new Set(['idtoken', 'id_token']);
+const SENSITIVE_QUERY_PARAMS = new Set(['idtoken', 'id_token', 'dl']);
 
 function redactSensitiveQueryParams(request: NonNullable<Sentry.Event['request']>): void {
   const query = request.query_string as unknown;

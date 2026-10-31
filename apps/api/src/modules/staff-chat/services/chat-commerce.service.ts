@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { MessageRole, MessageType } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { FINANCE_LINE_RECIPIENT_SELECT, financeLineRecipient } from '../../line-oa/services/otp-verified-customer';
 import { RoomManagerService } from '../../chat-engine/services/room-manager.service';
 import { MessageRouterService } from '../../chat-engine/services/message-router.service';
 import { ProductQuoteService } from './product-quote.service';
@@ -69,7 +70,15 @@ export class ChatCommerceService {
         channel: true,
         customerId: true,
         customer: {
-          select: { id: true, name: true, lineIdFinance: true, lineIdShop: true, acquisitionSource: true, phone: true, nationalId: true },
+          select: {
+            id: true,
+            name: true,
+            ...FINANCE_LINE_RECIPIENT_SELECT,
+            lineIdShop: true,
+            acquisitionSource: true,
+            phone: true,
+            nationalId: true,
+          },
         },
       },
     });
@@ -99,7 +108,8 @@ export class ChatCommerceService {
         customerLineIdForChannel = session.customer.lineIdShop;
         break;
       case 'LINE_FINANCE':
-        customerLineIdForChannel = session.customer.lineIdFinance;
+        // Task 22 I-1 (ง) — แถว OTP ของลูกค้า ไม่ใช่คอลัมน์ line_id_finance ที่อาจค้าง (ไม่มี = ใช้ LINE ของห้องตามเดิม)
+        customerLineIdForChannel = financeLineRecipient(session.customer);
         break;
       case 'FACEBOOK':
       case 'TIKTOK':
@@ -118,7 +128,7 @@ export class ChatCommerceService {
     const contract = await this.prisma.contract.findUnique({
       where: { id: params.contractId },
       include: {
-        customer: { select: { id: true, lineIdFinance: true, lineIdShop: true } },
+        customer: { select: { id: true, lineIdShop: true } },
         payments: {
           where: { deletedAt: null },
           orderBy: { installmentNo: 'asc' },

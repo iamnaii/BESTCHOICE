@@ -5,6 +5,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CustomerPiiService } from './customer-pii.service';
 import { sanitizeAuditValue } from '../audit/audit-sanitize.util';
+import { LINE_FINANCE_LINK_REQUIRES_OTP_MESSAGE } from '../line-oa/services/finance-line-link';
 
 describe('SkipTracingService', () => {
   let service: SkipTracingService;
@@ -60,6 +61,12 @@ describe('SkipTracingService', () => {
           delete plain.phoneEncrypted;
           delete plain.phoneSecondaryEncrypted;
           return { ...existingCustomer, ...plain };
+        }),
+      },
+      customerLineLink: {
+        updateMany: jest.fn().mockImplementation(async () => {
+          events.push('close-link');
+          return { count: 1 };
         }),
       },
     };
@@ -284,22 +291,22 @@ describe('SkipTracingService', () => {
     });
   });
 
-  it('เบอร์ของคนอื่น + LINE ID ใหม่ในครั้งเดียว → เบอร์สำรอง และ LINE ID ถูกบันทึกด้วย', async () => {
+  it('เบอร์ของคนอื่น + LINE ID ใหม่ในครั้งเดียว → 400 ชี้ทาง OTP ทั้งคำขอ (Task 22 I3) — ไม่เขียนอะไร ไม่มี audit', async () => {
     tx.customer.findMany.mockResolvedValueOnce([
       { id: 'cust-2', name: 'สมชาย', phone: '0820000000', phoneHash: 'h:0820000000' },
     ]);
-    const result = await legacyUpdateContact(
+    const err = await legacyUpdateContact(
       'cust-1',
       { newPhone: '0820000000', newLineId: 'new-line', reason: 'x-x-x' },
       { userId: 'u' },
-    );
-    expect(tx.customer.update.mock.calls[0][0].data).toEqual({
-      phoneSecondary: '0820000000',
-      phoneSecondaryEncrypted: 'enc:0820000000',
-      lineIdFinance: 'new-line',
+    ).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect((err as BadRequestException).getResponse()).toEqual({
+      message: LINE_FINANCE_LINK_REQUIRES_OTP_MESSAGE,
+      field: 'lineIdFinance',
     });
-    expect(result.phoneStoredAs).toBe('SECONDARY');
-    expect(result.lineIdFinance).toBe('new-line');
+    expect(tx.customer.update).not.toHaveBeenCalled();
+    expect(audit.log).not.toHaveBeenCalled();
   });
 
   it('payload audit ผ่าน sanitizer จริง → เบอร์หลัก/เบอร์สำรองถูกปิด แต่ phoneStoredAs/phoneOwnerId ยังอ่านได้', async () => {
@@ -327,26 +334,44 @@ describe('SkipTracingService', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
-  it('updates LINE ID without touching phone (ไม่ล็อกเบอร์)', async () => {
-    const result = await legacyUpdateContact(
+  it('LINE ID ใหม่ → 400 ชี้ทาง OTP (Task 22 I3: พนักงานตั้ง LINE การเงินไม่ได้) — ไม่เขียนอะไร', async () => {
+    const err = await legacyUpdateContact(
       'cust-1',
       { newLineId: 'new-line-id', reason: 'เจอใน Facebook' },
       { userId: 'user-1' },
-    );
-
-    expect(tx.$executeRaw).not.toHaveBeenCalled();
-    expect(tx.customer.update).toHaveBeenCalledWith({
-      where: { id: 'cust-1' },
-      data: { lineIdFinance: 'new-line-id' },
-      select: expect.any(Object),
+    ).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect((err as BadRequestException).getResponse()).toEqual({
+      message: LINE_FINANCE_LINK_REQUIRES_OTP_MESSAGE,
+      field: 'lineIdFinance',
     });
-    expect(result.lineIdFinance).toBe('new-line-id');
-    expect(result.phone).toBe('0810000000');
-    expect(result.phoneStoredAs).toBeNull();
+    expect(tx.$executeRaw).not.toHaveBeenCalled();
+    expect(tx.customer.update).not.toHaveBeenCalled();
+    expect(tx.customerLineLink.updateMany).not.toHaveBeenCalled();
+    expect(audit.log).not.toHaveBeenCalled();
+  });
 
-    const entry = audit.log.mock.calls[0][0];
-    expect(entry.oldValue.lineIdFinance).toBe('old-line');
-    expect(entry.newValue.lineIdFinance).toBe('new-line-id');
+  it('LINE ID ค่าเดิม → ไม่แตะ LINE การเงิน (ไม่ปิดแถว link)', async () => {
+    await legacyUpdateContact(
+      'cust-1',
+      { newLineId: 'old-line', reason: 'ยืนยันช่องทางเดิม' },
+      { userId: 'user-1' },
+    );
+    expect(tx.customer.update).toHaveBeenCalledTimes(1);
+    expect(tx.customer.update.mock.calls[0][0].data).toEqual({});
+    expect(tx.customerLineLink.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('LINE ID ว่าง → ไม่แตะ LINE การเงิน (Task 22 fix round 1 M-1: ยกเลิกผูกเหลือทางเดียวที่ PATCH /customers ของ OWNER/BM)', async () => {
+    await legacyUpdateContact(
+      'cust-1',
+      { newLineId: '', reason: 'ลูกค้าเปลี่ยนเครื่อง' },
+      { userId: 'user-1' },
+    );
+    expect(tx.customerLineLink.updateMany).not.toHaveBeenCalled();
+    expect(tx.customer.update).toHaveBeenCalledTimes(1);
+    expect(tx.customer.update.mock.calls[0][0].data).toEqual({});
+    expect(audit.log.mock.calls[0][0].newValue.lineIdFinance).toBe('old-line');
   });
 
   it('marks customer as LOST and writes audit', async () => {

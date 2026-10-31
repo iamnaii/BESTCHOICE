@@ -19,7 +19,8 @@ import { LIFF_CHANNEL_KEY } from './liff-channel.decorator';
  * Before this guard, LIFF endpoints trusted `lineId` from the client
  * (anyone who knew a LINE userId could access customer data).
  *
- * Now: frontend sends `X-Liff-Id-Token` header (from `liff.getIDToken()`),
+ * Now: frontend sends `X-Liff-Id-Token` header (from `liff.getIDToken()`) — header only, never the URL
+ * (Task 22 M-3: `?idToken=` removed; downloads use a single-use `?dl=` ticket),
  * backend verifies it with LINE (`https://api.line.me/oauth2/v2.1/verify`)
  * and extracts the real `sub` (LINE userId) from the token.
  *
@@ -56,11 +57,9 @@ export class LiffTokenGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
-    // Accept token from header (XHR) OR ?idToken= query param
-    // (browser navigation / <a href> — PDF downloads, file links).
-    const idToken =
-      (request.headers['x-liff-id-token'] as string | undefined) ||
-      (request.query?.idToken as string | undefined);
+    // Header เท่านั้น (Task 22 M-3) — เดิมรับ `?idToken=` ด้วยสำหรับลิงก์ดาวน์โหลด ⇒ id_token (ใช้ยืนยันตัวตนกับ LINE ได้จนหมดอายุ)
+    // ไปอยู่ใน access log ของ Cloud Run/Firebase · ลิงก์ดาวน์โหลดใช้ตั๋วครั้งเดียว `?dl=` (LiffDownloadController) แทน
+    const idToken = request.headers['x-liff-id-token'] as string | undefined;
 
     if (!idToken) {
       throw new UnauthorizedException('กรุณาเปิดผ่าน LINE');
@@ -144,7 +143,10 @@ export class LiffTokenGuard implements CanActivate {
       select: { channel: true },
     });
 
-    if (links.length === 0) return; // not linked yet — allow (enables registration flow)
+    // not linked yet — allow (enables the /liff/finance-verify OTP flow). Task 22 I-1 (ก): this is safe only because
+    // every FINANCE data endpoint resolves the customer from the active OTP link row (`findOtpVerifiedCustomerId`) —
+    // a LINE with no row gets null/404 there. Never authorize by `customers.line_id_finance` behind this guard.
+    if (links.length === 0) return;
 
     const hasExpected = links.some((l) => l.channel === expected);
     if (!hasExpected) {

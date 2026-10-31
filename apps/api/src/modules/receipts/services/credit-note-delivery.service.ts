@@ -1,8 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as Sentry from '@sentry/nestjs';
-import { Prisma, LineChannelType } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
+import {
+  FINANCE_LINE_RECIPIENT_SELECT,
+  financeLineRecipient,
+} from '../../line-oa/services/otp-verified-customer';
 import { toNum } from '../../../utils/decimal.util';
 import { LineFinanceClientService } from '../../chatbot-finance/services/line-finance-client.service';
 import {
@@ -25,7 +29,6 @@ type ReceiptForDelivery = Prisma.ReceiptGetPayload<{
           select: {
             id: true;
             name: true;
-            lineIdFinance: true;
             lineLinks: { select: { lineUserId: true } };
           };
         };
@@ -105,7 +108,8 @@ export class CreditNoteDeliveryService {
     await this.refreshPublicTokenExpiry(receipt);
 
     const customer = receipt.contract?.customer;
-    const lineUserId = customer?.lineLinks?.[0]?.lineUserId || customer?.lineIdFinance || null;
+    // ปลายทาง LINE การเงิน = แถว OTP ของลูกค้า (Task 22 I-1 ง) ไม่ใช่คอลัมน์ line_id_finance ที่อาจค้าง
+    const lineUserId = financeLineRecipient(customer);
 
     if (!lineUserId) {
       await this.handleFailure(receipt, 'ลูกค้ายังไม่ผูก LINE การเงิน — ไม่พบ LINE user id', undefined, 'NO_LINE_LINK');
@@ -140,12 +144,7 @@ export class CreditNoteDeliveryService {
                 select: {
                   id: true,
                   name: true,
-                  lineIdFinance: true,
-                  lineLinks: {
-                    where: { channel: LineChannelType.FINANCE, unlinkedAt: null, deletedAt: null },
-                    select: { lineUserId: true },
-                    take: 1,
-                  },
+                  ...FINANCE_LINE_RECIPIENT_SELECT,
                 },
               },
             },

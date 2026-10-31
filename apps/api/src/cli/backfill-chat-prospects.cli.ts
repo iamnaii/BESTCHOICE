@@ -83,12 +83,14 @@ export async function planBackfill(prisma: Db): Promise<BackfillPlan> {
       where: { lineUserId_channel: { lineUserId: room.lineUserId, channel: linkChannel } },
       select: { customerId: true },
     });
-    const byColumn = link
-      ? null
-      : await prisma.customer.findFirst({
-          where: { ...(room.channel === 'LINE_SHOP' ? { lineIdShop: room.lineUserId } : { lineIdFinance: room.lineUserId }), deletedAt: null },
-          select: { id: true },
-        });
+    // ตรงกับ ChatProspectService.findExistingCustomerId — LINE การเงินไม่ใช้คอลัมน์ line_id_finance (Task 22 I-1)
+    const byColumn =
+      link || room.channel !== 'LINE_SHOP'
+        ? null
+        : await prisma.customer.findFirst({
+            where: { lineIdShop: room.lineUserId, deletedAt: null },
+            select: { id: true },
+          });
     if (link || byColumn) personsWithExistingCustomer++;
   }
   return { rooms: rooms.length, persons: persons.size, personsWithExistingCustomer, roomsWithoutName, byChannel };

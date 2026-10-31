@@ -1,6 +1,11 @@
 import { Logger } from '@nestjs/common';
 import { formatDateShort } from '../../../utils/thai-date.util';
 import { PrismaService } from '../../../prisma/prisma.service';
+import {
+  ACTIVE_FINANCE_LINK_WHERE,
+  FINANCE_LINE_RECIPIENT_SELECT,
+  financeLineRecipient,
+} from '../../line-oa/services/otp-verified-customer';
 import { LineOaService } from '../../line-oa/line-oa.service';
 import { PaymentLinkService } from '../../line-oa/payment-links/payment-link.service';
 import { buildOverdueNoticeFlex } from '../../line-oa/flex-messages/overdue-notice.flex';
@@ -35,7 +40,9 @@ export class CollectionsNotifierService {
     const contracts = await this.prisma.contract.findMany({
       where: { id: { in: contractIds } },
       include: {
-        customer: { select: { id: true, name: true, lineIdFinance: true, phone: true } },
+        customer: {
+          select: { id: true, name: true, ...FINANCE_LINE_RECIPIENT_SELECT, phone: true },
+        },
         payments: {
           where: { status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] }, dueDate: { lt: new Date() } },
           orderBy: { installmentNo: 'asc' },
@@ -45,7 +52,8 @@ export class CollectionsNotifierService {
 
     let sent = 0;
     for (const contract of contracts) {
-      const lineId = contract.customer?.lineIdFinance;
+      // ปลายทาง = แถว OTP ของลูกค้า (Task 22 I-1 ง) ไม่ใช่คอลัมน์ line_id_finance
+      const lineId = financeLineRecipient(contract.customer);
       if (!lineId) continue;
 
       // Check PDPA consent before sending
@@ -113,7 +121,7 @@ export class CollectionsNotifierService {
         await this.prisma.contract.findMany({
           where: { id: { in: escalatedIds } },
           include: {
-            customer: { select: { name: true, lineIdFinance: true, phone: true } },
+            customer: { select: { name: true, ...FINANCE_LINE_RECIPIENT_SELECT, phone: true } },
             payments: {
               where: { status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] }, dueDate: { lt: now } },
               orderBy: { installmentNo: 'asc' },
@@ -128,7 +136,8 @@ export class CollectionsNotifierService {
     for (const esc of result.escalated) {
       try {
         const contract = contractsById.get(esc.contractId);
-        if (!contract?.customer?.lineIdFinance) continue;
+        const lineId = financeLineRecipient(contract?.customer);
+        if (!contract || !lineId) continue;
 
         const totalOverdue = contract.payments.reduce(
           (sum, p) => sum + (Number(p.amountDue) - Number(p.amountPaid) + Number(p.lateFee)),
@@ -151,7 +160,7 @@ export class CollectionsNotifierService {
             contractNumber: esc.contractNumber,
             daysOverdue: String(esc.daysOverdue),
           },
-          contract.customer.lineIdFinance,
+          lineId,
           {
             relatedId: esc.contractId,
             customerId: contract.customerId,
@@ -187,13 +196,13 @@ export class CollectionsNotifierService {
         contract: {
           deletedAt: null,
           status: { in: ['ACTIVE'] },
-          customer: { lineIdFinance: { not: null }, deletedAt: null },
+          customer: { lineLinks: { some: ACTIVE_FINANCE_LINK_WHERE }, deletedAt: null },
         },
       },
       include: {
         contract: {
           include: {
-            customer: { select: { name: true, lineIdFinance: true } },
+            customer: { select: { name: true, ...FINANCE_LINE_RECIPIENT_SELECT } },
           },
         },
       },
@@ -201,7 +210,7 @@ export class CollectionsNotifierService {
 
     let sent = 0;
     for (const payment of payments) {
-      const lineId = payment.contract.customer?.lineIdFinance;
+      const lineId = financeLineRecipient(payment.contract.customer);
       if (!lineId) continue;
 
       try {

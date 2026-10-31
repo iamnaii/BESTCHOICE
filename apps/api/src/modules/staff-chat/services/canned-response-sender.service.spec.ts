@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- jest mocks of Prisma/translator/router (pre-existing) */
 import { Test } from '@nestjs/testing';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { CannedResponseSenderService } from './canned-response-sender.service';
@@ -23,6 +24,7 @@ describe('CannedResponseSenderService', () => {
     prisma = {
       chatRoom: { findFirst: jest.fn() },
       cannedResponse: { findFirst: jest.fn() },
+      customerLineLink: { findFirst: jest.fn().mockResolvedValue(null) },
       user: {
         findFirst: jest.fn(),
         create: jest.fn(),
@@ -31,9 +33,7 @@ describe('CannedResponseSenderService', () => {
     };
     translator = {
       filterByChannel: jest.fn((bubbles: any[], channel: string) =>
-        bubbles.filter(
-          (b: any) => b.channels.length === 0 || b.channels.includes(channel),
-        ),
+        bubbles.filter((b: any) => b.channels.length === 0 || b.channels.includes(channel)),
       ),
       toOutboundMessage: jest.fn((bubble: any, externalUserId: string) => ({
         externalUserId,
@@ -143,9 +143,7 @@ describe('CannedResponseSenderService', () => {
     await expect(service.send('missing-room', 'tpl-1', 'staff-1')).rejects.toThrow(
       NotFoundException,
     );
-    await expect(service.send('missing-room', 'tpl-1', 'staff-1')).rejects.toThrow(
-      'ไม่พบห้องแชท',
-    );
+    await expect(service.send('missing-room', 'tpl-1', 'staff-1')).rejects.toThrow('ไม่พบห้องแชท');
     expect(messageRouter.sendStaffOutbound).not.toHaveBeenCalled();
   });
 
@@ -171,12 +169,8 @@ describe('CannedResponseSenderService', () => {
       quickReplies: [],
     });
 
-    await expect(service.send('room-1', 'tpl-1', 'staff-1')).rejects.toThrow(
-      BadRequestException,
-    );
-    await expect(service.send('room-1', 'tpl-1', 'staff-1')).rejects.toThrow(
-      'ยืนยันตัวตน',
-    );
+    await expect(service.send('room-1', 'tpl-1', 'staff-1')).rejects.toThrow(BadRequestException);
+    await expect(service.send('room-1', 'tpl-1', 'staff-1')).rejects.toThrow('ยืนยันตัวตน');
     expect(messageRouter.sendStaffOutbound).not.toHaveBeenCalled();
   });
 
@@ -274,9 +268,7 @@ describe('CannedResponseSenderService', () => {
     await service.send('room-1', 'tpl-1', 'staff-1');
 
     // Assert resolved values landed in the OutboundMessage text for each bubble
-    const sentTexts = messageRouter.sendStaffOutbound.mock.calls.map(
-      (c: any[]) => c[1].text,
-    );
+    const sentTexts = messageRouter.sendStaffOutbound.mock.calls.map((c: any[]) => c[1].text);
     expect(sentTexts).toEqual([
       'สวัสดีคุณ สมชาย ที่สาขา ลาดพร้าว',
       'ยอดค้าง 1,234.56 กำหนด 15/05/2569',
@@ -378,6 +370,124 @@ describe('CannedResponseSenderService', () => {
       await service.send('room-1', 'tpl-1', 'real-staff-id');
 
       expect(prisma.user.upsert).not.toHaveBeenCalled();
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Task 22 I-C — ลูกค้าเป็นคนกดปุ่ม (postback TEMPLATE: → staffId = null): เติมตัวแปรลูกค้าเฉพาะเมื่อ LINE ของห้อง
+  // ยืนยัน OTP กับลูกค้าของห้องแล้ว — `chat_rooms.customer_id` ถูกบอทขาย (capture_lead LINKED_BY_PHONE) ผูกได้ด้วยเบอร์อย่างเดียว
+  // ──────────────────────────────────────────────────────────────────────────
+
+  describe('ตัวแปรลูกค้าเมื่อลูกค้ากดปุ่มเอง (staffId = null)', () => {
+    const VALUES: Record<string, string> = {
+      customerName: 'สมชาย',
+      customerPhone: '0812345678',
+      contractNumber: 'CTR-001',
+      amountDue: '1,234.56',
+      dueDate: '15/05/2569',
+      installmentNo: '3',
+      branchName: 'ลาดพร้าว',
+    };
+    const template = {
+      id: 'tpl-1',
+      verifiedOnly: false,
+      bubbles: [
+        makeBubble({
+          id: 'b1',
+          type: 'TEXT',
+          text: 'คุณ{customerName} {customerPhone} สัญญา {contractNumber} ยอด {amountDue} งวด {installmentNo} {dueDate} สาขา {branchName}',
+        }),
+      ],
+      quickReplies: [],
+    };
+    const shopRoom = {
+      id: 'room-1',
+      channel: 'LINE_SHOP',
+      externalUserId: null,
+      lineUserId: 'U-shop',
+      customerId: 'cust-1',
+      verifiedAt: new Date('2026-01-01'),
+    };
+    const sentText = () => messageRouter.sendStaffOutbound.mock.calls[0][1].text;
+    const NEUTRAL = 'คุณลูกค้า - สัญญา - ยอด - งวด - - สาขา ลาดพร้าว';
+
+    beforeEach(() => {
+      variableService.expandVariables.mockImplementation(
+        async (tpl: string, ctx: { customerId?: string }) =>
+          tpl.replace(/\{(\w+)\}/g, (_: string, key: string) =>
+            key === 'branchName' || ctx.customerId ? (VALUES[key] ?? '-') : '-',
+          ),
+      );
+      prisma.cannedResponse.findFirst.mockResolvedValue(template);
+      prisma.user.upsert.mockResolvedValue({ id: 'system-user-id' });
+    });
+
+    it('LINE ของห้องยืนยัน OTP กับลูกค้าของห้อง → เติมตัวแปรลูกค้า', async () => {
+      prisma.chatRoom.findFirst.mockResolvedValue(shopRoom);
+      prisma.customerLineLink.findFirst.mockResolvedValue({ customerId: 'cust-1' });
+
+      await service.send('room-1', 'tpl-1', null);
+
+      expect(prisma.customerLineLink.findFirst.mock.calls[0][0].where).toMatchObject({
+        lineUserId: 'U-shop',
+        channel: 'FINANCE',
+        unlinkedAt: null,
+        deletedAt: null,
+      });
+      expect(variableService.expandVariables).toHaveBeenCalledWith(expect.any(String), {
+        roomId: 'room-1',
+        customerId: 'cust-1',
+      });
+      expect(sentText()).toBe(
+        'คุณสมชาย 0812345678 สัญญา CTR-001 ยอด 1,234.56 งวด 3 15/05/2569 สาขา ลาดพร้าว',
+      );
+    });
+
+    it('ห้องผูกด้วยเบอร์อย่างเดียว (LINE ยังไม่ยืนยัน OTP) → ไม่อ่านข้อมูลลูกค้า ใช้คำกลาง', async () => {
+      prisma.chatRoom.findFirst.mockResolvedValue(shopRoom);
+      prisma.customerLineLink.findFirst.mockResolvedValue(null);
+
+      await service.send('room-1', 'tpl-1', null);
+
+      expect(variableService.expandVariables).toHaveBeenCalledWith(expect.any(String), {
+        roomId: 'room-1',
+        customerId: undefined,
+      });
+      expect(sentText()).toBe(NEUTRAL);
+    });
+
+    it('LINE ยืนยัน OTP กับลูกค้าอีกคน (ห้องชี้คนที่ไม่ใช่) → คำกลาง ไม่เติมทั้งของห้องและของ OTP', async () => {
+      prisma.chatRoom.findFirst.mockResolvedValue(shopRoom);
+      prisma.customerLineLink.findFirst.mockResolvedValue({ customerId: 'cust-other' });
+
+      await service.send('room-1', 'tpl-1', null);
+
+      expect(sentText()).toBe(NEUTRAL);
+    });
+
+    it('Facebook (ไม่มี LINE ให้ยืนยัน OTP) → คำกลางเสมอ', async () => {
+      prisma.chatRoom.findFirst.mockResolvedValue({
+        ...shopRoom,
+        channel: 'FACEBOOK',
+        lineUserId: null,
+        externalUserId: 'psid-1',
+      });
+
+      await service.send('room-1', 'tpl-1', null);
+
+      expect(prisma.customerLineLink.findFirst).not.toHaveBeenCalled();
+      expect(sentText()).toBe(NEUTRAL);
+    });
+
+    it('พนักงานกดส่งเอง (staffId มีค่า) → ใช้ลูกค้าของห้องตามเดิม (พนักงานเห็นห้องและตัดสินเอง)', async () => {
+      prisma.chatRoom.findFirst.mockResolvedValue(shopRoom);
+
+      await service.send('room-1', 'tpl-1', 'staff-1');
+
+      expect(prisma.customerLineLink.findFirst).not.toHaveBeenCalled();
+      expect(sentText()).toBe(
+        'คุณสมชาย 0812345678 สัญญา CTR-001 ยอด 1,234.56 งวด 3 15/05/2569 สาขา ลาดพร้าว',
+      );
     });
   });
 });

@@ -42,6 +42,8 @@ export default function CustomerEditModal({ customerId, customerSnapshot, custom
   const returnFocus = useReturnFocusRef<HTMLElement | null>(null);
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(true);
+  // false = โหลดข้อมูลฉบับเต็มไม่ได้ ฟอร์มมีแค่ค่าจาก snapshot (ช่องอื่นว่างเพราะไม่รู้ค่า ไม่ใช่เพราะลูกค้าไม่มี)
+  const [loadedFull, setLoadedFull] = useState(false);
   const [form, setForm] = useState({
     prefix: '', name: '', nickname: '', birthDate: '',
     phone: '', phoneSecondary: '', email: '',
@@ -90,6 +92,7 @@ export default function CustomerEditModal({ customerId, customerSnapshot, custom
         const refs = [...existingRefs];
         while (refs.length < 4) refs.push({});
         setReferences(refs);
+        setLoadedFull(true);
       } catch {
         toast.error("โหลดข้อมูลลูกค้าฉบับเต็มไม่ได้ จึงแสดงข้อมูลที่บันทึกไว้แทน");
         const snap = customerSnapshot;
@@ -160,6 +163,15 @@ export default function CustomerEditModal({ customerId, customerSnapshot, custom
 
     const validRefs = references.filter(r => r.firstName || r.lastName || r.phone);
     payload.references = validRefs.length > 0 ? validRefs : [];
+
+    // Task 22 fix round 1 M-2 — ทางสำรอง (โหลดฉบับเต็มไม่ได้): ช่องว่างคือ "ไม่รู้ค่า" ไม่ใช่ "ล้างค่า" ⇒ ไม่ส่ง
+    // (เดิมส่ง null ทุกช่อง = ล้างอีเมล/Facebook/ผู้อ้างอิง และ LINE การเงิน = ยกเลิกผูก OTP โดยพนักงานไม่ได้แตะ)
+    if (!loadedFull) {
+      for (const key of Object.keys(payload)) {
+        if (payload[key] === null) delete payload[key];
+      }
+      if (validRefs.length === 0) delete payload.references;
+    }
 
     mutation.mutate(payload);
   };

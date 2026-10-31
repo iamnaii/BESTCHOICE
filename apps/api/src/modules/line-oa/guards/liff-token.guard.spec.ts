@@ -1,4 +1,4 @@
-import { ExecutionContext, ForbiddenException } from '@nestjs/common';
+import { ExecutionContext, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import { LineChannelType } from '@prisma/client';
@@ -61,20 +61,16 @@ describe('LiffTokenGuard — channel boundary (T6-C15)', () => {
   }
 
   it('allows when link channel matches expected (FINANCE → FINANCE)', async () => {
-    prisma.customerLineLink.findMany.mockResolvedValue([
-      { channel: LineChannelType.FINANCE },
-    ]);
+    prisma.customerLineLink.findMany.mockResolvedValue([{ channel: LineChannelType.FINANCE }]);
     const ctx = mockContext(LineChannelType.FINANCE);
     await expect(guard.canActivate(ctx)).resolves.toBe(true);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const req = (ctx.switchToHttp().getRequest() as any);
+    const req = ctx.switchToHttp().getRequest() as any;
     expect(req.liffUserId).toBe('U_line_123');
   });
 
   it('rejects when link exists on different channel (SHOP link → FINANCE endpoint)', async () => {
-    prisma.customerLineLink.findMany.mockResolvedValue([
-      { channel: LineChannelType.SHOP },
-    ]);
+    prisma.customerLineLink.findMany.mockResolvedValue([{ channel: LineChannelType.SHOP }]);
     const ctx = mockContext(LineChannelType.FINANCE);
     await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
     await expect(guard.canActivate(ctx)).rejects.toThrow('ไม่สามารถเข้าถึงข้อมูลได้');
@@ -90,5 +86,32 @@ describe('LiffTokenGuard — channel boundary (T6-C15)', () => {
     const ctx = mockContext(undefined);
     await expect(guard.canActivate(ctx)).resolves.toBe(true);
     expect(prisma.customerLineLink.findMany).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Task 22 M-3 — id_token ใน query string (`?idToken=`) ไปอยู่ใน access log ของ Cloud Run/Firebase และใช้ยืนยันตัวตนกับ LINE ได้
+   * จนหมดอายุ ⇒ guard รับเฉพาะ header `X-Liff-Id-Token` · ลิงก์ดาวน์โหลดใช้ตั๋วครั้งเดียว (`?dl=`) แทน
+   */
+  function queryOnlyContext(query: Record<string, string>): ExecutionContext {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const req: any = { headers: {}, query };
+    return {
+      switchToHttp: () => ({ getRequest: () => req }),
+      getHandler: () => () => undefined,
+      getClass: () => class TestController {},
+    } as unknown as ExecutionContext;
+  }
+
+  it('ไม่รับ id_token จาก ?idToken= (แม้เป็น token ที่ยืนยันแล้ว) → 401', async () => {
+    const ctx = queryOnlyContext({ idToken: 'cached-token' });
+    await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(UnauthorizedException);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((ctx.switchToHttp().getRequest() as any).liffUserId).toBeUndefined();
+  });
+
+  it('ไม่รับ id_token จาก ?id_token= → 401', async () => {
+    await expect(
+      guard.canActivate(queryOnlyContext({ id_token: 'cached-token' })),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 });

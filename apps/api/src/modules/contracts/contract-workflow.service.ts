@@ -6,10 +6,11 @@ import { assertNamedContractAction, assertNamedSources, namedExecution } from '.
 import { assertContractPromotionTerms, assertNamedSignatures, consumeContractPromotion } from '../promotions/contract-promotion-terms';
 import { contractSignatureRequirements } from '../../utils/validation.util';
 import { cashDownPayment } from '../trade-in/services/trade-in-credit.service';
-import { Injectable, Logger, Optional, NotFoundException, BadRequestException, ConflictException, ForbiddenException, InternalServerErrorException, forwardRef } from '@nestjs/common';
+import { Injectable, Logger, Optional, NotFoundException, BadRequestException, ConflictException, ForbiddenException, InternalServerErrorException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { formatDateShort } from '../../utils/thai-date.util';
 import { PrismaService } from '../../prisma/prisma.service';
+import { findFinanceLineRecipient } from '../line-oa/services/otp-verified-customer';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationCategory } from '../notifications/notification-category.enum';
 import {
@@ -569,7 +570,7 @@ export class ContractWorkflowService {
     // ก้อน 5 C3 — ด่าน blacklist ณ จุดที่สัญญาเริ่มมีผลจริง (ร่าง 2 ใบเปิดใช้ทั้งคู่ไม่ได้ · ติด tag/ถูกบอกเลิกหลังสร้างร่างก็ไม่ผ่าน)
     // สัญญาเปลี่ยนเครื่องข้าม — สัญญาเดิมของลูกค้าคนเดิมยัง ACTIVE โดยชอบ · SOFT ผ่านเฉพาะเมื่อร่างถูกปลดไว้ตอนสร้าง (blacklistOverriddenAt)
     // activate(id) ไม่มี actor จึงไม่มีทางปลดที่นี่ — ข้อความชี้ให้ลบร่างแล้วสร้างใหม่ (spec รอบ 3)
-    const isExchangeContract = !!(contract as any).exchangedFromContractId;
+    const isExchangeContract = !!contract.exchangedFromContractId;
     // สัญญาทดแทนจากเปลี่ยนเครื่องตำหนิ 7 วัน (defect-exchange — parentContractId ชี้สัญญาที่ DEFECT_EXCHANGED) = ต่อเนื่องจาก
     // สัญญาเดิมของลูกค้าคนเดิม ข้ามด่านเช่นเดียวกับเปลี่ยนเครื่อง (review C1 — ไม่งั้นเงินลูกค้าค้างใน 21-1106 ไม่มีทางไปต่อ)
     const parentContractId = (contract as { parentContractId?: string | null }).parentContractId ?? null;
@@ -749,7 +750,7 @@ export class ContractWorkflowService {
           {
             id: contract.id,
             productId: contract.productId,
-            exchangedFromContractId: (contract as any).exchangedFromContractId,
+            exchangedFromContractId: contract.exchangedFromContractId as string, // isExchangeContract ⇒ non-null
             financedAmount: contract.financedAmount,
             storeCommission: contract.storeCommission,
             // F2 (SHOP-leg wiring) — same pre-tx `contract`/`contract.product`
@@ -881,8 +882,8 @@ export class ContractWorkflowService {
           const downJe = await tx.journalEntry.findFirst({
             where: {
               AND: [
-                { metadata: { path: ['flow'], equals: 'shop-down-payment' } as any },
-                { metadata: { path: ['idempotencyKey'], equals: `shop-down-payment:${contract.id}` } as any },
+                { metadata: { path: ['flow'], equals: 'shop-down-payment' } },
+                { metadata: { path: ['idempotencyKey'], equals: `shop-down-payment:${contract.id}` } },
               ],
               deletedAt: null,
             },
@@ -1145,7 +1146,8 @@ export class ContractWorkflowService {
       `ขอบคุณที่ไว้วางใจ BESTCHOICE`,
     ].join('\n');
 
-    const lineId = customer.lineIdFinance;
+    // ปลายทาง LINE การเงิน = แถว OTP ของลูกค้า (Task 22 I-1 ง) ไม่ใช่คอลัมน์ line_id_finance ที่อาจค้าง
+    const lineId = await findFinanceLineRecipient(this.prisma, customer.id);
     if (lineId) {
       await this.notificationsService.send({
         channel: 'LINE',

@@ -1,5 +1,9 @@
 import { BadRequestException, InternalServerErrorException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
+import {
+  FINANCE_LINE_RECIPIENT_SELECT,
+  financeLineRecipient,
+} from '../../line-oa/services/otp-verified-customer';
 import { SendNotificationDto } from '../dto/create-notification.dto';
 import type { LineChannelKey } from '../dto/create-notification.dto';
 import { NotificationChannel, Prisma } from '@prisma/client';
@@ -386,7 +390,11 @@ export class NotificationDispatchService {
     // Batch load all contracts to avoid N+1 queries
     const contracts = await this.prisma.contract.findMany({
       where: { id: { in: contractIds }, deletedAt: null },
-      include: { customer: { select: { id: true, name: true, phone: true, lineIdFinance: true } } },
+      include: {
+        customer: {
+          select: { id: true, name: true, phone: true, ...FINANCE_LINE_RECIPIENT_SELECT },
+        },
+      },
     });
     const contractMap = new Map(contracts.map((c) => [c.id, c]));
 
@@ -400,7 +408,8 @@ export class NotificationDispatchService {
         contract_number: contract.contractNumber,
       };
 
-      const recipient = customer.lineIdFinance || customer.phone;
+      // LINE = แถว OTP ของลูกค้า (Task 22 I-1 ง) — คอลัมน์ line_id_finance ที่ค้างไม่ใช่ปลายทาง
+      const recipient = financeLineRecipient(customer) || customer.phone;
       if (!recipient) {
         results.push({ contractId, status: 'SKIPPED' });
         continue;

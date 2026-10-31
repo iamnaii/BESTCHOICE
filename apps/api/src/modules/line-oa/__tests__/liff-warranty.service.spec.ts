@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { LiffWarrantyService } from '../liff-warranty.service';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { LEGACY_SHOP_LINE_ID_CUTOFF } from '../services/otp-verified-customer';
 
 const PRODUCT = {
   brand: 'Samsung',
@@ -21,6 +22,7 @@ describe('LiffWarrantyService.getMyWarranties', () => {
   beforeEach(async () => {
     prisma = {
       customer: { findFirst: jest.fn().mockResolvedValue({ id: 'c-1', name: 'นาย ก' }) },
+      customerLineLink: { findFirst: jest.fn().mockResolvedValue(null) },
       sale: { findMany: jest.fn().mockResolvedValue([]) },
       contract: { findMany: jest.fn().mockResolvedValue([]) },
     };
@@ -38,11 +40,34 @@ describe('LiffWarrantyService.getMyWarranties', () => {
     expect(prisma.sale.findMany).not.toHaveBeenCalled();
   });
 
-  it('ค้นลูกค้าด้วย lineIdShop เท่านั้น (ไม่ใช่ lineIdFinance / CustomerLineLink)', async () => {
+  it('Task 22: ตัวตน = แถว OTP (FINANCE) ของ LINE เดียวกันก่อน แล้วอ่านชื่อจากลูกค้าคนนั้น — ไม่ค้น lineIdShop', async () => {
+    prisma.customerLineLink.findFirst.mockResolvedValue({ customerId: 'c-otp' });
+    prisma.customer.findFirst.mockResolvedValue({ id: 'c-otp', name: 'นาย ข' });
+    const res = await service.getMyWarranties('U-verified');
+    expect(res).toMatchObject({ linked: true, customerName: 'นาย ข' });
+    expect(prisma.customerLineLink.findFirst.mock.calls[0][0].where).toMatchObject({
+      lineUserId: 'U-verified',
+      channel: 'FINANCE',
+      unlinkedAt: null,
+    });
+    expect(prisma.customer.findFirst).toHaveBeenCalledTimes(1);
+    expect(prisma.customer.findFirst.mock.calls[0][0].where).toEqual({
+      id: 'c-otp',
+      deletedAt: null,
+    });
+    expect(prisma.sale.findMany.mock.calls[0][0].where.customerId).toBe('c-otp');
+  });
+
+  it('Task 22: ยังไม่ยืนยัน OTP → สำรองด้วย lineIdShop เฉพาะแถวที่แก้ล่าสุดก่อน Task 20', async () => {
     await service.getMyWarranties('U-shop-1');
-    expect(prisma.customer.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { lineIdShop: 'U-shop-1', deletedAt: null } }),
-    );
+    expect(prisma.customer.findFirst.mock.calls[0][0]).toEqual({
+      where: {
+        lineIdShop: 'U-shop-1',
+        deletedAt: null,
+        updatedAt: { lt: LEGACY_SHOP_LINE_ID_CUTOFF },
+      },
+      select: { id: true },
+    });
   });
 
   it('ใบขายที่ผูกสัญญาแล้วต้องถูกกรองออก — ไม่งั้นเครื่องเดียวโผล่สองแถว', async () => {

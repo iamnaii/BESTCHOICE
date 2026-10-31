@@ -295,6 +295,34 @@ describe('PaySolutionsService — createRescheduleQR (ปรับดิว coll
     expect(opts.tags.critical).toBe('paysolutions-reschedule-orphan');
   });
 
+  it('Task 22 I-1 (ง): คอลัมน์ lineIdFinance ค้างแต่ไม่มีแถว OTP → ไม่ส่ง QR ทาง LINE (sentToLine=false)', async () => {
+    buildPrisma({
+      contract: {
+        contractNumber: 'CT-2026-0009',
+        monthlyPayment: new Prisma.Decimal(1500),
+        customer: {
+          id: 'cust-rs-1',
+          email: 'c@example.com',
+          name: 'ลูกค้า',
+          lineIdFinance: 'U-stale',
+          lineLinks: [],
+        },
+      },
+    });
+    await buildService();
+    fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(gatewayOk());
+
+    const res = await service.createRescheduleQR({
+      paymentId,
+      daysToShift: 10,
+      splitMode: 'SPLIT',
+      requestedById,
+    });
+
+    expect(lineOa.pushMessage).not.toHaveBeenCalled();
+    expect(res.sentToLine).toBe(false);
+  });
+
   it('LINE push failure is swallowed: resolves with sentToLine=false, link still created, no Sentry', async () => {
     buildPrisma({
       contract: {
@@ -305,6 +333,7 @@ describe('PaySolutionsService — createRescheduleQR (ปรับดิว coll
           email: 'c@example.com',
           name: 'ลูกค้า',
           lineIdFinance: 'U1234567890abcdef',
+          lineLinks: [{ lineUserId: 'U1234567890abcdef' }],
         },
       },
     });
@@ -336,6 +365,7 @@ describe('PaySolutionsService — createRescheduleQR (ปรับดิว coll
           email: 'c@example.com',
           name: 'ลูกค้า',
           lineIdFinance: 'U1234567890abcdef',
+          lineLinks: [{ lineUserId: 'U1234567890abcdef' }],
         },
       },
     });

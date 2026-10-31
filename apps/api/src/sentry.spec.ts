@@ -604,4 +604,86 @@ describe('sentry.ts — beforeSend/beforeSendTransaction scrub the GFIN share to
       expect([error, tx].some(leaks)).toBe(false);
     });
   });
+
+  /**
+   * Task 22 fix round 1 (M-6): the single-use LIFF download ticket rides as `?dl=`
+   * (`LiffDownloadController` — receipts + contract document GETs). A minted ticket is 43-char
+   * base64url, which the deep scrub's bare-token pattern already catches — these tests use a
+   * 49-char value on purpose so they prove the param is redacted by NAME (a re-encoded / truncated
+   * ticket or a future ticket format must not leak through on the shape check alone).
+   */
+  describe('Task 22 fix round 1 (M-6) — the ?dl= download ticket is redacted by name', () => {
+    const TICKET = `dlticket_${'T'.repeat(40)}`;
+    const leaks = (value: unknown) => JSON.stringify(value).includes(TICKET);
+    const PDF_PATH = `/api/line-oa/liff/receipts/r1/download?dl=${TICKET}&download=1`;
+
+    it('?dl= in the URL / query string / span attributes is redacted on transactions', () => {
+      const config = loadSentryInitConfig();
+      const event = config.beforeSendTransaction({
+        type: 'transaction' as const,
+        transaction: 'GET /api/line-oa/liff/receipts/:receiptId/download',
+        request: {
+          url: `https://api.example${PDF_PATH}`,
+          method: 'GET',
+          query_string: `dl=${TICKET}&download=1`,
+        },
+        contexts: {
+          trace: {
+            trace_id: 't',
+            span_id: 's',
+            data: {
+              'http.target': PDF_PATH,
+              'url.full': `https://api.example${PDF_PATH}`,
+              'url.query': `dl=${TICKET}&download=1`,
+            },
+          },
+        },
+        spans: [{ span_id: 'c', data: { 'http.url': `https://api.example${PDF_PATH}` } }],
+      });
+      expect(event).not.toBeNull();
+      expect(leaks(event)).toBe(false);
+      expect(event.request.query_string).toBe('dl=[redacted]&download=1');
+      expect(event.request.url).toBe(
+        'https://api.example/api/line-oa/liff/receipts/r1/download?dl=[redacted]&download=1',
+      );
+    });
+
+    it('?dl= is redacted on error events (url, query string, breadcrumbs, message) and in object / pair query form', () => {
+      const config = loadSentryInitConfig();
+      const event = config.beforeSend({
+        request: {
+          url: `https://api.example${PDF_PATH}`,
+          query_string: `download=1&dl=${TICKET}`,
+        },
+        breadcrumbs: [{ category: 'http', data: { url: `https://api.example${PDF_PATH}` } }],
+        exception: { values: [{ type: 'Error', value: `GET ${PDF_PATH} failed` }] },
+      });
+      expect(leaks(event)).toBe(false);
+      expect(event.request.query_string).toBe('download=1&dl=[redacted]');
+      const objectForm = config.beforeSend({
+        request: { query_string: { dl: TICKET, download: '1' } },
+      });
+      expect(objectForm.request.query_string).toEqual({ dl: '[REDACTED]', download: '1' });
+      const pairForm = config.beforeSend({
+        request: {
+          query_string: [
+            ['DL', TICKET],
+            ['download', '1'],
+          ],
+        },
+      });
+      expect(pairForm.request.query_string).toEqual([
+        ['DL', '[REDACTED]'],
+        ['download', '1'],
+      ]);
+    });
+
+    it('look-alike params (download=, idl=, xdl=) are left alone', () => {
+      const config = loadSentryInitConfig();
+      const event = config.beforeSend({
+        request: { query_string: 'download=1&idl=abc&xdl=def' },
+      });
+      expect(event.request.query_string).toBe('download=1&idl=abc&xdl=def');
+    });
+  });
 });

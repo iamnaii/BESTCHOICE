@@ -193,7 +193,7 @@ describe('CreditNoteDeliveryService.deliver', () => {
     expect(flexJson).toContain('tok-abc123'); // same token, not rotated
   });
 
-  it('falls back to legacy Customer.lineIdFinance when no CustomerLineLink row exists', async () => {
+  it('Task 22 I-1 (ง): ไม่มีแถว OTP → ไม่ส่งไปคอลัมน์ lineIdFinance (เลิกทางสำรอง) — บันทึก NO_LINE_LINK', async () => {
     const { service, lineFinanceClient } = buildHarness({
       receipt: {
         ...BASE_RECEIPT,
@@ -206,8 +206,8 @@ describe('CreditNoteDeliveryService.deliver', () => {
 
     const result = await service.deliver('receipt-1');
 
-    expect(result).toEqual({ delivered: true });
-    expect(lineFinanceClient.pushMessage).toHaveBeenCalledWith('U-legacy-1', expect.any(Array));
+    expect(result).toEqual({ delivered: false });
+    expect(lineFinanceClient.pushMessage).not.toHaveBeenCalled();
   });
 
   it('(M5) push succeeds but the SENT bookkeeping write fails afterward: still resolves { delivered: true } (customer really did get the message) and raises a Sentry warning so ops notices the silent double-send risk', async () => {

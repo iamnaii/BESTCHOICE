@@ -33,6 +33,7 @@ import {
   AuthenticatedGeneratedDocumentDelivery,
 } from '@installment/shared';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { findFinanceLineRecipient } from '../../line-oa/services/otp-verified-customer';
 import { StorageService } from '../../storage/storage.service';
 import { SettingsService } from '../../settings/settings.service';
 import {
@@ -845,8 +846,10 @@ export class GeneratedDocumentsService {
             !contractSignatureRequirements(current.source).complete
           )
             throw generatedDenied();
+          // ปลายทาง LINE การเงิน = แถว OTP ของลูกค้า (Task 22 I-1 ง) ไม่ใช่คอลัมน์ line_id_finance ที่อาจค้าง
+          const financeLineId = await findFinanceLineRecipient(proof.tx, current.source.customerId);
           if (
-            current.source.customer.lineIdFinance &&
+            financeLineId &&
             !(await proof.tx.notificationLog.count({
               where: {
                 relatedId: current.source.id,
@@ -860,7 +863,7 @@ export class GeneratedDocumentsService {
               data: {
                 channel: 'LINE',
                 channelKey: 'line-finance',
-                recipient: current.source.customer.lineIdFinance,
+                recipient: financeLineId,
                 subject: 'CONTRACT_DOCUMENTS_READY',
                 message: `เอกสารสัญญาเลขที่ ${current.source.contractNumber} พร้อมดาวน์โหลดผ่าน LINE`,
                 relatedId: current.source.id,

@@ -108,7 +108,7 @@ describe('DeviceReturnNotifyService', () => {
     expect(notifications.sendFromTemplate).not.toHaveBeenCalled();
   });
 
-  it('SENT: ส่งผ่านแม่แบบ DEVICE_RETURNED ไป lineLinks ก่อน lineIdFinance พร้อมตัวแปรครบ (ไม่มีราคาประเมิน ไม่มี fallbackPhone) แล้วบันทึกผลบนใบ', async () => {
+  it('SENT: ส่งผ่านแม่แบบ DEVICE_RETURNED ไปแถว OTP (lineLinks) ไม่ใช่คอลัมน์ lineIdFinance พร้อมตัวแปรครบ (ไม่มีราคาประเมิน ไม่มี fallbackPhone) แล้วบันทึกผลบนใบ', async () => {
     prisma.deviceReturn.findUnique.mockResolvedValue(
       makeReturn({ customer: { ...makeReturn().customer, lineIdFinance: 'U-old' } }),
     );
@@ -142,7 +142,16 @@ describe('DeviceReturnNotifyService', () => {
     expect(prisma.todo.create).not.toHaveBeenCalled();
   });
 
-  it('REPOSSESSION → returnKindLabel "ยึดคืนหลังบอกเลิกสัญญา"; ใช้ lineIdFinance เมื่อไม่มี lineLinks', async () => {
+  it('REPOSSESSION → returnKindLabel "ยึดคืนหลังบอกเลิกสัญญา"', async () => {
+    prisma.deviceReturn.findUnique.mockResolvedValue(makeReturn({ returnKind: 'REPOSSESSION' }));
+    await service.notify('dr-1', 'DEVICE_RETURN_CANCELED');
+    const [eventType, data, recipient] = notifications.sendFromTemplate.mock.calls[0];
+    expect(eventType).toBe('DEVICE_RETURN_CANCELED');
+    expect(recipient).toBe('U-link');
+    expect(data.returnKindLabel).toBe('ยึดคืนหลังบอกเลิกสัญญา');
+  });
+
+  it('Task 22 I-1 (ง): มีแค่คอลัมน์ lineIdFinance (ไม่มีแถว OTP) → ไม่ส่งไปค่านั้น บันทึก NO_LINE (เลิกทางสำรอง)', async () => {
     prisma.deviceReturn.findUnique.mockResolvedValue(
       makeReturn({
         returnKind: 'REPOSSESSION',
@@ -150,10 +159,10 @@ describe('DeviceReturnNotifyService', () => {
       }),
     );
     await service.notify('dr-1', 'DEVICE_RETURN_CANCELED');
-    const [eventType, data, recipient] = notifications.sendFromTemplate.mock.calls[0];
-    expect(eventType).toBe('DEVICE_RETURN_CANCELED');
-    expect(recipient).toBe('U-fin');
-    expect(data.returnKindLabel).toBe('ยึดคืนหลังบอกเลิกสัญญา');
+    expect(notifications.sendFromTemplate).not.toHaveBeenCalled();
+    expect(prisma.deviceReturn.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ lineNotifyStatus: 'NO_LINE' }) }),
+    );
   });
 
   it('FAILED: dispatcher คืนสถานะไม่ใช่ SENT → บันทึก FAILED + id ของ log (dispatcher retry เอง)', async () => {

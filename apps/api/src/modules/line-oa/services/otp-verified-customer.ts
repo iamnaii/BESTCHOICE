@@ -1,4 +1,4 @@
-import { LineChannelType } from '@prisma/client';
+import { LineChannelType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { buildBrowserUrl } from '../../../utils/line-login.util';
 
@@ -13,21 +13,83 @@ import { buildBrowserUrl } from '../../../utils/line-login.util';
  * สมมติฐาน: OA ร้าน / OA การเงิน / LIFF อยู่ LINE provider เดียวกัน ⇒ userId เดียวกัน (สมมติฐานเดียวกับ
  * `liff-warranty`) — ถ้าไม่ใช่ จะไม่มี LINE ฝั่งร้านคนไหนผ่าน (fail closed ไม่ใช่รั่ว)
  */
+/** แถว `customer_line_links` ช่อง FINANCE ที่ยังผูก = หลักฐาน OTP (ผู้เขียนทางเดียว `VerificationService.bind`) */
+export const ACTIVE_FINANCE_LINK_WHERE = {
+  channel: LineChannelType.FINANCE,
+  unlinkedAt: null,
+  deletedAt: null,
+} satisfies Prisma.CustomerLineLinkWhereInput;
+
+/**
+ * Task 22 fix round 1 I-1 (ง) — ผู้ส่งข้อความการเงินทาง LINE ใส่ใน `customer: { select }` **แทน `lineIdFinance: true`** แล้วเรียก
+ * `financeLineRecipient(customer)` ⇒ ปลายทาง = U-id ของแถว OTP ที่ยังผูกของ**ลูกค้าคนนั้น** (unique ต่อลูกค้า — take 1).
+ * คอลัมน์ `customers.line_id_finance` แยกจากแถว OTP ได้ (ค่าที่พนักงาน/นำเข้าเขียนก่อน Task 22 · กู้ลูกค้าที่ถูกลบ) ⇒ ห้ามใช้เป็นปลายทาง
+ */
+export const FINANCE_LINE_RECIPIENT_SELECT = {
+  lineLinks: { where: ACTIVE_FINANCE_LINK_WHERE, select: { lineUserId: true }, take: 1 },
+} satisfies Prisma.CustomerSelect;
+
+/** U-id ปลายทางข้อความการเงินของลูกค้า (ต้องเลือก `FINANCE_LINE_RECIPIENT_SELECT`) — ไม่มีแถว OTP = null ⇒ ไม่ส่งทาง LINE */
+export function financeLineRecipient(
+  customer: { lineLinks?: { lineUserId: string }[] } | null | undefined,
+): string | null {
+  return customer?.lineLinks?.[0]?.lineUserId ?? null;
+}
+
+/** แบบค้นเอง — สำหรับผู้ส่งที่มีแค่ `customerId` และแก้ select ของแหล่งข้อมูลไม่ได้ (เช่น source ที่ผูก revision เอกสาร) */
+export async function findFinanceLineRecipient(
+  prisma: Pick<PrismaService, 'customerLineLink'>,
+  customerId: string,
+): Promise<string | null> {
+  const link = await prisma.customerLineLink.findFirst({
+    where: { customerId, ...ACTIVE_FINANCE_LINK_WHERE },
+    select: { lineUserId: true },
+  });
+  return link?.lineUserId ?? null;
+}
+
 export async function findOtpVerifiedCustomerId(
   prisma: Pick<PrismaService, 'customerLineLink'>,
   lineUserId: string,
 ): Promise<string | null> {
   const link = await prisma.customerLineLink.findFirst({
-    where: {
-      lineUserId,
-      channel: LineChannelType.FINANCE,
-      unlinkedAt: null,
-      deletedAt: null,
-      customer: { deletedAt: null },
-    },
+    where: { lineUserId, ...ACTIVE_FINANCE_LINK_WHERE, customer: { deletedAt: null } },
     select: { customerId: true },
   });
   return link?.customerId ?? null;
+}
+
+/**
+ * จุดตัดของค่า `customers.line_id_shop` ที่ยังเชื่อเป็นทางสำรอง — ก่อน Task 20 (2026-10-31 00:00 เวลาไทย).
+ * แถวที่แก้หลังจากนั้น (`updated_at` ใหม่กว่า — Prisma ตั้งให้ทุกครั้งที่ update) อาจถือค่าที่พนักงาน/บอทขายเขียนใหม่โดยไม่มี OTP
+ * ⇒ ไม่นับ (fail closed: แถวเก่าที่ถูกแก้ช่องอื่นภายหลังก็หลุด — ลูกค้ายืนยัน OTP แทน)
+ */
+export const LEGACY_SHOP_LINE_ID_CUTOFF = new Date('2026-10-31T00:00:00+07:00');
+
+/**
+ * Task 22 (task-20-report ข้อกังวล 1 — ทางเลือก ก) — ตัวตนลูกค้าของหน้า LIFF ฝั่งร้าน ("ประกันของฉัน" / เคสหลังการขาย):
+ * 1. แถว OTP ของ LINE เดียวกัน (`findOtpVerifiedCustomerId`) — หลักฐานตัวตนเดียวของระบบ (ลูกค้าเงินสดก็ยืนยันได้: OTP ค้นลูกค้าจากเบอร์
+ *    ไม่ดูว่ามีสัญญา)
+ * 2. สำรองเฉพาะค่า `line_id_shop` ที่เขียนก่อน Task 20 (`updatedAt < LEGACY_SHOP_LINE_ID_CUTOFF`) — ค่าที่เขียนหลังจากนั้นไม่ผ่าน OTP
+ *    (พนักงาน/บอทขายยังเขียนคอลัมน์นี้ได้) จึงไม่นับ · ชุดแถวสำรองนี้จำกัดแล้ว (ไม่โตขึ้น) — ตรวจ/ล้างก่อนเชื่อม OA ร้านกับ prod
+ *
+ * ไม่ใช้ทางเลือก ข (ให้ OTP เขียน line_id_shop ด้วย) เพราะคอลัมน์นั้นยังมีผู้เขียนที่ไม่ผ่าน OTP — เขียนเพิ่มอีกทางไม่ทำให้มันเป็นหลักฐานได้
+ */
+export async function findShopLiffCustomerId(
+  prisma: Pick<PrismaService, 'customerLineLink' | 'customer'>,
+  lineUserId: string,
+): Promise<string | null> {
+  const verified = await findOtpVerifiedCustomerId(prisma, lineUserId);
+  if (verified) return verified;
+  const legacy = await prisma.customer.findFirst({
+    where: {
+      lineIdShop: lineUserId,
+      deletedAt: null,
+      updatedAt: { lt: LEGACY_SHOP_LINE_ID_CUTOFF },
+    },
+    select: { id: true },
+  });
+  return legacy?.id ?? null;
 }
 
 /**

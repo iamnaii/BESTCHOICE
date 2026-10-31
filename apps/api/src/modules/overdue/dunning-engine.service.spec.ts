@@ -48,7 +48,6 @@ const mockResolver = {
 };
 
 // Sample payment fixture
-const TODAY = new Date('2026-04-15T00:00:00.000Z');
 const DUE_IN_3_DAYS = new Date('2026-04-18T00:00:00.000Z');
 
 const samplePayment = {
@@ -68,6 +67,7 @@ const samplePayment = {
       id: 'cust-1',
       name: 'สมชาย',
       lineIdFinance: 'U123',
+      lineLinks: [{ lineUserId: 'U123' }],
       phone: '0812345678',
     },
   },
@@ -269,6 +269,7 @@ describe('DunningEngineService', () => {
       customer: {
         name: 'สมชาย',
         lineIdFinance: 'U123',
+        lineLinks: [{ lineUserId: 'U123' }],
         phone: '0812345678',
       },
     };
@@ -340,7 +341,23 @@ describe('DunningEngineService', () => {
     it('creates action with SKIPPED status when customer has no lineId', async () => {
       mockPrisma.contract.findUnique.mockResolvedValueOnce({
         ...sampleContract,
-        customer: { ...sampleContract.customer, lineIdFinance: null },
+        customer: { ...sampleContract.customer, lineIdFinance: null, lineLinks: [] },
+      });
+
+      await service.executeEventTrigger('CALL_NO_ANSWER', 'c-1', null, null);
+
+      expect(mockPrisma.dunningAction.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: 'SKIPPED' }),
+        }),
+      );
+      expect(mockNotificationsService.send).not.toHaveBeenCalled();
+    });
+
+    it('Task 22 I-1 (ง): คอลัมน์ lineIdFinance ค้างแต่ไม่มีแถว OTP → SKIPPED ไม่ส่งไปค่านั้น', async () => {
+      mockPrisma.contract.findUnique.mockResolvedValueOnce({
+        ...sampleContract,
+        customer: { ...sampleContract.customer, lineIdFinance: 'U-stale', lineLinks: [] },
       });
 
       await service.executeEventTrigger('CALL_NO_ANSWER', 'c-1', null, null);

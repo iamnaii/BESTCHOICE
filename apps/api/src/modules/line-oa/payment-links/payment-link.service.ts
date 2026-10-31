@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException, BadRequestException } from '@nes
 import { ConfigService } from '@nestjs/config';
 import { MessageRole, MessageType, ChatChannel, LineChannelType } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { FINANCE_LINE_RECIPIENT_SELECT } from '../../line-oa/services/otp-verified-customer';
 import { calcOutstanding, toNum as d } from '../../../utils/decimal.util';
 import { maskThaiName } from '../../../utils/mask-name.util';
 import { formatDateShort } from '../../../utils/thai-date.util';
@@ -100,7 +101,7 @@ export class PaymentLinkService {
       include: {
         contract: {
           include: {
-            customer: { select: { name: true, phone: true, lineIdFinance: true } },
+            customer: { select: { name: true, phone: true, ...FINANCE_LINE_RECIPIENT_SELECT } },
             payments: { where: { deletedAt: null }, orderBy: { installmentNo: 'asc' } },
           },
         },

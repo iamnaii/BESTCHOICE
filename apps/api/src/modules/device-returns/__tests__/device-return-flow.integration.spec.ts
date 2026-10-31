@@ -97,7 +97,7 @@ const OWNER = () => ({ id: adminId, role: 'OWNER', branchId: null });
 // Fixtures
 // ---------------------------------------------------------------------------
 
-/** ลูกค้า (มี lineIdFinance → ไลน์ส่งได้) + เครื่อง + สัญญา 17K/12M + 12 งวด (schedule + payment) */
+/** ลูกค้า (ยืนยัน OTP แล้ว: lineIdFinance + แถว link FINANCE → ไลน์ส่งได้ — Task 22 fix round 1 I-1 ง) + เครื่อง + สัญญา 17K/12M + 12 งวด (schedule + payment) */
 async function seedContract(seq: number, status: 'ACTIVE' | 'TERMINATED') {
   const tag = `${RUN}-${seq}`;
   const customer = await prisma.customer.create({
@@ -109,6 +109,10 @@ async function seedContract(seq: number, status: 'ACTIVE' | 'TERMINATED') {
     },
   });
   createdCustomerIds.push(customer.id);
+  // ผู้รับไลน์การเงิน = แถว OTP ที่ยังผูก (bind เขียนคู่กับคอลัมน์) — คอลัมน์อย่างเดียวไม่ได้รับข้อความแล้ว
+  await prisma.customerLineLink.create({
+    data: { customerId: customer.id, lineUserId: `U-devret-${tag}`, channel: 'FINANCE' },
+  });
 
   const product = await prisma.product.create({
     data: {
@@ -312,6 +316,9 @@ describe('ใบรับเครื่องคืน — create → confirm �
       await prisma.customerTag.deleteMany({ where: { customerId: { in: createdCustomerIds } } });
       await prisma.contract.deleteMany({ where: { id: { in: createdContractIds } } });
       await prisma.product.deleteMany({ where: { id: { in: createdProductIds } } });
+      await prisma.customerLineLink.deleteMany({
+        where: { customerId: { in: createdCustomerIds } },
+      });
       await prisma.customer.deleteMany({ where: { id: { in: createdCustomerIds } } });
       for (const id of createdBranchIds) {
         try {

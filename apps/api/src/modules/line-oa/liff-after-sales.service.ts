@@ -4,9 +4,9 @@ import {
 } from '../repair-tickets/utils/repair-charge-visibility';
 // PR 3 Task 6 — LIFF endpoint "เคสของฉัน" (หลังการขาย) สำหรับหน้า /liff/warranty
 //
-// อ่านอย่างเดียว: ลูกค้าถูกระบุตัวตนจาก `customer.lineIdShop` (LiffTokenGuard ยืนยัน LINE ID
-// token กับ LINE จริงแล้วเซ็ต req.liffUserId — ดู liff-warranty.controller.ts) ไม่ใช่ตาราง
-// `CustomerLineLink` (ไม่มีแถวช่อง SHOP เลยสักแถว — เหตุผลเดียวกับ LiffWarrantyService).
+// อ่านอย่างเดียว: ลูกค้าถูกระบุตัวตนด้วย `findShopLiffCustomerId` (Task 22 — แถว OTP ช่อง FINANCE ของ LINE เดียวกัน
+// ที่ LiffTokenGuard ยืนยันแล้วเซ็ต req.liffUserId · สำรองด้วย `customer.lineIdShop` เฉพาะค่าที่เขียนก่อน Task 20) —
+// เหตุผลเดียวกับ LiffWarrantyService.
 //
 // คืนเฉพาะเคสที่เปิดอยู่ + เคสที่ปิด/ยกเลิกภายใน 14 วัน (ใหม่สุดก่อน, สูงสุด 10 แถว) ด้วยถ้อยคำฝั่งลูกค้า
 // ล้วน — ห้ามมี id ภายใน/IMEI เต็ม/ชื่อพนักงานหลุดออกไป (มี "poison field" ในเทสต์ (c) ปักไว้).
@@ -17,6 +17,7 @@ import {
 import { Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { findShopLiffCustomerId } from './services/otp-verified-customer';
 import {
   RECONCILE_SELECT,
   reconcileStage,
@@ -268,18 +269,15 @@ export class LiffAfterSalesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getMyCases(lineUserId: string): Promise<LiffAfterSalesResponse> {
-    const customer = await this.prisma.customer.findFirst({
-      where: { lineIdShop: lineUserId, deletedAt: null },
-      select: { id: true },
-    });
+    const customerId = await findShopLiffCustomerId(this.prisma, lineUserId);
 
-    // ยังไม่ผูกบัญชี — หน้าจอจะบอกวิธีผูก ไม่ใช่ error (เหมือน LiffWarrantyService)
-    if (!customer) return { linked: false, cases: [] };
+    // ยังไม่ยืนยันตัวตน — หน้าจอจะบอกวิธี ไม่ใช่ error (เหมือน LiffWarrantyService)
+    if (!customerId) return { linked: false, cases: [] };
 
     const closedSince = new Date(Date.now() - FOURTEEN_DAYS_MS);
     const rows = await this.prisma.afterSalesCase.findMany({
       where: {
-        customerId: customer.id,
+        customerId,
         deletedAt: null,
         // final fix M-3 — เคสที่ยกเลิกโชว์ 14 วันเหมือนเคสที่ปิด (เดิมหลุดทันทีเพราะ stored CANCELLED)
         OR: [

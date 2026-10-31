@@ -1,4 +1,5 @@
 import { LiffAfterSalesService } from './liff-after-sales.service';
+import { LEGACY_SHOP_LINE_ID_CUTOFF } from './services/otp-verified-customer';
 import { thaiShortYearDate } from '../after-sales/utils/after-sales-line-copy.util';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -50,6 +51,7 @@ describe('LiffAfterSalesService', () => {
   beforeEach(() => {
     prisma = {
       customer: { findFirst: jest.fn() },
+      customerLineLink: { findFirst: jest.fn().mockResolvedValue(null) },
       afterSalesCase: {
         findMany: jest.fn().mockResolvedValue([]),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
@@ -88,13 +90,32 @@ describe('LiffAfterSalesService', () => {
     expect(prisma.afterSalesCase.findMany).not.toHaveBeenCalled();
   });
 
-  it('(a) looks the customer up by lineIdShop + deletedAt:null only (never customerLineLink)', async () => {
+  it('(a) Task 22: ตัวตน = แถว OTP (FINANCE) ของ LINE เดียวกันก่อน — ไม่ค้น lineIdShop', async () => {
+    prisma.customerLineLink.findFirst.mockResolvedValue({ customerId: 'customer-otp' });
+
+    const result = await service.getMyCases('U_verified');
+
+    expect(result.linked).toBe(true);
+    expect(prisma.customerLineLink.findFirst.mock.calls[0][0].where).toMatchObject({
+      lineUserId: 'U_verified',
+      channel: 'FINANCE',
+      unlinkedAt: null,
+    });
+    expect(prisma.customer.findFirst).not.toHaveBeenCalled();
+    expect(prisma.afterSalesCase.findMany.mock.calls[0][0].where.customerId).toBe('customer-otp');
+  });
+
+  it('(a) Task 22: ยังไม่ยืนยัน OTP → สำรองด้วย lineIdShop เฉพาะแถวที่แก้ล่าสุดก่อน Task 20', async () => {
     prisma.customer.findFirst.mockResolvedValue(null);
 
     await service.getMyCases('U_unknown');
 
     expect(prisma.customer.findFirst).toHaveBeenCalledWith({
-      where: { lineIdShop: 'U_unknown', deletedAt: null },
+      where: {
+        lineIdShop: 'U_unknown',
+        deletedAt: null,
+        updatedAt: { lt: LEGACY_SHOP_LINE_ID_CUTOFF },
+      },
       select: { id: true },
     });
   });

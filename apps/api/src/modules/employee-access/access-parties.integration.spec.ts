@@ -22,6 +22,7 @@ import { CustomerTierService } from '../customers/customer-tier.service';
 import { SkipTracingService } from '../customers/skip-tracing.service';
 import { CustomerInsightsService } from '../overdue/customer-insights.service';
 import { CustomerMergeService } from '../chat-prospects/customer-merge.service';
+import { CustomerBlacklistService } from '../customers/customer-blacklist.service';
 import { PiiAuditService } from '../pii/pii-audit.service';
 import { CustomerPiiService } from '../customers/customer-pii.service';
 import { ContactsController } from '../contacts/contacts.controller';
@@ -155,6 +156,7 @@ beforeAll(async () => {
         CustomerInsightsService,
         CustomerMergeService,
         PiiAuditService,
+        CustomerBlacklistService,
       ].map((provide) => ({ provide, useValue: {} })),
       { provide: APP_INTERCEPTOR, useClass: AccessPolicyInterceptor },
     ],
@@ -223,6 +225,25 @@ it('ensures an actual customer child independently at an authorized destination'
   }).expect(201);
   expect(res.body.customerId).toEqual(expect.any(String));
   expect(res.body).not.toHaveProperty('nationalIdHash');
+});
+it('Task 27: managed unlink of the FINANCE LINE closes the OTP row via the canonical writer and acknowledges narrowly', async () => {
+  const c = await knownCustomer();
+  await db.customerLineLink.create({
+    data: { customerId: c.id, lineUserId: 'U-' + randomUUID(), channel: 'FINANCE' },
+  });
+  await http('post', '/customers/' + c.id + '/finance-line/unlink', undefined, denied).expect(403);
+  expect(await db.customerLineLink.count({ where: { customerId: c.id, unlinkedAt: null } })).toBe(
+    1,
+  );
+  await http('post', '/customers/' + c.id + '/finance-line/unlink').expect(201, { id: c.id });
+  expect(await db.customerLineLink.count({ where: { customerId: c.id, unlinkedAt: null } })).toBe(
+    0,
+  );
+  expect(
+    await db.auditLog.count({
+      where: { entityId: c.id, action: 'CUSTOMER_FINANCE_LINE_UNLINKED', userId: actor },
+    }),
+  ).toBe(1);
 });
 it('denies all four routes with no grants', async () => {
   const c = await knownCustomer();

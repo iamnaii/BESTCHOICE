@@ -30,6 +30,7 @@ import { CustomerTierService } from '../customers/customer-tier.service';
 import { SkipTracingService } from '../customers/skip-tracing.service';
 import { CustomerInsightsService } from '../overdue/customer-insights.service';
 import { CustomerMergeService } from '../chat-prospects/customer-merge.service';
+import { CustomerBlacklistService } from '../customers/customer-blacklist.service';
 import { PiiAuditService } from '../pii/pii-audit.service';
 import { CustomerPiiService } from '../customers/customer-pii.service';
 import { ContactsController } from '../contacts/contacts.controller';
@@ -164,6 +165,7 @@ beforeAll(async () => {
         SkipTracingService,
         CustomerInsightsService,
         CustomerMergeService,
+        CustomerBlacklistService,
       ].map((provide) => ({ provide, useValue: {} })),
       { provide: APP_INTERCEPTOR, useClass: AccessPolicyInterceptor },
     ],
@@ -298,6 +300,19 @@ async function contract(customerId: string, branchId = branchA, extra: object = 
     },
   });
 }
+it('Task 27: managed customer read projects financeLine from the OTP row without the LINE user id', async () => {
+  const id = await reader(['customers.read'], 'SHOP', [branchA]);
+  const c = await customer();
+  const lineUserId = 'U-' + randomUUID();
+  const linkedAt = new Date('2026-10-30T03:00:00.000Z');
+  await db.customerLineLink.create({
+    data: { customerId: c.id, lineUserId, channel: 'FINANCE', linkedAt },
+  });
+  const res = await http('get', '/customers/' + c.id, undefined, id).expect(200);
+  expect(res.body.financeLine).toEqual({ verified: true, linkedAt: linkedAt.toISOString() });
+  expect(res.body).not.toHaveProperty('lineLinks');
+  expect(JSON.stringify(res.body)).not.toContain(lineUserId);
+});
 it('masks both IDs without role fallback and never returns encrypted/hash fields', async () => {
   const res = await http('get', '/customers/' + queryCustomer).expect(200);
   expect(res.body.nationalId).not.toBe('1234567890123');
@@ -824,11 +839,12 @@ it('honors over-one-year absence against authorized purchases, not an old-row ex
   expect((await http('get', path, undefined, id).expect(200)).body.total).toBe(0);
 });
 
-it('reconciles exactly eight reviewed writer and six actual query registrations without catalog credit', () => {
+it('reconciles exactly nine reviewed writer and six actual query registrations without catalog credit', () => {
   expect(PARTY_QUERY_ROUTES).toHaveLength(6);
-  expect(PARTY_WRITE_ROUTES).toHaveLength(8);
+  // Task 27 — + CustomersController.unlinkFinanceLine (ปุ่ม "ยกเลิกการผูก" LINE น้องเบส)
+  expect(PARTY_WRITE_ROUTES).toHaveLength(9);
   const routes = [...PARTY_WRITE_ROUTES, ...PARTY_QUERY_ROUTES];
-  expect(new Set(routes).size).toBe(14);
+  expect(new Set(routes).size).toBe(15);
   for (const route of routes) {
     expect(ACCESS_BOUNDARIES.has(route)).toBe(true);
     expect(ACCESS_POLICIES[route].classification).toBe('staff');

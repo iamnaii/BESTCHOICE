@@ -79,6 +79,11 @@ export class CustomersService {
     return this.write.update(id, dto, actor);
   }
 
+  /** Task 27 — ปุ่ม "ยกเลิกการผูก" LINE น้องเบส (การเงิน) ของพนักงาน — `POST /customers/:id/finance-line/unlink` */
+  unlinkFinanceLineByStaff(id: string, actor: { id: string; role: string }) {
+    return this.write.unlinkFinanceLineByStaff(id, actor);
+  }
+
   fillPlaceholderContact(
     id: string,
     dto: FillProspectContactDto,

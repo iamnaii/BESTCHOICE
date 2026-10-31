@@ -14,7 +14,7 @@ const ALLOWED: Record<string, string> = {
   'modules/customers/dto/customer.dto.ts':
     'DTO ฟอร์มลูกค้า — ค่าที่ส่งมาตัดสินด้วย staffLineFinanceChange (ล้างได้ ตั้งไม่ได้)',
   'modules/customers/services/customer-write.service.ts':
-    'ฟอร์มลูกค้า — ล้าง = unlinkFinanceLine · ค่าใหม่ = 400',
+    'ฟอร์มลูกค้า — ล้าง = unlinkFinanceLine · ค่าใหม่ = 400 · ปุ่ม "ยกเลิกการผูก" (Task 27) อ่านแค่ว่าคอลัมน์มีค่าไหม (มีอะไรให้ล้าง/บันทึก audit — ไม่เก็บค่า)',
   'modules/customers/skip-tracing.service.ts':
     'skip-tracing — ค่าเดิมไว้ตัดสิน/บันทึก audit · ไม่เขียนค่าใหม่',
   'modules/customers/services/customer-query.service.ts': 'แสดงบนหน้าลูกค้าของพนักงาน',

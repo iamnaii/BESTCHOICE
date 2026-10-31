@@ -40,6 +40,10 @@ import {
   staffLineFinanceChange,
   unlinkFinanceLine,
 } from '../../line-oa/services/finance-line-link';
+import {
+  ACTIVE_FINANCE_LINK_WHERE,
+  type FinanceLineStatus,
+} from '../../line-oa/services/otp-verified-customer';
 import { contactAddedEntry, isBlankContact } from '../../customer-journey/chat-identity-entries';
 import type { ContactField } from '../../customer-journey/journey-data-schemas';
 
@@ -747,6 +751,60 @@ export class CustomerWriteService {
     }
     await this.managedAudit('CUSTOMER_UPDATED', id, before.assignedToId, updated.assignedToId);
     return updated;
+  }
+
+  /**
+   * Task 27 — ปุ่ม "ยกเลิกการผูก" LINE น้องเบส (การเงิน) ในฟอร์มแก้ไขลูกค้า (`POST /customers/:id/finance-line/unlink` — OWNER/BM).
+   * ทางเดียวกับ PATCH ล้างช่อง (`unlinkFinanceLine({ customerId })` — ล้างคอลัมน์ + ปิดแถวของลูกค้าคนนี้ + ล้าง `chat_rooms.verified_at`)
+   * แต่ตัดสินจาก**แถว OTP ที่ยังผูก**ด้วย (PATCH ดูคอลัมน์อย่างเดียว — คอลัมน์ว่างแต่มีแถว = ไม่แตะ) ⇒ ปุ่มปิดแถวได้เสมอ ·
+   * ไม่มีทั้งแถวและคอลัมน์ = สำเร็จแบบไม่แตะอะไร (กดซ้ำ/หน้าจอค้าง) ไม่เขียน audit ·
+   * audit `CUSTOMER_FINANCE_LINE_UNLINKED` (สถานะก่อน/หลัง ไม่มี U-id) — ทางเดิมไม่มี audit เฉพาะ (Task 22 รายงานข้อ 3) ·
+   * ไม่สลับ rich menu (เหมือน LIFF ยกเลิกเอง) · ผูกใหม่ได้ทาง OTP ของลูกค้าเท่านั้น
+   */
+  async unlinkFinanceLineByStaff(
+    id: string,
+    actor: { id: string; role: string },
+  ): Promise<{ id: string; unlinked: boolean; financeLine: FinanceLineStatus }> {
+    const ctx = partyWriteExecution();
+    if (ctx && actor.id !== ctx.snapshot.userId) throw new Error('Customer actor mismatch');
+    if (ctx) await this.parties!.mutation(ctx.client, 'customer', id, 'customers.update');
+    const before = await this.prisma.$transaction(async (tx) => {
+      // ล็อกแถวลูกค้าก่อนอ่านสถานะ ⇒ กดพร้อมกันสองคนได้ audit ใบเดียว · ลำดับล็อก ลูกค้า → แถว link เท่าทาง PATCH
+      await tx.$queryRaw`SELECT id FROM customers WHERE id = ${id} FOR UPDATE`;
+      const customer = await tx.customer.findUnique({
+        where: { id },
+        select: { deletedAt: true, lineIdFinance: true },
+      });
+      if (!customer || customer.deletedAt) throw new NotFoundException('ไม่พบลูกค้า');
+      const active = await tx.customerLineLink.findFirst({
+        where: { customerId: id, ...ACTIVE_FINANCE_LINK_WHERE },
+        select: { linkedAt: true },
+      });
+      const lineIdFinanceColumnSet = !!customer.lineIdFinance?.trim();
+      if (!active && !lineIdFinanceColumnSet) return null;
+      await unlinkFinanceLine(tx, { customerId: id });
+      const financeLine: FinanceLineStatus = {
+        verified: !!active,
+        linkedAt: active ? active.linkedAt.toISOString() : null,
+      };
+      return { financeLine, lineIdFinanceColumnSet };
+    });
+    const after: FinanceLineStatus = { verified: false, linkedAt: null };
+    if (before) {
+      const entry = {
+        userId: actor.id,
+        action: 'CUSTOMER_FINANCE_LINE_UNLINKED',
+        entity: 'customer',
+        entityId: id,
+        oldValue: before,
+        newValue: { financeLine: after },
+      };
+      if (ctx) {
+        if (!this.audit) throw new Error('Required customer audit writer unavailable');
+        await this.audit.log(entry, ctx.client);
+      } else await this.audit?.log(entry); // หลัง commit — แถวอยู่ใน Merkle chain (database.md)
+    }
+    return { id, unlinked: !!before, financeLine: after };
   }
 
   async remove(id: string) {

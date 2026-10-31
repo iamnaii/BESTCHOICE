@@ -474,6 +474,21 @@ Cash account dimension is required on every Payment record.
 
 ---
 
+## คืนเงินของสัญญาที่ปิดแล้ว — ปฏิเสธเหมือนยกเลิกใบเสร็จ (คำตัดสินเจ้าของ 2026-10-31)
+
+คืนเงิน (`RefundsService`) = un-pay งวด (`markReversed` กลับรายการรับชำระทุกใบของงวด + คืนแถวงวดเป็นค้างจากยอดในบัญชี) — สัญญาที่ปิดแล้ว
+ถอยไม่ได้ จึงใช้ด่านเดียวกับยกเลิกใบเสร็จ: **`UNPAY_BLOCKED_CONTRACT_STATUSES`** (`receipts/services/receipt-void-core.ts` — `COMPLETED`
+`EARLY_PAYOFF` `TERMINATED` `EXCHANGED` `DEFECT_EXCHANGED` `CLOSED_BAD_DEBT` `CANCELED`) ตัวเดียว ห้ามมีชุดที่สอง
+
+| จุด | พฤติกรรม |
+|---|---|
+| `requestRefund` | สัญญาอยู่ในชุดนี้ → 400 `closedContractRefundMessage(status)` ไม่สร้างคำขอ ไม่เขียน audit |
+| `approveRefund` | ตรวจซ้ำ (สัญญาอาจปิดระหว่างคำขอค้างคิว) → 400 เดียวกัน คำขอคงเป็น `REQUESTED` · ทางเคลียร์คือ `rejectRefund` (ไม่ติดด่านนี้) |
+| `markReversed` | **ไม่ได้ใส่ด่านนี้** — ขั้นนี้บันทึกว่าธนาคารคืนเงินไปแล้ว (เงินออกแล้วจริง) การปฏิเสธทำให้สมุดไม่ขยับ · ช่องที่เหลือ: สัญญาปิดหลังอนุมัติก่อนยืนยันธนาคาร — รอเจ้าของตัดสิน |
+| ข้อความ | บอกเหตุผล (ยกเลิกการรับชำระของงวดในสัญญาที่ปิดแล้ว) + ระบบไม่มีทางเปิดสัญญาที่ปิดแล้วกลับมา → ติดต่อฝ่ายบัญชี · ข้อความยกเลิกใบเสร็จของสัญญาปิดเลิกชี้ไป "ระบบคืนเงิน (Refund)" แล้ว |
+
+---
+
 ## Tolerance Policy (<=1 THB)
 
 Small discrepancies on payment receipt (overpay / underpay <=1 THB):

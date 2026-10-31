@@ -13,7 +13,12 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Prisma } from '@prisma/client';
 import { ADVANCE_EXCESS_VOID_BLOCKED_MESSAGE } from '../journal/advance-excess-income.util';
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
-import { RECEIPT_NOT_ISSUED_REFUND_MESSAGE, RefundsService } from './refunds.service';
+import {
+  closedContractRefundMessage,
+  RECEIPT_NOT_ISSUED_REFUND_MESSAGE,
+  RefundsService,
+} from './refunds.service';
+import { UNPAY_BLOCKED_CONTRACT_STATUSES } from '../receipts/services/receipt-void-core';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { ReceiptVoidReversalTemplate } from '../journal/cpa-templates/receipt-void-reversal.template';
@@ -417,6 +422,73 @@ describe('RefundsService', () => {
       expect(template.voidReceipt).not.toHaveBeenCalled();
       expect(prisma.payment.update).not.toHaveBeenCalled();
       expect(prisma.refund.updateMany).not.toHaveBeenCalled();
+    });
+  });
+
+  // คำตัดสินเจ้าของ 2026-10-31: คืนเงิน = un-pay งวด (markReversed กลับรายการรับชำระ + คืนงวดเป็นค้าง) — สัญญาที่ปิดแล้ว
+  // ปฏิเสธเหมือนยกเลิกใบเสร็จ ด้วยชุดสถานะเดียวกัน (`UNPAY_BLOCKED_CONTRACT_STATUSES` — วนทุกค่าเพื่อพิสูจน์ว่าไม่มีชุดที่สอง)
+  describe('สัญญาที่ปิดแล้ว — ขอคืน/อนุมัติไม่ได้ (กติกาเดียวกับยกเลิกใบเสร็จ)', () => {
+    it.each(UNPAY_BLOCKED_CONTRACT_STATUSES)(
+      'requestRefund บนสัญญา %s → 400 ไทย ไม่สร้างคำขอ ไม่เขียน audit',
+      async (status) => {
+        prisma.contract.findFirst.mockResolvedValue({ branchId: 'branch-a', status });
+        const attempt = service.requestRefund(
+          { paymentId: 'pay-1', amount: 1000, reason: 'customer double-paid ชำระซ้ำ' },
+          'u-staff',
+        );
+        await expect(attempt).rejects.toBeInstanceOf(BadRequestException);
+        await expect(attempt).rejects.toThrow(closedContractRefundMessage(status));
+        expect(prisma.refund.create).not.toHaveBeenCalled();
+        expect(prisma.auditLog.create).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(UNPAY_BLOCKED_CONTRACT_STATUSES)(
+      'approveRefund ของคำขอที่สัญญากลายเป็น %s หลังขอ → 400 ไทย คำขอยังเป็น REQUESTED',
+      async (status) => {
+        prisma.payment.findUnique.mockResolvedValue(
+          paidPayment({ amountPaid: new Prisma.Decimal(500) }),
+        );
+        prisma.contract.findFirst.mockResolvedValue({ branchId: 'branch-a', status });
+        const attempt = service.approveRefund('rf-1', 'u-owner', 'OWNER');
+        await expect(attempt).rejects.toBeInstanceOf(BadRequestException);
+        await expect(attempt).rejects.toThrow(closedContractRefundMessage(status));
+        expect(prisma.refund.updateMany).not.toHaveBeenCalled();
+        expect(prisma.auditLog.create).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(['ACTIVE', 'OVERDUE', 'DEFAULT'])(
+      'สัญญา %s (ยังไม่ปิด) → ขอคืนและอนุมัติได้ตามเดิม',
+      async (status) => {
+        prisma.contract.findFirst.mockResolvedValue({ branchId: 'branch-a', status });
+        await service.requestRefund(
+          { paymentId: 'pay-1', amount: 1000, reason: 'customer double-paid ชำระซ้ำ' },
+          'u-staff',
+        );
+        expect(prisma.refund.create).toHaveBeenCalledTimes(1);
+        prisma.payment.findUnique.mockResolvedValue(
+          paidPayment({ amountPaid: new Prisma.Decimal(500) }),
+        );
+        await service.approveRefund('rf-1', 'u-owner', 'OWNER');
+        expect(prisma.refund.updateMany).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    it('คำขอที่ค้างบนสัญญาที่ปิดแล้วยังปฏิเสธ (reject) ได้ — ทางเคลียร์คำขอที่อนุมัติไม่ได้', async () => {
+      prisma.contract.findFirst.mockResolvedValue({ branchId: 'branch-a', status: 'COMPLETED' });
+      await service.rejectRefund('rf-1', { reason: 'สัญญาปิดแล้ว' }, 'u-owner', 'OWNER');
+      expect(prisma.refund.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: 'REJECTED' }) }),
+      );
+    });
+
+    it('ข้อความบอกเหตุผลและทางที่ทำได้จริง (ฝ่ายบัญชี) — ไม่อ้างการเปิดสัญญาที่ระบบไม่มี', () => {
+      const message = closedContractRefundMessage('COMPLETED');
+      expect(message).toContain('(สถานะ COMPLETED)');
+      expect(message).toContain('ยกเลิกการรับชำระของงวด');
+      expect(message).toContain('ระบบไม่มีทางเปิดสัญญาที่ปิดแล้วกลับมา');
+      expect(message).toContain('ติดต่อฝ่ายบัญชี');
     });
   });
 

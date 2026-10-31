@@ -55,9 +55,11 @@
  * early (the payoff settled only the rows still open).
  *
  * COST (Task 25 review m-2 — accepted, no index): the population query decides path (c) per row (a SubPlan
- * that scans journal_entries), so a run takes seconds at today's size and grows with (rows the payoff paid +
- * rows the nightly run cleared) × journal entries (synthetic 1,200 × 86,200 ≈ 4.4 s). Manual tool only —
- * the nightly orphan_payments check plans (c) as an anti-join.
+ * that scans journal_entries) and its `LIVE_BOUND_RECEIPT_ENTRY` anti-join (Task 23) also runs as a per-row
+ * Nested Loop over the live receipt entries, so a run takes seconds at today's size and grows with (rows the
+ * payoff paid + rows the nightly run cleared) × journal entries (synthetic 1,200 × 86,200: (c) ≈ 4.4 s + the
+ * anti-join ≈ 2 s · ≈ 7 s in all). Manual tool only — the nightly orphan_payments check plans (c) as an
+ * anti-join.
  *
  * GUARDS
  * ------

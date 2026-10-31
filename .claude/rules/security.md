@@ -140,3 +140,12 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
 - **ห้าม commit** `.env` files
 - **ห้าม log** tokens, passwords, หรือ PII (ข้อมูลส่วนบุคคล)
 - ใช้ environment variables สำหรับ secrets ทั้งหมด
+
+## Credentials ใน Integration Hub (`INTEGRATION_ENCRYPTION_KEY` — 2026-10-31)
+- ค่า sensitive เข้ารหัสด้วย `INTEGRATION_ENCRYPTION_KEY` (Secret Manager → `bestchoice-api` + worker) ·
+  ค่าที่ถอดไม่ได้ = **"ยังไม่ตั้งค่า"** (`IntegrationConfigService.getValue` คืน `undefined` — ไม่คืน ciphertext,
+  ไม่ throw, **ไม่ใช้ env สำรองของช่องนั้น**) ⇒ ผู้เรียกต้องรับมือ `undefined` แบบ fail closed
+  (webhook guard ปฏิเสธบน production) · ด่านที่ "ตั้งค่าอยู่" ต้องหมายถึงปลอดภัย (เช่นด่าน PEAK ของ
+  `import:legacy-backoffice`) ใช้ `checkEncryptedFields(integration).failed` นับค่าที่ถอดไม่ได้ว่าตั้งค่าอยู่
+- ตรวจ key บน prod จากบรรทัดบูต `integration encrypted fields: ok=N failed=M [...]` (ชื่อช่องเท่านั้น) —
+  ห้ามอ่าน/พิมพ์ค่า secret หรือค่าใน `system_config` · runbook: `docs/runbooks/2026-10-31-integration-encryption-key.md`

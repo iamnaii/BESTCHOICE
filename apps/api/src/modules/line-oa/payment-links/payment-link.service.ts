@@ -313,14 +313,10 @@ export class PaymentLinkService {
       throw new BadRequestException('ส่ง Flex ไม่สำเร็จ — กรุณาลองใหม่');
     }
 
-    // Save record in chat room so staff sees it in history
+    // Save record in chat room so staff sees it in history — ห้องของผู้รับจริง (LINE ของแถว OTP) ไม่ใช่ "ห้องการเงินล่าสุดของลูกค้า":
+    // ห้องของ LINE ที่ลูกค้ายกเลิกแล้วยังถือ customerId เดิม (M-8) ⇒ บิลจะไปโผล่ในห้องนั้นและพนักงานตอบถึงผู้ถือ LINE เก่า (Task 24 fix round 2 m-2)
     const room = await this.prisma.chatRoom.findFirst({
-      where: {
-        customerId: contract.customer.id,
-        channel: ChatChannel.LINE_FINANCE,
-        deletedAt: null,
-      },
-      orderBy: { lastMessageAt: 'desc' },
+      where: { lineUserId: financeLineId, channel: ChatChannel.LINE_FINANCE, deletedAt: null },
       select: { id: true },
     });
 

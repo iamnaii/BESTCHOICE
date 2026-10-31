@@ -25,7 +25,13 @@ const contract: ContractRow = {
   contractNumber: 'BC-2026-0001',
   status: 'OVERDUE',
   dunningStage: 'NOTICE',
-  customer: { id: 'cus-1', name: 'สมชาย ใจดี', phone: '0812345678', lineIdFinance: null, lineIdShop: null },
+  customer: {
+    id: 'cus-1',
+    name: 'สมชาย ใจดี',
+    phone: '0812345678',
+    lineIdFinance: null,
+    lineIdShop: null,
+  },
   branch: { id: 'br-1', name: 'สาขาลาดพร้าว' },
   assignedTo: null,
   outstanding: 5500,
@@ -55,24 +61,18 @@ function renderWithQueryClient(ui: React.ReactElement) {
 
 describe('<ContactLogDialog />', () => {
   it('renders modal title with customer name when open', () => {
-    renderWithQueryClient(
-      <ContactLogDialog open={true} contract={contract} onClose={vi.fn()} />,
-    );
+    renderWithQueryClient(<ContactLogDialog open={true} contract={contract} onClose={vi.fn()} />);
     expect(screen.getByText(/บันทึกผล/)).toBeInTheDocument();
     expect(screen.getByText(/สมชาย ใจดี/)).toBeInTheDocument();
   });
 
   it('does not render when closed', () => {
-    renderWithQueryClient(
-      <ContactLogDialog open={false} contract={contract} onClose={vi.fn()} />,
-    );
+    renderWithQueryClient(<ContactLogDialog open={false} contract={contract} onClose={vi.fn()} />);
     expect(screen.queryByText(/บันทึกผล/)).not.toBeInTheDocument();
   });
 
   it('shows outcome chips for 3 choices', () => {
-    renderWithQueryClient(
-      <ContactLogDialog open={true} contract={contract} onClose={vi.fn()} />,
-    );
+    renderWithQueryClient(<ContactLogDialog open={true} contract={contract} onClose={vi.fn()} />);
     expect(screen.getByText('นัดชำระ')).toBeInTheDocument();
     expect(screen.getByText('ไม่รับสาย')).toBeInTheDocument();
     expect(screen.getByText('ติดต่อไม่ได้')).toBeInTheDocument();
@@ -80,9 +80,7 @@ describe('<ContactLogDialog />', () => {
 
   it('reveals settlement section (N-slot manager) when "นัดชำระ" is clicked', async () => {
     const user = userEvent.setup();
-    renderWithQueryClient(
-      <ContactLogDialog open={true} contract={contract} onClose={vi.fn()} />,
-    );
+    renderWithQueryClient(<ContactLogDialog open={true} contract={contract} onClose={vi.fn()} />);
 
     await user.click(screen.getByText('นัดชำระ'));
 
@@ -96,9 +94,7 @@ describe('<ContactLogDialog />', () => {
 
   it('hides settlement section when "ไม่รับสาย" is clicked', async () => {
     const user = userEvent.setup();
-    renderWithQueryClient(
-      <ContactLogDialog open={true} contract={contract} onClose={vi.fn()} />,
-    );
+    renderWithQueryClient(<ContactLogDialog open={true} contract={contract} onClose={vi.fn()} />);
 
     await user.click(screen.getByText('ไม่รับสาย'));
 
@@ -108,9 +104,7 @@ describe('<ContactLogDialog />', () => {
 
   it('allows adding a second slot', async () => {
     const user = userEvent.setup();
-    renderWithQueryClient(
-      <ContactLogDialog open={true} contract={contract} onClose={vi.fn()} />,
-    );
+    renderWithQueryClient(<ContactLogDialog open={true} contract={contract} onClose={vi.fn()} />);
 
     await user.click(screen.getByText('นัดชำระ'));
     // Find and click the "เพิ่ม" button (add slot)
@@ -126,21 +120,15 @@ describe('<ContactLogDialog />', () => {
 
   it('shows LINE notify hint after any outcome is selected', async () => {
     const user = userEvent.setup();
-    renderWithQueryClient(
-      <ContactLogDialog open={true} contract={contract} onClose={vi.fn()} />,
-    );
+    renderWithQueryClient(<ContactLogDialog open={true} contract={contract} onClose={vi.fn()} />);
 
     await user.click(screen.getByText('ไม่รับสาย'));
 
-    expect(
-      screen.getByText(/ระบบจะส่ง LINE แจ้งเตือนลูกค้าทันทีหลังบันทึก/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/ระบบจะส่ง LINE แจ้งเตือนลูกค้าทันทีหลังบันทึก/)).toBeInTheDocument();
   });
 
   it('displays contract number and outstanding in summary', () => {
-    renderWithQueryClient(
-      <ContactLogDialog open={true} contract={contract} onClose={vi.fn()} />,
-    );
+    renderWithQueryClient(<ContactLogDialog open={true} contract={contract} onClose={vi.fn()} />);
 
     expect(screen.getByText('BC-2026-0001')).toBeInTheDocument();
     // Outstanding 5500 formatted

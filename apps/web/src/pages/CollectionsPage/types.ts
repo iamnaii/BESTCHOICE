@@ -20,7 +20,14 @@ export interface PendingMdmRequest {
    * approval row renders an Unlock button (OWNER only). Absent for raw
    * PENDING requests (which is the common case in the approval queue).
    */
-  status?: 'PENDING' | 'APPROVED' | 'EXECUTED_MANUAL' | 'EXECUTED_API' | 'FAILED' | 'REJECTED' | 'UNLOCKED';
+  status?:
+    | 'PENDING'
+    | 'APPROVED'
+    | 'EXECUTED_MANUAL'
+    | 'EXECUTED_API'
+    | 'FAILED'
+    | 'REJECTED'
+    | 'UNLOCKED';
   contract: {
     id: string;
     contractNumber: string;
@@ -35,7 +42,13 @@ export interface ContractRow {
   contractNumber: string;
   status: string;
   dunningStage: string;
-  customer: { id: string; name: string; phone: string; lineIdFinance: string | null; lineIdShop: string | null };
+  customer: {
+    id: string;
+    name: string;
+    phone: string;
+    lineIdFinance: string | null;
+    lineIdShop: string | null;
+  };
   branch: { id: string; name: string };
   assignedTo: { id: string; name: string } | null;
   outstanding: number;

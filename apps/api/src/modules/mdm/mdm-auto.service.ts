@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
@@ -7,7 +7,7 @@ import {
 } from '../line-oa/services/otp-verified-customer';
 import { LineMessagePayload } from '../line-oa/dto/webhook-event.dto';
 import { LineOaService } from '../line-oa/line-oa.service';
-import { NotificationsService } from '../notifications/notifications.service';
+import { MDM_AUTO_LOCK_AUDIT } from '../notifications/services/collections-notifier.service';
 import { MdmService } from './mdm.service';
 
 export interface MdmAutoSettings {
@@ -31,7 +31,6 @@ export class MdmAutoService {
     private prisma: PrismaService,
     private mdmService: MdmService,
     private lineOaService: LineOaService,
-    private notificationsService: NotificationsService,
   ) {}
 
   // ─── Settings ───────────────────────────────────────────
@@ -62,6 +61,11 @@ export class MdmAutoService {
 
   /**
    * Called by cron daily. Locks overdue contracts that exceed the configured days threshold.
+   *
+   * Task 30 รอบ 4 m1 — **ไม่ส่งแจ้งล็อกถึงลูกค้าตอนนี้** (01:30 — เดิมส่ง `mdm.lock_notice` ทันทีทาง Flex ของแม่แบบซึ่งไม่ผ่านด่านเวลาทำการ):
+   * ล็อกสำเร็จแล้วลงแถว audit ของรอบระบบ (`MDM_AUTO_LOCK_AUDIT` · `ip_address = 'system-cron'`) ใน tx เดียวกับ `mdmLockedAt` — รอบเช้า 08:05
+   * (`CollectionsNotifierService.sendOvernightCollectionsNotices`) อ่านแล้วแจ้งเครื่องที่ยังล็อกอยู่ · เดิมรอบนี้ไม่มีแถว audit เลยและ `mdmLockedAt`
+   * แยกล็อกอัตโนมัติจากพนักงานกดล็อก (`MdmService.lockContract` ตั้งค่าเดียวกัน) ไม่ได้ · เวลาล็อกไม่เปลี่ยน
    */
   async autoLockOverdueContracts(): Promise<AutoLockResult> {
     const settings = await this.getSettings();
@@ -84,7 +88,6 @@ export class MdmAutoService {
       },
       include: {
         product: { select: { id: true, imeiSerial: true } },
-        customer: { select: { id: true, name: true, ...FINANCE_LINE_RECIPIENT_SELECT } },
         payments: {
           where: {
             status: { in: ['OVERDUE', 'PENDING'] },
@@ -102,6 +105,17 @@ export class MdmAutoService {
     let locked = 0;
     let skipped = 0;
     let failed = 0;
+
+    // ผู้บันทึกแถว audit — ไม่มี = ไม่ล็อกเลย (ล็อกโดยไม่มีแถว = แจ้งลูกค้าหายเงียบ) · ข้อความเดียวกับรอบเปลี่ยนสถานะ 00:30 ซึ่งต้องมีก่อนอยู่แล้ว
+    const systemUser =
+      contracts.length > 0
+        ? await this.prisma.user.findFirst({ where: { isSystemUser: true }, select: { id: true } })
+        : null;
+    if (contracts.length > 0 && !systemUser) {
+      throw new ServiceUnavailableException(
+        'SYSTEM user not found — seed collections-foundation must run first',
+      );
+    }
 
     for (const contract of contracts) {
       const imei = contract.product?.imeiSerial;
@@ -149,18 +163,31 @@ export class MdmAutoService {
         }
 
         if (result.success) {
-          await this.prisma.contract.update({
-            where: { id: contract.id },
-            data: { mdmLockedAt: new Date() },
-          });
+          await this.prisma.$transaction([
+            this.prisma.contract.update({
+              where: { id: contract.id },
+              data: { mdmLockedAt: new Date() },
+            }),
+            this.prisma.auditLog.create({
+              data: {
+                userId: systemUser!.id,
+                action: MDM_AUTO_LOCK_AUDIT.action,
+                entity: 'contract',
+                entityId: contract.id,
+                newValue: {
+                  source: MDM_AUTO_LOCK_AUDIT.source,
+                  reason,
+                  daysOverdue,
+                  notifyCustomer: settings.notifyLine,
+                },
+                ipAddress: 'system-cron',
+              },
+            }),
+          ]);
 
           this.logger.log(
             `MDM auto-lock: locked ${imei} for contract ${contract.contractNumber} (${daysOverdue} days overdue)`,
           );
-
-          if (settings.notifyLine) {
-            await this.notifyCustomerLock(contract, daysOverdue);
-          }
 
           locked++;
         } else {
@@ -277,44 +304,6 @@ export class MdmAutoService {
   }
 
   // ─── LINE Notifications ─────────────────────────────────
-
-  private async notifyCustomerLock(
-    contract: {
-      id: string;
-      contractNumber: string;
-      customer: { id: string; name: string; lineLinks: { lineUserId: string }[] } | null;
-    },
-    daysOverdue: number,
-  ): Promise<void> {
-    // ปลายทาง LINE การเงิน = แถว OTP ของลูกค้า (Task 22 I-1 ง) ไม่ใช่คอลัมน์ line_id_finance ที่อาจค้าง
-    const lineId = financeLineRecipient(contract.customer);
-    if (!lineId) return;
-
-    try {
-      // mdm.lock_notice template — caller offloads channelKey/category to template
-      await this.notificationsService.sendFromTemplate(
-        'mdm.lock_notice',
-        {
-          name: contract.customer!.name,
-          contractNumber: contract.contractNumber,
-          daysOverdue: String(daysOverdue),
-        },
-        lineId,
-        {
-          relatedId: contract.id,
-          customerId: contract.customer!.id,
-        },
-      );
-      this.logger.log(
-        `MDM lock LINE notify sent to customer (contract ${contract.contractNumber})`,
-      );
-    } catch (err) {
-      // Notification failure should not affect lock result
-      this.logger.warn(
-        `MDM lock LINE notify failed for contract ${contract.contractNumber}: ${err}`,
-      );
-    }
-  }
 
   private async notifyCustomerUnlock(contract: {
     contractNumber: string;

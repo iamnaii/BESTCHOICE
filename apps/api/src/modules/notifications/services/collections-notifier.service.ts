@@ -29,8 +29,17 @@ import { isSmsPaymentReminderDisabled } from '../../../utils/sms-payment-reminde
 import { isWithinBusinessHours } from '../../../utils/business-hours.util';
 import { bangkokStartOfDay } from '../../../utils/date.util';
 
-/** เวลาส่งข้อความผลรอบกลางคืน (A3/A4) — ต้องอยู่ในช่วงเวลาทำการของ `isWithinBusinessHours` */
+/** เวลาส่งข้อความผลรอบกลางคืน (A3/A4/แจ้งล็อก) — ต้องอยู่ในช่วงเวลาทำการของ `isWithinBusinessHours` */
 export const OVERNIGHT_COLLECTIONS_NOTICES_CRON = '5 8 * * *';
+
+/**
+ * Task 30 รอบ 4 m1 — แถว audit ที่รอบล็อกอัตโนมัติ (`MdmAutoService.autoLockOverdueContracts` 01:30) เขียนตอนล็อกสำเร็จ (tx เดียวกับ
+ * `mdmLockedAt`) แล้วรอบเช้าอ่านเพื่อส่งแจ้งล็อก · `source` แยกจาก `MDM_AUTO_LOCK` ของ `MdmLockService.autoLock` (รอบนัดชำระ — แจ้งเองผ่านกฎ
+ * DEVICE_LOCKED ซึ่งผ่านด่านเวลาทำการของ `send()` อยู่แล้ว) · `newValue`: `{ source, reason, daysOverdue, notifyCustomer }`
+ */
+export const MDM_AUTO_LOCK_AUDIT = { action: 'MDM_AUTO_LOCK', source: 'MDM_AUTO_OVERDUE' } as const;
+/** แม่แบบแจ้งล็อกเครื่อง (ยกเว้นช่วงผ่อนผันหลังผูก LINE — `LEGACY_LINK_GRACE_EXEMPT`) */
+export const MDM_LOCK_NOTICE_EVENT = 'mdm.lock_notice';
 
 /** งวดที่ถึงกำหนดแล้วและยังค้าง — นิยามเดียวของ A3 (แจ้งสถานะ) และ A4 (ขั้นทวง) */
 function dueUnpaidPaymentsWhere(now: Date): Prisma.PaymentWhereInput {
@@ -83,27 +92,29 @@ export class CollectionsNotifierService {
    *   การจ่ายไม่คืนสถานะสัญญาเป็น ACTIVE (รีวิวรอบ 3 I1) · สัญญาที่ออกจาก OVERDUE/DEFAULT แล้ว (เช่น ยกเลิก/ยึดคืน) = ไม่แจ้งสถานะ
    * - สัญญาที่ได้ข้อความทวงระดับสัญญาแล้ววันนี้ (`findContractsDunnedToday` — SENT / คิวส่งซ้ำ ทุกช่องทาง) = ข้าม — สั่งรันซ้ำไม่ส่งซ้ำ และหนึ่งสัญญา
    *   ได้ไม่เกินหนึ่งข้อความจากแจ้งสถานะ/ขั้นทวง · A2 09:00 / บอททวง 10:00 เว้นงวดของสัญญาที่ได้ข้อความจากรอบนี้ (รอบ 4 I2)
+   * - รอบ 4 m1 — แจ้งล็อกเครื่องของรอบล็อกอัตโนมัติ 01:30 (แถว audit `MDM_AUTO_LOCK_AUDIT`) ส่งท้ายรอบนี้: `notifySubjectsOfOvernightLocks`
    */
   async sendOvernightCollectionsNotices(now: Date = new Date()) {
     if (!isWithinBusinessHours(now, true)) {
       this.logger.warn('Overnight collections notices skipped — outside business hours');
-      return { statusNotices: 0, dunningNotices: 0 };
+      return { statusNotices: 0, dunningNotices: 0, lockNotices: 0 };
     }
     const since = bangkokStartOfDay(now);
     const rows = await this.prisma.auditLog.findMany({
       where: {
-        action: { in: ['STATUS_CHANGE', 'DUNNING_ESCALATION'] },
+        action: { in: ['STATUS_CHANGE', 'DUNNING_ESCALATION', MDM_AUTO_LOCK_AUDIT.action] },
         entity: 'contract',
         ipAddress: 'system-cron',
         createdAt: { gte: since },
       },
-      select: { action: true, entityId: true, newValue: true },
+      select: { action: true, entityId: true, newValue: true, createdAt: true },
       orderBy: { createdAt: 'asc' },
     });
     const valueOf = (v: unknown) =>
       v && typeof v === 'object' ? (v as Record<string, unknown>) : {};
     const statusIds = new Set<string>();
     const escalations = new Map<string, { to: string; daysOverdue: number }>();
+    const locks = new Map<string, { at: Date; daysOverdue: number }>();
     for (const row of rows) {
       const value = valueOf(row.newValue);
       if (row.action === 'STATUS_CHANGE' && (value.to === 'OVERDUE' || value.to === 'DEFAULT')) {
@@ -113,8 +124,33 @@ export class CollectionsNotifierService {
           to: value.dunningStage,
           daysOverdue: Number(value.daysOverdue ?? 0),
         });
+      } else if (
+        row.action === MDM_AUTO_LOCK_AUDIT.action &&
+        value.source === MDM_AUTO_LOCK_AUDIT.source &&
+        value.notifyCustomer === true
+      ) {
+        locks.set(row.entityId, {
+          at: row.createdAt,
+          daysOverdue: Number(value.daysOverdue ?? 0),
+        });
       }
     }
+
+    const { statusNotices, dunningNotices } = await this.sendStatusAndDunningNotices(
+      statusIds,
+      escalations,
+      now,
+    );
+    const lockNotices = await this.notifySubjectsOfOvernightLocks(locks);
+    return { statusNotices, dunningNotices, lockNotices };
+  }
+
+  /** แจ้งสถานะ (A3) + ขั้นทวง (A4) ของคืนนั้น — หนึ่งข้อความต่อสัญญา (กติกาใน docblock ของ `sendOvernightCollectionsNotices`) */
+  private async sendStatusAndDunningNotices(
+    statusIds: Set<string>,
+    escalations: Map<string, { to: string; daysOverdue: number }>,
+    now: Date,
+  ) {
     const contractIds = [...new Set([...statusIds, ...escalations.keys()])];
     if (contractIds.length === 0) return { statusNotices: 0, dunningNotices: 0 };
 
@@ -154,6 +190,78 @@ export class CollectionsNotifierService {
         ? await this.notifyEscalatedDunning({ escalated })
         : { escalated: 0, notified: 0, suppressed: 0 };
     return { statusNotices: statusTargets.length, dunningNotices: dunning.notified };
+  }
+
+  /**
+   * Task 30 รอบ 4 m1 — แจ้งล็อกเครื่อง (`mdm.lock_notice`) ของรอบล็อกอัตโนมัติ 01:30 ส่งตอนเช้า (เดิมส่งทันทีกลางดึก ทาง Flex ของแม่แบบซึ่งไม่ผ่าน
+   * ด่านเวลาทำการ) · รอบล็อกยังล็อกเวลาเดิม:
+   * - เครื่องที่ถูกปลดแล้วก่อนรอบเช้า (`mdmLockedAt` ว่าง — ลูกค้าจ่าย `autoUnlockAfterPayment` / พนักงานปลด `unlockContract`) = ไม่แจ้ง
+   * - สั่งรันซ้ำ: แจ้งล็อกครั้งนี้ไปแล้ว (แถวหัวข้อของแม่แบบแจ้งล็อก ของสัญญา สร้างหลังเวลาล็อก — ทุกสถานะ) = ไม่ส่งซ้ำ
+   * - ยกเว้นช่วงผ่อนผันหลังผูก LINE (`LEGACY_LINK_GRACE_EXEMPT` — ผ่าน `sendFromTemplate` ตามเดิม) · ไม่มีด่าน PDPA (เดิม)
+   * - **ไม่ถูกข้ามเพราะสัญญาได้แจ้งสถานะ/ขั้นทวงในรอบนี้แล้ว** (เหมือนก่อนย้ายเวลา — ลูกค้าต้องรู้ว่าเครื่องถูกล็อกเพราะอะไร · กติกา "วันละข้อความ"
+   *   ระหว่างแจ้งล็อกกับแจ้งสถานะรอคำตัดสินเจ้าของ) · ส่งท้ายสุดของรอบ ⇒ แถวของมันไม่ทำให้แจ้งสถานะ/ขั้นทวงของรอบนี้ถูกข้าม · A2 / บอททวงวันนั้นเว้นให้
+   */
+  private async notifySubjectsOfOvernightLocks(
+    locks: Map<string, { at: Date; daysOverdue: number }>,
+  ): Promise<number> {
+    if (locks.size === 0) return 0;
+    const template = await this.prisma.notificationTemplate.findUnique({
+      where: { eventType: MDM_LOCK_NOTICE_EVENT },
+      select: { subject: true, name: true },
+    });
+    // หัวข้อที่ `sendFromTemplate` ลงแถว (ทาง Flex และทางข้อความ)
+    const lockSubject = template ? (template.subject ?? template.name) : null;
+    const contracts = await this.prisma.contract.findMany({
+      where: { id: { in: [...locks.keys()] }, deletedAt: null },
+      select: {
+        id: true,
+        contractNumber: true,
+        mdmLockedAt: true,
+        customer: { select: { id: true, name: true, ...FINANCE_LINE_RECIPIENT_SELECT } },
+      },
+    });
+
+    let sent = 0;
+    for (const contract of contracts) {
+      const lock = locks.get(contract.id)!;
+      if (!contract.mdmLockedAt) continue;
+      const lineId = financeLineRecipient(contract.customer);
+      if (!lineId) continue;
+      if (
+        lockSubject &&
+        (await this.prisma.notificationLog.findFirst({
+          where: {
+            relatedId: contract.id,
+            subject: lockSubject,
+            createdAt: { gte: lock.at },
+            deletedAt: null,
+          },
+          select: { id: true },
+        }))
+      ) {
+        continue;
+      }
+      try {
+        const result = await this.notificationsService.sendFromTemplate(
+          MDM_LOCK_NOTICE_EVENT,
+          {
+            name: contract.customer.name,
+            contractNumber: contract.contractNumber,
+            daysOverdue: String(lock.daysOverdue),
+          },
+          lineId,
+          { relatedId: contract.id, customerId: contract.customer.id },
+        );
+        if (result.status === 'SENT') sent++;
+      } catch (err) {
+        // แจ้งไม่ผ่านไม่กระทบสัญญาอื่น — การล็อกเสร็จไปแล้วตอน 01:30
+        this.logger.warn(
+          `MDM lock notice failed for contract ${contract.contractNumber}: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }
+    this.logger.log(`Overnight MDM lock notices: ${sent} sent out of ${locks.size} locks`);
+    return sent;
   }
 
   /**

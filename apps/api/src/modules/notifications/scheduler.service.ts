@@ -198,7 +198,7 @@ export class SchedulerService {
     try {
       const result = await this.collectionsNotifier.sendOvernightCollectionsNotices();
       this.logger.log(
-        `Overnight collections notices: ${result.statusNotices} status · ${result.dunningNotices} dunning`,
+        `Overnight collections notices: ${result.statusNotices} status · ${result.dunningNotices} dunning · ${result.lockNotices} device-lock`,
       );
     } catch (error) {
       this.reportCronFailure('overnight-collections-notices', error);

@@ -298,4 +298,23 @@ describe('Task 33 — ความยินยอมตอนผูก LINE ก�
     const rows = await consents();
     expect(rows.map((r) => r.status)).toEqual(['REVOKED', 'GRANTED']);
   });
+
+  it('8. (fix round 1 M2) ครั้งเดียวต่อลูกค้า **ต่อเวอร์ชันข้อความ** — มีแถว GRANTED ของฉบับเก่า → ผูกใหม่ + ติ๊กฉบับปัจจุบัน = แถวใหม่ของฉบับปัจจุบัน', async () => {
+    const granted = (await consents()).find((r) => r.status === 'GRANTED')!;
+    // จำลองแถวที่ลูกค้ายินยอมไว้กับข้อความฉบับก่อน (เปลี่ยนข้อความ = เปลี่ยน LINE_FINANCE_CONSENT_VERSION)
+    await prisma.pDPAConsent.update({
+      where: { id: granted.id },
+      data: { consentVersion: 'line-finance-verify-previous' },
+    });
+    await liff.unlinkLineAccount(LINE);
+    const code = await requestCode();
+
+    const result = await verification.verifyOtp({ lineUserId: LINE, otp: code, consent: CONSENT });
+
+    const current = (await consents()).filter(
+      (r) => r.status === 'GRANTED' && r.consentVersion === LINE_FINANCE_CONSENT_VERSION,
+    );
+    expect(current).toHaveLength(1);
+    expect(result.consentRecordedAt).toBe(current[0].grantedAt!.toISOString());
+  });
 });

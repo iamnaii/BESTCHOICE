@@ -11,6 +11,27 @@ export type IntegrationConfig = Record<string, string>;
 /** Same shape but sensitive values are masked (e.g. `••••abcd`). */
 export type MaskedIntegrationConfig = Record<string, string>;
 
+/**
+ * State of INTEGRATION_ENCRYPTION_KEY in this process. Only `ok` is ever used to
+ * encrypt or decrypt — a malformed key is treated exactly like a missing one.
+ */
+export type IntegrationKeyStatus = 'ok' | 'missing' | 'malformed';
+
+/** Same rule as PII_ENCRYPTION_KEY (utils/env-validation.ts): 32 bytes as hex. */
+const INTEGRATION_KEY_FORMAT = /^[0-9a-f]{64}$/i;
+
+/** Why a stored credential could not be turned back into plaintext. */
+type UndecryptableReason = 'key-missing' | 'key-invalid' | 'decrypt-failed';
+
+/** Result of reading one stored value — never carries ciphertext. */
+type StoredRead = { ok: true; value: string } | { ok: false; reason: UndecryptableReason };
+
+/**
+ * Encrypted credentials checked against the key this process holds.
+ * Entries are `integrationKey.fieldKey` only — never values.
+ */
+export type EncryptedFieldCheck = { key: IntegrationKeyStatus; ok: string[]; failed: string[] };
+
 @Injectable()
 export class IntegrationConfigService implements OnModuleInit {
   private readonly logger = new Logger(IntegrationConfigService.name);
@@ -18,24 +39,92 @@ export class IntegrationConfigService implements OnModuleInit {
   private static readonly CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
   private cache = new Map<string, { config: IntegrationConfig; cachedAt: number }>();
 
+  /**
+   * getValue runs on hot paths (webhook guards on every request, every LINE
+   * send) — one warning + one Sentry event per field per hour is enough to be
+   * seen without flooding either.
+   */
+  private static readonly UNDECRYPTABLE_WARN_INTERVAL_MS = 60 * 60 * 1000;
+  private undecryptableWarnedAt = new Map<string, number>();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
   ) {}
 
-  onModuleInit() {
-    const key = this.configService.get<string>('INTEGRATION_ENCRYPTION_KEY');
-    if (!key) {
-      this.logger.warn('[IntegrationConfig] INTEGRATION_ENCRYPTION_KEY not set — credentials stored in plaintext!');
+  async onModuleInit(): Promise<void> {
+    const { status } = this.resolveKey();
+    if (status === 'missing') {
+      this.logger.warn(
+        '[IntegrationConfig] INTEGRATION_ENCRYPTION_KEY not set — credentials stored in plaintext!',
+      );
       Sentry.captureMessage('INTEGRATION_ENCRYPTION_KEY not configured', 'warning');
     }
+    if (status === 'malformed') {
+      // Never the value or its length — only the rule it breaks.
+      this.logger.error(
+        '[IntegrationConfig] INTEGRATION_ENCRYPTION_KEY is malformed (need 64 hex chars) — treated as not set: encrypted credentials read as not configured and new saves are stored unencrypted',
+      );
+      Sentry.captureMessage('INTEGRATION_ENCRYPTION_KEY malformed (need 64 hex chars)', 'error');
+    }
+    await this.logEncryptedFieldCheck(status);
+  }
+
+  /**
+   * Boot self-check: does the key this process holds open every encrypted
+   * credential? One log line (field references only — never values) lets ops
+   * verify the key after a deploy without reading any secret. Fields that
+   * decrypt are named too: a credential nobody remembers entering starts
+   * working the moment its key arrives, so ops must know which ones to test.
+   * Printed whenever a key is configured (well-formed or not) or encrypted
+   * values exist, so "no line" can only mean "no key and nothing encrypted".
+   * Never throws: a DB hiccup must not block boot.
+   */
+  private async logEncryptedFieldCheck(status: IntegrationKeyStatus): Promise<void> {
+    let check: EncryptedFieldCheck;
+    try {
+      check = await this.checkEncryptedFields();
+    } catch (err) {
+      this.logger.warn(
+        `integration encrypted fields: check failed — ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return;
+    }
+    const { ok, failed } = check;
+    if (status === 'missing' && ok.length + failed.length === 0) return;
+
+    const line = `integration encrypted fields: key=${status} ok=${ok.length} [${ok.join(', ')}] failed=${failed.length} [${failed.join(', ')}]`;
+    if (failed.length === 0 && status === 'ok') {
+      this.logger.log(line);
+      return;
+    }
+    this.logger.warn(line);
+    if (failed.length === 0) return;
+    Sentry.captureMessage('Integration credentials cannot be decrypted with the current key', {
+      level: 'warning',
+      tags: { subsystem: 'integration-config', key: status },
+      extra: { ok: ok.length, failed },
+    });
   }
 
   // ─── Private helpers ──────────────────────────────────────────────────────
 
-  /** Return the encryption key from env; empty string if not set (no encryption). */
+  /**
+   * Read INTEGRATION_ENCRYPTION_KEY: trimmed, and only usable when it is 64 hex
+   * chars. A malformed key (e.g. base64 from `openssl rand -base64 32`, or 32
+   * hex chars) would otherwise pass decryptPII's length gate and throw
+   * "Invalid key length" on every save — it is treated as absent instead.
+   */
+  private resolveKey(): { status: IntegrationKeyStatus; key: string } {
+    const key = (this.configService.get<string>('INTEGRATION_ENCRYPTION_KEY') ?? '').trim();
+    if (!key) return { status: 'missing', key: '' };
+    if (!INTEGRATION_KEY_FORMAT.test(key)) return { status: 'malformed', key: '' };
+    return { status: 'ok', key };
+  }
+
+  /** The usable encryption key; empty string when missing or malformed (no encryption). */
   private get encryptionKey(): string {
-    return this.configService.get<string>('INTEGRATION_ENCRYPTION_KEY') ?? '';
+    return this.resolveKey().key;
   }
 
   /** Build the SystemConfig DB key for a given integration + field. */
@@ -65,6 +154,44 @@ export class IntegrationConfigService implements OnModuleInit {
     return value.includes('•');
   }
 
+  /**
+   * Turn a stored value back into plaintext. Plaintext rows (saved while no key
+   * was configured) pass through unchanged. Never throws and never returns
+   * ciphertext — callers decide what "unreadable" means for them.
+   */
+  private readStored(raw: string): StoredRead {
+    if (!isEncrypted(raw)) return { ok: true, value: raw };
+    const { status, key } = this.resolveKey();
+    if (status === 'missing') return { ok: false, reason: 'key-missing' };
+    if (status === 'malformed') return { ok: false, reason: 'key-invalid' };
+    try {
+      return { ok: true, value: decryptPII(raw, key) };
+    } catch {
+      return { ok: false, reason: 'decrypt-failed' };
+    }
+  }
+
+  /** Warn about an unreadable credential — field reference only, never the value. */
+  private reportUndecryptable(fieldRef: string, reason: UndecryptableReason): void {
+    const now = Date.now();
+    const last = this.undecryptableWarnedAt.get(fieldRef);
+    if (
+      last !== undefined &&
+      now - last < IntegrationConfigService.UNDECRYPTABLE_WARN_INTERVAL_MS
+    ) {
+      return;
+    }
+    this.undecryptableWarnedAt.set(fieldRef, now);
+    this.logger.warn(
+      `[IntegrationConfig] ${fieldRef} is stored encrypted but cannot be decrypted (${reason}) — treated as not configured; re-enter it in Integration Hub`,
+    );
+    Sentry.captureMessage('Integration credential cannot be decrypted', {
+      level: 'warning',
+      tags: { subsystem: 'integration-config', reason },
+      extra: { field: fieldRef },
+    });
+  }
+
   /** Check if cached entry is still fresh. */
   private getCached(integrationKey: string): IntegrationConfig | null {
     const entry = this.cache.get(integrationKey);
@@ -81,6 +208,10 @@ export class IntegrationConfigService implements OnModuleInit {
   /**
    * Read a single field value.
    * Priority: SystemConfig DB (decrypted) → env var → field defaultValue.
+   *
+   * A DB value that is encrypted but cannot be decrypted here (no key, wrong
+   * key, malformed key) returns `undefined` = "not configured" — never the
+   * ciphertext and never a throw into business code.
    */
   async getValue(integrationKey: string, fieldKey: string): Promise<string | undefined> {
     const def = getIntegrationDef(integrationKey);
@@ -95,9 +226,16 @@ export class IntegrationConfigService implements OnModuleInit {
     });
 
     if (record?.value) {
-      const raw = record.value;
-      const key = this.encryptionKey;
-      return key && isEncrypted(raw) ? decryptPII(raw, key) : raw;
+      const read = this.readStored(record.value);
+      if (read.ok) return read.value;
+      // Fail closed WITHOUT falling back to the env var: a DB row is the
+      // admin's explicit override of the env value, and we cannot tell whether
+      // env still holds the same credential (prod env LINE_CHANNEL_* may belong
+      // to another / older OA). Using it would verify webhooks or send as an
+      // account the admin replaced. "Not configured" stops the feature visibly;
+      // the boot self-check names the field so it can be re-entered.
+      this.reportUndecryptable(`${integrationKey}.${fieldKey}`, read.reason);
+      return undefined;
     }
 
     // 2. Env var
@@ -106,6 +244,36 @@ export class IntegrationConfigService implements OnModuleInit {
 
     // 3. Default
     return field.defaultValue;
+  }
+
+  /**
+   * Try to decrypt every encrypted sensitive credential stored in SystemConfig
+   * (optionally for one integration) with the key this process holds.
+   * Plaintext and empty rows are not listed.
+   */
+  async checkEncryptedFields(integrationKey?: string): Promise<EncryptedFieldCheck> {
+    const refs = new Map<string, string>(); // SystemConfig key → integrationKey.fieldKey
+    for (const def of INTEGRATIONS) {
+      if (integrationKey && def.key !== integrationKey) continue;
+      for (const field of def.fields) {
+        if (field.sensitive) refs.set(this.dbKey(def.key, field.key), `${def.key}.${field.key}`);
+      }
+    }
+    const { status } = this.resolveKey();
+    if (refs.size === 0) return { key: status, ok: [], failed: [] };
+
+    const rows = await this.prisma.systemConfig.findMany({
+      where: { key: { in: [...refs.keys()] }, deletedAt: null },
+      select: { key: true, value: true },
+    });
+    const ok: string[] = [];
+    const failed: string[] = [];
+    for (const row of rows) {
+      const ref = refs.get(row.key);
+      if (!ref || !row.value || !isEncrypted(row.value)) continue;
+      (this.readStored(row.value).ok ? ok : failed).push(ref);
+    }
+    return { key: status, ok: ok.sort(), failed: failed.sort() };
   }
 
   /**
@@ -160,7 +328,9 @@ export class IntegrationConfigService implements OnModuleInit {
     for (const [fieldKey, rawValue] of Object.entries(values)) {
       const field = def.fields.find((f) => f.key === fieldKey);
       if (!field) {
-        this.logger.warn(`Ignoring unknown field '${fieldKey}' for integration '${integrationKey}'`);
+        this.logger.warn(
+          `Ignoring unknown field '${fieldKey}' for integration '${integrationKey}'`,
+        );
         continue;
       }
 
@@ -172,6 +342,18 @@ export class IntegrationConfigService implements OnModuleInit {
       if (field.sensitive && this.isMaskedValue(rawValue)) {
         this.logger.debug(
           `Skipping masked round-trip for '${integrationKey}.${fieldKey}' — value unchanged`,
+        );
+        continue;
+      }
+
+      // Empty sensitive input = "unchanged", never "clear". The hub sends a
+      // secret field the operator typed in and then emptied as ''; storing it
+      // would empty the row, and an empty row falls back to the env var —
+      // possibly another OA's credential (prod sets LINE_CHANNEL_* from Secret
+      // Manager). There is no "clear credential" action in the UI.
+      if (field.sensitive && !rawValue?.trim()) {
+        this.logger.debug(
+          `Skipping empty value for sensitive '${integrationKey}.${fieldKey}' — value unchanged`,
         );
         continue;
       }

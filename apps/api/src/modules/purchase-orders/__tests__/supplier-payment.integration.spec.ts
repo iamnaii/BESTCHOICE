@@ -691,7 +691,9 @@ describe('จ่ายเงินผู้จัดจำหน่าย — fl
     // พร้อม stamp periodClosed + งานแจ้ง — เหมือนการรับของ · ด่าน 400 ของ `resolvePostingDate` เป็นตาข่ายกรณีวันนี้พ้นช่วงผ่อนผันแล้ว
     const now = bangkokCalendarParts(new Date());
     const closedNow = await closeShopPeriod(now.year, now.month + 1);
-    const grace = await setGraceDays(0);
+    // grace 1 (not 0): `validatePeriodOpen` ends the window at 00:00 of (last day + grace), so with
+    // grace 0 this case failed on the last day of every month (2026-10-31 blocked the main deploy).
+    const grace = await setGraceDays(1);
     try {
       const res = await service.recordSupplierPayment(po.id, { paidAt: today(), amount: 500, slipUrl: SLIP }, adminId);
       expect(res.periodClosed).toBe(true);

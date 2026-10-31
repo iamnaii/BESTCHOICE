@@ -1,10 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
-import {
-  LEGACY_OPENING_FLOW,
-  LEGACY_PRIOR_RECEIPT_FLOW,
-} from '../../accounting/peak-export-exclusion';
+import { LEGACY_OPENING_FLOW } from '../../accounting/peak-export-exclusion';
 import { ADVANCE_VAT_META, advanceVatOutstanding } from '../../journal/advance-vat';
 import {
   CONTRACT_RECEIVABLE_TOLERANCE,
@@ -12,18 +9,23 @@ import {
   isReceivableGapBreached,
   loadContractReceivableGaps,
   receivableReconScopeSql,
+  type ContractReceivableGap,
   type ContractScope,
 } from '../../journal/contract-receivable-recon';
+import {
+  activatedBeforeShopWiring,
+  isLegacyNoShop,
+  loadShopFinanceReceivableLens,
+} from '../../interco-settlement/legacy-no-shop';
 import { loadLateFeePaidByPaymentIds } from '../../payments/services/payment-late-fee-paid.util';
 import { AuditCheckResult } from '../data-audit.types';
 import { LEGACY_UNTOUCHED_PAYMENT } from './legacy-untouched-payment';
+import { PAID_BY_EARLY_PAYOFF, SCHEDULE_ROWS_CLEARED_BY_ENTRY } from './payment-backing';
 
 /** รายการเปิดสัญญา 1A — `cpa-templates/contract-activation-1a.template.ts:71` */
 const CONTRACT_ACTIVATION_TAG = '1A';
 /** รายการเปิดสัญญาใหม่ของการเปลี่ยนเครื่อง A.1 — `cpa-templates/exchange-new-contract-1a.template.ts:68` */
 const EXCHANGE_NEW_CONTRACT_FLOW = 'exchange-new-contract-1a';
-/** ปิดยอดก่อนกำหนด JP4 (รายการระดับสัญญา ไม่มี `paymentId`) — `contracts/contract-payment.service.ts:842-843` */
-const EARLY_PAYOFF_FLOW = 'early-payoff';
 /** ต้นทุนขายฝั่ง SHOP ตอนเปิดสัญญา (JE A) — `cpa-templates/shop-inventory-transfer.template.ts:321` */
 export const SHOP_INVENTORY_TRANSFER_COGS_FLOW = 'shop-inventory-transfer-cogs';
 /**
@@ -46,6 +48,10 @@ export function isContractOpeningEntry(metadata: Prisma.JsonValue | null | undef
   );
 }
 
+/** รายการ (alias **`je`**) ที่เป็นรายการเปิดสัญญา — เงื่อนไข SQL ของ `isContractOpeningEntry` (1A · A.1 · ยอดยกมาของสัญญานำเข้า) */
+const CONTRACT_OPENING_ENTRY = Prisma.sql`(je.metadata->>'tag' = ${CONTRACT_ACTIVATION_TAG}
+           OR je.metadata->>'flow' IN (${EXCHANGE_NEW_CONTRACT_FLOW}, ${LEGACY_OPENING_FLOW}))`;
+
 /**
  * สัญญา (alias **`c`**) ที่ไม่มีรายการเปิดสัญญา (ผูก `metadata.contractId`) และไม่ใช่สัญญาประวัติที่นำเข้า (`legacy_contract_code`
  * ไม่ว่าง + ไม่มีตารางงวด — ตัวนำเข้าไม่ลงบัญชีให้โดยตั้งใจ) — เงื่อนไขเดียวของ `checkOrphanContracts` และ dry-run ของ
@@ -57,19 +63,76 @@ export const CONTRACT_WITHOUT_OPENING_JOURNAL = Prisma.sql`(
     WHERE je.metadata->>'contractId' = c.id
       AND je.status = 'POSTED'
       AND je.deleted_at IS NULL
-      AND (je.metadata->>'tag' = ${CONTRACT_ACTIVATION_TAG}
-           OR je.metadata->>'flow' IN (${EXCHANGE_NEW_CONTRACT_FLOW}, ${LEGACY_OPENING_FLOW}))
+      AND ${CONTRACT_OPENING_ENTRY}
   )
   AND NOT (
     c.legacy_contract_code IS NOT NULL
     AND NOT EXISTS (SELECT 1 FROM installment_schedules s WHERE s.contract_id = c.id)
   )
 )`;
+/**
+ * สถานะสัญญาที่ผ่านการเปิดสัญญาและยังไม่ปิด — ขอบเขตของ `orphan_contracts` และ `missing_cogs` (และของการไล่ตรวจสัญญาที่ใช้คำตัดสินสองข้อนี้
+ * + ขา SHOP ของการเปิดสัญญา) · `EARLY_PAYOFF` / `CLOSED_BAD_DEBT` / `TERMINATED` อยู่นอกขอบเขตตามตรวจกลางคืนเดิม (Task 23 · m-4 — trace
+ * เคยใช้ชุดที่กว้างกว่าของตัวเอง)
+ */
+export const ACTIVATED_CONTRACT_STATUSES = ['ACTIVE', 'OVERDUE', 'DEFAULT', 'COMPLETED'] as const;
+const activatedStatusSql = Prisma.sql`c.status::text IN (${Prisma.join([...ACTIVATED_CONTRACT_STATUSES])})`;
+/**
+ * รายการที่ Σ เดบิต กับ Σ เครดิต ต่างกันเกินนี้ = ไม่สมดุล (`journal_balance`) — การไล่ตรวจสัญญาใช้เกณฑ์เดียวกันกับรายการของสัญญา
+ *
+ * **ที่มา — ไม่ใช่กติกาบัญชี:** 0.01 เป็นตัวเลขดั้งเดิมของข้อกลางคืนตั้งแต่สร้าง DataAuditModule (`6ab118ca1` · 2026-04-12) ซึ่งเกิด**ก่อน**
+ * Wave-1 #10 (`2a4c59c13` · 2026-06-07) ที่ทำให้ทางลงบัญชีทั้งสองทางบังคับสมดุลพอดี — `JournalService.create` และ
+ * `JournalAutoService.createAndPost` ปฏิเสธเมื่อ `!totalDebit.equals(totalCredit)` (Decimal เทียบตรง ไม่มีเผื่อ) ⇒ รายการที่ต่างกัน 0.01 เกิดได้
+ * จากการเขียนนอกสองทางนี้เท่านั้น (SQL ตรง / ข้อมูลเก่า) และ**ข้อนี้กับการไล่ตรวจถือว่าสมดุล** (ต่าง > 0.01 จึงติด) · ลดเป็น 0 = ข้อกลางคืนระดับ
+ * CRITICAL (ยิง Sentry) จับได้ละเอียดขึ้น — ต้องให้เจ้าของรับทราบก่อนเปลี่ยนค่า (Task 23 review m-3) · ห้ามมีเกณฑ์ชุดที่สองใน trace
+ */
+export const JOURNAL_BALANCE_TOLERANCE = new Prisma.Decimal('0.01');
 /** ส่วนที่แถวงวดรับเกินยอดเรียกเก็บได้ — เศษปัดของใบที่ปิดงวด ≤ 1 บาท (Tolerance Policy `.claude/rules/accounting.md`) */
 const INSTALLMENT_OVERPAY_TOLERANCE = new Prisma.Decimal('1.00');
 /** VAT รอเรียกเก็บสองขาต้องตรงกันทุกสตางค์ (ยอด 2 ตำแหน่ง) */
 const VAT_DEFERRED_TOLERANCE = new Prisma.Decimal('0.01');
+/**
+ * เพดาน `details` ของข้อกลางคืน — ข้อที่ใช้เพดานนี้ไม่มี `LIMIT` ในคิวรี: `count` = จำนวนจริง (ข้อความสรุป Sentry `<ข้อ>: <count> issues`
+ * และ `data_audit_logs.count`) · `details` เก็บไม่เกิน 50 แถว · ไล่ตรวจสัญญาอ่านแถวของข้อเดียวกันทุกแถว (Task 25 · m-5 — เดิม
+ * `orphan_contracts` / `orphan_payments` / `journal_balance` / `ghost_stock` / `duplicate_payments` รายงาน `count` หลัง `LIMIT 50`)
+ */
 const DETAIL_LIMIT = 50;
+
+/** แถวของ `orphan_contracts` */
+export type OrphanContractRow = {
+  id: string;
+  contract_number: string;
+  status: string;
+  created_at: Date;
+};
+
+/** แถวของ `missing_cogs` */
+export type MissingCogsRow = {
+  id: string;
+  contract_number: string;
+  product_name: string;
+  cost_price: Prisma.Decimal;
+};
+
+/** แถวของ `vat_mismatch` (ยอดเป็นสตริง 2 ตำแหน่ง) */
+export type VatMismatchRow = {
+  contractId: string;
+  contractNumber: string;
+  vatReceivable: string;
+  vatDeferred: string;
+  advanceVatOutstanding: string;
+  diff: string;
+};
+
+/** แถวของ `orphan_payments` */
+export type OrphanPaymentRow = {
+  id: string;
+  installment_no: number;
+  amount_paid: Prisma.Decimal;
+  status: string;
+  paid_date: Date;
+  contract_number: string;
+};
 
 const money = (v: Prisma.Decimal.Value) => new Prisma.Decimal(v).toFixed(2);
 
@@ -95,7 +158,7 @@ const stampAmount = (raw: string | null): Prisma.Decimal => {
  * - `orphan_contracts` — เดิมหา `reference_type = 'CONTRACT'` ซึ่งไม่มีโค้ดใดเขียน (รายการอัตโนมัติทุกตัวเป็น `'AUTO'`) ⇒ หา 1A /
  *   เปิดสัญญาเปลี่ยนเครื่อง / รายการยกมาของสัญญานำเข้า ด้วย `metadata.contractId` · สัญญาประวัติที่นำเข้า (ไม่มีตารางงวด) ไม่ต้องมี
  * - `orphan_payments` — เพิ่มทางหนุนที่ไม่มี `paymentId`: รายการล้าง 11-2103 ของงวด (`installmentScheduleId` — ยกเว้น marker
- *   ยอดรับก่อนวันตัด) และ JP4 ของสัญญา ·
+ *   ยอดรับก่อนวันตัด) และ JP4 ของสัญญา (เฉพาะงวดที่ JP4 จ่าย — Task 25 · r-1) ·
  *   งวดนำเข้าที่ยังไม่มีเส้นทางรับเงินแตะ (`LEGACY_UNTOUCHED_PAYMENT`) ไม่ต้องมีรายการบัญชี
  * - `overpaid_contracts` — เดิมเทียบ Σ `amountPaid` (รวมค่าปรับ) กับหัวสัญญา (ราคา − ดาวน์ … ซึ่งไม่เท่ายอดผ่อนของสัญญานำเข้า) ⇒
  *   เทียบต่อแถวงวด: `amountPaid − ค่าปรับที่รับจริง` ≤ `amountDue + 1.00`
@@ -108,7 +171,8 @@ const stampAmount = (raw: string | null): Prisma.Decimal => {
  *
  * **2026-10-30 (Task 18) ข้อ MEDIUM สามข้อ** (เดิมเตือนปลอมทุกวันกับสัญญาปกติ — ผลก่อนวันนี้เทียบไม่ได้เช่นกัน):
  * - `missing_cogs` — เดิมหา `reference_type = 'CONTRACT_COGS'` ซึ่งไม่มีผู้เขียน ⇒ หาต้นทุนขายฝั่ง SHOP ของการเปิดสัญญา
- *   (flow `shop-inventory-transfer-cogs` + `metadata.contractId`) · สัญญานำเข้ายกเว้น · รับ `scope`
+ *   (flow `shop-inventory-transfer-cogs` + `metadata.contractId`) · สัญญานำเข้ายกเว้น · รับ `scope` · Task 23: สัญญาที่เปิดก่อนต่อขา
+ *   SHOP (`legacyNoShop` + วันเปิดก่อน 2026-06-24 — `preShopWiringContractIds`) ยกเว้น
  * - `late_fee_vat_leak` — เดิมเทียบ 21-2101 ของใบรับกับ `Payment.vatAmount` ⇒ รายการรับชำระของงวดที่มีค่าปรับต้องขยับ
  *   21-2101 เท่าภาษีของเงินรับล่วงหน้าที่ stamp ไว้เท่านั้น · รับ `scope`
  * - `commission_mismatch` — `SKIPPED` (ค่าคอมไม่ได้รับรู้ต่องวดตั้งแต่ A.4 · 42-1105 เป็นบัญชีอื่นแล้ว)
@@ -142,16 +206,15 @@ export class DataAuditChecksService {
       JOIN journal_lines jl ON jl.journal_entry_id = je.id AND jl.deleted_at IS NULL
       WHERE je.deleted_at IS NULL AND je.status = 'POSTED'
       GROUP BY je.id, je.entry_number, je.reference_type, je.reference_id
-      HAVING ABS(SUM(jl.debit) - SUM(jl.credit)) > 0.01
+      HAVING ABS(SUM(jl.debit) - SUM(jl.credit)) > ${JOURNAL_BALANCE_TOLERANCE}
       ORDER BY ABS(SUM(jl.debit) - SUM(jl.credit)) DESC
-      LIMIT 50
     `;
     return {
       name: 'journal_balance',
       severity: 'CRITICAL',
       status: unbalanced.length === 0 ? 'PASS' : 'FAIL',
       count: unbalanced.length,
-      details: unbalanced,
+      details: unbalanced.slice(0, DETAIL_LIMIT),
       executedAt: new Date(),
     };
   }
@@ -160,29 +223,32 @@ export class DataAuditChecksService {
    * Check 2: ACTIVE/OVERDUE/DEFAULT/COMPLETED contracts must have their opening journal — 1A, the
    * exchange A.1 new-contract entry, or (imported legacy contracts) the legacy opening entry, all
    * keyed by `metadata.contractId`. Imported history contracts (legacy code + no schedule rows —
-   * the importer books nothing for them by design) are exempt.
+   * the importer books nothing for them by design) are exempt. `count` = every row; `details` capped
+   * at 50 (`orphanContractRows` — the contract trace reads every row of its scope).
    */
   async checkOrphanContracts(scope?: ContractScope): Promise<AuditCheckResult> {
-    const orphans = await this.prisma.$queryRaw<
-      { id: string; contract_number: string; status: string; created_at: Date }[]
-    >`
-      SELECT c.id, c.contract_number, c.status, c.created_at
-      FROM contracts c
-      WHERE c.deleted_at IS NULL
-        AND c.status IN ('ACTIVE', 'OVERDUE', 'DEFAULT', 'COMPLETED')
-        ${contractScopeFilter('c.id', scope)}
-        AND ${CONTRACT_WITHOUT_OPENING_JOURNAL}
-      ORDER BY c.created_at DESC
-      LIMIT 50
-    `;
+    const orphans = await this.orphanContractRows(scope);
     return {
       name: 'orphan_contracts',
       severity: 'CRITICAL',
       status: orphans.length === 0 ? 'PASS' : 'FAIL',
       count: orphans.length,
-      details: orphans,
+      details: orphans.slice(0, DETAIL_LIMIT),
       executedAt: new Date(),
     };
+  }
+
+  /** Rows of `orphan_contracts` (rule: `checkOrphanContracts`) — every row in `scope` */
+  async orphanContractRows(scope?: ContractScope): Promise<OrphanContractRow[]> {
+    return this.prisma.$queryRaw<OrphanContractRow[]>`
+      SELECT c.id, c.contract_number, c.status, c.created_at
+      FROM contracts c
+      WHERE c.deleted_at IS NULL
+        AND ${activatedStatusSql}
+        ${contractScopeFilter('c.id', scope)}
+        AND ${CONTRACT_WITHOUT_OPENING_JOURNAL}
+      ORDER BY c.created_at DESC
+    `;
   }
 
   /**
@@ -190,22 +256,34 @@ export class DataAuditChecksService {
    *   (a) a receipt-style entry keyed by the payment (`referenceId` or `metadata.paymentId`), or
    *   (b) an entry that credits 11-2103 for the installment's schedule row without a paymentId
    *       (nightly advance / park consumption, 6a/6b) — not the legacy prior-receipt marker, or
-   *   (c) the contract's early payoff (JP4 is one contract-level entry for every row it pays).
-   * Imported rows still untouched since the cutover (`LEGACY_UNTOUCHED_PAYMENT`) are exempt — their
+   *   (c) the contract's early payoff — on the rows that JP4 paid only (`PAID_BY_EARLY_PAYOFF`: paid_date =
+   *       the JP4's posted_at and inside the range of installments it closed; a JP4 without the range also by
+   *       the early-payoff note prefix); a row PAID before the payoff needs its own backing (Task 25 · Task 23
+   *       re-review r-1 — (c) used to back every row of the contract).
+   * (b) and (c) are `payment-backing.ts` — the same rules `backfill:receipts` uses to skip rows whose
+   * money is documented elsewhere (and (c) is the JP4 late-fee allowance of `overpaid_contracts`). Imported rows still untouched since the cutover (`LEGACY_UNTOUCHED_PAYMENT`) are exempt — their
    * money was booked in PEAK. Set-based (anti-joins) so the nightly run does not rescan the journal
-   * per payment row.
+   * per payment row. `count` = every row; `details` capped at 50 (`orphanPaymentRows` — the contract
+   * trace reads every row).
    */
   async checkOrphanPayments(scope?: ContractScope): Promise<AuditCheckResult> {
-    const orphans = await this.prisma.$queryRaw<
-      {
-        id: string;
-        installment_no: number;
-        amount_paid: Prisma.Decimal;
-        status: string;
-        paid_date: Date;
-        contract_number: string;
-      }[]
-    >`
+    const orphans = await this.orphanPaymentRows(scope);
+    return {
+      name: 'orphan_payments',
+      severity: 'CRITICAL',
+      status: orphans.length === 0 ? 'PASS' : 'FAIL',
+      count: orphans.length,
+      details: orphans.slice(0, DETAIL_LIMIT),
+      executedAt: new Date(),
+    };
+  }
+
+  /**
+   * Rows of `orphan_payments` (rule: `checkOrphanPayments`) — every row in `scope` (the contract trace's verdict
+   * per installment; the nightly run caps its `details` at 50).
+   */
+  async orphanPaymentRows(scope?: ContractScope): Promise<OrphanPaymentRow[]> {
+    return this.prisma.$queryRaw<OrphanPaymentRow[]>`
       -- (a) and (b) deliberately count originals stamped metadata.reversed = true (receipt entries
       -- carry both paymentId and installmentScheduleId, so each path sees them): after a receipt void
       -- the row keeps the voided receipt's payment_method / recorded_by (so an imported row is no
@@ -221,22 +299,8 @@ export class DataAuditChecksService {
         WHERE je.reference_type = 'AUTO' AND je.status = 'POSTED' AND je.deleted_at IS NULL
           AND je.metadata->>'paymentId' IS NOT NULL
       ),
-      backed_schedule AS (
-        SELECT DISTINCT je.metadata->>'installmentScheduleId' AS id
-        FROM journal_entries je
-        JOIN journal_lines jl ON jl.journal_entry_id = je.id AND jl.deleted_at IS NULL
-        WHERE je.status = 'POSTED' AND je.deleted_at IS NULL
-          AND je.metadata->>'installmentScheduleId' IS NOT NULL
-          AND jl.account_code = '11-2103' AND jl.credit > 0
-          -- the legacy marker backs only the pre-cutover part, which (d) already exempts — once a
-          -- receipt touches the row it needs its own entry, so the marker must not excuse it
-          AND COALESCE(je.metadata->>'flow', '') <> ${LEGACY_PRIOR_RECEIPT_FLOW}
-      ),
-      early_payoff_contract AS (
-        SELECT DISTINCT je.metadata->>'contractId' AS id FROM journal_entries je
-        WHERE je.status = 'POSTED' AND je.deleted_at IS NULL
-          AND je.metadata->>'flow' = ${EARLY_PAYOFF_FLOW}
-      )
+      -- (b) / (c): payment-backing.ts — shared with backfill:receipts (one definition)
+      backed_schedule AS (${SCHEDULE_ROWS_CLEARED_BY_ENTRY})
       SELECT p.id, p.installment_no, p.amount_paid, p.status, p.paid_date,
              c.contract_number
       FROM payments p
@@ -249,19 +313,10 @@ export class DataAuditChecksService {
         ${contractScopeFilter('p.contract_id', scope)}
         AND NOT EXISTS (SELECT 1 FROM backed_payment b WHERE b.id = p.id)
         AND NOT EXISTS (SELECT 1 FROM backed_schedule b WHERE b.id = s.id)
-        AND NOT EXISTS (SELECT 1 FROM early_payoff_contract b WHERE b.id = p.contract_id)
+        AND NOT ${PAID_BY_EARLY_PAYOFF}
         AND NOT ${LEGACY_UNTOUCHED_PAYMENT}
       ORDER BY p.paid_date DESC
-      LIMIT 50
     `;
-    return {
-      name: 'orphan_payments',
-      severity: 'CRITICAL',
-      status: orphans.length === 0 ? 'PASS' : 'FAIL',
-      count: orphans.length,
-      details: orphans,
-      executedAt: new Date(),
-    };
   }
 
   /**
@@ -269,7 +324,8 @@ export class DataAuditChecksService {
    * actually received (it rides in `amountPaid`; read from the ledger with the same reader the
    * receipt paths use) must not exceed `amountDue` by more than the ≤1 THB closing tolerance.
    * On a row JP4 paid the row's charged late fee counts as received (JP4 books the fee on its
-   * contract-level entry) — only that row: a row already PAID before the payoff gets no allowance.
+   * contract-level entry) — only that row (`PAID_BY_EARLY_PAYOFF` — path (c) of `orphan_payments`): a row
+   * already PAID before the payoff gets no allowance.
    * Reported per contract. Imported rows untouched since the cutover are exempt (closed legacy data).
    */
   async checkOverpaidContracts(scope?: ContractScope): Promise<AuditCheckResult> {
@@ -288,22 +344,8 @@ export class DataAuditChecksService {
     >`
       SELECT p.id AS payment_id, c.id AS contract_id, c.contract_number, p.installment_no,
              p.amount_due, p.amount_paid, p.late_fee, p.late_fee_waived,
-             -- Rows this JP4 paid: ContractPaymentService.earlyPayoff stamps Payment.paidDate and the JP4
-             -- postedAt from one paidDate value (both timestamp(3)), but receipts entered the same day carry
-             -- the same UTC-midnight date, so the stamped range of the rows it closed (unpaid at payoff,
-             -- ascending) must hold too. JP4 entries without the range (before 2026-10-18) fall back to the date.
-             EXISTS (
-               SELECT 1 FROM journal_entries je
-               WHERE je.metadata->>'contractId' = p.contract_id
-                 AND je.metadata->>'flow' = ${EARLY_PAYOFF_FLOW}
-                 AND je.status = 'POSTED' AND je.deleted_at IS NULL
-                 AND je.posted_at = p.paid_date
-                 AND (
-                   je.metadata->>'firstUnpaidInstallmentNo' IS NULL
-                   OR p.installment_no BETWEEN (je.metadata->>'firstUnpaidInstallmentNo')::int
-                                           AND (je.metadata->>'lastUnpaidInstallmentNo')::int
-                 )
-             ) AS early_payoff
+             -- rows this JP4 paid — path (c) of orphan_payments (payment-backing.ts · one definition)
+             ${PAID_BY_EARLY_PAYOFF} AS early_payoff
       FROM payments p
       JOIN contracts c ON c.id = p.contract_id
       WHERE p.deleted_at IS NULL
@@ -379,14 +421,13 @@ export class DataAuditChecksService {
       WHERE pr.deleted_at IS NULL
         AND c.status IN ('ACTIVE', 'OVERDUE', 'DEFAULT')
         AND pr.status = 'IN_STOCK'
-      LIMIT 50
     `;
     return {
       name: 'ghost_stock',
       severity: 'HIGH',
       status: ghosts.length === 0 ? 'PASS' : 'FAIL',
       count: ghosts.length,
-      details: ghosts,
+      details: ghosts.slice(0, DETAIL_LIMIT),
       executedAt: new Date(),
     };
   }
@@ -401,6 +442,19 @@ export class DataAuditChecksService {
    * ภ.พ.30).
    */
   async checkVatMismatch(scope?: ContractScope): Promise<AuditCheckResult> {
+    const mismatches = await this.vatMismatchRows(scope);
+    return {
+      name: 'vat_mismatch',
+      severity: 'HIGH',
+      status: mismatches.length === 0 ? 'PASS' : 'FAIL',
+      count: mismatches.length,
+      details: mismatches.slice(0, DETAIL_LIMIT),
+      executedAt: new Date(),
+    };
+  }
+
+  /** Rows of `vat_mismatch` (rule: `checkVatMismatch`) — every contract in `scope` that breaks the identity */
+  async vatMismatchRows(scope?: ContractScope): Promise<VatMismatchRow[]> {
     const candidates = await this.prisma.$queryRaw<
       {
         contract_id: string;
@@ -440,14 +494,7 @@ export class DataAuditChecksService {
          OR EXISTS (SELECT 1 FROM advance_vat a WHERE a.contract_id = s.id)
       ORDER BY s.contract_number
     `;
-    const mismatches: {
-      contractId: string;
-      contractNumber: string;
-      vatReceivable: string;
-      vatDeferred: string;
-      advanceVatOutstanding: string;
-      diff: string;
-    }[] = [];
+    const mismatches: VatMismatchRow[] = [];
     for (const r of candidates) {
       const advance = await advanceVatOutstanding(this.prisma, r.contract_id);
       const diff = new Prisma.Decimal(r.vat_receivable).minus(r.vat_deferred).minus(advance);
@@ -461,14 +508,7 @@ export class DataAuditChecksService {
         diff: money(diff),
       });
     }
-    return {
-      name: 'vat_mismatch',
-      severity: 'HIGH',
-      status: mismatches.length === 0 ? 'PASS' : 'FAIL',
-      count: mismatches.length,
-      details: mismatches.slice(0, DETAIL_LIMIT),
-      executedAt: new Date(),
-    };
+    return mismatches;
   }
 
   /**
@@ -477,7 +517,7 @@ export class DataAuditChecksService {
    * (`journal/contract-receivable-recon.ts` — the same calculator as the 02:00 receivable recon).
    */
   async checkHpReceivableReconciliation(scope?: ContractScope): Promise<AuditCheckResult> {
-    const rows = await loadContractReceivableGaps(this.prisma, scope);
+    const rows = await this.receivableGapRows(scope);
     const zero = new Prisma.Decimal(0);
     const glReceivable = rows.reduce((s, r) => s.plus(r.glReceivable), zero);
     const registerOutstanding = rows.reduce((s, r) => s.plus(r.registerOutstanding), zero);
@@ -508,6 +548,14 @@ export class DataAuditChecksService {
       ],
       executedAt: new Date(),
     };
+  }
+
+  /**
+   * Rows of `hp_receivable_reconciliation` — one per contract in `scope` (breached or not; breach =
+   * `isReceivableGapBreached`)
+   */
+  receivableGapRows(scope?: ContractScope): Promise<ContractReceivableGap[]> {
+    return loadContractReceivableGaps(this.prisma, scope);
   }
 
   /**
@@ -629,16 +677,51 @@ export class DataAuditChecksService {
         AND gateway_ref != ''
       GROUP BY gateway_ref
       HAVING COUNT(*) > 1
-      LIMIT 50
     `;
     return {
       name: 'duplicate_payments',
       severity: 'HIGH',
       status: dupes.length === 0 ? 'PASS' : 'FAIL',
       count: dupes.length,
-      details: dupes.map((d) => ({ ...d, count: Number(d.count) })),
+      details: dupes.slice(0, DETAIL_LIMIT).map((d) => ({ ...d, count: Number(d.count) })),
       executedAt: new Date(),
     };
+  }
+
+  /**
+   * สัญญาที่เปิด**ก่อนต่อขา SHOP** (PR #1280 · 2026-06-23) — สมุด SHOP ไม่มีลูกหนี้ FINANCE ของสัญญาเลย (`legacyNoShop` —
+   * `interco-settlement/legacy-no-shop.ts` ตัวเดียวกับคิวรอจ่าย INTER-CO) **และ** รายการเปิดสัญญาใบแรก (`CONTRACT_OPENING_ENTRY`) ลงก่อนสิ้น
+   * วันต่อขา SHOP (`SHOP_LEG_WIRED_BEFORE`) ⇒ ไม่มีขา SHOP ของการเปิดสัญญา (ต้นทุนขาย / ลูกหนี้ FINANCE) โดยชอบ — สภาพปกติเดียวกับที่
+   * กระทบยอด INTER-CO ข้าม (`interco-reconcile.cron.ts` `PAYABLE_PAIR_MISMATCH`)
+   *
+   * ต้องครบทั้งสองข้อ: สมุด SHOP ว่างอย่างเดียว = ทุกสัญญาที่การเปิดสัญญาไม่ได้ลงขา SHOP (สิ่งที่ `missing_cogs` มีไว้จับ — JE A กับ JE B ลงใน
+   * ธุรกรรมเดียวกัน) · วันเปิดก่อนต่อขาอย่างเดียว = สัญญาเก่าที่มีขา SHOP บางขา (เช่น ต้นทุนขายหายแต่ลูกหนี้ยังอยู่) หลุด ·
+   * ไม่มีรายการเปิดสัญญา = ไม่ทราบวันเปิด ⇒ ไม่ยกเว้น (`orphan_contracts` ติดอยู่แล้ว)
+   */
+  async preShopWiringContractIds(contractIds: readonly string[]): Promise<Set<string>> {
+    const exempt = new Set<string>();
+    if (contractIds.length === 0) return exempt;
+    const lens = await loadShopFinanceReceivableLens(this.prisma, contractIds);
+    const noShop = new Set(contractIds.filter((id) => isLegacyNoShop(lens.get(id))));
+    if (noShop.size === 0) return exempt;
+    const opened = await this.prisma.$queryRaw<
+      { contract_id: string; activated_at: Date | null }[]
+    >`
+      SELECT je.metadata->>'contractId' AS contract_id, MIN(je.posted_at) AS activated_at
+      FROM journal_entries je
+      WHERE je.status = 'POSTED'
+        AND je.deleted_at IS NULL
+        AND ${CONTRACT_OPENING_ENTRY}
+        AND je.metadata->>'contractId' IN (${Prisma.join([...noShop])})
+      GROUP BY je.metadata->>'contractId'
+    `;
+    for (const row of opened) {
+      // both halves per contract — never trust the row set alone
+      if (noShop.has(row.contract_id) && activatedBeforeShopWiring(row.activated_at)) {
+        exempt.add(row.contract_id);
+      }
+    }
+    return exempt;
   }
 
   /**
@@ -654,16 +737,33 @@ export class DataAuditChecksService {
    * Imported legacy contracts (`legacy_contract_code` — written only by the importer) are exempt: the
    * shop side of the old sale lives in PEAK and the importer books no SHOP leg (device cost 0 —
    * `cli/legacy-backoffice/writer.ts:440`), even if a cost is entered on the device later.
+   *
+   * 2026-10-31 (Task 23 · Task 18 review m-3): contracts opened before the SHOP leg was wired
+   * (`preShopWiringContractIds` — the `legacyNoShop` rule of the inter-co queue + opened before the wiring
+   * day ends) are exempt too: no SHOP activation leg exists for them by design. Exemption is decided in TS
+   * after the query, so the query has no LIMIT (a capped candidate list could hide a failing contract
+   * behind exempt ones); `details` keeps the 50-row cap.
    */
   async checkMissingCogs(scope?: ContractScope): Promise<AuditCheckResult> {
-    const missing = await this.prisma.$queryRaw<
-      { id: string; contract_number: string; product_name: string; cost_price: Prisma.Decimal }[]
-    >`
+    const missing = await this.missingCogsRows(scope);
+    return {
+      name: 'missing_cogs',
+      severity: 'MEDIUM',
+      status: missing.length === 0 ? 'PASS' : 'FAIL',
+      count: missing.length,
+      details: missing.slice(0, DETAIL_LIMIT),
+      executedAt: new Date(),
+    };
+  }
+
+  /** Rows of `missing_cogs` (rule: `checkMissingCogs`) — every row in `scope` */
+  async missingCogsRows(scope?: ContractScope): Promise<MissingCogsRow[]> {
+    const candidates = await this.prisma.$queryRaw<MissingCogsRow[]>`
       SELECT c.id, c.contract_number, pr.name as product_name, pr.cost_price
       FROM contracts c
       JOIN products pr ON pr.id = c.product_id
       WHERE c.deleted_at IS NULL
-        AND c.status IN ('ACTIVE', 'COMPLETED', 'OVERDUE', 'DEFAULT')
+        AND ${activatedStatusSql}
         AND pr.cost_price > 0
         AND c.legacy_contract_code IS NULL
         ${contractScopeFilter('c.id', scope)}
@@ -675,16 +775,9 @@ export class DataAuditChecksService {
             AND je.status = 'POSTED'
         )
       ORDER BY c.created_at DESC
-      LIMIT 50
     `;
-    return {
-      name: 'missing_cogs',
-      severity: 'MEDIUM',
-      status: missing.length === 0 ? 'PASS' : 'FAIL',
-      count: missing.length,
-      details: missing,
-      executedAt: new Date(),
-    };
+    const preShopWiring = await this.preShopWiringContractIds(candidates.map((c) => c.id));
+    return candidates.filter((c) => !preShopWiring.has(c.id));
   }
 
   /**

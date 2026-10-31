@@ -101,6 +101,24 @@ export function isSensitiveKey(key: string): boolean {
   return SENSITIVE_KEY_PATTERNS.some((pat) => pat.test(key));
 }
 
+/**
+ * Settings whose name matches SENSITIVE_KEY_PATTERNS but whose value is not a
+ * secret and is read by the web through `GET /settings` — keep them served.
+ * (`customer_access_token_hours` = link lifetime in hours, Settings page.)
+ */
+const NAME_ONLY_SENSITIVE_KEYS = new Set<string>(['customer_access_token_hours']);
+
+/**
+ * Rows `GET /settings` must never return: Integration Hub credentials
+ * (`integration.*` — served masked by `/integrations/*` only) and any key
+ * `isSensitiveKey` flags (legacy plaintext secrets written by older screens,
+ * e.g. `line_channel_secret`, `fb_page_access_token`).
+ */
+export function isSecretSettingKey(key: string): boolean {
+  if (key.startsWith('integration.')) return true;
+  return isSensitiveKey(key) && !NAME_ONLY_SENSITIVE_KEYS.has(key);
+}
+
 export function redact(key: string, value: string | null | undefined): string | null {
   if (value === null || value === undefined) return null;
   return isSensitiveKey(key) ? '[REDACTED]' : value;

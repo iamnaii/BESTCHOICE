@@ -91,7 +91,7 @@ signature  = "0c592fa5db6e3cb5b2c10f1a0d79c49b295761a6"  (hex, lowercase)
 
 - Separate lifecycle จาก PEAK credentials
 - ถ้า key หมุน (rotate) → ต้อง re-encrypt existing SystemConfig rows (ยังไม่มี migration script — ถ้า rotate ต้องเขียน migration ด้วย)
-- ห้าม commit ลง git; ห้าม log — `integration-config.service.ts` `onModuleInit()` แค่ warn ถ้า missing
+- ห้าม commit ลง git; ห้าม log — `integration-config.service.ts` `onModuleInit()` warn ถ้า missing และ log บรรทัด `integration encrypted fields: ok=N failed=M [...]` (ชื่อช่องเท่านั้น) · ค่าที่ถอดไม่ได้ = "ยังไม่ตั้งค่า" ต้องกรอกใหม่ — ดู `docs/runbooks/2026-10-31-integration-encryption-key.md`
 
 ## Incident checklist (credentials leaked)
 

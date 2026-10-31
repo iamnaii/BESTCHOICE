@@ -147,5 +147,10 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
   ไม่ throw, **ไม่ใช้ env สำรองของช่องนั้น**) ⇒ ผู้เรียกต้องรับมือ `undefined` แบบ fail closed
   (webhook guard ปฏิเสธบน production) · ด่านที่ "ตั้งค่าอยู่" ต้องหมายถึงปลอดภัย (เช่นด่าน PEAK ของ
   `import:legacy-backoffice`) ใช้ `checkEncryptedFields(integration).failed` นับค่าที่ถอดไม่ได้ว่าตั้งค่าอยู่
-- ตรวจ key บน prod จากบรรทัดบูต `integration encrypted fields: ok=N failed=M [...]` (ชื่อช่องเท่านั้น) —
+- key ต้องเป็น hex 64 ตัว (trim) — รูปแบบผิด = ถือว่าไม่มี key (error + Sentry ไม่บอกค่า/ความยาว, บูตไม่ล้ม) ·
+  ช่องลับที่ส่งค่าว่างตอนบันทึก = ไม่เปลี่ยน (ไม่มีการ "ล้าง" ช่องลับจาก UI) · ปุ่มทดสอบการเชื่อมต่อใช้ค่าจาก
+  `getConfig` เท่านั้น (ห้ามเติม `|| process.env.*` — runtime ไม่ใช้ env เมื่อแถวถอดไม่ได้)
+- ตรวจ key บน prod จากบรรทัดบูต `integration encrypted fields: key=… ok=N [...] failed=M [...]` (ชื่อช่องเท่านั้น) —
   ห้ามอ่าน/พิมพ์ค่า secret หรือค่าใน `system_config` · runbook: `docs/runbooks/2026-10-31-integration-encryption-key.md`
+- ⚠ dev/CI ที่ใช้ DB ชุดเดียวกับ prod แต่ไม่มี key: webhook guard ของ LINE/Yeastar เห็น "ยังไม่ตั้งค่า" แล้ว **ข้ามการตรวจ
+  ลายเซ็น (DEV ONLY, `NODE_ENV !== 'production'`)** — ห้ามเปิด dev แบบนี้ออกอินเทอร์เน็ต (tunnel) · production ปฏิเสธ 401

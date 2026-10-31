@@ -310,7 +310,7 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
   `DELETE /integrations/:key/config/:field` OWNER เท่านั้น เท่ากับบันทึก)** เขียน `CLEARED_CREDENTIAL`
   (`integration-config.service.ts`) ทับแถว ⇒ ช่องนั้น "ยังไม่ตั้งค่า" และ **ไม่ใช้ env/ค่าตั้งต้นสำรอง** — มีผลทันทีกับผู้อ่าน
   `getValue` (LINE ×3 · Claude · อีเมล · PEAK · SMS · PaySolutions · MDM · e-Tax) ส่วนผู้อ่าน `getConfig` (cache 5 นาที ต่อ instance:
-  Facebook webhook/ส่ง/คอมเมนต์ · Yeastar webhook/token/CDR · การ์ด/ปุ่มทดสอบ) บน instance อื่นยังใช้ค่าเดิมได้ถึง 5 นาที
+  ผู้อ่าน Facebook ทุกตัว · Yeastar webhook/token/CDR · การ์ด/ปุ่มทดสอบ) บน instance อื่นยังใช้ค่าเดิมได้ถึง 5 นาที
   (แถวว่าง/ไม่มีแถว = ถอยไป env ซึ่ง prod ตั้ง `LINE_*` ไว้ — ล้างแค่ให้ว่างค่าเดิมยังใช้ต่อ) · ทุกผู้อ่าน
   `integration.*` ต้องเช็ค `isClearedCredential` (getValue → getConfig/masked/isConfigured/ปุ่มทดสอบ ·
   บรรทัดบูตไม่นับทั้ง ok/failed · cron หมุนรหัสข้าม) · บันทึกค่าใหม่ที่ไม่ว่าง = แทนสถานะล้างแล้ว ·

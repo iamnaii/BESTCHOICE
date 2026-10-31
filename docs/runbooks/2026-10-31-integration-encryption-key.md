@@ -82,9 +82,11 @@
 - บันทึกค่าใหม่ที่ไม่ว่าง = ใช้งานได้อีกทันที · `DELETE /integrations/:key/config` (ลบทั้ง integration "กลับไปใช้ env")
   ลบสถานะล้างแล้วด้วย = env กลับมาใช้
 - มีผล**ทันที**เฉพาะผู้อ่านที่ใช้ `getValue` (LINE ทั้ง 3 OA · Claude · อีเมล · PEAK · SMS · PaySolutions · MDM · e-Tax) ·
-  ผู้อ่านผ่าน `getConfig` cache — **Facebook** (webhook · ส่งข้อความ · คอมเมนต์) · **Yeastar** (webhook · token · ดึงประวัติการโทร) ·
+  ผู้อ่านผ่าน `getConfig` cache — **ผู้อ่าน Facebook ทุกตัว** · **Yeastar** (webhook · token · ดึงประวัติการโทร) ·
   การ์ดและปุ่มทดสอบ — บน instance อื่นของ API/worker อาจยังใช้ค่าเดิมได้ถึง **5 นาที** (แบบเดียวกับการบันทึก) ⇒ ถ้าล้างเพราะค่ารั่ว
-  ให้นับว่า Facebook/Yeastar ยังรับ/ส่งด้วยค่าเดิมได้อีก 5 นาที · ทดสอบหลังล้างแล้วยังผ่าน ให้รอ 5 นาทีแล้วกดใหม่
+  ให้นับว่า Facebook/Yeastar ยังรับ/ส่งด้วยค่าเดิมได้อีก 5 นาที · Facebook Verify Token ไม่ได้ใช้แค่ยืนยัน webhook: ฟีเจอร์คอมเมนต์เพจ
+  ต้องมีค่านี้ (`FacebookCommentGraphTransport.credentials()`) — ล้างแล้วตอบคอมเมนต์/สมัครรับคอมเมนต์ไม่ได้ และถ้าเปิดรับคอมเมนต์ไว้ คำขอ webhook
+  ที่มีคอมเมนต์ตอบ 503 (ข้อความ Messenger ในคำขอเดียวกันค้างด้วย) · ทดสอบหลังล้างแล้วยังผ่าน ให้รอ 5 นาทีแล้วกดใหม่
 - การ์ด Claude: ล้างแล้วหยุดเฉพาะฟีเจอร์ที่อ่านคีย์ผ่าน Hub (บอทน้องเบส · อ่านสลิป · OCR · วิเคราะห์เครดิต · บอท LINE SHOP แบบเดิม) —
   **บอทขายในอินบ็อกซ์ (`sales-bot/providers/claude.provider.ts`) · `chat-history-extractor/knowledge-extractor.service.ts` ·
   `staff-chat/services/sales-state.service.ts` · `ai-usage/ai-text.service.ts` · `chat-engine/services/after-hours.service.ts`**

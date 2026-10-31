@@ -44,7 +44,8 @@ export type FinanceLineUnlinkTarget = { lineUserId: string } | { customerId: str
  * `CUSTOMER_LINKED_TO_OTHER_LINE_MESSAGE`) ส่วนบอทยังถือว่าผูกอยู่. ผูกใหม่ด้วย OTP เปิด/ชี้แถวเดิมกลับ (`VerificationService.bind`)
  *
  * - `{ lineUserId }` (LIFF "ยกเลิกผูก LINE" — `LiffTokenGuard` พิสูจน์ว่าเป็นเจ้าของ LINE นี้): ล้างคอลัมน์บน**ทุก**ลูกค้าที่ถือ
- *   LINE นี้ (เดิมล้างคนเดียว — ถ้าค่าซ้ำบนลูกค้าคนที่สอง LIFF ยังเห็นข้อมูลอีกคนหลังยกเลิก · Task 19 review M1) + ปิดแถวของ LINE นี้
+ *   LINE นี้ **รวมแถวที่ถูกลบ** (กู้จากถังขยะ/ชุบ ghost แล้วค่าไม่กลับมา — Task 22 fix round 1) (เดิมล้างคนเดียว — Task 19 review M1)
+ *   + ปิดแถวของ LINE นี้
  * - `{ customerId }` (พนักงานล้างช่องในฟอร์มลูกค้า / skip-tracing): ล้างคอลัมน์ของลูกค้าคนนี้ + ปิดแถวของ**ลูกค้าคนนี้**เท่านั้น —
  *   ห้ามปิดตาม LINE: ค่าในคอลัมน์อาจเป็น U-id ที่พนักงานพิมพ์ (I3) ซึ่งเป็น LINE ที่ยืนยัน OTP ไว้กับลูกค้าอีกคน
  *
@@ -56,8 +57,9 @@ export async function unlinkFinanceLine(
   unlinkedAt: Date = new Date(),
 ): Promise<void> {
   if ('lineUserId' in target) {
+    // ไม่กรอง deletedAt โดยตั้งใจ — เป็นการล้างค่า ไม่ใช่การอ่าน
     await tx.customer.updateMany({
-      where: { lineIdFinance: target.lineUserId, deletedAt: null },
+      where: { lineIdFinance: target.lineUserId },
       data: { lineIdFinance: null },
     });
     await tx.customerLineLink.updateMany({

@@ -63,10 +63,10 @@ describe('unlinkFinanceLine', () => {
     };
   });
 
-  it('ตาม LINE (LIFF): ล้างคอลัมน์บนทุกลูกค้าที่ถือ LINE นี้ + ปิดแถว FINANCE ของ LINE นี้', async () => {
+  it('ตาม LINE (LIFF): ล้างคอลัมน์บนทุกลูกค้าที่ถือ LINE นี้ (รวมแถวที่ถูกลบ — กู้แล้วค่าไม่กลับ) + ปิดแถว FINANCE ของ LINE นี้', async () => {
     await unlinkFinanceLine(tx as never, { lineUserId: 'U1' }, at);
     expect(tx.customer.updateMany).toHaveBeenCalledWith({
-      where: { lineIdFinance: 'U1', deletedAt: null },
+      where: { lineIdFinance: 'U1' },
       data: { lineIdFinance: null },
     });
     expect(tx.customerLineLink.updateMany).toHaveBeenCalledWith({

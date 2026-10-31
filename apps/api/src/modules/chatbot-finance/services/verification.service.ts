@@ -625,9 +625,14 @@ export class VerificationService {
         },
       });
 
-      // Sync canonical customer.lineIdFinance — LIFF pages (LiffContract etc.)
-      // lookup customer ด้วย field นี้ตรงๆ ถ้าไม่ update จะ "ไม่มีสัญญา"
-      // ทั้งที่ chatbot/CustomerLineLink link เรียบร้อยแล้ว
+      // Task 22 I-1 (ข) — LINE นี้เป็นของลูกค้าคนนี้แล้ว (upsert-by-line ย้ายแถว link จากลูกค้าเดิมมาได้) ⇒ ล้าง U-id นี้ออกจาก
+      // คอลัมน์ของลูกค้าคนอื่นทุกคน **รวมแถวที่ถูกลบ** (กู้จากถังขยะ/ชุบ ghost แล้วค่าไม่กลับมา) — ไม่งั้นข้อความ push การเงินที่ยัง
+      // อ่านคอลัมน์จะไปหาลูกค้าเดิม (ครึ่งหลังของ Task 19 review M1)
+      await tx.customer.updateMany({
+        where: { lineIdFinance: lineUserId, id: { not: customerId } },
+        data: { lineIdFinance: null },
+      });
+      // Sync canonical customer.lineIdFinance — คอลัมน์เป็นกระจกของแถว OTP (LIFF/ผู้ส่งข้อความการเงินอ่านแถว OTP — Task 22 I-1)
       // Verification flow runs in line-finance OA context — write finance lineId
       await tx.customer.update({
         where: { id: customerId },

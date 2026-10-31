@@ -102,7 +102,10 @@ describe('VerificationService', () => {
         const tx = {
           customerLineLink: { upsert: jest.fn().mockResolvedValue({}) },
           chatRoom: { updateMany: jest.fn().mockResolvedValue({}) },
-          customer: { update: jest.fn().mockResolvedValue({}) },
+          customer: {
+            update: jest.fn().mockResolvedValue({}),
+            updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+          },
         };
         return cb(tx);
       }),
@@ -428,7 +431,10 @@ describe('VerificationService', () => {
             const tx = {
               customerLineLink: { upsert: jest.fn().mockResolvedValue({}) },
               chatRoom: { updateMany: jest.fn().mockResolvedValue({}) },
-              customer: { update: jest.fn().mockResolvedValue({}) },
+              customer: {
+                update: jest.fn().mockResolvedValue({}),
+                updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+              },
             };
             return cb(tx);
           }),
@@ -473,7 +479,10 @@ describe('VerificationService', () => {
           const tx = {
             customerLineLink: { upsert: jest.fn().mockResolvedValue({}) },
             chatRoom: { updateMany: jest.fn().mockResolvedValue({}) },
-            customer: { update: jest.fn().mockResolvedValue({}) },
+            customer: {
+              update: jest.fn().mockResolvedValue({}),
+              updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+            },
           };
           return cb(tx);
         });
@@ -525,7 +534,10 @@ describe('VerificationService', () => {
             const result = await cb({
               customerLineLink: { upsert },
               chatRoom: { updateMany: jest.fn().mockResolvedValue({}) },
-              customer: { update: jest.fn().mockResolvedValue({}) },
+              customer: {
+                update: jest.fn().mockResolvedValue({}),
+                updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+              },
             });
             order.push('commit');
             return result;
@@ -1036,7 +1048,7 @@ describe('VerificationService', () => {
     let tx: {
       customerLineLink: { upsert: jest.Mock; update: jest.Mock };
       chatRoom: { updateMany: jest.Mock };
-      customer: { update: jest.Mock };
+      customer: { update: jest.Mock; updateMany: jest.Mock };
     };
     let order: string[];
     let rows: { byCustomer: unknown; byLine: unknown };
@@ -1086,6 +1098,7 @@ describe('VerificationService', () => {
       'absorb',
       'link-upsert',
       'rooms',
+      'clear-others', // Task 22 I-1 (ข) — ล้าง U-id นี้ออกจากคอลัมน์ของลูกค้าคนอื่นก่อนเขียนของลูกค้าคนนี้
       'line_id_finance',
       'commit',
       'journey',
@@ -1104,7 +1117,7 @@ describe('VerificationService', () => {
       tx = {
         customerLineLink: { upsert: step('link-upsert'), update: step('link-repoint') },
         chatRoom: { updateMany: step('rooms') },
-        customer: { update: step('line_id_finance') },
+        customer: { update: step('line_id_finance'), updateMany: step('clear-others') },
       };
       tPrisma = {
         chatbotOtpRequest: withOtpRowMocks({
@@ -1158,6 +1171,11 @@ describe('VerificationService', () => {
       expect(tx.customer.update).toHaveBeenCalledWith({
         where: { id: 'c1' },
         data: { lineIdFinance: 'U123' },
+      });
+      // Task 22 I-1 (ข) — LINE ที่ย้ายมาหาลูกค้าคนนี้ต้องไม่ค้างบนคอลัมน์ของลูกค้าคนอื่น (รวมแถวที่ถูกลบ — ไม่กรอง deletedAt)
+      expect(tx.customer.updateMany).toHaveBeenCalledWith({
+        where: { lineIdFinance: 'U123', id: { not: 'c1' } },
+        data: { lineIdFinance: null },
       });
       expect(journey.recordAfterCommit.mock.calls[0][0]).toMatchObject({
         customerId: 'c1',

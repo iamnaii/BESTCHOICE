@@ -259,7 +259,7 @@ describe('LiffApiService', () => {
       const result = await service.unlinkLineAccount('U_line');
       expect(result.success).toBe(true);
       expect(tx.customer.updateMany).toHaveBeenCalledWith({
-        where: { lineIdFinance: 'U_line', deletedAt: null },
+        where: { lineIdFinance: 'U_line' },
         data: { lineIdFinance: null },
       });
     });

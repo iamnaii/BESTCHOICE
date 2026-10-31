@@ -13,6 +13,7 @@
  *   7. (Task 22 I4) พนักงานล้างช่อง LINE การเงินในฟอร์มลูกค้า → ปิดแถว ⇒ ลูกค้ายืนยัน OTP ด้วย LINE ใหม่ได้ (ไม่ติด 409)
  *   8. (Task 22 I-1 ก) LIFF การเงินหาลูกค้าจากแถว OTP ไม่ใช่คอลัมน์: คอลัมน์ค้างบนลูกค้าอีกคน (ค่าซ้ำ/พนักงานพิมพ์ก่อน Task 22)
  *      ไม่ให้สิทธิ์ · LINE ที่ไม่มีแถว OTP ได้ null ทุกทาง (รวมตั๋ว PDF)
+ *   9. (Task 22 I-1 ข) LINE ย้ายไปลูกค้าอีกคนด้วย OTP → U-id ถูกล้างจากคอลัมน์ของลูกค้าคนอื่นทุกคน (รวมแถวที่ถูกลบ)
  */
 import { randomUUID } from 'node:crypto';
 import { BadRequestException, ConflictException } from '@nestjs/common';
@@ -42,8 +43,8 @@ let liff: LiffApiService;
 let customerForm: CustomerWriteService;
 
 /** ขอ OTP ไปที่เบอร์ของลูกค้า แล้วยืนยันด้วยรหัสที่ส่งทาง SMS (เส้นจริง ไม่ใช่ test-mode) */
-async function verifyWithOtp(lineUserId: string) {
-  await verification.requestOtp({ lineUserId, phone: PHONE });
+async function verifyWithOtp(lineUserId: string, phone = PHONE) {
+  await verification.requestOtp({ lineUserId, phone });
   const otp = (sms.sendSmsFromQueue.mock.calls.at(-1)?.[1] as string).match(/(\d{6})/)![1];
   return verification.verifyOtp({ lineUserId, otp });
 }
@@ -181,5 +182,31 @@ describe('finance-verify is the only LINE-link path — link rows on real Postgr
     await expect(liff.resolveDownloadDocumentId(U3, 'receipt', randomUUID())).rejects.toThrow(
       'ไม่พบข้อมูลลูกค้า',
     );
+  });
+
+  it('9. the LINE moves to another customer by OTP → its U-id is cleared from every other customer column, deleted rows too (Task 22 I-1 ข)', async () => {
+    const otherPhone = `07${digits}`;
+    const other = await prisma.customer.create({
+      data: { name: `ทดสอบคนใหม่ ${tag}`, phone: otherPhone },
+    });
+    const ghost = await prisma.customer.create({
+      data: {
+        name: `ทดสอบถูกลบ ${tag}`,
+        phone: `05${digits}`,
+        lineIdFinance: U4,
+        deletedAt: new Date(),
+      },
+    });
+    extraCustomerIds.push(other.id, ghost.id);
+
+    await expect(verifyWithOtp(U4, otherPhone)).resolves.toMatchObject({ customerId: other.id });
+
+    const columns = await prisma.customer.findMany({
+      where: { lineIdFinance: U4 },
+      select: { id: true },
+    });
+    expect(columns).toEqual([{ id: other.id }]); // คนเดิม (customerId) · แถวค้างจากข้อ 8 · แถวที่ถูกลบ = ล้างหมด
+    expect(await lineIdFinance()).toBeNull();
+    expect(await liff.findCustomerByLineId(U4)).toMatchObject({ id: other.id });
   });
 });

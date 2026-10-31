@@ -8,22 +8,39 @@
  *
  * บังคับให้สองทรานแซกชันซ้อนกันจริงด้วยเทคนิคถือล็อก (แบบสเปค Task 27): อีกคอนเนกชันถือล็อกห้องแชทที่ bind ต้องแตะ → เริ่ม bind (ไปรอที่ห้อง) →
  * เริ่มทางยกเลิกผูก (ไปรอ) → ปล่อยห้อง. ลำดับเดิม: bind ถือแถว link แล้วรอแถวลูกค้า ส่วนพนักงานถือแถวลูกค้าแล้วรอแถว link = วงจร ·
- * ลำดับใหม่: ทั้งสองรอแถวลูกค้าก่อน ⇒ ทำทีละฝั่ง ไม่มีใครถูกฆ่า. ทางพนักงานใช้ PrismaClient แยก ⇒ เก็บ error ของทุกทรานแซกชันฝั่งพนักงานได้ (ปุ่มลองใหม่เองเมื่อโดน deadlock — ผลสุดท้ายสำเร็จ จึงต้องดูที่ error ระหว่างทาง)
+ * ลำดับใหม่: ทั้งสองรอแถวลูกค้าก่อน ⇒ ทำทีละฝั่ง ไม่มีใครถูกฆ่า. แต่ละฝั่งใช้ PrismaClient ของตัวเอง ⇒ เก็บ error ของทุกทรานแซกชันได้
+ * (ปุ่ม และตั้งแต่ fix round 1 `bind` ลองใหม่เองเมื่อโดน deadlock — ผลสุดท้ายสำเร็จ จึงต้องดูที่ error ระหว่างทาง).
+ *
+ * Task 29 fix round 1 (review I-1) — ทางเดิมที่ล็อก "ห้อง → ลูกค้า" สวนกับ `bind` ลำดับใหม่: ผูกห้องกับลูกค้าในกล่องข้อความ
+ * (`RoomManagerService.linkCustomer`) และผลวิเคราะห์สเตทเม้นจากแชทเสร็จ (`RoomCreditService.analyze`) — ทั้งคู่ล็อกห้องแล้วนำเข้าผลวิเคราะห์
+ * ซึ่งล็อกแถวลูกค้า (`linkRoomCreditHistory` → `lockCreditCustomer`) ⇒ ตอนนี้ล็อกลูกค้าก่อนห้องเหมือนกัน (ปักด้วยสองเคสท้ายไฟล์)
  */
+import { Readable } from 'stream';
 import { ChatChannel, LineChannelType, PrismaClient } from '@prisma/client';
 import { AuditService } from '../../audit/audit.service';
 import { VerificationService } from '../../chatbot-finance/services/verification.service';
+import { RoomManagerService } from '../../chat-engine/services/room-manager.service';
+import { RoomCreditService } from '../../credit-check/services/room-credit.service';
 import { CustomerWriteService } from '../../customers/services/customer-write.service';
 
 jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn(), captureMessage: jest.fn() }));
 jest.setTimeout(60_000);
 
+/** fixture · ตัวถือล็อก · ตัวนับผู้รอล็อก */
 const prisma = new PrismaClient();
-/** ฝั่งพนักงานใช้คอนเนกชันชุดแยก — spy `$transaction` นับเฉพาะทรานแซกชันของทางยกเลิกผูก */
+/** แต่ละฝั่งใช้คอนเนกชันชุดแยก — spy `$transaction` เก็บ error ระหว่างทางของฝั่งนั้น (ลองใหม่สำเร็จก็ยังเห็น) */
+const otpPrisma = new PrismaClient();
 const staffPrisma = new PrismaClient();
+const roomPrisma = new PrismaClient();
+const txFailures: { side: string; error: unknown }[] = [];
+const spies: jest.SpyInstance[] = [];
+let rooms: RoomManagerService;
+let roomCredit: RoomCreditService;
+/** OCR ของการวิเคราะห์สเตทเม้น — ค้างไว้จนเทสปล่อย (ให้ทรานแซกชันตอนวิเคราะห์เสร็จเริ่มในจังหวะที่กำหนด) */
+let ocrReached!: () => void;
+let ocrGate: Promise<void> = Promise.resolve();
 const tag = `t29lk-${Date.now()}`;
 const digits = String(Date.now()).slice(-7);
-const customerIds: string[] = [];
 const line = (name: string) => `U${tag}-${name}`;
 const sms = { sendSmsFromQueue: jest.fn().mockResolvedValue(undefined) };
 let verification: VerificationService;
@@ -34,7 +51,6 @@ async function customer(name: string, phoneSuffix: string, lineIdFinance: string
   const row = await prisma.customer.create({
     data: { name: `ทดสอบ ${name} ${tag}`, phone: `09${phoneSuffix}${digits}`, lineIdFinance },
   });
-  customerIds.push(row.id);
   return row;
 }
 
@@ -70,15 +86,26 @@ async function lockWaiters(n: number): Promise<void> {
   throw new Error(`ไม่มีคอนเนกชันรอล็อกครบ ${n} ตัวภายใน 10 วิ`);
 }
 
+/** เก็บ error ของทุก `$transaction` ของ client (ส่งต่อ error ตามเดิม — พฤติกรรมไม่เปลี่ยน) */
+function captureTxFailures(client: PrismaClient, side: string) {
+  const original = client.$transaction.bind(client) as (...args: unknown[]) => Promise<unknown>;
+  spies.push(
+    jest.spyOn(client, '$transaction').mockImplementation(((...args: unknown[]) =>
+      original(...args).catch((error: unknown) => {
+        txFailures.push({ side, error });
+        throw error;
+      })) as never),
+  );
+}
+
 /**
- * ถือล็อกห้อง `roomId` ไว้ → เริ่ม bind (OTP) → รอจน bind ติด → เริ่มทางยกเลิกผูก → รอจนติด → ปล่อย ·
- * คืนผลทั้งสองฝั่ง + error ของทรานแซกชันฝั่งพนักงานที่ล้มระหว่างทาง (ปุ่มลองใหม่แล้วสำเร็จได้)
+ * ถือล็อกห้อง `roomId` ไว้ → เริ่มฝั่งแรก → รอจนติด → เริ่มฝั่งที่สอง → รอจนติด → ปล่อย · คืนผลทั้งสองฝั่ง
+ * (error ระหว่างทางของทุกฝั่งอยู่ใน `txFailures`)
  */
-async function raceBindAgainst(
+async function raceOnRoom(
   roomId: string,
-  bindLine: string,
-  otp: string,
-  staffUnlink: () => Promise<unknown>,
+  first: () => Promise<unknown>,
+  second: () => Promise<unknown>,
 ) {
   let locked!: () => void;
   let release!: () => void;
@@ -93,24 +120,28 @@ async function raceBindAgainst(
     { timeout: 30_000 },
   );
   await lockedP;
-  const bindP = verification.verifyOtp({ lineUserId: bindLine, otp });
+  const firstP = first();
   await lockWaiters(1);
-  const staffTxFailures: unknown[] = [];
-  const original = staffPrisma.$transaction.bind(staffPrisma) as (
-    ...args: unknown[]
-  ) => Promise<unknown>;
-  const txSpy = jest.spyOn(staffPrisma, '$transaction').mockImplementation(((...args: unknown[]) =>
-    original(...args).catch((error: unknown) => {
-      staffTxFailures.push(error);
-      throw error;
-    })) as never);
-  const staffP = staffUnlink();
+  const secondP = second();
   await lockWaiters(2);
   release();
   await blocker;
-  const [bind, staff] = await Promise.allSettled([bindP, staffP]);
-  txSpy.mockRestore();
-  return { bind, staff, staffTxFailures };
+  return Promise.allSettled([firstP, secondP]);
+}
+
+/** bind (OTP) เริ่มก่อนทางยกเลิกผูกของพนักงาน */
+async function raceBindAgainst(
+  roomId: string,
+  bindLine: string,
+  otp: string,
+  staffUnlink: () => Promise<unknown>,
+) {
+  const [bind, staff] = await raceOnRoom(
+    roomId,
+    () => verification.verifyOtp({ lineUserId: bindLine, otp }),
+    staffUnlink,
+  );
+  return { bind, staff };
 }
 
 /** ฝั่งที่ล้ม = โยน error จริงออกมา (เช่น deadlock 40P01) ให้เห็นในผลเทส */
@@ -136,7 +167,7 @@ beforeAll(async () => {
     })
   ).id;
   verification = new VerificationService(
-    prisma as never,
+    otpPrisma as never,
     sms as never,
     { isEnabled: jest.fn().mockResolvedValue(false) } as never,
     { log: jest.fn().mockResolvedValue(undefined) } as never,
@@ -154,15 +185,32 @@ beforeAll(async () => {
     undefined,
     new AuditService(staffPrisma as never),
   );
+  rooms = new RoomManagerService(roomPrisma as never, {} as never, undefined, undefined);
+  const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0]);
+  roomCredit = new RoomCreditService(
+    roomPrisma as never,
+    { getStream: jest.fn(async () => Readable.from([png])) } as never,
+    {
+      analyzeBankStatement: jest.fn(async () => {
+        ocrReached();
+        await ocrGate;
+        return { monthlyIncome: 25000, totalIncome: 75000, statementMonths: 3, confidence: 0.9 };
+      }),
+    } as never,
+  );
+  captureTxFailures(otpPrisma, 'bind');
+  captureTxFailures(staffPrisma, 'staff');
+  captureTxFailures(roomPrisma, 'room');
 });
 
+beforeEach(() => {
+  txFailures.length = 0;
+});
+
+// แถวทดสอบทิ้งไว้ในฐานทดสอบ (ผลวิเคราะห์/ใบเช็คเครดิต/audit ผูก FK แบบ Restrict — ฐานถูก drop หลังรัน)
 afterAll(async () => {
-  await prisma.chatRoom.deleteMany({ where: { lineUserId: { startsWith: `U${tag}` } } });
-  await prisma.customerLineLink.deleteMany({ where: { customerId: { in: customerIds } } });
-  await prisma.chatbotOtpRequest.deleteMany({ where: { lineUserId: { contains: tag } } });
-  await prisma.customer.deleteMany({ where: { id: { in: customerIds } } });
-  await prisma.$disconnect();
-  await staffPrisma.$disconnect();
+  spies.forEach((spy) => spy.mockRestore());
+  await Promise.all([prisma, otpPrisma, staffPrisma, roomPrisma].map((c) => c.$disconnect()));
 });
 
 describe('ยืนยัน OTP พร้อมพนักงานยกเลิกผูก — ไม่มี deadlock (Task 29 · ลูกค้า → link → ห้อง)', () => {
@@ -187,13 +235,11 @@ describe('ยืนยัน OTP พร้อมพนักงานยกเ�
       const roomId = await room(line(n), c.id);
       const otp = await requestOtp(line(n), c.phone!);
 
-      const { bind, staff, staffTxFailures } = await raceBindAgainst(roomId, line(n), otp, () =>
-        staffUnlink(c.id),
-      );
+      const { bind, staff } = await raceBindAgainst(roomId, line(n), otp, () => staffUnlink(c.id));
 
       expect(settled(bind)).toMatchObject({ customerId: c.id });
       settled(staff);
-      expect(staffTxFailures).toEqual([]); // ไม่มีทรานแซกชันฝั่งพนักงานถูกฆ่าเพราะ deadlock (ปุ่มไม่ต้องลองใหม่)
+      expect(txFailures).toEqual([]); // ไม่มีทรานแซกชันฝั่งไหนถูกฆ่าเพราะ deadlock (ไม่ต้องลองใหม่)
       // bind ถือแถวลูกค้าก่อน ⇒ พนักงานรอจน bind commit แล้วจึงยกเลิกผูก
       expect((await linkRow(line(n))).unlinkedAt).toBeInstanceOf(Date);
       expect(
@@ -212,13 +258,13 @@ describe('ยืนยัน OTP พร้อมพนักงานยกเ�
     const c = await customer('เจ้าของใหม่', '4');
     const otp = await requestOtp(line('3'), c.phone!);
 
-    const { bind, staff, staffTxFailures } = await raceBindAgainst(hRoom, line('3'), otp, () =>
+    const { bind, staff } = await raceBindAgainst(hRoom, line('3'), otp, () =>
       staffForm.unlinkFinanceLineByStaff(h.id, { id: staffId }),
     );
 
     expect(settled(bind)).toMatchObject({ customerId: c.id });
     expect(settled(staff)).toMatchObject({ unlinked: false });
-    expect(staffTxFailures).toEqual([]);
+    expect(txFailures).toEqual([]);
     const row = await linkRow(line('3'));
     expect(row).toMatchObject({ customerId: c.id, unlinkedAt: null });
     const [hAfter, cAfter] = await Promise.all(
@@ -226,5 +272,83 @@ describe('ยืนยัน OTP พร้อมพนักงานยกเ�
     );
     expect(hAfter.lineIdFinance).toBeNull();
     expect(cAfter.lineIdFinance).toBe(line('3'));
+  });
+});
+
+describe('ทาง "ห้อง → ลูกค้า" เดิม แข่งกับยืนยัน OTP — ไม่มี deadlock (Task 29 fix round 1 · review I-1)', () => {
+  /** ลูกค้าที่จะยืนยัน OTP + ห้อง LINE การเงินของ LINE นั้น (ผูกลูกค้าแล้วหรือยัง) */
+  async function fixture(n: string, roomCustomerId: 'none' | 'owner') {
+    const c = await customer(`ห้อง→ลูกค้า ${n}`, n);
+    const roomId = (
+      await prisma.chatRoom.create({
+        data: {
+          lineUserId: line(n),
+          channel: ChatChannel.LINE_FINANCE,
+          customerId: roomCustomerId === 'owner' ? c.id : null,
+        },
+      })
+    ).id;
+    const otp = await requestOtp(line(n), c.phone!);
+    return { c, roomId, otp };
+  }
+
+  const imported = (roomId: string) =>
+    prisma.roomCreditAnalysis.findFirstOrThrow({
+      where: { roomId },
+      include: { creditCheck: true },
+    });
+
+  it('ผูกห้องกับลูกค้าในกล่องข้อความ (มีผลวิเคราะห์สเตทเม้นรอนำเข้า) ขณะลูกค้าคนนั้นยืนยัน OTP ของ LINE ห้องนั้น → ทั้งสองสำเร็จในรอบเดียว', async () => {
+    const { c, roomId, otp } = await fixture('5', 'none');
+    await prisma.roomCreditAnalysis.create({
+      data: { roomId, fileIds: [], status: 'COMPLETED', result: { monthlyIncome: 10000 } },
+    });
+
+    const [linked, bind] = await raceOnRoom(
+      roomId,
+      () => rooms.linkCustomer(roomId, c.id, { id: staffId, role: 'OWNER' }),
+      () => verification.verifyOtp({ lineUserId: line('5'), otp }),
+    );
+
+    expect(settled(linked)).toMatchObject({ id: roomId, customerId: c.id });
+    expect(settled(bind)).toMatchObject({ customerId: c.id });
+    expect(txFailures).toEqual([]);
+    expect((await imported(roomId)).creditCheck).toMatchObject({ customerId: c.id });
+    expect(await linkRow(line('5'))).toMatchObject({ customerId: c.id, unlinkedAt: null });
+  });
+
+  it('ผลวิเคราะห์สเตทเม้นจากแชทเสร็จ (ห้องผูกลูกค้าแล้ว) ขณะลูกค้าคนนั้นยืนยัน OTP ของ LINE ห้องนั้น → ทั้งสองสำเร็จในรอบเดียว', async () => {
+    const { c, roomId, otp } = await fixture('6', 'owner');
+    const file = await prisma.roomCreditFile.create({
+      data: {
+        roomId,
+        key: `room-credit/${tag}-6.png`,
+        name: 's.png',
+        mimeType: 'image/png',
+        size: 12,
+      },
+    });
+    let release!: () => void;
+    const reached = new Promise<void>((r) => (ocrReached = r));
+    ocrGate = new Promise<void>((r) => (release = r));
+    // ทรานแซกชันแรกของ analyze (สร้างแถว ANALYZING) จบก่อนเริ่มแข่ง — แข่งเฉพาะทรานแซกชันตอนวิเคราะห์เสร็จ
+    const analysis = roomCredit.analyze(roomId, [file.id], { id: staffId, role: 'OWNER' });
+    await reached;
+
+    const [analyzed, bind] = await raceOnRoom(
+      roomId,
+      () => {
+        release();
+        return analysis;
+      },
+      () => verification.verifyOtp({ lineUserId: line('6'), otp }),
+    );
+
+    settled(analyzed);
+    expect(settled(bind)).toMatchObject({ customerId: c.id });
+    expect(txFailures).toEqual([]);
+    const row = await imported(roomId);
+    expect(row.status).toBe('COMPLETED');
+    expect(row.creditCheck).toMatchObject({ customerId: c.id });
   });
 });

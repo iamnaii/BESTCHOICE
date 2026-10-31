@@ -96,10 +96,10 @@ export default function Customer360Panel({
 
   const isLocked = contract?.mdmState === 'LOCKED' || contract?.deviceLocked === true;
 
-  // LINE tab is only meaningful when the customer has a LINE ID. If they
-  // don't, hide the tab entirely and snap back to overview if the user was
-  // on LINE for a previously selected customer.
-  const hasLineId = !!(data?.detail.customer.lineIdFinance ?? contract?.customer.lineIdFinance);
+  // Task 27 (Task 24 ข้อกังวล 3) — ป้าย "LINE (งานการเงิน)" · แท็บ "แชท LINE" · ช่องพิมพ์ในแท็บ (ส่งข้อความจริง) ใช้เกณฑ์เดียวกับปุ่ม
+  // "ส่ง LINE": hasVerifiedLine = มีแถว OTP ที่ยังผูก (API คิดจาก customer_line_links) · คอลัมน์ lineIdFinance ไม่ใช่เกณฑ์ ·
+  // ยังไม่ยืนยัน = ไม่มีแท็บ และเด้งกลับภาพรวมถ้าอยู่ที่แท็บ LINE ของลูกค้าคนก่อน
+  const hasVerifiedLine = !!contract?.customer.hasVerifiedLine;
 
   useEffect(() => {
     setTab('overview');
@@ -111,8 +111,8 @@ export default function Customer360Panel({
   }, [contract?.id]);
 
   useEffect(() => {
-    if (tab === 'line' && !hasLineId) setTab('overview');
-  }, [tab, hasLineId]);
+    if (tab === 'line' && !hasVerifiedLine) setTab('overview');
+  }, [tab, hasVerifiedLine]);
 
   // Close on Escape
   useEffect(() => {
@@ -221,7 +221,7 @@ export default function Customer360Panel({
                       />
                     </>
                   )}
-                  {(data?.detail.customer.lineIdFinance ?? contract.customer.lineIdFinance) && (
+                  {hasVerifiedLine && (
                     <span
                       className="inline-flex items-center gap-1 rounded-full bg-success/10 text-success px-2 py-0.5"
                       title="Finance OA — น้องเบส"
@@ -284,7 +284,7 @@ export default function Customer360Panel({
                 <TabButton active={tab === 'related'} onClick={() => setTab('related')}>
                   สัญญาทั้งหมด
                 </TabButton>
-                {hasLineId && (
+                {hasVerifiedLine && (
                   <TabButton active={tab === 'line'} onClick={() => setTab('line')}>
                     แชท LINE
                   </TabButton>
@@ -302,7 +302,7 @@ export default function Customer360Panel({
                   />
                 </section>
               ) : tab === 'line' ? (
-                <LineChatPanel customerId={customerId} />
+                <LineChatPanel customerId={customerId} canSend={hasVerifiedLine} />
               ) : (
                 <>
                   <section className="px-5 pt-3">

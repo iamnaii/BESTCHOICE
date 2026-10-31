@@ -51,7 +51,7 @@ import { EclStageReverseTemplate } from '../../journal/cpa-templates/ecl-stage-r
 import { ContractPaymentService } from '../../contracts/contract-payment.service';
 import { ProductsService } from '../../products/products.service';
 import { ReceiptsService } from '../../receipts/receipts.service';
-import { bangkokStartOfDay } from '../../../utils/date.util';
+import { bangkokCalendarParts, bangkokMidnight, bangkokStartOfDay } from '../../../utils/date.util';
 import { isRetryablePrismaWriteError } from '../../../utils/transaction-retry.util';
 import type { PaymentCase } from '../dto/payment.dto';
 import type { DeferredWarning } from '../../journal/deferred-warning';
@@ -154,15 +154,15 @@ const reopenedFinancePeriods: { id: string; status: AccountingPeriodStatus }[] =
  * เทสไม่พึ่งว่าตารางงวดบัญชีสะอาด: เปิดงวดของ FINANCE ทุกเดือนที่เทสไฟล์นี้ลงรายการ
  * (ย้อนหลัง 10 วัน ถึงพรุ่งนี้). ไม่สร้างแถวใหม่ — ไม่มีแถว = งวดเปิดอยู่แล้ว.
  * แตะเฉพาะงวดของ FINANCE และจำแถวที่เปิดกับสถานะเดิมไว้ — afterAll คืนค่าใน finally.
- * ปี/เดือนอ่านจากเวลาของเครื่อง แบบเดียวกับ validatePeriodOpen.
+ * ปี/เดือนอ่านตามปฏิทินไทย แบบเดียวกับ validatePeriodOpen.
  */
 async function ensureFinancePeriodsOpen(): Promise<void> {
   const finance = await prisma.companyInfo.findFirstOrThrow({ where: { companyCode: 'FINANCE' } });
   const months = new Map<string, { year: number; month: number }>();
   for (let offset = -10; offset <= 1; offset++) {
-    const day = new Date(Date.now() + offset * DAY_MS);
-    const year = day.getFullYear();
-    const month = day.getMonth() + 1;
+    const bkk = bangkokCalendarParts(new Date(Date.now() + offset * DAY_MS));
+    const year = bkk.year;
+    const month = bkk.month + 1;
     months.set(`${year}-${month}`, { year, month });
   }
   const closed = await prisma.accountingPeriod.findMany({
@@ -1689,7 +1689,9 @@ describe('ตั้งลูกหนี้งวด ณ วันรับเ�
       const finance = await prisma.companyInfo.findFirstOrThrow({
         where: { companyCode: 'FINANCE' },
       });
-      const key = { companyId: finance.id, year: at.getFullYear(), month: at.getMonth() + 1 };
+      // เดือนตามปฏิทินไทย — ตัวเดียวกับที่ validatePeriodOpen อ่าน (ไม่ขึ้นกับ TZ ของโปรเซส)
+      const bkk = bangkokCalendarParts(at);
+      const key = { companyId: finance.id, year: bkk.year, month: bkk.month + 1 };
       const period = await prisma.accountingPeriod.findUnique({
         where: { companyId_year_month: key },
       });
@@ -2135,15 +2137,34 @@ describe('ตั้งลูกหนี้งวด ณ วันรับเ�
       const receiptId = await receiptIdOf(c.id, 1);
       const entriesBefore = await entryCount(c.id);
 
-      // validatePeriodOpen ปฏิเสธเมื่อ "ตอนนี้" เลยวันสุดท้ายของเดือนที่ปิด + วันผ่อนผัน:
-      // จำลองว่าวันนี้คือวันสุดท้ายของเดือนนี้ 12:00 (เวลาของเครื่อง) และไม่มีวันผ่อนผัน
-      const today = new Date();
-      const voidAt = new Date(today.getFullYear(), today.getMonth() + 1, 0, 12, 0, 0);
-      await withFinancePeriodClosed(voidAt, async () => {
-        await expect(
-          voidReceipt(receiptId, 'ทดสอบยกเลิกใบเสร็จเมื่องวดบัญชีปิดแล้ว'),
-        ).rejects.toThrow('ไม่สามารถบันทึกรายการในงวดที่ปิดแล้ว');
-      });
+      // validatePeriodOpen ปฏิเสธเมื่อ "ตอนนี้" ถึงวันถัดจากสิ้นเดือนของงวดที่ปิด + วันผ่อนผัน (เวลาไทย — คำตัดสินเจ้าของ
+      // 2026-10-31: วันสุดท้ายของงวดยังลงได้ทั้งวัน) · การยกเลิกลงวันที่ "วันนี้" ⇒ ปฏิเสธได้เฉพาะคำสั่งที่คร่อมเที่ยงคืน: จับวันที่
+      // ยกเลิกตอน 23:59:59.999 ของวันสุดท้ายของเดือนนี้ แล้วนาฬิกาถึง 00:00 วันที่ 1 ระหว่างหาบริษัท FINANCE (ก่อนตรวจงวด)
+      // และไม่มีวันผ่อนผัน. เดิมจำลอง 12:00 ของวันสุดท้าย = off-by-one ที่เจ้าของสั่งแก้ (เคสนั้นผ่านแล้ว — เทสต์ถัดไป)
+      const { year, month } = bangkokCalendarParts(new Date());
+      const dayAfterMonthEnd = bangkokMidnight(year, month + 1, 1);
+      const voidAt = new Date(dayAfterMonthEnd.getTime() - 1);
+      const voidService = receiptsService['void'];
+      const resolveFinance = voidService['resolveFinanceCompanyId'].bind(voidService);
+      const straddle = vi
+        .spyOn(
+          voidService as unknown as { resolveFinanceCompanyId: () => Promise<string | undefined> },
+          'resolveFinanceCompanyId',
+        )
+        .mockImplementationOnce(async () => {
+          vi.setSystemTime(dayAfterMonthEnd);
+          return resolveFinance();
+        });
+      try {
+        await withFinancePeriodClosed(voidAt, async () => {
+          await expect(
+            voidReceipt(receiptId, 'ทดสอบยกเลิกใบเสร็จเมื่องวดบัญชีปิดแล้ว'),
+          ).rejects.toThrow('ไม่สามารถบันทึกรายการในงวดที่ปิดแล้ว');
+        });
+        expect(straddle).toHaveBeenCalled();
+      } finally {
+        straddle.mockRestore();
+      }
 
       const receipt = await prisma.receipt.findUniqueOrThrow({ where: { id: receiptId } });
       expect(receipt.isVoided).toBe(false);
@@ -2151,6 +2172,22 @@ describe('ตั้งลูกหนี้งวด ณ วันรับเ�
       expect(await entryCount(c.id)).toBe(entriesBefore);
       expect(await balance(c.id, '11-2103', 'dr')).toBe('0.00');
       expect(await paidOf(c.id, 1)).toEqual({ amountPaid: '1515.83', status: 'PAID' });
+    });
+
+    it('งวดบัญชีของเดือนนี้ปิดก่อนสิ้นเดือน + ไม่มีวันผ่อนผัน → วันสุดท้ายของเดือนยังยกเลิกได้ถึง 23:59:59.999 (คำตัดสินเจ้าของ 2026-10-31)', async () => {
+      const c = await seedContract({ dueDate: futureDue(), paymentRows: [1, 2] });
+      await record(c.id, 1, 1515.83, 'AAR-VOID-7');
+      const receiptId = await receiptIdOf(c.id, 1);
+
+      const { year, month } = bangkokCalendarParts(new Date());
+      const voidAt = new Date(bangkokMidnight(year, month + 1, 1).getTime() - 1);
+      await withFinancePeriodClosed(voidAt, async () => {
+        await voidReceipt(receiptId, 'ทดสอบยกเลิกใบเสร็จวันสุดท้ายของงวดที่ปิดก่อนสิ้นเดือน');
+      });
+
+      const receipt = await prisma.receipt.findUniqueOrThrow({ where: { id: receiptId } });
+      expect(receipt.isVoided).toBe(true);
+      expect(await paidOf(c.id, 1)).toEqual({ amountPaid: '0.00', status: 'PENDING' });
     });
   });
 });

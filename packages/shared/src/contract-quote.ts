@@ -15,7 +15,11 @@ export interface ContractQuote {
   cashDownPayment: string;
   tradeInCreditAmount: string;
   configId: string | null;
-  vatSource: 'BRANCH_COMPANY' | 'CONFIG_FALLBACK';
+  /**
+   * ที่มาของอัตรา VAT — `FINANCE_COMPANY` = บริษัทผู้ให้สินเชื่อ (ตั้งแต่ 2026-10-31) · `CONFIG_FALLBACK` = ค่าตั้งดอกเบี้ย/ระบบ ·
+   * `BRANCH_COMPANY` = ป้ายเดิม (บริษัทของสาขา) ไม่มีผู้สร้างแล้ว — คงไว้ในชนิดเพื่อข้อมูล/fixture เก่า
+   */
+  vatSource: 'FINANCE_COMPANY' | 'CONFIG_FALLBACK' | 'BRANCH_COMPANY';
   effectiveVatPct: string;
   interestRate: string;
   storeCommissionPct: string;

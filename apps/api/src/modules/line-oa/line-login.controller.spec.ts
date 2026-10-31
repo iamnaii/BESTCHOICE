@@ -122,7 +122,7 @@ describe('LineLoginController — returnPath must stay on the frontend origin (C
     expect(target.pathname).toBe('/liff/finance-verify');
     expect(target.searchParams.get('src')).toBe('shop');
     expect(target.searchParams.get('line_login')).toBe('true');
-    expect(target.searchParams.get('line_user_id')).toBe('U_victim');
+    expect(target.searchParams.has('line_user_id')).toBe(false); // Task 21 I-A: ตัวตนอยู่ใน id_token เท่านั้น
     expect(target.hash).toBe(`#id_token=${encodeURIComponent('VICTIM_ID_TOKEN')}`);
   });
 

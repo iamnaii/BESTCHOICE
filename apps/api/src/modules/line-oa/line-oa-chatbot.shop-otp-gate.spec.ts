@@ -31,8 +31,8 @@ const ATTACKER = 'U_attacker_shop';
 const OWNER = 'U_owner_verified';
 const VICTIM_PHONE = '0812345678';
 const CONTRACT_NO = 'BC-2026-0001';
-/** ลิงก์ LINE Login → /liff/finance-verify (หน้า OTP) ที่บอทใส่ในข้อความ */
-const VERIFY_LINK = `returnPath=${encodeURIComponent('/liff/finance-verify')}`;
+/** ลิงก์หน้า /liff/finance-verify (หน้า OTP — หน้าเว็บเริ่ม LINE Login พร้อม nonce เอง, Task 21) ที่บอทใส่ในข้อความ */
+const VERIFY_LINK = '/liff/finance-verify';
 
 type World = {
   victim: {

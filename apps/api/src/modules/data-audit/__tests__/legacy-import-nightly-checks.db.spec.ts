@@ -1334,6 +1334,43 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
     LONG,
   );
 
+  it(
+    'Task 23 — contract trace: every paid row of the contract gets the orphan_payments verdict (no 50-row cap)',
+    async () => {
+      // D1 ปกติ: 62 แถวงวดที่ถูกตั้งเป็น PAID ตรงในฐานโดยไม่มีรายการบัญชี (แถว 13–62 เติมเอง) — orphan_payments ของสัญญาเดียวเกิน 50 แถว ·
+      // เดิม trace อ่าน details ของตรวจกลางคืนที่ตัด 50 ⇒ 12 แถวถูกตัดสินผิดเป็น PASS "backedWithoutPaymentId"
+      const d1 = await createNative('D1', P1.date, P1.dueDay);
+      native.set('D1', d1);
+      const last = await paymentOf(d1, 12);
+      await prisma.payment.createMany({
+        data: Array.from({ length: 50 }, (_, i) => ({
+          contractId: d1,
+          installmentNo: 13 + i,
+          dueDate: new Date(last.dueDate.getTime() + (i + 1) * 30 * DAY),
+          amountDue: last.amountDue,
+        })),
+      });
+      const paid = await prisma.payment.updateMany({
+        where: { contractId: d1 },
+        data: {
+          amountPaid: D(MONTHLY),
+          status: 'PAID',
+          paidDate: P1.due(1),
+          paymentMethod: 'CASH',
+          recordedById: userId,
+        },
+      });
+      expect(paid.count).toBe(62);
+      expect((await run('orphan_payments', [d1])).count).toBe(50); // ตรวจกลางคืนยังตัด details ที่ 50
+
+      const trace = new ContractTraceService(prisma as unknown as PrismaService, checks);
+      const t = await trace.traceContract(d1);
+      expect(t.checks.payments).toHaveLength(62);
+      expect(t.checks.payments.filter((p) => p.status !== 'FAIL').map((p) => p.name)).toEqual([]);
+    },
+    LONG,
+  );
+
   describe('early payoff (JP4) of a native contract — calendar anchored to today', () => {
     let a3 = '';
 

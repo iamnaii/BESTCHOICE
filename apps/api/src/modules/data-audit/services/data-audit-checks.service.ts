@@ -78,6 +78,22 @@ const INSTALLMENT_OVERPAY_TOLERANCE = new Prisma.Decimal('1.00');
 /** VAT รอเรียกเก็บสองขาต้องตรงกันทุกสตางค์ (ยอด 2 ตำแหน่ง) */
 const VAT_DEFERRED_TOLERANCE = new Prisma.Decimal('0.01');
 const DETAIL_LIMIT = 50;
+/**
+ * `LIMIT` ของ details ตรวจกลางคืน — ไม่ส่ง = ทุกแถวในขอบเขต (ไล่ตรวจสัญญาต้องเห็นทุกแถวของสัญญาที่ตรวจ ไม่งั้นแถวที่เกิน 50 ถูกตัดสิน
+ * ผิดเป็น PASS — Task 18 nit / Task 23)
+ */
+const limitClause = (limit?: number): Prisma.Sql =>
+  limit === undefined ? Prisma.empty : Prisma.raw(`LIMIT ${Math.trunc(limit)}`);
+
+/** แถวของ `orphan_payments` */
+export type OrphanPaymentRow = {
+  id: string;
+  installment_no: number;
+  amount_paid: Prisma.Decimal;
+  status: string;
+  paid_date: Date;
+  contract_number: string;
+};
 
 const money = (v: Prisma.Decimal.Value) => new Prisma.Decimal(v).toFixed(2);
 
@@ -202,19 +218,26 @@ export class DataAuditChecksService {
    *   (c) the contract's early payoff (JP4 is one contract-level entry for every row it pays).
    * Imported rows still untouched since the cutover (`LEGACY_UNTOUCHED_PAYMENT`) are exempt — their
    * money was booked in PEAK. Set-based (anti-joins) so the nightly run does not rescan the journal
-   * per payment row.
+   * per payment row. `details` capped at 50 (`orphanPaymentRows` — the contract trace reads every row).
    */
   async checkOrphanPayments(scope?: ContractScope): Promise<AuditCheckResult> {
-    const orphans = await this.prisma.$queryRaw<
-      {
-        id: string;
-        installment_no: number;
-        amount_paid: Prisma.Decimal;
-        status: string;
-        paid_date: Date;
-        contract_number: string;
-      }[]
-    >`
+    const orphans = await this.orphanPaymentRows(scope, DETAIL_LIMIT);
+    return {
+      name: 'orphan_payments',
+      severity: 'CRITICAL',
+      status: orphans.length === 0 ? 'PASS' : 'FAIL',
+      count: orphans.length,
+      details: orphans,
+      executedAt: new Date(),
+    };
+  }
+
+  /**
+   * Rows of `orphan_payments` (rule: `checkOrphanPayments`) — `limit` omitted = every row in `scope` (the contract
+   * trace's verdict per installment; the nightly run passes 50).
+   */
+  async orphanPaymentRows(scope?: ContractScope, limit?: number): Promise<OrphanPaymentRow[]> {
+    return this.prisma.$queryRaw<OrphanPaymentRow[]>`
       -- (a) and (b) deliberately count originals stamped metadata.reversed = true (receipt entries
       -- carry both paymentId and installmentScheduleId, so each path sees them): after a receipt void
       -- the row keeps the voided receipt's payment_method / recorded_by (so an imported row is no
@@ -261,16 +284,8 @@ export class DataAuditChecksService {
         AND NOT EXISTS (SELECT 1 FROM early_payoff_contract b WHERE b.id = p.contract_id)
         AND NOT ${LEGACY_UNTOUCHED_PAYMENT}
       ORDER BY p.paid_date DESC
-      LIMIT 50
+      ${limitClause(limit)}
     `;
-    return {
-      name: 'orphan_payments',
-      severity: 'CRITICAL',
-      status: orphans.length === 0 ? 'PASS' : 'FAIL',
-      count: orphans.length,
-      details: orphans,
-      executedAt: new Date(),
-    };
   }
 
   /**

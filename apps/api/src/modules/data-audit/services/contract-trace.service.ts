@@ -372,10 +372,13 @@ export class ContractTraceService {
     };
   }
 
-  /** งวดที่ `orphan_payments` ตัดสินว่าไม่มีรายการหนุน (คำตัดสินเดียวกับตรวจกลางคืน) */
+  /**
+   * งวดที่ `orphan_payments` ตัดสินว่าไม่มีรายการหนุน (คำตัดสินเดียวกับตรวจกลางคืน) — **ทุกแถว**ของสัญญาในขอบเขต (เดิมอ่าน `details` ของ
+   * ตรวจกลางคืนที่ตัด 50 แถว ⇒ แถวที่เกินถูกตัดสินผิดเป็น PASS — Task 23)
+   */
   private async orphanPaymentIds(scope: ContractScope): Promise<Set<string>> {
-    const result = await this.checks.checkOrphanPayments(scope);
-    return new Set((result.details as { id: string }[]).map((row) => row.id));
+    const rows = await this.checks.orphanPaymentRows(scope);
+    return new Set(rows.map((row) => row.id));
   }
 
   private tracePayment(

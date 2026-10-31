@@ -151,6 +151,29 @@ describe('DataAuditService', () => {
       expect(result.status).toBe('FAIL');
       expect(result.count).toBe(1);
     });
+
+    it('Task 23 — the nightly run caps details at 50; the contract trace reads every row of its scope (same SQL, no LIMIT)', async () => {
+      await service.checkOrphanPayments();
+      expect(JSON.stringify(prisma.$queryRaw.mock.calls[0])).toContain('LIMIT 50');
+
+      prisma.contract.findUnique.mockResolvedValueOnce({
+        id: 'c-1',
+        contractNumber: 'BC-1',
+        status: 'ACTIVE',
+        legacyContractCode: null,
+        payments: [],
+        product: null,
+        branch: null,
+      });
+      await service.traceContract('c-1');
+      const traceCall = prisma.$queryRaw.mock.calls
+        .slice(1)
+        .find((c: unknown[]) => JSON.stringify(c).includes('backed_payment'));
+      expect(JSON.stringify(traceCall)).not.toContain('LIMIT');
+      expect(traceCall).toEqual(
+        expect.arrayContaining([expect.objectContaining({ values: ['c-1'] })]),
+      );
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════

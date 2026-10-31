@@ -1371,6 +1371,32 @@ describeDb('nightly data-audit + receivable-recon on imported legacy contracts (
     LONG,
   );
 
+  it(
+    'Task 23 (m-5) — trace of a batch (each nightly check run once for every contract) = the trace of each contract alone',
+    async () => {
+      // ทุกสัญญาของสเปค (หลังขั้น 3 — มีทั้งสัญญาสะอาด สัญญาที่ถูกทำให้เพี้ยน และ D1 ที่ orphan_payments เกิน 50 แถว) · ชุดเดียว > 50 แถวงวดที่ติด
+      const trace = new ContractTraceService(prisma as unknown as PrismaService, checks);
+      const contractIds = [...native.values(), ...legacy.values()];
+      const batch = await trace.traceContracts(contractIds);
+      const alone: Awaited<ReturnType<ContractTraceService['traceContract']>>[] = [];
+      for (const id of contractIds) alone.push(await trace.traceContract(id));
+      expect(batch).toEqual(alone);
+      // ไม่ใช่เท่ากันเพราะผ่านหมด — ชุดนี้มีข้อ FAIL จากหลายตัวตรวจ
+      const failedNames = new Set(
+        batch.flatMap((t) =>
+          Object.values(t.checks)
+            .flat()
+            .filter((c) => c.status === 'FAIL')
+            .map((c) => c.name.replace(/^payment_\d+$/, 'payment')),
+        ),
+      );
+      expect([...failedNames].sort()).toEqual(
+        ['activation', 'cogs', 'hpReceivable', 'interCompany', 'payment', 'vatTotal'].sort(),
+      );
+    },
+    LONG,
+  );
+
   describe('early payoff (JP4) of a native contract — calendar anchored to today', () => {
     let a3 = '';
 

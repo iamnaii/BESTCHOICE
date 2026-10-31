@@ -12,6 +12,7 @@ import {
   isReceivableGapBreached,
   loadContractReceivableGaps,
   receivableReconScopeSql,
+  type ContractReceivableGap,
   type ContractScope,
 } from '../../journal/contract-receivable-recon';
 import {
@@ -110,6 +111,16 @@ export type MissingCogsRow = {
   contract_number: string;
   product_name: string;
   cost_price: Prisma.Decimal;
+};
+
+/** แถวของ `vat_mismatch` (ยอดเป็นสตริง 2 ตำแหน่ง) */
+export type VatMismatchRow = {
+  contractId: string;
+  contractNumber: string;
+  vatReceivable: string;
+  vatDeferred: string;
+  advanceVatOutstanding: string;
+  diff: string;
 };
 
 /** แถวของ `orphan_payments` */
@@ -456,6 +467,19 @@ export class DataAuditChecksService {
    * ภ.พ.30).
    */
   async checkVatMismatch(scope?: ContractScope): Promise<AuditCheckResult> {
+    const mismatches = await this.vatMismatchRows(scope);
+    return {
+      name: 'vat_mismatch',
+      severity: 'HIGH',
+      status: mismatches.length === 0 ? 'PASS' : 'FAIL',
+      count: mismatches.length,
+      details: mismatches.slice(0, DETAIL_LIMIT),
+      executedAt: new Date(),
+    };
+  }
+
+  /** Rows of `vat_mismatch` (rule: `checkVatMismatch`) — every contract in `scope` that breaks the identity */
+  async vatMismatchRows(scope?: ContractScope): Promise<VatMismatchRow[]> {
     const candidates = await this.prisma.$queryRaw<
       {
         contract_id: string;
@@ -495,14 +519,7 @@ export class DataAuditChecksService {
          OR EXISTS (SELECT 1 FROM advance_vat a WHERE a.contract_id = s.id)
       ORDER BY s.contract_number
     `;
-    const mismatches: {
-      contractId: string;
-      contractNumber: string;
-      vatReceivable: string;
-      vatDeferred: string;
-      advanceVatOutstanding: string;
-      diff: string;
-    }[] = [];
+    const mismatches: VatMismatchRow[] = [];
     for (const r of candidates) {
       const advance = await advanceVatOutstanding(this.prisma, r.contract_id);
       const diff = new Prisma.Decimal(r.vat_receivable).minus(r.vat_deferred).minus(advance);
@@ -516,14 +533,7 @@ export class DataAuditChecksService {
         diff: money(diff),
       });
     }
-    return {
-      name: 'vat_mismatch',
-      severity: 'HIGH',
-      status: mismatches.length === 0 ? 'PASS' : 'FAIL',
-      count: mismatches.length,
-      details: mismatches.slice(0, DETAIL_LIMIT),
-      executedAt: new Date(),
-    };
+    return mismatches;
   }
 
   /**
@@ -532,7 +542,7 @@ export class DataAuditChecksService {
    * (`journal/contract-receivable-recon.ts` — the same calculator as the 02:00 receivable recon).
    */
   async checkHpReceivableReconciliation(scope?: ContractScope): Promise<AuditCheckResult> {
-    const rows = await loadContractReceivableGaps(this.prisma, scope);
+    const rows = await this.receivableGapRows(scope);
     const zero = new Prisma.Decimal(0);
     const glReceivable = rows.reduce((s, r) => s.plus(r.glReceivable), zero);
     const registerOutstanding = rows.reduce((s, r) => s.plus(r.registerOutstanding), zero);
@@ -563,6 +573,14 @@ export class DataAuditChecksService {
       ],
       executedAt: new Date(),
     };
+  }
+
+  /**
+   * Rows of `hp_receivable_reconciliation` — one per contract in `scope` (breached or not; breach =
+   * `isReceivableGapBreached`)
+   */
+  receivableGapRows(scope?: ContractScope): Promise<ContractReceivableGap[]> {
+    return loadContractReceivableGaps(this.prisma, scope);
   }
 
   /**

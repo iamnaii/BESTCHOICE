@@ -1028,6 +1028,74 @@ describe('DataAuditService', () => {
       expect(result.total).toBe(0);
       expect(result.failed).toBe(0);
     });
+
+    it('Task 23 (m-5) — runs each nightly check ONCE for the whole batch (scoped by every contractId), not per contract; response shape unchanged', async () => {
+      const ids = ['c-1', 'c-2', 'c-3'];
+      prisma.contract.findMany.mockResolvedValueOnce(ids.map((id) => ({ id })));
+      prisma.contract.findUnique.mockImplementation(
+        async ({ where }: { where: { id: string } }) => ({
+          id: where.id,
+          contractNumber: `BC-${where.id}`,
+          status: 'ACTIVE',
+          legacyContractCode: null,
+          payments: [
+            {
+              id: `p-${where.id}`,
+              installmentNo: 1,
+              status: 'PENDING',
+              amountPaid: new Prisma.Decimal(0),
+            },
+          ],
+          product: null,
+          branch: null,
+        }),
+      );
+      // every contract carries its balanced SHOP receivable leg (JE B) — only the opening verdict differs
+      prisma.journalEntry.findMany.mockResolvedValue([
+        {
+          metadata: { flow: 'shop-inventory-transfer-revenue' },
+          lines: [
+            {
+              accountCode: 'S11-3001',
+              debit: new Prisma.Decimal(100),
+              credit: new Prisma.Decimal(0),
+            },
+            {
+              accountCode: 'S41-1101',
+              debit: new Prisma.Decimal(0),
+              credit: new Prisma.Decimal(100),
+            },
+          ],
+        },
+      ]);
+      const markers = {
+        orphanContracts: 'c.status, c.created_at',
+        missingCogs: 'shop-inventory-transfer-cogs',
+        orphanPayments: 'backed_payment',
+        vat: 'vat_receivable',
+        gaps: 'register_outstanding',
+      };
+      prisma.$queryRaw.mockImplementation(async (...args: unknown[]) => {
+        const sql = JSON.stringify(args);
+        // c-2 has no opening entry — only orphan_contracts says so
+        if (sql.includes(markers.orphanContracts)) return [{ id: 'c-2' }];
+        return [];
+      });
+
+      const result = await service.traceAll({});
+
+      const callsOf = (marker: string) =>
+        prisma.$queryRaw.mock.calls.filter((c: unknown[]) => JSON.stringify(c).includes(marker));
+      for (const marker of Object.values(markers)) {
+        const calls = callsOf(marker);
+        expect([marker, calls.length]).toEqual([marker, 1]); // once per batch (was once per contract)
+        for (const id of ids) expect(JSON.stringify(calls[0])).toContain(`"${id}"`);
+      }
+      expect(result).toMatchObject({ total: 3, checked: 3, passed: 2, failed: 1 });
+      expect(result.failures.map((f) => [f.contract.id, f.checks.activation.status])).toEqual([
+        ['c-2', 'FAIL'],
+      ]);
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════

@@ -489,6 +489,16 @@ Cash account dimension is required on every Payment record.
 
 ---
 
+## สมดุลรายการบัญชี — เท่ากันพอดี ไม่มีเผื่อ (คำตัดสินเจ้าของ 2026-10-31)
+
+ทุกรายการ POSTED ต้อง Σ เดบิต = Σ เครดิต **ทุกสตางค์** — กติกาเดียว `isJournalBalanced` + `JOURNAL_UNBALANCED_SQL`
+(`data-audit/services/data-audit-checks.service.ts`) ใช้ทั้งข้อกลางคืน `journal_balance` (CRITICAL → Sentry) และการไล่ตรวจสัญญา (trace)
+· ทางลงบัญชีทั้งสองทาง (`JournalService.create` · `JournalAutoService.createAndPost`) บังคับ `Decimal.equals` อยู่แล้ว ⇒ ต่างแม้ 0.01 = รายการที่
+เขียนนอกสองทางนี้ (SQL ตรง / ข้อมูลเก่า) · เดิมข้อกลางคืนเผื่อ 0.01 (`JOURNAL_BALANCE_TOLERANCE` — ลบแล้ว) · เกณฑ์ ≤ 1 บาทข้างล่างเป็นเรื่อง
+ยอดรับชำระ ไม่เกี่ยวกับสมดุลของรายการ
+
+---
+
 ## Tolerance Policy (<=1 THB)
 
 Small discrepancies on payment receipt (overpay / underpay <=1 THB):

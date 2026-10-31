@@ -13,7 +13,7 @@ import {
   ACTIVATED_CONTRACT_STATUSES,
   DataAuditChecksService,
   isContractOpeningEntry,
-  JOURNAL_BALANCE_TOLERANCE,
+  isJournalBalanced,
   SHOP_INVENTORY_TRANSFER_COGS_FLOW,
   SHOP_INVENTORY_TRANSFER_REVENUE_FLOW,
   type VatMismatchRow,
@@ -77,8 +77,8 @@ const balanceOf = (lines: TraceLine[]) => {
   return {
     totalDebit: money(totalDebit),
     totalCredit: money(totalCredit),
-    // เกณฑ์ของ `journal_balance` (ไม่สมดุล = ต่างกันเกิน 0.01)
-    balanced: totalDebit.minus(totalCredit).abs().lte(JOURNAL_BALANCE_TOLERANCE),
+    // กติกาของ `journal_balance` — เท่ากันพอดี ไม่มีเผื่อ (คำตัดสินเจ้าของ 2026-10-31)
+    balanced: isJournalBalanced(totalDebit, totalCredit),
   };
 };
 
@@ -98,7 +98,7 @@ const balanceOf = (lines: TraceLine[]) => {
  * - m-4: คำตัดสิน PASS/FAIL ของเปิดสัญญาและต้นทุนขายมาจาก `orphan_contracts` / `missing_cogs` (แถวของข้อนั้น) — เดิม trace เขียนเงื่อนไขซ้ำ
  *   ฝั่ง TS ด้วยชุดสถานะที่กว้างกว่า (`EARLY_PAYOFF` / `CLOSED_BAD_DEBT`) ⇒ ตอนนี้ขอบเขตเท่าตรวจกลางคืน (`ACTIVATED_CONTRACT_STATUSES`) ·
  *   ระหว่างกิจการ (ไม่มีข้อกลางคืนคู่) ใช้ประชากรเดียวกับ `missing_cogs` ยกเว้นเงื่อนไขต้นทุน เพราะ JE A / JE B ลงในธุรกรรมเดียวกัน (JE B
- *   ไม่ขึ้นกับต้นทุน) · รายการที่พบตรวจสมดุลด้วยเกณฑ์ของ `journal_balance`
+ *   ไม่ขึ้นกับต้นทุน) · รายการที่พบตรวจสมดุลด้วยเกณฑ์ของ `journal_balance` (`isJournalBalanced` — เท่ากันพอดี ตั้งแต่ 2026-10-31)
  * - m-3: สัญญาที่เปิดก่อนต่อขา SHOP (`preShopWiringContractIds` — `legacyNoShop` + วันเปิด) ไม่ต้องมีต้นทุนขาย / ลูกหนี้ FINANCE ฝั่ง SHOP
  * - m-5: ตรวจกลางคืนรันครั้งเดียวต่อชุดสัญญา (`traceContracts` / `loadVerdicts`) · แถวไม่ตัด 50
  */

@@ -39,6 +39,7 @@ import { computePayoffQuote, countNotDueInstallments, PayoffQuoteResult } from '
 import { JourneyEntryWriter } from '../customer-journey/journey-entry-writer.service';
 import { journeyDedupeKey } from '../customer-journey/journey-data-schemas';
 import { Decimal } from '@prisma/client/runtime/library';
+import { isJournalBalanced } from '../journal/journal-balance';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { assertNoPendingBankRefund } from '../refunds/pending-bank-refund';
 import { isFutureBkkDay } from '../../utils/date.util';
@@ -470,7 +471,8 @@ export class ContractPaymentService {
       jeTotalDr = jeTotalDr.plus(l.debit);
       jeTotalCr = jeTotalCr.plus(l.credit);
     }
-    const jeIsBalanced = jeTotalDr.toFixed(2) === jeTotalCr.toFixed(2);
+    // re-review m4: the single Dr = Cr rule (exact — owner decision 2026-10-31), not a hand-written comparison
+    const jeIsBalanced = isJournalBalanced(jeTotalDr, jeTotalCr);
 
     return {
       ...amounts,

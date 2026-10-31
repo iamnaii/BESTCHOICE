@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 
+import { ACTIVE_FINANCE_LINK_WHERE } from '../../modules/line-oa/services/otp-verified-customer';
 import type { LateFeeConfig } from '../../utils/late-fee.util';
 import { resolveLivePaymentLateFee } from '../../utils/late-fee.util';
 import { bkkDateStr } from './_context';
@@ -8,6 +9,16 @@ import { bkkDateStr } from './_context';
  * Pure helpers ของโหมดเดินเรื่อง (เฟส 3) — แยกไฟล์จาก _drive.ts เพื่อให้ spec
  * import ได้โดยไม่ลาก TestPackModule (กราฟ feature module เกือบทั้งแอป) เข้า jest
  */
+
+/**
+ * ลูกค้าที่ก้าวรับชำระ "อาจยิงข้อความ LINE การเงินถึงตัวจริง" ⇒ สัญญาของลูกค้ากลุ่มนี้ถูกข้าม (MINOR 5 — ชุดทดสอบห้าม push ถึงลูกค้าจริง).
+ * ผู้ส่งข้อความการเงิน (hook หลังรับเงิน ฯลฯ) อ่านปลายทางจากแถว OTP ที่ยังผูก (`ACTIVE_FINANCE_LINK_WHERE` — Task 22 I-1 ง) ไม่ใช่คอลัมน์
+ * ⇒ ต้องข้ามลูกค้าที่มีแถวนั้นแม้คอลัมน์ว่าง (Task 24 RR-M1 — เกิดได้จากแก้ DB มือ/ข้อมูลเก่า) · คอลัมน์ที่ไม่ว่างยังข้ามด้วยแบบระวังไว้ก่อน
+ * (ไม่ตัดสินสิทธิ์ ไม่เป็นปลายทาง — แค่ข้ามสัญญามากขึ้นในชุดทดสอบ)
+ */
+export const MAY_RECEIVE_FINANCE_LINE_WHERE = {
+  OR: [{ lineIdFinance: { not: null } }, { lineLinks: { some: ACTIVE_FINANCE_LINK_WHERE } }],
+} satisfies Prisma.CustomerWhereInput;
 
 /** เดือนไทย (YYYYMM) ของวันที่ — ใช้กับ month-guard ของก้าวที่คุมวันที่ลงบัญชีไม่ได้ */
 export const bkkMonthKey = (d: Date): string => bkkDateStr(d).slice(0, 6);

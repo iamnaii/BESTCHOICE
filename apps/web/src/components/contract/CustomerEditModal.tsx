@@ -14,6 +14,10 @@ import AddressForm, {
 import { toast } from 'sonner';
 import { THAI_NAME_PREFIXES, RELATIONSHIP_OPTIONS } from '@/lib/constants';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
+import {
+  FinanceLineStatusRow,
+  type FinanceLineStatus,
+} from '@/components/customer/FinanceLineStatusRow';
 
 interface CustReferenceData {
   prefix?: string;
@@ -38,6 +42,8 @@ interface Props {
   customerBasic: { name: string; phone: string };
   onClose: () => void;
   onSuccess: () => void;
+  /** สิทธิ์ปุ่ม "ยกเลิกการผูก" LINE น้องเบส — หน้าสัญญาส่ง canEditMaster ตัวเดียวกับที่เปิดฟอร์มนี้ · ไม่ส่ง = ซ่อน */
+  canUnlinkFinanceLine?: boolean;
 }
 
 export default function CustomerEditModal({
@@ -46,6 +52,7 @@ export default function CustomerEditModal({
   customerBasic,
   onClose,
   onSuccess,
+  canUnlinkFinanceLine = false,
 }: Props) {
   const uiExtraFieldId = useExtraFieldId();
   const uiFieldId = useUiFieldId();
@@ -54,6 +61,8 @@ export default function CustomerEditModal({
   const [loading, setLoading] = useState(true);
   // false = โหลดข้อมูลฉบับเต็มไม่ได้ ฟอร์มมีแค่ค่าจาก snapshot (ช่องอื่นว่างเพราะไม่รู้ค่า ไม่ใช่เพราะลูกค้าไม่มี)
   const [loadedFull, setLoadedFull] = useState(false);
+  // Task 27 — สถานะ LINE น้องเบสจาก GET /customers/:id (แถว OTP) · null = ไม่รู้ (ทางสำรอง) ⇒ ไม่แสดงแถว
+  const [financeLine, setFinanceLine] = useState<FinanceLineStatus | null>(null);
   const [form, setForm] = useState({
     prefix: '',
     name: '',
@@ -62,7 +71,6 @@ export default function CustomerEditModal({
     phone: '',
     phoneSecondary: '',
     email: '',
-    lineIdFinance: '',
     lineIdShop: '',
     facebookLink: '',
     facebookName: '',
@@ -97,7 +105,6 @@ export default function CustomerEditModal({
           phone: fc.phone || '',
           phoneSecondary: fc.phoneSecondary || '',
           email: fc.email || '',
-          lineIdFinance: fc.lineIdFinance || '',
           lineIdShop: fc.lineIdShop || '',
           facebookLink: fc.facebookLink || '',
           facebookName: fc.facebookName || '',
@@ -123,6 +130,7 @@ export default function CustomerEditModal({
         const refs = [...existingRefs];
         while (refs.length < 4) refs.push({});
         setReferences(refs);
+        setFinanceLine(fc.financeLine ?? null);
         setLoadedFull(true);
       } catch {
         toast.error('โหลดข้อมูลลูกค้าฉบับเต็มไม่ได้ จึงแสดงข้อมูลที่บันทึกไว้แทน');
@@ -135,7 +143,6 @@ export default function CustomerEditModal({
           phone: snap?.phone || customerBasic.phone || '',
           phoneSecondary: '',
           email: '',
-          lineIdFinance: '',
           lineIdShop: '',
           facebookLink: '',
           facebookName: '',
@@ -172,6 +179,8 @@ export default function CustomerEditModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // Task 27 — ไม่มี lineIdFinance ใน payload: ผูกได้ทาง OTP ของลูกค้าเท่านั้น · ยกเลิกผูก = ปุ่มใน FinanceLineStatusRow
+    // ⇒ บันทึกฟอร์มยกเลิกผูกไม่ได้ทั้งตอนโหลดได้และทางสำรอง (ปิด Task 22 review M-2 ฝั่ง LINE ถาวร)
     const payload: Record<string, unknown> = {
       prefix: form.prefix || null,
       name: form.name || null,
@@ -179,7 +188,6 @@ export default function CustomerEditModal({
       phone: form.phone || null,
       phoneSecondary: form.phoneSecondary || null,
       email: form.email || null,
-      lineIdFinance: form.lineIdFinance || null,
       lineIdShop: form.lineIdShop || null,
       facebookLink: form.facebookLink || null,
       facebookName: form.facebookName || null,
@@ -539,26 +547,10 @@ export default function CustomerEditModal({
                   </div>
                   <div>
                     <label
-                      htmlFor={`${uiFieldId}-10`}
-                      className="block text-xs text-muted-foreground mb-1"
-                    >
-                      LINE ID (น้องเบส / FINANCE)
-                    </label>
-                    <input
-                      id={`${uiFieldId}-10`}
-                      type="text"
-                      value={form.lineIdFinance}
-                      onChange={(e) => setForm({ ...form, lineIdFinance: e.target.value })}
-                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
-                      placeholder="U1234567890abcdef..."
-                    />
-                  </div>
-                  <div>
-                    <label
                       htmlFor={`${uiFieldId}-11`}
                       className="block text-xs text-muted-foreground mb-1"
                     >
-                      LINE ID (ร้าน / SHOP)
+                      LINE ID (Shop / ร้าน)
                     </label>
                     <input
                       id={`${uiFieldId}-11`}
@@ -569,6 +561,12 @@ export default function CustomerEditModal({
                       placeholder="U1234567890abcdef..."
                     />
                   </div>
+                  <FinanceLineStatusRow
+                    customerId={customerId}
+                    financeLine={financeLine}
+                    canUnlink={canUnlinkFinanceLine}
+                    labelClassName="font-normal text-muted-foreground"
+                  />
                   <div>
                     <label
                       htmlFor={`${uiFieldId}-12`}

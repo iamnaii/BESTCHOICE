@@ -14,15 +14,23 @@ import api, { getErrorMessage } from '@/lib/api';
 import { toast } from 'sonner';
 import { invalidateCustomerJourney } from '@/hooks/customer-journey/useCustomerJourney';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { FinanceLineStatusRow } from '@/components/customer/FinanceLineStatusRow';
 import type { CustomerDetail, ReferenceData } from '../types';
 
 interface EditCustomerDialogProps {
   customer: CustomerDetail;
   open: boolean;
   onClose: () => void;
+  /** สิทธิ์ปุ่ม "ยกเลิกการผูก" LINE น้องเบส — หน้าส่ง canEdit ตัวเดียวกับที่เปิดฟอร์มนี้ (OWNER/BRANCH_MANAGER) · ไม่ส่ง = ซ่อน */
+  canUnlinkFinanceLine?: boolean;
 }
 
-export default function EditCustomerDialog({ customer, open, onClose }: EditCustomerDialogProps) {
+export default function EditCustomerDialog({
+  customer,
+  open,
+  onClose,
+  canUnlinkFinanceLine = false,
+}: EditCustomerDialogProps) {
   const queryClient = useQueryClient();
   const returnFocus = useRef<HTMLElement | null>(null);
 
@@ -33,7 +41,6 @@ export default function EditCustomerDialog({ customer, open, onClose }: EditCust
     phone: '',
     phoneSecondary: '',
     email: '',
-    lineIdFinance: '',
     lineIdShop: '',
     facebookLink: '',
     facebookName: '',
@@ -66,7 +73,6 @@ export default function EditCustomerDialog({ customer, open, onClose }: EditCust
         phone: customer.phone || '',
         phoneSecondary: customer.phoneSecondary || '',
         email: customer.email || '',
-        lineIdFinance: customer.lineIdFinance || '',
         lineIdShop: customer.lineIdShop || '',
         facebookLink: customer.facebookLink || '',
         facebookName: customer.facebookName || '',
@@ -111,7 +117,7 @@ export default function EditCustomerDialog({ customer, open, onClose }: EditCust
       if (editForm.phone) payload.phone = editForm.phone;
       if (editForm.phoneSecondary) payload.phoneSecondary = editForm.phoneSecondary;
       if (editForm.email) payload.email = editForm.email;
-      if (editForm.lineIdFinance) payload.lineIdFinance = editForm.lineIdFinance;
+      // Task 27 — ไม่ส่ง lineIdFinance เลย: ผูกได้ทาง OTP ของลูกค้าเท่านั้น · ยกเลิกผูกเป็นปุ่มแยก (FinanceLineStatusRow)
       if (editForm.lineIdShop) payload.lineIdShop = editForm.lineIdShop;
       if (editForm.facebookLink) payload.facebookLink = editForm.facebookLink;
       if (editForm.facebookName) payload.facebookName = editForm.facebookName;
@@ -453,22 +459,6 @@ export default function EditCustomerDialog({ customer, open, onClose }: EditCust
                 </div>
                 <div>
                   <label
-                    htmlFor="customer-edit-10"
-                    className="block text-xs font-medium text-foreground mb-1.5"
-                  >
-                    LINE ID (Finance / น้องเบส)
-                  </label>
-                  <input
-                    id="customer-edit-10"
-                    type="text"
-                    value={editForm.lineIdFinance}
-                    onChange={(e) => setEditForm({ ...editForm, lineIdFinance: e.target.value })}
-                    className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
-                    placeholder="U1234567890abcdef..."
-                  />
-                </div>
-                <div>
-                  <label
                     htmlFor="customer-edit-11"
                     className="block text-xs font-medium text-foreground mb-1.5"
                   >
@@ -483,6 +473,11 @@ export default function EditCustomerDialog({ customer, open, onClose }: EditCust
                     placeholder="U1234567890abcdef..."
                   />
                 </div>
+                <FinanceLineStatusRow
+                  customerId={customer.id}
+                  financeLine={customer.financeLine}
+                  canUnlink={canUnlinkFinanceLine}
+                />
                 <div>
                   <label
                     htmlFor="customer-edit-12"

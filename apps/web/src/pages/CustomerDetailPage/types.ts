@@ -7,6 +7,7 @@ import type {
   ProspectSource,
 } from '@/pages/CustomersPage/types';
 import type { CustomerTagType } from '@/pages/CollectionsPage/hooks/useCustomerTags';
+import type { FinanceLineStatus } from '@/components/customer/FinanceLineStatusRow';
 
 export interface ReferenceData {
   prefix?: string;
@@ -29,6 +30,8 @@ export interface CustomerDetail {
   phoneSecondary: string | null;
   email: string | null;
   lineIdFinance: string | null;
+  /** Task 27 — สถานะ LINE น้องเบสจากแถว OTP ที่ยังผูก (ไม่ใช่คอลัมน์ lineIdFinance) · API รุ่นก่อน Task 27 ไม่ส่ง */
+  financeLine?: FinanceLineStatus;
   lineIdShop: string | null;
   facebookLink: string | null;
   facebookName: string | null;

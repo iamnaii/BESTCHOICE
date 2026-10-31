@@ -247,6 +247,7 @@ export default function CustomerDetailPage() {
         customer={customer}
         open={showEditModal}
         onClose={() => setShowEditModal(false)}
+        canUnlinkFinanceLine={canEdit}
       />
 
       <CreditCheckCreateDialog

@@ -1181,12 +1181,10 @@ export default function ContractDetailPage() {
                   const dTotal = dP.add(dComm).add(dInterest).add(dVat).toDecimalPlaces(2);
                   const dMonthly = dTotal.div(editForm.totalMonths).toDecimalPlaces(2);
                   const fmt2 = (d: Decimal) =>
-                    d
-                      .toNumber()
-                      .toLocaleString('th-TH', {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      });
+                    d.toNumber().toLocaleString('th-TH', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    });
                   return (
                     <div className="bg-muted rounded-lg p-3 text-xs space-y-1">
                       <div>ยอดปล่อย: {fmt2(dP)} บาท</div>
@@ -1587,6 +1585,7 @@ export default function ContractDetailPage() {
           customerBasic={contract.customer}
           onClose={() => setIsEditingCustomer(false)}
           onSuccess={invalidateContract}
+          canUnlinkFinanceLine={!!canEditMaster}
         />
       )}
 

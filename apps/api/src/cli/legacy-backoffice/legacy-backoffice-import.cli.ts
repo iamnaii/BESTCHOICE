@@ -27,6 +27,7 @@ import { performance } from 'node:perf_hooks';
 import { parseArgs } from 'node:util';
 import { AuditService } from '../../modules/audit/audit.service';
 import { CustomerPiiService } from '../../modules/customers/customer-pii.service';
+import type { EncryptedFieldCheck } from '../../modules/integrations/integration-config.service';
 import { JournalAutoService } from '../../modules/journal/journal-auto.service';
 import { LEGACY_SYSTEM_USER_EMAIL } from '../../modules/journal/legacy-import-journal';
 import type { PrismaService } from '../../prisma/prisma.service';
@@ -537,6 +538,8 @@ export type ImportDeps = {
   sampleForManualCheck: typeof sampleForManualCheck;
   /** การส่งรายการไป PEAK ทาง API ตั้งค่าอยู่หรือไม่ (`PeakService.isConfigured`) — เขียนจริงต้องปิด */
   peakApiConfigured: () => Promise<boolean>;
+  /** ช่อง PEAK ที่เข้ารหัสไว้ซึ่ง CLI ถอดได้/ไม่ได้ (ชื่อช่องเท่านั้น) — ใช้บอกทางแก้ในข้อความปฏิเสธ · ไม่ส่ง = ข้อความแบบตั้งค่าอยู่ */
+  peakEncryptedFields?: () => Promise<EncryptedFieldCheck>;
   now: () => Date;
 };
 
@@ -737,11 +740,10 @@ async function preflightImport(
   }
   const overdueDaysThreshold = await readOverdueDaysThreshold(prisma);
   d.log(`  เกณฑ์ OVERDUE              : ${overdueDaysThreshold} วัน (overdue_days_threshold)`);
-  if (await d.peakApiConfigured()) {
-    const message =
-      'ปิดการส่ง PEAK ทาง API ก่อน — ยังไม่มีตัวกรองดอกเบี้ย legacy (ล้าง PEAK User Token / Connect ID / Secret Key ที่ ตั้งค่า › เชื่อมต่อ › การเชื่อมต่อ และ env PEAK_* ของ API)';
-    if (!dryRun) throw new Error(message);
-    d.log(`  ⚠ ${message} — รอบเขียนจริงจะปฏิเสธ`);
+  const peakRefusal = await peakApiRefusalFor(d);
+  if (peakRefusal) {
+    if (!dryRun) throw new Error(peakRefusal);
+    d.log(`  ⚠ ${peakRefusal} — รอบเขียนจริงจะปฏิเสธ`);
   }
 
   // ④ แผน + งวดบัญชี
@@ -1135,6 +1137,7 @@ export async function runImport(
     runGates,
     sampleForManualCheck,
     peakApiConfigured: () => defaultPeakApiConfigured(prisma),
+    peakEncryptedFields: () => defaultPeakEncryptedFields(prisma),
     now: () => new Date(),
     ...deps,
   };
@@ -1230,6 +1233,47 @@ export async function defaultPeakApiConfigured(prisma: PrismaClient): Promise<bo
   );
   if (await peak.isConfigured()) return true;
   return (await integrationConfig.checkEncryptedFields('peak')).failed.length > 0;
+}
+
+/** ช่อง PEAK ที่เข้ารหัสไว้ซึ่ง CLI ถอดได้/ไม่ได้ ด้วย INTEGRATION_ENCRYPTION_KEY ของ CLI เอง (ชื่อช่องเท่านั้น) */
+export async function defaultPeakEncryptedFields(
+  prisma: PrismaClient,
+): Promise<EncryptedFieldCheck> {
+  const { ConfigService } = await import('@nestjs/config');
+  const { IntegrationConfigService } =
+    await import('../../modules/integrations/integration-config.service');
+  const service = prisma as unknown as PrismaService;
+  return new IntegrationConfigService(service, new ConfigService()).checkEncryptedFields('peak');
+}
+
+const PEAK_KEY_HINT: Record<EncryptedFieldCheck['key'], string> = {
+  missing: 'CLI ไม่มี INTEGRATION_ENCRYPTION_KEY',
+  ok: 'INTEGRATION_ENCRYPTION_KEY ของ CLI ไม่ตรงกับ key ที่ใช้เข้ารหัส',
+  malformed: 'INTEGRATION_ENCRYPTION_KEY ของ CLI รูปแบบไม่ถูก (ต้องเป็น hex 64 ตัว)',
+};
+
+/**
+ * ข้อความปฏิเสธเมื่อการส่ง PEAK ทาง API ยังตั้งค่าอยู่ (`null` = ไม่ปฏิเสธ)
+ *
+ * - CLI ถอดช่อง PEAK ที่เข้ารหัสไม่ได้ → บอกชื่อช่อง + ให้รันด้วย key ตัวเดียวกับ API แล้วรันใหม่ (ยังตัดสินไม่ได้ว่า
+ *   PEAK เปิดอยู่จริงไหม — ห้ามชี้ไป "ล้างค่า" ที่หน้าเชื่อมต่อ: ช่องที่ถอดไม่ได้แสดงเป็นช่องว่างและไม่มีปุ่มลบ)
+ * - ถอดได้และตั้งค่าครบ → ให้ล้าง Connect ID (ช่องไม่ลับ ล้างได้ที่การ์ด PEAK · ขาดช่องเดียว `PeakService.isConfigured`
+ *   = false) — User Token / Secret Key ล้างจากหน้านั้นไม่ได้ (ช่องลับที่ส่งค่าว่าง = ไม่เปลี่ยน)
+ */
+export async function peakApiRefusalFor(
+  d: Pick<ImportDeps, 'peakApiConfigured' | 'peakEncryptedFields'>,
+): Promise<string | null> {
+  if (!(await d.peakApiConfigured())) return null;
+  // ตัวช่วยบอกทางแก้เท่านั้น — อ่านไม่สำเร็จก็ยังปฏิเสธ (ด้วยข้อความแบบตั้งค่าอยู่)
+  const check = await d.peakEncryptedFields?.().catch(() => undefined);
+  if (check && check.failed.length > 0) {
+    return (
+      `ตรวจการส่ง PEAK ทาง API ไม่ได้ — CLI ถอดค่า PEAK ที่เข้ารหัสไว้ไม่ได้ (${check.failed.join(', ')}) · ${PEAK_KEY_HINT[check.key]} ` +
+      '— รัน CLI ใหม่ด้วย INTEGRATION_ENCRYPTION_KEY ตัวเดียวกับ API (Secret Manager เวอร์ชันที่ .github/workflows/deploy-gcp.yml pin ไว้ ' +
+      '— ดู docs/runbooks/2026-10-31-integration-encryption-key.md) แล้วระบบจะบอกว่า PEAK ยังเปิดส่งอยู่หรือไม่'
+    );
+  }
+  return 'ปิดการส่ง PEAK ทาง API ก่อน — ยังไม่มีตัวกรองดอกเบี้ย legacy (ลบช่อง Connect ID ของการ์ด PEAK ที่ ตั้งค่า › เชื่อมต่อ › การเชื่อมต่อ ให้ว่างแล้วบันทึก — ช่อง User Token / Secret Key ล้างจากหน้านั้นไม่ได้ และไม่จำเป็น — และ env PEAK_* ของ API)';
 }
 
 // ─── คำสั่งเดิม ──────────────────────────────────────────────────────────────────────────────────

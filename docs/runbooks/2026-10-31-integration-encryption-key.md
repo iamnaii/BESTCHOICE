@@ -68,8 +68,10 @@
   (2) จดรายการช่องในวงเล็บ `ok` ของบรรทัดบูตปัจจุบัน (3) แก้เลข pin + deploy (4) ช่องเหล่านั้นจะเป็น `failed` —
   OWNER กรอกใหม่ทุกช่องแล้วทดสอบตามข้อ 3 (5) ปิดเวอร์ชันเก่าเมื่อบรรทัดบูตเป็น `failed=0` แล้วเท่านั้น
 - ดูเลข/สถานะเวอร์ชันได้โดยไม่อ่านค่า: `gcloud secrets versions list INTEGRATION_ENCRYPTION_KEY --project bestchoice-prod
-  --format='value(name,state)'` — **ห้าม** `versions access`
+  --format='value(name,state)'` — **ห้าม** `versions access` เพื่อดู/พิมพ์ค่า (ใช้ได้เฉพาะส่งเข้า env ของ CLI ด้านล่าง)
 - ห้าม log / echo ค่า secret หรือค่าใน `system_config` เพื่อ "ตรวจ" — ใช้บรรทัดบูตแทน
 - CLI ที่อ่าน creds จาก Integration Hub บนเครื่องตัวเอง (`scripts/ops/train-ai-prod.sh` ดึงเวอร์ชันที่ `deploy-gcp.yml` pin ไว้ให้แล้ว ·
-  `backfill-fb-profiles.cli.ts`) ต้องได้ key ตัวเดียวกัน ไม่งั้นค่าที่เข้ารหัสอ่านเป็น "ยังไม่ตั้งค่า" ·
-  ด่าน PEAK ของ `import:legacy-backoffice` นับค่า PEAK ที่ถอดไม่ได้ว่า "ตั้งค่าอยู่" (ปฏิเสธการเขียน) ไม่ว่า CLI มี key หรือไม่
+  `backfill-fb-profiles.cli.ts` · `import:legacy-backoffice`) ต้องได้ key ตัวเดียวกัน ไม่งั้นค่าที่เข้ารหัสอ่านเป็น "ยังไม่ตั้งค่า" —
+  ส่งเข้า env แบบไม่พิมพ์ค่า: `export INTEGRATION_ENCRYPTION_KEY="$(gcloud secrets versions access <เลข pin> --secret=INTEGRATION_ENCRYPTION_KEY --project bestchoice-prod)"`
+  (ห้ามใส่เป็น prefix หน้าคำสั่ง npm — ค่าโผล่ใน process title) · ด่าน PEAK ของ `import:legacy-backoffice` นับค่า PEAK ที่ถอดไม่ได้
+  ว่า "ตั้งค่าอยู่" (ปฏิเสธการเขียน) ไม่ว่า CLI มี key หรือไม่ — ข้อความบอกชื่อช่องที่ถอดไม่ได้ ให้ส่ง key ตามข้างบนแล้วรันใหม่

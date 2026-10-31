@@ -1,7 +1,11 @@
 import { Logger } from '@nestjs/common';
 import type { PrismaClient } from '@prisma/client';
 import { encryptPII } from '../../../utils/crypto.util';
-import { defaultPeakApiConfigured } from '../legacy-backoffice-import.cli';
+import {
+  defaultPeakApiConfigured,
+  defaultPeakEncryptedFields,
+  peakApiRefusalFor,
+} from '../legacy-backoffice-import.cli';
 
 /**
  * The import refuses to write while the PEAK API is configured (legacy journals
@@ -76,5 +80,79 @@ describe('defaultPeakApiConfigured — undecryptable PEAK credentials still coun
 
   it('nothing stored and no PEAK_* env → not configured', async () => {
     await expect(defaultPeakApiConfigured(prismaWith({}))).resolves.toBe(false);
+  });
+});
+
+/**
+ * Review M-5: when the refusal comes from PEAK credentials the CLI cannot
+ * decrypt, the message must name them and send the operator to the real fix
+ * (same INTEGRATION_ENCRYPTION_KEY as the API) — not to a hub "clear" action
+ * that does not exist. Since P-2 the hub also cannot clear User Token /
+ * Secret Key (empty sensitive input = unchanged); Connect ID still clears.
+ */
+describe('peakApiRefusalFor — the refusal names what to do', () => {
+  const deps = (configured: boolean, failed: string[], key: 'ok' | 'missing' | 'malformed') => ({
+    peakApiConfigured: jest.fn(async () => configured),
+    peakEncryptedFields: jest.fn(async () => ({ key, ok: [], failed })),
+  });
+
+  it('not configured → no refusal', async () => {
+    await expect(peakApiRefusalFor(deps(false, [], 'ok'))).resolves.toBeNull();
+  });
+
+  it('configured and readable → disable PEAK first, pointing at Connect ID only', async () => {
+    const message = await peakApiRefusalFor(deps(true, [], 'ok'));
+    expect(message).toContain('ปิดการส่ง PEAK ทาง API ก่อน');
+    expect(message).toContain('Connect ID');
+    expect(message).toContain('ตั้งค่า › เชื่อมต่อ › การเชื่อมต่อ');
+    expect(message).not.toContain('User Token / Connect ID / Secret Key');
+  });
+
+  it('reading the encrypted-field hint fails → still refuses, with the configured message', async () => {
+    const message = await peakApiRefusalFor({
+      peakApiConfigured: async () => true,
+      peakEncryptedFields: async () => {
+        throw new Error('test-only: db down');
+      },
+    });
+    expect(message).toContain('ปิดการส่ง PEAK ทาง API ก่อน');
+  });
+
+  it('no peakEncryptedFields dep (tests / older callers) → the configured message', async () => {
+    const message = await peakApiRefusalFor({ peakApiConfigured: async () => true });
+    expect(message).toContain('ปิดการส่ง PEAK ทาง API ก่อน');
+  });
+
+  it.each([
+    ['missing', 'ไม่มี INTEGRATION_ENCRYPTION_KEY'],
+    ['ok', 'ไม่ตรงกับ key ที่ใช้เข้ารหัส'],
+    ['malformed', 'hex 64 ตัว'],
+  ] as const)(
+    'undecryptable (CLI key %s) → names the fields and the key fix, no hub "clear"',
+    async (key, hint) => {
+      const message = await peakApiRefusalFor(
+        deps(true, ['peak.secretKey', 'peak.userToken'], key),
+      );
+      expect(message).toContain('peak.secretKey, peak.userToken');
+      expect(message).toContain(hint);
+      expect(message).toContain('INTEGRATION_ENCRYPTION_KEY ตัวเดียวกับ API');
+      expect(message).toContain('.github/workflows/deploy-gcp.yml');
+      expect(message).toContain('docs/runbooks/2026-10-31-integration-encryption-key.md');
+      expect(message).not.toContain('ล้าง');
+    },
+  );
+
+  it('defaultPeakEncryptedFields reads the PEAK fields the CLI cannot decrypt (names only)', async () => {
+    const before = process.env.INTEGRATION_ENCRYPTION_KEY;
+    delete process.env.INTEGRATION_ENCRYPTION_KEY;
+    try {
+      await expect(defaultPeakEncryptedFields(prismaWith(peakRows(KEY_A)))).resolves.toEqual({
+        key: 'missing',
+        ok: [],
+        failed: ['peak.secretKey', 'peak.userToken'],
+      });
+    } finally {
+      if (before !== undefined) process.env.INTEGRATION_ENCRYPTION_KEY = before;
+    }
   });
 });

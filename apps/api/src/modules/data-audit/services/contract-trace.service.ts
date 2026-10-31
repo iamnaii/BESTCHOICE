@@ -13,11 +13,11 @@ import {
   ACTIVATED_CONTRACT_STATUSES,
   DataAuditChecksService,
   isContractOpeningEntry,
-  isJournalBalanced,
   SHOP_INVENTORY_TRANSFER_COGS_FLOW,
   SHOP_INVENTORY_TRANSFER_REVENUE_FLOW,
   type VatMismatchRow,
 } from './data-audit-checks.service';
+import { isJournalBalanced } from '../../journal/journal-balance';
 
 /** ขอบเขตของ `orphan_contracts` / `missing_cogs` — ชุดสถานะเดียวกับตรวจกลางคืน (Task 23 · m-4) */
 const isActivated = (status: string) =>

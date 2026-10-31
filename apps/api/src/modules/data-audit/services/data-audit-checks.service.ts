@@ -12,6 +12,7 @@ import {
   type ContractReceivableGap,
   type ContractScope,
 } from '../../journal/contract-receivable-recon';
+import { JOURNAL_UNBALANCED_SQL } from '../../journal/journal-balance';
 import {
   activatedBeforeShopWiring,
   isLegacyNoShop,
@@ -77,24 +78,6 @@ export const CONTRACT_WITHOUT_OPENING_JOURNAL = Prisma.sql`(
  */
 export const ACTIVATED_CONTRACT_STATUSES = ['ACTIVE', 'OVERDUE', 'DEFAULT', 'COMPLETED'] as const;
 const activatedStatusSql = Prisma.sql`c.status::text IN (${Prisma.join([...ACTIVATED_CONTRACT_STATUSES])})`;
-/**
- * กติกาเดียวของ "รายการสมดุล" (`journal_balance` + การไล่ตรวจสัญญา): Σ เดบิต = Σ เครดิต **พอดีทุกสตางค์ — ไม่มีเผื่อ**
- * (คำตัดสินเจ้าของ 2026-10-31) · `isJournalBalanced` = รูป TS (trace) · `JOURNAL_UNBALANCED_SQL` = รูปคิวรีของกติกาเดียวกัน (HAVING ของข้อ
- * กลางคืน) — ห้ามมีเกณฑ์ชุดที่สอง
- *
- * ทางลงบัญชีทั้งสองทางบังคับสมดุลพอดีอยู่แล้วตั้งแต่ Wave-1 #10 (`2a4c59c13` · 2026-06-07) — `JournalService.create` และ
- * `JournalAutoService.createAndPost` ปฏิเสธเมื่อ `!totalDebit.equals(totalCredit)` (Decimal เทียบตรง) ⇒ รายการที่ต่างแม้ 0.01 เกิดได้จาก
- * การเขียนนอกสองทางนี้เท่านั้น (SQL ตรง / ข้อมูลเก่า) และเป็น finding CRITICAL (ยิง Sentry). เดิมข้อนี้เผื่อ 0.01 (`JOURNAL_BALANCE_TOLERANCE`)
- * — ตัวเลขดั้งเดิมของข้อกลางคืนตั้งแต่สร้าง DataAuditModule (`6ab118ca1` · 2026-04-12) ซึ่งเกิดก่อนสองทางนั้นบังคับสมดุล ไม่ใช่กติกาบัญชี
- */
-export function isJournalBalanced(
-  totalDebit: Prisma.Decimal,
-  totalCredit: Prisma.Decimal,
-): boolean {
-  return totalDebit.equals(totalCredit);
-}
-/** รูปคิวรีของ `isJournalBalanced` (ไม่สมดุล) — alias `jl` = `journal_lines` ของรายการที่ GROUP BY */
-const JOURNAL_UNBALANCED_SQL = Prisma.sql`SUM(jl.debit) <> SUM(jl.credit)`;
 /** ส่วนที่แถวงวดรับเกินยอดเรียกเก็บได้ — เศษปัดของใบที่ปิดงวด ≤ 1 บาท (Tolerance Policy `.claude/rules/accounting.md`) */
 const INSTALLMENT_OVERPAY_TOLERANCE = new Prisma.Decimal('1.00');
 /** VAT รอเรียกเก็บสองขาต้องตรงกันทุกสตางค์ (ยอด 2 ตำแหน่ง) */

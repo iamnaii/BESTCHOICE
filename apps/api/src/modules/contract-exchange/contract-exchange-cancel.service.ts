@@ -1,4 +1,4 @@
-import { validatePeriodOpen } from '../../utils/period-lock.util';
+import { accountingPeriodOf, validatePeriodOpen } from '../../utils/period-lock.util';
 import { Optional } from '@nestjs/common';
 import { AccessExchangeSourceService, exchangeActor } from '../employee-access/access-exchange-source.service';
 import { currentDomainAccess, domainAccessClient } from '../employee-access/access-execution-context';
@@ -221,8 +221,7 @@ export class ExchangeCancelService {
           }) !== 2
         )
           throw new ForbiddenException('ไม่พบสมุดบัญชีปัจจุบัน');
-        const year = postedAt.getFullYear();
-        const month = postedAt.getMonth() + 1;
+        const { year, month } = accountingPeriodOf(postedAt); // the rows validatePeriodOpen reads (Bangkok calendar)
         await tx.$queryRaw`SELECT id FROM accounting_periods WHERE company_id=ANY(${bookIds}::text[]) AND year=${year} AND month=${month} ORDER BY id FOR SHARE`;
         await tx.$queryRaw`SELECT id FROM system_config WHERE key='period_grace_days' FOR SHARE`;
         for (const companyId of bookIds) await validatePeriodOpen(tx, postedAt, companyId);

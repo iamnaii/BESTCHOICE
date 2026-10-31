@@ -56,6 +56,17 @@ async function getGraceDays(prisma: PrismaLike): Promise<number> {
 }
 
 /**
+ * (year, month 1-12) of the accounting period `date` falls in — the Bangkok calendar, independent of the
+ * process TZ. The single month rule shared by `validatePeriodOpen` and every caller that locks the
+ * `accounting_periods` row FOR SHARE before checking it (activation · exchange cancel · payoff/settlement
+ * postings) — the locked row must be the row the guard reads (review M2, 2026-10-31).
+ */
+export function accountingPeriodOf(date: Date): { year: number; month: number } {
+  const parts = bangkokCalendarParts(date);
+  return { year: parts.year, month: parts.month + 1 }; // bangkokCalendarParts month is 0-indexed
+}
+
+/**
  * First instant at which a CLOSED/SYNCED period (`month` 1-12) stops accepting
  * postings: 00:00 Asia/Bangkok on day `1 + graceDays` of the following month.
  * grace 0 → 00:00 BKK on the 1st (the whole last day is still inside);
@@ -83,9 +94,7 @@ export async function validatePeriodOpen(
 ): Promise<void> {
   if (!companyId || !prisma.accountingPeriod) return;
 
-  const parts = bangkokCalendarParts(date);
-  const year = parts.year;
-  const month = parts.month + 1; // bangkokCalendarParts month is 0-indexed
+  const { year, month } = accountingPeriodOf(date);
   const period = await prisma.accountingPeriod.findUnique({
     where: { companyId_year_month: { companyId, year, month } },
     select: { status: true },

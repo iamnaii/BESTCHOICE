@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { validatePeriodOpen } from './period-lock.util';
+import { accountingPeriodOf, validatePeriodOpen } from './period-lock.util';
 
 /**
  * Period-lock enforcement — single source of truth = AccountingPeriod.
@@ -203,5 +203,15 @@ describe('validatePeriodOpen — AccountingPeriod single source of truth', () =>
     await expect(
       validatePeriodOpen(prisma, new Date('2026-05-31'), 'co-1'),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  // ── one Thai-calendar month helper (review M2) — the guard and every period-row locker use it ──
+  it('accountingPeriodOf reads the Bangkok calendar month whatever the process TZ', () => {
+    expect(accountingPeriodOf(new Date('2026-10-31T16:59:59.999Z'))).toEqual({
+      year: 2026,
+      month: 10,
+    });
+    expect(accountingPeriodOf(new Date('2026-10-31T17:30:00Z'))).toEqual({ year: 2026, month: 11 });
+    expect(accountingPeriodOf(new Date('2026-12-31T17:00:00Z'))).toEqual({ year: 2027, month: 1 });
   });
 });

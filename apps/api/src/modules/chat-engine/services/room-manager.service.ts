@@ -48,6 +48,7 @@ import * as Sentry from '@sentry/nestjs';
 import {
   LINE_FINANCE_NOT_VERIFIED_MESSAGE,
   LINE_SHOP_STAFF_SEND_DISABLED_MESSAGE,
+  lockFinanceLineCustomers,
 } from '../../line-oa/services/finance-line-link';
 import {
   VERIFIED_FINANCE_LINK_WHERE,
@@ -1211,6 +1212,9 @@ export class RoomManagerService {
       }
     }
     const linkedRoom = await this.prisma.$transaction(async (tx) => {
+      // Task 29 fix round 1 (review I-1) — ลำดับล็อกเดียว ลูกค้า → ห้อง (เท่า `VerificationService.bind` / ยกเลิกผูก / ผลวิเคราะห์สเตทเม้นเสร็จ):
+      // เดิมล็อกห้องก่อนแล้ว `linkRoomCreditHistory` ล็อกลูกค้า ⇒ ผูกห้องพร้อมลูกค้ายืนยัน OTP ของ LINE ห้องนั้น = deadlock 40P01
+      await lockFinanceLineCustomers(tx, [customerId]);
       await lockCreditRoom(tx, roomId);
       const room = await tx.chatRoom.findUnique({
         where: { id: roomId },

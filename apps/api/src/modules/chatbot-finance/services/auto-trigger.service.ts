@@ -13,12 +13,10 @@ import {
 } from '../../../utils/late-fee.util';
 import { FinanceConfigService } from './finance-config.service';
 import {
-  AutoTriggerType,
-  LineChannelType,
-  MessageRole,
-  Payment,
-  TriggerStatus,
-} from '@prisma/client';
+  FINANCE_LINE_RECIPIENT_SELECT,
+  financeLineRecipient,
+} from '../../line-oa/services/otp-verified-customer';
+import { AutoTriggerType, MessageRole, Payment, TriggerStatus } from '@prisma/client';
 
 const TIMEZONE = 'Asia/Bangkok';
 
@@ -113,10 +111,8 @@ export class AutoTriggerService {
               select: {
                 id: true,
                 name: true,
-                lineLinks: {
-                  where: { channel: LineChannelType.FINANCE, unlinkedAt: null },
-                  select: { lineUserId: true },
-                },
+                // ผู้รับ = แถว OTP ที่ยังผูก — เกณฑ์เดียวกับผู้ส่งข้อความการเงินทุกตัว (Task 24 fix round 2 m-5 · เดิมไม่ดู deleted_at)
+                ...FINANCE_LINE_RECIPIENT_SELECT,
               },
             },
           },
@@ -139,8 +135,8 @@ export class AutoTriggerService {
     let failed = 0;
 
     for (const payment of payments) {
-      const lineLink = payment.contract.customer.lineLinks[0];
-      if (!lineLink) {
+      const lineUserId = financeLineRecipient(payment.contract.customer);
+      if (!lineUserId) {
         skipped++;
         continue;
       }
@@ -151,7 +147,7 @@ export class AutoTriggerService {
         template,
         customerId: payment.contract.customerId,
         customerName: payment.contract.customer.name,
-        lineUserId: lineLink.lineUserId,
+        lineUserId,
         dayOffset,
         lateFeeConfig,
       });

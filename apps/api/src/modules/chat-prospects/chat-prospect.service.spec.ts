@@ -196,9 +196,11 @@ describe('ChatProspectService.ensureForRoom', () => {
     expect(tx.customerLineLink.findUnique).toHaveBeenCalledWith({
       where: {
         lineUserId_channel: { lineUserId: 'Ufin', channel: 'FINANCE' },
+        // เกณฑ์เดียว VERIFIED_FINANCE_LINK_WHERE (Task 24 fix round 2 m-5)
+        channel: 'FINANCE',
         unlinkedAt: null,
         deletedAt: null,
-        customer: { is: { deletedAt: null } },
+        customer: { deletedAt: null },
       },
       select: { customerId: true },
     });

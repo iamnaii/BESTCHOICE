@@ -3,6 +3,7 @@ import { ChatChannel, LineChannelType, Prisma } from '@prisma/client';
 import { chatSourceOf } from '@installment/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { isChatPlaceholder, placeholderName } from './chat-placeholder';
+import { VERIFIED_FINANCE_LINK_WHERE } from '../line-oa/services/otp-verified-customer';
 
 type Tx = Prisma.TransactionClient;
 const LINE_CHANNELS: ReadonlySet<ChatChannel> = new Set([
@@ -125,10 +126,10 @@ export class ChatProspectService {
     const link = await tx.customerLineLink.findUnique({
       where: {
         lineUserId_channel: { lineUserId: externalKey, channel: linkChannel },
-        // link ที่ยกเลิก/ลบแล้ว หรือชี้ลูกค้าที่ถูกลบ = ไม่ได้ผูกอยู่ (ตรงกับ verification.service isLinked)
-        unlinkedAt: null,
-        deletedAt: null,
-        customer: { is: { deletedAt: null } },
+        // link ที่ยกเลิก/ลบแล้ว หรือชี้ลูกค้าที่ถูกลบ = ไม่ได้ผูกอยู่ — เกณฑ์เดียว VERIFIED_FINANCE_LINK_WHERE (= isLinked / findOtpVerifiedCustomerId ·
+        // Task 24 fix round 2 m-5) · ช่องร้านใช้สถานะแถวชุดเดียวกัน (channel ทับด้วยช่องของห้อง)
+        ...VERIFIED_FINANCE_LINK_WHERE,
+        channel: linkChannel,
       },
       select: { customerId: true },
     });

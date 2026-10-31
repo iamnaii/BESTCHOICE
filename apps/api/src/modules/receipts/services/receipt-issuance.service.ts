@@ -8,6 +8,7 @@ import {
   ADVANCE_SURPLUS_RECEIPT_TYPE,
   DOCUMENT_BALANCE_RECEIPT_TYPES,
   INSTALLMENT_MONEY_RECEIPT_TYPES,
+  INSTALLMENT_RECEIPT_SOURCE_TAGS,
 } from '../receipt-types.constants';
 import {
   advanceSurplusReceiptTax,
@@ -17,9 +18,15 @@ import {
   type ReceiptTaxBreakdown,
 } from '../../journal/receipt-tax-breakdown';
 import { ReceiptNumberService } from './receipt-number.service';
-import { getReceiptDocumentBalance, persistReceiptDocumentBalance } from './receipt-document-balance';
+import {
+  getReceiptDocumentBalance,
+  persistReceiptDocumentBalance,
+} from './receipt-document-balance';
 import { CreditNoteDeliveryService } from './credit-note-delivery.service';
-import { currentDomainAccess, onDomainCommit } from '../../employee-access/access-execution-context';
+import {
+  currentDomainAccess,
+  onDomainCommit,
+} from '../../employee-access/access-execution-context';
 
 /** Internal exact-client integration; never a DTO or an independent authority. */
 export interface OwnedPayoffReceipt {
@@ -66,11 +73,18 @@ export class ReceiptIssuanceService {
       // Owned payoff receipts are EARLY_PAYOFF only. They may link the JP4 posted in the same owned
       // transaction (ฝ่ายบัญชี 16.1/16.2 — ใบปิดยอดเป็นใบกำกับภาษีตามบัญชี): the journal link below still
       // requires tag JP4 + flow early-payoff + this contract, so no other source can be attached.
-      if (ctx?.client !== ownedPayoff.client || !ctx.effects ||
-        ctx.snapshot.userId !== issuedById || ctx.domain !== 'parties' ||
-        ctx.scope.permission !== 'payments.create' || ctx.scope.company !== 'FINANCE' ||
-        ctx.scopeReads || ctx.isolationLevel !== 'Serializable' || receiptType !== 'EARLY_PAYOFF' ||
-        (sourceJournalEntryNumber && receiptType !== 'EARLY_PAYOFF'))
+      if (
+        ctx?.client !== ownedPayoff.client ||
+        !ctx.effects ||
+        ctx.snapshot.userId !== issuedById ||
+        ctx.domain !== 'parties' ||
+        ctx.scope.permission !== 'payments.create' ||
+        ctx.scope.company !== 'FINANCE' ||
+        ctx.scopeReads ||
+        ctx.isolationLevel !== 'Serializable' ||
+        receiptType !== 'EARLY_PAYOFF' ||
+        (sourceJournalEntryNumber && receiptType !== 'EARLY_PAYOFF')
+      )
         throw new ForbiddenException('ไม่มีขอบเขตการออกใบเสร็จปิดสัญญา');
     }
     const receiptPaidDate = paidDate ?? new Date();
@@ -85,10 +99,13 @@ export class ReceiptIssuanceService {
       if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
 
       // Get company info
-      const company = await tx.companyInfo.findFirst({ where: {
-        isActive: true, deletedAt: null,
-        ...(ownedPayoff ? { id: ownedPayoff.financeCompanyId, companyCode: 'FINANCE' } : {}),
-      } });
+      const company = await tx.companyInfo.findFirst({
+        where: {
+          isActive: true,
+          deletedAt: null,
+          ...(ownedPayoff ? { id: ownedPayoff.financeCompanyId, companyCode: 'FINANCE' } : {}),
+        },
+      });
       if (ownedPayoff && !company) throw new ForbiddenException('ไม่พบบริษัทการเงินของใบเสร็จ');
       const receiverName = company?.nameTh || 'บริษัท เบสท์ช้อยส์โฟน จำกัด';
 
@@ -171,24 +188,32 @@ export class ReceiptIssuanceService {
         });
         const meta = (source?.metadata ?? {}) as Record<string, unknown>;
         // ใบปิดยอดก่อนกำหนด (ฝ่ายบัญชี 16.1/16.2 · 2026-10-18): ผูกรายการ JP4 ของการปิดยอดนั้น (paymentId ไม่มีทั้งสองฝั่ง)
-        const acceptedTag = receiptType === 'RESCHEDULE_FEE'
-          ? meta.tag === 'reschedule-collect'
-          : receiptType === ADVANCE_SURPLUS_RECEIPT_TYPE
-            ? meta.tag === 'paysolutions-surplus-advance'
-            : receiptType === 'EARLY_PAYOFF'
-              ? meta.tag === 'JP4' && meta.flow === 'early-payoff'
-              : ['receipt', '2B'].includes(String(meta.tag));
+        const acceptedTag =
+          receiptType === 'RESCHEDULE_FEE'
+            ? meta.tag === 'reschedule-collect'
+            : receiptType === ADVANCE_SURPLUS_RECEIPT_TYPE
+              ? meta.tag === 'paysolutions-surplus-advance'
+              : receiptType === 'EARLY_PAYOFF'
+                ? meta.tag === 'JP4' && meta.flow === 'early-payoff'
+                : (INSTALLMENT_RECEIPT_SOURCE_TAGS as readonly string[]).includes(String(meta.tag));
         // รายการส่วนเกินลิงก์ชำระไม่มี paymentId (เงินพักไว้ที่สัญญา) — เทียบแบบ null = ไม่มี
-        if (!source || source.status !== 'POSTED' || source.deletedAt ||
-            (meta.paymentId ?? null) !== (paymentId ?? null) || meta.contractId !== contractId ||
-            !acceptedTag) {
+        if (
+          !source ||
+          source.status !== 'POSTED' ||
+          source.deletedAt ||
+          (meta.paymentId ?? null) !== (paymentId ?? null) ||
+          meta.contractId !== contractId ||
+          !acceptedTag
+        ) {
           throw new BadRequestException('ไม่พบรายการบัญชีรับชำระที่ตรงกับใบเสร็จ');
         }
         // ยกเลิกใบเสร็จ / คืนเงินกลับรายการรับชำระแล้ว — รายการเดิมคง POSTED ประทับแค่ metadata.reversed (final review I1) ⇒
         // ออกใบซ้ำด้วยเลขที่รายการนี้ต้องไม่ได้ใบกำกับภาษีที่มีผลให้เงินที่บัญชีกลับไปแล้ว. ปฏิเสธก่อนออกเลขที่ใบ (ไม่เปลืองเลข ·
         // ไม่ส่งข้อความ LINE) — ผู้เรียกทุกทางจับ error ของ generateReceipt อยู่แล้ว
         if (meta.reversed === true) {
-          throw new BadRequestException('รายการบัญชีรับชำระนี้ถูกกลับรายการแล้ว — ออกใบเสร็จไม่ได้');
+          throw new BadRequestException(
+            'รายการบัญชีรับชำระนี้ถูกกลับรายการแล้ว — ออกใบเสร็จไม่ได้',
+          );
         }
         sourceJournalEntryId = source.id;
         // ใบค่างวด (stamp ของ PaymentReceiptTemplate) และใบปิดยอด (stamp `receiptTax` ที่ earlyPayoff ประทับบน JP4 —
@@ -205,7 +230,10 @@ export class ReceiptIssuanceService {
             // JP4 ที่ไม่มี stamp = ปิดยอดที่ประทับค่าไม่ได้ (เงินรับเกิน 18.2 / ตารางงวดผิดปกติ) — ใบยังผูกรายการ พิมพ์แบบเดิม
             receiptTaxMissing = true;
           }
-        } else if (receiptType === 'RESCHEDULE_FEE' || receiptType === ADVANCE_SURPLUS_RECEIPT_TYPE) {
+        } else if (
+          receiptType === 'RESCHEDULE_FEE' ||
+          receiptType === ADVANCE_SURPLUS_RECEIPT_TYPE
+        ) {
           const amountDec = new Prisma.Decimal(amount);
           tax =
             receiptType === 'RESCHEDULE_FEE'
@@ -263,7 +291,9 @@ export class ReceiptIssuanceService {
           receiverName,
           amount,
           installmentNo,
-          remainingBalance: (DOCUMENT_BALANCE_RECEIPT_TYPES as readonly string[]).includes(receiptType)
+          remainingBalance: (DOCUMENT_BALANCE_RECEIPT_TYPES as readonly string[]).includes(
+            receiptType,
+          )
             ? null
             : remainingBalance,
           remainingMonths: Math.max(0, remainingMonths),
@@ -291,16 +321,21 @@ export class ReceiptIssuanceService {
         totalMonths: contract.totalMonths,
       });
       if (balance.documentRemainingBalance != null) {
-        const currentRemaining = balance.documentInstallmentAmountDue != null &&
+        const currentRemaining =
+          balance.documentInstallmentAmountDue != null &&
           balance.documentInstallmentAmountPaid != null
-          ? new Prisma.Decimal(balance.documentInstallmentAmountDue).minus(balance.documentInstallmentAmountPaid)
-          : null;
+            ? new Prisma.Decimal(balance.documentInstallmentAmountDue).minus(
+                balance.documentInstallmentAmountPaid,
+              )
+            : null;
         receipt = await tx.receipt.update({
           where: { id: receipt.id },
           data: {
             remainingBalance: new Prisma.Decimal(balance.documentRemainingBalance),
             remainingMonths: balance.documentRemainingMonths,
-            ...(INSTALLMENT_TYPES.includes(receiptType) ? { remainingAmount: currentRemaining } : {}),
+            ...(INSTALLMENT_TYPES.includes(receiptType)
+              ? { remainingAmount: currentRemaining }
+              : {}),
           },
         });
       }
@@ -319,9 +354,9 @@ export class ReceiptIssuanceService {
               contracts: { some: { id: contractId } },
               // ผูก LINE การเงิน = แถว OTP ที่ยังผูก (Task 22 I-1 ง) ไม่ใช่คอลัมน์ line_id_finance
               lineLinks: { some: ACTIVE_FINANCE_LINK_WHERE },
-              deletedAt: null
+              deletedAt: null,
             },
-            select: { id: true }
+            select: { id: true },
           });
 
           if (customer) {
@@ -331,10 +366,10 @@ export class ReceiptIssuanceService {
                 await this.lineOaService!.sendPaymentReceipt(customer.id, committedReceipt);
               });
             } else {
-            // Send receipt in background (don't wait)
-            this.lineOaService.sendPaymentReceipt(customer.id, receipt).catch(err => {
-              this.logger.error('[Receipt] Failed to send LINE receipt:', err);
-            });
+              // Send receipt in background (don't wait)
+              this.lineOaService.sendPaymentReceipt(customer.id, receipt).catch((err) => {
+                this.logger.error('[Receipt] Failed to send LINE receipt:', err);
+              });
             }
           }
         } catch (error) {

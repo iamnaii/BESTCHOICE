@@ -1626,9 +1626,21 @@ Integration: `contracts/early-payoff-receipt.integration.spec.ts`. **กลไ�
      ⇒ ออกช้าได้สถานะภายหลัง เช่น งวดที่ถูกชำระต่อจนครบไปแล้ว
 4. **`journalEntryNumber` เป็น `null`** (งวดไม่มีแถวตารางงวด — ในธุรกรรมมี Sentry `PAID installment has no postable 2B JE …` = ไม่มีรายการรับชำระ
    ให้ผูก) — ออกซ้ำโดยไม่ส่งเลขที่รายการได้ใบที่ไม่ผูกรายการและพิมพ์ตรรกะเดิม ⇒ แจ้งฝ่ายบัญชีทุกครั้ง
-5. `backfill:receipts` (`backfill-payment-receipts.cli.ts`) ใช้เป็นทางสุดท้ายเท่านั้น — ออกใบที่ไม่ผูกรายการ (พิมพ์ตรรกะเดิม) และเฉพาะงวดที่
-   `PAID` ที่ยังไม่มีใบเลย · **ห้ามใช้ร่วมกับการออกซ้ำแบบผูกรายการของ Payment เดียวกัน** — ใบของ CLI ไม่ผูกรายการ unique index
-   `receipts_source_journal_entry_key` จึงกันเอกสารใบที่สองของเงินก้อนเดียวกันไม่ได้
+5. `backfill:receipts` (`backfill-payment-receipts.cli.ts`) ใช้เป็นทางสุดท้ายเท่านั้น — ออกใบที่ไม่ผูกรายการ (พิมพ์ตรรกะเดิม) ยอด = `amount_paid`
+   เฉพาะงวด `PAID` ที่ยังไม่มีแถวใบเสร็จเลย (รวมใบที่ยกเลิกแล้ว) และ
+   - **ไม่ใช่งวดนำเข้าจากระบบเดิม** (`legacy_installment_code` — เงินยุคเก่าลงใน PEAK แล้ว · ไม่มีตัวเลือกให้รวม)
+   - **ไม่มีรายการรับชำระที่ยังมีผลผูกอยู่** (`POSTED` · ไม่ถูกลบ · `metadata.paymentId` = งวด · tag `receipt` / `2B` = `INSTALLMENT_RECEIPT_SOURCE_TAGS`
+     ชุดเดียวกับที่ `generateReceipt` รับ · `metadata.reversed` ไม่ใช่ `true`) — งวดเหล่านี้ CLI **ไม่ออกใบ** แต่พิมพ์
+     `[bound re-issue] paymentId=… contract=… งวด=… amountPaid=… entries=JE-… (receiptTax.amount=…)` ทั้ง dry-run และรันจริง (สรุปท้าย
+     `bound re-issue (not here)`) รวมงวดนำเข้าที่รับเงินหลังวันตัด ⇒ ออกซ้ำแบบผูกรายการตามข้อ 1–4 **หนึ่งใบต่อหนึ่งรายการ** ด้วยยอด `receiptTax.amount`
+     ของรายการนั้น (`-` = รายการก่อน PR3 ไม่มีค่าประทับ — ใบผูกรายการแต่พิมพ์ตรรกะเดิม แจ้งฝ่ายบัญชี)
+   - **ไม่ใช่เงินที่มีเอกสารอยู่แล้วที่อื่น** (Task 23 review m-1): งวดที่ปิดด้วยปิดยอดก่อนกำหนด (ใบ `EARLY_PAYOFF` และ JP4 ไม่ผูก `paymentId`) และงวดที่ถูก
+     ล้างด้วยรายการผูกแถวตารางงวดโดยไม่มี `paymentId` (รอบกลางคืนหักเงินรับล่วงหน้า / เงินพักค่าปรับดิว — เงินนั้นออกเอกสารพร้อมภาษีแล้วตอนรับ) — ทาง (c) / (b)
+     ของตรวจกลางคืน `orphan_payments` ชุดเดียวกัน (`data-audit/services/payment-backing.ts`) · ไม่อยู่ในรายชื่อใด
+
+   ⇒ CLI ไม่ออกใบที่ไม่ผูกรายการให้เงินที่มีรายการรับชำระหรือเอกสารแล้ว (unique index `receipts_source_journal_entry_key` กันใบที่ไม่ผูกรายการไม่ได้ — ด่านนี้
+   จึงอยู่ในคิวรีของ CLI) · **ไม่ครอบ:** งวดที่มีแถวใบเสร็จอยู่แล้วอย่างน้อยหนึ่งใบ (ใบที่ยกเลิกแล้วรับใหม่ · ใบบางส่วนอีกใบ · ใบปรับดิวที่ผูก `paymentId`
+   เดียวกัน) แต่รายการรับชำระอีกรายการยังไม่มีใบ — ไม่อยู่ในรายชื่อใดเลย ใช้ตัวตรวจ SQL ข้างล่าง (ต่อรายการ)
 
 | อาร์กิวเมนต์ | จาก Sentry (`extra`) | สำรอง |
 |---|---|---|
@@ -3032,9 +3044,17 @@ is skipped entirely (`shopJournalEntryId` stays `null`).
 `legacyNoShop` อีกต่อไป** (ข้อความเดิมของหัวข้อนี้ที่นับ device swap รวมอยู่ด้วย **ยกเลิก**):
 ตั้งแต่ 2026-08-01 (F2) มันโพสต์ SHOP leg แล้ว และตั้งแต่ 2026-08-03 (คำสั่งเจ้าของ ยกเลิก D5)
 มันปล่อยให้ทั้งสองฝั่งค้างไว้ จึงเข้าคิวจ่ายเป็นแถวปกติที่ `legacyNoShop = false`.
-`legacyNoShop = true` เหลือความหมายเดียวคือ **สัญญาที่ activate ก่อน 2026-06-23**
-(commit `bbcfa7a3`, PR #1280 — ก่อน SHOP-side receivable ถูกต่อเข้า
-`contract-workflow.service.ts`).
+`legacyNoShop = true` เหลือความหมายเดียวคือ **สัญญาที่ activate ก่อนต่อขา SHOP** (deploy PR #1280 บ่าย 2026-06-23 — commit `bbcfa7a3`
+merge 16:08 น. — ก่อน SHOP-side receivable ถูกต่อเข้า `contract-workflow.service.ts`).
+
+**นิยามอยู่ไฟล์เดียว (2026-10-31 · Task 23):** `apps/api/src/modules/interco-settlement/legacy-no-shop.ts` — `loadShopFinanceReceivableLens`
+(Σ Dr − Cr ของ S11-3001 / S11-3002 ต่อ `metadata.contractId` · รายการ `POSTED` ที่ไม่ถูกลบ · ยอด gross เพราะขาล้างของรอบจ่ายไม่ stamp `contractId`) +
+`isLegacyNoShop` (ทั้งสองเลนส์ **= 0 พอดี** · ไม่มีแถว = 0). ผู้ใช้: คิวรอจ่าย INTER-CO (`IntercoPendingService.getPendingContracts` → `buildShopLines`
+ข้ามบรรทัด SHOP) และตรวจข้อมูล (`DataAuditChecksService.preShopWiringContractIds` → `missing_cogs` · trace `cogs` / `interCompany`). ตรวจข้อมูลยกเว้น
+เฉพาะเมื่อ **ครบสองข้อ**: `legacyNoShop` **และ** รายการเปิดสัญญาใบแรก (1A / A.1 / ยอดยกมา — `MIN(posted_at)`) ลงก่อน `SHOP_LEG_WIRED_BEFORE` =
+`2026-06-24T00:00+07:00` (ครอบทั้งวันต่อขา) ⇒ สัญญาที่เปิดหลังต่อขาแต่ไม่มีขา SHOP (หรือขา SHOP ถูกยกเลิก) ยังติด `missing_cogs`.
+**ยังไม่รวม:** `IntercoAgingService.getPayablePairing` (กระทบยอดรายเดือน `PAYABLE_PAIR_MISMATCH`) คำนวณธงเองด้วย `|เลนส์| ≤ 0.01` — ต่างเฉพาะสัญญาที่
+เลนส์ค้าง ±0.01 พอดี (ย้ายมาใช้ไฟล์นี้ได้เมื่อตัดสินว่าแถว ±0.01 นับเป็น legacy หรือไม่). **ห้ามเขียนนิยามชุดที่สาม.**
 
 `batch.shopPostedAmount` only sums the non-legacy items, so it can be strictly less than
 `batch.totalAmount` — the gap is real money FINANCE wired to SHOP with no SHOP-side

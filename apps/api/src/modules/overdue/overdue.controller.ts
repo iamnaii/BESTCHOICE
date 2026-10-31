@@ -506,8 +506,11 @@ export class OverdueController {
 
   @Post('bulk/send-line')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
-  bulkSendLine(@Body() dto: BulkSendLineDto, @CurrentUser() user: { id: string }) {
-    return this.bulkService.bulkSendLine(dto, user.id);
+  bulkSendLine(
+    @Body() dto: BulkSendLineDto,
+    @CurrentUser() user: { id: string; role: string; branchId: string | null },
+  ) {
+    return this.bulkService.bulkSendLine(dto, user);
   }
 
   // --- Ad-hoc single contract LINE send ---
@@ -517,9 +520,9 @@ export class OverdueController {
   async sendLineAdhoc(
     @Param('contractId') contractId: string,
     @Body() dto: SendLineAdHocDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string; role: string; branchId: string | null },
   ) {
-    return this.bulkService.sendLineAdhoc(contractId, dto, user.id);
+    return this.bulkService.sendLineAdhoc(contractId, dto, user);
   }
 
   // --- Contract letters ---

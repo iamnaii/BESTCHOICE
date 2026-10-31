@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MdmLockService } from './mdm-lock.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -20,6 +20,9 @@ const mockPrisma = {
 const mockMdmLock = {
   proposeManual: jest.fn(),
 };
+
+/** ผู้ใช้ข้ามสาขา (ไม่กรองสาขา) */
+const OWNER = { id: 'actor-1', role: 'OWNER', branchId: null };
 
 const mockNotifications = {
   send: jest.fn(),
@@ -110,45 +113,65 @@ describe('OverdueBulkService', () => {
   });
 
   /**
-   * Task 24 RR-M2 — ปุ่ม "ส่ง LINE" ของคิวทวงถาม (สัญญาเดียว) ลูกค้าที่ยังไม่ยืนยัน OTP = 400 ข้อความบอกเหตุ + ทางที่มีจริง
-   * (เดิมได้ 201 {sent:0} แล้วหน้าเว็บขึ้น "อาจไม่มี lineId")
+   * Task 24 RR-M2 + fix round 1 M-3/M-4 — ปุ่ม "ส่ง LINE" ของคิวทวงถาม (สัญญาเดียว):
+   * - ลูกค้าไม่มีแถว OTP ที่ยังผูก ณ ตอนส่ง = 400 ข้อความบอกเหตุ + ทางที่มีจริง (เดิม 201 {sent:0} → toast "ลองใหม่" ทั้งที่ลองแล้วไม่หาย)
+   * - ไม่พบสัญญา / อยู่นอกสาขาของ SALES·BM = 404 (ขอบเขตเดียวกับคิวทวงถามที่อ่าน — `getBranchScope`)
    */
   describe('sendLineAdhoc', () => {
+    const row = (lineLinks: { lineUserId: string }[]) => ({
+      id: 'c1',
+      contractNumber: 'BC-001',
+      branchId: 'b1',
+      customer: { lineLinks, phone: '081', name: 'ก', id: 'cu1' },
+    });
+
     it('ลูกค้าไม่มีแถว OTP ที่ยังผูก (แม้คอลัมน์มีค่า) → 400 LINE_FINANCE_NOT_VERIFIED_MESSAGE ไม่ส่ง', async () => {
-      mockPrisma.contract.findFirst.mockResolvedValueOnce({ customer: { lineLinks: [] } });
-      await expect(
-        service.sendLineAdhoc('c1', { customMessage: 'ทดสอบ' }, 'actor-1'),
-      ).rejects.toThrow(new BadRequestException(LINE_FINANCE_NOT_VERIFIED_MESSAGE));
-      const where = mockPrisma.contract.findFirst.mock.calls[0][0].where;
-      expect(where).toEqual({ id: 'c1', deletedAt: null });
-      expect(mockPrisma.contract.findMany).not.toHaveBeenCalled();
+      mockPrisma.contract.findMany.mockResolvedValueOnce([row([])]);
+      await expect(service.sendLineAdhoc('c1', { customMessage: 'ทดสอบ' }, OWNER)).rejects.toThrow(
+        new BadRequestException(LINE_FINANCE_NOT_VERIFIED_MESSAGE),
+      );
       expect(mockNotifications.send).not.toHaveBeenCalled();
     });
 
-    it('มีแถว OTP → ส่งผ่าน bulkSendLine ตามเดิม', async () => {
-      mockPrisma.contract.findFirst.mockResolvedValueOnce({
-        customer: { lineLinks: [{ lineUserId: 'U1' }] },
-      });
-      mockPrisma.contract.findMany.mockResolvedValueOnce([
-        {
-          id: 'c1',
-          contractNumber: 'BC-001',
-          customer: { lineLinks: [{ lineUserId: 'U1' }], phone: '081', name: 'ก', id: 'cu1' },
-        },
-      ]);
+    it('มีแถว OTP → ส่งตามเดิม', async () => {
+      mockPrisma.contract.findMany.mockResolvedValueOnce([row([{ lineUserId: 'U1' }])]);
       mockNotifications.send.mockResolvedValueOnce({ id: 'n1', status: 'SENT' });
-      await expect(
-        service.sendLineAdhoc('c1', { customMessage: 'ทดสอบ' }, 'actor-1'),
-      ).resolves.toEqual({ sent: 1, failed: 0, total: 1 });
+      await expect(service.sendLineAdhoc('c1', { customMessage: 'ทดสอบ' }, OWNER)).resolves.toEqual(
+        { sent: 1, failed: 0, total: 1 },
+      );
       expect(mockNotifications.send).toHaveBeenCalledWith(
         expect.objectContaining({ recipient: 'U1', channelKey: 'line-finance' }),
       );
+    });
+
+    it('M-4: ไม่พบสัญญา (ถูกลบ/ไม่มี) → 404 "ไม่พบสัญญา" (ไม่ใช่ 201 {sent:0} ที่หน้าเว็บบอกให้ลองใหม่)', async () => {
+      mockPrisma.contract.findMany.mockResolvedValueOnce([]);
+      await expect(service.sendLineAdhoc('c1', { customMessage: 'ทดสอบ' }, OWNER)).rejects.toThrow(
+        new NotFoundException('ไม่พบสัญญา'),
+      );
+    });
+
+    it('M-3: SALES/BM ส่งได้เฉพาะสัญญาในสาขาตัวเอง — ค้นด้วย branchId ของผู้ใช้ · นอกสาขา = 404 เหมือนคิวที่อ่านไม่เห็น', async () => {
+      mockPrisma.contract.findMany.mockResolvedValueOnce([]);
+      await expect(
+        service.sendLineAdhoc(
+          'c1',
+          { customMessage: 'ทดสอบ' },
+          { id: 'u-s', role: 'SALES', branchId: 'b2' },
+        ),
+      ).rejects.toThrow(NotFoundException);
+      expect(mockPrisma.contract.findMany.mock.calls[0][0].where).toEqual({
+        id: { in: ['c1'] },
+        deletedAt: null,
+        branchId: 'b2',
+      });
+      expect(mockNotifications.send).not.toHaveBeenCalled();
     });
   });
 
   describe('bulkSendLine', () => {
     it('throws BadRequestException when neither templateId nor customMessage provided', async () => {
-      await expect(service.bulkSendLine({ contractIds: ['c1'] }, 'actor-1')).rejects.toThrow(
+      await expect(service.bulkSendLine({ contractIds: ['c1'] }, OWNER)).rejects.toThrow(
         BadRequestException,
       );
     });
@@ -175,7 +198,7 @@ describe('OverdueBulkService', () => {
 
       const result = await service.bulkSendLine(
         { contractIds: ['c1', 'c2'], customMessage: 'กรุณาชำระเงินค้างชำระ' },
-        'actor-1',
+        OWNER,
       );
 
       expect(result).toEqual({ sent: 1, failed: 1, total: 2 });
@@ -193,7 +216,7 @@ describe('OverdueBulkService', () => {
 
       const result = await service.bulkSendLine(
         { contractIds: ['c1'], customMessage: 'กรุณาชำระเงินค้างชำระ' },
-        'actor-1',
+        OWNER,
       );
 
       expect(result).toEqual({ sent: 0, failed: 1, total: 1 });
@@ -217,7 +240,7 @@ describe('OverdueBulkService', () => {
 
       await service.bulkSendLine(
         { contractIds: ['c1'], customMessage: 'ข้อความทดสอบ 10 ตัวอักษร' },
-        'actor-1',
+        OWNER,
       );
 
       const sendArg = mockNotifications.send.mock.calls[0][0];
@@ -247,7 +270,7 @@ describe('OverdueBulkService', () => {
 
       const result = await service.bulkSendLine(
         { contractIds: ['c1'], templateId: 'rule-1' },
-        'actor-1',
+        OWNER,
       );
 
       expect(result.sent).toBe(1);
@@ -271,7 +294,7 @@ describe('OverdueBulkService', () => {
       mockPrisma.dunningRule.findUnique.mockResolvedValueOnce(null);
 
       await expect(
-        service.bulkSendLine({ contractIds: ['c1'], templateId: 'no-such-template' }, 'actor-1'),
+        service.bulkSendLine({ contractIds: ['c1'], templateId: 'no-such-template' }, OWNER),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -304,10 +327,49 @@ describe('OverdueBulkService', () => {
 
       const result = await service.bulkSendLine(
         { contractIds: ['c1', 'c2'], customMessage: 'ข้อความทดสอบสำหรับการส่ง' },
-        'actor-1',
+        OWNER,
       );
 
       expect(result).toEqual({ sent: 1, failed: 1, total: 2 });
+    });
+  });
+
+  /** Task 24 fix round 1 M-3 — ส่ง LINE รวด (แบนเนอร์นัดครบกำหนด) ใช้ขอบเขตสาขาเดียวกับคิว/แบนเนอร์ที่อ่าน */
+  describe('bulkSendLine — branch scope (M-3)', () => {
+    it('ข้ามสาขา (OWNER/FM/ACCOUNTANT) → ไม่กรองสาขา', async () => {
+      mockPrisma.contract.findMany.mockResolvedValueOnce([]);
+      await service.bulkSendLine(
+        { contractIds: ['c1', 'c2'], customMessage: 'กรุณาชำระเงิน' },
+        OWNER,
+      );
+      expect(mockPrisma.contract.findMany.mock.calls[0][0].where).toEqual({
+        id: { in: ['c1', 'c2'] },
+        deletedAt: null,
+      });
+    });
+
+    it('BRANCH_MANAGER → เฉพาะสัญญาในสาขาตัวเอง (สัญญาสาขาอื่นไม่ถูกโหลด ไม่ถูกส่ง ไม่นับ)', async () => {
+      mockPrisma.contract.findMany.mockResolvedValueOnce([]);
+      const res = await service.bulkSendLine(
+        { contractIds: ['c1', 'c2'], customMessage: 'กรุณาชำระเงิน' },
+        { id: 'u-bm', role: 'BRANCH_MANAGER', branchId: 'b1' },
+      );
+      expect(mockPrisma.contract.findMany.mock.calls[0][0].where).toEqual({
+        id: { in: ['c1', 'c2'] },
+        deletedAt: null,
+        branchId: 'b1',
+      });
+      expect(res).toEqual({ sent: 0, failed: 0, total: 0 });
+    });
+
+    it('SALES/BM ที่ไม่มีสาขา → fail closed (ไม่ค้น ไม่ส่ง)', async () => {
+      const res = await service.bulkSendLine(
+        { contractIds: ['c1'], customMessage: 'กรุณาชำระเงิน' },
+        { id: 'u-s', role: 'SALES', branchId: null },
+      );
+      expect(res).toEqual({ sent: 0, failed: 0, total: 0 });
+      expect(mockPrisma.contract.findMany).not.toHaveBeenCalled();
+      expect(mockNotifications.send).not.toHaveBeenCalled();
     });
   });
 });

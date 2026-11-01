@@ -150,16 +150,21 @@ describe('ChatPanel — สถานะ LINE การเงินของห�
 
   // fix round 2 R2-M1 — ปุ่มตัวตนบนหัวห้องมือถือ: ชื่อปุ่มบอกชื่อลูกค้า + สถานะ LINE (เดิม aria-label "ข้อมูลลูกค้า" ทับทั้งชื่อและป้าย)
   it.each([
-    ['A2', { verified: false, unlinkedAt: '2026-10-30T05:00:00.000Z' }, 'ข้อมูลลูกค้า สมชาย ใจดี · ยกเลิกผูกแล้ว'],
+    [
+      'A2',
+      { verified: false, unlinkedAt: '2026-10-30T05:00:00.000Z' },
+      'ข้อมูลลูกค้า สมชาย ใจดี · ยกเลิกผูกแล้ว',
+    ],
     ['A3', { verified: true, unlinkedAt: null }, 'ข้อมูลลูกค้า สมชาย ใจดี · ยืนยัน OTP แล้ว'],
     ['A4', { verified: false, unlinkedAt: null }, 'ข้อมูลลูกค้า สมชาย ใจดี · ยังไม่ยืนยันตัวตน'],
     ['ไม่มีสถานะ', null, 'ข้อมูลลูกค้า สมชาย ใจดี'],
-  ])('R2-M1 %s — หัวห้องมือถือ: โปรแกรมอ่านจอได้ชื่อลูกค้า + สถานะ', (_label, financeLineStatus, name) => {
-    const { container } = mount({ ...unlinkedRoom, financeLineStatus });
-    expect(
-      within(mobileHeader(container)).getByRole('button', { name }),
-    ).toBeInTheDocument();
-  });
+  ])(
+    'R2-M1 %s — หัวห้องมือถือ: โปรแกรมอ่านจอได้ชื่อลูกค้า + สถานะ',
+    (_label, financeLineStatus, name) => {
+      const { container } = mount({ ...unlinkedRoom, financeLineStatus });
+      expect(within(mobileHeader(container)).getByRole('button', { name })).toBeInTheDocument();
+    },
+  );
 
   // fix round 2 R2-M2 — จอแคบ (คอนเทนเนอร์ห้องแชท < 28rem): ป้ายบนหัวห้องมือถือเหลือไอคอน (คำยังอยู่สำหรับโปรแกรมอ่านจอ) ให้ชื่อลูกค้ายังเห็น ·
   // จอกว้างคืนคำเต็ม · หัวห้องจอใหญ่คงคำเต็มเสมอ (ยังไม่ได้ดูบนเครื่องจริง — ตรวจจากโครง/คลาส เพราะ jsdom ไม่คำนวณ container query)
@@ -167,18 +172,20 @@ describe('ChatPanel — สถานะ LINE การเงินของห�
     ['ยกเลิกผูกแล้ว', { verified: false, unlinkedAt: '2026-10-30T05:00:00.000Z' }],
     ['ยืนยัน OTP แล้ว', { verified: true, unlinkedAt: null }],
     ['ยังไม่ยืนยันตัวตน', { verified: false, unlinkedAt: null }],
-  ])('R2-M2 "%s" — หัวห้องมือถือย่อเป็นไอคอนเมื่อแคบ · ชื่อลูกค้าตัดท้ายได้แต่ไม่ถูกดันหาย', (label, financeLineStatus) => {
-    const { container } = mount({ ...unlinkedRoom, financeLineStatus });
-    const mobileLabel = within(mobileHeader(container)).getByText(label);
-    expect(mobileLabel.className).toMatch(/(^|\s)sr-only(\s|$)/);
-    expect(mobileLabel.className).toContain('@md:not-sr-only');
-    expect(mobileLabel.parentElement!.querySelector('svg')).not.toBeNull();
-    const name = within(mobileHeader(container)).getByText('สมชาย ใจดี');
-    expect(name.className).toContain('truncate');
-    expect(name.className).toMatch(/min-w-\[/);
-    // หัวห้องจอใหญ่ไม่ย่อ
-    const desktopLabel = within(desktopHeader(container)).getByText(label);
-    expect(desktopLabel.className).not.toMatch(/(^|\s)sr-only(\s|$)/);
-  });
+  ])(
+    'R2-M2 "%s" — หัวห้องมือถือย่อเป็นไอคอนเมื่อแคบ · ชื่อลูกค้าตัดท้ายได้แต่ไม่ถูกดันหาย',
+    (label, financeLineStatus) => {
+      const { container } = mount({ ...unlinkedRoom, financeLineStatus });
+      const mobileLabel = within(mobileHeader(container)).getByText(label);
+      expect(mobileLabel.className).toMatch(/(^|\s)sr-only(\s|$)/);
+      expect(mobileLabel.className).toContain('@md:not-sr-only');
+      expect(mobileLabel.parentElement!.querySelector('svg')).not.toBeNull();
+      const name = within(mobileHeader(container)).getByText('สมชาย ใจดี');
+      expect(name.className).toContain('truncate');
+      expect(name.className).toMatch(/min-w-\[/);
+      // หัวห้องจอใหญ่ไม่ย่อ
+      const desktopLabel = within(desktopHeader(container)).getByText(label);
+      expect(desktopLabel.className).not.toMatch(/(^|\s)sr-only(\s|$)/);
+    },
+  );
 });
-

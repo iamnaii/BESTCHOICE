@@ -67,9 +67,12 @@ const PILL = {
 export function FinanceLineRoomPill({
   status,
   className,
+  labelClassName,
 }: {
   status: FinanceLineRoomStatus | null | undefined;
   className?: string;
+  /** คลาสของคำในป้าย (หัวห้องมือถือใช้ซ่อนคำเมื่อแคบ — คำยังอยู่สำหรับโปรแกรมอ่านจอ) */
+  labelClassName?: string;
 }) {
   const kind = financeLineRoomKind(status);
   if (kind !== 'unlinked' && kind !== 'not_verified') return null;
@@ -82,20 +85,26 @@ export function FinanceLineRoomPill({
       )}
     >
       <Icon className="size-3 shrink-0" aria-hidden="true" />
-      {label}
+      {labelClassName ? <span className={labelClassName}>{label}</span> : label}
     </span>
   );
 }
 
 /** A3 — "ยืนยัน OTP แล้ว" (ไอคอน + คำ) */
-function FinanceLineVerifiedLabel() {
+function FinanceLineVerifiedLabel({ labelClassName }: { labelClassName?: string }) {
   return (
     <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap font-medium leading-snug text-primary">
       <CircleCheck className="size-3.5 shrink-0" aria-hidden="true" />
-      ยืนยัน OTP แล้ว
+      {labelClassName ? <span className={labelClassName}>ยืนยัน OTP แล้ว</span> : 'ยืนยัน OTP แล้ว'}
     </span>
   );
 }
+
+/**
+ * fix round 2 R2-M2 — หัวห้องมือถือบนจอแคบ (คอนเทนเนอร์ห้องแชท `@container` < 28rem ≈ มือถือ 320–440px): ป้ายเหลือไอคอน ให้ชื่อลูกค้ายังเห็น ·
+ * คำยังอยู่ (sr-only) และคำเต็มกลับมาเมื่อกว้างพอ · ความหมายครบอยู่ที่คำอธิบายใต้หัวห้อง (A2/A4) + ชื่อปุ่มตัวตน (R2-M1)
+ */
+const COMPACT_LABEL = 'sr-only @md:not-sr-only';
 
 /**
  * หัวห้อง: A2/A4 = ป้ายข้างชื่อ · A3 = "ยืนยัน OTP แล้ว" (จอใหญ่วางในบรรทัดสถานะตาม mockup · มือถือวางข้างชื่อ — ผู้เรียกเลือกตำแหน่ง) ·
@@ -103,12 +112,24 @@ function FinanceLineVerifiedLabel() {
  */
 export function FinanceLineRoomHeaderBadge({
   status,
+  compact = false,
 }: {
   status: FinanceLineRoomStatus | null | undefined;
+  /** หัวห้องมือถือ — ย่อเหลือไอคอนเมื่อแคบ (R2-M2) */
+  compact?: boolean;
 }) {
   const kind = financeLineRoomKind(status);
-  if (kind === 'verified') return <FinanceLineVerifiedLabel />;
-  if (kind) return <FinanceLineRoomPill status={status} className="px-2.5" />;
+  const labelClassName = compact ? COMPACT_LABEL : undefined;
+  if (kind === 'verified') return <FinanceLineVerifiedLabel labelClassName={labelClassName} />;
+  if (kind) {
+    return (
+      <FinanceLineRoomPill
+        status={status}
+        className={compact ? 'px-1.5 @md:px-2.5' : 'px-2.5'}
+        labelClassName={labelClassName}
+      />
+    );
+  }
   return null;
 }
 

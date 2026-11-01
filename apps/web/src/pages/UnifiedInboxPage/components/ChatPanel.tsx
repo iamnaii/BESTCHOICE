@@ -995,8 +995,11 @@ export default function ChatPanel({
           <span className="min-w-0 text-left">
             {/* Task 33 fix round 1 (คำตัดสินเจ้าของข้อ 31) — ป้ายสถานะ LINE การเงินข้างชื่อบนมือถือด้วย (ทั้งสามสถานะ) · ชื่อหดก่อน */}
             <span className="flex min-w-0 items-center gap-1.5">
-              <span className="truncate text-base font-semibold leading-snug">{displayName}</span>
-              <FinanceLineRoomHeaderBadge status={financeLineStatus} />
+              {/* fix round 2 R2-M2 — ชื่อตัดท้ายได้แต่ไม่ถูกป้ายดันหาย (min-w) · ป้ายย่อเหลือไอคอนเมื่อแคบ */}
+              <span className="min-w-[3rem] truncate text-base font-semibold leading-snug">
+                {displayName}
+              </span>
+              <FinanceLineRoomHeaderBadge status={financeLineStatus} compact />
             </span>
             <span className="block truncate text-xs leading-snug text-muted-foreground">
               {channelLabel} · <span className={roomStatus.tone}>{roomStatus.text}</span>

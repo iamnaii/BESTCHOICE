@@ -182,7 +182,8 @@ export class OverdueLifecycleCronService {
     const activeIds = toFlip.map((c) => c.id);
 
     // Step 2: OVERDUE → DEFAULT (2+ consecutive missed payments).
-    // Streak derivation lives in ConsecutiveMissedService (single source of truth).
+    // Streak derivation lives in ConsecutiveMissedService (single source of truth) — งวดนับเป็นพลาดหลังสิ้นวันครบกำหนด
+    // ตามปฏิทินไทย (Task 30 รอบ 5 · เจ้าของ 01/11): งวดที่ครบกำหนดวันนี้ยังไม่ทำให้สัญญาเป็น DEFAULT ในรอบ 00:30 ของวันนั้น
     const streaks = await this.consecutiveMissed.getStreaks({ statuses: ['OVERDUE'] }, now);
     const defaultCandidates: { id: string; consecutive: number }[] = [...streaks.entries()]
       .filter(([, consecutive]) => consecutive >= 2)

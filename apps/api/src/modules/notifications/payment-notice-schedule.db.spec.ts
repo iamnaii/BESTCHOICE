@@ -12,8 +12,8 @@
  * - รอบ 3 C1: เดิม A1/A2 เลือกงวดตามวัน UTC ⇒ A1 ส่ง T-4/T-2/T-1 · A2 ส่ง T0 "เลยกำหนด 0 วัน"/T+2/T+6
  * - รอบ 4 I2 (รีวิวรอบ 3): สเปคเดิมไม่รันรอบกลางคืน — วันเปลี่ยนเป็น OVERDUE (T+7) ลูกค้าได้ A3 08:05 + A2 09:00 ของงวดเดียวกัน ⇒
  *   A2/บอทเห็นข้อความทวงระดับสัญญาที่ส่งแล้ววันนี้ (`contractDunningSentToday` — เจ้าของ: ข้อความทวงหลังครบกำหนดวันละข้อความเดียว)
- * - วันเปลี่ยนเป็น DEFAULT (ตรงกับ T0 ของงวดถัดไป): A3 (ทวง) + บอทเตือน T0 (เตือนงวดใหม่) คนละชนิด — **ปักพฤติกรรมปัจจุบัน
- *   รอคำตัดสินเจ้าของ** (ไม่เดากติกาใหม่)
+ * - รอบ 5 (เจ้าของ 01/11 ข้อ 2): งวดนับเป็น "พลาด" หลังสิ้นวันครบกำหนด ⇒ วันครบกำหนดงวด 2 สัญญายังเป็น OVERDUE (บอทเตือนงวด 2 อย่างเดียว)
+ *   และเปลี่ยนเป็น DEFAULT คืนถัดไป (T+1 ของงวด 2: แจ้งสถานะอย่างเดียว — A2 ไม่ดูสัญญา DEFAULT · บอททวง T+1 เว้นให้ข้อความทวงของสัญญา)
  */
 import { PrismaClient } from '@prisma/client';
 import { NotificationsService } from './notifications.service';
@@ -158,25 +158,33 @@ it('วันครบกำหนดเที่ยงคืนไทย + ท�
     where: { id: t8.contractId },
     data: { dunningStage: 'REMINDER' },
   });
-  // วันเปลี่ยนเป็น DEFAULT: งวด 1 ค้าง 30 วัน (ขั้น NOTICE แล้ว) + งวด 2 ครบกำหนดวันนี้ → คืนนี้ OVERDUE → DEFAULT
-  const def = await createInstallmentFixture(prisma, base, {
-    label: 'default',
-    dueDate: dueDateBkk(day, -30),
-    paymentStatus: 'OVERDUE',
-    contractStatus: 'OVERDUE',
-  });
-  await prisma.contract.update({ where: { id: def.contractId }, data: { dunningStage: 'NOTICE' } });
-  const defInst2 = await prisma.payment.create({
-    data: {
-      contractId: def.contractId,
-      installmentNo: 2,
-      dueDate: dueDateBkk(day, 0),
-      amountDue: dec('1515.83'),
-      lateFee: dec('0.00'),
-      status: 'PENDING',
-    },
-  });
-  fixtures.push(t8, def, { ...def, paymentId: defInst2.id });
+  // สัญญา OVERDUE (ขั้น NOTICE แล้ว): งวด 1 ค้าง + งวด 2 ครบกำหนดตาม `secondDue` (วันไทยเทียบวันนี้) ยังไม่จ่าย
+  const overdueWithSecond = async (label: string, secondDue: number) => {
+    const f = await createInstallmentFixture(prisma, base, {
+      label,
+      dueDate: dueDateBkk(day, secondDue - 30),
+      paymentStatus: 'OVERDUE',
+      contractStatus: 'OVERDUE',
+    });
+    await prisma.contract.update({ where: { id: f.contractId }, data: { dunningStage: 'NOTICE' } });
+    const second = await prisma.payment.create({
+      data: {
+        contractId: f.contractId,
+        installmentNo: 2,
+        dueDate: dueDateBkk(day, secondDue),
+        amountDue: dec('1515.83'),
+        lateFee: dec('0.00'),
+        status: secondDue < 0 ? 'OVERDUE' : 'PENDING',
+      },
+    });
+    fixtures.push(f, { ...f, paymentId: second.id });
+    return f;
+  };
+  // วันครบกำหนดงวด 2 — งวด 2 ยังไม่นับเป็นพลาด ⇒ ยังไม่เปลี่ยนเป็น DEFAULT (รอบ 5)
+  const secondDueToday = await overdueWithSecond('second0', 0);
+  // วันถัดจากวันครบกำหนดงวด 2 — คืนนี้ OVERDUE → DEFAULT
+  const def = await overdueWithSecond('default', -1);
+  fixtures.push(t8);
 
   // รอบกลางคืน
   jest.setSystemTime(bangkokAt(day, 0, 0, 30));
@@ -185,6 +193,7 @@ it('วันครบกำหนดเที่ยงคืนไทย + ท�
   await lifecycle.escalateDunningStages();
   expect(statuses.overdueIds).toContain(byOffset.get(-7)!.contractId);
   expect(statuses.defaultIds).toContain(def.contractId);
+  expect(statuses.defaultIds).not.toContain(secondDueToday.contractId);
 
   // รอบเช้า
   jest.setSystemTime(bangkokAt(day, 0, 8, 0));
@@ -218,14 +227,17 @@ it('วันครบกำหนดเที่ยงคืนไทย + ท�
     'T+7': ['08:05 A3'],
     // เลื่อนเป็น NOTICE คืนนี้ (เดิมส่ง 01:00)
     'T+8': ['08:05 tpl:dunning.notice'],
-    // เปลี่ยนเป็น DEFAULT คืนวันครบกำหนดงวด 2: แจ้งสถานะ (ทวง) + บอทเตือนงวด 2 (T0) — คำถามเจ้าของ
-    DEFAULT: ['08:05 A3', '09:00 bot'],
+    // วันครบกำหนดงวด 2: สัญญายัง OVERDUE (งวด 2 ยังไม่พลาด) — บอทเตือนงวด 2 (T0) อย่างเดียว · A1 ดูเฉพาะสัญญา ACTIVE
+    'งวด 2 T0': ['09:00 bot'],
+    // วันถัดไป: เปลี่ยนเป็น DEFAULT คืนนี้ → แจ้งสถานะอย่างเดียว (A2 ไม่ดูสัญญา DEFAULT · บอททวง T+1 เว้นให้ — เจ้าของ 01/11 ข้อ 1)
+    'DEFAULT (งวด 2 T+1)': ['08:05 A3'],
   };
   const label = (k: number) => (k === 0 ? 'T0' : k > 0 ? `T-${k}` : `T+${-k}`);
   expect({
     ...Object.fromEntries(offsets.map((k) => [label(k), received(byOffset.get(k)!)])),
     'T+8': received(t8),
-    DEFAULT: received(def),
+    'งวด 2 T0': received(secondDueToday),
+    'DEFAULT (งวด 2 T+1)': received(def),
   }).toEqual(expected);
   expect(a1.deferredToPayLink).toBeGreaterThanOrEqual(1);
 

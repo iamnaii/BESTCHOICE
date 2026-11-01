@@ -1,4 +1,5 @@
 import { FacebookCommentIngestService } from './facebook-comment-ingest.service';
+import { classifyCommentIngestFailure } from './facebook-comment-ingest-failure';
 import {
   Controller,
   Get,
@@ -180,7 +181,34 @@ export class FacebookWebhookController {
     const entries: any[] = body.entry ?? [];
     // Commit every comment entry before dispatching any Messenger events. A comment DB failure
     // returns non-2xx without replaying an earlier postback side effect on the next batch attempt.
-    for (const entry of entries) await this.comments?.ingest(entry);
+    // Only a failure redelivery cannot fix (classifyCommentIngestFailure — Task 35) is reported and
+    // skipped so it does not hold the Messenger events of this request.
+    for (const entry of entries) {
+      try {
+        await this.comments?.ingest(entry);
+      } catch (error) {
+        const failure = classifyCommentIngestFailure(error);
+        if (failure.retry) throw error;
+        // ids + reason code only — never the comment text, author or payload.
+        const pageId = typeof entry?.id === 'string' && entry.id.length <= 128 ? entry.id : null;
+        const line = `[FB Webhook] comment event skipped (${failure.reasonCode}) page=${pageId ?? '-'} changes=${failure.skippedChanges}`;
+        // Expected skips (hide/unhide) are logged only — no alert noise.
+        if (!failure.alert) {
+          this.logger.log(line);
+          continue;
+        }
+        this.logger.warn(line);
+        Sentry.captureMessage('Facebook comment event skipped — not retryable', {
+          level: 'warning',
+          tags: {
+            subsystem: 'facebook-comments',
+            action: 'comment-ingest-skipped',
+            reason: failure.reasonCode,
+          },
+          extra: { pageId, skippedChanges: failure.skippedChanges },
+        });
+      }
+    }
     for (const entry of entries) {
       const messagingEvents: any[] = entry.messaging ?? [];
 

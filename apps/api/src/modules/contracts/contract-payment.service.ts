@@ -633,7 +633,9 @@ export class ContractPaymentService {
 
       // คำตัดสินเจ้าของ #24 (2026-10-31): ห้ามปิดยอดขณะมีคำขอคืนเงินที่อนุมัติแล้วแต่ยังไม่บันทึกผลธนาคาร — อ่านใต้ล็อกแถวสัญญา
       // (managed ถือ FOR UPDATE อยู่แล้วจาก managedPayoffExecution · ทางปกติล็อกที่นี่) ซึ่ง approveRefund ล็อก FOR SHARE ก่อนอ่าน
-      // สถานะสัญญา ⇒ อนุมัติคืนเงินกับปิดยอดเรียงกันเสมอ (ตัวที่มาทีหลังเห็นผลของอีกตัว)
+      // สถานะสัญญา. ธุรกรรมนี้เป็น Serializable ⇒ กลไกจริง (review m-a · ปักด้วย `refunds/__tests__/pending-bank-refund-race.db.spec.ts`):
+      // ปิดยอดมาก่อน → อนุมัติที่รอล็อกได้ 40001 → 409 · อนุมัติมาก่อน → ธุรกรรมนี้ได้ล็อกแล้วอ่านคำขอด้วย snapshot เดิม (ยังไม่เห็น)
+      // แต่ SSI ยกเลิกตอนเขียน (40001 — คิวอนุมัติตอบ 409) · ลองใหม่ = เห็นคำขอ → 400 · ไม่ใช่ "มาทีหลังเห็นผล" ในทุกกรณี
       if (!managed) await tx.$queryRaw`SELECT id FROM contracts WHERE id=${id} FOR UPDATE`;
       await assertNoPendingBankRefund(tx, id, 'EARLY_PAYOFF');
 

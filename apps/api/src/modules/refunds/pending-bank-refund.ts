@@ -17,7 +17,11 @@ import { Prisma } from '@prisma/client';
  *   managed `ManagedPayoffEvidenceService`) · LIFF ยอดปิด/ลิงก์ปิดยอด · PaySolutions `createPaymentIntent` แบบไม่ระบุงวด
  *   (ลิงก์ที่ปิดหลายงวด) — **webhook ไม่ตรวจ** (เงินตัดที่ gateway แล้ว · แบบเดียวกับกติกา "ห้ามข้ามงวด" ที่บังคับตอนส่ง QR)
  * - JP5: `RepossessionsService.createInTx` (หลังล็อกแถวสัญญา) + `previewCalculation` (`eligibility`)
- * - อีกฝั่งของการแข่ง: `RefundsService.approveRefund` ล็อกแถวสัญญา FOR SHARE ก่อนอ่านสถานะ ⇒ อนุมัติ vs ปิดยอด/ยึด เรียงกันได้เสมอ
+ * - อีกฝั่งของการแข่ง: `RefundsService.approveRefund` ล็อกแถวสัญญา FOR SHARE ก่อนอ่านสถานะ ⇒ ทุกลำดับปลอดภัย แต่ด้วยกลไกต่างกัน
+ *   (review m-a · ปักด้วย DB สองคอนเนกชันจริง `__tests__/pending-bank-refund-race.db.spec.ts`):
+ *   ปิดมาก่อน → อนุมัติที่รอล็อก (Serializable) ได้ 40001 จากคำสั่ง raw = P2010 → 409 · กดใหม่ = 400 สัญญาปิด ·
+ *   อนุมัติมาก่อน + JP4 (Serializable) → ปิดยอดได้ล็อกแล้วอ่านด้วย snapshot เดิม (ยังไม่เห็นคำขอ) แต่ SSI ยกเลิกตอนเขียน → ลองใหม่ = 400 ·
+ *   อนุมัติมาก่อน + JP5 (Read Committed) → รอล็อกแล้วอ่านใหม่ เห็นคำขอ APPROVED → 400
  */
 export interface PendingBankRefund {
   id: string;

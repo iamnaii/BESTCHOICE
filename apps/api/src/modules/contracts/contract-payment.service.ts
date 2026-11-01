@@ -636,6 +636,10 @@ export class ContractPaymentService {
       // สถานะสัญญา. ธุรกรรมนี้เป็น Serializable ⇒ กลไกจริง (review m-a · ปักด้วย `refunds/__tests__/pending-bank-refund-race.db.spec.ts`):
       // ปิดยอดมาก่อน → อนุมัติที่รอล็อกได้ 40001 → 409 · อนุมัติมาก่อน → ธุรกรรมนี้ได้ล็อกแล้วอ่านคำขอด้วย snapshot เดิม (ยังไม่เห็น)
       // แต่ SSI ยกเลิกตอนเขียน (40001 — คิวอนุมัติตอบ 409) · ลองใหม่ = เห็นคำขอ → 400 · ไม่ใช่ "มาทีหลังเห็นผล" ในทุกกรณี
+      // ลำดับล็อก (review m-b — ไม่เปลี่ยนลำดับโดยตั้งใจ · ลำดับเดียวกับทาง managed): ทางนี้ล็อกแถวสัญญาก่อนแก้แถวงวด ส่วนรับชำระ /
+      // กระจายเงิน / ใช้เครดิต / webhook PaySolutions แก้แถวงวดก่อนแถวสัญญา ⇒ แข่งกันบนสัญญาเดียวกันอาจจบด้วย deadlock 40P01 (เดิม 40001)
+      // ฝั่งที่แพ้: ปิดยอดทางคิวอนุมัติ → 409 (I-2) กดใหม่ได้ · webhook → ธุรกรรม rollback ทั้งก้อน (รวมการ claim ลิงก์) controller ตอบ 500 +
+      // Sentry `payment_callback_je_failure` → PaySolutions ส่งซ้ำ (สูงสุด 3 ครั้งตามคอมเมนต์ของ controller) และรอบส่งซ้ำ claim ลิงก์ได้อีก
       if (!managed) await tx.$queryRaw`SELECT id FROM contracts WHERE id=${id} FOR UPDATE`;
       await assertNoPendingBankRefund(tx, id, 'EARLY_PAYOFF');
 

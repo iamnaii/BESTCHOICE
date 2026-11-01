@@ -23,6 +23,7 @@ import { assertNoAdvanceExcessIncome } from '../journal/advance-excess-income.ut
 import { revertPaymentFromLedger } from '../journal/revert-payment-from-ledger';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { UNPAY_BLOCKED_CONTRACT_STATUSES } from '../receipts/services/receipt-void-core';
+import { isRetryablePrismaWriteError } from '../../utils/transaction-retry.util';
 import {
   RequestRefundDto,
   MarkRefundReversedDto,
@@ -182,8 +183,10 @@ export class RefundsService {
       const refund = await tx.refund.findUnique({ where: { id: refundId } });
       if (!refund || refund.deletedAt) throw new NotFoundException('ไม่พบคำขอคืนเงิน');
       // คำตัดสินเจ้าของ #24: ปิดยอด (JP4) / ยืนยันรับเครื่องคืน (JP5) ถือแถวสัญญา FOR UPDATE ระหว่างตรวจคำขอคืนเงินที่ APPROVED
-      // (`refunds/pending-bank-refund.ts`) — ล็อกแถวเดียวกัน FOR SHARE ก่อนอ่านสถานะ ⇒ อนุมัติกับปิดยอด/ยึดเรียงกันเสมอ:
-      // มาทีหลังกว่าการปิด = เห็นสถานะปิดแล้ว (ด่านสัญญาปิดข้างล่าง · หรือ P2034 → 409 ให้โหลดใหม่) · มาก่อน = การปิดเห็นคำขอที่อนุมัติ
+      // (`refunds/pending-bank-refund.ts`) — ล็อกแถวเดียวกัน FOR SHARE ก่อนอ่านสถานะ. อนุมัติมาทีหลังการปิด: รอล็อกนี้ แล้วการปิด commit
+      // การแก้แถวสัญญา ⇒ ธุรกรรมนี้ (Serializable) ได้ 40001 จากคำสั่ง raw = **P2010** → 409 "ข้อมูลคืนเงินเปลี่ยนระหว่างทำรายการ"
+      // (`financialTransaction` — review I-2) · กดใหม่ = เห็นสัญญาปิด → 400 ของด่านสัญญาปิดข้างล่าง. อนุมัติมาก่อน: ดูกลไกฝั่งปิดที่
+      // `pending-bank-refund.ts`
       await tx.$queryRaw`SELECT id FROM contracts WHERE id=${refund.contractId} FOR SHARE`;
       const contract = await this.assertContractAccess(tx, actor, refund.contractId);
       if (refund.status !== 'REQUESTED') {
@@ -709,7 +712,12 @@ export class RefundsService {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
       });
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
+      // Serializable write conflict / deadlock → 409 (no retry): P2034 for typed writes, **P2010 with meta.code 40001/40P01**
+      // for the raw `FOR SHARE` row lock of approveRefund (#24 · review I-2) — `isRetryablePrismaWriteError` knows both.
+      // P2002 keeps its old meaning here (not a concurrency 409), although that helper counts it as retryable.
+      const uniqueViolation =
+        error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+      if (!uniqueViolation && isRetryablePrismaWriteError(error)) {
         throw new ConflictException('ข้อมูลคืนเงินเปลี่ยนระหว่างทำรายการ — กรุณาโหลดใหม่');
       }
       throw error;

@@ -17,7 +17,12 @@ import { Test, TestingModule } from '@nestjs/testing';
 import * as Sentry from '@sentry/nestjs';
 import { Prisma } from '@prisma/client';
 import { ADVANCE_EXCESS_VOID_BLOCKED_MESSAGE } from '../journal/advance-excess-income.util';
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   closedContractRefundMessage,
   RECEIPT_NOT_ISSUED_REFUND_MESSAGE,
@@ -504,6 +509,36 @@ describe('RefundsService', () => {
       prisma.payment.findUnique.mockResolvedValue(
         paidPayment({ amountPaid: new Prisma.Decimal(500) }),
       );
+    });
+
+    // review I-2 (2026-11-01): the FOR SHARE row lock (#24) is raw SQL — a serialization failure / deadlock on it
+    // arrives as P2010 (meta.code 40001 / 40P01), not P2034. It must still be the Thai 409, not a 500. P2002 keeps its
+    // old meaning (not translated here).
+    it.each([
+      ['P2010 / 40001', { code: 'P2010', meta: { code: '40001' } }],
+      ['P2010 / 40P01', { code: 'P2010', meta: { code: '40P01' } }],
+      ['P2034', { code: 'P2034' }],
+    ])(
+      'I-2: %s from the transaction → 409 "ข้อมูลคืนเงินเปลี่ยนระหว่างทำรายการ"',
+      async (_l, e) => {
+        prisma.$transaction.mockRejectedValueOnce(
+          new Prisma.PrismaClientKnownRequestError('conflict', { clientVersion: 'test', ...e }),
+        );
+        const attempt = service.approveRefund('rf-1', 'u-owner', 'OWNER');
+        await expect(attempt).rejects.toBeInstanceOf(ConflictException);
+        await expect(attempt).rejects.toThrow(
+          'ข้อมูลคืนเงินเปลี่ยนระหว่างทำรายการ — กรุณาโหลดใหม่',
+        );
+      },
+    );
+
+    it('I-2: P2002 is not turned into the concurrency 409', async () => {
+      const dup = new Prisma.PrismaClientKnownRequestError('dup', {
+        code: 'P2002',
+        clientVersion: 'test',
+      });
+      prisma.$transaction.mockRejectedValueOnce(dup);
+      await expect(service.approveRefund('rf-1', 'u-owner', 'OWNER')).rejects.toBe(dup);
     });
     it('blocks self-approval', async () => {
       prisma.refund.findUnique.mockResolvedValue(refundRecord({ requestedById: 'u-same' }));

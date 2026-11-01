@@ -11,6 +11,13 @@ import { QuickReplyPostbackRouterService } from '../staff-chat/services/quick-re
 import { PrismaService } from '../../prisma/prisma.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
 import { JourneyEntryWriter } from '../customer-journey/journey-entry-writer.service';
+import { WebhookDedupService } from '../chatbot-finance/services/webhook-dedup.service';
+
+/** Task 37 gate — every delivery is a first delivery here (redelivery: facebook-webhook.messenger-dedupe.spec.ts). */
+const firstDelivery = () => ({
+  provide: WebhookDedupService,
+  useValue: { claim: jest.fn().mockResolvedValue('claimed') },
+});
 
 /**
  * Mock IntegrationConfigService.getConfig('facebook') — the controller now
@@ -71,6 +78,7 @@ describe('FacebookWebhookController.handleWebhook — rawBody SLO alert (T6-C14)
         { provide: QuickReplyPostbackRouterService, useValue: postbackRouter },
         { provide: PrismaService, useValue: prisma },
         { provide: IntegrationConfigService, useValue: fbConfigMock() },
+        firstDelivery(),
       ],
     }).compile();
 
@@ -146,6 +154,7 @@ describe('FacebookWebhookController.handleWebhook — message_echoes', () => {
         { provide: QuickReplyPostbackRouterService, useValue: postbackRouter },
         { provide: PrismaService, useValue: prisma },
         { provide: IntegrationConfigService, useValue: fbConfigMock() },
+        firstDelivery(),
       ],
     }).compile();
 
@@ -236,6 +245,7 @@ describe('FacebookWebhookController.handleWebhook — message_echoes', () => {
         { provide: QuickReplyPostbackRouterService, useValue: postbackRouter },
         { provide: PrismaService, useValue: prisma },
         { provide: IntegrationConfigService, useValue: fbConfigMock() },
+        firstDelivery(),
       ],
     }).compile();
     const localController = mod.get(FacebookWebhookController);
@@ -359,6 +369,7 @@ describe('FacebookWebhookController.verifyWebhook — verify token from Integrat
         { provide: QuickReplyPostbackRouterService, useValue: { route: jest.fn() } },
         { provide: PrismaService, useValue: {} },
         { provide: IntegrationConfigService, useValue: integrationConfig },
+        firstDelivery(),
       ],
     }).compile();
     controller = mod.get(FacebookWebhookController);
@@ -448,6 +459,7 @@ describe('FacebookWebhookController — standalone referral จากลิง�
         { provide: QuickReplyPostbackRouterService, useValue: postbackRouter },
         { provide: PrismaService, useValue: prisma },
         { provide: IntegrationConfigService, useValue: fbConfigMock(FB_APP_SECRET) },
+        firstDelivery(),
         { provide: JourneyEntryWriter, useValue: journey },
       ],
     }).compile();

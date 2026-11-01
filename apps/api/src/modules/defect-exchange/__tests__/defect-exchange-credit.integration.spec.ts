@@ -28,6 +28,7 @@ import { DefectExchangeService } from '../defect-exchange.service';
 import { DEFECT_EXCHANGE_CN_SOURCE, EXCHANGE_BLOCK_RESCHEDULED } from '../defect-exchange-credit';
 import * as Sentry from '@sentry/nestjs';
 import { applyExchangeCreditAfterActivation } from '../../contracts/services/exchange-credit-autoapply';
+import { accountingPeriodOf } from '../../../utils/period-lock.util';
 
 vi.mock('@sentry/nestjs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@sentry/nestjs')>();
@@ -64,8 +65,9 @@ async function ensureFinancePeriodsOpen(): Promise<void> {
   const finance = await prisma.companyInfo.findFirstOrThrow({ where: { companyCode: 'FINANCE' } });
   const months = new Map<string, { year: number; month: number }>();
   for (let offset = -10; offset <= 1; offset++) {
-    const day = new Date(Date.now() + offset * DAY_MS);
-    months.set(`${day.getFullYear()}-${day.getMonth() + 1}`, { year: day.getFullYear(), month: day.getMonth() + 1 });
+    // เดือนตามปฏิทินไทย — ตัวเดียวกับ validatePeriodOpen
+    const { year, month } = accountingPeriodOf(new Date(Date.now() + offset * DAY_MS));
+    months.set(`${year}-${month}`, { year, month });
   }
   const closed = await prisma.accountingPeriod.findMany({
     where: { companyId: finance.id, status: { in: ['CLOSED', 'SYNCED'] }, OR: [...months.values()] },

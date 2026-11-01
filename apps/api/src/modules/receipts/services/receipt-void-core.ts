@@ -181,15 +181,17 @@ export async function voidReceiptInTx(
   // product ownership, CLOSED_BAD_DEBT posted a write-off, EXCHANGED/
   // DEFECT_EXCHANGED/CANCELED have their own reversal chains, TERMINATED is
   // ปพพ.386-final). Un-paying an installment here cannot safely unwind
-  // those — refuse and route to the refund flow / manual handling instead
-  // of leaving contract state divergent.
+  // those — refuse instead of leaving contract state divergent. The refund
+  // flow refuses the same statuses (RefundsService — owner decision
+  // 2026-10-31), so the message points to accounting, not to refunds.
   const contract = await tx.contract.findUnique({
     where: { id: receipt.contractId },
     select: { id: true, status: true },
   });
   if (contract && UNPAY_BLOCKED_CONTRACT_STATUSES.includes(contract.status)) {
     throw new BadRequestException(
-      `สัญญานี้อยู่ในสถานะปิดแล้ว (${contract.status}) — การยกเลิกใบเสร็จจะทำให้สถานะสัญญาและกรรมสิทธิ์สินค้าไม่สอดคล้อง กรุณาใช้ระบบคืนเงิน (Refund) หรือติดต่อผู้ดูแลระบบ`,
+      `สัญญานี้อยู่ในสถานะปิดแล้ว (${contract.status}) — การยกเลิกใบเสร็จจะทำให้สถานะสัญญาและกรรมสิทธิ์สินค้าไม่สอดคล้อง ` +
+        '(การคืนเงินปิดด้วยกติกาเดียวกัน) · ระบบไม่มีทางเปิดสัญญาที่ปิดแล้วกลับมา — ติดต่อฝ่ายบัญชีเพื่อพิจารณาเป็นรายกรณี',
     );
   }
   // PR4 ต6ข: สัญญาที่รอบกวาดลงรายได้เงินพักส่วนเกิน (42-1106) แล้ว — สัญญาที่ผ่อนครบทางรอบกลางคืนไม่ถูก flip

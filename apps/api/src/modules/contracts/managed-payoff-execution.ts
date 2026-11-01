@@ -2,6 +2,7 @@ import { ForbiddenException } from '@nestjs/common';
 import { canAccess } from '@installment/shared';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { accountingPeriodOf } from '../../utils/period-lock.util';
 import { currentDomainAccess } from '../employee-access/access-execution-context';
 import { AccessSnapshotService } from '../employee-access/access-snapshot.service';
 import { lockFinanceContractReadSource } from '../employee-access/access-party-source.service';
@@ -117,7 +118,8 @@ export async function lockPayoffPeriod(
   date: Date,
   companyId: string,
 ) {
+  const { year, month } = accountingPeriodOf(date); // the row validatePeriodOpen reads (Bangkok calendar)
   await tx.$queryRaw`SELECT id FROM accounting_periods WHERE company_id=${companyId}
-    AND year=${date.getFullYear()} AND month=${date.getMonth() + 1} FOR SHARE`;
+    AND year=${year} AND month=${month} FOR SHARE`;
   await tx.$queryRaw`SELECT id FROM system_config WHERE key='period_grace_days' FOR SHARE`;
 }

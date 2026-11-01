@@ -52,6 +52,7 @@ import {
   CASH_NOT_USED_REASON,
   CASH_OUT_OF_WINDOW_REASON,
 } from '../utils/after-sales-outcomes.util';
+import { accountingPeriodOf } from '../../../utils/period-lock.util';
 
 /**
  * after-sales — เปลี่ยนรุ่นเดิมขายสด (PR 5, CASH_SAME_MODEL_EXCHANGE) บน DB จริง — สเปก §12.
@@ -579,7 +580,7 @@ describe('after-sales — เปลี่ยนรุ่นเดิมขาย
     const created = await openCashCase(fx, next.id, SALES_USER());
     const shop = await prisma.companyInfo.findFirstOrThrow({ where: { companyCode: 'SHOP', deletedAt: null } });
     const now = new Date();
-    const key = { companyId: shop.id, year: now.getFullYear(), month: now.getMonth() + 1 };
+    const key = { companyId: shop.id, ...accountingPeriodOf(now) }; // งวดที่ validatePeriodOpen อ่าน (ปฏิทินไทย)
     const existing = await prisma.accountingPeriod.findUnique({ where: { companyId_year_month: key } });
     const period = existing
       ? await prisma.accountingPeriod.update({ where: { id: existing.id }, data: { status: 'CLOSED', closedAt: new Date(now.getTime() - 48 * 3600_000) } })

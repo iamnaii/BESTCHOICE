@@ -649,15 +649,33 @@ describe('SaleVoidService.voidSale', () => {
 
   // ── G2 ────────────────────────────────────────────────────────────────────
   //
-  // mirror ลงวันที่ **วันนี้** เสมอ (`createAndPost` ตั้ง entryDate = postedAt = now)
-  // ⇒ งวดที่ตรวจคืองวดปัจจุบัน ซึ่ง `period_grace_days` เปิดค้างไว้จนพ้นสิ้นเดือน
-  // ด่านนี้จึงทำงานจริงเฉพาะปลายหน้าต่าง grace — ตรึงเวลาไว้ตรงนั้นเพื่อพิสูจน์ว่ามันต่อสายจริง
-  it('G2: งวดบัญชีของบริษัทที่จะโพสต์กลับรายการปิดแล้ว (พ้น grace) → ปฏิเสธ ไม่กลับรายการ', async () => {
-    jest.useFakeTimers().setSystemTime(new Date(2026, 7, 31, 10, 0, 0)); // 31 ส.ค. 2026 10:00 น.
+  // mirror ลงวันที่ **วันนี้** เสมอ (`createAndPost` ตั้ง entryDate = postedAt = now) ⇒ งวดที่ตรวจคืองวดปัจจุบัน ·
+  // คำตัดสินเจ้าของ 2026-10-31: งวดที่ปิดแล้วรับรายการได้ถึงสิ้นวันสุดท้ายของเดือน (+ grace เป็นวันเต็ม เวลาไทย) ⇒ รายการที่ลงวันนี้
+  // ไม่มีวันพ้น grace ของงวดตัวเอง — ด่านนี้กัดจริงเฉพาะคำสั่งที่คร่อมเที่ยงคืนวันที่ 1 (จับวันที่โพสต์ก่อนเที่ยงคืน ตรวจงวดหลังเที่ยงคืน).
+  // เดิมเทสตรึง 10:00 ของวันสุดท้าย + grace 0 แล้วคาดว่าปฏิเสธ = off-by-one ที่เจ้าของสั่งแก้ ⇒ แยกเป็นสองเคสข้างล่าง
+  it('G2: งวดปัจจุบันปิดก่อนสิ้นเดือน + grace 0 → วันสุดท้ายของเดือนยังยกเลิกได้ (คำตัดสินเจ้าของ 31/10/2569)', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-08-31T23:59:59.999+07:00'));
     try {
       tx.accountingPeriod.findUnique.mockResolvedValue({ status: 'CLOSED' });
       tx.systemConfig.findUnique.mockResolvedValue({ value: '0' }); // grace 0 วัน
-      await expect(service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น')).rejects.toThrow(/งวดที่ปิดแล้ว/);
+      await service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น');
+      expect(reversalTemplate.reverse).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('G2: คำสั่งคร่อมเที่ยงคืนวันที่ 1 — งวดที่ปิดแล้วพ้นสิ้นเดือน (grace 0) → ปฏิเสธ ไม่กลับรายการ', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-08-31T23:59:59.999+07:00'));
+    try {
+      tx.accountingPeriod.findUnique.mockImplementation(async () => {
+        jest.setSystemTime(new Date('2026-09-01T00:00:00+07:00')); // วันถัดจากสิ้นเดือน
+        return { status: 'CLOSED' };
+      });
+      tx.systemConfig.findUnique.mockResolvedValue({ value: '0' }); // grace 0 วัน
+      await expect(service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น')).rejects.toThrow(
+        'ไม่สามารถบันทึกรายการในงวดที่ปิดแล้ว (2026/08 สถานะ: CLOSED)',
+      );
       expectNothingWritten();
     } finally {
       jest.useRealTimers();

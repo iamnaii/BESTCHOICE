@@ -383,7 +383,7 @@ export class CustomersController {
   /**
    * Task 27 — ปุ่ม "ยกเลิกการผูก" LINE น้องเบส (การเงิน) ในฟอร์มแก้ไขลูกค้า (หน้าลูกค้า › แก้ไข · หน้าสัญญา › แก้ไขข้อมูลลูกค้า):
    * ปิดแถว OTP ที่ยังผูก + ล้างคอลัมน์ `line_id_finance` ทันที (ไม่ต้องบันทึกฟอร์ม) ผ่าน `unlinkFinanceLine({ customerId })` ตัวเดิม ·
-   * ต่างจาก PATCH `lineIdFinance: null` ที่ตัดสินด้วยคอลัมน์ (คอลัมน์ว่าง = ไม่แตะแถว) · roles เท่าทางยกเลิกผูกของพนักงานเดิม (PATCH) ·
+   * PATCH `lineIdFinance: null` ใช้แกนเดียวกัน (Task 29 #2 — เจ้าของตัดสิน 31 ต.ค.) · roles เท่าทางยกเลิกผูกของพนักงานเดิม (PATCH) ·
    * audit `CUSTOMER_FINANCE_LINE_UNLINKED` · ผูกใหม่ได้ทาง OTP ของลูกค้าเท่านั้น ·
    * ตอบ 201 (ค่าเริ่มต้นของ `@Post` เหมือน POST action อื่นของ `/customers/:id`) ทั้งยกเลิกจริงและไม่มีอะไรให้ล้าง (`unlinked: false`)
    */

@@ -1,5 +1,7 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { ChatChannel, LineChannelType, Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
+import { isRetryablePrismaWriteError } from '../../../utils/transaction-retry.util';
 
 /**
  * Task 22 I3 — พนักงาน/API ตั้ง `customers.line_id_finance` เป็นค่าใหม่ไม่ได้ (การผูก LINE การเงินต้องผ่าน OTP ทาง SMS
@@ -30,11 +32,13 @@ export const LINE_SHOP_STAFF_SEND_DISABLED_MESSAGE =
 
 /**
  * ตัดสินค่า LINE การเงินที่พนักงาน/API ส่งมา (ฟอร์มลูกค้า · skip-tracing) เทียบกับค่าปัจจุบันของลูกค้า:
- * - ไม่ส่ง / ส่งค่าเดิม (ฟอร์มแก้ไขส่งทุกช่องกลับมาทุกครั้ง) / ว่างทั้งคู่ → `'none'` ไม่แตะ
- * - ส่งค่าว่างหรือ null ขณะที่ลูกค้ามีค่าอยู่ → `'clear'` ยกเลิกผูก (`unlinkFinanceLine` แบบ `customerId`)
+ * - ไม่ส่ง / ส่งค่าเดิมที่ไม่ว่าง (ฟอร์มรุ่นเก่าส่งทุกช่องกลับมาทุกครั้ง) → `'none'` ไม่แตะ
+ * - ส่งค่าว่าง/null/ช่องว่างล้วน → `'clear'` ยกเลิกผูก **ไม่ว่าคอลัมน์จะมีค่าหรือไม่** (Task 29 #2 — เจ้าของตัดสิน 31 ต.ค.: ล้างช่องผ่าน PATCH
+ *   = ปุ่ม "ยกเลิกการผูก" ⇒ ผู้เรียกส่งต่อให้ `CustomerWriteService.unlinkFinanceLineInTx` ซึ่งตัดสินจากแถว OTP + คอลัมน์ใต้ล็อก ·
+ *   ไม่มีอะไรให้ล้าง = ไม่แตะ ไม่เขียน audit) · เดิมคอลัมน์ว่าง = `'none'` ⇒ แถว OTP ที่ยังผูกปิดผ่าน PATCH ไม่ได้
  * - ค่าอื่น → 400 `LINE_FINANCE_LINK_REQUIRES_OTP_MESSAGE` (ห้ามตั้ง U-id ที่ไม่ได้ผ่าน OTP)
  *
- * เทียบหลัง trim — `' U1 '` ที่ส่งกลับมาคือค่าเดิม
+ * เทียบหลัง trim — `' U1 '` ที่ส่งกลับมาคือค่าเดิม · skip-tracing ส่ง `undefined` แทนค่าว่าง (ยกเลิกผูกทางนั้นไม่ได้ — fix round 1 M-1)
  */
 export function staffLineFinanceChange(
   requested: string | null | undefined,
@@ -42,9 +46,8 @@ export function staffLineFinanceChange(
 ): 'none' | 'clear' {
   if (requested === undefined) return 'none';
   const next = requested?.trim() ?? '';
-  const cur = current?.trim() ?? '';
-  if (next === cur) return 'none';
   if (next === '') return 'clear';
+  if (next === (current?.trim() ?? '')) return 'none';
   throw new BadRequestException({
     message: LINE_FINANCE_LINK_REQUIRES_OTP_MESSAGE,
     field: 'lineIdFinance',
@@ -76,6 +79,102 @@ export async function clearFinanceRoomVerification(
   });
 }
 
+/**
+ * Task 29 (เจ้าของตัดสิน 31 ต.ค. 2026 — Task 27 review M-2) — **ลำดับล็อกเดียว**ของทุกทางที่ผูก/ยกเลิกผูก LINE การเงิน:
+ * **แถวลูกค้า (`customers`, เรียงตาม id ใน SQL) → แถว `customer_line_links` → `chat_rooms`**. ผู้เรียก: `VerificationService.bind`
+ * (ผ่าน `lockCustomersForFinanceLineBind`) · `unlinkFinanceLine` ทั้งสองแบบ (LIFF / พนักงาน) · ปุ่ม/PATCH ยกเลิกผูกของพนักงาน
+ * (`CustomerWriteService.unlinkFinanceLineInTx`). เดิม `bind` ล็อกแถว link/ห้องก่อนแล้วค่อยแถวลูกค้า ⇒ ยืนยัน OTP พร้อมพนักงานกดยกเลิกผูก
+ * ลูกค้าคนเดียวกัน = deadlock 40P01 (ปักที่ `finance-line-lock-order.db.spec.ts`).
+ *
+ * ล็อกหลายแถวต้องผ่าน helper นี้เท่านั้น — `ORDER BY id` ใน SQL ตัดสินลำดับ (LockRows ทำงานหลัง Sort) ทุกผู้เรียกจึงเรียงเหมือนกันเสมอ ·
+ * `FOR NO KEY UPDATE` = ระดับเดียวกับ UPDATE ที่ไม่แตะคอลัมน์ key (ทุกทางแก้แค่ `line_id_finance`) ไม่บล็อก insert แถวลูกที่อ้าง FK ·
+ * ล็อกซ้ำแถวที่ถืออยู่แล้วไม่มีผล
+ */
+export async function lockFinanceLineCustomers(
+  tx: Prisma.TransactionClient,
+  customerIds: readonly (string | null | undefined)[],
+): Promise<void> {
+  const ids = [...new Set(customerIds.filter((id): id is string => !!id))];
+  if (ids.length === 0) return;
+  await tx.$queryRaw`SELECT id FROM customers WHERE id IN (${Prisma.join(ids)}) ORDER BY id FOR NO KEY UPDATE`;
+}
+
+/** อ่านชุดลูกค้าของ `bind` ซ้ำใต้ล็อกได้กี่รอบก่อนยอมแพ้ (Task 29 fix round 1 — review M-2) */
+const BIND_LOCK_SET_MAX_ROUNDS = 5;
+
+/**
+ * Task 29 fix round 1 (review M-2) — ชุดลูกค้าที่ `bind` ต้องล็อกยังโตหลังอ่านซ้ำครบรอบ ⇒ **ไม่ไปต่อแบบล็อกไม่ครบ**:
+ * ทรานแซกชันถูกยกเลิกทั้งก้อน และ `VerificationService.bind` ลองใหม่ (`runWithTransactionRetry` ถือ error นี้ว่าลองซ้ำได้)
+ */
+export class FinanceLineLockSetUnstableError extends Error {
+  constructor() {
+    super('finance-line bind: customer lock set did not settle');
+    this.name = 'FinanceLineLockSetUnstableError';
+  }
+}
+
+/**
+ * Task 29 fix round 1 — ทางที่ต้องล็อกลูกค้าของห้องก่อนตัวห้อง (`RoomCreditService.completeAnalysis` · `ChatSalesDispositionService.record`):
+ * อ่านเจ้าของห้อง (ไม่ล็อก) → ล็อกลูกค้า (`lockFinanceLineCustomers`) → ล็อกห้อง → อ่านซ้ำ · เจ้าของเปลี่ยนระหว่างนั้น = error นี้ (ยังไม่เขียนอะไร)
+ * ⇒ ผู้เรียกลองทั้งทรานแซกชันใหม่ (`isLockOrderRetryable`) · ครบรอบแล้ว = 409 ด้วยข้อความของผู้เรียก
+ */
+export class RoomCustomerChangedError extends ConflictException {}
+
+/**
+ * Task 29 fix round 1 — error ที่ลองทั้งทรานแซกชันใหม่ได้สำหรับทางที่ล็อกตามลำดับเดียว ลูกค้า → link → ห้อง (`runWithTransactionRetry`):
+ * deadlock/serialization ของ Postgres · ชุดลูกค้าของ `bind` ไม่นิ่ง · เจ้าของห้องเปลี่ยนระหว่างอ่านกับล็อก
+ */
+export function isLockOrderRetryable(error: unknown): boolean {
+  return (
+    isRetryablePrismaWriteError(error) ||
+    error instanceof FinanceLineLockSetUnstableError ||
+    error instanceof RoomCustomerChangedError
+  );
+}
+
+/**
+ * Task 29 — ชุดลูกค้าที่ `bind` (OTP) จะแตะ ล็อกก่อนแตะแถว link/ห้อง: ลูกค้าที่กำลังผูก + ลูกค้าที่ถือแถว link ของ LINE นี้อยู่
+ * (LINE ย้ายออกจากเขา — ห้องของเขาถูกล้าง `verified_at`) + ทุกลูกค้าที่คอลัมน์ `line_id_finance` = LINE นี้ (bind ล้างค่าให้ — รวมแถวที่ถูกลบ).
+ * อ่านชุด → ล็อก (เรียง id) → อ่านซ้ำใต้ล็อก จนชุดไม่โตอีก (ปกติสองรอบ · ชุดเปลี่ยนได้เฉพาะเมื่อมี bind ของ LINE เดียวกันอีกตัว commit ระหว่างนั้น —
+ * แถวที่เพิ่มเข้ามารอบหลังล็อกช้ากว่าลำดับ แต่ทรานแซกชันที่ทำให้ชุดเปลี่ยน commit ไปแล้วจึงไม่เป็นวงจร) ·
+ * ครบ `BIND_LOCK_SET_MAX_ROUNDS` แล้วชุดยังโต = Sentry warning (ไม่มี U-id/ข้อมูลลูกค้า) + `FinanceLineLockSetUnstableError` (fix round 1 M-2) ·
+ * คืนเจ้าของแถว link ของ LINE นี้ตามที่อ่านใต้ล็อก (ไม่มีแถว = null)
+ */
+export async function lockCustomersForFinanceLineBind(
+  tx: Prisma.TransactionClient,
+  lineUserId: string,
+  customerId: string,
+): Promise<{ lineHolderId: string | null }> {
+  const locked = new Set<string>();
+  let lineHolderId: string | null = null;
+  for (let round = 0; ; round++) {
+    const lineRow = await tx.customerLineLink.findUnique({
+      where: { lineUserId_channel: { lineUserId, channel: LineChannelType.FINANCE } },
+      select: { customerId: true },
+    });
+    // ไม่กรอง deletedAt โดยตั้งใจ — bind ล้างคอลัมน์นี้บนทุกแถว (รวมลูกค้าที่ถูกลบ)
+    const columnHolders = await tx.customer.findMany({
+      where: { lineIdFinance: lineUserId },
+      select: { id: true },
+    });
+    lineHolderId = lineRow?.customerId ?? null;
+    const ids = [customerId, lineHolderId, ...columnHolders.map((c) => c.id)].filter(
+      (id): id is string => !!id,
+    );
+    if (ids.every((id) => locked.has(id))) return { lineHolderId };
+    if (round >= BIND_LOCK_SET_MAX_ROUNDS) {
+      Sentry.captureMessage('[finance-line] bind customer lock set did not settle', {
+        level: 'warning',
+        tags: { subsystem: 'finance-line-lock' },
+        extra: { rounds: BIND_LOCK_SET_MAX_ROUNDS, lockedCustomers: locked.size },
+      });
+      throw new FinanceLineLockSetUnstableError();
+    }
+    await lockFinanceLineCustomers(tx, ids);
+    ids.forEach((id) => locked.add(id));
+  }
+}
+
 /** ยกเลิกผูกของ LINE หนึ่งบัญชี (ลูกค้าเป็นคนกดในหน้า LIFF) หรือของลูกค้าหนึ่งคน (พนักงานล้างช่อง LINE การเงิน) */
 export type FinanceLineUnlinkTarget = { lineUserId: string } | { customerId: string };
 
@@ -88,8 +187,8 @@ export type FinanceLineUnlinkTarget = { lineUserId: string } | { customerId: str
  * - `{ lineUserId }` (LIFF "ยกเลิกผูก LINE" — `LiffTokenGuard` พิสูจน์ว่าเป็นเจ้าของ LINE นี้): ล้างคอลัมน์บน**ทุก**ลูกค้าที่ถือ
  *   LINE นี้ **รวมแถวที่ถูกลบ** (กู้จากถังขยะ/ชุบ ghost แล้วค่าไม่กลับมา — Task 22 fix round 1) (เดิมล้างคนเดียว — Task 19 review M1)
  *   + ปิดแถวของ LINE นี้
- * - `{ customerId }` (พนักงานล้างช่องในฟอร์มลูกค้า / skip-tracing): ล้างคอลัมน์ของลูกค้าคนนี้ + ปิดแถวของ**ลูกค้าคนนี้**เท่านั้น —
- *   ห้ามปิดตาม LINE: ค่าในคอลัมน์อาจเป็น U-id ที่พนักงานพิมพ์ (I3) ซึ่งเป็น LINE ที่ยืนยัน OTP ไว้กับลูกค้าอีกคน
+ * - `{ customerId }` (พนักงาน — ปุ่ม "ยกเลิกการผูก" / PATCH ล้างช่อง ผ่านแกนเดียว `CustomerWriteService.unlinkFinanceLineInTx`):
+ *   ล้างคอลัมน์ของลูกค้าคนนี้ + ปิดแถวของ**ลูกค้าคนนี้**เท่านั้น — ห้ามปิดตาม LINE: ค่าในคอลัมน์อาจเป็น U-id ที่พนักงานพิมพ์ (I3) ซึ่งเป็น LINE ที่ยืนยัน OTP ไว้กับลูกค้าอีกคน
  *
  * ไม่สลับ rich menu กลับเป็นเมนูก่อนยืนยัน (เหมือน LIFF เดิม) · ไม่เขียน journey
  */
@@ -104,6 +203,16 @@ export async function unlinkFinanceLine(
       where: { lineUserId: target.lineUserId, channel: LineChannelType.FINANCE, unlinkedAt: null },
       select: { customerId: true },
     });
+    // Task 29 — ล็อกลูกค้าทุกคนที่ทางนี้จะแตะก่อน (เรียง id) แล้วค่อยแถว link → ห้อง (ลำดับเดียวกับ bind/ปุ่มพนักงาน) ·
+    // updateMany ข้างล่างล็อกตามลำดับที่สแกนเจอ ถ้าไม่ล็อกก่อนจะสวนกับ bind ที่ล็อกเรียง id ได้เมื่อมีหลายคนถือคอลัมน์นี้
+    const columnHolders = await tx.customer.findMany({
+      where: { lineIdFinance: target.lineUserId },
+      select: { id: true },
+    });
+    await lockFinanceLineCustomers(tx, [
+      ...holders.map((h) => h.customerId),
+      ...columnHolders.map((c) => c.id),
+    ]);
     // ไม่กรอง deletedAt โดยตั้งใจ — เป็นการล้างค่า ไม่ใช่การอ่าน
     await tx.customer.updateMany({
       where: { lineIdFinance: target.lineUserId },
@@ -119,6 +228,8 @@ export async function unlinkFinanceLine(
     });
     return;
   }
+  // Task 29 — ลำดับล็อก ลูกค้า → link → ห้อง: คำสั่งเขียนแรกของทางนี้คือแถวลูกค้า (ล้างคอลัมน์ด้านล่าง) จึงไม่ต้องล็อกแยก ·
+  // ผู้เรียกของพนักงาน (`CustomerWriteService.unlinkFinanceLineInTx`) ล็อกแถวนี้ไว้ก่อนอ่านสถานะอยู่แล้ว
   // LINE ของแถวที่กำลังปิด (M-8) — ห้องของ LINE นั้นอาจผูกลูกค้าอื่นไว้ (พนักงานผูกห้องเอง) ก็ถือว่าไม่ยืนยันแล้ว
   const closing = await tx.customerLineLink.findMany({
     where: { customerId: target.customerId, channel: LineChannelType.FINANCE, unlinkedAt: null },

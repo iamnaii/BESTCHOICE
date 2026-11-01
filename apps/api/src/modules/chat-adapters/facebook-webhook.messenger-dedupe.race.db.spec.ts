@@ -12,9 +12,10 @@ jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn(), captureMessage
  * on its own PrismaClient (= its own connection pool), receive the same signed body at the same time:
  * every Messenger side effect must happen once.
  *
- * Timing-independent: a rendezvous in front of every `processed_webhook_events` INSERT holds the first
- * connection until the second reaches the same key (max BARRIER_MS), so both INSERTs are in flight
- * together — only the UNIQUE index can decide. A check-then-insert implementation would let both through.
+ * The overlap is forced only at the claim: a rendezvous wraps `processedWebhookEvent.create` (nothing
+ * else) and holds the first connection until the second reaches the same key (max BARRIER_MS), so both
+ * INSERTs are in flight together — only the UNIQUE index can decide (the test asserts every key met).
+ * A check-then-insert implementation would let both through. Everything after the claim runs unsynchronised.
  *
  * Run: DATABASE_URL=<test_db or *_test with migrations applied> npx jest <this file> --runInBand
  * (no DATABASE_URL = skipped). Rows it creates are deleted at the end.

@@ -46,8 +46,9 @@ export class WebhookDedupService {
 
   /**
    * Retention: delete processed events older than 7 days.
-   * LINE retries within seconds; Meta stops retrying a failing Messenger webhook within about
-   * an hour (it then disables the subscription) — so 7 days is extremely safe for both.
+   * LINE retries within seconds; Meta (Graph Webhooks) keeps retrying a failed delivery for up to
+   * 36 hours — a Messenger webhook that fails continuously for an hour is unsubscribed instead.
+   * 7 days covers both.
    * Runs daily at 4 AM.
    */
   @Cron('0 4 * * *', { timeZone: 'Asia/Bangkok' })

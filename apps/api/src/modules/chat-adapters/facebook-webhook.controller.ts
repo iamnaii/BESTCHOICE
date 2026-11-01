@@ -343,7 +343,7 @@ export class FacebookWebhookController {
       this.logger.log(`[FB Webhook] Postback from PSID ${senderId}: "${postback.payload}"`);
 
       // fast-ack: ห้ามให้ webhook response แขวนรอเทิร์น AI (10-30s+ และยาวขึ้นตามคิว
-      // ต่อลูกค้า) — Meta รอ ~20s แล้ว redeliver + นับ fail สะสม เสี่ยงโดนลดเกรด webhook
+      // ต่อลูกค้า) — เอกสาร Messenger ให้ตอบ 200 ภายใน ~5 วิ ช้ากว่านั้น Meta ส่งซ้ำ + นับ fail สะสม เสี่ยงโดนลดเกรด webhook
       // referral note ต้องรอห้องถูกสร้างก่อน จึงต่อท้าย promise แทนการ await
       void this.messageRouter
         .routeInbound(inbound)

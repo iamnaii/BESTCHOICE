@@ -29,7 +29,7 @@ export class ConsecutiveMissedService {
       ? Prisma.sql`AND p."contract_id" IN (${Prisma.join(opts.contractIds)})`
       : Prisma.empty;
 
-    const rows = await (client as any).$queryRaw(Prisma.sql`
+    const rows = (await (client as any).$queryRaw(Prisma.sql`
       WITH payment_streaks AS (
         SELECT
           p."contract_id",
@@ -56,7 +56,7 @@ export class ConsecutiveMissedService {
         GROUP BY "contract_id"
       )
       SELECT id, consecutive::int FROM max_consecutive WHERE consecutive >= 1
-    `) as { id: string; consecutive: number }[];
+    `)) as { id: string; consecutive: number }[];
 
     return new Map(rows.map((r) => [r.id, r.consecutive]));
   }

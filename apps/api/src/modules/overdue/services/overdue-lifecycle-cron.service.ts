@@ -126,10 +126,7 @@ export class OverdueLifecycleCronService {
       status: 'ACTIVE',
       deletedAt: null,
       id: promisedContractIds.length > 0 ? { notIn: promisedContractIds } : undefined,
-      OR: [
-        { blockAutoEscalation: null },
-        { blockAutoEscalation: { lt: now } },
-      ],
+      OR: [{ blockAutoEscalation: null }, { blockAutoEscalation: { lt: now } }],
       payments: {
         some: {
           status: { in: ['PENDING', 'PARTIALLY_PAID', 'OVERDUE'] },
@@ -166,13 +163,17 @@ export class OverdueLifecycleCronService {
             action: 'STATUS_CHANGE',
             entity: 'contract',
             entityId: c.id,
-            newValue: { from: 'ACTIVE', to: 'OVERDUE', reason: `Payment overdue > ${overdueDays} days` },
+            newValue: {
+              from: 'ACTIVE',
+              to: 'OVERDUE',
+              reason: `Payment overdue > ${overdueDays} days`,
+            },
             ipAddress: 'system-cron',
           })),
         }),
       );
     }
-    const [flipResult] = await this.prisma.$transaction(txOps) as [
+    const [flipResult] = (await this.prisma.$transaction(txOps)) as [
       Prisma.BatchPayload,
       ...unknown[],
     ];
@@ -202,7 +203,11 @@ export class OverdueLifecycleCronService {
             action: 'STATUS_CHANGE',
             entity: 'contract',
             entityId: c.id,
-            newValue: { from: 'OVERDUE', to: 'DEFAULT', reason: `${c.consecutive} consecutive missed payments` },
+            newValue: {
+              from: 'OVERDUE',
+              to: 'DEFAULT',
+              reason: `${c.consecutive} consecutive missed payments`,
+            },
             ipAddress: 'system-cron',
           })),
         }),
@@ -238,7 +243,12 @@ export class OverdueLifecycleCronService {
 
     // Find overdue/default contracts in batches to prevent unbounded memory usage
     const BATCH_SIZE = 500;
-    let contracts: { id: string; contractNumber: string; dunningStage: DunningStage; payments: { dueDate: Date }[] }[] = [];
+    let contracts: {
+      id: string;
+      contractNumber: string;
+      dunningStage: DunningStage;
+      payments: { dueDate: Date }[];
+    }[] = [];
     let skip = 0;
     let hasMore = true;
     while (hasMore) {
@@ -265,11 +275,20 @@ export class OverdueLifecycleCronService {
         skip,
       });
       contracts = contracts.concat(batch as typeof contracts);
-      if (batch.length < BATCH_SIZE) { hasMore = false; break; }
+      if (batch.length < BATCH_SIZE) {
+        hasMore = false;
+        break;
+      }
       skip += BATCH_SIZE;
     }
 
-    const escalated: { contractId: string; contractNumber: string; from: DunningStage; to: DunningStage; daysOverdue: number }[] = [];
+    const escalated: {
+      contractId: string;
+      contractNumber: string;
+      from: DunningStage;
+      to: DunningStage;
+      daysOverdue: number;
+    }[] = [];
 
     const systemUserId = await this.getSystemUserIdOrThrow();
 
@@ -289,7 +308,13 @@ export class OverdueLifecycleCronService {
       }
 
       // Only escalate (never de-escalate)
-      const stageOrder: DunningStage[] = ['NONE', 'REMINDER', 'NOTICE', 'FINAL_WARNING', 'LEGAL_ACTION'];
+      const stageOrder: DunningStage[] = [
+        'NONE',
+        'REMINDER',
+        'NOTICE',
+        'FINAL_WARNING',
+        'LEGAL_ACTION',
+      ];
       const currentIdx = stageOrder.indexOf(contract.dunningStage);
       const targetIdx = stageOrder.indexOf(targetStage);
 
@@ -297,8 +322,7 @@ export class OverdueLifecycleCronService {
         // T4-C2: FINAL_WARNING and LEGAL_ACTION messages carry legal +
         // PDPA risk if fired auto on a disputed debt. Park them as pending
         // and wait for a human OWNER/FM to approve.
-        const requiresApproval =
-          targetStage === 'FINAL_WARNING' || targetStage === 'LEGAL_ACTION';
+        const requiresApproval = targetStage === 'FINAL_WARNING' || targetStage === 'LEGAL_ACTION';
 
         if (requiresApproval) {
           await this.prisma.contract.update({

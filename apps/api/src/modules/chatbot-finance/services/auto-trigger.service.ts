@@ -47,6 +47,7 @@ const TIMEZONE = 'Asia/Bangkok';
  *   ไม่จองแถว ⇒ ลูกค้าได้หนึ่งข้อความต่อชนิดต่องวดต่อวัน
  * Task 30 ข้อ 2 — ทวงหลังเลยกำหนด (ESCALATION_*) ของสัญญานำเข้าที่ลูกค้าผูก LINE ยังไม่ครบ 7 วัน = ไม่ส่ง (`legacy-link-grace.ts`) ·
  *   เตือนค่างวดยังส่งระหว่างผ่อนผัน
+ * Task 30 รอบ 4–5 — สัญญาที่ได้ข้อความทวงระดับสัญญาแล้ววันนี้ = ไม่ส่งทั้งทวงและเตือน (`findContractsDunnedToday`)
  */
 @Injectable()
 export class AutoTriggerService {
@@ -160,14 +161,14 @@ export class AutoTriggerService {
           this.prisma,
           payments.map((p) => p.contractId),
         );
-    // รอบ 4 I2 — ทวงหลังเลยกำหนด: สัญญาที่ได้ข้อความทวงระดับสัญญาแล้ววันนี้ (A2 เว้นให้แล้ว — บอทต้องไม่ส่งแทน) · เตือนค่างวดไม่ถาม
-    const contractDunned =
-      noticeKind === 'OVERDUE'
-        ? await findContractsDunnedToday(
-            this.prisma,
-            payments.map((p) => p.contractId),
-          )
-        : new Set<string>();
+    // สัญญาที่ได้ข้อความทวงระดับสัญญาแล้ววันนี้ (แจ้งสถานะ/ขั้นทวง 08:05 · พนักงาน · กฎตามเหตุการณ์) — ไม่ส่งทั้งทวง (รอบ 4 I2: A2 เว้นให้แล้ว
+    // บอทต้องไม่ส่งแทน) และเตือนค่างวด (รอบ 5 · เจ้าของ 01/11 ข้อ 1: วันละข้อความข้ามหมวด REMINDER/DUNNING)
+    const contractDunned = noticeKind
+      ? await findContractsDunnedToday(
+          this.prisma,
+          payments.map((p) => p.contractId),
+        )
+      : new Set<string>();
 
     for (const payment of payments) {
       const lineUserId = financeLineRecipient(payment.contract.customer);

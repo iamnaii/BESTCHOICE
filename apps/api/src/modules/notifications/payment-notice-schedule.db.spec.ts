@@ -14,6 +14,7 @@
  *   A2/บอทเห็นข้อความทวงระดับสัญญาที่ส่งแล้ววันนี้ (`contractDunningSentToday` — เจ้าของ: ข้อความทวงหลังครบกำหนดวันละข้อความเดียว)
  * - รอบ 5 (เจ้าของ 01/11 ข้อ 2): งวดนับเป็น "พลาด" หลังสิ้นวันครบกำหนด ⇒ วันครบกำหนดงวด 2 สัญญายังเป็น OVERDUE (บอทเตือนงวด 2 อย่างเดียว)
  *   และเปลี่ยนเป็น DEFAULT คืนถัดไป (T+1 ของงวด 2: แจ้งสถานะอย่างเดียว — A2 ไม่ดูสัญญา DEFAULT · บอททวง T+1 เว้นให้ข้อความทวงของสัญญา)
+ * - รอบ 5 (เจ้าของ 01/11 ข้อ 1): สัญญาที่ได้ข้อความทวงแล้ววันนี้ไม่ได้**เตือนค่างวด**วันนั้นด้วย (A1 / A6 / บอทเตือน) — ข้ามหมวด REMINDER/DUNNING
  */
 import { PrismaClient } from '@prisma/client';
 import { NotificationsService } from './notifications.service';
@@ -184,7 +185,24 @@ it('วันครบกำหนดเที่ยงคืนไทย + ท�
   const secondDueToday = await overdueWithSecond('second0', 0);
   // วันถัดจากวันครบกำหนดงวด 2 — คืนนี้ OVERDUE → DEFAULT
   const def = await overdueWithSecond('default', -1);
-  fixtures.push(t8);
+  // ตารางงวดถี่ (เช่นสัญญานำเข้า): งวด 1 เลยกำหนด 7 วัน (คืนนี้ ACTIVE → OVERDUE) + งวด 2 ครบกำหนดพรุ่งนี้ (บอทเตือน T-1 ดูสัญญา OVERDUE)
+  const flipWithReminder = await createInstallmentFixture(prisma, base, {
+    label: 'flipT-1',
+    dueDate: dueDateBkk(day, -7),
+    paymentStatus: 'OVERDUE',
+    contractStatus: 'ACTIVE',
+  });
+  const flipSecond = await prisma.payment.create({
+    data: {
+      contractId: flipWithReminder.contractId,
+      installmentNo: 2,
+      dueDate: dueDateBkk(day, 1),
+      amountDue: dec('1515.83'),
+      lateFee: dec('0.00'),
+      status: 'PENDING',
+    },
+  });
+  fixtures.push(t8, flipWithReminder, { ...flipWithReminder, paymentId: flipSecond.id });
 
   // รอบกลางคืน
   jest.setSystemTime(bangkokAt(day, 0, 0, 30));
@@ -231,6 +249,8 @@ it('วันครบกำหนดเที่ยงคืนไทย + ท�
     'งวด 2 T0': ['09:00 bot'],
     // วันถัดไป: เปลี่ยนเป็น DEFAULT คืนนี้ → แจ้งสถานะอย่างเดียว (A2 ไม่ดูสัญญา DEFAULT · บอททวง T+1 เว้นให้ — เจ้าของ 01/11 ข้อ 1)
     'DEFAULT (งวด 2 T+1)': ['08:05 A3'],
+    // เจ้าของ 01/11 ข้อ 1 — สัญญาที่ได้ข้อความทวงแล้ววันนี้ไม่ได้เตือนค่างวดด้วย (บอทเตือน T-1 ของงวด 2 เว้นให้แจ้งสถานะ)
+    'เปลี่ยนเป็น OVERDUE + งวด 2 T-1': ['08:05 A3'],
   };
   const label = (k: number) => (k === 0 ? 'T0' : k > 0 ? `T-${k}` : `T+${-k}`);
   expect({
@@ -238,6 +258,7 @@ it('วันครบกำหนดเที่ยงคืนไทย + ท�
     'T+8': received(t8),
     'งวด 2 T0': received(secondDueToday),
     'DEFAULT (งวด 2 T+1)': received(def),
+    'เปลี่ยนเป็น OVERDUE + งวด 2 T-1': received(flipWithReminder),
   }).toEqual(expected);
   expect(a1.deferredToPayLink).toBeGreaterThanOrEqual(1);
 

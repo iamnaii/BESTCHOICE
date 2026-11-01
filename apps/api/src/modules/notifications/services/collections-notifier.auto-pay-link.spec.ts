@@ -25,11 +25,13 @@ describe('CollectionsNotifierService.sendAutoPaymentLinks — การ์ดล
     },
   };
 
-  function build(opts: { sentToday?: boolean; linkFails?: boolean } = {}) {
+  function build(opts: { sentToday?: boolean; linkFails?: boolean; dunnedToday?: boolean } = {}) {
     const prisma = {
       payment: { findMany: jest.fn().mockResolvedValue([payment]) },
       notificationLog: {
         findFirst: jest.fn().mockResolvedValue(opts.sentToday ? { id: 'already' } : null),
+        // รอบ 5 — ข้อความทวงระดับสัญญาวันนี้ (`findContractsDunnedToday`)
+        findMany: jest.fn().mockResolvedValue(opts.dunnedToday ? [{ relatedId: 'k1' }] : []),
         create: jest.fn().mockResolvedValue({ id: 'log' }),
       },
       chatAutoTrigger: { findFirst: jest.fn().mockResolvedValue(null) },
@@ -91,6 +93,18 @@ describe('CollectionsNotifierService.sendAutoPaymentLinks — การ์ดล
 
     expect(links.createPaymentLink).not.toHaveBeenCalled();
     expect(lineOa.sendFlexMessage).not.toHaveBeenCalled();
+  });
+
+  it('รอบ 5 (เจ้าของ 01/11 ข้อ 1) — สัญญาได้ข้อความทวงแล้ววันนี้ → ไม่ส่งการ์ดเตือนค่างวด ไม่สร้างลิงก์', async () => {
+    const { prisma, links, lineOa, service } = build({ dunnedToday: true });
+
+    await service.sendAutoPaymentLinks(NOW);
+
+    expect(links.createPaymentLink).not.toHaveBeenCalled();
+    expect(lineOa.sendFlexMessage).not.toHaveBeenCalled();
+    expect(prisma.notificationLog.findMany.mock.calls[0][0].where.relatedId).toEqual({
+      in: ['k1'],
+    });
   });
 
   it('สร้างลิงก์/ส่งไม่ผ่าน → แถว FAILED (ให้ A1 ที่สั่งรันซ้ำส่งแทน)', async () => {

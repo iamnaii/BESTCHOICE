@@ -281,12 +281,22 @@ describe('AutoTriggerService', () => {
       expect(prisma.notificationLog.findMany.mock.calls[0][0].where.category).toBe('DUNNING');
     });
 
-    it('รอบ 4 I2: เตือนค่างวด (T-5..T0) ไม่ถามข้อความทวงระดับสัญญา', async () => {
+    it('รอบ 5 (เจ้าของ 01/11 ข้อ 1): เตือนค่างวด (T-5..T0) ของสัญญาที่ได้ข้อความทวงแล้ววันนี้ → ไม่ส่ง ไม่จองแถว', async () => {
+      prisma.payment.findMany.mockResolvedValue([makePayment(3, bkkDay(1))]);
+      prisma.notificationLog.findMany.mockResolvedValue([{ relatedId: 'con-1' }]);
+
+      await service.runDailyReminders();
+
+      expect(lineClient.pushText).not.toHaveBeenCalled();
+      expect(prisma.chatAutoTrigger.create).not.toHaveBeenCalled();
+    });
+
+    it('เตือนค่างวดของสัญญาที่ยังไม่ได้ข้อความทวงวันนี้ → ส่งตามเดิม', async () => {
       prisma.payment.findMany.mockResolvedValue([makePayment(3, bkkDay(1))]);
 
       await service.runDailyReminders();
 
-      expect(prisma.notificationLog.findMany).not.toHaveBeenCalled();
+      expect(prisma.notificationLog.findMany).toHaveBeenCalled();
       expect(lineClient.pushText).toHaveBeenCalled();
     });
 

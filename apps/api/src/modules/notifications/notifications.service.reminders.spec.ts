@@ -254,6 +254,22 @@ describe('NotificationsService — reminder / overdue dunning', () => {
       });
     });
 
+    describe('Task 30 รอบ 5 (เจ้าของ 01/11 ข้อ 1) — สัญญาที่ได้ข้อความทวงแล้ววันนี้ไม่ได้เตือนค่างวด', () => {
+      it('สัญญาได้ข้อความทวงระดับสัญญาแล้ววันนี้ → A1 ไม่ส่ง ไม่แตะ consent', async () => {
+        givenPayments([{ ...withLine(), contractId: 'ct-1' }]);
+        prisma.notificationLog.findMany.mockResolvedValue([{ relatedId: 'ct-1' }]);
+
+        const result = await service.sendPaymentReminders();
+
+        expect(spyOf('sendLineFlexMessage')).not.toHaveBeenCalled();
+        expect(spyOf('send')).not.toHaveBeenCalled();
+        expect(prisma.pDPAConsent.findFirst).not.toHaveBeenCalled();
+        expect(result.sent).toBe(0);
+        expect(result.dedupedByContractDunning).toBe(1);
+        expect(prisma.notificationLog.findMany.mock.calls[0][0].where.category).toBe('DUNNING');
+      });
+    });
+
     describe('Task 30 ข้อ 1 — งวดละหนึ่งข้อความต่อวัน (A1 08:00 กับบอท A8 09:00)', () => {
       it('ข้ามงวดที่บอทการเงินส่งเตือนไปแล้ววันนี้ — ไม่ส่ง LINE ไม่ส่ง SMS ไม่แตะ consent', async () => {
         givenPayments([withLine(), payment({ id: 'pay-2' })]);

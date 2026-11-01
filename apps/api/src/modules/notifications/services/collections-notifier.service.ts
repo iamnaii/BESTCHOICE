@@ -366,6 +366,13 @@ export class CollectionsNotifierService {
       },
     });
 
+    // รอบ 5 (เจ้าของ 01/11 ข้อ 1) — สัญญาที่ได้ข้อความทวงระดับสัญญาแล้ววันนี้ไม่ได้การ์ดเตือนค่างวด (query เดียวต่อรอบ)
+    const contractDunned = await findContractsDunnedToday(
+      this.prisma,
+      payments.map((p) => p.contractId),
+      now,
+    );
+
     let sent = 0;
     let alreadyReminded = 0;
     for (const payment of payments) {
@@ -374,6 +381,7 @@ export class CollectionsNotifierService {
       const customerId = payment.contract.customer.id;
 
       if (
+        contractDunned.has(payment.contractId) ||
         (await paymentNoticeSentToday(this.prisma, 'REMINDER', payment.id, now)) ||
         (await botNoticeSentToday(this.prisma, 'REMINDER', customerId, payment.id, now))
       ) {

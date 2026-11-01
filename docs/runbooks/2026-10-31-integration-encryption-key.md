@@ -67,7 +67,8 @@
      `integration encrypted fields: check failed` แทน = อ่าน DB ไม่ได้ตอนบูต ดู log บรรทัดนั้นแล้วรอ revision ถัดไป
 3. หลังกรอกใหม่: กด "บันทึก" แล้วหน้าต่างการ์ด**ปิดเอง** — เปิดการ์ดเดิมอีกครั้งแล้วกด "ทดสอบการเชื่อมต่อ" ·
    ถ้าขึ้น "ยังไม่ได้ตั้งค่า…" ทั้งที่เพิ่งบันทึก = คำขอไปตก instance อื่นที่ยังจำค่าเก่าไว้ (`getConfig` cache 5 นาที ล้างเฉพาะ
-   instance ที่รับการบันทึก) — รอ 5 นาทีแล้วกดใหม่ · บรรทัดบูตครั้งถัดไปต้องเป็น `failed=0`
+   instance ที่รับการบันทึก) — รอ 5 นาทีแล้วกดใหม่ · บรรทัดบูตครั้งถัดไปต้องเป็น `failed=0` · **Facebook Page Access Token:**
+   ระหว่าง 5 นาทีนั้น คอมเมนต์เพจที่ตกไป instance ที่ยังจำค่าเดิม (ถอดไม่ได้ = ว่าง) ถูกข้ามถาวร ไม่ส่งซ้ำ (ดูหัวข้อถัดไป)
 
 ## ล้างค่าช่องลับ (web 26.10.75)
 
@@ -84,9 +85,22 @@
 - มีผล**ทันที**เฉพาะผู้อ่านที่ใช้ `getValue` (LINE ทั้ง 3 OA · Claude · อีเมล · PEAK · SMS · PaySolutions · MDM · e-Tax) ·
   ผู้อ่านผ่าน `getConfig` cache — **ผู้อ่าน Facebook ทุกตัว** · **Yeastar** (webhook · token · ดึงประวัติการโทร) ·
   การ์ดและปุ่มทดสอบ — บน instance อื่นของ API/worker อาจยังใช้ค่าเดิมได้ถึง **5 นาที** (แบบเดียวกับการบันทึก) ⇒ ถ้าล้างเพราะค่ารั่ว
-  ให้นับว่า Facebook/Yeastar ยังรับ/ส่งด้วยค่าเดิมได้อีก 5 นาที · Facebook Verify Token ไม่ได้ใช้แค่ยืนยัน webhook: ฟีเจอร์คอมเมนต์เพจ
-  ต้องมีค่านี้ (`FacebookCommentGraphTransport.credentials()`) — ล้างแล้วตอบคอมเมนต์/สมัครรับคอมเมนต์ไม่ได้ และถ้าเปิดรับคอมเมนต์ไว้ คำขอ webhook
-  ที่มีคอมเมนต์ตอบ 503 (ข้อความ Messenger ในคำขอเดียวกันค้างด้วย) · ทดสอบหลังล้างแล้วยังผ่าน ให้รอ 5 นาทีแล้วกดใหม่
+  ให้นับว่า Facebook/Yeastar ยังรับ/ส่งด้วยค่าเดิมได้อีก 5 นาที · Facebook Verify Token ใช้เฉพาะตอน Meta ยืนยัน webhook (คำขอ GET
+  เมื่อตั้งหรือแก้ Callback URL ในหน้าแอปของ Meta — `FacebookWebhookController.verifyWebhook`) — ล้างแล้วการยืนยันนั้นไม่ผ่านจนกว่าจะบันทึกค่าใหม่ ·
+  การรับ Messenger (ตรวจลายเซ็นด้วย App Secret) และฟีเจอร์คอมเมนต์เพจไม่ใช้ค่านี้ (`FacebookCommentGraphTransport.credentials()` เลิกบังคับ
+  ตั้งแต่ Task 35) · **Facebook Page Access Token**: ล้างแล้วส่งข้อความ Messenger ออกไม่ได้ (บอทและพนักงานที่ตอบจากอินบ็อกซ์) ·
+  ข้อความที่ลูกค้าส่งเข้ามายังเข้าอินบ็อกซ์ แต่ห้องใหม่ไม่มีชื่อ/รูปโปรไฟล์ · ตอบคอมเมนต์ไม่ได้ และถ้าเปิดรับคอมเมนต์ไว้ คอมเมนต์ใหม่ถูกข้าม
+  (webhook ตอบ 200 — Meta ไม่ส่งซ้ำ จึงไม่มีทางได้คืน · Sentry warning `action: comment-ingest-skipped` reason `COMMENT_CONFIG_INCOMPLETE`) ·
+  ปุ่ม "ตั้งค่าปุ่ม Get Started" / "Backfill รูปโปรไฟล์" / การทดสอบ App Review ที่ใช้ token ของเพจ และการดึงคลังคำตอบจากแชท Facebook
+  (`chat-history` extract · `train-ai-knowledge` CLI) ใช้ไม่ได้ · Page Access Token ที่**ถอดรหัสไม่ได้** (อยู่ในวงเล็บ `failed`) ให้ผล
+  **เท่าล้างค่าทุกข้อ** รวมคอมเมนต์ถูกข้ามถาวร (`getValue` คืนว่าง) · หลังกรอกค่าใหม่ instance อื่นอาจยังใช้ config เดิมได้ถึง 5 นาที —
+  คอมเมนต์ที่ตกไปที่นั่นถูกข้ามถาวรเช่นกัน · ต่างจาก **App Secret** ที่ล้าง/ถอดไม่ได้: ทุกคำขอ webhook ตกการตรวจลายเซ็น (400) ก่อนถึงคอมเมนต์
+  ⇒ ทั้ง Messenger และคอมเมนต์ค้างรอ Meta ส่งซ้ำตามรอบของ Meta จนกว่าจะบันทึกค่าใหม่ · **คอมเมนต์ล้มกับ Messenger ในคำขอเดียวกัน (Task 35 ทาง 4):**
+  ล้มแบบส่งซ้ำแล้วไม่หาย (ตั้งค่าไม่ครบ · Meta ตอบแล้วว่า token/สิทธิ์/การสมัคร feed ไม่พร้อม · เหตุการณ์ผิดรูป/ไม่ตรงโพสต์เดิม) = ข้ามคอมเมนต์
+  แจ้ง Sentry (id + รหัสเหตุผลเท่านั้น) แล้วประมวลผล Messenger ต่อ ตอบ 200 · การซ่อน/เลิกซ่อนคอมเมนต์ (`hide`/`unhide` —
+  `COMMENT_VERB_UNSUPPORTED`) ข้ามแบบเดียวกันแต่ log ระดับ info ไม่แจ้ง Sentry · ล้มชั่วคราว (ฐานข้อมูล · Graph ล่ม/5xx/ติด rate limit/timeout · ไม่แน่ใจ)
+  = ตอบ 5xx ให้ Meta ส่งซ้ำ และ Messenger ในคำขอนั้นรอจนส่งซ้ำแล้วสำเร็จ (ตามเดิม — การส่งซ้ำของ postback ยังไม่มีตัวกันซ้ำ) · ตัวตัดสินอยู่ที่
+  `facebook-comment-ingest-failure.ts` ที่เดียว · ทดสอบหลังล้างแล้วยังผ่าน ให้รอ 5 นาทีแล้วกดใหม่
 - การ์ด Claude: ล้างแล้วหยุดเฉพาะฟีเจอร์ที่อ่านคีย์ผ่าน Hub (บอทน้องเบส · อ่านสลิป · OCR · วิเคราะห์เครดิต · บอท LINE SHOP แบบเดิม) —
   **บอทขายในอินบ็อกซ์ (`sales-bot/providers/claude.provider.ts`) · `chat-history-extractor/knowledge-extractor.service.ts` ·
   `staff-chat/services/sales-state.service.ts` · `ai-usage/ai-text.service.ts` · `chat-engine/services/after-hours.service.ts`**

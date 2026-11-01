@@ -33,6 +33,7 @@ const day = realBangkokDate();
 let base: FinanceFixtureBase;
 let collections: CollectionsNotifierService;
 let compliance: ComplianceService;
+let notifications: NotificationsService;
 const fixtures: InstallmentFixture[] = [];
 const delivered: { to: string; via: string }[] = [];
 const sink = (via: string) => async (to: string) => {
@@ -72,7 +73,7 @@ beforeAll(async () => {
     new PDPAService(prisma as never),
     new HolidayService(),
   );
-  const notifications = new NotificationsService(
+  notifications = new NotificationsService(
     prisma as never,
     { get: jest.fn() } as never,
     {} as never,
@@ -163,4 +164,23 @@ it('รอบกลางคืน → ไม่มีอะไรส่งต�
   expect(receivedBy(flipped)).toEqual(['statusFlex']);
   expect(receivedBy(escalated)).toEqual(['dunningFlex']);
   expect(receivedBy(both)).toEqual(['statusFlex']);
+}, 60_000);
+
+it('รอบ 5 — แจ้งล็อก 01:30 (ไม่แตะ MDM) เป็นข้อความทวงของสัญญาวันนั้น: คืนเดียวกับเปลี่ยนเป็น DEFAULT → 08:05 ไม่แจ้งสถานะซ้ำ', async () => {
+  const f = await overdueContract('lockNight');
+  await nightAudit(f, 'STATUS_CHANGE', { from: 'OVERDUE', to: 'DEFAULT', reason: 'x' });
+  // 01:30 — การเรียกเดียวกับที่ `MdmAutoService.notifyCustomerLock` ทำหลังล็อกสำเร็จ (ทาง Flex ของแม่แบบ — ลงแถว SENT หมวด DUNNING ของสัญญา)
+  useFakeDate(bangkokAt(day, 0, 1, 30));
+  await notifications.sendFromTemplate(
+    'mdm.lock_notice',
+    { name: 'ทดสอบ', contractNumber: f.contractNumber, daysOverdue: '30' },
+    f.lineUserId,
+    { relatedId: f.contractId, customerId: f.customerId },
+  );
+
+  jest.setSystemTime(bangkokAt(day, 0, 8, 5));
+  await collections.sendOvernightCollectionsNotices();
+
+  // วันละข้อความทวงต่อสัญญา: แจ้งล็อกตอนดึกคือข้อความของวันนั้น · แจ้งสถานะ 08:05 ถูกข้าม (คำถามเจ้าของรอบ 5)
+  expect(receivedBy(f)).toEqual(['dunningFlex']);
 }, 60_000);

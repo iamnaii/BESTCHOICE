@@ -4,7 +4,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { BubbleTranslatorService, Bubble, QuickReply } from './bubble-translator.service';
 import { CannedResponseVariableService } from './canned-response-variable.service';
 import { MessageRouterService } from '../../chat-engine/services/message-router.service';
-import { findOtpVerifiedCustomerId } from '../../line-oa/services/otp-verified-customer';
+import { findOtpVerifiedRoomCustomerId } from '../../line-oa/services/otp-verified-customer';
 
 /** ตัวแปรที่เปิดเผยข้อมูลของลูกค้า — ลูกค้าเป็นคนกดปุ่ม (staffId = null) ได้ค่าจริงเฉพาะ LINE ที่ยืนยัน OTP แล้ว (Task 22 I-C) */
 const CUSTOMER_VARIABLE_PLACEHOLDERS: Record<string, string> = {
@@ -91,14 +91,15 @@ export class CannedResponseSenderService {
     return user.id;
   }
 
-  /** ลูกค้าของห้องเมื่อ LINE ของห้องยืนยัน OTP กับลูกค้าคนนั้นแล้ว — ไม่ใช่ห้อง LINE / ยังไม่ยืนยัน / ยืนยันกับคนอื่น = undefined */
-  private async otpVerifiedRoomCustomerId(room: {
+  /**
+   * ลูกค้าของห้องเมื่อ LINE ของห้องยืนยัน OTP กับลูกค้าคนนั้นแล้ว — ไม่ใช่ห้อง LINE / ยังไม่ยืนยัน / ยืนยันกับคนอื่น = undefined ·
+   * Task 33 — กติกาย้ายไป `findOtpVerifiedRoomCustomerId` (ตัวเดียวกับสถานะห้องในอินบ็อกซ์ — ป้าย "ยืนยัน OTP แล้ว"/"ยกเลิกผูกแล้ว")
+   */
+  private otpVerifiedRoomCustomerId(room: {
     lineUserId: string | null;
     customerId: string | null;
   }): Promise<string | undefined> {
-    if (!room.lineUserId || !room.customerId) return undefined;
-    const verified = await findOtpVerifiedCustomerId(this.prisma, room.lineUserId);
-    return verified === room.customerId ? verified : undefined;
+    return findOtpVerifiedRoomCustomerId(this.prisma, room);
   }
 
   async send(

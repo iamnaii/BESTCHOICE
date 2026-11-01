@@ -25,6 +25,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { LIFF_ERRORS } from '@/constants/liff-errors';
+import LiffConsentModal from './components/LiffConsentModal';
 
 import type {
   LiffPayment as Payment,
@@ -282,33 +283,12 @@ export default function LiffContract() {
       />
 
       <div className="relative mx-auto max-w-[430px] pb-16">
-        {/* PDPA Consent Modal */}
+        {/* PDPA Consent Modal — Task 33 fix round 1: แยกคอมโพเนนต์ + ทางถอนความยินยอมที่มีจริง */}
         {showConsent && (
-          <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-4">
-            <Card className="max-w-md w-full animate-in slide-in-from-bottom-4">
-              <CardContent className="py-6">
-                <h2 className="text-base font-bold mb-3 leading-snug">ข้อตกลงการใช้งาน</h2>
-                <div className="text-xs text-muted-foreground space-y-2 mb-4 max-h-40 overflow-y-auto leading-snug">
-                  <p>
-                    BEST CHOICE ขอความยินยอมในการเก็บรวบรวม ใช้ และเปิดเผยข้อมูลส่วนบุคคลของท่าน เพื่อวัตถุประสงค์ดังนี้:
-                  </p>
-                  <p>1. การจัดการสัญญาเช่าซื้อและการชำระเงิน</p>
-                  <p>2. การแจ้งเตือนค่างวดและข้อมูลสัญญาผ่าน LINE</p>
-                  <p>3. การให้บริการลูกค้าผ่านระบบแชทอัตโนมัติ</p>
-                  <p>ท่านสามารถถอนความยินยอมได้ตลอดเวลาผ่านหน้าโปรไฟล์</p>
-                </div>
-                <Button
-                  variant="primary"
-                  size="lg"
-                  className="w-full"
-                  onClick={() => consentMutation.mutate()}
-                  disabled={consentMutation.isPending}
-                >
-                  {consentMutation.isPending ? 'กำลังบันทึก...' : 'ยินยอม'}
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
+          <LiffConsentModal
+            pending={consentMutation.isPending}
+            onAccept={() => consentMutation.mutate()}
+          />
         )}
 
         {/* Top bar */}

@@ -512,6 +512,56 @@ describe('MonthlyCloseService', () => {
         data: expect.objectContaining({ status: 'SYNCED', peakSyncResult: exported }),
       }));
     });
+
+    // owner decision #37 (2026-11-01): a SYNCED period locks immediately with no grace (#23) and cannot be reopened ⇒
+    // syncing a month that has not ended (Bangkok calendar) would block every posting dated today until month end —
+    // including PaySolutions money already captured. syncToPeak rejects it; allowed from 00:00 BKK on the 1st.
+    describe('month must have ended on the Bangkok calendar (#37)', () => {
+      afterEach(() => jest.useRealTimers());
+      const arm = () => {
+        prisma.accountingPeriod.findUnique.mockResolvedValue({ status: 'CLOSED' });
+        peakService.isConfigured.mockResolvedValue(true);
+        peakService.exportJournalEntries.mockResolvedValue({ exported: 1, skipped: 0, errors: [] });
+        prisma.accountingPeriod.update.mockResolvedValue({ status: 'SYNCED' });
+      };
+
+      it('rejects the current month up to its last millisecond (23:59:59.999 BKK) — nothing exported', async () => {
+        jest.useFakeTimers().setSystemTime(new Date('2026-10-31T23:59:59.999+07:00'));
+        arm();
+        const attempt = service.syncToPeak('company-1', 2026, 10);
+        await expect(attempt).rejects.toThrow(BadRequestException);
+        await expect(service.syncToPeak('company-1', 2026, 10)).rejects.toThrow(
+          'ยังเชื่อมข้อมูลงวด 2026/10 ไป PEAK ไม่ได้ — เดือนนี้ยังไม่สิ้นสุด',
+        );
+        await expect(service.syncToPeak('company-1', 2026, 10)).rejects.toThrow(
+          /เชื่อมได้ตั้งแต่ 00:00 น\. วันที่ 1\/11\/2026 \(เวลาไทย\)/,
+        );
+        expect(peakService.isConfigured).not.toHaveBeenCalled();
+        expect(peakService.exportJournalEntries).not.toHaveBeenCalled();
+        expect(prisma.accountingPeriod.update).not.toHaveBeenCalled();
+      });
+
+      it('allows the month from 00:00 BKK on the 1st of the next month', async () => {
+        jest.useFakeTimers().setSystemTime(new Date('2026-11-01T00:00:00.000+07:00'));
+        arm();
+        await expect(service.syncToPeak('company-1', 2026, 10)).resolves.toMatchObject({
+          status: 'SYNCED',
+        });
+        expect(peakService.exportJournalEntries).toHaveBeenCalledTimes(1);
+      });
+
+      it('allows a previous month and rejects a future month (December → next January boundary)', async () => {
+        jest.useFakeTimers().setSystemTime(new Date('2026-12-31T23:59:59.999+07:00'));
+        arm();
+        await expect(service.syncToPeak('company-1', 2026, 11)).resolves.toMatchObject({
+          status: 'SYNCED',
+        });
+        await expect(service.syncToPeak('company-1', 2026, 12)).rejects.toThrow(
+          /2026\/12.*วันที่ 1\/1\/2027/,
+        );
+        await expect(service.syncToPeak('company-1', 2027, 1)).rejects.toThrow(BadRequestException);
+      });
+    });
   });
 
   // T2-C10 — reopenPeriod 90-day lock

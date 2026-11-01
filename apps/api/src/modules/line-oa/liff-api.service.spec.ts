@@ -548,6 +548,28 @@ describe('LiffApiService', () => {
       );
     });
 
+    // fix round 2 R2-M3 — chat_consent_at ถูกตั้งตอนถอนด้วย ⇒ consentAt ต้องเป็นเวลาของความยินยอมที่มีผลจริง
+    it('chat_consent ถูกถอนแล้ว (chat_consent_at = เวลาถอน) แต่มีความยินยอมตอนผูก → consentAt = วันที่ยินยอมตอนผูก', async () => {
+      prisma.customer.findFirst.mockResolvedValue({
+        chatConsent: false,
+        chatConsentAt: new Date('2026-11-01T02:00:00.000Z'),
+        pdpaConsents: [{ grantedAt: new Date('2026-10-31T03:00:00.000Z'), createdAt: new Date() }],
+      });
+      expect(await service.getConsentStatus('U_line')).toEqual({
+        consent: true,
+        consentAt: '2026-10-31T03:00:00.000Z',
+      });
+    });
+
+    it('chat_consent ถูกถอนและไม่มีความยินยอมตอนผูก → consent = false · consentAt = null (เวลาถอนไม่ใช่เวลายินยอม)', async () => {
+      prisma.customer.findFirst.mockResolvedValue({
+        chatConsent: false,
+        chatConsentAt: new Date('2026-11-01T02:00:00.000Z'),
+        pdpaConsents: [],
+      });
+      expect(await service.getConsentStatus('U_line')).toEqual({ consent: false, consentAt: null });
+    });
+
     it('ไม่มีทั้ง chat_consent และความยินยอมตอนผูก → consent = false (โมดัลยังขึ้น)', async () => {
       prisma.customer.findFirst.mockResolvedValue({
         chatConsent: false,

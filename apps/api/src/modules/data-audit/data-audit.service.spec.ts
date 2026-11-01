@@ -106,6 +106,16 @@ describe('DataAuditService', () => {
       expect(result.details).toHaveLength(1);
     });
 
+    it('flags any difference — HAVING compares the sums exactly, no tolerance parameter (owner 2026-10-31)', async () => {
+      prisma.$queryRaw.mockResolvedValueOnce([]);
+      await service.checkJournalBalance();
+      // คิวรีทั้งก้อน (ข้อความ + ชิ้น Prisma.sql ที่ฝังไว้) — เงื่อนไขต้องเทียบผลรวมตรง ๆ และไม่มีค่าเผื่อส่งเป็นพารามิเตอร์
+      const query = JSON.stringify(prisma.$queryRaw.mock.calls[0]).replace(/(\\n|\s)+/g, ' ');
+      expect(query).toContain('HAVING');
+      expect(query).toContain('SUM(jl.debit) <> SUM(jl.credit)');
+      expect(query).not.toContain('0.01');
+    });
+
     it('Task 25 (m-5) — count is the true total; only details are capped at 50 (no LIMIT in the query)', async () => {
       prisma.$queryRaw.mockResolvedValueOnce(
         Array.from({ length: 62 }, (_, i) => ({ id: `je-${i}`, diff: new Prisma.Decimal('1.00') })),
@@ -1035,7 +1045,8 @@ describe('DataAuditService', () => {
       expect(result.checks.hpReceivable.details).toContain('ไม่มีแถวของสัญญานี้');
     });
 
-    it('Task 23 (m-4) — an entry off by exactly 0.01 is balanced (journal_balance flags > 0.01)', async () => {
+    // คำตัดสินเจ้าของ 2026-10-31: สมดุล = เท่ากันพอดี ไม่มีเผื่อ — เดิมเทสนี้ปักว่า "ต่าง 0.01 ยังถือว่าสมดุล" (เกณฑ์ 0.01 เดิม)
+    it('an entry off by exactly 0.01 is unbalanced — the trace uses the journal_balance rule (exact, owner 2026-10-31)', async () => {
       prisma.contract.findUnique.mockResolvedValueOnce(mockContract());
       const offByOneSatang = {
         ...opening1A,
@@ -1049,8 +1060,8 @@ describe('DataAuditService', () => {
       const result = await service.traceContract('c-1');
 
       expect(result.checks.activation).toMatchObject({
-        status: 'PASS',
-        details: { totalDebit: '18190.00', totalCredit: '18190.01', balanced: true },
+        status: 'FAIL',
+        details: { totalDebit: '18190.00', totalCredit: '18190.01', balanced: false },
       });
     });
 

@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { CredentialRotationCron } from './credential-rotation.cron';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CLEARED_CREDENTIAL } from './integration-config.service';
 
 jest.mock('@sentry/nestjs', () => ({
   captureMessage: jest.fn(),
@@ -37,6 +38,18 @@ describe('CredentialRotationCron (T6-C9)', () => {
 
   it('skips fields with no SystemConfig row (never configured)', async () => {
     prisma.systemConfig.findFirst.mockResolvedValue(null);
+    const result = await cron.checkStale();
+    expect(result.stale).toBe(0);
+    expect(result.ok).toBe(0);
+    expect(result.skipped).toBeGreaterThan(0);
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
+  });
+
+  it('skips a cleared credential ("ล้างค่า") — not configured, so never stale even when old', async () => {
+    prisma.systemConfig.findFirst.mockResolvedValue({
+      value: CLEARED_CREDENTIAL,
+      updatedAt: new Date(Date.now() - 400 * 24 * 60 * 60 * 1000),
+    });
     const result = await cron.checkStale();
     expect(result.stale).toBe(0);
     expect(result.ok).toBe(0);

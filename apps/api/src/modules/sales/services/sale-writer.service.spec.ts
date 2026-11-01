@@ -56,9 +56,9 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
       // ไม่มีแถว = ไม่ override ⇒ ใช้ค่าตามชนิดสินค้า
       systemConfig: { findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
       interestConfig: { findFirst: jest.fn().mockResolvedValue(null) },
-      // branch มีผู้อ่านสองราย: (1) resolveBranchVat (include company) → null = ใช้ VAT จาก config ตามเดิม
-      // (2) ShopTenderRecorder — ใช้ ShopAccountResolver ตัวจริงของมันเอง (ไม่ใช่ mock ที่ inject ให้ service)
-      //     อ่านลิ้นชักเงินสดของสาขา (select shopCashAccountCode) เมื่อ tender แรกเป็นเงินสด
+      // branch: ShopTenderRecorder — ใช้ ShopAccountResolver ตัวจริงของมันเอง (ไม่ใช่ mock ที่ inject ให้ service)
+      //     อ่านลิ้นชักเงินสดของสาขา (select shopCashAccountCode) เมื่อ tender แรกเป็นเงินสด · คำขออื่นได้ null
+      //     (เดิมมี resolveBranchVat เป็นผู้อ่านอีกราย — ถอดแล้ว 2026-10-31 · VAT ของสัญญาผ่อนอ่านจาก FINANCE)
       branch: {
         findUnique: jest.fn(async (args: { select?: { shopCashAccountCode?: boolean } }) =>
           args?.select?.shopCashAccountCode ? { shopCashAccountCode: 'S11-1102' } : null),

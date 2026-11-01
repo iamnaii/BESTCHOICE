@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateJournalEntryDto } from './dto/journal.dto';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { nextEntryNumber } from './entry-number.util';
+import { isJournalBalanced } from './journal-balance';
 import {
   ADVANCE_EXCESS_INCOME_FLOW,
   ADVANCE_EXCESS_INCOME_REVERSE_FLOW,
@@ -30,7 +31,7 @@ export class JournalService {
     const totalDebit = dto.lines.reduce((sum, line) => sum.add(new Decimal(line.debit)), new Decimal(0));
     const totalCredit = dto.lines.reduce((sum, line) => sum.add(new Decimal(line.credit)), new Decimal(0));
 
-    if (!totalDebit.equals(totalCredit)) {
+    if (!isJournalBalanced(totalDebit, totalCredit)) {
       throw new BadRequestException('ยอดเดบิตและเครดิตไม่สมดุล');
     }
 
@@ -206,7 +207,7 @@ export class JournalService {
       new Decimal(0),
     );
 
-    if (!totalDebit.equals(totalCredit)) {
+    if (!isJournalBalanced(totalDebit, totalCredit)) {
       throw new BadRequestException('ยอดเดบิตและเครดิตไม่สมดุล');
     }
 

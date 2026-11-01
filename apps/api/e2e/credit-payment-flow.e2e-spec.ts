@@ -267,16 +267,34 @@ describe('approved credit → real create/sign/activate → partial/complete pay
     const c = await exchangeCase(); await approve(c.customer.id);
     const resolver = new ContractQuoteService(db), actor = { id: ownerId, role: 'OWNER' };
     const quote = await resolver.resolve(c.dto, actor);
-    const company = await db.companyInfo.findUniqueOrThrow({ where: { id: shopId } });
+    // VAT ของสัญญาผ่อนอ่านจาก FINANCE (2026-10-31 · impact C1 — เดิมสลับ VAT ของ SHOP ซึ่งเป็นบริษัทของสาขา) ⇒ สลับ FINANCE ให้ยอดเปลี่ยน
+    const company = await db.companyInfo.findUniqueOrThrow({ where: { id: financeId } });
     try {
-      await db.companyInfo.update({ where: { id: shopId }, data: { vatRegistered: !company.vatRegistered } });
-      await expect(lifecycle.create({ ...c.dto, quoteFingerprint: quote.fingerprint }, ownerId, 'OWNER'))
-        .rejects.toMatchObject({ response: { code: 'CONTRACT_QUOTE_CHANGED', quote: { fingerprint: expect.any(String) } } });
+      await db.companyInfo.update({
+        where: { id: financeId },
+        data: { vatRegistered: !company.vatRegistered },
+      });
+      await expect(
+        lifecycle.create({ ...c.dto, quoteFingerprint: quote.fingerprint }, ownerId, 'OWNER'),
+      ).rejects.toMatchObject({
+        response: { code: 'CONTRACT_QUOTE_CHANGED', quote: { fingerprint: expect.any(String) } },
+      });
       expect(await db.contract.count({ where: { customerId: c.customer.id } })).toBe(0);
       expect(await db.tradeInCreditRedemption.count({ where: { tradeInId: c.intake.id } })).toBe(0);
-      expect((await db.product.findUniqueOrThrow({ where: { id: c.product.id } })).status).toBe('IN_STOCK');
-      expect(await db.creditApproval.count({ where: { creditCheck: { customerId: c.customer.id }, usedByContractId: { not: null } } })).toBe(0);
-    } finally { await db.companyInfo.update({ where: { id: shopId }, data: { vatRegistered: company.vatRegistered } }); }
+      expect((await db.product.findUniqueOrThrow({ where: { id: c.product.id } })).status).toBe(
+        'IN_STOCK',
+      );
+      expect(
+        await db.creditApproval.count({
+          where: { creditCheck: { customerId: c.customer.id }, usedByContractId: { not: null } },
+        }),
+      ).toBe(0);
+    } finally {
+      await db.companyInfo.update({
+        where: { id: financeId },
+        data: { vatRegistered: company.vatRegistered },
+      });
+    }
   });
 
   it('carries bank-transfer receipts through activation exactly once', async () => {

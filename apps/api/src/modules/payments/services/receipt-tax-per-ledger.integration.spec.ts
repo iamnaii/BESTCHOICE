@@ -43,6 +43,7 @@ import {
 } from '../../receipts/services/receipt-document-money';
 import type { PaymentCase } from '../dto/payment.dto';
 import { PaymentReceiptOrchestrator } from './payment-receipt-orchestrator';
+import { accountingPeriodOf } from '../../../utils/period-lock.util';
 
 const prisma = new PrismaClient();
 const D = (n: string) => new Decimal(n);
@@ -89,11 +90,9 @@ async function ensureFinancePeriodsOpen(): Promise<void> {
   const finance = await prisma.companyInfo.findFirstOrThrow({ where: { companyCode: 'FINANCE' } });
   const months = new Map<string, { year: number; month: number }>();
   for (let offset = -10; offset <= 1; offset++) {
-    const day = new Date(Date.now() + offset * DAY_MS);
-    months.set(`${day.getFullYear()}-${day.getMonth() + 1}`, {
-      year: day.getFullYear(),
-      month: day.getMonth() + 1,
-    });
+    // เดือนตามปฏิทินไทย — ตัวเดียวกับ validatePeriodOpen
+    const { year, month } = accountingPeriodOf(new Date(Date.now() + offset * DAY_MS));
+    months.set(`${year}-${month}`, { year, month });
   }
   const closed = await prisma.accountingPeriod.findMany({
     where: {

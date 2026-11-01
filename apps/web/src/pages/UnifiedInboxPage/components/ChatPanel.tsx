@@ -67,6 +67,7 @@ import {
   FinanceLineComposerCaution,
   FinanceLineRoomHeaderBadge,
   FinanceLineRoomNote,
+  financeLineRoomLabel,
   needsFinanceLineCaution,
   type FinanceLineRoomStatus,
 } from './RoomFinanceLineStatus';
@@ -710,6 +711,9 @@ export default function ChatPanel({
   // A2 ยกเลิกผูกแล้ว / A4 ยังไม่ยืนยันตัวตน (fix round 1) — คนที่คุยอาจไม่ใช่ลูกค้าของห้อง
   const financeLineCaution = needsFinanceLineCaution(financeLineStatus);
   const financeLineCautionId = `finance-line-caution-${session.id}`;
+  // fix round 2 R2-M1 — ชื่อปุ่มตัวตนบนหัวห้องมือถือ (aria-label ทับเนื้อหาข้างใน) ต้องบอกชื่อลูกค้า + สถานะ LINE เอง
+  const financeLineLabel = financeLineRoomLabel(financeLineStatus);
+  const mobileIdentityLabel = `ข้อมูลลูกค้า ${displayName}${financeLineLabel ? ` · ${financeLineLabel}` : ''}`;
 
   return (
     <div
@@ -981,7 +985,7 @@ export default function ChatPanel({
         <button
           type="button"
           onClick={onShowCustomerInfo}
-          aria-label="ข้อมูลลูกค้า"
+          aria-label={mobileIdentityLabel}
           className="inbox-mobile-identity"
         >
           <Avatar className="size-9 shrink-0">

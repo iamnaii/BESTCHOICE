@@ -27,6 +27,17 @@ export function financeLineRoomKind(
   return status.unlinkedAt ? 'unlinked' : 'not_verified';
 }
 
+/** คำของสถานะ (ตรงกับป้าย) — ใช้ประกอบชื่อปุ่ม/ข้อความสำหรับโปรแกรมอ่านจอ · ไม่มีสถานะ = null */
+export function financeLineRoomLabel(
+  status: FinanceLineRoomStatus | null | undefined,
+): string | null {
+  const kind = financeLineRoomKind(status);
+  if (kind === 'verified') return 'ยืนยัน OTP แล้ว';
+  if (kind === 'unlinked') return 'ยกเลิกผูกแล้ว';
+  if (kind === 'not_verified') return 'ยังไม่ยืนยันตัวตน';
+  return null;
+}
+
 /** ห้องที่ต้องขึ้นป้าย "ยกเลิกผูกแล้ว" (A2) */
 export function isFinanceLineUnlinked(
   status: FinanceLineRoomStatus | null | undefined,

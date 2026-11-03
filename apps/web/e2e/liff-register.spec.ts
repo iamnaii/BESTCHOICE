@@ -78,7 +78,9 @@ test.describe('LIFF Register → OTP verification', () => {
     await page.getByRole('button', { name: 'ยืนยัน', exact: true }).click();
     expect((await verifyRequest).postDataJSON()).toMatchObject({ consent: true });
 
-    await expect(page.getByText('ผูก LINE เรียบร้อย', { exact: true })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('ผูก LINE เรียบร้อย', { exact: true })).toBeVisible({
+      timeout: 5000,
+    });
     expect(retired).toEqual([]);
   });
 

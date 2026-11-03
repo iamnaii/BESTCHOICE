@@ -1827,6 +1827,14 @@ All accounting modules use the same convention:
 
 YYYYMMDD is **Asia/Bangkok local date** (so a doc created at 00:30 BKK = 17:30 UTC the previous day still numbers under today's date). The 4-digit sequence (`NNNN`) resets at BKK midnight per `<TYPE, day>` pair via an advisory lock — see `DocNumberService.next()` and `OtherIncomeService` / `DocNumberService.getBkkDayBounds()`.
 
+**เลขที่รายการบัญชี `JE-YYYYMM-NNNNN`** (`journal/entry-number.util.ts` `nextEntryNumber` — ผู้ออกเลขตัวเดียวของ `JournalAutoService` และ `JournalService`):
+YYYYMM = **เดือนตามปฏิทินไทยของวันที่ลงรายการ** (`bangkokCalendarParts`) ทั้ง prefix และคีย์ advisory lock — ไม่ขึ้นกับ TZ ของโปรเซส
+(Task 36 fix round 1 · m-h). รายการที่ลง 00:00 น. ไทยวันที่ 1 (= 17:00Z ของวันก่อน — เช่นรายการจ่ายผู้จัดจำหน่ายที่ลงเที่ยงคืนของวันโอน) ได้เลขเดือนนั้นเสมอ
+⇒ **ภายในวันไทยเดียวกัน เลขที่เรียงตามลำดับที่ลง** — ผู้อ่านที่เรียงรายการวันเดียวกันด้วยเลขที่ (ledger ผู้จัดจำหน่าย) พึ่งข้อนี้. เดิมใช้ `getFullYear()/getMonth()`
+ของโปรเซส: บน prod (TZ=Asia/Bangkok, ไม่มี DST) ได้ผลเท่ากันทุกจุด (ปักด้วย `entry-number.util.spec.ts` ที่รันสูตรเดิมในโปรเซสลูก TZ=Asia/Bangkok) แต่ใต้ TZ=UTC
+(jest/vitest บน CI) รายการ 00:00 น. ไทยวันที่ 1 ได้เลขเดือนก่อน. NNNNN = MAX ของเลขท้ายในเดือนนั้น + 1 (ทนแถวที่ถูกลบ/เลขท้าย 4 หลักของ JV มือ) · **ห้ามสร้างเลข JE
+จากเวลาของโปรเซสเอง** — เรียก `nextEntryNumber` ใน tx ของการลงรายการ
+
 Don't introduce alternative formats (`EX-2605110001`, `EX_2026-05-11_0001`, etc.) — keep one convention for grep-ability + downstream report parsing.
 
 ---

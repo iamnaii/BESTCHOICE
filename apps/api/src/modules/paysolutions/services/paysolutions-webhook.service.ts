@@ -281,9 +281,11 @@ export class PaySolutionsWebhookService {
 
       // Period-lock: the receipt JE posts to today's FINANCE period (postedAt=now).
       // Mirror PaymentsService.recordPayment so an autonomous webhook cannot post into a
-      // CLOSED/SYNCED period past its grace window. A posting dated "today" is never past
-      // it — a closed period accepts through the end of its last day + grace (Bangkok, owner
-      // rule 2026-10-31) — so this only bites a webhook that straddles midnight on the 1st.
+      // CLOSED period past its grace window, or a SYNCED one. A posting dated "today" is never past
+      // a CLOSED period's grace — it accepts through the end of its last day + grace (Bangkok, owner
+      // rule 2026-10-31) — so for CLOSED this only bites a webhook that straddles midnight on the 1st.
+      // A SYNCED period has no grace (owner decision #23, 2026-10-31): if today's month was already
+      // sent to PEAK, this rejects money the gateway has captured — reconcile manually from Sentry.
       await validatePeriodOpen(this.prisma, new Date(), financeCompanyId ?? undefined);
 
       // F-1-003 follow-up: resolve a real OWNER user.id for JournalEntry.createdById.

@@ -12,6 +12,7 @@ describe('Signed comment events share the existing webhook without losing Messen
     {} as any,
     {} as any,
     { getConfig: async () => ({ appSecret: secret }) } as any,
+    { claim: jest.fn().mockResolvedValue('claimed') } as never,
     undefined,
     ingest as unknown as FacebookCommentIngestService,
   );

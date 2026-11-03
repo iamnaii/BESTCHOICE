@@ -15,12 +15,15 @@ import { DashboardService } from '../dashboard/dashboard.service';
 import { PDPAService } from '../pdpa/pdpa.service';
 import { DunningEngineService } from '../overdue/dunning-engine.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
-import { CollectionsNotifierService } from './services/collections-notifier.service';
+import {
+  CollectionsNotifierService,
+  OVERNIGHT_COLLECTIONS_NOTICES_CRON,
+} from './services/collections-notifier.service';
 import { RetentionService } from './services/retention.service';
 import { OwnerReportNotifierService } from './services/owner-report-notifier.service';
 
 /**
- * Cron orchestrator facade. ALL 20 @Cron-decorated handlers + their decorators +
+ * Cron orchestrator facade. ALL 21 @Cron-decorated handlers + their decorators +
  * the centralized reportCronFailure reporter stay on this DI-instantiated
  * provider class (moving decorated methods into sub-services would un-register
  * the crons from @nestjs/schedule). The ~12 pure pass-through handlers stay
@@ -60,7 +63,11 @@ export class SchedulerService {
       this.paymentLinkService,
     );
     this.retention = new RetentionService(this.prisma);
-    this.ownerReportNotifier = new OwnerReportNotifierService(this.prisma, this.dashboardService, this.staffNotify);
+    this.ownerReportNotifier = new OwnerReportNotifierService(
+      this.prisma,
+      this.dashboardService,
+      this.staffNotify,
+    );
   }
 
   /**
@@ -98,13 +105,10 @@ export class SchedulerService {
     this.logger.log('Starting daily contract status update...');
     try {
       const result = await this.overdueService.updateContractStatuses();
-      this.logger.log(`Status update complete: ${result.overdueUpdated} overdue, ${result.defaultUpdated} default`);
-
-      // Send LINE notifications to customers whose contracts changed status
-      const changedIds = [...result.overdueIds, ...result.defaultIds];
-      if (changedIds.length > 0) {
-        await this.collectionsNotifier.notifyStatusChangedCustomers(changedIds);
-      }
+      this.logger.log(
+        `Status update complete: ${result.overdueUpdated} overdue, ${result.defaultUpdated} default`,
+      );
+      // Task 30 รอบ 3 — ไม่แจ้งลูกค้าตอนกลางดึกแล้ว: ข้อความออกจาก handleOvernightCollectionsNotices (08:05)
     } catch (error) {
       this.reportCronFailure('contract-status-update', error);
     }
@@ -146,7 +150,9 @@ export class SchedulerService {
     this.logger.log('Starting manager notifications...');
     try {
       const result = await this.notificationsService.notifyManagersOverdue();
-      this.logger.log(`Manager notifications complete: ${result.sent} sent for ${result.contracts} contracts`);
+      this.logger.log(
+        `Manager notifications complete: ${result.sent} sent for ${result.contracts} contracts`,
+      );
     } catch (error) {
       this.reportCronFailure('manager-notifications', error);
     }
@@ -160,24 +166,42 @@ export class SchedulerService {
     this.logger.log('Starting owner default notifications...');
     try {
       const result = await this.notificationsService.notifyOwnerDefault();
-      this.logger.log(`Owner notifications complete: ${result.sent} sent for ${result.contracts} contracts`);
+      this.logger.log(
+        `Owner notifications complete: ${result.sent} sent for ${result.contracts} contracts`,
+      );
     } catch (error) {
       this.reportCronFailure('owner-default-notifications', error);
     }
   }
 
   /**
-   * Run daily at 01:00: escalate dunning stages and send stage-specific notifications
+   * Run daily at 01:00: escalate dunning stages (customer notices go out at 08:05 — handleOvernightCollectionsNotices)
    */
   @Cron('0 1 * * *', { timeZone: 'Asia/Bangkok' })
   async handleDunningEscalation() {
     this.logger.log('Starting daily dunning escalation...');
     try {
       const result = await this.overdueService.escalateDunningStages();
-
-      await this.collectionsNotifier.notifyEscalatedDunning(result);
+      // Task 30 รอบ 3 — ไม่แจ้งลูกค้าตอนกลางดึกแล้ว: ข้อความออกจาก handleOvernightCollectionsNotices (08:05)
+      this.logger.log(`Dunning escalation complete: ${result.escalated.length} escalated`);
     } catch (error) {
       this.reportCronFailure('dunning-escalation', error);
+    }
+  }
+
+  /**
+   * Run daily at 08:05: LINE notices for what the night jobs changed — status flips (00:30) and dunning-stage
+   * escalations (01:00) — sent in business hours instead of at night (Task 30 r3 · CollectionsNotifierService).
+   */
+  @Cron(OVERNIGHT_COLLECTIONS_NOTICES_CRON, { timeZone: 'Asia/Bangkok' })
+  async handleOvernightCollectionsNotices() {
+    try {
+      const result = await this.collectionsNotifier.sendOvernightCollectionsNotices();
+      this.logger.log(
+        `Overnight collections notices: ${result.statusNotices} status · ${result.dunningNotices} dunning`,
+      );
+    } catch (error) {
+      this.reportCronFailure('overnight-collections-notices', error);
     }
   }
 
@@ -189,7 +213,9 @@ export class SchedulerService {
     this.logger.log('Starting daily stock level check...');
     try {
       const result = await this.reorderPointsService.checkStockLevels();
-      this.logger.log(`Stock check complete: ${result.alertsCreated} alerts, ${result.notificationsSent} notifications`);
+      this.logger.log(
+        `Stock check complete: ${result.alertsCreated} alerts, ${result.notificationsSent} notifications`,
+      );
     } catch (error) {
       this.reportCronFailure('stock-level-check', error);
     }
@@ -247,7 +273,9 @@ export class SchedulerService {
     try {
       const result = await this.notificationsService.processRetryQueue();
       if (result.retried > 0) {
-        this.logger.log(`Notification retry queue: ${result.succeeded} succeeded, ${result.failed} failed out of ${result.retried}`);
+        this.logger.log(
+          `Notification retry queue: ${result.succeeded} succeeded, ${result.failed} failed out of ${result.retried}`,
+        );
       }
     } catch (error) {
       this.reportCronFailure('notification-retry-queue', error);
@@ -278,7 +306,9 @@ export class SchedulerService {
   async handleDailyReport() {
     try {
       const report = await this.reportGeneratorService.generateDailySummary();
-      this.logger.log(`Daily report: ฿${report.revenue.toLocaleString()}, ${report.paymentsCount} payments`);
+      this.logger.log(
+        `Daily report: ฿${report.revenue.toLocaleString()}, ${report.paymentsCount} payments`,
+      );
     } catch (error) {
       this.reportCronFailure('daily-report', error);
     }
@@ -368,7 +398,9 @@ export class SchedulerService {
       if (credit.credit !== undefined && credit.credit < 100) {
         // ก้อน 7 A16 — ผ่านท่อกลาง (เหตุการณ์ sms.credit_low ถึง OWNER · วันละครั้ง) แทนแม่แบบ staff.sms_credit_low + notifyTargets
         if (!this.staffNotify) {
-          this.logger.warn(`SMS credit low (${credit.credit}) — StaffNotifyService unavailable, no LINE alert`);
+          this.logger.warn(
+            `SMS credit low (${credit.credit}) — StaffNotifyService unavailable, no LINE alert`,
+          );
           return;
         }
         const r = await this.staffNotify.notify('sms.credit_low', {

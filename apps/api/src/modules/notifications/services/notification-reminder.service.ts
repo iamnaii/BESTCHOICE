@@ -9,14 +9,29 @@ import {
 import { FlexTemplatesService } from '../../line-oa/flex-templates.service';
 import { QuickReplyService } from '../../line-oa/quick-reply.service';
 import { NotificationCategory } from '../notification-category.enum';
+import {
+  OVERDUE_NOTICE_SUBJECT,
+  PAYMENT_REMINDER_SUBJECT,
+  autoPayLinkFailedToday,
+  botNoticeSentToday,
+  findAutoPayLinkPaymentIds,
+  findContractsDunnedToday,
+  findRemindersCoveredByDueAmountNotice,
+  noticeDueWindow,
+  paymentNoticeSentToday,
+} from '../payment-notice-dedupe';
+import { bangkokDayDiff } from '../../../utils/date.util';
+import { recordNoticeLog } from '../notice-log';
+import { findContractsInLegacyLinkGrace, recordLegacyLinkGraceSkip } from '../legacy-link-grace';
 import { NotificationTransportService } from './notification-transport.service';
 import { NotificationDispatchService } from './notification-dispatch.service';
 
 /**
  * Cron-driven dunning lifecycle — payment reminders (upcoming due dates),
  * overdue notices (past-due), manager/owner escalation summaries. Owns the
- * shared per-payment dedup guard (`alreadyNotifiedToday`) and the PDPA-consent
- * gate (`ensurePdpaConsentOrLogSkip`).
+ * PDPA-consent gate (`ensurePdpaConsentOrLogSkip`). Reminders and overdue notices
+ * dedupe through `payment-notice-dedupe.ts` (Task 30 — one message of each kind per
+ * installment per day across these crons and the finance bot's auto-trigger).
  *
  * Plain class (not @Injectable) — constructed internally by NotificationsService.
  */
@@ -30,25 +45,6 @@ export class NotificationReminderService {
     private flexTemplates: FlexTemplatesService,
     private quickReplyService: QuickReplyService,
   ) {}
-
-  /**
-   * Send payment reminders for upcoming due dates (run daily)
-   * Sends reminders exactly 3 days and 1 day before due date
-   */
-  /**
-   * True when a notice with this subject was already logged for this payment
-   * today — the per-payment dedup guard shared by the reminder + overdue crons.
-   */
-  private async alreadyNotifiedToday(
-    paymentId: string,
-    subject: string,
-    today: Date,
-  ): Promise<boolean> {
-    const prev = await this.prisma.notificationLog.findFirst({
-      where: { relatedId: paymentId, subject, sentAt: { gte: today } },
-    });
-    return !!prev;
-  }
 
   /**
    * PDPA gate shared by the reminder + overdue crons: returns true when the
@@ -78,25 +74,18 @@ export class NotificationReminderService {
     return false;
   }
 
+  /**
+   * Send payment reminders for upcoming due dates (run daily 08:00) — 3 days, 1 day and the due day.
+   * Primary sender of the "one reminder per installment per day" rule (Task 30 — see payment-notice-dedupe.ts).
+   */
   async sendPaymentReminders() {
     const now = new Date();
-    const today = new Date(now.toISOString().split('T')[0]);
 
-    // Fetch payments due in exactly 0 (today), 1, or 3 days (filter at DB level)
-    const day0End = new Date(today.getTime() + 24 * 60 * 60 * 1000);
-    const day1 = new Date(today.getTime() + 1 * 24 * 60 * 60 * 1000);
-    const day1End = new Date(day1.getTime() + 24 * 60 * 60 * 1000);
-    const day3 = new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000);
-    const day3End = new Date(day3.getTime() + 24 * 60 * 60 * 1000);
-
+    // Fetch payments due in exactly 0 (today), 1, or 3 days — Thai calendar days (`noticeDueWindow`, Task 30 r3 C1)
     const upcomingPayments = await this.prisma.payment.findMany({
       where: {
         status: 'PENDING',
-        OR: [
-          { dueDate: { gte: today, lt: day0End } },
-          { dueDate: { gte: day1, lt: day1End } },
-          { dueDate: { gte: day3, lt: day3End } },
-        ],
+        OR: [0, 1, 3].map((days) => ({ dueDate: noticeDueWindow(now, days) })),
         contract: { status: 'ACTIVE', deletedAt: null },
       },
       include: {
@@ -111,17 +100,55 @@ export class NotificationReminderService {
       },
     });
 
+    // Task 30 รอบ 2 ข้อ 1 — งวดที่ลิงก์ชำระอัตโนมัติ (A6 08:30) จะส่งวันนี้ (เงื่อนไขของ A6 เอง — query เดียวต่อรอบ)
+    const payLinkIds = await findAutoPayLinkPaymentIds(
+      this.prisma,
+      upcomingPayments.map((p) => p.id),
+      now,
+    );
+
+    // รอบ 6 I3 — งวดที่ยอดอยู่ในข้อความทวงรอบ 08:05 ของสัญญาแล้ว ไม่ต้องเตือน (คำตัดสินเจ้าของ 01/11 ข้อ 1 · ทาง ก) · A1 ดูเฉพาะสัญญา ACTIVE
+    // และรันก่อนรอบ 08:05 ⇒ มีผลเฉพาะเมื่อสั่งรันซ้ำ
+    const coveredByNotice = await findRemindersCoveredByDueAmountNotice(
+      this.prisma,
+      upcomingPayments,
+      now,
+    );
+
     let sent = 0;
+    let dedupedByBot = 0;
+    let coveredByDunningNotice = 0;
+    let deferredToPayLink = 0;
     for (const payment of upcomingPayments) {
       const customer = payment.contract.customer;
-      const daysUntil = Math.max(
-        0,
-        Math.round((new Date(payment.dueDate).getTime() - today.getTime()) / (1000 * 60 * 60 * 24)),
-      );
+      const daysUntil = Math.max(0, bangkokDayDiff(now, new Date(payment.dueDate)));
 
-      // Dedup + PDPA guards (shared with sendOverdueNotices)
-      if (await this.alreadyNotifiedToday(payment.id, 'แจ้งเตือนค่างวด', today)) continue;
-      if (!(await this.ensurePdpaConsentOrLogSkip(customer.id, payment.id, 'แจ้งเตือนค่างวด'))) {
+      // Task 30 ข้อ 1 — งวดละหนึ่งข้อความต่อวัน (payment-notice-dedupe.ts):
+      // (1) A1 เองส่งงวดนี้แล้ววันนี้ ทุกทาง (Flex / template / ข้อความ / SMS) หรือยังถือการส่งอยู่ในคิวส่งซ้ำ —
+      //     เดิมดูแค่หัวข้อ Flex ⇒ สั่งรันซ้ำหลังทางสำรองส่งไปแล้วได้ข้อความที่สอง
+      // (2) บอทการเงิน (A8) ส่งงวดนี้ไปแล้ววันนี้ (สั่งรันบอทก่อน / สั่งรัน A1 ซ้ำหลัง 09:00) — ไม่ส่งซ้ำทั้ง LINE และ SMS
+      if (await paymentNoticeSentToday(this.prisma, 'REMINDER', payment.id, now)) continue;
+      if (await botNoticeSentToday(this.prisma, 'REMINDER', customer.id, payment.id, now)) {
+        dedupedByBot++;
+        continue;
+      }
+      if (coveredByNotice.has(payment.id)) {
+        coveredByDunningNotice++;
+        continue;
+      }
+      // (3) T-3: การ์ดลิงก์ชำระ (A6) เป็นข้อความเดียวของวัน — เว้นให้ เว้นแต่ A6 ส่งงวดนี้ไม่ผ่านไปแล้ววันนี้ (สั่งรัน A1 ซ้ำหลัง 08:30) ·
+      //     A6 พังตอน 08:30 แล้ว บอท 09:00 ส่งเตือนแทน (ตัวสำรองเดิม)
+      if (
+        payLinkIds.has(payment.id) &&
+        !(await autoPayLinkFailedToday(this.prisma, payment.id, now))
+      ) {
+        deferredToPayLink++;
+        continue;
+      }
+      // PDPA guard (shared with sendOverdueNotices)
+      if (
+        !(await this.ensurePdpaConsentOrLogSkip(customer.id, payment.id, PAYMENT_REMINDER_SUBJECT))
+      ) {
         continue;
       }
 
@@ -132,6 +159,8 @@ export class NotificationReminderService {
       // ปลายทาง LINE = แถว OTP ของลูกค้า (Task 22 I-1 ง) — คอลัมน์ line_id_finance ที่ค้างไม่ทำให้ข้อความไปผิดคน
       const financeLineId = financeLineRecipient(customer);
       if (financeLineId) {
+        // รอบ 3 M3 — try ครอบเฉพาะการ push · ลงแถว log ทีหลัง (ลงไม่ได้ไม่เข้าทางสำรอง ⇒ ไม่ส่งข้อความที่สอง)
+        let pushed = false;
         try {
           const flex = this.flexTemplates.paymentReminder({
             contractNumber: payment.contract.contractNumber,
@@ -142,21 +171,11 @@ export class NotificationReminderService {
           // Attach Quick Reply so customer can pay quickly or see balance
           flex.quickReply = { items: this.quickReplyService.afterPayment() };
           await this.transport.sendLineFlexMessage(financeLineId, flex, 'line-finance');
-          await this.prisma.notificationLog.create({
-            data: {
-              channel: 'LINE',
-              channelKey: 'line-finance',
-              recipient: financeLineId,
-              subject: 'แจ้งเตือนค่างวด',
-              message: `งวด ${payment.installmentNo} จำนวน ${Number(payment.amountDue).toLocaleString()} บาท อีก ${daysUntil} วัน`,
-              status: 'SENT',
-              relatedId: payment.id,
-              sentAt: new Date(),
-            },
-          });
-          sent++;
+          pushed = true;
         } catch (err) {
-          this.logger.warn(`Flex message failed, falling back to template text: ${err instanceof Error ? err.message : err}`);
+          this.logger.warn(
+            `Flex message failed, falling back to template text: ${err instanceof Error ? err.message : err}`,
+          );
           // Pick template by daysUntil. Fall back to legacy inline send for
           // day-0 (no dedicated template exists for "due today").
           const eventType =
@@ -188,16 +207,37 @@ export class NotificationReminderService {
               recipient: financeLineId,
               message: smsMessage,
               relatedId: payment.id,
-              fallbackPhone: isSmsPaymentReminderDisabled() ? undefined : (customer.phone || undefined),
+              fallbackPhone: isSmsPaymentReminderDisabled()
+                ? undefined
+                : customer.phone || undefined,
               customerId: customer.id,
               category: NotificationCategory.REMINDER,
             });
           }
           sent++;
         }
+        if (pushed) {
+          await recordNoticeLog(
+            this.prisma,
+            {
+              channel: 'LINE',
+              channelKey: 'line-finance',
+              recipient: financeLineId,
+              subject: PAYMENT_REMINDER_SUBJECT,
+              message: `งวด ${payment.installmentNo} จำนวน ${Number(payment.amountDue).toLocaleString()} บาท อีก ${daysUntil} วัน`,
+              status: 'SENT',
+              relatedId: payment.id,
+              sentAt: new Date(),
+            },
+            this.logger,
+          );
+          sent++;
+        }
       } else if (customer.phone) {
         if (isSmsPaymentReminderDisabled()) {
-          this.logger.warn(`[SMS-REMINDER-OFF] Skipping payment reminder SMS for payment ${payment.id}`);
+          this.logger.warn(
+            `[SMS-REMINDER-OFF] Skipping payment reminder SMS for payment ${payment.id}`,
+          );
         } else {
           // SMS branch — template is LINE-only so keep raw send()
           await this.dispatch.send({
@@ -213,8 +253,17 @@ export class NotificationReminderService {
       }
     }
 
-    this.logger.log(`Payment reminders sent: ${sent}/${upcomingPayments.length}`);
-    return { sent, total: upcomingPayments.length, timestamp: now };
+    this.logger.log(
+      `Payment reminders sent: ${sent}/${upcomingPayments.length} (already sent by finance bot today: ${dedupedByBot} · amount already in today's 08:05 dunning notice: ${coveredByDunningNotice} · left to the T-3 pay-link card: ${deferredToPayLink})`,
+    );
+    return {
+      sent,
+      total: upcomingPayments.length,
+      dedupedByBot,
+      coveredByDunningNotice,
+      deferredToPayLink,
+      timestamp: now,
+    };
   }
 
   /**
@@ -223,14 +272,10 @@ export class NotificationReminderService {
    */
   async sendOverdueNotices() {
     const now = new Date();
-    const today = new Date(now.toISOString().split('T')[0]);
 
-    // Only fetch payments overdue by exactly 1, 3, or 7 days (filter at DB level)
-    const dueDates = [1, 3, 7].map((days) => {
-      const start = new Date(today.getTime() - days * 24 * 60 * 60 * 1000);
-      const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
-      return { gte: start, lt: end };
-    });
+    // Only fetch payments overdue by exactly 1, 3, or 7 Thai calendar days (`noticeDueWindow`, Task 30 r3 C1 —
+    // the UTC-day window used to pick the due day itself on real Bangkok-midnight dueDates: "overdue 0 days")
+    const dueDates = [1, 3, 7].map((days) => noticeDueWindow(now, -days));
 
     const overduePayments = await this.prisma.payment.findMany({
       where: {
@@ -250,27 +295,74 @@ export class NotificationReminderService {
       },
     });
 
+    // Task 30 ข้อ 2 — สัญญานำเข้าที่ลูกค้าผูก LINE ยังไม่ครบ 7 วัน: ไม่แจ้งค้างชำระทาง LINE (query เดียวต่อรอบ)
+    const legacyGrace = await findContractsInLegacyLinkGrace(
+      this.prisma,
+      overduePayments.map((p) => p.contractId),
+      now,
+    );
+
+    // รอบ 4 I2 — สัญญาที่ได้ข้อความทวงระดับสัญญาแล้ววันนี้ (แจ้งสถานะ/ขั้นทวง/แจ้งล็อก 08:05 · พนักงาน · กฎตามเหตุการณ์) — query เดียวต่อรอบ
+    const contractDunned = await findContractsDunnedToday(
+      this.prisma,
+      overduePayments.map((p) => p.contractId),
+      now,
+    );
+
     let sent = 0;
+    let dedupedByBot = 0;
+    let dedupedByContractDunning = 0;
+    let legacyGraceSkipped = 0;
     for (const payment of overduePayments) {
       const customer = payment.contract.customer;
-      const daysOverdue = Math.floor(
-        (now.getTime() - new Date(payment.dueDate).getTime()) / (1000 * 60 * 60 * 24),
-      );
+      const daysOverdue = bangkokDayDiff(new Date(payment.dueDate), now);
 
-      // Dedup + PDPA guards (shared with sendPaymentReminders)
-      if (await this.alreadyNotifiedToday(payment.id, 'แจ้งค้างชำระ', today)) continue;
-      if (!(await this.ensurePdpaConsentOrLogSkip(customer.id, payment.id, 'แจ้งค้างชำระ'))) {
+      // Task 30 รอบ 2 ข้อ 3 — แจ้งค้างชำระงวดละหนึ่งข้อความต่อวัน (payment-notice-dedupe.ts · A2 ตัวหลัก · บอททวง 10:00 ตัวสำรอง):
+      // (1) A2 เองแจ้งงวดนี้แล้ววันนี้ ทุกทาง (Flex / template / ข้อความ / SMS) หรือยังถือการส่งอยู่ในคิวส่งซ้ำ — เดิมดูแค่หัวข้อ Flex
+      // (2) บอทการเงินทวง T+1/T+3 งวดนี้ไปแล้ววันนี้ — ไม่ส่งซ้ำทั้ง LINE และ SMS
+      if (await paymentNoticeSentToday(this.prisma, 'OVERDUE', payment.id, now)) continue;
+      // (3) สัญญานี้ได้ข้อความทวงแล้ววันนี้ (เจ้าของ: ข้อความทวงหลังครบกำหนดวันละข้อความเดียว — เช่น T+7 วันเปลี่ยนเป็น OVERDUE ได้แจ้งสถานะ 08:05)
+      if (contractDunned.has(payment.contractId)) {
+        dedupedByContractDunning++;
+        continue;
+      }
+      if (await botNoticeSentToday(this.prisma, 'OVERDUE', customer.id, payment.id, now)) {
+        dedupedByBot++;
         continue;
       }
 
-      const outstanding = Number(payment.amountDue) - Number(payment.amountPaid) + Number(payment.lateFee);
+      // ปลายทาง LINE = แถว OTP ของลูกค้า (Task 22 I-1 ง) — คอลัมน์ line_id_finance ที่ค้างไม่ทำให้ข้อความไปผิดคน
+      const financeLineId = financeLineRecipient(customer);
+
+      // Task 30 ข้อ 2 — ช่วงผ่อนผันหลังผูก LINE: ไม่ส่งทั้ง LINE และ SMS แทน (ลูกค้าผูก LINE แล้ว ทางนี้จะไปทาง LINE) · เก็บแถว BLOCKED
+      if (financeLineId && legacyGrace.has(payment.contractId)) {
+        await recordLegacyLinkGraceSkip(this.prisma, {
+          recipient: financeLineId,
+          subject: OVERDUE_NOTICE_SUBJECT,
+          message: `งวด ${payment.installmentNo} สัญญา ${payment.contract.contractNumber} เลยกำหนด ${daysOverdue} วัน — ระงับช่วงผ่อนผันหลังผูก LINE`,
+          relatedId: payment.id,
+          customerId: customer.id,
+        });
+        legacyGraceSkipped++;
+        continue;
+      }
+
+      // PDPA guard (shared with sendPaymentReminders)
+      if (
+        !(await this.ensurePdpaConsentOrLogSkip(customer.id, payment.id, OVERDUE_NOTICE_SUBJECT))
+      ) {
+        continue;
+      }
+
+      const outstanding =
+        Number(payment.amountDue) - Number(payment.amountPaid) + Number(payment.lateFee);
       // SMS branch + flex-fallback fallback uses the same plain-text body
       const smsMessage = `แจ้งเตือน: คุณ${customer.name}\nค่างวดที่ ${payment.installmentNo} สัญญา ${payment.contract.contractNumber}\nเลยกำหนดชำระ ${daysOverdue} วัน\nยอดค้างชำระ ${outstanding.toLocaleString()} บาท (รวมค่าปรับ)\nกรุณาชำระโดยเร็ว`;
 
       // Try LINE Flex Message first, fallback to template, then SMS
-      // ปลายทาง LINE = แถว OTP ของลูกค้า (Task 22 I-1 ง) — คอลัมน์ line_id_finance ที่ค้างไม่ทำให้ข้อความไปผิดคน
-      const financeLineId = financeLineRecipient(customer);
       if (financeLineId) {
+        // รอบ 3 M3 — try ครอบเฉพาะการ push · ลงแถว log ทีหลัง (ลงไม่ได้ไม่เข้าทางสำรอง ⇒ ไม่ส่งข้อความที่สอง)
+        let pushed = false;
         try {
           const flex = this.flexTemplates.overdueNotice({
             contractNumber: payment.contract.contractNumber,
@@ -281,21 +373,11 @@ export class NotificationReminderService {
           // Attach Quick Reply so customer can pay immediately or see balance
           flex.quickReply = { items: this.quickReplyService.afterPayment() };
           await this.transport.sendLineFlexMessage(financeLineId, flex, 'line-finance');
-          await this.prisma.notificationLog.create({
-            data: {
-              channel: 'LINE',
-              channelKey: 'line-finance',
-              recipient: financeLineId,
-              subject: 'แจ้งค้างชำระ',
-              message: `งวด ${payment.installmentNo} ค้าง ${outstanding.toLocaleString()} บาท เลยกำหนด ${daysOverdue} วัน`,
-              status: 'SENT',
-              relatedId: payment.id,
-              sentAt: new Date(),
-            },
-          });
-          sent++;
+          pushed = true;
         } catch (err) {
-          this.logger.warn(`Flex message failed, falling back to template text: ${err instanceof Error ? err.message : err}`);
+          this.logger.warn(
+            `Flex message failed, falling back to template text: ${err instanceof Error ? err.message : err}`,
+          );
           // Pick template by daysOverdue (1, 3, or 7) — the cron only fetches
           // payments at exactly those offsets so other values shouldn't occur,
           // but fall back defensively to the day-1 template if so.
@@ -321,9 +403,28 @@ export class NotificationReminderService {
           );
           sent++;
         }
+        if (pushed) {
+          await recordNoticeLog(
+            this.prisma,
+            {
+              channel: 'LINE',
+              channelKey: 'line-finance',
+              recipient: financeLineId,
+              subject: OVERDUE_NOTICE_SUBJECT,
+              message: `งวด ${payment.installmentNo} ค้าง ${outstanding.toLocaleString()} บาท เลยกำหนด ${daysOverdue} วัน`,
+              status: 'SENT',
+              relatedId: payment.id,
+              sentAt: new Date(),
+            },
+            this.logger,
+          );
+          sent++;
+        }
       } else if (customer.phone) {
         if (isSmsPaymentReminderDisabled()) {
-          this.logger.warn(`[SMS-REMINDER-OFF] Skipping overdue notice SMS for payment ${payment.id}`);
+          this.logger.warn(
+            `[SMS-REMINDER-OFF] Skipping overdue notice SMS for payment ${payment.id}`,
+          );
         } else {
           // SMS branch — template is LINE-only so keep raw send()
           await this.dispatch.send({
@@ -339,8 +440,17 @@ export class NotificationReminderService {
       }
     }
 
-    this.logger.log(`Overdue notices sent: ${sent}/${overduePayments.length}`);
-    return { sent, total: overduePayments.length, timestamp: now };
+    this.logger.log(
+      `Overdue notices sent: ${sent}/${overduePayments.length} (already sent by finance bot today: ${dedupedByBot} · contract already dunned today: ${dedupedByContractDunning} · legacy link grace: ${legacyGraceSkipped})`,
+    );
+    return {
+      sent,
+      total: overduePayments.length,
+      dedupedByBot,
+      dedupedByContractDunning,
+      legacyGraceSkipped,
+      timestamp: now,
+    };
   }
 
   /**
@@ -369,16 +479,19 @@ export class NotificationReminderService {
 
     let sent = 0;
     // Group by branch to send one summary per manager
-    const branchGroups = new Map<string, { manager: { name: string; email: string }; contracts: string[] }>();
+    const branchGroups = new Map<
+      string,
+      { manager: { name: string; email: string }; contracts: string[] }
+    >();
     for (const contract of overdueContracts) {
       for (const manager of contract.branch.users) {
         const key = manager.email;
         if (!branchGroups.has(key)) {
           branchGroups.set(key, { manager, contracts: [] });
         }
-        branchGroups.get(key)!.contracts.push(
-          `${contract.contractNumber}: ${contract.customer.name}`,
-        );
+        branchGroups
+          .get(key)!
+          .contracts.push(`${contract.contractNumber}: ${contract.customer.name}`);
       }
     }
 

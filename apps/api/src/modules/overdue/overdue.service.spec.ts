@@ -10,6 +10,7 @@ import { ContractLetterService } from './contract-letter.service';
 import { MdmLockService } from './mdm-lock.service';
 import { OwnerAlertHelper } from './owner-alert.helper';
 import { ConsecutiveMissedService } from './consecutive-missed.service';
+import { formatDateShort } from '../../utils/thai-date.util';
 
 // Shared no-op mock for DunningEngineService — tests that care can spy on it
 const mockDunningEngine = {
@@ -63,7 +64,10 @@ describe('OverdueService.recordSettlement', () => {
         { provide: ContractLetterService, useValue: mockLetterService },
         { provide: MdmLockService, useValue: mockMdmLockService },
         { provide: OwnerAlertHelper, useValue: mockOwnerAlertHelper },
-        { provide: ConsecutiveMissedService, useValue: { getStreaks: jest.fn().mockResolvedValue(new Map()) } },
+        {
+          provide: ConsecutiveMissedService,
+          useValue: { getStreaks: jest.fn().mockResolvedValue(new Map()) },
+        },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -157,7 +161,10 @@ describe('OverdueService.approveDunningEscalation (T4-C2)', () => {
         { provide: ContractLetterService, useValue: mockLetterService },
         { provide: MdmLockService, useValue: mockMdmLockService },
         { provide: OwnerAlertHelper, useValue: mockOwnerAlertHelper },
-        { provide: ConsecutiveMissedService, useValue: { getStreaks: jest.fn().mockResolvedValue(new Map()) } },
+        {
+          provide: ConsecutiveMissedService,
+          useValue: { getStreaks: jest.fn().mockResolvedValue(new Map()) },
+        },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -165,16 +172,16 @@ describe('OverdueService.approveDunningEscalation (T4-C2)', () => {
 
   it('rejects non-OWNER/FM roles', async () => {
     const { ForbiddenException } = await import('@nestjs/common');
-    await expect(
-      service.approveDunningEscalation('c-1', 'u-1', 'BRANCH_MANAGER'),
-    ).rejects.toThrow(ForbiddenException);
+    await expect(service.approveDunningEscalation('c-1', 'u-1', 'BRANCH_MANAGER')).rejects.toThrow(
+      ForbiddenException,
+    );
   });
 
   it('rejects when no pending escalation', async () => {
     prisma.contract.findFirst.mockResolvedValue(contractWithPending(null));
-    await expect(
-      service.approveDunningEscalation('c-1', 'u-owner', 'OWNER'),
-    ).rejects.toThrow(BadRequestException);
+    await expect(service.approveDunningEscalation('c-1', 'u-owner', 'OWNER')).rejects.toThrow(
+      BadRequestException,
+    );
   });
 
   it('flips dunningStage to pending target + clears pending + writes audit', async () => {
@@ -190,18 +197,13 @@ describe('OverdueService.approveDunningEscalation (T4-C2)', () => {
   });
 
   it('rejectDunningEscalation requires reason ≥ 5 chars', async () => {
-    await expect(
-      service.rejectDunningEscalation('c-1', 'u-owner', 'OWNER', 'no'),
-    ).rejects.toThrow(BadRequestException);
+    await expect(service.rejectDunningEscalation('c-1', 'u-owner', 'OWNER', 'no')).rejects.toThrow(
+      BadRequestException,
+    );
   });
 
   it('rejectDunningEscalation clears pending + audit log', async () => {
-    await service.rejectDunningEscalation(
-      'c-1',
-      'u-owner',
-      'OWNER',
-      'customer disputing — pause',
-    );
+    await service.rejectDunningEscalation('c-1', 'u-owner', 'OWNER', 'customer disputing — pause');
     const updateArgs = prisma.contract.update.mock.calls[0][0];
     expect(updateArgs.data.pendingDunningStage).toBeNull();
     expect(prisma.auditLog.create).toHaveBeenCalledWith(
@@ -232,7 +234,10 @@ describe('OverdueService.updateContractStatuses (T3-C11 hold guard)', () => {
         { provide: ContractLetterService, useValue: mockLetterService },
         { provide: MdmLockService, useValue: mockMdmLockService },
         { provide: OwnerAlertHelper, useValue: mockOwnerAlertHelper },
-        { provide: ConsecutiveMissedService, useValue: { getStreaks: jest.fn().mockResolvedValue(new Map()) } },
+        {
+          provide: ConsecutiveMissedService,
+          useValue: { getStreaks: jest.fn().mockResolvedValue(new Map()) },
+        },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -337,7 +342,10 @@ describe('OverdueService.holdAutoEscalation (T3-C11)', () => {
         { provide: ContractLetterService, useValue: mockLetterService },
         { provide: MdmLockService, useValue: mockMdmLockService },
         { provide: OwnerAlertHelper, useValue: mockOwnerAlertHelper },
-        { provide: ConsecutiveMissedService, useValue: { getStreaks: jest.fn().mockResolvedValue(new Map()) } },
+        {
+          provide: ConsecutiveMissedService,
+          useValue: { getStreaks: jest.fn().mockResolvedValue(new Map()) },
+        },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -353,15 +361,15 @@ describe('OverdueService.holdAutoEscalation (T3-C11)', () => {
 
   it('rejects SALES role (insufficient privilege)', async () => {
     const { ForbiddenException } = await import('@nestjs/common');
-    await expect(
-      service.holdAutoEscalation('c-1', 'u-1', 'SALES'),
-    ).rejects.toThrow(ForbiddenException);
+    await expect(service.holdAutoEscalation('c-1', 'u-1', 'SALES')).rejects.toThrow(
+      ForbiddenException,
+    );
   });
 
   it('rejects hoursFromNow > 168 (1 week max)', async () => {
-    await expect(
-      service.holdAutoEscalation('c-1', 'u-1', 'OWNER', 200),
-    ).rejects.toThrow(BadRequestException);
+    await expect(service.holdAutoEscalation('c-1', 'u-1', 'OWNER', 200)).rejects.toThrow(
+      BadRequestException,
+    );
   });
 });
 
@@ -398,7 +406,10 @@ describe('OverdueService.updateContractStatuses (C3: atomic flip)', () => {
         { provide: ContractLetterService, useValue: mockLetterService },
         { provide: MdmLockService, useValue: mockMdmLockService },
         { provide: OwnerAlertHelper, useValue: mockOwnerAlertHelper },
-        { provide: ConsecutiveMissedService, useValue: { getStreaks: jest.fn().mockResolvedValue(new Map()) } },
+        {
+          provide: ConsecutiveMissedService,
+          useValue: { getStreaks: jest.fn().mockResolvedValue(new Map()) },
+        },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -469,7 +480,10 @@ describe('OverdueService (C2: throw if no SYSTEM user)', () => {
         { provide: ContractLetterService, useValue: mockLetterService },
         { provide: MdmLockService, useValue: mockMdmLockService },
         { provide: OwnerAlertHelper, useValue: mockOwnerAlertHelper },
-        { provide: ConsecutiveMissedService, useValue: { getStreaks: jest.fn().mockResolvedValue(new Map()) } },
+        {
+          provide: ConsecutiveMissedService,
+          useValue: { getStreaks: jest.fn().mockResolvedValue(new Map()) },
+        },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -511,19 +525,28 @@ describe('OverdueService.getCollectionsFlag', () => {
         { provide: ContractLetterService, useValue: mockLetterService },
         { provide: MdmLockService, useValue: mockMdmLockService },
         { provide: OwnerAlertHelper, useValue: mockOwnerAlertHelper },
-        { provide: ConsecutiveMissedService, useValue: { getStreaks: jest.fn().mockResolvedValue(new Map()) } },
+        {
+          provide: ConsecutiveMissedService,
+          useValue: { getStreaks: jest.fn().mockResolvedValue(new Map()) },
+        },
       ],
     }).compile();
     service = mod.get(OverdueService);
   });
 
   it('returns true when flag value is "true"', async () => {
-    prisma.systemConfig.findUnique.mockResolvedValue({ key: 'collections_v2_enabled', value: 'true' });
+    prisma.systemConfig.findUnique.mockResolvedValue({
+      key: 'collections_v2_enabled',
+      value: 'true',
+    });
     await expect(service.getCollectionsFlag()).resolves.toBe(true);
   });
 
   it('returns false when flag value is "false"', async () => {
-    prisma.systemConfig.findUnique.mockResolvedValue({ key: 'collections_v2_enabled', value: 'false' });
+    prisma.systemConfig.findUnique.mockResolvedValue({
+      key: 'collections_v2_enabled',
+      value: 'false',
+    });
     await expect(service.getCollectionsFlag()).resolves.toBe(false);
   });
 
@@ -561,7 +584,9 @@ describe('OverdueService.logContact with event trigger wiring', () => {
     prisma = {
       contract: {
         findFirst: jest.fn().mockResolvedValue({ id: 'c-1', contractNumber: 'BC-001' }),
-        update: jest.fn().mockResolvedValue({ id: 'c-1', noAnswerCount: 1, needsSkipTracing: false }),
+        update: jest
+          .fn()
+          .mockResolvedValue({ id: 'c-1', noAnswerCount: 1, needsSkipTracing: false }),
       },
       callLog: {
         create: jest.fn().mockResolvedValue(makeCallLogResult('cl-1')),
@@ -593,7 +618,10 @@ describe('OverdueService.logContact with event trigger wiring', () => {
         { provide: ContractLetterService, useValue: mockLetterService },
         { provide: MdmLockService, useValue: mockMdmLockService },
         { provide: OwnerAlertHelper, useValue: mockOwnerAlertHelper },
-        { provide: ConsecutiveMissedService, useValue: { getStreaks: jest.fn().mockResolvedValue(new Map()) } },
+        {
+          provide: ConsecutiveMissedService,
+          useValue: { getStreaks: jest.fn().mockResolvedValue(new Map()) },
+        },
       ],
     }).compile();
     service = mod.get(OverdueService);
@@ -624,6 +652,23 @@ describe('OverdueService.logContact with event trigger wiring', () => {
     expect(updateCall.data.noAnswerCount).toBe(0);
   });
 
+  it('Task 30 รอบ 7 I4 — นัดหลายที่: ข้อความบอกยอด/วันของที่แรกที่ถึงก่อน', async () => {
+    mockPromiseService.createPromise.mockResolvedValueOnce({ id: 'promise-p3' });
+    const later = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
+    const sooner = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+
+    await service.logContact('c-1', 'u-1', {
+      result: 'PROMISED',
+      slots: [
+        { settlementDate: later.toISOString(), settlementAmount: 2000 },
+        { settlementDate: sooner.toISOString(), settlementAmount: 1000 },
+      ],
+    } as never);
+
+    const extras = engineSpy.mock.calls.find((c) => c[0] === 'CALL_ANSWERED_PROMISE')?.[4];
+    expect(extras).toEqual({ amount: 1000, settlementDate: formatDateShort(sooner) });
+  });
+
   it('dispatches CALL_ANSWERED_PROMISE on PROMISED result via PromiseService', async () => {
     // P2 Task 11: PROMISED now routes through PromiseService.createPromise.
     // Must supply at least settlementDate so slotsInput is non-empty.
@@ -635,8 +680,11 @@ describe('OverdueService.logContact with event trigger wiring', () => {
       settlementAmount: 5000,
     });
 
-    // Event trigger receives the new promise id returned by PromiseService
-    expect(engineSpy).toHaveBeenCalledWith('CALL_ANSWERED_PROMISE', 'c-1', null, 'promise-p2');
+    // Event trigger receives the new promise id returned by PromiseService + ยอด/วันนัดจริง (Task 30 รอบ 7 I4)
+    expect(engineSpy).toHaveBeenCalledWith('CALL_ANSWERED_PROMISE', 'c-1', null, 'promise-p2', {
+      amount: 5000,
+      settlementDate: expect.stringMatching(/\S/),
+    });
     // Contract update resets noAnswerCount
     expect(prisma.contract.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ noAnswerCount: 0 }) }),
@@ -644,7 +692,10 @@ describe('OverdueService.logContact with event trigger wiring', () => {
   });
 
   it('sets needsSkipTracing on WRONG_NUMBER and fires no event', async () => {
-    prisma.callLog.create.mockResolvedValue({ ...makeCallLogResult('cl-4'), result: 'WRONG_NUMBER' });
+    prisma.callLog.create.mockResolvedValue({
+      ...makeCallLogResult('cl-4'),
+      result: 'WRONG_NUMBER',
+    });
 
     await service.logContact('c-1', 'u-1', { result: 'WRONG_NUMBER' });
 
@@ -657,17 +708,15 @@ describe('OverdueService.logContact with event trigger wiring', () => {
   it('does not throw when executeEventTrigger rejects (non-fatal)', async () => {
     engineSpy.mockRejectedValueOnce(new Error('LINE API down'));
 
-    await expect(
-      service.logContact('c-1', 'u-1', { result: 'NO_ANSWER' }),
-    ).resolves.toBeDefined();
+    await expect(service.logContact('c-1', 'u-1', { result: 'NO_ANSWER' })).resolves.toBeDefined();
   });
 
   it('throws NotFoundException when contract is missing', async () => {
     prisma.contract.findFirst.mockResolvedValue(null);
 
-    await expect(
-      service.logContact('c-missing', 'u-1', { result: 'NO_ANSWER' }),
-    ).rejects.toThrow(NotFoundException);
+    await expect(service.logContact('c-missing', 'u-1', { result: 'NO_ANSWER' })).rejects.toThrow(
+      NotFoundException,
+    );
     expect(engineSpy).not.toHaveBeenCalled();
   });
 

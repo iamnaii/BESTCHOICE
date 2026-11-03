@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { LIFF_ERRORS } from '@/constants/liff-errors';
 import { queryErrorMessage } from '@/lib/query-error-message';
+import { liffMutationErrorMessage } from './liff-mutation-error';
 import { earlyPayoffDiscountCopy } from './early-payoff-copy';
 
 import type {
@@ -99,8 +100,9 @@ export default function LiffEarlyPayoff() {
         toast.error('ไม่สามารถสร้างลิงก์ชำระเงินได้ กรุณาลองใหม่');
       }
     },
-    onError: (err: Error) => {
-      toast.error(err.message);
+    onError: (err: unknown) => {
+      // ข้อความไทยจาก server (เช่น #24 คำขอคืนเงินรอธนาคาร) — ไม่ใช่ข้อความ axios (review m-c)
+      toast.error(liffMutationErrorMessage(err, LIFF_ERRORS.PAYMENT_CREATE_FAILED));
     },
   });
 

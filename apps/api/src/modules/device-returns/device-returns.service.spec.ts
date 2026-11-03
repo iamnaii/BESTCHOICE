@@ -964,6 +964,23 @@ describe('DeviceReturnsService', () => {
       expect(journey.recordAfterCommit).not.toHaveBeenCalled();
     });
 
+    // review I-2 (2026-11-01): createInTx ล็อกแถวสัญญาด้วย raw SQL (#24) — deadlock/serialization บนคำสั่งนั้นมาเป็น P2010
+    // (meta.code 40P01/40001) ต้องได้ 409 ไทยให้กดยืนยันใหม่ ไม่ใช่ 500 · P2002 คงความหมายเดิม (เครื่องเคยถูกยึด)
+    it.each([
+      ['P2010 / 40P01', { code: 'P2010', meta: { code: '40P01' } }],
+      ['P2010 / 40001', { code: 'P2010', meta: { code: '40001' } }],
+      ['P2034', { code: 'P2034' }],
+    ])('I-2: %s ใน tx → 409 ให้โหลดใหม่แล้วยืนยันอีกครั้ง', async (_l, e) => {
+      prisma.deviceReturn.findFirst.mockResolvedValue(pending());
+      prisma.deviceReturn.findUnique.mockResolvedValue(pending());
+      repossessions.createInTx.mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError('conflict', { clientVersion: 'test', ...e }),
+      );
+      const attempt = service.confirm('dr-1', {}, FM as never);
+      await expect(attempt).rejects.toBeInstanceOf(ConflictException);
+      await expect(attempt).rejects.toThrow('ข้อมูลสัญญาเปลี่ยนระหว่างยืนยันใบรับเครื่องคืน');
+    });
+
     it('P2002 ใน tx (แพ้ race ของ Repossession.productId unique) → 409 RE_REPOSSESSION_MSG', async () => {
       prisma.deviceReturn.findFirst.mockResolvedValue(pending());
       prisma.deviceReturn.findUnique.mockResolvedValue(pending());

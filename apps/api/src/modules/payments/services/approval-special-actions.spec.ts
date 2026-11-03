@@ -60,6 +60,8 @@ function mockDb() {
         },
       ]),
     },
+    // #24: approveRefund locks the contract row FOR SHARE before reading its status
+    $queryRaw: jest.fn().mockResolvedValue([]),
     contract: { findFirst: jest.fn().mockResolvedValue({ branchId: 'branch-a' }) },
     refund: {
       findUnique: jest.fn().mockResolvedValue({

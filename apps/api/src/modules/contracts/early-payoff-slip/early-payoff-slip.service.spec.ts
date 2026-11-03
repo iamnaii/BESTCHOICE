@@ -1,4 +1,5 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { EarlyPayoffSlipService } from './early-payoff-slip.service';
 
 /**
@@ -32,6 +33,7 @@ describe('EarlyPayoffSlipService', () => {
       ocrThrows?: boolean;
       reused?: boolean;
       totalPayoff?: number;
+      pendingRefund?: boolean;
     } = {},
   ) {
     const prisma = {
@@ -73,6 +75,10 @@ describe('EarlyPayoffSlipService', () => {
         .fn()
         .mockResolvedValue({ totalPayoff: over.totalPayoff ?? 18135.85 }),
       earlyPayoff: jest.fn().mockResolvedValue({ status: 'EARLY_PAYOFF' }),
+      // #24 ด่านต้นทาง — ผ่านเป็นค่าเริ่มต้น
+      assertNoPendingBankRefundForPayoff: over.pendingRefund
+        ? jest.fn().mockRejectedValue(new BadRequestException('มีคำขอคืนเงินที่รอผลธนาคาร'))
+        : jest.fn().mockResolvedValue(undefined),
     };
     const config = {
       get: jest.fn((k: string) => (k === 'JWT_SECRET' ? 'test-secret' : undefined)),
@@ -103,6 +109,15 @@ describe('EarlyPayoffSlipService', () => {
     expect(storage.upload.mock.calls[0][0]).toMatch(/^early-payoff-slips\/ct-1\/.*\.jpg$/);
     expect(contractPayment.getEarlyPayoffQuote).toHaveBeenCalledWith('ct-1', 50, '11-1201');
     expect(vision.extractSlip).toHaveBeenCalledWith(expect.any(Buffer), 'image/jpeg');
+  });
+
+  // คำตัดสินเจ้าของ #24: มีคำขอคืนเงินที่อนุมัติแล้วแต่ยังไม่บันทึกผลธนาคาร → ปฏิเสธก่อนอัปโหลด/อ่านสลิป (ไม่เปลืองเครดิต OCR)
+  it('#24 คำขอคืนเงินรอผลธนาคาร → 400 ก่อนอัปโหลดและก่อน OCR', async () => {
+    const { service, storage, vision, contractPayment } = build({ pendingRefund: true });
+    await expect(service.verify('ct-1', file(), '50', 'u-1')).rejects.toThrow(BadRequestException);
+    expect(contractPayment.assertNoPendingBankRefundForPayoff).toHaveBeenCalledWith('ct-1');
+    expect(storage.upload).not.toHaveBeenCalled();
+    expect(vision.extractSlip).not.toHaveBeenCalled();
   });
 
   it('ยอดไม่ตรง → matched=false ไม่มีตั๋ว แต่ยังคืน slipUrl ให้แนบไปกับคำขออนุมัติ', async () => {
@@ -201,6 +216,41 @@ describe('EarlyPayoffSlipService', () => {
         Date.now = realNow;
       }
       expect(contractPayment.earlyPayoff).not.toHaveBeenCalled();
+    });
+
+    // review m2-3 (คลาสเดียวกับ I-2): ปิดยอดล็อกแถวสัญญาด้วย raw `FOR UPDATE` ⇒ แข่งกับรายการอื่นบนสัญญาเดียวกันได้ P2010 40001/40P01
+    // (หรือ P2034 จากคำสั่ง typed) — เดิมหลุดเป็น 500 ข้อความกลาง
+    const prismaError = (code: string, meta?: Record<string, unknown>) =>
+      new Prisma.PrismaClientKnownRequestError('conflict', { clientVersion: 'test', code, meta });
+
+    it.each([
+      ['P2034', prismaError('P2034')],
+      ['P2010 40001', prismaError('P2010', { code: '40001' })],
+      ['P2010 40P01', prismaError('P2010', { code: '40P01' })],
+    ])('แข่งกับรายการอื่นบนสัญญาเดียวกัน (%s) → 409 ภาษาไทย ไม่ใช่ 500', async (_label, error) => {
+      const { service, contractPayment } = build();
+      const { ticket } = await service.verify('ct-1', file(), '50', 'u-1');
+      contractPayment.earlyPayoff.mockRejectedValueOnce(error);
+      const result = service.confirm('ct-1', 'u-1', { ticket: ticket! });
+      await expect(result).rejects.toBeInstanceOf(ConflictException);
+      await expect(result).rejects.toThrow(
+        'ข้อมูลสัญญาเปลี่ยนระหว่างปิดสัญญา (มีรายการอื่นทำกับสัญญานี้พร้อมกัน) — ยังไม่มีอะไรถูกบันทึก ' +
+          'กรุณาแนบสลิปเดิมอีกครั้งแล้วกด "ยืนยันปิดสัญญา"',
+      );
+    });
+
+    it('P2002 ดิบ / ConflictException ของ earlyPayoff (สลิปถูกใช้) / P2010 รหัสอื่น → ผ่านออกไปตามเดิม', async () => {
+      const { service, contractPayment } = build();
+      const { ticket } = await service.verify('ct-1', file(), '50', 'u-1');
+      const dup = prismaError('P2002', { target: ['hash'] });
+      contractPayment.earlyPayoff.mockRejectedValueOnce(dup);
+      await expect(service.confirm('ct-1', 'u-1', { ticket: ticket! })).rejects.toBe(dup);
+      const used = new ConflictException('สลิปนี้ถูกใช้บันทึกรายการอื่นไปแล้ว');
+      contractPayment.earlyPayoff.mockRejectedValueOnce(used);
+      await expect(service.confirm('ct-1', 'u-1', { ticket: ticket! })).rejects.toBe(used);
+      const other = prismaError('P2010', { code: '23505' });
+      contractPayment.earlyPayoff.mockRejectedValueOnce(other);
+      await expect(service.confirm('ct-1', 'u-1', { ticket: ticket! })).rejects.toBe(other);
     });
   });
 });

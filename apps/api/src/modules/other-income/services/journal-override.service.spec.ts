@@ -19,7 +19,41 @@ describe('JournalOverrideService', () => {
     });
 
     // คำตัดสินเจ้าของ 2026-10-31: สมดุล = เท่ากันพอดี (กติกาเดียวกับทางลงบัญชี `createAndPost`) — เดิม V1 เผื่อ 0.01 ⇒ บรรทัดที่ต่าง 0.01
-    // ผ่าน V1 แล้วไปตายที่ด่านลงบัญชีเป็น HTTP 500 แทนข้อความ 400 ภาษาไทย (review M3)
+    // ผ่าน V1 แล้วไปตายที่ด่านลงบัญชีของ `createAndPost` เป็น HTTP 400 ข้อความอังกฤษ `Unbalanced JE: Dr=… Cr=…` + Sentry ระดับ error
+    // แทนข้อความ 400 ภาษาไทย (review M3 · ถ้อยคำ "500" เดิมแก้ตาม re-review m3)
+
+    // re-review m2 (2026-11-01): numeric(12,2) ปัดทีละบรรทัด ⇒ ยอดดิบที่ "เท่ากันพอดี" ลงสมุดแล้วไม่สมดุล — ปฏิเสธยอดเกิน 2 ตำแหน่ง
+    // ก่อนเทียบสมดุล (ตาข่ายของ DTO `OverrideJournalLineDto` สำหรับผู้เรียก service ตรง)
+    it.each([
+      [
+        'Dr 50.005 + 50.005 / Cr 100.01',
+        [line('11-1101', 50.005, 0), line('11-1102', 50.005, 0), line('42-1102', 0, 100.01)],
+      ],
+      [
+        'Dr 1.005 + 1.00 / Cr 1.0025 + 1.0025',
+        [
+          line('11-1101', 1.005, 0),
+          line('11-1102', 1, 0),
+          line('42-1102', 0, 1.0025),
+          line('42-1103', 0, 1.0025),
+        ],
+      ],
+    ])('V1: rejects amounts with more than 2 decimals — %s', (_label, lines) => {
+      const attempt = () => svc.validate(lines);
+      expect(attempt).toThrow(BadRequestException);
+      try {
+        attempt();
+      } catch (e) {
+        const [error] = (
+          (e as BadRequestException).getResponse() as {
+            errors: { rule: string; msg: string }[];
+          }
+        ).errors;
+        expect(error.rule).toBe('V1');
+        expect(error.msg).toContain('ทศนิยมเกิน 2 ตำแหน่ง');
+        expect(error.msg).toContain('11-1101');
+      }
+    });
     it('V1: a 0.01 difference is rejected as a Thai 400 (exact, same rule as posting)', () => {
       const attempt = () => svc.validate([line('11-1101', 100, 0), line('42-1102', 0, 99.99)]);
       expect(attempt).toThrow(BadRequestException);

@@ -1,5 +1,6 @@
 import { PrismaService } from '../../../prisma/prisma.service';
 import { NotificationTransportService } from './notification-transport.service';
+import { LEGACY_LINK_GRACE_BLOCK_REASON } from '../legacy-link-grace';
 
 /**
  * Read-side notification analytics — log queries + log/compliance stats for
@@ -14,7 +15,12 @@ export class NotificationStatsService {
     private transport: NotificationTransportService,
   ) {}
 
-  async findLogs(filters: { channel?: string; status?: string; relatedId?: string; limit?: number }) {
+  async findLogs(filters: {
+    channel?: string;
+    status?: string;
+    relatedId?: string;
+    limit?: number;
+  }) {
     const where: Record<string, unknown> = {};
     if (filters.channel) where.channel = filters.channel;
     if (filters.status) where.status = filters.status;
@@ -30,7 +36,10 @@ export class NotificationStatsService {
   async getLogStats() {
     const groups = await this.prisma.notificationLog.groupBy({
       by: ['channel', 'status'],
-      where: { deletedAt: null, createdAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
+      where: {
+        deletedAt: null,
+        createdAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+      },
       _count: { _all: true },
     });
 
@@ -88,6 +97,8 @@ export class NotificationStatsService {
       FREQUENCY_CAP: 0,
       NO_CONSENT: 0,
       HOLIDAY_BLOCK: 0,
+      // Task 30 — ข้อความทวงที่ระบบส่งเองถูกระงับช่วงผ่อนผันหลังผูก LINE ของสัญญานำเข้า
+      [LEGACY_LINK_GRACE_BLOCK_REASON]: 0,
     };
     for (const b of blocks) {
       if (b.blockReason && result[b.blockReason] !== undefined) {

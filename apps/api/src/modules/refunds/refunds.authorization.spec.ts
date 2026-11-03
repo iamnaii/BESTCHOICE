@@ -24,6 +24,8 @@ function fixture(role = 'SALES', branchId: string | null = 'branch-a') {
     bankReversalRef: null,
   };
   const tx = {
+    // #24: approveRefund locks the contract row FOR SHARE before reading its status
+    $queryRaw: jest.fn().mockResolvedValue([]),
     user: { findFirst: jest.fn().mockResolvedValue(user) },
     systemConfig: {
       findFirst: jest.fn().mockResolvedValue({ value: JSON.stringify({ actor: ['REFUND'] }) }),

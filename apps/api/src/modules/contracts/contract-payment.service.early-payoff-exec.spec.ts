@@ -195,6 +195,8 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
     tx = {
       // Current persisted legacy admission is checked inside the money transaction.
       $queryRaw: jest.fn().mockResolvedValue([]),
+      // #24: earlyPayoff reads approved-but-not-bank-confirmed refunds under the contract lock — none in this fixture
+      refund: { findMany: jest.fn().mockResolvedValue([]) },
       user: { findUnique: jest.fn().mockResolvedValue({ isActive: true, deletedAt: null, accessManaged: false }) },
       // 2026-10-17: earlyPayoff อ่านงวดที่มีธง VAT บังคับ 60 วันใน tx (กลับ 21-2103 ก่อนลง JP4) — ฟิกซ์เจอร์นี้ไม่มีธง
       installmentSchedule: { findMany: jest.fn().mockResolvedValue([]) },

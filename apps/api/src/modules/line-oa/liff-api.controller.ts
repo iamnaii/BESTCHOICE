@@ -199,6 +199,8 @@ export class LiffApiController {
     if (!['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status)) {
       throw new BadRequestException('สัญญานี้ไม่สามารถปิดยอดก่อนกำหนดได้');
     }
+    // #24: คำขอคืนเงินที่รอผลธนาคาร → ลูกค้าปิดยอดเองไม่ได้ (ข้อความลูกค้า) — กติกาเดียวกับลิงก์ปิดยอดข้างล่าง
+    await this.contractPaymentService.assertNoPendingBankRefundForPayoff(contractId, 'customer');
 
     const quote = await this.contractPaymentService.getEarlyPayoffQuote(contractId);
     // Map service field names → LiffEarlyPayoffQuote (shared/liff-types.ts).
@@ -247,6 +249,11 @@ export class LiffApiController {
     if (!['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status)) {
       throw new BadRequestException('สัญญานี้ไม่สามารถปิดยอดก่อนกำหนดได้');
     }
+    // #24: บังคับตอนสร้างลิงก์ — webhook ไม่ปฏิเสธเงินที่ตัดแล้ว
+    await this.contractPaymentService.assertNoPendingBankRefundForPayoff(
+      dto.contractId,
+      'customer',
+    );
 
     const quote = await this.contractPaymentService.getEarlyPayoffQuote(dto.contractId);
     const result = await this.paymentLinkService.createPaymentLink(

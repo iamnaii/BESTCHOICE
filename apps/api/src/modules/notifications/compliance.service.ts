@@ -9,6 +9,7 @@ import {
   FREQUENCY_CAP_CATEGORIES,
 } from './notification-category.enum';
 import { isWithinBusinessHours, nextBusinessHourOpen } from '../../utils/business-hours.util';
+import { FREQUENCY_CAP_EXEMPT_SUBJECTS } from './payment-notice-dedupe';
 import type { NotificationChannel } from '@prisma/client';
 
 /**
@@ -64,9 +65,14 @@ export interface CanSendResult {
  * 2. Category bypass — TRANSACTIONAL (receipts) and STAFF skip all compliance
  * 3. Time-window — Asia/Bangkok 8-20 weekday, 8-18 weekend/holiday
  * 4. PDPA consent — required for any customer-facing send (DUNNING/REMINDER/MARKETING)
- * 5. Frequency cap — 1/day per (customer + contract) for DUNNING only
+ * 5. Frequency cap — 1/day per (customer + contract) for DUNNING only (status notices that did not stand in for a
+ *    dunning-stage message excluded — `FREQUENCY_CAP_EXEMPT_SUBJECTS`, Task 30 r4 m4)
  *
  * Compliance basis: พ.ร.บ.ทวงถามหนี้ พ.ศ. 2558 มาตรา 9 + PDPA.
+ *
+ * Not here: the 7-day legacy-link grace (Task 30) — it suppresses only AUTOMATED dunning, so it is decided
+ * by the dispatch call (`NotificationDispatchService.send` / `sendFromTemplate`, `manual` option), not by
+ * this context (which the retry queue rebuilds without knowing who started the send).
  */
 @Injectable()
 export class ComplianceService {
@@ -111,11 +117,7 @@ export class ComplianceService {
       }
     }
 
-    if (
-      FREQUENCY_CAP_CATEGORIES.has(ctx.category) &&
-      ctx.customerId &&
-      ctx.contractId
-    ) {
+    if (FREQUENCY_CAP_CATEGORIES.has(ctx.category) && ctx.customerId && ctx.contractId) {
       const todayStart = this.startOfBangkokDay(now);
       // Count both SENT (already delivered today) and DELAYED (queued for
       // delayed send today). Without DELAYED, a dunning queued at 23:00
@@ -131,6 +133,10 @@ export class ComplianceService {
           OR: [
             { status: 'SENT', sentAt: { gte: todayStart } },
             { status: 'DELAYED', createdAt: { gte: todayStart } },
+          ],
+          // Task 30 รอบ 4 m4 — แจ้งสถานะ (A3) ที่ไม่ได้ส่งแทนขั้นทวงไม่นับ (เดิมไม่ลงแถว) · หัวข้อว่างนับตามเดิม
+          AND: [
+            { OR: [{ subject: null }, { subject: { notIn: [...FREQUENCY_CAP_EXEMPT_SUBJECTS] } }] },
           ],
         },
       });
@@ -171,14 +177,11 @@ export class ComplianceService {
     this.logger.warn(
       `Dunning message missing identification prefix — auto-prepending: "${preview}..."`,
     );
-    Sentry.captureMessage(
-      `Dunning message missing [BESTCHOICE FINANCE] prefix — auto-prepended`,
-      {
-        level: 'warning',
-        tags: { module: 'notifications', compliance: 'identification-prefix' },
-        extra: { messagePreview: preview },
-      },
-    );
+    Sentry.captureMessage(`Dunning message missing [BESTCHOICE FINANCE] prefix — auto-prepended`, {
+      level: 'warning',
+      tags: { module: 'notifications', compliance: 'identification-prefix' },
+      extra: { messagePreview: preview },
+    });
 
     return `${DUNNING_IDENTIFICATION_PREFIX} ${message}`;
   }
@@ -206,14 +209,11 @@ export class ComplianceService {
       this.logger.warn(
         `Forbidden content detected: ${matches.join(', ')} — message: "${preview.slice(0, 60)}..."`,
       );
-      Sentry.captureMessage(
-        `Notification content review needed: ${matches.join(', ')}`,
-        {
-          level: 'warning',
-          tags: { module: 'notifications', compliance: 'content-guardrails' },
-          extra: { messagePreview: preview, dunningStage: dunningStage ?? null },
-        },
-      );
+      Sentry.captureMessage(`Notification content review needed: ${matches.join(', ')}`, {
+        level: 'warning',
+        tags: { module: 'notifications', compliance: 'content-guardrails' },
+        extra: { messagePreview: preview, dunningStage: dunningStage ?? null },
+      });
     }
 
     return matches;

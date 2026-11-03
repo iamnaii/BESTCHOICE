@@ -44,6 +44,11 @@ import { isFutureBkkDay, bkkYearMonth } from '../../utils/date.util';
 import { getBranchScope } from '../auth/branch-access.util';
 import { syncPriceRowsFromColumns } from '../../utils/product-price-sync.util';
 import { countPhotoAngles } from '../quality-control/photo-angles.util';
+import {
+  assertNoPendingBankRefund,
+  findPendingBankRefunds,
+  pendingBankRefundMessage,
+} from '../refunds/pending-bank-refund';
 
 /** Authenticated request user — service-level branch scoping (BranchGuard delegates to us). */
 export type RequestUser = { id: string; role?: string; branchId?: string | null };
@@ -404,6 +409,16 @@ export class RepossessionsService {
     if (eligibility.canRepossess && outstandingForJe.lte(0)) {
       eligibility = { canRepossess: false, reason: ZERO_OUTSTANDING_MSG };
     }
+    // คำตัดสินเจ้าของ #24 (2026-10-31): คำขอคืนเงินที่อนุมัติแล้วแต่ยังไม่บันทึกผลธนาคาร — กติกาและข้อความเดียวกับ createInTx
+    if (eligibility.canRepossess) {
+      const pendingRefunds = await findPendingBankRefunds(this.prisma, contractId);
+      if (pendingRefunds.length > 0) {
+        eligibility = {
+          canRepossess: false,
+          reason: pendingBankRefundMessage(pendingRefunds, 'REPOSSESSION'),
+        };
+      }
+    }
 
     // ยอดปิดสัญญา = สูตรเดียวกับปิดสัญญาก่อนกำหนด (computePayoffQuote — owner
     // 2026-07-20: ยอดยึดคืนต้องตรงกับ JP4 quote เสมอ). จุดที่เคยเพี้ยน: สูตรเก่า
@@ -635,6 +650,9 @@ export class RepossessionsService {
       throw new BadRequestException(`เกรดสภาพต้องเป็น ${validGrades.join(', ')}`);
     }
 
+    // #24 — ล็อกแถวสัญญาก่อนอ่าน (ผู้เรียกจองใบรับเครื่องคืนก่อนแตะสัญญา — ลำดับเดียวกับ reject/cancel): ด่านคำขอคืนเงินข้างล่าง
+    // อ่านใต้ล็อกนี้ และ approveRefund ล็อกแถวเดียวกัน FOR SHARE ก่อนอ่านสถานะสัญญา ⇒ อนุมัติคืนเงินกับยึดเรียงกันเสมอ
+    await tx.$queryRaw`SELECT id FROM contracts WHERE id=${input.contractId} FOR UPDATE`;
     const contract = await tx.contract.findUnique({
       where: { id: input.contractId },
       include: {
@@ -702,6 +720,9 @@ export class RepossessionsService {
     if (outstandingBalance.lte(0)) {
       throw new BadRequestException(ZERO_OUTSTANDING_MSG);
     }
+    // คำตัดสินเจ้าของ #24 (2026-10-31): ห้ามยืนยันรับเครื่องคืน/ยึดขณะมีคำขอคืนเงินที่อนุมัติแล้วแต่ยังไม่บันทึกผลธนาคาร —
+    // ไม่งั้นการบันทึกผลธนาคารภายหลังจะยกเลิกการรับชำระบนสัญญาที่ปิดแล้ว (Task 28 M1 คงไว้เป็นตาข่าย) · preview ใช้กติกาเดียวกัน
+    await assertNoPendingBankRefund(tx, input.contractId, 'REPOSSESSION');
 
     // ยอดปิดสัญญา = สูตรเดียวกับปิดสัญญาก่อนกำหนด (computePayoffQuote) — owner 2026-07-20
     const quote = computePayoffQuote({

@@ -647,12 +647,40 @@ describe('RescheduleCollectService (ปรับดิว collect-first)', () =>
     ).rejects.toThrow(/ชำระแล้ว/);
   });
 
+  it('closed CURRENT month on its own last day, grace 0 → still collects (owner rule 2026-10-31)', async () => {
+    // The collect JE posts TODAY ⇒ validatePeriodOpen checks the CURRENT month. Grace 0 keeps the
+    // period's last day open until 23:59:59.999 Bangkok (the old boundary was 00:00 OF the last day —
+    // this case used to be the "past grace" rejection below; flipped deliberately per the owner).
+    jest.setSystemTime(new Date('2026-07-31T23:59:59.999+07:00'));
+    prisma.accountingPeriod.findUnique.mockResolvedValue({ status: 'CLOSED' });
+    prisma.systemConfig.findUnique.mockImplementation(({ where }: AnyObj) =>
+      Promise.resolve(where.key === 'period_grace_days' ? { value: '0' } : null),
+    );
+
+    const result = await service.executeWithCollect({
+      contractId: 'ct-1',
+      installmentNo: 1,
+      daysToShift: 7,
+      splitMode: 'SPLIT',
+      amount: 1144,
+      paymentMethod: 'CASH',
+      recordedById: 'user-1',
+    });
+    expect(result.success).toBe(true);
+    expect(journalAuto.createAndPost).toHaveBeenCalled();
+  });
+
   it('closed accounting period (past grace) → BadRequest BEFORE any write (no tx, no JE, no reschedule)', async () => {
     // Period-lock (CR-7): the collect JE posts TODAY, so validatePeriodOpen checks
-    // the CURRENT month. A CLOSED period only rejects past the grace window
-    // (last calendar day + period_grace_days) — park "today" at noon LOCAL on the
-    // last day of July with grace 0 so graceEnd (Jul 31 00:00) is already behind us.
-    jest.setSystemTime(new Date(2026, 6, 31, 12, 0, 0));
+    // the CURRENT month — which can only be past its grace window when the request
+    // straddles midnight on the 1st: `new Date()` is captured on Jul 31 23:59:59.999
+    // BKK, then the clock reaches Aug 1 00:00 BKK (the day AFTER month end) while the
+    // FINANCE company resolves. Grace 0 ⇒ the CLOSED July period must reject.
+    jest.setSystemTime(new Date('2026-07-31T23:59:59.999+07:00'));
+    prisma.companyInfo.findFirst.mockImplementation(async () => {
+      jest.setSystemTime(new Date('2026-08-01T00:00:00+07:00'));
+      return { id: 'co-FINANCE' };
+    });
     prisma.accountingPeriod.findUnique.mockResolvedValue({ status: 'CLOSED' });
     prisma.systemConfig.findUnique.mockImplementation(({ where }: AnyObj) =>
       Promise.resolve(where.key === 'period_grace_days' ? { value: '0' } : null),

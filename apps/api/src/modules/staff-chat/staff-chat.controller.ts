@@ -155,20 +155,22 @@ export class StaffChatController {
   @Get('rooms/:id')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   async getRoom(@Param('id') id: string, @Req() req: { user: { id: string; role: string } }) {
-    const room = await this.roomManager.findById(id);
-    if (!room) throw new NotFoundException('ไม่พบห้องแชท');
+    const found = await this.roomManager.findById(id);
+    if (!found) throw new NotFoundException('ไม่พบห้องแชท');
     // SALES may only open rooms assigned to them (or still unassigned, which they can pick up).
     // The room payload includes customer PII (phone/nationalId), so a SALES user must not be
     // able to read an arbitrary room by guessing its id. Cross-branch roles see all rooms.
-    if (req.user.role === 'SALES' && room.assignedToId && room.assignedToId !== req.user.id) {
+    if (req.user.role === 'SALES' && found.assignedToId && found.assignedToId !== req.user.id) {
       // บอกชื่อคนที่ถืออยู่ด้วย — ข้อความลอย ๆ ทำให้พนักงานไม่รู้ว่าต้องไปคุยกับใคร
       // และหน้าจอเดิมไม่แสดงอะไรเลย (ดู index.tsx: sessionQuery ไม่มี error handling)
       throw new ForbiddenException(
-        room.assignedTo?.name
-          ? `ห้องนี้ ${room.assignedTo.name} กำลังดูแลอยู่ — ขอให้เขาโอนให้ก่อนจึงจะเปิดได้`
+        found.assignedTo?.name
+          ? `ห้องนี้ ${found.assignedTo.name} กำลังดูแลอยู่ — ขอให้เขาโอนให้ก่อนจึงจะเปิดได้`
           : 'ไม่มีสิทธิ์เข้าถึงห้องแชทนี้',
       );
     }
+    // Task 33 — ป้าย "ยืนยัน OTP แล้ว"/"ยกเลิกผูกแล้ว" ที่หัวห้อง: สถานะคำนวณฝั่ง server (ไม่มี U-id) แบบเดียวกับรายชื่อแชท
+    const [room] = await this.roomManager.attachFinanceLineStatus([found]);
     // ผู้สนใจอัตโนมัติ (สเปค 3.1): ติดธง chatPlaceholder ให้การ์ดขวารู้ว่าห้องนี้ยังไม่มีคนจริงผูกอยู่
     const customer = room.customer
       ? { ...room.customer, chatPlaceholder: isChatPlaceholder(room.customer) }
@@ -677,6 +679,10 @@ export class StaffChatController {
    * active FINANCE OTP link: that LINE's LINE_FINANCE room only (no room yet =
    * empty, roomId null — never another LINE's room). Without one: the
    * customer's newest LINE room, read only (sending answers 400).
+   * Branch scope (Task 29 #3 — owner decision 2026-10-31): the same rule as the
+   * collections LINE send button (lineSendCustomerScope) — cross-branch roles
+   * see every customer; others only a customer with a contract in their branch
+   * or one they hold a live DailyAssignment for today; out of scope = 404.
    * See RoomManagerService.getCustomerMessages · security.md LINE rule 9.
    *
    * Returns messages in reverse-chronological order (newest first) so
@@ -687,11 +693,12 @@ export class StaffChatController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES', 'ACCOUNTANT')
   async getCustomerMessages(
     @Param('customerId') customerId: string,
+    @Req() req: { user: { id: string; role: string; branchId: string | null } },
     @Query('limit') limit?: string,
     @Query('before') before?: string,
   ) {
     const take = Math.min(Math.max(parseInt(limit ?? '30', 10) || 30, 1), 100);
-    return this.roomManager.getCustomerMessages(customerId, take, before);
+    return this.roomManager.getCustomerMessages(customerId, req.user, take, before);
   }
 
   /**
@@ -703,22 +710,24 @@ export class StaffChatController {
    * LINE_FINANCE_NOT_VERIFIED_MESSAGE · only a LINE_SHOP room → 400
    * LINE_SHOP_STAFF_SEND_DISABLED_MESSAGE · verified but the LINE never chatted
    * (no room yet) → { success: false } "รอลูกค้าทักก่อน" below. The
-   * customer.lineIdFinance column plays no part. See
-   * RoomManagerService.sendCustomerMessage · security.md LINE rule 9.
+   * customer.lineIdFinance column plays no part. Out of the caller's
+   * collections LINE send scope (Task 29 #3, same rule as the GET) → 404
+   * before anything else. See RoomManagerService.sendCustomerMessage ·
+   * security.md LINE rule 9.
    */
   @Post('customer/:customerId/messages')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES', 'ACCOUNTANT')
   async sendCustomerMessage(
     @Param('customerId') customerId: string,
     @Body() body: { text: string },
-    @Req() req: { user: { id: string } },
+    @Req() req: { user: { id: string; role: string; branchId: string | null } },
   ) {
     const text = (body?.text ?? '').trim();
     if (!text) {
       return { success: false, error: 'กรุณาพิมพ์ข้อความก่อนส่ง' };
     }
 
-    const sent = await this.roomManager.sendCustomerMessage(customerId, req.user.id, text);
+    const sent = await this.roomManager.sendCustomerMessage(customerId, req.user, text);
 
     if (!sent.room) {
       return {

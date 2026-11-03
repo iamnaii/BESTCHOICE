@@ -51,8 +51,8 @@ function validateClientSide(lines: EditableJournalLine[]): ValidationIssue[] {
 
   const drTotalCents = lines.reduce((s, l) => s + Math.round((l.debit || 0) * 100), 0);
   const crTotalCents = lines.reduce((s, l) => s + Math.round((l.credit || 0) * 100), 0);
-  if (Math.abs(drTotalCents - crTotalCents) > 1) {
-    // 1 cent = 0.01 THB tolerance
+  if (drTotalCents !== crTotalCents) {
+    // exact, same as the server's isJournalBalanced (no 0.01 tolerance)
     const drTotal = drTotalCents / 100;
     const crTotal = crTotalCents / 100;
     issues.push({

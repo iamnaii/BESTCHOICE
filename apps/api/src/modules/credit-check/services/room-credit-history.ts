@@ -1,6 +1,10 @@
 import { Prisma } from '@prisma/client';
 
-/** All writers (link and analysis completion) hold the same ChatRoom row lock. */
+/**
+ * All writers (link and analysis completion) hold the same ChatRoom row lock — **after** the room's customer row
+ * (Task 29 fix round 1: one lock order customer → room, the same as `VerificationService.bind` and the finance-LINE
+ * unlink paths · `RoomManagerService.linkCustomer` / `RoomCreditService.completeAnalysis` call `lockFinanceLineCustomers` first).
+ */
 export async function lockCreditRoom(tx: Prisma.TransactionClient, roomId: string) {
   await tx.$queryRaw`SELECT id FROM chat_rooms WHERE id = ${roomId} FOR UPDATE`;
 }

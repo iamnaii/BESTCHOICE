@@ -33,6 +33,8 @@ async function goToOtpStep() {
   renderPage();
   const input = await screen.findByPlaceholderText(/08/);
   fireEvent.change(input, { target: { value: '0812345678' } });
+  // Task 33 — ปุ่มส่งรหัสกดได้เมื่อติ๊กยินยอมแล้วเท่านั้น (ยินยอมตอนผูก — แบบบังคับ)
+  fireEvent.click(screen.getByRole('checkbox', { name: /ยินยอมให้บริษัทส่งแจ้งเตือนค่างวด/ }));
   fireEvent.click(screen.getByRole('button', { name: 'ส่งรหัส OTP' }));
   await screen.findByText('089-***-5678');
 }

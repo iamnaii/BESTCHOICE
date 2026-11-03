@@ -741,11 +741,13 @@ describe('RepossessionsService', () => {
   // assertRepossessionPeriodsOpen — ด่านนอก tx ของ create() เดิม (2026-09-20 ใบรับเครื่องคืน)
   // ──────────────────────────────────────────────────────────────────────────
   describe('assertRepossessionPeriodsOpen', () => {
+    // คำตัดสินเจ้าของ 2026-10-31: grace 0 = วันสุดท้ายของงวดยังลงได้ถึง 23:59:59.999 เวลาไทย. เดิมเทสนี้ตรึงเที่ยงวันของ
+    // วันสุดท้ายแล้วคาดว่า "พ้น grace" (ขอบเดิม = 00:00 ของวันสุดท้าย — off-by-one ที่เจ้าของสั่งแก้) ⇒ กลับคาดเป็นผ่าน
     it.each(['company-finance', 'company-shop'])(
-      'rejects a closed %s period after the configured grace deadline',
+      'accepts a %s period closed early on its own last day with grace 0 (owner rule 2026-10-31)',
       async (companyId) => {
         jest.useFakeTimers();
-        jest.setSystemTime(new Date(2026, 8, 30, 12));
+        jest.setSystemTime(new Date('2026-09-30T23:59:59.999+07:00'));
         try {
           prisma.systemConfig.findUnique.mockResolvedValue({ value: '0' });
           prisma.accountingPeriod = {
@@ -753,8 +755,36 @@ describe('RepossessionsService', () => {
               status: args.where.companyId_year_month.companyId === companyId ? 'CLOSED' : 'OPEN',
             })),
           };
+          await expect(service.assertRepossessionPeriodsOpen(new Date())).resolves.toEqual({
+            financeCompanyId: 'company-finance',
+            shopCompanyId: 'company-shop',
+          });
+        } finally {
+          jest.useRealTimers();
+        }
+      },
+    );
+
+    // ด่านงวดยังกัดจริงเมื่อพ้นสิ้นเดือน — วันที่รับเงินต้องอยู่เดือนปัจจุบัน (ด่านเดือนข้างบน) ⇒ validatePeriodOpen ตัวจริงปฏิเสธได้
+    // เฉพาะคำขอที่คร่อมเที่ยงคืนวันที่ 1: ผ่านด่านเดือนตอน 23:59:59.999 ของวันสุดท้าย แล้วนาฬิกาเดินถึง 00:00 วันที่ 1 (วันถัดจาก
+    // สิ้นเดือน) ก่อนตรวจงวดของบริษัทนั้น · grace 0 ⇒ งวดที่ปิดแล้วต้องปฏิเสธ (แทนเคส "พ้น grace" เดิมที่ไปไม่ถึงแล้ว)
+    it.each(['company-finance', 'company-shop'])(
+      'rejects a closed %s period once the clock passes month end (grace 0 — request straddling midnight)',
+      async (companyId) => {
+        jest.useFakeTimers();
+        jest.setSystemTime(new Date('2026-09-30T23:59:59.999+07:00'));
+        try {
+          prisma.systemConfig.findUnique.mockResolvedValue({ value: '0' });
+          prisma.accountingPeriod = {
+            findUnique: jest.fn().mockImplementation(async (args) => {
+              if (args.where.companyId_year_month.companyId !== companyId)
+                return { status: 'OPEN' };
+              jest.setSystemTime(new Date('2026-10-01T00:00:00+07:00'));
+              return { status: 'CLOSED' };
+            }),
+          };
           await expect(service.assertRepossessionPeriodsOpen(new Date())).rejects.toThrow(
-            /งวดที่ปิดแล้ว/,
+            'ไม่สามารถบันทึกรายการในงวดที่ปิดแล้ว (2026/09 สถานะ: CLOSED)',
           );
         } finally {
           jest.useRealTimers();
@@ -1245,7 +1275,9 @@ describe('RepossessionsService', () => {
     it('ไม่เขียน audit SHOP_COLLECT_REPOSSESSION อีกต่อไป (แทนด้วย DEVICE_RETURN_CONFIRMED ที่ผู้เรียก + metadata บน JE)', async () => {
       arm();
       await run();
-      const actions = prisma.auditLog.create.mock.calls.map((c: any[]) => c[0].data.action);
+      const actions = prisma.auditLog.create.mock.calls.map(
+        (c: [{ data: { action: string } }]) => c[0].data.action,
+      );
       expect(actions).toContain('REPOSSESSION');
       expect(actions).not.toContain('SHOP_COLLECT_REPOSSESSION');
     });
@@ -1751,9 +1783,8 @@ describe('RepossessionsService', () => {
 
       await service.markReadyForSale('r1', { resellPrice: 21000, installmentPrice: 23900 });
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const priceUpdate = prisma.product.update.mock.calls.find(
-        (c: any[]) => c[0].data.cashPrice !== undefined,
+        (c: [{ data: { cashPrice?: unknown } }]) => c[0].data.cashPrice !== undefined,
       );
       expect(priceUpdate).toBeDefined();
       expect(priceUpdate[0].data.cashPrice.toString()).toBe('21000');

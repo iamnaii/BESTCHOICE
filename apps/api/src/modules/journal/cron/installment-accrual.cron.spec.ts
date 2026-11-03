@@ -1,11 +1,12 @@
-import { describe, it, expect, beforeAll } from 'vitest';
-import { PrismaClient } from '@prisma/client';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
+import { PrismaClient, type AccountingPeriodStatus } from '@prisma/client';
 import { seedFinanceCoa } from '../../../../prisma/seed-coa-finance';
 import { seedStandard17k12m } from '../__tests__/scenario-helpers';
 import { ContractActivation1ATemplate } from '../cpa-templates/contract-activation-1a.template';
 import { InstallmentAccrual2ATemplate } from '../cpa-templates/installment-accrual-2a.template';
 import { InstallmentAccrualCron } from './installment-accrual.cron';
 import { JournalAutoService } from '../journal-auto.service';
+import { bangkokCalendarParts } from '../../../utils/date.util';
 
 const prisma = new PrismaClient();
 
@@ -156,5 +157,201 @@ describe('InstallmentAccrualCron', () => {
     // Compare date-only to avoid Postgres timestamp precision flakes; both
     // values are seeded with setHours(0,0,0,0) so day equality is sufficient.
     expect(accrualJe.postedAt!.toDateString()).toBe(sevenDaysAgo.toDateString());
+  });
+
+  // impact C2 ของการตั้ง branches.company_id = SHOP (2026-10-31): 2A ลงฝั่ง FINANCE ⇒ ด่านงวดต้องตรวจงวดของ FINANCE ไม่ใช่บริษัทของสาขา
+  // (เดิมอ่าน `contract.branch.companyId` — สาขา NULL = ไม่ตรวจเลย · สาขา SHOP = ตรวจงวดของ SHOP แล้วข้าม 2A ของ FINANCE)
+  describe('period guard checks FINANCE, not the branch company', () => {
+    /** งวดบัญชี ก.ย. 2569 — พ้นสิ้นเดือน + ช่วงผ่อนผันค่าเริ่มต้น (5 วัน) ไปแล้วเสมอเมื่อเทสรัน */
+    const SEP_DUE = new Date('2026-09-15T00:00:00+07:00');
+
+    async function ensureCompany(code: 'SHOP' | 'FINANCE') {
+      const found = await prisma.companyInfo.findFirst({
+        where: { companyCode: code, deletedAt: null },
+      });
+      if (found) return found.id;
+      return (
+        await prisma.companyInfo.create({
+          data: {
+            nameTh: `Test ${code}`,
+            taxId: '0000000000000',
+            companyCode: code,
+            address: '1 Test Rd.',
+            directorName: 'Test',
+            vatRegistered: code === 'FINANCE',
+          },
+        })
+      ).id;
+    }
+
+    /** สัญญาที่สาขาผูกบริษัท SHOP · งวด 1 ครบกำหนด `due` · งวดอื่นเลื่อนไปอนาคต (ให้รอบนี้เห็นแค่งวด 1 ของสัญญานี้) */
+    async function seedOnShopBranch(due: Date) {
+      const shopId = await ensureCompany('SHOP');
+      await ensureCompany('FINANCE');
+      const c = await seedStandard17k12m(prisma);
+      await new ContractActivation1ATemplate(
+        new JournalAutoService(prisma as never),
+        prisma as never,
+      ).execute(c.id);
+      const branch = await prisma.branch.create({
+        data: { name: `__accrual_c2_${Date.now()}__`, companyId: shopId },
+      });
+      await prisma.contract.update({ where: { id: c.id }, data: { branchId: branch.id } });
+      await prisma.installmentSchedule.updateMany({
+        where: { contractId: c.id, installmentNo: { gt: 1 } },
+        data: { dueDate: new Date(Date.now() + 365 * 86_400_000) },
+      });
+      const inst = await prisma.installmentSchedule.findFirstOrThrow({
+        where: { contractId: c.id, installmentNo: 1 },
+      });
+      await prisma.installmentSchedule.update({
+        where: { id: inst.id },
+        data: { dueDate: due, accrualJournalEntryId: null },
+      });
+      return inst.id;
+    }
+
+    /** ตั้งสถานะงวด (บริษัท, ปี, เดือน) ชั่วคราว + `period_grace_days` (ถ้าส่ง) แล้วคืนค่าเดิมเสมอ */
+    async function withPeriods(
+      periods: {
+        code: 'SHOP' | 'FINANCE';
+        year: number;
+        month: number;
+        status: AccountingPeriodStatus;
+      }[],
+      grace: string | undefined,
+      run: () => Promise<void>,
+    ) {
+      const restores: (() => Promise<unknown>)[] = [];
+      try {
+        for (const p of periods) {
+          const companyId = await ensureCompany(p.code);
+          const where = { companyId_year_month: { companyId, year: p.year, month: p.month } };
+          const before = await prisma.accountingPeriod.findUnique({ where });
+          await prisma.accountingPeriod.upsert({
+            where,
+            create: { companyId, year: p.year, month: p.month, status: p.status },
+            update: { status: p.status },
+          });
+          restores.push(() =>
+            before
+              ? prisma.accountingPeriod.update({ where, data: { status: before.status } })
+              : prisma.accountingPeriod.delete({ where }),
+          );
+        }
+        if (grace !== undefined) {
+          const before = await prisma.systemConfig.findUnique({
+            where: { key: 'period_grace_days' },
+          });
+          await prisma.systemConfig.upsert({
+            where: { key: 'period_grace_days' },
+            create: { key: 'period_grace_days', value: grace },
+            update: { value: grace },
+          });
+          restores.push(() =>
+            before
+              ? prisma.systemConfig.update({
+                  where: { key: 'period_grace_days' },
+                  data: { value: before.value },
+                })
+              : prisma.systemConfig.delete({ where: { key: 'period_grace_days' } }),
+          );
+        }
+        await run();
+      } finally {
+        for (const restore of restores.reverse()) await restore();
+      }
+    }
+
+    const newCron = () =>
+      new InstallmentAccrualCron(
+        prisma as never,
+        new InstallmentAccrual2ATemplate(new JournalAutoService(prisma as never), prisma as never),
+      );
+    const accrualOf = async (id: string) =>
+      (await prisma.installmentSchedule.findUniqueOrThrow({ where: { id } })).accrualJournalEntryId;
+
+    it('SHOP period closed + FINANCE open ⇒ the FINANCE accrual still runs', async () => {
+      const id = await seedOnShopBranch(SEP_DUE);
+      await withPeriods(
+        [
+          { code: 'SHOP', year: 2026, month: 9, status: 'CLOSED' },
+          { code: 'FINANCE', year: 2026, month: 9, status: 'OPEN' },
+        ],
+        undefined,
+        async () => {
+          const result = await newCron().tick();
+          expect(result.failed).toBe(0);
+          expect(await accrualOf(id)).not.toBeNull();
+        },
+      );
+    });
+
+    it('FINANCE period closed past grace (SHOP open) ⇒ the accrual is skipped and reported', async () => {
+      const id = await seedOnShopBranch(SEP_DUE);
+      await withPeriods(
+        [
+          { code: 'SHOP', year: 2026, month: 9, status: 'OPEN' },
+          { code: 'FINANCE', year: 2026, month: 9, status: 'CLOSED' },
+        ],
+        undefined,
+        async () => {
+          const result = await newCron().tick();
+          expect(result.skippedClosedPeriod).toBeGreaterThanOrEqual(1);
+          expect(await accrualOf(id)).toBeNull();
+        },
+      );
+    });
+
+    it('FINANCE closes the current month early with grace 0 ⇒ an installment due today still accrues (grace rule 2026-10-31)', async () => {
+      const id = await seedOnShopBranch(new Date());
+      const { year, month } = bangkokCalendarParts(new Date());
+      await withPeriods(
+        [{ code: 'FINANCE', year, month: month + 1, status: 'CLOSED' }],
+        '0',
+        async () => {
+          const result = await newCron().tick();
+          expect(result.failed).toBe(0);
+          expect(await accrualOf(id)).not.toBeNull();
+        },
+      );
+    });
+
+    // review M5 (2026-10-31): the query is oldest-first and capped (ACCRUAL_BACKFILL_CAP) — rows due in a month FINANCE has
+    // locked used to be fetched and skipped one by one, so a full batch of them starved every newer installment. Locked
+    // months are now excluded in the query (still counted for BACKFILL_STALLED). Cap 1 makes the starvation observable.
+    it('installments due in a locked FINANCE month do not starve newer ones past the per-tick cap', async () => {
+      await newCron().tick(); // flush rows left by earlier tests so only this test's rows are pending
+      const stalled = await seedOnShopBranch(SEP_DUE);
+      const current = await seedOnShopBranch(new Date());
+      const previousCap = process.env.ACCRUAL_BACKFILL_CAP;
+      process.env.ACCRUAL_BACKFILL_CAP = '1';
+      vi.resetModules();
+      try {
+        const { InstallmentAccrualCron: CappedCron } = await import('./installment-accrual.cron');
+        const { InstallmentAccrual2ATemplate: Template } =
+          await import('../cpa-templates/installment-accrual-2a.template');
+        const { JournalAutoService: Journal } = await import('../journal-auto.service');
+        const capped = new CappedCron(
+          prisma as never,
+          new Template(new Journal(prisma as never), prisma as never),
+        );
+        await withPeriods(
+          [{ code: 'FINANCE', year: 2026, month: 9, status: 'CLOSED' }],
+          undefined,
+          async () => {
+            const result = await capped.tick();
+            expect(result.processed).toBe(1);
+            expect(result.skippedClosedPeriod).toBeGreaterThanOrEqual(1);
+            expect(await accrualOf(stalled)).toBeNull();
+            expect(await accrualOf(current)).not.toBeNull();
+          },
+        );
+      } finally {
+        if (previousCap === undefined) delete process.env.ACCRUAL_BACKFILL_CAP;
+        else process.env.ACCRUAL_BACKFILL_CAP = previousCap;
+        vi.resetModules();
+      }
+    });
   });
 });

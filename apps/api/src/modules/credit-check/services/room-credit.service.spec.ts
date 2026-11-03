@@ -210,4 +210,35 @@ describe('room statement attachments and analysis', () => {
     );
     expect(storage.delete).toHaveBeenCalledWith(storage.upload.mock.calls[0][0]);
   });
+
+  // Task 29 fix round 1 (review I-1) — ลำดับล็อกเดียว ลูกค้า → ห้อง (เท่า bind/ยกเลิกผูก) · แข่งจริงบน Postgres ที่ finance-line-lock-order.db.spec
+  describe('ทรานแซกชันตอนวิเคราะห์เสร็จ', () => {
+    const lockedTables = () =>
+      db.$queryRaw.mock.calls.map((call) =>
+        /FROM customers/.test((call[0] as string[]).join('?')) ? 'customers' : 'chat_rooms',
+      );
+    beforeEach(() => {
+      db.roomCreditFile.findMany.mockResolvedValue([file]);
+      ocr.analyzeBankStatement.mockResolvedValue({ totalIncome: 50000, confidence: 0.9 });
+    });
+
+    it('ห้องผูกลูกค้าแล้ว → ล็อกแถวลูกค้าก่อนห้อง', async () => {
+      db.chatRoom.findFirst.mockResolvedValue({ ...room, customerId: 'cust' });
+      await service.analyze('room', ['file'], actor);
+      // ทรานแซกชันแรก (สร้างแถว ANALYZING) ล็อกห้องอย่างเดียว · ทรานแซกชันตอนเสร็จ: ลูกค้า → ห้อง
+      expect(lockedTables()).toEqual(['chat_rooms', 'customers', 'chat_rooms']);
+    });
+
+    it('เจ้าของห้องเปลี่ยนระหว่างอ่านกับล็อก → ไม่เขียนอะไรในรอบนั้น แล้วลองทั้งก้อนใหม่', async () => {
+      db.chatRoom.findFirst
+        .mockResolvedValueOnce({ ...room }) // access() ของทรานแซกชันแรก
+        .mockResolvedValueOnce({ customerId: null }) // รอบ 1: อ่านเจ้าของ (ยังไม่ผูก)
+        .mockResolvedValueOnce({ ...room, customerId: 'cust' }) // รอบ 1: อ่านซ้ำใต้ล็อก — มีคนผูกระหว่างนั้น
+        .mockResolvedValue({ ...room, customerId: 'cust' });
+      await service.analyze('room', ['file'], actor);
+      expect(db.$transaction).toHaveBeenCalledTimes(3); // เริ่ม + เสร็จ 2 รอบ
+      expect(db.roomCreditAnalysis.updateMany).toHaveBeenCalledTimes(1);
+      expect(lockedTables()).toEqual(['chat_rooms', 'chat_rooms', 'customers', 'chat_rooms']);
+    });
+  });
 });

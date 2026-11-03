@@ -190,6 +190,41 @@ describe('MonthlyCloseService', () => {
       );
     });
 
+    // คำตัดสินเจ้าของ 2026-10-31 (ข้อ 3) — สมดุลรายการคือเท่ากันพอดี: ด่านก่อนปิดงวดต้องใช้นิยามเดียวกับ journal_balance
+    // (เดิมเผื่อ 0.01 ⇒ รายการที่ตรวจกลางคืนบอก CRITICAL ยังปิดงวดได้โดยไม่ต้องใส่เหตุผล — review I1)
+    it('counts an entry off by exactly 0.01 as unbalanced (exact rule shared with journal_balance)', async () => {
+      prisma.accountingPeriod.findUnique.mockResolvedValue(null);
+      prisma.journalEntry.count.mockResolvedValue(2);
+      prisma.journalEntry.findMany.mockResolvedValue([
+        {
+          id: 'je-ok',
+          lines: [
+            { debit: '100.00', credit: '0.00' },
+            { debit: '0.00', credit: '100.00' },
+          ],
+        },
+        {
+          id: 'je-off',
+          lines: [
+            { debit: '1000.00', credit: '0.00' },
+            { debit: '0.00', credit: '999.99' },
+          ],
+        },
+      ]);
+      prisma.payment.count.mockResolvedValue(0);
+      prisma.accountingPeriod.upsert.mockResolvedValue({ id: 'period-x', status: 'REVIEW' });
+
+      await service.startReview('company-1', 2026, 10, 'user-1');
+
+      expect(prisma.accountingPeriod.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({
+            auditIssues: expect.objectContaining({ unbalancedJournals: 1, hasIssues: true }),
+          }),
+        }),
+      );
+    });
+
     // 4. startReview — rejects on CLOSED period
     it('throws BadRequestException when period is already CLOSED', async () => {
       prisma.accountingPeriod.findUnique.mockResolvedValue({

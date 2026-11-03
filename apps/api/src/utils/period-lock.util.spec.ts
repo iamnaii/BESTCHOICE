@@ -1,5 +1,9 @@
 import { BadRequestException } from '@nestjs/common';
-import { validatePeriodOpen } from './period-lock.util';
+import {
+  accountingPeriodOf,
+  lockedAccountingPeriods,
+  validatePeriodOpen,
+} from './period-lock.util';
 
 /**
  * Period-lock enforcement — single source of truth = AccountingPeriod.
@@ -131,6 +135,62 @@ describe('validatePeriodOpen — AccountingPeriod single source of truth', () =>
     });
   });
 
+  // ── owner rule 2026-10-31: grace counts whole Bangkok days AFTER month end ──
+  // grace 0 = the period's own last day stays postable until 23:59:59.999 (Asia/Bangkok);
+  // grace N = N full days after month end. Instants are written with +07:00 so the
+  // assertions hold whatever the process TZ is (CI runs jest in UTC).
+
+  it('grace=0 + current month closed early: its own last day still accepts until 23:59:59.999 BKK', async () => {
+    jest.setSystemTime(new Date('2026-10-31T23:59:59.999+07:00'));
+    const prisma = mockPrisma({ period: { status: 'CLOSED' }, graceDays: '0' });
+    await expect(
+      validatePeriodOpen(prisma, new Date('2026-10-31T12:00:00+07:00'), 'co-1'),
+    ).resolves.toBeUndefined();
+  });
+
+  it('grace=0: blocks from 00:00 BKK on the 1st of the next month (the day AFTER month end)', async () => {
+    jest.setSystemTime(new Date('2026-11-01T00:00:00+07:00'));
+    const prisma = mockPrisma({ period: { status: 'CLOSED' }, graceDays: '0' });
+    await expect(
+      validatePeriodOpen(prisma, new Date('2026-10-31T12:00:00+07:00'), 'co-1'),
+    ).rejects.toThrow('ไม่สามารถบันทึกรายการในงวดที่ปิดแล้ว (2026/10 สถานะ: CLOSED)');
+  });
+
+  it('grace=5: the 5th day after month end is still inside for the whole day; the 6th blocks', async () => {
+    const prisma = mockPrisma({ period: { status: 'CLOSED' }, graceDays: '5' });
+    jest.setSystemTime(new Date('2026-11-05T23:59:59.999+07:00'));
+    await expect(
+      validatePeriodOpen(prisma, new Date('2026-10-31T12:00:00+07:00'), 'co-1'),
+    ).resolves.toBeUndefined();
+    jest.setSystemTime(new Date('2026-11-06T00:00:00+07:00'));
+    await expect(
+      validatePeriodOpen(prisma, new Date('2026-10-31T12:00:00+07:00'), 'co-1'),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('December rolls into January: grace=0 accepts through 31 Dec BKK, blocks from 1 Jan', async () => {
+    const prisma = mockPrisma({ period: { status: 'CLOSED' }, graceDays: '0' });
+    jest.setSystemTime(new Date('2026-12-31T23:59:59.999+07:00'));
+    await expect(
+      validatePeriodOpen(prisma, new Date('2026-12-31T09:00:00+07:00'), 'co-1'),
+    ).resolves.toBeUndefined();
+    jest.setSystemTime(new Date('2027-01-01T00:00:00+07:00'));
+    await expect(
+      validatePeriodOpen(prisma, new Date('2026-12-31T09:00:00+07:00'), 'co-1'),
+    ).rejects.toThrow('(2026/12 สถานะ: CLOSED)');
+  });
+
+  it('reads the period month on the Bangkok calendar whatever the process TZ', async () => {
+    jest.setSystemTime(new Date('2026-11-02T12:00:00+07:00'));
+    const prisma = mockPrisma({ period: null });
+    // 17:30Z on 31 Oct = 00:30 on 1 Nov in Bangkok → the November period
+    await validatePeriodOpen(prisma, new Date('2026-10-31T17:30:00Z'), 'co-1');
+    expect(prisma.accountingPeriod.findUnique).toHaveBeenCalledWith({
+      where: { companyId_year_month: { companyId: 'co-1', year: 2026, month: 11 } },
+      select: { status: true },
+    });
+  });
+
   // ── grace config edge cases fall back to default 5 ──────────────────────
 
   it('grace_days unparseable: falls back to default 5 (within window → allows)', async () => {
@@ -147,5 +207,35 @@ describe('validatePeriodOpen — AccountingPeriod single source of truth', () =>
     await expect(
       validatePeriodOpen(prisma, new Date('2026-05-31'), 'co-1'),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  // ── one Thai-calendar month helper (review M2) — the guard and every period-row locker use it ──
+  it('accountingPeriodOf reads the Bangkok calendar month whatever the process TZ', () => {
+    expect(accountingPeriodOf(new Date('2026-10-31T16:59:59.999Z'))).toEqual({
+      year: 2026,
+      month: 10,
+    });
+    expect(accountingPeriodOf(new Date('2026-10-31T17:30:00Z'))).toEqual({ year: 2026, month: 11 });
+    expect(accountingPeriodOf(new Date('2026-12-31T17:00:00Z'))).toEqual({ year: 2027, month: 1 });
+  });
+
+  // review M5: the per-period form of the same rule — a batch can exclude locked months up front
+  it('lockedAccountingPeriods returns only CLOSED/SYNCED periods already past their grace window', async () => {
+    jest.setSystemTime(new Date('2026-11-03T10:00:00+07:00'));
+    const findMany = jest.fn().mockResolvedValue([
+      { year: 2026, month: 9, status: 'CLOSED' }, // grace 5 ended 00:00 6 Oct → locked
+      { year: 2026, month: 10, status: 'SYNCED' }, // grace runs to the end of 5 Nov → still open
+    ]);
+    const prisma = {
+      systemConfig: { findUnique: jest.fn().mockResolvedValue({ value: '5' }) },
+      accountingPeriod: { findMany },
+    };
+    await expect(lockedAccountingPeriods(prisma, 'co-1')).resolves.toEqual([
+      { year: 2026, month: 9 },
+    ]);
+    expect(findMany).toHaveBeenCalledWith({
+      where: { companyId: 'co-1', status: { in: ['CLOSED', 'SYNCED'] } },
+      select: { year: true, month: true, status: true },
+    });
   });
 });

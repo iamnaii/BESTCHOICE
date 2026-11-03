@@ -56,6 +56,44 @@ describe('ConsolidatedService', () => {
     expect(result.grandDrTotal.toString()).toBe('1500');
   });
 
+  // คำตัดสินเจ้าของ 2026-10-31: สมดุล = เท่ากันพอดี — งบทดลองรวมเคยเผื่อ 0.01 ขณะที่งบทดลองปกติ (`general-ledger-report`) เทียบตรง (review M3)
+  it('getConsolidatedTrialBalance is not balanced when the grand totals differ by 0.01', async () => {
+    accountingMock.getTrialBalance.mockResolvedValue({
+      sections: [
+        {
+          codePrefix: '11',
+          sectionName: 'สินทรัพย์หมุนเวียน',
+          rows: [
+            {
+              code: '11-1101',
+              name: 'เงินสด',
+              type: 'สินทรัพย์',
+              normalBalance: 'Dr',
+              drBalance: dec('1000.00'),
+              crBalance: dec(0),
+              netBalance: dec('1000.00'),
+            },
+            {
+              code: '41-1101',
+              name: 'รายได้',
+              type: 'รายได้',
+              normalBalance: 'Cr',
+              drBalance: dec(0),
+              crBalance: dec('999.99'),
+              netBalance: dec('999.99'),
+            },
+          ],
+          drTotal: dec('1000.00'),
+          crTotal: dec('999.99'),
+        },
+      ],
+      grandDrTotal: dec('1000.00'),
+      grandCrTotal: dec('999.99'),
+    });
+
+    expect((await svc.getConsolidatedTrialBalance()).isBalanced).toBe(false);
+  });
+
   it('getConsolidatedTrialBalance deduplicates merged rows (same code in two sections)', async () => {
     // Edge case: same accountCode appears in two sections (mispost scenario)
     accountingMock.getTrialBalance.mockResolvedValue({

@@ -2,9 +2,12 @@
  * รัน: DATABASE_URL=<ฐานทดสอบ> npx jest src/modules/customers/services/customer-write.finance-line-unlink.db.spec.ts --runInBand
  *
  * Task 27 — ปุ่ม "ยกเลิกการผูก" LINE น้องเบส (การเงิน) ในฟอร์มแก้ไขลูกค้า → `POST /customers/:id/finance-line/unlink`
- * (`CustomerWriteService.unlinkFinanceLineByStaff`). ต่างจากทาง PATCH `lineIdFinance: null` ที่ตัดสินด้วยคอลัมน์ (คอลัมน์ว่าง = ไม่แตะ)
+ * (`CustomerWriteService.unlinkFinanceLineByStaff`). (ก่อน Task 29 ต่างจากทาง PATCH `lineIdFinance: null` ที่เคยตัดสินด้วยคอลัมน์)
  * ทางนี้ปิด**แถว OTP ที่ยังผูก**แม้คอลัมน์ว่าง (ผ่าน `unlinkFinanceLine({ customerId })` ตัวเดิม) + ล้าง `chat_rooms.verified_at`
  * (helper ของ Task 24) + เขียน audit `CUSTOMER_FINANCE_LINE_UNLINKED` (Task 22 รายงานว่าทางพนักงานไม่มี audit เฉพาะ)
+ *
+ * Task 29 #2 (เจ้าของตัดสิน 31 ต.ค. 2026 — Task 27 review M-3): `PATCH /customers/:id {"lineIdFinance": null}` ทำ**เหมือนปุ่มทุกอย่าง**
+ * (แกนเดียว `unlinkFinanceLineInTx` + audit เดียวกัน) — ปิดแถว OTP แม้คอลัมน์ว่าง · ล้าง verified_at · audit `CUSTOMER_FINANCE_LINE_UNLINKED`
  */
 import { NotFoundException } from '@nestjs/common';
 import { ChatChannel, LineChannelType, PrismaClient } from '@prisma/client';
@@ -223,5 +226,108 @@ describe('POST /customers/:id/finance-line/unlink (Task 27)', () => {
     expect(
       await prisma.customerLineLink.count({ where: { customerId: c.id, unlinkedAt: null } }),
     ).toBe(1);
+  });
+});
+
+describe('PATCH /customers/:id {lineIdFinance: null} = ปุ่ม "ยกเลิกการผูก" (Task 29 #2)', () => {
+  const patch = (id: string, body: Record<string, unknown>) =>
+    service.update(id, body as never, { id: staffId, role: 'BRANCH_MANAGER' });
+  const activeRows = (customerId: string) =>
+    prisma.customerLineLink.count({ where: { customerId, unlinkedAt: null } });
+
+  it.each([
+    ['null', null, '20'],
+    ['ค่าว่าง', '', '21'],
+    ['ช่องว่างล้วน', '   ', '22'],
+  ])(
+    'ล้างช่อง (%s) ขณะคอลัมน์ว่างแต่มีแถว OTP → ปิดแถว · ล้าง verified_at · audit เดียวกับปุ่ม · ช่องอื่นในคำขอเดียวกันยังบันทึก',
+    async (label, value, phoneSuffix) => {
+      const c = await customer(`PATCH คอลัมน์ว่าง ${label}`, phoneSuffix);
+      await link(c.id, line(`p${phoneSuffix}`));
+      const roomId = await room(line(`p${phoneSuffix}`), c.id);
+      const row = await prisma.customerLineLink.findFirstOrThrow({ where: { customerId: c.id } });
+
+      const updated = await patch(c.id, { name: `ชื่อใหม่ ${tag}`, lineIdFinance: value });
+
+      expect(updated).toMatchObject({ id: c.id, name: `ชื่อใหม่ ${tag}`, lineIdFinance: null });
+      expect(await activeRows(c.id)).toBe(0);
+      expect(
+        (await prisma.chatRoom.findUniqueOrThrow({ where: { id: roomId } })).verifiedAt,
+      ).toBeNull();
+      expect((await query.findOne(c.id)).financeLine).toEqual({ verified: false, linkedAt: null });
+      const [audit, ...rest] = await audits(c.id);
+      expect(rest).toHaveLength(0);
+      expect(audit.userId).toBe(staffId);
+      expect(audit.oldValue).toEqual({
+        financeLine: { verified: true, linkedAt: row.linkedAt.toISOString() },
+        lineIdFinanceColumnSet: false,
+      });
+      expect(audit.newValue).toEqual({ financeLine: { verified: false, linkedAt: null } });
+      expect(JSON.stringify([audit.oldValue, audit.newValue])).not.toContain(
+        line(`p${phoneSuffix}`),
+      );
+    },
+  );
+
+  it('คอลัมน์มีค่า + แถว OTP → ล้างทั้งคู่ + audit (เดิม PATCH ไม่มี audit เฉพาะ)', async () => {
+    const c = await customer('PATCH คอลัมน์มีค่า', '23', line('p23'));
+    await link(c.id, line('p23'));
+
+    await patch(c.id, { lineIdFinance: null });
+
+    expect(
+      (await prisma.customer.findUniqueOrThrow({ where: { id: c.id } })).lineIdFinance,
+    ).toBeNull();
+    expect(await activeRows(c.id)).toBe(0);
+    const [audit, ...rest] = await audits(c.id);
+    expect(rest).toHaveLength(0);
+    expect(audit.oldValue).toMatchObject({
+      financeLine: { verified: true },
+      lineIdFinanceColumnSet: true,
+    });
+  });
+
+  it('คอลัมน์ค้างไม่มีแถว OTP → ล้างคอลัมน์ + audit (เหมือนปุ่ม)', async () => {
+    const c = await customer('PATCH คอลัมน์ค้าง', '24', line('p24-typed'));
+
+    await patch(c.id, { lineIdFinance: null });
+
+    expect(
+      (await prisma.customer.findUniqueOrThrow({ where: { id: c.id } })).lineIdFinance,
+    ).toBeNull();
+    const [audit] = await audits(c.id);
+    expect(audit.oldValue).toMatchObject({
+      financeLine: { verified: false, linkedAt: null },
+      lineIdFinanceColumnSet: true,
+    });
+  });
+
+  it('ไม่มีอะไรให้ยกเลิก → ช่องอื่นบันทึกตามปกติ · ไม่เขียน audit ยกเลิกผูก', async () => {
+    const c = await customer('PATCH ไม่เคยผูก', '25');
+
+    await expect(
+      patch(c.id, { name: `ชื่อ 25 ${tag}`, lineIdFinance: null }),
+    ).resolves.toMatchObject({ name: `ชื่อ 25 ${tag}` });
+    expect(await audits(c.id)).toHaveLength(0);
+  });
+
+  it.each([
+    ['ส่งค่าเดิมกลับมา (ฟอร์มรุ่นเก่าส่งทุกช่อง)', true],
+    ['ไม่ส่ง lineIdFinance (ฟอร์มปัจจุบัน)', false],
+  ])('%s → ไม่ยกเลิกผูก ไม่เขียน audit', async (label, sendSame) => {
+    const suffix = sendSame ? '26' : '27';
+    const c = await customer(`PATCH ${label}`, suffix, line(`p${suffix}`));
+    await link(c.id, line(`p${suffix}`));
+
+    await patch(c.id, {
+      name: `ชื่อ ${suffix} ${tag}`,
+      ...(sendSame ? { lineIdFinance: line(`p${suffix}`) } : {}),
+    });
+
+    expect(await activeRows(c.id)).toBe(1);
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: c.id } })).lineIdFinance).toBe(
+      line(`p${suffix}`),
+    );
+    expect(await audits(c.id)).toHaveLength(0);
   });
 });

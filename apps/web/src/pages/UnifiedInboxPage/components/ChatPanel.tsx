@@ -63,6 +63,14 @@ import PinnedNoteBar from './PinnedNoteBar';
 import { mergeTimeline, type RoomNote } from './timeline';
 import { apptState, nextAppointment } from './appointment';
 import { fbWindowFor, fbWindowLeftText } from './fb-window';
+import {
+  FinanceLineComposerCaution,
+  FinanceLineRoomHeaderBadge,
+  FinanceLineRoomNote,
+  financeLineRoomLabel,
+  needsFinanceLineCaution,
+  type FinanceLineRoomStatus,
+} from './RoomFinanceLineStatus';
 import { useKeyboardShortcuts, isEditableTarget } from '../hooks/useKeyboardShortcuts';
 import api from '@/lib/api';
 import { getGeneratedAvatarUrl } from '@/lib/avatar';
@@ -594,6 +602,12 @@ export default function ChatPanel({
     inputRef.current?.focus();
   };
 
+  // Task 33 (mockup A2) — แทรกข้อความแนะนำต่อท้ายสิ่งที่พิมพ์ไว้ (ไม่ทับร่าง) แล้วโฟกัสช่องพิมพ์ให้แก้ก่อนส่ง
+  const insertFinanceLineReply = (text: string) => {
+    setInputText((prev) => (prev.trim() ? `${prev.replace(/\s+$/, '')}\n${text}` : text));
+    requestAnimationFrame(() => inputRef.current?.focus());
+  };
+
   const insertAtCaret = (content: string) => {
     const textarea = inputRef.current;
     if (textarea) {
@@ -692,6 +706,14 @@ export default function ChatPanel({
   })();
   // ช่องทางอื่นไม่มีหน้าต่าง → 'open' เสมอ · ห้อง FB ที่ยังไม่มี lastCustomerAt → 'open' (ไม่ขู่ รอเหตุจริงจากการส่ง)
   const fbWindow = fbWindowFor(session);
+  // Task 33 (mockup A2/A3) — สถานะ LINE การเงินของห้องจาก server (ไม่มี U-id) · ห้องช่องอื่น = null
+  const financeLineStatus = session.financeLineStatus as FinanceLineRoomStatus | null | undefined;
+  // A2 ยกเลิกผูกแล้ว / A4 ยังไม่ยืนยันตัวตน (fix round 1) — คนที่คุยอาจไม่ใช่ลูกค้าของห้อง
+  const financeLineCaution = needsFinanceLineCaution(financeLineStatus);
+  const financeLineCautionId = `finance-line-caution-${session.id}`;
+  // fix round 2 R2-M1 — ชื่อปุ่มตัวตนบนหัวห้องมือถือ (aria-label ทับเนื้อหาข้างใน) ต้องบอกชื่อลูกค้า + สถานะ LINE เอง
+  const financeLineLabel = financeLineRoomLabel(financeLineStatus);
+  const mobileIdentityLabel = `ข้อมูลลูกค้า ${displayName}${financeLineLabel ? ` · ${financeLineLabel}` : ''}`;
 
   return (
     <div
@@ -737,14 +759,25 @@ export default function ChatPanel({
           />
         </div>
         <div className="min-w-0 flex-1 basis-32 @md:basis-0">
-          <h3
-            className="truncate text-[15px] font-semibold leading-tight text-foreground"
-            title={displayName}
-          >
-            {displayName}
-          </h3>
+          <div className="flex min-w-0 items-center gap-2">
+            <h3
+              className="truncate text-[15px] font-semibold leading-tight text-foreground"
+              title={displayName}
+            >
+              {displayName}
+            </h3>
+            {/* Task 33 (mockup A2/A4) — ป้าย "ยกเลิกผูกแล้ว" / "ยังไม่ยืนยันตัวตน" ข้างชื่อ */}
+            {financeLineCaution && <FinanceLineRoomHeaderBadge status={financeLineStatus} />}
+          </div>
           <div className="mt-0.5 flex items-center gap-1.5 overflow-hidden whitespace-nowrap text-[12px] text-muted-foreground [&>*]:shrink-0">
             <span>{channelLabel}</span>
+            {/* Task 33 (mockup A3) — LINE ของห้องยืนยัน OTP กับลูกค้าของห้องแล้ว */}
+            {financeLineStatus?.verified && (
+              <>
+                <span className="text-border">·</span>
+                <FinanceLineRoomHeaderBadge status={financeLineStatus} />
+              </>
+            )}
             <span className="text-border">·</span>
             {/* สถานะจริงจาก waiting_since (PR1) แทน "กำลังสนทนา" ที่ไม่บอกอะไร */}
             <span
@@ -952,7 +985,7 @@ export default function ChatPanel({
         <button
           type="button"
           onClick={onShowCustomerInfo}
-          aria-label="ข้อมูลลูกค้า"
+          aria-label={mobileIdentityLabel}
           className="inbox-mobile-identity"
         >
           <Avatar className="size-9 shrink-0">
@@ -960,8 +993,13 @@ export default function ChatPanel({
             <AvatarFallback>{displayName[0]}</AvatarFallback>
           </Avatar>
           <span className="min-w-0 text-left">
-            <span className="block truncate text-base font-semibold leading-snug">
-              {displayName}
+            {/* Task 33 fix round 1 (คำตัดสินเจ้าของข้อ 31) — ป้ายสถานะ LINE การเงินข้างชื่อบนมือถือด้วย (ทั้งสามสถานะ) · ชื่อหดก่อน */}
+            <span className="flex min-w-0 items-center gap-1.5">
+              {/* fix round 2 R2-M2 — ชื่อตัดท้ายได้แต่ไม่ถูกป้ายดันหาย (min-w) · ป้ายย่อเหลือไอคอนเมื่อแคบ */}
+              <span className="min-w-[3rem] truncate text-base font-semibold leading-snug">
+                {displayName}
+              </span>
+              <FinanceLineRoomHeaderBadge status={financeLineStatus} compact />
             </span>
             <span className="block truncate text-xs leading-snug text-muted-foreground">
               {channelLabel} · <span className={roomStatus.tone}>{roomStatus.text}</span>
@@ -1083,6 +1121,9 @@ export default function ChatPanel({
           currentUserId={currentUserId}
         />
       )}
+
+      {/* Task 33 (mockup A2/A4) — คำอธิบายหนึ่งบรรทัดใต้หัวห้อง (ทั้งจอใหญ่และมือถือ) */}
+      <FinanceLineRoomNote status={financeLineStatus} customerName={displayName} />
 
       {/* Persistent "another staff is viewing" banner */}
       {otherViewers && otherViewers.length > 0 && (
@@ -1398,6 +1439,14 @@ export default function ChatPanel({
               </button>
             )}
           </div>
+          {/* Task 33 (mockup A2/A4) — เตือนเหนือกรอบพิมพ์ ไม่บล็อกการพิมพ์ · โน้ตภายในลูกค้าไม่เห็น จึงไม่ต้องเตือน */}
+          {!isNoteMode && (
+            <FinanceLineComposerCaution
+              id={financeLineCautionId}
+              status={financeLineStatus}
+              onInsert={insertFinanceLineReply}
+            />
+          )}
           <div
             data-chat-composer-card
             className={cn('inbox-composer-card', isNoteMode && 'border-warning/50 bg-warning/10')}
@@ -1491,6 +1540,9 @@ export default function ChatPanel({
                   onBlur={endTyping}
                   placeholder="พิมพ์ข้อความ…"
                   aria-label="พิมพ์ข้อความ"
+                  aria-describedby={
+                    financeLineCaution && !isNoteMode ? financeLineCautionId : undefined
+                  }
                   rows={1}
                   className="inbox-message-input focus-visible:ring-0 focus-visible:ring-offset-0"
                 />

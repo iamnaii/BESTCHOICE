@@ -9,7 +9,8 @@ import {
 import { AccountingPeriodStatus, Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
-import { d, dSum, dClose } from '../../utils/decimal.util';
+import { d, dSum } from '../../utils/decimal.util';
+import { isJournalBalanced } from '../journal/journal-balance';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { TaxService } from '../tax/tax.service';
 import { AccountingService } from './accounting.service';
@@ -523,7 +524,8 @@ export class MonthlyCloseService {
   /**
    * Run audit checks for the period:
    * - Count total POSTED journal entries
-   * - Find unbalanced entries (sum debit ≠ sum credit)
+   * - Find unbalanced entries (sum debit ≠ sum credit — exact, `isJournalBalanced`: same rule as the nightly
+   *   `journal_balance` check · owner decision 2026-10-31; was `dClose` with a 0.01 tolerance)
    * - Count payments without amount breakdown
    */
   private async runDataAudit(
@@ -565,7 +567,7 @@ export class MonthlyCloseService {
     for (const entry of journalLines) {
       const totalDebit = dSum(entry.lines.map((l) => d(l.debit)));
       const totalCredit = dSum(entry.lines.map((l) => d(l.credit)));
-      if (!dClose(totalDebit, totalCredit)) {
+      if (!isJournalBalanced(totalDebit, totalCredit)) {
         unbalancedJournals++;
       }
     }

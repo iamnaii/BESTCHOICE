@@ -35,6 +35,17 @@
 | `S3_ACCESS_KEY` | `<from S3/MinIO>` | File storage |
 | `S3_SECRET_KEY` | `<from S3/MinIO>` | File storage |
 | `ANTHROPIC_API_KEY` | `sk-ant-xxxx` | AI credit check + OCR |
+| `INTEGRATION_ENCRYPTION_KEY` | `<64 hex chars — openssl rand -hex 32>` | Integration Hub secrets encrypted at rest (API + worker) — see note below |
+
+> **`INTEGRATION_ENCRYPTION_KEY`** — `.github/workflows/deploy-gcp.yml` pins it to **version `:1`**
+> (`INTEGRATION_ENCRYPTION_KEY=INTEGRATION_ENCRYPTION_KEY:1`, not `:latest`), so version 1 must be the real key:
+> `scripts/setup-gcp-secrets.sh` generates it straight into Secret Manager on a fresh project (never a PLACEHOLDER).
+> Exactly 64 hex chars; any other format (base64, 32 hex) counts as **no key** — boot does not fail, but secrets
+> saved in the hub are stored unencrypted and encrypted ones read as "not configured".
+> **Never print it** (`versions access` only to pipe into a CLI's env — never echo it, never put it on a command line) — check
+> versions with `gcloud secrets versions list INTEGRATION_ENCRYPTION_KEY --format='value(name,state)'`.
+> Do not just change the pinned number: rotation is the full plan in
+> `docs/runbooks/2026-10-31-integration-encryption-key.md`.
 
 #### Optional — Falls back gracefully
 | Variable | Default | Notes |
@@ -78,3 +89,6 @@
 - [ ] LINE LIFF pages load in LINE app
 - [ ] SMS test message received
 - [ ] Sentry receives test error event
+- [ ] Boot log of the new API (and worker) revision shows `integration encrypted fields: key=ok … failed=0`
+      (no line = revision got no key; `key=malformed` / `failed>0` → follow
+      `docs/runbooks/2026-10-31-integration-encryption-key.md` before entering credentials in the hub)

@@ -48,11 +48,15 @@ import * as Sentry from '@sentry/nestjs';
 import {
   LINE_FINANCE_NOT_VERIFIED_MESSAGE,
   LINE_SHOP_STAFF_SEND_DISABLED_MESSAGE,
+  lockFinanceLineCustomers,
 } from '../../line-oa/services/finance-line-link';
 import {
+  type FinanceLineRoomStatus,
   VERIFIED_FINANCE_LINK_WHERE,
   findFinanceLineRecipient,
+  findFinanceLineRoomStatuses,
 } from '../../line-oa/services/otp-verified-customer';
+import { type LineSendActor, lineSendCustomerScope } from '../../overdue/line-send-scope';
 
 /** ตัวกรองห้องแชท — ใช้ร่วมกันระหว่างรายการห้อง (listRooms) กับตัวนับบนป้าย
  *  (getRoomBadgeCounts) เพื่อไม่ให้ "เลขบนป้าย" กับ "จำนวนแถวที่แท็บนั้นแสดง"
@@ -1210,6 +1214,9 @@ export class RoomManagerService {
       }
     }
     const linkedRoom = await this.prisma.$transaction(async (tx) => {
+      // Task 29 fix round 1 (review I-1) — ลำดับล็อกเดียว ลูกค้า → ห้อง (เท่า `VerificationService.bind` / ยกเลิกผูก / ผลวิเคราะห์สเตทเม้นเสร็จ):
+      // เดิมล็อกห้องก่อนแล้ว `linkRoomCreditHistory` ล็อกลูกค้า ⇒ ผูกห้องพร้อมลูกค้ายืนยัน OTP ของ LINE ห้องนั้น = deadlock 40P01
+      await lockFinanceLineCustomers(tx, [customerId]);
       await lockCreditRoom(tx, roomId);
       const room = await tx.chatRoom.findUnique({
         where: { id: roomId },
@@ -1241,7 +1248,12 @@ export class RoomManagerService {
       }
       const linked = await tx.chatRoom.update({
         where: { id: roomId },
-        data: { customerId },
+        data: {
+          customerId,
+          // Task 33 fix round 1 M3 — เวลาที่ LINE ของห้องหลุดจากการยืนยันเป็นของเจ้าของเดิม: เปลี่ยนลูกค้าแล้วห้ามค้าง
+          // (ไม่งั้นป้ายบอก "LINE นี้ยกเลิกผูกกับ [ลูกค้าใหม่]" ซึ่งไม่จริง) · แถวห้องถูกล็อกแล้วข้างบน — ไม่เพิ่มล็อก
+          ...(room.customerId !== customerId ? { financeLineUnlinkedAt: null } : {}),
+        },
       });
       await linkRoomCreditHistory(tx, roomId, customerId);
       return linked;
@@ -1320,6 +1332,31 @@ export class RoomManagerService {
     return where;
   }
 
+  /**
+   * Task 33 (mockup A2/A3) — แนบ `financeLineStatus` ให้ห้องที่ส่งถึงหน้าจอพนักงาน (รายชื่อแชท · หัวห้อง): คำนวณฝั่ง server ด้วย
+   * `findFinanceLineRoomStatuses` (กติกาเดียวกับข้อความสำเร็จรูปของห้องการเงิน) · ห้องช่องอื่น/ไม่มีลูกค้า = null · ไม่มี U-id ในสถานะ ·
+   * ตัดคอลัมน์ภายใน `financeLineUnlinkedAt` ออกจากคำตอบ
+   */
+  async attachFinanceLineStatus<
+    T extends {
+      id: string;
+      channel: ChatChannel | string;
+      lineUserId: string | null;
+      customerId: string | null;
+      financeLineUnlinkedAt?: Date | null;
+    },
+  >(
+    rooms: T[],
+  ): Promise<
+    (Omit<T, 'financeLineUnlinkedAt'> & { financeLineStatus: FinanceLineRoomStatus | null })[]
+  > {
+    const statuses = await findFinanceLineRoomStatuses(this.prisma, rooms);
+    return rooms.map(({ financeLineUnlinkedAt: _internal, ...room }) => ({
+      ...room,
+      financeLineStatus: statuses.get(room.id) ?? null,
+    }));
+  }
+
   /** List rooms for the unified inbox with pagination and filters */
   async listRooms(
     params: RoomFilterParams & { page?: number; limit?: number },
@@ -1395,7 +1432,12 @@ export class RoomManagerService {
         : [];
       const byId = new Map(rows.map((r) => [r.id, r]));
       const data = pageIds.map((id) => byId.get(id)!).filter(Boolean);
-      return { data: await withMatches(data), total: keys.length, page, limit };
+      return {
+        data: await this.attachFinanceLineStatus(await withMatches(data)),
+        total: keys.length,
+        page,
+        limit,
+      };
     }
 
     const [data, total] = await this.prisma.$transaction([
@@ -1429,7 +1471,12 @@ export class RoomManagerService {
       this.prisma.chatRoom.count({ where }),
     ]);
 
-    return { data: await withMatches(data), total, page, limit };
+    return {
+      data: await this.attachFinanceLineStatus(await withMatches(data)),
+      total,
+      page,
+      limit,
+    };
   }
 
   /** Link room to a verified customer */
@@ -1790,15 +1837,35 @@ export class RoomManagerService {
   }
 
   /**
+   * Task 29 #3 (เจ้าของตัดสิน 31 ต.ค. 2026) — แท็บ "แชท LINE" ของแผง 360 ใช้ขอบเขตเดียวกับปุ่ม "ส่ง LINE" ของคิวทวงถาม
+   * (`lineSendCustomerScope` ← `lineSendContractScope`): role ข้ามสาขา = ทุกลูกค้า · นอกนั้นต้องมีสัญญาของลูกค้าในสาขาตัวเอง หรือมีงานรายวัน
+   * วันนี้ของสัญญาใดของลูกค้า · นอกขอบเขต/ไม่มีลูกค้า = 404 (เหมือนปุ่มส่ง — ไม่บอกว่ามีลูกค้านี้อยู่) · ตรวจก่อนอ่าน/ส่งทุกครั้ง
+   */
+  private async assertCustomerLineChatScope(customerId: string, actor: LineSendActor) {
+    const visible = await this.prisma.customer.findFirst({
+      where: { id: customerId, ...lineSendCustomerScope(actor) },
+      select: { id: true },
+    });
+    if (!visible) throw new NotFoundException('ไม่พบลูกค้า');
+  }
+
+  /**
    * Last N messages across the customer's LINE rooms (LINE_FINANCE preferred).
    * Used by the Customer 360 LineChatPanel — collectors don't need to leave
-   * the collections workspace to see what was said in chat.
+   * the collections workspace to see what was said in chat. Branch-scoped like
+   * the collections LINE send button (`assertCustomerLineChatScope` — 404).
    *
    * Returns messages in reverse-chronological order (newest first) so
    * `before=<oldest.id>` paging walks backward through history. The frontend
    * reverses for display.
    */
-  async getCustomerMessages(customerId: string, take: number, before?: string) {
+  async getCustomerMessages(
+    customerId: string,
+    actor: LineSendActor,
+    take: number,
+    before?: string,
+  ) {
+    await this.assertCustomerLineChatScope(customerId, actor);
     // Task 24 fix round 1 I-1 — ห้องของแถว OTP ที่ยังผูกก่อน (ห้องเดียวกับที่ sendCustomerMessage ส่งเข้า) · ห้องของ LINE เก่าที่ลูกค้ายกเลิกแล้ว
     // ยังถือ customerId เดิม (M-8) และอาจใหม่กว่า ⇒ ถ้าเลือก "ห้องล่าสุด" พนักงานจะเห็นแชทของผู้ถือ LINE เก่าเป็นของลูกค้า
     const verifiedLine = await findFinanceLineRecipient(this.prisma, customerId);
@@ -1893,14 +1960,16 @@ export class RoomManagerService {
    * - ไม่มีแถวที่ยังผูก → 400 `LINE_FINANCE_NOT_VERIFIED_MESSAGE` (มีแต่ห้อง LINE ร้าน → `LINE_SHOP_STAFF_SEND_DISABLED_MESSAGE` —
    *   ฝั่งร้านยังไม่มี OTP จึงไม่ส่งทาง LINE ร้านจากแผงนี้)
    * - มีแถวแต่ลูกค้ายังไม่เคยทักแชท (ไม่มีห้องของ LINE นั้น) → `{ room: null }` ให้ผู้เรียกตอบ "รอลูกค้าทักก่อน" (ไม่ถอยไปห้องอื่นของลูกค้า)
+   * - Task 29 #3 — ลูกค้านอกขอบเขตของผู้ส่ง (`assertCustomerLineChatScope` — ขอบเขตเดียวกับปุ่ม "ส่ง LINE" ของคิวทวงถาม) → 404 ก่อนตรวจอย่างอื่น
    */
   async sendCustomerMessage(
     customerId: string,
-    staffId: string,
+    actor: LineSendActor,
     text: string,
   ): Promise<
     { room: null } | { room: { id: string }; result: { success: boolean; error?: string } }
   > {
+    await this.assertCustomerLineChatScope(customerId, actor);
     const lineUserId = await findFinanceLineRecipient(this.prisma, customerId);
     if (!lineUserId) {
       const shopRoom = await this.prisma.chatRoom.findFirst({
@@ -1922,7 +1991,7 @@ export class RoomManagerService {
 
     const result = await this.messageRouter!.sendStaffMessage({
       roomId: room.id,
-      staffId,
+      staffId: actor.id,
       text,
     });
 

@@ -1,10 +1,15 @@
 import { randomUUID } from 'node:crypto';
+import { ServiceUnavailableException } from '@nestjs/common';
 import { PrismaService } from '../src/prisma/prisma.service';
 import {
   FacebookCommentIngestService,
   commentIdentityKey,
 } from '../src/modules/chat-adapters/facebook-comment-ingest.service';
 import { FacebookCommentClient } from '../src/modules/chat-adapters/facebook-comment-client';
+import {
+  classifyCommentIngestFailure,
+  FacebookCommentIngestSkipped,
+} from '../src/modules/chat-adapters/facebook-comment-ingest-failure';
 import { IntegrationConfigService } from '../src/modules/integrations/integration-config.service';
 if (!process.env.DATABASE_URL?.includes('/bc_chat_credit_test?host=/tmp/bc-chat-credit.'))
   throw new Error('Use isolated chat operations harness');
@@ -129,12 +134,72 @@ describe('Durable Facebook comment ingestion', () => {
       (await db.facebookCommentThread.findUniqueOrThrow({ where: { id: thread.id } })).status,
     ).toBe('OPEN');
   });
-  it('ignores an unconfigured Page and fails closed without verified receive capability', async () => {
+  it('ignores an unconfigured Page; without receive capability it writes nothing — permanent only with proof', async () => {
     const payload = event(randomUUID());
     payload.id = 'unknown-page';
     expect(await ingest.ingest(payload)).toMatchObject({ persisted: 0, ignored: 1 });
+    // No transport ⇒ the client proves the configuration cannot serve the Page (notReady CONFIG) ⇒
+    // permanent skip: the webhook answers 200 and Messenger continues (Task 35 option 4).
+    const id = randomUUID();
     const closed = new FacebookCommentIngestService(db, config, new FacebookCommentClient(config));
-    await expect(closed.ingest(event(randomUUID()))).rejects.toThrow('ยังไม่ยืนยันสิทธิ์');
+    const skipped = await closed.ingest(event(id)).catch((error: unknown) => error);
+    expect(skipped).toBeInstanceOf(FacebookCommentIngestSkipped);
+    expect(skipped).toMatchObject({
+      reasonCode: 'COMMENT_CONFIG_INCOMPLETE',
+      skippedChanges: 1,
+      message: 'ยังไม่ยืนยันสิทธิ์การเชื่อมต่อ',
+    });
+    expect(classifyCommentIngestFailure(skipped)).toMatchObject({ retry: false, alert: true });
+    expect(await db.facebookCommentThread.count({ where: { pageId, rootCommentId: id } })).toBe(0);
+    // Without proof (Graph unreachable) it stays the retryable 503 — Meta redelivers.
+    const outage = new FacebookCommentIngestService(
+      db,
+      config,
+      new FacebookCommentClient(config, {
+        ...port,
+        evidence: async () => ({
+          graphVersion: 'fixture',
+          verified: false,
+          reason: 'ตรวจสิทธิ์กับ Meta ไม่สำเร็จ กรุณาลองตรวจอีกครั้ง',
+        }),
+      }),
+    );
+    const transient = await outage.ingest(event(randomUUID())).catch((error: unknown) => error);
+    expect(transient).toBeInstanceOf(ServiceUnavailableException);
+    expect(classifyCommentIngestFailure(transient)).toEqual({ retry: true });
+  });
+  // Review round 3 M4: the permanent error thrown inside the real interactive transaction keeps its
+  // class (Prisma rethrows it after rollback), and the valid change after it is still persisted.
+  it('a change whose stored thread belongs to another post is skipped permanently through the real transaction', async () => {
+    const id = randomUUID();
+    await ingest.ingest(event(id, 'add', 'แรก', '1'));
+    const thread = await db.facebookCommentThread.findUniqueOrThrow({
+      where: { pageId_rootCommentId: { pageId, rootCommentId: id } },
+    });
+    const moved = event(id, 'edited', 'ย้ายโพสต์', '2');
+    moved.changes[0].value.post_id = `${pageId}_other_post`;
+    moved.changes[0].value.parent_id = `${pageId}_other_post`;
+    const next = randomUUID();
+    const entry = {
+      ...moved,
+      changes: [moved.changes[0], event(next, 'add', 'คำถามใหม่', '1').changes[0]],
+    };
+    const error = await ingest.ingest(entry).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(FacebookCommentIngestSkipped);
+    expect(error).toMatchObject({ reasonCode: 'COMMENT_POST_MISMATCH', skippedChanges: 1 });
+    expect(classifyCommentIngestFailure(error)).toMatchObject({ retry: false, alert: true });
+    expect(
+      await db.facebookCommentThread.findUniqueOrThrow({ where: { id: thread.id } }),
+    ).toMatchObject({ postId: `${pageId}_post`, revision: thread.revision });
+    expect(
+      await db.facebookCommentRecord.findUniqueOrThrow({
+        where: { pageId_commentId: { pageId, commentId: id } },
+      }),
+    ).toMatchObject({ text: 'แรก', providerRevision: '1' });
+    expect(await db.facebookCommentEvent.count({ where: { pageId, commentId: id } })).toBe(1);
+    expect(await db.facebookCommentThread.count({ where: { pageId, rootCommentId: next } })).toBe(
+      1,
+    );
   });
   it('keeps the newest tombstone across concurrent add/edit/delete retries', async () => {
     const id = randomUUID();

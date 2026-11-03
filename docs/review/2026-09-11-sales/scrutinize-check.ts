@@ -20,7 +20,7 @@ import { CreateContractDto } from '../../../apps/api/src/modules/contracts/dto/c
 import { BookingsService } from '../../../apps/api/src/modules/bookings/bookings.service';
 import { SaleCreationService } from '../../../apps/api/src/modules/sales/services/sale-creation.service';
 import { SaleWriterService } from '../../../apps/api/src/modules/sales/services/sale-writer.service';
-import { resolveVatPctForBranch } from '../../../apps/api/src/utils/config.util';
+import { resolveFinanceVat } from '../../../apps/api/src/utils/config.util';
 import { calculateInstallmentWithInterest } from '../../../apps/api/src/utils/installment.util';
 
 const result: unknown[] = [];
@@ -111,7 +111,9 @@ async function main() {
   result.push({ case: 'External finance with zero down payment', downPayment: external.downPaymentAmount, amountReceived: external.amountReceived, stillExpectedFromFinance: receivable.expectedAmount, receiptEventSupplied: false });
   const browser = JSON.parse(readFileSync('docs/review/2026-09-11-sales/evidence/scrutinize-browser.json', 'utf8'));
   const previewText = browser.captures.find((c: any) => c.name === 'scrutinize-create-calculation').text;
-  const vat = await resolveVatPctForBranch({ branch: { findUnique: async () => ({ company: { vatRegistered: false, vatRate: dec(0) } }) } } as any, 'branch-a', 0.07);
+  // 2026-10-31: installment VAT is read from the FINANCE company, not the branch's company (resolveBranchVat /
+  // resolveVatPctForBranch were removed) — the fixture now models a non-VAT-registered FINANCE company to keep this case's numbers.
+  const vat = (await resolveFinanceVat({ companyInfo: { findFirst: async () => ({ vatRegistered: false, vatRate: dec(0) }) } } as any, 0.07)).vatPct;
   const calculation = calculateInstallmentWithInterest(10000, 2000, 480, 6, 0.1, vat);
   assert.ok(previewText.includes('1,654.93'));
   assert.equal(calculation.monthlyPayment, 1546.66);

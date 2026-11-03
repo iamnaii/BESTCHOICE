@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { nextEntryNumber } from './entry-number.util';
+import { isJournalBalanced } from './journal-balance';
 
 export interface JeLineInput {
   accountCode: string;
@@ -51,7 +52,7 @@ export class JournalAutoService {
     // 1. balanced check
     const totalDr = input.lines.reduce((s, l) => s.plus(l.dr), new Decimal(0));
     const totalCr = input.lines.reduce((s, l) => s.plus(l.cr), new Decimal(0));
-    if (!totalDr.equals(totalCr)) {
+    if (!isJournalBalanced(totalDr, totalCr)) {
       const msg = `Unbalanced JE: Dr=${totalDr.toFixed(2)} Cr=${totalCr.toFixed(2)} desc="${input.description}"`;
       Sentry.captureMessage(msg, 'error');
       throw new BadRequestException(msg);

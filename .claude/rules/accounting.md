@@ -453,6 +453,54 @@ Cash account dimension is required on every Payment record.
 
 ---
 
+## ล็อกงวดบัญชี — ช่วงผ่อนผันนับเป็นวันเต็มหลังสิ้นเดือน เวลาไทย (คำตัดสินเจ้าของ 2026-10-31)
+
+ตัวตัดสินเดียว = `validatePeriodOpen` (`apps/api/src/utils/period-lock.util.ts`) — ทุกเส้นทางลงบัญชีเรียกตัวนี้
+
+| ข้อ | กติกา |
+|---|---|
+| สถานะที่ล็อก | `AccountingPeriod.status` = `CLOSED` / `SYNCED` ของ (บริษัท, ปี, เดือน) · `OPEN` / `REVIEW` / ไม่มีแถว = ไม่ล็อก |
+| เดือนของรายการ | อ่านตาม**ปฏิทินไทย** ผ่าน `accountingPeriodOf(date)` ตัวเดียว — ไม่ขึ้นกับ TZ ของโปรเซส (เดิม `getFullYear/getMonth` ของโปรเซส) · ผู้ล็อกแถว `accounting_periods FOR SHARE` ก่อนตรวจ (เปิดใช้สัญญา · ยกเลิกเปลี่ยนเครื่อง · `lockPayoffPeriod`) และการตรวจลงย้อนวันของใบรับของ (`isPeriodClosedForBackdating`) ใช้ตัวเดียวกัน — แถวที่ล็อกต้องเป็นแถวที่ guard อ่าน (fix round 1 · M2) |
+| ช่วงผ่อนผัน | งวดที่ปิดแล้วยังรับรายการได้จนถึง **00:00 เวลาไทยของวันที่ `1 + period_grace_days` ของเดือนถัดไป** (`periodGraceEnd`, ไม่รวมขอบ) · grace 0 = วันสุดท้ายของเดือนลงได้ทั้งวันถึง 23:59:59.999 · grace N = ลงได้ถึงสิ้นวันที่ N ของเดือนถัดไป |
+| ค่าตั้ง | SystemConfig `period_grace_days` (OWNER แก้ได้ · ไม่มีหน้าเว็บ) · ไม่มีแถว/อ่านไม่ได้/ติดลบ = 5 ⇒ งวด พ.ค. ลงได้ถึงสิ้นวัน 5 มิ.ย. |
+| ผลที่ตามมา | รายการที่ลงวันที่ "วันนี้" ไม่มีวันพ้นช่วงผ่อนผันของงวดตัวเอง ⇒ **ปิดเดือนปัจจุบันก่อนสิ้นเดือนไม่บล็อกอะไรในเดือนนั้น** (รวมวันสุดท้าย) · ด่านของเส้นทางที่ลงวันนี้ (ยกเลิกใบเสร็จ · ยกเลิกใบขาย G2 · ใบรับเครื่องคืน · รับเงินคืนเครื่อง inter-co · ปรับดิว collect · PaySolutions) ปฏิเสธจริงเฉพาะคำสั่งที่คร่อมเที่ยงคืนวันที่ 1 · เส้นทางที่ลงย้อนวันยังถูกล็อกตามปกติเมื่อพ้นช่วงผ่อนผัน |
+
+**ก่อน 2026-10-31:** ขอบคือ 00:00 **ของ**วันที่ (วันสุดท้าย + grace) ตามเวลาโปรเซส ⇒ grace 0 บล็อกรายการทั้งวันสุดท้ายของงวดที่ปิดก่อนสิ้นเดือน
+(off-by-one — main deploy ล้มวันที่ 31/10/2569) และ grace 5 จริง ๆ ให้แค่ 4 วันเต็ม · เทสต์ที่เคยปักพฤติกรรมเดิมถูกแก้ความคาดหวังโดยตั้งใจ
+(ดู `period-lock.util.spec.ts` + เคส "คร่อมเที่ยงคืน" ใน repossessions / sale-void / reschedule-collect / interco device-return / accrue-at-receipt)
+
+**ที่มีช่วงผ่อนผันของตัวเอง (ไม่ผ่านกติกานี้):** ลงย้อนวันของใบรับของ/จ่ายผู้จัดจำหน่าย (`isPeriodClosedForBackdating` — สถานะงวดล้วน ไม่มีผ่อนผัน) ·
+การนำเข้าระบบเก่า (`assertPeriodsOpen` — ไม่มีผ่อนผัน)
+
+---
+
+## คืนเงินของสัญญาที่ปิดแล้ว — ปฏิเสธเหมือนยกเลิกใบเสร็จ (คำตัดสินเจ้าของ 2026-10-31)
+
+คืนเงิน (`RefundsService`) = un-pay งวด (`markReversed` กลับรายการรับชำระทุกใบของงวด + คืนแถวงวดเป็นค้างจากยอดในบัญชี) — สัญญาที่ปิดแล้ว
+ถอยไม่ได้ จึงใช้ด่านเดียวกับยกเลิกใบเสร็จ: **`UNPAY_BLOCKED_CONTRACT_STATUSES`** (`receipts/services/receipt-void-core.ts` — `COMPLETED`
+`EARLY_PAYOFF` `TERMINATED` `EXCHANGED` `DEFECT_EXCHANGED` `CLOSED_BAD_DEBT` `CANCELED`) ตัวเดียว ห้ามมีชุดที่สอง
+
+| จุด | พฤติกรรม |
+|---|---|
+| `requestRefund` | สัญญาอยู่ในชุดนี้ → 400 `closedContractRefundMessage(status)` ไม่สร้างคำขอ ไม่เขียน audit |
+| `approveRefund` | ตรวจซ้ำ (สัญญาอาจปิดระหว่างคำขอค้างคิว) → 400 เดียวกัน คำขอคงเป็น `REQUESTED` · ทางเคลียร์คือ `rejectRefund` (ไม่ติดด่านนี้) |
+| `markReversed` | **ไม่ปฏิเสธโดยตั้งใจ** — ขั้นนี้บันทึกว่าธนาคารคืนเงินไปแล้ว (เงินออกแล้วจริง) การปฏิเสธทำให้สมุดไม่ขยับ · สัญญาที่ปิดหลังอนุมัติ (สถานะอยู่ในชุดเดียวกัน): ยังลงรายการตามปกติ แต่ audit `REFUND_PROCESSED` มี `newValue.contractClosedAtProcessing` = สถานะ (สัญญาเปิด = `null`) + Sentry warning หลัง commit (`tags.action = 'refund-processed-closed-contract'` · extra `refundId`/`contractId`/`contractStatus` ไม่มี PII) เพราะงวดถูกคืนเป็นค้างและ 11-2103 ค้างบนสัญญาที่ไม่มีใครเก็บเงิน — ฝ่ายบัญชีต้องตรวจ · การกันฝั่งต้นทาง (ปิดยอด/ยึดขณะมีคำขอคืนที่อนุมัติแล้ว) รอเจ้าของตัดสิน |
+| ข้อความ | บอกเหตุผล (ยกเลิกการรับชำระของงวดในสัญญาที่ปิดแล้ว) + ระบบไม่มีทางเปิดสัญญาที่ปิดแล้วกลับมา → ติดต่อฝ่ายบัญชี · ข้อความยกเลิกใบเสร็จของสัญญาปิดเลิกชี้ไป "ระบบคืนเงิน (Refund)" แล้ว |
+
+---
+
+## สมดุลรายการบัญชี — เท่ากันพอดี ไม่มีเผื่อ (คำตัดสินเจ้าของ 2026-10-31)
+
+ทุกรายการ POSTED ต้อง Σ เดบิต = Σ เครดิต **ทุกสตางค์** — กติกาเดียว `isJournalBalanced` + `JOURNAL_UNBALANCED_SQL`
+(`journal/journal-balance.ts`) ใช้ทั้งข้อกลางคืน `journal_balance` (CRITICAL → Sentry) · การไล่ตรวจสัญญา (trace) · **การตรวจก่อนปิดงวด**
+(`MonthlyCloseService.runDataAudit` — เดิม `dClose` เผื่อ 0.01 ⇒ งวดที่ข้อกลางคืนบอกไม่สมดุลยังปิดได้โดยไม่ต้องใส่เหตุผล · fix round 1) ·
+งบทดลองรวม (`ConsolidatedService.isBalanced` — เดิม ±0.01) · V1 ของ Override JV · ด่านของทางลงบัญชีทั้งสองทาง
+· ทางลงบัญชีทั้งสองทาง (`JournalService.create` · `JournalAutoService.createAndPost`) บังคับ `Decimal.equals` อยู่แล้ว ⇒ ต่างแม้ 0.01 = รายการที่
+เขียนนอกสองทางนี้ (SQL ตรง / ข้อมูลเก่า) · เดิมข้อกลางคืนเผื่อ 0.01 (`JOURNAL_BALANCE_TOLERANCE` — ลบแล้ว) · เกณฑ์ ≤ 1 บาทข้างล่างเป็นเรื่อง
+ยอดรับชำระ ไม่เกี่ยวกับสมดุลของรายการ
+
+---
+
 ## Tolerance Policy (<=1 THB)
 
 Small discrepancies on payment receipt (overpay / underpay <=1 THB):
@@ -598,6 +646,12 @@ CLI source: `apps/api/src/cli/wipe-accounting.cli.ts`
 
 - **SHOP** not VAT-registered — no VAT on SHOP transactions
 - **FINANCE** VAT-registered at 7%
+- **อัตรา VAT ของสัญญาผ่อน = ของบริษัท FINANCE เสมอ** (2026-10-31 · `resolveFinanceVat` ใน `utils/config.util.ts` ← `ContractQuoteService`):
+  อ่าน `company_info` ที่ `company_code = 'FINANCE'` (`vat_registered` → 0 ถ้าไม่จด · `vat_rate`) — **ไม่ใช่บริษัทของสาขา** (สาขาหน้าร้านผูก SHOP
+  ซึ่งไม่จด VAT ⇒ เดิม `resolveBranchVat` ทำให้สัญญาใหม่ได้ VAT 0 · impact C1 ของการตั้ง `branches.company_id = SHOP`) · ไม่มีแถว FINANCE/ไม่มีอัตรา →
+  interest config / system config ตามเดิม · ใบเสนอยอด `vatSource` = `FINANCE_COMPANY` (`BRANCH_COMPANY` เป็นป้ายเดิม ไม่มีผู้สร้างแล้ว)
+  · **ต้องตั้งให้เท่ากัน:** ช่อง VAT ของหน้าตั้งค่าดอกเบี้ย (`interest_configs.vat_pct`) และ `resolveBcConfig` (ใบเสนอยอดของบอท/หน้าร้านออนไลน์) ยังอ่าน interest config
+  ⇒ ถ้าต่างจาก `company_info.vat_rate` ของ FINANCE ยอดบนจอ/บอทจะไม่ตรงกับยอดในสัญญาโดยไม่มีอะไรเตือน (31/10/2569 ทั้งคู่ 0.07 — review M4)
 - **Late fees** (ค่าปรับล่าช้า) — NOT subject to VAT (owner policy, legally correct: penalties excluded from VAT base)
 
   **Flat-bracket late-fee model (bracket-only, permanent):** late fee = `tier1Amount` for 1..(tier2MinDays-1) days overdue, `tier2Amount` (flat, does not accumulate per day) for >= tier2MinDays days overdue, driven by SystemConfig keys `late_fee_tier1_amount`, `late_fee_tier2_amount`, `late_fee_tier2_min_days` (defaults 50/100/3). CPA ยืนยันขั้นบันไดถาวร + ถอด PER_DAY ออกจากโค้ด 2026-08-01 (เดิม D2 2026-06-25 CPA-gated ไม่เคยเปิดใช้บน prod) — the per-day model (`min(daysOverdue × ratePerDay, maxAmount, capPct% × installmentGross)`) and its config-switchable `late_fee_mode` were removed entirely; BRACKET is the only formula in the system now. Single source of truth: `resolveLateFee` in `late-fee.util.ts`; the overdue cron reproduces the same flat-bracket CASE expression in SQL, guarded by an anti-drift test (`late-fee-bracket-sql.integration.spec.ts`).
@@ -1463,9 +1517,14 @@ QR ที่หน้าจอหักเครดิตออกให้แ�
   21-1103 / 21-5101 ลง**ขากลับ** `Dr 21-2101 / Cr 21-2102` แยกบรรทัดเท่าภาษีที่รับรู้ไปแล้วตอนรับ (ต3 ก) ⇒ ภาษีสุทธิของเดือน =
   ภาษีของเงินสดที่รับจริง ไม่ซ้ำ · เครดิตที่ไม่เคยมีภาษีตอนตั้ง (เปลี่ยนเครื่องเสีย · เงินก่อน PR4) ไม่มี stamp ⇒ ไม่มีขากลับ (2A รับรู้เต็ม — G7)
   — หัวข้อ "ภาษีขายของเงินรับล่วงหน้า ณ วันรับเงิน (PR4)"
-- รอบตั้งลูกหนี้ปกติตรวจงวดบัญชีของ**บริษัทของสาขา** ขณะที่รายการลงฝั่ง FINANCE (มีอยู่ก่อน — ยังไม่แก้); 2A ณ วันรับเงินตรวจงวดของ FINANCE
-- `validatePeriodOpen` อ่านเดือนตามเขตเวลาของโปรเซส — บน prod ทุกทางเข้ารันด้วย `TZ=Asia/Bangkok` เดือนจึงเป็นเดือนไทย ·
-  เฉพาะโปรเซสที่รันเป็น UTC (เช่น jest บน CI) ที่ตรวจรายการเที่ยงคืนไทยของวันที่ 1 กับงวดของเดือนก่อน — ไม่มีผลบน prod
+- ~~รอบตั้งลูกหนี้ปกติตรวจงวดบัญชีของ**บริษัทของสาขา**~~ — **แก้แล้ว 2026-10-31 (impact C2)**: `InstallmentAccrualCron` ตรวจงวดของ **FINANCE**
+  (`company_code = 'FINANCE'` ครั้งเดียวต่อรอบ — lookup เดียวกับ 2A ณ วันรับเงินและรอบ VAT 60 วัน) ที่วันครบกำหนด · เดิมสาขา NULL = ไม่ตรวจเลย ·
+  สาขา SHOP = เดือนของ SHOP ที่ปิดทำให้ 2A ของ FINANCE ถูกข้าม · ผลข้างเคียงที่ตั้งใจ: งวดที่ครบกำหนดในเดือนที่ FINANCE ปิดแล้ว
+  (พ้นช่วงผ่อนผัน) และยังไม่ตั้งลูกหนี้ จะถูกข้าม + `BACKFILL_STALLED` แทนการลงเงียบ · **เดือนที่ล็อกถูกกรองออกตั้งแต่คิวรี** (`lockedAccountingPeriods` —
+  กติกาเดียวกับ `validatePeriodOpen` แบบต่องวด · fix round 1 M5): เดิมคิวรีเรียงเก่าก่อน + เพดาน `ACCRUAL_BACKFILL_CAP` (1000) หยิบงวดในเดือนที่ล็อกมา
+  แล้วข้ามทีละแถว — ถ้าค้างถึง 1000 งวด งวดของเดือนที่ยังเปิดไม่ถูกตั้งเลย · งวดที่ถูกกรองยังนับใน `skippedClosedPeriod` (`BACKFILL_STALLED` extra มี `lockedMonths`)
+  แต่ไม่มี Sentry warning ต่อแถว · ด่านต่อแถวคงไว้เป็นตาข่ายกรณีเดือนล็อกระหว่างคิวรีกับแถว
+- ~~`validatePeriodOpen` อ่านเดือนตามเขตเวลาของโปรเซส~~ — **แก้แล้ว 2026-10-31**: อ่านเดือนตามปฏิทินไทยเสมอ (หัวข้อ "ล็อกงวดบัญชี")
 - เงินเข้าทาง PaySolutions ขณะงวดบัญชีของวันที่ลง 2A ปิด (รวมใบบางส่วน): webhook ตอบปฏิเสธ · QR ของหน้ารับชำระ: error ถูกกลืน (ตอบ 200)
   ⇒ **ไม่มีการส่งซ้ำ** — ทั้งสองกรณีต้องกระทบยอดมือจาก Sentry
 - เครื่องมือ backfill (`backfill-orphan-partial-receipts.cli.ts`) ลงใบบางส่วนด้วยวันที่ตอนรัน ⇒ ถ้างวดยังไม่ถึงวันครบกำหนด จะลง 2A บางส่วน
@@ -2416,7 +2475,7 @@ Spec: `docs/superpowers/specs/2026-08-22-void-sale-design.md` · Plan:
 | mirror | สลับ Dr/Cr ทุกบรรทัด, `companyId` เดิม (SHOP), **ลงวันที่วันที่ยกเลิก** (`createAndPost` default `entryDate = postedAt = now`) |
 | metadata ของ mirror | `flow: 'shop-cash-sale-void'`, `idempotencyKey: 'shop-cash-sale-void:<jeId ต้นทาง>'`, `reversesEntryId`, `tag: 'REVERSAL'`; **จงใจไม่ carry `saleId`** — กัน sweep รอบถัดไปไปเจอ mirror ของตัวเอง (engine ข้ามใบที่ `flow === flowLabel` อยู่อีกชั้น) |
 | ใบต้นทาง | คง `POSTED` + stamp `reversed: true` / `reversedByEntryNumber` (pattern เดียวกับ `reverseBatch`) |
-| period guard | `createAndPost` **ไม่มี** period guard ⇒ service เรียก `validatePeriodOpen(tx, now, companyId)` เองต่อทุก `companyId` ของใบที่จะกวาด (G2) — เป็น no-op เกือบตลอดเพราะโพสต์วันนี้เสมอ ทำงานจริงเฉพาะปลาย grace window |
+| period guard | `createAndPost` **ไม่มี** period guard ⇒ service เรียก `validatePeriodOpen(tx, now, companyId)` เองต่อทุก `companyId` ของใบที่จะกวาด (G2) — เป็น no-op เกือบตลอดเพราะโพสต์วันนี้เสมอ (งวดที่ปิดรับรายการถึงสิ้นวันสุดท้าย + grace — คำตัดสินเจ้าของ 2026-10-31) ปฏิเสธจริงเฉพาะคำสั่งที่คร่อมเที่ยงคืนวันที่ 1 |
 | Isolation | `$transaction` Serializable ใบเดียวทั้งด่าน+เขียน; P2034 → 409 ไทย + `Sentry.captureMessage` warning เอง (`SentryExceptionFilter` จับเฉพาะ ≥500) |
 
 **ไม่มีใบลดหนี้** — SHOP ไม่จด VAT (ไม่มีภาระ ม.86/10 ต่างจากใบเสร็จ FINANCE). ไม่มีเอกสารคืนเงินแยก
@@ -3289,7 +3348,7 @@ WHT: per-item `whtPct` field; WHT payable posts to `21-3101`
 ### Override JV (manual JE edit before POST)
 
 `POST /other-income/:id/post` accepts optional `{ override: true, overrideLines: [...] }`. When provided:
-- Server validates V1 (Dr=Cr ±0.01), V2 (≥2 lines), V5 (Dr XOR Cr per line) via `JournalOverrideService`
+- Server validates V1 (Dr = Cr **exactly** — `isJournalBalanced`, same rule as posting · was ±0.01 until 2026-10-31 → a 0.01 gap now gets a Thai 400 instead of the posting guard's 500), V2 (≥2 lines), V5 (Dr XOR Cr per line) via `JournalOverrideService`
 - Sets `OtherIncome.isOverridden = true`
 - Writes `AuditLog { action: 'JV_OVERRIDDEN', oldValue: { jvLines: <auto> }, newValue: { jvLines: <override>, diffSummary: <Thai> } }`
 - UI shows ✏ marker in list pages for these documents

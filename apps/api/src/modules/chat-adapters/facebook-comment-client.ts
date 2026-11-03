@@ -1,6 +1,10 @@
 import { BadRequestException, Inject, Injectable, Optional } from '@nestjs/common';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
-import { capabilityFromEvidence, FacebookCommentEvidence } from './facebook-comment-capability';
+import {
+  capabilityFromEvidence,
+  CommentReceiveNotReady,
+  FacebookCommentEvidence,
+} from './facebook-comment-capability';
 export const FACEBOOK_COMMENT_TRANSPORT = Symbol('FACEBOOK_COMMENT_TRANSPORT');
 export interface PublicCommentInput {
   pageId: string;
@@ -54,11 +58,18 @@ export class FacebookCommentClient {
     return typeof config.pageId === 'string' && config.pageId.length <= 128 ? config.pageId : null;
   }
   async getCapabilities(pageId: string, refresh = false) {
-    const closed = () => capabilityFromEvidence({ graphVersion: 'v25.0', verified: false });
+    // `CONFIG` = configuration proves this Page cannot be served (Task 35); a thrown read proves
+    // nothing, so it stays retryable (no notReady).
+    const closed = (notReady?: CommentReceiveNotReady) =>
+      capabilityFromEvidence({
+        graphVersion: 'v25.0',
+        verified: false,
+        ...(notReady ? { notReady } : {}),
+      });
     try {
       const config = await this.config.getConfig('facebook');
       if (!pageId || config.pageId !== pageId || !config.pageAccessToken || !this.transport)
-        return closed();
+        return closed('CONFIG');
       return capabilityFromEvidence(await this.transport.evidence(pageId, refresh));
     } catch {
       return closed();

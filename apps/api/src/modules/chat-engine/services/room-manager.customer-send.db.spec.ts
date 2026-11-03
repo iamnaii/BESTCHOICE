@@ -16,6 +16,9 @@ import {
 } from '../../line-oa/services/finance-line-link';
 import { RoomManagerService } from './room-manager.service';
 
+/** Task 33 — หน้า LIFF ส่งความยินยอมมาพร้อมรหัสเสมอ (DTO บังคับ) · ความยินยอมถูกบันทึกใน tx ของ bind */
+const GRANTED_CONSENT = { granted: true } as const;
+
 jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn(), captureMessage: jest.fn() }));
 
 const prisma = new PrismaClient();
@@ -28,6 +31,8 @@ const router = { sendStaffMessage: jest.fn().mockResolvedValue({ success: true }
 let verification: VerificationService;
 let liff: LiffApiService;
 let rooms: RoomManagerService;
+/** role ข้ามสาขา — ขอบเขตสาขาของแท็บนี้ (Task 29 #3) ปักแยกที่ room-manager.customer-scope.db.spec.ts */
+const staff = { id: 'staff-1', role: 'OWNER', branchId: null };
 
 async function customer(name: string, phoneSuffix: string) {
   const row = await prisma.customer.create({
@@ -51,7 +56,7 @@ async function room(
 async function verifyWithOtp(lineUserId: string, phone: string) {
   await verification.requestOtp({ lineUserId, phone });
   const otp = (sms.sendSmsFromQueue.mock.calls.at(-1)?.[1] as string).match(/(\d{6})/)![1];
-  return verification.verifyOtp({ lineUserId, otp });
+  return verification.verifyOtp({ lineUserId, otp, consent: GRANTED_CONSENT });
 }
 
 beforeAll(async () => {
@@ -77,6 +82,7 @@ beforeEach(() => router.sendStaffMessage.mockClear());
 afterAll(async () => {
   await prisma.chatRoom.deleteMany({ where: { lineUserId: { startsWith: `U${tag}` } } });
   await prisma.customerLineLink.deleteMany({ where: { customerId: { in: customerIds } } });
+  await prisma.pDPAConsent.deleteMany({ where: { customerId: { in: customerIds } } });
   await prisma.chatbotOtpRequest.deleteMany({ where: { lineUserId: { contains: tag } } });
   await prisma.customer.deleteMany({ where: { id: { in: customerIds } } });
   await prisma.$disconnect();
@@ -99,7 +105,7 @@ describe('แผง 360 ส่ง LINE ถึงห้องของแถว O
       b.id,
     );
 
-    const sent = await rooms.sendCustomerMessage(b.id, 'staff-1', 'ยอดค้างชำระ');
+    const sent = await rooms.sendCustomerMessage(b.id, staff, 'ยอดค้างชำระ');
 
     expect(sent.room).toEqual({ id: l2Room });
     expect(router.sendStaffMessage).toHaveBeenCalledTimes(1);
@@ -108,14 +114,14 @@ describe('แผง 360 ส่ง LINE ถึงห้องของแถว O
       staffId: 'staff-1',
       text: 'ยอดค้างชำระ',
     });
-    expect((await rooms.getCustomerMessages(b.id, 10)).roomId).toBe(l2Room);
+    expect((await rooms.getCustomerMessages(b.id, staff, 10)).roomId).toBe(l2Room);
   });
 
   it('ไม่มีแถว OTP ที่ยังผูก (มีแต่ห้องการเงินที่ผูกลูกค้าไว้) → 400 ข้อความยังไม่ยืนยัน OTP ไม่ส่ง', async () => {
     const d = await customer('D', '2');
     await room(ChatChannel.LINE_FINANCE, line('D'), d.id, new Date());
 
-    const err = await rooms.sendCustomerMessage(d.id, 'staff-1', 'x').catch((e: unknown) => e);
+    const err = await rooms.sendCustomerMessage(d.id, staff, 'x').catch((e: unknown) => e);
 
     expect(err).toBeInstanceOf(BadRequestException);
     expect((err as BadRequestException).message).toBe(LINE_FINANCE_NOT_VERIFIED_MESSAGE);
@@ -126,7 +132,7 @@ describe('แผง 360 ส่ง LINE ถึงห้องของแถว O
     const e = await customer('E', '3');
     await room(ChatChannel.LINE_SHOP, line('E-shop'), e.id, new Date());
 
-    const err = await rooms.sendCustomerMessage(e.id, 'staff-1', 'x').catch((x: unknown) => x);
+    const err = await rooms.sendCustomerMessage(e.id, staff, 'x').catch((x: unknown) => x);
 
     expect(err).toBeInstanceOf(BadRequestException);
     expect((err as BadRequestException).message).toBe(LINE_SHOP_STAFF_SEND_DISABLED_MESSAGE);
@@ -138,10 +144,10 @@ describe('แผง 360 ส่ง LINE ถึงห้องของแถว O
     await room(ChatChannel.LINE_FINANCE, line('C-old'), c.id, new Date());
     await verifyWithOtp(line('C'), c.phone!);
 
-    await expect(rooms.sendCustomerMessage(c.id, 'staff-1', 'x')).resolves.toEqual({ room: null });
+    await expect(rooms.sendCustomerMessage(c.id, staff, 'x')).resolves.toEqual({ room: null });
     expect(router.sendStaffMessage).not.toHaveBeenCalled();
     // fix round 2 m-1 — ประวัติต้องไม่ถอยไปห้องของ LINE อื่น (ช่องพิมพ์จะชี้ห้องเก่า) — มุมมองของแถว OTP: ยังไม่มีแชท
-    await expect(rooms.getCustomerMessages(c.id, 10)).resolves.toEqual({
+    await expect(rooms.getCustomerMessages(c.id, staff, 10)).resolves.toEqual({
       roomId: null,
       channel: null,
       messages: [],

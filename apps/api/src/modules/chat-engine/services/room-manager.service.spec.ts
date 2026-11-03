@@ -333,7 +333,11 @@ describe('RoomManagerService', () => {
       prisma.chatRoom.findUnique.mockResolvedValue(deadOwnerRoom);
       const room = await service.linkCustomer('room-1', 'cust-real', actor);
       expect(merge.absorbPlaceholder).not.toHaveBeenCalled();
-      expect(prisma.chatRoom.update).toHaveBeenCalledWith({ where: { id: 'room-1' }, data: { customerId: 'cust-real' } });
+      // Task 33 fix round 1 M3 — เปลี่ยนลูกค้าของห้อง = ล้างเวลายกเลิกผูกของเจ้าของเดิม
+      expect(prisma.chatRoom.update).toHaveBeenCalledWith({
+        where: { id: 'room-1' },
+        data: { customerId: 'cust-real', financeLineUnlinkedAt: null },
+      });
       expect(room.customerId).toBe('cust-real');
       expect(room.absorbed).toBeNull(); // M-A4: ไม่ได้รวม → null
     });

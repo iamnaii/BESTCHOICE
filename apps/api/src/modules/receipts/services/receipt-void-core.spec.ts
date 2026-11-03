@@ -118,6 +118,27 @@ describe('voidReceiptInTx — นโยบายของเปลี่ยน�
     ).rejects.toThrow(new BadRequestException('ไม่สามารถยกเลิกใบเสร็จที่ออกเกิน 30 วัน'));
   });
 
+  it('สัญญาที่ปิดแล้ว → ปฏิเสธ · ข้อความชี้ฝ่ายบัญชี ไม่ส่งไประบบคืนเงิน (คืนเงินปิดด้วยกติกาเดียวกัน — คำตัดสินเจ้าของ 2026-10-31)', async () => {
+    const { tx, reversal, numbers } = setup();
+    tx.contract.findUnique.mockResolvedValue({ id: 'ct-old', status: 'COMPLETED' });
+    const attempt = voidReceiptInTx(
+      tx as never,
+      { reversal: reversal as never, numbers: numbers as never },
+      {
+        reason: 'x',
+        issuedById: 'u',
+        approvedById: 'u',
+        creditNoteMoney: storedTaxColumnsOf,
+        receipt: receiptRow(),
+      },
+    );
+    await expect(attempt).rejects.toBeInstanceOf(BadRequestException);
+    await expect(attempt).rejects.toThrow(/\(COMPLETED\).*ติดต่อฝ่ายบัญชี/);
+    await expect(attempt).rejects.not.toThrow(/Refund|ใช้ระบบคืนเงิน/);
+    expect(tx.receipt.create).not.toHaveBeenCalled();
+    expect(reversal.voidReceipt).not.toHaveBeenCalled();
+  });
+
   it('ไม่มี policy: กระจกถูกเรียก 2 อาร์กิวเมนต์ (พฤติกรรม void เดิม) และใบลดหนี้ไม่มี cnSource', async () => {
     const { tx, reversal, numbers } = setup({
       receiptEntries: [{ id: 'je-receipt', metadata: { tag: 'receipt', paymentId: 'pay-1' }, lines: [] }],

@@ -11,32 +11,7 @@ import { NotificationCategory } from '../notifications/notification-category.enu
 import { LINE_FINANCE_NOT_VERIFIED_MESSAGE } from '../line-oa/services/finance-line-link';
 import { BulkAssignDto, BulkProposeLockDto, BulkSendLineDto } from './dto/bulk.dto';
 import { SendLineAdHocDto } from './dto/send-line-adhoc.dto';
-import { getBranchScope } from '../auth/branch-access.util';
-import { collectionsSessionDay } from '../collections-session/collections-session.service';
-
-/** ผู้ส่ง LINE จากคิวทวงถาม — role/branchId ใช้ตัดขอบเขตสาขา (`getBranchScope`) · id = ผู้ทวงของงานรายวัน + ลง audit */
-export type LineSendActor = { id: string; role: string; branchId: string | null };
-
-/**
- * สัญญาที่ผู้ใช้ส่ง LINE จากคิวทวงถามได้ (ad-hoc และส่งรวด ใช้ตัวเดียว) — ขอบเขตเดียวกับหน้าจอที่ปุ่มอยู่:
- * - role ข้ามสาขา (`CROSS_BRANCH_ROLES`) — ทุกสัญญา
- * - นอกนั้น — สัญญาในสาขาตัวเอง (คิวทวงถาม / `queue-row` / แบนเนอร์นัดครบกำหนด — fix round 1 M-3) **หรือ** สัญญาที่ผู้ใช้มีงานรายวันวันนี้
- *   (โหมดโฟกัส `GET /collections/session/mine` อ่านตามงานที่จ่าย ซึ่งจ่ายข้ามสาขาได้โดยตั้งใจ: round-robin · เติมขั้นต่ำ · ความสัมพันธ์เดิม · หยิบจาก pool —
- *   Task 24 fix round 2 I-R1) · "วันนี้" = `collectionsSessionDay` นิยามเดียวกับหน้าจอ · ไม่มีสาขาและไม่มีงาน = ไม่มีอะไร (fail closed)
- */
-export function lineSendContractScope(
-  actor: LineSendActor,
-  now: Date = new Date(),
-): Prisma.ContractWhereInput {
-  const scope = getBranchScope(actor);
-  if (scope.all) return {};
-  const assignedToday: Prisma.ContractWhereInput = {
-    dailyAssignments: {
-      some: { collectorId: actor.id, date: collectionsSessionDay(now), deletedAt: null },
-    },
-  };
-  return { OR: scope.branchId ? [{ branchId: scope.branchId }, assignedToday] : [assignedToday] };
-}
+import { type LineSendActor, lineSendContractScope } from './line-send-scope';
 
 @Injectable()
 export class OverdueBulkService {

@@ -65,13 +65,22 @@ test.describe('LIFF Register → OTP verification', () => {
 
     await page.goto('/liff/register');
     await page.getByPlaceholder('0812345678').fill('0812345678');
+    // Task 33 — ความยินยอมบังคับตอนผูก: ไม่ติ๊ก = ปุ่มส่ง OTP กดไม่ได้
+    await expect(page.getByRole('button', { name: 'ส่งรหัส OTP' })).toBeDisabled();
+    await page.getByRole('checkbox', { name: /ยินยอมให้บริษัทส่งแจ้งเตือนค่างวด/ }).check();
     await page.getByRole('button', { name: 'ส่งรหัส OTP' }).click();
 
     await expect(page.getByText('081-xxx-5678')).toBeVisible({ timeout: 5000 });
     await page.getByPlaceholder('000000').fill('123456');
+    const verifyRequest = page.waitForRequest((req) =>
+      req.url().includes('/chatbot/finance/liff/verify-otp'),
+    );
     await page.getByRole('button', { name: 'ยืนยัน', exact: true }).click();
+    expect((await verifyRequest).postDataJSON()).toMatchObject({ consent: true });
 
-    await expect(page.getByText('ยืนยันสำเร็จ', { exact: true })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('ผูก LINE เรียบร้อย', { exact: true })).toBeVisible({
+      timeout: 5000,
+    });
     expect(retired).toEqual([]);
   });
 

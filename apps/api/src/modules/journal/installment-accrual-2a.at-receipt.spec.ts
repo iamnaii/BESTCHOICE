@@ -247,15 +247,15 @@ describe('InstallmentAccrual2ATemplate.accrueAtReceipt', () => {
   });
 
   it('งวดครบกำหนดวันที่ 1 รับเงินหลังวันนั้น งวดบัญชีปิด → ข้อความบอกเดือนเดียวกับที่ระบบตรวจ และไม่มีวันที่ระดับวันให้อ่านขัดกัน', async () => {
-    // วันครบกำหนด 1 ก.ค. 2569 00:00 เวลาไทย = 30 มิ.ย. 17:00 UTC. validatePeriodOpen ตัดสินเดือนจาก
-    // เวลาของเครื่อง: เครื่อง UTC ตรวจงวด 06/2569 · เครื่องเวลาไทยตรวจงวด 07/2569. ข้อความต้องบอก
-    // เดือนที่ถูกตรวจจริง (อ่านจาก Date ตัวเดียวกันด้วย getter ชุดเดียวกัน) และต้องไม่มี "01/07/2569"
+    // วันครบกำหนด 1 ก.ค. 2569 00:00 เวลาไทย = 30 มิ.ย. 17:00 UTC. validatePeriodOpen ตัดสินเดือนตามปฏิทินไทย
+    // (2026-10-31 — เดิมใช้เวลาของเครื่อง: เครื่อง UTC เคยตรวจงวด 06/2569) ⇒ งวด 07/2569 ทุกเขตเวลา · ข้อความต้องบอก
+    // เดือนที่ถูกตรวจจริง (ปฏิทินเดียวกัน) และต้องไม่มี "01/07/2569"
     const due = new Date('2026-06-30T17:00:00.000Z');
     const receipt = new Date('2026-07-05T02:00:00.000Z'); // 5 ก.ค. 09:00 เวลาไทย
     const { tmpl, tx, createAndPost } = build({ dueDate: due, periodStatus: 'CLOSED' });
-    const checkedYear = due.getFullYear();
-    const checkedMonth = due.getMonth() + 1;
-    const closedMonth = `${String(checkedMonth).padStart(2, '0')}/${checkedYear + 543}`;
+    const checkedYear = 2026;
+    const checkedMonth = 7;
+    const closedMonth = '07/2569';
 
     const err = await tmpl.accrueAtReceipt('inst-3', receipt, tx as never).catch((e: Error) => e);
 
@@ -290,15 +290,15 @@ describe('InstallmentAccrual2ATemplate.accrueAtReceipt', () => {
 
       expect(out!.postedAt).toBe(due);
       expect((createAndPost.mock.calls[0][0] as CapturedJe).postedAt).toBe(due);
-      // เส้นทางรับชำระเรียก validatePeriodOpen(prisma, <วันที่รับเงิน>, FINANCE) ซึ่งตัดสินปี/เดือนจาก
-      // เวลาของเครื่อง — 2A ต้องถูกตัดสินด้วยปี/เดือนของ Date ตัวเดียวกัน ไม่ว่าเครื่องตั้งเขตเวลาใด
+      // เส้นทางรับชำระเรียก validatePeriodOpen(prisma, <วันที่รับเงิน>, FINANCE) ซึ่งตัดสินปี/เดือนตามปฏิทินไทย —
+      // 2A ต้องถูกตัดสินงวดเดียวกัน (ต.ค. 2569) ไม่ว่าเครื่องตั้งเขตเวลาใด
       expect(tx.accountingPeriod.findUnique).toHaveBeenCalledTimes(1);
       expect(tx.accountingPeriod.findUnique).toHaveBeenCalledWith({
         where: {
           companyId_year_month: {
             companyId: 'finance-co',
-            year: receipt.getFullYear(),
-            month: receipt.getMonth() + 1,
+            year: 2026,
+            month: 10,
           },
         },
         select: { status: true },

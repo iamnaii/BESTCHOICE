@@ -607,7 +607,8 @@ describe('chat credit with real PostgreSQL, HTTP and synthetic storage/OCR', () 
       await browserExpect(sheet).not.toBeVisible();
       releaseOcr(result);
       await browserExpect(page.getByText('อ่านสเตทเม้นแล้ว', { exact: true }).last()).toBeVisible();
-      await page.getByRole('button', { name: 'ข้อมูลลูกค้า', exact: true }).click();
+      // หัวห้องมือถือ: ชื่อปุ่ม = "ข้อมูลลูกค้า <ชื่อ>[ · <สถานะ LINE>]" (Task 33 R2-M1)
+      await page.getByRole('button', { name: /^ข้อมูลลูกค้า / }).click();
       await browserExpect(sheet.getByText('3,000 บาท', { exact: true })).toBeVisible();
       await page.screenshot({
         path: '../../docs/review/2026-09-07-chat-credit-mobile.png',

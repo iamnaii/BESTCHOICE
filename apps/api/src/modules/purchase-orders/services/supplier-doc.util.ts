@@ -2,7 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import { Prisma, SupplierDocType } from '@prisma/client';
 import { bangkokCalendarParts, bangkokDateString, bangkokMidnight, isFutureBkkDay } from '../../../utils/date.util';
 import { formatDateShort } from '../../../utils/thai-date.util';
-import { validatePeriodOpen } from '../../../utils/period-lock.util';
+import { accountingPeriodOf, validatePeriodOpen } from '../../../utils/period-lock.util';
 
 /**
  * เอกสารจากผู้จัดจำหน่ายบนใบรับของ (ข3 — แบบหน้าจอที่เจ้าของเคาะ 2026-10-01):
@@ -119,9 +119,9 @@ export function supplierDocMetadata(doc: SupplierDoc): Record<string, string | n
  * `validatePeriodOpen` ไม่ผ่านก็นับว่าปิดด้วย (ตาข่าย) — ใช้ตัวเดียวกันทั้งตอนลงบัญชี ตอนหน่วยเข้าคลังทีหลัง และตัวตรวจบนจอ
  */
 export async function isPeriodClosedForBackdating(client: Prisma.TransactionClient, date: Date, companyId: string): Promise<boolean> {
-  const { year, month } = bangkokCalendarParts(date);
+  const { year, month } = accountingPeriodOf(date); // same month rule as validatePeriodOpen
   const period = await client.accountingPeriod.findUnique({
-    where: { companyId_year_month: { companyId, year, month: month + 1 } },
+    where: { companyId_year_month: { companyId, year, month } },
     select: { status: true },
   });
   if (period?.status === 'CLOSED' || period?.status === 'SYNCED') return true;

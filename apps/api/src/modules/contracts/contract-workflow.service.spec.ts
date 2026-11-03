@@ -320,6 +320,23 @@ describe('ContractWorkflowService', () => {
       await service.activate('contract-1', 'activation-actor');
       expect(prisma.sale.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ paymentMethod: 'BANK_TRANSFER' }) }));
     });
+    // review M2 (2026-10-31): the period rows locked FOR SHARE are the Bangkok-calendar month that validatePeriodOpen checks —
+    // 17:30Z on 31 Oct is 00:30 on 1 Nov in Bangkok (a UTC process used to lock October rows and check November)
+    it('locks the Bangkok-calendar accounting period rows before the period check', async () => {
+      jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'] });
+      jest.setSystemTime(new Date('2026-10-31T17:30:00Z'));
+      try {
+        await service.activate('contract-1', 'activation-actor');
+      } finally {
+        jest.useRealTimers();
+      }
+      const periodLock = prisma.$queryRaw.mock.calls.find((call: unknown[]) =>
+        (call[0] as TemplateStringsArray).join('?').includes('FROM accounting_periods'),
+      );
+      expect(periodLock).toBeDefined();
+      expect(periodLock.slice(2)).toEqual([2026, 11]);
+    });
+
     it('activates a fully-approved DRAFT contract and writes the activation JE', async () => {
       await service.activate('contract-1', 'activation-actor');
 

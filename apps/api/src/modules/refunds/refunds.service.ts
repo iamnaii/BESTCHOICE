@@ -15,12 +15,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { ReceiptVoidReversalTemplate } from '../journal/cpa-templates/receipt-void-reversal.template';
 import { assertNoAdvanceExcessIncome } from '../journal/advance-excess-income.util';
 import { revertPaymentFromLedger } from '../journal/revert-payment-from-ledger';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
+import { UNPAY_BLOCKED_CONTRACT_STATUSES } from '../receipts/services/receipt-void-core';
 import {
   RequestRefundDto,
   MarkRefundReversedDto,
@@ -45,6 +47,27 @@ export const NO_REFUNDABLE_RECEIPT_MESSAGE =
  */
 export const RECEIPT_NOT_ISSUED_REFUND_MESSAGE =
   'งวดนี้มีรายการรับชำระแต่ใบเสร็จยังออกไม่สำเร็จ — แจ้งฝ่ายบัญชีให้ทีมระบบออกใบเสร็จของงวดนี้ก่อน (ยังไม่มีปุ่มในระบบ) แล้วจึงส่งคำขอคืนเงินใหม่';
+
+/**
+ * สัญญาที่ปิดแล้วคืนเงินไม่ได้ (คำตัดสินเจ้าของ 2026-10-31) — กติกาเดียวกับยกเลิกใบเสร็จ: คืนเงิน = un-pay งวด (`markReversed` กลับรายการ
+ * รับชำระ + คืนแถวงวดเป็นค้างจากยอดในบัญชี) ซึ่งสัญญาที่ปิดแล้วถอยไม่ได้ · ชุดสถานะคือ `UNPAY_BLOCKED_CONTRACT_STATUSES` ตัวเดียวกับยกเลิก
+ * ใบเสร็จ (ไม่มีชุดที่สอง) · ตรวจตอนขอคืนและตอนอนุมัติ. ทางที่ทำได้จริง (`coding-standards.md`): ระบบไม่มีทางเปิดสัญญาที่ปิดแล้วกลับมา ⇒
+ * ข้อความไม่อ้างการเปิดสัญญา — ชี้ฝ่ายบัญชี (แบบเดียวกับ `NO_REFUNDABLE_RECEIPT_MESSAGE`)
+ */
+export function closedContractRefundMessage(status: string): string {
+  return (
+    `สัญญานี้ปิดแล้ว (สถานะ ${status}) — คืนเงินผ่านระบบไม่ได้ เพราะการคืนเงินจะยกเลิกการรับชำระของงวดในสัญญาที่ปิดไปแล้ว ` +
+    'ทำให้สถานะสัญญาและกรรมสิทธิ์สินค้าไม่ตรงกับบัญชี (กติกาเดียวกับการยกเลิกใบเสร็จ) · ' +
+    'ระบบไม่มีทางเปิดสัญญาที่ปิดแล้วกลับมา — ติดต่อฝ่ายบัญชีเพื่อพิจารณาเป็นรายกรณี'
+  );
+}
+
+/** ด่านสัญญาปิด (ขอคืน + อนุมัติ) — `UNPAY_BLOCKED_CONTRACT_STATUSES` ชุดเดียวกับยกเลิกใบเสร็จ */
+function assertContractNotClosed(contract: { status: string }): void {
+  if (UNPAY_BLOCKED_CONTRACT_STATUSES.includes(contract.status)) {
+    throw new BadRequestException(closedContractRefundMessage(contract.status));
+  }
+}
 
 /**
  * Refund workflow — T1-C1 / P2Q7=F (bank reversal policy).
@@ -79,7 +102,8 @@ export class RefundsService {
       if (!payment || payment.deletedAt) {
         throw new NotFoundException('ไม่พบรายการชำระเงิน');
       }
-      await this.assertContractAccess(tx, actor, payment.contractId);
+      const contract = await this.assertContractAccess(tx, actor, payment.contractId);
+      assertContractNotClosed(contract);
       if (payment.status !== 'PAID' && payment.status !== 'PARTIALLY_PAID') {
         throw new BadRequestException(
           `ขอคืนเงินได้เฉพาะงวดที่ชำระแล้ว (สถานะปัจจุบัน: ${payment.status})`,
@@ -157,12 +181,14 @@ export class RefundsService {
       const actor = await this.refundActor(tx, userId, true);
       const refund = await tx.refund.findUnique({ where: { id: refundId } });
       if (!refund || refund.deletedAt) throw new NotFoundException('ไม่พบคำขอคืนเงิน');
-      await this.assertContractAccess(tx, actor, refund.contractId);
+      const contract = await this.assertContractAccess(tx, actor, refund.contractId);
       if (refund.status !== 'REQUESTED') {
         throw new BadRequestException(
           `อนุมัติได้เฉพาะคำขอสถานะ REQUESTED (สถานะปัจจุบัน: ${refund.status})`,
         );
       }
+      // สัญญาอาจปิดระหว่างคำขอค้างคิว (ผ่อนครบ / ปิดยอด / ยึด) — ตรวจซ้ำก่อนอนุมัติ · คำขอที่ค้างยังปฏิเสธ (reject) ได้
+      assertContractNotClosed(contract);
       await this.assertCurrentRefundAmount(tx, refund);
       const reason = approvalReason?.trim() || null;
       const ownerSelfApproval = refund.requestedById === userId && actor.role === 'OWNER';
@@ -240,11 +266,18 @@ export class RefundsService {
     userId: string,
     _userRole: string,
   ) {
-    return this.financialTransaction(async (tx) => {
+    /** สถานะสัญญาที่ปิดแล้ว ณ ตอนยืนยันธนาคาร — ส่งสัญญาณเตือนหลัง commit (null = สัญญายังไม่ปิด) */
+    let closedAtProcessing: { contractId: string; status: string } | null = null;
+    const processed = await this.financialTransaction(async (tx) => {
       const actor = await this.refundActor(tx, userId, true, true);
       const refund = await tx.refund.findUnique({ where: { id: refundId } });
       if (!refund || refund.deletedAt) throw new NotFoundException('ไม่พบคำขอคืนเงิน');
-      await this.assertContractAccess(tx, actor, refund.contractId);
+      const contract = await this.assertContractAccess(tx, actor, refund.contractId);
+      // review M1 (2026-10-31): **ไม่ปฏิเสธ** สัญญาที่ปิดหลังอนุมัติ — ขั้นนี้บันทึกเงินที่ธนาคารคืนไปแล้ว ปฏิเสธ = เงินออกโดยสมุดไม่ขยับ.
+      // แต่การกลับรายการจะคืนงวดเป็นค้าง + 11-2103 ค้างบนสัญญาที่ไม่มีใครเก็บเงิน ⇒ flag ใน audit + Sentry warning หลัง commit
+      closedAtProcessing = UNPAY_BLOCKED_CONTRACT_STATUSES.includes(contract.status)
+        ? { contractId: refund.contractId, status: contract.status }
+        : null;
       // PR4 ต6ข (final review I3): ตรวจซ้ำตอนดำเนินการ — รอบกวาดอาจลงรายการระหว่างคำขอค้างคิว (วางก่อนแตะ Payment/JE ใด)
       await assertNoAdvanceExcessIncome(tx, refund.contractId);
       if (refund.status !== 'APPROVED') {
@@ -402,12 +435,25 @@ export class RefundsService {
               previousAmountPaid: payment.amountPaid.toString(),
               survivingAmountPaid: reverted.survivingPaid.toString(),
             },
+            contractClosedAtProcessing: closedAtProcessing?.status ?? null,
           },
         },
       });
 
       return updated;
     });
+    if (closedAtProcessing) {
+      const { contractId, status } = closedAtProcessing;
+      Sentry.captureMessage(
+        'Refund bank reversal recorded on a closed contract — the installment and 11-2103 were reopened on a contract nobody collects; accounting must review',
+        {
+          level: 'warning',
+          tags: { subsystem: 'refunds', action: 'refund-processed-closed-contract' },
+          extra: { refundId, contractId, contractStatus: status },
+        },
+      );
+    }
+    return processed;
   }
 
   async markFailed(refundId: string, dto: MarkRefundFailedDto, userId: string, _userRole: string) {
@@ -634,19 +680,21 @@ export class RefundsService {
     return resolved.user;
   }
 
+  /** สิทธิ์สาขาของผู้ทำรายการ — คืนสถานะสัญญาที่อ่านในธุรกรรมเดียวกันให้ด่านสัญญาปิด (`assertContractNotClosed`) */
   private async assertContractAccess(
     tx: Prisma.TransactionClient,
     actor: ResolvedPaymentApprovalPermissions['user'],
     contractId: string,
-  ) {
+  ): Promise<{ branchId: string; status: string }> {
     const contract = await tx.contract.findFirst({
       where: { id: contractId, deletedAt: null },
-      select: { branchId: true },
+      select: { branchId: true, status: true },
     });
     if (!contract) throw new NotFoundException('ไม่พบสัญญาของคำขอคืนเงิน');
     if (!hasCrossBranchAccess(actor) && (!actor.branchId || actor.branchId !== contract.branchId)) {
       throw new ForbiddenException('ไม่มีสิทธิ์เข้าถึงคำขอคืนเงินต่างสาขา');
     }
+    return contract;
   }
 
   private async financialTransaction<T>(

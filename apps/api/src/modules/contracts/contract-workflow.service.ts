@@ -1,5 +1,5 @@
 import { assertValidContractConsent } from '../pdpa/contract-consent-evidence';
-import { validatePeriodOpen } from '../../utils/period-lock.util';
+import { accountingPeriodOf, validatePeriodOpen } from '../../utils/period-lock.util';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { currentDomainAccess, domainAccessClient, onDomainCommit } from '../employee-access/access-execution-context';
 import { assertNamedContractAction, assertNamedSources, namedExecution } from '../promotions/contract-promotion-source';
@@ -660,7 +660,7 @@ export class ContractWorkflowService {
       if (!execution) await this.legacyActivationActor(id, actorId, tx, true);
       const postedAt = new Date();
       const bookIds = [financeCompany.id, shopCompany.id].sort();
-      const year = postedAt.getFullYear(), month = postedAt.getMonth() + 1;
+      const { year, month } = accountingPeriodOf(postedAt); // the rows validatePeriodOpen reads (Bangkok calendar)
       await tx.$queryRaw`SELECT id FROM accounting_periods WHERE company_id=ANY(${bookIds}::text[]) AND year=${year} AND month=${month} ORDER BY id FOR SHARE`;
       await tx.$queryRaw`SELECT id FROM system_config WHERE key='period_grace_days' FOR SHARE`;
       for (const companyId of bookIds) await validatePeriodOpen(tx, postedAt, companyId);

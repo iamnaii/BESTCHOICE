@@ -37,6 +37,7 @@ import {
 } from '../../chat-prospects/chat-placeholder';
 import { JourneyEntryWriter } from '../../customer-journey/journey-entry-writer.service';
 import {
+  lockFinanceLineCustomers,
   staffLineFinanceChange,
   unlinkFinanceLine,
 } from '../../line-oa/services/finance-line-link';
@@ -44,10 +45,16 @@ import {
   ACTIVE_FINANCE_LINK_WHERE,
   type FinanceLineStatus,
 } from '../../line-oa/services/otp-verified-customer';
-import { isRetryablePrismaWriteError } from '../../../utils/transaction-retry.util';
+import { runWithTransactionRetry } from '../../../utils/transaction-retry.util';
 
-/** ปุ่มยกเลิกผูก LINE การเงิน (legacy) — ลองทั้งทรานแซกชันใหม่เมื่อ Postgres ตัดสิน deadlock/serialization (ดู lock order ที่ `unlinkFinanceLineByStaff`) */
+/** ปุ่มยกเลิกผูก LINE การเงิน (legacy) — ลองทั้งทรานแซกชันใหม่เมื่อ Postgres ตัดสิน deadlock/serialization (ตาข่าย — ลำดับล็อกเดียวกับ bind แล้ว ดู `unlinkFinanceLineByStaff`) */
 const FINANCE_LINE_UNLINK_MAX_ATTEMPTS = 3;
+
+/** สถานะ LINE การเงินหลังยกเลิกผูก (คำตอบของปุ่ม + newValue ของ audit) */
+const FINANCE_LINE_UNLINKED: FinanceLineStatus = { verified: false, linkedAt: null };
+
+/** สถานะก่อนยกเลิกผูก (oldValue ของ audit `CUSTOMER_FINANCE_LINE_UNLINKED` — ไม่มี U-id) */
+type FinanceLineUnlinkBefore = { financeLine: FinanceLineStatus; lineIdFinanceColumnSet: boolean };
 import { contactAddedEntry, isBlankContact } from '../../customer-journey/chat-identity-entries';
 import type { ContactField } from '../../customer-journey/journey-data-schemas';
 
@@ -677,8 +684,9 @@ export class CustomerWriteService {
     // ไม่แตะเบอร์ / ส่งเบอร์เดิมกลับมา (ฟอร์มแก้ไขส่งเบอร์ทุกครั้ง) = ตรวจแค่อีเมลที่นี่ตามเดิม — เบอร์เดิมไม่ได้
     // สร้างคู่ซ้ำใหม่ และถ้าตรวจซ้ำ ลูกค้าที่มีคู่ซ้ำอยู่แล้ว (เช่น stub จาก ensureRole ที่ไม่บล็อกเบอร์) จะแก้ข้อมูลอะไรไม่ได้เลย
     const phoneChanged = !!normalizedPhone && this.normalizePhone(before.phone) !== normalizedPhone;
-    // Task 22 I3/I4 — LINE การเงิน: ค่าเดิม/ไม่ส่ง = ไม่แตะ · ล้างช่อง = ยกเลิกผูก (ล้างคอลัมน์ + ปิดแถว customer_line_links
-    // ของลูกค้าคนนี้ในทรานแซกชันเดียวกับการแก้ไข ⇒ ลูกค้ายืนยัน OTP ด้วย LINE ใหม่ได้) · ค่าใหม่ = 400 (ผูกได้ทาง OTP เท่านั้น)
+    // Task 22 I3/I4 — LINE การเงิน: ค่าเดิม/ไม่ส่ง = ไม่แตะ · ค่าใหม่ = 400 (ผูกได้ทาง OTP เท่านั้น) · ล้างช่อง = ยกเลิกผูก
+    // **เหมือนปุ่ม "ยกเลิกการผูก" ทุกอย่าง** (Task 29 #2 — เจ้าของตัดสิน 31 ต.ค.): แกนเดียว `unlinkFinanceLineInTx` ในทรานแซกชันเดียวกับ
+    // การแก้ไข (ปิดแถว OTP แม้คอลัมน์ว่าง · ล้าง verified_at) + audit `CUSTOMER_FINANCE_LINE_UNLINKED` เดียวกัน
     const lineFinance = staffLineFinanceChange(lineIdFinance, before.lineIdFinance);
     if (!phoneChanged) {
       await this.assertContactNotDuplicate(this.prisma, null, normalizedEmail ?? null, id);
@@ -721,7 +729,7 @@ export class CustomerWriteService {
     // เปลี่ยนเบอร์หลักเป็นเบอร์ใหม่ที่ไม่ว่าง → ล็อก + ตรวจซ้ำ (ignoreCustomerId) + เขียน ในทรานแซกชันเดียว
     // ยกเลิกผูก LINE การเงิน → ทรานแซกชันเดียวกัน (ล็อกเบอร์ยังเป็นคำสั่งแรก · ยกเลิกผูกก่อนเขียน ⇒ แถวที่คืนเป็นค่าหลังล้าง)
     // ไม่แตะเบอร์/เบอร์เดิม และไม่ยกเลิกผูก = ทางเดิมไม่มีทรานแซกชัน · journey ยังบันทึกหลัง commit
-    const updated =
+    const { updated, financeLineUnlinked } =
       phoneChanged || lineFinance === 'clear'
         ? await this.prisma.$transaction(async (tx) => {
             if (phoneChanged) {
@@ -733,10 +741,20 @@ export class CustomerWriteService {
                 id,
               );
             }
-            if (lineFinance === 'clear') await unlinkFinanceLine(tx, { customerId: id });
-            return tx.customer.update({ where: { id }, data });
+            const unlinked =
+              lineFinance === 'clear' ? await this.unlinkFinanceLineInTx(tx, id) : null;
+            return {
+              updated: await tx.customer.update({ where: { id }, data }),
+              financeLineUnlinked: unlinked,
+            };
           })
-        : await this.prisma.customer.update({ where: { id }, data });
+        : {
+            updated: await this.prisma.customer.update({ where: { id }, data }),
+            financeLineUnlinked: null,
+          };
+    if (financeLineUnlinked) {
+      await this.auditFinanceLineUnlink(actor?.id, id, financeLineUnlinked);
+    }
 
     // CONTACT_ADDED — เบอร์จากว่าง → มีค่า เทียบในโค้ด ไม่เก็บตัวเบอร์ · เปลี่ยนเบอร์ที่มีอยู่แล้วไม่นับ
     // (nationalId ไม่อยู่ใน UpdateCustomerDto ⇒ ทางนี้ได้แค่เบอร์)
@@ -759,18 +777,17 @@ export class CustomerWriteService {
 
   /**
    * Task 27 — ปุ่ม "ยกเลิกการผูก" LINE น้องเบส (การเงิน) ในฟอร์มแก้ไขลูกค้า (`POST /customers/:id/finance-line/unlink` — OWNER/BM).
-   * ทางเดียวกับ PATCH ล้างช่อง (`unlinkFinanceLine({ customerId })` — ล้างคอลัมน์ + ปิดแถวของลูกค้าคนนี้ + ล้าง `chat_rooms.verified_at`)
-   * แต่ตัดสินจาก**แถว OTP ที่ยังผูก**ด้วย (PATCH ดูคอลัมน์อย่างเดียว — คอลัมน์ว่างแต่มีแถว = ไม่แตะ) ⇒ ปุ่มปิดแถวได้เสมอ ·
-   * ไม่มีทั้งแถวและคอลัมน์ = สำเร็จแบบไม่แตะอะไร (กดซ้ำ/หน้าจอค้าง) ไม่เขียน audit ·
-   * audit `CUSTOMER_FINANCE_LINE_UNLINKED` (สถานะก่อน/หลัง ไม่มี U-id) — ทางเดิมไม่มี audit เฉพาะ (Task 22 รายงานข้อ 3) ·
-   * ไม่สลับ rich menu (เหมือน LIFF ยกเลิกเอง) · ผูกใหม่ได้ทาง OTP ของลูกค้าเท่านั้น · ตอบ 201 เหมือน POST action อื่นของ `/customers/:id`
+   * ตั้งแต่ Task 29 #2 (เจ้าของตัดสิน 31 ต.ค. 2026) `PATCH /customers/:id {"lineIdFinance": null}` ใช้แกนเดียวกัน (`unlinkFinanceLineInTx` +
+   * `auditFinanceLineUnlink`) ⇒ สองทางทำเหมือนกันทุกอย่าง: ปิด**แถว OTP ที่ยังผูก**แม้คอลัมน์ว่าง + ล้างคอลัมน์ + ล้าง `chat_rooms.verified_at`
+   * (`unlinkFinanceLine({ customerId })`) · ไม่มีทั้งแถวและคอลัมน์ = สำเร็จแบบไม่แตะอะไร (กดซ้ำ/หน้าจอค้าง) ไม่เขียน audit ·
+   * audit `CUSTOMER_FINANCE_LINE_UNLINKED` (สถานะก่อน/หลัง ไม่มี U-id) · ไม่สลับ rich menu (เหมือน LIFF ยกเลิกเอง) · ผูกใหม่ได้ทาง OTP ของ
+   * ลูกค้าเท่านั้น · ตอบ 201 เหมือน POST action อื่นของ `/customers/:id` · ไม่มีขอบเขตสาขา (เจ้าของตัดสิน 31 ต.ค. — ยกเลิกผูกไม่จำกัดสาขา)
    *
-   * **ลำดับล็อก (fix round 1 — review M-2):** แถวลูกค้า → แถว link → ห้องแชท = ลำดับเดียวกับทางยกเลิกผูกพี่น้อง (PATCH ล้างช่อง · LIFF —
-   * `unlinkFinanceLine`) · `VerificationService.bind` ล็อกกลับด้าน (ห้องของ LINE/ลูกค้าเดิม → แถว link → ห้องของ LINE นี้ → ลูกค้า) ⇒
-   * ลูกค้ายืนยัน OTP พร้อมกับที่พนักงานกดปุ่มกับลูกค้าคนเดียวกัน Postgres อาจตัดสิน deadlock (40P01) ให้ฝ่ายหนึ่ง rollback ทั้งก้อน (ไม่มีข้อมูลค้าง):
-   * ฝั่งปุ่มลองทั้งทรานแซกชันใหม่เอง (legacy สูงสุด `FINANCE_LINE_UNLINK_MAX_ATTEMPTS` ครั้ง — ทุกขั้นอ่านใหม่ใต้ล็อก · managed = ระบบสิทธิ์ลองใหม่เอง
-   * maxAttempts 3) · ฝั่ง bind ได้ error — รหัส OTP ยังไม่ถูกลบ (กิน attempt ไป 1) ลูกค้ากรอกรหัสเดิมซ้ำได้ · **ไม่กลับลำดับที่นี่**: จะสวนกับ PATCH/LIFF
-   * แทน และ bind ล็อกห้องก่อนแถว link อยู่แล้ว (เลียนลำดับครบต้องล็อกห้องตามเงื่อนไขของ bind) — แก้ถาวรคือให้ bind ล็อกแถวลูกค้าก่อน (งานแยก)
+   * **ลำดับล็อก:** แถวลูกค้า → แถว link → ห้องแชท (`lockFinanceLineCustomers`) = ลำดับเดียวกับ LIFF (`unlinkFinanceLine`) และตั้งแต่ Task 29
+   * รวม `VerificationService.bind` (เดิม bind ล็อกกลับด้าน ⇒ ยืนยัน OTP พร้อมกดปุ่มกับลูกค้าคนเดียวกัน = deadlock 40P01 — Task 27 review M-2 ·
+   * ปักที่ `finance-line-lock-order.db.spec.ts`) · ปุ่มยังลองทั้งทรานแซกชันใหม่เมื่อ Postgres ตัดสิน deadlock/serialization เป็นตาข่าย
+   * (legacy สูงสุด `FINANCE_LINE_UNLINK_MAX_ATTEMPTS` ครั้ง — ทุกขั้นอ่านใหม่ใต้ล็อก · managed = ระบบสิทธิ์ลองใหม่เอง maxAttempts 3) ·
+   * PATCH ไม่ลองซ้ำ (ทรานแซกชันเดียวกับการแก้ไขช่องอื่น — ลำดับล็อกเดียวกันแล้วจึงไม่มีวงจร)
    */
   async unlinkFinanceLineByStaff(
     id: string,
@@ -779,60 +796,69 @@ export class CustomerWriteService {
     const ctx = partyWriteExecution();
     if (ctx && actor.id !== ctx.snapshot.userId) throw new Error('Customer actor mismatch');
     if (ctx) await this.parties!.mutation(ctx.client, 'customer', id, 'customers.update');
-    const unlinkInTx = () =>
-      this.prisma.$transaction(async (tx) => {
-        // ล็อกแถวลูกค้าก่อนอ่านสถานะ ⇒ กดพร้อมกันได้ audit ใบเดียว · NO KEY UPDATE พอ: บล็อกผู้เขียนแถวนี้ด้วยกัน แต่ไม่บล็อก insert แถวลูก
-        // ที่อ้าง FK (KEY SHARE) · ทรานแซกชันนี้แก้แค่ line_id_finance (ไม่ใช่คอลัมน์ key) — แบบ lockCreditCustomer
-        await tx.$queryRaw`SELECT id FROM customers WHERE id = ${id} FOR NO KEY UPDATE`;
-        const customer = await tx.customer.findUnique({
-          where: { id },
-          select: { deletedAt: true, lineIdFinance: true },
-        });
-        if (!customer || customer.deletedAt) throw new NotFoundException('ไม่พบลูกค้า');
-        const active = await tx.customerLineLink.findFirst({
-          where: { customerId: id, ...ACTIVE_FINANCE_LINK_WHERE },
-          select: { linkedAt: true },
-        });
-        const lineIdFinanceColumnSet = !!customer.lineIdFinance?.trim();
-        if (!active && !lineIdFinanceColumnSet) return null;
-        await unlinkFinanceLine(tx, { customerId: id });
-        const financeLine: FinanceLineStatus = {
-          verified: !!active,
-          linkedAt: active ? active.linkedAt.toISOString() : null,
-        };
-        return { financeLine, lineIdFinanceColumnSet };
-      });
-    let before: Awaited<ReturnType<typeof unlinkInTx>> = null;
-    for (let attempt = 1; ; attempt++) {
-      try {
-        before = await unlinkInTx();
-        break;
-      } catch (error) {
-        // managed: ทรานแซกชันเป็นของระบบสิทธิ์ (join) — ลองซ้ำข้างในไม่ได้ ให้ชั้นนอกลองทั้งก้อน
-        if (
-          ctx ||
-          attempt >= FINANCE_LINE_UNLINK_MAX_ATTEMPTS ||
-          !isRetryablePrismaWriteError(error)
-        )
-          throw error;
-      }
-    }
-    const after: FinanceLineStatus = { verified: false, linkedAt: null };
-    if (before) {
-      const entry = {
-        userId: actor.id,
-        action: 'CUSTOMER_FINANCE_LINE_UNLINKED',
-        entity: 'customer',
-        entityId: id,
-        oldValue: before,
-        newValue: { financeLine: after },
-      };
-      if (ctx) {
-        if (!this.audit) throw new Error('Required customer audit writer unavailable');
-        await this.audit.log(entry, ctx.client);
-      } else await this.audit?.log(entry); // หลัง commit — แถวอยู่ใน Merkle chain (database.md)
-    }
-    return { id, unlinked: !!before, financeLine: after };
+    const unlinkInTx = () => this.prisma.$transaction((tx) => this.unlinkFinanceLineInTx(tx, id));
+    // managed: ทรานแซกชันเป็นของระบบสิทธิ์ (join) — ลองซ้ำข้างในไม่ได้ ให้ชั้นนอกลองทั้งก้อน
+    const before = ctx
+      ? await unlinkInTx()
+      : await runWithTransactionRetry(unlinkInTx, FINANCE_LINE_UNLINK_MAX_ATTEMPTS);
+    if (before) await this.auditFinanceLineUnlink(actor.id, id, before);
+    return { id, unlinked: !!before, financeLine: { ...FINANCE_LINE_UNLINKED } };
+  }
+
+  /**
+   * แกนเดียวของการยกเลิกผูก LINE การเงินโดยพนักงาน (ปุ่ม + PATCH ล้างช่อง — Task 29 #2) — เรียกใน tx ของผู้เรียก:
+   * ล็อกแถวลูกค้าก่อนอ่านสถานะ (`lockFinanceLineCustomers` — กดพร้อมกันได้ audit ใบเดียว · NO KEY UPDATE พอ: บล็อกผู้เขียนแถวนี้ด้วยกัน
+   * แต่ไม่บล็อก insert แถวลูกที่อ้าง FK — แบบ lockCreditCustomer) → ลูกค้าถูกลบ/ไม่มี = 404 → ตัดสินจาก**แถว OTP ที่ยังผูก**และคอลัมน์ →
+   * ไม่มีทั้งคู่ = คืน null ไม่แตะ · มี = `unlinkFinanceLine({ customerId })` แล้วคืนสถานะก่อนยกเลิก (ไม่มี U-id) ให้ `auditFinanceLineUnlink`
+   */
+  private async unlinkFinanceLineInTx(
+    tx: Prisma.TransactionClient,
+    id: string,
+  ): Promise<FinanceLineUnlinkBefore | null> {
+    await lockFinanceLineCustomers(tx, [id]);
+    const customer = await tx.customer.findUnique({
+      where: { id },
+      select: { deletedAt: true, lineIdFinance: true },
+    });
+    if (!customer || customer.deletedAt) throw new NotFoundException('ไม่พบลูกค้า');
+    const active = await tx.customerLineLink.findFirst({
+      where: { customerId: id, ...ACTIVE_FINANCE_LINK_WHERE },
+      select: { linkedAt: true },
+    });
+    const lineIdFinanceColumnSet = !!customer.lineIdFinance?.trim();
+    if (!active && !lineIdFinanceColumnSet) return null;
+    await unlinkFinanceLine(tx, { customerId: id });
+    return {
+      financeLine: {
+        verified: !!active,
+        linkedAt: active ? active.linkedAt.toISOString() : null,
+      },
+      lineIdFinanceColumnSet,
+    };
+  }
+
+  /**
+   * audit `CUSTOMER_FINANCE_LINE_UNLINKED` ของปุ่มและ PATCH (รูปเดียวกัน) — legacy: หลัง commit (แถวอยู่ใน Merkle chain — database.md) ·
+   * managed: ใน tx ของระบบสิทธิ์ (`audit.log(entry, ctx.client)`)
+   */
+  private async auditFinanceLineUnlink(
+    actorId: string | undefined,
+    id: string,
+    before: FinanceLineUnlinkBefore,
+  ): Promise<void> {
+    const entry = {
+      userId: actorId,
+      action: 'CUSTOMER_FINANCE_LINE_UNLINKED',
+      entity: 'customer',
+      entityId: id,
+      oldValue: before,
+      newValue: { financeLine: { ...FINANCE_LINE_UNLINKED } },
+    };
+    const ctx = partyWriteExecution();
+    if (ctx) {
+      if (!this.audit) throw new Error('Required customer audit writer unavailable');
+      await this.audit.log(entry, ctx.client);
+    } else await this.audit?.log(entry);
   }
 
   async remove(id: string) {

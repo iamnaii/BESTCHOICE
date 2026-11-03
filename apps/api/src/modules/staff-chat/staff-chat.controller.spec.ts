@@ -71,6 +71,10 @@ describe('StaffChatController', () => {
             sendCustomerMessage: jest.fn(),
             getCrossChannelRooms: jest.fn(),
             findById: jest.fn(),
+            // Task 33 — สถานะ LINE การเงินของห้อง (คำนวณฝั่ง server) · ห้องช่องอื่น = null
+            attachFinanceLineStatus: jest.fn(async (rows: Record<string, unknown>[]) =>
+              rows.map((row) => ({ ...row, financeLineStatus: null })),
+            ),
             linkCustomer: jest.fn(),
           },
         },
@@ -409,20 +413,33 @@ describe('StaffChatController', () => {
   });
 
   describe('GET /staff-chat/customer/:customerId/messages', () => {
-    it('clamps limit and delegates to roomManager.getCustomerMessages', async () => {
+    // Task 29 #3 — ผู้ใช้ทั้งก้อน (role/branchId) ส่งต่อให้ service ตัดขอบเขตเดียวกับปุ่มส่ง LINE
+    const req = { user: { id: 'user-1', role: 'SALES', branchId: 'branch-1' } };
+
+    it('clamps limit and delegates to roomManager.getCustomerMessages with the caller', async () => {
       const payload = { roomId: 'r-1', channel: 'LINE_FINANCE', messages: [], hasMore: false };
-      jest.spyOn(roomManager, 'getCustomerMessages').mockResolvedValue(payload as any);
+      jest.spyOn(roomManager, 'getCustomerMessages').mockResolvedValue(payload as never);
 
-      const result = await controller.getCustomerMessages('cust-1', '30', undefined);
+      const result = await controller.getCustomerMessages('cust-1', req, '30', undefined);
 
-      expect(roomManager.getCustomerMessages).toHaveBeenCalledWith('cust-1', 30, undefined);
+      expect(roomManager.getCustomerMessages).toHaveBeenCalledWith(
+        'cust-1',
+        req.user,
+        30,
+        undefined,
+      );
       expect(result).toEqual(payload);
     });
 
     it('clamps limit above 100 down to 100', async () => {
-      jest.spyOn(roomManager, 'getCustomerMessages').mockResolvedValue({} as any);
-      await controller.getCustomerMessages('cust-1', '999', 'msg-9');
-      expect(roomManager.getCustomerMessages).toHaveBeenCalledWith('cust-1', 100, 'msg-9');
+      jest.spyOn(roomManager, 'getCustomerMessages').mockResolvedValue({} as never);
+      await controller.getCustomerMessages('cust-1', req, '999', 'msg-9');
+      expect(roomManager.getCustomerMessages).toHaveBeenCalledWith(
+        'cust-1',
+        req.user,
+        100,
+        'msg-9',
+      );
     });
   });
 
@@ -444,7 +461,12 @@ describe('StaffChatController', () => {
         { text: 'hello' },
         { user: { id: 'user-1' } } as any,
       );
-      expect(roomManager.sendCustomerMessage).toHaveBeenCalledWith('cust-1', 'user-1', 'hello');
+      // Task 29 #3 — ส่งผู้ใช้ทั้งก้อน (service ตัดขอบเขตสาขา/งานรายวันเอง)
+      expect(roomManager.sendCustomerMessage).toHaveBeenCalledWith(
+        'cust-1',
+        { id: 'user-1' },
+        'hello',
+      );
       expect(result).toEqual({
         success: false,
         error: 'ลูกค้ายังไม่เคยทักเข้ามาในแชท LINE — รอลูกค้าทักก่อน',
@@ -488,6 +510,40 @@ describe('StaffChatController', () => {
       expect(res.customer).toMatchObject({ chatPlaceholder: true });
       expect((res as any).possibleSamePerson).toEqual([{ customerId: 'c2' }]);
       expect(samePerson.findForRoom).toHaveBeenCalledWith('r1');
+    });
+
+    it('Task 33 — หัวห้องได้ financeLineStatus จาก attachFinanceLineStatus (ไม่มี U-id) ทั้ง OWNER และ SALES', async () => {
+      (roomManager.findById as jest.Mock).mockResolvedValue({
+        id: 'r1',
+        channel: 'LINE_FINANCE',
+        assignedToId: null,
+        customer: {
+          id: 'c1',
+          name: 'สมชาย',
+          phone: '0812345678',
+          nationalId: '1',
+          acquisitionSource: 'WALK_IN',
+        },
+      });
+      samePerson.findForRoom.mockResolvedValue([]);
+      (roomManager.attachFinanceLineStatus as jest.Mock).mockImplementation(
+        async (rows: Record<string, unknown>[]) =>
+          rows.map((row) => ({
+            ...row,
+            financeLineStatus: { verified: false, unlinkedAt: '2026-10-30T05:00:00.000Z' },
+          })),
+      );
+
+      for (const user of [
+        { id: 'u', role: 'OWNER' },
+        { id: 'sales-1', role: 'SALES' },
+      ]) {
+        const res = await controller.getRoom('r1', { user } as never);
+        expect(res.financeLineStatus).toEqual({
+          verified: false,
+          unlinkedAt: '2026-10-30T05:00:00.000Z',
+        });
+      }
     });
 
     it('SALES เปิดห้องที่ยังไม่มีเจ้าของ — ยังเห็น chatPlaceholder(false) + possibleSamePerson แต่ nationalId ถูกซ่อน (PDPA เดิม)', async () => {

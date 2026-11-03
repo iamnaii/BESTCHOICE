@@ -97,17 +97,21 @@ export class DunningRetryService {
     const message = action.messageContent ?? action.dunningRule.channel;
 
     try {
-      const sendResult = await this.notificationsService.send({
-        channel: channel as 'LINE' | 'SMS',
-        channelKey: channel === 'LINE' ? 'line-finance' : undefined,
-        recipient,
-        message,
-        relatedId: action.contractId,
-        subject: `Dunning retry: ${action.dunningRule.name}`,
-        noRetry: true, // manual retry — don't re-enqueue on failure
-        customerId: customer.id,
-        category: NotificationCategory.DUNNING,
-      });
+      const sendResult = await this.notificationsService.send(
+        {
+          channel: channel as 'LINE' | 'SMS',
+          channelKey: channel === 'LINE' ? 'line-finance' : undefined,
+          recipient,
+          message,
+          relatedId: action.contractId,
+          subject: `Dunning retry: ${action.dunningRule.name}`,
+          noRetry: true, // manual retry — don't re-enqueue on failure
+          customerId: customer.id,
+          category: NotificationCategory.DUNNING,
+        },
+        // พนักงานกดส่งซ้ำเอง — ไม่ถูกระงับช่วงผ่อนผันหลังผูก LINE ของสัญญานำเข้า (Task 30 รอบ 2 ข้อ 2)
+        { manual: true },
+      );
 
       if (sendResult.status === 'SENT') {
         const updated = await this.prisma.dunningAction.update({

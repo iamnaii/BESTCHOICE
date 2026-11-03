@@ -123,6 +123,7 @@ describe('ส่ง LINE จากคิวทวงถาม: สาขาต�
     ).resolves.toEqual({ sent: 1, failed: 0, total: 1 });
     expect(notifications.send).toHaveBeenCalledWith(
       expect.objectContaining({ recipient: `U${stamp}-assigned`, channelKey: 'line-finance' }),
+      { manual: true },
     );
   });
 

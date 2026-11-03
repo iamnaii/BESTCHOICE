@@ -7,12 +7,16 @@ import { NotificationCategory } from './notification-category.enum';
 
 describe('ComplianceService', () => {
   let service: ComplianceService;
-  let prisma: { notificationLog: { count: jest.Mock } };
+  let prisma: { notificationLog: { count: jest.Mock }; contract: { findFirst: jest.Mock } };
   let pdpa: { hasActiveConsent: jest.Mock };
   let holiday: { isHoliday: jest.Mock };
 
   beforeEach(async () => {
-    prisma = { notificationLog: { count: jest.fn().mockResolvedValue(0) } };
+    prisma = {
+      notificationLog: { count: jest.fn().mockResolvedValue(0) },
+      // Task 30 ข้อ 2 — สัญญาไม่อยู่ในช่วงผ่อนผันหลังผูก LINE (ค่าเริ่มต้น)
+      contract: { findFirst: jest.fn().mockResolvedValue(null) },
+    };
     pdpa = { hasActiveConsent: jest.fn().mockResolvedValue(true) };
     holiday = { isHoliday: jest.fn().mockReturnValue(false) };
 
@@ -177,12 +181,22 @@ describe('ComplianceService', () => {
     expect(result.allowed).toBe(true);
   });
 
+  it('Task 30 รอบ 2 ข้อ 2 — canSend ไม่ตัดสินช่วงผ่อนผันหลังผูก LINE (อยู่ที่ dispatch.send — ระงับเฉพาะที่ระบบส่งเอง) · ไม่อ่านสัญญา', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-05-04T07:00:00Z'));
+    prisma.contract.findFirst.mockResolvedValue({ id: 'k1' });
+    const result = await service.canSend({
+      channel: 'LINE',
+      customerId: 'c1',
+      contractId: 'k1',
+      category: NotificationCategory.DUNNING,
+    });
+    expect(result.allowed).toBe(true);
+    expect(prisma.contract.findFirst).not.toHaveBeenCalled();
+  });
+
   describe('ensureIdentificationPrefix', () => {
     it('prepends [BESTCHOICE FINANCE] to DUNNING message missing it', () => {
-      const result = service.ensureIdentificationPrefix(
-        'hello',
-        NotificationCategory.DUNNING,
-      );
+      const result = service.ensureIdentificationPrefix('hello', NotificationCategory.DUNNING);
       expect(result).toBe('[BESTCHOICE FINANCE] hello');
     });
 
@@ -195,10 +209,7 @@ describe('ComplianceService', () => {
     });
 
     it('does not modify REMINDER messages', () => {
-      const result = service.ensureIdentificationPrefix(
-        'hello',
-        NotificationCategory.REMINDER,
-      );
+      const result = service.ensureIdentificationPrefix('hello', NotificationCategory.REMINDER);
       expect(result).toBe('hello');
     });
 
@@ -218,10 +229,7 @@ describe('ComplianceService', () => {
     });
 
     it('allows ดำเนินคดี in LEGAL_ACTION stage', () => {
-      const matches = service.scanForbiddenContent(
-        'จะดำเนินคดีตามกฎหมาย',
-        'LEGAL_ACTION',
-      );
+      const matches = service.scanForbiddenContent('จะดำเนินคดีตามกฎหมาย', 'LEGAL_ACTION');
       expect(matches).toEqual([]);
     });
 
@@ -231,9 +239,7 @@ describe('ComplianceService', () => {
     });
 
     it('returns empty for clean message', () => {
-      const matches = service.scanForbiddenContent(
-        'แจ้งเตือน: ครบกำหนดชำระงวดที่ 3',
-      );
+      const matches = service.scanForbiddenContent('แจ้งเตือน: ครบกำหนดชำระงวดที่ 3');
       expect(matches).toEqual([]);
     });
   });

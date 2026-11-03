@@ -16,6 +16,18 @@ import {
   FINANCE_LINE_RECIPIENT_SELECT,
   financeLineRecipient,
 } from '../../line-oa/services/otp-verified-customer';
+import {
+  autoTriggerReferenceKey,
+  botNoticeKind,
+  findContractsDunnedToday,
+  findRemindersCoveredByDueAmountNotice,
+  noticeDueWindow,
+  paymentNoticeSentToday,
+} from '../../notifications/payment-notice-dedupe';
+import {
+  findContractsInLegacyLinkGrace,
+  recordLegacyLinkGraceSkip,
+} from '../../notifications/legacy-link-grace';
 import { AutoTriggerType, MessageRole, Payment, TriggerStatus } from '@prisma/client';
 
 const TIMEZONE = 'Asia/Bangkok';
@@ -30,6 +42,14 @@ const TIMEZONE = 'Asia/Bangkok';
  * Idempotency: ใช้ ChatAutoTrigger table เป็น marker
  *   - ก่อนส่ง: เช็คว่ามี trigger record (PENDING/SENT) สำหรับ payment+type นี้แล้วหรือยัง
  *   - หลังส่ง: mark SENT
+ *
+ * Task 30 — บอทเป็นตัวสำรอง (`payment-notice-dedupe.ts`): เตือนค่างวด T-5..T0 ของ A1 (`sendPaymentReminders` 08:00 — ข้อ 1) ·
+ *   ทวง T+1/T+3 ของ A2 (`sendOverdueNotices` 09:00 — รอบ 2 ข้อ 3) — งวดที่ตัวหลักส่งแล้ววันนี้ (หรือยังถือการส่งอยู่ในคิวส่งซ้ำ) = ข้าม
+ *   ไม่จองแถว ⇒ ลูกค้าได้หนึ่งข้อความต่อชนิดต่องวดต่อวัน
+ * Task 30 ข้อ 2 — ทวงหลังเลยกำหนด (ESCALATION_*) ของสัญญานำเข้าที่ลูกค้าผูก LINE ยังไม่ครบ 7 วัน = ไม่ส่ง (`legacy-link-grace.ts`) ·
+ *   เตือนค่างวดยังส่งระหว่างผ่อนผัน
+ * Task 30 รอบ 4 / 6 — ทวง: สัญญาที่ได้ข้อความทวงระดับสัญญาแล้ววันนี้ = ไม่ส่ง (`findContractsDunnedToday`) · เตือน: งวดที่ยอดอยู่ในข้อความทวงรอบ 08:05
+ *   แล้ว = ไม่ส่ง (`findRemindersCoveredByDueAmountNotice`)
  */
 @Injectable()
 export class AutoTriggerService {
@@ -90,11 +110,8 @@ export class AutoTriggerService {
     type: AutoTriggerType,
     template: (p: ReminderPayload) => string,
   ): Promise<void> {
-    const targetDate = new Date();
-    targetDate.setHours(0, 0, 0, 0);
-    targetDate.setDate(targetDate.getDate() + dayOffset);
-    const nextDay = new Date(targetDate);
-    nextDay.setDate(nextDay.getDate() + 1);
+    // วันปฏิทินไทย ไม่ขึ้นกับ TZ เครื่อง (Task 30 รอบ 3 C1 — เดิม setHours ตาม TZ เครื่อง: prod Bangkok / CI UTC คนละวัน)
+    const { gte: targetDate, lt: nextDay } = noticeDueWindow(new Date(), dayOffset);
 
     // หา payments ที่ครบกำหนดในวันนั้น + ยังไม่จ่าย
     const payments = await this.prisma.payment.findMany({
@@ -133,11 +150,60 @@ export class AutoTriggerService {
     let sent = 0;
     let skipped = 0;
     let failed = 0;
+    let dedupedByPrimary = 0;
+    let dedupedByContractDunning = 0;
+    let legacyGraceSkipped = 0;
+    // Task 30 — ชนิดข้อความ (เตือนค่างวด / แจ้งค้างชำระ) ที่บอทเป็นตัวสำรองของ A1 / A2 (payment-notice-dedupe.ts)
+    const noticeKind = botNoticeKind(type);
+    const isPaymentReminder = noticeKind === 'REMINDER';
+    // ทวงหลังเลยกำหนด: สัญญาในช่วงผ่อนผันหลังผูก LINE (query เดียวต่อรอบ) · เตือนค่างวดไม่ถาม
+    const legacyGrace = isPaymentReminder
+      ? new Set<string>()
+      : await findContractsInLegacyLinkGrace(
+          this.prisma,
+          payments.map((p) => p.contractId),
+        );
+    // ทวง (รอบ 4 I2): สัญญาที่ได้ข้อความทวงระดับสัญญาแล้ววันนี้ — A2 เว้นให้แล้ว บอทต้องไม่ส่งแทน ·
+    // เตือน (รอบ 6 I3 — เจ้าของ 01/11 ข้อ 1 ทาง ก): เฉพาะงวดที่ยอดอยู่ในข้อความทวงรอบ 08:05 ของสัญญาแล้ว (ครบกำหนดแล้ว — ในทางปฏิบัติ T0)
+    const skipIds =
+      noticeKind === 'OVERDUE'
+        ? await findContractsDunnedToday(
+            this.prisma,
+            payments.map((p) => p.contractId),
+          )
+        : noticeKind === 'REMINDER'
+          ? await findRemindersCoveredByDueAmountNotice(this.prisma, payments)
+          : new Set<string>();
+    const skippedForDunning = (p: { id: string; contractId: string }) =>
+      noticeKind === 'OVERDUE' ? skipIds.has(p.contractId) : skipIds.has(p.id);
 
     for (const payment of payments) {
       const lineUserId = financeLineRecipient(payment.contract.customer);
       if (!lineUserId) {
         skipped++;
+        continue;
+      }
+
+      // Task 30 — ตัวหลัก (A1 เตือนค่างวด / A2 แจ้งค้างชำระ) ส่งงวดนี้แล้ววันนี้ ⇒ ไม่ส่งซ้ำ (ไม่จองแถว: สั่งรันซ้ำก็ตัดสินเหมือนเดิม)
+      if (noticeKind && (await paymentNoticeSentToday(this.prisma, noticeKind, payment.id))) {
+        dedupedByPrimary++;
+        continue;
+      }
+      if (skippedForDunning(payment)) {
+        dedupedByContractDunning++;
+        continue;
+      }
+
+      // Task 30 ข้อ 2 — ทวงของสัญญานำเข้าในช่วงผ่อนผันหลังผูก LINE: ไม่ส่ง ไม่จองแถว · เก็บแถว BLOCKED ให้ตรวจย้อนได้
+      if (legacyGrace.has(payment.contractId)) {
+        await recordLegacyLinkGraceSkip(this.prisma, {
+          recipient: lineUserId,
+          subject: `AutoTrigger ${type}`,
+          message: `งวด ${payment.installmentNo} — ระงับช่วงผ่อนผันหลังผูก LINE`,
+          relatedId: payment.id,
+          customerId: payment.contract.customerId,
+        });
+        legacyGraceSkipped++;
         continue;
       }
 
@@ -157,7 +223,9 @@ export class AutoTriggerService {
       else if (result === 'failed') failed++;
     }
 
-    this.logger.log(`[AutoTrigger] ${type}: sent=${sent} skipped=${skipped} failed=${failed}`);
+    this.logger.log(
+      `[AutoTrigger] ${type}: sent=${sent} skipped=${skipped} failed=${failed} dedupedByPrimary=${dedupedByPrimary} contractDunned=${dedupedByContractDunning} legacyGrace=${legacyGraceSkipped}`,
+    );
   }
 
   private async sendReminder(args: {
@@ -189,7 +257,7 @@ export class AutoTriggerService {
     };
 
     const text = args.template(payload);
-    const referenceKey = `${args.type}:${args.payment.id}`;
+    const referenceKey = autoTriggerReferenceKey(args.type, args.payment.id);
 
     // Atomic insert ผ่าน @@unique([customerId, referenceKey])
     // ถ้า duplicate (concurrent run / re-run) → P2002 → skip ปลอดภัย

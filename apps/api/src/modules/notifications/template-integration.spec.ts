@@ -11,7 +11,7 @@ import { IntegrationConfigService } from '../integrations/integration-config.ser
 
 describe('NotificationsService — sendFromTemplate integration', () => {
   let service: NotificationsService;
-  let prisma: any;
+  let prisma: Record<string, Record<string, jest.Mock>>;
   let templateService: { findByEventType: jest.Mock };
   let integrationConfig: { getValue: jest.Mock };
   let fetchMock: jest.SpyInstance;
@@ -24,12 +24,12 @@ describe('NotificationsService — sendFromTemplate integration', () => {
           .mockImplementation(({ data }) => Promise.resolve({ id: 'log1', ...data })),
         count: jest.fn().mockResolvedValue(0),
       },
+      // Task 30 ข้อ 2 — ด่านผ่อนผันหลังผูก LINE อ่านสัญญาของ relatedId (ไม่พบ = ไม่อยู่ในช่วง)
+      contract: { findFirst: jest.fn().mockResolvedValue(null) },
     };
     templateService = { findByEventType: jest.fn() };
     integrationConfig = { getValue: jest.fn().mockResolvedValue('token') };
-    fetchMock = jest
-      .spyOn(global, 'fetch')
-      .mockResolvedValue(new Response('{}', { status: 200 }) as any);
+    fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       providers: [
@@ -91,9 +91,9 @@ describe('NotificationsService — sendFromTemplate integration', () => {
 
   it('throws InternalServerErrorException when template missing', async () => {
     templateService.findByEventType.mockResolvedValueOnce(null);
-    await expect(
-      service.sendFromTemplate('nonexistent.template', {}, 'Uxxx', {}),
-    ).rejects.toThrow(InternalServerErrorException);
+    await expect(service.sendFromTemplate('nonexistent.template', {}, 'Uxxx', {})).rejects.toThrow(
+      InternalServerErrorException,
+    );
   });
 
   it('returns BLOCKED when template inactive', async () => {
@@ -134,12 +134,10 @@ describe('NotificationsService — sendFromTemplate integration', () => {
     // sub-service, so spy on dispatch.send (assertion below unchanged).
     const sendSpy = jest.spyOn(service.dispatch, 'send');
 
-    await service.sendFromTemplate(
-      'dunning.reminder',
-      { name: 'John' },
-      'Uxxx',
-      { fallbackPhone: '0891234567', customerId: 'c1' },
-    );
+    await service.sendFromTemplate('dunning.reminder', { name: 'John' }, 'Uxxx', {
+      fallbackPhone: '0891234567',
+      customerId: 'c1',
+    });
 
     expect(sendSpy).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -148,6 +146,8 @@ describe('NotificationsService — sendFromTemplate integration', () => {
         channelKey: 'line-finance',
         category: 'DUNNING',
       }),
+      // Task 30 รอบ 2 ข้อ 2 — ไม่ระบุ manual = ระบบส่งเอง · รอบ 4 — แม่แบบทั่วไปไม่ยกเว้นช่วงผ่อนผัน
+      { manual: undefined, legacyGraceExempt: false },
     );
   });
 });

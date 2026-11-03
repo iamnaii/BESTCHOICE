@@ -130,6 +130,8 @@ describe('DunningRetryService', () => {
       expect(updateArg.data.status).toBe('SENT');
       expect(updateArg.data.executedById).toBe('user-1');
       expect(updateArg.data.result).toContain('manual retry OK');
+      // Task 30 รอบ 2 ข้อ 2 — พนักงานกดส่งซ้ำเอง = ส่งด้วยมือ
+      expect(mockNotifications.send.mock.calls[0][1]).toEqual({ manual: true });
     });
 
     it('keeps FAILED and throws BadRequest when send returns FAILED', async () => {

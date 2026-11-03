@@ -13,20 +13,24 @@ import { NotificationTemplateService } from './notification-template.service';
 
 describe('NotificationsService — compliance integration', () => {
   let service: NotificationsService;
-  let prisma: any;
+  let prisma: Record<string, Record<string, jest.Mock>>;
   let pdpa: { hasActiveConsent: jest.Mock };
   let fetchMock: jest.SpyInstance;
 
   beforeEach(async () => {
     prisma = {
       notificationLog: {
-        create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'log1', ...data })),
+        create: jest
+          .fn()
+          .mockImplementation(({ data }) => Promise.resolve({ id: 'log1', ...data })),
         count: jest.fn().mockResolvedValue(0),
       },
+      // Task 30 ข้อ 2 — ด่านผ่อนผันหลังผูก LINE อ่านสัญญาของ relatedId (ไม่พบ = ไม่อยู่ในช่วง)
+      contract: { findFirst: jest.fn().mockResolvedValue(null) },
     };
     pdpa = { hasActiveConsent: jest.fn().mockResolvedValue(true) };
     const integrationConfig = { getValue: jest.fn().mockResolvedValue('token') };
-    fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }) as any);
+    fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
 
     const moduleRef = await Test.createTestingModule({
       providers: [

@@ -11,10 +11,11 @@ interface Props {
   contract: ContractRow | null;
   onClose: () => void;
   /**
-   * Optional callback fired right after a successful send. The underlying
-   * adhoc-LINE mutation returns `{ sent, failed, total }` (no message id),
-   * so we always invoke this with no args. Existing call sites are
-   * unaffected.
+   * Optional callback fired right after the message actually reached the
+   * customer (`sent > 0`). The underlying adhoc-LINE mutation returns
+   * `{ sent, failed, total, notSent }` (no message id), so we always invoke
+   * this with no args. Task 34 ข้อ 2 — ถูกระงับ / ยังไม่ได้ส่ง ไม่เรียก
+   * (โหมดโฟกัสจะได้ไม่บันทึกผล "ส่ง LINE แล้ว")
    */
   onSent?: (messageId?: string) => void;
 }
@@ -90,11 +91,13 @@ export default function SendLineAdHocDialog({ open, contract, onClose, onSent }:
         customMessage: mode === 'custom' ? customMessage.trim() : undefined,
       },
       {
-        onSuccess: () => {
+        onSuccess: (data) => {
           // Notify parent (e.g. FocusMode) so it can record a LINE_SENT
-          // assignment action + advance. The mutation response has no
-          // message id surfaced — invoke with no arg.
-          onSent?.();
+          // assignment action + advance — only when the message was actually
+          // sent (Task 34 ข้อ 2: blocked/queued sends show their reason via
+          // the hook's toast). The mutation response has no message id
+          // surfaced — invoke with no arg.
+          if (data.sent > 0) onSent?.();
           onClose();
         },
       },

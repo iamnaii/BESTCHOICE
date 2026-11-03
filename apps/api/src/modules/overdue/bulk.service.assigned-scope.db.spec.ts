@@ -120,7 +120,7 @@ describe('ส่ง LINE จากคิวทวงถาม: สาขาต�
   it('SALES สาขา Y ได้งานวันนี้ของสัญญาสาขา X → ส่งได้', async () => {
     await expect(
       service.sendLineAdhoc(assigned, msg, { id: salesY, role: 'SALES', branchId: branchY }),
-    ).resolves.toEqual({ sent: 1, failed: 0, total: 1 });
+    ).resolves.toEqual({ sent: 1, failed: 0, total: 1, notSent: [] });
     expect(notifications.send).toHaveBeenCalledWith(
       expect.objectContaining({ recipient: `U${stamp}-assigned`, channelKey: 'line-finance' }),
       { manual: true },
@@ -147,7 +147,7 @@ describe('ส่ง LINE จากคิวทวงถาม: สาขาต�
     await assign(unassigned, salesNoBranch, collectionsSessionDay());
     await expect(
       service.sendLineAdhoc(unassigned, msg, { id: salesNoBranch, role: 'SALES', branchId: null }),
-    ).resolves.toEqual({ sent: 1, failed: 0, total: 1 });
+    ).resolves.toEqual({ sent: 1, failed: 0, total: 1, notSent: [] });
     await expect(
       service.sendLineAdhoc(assigned, msg, { id: salesNoBranch, role: 'SALES', branchId: null }),
     ).rejects.toThrow(NotFoundException);
@@ -159,6 +159,6 @@ describe('ส่ง LINE จากคิวทวงถาม: สาขาต�
         { contractIds: [assigned, assignedYesterday], ...msg },
         { id: salesY, role: 'SALES', branchId: branchY },
       ),
-    ).resolves.toEqual({ sent: 1, failed: 0, total: 1 });
+    ).resolves.toEqual({ sent: 1, failed: 0, total: 1, notSent: [] });
   });
 });

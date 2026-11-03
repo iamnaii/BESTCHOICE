@@ -1,0 +1,82 @@
+import { LINE_FINANCE_NOT_VERIFIED_MESSAGE } from '../line-oa/services/finance-line-link';
+import type { ComplianceBlockReason } from './compliance.service';
+import { LEGACY_LINK_GRACE_BLOCK_REASON } from './legacy-link-grace';
+
+/**
+ * Task 34 ข้อ 2 — ผลของการส่งที่**พนักงานกดเอง** (`NotificationsService.send` → `{ status, blockReason }`) แปลเป็น "ส่งแล้ว" หรือ
+ * "ไม่ได้ส่ง พร้อมเหตุผลภาษาไทย" ให้หน้าเว็บแสดง · เดิมผู้เรียกนับทุกครั้งที่ `send()` ไม่ throw เป็นส่งแล้ว ⇒ ข้อความที่ถูกระงับ
+ * (`BLOCKED`) · รอเวลาทำการ (`DELAYED`) · ส่ง LINE ไม่ผ่านแล้วเข้าคิวส่งซ้ำ (`FAILED`) ขึ้นว่าส่งสำเร็จ
+ *
+ * "ส่งแล้ว" = `SENT` เท่านั้น (รวม LINE ไม่ผ่านแล้วส่ง SMS แทนได้ — `send()` คืน `SENT`)
+ */
+export type NotSentReason =
+  | ComplianceBlockReason
+  | typeof LEGACY_LINK_GRACE_BLOCK_REASON
+  /** ถูกระงับด้วยเหตุผลที่ไม่อยู่ในรายการนี้ */
+  | 'BLOCKED'
+  /** ส่งทาง LINE ไม่ผ่าน (และไม่มี/ส่ง SMS แทนไม่ผ่าน) — `send()` ตั้งให้คิวส่งซ้ำลองใหม่เอง */
+  | 'DELIVERY_FAILED'
+  /** ลูกค้าไม่มีแถว OTP ที่ยังผูก — ไม่มีปลายทาง LINE การเงิน */
+  | 'NO_RECIPIENT'
+  /** `send()` throw — ไม่รู้ผล */
+  | 'SEND_ERROR';
+
+/**
+ * เหตุผลภาษาไทย — ขึ้นต้นด้วยผล ("ไม่ได้ส่ง" / "ยังไม่ได้ส่ง" = ระบบส่งเองภายหลัง) แล้วทางที่ทำได้จริง:
+ * - นอกเวลา: คิวส่งซ้ำตรวจกติกาอีกครั้งแล้วส่งเมื่อเข้าเวลา (`processRetryQueue` — แถว `DELAYED`) · เวลาตาม `business-hours.util.ts`
+ * - เพดานวันละครั้ง (พ.ร.บ.ทวงถามหนี้ ม.9 — นับทุกช่องทางของสัญญา) ⇒ ไม่ชวนโทรวันเดียวกัน
+ * - ไม่มีความยินยอม: ผู้ทวงโทรหาลูกค้าจากคิวทวงถามได้ (ปุ่มโทร/บันทึกการโทร)
+ * - ไม่มีปลายทาง: ข้อความเดิมของระบบ (`LINE_FINANCE_NOT_VERIFIED_MESSAGE`)
+ */
+export const NOT_SENT_REASON_TEXT: Record<NotSentReason, string> = {
+  OUTSIDE_HOURS:
+    'ยังไม่ได้ส่ง — นอกเวลาทวงถามตามกฎหมาย (วันธรรมดา 08:00–20:00 น. · วันหยุด 08:00–18:00 น.) ระบบเก็บไว้ส่งให้เองเมื่อถึงเวลา',
+  NO_CONSENT:
+    'ไม่ได้ส่ง — ลูกค้ายังไม่ได้ให้ความยินยอม PDPA ระบบจึงไม่ส่งข้อความทวงทาง LINE · ติดต่อลูกค้าทางโทรศัพท์แทน',
+  FREQUENCY_CAP:
+    'ไม่ได้ส่ง — วันนี้สัญญานี้ได้ข้อความทวงไปแล้ว (ทวงได้วันละ 1 ครั้งต่อสัญญา) · ส่งใหม่ได้พรุ่งนี้',
+  HOLIDAY_BLOCK: 'ไม่ได้ส่ง — วันหยุด ระบบไม่ส่งข้อความทวง · ส่งใหม่ได้ในวันทำการ',
+  [LEGACY_LINK_GRACE_BLOCK_REASON]:
+    'ไม่ได้ส่ง — สัญญาลูกค้าเก่าอยู่ในช่วงผ่อนผัน 7 วันหลังผูก LINE ระบบจึงไม่ส่งข้อความทวง',
+  BLOCKED: 'ไม่ได้ส่ง — ระบบระงับข้อความนี้',
+  DELIVERY_FAILED: 'ยังไม่ได้ส่ง — ส่งทาง LINE ไม่ผ่าน ระบบจะลองส่งใหม่อัตโนมัติ',
+  NO_RECIPIENT: LINE_FINANCE_NOT_VERIFIED_MESSAGE,
+  SEND_ERROR: 'ไม่ได้ส่ง — ระบบส่งข้อความไม่ผ่าน กรุณาลองใหม่',
+};
+
+export type SendOutcome =
+  | { sent: true }
+  | { sent: false; reason: NotSentReason; reasonText: string };
+
+/** เหตุผลที่ด่านของ `send()` ส่งกลับมาใน `blockReason` (compliance + ช่วงผ่อนผัน) */
+const BLOCK_REASONS: ReadonlySet<string> = new Set<NotSentReason>([
+  'OUTSIDE_HOURS',
+  'NO_CONSENT',
+  'FREQUENCY_CAP',
+  'HOLIDAY_BLOCK',
+  LEGACY_LINK_GRACE_BLOCK_REASON,
+]);
+
+function notSent(reason: NotSentReason): SendOutcome {
+  return { sent: false, reason, reasonText: NOT_SENT_REASON_TEXT[reason] };
+}
+
+/** เหตุผลที่ไม่ได้ส่งของการเรียกที่ไม่ถึง `send()` (ไม่มีปลายทาง / throw) */
+export function notSentOutcome(reason: 'NO_RECIPIENT' | 'SEND_ERROR'): SendOutcome {
+  return notSent(reason);
+}
+
+/**
+ * ผลของ `NotificationsService.send` → ส่งแล้ว / ไม่ได้ส่งพร้อมเหตุผล · `DELAYED` = นอกเวลาทำการ (ด่านเดียวที่ทำให้เลื่อน) ·
+ * `FAILED` = ส่งไม่ผ่านแล้วเข้าคิวส่งซ้ำ · สถานะอื่น (`BLOCKED` · `SKIPPED`) = เหตุผลจาก `blockReason` ถ้ารู้จัก
+ */
+export function describeSendOutcome(result: {
+  status: string;
+  blockReason?: string | null;
+}): SendOutcome {
+  if (result.status === 'SENT') return { sent: true };
+  if (result.status === 'DELAYED') return notSent('OUTSIDE_HOURS');
+  if (result.status === 'FAILED') return notSent('DELIVERY_FAILED');
+  const reason = result.blockReason;
+  return notSent(reason && BLOCK_REASONS.has(reason) ? (reason as NotSentReason) : 'BLOCKED');
+}

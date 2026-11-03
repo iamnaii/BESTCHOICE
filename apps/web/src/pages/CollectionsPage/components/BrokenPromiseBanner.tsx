@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Bell, Send, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '@/lib/api';
+import { describeNotSent, type LineSendResult } from '../lineSendResult';
 
 /**
  * P1 Task 14 — Broken-Promise Auto-Suggest banner.
@@ -57,17 +58,23 @@ export default function BrokenPromiseBanner() {
       // — we do client-side substitution here because the server-side template
       // resolver only knows {{customerName}} and {{contractNumber}}, which is
       // exactly what we need.
-      const { data } = await api.post<{ sent: number; failed: number; total: number }>(
-        '/overdue/bulk/send-line',
-        {
-          contractIds,
-          customMessage: PROMISE_DUE_TEMPLATE,
-        },
-      );
+      const { data } = await api.post<LineSendResult>('/overdue/bulk/send-line', {
+        contractIds,
+        customMessage: PROMISE_DUE_TEMPLATE,
+      });
       return data;
     },
     onSuccess: (res) => {
-      toast.success(`ส่ง LINE สำเร็จ ${res.sent}/${res.total} ราย (ล้มเหลว ${res.failed})`);
+      // Task 34 ข้อ 2 — "ส่งแล้ว" นับเฉพาะที่ถึงลูกค้า · ที่ไม่ได้ส่ง (ถูกระงับ / รอเวลาทำการ / เข้าคิวส่งซ้ำ) แจ้งแยกพร้อมเหตุผลจาก API
+      const notSent = res.notSent ?? [];
+      if (res.sent > 0) toast.success(`ส่ง LINE แล้ว ${res.sent} จาก ${res.total} ราย`);
+      if (notSent.length > 0) {
+        toast.error(`ไม่ได้ส่ง ${notSent.length} จาก ${res.total} ราย`, {
+          description: describeNotSent(notSent),
+        });
+      } else if (res.sent === 0) {
+        toast.error('ส่ง LINE ไม่สำเร็จ — กรุณาลองใหม่');
+      }
       qc.invalidateQueries({ queryKey: ['promise-due-reminders'] });
       qc.invalidateQueries({ queryKey: ['collections-queue'] });
     },

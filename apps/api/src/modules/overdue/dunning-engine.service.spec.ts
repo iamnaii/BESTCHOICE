@@ -12,7 +12,7 @@ jest.mock('@sentry/nestjs', () => ({
 }));
 
 const mockPrisma = {
-  payment: { findMany: jest.fn(), findUnique: jest.fn() },
+  payment: { findMany: jest.fn(), findUnique: jest.fn(), findFirst: jest.fn() },
   dunningAction: {
     findFirst: jest.fn(),
     create: jest.fn(),
@@ -333,6 +333,8 @@ describe('DunningEngineService', () => {
     it('กฎตามเหตุการณ์ (ไม่รับสาย ฯลฯ): BLOCKED LEGACY_LINK_GRACE → SKIPPED', async () => {
       mockPrisma.dunningRule.findFirst.mockResolvedValueOnce(eventRule);
       mockPrisma.contract.findUnique.mockResolvedValueOnce(samplePayment.contract);
+      // ข้อความใช้งวด/ยอด — สัญญามีงวดค้าง (รอบ 6 m7: ไม่ระบุงวด = ใช้งวดค้างที่เก่าที่สุด)
+      mockPrisma.payment.findFirst.mockResolvedValueOnce(samplePayment);
       mockNotificationsService.send.mockResolvedValueOnce({
         id: 'log-10',
         status: 'BLOCKED',
@@ -400,6 +402,7 @@ describe('DunningEngineService', () => {
       mockPrisma.dunningAction.findFirst.mockResolvedValue(null); // no recent dedup
       mockPrisma.contract.findUnique.mockResolvedValue(sampleContract);
       mockPrisma.payment.findUnique.mockResolvedValue(null);
+      mockPrisma.payment.findFirst.mockResolvedValue(null);
       mockPrisma.dunningAction.create.mockResolvedValue({ id: 'action-evt-1' });
       mockNotificationsService.send.mockResolvedValue({ id: 'notif-test', status: 'SENT' });
     });
@@ -442,6 +445,57 @@ describe('DunningEngineService', () => {
         expect(mockNotificationsService.send.mock.calls[0][1]).toEqual({ legacyGraceExempt: true });
       },
     );
+
+    describe('Task 30 รอบ 6 m7 — ทางโทรส่ง paymentId = null ⇒ เติมงวด/ยอดจากงวดค้างที่เก่าที่สุด', () => {
+      const ruleWithPaymentVars = {
+        ...eventRule,
+        messageTemplate:
+          'เรียน {{customerName}} กรุณาติดต่อกลับเพื่อชำระงวดที่ {{installmentNo}} ยอด {{amount}} ฿',
+      };
+
+      it('ไม่มี paymentId → ใช้งวดค้างที่ครบกำหนดแล้วงวดแรก (นิยามเดียวกับแจ้งสถานะ/ขั้นทวง) — ข้อความไม่มีช่องว่าง', async () => {
+        mockPrisma.dunningRule.findFirst.mockResolvedValueOnce(ruleWithPaymentVars);
+        mockPrisma.payment.findFirst.mockResolvedValueOnce({
+          id: 'pay-3',
+          installmentNo: 3,
+          amountDue: { toNumber: () => 1515.83 },
+          dueDate: new Date('2026-10-01T17:00:00Z'),
+        });
+
+        await service.executeEventTrigger('CALL_NO_ANSWER', 'c-1', null, 'cl-1');
+
+        const { where, orderBy } = mockPrisma.payment.findFirst.mock.calls[0][0];
+        expect(where).toMatchObject({
+          contractId: 'c-1',
+          deletedAt: null,
+          status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] },
+          dueDate: { lt: expect.any(Date) },
+        });
+        expect(orderBy).toEqual({ installmentNo: 'asc' });
+        const message = mockNotificationsService.send.mock.calls[0][0].message;
+        expect(message).toContain('งวดที่ 3');
+        expect(message).toContain('1,515.83');
+        expect(message).not.toMatch(/งวดที่\s+ยอด|ยอด\s+฿/);
+      });
+
+      it('ไม่มี paymentId และไม่มีงวดค้าง + ข้อความต้องใช้งวด/ยอด → ไม่ส่ง (SKIPPED) ไม่ส่งข้อความที่มีช่องว่าง', async () => {
+        mockPrisma.dunningRule.findFirst.mockResolvedValueOnce(ruleWithPaymentVars);
+
+        await service.executeEventTrigger('CALL_NO_ANSWER', 'c-1', null, 'cl-1');
+
+        expect(mockNotificationsService.send).not.toHaveBeenCalled();
+        expect(mockPrisma.dunningAction.create.mock.calls[0][0].data).toMatchObject({
+          status: 'SKIPPED',
+          result: 'NO_DUE_INSTALLMENT',
+        });
+      });
+
+      it('ไม่มีงวดค้าง แต่ข้อความไม่ใช้งวด/ยอด (เช่น ปลดล็อก) → ส่งตามเดิม', async () => {
+        await service.executeEventTrigger('CALL_NO_ANSWER', 'c-1', null, 'cl-1');
+
+        expect(mockNotificationsService.send).toHaveBeenCalledTimes(1);
+      });
+    });
 
     it('dedups within 4h window — second call skipped', async () => {
       // First call: no recent action

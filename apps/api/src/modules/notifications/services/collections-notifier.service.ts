@@ -19,6 +19,7 @@ import {
   STATUS_NOTICE_SUBJECT,
   autoPayLinkPaymentWhere,
   botNoticeSentToday,
+  dueUnpaidPaymentsWhere,
   dunningStageTemplateEvent,
   findContractsDunnedToday,
   findRemindersCoveredByDueAmountNotice,
@@ -33,11 +34,6 @@ import { bangkokStartOfDay } from '../../../utils/date.util';
 
 /** เวลาส่งข้อความผลรอบกลางคืน (A3/A4) — ต้องอยู่ในช่วงเวลาทำการของ `isWithinBusinessHours` */
 export const OVERNIGHT_COLLECTIONS_NOTICES_CRON = '5 8 * * *';
-
-/** งวดที่ถึงกำหนดแล้วและยังค้าง — นิยามเดียวของ A3 (แจ้งสถานะ) และ A4 (ขั้นทวง) */
-function dueUnpaidPaymentsWhere(now: Date): Prisma.PaymentWhereInput {
-  return { status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] }, dueDate: { lt: now } };
-}
 
 /**
  * ยอดค้างที่ถึงกำหนดแล้ว (ค่างวดคงค้าง + ค่าปรับ) ของงวดจาก `dueUnpaidPaymentsWhere` — ≤ 0 = ไม่มีอะไรต้องทวง ·

@@ -145,6 +145,18 @@ export async function findContractsDunnedToday(
   return new Set(rows.map((row) => row.relatedId).filter((id): id is string => id !== null));
 }
 
+/**
+ * งวดที่ครบกำหนดแล้ว (ก่อน `now`) และยังค้าง — **นิยามเดียว** ของยอดที่ข้อความทวงระดับสัญญาบอก: แจ้งสถานะ (A3) · ขั้นทวง (A4) ·
+ * กฎทวงตามเหตุการณ์ที่ไม่ได้ระบุงวด (รอบ 6 m7 — `DunningEngineService.executeEventTrigger` ใช้งวดแรกในชุดนี้)
+ */
+export function dueUnpaidPaymentsWhere(now: Date): Prisma.PaymentWhereInput {
+  return {
+    status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] },
+    dueDate: { lt: now },
+    deletedAt: null,
+  };
+}
+
 /** แถวที่ส่งแล้ววันนี้ (`SENT`) หรือยังถือการส่งอยู่ (`RETRY_PENDING` / `DELAYED` ที่สร้างวันนี้ — ส่งเองภายหลัง) · "วันนี้" = ปฏิทินไทย */
 function sentOrHeldToday(now: Date): Prisma.NotificationLogWhereInput[] {
   const dayStart = bangkokStartOfDay(now);

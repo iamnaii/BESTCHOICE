@@ -15,7 +15,7 @@ import {
   LEGACY_LINK_GRACE_BLOCK_REASON,
   LEGACY_LINK_GRACE_EXEMPT,
 } from '../notifications/legacy-link-grace';
-import { noticeDueWindow } from '../notifications/payment-notice-dedupe';
+import { dueUnpaidPaymentsWhere, noticeDueWindow } from '../notifications/payment-notice-dedupe';
 import { formatDateShort } from '../../utils/thai-date.util';
 
 /**
@@ -33,6 +33,11 @@ function actionOutcome(sendResult: { id: string; status: string; blockReason?: s
   }
   return { status: 'FAILED', result };
 }
+
+/** ตัวแปรในข้อความที่มาจากงวด — ไม่มีงวดให้เติม = ข้อความมีช่องว่าง (รอบ 6 m7) */
+const PAYMENT_TEMPLATE_VARS = ['installmentNo', 'amount', 'dueDate'] as const;
+/** ผลของ DunningAction เมื่อข้อความต้องใช้งวดแต่สัญญาไม่มีงวดค้าง */
+const NO_DUE_INSTALLMENT = 'NO_DUE_INSTALLMENT';
 
 export interface TemplateVars {
   customerName: string;
@@ -410,9 +415,14 @@ export class DunningEngineService {
       return;
     }
 
+    // Task 30 รอบ 6 m7 — ผู้เรียกที่ไม่ได้ระบุงวด (ทางบันทึกการโทร `contact-log.service.ts` · ล็อก/ปลดล็อก · จดหมาย) เดิมได้งวด/ยอด/วันครบเป็นค่าว่าง
+    // ⇒ ลูกค้าเห็น "ชำระงวดที่  ยอด  ฿" · ใช้งวดค้างที่ครบกำหนดแล้วงวดแรกของสัญญา (นิยามเดียวกับยอดของแจ้งสถานะ/ขั้นทวง)
     const payment = paymentId
       ? await this.prisma.payment.findUnique({ where: { id: paymentId } })
-      : null;
+      : await this.prisma.payment.findFirst({
+          where: { contractId, ...dueUnpaidPaymentsWhere(new Date()) },
+          orderBy: { installmentNo: 'asc' },
+        });
 
     const vars: TemplateVars = {
       customerName: contract.customer.name,
@@ -426,6 +436,27 @@ export class DunningEngineService {
 
     const templateBody = await this.resolveTemplateBody(rule);
     const messageContent = this.renderTemplate(templateBody, vars);
+
+    // ไม่มีงวดค้างเลย แต่ข้อความต้องบอกงวด/ยอด/วันครบ ⇒ ไม่ส่งข้อความที่มีช่องว่าง (เก็บ DunningAction SKIPPED ให้ตรวจย้อนได้)
+    if (
+      !payment &&
+      PAYMENT_TEMPLATE_VARS.some((key) => templateBody.includes(`{{${key}}}`) && !extraVars[key])
+    ) {
+      await this.prisma.dunningAction.create({
+        data: {
+          dunningRuleId: rule.id,
+          contractId,
+          paymentId: paymentId ?? undefined,
+          channel: rule.channel,
+          status: 'SKIPPED',
+          messageContent,
+          result: NO_DUE_INSTALLMENT,
+          paymentLinkUrl: null,
+          executedAt: null,
+        },
+      });
+      return;
+    }
 
     let paymentLinkUrl: string | undefined;
     // ปลายทาง LINE การเงิน = แถว OTP ของลูกค้า (Task 22 I-1 ง) ไม่ใช่คอลัมน์ line_id_finance ที่อาจค้าง

@@ -332,6 +332,12 @@ it('วันครบกำหนดเที่ยงคืนไทย + ท�
     'แจ้งล็อก 01:30 + งวด 2 T0': received(lockedNight),
   }).toEqual(expected);
   expect(a1.deferredToPayLink).toBeGreaterThanOrEqual(1);
+  // รอบ 6 m7 — กฎไม่รับสายจากทางโทร (ไม่ระบุงวด) บอกงวด/ยอดของงวดค้างที่เก่าที่สุด ไม่ใช่ "งวดที่  ยอด  ฿"
+  const noAnswerLog = await prisma.notificationLog.findFirst({
+    where: { relatedId: noAnswer.contractId, status: 'SENT', channel: 'LINE' },
+    select: { message: true },
+  });
+  expect(noAnswerLog?.message).toContain('งวดที่ 1 ยอด 1,515.83');
 
   // ข้อความที่ A1/A2 บันทึกบอกจำนวนวันตามวันไทย · วันครบกำหนด/วันเปลี่ยนสถานะไม่มีแถว "แจ้งค้างชำระ" ของ A2
   const logs = await prisma.notificationLog.findMany({

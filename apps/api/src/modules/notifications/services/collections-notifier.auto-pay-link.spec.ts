@@ -25,7 +25,14 @@ describe('CollectionsNotifierService.sendAutoPaymentLinks — การ์ดล
     },
   };
 
-  function build(opts: { sentToday?: boolean; linkFails?: boolean; dunnedToday?: boolean } = {}) {
+  function build(
+    opts: {
+      sentToday?: boolean;
+      linkFails?: boolean;
+      dunnedToday?: boolean;
+      noConsent?: boolean;
+    } = {},
+  ) {
     const prisma = {
       payment: { findMany: jest.fn().mockResolvedValue([payment]) },
       notificationLog: {
@@ -35,6 +42,10 @@ describe('CollectionsNotifierService.sendAutoPaymentLinks — การ์ดล
         create: jest.fn().mockResolvedValue({ id: 'log' }),
       },
       chatAutoTrigger: { findFirst: jest.fn().mockResolvedValue(null) },
+      // Task 34 ข้อ 3 — ความยินยอม PDPA (ด่านเดียวกับ A1/A2)
+      pDPAConsent: {
+        findFirst: jest.fn().mockResolvedValue(opts.noConsent ? null : { id: 'consent-1' }),
+      },
     };
     const lineOa = { sendFlexMessage: jest.fn().mockResolvedValue(undefined) };
     const links = {
@@ -103,6 +114,30 @@ describe('CollectionsNotifierService.sendAutoPaymentLinks — การ์ดล
     expect(links.createPaymentLink).toHaveBeenCalledTimes(1);
     expect(lineOa.sendFlexMessage).toHaveBeenCalledTimes(1);
     expect(prisma.notificationLog.findMany).not.toHaveBeenCalled();
+  });
+
+  it('Task 34 ข้อ 3 — ลูกค้าไม่มีความยินยอม PDPA → ไม่สร้างลิงก์ ไม่ส่งการ์ด · แถว IN_APP SKIPPED แบบเดียวกับ A1/A2', async () => {
+    const { prisma, links, lineOa, service } = build({ noConsent: true });
+
+    await service.sendAutoPaymentLinks(NOW);
+
+    expect(links.createPaymentLink).not.toHaveBeenCalled();
+    expect(lineOa.sendFlexMessage).not.toHaveBeenCalled();
+    expect(prisma.pDPAConsent.findFirst).toHaveBeenCalledWith({
+      where: { customerId: 'cust-1', status: 'GRANTED', deletedAt: null },
+      select: { id: true },
+    });
+    expect(prisma.notificationLog.create).toHaveBeenCalledTimes(1);
+    expect(prisma.notificationLog.create).toHaveBeenCalledWith({
+      data: {
+        channel: 'IN_APP',
+        recipient: 'cust-1',
+        subject: 'ลิงก์ชำระอัตโนมัติ',
+        message: 'ข้ามการแจ้งเตือน — ลูกค้าไม่มี PDPA consent',
+        status: 'SKIPPED',
+        relatedId: 'pay-1',
+      },
+    });
   });
 
   it('สร้างลิงก์/ส่งไม่ผ่าน → แถว FAILED (ให้ A1 ที่สั่งรันซ้ำส่งแทน)', async () => {

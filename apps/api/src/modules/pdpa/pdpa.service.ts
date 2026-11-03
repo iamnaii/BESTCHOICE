@@ -3,6 +3,7 @@ import { DSARRequestType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 import { DEFAULT_PRIVACY_NOTICE, CONTRACT_CONSENT_PURPOSES } from './contract-consent-evidence';
+import { hasActivePdpaConsent } from './active-consent';
 
 /**
  * DSAR ACCESS — ช่องของบันทึกการเดินทางที่ส่งให้เจ้าของข้อมูล: เนื้อหาของเหตุการณ์ครบ (รวม note ของเขาเอง)
@@ -119,11 +120,8 @@ export class PDPAService {
 
   /** Check whether a customer currently has an active (GRANTED) PDPA consent */
   async hasActiveConsent(customerId: string): Promise<boolean> {
-    const consent = await this.prisma.pDPAConsent.findFirst({
-      where: { customerId, status: 'GRANTED', deletedAt: null },
-      select: { id: true },
-    });
-    return !!consent;
+    // นิยามเดียวกับด่านของผู้ส่งตรง (A1/A2/A6/บอท) — `active-consent.ts` (Task 34 ข้อ 3)
+    return hasActivePdpaConsent(this.prisma, customerId);
   }
 
   /** Get all consents for a customer */

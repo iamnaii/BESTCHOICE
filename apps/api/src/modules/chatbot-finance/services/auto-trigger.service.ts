@@ -28,6 +28,7 @@ import {
   findContractsInLegacyLinkGrace,
   recordLegacyLinkGraceSkip,
 } from '../../notifications/legacy-link-grace';
+import { ensurePdpaConsentOrLogSkip } from '../../notifications/pdpa-consent-gate';
 import { AutoTriggerType, MessageRole, Payment, TriggerStatus } from '@prisma/client';
 
 const TIMEZONE = 'Asia/Bangkok';
@@ -50,6 +51,7 @@ const TIMEZONE = 'Asia/Bangkok';
  *   เตือนค่างวดยังส่งระหว่างผ่อนผัน
  * Task 30 รอบ 4 / 6 — ทวง: สัญญาที่ได้ข้อความทวงระดับสัญญาแล้ววันนี้ = ไม่ส่ง (`findContractsDunnedToday`) · เตือน: งวดที่ยอดอยู่ในข้อความทวงรอบ 08:05
  *   แล้ว = ไม่ส่ง (`findRemindersCoveredByDueAmountNotice`)
+ * Task 34 ข้อ 3 — ลูกค้าไม่มีความยินยอม PDPA = ไม่ส่ง ไม่จองแถว (`ensurePdpaConsentOrLogSkip` ตัวเดียวกับ A1/A2 · แถว IN_APP SKIPPED)
  */
 @Injectable()
 export class AutoTriggerService {
@@ -153,6 +155,7 @@ export class AutoTriggerService {
     let dedupedByPrimary = 0;
     let dedupedByContractDunning = 0;
     let legacyGraceSkipped = 0;
+    let noConsent = 0;
     // Task 30 — ชนิดข้อความ (เตือนค่างวด / แจ้งค้างชำระ) ที่บอทเป็นตัวสำรองของ A1 / A2 (payment-notice-dedupe.ts)
     const noticeKind = botNoticeKind(type);
     const isPaymentReminder = noticeKind === 'REMINDER';
@@ -207,6 +210,19 @@ export class AutoTriggerService {
         continue;
       }
 
+      // Task 34 ข้อ 3 — ด่านความยินยอม PDPA ตัวเดียวกับ A1/A2 (เดิมบอทไม่มีด่าน — ส่งแทนตัวหลักที่ข้ามเพราะไม่มีความยินยอม) ·
+      // ไม่มี = ไม่ส่ง ไม่จองแถว (ยินยอมทีหลังในวันเดียวกัน สั่งรันซ้ำก็ส่งได้) · แถว IN_APP SKIPPED
+      if (
+        !(await ensurePdpaConsentOrLogSkip(this.prisma, {
+          customerId: payment.contract.customerId,
+          relatedId: payment.id,
+          subject: `AutoTrigger ${type}`,
+        }))
+      ) {
+        noConsent++;
+        continue;
+      }
+
       const result = await this.sendReminder({
         payment,
         type,
@@ -224,7 +240,7 @@ export class AutoTriggerService {
     }
 
     this.logger.log(
-      `[AutoTrigger] ${type}: sent=${sent} skipped=${skipped} failed=${failed} dedupedByPrimary=${dedupedByPrimary} contractDunned=${dedupedByContractDunning} legacyGrace=${legacyGraceSkipped}`,
+      `[AutoTrigger] ${type}: sent=${sent} skipped=${skipped} failed=${failed} dedupedByPrimary=${dedupedByPrimary} contractDunned=${dedupedByContractDunning} legacyGrace=${legacyGraceSkipped} noConsent=${noConsent}`,
     );
   }
 

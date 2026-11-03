@@ -22,14 +22,15 @@ import {
 } from '../payment-notice-dedupe';
 import { bangkokDayDiff } from '../../../utils/date.util';
 import { recordNoticeLog } from '../notice-log';
+import { ensurePdpaConsentOrLogSkip } from '../pdpa-consent-gate';
 import { findContractsInLegacyLinkGrace, recordLegacyLinkGraceSkip } from '../legacy-link-grace';
 import { NotificationTransportService } from './notification-transport.service';
 import { NotificationDispatchService } from './notification-dispatch.service';
 
 /**
  * Cron-driven dunning lifecycle — payment reminders (upcoming due dates),
- * overdue notices (past-due), manager/owner escalation summaries. Owns the
- * PDPA-consent gate (`ensurePdpaConsentOrLogSkip`). Reminders and overdue notices
+ * overdue notices (past-due), manager/owner escalation summaries. PDPA-consent
+ * gate = `ensurePdpaConsentOrLogSkip` (`pdpa-consent-gate.ts` — shared with A6 + the finance bot). Reminders and overdue notices
  * dedupe through `payment-notice-dedupe.ts` (Task 30 — one message of each kind per
  * installment per day across these crons and the finance bot's auto-trigger).
  *
@@ -45,34 +46,6 @@ export class NotificationReminderService {
     private flexTemplates: FlexTemplatesService,
     private quickReplyService: QuickReplyService,
   ) {}
-
-  /**
-   * PDPA gate shared by the reminder + overdue crons: returns true when the
-   * customer has GRANTED consent. Otherwise logs an IN_APP SKIPPED row (so the
-   * skip stays auditable) and returns false.
-   */
-  private async ensurePdpaConsentOrLogSkip(
-    customerId: string,
-    paymentId: string,
-    subject: string,
-  ): Promise<boolean> {
-    const consent = await this.prisma.pDPAConsent.findFirst({
-      where: { customerId, status: 'GRANTED', deletedAt: null },
-      select: { id: true },
-    });
-    if (consent) return true;
-    await this.prisma.notificationLog.create({
-      data: {
-        channel: 'IN_APP',
-        recipient: customerId,
-        subject,
-        message: `ข้ามการแจ้งเตือน — ลูกค้าไม่มี PDPA consent`,
-        status: 'SKIPPED',
-        relatedId: paymentId,
-      },
-    });
-    return false;
-  }
 
   /**
    * Send payment reminders for upcoming due dates (run daily 08:00) — 3 days, 1 day and the due day.
@@ -147,7 +120,11 @@ export class NotificationReminderService {
       }
       // PDPA guard (shared with sendOverdueNotices)
       if (
-        !(await this.ensurePdpaConsentOrLogSkip(customer.id, payment.id, PAYMENT_REMINDER_SUBJECT))
+        !(await ensurePdpaConsentOrLogSkip(this.prisma, {
+          customerId: customer.id,
+          relatedId: payment.id,
+          subject: PAYMENT_REMINDER_SUBJECT,
+        }))
       ) {
         continue;
       }
@@ -349,7 +326,11 @@ export class NotificationReminderService {
 
       // PDPA guard (shared with sendPaymentReminders)
       if (
-        !(await this.ensurePdpaConsentOrLogSkip(customer.id, payment.id, OVERDUE_NOTICE_SUBJECT))
+        !(await ensurePdpaConsentOrLogSkip(this.prisma, {
+          customerId: customer.id,
+          relatedId: payment.id,
+          subject: OVERDUE_NOTICE_SUBJECT,
+        }))
       ) {
         continue;
       }

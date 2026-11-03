@@ -2,6 +2,7 @@ import { formatNumericText } from '@/utils/numericText';
 import { CheckCircle2, XCircle } from 'lucide-react';
 import { useMemo } from 'react';
 import { useCoaByCodes } from '@/hooks/useCoa';
+import { journalTotalsCents } from './journalCents';
 
 interface JeLine {
   accountCode: string;
@@ -19,9 +20,11 @@ interface Props {
  * v1: no override mode (locked). Override moved to post-MVP.
  */
 export function AutoJournalPreview({ lines }: Props) {
-  const totalDr = lines.reduce((s, l) => s + l.debit, 0);
-  const totalCr = lines.reduce((s, l) => s + l.credit, 0);
-  const balanced = Math.abs(totalDr - totalCr) < 0.01;
+  // exact to the satang — the same rule as EditableJournalTable and the server (no 0.01 float tolerance: re-review m1)
+  const { drCents, crCents } = journalTotalsCents(lines);
+  const totalDr = drCents / 100;
+  const totalCr = crCents / 100;
+  const balanced = drCents === crCents;
 
   // Resolve account codes → names via CoA lookup. Hook is cached (staleTime: Infinity),
   // so subsequent renders with the same code set hit cache instantly.

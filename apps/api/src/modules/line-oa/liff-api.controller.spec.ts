@@ -41,6 +41,8 @@ describe('LiffApiController', () => {
 
     contractPaymentService = {
       getEarlyPayoffQuote: jest.fn(),
+      // #24 ด่านต้นทาง (คำขอคืนเงินที่รอผลธนาคาร) — ผ่านเป็นค่าเริ่มต้น
+      assertNoPendingBankRefundForPayoff: jest.fn().mockResolvedValue(undefined),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -294,6 +296,42 @@ describe('LiffApiController', () => {
   });
 
   // ─── liffEarlyPayoff ───────────────────────────────
+
+  // owner decision #24 (2026-10-31): the customer cannot self-close while an approved refund waits for the bank —
+  // enforced when the quote is shown and when the payoff link is created (the webhook never rejects captured money)
+  describe('pending bank refund (#24)', () => {
+    const blocked = new BadRequestException('ยังปิดยอดผ่าน LINE ไม่ได้ในขณะนี้');
+
+    it('quote: rejects with the customer message before computing the quote', async () => {
+      liffService.findCustomerByLineId.mockResolvedValue({ id: 'cust1', name: 'สมชาย' });
+      liffService.findContractForCustomer.mockResolvedValue({ id: 'con1', status: 'ACTIVE' });
+      contractPaymentService.assertNoPendingBankRefundForPayoff.mockRejectedValue(blocked);
+
+      await expect(controller.getLiffEarlyPayoffQuote(mockReq('U_line'), 'con1')).rejects.toBe(
+        blocked,
+      );
+      expect(contractPaymentService.assertNoPendingBankRefundForPayoff).toHaveBeenCalledWith(
+        'con1',
+        'customer',
+      );
+      expect(contractPaymentService.getEarlyPayoffQuote).not.toHaveBeenCalled();
+    });
+
+    it('payoff link: rejects before creating the link', async () => {
+      liffService.findCustomerByLineId.mockResolvedValue({ id: 'cust1' });
+      liffService.findContractForCustomer.mockResolvedValue({ id: 'con1', status: 'ACTIVE' });
+      contractPaymentService.assertNoPendingBankRefundForPayoff.mockRejectedValue(blocked);
+
+      await expect(
+        controller.liffEarlyPayoff(mockReq('U_line'), { contractId: 'con1' }),
+      ).rejects.toBe(blocked);
+      expect(contractPaymentService.assertNoPendingBankRefundForPayoff).toHaveBeenCalledWith(
+        'con1',
+        'customer',
+      );
+      expect(paymentLinkService.createPaymentLink).not.toHaveBeenCalled();
+    });
+  });
 
   describe('liffEarlyPayoff', () => {
     it('creates payoff payment link', async () => {

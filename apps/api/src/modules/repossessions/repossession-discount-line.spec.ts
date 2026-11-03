@@ -81,6 +81,8 @@ describe('หน้าจอยึดคืน — ตัวอย่างข�
         findUniqueOrThrow: jest.fn().mockResolvedValue(contract),
       },
       systemConfig: { findUnique: jest.fn().mockResolvedValue(null) },
+      // #24: preview eligibility reads approved-but-not-bank-confirmed refunds — none here
+      refund: { findMany: jest.fn().mockResolvedValue([]) },
       repossession: { findFirst: jest.fn().mockResolvedValue(null) },
       installmentSchedule: { findMany: jest.fn().mockResolvedValue(installments) },
       payment: {

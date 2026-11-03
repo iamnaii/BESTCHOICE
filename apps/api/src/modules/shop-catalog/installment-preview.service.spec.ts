@@ -11,6 +11,12 @@ describe('InstallmentPreviewService', () => {
     prisma = {
       product: { findFirst: jest.fn() },
       interestConfig: { findFirst: jest.fn() },
+      // #22: VAT ของตั้งค่าดอกเบี้ยอ่านจากบริษัท FINANCE (ไม่ใช่ interest_configs.vat_pct) — FINANCE จด VAT 7%
+      companyInfo: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({ vatRegistered: true, vatRate: new Prisma.Decimal('0.07') }),
+      },
       gfinModelMapping: { findMany: jest.fn() },
       gfinOverpriceRule: { findMany: jest.fn() },
       gfinRateFactor: { findFirst: jest.fn() },

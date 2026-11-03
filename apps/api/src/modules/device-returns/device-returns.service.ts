@@ -36,6 +36,7 @@ import { lookupTableBase, TableBaseHint } from '../repossessions/table-base.util
 import { TradeInValuationService } from '../trade-in/services/trade-in-valuation.service';
 import { d, dAdd, dSub } from '../../utils/decimal.util';
 import { bkkYearMonth, isFutureBkkDay } from '../../utils/date.util';
+import { isRetryablePrismaWriteError } from '../../utils/transaction-retry.util';
 import { DeviceReturnNumberService } from './device-return-number.service';
 import { DeviceReturnNotifyService } from './device-return-notify.service';
 import { CreateDeviceReturnDto } from './dto/create-device-return.dto';
@@ -49,6 +50,9 @@ export const PENDING_REQUEST_MSG =
   'สัญญานี้มีคำขอเปลี่ยนเครื่องหรือคำขอยกเลิกสัญญาที่รอดำเนินการ — จัดการคำขอนั้นให้เสร็จก่อนรับเครื่องคืน';
 export const CLOSED_MSG = 'ใบนี้ถูกยืนยัน/ส่งกลับ/ยกเลิกไปแล้ว';
 export const NOT_FOUND_MSG = 'ไม่พบใบรับเครื่องคืน';
+/** แพ้ deadlock/serialization ตอนยืนยัน (review I-2) — ธุรกรรม rollback ทั้งก้อน ใบยังรอยืนยัน · ปุ่มยืนยันอยู่ใน RepossessionOverlay (OWNER/FM — ผู้ที่เห็นข้อความนี้) */
+export const CONFIRM_CONFLICT_MSG =
+  'ข้อมูลสัญญาเปลี่ยนระหว่างยืนยันใบรับเครื่องคืน (มีรายการอื่นทำกับสัญญานี้พร้อมกัน) — ยังไม่มีอะไรถูกบันทึก กรุณาโหลดหน้าใหม่แล้วกดยืนยันอีกครั้ง';
 
 const VOLUNTARY_STATUSES: ContractStatus[] = ['ACTIVE', 'OVERDUE', 'DEFAULT'];
 const VOLUNTARY_REASONS: RepossessionReturnReason[] = ['UNAFFORDABLE', 'NO_LONGER_NEEDED', 'OTHER'];
@@ -632,6 +636,9 @@ export class DeviceReturnsService {
         if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
           throw new ConflictException(RE_REPOSSESSION_MSG);
         }
+        // createInTx ล็อกแถวสัญญาด้วย raw SQL (#24) — deadlock/serialization บนคำสั่งนั้นมาเป็น P2010 (40P01/40001) ไม่ใช่ P2034
+        // (review I-2) · ทุกอย่างในธุรกรรม rollback แล้ว ใบยัง PENDING_CONFIRM ⇒ ยืนยันซ้ำได้
+        if (isRetryablePrismaWriteError(err)) throw new ConflictException(CONFIRM_CONFLICT_MSG);
         throw err;
       });
 

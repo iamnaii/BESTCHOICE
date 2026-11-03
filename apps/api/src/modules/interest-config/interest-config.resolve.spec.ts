@@ -19,6 +19,8 @@ import { InterestConfigService } from './interest-config.service';
 const makeSvc = (cfg: unknown) => {
   const prisma = {
     interestConfig: { findFirst: jest.fn().mockResolvedValue(cfg) },
+    // #22: VAT ของตั้งค่าดอกเบี้ยอ่านจากบริษัท FINANCE (ไม่ใช่ interest_configs.vat_pct) — FINANCE จด VAT 7%
+    companyInfo: { findFirst: jest.fn().mockResolvedValue({ vatRegistered: true, vatRate: 0.07 }) },
   } as unknown as PrismaService;
   return new InterestConfigService(prisma);
 };

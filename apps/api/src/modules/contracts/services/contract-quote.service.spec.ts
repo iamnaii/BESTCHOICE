@@ -110,10 +110,20 @@ describe('ContractQuoteService effective configuration and amounts', () => {
     });
     expect(db.branch.findUnique).not.toHaveBeenCalled();
   });
-  it('no FINANCE company row ⇒ the configured VAT (interest config) as before', async () => {
+  // คำตัดสินเจ้าของ #22 (2026-10-31): VAT ของตั้งค่าดอกเบี้ยอ่านจาก FINANCE ที่เดียว — interest_configs.vat_pct ไม่ถูกอ่านอีก
+  // (เดิม: ไม่มีแถว FINANCE ⇒ ใช้ vat_pct ของ interest config) · ไม่มีแถว FINANCE ⇒ ค่า VAT ของระบบ (VAT_RATE)
+  it('no FINANCE company row ⇒ the system VAT setting, never interest_configs.vat_pct (#22)', async () => {
     db.companyInfo.findFirst.mockResolvedValue(null);
+    db.interestConfig.findFirst.mockResolvedValue({ ...config, vatPct: new D('.10') });
+    db.systemConfig.findMany.mockResolvedValue([{ key: 'VAT_RATE', value: '8' }]);
     const quote = await service.resolve(input, actor);
-    expect([quote.effectiveVatPct, quote.vatSource]).toEqual(['0.0700', 'CONFIG_FALLBACK']);
+    expect([quote.effectiveVatPct, quote.vatSource]).toEqual(['0.0800', 'CONFIG_FALLBACK']);
+  });
+  it('FINANCE row decides even when interest_configs.vat_pct says otherwise (#22)', async () => {
+    financeVat(true);
+    db.interestConfig.findFirst.mockResolvedValue({ ...config, vatPct: new D('.10') });
+    const quote = await service.resolve(input, actor);
+    expect([quote.effectiveVatPct, quote.vatSource]).toEqual(['0.0700', 'FINANCE_COMPANY']);
   });
   it.each([{ ...actor, branchId: 'other' }, { id: 'staff', role: 'SALES' }])('rejects out-of-scope actors before reading configuration', async scopedActor => {
     await expect(service.resolve(input, scopedActor)).rejects.toThrow();

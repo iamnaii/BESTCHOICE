@@ -3,7 +3,10 @@
  *
  * Single source of truth = `AccountingPeriod` (per-company, per-month status).
  * Prevents posting/voiding accounting transactions into a CLOSED or SYNCED
- * period — UNLESS today is still inside the `period_grace_days` window.
+ * period. A CLOSED period still accepts postings while today is inside the
+ * `period_grace_days` window; a SYNCED period (already exported to PEAK) locks
+ * immediately with no grace (owner decision #23, 2026-10-31 — entries posted
+ * after the sync would never reach PEAK nor the snapshot taken at close).
  *
  * Grace window (owner decision 2026-10-31): counted in whole Asia/Bangkok days
  * AFTER the period's last day — grace 0 keeps the last day itself postable until
@@ -67,8 +70,8 @@ export function accountingPeriodOf(date: Date): { year: number; month: number } 
 }
 
 /**
- * First instant at which a CLOSED/SYNCED period (`month` 1-12) stops accepting
- * postings: 00:00 Asia/Bangkok on day `1 + graceDays` of the following month.
+ * First instant at which a CLOSED period (`month` 1-12) stops accepting
+ * postings (a SYNCED period has no grace — see `isPeriodLockedNow`): 00:00 Asia/Bangkok on day `1 + graceDays` of the following month.
  * grace 0 → 00:00 BKK on the 1st (the whole last day is still inside);
  * grace N → 00:00 BKK on day N+1 (N whole days after month end).
  */
@@ -77,19 +80,38 @@ export function periodGraceEnd(year: number, month: number, graceDays: number): 
   return bangkokMidnight(year, month, 1 + graceDays);
 }
 
-/** Statuses that close a period (after the grace window). OPEN / REVIEW never lock. */
+/** Statuses that close a period. OPEN / REVIEW never lock. */
 const LOCKING_STATUSES = ['CLOSED', 'SYNCED'] as const;
 const isLockingStatus = (status: string) =>
   (LOCKING_STATUSES as readonly string[]).includes(status);
 
-/** The single "is this period locked right now" rule — `validatePeriodOpen` and `lockedAccountingPeriods` both call it. */
+/**
+ * The single "is this period locked right now" rule — `validatePeriodOpen` and `lockedAccountingPeriods` both call it.
+ * CLOSED → locked once `periodGraceEnd` has passed · SYNCED → locked immediately, no grace (owner decision #23,
+ * 2026-10-31: the period is already in PEAK and cannot be reopened — `MonthlyCloseService.reopenPeriod` rejects SYNCED).
+ */
 function isPeriodLockedNow(
   status: string,
   year: number,
   month: number,
   graceDays: number,
 ): boolean {
+  if (status === 'SYNCED') return true;
   return isLockingStatus(status) && new Date() >= periodGraceEnd(year, month, graceDays);
+}
+
+/**
+ * The rejection text of `validatePeriodOpen`. The prefix `ไม่สามารถบันทึกรายการในงวดที่ปิดแล้ว (YYYY/MM สถานะ: X)` is shared by
+ * every status (callers/tests match it). SYNCED adds why there is no grace and the one real way out: the period cannot be
+ * reopened (`reopenPeriod` rejects SYNCED) and there is no manual-journal screen, so the user is pointed at the accounting team.
+ */
+function periodLockedMessage(year: number, month: number, status: string): string {
+  const head = `ไม่สามารถบันทึกรายการในงวดที่ปิดแล้ว (${year}/${String(month).padStart(2, '0')} สถานะ: ${status})`;
+  if (status !== 'SYNCED') return head;
+  return (
+    `${head} — งวดนี้ส่งเข้า PEAK แล้ว จึงล็อกทันที ไม่มีช่วงผ่อนผัน และเปิดงวดใหม่ไม่ได้ · ` +
+    'ติดต่อฝ่ายบัญชีเพื่อพิจารณาบันทึกเป็นรายการปรับปรุงในงวดที่ยังเปิด'
+  );
 }
 
 interface LockedPeriodsReader {
@@ -103,8 +125,8 @@ interface LockedPeriodsReader {
 }
 
 /**
- * Every period of `companyId` that `validatePeriodOpen` would reject right now (CLOSED/SYNCED and past
- * its grace window) — same rule, evaluated per period instead of per date. Lets a batch exclude those
+ * Every period of `companyId` that `validatePeriodOpen` would reject right now (CLOSED past its grace window,
+ * every SYNCED) — same rule, evaluated per period instead of per date. Lets a batch exclude those
  * months up front instead of fetching rows only to have the guard skip them one by one (the 2A accrual
  * cron — review M5, 2026-10-31).
  */
@@ -127,9 +149,9 @@ export async function lockedAccountingPeriods(
  * Validate that a transaction date is not in a closed accounting period.
  *
  * Looks up the AccountingPeriod for the date's (companyId, year, month) on the
- * Bangkok calendar. Throws if its status is CLOSED or SYNCED — UNLESS now is
- * before `periodGraceEnd` (the period's last day + `period_grace_days` whole
- * Bangkok days — D1.2.6.2, boundary per owner decision 2026-10-31).
+ * Bangkok calendar. Throws if its status is SYNCED (always — owner decision #23),
+ * or CLOSED once now has reached `periodGraceEnd` (the period's last day +
+ * `period_grace_days` whole Bangkok days — D1.2.6.2, boundary per owner decision 2026-10-31).
  *
  * Enforcement REQUIRES companyId: callers that do not pass one are not guarded.
  */
@@ -149,12 +171,10 @@ export async function validatePeriodOpen(
     return; // OPEN / REVIEW / no row → not locked
   }
 
-  // D1.2.6.2 — grace window. Allow posting INTO a closed period through the end
-  // of its last day plus `graceDays` whole days (Bangkok).
+  // D1.2.6.2 — grace window. Allow posting INTO a CLOSED period through the end
+  // of its last day plus `graceDays` whole days (Bangkok). SYNCED has none (#23).
   const graceDays = await getGraceDays(prisma);
   if (isPeriodLockedNow(period.status, year, month, graceDays)) {
-    throw new BadRequestException(
-      `ไม่สามารถบันทึกรายการในงวดที่ปิดแล้ว (${year}/${String(month).padStart(2, '0')} สถานะ: ${period.status})`,
-    );
+    throw new BadRequestException(periodLockedMessage(year, month, period.status));
   }
 }

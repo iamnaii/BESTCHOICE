@@ -51,7 +51,6 @@ describe('InterestConfigService.create — months-range guard (Wave 3 MED gap-fi
     interestRate: 0.02,
     minDownPaymentPct: 0.15,
     storeCommissionPct: 0.1,
-    vatPct: 0.07,
     minInstallmentMonths: 6,
     maxInstallmentMonths: 12,
     ...overrides,
@@ -86,7 +85,7 @@ describe('InterestConfigService.create — months-range guard (Wave 3 MED gap-fi
           interestRate: 0.02,
           minDownPaymentPct: 0.15,
           storeCommissionPct: 0.1,
-          vatPct: 0.07,
+          // ไม่มี vatPct — VAT ของตั้งค่าดอกเบี้ยมาจาก FINANCE (คำตัดสินเจ้าของ #22)
           minInstallmentMonths: 6,
           maxInstallmentMonths: 12,
         },
@@ -108,16 +107,15 @@ describe('InterestConfigService.create — months-range guard (Wave 3 MED gap-fi
     it('passes optional fields through as undefined (not stripped) when omitted', async () => {
       const dto = baseDto();
       delete dto.storeCommissionPct;
-      delete dto.vatPct;
       prisma.interestConfig.create.mockResolvedValue({ id: 'cfg-opt' });
 
       await service.create(dto);
 
       const dataArg = prisma.interestConfig.create.mock.calls[0][0].data;
       expect('storeCommissionPct' in dataArg).toBe(true);
-      expect('vatPct' in dataArg).toBe(true);
+      // #22: vat_pct ไม่ถูกเขียนเลย (ไม่ใช่ undefined — ไม่มีคีย์)
+      expect('vatPct' in dataArg).toBe(false);
       expect(dataArg.storeCommissionPct).toBeUndefined();
-      expect(dataArg.vatPct).toBeUndefined();
     });
   });
 });

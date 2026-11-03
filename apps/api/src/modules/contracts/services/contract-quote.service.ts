@@ -71,9 +71,11 @@ export class ContractQuoteService {
       where: { isActive: true, deletedAt: null, productCategories: { has: product.category } },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     });
-    const params = resolveInstallmentParams(config, await loadInstallmentConfig(tx), dto.interestRate);
-    // สัญญาผ่อนเป็นของ FINANCE ⇒ VAT จากบริษัท FINANCE ไม่ใช่บริษัทของสาขา (สาขาหน้าร้านผูก SHOP ซึ่งไม่จด VAT — impact C1)
-    const vat = await resolveFinanceVat(tx, params.vatPct);
+    const systemConfig = await loadInstallmentConfig(tx);
+    const params = resolveInstallmentParams(config, systemConfig, dto.interestRate);
+    // สัญญาผ่อนเป็นของ FINANCE ⇒ VAT จากบริษัท FINANCE ไม่ใช่บริษัทของสาขา (สาขาหน้าร้านผูก SHOP ซึ่งไม่จด VAT — impact C1) ·
+    // ไม่มีแถว FINANCE = ค่า VAT ของระบบ — ไม่อ่าน interest_configs.vat_pct (คำตัดสินเจ้าของ #22)
+    const vat = await resolveFinanceVat(tx, systemConfig.vatPct);
     if (downPayment.gte(sellingPrice)) throw new BadRequestException('เงินดาวน์รวมต้องน้อยกว่าราคาขาย');
     if (downPayment.lt(sellingPrice.mul(params.minDownPaymentPct))) {
       throw new BadRequestException(`เงินดาวน์ขั้นต่ำ ${(params.minDownPaymentPct * 100).toFixed(0)}%`);

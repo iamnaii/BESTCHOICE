@@ -17,7 +17,12 @@ import { Test, TestingModule } from '@nestjs/testing';
 import * as Sentry from '@sentry/nestjs';
 import { Prisma } from '@prisma/client';
 import { ADVANCE_EXCESS_VOID_BLOCKED_MESSAGE } from '../journal/advance-excess-income.util';
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   closedContractRefundMessage,
   RECEIPT_NOT_ISSUED_REFUND_MESSAGE,
@@ -84,6 +89,8 @@ describe('RefundsService', () => {
     (assertPaymentApprovalPermission as jest.Mock).mockReset().mockResolvedValue(actor);
     (getPaymentApprovalPermissions as jest.Mock).mockReset().mockResolvedValue(actor);
     prisma = {
+      // #24: approveRefund ล็อกแถวสัญญา FOR SHARE ก่อนอ่านสถานะ (เรียงกับปิดยอด/ยึดที่ถือ FOR UPDATE)
+      $queryRaw: jest.fn().mockResolvedValue([]),
       contract: { findFirst: jest.fn().mockResolvedValue({ branchId: 'branch-a' }) },
       user: {
         findUnique: jest
@@ -503,6 +510,36 @@ describe('RefundsService', () => {
         paidPayment({ amountPaid: new Prisma.Decimal(500) }),
       );
     });
+
+    // review I-2 (2026-11-01): the FOR SHARE row lock (#24) is raw SQL — a serialization failure / deadlock on it
+    // arrives as P2010 (meta.code 40001 / 40P01), not P2034. It must still be the Thai 409, not a 500. P2002 keeps its
+    // old meaning (not translated here).
+    it.each([
+      ['P2010 / 40001', { code: 'P2010', meta: { code: '40001' } }],
+      ['P2010 / 40P01', { code: 'P2010', meta: { code: '40P01' } }],
+      ['P2034', { code: 'P2034' }],
+    ])(
+      'I-2: %s from the transaction → 409 "ข้อมูลคืนเงินเปลี่ยนระหว่างทำรายการ"',
+      async (_l, e) => {
+        prisma.$transaction.mockRejectedValueOnce(
+          new Prisma.PrismaClientKnownRequestError('conflict', { clientVersion: 'test', ...e }),
+        );
+        const attempt = service.approveRefund('rf-1', 'u-owner', 'OWNER');
+        await expect(attempt).rejects.toBeInstanceOf(ConflictException);
+        await expect(attempt).rejects.toThrow(
+          'ข้อมูลคืนเงินเปลี่ยนระหว่างทำรายการ — กรุณาโหลดใหม่',
+        );
+      },
+    );
+
+    it('I-2: P2002 is not turned into the concurrency 409', async () => {
+      const dup = new Prisma.PrismaClientKnownRequestError('dup', {
+        code: 'P2002',
+        clientVersion: 'test',
+      });
+      prisma.$transaction.mockRejectedValueOnce(dup);
+      await expect(service.approveRefund('rf-1', 'u-owner', 'OWNER')).rejects.toBe(dup);
+    });
     it('blocks self-approval', async () => {
       prisma.refund.findUnique.mockResolvedValue(refundRecord({ requestedById: 'u-same' }));
       await expect(service.approveRefund('rf-1', 'u-same', 'OWNER')).rejects.toThrow(
@@ -561,6 +598,28 @@ describe('RefundsService', () => {
       await expect(service.approveRefund('rf-1', 'u-fm', 'FINANCE_MANAGER')).rejects.toThrow(
         BadRequestException,
       );
+    });
+
+    // owner decision #24 (2026-10-31): approve vs early payoff / repossession must serialize — the payoff/JP5
+    // transaction holds the contract row FOR UPDATE while it checks for APPROVED refunds; approve takes the same row
+    // FOR SHARE before it reads the contract status, so whichever comes second sees the other's result
+    it('#24 locks the contract row FOR SHARE before reading the contract status', async () => {
+      const order: string[] = [];
+      prisma.$queryRaw.mockImplementation((strings: TemplateStringsArray, ...values: unknown[]) => {
+        const sql = strings.join('?');
+        if (sql.includes('FROM contracts') && sql.includes('FOR SHARE'))
+          order.push(`lock-contract:${values[0]}`);
+        return Promise.resolve([]);
+      });
+      prisma.contract.findFirst.mockImplementation(() => {
+        order.push('read-contract');
+        return Promise.resolve({ branchId: 'branch-a', status: 'ACTIVE' });
+      });
+
+      await service.approveRefund('rf-1', 'u-owner', 'OWNER');
+
+      expect(order).toEqual(['lock-contract:con-1', 'read-contract']);
+      expect(prisma.refund.updateMany).toHaveBeenCalledTimes(1);
     });
 
     it('authorized actor approves using CAS and audit in the same transaction', async () => {

@@ -1,9 +1,15 @@
-import { Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnModuleInit,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as Sentry from '@sentry/node';
 import { PrismaService } from '../../prisma/prisma.service';
 import { encryptPII, decryptPII, isEncrypted } from '../../utils/crypto.util';
-import { getIntegrationDef, INTEGRATIONS } from './integration-registry';
+import { getIntegrationDef, INTEGRATIONS, type IntegrationField } from './integration-registry';
 
 /** Flat map of fieldKey → plaintext value for a single integration. */
 export type IntegrationConfig = Record<string, string>;
@@ -31,6 +37,32 @@ type StoredRead = { ok: true; value: string } | { ok: false; reason: Undecryptab
  * Entries are `integrationKey.fieldKey` only — never values.
  */
 export type EncryptedFieldCheck = { key: IntegrationKeyStatus; ok: string[]; failed: string[] };
+
+/**
+ * Stored in place of a sensitive credential the owner cleared with "ล้างค่า" in
+ * Integration Hub. A cleared field reads as "not configured" through the Hub and does
+ * NOT fall back to the env var or field default — prod sets LINE_* etc. from Secret
+ * Manager, so an empty/missing row would silently keep the old credential working.
+ *
+ * Cannot collide with a real stored credential: it contains the mask bullet `•`, which
+ * `saveConfig` never writes for a sensitive field (masked round-trip guard), and no
+ * ciphertext contains it. Stored as plaintext — it is not a secret, and the boot
+ * self-check must not count it as encrypted (neither `ok` nor `failed`). Saving a new
+ * non-empty value replaces it (upsert). Only honoured on sensitive fields: on a
+ * non-sensitive field the same text is just its value.
+ */
+export const CLEARED_CREDENTIAL = '•cleared•';
+
+/** The one "cleared" test — every reader of `integration.*` rows goes through this. */
+export function isClearedCredential(
+  field: Pick<IntegrationField, 'sensitive'>,
+  raw: string | null | undefined,
+): boolean {
+  return field.sensitive && raw === CLEARED_CREDENTIAL;
+}
+
+/** Where a field's value came from before it was cleared (audit trail — never the value). */
+export type ClearedPreviousSource = 'database' | 'env' | 'default' | 'cleared' | 'none';
 
 @Injectable()
 export class IntegrationConfigService implements OnModuleInit {
@@ -209,6 +241,10 @@ export class IntegrationConfigService implements OnModuleInit {
    * Read a single field value.
    * Priority: SystemConfig DB (decrypted) → env var → field defaultValue.
    *
+   * A sensitive field cleared with "ล้างค่า" (`CLEARED_CREDENTIAL`) returns `undefined`
+   * with no env/default fallback — getConfig, the masked view, isConfigured and the
+   * test buttons all read through here.
+   *
    * A DB value that is encrypted but cannot be decrypted here (no key, wrong
    * key, malformed key) returns `undefined` = "not configured" — never the
    * ciphertext and never a throw into business code.
@@ -226,6 +262,7 @@ export class IntegrationConfigService implements OnModuleInit {
     });
 
     if (record?.value) {
+      if (isClearedCredential(field, record.value)) return undefined;
       const read = this.readStored(record.value);
       if (read.ok) return read.value;
       // Fail closed WITHOUT falling back to the env var: a DB row is the
@@ -249,7 +286,7 @@ export class IntegrationConfigService implements OnModuleInit {
   /**
    * Try to decrypt every encrypted sensitive credential stored in SystemConfig
    * (optionally for one integration) with the key this process holds.
-   * Plaintext and empty rows are not listed.
+   * Plaintext, empty and cleared ("ล้างค่า") rows are not listed.
    */
   async checkEncryptedFields(integrationKey?: string): Promise<EncryptedFieldCheck> {
     const refs = new Map<string, string>(); // SystemConfig key → integrationKey.fieldKey
@@ -270,7 +307,9 @@ export class IntegrationConfigService implements OnModuleInit {
     const failed: string[] = [];
     for (const row of rows) {
       const ref = refs.get(row.key);
-      if (!ref || !row.value || !isEncrypted(row.value)) continue;
+      // refs holds sensitive fields only, so a cleared marker here is always "cleared".
+      if (!ref || !row.value || isClearedCredential({ sensitive: true }, row.value)) continue;
+      if (!isEncrypted(row.value)) continue;
       (this.readStored(row.value).ok ? ok : failed).push(ref);
     }
     return { key: status, ok: ok.sort(), failed: failed.sort() };
@@ -350,7 +389,7 @@ export class IntegrationConfigService implements OnModuleInit {
       // secret field the operator typed in and then emptied as ''; storing it
       // would empty the row, and an empty row falls back to the env var —
       // possibly another OA's credential (prod sets LINE_CHANNEL_* from Secret
-      // Manager). There is no "clear credential" action in the UI.
+      // Manager). Clearing is its own action: clearSecret ("ล้างค่า").
       if (field.sensitive && !rawValue?.trim()) {
         this.logger.debug(
           `Skipping empty value for sensitive '${integrationKey}.${fieldKey}' — value unchanged`,
@@ -379,6 +418,57 @@ export class IntegrationConfigService implements OnModuleInit {
     this.logger.log(`Saved config for integration '${integrationKey}'`);
     // Invalidate cache so next read picks up new values
     this.cache.delete(integrationKey);
+  }
+
+  /**
+   * "ล้างค่า" — make a sensitive credential read as "not configured" immediately, with
+   * no env/default fallback, until a new non-empty value is saved. Writes the
+   * `CLEARED_CREDENTIAL` marker over the row (creating it when only env supplied the
+   * value). Non-sensitive fields are refused: emptying them in the form and saving keeps
+   * its existing meaning (fall back to env/default).
+   *
+   * Returns where the value came from before — for the audit trail, never the value.
+   * This instance's getConfig cache is dropped; other instances keep theirs for up to
+   * CACHE_TTL_MS (same as saveConfig) — getValue itself is not cached.
+   */
+  async clearSecret(
+    integrationKey: string,
+    fieldKey: string,
+  ): Promise<{ previousSource: ClearedPreviousSource }> {
+    const def = getIntegrationDef(integrationKey);
+    if (!def) throw new NotFoundException(`Integration '${integrationKey}' not found`);
+    const field = def.fields.find((f) => f.key === fieldKey);
+    if (!field) throw new NotFoundException(`Field '${fieldKey}' not found in '${integrationKey}'`);
+    if (!field.sensitive) {
+      throw new BadRequestException(
+        `${field.label} ไม่ใช่ข้อมูลลับ — ลบข้อความในช่องแล้วกดบันทึกแทน`,
+      );
+    }
+
+    const dbKeyStr = this.dbKey(integrationKey, fieldKey);
+    const record = await this.prisma.systemConfig.findFirst({
+      where: { key: dbKeyStr, deletedAt: null },
+      select: { value: true },
+    });
+    const previousSource: ClearedPreviousSource = record?.value
+      ? isClearedCredential(field, record.value)
+        ? 'cleared'
+        : 'database'
+      : process.env[field.envVar]
+        ? 'env'
+        : field.defaultValue
+          ? 'default'
+          : 'none';
+
+    await this.prisma.systemConfig.upsert({
+      where: { key: dbKeyStr },
+      create: { key: dbKeyStr, value: CLEARED_CREDENTIAL, label: `${def.name} — ${field.label}` },
+      update: { value: CLEARED_CREDENTIAL, deletedAt: null },
+    });
+
+    this.logger.log(`Cleared '${integrationKey}.${fieldKey}' (was: ${previousSource})`);
+    this.cache.delete(integrationKey);
+    return { previousSource };
   }
 
   /**

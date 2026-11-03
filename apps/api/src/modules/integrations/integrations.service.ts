@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import * as crypto from 'crypto';
+import { AuditService } from '../audit/audit.service';
 import { INTEGRATIONS } from './integration-registry';
 import { IntegrationConfigService } from './integration-config.service';
 
@@ -22,7 +23,32 @@ export interface TestConnectionResult {
 
 @Injectable()
 export class IntegrationsService {
-  constructor(private readonly configService: IntegrationConfigService) {}
+  constructor(
+    private readonly configService: IntegrationConfigService,
+    private readonly audit: AuditService,
+  ) {}
+
+  /**
+   * "ล้างค่า" in the hub edit dialog — `IntegrationConfigService.clearSecret` (cleared =
+   * not configured, no env fallback) + one audit row naming the field and where its
+   * value came from. Never the value: the audit carries no plaintext, env value or
+   * ciphertext. Written after the clear succeeded (a refused clear writes nothing).
+   */
+  async clearSecret(
+    integrationKey: string,
+    fieldKey: string,
+    userId: string,
+  ): Promise<{ cleared: true }> {
+    const { previousSource } = await this.configService.clearSecret(integrationKey, fieldKey);
+    await this.audit.log({
+      userId,
+      action: 'INTEGRATION_SECRET_CLEARED',
+      entity: 'integrations',
+      entityId: `${integrationKey}.${fieldKey}`,
+      newValue: { integrationKey, fieldKey, previousSource },
+    });
+    return { cleared: true };
+  }
 
   async listAll(): Promise<IntegrationStatus[]> {
     // Sequential to avoid exhausting DB connection pool on small instances

@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { INTEGRATIONS } from './integration-registry';
+import { isClearedCredential } from './integration-config.service';
 
 /**
  * Weekly check for stale sensitive credentials (T6-C9).
@@ -16,9 +17,9 @@ import { INTEGRATIONS } from './integration-registry';
  * trigger for OWNER to run the rotation runbook — see
  * `docs/guides/PEAK-CREDENTIALS-RUNBOOK.md`.
  *
- * Missing credentials (no SystemConfig row at all) are treated as "not
- * configured" and skipped — we only flag credentials that were configured
- * once and then left to rot.
+ * Missing credentials (no SystemConfig row at all) and credentials cleared
+ * with "ล้างค่า" are treated as "not configured" and skipped — we only flag
+ * credentials that were configured once and then left to rot.
  */
 @Injectable()
 export class CredentialRotationCron {
@@ -55,7 +56,8 @@ export class CredentialRotationCron {
             select: { updatedAt: true, value: true },
           });
 
-          if (!row || !row.value) {
+          // Cleared with "ล้างค่า" = not configured — nothing left to rotate.
+          if (!row || !row.value || isClearedCredential(field, row.value)) {
             skipped++;
             continue;
           }

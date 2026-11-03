@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -294,4 +294,64 @@ it.each(['missing', 'error'] as const)('keeps MDM dialog closed for a %s contrac
   fail = false;
   fireEvent.click(await screen.findByRole('button', { name: 'ส่งคำสั่งล็อกเครื่อง (MDM)' }));
   expect(await screen.findByRole('dialog', { name: 'ยืนยันล็อกเครื่อง' })).toHaveTextContent('c1|ลูกค้าสังเคราะห์|7');
+});
+
+/**
+ * Task 33 (mockup A1 "ข้อมูลลูกค้า" ที่เจ้าของอนุมัติ) — หน้าต่าง "ดูข้อมูลลูกค้า" ในอินบ็อกซ์เลิกแสดง LINE user id ดิบ (U…) ของช่องการเงิน:
+ * แถว "LINE น้องเบส (การเงิน)" แสดงสถานะจาก `financeLine` (แถว OTP ที่ยังผูก — ชุดเดียวกับฟอร์มแก้ไขลูกค้า Task 27) และแสดงเสมอแม้ยังไม่ผูก ·
+ * LINE ID ร้าน (Shop) คงเดิม
+ */
+describe('Customer360Panel — หน้าต่างข้อมูลลูกค้า: สถานะ LINE น้องเบส (การเงิน) (Task 33 A1)', () => {
+  const RAW_LINE = 'U0123456789abcdef0123456789abcdef';
+
+  function withCustomer(customer: Record<string, unknown>) {
+    const base = mocks.get.getMockImplementation()!;
+    mocks.get.mockImplementation(async (url: string) =>
+      url === '/customers/customer1'
+        ? { data: { id: 'customer1', name: 'ลูกค้าสังเคราะห์', ...customer } }
+        : base(url),
+    );
+  }
+
+  async function openInfo() {
+    mount();
+    await openAction('ดูข้อมูลลูกค้า');
+    return screen.findByRole('dialog', { name: /ข้อมูลลูกค้า/ });
+  }
+
+  it('ยืนยัน OTP แล้ว → "ยืนยัน OTP แล้ว · ผูกเมื่อ [วันที่]" ไม่มี U-id ดิบ · LINE ID ร้านคงเดิม', async () => {
+    withCustomer({
+      phone: '0800000000',
+      lineIdFinance: RAW_LINE,
+      lineIdShop: 'shop-line-id',
+      financeLine: { verified: true, linkedAt: '2026-10-30T05:00:00.000Z' },
+    });
+    const dialog = await openInfo();
+    const group = await within(dialog).findByRole('group', { name: 'LINE น้องเบส (การเงิน)' });
+    expect(group).toHaveTextContent('ยืนยัน OTP แล้ว');
+    expect(group).toHaveTextContent('ผูกเมื่อ 30/10/2569');
+    expect(dialog).not.toHaveTextContent(RAW_LINE);
+    expect(dialog).not.toHaveTextContent('LINE ID (Finance');
+    expect(dialog).toHaveTextContent('LINE ID (Shop / ร้าน)');
+    expect(dialog).toHaveTextContent('shop-line-id');
+  });
+
+  it('ยังไม่ผูก (คอลัมน์ค้างค่าแต่ไม่มีแถว OTP) → "ยังไม่ได้ผูก LINE" + วิธีผูกเอง แสดงเสมอ · ไม่มี U-id ดิบ', async () => {
+    withCustomer({ lineIdFinance: RAW_LINE, financeLine: { verified: false, linkedAt: null } });
+    const dialog = await openInfo();
+    const group = await within(dialog).findByRole('group', { name: 'LINE น้องเบส (การเงิน)' });
+    expect(group).toHaveTextContent('ยังไม่ได้ผูก LINE');
+    expect(group).toHaveTextContent(
+      'ลูกค้าผูกเองในแชท LINE น้องเบส: กด “เริ่มยืนยันตัวตน” แล้วยืนยันเบอร์ด้วยรหัส OTP',
+    );
+    expect(dialog).not.toHaveTextContent(RAW_LINE);
+  });
+
+  it('ลูกค้าที่ไม่มีค่าใดเลยในช่อง LINE การเงิน ก็ยังเห็นแถว "ยังไม่ได้ผูก LINE"', async () => {
+    withCustomer({ lineIdFinance: null, financeLine: { verified: false, linkedAt: null } });
+    const dialog = await openInfo();
+    expect(
+      await within(dialog).findByRole('group', { name: 'LINE น้องเบส (การเงิน)' }),
+    ).toHaveTextContent('ยังไม่ได้ผูก LINE');
+  });
 });

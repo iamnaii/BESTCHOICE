@@ -86,9 +86,11 @@ describe('defaultPeakApiConfigured — undecryptable PEAK credentials still coun
 /**
  * Review M-5: when the refusal comes from PEAK credentials the CLI cannot
  * decrypt, the message must name them and send the operator to the real fix
- * (same INTEGRATION_ENCRYPTION_KEY as the API) — not to a hub "clear" action
- * that does not exist. Since P-2 the hub also cannot clear User Token /
- * Secret Key (empty sensitive input = unchanged); Connect ID still clears.
+ * (same INTEGRATION_ENCRYPTION_KEY as the API) — not to the hub "ล้างค่า" button,
+ * which an undecryptable field does not get (it reads as empty). When PEAK is
+ * readable, Task 32 "ล้างค่า" on User Token is the way to switch the API off:
+ * a cleared secret does not fall back to env PEAK_USER_TOKEN (emptying Connect ID
+ * — a non-secret — still falls back to env PEAK_CONNECT_ID).
  */
 describe('peakApiRefusalFor — the refusal names what to do', () => {
   const deps = (configured: boolean, failed: string[], key: 'ok' | 'missing' | 'malformed') => ({
@@ -100,22 +102,26 @@ describe('peakApiRefusalFor — the refusal names what to do', () => {
     await expect(peakApiRefusalFor(deps(false, [], 'ok'))).resolves.toBeNull();
   });
 
-  it('configured and readable → disable PEAK first, pointing at Connect ID only', async () => {
+  it('configured and readable → disable PEAK first with "ล้างค่า" on User Token (Task 32 M2)', async () => {
     const message = await peakApiRefusalFor(deps(true, [], 'ok'));
     expect(message).toContain('ปิดการส่ง PEAK ทาง API ก่อน');
-    expect(message).toContain('Connect ID');
     expect(message).toContain('ตั้งค่า › เชื่อมต่อ › การเชื่อมต่อ');
-    expect(message).not.toContain('User Token / Connect ID / Secret Key');
-  });
-
-  it('configured and readable → explains the blank-looking form and how to confirm (re-review N-1)', async () => {
-    const message = await peakApiRefusalFor(deps(true, [], 'ok'));
-    // The hub form does not prefill non-secret fields: saving the blank-looking box sends nothing.
+    // Card name + button + field exactly as IntegrationHubPage renders them.
     expect(message).toContain('การ์ด "PEAK (บัญชี)"');
-    expect(message).toContain('ฟอร์มไม่แสดงค่าที่ตั้งไว้');
-    expect(message).toContain('พิมพ์อักษรใดก็ได้แล้วลบออก');
+    expect(message).toContain('"ล้างค่า" ข้างช่อง User Token');
+    // A cleared secret does not fall back to env — unlike emptying Connect ID.
+    expect(message).toContain('ไม่ถอยไปใช้ env PEAK_USER_TOKEN');
+    expect(message).not.toContain('Connect ID');
+    expect(message).not.toContain('ล้างจากหน้านั้นไม่ได้');
     // Exact badge text on the card (IntegrationHubPage IntegrationCard).
     expect(message).toContain('"ยังไม่ตั้งค่า"');
+    // The button is OWNER-only (DELETE /integrations/:key/config/:field).
+    expect(message).toContain('OWNER');
+  });
+
+  it('undecryptable fields never point at "ล้างค่า" (no button for them)', async () => {
+    const message = await peakApiRefusalFor(deps(true, ['peak.userToken'], 'ok'));
+    expect(message).not.toContain('ล้างค่า');
   });
 
   it('reading the encrypted-field hint fails → still refuses, with the configured message', async () => {

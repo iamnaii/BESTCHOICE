@@ -71,6 +71,10 @@ describe('StaffChatController', () => {
             sendCustomerMessage: jest.fn(),
             getCrossChannelRooms: jest.fn(),
             findById: jest.fn(),
+            // Task 33 — สถานะ LINE การเงินของห้อง (คำนวณฝั่ง server) · ห้องช่องอื่น = null
+            attachFinanceLineStatus: jest.fn(async (rows: Record<string, unknown>[]) =>
+              rows.map((row) => ({ ...row, financeLineStatus: null })),
+            ),
             linkCustomer: jest.fn(),
           },
         },
@@ -506,6 +510,40 @@ describe('StaffChatController', () => {
       expect(res.customer).toMatchObject({ chatPlaceholder: true });
       expect((res as any).possibleSamePerson).toEqual([{ customerId: 'c2' }]);
       expect(samePerson.findForRoom).toHaveBeenCalledWith('r1');
+    });
+
+    it('Task 33 — หัวห้องได้ financeLineStatus จาก attachFinanceLineStatus (ไม่มี U-id) ทั้ง OWNER และ SALES', async () => {
+      (roomManager.findById as jest.Mock).mockResolvedValue({
+        id: 'r1',
+        channel: 'LINE_FINANCE',
+        assignedToId: null,
+        customer: {
+          id: 'c1',
+          name: 'สมชาย',
+          phone: '0812345678',
+          nationalId: '1',
+          acquisitionSource: 'WALK_IN',
+        },
+      });
+      samePerson.findForRoom.mockResolvedValue([]);
+      (roomManager.attachFinanceLineStatus as jest.Mock).mockImplementation(
+        async (rows: Record<string, unknown>[]) =>
+          rows.map((row) => ({
+            ...row,
+            financeLineStatus: { verified: false, unlinkedAt: '2026-10-30T05:00:00.000Z' },
+          })),
+      );
+
+      for (const user of [
+        { id: 'u', role: 'OWNER' },
+        { id: 'sales-1', role: 'SALES' },
+      ]) {
+        const res = await controller.getRoom('r1', { user } as never);
+        expect(res.financeLineStatus).toEqual({
+          verified: false,
+          unlinkedAt: '2026-10-30T05:00:00.000Z',
+        });
+      }
     });
 
     it('SALES เปิดห้องที่ยังไม่มีเจ้าของ — ยังเห็น chatPlaceholder(false) + possibleSamePerson แต่ nationalId ถูกซ่อน (PDPA เดิม)', async () => {

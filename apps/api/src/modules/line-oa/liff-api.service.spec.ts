@@ -344,7 +344,7 @@ describe('LiffApiService', () => {
           verifiedAt: { not: null },
           OR: [{ lineUserId: { in: ['U_line'] } }, { customerId: { in: ['cust1'] } }],
         },
-        data: { verifiedAt: null },
+        data: { verifiedAt: null, financeLineUnlinkedAt: expect.any(Date) },
       });
     });
 
@@ -522,6 +522,61 @@ describe('LiffApiService', () => {
       const result = await service.getConsentStatus('U_line');
       expect(result!.consent).toBe(true);
       expect(result!.consentAt).toBeTruthy();
+    });
+
+    // Task 33 fix round 1 (คำตัดสินเจ้าของข้อ 30) — ลูกค้าที่ยินยอมตอนผูก LINE (แถว GRANTED ของวัตถุประสงค์นี้) ไม่ต้องเห็นโมดัล chat_consent ซ้ำ
+    it('ยินยอมตอนผูก LINE แล้ว (แถว pdpa_consents ของวัตถุประสงค์นี้) → consent = true แม้ chat_consent ยังเป็น false', async () => {
+      prisma.customer.findFirst.mockResolvedValue({
+        chatConsent: false,
+        chatConsentAt: null,
+        pdpaConsents: [{ grantedAt: new Date('2026-10-31T03:00:00.000Z'), createdAt: new Date() }],
+      });
+      const result = await service.getConsentStatus('U_line');
+      expect(result).toEqual({ consent: true, consentAt: '2026-10-31T03:00:00.000Z' });
+      expect(prisma.customer.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: expect.objectContaining({
+            pdpaConsents: expect.objectContaining({
+              where: {
+                status: 'GRANTED',
+                deletedAt: null,
+                purposes: { has: 'แจ้งเตือนค่างวด ใบเสร็จ และข้อมูลสัญญาทาง LINE' },
+              },
+            }),
+          }),
+        }),
+      );
+    });
+
+    // fix round 2 R2-M3 — chat_consent_at ถูกตั้งตอนถอนด้วย ⇒ consentAt ต้องเป็นเวลาของความยินยอมที่มีผลจริง
+    it('chat_consent ถูกถอนแล้ว (chat_consent_at = เวลาถอน) แต่มีความยินยอมตอนผูก → consentAt = วันที่ยินยอมตอนผูก', async () => {
+      prisma.customer.findFirst.mockResolvedValue({
+        chatConsent: false,
+        chatConsentAt: new Date('2026-11-01T02:00:00.000Z'),
+        pdpaConsents: [{ grantedAt: new Date('2026-10-31T03:00:00.000Z'), createdAt: new Date() }],
+      });
+      expect(await service.getConsentStatus('U_line')).toEqual({
+        consent: true,
+        consentAt: '2026-10-31T03:00:00.000Z',
+      });
+    });
+
+    it('chat_consent ถูกถอนและไม่มีความยินยอมตอนผูก → consent = false · consentAt = null (เวลาถอนไม่ใช่เวลายินยอม)', async () => {
+      prisma.customer.findFirst.mockResolvedValue({
+        chatConsent: false,
+        chatConsentAt: new Date('2026-11-01T02:00:00.000Z'),
+        pdpaConsents: [],
+      });
+      expect(await service.getConsentStatus('U_line')).toEqual({ consent: false, consentAt: null });
+    });
+
+    it('ไม่มีทั้ง chat_consent และความยินยอมตอนผูก → consent = false (โมดัลยังขึ้น)', async () => {
+      prisma.customer.findFirst.mockResolvedValue({
+        chatConsent: false,
+        chatConsentAt: null,
+        pdpaConsents: [],
+      });
+      expect(await service.getConsentStatus('U_line')).toEqual({ consent: false, consentAt: null });
     });
   });
 

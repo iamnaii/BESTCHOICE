@@ -22,6 +22,8 @@ describe('Live Graph comment adapter (mock HTTP; no Meta calls)', () => {
   let sendBody: unknown;
   let sendThrows: boolean;
   let pages: number;
+  // Task 35: a GET answered with this instead of the fixture (status+JSON / socket error / HTML 5xx).
+  let graphFail: Record<string, { status: number; body: unknown } | 'network' | 'html'>;
   const reply = { pageId: '123', commentId: '123_789', text: 'คำตอบสาธารณะ' };
   beforeEach(() => {
     config.getConfig.mockResolvedValue({ ...credentials });
@@ -54,11 +56,16 @@ describe('Live Graph comment adapter (mock HTTP; no Meta calls)', () => {
     sendBody = { id: '123_888' };
     sendThrows = false;
     pages = 0;
+    graphFail = {};
     fetchMock = jest.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const url = new URL(String(input));
       expect(url.origin).toBe('https://graph.facebook.com');
       expect(init?.redirect).toBe('error');
       expect(init?.signal).toBeDefined();
+      const fail = init?.method === 'POST' ? undefined : graphFail[url.pathname];
+      if (fail === 'network') throw new Error('socket hang up');
+      if (fail === 'html') return new Response('<html>502 Bad Gateway</html>', { status: 502 });
+      if (fail) return new Response(JSON.stringify(fail.body), { status: fail.status });
       let data: unknown;
       let status = 200;
       if (url.pathname === '/v25.0/debug_token') data = { data: token };
@@ -135,6 +142,178 @@ describe('Live Graph comment adapter (mock HTTP; no Meta calls)', () => {
     config.getConfig.mockResolvedValue({ ...credentials, appId: '' });
     expect(await transport.evidence('123')).toMatchObject({ verified: false });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+  // Task 35 (owner 2026-10-31): the Verify Token only answers Meta's GET handshake
+  // (FacebookWebhookController.verifyWebhook). No Graph request reads it, so clearing it in the
+  // Integration Hub must not switch off comment receive / reply / feed subscription.
+  it.each([
+    ['cleared', { verifyToken: undefined }],
+    ['empty', { verifyToken: '' }],
+  ])('comment features do not need the webhook Verify Token (%s)', async (_label, override) => {
+    config.getConfig.mockResolvedValue({ ...credentials, ...override });
+    expect(await transport.evidence('123')).toMatchObject({
+      verified: true,
+      receive: true,
+      publicReply: true,
+    });
+    expect(await client().getCapabilities('123')).toMatchObject({
+      receive: true,
+      publicReply: true,
+    });
+    expect(await transport.readComment('123', '123_789')).toMatchObject({
+      commentId: '123_789',
+      exists: true,
+    });
+    expect(await client().replyPublic(reply)).toEqual({
+      status: 'CONFIRMED',
+      externalId: '123_888',
+    });
+    await transport.subscribeFeed('123');
+    expect(posts()).toHaveLength(2);
+  });
+  it('names only the fields the comment transport reads when configuration is incomplete', async () => {
+    config.getConfig.mockResolvedValue({ ...credentials, appSecret: '' });
+    const { reason } = await transport.evidence('123');
+    expect(reason).toBe('ตั้งค่า Page ID, App ID, Page Access Token และ App Secret ให้ครบ');
+    expect(reason).not.toContain('Verify Token');
+  });
+  // Task 35 (option 4): `notReady` = proof that receiving cannot work until someone changes the
+  // configuration or Meta permissions. Without proof (outage, rate limit, unknown) it stays absent
+  // so the webhook keeps Meta's redelivery.
+  describe('notReady — proof that receiving is impossible', () => {
+    const evidence = () => transport.evidence('123', true);
+    it('ready Page carries no notReady', async () => {
+      expect(await evidence()).toMatchObject({ receive: true });
+      expect((await evidence()).notReady).toBeUndefined();
+    });
+    it.each([
+      ['App Secret cleared', { appSecret: '' }],
+      ['Page Access Token cleared', { pageAccessToken: '' }],
+      ['App ID missing', { appId: '' }],
+      ['configured for another Page', { pageId: '999' }],
+    ])('configuration (%s) → CONFIG without any Graph request', async (_l, patch) => {
+      config.getConfig.mockResolvedValue({ ...credentials, ...patch });
+      expect(await evidence()).toMatchObject({ verified: false, notReady: 'CONFIG' });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+    it.each([
+      ['token reported invalid', () => (token.is_valid = false)],
+      ['token expired', () => (token.expires_at = 1)],
+      ['customer-content permission missing', () => (token.scopes = ['pages_read_engagement'])],
+      [
+        'app not subscribed to feed',
+        () => (apps = [{ id: '456', subscribed_fields: ['messages'] }]),
+      ],
+      [
+        'Page token rejected (OAuth 190)',
+        () => (graphFail['/v25.0/me'] = { status: 400, body: { error: { code: 190 } } }),
+      ],
+      [
+        'subscriptions refused (permission 200)',
+        () =>
+          (graphFail['/v25.0/123/subscribed_apps'] = {
+            status: 403,
+            body: { error: { code: 200 } },
+          }),
+      ],
+      [
+        'app token rejected on debug_token (OAuth 190)',
+        () => (graphFail['/v25.0/debug_token'] = { status: 400, body: { error: { code: 190 } } }),
+      ],
+      [
+        'debug_token verdict: invalid with an OAuth 190 inside (round 3 M1)',
+        () => {
+          token.is_valid = false;
+          token.error = { code: 190, message: 'Session has expired' };
+        },
+      ],
+    ])('Meta answered every request: %s → META_PERMISSION', async (_l, arrange) => {
+      arrange();
+      expect(await evidence()).toMatchObject({ receive: false, notReady: 'META_PERMISSION' });
+    });
+    it.each([
+      [
+        'Graph 500 on me',
+        () => (graphFail['/v25.0/me'] = { status: 500, body: { error: { code: 2 } } }),
+      ],
+      [
+        'OAuth error flagged transient',
+        () =>
+          (graphFail['/v25.0/me'] = {
+            status: 400,
+            body: { error: { code: 190, is_transient: true } },
+          }),
+      ],
+      [
+        'rate limited (code 4)',
+        () => (graphFail['/v25.0/debug_token'] = { status: 400, body: { error: { code: 4 } } }),
+      ],
+      [
+        'unknown 4xx code (100)',
+        () => (graphFail['/v25.0/me'] = { status: 400, body: { error: { code: 100 } } }),
+      ],
+      [
+        'subscriptions 503',
+        () => (graphFail['/v25.0/123/subscribed_apps'] = { status: 503, body: {} }),
+      ],
+      ['subscriptions HTML 502', () => (graphFail['/v25.0/123/subscribed_apps'] = 'html')],
+      ['network failure on me', () => (graphFail['/v25.0/me'] = 'network')],
+      ['HTML 502 on debug_token', () => (graphFail['/v25.0/debug_token'] = 'html')],
+      // Round 3 M1: debug_token answers 2xx even for a bad token — its verdict lives in `data`.
+      [
+        'debug_token 2xx, inner error is not OAuth (code 1)',
+        () => {
+          token.is_valid = false;
+          token.error = { code: 1, message: 'An unknown error occurred' };
+        },
+      ],
+      [
+        'debug_token 2xx, inner OAuth error flagged transient',
+        () => {
+          token.is_valid = false;
+          token.error = { code: 190, is_transient: true };
+        },
+      ],
+      [
+        'debug_token 2xx, inner error without a code',
+        () => {
+          token.is_valid = false;
+          token.error = { message: 'x' };
+        },
+      ],
+      ['debug_token 2xx without a verdict (empty data)', () => (token = {})],
+      ['valid token missing data_access_expires_at', () => delete token.data_access_expires_at],
+      ['valid token missing expires_at', () => delete token.expires_at],
+      ['valid token without a scopes list', () => delete token.scopes],
+    ])('no proof: %s → receive false, notReady absent (retryable)', async (_l, arrange) => {
+      arrange();
+      const result = await evidence();
+      expect(result.receive).not.toBe(true);
+      expect(result.notReady).toBeUndefined();
+    });
+    it('client passes the proof through and adds CONFIG for its own configuration gates', async () => {
+      token.scopes = ['pages_read_engagement'];
+      expect(await client().getCapabilities('123', true)).toMatchObject({
+        receive: false,
+        notReady: 'META_PERMISSION',
+      });
+      config.getConfig.mockResolvedValue({ ...credentials, pageAccessToken: '' });
+      expect(await client().getCapabilities('123')).toMatchObject({
+        receive: false,
+        notReady: 'CONFIG',
+      });
+      expect(
+        await new FacebookCommentClient(
+          config as unknown as IntegrationConfigService,
+        ).getCapabilities('123'),
+      ).toMatchObject({ receive: false, notReady: 'CONFIG' });
+    });
+    it('client: configuration read failure is not proof (retryable)', async () => {
+      config.getConfig.mockRejectedValue(new Error('database unavailable'));
+      const capabilities = await client().getCapabilities('123');
+      expect(capabilities.receive).toBe(false);
+      expect(capabilities).not.toHaveProperty('notReady');
+    });
   });
   it('invalidates cached evidence when credentials change', async () => {
     await transport.evidence('123');

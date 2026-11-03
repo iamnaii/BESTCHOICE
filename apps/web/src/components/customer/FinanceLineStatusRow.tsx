@@ -186,6 +186,60 @@ export function FinanceLineStatusRow({
   );
 }
 
+/** Task 33 (mockup A1) — วิธีผูกเองแบบสั้นในหน้าต่าง "ข้อมูลลูกค้า" ของอินบ็อกซ์ (ถ้อยคำตาม `A1NotLinked.dc.html`) */
+export const FINANCE_LINE_INBOX_SELF_LINK_TEXT =
+  'ลูกค้าผูกเองในแชท LINE น้องเบส: กด “เริ่มยืนยันตัวตน” แล้วยืนยันเบอร์ด้วยรหัส OTP';
+
+/**
+ * Task 33 (mockup A1 "ข้อมูลลูกค้า" ในอินบ็อกซ์) — แทนแถว "LINE ID (Finance / น้องเบส)" ที่เคยโชว์ LINE user id ดิบ (U…):
+ * สถานะจาก `financeLine` ชุดเดียวกับฟอร์มแก้ไข (แถว OTP ที่ยังผูก) · แสดงเสมอแม้ยังไม่ผูก (แถวอื่นของหน้าต่างซ่อนเมื่อไม่มีค่า) ·
+ * ไม่รู้สถานะ (API รุ่นเก่า) = ไม่แสดง (ไม่เดา) · ไม่มีปุ่มยกเลิกผูก — ทางนั้นอยู่ที่ฟอร์มแก้ไขลูกค้า
+ */
+export function FinanceLineStatusInfoRow({
+  financeLine,
+}: {
+  financeLine: FinanceLineStatus | null | undefined;
+}) {
+  const labelId = useId();
+  if (!financeLine) return null;
+  return (
+    <div className="flex gap-3 text-xs">
+      <span id={labelId} className="w-24 shrink-0 leading-snug text-muted-foreground">
+        {FINANCE_LINE_LABEL}
+      </span>
+      {financeLine.verified ? (
+        <div
+          role="group"
+          aria-labelledby={labelId}
+          className="flex min-w-0 flex-1 items-start gap-2 rounded-lg border border-primary/30 bg-primary/5 px-2.5 py-2"
+        >
+          <CircleCheck className="mt-px size-4 shrink-0 text-primary" aria-hidden="true" />
+          <div className="flex min-w-0 flex-col gap-px">
+            <span className="font-semibold leading-snug text-primary">ยืนยัน OTP แล้ว</span>
+            <span className="leading-snug text-muted-foreground">
+              ผูกเมื่อ {financeLine.linkedAt ? formatThaiDate(financeLine.linkedAt) : '-'}
+            </span>
+          </div>
+        </div>
+      ) : (
+        <div
+          role="group"
+          aria-labelledby={labelId}
+          className="flex min-w-0 flex-1 items-start gap-2 rounded-lg border border-border bg-muted px-2.5 py-2"
+        >
+          <Info className="mt-px size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <span className="font-semibold leading-snug text-foreground">ยังไม่ได้ผูก LINE</span>
+            <span className="leading-snug text-muted-foreground">
+              {FINANCE_LINE_INBOX_SELF_LINK_TEXT}
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** ฟอร์มสร้างลูกค้า — หมายเหตุเต็มความกว้างแทนช่องพิมพ์ (mockup CreateCustomer) */
 export function FinanceLineCreateNote({ labelClassName }: { labelClassName?: string }) {
   const labelId = useId();

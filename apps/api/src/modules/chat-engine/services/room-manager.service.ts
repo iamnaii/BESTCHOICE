@@ -51,8 +51,10 @@ import {
   lockFinanceLineCustomers,
 } from '../../line-oa/services/finance-line-link';
 import {
+  type FinanceLineRoomStatus,
   VERIFIED_FINANCE_LINK_WHERE,
   findFinanceLineRecipient,
+  findFinanceLineRoomStatuses,
 } from '../../line-oa/services/otp-verified-customer';
 import { type LineSendActor, lineSendCustomerScope } from '../../overdue/line-send-scope';
 
@@ -1246,7 +1248,12 @@ export class RoomManagerService {
       }
       const linked = await tx.chatRoom.update({
         where: { id: roomId },
-        data: { customerId },
+        data: {
+          customerId,
+          // Task 33 fix round 1 M3 — เวลาที่ LINE ของห้องหลุดจากการยืนยันเป็นของเจ้าของเดิม: เปลี่ยนลูกค้าแล้วห้ามค้าง
+          // (ไม่งั้นป้ายบอก "LINE นี้ยกเลิกผูกกับ [ลูกค้าใหม่]" ซึ่งไม่จริง) · แถวห้องถูกล็อกแล้วข้างบน — ไม่เพิ่มล็อก
+          ...(room.customerId !== customerId ? { financeLineUnlinkedAt: null } : {}),
+        },
       });
       await linkRoomCreditHistory(tx, roomId, customerId);
       return linked;
@@ -1325,6 +1332,31 @@ export class RoomManagerService {
     return where;
   }
 
+  /**
+   * Task 33 (mockup A2/A3) — แนบ `financeLineStatus` ให้ห้องที่ส่งถึงหน้าจอพนักงาน (รายชื่อแชท · หัวห้อง): คำนวณฝั่ง server ด้วย
+   * `findFinanceLineRoomStatuses` (กติกาเดียวกับข้อความสำเร็จรูปของห้องการเงิน) · ห้องช่องอื่น/ไม่มีลูกค้า = null · ไม่มี U-id ในสถานะ ·
+   * ตัดคอลัมน์ภายใน `financeLineUnlinkedAt` ออกจากคำตอบ
+   */
+  async attachFinanceLineStatus<
+    T extends {
+      id: string;
+      channel: ChatChannel | string;
+      lineUserId: string | null;
+      customerId: string | null;
+      financeLineUnlinkedAt?: Date | null;
+    },
+  >(
+    rooms: T[],
+  ): Promise<
+    (Omit<T, 'financeLineUnlinkedAt'> & { financeLineStatus: FinanceLineRoomStatus | null })[]
+  > {
+    const statuses = await findFinanceLineRoomStatuses(this.prisma, rooms);
+    return rooms.map(({ financeLineUnlinkedAt: _internal, ...room }) => ({
+      ...room,
+      financeLineStatus: statuses.get(room.id) ?? null,
+    }));
+  }
+
   /** List rooms for the unified inbox with pagination and filters */
   async listRooms(
     params: RoomFilterParams & { page?: number; limit?: number },
@@ -1400,7 +1432,12 @@ export class RoomManagerService {
         : [];
       const byId = new Map(rows.map((r) => [r.id, r]));
       const data = pageIds.map((id) => byId.get(id)!).filter(Boolean);
-      return { data: await withMatches(data), total: keys.length, page, limit };
+      return {
+        data: await this.attachFinanceLineStatus(await withMatches(data)),
+        total: keys.length,
+        page,
+        limit,
+      };
     }
 
     const [data, total] = await this.prisma.$transaction([
@@ -1434,7 +1471,12 @@ export class RoomManagerService {
       this.prisma.chatRoom.count({ where }),
     ]);
 
-    return { data: await withMatches(data), total, page, limit };
+    return {
+      data: await this.attachFinanceLineStatus(await withMatches(data)),
+      total,
+      page,
+      limit,
+    };
   }
 
   /** Link room to a verified customer */

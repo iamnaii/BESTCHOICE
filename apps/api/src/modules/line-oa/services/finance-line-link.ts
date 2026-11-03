@@ -60,11 +60,15 @@ export function staffLineFinanceChange(
  * `ChatRoomService.linkRoomToCustomer` (บอทการเงินหลัง `isLinked`) · สร้างห้องการเงินใหม่ของ LINE ที่มีแถวยังผูก (`ChatRoomService.getOrCreate` ·
  * cron `overdue-chat` ส่งลูกค้าจากแถวที่ยังผูกเข้า `RoomManagerService.getOrCreateRoom`). ฝั่งกลับ = helper นี้ตัวเดียว เรียกในทรานแซกชันเดียวกับการปิด/ย้ายแถว:
  * ล้างห้อง LINE การเงินของ LINE ที่หลุด (`lineUserIds`) และของลูกค้าที่ไม่เหลือ LINE ที่ยืนยันแล้ว (`customerIds` — ลูกค้ามีแถว FINANCE ได้แถวเดียว
- * ⇒ ห้องการเงินของเขาที่ยัง verified ทุกห้องเป็นค่าค้าง รวมห้องของ LINE เก่าที่ยกเลิกไปก่อนแก้ข้อนี้) · ไม่แตะ `customerId` ของห้อง (ประวัติแชทคงเดิม)
+ * ⇒ ห้องการเงินของเขาที่ยัง verified ทุกห้องเป็นค่าค้าง รวมห้องของ LINE เก่าที่ยกเลิกไปก่อนแก้ข้อนี้) · ไม่แตะ `customerId` ของห้อง (ประวัติแชทคงเดิม) ·
+ * Task 33 — ห้องที่ถูกล้างจำเวลาที่หลุดไว้ (`finance_line_unlinked_at`) ⇒ อินบ็อกซ์ขึ้นป้าย "ยกเลิกผูกแล้ว" + วันที่ได้แม้ลูกค้าเปลี่ยน LINE
+ * (แถว link ถูกชี้ไป LINE ใหม่ — ประวัติของ LINE เก่าไม่อยู่ในแถว link อีก) · `bind` ล้างค่านี้เมื่อห้องกลับมายืนยัน
  */
 export async function clearFinanceRoomVerification(
   tx: Prisma.TransactionClient,
   lost: { lineUserIds?: readonly string[]; customerIds?: readonly string[] },
+  /** Task 33 — เวลาที่หลุด (= `unlinkedAt` ของแถว link ที่ปิดในทรานแซกชันเดียวกัน) เก็บไว้ที่ห้องให้ป้าย "ยกเลิกผูกแล้ว" ในอินบ็อกซ์ */
+  at: Date = new Date(),
 ): Promise<void> {
   const lineUserIds = [...new Set((lost.lineUserIds ?? []).filter(Boolean))];
   const customerIds = [...new Set((lost.customerIds ?? []).filter(Boolean))];
@@ -75,7 +79,7 @@ export async function clearFinanceRoomVerification(
   // ไม่กรอง deletedAt โดยตั้งใจ — เป็นการล้างค่า ไม่ใช่การอ่าน
   await tx.chatRoom.updateMany({
     where: { channel: ChatChannel.LINE_FINANCE, verifiedAt: { not: null }, OR: scope },
-    data: { verifiedAt: null },
+    data: { verifiedAt: null, financeLineUnlinkedAt: at },
   });
 }
 
@@ -222,10 +226,11 @@ export async function unlinkFinanceLine(
       where: { lineUserId: target.lineUserId, channel: LineChannelType.FINANCE, unlinkedAt: null },
       data: { unlinkedAt },
     });
-    await clearFinanceRoomVerification(tx, {
-      lineUserIds: [target.lineUserId],
-      customerIds: holders.map((h) => h.customerId),
-    });
+    await clearFinanceRoomVerification(
+      tx,
+      { lineUserIds: [target.lineUserId], customerIds: holders.map((h) => h.customerId) },
+      unlinkedAt,
+    );
     return;
   }
   // Task 29 — ลำดับล็อก ลูกค้า → link → ห้อง: คำสั่งเขียนแรกของทางนี้คือแถวลูกค้า (ล้างคอลัมน์ด้านล่าง) จึงไม่ต้องล็อกแยก ·
@@ -243,8 +248,9 @@ export async function unlinkFinanceLine(
     where: { customerId: target.customerId, channel: LineChannelType.FINANCE, unlinkedAt: null },
     data: { unlinkedAt },
   });
-  await clearFinanceRoomVerification(tx, {
-    lineUserIds: closing.map((r) => r.lineUserId),
-    customerIds: [target.customerId],
-  });
+  await clearFinanceRoomVerification(
+    tx,
+    { lineUserIds: closing.map((r) => r.lineUserId), customerIds: [target.customerId] },
+    unlinkedAt,
+  );
 }

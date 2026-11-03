@@ -1,12 +1,14 @@
 import { Body, Controller, Get, HttpCode, Logger, Post, Req, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
+import type { Request } from 'express';
 import { LineChannelType } from '@prisma/client';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
-import { IsNumber, IsOptional, IsString, Length, Matches, Max, Min } from 'class-validator';
+import { Equals, IsNumber, IsOptional, IsString, Length, Matches, Max, Min } from 'class-validator';
 import { VerificationService } from './services/verification.service';
 import { FeedbackService } from './services/feedback.service';
 import { LiffTokenGuard, LiffRequest } from '../line-oa/guards/liff-token.guard';
 import { LiffChannel } from '../line-oa/guards/liff-channel.decorator';
+import { LINE_FINANCE_CONSENT_REQUIRED_MESSAGE } from '../pdpa/line-finance-consent';
 
 class RequestOtpDto {
   @IsString()
@@ -18,6 +20,14 @@ class VerifyOtpDto {
   @IsString()
   @Length(6, 6, { message: 'OTP ต้องเป็นตัวเลข 6 หลัก' })
   otp!: string;
+
+  /**
+   * Task 33 — ลูกค้าติ๊กยินยอมรับแจ้งเตือนทาง LINE ที่ขั้นกรอกเบอร์ (บังคับ) · ต้องเป็น boolean `true` เท่านั้น ·
+   * ชนิด `unknown` โดยตั้งใจ: ValidationPipe กลางเปิด `enableImplicitConversion` — ถ้าประกาศเป็น boolean สตริง `"false"`/`"no"`
+   * จะถูกแปลงเป็น true ก่อนตรวจ · ไม่มีช่องนี้ (หน้า LIFF รุ่นเก่า) = 400 ที่บอกทางเปิดหน้าใหม่
+   */
+  @Equals(true, { message: LINE_FINANCE_CONSENT_REQUIRED_MESSAGE })
+  consent!: unknown;
 }
 
 class SubmitFeedbackDto {
@@ -86,10 +96,19 @@ export class ChatbotFinanceLiffController {
   @Post('verify-otp')
   @HttpCode(200)
   @Throttle({ short: { ttl: 60000, limit: 10 } }) // 10/นาที/IP — เผื่อพิมพ์ผิด
-  async verifyOtp(@Req() req: LiffRequest, @Body() dto: VerifyOtpDto) {
+  async verifyOtp(
+    @Req() req: LiffRequest & Pick<Request, 'ip' | 'headers'>,
+    @Body() dto: VerifyOtpDto,
+  ) {
     const result = await this.verification.verifyOtp({
       lineUserId: req.liffUserId,
       otp: dto.otp,
+      // DTO ผ่านแล้ว = consent === true · หลักฐานแบบเดียวกับ PDPAService.recordConsent (IP + user agent)
+      consent: {
+        granted: true,
+        ipAddress: req.ip ?? null,
+        userAgent: req.headers['user-agent'] ?? null,
+      },
     });
     this.logger.log(`[LIFF] Verified successfully`);
     return result;

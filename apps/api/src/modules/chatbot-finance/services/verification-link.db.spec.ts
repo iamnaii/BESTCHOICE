@@ -22,6 +22,9 @@ import { VerificationService } from './verification.service';
 import { LiffApiService } from '../../line-oa/liff-api.service';
 import { CustomerWriteService } from '../../customers/services/customer-write.service';
 
+/** Task 33 — หน้า LIFF ส่งความยินยอมมาพร้อมรหัสเสมอ (DTO บังคับ) · ความยินยอมถูกบันทึกใน tx ของ bind */
+const GRANTED_CONSENT = { granted: true } as const;
+
 jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn(), captureMessage: jest.fn() }));
 
 const prisma = new PrismaClient();
@@ -46,7 +49,7 @@ let customerForm: CustomerWriteService;
 async function verifyWithOtp(lineUserId: string, phone = PHONE) {
   await verification.requestOtp({ lineUserId, phone });
   const otp = (sms.sendSmsFromQueue.mock.calls.at(-1)?.[1] as string).match(/(\d{6})/)![1];
-  return verification.verifyOtp({ lineUserId, otp });
+  return verification.verifyOtp({ lineUserId, otp, consent: GRANTED_CONSENT });
 }
 
 const linkRows = () =>
@@ -83,6 +86,9 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await prisma.customerLineLink.deleteMany({
+    where: { customerId: { in: [customerId, ...extraCustomerIds] } },
+  });
+  await prisma.pDPAConsent.deleteMany({
     where: { customerId: { in: [customerId, ...extraCustomerIds] } },
   });
   await prisma.chatbotOtpRequest.deleteMany({ where: { lineUserId: { in: [U1, U2, U3, U4] } } });

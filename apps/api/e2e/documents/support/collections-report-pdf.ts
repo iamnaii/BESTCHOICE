@@ -23,19 +23,38 @@ export interface ParsedReport {
   pages: Array<{ index: number; title: boolean; period: boolean; footer: string | null; pageLabel: string | null }>;
 }
 
-/** Baselines of every page, top first, each with its items left to right. */
+/**
+ * Baselines of every page, top first, each with its text runs left to right. Runs, not pdf.js text
+ * items: pdf.js joins two cells into one item when they end up 0.6 em (9.6 pt) apart or closer, and
+ * jspdf-autotable lets a cell's text overrun its content box by up to 1 pt before wrapping, so
+ * neighbouring left-aligned cells can be 9.5 pt apart (CI run 41222372998: "customer OVERDUE" in
+ * the Customer cell, Status empty — collections-report-cells.docs-spec.ts).
+ */
 export function baselinesOf(pdf: ParsedPdf): Baseline[] {
   const out: Baseline[] = [];
   for (const page of pdf.pages) {
+    if (!page.runs) {
+      throw new Error(`Collections report page ${page.index}: no text runs — not jsPDF output`);
+    }
     const rows = new Map<number, PdfTextItem[]>();
-    for (const item of page.items) {
+    for (const item of page.runs) {
       if (!item.str.trim()) continue;
       const key = Math.round(item.y * 2) / 2;
       rows.set(key, [...(rows.get(key) ?? []), item]);
     }
     for (const [y, items] of [...rows.entries()].sort(([a], [b]) => b - a)) {
       const sorted = items.sort((a, b) => a.x - b.x);
-      out.push({ page: page.index, y, items: sorted, text: sorted.map((i) => i.str).join('').replace(/\s+/g, ' ').trim(), maxSize: Math.max(...sorted.map((i) => Math.round(i.size * 10) / 10)) });
+      out.push({
+        page: page.index,
+        y,
+        items: sorted,
+        text: sorted
+          .map((i) => i.str)
+          .join(' ')
+          .replace(/\s+/g, ' ')
+          .trim(),
+        maxSize: Math.max(...sorted.map((i) => Math.round(i.size * 10) / 10)),
+      });
     }
   }
   return out;

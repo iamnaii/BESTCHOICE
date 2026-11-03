@@ -185,6 +185,17 @@ export class VerificationService {
     this.responseFloorMs = ms;
   }
 
+  /** งานส่ง SMS ที่ requestOtp ปล่อยไว้ (M1 — ไม่รอผล) ที่ยังไม่จบ รวมการเก็บกวาดของ handleSmsFailure */
+  private readonly smsDispatches = new Set<Promise<void>>();
+
+  /**
+   * Test hook: รองานส่ง SMS ที่ยังไม่จบให้ครบ (รวมคืนโควตา/ทิ้งรหัสเมื่อส่งไม่สำเร็จ) — สเปครอจากตัวงานจริง
+   * แทนการหน่วงเวลาคงที่ (Task 38: หน่วง 50 ms แล้ว CI ช้า การคืนโควตา 3 คำสั่งยังไม่ลง)
+   */
+  async _settleSmsDispatchesForTests(): Promise<void> {
+    while (this.smsDispatches.size > 0) await Promise.all([...this.smsDispatches]);
+  }
+
   /**
    * Step 1: เริ่ม OTP flow
    *
@@ -815,13 +826,15 @@ export class VerificationService {
     } catch (err) {
       sending = Promise.reject(err);
     }
-    void sending
+    const dispatch: Promise<void> = sending
       .then(
         () => this.logger.log(`[Verify] OTP sent to ${maskPhone(issued.phone)}`),
         (err: unknown) => this.handleSmsFailure(lineUserId, issued, err),
       )
       // Task 21 R-3: logger/Sentry ที่โยนเองต้องไม่กลายเป็น unhandled rejection (งานนี้ไม่มีใครรอ)
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => this.smsDispatches.delete(dispatch));
+    this.smsDispatches.add(dispatch);
   }
 
   /**

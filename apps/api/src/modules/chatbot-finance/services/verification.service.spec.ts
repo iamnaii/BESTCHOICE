@@ -70,9 +70,9 @@ function useUnitSeams(service: VerificationService, prisma: unknown): void {
   service._setResponseFloorForTests(0);
 }
 
-/** ปล่อยงานส่ง SMS ที่ไม่ได้ await (M1) ให้จบก่อนตรวจ */
-async function flushSmsDispatch(): Promise<void> {
-  for (let i = 0; i < 5; i++) await new Promise((resolve) => setImmediate(resolve));
+/** รองานส่ง SMS ที่ไม่ได้ await (M1) ให้จบก่อนตรวจ — รอจากตัวงานจริง (Task 38) ไม่นับรอบ event loop */
+function flushSmsDispatch(target: VerificationService): Promise<void> {
+  return target._settleSmsDispatchesForTests();
 }
 
 describe('VerificationService', () => {
@@ -942,7 +942,7 @@ describe('VerificationService', () => {
       );
 
       const result = await service.requestOtp({ lineUserId: 'U-6th', phone: '0891234567' });
-      await flushSmsDispatch();
+      await flushSmsDispatch(service);
 
       expect(result).toEqual({ maskedPhone: '089-***-4567', expiresInSeconds: 300 });
       expect(notifications.sendSmsFromQueue).not.toHaveBeenCalled();
@@ -1003,7 +1003,7 @@ describe('VerificationService', () => {
         service.requestOtp({ lineUserId: 'U123', phone: '0891234567' }),
       ).resolves.toEqual({ maskedPhone: '089-***-4567', expiresInSeconds: 300 });
       const issuedHash = prisma.chatbotOtpRequest.upsert.mock.calls[0][0].create.hash;
-      await flushSmsDispatch();
+      await flushSmsDispatch(service);
 
       expect(prisma.chatbotOtpRequest.delete).not.toHaveBeenCalled();
       // 3 แถวแรกคือการกินเพดาน (LINE → ลูกค้า+LINE → ลูกค้า) · ที่เหลือคือการเก็บกวาดหลังส่งไม่สำเร็จ
@@ -1040,7 +1040,7 @@ describe('VerificationService', () => {
       // ระหว่างรอ provider มีการเดารหัส ⇒ attempts ไม่เท่าตอนออก ⇒ UPDATE แบบมีเงื่อนไขไม่โดนแถวไหน
       prisma.chatbotOtpRequest.updateMany.mockResolvedValueOnce({ count: 0 });
       failSms(new Error('provider down'));
-      await flushSmsDispatch();
+      await flushSmsDispatch(service);
 
       const calls = prisma.chatbotOtpRequest.updateMany.mock.calls
         .map((c: [unknown]) => c[0])
@@ -1075,7 +1075,7 @@ describe('VerificationService', () => {
         await service.requestOtp({ lineUserId: 'U-ok', phone: '0891234567' });
         notifications.sendSmsFromQueue.mockRejectedValueOnce(new Error('provider down'));
         await service.requestOtp({ lineUserId: 'U-fail', phone: '0891234567' });
-        await flushSmsDispatch();
+        await flushSmsDispatch(service);
         await new Promise((resolve) => setTimeout(resolve, 20));
         expect(unhandled).toEqual([]);
       } finally {
@@ -1094,7 +1094,7 @@ describe('VerificationService', () => {
       await expect(
         service.requestOtp({ lineUserId: 'U123', phone: '0891234567' }),
       ).resolves.toBeDefined();
-      await flushSmsDispatch();
+      await flushSmsDispatch(service);
       expect(
         prisma.chatbotOtpRequest.updateMany.mock.calls.some(
           (c: [{ data: { lastRequestAt?: Date } }]) => c[0].data.lastRequestAt?.getTime() === 0,

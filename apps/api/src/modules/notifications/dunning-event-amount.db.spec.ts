@@ -264,6 +264,8 @@ it('แจ้งล็อก (DEVICE_LOCKED "ชำระยอดค้าง �
   expect(messageTo(f)).toContain(`ชำระเงินออนไลน์: http://localhost:5173/pay/${link.token}`);
 
   const { body } = await payLikePayPage(f, link.token);
+  // ไม่ส่งเลขงวด + ส่ง token ⇒ server ตรวจยอดกับลิงก์ (ไม่ใช่ทางเดิมที่ไม่ตรวจยอดเลย)
+  expect(body).toMatchObject({ amount: 2231.66, paymentLinkToken: link.token });
   expect(body.installmentNo).toBeUndefined();
   expect(chargedAmount()).toBe(2231.66);
 }, 60_000);

@@ -202,15 +202,19 @@ describeDb('#24 approve refund vs close contract — two real connections', () =
     const { contractId, refundId } = await fixture('A');
     let release!: () => void;
     const hold = new Promise<void>((r) => (release = r));
+    let locked!: () => void;
+    const holdsLock = new Promise<void>((r) => (locked = r));
     const closing = closer.$transaction(
       async (tx) => {
         await tx.$queryRaw`SELECT id FROM contracts WHERE id=${contractId} FOR UPDATE`;
         await assertNoPendingBankRefund(tx, contractId, 'EARLY_PAYOFF');
         await tx.contract.update({ where: { id: contractId }, data: { status: 'EARLY_PAYOFF' } });
+        locked(); // the close holds FOR UPDATE and has written the row — only now may the approval start (review m2-1)
         await hold;
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 20_000 },
     );
+    await holdsLock;
     const approving = approvalService().approveRefund(refundId, ownerId, 'OWNER', 'race');
     const approveResult = approving.then(
       () => null,

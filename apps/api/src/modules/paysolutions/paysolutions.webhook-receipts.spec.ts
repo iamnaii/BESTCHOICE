@@ -79,6 +79,8 @@ describe('PaySolutionsService.handlePaymentCallback — ใบเสร็จข
       auditLog: { create: jest.fn().mockResolvedValue({}) },
     };
     const prisma = {
+      // คำตัดสินเจ้าของ #45 — บัญชีรับเงินของ Pay Solutions (`resolvePaySolutionsDepositAccount`) · ไม่มีค่าตั้ง = 11-1201
+      paymentMethodConfig: { findFirst: jest.fn().mockResolvedValue(null) },
       partialPaymentLink: { findUnique: jest.fn().mockResolvedValue(null) },
       paymentLink: {
         findFirst: jest.fn().mockResolvedValue({

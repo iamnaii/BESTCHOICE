@@ -28,9 +28,9 @@ jest.mock('@sentry/nestjs', () => ({
  * uncovered surface before extracting the GatewayClient/Intent seam):
  *
  *   - createOnlineOrderIntent
- *   - createEarlyPayoffQR
  *   - createPartialPaymentQR
  *   - createSavingPlanIntent
+ *   (the fourth, createEarlyPayoffQR, was removed in Task 41 — no caller)
  *
  * (createPaymentIntent is already exercised by paysolutions.intent-and-failed.)
  *
@@ -244,77 +244,6 @@ describe('PaySolutionsService — intent creators (characterization)', () => {
       const opts = (Sentry.captureException as jest.Mock).mock.calls[0][1];
       expect(opts.level).toBe('fatal');
       expect(opts.tags.critical).toBe('paysolutions-online-orphan');
-    });
-  });
-
-  // ===========================================================================
-  // createEarlyPayoffQR
-  // ===========================================================================
-  describe('createEarlyPayoffQR', () => {
-    const contractId = 'ct-payoff-1';
-
-    function buildPrisma(): void {
-      prisma = {
-        contract: {
-          findUnique: jest.fn().mockResolvedValue({
-            id: contractId,
-            deletedAt: null,
-            contractNumber: 'CT-2026-0007',
-            customer: { email: 'c@example.com', name: 'ลูกค้า', lineIdFinance: null },
-          }),
-        },
-        paymentLink: {
-          create: jest.fn().mockResolvedValue({ id: 'pl-payoff-1' }),
-        },
-      };
-    }
-
-    it('success: Qrcode/Promptpay payload + creates PaymentLink with contractId, returns orderRef + sentToLine=false (no lineId)', async () => {
-      buildPrisma();
-      await buildService();
-      fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(gatewayOk());
-
-      const res = await service.createEarlyPayoffQR({
-        contractId,
-        amount: 12345,
-        description: 'ปิดยอด',
-      });
-
-      const payload = lastGatewayPayload();
-      expect(payload.amount).toBe(12345);
-      expect(payload.paymentChannel).toBe('Qrcode');
-      expect(payload.paymentGateway).toBe('Promptpay');
-      expect(payload.description).toBe('ปิดยอด');
-
-      // PaymentLink created WITH the contractId (so the webhook auto-closes it).
-      expect(prisma.paymentLink.create).toHaveBeenCalledTimes(1);
-      const linkData = prisma.paymentLink.create.mock.calls[0][0].data;
-      expect(linkData.contractId).toBe(contractId);
-      expect(linkData.amount).toBe(12345);
-      expect(linkData.status).toBe('ACTIVE');
-      // Task 39 — เงินของรายการนี้คือยอดปิดสัญญา
-      expect(linkData.purpose).toBe('PAYOFF');
-
-      expect(res.paymentLinkId).toBe('pl-payoff-1');
-      expect(res.paymentUrl).toBe('https://pay.example/redirect');
-      expect(typeof res.orderRef).toBe('string');
-      // No lineIdFinance + no quoteContext → nothing pushed to LINE.
-      expect(res.sentToLine).toBe(false);
-    });
-
-    it('orphan path: gateway OK then PaymentLink.create throws → Sentry critical=paysolutions-payoff-orphan + InternalServerError', async () => {
-      buildPrisma();
-      prisma.paymentLink.create.mockRejectedValueOnce(new Error('DB down'));
-      await buildService();
-      fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(gatewayOk());
-
-      await expect(
-        service.createEarlyPayoffQR({ contractId, amount: 100, description: 'x' }),
-      ).rejects.toBeInstanceOf(InternalServerErrorException);
-
-      const opts = (Sentry.captureException as jest.Mock).mock.calls[0][1];
-      expect(opts.level).toBe('fatal');
-      expect(opts.tags.critical).toBe('paysolutions-payoff-orphan');
     });
   });
 

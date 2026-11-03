@@ -54,7 +54,7 @@ describe('ContractPaymentService.earlyPayoff — gatewayMatch (ลูกค้�
     ],
   });
 
-  const build = (park: string, fingerprintTaken = false) => {
+  const build = (park: string, fingerprintTaken = false, extraLedger: Record<string, string> = {}) => {
     const contract = makeQuoteContract(park);
     const ledger = ledgerLines({
       '11-2101': '10800.00',
@@ -62,6 +62,7 @@ describe('ContractPaymentService.earlyPayoff — gatewayMatch (ลูกค้�
       '11-2106': '900.00',
       '21-2102': '756.00',
       '21-1103': park,
+      ...extraLedger,
     });
     const contractUpdates: Array<Record<string, unknown>> = [];
     const auditRows: Array<Record<string, unknown>> = [];
@@ -430,5 +431,23 @@ describe('ContractPaymentService.earlyPayoff — gatewayMatch (ลูกค้�
       h.service.earlyPayoff('contract-ep-park-1', 'owner-1', dto, undefined, undefined, gateway(h)),
     ).rejects.toThrow(/คำขอคืนเงินที่อนุมัติแล้ว/);
     expect(h.createAndPost).not.toHaveBeenCalled();
+  });
+
+  it('รีวิว M-2 — 11-2102 ติดลบ: Sentry warning ไม่ยิงในธุรกรรมของ webhook (savepoint อาจถอยทั้ง JP4) — ยิงเมื่อ webhook เรียกงานหลัง commit', async () => {
+    const h = build('0', false, { '11-2102': '-30.00' });
+    const g = gateway(h);
+
+    await h.service.earlyPayoff('contract-ep-park-1', 'owner-1', dto, undefined, undefined, g);
+
+    expect(Sentry.captureMessage).not.toHaveBeenCalledWith('JP4 payoff: negative 11-2102 balance', expect.anything());
+    await g.work[0]();
+    expect(Sentry.captureMessage).toHaveBeenCalledWith(
+      'JP4 payoff: negative 11-2102 balance',
+      expect.objectContaining({
+        level: 'warning',
+        tags: { subsystem: 'bad-debt' },
+        extra: { contractId: 'contract-ep-park-1', balance: '-30.00' },
+      }),
+    );
   });
 });

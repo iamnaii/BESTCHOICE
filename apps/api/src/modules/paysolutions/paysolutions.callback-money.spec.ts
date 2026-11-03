@@ -36,7 +36,7 @@ jest.mock('@sentry/nestjs', () => ({
  *        - underflow (1500 over [1000,1000]) → inst1 PAID, inst2 PARTIALLY_PAID
  *          amountPaid 500, paidDate NULL
  *        - OVERPAY (2500 over [1000,1000]) → both PAID, 500 surplus parked as
- *          customer advance: JE Dr 11-1202 / Cr 21-1103 + advanceBalance↑ +
+ *          customer advance: JE Dr 11-1201 / Cr 21-1103 + advanceBalance↑ +
  *          OVERPAY_ADVANCE_RECORDED audit (PR-843/I2 #3 owner decision)
  *        - lateFeeWaived=true → owed math uses lateFee 0
  *   2. Contract-close decision (1188-1226)
@@ -273,6 +273,8 @@ describe('PaySolutionsService.handlePaymentCallback — FIFO money + close (char
     contractForJe?: { id: string; contractNumber: string; branchId: string } | null;
   }) {
     prisma = {
+      // คำตัดสินเจ้าของ #45 — บัญชีรับเงินของ Pay Solutions (`resolvePaySolutionsDepositAccount`) · ไม่มีค่าตั้ง = 11-1201
+      paymentMethodConfig: { findFirst: jest.fn().mockResolvedValue(null) },
       partialPaymentLink: {
         findUnique: jest.fn().mockResolvedValue(null),
       },
@@ -374,7 +376,7 @@ describe('PaySolutionsService.handlePaymentCallback — FIFO money + close (char
       expect('paidAt' in c2.data).toBe(false);
     });
 
-    it('overpay: paidAmount=2500 over [1000,1000] → both PAID, 500 surplus parked as advance JE Dr 11-1202 / Cr 21-1103 + advanceBalance↑ + audit (owner decision PR-843/I2 #3)', async () => {
+    it('overpay: paidAmount=2500 over [1000,1000] → both PAID, 500 surplus parked as advance JE Dr 11-1201 / Cr 21-1103 + advanceBalance↑ + audit (owner decision PR-843/I2 #3)', async () => {
       const unpaid = [makeRow(1), makeRow(2)];
       const tx = buildTx({ unpaid, stillUnpaid: 0, contractProductId: null });
       buildPrisma({ link: makeLink({ amount: new Prisma.Decimal(2500) }), tx });
@@ -419,11 +421,11 @@ describe('PaySolutionsService.handlePaymentCallback — FIFO money + close (char
       expect(park2102.dr.toString()).toBe('32.71');
       expect(park2101.cr.toString()).toBe('32.71');
       expect(park2102.description).toBe('ภาษีขายของเงินรับล่วงหน้า (รับรู้ ณ วันรับ)');
-      const drLine = jeInput.lines.find((l: { accountCode: string }) => l.accountCode === '11-1202');
+      const drLine = jeInput.lines.find((l: { accountCode: string }) => l.accountCode === '11-1201');
       const crLine = jeInput.lines.find((l: { accountCode: string }) => l.accountCode === '21-1103');
       expect(drLine).toBeDefined();
       expect(crLine).toBeDefined();
-      // JE is balanced: Dr 11-1202 == Cr 21-1103 == 500 surplus.
+      // JE is balanced: Dr 11-1201 == Cr 21-1103 == 500 surplus.
       expect(drLine.dr.toString()).toBe('500');
       expect(drLine.cr.toString()).toBe('0');
       expect(crLine.cr.toString()).toBe('500');
@@ -866,7 +868,7 @@ describe('PaySolutionsService.handlePaymentCallback — FIFO money + close (char
       const [jeInput, outerTx] = template.execute.mock.calls[0];
       expect(jeInput.delta.toString()).toBe('600');
       expect(jeInput.installmentScheduleId).toBe('inst-sched');
-      expect(jeInput.debitAccountCode).toBe('11-1202');
+      expect(jeInput.debitAccountCode).toBe('11-1201'); // คำตัดสินเจ้าของ #45 (เดิม 11-1202)
       expect(jeInput.isFinalReceipt).toBe(true);
       expect(jeInput.paymentId).toBe('pay-1');
       // PR-843/I2 Phase 5b — the QR webhook always clears the FULL owed per

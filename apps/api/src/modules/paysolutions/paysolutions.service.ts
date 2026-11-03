@@ -43,7 +43,7 @@ export { PaymentStatusResult } from './services/paysolutions-confirmation.servic
  * unchanged; every public method one-line delegates.
  *
  *   - {@link PaySolutionsGatewayClient}      — DB-free config + createUiPayment dedup
- *   - {@link PaySolutionsIntentService}      — the 5 intent creators (NO regulated JE)
+ *   - {@link PaySolutionsIntentService}      — the 4 intent creators (NO regulated JE — `createEarlyPayoffQR` removed Task 41: no caller)
  *   - {@link PaySolutionsConfirmationService}— partial/online/saving confirm + status
  *   - {@link PaySolutionsWebhookService}     — REGULATED CORE: the line-1105
  *       Serializable webhook $tx (3 JEs, FIFO, idempotency, contract-close) AS
@@ -173,20 +173,6 @@ export class PaySolutionsService {
     channel: 'PROMPTPAY_QR' | 'CREDIT_DEBIT_CARD';
   }): Promise<{ paymentLinkId: string; paymentUrl: string; qrCodeUrl?: string }> {
     return this.services().intent.createOnlineOrderIntent(input);
-  }
-
-  createEarlyPayoffQR(input: {
-    contractId: string;
-    amount: number;
-    description?: string;
-    quoteContext?: {
-      originalAmount: number;
-      savings: number;
-      discountPct: number;
-      remainingMonths: number;
-    };
-  }): Promise<{ paymentLinkId: string; paymentUrl: string; orderRef: string; sentToLine: boolean }> {
-    return this.services().intent.createEarlyPayoffQR(input);
   }
 
   createPartialPaymentQR(input: {

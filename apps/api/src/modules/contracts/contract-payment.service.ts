@@ -731,6 +731,8 @@ export class ContractPaymentService {
                   gatewayRef: gatewayMatch.refno,
                   gatewayStatus: 'SUCCESS',
                   gatewayResponse: gatewayMatch.webhookData as object,
+                  // คำตัดสินเจ้าของ #45 — บัญชีเดียวกับขา Dr ของ JP4 (บัญชีรับเงินของ Pay Solutions)
+                  depositAccountCode: effectiveDepositCode,
                 }
               : {}),
           },
@@ -1067,7 +1069,11 @@ export class ContractPaymentService {
       // convention as the JP5/write-off consume-then-release helper
       // (glContractBalance + EclStageReverseTemplate), minus the "consume"
       // leg — JP4 has no loss to net the provision against.
-      const ecl = await this.releaseEclOnPayoff(tx, id, managed, paidDate);
+      // รีวิว M-2 (Task 41): สัญญาณเตือน 11-2102 ติดลบของทางไม่ managed ส่งหลัง commit (`epWarnings`) — เดิมยิงในธุรกรรม ⇒ ทาง QR ที่ถอย
+      // savepoint (JP4 ไม่ได้ลง) ยังได้ warning ของ JP4 ที่ไม่เกิด
+      const eclWarnings: DeferredWarning[] = [];
+      const ecl = await this.releaseEclOnPayoff(tx, id, managed, paidDate, eclWarnings);
+      if (eclWarnings.length > 0) epWarnings = [...epWarnings, ...eclWarnings];
       if (managed && ecl) {
         const entry = await tx.journalEntry.findUniqueOrThrow({
           where: { entryNumber: ecl.entryNo },
@@ -1379,6 +1385,8 @@ export class ContractPaymentService {
     contractId: string,
     managed?: ManagedPayoffExecution,
     paidDate?: Date,
+    /** ทางไม่ managed: สัญญาณเตือนถูกเก็บที่นี่ให้ผู้เรียกส่งหลัง commit (ไม่ยิงในธุรกรรม) */
+    deferredWarnings?: DeferredWarning[],
   ): Promise<{ entryNo: string } | null> {
     let result: { entryNo: string } | null = null;
     const bal = await glContractBalance(tx, contractId, '11-2102', 'cr');
@@ -1394,6 +1402,12 @@ export class ContractPaymentService {
         });
       };
       if (managed) onDomainCommit(warn);
+      else if (deferredWarnings)
+        deferredWarnings.push({
+          message: 'JP4 payoff: negative 11-2102 balance',
+          tags: { subsystem: 'bad-debt' },
+          extra: { contractId, balance: bal.toFixed(2) },
+        });
       else await warn();
     }
     if (bal.gt(0)) {

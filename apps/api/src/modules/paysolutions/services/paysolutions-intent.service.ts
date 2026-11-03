@@ -16,7 +16,6 @@ import {
   findOtpVerifiedCustomerId,
 } from '../../line-oa/services/otp-verified-customer';
 import { LineOaService } from '../../line-oa/line-oa.service';
-import { buildEarlyPayoffQRFlex } from '../../line-oa/flex-messages/early-payoff-qr.flex';
 import { buildPartialPaymentQRFlex } from '../../line-oa/flex-messages/partial-payment-qr.flex';
 import { buildRescheduleQRFlex } from '../../line-oa/flex-messages/reschedule-qr.flex';
 import { d, dAdd, dSub, dClose } from '../../../utils/decimal.util';
@@ -56,6 +55,21 @@ export function payoffAmountChangedMessage(totalPayoff: string): string {
   );
 }
 
+/**
+ * Task 41 fix round (ข้อ 3) — ลิงก์ `/pay/:token` ที่ `purpose = PAYOFF` แต่ยอดของลิงก์ไม่ตรงยอดปิดของ server แล้ว · ทางไปต่อที่มีจริงบนหน้า
+ * `/pay/:token` (`LiffPayment.tsx`): ลิงก์ "กลับไปดูสัญญา" ท้ายหน้า → `/liff/contract` ปุ่ม "ปิดยอดก่อนกำหนด · ลดดอกเบี้ย" (หน้าปิดยอดคิดยอดล่าสุด)
+ */
+export function stalePayoffLinkMessage(totalPayoff: string): string {
+  const formatted = Number(totalPayoff).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return (
+    `ลิงก์ปิดยอดนี้ใช้ไม่ได้แล้ว เพราะยอดปิดสัญญาเปลี่ยน (ยอดล่าสุด ${formatted} บาท) — กด "กลับไปดูสัญญา" ด้านล่าง ` +
+    'แล้วกด "ปิดยอดก่อนกำหนด · ลดดอกเบี้ย" เพื่อดูยอดล่าสุดและชำระ'
+  );
+}
+
 export interface PaymentIntentResult {
   paymentId: string;
   paymentUrl: string;
@@ -64,7 +78,7 @@ export interface PaymentIntentResult {
 }
 
 /**
- * Owns the five "mint a Pay Solutions intent" flows. NO regulated JE — the
+ * Owns the four "mint a Pay Solutions intent" flows (staff `createEarlyPayoffQR` removed in Task 41 — it had no caller and minted PAYOFF rows without a quote snapshot). NO regulated JE — the
  * line-266 intent-tracking $transaction does NOT touch the ledger. Constructed
  * internally by {@link PaySolutionsService}; the gateway mechanics live in
  * {@link PaySolutionsGatewayClient}.
@@ -154,6 +168,10 @@ export class PaySolutionsIntentService {
           throw new BadRequestException(payoffAmountChangedMessage(payoffQuote.totalPayoff));
         }
         amount = Number(payoffQuote.totalPayoff);
+      } else if (!dClose(sourceLink.amount, payoffQuote.totalPayoff)) {
+        // Task 41 fix round (ข้อ 3) — ลิงก์ PAYOFF ที่ยอดของลิงก์ไม่ตรงยอดปิดของ server แล้ว (ลิงก์อายุ 24 ชม. — ข้ามวันมีงวดถึงกำหนด/ค่าปรับเพิ่ม/
+        // จ่ายทางอื่นไปบางส่วน) ปฏิเสธก่อนตัดเงิน · webhook จึงเหลือแค่ช่องข้ามวันระหว่างสร้าง QR กับเงินเข้า
+        throw new BadRequestException(stalePayoffLinkMessage(payoffQuote.totalPayoff));
       }
     }
 
@@ -462,121 +480,6 @@ export class PaySolutionsIntentService {
         level: 'fatal',
         tags: { critical: 'paysolutions-online-orphan', orderRef },
         extra: { onlineOrderId: input.onlineOrderId },
-      });
-      throw new InternalServerErrorException('ระบบบันทึกข้อมูลชำระเงินไม่สำเร็จ');
-    }
-  }
-
-  /**
-   * Cashier-initiated early-payoff QR (no LIFF gating).
-   * Used by ContractEarlyPayoff overlay to generate a PromptPay QR a customer
-   * can scan in-store or receive via LINE OA. Webhook auto-closes contract
-   * via existing handlePaymentCallback path (referenceNo lookup).
-   */
-  async createEarlyPayoffQR(input: {
-    contractId: string;
-    amount: number;
-    description?: string;
-    /** Pre-computed quote info — used to enrich the LINE Flex push. */
-    quoteContext?: {
-      originalAmount: number;
-      savings: number;
-      discountPct: number;
-      remainingMonths: number;
-    };
-  }): Promise<{ paymentLinkId: string; paymentUrl: string; orderRef: string; sentToLine: boolean }> {
-    const contract = await this.prisma.contract.findUnique({
-      where: { id: input.contractId },
-      include: {
-        customer: { select: { email: true, name: true, ...FINANCE_LINE_RECIPIENT_SELECT } },
-      },
-    });
-    if (!contract || contract.deletedAt) {
-      throw new NotFoundException('ไม่พบสัญญา');
-    }
-
-    const orderRef = String(Date.now()).slice(-12);
-    const returnUrlBase =
-      this.returnUrl || `${this.config.get('FRONTEND_URL', 'http://localhost:5173')}/payments`;
-    const returnUrl = `${returnUrlBase}?payoff=${contract.contractNumber}`;
-
-    const paymentPayload: Record<string, unknown> = {
-      merchantId: await this.gateway.getMerchantId(),
-      customerEmail: contract.customer.email || 'noreply@bestchoice.com',
-      referenceNo: orderRef,
-      description: input.description || `ปิดยอดสัญญา ${contract.contractNumber}`,
-      amount: input.amount,
-      paymentChannel: 'Qrcode',
-      paymentGateway: 'Promptpay',
-      currencyCode: '00',
-      lang: 'TH',
-      returnUrl,
-      postbackUrl: `${this.apiBaseUrl}/api/paysolutions/webhook`,
-      terminalId: await this.gateway.getTerminalId(),
-      keyVersion: 1,
-    };
-
-    const { paymentUrl } = await this.gateway.createUiPayment(paymentPayload, {
-      orderRef,
-      buildErrorLog: (response, gr) =>
-        `Pay Solutions early-payoff API error: ${response.status} ${JSON.stringify(gr)}`,
-      errorMessagePrefix: 'ไม่สามารถสร้าง QR ได้',
-      missingUrlMessage: 'ไม่ได้รับลิงก์ชำระเงิน',
-      timeoutSentryKey: 'paysolutions-payoff-timeout',
-      timeoutSentryExtra: { contractId: input.contractId, amount: input.amount },
-      timeoutMessage: 'ระบบชำระเงินใช้เวลานานเกินไป',
-      genericErrorMessage: 'ไม่สามารถเชื่อมต่อระบบชำระเงินได้',
-    });
-
-    try {
-      const paymentLink = await this.prisma.paymentLink.create({
-        data: {
-          token: orderRef,
-          amount: input.amount,
-          status: 'ACTIVE',
-          expiresAt: new Date(Date.now() + 30 * 60 * 1000),
-          contractId: input.contractId,
-          // Task 39 — เงินของรายการนี้คือยอดปิดสัญญา
-          purpose: PaymentLinkPurpose.PAYOFF,
-        },
-      });
-      this.logger.log(
-        `Early-payoff QR created: ${orderRef} for contract ${input.contractId}, amount ${input.amount}`,
-      );
-
-      // Best-effort push Flex to customer's LINE OA (FINANCE channel).
-      // Failure here doesn't abort — cashier can resend or fall back to in-store QR.
-      let sentToLine = false;
-      // ปลายทาง LINE การเงิน = แถว OTP ของลูกค้า (Task 22 I-1 ง) ไม่ใช่คอลัมน์ line_id_finance ที่อาจค้าง
-      const lineId = financeLineRecipient(contract.customer);
-      if (lineId && input.quoteContext) {
-        try {
-          const flex = buildEarlyPayoffQRFlex({
-            customerName: contract.customer.name,
-            contractNumber: contract.contractNumber,
-            totalPayoff: input.amount,
-            originalAmount: input.quoteContext.originalAmount,
-            savings: input.quoteContext.savings,
-            discountPct: input.quoteContext.discountPct,
-            paymentUrl,
-            orderRef,
-            remainingMonths: input.quoteContext.remainingMonths,
-          });
-          await this.lineOaService.pushMessage(lineId, [flex], 'line-finance');
-          sentToLine = true;
-          this.logger.log(`Early-payoff Flex pushed to LINE: contract=${contract.contractNumber} lineId=${lineId.slice(0, 8)}...`);
-        } catch (pushErr) {
-          this.logger.error(`Early-payoff Flex push failed: ${pushErr}`);
-          // swallow — don't abort the QR creation
-        }
-      }
-
-      return { paymentLinkId: paymentLink.id, paymentUrl, orderRef, sentToLine };
-    } catch (dbError) {
-      Sentry.captureException(dbError, {
-        level: 'fatal',
-        tags: { critical: 'paysolutions-payoff-orphan', orderRef },
-        extra: { contractId: input.contractId },
       });
       throw new InternalServerErrorException('ระบบบันทึกข้อมูลชำระเงินไม่สำเร็จ');
     }

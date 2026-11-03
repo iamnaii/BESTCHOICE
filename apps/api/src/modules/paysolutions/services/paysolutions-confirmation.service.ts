@@ -9,6 +9,7 @@ import { OnlineOrderSaleAdapter } from '../../shop-orders/online-order-sale.adap
 import { PaymentsService } from '../../payments/payments.service';
 import { consumeOrderHoldInTx } from '../../shop-orders/consume-order-hold.util';
 import { buildOrderUnfulfillableFlex } from '../../shop-orders/order-unfulfillable-flex.util';
+import { resolvePaySolutionsDepositAccount } from '../paysolutions-deposit-account';
 
 export interface PaymentStatusResult {
   paymentId: string;
@@ -184,11 +185,8 @@ export class PaySolutionsConfirmationService {
       return;
     }
 
-    const qrDefault = await this.prisma.paymentMethodConfig.findFirst({
-      where: { method: 'QR', isDefault: true, enabled: true, deletedAt: null },
-      select: { accountCode: true },
-    });
-    const depositAccountCode = qrDefault?.accountCode ?? '11-1201';
+    // คำตัดสินเจ้าของ #45 — บัญชีรับเงินของ Pay Solutions ตัวเดียวทุกทาง (ค่าตั้ง QR ค่าเริ่มต้น · ไม่มี = 11-1201)
+    const depositAccountCode = await resolvePaySolutionsDepositAccount(this.prisma);
 
     // Look up installmentNo so recordPayment can find the right Payment row
     // (it keys on contractId + installmentNo, not paymentId).

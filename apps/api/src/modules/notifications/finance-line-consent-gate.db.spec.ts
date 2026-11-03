@@ -83,7 +83,7 @@ async function customer(label: string, dueInDays: number, how: 'otp' | 'no-conse
 const consentSkips = (relatedId: string) =>
   prisma.notificationLog.findMany({
     where: { relatedId, channel: 'IN_APP', status: 'SKIPPED' },
-    select: { subject: true, message: true, recipient: true },
+    select: { subject: true, message: true, recipient: true, blockReason: true },
   });
 
 async function runPayLinksAt(hh: number, mm = 0) {
@@ -196,6 +196,8 @@ describe('Task 34 ข้อ 3 — ด่านความยินยอม PDP
       subject,
       message: 'ข้ามการแจ้งเตือน — ลูกค้าไม่มี PDPA consent',
       recipient: f.customerId,
+      // รีวิว M1 — นับในช่อง "ไม่มี PDPA" ของการ์ด /notifications (นับจาก blockReason)
+      blockReason: 'NO_CONSENT',
     });
     // T-3: การ์ดข้าม (A6) แล้วบอท 09:00 ก็ข้าม — ลูกค้าไม่ได้ข้อความเลย
     expect(await consentSkips(t3.paymentId)).toEqual(
@@ -267,6 +269,7 @@ describe('Task 34 รอบเก็บ ข้อ 4 — แม่แบบขั
         subject: tpl.subject ?? tpl.name,
         message: 'ข้ามการแจ้งเตือน — ลูกค้าไม่มี PDPA consent',
         recipient: none.customerId,
+        blockReason: 'NO_CONSENT',
       },
     ]);
     expect(await consentSkips(ok.contractId)).toEqual([]);

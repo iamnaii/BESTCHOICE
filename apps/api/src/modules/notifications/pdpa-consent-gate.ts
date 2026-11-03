@@ -15,7 +15,8 @@ export const NO_PDPA_CONSENT_SKIP_MESSAGE = 'ข้ามการแจ้ง�
  * แจ้งค้างชำระ · Task 34 รีวิว I1) ถาม `hasActivePdpaConsent` ตัวเดียวกันแล้วตอบ 400 `NOT_SENT_REASON_TEXT.NO_CONSENT` ก่อนสร้างลิงก์
  *
  * มีความยินยอม (นิยามเดียว `hasActivePdpaConsent` — ตัวเดียวกับ `canSend`) = `true` · ไม่มี = ลงแถว `notification_logs` IN_APP `SKIPPED`
- * (ผูก `relatedId` = id งวด · หัวข้อของผู้ส่ง) ให้ตรวจย้อนได้ แล้วคืน `false` — ผู้เรียกไม่ส่งทั้ง LINE และ SMS
+ * `blockReason: NO_CONSENT` (ผูก `relatedId` = id งวด/สัญญา · หัวข้อของผู้ส่ง) ให้ตรวจย้อนได้และนับในการ์ด "ไม่มี PDPA" แล้วคืน `false` —
+ * ผู้เรียกไม่ส่งทั้ง LINE และ SMS · ตัวเลขบนการ์ด = จำนวนครั้งที่ข้าม (บอทลงหนึ่งแถวต่องวดต่อรอบ) ไม่ใช่จำนวนลูกค้า
  * · แถว SKIPPED ไม่ถูกนับเป็น "ส่งแล้ว" ในการกันซ้ำ (`payment-notice-dedupe.ts`)
  */
 export async function ensurePdpaConsentOrLogSkip(
@@ -30,6 +31,8 @@ export async function ensurePdpaConsentOrLogSkip(
       subject: input.subject,
       message: NO_PDPA_CONSENT_SKIP_MESSAGE,
       status: 'SKIPPED',
+      // Task 34 รีวิว M1 — ให้ช่อง "ไม่มี PDPA" ของการ์ด /notifications (นับจาก blockReason) นับการข้ามจากด่านนี้ด้วย · การกันซ้ำดูแค่สถานะ ไม่กระทบ
+      blockReason: 'NO_CONSENT',
       relatedId: input.relatedId,
     },
   });

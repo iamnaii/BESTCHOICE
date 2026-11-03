@@ -74,6 +74,7 @@ describe('NotificationDispatchService.sendFromTemplate — ด่านควา
           subject: 'แจ้งเตือนค้างชำระ (REMINDER)',
           message: 'ข้ามการแจ้งเตือน — ลูกค้าไม่มี PDPA consent',
           status: 'SKIPPED',
+          blockReason: 'NO_CONSENT',
           relatedId: 'k1',
         },
       });

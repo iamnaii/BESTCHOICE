@@ -155,6 +155,8 @@ describe('NotificationsService — reminder / overdue dunning', () => {
           data: expect.objectContaining({
             channel: 'IN_APP',
             status: 'SKIPPED',
+            // Task 34 รีวิว M1 — นับในช่อง "ไม่มี PDPA" ของการ์ด /notifications
+            blockReason: 'NO_CONSENT',
             subject: SUBJECT,
             relatedId: 'pay-1',
           }),
@@ -351,6 +353,8 @@ describe('NotificationsService — reminder / overdue dunning', () => {
           data: expect.objectContaining({
             channel: 'IN_APP',
             status: 'SKIPPED',
+            // Task 34 รีวิว M1 — นับในช่อง "ไม่มี PDPA" ของการ์ด /notifications
+            blockReason: 'NO_CONSENT',
             subject: SUBJECT,
             relatedId: 'pay-1',
           }),

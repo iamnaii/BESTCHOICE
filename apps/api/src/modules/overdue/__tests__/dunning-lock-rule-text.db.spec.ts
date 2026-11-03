@@ -35,6 +35,10 @@ it('seed ใช้ข้อความใหม่ (แหล่งเดีย
 
 it('migration แก้เฉพาะแถวแจ้งล็อกที่ยังเป็นข้อความ seed เดิมทุกตัวอักษร · ข้อความที่เจ้าของแก้ไม่แตะ · รันซ้ำไม่มีผล', async () => {
   assertTestDatabase();
+  // คำสั่งของ migration (ตั้งแต่ UPDATE ถึงท้ายไฟล์) — แบบเดียวกับ payment-link-purpose-backfill.db.spec.ts · อ่านก่อนสร้างแถว
+  // (อ่านไม่ได้ = ไม่มีแถวค้างบนฐาน — สเปค seed นับกฎตามเหตุการณ์ทั้งตาราง)
+  const file = readFileSync(MIGRATION, 'utf8');
+  const sql = file.slice(file.indexOf('UPDATE "dunning_rules"')).trim().replace(/;$/, '');
   const rows: [string, DunningEventTrigger, string, string][] = [
     ['ข้อความ seed เดิม', 'DEVICE_LOCKED', OLD_TEXT, NEW_TEXT],
     ['เจ้าของแก้ข้อความแล้ว', 'DEVICE_LOCKED', `${OLD_TEXT} (สอบถามสาขา)`, `${OLD_TEXT} (สอบถามสาขา)`],
@@ -60,9 +64,6 @@ it('migration แก้เฉพาะแถวแจ้งล็อกที่
     ids[label] = rule.id;
   }
 
-  // คำสั่งของ migration (ตั้งแต่ UPDATE ถึงท้ายไฟล์) — แบบเดียวกับ payment-link-purpose-backfill.db.spec.ts
-  const file = readFileSync(MIGRATION, 'utf8');
-  const sql = file.slice(file.indexOf('UPDATE "dunning_rules"')).trim().replace(/;$/, '');
   const ROLLBACK = new Error('rollback');
   let after: Record<string, string> = {};
   let secondRun = -1;

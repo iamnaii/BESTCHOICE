@@ -54,7 +54,11 @@ describe('ContractPaymentService.earlyPayoff — gatewayMatch (ลูกค้�
     ],
   });
 
-  const build = (park: string, fingerprintTaken = false, extraLedger: Record<string, string> = {}) => {
+  const build = (
+    park: string,
+    fingerprintTaken = false,
+    extraLedger: Record<string, string> = {},
+  ) => {
     const contract = makeQuoteContract(park);
     const ledger = ledgerLines({
       '11-2101': '10800.00',
@@ -439,7 +443,10 @@ describe('ContractPaymentService.earlyPayoff — gatewayMatch (ลูกค้�
 
     await h.service.earlyPayoff('contract-ep-park-1', 'owner-1', dto, undefined, undefined, g);
 
-    expect(Sentry.captureMessage).not.toHaveBeenCalledWith('JP4 payoff: negative 11-2102 balance', expect.anything());
+    expect(Sentry.captureMessage).not.toHaveBeenCalledWith(
+      'JP4 payoff: negative 11-2102 balance',
+      expect.anything(),
+    );
     await g.work[0]();
     expect(Sentry.captureMessage).toHaveBeenCalledWith(
       'JP4 payoff: negative 11-2102 balance',

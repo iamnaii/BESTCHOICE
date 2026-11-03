@@ -421,8 +421,12 @@ describe('PaySolutionsService.handlePaymentCallback — FIFO money + close (char
       expect(park2102.dr.toString()).toBe('32.71');
       expect(park2101.cr.toString()).toBe('32.71');
       expect(park2102.description).toBe('ภาษีขายของเงินรับล่วงหน้า (รับรู้ ณ วันรับ)');
-      const drLine = jeInput.lines.find((l: { accountCode: string }) => l.accountCode === '11-1201');
-      const crLine = jeInput.lines.find((l: { accountCode: string }) => l.accountCode === '21-1103');
+      const drLine = jeInput.lines.find(
+        (l: { accountCode: string }) => l.accountCode === '11-1201',
+      );
+      const crLine = jeInput.lines.find(
+        (l: { accountCode: string }) => l.accountCode === '21-1103',
+      );
       expect(drLine).toBeDefined();
       expect(crLine).toBeDefined();
       // JE is balanced: Dr 11-1201 == Cr 21-1103 == 500 surplus.

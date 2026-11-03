@@ -285,7 +285,10 @@ describe('PaySolutionsIntentService.createPaymentIntent — ลิงก์ PAYO
     });
 
     it('ลิงก์ PAYOFF ไม่มีคำขอค้าง ยอดของลิงก์ตรงยอดปิด → จ่ายได้ · ยอดที่ตัด = ยอดของลิงก์ (Task 39) · แถวติดตามเก็บยอดปิดของ server เป็น snapshot (Task 41)', async () => {
-      const { gateway, service, tx } = build({ link: payLink({ purpose: 'PAYOFF' }), payoffTotal: 1000 });
+      const { gateway, service, tx } = build({
+        link: payLink({ purpose: 'PAYOFF' }),
+        payoffTotal: 1000,
+      });
 
       await pay(service, 1000);
 
@@ -299,7 +302,10 @@ describe('PaySolutionsIntentService.createPaymentIntent — ลิงก์ PAYO
     });
 
     it('Task 41 fix round — ลิงก์ PAYOFF ที่ยอดของลิงก์ไม่ตรงยอดปิดของ server แล้ว (ต่างเกิน 0.01) → 400 ก่อนตัดเงิน ชี้ "กลับไปดูสัญญา" → "ปิดยอดก่อนกำหนด · ลดดอกเบี้ย"', async () => {
-      const { gateway, service, tx } = build({ link: payLink({ purpose: 'PAYOFF' }), payoffTotal: 15189.98 });
+      const { gateway, service, tx } = build({
+        link: payLink({ purpose: 'PAYOFF' }),
+        payoffTotal: 15189.98,
+      });
 
       await expect(pay(service, 1000)).rejects.toThrow(
         'ลิงก์ปิดยอดนี้ใช้ไม่ได้แล้ว เพราะยอดปิดสัญญาเปลี่ยน (ยอดล่าสุด 15,189.98 บาท) — กด "กลับไปดูสัญญา" ด้านล่าง แล้วกด "ปิดยอดก่อนกำหนด · ลดดอกเบี้ย" เพื่อดูยอดล่าสุดและชำระ',
@@ -308,7 +314,10 @@ describe('PaySolutionsIntentService.createPaymentIntent — ลิงก์ PAYO
       expect(tx.paymentLink.create).not.toHaveBeenCalled();
 
       // ต่าง 0.01 = ยังตรง (กติกาเดียวกับยอดจาก client)
-      const close = build({ link: payLink({ purpose: 'PAYOFF', amount: new Prisma.Decimal('1000.01') }), payoffTotal: 1000 });
+      const close = build({
+        link: payLink({ purpose: 'PAYOFF', amount: new Prisma.Decimal('1000.01') }),
+        payoffTotal: 1000,
+      });
       await pay(close.service, 1000.01);
       expect(close.gateway.createUiPayment).toHaveBeenCalledTimes(1);
     });

@@ -318,7 +318,8 @@ describeDb(
         : await prisma.paymentMethodConfig.create({
             data: { method: 'QR', accountCode, isDefault: true, enabled: true },
           });
-      if (qr) await prisma.paymentMethodConfig.update({ where: { id: qr.id }, data: { accountCode } });
+      if (qr)
+        await prisma.paymentMethodConfig.update({ where: { id: qr.id }, data: { accountCode } });
       try {
         await run();
       } finally {
@@ -435,7 +436,14 @@ describeDb(
           });
         const stale = await linkOf('15500.00');
         await expect(
-          intent.createPaymentIntent(f.contractId, 15500, 'ปิดยอด', f.lineUserId, undefined, stale.token),
+          intent.createPaymentIntent(
+            f.contractId,
+            15500,
+            'ปิดยอด',
+            f.lineUserId,
+            undefined,
+            stale.token,
+          ),
         ).rejects.toThrow(
           'ลิงก์ปิดยอดนี้ใช้ไม่ได้แล้ว เพราะยอดปิดสัญญาเปลี่ยน (ยอดล่าสุด 15,189.98 บาท) — กด "กลับไปดูสัญญา" ด้านล่าง แล้วกด "ปิดยอดก่อนกำหนด · ลดดอกเบี้ย" เพื่อดูยอดล่าสุดและชำระ',
         );
@@ -443,7 +451,14 @@ describeDb(
         expect(await prisma.paymentLink.count({ where: { sourceLinkId: stale.id } })).toBe(0);
 
         const fresh = await linkOf('15189.98');
-        await intent.createPaymentIntent(f.contractId, 15189.98, 'ปิดยอด', f.lineUserId, undefined, fresh.token);
+        await intent.createPaymentIntent(
+          f.contractId,
+          15189.98,
+          'ปิดยอด',
+          f.lineUserId,
+          undefined,
+          fresh.token,
+        );
         expect(createUiPayment).toHaveBeenCalledTimes(1);
         expect(createUiPayment.mock.calls[0][0].amount).toBe(15189.98);
       });
@@ -586,9 +601,13 @@ describeDb(
         // คำตัดสินเจ้าของ #45: ใบรับชำระงวดของ FIFO ลงบัญชี QR ของ Pay Solutions (11-1201) และแถวงวดบอกบัญชีเดียวกัน
         const bank = await bankLinesOf(f.contractId);
         expect(bank.every((l) => l.accountCode === '11-1201')).toBe(true);
-        expect(money(bank.reduce((sum, l) => sum.plus(l.debit), new Prisma.Decimal(0)))).toBe('15189.98');
+        expect(money(bank.reduce((sum, l) => sum.plus(l.debit), new Prisma.Decimal(0)))).toBe(
+          '15189.98',
+        );
         expect(
-          payments.filter((p) => p.installmentNo <= 11).every((p) => p.depositAccountCode === '11-1201'),
+          payments
+            .filter((p) => p.installmentNo <= 11)
+            .every((p) => p.depositAccountCode === '11-1201'),
         ).toBe(true);
         expect(host.sendPaymentSuccessNotification).toHaveBeenCalledTimes(1);
         expect(host.sendEarlyPayoffSuccessNotification).not.toHaveBeenCalled();
@@ -601,7 +620,9 @@ describeDb(
         expect(todos[0].description).toMatch(/ยอดปิด ณ เวลาที่เงินเข้า[^\n]*\d/);
         expect(todos[0].description).toContain('ยอดที่ลูกค้าจ่ายไม่ตรงยอดปิด');
         // I-1: บอกสิ่งที่เกิดจริง — ตัดงวด 1–11 · สัญญายังไม่ปิด · ทางไปต่อ = ปิดยอดส่วนที่เหลือ
-        expect(todos[0].description).toContain('ระบบลงเงินก้อนนี้เป็นค่างวดตามลำดับงวดแล้ว: งวดที่ 1–11');
+        expect(todos[0].description).toContain(
+          'ระบบลงเงินก้อนนี้เป็นค่างวดตามลำดับงวดแล้ว: งวดที่ 1–11',
+        );
         expect(todos[0].description).toContain('สัญญายังไม่ปิด');
         expect(todos[0].description).toContain('ปุ่ม "ปิดก่อนกำหนด"');
         expect(Sentry.captureMessage).toHaveBeenCalledWith(
@@ -734,7 +755,11 @@ describeDb(
         expect(contract.status).toBe('EARLY_PAYOFF'); // FIFO ของใบที่สองไม่เขียน COMPLETED ทับ
         expect(money(contract.advanceBalance)).toBe('15189.98');
         expect(await jp4Of(f.contractId)).toHaveLength(1);
-        expect(await entryTagsOf(f.contractId)).toEqual(['1A', 'JP4', 'paysolutions-surplus-advance']);
+        expect(await entryTagsOf(f.contractId)).toEqual([
+          '1A',
+          'JP4',
+          'paysolutions-surplus-advance',
+        ]);
         const receipts = await prisma.receipt.findMany({
           where: { contractId: f.contractId, deletedAt: null },
           orderBy: { createdAt: 'asc' },
@@ -787,15 +812,15 @@ describeDb(
             where: { entityId: f.contractId, action: 'EARLY_PAYOFF_GATEWAY_MATCHED' },
           }),
         ).toBe(0);
-        expect((await prisma.contract.findUniqueOrThrow({ where: { id: f.contractId } })).status).toBe(
-          'ACTIVE',
-        );
+        expect(
+          (await prisma.contract.findUniqueOrThrow({ where: { id: f.contractId } })).status,
+        ).toBe('ACTIVE');
         expect(
           await prisma.payment.count({ where: { contractId: f.contractId, status: 'PAID' } }),
         ).toBe(10);
-        expect((await prisma.paymentLink.findUniqueOrThrow({ where: { id: tracking.id } })).status).toBe(
-          'USED',
-        );
+        expect(
+          (await prisma.paymentLink.findUniqueOrThrow({ where: { id: tracking.id } })).status,
+        ).toBe('USED');
         const todos = await fallbackTodo(tracking.id);
         expect(todos).toHaveLength(1);
         expect(todos[0].description).toContain('ลงรายการปิดยอดไม่สำเร็จ');

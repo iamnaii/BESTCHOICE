@@ -79,7 +79,9 @@ describe('PaySolutionsWebhookService — ทางปิดยอดผ่าน
       auditLog: { create: jest.fn() },
       ...(opts.periodStatus
         ? {
-            accountingPeriod: { findUnique: jest.fn().mockResolvedValue({ status: opts.periodStatus }) },
+            accountingPeriod: {
+              findUnique: jest.fn().mockResolvedValue({ status: opts.periodStatus }),
+            },
             systemConfig: { findUnique: jest.fn().mockResolvedValue(null) },
           }
         : {}),
@@ -91,7 +93,9 @@ describe('PaySolutionsWebhookService — ทางปิดยอดผ่าน
     const prisma = {
       // คำตัดสินเจ้าของ #45 — บัญชีรับเงินของ Pay Solutions (`resolvePaySolutionsDepositAccount`) · ไม่มีค่าตั้ง = 11-1201
       paymentMethodConfig: {
-        findFirst: jest.fn().mockResolvedValue(opts.qrAccount ? { accountCode: opts.qrAccount } : null),
+        findFirst: jest
+          .fn()
+          .mockResolvedValue(opts.qrAccount ? { accountCode: opts.qrAccount } : null),
       },
       partialPaymentLink: { findUnique: jest.fn().mockResolvedValue(null) },
       paymentLink: {
@@ -433,14 +437,20 @@ describe('PaySolutionsWebhookService — ทางปิดยอดผ่าน
     });
 
     it('สัญญาปิดแล้ว (EARLY_PAYOFF) ไม่มีงวดค้าง → FIFO ไม่ตัดงวด · ไม่เขียนสถานะทับ/ไม่ย้ายกรรมสิทธิ์ · เงินทั้งก้อนเป็นเงินรับล่วงหน้า · ข้อความ "ต้องคืนลูกค้า" ตามจริง', async () => {
-      const { service, tx, prisma } = build({ earlyPayoff: statusError, contractStatus: 'EARLY_PAYOFF', unpaid: [] });
+      const { service, tx, prisma } = build({
+        earlyPayoff: statusError,
+        contractStatus: 'EARLY_PAYOFF',
+        unpaid: [],
+      });
       tx.payment.count.mockResolvedValue(0);
 
       await service.handlePaymentCallback(callback());
 
       expect(tx.contract.update.mock.calls.some(([args]) => 'status' in args.data)).toBe(false);
       const create = prisma.todo.upsert.mock.calls[0][0].create;
-      expect(create.title).toBe('เงินปิดยอดผ่าน QR เข้าสัญญาที่ปิดยอดไม่ได้ — สัญญา CT-41 รับเงิน 15,189.98 บาท (ต้องคืนลูกค้า)');
+      expect(create.title).toBe(
+        'เงินปิดยอดผ่าน QR เข้าสัญญาที่ปิดยอดไม่ได้ — สัญญา CT-41 รับเงิน 15,189.98 บาท (ต้องคืนลูกค้า)',
+      );
       expect(create.description.split('\n')).toEqual([
         'ลูกค้าชำระผ่าน Pay Solutions 15,189.98 บาท (อ้างอิง TX-41) เพื่อปิดยอดก่อนกำหนด แต่สัญญาอยู่ในสถานะ EARLY_PAYOFF ตอนเงินเข้า (เช่น ลูกค้าจ่าย QR ปิดยอดซ้ำ หรือสัญญาปิดไปแล้วทางอื่น) — ระบบลงเป็นปิดยอดไม่ได้',
         'ยอดปิดตอนสร้าง QR: 15,189.98 บาท (วันที่ 2026-11-03) · ยอดปิด ณ เวลาที่เงินเข้า: —',
@@ -449,12 +459,18 @@ describe('PaySolutionsWebhookService — ทางปิดยอดผ่าน
       ]);
       expect(Sentry.captureMessage).toHaveBeenCalledWith(
         expect.stringContaining('refund needed'),
-        expect.objectContaining({ tags: expect.objectContaining({ reason: 'CONTRACT_STATUS', outcome: 'ADVANCE_ONLY' }) }),
+        expect.objectContaining({
+          tags: expect.objectContaining({ reason: 'CONTRACT_STATUS', outcome: 'ADVANCE_ONLY' }),
+        }),
       );
     });
 
     it('สัญญาที่รอบกวาดไม่ลงรายได้ (CLOSED_BAD_DEBT) → ข้อความคืนเงินไม่อ้างรอบกวาด · สถานะคงเดิม', async () => {
-      const { service, tx, prisma } = build({ earlyPayoff: statusError, contractStatus: 'CLOSED_BAD_DEBT', unpaid: [] });
+      const { service, tx, prisma } = build({
+        earlyPayoff: statusError,
+        contractStatus: 'CLOSED_BAD_DEBT',
+        unpaid: [],
+      });
       tx.payment.count.mockResolvedValue(0);
 
       await service.handlePaymentCallback(callback());
@@ -468,7 +484,11 @@ describe('PaySolutionsWebhookService — ทางปิดยอดผ่าน
     });
 
     it('สัญญายังเปิด (TERMINATED ยังไม่จบ) และ FIFO ตัดครบทุกงวด → ปิดตามเดิม (สถานะ COMPLETED) — ตัวกันเขียนทับเฉพาะสถานะที่จบแล้ว', async () => {
-      const { service, tx } = build({ earlyPayoff: statusError, contractStatus: 'TERMINATED', unpaid: [unpaidRow(1)] });
+      const { service, tx } = build({
+        earlyPayoff: statusError,
+        contractStatus: 'TERMINATED',
+        unpaid: [unpaidRow(1)],
+      });
       tx.payment.count.mockResolvedValue(0);
 
       await service.handlePaymentCallback(callback('1515.83'));
@@ -500,12 +520,16 @@ describe('PaySolutionsWebhookService — ทางปิดยอดผ่าน
 
     it('คำขอคืนเงินรอธนาคาร (#24) → ทางไปต่อ: บันทึกผลธนาคารก่อน แล้วปิดยอดส่วนที่เหลือ', async () => {
       const { service, tx, prisma } = build({ earlyPayoff: statusError });
-      tx.refund.findMany.mockResolvedValue([{ id: 'rf', amount: new Prisma.Decimal('1'), payment: { installmentNo: 1 } }]);
+      tx.refund.findMany.mockResolvedValue([
+        { id: 'rf', amount: new Prisma.Decimal('1'), payment: { installmentNo: 1 } },
+      ]);
 
       await service.handlePaymentCallback(callback());
 
       const lines = prisma.todo.upsert.mock.calls[0][0].create.description.split('\n');
-      expect(lines[0]).toContain('สัญญามีคำขอคืนเงินที่อนุมัติแล้วแต่ยังไม่ได้บันทึกผลธนาคาร (คำตัดสินเจ้าของ #24');
+      expect(lines[0]).toContain(
+        'สัญญามีคำขอคืนเงินที่อนุมัติแล้วแต่ยังไม่ได้บันทึกผลธนาคาร (คำตัดสินเจ้าของ #24',
+      );
       expect(lines[3]).toBe(
         'บันทึกผลธนาคารของคำขอคืนเงินก่อน (ยังไม่มีปุ่มในหน้าจอ — แจ้งฝ่ายบัญชีให้ทีมระบบบันทึก) แล้วเปิดหน้าสัญญา กดปุ่ม "ปิดก่อนกำหนด" เพื่อดูยอดคงเหลือหลังเงินก้อนนี้ แล้วปิดยอดตามขั้นตอนปกติหลังตรวจกับลูกค้า',
       );
@@ -523,7 +547,9 @@ describe('PaySolutionsWebhookService — ทางปิดยอดผ่าน
       );
       expect(Sentry.captureMessage).toHaveBeenCalledWith(
         expect.any(String),
-        expect.objectContaining({ tags: expect.objectContaining({ reason: 'PERIOD_CLOSED', outcome: 'FIFO' }) }),
+        expect.objectContaining({
+          tags: expect.objectContaining({ reason: 'PERIOD_CLOSED', outcome: 'FIFO' }),
+        }),
       );
     });
 
@@ -533,8 +559,12 @@ describe('PaySolutionsWebhookService — ทางปิดยอดผ่าน
       await service.handlePaymentCallback(callback('1515.83'));
 
       const lines = prisma.todo.upsert.mock.calls[0][0].create.description.split('\n');
-      expect(lines[2]).toBe('ระบบลงเงินก้อนนี้เป็นค่างวดตามลำดับงวดแล้ว: งวดที่ 1 (ใบเสร็จค่างวดออกตามปกติ) — สัญญายังไม่ปิด');
-      expect(lines[3]).toBe('สัญญาอยู่ในสถานะ TERMINATED ซึ่งปิดยอดก่อนกำหนดไม่ได้ — แจ้งฝ่ายบัญชีตรวจเงินก้อนนี้กับสถานะสัญญา');
+      expect(lines[2]).toBe(
+        'ระบบลงเงินก้อนนี้เป็นค่างวดตามลำดับงวดแล้ว: งวดที่ 1 (ใบเสร็จค่างวดออกตามปกติ) — สัญญายังไม่ปิด',
+      );
+      expect(lines[3]).toBe(
+        'สัญญาอยู่ในสถานะ TERMINATED ซึ่งปิดยอดก่อนกำหนดไม่ได้ — แจ้งฝ่ายบัญชีตรวจเงินก้อนนี้กับสถานะสัญญา',
+      );
     });
 
     it('คำตัดสินเจ้าของ #45 — บัญชี QR ที่ตั้งไว้เป็นบัญชีรับเงินของทั้ง JP4 และใบรับชำระงวด (FIFO) + แถวงวด', async () => {
@@ -554,7 +584,9 @@ describe('PaySolutionsWebhookService — ทางปิดยอดผ่าน
         fifo.tx,
       );
       expect(fifo.tx.payment.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ depositAccountCode: '11-1203' }) }),
+        expect.objectContaining({
+          data: expect.objectContaining({ depositAccountCode: '11-1203' }),
+        }),
       );
     });
   });

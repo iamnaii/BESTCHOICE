@@ -287,16 +287,17 @@ describe('Task 30 ข้อ 1 — งวดละหนึ่งข้อคว�
     expect(deliveredTo(f.lineUserId)).toEqual({ flex: 0, text: 0, bot: 1 });
   });
 
-  it('ไม่มี consent PDPA → A1 ข้าม (แถว SKIPPED) → บอทส่ง — พฤติกรรมเดิมของบอท (ด่าน consent ของบอทรองาน "ยินยอมตอนผูก")', async () => {
+  it('ไม่มี consent PDPA → A1 ข้าม · บอทข้ามด้วยด่านเดียวกัน (Task 34 ข้อ 3 — เดิมบอทส่งแทน) · แถว SKIPPED ของทั้งคู่', async () => {
     const f = await installment('noconsent', 1, { consent: false });
 
     await runA1At(8);
     await runBotAt(9);
 
-    expect(deliveredTo(f.lineUserId)).toEqual({ flex: 0, text: 0, bot: 1 });
+    expect(deliveredTo(f.lineUserId)).toEqual({ flex: 0, text: 0, bot: 0 });
+    expect(await prisma.chatAutoTrigger.count({ where: { customerId: f.customerId } })).toBe(0);
     expect(
       await prisma.notificationLog.count({ where: { relatedId: f.paymentId, status: 'SKIPPED' } }),
-    ).toBe(1);
+    ).toBe(2);
   });
 });
 

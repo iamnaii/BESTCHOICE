@@ -56,6 +56,8 @@ describe('AutoTriggerService', () => {
       notificationTemplate: { findMany: jest.fn().mockResolvedValue([]) },
       // Task 30 ข้อ 2 — ไม่มีสัญญาในช่วงผ่อนผันหลังผูก LINE
       contract: { findMany: jest.fn().mockResolvedValue([]) },
+      // Task 34 ข้อ 3 — ลูกค้ามีความยินยอม PDPA (ด่านเดียวกับ A1/A2)
+      pDPAConsent: { findFirst: jest.fn().mockResolvedValue({ id: 'consent-1' }) },
     };
     lineClient = {
       pushText: jest.fn().mockResolvedValue(undefined),
@@ -228,7 +230,7 @@ describe('AutoTriggerService', () => {
       },
     );
 
-    it('A1 ยังไม่ได้ส่ง (ข้าม consent / ส่งไม่ผ่าน / สัญญาไม่ ACTIVE) → บอทส่งตามเดิม', async () => {
+    it('A1 ยังไม่ได้ส่ง (ส่งไม่ผ่าน / สัญญาไม่ ACTIVE) → บอทส่งตามเดิม', async () => {
       const due = new Date();
       due.setDate(due.getDate() + 3);
       prisma.payment.findMany.mockResolvedValue([makePayment(3, due)]);
@@ -304,7 +306,7 @@ describe('AutoTriggerService', () => {
       expect(lineClient.pushText).toHaveBeenCalled();
     });
 
-    it('A2 ยังไม่ได้แจ้ง (ไม่มี consent / ส่งไม่ผ่านจนหมดรอบ) → บอทส่งตามเดิม', async () => {
+    it('A2 ยังไม่ได้แจ้ง (ส่งไม่ผ่านจนหมดรอบ) → บอทส่งตามเดิม', async () => {
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
       prisma.payment.findMany.mockResolvedValue([makePayment(3, yesterday)]);
@@ -352,6 +354,71 @@ describe('AutoTriggerService', () => {
 
       expect(prisma.contract.findMany).not.toHaveBeenCalled();
       expect(lineClient.pushText).toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * Task 34 ข้อ 3 — บอทเตือน/ทวงใช้ด่านความยินยอม PDPA ตัวเดียวกับ A1/A2 (`ensurePdpaConsentOrLogSkip` → `hasActivePdpaConsent`):
+   * ไม่มีความยินยอม = ไม่ส่ง ไม่จองแถว `chat_auto_triggers` + แถว IN_APP SKIPPED แบบเดียวกับ A1/A2 (เดิมบอทส่งให้ทุกคน)
+   */
+  describe('Task 34 ข้อ 3 — ด่านความยินยอม PDPA', () => {
+    it.each([
+      ['เตือน T-3', 'runDailyReminders' as const, 3, 'REMINDER_T_MINUS_3'],
+      ['ทวง T+1', 'runDailyEscalations' as const, -1, 'ESCALATION_T_PLUS_1'],
+    ])(
+      '%s: ลูกค้าไม่มีความยินยอม → ไม่ส่ง ไม่จองแถว · แถว IN_APP SKIPPED แบบเดียวกับ A1/A2',
+      async (_label, run, offset, type) => {
+        const due = bkkDay(offset);
+        prisma.payment.findMany.mockImplementation(
+          ({ where }: { where: { dueDate: { gte: Date } } }) =>
+            Promise.resolve(
+              where.dueDate.gte.getTime() === due.getTime() ? [makePayment(3, due)] : [],
+            ),
+        );
+        prisma.pDPAConsent.findFirst.mockResolvedValue(null);
+        prisma.notificationLog.create = jest.fn().mockResolvedValue({ id: 'log' });
+
+        await service[run]();
+
+        expect(lineClient.pushText).not.toHaveBeenCalled();
+        expect(prisma.chatAutoTrigger.create).not.toHaveBeenCalled();
+        expect(prisma.pDPAConsent.findFirst).toHaveBeenCalledWith({
+          where: { customerId: 'cust-1', status: 'GRANTED', deletedAt: null },
+          select: { id: true },
+        });
+        expect(prisma.notificationLog.create).toHaveBeenCalledWith({
+          data: {
+            channel: 'IN_APP',
+            recipient: 'cust-1',
+            subject: `AutoTrigger ${type}`,
+            message: 'ข้ามการแจ้งเตือน — ลูกค้าไม่มี PDPA consent',
+            status: 'SKIPPED',
+            blockReason: 'NO_CONSENT',
+            relatedId: 'pay-3',
+          },
+        });
+      },
+    );
+
+    it('มีความยินยอม → ส่งตามเดิม', async () => {
+      prisma.payment.findMany.mockResolvedValue([makePayment(3, bkkDay(5))]);
+
+      await service.runDailyReminders();
+
+      expect(prisma.pDPAConsent.findFirst).toHaveBeenCalled();
+      expect(lineClient.pushText).toHaveBeenCalled();
+    });
+
+    it('งวดที่ตัวหลักส่งแล้ววันนี้ → ข้ามก่อนถึงด่านความยินยอม (ไม่ลงแถว SKIPPED ซ้อน)', async () => {
+      prisma.payment.findMany.mockResolvedValue([makePayment(3, bkkDay(1))]);
+      prisma.notificationLog.findFirst.mockResolvedValue({ id: 'a1-log' });
+      prisma.pDPAConsent.findFirst.mockResolvedValue(null);
+      prisma.notificationLog.create = jest.fn();
+
+      await service.runDailyReminders();
+
+      expect(prisma.pDPAConsent.findFirst).not.toHaveBeenCalled();
+      expect(prisma.notificationLog.create).not.toHaveBeenCalled();
     });
   });
 

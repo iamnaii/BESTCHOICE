@@ -56,6 +56,8 @@ describe('LineOaPaymentController (characterization)', () => {
         update: jest.fn(),
       },
       contract: { findFirst: jest.fn() },
+      // Task 34 รีวิว I1 — sendPaymentFlex ถามความยินยอม PDPA (ลูกค้าในเคสเหล่านี้มี)
+      pDPAConsent: { findFirst: jest.fn().mockResolvedValue({ id: 'consent-1' }) },
       payment: { count: jest.fn() },
       chatRoom: { findFirst: jest.fn(), update: jest.fn() },
       chatMessage: { create: jest.fn() },

@@ -330,7 +330,7 @@ describe('Task 30 ข้อ 2 — ผ่อนผัน 7 วันหลัง�
         { customMessage: '[BESTCHOICE FINANCE] กรุณาชำระค่างวดที่ค้าง' },
         owner,
       ),
-    ).resolves.toEqual({ sent: 1, failed: 0, total: 1 });
+    ).resolves.toEqual({ sent: 1, failed: 0, total: 1, notSent: [] });
     expect(lineDeliveries(t.legacy3.lineUserId)).toBe(1);
     expect(
       await prisma.notificationLog.count({

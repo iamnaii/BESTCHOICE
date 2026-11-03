@@ -234,7 +234,11 @@ Role ข้ามสาขา (`CROSS_BRANCH_ROLES` ใน `branch-access.util.t
     (เปลี่ยนข้อความ = เปลี่ยนเวอร์ชัน ⇒ ผูกครั้งถัดไปได้แถวของฉบับใหม่) (อ่านภายใต้ล็อกแถวลูกค้า · ทรานแซกชันที่ `runWithTransactionRetry` ลองใหม่อ่านใหม่ — ไม่ซ้ำ) ·
     ถูกเพิกถอนแล้วผูก + ยินยอมใหม่ = แถวใหม่ · test-mode bypass ใช้ทางเดียวกัน · คำตอบคืน `consentRecordedAt` (หน้า C3 "บันทึกความยินยอมแล้ว เมื่อ …" —
     API รุ่นเก่าไม่ส่ง = หน้าไม่แสดงกล่องนี้) · ผู้ตรวจความยินยอมเดิมนับแถวนี้ (ปักที่ `verification-consent.db.spec.ts`): รอบเตือนค่างวด/ค้างชำระ
-    (`NotificationReminderService.ensurePdpaConsentOrLogSkip`) และ `PDPAService.hasActiveConsent` (compliance · collections-notifier · line-flex-builder) ⇒ ลูกค้าเก่าที่ไม่มี
+    (`ensurePdpaConsentOrLogSkip` — `notifications/pdpa-consent-gate.ts` · ตั้งแต่ Task 34 ใช้ร่วมกับการ์ดลิงก์ชำระอัตโนมัติ A6 · บอทเตือน/ทวง ·
+    ทาง Flex ของแม่แบบขั้นทวง `dunning.*` (ระบบส่งเอง + พนักงานกดส่ง — ข้อยกเว้นส่งด้วยมือมีแค่ช่วงผ่อนผัน 7 วัน ไม่ใช่ PDPA) ซึ่งเดิมไม่มีด่าน —
+    **แจ้งล็อก `mdm.lock_notice` ยังไม่มีด่านความยินยอมโดยตั้งใจ** (ห้ามแตะเรื่อง MDM) · ปุ่ม "ส่งลิงก์ชำระ" ใน inbox (`POST /line-oa/payment-flex` —
+    การ์ดเตือนค่างวด/แจ้งค้างชำระที่พนักงานกดส่ง) ถาม `hasActivePdpaConsent` ตัวเดียวกัน ไม่มี = 400 ข้อความ `NOT_SENT_REASON_TEXT.NO_CONSENT` ก่อนสร้างลิงก์)
+    และ `PDPAService.hasActiveConsent` (compliance · collections-notifier · line-flex-builder) — นิยาม "มีความยินยอม" ที่เดียว `pdpa/active-consent.ts` ⇒ ลูกค้าเก่าที่ไม่มี
     ความยินยอมเดิมแต่ผูกผ่าน OTP + ยินยอม ได้รับแจ้งเตือน · `/liff/contract` ไม่ถามความยินยอม `chat_consent` ซ้ำกับลูกค้าที่มีแถวนี้ (`LiffApiService.getConsentStatus`
     นับ `GRANTED_LINE_FINANCE_CONSENT_WHERE` ทุกเวอร์ชัน · ไม่แตะธง `chat_consent` — fix round 1 คำตัดสินเจ้าของข้อ 30) และโมดัลนั้นบอกทางถอนที่มีจริงชุดเดียวกับ C3
     (`pages/liff/liff-contact.ts` — เดิมอ้าง "หน้าโปรไฟล์" ซึ่งไม่มี) ·

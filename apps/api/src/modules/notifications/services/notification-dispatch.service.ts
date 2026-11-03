@@ -20,6 +20,13 @@ import {
 import { readBoolFlag } from '../../../utils/config.util';
 import * as Sentry from '@sentry/nestjs';
 import { recordNoticeLog } from '../notice-log';
+import { ensurePdpaConsentOrLogSkip } from '../pdpa-consent-gate';
+import {
+  type NotSentFields,
+  describeSendOutcome,
+  notSentFields,
+  notSentOutcome,
+} from '../send-outcome';
 import { NotificationTransportService } from './notification-transport.service';
 
 /**
@@ -32,6 +39,9 @@ export interface DispatchOptions {
   /** ข้อความแจ้งล็อก/ปลดล็อกเครื่อง — ไม่ถูกระงับช่วงผ่อนผัน (`LEGACY_LINK_GRACE_EXEMPT` · รอบ 3 M5) */
   legacyGraceExempt?: boolean;
 }
+
+/** แม่แบบข้อความขั้นทวงของรอบ 08:05 (`dunningStageTemplateEvent` → `dunning.<ขั้น>`) — ชุดที่ทาง Flex ต้องผ่านด่านความยินยอม (Task 34 รอบเก็บ) */
+const DUNNING_STAGE_TEMPLATE_PREFIX = 'dunning.';
 
 /**
  * Notification dispatch hub — owns `send()` (the IN_APP kill-switch gate, the
@@ -357,7 +367,29 @@ export class NotificationDispatchService {
       return { id, status: 'BLOCKED', blockReason: LEGACY_LINK_GRACE_BLOCK_REASON };
     }
 
-    // For Flex templates with channel=LINE, render JSON and send via lineOaService
+    const viaFlex =
+      tpl.format === 'flex' && !!tpl.flexTemplate && tpl.channel === 'LINE' && !!tpl.channelKey;
+
+    // Task 34 รอบเก็บ (ผู้คุมงานข้อ 4) — ทาง Flex ไม่ผ่าน `canSend` ⇒ แม่แบบขั้นทวง `dunning.*` (A4 รอบ 08:05 + พนักงานกดส่ง send-from-template /
+    // bulk) ใช้ด่านความยินยอมตัวเดียวกับ A1/A2/A6/บอท: ไม่มี = ไม่ส่ง · แถว IN_APP SKIPPED · คืน BLOCKED NO_CONSENT (รูปเดียวกับที่ `send()` คืน —
+    // A4 นับเป็น suppressed) · **ส่งด้วยมือก็ถาม** (ตรงกับทางข้อความที่ `canSend` ถามทุกการส่ง — ข้อยกเว้นส่งด้วยมือของเจ้าของ #18 คือช่วงผ่อนผันเท่านั้น
+    // ไม่ใช่ PDPA) · `bypassCompliance` (ส่งทดสอบ) ข้ามเหมือน `canSend` · ทางข้อความผ่าน `canSend` อยู่แล้ว ·
+    // **แจ้งล็อก `mdm.lock_notice` ไม่อยู่ในชุดนี้โดยตั้งใจ** (คำสั่งเจ้าของ: ห้ามเปลี่ยนเรื่อง MDM)
+    if (
+      viaFlex &&
+      eventType.startsWith(DUNNING_STAGE_TEMPLATE_PREFIX) &&
+      !options.bypassCompliance &&
+      options.customerId &&
+      !(await ensurePdpaConsentOrLogSkip(this.prisma, {
+        customerId: options.customerId,
+        relatedId: options.relatedId ?? options.customerId,
+        subject: tpl.subject ?? tpl.name,
+      }))
+    ) {
+      return { id: null, status: 'BLOCKED', blockReason: 'NO_CONSENT' };
+    }
+
+    // For Flex templates with channel=LINE, render JSON and send via lineOaService (เงื่อนไขเดียวกับ `viaFlex`)
     if (tpl.format === 'flex' && tpl.flexTemplate && tpl.channel === 'LINE' && tpl.channelKey) {
       // Task 30 รอบ 4 m3 — try ครอบเฉพาะการสร้าง Flex + push · สำเนาลงห้องแชทและแถว log ทำหลังส่งถึงแล้ว (ลงไม่ได้ต้องไม่ตกไปทางข้อความ
       // ⇒ ไม่ส่งข้อความที่สอง — แบบเดียวกับ A1/A2 รอบ 3 M3)
@@ -460,7 +492,8 @@ export class NotificationDispatchService {
    *   Template carries channel/channelKey/category — no longer caller-passed.
    */
   async sendBulk(eventType: string, contractIds: string[], opts: DispatchOptions = {}) {
-    const results: { contractId: string; status: string }[] = [];
+    // ไม่ได้ส่ง = ผลรายสัญญามีเหตุผลภาษาไทย (`send-outcome.ts` — Task 34 รอบเก็บ: หน้าจอที่ส่งด้วยมือต้องบอกเหตุผลได้)
+    const results: ({ contractId: string; status: string } & NotSentFields)[] = [];
 
     // Batch load all contracts to avoid N+1 queries
     const contracts = await this.prisma.contract.findMany({
@@ -486,7 +519,11 @@ export class NotificationDispatchService {
       // LINE = แถว OTP ของลูกค้า (Task 22 I-1 ง) — คอลัมน์ line_id_finance ที่ค้างไม่ใช่ปลายทาง
       const recipient = financeLineRecipient(customer) || customer.phone;
       if (!recipient) {
-        results.push({ contractId, status: 'SKIPPED' });
+        results.push({
+          contractId,
+          status: 'SKIPPED',
+          ...notSentFields(notSentOutcome('NO_RECIPIENT')),
+        });
         continue;
       }
 
@@ -495,7 +532,11 @@ export class NotificationDispatchService {
         customerId: customer.id,
         manual: opts.manual,
       });
-      results.push({ contractId, status: result.status });
+      results.push({
+        contractId,
+        status: result.status,
+        ...notSentFields(describeSendOutcome(result)),
+      });
     }
 
     return { total: contractIds.length, results };

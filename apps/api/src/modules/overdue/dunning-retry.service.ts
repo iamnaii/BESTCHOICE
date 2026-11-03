@@ -7,6 +7,7 @@ import {
 import { LINE_FINANCE_NOT_VERIFIED_MESSAGE } from '../line-oa/services/finance-line-link';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationCategory } from '../notifications/notification-category.enum';
+import { describeSendOutcome } from '../notifications/send-outcome';
 
 @Injectable()
 export class DunningRetryService {
@@ -113,7 +114,9 @@ export class DunningRetryService {
         { manual: true },
       );
 
-      if (sendResult.status === 'SENT') {
+      // Task 34 รอบเก็บ — เหตุผลชุดเดียวกับคิวทวงถาม (`send-outcome.ts`) · ส่งซ้ำด้วยมือส่ง `noRetry` ⇒ ส่งไม่ผ่านไม่เข้าคิวส่งซ้ำ
+      const outcome = describeSendOutcome(sendResult, { queuedForRetry: false });
+      if (outcome.sent) {
         const updated = await this.prisma.dunningAction.update({
           where: { id: actionId },
           data: {
@@ -126,17 +129,17 @@ export class DunningRetryService {
         this.logger.log(`[DunningRetry] action ${actionId} retry succeeded by user ${userId}`);
         return updated;
       } else {
-        // send returned FAILED without throwing
+        // ไม่ได้ส่ง (ถูกระงับ / นอกเวลาทำการ / ส่งไม่ผ่าน) — เดิมขึ้น "ส่ง LINE ไม่สำเร็จ: unknown" เพราะผลที่ถูกระงับไม่มี errorMsg ·
+        // คงสถานะ FAILED (ส่งซ้ำได้อีก) · ข้อความผิดพลาดจริงของ transport (ถ้ามี) ต่อท้าย
+        const detail = sendResult.errorMsg;
         await this.prisma.dunningAction.update({
           where: { id: actionId },
           data: {
-            result: `manual retry failed: ${sendResult.errorMsg ?? 'unknown'}`,
+            result: `manual retry failed: ${outcome.reason}${detail ? ` — ${detail}` : ''}`,
             updatedAt: new Date(),
           },
         });
-        throw new BadRequestException(
-          `ส่ง ${channel} ไม่สำเร็จ: ${sendResult.errorMsg ?? 'unknown'}`,
-        );
+        throw new BadRequestException(`${outcome.reasonText}${detail ? ` (${detail})` : ''}`);
       }
     } catch (err) {
       if (err instanceof BadRequestException || err instanceof NotFoundException) throw err;

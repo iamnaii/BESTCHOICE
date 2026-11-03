@@ -27,6 +27,7 @@ import {
 } from '../payment-notice-dedupe';
 import { NotificationsService } from '../notifications.service';
 import { recordNoticeLog } from '../notice-log';
+import { ensurePdpaConsentOrLogSkip } from '../pdpa-consent-gate';
 import { findContractsInLegacyLinkGrace, recordLegacyLinkGraceSkip } from '../legacy-link-grace';
 import { isSmsPaymentReminderDisabled } from '../../../utils/sms-payment-reminder.util';
 import { isWithinBusinessHours } from '../../../utils/business-hours.util';
@@ -340,7 +341,8 @@ export class CollectionsNotifierService {
    *
    * Task 30 รอบ 2 ข้อ 1 — วัน T-3 การ์ดนี้เป็นข้อความเดียวของงวด: ค้นงวดด้วย `autoPayLinkPaymentWhere` (เงื่อนไขเดียวกับที่ A1 08:00 ใช้เว้นให้) ·
    * งวดที่ได้ข้อความเตือนวันนี้แล้ว (บอทสั่งรันก่อน / สั่งรันซ้ำ) = ข้าม · ส่งแล้วลงแถว SENT หมวด REMINDER (บอท 09:00 / A1 ที่สั่งรันซ้ำเห็น) ·
-   * ส่งไม่ผ่านลงแถว FAILED (บอท 09:00 ส่งเตือนแทน · A1 ที่สั่งรันซ้ำเลิกเว้น) — `payment-notice-dedupe.ts`
+   * ส่งไม่ผ่านลงแถว FAILED (บอท 09:00 ส่งเตือนแทน · A1 ที่สั่งรันซ้ำเลิกเว้น) — `payment-notice-dedupe.ts` ·
+   * Task 34 ข้อ 3 — ลูกค้าไม่มีความยินยอม PDPA = ไม่ส่ง (`ensurePdpaConsentOrLogSkip` ตัวเดียวกับ A1/A2)
    */
   async sendAutoPaymentLinks(now: Date = new Date()) {
     const payments = await this.prisma.payment.findMany({
@@ -359,6 +361,7 @@ export class CollectionsNotifierService {
 
     let sent = 0;
     let alreadyReminded = 0;
+    let noConsent = 0;
     for (const payment of payments) {
       const lineId = financeLineRecipient(payment.contract.customer);
       if (!lineId) continue;
@@ -370,6 +373,19 @@ export class CollectionsNotifierService {
         (await botNoticeSentToday(this.prisma, 'REMINDER', customerId, payment.id, now))
       ) {
         alreadyReminded++;
+        continue;
+      }
+
+      // Task 34 ข้อ 3 — ด่านความยินยอม PDPA ตัวเดียวกับ A1/A2 (เดิมการ์ดนี้ไม่มีด่าน) · ไม่มี = ไม่สร้างลิงก์ ไม่ส่ง · แถว IN_APP SKIPPED ·
+      // บอท 09:00 ใช้ด่านเดียวกันจึงไม่ส่งแทน ⇒ ลูกค้าที่ไม่มีความยินยอมไม่ได้ข้อความเตือนวัน T-3
+      if (
+        !(await ensurePdpaConsentOrLogSkip(this.prisma, {
+          customerId,
+          relatedId: payment.id,
+          subject: AUTO_PAY_LINK_SUBJECT,
+        }))
+      ) {
+        noConsent++;
         continue;
       }
 
@@ -433,7 +449,7 @@ export class CollectionsNotifierService {
     }
 
     this.logger.log(
-      `Auto payment links complete: ${sent} sent out of ${payments.length} payments (already reminded today: ${alreadyReminded})`,
+      `Auto payment links complete: ${sent} sent out of ${payments.length} payments (already reminded today: ${alreadyReminded} · no PDPA consent: ${noConsent})`,
     );
   }
 }

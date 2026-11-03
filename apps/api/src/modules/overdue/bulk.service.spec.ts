@@ -145,7 +145,7 @@ describe('OverdueBulkService', () => {
       mockPrisma.contract.findMany.mockResolvedValueOnce([row([{ lineUserId: 'U1' }])]);
       mockNotifications.send.mockResolvedValueOnce({ id: 'n1', status: 'SENT' });
       await expect(service.sendLineAdhoc('c1', { customMessage: 'ทดสอบ' }, OWNER)).resolves.toEqual(
-        { sent: 1, failed: 0, total: 1 },
+        { sent: 1, failed: 0, total: 1, notSent: [] },
       );
       // Task 30 รอบ 2 ข้อ 2 — พนักงานกดส่งเอง = ส่งด้วยมือ (ไม่ถูกระงับช่วงผ่อนผันหลังผูก LINE ของสัญญานำเข้า)
       expect(mockNotifications.send).toHaveBeenCalledWith(
@@ -211,7 +211,19 @@ describe('OverdueBulkService', () => {
         OWNER,
       );
 
-      expect(result).toEqual({ sent: 1, failed: 1, total: 2 });
+      expect(result).toEqual({
+        sent: 1,
+        failed: 1,
+        total: 2,
+        notSent: [
+          {
+            contractId: 'c1',
+            contractNumber: 'BC-001',
+            reason: 'NO_RECIPIENT',
+            reasonText: LINE_FINANCE_NOT_VERIFIED_MESSAGE,
+          },
+        ],
+      });
       expect(mockNotifications.send).toHaveBeenCalledTimes(1);
     });
 
@@ -229,7 +241,19 @@ describe('OverdueBulkService', () => {
         OWNER,
       );
 
-      expect(result).toEqual({ sent: 0, failed: 1, total: 1 });
+      expect(result).toEqual({
+        sent: 0,
+        failed: 1,
+        total: 1,
+        notSent: [
+          {
+            contractId: 'c1',
+            contractNumber: 'BC-001',
+            reason: 'NO_RECIPIENT',
+            reasonText: LINE_FINANCE_NOT_VERIFIED_MESSAGE,
+          },
+        ],
+      });
       expect(mockNotifications.send).not.toHaveBeenCalled();
     });
 
@@ -340,7 +364,19 @@ describe('OverdueBulkService', () => {
         OWNER,
       );
 
-      expect(result).toEqual({ sent: 1, failed: 1, total: 2 });
+      expect(result).toEqual({
+        sent: 1,
+        failed: 1,
+        total: 2,
+        notSent: [
+          {
+            contractId: 'c1',
+            contractNumber: 'BC-001',
+            reason: 'SEND_ERROR',
+            reasonText: expect.stringContaining('ระบบส่งข้อความไม่ผ่าน'),
+          },
+        ],
+      });
     });
   });
 
@@ -369,7 +405,7 @@ describe('OverdueBulkService', () => {
         deletedAt: null,
         OR: [{ branchId: 'b1' }, assignedToday('u-bm')],
       });
-      expect(res).toEqual({ sent: 0, failed: 0, total: 0 });
+      expect(res).toEqual({ sent: 0, failed: 0, total: 0, notSent: [] });
     });
 
     it('SALES/BM ที่ไม่มีสาขา → เฉพาะสัญญาที่มีงานรายวันวันนี้ (ไม่มีงาน = ไม่มีอะไร — fail closed)', async () => {
@@ -383,8 +419,121 @@ describe('OverdueBulkService', () => {
         deletedAt: null,
         OR: [assignedToday('u-s')],
       });
-      expect(res).toEqual({ sent: 0, failed: 0, total: 0 });
+      expect(res).toEqual({ sent: 0, failed: 0, total: 0, notSent: [] });
       expect(mockNotifications.send).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * Task 34 ข้อ 2 — ผลการส่งที่คืนให้หน้าเว็บแยก "ส่งแล้ว" กับ "ไม่ได้ส่ง พร้อมเหตุผลภาษาไทย": เดิมนับทุกครั้งที่ `send()` ไม่ throw เป็นส่งแล้ว
+   * ⇒ ข้อความที่ถูกระงับ (NO_CONSENT / FREQUENCY_CAP · นอกเวลาทำการ = DELAYED · LINE ล่ม = FAILED เข้าคิวส่งซ้ำ) ขึ้นว่าส่งสำเร็จ
+   */
+  describe('Task 34 ข้อ 2 — แยกส่งแล้ว / ไม่ได้ส่งพร้อมเหตุผล', () => {
+    const linked = (id: string, contractNumber: string) => ({
+      id,
+      contractNumber,
+      customer: { id: `cu-${id}`, lineLinks: [{ lineUserId: `U-${id}` }], phone: '081', name: id },
+    });
+
+    it('ส่งเดี่ยว: ลูกค้าไม่มีความยินยอม PDPA (BLOCKED NO_CONSENT) → ไม่นับเป็นส่งแล้ว + เหตุผลภาษาไทย', async () => {
+      mockPrisma.contract.findMany.mockResolvedValueOnce([linked('c1', 'BC-001')]);
+      mockNotifications.send.mockResolvedValueOnce({
+        id: 'n1',
+        status: 'BLOCKED',
+        blockReason: 'NO_CONSENT',
+      });
+
+      await expect(
+        service.sendLineAdhoc('c1', { customMessage: 'กรุณาชำระค่างวด' }, OWNER),
+      ).resolves.toEqual({
+        sent: 0,
+        failed: 1,
+        total: 1,
+        notSent: [
+          {
+            contractId: 'c1',
+            contractNumber: 'BC-001',
+            reason: 'NO_CONSENT',
+            reasonText: expect.stringContaining('ความยินยอม PDPA'),
+          },
+        ],
+      });
+    });
+
+    it('ส่งรวด: SENT · FREQUENCY_CAP · นอกเวลาทำการ (DELAYED) · LINE ล่ม (FAILED) · ช่วงผ่อนผัน · เหตุผลอื่น → ส่งแล้ว 1 ที่เหลือแยกเหตุผล', async () => {
+      mockPrisma.contract.findMany.mockResolvedValueOnce([
+        linked('c1', 'BC-001'),
+        linked('c2', 'BC-002'),
+        linked('c3', 'BC-003'),
+        linked('c4', 'BC-004'),
+        linked('c5', 'BC-005'),
+        linked('c6', 'BC-006'),
+      ]);
+      mockNotifications.send
+        .mockResolvedValueOnce({ id: 'n1', status: 'SENT' })
+        .mockResolvedValueOnce({ id: 'n2', status: 'BLOCKED', blockReason: 'FREQUENCY_CAP' })
+        .mockResolvedValueOnce({ id: 'n3', status: 'DELAYED', blockReason: 'OUTSIDE_HOURS' })
+        .mockResolvedValueOnce({ id: 'n4', status: 'FAILED', errorMsg: 'LINE API down' })
+        .mockResolvedValueOnce({ id: 'n5', status: 'BLOCKED', blockReason: 'LEGACY_LINK_GRACE' })
+        .mockResolvedValueOnce({ id: 'n6', status: 'BLOCKED', blockReason: 'SOMETHING_NEW' });
+
+      const res = await service.bulkSendLine(
+        { contractIds: ['c1', 'c2', 'c3', 'c4', 'c5', 'c6'], customMessage: 'กรุณาชำระค่างวด' },
+        OWNER,
+      );
+
+      expect(res.sent).toBe(1);
+      expect(res.failed).toBe(5);
+      expect(res.total).toBe(6);
+      expect(res.notSent.map((n) => [n.contractId, n.contractNumber, n.reason])).toEqual([
+        ['c2', 'BC-002', 'FREQUENCY_CAP'],
+        ['c3', 'BC-003', 'OUTSIDE_HOURS'],
+        ['c4', 'BC-004', 'DELIVERY_FAILED'],
+        ['c5', 'BC-005', 'LEGACY_LINK_GRACE'],
+        ['c6', 'BC-006', 'BLOCKED'],
+      ]);
+      const text = Object.fromEntries(res.notSent.map((n) => [n.reason, n.reasonText]));
+      expect(text.FREQUENCY_CAP).toMatch(/^ไม่ได้ส่ง — .*วันละ 1/);
+      expect(text.OUTSIDE_HOURS).toMatch(/^ยังไม่ได้ส่ง — นอกเวลา.*ส่งให้เอง/);
+      expect(text.DELIVERY_FAILED).toMatch(/^ยังไม่ได้ส่ง — .*ลองส่งใหม่อัตโนมัติ/);
+      expect(text.LEGACY_LINK_GRACE).toMatch(/^ไม่ได้ส่ง — .*ผ่อนผัน 7 วัน/);
+      expect(text.BLOCKED).toMatch(/^ไม่ได้ส่ง — /);
+    });
+
+    it('LINE ไม่ผ่านแต่ส่ง SMS แทนได้ (SENT) → นับเป็นส่งแล้ว', async () => {
+      mockPrisma.contract.findMany.mockResolvedValueOnce([linked('c1', 'BC-001')]);
+      mockNotifications.send.mockResolvedValueOnce({
+        id: 'n1',
+        status: 'SENT',
+        errorMsg: 'LINE failed, sent via SMS fallback',
+      });
+
+      await expect(
+        service.bulkSendLine({ contractIds: ['c1'], customMessage: 'กรุณาชำระค่างวด' }, OWNER),
+      ).resolves.toEqual({ sent: 1, failed: 0, total: 1, notSent: [] });
+    });
+
+    it('บันทึก audit ทุกครั้งที่กดส่ง พร้อมผลจริง (ไม่ใช่บอกว่าส่งแล้วทุกแถว)', async () => {
+      mockPrisma.contract.findMany.mockResolvedValueOnce([
+        linked('c1', 'BC-001'),
+        linked('c2', 'BC-002'),
+      ]);
+      mockNotifications.send
+        .mockResolvedValueOnce({ id: 'n1', status: 'SENT' })
+        .mockResolvedValueOnce({ id: 'n2', status: 'BLOCKED', blockReason: 'NO_CONSENT' });
+
+      await service.bulkSendLine(
+        { contractIds: ['c1', 'c2'], customMessage: 'กรุณาชำระค่างวด' },
+        OWNER,
+      );
+
+      const rows = mockPrisma.auditLog.createMany.mock.calls[0][0].data;
+      expect(
+        rows.map((r: { entityId: string; newValue: unknown }) => [r.entityId, r.newValue]),
+      ).toEqual([
+        ['c1', expect.objectContaining({ outcome: 'SENT', notSentReason: null })],
+        ['c2', expect.objectContaining({ outcome: 'BLOCKED', notSentReason: 'NO_CONSENT' })],
+      ]);
     });
   });
 });

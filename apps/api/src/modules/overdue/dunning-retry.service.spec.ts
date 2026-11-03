@@ -147,5 +147,62 @@ describe('DunningRetryService', () => {
       const updateArg = mockPrisma.dunningAction.update.mock.calls[0][0];
       expect(updateArg.data.result).toContain('manual retry failed');
     });
+
+    /**
+     * Task 34 รอบเก็บ (ผู้คุมงานข้อ 3) — ส่งซ้ำแล้วถูกระงับ / ยังไม่ได้ส่ง เคยขึ้น "ส่ง LINE ไม่สำเร็จ: unknown" (ผล `BLOCKED`/`DELAYED`
+     * ไม่มี `errorMsg`) ⇒ ใช้เหตุผลภาษาไทยชุดเดียวกับคิวทวงถาม (`describeSendOutcome`)
+     */
+    it.each([
+      [
+        { status: 'BLOCKED', blockReason: 'NO_CONSENT' },
+        'NO_CONSENT',
+        /^ไม่ได้ส่ง — ลูกค้ายังไม่ได้ให้ความยินยอม PDPA/,
+      ],
+      [
+        { status: 'BLOCKED', blockReason: 'FREQUENCY_CAP' },
+        'FREQUENCY_CAP',
+        /^ไม่ได้ส่ง — วันนี้สัญญานี้ได้ข้อความทวงไปแล้ว/,
+      ],
+      [
+        { status: 'DELAYED', blockReason: 'OUTSIDE_HOURS' },
+        'OUTSIDE_HOURS',
+        /^ยังไม่ได้ส่ง — นอกเวลาทวงถาม/,
+      ],
+    ])(
+      'ผล %j → 400 เหตุผลภาษาไทย (ไม่ใช่ "unknown") · คง FAILED · บันทึกเหตุผลใน result',
+      async (sendResult, reason, text) => {
+        mockPrisma.dunningAction.findUnique.mockResolvedValueOnce(baseAction);
+        mockNotifications.send.mockResolvedValueOnce({ id: 'notif-3', ...sendResult });
+        mockPrisma.dunningAction.update.mockResolvedValueOnce({ ...baseAction });
+
+        const err = await service.retry('action-1', 'user-1').catch((e: unknown) => e);
+
+        expect(err).toBeInstanceOf(BadRequestException);
+        expect((err as BadRequestException).message).toMatch(text);
+        expect((err as BadRequestException).message).not.toContain('unknown');
+        const updateArg = mockPrisma.dunningAction.update.mock.calls[0][0];
+        expect(updateArg.data.status).toBeUndefined();
+        expect(updateArg.data.result).toBe(`manual retry failed: ${reason}`);
+      },
+    );
+
+    it('ส่งไม่ผ่าน (FAILED · ส่งซ้ำด้วยมือไม่เข้าคิวส่งซ้ำ — noRetry) → ไม่บอกว่าระบบจะลองใหม่เอง · คงข้อความผิดพลาดจริงไว้', async () => {
+      mockPrisma.dunningAction.findUnique.mockResolvedValueOnce(baseAction);
+      mockNotifications.send.mockResolvedValueOnce({
+        id: 'notif-4',
+        status: 'FAILED',
+        errorMsg: 'LINE token invalid',
+      });
+      mockPrisma.dunningAction.update.mockResolvedValueOnce({ ...baseAction });
+
+      const err = await service.retry('action-1', 'user-1').catch((e: unknown) => e);
+
+      expect((err as BadRequestException).message).toBe(
+        'ไม่ได้ส่ง — ระบบส่งข้อความไม่ผ่าน กรุณาลองใหม่ (LINE token invalid)',
+      );
+      expect(mockPrisma.dunningAction.update.mock.calls[0][0].data.result).toBe(
+        'manual retry failed: SEND_ERROR — LINE token invalid',
+      );
+    });
   });
 });

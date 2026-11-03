@@ -32,7 +32,7 @@ export const NOT_SENT_REASON_TEXT: Record<NotSentReason, string> = {
   OUTSIDE_HOURS:
     'ยังไม่ได้ส่ง — นอกเวลาทวงถามตามกฎหมาย (วันธรรมดา 08:00–20:00 น. · วันหยุด 08:00–18:00 น.) ระบบเก็บไว้ส่งให้เองเมื่อถึงเวลา',
   NO_CONSENT:
-    'ไม่ได้ส่ง — ลูกค้ายังไม่ได้ให้ความยินยอม PDPA ระบบจึงไม่ส่งข้อความทวงทาง LINE · ติดต่อลูกค้าทางโทรศัพท์แทน',
+    'ไม่ได้ส่ง — ลูกค้ายังไม่ได้ให้ความยินยอม PDPA ระบบจึงไม่ส่งข้อความทวง · ติดต่อลูกค้าทางโทรศัพท์แทน',
   FREQUENCY_CAP:
     'ไม่ได้ส่ง — วันนี้สัญญานี้ได้ข้อความทวงไปแล้ว (ทวงได้วันละ 1 ครั้งต่อสัญญา) · ส่งใหม่ได้พรุ่งนี้',
   HOLIDAY_BLOCK: 'ไม่ได้ส่ง — วันหยุด ระบบไม่ส่งข้อความทวง · ส่งใหม่ได้ในวันทำการ',
@@ -68,15 +68,19 @@ export function notSentOutcome(reason: 'NO_RECIPIENT' | 'SEND_ERROR'): SendOutco
 
 /**
  * ผลของ `NotificationsService.send` → ส่งแล้ว / ไม่ได้ส่งพร้อมเหตุผล · `DELAYED` = นอกเวลาทำการ (ด่านเดียวที่ทำให้เลื่อน) ·
- * `FAILED` = ส่งไม่ผ่านแล้วเข้าคิวส่งซ้ำ · สถานะอื่น (`BLOCKED` · `SKIPPED`) = เหตุผลจาก `blockReason` ถ้ารู้จัก
+ * `FAILED` = ส่งไม่ผ่าน: ผู้เรียกปกติ `send()` ตั้งคิวส่งซ้ำให้ (`DELIVERY_FAILED`) · ผู้เรียกที่ส่ง `noRetry: true` (ส่งซ้ำกฎทวงด้วยมือ —
+ * `DunningRetryService`) ไม่เข้าคิว ⇒ `queuedForRetry: false` = `SEND_ERROR` (ไม่บอกว่าระบบจะลองใหม่เอง) ·
+ * สถานะอื่น (`BLOCKED` · `SKIPPED`) = เหตุผลจาก `blockReason` ถ้ารู้จัก
  */
-export function describeSendOutcome(result: {
-  status: string;
-  blockReason?: string | null;
-}): SendOutcome {
+export function describeSendOutcome(
+  result: { status: string; blockReason?: string | null },
+  opts: { queuedForRetry?: boolean } = {},
+): SendOutcome {
   if (result.status === 'SENT') return { sent: true };
   if (result.status === 'DELAYED') return notSent('OUTSIDE_HOURS');
-  if (result.status === 'FAILED') return notSent('DELIVERY_FAILED');
+  if (result.status === 'FAILED') {
+    return notSent(opts.queuedForRetry === false ? 'SEND_ERROR' : 'DELIVERY_FAILED');
+  }
   const reason = result.blockReason;
   return notSent(reason && BLOCK_REASONS.has(reason) ? (reason as NotSentReason) : 'BLOCKED');
 }

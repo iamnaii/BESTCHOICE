@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
-import type { LineSendResult } from '../lineSendResult';
+import { type LineSendResult, willSendLater } from '../lineSendResult';
 
 export interface SendLineAdHocPayload {
   contractId: string;
@@ -22,10 +22,13 @@ export function useAdHocLine() {
       } else {
         // ลูกค้าที่ยังไม่ยืนยัน OTP ได้ 400 พร้อมเหตุจาก API แล้ว (Task 24 RR-M2) · Task 34 ข้อ 2 — ถูกระงับ (ไม่มีความยินยอม PDPA /
         // ทวงวันนี้ไปแล้ว) · นอกเวลาทำการ · ส่งไม่ผ่านแล้วเข้าคิวส่งซ้ำ = แสดงเหตุผลจาก API (ไม่บอกว่าส่งแล้ว)
-        toast.error(
-          data.notSent?.[0]?.reasonText ??
-            'ส่ง LINE ไม่สำเร็จ — ระบบส่งข้อความไม่ผ่าน กรุณาลองใหม่',
-        );
+        const first = data.notSent?.[0];
+        // รีวิว M6 — ระบบจะส่งเอง (นอกเวลาทำการ / เข้าคิวส่งซ้ำ) = เตือน ไม่ใช่ error · ข้อความเหตุผลเดิม
+        if (first && willSendLater(first)) toast.warning(first.reasonText);
+        else
+          toast.error(
+            first?.reasonText ?? 'ส่ง LINE ไม่สำเร็จ — ระบบส่งข้อความไม่ผ่าน กรุณาลองใหม่',
+          );
       }
       qc.invalidateQueries({ queryKey: ['customer-360', vars.contractId] });
       qc.invalidateQueries({ queryKey: ['collections-queue'] });

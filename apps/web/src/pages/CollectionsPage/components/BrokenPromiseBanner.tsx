@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Bell, Send, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '@/lib/api';
-import { describeNotSent, type LineSendResult } from '../lineSendResult';
+import { describeNotSent, type LineSendResult, willSendLater } from '../lineSendResult';
 
 /**
  * P1 Task 14 — Broken-Promise Auto-Suggest banner.
@@ -67,12 +67,20 @@ export default function BrokenPromiseBanner() {
     onSuccess: (res) => {
       // Task 34 ข้อ 2 — "ส่งแล้ว" นับเฉพาะที่ถึงลูกค้า · ที่ไม่ได้ส่ง (ถูกระงับ / รอเวลาทำการ / เข้าคิวส่งซ้ำ) แจ้งแยกพร้อมเหตุผลจาก API
       const notSent = res.notSent ?? [];
+      // รีวิว M6 — ระบบจะส่งเอง (นอกเวลาทำการ / เข้าคิวส่งซ้ำ) แจ้งด้วย toast เตือนแยกจากที่ถูกระงับ (toast error)
+      const later = notSent.filter(willSendLater);
+      const blocked = notSent.filter((n) => !willSendLater(n));
       if (res.sent > 0) toast.success(`ส่ง LINE แล้ว ${res.sent} จาก ${res.total} ราย`);
-      if (notSent.length > 0) {
-        toast.error(`ไม่ได้ส่ง ${notSent.length} จาก ${res.total} ราย`, {
-          description: describeNotSent(notSent),
+      if (later.length > 0) {
+        toast.warning(`ยังไม่ได้ส่ง ${later.length} จาก ${res.total} ราย — ระบบจะส่งให้เอง`, {
+          description: describeNotSent(later),
         });
-      } else if (res.sent === 0) {
+      }
+      if (blocked.length > 0) {
+        toast.error(`ไม่ได้ส่ง ${blocked.length} จาก ${res.total} ราย`, {
+          description: describeNotSent(blocked),
+        });
+      } else if (res.sent === 0 && later.length === 0) {
         toast.error('ส่ง LINE ไม่สำเร็จ — กรุณาลองใหม่');
       }
       qc.invalidateQueries({ queryKey: ['promise-due-reminders'] });

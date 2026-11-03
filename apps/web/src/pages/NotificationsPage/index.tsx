@@ -238,6 +238,13 @@ export default function NotificationsPage() {
                 {complianceStats.HOLIDAY_BLOCK}
               </span>
             </div>
+            {/* Task 30 — ข้อความทวงที่ระบบส่งเองถูกระงับช่วงผ่อนผันหลังผูก LINE ของสัญญานำเข้า (API คีย์ LEGACY_LINK_GRACE) */}
+            <div>
+              ผ่อนผัน 7 วัน (ลูกค้าเก่า):{' '}
+              <span className="font-semibold tabular-nums">
+                {complianceStats.LEGACY_LINK_GRACE ?? 0}
+              </span>
+            </div>
           </div>
         </div>
       )}

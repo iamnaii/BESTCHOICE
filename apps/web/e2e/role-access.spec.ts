@@ -32,11 +32,25 @@ import { gotoWithRetry } from './helpers/navigation';
 async function isAccessDenied(page: Page, targetUrl: string): Promise<boolean> {
   await page.waitForTimeout(2000);
   const redirectedAway = !page.url().includes(targetUrl);
-  const deniedMsg = await page
+  const deniedLocator = page
     .getByText(/ไม่มีสิทธิ์|access denied|unauthorized|\b403\b|ไม่อนุญาต/i)
-    .first()
-    .isVisible({ timeout: 2000 })
-    .catch(() => false);
+    .first();
+  const deniedMsg = await deniedLocator.isVisible({ timeout: 2000 }).catch(() => false);
+  if (redirectedAway || deniedMsg) {
+    // บอกว่าเจออะไร — เทส OWNER Audit Logs ล้มบน CI โดยไม่มีหลักฐานว่าเจอข้อความไหน
+    const matched = deniedMsg
+      ? await deniedLocator
+          .evaluate((el) => {
+            const path: string[] = [];
+            for (let n: Element | null = el; n && path.length < 6; n = n.parentElement) {
+              path.push(n.tagName.toLowerCase() + (n.id ? `#${n.id}` : ''));
+            }
+            return `${path.join(' < ')} :: ${el.outerHTML.slice(0, 600)}`;
+          })
+          .catch((e: unknown) => `evaluate failed: ${String(e)}`)
+      : null;
+    console.log(`[isAccessDenied] ${targetUrl} url=${page.url()} matched=${matched}`);
+  }
   return redirectedAway || deniedMsg;
 }
 

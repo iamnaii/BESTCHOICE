@@ -1,7 +1,8 @@
 import { NotificationsController } from './notifications.controller';
 
 /**
- * Task 30 รอบ 2 ข้อ 2 — endpoint ส่งของหน้า /notifications คือพนักงานกดส่งเอง ⇒ ส่งต่อด้วย `manual: true`
+ * Task 30 รอบ 2 ข้อ 2 — `POST /notifications/send` คือพนักงานกดส่งเอง ⇒ ส่งต่อด้วย `manual: true`
+ * (แท็บ "ส่งการแจ้งเตือน" บนหน้า /notifications ถูกถอดแล้ว — คำตัดสินเจ้าของ #42 · route ยังอยู่)
  * (ไม่ถูกระงับช่วงผ่อนผันหลังผูก LINE ของสัญญานำเข้า) · ฝั่ง HTTP ตั้งค่านี้เองไม่ได้ (ไม่อยู่ใน DTO)
  */
 describe('NotificationsController — ส่งด้วยมือ', () => {

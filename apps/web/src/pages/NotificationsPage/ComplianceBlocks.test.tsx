@@ -94,3 +94,12 @@ describe('NotificationsPage — การ์ด Compliance blocks', () => {
     expect(screen.queryByText(/Compliance blocks/)).not.toBeInTheDocument();
   });
 });
+
+describe('NotificationsPage — แท็บ', () => {
+  it('ไม่มีแท็บ "ส่งการแจ้งเตือน" (คำตัดสินเจ้าของ #42 — ส่งข้อความหาลูกค้าใช้อินบ็อกซ์)', async () => {
+    renderWithStats(ZERO_STATS);
+    expect(await screen.findByRole('button', { name: 'ประวัติการส่ง' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'แม่แบบข้อความ' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'ส่งการแจ้งเตือน' })).not.toBeInTheDocument();
+  });
+});

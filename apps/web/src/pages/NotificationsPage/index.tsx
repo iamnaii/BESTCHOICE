@@ -1,5 +1,4 @@
-import { NativeSelect } from '@/components/ui/native-select';
-import { useId as useUiFieldId, useState } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
@@ -58,23 +57,16 @@ const defaultTemplateForm: TemplateFormState = {
 };
 
 export default function NotificationsPage() {
-  const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const isOwner = user?.role === 'OWNER';
-  const [activeTab, setActiveTab] = useState<'logs' | 'templates' | 'send' | 'staff'>('logs');
+  const [activeTab, setActiveTab] = useState<'logs' | 'templates' | 'staff'>('logs');
   const [channelFilter, setChannelFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<NotificationTemplate | null>(null);
   const [templateForm, setTemplateForm] = useState<TemplateFormState>(defaultTemplateForm);
   const [jsonError, setJsonError] = useState<string | null>(null);
-  const [sendForm, setSendForm] = useState({
-    customerId: '',
-    channel: 'LINE',
-    subject: '',
-    message: '',
-  });
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
     message: string;
@@ -89,22 +81,6 @@ export default function NotificationsPage() {
   const { data: complianceStats } = useQuery<Record<string, number>>({
     queryKey: ['notification-compliance-stats'],
     queryFn: async () => (await api.get('/notifications/compliance/stats')).data,
-  });
-
-  const sendNotificationMutation = useMutation({
-    mutationFn: async (data: {
-      customerId: string;
-      channel: string;
-      subject: string;
-      message: string;
-    }) => api.post('/notifications/send', data),
-    onSuccess: () => {
-      toast.success('ส่งการแจ้งเตือนสำเร็จ');
-      queryClient.invalidateQueries({ queryKey: ['notification-logs'] });
-      queryClient.invalidateQueries({ queryKey: ['notification-stats'] });
-      setSendForm({ customerId: '', channel: 'LINE', subject: '', message: '' });
-    },
-    onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
   const sendRemindersMutation = useMutation({
@@ -281,12 +257,6 @@ export default function NotificationsPage() {
         >
           แม่แบบข้อความ
         </button>
-        <button data-ui-control="button"
-          onClick={() => setActiveTab('send')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${activeTab === 'send' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
-        >
-          ส่งการแจ้งเตือน
-        </button>
         {isOwner && (
           <button data-ui-control="button"
             onClick={() => setActiveTab('staff')}
@@ -317,75 +287,6 @@ export default function NotificationsPage() {
       )}
 
       {activeTab === 'staff' && isOwner && <StaffNotifyTab />}
-
-      {activeTab === 'send' && (
-        <div className="rounded-xl border border-border/50 bg-card shadow-sm p-6 max-w-lg">
-          <h3 className="text-lg font-semibold mb-4">ส่งการแจ้งเตือนด้วยตนเอง</h3>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              sendNotificationMutation.mutate(sendForm);
-            }}
-            className="flex flex-col gap-4"
-          >
-            <div>
-              <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1">
-                รหัสลูกค้า *
-              </label>
-              <input id={`${uiFieldId}-1`}
-                type="text"
-                value={sendForm.customerId}
-                onChange={(e) => setSendForm({ ...sendForm, customerId: e.target.value })}
-                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
-                placeholder="รหัสลูกค้า"
-                required
-              />
-            </div>
-            <div>
-              <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1">ช่องทาง *</label>
-              <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-2`}
-                value={sendForm.channel}
-                onChange={(e) => setSendForm({ ...sendForm, channel: e.target.value })}
-                className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
-              >
-                <option value="LINE">LINE</option>
-                <option value="SMS">SMS</option>
-                <option value="IN_APP">ในระบบ (IN_APP)</option>
-              </NativeSelect>
-            </div>
-            <div>
-              <label htmlFor={`${uiFieldId}-3`} className="block text-sm font-medium text-foreground mb-1">หัวข้อ</label>
-              <input id={`${uiFieldId}-3`}
-                type="text"
-                value={sendForm.subject}
-                onChange={(e) => setSendForm({ ...sendForm, subject: e.target.value })}
-                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
-                placeholder="หัวข้อการแจ้งเตือน"
-              />
-            </div>
-            <div>
-              <label htmlFor={`${uiFieldId}-4`} className="block text-sm font-medium text-foreground mb-1">ข้อความ *</label>
-              <textarea id={`${uiFieldId}-4`}
-                value={sendForm.message}
-                onChange={(e) => setSendForm({ ...sendForm, message: e.target.value })}
-                rows={4}
-                className="w-full px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
-                placeholder="เนื้อหาข้อความแจ้งเตือน"
-                required
-              />
-            </div>
-            <div>
-              <button data-ui-control="button"
-                type="submit"
-                disabled={sendNotificationMutation.isPending}
-                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
-              >
-                {sendNotificationMutation.isPending ? 'กำลังส่ง...' : 'ส่งการแจ้งเตือน'}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
 
       <TemplateForm
         isOpen={isTemplateModalOpen}

@@ -31,6 +31,10 @@ function linkData(amount: number, purpose: LiffPaymentLinkPurpose | null): LiffP
     status: 'ACTIVE',
     expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
     purpose,
+    // Task 42 — หัวยอด/วันนัด/แถวนำไปชำระ ไม่เกี่ยวกับสิ่งที่ส่งไปสร้างรายการ
+    amountKind: purpose === 'PAYOFF' ? 'PAYOFF' : 'DUE',
+    promiseDate: null,
+    allocation: null,
     contract: { id: 'ct-1', contractNumber: 'BC-TEST-001', customer: { name: 'ส***' } },
     payment: { installmentNo: 1, amountDue: 1515.83, lateFee: 100, dueDate: '2026-10-01' },
   };

@@ -253,13 +253,14 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
-it('แจ้งล็อก (DEVICE_LOCKED "ชำระยอดค้าง … เพื่อปลดล็อค") = ยอดค้างที่ถึงกำหนดรวมของสัญญา · แนบลิงก์ AMOUNT ยอดเดียวกัน จ่ายได้จริง', async () => {
+it('แจ้งล็อก (DEVICE_LOCKED "ชำระยอดค้าง … แล้วเจ้าหน้าที่จะปลดล็อคให้") = ยอดค้างที่ถึงกำหนดรวมของสัญญา · แนบลิงก์ AMOUNT ยอดเดียวกัน จ่ายได้จริง', async () => {
   const f = await partlyPaidContract('locked');
 
   await engine.executeEventTrigger('DEVICE_LOCKED', f.contractId, null, null);
 
-  // 515.83 + 100 + 1,515.83 + 100 — งวด 3 ยังไม่ครบกำหนดไม่นับ
-  expect(messageTo(f)).toContain('ชำระยอดค้าง 2,231.66 ฿');
+  // 515.83 + 100 + 1,515.83 + 100 — งวด 3 ยังไม่ครบกำหนดไม่นับ · Task 42: ข้อความไม่สัญญาปลดล็อคทันที (เจ้าหน้าที่ปลดล็อคหลังตรวจยอด)
+  expect(messageTo(f)).toContain('ชำระยอดค้าง 2,231.66 ฿ แล้วเจ้าหน้าที่จะปลดล็อคให้');
+  expect(messageTo(f)).not.toContain('ปลดล็อคทันที');
   // Task 39 — ลิงก์ยอดค้างรวม = ยอดในข้อความ · AMOUNT (ยอดไม่ใช่ยอดคงค้างของงวดเดียว และไม่ใช่การปิดยอด)
   const [link, ...rest] = await linksOf(f);
   expect(rest).toEqual([]);

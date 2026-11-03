@@ -510,7 +510,7 @@ describe('DunningEngineService', () => {
         messageTemplate,
         includePaymentLink,
       });
-      const LOCK_TEXT = 'กรุณาชำระยอดค้าง {{amount}} ฿ เพื่อปลดล็อคทันที';
+      const LOCK_TEXT = 'กรุณาชำระยอดค้าง {{amount}} ฿ แล้วเจ้าหน้าที่จะปลดล็อคให้';
       const PROMISE_TEXT = 'ขอบคุณที่รับสาย กรุณาชำระยอด {{amount}} ฿ ภายใน {{settlementDate}}';
       // งวด 1 ค้างค่าปรับ 100 · งวด 2 ค้าง 1,515.83 ⇒ ยอดค้างที่ถึงกำหนด 1,615.83
       const dueRows = [
@@ -539,12 +539,14 @@ describe('DunningEngineService', () => {
 
         await service.executeEventTrigger('DEVICE_LOCKED', 'c-1', null, null);
 
+        // Task 42 — ลิงก์จำว่ากฎแจ้งล็อกสร้าง (หน้า /pay/:token หัว "ยอดค้างชำระ" · webhook สร้างงานให้เจ้าหน้าที่ปลดล็อค)
         expect(mockPaymentLinkService.createPaymentLink).toHaveBeenCalledWith('c-1', undefined, {
           amount: 1615.83,
           purpose: 'AMOUNT',
+          sourceEvent: 'DEVICE_LOCKED',
         });
         expect(sentMessage()).toBe(
-          'กรุณาชำระยอดค้าง 1,615.83 ฿ เพื่อปลดล็อคทันที\n\nชำระเงินออนไลน์: https://web/pay/tok',
+          'กรุณาชำระยอดค้าง 1,615.83 ฿ แล้วเจ้าหน้าที่จะปลดล็อคให้\n\nชำระเงินออนไลน์: https://web/pay/tok',
         );
         expect(mockPrisma.dunningAction.create.mock.calls[0][0].data.paymentLinkUrl).toBe('https://web/pay/tok');
       });
@@ -554,14 +556,19 @@ describe('DunningEngineService', () => {
           linkedRule('CALL_ANSWERED_PROMISE', PROMISE_TEXT, true),
         );
 
+        const promiseDate = new Date('2026-11-04T17:00:00.000Z');
         await service.executeEventTrigger('CALL_ANSWERED_PROMISE', 'c-1', null, 'promise-1', {
           amount: new Prisma.Decimal('1000'),
           settlementDate: '5 พ.ย. 69',
+          promiseDate,
         });
 
+        // Task 42 — ลิงก์จำกฎที่สร้าง + วันนัด (หน้า /pay/:token หัว "ยอดนัดชำระ" + แถว "วันนัด ภายใน …")
         expect(mockPaymentLinkService.createPaymentLink).toHaveBeenCalledWith('c-1', undefined, {
           amount: 1000,
           purpose: 'AMOUNT',
+          sourceEvent: 'CALL_ANSWERED_PROMISE',
+          promiseDate,
         });
         expect(sentMessage()).toBe(
           'ขอบคุณที่รับสาย กรุณาชำระยอด 1,000 ฿ ภายใน 5 พ.ย. 69\n\nชำระเงินออนไลน์: https://web/pay/tok',

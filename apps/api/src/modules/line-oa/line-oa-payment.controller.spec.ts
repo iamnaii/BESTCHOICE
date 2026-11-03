@@ -810,6 +810,10 @@ describe('LineOaPaymentController (characterization)', () => {
         status: 'ACTIVE',
         expiresAt,
         purpose: 'INSTALLMENT',
+        // Task 42 — ลิงก์งวด: หัว "ยอดที่ต้องชำระ" · ไม่มีวันนัด · ไม่มีแถวนำไปชำระ
+        amountKind: 'DUE',
+        promiseDate: undefined,
+        allocation: null,
         contract: {
           id: 'ct1',
           contractNumber: 'C-001',

@@ -666,7 +666,12 @@ describe('OverdueService.logContact with event trigger wiring', () => {
     } as never);
 
     const extras = engineSpy.mock.calls.find((c) => c[0] === 'CALL_ANSWERED_PROMISE')?.[4];
-    expect(extras).toEqual({ amount: 1000, settlementDate: formatDateShort(sooner) });
+    // Task 42 — วันนัดของที่แรกเป็นวันที่จริงด้วย (ลิงก์ยอดนัดเก็บไว้ให้หน้า /pay/:token แสดง "วันนัด ภายใน …")
+    expect(extras).toEqual({
+      amount: 1000,
+      settlementDate: formatDateShort(sooner),
+      promiseDate: sooner,
+    });
   });
 
   it('dispatches CALL_ANSWERED_PROMISE on PROMISED result via PromiseService', async () => {
@@ -684,6 +689,7 @@ describe('OverdueService.logContact with event trigger wiring', () => {
     expect(engineSpy).toHaveBeenCalledWith('CALL_ANSWERED_PROMISE', 'c-1', null, 'promise-p2', {
       amount: 5000,
       settlementDate: expect.stringMatching(/\S/),
+      promiseDate: expect.any(Date),
     });
     // Contract update resets noAnswerCount
     expect(prisma.contract.update).toHaveBeenCalledWith(

@@ -42,6 +42,8 @@ import { isRetryablePrismaWriteError } from '../../../utils/transaction-retry.ut
 import { d } from '../../../utils/decimal.util';
 import { resolvePaySolutionsDepositAccount } from '../paysolutions-deposit-account';
 import { FINISHED_CONTRACT_STATUSES } from '../../products/product-hold.util';
+import { allocatePaidAmountFifo, fifoUnpaidPaymentsArgs } from '../pay-allocation';
+import { createLockPaidUnlockTodo } from './lock-paid-unlock-todo';
 
 /** Task 41 — เหตุที่เงินของแถวติดตามปิดยอดถูกลงแบบ FIFO แทน JP4 (tag `reason` ของ Sentry · ข้อความในงานแจ้ง) */
 export type GatewayPayoffFallbackReason =
@@ -462,16 +464,13 @@ export class PaySolutionsWebhookService {
             payoffFallback = decision;
           }
 
-          const unpaidPayments = await tx.payment.findMany({
-            where: {
-              contractId: paymentLink.contractId!,
-              status: { not: 'PAID' },
-              deletedAt: null,
-            },
-            orderBy: { installmentNo: 'asc' },
-          });
+          // Task 42 — งวดที่กระจาย + การกระจาย (งวดเก่าก่อน) อยู่ที่ `pay-allocation.ts` ที่เดียว — หน้า /pay/:token แสดงผลจากตัวเดียวกัน
+          const unpaidPayments = await tx.payment.findMany(
+            fifoUnpaidPaymentsArgs(paymentLink.contractId!),
+          );
 
-          let remaining = paidAmount;
+          const allocation = allocatePaidAmountFifo(unpaidPayments, paidAmount);
+          const remaining = allocation.remaining;
           const now = new Date();
           let fullyPaidCount = 0;
           // PR-843/I2 Phase 3 3b: collect a snapshot for EVERY touched installment
@@ -490,22 +489,7 @@ export class PaySolutionsWebhookService {
             /** เลขที่รายการรับชำระของงวดนี้ — ใบเสร็จผูกรายการนี้หลัง commit (PR3) */
             entryNo?: string;
           }> = [];
-          for (const payment of unpaidPayments) {
-            if (remaining.lte(0)) break;
-            // lateFeeWaived=true sets lateFee=0 elsewhere, so reading lateFee
-            // directly is equivalent — we keep the guard explicit to be
-            // defensive against future model changes.
-            const lateFee = payment.lateFeeWaived
-              ? new Prisma.Decimal(0)
-              : payment.lateFee;
-            const owed = payment.amountDue.add(lateFee).sub(payment.amountPaid);
-            if (owed.lte(0)) continue;
-
-            const payThis = Prisma.Decimal.min(remaining, owed);
-            remaining = remaining.sub(payThis);
-            const newAmountPaid = payment.amountPaid.add(payThis).toDecimalPlaces(2);
-            const fullyPaid = newAmountPaid.gte(payment.amountDue.add(lateFee));
-
+          for (const { payment, lateFee, payThis, newAmountPaid, fullyPaid } of allocation.lines) {
             const paymentUpdated = await tx.payment.update({
               where: { id: payment.id },
               data: {
@@ -855,6 +839,13 @@ export class PaySolutionsWebhookService {
           surplusAmount: result.surplusAmount,
         });
       }
+
+      // Task 42 — เงินของลิงก์แจ้งล็อกเข้าแล้ว (หลัง commit): งานให้เจ้าหน้าที่ตรวจยอดแล้วปลดล็อค · ไม่แตะ MDM · ไม่ throw
+      await createLockPaidUnlockTodo(this.prisma, paymentLink, {
+        paidAmount,
+        refno,
+        paidAt: result.paidAt,
+      });
 
       // ใบเสร็จของทุกงวดที่เงินนี้จ่าย (PR3 — คำสั่งเจ้าของ 2026-09-30: เดิมทางนี้ลงบัญชีแต่ไม่มีใบเสร็จ) — ออกหลัง
       // ธุรกรรม commit ผูกรายการรับชำระของงวดนั้น (VAT ของใบ = ภาษีขายของ 2A ที่ลงพร้อมกัน). webhook ที่ส่งซ้ำจบที่ด่าน

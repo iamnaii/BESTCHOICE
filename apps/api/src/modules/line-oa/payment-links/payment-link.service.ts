@@ -4,8 +4,10 @@ import {
   MessageRole,
   MessageType,
   ChatChannel,
+  DunningEventTrigger,
   LineChannelType,
   PaymentLinkPurpose,
+  Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { FINANCE_LINE_RECIPIENT_SELECT } from '../../line-oa/services/otp-verified-customer';
@@ -16,6 +18,20 @@ import { PromptPayQrService } from '../promptpay/promptpay-qr.service';
 import { FlexTemplatesService } from '../flex-templates.service';
 import { LineFinanceClientService } from '../../chatbot-finance/services/line-finance-client.service';
 import { randomBytes } from 'crypto';
+import type { LiffPayAllocationLine } from '@installment/shared';
+import {
+  allocatePaidAmountFifo,
+  fifoUnpaidPaymentsArgs,
+  payAllocationPreviewLines,
+  payLinkAmountKind,
+  type InstallmentLedgerSoFar,
+} from '../../paysolutions/pay-allocation';
+import {
+  accrual2AInputOf,
+  type Accrual2AContractFields,
+} from '../../journal/build-accrual-2a-lines';
+import { computeInstallmentBreakdown } from '../../journal/compute-installment-breakdown';
+import { reconstructPriorCleared } from '../../journal/reconstruct-prior';
 
 @Injectable()
 export class PaymentLinkService {
@@ -47,11 +63,19 @@ export class PaymentLinkService {
    * ไม่ส่ง `override` ⇒ `INSTALLMENT` ยอด = ยอดคงค้างของงวดที่ผูก (งวดที่ระบุ หรืองวดค้างแรก) · ส่ง `override` ⇒ ผู้เรียกบอกยอดและ
    * purpose เอง: `INSTALLMENT` (ยอดคงค้างของงวดที่ระบุ) · `PAYOFF` (ยอดปิดสัญญา — ด่าน #24 ตอนจ่าย) · `AMOUNT` (ยอดที่ข้อความทวงบอก) ·
    * ลิงก์ที่ไม่ใช่ `INSTALLMENT` จ่ายด้วยยอดของลิงก์ (intent ทาง token) แล้ว webhook กระจาย FIFO · `paymentId` = งวดค้างแรก (แสดงเท่านั้น)
+   *
+   * Task 42 — `sourceEvent` = กฎทวงตามเหตุการณ์ที่สร้างลิงก์ `AMOUNT` (หัวยอดของหน้า `/pay/:token` · งานปลดล็อคหลังเงินเข้า) ·
+   * `promiseDate` = วันนัดของลิงก์ยอดนัด · ไม่ส่ง = null
    */
   async createPaymentLink(
     contractId: string,
     installmentNo?: number,
-    override?: { amount: number; purpose: PaymentLinkPurpose },
+    override?: {
+      amount: number;
+      purpose: PaymentLinkPurpose;
+      sourceEvent?: DunningEventTrigger;
+      promiseDate?: Date;
+    },
   ): Promise<{
     token: string;
     url: string;
@@ -97,6 +121,8 @@ export class PaymentLinkService {
         paymentId: payment.id,
         amount,
         purpose,
+        sourceEvent: override?.sourceEvent ?? null,
+        promiseDate: override?.promiseDate ?? null,
         status: 'ACTIVE',
         expiresAt,
       },
@@ -217,6 +243,13 @@ export class PaymentLinkService {
       this.logger.warn(`QR generation failed for payment link: ${err}`);
     }
 
+    // Task 42 — ลิงก์ AMOUNT (ยอดค้างรวมแจ้งล็อก · ยอดนัด): แถว "นำไปชำระ (งวดเก่าก่อน)" = สิ่งที่ webhook จะกระจายยอดของลิงก์นี้
+    // ณ ตอนนี้ (งวดค้างปัจจุบัน — ฟังก์ชันเดียวกับ webhook) · ลิงก์งวด / ปิดยอด / แถวเก่า ไม่มีแถวนี้ (การ์ดเดิม)
+    const allocation =
+      link.purpose === PaymentLinkPurpose.AMOUNT
+        ? await this.allocationPreview(contract, new Prisma.Decimal(link.amount))
+        : null;
+
     return {
       valid: true,
       token,
@@ -225,6 +258,10 @@ export class PaymentLinkService {
       expiresAt: link.expiresAt,
       // Task 39 — หน้า /pay/:token ส่งเลขงวดเฉพาะลิงก์ INSTALLMENT · อื่น ๆ ส่ง token แล้ว server ใช้ยอดของลิงก์
       purpose: link.purpose,
+      // Task 42 — หัวยอด (server ตัดสินจาก purpose + กฎที่สร้างลิงก์) · วันนัด · แถวนำไปชำระ — ไม่มีข้อมูลส่วนตัวเพิ่ม
+      amountKind: payLinkAmountKind(link.purpose, link.sourceEvent),
+      promiseDate: link.promiseDate,
+      allocation,
       contract: {
         id: contract.id,
         contractNumber: contract.contractNumber,
@@ -242,6 +279,51 @@ export class PaymentLinkService {
         maskedId: this.promptPayQrService.getMaskedPromptPayId(),
       },
     };
+  }
+
+  /**
+   * Task 42 — แถว "นำไปชำระ (งวดเก่าก่อน)": การกระจายของ webhook (`fifoUnpaidPaymentsArgs` + `allocatePaidAmountFifo`) แล้วแบ่งค่างวด/ค่าปรับ
+   * ด้วย `splitReceipt` ข้อมูลชุดเดียวกับใบรับชำระที่ webhook จะลง (รีวิว I1 — ค่าปรับก่อน หักค่าปรับที่ใบก่อนของงวดลงไปแล้ว):
+   * `installmentTotal` = `computeInstallmentBreakdown(accrual2AInputOf(...))` · ยอดที่ล้างแล้ว = `reconstructPriorCleared` — ท่อเดียวกับ
+   * `PaymentJournalPreviewService` / `ContractPaymentService` · อ่านบัญชีเฉพาะงวดที่เงินปิดครบ มีค่าปรับ และเคยจ่ายบางส่วน (ค่าปรับที่ลงแล้วมีได้
+   * เฉพาะงวดที่มีใบรับชำระ — งวดอื่น = 0) · ไม่มีแถวตารางงวด = 0 (webhook จะสร้างให้ ไม่มีรายการเดิม)
+   */
+  private async allocationPreview(
+    contract: Accrual2AContractFields & { id: string },
+    amount: Prisma.Decimal,
+  ): Promise<LiffPayAllocationLine[]> {
+    const allocation = allocatePaidAmountFifo(
+      await this.prisma.payment.findMany(fifoUnpaidPaymentsArgs(contract.id)),
+      amount,
+    );
+    const toRead = allocation.lines
+      .filter((l) => l.fullyPaid && l.lateFee.gt(0) && l.payment.amountPaid.gt(0))
+      .map((l) => l.payment.installmentNo);
+    const scheduleIdOf = new Map<number, string>();
+    if (toRead.length > 0) {
+      const schedules = await this.prisma.installmentSchedule.findMany({
+        where: { contractId: contract.id, installmentNo: { in: toRead }, deletedAt: null },
+        select: { id: true, installmentNo: true },
+      });
+      for (const sched of schedules) scheduleIdOf.set(sched.installmentNo, sched.id);
+    }
+
+    const ledger = new Map<number, InstallmentLedgerSoFar>();
+    for (const line of allocation.lines) {
+      if (!line.fullyPaid) continue;
+      const no = line.payment.installmentNo;
+      const { installmentTotal } = computeInstallmentBreakdown(accrual2AInputOf(contract, no));
+      const scheduleId = scheduleIdOf.get(no);
+      const prior = scheduleId
+        ? await reconstructPriorCleared(this.prisma, scheduleId, installmentTotal)
+        : null;
+      ledger.set(no, {
+        installmentTotal,
+        priorPrincipalCleared: prior?.priorPrincipalCleared ?? new Prisma.Decimal(0),
+        priorLateFeeBooked: prior?.priorLateFeeBooked ?? new Prisma.Decimal(0),
+      });
+    }
+    return payAllocationPreviewLines(allocation, (no) => ledger.get(no)!);
   }
 
   /**

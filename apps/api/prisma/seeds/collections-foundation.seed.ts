@@ -104,7 +104,9 @@ export const EVENT_DUNNING_RULES: readonly EventDunningRuleSeed[] = [
     eventTrigger: 'DEVICE_LOCKED',
     channel: 'LINE',
     messageTemplate:
-      'เครื่องของท่านถูกล็อคและตั้ง wallpaper แจ้งเตือน กรุณาชำระยอดค้าง {{amount}} ฿ เพื่อปลดล็อคทันที',
+      // Task 42 (คำตัดสินเจ้าของ #44) — ระบบไม่ปลดล็อคเองเมื่อเงินเข้า (ห้ามแตะการเชื่อม MDM): webhook สร้างงานให้เจ้าหน้าที่ตรวจยอดแล้วปลดล็อค ⇒
+      // เลิกสัญญา "ปลดล็อคทันที" · แถวที่ seed ไว้แล้วแก้ด้วย migration 20261113000001 (เฉพาะข้อความเดิมทุกตัวอักษร)
+      'เครื่องของท่านถูกล็อคและตั้ง wallpaper แจ้งเตือน กรุณาชำระยอดค้าง {{amount}} ฿ แล้วเจ้าหน้าที่จะปลดล็อคให้',
     includePaymentLink: true,
     autoExecute: true,
     sortOrder: 103,

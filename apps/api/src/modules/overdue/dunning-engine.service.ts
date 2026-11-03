@@ -61,6 +61,8 @@ export interface TemplateVars {
  */
 export type EventTriggerExtras = Partial<Omit<TemplateVars, 'amount'>> & {
   amount?: Prisma.Decimal | number;
+  /** Task 42 — วันนัดชำระจริง (กฎ `CALL_ANSWERED_PROMISE`) — เก็บบนลิงก์ยอดนัดให้หน้า `/pay/:token` แสดง "วันนัด ภายใน …" (ไม่ใช่ตัวแปรข้อความ) */
+  promiseDate?: Date;
 };
 
 /** รูปแบบยอดเงินในข้อความกฎทวง (เดิมของ engine) */
@@ -69,7 +71,7 @@ export function formatTemplateAmount(amount: Prisma.Decimal | number): string {
 }
 
 /**
- * Task 30 รอบ 7 I4 — กฎที่ข้อความพูดถึง "ยอดค้าง" ของทั้งสัญญา (แจ้งล็อก "ชำระยอดค้าง … เพื่อปลดล็อค") ⇒ `{{amount}}` = ยอดค้างที่ถึงกำหนดรวม
+ * Task 30 รอบ 7 I4 — กฎที่ข้อความพูดถึง "ยอดค้าง" ของทั้งสัญญา (แจ้งล็อก "ชำระยอดค้าง … แล้วเจ้าหน้าที่จะปลดล็อคให้") ⇒ `{{amount}}` = ยอดค้างที่ถึงกำหนดรวม
  * (`dueOutstanding` — นิยามเดียวกับแจ้งสถานะ) + ลิงก์ไม่ผูกงวดยอดเดียวกัน (Task 39) · กฎอื่นที่ข้อความระบุงวด ⇒ ยอดคงค้างของงวดนั้น
  * (`installmentOwed`) + ลิงก์ผูกงวดนั้น
  */
@@ -452,7 +454,7 @@ export class DunningEngineService {
 
     // Task 30 รอบ 7 I4 — ยอดที่ข้อความบอก + ลิงก์ชำระต้องครอบยอดเดียวกัน (เดิม m7 ใส่ค่างวดเต็มของงวดเก่าสุด + ลิงก์งวดเดียว):
     // ผู้เรียกบอกยอด (นัดชำระ) → ยอดนั้น · กฎยอดค้างทั้งสัญญา (แจ้งล็อก) → ยอดค้างที่ถึงกำหนดรวม · นอกนั้น → ยอดคงค้างของงวดที่ข้อความระบุ
-    const { amount: givenAmount, ...givenVars } = extras;
+    const { amount: givenAmount, promiseDate, ...givenVars } = extras;
     let amount: { value: Prisma.Decimal; linkInstallmentNo?: number } | null;
     if (givenAmount !== undefined) {
       amount = { value: new Prisma.Decimal(givenAmount) };
@@ -510,15 +512,20 @@ export class DunningEngineService {
     // Task 39 (ทาง ก ของรอบ 8 I5) — แนบลิงก์ตามสวิตช์ "แนบลิงก์ชำระเงิน" ของกฎ (m12) · ยอดของลิงก์ = ยอดในข้อความเสมอ:
     // ข้อความระบุงวด → `INSTALLMENT` ของงวดนั้น (หน้า `/pay/:token` ส่งเลขงวด · intent เทียบยอดคงค้างของงวด) · ยอดค้างรวม (แจ้งล็อก) /
     // ยอดนัด (นัดชำระ) → `AMOUNT` (หน้าเว็บส่ง token · intent ใช้ยอดของลิงก์ · ไม่ติดด่าน #24 · webhook กระจาย FIFO)
+    // Task 42 — ลิงก์ `AMOUNT` จำกฎที่สร้าง (หัวยอดของหน้า /pay/:token · งานปลดล็อคหลังเงินเข้า) + วันนัดของลิงก์ยอดนัด
     if (rule.includePaymentLink && amount && financeLineId) {
       try {
         const link = await this.paymentLinkService.createPaymentLink(
           contractId,
           amount.linkInstallmentNo,
-          {
-            amount: amount.value.toNumber(),
-            purpose: amount.linkInstallmentNo !== undefined ? 'INSTALLMENT' : 'AMOUNT',
-          },
+          amount.linkInstallmentNo !== undefined
+            ? { amount: amount.value.toNumber(), purpose: 'INSTALLMENT' }
+            : {
+                amount: amount.value.toNumber(),
+                purpose: 'AMOUNT',
+                sourceEvent: eventKey,
+                ...(promiseDate ? { promiseDate } : {}),
+              },
         );
         paymentLinkUrl = link.url;
       } catch (err) {

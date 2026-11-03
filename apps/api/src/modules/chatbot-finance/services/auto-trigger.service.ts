@@ -20,6 +20,7 @@ import {
   autoTriggerReferenceKey,
   botNoticeKind,
   findContractsDunnedToday,
+  findRemindersCoveredByDueAmountNotice,
   noticeDueWindow,
   paymentNoticeSentToday,
 } from '../../notifications/payment-notice-dedupe';
@@ -47,7 +48,8 @@ const TIMEZONE = 'Asia/Bangkok';
  *   ไม่จองแถว ⇒ ลูกค้าได้หนึ่งข้อความต่อชนิดต่องวดต่อวัน
  * Task 30 ข้อ 2 — ทวงหลังเลยกำหนด (ESCALATION_*) ของสัญญานำเข้าที่ลูกค้าผูก LINE ยังไม่ครบ 7 วัน = ไม่ส่ง (`legacy-link-grace.ts`) ·
  *   เตือนค่างวดยังส่งระหว่างผ่อนผัน
- * Task 30 รอบ 4–5 — สัญญาที่ได้ข้อความทวงระดับสัญญาแล้ววันนี้ = ไม่ส่งทั้งทวงและเตือน (`findContractsDunnedToday`)
+ * Task 30 รอบ 4 / 6 — ทวง: สัญญาที่ได้ข้อความทวงระดับสัญญาแล้ววันนี้ = ไม่ส่ง (`findContractsDunnedToday`) · เตือน: งวดที่ยอดอยู่ในข้อความทวงรอบ 08:05
+ *   แล้ว = ไม่ส่ง (`findRemindersCoveredByDueAmountNotice`)
  */
 @Injectable()
 export class AutoTriggerService {
@@ -161,14 +163,19 @@ export class AutoTriggerService {
           this.prisma,
           payments.map((p) => p.contractId),
         );
-    // สัญญาที่ได้ข้อความทวงระดับสัญญาแล้ววันนี้ (แจ้งสถานะ/ขั้นทวง 08:05 · พนักงาน · กฎตามเหตุการณ์) — ไม่ส่งทั้งทวง (รอบ 4 I2: A2 เว้นให้แล้ว
-    // บอทต้องไม่ส่งแทน) และเตือนค่างวด (รอบ 5 · เจ้าของ 01/11 ข้อ 1: วันละข้อความข้ามหมวด REMINDER/DUNNING)
-    const contractDunned = noticeKind
-      ? await findContractsDunnedToday(
-          this.prisma,
-          payments.map((p) => p.contractId),
-        )
-      : new Set<string>();
+    // ทวง (รอบ 4 I2): สัญญาที่ได้ข้อความทวงระดับสัญญาแล้ววันนี้ — A2 เว้นให้แล้ว บอทต้องไม่ส่งแทน ·
+    // เตือน (รอบ 6 I3 — เจ้าของ 01/11 ข้อ 1 ทาง ก): เฉพาะงวดที่ยอดอยู่ในข้อความทวงรอบ 08:05 ของสัญญาแล้ว (ครบกำหนดแล้ว — ในทางปฏิบัติ T0)
+    const skipIds =
+      noticeKind === 'OVERDUE'
+        ? await findContractsDunnedToday(
+            this.prisma,
+            payments.map((p) => p.contractId),
+          )
+        : noticeKind === 'REMINDER'
+          ? await findRemindersCoveredByDueAmountNotice(this.prisma, payments)
+          : new Set<string>();
+    const skippedForDunning = (p: { id: string; contractId: string }) =>
+      noticeKind === 'OVERDUE' ? skipIds.has(p.contractId) : skipIds.has(p.id);
 
     for (const payment of payments) {
       const lineUserId = financeLineRecipient(payment.contract.customer);
@@ -182,7 +189,7 @@ export class AutoTriggerService {
         dedupedByPrimary++;
         continue;
       }
-      if (contractDunned.has(payment.contractId)) {
+      if (skippedForDunning(payment)) {
         dedupedByContractDunning++;
         continue;
       }

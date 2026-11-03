@@ -88,6 +88,10 @@ describe('NotificationsService — reminder / overdue dunning', () => {
       systemConfig: { findFirst: jest.fn().mockResolvedValue(null) },
       // Task 30 ข้อ 1 — บอทการเงิน (A8) ยังไม่ได้ส่งงวดนี้วันนี้
       chatAutoTrigger: { findFirst: jest.fn().mockResolvedValue(null) },
+      // รอบ 6 I3 — หัวข้อแถวของแม่แบบขั้นทวง (`dunning.*`)
+      notificationTemplate: {
+        findMany: jest.fn().mockResolvedValue([{ subject: null, name: 'แจ้งค้างชำระ (NOTICE)' }]),
+      },
       // Task 30 ข้อ 2 — ไม่มีสัญญาในช่วงผ่อนผันหลังผูก LINE
       contract: { findMany: jest.fn().mockResolvedValue([]) },
     };
@@ -254,9 +258,9 @@ describe('NotificationsService — reminder / overdue dunning', () => {
       });
     });
 
-    describe('Task 30 รอบ 5 (เจ้าของ 01/11 ข้อ 1) — สัญญาที่ได้ข้อความทวงแล้ววันนี้ไม่ได้เตือนค่างวด', () => {
-      it('สัญญาได้ข้อความทวงระดับสัญญาแล้ววันนี้ → A1 ไม่ส่ง ไม่แตะ consent', async () => {
-        givenPayments([{ ...withLine(), contractId: 'ct-1' }]);
+    describe('Task 30 รอบ 6 I3 — เตือนค่างวดถูกข้ามเฉพาะงวดที่ยอดอยู่ในข้อความทวงรอบ 08:05 แล้ว', () => {
+      it('งวดครบกำหนดวันนี้ + สัญญาได้แจ้งสถานะ/ขั้นทวงวันนี้ → A1 ไม่ส่ง ไม่แตะ consent', async () => {
+        givenPayments([{ ...withLine(), contractId: 'ct-1' }]); // dueDate = วันนี้
         prisma.notificationLog.findMany.mockResolvedValue([{ relatedId: 'ct-1' }]);
 
         const result = await service.sendPaymentReminders();
@@ -265,8 +269,33 @@ describe('NotificationsService — reminder / overdue dunning', () => {
         expect(spyOf('send')).not.toHaveBeenCalled();
         expect(prisma.pDPAConsent.findFirst).not.toHaveBeenCalled();
         expect(result.sent).toBe(0);
-        expect(result.dedupedByContractDunning).toBe(1);
-        expect(prisma.notificationLog.findMany.mock.calls[0][0].where.category).toBe('DUNNING');
+        expect(result.coveredByDunningNotice).toBe(1);
+        // นับเฉพาะแถวหัวข้อแจ้งสถานะ / แม่แบบขั้นทวง ของสัญญา — ไม่ใช่ทุกแถวหมวด DUNNING
+        const { where } = prisma.notificationLog.findMany.mock.calls[0][0];
+        expect(where.category).toBe('DUNNING');
+        expect(where.subject.in).toEqual([
+          'แจ้งสถานะสัญญาค้างชำระ',
+          'แจ้งสถานะสัญญาค้างชำระ (แทนข้อความขั้นทวง)',
+          'แจ้งค้างชำระ (NOTICE)',
+        ]);
+        expect(prisma.notificationTemplate.findMany.mock.calls[0][0].where.eventType.in).toEqual([
+          'dunning.reminder',
+          'dunning.notice',
+          'dunning.final_warning',
+          'dunning.legal_action',
+        ]);
+      });
+
+      it('งวดยังไม่ครบกำหนด (T-1) → ไม่อยู่ในยอดของข้อความทวง ⇒ ส่งตามเดิม ไม่ query', async () => {
+        const tomorrow = new Date(Date.now() + 24 * 3600 * 1000);
+        givenPayments([{ ...withLine(), contractId: 'ct-1', dueDate: tomorrow }]);
+        prisma.notificationLog.findMany.mockResolvedValue([{ relatedId: 'ct-1' }]);
+
+        const result = await service.sendPaymentReminders();
+
+        expect(spyOf('sendLineFlexMessage')).toHaveBeenCalledTimes(1);
+        expect(result.sent).toBe(1);
+        expect(prisma.notificationLog.findMany).not.toHaveBeenCalled();
       });
     });
 

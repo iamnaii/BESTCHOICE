@@ -12,10 +12,10 @@ import { NotificationCategory } from './notification-category.enum';
  * | `REMINDER` เตือนค่างวด (ข้อ 1) | T-3 / T-1 / T0 | A1 `NotificationReminderService.sendPaymentReminders` 08:00 | บอท A8 `AutoTriggerService.runDailyReminders` 09:00 (T-5..T0) |
  * | `OVERDUE` แจ้งค้างชำระ (รอบ 2 ข้อ 3) | T+1 / T+3 | A2 `NotificationReminderService.sendOverdueNotices` 09:00 (T+1/+3/+7) | บอท `AutoTriggerService.runDailyEscalations` 10:00 (T+1/+3) |
  *
- * **ข้ามหมวด (รอบ 4 I2 · รอบ 5 — เจ้าของ 01/11 ข้อ 1):** สัญญาที่ได้ข้อความทวง**ระดับสัญญา**แล้ววันนี้ (`findContractsDunnedToday` — แจ้งสถานะ /
- * ขั้นทวงของรอบ 08:05 · พนักงานกดส่ง · กฎตามเหตุการณ์) ⇒ งวดของสัญญานั้นไม่ได้ทั้ง `OVERDUE` (A2 / บอททวง) และ `REMINDER` (A1 / A6 / บอทเตือน)
- * วันนั้น · ไม่ย้อนทาง: ข้อความเรื่องงวด (ผูก id งวด) ไม่ปิดข้อความทวงระดับสัญญา · ลำดับเวลา: A1 08:00 รันก่อนรอบ 08:05 แต่ดูเฉพาะสัญญา ACTIVE
- * ส่วนรอบ 08:05 แจ้งเฉพาะสัญญาที่เพิ่งเป็น OVERDUE/DEFAULT ⇒ สองตัวนี้ไม่ชนกัน
+ * **ข้ามหมวด:** (รอบ 4 I2) สัญญาที่ได้ข้อความทวง**ระดับสัญญา**แล้ววันนี้ (`findContractsDunnedToday` — แจ้งสถานะ / ขั้นทวงของรอบ 08:05 · แจ้งล็อก ·
+ * พนักงานกดส่ง · กฎตามเหตุการณ์) ⇒ งวดของสัญญานั้นไม่ได้ `OVERDUE` (A2 / บอททวง) วันนั้น · (รอบ 6 I3 — เจ้าของ 01/11 ข้อ 1 ทาง ก) `REMINDER`
+ * (A1 / A6 / บอทเตือน) ถูกข้ามเฉพาะงวดที่ยอดอยู่ในข้อความรอบ 08:05 แล้ว (`findRemindersCoveredByDueAmountNotice`) · ไม่ย้อนทาง: ข้อความเรื่องงวด
+ * (ผูก id งวด) ไม่ปิดข้อความทวงระดับสัญญา
  *
  * **T-3 (รอบ 2 ข้อ 1):** งวดที่ลิงก์ชำระอัตโนมัติ (A6 `CollectionsNotifierService.sendAutoPaymentLinks` 08:30 — การ์ด "แจ้งเตือนค่างวด" +
  * ปุ่มจ่าย) จะส่งวันนี้ = การ์ดลิงก์ชำระเป็นข้อความเดียวของวัน: A1 (รันก่อน 08:00) ตัดสินจาก**เงื่อนไขของ A6 เอง** (`autoPayLinkPaymentWhere` —
@@ -124,8 +124,8 @@ export const FREQUENCY_CAP_EXEMPT_SUBJECTS: readonly string[] = [STATUS_NOTICE_S
  * พนักงานกดส่ง · กฎทวงตามเหตุการณ์ · ทุกช่องทาง (LINE / SMS แทน) · `SENT` วันนี้ หรือ `RETRY_PENDING` / `DELAYED` ที่สร้างวันนี้ (ส่งเองภายหลัง)
  *
  * ผู้อ่าน: A2 / บอททวง T+1/T+3 ข้ามงวดของสัญญาเหล่านี้ (เดิม T+7 = วันเปลี่ยนเป็น OVERDUE ได้แจ้งสถานะ 08:05 + แจ้งค้างชำระ 09:00 ของงวดเดียวกัน ·
- * แถวของ A2 ผูก id งวดจึงไม่ถูกนับที่นี่) · A1 / A6 / บอทเตือน ข้ามด้วย (รอบ 5) · รอบเช้า 08:05 ที่สั่งรันซ้ำไม่ส่งซ้ำ · **ไม่ใช่**เพดานความถี่ของ `ComplianceService` (คนละกติกา —
- * เพดานนับเฉพาะแถวที่ผูกลูกค้า + สัญญา และยกเว้นแจ้งสถานะที่ไม่ได้ส่งแทนขั้นทวง — รอบ 4 m4)
+ * แถวของ A2 ผูก id งวดจึงไม่ถูกนับที่นี่) · รอบเช้า 08:05 ที่สั่งรันซ้ำไม่ส่งซ้ำ · **ไม่ใช่**ผู้ตัดสินเตือนค่างวด (รอบ 6 I3 — `findRemindersCoveredByDueAmountNotice`) ·
+ * **ไม่ใช่**เพดานความถี่ของ `ComplianceService` (คนละกติกา — เพดานนับเฉพาะแถวที่ผูกลูกค้า + สัญญา และยกเว้นแจ้งสถานะที่ไม่ได้ส่งแทนขั้นทวง — รอบ 4 m4)
  */
 export async function findContractsDunnedToday(
   prisma: Pick<PrismaService, 'notificationLog'>,
@@ -133,20 +133,75 @@ export async function findContractsDunnedToday(
   now: Date = new Date(),
 ): Promise<Set<string>> {
   if (contractIds.length === 0) return new Set();
-  const dayStart = bangkokStartOfDay(now);
   const rows = await prisma.notificationLog.findMany({
     where: {
       relatedId: { in: [...new Set(contractIds)] },
       category: NotificationCategory.DUNNING,
       deletedAt: null,
-      OR: [
-        { status: 'SENT', sentAt: { gte: dayStart } },
-        { status: { in: ['RETRY_PENDING', 'DELAYED'] }, createdAt: { gte: dayStart } },
-      ],
+      OR: sentOrHeldToday(now),
     },
     select: { relatedId: true },
   });
   return new Set(rows.map((row) => row.relatedId).filter((id): id is string => id !== null));
+}
+
+/** แถวที่ส่งแล้ววันนี้ (`SENT`) หรือยังถือการส่งอยู่ (`RETRY_PENDING` / `DELAYED` ที่สร้างวันนี้ — ส่งเองภายหลัง) · "วันนี้" = ปฏิทินไทย */
+function sentOrHeldToday(now: Date): Prisma.NotificationLogWhereInput[] {
+  const dayStart = bangkokStartOfDay(now);
+  return [
+    { status: 'SENT', sentAt: { gte: dayStart } },
+    { status: { in: ['RETRY_PENDING', 'DELAYED'] }, createdAt: { gte: dayStart } },
+  ];
+}
+
+/** แม่แบบข้อความขั้นทวงที่รอบเช้า 08:05 ส่ง (`CollectionsNotifierService.notifyEscalatedDunning`) — ขั้น → `dunning.<ขั้น>` */
+export function dunningStageTemplateEvent(stage: string): string {
+  return `dunning.${stage.toLowerCase()}`;
+}
+const DUNNING_STAGE_TEMPLATE_EVENTS = ['REMINDER', 'NOTICE', 'FINAL_WARNING', 'LEGAL_ACTION'].map(
+  dunningStageTemplateEvent,
+);
+
+/**
+ * Task 30 รอบ 6 I3 (ผู้คุมงานเลือกทาง ก · คำตัดสินเจ้าของ 01/11 ข้อ 1) — งวดในชุดนี้ที่**ไม่ต้องเตือนค่างวดวันนี้** เพราะยอดของงวดอยู่ในข้อความทวง
+ * รอบเช้า 08:05 ที่สัญญาได้แล้ว: (1) สัญญาได้แจ้งสถานะ (A3 — `STATUS_NOTICE_SUBJECT` / `STATUS_NOTICE_IN_PLACE_OF_ESCALATION_SUBJECT`) หรือ
+ * ข้อความขั้นทวง (A4 — แม่แบบ `dunning.*` ลงหัวข้อ `subject ?? name` ของแม่แบบ) วันนี้ ส่งแล้วหรือยังถือการส่ง **และ** (2) งวดครบกำหนดแล้ว
+ * (วันนี้หรือก่อน — ทั้งสองข้อความรวมยอดงวดที่ครบกำหนดก่อนเวลาส่ง `dueUnpaidPaymentsWhere`) · ข้อความทวงอื่นของสัญญา (ปลดล็อก · กฎตามเหตุการณ์ ·
+ * แจ้งล็อก 01:30 · พนักงานกดส่ง) ไม่บอกงวด/ยอดของงวดนั้น ⇒ **ไม่ทำให้เตือนถูกข้าม** (รอบ 5 ใช้ทุกข้อความทวง — กว้างเกินคำตัดสิน)
+ *
+ * ผู้อ่าน: A1 · การ์ดลิงก์ชำระ A6 · บอทเตือน T-5..T0 — ทางเดียว (ข้อความเรื่องงวดไม่ปิดข้อความทวงของสัญญา) · ในทางปฏิบัติเหลือเตือน T0 ของบอท
+ * (A1 ดูสัญญา ACTIVE และรันก่อน 08:05 · A6 คือ T-3 ยังไม่ครบกำหนด) · คืนค่าเป็น id งวด
+ */
+export async function findRemindersCoveredByDueAmountNotice(
+  prisma: Pick<PrismaService, 'notificationLog' | 'notificationTemplate'>,
+  payments: { id: string; contractId: string; dueDate: Date }[],
+  now: Date = new Date(),
+): Promise<Set<string>> {
+  const endOfToday = addBkkDays(bangkokStartOfDay(now), 1);
+  const due = payments.filter((p) => new Date(p.dueDate) < endOfToday);
+  if (due.length === 0) return new Set();
+  const stageTemplates = await prisma.notificationTemplate.findMany({
+    where: { eventType: { in: DUNNING_STAGE_TEMPLATE_EVENTS } },
+    select: { subject: true, name: true },
+  });
+  const rows = await prisma.notificationLog.findMany({
+    where: {
+      relatedId: { in: [...new Set(due.map((p) => p.contractId))] },
+      category: NotificationCategory.DUNNING,
+      subject: {
+        in: [
+          STATUS_NOTICE_SUBJECT,
+          STATUS_NOTICE_IN_PLACE_OF_ESCALATION_SUBJECT,
+          ...stageTemplates.map((t) => t.subject ?? t.name),
+        ],
+      },
+      deletedAt: null,
+      OR: sentOrHeldToday(now),
+    },
+    select: { relatedId: true },
+  });
+  const notified = new Set(rows.map((row) => row.relatedId));
+  return new Set(due.filter((p) => notified.has(p.contractId)).map((p) => p.id));
 }
 
 /**

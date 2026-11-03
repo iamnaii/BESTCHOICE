@@ -16,6 +16,7 @@ import {
   botNoticeSentToday,
   findAutoPayLinkPaymentIds,
   findContractsDunnedToday,
+  findRemindersCoveredByDueAmountNotice,
   noticeDueWindow,
   paymentNoticeSentToday,
 } from '../payment-notice-dedupe';
@@ -106,17 +107,17 @@ export class NotificationReminderService {
       now,
     );
 
-    // รอบ 5 (เจ้าของ 01/11 ข้อ 1) — สัญญาที่ได้ข้อความทวงระดับสัญญาแล้ววันนี้ไม่ได้เตือนค่างวด (query เดียวต่อรอบ) · A1 ดูเฉพาะสัญญา ACTIVE
-    // และรันก่อนรอบ 08:05 ⇒ ชนได้เฉพาะข้อความทวงที่ส่งก่อน 08:00 (พนักงาน/กฎตามเหตุการณ์) หรือสั่งรันซ้ำ
-    const contractDunned = await findContractsDunnedToday(
+    // รอบ 6 I3 — งวดที่ยอดอยู่ในข้อความทวงรอบ 08:05 ของสัญญาแล้ว ไม่ต้องเตือน (คำตัดสินเจ้าของ 01/11 ข้อ 1 · ทาง ก) · A1 ดูเฉพาะสัญญา ACTIVE
+    // และรันก่อนรอบ 08:05 ⇒ มีผลเฉพาะเมื่อสั่งรันซ้ำ
+    const coveredByNotice = await findRemindersCoveredByDueAmountNotice(
       this.prisma,
-      upcomingPayments.map((p) => p.contractId),
+      upcomingPayments,
       now,
     );
 
     let sent = 0;
     let dedupedByBot = 0;
-    let dedupedByContractDunning = 0;
+    let coveredByDunningNotice = 0;
     let deferredToPayLink = 0;
     for (const payment of upcomingPayments) {
       const customer = payment.contract.customer;
@@ -131,8 +132,8 @@ export class NotificationReminderService {
         dedupedByBot++;
         continue;
       }
-      if (contractDunned.has(payment.contractId)) {
-        dedupedByContractDunning++;
+      if (coveredByNotice.has(payment.id)) {
+        coveredByDunningNotice++;
         continue;
       }
       // (3) T-3: การ์ดลิงก์ชำระ (A6) เป็นข้อความเดียวของวัน — เว้นให้ เว้นแต่ A6 ส่งงวดนี้ไม่ผ่านไปแล้ววันนี้ (สั่งรัน A1 ซ้ำหลัง 08:30) ·
@@ -253,13 +254,13 @@ export class NotificationReminderService {
     }
 
     this.logger.log(
-      `Payment reminders sent: ${sent}/${upcomingPayments.length} (already sent by finance bot today: ${dedupedByBot} · contract already dunned today: ${dedupedByContractDunning} · left to the T-3 pay-link card: ${deferredToPayLink})`,
+      `Payment reminders sent: ${sent}/${upcomingPayments.length} (already sent by finance bot today: ${dedupedByBot} · amount already in today's 08:05 dunning notice: ${coveredByDunningNotice} · left to the T-3 pay-link card: ${deferredToPayLink})`,
     );
     return {
       sent,
       total: upcomingPayments.length,
       dedupedByBot,
-      dedupedByContractDunning,
+      coveredByDunningNotice,
       deferredToPayLink,
       timestamp: now,
     };

@@ -52,6 +52,8 @@ describe('AutoTriggerService', () => {
         // รอบ 4 I2 — ยังไม่มีสัญญาไหนได้ข้อความทวงระดับสัญญาวันนี้
         findMany: jest.fn().mockResolvedValue([]),
       },
+      // รอบ 6 I3 — หัวข้อแถวของแม่แบบขั้นทวง
+      notificationTemplate: { findMany: jest.fn().mockResolvedValue([]) },
       // Task 30 ข้อ 2 — ไม่มีสัญญาในช่วงผ่อนผันหลังผูก LINE
       contract: { findMany: jest.fn().mockResolvedValue([]) },
     };
@@ -281,22 +283,24 @@ describe('AutoTriggerService', () => {
       expect(prisma.notificationLog.findMany.mock.calls[0][0].where.category).toBe('DUNNING');
     });
 
-    it('รอบ 5 (เจ้าของ 01/11 ข้อ 1): เตือนค่างวด (T-5..T0) ของสัญญาที่ได้ข้อความทวงแล้ววันนี้ → ไม่ส่ง ไม่จองแถว', async () => {
-      prisma.payment.findMany.mockResolvedValue([makePayment(3, bkkDay(1))]);
+    it('รอบ 6 I3: เตือน T0 ของงวดที่ยอดอยู่ในข้อความทวงรอบ 08:05 แล้ว → ไม่ส่ง ไม่จองแถว', async () => {
+      prisma.payment.findMany.mockResolvedValue([makePayment(3, bkkDay(0))]);
       prisma.notificationLog.findMany.mockResolvedValue([{ relatedId: 'con-1' }]);
 
       await service.runDailyReminders();
 
       expect(lineClient.pushText).not.toHaveBeenCalled();
       expect(prisma.chatAutoTrigger.create).not.toHaveBeenCalled();
+      expect(prisma.notificationLog.findMany.mock.calls[0][0].where.subject).toBeDefined();
     });
 
-    it('เตือนค่างวดของสัญญาที่ยังไม่ได้ข้อความทวงวันนี้ → ส่งตามเดิม', async () => {
+    it('รอบ 6 I3: เตือน T-1 (งวดยังไม่ครบ — ไม่อยู่ในยอดของข้อความทวง) → ส่งตามเดิม ไม่ query', async () => {
       prisma.payment.findMany.mockResolvedValue([makePayment(3, bkkDay(1))]);
+      prisma.notificationLog.findMany.mockResolvedValue([{ relatedId: 'con-1' }]);
 
       await service.runDailyReminders();
 
-      expect(prisma.notificationLog.findMany).toHaveBeenCalled();
+      expect(prisma.notificationLog.findMany).not.toHaveBeenCalled();
       expect(lineClient.pushText).toHaveBeenCalled();
     });
 

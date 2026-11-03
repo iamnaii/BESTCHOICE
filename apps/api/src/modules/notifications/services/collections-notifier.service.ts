@@ -19,7 +19,9 @@ import {
   STATUS_NOTICE_SUBJECT,
   autoPayLinkPaymentWhere,
   botNoticeSentToday,
+  dunningStageTemplateEvent,
   findContractsDunnedToday,
+  findRemindersCoveredByDueAmountNotice,
   paymentNoticeSentToday,
 } from '../payment-notice-dedupe';
 import { NotificationsService } from '../notifications.service';
@@ -316,7 +318,7 @@ export class CollectionsNotifierService {
         //   NOTICE → dunning.notice
         //   FINAL_WARNING → dunning.final_warning
         //   LEGAL_ACTION → dunning.legal_action
-        const eventType = `dunning.${esc.to.toLowerCase()}`;
+        const eventType = dunningStageTemplateEvent(esc.to);
         const sendResult = await this.notificationsService.sendFromTemplate(
           eventType,
           {
@@ -366,12 +368,8 @@ export class CollectionsNotifierService {
       },
     });
 
-    // รอบ 5 (เจ้าของ 01/11 ข้อ 1) — สัญญาที่ได้ข้อความทวงระดับสัญญาแล้ววันนี้ไม่ได้การ์ดเตือนค่างวด (query เดียวต่อรอบ)
-    const contractDunned = await findContractsDunnedToday(
-      this.prisma,
-      payments.map((p) => p.contractId),
-      now,
-    );
+    // รอบ 6 I3 — งวดที่ยอดอยู่ในข้อความทวงรอบ 08:05 แล้วไม่ต้องเตือน (กติกาเดียวกับ A1/บอทเตือน) · การ์ด T-3 ยังไม่ครบกำหนด ⇒ ไม่เคยถูกข้ามจริง
+    const coveredByNotice = await findRemindersCoveredByDueAmountNotice(this.prisma, payments, now);
 
     let sent = 0;
     let alreadyReminded = 0;
@@ -381,7 +379,7 @@ export class CollectionsNotifierService {
       const customerId = payment.contract.customer.id;
 
       if (
-        contractDunned.has(payment.contractId) ||
+        coveredByNotice.has(payment.id) ||
         (await paymentNoticeSentToday(this.prisma, 'REMINDER', payment.id, now)) ||
         (await botNoticeSentToday(this.prisma, 'REMINDER', customerId, payment.id, now))
       ) {

@@ -58,7 +58,8 @@ const sms = { sendSmsFromQueue: jest.fn().mockResolvedValue(undefined) };
 async function verifyWithOtp(lineUserId: string, phone: string) {
   await verification.requestOtp({ lineUserId, phone });
   const otp = (sms.sendSmsFromQueue.mock.calls.at(-1)?.[1] as string).match(/(\d{6})/)![1];
-  return verification.verifyOtp({ lineUserId, otp });
+  // ผูกจริงต้องมีความยินยอม (#1763 — บันทึก pdpa_consents GRANTED พร้อมการผูก)
+  return verification.verifyOtp({ lineUserId, otp, consent: { granted: true } });
 }
 const fixtures: InstallmentFixture[] = [];
 let seq = 0;

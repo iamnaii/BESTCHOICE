@@ -44,8 +44,12 @@ const resetCooldown = (lineUserId: string) =>
     where: { lineUserId },
     data: { lastRequestAt: new Date(Date.now() - 120_000) },
   });
-/** ปล่อยงานส่ง SMS ที่ไม่ได้ await (fire-and-forget) ให้จบ */
-const settle = () => new Promise((resolve) => setTimeout(resolve, 50));
+/**
+ * รองานส่ง SMS ที่ไม่ได้ await (fire-and-forget) ให้จบครบ — รวมคืนโควตา/ทิ้งรหัสเมื่อส่งไม่สำเร็จ.
+ * Task 38: เดิมหน่วง 50 ms คงที่ — การคืนโควตาเป็น 3 คำสั่งต่อฐานข้อมูลหลัง requestOtp ตอบแล้ว
+ * runner ของ CI ช้าเมื่อไรเคส 6 อ่านโควตาก่อนคืน (Expected 0 / Received 1) — รอจากตัวงานแทน
+ */
+const settle = () => verification._settleSmsDispatchesForTests();
 /** ผลของ promise ภายในเวลาที่กำหนด — ยังไม่จบ = 'still-waiting' (ไม่รอให้เทสค้าง) */
 async function within<T>(p: Promise<T>, ms: number): Promise<T | 'still-waiting'> {
   let timer: NodeJS.Timeout | undefined;

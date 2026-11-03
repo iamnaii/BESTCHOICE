@@ -93,3 +93,44 @@ describe('DOC-10 collections report parser — one cell per drawn text run', () 
     );
   });
 });
+
+/** One-page PDF around a hand-written content stream, Helvetica as /F1 (A = B = 667/1000 em). */
+function handWrittenPdf(content: string): Buffer {
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+    `<< /Length ${Buffer.byteLength(content, 'latin1')} >>\nstream\n${content}\nendstream`,
+  ];
+  let body = '%PDF-1.4\n';
+  const offsets = objects.map((object, i) => {
+    const offset = Buffer.byteLength(body, 'latin1');
+    body += `${i + 1} 0 obj\n${object}\nendobj\n`;
+    return offset;
+  });
+  const xref = Buffer.byteLength(body, 'latin1');
+  const entries = offsets.map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`);
+  body += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${entries.join('')}`;
+  body += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(body, 'latin1');
+}
+
+describe('parsePdf runs — gives up instead of guessing', () => {
+  it('Tj runs are placed from the text state: A at 100, B after its 8 pt advance', async () => {
+    const pdf = await parsePdf(handWrittenPdf('BT /F1 12 Tf 100 700 Td (A) Tj (B) Tj ET'));
+    const runs = pdf.pages[0].runs;
+    expect(runs?.map((r) => r.str)).toEqual(['A', 'B']);
+    expect(runs?.[0].x).toBeCloseTo(100, 2);
+    expect(runs?.[1].x).toBeCloseTo(108, 2);
+  });
+
+  it('a TJ array (pdf.js 3.x passes its kerning numbers inside showText) makes the page runs null', async () => {
+    const pdf = await parsePdf(
+      handWrittenPdf('BT /F1 12 Tf 100 700 Td [(A) -5000 (B)] TJ (C) Tj ET'),
+    );
+    // pdf.js itself moves B by the kerning (8 + 60 pt): the run reader would have put it at 108.
+    expect(pdf.pages[0].items.find((item) => item.str.startsWith('B'))?.x).toBeCloseTo(168, 2);
+    expect(pdf.pages[0].runs).toBeNull();
+  });
+});

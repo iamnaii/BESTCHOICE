@@ -79,7 +79,16 @@ export async function parsePdf(bytes: Buffer): Promise<ParsedPdf> {
         items.push({ str: raw.str, x: raw.transform[4], y: raw.transform[5], size: Math.hypot(raw.transform[0], raw.transform[1]), width: Number(raw.width) || 0, font });
       }
       const lines = groupLines(items);
-      pages.push({ index, widthPt: x1 - x0, heightPt: y1 - y0, items, lines, text: lines.join('\n'), stream: items.map((item) => item.str).join(''), runs: textRuns(page, operators) });
+      pages.push({
+        index,
+        widthPt: x1 - x0,
+        heightPt: y1 - y0,
+        items,
+        lines,
+        text: lines.join('\n'),
+        stream: items.map((item) => item.str).join(''),
+        runs: textRuns(page, operators),
+      });
     }
   } finally {
     await doc.destroy();
@@ -96,7 +105,10 @@ function translate(m: Matrix, tx: number, ty: number): Matrix {
 /**
  * One item per text-showing operator, positioned from the page's own text state (`PdfPage.runs`).
  * Models the operators jsPDF writes for text — BT/ET, Tf, TL, Td/TD/T*, Tm, Tj, q/Q — and gives
- * up (null) on anything that would move glyphs differently (TJ, Tc/Tw/Tz/Ts, cm) rather than guess.
+ * up (null) on anything that would move glyphs differently rather than guess: Tc/Tw/Tz/Ts, `cm`,
+ * form XObjects and annotation appearances (their own matrices), and TJ — pdf.js 3.x hands TJ
+ * over as `showText` with its kerning numbers inside the glyph list, so a number there = TJ.
+ * `showSpacedText` / `'` / `"` never reach this list (pdf.js rewrites them); kept as a net.
  */
 function textRuns(
   page: any,
@@ -155,7 +167,8 @@ function textRuns(
         let str = '';
         let advance = 0;
         for (const glyph of args[0] as any[]) {
-          if (typeof glyph === 'number' || !glyph) continue;
+          if (typeof glyph === 'number') return null; // TJ kerning (see above)
+          if (!glyph) continue;
           str += glyph.unicode ?? '';
           advance += Number(glyph.width ?? 0) * state.fontSize * state.unitsPerEm;
         }
@@ -179,6 +192,8 @@ function textRuns(
       case OPS.setHScale:
       case OPS.setTextRise:
       case OPS.transform:
+      case OPS.paintFormXObjectBegin:
+      case OPS.beginAnnotation:
         return null;
       default:
         break;

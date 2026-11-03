@@ -24,7 +24,7 @@ import { liffMutationErrorMessage } from './liff-mutation-error';
 import { useLiffInit } from '@/hooks/useLiffInit';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
-import type { LiffPaymentLinkData as PaymentLinkData } from '@installment/shared';
+import { liffPayIntentRequest, type LiffPaymentLinkData as PaymentLinkData } from '@installment/shared';
 
 interface PaymentIntentResult {
   success: boolean;
@@ -166,17 +166,8 @@ export default function LiffPayment() {
   const createIntentMutation = useMutation({
     mutationFn: async () => {
       if (!data) throw new Error(LIFF_ERRORS.PAYMENT_DATA_NOT_FOUND);
-      const payload = {
-        contractId: data.contract.id,
-        amount: Number(data.amount),
-        description: `ชำระค่างวด สัญญา ${data.contract.contractNumber}`,
-        lineId: queryLineId || undefined,
-        // Only pass installmentNo for single-installment payments. Early-payoff
-        // links cover multiple installments — backend validates amount against
-        // the single linked installment's outstanding when installmentNo is
-        // present and would reject the full payoff as "ยอดไม่ตรง".
-        installmentNo: isMultiInstallment ? undefined : data.payment?.installmentNo,
-      };
+      // สิ่งที่ส่ง (ส่งเลขงวดหรือไม่) ตัดสินที่ `liffPayIntentRequest` ที่เดียว — สเปค DB ฝั่ง API เรียกตัวเดียวกัน
+      const payload = liffPayIntentRequest(data, queryLineId || undefined);
       const { data: result } = await liffApi.post<PaymentIntentResult>(
         '/paysolutions/create-intent',
         payload,
@@ -213,6 +204,7 @@ export default function LiffPayment() {
   // outstanding by more than one installment's worth → multi-installment
   // close. Lets the UI hide the "งวดที่ 1" line that would otherwise
   // mislead a customer paying the full payoff.
+  // Task 39: ใช้กับการแสดงผลเท่านั้น — สิ่งที่ส่งไปสร้างรายการ (ส่งเลขงวดหรือไม่) ตัดสินจาก `installmentBound` ของลิงก์ที่ `liffPayIntentRequest`
   const isMultiInstallment =
     !!payment &&
     amount > Number(payment.amountDue) + Number(payment.lateFee ?? 0) + 0.5;

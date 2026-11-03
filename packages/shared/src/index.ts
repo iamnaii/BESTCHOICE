@@ -3,6 +3,7 @@ export * from './company-access';
 export * from './accounting-self-approval';
 export * from './types';
 export * from './liff-types';
+export * from './liff-pay-intent';
 export * from './trade-in-declaration';
 export * from './trade-in-evidence';
 export * from './trade-in-credit';

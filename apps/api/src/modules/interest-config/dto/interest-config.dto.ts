@@ -1,5 +1,9 @@
 import { IsString, IsNumber, IsArray, IsBoolean, IsOptional, Min, Max } from 'class-validator';
 
+/**
+ * ไม่มีช่อง `vatPct` (คำตัดสินเจ้าของ #22, 2026-10-31): VAT ของตั้งค่าดอกเบี้ยอ่านจากบริษัท FINANCE ที่เดียว — แก้ที่
+ * ตั้งค่า › บริษัท & สาขา › บริษัทในเครือ · ค่าที่หน้าเว็บรุ่นเก่าส่งมาถูก ValidationPipe (whitelist) ตัดทิ้ง
+ */
 export class CreateInterestConfigDto {
   @IsString()
   name: string;
@@ -23,12 +27,6 @@ export class CreateInterestConfigDto {
   @Max(1, { message: 'ค่าคอมมิชชั่นต้องไม่เกิน 1' })
   @IsOptional()
   storeCommissionPct?: number;
-
-  @IsNumber()
-  @Min(0, { message: 'VAT ต้องไม่น้อยกว่า 0' })
-  @Max(1, { message: 'VAT ต้องไม่เกิน 1' })
-  @IsOptional()
-  vatPct?: number;
 
   @IsNumber()
   @Min(1, { message: 'จำนวนงวดขั้นต่ำต้องอย่างน้อย 1' })
@@ -66,12 +64,6 @@ export class UpdateInterestConfigDto {
   @Max(1, { message: 'ค่าคอมมิชชั่นต้องไม่เกิน 1' })
   @IsOptional()
   storeCommissionPct?: number;
-
-  @IsNumber()
-  @Min(0, { message: 'VAT ต้องไม่น้อยกว่า 0' })
-  @Max(1, { message: 'VAT ต้องไม่เกิน 1' })
-  @IsOptional()
-  vatPct?: number;
 
   @IsNumber()
   @Min(1, { message: 'จำนวนงวดขั้นต่ำต้องอย่างน้อย 1' })

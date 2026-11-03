@@ -3,6 +3,7 @@ import { currentDomainAccess, domainAccessClient } from '../../employee-access/a
 import { assertPreparationCredit } from '../../employee-access/access-preparation-credit';
 import { assertExportRowCount, EXPORT_ROW_LIMIT, readExportSnapshot } from '../../../common/helpers/export-snapshot';
 import { bangkokDateRange } from '../../../utils/date.util';
+import { resolveInstallmentVat } from '../../../utils/config.util';
 import { contractSignatureRequirements } from '../../../utils/validation.util';
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -205,8 +206,16 @@ export class ContractQueryService {
 
     // ก้อน 5 — การ์ดภาษีซื้อของเครื่อง (ยอดเฉพาะ OWNER/FM/ACCOUNTANT — Q5)
     const inputVat = await buildContractInputVatView(this.prisma as never, contract, user?.role);
+    // คำตัดสินเจ้าของ #22: VAT ของตั้งค่าดอกเบี้ย = บริษัท FINANCE — หน้าแก้สัญญาร่างใช้ interestConfig.vatPct คำนวณพรีวิว
+    // จึงส่งค่า FINANCE แทนคอลัมน์ interest_configs.vat_pct (ใบเสนอยอดจริงก็อ่าน FINANCE)
+    const interestConfig = contract.interestConfig
+      ? {
+          ...contract.interestConfig,
+          vatPct: new Prisma.Decimal((await resolveInstallmentVat(this.prisma)).vatPct),
+        }
+      : null;
 
-    return visibleContractCredit(this.prisma, redactContractInputVat({ ...contract, bundleProducts, signatureRequirements: contractSignatureRequirements(contract), inputVat }, user?.role), user);
+    return visibleContractCredit(this.prisma, redactContractInputVat({ ...contract, interestConfig, bundleProducts, signatureRequirements: contractSignatureRequirements(contract), inputVat }, user?.role), user);
   }
 
   /**

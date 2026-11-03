@@ -95,6 +95,8 @@ describe('Payoff parity: repossession closingAmount === early-payoff totalPayoff
     const prisma = {
       // eligibility (2026-09-05) อ่าน strict flag ใน previewCalculation — ปิดไว้ = ไม่กระทบ parity
       systemConfig: { findUnique: jest.fn().mockResolvedValue(null) },
+      // #24: preview eligibility reads approved-but-not-bank-confirmed refunds — none here
+      refund: { findMany: jest.fn().mockResolvedValue([]) },
       // eligibility (review 2026-09-05) ด่าน 'เครื่องเคยมีแถวยึด' — ไม่เคย = ไม่กระทบ parity
       repossession: { findFirst: jest.fn().mockResolvedValue(null) },
       contract: { findUnique: jest.fn().mockResolvedValue(contract) },

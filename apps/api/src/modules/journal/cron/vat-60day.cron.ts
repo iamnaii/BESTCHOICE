@@ -111,7 +111,7 @@ export class Vat60dayCron {
 
     // Closed-period guard: the mandatory VAT JE posts to today's FINANCE period
     // (createAndPost defaults postedAt=now, companyId=FINANCE). Never silently post
-    // into a CLOSED/SYNCED period past its grace window — mirror the 2A accrual cron.
+    // into a CLOSED period past its grace window or a SYNCED one (no grace — #23) — mirror the 2A accrual cron.
     const financeCompany = await this.prisma.companyInfo.findFirst({
       where: { companyCode: 'FINANCE', deletedAt: null },
       select: { id: true },

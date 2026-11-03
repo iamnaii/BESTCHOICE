@@ -86,12 +86,45 @@ describe('validatePeriodOpen — AccountingPeriod single source of truth', () =>
     ).resolves.toBeUndefined();
   });
 
-  it('SYNCED period: treated same as CLOSED for grace purposes', async () => {
+  it('SYNCED period: still rejected after the grace window', async () => {
     jest.setSystemTime(new Date('2026-06-10T00:00:00Z')); // beyond default grace
     const prisma = mockPrisma({ period: { status: 'SYNCED' } });
     await expect(
       validatePeriodOpen(prisma, new Date('2026-05-31'), 'co-1'),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  // owner decision #23 (2026-10-31): a period already sent to PEAK locks the moment it is SYNCED —
+  // no grace window (entries posted after the sync would never reach PEAK nor the close snapshot)
+  it('SYNCED period: locks immediately — no grace window (owner decision #23)', async () => {
+    jest.setSystemTime(new Date('2026-06-01T10:00:00+07:00')); // inside the default 5-day grace of May
+    const prisma = mockPrisma({ period: { status: 'SYNCED' } });
+    const attempt = validatePeriodOpen(prisma, new Date('2026-05-31T12:00:00+07:00'), 'co-1');
+    await expect(attempt).rejects.toThrow(BadRequestException);
+    await expect(attempt).rejects.toThrow(
+      'ไม่สามารถบันทึกรายการในงวดที่ปิดแล้ว (2026/05 สถานะ: SYNCED)',
+    );
+    await expect(attempt).rejects.toThrow(/ส่งเข้า PEAK แล้ว.*ไม่มีช่วงผ่อนผัน/);
+    await expect(attempt).rejects.toThrow(/เปิดงวดใหม่ไม่ได้/);
+    await expect(attempt).rejects.toThrow(/ติดต่อฝ่ายบัญชี/);
+  });
+
+  it('SYNCED current month: locks even a posting dated today (no last-day grace)', async () => {
+    jest.setSystemTime(new Date('2026-05-20T10:00:00+07:00'));
+    const prisma = mockPrisma({ period: { status: 'SYNCED' }, graceDays: '30' });
+    await expect(validatePeriodOpen(prisma, new Date(), 'co-1')).rejects.toThrow(
+      /2026\/05 สถานะ: SYNCED/,
+    );
+  });
+
+  it('CLOSED period keeps its grace window and its original message (no PEAK wording)', async () => {
+    jest.setSystemTime(new Date('2026-06-10T00:00:00Z'));
+    const prisma = mockPrisma({ period: { status: 'CLOSED' } });
+    const attempt = validatePeriodOpen(prisma, new Date('2026-05-31'), 'co-1');
+    await expect(attempt).rejects.toThrow(
+      'ไม่สามารถบันทึกรายการในงวดที่ปิดแล้ว (2026/05 สถานะ: CLOSED)',
+    );
+    await expect(attempt).rejects.not.toThrow(/PEAK/);
   });
 
   it('OPEN period: never throws regardless of grace window', async () => {
@@ -220,11 +253,13 @@ describe('validatePeriodOpen — AccountingPeriod single source of truth', () =>
   });
 
   // review M5: the per-period form of the same rule — a batch can exclude locked months up front
-  it('lockedAccountingPeriods returns only CLOSED/SYNCED periods already past their grace window', async () => {
+  it('lockedAccountingPeriods returns CLOSED periods past their grace window and every SYNCED period', async () => {
     jest.setSystemTime(new Date('2026-11-03T10:00:00+07:00'));
     const findMany = jest.fn().mockResolvedValue([
       { year: 2026, month: 9, status: 'CLOSED' }, // grace 5 ended 00:00 6 Oct → locked
-      { year: 2026, month: 10, status: 'SYNCED' }, // grace runs to the end of 5 Nov → still open
+      { year: 2026, month: 10, status: 'CLOSED' }, // grace runs to the end of 5 Nov → still open
+      { year: 2026, month: 8, status: 'SYNCED' }, // SYNCED → locked (no grace — owner decision #23)
+      { year: 2026, month: 11, status: 'SYNCED' }, // even the current month → locked
     ]);
     const prisma = {
       systemConfig: { findUnique: jest.fn().mockResolvedValue({ value: '5' }) },
@@ -232,6 +267,8 @@ describe('validatePeriodOpen — AccountingPeriod single source of truth', () =>
     };
     await expect(lockedAccountingPeriods(prisma, 'co-1')).resolves.toEqual([
       { year: 2026, month: 9 },
+      { year: 2026, month: 8 },
+      { year: 2026, month: 11 },
     ]);
     expect(findMany).toHaveBeenCalledWith({
       where: { companyId: 'co-1', status: { in: ['CLOSED', 'SYNCED'] } },

@@ -20,6 +20,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { liffApi } from '@/lib/api';
 import { LIFF_ERRORS } from '@/constants/liff-errors';
+import { liffMutationErrorMessage } from './liff-mutation-error';
 import { useLiffInit } from '@/hooks/useLiffInit';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
@@ -192,8 +193,9 @@ export default function LiffPayment() {
         toast.error(LIFF_ERRORS.PAYMENT_LINK_MISSING);
       }
     },
-    onError: (err: Error) => {
-      toast.error(err.message || LIFF_ERRORS.PAYMENT_CREATE_FAILED);
+    onError: (err: unknown) => {
+      // ข้อความไทยจาก server (เช่น #24 คำขอคืนเงินรอธนาคาร) — ไม่ใช่ข้อความ axios (review m-c)
+      toast.error(liffMutationErrorMessage(err, LIFF_ERRORS.PAYMENT_CREATE_FAILED));
     },
   });
 

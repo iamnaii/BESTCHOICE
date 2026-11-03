@@ -254,17 +254,18 @@ export async function loadInstallmentConfig(
 }
 
 /**
- * Resolve installment config: prefer InterestConfig entity, fallback to system config
+ * Resolve installment config: prefer InterestConfig entity, fallback to system config.
+ * **No VAT here** (owner decision #22, 2026-10-31): the VAT of an installment is the FINANCE company's —
+ * `resolveInstallmentVat` / `resolveFinanceVat` — and `interest_configs.vat_pct` is never read to calculate.
  */
 export function resolveInstallmentParams(
-  interestConfig: { interestRate: { toString(): string }; minDownPaymentPct: { toString(): string }; storeCommissionPct?: { toString(): string } | null; vatPct?: { toString(): string } | null; minInstallmentMonths: number; maxInstallmentMonths: number } | null,
+  interestConfig: { interestRate: { toString(): string }; minDownPaymentPct: { toString(): string }; storeCommissionPct?: { toString(): string } | null; minInstallmentMonths: number; maxInstallmentMonths: number } | null,
   systemConfig: InstallmentConfig,
   overrideInterestRate?: number | null,
 ): {
   interestRate: number;
   minDownPaymentPct: number;
   storeCommissionPct: number;
-  vatPct: number;
   minInstallmentMonths: number;
   maxInstallmentMonths: number;
 } {
@@ -272,7 +273,6 @@ export function resolveInstallmentParams(
     interestRate: overrideInterestRate ?? (interestConfig ? Number(interestConfig.interestRate) : systemConfig.interestRate),
     minDownPaymentPct: interestConfig ? Number(interestConfig.minDownPaymentPct) : systemConfig.minDownPaymentPct,
     storeCommissionPct: interestConfig?.storeCommissionPct != null ? Number(interestConfig.storeCommissionPct) : systemConfig.storeCommissionPct,
-    vatPct: interestConfig?.vatPct != null ? Number(interestConfig.vatPct) : systemConfig.vatPct,
     minInstallmentMonths: interestConfig ? interestConfig.minInstallmentMonths : systemConfig.minInstallmentMonths,
     maxInstallmentMonths: interestConfig ? interestConfig.maxInstallmentMonths : systemConfig.maxInstallmentMonths,
   };
@@ -285,23 +285,43 @@ export function resolveInstallmentParams(
  * สาขานั้นจะได้ VAT 0
  *
  *   - FINANCE ไม่จด VAT → 0 · มี `vatRate` → อัตรานั้น
- *   - ไม่มีแถว FINANCE หรือไม่มีอัตรา → `defaultVatPct` (interest config / system config — ลำดับเดิม)
+ *   - ไม่มีแถว FINANCE หรือไม่มีอัตรา → `defaultVatPct` (ค่า VAT ของระบบ — `VAT_RATE`; **ไม่ใช่** `interest_configs.vat_pct`
+ *     ตั้งแต่คำตัดสินเจ้าของ #22 2026-10-31) · ส่งเป็นฟังก์ชันได้ ⇒ อ่านเฉพาะเมื่อจำเป็น
  *
  * (เดิม `resolveBranchVat` / `resolveVatPctForBranch` อ่านบริษัทของสาขา — ผู้เรียกในโค้ดจริงมีแค่ใบเสนอยอดสัญญาผ่อน ซึ่งเป็นของ FINANCE
  * ⇒ ถอดทั้งคู่ · การขายหน้าร้าน (SHOP) ไม่ได้คิด VAT ผ่านตัวนี้)
  */
 export async function resolveFinanceVat(
   prisma: Pick<Prisma.TransactionClient, 'companyInfo'>,
-  defaultVatPct: number,
+  defaultVatPct: number | (() => Promise<number>),
 ): Promise<{ vatPct: number; source: 'FINANCE_COMPANY' | 'CONFIG_FALLBACK' }> {
-  const fallback = { vatPct: defaultVatPct, source: 'CONFIG_FALLBACK' as const };
+  const fallback = async () => ({
+    vatPct: typeof defaultVatPct === 'number' ? defaultVatPct : await defaultVatPct(),
+    source: 'CONFIG_FALLBACK' as const,
+  });
   const finance = await prisma.companyInfo.findFirst({
     where: { companyCode: 'FINANCE', deletedAt: null },
     select: { vatRegistered: true, vatRate: true },
   });
-  if (!finance) return fallback;
+  if (!finance) return fallback();
   if (!finance.vatRegistered) return { vatPct: 0, source: 'FINANCE_COMPANY' };
   if (finance.vatRate != null)
     return { vatPct: Number(finance.vatRate), source: 'FINANCE_COMPANY' };
-  return fallback;
+  return fallback();
+}
+
+/**
+ * VAT ของการผ่อน **ที่เดียว** (คำตัดสินเจ้าของ #22, 2026-10-31) — ทุกผู้อ่าน "VAT ของตั้งค่าดอกเบี้ย" เรียกตัวนี้: ใบเสนอยอดสัญญา
+ * (`ContractQuoteService` — ผ่าน `resolveFinanceVat` กับค่าระบบที่โหลดอยู่แล้ว) · `resolveBcConfig` (`GET /interest-configs/resolved`,
+ * เรียงตามค่างวดในหน้าสต๊อก) · `resolveBcConfigForCategory` (บอทขาย · หน้าร้านออนไลน์) · การ์ดสินค้าในแชท (`ProductQuoteService`) ·
+ * ค่า `vatPct` ที่ `InterestConfigService` ส่งออก. FINANCE → ไม่มีแถว/อัตรา = `VAT_RATE` ของระบบ.
+ * `interest_configs.vat_pct` ยังอยู่ในตาราง (ไม่มี migration ทำลายข้อมูล) แต่ไม่มีใครอ่านไปคำนวณ และ API ไม่เขียน
+ *
+ * ค่าสำรองของระบบ = `loadInstallmentConfig().vatPct` ตัวเดียวกับที่ใบเสนอยอดส่งให้ `resolveFinanceVat` (ลำดับ key + ปัด 4 ตำแหน่ง
+ * เดียวกัน — review m-f) ⇒ ทุกผู้อ่านได้ค่าเท่ากับใบเสนอยอดเสมอ
+ */
+export async function resolveInstallmentVat(
+  prisma: Pick<Prisma.TransactionClient, 'companyInfo' | 'systemConfig'>,
+): Promise<{ vatPct: number; source: 'FINANCE_COMPANY' | 'CONFIG_FALLBACK' }> {
+  return resolveFinanceVat(prisma, async () => (await loadInstallmentConfig(prisma)).vatPct);
 }

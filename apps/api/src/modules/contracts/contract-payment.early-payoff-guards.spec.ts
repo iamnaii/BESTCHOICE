@@ -132,6 +132,8 @@ describe('ContractPaymentService early-payoff guards (Wave 3 MED gap-fill)', () 
     tx = {
       // Current persisted legacy admission is checked inside the money transaction.
       $queryRaw: jest.fn().mockResolvedValue([]),
+      // #24: earlyPayoff reads approved-but-not-bank-confirmed refunds under the contract lock — none in this fixture
+      refund: { findMany: jest.fn().mockResolvedValue([]) },
       user: { findUnique: jest.fn().mockResolvedValue({ isActive: true, deletedAt: null, accessManaged: false }) },
       // 2026-10-17: earlyPayoff อ่านงวดที่มีธง VAT บังคับ 60 วันใน tx (กลับ 21-2103 ก่อนลง JP4) — ฟิกซ์เจอร์นี้ไม่มีธง
       installmentSchedule: { findMany: jest.fn().mockResolvedValue([]) },
@@ -444,6 +446,61 @@ describe('ContractPaymentService early-payoff guards (Wave 3 MED gap-fill)', () 
         select: { status: true },
       });
       expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(createAndPost).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ── (5) owner decision #24 (2026-10-31): no early payoff while an approved refund waits for the bank ──
+  describe('earlyPayoff — approved refund not yet confirmed by the bank (#24)', () => {
+    const pendingRefund = {
+      id: 'refund-1',
+      amount: dec('1926.00'),
+      payment: { installmentNo: 6 },
+    };
+
+    it('rejects inside the payoff transaction with the Thai guidance — nothing is written', async () => {
+      buildService();
+      tx.refund = { findMany: jest.fn().mockResolvedValue([pendingRefund]) };
+
+      const attempt = approvedEarlyPayoff(service, baseContract.id, 'user-1', {
+        paymentMethod: 'CASH',
+      });
+      await expect(attempt).rejects.toThrow(
+        'สัญญานี้มีคำขอคืนเงินที่อนุมัติแล้วแต่ยังไม่ได้บันทึกผลจากธนาคาร (งวดที่ 6 1926.00 บาท) — ปิดยอดก่อนกำหนดตอนนี้ไม่ได้',
+      );
+      await expect(
+        approvedEarlyPayoff(service, baseContract.id, 'user-1', { paymentMethod: 'CASH' }),
+      ).rejects.toThrow(
+        /OWNER.*FINANCE_MANAGER.*อนุมัติคืนเงินเข้าบัญชี.*คืนสำเร็จ หรือคืนไม่สำเร็จ/,
+      );
+
+      expect(tx.refund.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { contractId: baseContract.id, status: 'APPROVED', deletedAt: null },
+        }),
+      );
+      expect(tx.payment.update).not.toHaveBeenCalled();
+      expect(tx.contract.update).not.toHaveBeenCalled();
+      expect(createAndPost).not.toHaveBeenCalled();
+    });
+
+    it('reads the refunds under the contract row lock the transaction holds (FOR UPDATE first)', async () => {
+      buildService();
+      const order: string[] = [];
+      tx.$queryRaw = jest.fn((strings: TemplateStringsArray) => {
+        if (strings.join('?').includes('FROM contracts')) order.push('lock-contract');
+        return Promise.resolve([]);
+      });
+      tx.refund = {
+        findMany: jest.fn(() => {
+          order.push('read-refunds');
+          return Promise.resolve([]);
+        }),
+      };
+
+      await approvedEarlyPayoff(service, baseContract.id, 'user-1', { paymentMethod: 'CASH' });
+
+      expect(order).toEqual(['lock-contract', 'read-refunds']);
       expect(createAndPost).toHaveBeenCalledTimes(1);
     });
   });

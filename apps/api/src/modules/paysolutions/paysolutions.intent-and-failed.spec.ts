@@ -430,6 +430,47 @@ describe('PaySolutionsService — intent guards + FAILED/routing callbacks (char
       });
     });
 
+    // owner decision #24 (2026-10-31): a no-installment intent is the LIFF payoff (LiffEarlyPayoff / /pay/:token
+    // "ยอดปิดสัญญา") — refused while an approved refund waits for the bank. Enforced HERE, at link creation: the webhook
+    // never rejects money the gateway has captured (same shape as the "no skipping installments" rule).
+    it('#24 no installmentNo + refund APPROVED (not bank-confirmed) → customer 400 before any gateway call', async () => {
+      buildIntentPrisma(null);
+      (prisma as Record<string, unknown>).refund = {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            { id: 'rf-1', amount: new Prisma.Decimal('1000'), payment: { installmentNo: 2 } },
+          ]),
+      };
+      await buildService();
+      const fetchSpy = jest.spyOn(global, 'fetch');
+      try {
+        await expect(
+          service.createPaymentIntent(contractId, 5000, 'ปิดยอด', lineId),
+        ).rejects.toThrow('ยังปิดยอดผ่าน LINE ไม่ได้ในขณะนี้');
+        expect(fetchSpy).not.toHaveBeenCalled();
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
+    it('#24 a single-installment intent does not consult refunds (not a payoff)', async () => {
+      buildIntentPrisma({
+        id: 'pay-2',
+        status: 'PAID',
+        amountDue: 1000,
+        lateFee: 0,
+        amountPaid: 1000,
+      });
+      const findMany = jest.fn();
+      (prisma as Record<string, unknown>).refund = { findMany };
+      await buildService();
+      await expect(
+        service.createPaymentIntent(contractId, 1000, undefined, lineId, installmentNo),
+      ).rejects.toThrow('ชำระเรียบร้อยแล้ว');
+      expect(findMany).not.toHaveBeenCalled();
+    });
+
     it("installment already PAID → BadRequest 'ชำระเรียบร้อยแล้ว' (before any gateway call)", async () => {
       buildIntentPrisma({
         id: 'pay-paid-1',
@@ -550,6 +591,8 @@ describe('PaySolutionsService — intent guards + FAILED/routing callbacks (char
         },
         // No installmentNo passed → payment lookup skipped (paymentRecord null).
         // The orphan path is the $transaction that creates the PaymentLink.
+        // #24: a no-installment (payoff) intent first checks for refunds waiting for the bank — none here
+        refund: { findMany: jest.fn().mockResolvedValue([]) },
         $transaction: jest.fn().mockRejectedValue(dbError),
       };
       await buildService();

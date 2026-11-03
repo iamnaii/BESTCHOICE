@@ -106,6 +106,8 @@ describe('ContractPaymentService — ปิดยอดหักเงินร�
     const tx = {
       // Current persisted legacy admission is checked inside the money transaction.
       $queryRaw: jest.fn().mockResolvedValue([]),
+      // #24: earlyPayoff reads approved-but-not-bank-confirmed refunds under the contract lock — none in this fixture
+      refund: { findMany: jest.fn().mockResolvedValue([]) },
       user: { findUnique: jest.fn().mockResolvedValue({ isActive: true, deletedAt: null, accessManaged: false }) },
       contract: {
         findUnique: jest.fn().mockResolvedValue(contract),

@@ -63,14 +63,24 @@ export class PaySolutionsConfirmationService {
       };
     }
 
-    // ลองหาจาก PaymentLink token (กรณี order reference)
+    // ลองหาจาก PaymentLink token (กรณี order reference) หรือ id ของแถวติดตาม (Task 39 — create-intent ที่ไม่มีงวดคืน id นี้ให้หน้าเว็บ poll)
     const link = await this.prisma.paymentLink.findFirst({
-      where: { token: paymentId },
+      where: { OR: [{ token: paymentId }, { id: paymentId }] },
       include: { payment: true },
     });
 
     if (!link) {
       throw new NotFoundException('ไม่พบรายการชำระเงิน');
+    }
+
+    // Task 39 (รีวิว I-2) — แถวติดตามที่ไม่มีงวด (ลิงก์ PAYOFF / AMOUNT · LiffEarlyPayoff): USED = webhook รับเงินแล้ว (claim สำเร็จเท่านั้น)
+    if (link.status === 'USED' && !link.payment) {
+      return {
+        paymentId: link.id,
+        status: 'PAID',
+        amount: Number(link.amount),
+        paidAt: link.usedAt || undefined,
+      };
     }
 
     if (link.status === 'USED' && link.payment?.status === 'PAID') {

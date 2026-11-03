@@ -335,24 +335,49 @@ describe('PaySolutionsService — getPaymentStatus + early-payoff savings (chara
       });
     });
 
-    it("link status='USED' with NULL payment → PENDING (optional-chain guards the PAID check)", async () => {
-      // link.payment?.status with payment=null is undefined !== 'PAID', so the
-      // USED-PAID branch is skipped; not EXPIRED → final PENDING.
+    // Task 39 (รีวิว I-2) — แถวติดตามของลิงก์ที่ไม่ใช่ลิงก์งวด (PAYOFF / AMOUNT · LiffEarlyPayoff) ไม่มีงวด · USED = webhook รับเงินแล้ว
+    // (เดิมตอบ PENDING ตลอด — หน้า /pay/:token รอจนหมดเวลา)
+    it("link status='USED' ไม่มีงวด (paymentId null) → 'PAID' (paidAt = usedAt · ยอดของรายการ)", async () => {
+      const usedAt = new Date('2026-11-03T06:00:00.000Z');
       buildLinkPrisma({
         id: 'link-used-nopay',
-        token: 'tok-used-nopay',
+        token: '793686721395',
         status: 'USED',
-        amount: new Prisma.Decimal('100'),
+        paymentId: null,
+        usedAt,
+        amount: new Prisma.Decimal('1615.83'),
         payment: null,
       });
       await buildService();
 
-      const res = await service.getPaymentStatus('tok-used-nopay');
+      const res = await service.getPaymentStatus('link-used-nopay');
 
       expect(res).toEqual({
         paymentId: 'link-used-nopay',
-        status: 'PENDING',
-        amount: 100,
+        status: 'PAID',
+        amount: 1615.83,
+        paidAt: usedAt,
+      });
+    });
+
+    it('หาแถวติดตามด้วย id (UUID ที่ create-intent คืนให้หน้าเว็บ) หรือ token', async () => {
+      buildLinkPrisma({
+        id: '3f8e2b1c-6d4a-4f7e-9b2a-1c5d8e7f9a0b',
+        token: '793686721395',
+        status: 'ACTIVE',
+        paymentId: null,
+        amount: new Prisma.Decimal('1000'),
+        payment: null,
+      });
+      await buildService();
+
+      await service.getPaymentStatus('3f8e2b1c-6d4a-4f7e-9b2a-1c5d8e7f9a0b');
+
+      expect(prisma.paymentLink.findFirst.mock.calls[0][0].where).toEqual({
+        OR: [
+          { token: '3f8e2b1c-6d4a-4f7e-9b2a-1c5d8e7f9a0b' },
+          { id: '3f8e2b1c-6d4a-4f7e-9b2a-1c5d8e7f9a0b' },
+        ],
       });
     });
   });

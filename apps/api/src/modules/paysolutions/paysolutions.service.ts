@@ -124,8 +124,10 @@ export class PaySolutionsService {
             this.confirmSavingPlanPayment(id, linkId, data),
           confirmOnlineOrderPayment: (id, data) =>
             this.confirmOnlineOrderPayment(id, data),
-          sendPaymentSuccessNotification: (contractId, paymentId) =>
-            this.sendPaymentSuccessNotification(contractId, paymentId),
+          sendPaymentSuccessNotification: (contractId, paymentId, paidAmount) =>
+            paidAmount === undefined
+              ? this.sendPaymentSuccessNotification(contractId, paymentId)
+              : this.sendPaymentSuccessNotification(contractId, paymentId, paidAmount),
           sendEarlyPayoffSuccessNotification: (contractId, paidAmount) =>
             this.sendEarlyPayoffSuccessNotification(contractId, paidAmount),
         },
@@ -261,8 +263,9 @@ export class PaySolutionsService {
   private sendPaymentSuccessNotification(
     contractId: string,
     paymentId: string | null,
+    paidAmount?: Prisma.Decimal,
   ): Promise<void> {
-    return this.services().webhook.sendPaymentSuccessNotification(contractId, paymentId);
+    return this.services().webhook.sendPaymentSuccessNotification(contractId, paymentId, paidAmount);
   }
 
   private sendEarlyPayoffSuccessNotification(

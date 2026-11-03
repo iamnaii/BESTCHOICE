@@ -54,6 +54,7 @@ export interface PaySolutionsWebhookHost {
   sendPaymentSuccessNotification(
     contractId: string,
     paymentId: string | null,
+    paidAmount?: Prisma.Decimal,
   ): Promise<void>;
   sendEarlyPayoffSuccessNotification(
     contractId: string,
@@ -333,6 +334,15 @@ export class PaySolutionsWebhookService {
           });
           if (claim.count === 0) {
             return { alreadyClaimed: true as const };
+          }
+          // Task 39 (รีวิว 4ข) — แถวติดตามที่สร้างจากลิงก์ `/pay/:token` (PAYOFF / AMOUNT) ชี้ลิงก์ต้นทาง ⇒ เงินเข้าแล้วลิงก์ต้นทางเป็น USED
+          // ในธุรกรรมเดียวกับการรับเงิน (กดจ่ายซ้ำไม่ได้ — create-intent ตอบ "ลิงก์นี้ชำระเงินแล้ว") · เฉพาะ webhook สำเร็จ · ส่งซ้ำจบที่ claim ข้างบน ·
+          // `status: 'ACTIVE'` ⇒ ทำซ้ำไม่มีผล · ลิงก์งวดไม่มีลิงก์ต้นทาง (งวดที่ชำระแล้วกันการจ่ายซ้ำเองอยู่แล้ว)
+          if (paymentLink.sourceLinkId) {
+            await tx.paymentLink.updateMany({
+              where: { id: paymentLink.sourceLinkId, status: 'ACTIVE' },
+              data: { status: 'USED', usedAt: new Date() },
+            });
           }
 
           // ตั้งลูกหนี้งวด ณ วันรับเงิน: สถานะของสัญญา "ก่อนรับเงิน" — อ่านในธุรกรรมนี้ หลังได้สิทธิ์ลิงก์
@@ -778,10 +788,19 @@ export class PaySolutionsWebhookService {
           paymentLink.contractId,
           paidAmount,
         );
-      } else {
+      } else if (paymentLink.paymentId) {
         await this.host.sendPaymentSuccessNotification(
           paymentLink.contractId,
           paymentLink.paymentId,
+        );
+      } else {
+        // Task 39 (รีวิว I-2) — แถวติดตามที่ไม่มีงวด (ลิงก์ PAYOFF / AMOUNT · LiffEarlyPayoff) เดิมจบเงียบ ("ไม่มีงวด" ใน
+        // sendPaymentSuccessNotification) ⇒ ใช้การ์ดเดียวกับลิงก์งวด: งวดสุดท้ายที่เงินไปถึง + ยอดที่ลูกค้าโอนจริง
+        const lastTouched = result.touchedSnapshots[result.touchedSnapshots.length - 1];
+        await this.host.sendPaymentSuccessNotification(
+          paymentLink.contractId,
+          lastTouched?.id ?? null,
+          paidAmount,
         );
       }
     } else {
@@ -812,6 +831,8 @@ export class PaySolutionsWebhookService {
   async sendPaymentSuccessNotification(
     contractId: string,
     paymentId: string | null,
+    /** Task 39 — ยอดที่ลูกค้าโอนจริง (ลิงก์ที่ไม่ใช่ลิงก์งวด — เงินอาจครอบหลายงวด) · ไม่ส่ง = ยอดสะสมของงวดแบบเดิม */
+    paidAmount?: Prisma.Decimal,
   ): Promise<void> {
     try {
       const contract = await this.prisma.contract.findUnique({
@@ -839,7 +860,7 @@ export class PaySolutionsWebhookService {
         contractNumber: contract.contractNumber,
         installmentNo: payment.installmentNo,
         totalInstallments: contract.payments.length,
-        amountPaid: Number(payment.amountPaid),
+        amountPaid: Number(paidAmount ?? payment.amountPaid),
         paymentMethod: 'ONLINE_GATEWAY',
         paidDate: formatDateLong(new Date()),
         remainingInstallments: contract.payments.length - paidCount,

@@ -18,6 +18,7 @@ import { BadRequestException } from '@nestjs/common';
 import { LineChannelType, Prisma, PrismaClient } from '@prisma/client';
 import { seedFinanceCoa } from '../../../prisma/seed-coa-finance';
 import { bangkokCalendarParts, bangkokMidnight } from '../../utils/date.util';
+import { formatDateTime } from '../../utils/thai-date.util';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { ContractActivation1ATemplate } from '../journal/cpa-templates/contract-activation-1a.template';
 import { EarlyPayoffJP4Template } from '../journal/cpa-templates/early-payoff-jp4.template';
@@ -464,6 +465,108 @@ describeDb(
       });
     });
 
+    describe('Task 41 (ค) — มี QR ปิดยอดที่ยังเปิดอยู่ → สร้าง QR ปิดยอดใบที่สองไม่ได้', () => {
+      const openIntentText = (expiresAt: Date) =>
+        `มี QR ปิดยอดของสัญญานี้ที่สร้างไว้แล้ว ใช้ได้ถึง ${formatDateTime(expiresAt)} น. — ถ้าชำระไปแล้ว กด "กลับไปดูสัญญา" ด้านล่าง แล้วกด "ประวัติชำระเงิน" เพื่อดูผล · ถ้ายังไม่ได้ชำระ กรุณารอให้เลยเวลานั้นแล้วกดชำระใหม่`;
+      const openPayoffRows = (contractId: string) =>
+        prisma.paymentLink.findMany({
+          where: {
+            contractId,
+            purpose: 'PAYOFF',
+            status: 'ACTIVE',
+            expiresAt: { gt: new Date() },
+            NOT: { payoffQuote: { equals: Prisma.DbNull } },
+          },
+        });
+      const payoffLink = (contractId: string) =>
+        prisma.paymentLink.create({
+          data: {
+            token: randomBytes(32).toString('hex'),
+            contractId,
+            amount: new Prisma.Decimal('15189.98'),
+            purpose: 'PAYOFF',
+            status: 'ACTIVE',
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          },
+        });
+
+      it('ทีละคำขอ: ใบที่สอง (ทั้งทางหน้าปิดยอดและลิงก์ PAYOFF) → 400 ไทยบอกเวลาหมดอายุและทางไปต่อ · ไม่ถึง gateway · แถวติดตามเปิดอยู่ใบเดียว', async () => {
+        const f = await createPayoffContract();
+        const first = await createPayoffIntent(f, 15189.98);
+        expect(createUiPayment).toHaveBeenCalledTimes(1);
+
+        await expect(
+          intent.createPaymentIntent(f.contractId, 15189.98, 'ปิดยอด', f.lineUserId),
+        ).rejects.toThrow(openIntentText(first.tracking.expiresAt));
+        const link = await payoffLink(f.contractId);
+        await expect(
+          intent.createPaymentIntent(
+            f.contractId,
+            15189.98,
+            'ปิดยอด',
+            f.lineUserId,
+            undefined,
+            link.token,
+          ),
+        ).rejects.toThrow(openIntentText(first.tracking.expiresAt));
+
+        expect(createUiPayment).toHaveBeenCalledTimes(1); // ปฏิเสธก่อนเรียก gateway
+        expect((await openPayoffRows(f.contractId)).map((r) => r.id)).toEqual([first.tracking.id]);
+      });
+
+      it('QR ใบเดิมปิดไปแล้ว (ชำระไม่สำเร็จ → EXPIRED · เลยเวลาหมดอายุ) และลิงก์ /pay/:token ต้นทางไม่นับ → สร้างใบใหม่ได้', async () => {
+        const f = await createPayoffContract();
+        const failed = await createPayoffIntent(f, 15189.98);
+        await prisma.paymentLink.update({
+          where: { id: failed.tracking.id },
+          data: { status: 'EXPIRED' },
+        });
+        const timedOut = await createPayoffIntent(f, 15189.98);
+        await prisma.paymentLink.update({
+          where: { id: timedOut.tracking.id },
+          data: { expiresAt: new Date(Date.now() - 1000) },
+        });
+        await payoffLink(f.contractId); // ลิงก์ต้นทาง (ไม่มี snapshot) ไม่ใช่ QR ที่สร้างแล้ว
+        const third = await createPayoffIntent(f, 15189.98);
+        expect(createUiPayment).toHaveBeenCalledTimes(3);
+        expect((await openPayoffRows(f.contractId)).map((r) => r.id)).toEqual([third.tracking.id]);
+      });
+
+      it('สองคำขอพร้อมกัน (ผ่านด่านแรกและถึง gateway ทั้งคู่) → ผ่านคำขอเดียว · อีกคำขอได้ 400 ไทยและไม่ได้ลิงก์ชำระ · แถวติดตามเปิดอยู่ใบเดียว', async () => {
+        const f = await createPayoffContract();
+        // gateway ตอบเมื่อทั้งสองคำขอมาถึงแล้ว ⇒ ทั้งคู่ผ่านด่านก่อนเรียก gateway (ยังไม่มีแถวติดตาม) — ที่กันได้คือด่านใต้ล็อกในธุรกรรมที่สร้างแถว
+        let arrived = 0;
+        let release!: () => void;
+        const gate = new Promise<void>((resolve) => (release = resolve));
+        const safety = setTimeout(() => release(), 10_000);
+        const waitAtGate = async () => {
+          arrived += 1;
+          if (arrived === 2) release();
+          await gate;
+          return { gatewayResponse: {}, paymentUrl: 'https://gw.test/pay' };
+        };
+        createUiPayment.mockImplementationOnce(waitAtGate).mockImplementationOnce(waitAtGate);
+
+        const results = await Promise.allSettled([
+          intent.createPaymentIntent(f.contractId, 15189.98, 'ปิดยอด', f.lineUserId),
+          intent.createPaymentIntent(f.contractId, 15189.98, 'ปิดยอด', f.lineUserId),
+        ]);
+        clearTimeout(safety);
+
+        expect(arrived).toBe(2);
+        const ok = results.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
+        const rejected = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+        expect(ok).toHaveLength(1);
+        expect(rejected).toHaveLength(1);
+        expect(rejected[0].reason).toBeInstanceOf(BadRequestException);
+        const open = await openPayoffRows(f.contractId);
+        expect(open).toHaveLength(1);
+        expect(ok[0].paymentId).toBe(open[0].id);
+        expect((rejected[0].reason as Error).message).toBe(openIntentText(open[0].expiresAt));
+        expect(Sentry.captureException).not.toHaveBeenCalled(); // ไม่ใช่ orphan intent — ลิงก์ชำระของคำขอที่แพ้ไม่ถูกส่งออกไป
+      });
+    });
+
     describe('webhook — ยอดตรงยอดปิด ณ เวลาที่เงินเข้า → JP4', () => {
       it('ปิดสัญญาเป็น EARLY_PAYOFF · รายการ JP4 = ตัวเลขทอง · ใบ EARLY_PAYOFF หนึ่งใบผูก JP4 · การ์ดปิดยอดเดิม · แถวติดตาม USED', async () => {
         const f = await createPayoffContract();
@@ -742,9 +845,15 @@ describeDb(
         );
       });
 
-      it('I-1 ลูกค้าจ่าย QR ปิดยอดสองใบ → ใบแรกปิดสัญญา (JP4) · ใบที่สองไม่ตัดงวดใด เงินทั้งก้อนเป็นเงินรับล่วงหน้า · สถานะ EARLY_PAYOFF ไม่ถูกเขียนทับ · งานบอกให้คืนเงินตามจริง', async () => {
+      it('I-1 ลูกค้าจ่าย QR ปิดยอดสองใบ (ใบแรกเลยเวลาหมดอายุแล้วจึงสร้างใบที่สองได้ — (ค)) → ใบแรกปิดสัญญา (JP4) · ใบที่สองไม่ตัดงวดใด เงินทั้งก้อนเป็นเงินรับล่วงหน้า · สถานะ EARLY_PAYOFF ไม่ถูกเขียนทับ · งานบอกให้คืนเงินตามจริง', async () => {
         const f = await createPayoffContract();
         const first = await createPayoffIntent(f, 15189.98);
+        // (ค) — สร้างใบที่สองได้เมื่อใบแรกเลยเวลาหมดอายุ (30 นาที) แล้วเท่านั้น · webhook ไม่ดูเวลาหมดอายุ (แถวยัง ACTIVE) ⇒ ลูกค้าจ่ายใบแรกช้า
+        // แล้วจ่ายใบที่สองด้วย = ทางที่ยังเหลือของเหตุการณ์นี้ (อีกทาง: พนักงานปิดยอดด้วยสลิปขณะ QR ของลูกค้ายังเปิด)
+        await prisma.paymentLink.update({
+          where: { id: first.tracking.id },
+          data: { expiresAt: new Date(Date.now() - 1000) },
+        });
         const second = await createPayoffIntent(f, 15189.98);
 
         await webhook.handlePaymentCallback(webhookData(first.tracking, '15189.98'));

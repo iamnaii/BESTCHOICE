@@ -32,6 +32,11 @@ import {
   type PaySolutionsPayoffPort,
   type PayoffQuoteSnapshot,
 } from '../payoff-quote-snapshot';
+import {
+  findOpenPayoffIntent,
+  lockPayoffIntent,
+  openPayoffIntentMessage,
+} from '../payoff-intent-guard';
 
 /**
  * Task 39 — ลิงก์ `/pay/:token` ที่ชำระไปแล้ว (webhook ตั้ง USED เมื่อเงินเข้า) · หน้าที่ลูกค้ากดอยู่คือ `/pay/:token` ซึ่งมีปุ่ม
@@ -158,6 +163,11 @@ export class PaySolutionsIntentService {
       // (ก่อนเรียก gateway) เพราะ webhook ห้ามปฏิเสธเงินที่ตัดแล้ว (แบบเดียวกับกติกา "ห้ามข้ามงวด" ที่บังคับตอนส่ง QR) · webhook ตรวจซ้ำ
       // ในธุรกรรมของ JP4 แล้วถอยเป็น FIFO + งานแจ้ง (Task 41)
       await assertNoPendingBankRefund(this.prisma, contractId, 'EARLY_PAYOFF', 'customer');
+      // Task 41 (ค) — มี QR ปิดยอดของสัญญานี้ที่ยังเปิดอยู่ = 400 ก่อนเรียก gateway (ชั้นที่ 1 · ชั้นที่ 2 ใต้ล็อกตอนสร้างแถวติดตามข้างล่าง)
+      const openPayoff = await findOpenPayoffIntent(this.prisma, contractId);
+      if (openPayoff) {
+        throw new BadRequestException(openPayoffIntentMessage(openPayoff.expiresAt));
+      }
       // Task 41 (คำตัดสินเจ้าของ #43) — ยอดปิดของ server (ตัวเดียวกับหน้า LIFF ยอดปิด · % ส่วนลดค่าเริ่มต้นเดียวกัน) เก็บเป็น snapshot บน
       // แถวติดตาม ให้ webhook คำนวณใหม่ ณ เวลาที่เงินเข้าแล้วลง JP4 · ทาง `LiffEarlyPayoff`: ยอดที่ตัดเงิน = ยอดปิดของ server (ไม่เชื่อยอดจาก
       // client — ไม่ตรง ±0.01 = 400) · ลิงก์ `PAYOFF`: ยอดที่ตัดเงินยังเป็นยอดของลิงก์ (Task 39) — ยอดของลิงก์ที่ไม่ตรงยอดปิด ณ เวลาที่เงินเข้า
@@ -254,6 +264,15 @@ export class PaySolutionsIntentService {
     let tracking: { id: string } | null = null;
     try {
       tracking = await this.prisma.$transaction(async (tx) => {
+        if (payoffQuote) {
+          // Task 41 (ค) ชั้นที่ 2 — ล็อกต่อสัญญาแล้วตรวจซ้ำในธุรกรรมที่สร้างแถว: สองคำขอพร้อมกันที่ผ่านชั้นที่ 1 มาทั้งคู่ คำขอที่สองเห็นแถวของ
+          // คำขอแรก (commit แล้ว) → 400 และไม่ได้ลิงก์ชำระ (ล็อกไม่ถือข้ามการเรียก gateway)
+          await lockPayoffIntent(tx, contractId);
+          const raced = await findOpenPayoffIntent(tx, contractId);
+          if (raced) {
+            throw new BadRequestException(openPayoffIntentMessage(raced.expiresAt));
+          }
+        }
         if (paymentRecord) {
           await tx.payment.update({
             where: { id: paymentRecord.id },
@@ -286,6 +305,14 @@ export class PaySolutionsIntentService {
         });
       });
     } catch (dbError) {
+      if (dbError instanceof BadRequestException) {
+        // Task 41 (ค) — แพ้คำขอปิดยอดอีกใบที่สร้างพร้อมกัน: ไม่ส่งลิงก์ชำระให้ลูกค้า ⇒ intent ที่ gateway สร้างไว้ไม่มีใครเห็น QR (ไม่ใช่ orphan
+        // ที่มีเงินเข้าได้) · เก็บเลขอ้างอิงไว้ใน log เผื่อตรวจย้อน
+        this.logger.warn(
+          `Payoff intent rejected after gateway call — another payoff QR is open. orderRef=${orderRef} gatewayRef=${gatewayRef} contractId=${contractId} (payment URL not returned)`,
+        );
+        throw dbError;
+      }
       // Gateway intent created but DB tracking failed → ORPHAN risk
       this.logger.error(
         `CRITICAL: PaySolutions intent created but DB tracking failed. orderRef=${orderRef} gatewayRef=${gatewayRef} contractId=${contractId}`,

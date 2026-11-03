@@ -613,6 +613,8 @@ describe('PaySolutionsService — intent guards + FAILED/routing callbacks (char
         // The orphan path is the $transaction that creates the PaymentLink.
         // #24: a no-installment (payoff) intent first checks for refunds waiting for the bank — none here
         refund: { findMany: jest.fn().mockResolvedValue([]) },
+        // Task 41 (ค): no other payoff QR open for this contract
+        paymentLink: { findFirst: jest.fn().mockResolvedValue(null) },
         $transaction: jest.fn().mockRejectedValue(dbError),
       };
       // Task 41 — ยอดปิดของ server = ยอดที่หน้าปิดยอดส่งมา (ไม่งั้น 400 ก่อนถึง gateway)

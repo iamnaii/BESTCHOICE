@@ -60,11 +60,18 @@ describe('PaySolutionsIntentService.createPaymentIntent — ลิงก์ PAYO
       contractStatus?: string;
       /** Task 41 — ยอดปิดของ server (`getEarlyPayoffQuote`) · null = ไม่ต่อตัวคำนวณ (fail closed) */
       payoffTotal?: number | null;
+      /** Task 41 (ค) — แถวติดตาม QR ปิดยอดที่ยังเปิด: ก่อนเรียก gateway (`open`) / ในธุรกรรมใต้ล็อก (`raced`) */
+      openPayoff?: { id: string; expiresAt: Date } | null;
+      racedPayoff?: { id: string; expiresAt: Date } | null;
     } = {},
   ) {
     const tx = {
+      $executeRaw: jest.fn().mockResolvedValue(0),
       payment: { update: jest.fn() },
-      paymentLink: { create: jest.fn().mockResolvedValue({ id: 'track-1' }) },
+      paymentLink: {
+        create: jest.fn().mockResolvedValue({ id: 'track-1' }),
+        findFirst: jest.fn().mockResolvedValue(opts.racedPayoff ?? null),
+      },
     };
     const prisma = {
       contract: {
@@ -81,6 +88,7 @@ describe('PaySolutionsIntentService.createPaymentIntent — ลิงก์ PAYO
       refund: { findMany: jest.fn().mockResolvedValue(opts.refunds ?? []) },
       paymentLink: {
         findUnique: jest.fn().mockResolvedValue(opts.link === undefined ? payLink() : opts.link),
+        findFirst: jest.fn().mockResolvedValue(opts.openPayoff ?? null),
       },
       payment: {
         findUnique: jest.fn(),
@@ -438,6 +446,72 @@ describe('PaySolutionsIntentService.createPaymentIntent — ลิงก์ PAYO
         expect(amountLink.gateway.createUiPayment).toHaveBeenCalledTimes(1);
       },
     );
+  });
+
+  describe('Task 41 (ค) — QR ปิดยอดที่ยังเปิดอยู่ → สร้างใบที่สองไม่ได้', () => {
+    const open = { id: 'track-open', expiresAt: new Date('2026-11-03T12:35:00.000Z') };
+    // 19:35 น. ปฏิทินไทย ไม่ว่าโปรเซสจะรันเขตเวลาใด
+    const openText =
+      'มี QR ปิดยอดของสัญญานี้ที่สร้างไว้แล้ว ใช้ได้ถึง 03/11/2569 19:35 น. — ถ้าชำระไปแล้ว กด "กลับไปดูสัญญา" ด้านล่าง แล้วกด "ประวัติชำระเงิน" เพื่อดูผล · ถ้ายังไม่ได้ชำระ กรุณารอให้เลยเวลานั้นแล้วกดชำระใหม่';
+
+    it('มีแถวติดตามปิดยอดที่ยังเปิด (ตรวจก่อนเรียก gateway) → 400 ทั้งหน้าปิดยอดและลิงก์ PAYOFF · ไม่ถึง gateway · ไม่สร้างแถว', async () => {
+      const liff = build({ openPayoff: open });
+      await expect(
+        liff.service.createPaymentIntent(contractId, 15189.98, 'ปิดยอด', lineId),
+      ).rejects.toThrow(openText);
+      expect(liff.prisma.paymentLink.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            contractId,
+            purpose: 'PAYOFF',
+            NOT: { payoffQuote: { equals: Prisma.DbNull } },
+            status: 'ACTIVE',
+            expiresAt: { gt: expect.any(Date) },
+            deletedAt: null,
+          }),
+        }),
+      );
+      const link = build({
+        openPayoff: open,
+        link: payLink({ purpose: 'PAYOFF' }),
+        payoffTotal: 1000,
+      });
+      await expect(pay(link.service, 1000)).rejects.toThrow(openText);
+      for (const b of [liff, link]) {
+        expect(b.gateway.createUiPayment).not.toHaveBeenCalled();
+        expect(b.tx.paymentLink.create).not.toHaveBeenCalled();
+      }
+    });
+
+    it('แพ้คำขอที่สร้างพร้อมกัน (ด่านใต้ล็อกในธุรกรรมเห็นแถวของอีกคำขอ) → ล็อกต่อสัญญาก่อนตรวจ · 400 ข้อความเดียวกัน · ไม่สร้างแถว · ไม่ใช่ orphan (ไม่มี Sentry)', async () => {
+      const Sentry = jest.requireMock('@sentry/nestjs') as { captureException: jest.Mock };
+      Sentry.captureException.mockClear();
+      const { gateway, service, tx } = build({ racedPayoff: open });
+
+      await expect(
+        service.createPaymentIntent(contractId, 15189.98, 'ปิดยอด', lineId),
+      ).rejects.toThrow(openText);
+
+      expect(gateway.createUiPayment).toHaveBeenCalledTimes(1);
+      expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
+      const [strings, key] = tx.$executeRaw.mock.calls[0] as [TemplateStringsArray, string];
+      expect(strings.join('?')).toBe('SELECT pg_advisory_xact_lock(hashtext(?))');
+      expect(key).toBe(`paysolutions-payoff-intent:${contractId}`);
+      expect(tx.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
+        tx.paymentLink.findFirst.mock.invocationCallOrder[0],
+      );
+      expect(tx.paymentLink.create).not.toHaveBeenCalled();
+      expect(Sentry.captureException).not.toHaveBeenCalled();
+    });
+
+    it('ลิงก์ AMOUNT และทางเลขงวด (ไม่ใช่การปิดยอด) → ไม่ตรวจ ไม่ล็อก แม้มี QR ปิดยอดเปิดอยู่', async () => {
+      const amount = build({ openPayoff: open, racedPayoff: open });
+      await pay(amount.service, 1000);
+      expect(amount.gateway.createUiPayment).toHaveBeenCalledTimes(1);
+      expect(amount.prisma.paymentLink.findFirst).not.toHaveBeenCalled();
+      expect(amount.tx.$executeRaw).not.toHaveBeenCalled();
+      expect(amount.tx.paymentLink.create).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('ทางเลขงวด (ลิงก์ INSTALLMENT) → แถวติดตามผูกงวด purpose INSTALLMENT · คืน id ของงวด (เหมือนเดิม)', async () => {

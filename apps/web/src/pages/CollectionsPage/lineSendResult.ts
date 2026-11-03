@@ -28,3 +28,13 @@ export function describeNotSent(notSent: readonly LineSendNotSent[]): string {
   }
   return [...byReason].map(([text, numbers]) => `${text} (${numbers.join(', ')})`).join('\n');
 }
+
+/**
+ * เหตุผลที่ "ยังไม่ได้ส่ง แต่ระบบจะส่งเอง" (Task 34 รีวิว M6) — นอกเวลาทำการ (แถวรอเวลาที่คิวส่งซ้ำส่งให้) · ส่ง LINE ไม่ผ่านแล้วเข้าคิวส่งซ้ำ ·
+ * ไม่ใช่ข้อผิดพลาด ⇒ แจ้งด้วย toast เตือน · รหัสตรงกับ `NotSentReason` ของ API (`send-outcome.ts`)
+ */
+const SEND_LATER_REASONS: ReadonlySet<string> = new Set(['OUTSIDE_HOURS', 'DELIVERY_FAILED']);
+
+export function willSendLater(n: Pick<LineSendNotSent, 'reason'>): boolean {
+  return SEND_LATER_REASONS.has(n.reason);
+}

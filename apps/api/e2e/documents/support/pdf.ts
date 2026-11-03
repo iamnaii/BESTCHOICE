@@ -35,6 +35,14 @@ export interface PdfPage {
   text: string;
   /** Text in content-stream order — rotated overlays (VOID stamps) only read correctly here. */
   stream: string;
+  /**
+   * Text as drawn: one item per text-showing operator (a jsPDF `text()` call = one table cell line).
+   * `items` come from pdf.js `getTextContent`, which joins consecutive runs of one font on a baseline
+   * into a single item whenever they are at most 0.6 em apart — two neighbouring table cells can come
+   * back as one string. `null` when the page uses operators this reader does not model (Chromium
+   * output places text under `cm` transforms) — only the jsPDF collections report reads it.
+   */
+  runs: PdfTextItem[] | null;
 }
 
 export interface ParsedPdf {
@@ -55,7 +63,7 @@ export async function parsePdf(bytes: Buffer): Promise<ParsedPdf> {
     for (let index = 1; index <= doc.numPages; index += 1) {
       const page = await doc.getPage(index);
       const [x0, y0, x1, y1] = page.view as number[];
-      await page.getOperatorList(); // populates commonObjs with the embedded fonts
+      const operators = await page.getOperatorList(); // also loads the embedded fonts (commonObjs)
       const content = await page.getTextContent();
       const items: PdfTextItem[] = [];
       for (const raw of content.items as any[]) {
@@ -71,12 +79,127 @@ export async function parsePdf(bytes: Buffer): Promise<ParsedPdf> {
         items.push({ str: raw.str, x: raw.transform[4], y: raw.transform[5], size: Math.hypot(raw.transform[0], raw.transform[1]), width: Number(raw.width) || 0, font });
       }
       const lines = groupLines(items);
-      pages.push({ index, widthPt: x1 - x0, heightPt: y1 - y0, items, lines, text: lines.join('\n'), stream: items.map((item) => item.str).join('') });
+      pages.push({
+        index,
+        widthPt: x1 - x0,
+        heightPt: y1 - y0,
+        items,
+        lines,
+        text: lines.join('\n'),
+        stream: items.map((item) => item.str).join(''),
+        runs: textRuns(page, operators),
+      });
     }
   } finally {
     await doc.destroy();
   }
   return { pageCount: pages.length, pages, fonts: [...fonts].sort() };
+}
+
+type Matrix = [number, number, number, number, number, number];
+const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0];
+function translate(m: Matrix, tx: number, ty: number): Matrix {
+  return [m[0], m[1], m[2], m[3], m[0] * tx + m[2] * ty + m[4], m[1] * tx + m[3] * ty + m[5]];
+}
+
+/**
+ * One item per text-showing operator, positioned from the page's own text state (`PdfPage.runs`).
+ * Models the operators jsPDF writes for text — BT/ET, Tf, TL, Td/TD/T*, Tm, Tj, q/Q — and gives
+ * up (null) on anything that would move glyphs differently rather than guess: Tc/Tw/Tz/Ts, `cm`,
+ * form XObjects and annotation appearances (their own matrices), and TJ — pdf.js 3.x hands TJ
+ * over as `showText` with its kerning numbers inside the glyph list, so a number there = TJ.
+ * `showSpacedText` / `'` / `"` never reach this list (pdf.js rewrites them); kept as a net.
+ */
+function textRuns(
+  page: any,
+  operators: { fnArray: number[]; argsArray: any[][] },
+): PdfTextItem[] | null {
+  const OPS = pdfjs.OPS;
+  const runs: PdfTextItem[] = [];
+  let lineMatrix = IDENTITY;
+  let textMatrix = IDENTITY;
+  let state = { fontSize: 0, leading: 0, font: 'unknown', unitsPerEm: 0.001 };
+  const saved: Array<typeof state> = [];
+  for (let i = 0; i < operators.fnArray.length; i += 1) {
+    const args = operators.argsArray[i];
+    switch (operators.fnArray[i]) {
+      case OPS.save:
+        saved.push({ ...state });
+        break;
+      case OPS.restore:
+        state = saved.pop() ?? state;
+        break;
+      case OPS.beginText:
+        lineMatrix = textMatrix = IDENTITY;
+        break;
+      case OPS.setFont: {
+        let loaded: any = null;
+        try {
+          loaded = page.commonObjs.get(args[0]);
+        } catch {
+          loaded = null;
+        }
+        state = {
+          ...state,
+          fontSize: Number(args[1]),
+          font: String(loaded?.name ?? 'unknown').replace(/^[A-Z]{6}\+/, ''),
+          unitsPerEm: Number(loaded?.fontMatrix?.[0] ?? 0.001),
+        };
+        break;
+      }
+      case OPS.setLeading:
+        state = { ...state, leading: Number(args[0]) };
+        break;
+      case OPS.setLeadingMoveText:
+        state = { ...state, leading: -Number(args[1]) };
+        lineMatrix = textMatrix = translate(lineMatrix, Number(args[0]), Number(args[1]));
+        break;
+      case OPS.moveText:
+        lineMatrix = textMatrix = translate(lineMatrix, Number(args[0]), Number(args[1]));
+        break;
+      case OPS.nextLine:
+        lineMatrix = textMatrix = translate(lineMatrix, 0, -state.leading);
+        break;
+      case OPS.setTextMatrix:
+        lineMatrix = textMatrix = args.slice(0, 6).map(Number) as Matrix;
+        break;
+      case OPS.showText: {
+        let str = '';
+        let advance = 0;
+        for (const glyph of args[0] as any[]) {
+          if (typeof glyph === 'number') return null; // TJ kerning (see above)
+          if (!glyph) continue;
+          str += glyph.unicode ?? '';
+          advance += Number(glyph.width ?? 0) * state.fontSize * state.unitsPerEm;
+        }
+        const scale = Math.hypot(textMatrix[0], textMatrix[1]);
+        runs.push({
+          str,
+          x: textMatrix[4],
+          y: textMatrix[5],
+          size: Math.abs(state.fontSize) * scale,
+          width: advance * scale,
+          font: state.font,
+        });
+        textMatrix = translate(textMatrix, advance, 0);
+        break;
+      }
+      case OPS.showSpacedText:
+      case OPS.nextLineShowText:
+      case OPS.nextLineSetSpacingShowText:
+      case OPS.setCharSpacing:
+      case OPS.setWordSpacing:
+      case OPS.setHScale:
+      case OPS.setTextRise:
+      case OPS.transform:
+      case OPS.paintFormXObjectBegin:
+      case OPS.beginAnnotation:
+        return null;
+      default:
+        break;
+    }
+  }
+  return runs;
 }
 
 function groupLines(items: PdfTextItem[]): string[] {

@@ -17,6 +17,8 @@ import { formatDateShort } from '../../../utils/thai-date.util';
 import { PromptPayQrService } from '../promptpay/promptpay-qr.service';
 import { FlexTemplatesService } from '../flex-templates.service';
 import { LineFinanceClientService } from '../../chatbot-finance/services/line-finance-client.service';
+import { hasActivePdpaConsent } from '../../pdpa/active-consent';
+import { NOT_SENT_REASON_TEXT } from '../../notifications/send-outcome';
 import { randomBytes } from 'crypto';
 import type { LiffPayAllocationLine } from '@installment/shared';
 import {
@@ -369,6 +371,12 @@ export class PaymentLinkService {
 
     if (contract.payments.length === 0) {
       throw new BadRequestException('สัญญานี้ชำระครบแล้ว');
+    }
+
+    // Task 34 รีวิว I1 — การ์ดนี้คือเตือนค่างวด / แจ้งค้างชำระที่พนักงานกดส่งเอง ⇒ ด่านความยินยอม PDPA นิยามเดียวกับทางเตือน/ทวงอื่น
+    // (ข้อยกเว้นส่งด้วยมือ #18 = ช่วงผ่อนผันเท่านั้น) · ถามก่อนสร้างลิงก์ (ไม่มีแถวลิงก์ทิ้ง) · ทางที่ทำได้ = โทรออกจากเมนู "ดำเนินการ" เดียวกัน
+    if (!(await hasActivePdpaConsent(this.prisma, contract.customer.id))) {
+      throw new BadRequestException(NOT_SENT_REASON_TEXT.NO_CONSENT);
     }
 
     // Determine overdue

@@ -393,6 +393,7 @@ describe('AutoTriggerService', () => {
             subject: `AutoTrigger ${type}`,
             message: 'ข้ามการแจ้งเตือน — ลูกค้าไม่มี PDPA consent',
             status: 'SKIPPED',
+            blockReason: 'NO_CONSENT',
             relatedId: 'pay-3',
           },
         });

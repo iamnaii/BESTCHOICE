@@ -57,6 +57,11 @@ const marker = randomUUID();
 const reads: PermissionKey[] = ['contracts.read', 'payments.read'];
 const writes: PermissionKey[] = [...reads, 'payments.create'];
 const sensitive: PermissionKey[] = ['sensitive.cost.read', 'sensitive.profit.read'];
+/**
+ * ทุกงวดของ fixture ยังไม่ถึงกำหนด (ฝ่ายบัญชี 18.1 — ส่วนลดเฉพาะงวดที่ยังไม่ถึงกำหนด) · เดิมใช้วันที่ตายตัว 2026-01-01 ซึ่งผ่านไปแล้ว ⇒ ทุกงวดถึงกำหนด
+ * ส่วนลดเป็น 0 และ 17 เคสที่คาดส่วนลด 1,000 แดง — ใช้วันที่สัมพัทธ์กับเวลาที่รันแทน
+ */
+const NOT_DUE_YET = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
 let app: INestApplication;
 let actor: string, denied: string, owner: string, assigned: string, full: string, legacy: string;
 let branchA: string, branchB: string, contractA: string, contractB: string, assignedCase: string;
@@ -138,7 +143,7 @@ async function contract(branchId = branchA, assignedToId?: string) {
       data: {
         contractId: row.id,
         installmentNo,
-        dueDate: new Date('2026-01-01'),
+        dueDate: NOT_DUE_YET,
         amountDue: 1200,
         monthlyPrincipal: 1000,
         monthlyInterest: 200,
@@ -152,7 +157,7 @@ async function contract(branchId = branchA, assignedToId?: string) {
       data: {
         contractId: row.id,
         installmentNo,
-        dueDate: new Date('2026-01-01'),
+        dueDate: NOT_DUE_YET,
         principal: 1000,
         interest: 200,
         amountDue: 1200,

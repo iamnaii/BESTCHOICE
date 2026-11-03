@@ -17,6 +17,7 @@ import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { NotificationCategory } from '@prisma/client';
 import { NotificationsService } from './notifications.service';
 import { NotificationTemplateService } from './notification-template.service';
+import { describeSendOutcome, notSentFields } from './send-outcome';
 import { SendNotificationDto, BulkNotificationDto } from './dto/create-notification.dto';
 import type { LineChannelKey } from './dto/create-notification.dto';
 import {
@@ -57,7 +58,7 @@ export class NotificationsController {
 
   @Post('send-from-template')
   @Roles('OWNER', 'BRANCH_MANAGER')
-  sendFromTemplate(
+  async sendFromTemplate(
     @Body()
     body: {
       eventType: string;
@@ -67,11 +68,14 @@ export class NotificationsController {
       customerId?: string;
     },
   ) {
-    return this.notificationsService.sendFromTemplate(body.eventType, body.data, body.recipient, {
-      relatedId: body.relatedId,
-      customerId: body.customerId,
-      manual: true,
-    });
+    const result = await this.notificationsService.sendFromTemplate(
+      body.eventType,
+      body.data,
+      body.recipient,
+      { relatedId: body.relatedId, customerId: body.customerId, manual: true },
+    );
+    // ไม่ได้ส่ง (ไม่มีความยินยอม ฯลฯ) = เหตุผลภาษาไทยในคำตอบ (Task 34 รอบเก็บ — `send-outcome.ts`)
+    return { ...result, ...notSentFields(describeSendOutcome(result)) };
   }
 
   // ============================================================

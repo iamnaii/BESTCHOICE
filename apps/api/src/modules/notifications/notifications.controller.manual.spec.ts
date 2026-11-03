@@ -45,4 +45,34 @@ describe('NotificationsController — ส่งด้วยมือ', () => {
     await controller.sendBulk({ templateId: 'dunning.reminder', contractIds: ['k1'] } as never);
     expect(service.sendBulk).toHaveBeenCalledWith('dunning.reminder', ['k1'], { manual: true });
   });
+
+  /** ผู้คุมงาน (ตอบคำถามเปิด) — คำตอบของ endpoint ที่พนักงานกดส่งบอกเหตุผลภาษาไทยของที่ไม่ได้ส่ง (`describeSendOutcome`) */
+  it('POST notifications/send-from-template ถูกระงับ (ไม่มีความยินยอม) → คำตอบมี notSentReason + reasonText', async () => {
+    service.sendFromTemplate.mockResolvedValueOnce({
+      id: null,
+      status: 'BLOCKED',
+      blockReason: 'NO_CONSENT',
+    });
+    await expect(
+      controller.sendFromTemplate({
+        eventType: 'dunning.reminder',
+        data: {},
+        recipient: 'U-1',
+        relatedId: 'k1',
+        customerId: 'c1',
+      }),
+    ).resolves.toEqual({
+      id: null,
+      status: 'BLOCKED',
+      blockReason: 'NO_CONSENT',
+      notSentReason: 'NO_CONSENT',
+      reasonText: expect.stringMatching(/^ไม่ได้ส่ง — ลูกค้ายังไม่ได้ให้ความยินยอม PDPA/),
+    });
+  });
+
+  it('POST notifications/send-from-template ส่งแล้ว → คำตอบเดิม (ไม่มีช่องเหตุผล)', async () => {
+    await expect(
+      controller.sendFromTemplate({ eventType: 'dunning.reminder', data: {}, recipient: 'U-1' }),
+    ).resolves.toEqual({ id: 'n', status: 'SENT' });
+  });
 });

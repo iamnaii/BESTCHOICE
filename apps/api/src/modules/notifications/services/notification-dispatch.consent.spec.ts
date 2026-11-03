@@ -3,7 +3,7 @@ import { NotificationDispatchService } from './notification-dispatch.service';
 /**
  * Task 34 รอบเก็บ (ผู้คุมงานข้อ 4) — ทาง Flex ของ `sendFromTemplate` ไม่ผ่าน `ComplianceService.canSend` ⇒ แม่แบบขั้นทวง `dunning.*`
  * (A4 รอบ 08:05) ส่งถึงลูกค้าที่ไม่มีความยินยอม PDPA · ใส่ด่านเดียวกับ A1/A2/A6/บอท (`ensurePdpaConsentOrLogSkip`) ·
- * **แจ้งล็อกเครื่อง `mdm.lock_notice` ไม่ถูกแตะ** (คำสั่งเจ้าของ: ห้ามเปลี่ยนเรื่อง MDM)
+ * **แจ้งล็อกเครื่อง `mdm.lock_notice` ไม่ถูกแตะ** (คำสั่งเจ้าของ: ห้ามเปลี่ยนเรื่อง MDM) · ใช้ทั้งที่ระบบส่งเองและพนักงานกดส่ง (ผู้คุมงานตอบคำถามเปิด)
  */
 describe('NotificationDispatchService.sendFromTemplate — ด่านความยินยอมของแม่แบบขั้นทวง dunning.*', () => {
   function build(opts: { consent: boolean; format?: 'flex' | 'text'; category?: string }) {
@@ -105,17 +105,78 @@ describe('NotificationDispatchService.sendFromTemplate — ด่านควา
     expect(prisma.pDPAConsent.findFirst).not.toHaveBeenCalled();
   });
 
-  it.each([
-    ['พนักงานกดส่งเอง (manual)', { manual: true }],
-    ['bypassCompliance', { bypassCompliance: true }],
-  ])('%s → ไม่ถามความยินยอม (ส่งด้วยมือยังตามกติกาเดิม)', async (_label, extra) => {
+  /**
+   * ผู้คุมงาน (ตอบคำถามเปิด) — ข้อยกเว้น "ส่งด้วยมือ" ของเจ้าของ (#18) หมายถึงช่วงผ่อนผัน 7 วันเท่านั้น ไม่ใช่ PDPA ⇒ ด่านความยินยอมใช้กับการส่งด้วยมือด้วย
+   * (ตรงกับทางข้อความที่ผ่าน `canSend` อยู่แล้ว) · ข้อยกเว้นช่วงผ่อนผันของการส่งมือคงเดิม · `bypassCompliance` (ส่งทดสอบ) ข้ามทุกด่านเหมือน `canSend`
+   */
+  it('พนักงานกดส่งเอง (manual) ไม่มีความยินยอม → ไม่ส่ง · แถว SKIPPED · BLOCKED NO_CONSENT (เหมือนทางข้อความ)', async () => {
+    const { prisma, transport, service } = build({ consent: false });
+    const result = await service.sendFromTemplate('dunning.reminder', { amount: '1' }, 'U-1', {
+      ...target,
+      manual: true,
+    });
+    expect(result).toEqual({ id: null, status: 'BLOCKED', blockReason: 'NO_CONSENT' });
+    expect(transport.sendLineFlexMessage).not.toHaveBeenCalled();
+    expect(prisma.notificationLog.create.mock.calls[0][0].data).toMatchObject({
+      channel: 'IN_APP',
+      status: 'SKIPPED',
+      relatedId: 'k1',
+    });
+  });
+
+  it('พนักงานกดส่งเอง (manual) มีความยินยอม → ส่ง Flex', async () => {
+    const { transport, service } = build({ consent: true });
+    const result = await service.sendFromTemplate('dunning.reminder', { amount: '1' }, 'U-1', {
+      ...target,
+      manual: true,
+    });
+    expect(result.status).toBe('SENT');
+    expect(transport.sendLineFlexMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('bypassCompliance (ส่งทดสอบ) → ไม่ถามความยินยอม (เหมือน canSend)', async () => {
     const { prisma, transport, service } = build({ consent: false });
     await service.sendFromTemplate('dunning.reminder', { amount: '1' }, 'U-1', {
       ...target,
-      ...extra,
+      bypassCompliance: true,
     });
     expect(prisma.pDPAConsent.findFirst).not.toHaveBeenCalled();
     expect(transport.sendLineFlexMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('ส่งรวดด้วยมือ (sendBulk) → ผลรายสัญญามีเหตุผลภาษาไทยของที่ไม่ได้ส่ง (describeSendOutcome)', async () => {
+    const { prisma, service } = build({ consent: false });
+    Object.assign(prisma.contract, {
+      findMany: jest.fn().mockResolvedValue([
+        {
+          id: 'k1',
+          contractNumber: 'BC-1',
+          customer: { id: 'cust-1', name: 'ก', phone: null, lineLinks: [{ lineUserId: 'U-1' }] },
+        },
+        {
+          id: 'k2',
+          contractNumber: 'BC-2',
+          customer: { id: 'cust-2', name: 'ข', phone: null, lineLinks: [] },
+        },
+      ]),
+    });
+
+    const res = await service.sendBulk('dunning.reminder', ['k1', 'k2'], { manual: true });
+
+    expect(res.results).toEqual([
+      {
+        contractId: 'k1',
+        status: 'BLOCKED',
+        notSentReason: 'NO_CONSENT',
+        reasonText: expect.stringMatching(/^ไม่ได้ส่ง — ลูกค้ายังไม่ได้ให้ความยินยอม PDPA/),
+      },
+      {
+        contractId: 'k2',
+        status: 'SKIPPED',
+        notSentReason: 'NO_RECIPIENT',
+        reasonText: expect.stringContaining('ยังไม่ได้ยืนยัน LINE การเงิน'),
+      },
+    ]);
   });
 
   it('แม่แบบ dunning.* แบบข้อความ (ไม่ใช่ Flex) → ไม่ถามที่นี่ — ทางข้อความผ่าน canSend อยู่แล้ว', async () => {

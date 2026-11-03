@@ -84,3 +84,16 @@ export function describeSendOutcome(
   const reason = result.blockReason;
   return notSent(reason && BLOCK_REASONS.has(reason) ? (reason as NotSentReason) : 'BLOCKED');
 }
+
+/**
+ * ช่องเหตุผลสำหรับคำตอบของ endpoint ที่พนักงานกดส่ง (`POST notifications/send-from-template` · `notifications/bulk`) — ไม่ได้ส่ง =
+ * `notSentReason` + `reasonText` · ส่งแล้ว = ไม่มีช่อง (คำตอบเดิม)
+ */
+export interface NotSentFields {
+  notSentReason?: NotSentReason;
+  reasonText?: string;
+}
+
+export function notSentFields(outcome: SendOutcome): NotSentFields {
+  return outcome.sent ? {} : { notSentReason: outcome.reason, reasonText: outcome.reasonText };
+}

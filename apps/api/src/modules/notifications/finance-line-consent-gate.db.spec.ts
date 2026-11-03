@@ -226,7 +226,7 @@ describe('Task 34 ข้อ 3 — ด่านความยินยอม PDP
   });
 });
 
-describe('Task 34 รอบเก็บ ข้อ 4 — แม่แบบขั้นทวง dunning.* ทาง Flex (A4 รอบ 08:05) · แจ้งล็อกพฤติกรรมเดิม', () => {
+describe('Task 34 รอบเก็บ ข้อ 4 — แม่แบบขั้นทวง dunning.* ทาง Flex (A4 รอบ 08:05 + พนักงานกดส่ง) · แจ้งล็อกพฤติกรรมเดิม', () => {
   async function overdueCustomer(label: string, consent: boolean) {
     const f = await createInstallmentFixture(prisma, base, {
       label: `${label}-${++seq}`,
@@ -270,6 +270,39 @@ describe('Task 34 รอบเก็บ ข้อ 4 — แม่แบบขั
       },
     ]);
     expect(await consentSkips(ok.contractId)).toEqual([]);
+  });
+
+  it('พนักงานกดส่งเอง (send-from-template · ส่งรวด bulk — manual) dunning.notice: ไม่มีความยินยอม → ไม่ส่ง + แถว SKIPPED + เหตุผล · มีความยินยอม → ส่ง', async () => {
+    useFakeDate(bangkokAt(day, 0, 10));
+    const ok = await overdueCustomer('manual-consent', true);
+    const none = await overdueCustomer('manual-none', false);
+    const none2 = await overdueCustomer('manual-none-bulk', false);
+
+    const single = await notifications.sendFromTemplate(
+      'dunning.notice',
+      { name: 'ทดสอบ', amount: '1,515.83', contractNumber: none.contractNumber, daysOverdue: '10' },
+      none.lineUserId,
+      { relatedId: none.contractId, customerId: none.customerId, manual: true },
+    );
+    const bulk = await notifications.sendBulk('dunning.notice', [ok.contractId, none2.contractId], {
+      manual: true,
+    });
+
+    expect(single).toEqual({ id: null, status: 'BLOCKED', blockReason: 'NO_CONSENT' });
+    expect(bulk.results).toEqual([
+      { contractId: ok.contractId, status: 'SENT' },
+      {
+        contractId: none2.contractId,
+        status: 'BLOCKED',
+        notSentReason: 'NO_CONSENT',
+        reasonText: expect.stringContaining('ความยินยอม PDPA'),
+      },
+    ]);
+    expect(deliveries(ok.lineUserId, 'flex')).toBe(1);
+    for (const f of [none, none2]) {
+      expect(delivered.filter((d) => d.to === f.lineUserId)).toEqual([]);
+      expect(await consentSkips(f.contractId)).toHaveLength(1);
+    }
   });
 
   it('แจ้งล็อก mdm.lock_notice: ลูกค้าไม่มีความยินยอม → ยังส่ง Flex (พฤติกรรมเดิม — ไม่มีด่านความยินยอมโดยตั้งใจ)', async () => {

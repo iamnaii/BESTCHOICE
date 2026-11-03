@@ -164,7 +164,9 @@ describe('PaySolutionsService.handlePaymentCallback — งานปลดล็
     });
     expect(prisma.todo.upsert.mock.calls[0][0].create.description).toContain('2,231.66 บาท');
     // หลัง commit: ธุรกรรมรับเงินคืนค่าแล้วก่อนเขียนงาน · ธุรกรรมไม่มีช่องทางเขียนงาน
-    const txDone = (prisma.$transaction.mock.results[0].value as Promise<unknown>).then(() => Date.now());
+    const txDone = (prisma.$transaction.mock.results[0].value as Promise<unknown>).then(() =>
+      Date.now(),
+    );
     await expect(txDone).resolves.toEqual(expect.any(Number));
     expect(prisma.$transaction.mock.invocationCallOrder[0]).toBeLessThan(
       prisma.todo.upsert.mock.invocationCallOrder[0],
@@ -177,7 +179,11 @@ describe('PaySolutionsService.handlePaymentCallback — งานปลดล็
     ['webhook ส่งซ้ำ (แถวติดตาม USED)', { tracking: { status: 'USED' } }, '00'],
     ['แพ้การแย่งสิทธิ์ (claim 0)', { claimCount: 0 }, '00'],
     ['ลิงก์ยอดนัด', { sourceEvent: 'CALL_ANSWERED_PROMISE' }, '00'],
-    ['แถวติดตามไม่มีลิงก์ต้นทาง (ลิงก์งวด)', { tracking: { sourceLinkId: null, paymentId: 'pay-2' } }, '00'],
+    [
+      'แถวติดตามไม่มีลิงก์ต้นทาง (ลิงก์งวด)',
+      { tracking: { sourceLinkId: null, paymentId: 'pay-2' } },
+      '00',
+    ],
   ] as const)('%s → ไม่สร้างงาน', async (_label, opts, resultCode) => {
     const { service, prisma } = await build(opts as never);
 

@@ -206,7 +206,10 @@ beforeAll(async () => {
   const gateway = {
     getMerchantId: jest.fn(async () => 'merchant'),
     getTerminalId: jest.fn(async () => 'terminal'),
-    createUiPayment: jest.fn(async () => ({ gatewayResponse: {}, paymentUrl: 'https://gw.test/pay' })),
+    createUiPayment: jest.fn(async () => ({
+      gatewayResponse: {},
+      paymentUrl: 'https://gw.test/pay',
+    })),
   };
   intent = new PaySolutionsIntentService(gateway as never, prisma as never, {} as never, config);
   // webhook ตัวจริง (การกระจายเงิน + เขียนแถวงวด + ปิดลิงก์) · รายการบัญชี/ใบเสร็จ/ข้อความลูกค้าเป็นตัวจำลอง (ไม่ใช่เรื่องของสเปคนี้)
@@ -287,17 +290,28 @@ describe('ลิงก์แจ้งล็อก (ยอดค้างรว�
     await engine.executeEventTrigger('DEVICE_LOCKED', f.contractId, null, null);
     const link = await messageLink(f);
 
+    const todoCount = () =>
+      prisma.todo.count({ where: { requestKey: lockPaidUnlockTodoKey(link.id) } });
     const callback = await payAndConfirm(f, link.token);
+    // webhook ครั้งแรกสร้างงานเอง (หลัง commit)
+    expect(await todoCount()).toBe(1);
     // ผู้ให้บริการส่ง webhook ซ้ำ (ลิงก์ USED แล้ว — จบที่ด่าน idempotency)
     await webhook.handlePaymentCallback(callback);
+    expect(await todoCount()).toBe(1);
     // เรียกซ้ำตรง ๆ (เช่น งานในอนาคตที่ยิงซ้ำ) — upsert ด้วย requestKey เดิม
-    await createLockPaidUnlockTodo(prisma as never, { sourceLinkId: link.id }, {
-      paidAmount: link.amount,
-      refno: callback.refno,
-      paidAt: new Date(),
-    });
+    await createLockPaidUnlockTodo(
+      prisma as never,
+      { sourceLinkId: link.id },
+      {
+        paidAmount: link.amount,
+        refno: callback.refno,
+        paidAt: new Date(),
+      },
+    );
 
-    const todos = await prisma.todo.findMany({ where: { requestKey: lockPaidUnlockTodoKey(link.id) } });
+    const todos = await prisma.todo.findMany({
+      where: { requestKey: lockPaidUnlockTodoKey(link.id) },
+    });
     expect(todos).toHaveLength(1);
     expect(todos[0]).toMatchObject({
       title: `ลูกค้าชำระยอดค้างผ่าน LINE แล้ว — ตรวจยอดแล้วปลดล็อคเครื่อง สัญญา ${f.contractNumber}`,
@@ -312,7 +326,9 @@ describe('ลิงก์แจ้งล็อก (ยอดค้างรว�
     expect(todos[0].description).toContain('2,231.66 บาท');
     expect(todos[0].description).toContain(callback.refno);
     // ลิงก์ต้นทางจ่ายแล้ว (กดจ่ายซ้ำไม่ได้)
-    await expect(prisma.paymentLink.findUniqueOrThrow({ where: { id: link.id } })).resolves.toMatchObject({
+    await expect(
+      prisma.paymentLink.findUniqueOrThrow({ where: { id: link.id } }),
+    ).resolves.toMatchObject({
       status: 'USED',
     });
   }, 60_000);
@@ -350,8 +366,12 @@ describe('ลิงก์ยอดนัด (1,000 · งวด 1 ค้าง 1
     const first = after.get(1)!;
     expect([Number(first.amountPaid), first.status]).toEqual([1000, 'PARTIALLY_PAID']);
     // ยอดที่หน้าเว็บบอกว่า "ยังค้างหลังชำระ" = ยอดค้างจริงของงวดหลังจ่าย
-    expect(Number(first.amountDue.add(first.lateFee).sub(first.amountPaid).toFixed(2))).toBe(615.83);
+    expect(Number(first.amountDue.add(first.lateFee).sub(first.amountPaid).toFixed(2))).toBe(
+      615.83,
+    );
     expect(after.get(2)!.status).toBe('PENDING');
-    expect(await prisma.todo.count({ where: { requestKey: lockPaidUnlockTodoKey(link.id) } })).toBe(0);
+    expect(await prisma.todo.count({ where: { requestKey: lockPaidUnlockTodoKey(link.id) } })).toBe(
+      0,
+    );
   }, 60_000);
 });

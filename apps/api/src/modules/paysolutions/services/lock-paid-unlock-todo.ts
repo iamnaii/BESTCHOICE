@@ -56,11 +56,14 @@ export async function createLockPaidUnlockTodo(
       select: { id: true },
     });
     if (!system) {
-      Sentry.captureMessage('PaySolutions webhook: no SYSTEM user — lock-paid unlock Todo skipped', {
-        level: 'error',
-        tags: { module: 'paysolutions', action: 'lock-paid-unlock-todo' },
-        extra: { sourceLinkId, contractNumber: contract.contractNumber, refno: paid.refno },
-      });
+      Sentry.captureMessage(
+        'PaySolutions webhook: no SYSTEM user — lock-paid unlock Todo skipped',
+        {
+          level: 'error',
+          tags: { module: 'paysolutions', action: 'lock-paid-unlock-todo' },
+          extra: { sourceLinkId, contractNumber: contract.contractNumber, refno: paid.refno },
+        },
+      );
       logger.error(
         `ไม่พบผู้ใช้ SYSTEM — ไม่ได้สร้างงานปลดล็อคของสัญญา ${contract.contractNumber} (refno=${paid.refno})`,
       );

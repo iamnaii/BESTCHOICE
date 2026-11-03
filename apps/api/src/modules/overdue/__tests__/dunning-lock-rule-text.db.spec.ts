@@ -41,7 +41,12 @@ it('migration แก้เฉพาะแถวแจ้งล็อกที่
   const sql = file.slice(file.indexOf('UPDATE "dunning_rules"')).trim().replace(/;$/, '');
   const rows: [string, DunningEventTrigger, string, string][] = [
     ['ข้อความ seed เดิม', 'DEVICE_LOCKED', OLD_TEXT, NEW_TEXT],
-    ['เจ้าของแก้ข้อความแล้ว', 'DEVICE_LOCKED', `${OLD_TEXT} (สอบถามสาขา)`, `${OLD_TEXT} (สอบถามสาขา)`],
+    [
+      'เจ้าของแก้ข้อความแล้ว',
+      'DEVICE_LOCKED',
+      `${OLD_TEXT} (สอบถามสาขา)`,
+      `${OLD_TEXT} (สอบถามสาขา)`,
+    ],
     ['มีช่องว่างท้าย (ไม่ตรงทุกตัวอักษร)', 'DEVICE_LOCKED', `${OLD_TEXT} `, `${OLD_TEXT} `],
     ['กฎอื่นที่ข้อความเดียวกัน', 'DEVICE_UNLOCKED', OLD_TEXT, OLD_TEXT],
   ];
@@ -89,7 +94,9 @@ it('migration แก้เฉพาะแถวแจ้งล็อกที่
         if (err !== ROLLBACK) throw err;
       });
 
-    expect(after).toEqual(Object.fromEntries(rows.map(([label, , , expected]) => [label, expected])));
+    expect(after).toEqual(
+      Object.fromEntries(rows.map(([label, , , expected]) => [label, expected])),
+    );
     expect(secondRun).toBe(0);
   } finally {
     await prisma.dunningRule.deleteMany({ where: { id: { in: Object.values(ids) } } });

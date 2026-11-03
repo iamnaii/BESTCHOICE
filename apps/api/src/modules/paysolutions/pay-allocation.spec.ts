@@ -69,6 +69,21 @@ describe('allocatePaidAmountFifo — กติกาการกระจาย�
     expect(remaining.toFixed(2)).toBe('0.00');
   });
 
+  it('เงินพอค่างวดแต่ไม่พอค่าปรับ → งวดยังไม่ครบ (ค่าปรับนับในยอดที่ต้องปิด)', () => {
+    const allocation = allocatePaidAmountFifo(
+      [row(2, '0', '100.00'), row(3, '0', '0')],
+      dec('1515.83'),
+    );
+
+    expect(
+      allocation.lines.map((l) => [l.payment.installmentNo, l.payThis.toFixed(2), l.fullyPaid]),
+    ).toEqual([[2, '1515.83', false]]);
+    expect(payAllocationPreviewLines(allocation)).toEqual([
+      { kind: 'PARTIAL', installmentNo: 2, amount: 1515.83 },
+      { kind: 'LEFT_AFTER', installmentNo: 2, amount: 100 },
+    ]);
+  });
+
   it('ค่าปรับที่ยกเว้นแล้วไม่นับ · งวดที่ไม่มียอดค้าง (owed ≤ 0) ข้าม', () => {
     const { lines } = allocatePaidAmountFifo(
       [row(1, '1515.83', '0'), row(2, '0', '100.00', true), row(3, '0', '0')],

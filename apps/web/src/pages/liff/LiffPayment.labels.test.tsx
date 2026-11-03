@@ -33,7 +33,12 @@ function linkData(fields: Partial<LiffPaymentLinkData>): LiffPaymentLinkData {
     allocation: null,
     contract: { id: 'ct-1', contractNumber: 'BC-TEST-001', customer: { name: 'ส***' } },
     // งวดที่ผูก (งวดค้างแรก) — เวลาเที่ยงวันไทย ⇒ วันเดียวกันทั้ง TZ ไทยและ UTC
-    payment: { installmentNo: 2, amountDue: 1515.83, lateFee: 100, dueDate: '2026-10-01T05:00:00.000Z' },
+    payment: {
+      installmentNo: 2,
+      amountDue: 1515.83,
+      lateFee: 100,
+      dueDate: '2026-10-01T05:00:00.000Z',
+    },
     ...fields,
   };
 }

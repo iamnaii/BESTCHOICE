@@ -137,6 +137,12 @@ export interface PaySolutionsWebhookHost {
  * lives here AS ONE ATOM — never split, never crossing a seam. The C2 fix
  * that moved JE posting INSIDE the tx is preserved verbatim.
  *
+ * Task 41 (owner decision #43): a `PAYOFF` tracking row first tries a real early
+ * payoff (JP4 via `ContractPaymentService.earlyPayoff` — `gatewayMatch` entry) inside
+ * this SAME transaction, wrapped in a savepoint. Posted ⇒ no FIFO. Anything that blocks
+ * JP4 rolls back to the savepoint and the FIFO below runs unchanged (+ HIGH todo and a
+ * Sentry warning after commit). Serialization/deadlock still fails the whole webhook.
+ *
  * Routing branches (partial / saving-plan / online-order) and the post-tx
  * notifications dispatch through {@link PaySolutionsWebhookHost} (the facade),
  * so no transaction ever crosses the seam. Constructed internally by
@@ -1134,8 +1140,9 @@ export class PaySolutionsWebhookService {
       Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const contractLabel = ctx.contractNumber ?? ctx.contractId;
     const reference = ctx.transactionId || ctx.refno;
-    const nextStep =
-      decision.reason === 'REFUND_PENDING'
+    const nextStep = ctx.contractStatusAfter
+      ? 'สัญญาปิดจากเงินก้อนนี้แล้วแบบรับชำระค่างวด (ไม่ใช่ปิดยอดก่อนกำหนด — ไม่มีส่วนลด) — แจ้งฝ่ายบัญชีตรวจรายการกับลูกค้า'
+      : decision.reason === 'REFUND_PENDING'
         ? 'บันทึกผลธนาคารของคำขอคืนเงินก่อน (ยังไม่มีปุ่มในหน้าจอ — แจ้งฝ่ายบัญชีให้ทีมระบบบันทึก) แล้วเปิดหน้าสัญญา กดปุ่ม "ปิดก่อนกำหนด" เพื่อดูยอดคงเหลือหลังเงินก้อนนี้ แล้วปิดยอดตามขั้นตอนปกติหลังตรวจกับลูกค้า'
         : decision.reason === 'CONTRACT_STATUS'
           ? 'สัญญาไม่อยู่ในสถานะที่ปิดยอดได้ — แจ้งฝ่ายบัญชีตรวจเงินก้อนนี้กับสถานะสัญญา'

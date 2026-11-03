@@ -80,7 +80,8 @@ export const EVENT_DUNNING_RULES: readonly EventDunningRuleSeed[] = [
     eventTrigger: 'CALL_ANSWERED_PROMISE',
     channel: 'LINE',
     messageTemplate:
-      // Task 30 รอบ 8 I5 — ไม่แนบลิงก์ชำระกับยอดนัด (หน้าชำระจ่ายลิงก์ที่ไม่ใช่ยอดคงค้างของงวดเดียวไม่ได้) ⇒ ข้อความไม่อ้าง "ลิงก์ด้านล่าง"
+      // Task 30 รอบ 8 I5 — ข้อความไม่อ้าง "ลิงก์ด้านล่าง" (ตอนนั้นยอดนัดไม่มีลิงก์) · Task 39: แนบลิงก์ยอดนัด (ไม่ผูกงวด) แล้ว — ลิงก์ต่อท้าย
+      // เป็นบรรทัด "ชำระเงินออนไลน์: …" ของ engine เมื่อเปิด includePaymentLink · ถ้อยคำคงเดิม (แก้ถ้อยคำ = รอเจ้าของ)
       'ขอบคุณที่รับสาย กรุณาชำระยอด {{amount}} ฿ ภายใน {{settlementDate}}',
     includePaymentLink: true,
     autoExecute: true,

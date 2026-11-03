@@ -31,6 +31,7 @@ import { ensureInstallmentSchedules } from '../../../utils/installment-schedule.
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
 import { PaySolutionsGatewayClient } from './paysolutions-gateway.client';
 import { allocatePaidAmountFifo, fifoUnpaidPaymentsArgs } from '../pay-allocation';
+import { createLockPaidUnlockTodo } from './lock-paid-unlock-todo';
 
 /**
  * Cross-seam host the webhook routes through. The facade implements this and is
@@ -681,6 +682,13 @@ export class PaySolutionsWebhookService {
       this.logger.log(
         `Payment SUCCESS: refno=${refno}, contractId=${paymentLink.contractId}, contractStatus=${result.contractStatus ?? 'ACTIVE'}, fullyPaid=${result.fullyPaidCount}/${result.totalUnpaidAtStart}`,
       );
+
+      // Task 42 — เงินของลิงก์แจ้งล็อกเข้าแล้ว (หลัง commit): งานให้เจ้าหน้าที่ตรวจยอดแล้วปลดล็อค · ไม่แตะ MDM · ไม่ throw
+      await createLockPaidUnlockTodo(this.prisma, paymentLink, {
+        paidAmount,
+        refno,
+        paidAt: result.paidAt,
+      });
 
       // ใบเสร็จของทุกงวดที่เงินนี้จ่าย (PR3 — คำสั่งเจ้าของ 2026-09-30: เดิมทางนี้ลงบัญชีแต่ไม่มีใบเสร็จ) — ออกหลัง
       // ธุรกรรม commit ผูกรายการรับชำระของงวดนั้น (VAT ของใบ = ภาษีขายของ 2A ที่ลงพร้อมกัน). webhook ที่ส่งซ้ำจบที่ด่าน

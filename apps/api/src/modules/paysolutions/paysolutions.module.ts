@@ -12,6 +12,7 @@ import { JournalModule } from '../journal/journal.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { AccountingModule } from '../accounting/accounting.module';
 import { ReceiptsModule } from '../receipts/receipts.module';
+import { ContractsModule } from '../contracts/contracts.module';
 
 // No forwardRef needed for AccountingModule: its own import chain (JournalModule,
 // TaxModule, PeakModule, ConsecutiveMissedModule, ReceiptsModule — see
@@ -29,6 +30,9 @@ import { ReceiptsModule } from '../receipts/receipts.module';
     forwardRef(() => PaymentsModule),
     // PR3: ใบเสร็จของเงินที่เข้าทางลิงก์ชำระ — PaySolutionsService รับ ReceiptsService แบบ forwardRef
     forwardRef(() => ReceiptsModule),
+    // Task 41: ContractPaymentService (ยอดปิดของ server ตอนสร้าง intent ปิดยอด + ลง JP4 ใน webhook) — forwardRef เพราะ ContractsModule →
+    // ReceiptsModule → LineOaModule → ContractsModule และ PaymentsModule import ทั้งสองโมดูล
+    forwardRef(() => ContractsModule),
   ],
   controllers: [PaySolutionsController],
   providers: [PaySolutionsService, LiffTokenGuard, PartialPaymentExpireCron],

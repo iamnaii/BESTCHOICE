@@ -7,7 +7,8 @@ import {
 } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
 import { ConfigService } from '@nestjs/config';
-import { PaymentLinkPurpose, PaymentMethod } from '@prisma/client';
+import { randomUUID } from 'crypto';
+import { PaymentLinkPurpose, PaymentMethod, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import {
   FINANCE_LINE_RECIPIENT_SELECT,
@@ -26,6 +27,12 @@ import { PaySolutionsGatewayClient, PAYSOLUTIONS_TIMEOUT_MS } from './paysolutio
 import { shopBaseUrl } from '../../../utils/shop-base-url.util';
 import { PAY_LINK_TOKEN_PATTERN } from '../pay-link-token';
 import { assertNoPendingBankRefund } from '../../refunds/pending-bank-refund';
+import {
+  buildPayoffQuoteSnapshot,
+  PAYOFF_ELIGIBLE_CONTRACT_STATUSES,
+  type PaySolutionsPayoffPort,
+  type PayoffQuoteSnapshot,
+} from '../payoff-quote-snapshot';
 
 /**
  * Task 39 — ลิงก์ `/pay/:token` ที่ชำระไปแล้ว (webhook ตั้ง USED เมื่อเงินเข้า) · หน้าที่ลูกค้ากดอยู่คือ `/pay/:token` ซึ่งมีปุ่ม
@@ -33,6 +40,21 @@ import { assertNoPendingBankRefund } from '../../refunds/pending-bank-refund';
  */
 export const PAY_LINK_USED_MESSAGE =
   'ลิงก์นี้ชำระเงินแล้ว — กด "กลับไปดูสัญญา" ด้านล่างเพื่อดูประวัติชำระเงินและยอดคงเหลือ';
+
+/**
+ * Task 41 — ยอดที่หน้าปิดยอด (`LiffEarlyPayoff`) ส่งมาไม่ตรงยอดปิดของ server (เปิดหน้าค้างข้ามวัน / มีงวดถึงกำหนดหรือค่าปรับเพิ่ม) · ทางไปต่อ
+ * ที่มีจริงบนหน้านั้น: ลิงก์ "กลับไปดูสัญญา" ท้ายหน้า → `/liff/contract` ปุ่ม "ปิดยอดก่อนกำหนด · ลดดอกเบี้ย" (โหลดยอดล่าสุดใหม่)
+ */
+export function payoffAmountChangedMessage(totalPayoff: string): string {
+  const formatted = Number(totalPayoff).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return (
+    `ยอดปิดสัญญาเปลี่ยนแล้ว — ยอดล่าสุด ${formatted} บาท · กด "กลับไปดูสัญญา" ด้านล่าง ` +
+    'แล้วกด "ปิดยอดก่อนกำหนด · ลดดอกเบี้ย" อีกครั้งเพื่อดูยอดล่าสุดก่อนชำระ'
+  );
+}
 
 export interface PaymentIntentResult {
   paymentId: string;
@@ -58,6 +80,8 @@ export class PaySolutionsIntentService {
     private prisma: PrismaService,
     private lineOaService: LineOaService,
     private config: ConfigService,
+    /** Task 41 — ยอดปิดของ server สำหรับ intent ปิดยอด (ไม่ส่ง = intent ปิดยอดถูกปฏิเสธ — fail closed) */
+    private payoff?: PaySolutionsPayoffPort,
   ) {
     this.returnUrl = this.config.get<string>('PAYSOLUTIONS_RETURN_URL', '');
     this.apiBaseUrl = this.config.get<string>(
@@ -106,11 +130,31 @@ export class PaySolutionsIntentService {
         ? await this.amountPayLink(contractId, paymentLinkToken, amount)
         : null;
     if (sourceLink) amount = sourceLink.amount;
-    // คำตัดสินเจ้าของ #24 (2026-10-31): ห้ามปิดยอดก่อนกำหนด (JP4) ขณะมีคำขอคืนเงินที่อนุมัติแล้วแต่ยังไม่บันทึกผลธนาคาร — บังคับที่นี่
-    // (ก่อนเรียก gateway) เพราะ webhook ห้ามปฏิเสธเงินที่ตัดแล้ว (แบบเดียวกับกติกา "ห้ามข้ามงวด" ที่บังคับตอนส่ง QR). Task 39: เฉพาะการปิดยอด —
-    // ลิงก์ `PAYOFF` และทางที่ไม่มีทั้งเลขงวดและ token (`LiffEarlyPayoff`) · ลิงก์ `AMOUNT` (แจ้งล็อก · ยอดนัด) และลิงก์งวดจ่ายได้เหมือนจ่ายที่สาขา
-    if (!installmentNo && (!sourceLink || sourceLink.purpose === PaymentLinkPurpose.PAYOFF)) {
+    // การปิดยอด = ลิงก์ `PAYOFF` และทางที่ไม่มีทั้งเลขงวดและ token (`LiffEarlyPayoff`) · ลิงก์ `AMOUNT` (แจ้งล็อก · ยอดนัด) และลิงก์งวดจ่ายได้
+    // เหมือนจ่ายที่สาขา (FIFO — ไม่ใช่ JP4)
+    const isPayoff =
+      !installmentNo && (!sourceLink || sourceLink.purpose === PaymentLinkPurpose.PAYOFF);
+    let payoffQuote: PayoffQuoteSnapshot | null = null;
+    if (isPayoff) {
+      // Task 41 — สถานะเดียวกับหน้า LIFF ยอดปิด (ข้อความลูกค้าเดียวกัน) · เดิม create-intent ไม่ตรวจสถานะ (Task 39 m-5)
+      if (!PAYOFF_ELIGIBLE_CONTRACT_STATUSES.includes(contract.status)) {
+        throw new BadRequestException('สัญญานี้ไม่สามารถปิดยอดก่อนกำหนดได้');
+      }
+      // คำตัดสินเจ้าของ #24 (2026-10-31): ห้ามปิดยอดก่อนกำหนด (JP4) ขณะมีคำขอคืนเงินที่อนุมัติแล้วแต่ยังไม่บันทึกผลธนาคาร — บังคับที่นี่
+      // (ก่อนเรียก gateway) เพราะ webhook ห้ามปฏิเสธเงินที่ตัดแล้ว (แบบเดียวกับกติกา "ห้ามข้ามงวด" ที่บังคับตอนส่ง QR) · webhook ตรวจซ้ำ
+      // ในธุรกรรมของ JP4 แล้วถอยเป็น FIFO + งานแจ้ง (Task 41)
       await assertNoPendingBankRefund(this.prisma, contractId, 'EARLY_PAYOFF', 'customer');
+      // Task 41 (คำตัดสินเจ้าของ #43) — ยอดปิดของ server (ตัวเดียวกับหน้า LIFF ยอดปิด · % ส่วนลดค่าเริ่มต้นเดียวกัน) เก็บเป็น snapshot บน
+      // แถวติดตาม ให้ webhook คำนวณใหม่ ณ เวลาที่เงินเข้าแล้วลง JP4 · ทาง `LiffEarlyPayoff`: ยอดที่ตัดเงิน = ยอดปิดของ server (ไม่เชื่อยอดจาก
+      // client — ไม่ตรง ±0.01 = 400) · ลิงก์ `PAYOFF`: ยอดที่ตัดเงินยังเป็นยอดของลิงก์ (Task 39) — ยอดของลิงก์ที่ไม่ตรงยอดปิด ณ เวลาที่เงินเข้า
+      // ถูกลงแบบ FIFO + งานแจ้งพนักงาน
+      payoffQuote = await this.serverPayoffQuote(contractId);
+      if (!sourceLink) {
+        if (!dClose(amount, payoffQuote.totalPayoff)) {
+          throw new BadRequestException(payoffAmountChangedMessage(payoffQuote.totalPayoff));
+        }
+        amount = Number(payoffQuote.totalPayoff);
+      }
     }
 
     // PaySolutions referenceNo: max 12 chars, must be unique.
@@ -142,8 +186,12 @@ export class PaySolutionsIntentService {
       }
     }
 
+    // Task 41 — id ของแถวติดตามกำหนดก่อนเรียก gateway เพื่อใส่ใน returnUrl: หน้า `/liff/contract?ref=` poll `GET /paysolutions/status/:id`
+    // (ParseUUIDPipe) — เดิมส่งเลขอ้างอิง 12 หลัก ⇒ 400 ทุกครั้ง หน้าไม่เคยขึ้น "ชำระเงินสำเร็จ!" · `getPaymentStatus` หาแถวด้วย id (Task 39)
+    const trackingId = randomUUID();
+
     // เรียก Pay Solutions API v2 (ตาม Web API Guideline v1.2.2)
-    const returnUrlWithRef = `${this.returnUrl || `${this.config.get('FRONTEND_URL', 'http://localhost:5173')}/liff/contract`}?ref=${orderRef}`;
+    const returnUrlWithRef = `${this.returnUrl || `${this.config.get('FRONTEND_URL', 'http://localhost:5173')}/liff/contract`}?ref=${trackingId}`;
 
     const paymentPayload = {
       merchantId: await this.gateway.getMerchantId(),
@@ -202,6 +250,7 @@ export class PaySolutionsIntentService {
 
         return tx.paymentLink.create({
           data: {
+            id: trackingId,
             token: orderRef,
             contractId,
             paymentId: paymentRecord?.id || null,
@@ -211,6 +260,8 @@ export class PaySolutionsIntentService {
               ? PaymentLinkPurpose.INSTALLMENT
               : (sourceLink?.purpose ?? PaymentLinkPurpose.PAYOFF),
             sourceLinkId: sourceLink?.id ?? null,
+            // Task 41 — ยอดปิดของ server ตอนสร้าง intent (เฉพาะการปิดยอด) — webhook คำนวณใหม่ด้วย % ส่วนลดตัวนี้
+            ...(payoffQuote ? { payoffQuote: payoffQuote as unknown as Prisma.InputJsonObject } : {}),
             status: 'ACTIVE',
             expiresAt: new Date(Date.now() + 30 * 60 * 1000), // 30 min expiry
           },
@@ -250,6 +301,18 @@ export class PaySolutionsIntentService {
       paymentUrl,
       gatewayRef,
     };
+  }
+
+  /** Task 41 — ยอดปิดของ server (ตัวเดียวกับหน้า LIFF ยอดปิด `GET liff/early-payoff-quote` — % ส่วนลดค่าเริ่มต้น) เป็น snapshot ของแถวติดตาม */
+  private async serverPayoffQuote(contractId: string): Promise<PayoffQuoteSnapshot> {
+    if (!this.payoff) {
+      // fail closed — ไม่มีตัวคำนวณ = ไม่รู้ยอดปิดที่ถูก ห้ามตัดเงินตามยอดของ client
+      throw new InternalServerErrorException('ระบบคำนวณยอดปิดสัญญาไม่พร้อม กรุณาติดต่อเจ้าหน้าที่');
+    }
+    const quote = await this.payoff.getEarlyPayoffQuote(contractId, undefined, undefined, this.prisma, {
+      skipJournalPreview: true,
+    });
+    return buildPayoffQuoteSnapshot(quote);
   }
 
   /**

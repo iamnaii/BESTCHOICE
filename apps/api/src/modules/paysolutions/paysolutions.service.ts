@@ -17,6 +17,7 @@ import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-rev
 import { PaymentsService } from '../payments/payments.service';
 import { BadDebtService } from '../accounting/bad-debt.service';
 import { ReceiptsService } from '../receipts/receipts.service';
+import { ContractPaymentService } from '../contracts/contract-payment.service';
 import type { PartialPaymentLink } from '@prisma/client';
 import { PaySolutionsGatewayClient } from './services/paysolutions-gateway.client';
 import {
@@ -84,6 +85,11 @@ export class PaySolutionsService {
     @Optional()
     @Inject(forwardRef(() => ReceiptsService))
     private receiptsService?: ReceiptsService,
+    // Task 41 (คำตัดสินเจ้าของ #43): intent ปิดยอดใช้ยอดปิดของ server + webhook ลงปิดยอดจริง (JP4) ผ่านแกนเดียวกับพนักงาน ·
+    // @Optional — spec เดิมที่ไม่ส่ง = intent ปิดยอดถูกปฏิเสธ (fail closed) และ webhook ลงทุกเงินแบบ FIFO เดิม
+    @Optional()
+    @Inject(forwardRef(() => ContractPaymentService))
+    private contractPaymentService?: ContractPaymentService,
   ) {}
 
   /**
@@ -101,6 +107,7 @@ export class PaySolutionsService {
         this.prisma,
         this.lineOaService,
         this.config,
+        this.contractPaymentService,
       );
       const confirmation = new PaySolutionsConfirmationService(
         this.prisma,
@@ -132,6 +139,7 @@ export class PaySolutionsService {
             this.sendEarlyPayoffSuccessNotification(contractId, paidAmount),
         },
         this.receiptsService,
+        this.contractPaymentService,
       );
       this._services = { gateway, intent, confirmation, webhook };
     }

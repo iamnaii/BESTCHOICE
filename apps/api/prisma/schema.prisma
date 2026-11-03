@@ -4499,6 +4499,11 @@ model PaymentLink {
   /// Task 39 — แถวติดตาม intent ที่สร้างจากลิงก์ `/pay/:token` ที่ไม่ผูกงวด ชี้กลับลิงก์ต้นทาง ⇒ webhook สำเร็จตั้งลิงก์ต้นทางเป็น `USED`
   /// (จ่ายซ้ำจากลิงก์เดียวกันไม่ได้) ในธุรกรรมเดียวกับการรับเงิน
   sourceLinkId     String?           @map("source_link_id")
+  /// Task 41 — ยอดปิดที่ server คำนวณตอนสร้าง intent ปิดยอด (แถวติดตาม `PAYOFF` ของ `createPaymentIntent`): `{ v, totalPayoff,
+  /// discountPct, discountAmount, unpaidLateFees, remainingMonths, notDueMonths, quoteDate (ปฏิทินไทย), quotedAt }` ·
+  /// webhook ใช้ `discountPct` คำนวณยอดปิดใหม่ ณ เวลาที่เงินเข้า แล้วลง JP4 เมื่อยอดตรง (±0.01) · null = ไม่ใช่ intent ปิดยอด /
+  /// แถวก่อน migration ⇒ เงินเข้าแบบ FIFO เดิม (แถว `PAYOFF` ที่ไม่มีค่านี้ได้งานแจ้งพนักงาน)
+  payoffQuote      Json?             @map("payoff_quote")
   status           PaymentLinkStatus @default(ACTIVE)
   expiresAt        DateTime          @map("expires_at")
   usedAt           DateTime?         @map("used_at")

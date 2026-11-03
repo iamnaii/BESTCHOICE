@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import {
   PAY_LINK_USED_MESSAGE,
@@ -51,7 +51,17 @@ describe('PaySolutionsIntentService.createPaymentIntent — ลิงก์ PAYO
     };
   }
 
-  function build(opts: { link?: Record<string, unknown> | null; unpaid?: unknown[]; refunds?: unknown[] } = {}) {
+  function build(
+    opts: {
+      link?: Record<string, unknown> | null;
+      unpaid?: unknown[];
+      refunds?: unknown[];
+      /** Task 41 — สถานะสัญญา (ทางปิดยอดตรวจ) · ค่าเริ่มต้น ACTIVE */
+      contractStatus?: string;
+      /** Task 41 — ยอดปิดของ server (`getEarlyPayoffQuote`) · null = ไม่ต่อตัวคำนวณ (fail closed) */
+      payoffTotal?: number | null;
+    } = {},
+  ) {
     const tx = {
       payment: { update: jest.fn() },
       paymentLink: { create: jest.fn().mockResolvedValue({ id: 'track-1' }) },
@@ -62,6 +72,7 @@ describe('PaySolutionsIntentService.createPaymentIntent — ลิงก์ PAYO
           id: contractId,
           customerId: 'cust-1',
           deletedAt: null,
+          status: opts.contractStatus ?? 'ACTIVE',
           contractNumber: 'BC-001',
           customer: { name: 'ลูกค้า', phone: null, email: null },
         }),
@@ -85,13 +96,28 @@ describe('PaySolutionsIntentService.createPaymentIntent — ลิงก์ PAYO
         paymentUrl: 'https://gw/pay',
       })),
     };
+    const payoffPort =
+      opts.payoffTotal === null
+        ? undefined
+        : {
+            getEarlyPayoffQuote: jest.fn(async () => ({
+              totalPayoff: opts.payoffTotal ?? 15189.98,
+              discountPct: 50,
+              discountAmount: 3000,
+              unpaidLateFees: 0,
+              remainingMonths: 12,
+              notDueMonths: 12,
+            })),
+            earlyPayoff: jest.fn(),
+          };
     const service = new PaySolutionsIntentService(
       gateway as never,
       prisma as never,
       {} as never,
       { get: (_k: string, fallback?: unknown) => fallback } as never,
+      payoffPort as never,
     );
-    return { prisma, tx, gateway, service };
+    return { prisma, tx, gateway, service, payoffPort };
   }
 
   const pay = (service: PaySolutionsIntentService, amount: number) =>
@@ -258,12 +284,18 @@ describe('PaySolutionsIntentService.createPaymentIntent — ลิงก์ PAYO
       expect(gateway.createUiPayment).not.toHaveBeenCalled();
     });
 
-    it('ลิงก์ PAYOFF ไม่มีคำขอค้าง → จ่ายได้', async () => {
-      const { gateway, service } = build({ link: payLink({ purpose: 'PAYOFF' }) });
+    it('ลิงก์ PAYOFF ไม่มีคำขอค้าง → จ่ายได้ · ยอดที่ตัด = ยอดของลิงก์ (Task 39) · แถวติดตามเก็บยอดปิดของ server เป็น snapshot (Task 41)', async () => {
+      const { gateway, service, tx } = build({ link: payLink({ purpose: 'PAYOFF' }) });
 
       await pay(service, 1000);
 
       expect(gateway.createUiPayment).toHaveBeenCalledTimes(1);
+      expect(gateway.createUiPayment.mock.calls[0][0]).toMatchObject({ amount: 1000 });
+      expect(tx.paymentLink.create.mock.calls[0][0].data).toMatchObject({
+        amount: 1000,
+        purpose: 'PAYOFF',
+        payoffQuote: { v: 1, totalPayoff: '15189.98', discountPct: 50 },
+      });
     });
 
     it('ไม่มีทั้งเลขงวดและ token (LiffEarlyPayoff) → 400 เหมือนเดิม', async () => {
@@ -298,20 +330,81 @@ describe('PaySolutionsIntentService.createPaymentIntent — ลิงก์ PAYO
     expect(prisma.paymentLink.findUnique).not.toHaveBeenCalled();
   });
 
-  it('ไม่ส่งทั้งเลขงวดและ token (หน้าปิดยอด LiffEarlyPayoff) → ทางเดิม ไม่อ่านลิงก์ · แถวติดตาม PAYOFF ไม่มีลิงก์ต้นทาง', async () => {
-    const { prisma, tx, gateway, service } = build();
+  it('ไม่ส่งทั้งเลขงวดและ token (หน้าปิดยอด LiffEarlyPayoff) → ไม่อ่านลิงก์ · แถวติดตาม PAYOFF ไม่มีลิงก์ต้นทาง · ยอด = ยอดปิดของ server + snapshot', async () => {
+    const { prisma, tx, gateway, service, payoffPort } = build();
 
     await expect(
       service.createPaymentIntent(contractId, 15189.98, 'ปิดยอด', lineId),
     ).resolves.toMatchObject({ paymentId: 'track-1' });
 
     expect(prisma.paymentLink.findUnique).not.toHaveBeenCalled();
+    expect(payoffPort!.getEarlyPayoffQuote).toHaveBeenCalledWith(contractId, undefined, undefined, prisma, {
+      skipJournalPreview: true,
+    });
     expect(gateway.createUiPayment.mock.calls[0][0]).toMatchObject({ amount: 15189.98 });
-    expect(tx.paymentLink.create.mock.calls[0][0].data).toMatchObject({
+    const data = tx.paymentLink.create.mock.calls[0][0].data;
+    expect(data).toMatchObject({
       paymentId: null,
       purpose: 'PAYOFF',
       sourceLinkId: null,
+      amount: 15189.98,
+      payoffQuote: { v: 1, totalPayoff: '15189.98', discountPct: 50, discountAmount: '3000.00', remainingMonths: 12 },
     });
+    // Task 41 — หน้ากลับ /liff/contract?ref= poll ด้วย id ของแถวติดตาม (UUID ที่ endpoint สถานะรับได้) — ไม่ใช่เลขอ้างอิง 12 หลัก
+    expect(gateway.createUiPayment.mock.calls[0][0]).toMatchObject({
+      returnUrl: expect.stringMatching(new RegExp(`/liff/contract\\?ref=${data.id}$`)),
+    });
+    expect(data.id).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  describe('Task 41 — intent ปิดยอดใช้ยอดปิดของ server (ไม่เชื่อยอดจาก client)', () => {
+    it('LiffEarlyPayoff: ยอดจาก client ต่างยอดปิดเกิน 0.01 → 400 บอกยอดล่าสุด + ทางไปต่อ · ไม่ถึง gateway', async () => {
+      const { gateway, service, tx } = build();
+
+      await expect(service.createPaymentIntent(contractId, 15189.96, 'ปิดยอด', lineId)).rejects.toThrow(
+        'ยอดปิดสัญญาเปลี่ยนแล้ว — ยอดล่าสุด 15,189.98 บาท · กด "กลับไปดูสัญญา" ด้านล่าง แล้วกด "ปิดยอดก่อนกำหนด · ลดดอกเบี้ย" อีกครั้งเพื่อดูยอดล่าสุดก่อนชำระ',
+      );
+      expect(gateway.createUiPayment).not.toHaveBeenCalled();
+      expect(tx.paymentLink.create).not.toHaveBeenCalled();
+    });
+
+    it('LiffEarlyPayoff: ต่าง 0.01 → ผ่าน แต่ยอดที่ตัดเงินคือยอดปิดของ server (ไม่ใช่ยอดของ client)', async () => {
+      const { gateway, service } = build();
+
+      await service.createPaymentIntent(contractId, 15189.99, 'ปิดยอด', lineId);
+
+      expect(gateway.createUiPayment.mock.calls[0][0]).toMatchObject({ amount: 15189.98 });
+    });
+
+    it('ไม่มีตัวคำนวณยอดปิด → 500 (fail closed) · ไม่ถึง gateway · ลิงก์ AMOUNT ยังจ่ายได้', async () => {
+      const payoff = build({ payoffTotal: null });
+      await expect(
+        payoff.service.createPaymentIntent(contractId, 15189.98, 'ปิดยอด', lineId),
+      ).rejects.toBeInstanceOf(InternalServerErrorException);
+      expect(payoff.gateway.createUiPayment).not.toHaveBeenCalled();
+
+      const amount = build({ payoffTotal: null });
+      await pay(amount.service, 1000);
+      expect(amount.gateway.createUiPayment).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([['TERMINATED'], ['EARLY_PAYOFF'], ['CLOSED_BAD_DEBT']])(
+      'สัญญา %s → การปิดยอดถูกปฏิเสธด้วยข้อความลูกค้าเดียวกับหน้า LIFF ยอดปิด (LiffEarlyPayoff + ลิงก์ PAYOFF) · ลิงก์ AMOUNT ไม่เปลี่ยน',
+      async (status) => {
+        const liff = build({ contractStatus: status });
+        await expect(liff.service.createPaymentIntent(contractId, 15189.98, 'ปิดยอด', lineId)).rejects.toThrow(
+          'สัญญานี้ไม่สามารถปิดยอดก่อนกำหนดได้',
+        );
+        const payoffLink = build({ contractStatus: status, link: payLink({ purpose: 'PAYOFF' }) });
+        await expect(pay(payoffLink.service, 1000)).rejects.toThrow('สัญญานี้ไม่สามารถปิดยอดก่อนกำหนดได้');
+        expect(liff.gateway.createUiPayment).not.toHaveBeenCalled();
+        expect(payoffLink.gateway.createUiPayment).not.toHaveBeenCalled();
+
+        const amountLink = build({ contractStatus: status });
+        await pay(amountLink.service, 1000);
+        expect(amountLink.gateway.createUiPayment).toHaveBeenCalledTimes(1);
+      },
+    );
   });
 
   it('ทางเลขงวด (ลิงก์ INSTALLMENT) → แถวติดตามผูกงวด purpose INSTALLMENT · คืน id ของงวด (เหมือนเดิม)', async () => {

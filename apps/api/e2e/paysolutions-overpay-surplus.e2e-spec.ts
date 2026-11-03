@@ -12,7 +12,8 @@
  *   1. The installment is NOT over-cleared — the primitive clears only its own owed,
  *      so Σ(Cr 11-2103) for the installment == installmentTotal (1515.83), never 2015.83.
  *   2. The leftover 500 is parked as a customer advance:
- *      - A balanced JE `Dr 11-1202 / Cr 21-1103` for the surplus (500) is posted.
+ *      - A balanced JE `Dr 11-1201 / Cr 21-1103` for the surplus (500) is posted
+ *        (owner decision #45: PaySolutions money lands in 11-1201 KBank on every path).
  *      - `contract.advanceBalance` increases by 500.
  *      - An `OVERPAY_ADVANCE_RECORDED` audit log is written.
  *
@@ -268,12 +269,13 @@ describeOrSkip('PaySolutions webhook — overpay surplus → park as advance (re
       expect(cr2103).toBeCloseTo(INSTALLMENT_TOTAL, 2);
 
       // (b) The surplus (500) is parked as a customer advance:
-      //     - A balanced JE `Dr 11-1202 / Cr 21-1103` for 500 was posted.
+      //     - A balanced JE `Dr 11-1201 / Cr 21-1103` for 500 was posted.
       const cr21_1103 = await sumSurplusAdvanceCredits('21-1103');
       expect(cr21_1103).toBeCloseTo(SURPLUS, 2);
-      //     - the Dr side hits the PaySolutions deposit account 11-1202 (not a different cash code).
-      const dr11_1202 = await sumSurplusAdvanceDebits('11-1202');
-      expect(dr11_1202).toBeCloseTo(SURPLUS, 2);
+      //     - the Dr side hits the PaySolutions deposit account (resolvePaySolutionsDepositAccount —
+      //       the QR default seeded by 20260808000000 = 11-1201 · owner decision #45).
+      const dr11_1201 = await sumSurplusAdvanceDebits('11-1201');
+      expect(dr11_1201).toBeCloseTo(SURPLUS, 2);
 
       //     - contract.advanceBalance increased by exactly the surplus.
       const contractAfter = await prisma.contract.findUniqueOrThrow({

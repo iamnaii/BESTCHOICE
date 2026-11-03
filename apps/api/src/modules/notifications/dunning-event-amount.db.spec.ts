@@ -165,6 +165,8 @@ it('แจ้งล็อก (DEVICE_LOCKED "ชำระยอดค้าง �
   expect(messageTo(f)).not.toContain('ชำระเงินออนไลน์');
 }, 60_000);
 
+// m11 (รีวิวรอบ 7) — ตาข่ายกรณีขอบ: แถว `lateFeeWaived = true` ที่ยังมี `lateFee` และยังค้าง ไม่เกิดจากทางปกติ (ยกเว้นค่าปรับ
+// `LateFeeWaiverService` ตั้ง `lateFee = 0` · ยกเว้นตอนรับเงินตั้งงวดเป็น PAID) — ปักไว้ให้ผลตรงกับทางรับเงิน/webhook ถ้าเกิดขึ้น
 it('แจ้งล็อก — ค่าปรับที่ยกเว้นแล้วไม่นับ', async () => {
   const f = await partlyPaidContract('lockedWaived', { firstFeeWaived: true });
 

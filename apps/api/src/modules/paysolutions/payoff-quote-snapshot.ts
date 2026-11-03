@@ -7,10 +7,17 @@ import type { ContractPaymentService } from '../contracts/contract-payment.servi
  * Task 41 (คำตัดสินเจ้าของ #43) — ส่วนของ `ContractPaymentService` ที่ PaySolutions ใช้: intent ปิดยอดถามยอดปิดของ server
  * (`getEarlyPayoffQuote` — ตัวเดียวกับหน้า LIFF ยอดปิด) · webhook ลงปิดยอดจริงผ่านแกนเดียวกับพนักงาน (`earlyPayoff` ทางเข้า `gatewayMatch`)
  */
-export type PaySolutionsPayoffPort = Pick<ContractPaymentService, 'getEarlyPayoffQuote' | 'earlyPayoff'>;
+export type PaySolutionsPayoffPort = Pick<
+  ContractPaymentService,
+  'getEarlyPayoffQuote' | 'earlyPayoff'
+>;
 
 /** สถานะสัญญาที่ปิดยอดก่อนกำหนดได้ — ชุดเดียวกับ `getEarlyPayoffQuote` / หน้า LIFF ยอดปิด */
-export const PAYOFF_ELIGIBLE_CONTRACT_STATUSES: readonly string[] = ['ACTIVE', 'OVERDUE', 'DEFAULT'];
+export const PAYOFF_ELIGIBLE_CONTRACT_STATUSES: readonly string[] = [
+  'ACTIVE',
+  'OVERDUE',
+  'DEFAULT',
+];
 
 export const PAYOFF_QUOTE_SNAPSHOT_VERSION = 1;
 
@@ -61,12 +68,19 @@ export function buildPayoffQuoteSnapshot(
 const MONEY = /^\d+\.\d{2}$/;
 
 /** อ่าน snapshot จากคอลัมน์ JSON — รูปไม่ครบ/รุ่นไม่ตรง = null (webhook ถือว่าไม่มี → FIFO + งานแจ้ง) */
-export function parsePayoffQuoteSnapshot(value: Prisma.JsonValue | null | undefined): PayoffQuoteSnapshot | null {
+export function parsePayoffQuoteSnapshot(
+  value: Prisma.JsonValue | null | undefined,
+): PayoffQuoteSnapshot | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const s = value as Record<string, unknown>;
   if (s.v !== PAYOFF_QUOTE_SNAPSHOT_VERSION) return null;
   if (typeof s.totalPayoff !== 'string' || !MONEY.test(s.totalPayoff)) return null;
-  if (typeof s.discountPct !== 'number' || !Number.isFinite(s.discountPct) || s.discountPct < 0 || s.discountPct > 100) {
+  if (
+    typeof s.discountPct !== 'number' ||
+    !Number.isFinite(s.discountPct) ||
+    s.discountPct < 0 ||
+    s.discountPct > 100
+  ) {
     return null;
   }
   if (typeof s.quoteDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s.quoteDate)) return null;

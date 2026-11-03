@@ -54,9 +54,6 @@ describe('ContractPaymentService.earlyPayoff — gatewayMatch (ลูกค้�
     ],
   });
 
-  type CapturedLine = { accountCode: string; dr: Prisma.Decimal; cr: Prisma.Decimal };
-  type CapturedJe = { metadata: Record<string, unknown>; lines: CapturedLine[] };
-
   const build = (park: string, fingerprintTaken = false) => {
     const contract = makeQuoteContract(park);
     const ledger = ledgerLines({
@@ -80,7 +77,11 @@ describe('ContractPaymentService.earlyPayoff — gatewayMatch (ลูกค้�
       $queryRaw: jest.fn().mockResolvedValue([]),
       // #24: earlyPayoff reads approved-but-not-bank-confirmed refunds under the contract lock — none in this fixture
       refund: { findMany: jest.fn().mockResolvedValue([]) },
-      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true, deletedAt: null, accessManaged: false }) },
+      user: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ isActive: true, deletedAt: null, accessManaged: false }),
+      },
       contract: {
         // ทางสลิปตรงคิดยอดปิดสดใน tx (getEarlyPayoffQuote(id, …, tx)) จึงต้องได้สัญญาเต็มตัว
         findUnique: jest.fn().mockResolvedValue({
@@ -191,7 +192,9 @@ describe('ContractPaymentService.earlyPayoff — gatewayMatch (ลูกค้�
       $transaction: jest.fn((cb: (t: unknown) => Promise<unknown>) => cb(tx)),
     };
 
-    const receipts = { generateReceipt: jest.fn().mockResolvedValue({ receiptNumber: 'RT-202611-00001' }) };
+    const receipts = {
+      generateReceipt: jest.fn().mockResolvedValue({ receiptNumber: 'RT-202611-00001' }),
+    };
     const journey = { recordAfterCommit: jest.fn().mockResolvedValue(undefined) };
     const service = new ContractPaymentService(
       prisma as never,
@@ -204,7 +207,18 @@ describe('ContractPaymentService.earlyPayoff — gatewayMatch (ลูกค้�
       journey as never,
     );
 
-    return { service, createAndPost, contractUpdates, auditRows, fingerprints, evidenceRows, tx, prisma, receipts, journey };
+    return {
+      service,
+      createAndPost,
+      contractUpdates,
+      auditRows,
+      fingerprints,
+      evidenceRows,
+      tx,
+      prisma,
+      receipts,
+      journey,
+    };
   };
 
   const dto: EarlyPayoffDto = {
@@ -240,7 +254,14 @@ describe('ContractPaymentService.earlyPayoff — gatewayMatch (ลูกค้�
     const h = build('0');
     const g = gateway(h);
 
-    const res = await h.service.earlyPayoff('contract-ep-park-1', 'owner-1', dto, undefined, undefined, g);
+    const res = await h.service.earlyPayoff(
+      'contract-ep-park-1',
+      'owner-1',
+      dto,
+      undefined,
+      undefined,
+      g,
+    );
 
     expect(res.status).toBe('EARLY_PAYOFF');
     expect(h.prisma.$transaction).not.toHaveBeenCalled();
@@ -256,9 +277,15 @@ describe('ContractPaymentService.earlyPayoff — gatewayMatch (ลูกค้�
       gatewayTransactionId: 'TX-41',
       paymentLinkId: 'track-41',
     });
-    expect(jeInput.lines.find((l: { accountCode: string }) => l.accountCode === '11-1202')).toBeDefined();
+    expect(
+      jeInput.lines.find((l: { accountCode: string }) => l.accountCode === '11-1202'),
+    ).toBeDefined();
     const audit = h.auditRows.find((r) => r.action === 'EARLY_PAYOFF_GATEWAY_MATCHED');
-    expect(audit).toMatchObject({ entity: 'contract', entityId: 'contract-ep-park-1', userId: 'owner-1' });
+    expect(audit).toMatchObject({
+      entity: 'contract',
+      entityId: 'contract-ep-park-1',
+      userId: 'owner-1',
+    });
     expect(audit!.newValue).toMatchObject({
       totalPayoff: '11106.00',
       paidAmount: '11106.00',
@@ -325,7 +352,10 @@ describe('ContractPaymentService.earlyPayoff — gatewayMatch (ลูกค้�
     expect(Sentry.captureException).toHaveBeenCalledWith(
       expect.any(Error),
       expect.objectContaining({
-        tags: expect.objectContaining({ action: 'post-commit-receipt-failed', path: 'paysolutions-webhook-payoff' }),
+        tags: expect.objectContaining({
+          action: 'post-commit-receipt-failed',
+          path: 'paysolutions-webhook-payoff',
+        }),
         extra: expect.objectContaining({
           journalEntryNumber: 'JE-EP-PARK-0001',
           amount: '11106.00',
@@ -338,7 +368,14 @@ describe('ContractPaymentService.earlyPayoff — gatewayMatch (ลูกค้�
 
   it('ยอดปิดสดไม่ตรงเงินที่รับ (เกิน 0.01) → GatewayPayoffMismatchError พร้อมยอดปิดสด · ไม่ลง JE ไม่เขียน audit', async () => {
     const h = build('0');
-    const attempt = h.service.earlyPayoff('contract-ep-park-1', 'owner-1', dto, undefined, undefined, gateway(h, '11000.00'));
+    const attempt = h.service.earlyPayoff(
+      'contract-ep-park-1',
+      'owner-1',
+      dto,
+      undefined,
+      undefined,
+      gateway(h, '11000.00'),
+    );
 
     await expect(attempt).rejects.toBeInstanceOf(GatewayPayoffMismatchError);
     await expect(attempt).rejects.toMatchObject({ liveTotalPayoff: 11106, paidAmount: '11000.00' });
@@ -348,7 +385,14 @@ describe('ContractPaymentService.earlyPayoff — gatewayMatch (ลูกค้�
 
   it('ต่าง 0.01 ยังผ่าน (กติกาเดียวกับสลิปตรง — รายการลงยอดปิด)', async () => {
     const h = build('0');
-    const res = await h.service.earlyPayoff('contract-ep-park-1', 'owner-1', dto, undefined, undefined, gateway(h, '11106.01'));
+    const res = await h.service.earlyPayoff(
+      'contract-ep-park-1',
+      'owner-1',
+      dto,
+      undefined,
+      undefined,
+      gateway(h, '11106.01'),
+    );
     expect(res.status).toBe('EARLY_PAYOFF');
     expect(res.totalPayoff).toBe(11106);
   });
@@ -361,7 +405,15 @@ describe('ContractPaymentService.earlyPayoff — gatewayMatch (ลูกค้�
         'owner-1',
         dto,
         undefined,
-        { imageKey: 'k', hash: 'h', amount: 11106, refNo: null, bankName: null, date: null, confidence: 1 },
+        {
+          imageKey: 'k',
+          hash: 'h',
+          amount: 11106,
+          refNo: null,
+          bankName: null,
+          date: null,
+          confidence: 1,
+        },
         gateway(h),
       ),
     ).rejects.toBeInstanceOf(ForbiddenException);
@@ -370,7 +422,9 @@ describe('ContractPaymentService.earlyPayoff — gatewayMatch (ลูกค้�
 
   it('คำขอคืนเงินรอธนาคาร (#24) → 400 จากด่านเดิมในธุรกรรม (webhook ถอยเป็น FIFO)', async () => {
     const h = build('0');
-    h.tx.refund.findMany.mockResolvedValue([{ id: 'rf-1', amount: dec('500'), payment: { installmentNo: 7 } }]);
+    h.tx.refund.findMany.mockResolvedValue([
+      { id: 'rf-1', amount: dec('500'), payment: { installmentNo: 7 } },
+    ]);
 
     await expect(
       h.service.earlyPayoff('contract-ep-park-1', 'owner-1', dto, undefined, undefined, gateway(h)),

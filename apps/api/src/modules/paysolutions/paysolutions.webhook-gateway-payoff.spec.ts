@@ -39,7 +39,13 @@ describe('PaySolutionsWebhookService — ทางปิดยอดผ่าน
     status: 'PENDING',
   });
 
-  function build(opts: { earlyPayoff?: jest.Mock; tracking?: Record<string, unknown>; payoffPort?: boolean } = {}) {
+  function build(
+    opts: {
+      earlyPayoff?: jest.Mock;
+      tracking?: Record<string, unknown>;
+      payoffPort?: boolean;
+    } = {},
+  ) {
     const order: string[] = [];
     const tx = {
       paymentLink: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
@@ -88,12 +94,22 @@ describe('PaySolutionsWebhookService — ทางปิดยอดผ่าน
       companyInfo: { findFirst: jest.fn().mockResolvedValue({ id: 'co-fin' }) },
       user: { findFirst: jest.fn().mockResolvedValue({ id: 'owner-1' }) },
       contract: {
-        findUnique: jest.fn().mockResolvedValue({ id: contractId, contractNumber: 'CT-41', branchId: 'br-1' }),
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ id: contractId, contractNumber: 'CT-41', branchId: 'br-1' }),
       },
-      accountingPeriod: { findUnique: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
-      systemConfig: { findUnique: jest.fn().mockResolvedValue(null), findFirst: jest.fn().mockResolvedValue(null) },
+      accountingPeriod: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      systemConfig: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
       todo: {
-        upsert: jest.fn(async (_args: { where: unknown; create: Record<string, string> }) => order.push('todo')),
+        upsert: jest.fn(async (_args: { where: unknown; create: Record<string, string> }) =>
+          order.push('todo'),
+        ),
       },
       $transaction: jest.fn(async (cb: (t: typeof tx) => Promise<unknown>) => {
         const result = await cb(tx);
@@ -114,13 +130,22 @@ describe('PaySolutionsWebhookService — ทางปิดยอดผ่าน
     };
     const earlyPayoff =
       opts.earlyPayoff ??
-      jest.fn(async (_id, _user, _dto, _a, _s, gatewayMatch: { onCommit: (w: () => Promise<void>) => void }) => {
-        order.push('jp4');
-        gatewayMatch.onCommit(async () => {
-          order.push('payoff-post-commit');
-        });
-        return { totalPayoff: 15189.98 };
-      });
+      jest.fn(
+        async (
+          _id,
+          _user,
+          _dto,
+          _a,
+          _s,
+          gatewayMatch: { onCommit: (w: () => Promise<void>) => void },
+        ) => {
+          order.push('jp4');
+          gatewayMatch.onCommit(async () => {
+            order.push('payoff-post-commit');
+          });
+          return { totalPayoff: 15189.98 };
+        },
+      );
     const payoffPort = {
       earlyPayoff,
       getEarlyPayoffQuote: jest.fn(async () => ({ totalPayoff: 15422.98 })),
@@ -142,7 +167,12 @@ describe('PaySolutionsWebhookService — ทางปิดยอดผ่าน
     return { service, tx, prisma, host, earlyPayoff, payoffPort, receiptTemplate, order };
   }
 
-  const callback = (total = '15189.98') => ({ refno, result_code: '00', transaction_id: 'TX-41', total });
+  const callback = (total = '15189.98') => ({
+    refno,
+    result_code: '00',
+    transaction_id: 'TX-41',
+    total,
+  });
 
   beforeEach(() => jest.clearAllMocks());
 
@@ -167,10 +197,17 @@ describe('PaySolutionsWebhookService — ทางปิดยอดผ่าน
       depositAccountCode: '11-1202',
       referenceNo: 'TX-41',
     });
-    expect(gatewayMatch).toMatchObject({ refno, transactionId: 'TX-41', paymentLinkId: 'track-41' });
+    expect(gatewayMatch).toMatchObject({
+      refno,
+      transactionId: 'TX-41',
+      paymentLinkId: 'track-41',
+    });
     expect(gatewayMatch.paidAmount.toFixed(2)).toBe('15189.98');
     expect(receiptTemplate.execute).not.toHaveBeenCalled();
-    expect(host.sendEarlyPayoffSuccessNotification).toHaveBeenCalledWith(contractId, new Prisma.Decimal('15189.98'));
+    expect(host.sendEarlyPayoffSuccessNotification).toHaveBeenCalledWith(
+      contractId,
+      new Prisma.Decimal('15189.98'),
+    );
     expect(host.sendPaymentSuccessNotification).not.toHaveBeenCalled();
     expect(prisma.todo.upsert).not.toHaveBeenCalled();
     expect(Sentry.captureMessage).not.toHaveBeenCalled();
@@ -192,7 +229,11 @@ describe('PaySolutionsWebhookService — ทางปิดยอดผ่าน
     expect(order.indexOf('todo')).toBeGreaterThan(order.indexOf('commit'));
     const upsert = prisma.todo.upsert.mock.calls[0][0];
     expect(upsert.where).toEqual({ requestKey: 'paysolutions-payoff-fallback:track-41' });
-    expect(upsert.create).toMatchObject({ priority: 'HIGH', tags: ['paysolutions-payoff-fallback'], branchId: 'br-1' });
+    expect(upsert.create).toMatchObject({
+      priority: 'HIGH',
+      tags: ['paysolutions-payoff-fallback'],
+      branchId: 'br-1',
+    });
     expect(upsert.create.title).toContain('CT-41');
     expect(upsert.create.description).toContain('15,422.98');
     expect(upsert.create.description).toContain('15,189.98 บาท (วันที่ 2026-11-03)');
@@ -200,7 +241,10 @@ describe('PaySolutionsWebhookService — ทางปิดยอดผ่าน
       expect.stringContaining('QUOTE_MISMATCH'),
       expect.objectContaining({
         level: 'warning',
-        tags: expect.objectContaining({ action: 'paysolutions-payoff-fallback', reason: 'QUOTE_MISMATCH' }),
+        tags: expect.objectContaining({
+          action: 'paysolutions-payoff-fallback',
+          reason: 'QUOTE_MISMATCH',
+        }),
       }),
     );
     expect(host.sendPaymentSuccessNotification).toHaveBeenCalledTimes(1);
@@ -212,7 +256,9 @@ describe('PaySolutionsWebhookService — ทางปิดยอดผ่าน
       throw new BadRequestException('มีคำขอคืนเงินรอธนาคาร');
     });
     const { service, tx, order } = build({ earlyPayoff });
-    tx.refund.findMany.mockResolvedValue([{ id: 'rf', amount: new Prisma.Decimal('1'), payment: { installmentNo: 1 } }]);
+    tx.refund.findMany.mockResolvedValue([
+      { id: 'rf', amount: new Prisma.Decimal('1'), payment: { installmentNo: 1 } },
+    ]);
 
     await service.handlePaymentCallback(callback());
 
@@ -247,24 +293,40 @@ describe('PaySolutionsWebhookService — ทางปิดยอดผ่าน
   });
 
   it.each([
-    ['P2034', new Prisma.PrismaClientKnownRequestError('serialization', { code: 'P2034', clientVersion: 'x' })],
+    [
+      'P2034',
+      new Prisma.PrismaClientKnownRequestError('serialization', {
+        code: 'P2034',
+        clientVersion: 'x',
+      }),
+    ],
     [
       'P2010 40P01',
-      new Prisma.PrismaClientKnownRequestError('deadlock', { code: 'P2010', clientVersion: 'x', meta: { code: '40P01' } }),
+      new Prisma.PrismaClientKnownRequestError('deadlock', {
+        code: 'P2010',
+        clientVersion: 'x',
+        meta: { code: '40P01' },
+      }),
     ],
-  ])('serialization/deadlock (%s) → ทั้ง webhook ล้ม (ส่งซ้ำได้) · ไม่ถอยเป็น FIFO · ไม่มีงานแจ้ง', async (_label, error) => {
-    const earlyPayoff = jest.fn(async () => {
-      throw error;
-    });
-    const { service, prisma, order } = build({ earlyPayoff });
+  ])(
+    'serialization/deadlock (%s) → ทั้ง webhook ล้ม (ส่งซ้ำได้) · ไม่ถอยเป็น FIFO · ไม่มีงานแจ้ง',
+    async (_label, error) => {
+      const earlyPayoff = jest.fn(async () => {
+        throw error;
+      });
+      const { service, prisma, order } = build({ earlyPayoff });
 
-    await expect(service.handlePaymentCallback(callback())).rejects.toBe(error);
-    expect(order).toEqual(['SAVEPOINT paysolutions_gateway_payoff']);
-    expect(prisma.todo.upsert).not.toHaveBeenCalled();
-  });
+      await expect(service.handlePaymentCallback(callback())).rejects.toBe(error);
+      expect(order).toEqual(['SAVEPOINT paysolutions_gateway_payoff']);
+      expect(prisma.todo.upsert).not.toHaveBeenCalled();
+    },
+  );
 
   it('P2002 (unique) ไม่ใช่การแข่ง → ถอยเป็น FIFO + งานแจ้ง (ส่งซ้ำก็ได้ผลเดิม — ห้ามทิ้งเงิน)', async () => {
-    const error = new Prisma.PrismaClientKnownRequestError('unique', { code: 'P2002', clientVersion: 'x' });
+    const error = new Prisma.PrismaClientKnownRequestError('unique', {
+      code: 'P2002',
+      clientVersion: 'x',
+    });
     const { service, prisma, order } = build({
       earlyPayoff: jest.fn(async () => {
         throw error;
@@ -323,11 +385,15 @@ describe('PaySolutionsWebhookService — ทางปิดยอดผ่าน
     await expect(service.handlePaymentCallback(callback())).resolves.toBeUndefined();
     expect(Sentry.captureException).toHaveBeenCalledWith(
       expect.any(Error),
-      expect.objectContaining({ tags: expect.objectContaining({ action: 'paysolutions-payoff-fallback-todo' }) }),
+      expect.objectContaining({
+        tags: expect.objectContaining({ action: 'paysolutions-payoff-fallback-todo' }),
+      }),
     );
     expect(Sentry.captureMessage).toHaveBeenCalledWith(
       expect.any(String),
-      expect.objectContaining({ tags: expect.objectContaining({ action: 'paysolutions-payoff-fallback' }) }),
+      expect.objectContaining({
+        tags: expect.objectContaining({ action: 'paysolutions-payoff-fallback' }),
+      }),
     );
   });
 
@@ -338,7 +404,9 @@ describe('PaySolutionsWebhookService — ทางปิดยอดผ่าน
 
     expect(Sentry.captureMessage).toHaveBeenCalledWith(
       expect.any(String),
-      expect.objectContaining({ tags: expect.objectContaining({ action: 'paysolutions-payoff-satang-difference' }) }),
+      expect.objectContaining({
+        tags: expect.objectContaining({ action: 'paysolutions-payoff-satang-difference' }),
+      }),
     );
   });
 });

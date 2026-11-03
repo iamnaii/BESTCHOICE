@@ -99,7 +99,7 @@
   ล้มแบบส่งซ้ำแล้วไม่หาย (ตั้งค่าไม่ครบ · Meta ตอบแล้วว่า token/สิทธิ์/การสมัคร feed ไม่พร้อม · เหตุการณ์ผิดรูป/ไม่ตรงโพสต์เดิม) = ข้ามคอมเมนต์
   แจ้ง Sentry (id + รหัสเหตุผลเท่านั้น) แล้วประมวลผล Messenger ต่อ ตอบ 200 · การซ่อน/เลิกซ่อนคอมเมนต์ (`hide`/`unhide` —
   `COMMENT_VERB_UNSUPPORTED`) ข้ามแบบเดียวกันแต่ log ระดับ info ไม่แจ้ง Sentry · ล้มชั่วคราว (ฐานข้อมูล · Graph ล่ม/5xx/ติด rate limit/timeout · ไม่แน่ใจ)
-  = ตอบ 5xx ให้ Meta ส่งซ้ำ และ Messenger ในคำขอนั้นรอจนส่งซ้ำแล้วสำเร็จ (ตามเดิม — การส่งซ้ำของ postback ยังไม่มีตัวกันซ้ำ) · ตัวตัดสินอยู่ที่
+  = ตอบ 5xx ให้ Meta ส่งซ้ำ และ Messenger ในคำขอนั้นรอจนส่งซ้ำแล้วสำเร็จ (ตามเดิม — ตั้งแต่ Task 37 event ของ Messenger ที่ส่งซ้ำถูกกันซ้ำราย event ใน `processed_webhook_events` จึงไม่ทำงานสองรอบ ยกเว้น event ที่ไม่มีทั้ง `mid` และ `timestamp` (ทำงานแบบเดิม) และรอบที่ claim ล้มเพราะฐานข้อมูล (ประมวลผลต่อ + Sentry `messenger-dedupe-unavailable`)) · ตัวตัดสินอยู่ที่
   `facebook-comment-ingest-failure.ts` ที่เดียว · ทดสอบหลังล้างแล้วยังผ่าน ให้รอ 5 นาทีแล้วกดใหม่
 - การ์ด Claude: ล้างแล้วหยุดเฉพาะฟีเจอร์ที่อ่านคีย์ผ่าน Hub (บอทน้องเบส · อ่านสลิป · OCR · วิเคราะห์เครดิต · บอท LINE SHOP แบบเดิม) —
   **บอทขายในอินบ็อกซ์ (`sales-bot/providers/claude.provider.ts`) · `chat-history-extractor/knowledge-extractor.service.ts` ·

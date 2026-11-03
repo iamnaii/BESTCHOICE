@@ -15,24 +15,40 @@ export class WebhookDedupService {
   constructor(private prisma: PrismaService) {}
 
   /**
+   * Claim an event id before processing it (one INSERT — the UNIQUE index decides, so two
+   * concurrent requests on different connections cannot both win).
+   * `claimed` = first delivery, process it · `duplicate` = already claimed, skip it.
+   * Any other failure is thrown so the caller decides what a database problem means
+   * (Facebook Messenger fails open — Task 37; LINE uses `isDuplicate`, which fails closed).
+   */
+  async claim(eventId: string): Promise<'claimed' | 'duplicate'> {
+    try {
+      await this.prisma.processedWebhookEvent.create({ data: { eventId } });
+      return 'claimed';
+    } catch (err) {
+      if ((err as { code?: string } | null)?.code === 'P2002') return 'duplicate';
+      throw err;
+    }
+  }
+
+  /**
    * Returns true if this eventId was already processed (duplicate).
    * Returns false and records the eventId if it's new.
+   * Any failure counts as a duplicate (LINE — unchanged).
    */
   async isDuplicate(eventId: string): Promise<boolean> {
     try {
-      await this.prisma.processedWebhookEvent.create({
-        data: { eventId },
-      });
-      return false; // new event
+      return (await this.claim(eventId)) === 'duplicate';
     } catch {
-      // Unique constraint violation → already processed
       return true;
     }
   }
 
   /**
    * Retention: delete processed events older than 7 days.
-   * LINE retries within seconds, so 7 days is extremely safe.
+   * LINE retries within seconds; Meta (Graph Webhooks) keeps retrying a failed delivery for up to
+   * 36 hours — a Messenger webhook that fails continuously for an hour is unsubscribed instead.
+   * 7 days covers both.
    * Runs daily at 4 AM.
    */
   @Cron('0 4 * * *', { timeZone: 'Asia/Bangkok' })

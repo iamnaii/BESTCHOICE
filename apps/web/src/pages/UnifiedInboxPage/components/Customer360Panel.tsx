@@ -36,6 +36,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { format, isPast, differenceInDays } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { FinanceLineStatusInfoRow } from '@/components/customer/FinanceLineStatusRow';
 import { toast } from 'sonner';
 
 
@@ -721,7 +722,8 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
                 <CustomerInfoRow label="โทรศัพท์" value={customer.phone} />
                 <CustomerInfoRow label="โทรสำรอง" value={customer.phoneSecondary} />
                 <CustomerInfoRow label="อีเมล" value={customer.email} />
-                <CustomerInfoRow label="LINE ID (Finance / น้องเบส)" value={customer.lineIdFinance} />
+                {/* Task 33 (mockup A1) — สถานะแถว OTP แทน LINE user id ดิบ · แสดงเสมอแม้ยังไม่ผูก */}
+                <FinanceLineStatusInfoRow financeLine={customer.financeLine} />
                 <CustomerInfoRow label="LINE ID (Shop / ร้าน)" value={customer.lineIdShop} />
                 <CustomerInfoRow label="Facebook" value={customer.facebookName} />
               </CustomerInfoSection>

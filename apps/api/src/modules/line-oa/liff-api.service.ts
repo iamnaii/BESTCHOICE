@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { unlinkFinanceLine } from './services/finance-line-link';
 import { findOtpVerifiedCustomerId } from './services/otp-verified-customer';
+import { GRANTED_LINE_FINANCE_CONSENT_WHERE } from '../pdpa/line-finance-consent';
 import type { LiffDownloadKind } from './services/liff-download-ticket.service';
 import { toNum, calcOutstanding } from '../../utils/decimal.util';
 // Return types for LIFF API (mirrors packages/shared/src/liff-types.ts)
@@ -340,17 +341,37 @@ export class LiffApiService {
 
   // ─── PDPA Consent ───────────────────────────────────
 
+  /**
+   * โมดัล "ข้อตกลงการใช้งาน" ของ `/liff/contract` ขึ้นเมื่อ `consent` เป็น false · Task 33 fix round 1 (คำตัดสินเจ้าของข้อ 30): ลูกค้าที่ยินยอม
+   * ตอนผูก LINE แล้ว (แถว `pdpa_consents` GRANTED ของวัตถุประสงค์ "แจ้งเตือนค่างวด ใบเสร็จ และข้อมูลสัญญาทาง LINE" — ทุกเวอร์ชันข้อความ)
+   * ไม่ต้องถูกถามซ้ำ ⇒ นับเป็นยินยอมแล้ว · ไม่แก้ธง `chat_consent` (เป็นคนละชุด — ผู้ตรวจรอบแจ้งเตือนอ่าน `pdpa_consents`)
+   */
   async getConsentStatus(lineId: string): Promise<{ consent: boolean; consentAt: string | null } | null> {
     const where = await this.linkedCustomerWhere(lineId);
     if (!where) return null;
     const customer = await this.prisma.customer.findFirst({
       where,
-      select: { chatConsent: true, chatConsentAt: true },
+      select: {
+        chatConsent: true,
+        chatConsentAt: true,
+        pdpaConsents: {
+          where: GRANTED_LINE_FINANCE_CONSENT_WHERE,
+          select: { grantedAt: true, createdAt: true },
+          orderBy: { createdAt: 'asc' },
+          take: 1,
+        },
+      },
     });
     if (!customer) return null;
+    const lineConsent = customer.pdpaConsents?.[0];
+    // fix round 2 R2-M3 — `chat_consent_at` ถูกตั้งทั้งตอนให้และตอนถอน ⇒ ใช้เป็นเวลายินยอมได้เฉพาะเมื่อธงยังเป็น true ·
+    // ไม่งั้นใช้วันที่ของแถวความยินยอมตอนผูกที่ยังมีผล (GRANTED) · ไม่มีความยินยอมที่มีผล = null (เวลาถอนไม่ใช่เวลายินยอม)
+    const consentAt = customer.chatConsent
+      ? customer.chatConsentAt
+      : (lineConsent?.grantedAt ?? lineConsent?.createdAt ?? null);
     return {
-      consent: customer.chatConsent,
-      consentAt: customer.chatConsentAt ? customer.chatConsentAt.toISOString() : null,
+      consent: customer.chatConsent || !!lineConsent,
+      consentAt: consentAt ? consentAt.toISOString() : null,
     };
   }
 

@@ -80,6 +80,14 @@ describe('NotificationsPage — การ์ด Compliance blocks', () => {
     expect(cellOf(/ผ่อนผัน 7 วัน/)).toHaveTextContent(/6$/);
   });
 
+  it('ผู้คุมงาน (รอบเก็บ): ห้าช่องอยู่แถวเดียวบนจอกว้าง (lg) · แท็บเล็ตคงสี่คอลัมน์ · มือถือสองคอลัมน์', async () => {
+    renderWithStats({ ...ZERO_STATS, NO_CONSENT: 1 });
+    await screen.findByText(/Compliance blocks/);
+    const grid = cellOf(/ผ่อนผัน 7 วัน/).parentElement as HTMLElement;
+    expect(grid.children).toHaveLength(5);
+    expect(grid).toHaveClass('grid', 'grid-cols-2', 'md:grid-cols-4', 'lg:grid-cols-5');
+  });
+
   it('ทุกช่องเป็นศูนย์ → ไม่แสดงการ์ด', async () => {
     renderWithStats(ZERO_STATS);
     await screen.findByText('ส่งเตือนก่อนครบกำหนด');

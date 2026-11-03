@@ -213,7 +213,7 @@ export default function NotificationsPage() {
           <div className="text-sm text-muted-foreground mb-2">
             Compliance blocks (7 วันล่าสุด)
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2 text-sm">
             <div>
               นอกเวลา:{' '}
               <span className="font-semibold tabular-nums">

@@ -631,6 +631,48 @@ describe('จ่ายเงินผู้จัดจำหน่าย — fl
     expect(moves.closing).toBe('0.00');
   });
 
+  // วันที่ 1 ของเดือนตามปฏิทินไทยใต้ TZ=UTC (CI 1 พ.ย. 2026 02:45Z — เทสต์ข้างบนแดง): รายการจ่ายลงเที่ยงคืนไทยของวันโอน
+  // (= 17:00Z ของวันก่อน) เคยได้เลขที่เดือนก่อนตามเขตเวลาของโปรเซส ('JE-202610-…') ส่วนรับของได้ 'JE-202611-…' ⇒ เรียงวันเดียวกัน
+  // ด้วยเลขที่แล้วรายการจ่ายที่ลงทีหลังขึ้นก่อนรับของ. วันที่ของรายการรับของมาจาก `goods_receivings.created_at` (นาฬิกาของ
+  // Prisma engine — ตรึงด้วย fake timers ไม่ได้) ⇒ ลงรายการรูปเดียวกับ template ผ่าน `createAndPost` (ทางเดียวกับที่ template ใช้ออกเลขที่)
+  // ที่เวลาที่กำหนด แล้วอ่านผ่าน ledger จริง · แก้ที่ `nextEntryNumber` (เดือนตามปฏิทินไทย — Task 36 fix round 1 · m-h)
+  it.each([
+    ['วันที่ 1 ตามปฏิทินไทย 09:45 น.', 1, '2026-11-01T02:45:00Z'],
+    ['ตีหนึ่งวันที่ 2 ไทย (18:00Z ของวันที่ 1)', 2, '2026-11-01T18:00:00Z'],
+    ['กลางเดือน', 15, '2026-11-15T05:00:00Z'],
+  ])('ledger: วันเดียวกันตามปฏิทินไทยเรียงตามลำดับที่ลงรายการ ไม่ขึ้นกับเขตเวลาของโปรเซส (%s)', async (_label, day, receivedAt) => {
+    const supplier = await seedSupplier(`ORDER-D${day}`, true);
+    const po = await createDocExamplePo(supplier.id);
+    const paidAt = bangkokMidnight(2026, 10, day); // 00:00 ไทยของวันโอน — วันที่ลงรายการจ่ายของ recordSupplierPayment
+    const post = (tag: string, kind: string | undefined, at: Date, dr: string, cr: string, amount: number) =>
+      journal.createAndPost({
+        description: `${PREFIX}ledger-order ${kind ?? tag}`,
+        companyId: shopCompanyId,
+        postedAt: at,
+        metadata: { tag, ...(kind ? { kind } : {}), poId: po.id, poNumber: po.poNumber, supplierId: supplier.id },
+        lines: [
+          { accountCode: dr, dr: new Decimal(amount), cr: new Decimal(0) },
+          { accountCode: cr, dr: new Decimal(0), cr: new Decimal(amount) },
+        ],
+      });
+    // ลำดับที่ลงจริงของ flow ในเทสต์ข้างบน: มัดจำ → รับของ (+หักมัดจำ) → จ่ายส่วนที่เหลือ
+    await post('SHOP_SUPPLIER_PAYMENT', 'DEPOSIT', paidAt, 'S11-4201', 'S11-1202', 5000);
+    await post('SHOP_GOODS_RECEIVING', undefined, new Date(receivedAt), 'S11-2001', 'S21-1101', 15729);
+    await post('SHOP_SUPPLIER_PAYMENT', 'DEPOSIT_APPLIED', new Date(receivedAt), 'S21-1101', 'S11-4201', 5000);
+    await post('SHOP_SUPPLIER_PAYMENT', 'SETTLEMENT', paidAt, 'S21-1101', 'S11-1202', 10729);
+
+    const moves = await service.getSupplierLedgerMovements(supplier.id, '2026-11');
+    expect(moves.rows.map((r) => [r.kind, r.payableIncrease, r.payableDecrease, r.depositChange, r.running])).toEqual([
+      ['DEPOSIT', '0.00', '0.00', '5000.00', '0.00'],
+      ['RECEIVING', '15729.00', '0.00', '0.00', '15729.00'],
+      ['DEPOSIT_APPLIED', '0.00', '5000.00', '-5000.00', '10729.00'],
+      ['SETTLEMENT', '0.00', '10729.00', '0.00', '0.00'],
+    ]);
+    // ทุกรายการของวันนั้นได้เลขที่เดือนเดียวกัน (เดือนตามปฏิทินไทย) และเพิ่มขึ้นตามลำดับที่ลง
+    expect(new Set(moves.rows.map((r) => r.entryNumber.slice(0, 10)))).toEqual(new Set(['JE-202611-']));
+    expect(moves.closing).toBe('0.00');
+  });
+
   // ───────────── รอบแก้หลังผู้ตรวจอิสระ (2026-10-05) ─────────────
 
   it('[race] ยกเลิกใบขณะมัดจำกำลังถูกบันทึก (tx ค้าง) → การยกเลิกต้องรอล็อกใบ แล้วปฏิเสธเพราะมีมัดจำค้าง ไม่ใช่ยกเลิกทิ้งเงิน', async () => {

@@ -473,6 +473,8 @@ export class PaySolutionsIntentService {
           status: 'ACTIVE',
           expiresAt: new Date(Date.now() + 30 * 60 * 1000),
           contractId: input.contractId,
+          // Task 39 — เงินของรายการนี้คือยอดปิดสัญญา
+          purpose: PaymentLinkPurpose.PAYOFF,
         },
       });
       this.logger.log(

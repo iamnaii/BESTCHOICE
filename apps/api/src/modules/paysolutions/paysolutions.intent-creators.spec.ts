@@ -292,6 +292,8 @@ describe('PaySolutionsService — intent creators (characterization)', () => {
       expect(linkData.contractId).toBe(contractId);
       expect(linkData.amount).toBe(12345);
       expect(linkData.status).toBe('ACTIVE');
+      // Task 39 — เงินของรายการนี้คือยอดปิดสัญญา
+      expect(linkData.purpose).toBe('PAYOFF');
 
       expect(res.paymentLinkId).toBe('pl-payoff-1');
       expect(res.paymentUrl).toBe('https://pay.example/redirect');

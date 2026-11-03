@@ -10,6 +10,7 @@ import { ContractLetterService } from './contract-letter.service';
 import { MdmLockService } from './mdm-lock.service';
 import { OwnerAlertHelper } from './owner-alert.helper';
 import { ConsecutiveMissedService } from './consecutive-missed.service';
+import { formatDateShort } from '../../utils/thai-date.util';
 
 // Shared no-op mock for DunningEngineService — tests that care can spy on it
 const mockDunningEngine = {
@@ -651,6 +652,23 @@ describe('OverdueService.logContact with event trigger wiring', () => {
     expect(updateCall.data.noAnswerCount).toBe(0);
   });
 
+  it('Task 30 รอบ 7 I4 — นัดหลายที่: ข้อความบอกยอด/วันของที่แรกที่ถึงก่อน', async () => {
+    mockPromiseService.createPromise.mockResolvedValueOnce({ id: 'promise-p3' });
+    const later = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
+    const sooner = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+
+    await service.logContact('c-1', 'u-1', {
+      result: 'PROMISED',
+      slots: [
+        { settlementDate: later.toISOString(), settlementAmount: 2000 },
+        { settlementDate: sooner.toISOString(), settlementAmount: 1000 },
+      ],
+    } as never);
+
+    const extras = engineSpy.mock.calls.find((c) => c[0] === 'CALL_ANSWERED_PROMISE')?.[4];
+    expect(extras).toEqual({ amount: 1000, settlementDate: formatDateShort(sooner) });
+  });
+
   it('dispatches CALL_ANSWERED_PROMISE on PROMISED result via PromiseService', async () => {
     // P2 Task 11: PROMISED now routes through PromiseService.createPromise.
     // Must supply at least settlementDate so slotsInput is non-empty.
@@ -662,8 +680,11 @@ describe('OverdueService.logContact with event trigger wiring', () => {
       settlementAmount: 5000,
     });
 
-    // Event trigger receives the new promise id returned by PromiseService
-    expect(engineSpy).toHaveBeenCalledWith('CALL_ANSWERED_PROMISE', 'c-1', null, 'promise-p2');
+    // Event trigger receives the new promise id returned by PromiseService + ยอด/วันนัดจริง (Task 30 รอบ 7 I4)
+    expect(engineSpy).toHaveBeenCalledWith('CALL_ANSWERED_PROMISE', 'c-1', null, 'promise-p2', {
+      amount: 5000,
+      settlementDate: expect.stringMatching(/\S/),
+    });
     // Contract update resets noAnswerCount
     expect(prisma.contract.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ noAnswerCount: 0 }) }),

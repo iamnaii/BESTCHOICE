@@ -1,6 +1,7 @@
 import { AutoTriggerType, Prisma, TriggerStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { addBkkDays, bangkokStartOfDay } from '../../utils/date.util';
+import { calcOutstanding } from '../../utils/decimal.util';
 import { ACTIVE_FINANCE_LINK_WHERE } from '../line-oa/services/otp-verified-customer';
 import { NotificationCategory } from './notification-category.enum';
 
@@ -155,6 +156,40 @@ export function dueUnpaidPaymentsWhere(now: Date): Prisma.PaymentWhereInput {
     dueDate: { lt: now },
     deletedAt: null,
   };
+}
+
+/** แถวงวดที่ใช้คิดยอดค้าง */
+export interface InstallmentOwedInput {
+  amountDue: Prisma.Decimal | number | string;
+  amountPaid: Prisma.Decimal | number | string;
+  lateFee: Prisma.Decimal | number | string;
+  lateFeeWaived: boolean;
+}
+
+/**
+ * ยอดคงค้างของงวด = ค่างวด − ที่จ่ายแล้ว + ค่าปรับคงค้าง (ค่าปรับที่ยกเว้นแล้ว = 0 — กติกาเดียวกับทางรับเงิน `payment-receipt-orchestrator` /
+ * webhook PaySolutions ที่กระจายเงินเข้างวด) · คิดด้วย `calcOutstanding` ตัวกลาง · ติดลบ = 0 · รอบ 7 I4
+ */
+export function installmentOwed(p: InstallmentOwedInput): Prisma.Decimal {
+  const owed = new Prisma.Decimal(
+    calcOutstanding({
+      amountDue: p.amountDue,
+      amountPaid: p.amountPaid,
+      lateFee: p.lateFeeWaived ? 0 : p.lateFee,
+    }),
+  );
+  return owed.isNegative() ? new Prisma.Decimal(0) : owed;
+}
+
+/**
+ * ยอดค้างที่ถึงกำหนดรวมของสัญญา = Σ `installmentOwed` ของงวดจาก `dueUnpaidPaymentsWhere` — **นิยามเดียว** ของยอดที่ข้อความทวงระดับสัญญาบอก:
+ * แจ้งสถานะ (A3) · ขั้นทวง (A4) · แจ้งล็อก/ยอดปลดล็อกของกฎตามเหตุการณ์ (รอบ 7 I4) · ≤ 0 = ไม่มีอะไรต้องทวง (รอบ 4 I1)
+ */
+export function dueOutstanding(payments: readonly InstallmentOwedInput[]): number {
+  return payments
+    .reduce((sum, p) => sum.add(installmentOwed(p)), new Prisma.Decimal(0))
+    .toDecimalPlaces(2)
+    .toNumber();
 }
 
 /** แถวที่ส่งแล้ววันนี้ (`SENT`) หรือยังถือการส่งอยู่ (`RETRY_PENDING` / `DELAYED` ที่สร้างวันนี้ — ส่งเองภายหลัง) · "วันนี้" = ปฏิทินไทย */

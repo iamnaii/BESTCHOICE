@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { Prisma } from '@prisma/client';
 import { DunningEngineService } from './dunning-engine.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DunningRuleService } from './dunning-rule.service';
@@ -56,9 +57,10 @@ const samplePayment = {
   installmentNo: 3,
   dueDate: DUE_IN_3_DAYS,
   status: 'PENDING',
-  amountDue: { toNumber: () => 5000 },
-  amountPaid: { toNumber: () => 0 },
-  lateFee: { toNumber: () => 0 },
+  amountDue: new Prisma.Decimal(5000),
+  amountPaid: new Prisma.Decimal(0),
+  lateFee: new Prisma.Decimal(0),
+  lateFeeWaived: false,
   contract: {
     id: 'c-1',
     contractNumber: 'BC-001',
@@ -458,7 +460,10 @@ describe('DunningEngineService', () => {
         mockPrisma.payment.findFirst.mockResolvedValueOnce({
           id: 'pay-3',
           installmentNo: 3,
-          amountDue: { toNumber: () => 1515.83 },
+          amountDue: new Prisma.Decimal('1515.83'),
+          amountPaid: new Prisma.Decimal('1000.00'),
+          lateFee: new Prisma.Decimal('100.00'),
+          lateFeeWaived: false,
           dueDate: new Date('2026-10-01T17:00:00Z'),
         });
 
@@ -474,7 +479,8 @@ describe('DunningEngineService', () => {
         expect(orderBy).toEqual({ installmentNo: 'asc' });
         const message = mockNotificationsService.send.mock.calls[0][0].message;
         expect(message).toContain('งวดที่ 3');
-        expect(message).toContain('1,515.83');
+        // รอบ 7 I4 — ยอดคงค้างของงวด (1,515.83 − 1,000 + ค่าปรับ 100) ไม่ใช่ค่างวดเต็ม
+        expect(message).toContain('ยอด 615.83');
         expect(message).not.toMatch(/งวดที่\s+ยอด|ยอด\s+฿/);
       });
 

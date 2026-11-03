@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateCallLogDto } from '../dto/create-call-log.dto';
 import { BUSINESS_RULES } from '../../../utils/config.util';
+import { formatDateShort } from '../../../utils/thai-date.util';
 import { DunningEngineService } from '../dunning-engine.service';
 import { OverdueKpiService } from '../kpi.service';
 import { PromiseService } from '../promise.service';
@@ -255,12 +256,21 @@ export class ContactLogService {
       );
 
       // Fire CALL_ANSWERED_PROMISE event trigger — non-fatal.
+      // Task 30 รอบ 7 I4 — ข้อความ "ชำระยอด {{amount}} ภายใน {{settlementDate}}" = ยอดและวันที่ลูกค้านัดจริง (ที่แรกที่ถึงก่อน — ผิดนัดที่แรก
+      // ถือว่าผิดนัด) · เดิมได้ค่างวดของงวดเก่าสุด และ `{{settlementDate}}` หลุดเป็นตัวอักษร
+      const firstSlot = [...slotsInput].sort(
+        (a, b) => a.settlementDate.getTime() - b.settlementDate.getTime(),
+      )[0];
       try {
         await this.dunningEngine.executeEventTrigger(
           'CALL_ANSWERED_PROMISE',
           contractId,
           null,
           newPromise.id,
+          {
+            amount: firstSlot.settlementAmount,
+            settlementDate: formatDateShort(firstSlot.settlementDate),
+          },
         );
       } catch (err) {
         this.logger.warn(

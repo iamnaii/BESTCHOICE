@@ -1,5 +1,4 @@
 import { Logger } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
 import { formatDateShort } from '../../../utils/thai-date.util';
 import { PrismaService } from '../../../prisma/prisma.service';
 import {
@@ -19,6 +18,7 @@ import {
   STATUS_NOTICE_SUBJECT,
   autoPayLinkPaymentWhere,
   botNoticeSentToday,
+  dueOutstanding,
   dueUnpaidPaymentsWhere,
   dunningStageTemplateEvent,
   findContractsDunnedToday,
@@ -34,20 +34,6 @@ import { bangkokStartOfDay } from '../../../utils/date.util';
 
 /** เวลาส่งข้อความผลรอบกลางคืน (A3/A4) — ต้องอยู่ในช่วงเวลาทำการของ `isWithinBusinessHours` */
 export const OVERNIGHT_COLLECTIONS_NOTICES_CRON = '5 8 * * *';
-
-/**
- * ยอดค้างที่ถึงกำหนดแล้ว (ค่างวดคงค้าง + ค่าปรับ) ของงวดจาก `dueUnpaidPaymentsWhere` — ≤ 0 = ไม่มีอะไรต้องทวง ·
- * ใช้ตัดสินทั้ง A3 และ A4 (รีวิวรอบ 3 I1: ลูกค้าที่จ่ายระหว่างคืนสัญญายังเป็น OVERDUE/DEFAULT เพราะไม่มีทางไหนคืนสถานะเป็น ACTIVE ⇒
- * ตัดสินจากสถานะสัญญาไม่ได้ ต้องดูยอดค้าง)
- */
-function dueOutstanding(
-  payments: { amountDue: Prisma.Decimal; amountPaid: Prisma.Decimal; lateFee: Prisma.Decimal }[],
-): number {
-  return payments.reduce(
-    (sum, p) => sum + (Number(p.amountDue) - Number(p.amountPaid) + Number(p.lateFee)),
-    0,
-  );
-}
 
 /**
  * Collections-side LINE notification bodies extracted from the scheduler:
@@ -218,7 +204,11 @@ export class CollectionsNotifierService {
           ? Math.floor((Date.now() - oldestDue.getTime()) / (1000 * 60 * 60 * 24))
           : 0;
 
-        const lateFee = contract.payments.reduce((sum, p) => sum + Number(p.lateFee), 0);
+        // ค่าปรับคงค้าง — ค่าปรับที่ยกเว้นแล้วไม่นับ (เท่ากับที่ `dueOutstanding` รวมไว้ในยอด · รอบ 7)
+        const lateFee = contract.payments.reduce(
+          (sum, p) => sum + (p.lateFeeWaived ? 0 : Number(p.lateFee)),
+          0,
+        );
         const flex = buildOverdueNoticeFlex({
           customerName: contract.customer?.name || '-',
           contractNumber: contract.contractNumber,

@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
-import { ContractStatus, DunningEventTrigger, PaymentStatus } from '@prisma/client';
+import { ContractStatus, DunningEventTrigger, PaymentStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   FINANCE_LINE_RECIPIENT_SELECT,
@@ -15,7 +15,12 @@ import {
   LEGACY_LINK_GRACE_BLOCK_REASON,
   LEGACY_LINK_GRACE_EXEMPT,
 } from '../notifications/legacy-link-grace';
-import { dueUnpaidPaymentsWhere, noticeDueWindow } from '../notifications/payment-notice-dedupe';
+import {
+  dueOutstanding,
+  dueUnpaidPaymentsWhere,
+  installmentOwed,
+  noticeDueWindow,
+} from '../notifications/payment-notice-dedupe';
 import { formatDateShort } from '../../utils/thai-date.util';
 
 /**
@@ -47,7 +52,27 @@ export interface TemplateVars {
   daysOverdue: string;
   installmentNo: string;
   trackingNumber?: string;
+  /** วันที่ลูกค้านัดชำระ (กฎ `CALL_ANSWERED_PROMISE`) */
+  settlementDate?: string;
 }
+
+/**
+ * ค่าที่ผู้เรียกกฎตามเหตุการณ์บอกเองได้ — `amount` เป็นตัวเลข (ใช้ทั้งในข้อความและยอดของลิงก์ชำระ) เช่น ยอดที่ลูกค้านัด (รอบ 7 I4)
+ */
+export type EventTriggerExtras = Partial<Omit<TemplateVars, 'amount'>> & {
+  amount?: Prisma.Decimal | number;
+};
+
+/** รูปแบบยอดเงินในข้อความกฎทวง (เดิมของ engine) */
+export function formatTemplateAmount(amount: Prisma.Decimal | number): string {
+  return new Prisma.Decimal(amount).toNumber().toLocaleString('th-TH');
+}
+
+/**
+ * Task 30 รอบ 7 I4 — กฎที่ข้อความพูดถึง "ยอดค้าง" ของทั้งสัญญา (แจ้งล็อก "ชำระยอดค้าง … เพื่อปลดล็อค") ⇒ `{{amount}}` = ยอดค้างที่ถึงกำหนดรวม
+ * (`dueOutstanding` — นิยามเดียวกับแจ้งสถานะ) และลิงก์ชำระครอบยอดนั้น · กฎอื่นที่ข้อความระบุงวด ⇒ ยอดคงค้างของงวดนั้น (`installmentOwed`)
+ */
+const CONTRACT_TOTAL_AMOUNT_EVENTS: ReadonlySet<DunningEventTrigger> = new Set(['DEVICE_LOCKED']);
 
 @Injectable()
 export class DunningEngineService {
@@ -366,7 +391,7 @@ export class DunningEngineService {
     contractId: string,
     paymentId: string | null,
     callLogId: string | null,
-    extraVars: Partial<TemplateVars> = {},
+    extras: EventTriggerExtras = {},
   ): Promise<void> {
     const rule = await this.prisma.dunningRule.findFirst({
       where: { eventTrigger: eventKey, isActive: true, deletedAt: null },
@@ -424,23 +449,43 @@ export class DunningEngineService {
           orderBy: { installmentNo: 'asc' },
         });
 
+    // Task 30 รอบ 7 I4 — ยอดที่ข้อความบอก + ลิงก์ชำระต้องครอบยอดเดียวกัน (เดิม m7 ใส่ค่างวดเต็มของงวดเก่าสุด + ลิงก์งวดเดียว):
+    // ผู้เรียกบอกยอด (นัดชำระ) → ยอดนั้น · กฎยอดค้างทั้งสัญญา (แจ้งล็อก) → ยอดค้างที่ถึงกำหนดรวม · นอกนั้น → ยอดคงค้างของงวดที่ข้อความระบุ
+    const { amount: givenAmount, ...givenVars } = extras;
+    let amount: { value: Prisma.Decimal; linkInstallmentNo?: number } | null;
+    if (givenAmount !== undefined) {
+      amount = { value: new Prisma.Decimal(givenAmount) };
+    } else if (CONTRACT_TOTAL_AMOUNT_EVENTS.has(eventKey)) {
+      const due = await this.prisma.payment.findMany({
+        where: { contractId, ...dueUnpaidPaymentsWhere(new Date()) },
+        select: { amountDue: true, amountPaid: true, lateFee: true, lateFeeWaived: true },
+      });
+      const total = dueOutstanding(due);
+      amount = total > 0 ? { value: new Prisma.Decimal(total) } : null;
+    } else {
+      amount = payment
+        ? { value: installmentOwed(payment), linkInstallmentNo: payment.installmentNo }
+        : null;
+    }
+
     const vars: TemplateVars = {
       customerName: contract.customer.name,
       contractNumber: contract.contractNumber,
-      amount: payment ? payment.amountDue.toNumber().toLocaleString('th-TH') : '',
+      amount: amount ? formatTemplateAmount(amount.value) : '',
       dueDate: payment ? formatDateShort(payment.dueDate) : '',
       daysOverdue: '',
       installmentNo: payment ? String(payment.installmentNo) : '',
-      ...extraVars,
+      ...givenVars,
     };
 
     const templateBody = await this.resolveTemplateBody(rule);
     const messageContent = this.renderTemplate(templateBody, vars);
 
-    // ไม่มีงวดค้างเลย แต่ข้อความต้องบอกงวด/ยอด/วันครบ ⇒ ไม่ส่งข้อความที่มีช่องว่าง (เก็บ DunningAction SKIPPED ให้ตรวจย้อนได้)
+    // ไม่มีงวด/ยอดให้เติม แต่ข้อความต้องบอก ⇒ ไม่ส่งข้อความที่มีช่องว่าง (เก็บ DunningAction SKIPPED ให้ตรวจย้อนได้ — รอบ 6 m7)
+    const missingVar = (key: (typeof PAYMENT_TEMPLATE_VARS)[number]) =>
+      key === 'amount' ? !amount : !payment && !givenVars[key];
     if (
-      !payment &&
-      PAYMENT_TEMPLATE_VARS.some((key) => templateBody.includes(`{{${key}}}`) && !extraVars[key])
+      PAYMENT_TEMPLATE_VARS.some((key) => templateBody.includes(`{{${key}}}`) && missingVar(key))
     ) {
       await this.prisma.dunningAction.create({
         data: {
@@ -461,11 +506,13 @@ export class DunningEngineService {
     let paymentLinkUrl: string | undefined;
     // ปลายทาง LINE การเงิน = แถว OTP ของลูกค้า (Task 22 I-1 ง) ไม่ใช่คอลัมน์ line_id_finance ที่อาจค้าง
     const financeLineId = financeLineRecipient(contract.customer);
-    if (rule.includePaymentLink && payment && financeLineId) {
+    if (rule.includePaymentLink && amount && financeLineId) {
       try {
+        // ยอดของลิงก์ = ยอดในข้อความ · ลิงก์ที่ไม่ผูกงวด (ยอดค้างรวม / ยอดนัด) ถูกกระจายเข้างวดค้างตามลำดับตอนรับเงิน (webhook PaySolutions)
         const link = await this.paymentLinkService.createPaymentLink(
           contractId,
-          payment.installmentNo,
+          amount.linkInstallmentNo,
+          amount.value.toNumber(),
         );
         paymentLinkUrl = link.url;
       } catch (err) {

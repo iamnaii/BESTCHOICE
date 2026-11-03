@@ -89,6 +89,11 @@ export interface LiffPaymentLinkData {
   amount: number;
   status: string;
   expiresAt: string;
+  /**
+   * Task 39 — ลิงก์ผูกงวด (ยอด = ยอดคงค้างของงวด `payment`) ⇒ หน้าเว็บส่งเลขงวด · false = ยอดไม่ใช่ยอดของงวดเดียว (ปิดยอด ·
+   * ยอดค้างรวมแจ้งล็อก · ยอดนัด) ⇒ ส่ง token แล้ว server ใช้ยอดของลิงก์ · `payment` ของลิงก์ไม่ผูกงวด = งวดค้างแรก (แสดงเท่านั้น)
+   */
+  installmentBound: boolean;
   contract: {
     id: string;
     contractNumber: string;

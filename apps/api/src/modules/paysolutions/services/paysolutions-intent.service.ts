@@ -68,6 +68,7 @@ export class PaySolutionsIntentService {
     description?: string,
     lineId?: string,
     installmentNo?: number,
+    paymentLinkToken?: string,
   ): Promise<PaymentIntentResult> {
     // ตรวจสอบว่า contract มีอยู่จริง
     const contract = await this.prisma.contract.findUnique({
@@ -90,11 +91,16 @@ export class PaySolutionsIntentService {
     if ((await findOtpVerifiedCustomerId(this.prisma, lineId)) !== contract.customerId) {
       throw new BadRequestException('สัญญานี้ไม่ตรงกับบัญชี LINE ของคุณ');
     }
-    // คำตัดสินเจ้าของ #24 (2026-10-31): intent ที่ไม่ระบุงวด = ลิงก์ปิดยอด (LiffEarlyPayoff / /pay/:token "ยอดปิดสัญญา" — webhook
-    // กระจายเงินทุกงวดแล้วปิดสัญญา) → ปฏิเสธขณะมีคำขอคืนเงินที่อนุมัติแล้วแต่ยังไม่บันทึกผลธนาคาร · บังคับที่นี่ (ก่อนเรียก gateway)
-    // เพราะ webhook ห้ามปฏิเสธเงินที่ตัดแล้ว — แบบเดียวกับกติกา "ห้ามข้ามงวด" ที่บังคับตอนส่ง QR
+    // คำตัดสินเจ้าของ #24 (2026-10-31): intent ที่ไม่ระบุงวด = ลิงก์ที่ webhook กระจายเงิน FIFO ได้หลายงวด (ลิงก์ปิดยอดของ
+    // LiffEarlyPayoff / `/pay/:token` และตั้งแต่ Task 39 ลิงก์ไม่ผูกงวดของข้อความทวง — ยอดค้างรวมแจ้งล็อก · ยอดนัด) → ปฏิเสธขณะมีคำขอ
+    // คืนเงินที่อนุมัติแล้วแต่ยังไม่บันทึกผลธนาคาร · บังคับที่นี่ (ก่อนเรียก gateway) เพราะ webhook ห้ามปฏิเสธเงินที่ตัดแล้ว — แบบเดียวกับ
+    // กติกา "ห้ามข้ามงวด" ที่บังคับตอนส่ง QR
     if (!installmentNo) {
       await assertNoPendingBankRefund(this.prisma, contractId, 'EARLY_PAYOFF', 'customer');
+    }
+    // Task 39 — ลิงก์ไม่ผูกงวดจากหน้า `/pay/:token` (ส่ง token แทนเลขงวด): ยอดที่ตัดเงิน = ยอดของลิงก์ที่เก็บไว้ (server ตัดสิน ไม่เชื่อ client)
+    if (!installmentNo && paymentLinkToken) {
+      amount = await this.unboundPayLinkAmount(contractId, paymentLinkToken, amount);
     }
 
     // PaySolutions referenceNo: max 12 chars, must be unique.
@@ -226,6 +232,56 @@ export class PaySolutionsIntentService {
       paymentUrl,
       gatewayRef,
     };
+  }
+
+  /**
+   * Task 39 — ยอดที่ตัดเงินของลิงก์ชำระที่**ไม่ผูกงวด** (`PaymentLink.installmentBound = false` — ปิดยอด · ยอดค้างรวมแจ้งล็อก · ยอดนัด)
+   * = `PaymentLink.amount` ที่เก็บไว้ (ยอดเดียวกับข้อความที่ลูกค้าได้) · ยอดจาก client ต้องตรง ±0.01 ไม่งั้น 400 (ไม่เชื่อ client) ·
+   * ลิงก์ต้องเป็นของสัญญานี้ ยังไม่ถูกลบ/ใช้/หมดอายุ และไม่ผูกงวด (ลิงก์ผูกงวดต้องมาทางเลขงวด — ด่านยอดคงค้างของงวดเดิม)
+   *
+   * ยอดค้างเปลี่ยนระหว่างส่งลิงก์กับกดจ่าย (เช่น ลูกค้าจ่ายที่สาขาไปบางส่วน): ยอดของลิงก์ยังเป็นยอดที่ตัด — webhook กระจาย FIFO ตามงวด
+   * (เงินไม่พอปิดงวด = `PARTIALLY_PAID`) และส่วนที่เกินทุกงวดค้างพักเป็นเงินรับล่วงหน้า 21-1103 + ใบ `ADVANCE_SURPLUS` (กติกาเดิมของ
+   * ลิงก์ชำระ — PR-843/I2 #3 · PR4ข) ไม่มีรายการบัญชีใหม่ · **ไม่มียอดค้างเลย** (ทุกงวด PAID) = 400 ก่อนตัดเงิน — แบบเดียวกับทางผูกงวด
+   * ที่ปฏิเสธงวดที่ชำระแล้ว (ไม่งั้นเงินทั้งก้อนกลายเป็นเงินรับล่วงหน้าของสัญญาที่ปิดแล้ว) · ยอดค้าง = สูตรเดียวกับ webhook
+   * (`status ≠ PAID` · ไม่ถูกลบ · ค่าปรับที่ยกเว้น = 0 · แถวที่ owed ≤ 0 ไม่นับ)
+   */
+  private async unboundPayLinkAmount(
+    contractId: string,
+    token: string,
+    clientAmount: number,
+  ): Promise<number> {
+    const link = await this.prisma.paymentLink.findUnique({ where: { token } });
+    if (
+      !link ||
+      link.deletedAt ||
+      link.contractId !== contractId ||
+      link.savingPlanId ||
+      link.installmentBound
+    ) {
+      throw new BadRequestException('ลิงก์ชำระเงินไม่ถูกต้อง');
+    }
+    if (link.status !== 'ACTIVE' || link.expiresAt <= new Date()) {
+      throw new BadRequestException('ลิงก์ชำระเงินหมดอายุหรือถูกใช้แล้ว');
+    }
+    if (!dClose(clientAmount, link.amount)) {
+      throw new BadRequestException(
+        `ยอดชำระไม่ตรง: ส่งมา ${clientAmount.toLocaleString()} บาท แต่ยอดของลิงก์ ${link.amount.toNumber().toLocaleString()} บาท`,
+      );
+    }
+
+    const unpaid = await this.prisma.payment.findMany({
+      where: { contractId, status: { not: 'PAID' }, deletedAt: null },
+      select: { amountDue: true, amountPaid: true, lateFee: true, lateFeeWaived: true },
+    });
+    const outstanding = unpaid.reduce((sum, p) => {
+      const owed = dSub(dAdd(p.amountDue, p.lateFeeWaived ? 0 : p.lateFee), p.amountPaid);
+      return owed.gt(0) ? dAdd(sum, owed) : sum;
+    }, d(0));
+    if (outstanding.lte(0)) {
+      throw new BadRequestException('สัญญานี้ชำระครบแล้ว');
+    }
+
+    return link.amount.toNumber();
   }
 
   /**

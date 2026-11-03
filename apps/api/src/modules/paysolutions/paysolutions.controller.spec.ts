@@ -144,6 +144,16 @@ describe('PaySolutionsController.createPaymentIntent — verified LINE identity'
   it('passes the verified customer identity to the existing ownership-checked service', async () => {
     await request(app.getHttpServer()).post('/paysolutions/create-intent')
       .set('x-test-verified-identity', 'contract-owner').send(body).expect(201);
-    expect(createPaymentIntent).toHaveBeenCalledWith('synthetic-contract', 1234, undefined, 'contract-owner', 2);
+    expect(createPaymentIntent).toHaveBeenCalledWith('synthetic-contract', 1234, undefined, 'contract-owner', 2, undefined);
+  });
+
+  // Task 39 — ลิงก์ไม่ผูกงวดจากหน้า /pay/:token ส่ง token แทนเลขงวด ⇒ service ใช้ยอดของลิงก์
+  it('passes the pay-link token of an unbound link through to the service', async () => {
+    const token = 'a'.repeat(64);
+    await request(app.getHttpServer()).post('/paysolutions/create-intent')
+      .set('x-test-verified-identity', 'contract-owner')
+      .send({ contractId: 'synthetic-contract', amount: 1000, lineId: 'contract-owner', paymentLinkToken: token })
+      .expect(201);
+    expect(createPaymentIntent).toHaveBeenCalledWith('synthetic-contract', 1000, undefined, 'contract-owner', undefined, token);
   });
 });

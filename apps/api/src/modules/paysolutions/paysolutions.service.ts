@@ -144,8 +144,16 @@ export class PaySolutionsService {
     description?: string,
     lineId?: string,
     installmentNo?: number,
+    paymentLinkToken?: string,
   ): Promise<PaymentIntentResult> {
-    return this.services().intent.createPaymentIntent(contractId, amount, description, lineId, installmentNo);
+    return this.services().intent.createPaymentIntent(
+      contractId,
+      amount,
+      description,
+      lineId,
+      installmentNo,
+      paymentLinkToken,
+    );
   }
 
   createOnlineOrderIntent(input: {

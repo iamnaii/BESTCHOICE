@@ -35,7 +35,12 @@ export class PaymentLinkService {
   }
 
   /**
-   * Create a payment link for a specific contract/installment
+   * Create a payment link for a specific contract/installment.
+   *
+   * Task 39 — `installmentBound` (ผูกงวด) = ยอดของลิงก์คือยอดคงค้างของงวดที่ผูก: ไม่ส่ง `overrideAmount` (ยอด = ยอดคงค้างของงวดนั้น)
+   * หรือผู้เรียกระบุ `installmentNo` เอง ⇒ หน้า `/pay/:token` ส่งเลขงวด และ intent เทียบยอดกับงวดนั้น (พฤติกรรมเดิม) ·
+   * ส่งยอดมาโดยไม่ระบุงวด (ปิดยอด · ยอดค้างรวมแจ้งล็อก · ยอดนัด) = ไม่ผูก ⇒ intent ใช้ยอดของลิงก์ แล้ว webhook กระจาย FIFO ·
+   * `paymentId` ของลิงก์ไม่ผูกงวด = งวดค้างแรก (หน้าเว็บใช้แสดงเท่านั้น)
    */
   async createPaymentLink(
     contractId: string,
@@ -69,6 +74,7 @@ export class PaymentLinkService {
     }
 
     const amount = overrideAmount ?? calcOutstanding(payment);
+    const installmentBound = overrideAmount === undefined || Boolean(installmentNo);
 
     // Generate unique token
     const token = randomBytes(32).toString('hex');
@@ -84,6 +90,7 @@ export class PaymentLinkService {
         contractId,
         paymentId: payment.id,
         amount,
+        installmentBound,
         status: 'ACTIVE',
         expiresAt,
       },
@@ -210,6 +217,8 @@ export class PaymentLinkService {
       amount,
       status: link.status,
       expiresAt: link.expiresAt,
+      // Task 39 — หน้า /pay/:token ส่งเลขงวดเฉพาะลิงก์ผูกงวด · ไม่ผูก = ส่ง token แล้ว server ใช้ยอดของลิงก์
+      installmentBound: link.installmentBound,
       contract: {
         id: contract.id,
         contractNumber: contract.contractNumber,

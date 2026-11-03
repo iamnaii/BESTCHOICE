@@ -4475,17 +4475,21 @@ enum CreditCheckType {
 }
 
 model PaymentLink {
-  id           String            @id @default(uuid())
-  token        String            @unique
-  contractId   String?           @map("contract_id")
-  paymentId    String?           @map("payment_id")
-  savingPlanId String?           @map("saving_plan_id")
-  amount       Decimal           @db.Decimal(12, 2)
-  status       PaymentLinkStatus @default(ACTIVE)
-  expiresAt    DateTime          @map("expires_at")
-  usedAt       DateTime?         @map("used_at")
-  createdAt    DateTime          @default(now()) @map("created_at")
-  deletedAt    DateTime?         @map("deleted_at")
+  id               String            @id @default(uuid())
+  token            String            @unique
+  contractId       String?           @map("contract_id")
+  paymentId        String?           @map("payment_id")
+  savingPlanId     String?           @map("saving_plan_id")
+  amount           Decimal           @db.Decimal(12, 2)
+  /// Task 39 — ลิงก์ผูกงวด: ยอดของลิงก์ = ยอดคงค้างของงวดที่ผูก (`paymentId`) ⇒ หน้า `/pay/:token` ส่งเลขงวดและ intent เทียบยอดกับงวดนั้น ·
+  /// false = ยอดไม่ใช่ยอดของงวดเดียว (ปิดยอด · ยอดค้างรวมแจ้งล็อก · ยอดนัด) ⇒ หน้าเว็บส่ง token แล้ว intent ใช้ยอดของลิงก์ (server ตัดสิน)
+  /// webhook กระจายเงิน FIFO · `paymentId` ของลิงก์ไม่ผูกงวด = งวดค้างแรก (ให้หน้าเว็บแสดง) · แถวก่อน migration = false
+  installmentBound Boolean           @default(false) @map("installment_bound")
+  status           PaymentLinkStatus @default(ACTIVE)
+  expiresAt        DateTime          @map("expires_at")
+  usedAt           DateTime?         @map("used_at")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  deletedAt        DateTime?         @map("deleted_at")
 
   contract    Contract?    @relation(fields: [contractId], references: [id])
   payment     Payment?     @relation(fields: [paymentId], references: [id])

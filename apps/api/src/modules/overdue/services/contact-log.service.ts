@@ -149,12 +149,7 @@ export class ContactLogService {
       settlementDate?: string;
       settlementNotes?: string;
       // P1 Task 12 quick-tag enums (optional, back-compat).
-      callResult?:
-        | 'ANSWERED'
-        | 'NO_ANSWER'
-        | 'BUSY'
-        | 'DEVICE_OFF'
-        | 'UNREACHABLE';
+      callResult?: 'ANSWERED' | 'NO_ANSWER' | 'BUSY' | 'DEVICE_OFF' | 'UNREACHABLE';
       negotiationResult?:
         | 'REQUESTED_EXTENSION'
         | 'WILL_PAY'
@@ -288,12 +283,12 @@ export class ContactLogService {
         eventKey?: import('@prisma/client').DunningEventTrigger;
       }
     > = {
-      NO_ANSWER:    { noAnswerDelta: 'inc',   eventKey: 'CALL_NO_ANSWER' },
-      ANSWERED:     { noAnswerDelta: 'reset' },
-      PROMISED:     { noAnswerDelta: 'reset', eventKey: 'CALL_ANSWERED_PROMISE' },
-      REFUSED:      { noAnswerDelta: 'reset', eventKey: 'CALL_REFUSED' },
-      WRONG_NUMBER: { noAnswerDelta: 'keep',  needsSkipTracing: true },
-      OTHER:        { noAnswerDelta: 'keep' },
+      NO_ANSWER: { noAnswerDelta: 'inc', eventKey: 'CALL_NO_ANSWER' },
+      ANSWERED: { noAnswerDelta: 'reset' },
+      PROMISED: { noAnswerDelta: 'reset', eventKey: 'CALL_ANSWERED_PROMISE' },
+      REFUSED: { noAnswerDelta: 'reset', eventKey: 'CALL_REFUSED' },
+      WRONG_NUMBER: { noAnswerDelta: 'keep', needsSkipTracing: true },
+      OTHER: { noAnswerDelta: 'keep' },
     };
     const plan = resultMap[dto.result] ?? { noAnswerDelta: 'keep' };
 
@@ -424,9 +419,7 @@ export class ContactLogService {
     // Partial payment ต้องระบุวันนัดใหม่ + อนาคต + ไม่เกิน 30 วัน
     if (!isFullPayment) {
       if (!dto.newSettlementDate) {
-        throw new BadRequestException(
-          'จ่ายไม่ครบ — ต้องระบุวันที่นัดจ่ายส่วนที่เหลือ',
-        );
+        throw new BadRequestException('จ่ายไม่ครบ — ต้องระบุวันที่นัดจ่ายส่วนที่เหลือ');
       }
       const promisedDate = new Date(dto.newSettlementDate);
       validateSettlementDate(promisedDate, now, {

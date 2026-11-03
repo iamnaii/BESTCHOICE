@@ -23,6 +23,7 @@ describe('FacebookWebhookController — permanent comment failures do not hold M
     {} as any,
     {} as any,
     { getConfig: async () => ({ appSecret: secret }) } as any,
+    { claim: jest.fn().mockResolvedValue('claimed') } as never,
     undefined,
     ingest as unknown as FacebookCommentIngestService,
   );

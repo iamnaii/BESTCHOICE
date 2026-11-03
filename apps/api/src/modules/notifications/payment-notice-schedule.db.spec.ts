@@ -42,6 +42,8 @@ import {
   retireFixtures,
   useFakeDate,
 } from './__tests__/finance-line-fixtures';
+import { useSeededEventDunningRules } from './__tests__/event-dunning-rules';
+import { upsertSystemUser } from '../../../prisma/seeds/collections-foundation.seed';
 
 jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn(), captureMessage: jest.fn() }));
 
@@ -49,6 +51,8 @@ const prisma = new PrismaClient();
 const stamp = `t30c-${Date.now()}`;
 const day = realBangkokDate();
 let base: FinanceFixtureBase;
+/** กฎทวงตามเหตุการณ์ของสเปค (ข้อความจาก seed) — CI ไม่ seed ฐาน */
+let restoreEventRules: () => Promise<void> = async () => {};
 let notifications: NotificationsService;
 let bot: AutoTriggerService;
 let collections: CollectionsNotifierService;
@@ -67,6 +71,12 @@ let templateInFlight: string | null = null;
 beforeAll(async () => {
   assertTestDatabase();
   base = await createFinanceFixtureBase(prisma, stamp);
+  // ผู้ใช้ระบบ (ผู้บันทึกของรอบกลางคืน) — แถวเดียวกับ seed · CI ไม่ seed ฐาน
+  await upsertSystemUser(prisma as never);
+  restoreEventRules = await useSeededEventDunningRules(prisma, stamp, [
+    'DEVICE_UNLOCKED',
+    'CALL_NO_ANSWER',
+  ]);
   notifications = new NotificationsService(
     prisma as never,
     { get: jest.fn() } as never,
@@ -142,6 +152,7 @@ beforeAll(async () => {
 afterAll(async () => {
   jest.useRealTimers();
   await retireFixtures(prisma, fixtures);
+  await restoreEventRules();
   await prisma.$disconnect();
 });
 

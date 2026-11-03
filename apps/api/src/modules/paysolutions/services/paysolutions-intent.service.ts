@@ -24,6 +24,7 @@ import { computeRescheduleQuote } from '../../../utils/reschedule-quote.util';
 import { addBkkDays } from '../../../utils/date.util';
 import { PaySolutionsGatewayClient, PAYSOLUTIONS_TIMEOUT_MS } from './paysolutions-gateway.client';
 import { shopBaseUrl } from '../../../utils/shop-base-url.util';
+import { assertNoPendingBankRefund } from '../../refunds/pending-bank-refund';
 
 export interface PaymentIntentResult {
   paymentId: string;
@@ -88,6 +89,12 @@ export class PaySolutionsIntentService {
     }
     if ((await findOtpVerifiedCustomerId(this.prisma, lineId)) !== contract.customerId) {
       throw new BadRequestException('สัญญานี้ไม่ตรงกับบัญชี LINE ของคุณ');
+    }
+    // คำตัดสินเจ้าของ #24 (2026-10-31): intent ที่ไม่ระบุงวด = ลิงก์ปิดยอด (LiffEarlyPayoff / /pay/:token "ยอดปิดสัญญา" — webhook
+    // กระจายเงินทุกงวดแล้วปิดสัญญา) → ปฏิเสธขณะมีคำขอคืนเงินที่อนุมัติแล้วแต่ยังไม่บันทึกผลธนาคาร · บังคับที่นี่ (ก่อนเรียก gateway)
+    // เพราะ webhook ห้ามปฏิเสธเงินที่ตัดแล้ว — แบบเดียวกับกติกา "ห้ามข้ามงวด" ที่บังคับตอนส่ง QR
+    if (!installmentNo) {
+      await assertNoPendingBankRefund(this.prisma, contractId, 'EARLY_PAYOFF', 'customer');
     }
 
     // PaySolutions referenceNo: max 12 chars, must be unique.

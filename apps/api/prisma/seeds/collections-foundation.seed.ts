@@ -13,13 +13,12 @@ export interface CollectionsFoundationSeedOptions {
   eventRulesActive?: boolean;
 }
 
-export async function seedCollectionsFoundation(
-  prisma: PrismaClient,
-  options: CollectionsFoundationSeedOptions = {},
-): Promise<void> {
-  const { eventRulesActive = true } = options;
-  // System user — never logs in, used as actor for system-generated audit logs
-  await prisma.user.upsert({
+/**
+ * System user — never logs in, used as actor for system-generated audit logs (รอบระบบกลางคืน · ล็อกอัตโนมัติ ฯลฯ) · idempotent ·
+ * export ให้สเปค DB สร้างแถวเดียวกันบนฐานที่ไม่ได้ seed (CI สร้างฐานด้วย `prisma migrate deploy` อย่างเดียว)
+ */
+export async function upsertSystemUser(prisma: PrismaClient): Promise<{ id: string }> {
+  return prisma.user.upsert({
     where: { email: 'system@bestchoice.internal' },
     update: { isSystemUser: true, isActive: false },
     create: {
@@ -35,134 +34,148 @@ export async function seedCollectionsFoundation(
       isActive: false,
       isSystemUser: true,
     },
+    select: { id: true },
   });
+}
 
-  // 9 event-triggered dunning rules (upsert by deterministic id for idempotency)
-  const eventRules: Array<{
-    id: string;
-    name: string;
-    eventTrigger:
-      | 'CALL_NO_ANSWER'
-      | 'CALL_ANSWERED_PROMISE'
-      | 'CALL_REFUSED'
-      | 'DEVICE_LOCKED'
-      | 'DEVICE_UNLOCKED'
-      | 'BROKEN_PROMISE'
-      | 'LETTER_DISPATCHED'
-      | 'CONTRACT_TERMINATED'
-      | 'PROMISE_DUE_REMINDER';
-    channel: 'LINE' | 'SMS' | 'INTERNAL_ALERT';
-    messageTemplate: string;
-    includePaymentLink: boolean;
-    autoExecute: boolean;
-    sortOrder: number;
-  }> = [
-    {
-      id: 'dunning-event-CALL_NO_ANSWER',
-      name: 'dunning_on_no_answer',
-      eventTrigger: 'CALL_NO_ANSWER',
-      channel: 'LINE',
-      messageTemplate:
-        'เรียน {{customerName}} เราไม่สามารถติดต่อท่านได้ กรุณาติดต่อกลับเพื่อชำระงวดที่ {{installmentNo}} ยอด {{amount}} ฿',
-      includePaymentLink: true,
-      autoExecute: true,
-      sortOrder: 100,
-    },
-    {
-      id: 'dunning-event-CALL_ANSWERED_PROMISE',
-      name: 'dunning_confirm_promise',
-      eventTrigger: 'CALL_ANSWERED_PROMISE',
-      channel: 'LINE',
-      messageTemplate:
-        // Task 30 รอบ 8 I5 — ไม่แนบลิงก์ชำระกับยอดนัด (หน้าชำระจ่ายลิงก์ที่ไม่ใช่ยอดคงค้างของงวดเดียวไม่ได้) ⇒ ข้อความไม่อ้าง "ลิงก์ด้านล่าง"
-        'ขอบคุณที่รับสาย กรุณาชำระยอด {{amount}} ฿ ภายใน {{settlementDate}}',
-      includePaymentLink: true,
-      autoExecute: true,
-      sortOrder: 101,
-    },
-    {
-      id: 'dunning-event-CALL_REFUSED',
-      name: 'dunning_firm_warning',
-      eventTrigger: 'CALL_REFUSED',
-      channel: 'LINE',
-      messageTemplate:
-        'เรียน {{customerName}} หากไม่ชำระงวด {{installmentNo}} ยอด {{amount}} ฿ บริษัทจำเป็นต้องดำเนินการตามขั้นตอนต่อไป',
-      includePaymentLink: true,
-      autoExecute: true,
-      sortOrder: 102,
-    },
-    {
-      id: 'dunning-event-DEVICE_LOCKED',
-      name: 'dunning_device_locked',
-      eventTrigger: 'DEVICE_LOCKED',
-      channel: 'LINE',
-      messageTemplate:
-        'เครื่องของท่านถูกล็อคและตั้ง wallpaper แจ้งเตือน กรุณาชำระยอดค้าง {{amount}} ฿ เพื่อปลดล็อคทันที',
-      includePaymentLink: true,
-      autoExecute: true,
-      sortOrder: 103,
-    },
-    {
-      id: 'dunning-event-DEVICE_UNLOCKED',
-      name: 'dunning_device_unlocked',
-      eventTrigger: 'DEVICE_UNLOCKED',
-      channel: 'LINE',
-      messageTemplate: 'ขอบคุณที่ชำระยอดค้างชำระ เครื่องของท่านถูกปลดล็อคเรียบร้อยแล้ว',
-      includePaymentLink: false,
-      autoExecute: true,
-      sortOrder: 104,
-    },
-    {
-      id: 'dunning-event-BROKEN_PROMISE',
-      name: 'dunning_broken_promise',
-      eventTrigger: 'BROKEN_PROMISE',
-      channel: 'LINE',
-      messageTemplate:
-        'เรียน {{customerName}} ท่านไม่ได้ชำระตามนัดที่ {{settlementDate}} กรุณาติดต่อกลับโดยด่วน',
-      includePaymentLink: true,
-      autoExecute: true,
-      sortOrder: 105,
-    },
-    {
-      id: 'dunning-event-LETTER_DISPATCHED',
-      name: 'dunning_letter_dispatched',
-      eventTrigger: 'LETTER_DISPATCHED',
-      channel: 'LINE',
-      messageTemplate:
-        'บริษัทได้จัดส่งหนังสือถึงท่านทางไปรษณีย์ลงทะเบียน (EMS: {{trackingNumber}}) กรุณาติดต่อกลับโดยด่วน',
-      includePaymentLink: false,
-      autoExecute: true,
-      sortOrder: 106,
-    },
-    {
-      id: 'dunning-event-CONTRACT_TERMINATED',
-      name: 'dunning_contract_terminated',
-      eventTrigger: 'CONTRACT_TERMINATED',
-      channel: 'LINE',
-      messageTemplate:
-        'เรียน {{customerName}} สัญญาเลขที่ {{contractNumber}} ได้ถูกบอกเลิกและอยู่ระหว่างดำเนินคดีทางกฎหมาย',
-      includePaymentLink: false,
-      autoExecute: true,
-      sortOrder: 107,
-    },
-    {
-      // P1 Task 14: stamped daily by BrokenPromiseReminderCron at 09:00 BKK
-      // for every CallLog promise due TODAY. INTERNAL_ALERT channel +
-      // autoExecute=false → no message is sent automatically; the
-      // BrokenPromiseBanner reads these and prompts the collector to bulk-send.
-      id: 'dunning-event-PROMISE_DUE_REMINDER',
-      name: 'dunning_promise_due_reminder',
-      eventTrigger: 'PROMISE_DUE_REMINDER',
-      channel: 'INTERNAL_ALERT',
-      messageTemplate:
-        'เรียนคุณ {{customerName}}, วันนี้ครบกำหนดนัดชำระงวด {{installmentNo}} ยอด {{amount}} ฿ — กรุณาชำระภายในวันนี้',
-      includePaymentLink: true,
-      autoExecute: false,
-      sortOrder: 108,
-    },
-  ];
+export interface EventDunningRuleSeed {
+  id: string;
+  name: string;
+  eventTrigger:
+    | 'CALL_NO_ANSWER'
+    | 'CALL_ANSWERED_PROMISE'
+    | 'CALL_REFUSED'
+    | 'DEVICE_LOCKED'
+    | 'DEVICE_UNLOCKED'
+    | 'BROKEN_PROMISE'
+    | 'LETTER_DISPATCHED'
+    | 'CONTRACT_TERMINATED'
+    | 'PROMISE_DUE_REMINDER';
+  channel: 'LINE' | 'SMS' | 'INTERNAL_ALERT';
+  messageTemplate: string;
+  includePaymentLink: boolean;
+  autoExecute: boolean;
+  sortOrder: number;
+}
 
-  for (const rule of eventRules) {
+/**
+ * 9 event-triggered dunning rules (upsert by deterministic id for idempotency) — **แหล่งเดียว**ของข้อความแม่แบบกฎทวงตามเหตุการณ์ ·
+ * export ให้สเปค DB สร้างกฎจากข้อความชุดเดียวกัน (ห้ามคัดลอกข้อความในสเปค)
+ */
+export const EVENT_DUNNING_RULES: readonly EventDunningRuleSeed[] = [
+  {
+    id: 'dunning-event-CALL_NO_ANSWER',
+    name: 'dunning_on_no_answer',
+    eventTrigger: 'CALL_NO_ANSWER',
+    channel: 'LINE',
+    messageTemplate:
+      'เรียน {{customerName}} เราไม่สามารถติดต่อท่านได้ กรุณาติดต่อกลับเพื่อชำระงวดที่ {{installmentNo}} ยอด {{amount}} ฿',
+    includePaymentLink: true,
+    autoExecute: true,
+    sortOrder: 100,
+  },
+  {
+    id: 'dunning-event-CALL_ANSWERED_PROMISE',
+    name: 'dunning_confirm_promise',
+    eventTrigger: 'CALL_ANSWERED_PROMISE',
+    channel: 'LINE',
+    messageTemplate:
+      // Task 30 รอบ 8 I5 — ไม่แนบลิงก์ชำระกับยอดนัด (หน้าชำระจ่ายลิงก์ที่ไม่ใช่ยอดคงค้างของงวดเดียวไม่ได้) ⇒ ข้อความไม่อ้าง "ลิงก์ด้านล่าง"
+      'ขอบคุณที่รับสาย กรุณาชำระยอด {{amount}} ฿ ภายใน {{settlementDate}}',
+    includePaymentLink: true,
+    autoExecute: true,
+    sortOrder: 101,
+  },
+  {
+    id: 'dunning-event-CALL_REFUSED',
+    name: 'dunning_firm_warning',
+    eventTrigger: 'CALL_REFUSED',
+    channel: 'LINE',
+    messageTemplate:
+      'เรียน {{customerName}} หากไม่ชำระงวด {{installmentNo}} ยอด {{amount}} ฿ บริษัทจำเป็นต้องดำเนินการตามขั้นตอนต่อไป',
+    includePaymentLink: true,
+    autoExecute: true,
+    sortOrder: 102,
+  },
+  {
+    id: 'dunning-event-DEVICE_LOCKED',
+    name: 'dunning_device_locked',
+    eventTrigger: 'DEVICE_LOCKED',
+    channel: 'LINE',
+    messageTemplate:
+      'เครื่องของท่านถูกล็อคและตั้ง wallpaper แจ้งเตือน กรุณาชำระยอดค้าง {{amount}} ฿ เพื่อปลดล็อคทันที',
+    includePaymentLink: true,
+    autoExecute: true,
+    sortOrder: 103,
+  },
+  {
+    id: 'dunning-event-DEVICE_UNLOCKED',
+    name: 'dunning_device_unlocked',
+    eventTrigger: 'DEVICE_UNLOCKED',
+    channel: 'LINE',
+    messageTemplate: 'ขอบคุณที่ชำระยอดค้างชำระ เครื่องของท่านถูกปลดล็อคเรียบร้อยแล้ว',
+    includePaymentLink: false,
+    autoExecute: true,
+    sortOrder: 104,
+  },
+  {
+    id: 'dunning-event-BROKEN_PROMISE',
+    name: 'dunning_broken_promise',
+    eventTrigger: 'BROKEN_PROMISE',
+    channel: 'LINE',
+    messageTemplate:
+      'เรียน {{customerName}} ท่านไม่ได้ชำระตามนัดที่ {{settlementDate}} กรุณาติดต่อกลับโดยด่วน',
+    includePaymentLink: true,
+    autoExecute: true,
+    sortOrder: 105,
+  },
+  {
+    id: 'dunning-event-LETTER_DISPATCHED',
+    name: 'dunning_letter_dispatched',
+    eventTrigger: 'LETTER_DISPATCHED',
+    channel: 'LINE',
+    messageTemplate:
+      'บริษัทได้จัดส่งหนังสือถึงท่านทางไปรษณีย์ลงทะเบียน (EMS: {{trackingNumber}}) กรุณาติดต่อกลับโดยด่วน',
+    includePaymentLink: false,
+    autoExecute: true,
+    sortOrder: 106,
+  },
+  {
+    id: 'dunning-event-CONTRACT_TERMINATED',
+    name: 'dunning_contract_terminated',
+    eventTrigger: 'CONTRACT_TERMINATED',
+    channel: 'LINE',
+    messageTemplate:
+      'เรียน {{customerName}} สัญญาเลขที่ {{contractNumber}} ได้ถูกบอกเลิกและอยู่ระหว่างดำเนินคดีทางกฎหมาย',
+    includePaymentLink: false,
+    autoExecute: true,
+    sortOrder: 107,
+  },
+  {
+    // P1 Task 14: stamped daily by BrokenPromiseReminderCron at 09:00 BKK
+    // for every CallLog promise due TODAY. INTERNAL_ALERT channel +
+    // autoExecute=false → no message is sent automatically; the
+    // BrokenPromiseBanner reads these and prompts the collector to bulk-send.
+    id: 'dunning-event-PROMISE_DUE_REMINDER',
+    name: 'dunning_promise_due_reminder',
+    eventTrigger: 'PROMISE_DUE_REMINDER',
+    channel: 'INTERNAL_ALERT',
+    messageTemplate:
+      'เรียนคุณ {{customerName}}, วันนี้ครบกำหนดนัดชำระงวด {{installmentNo}} ยอด {{amount}} ฿ — กรุณาชำระภายในวันนี้',
+    includePaymentLink: true,
+    autoExecute: false,
+    sortOrder: 108,
+  },
+];
+
+export async function seedCollectionsFoundation(
+  prisma: PrismaClient,
+  options: CollectionsFoundationSeedOptions = {},
+): Promise<void> {
+  const { eventRulesActive = true } = options;
+  await upsertSystemUser(prisma);
+
+  for (const rule of EVENT_DUNNING_RULES) {
     await prisma.dunningRule.upsert({
       where: { id: rule.id },
       update: {
@@ -259,6 +272,6 @@ export async function seedCollectionsFoundation(
   }
 
   console.log(
-    `  ✓ Collections foundation: 1 system user, ${eventRules.length} event rules, ${mdmLetterConfigs.length} configs`,
+    `  ✓ Collections foundation: 1 system user, ${EVENT_DUNNING_RULES.length} event rules, ${mdmLetterConfigs.length} configs`,
   );
 }

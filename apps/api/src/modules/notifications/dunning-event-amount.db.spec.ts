@@ -32,6 +32,7 @@ import {
   retireFixtures,
   useFakeDate,
 } from './__tests__/finance-line-fixtures';
+import { useSeededEventDunningRules } from './__tests__/event-dunning-rules';
 
 jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn(), captureMessage: jest.fn() }));
 
@@ -39,6 +40,8 @@ const prisma = new PrismaClient();
 const stamp = `t30e-${Date.now()}`;
 const day = realBangkokDate();
 let base: FinanceFixtureBase;
+/** กฎทวงตามเหตุการณ์ของสเปค (ข้อความจาก seed) — CI ไม่ seed ฐาน */
+let restoreEventRules: () => Promise<void> = async () => {};
 let engine: DunningEngineService;
 let intent: PaySolutionsIntentService;
 const fixtures: InstallmentFixture[] = [];
@@ -106,6 +109,11 @@ async function partlyPaidContract(label: string, opts: { firstFeeWaived?: boolea
 beforeAll(async () => {
   assertTestDatabase();
   base = await createFinanceFixtureBase(prisma, stamp);
+  restoreEventRules = await useSeededEventDunningRules(prisma, stamp, [
+    'CALL_NO_ANSWER',
+    'CALL_ANSWERED_PROMISE',
+    'DEVICE_LOCKED',
+  ]);
   const notifications = new NotificationsService(
     prisma as never,
     { get: jest.fn() } as never,
@@ -150,6 +158,7 @@ afterEach(() => jest.useRealTimers());
 
 afterAll(async () => {
   await retireFixtures(prisma, fixtures);
+  await restoreEventRules();
   await prisma.$disconnect();
 });
 

@@ -10,6 +10,8 @@ import { AccountingPeriodStatus, Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { d, dSum } from '../../utils/decimal.util';
+import { bangkokMidnight } from '../../utils/date.util';
+import { accountingPeriodOf, periodGraceEnd } from '../../utils/period-lock.util';
 import { isJournalBalanced } from '../journal/journal-balance';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { TaxService } from '../tax/tax.service';
@@ -59,12 +61,16 @@ export class MonthlyCloseService {
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
 
+  // Period (year, month 1-12) → its instant range on the Bangkok calendar — the reverse of `accountingPeriodOf`
+  // (date → period), so the pre-close audit and the PEAK export window match the month the period guard reads,
+  // whatever the process TZ (re-review m6 · was `new Date(y, m-1, 1)` in the process TZ, 7 h off under UTC).
   private periodStart(year: number, month: number): Date {
-    return new Date(year, month - 1, 1, 0, 0, 0, 0);
+    return bangkokMidnight(year, month - 1, 1);
   }
 
+  /** Last millisecond of the period (inclusive `lte` bound): 00:00 Bangkok of the next month's 1st − 1 ms. */
   private periodEnd(year: number, month: number): Date {
-    return new Date(year, month, 0, 23, 59, 59, 999);
+    return new Date(bangkokMidnight(year, month, 1).getTime() - 1);
   }
 
   private lastDayStr(year: number, month: number): string {
@@ -286,6 +292,20 @@ export class MonthlyCloseService {
       const currentStatus = existing?.status ?? 'OPEN';
       throw new BadRequestException(
         `ไม่สามารถ Sync ไปยัง PEAK ได้ — งวดนี้มีสถานะ ${currentStatus} (ต้องการสถานะ CLOSED หรือ SYNCED)`,
+      );
+    }
+
+    // คำตัดสินเจ้าของ #37 (2026-11-01): งวด SYNCED ล็อกทันทีไม่มีผ่อนผัน (#23) และเปิดใหม่ไม่ได้ (reopenPeriod ปฏิเสธ SYNCED) ⇒ sync
+    // เดือนที่ยังไม่จบ = ทุกเส้นทางที่ลงวันนี้ถูกปฏิเสธจนสิ้นเดือน รวม webhook PaySolutions ที่เงินตัดแล้ว · ส่งได้ตั้งแต่ 00:00 น. วันที่ 1
+    // ของเดือนถัดไปตามปฏิทินไทย (ขอบเดียวกับ periodGraceEnd ที่ grace 0 — ไม่ขึ้นกับ TZ ของโปรเซส) · ปิดงวด (CLOSED) ไม่ต้องมีด่านนี้:
+    // CLOSED มีช่วงผ่อนผัน รายการที่ลงวันนี้ของเดือนที่ปิดก่อนสิ้นเดือนยังลงได้
+    const monthEnd = periodGraceEnd(year, month, 0);
+    if (Date.now() < monthEnd.getTime()) {
+      const next = accountingPeriodOf(monthEnd);
+      throw new BadRequestException(
+        `ยังเชื่อมข้อมูลงวด ${year}/${String(month).padStart(2, '0')} ไป PEAK ไม่ได้ — เดือนนี้ยังไม่สิ้นสุด ` +
+          'และงวดที่ส่ง PEAK แล้วจะล็อกทันที เปิดงวดใหม่ไม่ได้ · ' +
+          `เชื่อมได้ตั้งแต่ 00:00 น. วันที่ 1/${next.month}/${next.year} (เวลาไทย)`,
       );
     }
 

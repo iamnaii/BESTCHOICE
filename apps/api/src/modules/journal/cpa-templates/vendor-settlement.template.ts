@@ -221,8 +221,10 @@ export class VendorSettlementTemplate {
       for (const d of clearedDocsAmts) {
         const cumulative = (priorByDoc.get(d.id) ?? zero).plus(thisByDoc.get(d.id) ?? zero);
         const total = new Decimal(d.totalAmount.toString());
-        // ≥ instead of = because residual < 0.005 should still close the doc
-        // (tolerance — same approach as journal balanced check at 0.01).
+        // "Fully paid" status of the expense document — a document-payment rule, not the
+        // journal's balance (that one is exact: isJournalBalanced, owner decision 2026-10-31).
+        // Both sides are Decimal(12,2) sums (multiples of 0.01), so `≥ total − 0.005` closes
+        // exactly when cumulative ≥ total; the half-satang margin only absorbs sub-satang residue.
         if (cumulative.gte(total.minus(new Decimal('0.005')))) {
           fullyPaidIds.push(d.id);
         } else {

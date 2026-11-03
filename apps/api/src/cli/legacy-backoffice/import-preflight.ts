@@ -26,9 +26,10 @@ const DAY_MS = 86_400_000;
 export type Env = Record<string, string | undefined>;
 
 /**
- * เขตเวลาของโปรเซสต้องเป็นกรุงเทพก่อน `Date` ตัวแรก — `nextEntryNumber` ตั้งเดือนของเลขที่รายการและคีย์ล็อกจาก
- * `getFullYear()/getMonth()` ของโปรเซส (รายการไล่ VAT 1 ธ.ค. 00:05 ภายใต้ UTC = เลข JE-202611-…) · ตั้ง `TZ` แบบเดียวกับ
- * `installRuntimeGlobals()` แล้วตรวจกับ Intl
+ * เขตเวลาของโปรเซสต้องเป็นกรุงเทพก่อน `Date` ตัวแรก ให้ตรงกับเซิร์ฟเวอร์จริง · ตั้ง `TZ` แบบเดียวกับ `installRuntimeGlobals()`
+ * แล้วตรวจกับ Intl. (เดิมด่านนี้กัน `nextEntryNumber` ที่ตั้งเดือนของเลขที่รายการจาก `getFullYear()/getMonth()` ของโปรเซส —
+ * ตั้งแต่ Task 36 fix round 1 · m-h ใช้เดือนตามปฏิทินไทยแล้ว · `validatePeriodOpen` ก็ใช้ปฏิทินไทย · คงด่านไว้กันโค้ดที่ยังอ่าน
+ * เขตเวลาของโปรเซส)
  */
 export function ensureBangkokTimeZone(
   env: Env = process.env,
@@ -38,7 +39,7 @@ export function ensureBangkokTimeZone(
   const tz = resolvedTimeZone();
   if (tz !== BANGKOK_TZ) {
     throw new Error(
-      `เขตเวลาของโปรเซสเป็น ${tz} ไม่ใช่ ${BANGKOK_TZ} — รันใหม่ด้วย TZ=${BANGKOK_TZ} (เลขที่รายการบัญชีและงวดบัญชีอ่านเดือนตามเขตเวลาของโปรเซส)`,
+      `เขตเวลาของโปรเซสเป็น ${tz} ไม่ใช่ ${BANGKOK_TZ} — รันใหม่ด้วย TZ=${BANGKOK_TZ} (ให้ตรงกับเซิร์ฟเวอร์จริงที่รันด้วยเขตเวลานี้)`,
     );
   }
 }

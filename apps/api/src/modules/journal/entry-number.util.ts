@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { bangkokCalendarParts } from '../../utils/date.util';
 
 /**
  * Allocate the next journal-entry number for the month of `at`:
@@ -17,9 +18,19 @@ import { Prisma } from '@prisma/client';
  * Serialised per month via a pg advisory xact lock, so concurrent posts in
  * the same month can't both read the same max. Callers must pass the
  * *transaction* client — the lock is transaction-scoped.
+ *
+ * The month (prefix AND lock key) is the **Bangkok calendar** month of `at`,
+ * independent of the process TZ (Task 36 fix round 1 · m-h). Production runs
+ * with TZ=Asia/Bangkok, where this equals the old `getFullYear()/getMonth()`
+ * for every instant (no DST) — pinned by `entry-number.util.spec.ts` against a
+ * real TZ=Asia/Bangkok child process. Under TZ=UTC (CI) the old local getters
+ * gave a JE posted at 00:00 BKK on the 1st (= 17:00Z the day before) the
+ * PREVIOUS month's prefix, so readers that order one Bangkok day by entry
+ * number (supplier ledger) put it before entries posted earlier that day.
  */
 export async function nextEntryNumber(tx: Prisma.TransactionClient, at: Date): Promise<string> {
-  const ym = `${at.getFullYear()}${String(at.getMonth() + 1).padStart(2, '0')}`;
+  const { year, month } = bangkokCalendarParts(at); // month is 0-indexed
+  const ym = `${year}${String(month + 1).padStart(2, '0')}`;
   const lockKey = parseInt(ym, 10);
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockKey})`;
 

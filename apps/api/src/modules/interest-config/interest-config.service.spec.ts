@@ -17,6 +17,10 @@ describe('InterestConfigService', () => {
         create: jest.fn(),
         update: jest.fn(),
       },
+      // #22: vatPct ที่ส่งออก = VAT ของบริษัท FINANCE
+      companyInfo: {
+        findFirst: jest.fn().mockResolvedValue({ vatRegistered: true, vatRate: 0.07 }),
+      },
     };
 
     prisma.$executeRaw = jest.fn().mockResolvedValue(0);
@@ -47,10 +51,13 @@ describe('InterestConfigService', () => {
 
   describe('findOne', () => {
     it('returns a config when found and not soft-deleted', async () => {
-      const row = { id: 'cfg-1', name: 'มือ 1' };
+      const row = { id: 'cfg-1', name: 'มือ 1', vatPct: '0.1000' };
       prisma.interestConfig.findFirst.mockResolvedValue(row);
 
-      await expect(service.findOne('cfg-1')).resolves.toBe(row);
+      // #22: vatPct ของแถวถูกแทนด้วย VAT ของ FINANCE
+      const found = await service.findOne('cfg-1');
+      expect(found).toMatchObject({ id: 'cfg-1', name: 'มือ 1' });
+      expect(found.vatPct.toString()).toBe('0.07');
       expect(prisma.interestConfig.findFirst).toHaveBeenCalledWith({
         where: { id: 'cfg-1', deletedAt: null },
       });

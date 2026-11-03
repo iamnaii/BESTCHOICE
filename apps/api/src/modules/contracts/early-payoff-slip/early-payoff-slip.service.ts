@@ -1,7 +1,8 @@
 import { ManagedPayoffEvidenceService } from './managed-payoff-evidence';
 import { currentDomainAccess } from '../../employee-access/access-execution-context';
 import { assertUnmanagedPayoffActor } from '../managed-payoff-execution';
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import { randomUUID } from 'crypto';
@@ -15,6 +16,7 @@ import {
   isEvidenceImage,
 } from '../../../utils/upload-image.util';
 import { bangkokDateString } from '../../../utils/date.util';
+import { isRetryablePrismaWriteError } from '../../../utils/transaction-retry.util';
 import { ContractPaymentService, type SlipMatchAuthorization } from '../contract-payment.service';
 import { EarlyPayoffSlipConfirmDto } from '../dto/early-payoff-slip.dto';
 import {
@@ -30,6 +32,13 @@ const TICKET_TTL_MS = 15 * 60 * 1000;
 const TICKET_VERSION = 1;
 /** ธนาคารรับปิดยอดตรงเข้า FINANCE = กสิกรเท่านั้น (กติกาเจ้าของ 2026-07-08) */
 const PAYOFF_DEPOSIT_ACCOUNT = '11-1201';
+/**
+ * ปิดยอดแข่งกับรายการอื่นบนสัญญาเดียวกัน (ล็อกแถวสัญญาแบบ raw → P2010 40001/40P01 · คำสั่ง typed → P2034) — review m2-3 คลาสเดียวกับ I-2.
+ * ธุรกรรม rollback ทั้งก้อน (รวมลายนิ้วมือสลิป) ⇒ สลิปเดิมใช้ได้ · หน้าจอล้างผลตรวจสลิปเมื่อยืนยันไม่สำเร็จ จึงต้องแนบใหม่ก่อนกดยืนยัน
+ */
+export const SLIP_CONFIRM_CONFLICT_MSG =
+  'ข้อมูลสัญญาเปลี่ยนระหว่างปิดสัญญา (มีรายการอื่นทำกับสัญญานี้พร้อมกัน) — ยังไม่มีอะไรถูกบันทึก ' +
+  'กรุณาแนบสลิปเดิมอีกครั้งแล้วกด "ยืนยันปิดสัญญา"';
 
 export interface EarlyPayoffSlipVerifyResult {
   /** เครื่องยนต์ที่อ่านสลิป — วันนี้ OCR (Claude) · สลับเป็น SCB/บริการกลางได้โดยหน้าจอไม่เปลี่ยน */
@@ -125,6 +134,8 @@ export class EarlyPayoffSlipService {
       discountPct,
       PAYOFF_DEPOSIT_ACCOUNT,
     );
+    // #24: คำขอคืนเงินที่อนุมัติแล้วแต่ยังไม่บันทึกผลธนาคาร → ปฏิเสธก่อนอัปโหลด/OCR (ด่านจริงอยู่ใน earlyPayoff ตอนยืนยัน)
+    await this.contractPayment.assertNoPendingBankRefundForPayoff(contractId);
 
     const key = `early-payoff-slips/${contractId}/${Date.now()}-${randomUUID()}.${evidenceImageExtension(file.mimetype)}`;
     await this.storage.upload(key, file.buffer, file.mimetype);
@@ -216,21 +227,32 @@ export class EarlyPayoffSlipService {
       date: t.date,
       confidence: t.confidence,
     };
-    return this.contractPayment.earlyPayoff(
-      contractId,
-      userId,
-      {
-        paymentMethod: 'BANK_TRANSFER',
-        discountPct: t.discountPct,
-        depositAccountCode: PAYOFF_DEPOSIT_ACCOUNT,
-        paymentDate: t.paymentDate,
-        slipUrl: t.slipUrl,
-        referenceNo: t.refNo ?? undefined,
-        notes: dto.notes,
-      },
-      undefined,
-      slipMatch,
-    );
+    try {
+      return await this.contractPayment.earlyPayoff(
+        contractId,
+        userId,
+        {
+          paymentMethod: 'BANK_TRANSFER',
+          discountPct: t.discountPct,
+          depositAccountCode: PAYOFF_DEPOSIT_ACCOUNT,
+          paymentDate: t.paymentDate,
+          slipUrl: t.slipUrl,
+          referenceNo: t.refNo ?? undefined,
+          notes: dto.notes,
+        },
+        undefined,
+        slipMatch,
+      );
+    } catch (error) {
+      // ตัวจัดประเภทเดียวกับ I-2 · P2002 ไม่ใช่การแข่งของล็อก (สลิปซ้ำ earlyPayoff แปลงเป็น 409 ของมันเองแล้ว) ⇒ ไม่แปลงที่นี่ ·
+      // ทาง managed (ข้างบน) ไม่แปลง — ชั้นนอกลองทั้งธุรกรรมใหม่จาก error ดิบ
+      const uniqueViolation =
+        error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+      if (!uniqueViolation && isRetryablePrismaWriteError(error)) {
+        throw new ConflictException(SLIP_CONFIRM_CONFLICT_MSG);
+      }
+      throw error;
+    }
   }
 
   private parseDiscount(raw: string | number | undefined): number {

@@ -221,11 +221,27 @@ describe('ProductQuoteService', () => {
     rates: [{ months: 3, ratePct: '0.9000' }],
   };
 
-  const makeService = (configs: unknown[]) => {
+  const makeService = (configs: unknown[], financeVatRate = '0.0700') => {
     const findMany = jest.fn().mockResolvedValue(configs);
-    const prisma = { interestConfig: { findMany } } as unknown as PrismaService;
+    const prisma = {
+      interestConfig: { findMany },
+      // #22: VAT ของตั้งค่าดอกเบี้ย = บริษัท FINANCE (ไม่ใช่ interest_configs.vat_pct)
+      companyInfo: {
+        findFirst: jest.fn().mockResolvedValue({ vatRegistered: true, vatRate: financeVatRate }),
+      },
+      systemConfig: { findMany: jest.fn().mockResolvedValue([]) },
+    } as unknown as PrismaService;
     return { service: new ProductQuoteService(prisma), findMany };
   };
+
+  // owner decision #22 (2026-10-31): the chat product card quotes with the FINANCE VAT, not the row's vat_pct
+  it('#22 quotes with the FINANCE VAT even when interest_configs.vat_pct differs', async () => {
+    const input = { category: 'PHONE_NEW', cashPrice: null, installmentPrice: '10000' };
+    const { service } = makeService([{ ...CONFIG_OLDEST, vatPct: '0.1000' }], '0.0700');
+    const [quote] = await service.getQuotes([input]);
+    expect(quote).toEqual(computeProductQuote(input, { ...CONFIG_OLDEST, vatPct: '0.0700' }));
+    expect(quote).not.toEqual(computeProductQuote(input, { ...CONFIG_OLDEST, vatPct: '0.1000' }));
+  });
 
   it('2 config ใน category เดียว → เลือกตัว createdAt เก่าสุด (first-wins, catches a first/last-wins swap)', async () => {
     // Prisma's `orderBy: { createdAt: 'asc' }` means the mocked findMany

@@ -4499,6 +4499,12 @@ model PaymentLink {
   /// Task 39 — แถวติดตาม intent ที่สร้างจากลิงก์ `/pay/:token` ที่ไม่ผูกงวด ชี้กลับลิงก์ต้นทาง ⇒ webhook สำเร็จตั้งลิงก์ต้นทางเป็น `USED`
   /// (จ่ายซ้ำจากลิงก์เดียวกันไม่ได้) ในธุรกรรมเดียวกับการรับเงิน
   sourceLinkId     String?           @map("source_link_id")
+  /// Task 42 — กฎทวงตามเหตุการณ์ที่สร้างลิงก์ `AMOUNT` นี้ (`DunningEngineService.executeEventTrigger`): `DEVICE_LOCKED` = ยอดค้างรวมแจ้งล็อก
+  /// (หน้า `/pay/:token` หัว "ยอดค้างชำระ" · เงินเข้าแล้ว webhook สร้างงานให้เจ้าหน้าที่ตรวจยอดแล้วปลดล็อค) · `CALL_ANSWERED_PROMISE` = ยอดนัด
+  /// (หัว "ยอดนัดชำระ") · null = ลิงก์อื่นทั้งหมด (ลิงก์งวด · ลิงก์ปิดยอด · ลิงก์ของพนักงาน · แถวก่อน migration) ⇒ หัว "ยอดที่ต้องชำระ"
+  sourceEvent      DunningEventTrigger? @map("source_event")
+  /// Task 42 — วันนัดชำระ (ที่แรกที่ถึงก่อน) ของลิงก์ยอดนัด — หน้า `/pay/:token` แสดง "วันนัด ภายใน …" · ลิงก์อื่น = null
+  promiseDate      DateTime?         @map("promise_date")
   status           PaymentLinkStatus @default(ACTIVE)
   expiresAt        DateTime          @map("expires_at")
   usedAt           DateTime?         @map("used_at")

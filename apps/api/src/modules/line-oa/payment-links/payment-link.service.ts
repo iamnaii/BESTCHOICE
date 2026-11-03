@@ -4,8 +4,10 @@ import {
   MessageRole,
   MessageType,
   ChatChannel,
+  DunningEventTrigger,
   LineChannelType,
   PaymentLinkPurpose,
+  Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { FINANCE_LINE_RECIPIENT_SELECT } from '../../line-oa/services/otp-verified-customer';
@@ -16,6 +18,12 @@ import { PromptPayQrService } from '../promptpay/promptpay-qr.service';
 import { FlexTemplatesService } from '../flex-templates.service';
 import { LineFinanceClientService } from '../../chatbot-finance/services/line-finance-client.service';
 import { randomBytes } from 'crypto';
+import {
+  allocatePaidAmountFifo,
+  fifoUnpaidPaymentsArgs,
+  payAllocationPreviewLines,
+  payLinkAmountKind,
+} from '../../paysolutions/pay-allocation';
 
 @Injectable()
 export class PaymentLinkService {
@@ -47,11 +55,19 @@ export class PaymentLinkService {
    * ไม่ส่ง `override` ⇒ `INSTALLMENT` ยอด = ยอดคงค้างของงวดที่ผูก (งวดที่ระบุ หรืองวดค้างแรก) · ส่ง `override` ⇒ ผู้เรียกบอกยอดและ
    * purpose เอง: `INSTALLMENT` (ยอดคงค้างของงวดที่ระบุ) · `PAYOFF` (ยอดปิดสัญญา — ด่าน #24 ตอนจ่าย) · `AMOUNT` (ยอดที่ข้อความทวงบอก) ·
    * ลิงก์ที่ไม่ใช่ `INSTALLMENT` จ่ายด้วยยอดของลิงก์ (intent ทาง token) แล้ว webhook กระจาย FIFO · `paymentId` = งวดค้างแรก (แสดงเท่านั้น)
+   *
+   * Task 42 — `sourceEvent` = กฎทวงตามเหตุการณ์ที่สร้างลิงก์ `AMOUNT` (หัวยอดของหน้า `/pay/:token` · งานปลดล็อคหลังเงินเข้า) ·
+   * `promiseDate` = วันนัดของลิงก์ยอดนัด · ไม่ส่ง = null
    */
   async createPaymentLink(
     contractId: string,
     installmentNo?: number,
-    override?: { amount: number; purpose: PaymentLinkPurpose },
+    override?: {
+      amount: number;
+      purpose: PaymentLinkPurpose;
+      sourceEvent?: DunningEventTrigger;
+      promiseDate?: Date;
+    },
   ): Promise<{
     token: string;
     url: string;
@@ -97,6 +113,8 @@ export class PaymentLinkService {
         paymentId: payment.id,
         amount,
         purpose,
+        sourceEvent: override?.sourceEvent ?? null,
+        promiseDate: override?.promiseDate ?? null,
         status: 'ACTIVE',
         expiresAt,
       },
@@ -217,6 +235,18 @@ export class PaymentLinkService {
       this.logger.warn(`QR generation failed for payment link: ${err}`);
     }
 
+    // Task 42 — ลิงก์ AMOUNT (ยอดค้างรวมแจ้งล็อก · ยอดนัด): แถว "นำไปชำระ (งวดเก่าก่อน)" = สิ่งที่ webhook จะกระจายยอดของลิงก์นี้
+    // ณ ตอนนี้ (งวดค้างปัจจุบัน — ฟังก์ชันเดียวกับ webhook) · ลิงก์งวด / ปิดยอด / แถวเก่า ไม่มีแถวนี้ (การ์ดเดิม)
+    const allocation =
+      link.purpose === PaymentLinkPurpose.AMOUNT
+        ? payAllocationPreviewLines(
+            allocatePaidAmountFifo(
+              await this.prisma.payment.findMany(fifoUnpaidPaymentsArgs(contract.id)),
+              new Prisma.Decimal(link.amount),
+            ),
+          )
+        : null;
+
     return {
       valid: true,
       token,
@@ -225,6 +255,10 @@ export class PaymentLinkService {
       expiresAt: link.expiresAt,
       // Task 39 — หน้า /pay/:token ส่งเลขงวดเฉพาะลิงก์ INSTALLMENT · อื่น ๆ ส่ง token แล้ว server ใช้ยอดของลิงก์
       purpose: link.purpose,
+      // Task 42 — หัวยอด (server ตัดสินจาก purpose + กฎที่สร้างลิงก์) · วันนัด · แถวนำไปชำระ — ไม่มีข้อมูลส่วนตัวเพิ่ม
+      amountKind: payLinkAmountKind(link.purpose, link.sourceEvent),
+      promiseDate: link.promiseDate,
+      allocation,
       contract: {
         id: contract.id,
         contractNumber: contract.contractNumber,

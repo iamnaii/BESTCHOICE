@@ -29,6 +29,7 @@ describe('PaymentLinkService — purpose ของลิงก์', () => {
         create: jest.fn().mockResolvedValue({}),
         findUnique: jest.fn().mockResolvedValue(link ?? null),
       },
+      payment: { findMany: jest.fn().mockResolvedValue([]) },
     };
     const promptPay = {
       generateQrDataUrl: jest.fn().mockResolvedValue(null),
@@ -83,4 +84,157 @@ describe('PaymentLinkService — purpose ของลิงก์', () => {
       expect(view).toMatchObject({ valid: true, amount: 1000, purpose });
     },
   );
+
+  describe('Task 42 — กฎทวงที่สร้างลิงก์ + วันนัด', () => {
+    it('ผู้เรียกบอก sourceEvent / promiseDate → เก็บบนลิงก์', async () => {
+      const { prisma, service } = build();
+      const promiseDate = new Date('2026-11-04T17:00:00.000Z');
+
+      await service.createPaymentLink('ct-1', undefined, {
+        amount: 1000,
+        purpose: 'AMOUNT',
+        sourceEvent: 'CALL_ANSWERED_PROMISE',
+        promiseDate,
+      });
+
+      expect(prisma.paymentLink.create.mock.calls[0][0].data).toMatchObject({
+        purpose: 'AMOUNT',
+        sourceEvent: 'CALL_ANSWERED_PROMISE',
+        promiseDate,
+      });
+    });
+
+    it('ไม่บอก → null (ลิงก์งวด · ลิงก์ปิดยอด · ลิงก์ของพนักงาน)', async () => {
+      const { prisma, service } = build();
+
+      await service.createPaymentLink('ct-1', 1);
+
+      expect(prisma.paymentLink.create.mock.calls[0][0].data).toMatchObject({
+        sourceEvent: null,
+        promiseDate: null,
+      });
+    });
+  });
+
+  describe('GET /line-oa/pay/:token — หัวยอด · วันนัด · แถว "นำไปชำระ (งวดเก่าก่อน)" (Task 42)', () => {
+    const dec = (v: string) => new Prisma.Decimal(v);
+    const installment = (installmentNo: number, amountPaid: string, lateFee: string) => ({
+      id: `pay-${installmentNo}`,
+      installmentNo,
+      amountDue: dec('1515.83'),
+      amountPaid: dec(amountPaid),
+      lateFee: dec(lateFee),
+      lateFeeWaived: false,
+      dueDate: new Date('2026-10-01T17:00:00Z'),
+    });
+    const linkRow = (fields: Record<string, unknown>) => ({
+      id: 'link-1',
+      status: 'ACTIVE',
+      amount: dec('1000.00'),
+      purpose: 'AMOUNT',
+      sourceEvent: null,
+      promiseDate: null,
+      expiresAt: new Date(Date.now() + 60_000),
+      contract: { id: 'ct-1', contractNumber: 'BC-001', customer: { name: 'สมชาย ใจดี' } },
+      payment: unpaid,
+      ...fields,
+    });
+
+    it.each([
+      ['INSTALLMENT', 'CALL_NO_ANSWER', 'DUE'],
+      ['PAYOFF', null, 'PAYOFF'],
+      ['AMOUNT', 'DEVICE_LOCKED', 'OUTSTANDING'],
+      ['AMOUNT', 'CALL_ANSWERED_PROMISE', 'PROMISE'],
+      ['AMOUNT', null, 'DUE'],
+      [null, null, 'DUE'],
+    ])('purpose %s · กฎ %s → หัวยอด %s', async (purpose, sourceEvent, amountKind) => {
+      const { service } = build(linkRow({ purpose, sourceEvent }));
+
+      await expect(service.resolvePaymentLink('tok')).resolves.toMatchObject({ amountKind });
+    });
+
+    it('ลิงก์แจ้งล็อก → แถวนำไปชำระ = การกระจายของ webhook จากงวดค้าง ณ ตอนนี้ (query เดียวกับ webhook)', async () => {
+      const { prisma, service } = build(
+        linkRow({ amount: dec('2231.66'), sourceEvent: 'DEVICE_LOCKED' }),
+      );
+      prisma.payment.findMany.mockResolvedValue([
+        installment(2, '900.00', '100.00'),
+        installment(3, '0', '0'),
+      ]);
+
+      const view = await service.resolvePaymentLink('tok');
+
+      expect(prisma.payment.findMany).toHaveBeenCalledWith({
+        where: { contractId: 'ct-1', status: { not: 'PAID' }, deletedAt: null },
+        orderBy: { installmentNo: 'asc' },
+      });
+      expect(view).toMatchObject({
+        amountKind: 'OUTSTANDING',
+        promiseDate: null,
+        allocation: [
+          { kind: 'INSTALLMENT_REMAINING', installmentNo: 2, amount: 615.83 },
+          { kind: 'LATE_FEE', installmentNo: 2, amount: 100 },
+          { kind: 'INSTALLMENT', installmentNo: 3, amount: 1515.83 },
+        ],
+      });
+    });
+
+    it('ลิงก์ยอดนัด → วันนัด + งวดที่เงินไม่พอปิด (ชำระบางส่วน / ยังค้างหลังชำระ)', async () => {
+      const promiseDate = new Date('2026-11-04T17:00:00.000Z');
+      const { prisma, service } = build(
+        linkRow({ sourceEvent: 'CALL_ANSWERED_PROMISE', promiseDate }),
+      );
+      prisma.payment.findMany.mockResolvedValue([installment(2, '0', '100.00'), installment(3, '0', '0')]);
+
+      const view = await service.resolvePaymentLink('tok');
+
+      expect(view).toMatchObject({
+        amountKind: 'PROMISE',
+        promiseDate,
+        allocation: [
+          { kind: 'PARTIAL', installmentNo: 2, amount: 1000 },
+          { kind: 'LEFT_AFTER', installmentNo: 2, amount: 615.83 },
+        ],
+      });
+    });
+
+    it.each(['INSTALLMENT', 'PAYOFF', null])(
+      'ลิงก์ %s → ไม่มีแถวนำไปชำระ (การ์ดเดิม) · ไม่อ่านงวด',
+      async (purpose) => {
+        const { prisma, service } = build(linkRow({ purpose }));
+
+        const view = await service.resolvePaymentLink('tok');
+
+        expect(view).toMatchObject({ allocation: null });
+        expect(prisma.payment.findMany).not.toHaveBeenCalled();
+      },
+    );
+
+    it('ไม่ส่งข้อมูลส่วนตัวเพิ่ม — ช่องใหม่มีแค่หัวยอด · วันนัด · แถวนำไปชำระ (เลขงวด + ยอด)', async () => {
+      const { prisma, service } = build(linkRow({ sourceEvent: 'DEVICE_LOCKED' }));
+      prisma.payment.findMany.mockResolvedValue([installment(2, '0', '0')]);
+
+      const view = (await service.resolvePaymentLink('tok')) as Record<string, unknown>;
+
+      expect(Object.keys(view).sort()).toEqual(
+        [
+          'allocation',
+          'amount',
+          'amountKind',
+          'contract',
+          'expiresAt',
+          'payment',
+          'promiseDate',
+          'promptPay',
+          'purpose',
+          'status',
+          'token',
+          'valid',
+        ].sort(),
+      );
+      for (const line of view.allocation as Record<string, unknown>[]) {
+        expect(Object.keys(line).sort()).toEqual(['amount', 'installmentNo', 'kind']);
+      }
+    });
+  });
 });

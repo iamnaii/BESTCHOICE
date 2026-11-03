@@ -70,7 +70,7 @@ export function formatTemplateAmount(amount: Prisma.Decimal | number): string {
 
 /**
  * Task 30 รอบ 7 I4 — กฎที่ข้อความพูดถึง "ยอดค้าง" ของทั้งสัญญา (แจ้งล็อก "ชำระยอดค้าง … เพื่อปลดล็อค") ⇒ `{{amount}}` = ยอดค้างที่ถึงกำหนดรวม
- * (`dueOutstanding` — นิยามเดียวกับแจ้งสถานะ) และลิงก์ชำระครอบยอดนั้น · กฎอื่นที่ข้อความระบุงวด ⇒ ยอดคงค้างของงวดนั้น (`installmentOwed`)
+ * (`dueOutstanding` — นิยามเดียวกับแจ้งสถานะ) · ไม่แนบลิงก์ชำระ (รอบ 8 I5) · กฎอื่นที่ข้อความระบุงวด ⇒ ยอดคงค้างของงวดนั้น (`installmentOwed`) + ลิงก์ของงวดนั้น
  */
 const CONTRACT_TOTAL_AMOUNT_EVENTS: ReadonlySet<DunningEventTrigger> = new Set(['DEVICE_LOCKED']);
 
@@ -506,9 +506,13 @@ export class DunningEngineService {
     let paymentLinkUrl: string | undefined;
     // ปลายทาง LINE การเงิน = แถว OTP ของลูกค้า (Task 22 I-1 ง) ไม่ใช่คอลัมน์ line_id_finance ที่อาจค้าง
     const financeLineId = financeLineRecipient(contract.customer);
-    if (rule.includePaymentLink && amount && financeLineId) {
+    // Task 30 รอบ 8 I5 (ผู้คุมงานเลือกทาง ข) — แนบลิงก์เฉพาะเมื่อยอดในข้อความ = ยอดคงค้างของงวดเดียว (ข้อความระบุงวด): หน้า `/pay/:token`
+    // (`LiffPayment.tsx`) เดาจากยอดว่าลิงก์ผูกงวด แล้ว `createPaymentIntent` บังคับยอด = ยอดคงค้างของงวดนั้น ⇒ ลิงก์ยอดค้างรวม (แจ้งล็อก) /
+    // ยอดนัด (นัดชำระ) ถูกปฏิเสธ "ยอดชำระไม่ตรง" · ข้อความยังบอกยอดที่ถูก · งานต่อ (ทาง ก): `resolvePaymentLink` คืนธงผูกงวด +
+    // หน้าเว็บส่ง `installmentNo` เฉพาะลิงก์ที่ผูกงวด แล้วค่อยแนบลิงก์ให้สองกฎนี้
+    if (rule.includePaymentLink && amount?.linkInstallmentNo !== undefined && financeLineId) {
       try {
-        // ยอดของลิงก์ = ยอดในข้อความ · ลิงก์ที่ไม่ผูกงวด (ยอดค้างรวม / ยอดนัด) ถูกกระจายเข้างวดค้างตามลำดับตอนรับเงิน (webhook PaySolutions)
+        // ยอดของลิงก์ = ยอดในข้อความ (ยอดคงค้างของงวด)
         const link = await this.paymentLinkService.createPaymentLink(
           contractId,
           amount.linkInstallmentNo,

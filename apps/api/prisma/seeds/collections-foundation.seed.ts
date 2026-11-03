@@ -74,7 +74,8 @@ export async function seedCollectionsFoundation(
       eventTrigger: 'CALL_ANSWERED_PROMISE',
       channel: 'LINE',
       messageTemplate:
-        'ขอบคุณที่รับสาย กรุณาชำระยอด {{amount}} ฿ ภายใน {{settlementDate}} ผ่านลิงก์ด้านล่าง',
+        // Task 30 รอบ 8 I5 — ไม่แนบลิงก์ชำระกับยอดนัด (หน้าชำระจ่ายลิงก์ที่ไม่ใช่ยอดคงค้างของงวดเดียวไม่ได้) ⇒ ข้อความไม่อ้าง "ลิงก์ด้านล่าง"
+        'ขอบคุณที่รับสาย กรุณาชำระยอด {{amount}} ฿ ภายใน {{settlementDate}}',
       includePaymentLink: true,
       autoExecute: true,
       sortOrder: 101,

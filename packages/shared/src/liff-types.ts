@@ -85,6 +85,28 @@ export interface LiffEarlyPayoffQuote {
 /** `PaymentLink.purpose` (Prisma enum `PaymentLinkPurpose`) — Task 39 */
 export type LiffPaymentLinkPurpose = 'INSTALLMENT' | 'PAYOFF' | 'AMOUNT';
 
+/**
+ * Task 42 — หัวยอดของหน้า `/pay/:token` (server ตัดสินจาก `purpose` + กฎทวงที่สร้างลิงก์ — หน้าเว็บไม่เดาจากยอด):
+ * `DUE` "ยอดที่ต้องชำระ" (ลิงก์งวด · ลิงก์ยอดอื่น · แถวเก่า) · `PAYOFF` "ยอดปิดสัญญา" (เฉพาะ purpose PAYOFF) ·
+ * `OUTSTANDING` "ยอดค้างชำระ" (ลิงก์แจ้งล็อก) · `PROMISE` "ยอดนัดชำระ" (ลิงก์ยอดนัด)
+ */
+export type LiffPayAmountKind = 'DUE' | 'PAYOFF' | 'OUTSTANDING' | 'PROMISE';
+
+/**
+ * Task 42 — แถว "นำไปชำระ (งวดเก่าก่อน)" ของหน้า `/pay/:token` = สิ่งที่ webhook PaySolutions จะกระจายเงินของลิงก์นี้ ณ ตอนเปิดหน้า
+ * (ฟังก์ชันเดียวกับที่ webhook ใช้ — `paysolutions/pay-allocation.ts`):
+ * `INSTALLMENT` ค่างวดของงวดที่ยังไม่เคยจ่าย · `INSTALLMENT_REMAINING` ค่างวดที่เหลือของงวดที่จ่ายมาบางส่วน · `LATE_FEE` ค่าปรับ ·
+ * `PARTIAL` เงินไม่พอปิดงวด — ยอดที่ลงงวดนั้น · `LEFT_AFTER` ยอดที่งวดนั้นยังค้างหลังชำระ ·
+ * `SURPLUS` เงินที่เกินทุกงวดค้าง (webhook พักเป็นเงินรับล่วงหน้า)
+ */
+export type LiffPayAllocationLine =
+  | {
+      kind: 'INSTALLMENT' | 'INSTALLMENT_REMAINING' | 'LATE_FEE' | 'PARTIAL' | 'LEFT_AFTER';
+      installmentNo: number;
+      amount: number;
+    }
+  | { kind: 'SURPLUS'; amount: number };
+
 /** Payment link data resolved by GET /line-oa/pay/:token */
 export interface LiffPaymentLinkData {
   valid: boolean;
@@ -98,6 +120,12 @@ export interface LiffPaymentLinkData {
    * `payment` ของลิงก์ที่ไม่ใช่ `INSTALLMENT` = งวดค้างแรก (แสดงเท่านั้น)
    */
   purpose: LiffPaymentLinkPurpose | null;
+  /** Task 42 — หัวยอด (server ตัดสิน) */
+  amountKind: LiffPayAmountKind;
+  /** Task 42 — วันนัดชำระของลิงก์ยอดนัด (ISO) · อื่น ๆ = null */
+  promiseDate: string | null;
+  /** Task 42 — แถว "นำไปชำระ (งวดเก่าก่อน)" ของลิงก์ `AMOUNT` · อื่น ๆ = null */
+  allocation: LiffPayAllocationLine[] | null;
   contract: {
     id: string;
     contractNumber: string;

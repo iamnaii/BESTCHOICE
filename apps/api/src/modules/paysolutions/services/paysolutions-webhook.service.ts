@@ -30,6 +30,7 @@ import { formatDateLong } from '../../../utils/thai-date.util';
 import { ensureInstallmentSchedules } from '../../../utils/installment-schedule.util';
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
 import { PaySolutionsGatewayClient } from './paysolutions-gateway.client';
+import { allocatePaidAmountFifo, fifoUnpaidPaymentsArgs } from '../pay-allocation';
 
 /**
  * Cross-seam host the webhook routes through. The facade implements this and is
@@ -353,16 +354,13 @@ export class PaySolutionsWebhookService {
             select: { status: true },
           });
 
-          const unpaidPayments = await tx.payment.findMany({
-            where: {
-              contractId: paymentLink.contractId!,
-              status: { not: 'PAID' },
-              deletedAt: null,
-            },
-            orderBy: { installmentNo: 'asc' },
-          });
+          // Task 42 — งวดที่กระจาย + การกระจาย (งวดเก่าก่อน) อยู่ที่ `pay-allocation.ts` ที่เดียว — หน้า /pay/:token แสดงผลจากตัวเดียวกัน
+          const unpaidPayments = await tx.payment.findMany(
+            fifoUnpaidPaymentsArgs(paymentLink.contractId!),
+          );
 
-          let remaining = paidAmount;
+          const allocation = allocatePaidAmountFifo(unpaidPayments, paidAmount);
+          const remaining = allocation.remaining;
           const now = new Date();
           let fullyPaidCount = 0;
           // PR-843/I2 Phase 3 3b: collect a snapshot for EVERY touched installment
@@ -381,22 +379,7 @@ export class PaySolutionsWebhookService {
             /** เลขที่รายการรับชำระของงวดนี้ — ใบเสร็จผูกรายการนี้หลัง commit (PR3) */
             entryNo?: string;
           }> = [];
-          for (const payment of unpaidPayments) {
-            if (remaining.lte(0)) break;
-            // lateFeeWaived=true sets lateFee=0 elsewhere, so reading lateFee
-            // directly is equivalent — we keep the guard explicit to be
-            // defensive against future model changes.
-            const lateFee = payment.lateFeeWaived
-              ? new Prisma.Decimal(0)
-              : payment.lateFee;
-            const owed = payment.amountDue.add(lateFee).sub(payment.amountPaid);
-            if (owed.lte(0)) continue;
-
-            const payThis = Prisma.Decimal.min(remaining, owed);
-            remaining = remaining.sub(payThis);
-            const newAmountPaid = payment.amountPaid.add(payThis).toDecimalPlaces(2);
-            const fullyPaid = newAmountPaid.gte(payment.amountDue.add(lateFee));
-
+          for (const { payment, lateFee, payThis, newAmountPaid, fullyPaid } of allocation.lines) {
             const paymentUpdated = await tx.payment.update({
               where: { id: payment.id },
               data: {

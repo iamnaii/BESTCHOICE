@@ -680,7 +680,7 @@ CLI source: `apps/api/src/cli/wipe-accounting.cli.ts`
   ซึ่งไม่จด VAT ⇒ เดิม `resolveBranchVat` ทำให้สัญญาใหม่ได้ VAT 0 · impact C1 ของการตั้ง `branches.company_id = SHOP`) · ไม่มีแถว FINANCE/ไม่มีอัตรา →
   ค่า VAT ของระบบ (`VAT_RATE`) · ใบเสนอยอด `vatSource` = `FINANCE_COMPANY` (`BRANCH_COMPANY` เป็นป้ายเดิม ไม่มีผู้สร้างแล้ว)
 - **VAT ของตั้งค่าดอกเบี้ย = FINANCE ที่เดียว (คำตัดสินเจ้าของ #22 · 2026-10-31 — ปิด review M4 ของ Task 28):** ตัวเดียว `resolveInstallmentVat`
-  (`utils/config.util.ts` — FINANCE → `VAT_RATE` ของระบบ) · ผู้อ่านทุกตัวเรียกตัวนี้: ใบเสนอยอดสัญญา (`ContractQuoteService` — `resolveFinanceVat` กับค่าระบบ) ·
+  (`utils/config.util.ts` — FINANCE → `VAT_RATE` ของระบบ ผ่าน `loadInstallmentConfig().vatPct` ตัวเดียวกับใบเสนอยอด ปัด 4 ตำแหน่ง — review m-f) · ผู้อ่านทุกตัวเรียกตัวนี้: ใบเสนอยอดสัญญา (`ContractQuoteService` — `resolveFinanceVat` กับค่าระบบ) ·
   `resolveBcConfig` (`GET /interest-configs/resolved` — การ์ด/สติกเกอร์/หน้าสต๊อก/หน้าสินค้า · เรียงตามค่างวด) · `resolveBcConfigForCategory` (บอทขาย ·
   หน้าร้านออนไลน์) · `ProductQuoteService` (การ์ดสินค้าในแชท) · `InterestConfigService` แทน `vatPct` ที่ส่งออกด้วยค่านี้ (`findAll`/`findOne`/`findByCategory`/
   ผล create-update — หน้าตั้งค่าดอกเบี้ย + พรีวิวหน้าสร้างสัญญา) · `GET /contracts/:id` แทน `interestConfig.vatPct` (พรีวิวแก้สัญญาร่าง) ·

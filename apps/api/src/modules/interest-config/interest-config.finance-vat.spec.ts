@@ -2,7 +2,11 @@ import { Prisma } from '@prisma/client';
 import { InterestConfigService } from './interest-config.service';
 import { resolveBcConfig } from './resolve-bc-config';
 import { resolveBcConfigForCategory, toBcConfig } from '../../utils/bc-installment-config.util';
-import { resolveInstallmentParams, resolveInstallmentVat } from '../../utils/config.util';
+import {
+  loadInstallmentConfig,
+  resolveInstallmentParams,
+  resolveInstallmentVat,
+} from '../../utils/config.util';
 
 /**
  * Owner decision #22 (2026-10-31): the VAT of the interest settings is read from the FINANCE company only
@@ -73,6 +77,18 @@ describe('resolveInstallmentVat — FINANCE first, then the system VAT setting (
   it('no FINANCE row → system VAT_RATE (Settings › บัญชี & ภาษี › VAT)', async () => {
     await expect(resolveInstallmentVat(makePrisma(null, '8') as never)).resolves.toEqual({
       vatPct: 0.08,
+      source: 'CONFIG_FALLBACK',
+    });
+  });
+
+  // review m-f: the contract quote passes `loadInstallmentConfig().vatPct` (4-dp rounding) as the fallback — every other
+  // reader must get the very same value, not a second unrounded read of the same keys
+  it('system fallback = the contract quote value (loadInstallmentConfig, rounded to 4 dp)', async () => {
+    const prisma = makePrisma(null, '7.12345');
+    const quoteFallback = (await loadInstallmentConfig(prisma as never)).vatPct;
+    expect(quoteFallback).toBe(0.0712);
+    await expect(resolveInstallmentVat(prisma as never)).resolves.toEqual({
+      vatPct: quoteFallback,
       source: 'CONFIG_FALLBACK',
     });
   });

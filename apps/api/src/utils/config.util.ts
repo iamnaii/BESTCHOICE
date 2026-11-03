@@ -3,7 +3,7 @@
  * Eliminates duplication of config loading pattern across services
  */
 import { Prisma } from '@prisma/client';
-import { DEFAULT_VAT_DECIMAL, loadVatRateDecimal, parseVatValue } from './vat-rate.util';
+import { DEFAULT_VAT_DECIMAL, parseVatValue } from './vat-rate.util';
 import { STORE_COMMISSION_FALLBACK_RATE } from './store-commission.util';
 
 /**
@@ -316,9 +316,12 @@ export async function resolveFinanceVat(
  * เรียงตามค่างวดในหน้าสต๊อก) · `resolveBcConfigForCategory` (บอทขาย · หน้าร้านออนไลน์) · การ์ดสินค้าในแชท (`ProductQuoteService`) ·
  * ค่า `vatPct` ที่ `InterestConfigService` ส่งออก. FINANCE → ไม่มีแถว/อัตรา = `VAT_RATE` ของระบบ.
  * `interest_configs.vat_pct` ยังอยู่ในตาราง (ไม่มี migration ทำลายข้อมูล) แต่ไม่มีใครอ่านไปคำนวณ และ API ไม่เขียน
+ *
+ * ค่าสำรองของระบบ = `loadInstallmentConfig().vatPct` ตัวเดียวกับที่ใบเสนอยอดส่งให้ `resolveFinanceVat` (ลำดับ key + ปัด 4 ตำแหน่ง
+ * เดียวกัน — review m-f) ⇒ ทุกผู้อ่านได้ค่าเท่ากับใบเสนอยอดเสมอ
  */
 export async function resolveInstallmentVat(
   prisma: Pick<Prisma.TransactionClient, 'companyInfo' | 'systemConfig'>,
 ): Promise<{ vatPct: number; source: 'FINANCE_COMPANY' | 'CONFIG_FALLBACK' }> {
-  return resolveFinanceVat(prisma, () => loadVatRateDecimal(prisma as never));
+  return resolveFinanceVat(prisma, async () => (await loadInstallmentConfig(prisma)).vatPct);
 }

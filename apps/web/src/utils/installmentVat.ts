@@ -22,10 +22,11 @@ function percentText(fraction: number): string {
   return `${(fraction * 100).toFixed(2).replace(/\.?0+$/, '')}%`;
 }
 
+/** ปัด 4 ตำแหน่งเหมือน `loadInstallmentConfig` ของ server (ค่าสำรองที่ใบเสนอยอดใช้ — review m-f) */
 function parseSystemVat(raw: string | null | undefined): number {
   const n = Number(String(raw ?? '').trim());
   if (raw == null || String(raw).trim() === '' || !Number.isFinite(n) || n < 0) return 0.07;
-  return n >= 1 ? n / 100 : n;
+  return Math.round((n >= 1 ? n / 100 : n) * 10000) / 10000;
 }
 
 export function installmentVat(

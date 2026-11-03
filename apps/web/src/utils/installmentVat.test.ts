@@ -33,4 +33,9 @@ describe('installmentVat', () => {
       source: 'SYSTEM',
     });
   });
+
+  // review m-f: same 4-dp rounding as the server's loadInstallmentConfig (the contract quote's fallback)
+  it('system VAT_RATE is rounded to 4 dp like the server', () => {
+    expect(installmentVat([shop], '7.12345')).toMatchObject({ fraction: 0.0712, source: 'SYSTEM' });
+  });
 });

@@ -218,7 +218,8 @@ export async function seedCollectionsFoundation(
     {
       key: 'letter_auto_generate_enabled',
       value: 'true',
-      label: 'เปิดใช้งาน cron สร้างหนังสืออัตโนมัติรายวัน (ผ่านการตรวจสอบทางกฎหมาย — owner 2026-07-24)',
+      label:
+        'เปิดใช้งาน cron สร้างหนังสืออัตโนมัติรายวัน (ผ่านการตรวจสอบทางกฎหมาย — owner 2026-07-24)',
     },
     {
       key: 'letter_return_device_days',

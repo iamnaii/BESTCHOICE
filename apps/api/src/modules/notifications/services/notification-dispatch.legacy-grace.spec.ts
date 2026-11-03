@@ -8,6 +8,8 @@ describe('NotificationDispatchService.sendFromTemplate — ผ่อนผัน
   function build(opts: { inGrace: boolean; category?: string; channel?: 'LINE' | 'SMS' }) {
     const prisma = {
       contract: { findFirst: jest.fn().mockResolvedValue(opts.inGrace ? { id: 'k1' } : null) },
+      // Task 34 รอบเก็บ — แม่แบบ dunning.* ทาง Flex ถามความยินยอม PDPA (ลูกค้าในเคสเหล่านี้มี)
+      pDPAConsent: { findFirst: jest.fn().mockResolvedValue({ id: 'consent-1' }) },
       chatRoom: { findFirst: jest.fn().mockResolvedValue(null) },
       chatMessage: { create: jest.fn() },
       notificationLog: {

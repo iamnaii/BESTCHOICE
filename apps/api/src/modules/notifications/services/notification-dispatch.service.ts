@@ -20,6 +20,7 @@ import {
 import { readBoolFlag } from '../../../utils/config.util';
 import * as Sentry from '@sentry/nestjs';
 import { recordNoticeLog } from '../notice-log';
+import { ensurePdpaConsentOrLogSkip } from '../pdpa-consent-gate';
 import { NotificationTransportService } from './notification-transport.service';
 
 /**
@@ -32,6 +33,9 @@ export interface DispatchOptions {
   /** ข้อความแจ้งล็อก/ปลดล็อกเครื่อง — ไม่ถูกระงับช่วงผ่อนผัน (`LEGACY_LINK_GRACE_EXEMPT` · รอบ 3 M5) */
   legacyGraceExempt?: boolean;
 }
+
+/** แม่แบบข้อความขั้นทวงของรอบ 08:05 (`dunningStageTemplateEvent` → `dunning.<ขั้น>`) — ชุดที่ทาง Flex ต้องผ่านด่านความยินยอม (Task 34 รอบเก็บ) */
+const DUNNING_STAGE_TEMPLATE_PREFIX = 'dunning.';
 
 /**
  * Notification dispatch hub — owns `send()` (the IN_APP kill-switch gate, the
@@ -357,7 +361,29 @@ export class NotificationDispatchService {
       return { id, status: 'BLOCKED', blockReason: LEGACY_LINK_GRACE_BLOCK_REASON };
     }
 
-    // For Flex templates with channel=LINE, render JSON and send via lineOaService
+    const viaFlex =
+      tpl.format === 'flex' && !!tpl.flexTemplate && tpl.channel === 'LINE' && !!tpl.channelKey;
+
+    // Task 34 รอบเก็บ (ผู้คุมงานข้อ 4) — ทาง Flex ไม่ผ่าน `canSend` ⇒ แม่แบบขั้นทวง `dunning.*` ที่ระบบส่งเอง (A4 รอบ 08:05) ใช้ด่านความยินยอม
+    // ตัวเดียวกับ A1/A2/A6/บอท: ไม่มี = ไม่ส่ง · แถว IN_APP SKIPPED · คืน BLOCKED NO_CONSENT (รูปเดียวกับที่ `send()` คืน — A4 นับเป็น suppressed) ·
+    // ทางข้อความ (แม่แบบไม่ใช่ Flex / Flex ส่งไม่ผ่าน) ผ่าน `canSend` อยู่แล้ว · ส่งด้วยมือ / bypassCompliance ตามกติกาเดิม ·
+    // **แจ้งล็อก `mdm.lock_notice` ไม่อยู่ในชุดนี้โดยตั้งใจ** (คำสั่งเจ้าของ: ห้ามเปลี่ยนเรื่อง MDM)
+    if (
+      viaFlex &&
+      eventType.startsWith(DUNNING_STAGE_TEMPLATE_PREFIX) &&
+      !options.manual &&
+      !options.bypassCompliance &&
+      options.customerId &&
+      !(await ensurePdpaConsentOrLogSkip(this.prisma, {
+        customerId: options.customerId,
+        relatedId: options.relatedId ?? options.customerId,
+        subject: tpl.subject ?? tpl.name,
+      }))
+    ) {
+      return { id: null, status: 'BLOCKED', blockReason: 'NO_CONSENT' };
+    }
+
+    // For Flex templates with channel=LINE, render JSON and send via lineOaService (เงื่อนไขเดียวกับ `viaFlex`)
     if (tpl.format === 'flex' && tpl.flexTemplate && tpl.channel === 'LINE' && tpl.channelKey) {
       // Task 30 รอบ 4 m3 — try ครอบเฉพาะการสร้าง Flex + push · สำเนาลงห้องแชทและแถว log ทำหลังส่งถึงแล้ว (ลงไม่ได้ต้องไม่ตกไปทางข้อความ
       // ⇒ ไม่ส่งข้อความที่สอง — แบบเดียวกับ A1/A2 รอบ 3 M3)

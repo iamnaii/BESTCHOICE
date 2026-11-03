@@ -7,7 +7,9 @@ export const NO_PDPA_CONSENT_SKIP_MESSAGE = 'ข้ามการแจ้ง�
 /**
  * ด่านความยินยอม PDPA ของ**ผู้ส่งข้อความเรื่องงวดทาง LINE ที่ไม่ผ่าน `dispatch.send`** (จึงไม่ผ่าน `ComplianceService.canSend`) —
  * A1 เตือนค่างวด · A2 แจ้งค้างชำระ (`NotificationReminderService`) · การ์ดลิงก์ชำระอัตโนมัติ A6 (`CollectionsNotifierService.sendAutoPaymentLinks`) ·
- * บอทการเงินเตือน/ทวง (`AutoTriggerService` — Task 34 ข้อ 3: เดิม A6 และบอทส่งให้ลูกค้าที่ไม่มีความยินยอม)
+ * บอทการเงินเตือน/ทวง (`AutoTriggerService` — Task 34 ข้อ 3: เดิม A6 และบอทส่งให้ลูกค้าที่ไม่มีความยินยอม) ·
+ * ทาง Flex ของ `NotificationDispatchService.sendFromTemplate` สำหรับแม่แบบขั้นทวง `dunning.*` ที่ระบบส่งเอง (A4 — Task 34 รอบเก็บ) ·
+ * **แจ้งล็อก `mdm.lock_notice` ไม่ผ่านด่านนี้โดยตั้งใจ** (คำสั่งเจ้าของ: ห้ามเปลี่ยนเรื่อง MDM)
  *
  * มีความยินยอม (นิยามเดียว `hasActivePdpaConsent` — ตัวเดียวกับ `canSend`) = `true` · ไม่มี = ลงแถว `notification_logs` IN_APP `SKIPPED`
  * (ผูก `relatedId` = id งวด · หัวข้อของผู้ส่ง) ให้ตรวจย้อนได้ แล้วคืน `false` — ผู้เรียกไม่ส่งทั้ง LINE และ SMS

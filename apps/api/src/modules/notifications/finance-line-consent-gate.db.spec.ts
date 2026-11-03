@@ -6,14 +6,20 @@
  *   - ลูกค้าที่ผูก LINE การเงินด้วย OTP หลัง #1763 (ยินยอมตอนผูก — `VerificationService.verifyOtp` บันทึก `pdpa_consents` GRANTED ในทรานแซกชันของการผูก)
  *     ได้รับตามปกติ
  *   - ลูกค้าที่ไม่มีความยินยอม (ผูกก่อน #1763 / ถูกเพิกถอน) ไม่ได้รับ · ทิ้งแถว IN_APP SKIPPED แบบเดียวกับ A1/A2 · บอทไม่จองแถว
+ * รอบเก็บ (ผู้คุมงานข้อ 4) — แม่แบบขั้นทวง `dunning.*` ทาง Flex ของ `sendFromTemplate` (A4 รอบ 08:05) ใช้ด่านเดียวกัน · แจ้งล็อก `mdm.lock_notice`
+ *   พฤติกรรมเดิม (ไม่มีด่านความยินยอม — ตั้งใจ ไม่แตะเรื่อง MDM)
  *
- * ปลายทางจริงถูก stub (LineOaService ของ A6 · LineFinanceClient ของบอท · SMS ของ OTP) — นับข้อความต่อ LINE ที่ส่งผ่าน
+ * ปลายทางจริงถูก stub (LineOaService ของ A6 · LineFinanceClient ของบอท · transport ของ NotificationsService · SMS ของ OTP) — นับข้อความต่อ LINE
  */
 import { PrismaClient } from '@prisma/client';
 import { PDPAService } from '../pdpa/pdpa.service';
 import { AutoTriggerService } from '../chatbot-finance/services/auto-trigger.service';
 import { VerificationService } from '../chatbot-finance/services/verification.service';
 import { CollectionsNotifierService } from './services/collections-notifier.service';
+import { NotificationsService } from './notifications.service';
+import { ComplianceService } from './compliance.service';
+import { HolidayService } from './holiday.service';
+import { NotificationTemplateService } from './notification-template.service';
 import {
   FinanceFixtureBase,
   InstallmentFixture,
@@ -38,11 +44,12 @@ let collections: CollectionsNotifierService;
 let bot: AutoTriggerService;
 let verification: VerificationService;
 let pdpa: PDPAService;
+let notifications: NotificationsService;
 let seq = 0;
 const fixtures: InstallmentFixture[] = [];
 const sms = { sendSmsFromQueue: jest.fn().mockResolvedValue(undefined) };
 
-type Via = 'payLink' | 'bot';
+type Via = 'payLink' | 'bot' | 'flex' | 'text';
 const delivered: { to: string; via: Via }[] = [];
 const sink = (via: Via) => async (to: string) => {
   delivered.push({ to, via });
@@ -96,11 +103,23 @@ beforeAll(async () => {
   assertTestDatabase();
   base = await createFinanceFixtureBase(prisma, stamp);
   pdpa = new PDPAService(prisma as never);
+  notifications = new NotificationsService(
+    prisma as never,
+    { get: jest.fn() } as never,
+    {} as never,
+    { afterPayment: jest.fn(() => []) } as never,
+    { getValue: jest.fn().mockResolvedValue('') } as never,
+    new ComplianceService(prisma as never, pdpa, new HolidayService()),
+    new NotificationTemplateService(prisma as never),
+  );
+  jest.spyOn(notifications.transport, 'sendLineFlexMessage').mockImplementation(sink('flex'));
+  jest.spyOn(notifications.transport, 'sendLine').mockImplementation(sink('text'));
+  jest.spyOn(notifications.transport, 'sendSms').mockResolvedValue('sms-id');
   collections = new CollectionsNotifierService(
     prisma as never,
     { sendFlexMessage: jest.fn(sink('payLink')) } as never,
     pdpa,
-    {} as never,
+    notifications,
     {
       createPaymentLink: jest.fn().mockResolvedValue({
         url: 'https://pay.test/x',
@@ -204,5 +223,68 @@ describe('Task 34 ข้อ 3 — ด่านความยินยอม PDP
 
     expect(deliveries(t5.lineUserId, 'bot')).toBe(0);
     expect(await prisma.chatAutoTrigger.count({ where: { customerId: t5.customerId } })).toBe(0);
+  });
+});
+
+describe('Task 34 รอบเก็บ ข้อ 4 — แม่แบบขั้นทวง dunning.* ทาง Flex (A4 รอบ 08:05) · แจ้งล็อกพฤติกรรมเดิม', () => {
+  async function overdueCustomer(label: string, consent: boolean) {
+    const f = await createInstallmentFixture(prisma, base, {
+      label: `${label}-${++seq}`,
+      dueDate: dueDateBkk(day, -10),
+      consent,
+      contractStatus: 'OVERDUE',
+      paymentStatus: 'OVERDUE',
+    });
+    fixtures.push(f);
+    return f;
+  }
+  const escalate = (f: InstallmentFixture) => ({
+    contractId: f.contractId,
+    contractNumber: f.contractNumber,
+    daysOverdue: 10,
+    to: 'NOTICE',
+  });
+
+  it('ขั้นทวง dunning.notice: มีความยินยอม → ส่ง Flex · ไม่มีความยินยอม → ไม่ส่ง (ทั้ง Flex และข้อความ) + แถว IN_APP SKIPPED', async () => {
+    useFakeDate(bangkokAt(day, 0, 8, 5));
+    const ok = await overdueCustomer('dun-consent', true);
+    const none = await overdueCustomer('dun-none', false);
+
+    const result = await collections.notifyEscalatedDunning({
+      escalated: [escalate(ok), escalate(none)],
+    });
+
+    expect(deliveries(ok.lineUserId, 'flex')).toBe(1);
+    expect(delivered.filter((d) => d.to === none.lineUserId)).toEqual([]);
+    // ไม่นับเป็นแจ้งแล้ว (A4 นับ BLOCKED เป็น suppressed)
+    expect(result).toEqual({ escalated: 2, notified: 1, suppressed: 1 });
+    const tpl = await prisma.notificationTemplate.findFirstOrThrow({
+      where: { eventType: 'dunning.notice', deletedAt: null },
+      select: { subject: true, name: true },
+    });
+    expect(await consentSkips(none.contractId)).toEqual([
+      {
+        subject: tpl.subject ?? tpl.name,
+        message: 'ข้ามการแจ้งเตือน — ลูกค้าไม่มี PDPA consent',
+        recipient: none.customerId,
+      },
+    ]);
+    expect(await consentSkips(ok.contractId)).toEqual([]);
+  });
+
+  it('แจ้งล็อก mdm.lock_notice: ลูกค้าไม่มีความยินยอม → ยังส่ง Flex (พฤติกรรมเดิม — ไม่มีด่านความยินยอมโดยตั้งใจ)', async () => {
+    useFakeDate(bangkokAt(day, 0, 8, 5));
+    const none = await overdueCustomer('lock-none', false);
+
+    const result = await notifications.sendFromTemplate(
+      'mdm.lock_notice',
+      { name: 'ทดสอบ', contractNumber: none.contractNumber, daysOverdue: '30' },
+      none.lineUserId,
+      { relatedId: none.contractId, customerId: none.customerId },
+    );
+
+    expect(result.status).toBe('SENT');
+    expect(deliveries(none.lineUserId, 'flex')).toBe(1);
+    expect(await consentSkips(none.contractId)).toEqual([]);
   });
 });

@@ -6,7 +6,8 @@ import type { PrismaService } from '../../prisma/prisma.service';
  * (ยินยอมตอนทำสัญญา `PDPAService.recordConsent` · ยินยอมตอนผูก LINE การเงิน `recordLineFinanceConsentInTx` — #1763)
  *
  * ผู้อ่าน: `PDPAService.hasActiveConsent` (→ ด่าน `ComplianceService.canSend` ของทุก `dispatch.send` หมวด REMINDER/DUNNING/MARKETING ·
- * แจ้งสถานะ A3 · Flex ใบเสร็จ) และ `ensurePdpaConsentOrLogSkip` (ผู้ส่งตรงที่ไม่ผ่าน dispatch: A1 · A2 · การ์ดลิงก์ชำระ A6 · บอทเตือน/ทวง) —
+ * แจ้งสถานะ A3 · Flex ใบเสร็จ) และ `ensurePdpaConsentOrLogSkip` (ผู้ส่งตรงที่ไม่ผ่าน `canSend`: A1 · A2 · การ์ดลิงก์ชำระ A6 · บอทเตือน/ทวง ·
+ * ทาง Flex ของแม่แบบขั้นทวง `dunning.*`) —
  * ห้ามเขียนเงื่อนไขชุดที่สอง
  */
 export const ACTIVE_PDPA_CONSENT_WHERE = {

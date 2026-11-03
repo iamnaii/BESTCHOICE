@@ -508,14 +508,17 @@ export class DunningEngineService {
     // ปลายทาง LINE การเงิน = แถว OTP ของลูกค้า (Task 22 I-1 ง) ไม่ใช่คอลัมน์ line_id_finance ที่อาจค้าง
     const financeLineId = financeLineRecipient(contract.customer);
     // Task 39 (ทาง ก ของรอบ 8 I5) — แนบลิงก์ตามสวิตช์ "แนบลิงก์ชำระเงิน" ของกฎ (m12) · ยอดของลิงก์ = ยอดในข้อความเสมอ:
-    // ข้อความระบุงวด → ลิงก์ผูกงวดนั้น (หน้า `/pay/:token` ส่งเลขงวด · intent เทียบยอดคงค้างของงวด) · ยอดค้างรวม (แจ้งล็อก) / ยอดนัด
-    // (นัดชำระ) → ลิงก์ไม่ผูกงวด (`installmentBound = false` — หน้าเว็บส่ง token · intent ใช้ยอดของลิงก์ · webhook กระจาย FIFO)
+    // ข้อความระบุงวด → `INSTALLMENT` ของงวดนั้น (หน้า `/pay/:token` ส่งเลขงวด · intent เทียบยอดคงค้างของงวด) · ยอดค้างรวม (แจ้งล็อก) /
+    // ยอดนัด (นัดชำระ) → `AMOUNT` (หน้าเว็บส่ง token · intent ใช้ยอดของลิงก์ · ไม่ติดด่าน #24 · webhook กระจาย FIFO)
     if (rule.includePaymentLink && amount && financeLineId) {
       try {
         const link = await this.paymentLinkService.createPaymentLink(
           contractId,
           amount.linkInstallmentNo,
-          amount.value.toNumber(),
+          {
+            amount: amount.value.toNumber(),
+            purpose: amount.linkInstallmentNo !== undefined ? 'INSTALLMENT' : 'AMOUNT',
+          },
         );
         paymentLinkUrl = link.url;
       } catch (err) {

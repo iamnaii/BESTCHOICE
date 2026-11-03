@@ -430,8 +430,9 @@ describe('PaySolutionsService — intent guards + FAILED/routing callbacks (char
       });
     });
 
-    // owner decision #24 (2026-10-31): a no-installment intent is the LIFF payoff (LiffEarlyPayoff / /pay/:token
-    // "ยอดปิดสัญญา") — refused while an approved refund waits for the bank. Enforced HERE, at link creation: the webhook
+    // owner decision #24 (2026-10-31): an intent with neither installmentNo nor pay-link token is the LIFF payoff
+    // (LiffEarlyPayoff) — refused while an approved refund waits for the bank (Task 39: /pay/:token links are refused only
+    // when their purpose is PAYOFF — paysolutions.intent-pay-link.spec.ts). Enforced HERE, at link creation: the webhook
     // never rejects money the gateway has captured (same shape as the "no skipping installments" rule).
     it('#24 no installmentNo + refund APPROVED (not bank-confirmed) → customer 400 before any gateway call', async () => {
       buildIntentPrisma(null);

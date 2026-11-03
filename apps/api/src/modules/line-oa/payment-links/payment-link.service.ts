@@ -1,6 +1,12 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { MessageRole, MessageType, ChatChannel, LineChannelType } from '@prisma/client';
+import {
+  MessageRole,
+  MessageType,
+  ChatChannel,
+  LineChannelType,
+  PaymentLinkPurpose,
+} from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { FINANCE_LINE_RECIPIENT_SELECT } from '../../line-oa/services/otp-verified-customer';
 import { calcOutstanding, toNum as d } from '../../../utils/decimal.util';
@@ -37,15 +43,15 @@ export class PaymentLinkService {
   /**
    * Create a payment link for a specific contract/installment.
    *
-   * Task 39 — `installmentBound` (ผูกงวด) = ยอดของลิงก์คือยอดคงค้างของงวดที่ผูก: ไม่ส่ง `overrideAmount` (ยอด = ยอดคงค้างของงวดนั้น)
-   * หรือผู้เรียกระบุ `installmentNo` เอง ⇒ หน้า `/pay/:token` ส่งเลขงวด และ intent เทียบยอดกับงวดนั้น (พฤติกรรมเดิม) ·
-   * ส่งยอดมาโดยไม่ระบุงวด (ปิดยอด · ยอดค้างรวมแจ้งล็อก · ยอดนัด) = ไม่ผูก ⇒ intent ใช้ยอดของลิงก์ แล้ว webhook กระจาย FIFO ·
-   * `paymentId` ของลิงก์ไม่ผูกงวด = งวดค้างแรก (หน้าเว็บใช้แสดงเท่านั้น)
+   * Task 39 — `PaymentLink.purpose` บอกว่าเงินของลิงก์จ่ายอะไร (หน้า `/pay/:token` ตัดสินจากค่านี้ ไม่เดาจากยอด):
+   * ไม่ส่ง `override` ⇒ `INSTALLMENT` ยอด = ยอดคงค้างของงวดที่ผูก (งวดที่ระบุ หรืองวดค้างแรก) · ส่ง `override` ⇒ ผู้เรียกบอกยอดและ
+   * purpose เอง: `INSTALLMENT` (ยอดคงค้างของงวดที่ระบุ) · `PAYOFF` (ยอดปิดสัญญา — ด่าน #24 ตอนจ่าย) · `AMOUNT` (ยอดที่ข้อความทวงบอก) ·
+   * ลิงก์ที่ไม่ใช่ `INSTALLMENT` จ่ายด้วยยอดของลิงก์ (intent ทาง token) แล้ว webhook กระจาย FIFO · `paymentId` = งวดค้างแรก (แสดงเท่านั้น)
    */
   async createPaymentLink(
     contractId: string,
     installmentNo?: number,
-    overrideAmount?: number,
+    override?: { amount: number; purpose: PaymentLinkPurpose },
   ): Promise<{
     token: string;
     url: string;
@@ -73,8 +79,8 @@ export class PaymentLinkService {
       throw new NotFoundException('ไม่พบงวดค้างชำระ');
     }
 
-    const amount = overrideAmount ?? calcOutstanding(payment);
-    const installmentBound = overrideAmount === undefined || Boolean(installmentNo);
+    const amount = override?.amount ?? calcOutstanding(payment);
+    const purpose: PaymentLinkPurpose = override?.purpose ?? PaymentLinkPurpose.INSTALLMENT;
 
     // Generate unique token
     const token = randomBytes(32).toString('hex');
@@ -90,7 +96,7 @@ export class PaymentLinkService {
         contractId,
         paymentId: payment.id,
         amount,
-        installmentBound,
+        purpose,
         status: 'ACTIVE',
         expiresAt,
       },
@@ -217,8 +223,8 @@ export class PaymentLinkService {
       amount,
       status: link.status,
       expiresAt: link.expiresAt,
-      // Task 39 — หน้า /pay/:token ส่งเลขงวดเฉพาะลิงก์ผูกงวด · ไม่ผูก = ส่ง token แล้ว server ใช้ยอดของลิงก์
-      installmentBound: link.installmentBound,
+      // Task 39 — หน้า /pay/:token ส่งเลขงวดเฉพาะลิงก์ INSTALLMENT · อื่น ๆ ส่ง token แล้ว server ใช้ยอดของลิงก์
+      purpose: link.purpose,
       contract: {
         id: contract.id,
         contractNumber: contract.contractNumber,

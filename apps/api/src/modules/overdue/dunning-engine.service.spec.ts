@@ -534,19 +534,22 @@ describe('DunningEngineService', () => {
         mockPrisma.payment.findMany.mockResolvedValue(dueRows);
       });
 
-      it('แจ้งล็อก + แนบลิงก์ → ลิงก์ไม่ผูกงวด ยอด = ยอดค้างรวมในข้อความ (1,615.83) · ข้อความต่อท้ายบรรทัดลิงก์', async () => {
+      it('แจ้งล็อก + แนบลิงก์ → ลิงก์ AMOUNT ยอด = ยอดค้างรวมในข้อความ (1,615.83) · ข้อความต่อท้ายบรรทัดลิงก์', async () => {
         mockPrisma.dunningRule.findFirst.mockResolvedValueOnce(linkedRule('DEVICE_LOCKED', LOCK_TEXT, true));
 
         await service.executeEventTrigger('DEVICE_LOCKED', 'c-1', null, null);
 
-        expect(mockPaymentLinkService.createPaymentLink).toHaveBeenCalledWith('c-1', undefined, 1615.83);
+        expect(mockPaymentLinkService.createPaymentLink).toHaveBeenCalledWith('c-1', undefined, {
+          amount: 1615.83,
+          purpose: 'AMOUNT',
+        });
         expect(sentMessage()).toBe(
           'กรุณาชำระยอดค้าง 1,615.83 ฿ เพื่อปลดล็อคทันที\n\nชำระเงินออนไลน์: https://web/pay/tok',
         );
         expect(mockPrisma.dunningAction.create.mock.calls[0][0].data.paymentLinkUrl).toBe('https://web/pay/tok');
       });
 
-      it('นัดชำระ + แนบลิงก์ → ลิงก์ไม่ผูกงวด ยอด = ยอดนัด (1,000) · ข้อความแม่แบบไม่เปลี่ยน', async () => {
+      it('นัดชำระ + แนบลิงก์ → ลิงก์ AMOUNT ยอด = ยอดนัด (1,000) · ข้อความแม่แบบไม่เปลี่ยน', async () => {
         mockPrisma.dunningRule.findFirst.mockResolvedValueOnce(
           linkedRule('CALL_ANSWERED_PROMISE', PROMISE_TEXT, true),
         );
@@ -556,7 +559,10 @@ describe('DunningEngineService', () => {
           settlementDate: '5 พ.ย. 69',
         });
 
-        expect(mockPaymentLinkService.createPaymentLink).toHaveBeenCalledWith('c-1', undefined, 1000);
+        expect(mockPaymentLinkService.createPaymentLink).toHaveBeenCalledWith('c-1', undefined, {
+          amount: 1000,
+          purpose: 'AMOUNT',
+        });
         expect(sentMessage()).toBe(
           'ขอบคุณที่รับสาย กรุณาชำระยอด 1,000 ฿ ภายใน 5 พ.ย. 69\n\nชำระเงินออนไลน์: https://web/pay/tok',
         );
@@ -574,7 +580,7 @@ describe('DunningEngineService', () => {
         expect(sentMessage()).not.toContain('ชำระเงินออนไลน์');
       });
 
-      it('ไม่รับสาย (ข้อความระบุงวด) + แนบลิงก์ → ลิงก์ผูกงวดนั้น ยอดคงค้างของงวด (เหมือนเดิม)', async () => {
+      it('ไม่รับสาย (ข้อความระบุงวด) + แนบลิงก์ → ลิงก์ INSTALLMENT ของงวดนั้น ยอดคงค้างของงวด', async () => {
         mockPrisma.dunningRule.findFirst.mockResolvedValueOnce(
           linkedRule('CALL_NO_ANSWER', 'ชำระงวดที่ {{installmentNo}} ยอด {{amount}} ฿', true),
         );
@@ -590,7 +596,10 @@ describe('DunningEngineService', () => {
 
         await service.executeEventTrigger('CALL_NO_ANSWER', 'c-1', null, 'cl-1');
 
-        expect(mockPaymentLinkService.createPaymentLink).toHaveBeenCalledWith('c-1', 3, 615.83);
+        expect(mockPaymentLinkService.createPaymentLink).toHaveBeenCalledWith('c-1', 3, {
+          amount: 615.83,
+          purpose: 'INSTALLMENT',
+        });
       });
     });
 

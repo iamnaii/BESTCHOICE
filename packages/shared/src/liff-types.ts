@@ -82,6 +82,9 @@ export interface LiffEarlyPayoffQuote {
   customerName: string;
 }
 
+/** `PaymentLink.purpose` (Prisma enum `PaymentLinkPurpose`) — Task 39 */
+export type LiffPaymentLinkPurpose = 'INSTALLMENT' | 'PAYOFF' | 'AMOUNT';
+
 /** Payment link data resolved by GET /line-oa/pay/:token */
 export interface LiffPaymentLinkData {
   valid: boolean;
@@ -90,10 +93,11 @@ export interface LiffPaymentLinkData {
   status: string;
   expiresAt: string;
   /**
-   * Task 39 — ลิงก์ผูกงวด (ยอด = ยอดคงค้างของงวด `payment`) ⇒ หน้าเว็บส่งเลขงวด · false = ยอดไม่ใช่ยอดของงวดเดียว (ปิดยอด ·
-   * ยอดค้างรวมแจ้งล็อก · ยอดนัด) ⇒ ส่ง token แล้ว server ใช้ยอดของลิงก์ · `payment` ของลิงก์ไม่ผูกงวด = งวดค้างแรก (แสดงเท่านั้น)
+   * Task 39 — เงินของลิงก์จ่ายอะไร: `INSTALLMENT` (ยอดคงค้างของงวด `payment`) ⇒ หน้าเว็บส่งเลขงวด · `PAYOFF` (ยอดปิดสัญญา) /
+   * `AMOUNT` (ยอดค้างรวมแจ้งล็อก · ยอดนัด) ⇒ ส่ง token แล้ว server ใช้ยอดของลิงก์ · `null` = แถวเก่า/ไม่ใช่ลิงก์ของสัญญา ·
+   * `payment` ของลิงก์ที่ไม่ใช่ `INSTALLMENT` = งวดค้างแรก (แสดงเท่านั้น)
    */
-  installmentBound: boolean;
+  purpose: LiffPaymentLinkPurpose | null;
   contract: {
     id: string;
     contractNumber: string;

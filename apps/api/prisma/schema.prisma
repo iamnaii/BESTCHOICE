@@ -4449,6 +4449,16 @@ enum PaymentLinkStatus {
   EXPIRED
 }
 
+/// Task 39 — เงินของลิงก์ชำระของสัญญาจ่ายอะไร (`PaymentLink.purpose`)
+enum PaymentLinkPurpose {
+  /// ยอด = ยอดคงค้างของงวดที่ผูก (`paymentId`) — หน้า `/pay/:token` ส่งเลขงวด · intent เทียบยอดกับงวดนั้น
+  INSTALLMENT
+  /// ยอดปิดสัญญา (ปิดยอดก่อนกำหนด) — ด่านคำขอคืนเงินรอธนาคาร #24 ใช้กับลิงก์นี้
+  PAYOFF
+  /// ยอดที่ข้อความบอก (ยอดค้างรวมแจ้งล็อก · ยอดนัด) — ไม่ใช่ยอดของงวดเดียวและไม่ใช่การปิดยอด
+  AMOUNT
+}
+
 enum EvidenceStatus {
   PENDING_REVIEW
   APPROVED
@@ -4481,23 +4491,30 @@ model PaymentLink {
   paymentId        String?           @map("payment_id")
   savingPlanId     String?           @map("saving_plan_id")
   amount           Decimal           @db.Decimal(12, 2)
-  /// Task 39 — ลิงก์ผูกงวด: ยอดของลิงก์ = ยอดคงค้างของงวดที่ผูก (`paymentId`) ⇒ หน้า `/pay/:token` ส่งเลขงวดและ intent เทียบยอดกับงวดนั้น ·
-  /// false = ยอดไม่ใช่ยอดของงวดเดียว (ปิดยอด · ยอดค้างรวมแจ้งล็อก · ยอดนัด) ⇒ หน้าเว็บส่ง token แล้ว intent ใช้ยอดของลิงก์ (server ตัดสิน)
-  /// webhook กระจายเงิน FIFO · `paymentId` ของลิงก์ไม่ผูกงวด = งวดค้างแรก (ให้หน้าเว็บแสดง) · แถวก่อน migration = false
-  installmentBound Boolean           @default(false) @map("installment_bound")
+  /// Task 39 — เงินของลิงก์จ่ายอะไร: `INSTALLMENT` ⇒ หน้า `/pay/:token` ส่งเลขงวดและ intent เทียบยอดกับงวด (`paymentId`) ·
+  /// `PAYOFF` / `AMOUNT` ⇒ หน้าเว็บส่ง token แล้ว intent ใช้ยอดของลิงก์ (server ตัดสิน) · webhook กระจาย FIFO · `paymentId` = งวดค้างแรก (แสดงเท่านั้น)
+  /// ผู้ตั้ง: `PaymentLinkService.createPaymentLink` (ทุกลิงก์ `/pay/:token`) · แถวติดตาม intent ของสัญญา · QR ปิดยอดของพนักงาน
+  /// null = ไม่ใช่เงินค่างวดของสัญญา (ออเดอร์ออนไลน์ · ออมเงิน) หรือแถวก่อน migration ที่ใช้ไม่ได้แล้ว (หมดอายุ/ใช้แล้ว/แถวติดตาม)
+  purpose          PaymentLinkPurpose? @map("purpose")
+  /// Task 39 — แถวติดตาม intent ที่สร้างจากลิงก์ `/pay/:token` ที่ไม่ผูกงวด ชี้กลับลิงก์ต้นทาง ⇒ webhook สำเร็จตั้งลิงก์ต้นทางเป็น `USED`
+  /// (จ่ายซ้ำจากลิงก์เดียวกันไม่ได้) ในธุรกรรมเดียวกับการรับเงิน
+  sourceLinkId     String?           @map("source_link_id")
   status           PaymentLinkStatus @default(ACTIVE)
   expiresAt        DateTime          @map("expires_at")
   usedAt           DateTime?         @map("used_at")
   createdAt        DateTime          @default(now()) @map("created_at")
   deletedAt        DateTime?         @map("deleted_at")
 
-  contract    Contract?    @relation(fields: [contractId], references: [id])
-  payment     Payment?     @relation(fields: [paymentId], references: [id])
-  savingPlan  SavingPlan?  @relation(fields: [savingPlanId], references: [id])
+  contract    Contract?     @relation(fields: [contractId], references: [id])
+  payment     Payment?      @relation(fields: [paymentId], references: [id])
+  savingPlan  SavingPlan?   @relation(fields: [savingPlanId], references: [id])
   onlineOrder OnlineOrder?
+  sourceLink  PaymentLink?  @relation("PaymentLinkIntents", fields: [sourceLinkId], references: [id])
+  intents     PaymentLink[] @relation("PaymentLinkIntents")
 
   @@index([token])
   @@index([contractId])
+  @@index([sourceLinkId])
   @@index([savingPlanId])
   @@index([status])
   @@index([deletedAt])

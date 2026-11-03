@@ -204,7 +204,7 @@ export default function LiffPayment() {
   // outstanding by more than one installment's worth → multi-installment
   // close. Lets the UI hide the "งวดที่ 1" line that would otherwise
   // mislead a customer paying the full payoff.
-  // Task 39: ใช้กับการแสดงผลเท่านั้น — สิ่งที่ส่งไปสร้างรายการ (ส่งเลขงวดหรือไม่) ตัดสินจาก `installmentBound` ของลิงก์ที่ `liffPayIntentRequest`
+  // Task 39: ใช้กับการแสดงผลเท่านั้น — สิ่งที่ส่งไปสร้างรายการ (ส่งเลขงวดหรือไม่) ตัดสินจาก `purpose` ของลิงก์ที่ `liffPayIntentRequest`
   const isMultiInstallment =
     !!payment &&
     amount > Number(payment.amountDue) + Number(payment.lateFee ?? 0) + 0.5;

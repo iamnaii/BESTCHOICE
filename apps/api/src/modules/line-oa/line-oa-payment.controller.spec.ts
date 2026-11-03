@@ -786,7 +786,7 @@ describe('LineOaPaymentController (characterization)', () => {
       paymentLink.getPaymentLink.mockResolvedValue({
         status: 'ACTIVE',
         amount: dec(1500),
-        installmentBound: true,
+        purpose: 'INSTALLMENT',
         expiresAt,
         contract: {
           id: 'ct1',
@@ -809,7 +809,7 @@ describe('LineOaPaymentController (characterization)', () => {
         amount: 1500,
         status: 'ACTIVE',
         expiresAt,
-        installmentBound: true,
+        purpose: 'INSTALLMENT',
         contract: {
           id: 'ct1',
           contractNumber: 'C-001',

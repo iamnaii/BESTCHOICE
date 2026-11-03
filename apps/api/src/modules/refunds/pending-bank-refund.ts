@@ -14,8 +14,9 @@ import { Prisma } from '@prisma/client';
  * ผู้ใช้ทุกจุดเรียกไฟล์นี้ — ห้ามเขียนชุดที่สอง:
  * - JP4 ด่านที่ผูกมัด: `ContractPaymentService.earlyPayoff` ในธุรกรรมของการลง (หลังล็อกแถวสัญญา) — ครอบทางคิวอนุมัติ · สลิปตรง · managed
  * - JP4 ด่านต้นทาง (บอกก่อนเสียเวลา): สร้างคำขออนุมัติ (`createEarlyPayoffRequest`) · ตรวจสลิป (`EarlyPayoffSlipService.verify`,
- *   managed `ManagedPayoffEvidenceService`) · LIFF ยอดปิด/ลิงก์ปิดยอด · PaySolutions `createPaymentIntent` แบบไม่ระบุงวด
- *   (ลิงก์ที่ปิดหลายงวด) — **webhook ไม่ตรวจ** (เงินตัดที่ gateway แล้ว · แบบเดียวกับกติกา "ห้ามข้ามงวด" ที่บังคับตอนส่ง QR)
+ *   managed `ManagedPayoffEvidenceService`) · LIFF ยอดปิด/ลิงก์ปิดยอด · PaySolutions `createPaymentIntent` เฉพาะการปิดยอด
+ *   (ไม่มีทั้งเลขงวดและ token = `LiffEarlyPayoff` · ลิงก์ `/pay/:token` ที่ `purpose = PAYOFF` — ลิงก์ `AMOUNT`/งวดไม่ถูกกัน · Task 39)
+ *   — **webhook ไม่ตรวจ** (เงินตัดที่ gateway แล้ว · แบบเดียวกับกติกา "ห้ามข้ามงวด" ที่บังคับตอนส่ง QR)
  * - JP5: `RepossessionsService.createInTx` (หลังล็อกแถวสัญญา) + `previewCalculation` (`eligibility`)
  * - อีกฝั่งของการแข่ง: `RefundsService.approveRefund` ล็อกแถวสัญญา FOR SHARE ก่อนอ่านสถานะ ⇒ ทุกลำดับปลอดภัย แต่ด้วยกลไกต่างกัน
  *   (review m-a · ปักด้วย DB สองคอนเนกชันจริง `__tests__/pending-bank-refund-race.db.spec.ts`):

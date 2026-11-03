@@ -17,6 +17,8 @@ describe('PaymentLinkService.sendPaymentFlex — สำเนาลงห้อ�
           payments: [{ installmentNo: 3, dueDate: new Date(Date.now() + 86_400_000), lateFee: 0 }],
         }),
       },
+      // Task 34 รีวิว I1 — ด่านความยินยอม PDPA (ลูกค้ามี)
+      pDPAConsent: { findFirst: jest.fn().mockResolvedValue({ id: 'consent-1' }) },
       payment: { count: jest.fn().mockResolvedValue(12) },
       chatRoom: { findFirst: jest.fn().mockResolvedValue(room), update: jest.fn() },
       chatMessage: { create: jest.fn() },

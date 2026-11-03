@@ -30,6 +30,9 @@ describe('PaymentLinkService — purpose ของลิงก์', () => {
         findUnique: jest.fn().mockResolvedValue(link ?? null),
       },
       payment: { findMany: jest.fn().mockResolvedValue([]) },
+      // Task 42 รีวิว I1 — ค่าปรับที่ใบรับชำระก่อนหน้าของงวดลงไปแล้ว (reconstructPriorCleared)
+      installmentSchedule: { findMany: jest.fn().mockResolvedValue([]) },
+      journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
     };
     const promptPay = {
       generateQrDataUrl: jest.fn().mockResolvedValue(null),
@@ -135,7 +138,17 @@ describe('PaymentLinkService — purpose ของลิงก์', () => {
       sourceEvent: null,
       promiseDate: null,
       expiresAt: new Date(Date.now() + 60_000),
-      contract: { id: 'ct-1', contractNumber: 'BC-001', customer: { name: 'สมชาย ใจดี' } },
+      // สัญญา 17,000 / 12 งวด (ค่างวดตามบัญชี 1,515.83)
+      contract: {
+        id: 'ct-1',
+        contractNumber: 'BC-001',
+        customer: { name: 'สมชาย ใจดี' },
+        financedAmount: dec('10000.00'),
+        storeCommission: dec('1000.00'),
+        interestTotal: dec('6000.00'),
+        vatAmount: dec('1190.00'),
+        totalMonths: 12,
+      },
       payment: unpaid,
       ...fields,
     });
@@ -196,6 +209,56 @@ describe('PaymentLinkService — purpose ของลิงก์', () => {
           { kind: 'LEFT_AFTER', installmentNo: 2, amount: 615.83 },
         ],
       });
+    });
+
+    it('รีวิว I1 — งวดที่จ่ายที่สาขามาแล้วและใบนั้นลงค่าปรับไปแล้ว → แถวค่างวดอย่างเดียว (ค่าปรับก่อน ตามบัญชี — ไม่บอกว่าจ่ายค่าปรับซ้ำ)', async () => {
+      const { prisma, service } = build(
+        linkRow({ amount: dec('2331.66'), sourceEvent: 'DEVICE_LOCKED' }),
+      );
+      // งวด 2 จ่ายที่สาขา 900 (ใบนั้น Cr 42-1103 100 / Cr 11-2103 800) · งวด 3 ยังไม่เคยจ่าย
+      prisma.payment.findMany.mockResolvedValue([
+        installment(2, '900.00', '100.00'),
+        installment(3, '0', '100.00'),
+      ]);
+      prisma.installmentSchedule.findMany.mockResolvedValue([{ id: 'sched-2', installmentNo: 2 }]);
+      prisma.journalEntry.findMany.mockResolvedValue([
+        {
+          metadata: { tag: 'receipt', installmentScheduleId: 'sched-2' },
+          lines: [
+            { accountCode: '11-1101', debit: dec('900.00'), credit: dec('0') },
+            { accountCode: '42-1103', debit: dec('0'), credit: dec('100.00') },
+            { accountCode: '11-2103', debit: dec('0'), credit: dec('800.00') },
+          ],
+        },
+      ]);
+
+      const view = await service.resolvePaymentLink('tok');
+
+      expect(view).toMatchObject({
+        allocation: [
+          { kind: 'INSTALLMENT_REMAINING', installmentNo: 2, amount: 715.83 },
+          { kind: 'INSTALLMENT', installmentNo: 3, amount: 1515.83 },
+          { kind: 'LATE_FEE', installmentNo: 3, amount: 100 },
+        ],
+      });
+      // อ่านบัญชีเฉพาะงวดที่เงินปิด มีค่าปรับ และเคยจ่ายบางส่วน (งวด 3 ยังไม่เคยจ่าย — ไม่มีใบให้อ่าน)
+      expect(prisma.installmentSchedule.findMany).toHaveBeenCalledTimes(1);
+      expect(prisma.installmentSchedule.findMany.mock.calls[0][0].where).toMatchObject({
+        contractId: 'ct-1',
+        installmentNo: { in: [2] },
+        deletedAt: null,
+      });
+      expect(prisma.journalEntry.findMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('ไม่มีงวดที่ต้องอ่านบัญชี → ไม่อ่านตารางงวด/รายการบัญชี', async () => {
+      const { prisma, service } = build(linkRow({ sourceEvent: 'DEVICE_LOCKED' }));
+      prisma.payment.findMany.mockResolvedValue([installment(2, '0', '0')]);
+
+      await service.resolvePaymentLink('tok');
+
+      expect(prisma.installmentSchedule.findMany).not.toHaveBeenCalled();
+      expect(prisma.journalEntry.findMany).not.toHaveBeenCalled();
     });
 
     it.each(['INSTALLMENT', 'PAYOFF', null])(

@@ -1,6 +1,8 @@
 import { Prisma } from '@prisma/client';
+import { Decimal } from '@prisma/client/runtime/library';
 import type { DunningEventTrigger, PaymentLinkPurpose } from '@prisma/client';
 import type { LiffPayAllocationLine, LiffPayAmountKind } from '@installment/shared';
+import { splitReceipt } from '../journal/split-receipt';
 
 /**
  * Task 42 — การกระจายเงินของ webhook PaySolutions (งวดเก่าก่อน) **ที่เดียว**: `PaySolutionsWebhookService.handlePaymentCallback`
@@ -77,26 +79,51 @@ export function allocatePaidAmountFifo<P extends FifoInstallmentRow>(
 const money = (d: Prisma.Decimal) => d.toDecimalPlaces(2).toNumber();
 
 /**
- * แถว "นำไปชำระ (งวดเก่าก่อน)" จากผลการกระจาย: งวดที่เงินปิดครบ = ค่างวดที่ยังค้าง (`INSTALLMENT` ถ้ายังไม่เคยจ่าย ·
- * `INSTALLMENT_REMAINING` ถ้าเคยจ่ายบางส่วน) แล้วค่าปรับ (`LATE_FEE` เมื่อ > 0) — ที่จ่ายมาแล้วนับเข้าค่างวดก่อน (แถวงวดไม่แยกว่า
- * จ่ายค่าปรับไปแล้วเท่าไร) · งวดที่เงินไม่พอ = `PARTIAL` (ยอดที่ลง) + `LEFT_AFTER` (ยอดที่ยังค้าง) · เงินเกินทุกงวด = `SURPLUS`
+ * สิ่งที่บัญชีของงวดบันทึกไว้แล้ว — ข้อมูลเข้าของ `splitReceipt` ชุดเดียวกับที่ `PaymentReceiptTemplate` ใช้ตอน webhook ลงใบรับชำระ:
+ * `installmentTotal` = `computeInstallmentBreakdown(accrual2AInputOf(สัญญา, งวด))` · ยอดที่ล้างแล้ว = `reconstructPriorCleared` ของแถวตารางงวด
+ * (งวดที่ไม่มีใบรับชำระ / ไม่มีค่าปรับ / ไม่มีแถวตารางงวด = 0)
+ */
+export interface InstallmentLedgerSoFar {
+  installmentTotal: Prisma.Decimal;
+  priorPrincipalCleared: Prisma.Decimal;
+  priorLateFeeBooked: Prisma.Decimal;
+}
+
+/**
+ * แถว "นำไปชำระ (งวดเก่าก่อน)" จากผลการกระจาย: งวดที่เงินปิดครบ = ค่างวด (`INSTALLMENT` ถ้ายังไม่เคยจ่าย · `INSTALLMENT_REMAINING`
+ * ถ้าเคยจ่ายบางส่วน) แล้วค่าปรับ (`LATE_FEE` เมื่อ > 0) · งวดที่เงินไม่พอ = `PARTIAL` (ยอดที่ลง) + `LEFT_AFTER` (ยอดที่ยังค้าง) ·
+ * เงินเกินทุกงวด = `SURPLUS`
+ *
+ * รีวิว I1 — ค่าปรับของแถว = `splitReceipt(...).lateFeePortion` ด้วยข้อมูลชุดเดียวกับใบรับชำระที่ webhook จะลง (ค่าปรับก่อน หักค่าปรับที่ใบก่อน
+ * ของงวดลงไปแล้ว — `ledgerOf`) ⇒ แถวค่าปรับ = Cr 42-1103 ของใบนั้น · ค่างวด = ยอดที่ลงงวด − ค่าปรับ (= Cr 11-2103 + เศษ ≤ 1 บาทของยอดเรียกเก็บ)
+ * · ไม่มีกติกาแบ่งชุดที่สอง
  */
 export function payAllocationPreviewLines<P extends FifoInstallmentRow & { installmentNo: number }>(
   allocation: FifoAllocation<P>,
+  ledgerOf: (installmentNo: number) => InstallmentLedgerSoFar,
 ): LiffPayAllocationLine[] {
   const rows: LiffPayAllocationLine[] = [];
   for (const line of allocation.lines) {
-    const { installmentNo, amountDue, amountPaid } = line.payment;
+    const { installmentNo, amountPaid } = line.payment;
     if (!line.fullyPaid) {
       rows.push({ kind: 'PARTIAL', installmentNo, amount: money(line.payThis) });
       rows.push({ kind: 'LEFT_AFTER', installmentNo, amount: money(line.owed.sub(line.payThis)) });
       continue;
     }
-    const principal = Prisma.Decimal.min(
-      Prisma.Decimal.max(amountDue.sub(amountPaid), new Prisma.Decimal(0)),
-      line.payThis,
-    );
-    const fee = line.payThis.sub(principal);
+    const ledger = ledgerOf(installmentNo);
+    // อาร์กิวเมนต์เดียวกับ PaymentReceiptTemplate.execute ตอน webhook (delta = payThis · ค่าปรับของบรรทัดการกระจาย · ไม่มีเงินรับล่วงหน้า)
+    const { lateFeePortion } = splitReceipt({
+      delta: new Decimal(line.payThis.toString()),
+      installmentTotal: new Decimal(ledger.installmentTotal.toString()),
+      lateFee: new Decimal(line.lateFee.toString()),
+      priorPrincipalCleared: new Decimal(ledger.priorPrincipalCleared.toString()),
+      priorLateFeeBooked: new Decimal(ledger.priorLateFeeBooked.toString()),
+      advanceConsume: new Decimal(0),
+      advanceCredit: new Decimal(0),
+      isFinalReceipt: line.fullyPaid,
+    });
+    const fee = new Prisma.Decimal(lateFeePortion.toString());
+    const principal = line.payThis.sub(fee);
     if (principal.gt(0)) {
       rows.push({
         kind: amountPaid.gt(0) ? 'INSTALLMENT_REMAINING' : 'INSTALLMENT',

@@ -29,7 +29,13 @@ describe('createLockPaidUnlockTodo', () => {
   function build(src: Record<string, unknown> | null = source()) {
     return {
       paymentLink: { findUnique: jest.fn().mockResolvedValue(src) },
-      user: { findFirst: jest.fn().mockResolvedValue({ id: 'system-1' }) },
+      // ผู้ใช้ระบบ (ผู้สร้าง) · เจ้าของที่ active คนแรก (ผู้รับ — แบบคำขอตัดสินค้า)
+      user: {
+        findFirst: jest.fn(
+          async (args: { where: Record<string, unknown> }): Promise<{ id: string } | null> =>
+            args.where.isSystemUser ? { id: 'system-1' } : { id: 'owner-1' },
+        ),
+      },
       todo: { upsert: jest.fn().mockResolvedValue({ id: 'todo-1' }) },
     };
   }
@@ -56,12 +62,35 @@ describe('createLockPaidUnlockTodo', () => {
       createdById: 'system-1',
       branchId: 'br-1',
     });
-    expect(args.create.assigneeId).toBeUndefined();
+    // รีวิว M2 — ผู้รับ = เจ้าของที่ active คนแรก (ปุ่ม/endpoint ปลดล็อคเปิดเฉพาะ OWNER / FINANCE_MANAGER) — ค้นแบบคำขอตัดสินค้า
+    expect(args.create.assigneeId).toBe('owner-1');
+    const ownerQuery = prisma.user.findFirst.mock.calls.find(
+      (c: [{ where: Record<string, unknown> }]) => c[0].where.role === 'OWNER',
+    )![0];
+    expect(ownerQuery).toMatchObject({
+      where: { role: 'OWNER', isActive: true, deletedAt: null },
+      orderBy: { createdAt: 'asc' },
+    });
     // คำอธิบายบอกยอด · เลขอ้างอิง · ว่าระบบไม่ปลดล็อคให้ · ทางปลดล็อคที่มีจริง (หน้ารายละเอียดสัญญา การ์ด "อุปกรณ์ MDM" ปุ่ม "ปลดล็อค")
     expect(args.create.description).toContain('2,231.66 บาท');
     expect(args.create.description).toContain('793686721395');
     expect(args.create.description).toContain('ระบบไม่ได้ปลดล็อคเครื่องให้');
     expect(args.create.description).toContain('การ์ด "อุปกรณ์ MDM" ปุ่ม "ปลดล็อค"');
+    // ทางสำรองเมื่อการ์ดไม่ขึ้น (เรียกสถานะ MDM ไม่สำเร็จ) หรือไม่มีปุ่ม ("ไม่พบใน MDM")
+    expect(args.create.description).toContain(
+      'ถ้าไม่เห็นการ์ด "อุปกรณ์ MDM" หรือการ์ดไม่มีปุ่ม "ปลดล็อค" (เช่น "ไม่พบใน MDM") แจ้งเจ้าของ',
+    );
+  });
+
+  it('ไม่มีเจ้าของที่ active → ยังสร้างงาน (ไม่ระบุผู้รับ)', async () => {
+    const prisma = build();
+    prisma.user.findFirst.mockImplementation(async (args: { where: Record<string, unknown> }) =>
+      args.where.isSystemUser ? { id: 'system-1' } : null,
+    );
+
+    await createLockPaidUnlockTodo(prisma as never, { sourceLinkId: 'src-1' }, paid);
+
+    expect(prisma.todo.upsert.mock.calls[0][0].create.assigneeId).toBeNull();
   });
 
   it.each([
@@ -89,7 +118,7 @@ describe('createLockPaidUnlockTodo', () => {
 
   it('ไม่มีผู้ใช้ระบบ → ไม่สร้างงาน · แจ้ง Sentry (เงินเข้าแล้ว ห้ามทำให้ webhook ล้ม)', async () => {
     const prisma = build();
-    prisma.user.findFirst.mockResolvedValue(null);
+    prisma.user.findFirst.mockImplementation(async () => null);
 
     await expect(
       createLockPaidUnlockTodo(prisma as never, { sourceLinkId: 'src-1' }, paid),

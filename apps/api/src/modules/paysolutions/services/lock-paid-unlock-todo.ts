@@ -22,8 +22,8 @@ const logger = new Logger('LockPaidUnlockTodo');
  *   (เงินเข้าและลงบัญชีแล้ว) แจ้ง Sentry แทน
  * - **ไม่ปลดล็อคเอง ไม่เรียกอะไรของ MDM ไม่อ่านสถานะล็อก** (คำสั่งเจ้าของ "ห้ามยุ่งกับการเชื่อม MDM")
  * - งานเดียวต่อหนึ่งลิงก์: `upsert` ด้วย `requestKey` (unique) แบบไม่แก้งานที่มีอยู่ — webhook ส่งซ้ำจบที่ด่านลิงก์ USED ก่อนถึงตรงนี้อยู่แล้ว
- * - รูปงานเดียวกับงานระบบอื่น (กระทบยอดระหว่างกิจการ · เงินพักค้าง): ผู้สร้าง = ผู้ใช้ระบบ · ไม่ระบุผู้รับ (ทุก role ที่เปิดหน้างานเห็น —
- *   งานที่ไม่ผูกห้องแชท) · ผูกสาขาของสัญญา (กรองตามสาขาได้)
+ * - ผู้สร้าง = ผู้ใช้ระบบ · ผู้รับ = เจ้าของที่ active คนแรก (แบบคำขอตัดสินค้า — ปุ่มปลดล็อคเปิดเฉพาะ OWNER / FM · รีวิว M2) · งานไม่ผูกห้องแชท
+ *   (role อื่นที่เปิดหน้างานยังเห็น) · ผูกสาขาของสัญญา (กรองตามสาขาได้)
  */
 export async function createLockPaidUnlockTodo(
   prisma: Pick<PrismaService, 'paymentLink' | 'user' | 'todo'>,
@@ -70,6 +70,14 @@ export async function createLockPaidUnlockTodo(
       return;
     }
 
+    // รีวิว M2 — ผู้รับ = เจ้าของที่ active คนแรก (ค้นแบบเดียวกับคำขอตัดสินค้า `stock-adjustments.service.ts`) — ปุ่ม/endpoint ปลดล็อค
+    // เปิดเฉพาะ OWNER / FINANCE_MANAGER · ผู้ใช้ระบบ (isActive = false) ไม่เข้าเงื่อนไข · ไม่มี = งานไม่ระบุผู้รับ
+    const owner = await prisma.user.findFirst({
+      where: { role: 'OWNER', isActive: true, deletedAt: null },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    });
+
     const amount = paid.paidAmount
       .toNumber()
       .toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -83,10 +91,12 @@ export async function createLockPaidUnlockTodo(
           `ลูกค้าชำระยอดค้าง ${amount} บาท ผ่านลิงก์ในข้อความแจ้งล็อกเครื่อง (Pay Solutions เลขอ้างอิง ${paid.refno}) ` +
           `เมื่อ ${formatDateTime(paid.paidAt)} น. — ระบบลงรับชำระเข้างวดแล้ว แต่ระบบไม่ได้ปลดล็อคเครื่องให้\n` +
           `ตรวจยอดที่หน้ารายละเอียดสัญญา ${contract.contractNumber} (เมนู สัญญาผ่อนชำระ) แล้วปลดล็อคที่การ์ด "อุปกรณ์ MDM" ` +
-          `ปุ่ม "ปลดล็อค" (สิทธิ์: เจ้าของ / ผู้จัดการการเงิน)`,
+          `ปุ่ม "ปลดล็อค" (สิทธิ์: เจ้าของ / ผู้จัดการการเงิน) · ถ้าไม่เห็นการ์ด "อุปกรณ์ MDM" หรือการ์ดไม่มีปุ่ม "ปลดล็อค" ` +
+          `(เช่น "ไม่พบใน MDM") แจ้งเจ้าของ`,
         priority: 'HIGH',
         tags: [LOCK_PAID_UNLOCK_TODO_TAG],
         createdById: system.id,
+        assigneeId: owner?.id ?? null,
         branchId: contract.branchId,
       },
     });

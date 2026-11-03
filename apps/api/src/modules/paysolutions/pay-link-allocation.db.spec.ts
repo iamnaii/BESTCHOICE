@@ -2,8 +2,10 @@
  * รัน: DATABASE_URL=<ฐานทดสอบ> npm test --workspace=apps/api -- src/modules/paysolutions/pay-link-allocation.db.spec.ts (แบบ CI — node --experimental-vm-modules)
  *
  * Task 42 (คำตัดสินเจ้าของ #44) บน Postgres จริง (ฐานที่สร้างด้วย `prisma migrate deploy` อย่างเดียว — กฎทวง/ผู้ใช้ระบบสร้างเอง):
- * - ลิงก์แจ้งล็อก: แถว "นำไปชำระ (งวดเก่าก่อน)" ของหน้า `/pay/:token` (`GET /line-oa/pay/:token`) = สิ่งที่ webhook PaySolutions กระจายจริง
- *   หลังลูกค้าจ่าย (กดจ่ายผ่าน intent ตัวจริง → webhook ตัวจริง เขียนแถวงวดจริง)
+ * - ลิงก์แจ้งล็อก: **ยอดรวมต่องวด**ของแถว "นำไปชำระ (งวดเก่าก่อน)" ของหน้า `/pay/:token` (`GET /line-oa/pay/:token`) = ยอดที่ webhook PaySolutions
+ *   ลงแต่ละงวดจริงหลังลูกค้าจ่าย (กดจ่ายผ่าน intent ตัวจริง → webhook ตัวจริง เขียนแถวงวดจริง) — สเปคนี้ตั้ง `amountPaid` ของ fixture ตรง ๆ และจำลอง
+ *   ใบรับชำระ จึง**ไม่ได้**พิสูจน์การแบ่งค่างวด/ค่าปรับ: การแบ่งเทียบรายการบัญชีจริงอยู่ที่
+ *   `payments/services/pay-link-preview-ledger.integration.spec.ts` (รีวิว I1)
  * - ลิงก์ยอดนัด: วันนัด + แถวชำระบางส่วน / ยังค้างหลังชำระ ตรงกับงวดหลังจ่ายจริง
  * - เงินของลิงก์แจ้งล็อกเข้าแล้ว → งานปลดล็อคหนึ่งงาน (webhook ส่งซ้ำ / เรียกซ้ำไม่สร้างเพิ่ม) · ลิงก์ยอดนัดไม่มีงาน
  */
@@ -239,7 +241,7 @@ afterAll(async () => {
 });
 
 describe('ลิงก์แจ้งล็อก (ยอดค้างรวม 2,231.66)', () => {
-  it('หน้า /pay/:token: หัว "ยอดค้างชำระ" · แถวนำไปชำระ = ยอดที่ webhook ลงแต่ละงวดจริงหลังจ่าย · ไม่มีเงินเกิน', async () => {
+  it('หน้า /pay/:token: หัว "ยอดค้างชำระ" · ยอดรวมต่องวดของแถวนำไปชำระ = ยอดที่ webhook ลงแต่ละงวดจริงหลังจ่าย · ไม่มีเงินเกิน', async () => {
     const f = await lockedContract('lock');
     await engine.executeEventTrigger('DEVICE_LOCKED', f.contractId, null, null);
     const link = await messageLink(f);
@@ -312,6 +314,14 @@ describe('ลิงก์แจ้งล็อก (ยอดค้างรว�
     const todos = await prisma.todo.findMany({
       where: { requestKey: lockPaidUnlockTodoKey(link.id) },
     });
+    // รีวิว M2 — ผู้รับ = เจ้าของที่ active คนแรก (ผู้ใช้ระบบ isActive = false ไม่นับ)
+    const firstOwner = await prisma.user.findFirst({
+      where: { role: 'OWNER', isActive: true, deletedAt: null },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    });
+    expect(firstOwner).not.toBeNull();
+    expect(firstOwner!.id).not.toBe(systemUserId);
     expect(todos).toHaveLength(1);
     expect(todos[0]).toMatchObject({
       title: `ลูกค้าชำระยอดค้างผ่าน LINE แล้ว — ตรวจยอดแล้วปลดล็อคเครื่อง สัญญา ${f.contractNumber}`,
@@ -319,7 +329,7 @@ describe('ลิงก์แจ้งล็อก (ยอดค้างรว�
       status: 'TODO',
       tags: [LOCK_PAID_UNLOCK_TODO_TAG],
       createdById: systemUserId,
-      assigneeId: null,
+      assigneeId: firstOwner!.id,
       branchId: base.branchId,
       roomId: null,
     });

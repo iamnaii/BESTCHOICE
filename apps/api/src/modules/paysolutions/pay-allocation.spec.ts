@@ -1,4 +1,6 @@
 import { Prisma } from '@prisma/client';
+import { Decimal } from '@prisma/client/runtime/library';
+import { splitReceipt } from '../journal/split-receipt';
 import {
   allocatePaidAmountFifo,
   fifoUnpaidPaymentsArgs,
@@ -11,6 +13,14 @@ import {
  * เรียกตอนแสดง "นำไปชำระ (งวดเก่าก่อน)" ⇒ สิ่งที่ลูกค้าเห็นก่อนจ่าย = สิ่งที่ webhook ทำหลังจ่าย
  */
 const dec = (v: string) => new Prisma.Decimal(v);
+/** บัญชีของงวดที่ยังไม่มีใบรับชำระ (หรือไม่มีค่าปรับที่ลงไปแล้ว) — ค่างวดตามบัญชี 1,515.83 */
+const ledger =
+  (priorLateFeeBooked: Record<number, string> = {}) =>
+  (installmentNo: number) => ({
+    installmentTotal: dec('1515.83'),
+    priorPrincipalCleared: dec('0'),
+    priorLateFeeBooked: dec(priorLateFeeBooked[installmentNo] ?? '0'),
+  });
 const row = (
   installmentNo: number,
   amountPaid: string,
@@ -78,7 +88,7 @@ describe('allocatePaidAmountFifo — กติกาการกระจาย�
     expect(
       allocation.lines.map((l) => [l.payment.installmentNo, l.payThis.toFixed(2), l.fullyPaid]),
     ).toEqual([[2, '1515.83', false]]);
-    expect(payAllocationPreviewLines(allocation)).toEqual([
+    expect(payAllocationPreviewLines(allocation, ledger())).toEqual([
       { kind: 'PARTIAL', installmentNo: 2, amount: 1515.83 },
       { kind: 'LEFT_AFTER', installmentNo: 2, amount: 100 },
     ]);
@@ -113,7 +123,7 @@ describe('payAllocationPreviewLines — แถว "นำไปชำระ (ง
       dec('2231.66'),
     );
 
-    expect(payAllocationPreviewLines(allocation)).toEqual([
+    expect(payAllocationPreviewLines(allocation, ledger())).toEqual([
       { kind: 'INSTALLMENT_REMAINING', installmentNo: 2, amount: 615.83 },
       { kind: 'LATE_FEE', installmentNo: 2, amount: 100 },
       { kind: 'INSTALLMENT', installmentNo: 3, amount: 1515.83 },
@@ -126,7 +136,7 @@ describe('payAllocationPreviewLines — แถว "นำไปชำระ (ง
       dec('1000'),
     );
 
-    expect(payAllocationPreviewLines(allocation)).toEqual([
+    expect(payAllocationPreviewLines(allocation, ledger())).toEqual([
       { kind: 'PARTIAL', installmentNo: 2, amount: 1000 },
       { kind: 'LEFT_AFTER', installmentNo: 2, amount: 615.83 },
     ]);
@@ -138,7 +148,7 @@ describe('payAllocationPreviewLines — แถว "นำไปชำระ (ง
       dec('1615.83'),
     );
 
-    expect(payAllocationPreviewLines(allocation)).toEqual([
+    expect(payAllocationPreviewLines(allocation, ledger())).toEqual([
       { kind: 'LATE_FEE', installmentNo: 1, amount: 100 },
       { kind: 'INSTALLMENT', installmentNo: 2, amount: 1515.83 },
     ]);
@@ -146,12 +156,75 @@ describe('payAllocationPreviewLines — แถว "นำไปชำระ (ง
 
   it('เงินเกินทุกงวดค้าง → แถวส่วนเกิน (webhook พักเป็นเงินรับล่วงหน้า) · ผลรวมแถว = ยอดของลิงก์', () => {
     const allocation = allocatePaidAmountFifo([row(12, '1000.00', '0')], dec('1000'));
-    const lines = payAllocationPreviewLines(allocation);
+    const lines = payAllocationPreviewLines(allocation, ledger());
 
     expect(lines).toEqual([
       { kind: 'INSTALLMENT_REMAINING', installmentNo: 12, amount: 515.83 },
       { kind: 'SURPLUS', amount: 484.17 },
     ]);
+  });
+});
+
+describe('payAllocationPreviewLines — ค่าปรับก่อน ตามรายการบัญชีของงวด (แบบเดียวกับใบรับชำระ · รีวิว I1)', () => {
+  // งวด 1,515.83 + ค่าปรับ 100 · จ่ายที่สาขาแล้ว 900 · เงินลิงก์ปิดงวดนี้ (715.83)
+  const paidAtBranch = () => allocatePaidAmountFifo([row(1, '900.00', '100.00')], dec('715.83'));
+
+  it.each([
+    [
+      'ใบ 900 ลงค่าปรับ 100 ไปแล้ว (มีค่าปรับก่อนจ่าย) → ค่างวดคงเหลือ 715.83 แถวเดียว ไม่มีค่าปรับซ้ำ',
+      '100',
+      [{ kind: 'INSTALLMENT_REMAINING', installmentNo: 1, amount: 715.83 }],
+    ],
+    [
+      'ใบ 900 ลงค่าปรับ 50 (ค่าปรับขยับเป็น 100 ภายหลัง) → 665.83 + ค่าปรับ 50',
+      '50',
+      [
+        { kind: 'INSTALLMENT_REMAINING', installmentNo: 1, amount: 665.83 },
+        { kind: 'LATE_FEE', installmentNo: 1, amount: 50 },
+      ],
+    ],
+    [
+      'ใบ 900 ไม่มีค่าปรับ (จ่ายก่อนค่าปรับเกิด — ตัวเลข mockup) → 615.83 + ค่าปรับ 100',
+      '0',
+      [
+        { kind: 'INSTALLMENT_REMAINING', installmentNo: 1, amount: 615.83 },
+        { kind: 'LATE_FEE', installmentNo: 1, amount: 100 },
+      ],
+    ],
+  ] as const)('%s', (_label, booked, expected) => {
+    expect(payAllocationPreviewLines(paidAtBranch(), ledger({ 1: booked }))).toEqual(expected);
+  });
+
+  it('ค่าปรับของแถว = lateFeePortion ของ splitReceipt (ตัวที่ใบรับชำระของ webhook ใช้) ทุกกรณี', () => {
+    for (const paid of ['0', '50.00', '900.00', '1515.83']) {
+      for (const fee of ['0', '50.00', '100.00']) {
+        for (const booked of ['0', '50.00', '100.00']) {
+          if (dec(booked).gt(fee) || dec(booked).gt(paid)) continue;
+          const allocation = allocatePaidAmountFifo([row(1, paid, fee)], dec('5000'));
+          const [line] = allocation.lines;
+          if (!line) continue; // งวดที่ไม่มียอดค้าง — ไม่มีแถว
+          const lateFeeRow = payAllocationPreviewLines(allocation, ledger({ 1: booked })).find(
+            (r) => r.kind === 'LATE_FEE',
+          );
+          const books = splitReceipt({
+            delta: new Decimal(line.payThis.toString()),
+            installmentTotal: new Decimal('1515.83'),
+            lateFee: new Decimal(line.lateFee.toString()),
+            priorPrincipalCleared: new Decimal('0'),
+            priorLateFeeBooked: new Decimal(booked),
+            advanceConsume: new Decimal(0),
+            advanceCredit: new Decimal(0),
+            isFinalReceipt: true,
+          });
+          expect([paid, fee, booked, lateFeeRow?.amount ?? 0]).toEqual([
+            paid,
+            fee,
+            booked,
+            books.lateFeePortion.toNumber(),
+          ]);
+        }
+      }
+    }
   });
 });
 

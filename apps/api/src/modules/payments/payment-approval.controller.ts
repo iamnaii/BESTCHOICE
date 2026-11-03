@@ -29,6 +29,7 @@ import { INSTALLMENT_MONEY_RECEIPT_TYPES } from '../receipts/receipt-types.const
 import { RecordPaymentDto } from './dto/payment.dto';
 import { EarlyPayoffDto } from '../contracts/dto/contract.dto';
 import { createEarlyPayoffRequest } from './services/early-payoff-request';
+import { isRetryablePrismaWriteError } from '../../utils/transaction-retry.util';
 import {
   getPaymentApprovalPermissions,
   type PaymentApprovalPermission,
@@ -381,7 +382,9 @@ export class PaymentApprovalController {
         throw new BadRequestException('ไม่รองรับคำขอประเภทนี้');
     }
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && ['P2034', 'P2002'].includes(error.code)) throw new ConflictException('รายการถูกเปลี่ยนแปลงระหว่างดำเนินการ กรุณาโหลดรายการรออนุมัติใหม่');
+      // P2034 / P2002 (เดิม) + P2010 ที่ meta.code 40001/40P01 และ deadlock ที่ engine แปลงไม่ได้ — ล็อกแถวสัญญาแบบ raw SQL ของ
+      // earlyPayoff (#24 · review I-2) ล้มเป็น P2010 ไม่ใช่ P2034 · ตัวเดียวกับที่ทางอื่นใช้ (`isRetryablePrismaWriteError`) — แปลงเป็น 409 ไม่ลองซ้ำ
+      if (isRetryablePrismaWriteError(error)) throw new ConflictException('รายการถูกเปลี่ยนแปลงระหว่างดำเนินการ กรุณาโหลดรายการรออนุมัติใหม่');
       throw error;
     }
   }

@@ -3,6 +3,7 @@ import Decimal from 'decimal.js';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { calcBcInstallment } from '../../../utils/installment-calc.util';
 import { toBcConfig } from '../../../utils/bc-installment-config.util';
+import { resolveInstallmentVat } from '../../../utils/config.util';
 
 export type DecimalLike = string | number | { toString(): string };
 
@@ -121,8 +122,9 @@ export function computeProductQuote(
   }
 
   // B3 Task 14 — ห้ามมีตรรกะ resolve config 2 ก็อปในระบบ: ใช้ตัวเดียวกับ
-  // InstallmentPreviewService (เว็บ) และ CalculateInstallmentTool (บอท)
-  const bcConfig = toBcConfig(config);
+  // InstallmentPreviewService (เว็บ) และ CalculateInstallmentTool (บอท) · `config.vatPct` = VAT ของ FINANCE ที่
+  // `ProductQuoteService.getQuotes` ใส่ให้ (คำตัดสินเจ้าของ #22)
+  const bcConfig = toBcConfig(config, String(config.vatPct));
   if (bcConfig.allowedMonths.length === 0) return { ...base, ...EMPTY_INSTALLMENT };
 
   const months = bcConfig.allowedMonths[bcConfig.allowedMonths.length - 1];
@@ -167,7 +169,12 @@ export class ProductQuoteService {
       }
     }
 
-    return inputs.map((i) => computeProductQuote(i, byCategory.get(i.category) ?? null));
+    // #22: VAT ของตั้งค่าดอกเบี้ย = บริษัท FINANCE — แทน vat_pct ของแถวก่อนคำนวณ (ครั้งเดียวต่อชุด)
+    const { vatPct } = await resolveInstallmentVat(this.prisma);
+    return inputs.map((i) => {
+      const config = byCategory.get(i.category);
+      return computeProductQuote(i, config ? { ...config, vatPct } : null);
+    });
   }
 
   async getQuote(input: ProductPriceInput): Promise<ProductQuote> {

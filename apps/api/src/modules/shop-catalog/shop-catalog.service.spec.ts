@@ -25,6 +25,12 @@ describe('ShopCatalogService', () => {
       // resolveBcConfigForCategory (B3 util) reads this — default null (no config found) so
       // existing tests that don't care about ผ่อนเริ่มต้น keep getting monthlyPaymentFrom: null.
       interestConfig: { findFirst: jest.fn().mockResolvedValue(null) },
+      // #22: VAT ของตั้งค่าดอกเบี้ยอ่านจากบริษัท FINANCE (ไม่ใช่ interest_configs.vat_pct) — FINANCE จด VAT 7%
+      companyInfo: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({ vatRegistered: true, vatRate: new Prisma.Decimal('0.07') }),
+      },
     };
     const module = await Test.createTestingModule({
       providers: [ShopCatalogService, { provide: PrismaService, useValue: prisma }],

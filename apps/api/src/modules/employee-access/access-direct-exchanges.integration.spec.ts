@@ -1053,30 +1053,43 @@ it.each([
     expect((await invoke('preview', who.id, f).query({ [field]: 'not-valid' })).status).toBe(400);
   },
 );
-it('current period versions are rechecked after an observed lock wait and current-month grace remains usable', async () => {
-  const f = await finalizedPriced(),
-    now = new Date(),
-    year = now.getFullYear(),
-    month = now.getMonth() + 1;
-  const period = await db.accountingPeriod.upsert({
-    where: { companyId_year_month: { companyId: financeCompanyId, year, month } },
-    create: { companyId: financeCompanyId, year, month, status: 'OPEN' },
-    update: { status: 'OPEN' },
-  });
-  let response: Promise<request.Response> | undefined;
-  await db.$transaction(async (tx) => {
-    const [{ pid }] = await tx.$queryRaw<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`;
-    await tx.$queryRaw`SELECT id FROM accounting_periods WHERE id=${period.id} FOR UPDATE`;
-    response = invoke('cancel', adminId, f).then((res) => res);
-    await observeWait(tx, pid);
-    await tx.accountingPeriod.update({ where: { id: period.id }, data: { status: 'SYNCED' } });
-  });
-  expect((await response!).status).toBe(201);
-  expect((await db.accountingPeriod.findUniqueOrThrow({ where: { id: period.id } })).status).toBe(
-    'SYNCED',
-  );
-  await db.accountingPeriod.update({ where: { id: period.id }, data: { status: 'OPEN' } });
-});
+// The cancel waits on the period row, the period flips while it waits, the cancel re-reads it.
+// CLOSED: the current month's grace still covers today → 201. SYNCED (owner decision #23,
+// 2026-10-31): a period already sent to PEAK has no grace → the re-read rejects, nothing is posted.
+it.each([
+  ['CLOSED', 201],
+  ['SYNCED', 400],
+] as const)(
+  'current period versions are rechecked after an observed lock wait (%s → %d)',
+  async (status, expected) => {
+    const f = await finalizedPriced(),
+      now = new Date(),
+      year = now.getFullYear(),
+      month = now.getMonth() + 1;
+    const period = await db.accountingPeriod.upsert({
+      where: { companyId_year_month: { companyId: financeCompanyId, year, month } },
+      create: { companyId: financeCompanyId, year, month, status: 'OPEN' },
+      update: { status: 'OPEN' },
+    });
+    const journalsBefore = await db.journalEntry.count();
+    let response: Promise<request.Response> | undefined;
+    await db.$transaction(async (tx) => {
+      const [{ pid }] = await tx.$queryRaw<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`;
+      await tx.$queryRaw`SELECT id FROM accounting_periods WHERE id=${period.id} FOR UPDATE`;
+      response = invoke('cancel', adminId, f).then((res) => res);
+      await observeWait(tx, pid);
+      await tx.accountingPeriod.update({ where: { id: period.id }, data: { status } });
+    });
+    const res = await response!;
+    expect(res.status).toBe(expected);
+    // (the managed access boundary replaces the guard's Thai text with its generic state message)
+    if (expected === 400) expect(await db.journalEntry.count()).toBe(journalsBefore);
+    expect((await db.accountingPeriod.findUniqueOrThrow({ where: { id: period.id } })).status).toBe(
+      status,
+    );
+    await db.accountingPeriod.update({ where: { id: period.id }, data: { status: 'OPEN' } });
+  },
+);
 
 it.each(['customer', 'product', 'backlink', 'old-product'] as const)(
   'R128 cancel rejects independently authorized but unrelated %s identity before any state effects',

@@ -309,6 +309,8 @@ describe('ใบรับเครื่องคืน — create → confirm �
       await prisma.installmentSchedule.deleteMany({
         where: { contractId: { in: createdContractIds } },
       });
+      // #24 fixture rows (Refund → Payment is onDelete: Restrict)
+      await prisma.refund.deleteMany({ where: { contractId: { in: createdContractIds } } });
       await prisma.payment.deleteMany({ where: { contractId: { in: createdContractIds } } });
       await prisma.customerJourneyEntry.deleteMany({
         where: { customerId: { in: createdCustomerIds } },
@@ -734,5 +736,69 @@ describe('ใบรับเครื่องคืน — create → confirm �
     });
     expect(preview.returnKind).toBe('REPOSSESSION');
     expect(preview.allowedReasons).toEqual(['AFTER_TERMINATION']);
+  }, 120_000);
+
+  // -------------------------------------------------------------------------
+  // คำตัดสินเจ้าของ #24 (2026-10-31): ยืนยันรับเครื่องคืน (JP5) ไม่ได้ขณะสัญญามีคำขอคืนเงินที่อนุมัติแล้วแต่ยังไม่บันทึกผลธนาคาร —
+  // ด่านอ่านใต้ล็อกแถวสัญญาในธุรกรรมของการยืนยัน · preview ให้เหตุผลเดียวกัน · บันทึกผลธนาคาร (ไม่สำเร็จ = FAILED) แล้วยืนยันได้
+  it('#24 สัญญา F: คำขอคืนเงิน APPROVED ค้าง → preview ยึดไม่ได้ + confirm 400 ไม่มี JE/แถวยึด/ใบยังรอ · ผลธนาคาร FAILED → confirm ได้', async () => {
+    const { contract } = await seedContract(4, 'ACTIVE');
+    await activateAndPay(contract.id, 1);
+    const intake = await deviceReturns.create(
+      {
+        contractId: contract.id,
+        deviceReceivedAt: new Date().toISOString(),
+        conditionGrade: 'B',
+        appraisalPrice: 7000,
+        returnReason: 'NO_LONGER_NEEDED',
+        receivingBranchId,
+      },
+      OWNER() as never,
+    );
+    const paidInstallment = await prisma.payment.findUniqueOrThrow({
+      where: { contractId_installmentNo: { contractId: contract.id, installmentNo: 1 } },
+    });
+    // อนุมัติก่อนรับเครื่องคืน (ตอนสัญญายัง ACTIVE) แล้วยังไม่มีใครบันทึกผลธนาคาร
+    const refund = await prisma.refund.create({
+      data: {
+        paymentId: paidInstallment.id,
+        contractId: contract.id,
+        amount: INSTALLMENT_TOTAL,
+        reason: 'ลูกค้าโอนซ้ำ (fixture #24)',
+        status: 'APPROVED',
+        requestedById: adminId,
+        approvedById: adminId,
+        approvedAt: new Date(),
+      },
+    });
+
+    const preview = await repossessionsService.previewCalculation(contract.id, {
+      deviceReturnId: intake.id,
+    });
+    expect(preview.eligibility.canRepossess).toBe(false);
+    expect(preview.eligibility.reason).toContain(
+      'สัญญานี้มีคำขอคืนเงินที่อนุมัติแล้วแต่ยังไม่ได้บันทึกผลจากธนาคาร (งวดที่ 1 1515.83 บาท)',
+    );
+
+    await expect(deviceReturns.confirm(intake.id, {}, OWNER() as never)).rejects.toThrow(
+      preview.eligibility.reason!,
+    );
+    expect((await prisma.deviceReturn.findUniqueOrThrow({ where: { id: intake.id } })).status).toBe(
+      'PENDING_CONFIRM',
+    );
+    expect(await prisma.repossession.count({ where: { contractId: contract.id } })).toBe(0);
+    expect(await jeByFlow(contract.id, 'repossession')).toHaveLength(0);
+    expect((await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } })).status).toBe(
+      'TERMINATED',
+    );
+
+    // ทางเคลียร์ที่ข้อความชี้: บันทึกผลธนาคาร — คืนไม่สำเร็จ (mark-failed → FAILED) ⇒ ยืนยันได้ตามปกติ
+    await prisma.refund.update({
+      where: { id: refund.id },
+      data: { status: 'FAILED', failureReason: 'ธนาคารแจ้งคืนไม่สำเร็จ (fixture #24)' },
+    });
+    const confirmed = await deviceReturns.confirm(intake.id, {}, OWNER() as never);
+    expect(confirmed.status).toBe('CONFIRMED');
+    expect(await jeByFlow(contract.id, 'repossession')).toHaveLength(1);
   }, 120_000);
 });

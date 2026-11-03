@@ -30,6 +30,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
 import { JourneyEntryWriter } from '../customer-journey/journey-entry-writer.service';
 import { productLinkClickEntry } from '../customer-journey/chat-identity-entries';
+import { WebhookDedupService } from '../chatbot-finance/services/webhook-dedup.service';
+import { messengerEventDedupe, postbackExternalMessageId } from './facebook-messaging-dedupe';
 
 /**
  * Facebook Messenger Webhook Controller
@@ -83,6 +85,8 @@ export class FacebookWebhookController {
     private postbackRouter: QuickReplyPostbackRouterService,
     private prisma: PrismaService,
     private integrationConfig: IntegrationConfigService,
+    // Task 37 — กันส่งซ้ำราย event ของ Messenger (processed_webhook_events · cron ลบ 7 วันอยู่แล้ว)
+    private messengerDedupe: WebhookDedupService,
     // การเดินทางของลูกค้า — PRODUCT_LINK_CLICK (เดิมมีแค่ข้อความระบบในห้อง แกะย้อนหลังไม่ได้)
     @Optional() private journey?: JourneyEntryWriter,
     @Optional() private comments?: FacebookCommentIngestService,
@@ -241,6 +245,7 @@ export class FacebookWebhookController {
     const postback = event.postback;
 
     if (!senderId) return;
+    if (!(await this.isFirstDelivery(event))) return;
 
     // Echo: admin replied via Meta Business Suite / FB Page Inbox / FB Page app.
     // sender.id = our PAGE_ID, recipient.id = customer PSID, message.is_echo = true.
@@ -324,7 +329,8 @@ export class FacebookWebhookController {
       const inboundText =
         payload === 'GET_STARTED' ? 'ลูกค้ากดเริ่มต้นใช้งาน (Get Started)' : payload;
       const inbound: InboundMessage = {
-        externalMessageId: `postback_${Date.now()}_${senderId}`,
+        // จาก event ไม่ใช่นาฬิกา — ถ้าด่านกันซ้ำใช้ไม่ได้ (fail open) UNIQUE ของ chat_messages ยังกันบับเบิล+เทิร์นบอทซ้ำ
+        externalMessageId: postbackExternalMessageId(event),
         externalUserId: senderId,
         channel: ChatChannel.FACEBOOK,
         type: MessageType.TEXT,
@@ -337,7 +343,7 @@ export class FacebookWebhookController {
       this.logger.log(`[FB Webhook] Postback from PSID ${senderId}: "${postback.payload}"`);
 
       // fast-ack: ห้ามให้ webhook response แขวนรอเทิร์น AI (10-30s+ และยาวขึ้นตามคิว
-      // ต่อลูกค้า) — Meta รอ ~20s แล้ว redeliver + นับ fail สะสม เสี่ยงโดนลดเกรด webhook
+      // ต่อลูกค้า) — เอกสาร Messenger ให้ตอบ 200 ภายใน ~5 วิ ช้ากว่านั้น Meta ส่งซ้ำ + นับ fail สะสม เสี่ยงโดนลดเกรด webhook
       // referral note ต้องรอห้องถูกสร้างก่อน จึงต่อท้าย promise แทนการ await
       void this.messageRouter
         .routeInbound(inbound)
@@ -400,7 +406,8 @@ export class FacebookWebhookController {
     );
 
     // fast-ack: ตอบ Meta ทันที — เทิร์น AI วิ่งต่อในคิวต่อลูกค้า (inboundChains)
-    // dedup redelivery มี UNIQUE externalMessageId (mid) คุ้มที่ชั้น saveMessage แล้ว
+    // ส่งซ้ำ: ด่าน isFirstDelivery (mid) ข้ามตั้งแต่ต้น — รวมโน้ตโฆษณาที่ routeInbound เขียนก่อน saveMessage
+    // ชั้นที่สอง UNIQUE externalMessageId (mid) ที่ saveMessage ยังอยู่ (Task 37)
     void this.messageRouter
       .routeInbound(inbound)
       // 🔴 เดิมเส้นนี้ไม่เรียก handleProductReferral เลย (call site มีแค่ postback กับ
@@ -420,11 +427,59 @@ export class FacebookWebhookController {
   }
 
   /**
+   * Task 37 (owner #27, 2026-11-01) — Meta resends a webhook when we answer slowly or non-2xx, so the
+   * same Messenger event can arrive twice, even concurrently (a second request while the first is still
+   * sending a template). Claim the event in `processed_webhook_events` before any side effect; only the
+   * first claim runs it. Key: `messengerEventDedupe` (Meta's own ids/timestamp — never our clock).
+   *
+   * Claimed **before** processing, deliberately:
+   * - only an atomic claim ahead of the work stops two concurrent deliveries — a mark written afterwards
+   *   lets both run (template sent twice, bot answers twice);
+   * - the side effects are customer-visible and cannot be taken back (template / bot reply / notes);
+   * - Messenger is already at-most-once: a failed event is logged and the webhook still answers 200
+   *   (Meta does not resend), and `routeInbound` is fire-and-forget (it may finish after the 200). The new
+   *   loss is an event whose claim committed but whose work never finished while Meta was resending
+   *   anyway — the process died before the 200, or it failed inside a request slow enough for Meta to
+   *   time out — the resend is then skipped. Before, that resend ran it again (duplicating what had run).
+   * - customer messages keep the `chat_messages.external_message_id` UNIQUE as a second layer; legacy
+   *   postbacks now have a stable externalMessageId (`postbackExternalMessageId`) for the same reason.
+   *
+   * Comments still run first (Task 35): a transient comment failure answers non-2xx before any claim,
+   * so the resend processes Messenger once. If the claim itself fails (database), the event is processed
+   * anyway (fail open — losing a customer message is worse than a rare duplicate) and Sentry gets the
+   * kind only.
+   *
+   * @returns false = already delivered (another request claimed it) → skip every side effect
+   */
+  private async isFirstDelivery(event: unknown): Promise<boolean> {
+    const dedupe = messengerEventDedupe(event, this.configService.get<string>('FACEBOOK_APP_ID'));
+    if (!dedupe) return true;
+    try {
+      if ((await this.messengerDedupe.claim(dedupe.key)) === 'claimed') return true;
+      this.logger.log(`[FB Webhook] ${dedupe.kind} event already delivered — redelivery skipped`);
+      return false;
+    } catch (err) {
+      this.logger.warn(
+        `[FB Webhook] dedupe store unavailable for ${dedupe.kind} event — processing anyway: ${err instanceof Error ? err.message : err}`,
+      );
+      Sentry.captureException(err, {
+        level: 'warning',
+        tags: {
+          subsystem: 'facebook-messenger',
+          action: 'messenger-dedupe-unavailable',
+          kind: dedupe.kind,
+        },
+      });
+      return true;
+    }
+  }
+
+  /**
    * Persist a Facebook `message_echoes` event as a STAFF message so admin
    * replies sent outside our /chat UI (Meta Business Suite, Page Inbox, FB
    * Page mobile app) still appear in the unified inbox.
    *
-   * Dedup strategy (two layers):
+   * Dedup strategy (two layers, behind the per-event redelivery gate `isFirstDelivery` — Task 37):
    * 1. Skip echoes whose `message.app_id` matches our own FACEBOOK_APP_ID — those
    *    were sent by `sendStaffMessage` and are already in the DB.
    * 2. Fallback: rely on the UNIQUE constraint on `ChatMessage.externalMessageId`

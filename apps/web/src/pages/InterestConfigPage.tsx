@@ -9,6 +9,8 @@ import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, enabledStatusMap } from '@/lib/status-badges';
+import { Link } from 'react-router';
+import { installmentVat, type CompanyVatRow } from '@/utils/installmentVat';
 
 interface ConfigItem {
   id: string;
@@ -44,7 +46,6 @@ const defaultForm = {
   interestRate: 8.0,
   minDownPaymentPct: 15,
   storeCommissionPct: 10,
-  vatPct: 7,
   minInstallmentMonths: 6,
   maxInstallmentMonths: 12,
 };
@@ -58,7 +59,6 @@ function validateForm(form: typeof defaultForm): FormErrors {
   if (form.interestRate <= 0) errors.interestRate = 'ดอกเบี้ยต้องมากกว่า 0';
   if (form.minDownPaymentPct <= 0 || form.minDownPaymentPct > 100) errors.minDownPaymentPct = 'ดาวน์ขั้นต่ำต้องอยู่ระหว่าง 0-100%';
   if (form.storeCommissionPct < 0 || form.storeCommissionPct > 100) errors.storeCommissionPct = 'ค่าคอมต้องอยู่ระหว่าง 0-100%';
-  if (form.vatPct < 0 || form.vatPct > 100) errors.vatPct = 'VAT ต้องอยู่ระหว่าง 0-100%';
   if (form.minInstallmentMonths < 1) errors.minInstallmentMonths = 'งวดต่ำสุดต้อง >= 1';
   if (form.maxInstallmentMonths < 1) errors.maxInstallmentMonths = 'งวดสูงสุดต้อง >= 1';
   if (form.minInstallmentMonths >= form.maxInstallmentMonths) {
@@ -69,11 +69,10 @@ function validateForm(form: typeof defaultForm): FormErrors {
 }
 
 /**
- * D1.1.3.1 follow-up — InterestConfigPage now writes to canonical `VAT_RATE`
- * (percentage form, e.g. "7") instead of legacy `vat_pct` (decimal form,
- * e.g. "0.07"). The display + save logic for VAT below handles legacy reads
- * (decimal form → multiply by 100 for display) so the same OWNER can swap
- * between this page and `/settings/accounting` without seeing 700% or 0.07%.
+ * Owner decision #22 (2026-10-31): this page no longer edits any VAT — the installment VAT is the FINANCE company's
+ * (read-only here, edited at ตั้งค่า › บริษัท & สาขา › บริษัทในเครือ). `VAT_RATE` is still hydrated below (legacy
+ * decimal form → percent) only as the display fallback when no FINANCE rate exists; it is edited at
+ * ตั้งค่า › บัญชี & ภาษี › VAT.
  *
  * Other keys (`interest_rate`, `min_down_payment_pct`, `store_commission_pct`)
  * remain in decimal form — those don't have a canonical-key counterpart yet.
@@ -82,7 +81,8 @@ const defaultKeys = [
   { key: 'interest_rate', label: "อัตราดอกเบี้ยต่อเดือน (แบบคงที่)", step: '0.01' },
   { key: 'min_down_payment_pct', label: 'เงินดาวน์ขั้นต่ำ (%)', step: '0.01' },
   { key: 'store_commission_pct', label: 'ค่าคอมหน้าร้าน (เช่น 0.10 = 10%)', step: '0.01' },
-  { key: 'VAT_RATE', label: 'VAT (%) — เช่น 7 = 7%', step: '0.01' },
+  // VAT_RATE ไม่อยู่ในตัวแก้ของหน้านี้แล้ว (คำตัดสินเจ้าของ #22): VAT ของการผ่อนอ่านจากบริษัท FINANCE —
+  // ค่า VAT_RATE ของระบบยังแก้ได้ที่ ตั้งค่า › บัญชี & ภาษี › VAT
 ];
 
 /**
@@ -97,6 +97,25 @@ function toVatPercentString(raw: string | null | undefined): string {
   // Values < 1 are decimal form ("0.07") → multiply by 100.
   // Values >= 1 are percent form ("7") → unchanged.
   return String(n < 1 ? n * 100 : n);
+}
+
+/** ที่มาของ VAT + ที่แก้ (เมนูที่มีจริง: settings-registry — บริษัทในเครือ / VAT · OWNER ทั้งคู่ เหมือนหน้านี้) */
+function VatSourceHint({ source }: { source: 'FINANCE' | 'SYSTEM' }) {
+  return source === 'FINANCE' ? (
+    <p className="text-xs text-muted-foreground mt-1 leading-snug">
+      ตามบริษัท FINANCE · แก้ที่{' '}
+      <Link to="/settings/company/entities" className="text-primary hover:underline">
+        ตั้งค่า › บริษัท &amp; สาขา › บริษัทในเครือ
+      </Link>
+    </p>
+  ) : (
+    <p className="text-xs text-muted-foreground mt-1 leading-snug">
+      ยังไม่ได้ตั้ง VAT ของบริษัท FINANCE จึงใช้ค่า VAT ของระบบ · ตั้งที่{' '}
+      <Link to="/settings/company/entities" className="text-primary hover:underline">
+        ตั้งค่า › บริษัท &amp; สาขา › บริษัทในเครือ
+      </Link>
+    </p>
+  );
 }
 
 export default function InterestConfigPage() {
@@ -159,6 +178,13 @@ export default function InterestConfigPage() {
     saveDefaultsMutation.mutate(items);
   };
 
+  // #22: VAT ของตั้งค่าดอกเบี้ย = บริษัท FINANCE (แสดงอย่างเดียว · แก้ที่ บริษัทในเครือ) — key เดียวกับหน้าบริษัทในเครือ
+  const { data: companies } = useQuery<CompanyVatRow[]>({
+    queryKey: ['companies'],
+    queryFn: async () => (await api.get('/companies')).data,
+  });
+  const vat = installmentVat(companies, defaults['VAT_RATE']);
+
   const { data: configs = [], isLoading, isError, error, refetch } = useQuery<InterestConfig[]>({
     queryKey: ['interest-configs'],
     queryFn: async () => { const { data } = await api.get('/interest-configs'); return data; },
@@ -172,7 +198,6 @@ export default function InterestConfigPage() {
         interestRate: form.interestRate / 100,
         minDownPaymentPct: form.minDownPaymentPct / 100,
         storeCommissionPct: form.storeCommissionPct / 100,
-        vatPct: form.vatPct / 100,
         minInstallmentMonths: form.minInstallmentMonths,
         maxInstallmentMonths: form.maxInstallmentMonths,
       };
@@ -216,7 +241,6 @@ export default function InterestConfigPage() {
       interestRate: parseFloat(config.interestRate) * 100,
       minDownPaymentPct: parseFloat(config.minDownPaymentPct) * 100,
       storeCommissionPct: parseFloat(config.storeCommissionPct) * 100,
-      vatPct: parseFloat(config.vatPct) * 100,
       minInstallmentMonths: config.minInstallmentMonths,
       maxInstallmentMonths: config.maxInstallmentMonths,
     });
@@ -258,14 +282,14 @@ export default function InterestConfigPage() {
     const downPct = parseFloat(config.minDownPaymentPct);
     const rate = parseFloat(config.interestRate);
     const commPct = parseFloat(config.storeCommissionPct);
-    const vat = parseFloat(config.vatPct);
+    const vatFraction = parseFloat(config.vatPct); // = FINANCE VAT (API replaces the column — #22)
     const months = config.maxInstallmentMonths;
 
     const down = price * downPct;
     const loan = price - down;
     const commission = loan * commPct;
     const interest = loan * rate * months;
-    const vatAmount = (loan + commission + interest) * vat;
+    const vatAmount = (loan + commission + interest) * vatFraction;
     const total = loan + commission + interest + vatAmount;
     const monthly = Math.ceil(total / months);
     return { down, loan, interest, commission, vatAmount, total, monthly, months };
@@ -311,9 +335,9 @@ export default function InterestConfigPage() {
                   </div>
                   <div>
                     <div className="text-xs text-muted-foreground">VAT</div>
-                    {/* D1.1.3.1 follow-up — canonical VAT_RATE (percent) only.
-                        Legacy vat_pct/vat_rate normalised at hydrate-time. */}
-                    <div className="text-lg font-bold">{defaults['VAT_RATE'] ? `${defaults['VAT_RATE']}%` : '-'}</div>
+                    {/* #22 — VAT ของการผ่อนอ่านจากบริษัท FINANCE (ไม่ใช่ VAT_RATE ของระบบ เว้นแต่ไม่มีบริษัท FINANCE) */}
+                    <div className="text-lg font-bold" data-testid="interest-default-vat">{vat.percentText}</div>
+                    <VatSourceHint source={vat.source} />
                   </div>
                 </div>
               </>
@@ -529,16 +553,16 @@ export default function InterestConfigPage() {
                 {touched && errors.storeCommissionPct && <p className="text-xs text-destructive mt-1">{errors.storeCommissionPct}</p>}
               </div>
               <div>
-                <label htmlFor={`${uiFieldId}-5`} className="block text-sm font-medium text-foreground mb-1">VAT (%)</label>
-                <NumberInput unstyled id={`${uiFieldId}-5`}
-                  value={form.vatPct}
-                  onChange={(e) => setForm((f) => ({ ...f, vatPct: Number(e.target.value) }))}
-                  step="0.1"
-                  min="0"
-                  max="100"
-                  className={touched && errors.vatPct ? errorInputClass : `${inputClass} border-input`}
-                />
-                {touched && errors.vatPct && <p className="text-xs text-destructive mt-1">{errors.vatPct}</p>}
+                {/* #22 — อ่านอย่างเดียว: VAT ของการผ่อนมาจากบริษัท FINANCE (ช่องนี้ไม่ถูกบันทึก) */}
+                <span className="block text-sm font-medium text-foreground mb-1">VAT (%)</span>
+                <div
+                  data-testid="interest-vat-readonly"
+                  aria-readonly="true"
+                  className={`${inputClass} border-input bg-muted text-muted-foreground`}
+                >
+                  {vat.percentText}
+                </div>
+                <VatSourceHint source={vat.source} />
               </div>
             </div>
 
@@ -576,7 +600,7 @@ export default function InterestConfigPage() {
                   const loan = price - down;
                   const commission = loan * (form.storeCommissionPct / 100);
                   const interest = loan * (form.interestRate / 100) * form.maxInstallmentMonths;
-                  const vatAmount = (loan + commission + interest) * (form.vatPct / 100);
+                  const vatAmount = (loan + commission + interest) * vat.fraction;
                   const total = loan + commission + interest + vatAmount;
                   const monthly = Math.ceil(total / form.maxInstallmentMonths);
                   return (

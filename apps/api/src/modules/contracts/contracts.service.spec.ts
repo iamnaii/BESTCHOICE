@@ -238,6 +238,12 @@ describe('ContractsService', () => {
         findFirst: jest.fn().mockResolvedValue(mockInterestConfig),
         findUnique: jest.fn().mockResolvedValue(mockInterestConfig),
       },
+      // #22: GET /contracts/:id แทน interestConfig.vatPct ด้วย VAT ของบริษัท FINANCE
+      companyInfo: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({ vatRegistered: true, vatRate: new Prisma.Decimal('0.07') }),
+      },
       contract: {
         findMany: jest.fn().mockResolvedValue([mockContract]),
         findUnique: jest.fn().mockResolvedValue(mockContract),
@@ -420,6 +426,18 @@ describe('ContractsService', () => {
       const user = { id: 'user-1', role: 'SALES', branchId: 'branch-1' };
       const result = await service.findOne('contract-1', user);
       expect(result.id).toBe('contract-1');
+    });
+
+    // owner decision #22 (2026-10-31): the draft-edit preview on the contract page computes VAT from
+    // interestConfig.vatPct — the API sends the FINANCE VAT there, never interest_configs.vat_pct
+    it('#22 interestConfig.vatPct is the FINANCE VAT, not the column', async () => {
+      prisma.companyInfo.findFirst.mockResolvedValue({
+        vatRegistered: true,
+        vatRate: new Prisma.Decimal('0.05'),
+      });
+      const result = await service.findOne('contract-1');
+      expect(result.interestConfig?.vatPct.toString()).toBe('0.05');
+      expect(result.interestConfig?.interestRate.toString()).toBe('0.08');
     });
   });
 

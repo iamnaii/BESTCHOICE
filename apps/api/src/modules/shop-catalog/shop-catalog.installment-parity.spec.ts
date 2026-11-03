@@ -65,6 +65,12 @@ describe('ผ่อนเริ่มต้นหน้ารายการ ===
         findUnique: jest.fn(),
       },
       interestConfig: { findFirst: jest.fn().mockResolvedValue(INTEREST_CONFIG) },
+      // #22: VAT ของตั้งค่าดอกเบี้ยอ่านจากบริษัท FINANCE — จด VAT 7% (= vatPct ของ fixture)
+      companyInfo: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({ vatRegistered: true, vatRate: new Prisma.Decimal('0.07') }),
+      },
       gfinModelMapping: { findMany: jest.fn() },
       gfinOverpriceRule: { findMany: jest.fn() },
       gfinRateFactor: { findFirst: jest.fn() },

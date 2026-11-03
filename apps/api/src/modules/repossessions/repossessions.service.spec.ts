@@ -190,6 +190,10 @@ describe('RepossessionsService', () => {
       deviceReturn: {
         findFirst: jest.fn().mockResolvedValue(null),
       },
+      // #24: คำขอคืนเงินที่อนุมัติแล้วแต่ยังไม่บันทึกผลธนาคาร — ค่าเริ่มต้น = ไม่มี
+      refund: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
       // findAll.deviceReturnOutstanding — helper ของ Phase 1 `postedDeductionsByContract` อ่าน
       // InterCoSettlementItem ผ่าน prisma ตัวนี้; รูป mock ต้องตาม implementation จริงของ Phase 1
       // (ให้ทุก call คืนค่าว่าง → Σ deduction = 0). ถ้า helper ใช้ method อื่นเพิ่ม ให้เติมที่นี่
@@ -583,6 +587,26 @@ describe('RepossessionsService', () => {
       expect(result.eligibility.reason).toMatch(/หนังสือบอกเลิก/);
     });
 
+    // owner decision #24 (2026-10-31): the preview's eligibility uses the same rule as createInTx
+    it('eligibility: an approved refund waiting for the bank → canRepossess=false with the same message createInTx throws', async () => {
+      prisma.contract.findUnique.mockResolvedValue(makeContract({ status: 'TERMINATED' }));
+      prisma.refund.findMany.mockResolvedValue([
+        { id: 'rf-1', amount: decimal(1515.83), payment: { installmentNo: 4 } },
+      ]);
+
+      const result = await service.previewCalculation('contract-1', {});
+
+      expect(result.eligibility.canRepossess).toBe(false);
+      expect(result.eligibility.reason).toContain(
+        'สัญญานี้มีคำขอคืนเงินที่อนุมัติแล้วแต่ยังไม่ได้บันทึกผลจากธนาคาร (งวดที่ 4 1515.83 บาท) — ยืนยันรับเครื่องคืน/ยึดเครื่องตอนนี้ไม่ได้',
+      );
+      expect(prisma.refund.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { contractId: 'contract-1', status: 'APPROVED', deletedAt: null },
+        }),
+      );
+    });
+
     it('eligibility: TERMINATED contract is repossessable even under strict mode; ACTIVE never is', async () => {
       prisma.systemConfig.findUnique.mockResolvedValue({ value: 'true' });
       prisma.contract.findUnique.mockResolvedValue(makeContract({ status: 'TERMINATED' }));
@@ -898,6 +922,42 @@ describe('RepossessionsService', () => {
             (input.metadata as Record<string, unknown>)?.flow === 'shop-repossession-intake',
         )
         .map(([input]: [Record<string, unknown>]) => input);
+
+    // owner decision #24 (2026-10-31): no JP5 while an approved refund waits for the bank — checked under the
+    // contract row lock the confirm transaction takes (approveRefund locks the same row FOR SHARE)
+    it('#24 an approved refund waiting for the bank → 400 before JP5, nothing written', async () => {
+      arm({ status: 'TERMINATED' });
+      prisma.refund.findMany.mockResolvedValue([
+        { id: 'rf-1', amount: decimal(1515.83), payment: { installmentNo: 4 } },
+      ]);
+
+      await expect(run()).rejects.toThrow(BadRequestException);
+      await expect(run()).rejects.toThrow(
+        /ยืนยันรับเครื่องคืน\/ยึดเครื่องตอนนี้ไม่ได้.*OWNER.*FINANCE_MANAGER/,
+      );
+      expect(jp5.execute).not.toHaveBeenCalled();
+      expect(prisma.repossession.create).not.toHaveBeenCalled();
+      expect(prisma.contract.update).not.toHaveBeenCalled();
+      expect(prisma.product.update).not.toHaveBeenCalled();
+    });
+
+    it('#24 reads the refunds after locking the contract row FOR UPDATE', async () => {
+      arm({ status: 'TERMINATED' });
+      const order: string[] = [];
+      prisma.$queryRaw.mockImplementation((strings: TemplateStringsArray) => {
+        if (strings.join('?').includes('FROM contracts')) order.push('lock-contract');
+        return Promise.resolve([{ balance: '0' }]);
+      });
+      prisma.refund.findMany.mockImplementation(() => {
+        order.push('read-refunds');
+        return Promise.resolve([]);
+      });
+
+      await run();
+
+      expect(order.slice(0, 2)).toEqual(['lock-contract', 'read-refunds']);
+      expect(jp5.execute).toHaveBeenCalled();
+    });
 
     // PR6 — คำตอบฝ่ายบัญชี เล่ม 1 ข้อ 6: JP5 หักเงินของลูกค้าที่ค้างทุกประเภทตามยอดในบัญชี (บรรทัดเงินพัก 200 +
     // บรรทัดเงินรับล่วงหน้าที่เหลือ) → ถังพักเป็น 0 ทั้งก้อน (เดิม: ตัดคอลัมน์เท่าที่บรรทัดเงินพักลง → เหลือ 300)

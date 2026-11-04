@@ -1,6 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
-import { Prisma, PaymentMethod } from '@prisma/client';
+import { Prisma, PaymentLinkPurpose, PaymentMethod } from '@prisma/client';
 import type { PartialPaymentLink } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -30,6 +30,79 @@ import { formatDateLong } from '../../../utils/thai-date.util';
 import { ensureInstallmentSchedules } from '../../../utils/installment-schedule.util';
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
 import { PaySolutionsGatewayClient } from './paysolutions-gateway.client';
+import {
+  parsePayoffQuoteSnapshot,
+  PAYOFF_ELIGIBLE_CONTRACT_STATUSES,
+  type PaySolutionsPayoffPort,
+  type PayoffQuoteSnapshot,
+} from '../payoff-quote-snapshot';
+import { GatewayPayoffMismatchError } from '../../contracts/early-payoff-gateway';
+import { findPendingBankRefunds } from '../../refunds/pending-bank-refund';
+import { isRetryablePrismaWriteError } from '../../../utils/transaction-retry.util';
+import { d } from '../../../utils/decimal.util';
+import { resolvePaySolutionsDepositAccount } from '../paysolutions-deposit-account';
+import { FINISHED_CONTRACT_STATUSES } from '../../products/product-hold.util';
+import { allocatePaidAmountFifo, fifoUnpaidPaymentsArgs } from '../pay-allocation';
+import { createLockPaidUnlockTodo } from './lock-paid-unlock-todo';
+
+/** Task 41 — เหตุที่เงินของแถวติดตามปิดยอดถูกลงแบบ FIFO แทน JP4 (tag `reason` ของ Sentry · ข้อความในงานแจ้ง) */
+export type GatewayPayoffFallbackReason =
+  | 'QUOTE_MISMATCH'
+  | 'REFUND_PENDING'
+  | 'CONTRACT_STATUS'
+  | 'PERIOD_CLOSED'
+  | 'NO_QUOTE_SNAPSHOT'
+  | 'UNAVAILABLE'
+  | 'JP4_ERROR';
+
+const FALLBACK_REASON_TEXT: Record<GatewayPayoffFallbackReason, string> = {
+  QUOTE_MISMATCH:
+    'ยอดที่ลูกค้าจ่ายไม่ตรงยอดปิด ณ เวลาที่เงินเข้า (เช่น ข้ามวันแล้วมีงวดถึงกำหนด ค่าปรับเพิ่ม หรือมีเงินเข้าทางอื่นระหว่างนั้น)',
+  REFUND_PENDING:
+    'สัญญามีคำขอคืนเงินที่อนุมัติแล้วแต่ยังไม่ได้บันทึกผลธนาคาร (คำตัดสินเจ้าของ #24 — ปิดยอดไม่ได้จนกว่าจะบันทึกผล)',
+  CONTRACT_STATUS: 'สถานะสัญญาตอนเงินเข้าไม่ใช่สถานะที่ปิดยอดได้ (ACTIVE / OVERDUE / DEFAULT)',
+  PERIOD_CLOSED: 'งวดบัญชีของวันที่เงินเข้าถูกปิดระหว่างทำรายการ',
+  NO_QUOTE_SNAPSHOT: 'รายการชำระนี้ไม่มียอดปิดที่ระบบคำนวณไว้ตอนสร้าง QR (สร้างก่อนระบบใหม่)',
+  UNAVAILABLE: 'ระบบลงรายการปิดยอดไม่พร้อมขณะเงินเข้า',
+  JP4_ERROR: 'ลงรายการปิดยอดไม่สำเร็จ (รายละเอียดใน Sentry)',
+};
+
+/** Todo ของเงินปิดยอดที่ลงแบบ FIFO — requestKey ต่อแถวติดตาม (ส่งซ้ำ/เรียกซ้ำได้ใบเดียว) */
+export const PAYOFF_FALLBACK_TODO_TAG = 'paysolutions-payoff-fallback';
+export const payoffFallbackRequestKey = (paymentLinkId: string) =>
+  `${PAYOFF_FALLBACK_TODO_TAG}:${paymentLinkId}`;
+
+type GatewayPayoffDecision =
+  | { outcome: 'POSTED'; postCommit: Array<() => Promise<void>>; totalPayoff: number; snapshot: PayoffQuoteSnapshot }
+  | {
+      outcome: 'FALLBACK';
+      reason: GatewayPayoffFallbackReason;
+      snapshot: PayoffQuoteSnapshot | null;
+      /** ยอดปิด ณ เวลาที่เงินเข้า (ก่อน FIFO) — null = คำนวณไม่ได้ */
+      liveTotalPayoff: number | null;
+      errorMessage: string | null;
+    };
+
+const GATEWAY_PAYOFF_SAVEPOINT = 'paysolutions_gateway_payoff';
+const GATEWAY_PAYOFF_DIAG_SAVEPOINT = 'paysolutions_gateway_payoff_diag';
+
+/**
+ * serialization failure / deadlock ของ Postgres ⇒ ทั้งธุรกรรมของ webhook ต้องล้ม (controller ตอบ 5xx → PaySolutions ส่งซ้ำ แล้วรอบใหม่ตัดสินใหม่
+ * ทั้งหมด) — ถอยเป็น FIFO ในธุรกรรมที่ Postgres ตัดสินว่าจะ commit ไม่ได้อยู่แล้วไม่มีประโยชน์ · P2002 (unique) ไม่ใช่การแข่ง — ถอยเป็น FIFO
+ */
+function isSerializationFailure(error: unknown): boolean {
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') return false;
+  return isRetryablePrismaWriteError(error);
+}
+
+/** เลขงวดในข้อความงานแจ้ง — ต่อเนื่อง = "1–11" · ไม่ต่อเนื่อง = "1, 3, 5" */
+export function formatInstallmentNos(nos: readonly number[]): string {
+  const sorted = [...nos].sort((a, b) => a - b);
+  if (sorted.length === 0) return '—';
+  const consecutive = sorted.every((n, i) => i === 0 || n === sorted[i - 1] + 1);
+  if (consecutive && sorted.length > 1) return `${sorted[0]}–${sorted[sorted.length - 1]}`;
+  return sorted.join(', ');
+}
 
 /**
  * Cross-seam host the webhook routes through. The facade implements this and is
@@ -54,6 +127,7 @@ export interface PaySolutionsWebhookHost {
   sendPaymentSuccessNotification(
     contractId: string,
     paymentId: string | null,
+    paidAmount?: Prisma.Decimal,
   ): Promise<void>;
   sendEarlyPayoffSuccessNotification(
     contractId: string,
@@ -70,6 +144,12 @@ export interface PaySolutionsWebhookHost {
  * follow-up to C1, 2026-07-30), surplus-advance JE + advanceBalance + audit)
  * lives here AS ONE ATOM — never split, never crossing a seam. The C2 fix
  * that moved JE posting INSIDE the tx is preserved verbatim.
+ *
+ * Task 41 (owner decision #43): a `PAYOFF` tracking row first tries a real early
+ * payoff (JP4 via `ContractPaymentService.earlyPayoff` — `gatewayMatch` entry) inside
+ * this SAME transaction, wrapped in a savepoint. Posted ⇒ no FIFO. Anything that blocks
+ * JP4 rolls back to the savepoint and the FIFO below runs unchanged (+ HIGH todo and a
+ * Sentry warning after commit). Serialization/deadlock still fails the whole webhook.
  *
  * Routing branches (partial / saving-plan / online-order) and the post-tx
  * notifications dispatch through {@link PaySolutionsWebhookHost} (the facade),
@@ -94,6 +174,11 @@ export class PaySolutionsWebhookService {
      * ใบเสร็จของงวดที่เงินลิงก์ชำระจ่าย (PR3 — คำสั่งเจ้าของ 2026-09-30). ไม่ส่ง = ไม่ออกใบ (ค่าเริ่มต้นของ spec เดิม)
      */
     private receipts?: Pick<ReceiptsService, 'generateReceipt'>,
+    /**
+     * Task 41 (คำตัดสินเจ้าของ #43) — แกนปิดยอดก่อนกำหนด (`ContractPaymentService.earlyPayoff` ทางเข้า `gatewayMatch`) สำหรับแถวติดตาม
+     * `PAYOFF` ที่เงินเข้าเท่ายอดปิด · ไม่ส่ง = ทุกเงินเข้า FIFO เดิม (แถว `PAYOFF` ได้งานแจ้งพนักงาน)
+     */
+    private payoff?: PaySolutionsPayoffPort,
   ) {}
 
   /**
@@ -278,6 +363,8 @@ export class PaySolutionsWebhookService {
         where: { id: paymentLink.contractId! },
         select: { id: true, contractNumber: true, branchId: true },
       });
+      // คำตัดสินเจ้าของ #45 — บัญชีรับเงินของ Pay Solutions ตัวเดียวทุกทาง (ค่าตั้ง QR ค่าเริ่มต้น · ไม่มี = 11-1201 กสิกร) · เดิมค่าคงที่ 11-1202
+      const depositAccountCode = await resolvePaySolutionsDepositAccount(this.prisma);
 
       // Period-lock: the receipt JE posts to today's FINANCE period (postedAt=now).
       // Mirror PaymentsService.recordPayment so an autonomous webhook cannot post into a
@@ -334,6 +421,15 @@ export class PaySolutionsWebhookService {
           if (claim.count === 0) {
             return { alreadyClaimed: true as const };
           }
+          // Task 39 (รีวิว 4ข) — แถวติดตามที่สร้างจากลิงก์ `/pay/:token` (PAYOFF / AMOUNT) ชี้ลิงก์ต้นทาง ⇒ เงินเข้าแล้วลิงก์ต้นทางเป็น USED
+          // ในธุรกรรมเดียวกับการรับเงิน (กดจ่ายซ้ำไม่ได้ — create-intent ตอบ "ลิงก์นี้ชำระเงินแล้ว") · เฉพาะ webhook สำเร็จ · ส่งซ้ำจบที่ claim ข้างบน ·
+          // `status: 'ACTIVE'` ⇒ ทำซ้ำไม่มีผล · ลิงก์งวดไม่มีลิงก์ต้นทาง (งวดที่ชำระแล้วกันการจ่ายซ้ำเองอยู่แล้ว)
+          if (paymentLink.sourceLinkId) {
+            await tx.paymentLink.updateMany({
+              where: { id: paymentLink.sourceLinkId, status: 'ACTIVE' },
+              data: { status: 'USED', usedAt: new Date() },
+            });
+          }
 
           // ตั้งลูกหนี้งวด ณ วันรับเงิน: สถานะของสัญญา "ก่อนรับเงิน" — อ่านในธุรกรรมนี้ หลังได้สิทธิ์ลิงก์
           // และก่อนแก้อะไร. การอ่านนอกธุรกรรม (contractForJe) ไม่เห็นการบอกเลิก/รับเครื่องคืนที่ commit
@@ -343,16 +439,38 @@ export class PaySolutionsWebhookService {
             select: { status: true },
           });
 
-          const unpaidPayments = await tx.payment.findMany({
-            where: {
+          // Task 41 (คำตัดสินเจ้าของ #43) — แถวติดตาม intent ปิดยอด (`PAYOFF`): เงินเท่ายอดปิด ณ เวลาที่เงินเข้า (±0.01) = ปิดยอดก่อนกำหนด
+          // จริง (JP4 — แกนเดียวกับพนักงานทางสลิปตรง) ในธุรกรรมนี้ แทนการกระจายเงินทีละงวด · ลง JP4 ไม่ได้ด้วยเหตุใดก็ตาม (ยอดไม่ตรง ·
+          // คำขอคืนเงินรอธนาคาร #24 · สถานะสัญญา · ไม่มี snapshot · error) = ถอยกลับ savepoint แล้ว FIFO ข้างล่างตามเดิมทุกตัวอักษร +
+          // งานแจ้ง HIGH + Sentry warning หลัง commit — webhook ห้ามทิ้งเงินที่ตัดแล้ว
+          let payoffFallback: Extract<GatewayPayoffDecision, { outcome: 'FALLBACK' }> | null = null;
+          if (paymentLink.purpose === PaymentLinkPurpose.PAYOFF) {
+            const decision = await this.settleGatewayPayoff(tx, {
+              paymentLinkId: paymentLink.id,
               contractId: paymentLink.contractId!,
-              status: { not: 'PAID' },
-              deletedAt: null,
-            },
-            orderBy: { installmentNo: 'asc' },
-          });
+              payoffQuote: paymentLink.payoffQuote,
+              paidAmount,
+              refno,
+              transactionId: transaction_id || null,
+              webhookData,
+              systemUserId,
+              paidAt: new Date(),
+              depositAccountCode,
+              financeCompanyId,
+            });
+            if (decision.outcome === 'POSTED') {
+              return { alreadyClaimed: false as const, kind: 'GATEWAY_PAYOFF' as const, decision };
+            }
+            payoffFallback = decision;
+          }
 
-          let remaining = paidAmount;
+          // Task 42 — งวดที่กระจาย + การกระจาย (งวดเก่าก่อน) อยู่ที่ `pay-allocation.ts` ที่เดียว — หน้า /pay/:token แสดงผลจากตัวเดียวกัน
+          const unpaidPayments = await tx.payment.findMany(
+            fifoUnpaidPaymentsArgs(paymentLink.contractId!),
+          );
+
+          const allocation = allocatePaidAmountFifo(unpaidPayments, paidAmount);
+          const remaining = allocation.remaining;
           const now = new Date();
           let fullyPaidCount = 0;
           // PR-843/I2 Phase 3 3b: collect a snapshot for EVERY touched installment
@@ -371,22 +489,7 @@ export class PaySolutionsWebhookService {
             /** เลขที่รายการรับชำระของงวดนี้ — ใบเสร็จผูกรายการนี้หลัง commit (PR3) */
             entryNo?: string;
           }> = [];
-          for (const payment of unpaidPayments) {
-            if (remaining.lte(0)) break;
-            // lateFeeWaived=true sets lateFee=0 elsewhere, so reading lateFee
-            // directly is equivalent — we keep the guard explicit to be
-            // defensive against future model changes.
-            const lateFee = payment.lateFeeWaived
-              ? new Prisma.Decimal(0)
-              : payment.lateFee;
-            const owed = payment.amountDue.add(lateFee).sub(payment.amountPaid);
-            if (owed.lte(0)) continue;
-
-            const payThis = Prisma.Decimal.min(remaining, owed);
-            remaining = remaining.sub(payThis);
-            const newAmountPaid = payment.amountPaid.add(payThis).toDecimalPlaces(2);
-            const fullyPaid = newAmountPaid.gte(payment.amountDue.add(lateFee));
-
+          for (const { payment, lateFee, payThis, newAmountPaid, fullyPaid } of allocation.lines) {
             const paymentUpdated = await tx.payment.update({
               where: { id: payment.id },
               data: {
@@ -394,6 +497,8 @@ export class PaySolutionsWebhookService {
                 status: fullyPaid ? 'PAID' : 'PARTIALLY_PAID',
                 ...(fullyPaid ? { paidDate: now, paidAt: now } : {}),
                 paymentMethod: PaymentMethod.ONLINE_GATEWAY,
+                // คำตัดสินเจ้าของ #45 — บัญชีเดียวกับขา Dr ของใบรับชำระของงวดนี้ (ข้างล่าง)
+                depositAccountCode,
                 gatewayRef: refno,
                 gatewayStatus: 'SUCCESS',
                 gatewayResponse: webhookData as object,
@@ -430,8 +535,16 @@ export class PaySolutionsWebhookService {
             },
           });
 
+          // Task 41 (รีวิว I-1) — สัญญาที่ปิดไปแล้วก่อนเงินก้อนนี้ (เช่น ลูกค้าจ่าย QR ปิดยอดซ้ำ / ปิดยอดไปแล้วทางอื่น — FIFO ไม่ได้ตัดงวดใด
+          // เงินทั้งก้อนเป็นเงินส่วนเกิน) ต้องคงสถานะเดิม: เดิม `stillUnpaid === 0` เขียน COMPLETED ทับ EARLY_PAYOFF / CLOSED_BAD_DEBT ฯลฯ
+          // และย้ายกรรมสิทธิ์ซ้ำ · ชุดสถานะ "จบแล้ว" ตัวเดียวของระบบ (`FINISHED_CONTRACT_STATUSES`) · TERMINATED ไม่อยู่ในชุด (จ่ายครบ = ปิดตามเดิม)
+          const closedBeforeReceipt =
+            !!contractBeforeReceipt &&
+            FINISHED_CONTRACT_STATUSES.includes(
+              contractBeforeReceipt.status as (typeof FINISHED_CONTRACT_STATUSES)[number],
+            );
           let contractStatus: 'EARLY_PAYOFF' | 'COMPLETED' | null = null;
-          if (stillUnpaid === 0) {
+          if (stillUnpaid === 0 && !closedBeforeReceipt) {
             contractStatus = fullyPaidCount > 1 ? 'EARLY_PAYOFF' : 'COMPLETED';
             const updated = await tx.contract.update({
               where: { id: paymentLink.contractId! },
@@ -495,7 +608,7 @@ export class PaySolutionsWebhookService {
                   {
                     installmentScheduleId: instSchedPs.id,
                     delta: new Decimal(snapshot.payThis.toString()),
-                    debitAccountCode: '11-1202',
+                    debitAccountCode: depositAccountCode,
                     lateFee: snapshot.lateFee.gt(0)
                       ? new Decimal(snapshot.lateFee.toString())
                       : undefined,
@@ -620,7 +733,7 @@ export class PaySolutionsWebhookService {
                 },
                 lines: [
                   {
-                    accountCode: '11-1202',
+                    accountCode: depositAccountCode,
                     dr: remaining,
                     cr: new Decimal(0),
                     description: 'เงินรับเกิน',
@@ -665,6 +778,9 @@ export class PaySolutionsWebhookService {
 
           return {
             alreadyClaimed: false as const,
+            kind: 'FIFO' as const,
+            payoffFallback,
+            contractStatusBefore: contractBeforeReceipt?.status ?? null,
             contractStatus,
             fullyPaidCount,
             totalUnpaidAtStart: unpaidPayments.length,
@@ -685,9 +801,51 @@ export class PaySolutionsWebhookService {
         return;
       }
 
+      // Task 41 — ปิดยอดผ่าน QR ลง JP4 แล้ว: งานหลัง commit ของการปิดยอด (สัญญาณเตือน · ใบ EARLY_PAYOFF ผูก JP4 · journey) แล้วการ์ด
+      // "ปิดยอดก่อนกำหนดสำเร็จ" เดิมทาง OA การเงิน (แม่แบบเดิม — ทางที่ FIFO ปิดหลายงวดเคยส่ง) · ไม่มีใบรับชำระงวด/เงินส่วนเกิน ·
+      // ไม่มีการปลดล็อกเครื่อง (ห้ามแตะการเชื่อม MDM)
+      if (result.kind === 'GATEWAY_PAYOFF') {
+        await this.finishGatewayPayoff(result.decision, {
+          contractId: paymentLink.contractId,
+          contractNumber: contractForJe?.contractNumber ?? null,
+          paymentLinkId: paymentLink.id,
+          paidAmount,
+          refno,
+          transactionId: transaction_id || null,
+        });
+        return;
+      }
+
       this.logger.log(
         `Payment SUCCESS: refno=${refno}, contractId=${paymentLink.contractId}, contractStatus=${result.contractStatus ?? 'ACTIVE'}, fullyPaid=${result.fullyPaidCount}/${result.totalUnpaidAtStart}`,
       );
+
+      // Task 41 — เงินของแถวติดตามปิดยอดที่ลงแบบ FIFO: งาน HIGH ให้พนักงานปิดยอดต่อ + Sentry warning (หลัง commit · ไม่ throw)
+      if (result.payoffFallback) {
+        await this.alertPayoffFallback(result.payoffFallback, {
+          contractId: paymentLink.contractId,
+          contractNumber: contractForJe?.contractNumber ?? null,
+          branchId: contractForJe?.branchId ?? null,
+          paymentLinkId: paymentLink.id,
+          paidAmount,
+          refno,
+          transactionId: transaction_id || null,
+          systemUserId,
+          contractStatusBefore: result.contractStatusBefore,
+          contractStatusAfter: result.contractStatus,
+          touchedInstallmentNos: result.touchedSnapshots
+            .filter((t) => t.payThis.gt(0))
+            .map((t) => t.installmentNo),
+          surplusAmount: result.surplusAmount,
+        });
+      }
+
+      // Task 42 — เงินของลิงก์แจ้งล็อกเข้าแล้ว (หลัง commit): งานให้เจ้าหน้าที่ตรวจยอดแล้วปลดล็อค · ไม่แตะ MDM · ไม่ throw
+      await createLockPaidUnlockTodo(this.prisma, paymentLink, {
+        paidAmount,
+        refno,
+        paidAt: result.paidAt,
+      });
 
       // ใบเสร็จของทุกงวดที่เงินนี้จ่าย (PR3 — คำสั่งเจ้าของ 2026-09-30: เดิมทางนี้ลงบัญชีแต่ไม่มีใบเสร็จ) — ออกหลัง
       // ธุรกรรม commit ผูกรายการรับชำระของงวดนั้น (VAT ของใบ = ภาษีขายของ 2A ที่ลงพร้อมกัน). webhook ที่ส่งซ้ำจบที่ด่าน
@@ -778,10 +936,19 @@ export class PaySolutionsWebhookService {
           paymentLink.contractId,
           paidAmount,
         );
-      } else {
+      } else if (paymentLink.paymentId) {
         await this.host.sendPaymentSuccessNotification(
           paymentLink.contractId,
           paymentLink.paymentId,
+        );
+      } else {
+        // Task 39 (รีวิว I-2) — แถวติดตามที่ไม่มีงวด (ลิงก์ PAYOFF / AMOUNT · LiffEarlyPayoff) เดิมจบเงียบ ("ไม่มีงวด" ใน
+        // sendPaymentSuccessNotification) ⇒ ใช้การ์ดเดียวกับลิงก์งวด: งวดสุดท้ายที่เงินไปถึง + ยอดที่ลูกค้าโอนจริง
+        const lastTouched = result.touchedSnapshots[result.touchedSnapshots.length - 1];
+        await this.host.sendPaymentSuccessNotification(
+          paymentLink.contractId,
+          lastTouched?.id ?? null,
+          paidAmount,
         );
       }
     } else {
@@ -807,11 +974,337 @@ export class PaySolutionsWebhookService {
   }
 
   /**
+   * Task 41 — ลงเงินของแถวติดตามปิดยอดเป็นปิดยอดก่อนกำหนด (JP4) ผ่าน `ContractPaymentService.earlyPayoff` ทางเข้า `gatewayMatch` ในธุรกรรมของ
+   * webhook ภายใน savepoint · ล้ม (ยกเว้น serialization/deadlock ที่ต้องล้มทั้งก้อน) = กลับ savepoint แล้วคืน FALLBACK พร้อมเหตุผล ให้ FIFO
+   * เดิมทำงานต่อในธุรกรรมเดียวกัน (ไม่มีแถวของ JP4 ค้าง — ทุกอย่างหลัง savepoint ถูกถอย)
+   */
+  private async settleGatewayPayoff(
+    tx: Prisma.TransactionClient,
+    ctx: {
+      paymentLinkId: string;
+      contractId: string;
+      payoffQuote: Prisma.JsonValue | null;
+      paidAmount: Prisma.Decimal;
+      refno: string;
+      transactionId: string | null;
+      webhookData: Record<string, string>;
+      systemUserId: string | null;
+      paidAt: Date;
+      /** บัญชีรับเงินของ Pay Solutions (`resolvePaySolutionsDepositAccount`) — ขา Dr ของ JP4 */
+      depositAccountCode: string;
+      financeCompanyId: string | null;
+    },
+  ): Promise<GatewayPayoffDecision> {
+    const snapshot = parsePayoffQuoteSnapshot(ctx.payoffQuote);
+    if (!snapshot) {
+      return {
+        outcome: 'FALLBACK',
+        reason: 'NO_QUOTE_SNAPSHOT',
+        snapshot: null,
+        liveTotalPayoff: (await this.diagnoseGatewayPayoff(tx, ctx, undefined)).liveTotalPayoff,
+        errorMessage: null,
+      };
+    }
+    if (!this.payoff || !ctx.systemUserId) {
+      return { outcome: 'FALLBACK', reason: 'UNAVAILABLE', snapshot, liveTotalPayoff: null, errorMessage: null };
+    }
+
+    const postCommit: Array<() => Promise<void>> = [];
+    await tx.$executeRawUnsafe(`SAVEPOINT ${GATEWAY_PAYOFF_SAVEPOINT}`);
+    try {
+      const posted = await this.payoff.earlyPayoff(
+        ctx.contractId,
+        ctx.systemUserId,
+        {
+          paymentMethod: PaymentMethod.ONLINE_GATEWAY,
+          // % ส่วนลดเดียวกับยอดที่ลูกค้าเห็นตอนสร้าง QR — ยอดปิดคำนวณใหม่ ณ เวลาที่เงินเข้าในธุรกรรมนี้
+          discountPct: snapshot.discountPct,
+          depositAccountCode: ctx.depositAccountCode,
+          paymentDate: ctx.paidAt.toISOString(),
+          referenceNo: ctx.transactionId || ctx.refno,
+          notes: `ชำระผ่าน Pay Solutions (${ctx.transactionId || ctx.refno})`,
+        },
+        undefined,
+        undefined,
+        {
+          tx,
+          paidAmount: ctx.paidAmount,
+          refno: ctx.refno,
+          transactionId: ctx.transactionId,
+          paymentLinkId: ctx.paymentLinkId,
+          quoteSnapshot: snapshot,
+          webhookData: ctx.webhookData,
+          onCommit: (work) => postCommit.push(work),
+        },
+      );
+      await tx.$executeRawUnsafe(`RELEASE SAVEPOINT ${GATEWAY_PAYOFF_SAVEPOINT}`);
+      return { outcome: 'POSTED', postCommit, totalPayoff: posted.totalPayoff, snapshot };
+    } catch (err) {
+      if (isSerializationFailure(err)) throw err;
+      await tx.$executeRawUnsafe(`ROLLBACK TO SAVEPOINT ${GATEWAY_PAYOFF_SAVEPOINT}`);
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      if (err instanceof GatewayPayoffMismatchError) {
+        return {
+          outcome: 'FALLBACK',
+          reason: 'QUOTE_MISMATCH',
+          snapshot,
+          liveTotalPayoff: err.liveTotalPayoff,
+          errorMessage,
+        };
+      }
+      const diagnosis = await this.diagnoseGatewayPayoff(tx, ctx, snapshot.discountPct);
+      return { outcome: 'FALLBACK', ...diagnosis, snapshot, errorMessage };
+    }
+  }
+
+  /**
+   * เหตุที่ลง JP4 ไม่ได้ (อ่านสถานะหลังถอย savepoint — ไม่ตีความข้อความ error) + ยอดปิด ณ เวลาที่เงินเข้าสำหรับงานแจ้ง · อ่านอย่างเดียวใน
+   * savepoint ของตัวเอง: คำสั่งที่ล้มต้องไม่ทำให้ธุรกรรมของ FIFO ที่ตามมาเสีย
+   */
+  private async diagnoseGatewayPayoff(
+    tx: Prisma.TransactionClient,
+    ctx: { contractId: string; paidAt: Date; financeCompanyId: string | null },
+    discountPct: number | undefined,
+  ): Promise<{ reason: GatewayPayoffFallbackReason; liveTotalPayoff: number | null }> {
+    const { contractId } = ctx;
+    await tx.$executeRawUnsafe(`SAVEPOINT ${GATEWAY_PAYOFF_DIAG_SAVEPOINT}`);
+    try {
+      const contract = await tx.contract.findUnique({ where: { id: contractId }, select: { status: true } });
+      let reason: GatewayPayoffFallbackReason = 'JP4_ERROR';
+      if (!contract || !PAYOFF_ELIGIBLE_CONTRACT_STATUSES.includes(contract.status)) {
+        reason = 'CONTRACT_STATUS';
+      } else if (!(await this.periodOpenAt(tx, ctx.paidAt, ctx.financeCompanyId))) {
+        reason = 'PERIOD_CLOSED';
+      } else if ((await findPendingBankRefunds(tx, contractId)).length > 0) {
+        reason = 'REFUND_PENDING';
+      }
+      let liveTotalPayoff: number | null = null;
+      if (this.payoff && reason !== 'CONTRACT_STATUS') {
+        try {
+          liveTotalPayoff = (
+            await this.payoff.getEarlyPayoffQuote(contractId, discountPct, undefined, tx, { skipJournalPreview: true })
+          ).totalPayoff;
+        } catch {
+          liveTotalPayoff = null; // ด่านของ quote (ไม่มีงวดค้าง ฯลฯ) — JS error ไม่ทำให้ธุรกรรมเสีย
+        }
+      }
+      await tx.$executeRawUnsafe(`RELEASE SAVEPOINT ${GATEWAY_PAYOFF_DIAG_SAVEPOINT}`);
+      return { reason, liveTotalPayoff };
+    } catch {
+      await tx.$executeRawUnsafe(`ROLLBACK TO SAVEPOINT ${GATEWAY_PAYOFF_DIAG_SAVEPOINT}`);
+      return { reason: 'JP4_ERROR', liveTotalPayoff: null };
+    }
+  }
+
+  /** ด่านงวดบัญชีตัวเดียวกับแกนปิดยอด (`validatePeriodOpen`) — ปิด = false (ใช้บอกเหตุเท่านั้น) */
+  private async periodOpenAt(
+    tx: Prisma.TransactionClient,
+    at: Date,
+    financeCompanyId: string | null,
+  ): Promise<boolean> {
+    try {
+      await validatePeriodOpen(tx, at, financeCompanyId ?? undefined);
+      return true;
+    } catch (err) {
+      if (err instanceof BadRequestException) return false;
+      throw err;
+    }
+  }
+
+  /** งานหลัง commit ของการปิดยอดผ่าน QR — ห้าม throw (เงินและรายการบัญชี commit แล้ว) */
+  private async finishGatewayPayoff(
+    decision: Extract<GatewayPayoffDecision, { outcome: 'POSTED' }>,
+    ctx: {
+      contractId: string;
+      contractNumber: string | null;
+      paymentLinkId: string;
+      paidAmount: Prisma.Decimal;
+      refno: string;
+      transactionId: string | null;
+    },
+  ): Promise<void> {
+    for (const work of decision.postCommit) {
+      try {
+        await work();
+      } catch (err) {
+        this.logger.error(
+          `Gateway payoff post-commit step failed for contract ${ctx.contractId} (refno=${ctx.refno}): ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }
+    // เงินที่รับต่างยอดปิดในรายการได้ไม่เกิน 0.01 (กติกาเดียวกับสลิปตรง — รายการใช้ยอดปิด) · ต่างจริง = เงินในธนาคารต่างรายการ 1 สตางค์
+    if (!d(decision.totalPayoff).eq(ctx.paidAmount)) {
+      emitDeferredWarnings([
+        {
+          message: '[paysolutions payoff] money received differs from the posted payoff by up to 0.01 — JP4 books the payoff amount',
+          tags: { module: 'paysolutions', action: 'paysolutions-payoff-satang-difference' },
+          extra: {
+            contractId: ctx.contractId,
+            contractNumber: ctx.contractNumber,
+            paymentLinkId: ctx.paymentLinkId,
+            refno: ctx.refno,
+            transactionId: ctx.transactionId,
+            paidAmount: ctx.paidAmount.toFixed(2),
+            totalPayoff: d(decision.totalPayoff).toFixed(2),
+          },
+        },
+      ]);
+    }
+    this.logger.log(
+      `Payment SUCCESS (early payoff JP4): refno=${ctx.refno}, contractId=${ctx.contractId}, paid=${ctx.paidAmount.toFixed(2)}`,
+    );
+    await this.host.sendEarlyPayoffSuccessNotification(ctx.contractId, ctx.paidAmount);
+  }
+
+  /**
+   * Task 41 — เงินของแถวติดตามปิดยอดลงแบบ FIFO (ลง JP4 ไม่ได้): งาน HIGH หนึ่งใบต่อแถวติดตาม (`requestKey`) + Sentry warning · หลัง commit
+   * เท่านั้น · ไม่มีข้อมูลลูกค้า (เลขสัญญา/ยอด/เลขอ้างอิงเท่านั้น) · ห้าม throw
+   *
+   * รีวิว I-1 — ข้อความต้องบอก**สิ่งที่เกิดกับเงินก้อนนี้จริง** (ไม่ใช่เดาจากเหตุอย่างเดียว):
+   * - **ไม่มีงวดถูกตัด** (สัญญาปิด/ไม่มีงวดค้างแล้วตอนเงินเข้า — เช่น จ่าย QR ปิดยอดสองใบ · ปิดยอดไปแล้วทางอื่น) ⇒ เงินทั้งก้อนเป็นเงินรับล่วงหน้า
+   *   (21-1103) + ใบ `ADVANCE_SURPLUS` ⇒ **ต้องคืนลูกค้า** · ระบบไม่มีทางคืน (คำขอคืนเงิน / ยกเลิกใบเสร็จปฏิเสธสัญญาที่ปิด · เว็บไม่มีหน้าจอคืนเงิน)
+   *   ⇒ ฝ่ายบัญชี + เตือนว่ารอบกวาด 00:40 น. ลงเป็นรายได้ 42-1106 (สัญญา COMPLETED / EARLY_PAYOFF — `advance-excess-income.cron.ts`)
+   * - **ตัดงวดแล้ว** ⇒ บอกงวดที่ตัด · ส่วนเกิน (ถ้ามี) · สัญญาปิดจากเงินก้อนนี้หรือไม่ · ทางไปต่อตามเหตุ (#24 · งวดบัญชี · สถานะ · ยอดไม่ตรง)
+   */
+  private async alertPayoffFallback(
+    decision: Extract<GatewayPayoffDecision, { outcome: 'FALLBACK' }>,
+    ctx: {
+      contractId: string;
+      contractNumber: string | null;
+      branchId: string | null;
+      paymentLinkId: string;
+      paidAmount: Prisma.Decimal;
+      refno: string;
+      transactionId: string | null;
+      systemUserId: string | null;
+      /** สถานะสัญญาก่อนรับเงินก้อนนี้ (อ่านในธุรกรรม) */
+      contractStatusBefore: string | null;
+      /** สถานะที่ FIFO ตั้ง (ปิดจากเงินก้อนนี้) — null = ไม่เปลี่ยน */
+      contractStatusAfter: string | null;
+      /** งวดที่ FIFO ตัดเงินเข้า (> 0) */
+      touchedInstallmentNos: number[];
+      /** เงินที่เกินทุกงวดค้าง → เงินรับล่วงหน้า 21-1103 + ใบ ADVANCE_SURPLUS */
+      surplusAmount: Prisma.Decimal | null;
+    },
+  ): Promise<void> {
+    const fmt = (v: Prisma.Decimal.Value) =>
+      Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const contractLabel = ctx.contractNumber ?? ctx.contractId;
+    const reference = ctx.transactionId || ctx.refno;
+    const paid = fmt(ctx.paidAmount.toString());
+    const surplus = ctx.surplusAmount && ctx.surplusAmount.gt(0) ? ctx.surplusAmount : null;
+    const advanceOnly = ctx.touchedInstallmentNos.length === 0;
+    const statusBefore = ctx.contractStatusBefore ?? '—';
+    const finalStatus = ctx.contractStatusAfter ?? statusBefore;
+    const quoteLine = `ยอดปิดตอนสร้าง QR: ${decision.snapshot ? `${fmt(decision.snapshot.totalPayoff)} บาท (วันที่ ${decision.snapshot.quoteDate})` : '—'} · ยอดปิด ณ เวลาที่เงินเข้า: ${decision.liveTotalPayoff != null ? `${fmt(decision.liveTotalPayoff)} บาท` : '—'}`;
+
+    let title: string;
+    let lines: string[];
+    if (advanceOnly) {
+      // (ข) ไม่มีงวดให้ตัด — เงินทั้งก้อนพักเป็นเงินรับล่วงหน้าที่ต้องคืน
+      const sweptTonight = finalStatus === 'COMPLETED' || finalStatus === 'EARLY_PAYOFF';
+      title = `เงินปิดยอดผ่าน QR เข้าสัญญาที่ปิดยอดไม่ได้ — สัญญา ${contractLabel} รับเงิน ${paid} บาท (ต้องคืนลูกค้า)`;
+      lines = [
+        `ลูกค้าชำระผ่าน Pay Solutions ${paid} บาท (อ้างอิง ${reference}) เพื่อปิดยอดก่อนกำหนด แต่สัญญาอยู่ในสถานะ ${statusBefore} ตอนเงินเข้า (เช่น ลูกค้าจ่าย QR ปิดยอดซ้ำ หรือสัญญาปิดไปแล้วทางอื่น) — ระบบลงเป็นปิดยอดไม่ได้`,
+        quoteLine,
+        `ระบบไม่ได้ตัดงวดใด — เงินทั้งก้อน ${fmt((surplus ?? ctx.paidAmount).toString())} บาทพักเป็นเงินรับล่วงหน้า (21-1103) ของสัญญา และออกใบรับเงินส่วนเกิน (ADVANCE_SURPLUS) ให้ลูกค้าแล้ว · ` +
+          (ctx.contractStatusAfter
+            ? `สถานะสัญญาเปลี่ยนเป็น ${ctx.contractStatusAfter} (ไม่มีงวดค้างแล้ว)`
+            : `สถานะสัญญาคงเดิม (${statusBefore})`),
+        'เงินก้อนนี้ต้องคืนลูกค้า แต่ระบบยังไม่มีทางคืน (คำขอคืนเงินและการยกเลิกใบเสร็จถูกปฏิเสธเมื่อสัญญาปิด · เว็บไม่มีหน้าจอคืนเงิน) — แจ้งฝ่ายบัญชีวันนี้เพื่อโอนคืนลูกค้าและบันทึกบัญชี' +
+          (sweptTonight
+            ? ' · รอบกวาดเงินพักส่วนเกินเวลา 00:40 น. คืนนี้จะลงเงินนี้เป็นรายได้ 42-1106 อัตโนมัติ (ทีมระบบกลับรายการได้ด้วยเครื่องมือ advance-excess:reverse)'
+            : ''),
+      ];
+    } else {
+      // (ก)/(ค) ตัดงวดแล้ว — บอกงวด · ส่วนเกิน · สัญญาปิดหรือไม่ · ทางไปต่อตามเหตุ
+      const nextStep = ctx.contractStatusAfter
+        ? 'สัญญาปิดจากเงินก้อนนี้แบบรับชำระค่างวด (ไม่ใช่ปิดยอดก่อนกำหนด — ไม่มีส่วนลด) — แจ้งฝ่ายบัญชีตรวจรายการกับลูกค้า'
+        : decision.reason === 'REFUND_PENDING'
+          ? 'บันทึกผลธนาคารของคำขอคืนเงินก่อน (ยังไม่มีปุ่มในหน้าจอ — แจ้งฝ่ายบัญชีให้ทีมระบบบันทึก) แล้วเปิดหน้าสัญญา กดปุ่ม "ปิดก่อนกำหนด" เพื่อดูยอดคงเหลือหลังเงินก้อนนี้ แล้วปิดยอดตามขั้นตอนปกติหลังตรวจกับลูกค้า'
+          : decision.reason === 'PERIOD_CLOSED'
+            ? 'แจ้งฝ่ายบัญชีตรวจรายการค่างวดที่ลงในวันที่งวดบัญชีปิด แล้วเปิดหน้าสัญญา กดปุ่ม "ปิดก่อนกำหนด" เพื่อปิดยอดส่วนที่เหลือหลังตรวจกับลูกค้า'
+            : decision.reason === 'CONTRACT_STATUS'
+              ? `สัญญาอยู่ในสถานะ ${statusBefore} ซึ่งปิดยอดก่อนกำหนดไม่ได้ — แจ้งฝ่ายบัญชีตรวจเงินก้อนนี้กับสถานะสัญญา`
+              : 'เปิดหน้าสัญญา กดปุ่ม "ปิดก่อนกำหนด" เพื่อดูยอดคงเหลือหลังเงินก้อนนี้ แล้วปิดยอดตามขั้นตอนปกติหลังตรวจกับลูกค้า';
+      title = `ปิดยอดผ่าน QR ไม่สำเร็จ — สัญญา ${contractLabel} รับเงิน ${paid} บาท`;
+      lines = [
+        `ลูกค้าชำระผ่าน Pay Solutions ${paid} บาท (อ้างอิง ${reference}) เพื่อปิดยอดก่อนกำหนด แต่ระบบลงเป็นปิดยอดไม่ได้: ${FALLBACK_REASON_TEXT[decision.reason]}`,
+        quoteLine,
+        `ระบบลงเงินก้อนนี้เป็นค่างวดตามลำดับงวดแล้ว: งวดที่ ${formatInstallmentNos(ctx.touchedInstallmentNos)} (ใบเสร็จค่างวดออกตามปกติ)` +
+          (surplus
+            ? ` · ส่วนเกิน ${fmt(surplus.toString())} บาทพักเป็นเงินรับล่วงหน้า (21-1103) พร้อมใบรับเงินส่วนเกิน (ADVANCE_SURPLUS)`
+            : '') +
+          (ctx.contractStatusAfter
+            ? ` — สัญญาปิดจากเงินก้อนนี้ (สถานะ ${ctx.contractStatusAfter})`
+            : ' — สัญญายังไม่ปิด'),
+        nextStep,
+      ];
+    }
+    const description = lines.join('\n');
+
+    if (ctx.systemUserId) {
+      try {
+        const requestKey = payoffFallbackRequestKey(ctx.paymentLinkId);
+        await this.prisma.todo.upsert({
+          where: { requestKey },
+          update: {},
+          create: {
+            requestKey,
+            title,
+            description,
+            priority: 'HIGH',
+            tags: [PAYOFF_FALLBACK_TODO_TAG],
+            createdById: ctx.systemUserId,
+            branchId: ctx.branchId,
+          },
+        });
+      } catch (err) {
+        // งานแจ้งพังต้องไม่ทำให้ webhook ล้ม (เงินลงบัญชีแล้ว) — Sentry ด้านล่างยังมีข้อมูลครบ
+        Sentry.captureException(err, {
+          level: 'error',
+          tags: { module: 'paysolutions', action: 'paysolutions-payoff-fallback-todo' },
+          extra: { contractId: ctx.contractId, paymentLinkId: ctx.paymentLinkId, refno: ctx.refno },
+        });
+      }
+    }
+    emitDeferredWarnings([
+      {
+        message: `[paysolutions payoff] payoff payment booked FIFO instead of JP4 — ${decision.reason}${advanceOnly ? ' (no installment touched — whole amount held as advance, refund needed)' : ''}`,
+        tags: {
+          module: 'paysolutions',
+          action: 'paysolutions-payoff-fallback',
+          reason: decision.reason,
+          outcome: advanceOnly ? 'ADVANCE_ONLY' : 'FIFO',
+        },
+        extra: {
+          contractId: ctx.contractId,
+          contractNumber: ctx.contractNumber,
+          paymentLinkId: ctx.paymentLinkId,
+          refno: ctx.refno,
+          transactionId: ctx.transactionId,
+          paidAmount: ctx.paidAmount.toFixed(2),
+          liveTotalPayoff: decision.liveTotalPayoff != null ? d(decision.liveTotalPayoff).toFixed(2) : null,
+          quotedTotalPayoff: decision.snapshot?.totalPayoff ?? null,
+          quoteDate: decision.snapshot?.quoteDate ?? null,
+          contractStatusBefore: ctx.contractStatusBefore,
+          contractStatusAfter: ctx.contractStatusAfter,
+          installmentsTouched: ctx.touchedInstallmentNos,
+          surplusAmount: surplus ? surplus.toFixed(2) : null,
+          error: decision.errorMessage,
+        },
+      },
+    ]);
+  }
+
+  /**
    * ส่ง LINE flex message แจ้งลูกค้าว่าชำระสำเร็จ
    */
   async sendPaymentSuccessNotification(
     contractId: string,
     paymentId: string | null,
+    /** Task 39 — ยอดที่ลูกค้าโอนจริง (ลิงก์ที่ไม่ใช่ลิงก์งวด — เงินอาจครอบหลายงวด) · ไม่ส่ง = ยอดสะสมของงวดแบบเดิม */
+    paidAmount?: Prisma.Decimal,
   ): Promise<void> {
     try {
       const contract = await this.prisma.contract.findUnique({
@@ -839,7 +1332,7 @@ export class PaySolutionsWebhookService {
         contractNumber: contract.contractNumber,
         installmentNo: payment.installmentNo,
         totalInstallments: contract.payments.length,
-        amountPaid: Number(payment.amountPaid),
+        amountPaid: Number(paidAmount ?? payment.amountPaid),
         paymentMethod: 'ONLINE_GATEWAY',
         paidDate: formatDateLong(new Date()),
         remainingInstallments: contract.payments.length - paidCount,

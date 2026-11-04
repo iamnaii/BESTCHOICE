@@ -80,7 +80,8 @@ export const EVENT_DUNNING_RULES: readonly EventDunningRuleSeed[] = [
     eventTrigger: 'CALL_ANSWERED_PROMISE',
     channel: 'LINE',
     messageTemplate:
-      // Task 30 รอบ 8 I5 — ไม่แนบลิงก์ชำระกับยอดนัด (หน้าชำระจ่ายลิงก์ที่ไม่ใช่ยอดคงค้างของงวดเดียวไม่ได้) ⇒ ข้อความไม่อ้าง "ลิงก์ด้านล่าง"
+      // Task 30 รอบ 8 I5 — ข้อความไม่อ้าง "ลิงก์ด้านล่าง" (ตอนนั้นยอดนัดไม่มีลิงก์) · Task 39: แนบลิงก์ยอดนัด (ไม่ผูกงวด) แล้ว — ลิงก์ต่อท้าย
+      // เป็นบรรทัด "ชำระเงินออนไลน์: …" ของ engine เมื่อเปิด includePaymentLink · ถ้อยคำคงเดิม (แก้ถ้อยคำ = รอเจ้าของ)
       'ขอบคุณที่รับสาย กรุณาชำระยอด {{amount}} ฿ ภายใน {{settlementDate}}',
     includePaymentLink: true,
     autoExecute: true,
@@ -103,7 +104,9 @@ export const EVENT_DUNNING_RULES: readonly EventDunningRuleSeed[] = [
     eventTrigger: 'DEVICE_LOCKED',
     channel: 'LINE',
     messageTemplate:
-      'เครื่องของท่านถูกล็อคและตั้ง wallpaper แจ้งเตือน กรุณาชำระยอดค้าง {{amount}} ฿ เพื่อปลดล็อคทันที',
+      // Task 42 (คำตัดสินเจ้าของ #44) — ระบบไม่ปลดล็อคเองเมื่อเงินเข้า (ห้ามแตะการเชื่อม MDM): webhook สร้างงานให้เจ้าหน้าที่ตรวจยอดแล้วปลดล็อค ⇒
+      // เลิกสัญญา "ปลดล็อคทันที" · แถวที่ seed ไว้แล้วแก้ด้วย migration 20261113000001 (เฉพาะข้อความเดิมทุกตัวอักษร)
+      'เครื่องของท่านถูกล็อคและตั้ง wallpaper แจ้งเตือน กรุณาชำระยอดค้าง {{amount}} ฿ แล้วเจ้าหน้าที่จะปลดล็อคให้',
     includePaymentLink: true,
     autoExecute: true,
     sortOrder: 103,

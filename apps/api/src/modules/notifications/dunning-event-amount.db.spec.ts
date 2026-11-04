@@ -1,15 +1,20 @@
 /**
- * รัน: DATABASE_URL=<ฐานทดสอบ> npx jest src/modules/notifications/dunning-event-amount.db.spec.ts --runInBand
+ * รัน: DATABASE_URL=<ฐานทดสอบ> npm test --workspace=apps/api -- src/modules/notifications/dunning-event-amount.db.spec.ts (แบบ CI — node --experimental-vm-modules)
  *
  * Task 30 รอบ 7 I4 (ผู้คุมงานเลือกทาง ก) — ยอดในข้อความกฎทวงตามเหตุการณ์ (`DunningEngineService.executeEventTrigger`) บน Postgres จริง
  * กับแม่แบบที่ seed ไว้ในฐาน · สถานการณ์ของผู้รีวิวรอบ 6: งวด 1 จ่ายบางส่วน 1,000 จาก 1,515.83 + ค่าปรับ 100 · งวด 2 ค้างเต็ม + ค่าปรับ 100
  * ⇒ ยอดค้างที่ถึงกำหนดรวม 2,231.66 · งวด 1 เหลือค้าง 615.83 — รอบ 6 (m7) ใส่ค่างวดเต็ม 1,515.83 ให้ทุกกฎ
  *
- * รอบ 8 I5 (ผู้คุมงานเลือกทาง ข) — ลิงก์ชำระในข้อความต้อง**จ่ายได้จริง**จากหน้า `/pay/:token`: ใช้ `PaymentLinkService` + `PaySolutionsIntentService`
- * ตัวจริง และส่งค่าแบบที่หน้าเว็บ (`LiffPayment.tsx`) ส่ง · หน้าเว็บตัดสินว่าลิงก์ผูกงวดจาก**ยอด** แล้ว intent บังคับยอด = ยอดคงค้างของงวด ⇒ ลิงก์ที่ยอดไม่ใช่
- * ยอดคงค้างของงวดเดียว (แจ้งล็อก · นัดชำระ) จ่ายไม่ได้ ⇒ ไม่แนบลิงก์ (ข้อความยังบอกยอดที่ถูก)
+ * รอบ 8 I5 — ลิงก์ชำระในข้อความต้อง**จ่ายได้จริง**จากหน้า `/pay/:token`: ใช้ `PaymentLinkService` + `PaySolutionsIntentService` ตัวจริง
+ * (gateway จำลองหลังด่านยอดของ intent) และส่ง**สิ่งที่หน้าเว็บส่งจริง** — `liffPayIntentRequest` (`@installment/shared`) ตัวเดียวกับที่
+ * `LiffPayment.tsx` เรียก กับข้อมูลจาก `resolvePaymentLink` (`GET /line-oa/pay/:token`)
+ *
+ * Task 39 (ทาง ก ของ I5) — หน้าเว็บตัดสินจาก**ข้อมูลของลิงก์** (`purpose`) ไม่ใช่จากยอด · ลิงก์ `AMOUNT` (แจ้งล็อก = ยอดค้างรวม ·
+ * นัดชำระ = ยอดนัด) server ใช้ยอดของลิงก์เอง (ยอดจาก client ต้องตรง ไม่งั้นปฏิเสธ) ⇒ แนบลิงก์ให้สองกฎนี้แล้ว ยอดของลิงก์ = ยอดในข้อความ
  */
 import { PrismaClient } from '@prisma/client';
+import { BadRequestException } from '@nestjs/common';
+import { liffPayIntentRequest, type LiffPayIntentRequest } from '@installment/shared';
 import { NotificationsService } from './notifications.service';
 import { ComplianceService } from './compliance.service';
 import { HolidayService } from './holiday.service';
@@ -18,7 +23,10 @@ import { PDPAService } from '../pdpa/pdpa.service';
 import { DunningEngineService } from '../overdue/dunning-engine.service';
 import { DunningRuleResolverService } from '../overdue/dunning-rule-resolver.service';
 import { PaymentLinkService } from '../line-oa/payment-links/payment-link.service';
-import { PaySolutionsIntentService } from '../paysolutions/services/paysolutions-intent.service';
+import {
+  PAY_LINK_USED_MESSAGE,
+  PaySolutionsIntentService,
+} from '../paysolutions/services/paysolutions-intent.service';
 import {
   FinanceFixtureBase,
   InstallmentFixture,
@@ -43,7 +51,13 @@ let base: FinanceFixtureBase;
 /** กฎทวงตามเหตุการณ์ของสเปค (ข้อความจาก seed) — CI ไม่ seed ฐาน */
 let restoreEventRules: () => Promise<void> = async () => {};
 let engine: DunningEngineService;
+let links: PaymentLinkService;
 let intent: PaySolutionsIntentService;
+/** gateway จำลอง — ถูกเรียกแปลว่าผ่านด่านยอดของ intent แล้ว · อาร์กิวเมนต์แรก = payload ที่ส่งไป Pay Solutions (มียอดที่ตัดเงินจริง) */
+const createUiPayment = jest.fn(async (_payload: { amount: number }) => ({
+  gatewayResponse: {},
+  paymentUrl: 'https://gw.test/pay',
+}));
 const fixtures: InstallmentFixture[] = [];
 const delivered: { to: string; text: string }[] = [];
 const messageTo = (f: InstallmentFixture) =>
@@ -51,27 +65,42 @@ const messageTo = (f: InstallmentFixture) =>
     .filter((d) => d.to === f.lineUserId)
     .map((d) => d.text)
     .join('\n');
+/** ลิงก์ที่ข้อความแนบ (`createPaymentLink` — token 64 ตัว) ไม่รวมแถวติดตาม intent (token = เลขอ้างอิง 12 หลัก) */
 const linksOf = (f: InstallmentFixture) =>
   prisma.paymentLink.findMany({
-    where: { contractId: f.contractId },
-    include: { payment: { select: { installmentNo: true, amountDue: true, lateFee: true } } },
+    where: { contractId: f.contractId, NOT: { token: { in: intentRefs } } },
+    include: { payment: { select: { installmentNo: true } } },
   });
+const intentRefs: string[] = [];
 
-/** สิ่งที่หน้า `/pay/:token` (`LiffPayment.tsx`) ส่งไป `POST /paysolutions/create-intent` — ส่งเลขงวดเมื่อยอดไม่เกินงวดที่ผูก + ค่าปรับ + 0.5 */
-async function payLikePayPage(f: InstallmentFixture, link: Awaited<ReturnType<typeof linksOf>>[0]) {
-  const amount = Number(link.amount);
-  const p = link.payment!;
-  const isMulti = amount > Number(p.amountDue) + Number(p.lateFee) + 0.5;
+/**
+ * กดจ่ายแบบหน้า `/pay/:token`: เปิดลิงก์ (`resolvePaymentLink`) → body จาก `liffPayIntentRequest` (ตัวเดียวกับ `LiffPayment.tsx`) →
+ * controller ส่งต่อ `createPaymentIntent` ตามช่องของ body · `tamper` = client แก้ body ก่อนส่ง
+ */
+async function payLikePayPage(
+  f: InstallmentFixture,
+  token: string,
+  tamper: Partial<LiffPayIntentRequest> = {},
+) {
   // เลขอ้างอิงของ intent มาจาก Date.now() — ใช้นาฬิกาจริง (นาฬิกาปลอมคงที่ทำให้เลขชนกับรอบก่อนบนฐานเดียวกัน)
   jest.useRealTimers();
-  return intent.createPaymentIntent(
-    f.contractId,
-    amount,
-    'ทดสอบ',
-    f.lineUserId,
-    isMulti ? undefined : p.installmentNo,
+  const view = await links.resolvePaymentLink(token);
+  if (!view.valid || !view.contract) throw new Error(`ลิงก์เปิดไม่ได้: ${JSON.stringify(view)}`);
+  const body = { ...liffPayIntentRequest(view, f.lineUserId), ...tamper };
+  const result = await intent.createPaymentIntent(
+    body.contractId,
+    body.amount,
+    body.description,
+    body.lineId,
+    body.installmentNo,
+    body.paymentLinkToken,
   );
+  intentRefs.push(result.gatewayRef);
+  return { body, result };
 }
+
+/** ยอดที่ gateway ถูกขอให้ตัดเงิน (ครั้งล่าสุด) */
+const chargedAmount = () => createUiPayment.mock.calls.at(-1)?.[0].amount;
 
 /** สัญญา DEFAULT: งวด 1 จ่ายบางส่วน 1,000 + ค่าปรับ 100 · งวด 2 ค้างเต็ม + ค่าปรับ 100 · งวด 3 ยังไม่ครบกำหนด */
 async function partlyPaidContract(label: string, opts: { firstFeeWaived?: boolean } = {}) {
@@ -106,6 +135,59 @@ async function partlyPaidContract(label: string, opts: { firstFeeWaived?: boolea
   return f;
 }
 
+/** งวดของสัญญาเพิ่มเติม (งวด 2+) — เก็บไว้ให้ retireFixtures */
+async function addInstallment(
+  f: InstallmentFixture,
+  installmentNo: number,
+  dueOffset: number,
+  data: { lateFee?: string; status: 'PENDING' | 'OVERDUE' },
+) {
+  const p = await prisma.payment.create({
+    data: {
+      contractId: f.contractId,
+      installmentNo,
+      dueDate: dueDateBkk(day, dueOffset),
+      amountDue: dec('1515.83'),
+      lateFee: dec(data.lateFee ?? '0.00'),
+      status: data.status,
+    },
+  });
+  fixtures.push({ ...f, paymentId: p.id });
+}
+
+/** สัญญา DEFAULT: งวด 1 ค้างเต็ม 1,515.83 + ค่าปรับ 100 (ยอดคงค้าง 1,615.83) · งวด 2 ยังไม่ครบกำหนด — สถานการณ์ยอดนัดของผู้รีวิว */
+async function overdueFirstContract(label: string) {
+  const f = await createInstallmentFixture(prisma, base, {
+    label,
+    dueDate: dueDateBkk(day, -10),
+    paymentStatus: 'OVERDUE',
+    contractStatus: 'DEFAULT',
+    lateFee: '100.00',
+  });
+  fixtures.push(f);
+  await addInstallment(f, 2, 20, { status: 'PENDING' });
+  return f;
+}
+
+/**
+ * สัญญา DEFAULT: งวด 1 จ่ายค่างวดครบแล้ว เหลือค่าปรับ 100 · งวด 2 ค้าง 1,515.83 · งวด 3 ยังไม่ครบกำหนด ⇒ ยอดค้างที่ถึงกำหนด 1,615.83
+ * — เท่าค่างวด + ค่าปรับของงวดที่ลิงก์ผูก (งวด 1) พอดี ⇒ หน้าเว็บที่เดาจากยอดคิดว่าเป็นลิงก์งวดเดียว ส่งเลขงวด 1 แล้วถูกปฏิเสธ (งวด 1 ค้างแค่ 100)
+ */
+async function lateFeeOnlyFirstContract(label: string) {
+  const f = await createInstallmentFixture(prisma, base, {
+    label,
+    dueDate: dueDateBkk(day, -40),
+    paymentStatus: 'PARTIALLY_PAID',
+    contractStatus: 'DEFAULT',
+    lateFee: '100.00',
+  });
+  await prisma.payment.update({ where: { id: f.paymentId }, data: { amountPaid: dec('1515.83') } });
+  fixtures.push(f);
+  await addInstallment(f, 2, -10, { status: 'OVERDUE' });
+  await addInstallment(f, 3, 20, { status: 'PENDING' });
+  return f;
+}
+
 beforeAll(async () => {
   assertTestDatabase();
   base = await createFinanceFixtureBase(prisma, stamp);
@@ -130,11 +212,23 @@ beforeAll(async () => {
     delivered.push({ to, text });
   }) as never);
   const config = { get: (_key: string, fallback?: unknown) => fallback } as never;
+  links = new PaymentLinkService(
+    config,
+    prisma as never,
+    // QR พร้อมเพย์บนหน้า /pay/:token — ไม่เกี่ยวกับยอดที่ส่งไปสร้างรายการ
+    {
+      generateQrDataUrl: async () => null,
+      getAccountName: () => 'บริษัท ทดสอบ',
+      getMaskedPromptPayId: () => 'xxx-xxx-0000',
+    } as never,
+    {} as never,
+    {} as never,
+  );
   engine = new DunningEngineService(
     prisma as never,
     {} as never,
     notifications,
-    new PaymentLinkService(config, prisma as never, {} as never, {} as never, {} as never),
+    links,
     new DunningRuleResolverService(prisma as never),
   );
   intent = new PaySolutionsIntentService(
@@ -142,10 +236,7 @@ beforeAll(async () => {
     {
       getMerchantId: jest.fn(async () => 'merchant'),
       getTerminalId: jest.fn(async () => 'terminal'),
-      createUiPayment: jest.fn(async () => ({
-        gatewayResponse: {},
-        paymentUrl: 'https://gw.test/pay',
-      })),
+      createUiPayment,
     } as never,
     prisma as never,
     {} as never,
@@ -162,52 +253,208 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
-it('แจ้งล็อก (DEVICE_LOCKED "ชำระยอดค้าง … เพื่อปลดล็อค") = ยอดค้างที่ถึงกำหนดรวมของสัญญา · ไม่แนบลิงก์ (รอบ 8 I5)', async () => {
+it('แจ้งล็อก (DEVICE_LOCKED "ชำระยอดค้าง … แล้วเจ้าหน้าที่จะปลดล็อคให้") = ยอดค้างที่ถึงกำหนดรวมของสัญญา · แนบลิงก์ AMOUNT ยอดเดียวกัน จ่ายได้จริง', async () => {
   const f = await partlyPaidContract('locked');
 
   await engine.executeEventTrigger('DEVICE_LOCKED', f.contractId, null, null);
 
-  // 515.83 + 100 + 1,515.83 + 100 — งวด 3 ยังไม่ครบกำหนดไม่นับ
-  expect(messageTo(f)).toContain('ชำระยอดค้าง 2,231.66 ฿');
-  // รอบ 8 I5 — ยอดค้างรวมไม่ใช่ยอดคงค้างของงวดเดียว ⇒ หน้าชำระจ่ายลิงก์แบบนี้ไม่ได้ ⇒ ไม่แนบลิงก์ (ไม่มีลิงก์ว่าง)
-  expect(await linksOf(f)).toEqual([]);
-  expect(messageTo(f)).not.toContain('ชำระเงินออนไลน์');
+  // 515.83 + 100 + 1,515.83 + 100 — งวด 3 ยังไม่ครบกำหนดไม่นับ · Task 42: ข้อความไม่สัญญาปลดล็อคทันที (เจ้าหน้าที่ปลดล็อคหลังตรวจยอด)
+  expect(messageTo(f)).toContain('ชำระยอดค้าง 2,231.66 ฿ แล้วเจ้าหน้าที่จะปลดล็อคให้');
+  expect(messageTo(f)).not.toContain('ปลดล็อคทันที');
+  // Task 39 — ลิงก์ยอดค้างรวม = ยอดในข้อความ · AMOUNT (ยอดไม่ใช่ยอดคงค้างของงวดเดียว และไม่ใช่การปิดยอด)
+  const [link, ...rest] = await linksOf(f);
+  expect(rest).toEqual([]);
+  expect([Number(link.amount), link.purpose]).toEqual([2231.66, 'AMOUNT']);
+  expect(messageTo(f)).toContain(`ชำระเงินออนไลน์: http://localhost:5173/pay/${link.token}`);
+
+  const { body } = await payLikePayPage(f, link.token);
+  // ไม่ส่งเลขงวด + ส่ง token ⇒ server ตรวจยอดกับลิงก์ (ไม่ใช่ทางเดิมที่ไม่ตรวจยอดเลย)
+  expect(body).toMatchObject({ amount: 2231.66, paymentLinkToken: link.token });
+  expect(body.installmentNo).toBeUndefined();
+  expect(chargedAmount()).toBe(2231.66);
+}, 60_000);
+
+it('แจ้งล็อก ยอดค้างหลายงวด 1,615.83 = ค่าปรับที่เหลือของงวด 1 (100) + งวด 2 (1,515.83) — จ่ายได้ (เดิม 400 "ยอดชำระไม่ตรง")', async () => {
+  const f = await lateFeeOnlyFirstContract('lockedMulti');
+
+  await engine.executeEventTrigger('DEVICE_LOCKED', f.contractId, null, null);
+
+  expect(messageTo(f)).toContain('ชำระยอดค้าง 1,615.83 ฿');
+  const [link] = await linksOf(f);
+  // ลิงก์ผูกแถวงวด 1 (งวดค้างแรก — ให้หน้าเว็บแสดง) แต่ยอดเป็น AMOUNT
+  expect([link.payment?.installmentNo, Number(link.amount), link.purpose]).toEqual([
+    1,
+    1615.83,
+    'AMOUNT',
+  ]);
+
+  const { body } = await payLikePayPage(f, link.token);
+  // หน้าเว็บไม่ส่งเลขงวด ⇒ intent ไม่เทียบกับยอดคงค้างของงวด 1 (100) · gateway ตัดเงินตามยอดของลิงก์
+  expect(body).toMatchObject({ amount: 1615.83, paymentLinkToken: link.token });
+  expect(body.installmentNo).toBeUndefined();
+  expect(chargedAmount()).toBe(1615.83);
 }, 60_000);
 
 // m11 (รีวิวรอบ 7) — ตาข่ายกรณีขอบ: แถว `lateFeeWaived = true` ที่ยังมี `lateFee` และยังค้าง ไม่เกิดจากทางปกติ (ยกเว้นค่าปรับ
 // `LateFeeWaiverService` ตั้ง `lateFee = 0` · ยกเว้นตอนรับเงินตั้งงวดเป็น PAID) — ปักไว้ให้ผลตรงกับทางรับเงิน/webhook ถ้าเกิดขึ้น
-it('แจ้งล็อก — ค่าปรับที่ยกเว้นแล้วไม่นับ', async () => {
+it('แจ้งล็อก — ค่าปรับที่ยกเว้นแล้วไม่นับ (ข้อความและลิงก์)', async () => {
   const f = await partlyPaidContract('lockedWaived', { firstFeeWaived: true });
 
   await engine.executeEventTrigger('DEVICE_LOCKED', f.contractId, null, null);
 
   expect(messageTo(f)).toContain('ชำระยอดค้าง 2,131.66 ฿');
+  expect((await linksOf(f)).map((l) => Number(l.amount))).toEqual([2131.66]);
 }, 60_000);
 
-it('ไม่รับสาย (CALL_NO_ANSWER "ชำระงวดที่ … ยอด …") = ยอดคงค้างของงวดนั้น (ค่างวด − ที่จ่าย + ค่าปรับ) · ลิงก์ของงวดนั้นยอดเดียวกัน จ่ายได้จริง', async () => {
+it('ไม่รับสาย (CALL_NO_ANSWER "ชำระงวดที่ … ยอด …") = ยอดคงค้างของงวดนั้น (ค่างวด − ที่จ่าย + ค่าปรับ) · ลิงก์ INSTALLMENT ของงวดนั้น — หน้าเว็บส่งเลขงวดเหมือนเดิม', async () => {
   const f = await partlyPaidContract('noAnswer');
 
   await engine.executeEventTrigger('CALL_NO_ANSWER', f.contractId, null, null);
 
   expect(messageTo(f)).toContain('ชำระงวดที่ 1 ยอด 615.83 ฿');
   // ข้อความระบุงวด ⇒ ลิงก์ของงวดนั้น ยอดเดียวกับข้อความ · หน้าชำระจ่ายได้ (ผ่านด่านยอดของ intent ไปถึง gateway)
-  const links = await linksOf(f);
-  expect(links.map((l) => [l.payment?.installmentNo, Number(l.amount)])).toEqual([[1, 615.83]]);
+  const found = await linksOf(f);
+  expect(found.map((l) => [l.payment?.installmentNo, Number(l.amount), l.purpose])).toEqual([
+    [1, 615.83, 'INSTALLMENT'],
+  ]);
   expect(messageTo(f)).toContain('ชำระเงินออนไลน์:');
-  await expect(payLikePayPage(f, links[0])).resolves.toBeDefined();
+
+  const { body, result } = await payLikePayPage(f, found[0].token);
+  // ทางลิงก์งวดไม่เปลี่ยน: ส่งเลขงวด ไม่ส่ง token · intent ผูกแถวงวด (paymentId = งวด 1)
+  expect(body).toMatchObject({ amount: 615.83, installmentNo: 1 });
+  expect(body.paymentLinkToken).toBeUndefined();
+  expect(result.paymentId).toBe(f.paymentId);
+  expect(chargedAmount()).toBe(615.83);
 }, 60_000);
 
-it('นัดชำระ (CALL_ANSWERED_PROMISE "ชำระยอด … ภายใน …") = ยอดและวันที่ลูกค้านัด จากผู้เรียก · ไม่แนบลิงก์ (รอบ 8 I5)', async () => {
-  const f = await partlyPaidContract('promise');
+it('นัดชำระบางส่วน (CALL_ANSWERED_PROMISE "ชำระยอด 1,000 ภายใน …" · งวด 1 ค้าง 1,615.83) — แนบลิงก์ยอดนัด จ่ายได้ (เดิม 400)', async () => {
+  const f = await overdueFirstContract('promise');
 
   await engine.executeEventTrigger('CALL_ANSWERED_PROMISE', f.contractId, null, 'promise-1', {
-    amount: 1500,
+    amount: 1000,
     settlementDate: '5 พ.ย. 69',
   });
 
-  expect(messageTo(f)).toContain('ชำระยอด 1,500 ฿ ภายใน 5 พ.ย. 69');
+  // ข้อความตามแม่แบบที่ seed (ไม่อ้าง "ลิงก์ด้านล่าง" — migration 20261110000000) · ลิงก์ต่อท้ายเป็นบรรทัด "ชำระเงินออนไลน์:"
+  expect(messageTo(f)).toContain('ชำระยอด 1,000 ฿ ภายใน 5 พ.ย. 69');
   expect(messageTo(f)).not.toContain('{{');
-  // รอบ 8 I5 — ยอดนัด (มักเป็นบางส่วน) ไม่ใช่ยอดคงค้างของงวดเดียว ⇒ ไม่แนบลิงก์ · ข้อความไม่อ้าง "ลิงก์ด้านล่าง" (แม่แบบที่ seed)
-  expect(await linksOf(f)).toEqual([]);
   expect(messageTo(f)).not.toContain('ลิงก์');
+  const [link, ...rest] = await linksOf(f);
+  expect(rest).toEqual([]);
+  expect([Number(link.amount), link.purpose]).toEqual([1000, 'AMOUNT']);
+  expect(messageTo(f)).toContain(`ชำระเงินออนไลน์: http://localhost:5173/pay/${link.token}`);
+
+  const { body } = await payLikePayPage(f, link.token);
+  expect(body).toMatchObject({ amount: 1000, paymentLinkToken: link.token });
+  expect(body.installmentNo).toBeUndefined();
+  // ยอดนัด (บางส่วน) ถึง gateway ตามยอดของลิงก์ — webhook กระจายเข้างวด 1 เป็น PARTIALLY_PAID
+  expect(chargedAmount()).toBe(1000);
 }, 60_000);
+
+it('client แก้ยอดก่อนส่ง (ลิงก์ AMOUNT) → 400 ไม่ถึง gateway ไม่สร้างรายการ — server ใช้ยอดของลิงก์', async () => {
+  const f = await overdueFirstContract('tamper');
+  await engine.executeEventTrigger('CALL_ANSWERED_PROMISE', f.contractId, null, 'promise-2', {
+    amount: 1000,
+    settlementDate: '5 พ.ย. 69',
+  });
+  const [link] = await linksOf(f);
+  const calls = createUiPayment.mock.calls.length;
+
+  for (const amount of [1, 999.98, 1615.83]) {
+    await expect(payLikePayPage(f, link.token, { amount })).rejects.toThrow(BadRequestException);
+  }
+  await expect(payLikePayPage(f, link.token, { amount: 1 })).rejects.toThrow('ยอดชำระไม่ตรง');
+  expect(createUiPayment.mock.calls.length).toBe(calls);
+  // ไม่มีแถวติดตาม intent ของสัญญานี้ (มีแต่ลิงก์ที่ข้อความแนบ)
+  expect(await prisma.paymentLink.count({ where: { contractId: f.contractId } })).toBe(1);
+}, 60_000);
+
+/** คำขอคืนเงินที่อนุมัติแล้วแต่ยังไม่บันทึกผลธนาคาร (#24) บนงวด 1 ของสัญญา */
+async function pendingBankRefund(f: InstallmentFixture) {
+  await prisma.refund.create({
+    data: {
+      paymentId: f.paymentId,
+      contractId: f.contractId,
+      amount: dec('500.00'),
+      reason: 'ทดสอบ #24',
+      status: 'APPROVED',
+      requestedById: base.salespersonId,
+      approvedAt: new Date(),
+    },
+  });
+}
+
+describe('#24 คำขอคืนเงินรอธนาคาร — กันเฉพาะการปิดยอด (รีวิว I-1)', () => {
+  it('ลิงก์แจ้งล็อก (AMOUNT) จ่ายได้ขณะมีคำขอค้าง — เหมือนจ่ายที่สาขา/ลิงก์งวด', async () => {
+    const f = await lateFeeOnlyFirstContract('refundAmount');
+    await pendingBankRefund(f);
+    await engine.executeEventTrigger('DEVICE_LOCKED', f.contractId, null, null);
+    const [link] = await linksOf(f);
+    expect(link.purpose).toBe('AMOUNT');
+
+    await payLikePayPage(f, link.token);
+
+    expect(chargedAmount()).toBe(1615.83);
+  }, 60_000);
+
+  it('ลิงก์ปิดยอด (PAYOFF) ถูกกันขณะมีคำขอค้าง — ข้อความลูกค้า · ไม่ถึง gateway', async () => {
+    const f = await overdueFirstContract('refundPayoff');
+    await pendingBankRefund(f);
+    const payoff = await links.createPaymentLink(f.contractId, undefined, {
+      amount: 15189.98,
+      purpose: 'PAYOFF',
+    });
+    const calls = createUiPayment.mock.calls.length;
+
+    await expect(payLikePayPage(f, payoff.token)).rejects.toThrow(
+      'ยังปิดยอดผ่าน LINE ไม่ได้ในขณะนี้',
+    );
+    expect(createUiPayment.mock.calls.length).toBe(calls);
+  }, 60_000);
+});
+
+describe('แถวติดตาม intent ของลิงก์ AMOUNT · ลิงก์ที่ชำระแล้ว (รีวิว I-2 · 4ข)', () => {
+  it('แถวติดตามชี้ลิงก์ต้นทาง · purpose AMOUNT · หน้าเว็บได้ id ของแถว (UUID) ไว้ poll · ลิงก์ที่ webhook ตั้ง USED กดจ่ายซ้ำไม่ได้', async () => {
+    const f = await overdueFirstContract('usedLink');
+    await engine.executeEventTrigger('CALL_ANSWERED_PROMISE', f.contractId, null, 'promise-3', {
+      amount: 1000,
+      settlementDate: '5 พ.ย. 69',
+    });
+    const [link] = await linksOf(f);
+
+    const { result } = await payLikePayPage(f, link.token);
+
+    const tracking = await prisma.paymentLink.findUniqueOrThrow({ where: { id: result.paymentId } });
+    expect(tracking).toMatchObject({
+      token: result.gatewayRef,
+      paymentId: null,
+      purpose: 'AMOUNT',
+      sourceLinkId: link.id,
+    });
+    expect(Number(tracking.amount)).toBe(1000);
+    expect(result.paymentId).toMatch(/^[0-9a-f-]{36}$/);
+
+    // webhook สำเร็จตั้งลิงก์ต้นทางเป็น USED (ปักใน paysolutions.webhook-pay-link.spec.ts) — ทำแบบเดียวกันที่นี่
+    await prisma.paymentLink.update({
+      where: { id: link.id },
+      data: { status: 'USED', usedAt: new Date() },
+    });
+    const calls = createUiPayment.mock.calls.length;
+    await expect(
+      intent.createPaymentIntent(
+        f.contractId,
+        1000,
+        'ทดสอบ',
+        f.lineUserId,
+        undefined,
+        link.token,
+      ),
+    ).rejects.toThrow(PAY_LINK_USED_MESSAGE);
+    expect(createUiPayment.mock.calls.length).toBe(calls);
+    // หน้าเว็บเปิดลิงก์นี้อีก → "ใช้แล้ว" (ข้อความเดิมของหน้า)
+    await expect(links.resolvePaymentLink(link.token)).resolves.toMatchObject({
+      valid: false,
+      status: 'USED',
+    });
+  }, 60_000);
+});

@@ -6,7 +6,9 @@ export type PostCommitReceiptPath =
   | 'apply-credit'
   | 'paysolutions-webhook'
   /** PR4ข — ใบรับเงินส่วนเกินลิงก์ชำระ (ADVANCE_SURPLUS): ไม่ผูกแถว Payment / งวด */
-  | 'paysolutions-webhook-surplus';
+  | 'paysolutions-webhook-surplus'
+  /** Task 41 — ใบปิดยอดก่อนกำหนด (EARLY_PAYOFF) ของเงินที่ลูกค้าปิดยอดเองผ่าน QR: ผูกรายการ JP4 · ไม่ผูกแถว Payment / งวด */
+  | 'paysolutions-webhook-payoff';
 
 export interface ReceiptIssueFailure {
   path: PostCommitReceiptPath;

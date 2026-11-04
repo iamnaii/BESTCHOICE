@@ -503,6 +503,113 @@ describe('DunningEngineService', () => {
       });
     });
 
+    describe('Task 39 — ลิงก์ชำระของกฎตามเหตุการณ์: ยอดของลิงก์ = ยอดในข้อความ · ทำตามสวิตช์ "แนบลิงก์ชำระเงิน" (รีวิว m12)', () => {
+      const linkedRule = (eventTrigger: string, messageTemplate: string, includePaymentLink: boolean) => ({
+        ...eventRule,
+        eventTrigger,
+        messageTemplate,
+        includePaymentLink,
+      });
+      const LOCK_TEXT = 'กรุณาชำระยอดค้าง {{amount}} ฿ แล้วเจ้าหน้าที่จะปลดล็อคให้';
+      const PROMISE_TEXT = 'ขอบคุณที่รับสาย กรุณาชำระยอด {{amount}} ฿ ภายใน {{settlementDate}}';
+      // งวด 1 ค้างค่าปรับ 100 · งวด 2 ค้าง 1,515.83 ⇒ ยอดค้างที่ถึงกำหนด 1,615.83
+      const dueRows = [
+        {
+          amountDue: new Prisma.Decimal('1515.83'),
+          amountPaid: new Prisma.Decimal('1515.83'),
+          lateFee: new Prisma.Decimal('100'),
+          lateFeeWaived: false,
+        },
+        {
+          amountDue: new Prisma.Decimal('1515.83'),
+          amountPaid: new Prisma.Decimal('0'),
+          lateFee: new Prisma.Decimal('0'),
+          lateFeeWaived: false,
+        },
+      ];
+      const sentMessage = () => mockNotificationsService.send.mock.calls[0][0].message as string;
+
+      beforeEach(() => {
+        mockPaymentLinkService.createPaymentLink.mockResolvedValue({ url: 'https://web/pay/tok' });
+        mockPrisma.payment.findMany.mockResolvedValue(dueRows);
+      });
+
+      it('แจ้งล็อก + แนบลิงก์ → ลิงก์ AMOUNT ยอด = ยอดค้างรวมในข้อความ (1,615.83) · ข้อความต่อท้ายบรรทัดลิงก์', async () => {
+        mockPrisma.dunningRule.findFirst.mockResolvedValueOnce(linkedRule('DEVICE_LOCKED', LOCK_TEXT, true));
+
+        await service.executeEventTrigger('DEVICE_LOCKED', 'c-1', null, null);
+
+        // Task 42 — ลิงก์จำว่ากฎแจ้งล็อกสร้าง (หน้า /pay/:token หัว "ยอดค้างชำระ" · webhook สร้างงานให้เจ้าหน้าที่ปลดล็อค)
+        expect(mockPaymentLinkService.createPaymentLink).toHaveBeenCalledWith('c-1', undefined, {
+          amount: 1615.83,
+          purpose: 'AMOUNT',
+          sourceEvent: 'DEVICE_LOCKED',
+        });
+        expect(sentMessage()).toBe(
+          'กรุณาชำระยอดค้าง 1,615.83 ฿ แล้วเจ้าหน้าที่จะปลดล็อคให้\n\nชำระเงินออนไลน์: https://web/pay/tok',
+        );
+        expect(mockPrisma.dunningAction.create.mock.calls[0][0].data.paymentLinkUrl).toBe('https://web/pay/tok');
+      });
+
+      it('นัดชำระ + แนบลิงก์ → ลิงก์ AMOUNT ยอด = ยอดนัด (1,000) · ข้อความแม่แบบไม่เปลี่ยน', async () => {
+        mockPrisma.dunningRule.findFirst.mockResolvedValueOnce(
+          linkedRule('CALL_ANSWERED_PROMISE', PROMISE_TEXT, true),
+        );
+
+        const promiseDate = new Date('2026-11-04T17:00:00.000Z');
+        await service.executeEventTrigger('CALL_ANSWERED_PROMISE', 'c-1', null, 'promise-1', {
+          amount: new Prisma.Decimal('1000'),
+          settlementDate: '5 พ.ย. 69',
+          promiseDate,
+        });
+
+        // Task 42 — ลิงก์จำกฎที่สร้าง + วันนัด (หน้า /pay/:token หัว "ยอดนัดชำระ" + แถว "วันนัด ภายใน …")
+        expect(mockPaymentLinkService.createPaymentLink).toHaveBeenCalledWith('c-1', undefined, {
+          amount: 1000,
+          purpose: 'AMOUNT',
+          sourceEvent: 'CALL_ANSWERED_PROMISE',
+          promiseDate,
+        });
+        expect(sentMessage()).toBe(
+          'ขอบคุณที่รับสาย กรุณาชำระยอด 1,000 ฿ ภายใน 5 พ.ย. 69\n\nชำระเงินออนไลน์: https://web/pay/tok',
+        );
+      });
+
+      it.each([
+        ['DEVICE_LOCKED', LOCK_TEXT, undefined],
+        ['CALL_ANSWERED_PROMISE', PROMISE_TEXT, { amount: 1000, settlementDate: '5 พ.ย. 69' }],
+      ] as const)('%s + ปิดสวิตช์แนบลิงก์ → ไม่สร้างลิงก์ · ข้อความไม่มีบรรทัดลิงก์', async (eventKey, text, extras) => {
+        mockPrisma.dunningRule.findFirst.mockResolvedValueOnce(linkedRule(eventKey, text, false));
+
+        await service.executeEventTrigger(eventKey, 'c-1', null, null, extras);
+
+        expect(mockPaymentLinkService.createPaymentLink).not.toHaveBeenCalled();
+        expect(sentMessage()).not.toContain('ชำระเงินออนไลน์');
+      });
+
+      it('ไม่รับสาย (ข้อความระบุงวด) + แนบลิงก์ → ลิงก์ INSTALLMENT ของงวดนั้น ยอดคงค้างของงวด', async () => {
+        mockPrisma.dunningRule.findFirst.mockResolvedValueOnce(
+          linkedRule('CALL_NO_ANSWER', 'ชำระงวดที่ {{installmentNo}} ยอด {{amount}} ฿', true),
+        );
+        mockPrisma.payment.findFirst.mockResolvedValueOnce({
+          id: 'pay-3',
+          installmentNo: 3,
+          amountDue: new Prisma.Decimal('1515.83'),
+          amountPaid: new Prisma.Decimal('1000.00'),
+          lateFee: new Prisma.Decimal('100.00'),
+          lateFeeWaived: false,
+          dueDate: new Date('2026-10-01T17:00:00Z'),
+        });
+
+        await service.executeEventTrigger('CALL_NO_ANSWER', 'c-1', null, 'cl-1');
+
+        expect(mockPaymentLinkService.createPaymentLink).toHaveBeenCalledWith('c-1', 3, {
+          amount: 615.83,
+          purpose: 'INSTALLMENT',
+        });
+      });
+    });
+
     it('dedups within 4h window — second call skipped', async () => {
       // First call: no recent action
       mockPrisma.dunningAction.findFirst.mockResolvedValueOnce(null);

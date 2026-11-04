@@ -2,7 +2,7 @@ import { LiffShell as Shell, LiffTopBar as TopBar } from './components/LiffLayou
 import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router';
 import { formatDateShort, formatDateTime } from '@/utils/formatters';
-import { formatNumber } from '@/utils/formatters';
+import { formatNumber, formatNumberDecimal } from '@/utils/formatters';
 import {
   ChevronLeft,
   CheckCircle2,
@@ -24,7 +24,8 @@ import { liffMutationErrorMessage } from './liff-mutation-error';
 import { useLiffInit } from '@/hooks/useLiffInit';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
-import type { LiffPaymentLinkData as PaymentLinkData } from '@installment/shared';
+import { liffPayIntentRequest, type LiffPaymentLinkData as PaymentLinkData } from '@installment/shared';
+import { payAllocationLineLabel, payAmountLabel } from './pay-link-display';
 
 interface PaymentIntentResult {
   success: boolean;
@@ -166,17 +167,8 @@ export default function LiffPayment() {
   const createIntentMutation = useMutation({
     mutationFn: async () => {
       if (!data) throw new Error(LIFF_ERRORS.PAYMENT_DATA_NOT_FOUND);
-      const payload = {
-        contractId: data.contract.id,
-        amount: Number(data.amount),
-        description: `ชำระค่างวด สัญญา ${data.contract.contractNumber}`,
-        lineId: queryLineId || undefined,
-        // Only pass installmentNo for single-installment payments. Early-payoff
-        // links cover multiple installments — backend validates amount against
-        // the single linked installment's outstanding when installmentNo is
-        // present and would reject the full payoff as "ยอดไม่ตรง".
-        installmentNo: isMultiInstallment ? undefined : data.payment?.installmentNo,
-      };
+      // สิ่งที่ส่ง (ส่งเลขงวดหรือไม่) ตัดสินที่ `liffPayIntentRequest` ที่เดียว — สเปค DB ฝั่ง API เรียกตัวเดียวกัน
+      const payload = liffPayIntentRequest(data, queryLineId || undefined);
       const { data: result } = await liffApi.post<PaymentIntentResult>(
         '/paysolutions/create-intent',
         payload,
@@ -209,13 +201,9 @@ export default function LiffPayment() {
   const amount = data ? Number(data.amount) : 0;
   const payment = data?.payment;
   const dueDate = payment ? formatDateShort(payment.dueDate) : '-';
-  // Early-payoff heuristic: link amount exceeds the linked installment's
-  // outstanding by more than one installment's worth → multi-installment
-  // close. Lets the UI hide the "งวดที่ 1" line that would otherwise
-  // mislead a customer paying the full payoff.
-  const isMultiInstallment =
-    !!payment &&
-    amount > Number(payment.amountDue) + Number(payment.lateFee ?? 0) + 0.5;
+  // Task 42 (คำตัดสินเจ้าของ #44) — แสดงตามข้อมูลของลิงก์ ไม่เดาจากยอด (เดิม "ยอด > ค่างวดที่ผูก + ค่าปรับ + 0.5 = ยอดปิดสัญญา"
+  // ⇒ ลิงก์แจ้งล็อก/แถวเก่าขึ้นหัวยอดปิดสัญญา): งวดที่/ครบกำหนดเฉพาะลิงก์งวด · หัวยอดจาก server (`amountKind`)
+  const showInstallment = !!payment && data?.purpose === 'INSTALLMENT';
   const customerName = data?.contract.customer.name ?? '';
   const customerInitial = customerName.charAt(0) || '?';
 
@@ -334,7 +322,7 @@ export default function LiffPayment() {
 
           <div className="mt-6 w-full max-w-xs rounded-[22px] border border-border/50 bg-card p-5 shadow-sm space-y-3 text-left">
             <Row label="สัญญา" value={data?.contract.contractNumber ?? '-'} mono />
-            {payment && !isMultiInstallment && (
+            {showInstallment && payment && (
               <Row label="งวดที่" value={`${payment.installmentNo}`} />
             )}
             <Row label="ยอดที่ชำระ" value={`฿${formatNumber(amount)}`} emphasize />
@@ -474,8 +462,11 @@ export default function LiffPayment() {
 
         <div className="relative">
           <div className="flex items-center justify-between">
-            <span className="text-[10.5px] font-semibold uppercase tracking-[0.18em] text-emerald-800">
-              {isMultiInstallment ? 'ยอดปิดสัญญา' : 'ยอดที่ต้องชำระ'}
+            <span
+              data-testid="pay-amount-label"
+              className="text-[10.5px] font-semibold uppercase tracking-[0.18em] text-emerald-800"
+            >
+              {payAmountLabel(data.amountKind)}
             </span>
             {expirySeconds !== null && expirySeconds > 0 && (
               <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
@@ -550,13 +541,37 @@ export default function LiffPayment() {
       </div>
 
       <section className="relative z-[1] mt-4 px-5">
-        <div className="rounded-[22px] border border-border/50 bg-card p-5 shadow-sm space-y-3">
+        <div
+          data-testid="pay-details"
+          className="rounded-[22px] border border-border/50 bg-card p-5 shadow-sm space-y-3"
+        >
           <Row label="ลูกค้า" value={customerName} />
           <Row label="สัญญา" value={data.contract.contractNumber} mono />
-          {payment && !isMultiInstallment && (
+          {showInstallment && payment && (
             <>
               <Row label="งวดที่" value={`${payment.installmentNo}`} />
               <Row label="ครบกำหนด" value={dueDate} />
+            </>
+          )}
+          {data.promiseDate && (
+            <Row label="วันนัด" value={`ภายใน ${formatDateShort(data.promiseDate)}`} />
+          )}
+          {/* Task 42 — ลิงก์แจ้งล็อก / ยอดนัด: เงินก้อนนี้ลงงวดไหน (server คิดด้วยกติกาเดียวกับ webhook — งวดเก่าก่อน) */}
+          {data.allocation && data.allocation.length > 0 && (
+            <>
+              <div data-testid="pay-allocation-divider" className="h-px bg-border/50" />
+              <p className="text-[11.5px] text-muted-foreground leading-snug">
+                นำไปชำระ (งวดเก่าก่อน)
+              </p>
+              {data.allocation.map((line, i) => (
+                <Row
+                  key={`${line.kind}-${'installmentNo' in line ? line.installmentNo : 'surplus'}-${i}`}
+                  label={payAllocationLineLabel(line)}
+                  value={formatNumberDecimal(line.amount, 2)}
+                  mono
+                  muted={line.kind === 'LEFT_AFTER'}
+                />
+              ))}
             </>
           )}
         </div>
@@ -596,20 +611,23 @@ function Row({
   value,
   mono,
   emphasize,
+  muted,
 }: {
   label: string;
   value: string;
   mono?: boolean;
   emphasize?: boolean;
+  /** Task 42 — แถวข้อมูลประกอบ (เช่น "ยังค้างหลังชำระ") — ค่าใช้สีจางแบบเดียวกับป้าย */
+  muted?: boolean;
 }) {
   return (
-    <div className="flex items-baseline justify-between">
+    <div data-testid="pay-row" className="flex items-baseline justify-between">
       <span className="text-[12.5px] text-muted-foreground leading-snug">{label}</span>
       <span
         className={`tabular-nums tracking-tight leading-snug ${mono ? 'font-mono' : ''} ${
           emphasize
             ? 'text-[15px] font-semibold text-emerald-700'
-            : 'text-[13.5px] font-medium text-foreground'
+            : `text-[13.5px] font-medium ${muted ? 'text-muted-foreground' : 'text-foreground'}`
         }`}
       >
         {value}

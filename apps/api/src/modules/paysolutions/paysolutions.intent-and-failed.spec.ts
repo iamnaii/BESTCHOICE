@@ -17,6 +17,7 @@ import { PaymentReceiptTemplate } from '../journal/cpa-templates/payment-receipt
 import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-reversal.template';
 import { PaymentsService } from '../payments/payments.service';
 import { BadDebtService } from '../accounting/bad-debt.service';
+import { ContractPaymentService } from '../contracts/contract-payment.service';
 
 // Same Sentry-transport stub the sibling specs use — captureException /
 // captureMessage are asserted directly in the orphan-intent test.
@@ -62,6 +63,8 @@ describe('PaySolutionsService — intent guards + FAILED/routing callbacks (char
   let prisma: any;
   let template: { execute: jest.Mock };
   let payments: { recordPayment: jest.Mock };
+  /** Task 41 — ยอดปิดของ server สำหรับ intent ปิดยอด (ทางที่ไม่มีเลขงวด) */
+  let payoffTotal = 1234;
 
   /**
    * Build a fresh service around the current `prisma` mock, re-wiring the
@@ -105,6 +108,20 @@ describe('PaySolutionsService — intent guards + FAILED/routing callbacks (char
         { provide: Vat60dayReversalTemplate, useValue: { execute: jest.fn() } },
         { provide: PaymentsService, useValue: payments },
         { provide: BadDebtService, useValue: { reverseStageOnPayment: jest.fn().mockResolvedValue(null) } },
+        {
+          provide: ContractPaymentService,
+          useValue: {
+            getEarlyPayoffQuote: jest.fn(async () => ({
+              totalPayoff: payoffTotal,
+              discountPct: 50,
+              discountAmount: 100,
+              unpaidLateFees: 0,
+              remainingMonths: 3,
+              notDueMonths: 3,
+            })),
+            earlyPayoff: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
@@ -374,6 +391,7 @@ describe('PaySolutionsService — intent guards + FAILED/routing callbacks (char
             id: contractId,
             customerId: 'cust-intent-1',
             deletedAt: null,
+            status: 'ACTIVE',
             contractNumber: 'CT-2026-0009',
             customer: {
               name: 'ลูกค้า ทดสอบ',
@@ -430,8 +448,9 @@ describe('PaySolutionsService — intent guards + FAILED/routing callbacks (char
       });
     });
 
-    // owner decision #24 (2026-10-31): a no-installment intent is the LIFF payoff (LiffEarlyPayoff / /pay/:token
-    // "ยอดปิดสัญญา") — refused while an approved refund waits for the bank. Enforced HERE, at link creation: the webhook
+    // owner decision #24 (2026-10-31): an intent with neither installmentNo nor pay-link token is the LIFF payoff
+    // (LiffEarlyPayoff) — refused while an approved refund waits for the bank (Task 39: /pay/:token links are refused only
+    // when their purpose is PAYOFF — paysolutions.intent-pay-link.spec.ts). Enforced HERE, at link creation: the webhook
     // never rejects money the gateway has captured (same shape as the "no skipping installments" rule).
     it('#24 no installmentNo + refund APPROVED (not bank-confirmed) → customer 400 before any gateway call', async () => {
       buildIntentPrisma(null);
@@ -577,6 +596,7 @@ describe('PaySolutionsService — intent guards + FAILED/routing callbacks (char
             id: contractId,
             customerId: 'cust-orphan-1',
             deletedAt: null,
+            status: 'ACTIVE',
             contractNumber: 'CT-2026-0011',
             customer: {
               name: 'ลูกค้า ออร์แฟน',
@@ -593,8 +613,12 @@ describe('PaySolutionsService — intent guards + FAILED/routing callbacks (char
         // The orphan path is the $transaction that creates the PaymentLink.
         // #24: a no-installment (payoff) intent first checks for refunds waiting for the bank — none here
         refund: { findMany: jest.fn().mockResolvedValue([]) },
+        // Task 41 (ค): no other payoff QR open for this contract
+        paymentLink: { findFirst: jest.fn().mockResolvedValue(null) },
         $transaction: jest.fn().mockRejectedValue(dbError),
       };
+      // Task 41 — ยอดปิดของ server = ยอดที่หน้าปิดยอดส่งมา (ไม่งั้น 400 ก่อนถึง gateway)
+      payoffTotal = 1234;
       await buildService();
 
       // Gateway call SUCCEEDS — transactionId becomes the gatewayRef carried

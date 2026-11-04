@@ -49,7 +49,9 @@ import {
   type PaymentApprovalContext,
   canonical,
 } from '../payments/services/payment-approval-request.util';
-import { d, dAdd, dSub, dRound } from '../../utils/decimal.util';
+import { d, dAdd, dSub, dRound, dClose } from '../../utils/decimal.util';
+import { reportReceiptIssueFailure } from '../receipts/services/receipt-issue-alert';
+import { GatewayPayoffMismatchError, type GatewayMatchAuthorization } from './early-payoff-gateway';
 import { onDomainCommit } from '../employee-access/access-execution-context';
 import {
   assertUnmanagedPayoffActor,
@@ -502,10 +504,14 @@ export class ContractPaymentService {
     dto: EarlyPayoffDto,
     approvalContext?: PaymentApprovalContext,
     slipMatch?: SlipMatchAuthorization,
+    gatewayMatch?: GatewayMatchAuthorization,
   ) {
-    if (!approvalContext && !slipMatch)
+    if (!approvalContext && !slipMatch && !gatewayMatch)
       throw new ForbiddenException('กรุณาส่งคำขอปิดยอดผ่านหน้ารออนุมัติ หรือแนบสลิปที่ยอดตรง');
-    const managed = await managedPayoffExecution(this.prisma, id, userId);
+    // ทาง QR (Task 41) ไม่มีพนักงาน/คำขอ/สลิป และไม่อยู่ในทางเข้า managed — ผู้เรียกเดียวคือ webhook
+    if (gatewayMatch && (approvalContext || slipMatch))
+      throw new ForbiddenException('รายการนี้มีทางเข้ามากกว่าหนึ่งทาง');
+    const managed = gatewayMatch ? undefined : await managedPayoffExecution(this.prisma, id, userId);
     // The legacy approval consumer is not the managed owner/source/money consumer.
     // Keep even old unmarked requests closed until that integration owns this seam.
     if (managed && approvalContext)
@@ -524,7 +530,7 @@ export class ContractPaymentService {
       id,
       dto.discountPct,
       effectiveDepositCode,
-      managed?.client,
+      managed?.client ?? gatewayMatch?.tx,
     );
     const paidDate = dto.paymentDate ? new Date(dto.paymentDate) : new Date();
     if (!Number.isFinite(paidDate.getTime())) throw new BadRequestException('วันที่ชำระไม่ถูกต้อง');
@@ -549,7 +555,7 @@ export class ContractPaymentService {
     // Period-lock guard (audit finding J3): cannot back-date an early payoff
     // into a closed (FINANCE) accounting period.
     if (managed) await lockPayoffPeriod(managed.client, paidDate, financeCompanyId);
-    await validatePeriodOpen(managed?.client ?? this.prisma, paidDate, financeCompanyId);
+    await validatePeriodOpen(managed?.client ?? gatewayMatch?.tx ?? this.prisma, paidDate, financeCompanyId);
 
     // สัญญาณเตือน (คอลัมน์เงินของลูกค้าไม่ตรงยอดในบัญชี) — ส่งหลังธุรกรรม commit เท่านั้น
     let epWarnings: readonly DeferredWarning[] = [];
@@ -561,7 +567,7 @@ export class ContractPaymentService {
     // เลขที่รายการ JP4 — ใบเสร็จปิดยอดผูกรายการนี้และคัดลอก receiptTax (ฝ่ายบัญชี 16.1 · 2026-10-18)
     let jp4EntryNumber: string | undefined;
     const execute = async (tx: Prisma.TransactionClient) => {
-      if (!managed) await assertUnmanagedPayoffActor(tx, userId);
+      if (!managed && !gatewayMatch) await assertUnmanagedPayoffActor(tx, userId);
       if (approvalContext) {
         const approval = await consumePaymentApproval(tx, approvalContext, 'EARLY_PAYOFF', id);
         if (approval.requestedById !== userId)
@@ -573,6 +579,32 @@ export class ContractPaymentService {
         ) {
           throw new ConflictException('ยอดปิดสัญญาเปลี่ยนแล้ว กรุณาส่งขออนุมัติใหม่');
         }
+      } else if (gatewayMatch) {
+        // ทาง QR (Task 41) — ยอดปิดสด ณ เวลาที่เงินเข้า (ในธุรกรรมเดียวกับ JE · % ส่วนลดจาก snapshot ของ intent) ต้องตรงเงินที่รับ ±0.01 ·
+        // ไม่ตรง (ข้ามวันแล้วมีงวดถึงกำหนด / ค่าปรับเพิ่ม / มีเงินเข้าทางอื่น) = ไม่ลง JP4 — webhook ถอยเป็น FIFO + งานแจ้ง
+        quote = await this.getEarlyPayoffQuote(id, dto.discountPct, effectiveDepositCode, tx);
+        if (!dClose(quote.totalPayoff, gatewayMatch.paidAmount)) {
+          throw new GatewayPayoffMismatchError(quote.totalPayoff, d(gatewayMatch.paidAmount).toFixed(2));
+        }
+        // audit ใน tx (atomic กับ JE — แบบเดียวกับสลิปตรง) — "ปิดโดยไม่ผ่านคิวอนุมัติเพราะเงินเข้าทาง QR เท่ายอดปิด"
+        await tx.auditLog.create({
+          data: {
+            userId,
+            action: 'EARLY_PAYOFF_GATEWAY_MATCHED',
+            entity: 'contract',
+            entityId: id,
+            newValue: {
+              totalPayoff: d(quote.totalPayoff).toFixed(2),
+              paidAmount: d(gatewayMatch.paidAmount).toFixed(2),
+              discountPct: quote.discountPct,
+              refno: gatewayMatch.refno,
+              transactionId: gatewayMatch.transactionId,
+              paymentLinkId: gatewayMatch.paymentLinkId,
+              quotedTotalPayoff: gatewayMatch.quoteSnapshot.totalPayoff,
+              quoteDate: gatewayMatch.quoteSnapshot.quoteDate,
+            },
+          },
+        });
       } else {
         // ทางสลิปตรง — ตรวจซ้ำในทรานแซกชันเดียวกับ JE: ยอดปิดสดยังตรงกับสลิป และสลิปยังไม่ถูกใช้
         // (SlipFingerprint.hash unique — ชนกับสลิปที่ลูกค้าเคยส่งบอทหรือปิดยอดไปแล้ว → 409)
@@ -693,6 +725,16 @@ export class ContractPaymentService {
             evidenceUrl: dto.slipUrl ?? payment.evidenceUrl,
             gatewayRef: dto.referenceNo ?? payment.gatewayRef,
             notes: dto.notes ? `[ปิดก่อนกำหนด] ${dto.notes}` : '[ปิดก่อนกำหนด]',
+            // ทาง QR (Task 41) — ช่อง gateway ของแถวงวดแบบเดียวกับที่ webhook ตั้งให้งวดที่ชำระผ่าน Pay Solutions (refno ของแถวติดตาม)
+            ...(gatewayMatch
+              ? {
+                  gatewayRef: gatewayMatch.refno,
+                  gatewayStatus: 'SUCCESS',
+                  gatewayResponse: gatewayMatch.webhookData as object,
+                  // คำตัดสินเจ้าของ #45 — บัญชีเดียวกับขา Dr ของ JP4 (บัญชีรับเงินของ Pay Solutions)
+                  depositAccountCode: effectiveDepositCode,
+                }
+              : {}),
           },
         });
       }
@@ -911,6 +953,15 @@ export class ContractPaymentService {
                 shopReceivableType: 'SHOP_COLLECT',
               }
             : {}),
+          // ทาง QR (Task 41) — เงินเข้าทาง Pay Solutions (แถวติดตาม intent ปิดยอด)
+          ...(gatewayMatch
+            ? {
+                source: 'PAYSOLUTIONS_GATEWAY',
+                gatewayRefno: gatewayMatch.refno,
+                ...(gatewayMatch.transactionId ? { gatewayTransactionId: gatewayMatch.transactionId } : {}),
+                paymentLinkId: gatewayMatch.paymentLinkId,
+              }
+            : {}),
         };
 
         const posted = await this.journalAutoService.createAndPost(
@@ -1018,7 +1069,11 @@ export class ContractPaymentService {
       // convention as the JP5/write-off consume-then-release helper
       // (glContractBalance + EclStageReverseTemplate), minus the "consume"
       // leg — JP4 has no loss to net the provision against.
-      const ecl = await this.releaseEclOnPayoff(tx, id, managed, paidDate);
+      // รีวิว M-2 (Task 41): สัญญาณเตือน 11-2102 ติดลบของทางไม่ managed ส่งหลัง commit (`epWarnings`) — เดิมยิงในธุรกรรม ⇒ ทาง QR ที่ถอย
+      // savepoint (JP4 ไม่ได้ลง) ยังได้ warning ของ JP4 ที่ไม่เกิด
+      const eclWarnings: DeferredWarning[] = [];
+      const ecl = await this.releaseEclOnPayoff(tx, id, managed, paidDate, eclWarnings);
+      if (eclWarnings.length > 0) epWarnings = [...epWarnings, ...eclWarnings];
       if (managed && ecl) {
         const entry = await tx.journalEntry.findUniqueOrThrow({
           where: { entryNumber: ecl.entryNo },
@@ -1085,16 +1140,18 @@ export class ContractPaymentService {
       }
     };
     if (managed) await execute(managed.client);
+    // ทาง QR (Task 41) — ธุรกรรมของ webhook (commit โดย webhook หลัง claim ลิงก์ในก้อนเดียวกัน)
+    else if (gatewayMatch) await execute(gatewayMatch.tx);
     else
       await this.prisma.$transaction(execute, {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
       });
-    if (!managed) emitDeferredWarnings(epWarnings);
+    if (!managed && !gatewayMatch) emitDeferredWarnings(epWarnings);
 
     // Issue the EARLY_PAYOFF receipt (post-commit; generateReceipt has its own tx +
     // sequence lock). Mirrors the normal recordPayment path — a receipt failure must
     // NOT roll back the committed payoff, so it's logged and swallowed.
-    if (!managed) {
+    const issueReceipt = async () => {
       try {
         const receipt = await this.receiptsService.generateReceipt(
           id,
@@ -1113,8 +1170,24 @@ export class ContractPaymentService {
         this.logger.error(
           `Failed to generate EARLY_PAYOFF receipt for contract ${id}: ${err instanceof Error ? err.message : err}`,
         );
+        // ทาง QR (Task 41): ไม่มีพนักงานเห็นหน้าจอ และ PaySolutions ส่งซ้ำก็จบที่ claim — แจ้ง Sentry พร้อมอาร์กิวเมนต์ของการออกใบซ้ำ
+        // (แบบเดียวกับใบรับชำระงวดของ webhook — accounting.md "ออกใบเสร็จซ้ำ")
+        if (gatewayMatch)
+          reportReceiptIssueFailure(err, {
+            path: 'paysolutions-webhook-payoff',
+            contractId: id,
+            paymentId: null,
+            installmentNo: null,
+            journalEntryNumber: jp4EntryNumber ?? null,
+            paymentMethod: dto.paymentMethod,
+            amount: d(quote.totalPayoff).toFixed(2),
+            transactionRef: dto.referenceNo ?? null,
+            issuedById: userId,
+            paidDate: paidDate.toISOString(),
+          });
       }
-    }
+    };
+    if (!managed && !gatewayMatch) await issueReceipt();
 
     const afterCommit = async () => {
       if (managed) emitDeferredWarnings(epWarnings);
@@ -1132,8 +1205,9 @@ export class ContractPaymentService {
               customerId: closed.customerId,
               kind: 'EARLY_PAYOFF',
               occurredAt: paidDate,
-              actorType: 'STAFF',
-              actorUserId: userId,
+              // ทาง QR (Task 41) — ลูกค้าปิดยอดเองในไลน์ ไม่มีพนักงานกด
+              actorType: gatewayMatch ? 'CUSTOMER' : 'STAFF',
+              actorUserId: gatewayMatch ? null : userId,
               refType: 'contract',
               refId: id,
               data: {
@@ -1152,6 +1226,13 @@ export class ContractPaymentService {
       }
     };
     if (managed) onDomainCommit(afterCommit);
+    // ทาง QR (Task 41) — ลำดับเดียวกับทางปกติ (สัญญาณเตือน → ใบ EARLY_PAYOFF → journey) แต่เรียกโดย webhook หลังธุรกรรมของมัน commit
+    else if (gatewayMatch)
+      gatewayMatch.onCommit(async () => {
+        emitDeferredWarnings(epWarnings);
+        await issueReceipt();
+        await afterCommit();
+      });
     else await afterCommit();
 
     return {
@@ -1304,6 +1385,8 @@ export class ContractPaymentService {
     contractId: string,
     managed?: ManagedPayoffExecution,
     paidDate?: Date,
+    /** ทางไม่ managed: สัญญาณเตือนถูกเก็บที่นี่ให้ผู้เรียกส่งหลัง commit (ไม่ยิงในธุรกรรม) */
+    deferredWarnings?: DeferredWarning[],
   ): Promise<{ entryNo: string } | null> {
     let result: { entryNo: string } | null = null;
     const bal = await glContractBalance(tx, contractId, '11-2102', 'cr');
@@ -1319,6 +1402,12 @@ export class ContractPaymentService {
         });
       };
       if (managed) onDomainCommit(warn);
+      else if (deferredWarnings)
+        deferredWarnings.push({
+          message: 'JP4 payoff: negative 11-2102 balance',
+          tags: { subsystem: 'bad-debt' },
+          extra: { contractId, balance: bal.toFixed(2) },
+        });
       else await warn();
     }
     if (bal.gt(0)) {

@@ -788,6 +788,7 @@ describe('LineOaPaymentController (characterization)', () => {
       paymentLink.getPaymentLink.mockResolvedValue({
         status: 'ACTIVE',
         amount: dec(1500),
+        purpose: 'INSTALLMENT',
         expiresAt,
         contract: {
           id: 'ct1',
@@ -810,6 +811,11 @@ describe('LineOaPaymentController (characterization)', () => {
         amount: 1500,
         status: 'ACTIVE',
         expiresAt,
+        purpose: 'INSTALLMENT',
+        // Task 42 — ลิงก์งวด: หัว "ยอดที่ต้องชำระ" · ไม่มีวันนัด · ไม่มีแถวนำไปชำระ
+        amountKind: 'DUE',
+        promiseDate: undefined,
+        allocation: null,
         contract: {
           id: 'ct1',
           contractNumber: 'C-001',

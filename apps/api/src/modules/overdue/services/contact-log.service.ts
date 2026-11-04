@@ -270,6 +270,8 @@ export class ContactLogService {
           {
             amount: firstSlot.settlementAmount,
             settlementDate: formatDateShort(firstSlot.settlementDate),
+            // Task 42 — ลิงก์ยอดนัดเก็บวันนัดจริงให้หน้า /pay/:token แสดง "วันนัด ภายใน …"
+            promiseDate: firstSlot.settlementDate,
           },
         );
       } catch (err) {

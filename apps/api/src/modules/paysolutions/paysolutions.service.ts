@@ -17,6 +17,7 @@ import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-rev
 import { PaymentsService } from '../payments/payments.service';
 import { BadDebtService } from '../accounting/bad-debt.service';
 import { ReceiptsService } from '../receipts/receipts.service';
+import { ContractPaymentService } from '../contracts/contract-payment.service';
 import type { PartialPaymentLink } from '@prisma/client';
 import { PaySolutionsGatewayClient } from './services/paysolutions-gateway.client';
 import {
@@ -42,7 +43,7 @@ export { PaymentStatusResult } from './services/paysolutions-confirmation.servic
  * unchanged; every public method one-line delegates.
  *
  *   - {@link PaySolutionsGatewayClient}      — DB-free config + createUiPayment dedup
- *   - {@link PaySolutionsIntentService}      — the 5 intent creators (NO regulated JE)
+ *   - {@link PaySolutionsIntentService}      — the 4 intent creators (NO regulated JE — `createEarlyPayoffQR` removed Task 41: no caller)
  *   - {@link PaySolutionsConfirmationService}— partial/online/saving confirm + status
  *   - {@link PaySolutionsWebhookService}     — REGULATED CORE: the line-1105
  *       Serializable webhook $tx (3 JEs, FIFO, idempotency, contract-close) AS
@@ -84,6 +85,11 @@ export class PaySolutionsService {
     @Optional()
     @Inject(forwardRef(() => ReceiptsService))
     private receiptsService?: ReceiptsService,
+    // Task 41 (คำตัดสินเจ้าของ #43): intent ปิดยอดใช้ยอดปิดของ server + webhook ลงปิดยอดจริง (JP4) ผ่านแกนเดียวกับพนักงาน ·
+    // @Optional — spec เดิมที่ไม่ส่ง = intent ปิดยอดถูกปฏิเสธ (fail closed) และ webhook ลงทุกเงินแบบ FIFO เดิม
+    @Optional()
+    @Inject(forwardRef(() => ContractPaymentService))
+    private contractPaymentService?: ContractPaymentService,
   ) {}
 
   /**
@@ -101,6 +107,7 @@ export class PaySolutionsService {
         this.prisma,
         this.lineOaService,
         this.config,
+        this.contractPaymentService,
       );
       const confirmation = new PaySolutionsConfirmationService(
         this.prisma,
@@ -124,12 +131,15 @@ export class PaySolutionsService {
             this.confirmSavingPlanPayment(id, linkId, data),
           confirmOnlineOrderPayment: (id, data) =>
             this.confirmOnlineOrderPayment(id, data),
-          sendPaymentSuccessNotification: (contractId, paymentId) =>
-            this.sendPaymentSuccessNotification(contractId, paymentId),
+          sendPaymentSuccessNotification: (contractId, paymentId, paidAmount) =>
+            paidAmount === undefined
+              ? this.sendPaymentSuccessNotification(contractId, paymentId)
+              : this.sendPaymentSuccessNotification(contractId, paymentId, paidAmount),
           sendEarlyPayoffSuccessNotification: (contractId, paidAmount) =>
             this.sendEarlyPayoffSuccessNotification(contractId, paidAmount),
         },
         this.receiptsService,
+        this.contractPaymentService,
       );
       this._services = { gateway, intent, confirmation, webhook };
     }
@@ -144,8 +154,16 @@ export class PaySolutionsService {
     description?: string,
     lineId?: string,
     installmentNo?: number,
+    paymentLinkToken?: string,
   ): Promise<PaymentIntentResult> {
-    return this.services().intent.createPaymentIntent(contractId, amount, description, lineId, installmentNo);
+    return this.services().intent.createPaymentIntent(
+      contractId,
+      amount,
+      description,
+      lineId,
+      installmentNo,
+      paymentLinkToken,
+    );
   }
 
   createOnlineOrderIntent(input: {
@@ -155,20 +173,6 @@ export class PaySolutionsService {
     channel: 'PROMPTPAY_QR' | 'CREDIT_DEBIT_CARD';
   }): Promise<{ paymentLinkId: string; paymentUrl: string; qrCodeUrl?: string }> {
     return this.services().intent.createOnlineOrderIntent(input);
-  }
-
-  createEarlyPayoffQR(input: {
-    contractId: string;
-    amount: number;
-    description?: string;
-    quoteContext?: {
-      originalAmount: number;
-      savings: number;
-      discountPct: number;
-      remainingMonths: number;
-    };
-  }): Promise<{ paymentLinkId: string; paymentUrl: string; orderRef: string; sentToLine: boolean }> {
-    return this.services().intent.createEarlyPayoffQR(input);
   }
 
   createPartialPaymentQR(input: {
@@ -253,8 +257,9 @@ export class PaySolutionsService {
   private sendPaymentSuccessNotification(
     contractId: string,
     paymentId: string | null,
+    paidAmount?: Prisma.Decimal,
   ): Promise<void> {
-    return this.services().webhook.sendPaymentSuccessNotification(contractId, paymentId);
+    return this.services().webhook.sendPaymentSuccessNotification(contractId, paymentId, paidAmount);
   }
 
   private sendEarlyPayoffSuccessNotification(

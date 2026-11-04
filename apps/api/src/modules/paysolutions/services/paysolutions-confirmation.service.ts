@@ -9,6 +9,7 @@ import { OnlineOrderSaleAdapter } from '../../shop-orders/online-order-sale.adap
 import { PaymentsService } from '../../payments/payments.service';
 import { consumeOrderHoldInTx } from '../../shop-orders/consume-order-hold.util';
 import { buildOrderUnfulfillableFlex } from '../../shop-orders/order-unfulfillable-flex.util';
+import { resolvePaySolutionsDepositAccount } from '../paysolutions-deposit-account';
 
 export interface PaymentStatusResult {
   paymentId: string;
@@ -63,14 +64,24 @@ export class PaySolutionsConfirmationService {
       };
     }
 
-    // ลองหาจาก PaymentLink token (กรณี order reference)
+    // ลองหาจาก PaymentLink token (กรณี order reference) หรือ id ของแถวติดตาม (Task 39 — create-intent ที่ไม่มีงวดคืน id นี้ให้หน้าเว็บ poll)
     const link = await this.prisma.paymentLink.findFirst({
-      where: { token: paymentId },
+      where: { OR: [{ token: paymentId }, { id: paymentId }] },
       include: { payment: true },
     });
 
     if (!link) {
       throw new NotFoundException('ไม่พบรายการชำระเงิน');
+    }
+
+    // Task 39 (รีวิว I-2) — แถวติดตามที่ไม่มีงวด (ลิงก์ PAYOFF / AMOUNT · LiffEarlyPayoff): USED = webhook รับเงินแล้ว (claim สำเร็จเท่านั้น)
+    if (link.status === 'USED' && !link.payment) {
+      return {
+        paymentId: link.id,
+        status: 'PAID',
+        amount: Number(link.amount),
+        paidAt: link.usedAt || undefined,
+      };
     }
 
     if (link.status === 'USED' && link.payment?.status === 'PAID') {
@@ -174,11 +185,8 @@ export class PaySolutionsConfirmationService {
       return;
     }
 
-    const qrDefault = await this.prisma.paymentMethodConfig.findFirst({
-      where: { method: 'QR', isDefault: true, enabled: true, deletedAt: null },
-      select: { accountCode: true },
-    });
-    const depositAccountCode = qrDefault?.accountCode ?? '11-1201';
+    // คำตัดสินเจ้าของ #45 — บัญชีรับเงินของ Pay Solutions ตัวเดียวทุกทาง (ค่าตั้ง QR ค่าเริ่มต้น · ไม่มี = 11-1201)
+    const depositAccountCode = await resolvePaySolutionsDepositAccount(this.prisma);
 
     // Look up installmentNo so recordPayment can find the right Payment row
     // (it keys on contractId + installmentNo, not paymentId).

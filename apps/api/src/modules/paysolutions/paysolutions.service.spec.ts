@@ -118,6 +118,8 @@ describe('PaySolutionsService.handlePaymentCallback — payment JE (F-1-003)', (
         }),
         update: jest.fn(),
       },
+      // คำตัดสินเจ้าของ #45 — บัญชีรับเงินของ Pay Solutions (`resolvePaySolutionsDepositAccount`) · ไม่มีค่าตั้ง = 11-1201
+      paymentMethodConfig: { findFirst: jest.fn().mockResolvedValue(null) },
       partialPaymentLink: {
         // Default: no partial-payment link exists for this refno (regular path).
         findUnique: jest.fn().mockResolvedValue(null),
@@ -212,7 +214,7 @@ describe('PaySolutionsService.handlePaymentCallback — payment JE (F-1-003)', (
     expect(paymentReceiptTemplate.execute).toHaveBeenCalledWith(
       expect.objectContaining({
         installmentScheduleId: 'inst-sched-1',
-        debitAccountCode: '11-1202',
+        debitAccountCode: '11-1201', // คำตัดสินเจ้าของ #45 — บัญชีรับเงินของ Pay Solutions (เดิม 11-1202)
         isFinalReceipt: true,
         paymentId,
       }),

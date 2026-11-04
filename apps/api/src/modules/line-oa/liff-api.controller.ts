@@ -256,11 +256,11 @@ export class LiffApiController {
     );
 
     const quote = await this.contractPaymentService.getEarlyPayoffQuote(dto.contractId);
-    const result = await this.paymentLinkService.createPaymentLink(
-      dto.contractId,
-      undefined,
-      quote.totalPayoff,
-    );
+    // Task 39 — ลิงก์ปิดยอด = PAYOFF (หน้า /pay/:token ส่ง token · ด่าน #24 ตรวจซ้ำตอนจ่าย)
+    const result = await this.paymentLinkService.createPaymentLink(dto.contractId, undefined, {
+      amount: quote.totalPayoff,
+      purpose: 'PAYOFF',
+    });
     return { url: result.url, token: result.token, totalPayoff: quote.totalPayoff };
   }
 

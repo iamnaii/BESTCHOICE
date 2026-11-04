@@ -73,6 +73,7 @@ export class PaySolutionsController {
       dto.description,
       lineUserId,
       dto.installmentNo,
+      dto.paymentLinkToken,
     );
 
     return {

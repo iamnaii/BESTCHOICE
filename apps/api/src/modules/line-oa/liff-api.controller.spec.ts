@@ -345,6 +345,11 @@ describe('LiffApiController', () => {
         { contractId: 'con1' },
       );
       expect(result).toEqual({ url: 'https://pay/tok', token: 'tok', totalPayoff: 8500 });
+      // Task 39 — ลิงก์ปิดยอด = PAYOFF (ด่าน #24 ตอนจ่าย · หน้าเว็บส่ง token)
+      expect(paymentLinkService.createPaymentLink).toHaveBeenCalledWith('con1', undefined, {
+        amount: 8500,
+        purpose: 'PAYOFF',
+      });
     });
 
     it('throws NotFoundException if customer not found', async () => {

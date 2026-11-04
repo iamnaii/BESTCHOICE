@@ -114,7 +114,13 @@ describe('ChatbotFinanceService', () => {
         // ChatbotFinanceService recently added ConfigService as a constructor dep
         // (used for FB_BOT_DISABLED / LINE token reads). Tests don't exercise
         // those paths — a no-op stub keeps DI happy without affecting assertions.
-        { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue(undefined) } },
+        // Task 44 I-1 — บอทเต็มเปิดเฉพาะ LINE_FINANCE_BOT_MODE=full (ค่าเริ่มต้นของ spec นี้ ให้เทสบอทเต็มเดิมเดินตามเดิม)
+        {
+          provide: ConfigService,
+          useValue: {
+            get: jest.fn((k: string) => (k === 'LINE_FINANCE_BOT_MODE' ? 'full' : undefined)),
+          },
+        },
         // Phase 5 — QuickReplyPostbackRouterService injected via forwardRef
         // for TEMPLATE:<id> Quick Reply routing. Stub returns handled:false so
         // existing postback specs (feedback flow) fall through unchanged.
@@ -680,6 +686,46 @@ describe('ChatbotFinanceService', () => {
       await service.handleEvent(makeTextEvent('ยอดเท่าไหร่'));
       expect(ai.generateReply).toHaveBeenCalled();
       expect(messageRouter.mirrorInbound).not.toHaveBeenCalled();
+    });
+  });
+  describe('Task 44 I-1 — บอทเต็มเปิดได้ทางเดียว (fail-safe)', () => {
+    const textEvent = {
+      type: 'message',
+      replyToken: 'rt',
+      source: { type: 'user', userId: 'U-fs' },
+      message: { type: 'text', id: 'm-fs', text: 'สวัสดี' },
+      webhookEventId: 'evt-fs',
+    } as any;
+
+    it.each([
+      ['env หายทั้งหมด', {}],
+      ['พิมพ์ผิด (FULL ตัวใหญ่)', { LINE_FINANCE_BOT_MODE: 'FULL' }],
+      ['DISABLED=false แต่ไม่มี MODE', { LINE_FINANCE_BOT_DISABLED: 'false' }],
+      [
+        'MODE=full แต่ DISABLED=true (prod)',
+        { LINE_FINANCE_BOT_MODE: 'full', LINE_FINANCE_BOT_DISABLED: 'true' },
+      ],
+    ])('%s → inbox-only', async (_label, env: Record<string, string>) => {
+      const config = (service as any).configService as { get: jest.Mock };
+      config.get.mockImplementation((k: string) => env[k]);
+      const inboxOnly = jest
+        .spyOn(service as any, 'handleEventInboxOnly')
+        .mockResolvedValue(undefined);
+      await service.handleEvent(textEvent);
+      expect(inboxOnly).toHaveBeenCalledTimes(1);
+    });
+
+    it('MODE=full และไม่ได้ตั้ง DISABLED → บอทเต็ม (ไม่เข้าทาง inbox-only)', async () => {
+      const config = (service as any).configService as { get: jest.Mock };
+      config.get.mockImplementation((k: string) =>
+        k === 'LINE_FINANCE_BOT_MODE' ? 'full' : undefined,
+      );
+      const inboxOnly = jest
+        .spyOn(service as any, 'handleEventInboxOnly')
+        .mockResolvedValue(undefined);
+      jest.spyOn(service as any, 'handleMessage').mockResolvedValue(undefined);
+      await service.handleEvent(textEvent);
+      expect(inboxOnly).not.toHaveBeenCalled();
     });
   });
 });

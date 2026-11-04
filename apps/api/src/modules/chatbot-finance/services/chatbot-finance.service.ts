@@ -161,9 +161,10 @@ export class ChatbotFinanceService {
       await this.groups.ensureKnown('FINANCE', event.source.groupId);
     }
 
-    // Owner-controlled switch (deploy-gcp.yml ตั้ง true) — คำตัดสินเจ้าของ #49 (Task 44): เดิม = ทิ้งทุก event
-    // (สลิป/ข้อความลูกค้าหาย) · ตอนนี้ = "เก็บเข้า inbox ไม่ตอบอัตโนมัติ" — ดู handleEventInboxOnly
-    if (this.configService.get<string>('LINE_FINANCE_BOT_DISABLED') === 'true') {
+    // คำตัดสินเจ้าของ #49 (Task 44): OA การเงิน = "เก็บเข้า inbox ไม่ตอบอัตโนมัติ" — ดู handleEventInboxOnly.
+    // fail-safe: บอทเต็ม (AI ตอบ · ตัวอ่านสลิปที่อนุมัติเองได้) เปิดได้ทางเดียวคือ LINE_FINANCE_BOT_MODE=full
+    // และ LINE_FINANCE_BOT_DISABLED ไม่ใช่ 'true' — env หาย/พิมพ์ผิด/deploy ด้วยชุดอื่น = inbox-only เสมอ
+    if (!this.isFullBotMode()) {
       return this.handleEventInboxOnly(event);
     }
 
@@ -230,7 +231,19 @@ export class ChatbotFinanceService {
     return { text: this.inboundMessageToText(message) };
   }
 
-  // ─── inbox-only mode (LINE_FINANCE_BOT_DISABLED=true — Task 44) ─────
+  // ─── inbox-only mode (ค่าเริ่มต้น — Task 44) ─────
+
+  /**
+   * บอทเต็มเปิดเฉพาะเมื่อตั้ง `LINE_FINANCE_BOT_MODE=full` ไว้ตรง ๆ และไม่ได้ตั้ง `LINE_FINANCE_BOT_DISABLED=true`
+   * (prod ตั้ง DISABLED=true ไว้ใน deploy-gcp.yml) · ค่าอื่นทุกแบบ = inbox-only — รีวิว Task 44 I-1: ด่านเดิมเทียบ
+   * DISABLED === 'true' ตรงตัว env หายครั้งเดียว AI ตอบลูกค้าเก่าและสลิปติด APPROVED เองได้
+   */
+  private isFullBotMode(): boolean {
+    return (
+      this.configService.get<string>('LINE_FINANCE_BOT_MODE') === 'full' &&
+      this.configService.get<string>('LINE_FINANCE_BOT_DISABLED') !== 'true'
+    );
+  }
 
   /**
    * คำตัดสินเจ้าของ #49 — OA การเงินต่อเข้าระบบในโหมด "เก็บเข้า inbox ไม่ตอบอัตโนมัติ":

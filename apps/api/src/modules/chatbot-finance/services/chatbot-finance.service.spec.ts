@@ -681,7 +681,7 @@ describe('ChatbotFinanceService', () => {
     });
   });
 
-  describe('บอทเปิดเต็ม (flag ไม่ใช่ true) — ไม่ใช้ทาง inbox-only', () => {
+  describe('บอทเปิดเต็ม (LINE_FINANCE_BOT_MODE=full · ไม่ตั้ง DISABLED=true) — ไม่ใช้ทาง inbox-only', () => {
     it('ข้อความ → ทางเดิม (AI ตอบ) ไม่เรียก mirrorInbound', async () => {
       await service.handleEvent(makeTextEvent('ยอดเท่าไหร่'));
       expect(ai.generateReply).toHaveBeenCalled();

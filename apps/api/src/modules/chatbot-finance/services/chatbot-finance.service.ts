@@ -23,6 +23,8 @@ import { LineGroupMembershipService } from './line-group-membership.service';
 import { INTENTS } from '../constants/intents';
 import { buildBrowserUrl } from '../../../utils/line-login.util';
 import { formatStickerToken } from '../../chat-engine/utils/sticker-token.util';
+import { MessageRouterService } from '../../chat-engine/services/message-router.service';
+import { StorageService } from '../../storage/storage.service';
 
 const FALLBACK_REPLY =
   'ขออภัยค่ะ ระบบขัดข้องชั่วคราว 🙏\nรบกวนติดต่อเจ้าหน้าที่ 063-134-6356 ในเวลาทำการนะคะ';
@@ -57,6 +59,9 @@ export class ChatbotFinanceService {
     // redundant for Nest's DI graph.
     private postbackRouter: QuickReplyPostbackRouterService,
     private groups: LineGroupMembershipService,
+    // Task 44 — โหมดเก็บเข้า inbox: ทางเดียวกับ SHOP (mirrorInbound) + เก็บรูปสลิปให้พนักงานเปิดดูได้
+    private messageRouter: MessageRouterService,
+    private storage: StorageService,
   ) {}
 
   /** Flex card สำหรับ prompt ยืนยันตัวตน — ปุ่มเปิด LINE Login OAuth */
@@ -156,9 +161,10 @@ export class ChatbotFinanceService {
       await this.groups.ensureKnown('FINANCE', event.source.groupId);
     }
 
-    // Owner-controlled kill switch — drop all events without reply when paused
+    // Owner-controlled switch (deploy-gcp.yml ตั้ง true) — คำตัดสินเจ้าของ #49 (Task 44): เดิม = ทิ้งทุก event
+    // (สลิป/ข้อความลูกค้าหาย) · ตอนนี้ = "เก็บเข้า inbox ไม่ตอบอัตโนมัติ" — ดู handleEventInboxOnly
     if (this.configService.get<string>('LINE_FINANCE_BOT_DISABLED') === 'true') {
-      return;
+      return this.handleEventInboxOnly(event);
     }
 
     if (event.source.type === 'group' && event.source.groupId) {
@@ -222,6 +228,79 @@ export class ChatbotFinanceService {
     if (message.type === 'file')
       return { type: 'FILE', text: '[file]', externalMessageId: message.id };
     return { text: this.inboundMessageToText(message) };
+  }
+
+  // ─── inbox-only mode (LINE_FINANCE_BOT_DISABLED=true — Task 44) ─────
+
+  /**
+   * คำตัดสินเจ้าของ #49 — OA การเงินต่อเข้าระบบในโหมด "เก็บเข้า inbox ไม่ตอบอัตโนมัติ":
+   * - ข้อความ/รูป/สติกเกอร์/ไฟล์ของผู้ใช้ 1:1 → ห้อง LINE_FINANCE ใน unified inbox ทางเดียวกับ SHOP
+   *   (`MessageRouterService.mirrorInbound` — เปิดห้องที่ปิดแล้วกลับมา · ตั้ง "รอตอบ" · ผู้สนใจอัตโนมัติ) ไม่ตอบเลย
+   *   (ไม่มี AI · ไม่มีการ์ดยืนยันตัวตนต่อข้อความ · ไม่อ่านสลิปตอบลูกค้า/ไม่สร้าง PaymentEvidence)
+   * - เพิ่มเพื่อน → ข้อความต้อนรับ + การ์ดยืนยันตัวตนเดิม (`handleFollow`) — ทางเดียวที่บอทตอบเอง
+   * - postback ที่ลูกค้ากดเอง → ทางเดิม (`handlePostback`) · ลิงก์ LIFF (ยืนยันตัวตน/ชำระ/ดูสัญญา) ไม่ผ่าน webhook อยู่แล้ว
+   * - ข้อความกลุ่ม/ห้องหลายคน → ไม่เก็บ (เหมือนทางเต็ม — การจดสมาชิกภาพกลุ่มทำก่อนถึงนี่แล้ว)
+   * กันซ้ำ: controller claim `webhookEventId` ก่อนเรียก + `chat_messages.external_message_id` unique
+   */
+  private async handleEventInboxOnly(event: LineFinanceWebhookEvent): Promise<void> {
+    switch (event.type) {
+      case 'message':
+        return this.mirrorMessageToInbox(event);
+      case 'follow':
+        return this.handleFollow(event);
+      case 'postback':
+        return this.handlePostback(event as LinePostbackEvent);
+      default:
+        return;
+    }
+  }
+
+  private async mirrorMessageToInbox(event: LineMessageEvent): Promise<void> {
+    const userId = event.source.userId;
+    if (!userId || event.source.type !== 'user') return;
+
+    const { message } = event;
+    // error จาก mirrorInbound ไม่กลืน — controller จด log + Sentry ต่อ event (ข้อความที่เก็บไม่ได้ต้องมีร่องรอย)
+    await this.messageRouter.mirrorInbound({
+      externalMessageId: message.id,
+      externalUserId: userId,
+      channel: ChatChannel.LINE_FINANCE,
+      ...(await this.inboxOnlyContent(message)),
+    });
+  }
+
+  /** ชนิด/ข้อความที่เก็บเข้า inbox — รูปเก็บไฟล์ไว้ให้พนักงานเปิดดูได้ · ชนิดอื่นใช้ mapping เดิมของห้องการเงิน */
+  private async inboxOnlyContent(
+    message: LineMessageContent,
+  ): Promise<{ type: MessageType; text?: string; mediaUrl?: string; mediaType?: string }> {
+    if (message.type === 'image') {
+      const mediaUrl = await this.storeInboundImage(message.id);
+      return mediaUrl
+        ? { type: MessageType.IMAGE, mediaUrl, mediaType: 'image/jpeg' }
+        : { type: MessageType.IMAGE, text: '[image]' };
+    }
+    const { type = MessageType.TEXT, text } = this.inboundMediaFields(message);
+    return { type, text };
+  }
+
+  /**
+   * ดึงรูปจาก LINE (ไฟล์ของ LINE หมดอายุได้) แล้วเก็บใน storage — key ใต้ `staff-chat/` เพราะ inbox ลงลายเซ็น
+   * storage key ให้เปิดดูได้ และปุ่ม GFIN อ่านไฟล์จาก storage เฉพาะ prefix นี้ · key ผูก message id (ส่งซ้ำ = ทับไฟล์เดิม)
+   * ไม่สำเร็จ/ไม่มี storage → null (ยังเก็บข้อความพร้อม message id ไว้ให้ปุ่ม GFIN ดึงจาก LINE ทีหลัง)
+   */
+  private async storeInboundImage(messageId: string): Promise<string | null> {
+    if (!this.storage.configured) return null;
+    try {
+      const buffer = await this.lineClient.getMessageContent(messageId);
+      const key = `staff-chat/line-finance/${messageId}.jpg`;
+      await this.storage.upload(key, buffer, 'image/jpeg');
+      return key;
+    } catch (err) {
+      this.logger.warn(
+        `[Finance inbox-only] store image ${messageId} failed: ${err instanceof Error ? err.message : err}`,
+      );
+      return null;
+    }
   }
 
   // ─── message ─────────────────────────────────────────────

@@ -2,16 +2,10 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
-  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { LateFeeWaiverStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { ProductsService } from '../products/products.service';
-import {
-  checkContractCompletion,
-  lateFeeWaiverSettlement,
-} from '../payments/services/payment-helpers';
 import { CreateLateFeeWaiverDto } from './dto/create-request.dto';
 
 /**
@@ -21,8 +15,7 @@ import { CreateLateFeeWaiverDto } from './dto/create-request.dto';
  * Flow:
  *   collector calls create() → status=PENDING with totalWaiveAmount snapshot
  *   OWNER calls approve()    → in $transaction: zero `lateFee` on each Payment
- *                              + mark `lateFeeWaived=true` (+ PAID when the base
- *                              is already paid) + status=APPROVED.
+ *                              + mark `lateFeeWaived=true` + status=APPROVED.
  *                              Approver MUST differ from requester (SoD).
  *   OWNER calls reject()     → status=REJECTED + rejectedReason. No mutation
  *                              of Payment rows.
@@ -37,12 +30,7 @@ import { CreateLateFeeWaiverDto } from './dto/create-request.dto';
  */
 @Injectable()
 export class LateFeeWaiverService {
-  private readonly logger = new Logger(LateFeeWaiverService.name);
-
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly productsService: ProductsService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async create(dto: CreateLateFeeWaiverDto, requesterUserId: string) {
     const contract = await this.prisma.contract.findFirst({
@@ -124,13 +112,6 @@ export class LateFeeWaiverService {
    * Segregation of Duties: approver must differ from requester. Without
    * SoD the workflow degenerates into single-user write-down which our
    * margin can't sustain.
-   *
-   * An installment whose base is already paid (amountPaid ≥ amountDue — only the
-   * fee was outstanding, e.g. PARTIALLY_PAID) becomes PAID with paidDate, and the
-   * contract-completion check runs in the same tx — the same rule and the same
-   * side effect as the payments-side waiver (`lateFeeWaiverSettlement` +
-   * `checkContractCompletion`, Serializable like that path). Before this a
-   * fee-only installment was left PARTIALLY_PAID with nothing owed.
    */
   async approve(id: string, approverUserId: string) {
     const request = await this.prisma.lateFeeWaiverRequest.findFirst({
@@ -149,15 +130,7 @@ export class LateFeeWaiverService {
     return this.prisma.$transaction(async (tx) => {
       const payments = await tx.payment.findMany({
         where: { id: { in: request.paymentIds }, deletedAt: null },
-        select: {
-          id: true,
-          contractId: true,
-          lateFee: true,
-          lateFeeWaived: true,
-          amountDue: true,
-          amountPaid: true,
-          status: true,
-        },
+        select: { id: true, lateFee: true, lateFeeWaived: true },
       });
       if (payments.length === 0) {
         throw new NotFoundException('ไม่พบรายการชำระที่ขอ waive');
@@ -165,15 +138,12 @@ export class LateFeeWaiverService {
 
       const now = new Date();
       let totalWaived = new Prisma.Decimal(0);
-      const settledContractIds = new Set<string>();
 
       for (const p of payments) {
         if (p.lateFeeWaived) continue; // skip rows already waived elsewhere
         const original = new Prisma.Decimal(p.lateFee);
         if (original.lte(0)) continue;
         totalWaived = totalWaived.add(original);
-        const settlement = lateFeeWaiverSettlement(p, now);
-        if (settlement.becomesPaid) settledContractIds.add(p.contractId);
         await tx.payment.update({
           where: { id: p.id },
           data: {
@@ -184,21 +154,8 @@ export class LateFeeWaiverService {
             waivedReason: request.reason,
             waivedApprovedById: approverUserId,
             waivedAmount: original,
-            ...settlement.update,
           },
         });
-      }
-
-      // Same tx as the PAID flips — completion (COMPLETED + call-log tier + ownership
-      // release) cannot diverge from the installment status.
-      for (const contractId of settledContractIds) {
-        await checkContractCompletion(
-          this.prisma,
-          this.productsService,
-          this.logger,
-          contractId,
-          tx,
-        );
       }
 
       // TODO journal adjust — discuss accountant
@@ -219,7 +176,7 @@ export class LateFeeWaiverService {
           totalWaiveAmount: totalWaived,
         },
       });
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    });
   }
 
   async reject(id: string, approverUserId: string, reason: string) {

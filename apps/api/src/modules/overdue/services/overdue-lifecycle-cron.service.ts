@@ -244,43 +244,48 @@ export class OverdueLifecycleCronService {
     let recoveredIds: string[] = [];
     if (candidates.length > 0) {
       const before = new Map(candidates.map((c) => [c.id, c]));
-      recoveredIds = await this.prisma.$transaction(async (tx) => {
-        // The full predicate rides on the update (atomic re-evaluation, like Step 1):
-        // a receipt void that re-opens a past-due installment after the snapshot
-        // excludes that contract on the DB side. updateManyAndReturn tells us which
-        // rows actually changed, so audit rows are written for exactly those.
-        const restored = await tx.contract.updateManyAndReturn({
-          where: { ...recoverWhere, id: { in: [...before.keys()] } },
-          data: {
-            status: 'ACTIVE',
-            ...DUNNING_START,
-            pendingDunningStage: null,
-            pendingDunningSince: null,
-          },
-          select: { id: true },
-        });
-        if (restored.length > 0) {
-          await tx.auditLog.createMany({
-            data: restored.map(({ id }) => ({
-              userId: systemUserId,
-              action: 'STATUS_CHANGE',
-              entity: 'contract',
-              entityId: id,
-              newValue: {
-                from: 'OVERDUE',
-                to: 'ACTIVE',
-                reason: 'No unsettled installment past its due date (caught up)',
-                dunningReset: {
-                  previousStage: before.get(id)?.dunningStage ?? null,
-                  previousPendingStage: before.get(id)?.pendingDunningStage ?? null,
-                },
-              },
-              ipAddress: 'system-cron',
-            })),
+      recoveredIds = await this.prisma.$transaction(
+        async (tx) => {
+          // The full predicate rides on the update (atomic re-evaluation, like Step 1):
+          // a receipt void that re-opens a past-due installment after the snapshot
+          // excludes that contract on the DB side. updateManyAndReturn tells us which
+          // rows actually changed, so audit rows are written for exactly those.
+          const restored = await tx.contract.updateManyAndReturn({
+            where: { ...recoverWhere, id: { in: [...before.keys()] } },
+            data: {
+              status: 'ACTIVE',
+              ...DUNNING_START,
+              pendingDunningStage: null,
+              pendingDunningSince: null,
+            },
+            select: { id: true },
           });
-        }
-        return restored.map((r) => r.id);
-      });
+          if (restored.length > 0) {
+            await tx.auditLog.createMany({
+              data: restored.map(({ id }) => ({
+                userId: systemUserId,
+                action: 'STATUS_CHANGE',
+                entity: 'contract',
+                entityId: id,
+                newValue: {
+                  from: 'OVERDUE',
+                  to: 'ACTIVE',
+                  reason: 'No unsettled installment past its due date (caught up)',
+                  dunningReset: {
+                    previousStage: before.get(id)?.dunningStage ?? null,
+                    previousPendingStage: before.get(id)?.pendingDunningStage ?? null,
+                  },
+                },
+                ipAddress: 'system-cron',
+              })),
+            });
+          }
+          return restored.map((r) => r.id);
+        },
+        // Prisma's 5s interactive default would abort the whole nightly run (Step 2 skipped)
+        // on a large catch-up batch; one updateMany + one createMany stays well inside 30s.
+        { timeout: 30_000 },
+      );
       if (recoveredIds.length !== candidates.length) {
         this.logger.warn(
           `OVERDUE→ACTIVE: ${candidates.length - recoveredIds.length} contract(s) changed between snapshot and update and were not restored`,

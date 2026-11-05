@@ -128,33 +128,6 @@ export async function validateBranchAccessByPayment(
 }
 
 /**
- * Does an installment become PAID once its late fee is waived? `amountDue` excludes
- * the late fee by schema, so after a waiver the row owes only its base: settled when
- * `amountPaid ≥ amountDue`. ONE rule for both waiver paths — the wizard waiver
- * (`LateFeeWaiverService.waiveLateFee`, payments) and the collector→approver request
- * (`late-fee-waiver/LateFeeWaiverService.approve`). `becomesPaid` = settled and not
- * already PAID → apply `update` and run `checkContractCompletion` in the same tx.
- */
-export function lateFeeWaiverSettlement(
-  payment: {
-    amountDue: Prisma.Decimal | number | string;
-    amountPaid: Prisma.Decimal | number | string;
-    status: string;
-  },
-  now: Date,
-): {
-  fullyPaid: boolean;
-  becomesPaid: boolean;
-  update: { status?: 'PAID'; paidDate?: Date };
-} {
-  const totalOwedDec = new Prisma.Decimal(payment.amountDue.toString()); // without late fee
-  const amountPaidDec = new Prisma.Decimal(payment.amountPaid.toString());
-  const fullyPaid = amountPaidDec.gte(totalOwedDec);
-  const becomesPaid = fullyPaid && payment.status !== 'PAID';
-  return { fullyPaid, becomesPaid, update: becomesPaid ? { status: 'PAID', paidDate: now } : {} };
-}
-
-/**
  * Todo tag ของงาน "เงินพัก/เงินรับล่วงหน้าค้างหลังสัญญาปิด" — PR4 ต6 (2026-10-11): งานสร้างโดยรอบกวาด
  * `journal/cron/advance-excess-income.cron.ts` (ลงรายได้ 42-1106 แล้วแจ้งเพื่อทราบ · หรือคอลัมน์ไม่ตรงบัญชีให้ตรวจ)
  * แทน `alarmResidualParkOnCompletion` เดิม (I-5 / R-5) ที่ถูกถอดออก — tag คงเดิมเพื่อให้งานเก่าและใหม่อยู่คิวเดียวกัน.

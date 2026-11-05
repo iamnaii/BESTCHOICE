@@ -375,17 +375,21 @@ describe('PaymentsService — credit / waive / daily-summary / partial-preview (
       ...overrides,
     });
 
-    it('lateFee=200 on PARTIALLY_PAID (amountPaid==amountDue) → lateFee 0, waivedAmount 200, status PAID, paidDate set, completion checked', async () => {
+    // No receipt fee entry in the (mocked) ledger → feePaid 0 → the whole fee is waivable
+    // and amountPaid counts as principal (GL-aware rule — late-fee-waiver-settlement.util.ts).
+    it('lateFee=200 on PARTIALLY_PAID (amountPaid==amountDue), no fee in the ledger → lateFee 0, waivedAmount 200, status PAID, paidDate set, completion checked', async () => {
       prisma.payment.findUnique.mockResolvedValue(mkPayment());
+      // Settlement is limited to contracts the receipt path collects for (ACTIVE/OVERDUE/DEFAULT).
+      prisma.contract.findUnique.mockResolvedValue({ id: 'wv-contract-1', status: 'ACTIVE' });
       // checkContractCompletion: all installments now paid → completes contract.
       prisma.payment.count.mockResolvedValue(0);
 
       const result = await service.waiveLateFee('wv-pay-1', 'goodwill', 'requester-1', 'approver-1', undefined, { requestId: 'waiver-request', actorId: 'approver-1' });
 
       const write = prisma.payment.update.mock.calls[0][0];
-      expect(write.data.lateFee).toBe(0);
+      expect(write.data.lateFee.toString()).toBe('0');
       expect(write.data.lateFeeWaived).toBe(true);
-      expect(write.data.waivedAmount).toBe(200);
+      expect(write.data.waivedAmount.toString()).toBe('200');
       expect(write.data.waivedById).toBe('requester-1');
       expect(write.data.waivedApprovedById).toBe('approver-1');
       expect(write.data.waivedReason).toBe('goodwill');

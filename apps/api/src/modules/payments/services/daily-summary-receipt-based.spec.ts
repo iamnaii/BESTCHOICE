@@ -180,6 +180,68 @@ describe('getDailySummary — receipt-based (เงินสดที่รั�
     expect(summary.totalLateFees).toBe(0);
   });
 
+  it('a row whose waivedAmount exceeds the gross fee nets to 0, never negative (fee 100, waived 300)', async () => {
+    const { service, prisma } = setup([
+      rcpt({ receiptNumber: 'RT-202611-00001', installmentNo: 3, amount: D(3671), paymentId: 'pay-3' }),
+    ]);
+    (prisma.payment.findMany as jest.Mock).mockResolvedValue([
+      { lateFee: D(100), lateFeeWaived: true, waivedAmount: D(300) },
+    ]);
+
+    const summary = await service.getDailySummary('2026-11-05');
+
+    // Before the clamp this row contributed 100 − 300 = −200 and the card read −200.
+    expect(summary.totalLateFees).toBe(0);
+  });
+
+  it('standalone waiver shape (lateFee zeroed, waivedAmount kept) nets to 0', async () => {
+    const { service, prisma } = setup([
+      rcpt({ receiptNumber: 'RT-202611-00002', installmentNo: 2, amount: D(3671), paymentId: 'pay-2' }),
+    ]);
+    (prisma.payment.findMany as jest.Mock).mockResolvedValue([
+      { lateFee: D(0), lateFeeWaived: true, waivedAmount: D(100) },
+    ]);
+
+    const summary = await service.getDailySummary('2026-11-05');
+
+    expect(summary.totalLateFees).toBe(0);
+  });
+
+  it('mixed rows: an over-waived row is clamped and does not cancel the other rows', async () => {
+    const { service, prisma } = setup([
+      rcpt({ receiptNumber: 'RT-202611-00003', installmentNo: 1, amount: D(3771), paymentId: 'pay-1' }),
+      rcpt({ receiptNumber: 'RT-202611-00004', installmentNo: 2, amount: D(3721), paymentId: 'pay-2' }),
+      rcpt({ receiptNumber: 'RT-202611-00005', installmentNo: 3, amount: D(3671), paymentId: 'pay-3' }),
+      rcpt({ receiptNumber: 'RT-202611-00006', installmentNo: 4, amount: D(3721.5), paymentId: 'pay-4' }),
+    ]);
+    (prisma.payment.findMany as jest.Mock).mockResolvedValue([
+      { lateFee: D(100), lateFeeWaived: false, waivedAmount: null }, // 100 collected
+      { lateFee: D(100), lateFeeWaived: true, waivedAmount: D(50) }, // 50 net
+      { lateFee: D(100), lateFeeWaived: true, waivedAmount: D(300) }, // −200 → 0
+      { lateFee: D(50.5), lateFeeWaived: false, waivedAmount: null }, // 50.50 collected
+    ]);
+
+    const summary = await service.getDailySummary('2026-11-05');
+
+    // 100 + 50 + 0 + 50.50 — unclamped would have been 0.50.
+    expect(summary.totalLateFees).toBe(200.5);
+  });
+
+  it('legacy lateFeeWaived=true with no waivedAmount still nets the whole fee away, next to a collected fee', async () => {
+    const { service, prisma } = setup([
+      rcpt({ receiptNumber: 'RT-202611-00007', installmentNo: 1, amount: D(3771), paymentId: 'pay-1' }),
+      rcpt({ receiptNumber: 'RT-202611-00008', installmentNo: 2, amount: D(3771), paymentId: 'pay-2' }),
+    ]);
+    (prisma.payment.findMany as jest.Mock).mockResolvedValue([
+      { lateFee: D(100), lateFeeWaived: true, waivedAmount: null }, // legacy full waiver → 0
+      { lateFee: D(100), lateFeeWaived: false, waivedAmount: null }, // 100 collected
+    ]);
+
+    const summary = await service.getDailySummary('2026-11-05');
+
+    expect(summary.totalLateFees).toBe(100);
+  });
+
   it('attaches the issuer name via the batch user lookup (no Receipt→User relation)', async () => {
     const { service } = setup([rcpt({ receiptNumber: 'RT-202608-00004', amount: D(3800) })]);
 

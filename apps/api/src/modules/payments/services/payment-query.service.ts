@@ -762,6 +762,11 @@ export class PaymentQueryService {
     // `lateFeeWaived` means the whole gross fee was waived (legacy rows).
     // `distinct` above dedupes at the DB, the Set dedupes again in code — the
     // fee must be counted once per installment even if that clause ever moves.
+    // Each row's net is clamped at 0 BEFORE summing: the standalone waiver flow
+    // zeroes `lateFee` but keeps `waivedAmount`, so `waivedAmount > lateFee` is a
+    // real state — unclamped, one such row drags the "ค่าปรับรวม" card negative
+    // and silently cancels other rows' collected fees (same clamp as `netStoredFee`
+    // in the pending queue above).
     const paymentIds = [
       ...new Set(dayPaymentRefs.map((r) => r.paymentId).filter((id): id is string => id != null)),
     ];
@@ -780,7 +785,7 @@ export class PaymentQueryService {
             : p.lateFeeWaived
               ? gross
               : new Prisma.Decimal(0);
-        return acc.plus(gross.minus(waived));
+        return acc.plus(Prisma.Decimal.max(0, gross.minus(waived)));
       }, new Prisma.Decimal(0))
       .toDecimalPlaces(2)
       .toNumber();

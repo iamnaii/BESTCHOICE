@@ -262,6 +262,35 @@ it('วันครบกำหนดเที่ยงคืนไทย + ท�
     status: 'OVERDUE',
     stage: 'NOTICE',
   });
+  // จ่ายไล่ทันแล้วแต่สถานะค้าง OVERDUE (ไม่มีงวดที่ถึงกำหนดค้าง) — รอบ 00:30 คืนเป็น ACTIVE (Step 1b · เจ้าของ 05/11)
+  // งวด 2 ครบกำหนดอีก `nextDue` วัน (ยังไม่จ่าย) · ขั้นทวงค้าง NOTICE จากรอบที่ค้างก่อนหน้า
+  const caughtUp = async (label: string, nextDue: number) => {
+    const f = await createInstallmentFixture(prisma, base, {
+      label,
+      dueDate: dueDateBkk(day, -20),
+      paymentStatus: 'PAID',
+      contractStatus: 'OVERDUE',
+    });
+    await prisma.payment.update({
+      where: { id: f.paymentId },
+      data: { amountPaid: dec('1515.83'), paidDate: dueDateBkk(day, -2) },
+    });
+    await prisma.contract.update({ where: { id: f.contractId }, data: { dunningStage: 'NOTICE' } });
+    const next = await prisma.payment.create({
+      data: {
+        contractId: f.contractId,
+        installmentNo: 2,
+        dueDate: dueDateBkk(day, nextDue),
+        amountDue: dec('1515.83'),
+        lateFee: dec('0.00'),
+        status: 'PENDING',
+      },
+    });
+    fixtures.push(f, { ...f, paymentId: next.id });
+    return f;
+  };
+  const caughtUpFar = await caughtUp('caughtUpT-10', 10);
+  const caughtUpTomorrow = await caughtUp('caughtUpT-1', 1);
 
   // รอบกลางคืน
   jest.setSystemTime(bangkokAt(day, 0, 0, 30));
@@ -279,6 +308,13 @@ it('วันครบกำหนดเที่ยงคืนไทย + ท�
   expect(statuses.overdueIds).toContain(byOffset.get(-7)!.contractId);
   expect(statuses.defaultIds).toContain(def.contractId);
   expect(statuses.defaultIds).not.toContain(secondDueToday.contractId);
+  expect(statuses.recoveredIds).toEqual(
+    expect.arrayContaining([caughtUpFar.contractId, caughtUpTomorrow.contractId]),
+  );
+  // ไม่มีสัญญาที่ยังค้างงวดถึงกำหนดถูกคืนเป็น ACTIVE
+  for (const f of [t8, secondDueToday, def, escalateDueToday, unlocked, noAnswer, lockedNight]) {
+    expect(statuses.recoveredIds).not.toContain(f.contractId);
+  }
 
   // รอบเช้า
   jest.setSystemTime(bangkokAt(day, 0, 8, 0));
@@ -328,6 +364,10 @@ it('วันครบกำหนดเที่ยงคืนไทย + ท�
     'ปลดล็อก 08:40 + งวด 2 T-1': ['08:40 text', '09:00 bot'],
     'ไม่รับสาย 08:50 + งวด 2 T-1': ['08:50 text', '09:00 bot'],
     'แจ้งล็อก 01:30 + งวด 2 T0': ['01:30 tpl:mdm.lock_notice', '09:00 bot'],
+    // คืนเป็น ACTIVE คืนนี้ (Step 1b): การคืนสถานะเองไม่ส่งอะไร (A3 08:05 อ่านเฉพาะแถวที่ไป OVERDUE/DEFAULT)
+    'คืนเป็น ACTIVE + งวด 2 T-10': [],
+    // …แล้วได้เตือนค่างวดตามปกติของสัญญา ACTIVE ข้อความเดียว (เหมือน T-1 ข้างบน)
+    'คืนเป็น ACTIVE + งวด 2 T-1': ['08:00 A1'],
   };
   const label = (k: number) => (k === 0 ? 'T0' : k > 0 ? `T-${k}` : `T+${-k}`);
   expect({
@@ -341,6 +381,8 @@ it('วันครบกำหนดเที่ยงคืนไทย + ท�
     'ปลดล็อก 08:40 + งวด 2 T-1': received(unlocked),
     'ไม่รับสาย 08:50 + งวด 2 T-1': received(noAnswer),
     'แจ้งล็อก 01:30 + งวด 2 T0': received(lockedNight),
+    'คืนเป็น ACTIVE + งวด 2 T-10': received(caughtUpFar),
+    'คืนเป็น ACTIVE + งวด 2 T-1': received(caughtUpTomorrow),
   }).toEqual(expected);
   expect(a1.deferredToPayLink).toBeGreaterThanOrEqual(1);
   // รอบ 6 m7 — กฎไม่รับสายจากทางโทร (ไม่ระบุงวด) บอกงวด/ยอดของงวดค้างที่เก่าที่สุด ไม่ใช่ "งวดที่  ยอด  ฿"

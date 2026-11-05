@@ -22,6 +22,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { bangkokDateRange } from '../../utils/date.util';
 
 /**
  * Legacy expenses CRUD endpoints have been removed (Phase: expense-documents PR-1).
@@ -188,12 +189,16 @@ export class AccountingController {
     if (!startDate || !endDate) {
       throw new BadRequestException('กรุณาระบุช่วงวันที่');
     }
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-      throw new BadRequestException('รูปแบบวันที่ไม่ถูกต้อง');
+    // Bangkok calendar days (คู่มือคืนตัด 5.3 D7): 00:00 Bangkok of startDate .. 23:59:59.999 Bangkok of endDate,
+    // independent of the process TZ. `new Date('YYYY-MM-DD')` is UTC midnight (07:00 Bangkok) — adjacent files used
+    // to miss every entry posted 00:00–06:59 Bangkok (the nightly 2A / allowance / catch-up VAT entries).
+    // The service filters with `lte`, so pass the last millisecond before the exclusive bound (DateTime is ms precision).
+    const { gte: start, lt: endExclusive } = bangkokDateRange(startDate, endDate);
+    if (!start || !endExclusive) {
+      // unreachable — both dates were checked non-empty above; narrows the optional return type
+      throw new BadRequestException('กรุณาระบุช่วงวันที่');
     }
-    end.setHours(23, 59, 59, 999);
+    const end = new Date(endExclusive.getTime() - 1);
 
     const result = await this.service.exportJournalWithPeakCodes(start, end);
     const filename = `peak-journal-${startDate}_${endDate}.csv`;

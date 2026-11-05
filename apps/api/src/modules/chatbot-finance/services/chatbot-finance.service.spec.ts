@@ -11,6 +11,10 @@ import { SlipProcessingService } from './slip-processing.service';
 import { FeedbackService } from './feedback.service';
 import { QuickReplyPostbackRouterService } from '../../staff-chat/services/quick-reply-postback-router.service';
 import { LineGroupMembershipService } from './line-group-membership.service';
+import { MessageRouterService } from '../../chat-engine/services/message-router.service';
+import { StorageService } from '../../storage/storage.service';
+import { ChatChannel, MessageType } from '@prisma/client';
+import { formatStickerToken } from '../../chat-engine/utils/sticker-token.util';
 
 describe('ChatbotFinanceService', () => {
   let service: ChatbotFinanceService;
@@ -30,6 +34,12 @@ describe('ChatbotFinanceService', () => {
   let prisma: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let groups: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let messageRouter: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let storage: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let postbackRouter: any;
 
   const session = { id: 'sess-1', customerId: null };
   const linkedStatus = { linked: true, customerId: 'c1', customerName: 'สมชาย' };
@@ -80,6 +90,12 @@ describe('ChatbotFinanceService', () => {
       onLeave: jest.fn().mockResolvedValue(undefined),
       ensureKnown: jest.fn().mockResolvedValue(undefined),
     };
+    messageRouter = { mirrorInbound: jest.fn().mockResolvedValue(undefined) };
+    storage = {
+      configured: true,
+      upload: jest.fn().mockImplementation(async (key: string) => key),
+    };
+    postbackRouter = { route: jest.fn().mockResolvedValue({ handled: false }) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -98,15 +114,21 @@ describe('ChatbotFinanceService', () => {
         // ChatbotFinanceService recently added ConfigService as a constructor dep
         // (used for FB_BOT_DISABLED / LINE token reads). Tests don't exercise
         // those paths — a no-op stub keeps DI happy without affecting assertions.
-        { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue(undefined) } },
+        // Task 44 I-1 — บอทเต็มเปิดเฉพาะ LINE_FINANCE_BOT_MODE=full (ค่าเริ่มต้นของ spec นี้ ให้เทสบอทเต็มเดิมเดินตามเดิม)
+        {
+          provide: ConfigService,
+          useValue: {
+            get: jest.fn((k: string) => (k === 'LINE_FINANCE_BOT_MODE' ? 'full' : undefined)),
+          },
+        },
         // Phase 5 — QuickReplyPostbackRouterService injected via forwardRef
         // for TEMPLATE:<id> Quick Reply routing. Stub returns handled:false so
         // existing postback specs (feedback flow) fall through unchanged.
-        {
-          provide: QuickReplyPostbackRouterService,
-          useValue: { route: jest.fn().mockResolvedValue({ handled: false }) },
-        },
+        { provide: QuickReplyPostbackRouterService, useValue: postbackRouter },
         { provide: LineGroupMembershipService, useValue: groups },
+        // Task 44 — โหมด "เก็บเข้า inbox ไม่ตอบอัตโนมัติ" (LINE_FINANCE_BOT_DISABLED=true)
+        { provide: MessageRouterService, useValue: messageRouter },
+        { provide: StorageService, useValue: storage },
       ],
     }).compile();
 
@@ -415,8 +437,10 @@ describe('ChatbotFinanceService', () => {
       );
       await service.handleEvent(makeGroupEvent('join'));
       expect(groups.onJoin).toHaveBeenCalledWith('FINANCE', 'Cgroup1');
+      // Task 44 — kill switch = "เก็บเข้า inbox ไม่ตอบอัตโนมัติ" (เดิม = ทิ้งข้อความ) — ดู describe ท้ายไฟล์
       await service.handleEvent(makeTextEvent('สวัสดี'));
-      expect(sessions.saveMessage).not.toHaveBeenCalled();
+      expect(lineClient.replyMessage).not.toHaveBeenCalled();
+      expect(ai.generateReply).not.toHaveBeenCalled();
     });
     // F3 (final-fix wave) — กลุ่มที่เชิญ OA เข้าไว้ก่อน PR 2 ขึ้น ไม่เคยได้ event join ซ้ำ (LINE ไม่ resend join
     // เมื่อบอทเป็นสมาชิกอยู่แล้ว) → ต้องจดสมาชิกภาพจากข้อความกลุ่มอื่นแทน ก่อน kill switch เหมือน join/leave
@@ -445,6 +469,263 @@ describe('ChatbotFinanceService', () => {
       };
       await service.handleEvent(groupTextEvent as any);
       expect(groups.ensureKnown).toHaveBeenCalledWith('FINANCE', 'Cgroup1');
+    });
+  });
+
+  /**
+   * Task 44 — คำตัดสินเจ้าของ #49: ต่อ OA การเงินแล้วบอทอยู่โหมด "เก็บเข้า inbox ไม่ตอบอัตโนมัติ"
+   * (`LINE_FINANCE_BOT_DISABLED=true` — ค่าที่ deploy-gcp.yml ตั้งไว้แล้ว). เดิม flag นี้ทิ้งทุก event ⇒ สลิปของลูกค้าหาย.
+   * ทุกข้อความของผู้ใช้เข้า inbox ทางเดียวกับ SHOP (`MessageRouterService.mirrorInbound`) · ไม่ตอบอะไรเลย ยกเว้นเพิ่มเพื่อน
+   * (การ์ดต้อนรับ + ยืนยันตัวตนเดิม) และ postback ที่ลูกค้ากดเอง
+   */
+  describe('โหมดเก็บเข้า inbox ไม่ตอบอัตโนมัติ (LINE_FINANCE_BOT_DISABLED=true)', () => {
+    const base = {
+      mode: 'active',
+      timestamp: Date.now(),
+      source: { type: 'user' as const, userId: 'U123' },
+      deliveryContext: { isRedelivery: false },
+    };
+    const messageEvent = (message: Record<string, unknown>) =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ({ ...base, type: 'message', webhookEventId: 'evt-m', replyToken: 'rt-m', message }) as any;
+
+    beforeEach(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const config = (service as any).configService as { get: jest.Mock };
+      config.get.mockImplementation((k: string) =>
+        k === 'LINE_FINANCE_BOT_DISABLED' ? 'true' : undefined,
+      );
+    });
+
+    /** ไม่มีทางตอบอัตโนมัติใด ๆ ถูกแตะ — AI · การ์ดยืนยันตัวตนต่อข้อความ · อ่านสลิปตอบลูกค้า */
+    const expectNoAutoReply = () => {
+      expect(lineClient.replyMessage).not.toHaveBeenCalled();
+      expect(lineClient.replyText).not.toHaveBeenCalled();
+      expect(ai.generateReply).not.toHaveBeenCalled();
+      expect(slipProcessing.processSlip).not.toHaveBeenCalled();
+      expect(verification.isLinked).not.toHaveBeenCalled();
+      expect(handoff.isBotSilenced).not.toHaveBeenCalled();
+    };
+
+    it('ข้อความตัวอักษร → เข้า inbox ห้อง LINE_FINANCE (ทางเดียวกับ SHOP) ไม่ตอบ', async () => {
+      await service.handleEvent(makeTextEvent('โอนแล้วนะคะ'));
+
+      expect(messageRouter.mirrorInbound).toHaveBeenCalledTimes(1);
+      expect(messageRouter.mirrorInbound).toHaveBeenCalledWith({
+        externalMessageId: 'msg-1',
+        externalUserId: 'U123',
+        channel: ChatChannel.LINE_FINANCE,
+        type: MessageType.TEXT,
+        text: 'โอนแล้วนะคะ',
+      });
+      expectNoAutoReply();
+    });
+
+    it('รูป (สลิป) → ดึงไฟล์จาก LINE เก็บใน storage แล้วเข้า inbox เป็นรูปที่พนักงานเปิดดูได้ · ไม่อ่านสลิปตอบลูกค้า', async () => {
+      lineClient.getMessageContent.mockResolvedValue(Buffer.from('jpeg-bytes'));
+
+      await service.handleEvent(
+        messageEvent({ id: 'img-9', type: 'image', contentProvider: { type: 'line' } }),
+      );
+
+      expect(lineClient.getMessageContent).toHaveBeenCalledWith('img-9');
+      // key ใต้ staff-chat/ — ปุ่ม GFIN ของ inbox อ่านไฟล์จาก storage ได้เฉพาะ prefix นี้
+      expect(storage.upload).toHaveBeenCalledWith(
+        'staff-chat/line-finance/img-9.jpg',
+        Buffer.from('jpeg-bytes'),
+        'image/jpeg',
+      );
+      expect(messageRouter.mirrorInbound).toHaveBeenCalledWith({
+        externalMessageId: 'img-9',
+        externalUserId: 'U123',
+        channel: ChatChannel.LINE_FINANCE,
+        type: MessageType.IMAGE,
+        mediaUrl: 'staff-chat/line-finance/img-9.jpg',
+        mediaType: 'image/jpeg',
+      });
+      expectNoAutoReply();
+    });
+
+    it('ดึงรูปจาก LINE ไม่สำเร็จ → ยังเข้า inbox เป็นรูป (มี message id ให้ปุ่ม GFIN ดึงทีหลัง) ไม่ตอบ', async () => {
+      lineClient.getMessageContent.mockRejectedValue(new Error('LINE content API error 404'));
+
+      await service.handleEvent(
+        messageEvent({ id: 'img-10', type: 'image', contentProvider: { type: 'line' } }),
+      );
+
+      expect(storage.upload).not.toHaveBeenCalled();
+      expect(messageRouter.mirrorInbound).toHaveBeenCalledWith({
+        externalMessageId: 'img-10',
+        externalUserId: 'U123',
+        channel: ChatChannel.LINE_FINANCE,
+        type: MessageType.IMAGE,
+        text: '[image]',
+      });
+      expectNoAutoReply();
+    });
+
+    it('storage ยังไม่ตั้งค่า → ไม่อ้าง key ที่ไม่มีไฟล์จริง (เข้า inbox เป็นรูปแบบไม่มีไฟล์)', async () => {
+      storage.configured = false;
+
+      await service.handleEvent(
+        messageEvent({ id: 'img-11', type: 'image', contentProvider: { type: 'line' } }),
+      );
+
+      expect(storage.upload).not.toHaveBeenCalled();
+      expect(messageRouter.mirrorInbound).toHaveBeenCalledWith(
+        expect.objectContaining({ type: MessageType.IMAGE, text: '[image]' }),
+      );
+      expect(messageRouter.mirrorInbound.mock.calls[0][0]).not.toHaveProperty('mediaUrl');
+    });
+
+    it('สติกเกอร์ → token ที่ inbox วาดเป็นรูปสติกเกอร์ · ไฟล์ → FILE พร้อม message id · อื่น ๆ → ป้ายชนิด · ไม่ตอบทุกชนิด', async () => {
+      await service.handleEvent(
+        messageEvent({ id: 'st-1', type: 'sticker', packageId: '11537', stickerId: '52002734' }),
+      );
+      await service.handleEvent(
+        messageEvent({ id: 'f-1', type: 'file', fileName: 'slip.pdf', fileSize: 1200 }),
+      );
+      await service.handleEvent(
+        messageEvent({
+          id: 'v-1',
+          type: 'video',
+          duration: 3000,
+          contentProvider: { type: 'line' },
+        }),
+      );
+
+      expect(messageRouter.mirrorInbound.mock.calls.map((c: unknown[]) => c[0])).toEqual([
+        {
+          externalMessageId: 'st-1',
+          externalUserId: 'U123',
+          channel: ChatChannel.LINE_FINANCE,
+          type: MessageType.TEXT,
+          text: formatStickerToken('11537', '52002734'),
+        },
+        {
+          externalMessageId: 'f-1',
+          externalUserId: 'U123',
+          channel: ChatChannel.LINE_FINANCE,
+          type: MessageType.FILE,
+          text: '[file]',
+        },
+        {
+          externalMessageId: 'v-1',
+          externalUserId: 'U123',
+          channel: ChatChannel.LINE_FINANCE,
+          type: MessageType.TEXT,
+          text: '[video]',
+        },
+      ]);
+      expectNoAutoReply();
+    });
+
+    it('เพิ่มเพื่อน → ยังได้ข้อความต้อนรับ + การ์ดยืนยันตัวตนเดิม (ทางเดียวที่บอทตอบเอง)', async () => {
+      await service.handleEvent({
+        ...base,
+        type: 'follow',
+        webhookEventId: 'evt-f',
+        replyToken: 'rt-f',
+      });
+
+      expect(lineClient.replyMessage).toHaveBeenCalledTimes(1);
+      expect(lineClient.replyMessage).toHaveBeenCalledWith('rt-f', [
+        { type: 'text', text: 'สวัสดีค่ะ น้องเบสยินดีให้บริการนะคะ 😊' },
+        expect.objectContaining({
+          type: 'flex',
+          altText: 'รบกวนยืนยันตัวตนก่อนนะคะ เพื่อความปลอดภัยของข้อมูลค่ะ 🔐',
+        }),
+      ]);
+      expect(messageRouter.mirrorInbound).not.toHaveBeenCalled();
+      expect(ai.generateReply).not.toHaveBeenCalled();
+    });
+
+    it('postback ที่ลูกค้ากดเอง (ปุ่มแม่แบบที่พนักงานส่ง) → ยังทำงาน', async () => {
+      prisma.chatRoom.findUnique.mockResolvedValue({ id: 'room-1' });
+      postbackRouter.route.mockResolvedValue({ handled: true, action: 'send-template' });
+
+      await service.handleEvent({
+        ...base,
+        type: 'postback',
+        webhookEventId: 'evt-p',
+        replyToken: 'rt-p',
+        postback: { data: 'TEMPLATE:tpl-1' },
+      });
+
+      expect(postbackRouter.route).toHaveBeenCalledWith('room-1', 'TEMPLATE:tpl-1');
+    });
+
+    it('ข้อความจากกลุ่ม → ไม่เข้า inbox ไม่ตอบ (จดสมาชิกภาพกลุ่มอย่างเดียวตามเดิม)', async () => {
+      await service.handleEvent({
+        ...makeTextEvent('สวัสดีกลุ่ม'),
+        source: { type: 'group' as const, groupId: 'Cgroup1', userId: 'U1' },
+      });
+
+      expect(groups.ensureKnown).toHaveBeenCalledWith('FINANCE', 'Cgroup1');
+      expect(messageRouter.mirrorInbound).not.toHaveBeenCalled();
+      expect(lineClient.replyMessage).not.toHaveBeenCalled();
+    });
+
+    it('เลิกเป็นเพื่อน → ไม่ทำอะไร', async () => {
+      await service.handleEvent({ ...base, type: 'unfollow', webhookEventId: 'evt-u' });
+
+      expect(messageRouter.mirrorInbound).not.toHaveBeenCalled();
+      expect(lineClient.replyMessage).not.toHaveBeenCalled();
+    });
+
+    it('เข้า inbox ไม่สำเร็จ → error ออกไปให้ controller จด Sentry (ห้ามกลืนเงียบ — ข้อความหายต้องมีร่องรอย)', async () => {
+      messageRouter.mirrorInbound.mockRejectedValue(new Error('db down'));
+
+      await expect(service.handleEvent(makeTextEvent('โอนแล้ว'))).rejects.toThrow('db down');
+      expect(lineClient.replyMessage).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('บอทเปิดเต็ม (LINE_FINANCE_BOT_MODE=full · ไม่ตั้ง DISABLED=true) — ไม่ใช้ทาง inbox-only', () => {
+    it('ข้อความ → ทางเดิม (AI ตอบ) ไม่เรียก mirrorInbound', async () => {
+      await service.handleEvent(makeTextEvent('ยอดเท่าไหร่'));
+      expect(ai.generateReply).toHaveBeenCalled();
+      expect(messageRouter.mirrorInbound).not.toHaveBeenCalled();
+    });
+  });
+  describe('Task 44 I-1 — บอทเต็มเปิดได้ทางเดียว (fail-safe)', () => {
+    const textEvent = {
+      type: 'message',
+      replyToken: 'rt',
+      source: { type: 'user', userId: 'U-fs' },
+      message: { type: 'text', id: 'm-fs', text: 'สวัสดี' },
+      webhookEventId: 'evt-fs',
+    } as any;
+
+    it.each([
+      ['env หายทั้งหมด', {}],
+      ['พิมพ์ผิด (FULL ตัวใหญ่)', { LINE_FINANCE_BOT_MODE: 'FULL' }],
+      ['DISABLED=false แต่ไม่มี MODE', { LINE_FINANCE_BOT_DISABLED: 'false' }],
+      [
+        'MODE=full แต่ DISABLED=true (prod)',
+        { LINE_FINANCE_BOT_MODE: 'full', LINE_FINANCE_BOT_DISABLED: 'true' },
+      ],
+    ])('%s → inbox-only', async (_label, env: Record<string, string>) => {
+      const config = (service as any).configService as { get: jest.Mock };
+      config.get.mockImplementation((k: string) => env[k]);
+      const inboxOnly = jest
+        .spyOn(service as any, 'handleEventInboxOnly')
+        .mockResolvedValue(undefined);
+      await service.handleEvent(textEvent);
+      expect(inboxOnly).toHaveBeenCalledTimes(1);
+    });
+
+    it('MODE=full และไม่ได้ตั้ง DISABLED → บอทเต็ม (ไม่เข้าทาง inbox-only)', async () => {
+      const config = (service as any).configService as { get: jest.Mock };
+      config.get.mockImplementation((k: string) =>
+        k === 'LINE_FINANCE_BOT_MODE' ? 'full' : undefined,
+      );
+      const inboxOnly = jest
+        .spyOn(service as any, 'handleEventInboxOnly')
+        .mockResolvedValue(undefined);
+      jest.spyOn(service as any, 'handleMessage').mockResolvedValue(undefined);
+      await service.handleEvent(textEvent);
+      expect(inboxOnly).not.toHaveBeenCalled();
     });
   });
 });

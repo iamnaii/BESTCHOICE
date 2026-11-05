@@ -40,11 +40,10 @@ export class ChatbotFinanceController {
 
     // Process events sequentially (LINE allows up to ~5 events per call)
     for (const event of body.events) {
-      // Dedup: skip redelivered or already-processed events (DB-based for multi-instance safety)
-      if (event.deliveryContext?.isRedelivery) {
-        this.logger.log(`[Finance webhook] Skip redelivery: ${event.webhookEventId}`);
-        continue;
-      }
+      // Dedup by webhookEventId only (DB claim — multi-instance safe). LINE redelivers with the SAME
+      // webhookEventId, so an already-processed event is skipped here; a redelivery whose first
+      // delivery never reached us (guard 401 / deploy / timeout) is processed once instead of dropped
+      // (Task 44 — เดิมทิ้งทุก isRedelivery ⇒ สลิปของรอบที่ไม่ถึงหายถาวร).
       if (event.webhookEventId && await this.dedupService.isDuplicate(event.webhookEventId)) {
         this.logger.log(`[Finance webhook] Skip duplicate event: ${event.webhookEventId}`);
         continue;

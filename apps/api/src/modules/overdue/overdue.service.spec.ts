@@ -247,7 +247,9 @@ describe('OverdueService.updateContractStatuses (T3-C11 hold guard)', () => {
     jest.clearAllMocks();
     prisma = {
       contract: {
-        findMany: jest.fn(),
+        // default [] = Step 1b (OVERDUE→ACTIVE) snapshot finds nothing; each test
+        // overrides the FIRST call (Step 1's toFlip snapshot) with mockResolvedValueOnce
+        findMany: jest.fn().mockResolvedValue([]),
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
       callLog: { findMany: jest.fn().mockResolvedValue([]) },

@@ -98,7 +98,8 @@ export class SchedulerService {
   }
 
   /**
-   * Run daily at 00:30: update contract statuses (ACTIVE->OVERDUE->DEFAULT)
+   * Run daily at 00:30: update contract statuses (ACTIVE->OVERDUE->DEFAULT, and
+   * OVERDUE->ACTIVE once nothing past due is unsettled)
    */
   @Cron('30 0 * * *', { timeZone: 'Asia/Bangkok' })
   async handleContractStatusUpdate() {
@@ -106,7 +107,7 @@ export class SchedulerService {
     try {
       const result = await this.overdueService.updateContractStatuses();
       this.logger.log(
-        `Status update complete: ${result.overdueUpdated} overdue, ${result.defaultUpdated} default`,
+        `Status update complete: ${result.overdueUpdated} overdue, ${result.recoveredUpdated} back to active, ${result.defaultUpdated} default`,
       );
       // Task 30 รอบ 3 — ไม่แจ้งลูกค้าตอนกลางดึกแล้ว: ข้อความออกจาก handleOvernightCollectionsNotices (08:05)
     } catch (error) {

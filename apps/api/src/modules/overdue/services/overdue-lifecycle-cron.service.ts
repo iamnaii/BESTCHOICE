@@ -3,15 +3,16 @@ import { Prisma, DunningStage } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { loadLateFeeConfig } from '../../../utils/late-fee.util';
 import { ConsecutiveMissedService } from '../consecutive-missed.service';
+import { UNSETTLED_PAYMENT_STATUSES } from '../today-queue.predicate';
 
 /**
  * Cron-driven lifecycle mutations for the overdue/collections module.
  *
  * Extracted from OverdueService as part of the behaviour-preserving decompose.
  * Holds the two raw-SQL paths ($executeRaw bulk late-fee UPDATE + $queryRaw
- * consecutive-missed CTE — moved VERBATIM) and the two status-update
- * $transactions (ACTIVE→OVERDUE + OVERDUE→DEFAULT). Owns the shared private
- * getSystemUserIdOrThrow, whose only callers are these crons.
+ * consecutive-missed CTE — moved VERBATIM) and the three status-update
+ * $transactions (ACTIVE→OVERDUE, OVERDUE→ACTIVE once caught up, OVERDUE→DEFAULT).
+ * Owns the shared private getSystemUserIdOrThrow, whose only callers are these crons.
  *
  * Consumed by notifications/scheduler.service.ts (calculateLateFees,
  * updateContractStatuses, escalateDunningStages) via the OverdueService facade.
@@ -129,7 +130,9 @@ export class OverdueLifecycleCronService {
       OR: [{ blockAutoEscalation: null }, { blockAutoEscalation: { lt: now } }],
       payments: {
         some: {
-          status: { in: ['PENDING', 'PARTIALLY_PAID', 'OVERDUE'] },
+          // Same set Step 1b reads — shared constant so the two steps cannot drift
+          // apart (drift = a contract eligible for both = flip-flop every night).
+          status: { in: UNSETTLED_PAYMENT_STATUSES },
           dueDate: { lt: thresholdDate },
         },
       },
@@ -181,6 +184,84 @@ export class OverdueLifecycleCronService {
     const overdueUpdated = flipResult.count;
     const activeIds = toFlip.map((c) => c.id);
 
+    // Step 1b: OVERDUE → ACTIVE once the customer has caught up (owner decision
+    // 2026-11-05). Before this step nothing ever moved a contract back, so a fully
+    // caught-up contract stayed OVERDUE forever and the overdue reports/dashboards
+    // that filter contracts by status OVERDUE/DEFAULT over-counted it.
+    //
+    // Caught up = NO installment that has already fallen due (dueDate < now) is
+    // unsettled. "Unsettled" is the same UNSETTLED_PAYMENT_STATUSES set Step 1
+    // flips on (PENDING / OVERDUE / PARTIALLY_PAID — a base-paid row that still
+    // owes a late fee stays PARTIALLY_PAID and so still blocks). Like Step 1,
+    // payment rows are NOT filtered by deletedAt. Together with `now` > thresholdDate
+    // this makes "eligible here" ⇒ "not eligible for Step 1" by construction, so a
+    // contract can never flip OVERDUE→ACTIVE→OVERDUE (or ACTIVE→OVERDUE→ACTIVE) in
+    // one run, nor flip-flop across nights:
+    //   - a contract Step 1 just flipped owns an unsettled row due before
+    //     thresholdDate (< now) → excluded here;
+    //   - an unpaid installment already past due but still inside the threshold
+    //     keeps the contract OVERDUE (no flapping while the customer is late);
+    //   - a contract restored here is ACTIVE, so Step 2's streak scan
+    //     (statuses: ['OVERDUE']) never sees it — and its streak is 0 anyway.
+    // DEFAULT is deliberately NOT restored — leaving DEFAULT stays a manual staff
+    // action. The manual hold (blockAutoEscalation) and recent PROMISED call logs
+    // guard ESCALATION only and do not apply to a contract that owes nothing past due.
+    //
+    // Side effects mirror Step 1 exactly: status + one STATUS_CHANGE audit row per
+    // contract from the system user, in one $transaction. The 08:05 customer notice
+    // (CollectionsNotifierService.sendOvernightCollectionsNotices) only reads
+    // STATUS_CHANGE rows whose `to` is OVERDUE/DEFAULT, so this row sends nothing.
+    // Dunning stage is left as-is, exactly like Step 1 leaves it.
+    const recoverWhere: Prisma.ContractWhereInput = {
+      status: 'OVERDUE',
+      deletedAt: null,
+      payments: {
+        none: {
+          status: { in: UNSETTLED_PAYMENT_STATUSES },
+          dueDate: { lt: now },
+        },
+      },
+    };
+    const toRecover = await this.prisma.contract.findMany({
+      where: recoverWhere,
+      select: { id: true },
+    });
+    const recoveredIds = toRecover.map((c) => c.id);
+    let recoveredUpdated = 0;
+    if (recoveredIds.length > 0) {
+      // Same atomic re-evaluation as Step 1: the full predicate rides on the
+      // updateMany, so a receipt void that re-opens a past-due installment between
+      // the snapshot and the update excludes that contract on the DB side. Scoping
+      // to the snapshot ids additionally guarantees no contract is restored without
+      // its audit row.
+      const [recoverResult] = (await this.prisma.$transaction([
+        this.prisma.contract.updateMany({
+          where: { ...recoverWhere, id: { in: recoveredIds } },
+          data: { status: 'ACTIVE' },
+        }),
+        this.prisma.auditLog.createMany({
+          data: recoveredIds.map((id) => ({
+            userId: systemUserId,
+            action: 'STATUS_CHANGE',
+            entity: 'contract',
+            entityId: id,
+            newValue: {
+              from: 'OVERDUE',
+              to: 'ACTIVE',
+              reason: 'No unsettled installment past its due date (caught up)',
+            },
+            ipAddress: 'system-cron',
+          })),
+        }),
+      ])) as [Prisma.BatchPayload, ...unknown[]];
+      recoveredUpdated = recoverResult.count;
+      if (recoveredUpdated !== recoveredIds.length) {
+        this.logger.warn(
+          `OVERDUE→ACTIVE: ${recoveredIds.length - recoveredUpdated} snapshot contract(s) changed before the update and were not restored (audit row written anyway — same accepted artifact as Step 1)`,
+        );
+      }
+    }
+
     // Step 2: OVERDUE → DEFAULT (2+ consecutive missed payments).
     // Streak derivation lives in ConsecutiveMissedService (single source of truth) — งวดนับเป็นพลาดหลังสิ้นวันครบกำหนด
     // ตามปฏิทินไทย (Task 30 รอบ 5 · เจ้าของ 01/11): งวดที่ครบกำหนดวันนี้ยังไม่ทำให้สัญญาเป็น DEFAULT ในรอบ 00:30 ของวันนั้น
@@ -217,8 +298,18 @@ export class OverdueLifecycleCronService {
       defaultUpdated = defaultIds.length;
     }
 
-    this.logger.log(`Contract status update: ${overdueUpdated} overdue, ${defaultUpdated} default`);
-    return { overdueUpdated, defaultUpdated, overdueIds: activeIds, defaultIds, timestamp: now };
+    this.logger.log(
+      `Contract status update: ${overdueUpdated} overdue, ${recoveredUpdated} back to active, ${defaultUpdated} default`,
+    );
+    return {
+      overdueUpdated,
+      recoveredUpdated,
+      defaultUpdated,
+      overdueIds: activeIds,
+      recoveredIds,
+      defaultIds,
+      timestamp: now,
+    };
   }
 
   /**

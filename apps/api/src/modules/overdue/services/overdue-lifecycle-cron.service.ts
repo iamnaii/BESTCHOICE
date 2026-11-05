@@ -87,6 +87,10 @@ export class OverdueLifecycleCronService {
         -- Once any payment is received, the cumulative fee is frozen for this
         -- installment, including zero. Staff may explicitly add a fee later.
         AND "amount_paid" <= 0
+        -- An approved waiver freezes it too: after every receipt is voided amount_paid
+        -- is back to 0 but the waiver stands, so the charge it left stays owed instead of
+        -- a fresh bracket fee. SQL twin of isLateFeeFrozen (late-fee.util.ts).
+        AND COALESCE("waived_amount", 0) <= 0
         AND "contract_id" IN (
           SELECT "id" FROM "contracts"
           WHERE "status" IN ('ACTIVE', 'OVERDUE', 'DEFAULT')

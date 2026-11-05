@@ -33,7 +33,7 @@ import { validatePeriodOpen } from '../../../utils/period-lock.util';
 import { ensureInstallmentSchedules } from '../../../utils/installment-schedule.util';
 import { assertSequentialInstallment } from './installment-sequence.util';
 import { d, dAdd, dSub, dMul, dRound, dGte } from '../../../utils/decimal.util';
-import { loadLateFeeConfig, resolveLateFee } from '../../../utils/late-fee.util';
+import { isLateFeeFrozen, loadLateFeeConfig, resolveLateFee } from '../../../utils/late-fee.util';
 import { loadLateFeePaidByPaymentIds } from './payment-late-fee-paid.util';
 import {
   consumePaymentApproval,
@@ -281,11 +281,12 @@ export class PaymentReceiptOrchestrator {
         // Real-time late fee: flat-bracket via resolveLateFee (CPA ยืนยันขั้นบันได
         // ถาวร 2026-08-01 — the only formula). Set = resolved fee (NOT
         // max(stored, resolved)) so this path agrees with the overdue cron's
-        // retroactive downgrade. Skip waived.
+        // retroactive downgrade. Skip waived, and skip a frozen fee (anything paid, or an
+        // approved waiver — after a void returns amountPaid to 0 the waiver still stands).
         let lateFee = d(payment.lateFee);
         if (
           !payment.lateFeeWaived &&
-          d(payment.amountPaid).lte(0) &&
+          !isLateFeeFrozen(payment) &&
           payment.dueDate < effectivePaidDate
         ) {
           const daysOverdue = Math.max(

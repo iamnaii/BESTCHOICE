@@ -450,6 +450,32 @@ describe('PaymentsService — real-time late fee on payment (flat-bracket)', () 
   });
 
   // ───────────────────────────────────────────────────────────────────────────
+  // An approved waiver freezes the fee — also after every receipt was voided
+  // (amountPaid back to 0). Fee 150, 110 collected, 40 waived → 110 stays owed;
+  // the 100 bracket must not come back.
+  // ───────────────────────────────────────────────────────────────────────────
+  it('approved partial waiver (waivedAmount 40) with amountPaid 0 skips recompute → stored 110 is the fee', async () => {
+    prisma.payment.findFirst.mockResolvedValue(
+      makePayment({ dueDate: overdueDays(30), lateFee: D(110), waivedAmount: D(40) }),
+    );
+
+    await service.recordPayment(
+      'lf-contract-1',
+      1,
+      10110, // amountDue(10000) + the 110 the waiver left
+      'CASH',
+      'user-1',
+      'https://slip.test/frozen-by-waiver',
+      undefined,
+      'LF-FROZEN-WAIVER',
+      '11-1101',
+    );
+
+    expect(lateFeeWritten()).toBeUndefined();
+    expect(lateFeeForwarded()?.toFixed(2)).toBe('110.00');
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
   // No change when stored fee already equals the resolved fee
   // 3 days → tier2 (100). Stored=100 → no write.
   // ───────────────────────────────────────────────────────────────────────────

@@ -48,6 +48,9 @@ import { PaymentApprovalController } from '../payment-approval.controller';
 import { LateFeeWaiverService as ApprovalWaiverService } from './late-fee-waiver.service';
 import { PaymentReceiptOrchestrator } from './payment-receipt-orchestrator';
 import { paymentApprovalSnapshot } from './payment-approval-request.util';
+import { voidReceiptWithApproval } from '../../../../e2e/helpers/payment-approval';
+import { OverdueLifecycleCronService } from '../../overdue/services/overdue-lifecycle-cron.service';
+import { ConsecutiveMissedService } from '../../overdue/consecutive-missed.service';
 
 const prisma = new PrismaClient();
 const D = (n: string | number) => new Decimal(n);
@@ -380,6 +383,47 @@ describe('late-fee waivers settle against the ledger, not Payment.amountPaid', (
         else await orchestrator.autoAllocatePayment(f.contractId, 100, 'CASH', recordedById);
         p = await row(f);
         expect(p.status).toBe('PAID');
+        expect(await ledger(f)).toEqual({ principalOpen: '0.00', feeBooked: '110.00' });
+        expect(await contractStatus(f)).toBe('COMPLETED');
+      });
+    }
+
+    /**
+     * Voiding every receipt after a partial waiver must not erase the approved waiver.
+     * The void reverses both receipts (amountPaid back to 0, the 110 fee income reversed);
+     * the nightly late-fee run and the next receipt's recompute must both treat the fee as
+     * frozen (isLateFeeFrozen: waivedAmount > 0) — the 110 the waiver left is owed again,
+     * the waived 40 stays waived, and no fresh bracket fee (100) replaces it.
+     */
+    for (const path of ['path 1 (payment approval)', 'path 2 (collector request)'] as const) {
+      it(`${path}: voiding every receipt keeps the approved waiver; the 110 is owed again, not a fresh bracket fee`, async () => {
+        const f = await seedWithRemainingFee();
+        if (path === 'path 1 (payment approval)') await waiveViaApproval(f);
+        else await collectorWaiver.approve((await requestViaCollector(f)).id, approverId);
+
+        const receipt = await prisma.receipt.findFirstOrThrow({
+          where: { paymentId: f.paymentId, receiptType: 'INSTALLMENT', isVoided: false, deletedAt: null },
+          orderBy: { createdAt: 'desc' },
+        });
+        await voidReceiptWithApproval(prisma, receiptsService, receipt.id,
+          'ทดสอบยกเลิกใบเสร็จหลังยกเว้นค่าปรับบางส่วน', recordedById, approverId, 'OWNER');
+
+        let p = await row(f);
+        expect([p.amountPaid.toFixed(2), p.status]).toEqual(['0.00', 'OVERDUE']);
+        expect([p.lateFee.toFixed(2), p.waivedAmount?.toFixed(2), p.lateFeeWaived]).toEqual(['110.00', '40.00', false]);
+        expect(await ledger(f)).toEqual({ principalOpen: '1515.83', feeBooked: '0.00' });
+
+        // Nightly late-fee run (00:00): the stored fee is frozen by the waiver.
+        await new OverdueLifecycleCronService(prisma as never, new ConsecutiveMissedService(prisma as never))
+          .calculateLateFees();
+        p = await row(f);
+        expect(p.lateFee.toFixed(2)).toBe('110.00');
+
+        // The next receipt sees the same fee (no receipt-time bracket recompute):
+        // amountDue 1,515.83 + 110 closes the installment exactly.
+        await pay(f, 1625.83);
+        p = await row(f);
+        expect([p.status, p.lateFee.toFixed(2), p.waivedAmount?.toFixed(2)]).toEqual(['PAID', '110.00', '40.00']);
         expect(await ledger(f)).toEqual({ principalOpen: '0.00', feeBooked: '110.00' });
         expect(await contractStatus(f)).toBe('COMPLETED');
       });

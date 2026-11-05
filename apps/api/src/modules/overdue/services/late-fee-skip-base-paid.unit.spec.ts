@@ -69,4 +69,14 @@ describe('OverdueLifecycleCronService.calculateLateFees — base-settled skip gu
     expect(text).toContain('"late_fee_waived" = false');
     expect(text).toContain('"amount_paid" < "amount_due"');
   });
+
+  it('an approved waiver freezes the fee: rows with waived_amount > 0 are not recomputed', async () => {
+    const { prisma, $executeRaw } = makePrisma();
+
+    await buildCron(prisma).calculateLateFees();
+
+    const text = sqlTextOf($executeRaw.mock.calls[0][0]);
+    expect(text).toContain('"amount_paid" <= 0');
+    expect(text).toContain('COALESCE("waived_amount", 0) <= 0');
+  });
 });

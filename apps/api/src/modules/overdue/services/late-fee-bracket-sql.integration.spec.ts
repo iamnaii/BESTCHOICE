@@ -19,7 +19,11 @@ import { PrismaClient, Prisma } from '@prisma/client';
 import { seedStandard17k12m } from '../../journal/__tests__/scenario-helpers';
 import { OverdueLifecycleCronService } from './overdue-lifecycle-cron.service';
 import { ConsecutiveMissedService } from '../consecutive-missed.service';
-import { computeBracketLateFee, loadLateFeeConfig } from '../../../utils/late-fee.util';
+import {
+  computeBracketLateFee,
+  loadLateFeeConfig,
+  resolveLivePaymentLateFee,
+} from '../../../utils/late-fee.util';
 
 const prisma = new PrismaClient();
 
@@ -34,6 +38,9 @@ const cases = [
   { n: 3, days: 3 },
   { n: 4, days: 100 },
 ];
+
+/** Installment of the frozen-by-waiver row (outside the bracket cases). */
+const FROZEN_NO = 9;
 
 const BRACKET_CONFIG = [
   ['late_fee_tier1_amount', '50'],
@@ -69,6 +76,20 @@ describe('calculateLateFees SQL == computeBracketLateFee (anti-drift)', () => {
     await prisma.contract.update({ where: { id: contractId }, data: { status: 'ACTIVE' } });
 
     const now = Date.now();
+    // Frozen-by-waiver row (isLateFeeFrozen): partly waived, then every receipt voided.
+    await prisma.payment.create({
+      data: {
+        contractId,
+        installmentNo: FROZEN_NO,
+        amountDue: new Prisma.Decimal('1515.83'),
+        amountPaid: new Prisma.Decimal(0),
+        lateFee: new Prisma.Decimal('110.00'),
+        lateFeeWaived: false,
+        waivedAmount: new Prisma.Decimal('40.00'),
+        dueDate: new Date(now - 30 * 86_400_000),
+        status: 'OVERDUE',
+      },
+    });
     // Create PENDING payments with due dates in the past (days overdue = `days`)
     for (const { n, days } of cases) {
       await prisma.payment.create({
@@ -130,5 +151,19 @@ describe('calculateLateFees SQL == computeBracketLateFee (anti-drift)', () => {
     expect(new Prisma.Decimal(p3!.lateFee.toString()).toString()).toBe('100');
     const p4 = await prisma.payment.findFirst({ where: { contractId, installmentNo: 4 } });
     expect(new Prisma.Decimal(p4!.lateFee.toString()).toString()).toBe('100');
+  });
+
+  it('frozen fee (approved waiver, nothing paid): SQL leaves the stored fee exactly as the TS live fee reports it', async () => {
+    const svc = new OverdueLifecycleCronService(
+      prisma as never,
+      new ConsecutiveMissedService(prisma as never),
+    );
+    await svc.calculateLateFees();
+
+    const cfg = await loadLateFeeConfig(prisma);
+    const p = await prisma.payment.findFirstOrThrow({ where: { contractId, installmentNo: FROZEN_NO } });
+    const live = resolveLivePaymentLateFee(p, cfg, new Date());
+    expect(p.lateFee.toFixed(2)).toBe('110.00');
+    expect(live.toFixed(2)).toBe(p.lateFee.toFixed(2));
   });
 });

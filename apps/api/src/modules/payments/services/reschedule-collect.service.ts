@@ -670,6 +670,8 @@ export class RescheduleCollectService {
       dueDate: Date;
       amountDue: Prisma.Decimal;
       amountPaid: Prisma.Decimal;
+      lateFee: Prisma.Decimal;
+      waivedAmount: Prisma.Decimal | null;
       lateFeeWaived: boolean;
     },
     daysToShift: number,

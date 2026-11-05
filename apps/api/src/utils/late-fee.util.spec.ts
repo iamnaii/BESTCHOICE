@@ -1,4 +1,10 @@
-import { computeBracketLateFee, resolveLateFee, resolveLivePaymentLateFee, type LateFeeConfig } from './late-fee.util';
+import {
+  computeBracketLateFee,
+  isLateFeeFrozen,
+  resolveLateFee,
+  resolveLivePaymentLateFee,
+  type LateFeeConfig,
+} from './late-fee.util';
 
 const s = (d: { toString(): string }) => d.toString();
 
@@ -126,5 +132,47 @@ describe('resolveLivePaymentLateFee — fee frozen after the first receipt', () 
 
   it('keeps waiver precedence on a partially paid installment', () => {
     expect(resolveLivePaymentLateFee({ ...payment, lateFeeWaived: true }, cfg, asOf).toNumber()).toBe(0);
+  });
+});
+
+describe('isLateFeeFrozen — when the stored fee is never recomputed from days overdue', () => {
+  it('nothing paid and no waiver → not frozen (legacy inputs without the fields too)', () => {
+    expect(isLateFeeFrozen({})).toBe(false);
+    expect(isLateFeeFrozen({ amountPaid: 0, waivedAmount: null })).toBe(false);
+    expect(isLateFeeFrozen({ amountPaid: '0.00', waivedAmount: '0' })).toBe(false);
+  });
+
+  it('any amount paid → frozen', () => {
+    expect(isLateFeeFrozen({ amountPaid: '0.01' })).toBe(true);
+  });
+
+  it('an approved waiver → frozen even with nothing paid (every receipt voided)', () => {
+    expect(isLateFeeFrozen({ amountPaid: 0, waivedAmount: '40.00' })).toBe(true);
+  });
+});
+
+describe('resolveLivePaymentLateFee — approved waiver keeps the charge it left', () => {
+  const cfg: LateFeeConfig = { tier1Amount: 50, tier2Amount: 100, tier2MinDays: 3 };
+  const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000);
+
+  it('partly waived row whose receipts were all voided → the stored 110, not the 100 bracket', () => {
+    // 150 fee, 110 collected, 40 waived — then every receipt voided (amountPaid back to 0).
+    expect(
+      resolveLivePaymentLateFee(
+        { dueDate: daysAgo(30), amountDue: 1515.83, amountPaid: 0, lateFee: '110', waivedAmount: '40', lateFeeWaived: false },
+        cfg,
+        new Date(),
+      ).toFixed(2),
+    ).toBe('110.00');
+  });
+
+  it('same row without an approved waiver → the bracket fee (unchanged behaviour)', () => {
+    expect(
+      resolveLivePaymentLateFee(
+        { dueDate: daysAgo(30), amountDue: 1515.83, amountPaid: 0, lateFee: '110', waivedAmount: null, lateFeeWaived: false },
+        cfg,
+        new Date(),
+      ).toFixed(2),
+    ).toBe('100.00');
   });
 });

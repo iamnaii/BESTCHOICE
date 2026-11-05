@@ -67,6 +67,33 @@ export function resolveLateFee(cfg: LateFeeConfig, daysOverdue: number): Prisma.
 }
 
 /**
+ * Is the installment's stored late fee frozen — never recomputed from days overdue?
+ *
+ *   - any amount paid (amountPaid > 0): the cumulative fee is fixed once money arrives,
+ *     including zero; staff may still add a fee explicitly on a receipt;
+ *   - an approved waiver (waivedAmount > 0): the waiver fixed the remaining charge.
+ *     This one matters after every receipt of the installment is voided — amountPaid
+ *     returns to 0 while the waiver still stands, so the charge the waiver left (the part
+ *     that had been collected, now refunded by the void) is what is owed again, not a
+ *     fresh bracket fee.
+ *
+ * Single TS definition for the receipt-time recompute (PaymentReceiptOrchestrator) and
+ * the display-side live fee below; the nightly bulk UPDATE in
+ * OverdueLifecycleCronService.calculateLateFees mirrors it in SQL
+ * (`amount_paid <= 0 AND COALESCE(waived_amount, 0) <= 0` select the rows it may
+ * recompute) — late-fee-bracket-sql.integration.spec.ts pins the two together.
+ */
+export function isLateFeeFrozen(payment: {
+  amountPaid?: Prisma.Decimal | number | string;
+  waivedAmount?: Prisma.Decimal | number | string | null;
+}): boolean {
+  return (
+    new Prisma.Decimal(payment.amountPaid ?? 0).gt(0) ||
+    new Prisma.Decimal(payment.waivedAmount ?? 0).gt(0)
+  );
+}
+
+/**
  * Display-side live late fee for an UNPAID installment as of `asOf`. The twin of
  * the record-time recompute in PaymentReceiptOrchestrator — call this wherever a
  * pending/overdue installment's late fee is SHOWN, so the figure tracks the
@@ -77,7 +104,7 @@ export function resolveLateFee(cfg: LateFeeConfig, daysOverdue: number): Prisma.
  * obligation, not the fee to book on the next receipt.
  *
  *   waived                    → 0
- *   amountPaid > 0            → stored lateFee (frozen for this installment)
+ *   frozen (isLateFeeFrozen)  → stored lateFee
  *   dueDate >= asOf (≥ today) → 0  (resolveLateFee returns 0 for < 1 whole day)
  *   otherwise                 → resolveLateFee(cfg, whole days overdue)
  *
@@ -87,16 +114,17 @@ export function resolveLivePaymentLateFee(
   payment: {
     dueDate: Date;
     amountDue: Prisma.Decimal | number | string;
-    /** Legacy quote inputs omit these; missing means no prior payment/fee. */
+    /** Legacy quote inputs omit these; missing means no prior payment/fee/waiver. */
     amountPaid?: Prisma.Decimal | number | string;
     lateFee?: Prisma.Decimal | number | string;
+    waivedAmount?: Prisma.Decimal | number | string | null;
     lateFeeWaived: boolean;
   },
   cfg: LateFeeConfig,
   asOf: Date,
 ): Prisma.Decimal {
   if (payment.lateFeeWaived) return new Prisma.Decimal(0);
-  if (new Prisma.Decimal(payment.amountPaid ?? 0).gt(0)) {
+  if (isLateFeeFrozen(payment)) {
     return new Prisma.Decimal(payment.lateFee ?? 0);
   }
   const daysOverdue = Math.max(

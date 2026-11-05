@@ -156,7 +156,8 @@ describe('getDailySummary — receipt-based (เงินสดที่รั�
       rcpt({ receiptNumber: 'RT-202608-00015', installmentNo: 4, amount: D(2000), paymentId: 'pay-4' }),
     ]);
     (prisma.payment.findMany as jest.Mock).mockResolvedValue([
-      { lateFee: D(100), lateFeeWaived: false, waivedAmount: D(40) },
+      // receipt-path gross waiver: lateFee gross 100, 40 waived on the closing receipt
+      { lateFee: D(100), lateFeeWaived: true, waivedAmount: D(40) },
     ]);
 
     const summary = await service.getDailySummary('2026-08-16');
@@ -165,6 +166,41 @@ describe('getDailySummary — receipt-based (เงินสดที่รั�
     expect(summary.totalLateFees).toBe(60);
     const feeWhere = (prisma.payment.findMany as jest.Mock).mock.calls[0][0].where;
     expect(feeWhere.id).toEqual({ in: ['pay-4'] });
+  });
+
+  it('partly waived standalone row (lateFee = collected 110, waivedAmount = 40 remainder, not flagged) counts the 110', async () => {
+    const { service, prisma } = setup([
+      rcpt({ receiptNumber: 'RT-202608-00030', installmentNo: 2, amount: D(1625.83), paymentId: 'pay-2' }),
+    ]);
+    (prisma.payment.findMany as jest.Mock).mockResolvedValue([
+      { lateFee: D(110), lateFeeWaived: false, waivedAmount: D(40) },
+    ]);
+
+    const summary = await service.getDailySummary('2026-08-16');
+
+    // lateFee already excludes the waived remainder — subtracting it again would read 70.
+    expect(summary.totalLateFees).toBe(110);
+  });
+
+  it('all waiver shapes side by side: gross waiver, full standalone, legacy flag, partial, plain', async () => {
+    const { service, prisma } = setup([
+      rcpt({ receiptNumber: 'RT-202608-00031', installmentNo: 1, amount: D(100), paymentId: 'p1' }),
+      rcpt({ receiptNumber: 'RT-202608-00032', installmentNo: 2, amount: D(100), paymentId: 'p2' }),
+      rcpt({ receiptNumber: 'RT-202608-00033', installmentNo: 3, amount: D(100), paymentId: 'p3' }),
+      rcpt({ receiptNumber: 'RT-202608-00034', installmentNo: 4, amount: D(100), paymentId: 'p4' }),
+      rcpt({ receiptNumber: 'RT-202608-00035', installmentNo: 5, amount: D(100), paymentId: 'p5' }),
+    ]);
+    (prisma.payment.findMany as jest.Mock).mockResolvedValue([
+      { lateFee: D(100), lateFeeWaived: true, waivedAmount: D(40) }, // gross waiver → 60
+      { lateFee: D(0), lateFeeWaived: true, waivedAmount: D(100) }, // full standalone → 0
+      { lateFee: D(100), lateFeeWaived: true, waivedAmount: null }, // legacy flag → 0
+      { lateFee: D(110), lateFeeWaived: false, waivedAmount: D(40) }, // partial → 110
+      { lateFee: D(50), lateFeeWaived: false, waivedAmount: null }, // plain → 50
+    ]);
+
+    const summary = await service.getDailySummary('2026-08-16');
+
+    expect(summary.totalLateFees).toBe(220);
   });
 
   it('legacy full waiver (lateFeeWaived with no waivedAmount) nets to zero', async () => {

@@ -229,6 +229,23 @@ export interface CasePaymentRow {
 
 export type CaseTone = 'warning' | 'info' | 'primary' | 'success';
 
+/**
+ * Waived part of an installment's stored late fee. Only a row flagged `lateFeeWaived`
+ * carries its waiver inside `lateFee` (receipt-path gross waiver, or a full standalone
+ * waiver with `lateFee` 0): subtract `waivedAmount`, or the whole fee for a legacy row
+ * without one. A partly waived row (`lateFeeWaived` false) stores only the collected part
+ * as `lateFee` and the remainder in `waivedAmount` — nothing to subtract. Same rule as the
+ * API's daily summary and `netStoredFee`.
+ */
+export function storedFeeWaived(p: {
+  lateFee: string | number;
+  lateFeeWaived: boolean;
+  waivedAmount: string | number | null;
+}): number {
+  if (!p.lateFeeWaived) return 0;
+  return p.waivedAmount != null ? Number(p.waivedAmount) : Number(p.lateFee) || 0;
+}
+
 const PAYMENT_CASE_LABELS: Record<string, { label: string; tone: CaseTone }> = {
   NORMAL: { label: 'ตรงดิว', tone: 'success' },
   PARTIAL: { label: 'แบ่งชำระ', tone: 'info' },
@@ -266,11 +283,7 @@ export function caseForReceipt(
   // Undefined alone keeps compatibility with responses from an older API.
   if (r.paymentCase === null) return { label: 'ไม่ระบุ', tone: 'info' };
   if (p) {
-    // An explicit waivedAmount wins,
-    // otherwise lateFeeWaived means the whole gross fee was waived.
-    const waived =
-      p.waivedAmount != null ? Number(p.waivedAmount) : p.lateFeeWaived ? Number(p.lateFee) : 0;
-    const obligation = Number(p.amountDue) + (Number(p.lateFee) - waived);
+    const obligation = Number(p.amountDue) + (Number(p.lateFee) - storedFeeWaived(p));
     if (Number(r.amount) > obligation) return { label: 'ชำระเกิน', tone: 'primary' };
   }
   return { label: 'ตรงดิว', tone: 'success' };

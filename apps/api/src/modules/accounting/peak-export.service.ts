@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CompanyResolverService } from '../journal/company-resolver.service';
+import { bangkokDateString } from '../../utils/date.util';
 import {
   isExcludedFromPeakExport,
   isExcludedLegacyInterestLine,
@@ -352,7 +353,8 @@ export class PeakExportService {
         : '';
       body.push(
         [
-          ln.journalEntry.entryDate.toISOString().slice(0, 10),
+          // Bangkok calendar day (D7) — toISOString() is the UTC day, one day early for 00:00–06:59 Bangkok
+          bangkokDateString(ln.journalEntry.entryDate),
           escape(ln.journalEntry.entryNumber),
           escape(mapping.peakCode),
           escape(subCodeFor(ln.accountCode, mapping, ln.journalEntry.metadata as JsonMeta)),

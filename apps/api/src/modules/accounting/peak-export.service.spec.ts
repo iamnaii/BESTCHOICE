@@ -139,6 +139,27 @@ describe('PeakExportService', () => {
     });
   });
 
+  // คู่มือคืนตัด 5.3 D7: the file's entryDate column is the Bangkok calendar day, not the UTC day.
+  // ไล่ VAT 1 ธ.ค. 00:05 Bangkok = 30 พ.ย. 17:05 UTC — printed as 2026-11-30 before the fix.
+  it.each([
+    ['2026-11-30T17:05:00.000Z', '2026-12-01'], // 1 ธ.ค. 00:05 Bangkok (catch-up VAT)
+    ['2026-11-30T16:59:59.000Z', '2026-11-30'], // 30 พ.ย. 23:59:59 Bangkok (opening entries)
+    ['2026-12-01T06:59:59.000Z', '2026-12-01'], // 1 ธ.ค. 13:59:59 Bangkok
+  ])('prints entryDate %s as the Bangkok day %s', async (instant, day) => {
+    prisma.chartOfAccount.findMany
+      .mockResolvedValueOnce([
+        { code: '21-2101', name: 'ภาษีขาย', peakCode: '215101', peakSubCode: null, peakSubCodeSource: 'none' },
+      ])
+      .mockResolvedValueOnce([{ code: '21-2101', name: 'ภาษีขาย' }]);
+    const je = { entryNumber: 'JE-7', entryDate: new Date(instant), description: 'd', referenceType: null, referenceId: null };
+    prisma.journalLine.findMany.mockResolvedValue([
+      { accountCode: '21-2101', debit: '0', credit: '12.34', description: null, journalEntry: je },
+    ]);
+    const res = await service.exportJournalWithPeakCodes(new Date('2026-11-01'), new Date('2026-12-31'));
+    const lines = res.csv.replace(/^\uFEFF/, '').split('\n');
+    expect(lines[1].split(',')[0]).toBe(day);
+  });
+
   it('scopes the export to FINANCE company (X5)', async () => {
     await service.exportJournalWithPeakCodes(new Date('2026-06-01'), new Date('2026-06-30'));
     expect(prisma.journalLine.findMany).toHaveBeenCalledWith(

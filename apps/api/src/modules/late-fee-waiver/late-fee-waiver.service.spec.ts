@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { LateFeeWaiverStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ProductsService } from '../products/products.service';
 import { LateFeeWaiverService } from './late-fee-waiver.service';
 
 /**
@@ -16,7 +17,25 @@ const approveTxState = {
   paymentUpdate: jest.fn(),
   requestUpdate: jest.fn(),
   paymentFindMany: jest.fn(),
+  // checkContractCompletion (runs only when a row becomes PAID)
+  paymentCount: jest.fn(),
+  contractUpdate: jest.fn(),
+  callLogUpdateMany: jest.fn(),
 };
+
+const mockProducts = { transferOwnership: jest.fn() };
+
+/** A payment row as approve() selects it — base 1,515.83 + late fee. */
+const row = (over: Record<string, unknown> = {}) => ({
+  id: 'p-1',
+  contractId: 'c-1',
+  lateFee: new Prisma.Decimal(150),
+  lateFeeWaived: false,
+  amountDue: new Prisma.Decimal('1515.83'),
+  amountPaid: new Prisma.Decimal(0),
+  status: 'OVERDUE',
+  ...over,
+});
 
 const mockPrisma = {
   contract: { findFirst: jest.fn() },
@@ -34,7 +53,10 @@ const mockPrisma = {
       payment: {
         findMany: approveTxState.paymentFindMany,
         update: approveTxState.paymentUpdate,
+        count: approveTxState.paymentCount,
       },
+      contract: { update: approveTxState.contractUpdate },
+      callLog: { updateMany: approveTxState.callLogUpdateMany },
       lateFeeWaiverRequest: {
         update: approveTxState.requestUpdate,
       },
@@ -51,6 +73,7 @@ describe('LateFeeWaiverService', () => {
       providers: [
         LateFeeWaiverService,
         { provide: PrismaService, useValue: mockPrisma },
+        { provide: ProductsService, useValue: mockProducts },
       ],
     }).compile();
     service = mod.get(LateFeeWaiverService);
@@ -110,8 +133,8 @@ describe('LateFeeWaiverService', () => {
         reason: 'ลูกค้าป่วย',
       });
       approveTxState.paymentFindMany.mockResolvedValue([
-        { id: 'p-1', lateFee: new Prisma.Decimal(150), lateFeeWaived: false },
-        { id: 'p-2', lateFee: new Prisma.Decimal(250), lateFeeWaived: false },
+        row({ id: 'p-1', lateFee: new Prisma.Decimal(150) }),
+        row({ id: 'p-2', lateFee: new Prisma.Decimal(250) }),
       ]);
       approveTxState.paymentUpdate.mockResolvedValue({});
       approveTxState.requestUpdate.mockImplementation((args: any) =>
@@ -132,6 +155,77 @@ describe('LateFeeWaiverService', () => {
       expect(out.approverUserId).toBe('user-owner');
       // totalWaived recomputed inside tx = 150 + 250
       expect((out.totalWaiveAmount as Prisma.Decimal).toString()).toBe('400');
+    });
+
+    const pendingRequest = {
+      id: 'req-1',
+      status: LateFeeWaiverStatus.PENDING,
+      requesterUserId: 'user-collector',
+      paymentIds: ['p-1'],
+      reason: 'ลูกค้าป่วย',
+    };
+
+    it('base already paid (only the fee was owed, PARTIALLY_PAID) → PAID with paidDate, and contract completion runs in the same tx', async () => {
+      mockPrisma.lateFeeWaiverRequest.findFirst.mockResolvedValue(pendingRequest);
+      approveTxState.paymentFindMany.mockResolvedValue([
+        row({ amountPaid: new Prisma.Decimal('1515.83'), status: 'PARTIALLY_PAID' }),
+      ]);
+      approveTxState.paymentUpdate.mockResolvedValue({});
+      approveTxState.paymentCount.mockResolvedValue(0); // that was the last unpaid installment
+      approveTxState.contractUpdate.mockResolvedValue({ productId: 'prod-1' });
+      approveTxState.callLogUpdateMany.mockResolvedValue({ count: 0 });
+      approveTxState.requestUpdate.mockImplementation((args: { data: Record<string, unknown> }) =>
+        Promise.resolve({ id: 'req-1', ...args.data }),
+      );
+
+      await service.approve('req-1', 'user-owner');
+
+      const data = approveTxState.paymentUpdate.mock.calls[0][0].data;
+      expect(data.lateFee).toBe(0);
+      expect(data.lateFeeWaived).toBe(true);
+      expect(data.status).toBe('PAID');
+      expect(data.paidDate).toBeInstanceOf(Date);
+      // checkContractCompletion: count unpaid → COMPLETED → ownership released
+      expect(approveTxState.paymentCount).toHaveBeenCalledWith({
+        where: { contractId: 'c-1', status: { not: 'PAID' }, deletedAt: null },
+      });
+      expect(approveTxState.contractUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'c-1' }, data: { status: 'COMPLETED' } }),
+      );
+      expect(mockProducts.transferOwnership).toHaveBeenCalledWith('prod-1', null, expect.anything());
+    });
+
+    it('base still owing (PARTIALLY_PAID, 500 of 1,515.83) → fee waived but the row stays PARTIALLY_PAID, no completion check', async () => {
+      mockPrisma.lateFeeWaiverRequest.findFirst.mockResolvedValue(pendingRequest);
+      approveTxState.paymentFindMany.mockResolvedValue([
+        row({ amountPaid: new Prisma.Decimal(500), status: 'PARTIALLY_PAID' }),
+      ]);
+      approveTxState.paymentUpdate.mockResolvedValue({});
+      approveTxState.requestUpdate.mockImplementation((args: { data: Record<string, unknown> }) =>
+        Promise.resolve({ id: 'req-1', ...args.data }),
+      );
+
+      await service.approve('req-1', 'user-owner');
+
+      const data = approveTxState.paymentUpdate.mock.calls[0][0].data;
+      expect(data.lateFeeWaived).toBe(true);
+      expect(data).not.toHaveProperty('status');
+      expect(data).not.toHaveProperty('paidDate');
+      expect(approveTxState.paymentCount).not.toHaveBeenCalled();
+      expect(approveTxState.contractUpdate).not.toHaveBeenCalled();
+    });
+
+    it('runs Serializable, like the payments-side waiver', async () => {
+      mockPrisma.lateFeeWaiverRequest.findFirst.mockResolvedValue(pendingRequest);
+      approveTxState.paymentFindMany.mockResolvedValue([row()]);
+      approveTxState.paymentUpdate.mockResolvedValue({});
+      approveTxState.requestUpdate.mockResolvedValue({ id: 'req-1' });
+
+      await service.approve('req-1', 'user-owner');
+
+      expect(mockPrisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
     });
 
     it('refuses when approver === requester (Segregation of Duties)', async () => {

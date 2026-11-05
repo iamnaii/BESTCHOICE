@@ -5,6 +5,13 @@ import { loadLateFeeConfig } from '../../../utils/late-fee.util';
 import { ConsecutiveMissedService } from '../consecutive-missed.service';
 import { UNSETTLED_PAYMENT_STATUSES } from '../today-queue.predicate';
 
+/** Dunning back to the start — the fields resetDunningStage clears (Step 1b clears pending too). */
+const DUNNING_START = {
+  dunningStage: 'NONE',
+  dunningEscalatedAt: null,
+  dunningLastActionAt: null,
+} satisfies Prisma.ContractUpdateManyMutationInput;
+
 /**
  * Cron-driven lifecycle mutations for the overdue/collections module.
  *
@@ -104,7 +111,10 @@ export class OverdueLifecycleCronService {
     const overdueConfig = await this.prisma.systemConfig.findUnique({
       where: { key: 'overdue_days_threshold' },
     });
-    const overdueDays = overdueConfig ? Number(overdueConfig.value) : 7;
+    // Floored at 0: a negative value would put thresholdDate in the FUTURE, so Step 1
+    // would flip contracts whose unpaid installment is not even due yet — which Step 1b
+    // (dueDate < now) would then restore in the same run, every night.
+    const overdueDays = Math.max(0, overdueConfig ? Number(overdueConfig.value) : 7);
 
     // Step 1: ACTIVE → OVERDUE (payments overdue > threshold days)
     // C3 fix: encode all filter conditions in flipWhere so that updateMany
@@ -207,11 +217,16 @@ export class OverdueLifecycleCronService {
     // action. The manual hold (blockAutoEscalation) and recent PROMISED call logs
     // guard ESCALATION only and do not apply to a contract that owes nothing past due.
     //
-    // Side effects mirror Step 1 exactly: status + one STATUS_CHANGE audit row per
-    // contract from the system user, in one $transaction. The 08:05 customer notice
-    // (CollectionsNotifierService.sendOvernightCollectionsNotices) only reads
-    // STATUS_CHANGE rows whose `to` is OVERDUE/DEFAULT, so this row sends nothing.
-    // Dunning stage is left as-is, exactly like Step 1 leaves it.
+    // Side effects: status + one STATUS_CHANGE audit row per restored contract from
+    // the system user (like Step 1), and dunning goes back to the start (owner
+    // decision 2026-11-05): dunningStage NONE + escalation timestamps cleared (the
+    // fields resetDunningStage clears) + any escalation still waiting for approval
+    // dropped (pendingDunningStage/Since) — so the LIFF page stops showing a dunning
+    // label and a contract that falls behind again escalates from REMINDER like a
+    // fresh one. History (dunning_actions, audit rows, notification logs) is kept.
+    // The audit row records the stage / pending stage that were reset. The 08:05
+    // customer notice (CollectionsNotifierService.sendOvernightCollectionsNotices)
+    // only reads STATUS_CHANGE rows whose `to` is OVERDUE/DEFAULT, so this sends nothing.
     const recoverWhere: Prisma.ContractWhereInput = {
       status: 'OVERDUE',
       deletedAt: null,
@@ -222,45 +237,57 @@ export class OverdueLifecycleCronService {
         },
       },
     };
-    const toRecover = await this.prisma.contract.findMany({
+    const candidates = await this.prisma.contract.findMany({
       where: recoverWhere,
-      select: { id: true },
+      select: { id: true, dunningStage: true, pendingDunningStage: true },
     });
-    const recoveredIds = toRecover.map((c) => c.id);
-    let recoveredUpdated = 0;
-    if (recoveredIds.length > 0) {
-      // Same atomic re-evaluation as Step 1: the full predicate rides on the
-      // updateMany, so a receipt void that re-opens a past-due installment between
-      // the snapshot and the update excludes that contract on the DB side. Scoping
-      // to the snapshot ids additionally guarantees no contract is restored without
-      // its audit row.
-      const [recoverResult] = (await this.prisma.$transaction([
-        this.prisma.contract.updateMany({
-          where: { ...recoverWhere, id: { in: recoveredIds } },
-          data: { status: 'ACTIVE' },
-        }),
-        this.prisma.auditLog.createMany({
-          data: recoveredIds.map((id) => ({
-            userId: systemUserId,
-            action: 'STATUS_CHANGE',
-            entity: 'contract',
-            entityId: id,
-            newValue: {
-              from: 'OVERDUE',
-              to: 'ACTIVE',
-              reason: 'No unsettled installment past its due date (caught up)',
-            },
-            ipAddress: 'system-cron',
-          })),
-        }),
-      ])) as [Prisma.BatchPayload, ...unknown[]];
-      recoveredUpdated = recoverResult.count;
-      if (recoveredUpdated !== recoveredIds.length) {
+    let recoveredIds: string[] = [];
+    if (candidates.length > 0) {
+      const before = new Map(candidates.map((c) => [c.id, c]));
+      recoveredIds = await this.prisma.$transaction(async (tx) => {
+        // The full predicate rides on the update (atomic re-evaluation, like Step 1):
+        // a receipt void that re-opens a past-due installment after the snapshot
+        // excludes that contract on the DB side. updateManyAndReturn tells us which
+        // rows actually changed, so audit rows are written for exactly those.
+        const restored = await tx.contract.updateManyAndReturn({
+          where: { ...recoverWhere, id: { in: [...before.keys()] } },
+          data: {
+            status: 'ACTIVE',
+            ...DUNNING_START,
+            pendingDunningStage: null,
+            pendingDunningSince: null,
+          },
+          select: { id: true },
+        });
+        if (restored.length > 0) {
+          await tx.auditLog.createMany({
+            data: restored.map(({ id }) => ({
+              userId: systemUserId,
+              action: 'STATUS_CHANGE',
+              entity: 'contract',
+              entityId: id,
+              newValue: {
+                from: 'OVERDUE',
+                to: 'ACTIVE',
+                reason: 'No unsettled installment past its due date (caught up)',
+                dunningReset: {
+                  previousStage: before.get(id)?.dunningStage ?? null,
+                  previousPendingStage: before.get(id)?.pendingDunningStage ?? null,
+                },
+              },
+              ipAddress: 'system-cron',
+            })),
+          });
+        }
+        return restored.map((r) => r.id);
+      });
+      if (recoveredIds.length !== candidates.length) {
         this.logger.warn(
-          `OVERDUE→ACTIVE: ${recoveredIds.length - recoveredUpdated} snapshot contract(s) changed before the update and were not restored (audit row written anyway — same accepted artifact as Step 1)`,
+          `OVERDUE→ACTIVE: ${candidates.length - recoveredIds.length} contract(s) changed between snapshot and update and were not restored`,
         );
       }
     }
+    const recoveredUpdated = recoveredIds.length;
 
     // Step 2: OVERDUE → DEFAULT (2+ consecutive missed payments).
     // Streak derivation lives in ConsecutiveMissedService (single source of truth) — งวดนับเป็นพลาดหลังสิ้นวันครบกำหนด
@@ -480,11 +507,7 @@ export class OverdueLifecycleCronService {
   async resetDunningStage(contractId: string) {
     return this.prisma.contract.update({
       where: { id: contractId },
-      data: {
-        dunningStage: 'NONE',
-        dunningEscalatedAt: null,
-        dunningLastActionAt: null,
-      },
+      data: { ...DUNNING_START },
     });
   }
 }

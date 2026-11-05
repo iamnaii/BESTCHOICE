@@ -12,7 +12,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { ProductsService } from '../../products/products.service';
-import { checkContractCompletion } from './payment-helpers';
+import { checkContractCompletion, lateFeeWaiverSettlement } from './payment-helpers';
 
 /**
  * Late-fee waiver flow — its OWN $transaction (4-eyes Segregation-of-Duties +
@@ -65,10 +65,10 @@ export class LateFeeWaiverService {
       const originalLateFee = lateFeeDec.toDecimalPlaces(2).toNumber();
       const notes = [payment.notes, `ยกเว้นค่าปรับ ${originalLateFee.toLocaleString()} บาท — ${reason}`].filter(Boolean).join(' | ');
 
-      // Check if payment becomes fully paid after waiving late fee
-      const totalOwedDec = new Prisma.Decimal(payment.amountDue.toString()); // without late fee
-      const amountPaidDec = new Prisma.Decimal(payment.amountPaid.toString());
-      const isNowFullyPaid = amountPaidDec.gte(totalOwedDec);
+      // Check if payment becomes fully paid after waiving late fee — the rule is shared
+      // with the request-approval path (late-fee-waiver/LateFeeWaiverService.approve).
+      const settlement = lateFeeWaiverSettlement(payment, new Date());
+      const isNowFullyPaid = settlement.fullyPaid;
 
       const updated = await tx.payment.update({
         where: { id: paymentId },
@@ -81,7 +81,7 @@ export class LateFeeWaiverService {
           waivedApprovedById: approverId,
           waivedAmount: originalLateFee,
           notes,
-          ...(isNowFullyPaid && payment.status !== 'PAID' ? { status: 'PAID', paidDate: new Date() } : {}),
+          ...settlement.update,
         },
       });
 
@@ -100,7 +100,7 @@ export class LateFeeWaiverService {
       });
 
       // Check contract completion inside transaction
-      if (isNowFullyPaid && payment.status !== 'PAID') {
+      if (settlement.becomesPaid) {
         await checkContractCompletion(this.prisma, this.productsService, this.logger, payment.contractId, tx);
       }
 

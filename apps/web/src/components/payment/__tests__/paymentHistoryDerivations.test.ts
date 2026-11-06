@@ -6,6 +6,7 @@ import {
   receiptLabelsForJes,
   caseForReceipt,
   paidRowsWithoutReceipt,
+  storedFeeWaived,
   type PaidPaymentRow,
   type ReceiptAmountRow,
   type JeRef,
@@ -283,7 +284,8 @@ describe('caseForReceipt', () => {
 
   it('a partially waived late fee uses the NET fee as the threshold', () => {
     // งวด 3,671 + net fee (100 − 40 = 60) = 3,731 is the exact obligation.
-    const p = casePay({ lateFee: '100', waivedAmount: '40' });
+    // Receipt-path gross waiver shape: flagged, lateFee gross, waivedAmount the discount.
+    const p = casePay({ lateFee: '100', lateFeeWaived: true, waivedAmount: '40' });
     expect(caseForReceipt(caseRcpt({ amount: '3731' }), p).label).toBe('ตรงดิว');
     expect(caseForReceipt(caseRcpt({ amount: '3732' }), p).label).toBe('ชำระเกิน');
   });
@@ -357,5 +359,41 @@ describe('paidRowsWithoutReceipt — งวด PAID ที่ไม่มีใ�
     const [row] = paidRowsWithoutReceipt([pay({})], []);
     expect(caseForReceipt(row, undefined)).toEqual({ label: 'ชำระแล้ว (ยกมา)', tone: 'info' });
     expect(computeCumulativePaid([rec({ amount: '4299' }), row])).toBe(8498);
+  });
+});
+
+/* ─── storedFeeWaived ──────────────────────────────────
+ * Only a row flagged lateFeeWaived carries its waiver inside lateFee. A partly waived
+ * row stores the collected part as lateFee and the remainder in waivedAmount, so
+ * subtracting waivedAmount again would under-count the fee (110 collected / 40 waived → 70).
+ */
+describe('storedFeeWaived', () => {
+  it('receipt-path gross waiver (flagged, lateFee gross 100, waived 40) → 40', () => {
+    expect(storedFeeWaived({ lateFee: '100', lateFeeWaived: true, waivedAmount: '40' })).toBe(40);
+  });
+  it('full standalone waiver (flagged, lateFee 0, waivedAmount 100) → 100', () => {
+    expect(storedFeeWaived({ lateFee: '0', lateFeeWaived: true, waivedAmount: '100' })).toBe(100);
+  });
+  it('legacy flagged row without waivedAmount → the whole fee', () => {
+    expect(storedFeeWaived({ lateFee: '100', lateFeeWaived: true, waivedAmount: null })).toBe(100);
+  });
+  it('partly waived row (not flagged, lateFee = collected 110, waivedAmount 40) → 0', () => {
+    expect(storedFeeWaived({ lateFee: '110', lateFeeWaived: false, waivedAmount: '40' })).toBe(0);
+  });
+  it('no waiver → 0', () => {
+    expect(storedFeeWaived({ lateFee: '50', lateFeeWaived: false, waivedAmount: null })).toBe(0);
+  });
+});
+
+describe('caseForReceipt — obligation with a partly waived fee', () => {
+  it('partly waived row: 1,515.83 + the 110 collected is exactly the obligation (not an overpay)', () => {
+    const p = casePay({ amountDue: '1515.83', lateFee: '110', lateFeeWaived: false, waivedAmount: '40' });
+    expect(caseForReceipt(caseRcpt({ amount: '1625.83' }), p).label).toBe('ตรงดิว');
+    expect(caseForReceipt(caseRcpt({ amount: '1625.84' }), p).label).toBe('ชำระเกิน');
+  });
+  it('flagged gross waiver still nets the waiver out of the obligation', () => {
+    const p = casePay({ amountDue: '1515.83', lateFee: '100', lateFeeWaived: true, waivedAmount: '40' });
+    expect(caseForReceipt(caseRcpt({ amount: '1575.83' }), p).label).toBe('ตรงดิว');
+    expect(caseForReceipt(caseRcpt({ amount: '1575.84' }), p).label).toBe('ชำระเกิน');
   });
 });

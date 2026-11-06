@@ -52,6 +52,7 @@ export function lateFeeAtPostDate(
     amountDue: Prisma.Decimal | string | number;
     amountPaid?: Prisma.Decimal | string | number;
     lateFee: Prisma.Decimal | string | number;
+    waivedAmount?: Prisma.Decimal | string | number | null;
     lateFeeWaived: boolean;
   },
   cfg: LateFeeConfig,

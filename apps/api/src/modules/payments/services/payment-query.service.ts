@@ -618,7 +618,7 @@ export class PaymentQueryService {
       // stamp — recompute from current config so the KPI matches the queue rows).
       this.prisma.payment.findMany({
         where: pendingWhere,
-        select: { id: true, dueDate: true, amountDue: true, amountPaid: true, lateFee: true, lateFeeWaived: true },
+        select: { id: true, dueDate: true, amountDue: true, amountPaid: true, lateFee: true, lateFeeWaived: true, waivedAmount: true },
       }),
       loadLateFeeConfig(this.prisma),
     ]);
@@ -757,9 +757,12 @@ export class PaymentQueryService {
 
     // Late fee lives on the INSTALLMENT (Payment.lateFee), not on the receipt, so
     // it is counted once per distinct installment even when two receipts cleared
-    // it. Net of the waiver, using the same convention as the history modal's
-    // computeFeeTotals: an explicit `waivedAmount` wins, otherwise
-    // `lateFeeWaived` means the whole gross fee was waived (legacy rows).
+    // it. Net of the waiver, same rule as `netStoredFee` above: only a row flagged
+    // `lateFeeWaived` carries its waiver inside `lateFee` (receipt-path gross waiver /
+    // standalone full waiver) — subtract `waivedAmount`, or the whole fee when a legacy
+    // row has none. A partly waived row (`lateFeeWaived` false) already stores just the
+    // collected part as `lateFee` with the remainder in `waivedAmount`, so nothing is
+    // subtracted (doing so would count 110 collected / 40 waived as 70).
     // `distinct` above dedupes at the DB, the Set dedupes again in code — the
     // fee must be counted once per installment even if that clause ever moves.
     // Each row's net is clamped at 0 BEFORE summing: the standalone waiver flow
@@ -779,12 +782,11 @@ export class PaymentQueryService {
     const totalLateFees = feeRows
       .reduce((acc, p) => {
         const gross = new Prisma.Decimal(p.lateFee ?? 0);
-        const waived =
-          p.waivedAmount != null
+        const waived = !p.lateFeeWaived
+          ? new Prisma.Decimal(0)
+          : p.waivedAmount != null
             ? new Prisma.Decimal(p.waivedAmount)
-            : p.lateFeeWaived
-              ? gross
-              : new Prisma.Decimal(0);
+            : gross;
         return acc.plus(Prisma.Decimal.max(0, gross.minus(waived)));
       }, new Prisma.Decimal(0))
       .toDecimalPlaces(2)

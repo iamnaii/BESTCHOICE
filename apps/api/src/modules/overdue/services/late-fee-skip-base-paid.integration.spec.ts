@@ -94,6 +94,17 @@ describe('calculateLateFees skips installments whose base is already paid', () =
         dueDate: new Date(now - 10 * 86_400_000), status: 'PARTIALLY_PAID',
       },
     });
+    // Row 5 — partly waived (150 fee, 110 collected, 40 waived) and then every receipt
+    // voided: amountPaid is back to 0 but the waiver stands → the 110 it left stays the
+    // fee; the 100 bracket must not come back.
+    await prisma.payment.create({
+      data: {
+        contractId, installmentNo: 5, amountDue: new Prisma.Decimal('3671.00'),
+        amountPaid: new Prisma.Decimal(0), lateFee: new Prisma.Decimal('110.00'),
+        lateFeeWaived: false, waivedAmount: new Prisma.Decimal('40.00'),
+        dueDate: new Date(now - 10 * 86_400_000), status: 'OVERDUE',
+      },
+    });
   });
 
   afterAll(async () => {
@@ -139,5 +150,17 @@ describe('calculateLateFees skips installments whose base is already paid', () =
     const zeroFee = await prisma.payment.findFirst({ where: { contractId, installmentNo: 4 } });
     expect(zeroFee!.lateFee.toFixed(2)).toBe('0.00');
     expect(zeroFee!.status).toBe('PARTIALLY_PAID');
+  });
+
+  it('keeps the charge an approved waiver left after every receipt was voided (amountPaid 0)', async () => {
+    const svc = new OverdueLifecycleCronService(
+      prisma as never,
+      new ConsecutiveMissedService(prisma as never),
+    );
+    await svc.calculateLateFees();
+
+    const waived = await prisma.payment.findFirst({ where: { contractId, installmentNo: 5 } });
+    expect(waived!.lateFee.toFixed(2)).toBe('110.00');
+    expect(waived!.waivedAmount?.toFixed(2)).toBe('40.00');
   });
 });

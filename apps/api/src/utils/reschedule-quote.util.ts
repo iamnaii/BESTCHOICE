@@ -19,6 +19,8 @@ export interface RescheduleQuoteInput {
     /** Optional for legacy callers — missing → 0 (nothing paid yet). */
     amountPaid?: Prisma.Decimal | number | string;
     lateFee?: Prisma.Decimal | number | string;
+    /** Approved waiver on the row — freezes the stored fee (isLateFeeFrozen). */
+    waivedAmount?: Prisma.Decimal | number | string | null;
     lateFeeWaived: boolean;
   };
   lateFeeCfg: LateFeeConfig;

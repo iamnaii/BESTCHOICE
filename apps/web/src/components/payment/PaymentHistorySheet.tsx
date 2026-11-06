@@ -23,6 +23,7 @@ import {
   paidRowsWithoutReceipt,
   receiptLabelsForJes,
   caseForReceipt,
+  storedFeeWaived,
   type CaseTone,
   type ReceiptInstallmentAllocation,
 } from './paymentHistoryDerivations';
@@ -206,10 +207,7 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
   const feeByPaymentId = useMemo(() => {
     const m = new Map<string, { lateFee: number; waived: number }>();
     for (const p of payments) {
-      const lateFee = Number(p.lateFee) || 0;
-      const waived =
-        p.waivedAmount != null ? Number(p.waivedAmount) : p.lateFeeWaived ? lateFee : 0;
-      m.set(p.id, { lateFee, waived });
+      m.set(p.id, { lateFee: Number(p.lateFee) || 0, waived: storedFeeWaived(p) });
     }
     return m;
   }, [payments]);

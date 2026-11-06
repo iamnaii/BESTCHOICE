@@ -84,6 +84,10 @@ export class AuditController {
       rowsChecked: result.rowsChecked,
       firstMismatchSeq: result.firstMismatchSeq?.toString() ?? null,
       firstMismatchId: result.firstMismatchId,
+      mismatchKind: result.mismatchKind,
+      // จุดขาดที่รับรู้แล้ว (audit_chain_acknowledged_breaks) — แสดงให้ผู้ตรวจสอบเห็นเสมอ
+      acknowledgedBreaks: result.acknowledgedBreaks,
+      acknowledgedSeqs: result.acknowledgedSeqs,
     };
   }
 }

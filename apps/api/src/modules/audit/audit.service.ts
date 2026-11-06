@@ -173,16 +173,43 @@ export class AuditService {
    *
    * Historical rows where rowHash IS NULL (backfill before this migration)
    * are skipped — the chain is defined only for post-migration rows.
+   *
+   * Acknowledged breaks (table `audit_chain_acknowledged_breaks`, append-only):
+   * the prev-link comparison is skipped for an acknowledged seq ONLY when the
+   * row's id, rowHash, stored prevRowHash AND the previous row's rowHash all
+   * still equal the values captured at acknowledgement time. Otherwise it is
+   * reported as `ACK_MISMATCH`. The acknowledged row's own content hash is
+   * still recomputed, and the next row must still link to its rowHash — so
+   * every other break, and any later change to the acknowledged row, alerts.
+   * If the acknowledgement table can't be read, this throws (fail closed —
+   * the cron reports it as a failure instead of silently passing).
    */
   async verifyChain(options: { maxRows?: number } = {}): Promise<{
     ok: boolean;
     rowsChecked: number;
     /** แถวรุ่น 1 (ไม่มี prefix v2:) — ตรวจ hash ย้อนหลังไม่ได้โดยโครงสร้าง ไม่นับเป็น mismatch */
     legacyUnverifiable: number;
+    /** จำนวนจุดขาดที่รับรู้แล้ว (acknowledged) ที่เจอและตรงทุกค่าระหว่างเดิน chain */
+    acknowledgedBreaks: number;
+    acknowledgedSeqs: string[];
     firstMismatchSeq: bigint | null;
     firstMismatchId: string | null;
+    mismatchKind: 'PREV_LINK' | 'ROW_HASH' | 'ACK_MISMATCH' | null;
   }> {
     const take = options.maxRows ?? 10_000;
+    // Fail closed: no try/catch — an unreadable ack table must surface as an error.
+    const acks = await this.prisma.auditChainAcknowledgedBreak.findMany({
+      select: {
+        sequenceNumber: true,
+        auditLogId: true,
+        breakType: true,
+        expectedPrevRowHash: true,
+        actualPrevRowHash: true,
+        rowHashAtAck: true,
+      },
+    });
+    const ackBySeq = new Map(acks.map((a) => [a.sequenceNumber.toString(), a]));
+
     const rows = await this.prisma.auditLog.findMany({
       where: { rowHash: { not: null }, sequenceNumber: { not: null } },
       orderBy: { sequenceNumber: 'asc' },
@@ -205,57 +232,72 @@ export class AuditService {
     let lastHash: string | null = null;
     let lastSeq: bigint | null = null;
     let legacyUnverifiable = 0;
-    for (const r of rows) {
+    const acknowledgedSeqs: string[] = [];
+    const mismatch = (
+      index: number,
+      r: { sequenceNumber: bigint; id: string },
+      kind: 'PREV_LINK' | 'ROW_HASH' | 'ACK_MISMATCH',
+    ) => ({
+      ok: false,
+      rowsChecked: index,
+      legacyUnverifiable,
+      acknowledgedBreaks: acknowledgedSeqs.length,
+      acknowledgedSeqs,
+      firstMismatchSeq: r.sequenceNumber,
+      firstMismatchId: r.id,
+      mismatchKind: kind,
+    });
+    for (const [index, r] of rows.entries()) {
       if (r.sequenceNumber === null || r.rowHash === null) continue;
+      const row = { ...r, sequenceNumber: r.sequenceNumber, rowHash: r.rowHash };
       // prev linkage check — เฉพาะเมื่อ seq ต่อเนื่องกันจริง: nextval() ของ tx ที่ rollback
       // ทำให้ seq ข้ามได้ และแถวถัดไปหา prev ที่ seq-1 ไม่เจอจึงเก็บ prevRowHash=null ตามดีไซน์
       // (ไม่ใช่การแก้ข้อมูล) — ช่องว่างแบบนั้นข้ามการเทียบ ไม่ใช่ mismatch
-      const contiguous = lastSeq !== null && r.sequenceNumber === lastSeq + BigInt(1);
-      if (contiguous && (r.prevRowHash ?? null) !== lastHash) {
-        return {
-          ok: false,
-          rowsChecked: rows.indexOf(r),
-          legacyUnverifiable,
-          firstMismatchSeq: r.sequenceNumber,
-          firstMismatchId: r.id,
-        };
+      const contiguous = lastSeq !== null && row.sequenceNumber === lastSeq + BigInt(1);
+      if (contiguous && (row.prevRowHash ?? null) !== lastHash) {
+        const ack = ackBySeq.get(row.sequenceNumber.toString());
+        if (!ack) return mismatch(index, row, 'PREV_LINK');
+        const ackMatches =
+          ack.breakType === 'PREV_LINK_MISMATCH' &&
+          ack.auditLogId === row.id &&
+          ack.expectedPrevRowHash === lastHash &&
+          (ack.actualPrevRowHash ?? null) === (row.prevRowHash ?? null) &&
+          ack.rowHashAtAck === row.rowHash;
+        if (!ackMatches) return mismatch(index, row, 'ACK_MISMATCH');
+        // จุดขาดที่รับรู้แล้วและทุกค่ายังตรง — ข้ามเฉพาะการเทียบ prev ส่วน hash เนื้อหายังตรวจต่อด้านล่าง
+        acknowledgedSeqs.push(row.sequenceNumber.toString());
       }
-      lastHash = r.rowHash;
-      lastSeq = r.sequenceNumber;
-      if (!r.rowHash.startsWith(AuditService.HASH_VERSION_PREFIX)) {
+      lastHash = row.rowHash;
+      lastSeq = row.sequenceNumber;
+      if (!row.rowHash.startsWith(AuditService.HASH_VERSION_PREFIX)) {
         // แถวรุ่น 1: รูป JSON ตอนเขียนถูก jsonb เรียง key ใหม่ไปแล้ว คำนวณซ้ำไม่ได้
         legacyUnverifiable++;
         continue;
       }
       const expected = this.computeRowHash({
-        sequenceNumber: r.sequenceNumber,
-        id: r.id,
-        userId: r.userId,
-        action: r.action,
-        entity: r.entity,
-        entityId: r.entityId,
-        oldValue: r.oldValue as unknown,
-        newValue: r.newValue as unknown,
-        createdAt: r.createdAt,
-        prevRowHash: r.prevRowHash ?? null,
+        sequenceNumber: row.sequenceNumber,
+        id: row.id,
+        userId: row.userId,
+        action: row.action,
+        entity: row.entity,
+        entityId: row.entityId,
+        oldValue: row.oldValue as unknown,
+        newValue: row.newValue as unknown,
+        createdAt: row.createdAt,
+        prevRowHash: row.prevRowHash ?? null,
       });
-      if (expected !== r.rowHash) {
-        return {
-          ok: false,
-          rowsChecked: rows.indexOf(r),
-          legacyUnverifiable,
-          firstMismatchSeq: r.sequenceNumber,
-          firstMismatchId: r.id,
-        };
-      }
+      if (expected !== row.rowHash) return mismatch(index, row, 'ROW_HASH');
     }
 
     return {
       ok: true,
       rowsChecked: rows.length,
       legacyUnverifiable,
+      acknowledgedBreaks: acknowledgedSeqs.length,
+      acknowledgedSeqs,
       firstMismatchSeq: null,
       firstMismatchId: null,
+      mismatchKind: null,
     };
   }
 

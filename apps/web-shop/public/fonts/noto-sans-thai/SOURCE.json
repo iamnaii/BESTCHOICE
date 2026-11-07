@@ -1,0 +1,67 @@
+{
+  "package": "@fontsource/noto-sans-thai",
+  "version": "5.3.0",
+  "license": "SIL Open Font License 1.1; see OFL.txt",
+  "files": [
+    {
+      "file": "noto-sans-thai-latin-400-normal.woff2",
+      "bytes": 10268,
+      "sha256": "fde3c93cfbfd8c97286fac1cca1c89912eb61857dd3996d26b7c0eaf16715bb6"
+    },
+    {
+      "file": "noto-sans-thai-latin-500-normal.woff2",
+      "bytes": 10356,
+      "sha256": "48a30aec87f1260fd291e1cc3cbc2fd191098eec913f583b8d77cb79b0e1edce"
+    },
+    {
+      "file": "noto-sans-thai-latin-600-normal.woff2",
+      "bytes": 10304,
+      "sha256": "351530d6156ff829f957f2085a55f5ea45c4d07e3504625b1e7db0b239c25e3a"
+    },
+    {
+      "file": "noto-sans-thai-latin-700-normal.woff2",
+      "bytes": 10220,
+      "sha256": "af79e77ba9fd08231b341621ee55fef64a63e0e1da954734e2766bec60830bd9"
+    },
+    {
+      "file": "noto-sans-thai-latin-ext-400-normal.woff2",
+      "bytes": 6084,
+      "sha256": "c4c5134dd6335447b84e9e07aa27e37f992392ad431de986a18f2b93bbd7f236"
+    },
+    {
+      "file": "noto-sans-thai-latin-ext-500-normal.woff2",
+      "bytes": 6108,
+      "sha256": "7f6ea1c9c6ec61ce23cbf5e4ad6b884fbc1035b001ab4e4054cce15bd4a4b06a"
+    },
+    {
+      "file": "noto-sans-thai-latin-ext-600-normal.woff2",
+      "bytes": 6100,
+      "sha256": "b0e06825e76094dfeadd98794fe0d8d1be127303fcb11e450391ee5a93c14b3c"
+    },
+    {
+      "file": "noto-sans-thai-latin-ext-700-normal.woff2",
+      "bytes": 6112,
+      "sha256": "a2eb1eb7dfaa51dbf681e8ff39e59599d9da67a652e38ca3ae703a942d2d5ca2"
+    },
+    {
+      "file": "noto-sans-thai-thai-400-normal.woff2",
+      "bytes": 9112,
+      "sha256": "57776453076ebf0fa935080e63c0ae656f1f1ecd5172112d59d3b259e0dd8796"
+    },
+    {
+      "file": "noto-sans-thai-thai-500-normal.woff2",
+      "bytes": 9224,
+      "sha256": "36aac83971765332c5d79f98bba123a4ed07aacd5f90c4634eecba7d46264014"
+    },
+    {
+      "file": "noto-sans-thai-thai-600-normal.woff2",
+      "bytes": 9220,
+      "sha256": "8690b63cc8c7090492cce68f57a421be92fee4f682dff7ee06912132ebd2a8fc"
+    },
+    {
+      "file": "noto-sans-thai-thai-700-normal.woff2",
+      "bytes": 9128,
+      "sha256": "fa4acaf9f20aa6d9a4c86c6474fe40e65525dd2ed6dd687f55a4ef1da5a0a57e"
+    }
+  ]
+}

@@ -3,7 +3,7 @@
 @import './styles/tokens.css';
 @import './styles/motion.css';
 
-/* Noto Sans Thai Looped is shared with the admin/customer UI.
+/* Noto Sans Thai (ไม่มีหัว) ใช้ร่วมกับหลังบ้าน/LIFF
    Thai headings retain room for stacked vowel and tone marks. */
 
 @layer base {

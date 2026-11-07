@@ -1,0 +1,82 @@
+{
+  "package": "@fontsource/ibm-plex-sans-thai",
+  "version": "5.3.0",
+  "license": "SIL Open Font License 1.1; see OFL.txt",
+  "files": [
+    {
+      "file": "ibm-plex-sans-thai-latin-300-normal.woff2",
+      "bytes": 19024,
+      "sha256": "d03f48db9ee3be6a2ee36fd5f489272a35e458d34cd53dc315c6e4d46c48a47d"
+    },
+    {
+      "file": "ibm-plex-sans-thai-latin-400-normal.woff2",
+      "bytes": 17736,
+      "sha256": "82ddd36544e4776857cce6ab26d0e509d10c1eeddf872c1b16f421489b0096a7"
+    },
+    {
+      "file": "ibm-plex-sans-thai-latin-500-normal.woff2",
+      "bytes": 18520,
+      "sha256": "50cf74f017a2d3a07154e829a48d259c52cb4c068e80bed3b75a3dbe024d7168"
+    },
+    {
+      "file": "ibm-plex-sans-thai-latin-600-normal.woff2",
+      "bytes": 18992,
+      "sha256": "2a1bc932c82cf188c06d8f29797dd31bc0604229571e08f340d816aa9e4014b4"
+    },
+    {
+      "file": "ibm-plex-sans-thai-latin-700-normal.woff2",
+      "bytes": 18016,
+      "sha256": "ed45a51e88e4dac8cd8e0279327b96d3c899bb4c8a4acccd07f296c470284bba"
+    },
+    {
+      "file": "ibm-plex-sans-thai-latin-ext-300-normal.woff2",
+      "bytes": 6608,
+      "sha256": "bf7effe88954da7af74e43fcafe53ac646e669f403917b1bbc8c2d3008e8ea21"
+    },
+    {
+      "file": "ibm-plex-sans-thai-latin-ext-400-normal.woff2",
+      "bytes": 6356,
+      "sha256": "20e71a8635466748fba07aa4dfd8ba2e2f00fb9480cf490357735a6101e2604f"
+    },
+    {
+      "file": "ibm-plex-sans-thai-latin-ext-500-normal.woff2",
+      "bytes": 6248,
+      "sha256": "5dd17f81b73f5d230276b51e671b6c1947f7b9e0310b4dc900e410baa35740e7"
+    },
+    {
+      "file": "ibm-plex-sans-thai-latin-ext-600-normal.woff2",
+      "bytes": 6276,
+      "sha256": "1c5d96f1c642f4c6de3f79ea757212e728bf8d5c46599983f8f7115563d77491"
+    },
+    {
+      "file": "ibm-plex-sans-thai-latin-ext-700-normal.woff2",
+      "bytes": 6280,
+      "sha256": "4f4de58fbe515539dbbf904f5790eacc406d6ba2f41ee91960be83379aee9a64"
+    },
+    {
+      "file": "ibm-plex-sans-thai-thai-300-normal.woff2",
+      "bytes": 12024,
+      "sha256": "1d7693ed83b4983c08a9643b1a66cc376cf9489aaa0fa29ebcbd410ee05236c6"
+    },
+    {
+      "file": "ibm-plex-sans-thai-thai-400-normal.woff2",
+      "bytes": 11804,
+      "sha256": "2d66381c26d32bf2a95bfe559d1a5ed5475fcdac3fa128e45a33301010d42056"
+    },
+    {
+      "file": "ibm-plex-sans-thai-thai-500-normal.woff2",
+      "bytes": 11716,
+      "sha256": "7e01c133031aba4ca902d81930096f0224d83f808014c1232016b49e0a7ecff6"
+    },
+    {
+      "file": "ibm-plex-sans-thai-thai-600-normal.woff2",
+      "bytes": 11804,
+      "sha256": "ea935955dc3bccb684f8fb772dbd429250dd0d3dfee9483995a3ee3456471df8"
+    },
+    {
+      "file": "ibm-plex-sans-thai-thai-700-normal.woff2",
+      "bytes": 11944,
+      "sha256": "0862e44c00761da16f929a078d2c6d5ed302b9eef84b143bc1c5a1c8a3a31878"
+    }
+  ]
+}

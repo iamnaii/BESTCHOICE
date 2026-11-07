@@ -32,7 +32,7 @@ describe('Public, service, report and settings field regressions', () => {
             });
           });
           expect(fields.length).toBeGreaterThan(0);
-          for (const f of fields) { expect(f.height).toBeGreaterThanOrEqual(config.root * 2.75 - 0.1); expect(f.font).toContain('Noto Sans Thai Looped'); expect(f.x).toBeGreaterThanOrEqual(0); expect(f.right).toBeLessThanOrEqual(config.width); if (config.width < 1024) expect(f.size).toBeGreaterThanOrEqual(config.root); }
+          for (const f of fields) { expect(f.height).toBeGreaterThanOrEqual(config.root * 2.75 - 0.1); expect(f.font).toMatch(/^["']?Noto Sans Thai["']?,/); expect(f.x).toBeGreaterThanOrEqual(0); expect(f.right).toBeLessThanOrEqual(config.width); if (config.width < 1024) expect(f.size).toBeGreaterThanOrEqual(config.root); }
           expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
           await page.screenshot({ path: join(output, `${name}-${config.width}-${config.theme}-${config.root}.png`), fullPage: true, animations: 'disabled' });
           results.push({ name, ...config, fields, status: 'PASS' });

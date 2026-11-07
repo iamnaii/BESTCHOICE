@@ -78,7 +78,7 @@ describe('PO filter alignment and selection', () => {
           const selects = fields.slice(1);
           for (const field of fields) {
             expect(field.height).toBeCloseTo(2.75 * config.root, 0);
-            expect(field.font).toContain('Noto Sans Thai Looped');
+            expect(field.font).toMatch(/^["']?Noto Sans Thai["']?,/);
             expect(field.size).toBe(fields[0].size);
             expect(field.paddingLeft).toBe(fields[0].paddingLeft);
           }

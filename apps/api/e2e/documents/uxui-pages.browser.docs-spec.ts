@@ -150,8 +150,8 @@ describe('UX/UI route inventory on isolated full API', () => {
                 // Report wrappers include UI controls; only actual paper/editor subtrees
                 // retain their legacy font. Inspect body to include portalled controls.
                 const paper = '.voucher-sheet,.document-sheet,.bc-document,.template-paper,.font-sarabun,.mobile-receipt,.sticker,.print-stickers,.tiptap,svg,iframe';
-                const wrongFonts = [...document.body.querySelectorAll('*')].filter(e => visible(e) && !e.closest(paper) && [...e.childNodes].some(n => n.nodeType === Node.TEXT_NODE && n.textContent?.trim()) && !getComputedStyle(e).fontFamily.includes('Noto Sans Thai Looped')).map(e => ({ tag: e.tagName, text: e.textContent?.slice(0, 80), font: getComputedStyle(e).fontFamily })).slice(0, 20);
-                const fontLoaded = [...document.fonts].some(f => f.family.includes('Noto Sans Thai Looped') && f.status === 'loaded');
+                const wrongFonts = [...document.body.querySelectorAll('*')].filter(e => visible(e) && !e.closest(paper) && [...e.childNodes].some(n => n.nodeType === Node.TEXT_NODE && n.textContent?.trim()) && !/^["']?Noto Sans Thai["']?,/.test(getComputedStyle(e).fontFamily)).map(e => ({ tag: e.tagName, text: e.textContent?.slice(0, 80), font: getComputedStyle(e).fontFamily })).slice(0, 20);
+                const fontLoaded = [...document.fonts].some(f => f.family.replace(/["']/g, '') === 'Noto Sans Thai' && f.status === 'loaded');
                 const overflowingElements = [...main.querySelectorAll('*')].filter(e => visible(e) && e.getBoundingClientRect().right > innerWidth + 1).slice(0, 30).map(e => ({ tag: e.tagName, className: e.getAttribute('class'), right: e.getBoundingClientRect().right, text: e.textContent?.slice(0, 100) }));
                 const fields = [...main.querySelectorAll<HTMLInputElement>('input,select,textarea,button[role="combobox"],[data-slot="select-trigger"]')]
                   .filter(e => visible(e) && !e.closest(paper) && !['hidden', 'checkbox', 'radio', 'file', 'range', 'color'].includes(e.type))

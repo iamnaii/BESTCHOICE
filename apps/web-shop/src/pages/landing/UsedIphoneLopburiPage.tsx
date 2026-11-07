@@ -100,13 +100,13 @@ export default function UsedIphoneLopburiPage() {
                     <Stack gap={2} className="leading-snug">
                       {q.icon}
                       <h3 className="font-semibold leading-snug">{q.title}</h3>
-                      <p className="text-sm text-muted-foreground leading-snug">{q.description}</p>
+                      <p className="reading-block text-muted-foreground">{q.description}</p>
                     </Stack>
                   </CardBody>
                 </Card>
               ))}
             </div>
-            <p className="mt-3 text-sm text-muted-foreground leading-snug">
+            <p className="mt-3 reading-block text-muted-foreground">
               ทุกเครื่องแสดงรูปถ่ายเครื่องจริง ราคาเงินสด และค่างวดผ่อนบนหน้า{' '}
               <Link to="/products" className="text-emerald-700 underline">สินค้าทั้งหมด</Link>{' '}
               — เงื่อนไขประกันอ่านได้ที่{' '}

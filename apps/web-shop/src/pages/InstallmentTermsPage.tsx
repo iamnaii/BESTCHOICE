@@ -125,14 +125,14 @@ export default function InstallmentTermsPage() {
                       <h2 className="font-semibold text-base md:text-lg leading-snug">{s.title}</h2>
                     </div>
                     {s.paragraphs.map((p, j) => (
-                      <p key={j} className="text-sm text-muted-foreground leading-snug">
+                      <p key={j} className="reading-block text-muted-foreground">
                         {p}
                       </p>
                     ))}
                     {s.bullets && (
                       <ul className="space-y-1.5">
                         {s.bullets.map((b, j) => (
-                          <li key={j} className="flex gap-2 text-sm leading-snug">
+                          <li key={j} className="flex gap-2 reading-block">
                             <Check className="size-4 text-emerald-500 shrink-0 mt-0.5" aria-hidden="true" />
                             <span>{b}</span>
                           </li>

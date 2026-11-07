@@ -377,7 +377,7 @@ export default function ProductDetailPage() {
             <WarrantyDetails warranty={selectedUnit ?? data} />
 
             {data.description && (
-              <p className="text-sm md:text-base text-muted-foreground leading-snug">
+              <p className="reading-block text-muted-foreground">
                 {data.description}
               </p>
             )}

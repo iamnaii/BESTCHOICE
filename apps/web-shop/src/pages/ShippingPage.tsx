@@ -83,10 +83,10 @@ export default function ShippingPage() {
       <Container>
         <Stack gap={6} className="py-8">
           <Stack gap={3} className="leading-snug">
-            <p className="text-sm md:text-base text-muted-foreground leading-snug">
+            <p className="reading-block text-muted-foreground">
               {copy.shipping.intro1}
             </p>
-            <p className="text-sm md:text-base text-muted-foreground leading-snug">
+            <p className="reading-block text-muted-foreground">
               {copy.shipping.intro2}
             </p>
           </Stack>
@@ -108,7 +108,7 @@ export default function ShippingPage() {
                         <h3 className="text-base font-semibold leading-snug">{m.name}</h3>
                         <p className="text-xs text-muted-foreground leading-snug">{m.eta}</p>
                       </div>
-                      <p className="text-sm text-muted-foreground leading-snug">{m.description}</p>
+                      <p className="reading-block text-muted-foreground">{m.description}</p>
                     </Stack>
                   </CardBody>
                 </Card>
@@ -124,13 +124,13 @@ export default function ShippingPage() {
                   <Stack gap={3} className="leading-snug">
                     <div className="flex items-start gap-3">
                       <MapPin className="size-5 text-emerald-600 shrink-0 mt-0.5" aria-hidden="true" />
-                      <p className="text-sm text-muted-foreground leading-snug">
+                      <p className="reading-block text-muted-foreground">
                         {copy.shipping.branchAddress}
                       </p>
                     </div>
                     <div className="flex items-start gap-3">
                       <Clock className="size-5 text-emerald-600 shrink-0 mt-0.5" aria-hidden="true" />
-                      <p className="text-sm text-muted-foreground leading-snug">
+                      <p className="reading-block text-muted-foreground">
                         {copy.shipping.branchHours}
                       </p>
                     </div>

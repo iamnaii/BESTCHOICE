@@ -82,7 +82,7 @@ export default function ShopHeader() {
             <img src="/logo-icon.svg" alt="" className="size-6" aria-hidden />
           </span>
           {/* Wordmark split per the logo: BEST in charcoal, CHOICE in the brand green. */}
-          <span className="font-brand text-[15px] font-extrabold italic">
+          <span className="font-brand text-[15px] font-bold italic">
             <span className="text-zinc-700">BEST</span>
             <span className="text-emerald-500">CHOICE</span>
           </span>

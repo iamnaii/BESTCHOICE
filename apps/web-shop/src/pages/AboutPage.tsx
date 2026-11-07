@@ -86,10 +86,10 @@ export default function AboutPage() {
                 <h2 className="text-2xl md:text-3xl font-bold leading-snug">
                   {copy.about.storyTitle}
                 </h2>
-                <p className="text-sm md:text-base text-muted-foreground leading-snug">
+                <p className="reading-block text-muted-foreground">
                   {copy.about.storyP1}
                 </p>
-                <p className="text-sm md:text-base text-muted-foreground leading-snug">
+                <p className="reading-block text-muted-foreground">
                   {copy.about.storyP2}
                 </p>
               </Stack>
@@ -112,7 +112,7 @@ export default function AboutPage() {
                         {m.year}
                       </span>
                       <h3 className="text-base font-semibold leading-snug">{m.title}</h3>
-                      <p className="text-sm text-muted-foreground leading-snug">{m.description}</p>
+                      <p className="reading-block text-muted-foreground">{m.description}</p>
                     </Stack>
                   </CardBody>
                 </Card>
@@ -131,7 +131,7 @@ export default function AboutPage() {
                         <v.Icon className="size-6" aria-hidden="true" />
                       </span>
                       <h3 className="text-lg font-semibold leading-snug">{v.title}</h3>
-                      <p className="text-sm text-muted-foreground leading-snug">{v.description}</p>
+                      <p className="reading-block text-muted-foreground">{v.description}</p>
                     </Stack>
                   </CardBody>
                 </Card>

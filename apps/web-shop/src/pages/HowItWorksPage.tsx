@@ -102,7 +102,7 @@ export default function HowItWorksPage() {
                         <step.Icon className="size-5 text-emerald-600" aria-hidden="true" />
                       </div>
                       <h3 className="text-lg font-semibold leading-snug">{step.title}</h3>
-                      <p className="text-sm text-muted-foreground leading-snug">
+                      <p className="reading-block text-muted-foreground">
                         {step.description}
                       </p>
                     </Stack>

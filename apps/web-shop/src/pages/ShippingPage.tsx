@@ -108,7 +108,7 @@ export default function ShippingPage() {
                         <h3 className="text-base font-semibold leading-snug">{m.name}</h3>
                         <p className="text-xs text-muted-foreground leading-snug">{m.eta}</p>
                       </div>
-                      <p className="reading-block text-muted-foreground">{m.description}</p>
+                      <p className="text-sm text-muted-foreground leading-snug">{m.description}</p>
                     </Stack>
                   </CardBody>
                 </Card>

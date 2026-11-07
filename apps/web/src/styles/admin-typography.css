@@ -10,6 +10,12 @@
       font-variant-numeric: tabular-nums;
     }
 
+    /* Tight tracking was tuned for the looped face; the loopless Noto Sans Thai
+     * stacks marks when squeezed. Screen UI only; paper keeps its tracking. */
+    & :is(.tracking-tight, .tracking-tighter):not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
+      letter-spacing: normal;
+    }
+
     /* Secondary labels and counters must remain legible at compact density. */
     & :is(.text-2xs, .text-\[7px\], .text-\[9px\], .text-\[9\.5px\], .text-\[10px\], .text-\[10\.5px\], .text-\[11px\], .text-\[11\.5px\], .text-\[0\.6875rem\]):not(:where(.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, iframe, .voucher-sheet *, .document-sheet *, .bc-document *, .document-landscape *, .document-print-dialog *, .template-paper *, .font-sarabun *, .mobile-receipt *, .sticker *, .print-stickers *, .tiptap *, iframe *)) {
       font-size: 0.75rem;

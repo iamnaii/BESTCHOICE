@@ -46,7 +46,8 @@ describe('admin app fonts', () => {
   });
   test('document faces are self-hosted at the weights the Google import requested', () => {
     expect(faces(docFontsCss).sort()).toEqual([
-      ...expectFaces('Inter', 'inter', W5, ['latin', 'latin-ext']),
+      // spec §5: Google serves Inter as ONE variable woff2 per subset (static @fontsource files rasterise differently at 500/700)
+      ...W5.flatMap((w) => ['latin', 'latin-ext'].map((s) => `Inter|${w}|/fonts/inter/inter-${s}-variable.woff2`)),
       ...expectFaces('IBM Plex Sans Thai', 'ibm-plex-sans-thai', W5, ['thai', 'latin', 'latin-ext']),
       ...expectFaces('IBM Plex Mono', 'ibm-plex-mono', ['300', '400', '500', '600'], ['latin', 'latin-ext']),
     ].sort());

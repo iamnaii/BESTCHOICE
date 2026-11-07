@@ -1,57 +1,20 @@
 {
-  "package": "@fontsource/inter",
-  "version": "5.3.0",
+  "package": "Inter (Google Fonts, variable)",
+  "version": "Google Fonts v20",
+  "cssSource": "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap",
   "license": "SIL Open Font License 1.1; see OFL.txt",
   "files": [
     {
-      "file": "inter-latin-300-normal.woff2",
-      "bytes": 23916,
-      "sha256": "be0276550393a72b94d673505567dceba801511d5e1ca5a87793190dc5d5a6ca"
+      "file": "inter-latin-ext-variable.woff2",
+      "bytes": 85272,
+      "sha256": "a28eb6d3ccb534ae0c94ca999371df024aab60b08c3c8a5720ee9e32fa0faaa2",
+      "source": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa25L7W0Q5n-wU.woff2"
     },
     {
-      "file": "inter-latin-400-normal.woff2",
-      "bytes": 23664,
-      "sha256": "8909904ab6c872eb994093482a88a28eca2cd95912d7b6fecd72103b0dc07edc"
-    },
-    {
-      "file": "inter-latin-500-normal.woff2",
-      "bytes": 24272,
-      "sha256": "f3779f1efccc4bdcdf9c0a02ab95bf6bd092ed09c48c08cedc725889edd1d19f"
-    },
-    {
-      "file": "inter-latin-600-normal.woff2",
-      "bytes": 24452,
-      "sha256": "f9a06e79cd3a2a20951c0f0e28f66dd0e6d3fda73911d640a2125c8fcb78f21a"
-    },
-    {
-      "file": "inter-latin-700-normal.woff2",
-      "bytes": 24356,
-      "sha256": "6f56409fd3d64bb85f7d070bce20749db2d66b6d63cec586cc22d1c761be2491"
-    },
-    {
-      "file": "inter-latin-ext-300-normal.woff2",
-      "bytes": 35880,
-      "sha256": "b11def546ac052fad7993e39c53801b55af99b0fd51a9ac0e72884b5c3fcaa3f"
-    },
-    {
-      "file": "inter-latin-ext-400-normal.woff2",
-      "bytes": 35000,
-      "sha256": "6744a7f509ebc6ab220a6cd4ea77e898adf014f03d88dcda5d45d8a9feefb4e9"
-    },
-    {
-      "file": "inter-latin-ext-500-normal.woff2",
-      "bytes": 36024,
-      "sha256": "2c6fbc42d315528beb06c1096df45487bf4186c4b78b8111d12c9c951f8acca2"
-    },
-    {
-      "file": "inter-latin-ext-600-normal.woff2",
-      "bytes": 36260,
-      "sha256": "e4bdf67b0cd15ca9e184509275be95db942195d3cc2b17f6a0452f2adf75d0bf"
-    },
-    {
-      "file": "inter-latin-ext-700-normal.woff2",
-      "bytes": 36244,
-      "sha256": "143f9504f1377012aa3e39c90c4354ef429cb0494b9ac0e1437f1a81e5412236"
+      "file": "inter-latin-variable.woff2",
+      "bytes": 48432,
+      "sha256": "c940764593d0fe5d596be327ca7558855e018039fb78509aa21921fd3644c3e4",
+      "source": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7W0Q5nw.woff2"
     }
   ]
 }

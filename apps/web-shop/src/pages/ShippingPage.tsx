@@ -124,13 +124,13 @@ export default function ShippingPage() {
                   <Stack gap={3} className="leading-snug">
                     <div className="flex items-start gap-3">
                       <MapPin className="size-5 text-emerald-600 shrink-0 mt-0.5" aria-hidden="true" />
-                      <p className="reading-block text-muted-foreground">
+                      <p className="text-sm text-muted-foreground leading-snug">
                         {copy.shipping.branchAddress}
                       </p>
                     </div>
                     <div className="flex items-start gap-3">
                       <Clock className="size-5 text-emerald-600 shrink-0 mt-0.5" aria-hidden="true" />
-                      <p className="reading-block text-muted-foreground">
+                      <p className="text-sm text-muted-foreground leading-snug">
                         {copy.shipping.branchHours}
                       </p>
                     </div>

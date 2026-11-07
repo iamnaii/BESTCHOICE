@@ -88,7 +88,7 @@ export default function NoCreditCardPage() {
                   <h3 className="font-semibold leading-snug">สิ่งที่ไม่ต้องมี</h3>
                   <ul className="mt-3 space-y-2">
                     {NOT_NEEDED.map((item) => (
-                      <li key={item} className="flex items-center gap-2 reading-block text-muted-foreground">
+                      <li key={item} className="flex items-center gap-2 text-sm text-muted-foreground leading-snug">
                         <X className="size-4 shrink-0 text-red-500" aria-hidden="true" />
                         {item}
                       </li>
@@ -101,13 +101,13 @@ export default function NoCreditCardPage() {
                   <h3 className="font-semibold leading-snug">สิ่งที่ต้องมี</h3>
                   <ul className="mt-3 space-y-2">
                     {NEEDED.map((item) => (
-                      <li key={item} className="flex items-center gap-2 reading-block text-muted-foreground">
+                      <li key={item} className="flex items-center gap-2 text-sm text-muted-foreground leading-snug">
                         <Check className="size-4 shrink-0 text-emerald-600" aria-hidden="true" />
                         {item}
                       </li>
                     ))}
                   </ul>
-                  <p className="mt-3 flex items-start gap-2 reading-block text-muted-foreground">
+                  <p className="mt-3 flex items-start gap-2 text-sm text-muted-foreground leading-snug">
                     <UserCheck className="size-4 shrink-0 mt-0.5 text-emerald-600" aria-hidden="true" />
                     แค่นี้จริง ๆ — เดินเข้าหน้าร้านลพบุรีได้เลย หรือทักไลน์สอบถามก่อนได้จากทุกจังหวัด
                   </p>

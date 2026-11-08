@@ -7,7 +7,14 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
-import { factKey, isNumericOnly, normalizeKeyText, resolveKeys, UI_FONT_RE } from './rules.mjs';
+import {
+  evaluateTypography,
+  factKey,
+  isNumericOnly,
+  normalizeKeyText,
+  resolveKeys,
+  UI_FONT_RE,
+} from './rules.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const COLLECT = path.join(HERE, 'collect.js');
@@ -45,6 +52,7 @@ const FIELDS = [
   'inReadingBlock',
   'iconRatios',
   'headingLevel',
+  'truncation',
 ];
 const THAI_RE = /[฀-๿]/;
 
@@ -276,6 +284,7 @@ test('every fact has the full Task 1 shape with the right types', async () => {
       `lineHeight=${f.lineHeight}`,
     );
     assert.ok(['none', 'x', 'y', 'both'].includes(f.overflowClip));
+    assert.ok(['none', 'clamp', 'ellipsis'].includes(f.truncation), `truncation=${f.truncation}`);
     for (const b of [
       'numeric',
       'scrollOverflowX',
@@ -985,4 +994,107 @@ test('fix2 item 8: canvas mirrors italic (family with a real italic face) and lo
     'the italic face really differs from upright',
   );
   assert.equal(ink.lower.text, 'HELLO WIDE WORLD');
+});
+
+// ---------------------------------------------------------------- calibration (Ruling AF): intentional truncation
+
+// Tailwind v4 utilities, verbatim
+const TW_TRUNCATION = `<style>
+.line-clamp-2{overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2}
+.truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+</style>`;
+const LONG_THAI = 'รายละเอียดสินค้ายาวมากต้องตัดเหลือสองบรรทัดเท่านั้น'; // ≤ 60 chars: fact text is not clipped
+
+test('calib: line-clamp-2 paragraph ⇒ truncation clamp (also for a span inside the clamped box)', async () => {
+  const facts = await collect(
+    `<p class="line-clamp-2" style="width:120px">${LONG_THAI}</p>
+    <div class="line-clamp-2" style="width:120px"><span>${LONG_THAI}ซ้อน</span></div>`,
+    { head: TW_TRUNCATION },
+  );
+  const p = one(facts, LONG_THAI);
+  assert.equal(p.kind, 'paragraph');
+  assert.equal(p.truncation, 'clamp');
+  assert.equal(p.overflowClip, 'both');
+  assert.equal(p.scrollOverflowY, true, 'fixture really hides lines');
+  // end to end with rules.mjs: the clamped Thai paragraph no longer trips R4; the same fact without
+  // the field (older JSON) still does through the scroll branch alone
+  const r4 = (f) =>
+    evaluateTypography([f], {
+      app: 'web',
+      width: 1280,
+      theme: 'light',
+      role: 'x',
+      route: '/x',
+    }).filter((x) => x.rule === 'R4');
+  assert.ok(
+    p.inkHeight <= p.lineHeight + 1,
+    'ink fits the line: only the scroll branch is in play',
+  );
+  assert.equal(r4(p).length, 0);
+  assert.equal(r4({ ...p, truncation: undefined }).length, 1);
+  assert.equal(one(facts, `${LONG_THAI}ซ้อน`).truncation, 'clamp');
+});
+
+test('calib: Tailwind truncate ⇒ truncation ellipsis (on the element or its clip-box ancestor)', async () => {
+  const facts = await collect(
+    `<span class="truncate" style="display:block;width:80px">ชื่อลูกค้าที่ยาวมากเกินช่อง</span>
+    <div class="truncate" style="width:80px"><span>ชื่อสาขาที่ยาวมากเกินช่อง</span></div>`,
+    { head: TW_TRUNCATION },
+  );
+  const self = one(facts, 'ชื่อลูกค้าที่ยาวมากเกินช่อง');
+  assert.equal(self.truncation, 'ellipsis');
+  assert.equal(self.scrollOverflowX, true, 'fixture really overflows');
+  assert.equal(one(facts, 'ชื่อสาขาที่ยาวมากเกินช่อง').truncation, 'ellipsis');
+});
+
+test('calib: plain and clipped-but-not-truncated text ⇒ truncation none', async () => {
+  const facts = await collect(
+    `<p>ข้อความปกติ</p>
+    <div style="overflow:hidden;height:16px;line-height:16px;font-size:16px">ปุ่มตัดสระ</div>
+    <p style="text-overflow:ellipsis;white-space:nowrap;width:60px">จุดไข่ปลาแต่ไม่ตัด</p>`,
+    { head: TW_TRUNCATION },
+  );
+  assert.equal(one(facts, 'ข้อความปกติ').truncation, 'none');
+  assert.equal(
+    one(facts, 'ปุ่มตัดสระ').truncation,
+    'none',
+    'overflow hidden alone is not truncation',
+  );
+  // text-overflow without a clipping box on that axis truncates nothing
+  assert.equal(one(facts, 'จุดไข่ปลาแต่ไม่ตัด').overflowClip, 'none');
+  assert.equal(one(facts, 'จุดไข่ปลาแต่ไม่ตัด').truncation, 'none');
+});
+
+test('calib: the walk stops at the box that decided overflowClip on that axis', async () => {
+  const facts = await collect(
+    `<div class="line-clamp-2"><div style="overflow:auto;height:60px"><p>เลื่อนในกล่องตัดบรรทัด</p></div></div>
+    <div class="line-clamp-2"><div style="overflow:hidden;height:20px"><p>ตัดก่อนถึงกล่องตัดบรรทัด</p></div></div>
+    <div class="truncate"><div style="overflow-x:auto"><span>เลื่อนแนวนอนในกล่องจุดไข่ปลา</span></div></div>
+    <p class="line-clamp-2" style="text-overflow:ellipsis;width:120px">${LONG_THAI}</p>`,
+    { head: TW_TRUNCATION },
+  );
+  assert.equal(
+    one(facts, 'เลื่อนในกล่องตัดบรรทัด').truncation,
+    'none',
+    'auto scroller decides: not clipped',
+  );
+  assert.equal(
+    one(facts, 'ตัดก่อนถึงกล่องตัดบรรทัด').truncation,
+    'none',
+    'inner hidden box decides',
+  );
+  assert.equal(one(facts, 'เลื่อนแนวนอนในกล่องจุดไข่ปลา').truncation, 'none');
+  assert.equal(one(facts, LONG_THAI).truncation, 'clamp', 'clamp wins over ellipsis');
+});
+
+test('calib: form controls ⇒ truncation none, even when styled with an ellipsis', async () => {
+  const facts = await collect(
+    `<input class="truncate" placeholder="ค้นหาลูกค้าด้วยชื่อหรือเบอร์โทร" style="width:60px">
+    <button role="combobox" class="truncate" style="width:60px"><span data-slot="select-value">สาขาลาดพร้าวที่ยาวมาก</span></button>
+    <textarea class="line-clamp-2" placeholder="หมายเหตุ"></textarea>`,
+    { head: TW_TRUNCATION },
+  );
+  const inputs = facts.filter((f) => f.kind === 'input');
+  assert.equal(inputs.length, 3);
+  for (const f of inputs) assert.equal(f.truncation, 'none', f.tag);
 });

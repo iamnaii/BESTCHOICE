@@ -9,6 +9,8 @@
  * text rects, lines, ink, overflow and scroll from the text element itself. Form-control facts never
  * record values: their text is placeholder || aria-label || '', and their scroll flags are always false
  * (they would flip with the typed value's length). Visually hidden (sr-only) text is never a fact.
+ * truncation = 'clamp' | 'ellipsis' | 'none': intentional truncation (-webkit-line-clamp / text-overflow:
+ * ellipsis) on the text element's clip chain up to the box that clips that axis; always 'none' on controls.
  * Ink is measured on a canvas that mirrors rendering (font-style/weight/size/family, letter-spacing,
  * text-transform); inkTop/inkBottom place the first line's real ink (baseline ∓ actual ascent/descent).
  *
@@ -241,18 +243,39 @@
 
     // Ruling S: per axis, the nearest element (self first, html/body excluded) whose overflow on that
     // axis is not visible decides — hidden/clip ⇒ clipped, auto/scroll ⇒ not clipped (walk stops).
-    function axisClipped(el, prop) {
+    // Returns the elements from el up to and including that deciding box when it clips, else null.
+    function clipChain(el, prop) {
+      var chain = [];
       for (var n = el; n && n.nodeType === 1 && n !== htmlEl && n !== bodyEl; n = n.parentElement) {
+        chain.push(n);
         var v = style(n)[prop];
         if (v === 'visible') continue;
-        return v === 'hidden' || v === 'clip';
+        return v === 'hidden' || v === 'clip' ? chain : null;
       }
-      return false;
+      return null;
     }
     function overflowClip(el) {
-      var x = axisClipped(el, 'overflowX');
-      var y = axisClipped(el, 'overflowY');
+      var x = clipChain(el, 'overflowX') !== null;
+      var y = clipChain(el, 'overflowY') !== null;
       return x && y ? 'both' : x ? 'x' : y ? 'y' : 'none';
+    }
+    function lineClamped(n) {
+      var v = style(n).getPropertyValue('-webkit-line-clamp');
+      return v !== '' && v !== 'none';
+    }
+    function ellipsised(n) {
+      return style(n).textOverflow === 'ellipsis';
+    }
+    // Ruling AF: intentional truncation with an ellipsis. 'clamp' = -webkit-line-clamp on an element
+    // of the vertical clip chain (el … the box that clips overflowY); 'ellipsis' = text-overflow:
+    // ellipsis on an element of the horizontal clip chain; else 'none' (also when that axis is not
+    // clipped — the property then truncates nothing). Clamp wins when both apply.
+    function truncation(el) {
+      var y = clipChain(el, 'overflowY');
+      if (y && y.some(lineClamped)) return 'clamp';
+      var x = clipChain(el, 'overflowX');
+      if (x && x.some(ellipsised)) return 'ellipsis';
+      return 'none';
     }
 
     function canvas() {
@@ -476,6 +499,7 @@
         inReadingBlock: base.el.closest('.reading-block') !== null,
         iconRatios: base.iconRatios,
         headingLevel: base.headingLevel,
+        truncation: base.truncation,
       };
     }
 
@@ -519,6 +543,7 @@
           scrollOverflowY: el.scrollHeight > el.clientHeight + 1,
           iconRatios: iconRatios(pathToAnchor(el, anchor.node), fontSize),
           headingLevel: headingLevel(anchor.node),
+          truncation: truncation(el),
         }),
       };
     }
@@ -564,6 +589,8 @@
           scrollOverflowY: false,
           iconRatios: iconRatios([el], fontSize),
           headingLevel: null,
+          // value-independent like the scroll flags: a control's ellipsis cuts the typed value
+          truncation: 'none',
         }),
       };
     }

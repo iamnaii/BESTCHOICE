@@ -23,20 +23,35 @@ export const NUMERIC_ONLY_RE = /^[\d,.\s฿%+\-–/]+$/;
 // numeric-only = plan regex AND at least one ASCII digit ('-', '/', '–' placeholders are not numbers).
 // The collector computes Fact.numericOnly with these semantics; R10 trusts the flag only.
 export const isNumericOnly = (text) => NUMERIC_ONLY_RE.test(text) && /[0-9]/.test(text);
+// Thai text = Thai letters, vowels, tone marks, signs and Thai digits (U+0E01–U+0E3A, U+0E40–U+0E5B).
+// U+0E3F "฿" sits in the Thai block but is a currency sign: "฿12,126.64" is an amount, not Thai text.
+// Fact.hasThai (collector, whole Thai block) is still required — Thai-only rules use isThaiText.
+export const THAI_TEXT_RE = /[ก-ฺเ-๛]/;
+export const isThaiText = (f) => Boolean(f.hasThai) && THAI_TEXT_RE.test(String(f.text ?? ''));
 export const NON_DIFF_RULES = ['R8'];
 const SEVERITY_RANK = { P3: 1, P2: 2, P1: 3 };
 
+// Thresholds follow the house style (owner decision 2026-11-08, Ruling AF / canvas item 5):
+// Thai UI text uses Tailwind `leading-snug` (×1.375, .claude/rules/frontend.md), so R3's small band
+// starts just under it; desktop controls are 32–34px (sidebar items 32–34px, shadcn md
+// Button/SelectTrigger 34px), so R7's desktop minimum is 32px. Mobile stays 44px; Thai < ×1.2 stays P1.
+export const HOUSE_LEADING_SNUG = 1.375;
+export const LH_SMALL_MIN_HOUSE_STYLE = 1.35;
+export const TOUCH_MIN_DESKTOP_HOUSE_STYLE = 32;
+
 export const LH_SMALL_MAX_FONT = 20; // < 20px uses the small range
-export const LH_SMALL_RANGE = [1.4, 1.8];
+export const LH_SMALL_RANGE = [LH_SMALL_MIN_HOUSE_STYLE, 1.8];
 export const LH_LARGE_RANGE = [1.2, 1.6];
 export const LH_THAI_MIN = 1.2;
 export const LH_EPSILON = 1e-6; // float noise only; spec has no tolerance
 export const INK_CLIP_SLACK_PX = 1;
+// Fact.truncation values (collector) that mean "cut on purpose, with an ellipsis"
+export const INTENTIONAL_TRUNCATION = ['clamp', 'ellipsis'];
 export const DESKTOP_MIN_WIDTH = 1024; // R5 P1 at/above
 export const MOBILE_MAX_WIDTH = 430;
 export const TABLET_MIN_WIDTH = 768;
 export const TOUCH_MIN_MOBILE = 44;
-export const TOUCH_MIN_DESKTOP = 36;
+export const TOUCH_MIN_DESKTOP = TOUCH_MIN_DESKTOP_HOUSE_STYLE;
 export const INPUT_MIN_FONT_MOBILE = 16;
 export const TNUM_MIN_FONT = 20;
 export const ICON_RATIO_RANGE = [0.85, 1.6];
@@ -88,6 +103,7 @@ export function evaluateTypography(facts, ctx) {
   const h1Max = Math.max(0, ...facts.filter((f) => f.headingLevel === 1).map((f) => f.fontSize));
 
   for (const [i, f] of facts.entries()) {
+    const thai = isThaiText(f);
     const emit = (rule, severity, detail) =>
       out.push({
         rule,
@@ -117,7 +133,7 @@ export function evaluateTypography(facts, ctx) {
     if (finite(f.lineHeight) && f.fontSize > 0) {
       const ratio = f.lineHeight / f.fontSize;
       const range = f.fontSize < LH_SMALL_MAX_FONT ? LH_SMALL_RANGE : LH_LARGE_RANGE;
-      if (f.hasThai && ratio < LH_THAI_MIN - LH_EPSILON) {
+      if (thai && ratio < LH_THAI_MIN - LH_EPSILON) {
         emit('R3', 'P1', {
           ratio,
           fontSize: f.fontSize,
@@ -129,10 +145,14 @@ export function evaluateTypography(facts, ctx) {
       }
     }
     // R4 (Ruling G)
-    if (f.hasThai && (f.overflowClip === 'y' || f.overflowClip === 'both')) {
+    if (thai && (f.overflowClip === 'y' || f.overflowClip === 'both')) {
       // scroll branch fires even with non-finite lineHeight; only the ink branch needs it
       const inkOverflow = finite(f.lineHeight) && f.inkHeight > f.lineHeight + INK_CLIP_SLACK_PX;
-      if (inkOverflow || f.scrollOverflowY) {
+      // intentional truncation with an ellipsis (line-clamp / text-overflow) hides whole lines or
+      // the line end, not Thai marks — skip the scroll branch (R6 covers horizontal ellipsis).
+      // Facts without the field (older JSON) behave as before.
+      const truncated = INTENTIONAL_TRUNCATION.includes(f.truncation);
+      if (inkOverflow || (f.scrollOverflowY && !truncated)) {
         emit('R4', 'P1', {
           inkHeight: f.inkHeight,
           lineHeight: f.lineHeight,

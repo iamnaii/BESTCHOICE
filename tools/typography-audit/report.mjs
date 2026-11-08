@@ -27,6 +27,13 @@ import {
   compareFacts,
   findingKey,
   resolveKeys,
+  HOUSE_LEADING_SNUG,
+  LH_SMALL_MAX_FONT,
+  LH_SMALL_RANGE,
+  LH_LARGE_RANGE,
+  LH_THAI_MIN,
+  MOBILE_MAX_WIDTH,
+  TABLET_MIN_WIDTH,
   TOUCH_MIN_DESKTOP,
   TOUCH_MIN_MOBILE,
 } from './rules.mjs';
@@ -46,20 +53,10 @@ export const RUN_VARYING_ROUTES = {
   '/system-status': 'เวลาตอบสนองและหน่วยความจำของรอบนั้น',
 };
 const isRunVarying = (route) => Object.hasOwn(RUN_VARYING_ROUTES, route);
-// Rule-vs-house-style (controller ruling, fix round 1): only these measured values are the house
-// style the owner decides on — everything else in R3/R7 is a real finding.
-export const HOUSE_STYLE = {
-  R3: 'R3 P2 with line-height ratio 1.375 ± 0.01 (Tailwind leading-snug) and font-size < 20px',
-  R7: `R7 at desktop widths (minimum ${TOUCH_MIN_DESKTOP}px) with height 31.5–34.5px (shadcn md Button/SelectTrigger 34px, sidebar items 32–34px)`,
-};
-const LEADING_SNUG = 1.375;
-export function isHouseStyle(f) {
-  const d = f.detail ?? {};
-  if (f.rule === 'R3')
-    return f.severity === 'P2' && Math.abs(d.ratio - LEADING_SNUG) < 0.01 && d.fontSize < 20;
-  if (f.rule === 'R7') return d.min === TOUCH_MIN_DESKTOP && d.h >= 31.5 && d.h <= 34.5;
-  return false;
-}
+// Owner decision 2026-11-08 (Ruling AF / canvas item 5): the R3/R7 thresholds in rules.mjs follow the
+// house style, so the house style no longer produces findings — every R3/R7 finding is a real issue
+// and nothing is subtracted as "house style" (totals.houseStyle keeps the decision + real split).
+export const HOUSE_STYLE_DECISION = `owner 2026-11-08 (Ruling AF / canvas item 5): R3/R7 thresholds follow the house style — R3 text < ${LH_SMALL_MAX_FONT}px accepts line-height ×${LH_SMALL_RANGE[0]}–×${LH_SMALL_RANGE[1]} (Tailwind leading-snug ×${HOUSE_LEADING_SNUG} passes); R7 desktop (width >= ${TABLET_MIN_WIDTH}px) minimum ${TOUCH_MIN_DESKTOP}px (shadcn md Button/SelectTrigger 34px, sidebar items 32–34px pass); mobile (width <= ${MOBILE_MAX_WIDTH}px) ${TOUCH_MIN_MOBILE}px and Thai < ×${LH_THAI_MIN} = P1 unchanged. Every R3/R7 finding counted is a real issue; no house-style exemption is subtracted`;
 export const UNMEASURED_ROLES = ['FINANCE_MANAGER', 'ACCOUNTANT', 'BRANCH_MANAGER'];
 export const STATUSES = ['rendered', 'redirected', 'empty', 'error', 'blocked', 'document'];
 export const SEVERITIES = ['P1', 'P2', 'P3'];
@@ -354,36 +351,43 @@ function examples(list, bucketOf = () => '', n = 3) {
   }
   return out;
 }
+// R3/R7 under the house-style thresholds: every finding is real (owner decision 2026-11-08).
+// R7 minimums are TOUCH_MIN_MOBILE (width <= MOBILE_MAX_WIDTH) or TOUCH_MIN_DESKTOP — the two
+// buckets cover every R7 finding.
 export function houseStyleSplit(findings) {
   const r3 = findings.filter((f) => f.rule === 'R3'),
     r7 = findings.filter((f) => f.rule === 'R7');
-  const r3RealP2 = r3.filter((f) => f.severity === 'P2' && !isHouseStyle(f));
-  const r7Real = r7.filter((f) => !isHouseStyle(f));
-  const mobile = r7Real.filter((f) => f.detail?.min === TOUCH_MIN_MOBILE);
-  const desktopLow = r7Real.filter((f) => f.detail?.min === TOUCH_MIN_DESKTOP && f.detail.h < 31.5);
-  const other = r7Real.filter((f) => !mobile.includes(f) && !desktopLow.includes(f));
+  const r3P2 = r3.filter((f) => f.severity === 'P2'),
+    r3P1 = r3.filter((f) => f.severity === 'P1');
+  const mobile = r7.filter((f) => f.detail?.min === TOUCH_MIN_MOBILE);
+  const desktop = r7.filter((f) => f.detail?.min !== TOUCH_MIN_MOBILE);
   return {
     scope: 'persisting + new (added and escalated)',
+    decision: HOUSE_STYLE_DECISION,
+    thresholds: {
+      R3SmallMaxFontPx: LH_SMALL_MAX_FONT,
+      R3SmallRange: [...LH_SMALL_RANGE],
+      R3LargeRange: [...LH_LARGE_RANGE],
+      R3ThaiMin: LH_THAI_MIN,
+      R7DesktopFromWidthPx: TABLET_MIN_WIDTH,
+      R7DesktopMinPx: TOUCH_MIN_DESKTOP,
+      R7MobileToWidthPx: MOBILE_MAX_WIDTH,
+      R7MobileMinPx: TOUCH_MIN_MOBILE,
+    },
     R3: {
-      definition: HOUSE_STYLE.R3,
-      houseStyle: r3.filter(isHouseStyle).length,
-      realP2: r3RealP2.length,
-      realP1: r3.filter((f) => f.severity === 'P1').length,
+      realP2: r3P2.length,
+      realP1: r3P1.length,
       examples: {
-        realP2: examples(r3RealP2, (f) => r1(f.detail?.ratio, 2)),
-        realP1: examples(r3.filter((f) => f.severity === 'P1')),
+        realP2: examples(r3P2, (f) => r1(f.detail?.ratio, 2)),
+        realP1: examples(r3P1),
       },
     },
     R7: {
-      definition: HOUSE_STYLE.R7,
-      houseStyle: r7.filter(isHouseStyle).length,
       realMobileBelow44: mobile.length,
-      realDesktopBelow32: desktopLow.length,
-      realDesktopOther: other.length,
+      realDesktopBelow32: desktop.length,
       examples: {
         mobileBelow44: examples(mobile, (f) => f.route),
-        desktopBelow32: examples(desktopLow, (f) => f.route),
-        desktopOther: examples(other, (f) => f.route),
+        desktopBelow32: examples(desktop, (f) => f.route),
       },
     },
   };
@@ -649,7 +653,7 @@ export function summarize(runs, opts = {}) {
     resolved: groupPoints(cats.resolved, shellMin),
     r8: groupPoints(cats.R8, shellMin),
   };
-  const byRule = (points, findings) => {
+  const byRule = (points) => {
     const out = {};
     for (const p of points) {
       const r = (out[p.rule] ??= { findings: 0, points: 0, routes: new Set(), bySeverity: {} });
@@ -659,9 +663,6 @@ export function summarize(runs, opts = {}) {
       r.bySeverity[p.severity] = (r.bySeverity[p.severity] ?? 0) + p.occurrences;
     }
     for (const r of Object.values(out)) r.routes = r.routes.size;
-    for (const f of findings)
-      if (isHouseStyle(f) && out[f.rule])
-        out[f.rule].houseStyle = (out[f.rule].houseStyle ?? 0) + 1;
     return Object.fromEntries(
       Object.entries(out).sort(([a], [b]) => a.localeCompare(b, 'en', { numeric: true })),
     );
@@ -721,13 +722,13 @@ export function summarize(runs, opts = {}) {
     persisting: {
       points: groups.persisting.length,
       findings: cats.persisting.length,
-      byRule: byRule(groups.persisting, cats.persisting),
+      byRule: byRule(groups.persisting),
     },
     resolved: {
       points: groups.resolved.length,
       findings: cats.resolved.length,
       runVarying: runVarying(cats.resolved),
-      byRule: byRule(groups.resolved, cats.resolved),
+      byRule: byRule(groups.resolved),
     },
     afterOnlyR8: { points: groups.r8.length, findings: cats.R8.length },
   };
@@ -930,7 +931,7 @@ export function renderSummary(s) {
   );
   const hs = t.houseStyle;
   L.push(
-    `- **มีอยู่ก่อนแล้ว** (ไม่เกี่ยวกับฟอนต์ใหม่) ${n(t.persisting.points)} จุด (${n(t.persisting.findings)} ครั้ง) — ในนี้ ${n(hs.R3.houseStyle + hs.R7.houseStyle)} ครั้งเป็นแบบที่บ้านกำหนด (ระยะบรรทัด leading-snug ${n(hs.R3.houseStyle)} · ปุ่มจอใหญ่สูง 32–34px ${n(hs.R7.houseStyle)}) ให้เจ้าของตัดสิน ไม่ใช่ข้อบกพร่อง · **หายไปหลังเปลี่ยน** ${n(t.resolved.points)} จุด (${n(t.resolved.findings)} ครั้ง)`,
+    `- **มีอยู่ก่อนแล้ว** (ไม่เกี่ยวกับฟอนต์ใหม่) ${n(t.persisting.points)} จุด (${n(t.persisting.findings)} ครั้ง) — เกณฑ์ R3 ระยะบรรทัดและ R7 ความสูงปุ่ม/ช่องกรอกตามแบบที่บ้านกำหนดแล้ว (เจ้าของตัดสิน 2026-11-08: ตัวเล็กกว่า ${hs.thresholds.R3SmallMaxFontPx}px ×${hs.thresholds.R3SmallRange[0]} ขึ้นไป · ปุ่มจอกว้าง ${hs.thresholds.R7DesktopMinPx}px ขึ้นไป) ตัวเลข R3/R7 ทุกตัวจึงเป็นปัญหาจริง · **หายไปหลังเปลี่ยน** ${n(t.resolved.points)} จุด (${n(t.resolved.findings)} ครั้ง)`,
   );
   L.push(
     `- **ฟอนต์ผิดในรอบหลัง** ${n(t.afterOnlyR8.points)} จุด (${n(t.afterOnlyR8.findings)} ครั้ง) — ดูหัวข้อ "AFTER เท่านั้น"`,
@@ -1104,9 +1105,13 @@ export function renderSummary(s) {
     '',
   );
   L.push(pointsTable(s, preP1));
-  L.push('### กฎที่ขัดกับแบบที่บ้านกำหนด — แยกแบบบ้านออกจากปัญหาจริง', '');
+  const th = hs.thresholds;
   L.push(
-    `นับรวม "มีอยู่ก่อน" และ "เกิดจากฟอนต์ใหม่" · แยกจากค่าที่วัดได้ของแต่ละครั้ง · \`findings.json\` → \`totals.houseStyle\``,
+    '### R3/R7 ใช้เกณฑ์ตามแบบที่บ้านกำหนด (เจ้าของตัดสิน 2026-11-08) — ตัวเลขคือปัญหาจริงทั้งหมด',
+    '',
+  );
+  L.push(
+    `เกณฑ์ของเครื่องมือปรับให้ตรงแบบที่บ้านแล้ว: ข้อความเล็กกว่า ${th.R3SmallMaxFontPx}px ระยะบรรทัด ×${th.R3SmallRange[0]}–×${th.R3SmallRange[1]} (\`leading-snug\` ×${HOUSE_LEADING_SNUG} ตาม \`.claude/rules/frontend.md\` ผ่าน) · ปุ่ม/ช่องกรอกบนจอกว้างตั้งแต่ ${th.R7DesktopFromWidthPx}px สูงอย่างน้อย ${th.R7DesktopMinPx}px (ปุ่ม/SelectTrigger ขนาด md ของ shadcn 34px · รายการเมนูซ้าย 32–34px ผ่าน) · มือถือ (กว้างไม่เกิน ${th.R7MobileToWidthPx}px) ยังต้องสูง ${th.R7MobileMinPx}px · ข้อความไทยระยะบรรทัดต่ำกว่า ×${th.R3ThaiMin} ยังเป็น P1 ⇒ แบบที่บ้านไม่ถูกนับเป็นปัญหาอีก และไม่มีการหักแบบบ้านออกจากตัวเลขข้างล่าง · นับรวม "มีอยู่ก่อน" และ "เกิดจากฟอนต์ใหม่" · \`findings.json\` → \`totals.houseStyle\``,
     '',
   );
   const exs = (list) =>
@@ -1114,27 +1119,17 @@ export function renderSummary(s) {
       ? ` — ตัวอย่าง ${list.map((e) => `“${cell(e.text)}” (${APP_TH[e.app] ?? e.app} ${code(e.route)} ${e.width}px, ${cell(e.value)})`).join(' · ')}`
       : '';
   L.push(
-    `- **R3 ระยะบรรทัด — ตามแบบบ้าน ${n(hs.R3.houseStyle)} ครั้ง:** ข้อความเล็กกว่า 20px ที่ใช้ \`leading-snug\` (×1.375) ต่ำกว่าเกณฑ์ 1.4 ของกฎ แต่ \`.claude/rules/frontend.md\` กำหนดให้ข้อความไทยใช้ \`leading-snug\` → ให้เจ้าของตัดสินเกณฑ์ ไม่ใช่ข้อบกพร่อง`,
+    `- **R3 ระยะบรรทัด P2 ${n(hs.R3.realP2)} ครั้ง** (ตัวเล็กกว่า ${th.R3SmallMaxFontPx}px นอก ×${th.R3SmallRange[0]}–×${th.R3SmallRange[1]} · ตัวตั้งแต่ ${th.R3SmallMaxFontPx}px นอก ×${th.R3LargeRange[0]}–×${th.R3LargeRange[1]})${exs(hs.R3.examples.realP2)}`,
   );
   L.push(
-    `  - **ปัญหาจริง P2 ${n(hs.R3.realP2)} ครั้ง** (ระยะบรรทัดค่าอื่น เช่น ×1.0, ×0.95, ×1.33, ×1.65)${exs(hs.R3.examples.realP2)}`,
+    `- **R3 ระยะบรรทัด P1 ${n(hs.R3.realP1)} ครั้ง** (ข้อความไทยระยะบรรทัดต่ำกว่า ×${th.R3ThaiMin} — สระ/วรรณยุกต์ชนบรรทัด)${exs(hs.R3.examples.realP1)}`,
   );
   L.push(
-    `  - **ปัญหาจริง P1 ${n(hs.R3.realP1)} ครั้ง** (ข้อความไทยระยะบรรทัดต่ำกว่า ×1.2 — สระ/วรรณยุกต์ชนบรรทัด)${exs(hs.R3.examples.realP1)}`,
+    `- **R7 ความสูงปุ่ม/ช่องกรอก มือถือต่ำกว่า ${th.R7MobileMinPx}px ${n(hs.R7.realMobileBelow44)} ครั้ง** (กดยากบนจอสัมผัส)${exs(hs.R7.examples.mobileBelow44)}`,
   );
   L.push(
-    `- **R7 ความสูงปุ่ม/ช่องกรอก — ตามแบบบ้าน ${n(hs.R7.houseStyle)} ครั้ง:** จอใหญ่ สูง 32–34px (ปุ่ม/SelectTrigger ขนาด md ของ shadcn 34px · รายการเมนูซ้าย 32–34px) ต่ำกว่าเกณฑ์ ${TOUCH_MIN_DESKTOP}px → ขนาดมาตรฐานของชุดคอมโพเนนต์ ให้เจ้าของตัดสิน`,
+    `- **R7 ความสูงปุ่ม/ช่องกรอก จอกว้างต่ำกว่า ${th.R7DesktopMinPx}px ${n(hs.R7.realDesktopBelow32)} ครั้ง**${exs(hs.R7.examples.desktopBelow32)}`,
   );
-  L.push(
-    `  - **ปัญหาจริง มือถือต่ำกว่า ${TOUCH_MIN_MOBILE}px ${n(hs.R7.realMobileBelow44)} ครั้ง** (กดยากบนจอสัมผัส)${exs(hs.R7.examples.mobileBelow44)}`,
-  );
-  L.push(
-    `  - **ปัญหาจริง จอใหญ่ต่ำกว่า 32px ${n(hs.R7.realDesktopBelow32)} ครั้ง**${exs(hs.R7.examples.desktopBelow32)}`,
-  );
-  if (hs.R7.realDesktopOther)
-    L.push(
-      `  - **ปัญหาจริง อื่น ๆ ${n(hs.R7.realDesktopOther)} ครั้ง**${exs(hs.R7.examples.desktopOther)}`,
-    );
   L.push('');
 
   // resolved
@@ -1218,9 +1213,9 @@ function perRuleTable(points, byRule) {
       .slice(0, 3)
       .map((x) => `“${x}”`)
       .join(', ');
-    return `| ${rule} | ${RULE_TH[rule] ?? ''} | ${sev} | ${n(r.points)} | ${n(r.findings)} | ${r.houseStyle ? n(r.houseStyle) : '—'} | ${n(r.routes)} | ${cell(sample)} |`;
+    return `| ${rule} | ${RULE_TH[rule] ?? ''} | ${sev} | ${n(r.points)} | ${n(r.findings)} | ${n(r.routes)} | ${cell(sample)} |`;
   });
-  return `| กฎ | ตรวจอะไร | ระดับ (ครั้ง) | จุด | ครั้ง | ในนี้ตามแบบบ้าน | หน้า | ตัวอย่าง |\n|---|---|---|---|---|---|---|---|\n${rows.join('\n')}\n`;
+  return `| กฎ | ตรวจอะไร | ระดับ (ครั้ง) | จุด | ครั้ง | หน้า | ตัวอย่าง |\n|---|---|---|---|---|---|---|\n${rows.join('\n')}\n`;
 }
 
 // ── findings.json (Ruling AC) ───────────────────────────────────────────────────────────────────
@@ -1304,7 +1299,7 @@ export function buildFindingsJson(s) {
       routesCounts:
         'routes[].counts are per BEFORE/AFTER pair, before cross-row dedupe and precedence — their sums exceed totals by design',
       houseStyle:
-        'totals.houseStyle splits R3/R7 (persisting + new) into the house style the owner decides on (definitions inside) and real findings',
+        'totals.houseStyle: R3/R7 (persisting + new) under the house-style thresholds (owner decision 2026-11-08 — decision + thresholds inside); every count is a real finding, no house-style exemption is subtracted',
       revisions:
         'sources[].revision comes from the run folder run.json (revisionSource "run.json") or from --revision <label>=<sha> (revisionSource "cli"; the storefront runs have no run.json)',
       runTokens:

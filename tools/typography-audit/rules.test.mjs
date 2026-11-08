@@ -9,6 +9,14 @@ import {
   compareFacts,
   factKey,
   normalizeKeyText,
+  THAI_TEXT_RE,
+  isThaiText,
+  HOUSE_LEADING_SNUG,
+  LH_SMALL_MIN_HOUSE_STYLE,
+  LH_SMALL_RANGE,
+  TOUCH_MIN_DESKTOP_HOUSE_STYLE,
+  TOUCH_MIN_DESKTOP,
+  TOUCH_MIN_MOBILE,
 } from './rules.mjs';
 
 const NOTO = '"Noto Sans Thai", "Inter", sans-serif';
@@ -322,7 +330,7 @@ test('fix1: mutant-killers for R1/R2/R3/R6/R7', () => {
   assert.ok(
     rules([fact({ fontSize: 24, lineHeight: 27, hasThai: true })], ctx()).includes('R3:P1'),
   );
-  assert.ok(rules([fact({ kind: 'button', h: 32 })], ctx({ width: 1440 })).includes('R7:P2'));
+  assert.ok(rules([fact({ kind: 'button', h: 31.9 })], ctx({ width: 1440 })).includes('R7:P2'));
   assert.ok(!has([fact({ kind: 'button', h: 20 })], ctx({ width: 600 }), 'R7'));
   assert.ok(!has([fact({ kind: 'th', overflowClip: 'none', scrollOverflowX: true })], ctx(), 'R6'));
   assert.ok(!has([fact({ kind: 'th', overflowClip: 'x', scrollOverflowX: false })], ctx(), 'R6'));
@@ -415,8 +423,9 @@ test('fix2: D1 gated on raw text; differing text still eligible for D2', () => {
 });
 
 test('fix2: R3 epsilon is float-noise only', () => {
-  assert.ok(rules([fact({ fontSize: 14, lineHeight: 19.53 })], ctx()).includes('R3:P2'));
-  assert.ok(!has([fact({ fontSize: 12, lineHeight: 12 * 1.4 })], ctx(), 'R3'));
+  // ×1.345 sits 0.005 under the ×1.35 floor
+  assert.ok(rules([fact({ fontSize: 14, lineHeight: 18.83 })], ctx()).includes('R3:P2'));
+  assert.ok(!has([fact({ fontSize: 12, lineHeight: 12 * 1.35 })], ctx(), 'R3'));
   assert.ok(
     rules([fact({ fontSize: 20, lineHeight: 23.9, hasThai: true })], ctx()).includes('R3:P1'),
   );
@@ -612,4 +621,108 @@ test('fixr2: R8 is anchored on the FIRST family', () => {
       ctx({ app: 'shop' }),
     ).includes('R8:P1'),
   );
+});
+
+// ---- calibration (Ruling AF, owner 2026-11-08) ----
+
+test('calib 1: the baht sign is not Thai text — THAI_TEXT_RE / isThaiText', () => {
+  assert.equal(THAI_TEXT_RE.test('฿12,126.64'), false);
+  assert.equal(THAI_TEXT_RE.test('ยอด ฿100'), true);
+  assert.equal(THAI_TEXT_RE.test('๑๒๓'), true, 'Thai digits are Thai text');
+  assert.equal(THAI_TEXT_RE.test('ฯ'), true);
+  assert.equal(THAI_TEXT_RE.test('Total 1,200'), false);
+  // hasThai (collector flag, U+0E00–U+0E7F) is still required
+  assert.equal(isThaiText({ hasThai: true, text: '฿12,126.64' }), false);
+  assert.equal(isThaiText({ hasThai: true, text: 'ยอด ฿100' }), true);
+  assert.equal(isThaiText({ hasThai: false, text: 'ยอด ฿100' }), false);
+});
+
+test('calib 1: "฿12,126.64" never takes a Thai-only rule (R3 P1, R4)', () => {
+  const baht = { text: '฿12,126.64', hasThai: true };
+  // ratio 1.1: Thai → P1; baht amount → ordinary out-of-range P2
+  assert.deepEqual(
+    rules([fact({ ...baht, lineHeight: 15.4 })], ctx()).filter((r) => r.startsWith('R3:')),
+    ['R3:P2'],
+  );
+  assert.ok(!has([fact({ ...baht, overflowClip: 'y', scrollOverflowY: true })], ctx(), 'R4'));
+  assert.ok(
+    !has([fact({ ...baht, overflowClip: 'both', lineHeight: 16, inkHeight: 19 })], ctx(), 'R4'),
+  );
+});
+
+test('calib 1: "ยอด ฿100" is still Thai text (R3 P1, R4)', () => {
+  const thai = { text: 'ยอด ฿100', hasThai: true };
+  assert.ok(rules([fact({ ...thai, lineHeight: 15.4 })], ctx()).includes('R3:P1'));
+  assert.ok(has([fact({ ...thai, overflowClip: 'y', scrollOverflowY: true })], ctx(), 'R4'));
+  assert.ok(
+    has([fact({ ...thai, overflowClip: 'both', lineHeight: 16, inkHeight: 19 })], ctx(), 'R4'),
+  );
+});
+
+test('calib 3: R4 scroll branch skips intentional truncation (line-clamp / ellipsis)', () => {
+  // Thai text, vertical clip, ink fits the line — only the scroll branch could fire
+  const base = fact({ hasThai: true, overflowClip: 'y', lineHeight: 22, inkHeight: 10 });
+  const scroll = { ...base, scrollOverflowY: true };
+  assert.ok(!has([{ ...scroll, truncation: 'clamp' }], ctx(), 'R4'));
+  assert.ok(!has([{ ...scroll, truncation: 'ellipsis' }], ctx(), 'R4'));
+  assert.ok(!has([{ ...scroll, overflowClip: 'both', truncation: 'ellipsis' }], ctx(), 'R4'));
+  assert.ok(has([{ ...scroll, truncation: 'none' }], ctx(), 'R4'));
+  // old JSON without the field behaves as today
+  assert.ok(!('truncation' in scroll));
+  assert.ok(has([scroll], ctx(), 'R4'));
+  // null lineHeight: the scroll branch alone decided — truncation still skips it
+  assert.ok(!has([{ ...scroll, lineHeight: null, truncation: 'clamp' }], ctx(), 'R4'));
+});
+
+test('calib 3: R4 ink branch still fires on truncated text', () => {
+  const inked = fact({ hasThai: true, overflowClip: 'y', lineHeight: 16, inkHeight: 19 });
+  for (const truncation of ['clamp', 'ellipsis']) {
+    assert.ok(has([{ ...inked, truncation }], ctx(), 'R4'), truncation);
+    assert.ok(has([{ ...inked, truncation, scrollOverflowY: true }], ctx(), 'R4'), truncation);
+  }
+});
+
+test('calib 4: house-style thresholds are exported under names that say why', () => {
+  assert.equal(HOUSE_LEADING_SNUG, 1.375);
+  assert.equal(LH_SMALL_MIN_HOUSE_STYLE, 1.35);
+  assert.deepEqual(LH_SMALL_RANGE, [LH_SMALL_MIN_HOUSE_STYLE, 1.8]);
+  assert.ok(HOUSE_LEADING_SNUG >= LH_SMALL_MIN_HOUSE_STYLE, 'leading-snug passes R3');
+  assert.equal(TOUCH_MIN_DESKTOP_HOUSE_STYLE, 32);
+  assert.equal(TOUCH_MIN_DESKTOP, TOUCH_MIN_DESKTOP_HOUSE_STYLE);
+  assert.equal(TOUCH_MIN_MOBILE, 44);
+});
+
+test('calib 4: R3 small band is ×1.35–×1.8 (house leading-snug ×1.375 passes)', () => {
+  const r3 = (o) => rules([fact(o)], ctx()).filter((r) => r.startsWith('R3:'));
+  assert.deepEqual(r3({ fontSize: 16, lineHeight: 16 * 1.349 }), ['R3:P2']);
+  assert.deepEqual(r3({ fontSize: 16, lineHeight: 16 * 1.35 }), []);
+  assert.deepEqual(r3({ fontSize: 14, lineHeight: 19.25 }), [], 'leading-snug 14px/19.25px');
+  assert.deepEqual(r3({ fontSize: 12, lineHeight: 16.5, hasThai: true }), [], 'Thai snug 12px');
+  assert.deepEqual(r3({ fontSize: 14, lineHeight: 14 * 1.8 }), []);
+  assert.deepEqual(r3({ fontSize: 14, lineHeight: 14 * 1.81 }), ['R3:P2']);
+  // Thai below ×1.2 stays P1; Thai ×1.2–×1.35 is the ordinary P2
+  assert.deepEqual(r3({ fontSize: 14, lineHeight: 14 * 1.19, hasThai: true }), ['R3:P1']);
+  assert.deepEqual(r3({ fontSize: 14, lineHeight: 14 * 1.3, hasThai: true }), ['R3:P2']);
+  // the >= 20px band is unchanged (×1.2–×1.6)
+  assert.deepEqual(r3({ fontSize: 20, lineHeight: 20 * 1.25 }), []);
+  assert.deepEqual(r3({ fontSize: 20, lineHeight: 20 * 1.19 }), ['R3:P2']);
+  assert.deepEqual(r3({ fontSize: 20, lineHeight: 20 * 1.61 }), ['R3:P2']);
+});
+
+test('calib 4: R7 desktop minimum is the house 32px; mobile stays 44px', () => {
+  const r7 = (h, width) =>
+    rules([fact({ kind: 'button', h })], ctx({ width })).filter((r) => r.startsWith('R7:'));
+  for (const width of [768, 1440]) {
+    assert.deepEqual(r7(31.9, width), ['R7:P2'], `desktop ${width} h 31.9`);
+    assert.deepEqual(r7(32, width), [], `desktop ${width} h 32`);
+    assert.deepEqual(r7(34, width), [], `desktop ${width} shadcn md 34px`);
+  }
+  for (const width of [320, 390, 430]) {
+    assert.deepEqual(r7(43.9, width), ['R7:P2'], `mobile ${width} h 43.9`);
+    assert.deepEqual(r7(44, width), [], `mobile ${width} h 44`);
+  }
+  const f = evaluateTypography([fact({ kind: 'input', h: 30 })], ctx()).find(
+    (x) => x.rule === 'R7',
+  );
+  assert.equal(f.detail.min, 32);
 });

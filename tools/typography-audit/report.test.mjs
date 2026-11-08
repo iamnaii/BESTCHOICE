@@ -252,7 +252,7 @@ test('shell grouping counts a finding repeated on many routes once', () => {
 test('escalated findings are listed with added under เกิดจากฟอนต์ใหม่', () => {
   const thai = (lineHeight) =>
     fact({ text: 'ข้อความไทย', hasThai: true, fontSize: 14, lineHeight });
-  // before ratio 1.3 → R3 P2 (Thai ≥ 1.2, outside 1.4–1.8)
+  // before ratio 1.3 → R3 P2 (Thai ≥ 1.2, outside 1.35–1.8)
   // after 1.1 → R3 P1 (Thai < 1.2); same key
   const s = summarize(pair([rec({ facts: [thai(18.2)] })], [rec({ facts: [thai(15.4)] })]));
   assert.equal(s.totals.escalated.findings, 1);
@@ -654,38 +654,57 @@ test('D1/D2 totals state the direction and median of the change', () => {
   );
 });
 
-test('house style is split from real R3/R7 findings by the measured values', () => {
+test('R3/R7 thresholds follow the house style — the split counts real findings only', () => {
   const both = (facts, o = {}) => [rec({ facts, ...o }), rec({ facts, ...o })];
-  // ×1.375 below 20px → house style
-  const snug = fact({ text: 'ระยะ snug', fontSize: 14, lineHeight: 19.25 });
-  const tight = fact({ text: 'ตัวเลขชิด', fontSize: 14, lineHeight: 14 }); // ×1.0 → real
-  const btn32 = fact({ kind: 'button', text: 'ปุ่ม 32', h: 32 }); // desktop 32 → house style
+  const snug = fact({ text: 'ระยะ snug', fontSize: 14, lineHeight: 19.25 }); // ×1.375 → passes R3
+  const tight = fact({ text: 'ตัวเลขชิด', fontSize: 14, lineHeight: 14 }); // ×1.0 → real P2
+  const thai = fact({ text: 'ไทยชิดมาก', hasThai: true, fontSize: 14, lineHeight: 15.4 }); // P1
+  const btn32 = fact({ kind: 'button', text: 'ปุ่ม 32', h: 32 }); // desktop 32 → passes R7
+  const btn31 = fact({ kind: 'button', text: 'ปุ่มเกือบ', h: 31.9 }); // desktop < 32 → real
   const btn24 = fact({ kind: 'button', text: 'ปุ่มเตี้ย', h: 24 }); // desktop < 32 → real
   const mob = fact({ kind: 'button', text: 'ปุ่มมือถือ', h: 40 }); // 390 < 44 → real
-  const [b1, a1] = both([snug, tight, btn32, btn24]);
+  const [b1, a1] = both([snug, tight, thai, btn32, btn31, btn24]);
   const [b2, a2] = both([mob], { no: '2', width: 390 });
   const s = summarize(pair([b1, b2], [a1, a2]));
   const hs = s.totals.houseStyle;
   assert.deepEqual(
-    [
-      hs.R3.houseStyle,
-      hs.R3.realP2,
-      hs.R3.realP1,
-      hs.R7.houseStyle,
-      hs.R7.realMobileBelow44,
-      hs.R7.realDesktopBelow32,
-      hs.R7.realDesktopOther,
-    ],
-    [1, 1, 0, 1, 1, 1, 0],
+    [hs.R3.realP2, hs.R3.realP1, hs.R7.realMobileBelow44, hs.R7.realDesktopBelow32],
+    [1, 1, 1, 2],
   );
+  // nothing is subtracted as house style: the split adds up to every R3/R7 finding
+  const byRule = s.totals.persisting.byRule;
+  assert.equal(byRule.R3.findings, hs.R3.realP2 + hs.R3.realP1);
+  assert.equal(byRule.R7.findings, hs.R7.realMobileBelow44 + hs.R7.realDesktopBelow32);
+  assert.equal(byRule.R3.houseStyle, undefined);
+  assert.equal(byRule.R7.houseStyle, undefined);
+  assert.equal(hs.R3.houseStyle, undefined, 'no house-style exemption count');
+  assert.equal(hs.R7.houseStyle, undefined, 'no house-style exemption count');
+  assert.match(hs.decision, /owner 2026-11-08/);
+  assert.deepEqual(hs.thresholds, {
+    R3SmallMaxFontPx: 20,
+    R3SmallRange: [1.35, 1.8],
+    R3LargeRange: [1.2, 1.6],
+    R3ThaiMin: 1.2,
+    R7DesktopFromWidthPx: 768,
+    R7DesktopMinPx: 32,
+    R7MobileToWidthPx: 430,
+    R7MobileMinPx: 44,
+  });
   const json = buildFindingsJson(s);
-  assert.equal(json.totals.houseStyle.R7.houseStyle, 1);
-  const md = section(renderSummary(s), /มีอยู่ก่อนแล้ว/).body;
-  assert.ok(
-    md.includes('ตัวเลขชิด') && md.includes('ปุ่มเตี้ย') && md.includes('ปุ่มมือถือ'),
-    'real remainders show example texts',
-  );
-  assert.ok(!/R3 P2 \(\d[\d,]* ครั้ง ทั้งใหม่และเดิม\)/.test(md), 'no blanket house-style count');
+  assert.deepEqual(json.totals.houseStyle, hs);
+  assert.match(json.notes.houseStyle, /2026-11-08/);
+  assert.doesNotMatch(json.notes.houseStyle, /owner decides on/);
+  const md = renderSummary(s);
+  const pre = section(md, /มีอยู่ก่อนแล้ว/).body;
+  for (const text of ['ตัวเลขชิด', 'ไทยชิดมาก', 'ปุ่มเกือบ', 'ปุ่มเตี้ย', 'ปุ่มมือถือ'])
+    assert.ok(pre.includes(text), `real finding example ${text}`);
+  for (const text of ['ระยะ snug', 'ปุ่ม 32']) assert.ok(!md.includes(text), `${text} passes now`);
+  assert.ok(pre.includes('เจ้าของตัดสิน 2026-11-08'), 'the section states the owner decision');
+  assert.ok(pre.includes('×1.35') && pre.includes('×1.375') && pre.includes('32px'));
+  assert.ok(!md.includes('ให้เจ้าของตัดสิน'), 'nothing left for the owner to decide');
+  assert.ok(!md.includes('ตามแบบบ้าน '), 'no house-style count or column');
+  assert.ok(!md.includes('ในนี้ตามแบบบ้าน'), 'per-rule table has no house-style column');
+  assert.ok(section(md, /สรุปสั้น/).body.includes('เจ้าของตัดสิน 2026-11-08'));
 });
 
 test('persisting in one inventory row and added/resolved in another counts once', () => {

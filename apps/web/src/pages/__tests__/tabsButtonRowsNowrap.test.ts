@@ -150,3 +150,11 @@ describe('scrollable tab bars keep the full 2px underline', () => {
     expect(src.slice(i, i + 2500)).not.toContain('-mb-px');
   });
 });
+
+describe('SellingPriceCard "ขึ้นเว็บ" readiness button', () => {
+  it('never wraps', () => {
+    const src = read('pages/ProductDetailPage/components/SellingPriceCard.tsx');
+    const cls = classBefore(src, '>\n                ขึ้นเว็บ', '<button');
+    expect(cls).toContain('whitespace-nowrap');
+  });
+});

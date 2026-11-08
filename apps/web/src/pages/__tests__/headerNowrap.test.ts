@@ -120,4 +120,11 @@ describe('ChatPanel assignee chip', () => {
     expect(chip![0]).not.toContain('leading-none');
     expect(chip![0]).toContain('h-5');
   });
+  it('appointment chip uses leading-snug (Thai text rule)', () => {
+    const src = read('UnifiedInboxPage/components/ChatPanel.tsx');
+    const before = src.slice(0, src.indexOf("roomApptState.tone === 'danger'"));
+    const cls = before.slice(before.lastIndexOf("'inline-flex h-5"));
+    expect(cls).toContain('leading-snug');
+    expect(cls).not.toContain('leading-none');
+  });
 });

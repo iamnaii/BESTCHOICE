@@ -10,12 +10,17 @@ export const PROFILES = {
 export const UI_FONT_RE = /^["']?Noto Sans Thai["']?,/;
 export const SARABUN_RE = /^["']?Sarabun["']?,/;
 export const NUMERIC_ONLY_RE = /^[\d,.\s฿%+\-–/]+$/;
+// numeric-only = plan regex AND at least one ASCII digit ('-', '/', '–' placeholders are not numbers).
+// The collector computes Fact.numericOnly with these semantics; R10 trusts the flag only.
+export const isNumericOnly = (text) => NUMERIC_ONLY_RE.test(text) && /[0-9]/.test(text);
+export const NON_DIFF_RULES = ['R8'];
+const SEVERITY_RANK = { P3: 1, P2: 2, P1: 3 };
 
 export const LH_SMALL_MAX_FONT = 20; // < 20px uses the small range
 export const LH_SMALL_RANGE = [1.4, 1.8];
 export const LH_LARGE_RANGE = [1.2, 1.6];
 export const LH_THAI_MIN = 1.2;
-export const LH_EPSILON = 0.01;
+export const LH_EPSILON = 1e-6; // float noise only; spec has no tolerance
 export const INK_CLIP_SLACK_PX = 1;
 export const DESKTOP_MIN_WIDTH = 1024; // R5 P1 at/above
 export const MOBILE_MAX_WIDTH = 430;
@@ -46,18 +51,32 @@ export const normalizeKeyText = (text) => String(text ?? '').replace(/\s+/g, ' '
 export const factKey = (kind, text, dup) => `${kind}|${normalizeKeyText(text)}|${dup}`;
 export const findingKey = (f) => `${f.route}|${f.width}|${f.theme}|${f.role}|${f.rule}|${f.key}`;
 
+// Shared key resolver (evaluateTypography + compareFacts): fact.key when present, else
+// factKey(kind, text, dup) with dup = count of earlier facts of same kind + normalized text.
+export function resolveKeys(facts) {
+  const seen = new Map();
+  return facts.map((f) => {
+    if (f.key) return f.key;
+    const base = `${f.kind}|${normalizeKeyText(f.text)}`;
+    const dup = seen.get(base) ?? 0;
+    seen.set(base, dup + 1);
+    return factKey(f.kind, f.text, dup);
+  });
+}
+
 const inRange = (v, [lo, hi]) => v >= lo - LH_EPSILON && v <= hi + LH_EPSILON;
 const finite = (n) => Number.isFinite(n);
 
 export function evaluateTypography(facts, ctx) {
   const profile = PROFILES[ctx.app];
   const out = [];
+  const keys = resolveKeys(facts);
   const h1Max = Math.max(0, ...facts.filter((f) => f.headingLevel === 1).map((f) => f.fontSize));
 
-  for (const f of facts) {
+  for (const [i, f] of facts.entries()) {
     const emit = (rule, severity, detail) => out.push({
       rule, severity, route: ctx.route, width: ctx.width, theme: ctx.theme, role: ctx.role,
-      key: f.key ?? factKey(f.kind, f.text, 0), text: f.text, detail,
+      key: keys[i], text: f.text, detail,
     });
 
     // R1
@@ -79,8 +98,9 @@ export function evaluateTypography(facts, ctx) {
       }
     }
     // R4 (Ruling G)
-    if (f.hasThai && finite(f.lineHeight) && (f.overflowClip === 'y' || f.overflowClip === 'both')) {
-      const inkOverflow = f.inkHeight > f.lineHeight + INK_CLIP_SLACK_PX;
+    if (f.hasThai && (f.overflowClip === 'y' || f.overflowClip === 'both')) {
+      // scroll branch fires even with non-finite lineHeight; only the ink branch needs it
+      const inkOverflow = finite(f.lineHeight) && f.inkHeight > f.lineHeight + INK_CLIP_SLACK_PX;
       if (inkOverflow || f.scrollOverflowY) {
         emit('R4', 'P1', { inkHeight: f.inkHeight, lineHeight: f.lineHeight, scrollOverflowY: f.scrollOverflowY, overflowClip: f.overflowClip });
       }
@@ -106,9 +126,10 @@ export function evaluateTypography(facts, ctx) {
       || (profile.sarabunInReadingBlock && f.inReadingBlock && SARABUN_RE.test(f.fontFamily));
     if (!familyOk) emit('R8', 'P1', { fontFamily: f.fontFamily, inReadingBlock: f.inReadingBlock });
     // R9
-    if (!profile.weights.includes(f.fontWeight)) emit('R9', 'P3', { fontWeight: f.fontWeight, weights: profile.weights });
-    // R10 (Ruling M: f.numeric = tabular-nums active)
-    if (f.numericOnly && NUMERIC_ONLY_RE.test(f.text) && (f.tag === 'td' || f.fontSize >= TNUM_MIN_FONT) && !f.numeric) {
+    const weight = Number(f.fontWeight);
+    if (!profile.weights.includes(weight)) emit('R9', 'P3', { fontWeight: weight, weights: profile.weights });
+    // R10 (Ruling M: f.numeric = tabular-nums active; numericOnly flag is the single source)
+    if (f.numericOnly && (f.tag === 'td' || f.fontSize >= TNUM_MIN_FONT) && !f.numeric) {
       emit('R10', 'P3', { tag: f.tag, fontSize: f.fontSize });
     }
     // R11
@@ -122,14 +143,19 @@ export function evaluateTypography(facts, ctx) {
   return out;
 }
 
-export function diffFindings(before, after, { excludeRules = [] } = {}) {
+// persisting entries = AFTER finding + `before` (matching BEFORE finding).
+// escalated = persisting entries whose severity rank rose (P3 < P2 < P1).
+export function diffFindings(before, after, { excludeRules = NON_DIFF_RULES } = {}) {
   const keep = (list) => list.filter((f) => !excludeRules.includes(f.rule));
   const b = keep(before), a = keep(after);
-  const bKeys = new Set(b.map(findingKey)), aKeys = new Set(a.map(findingKey));
+  const bMap = new Map(b.map((f) => [findingKey(f), f]));
+  const aKeys = new Set(a.map(findingKey));
+  const persisting = a.filter((f) => bMap.has(findingKey(f))).map((f) => ({ ...f, before: bMap.get(findingKey(f)) }));
   return {
-    added: a.filter((f) => !bKeys.has(findingKey(f))),
+    added: a.filter((f) => !bMap.has(findingKey(f))),
     resolved: b.filter((f) => !aKeys.has(findingKey(f))),
-    persisting: a.filter((f) => bKeys.has(findingKey(f))),
+    persisting,
+    escalated: persisting.filter((f) => SEVERITY_RANK[f.severity] > SEVERITY_RANK[f.before.severity]),
   };
 }
 
@@ -139,13 +165,14 @@ export function diffFindings(before, after, { excludeRules = [] } = {}) {
 const inkCentreOffset = (f) => f.textTop + f.textHeight / 2 - (f.y + f.h / 2);
 
 export function compareFacts(beforeFacts, afterFacts, ctx = {}) {
-  const byKey = new Map(beforeFacts.map((f) => [f.key, f]));
+  const bKeys = resolveKeys(beforeFacts), aKeys = resolveKeys(afterFacts);
+  const byKey = new Map(beforeFacts.map((f, i) => [bKeys[i], f]));
   const out = [];
-  for (const a of afterFacts) {
-    const b = byKey.get(a.key);
+  for (const [i, a] of afterFacts.entries()) {
+    const b = byKey.get(aKeys[i]);
     if (!b) continue;
-    const base = { key: a.key, kind: a.kind, text: a.text, ...ctx };
-    if (b.inkWidth > 0) {
+    const base = { key: aKeys[i], kind: a.kind, text: a.text, ...ctx };
+    if (a.text === b.text && b.inkWidth > 0) {
       const change = (a.inkWidth - b.inkWidth) / b.inkWidth;
       if (Math.abs(change) > D1_INK_WIDTH_CHANGE) out.push({ rule: 'D1', ...base, detail: { before: b.inkWidth, after: a.inkWidth, change } });
     }

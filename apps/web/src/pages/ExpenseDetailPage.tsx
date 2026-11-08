@@ -347,14 +347,14 @@ export default function ExpenseDetailPage() {
 
             {/* Line items */}
             {doc.expenseDetail?.lines?.length ? (
-              <section className="rounded-lg border border-border bg-card overflow-hidden">
+              <section className="rounded-lg border border-border bg-card overflow-x-auto">
                 <ScreenTable className="w-full text-sm">
                   <thead className="bg-muted/50 text-muted-foreground">
                     <tr>
-                      <th className="px-4 py-2 text-left font-medium leading-snug">บัญชี / รายการ</th>
-                      <th className="px-4 py-2 text-right font-medium leading-snug">ก่อน VAT</th>
-                      <th className="px-4 py-2 text-right font-medium leading-snug">VAT</th>
-                      <th className="px-4 py-2 text-right font-medium leading-snug">หัก ณ ที่จ่าย</th>
+                      <th className="whitespace-nowrap px-4 py-2 text-left font-medium leading-snug">บัญชี / รายการ</th>
+                      <th className="whitespace-nowrap px-4 py-2 text-right font-medium leading-snug">ก่อน VAT</th>
+                      <th className="whitespace-nowrap px-4 py-2 text-right font-medium leading-snug">VAT</th>
+                      <th className="whitespace-nowrap px-4 py-2 text-right font-medium leading-snug">หัก ณ ที่จ่าย</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">

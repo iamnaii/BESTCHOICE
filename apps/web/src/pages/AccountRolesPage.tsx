@@ -140,13 +140,13 @@ function RoleMapTable({
       <ScreenTable className="w-full text-sm">
         <thead className="bg-muted/50 text-muted-foreground">
           <tr>
-            <th className="px-4 py-3 text-left font-medium leading-snug">บทบาท</th>
-            <th className="px-4 py-3 text-left font-medium leading-snug">รหัสบัญชี</th>
-            <th className="px-4 py-3 text-left font-medium leading-snug">ชื่อบัญชี</th>
-            <th className="px-4 py-3 text-right font-medium leading-snug">ลำดับความสำคัญ</th>
-            <th className="px-4 py-3 text-center font-medium leading-snug">ใช้งาน</th>
-            <th className="px-4 py-3 text-left font-medium leading-snug">หมายเหตุ</th>
-            <th className="px-4 py-3 text-right font-medium leading-snug">การจัดการ</th>
+            <th className="whitespace-nowrap px-4 py-3 text-left font-medium leading-snug">บทบาท</th>
+            <th className="whitespace-nowrap px-4 py-3 text-left font-medium leading-snug">รหัสบัญชี</th>
+            <th className="whitespace-nowrap px-4 py-3 text-left font-medium leading-snug">ชื่อบัญชี</th>
+            <th className="whitespace-nowrap px-4 py-3 text-right font-medium leading-snug">ลำดับความสำคัญ</th>
+            <th className="whitespace-nowrap px-4 py-3 text-center font-medium leading-snug">ใช้งาน</th>
+            <th className="whitespace-nowrap px-4 py-3 text-left font-medium leading-snug">หมายเหตุ</th>
+            <th className="whitespace-nowrap px-4 py-3 text-right font-medium leading-snug">การจัดการ</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">

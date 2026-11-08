@@ -27,11 +27,11 @@ export function UserPermissionTable<P extends string>({
       <table className="w-full text-sm">
         <thead className="bg-muted/50">
           <tr>
-            <th scope="col" className="min-w-44 p-3 text-left font-medium">
+            <th scope="col" className="whitespace-nowrap min-w-44 p-3 text-left font-medium">
               ผู้ใช้
             </th>
             {permissions.map((permission) => (
-              <th key={permission} scope="col" className="min-w-28 p-3 text-center font-medium">
+              <th key={permission} scope="col" className="whitespace-nowrap min-w-28 p-3 text-center font-medium">
                 {labels[permission]}
               </th>
             ))}

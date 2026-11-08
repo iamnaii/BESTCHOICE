@@ -381,7 +381,7 @@ function PaymentRow({ payment }: { payment: HistoryPayment }) {
                 onClick={onLiffDownloadClick('receipt', payment.receiptId)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-2 inline-flex items-center gap-1 rounded-full bg-emerald-50/70 border border-emerald-200 px-2 py-1 text-[10px] font-medium text-emerald-700 active:scale-[0.97] transition-transform leading-none"
+                className="mt-2 inline-flex items-center gap-1 rounded-full bg-emerald-50/70 border border-emerald-200 px-2 py-1 text-xs font-medium text-emerald-700 active:scale-[0.97] transition-transform leading-normal"
               >
                 <Download className="size-[11px]" strokeWidth={2} />
                 ใบเสร็จ

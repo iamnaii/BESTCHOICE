@@ -194,3 +194,16 @@ describe('scrollable tab bars use an inset focus ring', () => {
     }
   });
 });
+
+describe('ContractsPage keeps the selected tab in view', () => {
+  const src = read('pages/ContractsPage.tsx');
+  it('scrolls the active tab into view with nearest/nearest only when the bar overflows', () => {
+    expect(src).toMatch(/scrollIntoView\(\{\s*block:\s*'nearest',\s*inline:\s*'nearest'\s*\}\)/);
+    expect(src).toMatch(/scrollWidth\s*<=?\s*\w+\.clientWidth|scrollWidth\s*>\s*\w+\.clientWidth/);
+    expect(src).toMatch(/\[data-state="active"\]|aria-selected="true"|aria-pressed/);
+    expect(src).not.toMatch(/behavior:\s*'smooth'/);
+  });
+  it.each(['all', 'my', 'pending_review'])('tab %s button exposes aria-pressed', (key) => {
+    expect(src).toContain(`aria-pressed={viewTab === '${key}'}`);
+  });
+});

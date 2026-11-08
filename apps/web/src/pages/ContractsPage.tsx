@@ -5,7 +5,7 @@ import type { SignatureRequirements } from '@installment/shared';
 import { PaginationBar } from '@/components/ui/PaginationBar';
 import { createExportGuard, ExportError, fetchExportSnapshot, type ExportSnapshot } from '@/lib/fetch-export-pages';
 import { formatThaiDateTime, toBangkokDateString } from '@/lib/date';
-import { useMemo, useCallback, useState, useEffect } from 'react';
+import { useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
@@ -106,6 +106,14 @@ export default function ContractsPage() {
   const setPage = useCallback((p: number) => updateParams({ page: p > 1 ? String(p) : '' }), [updateParams]);
 
   const debouncedSearch = useDebounce(search);
+
+  // Keep the selected tab visible when the bar overflows (deep link ?tab=…). nearest/nearest: no page scroll.
+  const tabBarRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const bar = tabBarRef.current;
+    if (!bar || bar.scrollWidth <= bar.clientWidth) return;
+    bar.querySelector<HTMLElement>('[aria-pressed="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [viewTab]);
 
   const buildParams = (targetPage = page, targetLimit = size) => {
     const params = new URLSearchParams();
@@ -343,9 +351,10 @@ export default function ContractsPage() {
       )}
 
       {/* View Tabs — Metronic line tabs style */}
-      <div className="flex max-w-full min-w-0 overflow-x-auto overflow-y-hidden gap-0 mb-5 shadow-[inset_0_-1px_0_hsl(var(--border)/0.6)]">
+      <div className="flex max-w-full min-w-0 overflow-x-auto overflow-y-hidden gap-0 mb-5 shadow-[inset_0_-1px_0_hsl(var(--border)/0.6)]" ref={tabBarRef}>
         <button data-ui-control="button"
           onClick={() => updateParams({ tab: '', status: '', workflow: '', q: '', page: '' })}
+          aria-pressed={viewTab === 'all'}
           className={`px-5 py-3 text-sm font-medium whitespace-nowrap shrink-0 border-b-2 transition-all focus-visible:ring-inset focus-visible:ring-offset-0 ${viewTab === 'all' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           ทั้งหมด
@@ -353,6 +362,7 @@ export default function ContractsPage() {
         </button>
         <button data-ui-control="button"
           onClick={() => updateParams({ tab: 'my', status: '', workflow: '', q: '', page: '' })}
+          aria-pressed={viewTab === 'my'}
           className={`px-5 py-3 text-sm font-medium whitespace-nowrap shrink-0 border-b-2 transition-all focus-visible:ring-inset focus-visible:ring-offset-0 ${viewTab === 'my' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           สัญญาของฉัน
@@ -360,7 +370,8 @@ export default function ContractsPage() {
         {isManager && (
           <button data-ui-control="button"
             onClick={() => updateParams({ tab: 'pending_review', status: '', workflow: '', q: '', page: '' })}
-            className={`px-5 py-3 text-sm font-medium whitespace-nowrap shrink-0 border-b-2 transition-all focus-visible:ring-inset focus-visible:ring-offset-0 ${viewTab === 'pending_review' ? 'border-warning text-warning-strong' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+            aria-pressed={viewTab === 'pending_review'}
+          className={`px-5 py-3 text-sm font-medium whitespace-nowrap shrink-0 border-b-2 transition-all focus-visible:ring-inset focus-visible:ring-offset-0 ${viewTab === 'pending_review' ? 'border-warning text-warning-strong' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
           >
             รอตรวจสอบ
           </button>

@@ -195,7 +195,7 @@ export function ProductCard({ product: p, priceMode = 'combined' }: Props) {
                       )}
                       aria-hidden
                     />
-                    <span className="truncate">{t.label}</span>
+                    <span className="truncate" title={t.label}>{t.label}</span>
                   </span>
                 ))}
               </div>

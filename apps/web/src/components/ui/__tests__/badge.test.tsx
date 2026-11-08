@@ -14,4 +14,18 @@ describe('Badge', () => {
     expect(cls).toContain('truncate');
     expect(cls).toContain('max-w-24');
   });
+
+  it('long text: Badge capped at container width with an inner truncate span', () => {
+    render(
+      <Badge className="max-w-full min-w-0" title="ข้อความยาวมาก">
+        <span className="truncate">ข้อความยาวมาก</span>
+      </Badge>,
+    );
+    const inner = screen.getByText('ข้อความยาวมาก');
+    expect(inner.className).toContain('truncate');
+    const badge = inner.parentElement as HTMLElement;
+    expect(badge.className).toContain('max-w-full');
+    expect(badge.className).toContain('whitespace-nowrap');
+    expect(badge.getAttribute('title')).toBe('ข้อความยาวมาก');
+  });
 });

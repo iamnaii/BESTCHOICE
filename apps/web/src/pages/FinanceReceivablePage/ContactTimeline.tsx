@@ -37,8 +37,14 @@ export default function ContactTimeline({ logs }: { logs: FinanceContactLog[] })
               <span className="font-medium">{log.contactedBy.name}</span>
               <span className="text-muted-foreground">{formatDateShortThai(log.contactedAt)}</span>
               {log.contact && (
-                <Badge variant="secondary">
-                  คุย: {log.contact.name}{log.contact.position ? ` (${log.contact.position})` : ''}
+                <Badge
+                  variant="secondary"
+                  className="max-w-full min-w-0"
+                  title={`คุย: ${log.contact.name}${log.contact.position ? ` (${log.contact.position})` : ''}`}
+                >
+                  <span className="truncate">
+                    คุย: {log.contact.name}{log.contact.position ? ` (${log.contact.position})` : ''}
+                  </span>
                 </Badge>
               )}
               <span className={`px-2 py-0.5 rounded text-xs ${RESULT_TONE[log.result]}`}>

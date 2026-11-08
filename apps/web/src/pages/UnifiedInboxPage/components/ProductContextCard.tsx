@@ -160,9 +160,9 @@ export default function ProductContextCard({ roomId, empty }: ProductContextCard
             {product.activePromotions?.length > 0 && (
               <div className="mt-1.5 flex flex-wrap gap-1">
                 {product.activePromotions.map((promo) => (
-                  <Badge key={promo.id} variant="secondary" className="text-[10px]">
+                  <Badge key={promo.id} variant="secondary" className="max-w-full min-w-0 text-[10px]" title={promo.name}>
                     <BadgePercent className="size-2.5 mr-0.5" />
-                    {promo.name}
+                    <span className="truncate">{promo.name}</span>
                   </Badge>
                 ))}
               </div>

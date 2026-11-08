@@ -44,10 +44,11 @@ function StageChip({ row }: { row: CaseRow }) {
     : STAGE_LABEL[row.stage];
   return (
     <span
-      className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold leading-snug ${STAGE_TILE[row.stage]}`}
+      title={label}
+      className={`inline-flex max-w-full min-w-0 items-center gap-1 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold leading-snug ${STAGE_TILE[row.stage]}`}
     >
       <Icon aria-hidden className="h-3.5 w-3.5 shrink-0" />
-      {label}
+      <span className="truncate">{label}</span>
     </span>
   );
 }
@@ -145,9 +146,9 @@ export default function CaseTable({ rows }: CaseTableProps) {
             to={`/after-sales/${row.id}`}
             className="block rounded-lg border border-border bg-card p-3 text-sm hover:bg-accent"
           >
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
               <span className="font-semibold text-primary">{row.caseNumber}</span>
-              <div className="flex flex-wrap items-center gap-1.5">
+              <div className="flex min-w-0 max-w-full flex-wrap items-center gap-1.5">
                 <StageChip row={row} />
                 {showAwaitingMgrChip(row) && <AwaitingMgrChip />}
               </div>

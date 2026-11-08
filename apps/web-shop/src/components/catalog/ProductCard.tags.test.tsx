@@ -28,4 +28,5 @@ it('keeps a card tag on one line and truncates instead of wrapping', () => {
   const pill = label.closest('span.rounded-full') as HTMLElement;
   expect(pill.className).toContain('whitespace-nowrap');
   expect(label.className).toContain('truncate');
+  expect(label.getAttribute('title')).toBe('ประกันร้าน 60 วัน');
 });

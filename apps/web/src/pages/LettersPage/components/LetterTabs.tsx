@@ -25,7 +25,7 @@ export default function LetterTabs({ active, counts, onChange }: Props) {
           <button data-ui-control="button"
             key={status}
             onClick={() => onChange(status)}
-            className={`inline-flex items-center gap-1.5 px-4 py-2.5 text-sm border-b-2 transition-colors whitespace-nowrap ${
+            className={`inline-flex items-center gap-1.5 px-4 py-2.5 text-sm border-b-2 transition-colors whitespace-nowrap focus-visible:ring-inset focus-visible:ring-offset-0 ${
               isActive
                 ? 'border-primary text-primary font-medium'
                 : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'

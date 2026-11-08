@@ -315,7 +315,7 @@ export default function ChartOfAccountsPage() {
             className={cn(
               'min-h-11 px-4 py-2 text-sm whitespace-nowrap shrink-0 transition-colors leading-snug focus-visible:ring-inset focus-visible:ring-offset-0',
               scope === t.key
-                ? 'bg-primary text-primary-foreground'
+                ? 'bg-primary text-primary-foreground focus-visible:ring-primary-foreground'
                 : 'bg-background text-muted-foreground hover:bg-accent',
             )}
           >

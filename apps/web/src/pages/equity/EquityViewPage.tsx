@@ -188,7 +188,7 @@ export default function EquityViewPage() {
                       <th className="whitespace-nowrap text-right px-2">จำนวนเงิน</th>
                       <th className="whitespace-nowrap text-right px-2">ส่วนเกิน</th>
                       <th className="whitespace-nowrap text-right px-2">ชำระจริง</th>
-                      <th className="whitespace-nowrap text-right px-2">WHT</th>
+                      <th className="whitespace-nowrap text-right pl-2">WHT</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -204,7 +204,7 @@ export default function EquityViewPage() {
                         <td className="text-right font-mono px-2">
                           {formatNumberDecimal(parseFloat(l.paid), 2)}
                         </td>
-                        <td className="text-right font-mono px-2">
+                        <td className="text-right font-mono pl-2">
                           {formatNumberDecimal(parseFloat(l.wht), 2)}
                         </td>
                       </tr>

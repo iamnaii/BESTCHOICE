@@ -107,13 +107,7 @@ export default function ContractsPage() {
 
   const debouncedSearch = useDebounce(search);
 
-  // Keep the selected tab visible when the bar overflows (deep link ?tab=…). nearest/nearest: no page scroll.
   const tabBarRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const bar = tabBarRef.current;
-    if (!bar || bar.scrollWidth <= bar.clientWidth) return;
-    bar.querySelector<HTMLElement>('[aria-pressed="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  }, [viewTab]);
 
   const buildParams = (targetPage = page, targetLimit = size) => {
     const params = new URLSearchParams();
@@ -151,6 +145,19 @@ export default function ContractsPage() {
   }, [result, page, setPage]);
   const contracts = result?.data ?? [];
   const summary = result?.summary;
+
+  // Keep the selected tab visible when the bar overflows (deep link ?tab=…). Scrolls the bar only, horizontally:
+  // the element-level scroll helper could also move the window on short phones. Re-runs when the count badge arrives (widens "ทั้งหมด").
+  useEffect(() => {
+    const bar = tabBarRef.current;
+    if (!bar || bar.scrollWidth <= bar.clientWidth) return;
+    const tab = bar.querySelector<HTMLElement>('[aria-pressed="true"]');
+    if (!tab) return;
+    const b = bar.getBoundingClientRect();
+    const t = tab.getBoundingClientRect();
+    if (t.left < b.left) bar.scrollLeft -= b.left - t.left;
+    else if (t.right > b.right) bar.scrollLeft += t.right - b.right;
+  }, [viewTab, result?.total]);
 
   const isManager = user && ['OWNER', 'FINANCE_MANAGER'].includes(user.role);
   const canCreate = ['OWNER', 'BRANCH_MANAGER', 'SALES'].includes(user?.role ?? '');
@@ -371,7 +378,7 @@ export default function ContractsPage() {
           <button data-ui-control="button"
             onClick={() => updateParams({ tab: 'pending_review', status: '', workflow: '', q: '', page: '' })}
             aria-pressed={viewTab === 'pending_review'}
-          className={`px-5 py-3 text-sm font-medium whitespace-nowrap shrink-0 border-b-2 transition-all focus-visible:ring-inset focus-visible:ring-offset-0 ${viewTab === 'pending_review' ? 'border-warning text-warning-strong' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+            className={`px-5 py-3 text-sm font-medium whitespace-nowrap shrink-0 border-b-2 transition-all focus-visible:ring-inset focus-visible:ring-offset-0 ${viewTab === 'pending_review' ? 'border-warning text-warning-strong' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
           >
             รอตรวจสอบ
           </button>

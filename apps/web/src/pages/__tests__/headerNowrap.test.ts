@@ -141,8 +141,17 @@ describe('EquityViewPage shareholder table — cells have horizontal padding', (
     expect(cells.length).toBe((table.match(/<(th|td)\b/g) ?? []).length);
     expect(cells.length).toBeGreaterThan(0);
   });
-  it.each(cells.map((m, i) => [`${i} ${m[1]} ${m[2]}`, m[2]]))('%s has px-2 or pr-2', (_name, cls) => {
-    expect(/\b(px-2|pr-2)\b/.test(cls)).toBe(true);
+  const lastTd = cells.filter((m) => m[1] === 'td').pop();
+  const lastTh = cells.filter((m) => m[1] === 'th').pop();
+  it.each(cells.map((m, i) => [`${i} ${m[1]} ${m[2]}`, m[2], m === lastTd || m === lastTh]))('%s has horizontal padding', (_name, cls, isLast) => {
+    expect(new RegExp(isLast ? '\\bpl-2\\b' : '\\b(px-2|pr-2)\\b').test(cls as string)).toBe(true);
+  });
+  it('last column (WHT) trims trailing padding: pl-2 only, no px-2', () => {
+    const last = (tag: 'th' | 'td') => cells.filter((m) => m[1] === tag).pop()![2];
+    for (const tag of ['th', 'td'] as const) {
+      expect(last(tag)).toMatch(/\bpl-2\b/);
+      expect(last(tag)).not.toMatch(/\bpx-2\b/);
+    }
   });
   it('every <th> is still whitespace-nowrap', () => {
     const ths = [...table.matchAll(/<th className="([^"]*)"/g)];

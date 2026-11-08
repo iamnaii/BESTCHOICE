@@ -107,7 +107,7 @@ export default function AssetHubTabs() {
               to={tab.path}
               end={tab.end}
               className={({ isActive }) =>
-                `flex items-center gap-1.5 px-3 py-2.5 text-sm whitespace-nowrap border-b-2 -mb-px transition-colors leading-snug ${
+                `flex items-center gap-1.5 px-3 py-2.5 text-sm whitespace-nowrap border-b-2 -mb-px transition-colors leading-snug focus-visible:ring-inset focus-visible:ring-offset-0 ${
                   isActive
                     ? 'border-primary text-primary font-medium'
                     : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-accent rounded-t-md'

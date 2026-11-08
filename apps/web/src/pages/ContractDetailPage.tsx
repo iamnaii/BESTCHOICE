@@ -1503,7 +1503,7 @@ export default function ContractDetailPage() {
         <button
           data-ui-control="button"
           onClick={() => setActiveTab('schedule')}
-          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === 'schedule' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors focus-visible:ring-inset focus-visible:ring-offset-0 ${activeTab === 'schedule' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           ตารางผ่อน
           <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-2xs bg-muted text-muted-foreground">
@@ -1513,14 +1513,14 @@ export default function ContractDetailPage() {
         <button
           data-ui-control="button"
           onClick={() => setActiveTab('preview')}
-          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === 'preview' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors focus-visible:ring-inset focus-visible:ring-offset-0 ${activeTab === 'preview' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           ดูสัญญา
         </button>
         <button
           data-ui-control="button"
           onClick={() => setActiveTab('documents')}
-          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === 'documents' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors focus-visible:ring-inset focus-visible:ring-offset-0 ${activeTab === 'documents' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           เอกสาร
           {contract.contractDocuments.length > 0 && (
@@ -1532,7 +1532,7 @@ export default function ContractDetailPage() {
         <button
           data-ui-control="button"
           onClick={() => setActiveTab('credit')}
-          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === 'credit' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors focus-visible:ring-inset focus-visible:ring-offset-0 ${activeTab === 'credit' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           ตรวจเครดิต
         </button>

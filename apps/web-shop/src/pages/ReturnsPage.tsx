@@ -73,7 +73,7 @@ export default function ReturnsPage() {
                   <h3 className="text-lg font-semibold leading-snug">
                     {copy.returns.contactTitle}
                   </h3>
-                  <p className="reading-block text-muted-foreground">
+                  <p className="text-sm text-muted-foreground leading-snug">
                     {copy.returns.contactBody}
                   </p>
                   <Stack gap={2}>

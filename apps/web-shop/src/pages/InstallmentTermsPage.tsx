@@ -132,7 +132,7 @@ export default function InstallmentTermsPage() {
                     {s.bullets && (
                       <ul className="space-y-1.5">
                         {s.bullets.map((b, j) => (
-                          <li key={j} className="flex gap-2 reading-block">
+                          <li key={j} className="flex gap-2 text-sm leading-snug">
                             <Check className="size-4 text-emerald-500 shrink-0 mt-0.5" aria-hidden="true" />
                             <span>{b}</span>
                           </li>

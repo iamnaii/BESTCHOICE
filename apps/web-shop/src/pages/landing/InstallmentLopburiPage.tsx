@@ -108,7 +108,7 @@ export default function InstallmentLopburiPage() {
                     <Stack gap={2} className="leading-snug">
                       {w.icon}
                       <h3 className="font-semibold leading-snug">{w.title}</h3>
-                      <p className="reading-block text-muted-foreground">{w.description}</p>
+                      <p className="text-sm text-muted-foreground leading-snug">{w.description}</p>
                     </Stack>
                   </CardBody>
                 </Card>
@@ -128,7 +128,7 @@ export default function InstallmentLopburiPage() {
                       </span>
                       <div>
                         <h3 className="font-semibold leading-snug">{s.title}</h3>
-                        <p className="mt-1 reading-block text-muted-foreground">{s.description}</p>
+                        <p className="mt-1 text-sm text-muted-foreground leading-snug">{s.description}</p>
                       </div>
                     </div>
                   </CardBody>

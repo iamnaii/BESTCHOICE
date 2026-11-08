@@ -100,7 +100,7 @@ export default function UsedIphoneLopburiPage() {
                     <Stack gap={2} className="leading-snug">
                       {q.icon}
                       <h3 className="font-semibold leading-snug">{q.title}</h3>
-                      <p className="reading-block text-muted-foreground">{q.description}</p>
+                      <p className="text-sm text-muted-foreground leading-snug">{q.description}</p>
                     </Stack>
                   </CardBody>
                 </Card>

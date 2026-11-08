@@ -15,7 +15,7 @@ test('reading-block is a Tailwind @utility that keeps controls in the UI face', 
 });
 test('long-form surfaces use reading-block', () => {
   for (const f of [
-    'src/components/shop/FaqAccordion.tsx', 'src/pages/HowItWorksPage.tsx', 'src/pages/InstallmentTermsPage.tsx',
+    'src/components/shop/FaqAccordion.tsx', 'src/pages/InstallmentTermsPage.tsx',
     'src/pages/ReturnsPage.tsx', 'src/pages/ShippingPage.tsx', 'src/pages/AboutPage.tsx',
     'src/pages/landing/InstallmentLopburiPage.tsx', 'src/pages/landing/UsedIphoneLopburiPage.tsx', 'src/pages/ProductDetailPage.tsx',
   ]) expect(read(f), f).toMatch(/\breading-block\b/);

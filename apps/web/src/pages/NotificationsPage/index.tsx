@@ -244,23 +244,23 @@ export default function NotificationsPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex max-w-full min-w-0 overflow-x-auto overflow-y-hidden gap-1 mb-4 border-b">
+      <div className="flex max-w-full min-w-0 overflow-x-auto overflow-y-hidden gap-1 mb-4 shadow-[inset_0_-1px_0_hsl(var(--border))]">
         <button data-ui-control="button"
           onClick={() => setActiveTab('logs')}
-          className={`px-4 py-2 text-sm font-medium whitespace-nowrap shrink-0 border-b-2 -mb-px ${activeTab === 'logs' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          className={`px-4 py-2 text-sm font-medium whitespace-nowrap shrink-0 border-b-2 ${activeTab === 'logs' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           ประวัติการส่ง
         </button>
         <button data-ui-control="button"
           onClick={() => setActiveTab('templates')}
-          className={`px-4 py-2 text-sm font-medium whitespace-nowrap shrink-0 border-b-2 -mb-px ${activeTab === 'templates' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          className={`px-4 py-2 text-sm font-medium whitespace-nowrap shrink-0 border-b-2 ${activeTab === 'templates' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           แม่แบบข้อความ
         </button>
         {isOwner && (
           <button data-ui-control="button"
             onClick={() => setActiveTab('staff')}
-            className={`px-4 py-2 text-sm font-medium whitespace-nowrap shrink-0 border-b-2 -mb-px ${activeTab === 'staff' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+            className={`px-4 py-2 text-sm font-medium whitespace-nowrap shrink-0 border-b-2 ${activeTab === 'staff' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
           >
             แจ้งพนักงาน (LINE)
           </button>

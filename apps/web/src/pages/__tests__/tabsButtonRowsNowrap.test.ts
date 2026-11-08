@@ -103,3 +103,32 @@ describe('button rows wrap whole buttons', () => {
     expect(classBefore(src, 'ไม่มีผลต่าง', '<div className=')).toContain('flex-wrap');
   });
 });
+
+// Underline technique: a scroll container clips anything below its padding box, so a tab's -mb-px (2px underline
+// overlapping the bar border) would lose 1px. Bars that used -mb-px draw their bottom line as an inset shadow
+// (token colour) and the tabs sit flush; the rest keep border-b with tabs above it. Either way: no -mb-px in a scroller.
+describe('scrollable tab bars keep the full 2px underline', () => {
+  it.each([
+    ['NotificationsPage/index.tsx', '{/* Tabs */}'],
+    ['ContractsPage.tsx', '{/* View Tabs'],
+  ])('%s: inset-shadow line, no border-b, no -mb-px', (file, marker) => {
+    const src = read(`pages/${file}`);
+    const bar = divAfter(src, marker);
+    expect(bar).toMatch(/shadow-\[inset_0_-1px_0_hsl\(var\(--border\)/);
+    expect(bar).not.toMatch(/(^|\s)border-b(\s|$)/);
+    expect(bar).toContain('overflow-y-hidden');
+    const i = src.indexOf(marker);
+    const barEnd = src.indexOf('</div>', i);
+    expect(src.slice(i, barEnd)).not.toContain('-mb-px');
+  });
+  it.each([
+    ['CommissionsPage.tsx', '{/* Tabs */}'],
+    ['PurchaseOrdersPage/index.tsx', '{/* Tabs */}'],
+    ['ProductDetailPage/index.tsx', '{/* Tabs — always shown'],
+  ])('%s: border-b kept, tabs not pulled into it', (file, marker) => {
+    const src = read(`pages/${file}`);
+    expect(divAfter(src, marker)).toContain('border-b');
+    const i = src.indexOf(marker);
+    expect(src.slice(i, i + 2500)).not.toContain('-mb-px');
+  });
+});

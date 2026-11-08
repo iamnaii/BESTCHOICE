@@ -2,14 +2,14 @@
 
 สร้างเมื่อ 2026-11-08 ด้วย `node tools/typography-audit/report.mjs` · ข้อมูลทั้งหมดเป็นข้อมูลจำลองของชุดทดสอบ (ไม่มีข้อมูลลูกค้าจริง) · ภาพหน้าจอและ contact sheet อยู่ใน `.tmp/typo-audit/` (ไม่ commit) — ชื่อภาพในตารางนับจากโฟลเดอร์นั้น
 
-**อ่านอย่างไร** — "ก่อน" = commit `70eb82556` (ฟอนต์เดิม Noto Sans Thai Looped) · "หลัง" = ฐานงานหลัง PR #1776 (Noto Sans Thai แบบไม่มีหัว) · วัดด้วยเบราว์เซอร์จริงทุกหน้า × ความกว้าง 1440/390/320 × ธีมสว่าง/มืด (หน้าร้านมีแต่ธีมสว่าง) แล้วจับคู่หน้าเดียวกันก่อน/หลังมาเทียบ
+**อ่านอย่างไร** — "ก่อน" = commit `70eb82556` (ฟอนต์เดิม Noto Sans Thai Looped) · "หลัง" = commit `1d0b4c283`, `77ce21ece`, `1f67675fd` (Noto Sans Thai แบบไม่มีหัว — commit ที่รันเครื่องมือตรวจ แยกตามโฟลเดอร์ในตาราง "จำนวนที่วัด") · วัดด้วยเบราว์เซอร์จริงทุกหน้า × ความกว้าง 1440/390/320 × ธีมสว่าง/มืด (หน้าร้านมีแต่ธีมสว่าง) แล้วจับคู่หน้าเดียวกันก่อน/หลังมาเทียบ
 ระดับ: **P1 ต้องแก้** · **P2 ควรแก้** · **P3 ขัดเกลา** · "ครั้ง" = จำนวนที่พบจริงทุกหน้า · "จุด" = นับปัญหาเดียวกัน (กฎ+ชนิด+ข้อความ+ความกว้าง+ธีม+role เดียวกัน) ที่ซ้ำตั้งแต่ 5 หน้าขึ้นไปเป็น 1 จุด — คือส่วนที่ใช้ร่วมทุกหน้า เช่น เมนูซ้าย หัวหน้า เมนูล่าง หรือคอมโพเนนต์ร่วม · role: owner = เจ้าของ · salesA = พนักงานขาย · LIFF = ลูกค้าใน LINE (session ลูกค้าจำลอง) · guest = ผู้เยี่ยมชมหน้าร้าน · customer = ลูกค้าที่ล็อกอินหน้าร้าน
 
 ## สรุปสั้น
 
-- **เกิดจากฟอนต์ใหม่** 30 จุด (30 ครั้ง): P1 0 จุด (0 ครั้ง) · P2 0 จุด (0 ครั้ง) · P3 30 จุด (30 ครั้ง) — ในจำนวนนี้ "มีอยู่แล้วแต่ระดับสูงขึ้น" 0 จุด (0 ครั้ง) · อยู่บนหน้าที่ข้อมูลเปลี่ยนทุกรอบ 30 ครั้ง (※ น่าจะเป็นสัญญาณรบกวน)
+- **เกิดจากฟอนต์ใหม่** 18 จุด (18 ครั้ง): P1 0 จุด (0 ครั้ง) · P2 0 จุด (0 ครั้ง) · P3 18 จุด (18 ครั้ง) — ในจำนวนนี้ "มีอยู่แล้วแต่ระดับสูงขึ้น" 0 จุด (0 ครั้ง) · อยู่บนหน้าที่ข้อมูลเปลี่ยนทุกรอบ 18 ครั้ง (※ น่าจะเป็นสัญญาณรบกวน)
 - **ควรดูด้วยตา** (ไม่ใช่ระดับปัญหา): ความกว้างเปลี่ยนเกิน 8% (D1) 79 จุด (79 ครั้ง) · ตัวอักษรเยื้องในปุ่ม (D2) 1,859 จุด (3,449 ครั้ง)
-- **มีอยู่ก่อนแล้ว** (ไม่เกี่ยวกับฟอนต์ใหม่) 7,786 จุด (19,094 ครั้ง) · **หายไปหลังเปลี่ยน** 288 จุด (546 ครั้ง)
+- **มีอยู่ก่อนแล้ว** (ไม่เกี่ยวกับฟอนต์ใหม่) 7,786 จุด (19,094 ครั้ง) — ในนี้ 10,022 ครั้งเป็นแบบที่บ้านกำหนด (ระยะบรรทัด leading-snug 6,316 · ปุ่มจอใหญ่สูง 32–34px 3,706) ให้เจ้าของตัดสิน ไม่ใช่ข้อบกพร่อง · **หายไปหลังเปลี่ยน** 288 จุด (546 ครั้ง)
 - **ฟอนต์ผิดในรอบหลัง** 0 จุด (0 ครั้ง) — ดูหัวข้อ "AFTER เท่านั้น"
 - จับคู่เทียบได้ 2,043 ชุด (หน้า × ความกว้าง × ธีม × role) · เทียบไม่ได้ 1,335 ชุด — ดูหัวข้อ "ตรวจไม่ได้/ไม่วัด"
 
@@ -21,30 +21,30 @@
 | `.tmp/typo-audit/admin-after-owner` (admin-after-owner) | มี | 1,674 | 1,674 | 0 | 0 | PASS | `1d0b4c283` |
 | `.tmp/typo-audit/admin-before-salesA` (admin-before-sales) | มี | 1,674 | 1,596 | 78 | 0 | PASS | `70eb82556` |
 | `.tmp/typo-audit/admin-after-salesA` (admin-after-sales) | มี | 1,674 | 1,596 | 78 | 0 | PASS | `77ce21ece` |
-| `.tmp/typo-audit/shop-before` (shop-before) | มี | 108 | 108 | 0 | 1 | — | — |
-| `.tmp/typo-audit/shop-after` (shop-after) | มี | 108 | 108 | 0 | 1 | — | — |
+| `.tmp/typo-audit/shop-before` (shop-before) | มี | 108 | 108 | 0 | 1 | — | `70eb82556` (ระบุตอนรัน) |
+| `.tmp/typo-audit/shop-after` (shop-after) | มี | 108 | 108 | 0 | 1 | — | `1f67675fd` (ระบุตอนรัน) |
 
-"ใช้" = แถวที่เข้ารายงาน · "ซ้ำ (LIFF)" = หน้า LIFF ที่วัดซ้ำในรอบ role ที่สอง (session ลูกค้าจำลองเดียวกัน) นับครั้งเดียว · "ข้าม" = ไฟล์ที่ไม่ใช่ผลของหน้า (เช่น `unmatched.json`)
+"ใช้" = แถวที่เข้ารายงาน · "ซ้ำ (LIFF)" = หน้า LIFF ที่วัดซ้ำในรอบ role ที่สอง (session ลูกค้าจำลองเดียวกัน) นับครั้งเดียว · "ข้าม" = ไฟล์ที่ไม่ใช่ผลของหน้า (เช่น `unmatched.json`) · commit มาจาก `run.json` ของรอบนั้น; หน้าร้านไม่มี `run.json` จึง "ระบุตอนรัน" (`--revision`)
 
 ### หน้าร้าน
 
-| รอบ | role | วัดได้ | ถูกพาไปหน้าอื่น | หน้าว่าง | ผิดพลาด | ถูกกัน | หน้าเอกสาร | รวม |
-|---|---|---|---|---|---|---|---|---|
-| ก่อน | customer | 6 | 3 | 0 | 0 | 0 | 0 | 9 |
-| ก่อน | guest | 57 | 42 | 0 | 0 | 0 | 0 | 99 |
-| หลัง | customer | 6 | 3 | 0 | 0 | 0 | 0 | 9 |
-| หลัง | guest | 57 | 42 | 0 | 0 | 0 | 0 | 99 |
+| รอบ | role | วัดได้ | ถูกพาไปหน้าอื่น | หน้าว่าง | ผิดพลาด | ถูกกัน | หน้าเอกสาร | ไม่ทราบสถานะ | รวม |
+|---|---|---|---|---|---|---|---|---|---|
+| ก่อน | customer | 6 | 3 | 0 | 0 | 0 | 0 | 0 | 9 |
+| ก่อน | guest | 57 | 42 | 0 | 0 | 0 | 0 | 0 | 99 |
+| หลัง | customer | 6 | 3 | 0 | 0 | 0 | 0 | 0 | 9 |
+| หลัง | guest | 57 | 42 | 0 | 0 | 0 | 0 | 0 | 99 |
 
 ### หลังบ้าน
 
-| รอบ | role | วัดได้ | ถูกพาไปหน้าอื่น | หน้าว่าง | ผิดพลาด | ถูกกัน | หน้าเอกสาร | รวม |
-|---|---|---|---|---|---|---|---|---|
-| ก่อน | LIFF | 60 | 18 | 0 | 0 | 0 | 0 | 78 |
-| ก่อน | owner | 1,254 | 300 | 0 | 0 | 0 | 42 | 1,596 |
-| ก่อน | salesA | 666 | 888 | 0 | 0 | 0 | 42 | 1,596 |
-| หลัง | LIFF | 60 | 18 | 0 | 0 | 0 | 0 | 78 |
-| หลัง | owner | 1,254 | 300 | 0 | 0 | 0 | 42 | 1,596 |
-| หลัง | salesA | 666 | 888 | 0 | 0 | 0 | 42 | 1,596 |
+| รอบ | role | วัดได้ | ถูกพาไปหน้าอื่น | หน้าว่าง | ผิดพลาด | ถูกกัน | หน้าเอกสาร | ไม่ทราบสถานะ | รวม |
+|---|---|---|---|---|---|---|---|---|---|
+| ก่อน | LIFF | 60 | 18 | 0 | 0 | 0 | 0 | 0 | 78 |
+| ก่อน | owner | 1,254 | 300 | 0 | 0 | 0 | 42 | 0 | 1,596 |
+| ก่อน | salesA | 666 | 888 | 0 | 0 | 0 | 42 | 0 | 1,596 |
+| หลัง | LIFF | 60 | 18 | 0 | 0 | 0 | 0 | 0 | 78 |
+| หลัง | owner | 1,254 | 300 | 0 | 0 | 0 | 42 | 0 | 1,596 |
+| หลัง | salesA | 666 | 888 | 0 | 0 | 0 | 42 | 0 | 1,596 |
 
 นับเป็น "วัดได้" เฉพาะสถานะ `rendered` เท่านั้น — สถานะอื่นไม่นับว่าผ่าน · ก่อน 2,043 · หลัง 2,043 ชุด
 
@@ -75,7 +75,7 @@
 - salesA ถูกพาไปหน้าอื่นบนหน้าที่เป็นของ owner (เช่น ตั้งค่า บัญชี) — เป็นสิทธิ์ตามปกติ ไม่ใช่ข้อผิดพลาด
 - หน้า `/kiosk` วัดได้เฉพาะหน้าลงทะเบียนเครื่อง (ไม่มีเครื่องที่จับคู่ไว้ในชุดทดสอบ)
 - หน้า LIFF วัดด้วย session ลูกค้าจำลองเดียวกันทั้งสองรอบ role จึงรายงานครั้งเดียวใต้ role "LIFF"
-- 8 เส้นทางอยู่ในรายการหน้าสองแถว (วัดสองครั้ง นับในตารางจำนวนทั้งสองแถว แต่ปัญหาที่ซ้ำกันนับครั้งเดียว): `/audit-logs`, `/branches`, `/contract-templates`, `/promotions`, `/settings/document-config`, `/settings/rich-menu`, `/system-status`, `/users`
+- 8 เส้นทางอยู่ในรายการหน้าสองแถว เข้าจากคนละทาง จึงเป็นการวัดแยกกันสองครั้ง (จำนวนข้อความ/ปลายทางต่างกันได้) — นับทั้งสองแถวในตารางจำนวน แต่ปัญหา key เดียวกันนับครั้งเดียว และถ้าแถวหนึ่ง "มีอยู่ก่อน" อีกแถว "ใหม่/หายไป" นับเป็นมีอยู่ก่อน (ตัดออก ใหม่ 12 · หายไป 0 · มีอยู่ก่อนที่อีกแถวระดับสูงขึ้น 0): `/audit-logs (128, 265)`, `/branches (32, 217)`, `/contract-templates (82, 243)`, `/promotions (160, 242)`, `/settings/document-config (67, 233)`, `/settings/rich-menu (192, 246)`, `/system-status (142, 266)`, `/users (119, 219)`
 - **ข้อจำกัดของเครื่องมือ:** ตัวอ่านรายการหน้า (`routes.mjs`) จะมองไม่เห็น `<Route>` ที่อยู่ใน `{expression}` (เงื่อนไข/วนลูป) หรือถ้ามีคำว่า `<Routes` ในคอมเมนต์ก่อนหน้า — รอบปรับให้ทนทานถูกพักไว้ตามคำสั่งเจ้าของ · รายการวันนี้ตรวจแยกแล้วว่าครบทุกหน้า
 
 ## เกิดจากฟอนต์ใหม่ (มีในรอบหลังแต่ไม่มีในรอบก่อน หรือระดับสูงขึ้น)
@@ -90,42 +90,30 @@ _ไม่มี_
 
 _ไม่มี_
 
-### ขัดเกลา (P3) — ใหม่ 30 จุด (30 ครั้ง)
+### ขัดเกลา (P3) — ใหม่ 18 จุด (18 ครั้ง)
 
 | # | กฎ | ระดับ | แอป | หน้า | กว้าง | ธีม | role | ข้อความ | ค่าที่วัด | ภาพ |
 |---|---|---|---|---|---|---|---|---|---|---|
 | 1 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 1440 | light | owner | 1 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-265-1440-light.png |
-| 2 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 1440 | light | owner | 12 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-128-1440-light.png |
-| 3 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 1440 | light | owner | 12 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-265-1440-light.png |
-| 4 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 1440 | light | owner | 19 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-128-1440-light.png |
-| 5 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 1440 | light | owner | 19 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-265-1440-light.png |
-| 6 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 1440 | dark | owner | 1 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-265-1440-dark.png |
-| 7 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 1440 | dark | owner | 12 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-128-1440-dark.png |
-| 8 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 1440 | dark | owner | 12 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-265-1440-dark.png |
-| 9 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 1440 | dark | owner | 19 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-128-1440-dark.png |
-| 10 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 1440 | dark | owner | 19 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-265-1440-dark.png |
-| 11 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 390 | light | owner | 1 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-265-390-light.png |
-| 12 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 390 | light | owner | 12 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-128-390-light.png |
-| 13 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 390 | light | owner | 12 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-265-390-light.png |
-| 14 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 390 | light | owner | 19 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-128-390-light.png |
-| 15 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 390 | light | owner | 19 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-265-390-light.png |
-| 16 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 390 | dark | owner | 1 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-265-390-dark.png |
-| 17 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 390 | dark | owner | 12 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-128-390-dark.png |
-| 18 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 390 | dark | owner | 12 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-265-390-dark.png |
-| 19 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 390 | dark | owner | 19 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-128-390-dark.png |
-| 20 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 390 | dark | owner | 19 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-265-390-dark.png |
-| 21 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 320 | light | owner | 1 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-265-320-light.png |
-| 22 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 320 | light | owner | 12 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-128-320-light.png |
-| 23 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 320 | light | owner | 12 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-265-320-light.png |
-| 24 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 320 | light | owner | 19 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-128-320-light.png |
-| 25 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 320 | light | owner | 19 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-265-320-light.png |
-| 26 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 320 | dark | owner | 1 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-265-320-dark.png |
-| 27 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 320 | dark | owner | 12 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-128-320-dark.png |
-| 28 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 320 | dark | owner | 12 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-265-320-dark.png |
-| 29 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 320 | dark | owner | 19 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-128-320-dark.png |
-| 30 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 320 | dark | owner | 19 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-265-320-dark.png |
+| 2 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 1440 | light | owner | 12 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-265-1440-light.png |
+| 3 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 1440 | light | owner | 19 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-265-1440-light.png |
+| 4 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 1440 | dark | owner | 1 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-265-1440-dark.png |
+| 5 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 1440 | dark | owner | 12 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-265-1440-dark.png |
+| 6 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 1440 | dark | owner | 19 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-265-1440-dark.png |
+| 7 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 390 | light | owner | 1 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-265-390-light.png |
+| 8 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 390 | light | owner | 12 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-265-390-light.png |
+| 9 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 390 | light | owner | 19 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-265-390-light.png |
+| 10 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 390 | dark | owner | 1 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-265-390-dark.png |
+| 11 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 390 | dark | owner | 12 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-265-390-dark.png |
+| 12 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 390 | dark | owner | 19 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-265-390-dark.png |
+| 13 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 320 | light | owner | 1 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-265-320-light.png |
+| 14 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 320 | light | owner | 12 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-265-320-light.png |
+| 15 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 320 | light | owner | 19 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-265-320-light.png |
+| 16 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 320 | dark | owner | 1 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-265-320-dark.png |
+| 17 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 320 | dark | owner | 12 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-265-320-dark.png |
+| 18 | R10 | P3 | หลังบ้าน | `/audit-logs` ※ | 320 | dark | owner | 19 | ไม่มี tabular-nums (td, 12px) | admin-after-owner/uxui-pages/route-265-320-dark.png |
 
-※ หน้าที่ข้อมูลเปลี่ยนทุกรอบ (`/liff/debug` พิมพ์หมายเลขพอร์ตของรอบทดสอบ · `/audit-logs` ตัวเลขในตารางคือจำนวนรายการ audit ของรอบนั้น · `/system-status` เวลาตอบสนองและหน่วยความจำของรอบนั้น) — ตัวเลขที่ต่างกันระหว่างรอบทำให้นับเป็นใหม่/หายไปได้ทั้งที่ไม่เกี่ยวกับฟอนต์ · หัวข้อนี้มี 30 ครั้งบนหน้าเหล่านี้
+※ หน้าที่ข้อมูลเปลี่ยนทุกรอบ (`/liff/debug` พิมพ์หมายเลขพอร์ตของรอบทดสอบ · `/audit-logs` ตัวเลขในตารางคือจำนวนรายการ audit ของรอบนั้น · `/system-status` เวลาตอบสนองและหน่วยความจำของรอบนั้น) — ตัวเลขที่ต่างกันระหว่างรอบทำให้นับเป็นใหม่/หายไปได้ทั้งที่ไม่เกี่ยวกับฟอนต์ · หัวข้อนี้มี 18 ครั้งบนหน้าเหล่านี้
 
 ## ควรดูด้วยตา (D1/D2 — เทียบก่อน/หลังเท่านั้น ไม่ใช่ระดับปัญหา)
 
@@ -269,35 +257,108 @@ _ไม่มี_
 
 ## มีอยู่ก่อนแล้ว (พบทั้งก่อนและหลัง — ไม่ได้เกิดจากฟอนต์ใหม่)
 
-| กฎ | ตรวจอะไร | ระดับ (ครั้ง) | จุด | ครั้ง | หน้า | ตัวอย่าง |
-|---|---|---|---|---|---|---|
-| R1 | ขนาดตัวอักษรไม่อยู่ในสเกล | P3 3,566 | 894 | 3,566 | 204 | “AI”, “การเงิน & สินเชื่อ”, “เชื่อมต่อ” |
-| R2 | หัวข้อรองใหญ่กว่าหัวข้อหลัก | P2 12 | 12 | 12 | 3 | “งวดบัญชี (Accounting Pe…” |
-| R3 | ระยะบรรทัดไม่พอดี (ไทยแน่นเกิน = P1) | P1 100 · P2 7,016 | 5,260 | 7,116 | 142 | “ของเรา”, “ช่องทาง”, “ติดต่อ” |
-| R4 | สระ/วรรณยุกต์ถูกตัด | P1 68 | 68 | 68 | 7 | “สาขา: ทดสอบระบบ DOCS-04…”, “สาขา: ทดสอบระบบ DOCS-72…”, “ระบบจัดการร้านครบวงจร” |
-| R5 | ปุ่ม/ชิป/เมนู/หัวตารางขึ้นสองบรรทัด | P1 122 · P2 325 | 303 | 447 | 42 | “ค่าใช้จ่าย”, “รับเรื่องแล้ว”, “สัญญาผ่อน” |
-| R6 | ข้อความในปุ่ม/ป้ายถูกตัดแนวนอน | P2 30 | 30 | 30 | 1 | “ธนาคาร - กสิกรไทย ออมทร…”, “ธนาคาร - ไทยพาณิชย์ ออม…”, “เงินสด - พนักงานบัญชี” |
-| R7 | ปุ่ม/ช่องกรอกเตี้ยกว่าเกณฑ์ | P2 4,102 | 518 | 4,102 | 152 | “ขาย”, “เครื่องมือ”, “สัญญา & ชำระ” |
-| R7b | ช่องกรอกบนมือถือตัวเล็กกว่า 16px (iOS ซูม) | P2 8 | 8 | 8 | 1 | “กรอกเลข IMEI 15 หลัก” |
-| R9 | น้ำหนักตัวอักษรไม่อยู่ในชุดที่ส่ง | P3 1,256 | 88 | 1,256 | 195 | “BEST”, “CHOICE” |
-| R10 | ตัวเลขไม่เรียงหลัก (ไม่มี tabular-nums) | P3 972 | 504 | 972 | 27 | “2”, “0”, “0 ฿” |
-| R11 | ไอคอนไม่สมส่วนกับตัวอักษร | P3 1,488 | 72 | 1,488 | 196 | “เพิ่มเติม”, “ออกจากตั้งค่า”, “เลือกแม่แบบเพื่อแก้ไข” |
-| R12 | ย่อหน้ากว้างเกินอ่านสบาย | P3 29 | 29 | 29 | 6 | “OT นับเมื่อออกหลังเวลาเ…”, “BESTCHOICE เป็นร้านขาย …”, “บริษัท เบสช้อยส์ จำกัด …” |
+| กฎ | ตรวจอะไร | ระดับ (ครั้ง) | จุด | ครั้ง | ในนี้ตามแบบบ้าน | หน้า | ตัวอย่าง |
+|---|---|---|---|---|---|---|---|
+| R1 | ขนาดตัวอักษรไม่อยู่ในสเกล | P3 3,566 | 894 | 3,566 | — | 204 | “AI”, “การเงิน & สินเชื่อ”, “เชื่อมต่อ” |
+| R2 | หัวข้อรองใหญ่กว่าหัวข้อหลัก | P2 12 | 12 | 12 | — | 3 | “งวดบัญชี (Accounting Pe…” |
+| R3 | ระยะบรรทัดไม่พอดี (ไทยแน่นเกิน = P1) | P1 100 · P2 7,016 | 5,260 | 7,116 | 6,316 | 142 | “ของเรา”, “ช่องทาง”, “ติดต่อ” |
+| R4 | สระ/วรรณยุกต์ถูกตัด | P1 68 | 68 | 68 | — | 7 | “สาขา: ทดสอบระบบ DOCS-04…”, “สาขา: ทดสอบระบบ DOCS-72…”, “ระบบจัดการร้านครบวงจร” |
+| R5 | ปุ่ม/ชิป/เมนู/หัวตารางขึ้นสองบรรทัด | P1 122 · P2 325 | 303 | 447 | — | 42 | “ค่าใช้จ่าย”, “รับเรื่องแล้ว”, “สัญญาผ่อน” |
+| R6 | ข้อความในปุ่ม/ป้ายถูกตัดแนวนอน | P2 30 | 30 | 30 | — | 1 | “ธนาคาร - กสิกรไทย ออมทร…”, “ธนาคาร - ไทยพาณิชย์ ออม…”, “เงินสด - พนักงานบัญชี” |
+| R7 | ปุ่ม/ช่องกรอกเตี้ยกว่าเกณฑ์ | P2 4,102 | 518 | 4,102 | 3,706 | 152 | “ขาย”, “เครื่องมือ”, “สัญญา & ชำระ” |
+| R7b | ช่องกรอกบนมือถือตัวเล็กกว่า 16px (iOS ซูม) | P2 8 | 8 | 8 | — | 1 | “กรอกเลข IMEI 15 หลัก” |
+| R9 | น้ำหนักตัวอักษรไม่อยู่ในชุดที่ส่ง | P3 1,256 | 88 | 1,256 | — | 195 | “BEST”, “CHOICE” |
+| R10 | ตัวเลขไม่เรียงหลัก (ไม่มี tabular-nums) | P3 972 | 504 | 972 | — | 27 | “2”, “0”, “0 ฿” |
+| R11 | ไอคอนไม่สมส่วนกับตัวอักษร | P3 1,488 | 72 | 1,488 | — | 196 | “เพิ่มเติม”, “ออกจากตั้งค่า”, “เลือกแม่แบบเพื่อแก้ไข” |
+| R12 | ย่อหน้ากว้างเกินอ่านสบาย | P3 29 | 29 | 29 | — | 6 | “OT นับเมื่อออกหลังเวลาเ…”, “BESTCHOICE เป็นร้านขาย …”, “บริษัท เบสช้อยส์ จำกัด …” |
 
-### กฎที่ขัดกับแบบที่บ้านกำหนด (ให้เจ้าของตัดสิน — ไม่ใช่ข้อบกพร่อง)
+### P1 ที่มีอยู่ก่อนแล้ว — 290 จุด (290 ครั้ง) · ต้องแก้ แม้ไม่ได้เกิดจากฟอนต์ใหม่
 
-- **R3 P2 (7,016 ครั้ง ทั้งใหม่และเดิม):** ทุกข้อความที่ใช้ `leading-snug` (×1.375) ต่ำกว่าเกณฑ์ 1.4 ของกฎ แต่ `.claude/rules/frontend.md` กำหนดให้ข้อความไทยใช้ `leading-snug`
-- **R7 P2 (4,102 ครั้ง ทั้งใหม่และเดิม):** ปุ่ม/SelectTrigger ขนาด md ของ shadcn สูง 34px (เกณฑ์จอใหญ่ 36px) และรายการเมนูซ้ายสูง 32–34px — เป็นขนาดมาตรฐานของชุดคอมโพเนนต์
+| # | กฎ | ระดับ | แอป | หน้า | กว้าง | ธีม | role | ข้อความ | ค่าที่วัด | ภาพ |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | R3 | P1 | หลังบ้าน | `/landing` | 1440 | light | owner | ของเรา | ระยะบรรทัด ×1.11 (40/36px) | admin-after-owner/uxui-pages/route-1-1440-light.png |
+| 2 | R3 | P1 | หลังบ้าน | `/landing` | 1440 | light | salesA | ของเรา | ระยะบรรทัด ×1.11 (40/36px) | admin-after-salesA/uxui-pages/route-1-1440-light.png |
+| 3 | R3 | P1 | หลังบ้าน | `/landing` | 1440 | light | owner | ช่องทาง | ระยะบรรทัด ×1.11 (40/36px) | admin-after-owner/uxui-pages/route-1-1440-light.png |
+| 4 | R3 | P1 | หลังบ้าน | `/landing` | 1440 | light | salesA | ช่องทาง | ระยะบรรทัด ×1.11 (40/36px) | admin-after-salesA/uxui-pages/route-1-1440-light.png |
+| 5 | R3 | P1 | หลังบ้าน | `/landing` | 1440 | light | owner | ติดต่อ | ระยะบรรทัด ×1.11 (40/36px) | admin-after-owner/uxui-pages/route-1-1440-light.png |
+| 6 | R3 | P1 | หลังบ้าน | `/landing` | 1440 | light | salesA | ติดต่อ | ระยะบรรทัด ×1.11 (40/36px) | admin-after-salesA/uxui-pages/route-1-1440-light.png |
+| 7 | R3 | P1 | หลังบ้าน | `/landing` | 1440 | light | owner | แนะนำ | ระยะบรรทัด ×1.11 (40/36px) | admin-after-owner/uxui-pages/route-1-1440-light.png |
+| 8 | R3 | P1 | หลังบ้าน | `/landing` | 1440 | light | salesA | แนะนำ | ระยะบรรทัด ×1.11 (40/36px) | admin-after-salesA/uxui-pages/route-1-1440-light.png |
+| 9 | R3 | P1 | หลังบ้าน | `/landing` | 1440 | light | owner | บริการ | ระยะบรรทัด ×1.11 (40/36px) | admin-after-owner/uxui-pages/route-1-1440-light.png |
+| 10 | R3 | P1 | หลังบ้าน | `/landing` | 1440 | light | salesA | บริการ | ระยะบรรทัด ×1.11 (40/36px) | admin-after-salesA/uxui-pages/route-1-1440-light.png |
+| 11 | R3 | P1 | หลังบ้าน | `/landing` | 1440 | light | owner | พร้อมเป็นเจ้าของสมาร์ทโฟนในฝัน? | ระยะบรรทัด ×1.11 (40/36px) | admin-after-owner/uxui-pages/route-1-1440-light.png |
+| 12 | R3 | P1 | หลังบ้าน | `/landing` | 1440 | light | salesA | พร้อมเป็นเจ้าของสมาร์ทโฟนในฝัน? | ระยะบรรทัด ×1.11 (40/36px) | admin-after-salesA/uxui-pages/route-1-1440-light.png |
+| 13 | R3 | P1 | หลังบ้าน | `/landing` | 1440 | light | owner | สินค้า | ระยะบรรทัด ×1.11 (40/36px) | admin-after-owner/uxui-pages/route-1-1440-light.png |
+| 14 | R3 | P1 | หลังบ้าน | `/landing` | 1440 | light | salesA | สินค้า | ระยะบรรทัด ×1.11 (40/36px) | admin-after-salesA/uxui-pages/route-1-1440-light.png |
+| 15 | R3 | P1 | หลังบ้าน | `/liff/contract` | 1440 | light | LIFF | ฿ | ระยะบรรทัด ×1 (26/26px) | admin-after-owner/uxui-pages/route-18-1440-light.png |
+| 16 | R3 | P1 | หลังบ้าน | `/liff/contract` | 1440 | light | LIFF | ฿12,126.64 | ระยะบรรทัด ×1 (24/24px) | admin-after-owner/uxui-pages/route-18-1440-light.png |
+| 17 | R3 | P1 | หลังบ้าน | `/liff/early-payoff` | 1440 | light | LIFF | ฿ | ระยะบรรทัด ×1 (22/22px) | admin-after-owner/uxui-pages/route-22-1440-light.png |
+| 18 | R3 | P1 | หลังบ้าน | `/liff/history` | 1440 | light | LIFF | ฿ | ระยะบรรทัด ×1 (26/26px) | admin-after-owner/uxui-pages/route-20-1440-light.png |
+| 19 | R3 | P1 | หลังบ้าน | `/liff/history` | 1440 | light | LIFF | ฿1,515.83 | ระยะบรรทัด ×1 (15/15px) | admin-after-owner/uxui-pages/route-20-1440-light.png |
+| 20 | R3 | P1 | หลังบ้าน | `/liff/history` | 1440 | light | LIFF | ฿1,515.83 | ระยะบรรทัด ×1 (15/15px) | admin-after-owner/uxui-pages/route-20-1440-light.png |
+| 21 | R3 | P1 | หลังบ้าน | `/liff/history` | 1440 | light | LIFF | ฿1,515.83 | ระยะบรรทัด ×1 (15/15px) | admin-after-owner/uxui-pages/route-20-1440-light.png |
+| 22 | R3 | P1 | หลังบ้าน | `/liff/history` | 1440 | light | LIFF | ฿1,515.83 | ระยะบรรทัด ×1 (15/15px) | admin-after-owner/uxui-pages/route-20-1440-light.png |
+| 23 | R3 | P1 | หลังบ้าน | `/liff/history` | 1440 | light | LIFF | ใบเสร็จ | ระยะบรรทัด ×1 (10/10px) | admin-after-owner/uxui-pages/route-20-1440-light.png |
+| 24 | R3 | P1 | หลังบ้าน | `/liff/history` | 1440 | light | LIFF | ใบเสร็จ | ระยะบรรทัด ×1 (10/10px) | admin-after-owner/uxui-pages/route-20-1440-light.png |
+| 25 | R3 | P1 | หลังบ้าน | `/liff/history` | 1440 | light | LIFF | ใบเสร็จ | ระยะบรรทัด ×1 (10/10px) | admin-after-owner/uxui-pages/route-20-1440-light.png |
+| 26 | R3 | P1 | หลังบ้าน | `/liff/history` | 1440 | light | LIFF | ใบเสร็จ | ระยะบรรทัด ×1 (10/10px) | admin-after-owner/uxui-pages/route-20-1440-light.png |
+| 27 | R3 | P1 | หลังบ้าน | `/landing` | 1440 | dark | owner | ของเรา | ระยะบรรทัด ×1.11 (40/36px) | admin-after-owner/uxui-pages/route-1-1440-dark.png |
+| 28 | R3 | P1 | หลังบ้าน | `/landing` | 1440 | dark | salesA | ของเรา | ระยะบรรทัด ×1.11 (40/36px) | admin-after-salesA/uxui-pages/route-1-1440-dark.png |
+| 29 | R3 | P1 | หลังบ้าน | `/landing` | 1440 | dark | owner | ช่องทาง | ระยะบรรทัด ×1.11 (40/36px) | admin-after-owner/uxui-pages/route-1-1440-dark.png |
+| 30 | R3 | P1 | หลังบ้าน | `/landing` | 1440 | dark | salesA | ช่องทาง | ระยะบรรทัด ×1.11 (40/36px) | admin-after-salesA/uxui-pages/route-1-1440-dark.png |
+| 31 | R3 | P1 | หลังบ้าน | `/landing` | 1440 | dark | owner | ติดต่อ | ระยะบรรทัด ×1.11 (40/36px) | admin-after-owner/uxui-pages/route-1-1440-dark.png |
+| 32 | R3 | P1 | หลังบ้าน | `/landing` | 1440 | dark | salesA | ติดต่อ | ระยะบรรทัด ×1.11 (40/36px) | admin-after-salesA/uxui-pages/route-1-1440-dark.png |
+| 33 | R3 | P1 | หลังบ้าน | `/landing` | 1440 | dark | owner | แนะนำ | ระยะบรรทัด ×1.11 (40/36px) | admin-after-owner/uxui-pages/route-1-1440-dark.png |
+| 34 | R3 | P1 | หลังบ้าน | `/landing` | 1440 | dark | salesA | แนะนำ | ระยะบรรทัด ×1.11 (40/36px) | admin-after-salesA/uxui-pages/route-1-1440-dark.png |
+| 35 | R3 | P1 | หลังบ้าน | `/landing` | 1440 | dark | owner | บริการ | ระยะบรรทัด ×1.11 (40/36px) | admin-after-owner/uxui-pages/route-1-1440-dark.png |
+| 36 | R3 | P1 | หลังบ้าน | `/landing` | 1440 | dark | salesA | บริการ | ระยะบรรทัด ×1.11 (40/36px) | admin-after-salesA/uxui-pages/route-1-1440-dark.png |
+| 37 | R3 | P1 | หลังบ้าน | `/landing` | 1440 | dark | owner | พร้อมเป็นเจ้าของสมาร์ทโฟนในฝัน? | ระยะบรรทัด ×1.11 (40/36px) | admin-after-owner/uxui-pages/route-1-1440-dark.png |
+| 38 | R3 | P1 | หลังบ้าน | `/landing` | 1440 | dark | salesA | พร้อมเป็นเจ้าของสมาร์ทโฟนในฝัน? | ระยะบรรทัด ×1.11 (40/36px) | admin-after-salesA/uxui-pages/route-1-1440-dark.png |
+| 39 | R3 | P1 | หลังบ้าน | `/landing` | 1440 | dark | owner | สินค้า | ระยะบรรทัด ×1.11 (40/36px) | admin-after-owner/uxui-pages/route-1-1440-dark.png |
+| 40 | R3 | P1 | หลังบ้าน | `/landing` | 1440 | dark | salesA | สินค้า | ระยะบรรทัด ×1.11 (40/36px) | admin-after-salesA/uxui-pages/route-1-1440-dark.png |
+| 41 | R3 | P1 | หลังบ้าน | `/liff/contract` | 1440 | dark | LIFF | ฿ | ระยะบรรทัด ×1 (26/26px) | admin-after-owner/uxui-pages/route-18-1440-dark.png |
+| 42 | R3 | P1 | หลังบ้าน | `/liff/contract` | 1440 | dark | LIFF | ฿12,126.64 | ระยะบรรทัด ×1 (24/24px) | admin-after-owner/uxui-pages/route-18-1440-dark.png |
+| 43 | R3 | P1 | หลังบ้าน | `/liff/early-payoff` | 1440 | dark | LIFF | ฿ | ระยะบรรทัด ×1 (22/22px) | admin-after-owner/uxui-pages/route-22-1440-dark.png |
+| 44 | R3 | P1 | หลังบ้าน | `/liff/history` | 1440 | dark | LIFF | ฿ | ระยะบรรทัด ×1 (26/26px) | admin-after-owner/uxui-pages/route-20-1440-dark.png |
+| 45 | R3 | P1 | หลังบ้าน | `/liff/history` | 1440 | dark | LIFF | ฿1,515.83 | ระยะบรรทัด ×1 (15/15px) | admin-after-owner/uxui-pages/route-20-1440-dark.png |
+| 46 | R3 | P1 | หลังบ้าน | `/liff/history` | 1440 | dark | LIFF | ฿1,515.83 | ระยะบรรทัด ×1 (15/15px) | admin-after-owner/uxui-pages/route-20-1440-dark.png |
+| 47 | R3 | P1 | หลังบ้าน | `/liff/history` | 1440 | dark | LIFF | ฿1,515.83 | ระยะบรรทัด ×1 (15/15px) | admin-after-owner/uxui-pages/route-20-1440-dark.png |
+| 48 | R3 | P1 | หลังบ้าน | `/liff/history` | 1440 | dark | LIFF | ฿1,515.83 | ระยะบรรทัด ×1 (15/15px) | admin-after-owner/uxui-pages/route-20-1440-dark.png |
+| 49 | R3 | P1 | หลังบ้าน | `/liff/history` | 1440 | dark | LIFF | ใบเสร็จ | ระยะบรรทัด ×1 (10/10px) | admin-after-owner/uxui-pages/route-20-1440-dark.png |
+| 50 | R3 | P1 | หลังบ้าน | `/liff/history` | 1440 | dark | LIFF | ใบเสร็จ | ระยะบรรทัด ×1 (10/10px) | admin-after-owner/uxui-pages/route-20-1440-dark.png |
+| 51 | R3 | P1 | หลังบ้าน | `/liff/history` | 1440 | dark | LIFF | ใบเสร็จ | ระยะบรรทัด ×1 (10/10px) | admin-after-owner/uxui-pages/route-20-1440-dark.png |
+| 52 | R3 | P1 | หลังบ้าน | `/liff/history` | 1440 | dark | LIFF | ใบเสร็จ | ระยะบรรทัด ×1 (10/10px) | admin-after-owner/uxui-pages/route-20-1440-dark.png |
+| 53 | R3 | P1 | หลังบ้าน | `/liff/contract` | 390 | light | LIFF | ฿ | ระยะบรรทัด ×1 (26/26px) | admin-after-owner/uxui-pages/route-18-390-light.png |
+| 54 | R3 | P1 | หลังบ้าน | `/liff/contract` | 390 | light | LIFF | ฿12,126.64 | ระยะบรรทัด ×1 (24/24px) | admin-after-owner/uxui-pages/route-18-390-light.png |
+| 55 | R3 | P1 | หลังบ้าน | `/liff/early-payoff` | 390 | light | LIFF | ฿ | ระยะบรรทัด ×1 (22/22px) | admin-after-owner/uxui-pages/route-22-390-light.png |
+| 56 | R3 | P1 | หลังบ้าน | `/liff/history` | 390 | light | LIFF | ฿ | ระยะบรรทัด ×1 (26/26px) | admin-after-owner/uxui-pages/route-20-390-light.png |
+| 57 | R3 | P1 | หลังบ้าน | `/liff/history` | 390 | light | LIFF | ฿1,515.83 | ระยะบรรทัด ×1 (15/15px) | admin-after-owner/uxui-pages/route-20-390-light.png |
+| 58 | R3 | P1 | หลังบ้าน | `/liff/history` | 390 | light | LIFF | ฿1,515.83 | ระยะบรรทัด ×1 (15/15px) | admin-after-owner/uxui-pages/route-20-390-light.png |
+| 59 | R3 | P1 | หลังบ้าน | `/liff/history` | 390 | light | LIFF | ฿1,515.83 | ระยะบรรทัด ×1 (15/15px) | admin-after-owner/uxui-pages/route-20-390-light.png |
+| 60 | R3 | P1 | หลังบ้าน | `/liff/history` | 390 | light | LIFF | ฿1,515.83 | ระยะบรรทัด ×1 (15/15px) | admin-after-owner/uxui-pages/route-20-390-light.png |
+
+… อีก 230 จุด — ดูทั้งหมดใน `findings.json`
+
+### กฎที่ขัดกับแบบที่บ้านกำหนด — แยกแบบบ้านออกจากปัญหาจริง
+
+นับรวม "มีอยู่ก่อน" และ "เกิดจากฟอนต์ใหม่" · แยกจากค่าที่วัดได้ของแต่ละครั้ง · `findings.json` → `totals.houseStyle`
+
+- **R3 ระยะบรรทัด — ตามแบบบ้าน 6,316 ครั้ง:** ข้อความเล็กกว่า 20px ที่ใช้ `leading-snug` (×1.375) ต่ำกว่าเกณฑ์ 1.4 ของกฎ แต่ `.claude/rules/frontend.md` กำหนดให้ข้อความไทยใช้ `leading-snug` → ให้เจ้าของตัดสินเกณฑ์ ไม่ใช่ข้อบกพร่อง
+  - **ปัญหาจริง P2 700 ครั้ง** (ระยะบรรทัดค่าอื่น เช่น ×1.0, ×0.95, ×1.33, ×1.65) — ตัวอย่าง “BEST CHOICE” (หลังบ้าน `/liff/branches` 1440px, ระยะบรรทัด ×1.33 (16/12px)) · “฿0.00” (หลังบ้าน `/accounting/intercompany` 1440px, ระยะบรรทัด ×1.65 (35.8/21.7px)) · “5.0” (หน้าร้าน `/` 1440px, ระยะบรรทัด ×1 (36/36px))
+  - **ปัญหาจริง P1 100 ครั้ง** (ข้อความไทยระยะบรรทัดต่ำกว่า ×1.2 — สระ/วรรณยุกต์ชนบรรทัด) — ตัวอย่าง “฿” (หลังบ้าน `/liff/contract` 1440px, ระยะบรรทัด ×1 (26/26px)) · “฿12,126.64” (หลังบ้าน `/liff/contract` 1440px, ระยะบรรทัด ×1 (24/24px)) · “฿1,515.83” (หลังบ้าน `/liff/history` 1440px, ระยะบรรทัด ×1 (15/15px))
+- **R7 ความสูงปุ่ม/ช่องกรอก — ตามแบบบ้าน 3,706 ครั้ง:** จอใหญ่ สูง 32–34px (ปุ่ม/SelectTrigger ขนาด md ของ shadcn 34px · รายการเมนูซ้าย 32–34px) ต่ำกว่าเกณฑ์ 36px → ขนาดมาตรฐานของชุดคอมโพเนนต์ ให้เจ้าของตัดสิน
+  - **ปัญหาจริง มือถือต่ำกว่า 44px 220 ครั้ง** (กดยากบนจอสัมผัส) — ตัวอย่าง “การลงบัญชี” (หลังบ้าน `/payments` 390px, สูง 32px < 44px (button)) · “ตามรุ่น” (หลังบ้าน `/` 390px, สูง 36px < 44px (button)) · “ดูรายละเอียดลูกค้า (ข้อมูลปัจจุบัน)” (หลังบ้าน `/contracts/:id` 390px, สูง 18px < 44px (button))
+  - **ปัญหาจริง จอใหญ่ต่ำกว่า 32px 176 ครั้ง** — ตัวอย่าง “ประเภท” (หลังบ้าน `/stock/products` 1440px, สูง 24px < 36px (button)) · “วันที่/เวลา” (หลังบ้าน `/trade-in` 1440px, สูง 24px < 36px (button)) · “เลข PO” (หลังบ้าน `/purchase-orders` 1440px, สูง 24px < 36px (button))
 
 ## หายไปหลังเปลี่ยน (พบในรอบก่อน ไม่พบในรอบหลัง)
 
-| กฎ | ตรวจอะไร | ระดับ (ครั้ง) | จุด | ครั้ง | หน้า | ตัวอย่าง |
-|---|---|---|---|---|---|---|
-| R4 | สระ/วรรณยุกต์ถูกตัด | P1 234 | 234 | 234 | 15 | “ผ่อน iPhone ใช้บัตรประช…”, “0.00 ฿”, “฿” |
-| R5 | ปุ่ม/ชิป/เมนู/หัวตารางขึ้นสองบรรทัด | P1 44 · P2 6 | 14 | 50 | 10 | “รายจ่าย: บันทึก & POST”, “รายจ่าย: ยกเลิก”, “รายรับ: บันทึก & POST” |
-| R9 | น้ำหนักตัวอักษรไม่อยู่ในชุดที่ส่ง | P3 252 | 30 | 252 | 21 | “BEST”, “CHOICE” |
-| R10 | ตัวเลขไม่เรียงหลัก (ไม่มี tabular-nums) | P3 6 | 6 | 6 | 1 | “137” |
-| R12 | ย่อหน้ากว้างเกินอ่านสบาย | P3 4 | 4 | 4 | 1 | “บริษัทจะดำเนินการลบข้อม…” |
+| กฎ | ตรวจอะไร | ระดับ (ครั้ง) | จุด | ครั้ง | ในนี้ตามแบบบ้าน | หน้า | ตัวอย่าง |
+|---|---|---|---|---|---|---|---|
+| R4 | สระ/วรรณยุกต์ถูกตัด | P1 234 | 234 | 234 | — | 15 | “ผ่อน iPhone ใช้บัตรประช…”, “0.00 ฿”, “฿” |
+| R5 | ปุ่ม/ชิป/เมนู/หัวตารางขึ้นสองบรรทัด | P1 44 · P2 6 | 14 | 50 | — | 10 | “รายจ่าย: บันทึก & POST”, “รายจ่าย: ยกเลิก”, “รายรับ: บันทึก & POST” |
+| R9 | น้ำหนักตัวอักษรไม่อยู่ในชุดที่ส่ง | P3 252 | 30 | 252 | — | 21 | “BEST”, “CHOICE” |
+| R10 | ตัวเลขไม่เรียงหลัก (ไม่มี tabular-nums) | P3 6 | 6 | 6 | — | 1 | “137” |
+| R12 | ย่อหน้ากว้างเกินอ่านสบาย | P3 4 | 4 | 4 | — | 1 | “บริษัทจะดำเนินการลบข้อม…” |
 
 ※ หน้าที่ข้อมูลเปลี่ยนทุกรอบ (`/liff/debug` พิมพ์หมายเลขพอร์ตของรอบทดสอบ · `/audit-logs` ตัวเลขในตารางคือจำนวนรายการ audit ของรอบนั้น · `/system-status` เวลาตอบสนองและหน่วยความจำของรอบนั้น) — ตัวเลขที่ต่างกันระหว่างรอบทำให้นับเป็นใหม่/หายไปได้ทั้งที่ไม่เกี่ยวกับฟอนต์ · หัวข้อนี้มี 6 ครั้งบนหน้าเหล่านี้
 
@@ -338,7 +399,7 @@ _ไม่มี_
 
 ## 30 จุดที่ควรดูก่อน
 
-ลำดับ: ใหม่ P1 → ใหม่ P2 → ใหม่ P3 → ดูด้วยตา (สลับ D1/D2) → มีอยู่ก่อน → จุดใหม่ที่อยู่เฉพาะบนหน้าที่ข้อมูลเปลี่ยนทุกรอบ (※) · ในกลุ่มเดียวกันเรียงตามจำนวนหน้าที่ได้รับผล · ภาพ = ภาพรอบหลังของหน้าแรกในจุดนั้น
+ลำดับ: ใหม่ P1 → ใหม่ P2 → ใหม่ P3 → ดูด้วยตา (สลับ D1/D2) → **P1 ที่มีอยู่ก่อนแล้ว** (กันที่ไว้ 10 อันดับท้าย สลับตามกฎเพื่อให้ทุกกลุ่ม P1 ปรากฏ — รายการเต็มอยู่ในหัวข้อ "มีอยู่ก่อนแล้ว") → มีอยู่ก่อนอื่น ๆ → จุดใหม่ที่อยู่เฉพาะบนหน้าที่ข้อมูลเปลี่ยนทุกรอบ (※) · ในกลุ่มเดียวกันเรียงตามจำนวนหน้าที่ได้รับผล · ภาพ = ภาพรอบหลังของหน้าแรกในจุดนั้น
 
 | # | ประเภท | กฎ | ระดับ | แอป | หน้า | กว้าง | ธีม | role | ข้อความ | ค่าที่วัด | ภาพ |
 |---|---|---|---|---|---|---|---|---|---|---|---|
@@ -362,16 +423,16 @@ _ไม่มี_
 | 18 | ดูด้วยตา | D2 | — | หลังบ้าน | ส่วนร่วม 40 หน้า เช่น `/collection-dashboard`, `/collections`, `/commissions` | 1440 | light | owner | รับชำระค่างวด | เยื้องจากกึ่งกลาง 0.3 → -2.5px | admin-after-owner/uxui-pages/route-104-1440-light.png |
 | 19 | ดูด้วยตา | D1 | — | หน้าร้าน | `/installment-terms` | 390 | light | guest | เครื่องจะถูกล็อคการใช้งานชั่วคราว เฉพาะ… | ความกว้างหมึก 825.8 → 949.4px (+15%) | shop-after/shop/route-installment-terms-390.png |
 | 20 | ดูด้วยตา | D2 | — | หลังบ้าน | ส่วนร่วม 40 หน้า เช่น `/collection-dashboard`, `/collections`, `/commissions` | 1440 | dark | owner | รับชำระค่างวด | เยื้องจากกึ่งกลาง 0.3 → -2.5px | admin-after-owner/uxui-pages/route-104-1440-dark.png |
-| 21 | ดูด้วยตา | D1 | — | หน้าร้าน | `/installment-terms` | 320 | light | guest | เครื่องจะถูกล็อคการใช้งานชั่วคราว เฉพาะ… | ความกว้างหมึก 825.8 → 949.4px (+15%) | shop-after/shop/route-installment-terms-320.png |
-| 22 | ดูด้วยตา | D2 | — | หลังบ้าน | ส่วนร่วม 40 หน้า เช่น `/collection-dashboard`, `/collections`, `/commissions` | 1440 | light | owner | จัดการจดหมาย | เยื้องจากกึ่งกลาง 0.5 → -2px | admin-after-owner/uxui-pages/route-104-1440-light.png |
-| 23 | ดูด้วยตา | D1 | — | หน้าร้าน | `/how-it-works` | 1440 | light | guest | ผ่อนได้ครับ ใช้บัตรประชาชนใบเดียว ไม่เช… | ความกว้างหมึก 473.6 → 542.5px (+14.6%) | shop-after/shop/route-how-it-works-1440.png |
-| 24 | ดูด้วยตา | D2 | — | หลังบ้าน | ส่วนร่วม 40 หน้า เช่น `/collection-dashboard`, `/collections`, `/commissions` | 1440 | dark | owner | จัดการจดหมาย | เยื้องจากกึ่งกลาง 0.5 → -2px | admin-after-owner/uxui-pages/route-104-1440-dark.png |
-| 25 | ดูด้วยตา | D1 | — | หน้าร้าน | `/how-it-works` | 390 | light | guest | ผ่อนได้ครับ ใช้บัตรประชาชนใบเดียว ไม่เช… | ความกว้างหมึก 473.6 → 542.5px (+14.6%) | shop-after/shop/route-how-it-works-390.png |
-| 26 | ดูด้วยตา | D2 | — | หลังบ้าน | ส่วนร่วม 23 หน้า เช่น `/settings/:categoryId`, `/settings/access`, `/settings/access#accounting-permissions` | 390 | light | owner | เลือกหมวดตั้งค่า | เยื้องจากกึ่งกลาง -1.6 → -2.5px | admin-after-owner/uxui-pages/route-123-390-light.png |
-| 27 | ดูด้วยตา | D1 | — | หน้าร้าน | `/how-it-works` | 320 | light | guest | ผ่อนได้ครับ ใช้บัตรประชาชนใบเดียว ไม่เช… | ความกว้างหมึก 473.6 → 542.5px (+14.6%) | shop-after/shop/route-how-it-works-320.png |
-| 28 | ดูด้วยตา | D2 | — | หลังบ้าน | ส่วนร่วม 23 หน้า เช่น `/settings/:categoryId`, `/settings/access`, `/settings/access#accounting-permissions` | 390 | dark | owner | เลือกหมวดตั้งค่า | เยื้องจากกึ่งกลาง -1.6 → -2.5px | admin-after-owner/uxui-pages/route-123-390-dark.png |
-| 29 | ดูด้วยตา | D1 | — | หน้าร้าน | `/returns` | 1440 | light | guest | ทุกเครื่องรับประกันจากร้าน 60 วัน ครอบค… | ความกว้างหมึก 760.6 → 871.2px (+14.5%) | shop-after/shop/route-returns-1440.png |
-| 30 | ดูด้วยตา | D2 | — | หลังบ้าน | ส่วนร่วม 23 หน้า เช่น `/settings/:categoryId`, `/settings/access`, `/settings/access#accounting-permissions` | 320 | light | owner | เลือกหมวดตั้งค่า | เยื้องจากกึ่งกลาง -1.6 → -2.5px | admin-after-owner/uxui-pages/route-123-320-light.png |
+| 21 | มีอยู่ก่อน (P1) | R3 | P1 | หลังบ้าน | `/landing` | 1440 | light | owner | ของเรา | ระยะบรรทัด ×1.11 (40/36px) | admin-after-owner/uxui-pages/route-1-1440-light.png |
+| 22 | มีอยู่ก่อน (P1) | R4 | P1 | หลังบ้าน | `/contracts/create` | 1440 | light | salesA | สาขา: ทดสอบระบบ DOCS-04BE8B9E สาขา A | เนื้อหาล้นกล่องแนวตั้ง | admin-after-salesA/uxui-pages/route-79-1440-light.png |
+| 23 | มีอยู่ก่อน (P1) | R5 | P1 | หลังบ้าน | `/after-sales` | 1440 | light | owner | ค่าใช้จ่าย | ขึ้น 2 บรรทัด (th) | admin-after-owner/uxui-pages/route-56-1440-light.png |
+| 24 | มีอยู่ก่อน (P1) | R3 | P1 | หลังบ้าน | `/landing` | 1440 | light | salesA | ของเรา | ระยะบรรทัด ×1.11 (40/36px) | admin-after-salesA/uxui-pages/route-1-1440-light.png |
+| 25 | มีอยู่ก่อน (P1) | R4 | P1 | หลังบ้าน | `/contracts/create` | 1440 | light | salesA | สาขา: ทดสอบระบบ DOCS-04BE8B9E สาขา B | เนื้อหาล้นกล่องแนวตั้ง | admin-after-salesA/uxui-pages/route-79-1440-light.png |
+| 26 | มีอยู่ก่อน (P1) | R5 | P1 | หลังบ้าน | `/after-sales` | 1440 | light | salesA | ค่าใช้จ่าย | ขึ้น 2 บรรทัด (th) | admin-after-salesA/uxui-pages/route-56-1440-light.png |
+| 27 | มีอยู่ก่อน (P1) | R3 | P1 | หลังบ้าน | `/landing` | 1440 | light | owner | ช่องทาง | ระยะบรรทัด ×1.11 (40/36px) | admin-after-owner/uxui-pages/route-1-1440-light.png |
+| 28 | มีอยู่ก่อน (P1) | R4 | P1 | หลังบ้าน | `/contracts/create` | 1440 | light | owner | สาขา: ทดสอบระบบ DOCS-72C22C15 สาขา A | เนื้อหาล้นกล่องแนวตั้ง | admin-after-owner/uxui-pages/route-79-1440-light.png |
+| 29 | มีอยู่ก่อน (P1) | R5 | P1 | หลังบ้าน | `/after-sales` | 1440 | light | owner | รับเรื่องแล้ว | ขึ้น 2 บรรทัด (badge) | admin-after-owner/uxui-pages/route-56-1440-light.png |
+| 30 | มีอยู่ก่อน (P1) | R3 | P1 | หลังบ้าน | `/landing` | 1440 | light | salesA | ช่องทาง | ระยะบรรทัด ×1.11 (40/36px) | admin-after-salesA/uxui-pages/route-1-1440-light.png |
 
 ## หมายเหตุสำหรับการตรวจด้วยตา
 

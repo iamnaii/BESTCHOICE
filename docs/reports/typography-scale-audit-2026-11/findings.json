@@ -1,6 +1,6 @@
 {
   "schema": "typography-audit-report/1",
-  "generatedAt": "2026-11-08T09:25:13.604Z",
+  "generatedAt": "2026-11-08T09:52:33.928Z",
   "notes": {
     "pairing": "BEFORE↔AFTER by app + inventory row (no) + route + width + theme + role; only status \"rendered\" on both sides is compared",
     "shell": "Ruling Z: same rule|severity|kind|normalized text|width|theme|role on >= 5 distinct routes = one point (\"shell\": true) with routeCount/occurrences; routes lists the first 20",
@@ -8,19 +8,22 @@
     "persisting": "counts per rule × severity × route × width × theme × role with up to 5 example texts (Ruling AC); per-finding detail stays in .tmp",
     "fontCheck": "afterOnlyR8 = font-family check on AFTER only; never part of added/escalated/persisting/resolved (Ruling J)",
     "liff": "LIFF rows (/liff*) use one synthetic customer session in both role runs → role \"liff\", counted once",
-    "dedupe": "within each category a finding is counted once per app + findingKey (inventory rows sharing a path measure the same page)",
+    "dedupe": "inventory rows sharing a path are separate measurements (different entry point / fact counts); a finding is counted once per app + findingKey, and across rows escalated beats persisting and persisting/escalated beat added/resolved (totals.crossRowPrecedence = entries dropped)",
+    "routesCounts": "routes[].counts are per BEFORE/AFTER pair, before cross-row dedupe and precedence — their sums exceed totals by design",
+    "houseStyle": "totals.houseStyle splits R3/R7 (persisting + new) into the house style the owner decides on (definitions inside) and real findings",
+    "revisions": "sources[].revision comes from the run folder run.json (revisionSource \"run.json\") or from --revision <label>=<sha> (revisionSource \"cli\"; the storefront runs have no run.json)",
     "runTokens": "run-specific seed tokens (DOCS-<hex>, truncated \"abcd1234...\" ids) are canonicalized in the key text before pairing; displayed texts are raw",
     "noise": "D1/D2 on /liff/debug excluded (run-specific port in the text) — totals.deltas.noiseExcluded",
     "text": "texts clipped to 120 characters; synthetic harness/fixture data only"
   },
   "shellMinRoutes": 5,
   "sources": [
-    {"label":"admin-before-owner","app":"web","phase":"before","role":"owner","dir":".tmp/typo-audit/admin-before-owner","present":true,"files":1674,"skipped":0,"runStatus":"PASS","revision":"70eb8255671a33752ac8cb6e6596c79f76a640b5","records":1674,"sharedDuplicates":0},
-    {"label":"admin-after-owner","app":"web","phase":"after","role":"owner","dir":".tmp/typo-audit/admin-after-owner","present":true,"files":1674,"skipped":0,"runStatus":"PASS","revision":"1d0b4c283972a7d3b382915888f23aaf228407a1","records":1674,"sharedDuplicates":0},
-    {"label":"admin-before-sales","app":"web","phase":"before","role":"salesA","dir":".tmp/typo-audit/admin-before-salesA","present":true,"files":1674,"skipped":0,"runStatus":"PASS","revision":"70eb8255671a33752ac8cb6e6596c79f76a640b5","records":1596,"sharedDuplicates":78},
-    {"label":"admin-after-sales","app":"web","phase":"after","role":"salesA","dir":".tmp/typo-audit/admin-after-salesA","present":true,"files":1674,"skipped":0,"runStatus":"PASS","revision":"77ce21ecea2b2ff94656ef7f9a4954f22a0ee3ab","records":1596,"sharedDuplicates":78},
-    {"label":"shop-before","app":"shop","phase":"before","role":null,"dir":".tmp/typo-audit/shop-before","present":true,"files":108,"skipped":1,"runStatus":null,"revision":null,"records":108,"sharedDuplicates":0},
-    {"label":"shop-after","app":"shop","phase":"after","role":null,"dir":".tmp/typo-audit/shop-after","present":true,"files":108,"skipped":1,"runStatus":null,"revision":null,"records":108,"sharedDuplicates":0}
+    {"label":"admin-before-owner","app":"web","phase":"before","role":"owner","dir":".tmp/typo-audit/admin-before-owner","present":true,"files":1674,"skipped":0,"runStatus":"PASS","revision":"70eb8255671a33752ac8cb6e6596c79f76a640b5","revisionSource":"run.json","records":1674,"sharedDuplicates":0},
+    {"label":"admin-after-owner","app":"web","phase":"after","role":"owner","dir":".tmp/typo-audit/admin-after-owner","present":true,"files":1674,"skipped":0,"runStatus":"PASS","revision":"1d0b4c283972a7d3b382915888f23aaf228407a1","revisionSource":"run.json","records":1674,"sharedDuplicates":0},
+    {"label":"admin-before-sales","app":"web","phase":"before","role":"salesA","dir":".tmp/typo-audit/admin-before-salesA","present":true,"files":1674,"skipped":0,"runStatus":"PASS","revision":"70eb8255671a33752ac8cb6e6596c79f76a640b5","revisionSource":"run.json","records":1596,"sharedDuplicates":78},
+    {"label":"admin-after-sales","app":"web","phase":"after","role":"salesA","dir":".tmp/typo-audit/admin-after-salesA","present":true,"files":1674,"skipped":0,"runStatus":"PASS","revision":"77ce21ecea2b2ff94656ef7f9a4954f22a0ee3ab","revisionSource":"run.json","records":1596,"sharedDuplicates":78},
+    {"label":"shop-before","app":"shop","phase":"before","role":null,"dir":".tmp/typo-audit/shop-before","present":true,"files":108,"skipped":1,"runStatus":null,"revision":"70eb82556","revisionSource":"cli","records":108,"sharedDuplicates":0},
+    {"label":"shop-after","app":"shop","phase":"after","role":null,"dir":".tmp/typo-audit/shop-after","present":true,"files":108,"skipped":1,"runStatus":null,"revision":"1f67675fd","revisionSource":"cli","records":108,"sharedDuplicates":0}
   ],
   "totals": {
     "records": {
@@ -144,13 +147,59 @@
     "pairsCompared": 2043,
     "sharedDuplicates": 156,
     "afterUnpairedFindings": 0,
+    "crossRowPrecedence": {
+      "persisting": 0,
+      "added": 12,
+      "resolved": 0
+    },
+    "houseStyle": {
+      "scope": "persisting + new (added and escalated)",
+      "R3": {
+        "definition": "R3 P2 with line-height ratio 1.375 ± 0.01 (Tailwind leading-snug) and font-size < 20px",
+        "houseStyle": 6316,
+        "realP2": 700,
+        "realP1": 100,
+        "examples": {
+          "realP2": [
+            {"app":"web","route":"/liff/branches","width":1440,"text":"BEST CHOICE","value":"ระยะบรรทัด ×1.33 (16/12px)"},
+            {"app":"web","route":"/accounting/intercompany","width":1440,"text":"฿0.00","value":"ระยะบรรทัด ×1.65 (35.8/21.7px)"},
+            {"app":"shop","route":"/","width":1440,"text":"5.0","value":"ระยะบรรทัด ×1 (36/36px)"}
+          ],
+          "realP1": [
+            {"app":"web","route":"/liff/contract","width":1440,"text":"฿","value":"ระยะบรรทัด ×1 (26/26px)"},
+            {"app":"web","route":"/liff/contract","width":1440,"text":"฿12,126.64","value":"ระยะบรรทัด ×1 (24/24px)"},
+            {"app":"web","route":"/liff/history","width":1440,"text":"฿1,515.83","value":"ระยะบรรทัด ×1 (15/15px)"}
+          ]
+        }
+      },
+      "R7": {
+        "definition": "R7 at desktop widths (minimum 36px) with height 31.5–34.5px (shadcn md Button/SelectTrigger 34px, sidebar items 32–34px)",
+        "houseStyle": 3706,
+        "realMobileBelow44": 220,
+        "realDesktopBelow32": 176,
+        "realDesktopOther": 0,
+        "examples": {
+          "mobileBelow44": [
+            {"app":"web","route":"/payments","width":390,"text":"การลงบัญชี","value":"สูง 32px < 44px (button)"},
+            {"app":"web","route":"/","width":390,"text":"ตามรุ่น","value":"สูง 36px < 44px (button)"},
+            {"app":"web","route":"/contracts/:id","width":390,"text":"ดูรายละเอียดลูกค้า (ข้อมูลปัจจุบัน)","value":"สูง 18px < 44px (button)"}
+          ],
+          "desktopBelow32": [
+            {"app":"web","route":"/stock/products","width":1440,"text":"ประเภท","value":"สูง 24px < 36px (button)"},
+            {"app":"web","route":"/trade-in","width":1440,"text":"วันที่/เวลา","value":"สูง 24px < 36px (button)"},
+            {"app":"web","route":"/purchase-orders","width":1440,"text":"เลข PO","value":"สูง 24px < 36px (button)"}
+          ],
+          "desktopOther": []
+        }
+      }
+    },
     "unpaired": 1335,
     "duplicateRoutePaths": [
       {"route":"/audit-logs","rows":["128","265"]},
-      {"route":"/branches","rows":["217","32"]},
-      {"route":"/contract-templates","rows":["243","82"]},
+      {"route":"/branches","rows":["32","217"]},
+      {"route":"/contract-templates","rows":["82","243"]},
       {"route":"/promotions","rows":["160","242"]},
-      {"route":"/settings/document-config","rows":["233","67"]},
+      {"route":"/settings/document-config","rows":["67","233"]},
       {"route":"/settings/rich-menu","rows":["192","246"]},
       {"route":"/system-status","rows":["142","266"]},
       {"route":"/users","rows":["119","219"]}
@@ -165,10 +214,10 @@
         "findings": 0
       },
       "P3": {
-        "points": 30,
-        "findings": 30
+        "points": 18,
+        "findings": 18
       },
-      "runVarying": 30
+      "runVarying": 18
     },
     "escalated": {
       "points": 0,
@@ -219,7 +268,8 @@
           "bySeverity": {
             "P1": 100,
             "P2": 7016
-          }
+          },
+          "houseStyle": 6316
         },
         "R4": {
           "findings": 68,
@@ -252,7 +302,8 @@
           "routes": 152,
           "bySeverity": {
             "P2": 4102
-          }
+          },
+          "houseStyle": 3706
         },
         "R7b": {
           "findings": 8,
@@ -1809,34 +1860,22 @@
   },
   "added": [
     {"rule":"R10","severity":"P3","app":"web","route":"/audit-logs","no":"265","width":1440,"theme":"light","role":"owner","key":"text|#|23","text":"1","detail":{"tag":"td","fontSize":12}},
-    {"rule":"R10","severity":"P3","app":"web","route":"/audit-logs","no":"128","width":1440,"theme":"light","role":"owner","key":"text|##|11","text":"12","detail":{"tag":"td","fontSize":12}},
     {"rule":"R10","severity":"P3","app":"web","route":"/audit-logs","no":"265","width":1440,"theme":"light","role":"owner","key":"text|##|14","text":"12","detail":{"tag":"td","fontSize":12}},
-    {"rule":"R10","severity":"P3","app":"web","route":"/audit-logs","no":"128","width":1440,"theme":"light","role":"owner","key":"text|##|12","text":"19","detail":{"tag":"td","fontSize":12}},
     {"rule":"R10","severity":"P3","app":"web","route":"/audit-logs","no":"265","width":1440,"theme":"light","role":"owner","key":"text|##|15","text":"19","detail":{"tag":"td","fontSize":12}},
     {"rule":"R10","severity":"P3","app":"web","route":"/audit-logs","no":"265","width":1440,"theme":"dark","role":"owner","key":"text|#|23","text":"1","detail":{"tag":"td","fontSize":12}},
-    {"rule":"R10","severity":"P3","app":"web","route":"/audit-logs","no":"128","width":1440,"theme":"dark","role":"owner","key":"text|##|11","text":"12","detail":{"tag":"td","fontSize":12}},
     {"rule":"R10","severity":"P3","app":"web","route":"/audit-logs","no":"265","width":1440,"theme":"dark","role":"owner","key":"text|##|14","text":"12","detail":{"tag":"td","fontSize":12}},
-    {"rule":"R10","severity":"P3","app":"web","route":"/audit-logs","no":"128","width":1440,"theme":"dark","role":"owner","key":"text|##|12","text":"19","detail":{"tag":"td","fontSize":12}},
     {"rule":"R10","severity":"P3","app":"web","route":"/audit-logs","no":"265","width":1440,"theme":"dark","role":"owner","key":"text|##|15","text":"19","detail":{"tag":"td","fontSize":12}},
     {"rule":"R10","severity":"P3","app":"web","route":"/audit-logs","no":"265","width":390,"theme":"light","role":"owner","key":"text|#|23","text":"1","detail":{"tag":"td","fontSize":12}},
-    {"rule":"R10","severity":"P3","app":"web","route":"/audit-logs","no":"128","width":390,"theme":"light","role":"owner","key":"text|##|11","text":"12","detail":{"tag":"td","fontSize":12}},
     {"rule":"R10","severity":"P3","app":"web","route":"/audit-logs","no":"265","width":390,"theme":"light","role":"owner","key":"text|##|14","text":"12","detail":{"tag":"td","fontSize":12}},
-    {"rule":"R10","severity":"P3","app":"web","route":"/audit-logs","no":"128","width":390,"theme":"light","role":"owner","key":"text|##|12","text":"19","detail":{"tag":"td","fontSize":12}},
     {"rule":"R10","severity":"P3","app":"web","route":"/audit-logs","no":"265","width":390,"theme":"light","role":"owner","key":"text|##|15","text":"19","detail":{"tag":"td","fontSize":12}},
     {"rule":"R10","severity":"P3","app":"web","route":"/audit-logs","no":"265","width":390,"theme":"dark","role":"owner","key":"text|#|23","text":"1","detail":{"tag":"td","fontSize":12}},
-    {"rule":"R10","severity":"P3","app":"web","route":"/audit-logs","no":"128","width":390,"theme":"dark","role":"owner","key":"text|##|11","text":"12","detail":{"tag":"td","fontSize":12}},
     {"rule":"R10","severity":"P3","app":"web","route":"/audit-logs","no":"265","width":390,"theme":"dark","role":"owner","key":"text|##|14","text":"12","detail":{"tag":"td","fontSize":12}},
-    {"rule":"R10","severity":"P3","app":"web","route":"/audit-logs","no":"128","width":390,"theme":"dark","role":"owner","key":"text|##|12","text":"19","detail":{"tag":"td","fontSize":12}},
     {"rule":"R10","severity":"P3","app":"web","route":"/audit-logs","no":"265","width":390,"theme":"dark","role":"owner","key":"text|##|15","text":"19","detail":{"tag":"td","fontSize":12}},
     {"rule":"R10","severity":"P3","app":"web","route":"/audit-logs","no":"265","width":320,"theme":"light","role":"owner","key":"text|#|23","text":"1","detail":{"tag":"td","fontSize":12}},
-    {"rule":"R10","severity":"P3","app":"web","route":"/audit-logs","no":"128","width":320,"theme":"light","role":"owner","key":"text|##|11","text":"12","detail":{"tag":"td","fontSize":12}},
     {"rule":"R10","severity":"P3","app":"web","route":"/audit-logs","no":"265","width":320,"theme":"light","role":"owner","key":"text|##|14","text":"12","detail":{"tag":"td","fontSize":12}},
-    {"rule":"R10","severity":"P3","app":"web","route":"/audit-logs","no":"128","width":320,"theme":"light","role":"owner","key":"text|##|12","text":"19","detail":{"tag":"td","fontSize":12}},
     {"rule":"R10","severity":"P3","app":"web","route":"/audit-logs","no":"265","width":320,"theme":"light","role":"owner","key":"text|##|15","text":"19","detail":{"tag":"td","fontSize":12}},
     {"rule":"R10","severity":"P3","app":"web","route":"/audit-logs","no":"265","width":320,"theme":"dark","role":"owner","key":"text|#|23","text":"1","detail":{"tag":"td","fontSize":12}},
-    {"rule":"R10","severity":"P3","app":"web","route":"/audit-logs","no":"128","width":320,"theme":"dark","role":"owner","key":"text|##|11","text":"12","detail":{"tag":"td","fontSize":12}},
     {"rule":"R10","severity":"P3","app":"web","route":"/audit-logs","no":"265","width":320,"theme":"dark","role":"owner","key":"text|##|14","text":"12","detail":{"tag":"td","fontSize":12}},
-    {"rule":"R10","severity":"P3","app":"web","route":"/audit-logs","no":"128","width":320,"theme":"dark","role":"owner","key":"text|##|12","text":"19","detail":{"tag":"td","fontSize":12}},
     {"rule":"R10","severity":"P3","app":"web","route":"/audit-logs","no":"265","width":320,"theme":"dark","role":"owner","key":"text|##|15","text":"19","detail":{"tag":"td","fontSize":12}}
   ],
   "escalated": [],
@@ -8254,16 +8293,16 @@
     {"rank":18,"tier":"delta","shell":true,"rule":"D2","app":"web","kind":"button","keyText":"รับชำระค่างวด","text":"รับชำระค่างวด","width":1440,"theme":"light","role":"owner","routeCount":40,"occurrences":40,"routes":["/collection-dashboard","/collections","/commissions","/document-dashboard","/expenses","/expenses/:id","/expenses/:id/voucher","/expenses/ap-aging","/expenses/daily-summary","/expenses/favorites","/expenses/new","/external-finance-companies/:id","/finance-portfolio","/finance-receivable","/finance/aging-report","/finance/bad-debt-report","/finance/balance-sheet","/finance/contract-cancellation","/finance/e-receipt-auto","/finance/general-journal"],"example":{"route":"/collection-dashboard","no":"104","key":"button|รับชำระค่างวด|0","detail":{"beforeOffset":0.3468751907348633,"afterOffset":-2.5199995040893555,"beforeH":34,"afterH":34}},"screenshot":"admin-after-owner/uxui-pages/route-104-1440-light.png"},
     {"rank":19,"tier":"delta","rule":"D1","app":"shop","route":"/installment-terms","width":390,"theme":"light","role":"guest","key":"paragraph|เครื่องจะถูกล็อคการใช้งานชั่วคราว เฉพาะก|0","text":"เครื่องจะถูกล็อคการใช้งานชั่วคราว เฉพาะกรณีค้างชำระและติดต่อ","detail":{"before":825.8173828125,"after":949.3912353515625,"change":0.14963823129782639},"screenshot":"shop-after/shop/route-installment-terms-390.png"},
     {"rank":20,"tier":"delta","shell":true,"rule":"D2","app":"web","kind":"button","keyText":"รับชำระค่างวด","text":"รับชำระค่างวด","width":1440,"theme":"dark","role":"owner","routeCount":40,"occurrences":40,"routes":["/collection-dashboard","/collections","/commissions","/document-dashboard","/expenses","/expenses/:id","/expenses/:id/voucher","/expenses/ap-aging","/expenses/daily-summary","/expenses/favorites","/expenses/new","/external-finance-companies/:id","/finance-portfolio","/finance-receivable","/finance/aging-report","/finance/bad-debt-report","/finance/balance-sheet","/finance/contract-cancellation","/finance/e-receipt-auto","/finance/general-journal"],"example":{"route":"/collection-dashboard","no":"104","key":"button|รับชำระค่างวด|0","detail":{"beforeOffset":0.3468751907348633,"afterOffset":-2.5199995040893555,"beforeH":34,"afterH":34}},"screenshot":"admin-after-owner/uxui-pages/route-104-1440-dark.png"},
-    {"rank":21,"tier":"delta","rule":"D1","app":"shop","route":"/installment-terms","width":320,"theme":"light","role":"guest","key":"paragraph|เครื่องจะถูกล็อคการใช้งานชั่วคราว เฉพาะก|0","text":"เครื่องจะถูกล็อคการใช้งานชั่วคราว เฉพาะกรณีค้างชำระและติดต่อ","detail":{"before":825.8173828125,"after":949.3912353515625,"change":0.14963823129782639},"screenshot":"shop-after/shop/route-installment-terms-320.png"},
-    {"rank":22,"tier":"delta","shell":true,"rule":"D2","app":"web","kind":"button","keyText":"จัดการจดหมาย","text":"จัดการจดหมาย","width":1440,"theme":"light","role":"owner","routeCount":40,"occurrences":40,"routes":["/collection-dashboard","/collections","/commissions","/document-dashboard","/expenses","/expenses/:id","/expenses/:id/voucher","/expenses/ap-aging","/expenses/daily-summary","/expenses/favorites","/expenses/new","/external-finance-companies/:id","/finance-portfolio","/finance-receivable","/finance/aging-report","/finance/bad-debt-report","/finance/balance-sheet","/finance/contract-cancellation","/finance/e-receipt-auto","/finance/general-journal"],"example":{"route":"/collection-dashboard","no":"104","key":"button|จัดการจดหมาย|0","detail":{"beforeOffset":0.5398831367492676,"afterOffset":-2.039999485015869,"beforeH":34,"afterH":34}},"screenshot":"admin-after-owner/uxui-pages/route-104-1440-light.png"},
-    {"rank":23,"tier":"delta","rule":"D1","app":"shop","route":"/how-it-works","width":1440,"theme":"light","role":"guest","key":"paragraph|ผ่อนได้ครับ ใช้บัตรประชาชนใบเดียว ไม่เช็|0","text":"ผ่อนได้ครับ ใช้บัตรประชาชนใบเดียว ไม่เช็กบูโร ไม่ต้องใช้บัตร","detail":{"before":473.59161376953125,"after":542.54345703125,"change":0.14559346334893822},"screenshot":"shop-after/shop/route-how-it-works-1440.png"},
-    {"rank":24,"tier":"delta","shell":true,"rule":"D2","app":"web","kind":"button","keyText":"จัดการจดหมาย","text":"จัดการจดหมาย","width":1440,"theme":"dark","role":"owner","routeCount":40,"occurrences":40,"routes":["/collection-dashboard","/collections","/commissions","/document-dashboard","/expenses","/expenses/:id","/expenses/:id/voucher","/expenses/ap-aging","/expenses/daily-summary","/expenses/favorites","/expenses/new","/external-finance-companies/:id","/finance-portfolio","/finance-receivable","/finance/aging-report","/finance/bad-debt-report","/finance/balance-sheet","/finance/contract-cancellation","/finance/e-receipt-auto","/finance/general-journal"],"example":{"route":"/collection-dashboard","no":"104","key":"button|จัดการจดหมาย|0","detail":{"beforeOffset":0.5398831367492676,"afterOffset":-2.039999485015869,"beforeH":34,"afterH":34}},"screenshot":"admin-after-owner/uxui-pages/route-104-1440-dark.png"},
-    {"rank":25,"tier":"delta","rule":"D1","app":"shop","route":"/how-it-works","width":390,"theme":"light","role":"guest","key":"paragraph|ผ่อนได้ครับ ใช้บัตรประชาชนใบเดียว ไม่เช็|0","text":"ผ่อนได้ครับ ใช้บัตรประชาชนใบเดียว ไม่เช็กบูโร ไม่ต้องใช้บัตร","detail":{"before":473.59161376953125,"after":542.54345703125,"change":0.14559346334893822},"screenshot":"shop-after/shop/route-how-it-works-390.png"},
-    {"rank":26,"tier":"delta","shell":true,"rule":"D2","app":"web","kind":"input","keyText":"เลือกหมวดตั้งค่า","text":"เลือกหมวดตั้งค่า","width":390,"theme":"light","role":"owner","routeCount":23,"occurrences":23,"routes":["/settings/:categoryId","/settings/access","/settings/access#accounting-permissions","/settings/access#attachment","/settings/access#maker-checker","/settings/access#payment-approval-permissions","/settings/access#reverse-permission","/settings/access#reverse-reasons","/settings/accounting","/settings/accounting#periods","/settings/accounting#vat","/settings/ai","/settings/comms","/settings/company","/settings/company#company-info","/settings/finance","/settings/finance#late-fee","/settings/integrations","/settings/products","/settings/system"],"example":{"route":"/settings/:categoryId","no":"123","key":"input|เลือกหมวดตั้งค่า|0","detail":{"beforeOffset":-1.6319999694824219,"afterOffset":-2.5359978675842285,"beforeH":44,"afterH":44}},"screenshot":"admin-after-owner/uxui-pages/route-123-390-light.png"},
-    {"rank":27,"tier":"delta","rule":"D1","app":"shop","route":"/how-it-works","width":320,"theme":"light","role":"guest","key":"paragraph|ผ่อนได้ครับ ใช้บัตรประชาชนใบเดียว ไม่เช็|0","text":"ผ่อนได้ครับ ใช้บัตรประชาชนใบเดียว ไม่เช็กบูโร ไม่ต้องใช้บัตร","detail":{"before":473.59161376953125,"after":542.54345703125,"change":0.14559346334893822},"screenshot":"shop-after/shop/route-how-it-works-320.png"},
-    {"rank":28,"tier":"delta","shell":true,"rule":"D2","app":"web","kind":"input","keyText":"เลือกหมวดตั้งค่า","text":"เลือกหมวดตั้งค่า","width":390,"theme":"dark","role":"owner","routeCount":23,"occurrences":23,"routes":["/settings/:categoryId","/settings/access","/settings/access#accounting-permissions","/settings/access#attachment","/settings/access#maker-checker","/settings/access#payment-approval-permissions","/settings/access#reverse-permission","/settings/access#reverse-reasons","/settings/accounting","/settings/accounting#periods","/settings/accounting#vat","/settings/ai","/settings/comms","/settings/company","/settings/company#company-info","/settings/finance","/settings/finance#late-fee","/settings/integrations","/settings/products","/settings/system"],"example":{"route":"/settings/:categoryId","no":"123","key":"input|เลือกหมวดตั้งค่า|0","detail":{"beforeOffset":-1.6319999694824219,"afterOffset":-2.5359978675842285,"beforeH":44,"afterH":44}},"screenshot":"admin-after-owner/uxui-pages/route-123-390-dark.png"},
-    {"rank":29,"tier":"delta","rule":"D1","app":"shop","route":"/returns","width":1440,"theme":"light","role":"guest","key":"paragraph|ทุกเครื่องรับประกันจากร้าน ## วัน ครอบคล|0","text":"ทุกเครื่องรับประกันจากร้าน 60 วัน ครอบคลุมการใช้งานปกติ หากเ","detail":{"before":760.5633544921875,"after":871.2151489257812,"change":0.14548662354035408},"screenshot":"shop-after/shop/route-returns-1440.png"},
-    {"rank":30,"tier":"delta","shell":true,"rule":"D2","app":"web","kind":"input","keyText":"เลือกหมวดตั้งค่า","text":"เลือกหมวดตั้งค่า","width":320,"theme":"light","role":"owner","routeCount":23,"occurrences":23,"routes":["/settings/:categoryId","/settings/access","/settings/access#accounting-permissions","/settings/access#attachment","/settings/access#maker-checker","/settings/access#payment-approval-permissions","/settings/access#reverse-permission","/settings/access#reverse-reasons","/settings/accounting","/settings/accounting#periods","/settings/accounting#vat","/settings/ai","/settings/comms","/settings/company","/settings/company#company-info","/settings/finance","/settings/finance#late-fee","/settings/integrations","/settings/products","/settings/system"],"example":{"route":"/settings/:categoryId","no":"123","key":"input|เลือกหมวดตั้งค่า|0","detail":{"beforeOffset":-1.6319999694824219,"afterOffset":-2.5359978675842285,"beforeH":44,"afterH":44}},"screenshot":"admin-after-owner/uxui-pages/route-123-320-light.png"}
+    {"rank":21,"tier":"persisting-p1","rule":"R3","severity":"P1","app":"web","route":"/landing","no":"1","width":1440,"theme":"light","role":"owner","key":"text|ของเรา|0","text":"ของเรา","detail":{"ratio":1.11,"fontSize":36,"lineHeight":39.96,"min":1.2},"screenshot":"admin-after-owner/uxui-pages/route-1-1440-light.png"},
+    {"rank":22,"tier":"persisting-p1","rule":"R4","severity":"P1","app":"web","route":"/contracts/create","no":"79","width":1440,"theme":"light","role":"salesA","key":"text|สาขา: ทดสอบระบบ DOCS-~ สาขา A|0","text":"สาขา: ทดสอบระบบ DOCS-04BE8B9E สาขา A","detail":{"inkHeight":8.868001937866211,"lineHeight":18,"scrollOverflowY":true,"overflowClip":"both"},"screenshot":"admin-after-salesA/uxui-pages/route-79-1440-light.png"},
+    {"rank":23,"tier":"persisting-p1","rule":"R5","severity":"P1","app":"web","route":"/after-sales","no":"56","width":1440,"theme":"light","role":"owner","key":"th|ค่าใช้จ่าย|0","text":"ค่าใช้จ่าย","detail":{"kind":"th","lines":2},"screenshot":"admin-after-owner/uxui-pages/route-56-1440-light.png"},
+    {"rank":24,"tier":"persisting-p1","rule":"R3","severity":"P1","app":"web","route":"/landing","no":"1","width":1440,"theme":"light","role":"salesA","key":"text|ของเรา|0","text":"ของเรา","detail":{"ratio":1.11,"fontSize":36,"lineHeight":39.96,"min":1.2},"screenshot":"admin-after-salesA/uxui-pages/route-1-1440-light.png"},
+    {"rank":25,"tier":"persisting-p1","rule":"R4","severity":"P1","app":"web","route":"/contracts/create","no":"79","width":1440,"theme":"light","role":"salesA","key":"text|สาขา: ทดสอบระบบ DOCS-~ สาขา B|0","text":"สาขา: ทดสอบระบบ DOCS-04BE8B9E สาขา B","detail":{"inkHeight":8.868001937866211,"lineHeight":18,"scrollOverflowY":true,"overflowClip":"both"},"screenshot":"admin-after-salesA/uxui-pages/route-79-1440-light.png"},
+    {"rank":26,"tier":"persisting-p1","rule":"R5","severity":"P1","app":"web","route":"/after-sales","no":"56","width":1440,"theme":"light","role":"salesA","key":"th|ค่าใช้จ่าย|0","text":"ค่าใช้จ่าย","detail":{"kind":"th","lines":2},"screenshot":"admin-after-salesA/uxui-pages/route-56-1440-light.png"},
+    {"rank":27,"tier":"persisting-p1","rule":"R3","severity":"P1","app":"web","route":"/landing","no":"1","width":1440,"theme":"light","role":"owner","key":"heading|ช่องทาง|0","text":"ช่องทาง","detail":{"ratio":1.11,"fontSize":36,"lineHeight":39.96,"min":1.2},"screenshot":"admin-after-owner/uxui-pages/route-1-1440-light.png"},
+    {"rank":28,"tier":"persisting-p1","rule":"R4","severity":"P1","app":"web","route":"/contracts/create","no":"79","width":1440,"theme":"light","role":"owner","key":"text|สาขา: ทดสอบระบบ DOCS-~ สาขา A|0","text":"สาขา: ทดสอบระบบ DOCS-72C22C15 สาขา A","detail":{"inkHeight":8.868001937866211,"lineHeight":18,"scrollOverflowY":true,"overflowClip":"both"},"screenshot":"admin-after-owner/uxui-pages/route-79-1440-light.png"},
+    {"rank":29,"tier":"persisting-p1","rule":"R5","severity":"P1","app":"web","route":"/after-sales","no":"56","width":1440,"theme":"light","role":"owner","key":"badge|รับเรื่องแล้ว|0","text":"รับเรื่องแล้ว","detail":{"kind":"badge","lines":2},"screenshot":"admin-after-owner/uxui-pages/route-56-1440-light.png"},
+    {"rank":30,"tier":"persisting-p1","rule":"R3","severity":"P1","app":"web","route":"/landing","no":"1","width":1440,"theme":"light","role":"salesA","key":"heading|ช่องทาง|0","text":"ช่องทาง","detail":{"ratio":1.11,"fontSize":36,"lineHeight":39.96,"min":1.2},"screenshot":"admin-after-salesA/uxui-pages/route-1-1440-light.png"}
   ],
   "routes": [
     {"app":"shop","route":"/account","width":1440,"theme":"light","role":"customer","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":2,"resolved":4,"D1":0,"D2":0,"R8":0}},

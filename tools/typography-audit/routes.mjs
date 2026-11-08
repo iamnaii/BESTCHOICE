@@ -19,9 +19,10 @@ export const ADMIN_APP = 'apps/web/src/App.tsx';
 export const SETTINGS_REGISTRY = 'apps/web/src/config/settings-registry.tsx';
 export const OCTOBER_INVENTORY = 'docs/reports/uxui-2026-10-14/acceptance-routes.json';
 
-// ── document routes (Ruling K: the Global list, literally) ──────────────────────────────────────
+// ── document routes (Ruling K: the Global list, literally — plus /cn/ by controller ruling) ──────
 export const DOCUMENT_ROUTES = [
   /^\/r\//, // ใบเสร็จขายสด /r/:token
+  /^\/cn\//, // ใบลดหนี้ /cn/:token — public credit-note PDF viewer, same class as /r/:token
   /^\/sales\/[^/]+\/parcel-label$/, // ป้ายพัสดุ /sales/:id/parcel-label
   /^\/stickers$/,
   /^\/verify\//,

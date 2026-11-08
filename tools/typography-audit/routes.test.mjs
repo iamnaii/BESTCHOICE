@@ -70,9 +70,15 @@ test('document routes classified', () => {
   }
   // Ruling K: the bare /contract-templates list/editor page is measured; only its subpaths are documents.
   for (const p of ['/contract-templates', '/settings/products/stickers', '/settings/stickers', '/stickers/x',
-    '/sales', '/sales/:id', '/expenses/verify/:id', '/expenses/verify-number/:number', '/cn/:token']) {
+    '/sales', '/sales/:id', '/expenses/verify/:id', '/expenses/verify-number/:number']) {
     assert.ok(!isDocumentRoute(p), p);
   }
+});
+
+test('credit-note viewer /cn/:token is a document route (controller ruling, same class as /r/:token)', () => {
+  assert.ok(isDocumentRoute('/cn/:token'));
+  assert.ok(DOCUMENT_ROUTES.some((re) => re.test('/cn/:token')));
+  for (const p of ['/contracts', '/customers']) assert.ok(!isDocumentRoute(p), p);
 });
 
 test('shopRoutes covers App.tsx', () => {

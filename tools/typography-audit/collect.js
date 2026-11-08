@@ -7,7 +7,8 @@
  * control, in DOM order. Text facts take kind/box/headingLevel from an "anchor" (the element itself, or
  * the nearest matching ancestor control when this element is that control's only text carrier) and take
  * text rects, lines, ink, overflow and scroll from the text element itself. Form-control facts never
- * record values: their text is placeholder || aria-label || ''.
+ * record values: their text is placeholder || aria-label || '', and their scroll flags are always false
+ * (they would flip with the typed value's length). Visually hidden (sr-only) text is never a fact.
  *
  * normalizeKeyText / factKey / isNumericOnly re-implement tools/typography-audit/rules.mjs verbatim
  * (collect.test.mjs asserts they never drift).
@@ -60,6 +61,7 @@
     var bodyEl = document.body;
     var styles = new Map();
     var carriers = new Map();
+    var hiddenChains = new Map();
     var inkCache = new Map();
     var normalLineHeights = new Map();
     var canvasCtx = null;
@@ -70,11 +72,53 @@
       if (!cs) { cs = getComputedStyle(el); styles.set(el, cs); }
       return cs;
     }
-    // Same predicate as the uxui harness `visible` (apps/api/e2e/documents/uxui-pages.browser.docs-spec.ts).
+    // The uxui harness `visible` predicate (apps/api/e2e/documents/uxui-pages.browser.docs-spec.ts)
+    // plus Ruling T: not visually hidden the sr-only way (self or any ancestor below body).
     function visible(el) {
       if (el.getClientRects().length === 0) return false;
       var cs = style(el);
-      return cs.visibility !== 'hidden' && cs.opacity !== '0' && !el.closest(HIDDEN_SELECTOR);
+      return cs.visibility !== 'hidden' && cs.opacity !== '0' && !el.closest(HIDDEN_SELECTOR) && !visuallyHidden(el);
+    }
+    function lengthIn(value, basis) {
+      var n = parseFloat(value);
+      if (!isFinite(n)) return NaN;
+      return /%$/.test(value) ? (n / 100) * basis : n;
+    }
+    // clip-path: inset(t [r [b [l]]] [round …]) that leaves no area of the border box
+    function insetCollapses(clipPath, rect) {
+      var m = /^inset\(([^()]*)\)$/.exec(clipPath);
+      if (!m) return false;
+      var args = m[1].split(/\s+round\s+/)[0].trim().split(/\s+/);
+      if (args.length < 1 || args.length > 4) return false;
+      var t = args[0], r = args[1] || t, b = args[2] || t, l = args[3] || r;
+      return lengthIn(t, rect.height) + lengthIn(b, rect.height) >= rect.height
+        || lengthIn(l, rect.width) + lengthIn(r, rect.width) >= rect.width;
+    }
+    // clip: rect(top, right, bottom, left) with no area, e.g. rect(0px, 0px, 0px, 0px)
+    function clipRectCollapses(clip) {
+      var m = /^rect\(([^()]*)\)$/.exec(clip);
+      if (!m) return false;
+      var v = m[1].trim().split(/\s*,\s*|\s+/).map(parseFloat);
+      if (v.length !== 4 || !v.every(isFinite)) return false; // 'auto' edges never collapse
+      return v[2] <= v[0] || v[1] <= v[3];
+    }
+    function isHiddenOrClip(value) {
+      return value === 'hidden' || value === 'clip';
+    }
+    function selfVisuallyHidden(el) {
+      var cs = style(el);
+      var rect = el.getBoundingClientRect();
+      if (insetCollapses(cs.clipPath || '', rect)) return true;
+      if (clipRectCollapses(cs.clip || '')) return true;
+      return rect.width <= 1 && rect.height <= 1 && isHiddenOrClip(cs.overflowX) && isHiddenOrClip(cs.overflowY);
+    }
+    function visuallyHidden(el) {
+      if (!el || el.nodeType !== 1 || el === htmlEl || el === bodyEl) return false;
+      var cached = hiddenChains.get(el);
+      if (cached !== undefined) return cached;
+      var hidden = selfVisuallyHidden(el) || visuallyHidden(el.parentElement);
+      hiddenChains.set(el, hidden);
+      return hidden;
     }
     function excluded(el) {
       return exclude !== '' && el.closest(exclude) !== null;
@@ -284,8 +328,8 @@
         inkWidth: base.ink.inkWidth,
         inkHeight: base.ink.inkHeight,
         overflowClip: base.overflowClip,
-        scrollOverflowX: base.scrollEl.scrollWidth > base.scrollEl.clientWidth + 1,
-        scrollOverflowY: base.scrollEl.scrollHeight > base.scrollEl.clientHeight + 1,
+        scrollOverflowX: base.scrollOverflowX,
+        scrollOverflowY: base.scrollOverflowY,
         hasThai: THAI_RE.test(base.text),
         numericOnly: isNumericOnly(base.text),
         inReadingBlock: base.el.closest('.reading-block') !== null,
@@ -312,7 +356,9 @@
         lineHeight: lineHeight(cs, text), fontWeight: Number(cs.fontWeight), fontFamily: cs.fontFamily,
         numeric: isTabular(cs), box: box(anchor.node), lines: countLines(rects),
         textTop: top + scrollY, textHeight: bottom - top, ink: measure(cs, text),
-        overflowClip: overflowClip(el), scrollEl: el,
+        overflowClip: overflowClip(el),
+        scrollOverflowX: el.scrollWidth > el.clientWidth + 1,
+        scrollOverflowY: el.scrollHeight > el.clientHeight + 1,
         iconRatios: iconRatios(anchor.node === el ? [el] : [el, anchor.node], fontSize),
         headingLevel: headingLevel(anchor.node),
       }) };
@@ -332,7 +378,10 @@
         lineHeight: lineHeight(cs, text), fontWeight: Number(cs.fontWeight), fontFamily: cs.fontFamily,
         numeric: isTabular(cs), box: b, lines: 1,
         textTop: contentTop + (contentHeight - ink.fontBox) / 2, textHeight: ink.fontBox, ink: ink,
-        overflowClip: overflowClip(el), scrollEl: el,
+        overflowClip: overflowClip(el),
+        // Ruling U: scroll extents of a control follow the typed value — never let them reach the audit
+        scrollOverflowX: false,
+        scrollOverflowY: false,
         iconRatios: iconRatios([el], fontSize), headingLevel: null,
       }) };
     }

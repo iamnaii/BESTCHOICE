@@ -419,3 +419,54 @@ test('deterministic output and no DOM residue', async () => {
     await page.close();
   }
 });
+
+// ---------------------------------------------------------------- Ruling T: visually hidden (sr-only) text
+
+const SR_ONLY = 'position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border-width:0';
+const SR_ONLY_V3 = 'position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border-width:0';
+
+test('sr-only label inside an icon button ⇒ no fact; the same text as a normal 1-line label ⇒ a fact', async () => {
+  const hidden = await collect(`<button aria-label="x"><svg width="16" height="16"></svg><span class="sr-only-like" style="${SR_ONLY}">ลบรายการนี้</span></button>`);
+  assert.deepEqual(hidden, []);
+  const shown = await collect('<button aria-label="x"><svg width="16" height="16"></svg><span>ลบรายการนี้</span></button>');
+  const f = one(shown, 'ลบรายการนี้');
+  assert.equal(f.kind, 'button');
+  assert.equal(f.lines, 1);
+});
+
+test('visually hidden variants: clip rect(0…) (also on a full-size box), collapsing inset, 1×1 overflow box, hidden ancestor — skipped; near misses kept', async () => {
+  const facts = await collect(`
+    <span style="${SR_ONLY_V3}">ซ่อนแบบเก่า</span>
+    <span style="position:absolute;top:0;left:0;width:200px;height:24px;clip:rect(0,0,0,0)">ซ่อนด้วยคลิปอย่างเดียว</span>
+    <span style="display:block;width:200px;clip-path:inset(0 50% 0 50%)">ซ่อนแบบหุบ</span>
+    <span style="display:inline-block;width:1px;height:1px;overflow:hidden">ซ่อนกล่องเล็ก</span>
+    <span style="${SR_ONLY}"><b>ซ่อนลึก</b></span>
+    <span style="display:block;width:200px;clip-path:inset(10%)">ตัดขอบนิดเดียว</span>
+    <span style="display:inline-block;width:1px;height:1px">ล้นออกมาเห็น</span>
+    <p>มองเห็น</p>`);
+  assert.deepEqual(facts.map((f) => f.text), ['ตัดขอบนิดเดียว', 'ล้นออกมาเห็น', 'มองเห็น']);
+});
+
+// ---------------------------------------------------------------- Ruling U: value-independent input flags
+
+test('input/textarea scroll flags are always false and typed values never appear', async () => {
+  const longValue = 'ข้อความที่พิมพ์ยาวมากเกินความกว้างของช่องนี้หลายเท่าตัว'.repeat(3);
+  const manyLines = Array.from({ length: 20 }, (_, i) => `บรรทัดค่าที่พิมพ์ ${i + 1}`).join('\n');
+  const page = await openPage(`<input id="i" placeholder="ค้นหา" style="width:80px">
+    <textarea id="t" placeholder="หมายเหตุ" rows="2" style="width:200px"></textarea>`);
+  try {
+    const raw = await page.evaluate(({ v, t }) => {
+      const i = document.getElementById('i'); const ta = document.getElementById('t');
+      i.value = v; ta.value = t; // typed values (not attributes)
+      return { inputScrolls: i.scrollWidth > i.clientWidth + 1, textareaScrolls: ta.scrollHeight > ta.clientHeight + 1 };
+    }, { v: longValue, t: manyLines });
+    assert.deepEqual(raw, { inputScrolls: true, textareaScrolls: true }, 'fixture must really overflow');
+    const facts = await page.evaluate((exclude) => window.__collectTypography({ exclude }), EXCLUDE);
+    assert.deepEqual(facts.map((f) => [f.kind, f.text, f.scrollOverflowX, f.scrollOverflowY]),
+      [['input', 'ค้นหา', false, false], ['input', 'หมายเหตุ', false, false]]);
+    const json = JSON.stringify(facts);
+    assert.ok(!json.includes('ข้อความที่พิมพ์') && !json.includes('บรรทัดค่าที่พิมพ์'));
+  } finally {
+    await page.close();
+  }
+});

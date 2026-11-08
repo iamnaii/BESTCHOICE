@@ -16,6 +16,10 @@ describe.each([
   ['ExpenseDetailPage.tsx'],
   ['WhtReportPage.tsx'],
   ['SettingsPage/components/UserPermissionTable.tsx'],
+  ['EquityStatementPage.tsx'],
+  ['equity/EquityViewPage.tsx'],
+  ['assets/components/AssetEntrySection4Journal.tsx'],
+  ['settings/TrashPage/components/TrashRows.tsx'],
 ])('%s', (file) => {
   const src = read(file);
   it('every <th> is whitespace-nowrap', () => {
@@ -75,5 +79,48 @@ describe('long-text chips are capped and truncated, rows wrap', () => {
     expect(around).toContain('max-w-full');
     expect(around).toContain('className="truncate"');
     expect(around).toContain('title=');
+  });
+});
+
+// Round 3 Task 2: short fixed-text chips are hand-written spans (not the shared Badge): they must never wrap.
+describe('fixed-text chips are whitespace-nowrap', () => {
+  const around = (file: string, anchor: string) => {
+    const src = read(file);
+    const i = src.indexOf(anchor);
+    expect(i, anchor).toBeGreaterThan(-1);
+    const open = src.lastIndexOf('<span', i);
+    return src.slice(open, i);
+  };
+  it.each([
+    ['ContractCreatePage/components/ProductSelectStep.tsx', "{p.category === 'PHONE_NEW' ? 'มือ 1'"],
+    ['CommissionsPage.tsx', 'ดูอย่างเดียว\n            </span>'],
+    ['liff/LiffContract.tsx', 'ถึงกำหนด\n                        </span>'],
+  ])('%s', (file, anchor) => {
+    const tag = around(file, anchor);
+    expect(tag).toContain('whitespace-nowrap');
+  });
+  it('CommissionsPage keeps the round-3 task-1 tab bar classes', () => {
+    expect(read('CommissionsPage.tsx')).toContain('ใบจ่ายรายเดือน');
+  });
+});
+
+// A scroll wrapper must be a containing block for abspos children (sr-only), or they leak past it and widen the page.
+describe('TrashRows scroll wrapper is positioned', () => {
+  it('overflow-x-auto wrapper is relative', () => {
+    const m = read('settings/TrashPage/components/TrashRows.tsx').match(/<div className="([^"]*overflow-x-auto[^"]*)">/);
+    expect(m).not.toBeNull();
+    expect(m![1]).toContain('relative');
+  });
+});
+
+// Chat assignee chip shows Thai text: no leading-none (clips tone marks), height stays h-5.
+describe('ChatPanel assignee chip', () => {
+  const src = read('UnifiedInboxPage/components/ChatPanel.tsx');
+  const chip = src.match(/'inline-flex h-5 max-w-\[11rem\][^']*'/);
+  it('uses leading-snug and keeps h-5', () => {
+    expect(chip).not.toBeNull();
+    expect(chip![0]).toContain('leading-snug');
+    expect(chip![0]).not.toContain('leading-none');
+    expect(chip![0]).toContain('h-5');
   });
 });

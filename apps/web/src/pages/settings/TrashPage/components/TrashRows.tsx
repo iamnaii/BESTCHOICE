@@ -21,21 +21,21 @@ export default function TrashRows({ rows, selected, onToggle, onToggleAll, onRes
   const restorable = rows.filter((r) => r.restorable);
   const allChecked = restorable.length > 0 && restorable.every((r) => selected.has(trashRowKey(r)));
   return (
-    <div className="overflow-x-auto">
+    <div className="relative overflow-x-auto">
       <table className="w-full min-w-[960px] text-sm">
         <thead className="bg-muted/40 text-xs text-muted-foreground">
           <tr>
-            <th scope="col" className="w-10 px-3 py-2">
+            <th scope="col" className="whitespace-nowrap w-10 px-3 py-2">
               <label className="inline-flex cursor-pointer items-center justify-center max-lg:min-h-11 max-lg:min-w-11">
                 <input type="checkbox" className="size-4 accent-primary" checked={allChecked} disabled={restorable.length === 0} onChange={(e) => onToggleAll(e.target.checked)} aria-label="เลือกทั้งหน้า (เฉพาะที่กู้ได้)" />
               </label>
             </th>
-            <th scope="col" className="px-3 py-2 text-left font-medium">ประเภท</th>
-            <th scope="col" className="min-w-[280px] px-3 py-2 text-left font-medium">รายการ</th>
-            <th scope="col" className="px-3 py-2 text-left font-medium">ลบเมื่อ</th>
-            <th scope="col" className="px-3 py-2 text-left font-medium">ลบโดย</th>
-            <th scope="col" className="px-3 py-2 text-left font-medium">สถานะการกู้</th>
-            <th scope="col" className="px-3 py-2"><span className="sr-only">การกระทำ</span></th>
+            <th scope="col" className="whitespace-nowrap px-3 py-2 text-left font-medium">ประเภท</th>
+            <th scope="col" className="whitespace-nowrap min-w-[280px] px-3 py-2 text-left font-medium">รายการ</th>
+            <th scope="col" className="whitespace-nowrap px-3 py-2 text-left font-medium">ลบเมื่อ</th>
+            <th scope="col" className="whitespace-nowrap px-3 py-2 text-left font-medium">ลบโดย</th>
+            <th scope="col" className="whitespace-nowrap px-3 py-2 text-left font-medium">สถานะการกู้</th>
+            <th scope="col" className="whitespace-nowrap px-3 py-2"><span className="sr-only">การกระทำ</span></th>
           </tr>
         </thead>
         <tbody>

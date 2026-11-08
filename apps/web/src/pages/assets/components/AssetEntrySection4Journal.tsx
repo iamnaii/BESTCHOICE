@@ -43,13 +43,14 @@ export function AssetEntrySection4Journal({ calc }: { calc: CalculationResult })
             กรอกข้อมูลให้ครบเพื่อดูตัวอย่างรายการบัญชี
           </div>
         ) : (
+          <div className="overflow-x-auto">
           <ScreenTable className="w-full text-sm">
             <thead>
               <tr className="border-b text-muted-foreground">
-                <th className="text-left py-2 px-2 font-medium">บัญชี</th>
-                <th className="text-left py-2 px-2 font-medium">ชื่อบัญชี</th>
-                <th className="text-right py-2 px-2 font-medium text-primary">DR (฿)</th>
-                <th className="text-right py-2 px-2 font-medium text-primary">CR (฿)</th>
+                <th className="whitespace-nowrap text-left py-2 px-2 font-medium">บัญชี</th>
+                <th className="whitespace-nowrap text-left py-2 px-2 font-medium">ชื่อบัญชี</th>
+                <th className="whitespace-nowrap text-right py-2 px-2 font-medium text-primary">DR (฿)</th>
+                <th className="whitespace-nowrap text-right py-2 px-2 font-medium text-primary">CR (฿)</th>
               </tr>
             </thead>
             <tbody>
@@ -74,6 +75,7 @@ export function AssetEntrySection4Journal({ calc }: { calc: CalculationResult })
               </tr>
             </tbody>
           </ScreenTable>
+          </div>
         )}
       </CardContent>
     </Card>

@@ -654,7 +654,7 @@ export default function LiffContract() {
                       </span>
                       {isCurrent && (
                         <span
-                          className="rounded-full text-white px-2 py-0.5 text-[9.5px] font-semibold tracking-wide shadow-sm leading-snug"
+                          className="whitespace-nowrap rounded-full text-white px-2 py-0.5 text-[9.5px] font-semibold tracking-wide shadow-sm leading-snug"
                           style={{ background: 'linear-gradient(90deg, rgb(16 185 129), rgb(13 148 136))' }}
                         >
                           ถึงกำหนด

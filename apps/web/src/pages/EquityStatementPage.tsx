@@ -227,15 +227,15 @@ export function EquityStatementPage() {
                   <ScreenTable className="w-full text-sm leading-snug">
                     <thead className="bg-muted/50">
                       <tr>
-                        <th className="text-left p-3 font-medium text-muted-foreground">บัญชี</th>
-                        <th className="text-right p-3 font-medium text-muted-foreground">
+                        <th className="whitespace-nowrap text-left p-3 font-medium text-muted-foreground">บัญชี</th>
+                        <th className="whitespace-nowrap text-right p-3 font-medium text-muted-foreground">
                           ยอดต้นงวด
                         </th>
-                        <th className="text-right p-3 font-medium text-muted-foreground">
+                        <th className="whitespace-nowrap text-right p-3 font-medium text-muted-foreground">
                           + เพิ่ม
                         </th>
-                        <th className="text-right p-3 font-medium text-muted-foreground">− ลด</th>
-                        <th className="text-right p-3 font-medium text-muted-foreground">
+                        <th className="whitespace-nowrap text-right p-3 font-medium text-muted-foreground">− ลด</th>
+                        <th className="whitespace-nowrap text-right p-3 font-medium text-muted-foreground">
                           ยอดปลายงวด
                         </th>
                       </tr>

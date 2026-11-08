@@ -21,7 +21,14 @@
   var CONTROL_SELECTOR = 'input,select,textarea,[role=combobox],[data-slot=select-trigger]';
   // text inside these is a control's value (or the control itself) — never a text fact
   var VALUE_SELECTOR = CONTROL_SELECTOR + ',[data-slot=select-value]';
-  var EXCLUDED_INPUT_TYPES = { hidden: true, checkbox: true, radio: true, file: true, range: true, color: true };
+  var EXCLUDED_INPUT_TYPES = {
+    hidden: true,
+    checkbox: true,
+    radio: true,
+    file: true,
+    range: true,
+    color: true,
+  };
   var HIDDEN_SELECTOR = '[aria-hidden=true],[hidden]';
   var THAI_RE = /[฀-๿]/;
   var NUMERIC_ONLY_RE = /^[\d,.\s฿%+\-–/]+$/; // = rules.mjs /^[\d,.\s฿%+\-–/]+$/
@@ -35,7 +42,11 @@
 
   // ---- rules.mjs mirrors (keep byte-for-byte equivalent semantics) ----
   function normalizeKeyText(text) {
-    return String(text == null ? '' : text).replace(/\s+/g, ' ').trim().replace(/[0-9]/g, '#').slice(0, 40);
+    return String(text == null ? '' : text)
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/[0-9]/g, '#')
+      .slice(0, 40);
   }
   function factKey(kind, text, dup) {
     return kind + '|' + normalizeKeyText(text) + '|' + dup;
@@ -73,7 +84,10 @@
 
     function style(el) {
       var cs = styles.get(el);
-      if (!cs) { cs = getComputedStyle(el); styles.set(el, cs); }
+      if (!cs) {
+        cs = getComputedStyle(el);
+        styles.set(el, cs);
+      }
       return cs;
     }
     // The uxui harness `visible` predicate (apps/api/e2e/documents/uxui-pages.browser.docs-spec.ts)
@@ -81,7 +95,12 @@
     function visible(el) {
       if (el.getClientRects().length === 0) return false;
       var cs = style(el);
-      return cs.visibility !== 'hidden' && cs.opacity !== '0' && !el.closest(HIDDEN_SELECTOR) && !visuallyHidden(el);
+      return (
+        cs.visibility !== 'hidden' &&
+        cs.opacity !== '0' &&
+        !el.closest(HIDDEN_SELECTOR) &&
+        !visuallyHidden(el)
+      );
     }
     function lengthIn(value, basis) {
       var n = parseFloat(value);
@@ -92,17 +111,28 @@
     function insetCollapses(clipPath, rect) {
       var m = /^inset\(([^()]*)\)$/.exec(clipPath);
       if (!m) return false;
-      var args = m[1].split(/\s+round\s+/)[0].trim().split(/\s+/);
+      var args = m[1]
+        .split(/\s+round\s+/)[0]
+        .trim()
+        .split(/\s+/);
       if (args.length < 1 || args.length > 4) return false;
-      var t = args[0], r = args[1] || t, b = args[2] || t, l = args[3] || r;
-      return lengthIn(t, rect.height) + lengthIn(b, rect.height) >= rect.height
-        || lengthIn(l, rect.width) + lengthIn(r, rect.width) >= rect.width;
+      var t = args[0],
+        r = args[1] || t,
+        b = args[2] || t,
+        l = args[3] || r;
+      return (
+        lengthIn(t, rect.height) + lengthIn(b, rect.height) >= rect.height ||
+        lengthIn(l, rect.width) + lengthIn(r, rect.width) >= rect.width
+      );
     }
     // clip: rect(top, right, bottom, left) with no area, e.g. rect(0px, 0px, 0px, 0px)
     function clipRectCollapses(clip) {
       var m = /^rect\(([^()]*)\)$/.exec(clip);
       if (!m) return false;
-      var v = m[1].trim().split(/\s*,\s*|\s+/).map(parseFloat);
+      var v = m[1]
+        .trim()
+        .split(/\s*,\s*|\s+/)
+        .map(parseFloat);
       if (v.length !== 4 || !v.every(isFinite)) return false; // 'auto' edges never collapse
       return v[2] <= v[0] || v[1] <= v[3];
     }
@@ -114,7 +144,12 @@
       var rect = el.getBoundingClientRect();
       if (insetCollapses(cs.clipPath || '', rect)) return true;
       if (clipRectCollapses(cs.clip || '')) return true;
-      return rect.width <= 1 && rect.height <= 1 && isHiddenOrClip(cs.overflowX) && isHiddenOrClip(cs.overflowY);
+      return (
+        rect.width <= 1 &&
+        rect.height <= 1 &&
+        isHiddenOrClip(cs.overflowX) &&
+        isHiddenOrClip(cs.overflowY)
+      );
     }
     function visuallyHidden(el) {
       if (!el || el.nodeType !== 1 || el === htmlEl || el === bodyEl) return false;
@@ -140,7 +175,8 @@
     }
     function isFormControl(el) {
       if (!el.matches(CONTROL_SELECTOR)) return false;
-      if (el.localName === 'input' && EXCLUDED_INPUT_TYPES[String(el.type).toLowerCase()]) return false;
+      if (el.localName === 'input' && EXCLUDED_INPUT_TYPES[String(el.type).toLowerCase()])
+        return false;
       return true;
     }
     // An element that would itself be collected as a text fact.
@@ -167,7 +203,11 @@
 
     function isBadgeKind(node) {
       if (node.matches('[data-slot=badge]')) return true;
-      return Boolean(node.classList && node.classList.contains('rounded-full') && px(style(node).fontSize) <= BADGE_MAX_FONT_PX);
+      return Boolean(
+        node.classList &&
+        node.classList.contains('rounded-full') &&
+        px(style(node).fontSize) <= BADGE_MAX_FONT_PX,
+      );
     }
     // Ruling R precedence: role/form semantics before tag (button also matches [data-slot=button]).
     function kindOf(node) {
@@ -217,14 +257,25 @@
 
     function canvas() {
       if (!canvasCtx) {
-        canvasCtx = typeof OffscreenCanvas !== 'undefined'
-          ? new OffscreenCanvas(1, 1).getContext('2d')
-          : document.createElement('canvas').getContext('2d');
+        canvasCtx =
+          typeof OffscreenCanvas !== 'undefined'
+            ? new OffscreenCanvas(1, 1).getContext('2d')
+            : document.createElement('canvas').getContext('2d');
       }
       return canvasCtx;
     }
     function fontString(cs) {
-      return cs.fontStyle + ' ' + cs.fontWeight + ' ' + cs.fontSize + '/' + cs.lineHeight + ' ' + cs.fontFamily;
+      return (
+        cs.fontStyle +
+        ' ' +
+        cs.fontWeight +
+        ' ' +
+        cs.fontSize +
+        '/' +
+        cs.lineHeight +
+        ' ' +
+        cs.fontFamily
+      );
     }
     // CSS capitalize upper-cases the first character of every word as split by the ICU word iterator
     // ('(hello) world-wide e-mail' → '(Hello) World-Wide E-Mail', "don't" → "Don't", 'foo_bar' → 'Foo_bar');
@@ -241,7 +292,9 @@
         }
         return out;
       }
-      return text.replace(/(^|[^\p{L}\p{M}\p{N}])(\p{L})/gu, function (m, sep, ch) { return sep + ch.toUpperCase(); });
+      return text.replace(/(^|[^\p{L}\p{M}\p{N}])(\p{L})/gu, function (m, sep, ch) {
+        return sep + ch.toUpperCase();
+      });
     }
     // text-transform changes the rendered glyphs, so the measured string must follow it
     function transformed(text, transform) {
@@ -263,7 +316,8 @@
       ctx.font = CANVAS_SENTINEL_FONT; // reset so an unparsable font can never reuse a stale one
       var sentinel = ctx.font;
       ctx.font = font;
-      if (ctx.font === sentinel) throw new Error('__collectTypography: canvas rejected font "' + font + '"');
+      if (ctx.font === sentinel)
+        throw new Error('__collectTypography: canvas rejected font "' + font + '"');
       if ('letterSpacing' in ctx) {
         ctx.letterSpacing = '0px'; // reset: the canvas silently keeps the old value for '10%' / 'calc(10% + 1px)'
         ctx.letterSpacing = spacing;
@@ -284,7 +338,12 @@
     // Ruling W: real ink extent of the first line, page-absolute. baseline = text box top + font ascent.
     // Falls back to the text box itself when there is no ink to place (empty text / no font metrics).
     function inkExtent(textBoxTop, textBoxHeight, ink, hasText) {
-      if (!hasText || !isFinite(ink.fontAscent) || !isFinite(ink.inkAscent) || !isFinite(ink.inkDescent)) {
+      if (
+        !hasText ||
+        !isFinite(ink.fontAscent) ||
+        !isFinite(ink.inkAscent) ||
+        !isFinite(ink.inkDescent)
+      ) {
         return { top: textBoxTop, bottom: textBoxTop + textBoxHeight };
       }
       var baseline = textBoxTop + ink.fontAscent;
@@ -299,8 +358,9 @@
         probe = document.createElement('div');
         probe.setAttribute(PROBE_ATTR, '');
         probe.setAttribute('aria-hidden', 'true');
-        probe.style.cssText = 'position:absolute;left:-100000px;top:0;display:block;visibility:hidden;'
-          + 'white-space:nowrap;margin:0;padding:0;border:0;line-height:normal;';
+        probe.style.cssText =
+          'position:absolute;left:-100000px;top:0;display:block;visibility:hidden;' +
+          'white-space:nowrap;margin:0;padding:0;border:0;line-height:normal;';
         host.appendChild(probe);
       }
       probe.style.fontFamily = cs.fontFamily;
@@ -321,7 +381,10 @@
       return /px$/.test(raw) ? n : n * px(cs.fontSize); // Chromium resolves to px; unitless is defensive
     }
     function isTabular(cs) {
-      return /tabular-nums/.test(cs.fontVariantNumeric || '') || /["']tnum["'](?!\s*0)/.test(cs.fontFeatureSettings || '');
+      return (
+        /tabular-nums/.test(cs.fontVariantNumeric || '') ||
+        /["']tnum["'](?!\s*0)/.test(cs.fontFeatureSettings || '')
+      );
     }
     // hosts = every element from the text element up to and including the anchor (text element first)
     function pathToAnchor(el, anchor) {
@@ -355,16 +418,26 @@
         if (!/\S/.test(nodes[i].data)) continue;
         range.selectNodeContents(nodes[i]);
         var list = range.getClientRects();
-        for (var j = 0; j < list.length; j++) if (list[j].width > 0 && list[j].height > 0) rects.push(list[j]);
+        for (var j = 0; j < list.length; j++)
+          if (list[j].width > 0 && list[j].height > 0) rects.push(list[j]);
       }
       return rects;
     }
     function countLines(rects) {
-      var tops = rects.map(function (r) { return r.top; }).sort(function (a, b) { return a - b; });
+      var tops = rects
+        .map(function (r) {
+          return r.top;
+        })
+        .sort(function (a, b) {
+          return a - b;
+        });
       var lines = 0;
       var clusterTop = -Infinity;
       for (var i = 0; i < tops.length; i++) {
-        if (tops[i] - clusterTop > LINE_TOP_TOLERANCE_PX) { lines++; clusterTop = tops[i]; }
+        if (tops[i] - clusterTop > LINE_TOP_TOLERANCE_PX) {
+          lines++;
+          clusterTop = tops[i];
+        }
       }
       return lines;
     }
@@ -422,17 +495,32 @@
       var ink = measure(cs, text);
       var firstLine = rects[0];
       var extent = inkExtent(firstLine.top + scrollY, firstLine.height, ink, true);
-      return { fullText: text, fact: fact({
-        el: el, kind: anchor.kind, tag: reportedTag(el), text: text, fontSize: fontSize,
-        lineHeight: lineHeight(cs, text), fontWeight: Number(cs.fontWeight), fontFamily: cs.fontFamily,
-        numeric: isTabular(cs), box: box(anchor.node), lines: countLines(rects),
-        textTop: top + scrollY, textHeight: bottom - top, ink: ink, inkTop: extent.top, inkBottom: extent.bottom,
-        overflowClip: overflowClip(el),
-        scrollOverflowX: el.scrollWidth > el.clientWidth + 1,
-        scrollOverflowY: el.scrollHeight > el.clientHeight + 1,
-        iconRatios: iconRatios(pathToAnchor(el, anchor.node), fontSize),
-        headingLevel: headingLevel(anchor.node),
-      }) };
+      return {
+        fullText: text,
+        fact: fact({
+          el: el,
+          kind: anchor.kind,
+          tag: reportedTag(el),
+          text: text,
+          fontSize: fontSize,
+          lineHeight: lineHeight(cs, text),
+          fontWeight: Number(cs.fontWeight),
+          fontFamily: cs.fontFamily,
+          numeric: isTabular(cs),
+          box: box(anchor.node),
+          lines: countLines(rects),
+          textTop: top + scrollY,
+          textHeight: bottom - top,
+          ink: ink,
+          inkTop: extent.top,
+          inkBottom: extent.bottom,
+          overflowClip: overflowClip(el),
+          scrollOverflowX: el.scrollWidth > el.clientWidth + 1,
+          scrollOverflowY: el.scrollHeight > el.clientHeight + 1,
+          iconRatios: iconRatios(pathToAnchor(el, anchor.node), fontSize),
+          headingLevel: headingLevel(anchor.node),
+        }),
+      };
     }
 
     // Ruling Q: form controls — text never comes from the value.
@@ -443,20 +531,41 @@
       var b = box(el);
       var ink = measure(cs, text);
       var contentTop = b.y + px(cs.borderTopWidth) + px(cs.paddingTop);
-      var contentHeight = b.h - px(cs.borderTopWidth) - px(cs.borderBottomWidth) - px(cs.paddingTop) - px(cs.paddingBottom);
+      var contentHeight =
+        b.h -
+        px(cs.borderTopWidth) -
+        px(cs.borderBottomWidth) -
+        px(cs.paddingTop) -
+        px(cs.paddingBottom);
       var textTop = contentTop + (contentHeight - ink.fontBox) / 2;
       var extent = inkExtent(textTop, ink.fontBox, ink, text !== '');
-      return { fullText: text, fact: fact({
-        el: el, kind: 'input', tag: el.tagName.toLowerCase(), text: text, fontSize: fontSize,
-        lineHeight: lineHeight(cs, text), fontWeight: Number(cs.fontWeight), fontFamily: cs.fontFamily,
-        numeric: isTabular(cs), box: b, lines: 1,
-        textTop: textTop, textHeight: ink.fontBox, ink: ink, inkTop: extent.top, inkBottom: extent.bottom,
-        overflowClip: overflowClip(el),
-        // Ruling U: scroll extents of a control follow the typed value — never let them reach the audit
-        scrollOverflowX: false,
-        scrollOverflowY: false,
-        iconRatios: iconRatios([el], fontSize), headingLevel: null,
-      }) };
+      return {
+        fullText: text,
+        fact: fact({
+          el: el,
+          kind: 'input',
+          tag: el.tagName.toLowerCase(),
+          text: text,
+          fontSize: fontSize,
+          lineHeight: lineHeight(cs, text),
+          fontWeight: Number(cs.fontWeight),
+          fontFamily: cs.fontFamily,
+          numeric: isTabular(cs),
+          box: b,
+          lines: 1,
+          textTop: textTop,
+          textHeight: ink.fontBox,
+          ink: ink,
+          inkTop: extent.top,
+          inkBottom: extent.bottom,
+          overflowClip: overflowClip(el),
+          // Ruling U: scroll extents of a control follow the typed value — never let them reach the audit
+          scrollOverflowX: false,
+          scrollOverflowY: false,
+          iconRatios: iconRatios([el], fontSize),
+          headingLevel: null,
+        }),
+      };
     }
 
     try {

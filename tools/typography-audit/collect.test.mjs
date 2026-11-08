@@ -14,10 +14,38 @@ const COLLECT = path.join(HERE, 'collect.js');
 const PUBLIC = path.resolve(HERE, '../../apps/web/public');
 const ORIGIN = 'http://typography.test';
 // Global Constraints exclude list, verbatim.
-const EXCLUDE = '.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, .parcel-label, .contract-body, iframe, svg';
-const FIELDS = ['key', 'tag', 'kind', 'text', 'fontSize', 'lineHeight', 'fontWeight', 'fontFamily', 'numeric', 'x', 'y', 'w', 'h',
-  'lines', 'textTop', 'textHeight', 'inkWidth', 'inkHeight', 'inkTop', 'inkBottom', 'overflowClip', 'scrollOverflowX', 'scrollOverflowY', 'hasThai',
-  'numericOnly', 'inReadingBlock', 'iconRatios', 'headingLevel'];
+const EXCLUDE =
+  '.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, .parcel-label, .contract-body, iframe, svg';
+const FIELDS = [
+  'key',
+  'tag',
+  'kind',
+  'text',
+  'fontSize',
+  'lineHeight',
+  'fontWeight',
+  'fontFamily',
+  'numeric',
+  'x',
+  'y',
+  'w',
+  'h',
+  'lines',
+  'textTop',
+  'textHeight',
+  'inkWidth',
+  'inkHeight',
+  'inkTop',
+  'inkBottom',
+  'overflowClip',
+  'scrollOverflowX',
+  'scrollOverflowY',
+  'hasThai',
+  'numericOnly',
+  'inReadingBlock',
+  'iconRatios',
+  'headingLevel',
+];
 const THAI_RE = /[฀-๿]/;
 
 // Tailwind preflight equivalent: form controls inherit the page font.
@@ -27,14 +55,23 @@ const html = (body, head) => `<!doctype html><html lang="th"><head><meta charset
 <link rel="stylesheet" href="/fonts/noto-sans-thai/fonts.css"><style>${BASE_STYLE}</style>${head}</head><body>${body}</body></html>`;
 
 let browser;
-before(async () => { browser = await chromium.launch(); });
-after(async () => { await browser?.close(); });
+before(async () => {
+  browser = await chromium.launch();
+});
+after(async () => {
+  await browser?.close();
+});
 
 async function openPage(body, head = '') {
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   await page.route(`${ORIGIN}/**`, async (route) => {
     const { pathname } = new URL(route.request().url());
-    if (pathname === '/') return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: html(body, head) });
+    if (pathname === '/')
+      return route.fulfill({
+        status: 200,
+        contentType: 'text/html; charset=utf-8',
+        body: html(body, head),
+      });
     const file = path.normalize(path.join(PUBLIC, decodeURIComponent(pathname)));
     if (pathname.startsWith('/fonts/') && file.startsWith(PUBLIC + path.sep)) {
       const contentType = file.endsWith('.css') ? 'text/css; charset=utf-8' : 'font/woff2';
@@ -46,7 +83,9 @@ async function openPage(body, head = '') {
   const loadedFaces = await page.evaluate(async () => {
     void document.body.offsetHeight; // force layout so every used face starts loading
     await document.fonts.ready;
-    return [...document.fonts].filter((f) => f.family.replace(/["']/g, '') === 'Noto Sans Thai' && f.status === 'loaded').length;
+    return [...document.fonts].filter(
+      (f) => f.family.replace(/["']/g, '') === 'Noto Sans Thai' && f.status === 'loaded',
+    ).length;
   });
   assert.ok(loadedFaces > 0, 'Noto Sans Thai FontFace must be loaded before measuring');
   await page.addScriptTag({ path: COLLECT });
@@ -57,7 +96,10 @@ async function collect(body, { head = '', options = {}, prepare } = {}) {
   const page = await openPage(body, head);
   try {
     if (prepare) await prepare(page);
-    return await page.evaluate((o) => window.__collectTypography(o), { exclude: EXCLUDE, ...options });
+    return await page.evaluate((o) => window.__collectTypography(o), {
+      exclude: EXCLUDE,
+      ...options,
+    });
   } finally {
     await page.close();
   }
@@ -66,7 +108,11 @@ async function collect(body, { head = '', options = {}, prepare } = {}) {
 const withText = (facts, text) => facts.filter((f) => f.text === text);
 const one = (facts, text) => {
   const found = withText(facts, text);
-  assert.equal(found.length, 1, `expected exactly one fact with text ${JSON.stringify(text)}, got ${found.length}`);
+  assert.equal(
+    found.length,
+    1,
+    `expected exactly one fact with text ${JSON.stringify(text)}, got ${found.length}`,
+  );
   return found[0];
 };
 const centreOffset = (f) => f.textTop + f.textHeight / 2 - (f.y + f.h / 2);
@@ -74,7 +120,9 @@ const centreOffset = (f) => f.textTop + f.textHeight / 2 - (f.y + f.h / 2);
 // ---------------------------------------------------------------- brief Step 1 cases
 
 test('single-line 40px button → lines 1 (lines from text rects, not box height)', async () => {
-  const facts = await collect('<button style="height:40px;padding:0 16px;line-height:21px;font-size:14px">บันทึก</button>');
+  const facts = await collect(
+    '<button style="height:40px;padding:0 16px;line-height:21px;font-size:14px">บันทึก</button>',
+  );
   const f = one(facts, 'บันทึก');
   assert.equal(f.kind, 'button');
   assert.equal(f.tag, 'button');
@@ -85,14 +133,18 @@ test('single-line 40px button → lines 1 (lines from text rects, not box height
 });
 
 test('wrapped button → lines ≥ 2, kind button', async () => {
-  const facts = await collect('<button style="width:60px;font-size:14px;line-height:21px">บันทึกข้อมูลลูกค้าทั้งหมด</button>');
+  const facts = await collect(
+    '<button style="width:60px;font-size:14px;line-height:21px">บันทึกข้อมูลลูกค้าทั้งหมด</button>',
+  );
   const f = one(facts, 'บันทึกข้อมูลลูกค้าทั้งหมด');
   assert.equal(f.kind, 'button');
   assert.ok(f.lines >= 2, `lines=${f.lines}`);
 });
 
 test('ink overflow Thai — overflow:hidden ⇒ overflowClip both (Ruling H) and inkHeight > 16', async () => {
-  const facts = await collect('<div style="overflow:hidden;height:16px;line-height:16px;font-size:16px">ปุ่ม</div>');
+  const facts = await collect(
+    '<div style="overflow:hidden;height:16px;line-height:16px;font-size:16px">ปุ่ม</div>',
+  );
   const f = one(facts, 'ปุ่ม');
   assert.equal(f.overflowClip, 'both');
   assert.ok(f.inkHeight > 16, `inkHeight=${f.inkHeight}`);
@@ -101,7 +153,9 @@ test('ink overflow Thai — overflow:hidden ⇒ overflowClip both (Ruling H) and
 });
 
 test('ink overflow Thai — overflow-y:hidden alone ⇒ overflowClip y (Ruling H)', async () => {
-  const facts = await collect('<div style="overflow-y:hidden;height:16px;line-height:16px;font-size:16px">ปุ่ม</div>');
+  const facts = await collect(
+    '<div style="overflow-y:hidden;height:16px;line-height:16px;font-size:16px">ปุ่ม</div>',
+  );
   assert.equal(one(facts, 'ปุ่ม').overflowClip, 'y');
 });
 
@@ -111,7 +165,10 @@ test('excludes document subtrees (.template-paper, .sticker, .parcel-label)', as
     <div class="sticker"><span>สติกเกอร์</span></div>
     <div class="parcel-label"><b>ใบปะหน้า</b></div>
     <svg width="100" height="20"><text x="0" y="15">กราฟ</text></svg>`);
-  assert.deepEqual(facts.map((f) => f.text), ['หน้าจอ']);
+  assert.deepEqual(
+    facts.map((f) => f.text),
+    ['หน้าจอ'],
+  );
 });
 
 test('family and weight captured', async () => {
@@ -179,16 +236,54 @@ test('every fact has the full Task 1 shape with the right types', async () => {
     assert.deepEqual(Object.keys(f).sort(), [...FIELDS].sort(), JSON.stringify(f));
     assert.equal(f.tag, f.tag.toLowerCase());
     assert.equal(typeof f.key, 'string');
-    assert.ok(['heading', 'button', 'badge', 'th', 'nav', 'tab', 'input', 'label', 'paragraph', 'text'].includes(f.kind), f.kind);
+    assert.ok(
+      [
+        'heading',
+        'button',
+        'badge',
+        'th',
+        'nav',
+        'tab',
+        'input',
+        'label',
+        'paragraph',
+        'text',
+      ].includes(f.kind),
+      f.kind,
+    );
     assert.equal(typeof f.text, 'string');
     assert.ok(f.text.length <= 60);
     assert.equal(typeof f.fontFamily, 'string');
-    for (const n of ['fontSize', 'fontWeight', 'x', 'y', 'w', 'h', 'lines', 'textTop', 'textHeight', 'inkWidth', 'inkHeight', 'inkTop', 'inkBottom']) {
+    for (const n of [
+      'fontSize',
+      'fontWeight',
+      'x',
+      'y',
+      'w',
+      'h',
+      'lines',
+      'textTop',
+      'textHeight',
+      'inkWidth',
+      'inkHeight',
+      'inkTop',
+      'inkBottom',
+    ]) {
       assert.ok(typeof f[n] === 'number' && Number.isFinite(f[n]), `${n}=${f[n]} on ${f.key}`);
     }
-    assert.ok(f.lineHeight === null || (typeof f.lineHeight === 'number' && Number.isFinite(f.lineHeight)), `lineHeight=${f.lineHeight}`);
+    assert.ok(
+      f.lineHeight === null || (typeof f.lineHeight === 'number' && Number.isFinite(f.lineHeight)),
+      `lineHeight=${f.lineHeight}`,
+    );
     assert.ok(['none', 'x', 'y', 'both'].includes(f.overflowClip));
-    for (const b of ['numeric', 'scrollOverflowX', 'scrollOverflowY', 'hasThai', 'numericOnly', 'inReadingBlock']) {
+    for (const b of [
+      'numeric',
+      'scrollOverflowX',
+      'scrollOverflowY',
+      'hasThai',
+      'numericOnly',
+      'inReadingBlock',
+    ]) {
       assert.equal(typeof f[b], 'boolean', `${b} on ${f.key}`);
     }
     assert.ok(Array.isArray(f.iconRatios) && f.iconRatios.every(Number.isFinite));
@@ -208,14 +303,26 @@ test('drift guard: key === rules.mjs factKey and numericOnly === rules.mjs isNum
     const dup = seen.get(base) ?? 0;
     seen.set(base, dup + 1);
     assert.equal(f.key, factKey(f.kind, full, dup), `key drift for ${JSON.stringify(full)}`);
-    assert.equal(f.numericOnly, isNumericOnly(full), `numericOnly drift for ${JSON.stringify(full)}`);
+    assert.equal(
+      f.numericOnly,
+      isNumericOnly(full),
+      `numericOnly drift for ${JSON.stringify(full)}`,
+    );
     assert.equal(f.hasThai, THAI_RE.test(full), `hasThai drift for ${JSON.stringify(full)}`);
   }
   // rules.mjs resolveKeys over key-less copies reproduces the collector's keys exactly
-  assert.deepEqual(resolveKeys(facts.map((f) => ({ ...f, key: undefined, text: f.text.length === 60 ? longFull : f.text }))), facts.map((f) => f.key));
+  assert.deepEqual(
+    resolveKeys(
+      facts.map((f) => ({ ...f, key: undefined, text: f.text.length === 60 ? longFull : f.text })),
+    ),
+    facts.map((f) => f.key),
+  );
   // the spot checks the drift guard must cover
   assert.equal(one(facts, 'ยอด 1,200 บาท').key, 'paragraph|ยอด #,### บาท|0');
-  assert.deepEqual(withText(facts, 'บันทึก').map((f) => f.key), ['button|บันทึก|0', 'button|บันทึก|1', 'text|บันทึก|0']);
+  assert.deepEqual(
+    withText(facts, 'บันทึก').map((f) => f.key),
+    ['button|บันทึก|0', 'button|บันทึก|1', 'text|บันทึก|0'],
+  );
   assert.equal(one(facts, '฿1,200').numericOnly, true);
   assert.equal(one(facts, 'หน้า หลัก ๑๒๓').key, 'heading|หน้า หลัก ๑๒๓|0');
 });
@@ -231,16 +338,24 @@ test('form controls are facts with text = placeholder || aria-label || "" and ne
     <select aria-label="สาขา"><option>ลาดพร้าวลับ</option></select>
     <input type="hidden" value="h"><input type="checkbox"><input type="radio"><input type="file"><input type="range"><input type="color">`);
   const inputs = facts.filter((f) => f.kind === 'input');
-  assert.deepEqual(inputs.map((f) => [f.tag, f.text, f.key]), [
-    ['input', 'ค้นหาลูกค้า', 'input|ค้นหาลูกค้า|0'],
-    ['input', 'จำนวนชิ้น', 'input|จำนวนชิ้น|0'],
-    ['input', '', 'input||0'],
-    ['textarea', 'หมายเหตุ', 'input|หมายเหตุ|0'],
-    ['select', 'สาขา', 'input|สาขา|0'],
-  ]);
-  assert.equal(facts.length, 5, 'no other facts (no option text, no textarea content, no excluded input types)');
+  assert.deepEqual(
+    inputs.map((f) => [f.tag, f.text, f.key]),
+    [
+      ['input', 'ค้นหาลูกค้า', 'input|ค้นหาลูกค้า|0'],
+      ['input', 'จำนวนชิ้น', 'input|จำนวนชิ้น|0'],
+      ['input', '', 'input||0'],
+      ['textarea', 'หมายเหตุ', 'input|หมายเหตุ|0'],
+      ['select', 'สาขา', 'input|สาขา|0'],
+    ],
+  );
+  assert.equal(
+    facts.length,
+    5,
+    'no other facts (no option text, no textarea content, no excluded input types)',
+  );
   const json = JSON.stringify(facts);
-  for (const secret of ['สมชาย', '0812345678', 'ความลับ', 'ข้อความลับในช่อง', 'ลาดพร้าวลับ']) assert.ok(!json.includes(secret), secret);
+  for (const secret of ['สมชาย', '0812345678', 'ความลับ', 'ข้อความลับในช่อง', 'ลาดพร้าวลับ'])
+    assert.ok(!json.includes(secret), secret);
   for (const f of inputs) assert.equal(f.lines, 1);
   assert.equal(one(facts, '').inkWidth, 0);
 });
@@ -265,7 +380,13 @@ test('button[role=combobox] with a value span ⇒ one input fact, no fact for th
   const facts = await collect(`
     <button role="combobox" aria-label="เลือกสาขา" style="font-size:16px"><span data-slot="select-value">ลาดพร้าว</span><svg width="16" height="16"></svg></button>
     <div data-slot="select-trigger" tabindex="0"><span>ทั้งหมด</span></div>`);
-  assert.deepEqual(facts.map((f) => [f.kind, f.tag, f.text]), [['input', 'button', 'เลือกสาขา'], ['input', 'div', '']]);
+  assert.deepEqual(
+    facts.map((f) => [f.kind, f.tag, f.text]),
+    [
+      ['input', 'button', 'เลือกสาขา'],
+      ['input', 'div', ''],
+    ],
+  );
   assert.deepEqual(one(facts, 'เลือกสาขา').iconRatios, [1]);
 });
 
@@ -324,7 +445,10 @@ test('anchor rejected when the anchor carries its own text; heading/badge/th/lab
   assert.equal(one(facts, '3').kind, 'text');
   const h2 = one(facts, 'หัวข้อรอง');
   assert.deepEqual([h2.kind, h2.headingLevel, h2.tag], ['heading', 2, 'span']);
-  assert.deepEqual([one(facts, 'หัวเรื่อง').kind, one(facts, 'หัวเรื่อง').headingLevel], ['heading', 1]);
+  assert.deepEqual(
+    [one(facts, 'หัวเรื่อง').kind, one(facts, 'หัวเรื่อง').headingLevel],
+    ['heading', 1],
+  );
   assert.equal(one(facts, 'ใหม่').kind, 'badge');
   assert.equal(one(facts, 'ใหญ่').kind, 'text');
   assert.equal(one(facts, 'ค้างชำระ').kind, 'badge');
@@ -346,7 +470,9 @@ test('td tag: a lone text element inside a td reports tag td; shared cells keep 
 });
 
 test('icon ratios read direct svg children even though svg is in the exclude list', async () => {
-  const facts = await collect('<button style="font-size:16px"><svg width="20" height="20"></svg>เพิ่ม</button>');
+  const facts = await collect(
+    '<button style="font-size:16px"><svg width="20" height="20"></svg>เพิ่ม</button>',
+  );
   assert.deepEqual(one(facts, 'เพิ่ม').iconRatios, [1.25]);
 });
 
@@ -362,7 +488,9 @@ test('overflowClip: nearest non-visible element per axis decides; auto/scroll st
   assert.equal(one(facts, 'เลื่อนได้').overflowClip, 'none');
   assert.equal(one(facts, 'ตัดแนวนอน').overflowClip, 'x');
   assert.equal(one(facts, 'ปกติ').overflowClip, 'none');
-  const rootClipped = await collect('<p>ราก</p>', { head: '<style>html,body{overflow:hidden}</style>' });
+  const rootClipped = await collect('<p>ราก</p>', {
+    head: '<style>html,body{overflow:hidden}</style>',
+  });
   assert.equal(one(rootClipped, 'ราก').overflowClip, 'none');
 });
 
@@ -372,7 +500,11 @@ test('line-height: normal resolves to a measured px value (Ruling F)', async () 
   const facts = await collect('<p style="margin:0;line-height:normal;font-size:16px">ปกติ</p>');
   const f = one(facts, 'ปกติ');
   assert.ok(Number.isFinite(f.lineHeight), `lineHeight=${f.lineHeight}`);
-  assert.equal(f.lineHeight, f.h, 'a single-line block with no padding is exactly one normal line box tall');
+  assert.equal(
+    f.lineHeight,
+    f.h,
+    'a single-line block with no padding is exactly one normal line box tall',
+  );
   assert.ok(f.lineHeight > 16);
 });
 
@@ -394,17 +526,33 @@ test('coordinates are page-absolute (scroll offsets added)', async () => {
 test('visibility: hidden, opacity 0, aria-hidden, [hidden], display:none are skipped', async () => {
   const facts = await collect(`<p style="visibility:hidden">ซ่อน1</p><p style="opacity:0">ซ่อน2</p>
     <div aria-hidden="true"><p>ซ่อน3</p></div><p hidden>ซ่อน4</p><p style="display:none">ซ่อน5</p><p>เห็น</p>`);
-  assert.deepEqual(facts.map((f) => f.text), ['เห็น']);
+  assert.deepEqual(
+    facts.map((f) => f.text),
+    ['เห็น'],
+  );
 });
 
 test('root option scopes collection (root itself included); missing root throws; empty exclude excludes nothing', async () => {
-  const scoped = await collect('<div id="main"><p>ใน</p></div><p>นอก</p>', { options: { root: '#main' } });
-  assert.deepEqual(scoped.map((f) => f.text), ['ใน']);
+  const scoped = await collect('<div id="main"><p>ใน</p></div><p>นอก</p>', {
+    options: { root: '#main' },
+  });
+  assert.deepEqual(
+    scoped.map((f) => f.text),
+    ['ใน'],
+  );
   const self = await collect('<p id="solo">ตัวเอง</p>', { options: { root: '#solo' } });
-  assert.deepEqual(self.map((f) => f.text), ['ตัวเอง']);
+  assert.deepEqual(
+    self.map((f) => f.text),
+    ['ตัวเอง'],
+  );
   await assert.rejects(collect('<p>x</p>', { options: { root: '#missing' } }), /root not found/);
-  const all = await collect('<div class="sticker"><p>สติกเกอร์</p></div>', { options: { exclude: '' } });
-  assert.deepEqual(all.map((f) => f.text), ['สติกเกอร์']);
+  const all = await collect('<div class="sticker"><p>สติกเกอร์</p></div>', {
+    options: { exclude: '' },
+  });
+  assert.deepEqual(
+    all.map((f) => f.text),
+    ['สติกเกอร์'],
+  );
 });
 
 test('deterministic output and no DOM residue', async () => {
@@ -422,13 +570,19 @@ test('deterministic output and no DOM residue', async () => {
 
 // ---------------------------------------------------------------- Ruling T: visually hidden (sr-only) text
 
-const SR_ONLY = 'position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border-width:0';
-const SR_ONLY_V3 = 'position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border-width:0';
+const SR_ONLY =
+  'position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border-width:0';
+const SR_ONLY_V3 =
+  'position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border-width:0';
 
 test('sr-only label inside an icon button ⇒ no fact; the same text as a normal 1-line label ⇒ a fact', async () => {
-  const hidden = await collect(`<button aria-label="x"><svg width="16" height="16"></svg><span class="sr-only-like" style="${SR_ONLY}">ลบรายการนี้</span></button>`);
+  const hidden = await collect(
+    `<button aria-label="x"><svg width="16" height="16"></svg><span class="sr-only-like" style="${SR_ONLY}">ลบรายการนี้</span></button>`,
+  );
   assert.deepEqual(hidden, []);
-  const shown = await collect('<button aria-label="x"><svg width="16" height="16"></svg><span>ลบรายการนี้</span></button>');
+  const shown = await collect(
+    '<button aria-label="x"><svg width="16" height="16"></svg><span>ลบรายการนี้</span></button>',
+  );
   const f = one(shown, 'ลบรายการนี้');
   assert.equal(f.kind, 'button');
   assert.equal(f.lines, 1);
@@ -444,7 +598,10 @@ test('visually hidden variants: clip rect(0…) (also on a full-size box), colla
     <span style="display:block;width:200px;clip-path:inset(10%)">ตัดขอบนิดเดียว</span>
     <span style="display:inline-block;width:1px;height:1px">ล้นออกมาเห็น</span>
     <p>มองเห็น</p>`);
-  assert.deepEqual(facts.map((f) => f.text), ['ตัดขอบนิดเดียว', 'ล้นออกมาเห็น', 'มองเห็น']);
+  assert.deepEqual(
+    facts.map((f) => f.text),
+    ['ตัดขอบนิดเดียว', 'ล้นออกมาเห็น', 'มองเห็น'],
+  );
 });
 
 // ---------------------------------------------------------------- Ruling U: value-independent input flags
@@ -455,15 +612,35 @@ test('input/textarea scroll flags are always false and typed values never appear
   const page = await openPage(`<input id="i" placeholder="ค้นหา" style="width:80px">
     <textarea id="t" placeholder="หมายเหตุ" rows="2" style="width:200px"></textarea>`);
   try {
-    const raw = await page.evaluate(({ v, t }) => {
-      const i = document.getElementById('i'); const ta = document.getElementById('t');
-      i.value = v; ta.value = t; // typed values (not attributes)
-      return { inputScrolls: i.scrollWidth > i.clientWidth + 1, textareaScrolls: ta.scrollHeight > ta.clientHeight + 1 };
-    }, { v: longValue, t: manyLines });
-    assert.deepEqual(raw, { inputScrolls: true, textareaScrolls: true }, 'fixture must really overflow');
-    const facts = await page.evaluate((exclude) => window.__collectTypography({ exclude }), EXCLUDE);
-    assert.deepEqual(facts.map((f) => [f.kind, f.text, f.scrollOverflowX, f.scrollOverflowY]),
-      [['input', 'ค้นหา', false, false], ['input', 'หมายเหตุ', false, false]]);
+    const raw = await page.evaluate(
+      ({ v, t }) => {
+        const i = document.getElementById('i');
+        const ta = document.getElementById('t');
+        i.value = v;
+        ta.value = t; // typed values (not attributes)
+        return {
+          inputScrolls: i.scrollWidth > i.clientWidth + 1,
+          textareaScrolls: ta.scrollHeight > ta.clientHeight + 1,
+        };
+      },
+      { v: longValue, t: manyLines },
+    );
+    assert.deepEqual(
+      raw,
+      { inputScrolls: true, textareaScrolls: true },
+      'fixture must really overflow',
+    );
+    const facts = await page.evaluate(
+      (exclude) => window.__collectTypography({ exclude }),
+      EXCLUDE,
+    );
+    assert.deepEqual(
+      facts.map((f) => [f.kind, f.text, f.scrollOverflowX, f.scrollOverflowY]),
+      [
+        ['input', 'ค้นหา', false, false],
+        ['input', 'หมายเหตุ', false, false],
+      ],
+    );
     const json = JSON.stringify(facts);
     assert.ok(!json.includes('ข้อความที่พิมพ์') && !json.includes('บรรทัดค่าที่พิมพ์'));
   } finally {
@@ -475,10 +652,15 @@ test('input/textarea scroll flags are always false and typed values never appear
 
 // Second family for comparisons: IBM Plex Sans Thai from apps/web/public/fonts (no fonts.css ships for it).
 const PLEX_THAI_RANGE = 'U+02D7,U+0303,U+0331,U+0E01-0E5B,U+200C-200D,U+25CC';
-const PLEX_LATIN_RANGE = 'U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD';
-const PLEX = `<style>${[400, 700].map((w) => `
+const PLEX_LATIN_RANGE =
+  'U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD';
+const PLEX = `<style>${[400, 700]
+  .map(
+    (w) => `
 @font-face{font-family:'IBM Plex Sans Thai';font-style:normal;font-weight:${w};src:url(/fonts/ibm-plex-sans-thai/ibm-plex-sans-thai-thai-${w}-normal.woff2) format('woff2');unicode-range:${PLEX_THAI_RANGE}}
-@font-face{font-family:'IBM Plex Sans Thai';font-style:normal;font-weight:${w};src:url(/fonts/ibm-plex-sans-thai/ibm-plex-sans-thai-latin-${w}-normal.woff2) format('woff2');unicode-range:${PLEX_LATIN_RANGE}}`).join('')}</style>`;
+@font-face{font-family:'IBM Plex Sans Thai';font-style:normal;font-weight:${w};src:url(/fonts/ibm-plex-sans-thai/ibm-plex-sans-thai-latin-${w}-normal.woff2) format('woff2');unicode-range:${PLEX_LATIN_RANGE}}`,
+  )
+  .join('')}</style>`;
 const PLEX_FAMILY = "font-family:'IBM Plex Sans Thai',sans-serif";
 // Inter (variable, latin) for Latin-text comparisons — Noto Sans Thai and IBM Plex Sans Thai place ink
 // within 0.41px of each other at 14px/21px, Inter vs Noto differs by ~1.5px on 'Total 1,234'.
@@ -489,22 +671,37 @@ const INTER_FAMILY = "font-family:'Inter',sans-serif";
 async function collectMeasured(body, head = '') {
   const page = await openPage(body, head);
   try {
-    const faces = await page.evaluate(() => [...document.fonts].filter((f) => f.status === 'loaded').map((f) => `${f.family.replace(/["']/g, '')}|${f.weight}`));
-    const facts = await page.evaluate((exclude) => window.__collectTypography({ exclude }), EXCLUDE);
-    const marks = await page.evaluate(() => [...document.querySelectorAll('[data-k]')].map((el) => {
-      const range = document.createRange();
-      let rendered = 0;
-      const rects = [];
-      for (const n of el.childNodes) {
-        if (n.nodeType !== 3 || !/\S/.test(n.data)) continue;
-        range.selectNodeContents(n);
-        for (const r of range.getClientRects()) {
-          rendered += r.width;
-          if (r.width > 0 && r.height > 0) rects.push({ top: r.top + window.scrollY, bottom: r.bottom + window.scrollY });
+    const faces = await page.evaluate(() =>
+      [...document.fonts]
+        .filter((f) => f.status === 'loaded')
+        .map((f) => `${f.family.replace(/["']/g, '')}|${f.weight}`),
+    );
+    const facts = await page.evaluate(
+      (exclude) => window.__collectTypography({ exclude }),
+      EXCLUDE,
+    );
+    const marks = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-k]')].map((el) => {
+        const range = document.createRange();
+        let rendered = 0;
+        const rects = [];
+        for (const n of el.childNodes) {
+          if (n.nodeType !== 3 || !/\S/.test(n.data)) continue;
+          range.selectNodeContents(n);
+          for (const r of range.getClientRects()) {
+            rendered += r.width;
+            if (r.width > 0 && r.height > 0)
+              rects.push({ top: r.top + window.scrollY, bottom: r.bottom + window.scrollY });
+          }
         }
-      }
-      return { k: el.dataset.k, y: el.getBoundingClientRect().top + window.scrollY, rendered, rects };
-    }));
+        return {
+          k: el.dataset.k,
+          y: el.getBoundingClientRect().top + window.scrollY,
+          rendered,
+          rects,
+        };
+      }),
+    );
     return { faces, facts, mark: Object.fromEntries(marks.map((m) => [m.k, m])) };
   } finally {
     await page.close();
@@ -520,12 +717,20 @@ const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg}: ${a}
 const SAMPLE = 'กรุณาตรวจสอบข้อมูล Total 1,234';
 
 test('item 1: inkWidth ≈ rendered width for Noto 400/700 and IBM Plex Sans Thai 400/700, and they differ', async () => {
-  const { faces, facts, mark } = await collectMeasured(`
+  const { faces, facts, mark } = await collectMeasured(
+    `
     <div data-k="n400" style="white-space:nowrap;font-weight:400">${SAMPLE}</div>
     <div data-k="n700" style="white-space:nowrap;font-weight:700">${SAMPLE}</div>
     <div data-k="p400" style="white-space:nowrap;${PLEX_FAMILY};font-weight:400">${SAMPLE}</div>
-    <div data-k="p700" style="white-space:nowrap;${PLEX_FAMILY};font-weight:700">${SAMPLE}</div>`, PLEX);
-  for (const face of ['Noto Sans Thai|400', 'Noto Sans Thai|700', 'IBM Plex Sans Thai|400', 'IBM Plex Sans Thai|700']) {
+    <div data-k="p700" style="white-space:nowrap;${PLEX_FAMILY};font-weight:700">${SAMPLE}</div>`,
+    PLEX,
+  );
+  for (const face of [
+    'Noto Sans Thai|400',
+    'Noto Sans Thai|700',
+    'IBM Plex Sans Thai|400',
+    'IBM Plex Sans Thai|700',
+  ]) {
     assert.ok(faces.includes(face), `font face not loaded: ${face}`);
   }
   const ink = {};
@@ -542,7 +747,9 @@ test('item 1: inkWidth ≈ rendered width for Noto 400/700 and IBM Plex Sans Tha
 test('item 1: a long nowrap paragraph (> 60 chars) is measured in full', async () => {
   const long = 'ข้อความยาวมากสำหรับทดสอบการวัดความกว้างทั้งบรรทัด '.repeat(3).trim();
   assert.ok(long.length > 60);
-  const { facts, mark } = await collectMeasured(`<p data-k="long" style="white-space:nowrap;margin:0">${long}</p>`);
+  const { facts, mark } = await collectMeasured(
+    `<p data-k="long" style="white-space:nowrap;margin:0">${long}</p>`,
+  );
   const f = factAtY(facts, mark.long.y);
   assert.equal(f.text, long.slice(0, 60));
   near(f.inkWidth, mark.long.rendered, 0.5, 'full-text inkWidth');
@@ -550,28 +757,43 @@ test('item 1: a long nowrap paragraph (> 60 chars) is measured in full', async (
 
 test('item 1: a 20px/700 span inside a 14px/400 button is measured with the span font', async () => {
   const { facts, mark } = await collectMeasured(
-    '<button style="font-size:14px;font-weight:400;white-space:nowrap"><span data-k="s" style="font-size:20px;font-weight:700">บันทึกด่วน</span></button>');
+    '<button style="font-size:14px;font-weight:400;white-space:nowrap"><span data-k="s" style="font-size:20px;font-weight:700">บันทึกด่วน</span></button>',
+  );
   const f = one(facts, 'บันทึกด่วน');
   assert.deepEqual([f.kind, f.fontSize, f.fontWeight], ['button', 20, 700]);
   near(f.inkWidth, mark.s.rendered, 0.5, 'span inkWidth');
 });
 
 test('item 2: same centred 40px button text in two fonts ⇒ text-rect offsets ≈ equal, ink-centre offsets differ (Ruling W)', async () => {
-  const btn = (extra) => `<button style="display:block;height:40px;padding:0 16px;line-height:21px;font-size:14px;${extra}">Total 1,234</button>`;
+  const btn = (extra) =>
+    `<button style="display:block;height:40px;padding:0 16px;line-height:21px;font-size:14px;${extra}">Total 1,234</button>`;
   const page = await openPage(btn('') + btn(INTER_FAMILY), INTER);
   try {
-    const interLoaded = await page.evaluate(() => [...document.fonts].some((f) => f.family.replace(/["']/g, '') === 'Inter' && f.status === 'loaded'));
+    const interLoaded = await page.evaluate(() =>
+      [...document.fonts].some(
+        (f) => f.family.replace(/["']/g, '') === 'Inter' && f.status === 'loaded',
+      ),
+    );
     assert.ok(interLoaded, 'Inter must be loaded');
-    const facts = await page.evaluate((exclude) => window.__collectTypography({ exclude }), EXCLUDE);
+    const facts = await page.evaluate(
+      (exclude) => window.__collectTypography({ exclude }),
+      EXCLUDE,
+    );
     const [noto, inter] = withText(facts, 'Total 1,234');
-    assert.ok(inter.fontFamily.startsWith('Inter') || inter.fontFamily.startsWith('"Inter"'), inter.fontFamily);
+    assert.ok(
+      inter.fontFamily.startsWith('Inter') || inter.fontFamily.startsWith('"Inter"'),
+      inter.fontFamily,
+    );
     const inkOffset = (f) => (f.inkTop + f.inkBottom) / 2 - (f.y + f.h / 2);
     for (const f of [noto, inter]) {
       assert.ok(Math.abs(centreOffset(f)) <= 0.5, `text-rect offset ${centreOffset(f)}`);
       assert.ok(f.inkTop < f.inkBottom && f.inkTop > f.y && f.inkBottom < f.y + f.h);
     }
     near(centreOffset(noto), centreOffset(inter), 0.5, 'text-rect centre offsets');
-    assert.ok(Math.abs(inkOffset(noto) - inkOffset(inter)) > 0.5, `ink offsets ${inkOffset(noto)} vs ${inkOffset(inter)}`);
+    assert.ok(
+      Math.abs(inkOffset(noto) - inkOffset(inter)) > 0.5,
+      `ink offsets ${inkOffset(noto)} vs ${inkOffset(inter)}`,
+    );
   } finally {
     await page.close();
   }
@@ -606,7 +828,11 @@ test('item 3: [data-slot=button] ⇒ button; a count badge does not steal the la
   assert.equal(one(facts, '3').kind, 'badge');
   assert.equal(one(facts, 'ข้อความ').kind, 'nav');
   assert.equal(one(facts, '12').kind, 'badge');
-  assert.equal(one(facts, 'สองป้าย').kind, 'text', 'two non-badge carriers still reject the anchor');
+  assert.equal(
+    one(facts, 'สองป้าย').kind,
+    'text',
+    'two non-badge carriers still reject the anchor',
+  );
 });
 
 test('item 4: canvas mirrors letter-spacing and text-transform (fact text stays the DOM text)', async () => {
@@ -623,14 +849,22 @@ test('item 4: canvas mirrors letter-spacing and text-transform (fact text stays 
     near(f.inkWidth, mark[k].rendered, 0.5, `${k} inkWidth vs rendered`);
     ink[k] = f;
   }
-  assert.ok(ink.tight.inkWidth < ink.plain.inkWidth - 0.5, 'negative letter-spacing narrows the measurement');
-  assert.ok(ink.upper.inkWidth > ink.lower.inkWidth + 0.5, 'uppercase transform widens the measurement');
+  assert.ok(
+    ink.tight.inkWidth < ink.plain.inkWidth - 0.5,
+    'negative letter-spacing narrows the measurement',
+  );
+  assert.ok(
+    ink.upper.inkWidth > ink.lower.inkWidth + 0.5,
+    'uppercase transform widens the measurement',
+  );
   assert.equal(ink.upper.text, 'uppercase sample text');
   assert.equal(ink.upper.key, 'text|uppercase sample text|0');
 });
 
 test('item 5: iconRatios read svg children of every element from the text element up to the anchor', async () => {
-  const facts = await collect('<button style="font-size:14px"><a><svg width="16" height="16"></svg><span>เมนู</span></a></button>');
+  const facts = await collect(
+    '<button style="font-size:14px"><a><svg width="16" height="16"></svg><span>เมนู</span></a></button>',
+  );
   const f = one(facts, 'เมนู');
   assert.equal(f.kind, 'button');
   assert.deepEqual(f.iconRatios, [16 / 14]);
@@ -651,34 +885,58 @@ test('item 6: font-feature-settings "tnum" 0 / off ⇒ numeric false; "tnum" 1 �
 
 test('fix2 item 1: a letter-spacing the canvas rejects (10%) never inherits the previous element spacing', async () => {
   const pct = '<div style="white-space:nowrap;letter-spacing:10%">Percent Spacing Sample</div>';
-  const together = await collect(`<div style="white-space:nowrap;letter-spacing:4px">Four Pixel Spacing</div>${pct}`);
+  const together = await collect(
+    `<div style="white-space:nowrap;letter-spacing:4px">Four Pixel Spacing</div>${pct}`,
+  );
   const alone = await collect(pct);
-  assert.equal(one(together, 'Percent Spacing Sample').inkWidth, one(alone, 'Percent Spacing Sample').inkWidth);
+  assert.equal(
+    one(together, 'Percent Spacing Sample').inkWidth,
+    one(alone, 'Percent Spacing Sample').inkWidth,
+  );
 });
 
 test('fix2 item 2: capitalize follows CSS word boundaries (punctuation, hyphens, apostrophes)', async () => {
   const { facts, mark } = await collectMeasured(`
     <div data-k="a" style="white-space:nowrap;text-transform:capitalize">(hello) world-wide e-mail</div>
     <div data-k="b" style="white-space:nowrap;text-transform:capitalize">don't stop e.g. foo_bar 3d</div>`);
-  for (const k of ['a', 'b']) near(factAtY(facts, mark[k].y).inkWidth, mark[k].rendered, 0.5, `capitalize ${k}`);
+  for (const k of ['a', 'b'])
+    near(factAtY(facts, mark[k].y).inkWidth, mark[k].rendered, 0.5, `capitalize ${k}`);
 });
 
 test('fix2 item 3: ink is placed on the FIRST line of wrapped text', async () => {
   const { facts, mark } = await collectMeasured(
-    '<div data-k="w" style="width:140px;line-height:32px">บรรทัดแรกของข้อความที่ยาวพอจะขึ้นบรรทัดใหม่แน่นอน</div>');
+    '<div data-k="w" style="width:140px;line-height:32px">บรรทัดแรกของข้อความที่ยาวพอจะขึ้นบรรทัดใหม่แน่นอน</div>',
+  );
   const f = factAtY(facts, mark.w.y);
   const first = mark.w.rects[0];
   const last = mark.w.rects[mark.w.rects.length - 1];
   assert.ok(f.lines >= 2 && last.top > first.bottom, 'fixture must wrap onto separate lines');
-  assert.ok(f.inkTop < first.bottom, `inkTop ${f.inkTop} must be inside the first line (bottom ${first.bottom})`);
-  assert.ok(f.inkBottom < last.top, `inkBottom ${f.inkBottom} must end before the last line (top ${last.top})`);
+  assert.ok(
+    f.inkTop < first.bottom,
+    `inkTop ${f.inkTop} must be inside the first line (bottom ${first.bottom})`,
+  );
+  assert.ok(
+    f.inkBottom < last.top,
+    `inkBottom ${f.inkBottom} must end before the last line (top ${last.top})`,
+  );
 });
 
 test('fix2 item 4: ink fields are page-absolute — scrolling 500px leaves them and the D2 offset unchanged', async () => {
-  const body = '<div style="height:1500px"></div><button style="display:block;height:40px;line-height:21px;font-size:14px">บันทึกข้อมูล</button><div style="height:1500px"></div>';
+  const body =
+    '<div style="height:1500px"></div><button style="display:block;height:40px;line-height:21px;font-size:14px">บันทึกข้อมูล</button><div style="height:1500px"></div>';
   const still = one(await collect(body), 'บันทึกข้อมูล');
   let scrolledBy = 0;
-  const scrolled = one(await collect(body, { prepare: async (page) => { scrolledBy = await page.evaluate(() => { window.scrollTo(0, 500); return window.scrollY; }); } }), 'บันทึกข้อมูล');
+  const scrolled = one(
+    await collect(body, {
+      prepare: async (page) => {
+        scrolledBy = await page.evaluate(() => {
+          window.scrollTo(0, 500);
+          return window.scrollY;
+        });
+      },
+    }),
+    'บันทึกข้อมูล',
+  );
   assert.equal(scrolledBy, 500);
   const inkOffset = (f) => (f.inkTop + f.inkBottom) / 2 - (f.y + f.h / 2);
   near(inkOffset(scrolled), inkOffset(still), 0.5, 'ink-centre offset');
@@ -722,6 +980,9 @@ test('fix2 item 8: canvas mirrors italic (family with a real italic face) and lo
     ink[k] = factAtY(facts, mark[k].y);
     near(ink[k].inkWidth, mark[k].rendered, 0.5, `${k} inkWidth vs rendered`);
   }
-  assert.ok(Math.abs(ink.italic.inkWidth - ink.upright.inkWidth) > 0.5, 'the italic face really differs from upright');
+  assert.ok(
+    Math.abs(ink.italic.inkWidth - ink.upright.inkWidth) > 0.5,
+    'the italic face really differs from upright',
+  );
   assert.equal(ink.lower.text, 'HELLO WIDE WORLD');
 });

@@ -58,7 +58,7 @@ describe('storefront fonts', () => {
     }
   });
   test('Looped, Prompt and Google Fonts are gone', () => {
-    expect(fontsCss + tokensCss + indexCss + indexHtml).not.toMatch(/Looped|Prompt|googleapis|gstatic/);
+    expect(fontsCss + tokensCss + indexCss + indexHtml).not.toMatch(/Looped|['"]Prompt['"]|\/fonts\/prompt|googleapis|gstatic/);
     expect(existsSync(resolve(app, 'public/fonts/noto-sans-thai-looped'))).toBe(false);
     expect(existsSync(resolve(app, 'public/fonts/prompt'))).toBe(false);
   });

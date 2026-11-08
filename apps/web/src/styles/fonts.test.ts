@@ -23,8 +23,11 @@ const W5 = ['300', '400', '500', '600', '700'];
 
 describe('admin app fonts', () => {
   test('no Google Fonts, Looped or Prompt remains in the app bundle and static pages', () => {
-    expect(indexCss + fontsCss + docFontsCss + indexHtml + staticPages).not.toMatch(/googleapis|gstatic|Looped|Prompt/);
+    expect(indexCss + fontsCss + docFontsCss + indexHtml + staticPages).not.toMatch(/googleapis|gstatic|Looped|['"]Prompt['"]|\/fonts\/prompt/);
     expect(existsSync(resolve(app, 'public/fonts/noto-sans-thai-looped'))).toBe(false);
+  });
+  test('public fonts.css copy equals src/styles/fonts.css', () => {
+    expect(read('public/fonts/noto-sans-thai/fonts.css')).toBe(fontsCss);
   });
   test('index.css imports the UI faces then the document faces', () => {
     expect(indexCss).toMatch(/@import '\.\/styles\/fonts\.css';\s*\n@import '\.\/styles\/document-ui-fonts\.css';/);

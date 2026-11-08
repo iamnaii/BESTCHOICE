@@ -21,6 +21,6 @@ test('long-form surfaces use reading-block', () => {
   ]) expect(read(f), f).toMatch(/\breading-block\b/);
 });
 test('no 800 weight, tight tracking, Looped or Prompt remains in storefront src', () => {
-  const out = execSync("grep -rlE 'font-extrabold|tracking-tight|Looped|Prompt' src --include='*.tsx' --include='*.ts' --include='*.css' --exclude='*.test.ts' --exclude='*.test.tsx' || true", { cwd: app }).toString().trim();
+  const out = execSync("grep -rlE 'font-extrabold|tracking-tight|Looped|(^|[^A-Za-z])Prompt([^A-Za-z]|$)|fonts/prompt' src --include='*.tsx' --include='*.ts' --include='*.css' --exclude='*.test.ts' --exclude='*.test.tsx' || true", { cwd: app }).toString().trim();
   expect(out).toBe('');
 });

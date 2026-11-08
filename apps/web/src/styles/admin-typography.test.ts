@@ -19,3 +19,8 @@ test('tight tracking is neutralised on screen UI only, with the same document ex
 test('no blanket leading-none override exists', () => {
   expect(css).not.toMatch(/\.leading-none/);
 });
+test('every :not(:where(...)) exclusion list equals the first one', () => {
+  const lists = [...css.matchAll(/:not\(:where\(([^)]*)\)\)/g)].map((m) => m[1]);
+  expect(lists.length).toBeGreaterThan(1);
+  for (const l of lists) expect(l).toBe(docGuard);
+});

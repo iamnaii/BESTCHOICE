@@ -838,7 +838,7 @@ export default function ChatPanel({
                       ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                   }}
                   className={cn(
-                    'inline-flex h-5 max-w-[11rem] items-center gap-1 truncate rounded-full border px-2 text-[11.5px] font-semibold leading-none transition-colors',
+                    'inline-flex h-5 max-w-[11rem] items-center gap-1 truncate rounded-full border px-2 text-[11.5px] font-semibold leading-snug transition-colors',
                     roomApptState.tone === 'danger'
                       ? 'border-destructive/50 bg-destructive/10 text-destructive hover:bg-destructive/20'
                       : roomApptState.tone === 'warn'

@@ -120,4 +120,43 @@ describe('ChatPanel assignee chip', () => {
     expect(chip![0]).not.toContain('leading-none');
     expect(chip![0]).toContain('h-5');
   });
+  it('appointment chip uses leading-snug (Thai text rule)', () => {
+    const src = read('UnifiedInboxPage/components/ChatPanel.tsx');
+    const before = src.slice(0, src.indexOf("roomApptState.tone === 'danger'"));
+    const cls = before.slice(before.lastIndexOf("'inline-flex h-5"));
+    expect(cls).toContain('leading-snug');
+    expect(cls).not.toContain('leading-none');
+  });
+});
+
+// Round 4 Task 2: shareholder table cells need horizontal padding so nowrap headers read apart.
+// Anchored on this table's own <ScreenTable> ... </ScreenTable> (the doc.lines.map window would also take in neighbouring markup).
+describe('EquityViewPage shareholder table — cells have horizontal padding', () => {
+  const src = read('equity/EquityViewPage.tsx');
+  const open = src.indexOf('<ScreenTable className="w-full text-sm">');
+  const table = src.slice(open, src.indexOf('</ScreenTable>', open));
+  const cells = [...table.matchAll(/<(th|td) className="([^"]*)"/g)];
+  it('anchor found and every <th>/<td> has a plain className string (none skipped)', () => {
+    expect(open).toBeGreaterThan(-1);
+    expect(cells.length).toBe((table.match(/<(th|td)\b/g) ?? []).length);
+    expect(cells.length).toBeGreaterThan(0);
+  });
+  const lastTd = cells.filter((m) => m[1] === 'td').pop();
+  const lastTh = cells.filter((m) => m[1] === 'th').pop();
+  it.each(cells.map((m, i) => [`${i} ${m[1]} ${m[2]}`, m[2], m === lastTd || m === lastTh]))('%s has horizontal padding', (_name, cls, isLast) => {
+    expect(new RegExp(isLast ? '\\bpl-2\\b' : '\\b(px-2|pr-2)\\b').test(cls as string)).toBe(true);
+  });
+  it('last column (WHT) trims trailing padding: pl-2 only, no px-2', () => {
+    const last = (tag: 'th' | 'td') => cells.filter((m) => m[1] === tag).pop()![2];
+    for (const tag of ['th', 'td'] as const) {
+      expect(last(tag)).toMatch(/\bpl-2\b/);
+      expect(last(tag)).not.toMatch(/\bpx-2\b/);
+    }
+  });
+  it('every <th> is still whitespace-nowrap', () => {
+    const ths = [...table.matchAll(/<th className="([^"]*)"/g)];
+    expect(ths.length).toBe((table.match(/<th\b/g) ?? []).length);
+    expect(ths.length).toBeGreaterThan(0);
+    for (const m of ths) expect(m[1]).toContain('whitespace-nowrap');
+  });
 });

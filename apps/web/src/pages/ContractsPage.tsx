@@ -5,7 +5,7 @@ import type { SignatureRequirements } from '@installment/shared';
 import { PaginationBar } from '@/components/ui/PaginationBar';
 import { createExportGuard, ExportError, fetchExportSnapshot, type ExportSnapshot } from '@/lib/fetch-export-pages';
 import { formatThaiDateTime, toBangkokDateString } from '@/lib/date';
-import { useMemo, useCallback, useState, useEffect } from 'react';
+import { useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
@@ -107,6 +107,8 @@ export default function ContractsPage() {
 
   const debouncedSearch = useDebounce(search);
 
+  const tabBarRef = useRef<HTMLDivElement>(null);
+
   const buildParams = (targetPage = page, targetLimit = size) => {
     const params = new URLSearchParams();
     if (debouncedSearch) params.set('search', debouncedSearch);
@@ -143,6 +145,19 @@ export default function ContractsPage() {
   }, [result, page, setPage]);
   const contracts = result?.data ?? [];
   const summary = result?.summary;
+
+  // Keep the selected tab visible when the bar overflows (deep link ?tab=…). Scrolls the bar only, horizontally:
+  // the element-level scroll helper could also move the window on short phones. Re-runs when the count badge arrives (widens "ทั้งหมด").
+  useEffect(() => {
+    const bar = tabBarRef.current;
+    if (!bar || bar.scrollWidth <= bar.clientWidth) return;
+    const tab = bar.querySelector<HTMLElement>('[aria-pressed="true"]');
+    if (!tab) return;
+    const b = bar.getBoundingClientRect();
+    const t = tab.getBoundingClientRect();
+    if (t.left < b.left) bar.scrollLeft -= b.left - t.left;
+    else if (t.right > b.right) bar.scrollLeft += t.right - b.right;
+  }, [viewTab, result?.total]);
 
   const isManager = user && ['OWNER', 'FINANCE_MANAGER'].includes(user.role);
   const canCreate = ['OWNER', 'BRANCH_MANAGER', 'SALES'].includes(user?.role ?? '');
@@ -343,24 +358,27 @@ export default function ContractsPage() {
       )}
 
       {/* View Tabs — Metronic line tabs style */}
-      <div className="flex max-w-full min-w-0 overflow-x-auto overflow-y-hidden gap-0 mb-5 shadow-[inset_0_-1px_0_hsl(var(--border)/0.6)]">
+      <div className="flex max-w-full min-w-0 overflow-x-auto overflow-y-hidden gap-0 mb-5 shadow-[inset_0_-1px_0_hsl(var(--border)/0.6)]" ref={tabBarRef}>
         <button data-ui-control="button"
           onClick={() => updateParams({ tab: '', status: '', workflow: '', q: '', page: '' })}
-          className={`px-5 py-3 text-sm font-medium whitespace-nowrap shrink-0 border-b-2 transition-all ${viewTab === 'all' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          aria-pressed={viewTab === 'all'}
+          className={`px-5 py-3 text-sm font-medium whitespace-nowrap shrink-0 border-b-2 transition-all focus-visible:ring-inset focus-visible:ring-offset-0 ${viewTab === 'all' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           ทั้งหมด
           {result && <span className={`ml-2 text-xs px-1.5 py-0.5 rounded-full ${viewTab === 'all' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>{result.total}</span>}
         </button>
         <button data-ui-control="button"
           onClick={() => updateParams({ tab: 'my', status: '', workflow: '', q: '', page: '' })}
-          className={`px-5 py-3 text-sm font-medium whitespace-nowrap shrink-0 border-b-2 transition-all ${viewTab === 'my' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          aria-pressed={viewTab === 'my'}
+          className={`px-5 py-3 text-sm font-medium whitespace-nowrap shrink-0 border-b-2 transition-all focus-visible:ring-inset focus-visible:ring-offset-0 ${viewTab === 'my' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           สัญญาของฉัน
         </button>
         {isManager && (
           <button data-ui-control="button"
             onClick={() => updateParams({ tab: 'pending_review', status: '', workflow: '', q: '', page: '' })}
-            className={`px-5 py-3 text-sm font-medium whitespace-nowrap shrink-0 border-b-2 transition-all ${viewTab === 'pending_review' ? 'border-warning text-warning-strong' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+            aria-pressed={viewTab === 'pending_review'}
+            className={`px-5 py-3 text-sm font-medium whitespace-nowrap shrink-0 border-b-2 transition-all focus-visible:ring-inset focus-visible:ring-offset-0 ${viewTab === 'pending_review' ? 'border-warning text-warning-strong' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
           >
             รอตรวจสอบ
           </button>

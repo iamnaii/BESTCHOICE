@@ -184,27 +184,27 @@ export default function EquityViewPage() {
                 <ScreenTable className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border text-left text-xs text-muted-foreground uppercase">
-                      <th className="whitespace-nowrap py-2">ชื่อ</th>
-                      <th className="whitespace-nowrap text-right">จำนวนเงิน</th>
-                      <th className="whitespace-nowrap text-right">ส่วนเกิน</th>
-                      <th className="whitespace-nowrap text-right">ชำระจริง</th>
-                      <th className="whitespace-nowrap text-right">WHT</th>
+                      <th className="whitespace-nowrap py-2 pr-2">ชื่อ</th>
+                      <th className="whitespace-nowrap text-right px-2">จำนวนเงิน</th>
+                      <th className="whitespace-nowrap text-right px-2">ส่วนเกิน</th>
+                      <th className="whitespace-nowrap text-right px-2">ชำระจริง</th>
+                      <th className="whitespace-nowrap text-right pl-2">WHT</th>
                     </tr>
                   </thead>
                   <tbody>
                     {doc.lines.map((l) => (
                       <tr key={l.id} className="border-b border-border">
-                        <td className="py-2">{l.shareholderName}</td>
-                        <td className="text-right font-mono">
+                        <td className="py-2 pr-2">{l.shareholderName}</td>
+                        <td className="text-right font-mono px-2">
                           {formatNumberDecimal(parseFloat(l.amount), 2)}
                         </td>
-                        <td className="text-right font-mono">
+                        <td className="text-right font-mono px-2">
                           {formatNumberDecimal(parseFloat(l.premium), 2)}
                         </td>
-                        <td className="text-right font-mono">
+                        <td className="text-right font-mono px-2">
                           {formatNumberDecimal(parseFloat(l.paid), 2)}
                         </td>
-                        <td className="text-right font-mono">
+                        <td className="text-right font-mono pl-2">
                           {formatNumberDecimal(parseFloat(l.wht), 2)}
                         </td>
                       </tr>

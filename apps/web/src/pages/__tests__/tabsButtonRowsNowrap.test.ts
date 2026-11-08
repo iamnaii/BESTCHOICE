@@ -150,3 +150,103 @@ describe('scrollable tab bars keep the full 2px underline', () => {
     expect(src.slice(i, i + 2500)).not.toContain('-mb-px');
   });
 });
+
+describe('SellingPriceCard "ขึ้นเว็บ" readiness button', () => {
+  it('never wraps', () => {
+    const src = read('pages/ProductDetailPage/components/SellingPriceCard.tsx');
+    const cls = classBefore(src, '>\n                ขึ้นเว็บ', '<button');
+    expect(cls).toContain('whitespace-nowrap');
+  });
+});
+
+describe('CommissionsPage "ดูอย่างเดียว" badge', () => {
+  it('lives in the payouts panel header, not inside the tab button', () => {
+    const src = read('pages/CommissionsPage.tsx');
+    const tabIdx = src.indexOf('ใบจ่ายรายเดือน\n'); // label text inside the tab button
+    const badgeIdx = src.indexOf('ดูอย่างเดียว\n');
+    const payoutsIdx = src.indexOf("activeTab === 'payouts' && (");
+    expect(badgeIdx).toBeGreaterThan(payoutsIdx);
+    expect(src.slice(tabIdx, tabIdx + 400)).not.toContain('ดูอย่างเดียว');
+    expect(classBefore(src, 'ดูอย่างเดียว\n', '<span')).toContain('whitespace-nowrap');
+  });
+});
+
+// Keyboard focus ring: a scroll container clips an outside ring (offset 2-3px), so every tab button in a
+// scrollable bar draws the ring inset (inside its own box). Source-text pin; the harness cannot press Tab.
+describe('scrollable tab bars use an inset focus ring', () => {
+  it.each([
+    ['NotificationsPage/index.tsx', '{/* Tabs */}', 3],
+    ['CommissionsPage.tsx', '{/* Tabs */}', 2],
+    ['ContractsPage.tsx', '{/* View Tabs', 3],
+    ['PurchaseOrdersPage/index.tsx', '{/* Tabs */}', 2],
+    ['ProductDetailPage/index.tsx', '{/* Tabs — always shown', 1],
+    ['ChartOfAccountsPage.tsx', '{/* Scope tabs', 1],
+  ] as const)('%s: every tab button has ring-inset + ring-offset-0', (file, marker, expected) => {
+    const src = read(`pages/${file}`);
+    const i = src.indexOf(marker);
+    expect(i, `marker not found: ${marker}`).toBeGreaterThan(-1);
+    const bar = src.slice(i, src.indexOf('</div>', i));
+    const buttons = bar.split('<button').slice(1);
+    expect(buttons.length).toBe(expected);
+    for (const b of buttons) {
+      expect(b).toContain('focus-visible:ring-inset');
+      expect(b).toContain('focus-visible:ring-offset-0');
+    }
+  });
+});
+
+// 4 more hand-rendered scrollable bars (spec item 4: inset ring system-wide). Counts = tab elements in source
+// (map-rendered bars have one element template; ContractDetailPage has 4 literal buttons).
+describe('4 more scrollable tab bars use an inset focus ring', () => {
+  it.each([
+    ['CollectionsPage/components/CollectionsTabs.tsx', 'overflow-x-auto', '<button', 1],
+    ['LettersPage/components/LetterTabs.tsx', 'overflow-x-auto', '<button', 1],
+    ['ContractDetailPage.tsx', '{/* Tabs: Schedule', '<button', 4],
+    ['assets/components/AssetHubTabs.tsx', 'visibleGroups.map', '<NavLink', 1],
+  ] as const)('%s: every tab has ring-inset + ring-offset-0', (file, marker, tag, expected) => {
+    const src = read(`pages/${file}`);
+    const i = src.indexOf(marker);
+    expect(i, `marker not found: ${marker}`).toBeGreaterThan(-1);
+    const endMarker = { ContractDetailPage: '{/* Tab Content */}', assets: '</nav>' }[file.split(/[./]/)[0] as string] ?? '</div>\n  );';
+    const end = src.indexOf(endMarker, i);
+    expect(end, 'bar end not found').toBeGreaterThan(i);
+    const bar = src.slice(i, end);
+    const tabs = bar.split(tag).slice(1);
+    expect(tabs.length).toBe(expected);
+    for (const t of tabs) {
+      expect(t).toContain('focus-visible:ring-inset');
+      expect(t).toContain('focus-visible:ring-offset-0');
+    }
+  });
+});
+
+describe('ChartOfAccountsPage selected scope button keeps a visible focus ring', () => {
+  it('selected branch swaps the ring to primary-foreground (ring-ring/30 is invisible on bg-primary)', () => {
+    const src = read('pages/ChartOfAccountsPage.tsx');
+    expect(src).toMatch(/scope === t\.key\s*\?\s*'[^']*bg-primary text-primary-foreground[^']*focus-visible:ring-primary-foreground[^']*'/);
+    expect(src).not.toMatch(/'bg-background text-muted-foreground[^']*focus-visible:ring-primary-foreground/);
+  });
+});
+
+describe('ContractsPage keeps the selected tab in view', () => {
+  const src = read('pages/ContractsPage.tsx');
+  const at = src.indexOf('const bar = tabBarRef.current');
+  const effect = src.slice(at, src.indexOf('}, [', at) + 40);
+  it('scrolls only the bar horizontally (no scrollIntoView, which can move the window)', () => {
+    expect(src).not.toContain('scrollIntoView');
+    expect(effect).toMatch(/getBoundingClientRect\(\)/);
+    expect(effect).toMatch(/\.scrollLeft\s*[-+]=/);
+    expect(effect).not.toMatch(/scrollTop|scrollTo\(/);
+    expect(src).not.toMatch(/behavior:\s*'smooth'/);
+  });
+  it('still only acts when the bar overflows, on the aria-pressed tab', () => {
+    expect(effect).toMatch(/scrollWidth\s*<=\s*\w+\.clientWidth/);
+    expect(effect).toContain('[aria-pressed="true"]');
+  });
+  it('re-runs when the total count badge arrives (it widens the first tab)', () => {
+    expect(effect).toMatch(/\[viewTab,\s*result\?\.total\]/);
+  });
+  it.each(['all', 'my', 'pending_review'])('tab %s button exposes aria-pressed', (key) => {
+    expect(src).toContain(`aria-pressed={viewTab === '${key}'}`);
+  });
+});

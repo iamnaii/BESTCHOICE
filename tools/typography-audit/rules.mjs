@@ -7,8 +7,10 @@ export const PROFILES = {
   shop: { scale: [12, 14, 16, 18, 20, 24, 30, 36, 48], weights: [400, 500, 600, 700], sarabunInReadingBlock: true },
 };
 
-export const UI_FONT_RE = /^["']?Noto Sans Thai["']?,/;
-export const SARABUN_RE = /^["']?Sarabun["']?,/;
+// first family must be exactly this name: followed by ',' or end of the list (a lone family is fine;
+// look-alikes such as "Noto Sans Thai Looped" are not)
+export const UI_FONT_RE = /^["']?Noto Sans Thai["']?(,|$)/;
+export const SARABUN_RE = /^["']?Sarabun["']?(,|$)/;
 export const NUMERIC_ONLY_RE = /^[\d,.\s฿%+\-–/]+$/;
 // numeric-only = plan regex AND at least one ASCII digit ('-', '/', '–' placeholders are not numbers).
 // The collector computes Fact.numericOnly with these semantics; R10 trusts the flag only.
@@ -162,7 +164,14 @@ export function diffFindings(before, after, options) {
 // DeltaFinding = { rule: 'D1'|'D2', key, kind, text, detail, ...ctx }
 // D1 detail: { before, after, change }  (inkWidth px, change = fraction)
 // D2 detail: { beforeOffset, afterOffset, beforeH, afterH }
-const inkCentreOffset = (f) => f.textTop + f.textHeight / 2 - (f.y + f.h / 2);
+// Ruling W: real ink centre ((inkTop + inkBottom) / 2) when the collector supplied finite ink fields,
+// else the text-rect centre (textTop + textHeight / 2) — both measured against the box centre.
+const inkCentreOffset = (f) => {
+  const centre = Number.isFinite(f.inkTop) && Number.isFinite(f.inkBottom)
+    ? (f.inkTop + f.inkBottom) / 2
+    : f.textTop + f.textHeight / 2;
+  return centre - (f.y + f.h / 2);
+};
 
 export function compareFacts(beforeFacts, afterFacts, ctx = {}) {
   const bKeys = resolveKeys(beforeFacts), aKeys = resolveKeys(afterFacts);

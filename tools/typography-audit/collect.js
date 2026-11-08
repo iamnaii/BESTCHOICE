@@ -9,6 +9,8 @@
  * text rects, lines, ink, overflow and scroll from the text element itself. Form-control facts never
  * record values: their text is placeholder || aria-label || '', and their scroll flags are always false
  * (they would flip with the typed value's length). Visually hidden (sr-only) text is never a fact.
+ * Ink is measured on a canvas that mirrors rendering (font-style/weight/size/family, letter-spacing,
+ * text-transform); inkTop/inkBottom place the first line's real ink (baseline ∓ actual ascent/descent).
  *
  * normalizeKeyText / factKey / isNumericOnly re-implement tools/typography-audit/rules.mjs verbatim
  * (collect.test.mjs asserts they never drift).
@@ -28,6 +30,7 @@
   var LINE_TOP_TOLERANCE_PX = 1;
   var TEXT_MAX_CHARS = 60;
   var PROBE_ATTR = 'data-typography-audit-probe';
+  var CANVAS_SENTINEL_FONT = '1px typography-audit-sentinel';
 
   // ---- rules.mjs mirrors (keep byte-for-byte equivalent semantics) ----
   function normalizeKeyText(text) {
@@ -147,22 +150,30 @@
       carriers.set(el, ok);
       return ok;
     }
+    // A count badge (badge-kind element, or text inside one) does not compete with the label.
+    function insideBadge(node, container) {
+      for (var n = node; n && n !== container; n = n.parentElement) if (isBadgeKind(n)) return true;
+      return false;
+    }
     function soleTextCarrier(container, el) {
       if (container.getClientRects().length === 0 || isTextCarrier(container)) return false;
       var walker = document.createTreeWalker(container, NodeFilter.SHOW_ELEMENT);
       for (var n = walker.nextNode(); n; n = walker.nextNode()) {
-        if (n !== el && isTextCarrier(n)) return false;
+        if (n !== el && isTextCarrier(n) && !insideBadge(n, container)) return false;
       }
       return true;
     }
 
-    // Ruling R precedence: role/form semantics before tag.
+    function isBadgeKind(node) {
+      if (node.matches('[data-slot=badge]')) return true;
+      return Boolean(node.classList && node.classList.contains('rounded-full') && px(style(node).fontSize) <= BADGE_MAX_FONT_PX);
+    }
+    // Ruling R precedence: role/form semantics before tag (button also matches [data-slot=button]).
     function kindOf(node) {
       if (node.matches(CONTROL_SELECTOR)) return 'input';
       if (node.matches('[role=tab]')) return 'tab';
-      if (node.matches('button,[role=button]')) return 'button';
-      if (node.matches('[data-slot=badge]')) return 'badge';
-      if (node.classList && node.classList.contains('rounded-full') && px(style(node).fontSize) <= BADGE_MAX_FONT_PX) return 'badge';
+      if (node.matches('button,[role=button],[data-slot=button]')) return 'button';
+      if (isBadgeKind(node)) return 'badge';
       var tag = node.localName;
       if (tag === 'th') return 'th';
       if (node.matches('nav a')) return 'nav';
@@ -212,26 +223,51 @@
       return canvasCtx;
     }
     function fontString(cs) {
-      return cs.fontWeight + ' ' + cs.fontSize + '/' + cs.lineHeight + ' ' + cs.fontFamily;
+      return cs.fontStyle + ' ' + cs.fontWeight + ' ' + cs.fontSize + '/' + cs.lineHeight + ' ' + cs.fontFamily;
     }
-    // inkWidth = width, inkHeight = actualBoundingBoxAscent + Descent; fontBox = font ascent + descent.
+    // text-transform changes the rendered glyphs, so the measured string must follow it
+    function transformed(text, transform) {
+      if (transform === 'uppercase') return text.toUpperCase();
+      if (transform === 'lowercase') return text.toLowerCase();
+      if (transform === 'capitalize') return text.replace(/(^|\s)(\S)/g, function (m, sep, ch) { return sep + ch.toUpperCase(); });
+      return text;
+    }
+    // Canvas mirrors rendering: font-style/weight/size/line-height/family, letter-spacing, text-transform.
+    // inkWidth = width · inkHeight = actualBoundingBoxAscent + Descent · fontBox = font ascent + descent.
     function measure(cs, text) {
       var font = fontString(cs);
-      var cacheKey = font + '\n' + text;
+      var spacing = cs.letterSpacing && cs.letterSpacing !== 'normal' ? cs.letterSpacing : '0px';
+      var shown = transformed(text, cs.textTransform);
+      var cacheKey = font + '\n' + spacing + '\n' + shown;
       var hit = inkCache.get(cacheKey);
       if (hit) return hit;
       var ctx = canvas();
-      ctx.font = '10px sans-serif'; // reset so an unparsable font can never reuse a stale one
+      ctx.font = CANVAS_SENTINEL_FONT; // reset so an unparsable font can never reuse a stale one
+      var sentinel = ctx.font;
       ctx.font = font;
-      var m = ctx.measureText(text === '' ? ' ' : text);
+      if (ctx.font === sentinel) throw new Error('__collectTypography: canvas rejected font "' + font + '"');
+      if ('letterSpacing' in ctx) ctx.letterSpacing = spacing;
+      var m = ctx.measureText(shown === '' ? ' ' : shown);
       var fontBox = m.fontBoundingBoxAscent + m.fontBoundingBoxDescent;
       var result = {
-        inkWidth: text === '' ? 0 : m.width,
-        inkHeight: text === '' ? 0 : m.actualBoundingBoxAscent + m.actualBoundingBoxDescent,
+        inkWidth: shown === '' ? 0 : m.width,
+        inkHeight: shown === '' ? 0 : m.actualBoundingBoxAscent + m.actualBoundingBoxDescent,
+        inkAscent: m.actualBoundingBoxAscent,
+        inkDescent: m.actualBoundingBoxDescent,
+        fontAscent: m.fontBoundingBoxAscent,
         fontBox: isFinite(fontBox) && fontBox > 0 ? fontBox : px(cs.fontSize),
       };
       inkCache.set(cacheKey, result);
       return result;
+    }
+    // Ruling W: real ink extent of the first line, page-absolute. baseline = text box top + font ascent.
+    // Falls back to the text box itself when there is no ink to place (empty text / no font metrics).
+    function inkExtent(textBoxTop, textBoxHeight, ink, hasText) {
+      if (!hasText || !isFinite(ink.fontAscent) || !isFinite(ink.inkAscent) || !isFinite(ink.inkDescent)) {
+        return { top: textBoxTop, bottom: textBoxTop + textBoxHeight };
+      }
+      var baseline = textBoxTop + ink.fontAscent;
+      return { top: baseline - ink.inkAscent, bottom: baseline + ink.inkDescent };
     }
     // Ruling F: `line-height: normal` → measured px (off-screen probe with the same font + text), else null.
     function normalLineHeight(cs, text) {
@@ -265,6 +301,15 @@
     }
     function isTabular(cs) {
       return /tabular-nums/.test(cs.fontVariantNumeric || '') || /["']tnum["'](?!\s*0)/.test(cs.fontFeatureSettings || '');
+    }
+    // hosts = every element from the text element up to and including the anchor (text element first)
+    function pathToAnchor(el, anchor) {
+      var hosts = [];
+      for (var n = el; n; n = n.parentElement) {
+        hosts.push(n);
+        if (n === anchor) break;
+      }
+      return hosts;
     }
     function iconRatios(hosts, fontSize) {
       var out = [];
@@ -327,6 +372,8 @@
         textHeight: base.textHeight,
         inkWidth: base.ink.inkWidth,
         inkHeight: base.ink.inkHeight,
+        inkTop: base.inkTop,
+        inkBottom: base.inkBottom,
         overflowClip: base.overflowClip,
         scrollOverflowX: base.scrollOverflowX,
         scrollOverflowY: base.scrollOverflowY,
@@ -351,15 +398,18 @@
         top = Math.min(top, rects[i].top);
         bottom = Math.max(bottom, rects[i].bottom);
       }
+      var ink = measure(cs, text);
+      var firstLine = rects[0];
+      var extent = inkExtent(firstLine.top + scrollY, firstLine.height, ink, true);
       return { fullText: text, fact: fact({
         el: el, kind: anchor.kind, tag: reportedTag(el), text: text, fontSize: fontSize,
         lineHeight: lineHeight(cs, text), fontWeight: Number(cs.fontWeight), fontFamily: cs.fontFamily,
         numeric: isTabular(cs), box: box(anchor.node), lines: countLines(rects),
-        textTop: top + scrollY, textHeight: bottom - top, ink: measure(cs, text),
+        textTop: top + scrollY, textHeight: bottom - top, ink: ink, inkTop: extent.top, inkBottom: extent.bottom,
         overflowClip: overflowClip(el),
         scrollOverflowX: el.scrollWidth > el.clientWidth + 1,
         scrollOverflowY: el.scrollHeight > el.clientHeight + 1,
-        iconRatios: iconRatios(anchor.node === el ? [el] : [el, anchor.node], fontSize),
+        iconRatios: iconRatios(pathToAnchor(el, anchor.node), fontSize),
         headingLevel: headingLevel(anchor.node),
       }) };
     }
@@ -373,11 +423,13 @@
       var ink = measure(cs, text);
       var contentTop = b.y + px(cs.borderTopWidth) + px(cs.paddingTop);
       var contentHeight = b.h - px(cs.borderTopWidth) - px(cs.borderBottomWidth) - px(cs.paddingTop) - px(cs.paddingBottom);
+      var textTop = contentTop + (contentHeight - ink.fontBox) / 2;
+      var extent = inkExtent(textTop, ink.fontBox, ink, text !== '');
       return { fullText: text, fact: fact({
         el: el, kind: 'input', tag: el.tagName.toLowerCase(), text: text, fontSize: fontSize,
         lineHeight: lineHeight(cs, text), fontWeight: Number(cs.fontWeight), fontFamily: cs.fontFamily,
         numeric: isTabular(cs), box: b, lines: 1,
-        textTop: contentTop + (contentHeight - ink.fontBox) / 2, textHeight: ink.fontBox, ink: ink,
+        textTop: textTop, textHeight: ink.fontBox, ink: ink, inkTop: extent.top, inkBottom: extent.bottom,
         overflowClip: overflowClip(el),
         // Ruling U: scroll extents of a control follow the typed value — never let them reach the audit
         scrollOverflowX: false,

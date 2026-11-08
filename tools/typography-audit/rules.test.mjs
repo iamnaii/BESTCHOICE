@@ -322,3 +322,37 @@ test('fix3: R9 detail carries numeric weight', () => {
   const f = evaluateTypography([fact({ fontWeight: '800' })], ctx()).find((x) => x.rule === 'R9');
   assert.equal(f.detail.fontWeight, 800);
 });
+
+// ---- Task 2 fix round 1 (Rulings W and item 7) ----
+
+test('fixr1: D2 uses the real ink centre when inkTop/inkBottom are finite (Ruling W)', () => {
+  const k = 'button|ตกลง|0';
+  const btn = (o) => fact({ kind: 'button', text: 'ตกลง', key: k, y: 0, h: 40, textTop: 11, textHeight: 18, ...o });
+  // ink centre (14+26)/2 = 20 = box centre → offset 0; after (16+28)/2 = 22 → offset 2.0; text rects unchanged
+  const fired = compareFacts([btn({ inkTop: 14, inkBottom: 26 })], [btn({ inkTop: 16, inkBottom: 28 })]).filter((d) => d.rule === 'D2');
+  assert.equal(fired.length, 1);
+  assert.equal(fired[0].detail.beforeOffset, 0);
+  assert.equal(fired[0].detail.afterOffset, 2);
+  // only textTop moves (fallback formula would give offset 4) but the ink stays centred → no D2
+  const quiet = compareFacts([btn({ inkTop: 14, inkBottom: 26 })], [btn({ textTop: 15, inkTop: 14, inkBottom: 26 })]);
+  assert.equal(quiet.filter((d) => d.rule === 'D2').length, 0);
+});
+
+test('fixr1: D2 falls back to the text-rect centre when an ink field is missing or non-finite', () => {
+  const k = 'button|ตกลง|0';
+  const btn = (o) => fact({ kind: 'button', text: 'ตกลง', key: k, y: 0, h: 40, textTop: 11, textHeight: 18, ...o });
+  for (const partial of [{ inkTop: null, inkBottom: 26 }, { inkTop: 14 }, { inkTop: NaN, inkBottom: NaN }]) {
+    const out = compareFacts([btn({})], [btn({ textTop: 15, ...partial })]).filter((d) => d.rule === 'D2');
+    assert.equal(out.length, 1, JSON.stringify(partial));
+    assert.equal(out[0].detail.afterOffset, 4);
+  }
+});
+
+test('fixr1: UI_FONT_RE / SARABUN_RE accept a lone family and still reject look-alikes (item 7)', () => {
+  assert.ok(!has([fact({ fontFamily: "'Noto Sans Thai'" })], ctx(), 'R8'));
+  assert.ok(!has([fact({ fontFamily: 'Noto Sans Thai' })], ctx(), 'R8'));
+  assert.ok(rules([fact({ fontFamily: '"Noto Sans Thai Looped", sans-serif' })], ctx()).includes('R8:P1'));
+  assert.ok(rules([fact({ fontFamily: '"Noto Sans Thai Looped"' })], ctx()).includes('R8:P1'));
+  assert.ok(!has([fact({ fontFamily: 'Sarabun', inReadingBlock: true })], ctx({ app: 'shop' }), 'R8'));
+  assert.ok(has([fact({ fontFamily: '"Sarabun New", serif', inReadingBlock: true })], ctx({ app: 'shop' }), 'R8'));
+});

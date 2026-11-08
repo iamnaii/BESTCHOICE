@@ -16,7 +16,7 @@ const ORIGIN = 'http://typography.test';
 // Global Constraints exclude list, verbatim.
 const EXCLUDE = '.voucher-sheet, .document-sheet, .bc-document, .document-landscape, .document-print-dialog, .template-paper, .font-sarabun, .mobile-receipt, .sticker, .print-stickers, .tiptap, .parcel-label, .contract-body, iframe, svg';
 const FIELDS = ['key', 'tag', 'kind', 'text', 'fontSize', 'lineHeight', 'fontWeight', 'fontFamily', 'numeric', 'x', 'y', 'w', 'h',
-  'lines', 'textTop', 'textHeight', 'inkWidth', 'inkHeight', 'overflowClip', 'scrollOverflowX', 'scrollOverflowY', 'hasThai',
+  'lines', 'textTop', 'textHeight', 'inkWidth', 'inkHeight', 'inkTop', 'inkBottom', 'overflowClip', 'scrollOverflowX', 'scrollOverflowY', 'hasThai',
   'numericOnly', 'inReadingBlock', 'iconRatios', 'headingLevel'];
 const THAI_RE = /[฀-๿]/;
 
@@ -183,7 +183,7 @@ test('every fact has the full Task 1 shape with the right types', async () => {
     assert.equal(typeof f.text, 'string');
     assert.ok(f.text.length <= 60);
     assert.equal(typeof f.fontFamily, 'string');
-    for (const n of ['fontSize', 'fontWeight', 'x', 'y', 'w', 'h', 'lines', 'textTop', 'textHeight', 'inkWidth', 'inkHeight']) {
+    for (const n of ['fontSize', 'fontWeight', 'x', 'y', 'w', 'h', 'lines', 'textTop', 'textHeight', 'inkWidth', 'inkHeight', 'inkTop', 'inkBottom']) {
       assert.ok(typeof f[n] === 'number' && Number.isFinite(f[n]), `${n}=${f[n]} on ${f.key}`);
     }
     assert.ok(f.lineHeight === null || (typeof f.lineHeight === 'number' && Number.isFinite(f.lineHeight)), `lineHeight=${f.lineHeight}`);
@@ -469,4 +469,176 @@ test('input/textarea scroll flags are always false and typed values never appear
   } finally {
     await page.close();
   }
+});
+
+// ---------------------------------------------------------------- fix round 1
+
+// Second family for comparisons: IBM Plex Sans Thai from apps/web/public/fonts (no fonts.css ships for it).
+const PLEX_THAI_RANGE = 'U+02D7,U+0303,U+0331,U+0E01-0E5B,U+200C-200D,U+25CC';
+const PLEX_LATIN_RANGE = 'U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD';
+const PLEX = `<style>${[400, 700].map((w) => `
+@font-face{font-family:'IBM Plex Sans Thai';font-style:normal;font-weight:${w};src:url(/fonts/ibm-plex-sans-thai/ibm-plex-sans-thai-thai-${w}-normal.woff2) format('woff2');unicode-range:${PLEX_THAI_RANGE}}
+@font-face{font-family:'IBM Plex Sans Thai';font-style:normal;font-weight:${w};src:url(/fonts/ibm-plex-sans-thai/ibm-plex-sans-thai-latin-${w}-normal.woff2) format('woff2');unicode-range:${PLEX_LATIN_RANGE}}`).join('')}</style>`;
+const PLEX_FAMILY = "font-family:'IBM Plex Sans Thai',sans-serif";
+// Inter (variable, latin) for Latin-text comparisons — Noto Sans Thai and IBM Plex Sans Thai place ink
+// within 0.41px of each other at 14px/21px, Inter vs Noto differs by ~1.5px on 'Total 1,234'.
+const INTER = `<style>@font-face{font-family:'Inter';font-style:normal;font-weight:100 900;src:url(/fonts/inter/inter-latin-variable.woff2) format('woff2');unicode-range:${PLEX_LATIN_RANGE}}</style>`;
+const INTER_FAMILY = "font-family:'Inter',sans-serif";
+
+// facts + per-[data-k] rendered geometry (sum of the direct text nodes' Range rect widths)
+async function collectMeasured(body, head = '') {
+  const page = await openPage(body, head);
+  try {
+    const faces = await page.evaluate(() => [...document.fonts].filter((f) => f.status === 'loaded').map((f) => `${f.family.replace(/["']/g, '')}|${f.weight}`));
+    const facts = await page.evaluate((exclude) => window.__collectTypography({ exclude }), EXCLUDE);
+    const marks = await page.evaluate(() => [...document.querySelectorAll('[data-k]')].map((el) => {
+      const range = document.createRange();
+      let rendered = 0;
+      for (const n of el.childNodes) {
+        if (n.nodeType !== 3 || !/\S/.test(n.data)) continue;
+        range.selectNodeContents(n);
+        for (const r of range.getClientRects()) rendered += r.width;
+      }
+      return { k: el.dataset.k, y: el.getBoundingClientRect().top + window.scrollY, rendered };
+    }));
+    return { faces, facts, mark: Object.fromEntries(marks.map((m) => [m.k, m])) };
+  } finally {
+    await page.close();
+  }
+}
+const factAtY = (facts, y) => {
+  const found = facts.filter((f) => f.y === y);
+  assert.equal(found.length, 1, `expected one fact at y=${y}`);
+  return found[0];
+};
+const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg}: ${a} vs ${b}`);
+
+const SAMPLE = 'กรุณาตรวจสอบข้อมูล Total 1,234';
+
+test('item 1: inkWidth ≈ rendered width for Noto 400/700 and IBM Plex Sans Thai 400/700, and they differ', async () => {
+  const { faces, facts, mark } = await collectMeasured(`
+    <div data-k="n400" style="white-space:nowrap;font-weight:400">${SAMPLE}</div>
+    <div data-k="n700" style="white-space:nowrap;font-weight:700">${SAMPLE}</div>
+    <div data-k="p400" style="white-space:nowrap;${PLEX_FAMILY};font-weight:400">${SAMPLE}</div>
+    <div data-k="p700" style="white-space:nowrap;${PLEX_FAMILY};font-weight:700">${SAMPLE}</div>`, PLEX);
+  for (const face of ['Noto Sans Thai|400', 'Noto Sans Thai|700', 'IBM Plex Sans Thai|400', 'IBM Plex Sans Thai|700']) {
+    assert.ok(faces.includes(face), `font face not loaded: ${face}`);
+  }
+  const ink = {};
+  for (const k of ['n400', 'n700', 'p400', 'p700']) {
+    const f = factAtY(facts, mark[k].y);
+    near(f.inkWidth, mark[k].rendered, 0.5, `${k} inkWidth vs rendered width`);
+    ink[k] = f.inkWidth;
+  }
+  assert.ok(Math.abs(ink.n400 - ink.n700) > 0.5, 'Noto 400 vs 700');
+  assert.ok(Math.abs(ink.p400 - ink.p700) > 0.5, 'Plex 400 vs 700');
+  assert.ok(Math.abs(ink.n400 - ink.p400) > 0.5, 'Noto vs Plex');
+});
+
+test('item 1: a long nowrap paragraph (> 60 chars) is measured in full', async () => {
+  const long = 'ข้อความยาวมากสำหรับทดสอบการวัดความกว้างทั้งบรรทัด '.repeat(3).trim();
+  assert.ok(long.length > 60);
+  const { facts, mark } = await collectMeasured(`<p data-k="long" style="white-space:nowrap;margin:0">${long}</p>`);
+  const f = factAtY(facts, mark.long.y);
+  assert.equal(f.text, long.slice(0, 60));
+  near(f.inkWidth, mark.long.rendered, 0.5, 'full-text inkWidth');
+});
+
+test('item 1: a 20px/700 span inside a 14px/400 button is measured with the span font', async () => {
+  const { facts, mark } = await collectMeasured(
+    '<button style="font-size:14px;font-weight:400;white-space:nowrap"><span data-k="s" style="font-size:20px;font-weight:700">บันทึกด่วน</span></button>');
+  const f = one(facts, 'บันทึกด่วน');
+  assert.deepEqual([f.kind, f.fontSize, f.fontWeight], ['button', 20, 700]);
+  near(f.inkWidth, mark.s.rendered, 0.5, 'span inkWidth');
+});
+
+test('item 2: same centred 40px button text in two fonts ⇒ text-rect offsets ≈ equal, ink-centre offsets differ (Ruling W)', async () => {
+  const btn = (extra) => `<button style="display:block;height:40px;padding:0 16px;line-height:21px;font-size:14px;${extra}">Total 1,234</button>`;
+  const page = await openPage(btn('') + btn(INTER_FAMILY), INTER);
+  try {
+    const interLoaded = await page.evaluate(() => [...document.fonts].some((f) => f.family.replace(/["']/g, '') === 'Inter' && f.status === 'loaded'));
+    assert.ok(interLoaded, 'Inter must be loaded');
+    const facts = await page.evaluate((exclude) => window.__collectTypography({ exclude }), EXCLUDE);
+    const [noto, inter] = withText(facts, 'Total 1,234');
+    assert.ok(inter.fontFamily.startsWith('Inter') || inter.fontFamily.startsWith('"Inter"'), inter.fontFamily);
+    const inkOffset = (f) => (f.inkTop + f.inkBottom) / 2 - (f.y + f.h / 2);
+    for (const f of [noto, inter]) {
+      assert.ok(Math.abs(centreOffset(f)) <= 0.5, `text-rect offset ${centreOffset(f)}`);
+      assert.ok(f.inkTop < f.inkBottom && f.inkTop > f.y && f.inkBottom < f.y + f.h);
+    }
+    near(centreOffset(noto), centreOffset(inter), 0.5, 'text-rect centre offsets');
+    assert.ok(Math.abs(inkOffset(noto) - inkOffset(inter)) > 0.5, `ink offsets ${inkOffset(noto)} vs ${inkOffset(inter)}`);
+  } finally {
+    await page.close();
+  }
+});
+
+test('item 2: text-fact ink = first-line baseline ∓ actual ascent/descent; inputs derive it from the centred content box', async () => {
+  const facts = await collect(`
+    <div style="font-size:16px;line-height:24px">ค้นหาสินค้า</div>
+    <input placeholder="ค้นหาสินค้า" style="box-sizing:border-box;height:40px;padding:8px 12px;border:1px solid #000;font-size:16px;line-height:24px">
+    <input style="box-sizing:border-box;height:40px;padding:8px 12px;border:1px solid #000;font-size:16px;line-height:24px">`);
+  const div = facts.find((f) => f.kind === 'text');
+  const input = facts.find((f) => f.kind === 'input' && f.text === 'ค้นหาสินค้า');
+  const empty = facts.find((f) => f.kind === 'input' && f.text === '');
+  assert.ok(div.inkTop > div.textTop && div.inkBottom < div.textTop + div.textHeight + 1);
+  // same font + text ⇒ the ink sits at the same distance from the text box top
+  near(input.inkTop - input.textTop, div.inkTop - div.textTop, 1e-6, 'inkTop offset');
+  near(input.inkBottom - input.textTop, div.inkBottom - div.textTop, 1e-6, 'inkBottom offset');
+  near(input.inkBottom - input.inkTop, input.inkHeight, 1e-6, 'input ink span = inkHeight');
+  // no text ⇒ no ink: fall back to the centred text box
+  assert.equal(empty.inkTop, empty.textTop);
+  assert.equal(empty.inkBottom, empty.textTop + empty.textHeight);
+});
+
+test('item 3: [data-slot=button] ⇒ button; a count badge does not steal the label anchor', async () => {
+  const facts = await collect(`<a data-slot="button" href="#">ดูทั้งหมด</a>
+    <nav><a href="#n" style="display:flex;gap:8px;height:40px;align-items:center"><svg width="16" height="16"></svg><span>แจ้งเตือน</span><span data-slot="badge">3</span></a></nav>
+    <nav><a href="#m" style="display:flex;gap:8px;height:40px;align-items:center"><span>ข้อความ</span><span class="rounded-full" style="font-size:12px">12</span></a></nav>
+    <nav><a href="#o" style="display:flex;gap:8px;height:40px;align-items:center"><span>สองป้าย</span><span>คำอธิบาย</span></a></nav>`);
+  assert.equal(one(facts, 'ดูทั้งหมด').kind, 'button');
+  const label = one(facts, 'แจ้งเตือน');
+  assert.deepEqual([label.kind, label.h, label.iconRatios], ['nav', 40, [1]]);
+  assert.equal(one(facts, '3').kind, 'badge');
+  assert.equal(one(facts, 'ข้อความ').kind, 'nav');
+  assert.equal(one(facts, '12').kind, 'badge');
+  assert.equal(one(facts, 'สองป้าย').kind, 'text', 'two non-badge carriers still reject the anchor');
+});
+
+test('item 4: canvas mirrors letter-spacing and text-transform (fact text stays the DOM text)', async () => {
+  const { facts, mark } = await collectMeasured(`
+    <div data-k="tight" style="white-space:nowrap;letter-spacing:-0.025em">Tracking Tight Sample Text</div>
+    <div data-k="plain" style="white-space:nowrap">Tracking Tight Sample Text</div>
+    <div data-k="upper" style="white-space:nowrap;text-transform:uppercase">uppercase sample text</div>
+    <div data-k="lower" style="white-space:nowrap">uppercase sample text</div>
+    <div data-k="cap" style="white-space:nowrap;text-transform:capitalize">capitalize every word here</div>
+    <div data-k="italic" style="white-space:nowrap;font-style:italic">Italic Sample Text</div>`);
+  const ink = {};
+  for (const k of ['tight', 'plain', 'upper', 'lower', 'cap', 'italic']) {
+    const f = factAtY(facts, mark[k].y);
+    near(f.inkWidth, mark[k].rendered, 0.5, `${k} inkWidth vs rendered`);
+    ink[k] = f;
+  }
+  assert.ok(ink.tight.inkWidth < ink.plain.inkWidth - 0.5, 'negative letter-spacing narrows the measurement');
+  assert.ok(ink.upper.inkWidth > ink.lower.inkWidth + 0.5, 'uppercase transform widens the measurement');
+  assert.equal(ink.upper.text, 'uppercase sample text');
+  assert.equal(ink.upper.key, 'text|uppercase sample text|0');
+});
+
+test('item 5: iconRatios read svg children of every element from the text element up to the anchor', async () => {
+  const facts = await collect('<button style="font-size:14px"><a><svg width="16" height="16"></svg><span>เมนู</span></a></button>');
+  const f = one(facts, 'เมนู');
+  assert.equal(f.kind, 'button');
+  assert.deepEqual(f.iconRatios, [16 / 14]);
+});
+
+test('item 6: font-feature-settings "tnum" 0 / off ⇒ numeric false; "tnum" 1 ⇒ true', async () => {
+  const facts = await collect(`<table><tbody><tr>
+    <td style="font-feature-settings:'tnum' 0">1,000</td>
+    <td style="font-feature-settings:'tnum' off">2,000</td>
+    <td style="font-feature-settings:'tnum' 1">3,000</td>
+  </tr></tbody></table>`);
+  assert.equal(one(facts, '1,000').numeric, false);
+  assert.equal(one(facts, '2,000').numeric, false);
+  assert.equal(one(facts, '3,000').numeric, true);
 });

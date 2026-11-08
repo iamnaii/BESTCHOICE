@@ -1,6 +1,6 @@
 {
   "schema": "typography-audit-report/1",
-  "generatedAt": "2026-11-08T14:07:52.077Z",
+  "generatedAt": "2026-11-08T14:39:15.208Z",
   "notes": {
     "pairing": "BEFORE↔AFTER by app + inventory row (no) + route + width + theme + role; only status \"rendered\" on both sides is compared",
     "shell": "Ruling Z: same rule|severity|kind|normalized text|width|theme|role on >= 5 distinct routes = one point (\"shell\": true) with routeCount/occurrences; routes lists the first 20",
@@ -19,9 +19,9 @@
   "shellMinRoutes": 5,
   "sources": [
     {"label":"admin-before-owner","app":"web","phase":"before","role":"owner","dir":"admin-after-owner","present":true,"files":1674,"skipped":0,"runStatus":"PASS","revision":"f2f9977b88ce68f0856c71efc834bc4b9dd66001","revisionSource":"run.json","records":1674,"sharedDuplicates":0},
-    {"label":"admin-after-owner","app":"web","phase":"after","role":"owner","dir":".tmp/typo-fix/admin-after-owner","present":true,"files":1674,"skipped":0,"runStatus":"PASS","revision":"efa467e342e64b53d6db6aa1318fa7af17b04625","revisionSource":"run.json","records":1674,"sharedDuplicates":0},
+    {"label":"admin-after-owner","app":"web","phase":"after","role":"owner","dir":".tmp/typo-fix2/admin-after-owner","present":true,"files":1674,"skipped":0,"runStatus":"PASS","revision":"efa467e342e64b53d6db6aa1318fa7af17b04625","revisionSource":"run.json","records":1674,"sharedDuplicates":0},
     {"label":"admin-before-sales","app":"web","phase":"before","role":"salesA","dir":"admin-after-salesA","present":true,"files":1674,"skipped":0,"runStatus":"PASS","revision":"f2f9977b88ce68f0856c71efc834bc4b9dd66001","revisionSource":"run.json","records":1596,"sharedDuplicates":78},
-    {"label":"admin-after-sales","app":"web","phase":"after","role":"salesA","dir":".tmp/typo-fix/admin-after-salesA","present":true,"files":1674,"skipped":0,"runStatus":"PASS","revision":"efa467e342e64b53d6db6aa1318fa7af17b04625","revisionSource":"run.json","records":1596,"sharedDuplicates":78},
+    {"label":"admin-after-sales","app":"web","phase":"after","role":"salesA","dir":".tmp/typo-fix2/admin-after-salesA","present":true,"files":1674,"skipped":0,"runStatus":"PASS","revision":"efa467e342e64b53d6db6aa1318fa7af17b04625","revisionSource":"run.json","records":1596,"sharedDuplicates":78},
     {"label":"shop-before","app":"shop","phase":"before","role":null,"dir":"shop-after","present":true,"files":108,"skipped":1,"runStatus":null,"revision":"e504094cd","revisionSource":"cli","records":108,"sharedDuplicates":0},
     {"label":"shop-after","app":"shop","phase":"after","role":null,"dir":".tmp/typo-fix/shop-after","present":true,"files":108,"skipped":1,"runStatus":null,"revision":"d2ca65c5b","revisionSource":"cli","records":108,"sharedDuplicates":0}
   ],
@@ -178,12 +178,11 @@
         }
       },
       "R7": {
-        "realMobileBelow44": 16,
-        "realDesktopBelow32": 14,
+        "realMobileBelow44": 12,
+        "realDesktopBelow32": 12,
         "examples": {
           "mobileBelow44": [
-            {"app":"web","route":"/stock/products","width":390,"text":"iPhone (ทดสอบระบบ)","value":"สูง 22px < 44px (button)"},
-            {"app":"web","route":"/settings/finance/interest","width":390,"text":"แก้ไข","value":"สูง 26px < 44px (button)"}
+            {"app":"web","route":"/stock/products","width":390,"text":"iPhone (ทดสอบระบบ)","value":"สูง 22px < 44px (button)"}
           ],
           "desktopBelow32": [
             {"app":"web","route":"/stock/products","width":1440,"text":"iPhone (ทดสอบระบบ)","value":"สูง 19.3px < 32px (button)"},
@@ -225,10 +224,10 @@
     },
     "deltas": {
       "D1": {
-        "points": 24,
-        "findings": 24,
-        "wider": 24,
-        "narrower": 0,
+        "points": 34,
+        "findings": 34,
+        "wider": 32,
+        "narrower": 2,
         "medianChangePct": 20
       },
       "D2": {
@@ -242,8 +241,8 @@
       "noiseExcluded": 0
     },
     "persisting": {
-      "points": 2467,
-      "findings": 8251,
+      "points": 2445,
+      "findings": 8213,
       "byRule": {
         "R1": {
           "findings": 3542,
@@ -278,12 +277,12 @@
           }
         },
         "R5": {
-          "findings": 130,
-          "points": 130,
-          "routes": 21,
+          "findings": 114,
+          "points": 114,
+          "routes": 20,
           "bySeverity": {
-            "P1": 16,
-            "P2": 114
+            "P1": 4,
+            "P2": 110
           }
         },
         "R6": {
@@ -295,11 +294,11 @@
           }
         },
         "R7": {
-          "findings": 30,
-          "points": 30,
-          "routes": 4,
+          "findings": 24,
+          "points": 24,
+          "routes": 3,
           "bySeverity": {
-            "P2": 30
+            "P2": 24
           }
         },
         "R7b": {
@@ -311,11 +310,11 @@
           }
         },
         "R9": {
-          "findings": 1256,
+          "findings": 1240,
           "points": 88,
-          "routes": 195,
+          "routes": 193,
           "bySeverity": {
-            "P3": 1256
+            "P3": 1240
           }
         },
         "R10": {
@@ -345,8 +344,8 @@
       }
     },
     "resolved": {
-      "points": 611,
-      "findings": 809,
+      "points": 643,
+      "findings": 847,
       "runVarying": 48,
       "byRule": {
         "R1": {
@@ -374,20 +373,28 @@
           }
         },
         "R5": {
-          "findings": 317,
-          "points": 173,
-          "routes": 22,
+          "findings": 333,
+          "points": 189,
+          "routes": 23,
           "bySeverity": {
-            "P1": 106,
-            "P2": 211
+            "P1": 118,
+            "P2": 215
           }
         },
         "R7": {
-          "findings": 366,
+          "findings": 372,
           "points": 312,
           "routes": 40,
           "bySeverity": {
-            "P2": 366
+            "P2": 372
+          }
+        },
+        "R9": {
+          "findings": 16,
+          "points": 16,
+          "routes": 2,
+          "bySeverity": {
+            "P3": 16
           }
         },
         "R10": {
@@ -1907,14 +1914,24 @@
   "escalated": [],
   "deltas": {
     "D1": [
+      {"rule":"D1","app":"web","route":"/after-sales","no":"56","width":1440,"theme":"light","role":"owner","key":"text|ท|0","text":"ท","detail":{"before":7.727996826171875,"after":9.0159912109375,"change":0.16666600850606758}},
+      {"rule":"D1","app":"web","route":"/after-sales","no":"56","width":1440,"theme":"light","role":"salesA","key":"text|ท|0","text":"ท","detail":{"before":7.727996826171875,"after":9.0159912109375,"change":0.16666600850606758}},
       {"rule":"D1","app":"web","route":"/liff/history","no":"20","width":1440,"theme":"light","role":"liff","key":"badge|ใบเสร็จ|0","text":"ใบเสร็จ","detail":{"before":28.249954223632812,"after":33.89996337890625,"change":0.2000006481620016}},
       {"rule":"D1","app":"web","route":"/liff/history","no":"20","width":1440,"theme":"light","role":"liff","key":"badge|ใบเสร็จ|1","text":"ใบเสร็จ","detail":{"before":28.249954223632812,"after":33.89996337890625,"change":0.2000006481620016}},
       {"rule":"D1","app":"web","route":"/liff/history","no":"20","width":1440,"theme":"light","role":"liff","key":"badge|ใบเสร็จ|2","text":"ใบเสร็จ","detail":{"before":28.249954223632812,"after":33.89996337890625,"change":0.2000006481620016}},
       {"rule":"D1","app":"web","route":"/liff/history","no":"20","width":1440,"theme":"light","role":"liff","key":"badge|ใบเสร็จ|3","text":"ใบเสร็จ","detail":{"before":28.249954223632812,"after":33.89996337890625,"change":0.2000006481620016}},
+      {"rule":"D1","app":"web","route":"/stock/products","no":"38","width":1440,"theme":"light","role":"salesA","key":"button|เครื่องมือ|0","text":"เครื่องมือ","detail":{"before":58.365936279296875,"after":52.4859619140625,"change":-0.10074325437181542}},
+      {"rule":"D1","app":"web","route":"/stock/products","no":"38","width":1440,"theme":"light","role":"owner","key":"text|ท|0","text":"ท","detail":{"before":7.727996826171875,"after":9.0159912109375,"change":0.16666600850606758}},
+      {"rule":"D1","app":"web","route":"/stock/products","no":"38","width":1440,"theme":"light","role":"salesA","key":"text|ท|0","text":"ท","detail":{"before":7.727996826171875,"after":9.0159912109375,"change":0.16666600850606758}},
+      {"rule":"D1","app":"web","route":"/after-sales","no":"56","width":1440,"theme":"dark","role":"owner","key":"text|ท|0","text":"ท","detail":{"before":7.727996826171875,"after":9.0159912109375,"change":0.16666600850606758}},
+      {"rule":"D1","app":"web","route":"/after-sales","no":"56","width":1440,"theme":"dark","role":"salesA","key":"text|ท|0","text":"ท","detail":{"before":7.727996826171875,"after":9.0159912109375,"change":0.16666600850606758}},
       {"rule":"D1","app":"web","route":"/liff/history","no":"20","width":1440,"theme":"dark","role":"liff","key":"badge|ใบเสร็จ|0","text":"ใบเสร็จ","detail":{"before":28.249954223632812,"after":33.89996337890625,"change":0.2000006481620016}},
       {"rule":"D1","app":"web","route":"/liff/history","no":"20","width":1440,"theme":"dark","role":"liff","key":"badge|ใบเสร็จ|1","text":"ใบเสร็จ","detail":{"before":28.249954223632812,"after":33.89996337890625,"change":0.2000006481620016}},
       {"rule":"D1","app":"web","route":"/liff/history","no":"20","width":1440,"theme":"dark","role":"liff","key":"badge|ใบเสร็จ|2","text":"ใบเสร็จ","detail":{"before":28.249954223632812,"after":33.89996337890625,"change":0.2000006481620016}},
       {"rule":"D1","app":"web","route":"/liff/history","no":"20","width":1440,"theme":"dark","role":"liff","key":"badge|ใบเสร็จ|3","text":"ใบเสร็จ","detail":{"before":28.249954223632812,"after":33.89996337890625,"change":0.2000006481620016}},
+      {"rule":"D1","app":"web","route":"/stock/products","no":"38","width":1440,"theme":"dark","role":"salesA","key":"button|เครื่องมือ|0","text":"เครื่องมือ","detail":{"before":58.365936279296875,"after":52.4859619140625,"change":-0.10074325437181542}},
+      {"rule":"D1","app":"web","route":"/stock/products","no":"38","width":1440,"theme":"dark","role":"owner","key":"text|ท|0","text":"ท","detail":{"before":7.727996826171875,"after":9.0159912109375,"change":0.16666600850606758}},
+      {"rule":"D1","app":"web","route":"/stock/products","no":"38","width":1440,"theme":"dark","role":"salesA","key":"text|ท|0","text":"ท","detail":{"before":7.727996826171875,"after":9.0159912109375,"change":0.16666600850606758}},
       {"rule":"D1","app":"web","route":"/liff/history","no":"20","width":390,"theme":"light","role":"liff","key":"badge|ใบเสร็จ|0","text":"ใบเสร็จ","detail":{"before":28.249954223632812,"after":33.89996337890625,"change":0.2000006481620016}},
       {"rule":"D1","app":"web","route":"/liff/history","no":"20","width":390,"theme":"light","role":"liff","key":"badge|ใบเสร็จ|1","text":"ใบเสร็จ","detail":{"before":28.249954223632812,"after":33.89996337890625,"change":0.2000006481620016}},
       {"rule":"D1","app":"web","route":"/liff/history","no":"20","width":390,"theme":"light","role":"liff","key":"badge|ใบเสร็จ|2","text":"ใบเสร็จ","detail":{"before":28.249954223632812,"after":33.89996337890625,"change":0.2000006481620016}},
@@ -1989,6 +2006,12 @@
     {"rule":"R3","severity":"P1","app":"web","route":"/liff/history","no":"20","width":320,"theme":"dark","role":"liff","key":"badge|ใบเสร็จ|3","text":"ใบเสร็จ","detail":{"ratio":1,"fontSize":10,"lineHeight":10,"min":1.2}},
     {"rule":"R4","severity":"P1","app":"web","route":"/suppliers/:id","no":"49","width":320,"theme":"light","role":"owner","key":"badge|เปิดใช้งาน|0","text":"เปิดใช้งาน","detail":{"inkHeight":10.2239990234375,"lineHeight":18,"scrollOverflowY":true,"overflowClip":"both"}},
     {"rule":"R4","severity":"P1","app":"web","route":"/suppliers/:id","no":"49","width":320,"theme":"dark","role":"owner","key":"badge|เปิดใช้งาน|0","text":"เปิดใช้งาน","detail":{"inkHeight":10.2239990234375,"lineHeight":18,"scrollOverflowY":true,"overflowClip":"both"}},
+    {"rule":"R5","severity":"P1","app":"web","route":"/after-sales","no":"56","width":1440,"theme":"light","role":"owner","key":"th|ค่าใช้จ่าย|0","text":"ค่าใช้จ่าย","detail":{"kind":"th","lines":2}},
+    {"rule":"R5","severity":"P1","app":"web","route":"/after-sales","no":"56","width":1440,"theme":"light","role":"salesA","key":"th|ค่าใช้จ่าย|0","text":"ค่าใช้จ่าย","detail":{"kind":"th","lines":2}},
+    {"rule":"R5","severity":"P1","app":"web","route":"/after-sales","no":"56","width":1440,"theme":"light","role":"owner","key":"badge|รับเรื่องแล้ว|0","text":"รับเรื่องแล้ว","detail":{"kind":"badge","lines":2}},
+    {"rule":"R5","severity":"P1","app":"web","route":"/after-sales","no":"56","width":1440,"theme":"light","role":"salesA","key":"badge|รับเรื่องแล้ว|0","text":"รับเรื่องแล้ว","detail":{"kind":"badge","lines":2}},
+    {"rule":"R5","severity":"P1","app":"web","route":"/after-sales","no":"56","width":1440,"theme":"light","role":"owner","key":"badge|สัญญาผ่อน|0","text":"สัญญาผ่อน","detail":{"kind":"badge","lines":2}},
+    {"rule":"R5","severity":"P1","app":"web","route":"/after-sales","no":"56","width":1440,"theme":"light","role":"salesA","key":"badge|สัญญาผ่อน|0","text":"สัญญาผ่อน","detail":{"kind":"badge","lines":2}},
     {"rule":"R5","severity":"P1","app":"web","route":"/branches","no":"32","width":1440,"theme":"light","role":"owner","key":"badge|ใช้งาน|0","text":"ใช้งาน","detail":{"kind":"badge","lines":2}},
     {"rule":"R5","severity":"P1","app":"web","route":"/branches","no":"32","width":1440,"theme":"light","role":"owner","key":"badge|ใช้งาน|1","text":"ใช้งาน","detail":{"kind":"badge","lines":2}},
     {"rule":"R5","severity":"P1","app":"web","route":"/branches","no":"32","width":1440,"theme":"light","role":"owner","key":"badge|ยังไม่ตั้ง — ขายสดไม่ได้|0","text":"ยังไม่ตั้ง — ขายสดไม่ได้","detail":{"kind":"badge","lines":2}},
@@ -2042,6 +2065,12 @@
     {"rule":"R5","severity":"P1","app":"web","route":"/users","no":"119","width":1440,"theme":"light","role":"owner","key":"button|เข้าสู่ระบบล่าสุด|0","text":"เข้าสู่ระบบล่าสุด","detail":{"kind":"button","lines":2}},
     {"rule":"R5","severity":"P1","app":"web","route":"/users","no":"119","width":1440,"theme":"light","role":"owner","key":"button|รหัสพนง.|0","text":"รหัสพนง.","detail":{"kind":"button","lines":2}},
     {"rule":"R5","severity":"P1","app":"web","route":"/users","no":"119","width":1440,"theme":"light","role":"owner","key":"button|วันเริ่มงาน|0","text":"วันเริ่มงาน","detail":{"kind":"button","lines":3}},
+    {"rule":"R5","severity":"P1","app":"web","route":"/after-sales","no":"56","width":1440,"theme":"dark","role":"owner","key":"th|ค่าใช้จ่าย|0","text":"ค่าใช้จ่าย","detail":{"kind":"th","lines":2}},
+    {"rule":"R5","severity":"P1","app":"web","route":"/after-sales","no":"56","width":1440,"theme":"dark","role":"salesA","key":"th|ค่าใช้จ่าย|0","text":"ค่าใช้จ่าย","detail":{"kind":"th","lines":2}},
+    {"rule":"R5","severity":"P1","app":"web","route":"/after-sales","no":"56","width":1440,"theme":"dark","role":"owner","key":"badge|รับเรื่องแล้ว|0","text":"รับเรื่องแล้ว","detail":{"kind":"badge","lines":2}},
+    {"rule":"R5","severity":"P1","app":"web","route":"/after-sales","no":"56","width":1440,"theme":"dark","role":"salesA","key":"badge|รับเรื่องแล้ว|0","text":"รับเรื่องแล้ว","detail":{"kind":"badge","lines":2}},
+    {"rule":"R5","severity":"P1","app":"web","route":"/after-sales","no":"56","width":1440,"theme":"dark","role":"owner","key":"badge|สัญญาผ่อน|0","text":"สัญญาผ่อน","detail":{"kind":"badge","lines":2}},
+    {"rule":"R5","severity":"P1","app":"web","route":"/after-sales","no":"56","width":1440,"theme":"dark","role":"salesA","key":"badge|สัญญาผ่อน|0","text":"สัญญาผ่อน","detail":{"kind":"badge","lines":2}},
     {"rule":"R5","severity":"P1","app":"web","route":"/branches","no":"32","width":1440,"theme":"dark","role":"owner","key":"badge|ใช้งาน|0","text":"ใช้งาน","detail":{"kind":"badge","lines":2}},
     {"rule":"R5","severity":"P1","app":"web","route":"/branches","no":"32","width":1440,"theme":"dark","role":"owner","key":"badge|ใช้งาน|1","text":"ใช้งาน","detail":{"kind":"badge","lines":2}},
     {"rule":"R5","severity":"P1","app":"web","route":"/branches","no":"32","width":1440,"theme":"dark","role":"owner","key":"badge|ยังไม่ตั้ง — ขายสดไม่ได้|0","text":"ยังไม่ตั้ง — ขายสดไม่ได้","detail":{"kind":"badge","lines":2}},
@@ -2095,12 +2124,12 @@
     {"rule":"R5","severity":"P1","app":"web","route":"/users","no":"119","width":1440,"theme":"dark","role":"owner","key":"button|เข้าสู่ระบบล่าสุด|0","text":"เข้าสู่ระบบล่าสุด","detail":{"kind":"button","lines":2}},
     {"rule":"R5","severity":"P1","app":"web","route":"/users","no":"119","width":1440,"theme":"dark","role":"owner","key":"button|รหัสพนง.|0","text":"รหัสพนง.","detail":{"kind":"button","lines":2}},
     {"rule":"R5","severity":"P1","app":"web","route":"/users","no":"119","width":1440,"theme":"dark","role":"owner","key":"button|วันเริ่มงาน|0","text":"วันเริ่มงาน","detail":{"kind":"button","lines":3}},
-    {"shell":true,"rule":"R7","severity":"P2","app":"web","kind":"button","keyText":"แก้ไข","text":"แก้ไข","width":1440,"theme":"light","role":"owner","routeCount":8,"occurrences":10,"routes":["/settings/:categoryId","/settings/company","/settings/company#company-info","/settings/finance","/settings/finance#late-fee","/settings/general","/settings/products/receipts","/settings/products/stickers"],"example":{"route":"/settings/:categoryId","no":"123","key":"button|แก้ไข|0","detail":{"kind":"button","h":26,"min":32}}},
-    {"shell":true,"rule":"R7","severity":"P2","app":"web","kind":"button","keyText":"แก้ไข","text":"แก้ไข","width":1440,"theme":"dark","role":"owner","routeCount":8,"occurrences":10,"routes":["/settings/:categoryId","/settings/company","/settings/company#company-info","/settings/finance","/settings/finance#late-fee","/settings/general","/settings/products/receipts","/settings/products/stickers"],"example":{"route":"/settings/:categoryId","no":"123","key":"button|แก้ไข|0","detail":{"kind":"button","h":26,"min":32}}},
-    {"shell":true,"rule":"R7","severity":"P2","app":"web","kind":"button","keyText":"แก้ไข","text":"แก้ไข","width":390,"theme":"light","role":"owner","routeCount":8,"occurrences":10,"routes":["/settings/:categoryId","/settings/company","/settings/company#company-info","/settings/finance","/settings/finance#late-fee","/settings/general","/settings/products/receipts","/settings/products/stickers"],"example":{"route":"/settings/:categoryId","no":"123","key":"button|แก้ไข|0","detail":{"kind":"button","h":26,"min":44}}},
-    {"shell":true,"rule":"R7","severity":"P2","app":"web","kind":"button","keyText":"แก้ไข","text":"แก้ไข","width":390,"theme":"dark","role":"owner","routeCount":8,"occurrences":10,"routes":["/settings/:categoryId","/settings/company","/settings/company#company-info","/settings/finance","/settings/finance#late-fee","/settings/general","/settings/products/receipts","/settings/products/stickers"],"example":{"route":"/settings/:categoryId","no":"123","key":"button|แก้ไข|0","detail":{"kind":"button","h":26,"min":44}}},
-    {"shell":true,"rule":"R7","severity":"P2","app":"web","kind":"button","keyText":"แก้ไข","text":"แก้ไข","width":320,"theme":"light","role":"owner","routeCount":8,"occurrences":10,"routes":["/settings/:categoryId","/settings/company","/settings/company#company-info","/settings/finance","/settings/finance#late-fee","/settings/general","/settings/products/receipts","/settings/products/stickers"],"example":{"route":"/settings/:categoryId","no":"123","key":"button|แก้ไข|0","detail":{"kind":"button","h":26,"min":44}}},
-    {"shell":true,"rule":"R7","severity":"P2","app":"web","kind":"button","keyText":"แก้ไข","text":"แก้ไข","width":320,"theme":"dark","role":"owner","routeCount":8,"occurrences":10,"routes":["/settings/:categoryId","/settings/company","/settings/company#company-info","/settings/finance","/settings/finance#late-fee","/settings/general","/settings/products/receipts","/settings/products/stickers"],"example":{"route":"/settings/:categoryId","no":"123","key":"button|แก้ไข|0","detail":{"kind":"button","h":26,"min":44}}},
+    {"shell":true,"rule":"R7","severity":"P2","app":"web","kind":"button","keyText":"แก้ไข","text":"แก้ไข","width":1440,"theme":"light","role":"owner","routeCount":9,"occurrences":11,"routes":["/settings/:categoryId","/settings/company","/settings/company#company-info","/settings/finance","/settings/finance#late-fee","/settings/finance/interest","/settings/general","/settings/products/receipts","/settings/products/stickers"],"example":{"route":"/settings/:categoryId","no":"123","key":"button|แก้ไข|0","detail":{"kind":"button","h":26,"min":32}}},
+    {"shell":true,"rule":"R7","severity":"P2","app":"web","kind":"button","keyText":"แก้ไข","text":"แก้ไข","width":1440,"theme":"dark","role":"owner","routeCount":9,"occurrences":11,"routes":["/settings/:categoryId","/settings/company","/settings/company#company-info","/settings/finance","/settings/finance#late-fee","/settings/finance/interest","/settings/general","/settings/products/receipts","/settings/products/stickers"],"example":{"route":"/settings/:categoryId","no":"123","key":"button|แก้ไข|0","detail":{"kind":"button","h":26,"min":32}}},
+    {"shell":true,"rule":"R7","severity":"P2","app":"web","kind":"button","keyText":"แก้ไข","text":"แก้ไข","width":390,"theme":"light","role":"owner","routeCount":9,"occurrences":11,"routes":["/settings/:categoryId","/settings/company","/settings/company#company-info","/settings/finance","/settings/finance#late-fee","/settings/finance/interest","/settings/general","/settings/products/receipts","/settings/products/stickers"],"example":{"route":"/settings/:categoryId","no":"123","key":"button|แก้ไข|0","detail":{"kind":"button","h":26,"min":44}}},
+    {"shell":true,"rule":"R7","severity":"P2","app":"web","kind":"button","keyText":"แก้ไข","text":"แก้ไข","width":390,"theme":"dark","role":"owner","routeCount":9,"occurrences":11,"routes":["/settings/:categoryId","/settings/company","/settings/company#company-info","/settings/finance","/settings/finance#late-fee","/settings/finance/interest","/settings/general","/settings/products/receipts","/settings/products/stickers"],"example":{"route":"/settings/:categoryId","no":"123","key":"button|แก้ไข|0","detail":{"kind":"button","h":26,"min":44}}},
+    {"shell":true,"rule":"R7","severity":"P2","app":"web","kind":"button","keyText":"แก้ไข","text":"แก้ไข","width":320,"theme":"light","role":"owner","routeCount":9,"occurrences":11,"routes":["/settings/:categoryId","/settings/company","/settings/company#company-info","/settings/finance","/settings/finance#late-fee","/settings/finance/interest","/settings/general","/settings/products/receipts","/settings/products/stickers"],"example":{"route":"/settings/:categoryId","no":"123","key":"button|แก้ไข|0","detail":{"kind":"button","h":26,"min":44}}},
+    {"shell":true,"rule":"R7","severity":"P2","app":"web","kind":"button","keyText":"แก้ไข","text":"แก้ไข","width":320,"theme":"dark","role":"owner","routeCount":9,"occurrences":11,"routes":["/settings/:categoryId","/settings/company","/settings/company#company-info","/settings/finance","/settings/finance#late-fee","/settings/finance/interest","/settings/general","/settings/products/receipts","/settings/products/stickers"],"example":{"route":"/settings/:categoryId","no":"123","key":"button|แก้ไข|0","detail":{"kind":"button","h":26,"min":44}}},
     {"shell":true,"rule":"R5","severity":"P2","app":"web","kind":"th","keyText":"รายจ่าย: บันทึก & POST","text":"รายจ่าย: บันทึก & POST","width":390,"theme":"light","role":"owner","routeCount":7,"occurrences":7,"routes":["/settings/access","/settings/access#accounting-permissions","/settings/access#attachment","/settings/access#maker-checker","/settings/access#payment-approval-permissions","/settings/access#reverse-permission","/settings/access#reverse-reasons"],"example":{"route":"/settings/access","no":"218","key":"th|รายจ่าย: บันทึก & POST|0","detail":{"kind":"th","lines":2}}},
     {"shell":true,"rule":"R5","severity":"P2","app":"web","kind":"th","keyText":"รายจ่าย: ยกเลิก","text":"รายจ่าย: ยกเลิก","width":390,"theme":"light","role":"owner","routeCount":7,"occurrences":7,"routes":["/settings/access","/settings/access#accounting-permissions","/settings/access#attachment","/settings/access#maker-checker","/settings/access#payment-approval-permissions","/settings/access#reverse-permission","/settings/access#reverse-reasons"],"example":{"route":"/settings/access","no":"218","key":"th|รายจ่าย: ยกเลิก|0","detail":{"kind":"th","lines":2}}},
     {"shell":true,"rule":"R5","severity":"P2","app":"web","kind":"th","keyText":"รายรับ: บันทึก & POST","text":"รายรับ: บันทึก & POST","width":390,"theme":"light","role":"owner","routeCount":7,"occurrences":7,"routes":["/settings/access","/settings/access#accounting-permissions","/settings/access#attachment","/settings/access#maker-checker","/settings/access#payment-approval-permissions","/settings/access#reverse-permission","/settings/access#reverse-reasons"],"example":{"route":"/settings/access","no":"218","key":"th|รายรับ: บันทึก & POST|0","detail":{"kind":"th","lines":2}}},
@@ -2160,11 +2189,15 @@
     {"rule":"R5","severity":"P2","app":"web","route":"/settings/ai/admin","no":"253","width":390,"theme":"dark","role":"owner","key":"th|โทเคนขาออก|0","text":"โทเคนขาออก","detail":{"kind":"th","lines":4}},
     {"rule":"R5","severity":"P2","app":"web","route":"/settings/ai/persona","no":"254","width":390,"theme":"dark","role":"owner","key":"badge|ค่าเริ่มต้น|1","text":"ค่าเริ่มต้น","detail":{"kind":"badge","lines":2}},
     {"rule":"R5","severity":"P2","app":"shop","route":"/","width":320,"theme":"light","role":"guest","key":"badge|ประกันร้าน ## วัน|0","text":"ประกันร้าน 60 วัน","detail":{"kind":"badge","lines":2}},
+    {"rule":"R5","severity":"P2","app":"web","route":"/after-sales","no":"56","width":320,"theme":"light","role":"owner","key":"badge|รับเรื่องแล้ว|0","text":"รับเรื่องแล้ว","detail":{"kind":"badge","lines":2}},
+    {"rule":"R5","severity":"P2","app":"web","route":"/after-sales","no":"56","width":320,"theme":"light","role":"salesA","key":"badge|รับเรื่องแล้ว|0","text":"รับเรื่องแล้ว","detail":{"kind":"badge","lines":2}},
     {"rule":"R5","severity":"P2","app":"shop","route":"/products","width":320,"theme":"light","role":"guest","key":"badge|ประกันร้าน ## วัน|0","text":"ประกันร้าน 60 วัน","detail":{"kind":"badge","lines":2}},
     {"rule":"R5","severity":"P2","app":"shop","route":"/products/:id","width":320,"theme":"light","role":"guest","key":"badge|ประกันร้าน ## วัน|0","text":"ประกันร้าน 60 วัน","detail":{"kind":"badge","lines":2}},
     {"rule":"R5","severity":"P2","app":"web","route":"/settings/ai/persona","no":"254","width":320,"theme":"light","role":"owner","key":"badge|ค่าเริ่มต้น|1","text":"ค่าเริ่มต้น","detail":{"kind":"badge","lines":2}},
     {"rule":"R5","severity":"P2","app":"web","route":"/settings/ai/persona","no":"254","width":320,"theme":"light","role":"owner","key":"badge|อ่านอย่างเดียว|0","text":"อ่านอย่างเดียว","detail":{"kind":"badge","lines":2}},
     {"rule":"R5","severity":"P2","app":"web","route":"/suppliers/:id","no":"49","width":320,"theme":"light","role":"owner","key":"badge|เปิดใช้งาน|0","text":"เปิดใช้งาน","detail":{"kind":"badge","lines":2}},
+    {"rule":"R5","severity":"P2","app":"web","route":"/after-sales","no":"56","width":320,"theme":"dark","role":"owner","key":"badge|รับเรื่องแล้ว|0","text":"รับเรื่องแล้ว","detail":{"kind":"badge","lines":2}},
+    {"rule":"R5","severity":"P2","app":"web","route":"/after-sales","no":"56","width":320,"theme":"dark","role":"salesA","key":"badge|รับเรื่องแล้ว|0","text":"รับเรื่องแล้ว","detail":{"kind":"badge","lines":2}},
     {"rule":"R5","severity":"P2","app":"web","route":"/settings/ai/persona","no":"254","width":320,"theme":"dark","role":"owner","key":"badge|ค่าเริ่มต้น|1","text":"ค่าเริ่มต้น","detail":{"kind":"badge","lines":2}},
     {"rule":"R5","severity":"P2","app":"web","route":"/settings/ai/persona","no":"254","width":320,"theme":"dark","role":"owner","key":"badge|อ่านอย่างเดียว|0","text":"อ่านอย่างเดียว","detail":{"kind":"badge","lines":2}},
     {"rule":"R5","severity":"P2","app":"web","route":"/suppliers/:id","no":"49","width":320,"theme":"dark","role":"owner","key":"badge|เปิดใช้งาน|0","text":"เปิดใช้งาน","detail":{"kind":"badge","lines":2}},
@@ -2545,7 +2578,23 @@
     {"rule":"R10","severity":"P3","app":"web","route":"/audit-logs","no":"128","width":320,"theme":"dark","role":"owner","key":"text|##|13","text":"22","detail":{"tag":"td","fontSize":12}},
     {"rule":"R10","severity":"P3","app":"web","route":"/audit-logs","no":"265","width":320,"theme":"dark","role":"owner","key":"text|##|19","text":"22","detail":{"tag":"td","fontSize":12}},
     {"rule":"R10","severity":"P3","app":"web","route":"/audit-logs","no":"265","width":320,"theme":"dark","role":"owner","key":"text|##|14","text":"41","detail":{"tag":"td","fontSize":12}},
-    {"rule":"R10","severity":"P3","app":"web","route":"/audit-logs","no":"265","width":320,"theme":"dark","role":"owner","key":"text|##|15","text":"57","detail":{"tag":"td","fontSize":12}}
+    {"rule":"R10","severity":"P3","app":"web","route":"/audit-logs","no":"265","width":320,"theme":"dark","role":"owner","key":"text|##|15","text":"57","detail":{"tag":"td","fontSize":12}},
+    {"rule":"R9","severity":"P3","app":"web","route":"/after-sales","no":"56","width":1440,"theme":"light","role":"owner","key":"text|BEST|0","text":"BEST","detail":{"fontWeight":800,"weights":[300,400,500,600,700]}},
+    {"rule":"R9","severity":"P3","app":"web","route":"/after-sales","no":"56","width":1440,"theme":"light","role":"salesA","key":"text|BEST|0","text":"BEST","detail":{"fontWeight":800,"weights":[300,400,500,600,700]}},
+    {"rule":"R9","severity":"P3","app":"web","route":"/after-sales","no":"56","width":1440,"theme":"light","role":"owner","key":"text|CHOICE|0","text":"CHOICE","detail":{"fontWeight":800,"weights":[300,400,500,600,700]}},
+    {"rule":"R9","severity":"P3","app":"web","route":"/after-sales","no":"56","width":1440,"theme":"light","role":"salesA","key":"text|CHOICE|0","text":"CHOICE","detail":{"fontWeight":800,"weights":[300,400,500,600,700]}},
+    {"rule":"R9","severity":"P3","app":"web","route":"/stock/products","no":"38","width":1440,"theme":"light","role":"owner","key":"text|BEST|0","text":"BEST","detail":{"fontWeight":800,"weights":[300,400,500,600,700]}},
+    {"rule":"R9","severity":"P3","app":"web","route":"/stock/products","no":"38","width":1440,"theme":"light","role":"salesA","key":"text|BEST|0","text":"BEST","detail":{"fontWeight":800,"weights":[300,400,500,600,700]}},
+    {"rule":"R9","severity":"P3","app":"web","route":"/stock/products","no":"38","width":1440,"theme":"light","role":"owner","key":"text|CHOICE|0","text":"CHOICE","detail":{"fontWeight":800,"weights":[300,400,500,600,700]}},
+    {"rule":"R9","severity":"P3","app":"web","route":"/stock/products","no":"38","width":1440,"theme":"light","role":"salesA","key":"text|CHOICE|0","text":"CHOICE","detail":{"fontWeight":800,"weights":[300,400,500,600,700]}},
+    {"rule":"R9","severity":"P3","app":"web","route":"/after-sales","no":"56","width":1440,"theme":"dark","role":"owner","key":"text|BEST|0","text":"BEST","detail":{"fontWeight":800,"weights":[300,400,500,600,700]}},
+    {"rule":"R9","severity":"P3","app":"web","route":"/after-sales","no":"56","width":1440,"theme":"dark","role":"salesA","key":"text|BEST|0","text":"BEST","detail":{"fontWeight":800,"weights":[300,400,500,600,700]}},
+    {"rule":"R9","severity":"P3","app":"web","route":"/after-sales","no":"56","width":1440,"theme":"dark","role":"owner","key":"text|CHOICE|0","text":"CHOICE","detail":{"fontWeight":800,"weights":[300,400,500,600,700]}},
+    {"rule":"R9","severity":"P3","app":"web","route":"/after-sales","no":"56","width":1440,"theme":"dark","role":"salesA","key":"text|CHOICE|0","text":"CHOICE","detail":{"fontWeight":800,"weights":[300,400,500,600,700]}},
+    {"rule":"R9","severity":"P3","app":"web","route":"/stock/products","no":"38","width":1440,"theme":"dark","role":"owner","key":"text|BEST|0","text":"BEST","detail":{"fontWeight":800,"weights":[300,400,500,600,700]}},
+    {"rule":"R9","severity":"P3","app":"web","route":"/stock/products","no":"38","width":1440,"theme":"dark","role":"salesA","key":"text|BEST|0","text":"BEST","detail":{"fontWeight":800,"weights":[300,400,500,600,700]}},
+    {"rule":"R9","severity":"P3","app":"web","route":"/stock/products","no":"38","width":1440,"theme":"dark","role":"owner","key":"text|CHOICE|0","text":"CHOICE","detail":{"fontWeight":800,"weights":[300,400,500,600,700]}},
+    {"rule":"R9","severity":"P3","app":"web","route":"/stock/products","no":"38","width":1440,"theme":"dark","role":"salesA","key":"text|CHOICE|0","text":"CHOICE","detail":{"fontWeight":800,"weights":[300,400,500,600,700]}}
   ],
   "afterOnlyR8": [],
   "persisting": [
@@ -2762,15 +2811,9 @@
     {"rule":"R11","severity":"P3","app":"web","route":"/accounting/tax-disallowed-summary","width":390,"theme":"dark","role":"owner","count":2,"examples":["ออกจากตั้งค่า","เพิ่มเติม"]},
     {"rule":"R11","severity":"P3","app":"web","route":"/accounting/tax-disallowed-summary","width":320,"theme":"light","role":"owner","count":2,"examples":["ออกจากตั้งค่า","เพิ่มเติม"]},
     {"rule":"R11","severity":"P3","app":"web","route":"/accounting/tax-disallowed-summary","width":320,"theme":"dark","role":"owner","count":2,"examples":["ออกจากตั้งค่า","เพิ่มเติม"]},
-    {"rule":"R9","severity":"P3","app":"web","route":"/after-sales","width":1440,"theme":"light","role":"owner","count":2,"examples":["BEST","CHOICE"]},
-    {"rule":"R5","severity":"P1","app":"web","route":"/after-sales","width":1440,"theme":"light","role":"owner","count":3,"examples":["ค่าใช้จ่าย","สัญญาผ่อน","รับเรื่องแล้ว"]},
-    {"rule":"R9","severity":"P3","app":"web","route":"/after-sales","width":1440,"theme":"dark","role":"owner","count":2,"examples":["BEST","CHOICE"]},
-    {"rule":"R5","severity":"P1","app":"web","route":"/after-sales","width":1440,"theme":"dark","role":"owner","count":3,"examples":["ค่าใช้จ่าย","สัญญาผ่อน","รับเรื่องแล้ว"]},
     {"rule":"R11","severity":"P3","app":"web","route":"/after-sales","width":390,"theme":"light","role":"owner","count":1,"examples":["เพิ่มเติม"]},
     {"rule":"R11","severity":"P3","app":"web","route":"/after-sales","width":390,"theme":"dark","role":"owner","count":1,"examples":["เพิ่มเติม"]},
-    {"rule":"R5","severity":"P2","app":"web","route":"/after-sales","width":320,"theme":"light","role":"owner","count":1,"examples":["รับเรื่องแล้ว"]},
     {"rule":"R11","severity":"P3","app":"web","route":"/after-sales","width":320,"theme":"light","role":"owner","count":1,"examples":["เพิ่มเติม"]},
-    {"rule":"R5","severity":"P2","app":"web","route":"/after-sales","width":320,"theme":"dark","role":"owner","count":1,"examples":["รับเรื่องแล้ว"]},
     {"rule":"R11","severity":"P3","app":"web","route":"/after-sales","width":320,"theme":"dark","role":"owner","count":1,"examples":["เพิ่มเติม"]},
     {"rule":"R9","severity":"P3","app":"web","route":"/after-sales/:id","width":1440,"theme":"light","role":"owner","count":2,"examples":["BEST","CHOICE"]},
     {"rule":"R9","severity":"P3","app":"web","route":"/after-sales/:id","width":1440,"theme":"dark","role":"owner","count":2,"examples":["BEST","CHOICE"]},
@@ -4336,17 +4379,11 @@
     {"rule":"R11","severity":"P3","app":"web","route":"/settings/finance/gfin","width":320,"theme":"dark","role":"owner","count":2,"examples":["ออกจากตั้งค่า","เพิ่มเติม"]},
     {"rule":"R9","severity":"P3","app":"web","route":"/settings/finance/interest","width":1440,"theme":"light","role":"owner","count":2,"examples":["BEST","CHOICE"]},
     {"rule":"R1","severity":"P3","app":"web","route":"/settings/finance/interest","width":1440,"theme":"light","role":"owner","count":10,"examples":["รายชื่อผู้ติดต่อ","บริษัท & สาขา","ผู้ใช้ & สิทธิ์","บัญชี & ภาษี","การเงิน & สินเชื่อ"]},
-    {"rule":"R7","severity":"P2","app":"web","route":"/settings/finance/interest","width":1440,"theme":"light","role":"owner","count":1,"examples":["แก้ไข"]},
     {"rule":"R9","severity":"P3","app":"web","route":"/settings/finance/interest","width":1440,"theme":"dark","role":"owner","count":2,"examples":["BEST","CHOICE"]},
     {"rule":"R1","severity":"P3","app":"web","route":"/settings/finance/interest","width":1440,"theme":"dark","role":"owner","count":10,"examples":["รายชื่อผู้ติดต่อ","บริษัท & สาขา","ผู้ใช้ & สิทธิ์","บัญชี & ภาษี","การเงิน & สินเชื่อ"]},
-    {"rule":"R7","severity":"P2","app":"web","route":"/settings/finance/interest","width":1440,"theme":"dark","role":"owner","count":1,"examples":["แก้ไข"]},
-    {"rule":"R7","severity":"P2","app":"web","route":"/settings/finance/interest","width":390,"theme":"light","role":"owner","count":1,"examples":["แก้ไข"]},
     {"rule":"R11","severity":"P3","app":"web","route":"/settings/finance/interest","width":390,"theme":"light","role":"owner","count":2,"examples":["ออกจากตั้งค่า","เพิ่มเติม"]},
-    {"rule":"R7","severity":"P2","app":"web","route":"/settings/finance/interest","width":390,"theme":"dark","role":"owner","count":1,"examples":["แก้ไข"]},
     {"rule":"R11","severity":"P3","app":"web","route":"/settings/finance/interest","width":390,"theme":"dark","role":"owner","count":2,"examples":["ออกจากตั้งค่า","เพิ่มเติม"]},
-    {"rule":"R7","severity":"P2","app":"web","route":"/settings/finance/interest","width":320,"theme":"light","role":"owner","count":1,"examples":["แก้ไข"]},
     {"rule":"R11","severity":"P3","app":"web","route":"/settings/finance/interest","width":320,"theme":"light","role":"owner","count":2,"examples":["ออกจากตั้งค่า","เพิ่มเติม"]},
-    {"rule":"R7","severity":"P2","app":"web","route":"/settings/finance/interest","width":320,"theme":"dark","role":"owner","count":1,"examples":["แก้ไข"]},
     {"rule":"R11","severity":"P3","app":"web","route":"/settings/finance/interest","width":320,"theme":"dark","role":"owner","count":2,"examples":["ออกจากตั้งค่า","เพิ่มเติม"]},
     {"rule":"R9","severity":"P3","app":"web","route":"/settings/finance/payment-methods","width":1440,"theme":"light","role":"owner","count":2,"examples":["BEST","CHOICE"]},
     {"rule":"R1","severity":"P3","app":"web","route":"/settings/finance/payment-methods","width":1440,"theme":"light","role":"owner","count":10,"examples":["รายชื่อผู้ติดต่อ","บริษัท & สาขา","ผู้ใช้ & สิทธิ์","บัญชี & ภาษี","การเงิน & สินเชื่อ"]},
@@ -4544,9 +4581,7 @@
     {"rule":"R11","severity":"P3","app":"web","route":"/stock/count","width":390,"theme":"dark","role":"owner","count":1,"examples":["เพิ่มเติม"]},
     {"rule":"R11","severity":"P3","app":"web","route":"/stock/count","width":320,"theme":"light","role":"owner","count":1,"examples":["เพิ่มเติม"]},
     {"rule":"R11","severity":"P3","app":"web","route":"/stock/count","width":320,"theme":"dark","role":"owner","count":1,"examples":["เพิ่มเติม"]},
-    {"rule":"R9","severity":"P3","app":"web","route":"/stock/products","width":1440,"theme":"light","role":"owner","count":2,"examples":["BEST","CHOICE"]},
     {"rule":"R7","severity":"P2","app":"web","route":"/stock/products","width":1440,"theme":"light","role":"owner","count":2,"examples":["iPhone (ทดสอบระบบ)","iPhone (ทดสอบระบบ)"]},
-    {"rule":"R9","severity":"P3","app":"web","route":"/stock/products","width":1440,"theme":"dark","role":"owner","count":2,"examples":["BEST","CHOICE"]},
     {"rule":"R7","severity":"P2","app":"web","route":"/stock/products","width":1440,"theme":"dark","role":"owner","count":2,"examples":["iPhone (ทดสอบระบบ)","iPhone (ทดสอบระบบ)"]},
     {"rule":"R7","severity":"P2","app":"web","route":"/stock/products","width":390,"theme":"light","role":"owner","count":2,"examples":["iPhone (ทดสอบระบบ)","iPhone (ทดสอบระบบ)"]},
     {"rule":"R11","severity":"P3","app":"web","route":"/stock/products","width":390,"theme":"light","role":"owner","count":1,"examples":["เพิ่มเติม"]},
@@ -4676,15 +4711,9 @@
     {"rule":"R11","severity":"P3","app":"web","route":"/accounting/tax-disallowed-summary","width":390,"theme":"dark","role":"salesA","count":1,"examples":["เพิ่มเติม"]},
     {"rule":"R11","severity":"P3","app":"web","route":"/accounting/tax-disallowed-summary","width":320,"theme":"light","role":"salesA","count":1,"examples":["เพิ่มเติม"]},
     {"rule":"R11","severity":"P3","app":"web","route":"/accounting/tax-disallowed-summary","width":320,"theme":"dark","role":"salesA","count":1,"examples":["เพิ่มเติม"]},
-    {"rule":"R9","severity":"P3","app":"web","route":"/after-sales","width":1440,"theme":"light","role":"salesA","count":2,"examples":["BEST","CHOICE"]},
-    {"rule":"R5","severity":"P1","app":"web","route":"/after-sales","width":1440,"theme":"light","role":"salesA","count":3,"examples":["ค่าใช้จ่าย","สัญญาผ่อน","รับเรื่องแล้ว"]},
-    {"rule":"R9","severity":"P3","app":"web","route":"/after-sales","width":1440,"theme":"dark","role":"salesA","count":2,"examples":["BEST","CHOICE"]},
-    {"rule":"R5","severity":"P1","app":"web","route":"/after-sales","width":1440,"theme":"dark","role":"salesA","count":3,"examples":["ค่าใช้จ่าย","สัญญาผ่อน","รับเรื่องแล้ว"]},
     {"rule":"R11","severity":"P3","app":"web","route":"/after-sales","width":390,"theme":"light","role":"salesA","count":1,"examples":["เพิ่มเติม"]},
     {"rule":"R11","severity":"P3","app":"web","route":"/after-sales","width":390,"theme":"dark","role":"salesA","count":1,"examples":["เพิ่มเติม"]},
-    {"rule":"R5","severity":"P2","app":"web","route":"/after-sales","width":320,"theme":"light","role":"salesA","count":1,"examples":["รับเรื่องแล้ว"]},
     {"rule":"R11","severity":"P3","app":"web","route":"/after-sales","width":320,"theme":"light","role":"salesA","count":1,"examples":["เพิ่มเติม"]},
-    {"rule":"R5","severity":"P2","app":"web","route":"/after-sales","width":320,"theme":"dark","role":"salesA","count":1,"examples":["รับเรื่องแล้ว"]},
     {"rule":"R11","severity":"P3","app":"web","route":"/after-sales","width":320,"theme":"dark","role":"salesA","count":1,"examples":["เพิ่มเติม"]},
     {"rule":"R9","severity":"P3","app":"web","route":"/after-sales/:id","width":1440,"theme":"light","role":"salesA","count":2,"examples":["BEST","CHOICE"]},
     {"rule":"R9","severity":"P3","app":"web","route":"/after-sales/:id","width":1440,"theme":"dark","role":"salesA","count":2,"examples":["BEST","CHOICE"]},
@@ -5342,9 +5371,7 @@
     {"rule":"R11","severity":"P3","app":"web","route":"/stock/count","width":390,"theme":"dark","role":"salesA","count":1,"examples":["เพิ่มเติม"]},
     {"rule":"R11","severity":"P3","app":"web","route":"/stock/count","width":320,"theme":"light","role":"salesA","count":1,"examples":["เพิ่มเติม"]},
     {"rule":"R11","severity":"P3","app":"web","route":"/stock/count","width":320,"theme":"dark","role":"salesA","count":1,"examples":["เพิ่มเติม"]},
-    {"rule":"R9","severity":"P3","app":"web","route":"/stock/products","width":1440,"theme":"light","role":"salesA","count":2,"examples":["BEST","CHOICE"]},
     {"rule":"R7","severity":"P2","app":"web","route":"/stock/products","width":1440,"theme":"light","role":"salesA","count":1,"examples":["iPhone (ทดสอบระบบ)"]},
-    {"rule":"R9","severity":"P3","app":"web","route":"/stock/products","width":1440,"theme":"dark","role":"salesA","count":2,"examples":["BEST","CHOICE"]},
     {"rule":"R7","severity":"P2","app":"web","route":"/stock/products","width":1440,"theme":"dark","role":"salesA","count":1,"examples":["iPhone (ทดสอบระบบ)"]},
     {"rule":"R7","severity":"P2","app":"web","route":"/stock/products","width":390,"theme":"light","role":"salesA","count":1,"examples":["iPhone (ทดสอบระบบ)"]},
     {"rule":"R11","severity":"P3","app":"web","route":"/stock/products","width":390,"theme":"light","role":"salesA","count":1,"examples":["เพิ่มเติม"]},
@@ -5451,15 +5478,15 @@
     {"rank":19,"tier":"delta","rule":"D1","app":"web","route":"/liff/history","no":"20","width":390,"theme":"dark","role":"liff","key":"badge|ใบเสร็จ|3","text":"ใบเสร็จ","detail":{"before":28.249954223632812,"after":33.89996337890625,"change":0.2000006481620016},"screenshot":"admin-after-owner/uxui-pages/route-20-390-dark.png"},
     {"rank":20,"tier":"delta","rule":"D1","app":"web","route":"/liff/history","no":"20","width":320,"theme":"light","role":"liff","key":"badge|ใบเสร็จ|0","text":"ใบเสร็จ","detail":{"before":28.249954223632812,"after":33.89996337890625,"change":0.2000006481620016},"screenshot":"admin-after-owner/uxui-pages/route-20-320-light.png"},
     {"rank":21,"tier":"persisting-p1","rule":"R4","severity":"P1","app":"web","route":"/contracts/create","no":"79","width":1440,"theme":"light","role":"salesA","key":"text|สาขา: ทดสอบระบบ DOCS-~ สาขา A|0","text":"สาขา: ทดสอบระบบ DOCS-3500EF04 สาขา A","detail":{"inkHeight":8.868001937866211,"lineHeight":18,"scrollOverflowY":true,"overflowClip":"both"},"screenshot":"admin-after-salesA/uxui-pages/route-79-1440-light.png"},
-    {"rank":22,"tier":"persisting-p1","rule":"R5","severity":"P1","app":"web","route":"/after-sales","no":"56","width":1440,"theme":"light","role":"owner","key":"th|ค่าใช้จ่าย|0","text":"ค่าใช้จ่าย","detail":{"kind":"th","lines":2},"screenshot":"admin-after-owner/uxui-pages/route-56-1440-light.png"},
+    {"rank":22,"tier":"persisting-p1","rule":"R5","severity":"P1","app":"web","route":"/assets","no":"161","width":1440,"theme":"light","role":"owner","key":"button|TEST-ACT-DOCS-~|0","text":"TEST-ACT-DOCS-8F337B0C","detail":{"kind":"button","lines":2},"screenshot":"admin-after-owner/uxui-pages/route-161-1440-light.png"},
     {"rank":23,"tier":"persisting-p1","rule":"R4","severity":"P1","app":"web","route":"/contracts/create","no":"79","width":1440,"theme":"light","role":"salesA","key":"text|สาขา: ทดสอบระบบ DOCS-~ สาขา B|0","text":"สาขา: ทดสอบระบบ DOCS-3500EF04 สาขา B","detail":{"inkHeight":8.868001937866211,"lineHeight":18,"scrollOverflowY":true,"overflowClip":"both"},"screenshot":"admin-after-salesA/uxui-pages/route-79-1440-light.png"},
-    {"rank":24,"tier":"persisting-p1","rule":"R5","severity":"P1","app":"web","route":"/after-sales","no":"56","width":1440,"theme":"light","role":"salesA","key":"th|ค่าใช้จ่าย|0","text":"ค่าใช้จ่าย","detail":{"kind":"th","lines":2},"screenshot":"admin-after-salesA/uxui-pages/route-56-1440-light.png"},
+    {"rank":24,"tier":"persisting-p1","rule":"R5","severity":"P1","app":"web","route":"/assets","no":"161","width":1440,"theme":"light","role":"owner","key":"button|TEST-UI-DOCS-~|0","text":"TEST-UI-DOCS-8F337B0C","detail":{"kind":"button","lines":2},"screenshot":"admin-after-owner/uxui-pages/route-161-1440-light.png"},
     {"rank":25,"tier":"persisting-p1","rule":"R4","severity":"P1","app":"web","route":"/contracts/create","no":"79","width":1440,"theme":"light","role":"owner","key":"text|สาขา: ทดสอบระบบ DOCS-~ สาขา A|0","text":"สาขา: ทดสอบระบบ DOCS-8F337B0C สาขา A","detail":{"inkHeight":8.868001937866211,"lineHeight":18,"scrollOverflowY":true,"overflowClip":"both"},"screenshot":"admin-after-owner/uxui-pages/route-79-1440-light.png"},
-    {"rank":26,"tier":"persisting-p1","rule":"R5","severity":"P1","app":"web","route":"/after-sales","no":"56","width":1440,"theme":"light","role":"owner","key":"badge|รับเรื่องแล้ว|0","text":"รับเรื่องแล้ว","detail":{"kind":"badge","lines":2},"screenshot":"admin-after-owner/uxui-pages/route-56-1440-light.png"},
+    {"rank":26,"tier":"persisting-p1","rule":"R5","severity":"P1","app":"web","route":"/assets","no":"161","width":1440,"theme":"dark","role":"owner","key":"button|TEST-ACT-DOCS-~|0","text":"TEST-ACT-DOCS-8F337B0C","detail":{"kind":"button","lines":2},"screenshot":"admin-after-owner/uxui-pages/route-161-1440-dark.png"},
     {"rank":27,"tier":"persisting-p1","rule":"R4","severity":"P1","app":"web","route":"/contracts/create","no":"79","width":1440,"theme":"light","role":"owner","key":"text|สาขา: ทดสอบระบบ DOCS-~ สาขา B|0","text":"สาขา: ทดสอบระบบ DOCS-8F337B0C สาขา B","detail":{"inkHeight":8.868001937866211,"lineHeight":18,"scrollOverflowY":true,"overflowClip":"both"},"screenshot":"admin-after-owner/uxui-pages/route-79-1440-light.png"},
-    {"rank":28,"tier":"persisting-p1","rule":"R5","severity":"P1","app":"web","route":"/after-sales","no":"56","width":1440,"theme":"light","role":"salesA","key":"badge|รับเรื่องแล้ว|0","text":"รับเรื่องแล้ว","detail":{"kind":"badge","lines":2},"screenshot":"admin-after-salesA/uxui-pages/route-56-1440-light.png"},
+    {"rank":28,"tier":"persisting-p1","rule":"R5","severity":"P1","app":"web","route":"/assets","no":"161","width":1440,"theme":"dark","role":"owner","key":"button|TEST-UI-DOCS-~|0","text":"TEST-UI-DOCS-8F337B0C","detail":{"kind":"button","lines":2},"screenshot":"admin-after-owner/uxui-pages/route-161-1440-dark.png"},
     {"rank":29,"tier":"persisting-p1","rule":"R4","severity":"P1","app":"web","route":"/forgot-password","no":"6","width":1440,"theme":"light","role":"owner","key":"heading|ระบบจัดการร้านครบวงจร|0","text":"ระบบจัดการร้านครบวงจร","detail":{"inkHeight":25.860000610351562,"lineHeight":37.5,"scrollOverflowY":true,"overflowClip":"both"},"screenshot":"admin-after-owner/uxui-pages/route-6-1440-light.png"},
-    {"rank":30,"tier":"persisting-p1","rule":"R5","severity":"P1","app":"web","route":"/after-sales","no":"56","width":1440,"theme":"light","role":"owner","key":"badge|สัญญาผ่อน|0","text":"สัญญาผ่อน","detail":{"kind":"badge","lines":2},"screenshot":"admin-after-owner/uxui-pages/route-56-1440-light.png"}
+    {"rank":30,"tier":"persisting-p1","rule":"R4","severity":"P1","app":"web","route":"/forgot-password","no":"6","width":1440,"theme":"light","role":"salesA","key":"heading|ระบบจัดการร้านครบวงจร|0","text":"ระบบจัดการร้านครบวงจร","detail":{"inkHeight":25.860000610351562,"lineHeight":37.5,"scrollOverflowY":true,"overflowClip":"both"},"screenshot":"admin-after-salesA/uxui-pages/route-6-1440-light.png"}
   ],
   "routes": [
     {"app":"shop","route":"/account","width":1440,"theme":"light","role":"customer","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":2,"resolved":0,"D1":0,"D2":0,"R8":0}},
@@ -5678,12 +5705,12 @@
     {"app":"web","no":"203","route":"/accounting/tax-disallowed-summary","width":390,"theme":"dark","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":2,"resolved":0,"D1":0,"D2":0,"R8":0}},
     {"app":"web","no":"203","route":"/accounting/tax-disallowed-summary","width":320,"theme":"light","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":2,"resolved":0,"D1":0,"D2":0,"R8":0}},
     {"app":"web","no":"203","route":"/accounting/tax-disallowed-summary","width":320,"theme":"dark","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":2,"resolved":0,"D1":0,"D2":0,"R8":0}},
-    {"app":"web","no":"56","route":"/after-sales","width":1440,"theme":"light","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":5,"resolved":0,"D1":0,"D2":0,"R8":0}},
-    {"app":"web","no":"56","route":"/after-sales","width":1440,"theme":"dark","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":5,"resolved":0,"D1":0,"D2":0,"R8":0}},
+    {"app":"web","no":"56","route":"/after-sales","width":1440,"theme":"light","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":0,"resolved":5,"D1":1,"D2":0,"R8":0}},
+    {"app":"web","no":"56","route":"/after-sales","width":1440,"theme":"dark","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":0,"resolved":5,"D1":1,"D2":0,"R8":0}},
     {"app":"web","no":"56","route":"/after-sales","width":390,"theme":"light","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":1,"resolved":0,"D1":0,"D2":0,"R8":0}},
     {"app":"web","no":"56","route":"/after-sales","width":390,"theme":"dark","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":1,"resolved":0,"D1":0,"D2":0,"R8":0}},
-    {"app":"web","no":"56","route":"/after-sales","width":320,"theme":"light","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":2,"resolved":0,"D1":0,"D2":0,"R8":0}},
-    {"app":"web","no":"56","route":"/after-sales","width":320,"theme":"dark","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":2,"resolved":0,"D1":0,"D2":0,"R8":0}},
+    {"app":"web","no":"56","route":"/after-sales","width":320,"theme":"light","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":1,"resolved":1,"D1":0,"D2":0,"R8":0}},
+    {"app":"web","no":"56","route":"/after-sales","width":320,"theme":"dark","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":1,"resolved":1,"D1":0,"D2":0,"R8":0}},
     {"app":"web","no":"58","route":"/after-sales/:id","width":1440,"theme":"light","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":2,"resolved":0,"D1":0,"D2":0,"R8":0}},
     {"app":"web","no":"58","route":"/after-sales/:id","width":1440,"theme":"dark","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":2,"resolved":0,"D1":0,"D2":0,"R8":0}},
     {"app":"web","no":"58","route":"/after-sales/:id","width":390,"theme":"light","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":1,"resolved":0,"D1":0,"D2":0,"R8":0}},
@@ -6890,12 +6917,12 @@
     {"app":"web","no":"237","route":"/settings/finance/gfin","width":390,"theme":"dark","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":2,"resolved":0,"D1":0,"D2":0,"R8":0}},
     {"app":"web","no":"237","route":"/settings/finance/gfin","width":320,"theme":"light","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":2,"resolved":0,"D1":0,"D2":0,"R8":0}},
     {"app":"web","no":"237","route":"/settings/finance/gfin","width":320,"theme":"dark","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":2,"resolved":0,"D1":0,"D2":0,"R8":0}},
-    {"app":"web","no":"235","route":"/settings/finance/interest","width":1440,"theme":"light","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":13,"resolved":1,"D1":0,"D2":0,"R8":0}},
-    {"app":"web","no":"235","route":"/settings/finance/interest","width":1440,"theme":"dark","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":13,"resolved":1,"D1":0,"D2":0,"R8":0}},
-    {"app":"web","no":"235","route":"/settings/finance/interest","width":390,"theme":"light","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":3,"resolved":1,"D1":0,"D2":0,"R8":0}},
-    {"app":"web","no":"235","route":"/settings/finance/interest","width":390,"theme":"dark","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":3,"resolved":1,"D1":0,"D2":0,"R8":0}},
-    {"app":"web","no":"235","route":"/settings/finance/interest","width":320,"theme":"light","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":3,"resolved":1,"D1":0,"D2":0,"R8":0}},
-    {"app":"web","no":"235","route":"/settings/finance/interest","width":320,"theme":"dark","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":3,"resolved":1,"D1":0,"D2":0,"R8":0}},
+    {"app":"web","no":"235","route":"/settings/finance/interest","width":1440,"theme":"light","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":12,"resolved":2,"D1":0,"D2":0,"R8":0}},
+    {"app":"web","no":"235","route":"/settings/finance/interest","width":1440,"theme":"dark","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":12,"resolved":2,"D1":0,"D2":0,"R8":0}},
+    {"app":"web","no":"235","route":"/settings/finance/interest","width":390,"theme":"light","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":2,"resolved":2,"D1":0,"D2":0,"R8":0}},
+    {"app":"web","no":"235","route":"/settings/finance/interest","width":390,"theme":"dark","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":2,"resolved":2,"D1":0,"D2":0,"R8":0}},
+    {"app":"web","no":"235","route":"/settings/finance/interest","width":320,"theme":"light","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":2,"resolved":2,"D1":0,"D2":0,"R8":0}},
+    {"app":"web","no":"235","route":"/settings/finance/interest","width":320,"theme":"dark","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":2,"resolved":2,"D1":0,"D2":0,"R8":0}},
     {"app":"web","no":"238","route":"/settings/finance/payment-methods","width":1440,"theme":"light","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":12,"resolved":0,"D1":0,"D2":0,"R8":0}},
     {"app":"web","no":"238","route":"/settings/finance/payment-methods","width":1440,"theme":"dark","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":12,"resolved":0,"D1":0,"D2":0,"R8":0}},
     {"app":"web","no":"238","route":"/settings/finance/payment-methods","width":390,"theme":"light","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":2,"resolved":0,"D1":0,"D2":0,"R8":0}},
@@ -7130,8 +7157,8 @@
     {"app":"web","no":"43","route":"/stock/count","width":390,"theme":"dark","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":1,"resolved":0,"D1":0,"D2":0,"R8":0}},
     {"app":"web","no":"43","route":"/stock/count","width":320,"theme":"light","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":1,"resolved":0,"D1":0,"D2":0,"R8":0}},
     {"app":"web","no":"43","route":"/stock/count","width":320,"theme":"dark","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":1,"resolved":0,"D1":0,"D2":0,"R8":0}},
-    {"app":"web","no":"38","route":"/stock/products","width":1440,"theme":"light","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":4,"resolved":10,"D1":0,"D2":0,"R8":0}},
-    {"app":"web","no":"38","route":"/stock/products","width":1440,"theme":"dark","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":4,"resolved":10,"D1":0,"D2":0,"R8":0}},
+    {"app":"web","no":"38","route":"/stock/products","width":1440,"theme":"light","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":2,"resolved":12,"D1":1,"D2":0,"R8":0}},
+    {"app":"web","no":"38","route":"/stock/products","width":1440,"theme":"dark","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":2,"resolved":12,"D1":1,"D2":0,"R8":0}},
     {"app":"web","no":"38","route":"/stock/products","width":390,"theme":"light","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":3,"resolved":0,"D1":0,"D2":0,"R8":0}},
     {"app":"web","no":"38","route":"/stock/products","width":390,"theme":"dark","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":3,"resolved":0,"D1":0,"D2":0,"R8":0}},
     {"app":"web","no":"38","route":"/stock/products","width":320,"theme":"light","role":"owner","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":3,"resolved":0,"D1":0,"D2":0,"R8":0}},
@@ -7274,12 +7301,12 @@
     {"app":"web","no":"203","route":"/accounting/tax-disallowed-summary","width":390,"theme":"dark","role":"salesA","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":1,"resolved":0,"D1":0,"D2":0,"R8":0}},
     {"app":"web","no":"203","route":"/accounting/tax-disallowed-summary","width":320,"theme":"light","role":"salesA","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":1,"resolved":0,"D1":0,"D2":0,"R8":0}},
     {"app":"web","no":"203","route":"/accounting/tax-disallowed-summary","width":320,"theme":"dark","role":"salesA","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":1,"resolved":0,"D1":0,"D2":0,"R8":0}},
-    {"app":"web","no":"56","route":"/after-sales","width":1440,"theme":"light","role":"salesA","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":5,"resolved":0,"D1":0,"D2":0,"R8":0}},
-    {"app":"web","no":"56","route":"/after-sales","width":1440,"theme":"dark","role":"salesA","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":5,"resolved":0,"D1":0,"D2":0,"R8":0}},
+    {"app":"web","no":"56","route":"/after-sales","width":1440,"theme":"light","role":"salesA","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":0,"resolved":5,"D1":1,"D2":0,"R8":0}},
+    {"app":"web","no":"56","route":"/after-sales","width":1440,"theme":"dark","role":"salesA","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":0,"resolved":5,"D1":1,"D2":0,"R8":0}},
     {"app":"web","no":"56","route":"/after-sales","width":390,"theme":"light","role":"salesA","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":1,"resolved":0,"D1":0,"D2":0,"R8":0}},
     {"app":"web","no":"56","route":"/after-sales","width":390,"theme":"dark","role":"salesA","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":1,"resolved":0,"D1":0,"D2":0,"R8":0}},
-    {"app":"web","no":"56","route":"/after-sales","width":320,"theme":"light","role":"salesA","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":2,"resolved":0,"D1":0,"D2":0,"R8":0}},
-    {"app":"web","no":"56","route":"/after-sales","width":320,"theme":"dark","role":"salesA","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":2,"resolved":0,"D1":0,"D2":0,"R8":0}},
+    {"app":"web","no":"56","route":"/after-sales","width":320,"theme":"light","role":"salesA","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":1,"resolved":1,"D1":0,"D2":0,"R8":0}},
+    {"app":"web","no":"56","route":"/after-sales","width":320,"theme":"dark","role":"salesA","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":1,"resolved":1,"D1":0,"D2":0,"R8":0}},
     {"app":"web","no":"58","route":"/after-sales/:id","width":1440,"theme":"light","role":"salesA","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":2,"resolved":0,"D1":0,"D2":0,"R8":0}},
     {"app":"web","no":"58","route":"/after-sales/:id","width":1440,"theme":"dark","role":"salesA","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":2,"resolved":0,"D1":0,"D2":0,"R8":0}},
     {"app":"web","no":"58","route":"/after-sales/:id","width":390,"theme":"light","role":"salesA","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":1,"resolved":0,"D1":0,"D2":0,"R8":0}},
@@ -8726,8 +8753,8 @@
     {"app":"web","no":"43","route":"/stock/count","width":390,"theme":"dark","role":"salesA","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":1,"resolved":0,"D1":0,"D2":0,"R8":0}},
     {"app":"web","no":"43","route":"/stock/count","width":320,"theme":"light","role":"salesA","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":1,"resolved":0,"D1":0,"D2":0,"R8":0}},
     {"app":"web","no":"43","route":"/stock/count","width":320,"theme":"dark","role":"salesA","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":1,"resolved":0,"D1":0,"D2":0,"R8":0}},
-    {"app":"web","no":"38","route":"/stock/products","width":1440,"theme":"light","role":"salesA","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":3,"resolved":9,"D1":0,"D2":0,"R8":0}},
-    {"app":"web","no":"38","route":"/stock/products","width":1440,"theme":"dark","role":"salesA","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":3,"resolved":9,"D1":0,"D2":0,"R8":0}},
+    {"app":"web","no":"38","route":"/stock/products","width":1440,"theme":"light","role":"salesA","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":1,"resolved":11,"D1":2,"D2":0,"R8":0}},
+    {"app":"web","no":"38","route":"/stock/products","width":1440,"theme":"dark","role":"salesA","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":1,"resolved":11,"D1":2,"D2":0,"R8":0}},
     {"app":"web","no":"38","route":"/stock/products","width":390,"theme":"light","role":"salesA","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":2,"resolved":0,"D1":0,"D2":0,"R8":0}},
     {"app":"web","no":"38","route":"/stock/products","width":390,"theme":"dark","role":"salesA","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":2,"resolved":0,"D1":0,"D2":0,"R8":0}},
     {"app":"web","no":"38","route":"/stock/products","width":320,"theme":"light","role":"salesA","beforeStatus":"rendered","afterStatus":"rendered","counts":{"new":{"P1":0,"P2":0,"P3":0},"escalated":0,"persisting":2,"resolved":0,"D1":0,"D2":0,"R8":0}},

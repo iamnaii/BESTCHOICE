@@ -12,6 +12,7 @@ function headerClasses(src: string) {
 
 describe.each([
   ['AccountRolesPage.tsx'],
+  ['after-sales/CaseTable.tsx'],
   ['ExpenseDetailPage.tsx'],
   ['WhtReportPage.tsx'],
   ['SettingsPage/components/UserPermissionTable.tsx'],
@@ -24,5 +25,19 @@ describe.each([
   });
   it('table sits in a horizontal scroll container', () => {
     expect(src).toMatch(/overflow-x-auto/);
+  });
+});
+
+// /after-sales CaseTable draws its own chips (not the shared Badge): they must never wrap either.
+describe('after-sales/CaseTable.tsx chips', () => {
+  const src = read('after-sales/CaseTable.tsx');
+  it.each([
+    ['StageChip', /className=\{`inline-flex[^`]*`\}/],
+    ['AwaitingMgrChip', /className="inline-flex[^"]*border-warning\/40[^"]*"/],
+    ['SOURCE_LABEL chip', /className="inline-block[^"]*bg-muted[^"]*"\s*>\s*\{SOURCE_LABEL/],
+  ])('%s is whitespace-nowrap', (_name, re) => {
+    const m = src.match(re);
+    expect(m).not.toBeNull();
+    expect(m![0]).toContain('whitespace-nowrap');
   });
 });

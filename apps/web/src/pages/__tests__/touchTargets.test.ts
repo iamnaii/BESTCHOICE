@@ -45,6 +45,7 @@ describe.each<[string, string | RegExp, { keepsBox?: boolean; desktopOnlyBox?: b
   ['assets/AssetsListPage.tsx', '{row.assetCode}', {}],
   ['liff/LiffContract.tsx', 'แสดงอีก', {}],
   ['InterestConfigPage.tsx', 'สร้างตั้งค่าแรก', { keepsBox: true }],
+  ['InterestConfigPage.tsx', />\s*แก้ไข\s*</, { keepsBox: true }],
   ['PricingTemplatesPage.tsx', 'เพิ่มราคาตั้งต้นรายการแรก', { keepsBox: true }],
   ['DunningSettingsPage.tsx', 'เพิ่ม กฎ แรก', { keepsBox: true }],
   ['LineOaSettingsPage.tsx', "showSecrets['token'] ? 'ซ่อน' : 'แสดง'", {}],

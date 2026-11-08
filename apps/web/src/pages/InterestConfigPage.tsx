@@ -375,7 +375,7 @@ export default function InterestConfigPage() {
             )}
           </div>
           {!editingDefaults && (
-            <button onClick={() => setEditingDefaults(true)} className="text-xs text-primary hover:underline px-2 py-1 ml-4">แก้ไข</button>
+            <button onClick={() => setEditingDefaults(true)} className="inline-flex items-center text-xs text-primary hover:underline px-2 py-1 ml-4 max-lg:min-h-11 lg:min-h-8 max-lg:-my-2.25 lg:-my-0.75">แก้ไข</button>
           )}
         </div>
       </div>

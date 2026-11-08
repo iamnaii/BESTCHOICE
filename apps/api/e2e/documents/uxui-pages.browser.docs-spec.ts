@@ -20,7 +20,8 @@ import { seedSystemUi } from '../ui-fields/system-fixtures';
 //   document   — row.type 'document' (customer documents / paper): no navigation, no measurement, no screenshot
 //   error      — navigation/readiness threw, the root error boundary ("โหลดหน้าใหม่") showed, the row raised
 //                page errors, or the collector threw (e.g. the canvas rejected a font) — `error` says which
-//   redirected — the final pathname differs from the resolved target pathname (query/hash ignored)
+//   redirected — the final pathname differs from the resolved target pathname (query/hash ignored), incl. a
+//                settings-inline panel that never mounted because the role was sent elsewhere (finalPath = there)
 //   empty      — rendered, but the collector found 0 facts or the main region has no text
 //   rendered   — otherwise
 // facts are kept only for `rendered`. LIFF rows get a seeded synthetic customer session + mocked LIFF API
@@ -127,6 +128,8 @@ describe('UX/UI route inventory on isolated full API', () => {
   function typographyRecord(row: typeof inventory[number], width: number, theme: string, item: any, targetPath: string, capture: ThemeCapture | undefined) {
     const base = { no: row.no, route: row.path, width, theme, role };
     const result = (status: TypographyStatus, extra: Record<string, unknown> = {}) => ({ ...base, status, facts: [] as unknown[], target: targetPath, finalPath: capture?.finalPath ?? null, ...extra });
+    // Settings-inline panel never mounted because the page left the target pathname (fix round 1).
+    if (item.panelRedirect) return result('redirected', { finalPath: item.panelRedirect });
     if (item.error) return result('error', { error: item.error });
     if (item.rootError) return result('error', { error: 'root error boundary (โหลดหน้าใหม่)' });
     if (item.pageErrors?.length) return result('error', { error: item.pageErrors.slice(0, 5).join(' | ').slice(0, 700) });
@@ -208,7 +211,18 @@ describe('UX/UI route inventory on isolated full API', () => {
             await page.evaluate(() => document.fonts.ready);
             if (row.type === 'settings-inline') {
               const panel = page.locator(`[id="${row.path.split('#')[1]}"]`);
-              await panel.waitFor({ state: 'attached', timeout: 4000 });
+              if (typography) {
+                try {
+                  await panel.waitFor({ state: 'attached', timeout: 4000 });
+                } catch (error) {
+                  // A role without access to the settings page (salesA) is redirected away before the panel
+                  // mounts: record that as `redirected` (typographyRecord), not as a harness error.
+                  const current = new URL(page.url());
+                  const currentPath = current.pathname + current.search + current.hash;
+                  if (pathnameOf(currentPath) !== pathnameOf(resolved.path)) item.panelRedirect = item.finalPath = currentPath;
+                  throw error;
+                }
+              } else await panel.waitFor({ state: 'attached', timeout: 4000 });
               await panel.scrollIntoViewIfNeeded();
               item.panelText = (await panel.innerText()).slice(0, 500);
             }
@@ -284,7 +298,11 @@ describe('UX/UI route inventory on isolated full API', () => {
       expect(results.filter(r => r.width === viewport.width)).toHaveLength(inventory.length);
       if (typography) {
         // Ruling Y: the audit run passes on complete evidence; REVIEW rows are listed by status, not failed.
-        expect(typographyFiles.filter(f => f.width === viewport.width)).toHaveLength(inventory.length * THEMES.length);
+        // An empty selection (typo in UXUI_ROWS / wrong inventory) must not pass vacuously.
+        expect(inventory.length).toBeGreaterThan(0);
+        // Distinct row × theme keys, not the number of saves: a duplicate save cannot hide a missing JSON.
+        const written = new Set(typographyFiles.filter(f => f.width === viewport.width).map(f => `${f.no}-${f.theme}`));
+        expect([...written].sort()).toEqual(inventory.flatMap(row => THEMES.map(theme => `${row.no}-${theme}`)).sort());
       } else {
         expect(results.filter(r => r.width === viewport.width && r.status === 'REVIEW').map(r => ({ no: r.no, path: r.path, error: r.error, pageErrors: r.pageErrors, rootError: r.rootError, blankThemes: r.themes?.filter((t: any) => !t.text.trim()).map((t: any) => t.theme), overflow: r.themes?.filter((t: any) => t.overflow).map((t: any) => t.theme) }))).toEqual([]);
       }

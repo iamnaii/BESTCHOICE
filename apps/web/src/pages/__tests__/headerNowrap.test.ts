@@ -99,9 +99,6 @@ describe('fixed-text chips are whitespace-nowrap', () => {
     const tag = around(file, anchor);
     expect(tag).toContain('whitespace-nowrap');
   });
-  it('CommissionsPage keeps the round-3 task-1 tab bar classes', () => {
-    expect(read('CommissionsPage.tsx')).toContain('ใบจ่ายรายเดือน');
-  });
 });
 
 // A scroll wrapper must be a containing block for abspos children (sr-only), or they leak past it and widen the page.

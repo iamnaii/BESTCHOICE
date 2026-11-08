@@ -16,8 +16,8 @@ function classBefore(src: string, text: string, tagStart: string): string {
   const region = src.slice(start, idx);
   const all = [...region.matchAll(/className=(?:"([^"]*)"|\{`([^`]*)`\})/g)];
   expect(all.length, `no className for ${text}`).toBeGreaterThan(0);
-  const last = all[0];
-  return last[1] ?? last[2];
+  const own = all[0];
+  return own[1] ?? own[2];
 }
 
 /** className of the first <div className="..."> after `marker`. */
@@ -76,6 +76,24 @@ describe.each(buttons)('%s buttons', (file, texts) => {
   const src = read(`pages/${file}`);
   it.each(texts)('button %j is whitespace-nowrap', (text) => {
     expect(classBefore(src, text, '<button')).toContain('whitespace-nowrap');
+  });
+});
+
+// OtherIncomeViewPage has a second "แก้ไขและ ลงบัญชี" button (full-width sidebar draft shortcut) — pin it too.
+describe('OtherIncomeViewPage sidebar draft edit button', () => {
+  it('second "แก้ไขและ ลงบัญชี" button is whitespace-nowrap', () => {
+    const src = read('pages/other-income/OtherIncomeViewPage.tsx');
+    const text = 'แก้ไขและ ลงบัญชี';
+    const first = src.indexOf(text);
+    expect(first, 'first occurrence').toBeGreaterThan(-1);
+    const idx = src.indexOf(text, first + 1);
+    expect(idx, 'second occurrence').toBeGreaterThan(-1);
+    const start = src.lastIndexOf('<button', idx);
+    expect(start, 'no <button before second occurrence').toBeGreaterThan(-1);
+    const all = [...src.slice(start, idx).matchAll(/className=(?:"([^"]*)"|\{`([^`]*)`\})/g)];
+    expect(all.length, 'no className for second occurrence').toBeGreaterThan(0);
+    const own = all[0];
+    expect(own[1] ?? own[2]).toContain('whitespace-nowrap');
   });
 });
 

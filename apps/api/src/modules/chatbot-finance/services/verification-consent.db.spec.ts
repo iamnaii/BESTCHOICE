@@ -19,6 +19,7 @@ import {
   LINE_FINANCE_CONSENT_TEXT,
   LINE_FINANCE_CONSENT_VERSION,
 } from '../../pdpa/line-finance-consent';
+import { noticeDueWindow } from '../../notifications/payment-notice-dedupe';
 
 jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn(), captureMessage: jest.fn() }));
 
@@ -66,9 +67,12 @@ async function requestCode(): Promise<string> {
 const consents = () =>
   prisma.pDPAConsent.findMany({ where: { customerId }, orderBy: { createdAt: 'asc' } });
 
-/** ค่างวดที่ครบกำหนดวันนี้ (วันตามที่รอบแจ้งเตือนคำนวณ — UTC) ของสัญญา ACTIVE */
+/**
+ * ค่างวดที่ครบกำหนดวันนี้ของสัญญา ACTIVE — "วันนี้" ตามวันไทย ตัวเดียวกับที่รอบแจ้งเตือนใช้ (`noticeDueWindow`)
+ * เดิมใช้วันที่ UTC ⇒ ช่วง 00:00–07:00 น. เวลาไทย วัน UTC ยังเป็นเมื่อวาน เทสล้มทุกครั้ง
+ */
 async function seedDuePayment() {
-  const today = new Date(new Date().toISOString().split('T')[0]);
+  const todayBkk = noticeDueWindow(new Date(), 0).gte;
   ids.branch = (await prisma.branch.create({ data: { name: `${tag} สาขา` } })).id;
   ids.user = (
     await prisma.user.create({
@@ -119,7 +123,7 @@ async function seedDuePayment() {
       data: {
         contractId: ids.contract,
         installmentNo: 1,
-        dueDate: new Date(today.getTime() + 6 * 60 * 60 * 1000),
+        dueDate: new Date(todayBkk.getTime() + 6 * 60 * 60 * 1000),
         amountDue: dec('3333.33'),
         status: 'PENDING',
       },

@@ -1,0 +1,1957 @@
+{
+  "rows": [
+    {
+      "app": "admin",
+      "id": "1",
+      "path": "/landing",
+      "type": "page",
+      "component": "LandingPage"
+    },
+    {
+      "app": "admin",
+      "id": "2",
+      "path": "/login",
+      "type": "conditional-page",
+      "component": "LoginPage"
+    },
+    {
+      "app": "admin",
+      "id": "3",
+      "path": "/privacy",
+      "type": "page",
+      "component": "PrivacyPolicyPage"
+    },
+    {
+      "app": "admin",
+      "id": "4",
+      "path": "/privacy/data-deletion",
+      "type": "page",
+      "component": "DataDeletionPage"
+    },
+    {
+      "app": "admin",
+      "id": "5",
+      "path": "/terms",
+      "type": "redirect",
+      "component": "ExternalRedirect"
+    },
+    {
+      "app": "admin",
+      "id": "6",
+      "path": "/forgot-password",
+      "type": "page",
+      "component": "ForgotPasswordPage"
+    },
+    {
+      "app": "admin",
+      "id": "7",
+      "path": "/reset-password",
+      "type": "page",
+      "component": "ResetPasswordPage"
+    },
+    {
+      "app": "admin",
+      "id": "8",
+      "path": "/register",
+      "type": "page",
+      "component": "RegisterInvitePage"
+    },
+    {
+      "app": "admin",
+      "id": "9",
+      "path": "/customer-access/:token",
+      "type": "page",
+      "component": "CustomerPortalPage"
+    },
+    {
+      "app": "admin",
+      "id": "10",
+      "path": "/verify/contracts/:id",
+      "type": "document",
+      "component": "ContractVerifyPage"
+    },
+    {
+      "app": "admin",
+      "id": "11",
+      "path": "/cn/:token",
+      "type": "document",
+      "component": "CreditNoteViewPage"
+    },
+    {
+      "app": "admin",
+      "id": "12",
+      "path": "/visit",
+      "type": "page",
+      "component": "PublicAppointmentPage"
+    },
+    {
+      "app": "admin",
+      "id": "13",
+      "path": "/pay/:token",
+      "type": "page",
+      "component": "LiffPayment"
+    },
+    {
+      "app": "admin",
+      "id": "14",
+      "path": "/liff",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "15",
+      "path": "/contract",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "16",
+      "path": "/history",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "17",
+      "path": "/early-payoff",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "18",
+      "path": "/liff/contract",
+      "type": "page",
+      "component": "LiffContract"
+    },
+    {
+      "app": "admin",
+      "id": "19",
+      "path": "/liff/register",
+      "type": "page",
+      "component": "LiffRegister"
+    },
+    {
+      "app": "admin",
+      "id": "20",
+      "path": "/liff/history",
+      "type": "page",
+      "component": "LiffHistory"
+    },
+    {
+      "app": "admin",
+      "id": "21",
+      "path": "/liff/profile",
+      "type": "page",
+      "component": "LiffProfile"
+    },
+    {
+      "app": "admin",
+      "id": "22",
+      "path": "/liff/early-payoff",
+      "type": "page",
+      "component": "LiffEarlyPayoff"
+    },
+    {
+      "app": "admin",
+      "id": "23",
+      "path": "/liff/finance-verify",
+      "type": "page",
+      "component": "LiffFinanceVerify"
+    },
+    {
+      "app": "admin",
+      "id": "24",
+      "path": "/liff/branches",
+      "type": "page",
+      "component": "LiffBranches"
+    },
+    {
+      "app": "admin",
+      "id": "25",
+      "path": "/liff/receipts",
+      "type": "page",
+      "component": "LiffReceipts"
+    },
+    {
+      "app": "admin",
+      "id": "26",
+      "path": "/liff/warranty",
+      "type": "page",
+      "component": "LiffWarranty"
+    },
+    {
+      "app": "admin",
+      "id": "27",
+      "path": "/liff/notifications",
+      "type": "page",
+      "component": "LiffNotificationSettings"
+    },
+    {
+      "app": "admin",
+      "id": "28",
+      "path": "/liff/debug",
+      "type": "page",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "29",
+      "path": "/liff/*",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "30",
+      "path": "/chat",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "31",
+      "path": "/",
+      "type": "page",
+      "component": "DashboardPage"
+    },
+    {
+      "app": "admin",
+      "id": "32",
+      "path": "/branches",
+      "type": "page",
+      "component": "BranchesPage"
+    },
+    {
+      "app": "admin",
+      "id": "33",
+      "path": "/inventory",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "34",
+      "path": "/purchase-orders",
+      "type": "page",
+      "component": "PurchaseOrdersPage"
+    },
+    {
+      "app": "admin",
+      "id": "35",
+      "path": "/purchase-orders/qc",
+      "type": "page",
+      "component": "QcCenterPage"
+    },
+    {
+      "app": "admin",
+      "id": "36",
+      "path": "/purchase-orders/:id/goods-receivings/:receivingId/print",
+      "type": "page",
+      "component": "GoodsReceiptPrintPage"
+    },
+    {
+      "app": "admin",
+      "id": "37",
+      "path": "/stock",
+      "type": "page",
+      "component": "StockOverviewPage"
+    },
+    {
+      "app": "admin",
+      "id": "38",
+      "path": "/stock/products",
+      "type": "page",
+      "component": "StockProductsPage"
+    },
+    {
+      "app": "admin",
+      "id": "39",
+      "path": "/products",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "40",
+      "path": "/stock/transfers",
+      "type": "page",
+      "component": "StockTransfersPage"
+    },
+    {
+      "app": "admin",
+      "id": "41",
+      "path": "/stock/alerts",
+      "type": "page",
+      "component": "StockAlertsPage"
+    },
+    {
+      "app": "admin",
+      "id": "42",
+      "path": "/stock/adjustments",
+      "type": "page",
+      "component": "StockAdjustmentsPage"
+    },
+    {
+      "app": "admin",
+      "id": "43",
+      "path": "/stock/count",
+      "type": "page",
+      "component": "StockCountPage"
+    },
+    {
+      "app": "admin",
+      "id": "44",
+      "path": "/stock/workflow",
+      "type": "page",
+      "component": "InventoryWorkflowPage"
+    },
+    {
+      "app": "admin",
+      "id": "45",
+      "path": "/stock/branch-receiving",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "46",
+      "path": "/inspections",
+      "type": "page",
+      "component": "InspectionPage"
+    },
+    {
+      "app": "admin",
+      "id": "47",
+      "path": "/inspections/:id",
+      "type": "page",
+      "component": "InspectionDetailPage"
+    },
+    {
+      "app": "admin",
+      "id": "48",
+      "path": "/suppliers",
+      "type": "page",
+      "component": "SuppliersPage"
+    },
+    {
+      "app": "admin",
+      "id": "49",
+      "path": "/suppliers/:id",
+      "type": "page",
+      "component": "SupplierDetailPage"
+    },
+    {
+      "app": "admin",
+      "id": "50",
+      "path": "/products/create",
+      "type": "page",
+      "component": "ProductCreatePage"
+    },
+    {
+      "app": "admin",
+      "id": "51",
+      "path": "/products/:id",
+      "type": "page",
+      "component": "ProductDetailPage"
+    },
+    {
+      "app": "admin",
+      "id": "52",
+      "path": "/stickers",
+      "type": "document",
+      "component": "StickerPrintPage"
+    },
+    {
+      "app": "admin",
+      "id": "53",
+      "path": "/pos",
+      "type": "page",
+      "component": "POSPage"
+    },
+    {
+      "app": "admin",
+      "id": "54",
+      "path": "/sales",
+      "type": "page",
+      "component": "SalesHistoryPage"
+    },
+    {
+      "app": "admin",
+      "id": "55",
+      "path": "/shop/daily-cash",
+      "type": "page",
+      "component": "ShopDailyCashPage"
+    },
+    {
+      "app": "admin",
+      "id": "56",
+      "path": "/after-sales",
+      "type": "page",
+      "component": "AfterSalesPage"
+    },
+    {
+      "app": "admin",
+      "id": "57",
+      "path": "/after-sales/new",
+      "type": "page",
+      "component": "AfterSalesNewPage"
+    },
+    {
+      "app": "admin",
+      "id": "58",
+      "path": "/after-sales/:id",
+      "type": "page",
+      "component": "AfterSalesCasePage"
+    },
+    {
+      "app": "admin",
+      "id": "59",
+      "path": "/imported-sales",
+      "type": "page",
+      "component": "ImportedSalesPage"
+    },
+    {
+      "app": "admin",
+      "id": "60",
+      "path": "/todos",
+      "type": "page",
+      "component": "TodosPage"
+    },
+    {
+      "app": "admin",
+      "id": "61",
+      "path": "/inbox/:roomId?",
+      "type": "page",
+      "component": "UnifiedInboxPage"
+    },
+    {
+      "app": "admin",
+      "id": "62",
+      "path": "/settings/channels",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "63",
+      "path": "/settings/payment-methods",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "64",
+      "path": "/settings/stickers",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "65",
+      "path": "/settings/collections",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "66",
+      "path": "/settings/general",
+      "type": "page",
+      "component": "GeneralSettingsPage"
+    },
+    {
+      "app": "admin",
+      "id": "67",
+      "path": "/settings/document-config",
+      "type": "page",
+      "component": "DocumentConfigPage"
+    },
+    {
+      "app": "admin",
+      "id": "68",
+      "path": "/chatbot-finance",
+      "type": "page",
+      "component": "ChatbotFinanceAnalyticsPage"
+    },
+    {
+      "app": "admin",
+      "id": "69",
+      "path": "/chatbot-finance/sessions",
+      "type": "page",
+      "component": "ChatbotFinanceSessionsPage"
+    },
+    {
+      "app": "admin",
+      "id": "70",
+      "path": "/chatbot-finance/knowledge",
+      "type": "page",
+      "component": "ChatbotFinanceKnowledgePage"
+    },
+    {
+      "app": "admin",
+      "id": "71",
+      "path": "/chatbot-finance/learning",
+      "type": "page",
+      "component": "ChatbotFinanceLearningPage"
+    },
+    {
+      "app": "admin",
+      "id": "72",
+      "path": "/customers",
+      "type": "page",
+      "component": "CustomersPage"
+    },
+    {
+      "app": "admin",
+      "id": "73",
+      "path": "/credit-checks",
+      "type": "page",
+      "component": "CreditChecksPage"
+    },
+    {
+      "app": "admin",
+      "id": "74",
+      "path": "/customers/:id",
+      "type": "page",
+      "component": "CustomerDetailPage"
+    },
+    {
+      "app": "admin",
+      "id": "75",
+      "path": "/contacts",
+      "type": "page",
+      "component": "ContactsPage"
+    },
+    {
+      "app": "admin",
+      "id": "76",
+      "path": "/contacts/:id",
+      "type": "page",
+      "component": "ContactDetailPage"
+    },
+    {
+      "app": "admin",
+      "id": "77",
+      "path": "/customer-intake",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "78",
+      "path": "/contracts",
+      "type": "page",
+      "component": "ContractsPage"
+    },
+    {
+      "app": "admin",
+      "id": "79",
+      "path": "/contracts/create",
+      "type": "page",
+      "component": "ContractCreatePage"
+    },
+    {
+      "app": "admin",
+      "id": "80",
+      "path": "/contracts/:id",
+      "type": "page",
+      "component": "ContractDetailPage"
+    },
+    {
+      "app": "admin",
+      "id": "81",
+      "path": "/contracts/:id/sign",
+      "type": "page",
+      "component": "ContractSignPage"
+    },
+    {
+      "app": "admin",
+      "id": "82",
+      "path": "/contract-templates",
+      "type": "page",
+      "component": "ContractTemplatesPage"
+    },
+    {
+      "app": "admin",
+      "id": "83",
+      "path": "/payments",
+      "type": "page",
+      "component": "PaymentsPage"
+    },
+    {
+      "app": "admin",
+      "id": "84",
+      "path": "/finance-receivable",
+      "type": "page",
+      "component": "FinanceReceivablePage"
+    },
+    {
+      "app": "admin",
+      "id": "85",
+      "path": "/finance-portfolio",
+      "type": "page",
+      "component": "FinancePortfolioPage"
+    },
+    {
+      "app": "admin",
+      "id": "86",
+      "path": "/external-finance-companies/:id",
+      "type": "page",
+      "component": "ExternalFinanceCompanyDetailPage"
+    },
+    {
+      "app": "admin",
+      "id": "87",
+      "path": "/expenses/new",
+      "type": "page",
+      "component": "ExpenseDocumentNewPage"
+    },
+    {
+      "app": "admin",
+      "id": "88",
+      "path": "/expenses/favorites",
+      "type": "page",
+      "component": "ExpenseFavoritesPage"
+    },
+    {
+      "app": "admin",
+      "id": "89",
+      "path": "/expenses/daily-summary",
+      "type": "page",
+      "component": "ExpenseDailySummaryPage"
+    },
+    {
+      "app": "admin",
+      "id": "90",
+      "path": "/expenses/ap-aging",
+      "type": "page",
+      "component": "APAgingPage"
+    },
+    {
+      "app": "admin",
+      "id": "91",
+      "path": "/expenses/:id/voucher",
+      "type": "page",
+      "component": "PaymentVoucherPage"
+    },
+    {
+      "app": "admin",
+      "id": "92",
+      "path": "/expenses/:id",
+      "type": "page",
+      "component": "ExpenseDetailPage"
+    },
+    {
+      "app": "admin",
+      "id": "93",
+      "path": "/expenses",
+      "type": "page",
+      "component": "ExpensesPage"
+    },
+    {
+      "app": "admin",
+      "id": "94",
+      "path": "/commissions",
+      "type": "page",
+      "component": "CommissionsPage"
+    },
+    {
+      "app": "admin",
+      "id": "95",
+      "path": "/payments/import-csv",
+      "type": "page",
+      "component": "PaymentCsvImportPage"
+    },
+    {
+      "app": "admin",
+      "id": "96",
+      "path": "/document-dashboard",
+      "type": "page",
+      "component": "DocumentDashboardPage"
+    },
+    {
+      "app": "admin",
+      "id": "97",
+      "path": "/pdpa",
+      "type": "page",
+      "component": "PDPAPage"
+    },
+    {
+      "app": "admin",
+      "id": "98",
+      "path": "/receipts",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "99",
+      "path": "/receipts/verify/:receiptNumber",
+      "type": "document",
+      "component": "ReceiptVerifyPage"
+    },
+    {
+      "app": "admin",
+      "id": "100",
+      "path": "/overdue",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "101",
+      "path": "/overdue/*",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "102",
+      "path": "/collections",
+      "type": "page",
+      "component": "CollectionsPage"
+    },
+    {
+      "app": "admin",
+      "id": "103",
+      "path": "/letters",
+      "type": "page",
+      "component": "LettersPage"
+    },
+    {
+      "app": "admin",
+      "id": "104",
+      "path": "/collection-dashboard",
+      "type": "page",
+      "component": "CollectionDashboardPage"
+    },
+    {
+      "app": "admin",
+      "id": "105",
+      "path": "/appointments",
+      "type": "page",
+      "component": "StoreAppointmentsPage"
+    },
+    {
+      "app": "admin",
+      "id": "106",
+      "path": "/bookings",
+      "type": "page",
+      "component": "BookingsPage"
+    },
+    {
+      "app": "admin",
+      "id": "107",
+      "path": "/insurance",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "108",
+      "path": "/insurance/new",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "109",
+      "path": "/insurance/warranty-check",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "110",
+      "path": "/insurance/exchange-request/new",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "111",
+      "path": "/insurance/exchange-requests",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "112",
+      "path": "/defect-exchange",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "113",
+      "path": "/insurance/:id",
+      "type": "redirect",
+      "component": "TicketRedirect"
+    },
+    {
+      "app": "admin",
+      "id": "114",
+      "path": "/repossessions",
+      "type": "page",
+      "component": "RepossessionsPage"
+    },
+    {
+      "app": "admin",
+      "id": "115",
+      "path": "/notifications",
+      "type": "page",
+      "component": "NotificationsPage"
+    },
+    {
+      "app": "admin",
+      "id": "116",
+      "path": "/slip-review",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "117",
+      "path": "/reports",
+      "type": "page",
+      "component": "ReportsPage"
+    },
+    {
+      "app": "admin",
+      "id": "118",
+      "path": "/profit-loss",
+      "type": "page",
+      "component": "ProfitLossPage"
+    },
+    {
+      "app": "admin",
+      "id": "119",
+      "path": "/users",
+      "type": "page",
+      "component": "UsersPage"
+    },
+    {
+      "app": "admin",
+      "id": "120",
+      "path": "/users/new",
+      "type": "page",
+      "component": "UserDetailPage"
+    },
+    {
+      "app": "admin",
+      "id": "121",
+      "path": "/users/:id",
+      "type": "page",
+      "component": "UserDetailPage"
+    },
+    {
+      "app": "admin",
+      "id": "122",
+      "path": "/settings",
+      "type": "redirect",
+      "component": "SettingsIndexRedirect"
+    },
+    {
+      "app": "admin",
+      "id": "123",
+      "path": "/settings/:categoryId",
+      "type": "settings-shell",
+      "component": "SettingsLayout"
+    },
+    {
+      "app": "admin",
+      "id": "124",
+      "path": "/settings/:categoryId/:itemId",
+      "type": "settings-shell",
+      "component": "SettingsItemRoute"
+    },
+    {
+      "app": "admin",
+      "id": "125",
+      "path": "/settings/interest-config",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "126",
+      "path": "/settings/pricing-templates",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "127",
+      "path": "/settings/gfin-rates",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "128",
+      "path": "/audit-logs",
+      "type": "page",
+      "component": "AuditLogsPage"
+    },
+    {
+      "app": "admin",
+      "id": "129",
+      "path": "/financial-audit",
+      "type": "page",
+      "component": "FinancialAuditPage"
+    },
+    {
+      "app": "admin",
+      "id": "130",
+      "path": "/monthly-close",
+      "type": "page",
+      "component": "MonthlyClosePage"
+    },
+    {
+      "app": "admin",
+      "id": "131",
+      "path": "/finance/year-end-closing",
+      "type": "page",
+      "component": "YearEndClosingPage"
+    },
+    {
+      "app": "admin",
+      "id": "132",
+      "path": "/finance/equity",
+      "type": "page",
+      "component": "EquityListPage"
+    },
+    {
+      "app": "admin",
+      "id": "133",
+      "path": "/finance/equity/new",
+      "type": "page",
+      "component": "EquityEntryPage"
+    },
+    {
+      "app": "admin",
+      "id": "134",
+      "path": "/finance/equity/:id/edit",
+      "type": "page",
+      "component": "EquityEntryPage"
+    },
+    {
+      "app": "admin",
+      "id": "135",
+      "path": "/finance/equity/:id",
+      "type": "page",
+      "component": "EquityViewPage"
+    },
+    {
+      "app": "admin",
+      "id": "136",
+      "path": "/finance/dividend-register",
+      "type": "page",
+      "component": "DividendRegisterPage"
+    },
+    {
+      "app": "admin",
+      "id": "137",
+      "path": "/shop/accounting",
+      "type": "page",
+      "component": "ShopAccountingPage"
+    },
+    {
+      "app": "admin",
+      "id": "138",
+      "path": "/accounting/intercompany",
+      "type": "page",
+      "component": "IntercompanySettlementPage"
+    },
+    {
+      "app": "admin",
+      "id": "139",
+      "path": "/finance/cash-flow",
+      "type": "page",
+      "component": "CashFlowPage"
+    },
+    {
+      "app": "admin",
+      "id": "140",
+      "path": "/finance/equity-statement",
+      "type": "page",
+      "component": "EquityStatementPage"
+    },
+    {
+      "app": "admin",
+      "id": "141",
+      "path": "/finance/general-ledger",
+      "type": "page",
+      "component": "GeneralLedgerPage"
+    },
+    {
+      "app": "admin",
+      "id": "142",
+      "path": "/system-status",
+      "type": "page",
+      "component": "SystemStatusPage"
+    },
+    {
+      "app": "admin",
+      "id": "143",
+      "path": "/migration",
+      "type": "page",
+      "component": "MigrationPage"
+    },
+    {
+      "app": "admin",
+      "id": "144",
+      "path": "/settings/line-oa",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "145",
+      "path": "/finance/vat",
+      "type": "page",
+      "component": "VatPage"
+    },
+    {
+      "app": "admin",
+      "id": "146",
+      "path": "/finance/wht",
+      "type": "page",
+      "component": "WhtPage"
+    },
+    {
+      "app": "admin",
+      "id": "147",
+      "path": "/finance/wht-report",
+      "type": "page",
+      "component": "WhtReportPage"
+    },
+    {
+      "app": "admin",
+      "id": "148",
+      "path": "/finance/sso-report",
+      "type": "page",
+      "component": "SsoReportPage"
+    },
+    {
+      "app": "admin",
+      "id": "149",
+      "path": "/finance/wht-annual",
+      "type": "page",
+      "component": "WhtAnnualPage"
+    },
+    {
+      "app": "admin",
+      "id": "150",
+      "path": "/finance/e-tax",
+      "type": "page",
+      "component": "ETaxPage"
+    },
+    {
+      "app": "admin",
+      "id": "151",
+      "path": "/finance/vat-auto-journal",
+      "type": "page",
+      "component": "VatAutoJournalPage"
+    },
+    {
+      "app": "admin",
+      "id": "152",
+      "path": "/settings/e-tax-config",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "153",
+      "path": "/tax-reports",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "154",
+      "path": "/settings/companies",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "155",
+      "path": "/settings/dunning",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "156",
+      "path": "/settings/sms-templates",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "157",
+      "path": "/settings/peak-sync",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "158",
+      "path": "/finance/peak-export",
+      "type": "page",
+      "component": "PeakExportPage"
+    },
+    {
+      "app": "admin",
+      "id": "159",
+      "path": "/trade-in",
+      "type": "page",
+      "component": "TradeInPage"
+    },
+    {
+      "app": "admin",
+      "id": "160",
+      "path": "/promotions",
+      "type": "page",
+      "component": "PromotionsPage"
+    },
+    {
+      "app": "admin",
+      "id": "161",
+      "path": "/assets",
+      "type": "page",
+      "component": "AssetsListPage"
+    },
+    {
+      "app": "admin",
+      "id": "162",
+      "path": "/assets/new",
+      "type": "page",
+      "component": "AssetEntryPage"
+    },
+    {
+      "app": "admin",
+      "id": "163",
+      "path": "/assets/:id/edit",
+      "type": "page",
+      "component": "AssetEntryPage"
+    },
+    {
+      "app": "admin",
+      "id": "164",
+      "path": "/assets/transfers",
+      "type": "page",
+      "component": "AssetTransfersListPage"
+    },
+    {
+      "app": "admin",
+      "id": "165",
+      "path": "/assets/register",
+      "type": "page",
+      "component": "AssetRegisterPage"
+    },
+    {
+      "app": "admin",
+      "id": "166",
+      "path": "/assets/journal",
+      "type": "page",
+      "component": "AssetJournalPage"
+    },
+    {
+      "app": "admin",
+      "id": "167",
+      "path": "/assets/summary-report",
+      "type": "page",
+      "component": "AssetSummaryReportPage"
+    },
+    {
+      "app": "admin",
+      "id": "168",
+      "path": "/assets/period-close",
+      "type": "page",
+      "component": "AssetPeriodClosePage"
+    },
+    {
+      "app": "admin",
+      "id": "169",
+      "path": "/assets/depreciation",
+      "type": "page",
+      "component": "DepreciationPage"
+    },
+    {
+      "app": "admin",
+      "id": "170",
+      "path": "/assets/audit",
+      "type": "page",
+      "component": "AssetAuditPage"
+    },
+    {
+      "app": "admin",
+      "id": "171",
+      "path": "/assets/:id",
+      "type": "page",
+      "component": "AssetDetailPage"
+    },
+    {
+      "app": "admin",
+      "id": "172",
+      "path": "/assets/:id/dispose",
+      "type": "page",
+      "component": "AssetDisposePage"
+    },
+    {
+      "app": "admin",
+      "id": "173",
+      "path": "/assets/:id/schedule",
+      "type": "page",
+      "component": "AssetSchedulePage"
+    },
+    {
+      "app": "admin",
+      "id": "174",
+      "path": "/assets/:id/audit",
+      "type": "page",
+      "component": "AssetAuditPage"
+    },
+    {
+      "app": "admin",
+      "id": "175",
+      "path": "/depreciation",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "176",
+      "path": "/settings/chart-of-accounts",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "177",
+      "path": "/finance/bank-accounts",
+      "type": "page",
+      "component": "BankAccountsPage"
+    },
+    {
+      "app": "admin",
+      "id": "178",
+      "path": "/settings/account-roles",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "179",
+      "path": "/analytics",
+      "type": "page",
+      "component": "AnalyticsPage"
+    },
+    {
+      "app": "admin",
+      "id": "180",
+      "path": "/webhooks",
+      "type": "page",
+      "component": "WebhooksPage"
+    },
+    {
+      "app": "admin",
+      "id": "181",
+      "path": "/chat-analytics",
+      "type": "page",
+      "component": "ChatAnalyticsPage"
+    },
+    {
+      "app": "admin",
+      "id": "182",
+      "path": "/canned-responses",
+      "type": "page",
+      "component": "CannedResponseAdminPage"
+    },
+    {
+      "app": "admin",
+      "id": "183",
+      "path": "/settings/ai-chat",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "184",
+      "path": "/settings/ai-training",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "185",
+      "path": "/settings/ai-performance",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "186",
+      "path": "/settings/ai-admin",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "187",
+      "path": "/settings/ai-persona",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "188",
+      "path": "/settings/system/integrations",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "189",
+      "path": "/settings/system/mdm",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "190",
+      "path": "/settings/mdm-test",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "191",
+      "path": "/mdm",
+      "type": "page",
+      "component": "MdmDashboardPage"
+    },
+    {
+      "app": "admin",
+      "id": "192",
+      "path": "/settings/rich-menu",
+      "type": "page",
+      "component": "RichMenuPage"
+    },
+    {
+      "app": "admin",
+      "id": "193",
+      "path": "/settings/line-greeting",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "194",
+      "path": "/profile",
+      "type": "page",
+      "component": "UserProfilePage"
+    },
+    {
+      "app": "admin",
+      "id": "195",
+      "path": "/other-income",
+      "type": "page",
+      "component": "OtherIncomeListPage"
+    },
+    {
+      "app": "admin",
+      "id": "196",
+      "path": "/other-income/new",
+      "type": "page",
+      "component": "OtherIncomeEntryPage"
+    },
+    {
+      "app": "admin",
+      "id": "197",
+      "path": "/other-income/daily-sheet",
+      "type": "page",
+      "component": "OtherIncomeDailySheetPage"
+    },
+    {
+      "app": "admin",
+      "id": "198",
+      "path": "/other-income/pending-approval",
+      "type": "page",
+      "component": "OtherIncomePendingApprovalPage"
+    },
+    {
+      "app": "admin",
+      "id": "199",
+      "path": "/other-income/templates",
+      "type": "page",
+      "component": "OtherIncomeTemplatesPage"
+    },
+    {
+      "app": "admin",
+      "id": "200",
+      "path": "/other-income/:id",
+      "type": "page",
+      "component": "OtherIncomeViewPage"
+    },
+    {
+      "app": "admin",
+      "id": "201",
+      "path": "/other-income/:id/edit",
+      "type": "page",
+      "component": "OtherIncomeEntryPage"
+    },
+    {
+      "app": "admin",
+      "id": "202",
+      "path": "/accounting/periods",
+      "type": "redirect",
+      "component": "PeriodsRedirect"
+    },
+    {
+      "app": "admin",
+      "id": "203",
+      "path": "/accounting/tax-disallowed-summary",
+      "type": "page",
+      "component": "TaxDisallowedSummaryPage"
+    },
+    {
+      "app": "admin",
+      "id": "204",
+      "path": "/settings/brands",
+      "type": "placeholder",
+      "component": "ComingSoonPage"
+    },
+    {
+      "app": "admin",
+      "id": "205",
+      "path": "/settings/backup",
+      "type": "placeholder",
+      "component": "ComingSoonPage"
+    },
+    {
+      "app": "admin",
+      "id": "206",
+      "path": "/finance/contract-cancellation",
+      "type": "page",
+      "component": "ContractCancellationPage"
+    },
+    {
+      "app": "admin",
+      "id": "207",
+      "path": "/finance/balance-sheet",
+      "type": "page",
+      "component": "BalanceSheetPage"
+    },
+    {
+      "app": "admin",
+      "id": "208",
+      "path": "/finance/aging-report",
+      "type": "page",
+      "component": "AgingReportPage"
+    },
+    {
+      "app": "admin",
+      "id": "209",
+      "path": "/finance/general-journal",
+      "type": "page",
+      "component": "GeneralJournalPage"
+    },
+    {
+      "app": "admin",
+      "id": "210",
+      "path": "/finance/bad-debt-report",
+      "type": "page",
+      "component": "BadDebtReportPage"
+    },
+    {
+      "app": "admin",
+      "id": "211",
+      "path": "/finance/intercompany-report",
+      "type": "page",
+      "component": "IntercompanyReportPage"
+    },
+    {
+      "app": "admin",
+      "id": "212",
+      "path": "/finance/e-receipt-auto",
+      "type": "page",
+      "component": "EReceiptAutoPage"
+    },
+    {
+      "app": "admin",
+      "id": "213",
+      "path": "*",
+      "type": "redirect",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "214",
+      "path": "/settings/company",
+      "type": "settings-category",
+      "component": "SettingsCategoryRoute"
+    },
+    {
+      "app": "admin",
+      "id": "215",
+      "path": "/settings/company#company-info",
+      "type": "settings-inline",
+      "component": "CompanyTab"
+    },
+    {
+      "app": "admin",
+      "id": "216",
+      "path": "/settings/company/entities",
+      "type": "settings-route",
+      "component": "CompanySettingsPage"
+    },
+    {
+      "app": "admin",
+      "id": "217",
+      "path": "/branches",
+      "type": "settings-external",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "218",
+      "path": "/settings/access",
+      "type": "settings-category",
+      "component": "SettingsCategoryRoute"
+    },
+    {
+      "app": "admin",
+      "id": "219",
+      "path": "/users",
+      "type": "settings-external",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "220",
+      "path": "/settings/access/account-roles",
+      "type": "settings-route",
+      "component": "AccountRolesPage"
+    },
+    {
+      "app": "admin",
+      "id": "221",
+      "path": "/settings/access#maker-checker",
+      "type": "settings-inline",
+      "component": "MakerCheckerToggle"
+    },
+    {
+      "app": "admin",
+      "id": "222",
+      "path": "/settings/access#accounting-permissions",
+      "type": "settings-inline",
+      "component": "AccountingPermissionsCard"
+    },
+    {
+      "app": "admin",
+      "id": "223",
+      "path": "/settings/access#payment-approval-permissions",
+      "type": "settings-inline",
+      "component": "PaymentApprovalPermissionsCard"
+    },
+    {
+      "app": "admin",
+      "id": "224",
+      "path": "/settings/access#reverse-permission",
+      "type": "settings-inline",
+      "component": "ReversePermissionCard"
+    },
+    {
+      "app": "admin",
+      "id": "225",
+      "path": "/settings/access#reverse-reasons",
+      "type": "settings-inline",
+      "component": "ReverseReasonsManagementCard"
+    },
+    {
+      "app": "admin",
+      "id": "226",
+      "path": "/settings/access#attachment",
+      "type": "settings-inline",
+      "component": "AttachmentTab"
+    },
+    {
+      "app": "admin",
+      "id": "227",
+      "path": "/settings/accounting",
+      "type": "settings-category",
+      "component": "SettingsCategoryRoute"
+    },
+    {
+      "app": "admin",
+      "id": "228",
+      "path": "/settings/accounting#vat",
+      "type": "settings-inline",
+      "component": "VatTab"
+    },
+    {
+      "app": "admin",
+      "id": "229",
+      "path": "/settings/accounting#periods",
+      "type": "settings-inline",
+      "component": "PeriodsTab"
+    },
+    {
+      "app": "admin",
+      "id": "230",
+      "path": "/settings/accounting/chart",
+      "type": "settings-route",
+      "component": "ChartOfAccountsPage"
+    },
+    {
+      "app": "admin",
+      "id": "231",
+      "path": "/settings/accounting/peak-sync",
+      "type": "settings-route",
+      "component": "PeakSyncPage"
+    },
+    {
+      "app": "admin",
+      "id": "232",
+      "path": "/settings/accounting/e-tax",
+      "type": "settings-route",
+      "component": "ETaxConfigPage"
+    },
+    {
+      "app": "admin",
+      "id": "233",
+      "path": "/settings/document-config",
+      "type": "settings-external",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "234",
+      "path": "/settings/finance",
+      "type": "settings-category",
+      "component": "SettingsCategoryRoute"
+    },
+    {
+      "app": "admin",
+      "id": "235",
+      "path": "/settings/finance/interest",
+      "type": "settings-route",
+      "component": "InterestConfigPage"
+    },
+    {
+      "app": "admin",
+      "id": "236",
+      "path": "/settings/finance#late-fee",
+      "type": "settings-inline",
+      "component": "LateFeeSettingsCard"
+    },
+    {
+      "app": "admin",
+      "id": "237",
+      "path": "/settings/finance/gfin",
+      "type": "settings-route",
+      "component": "GfinConfigPage"
+    },
+    {
+      "app": "admin",
+      "id": "238",
+      "path": "/settings/finance/payment-methods",
+      "type": "settings-route",
+      "component": "PaymentMethodSettingsPage"
+    },
+    {
+      "app": "admin",
+      "id": "239",
+      "path": "/settings/products",
+      "type": "settings-category",
+      "component": "SettingsCategoryRoute"
+    },
+    {
+      "app": "admin",
+      "id": "240",
+      "path": "/settings/products/pricing",
+      "type": "settings-route",
+      "component": "PricingTemplatesPage"
+    },
+    {
+      "app": "admin",
+      "id": "241",
+      "path": "/settings/products/stickers",
+      "type": "settings-route",
+      "component": "StickersSettingsPage"
+    },
+    {
+      "app": "admin",
+      "id": "242",
+      "path": "/promotions",
+      "type": "settings-external",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "243",
+      "path": "/contract-templates",
+      "type": "settings-external",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "244",
+      "path": "/settings/comms",
+      "type": "settings-category",
+      "component": "SettingsCategoryRoute"
+    },
+    {
+      "app": "admin",
+      "id": "245",
+      "path": "/settings/comms/line-oa",
+      "type": "settings-route",
+      "component": "LineOaSettingsPage"
+    },
+    {
+      "app": "admin",
+      "id": "246",
+      "path": "/settings/rich-menu",
+      "type": "settings-external",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "247",
+      "path": "/settings/comms/greeting",
+      "type": "settings-route",
+      "component": "LineGreetingPage"
+    },
+    {
+      "app": "admin",
+      "id": "248",
+      "path": "/settings/comms/sms",
+      "type": "settings-route",
+      "component": "SmsTemplatesPage"
+    },
+    {
+      "app": "admin",
+      "id": "249",
+      "path": "/settings/comms/channels",
+      "type": "settings-route",
+      "component": "ChannelSettingsPage"
+    },
+    {
+      "app": "admin",
+      "id": "250",
+      "path": "/settings/comms/dunning",
+      "type": "settings-route",
+      "component": "DunningSettingsPage"
+    },
+    {
+      "app": "admin",
+      "id": "251",
+      "path": "/settings/comms/collections",
+      "type": "settings-route",
+      "component": "CollectionsSettingsPage"
+    },
+    {
+      "app": "admin",
+      "id": "252",
+      "path": "/settings/ai",
+      "type": "settings-category",
+      "component": "SettingsCategoryRoute"
+    },
+    {
+      "app": "admin",
+      "id": "253",
+      "path": "/settings/ai/admin",
+      "type": "settings-route",
+      "component": "AiAdminPage"
+    },
+    {
+      "app": "admin",
+      "id": "254",
+      "path": "/settings/ai/persona",
+      "type": "settings-route",
+      "component": "AiPersonaPage"
+    },
+    {
+      "app": "admin",
+      "id": "255",
+      "path": "/settings/ai/assistant",
+      "type": "settings-route",
+      "component": "AiSettingsPage"
+    },
+    {
+      "app": "admin",
+      "id": "256",
+      "path": "/settings/ai/training",
+      "type": "settings-route",
+      "component": "AiTrainingPage"
+    },
+    {
+      "app": "admin",
+      "id": "257",
+      "path": "/settings/ai/performance",
+      "type": "settings-route",
+      "component": "AiPerformancePage"
+    },
+    {
+      "app": "admin",
+      "id": "258",
+      "path": "/settings/integrations",
+      "type": "settings-category",
+      "component": "SettingsCategoryRoute"
+    },
+    {
+      "app": "admin",
+      "id": "259",
+      "path": "/settings/integrations/hub",
+      "type": "settings-route",
+      "component": "IntegrationHubPage"
+    },
+    {
+      "app": "admin",
+      "id": "260",
+      "path": "/settings/integrations/mdm",
+      "type": "settings-route",
+      "component": "MdmTestPage"
+    },
+    {
+      "app": "admin",
+      "id": "261",
+      "path": "/settings/system",
+      "type": "settings-category",
+      "component": "SettingsCategoryRoute"
+    },
+    {
+      "app": "admin",
+      "id": "262",
+      "path": "/settings/system#test-mode",
+      "type": "settings-inline",
+      "component": "TestModeToggle"
+    },
+    {
+      "app": "admin",
+      "id": "263",
+      "path": "/settings/system#pdpa",
+      "type": "settings-inline",
+      "component": "PdpaTab"
+    },
+    {
+      "app": "admin",
+      "id": "264",
+      "path": "/settings/system#backup",
+      "type": "settings-inline",
+      "component": "OffsiteBackupTab"
+    },
+    {
+      "app": "admin",
+      "id": "265",
+      "path": "/audit-logs",
+      "type": "settings-external",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "266",
+      "path": "/system-status",
+      "type": "settings-external",
+      "component": ""
+    },
+    {
+      "app": "admin",
+      "id": "267",
+      "path": "/verify/:identifier",
+      "type": "document",
+      "component": "LegacyVerifyPage"
+    },
+    {
+      "app": "admin",
+      "id": "268",
+      "path": "/expenses/verify-number/:number",
+      "type": "page",
+      "component": "ExpenseVerifyNumberPage"
+    },
+    {
+      "app": "admin",
+      "id": "269",
+      "path": "/expenses/verify/:id",
+      "type": "page",
+      "component": "ExpenseDetailPage"
+    },
+    {
+      "app": "admin",
+      "id": "270",
+      "path": "/shop/petty-cash",
+      "type": "page",
+      "component": "ShopPettyCashPage"
+    },
+    {
+      "app": "admin",
+      "id": "T1",
+      "path": "/r/:token",
+      "type": "document",
+      "component": "SaleReceiptViewPage"
+    },
+    {
+      "app": "admin",
+      "id": "T2",
+      "path": "/kiosk",
+      "type": "page",
+      "component": "KioskPage"
+    },
+    {
+      "app": "admin",
+      "id": "T3",
+      "path": "/sales/:id/parcel-label",
+      "type": "document",
+      "component": "ParcelLabelPage"
+    },
+    {
+      "app": "admin",
+      "id": "T4",
+      "path": "/attendance",
+      "type": "page",
+      "component": "AttendancePage"
+    },
+    {
+      "app": "admin",
+      "id": "T5",
+      "path": "/attendance/me",
+      "type": "page",
+      "component": "MyTimePage"
+    },
+    {
+      "app": "admin",
+      "id": "T6",
+      "path": "/expenses/recurring-bills",
+      "type": "page",
+      "component": "RecurringBillsPage"
+    },
+    {
+      "app": "admin",
+      "id": "T7",
+      "path": "/settings/company/attendance-devices",
+      "type": "settings-route",
+      "component": "AttendanceDevicesPage"
+    },
+    {
+      "app": "admin",
+      "id": "T8",
+      "path": "/settings/products/receipts",
+      "type": "settings-route",
+      "component": "ReceiptsSettingsPage"
+    },
+    {
+      "app": "admin",
+      "id": "T9",
+      "path": "/settings/system/trash",
+      "type": "settings-route",
+      "component": "TrashPage"
+    }
+  ]
+}

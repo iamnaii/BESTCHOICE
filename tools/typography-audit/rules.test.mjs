@@ -262,3 +262,63 @@ test('fix2: compareFacts ctx cannot override delta fields', () => {
     assert.equal(d.route, '/r');
   }
 });
+
+// ---- fix round 3: pin D1/D2 thresholds and remaining edges ----
+// offset = textTop + textHeight/2 - (y + h/2); with y 0, h 40, textHeight 18: offset = textTop - 11
+const ctl = (kind, offset, o = {}) => fact({
+  kind, text: 'ตกลง', key: `${kind}|ตกลง|0`, y: 0, h: 40, textTop: 11 + offset, textHeight: 18, ...o,
+});
+const d2count = (kind, from, to) => compareFacts([ctl(kind, from)], [ctl(kind, to)]).filter((d) => d.rule === 'D2').length;
+
+test('fix3: D2 threshold at 1.5px', () => {
+  assert.equal(d2count('button', 0, 1.0), 0);
+  assert.equal(d2count('button', 0, 1.6), 1);
+});
+
+test('fix3: D2 kind gate (Ruling C)', () => {
+  assert.equal(d2count('paragraph', 0, 3), 0);
+  assert.equal(d2count('badge', 0, 3), 1);
+  assert.equal(d2count('th', 0, 3), 0);
+});
+
+test('fix3: D2 uses abs offset and the y term', () => {
+  assert.equal(d2count('button', 0, -2), 1);
+  const b = ctl('button', 0, { y: 500 });
+  const a = ctl('button', 0, { y: 501, textTop: 12 });
+  assert.equal(compareFacts([b], [a]).filter((d) => d.rule === 'D2').length, 0);
+});
+
+test('fix3: D1 boundary, direction, zero guard', () => {
+  const d1 = (from, to) => compareFacts([fact({ key: 'k', inkWidth: from })], [fact({ key: 'k', inkWidth: to })]).filter((d) => d.rule === 'D1').length;
+  assert.equal(d1(100, 108), 0);
+  assert.equal(d1(100, 91), 1);
+  assert.equal(d1(0, 50), 0);
+});
+
+test('fix3: R4 requires vertical clip', () => {
+  const base = fact({ hasThai: true, scrollOverflowY: true, lineHeight: 22 });
+  assert.ok(!has([{ ...base, overflowClip: 'none' }], ctx(), 'R4'));
+  assert.ok(!has([{ ...base, overflowClip: 'x' }], ctx(), 'R4'));
+});
+
+test('fix3: isNumericOnly rejects mixed text', () => {
+  assert.equal(isNumericOnly('ยอด 1'), false);
+});
+
+test('fix3: compareFacts pairs keyed + keyless facts by resolved key', () => {
+  const keyed = fact({ kind: 'button', text: 'ตกลง', key: 'button|ตกลง|0', inkWidth: 100 });
+  const keyless = fact({ kind: 'button', text: 'ตกลง', key: undefined, inkWidth: 100 });
+  const out = compareFacts([keyed, keyless], [keyed, { ...keyless, inkWidth: 130 }]).filter((d) => d.rule === 'D1');
+  assert.equal(out.length, 1);
+  assert.equal(out[0].key, 'button|ตกลง|1');
+});
+
+test('fix3: R3 Thai exactly 1.2 passes', () => {
+  assert.ok(!has([fact({ fontSize: 20, lineHeight: 24, hasThai: true })], ctx(), 'R3'));
+  assert.ok(!has([fact({ fontSize: 30, lineHeight: 36, hasThai: true })], ctx(), 'R3'));
+});
+
+test('fix3: R9 detail carries numeric weight', () => {
+  const f = evaluateTypography([fact({ fontWeight: '800' })], ctx()).find((x) => x.rule === 'R9');
+  assert.equal(f.detail.fontWeight, 800);
+});

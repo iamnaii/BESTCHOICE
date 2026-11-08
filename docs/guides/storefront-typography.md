@@ -1,5 +1,7 @@
 # Storefront typography
 
+> **อัปเดต 2026-11-08:** ฟอนต์ UI เปลี่ยนจาก Noto Sans Thai Looped เป็น **Noto Sans Thai (ไม่มีหัว)** น้ำหนัก 400–700 (ไฟล์อยู่ที่ `public/fonts/noto-sans-thai/`, Looped และ Prompt ถูกลบแล้ว) ข้อความยาวใช้ Sarabun ผ่าน `reading-block` (`public/fonts/sarabun/`, 400/700) เฉพาะย่อหน้าหลายประโยค คำตอบ FAQ และคำอธิบายสินค้า · ข้อความบรรทัดเดียวและคำอธิบายหนึ่งประโยคใต้หัวการ์ดคงเป็น Noto 14px · ดู `docs/superpowers/specs/2026-11-08-typography-noto-sans-thai-design.md` ข้อความด้านล่างที่พูดถึง Looped / 100–900 / Prompt เป็นประวัติของ 2026-10-14
+
 Applies only to `apps/web-shop` (www.bestchoicephone.com).
 
 ## Decision — 2026-10-14

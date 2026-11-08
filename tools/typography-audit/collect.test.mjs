@@ -494,12 +494,16 @@ async function collectMeasured(body, head = '') {
     const marks = await page.evaluate(() => [...document.querySelectorAll('[data-k]')].map((el) => {
       const range = document.createRange();
       let rendered = 0;
+      const rects = [];
       for (const n of el.childNodes) {
         if (n.nodeType !== 3 || !/\S/.test(n.data)) continue;
         range.selectNodeContents(n);
-        for (const r of range.getClientRects()) rendered += r.width;
+        for (const r of range.getClientRects()) {
+          rendered += r.width;
+          if (r.width > 0 && r.height > 0) rects.push({ top: r.top + window.scrollY, bottom: r.bottom + window.scrollY });
+        }
       }
-      return { k: el.dataset.k, y: el.getBoundingClientRect().top + window.scrollY, rendered };
+      return { k: el.dataset.k, y: el.getBoundingClientRect().top + window.scrollY, rendered, rects };
     }));
     return { faces, facts, mark: Object.fromEntries(marks.map((m) => [m.k, m])) };
   } finally {
@@ -641,4 +645,83 @@ test('item 6: font-feature-settings "tnum" 0 / off ⇒ numeric false; "tnum" 1 �
   assert.equal(one(facts, '1,000').numeric, false);
   assert.equal(one(facts, '2,000').numeric, false);
   assert.equal(one(facts, '3,000').numeric, true);
+});
+
+// ---------------------------------------------------------------- fix round 2
+
+test('fix2 item 1: a letter-spacing the canvas rejects (10%) never inherits the previous element spacing', async () => {
+  const pct = '<div style="white-space:nowrap;letter-spacing:10%">Percent Spacing Sample</div>';
+  const together = await collect(`<div style="white-space:nowrap;letter-spacing:4px">Four Pixel Spacing</div>${pct}`);
+  const alone = await collect(pct);
+  assert.equal(one(together, 'Percent Spacing Sample').inkWidth, one(alone, 'Percent Spacing Sample').inkWidth);
+});
+
+test('fix2 item 2: capitalize follows CSS word boundaries (punctuation, hyphens, apostrophes)', async () => {
+  const { facts, mark } = await collectMeasured(`
+    <div data-k="a" style="white-space:nowrap;text-transform:capitalize">(hello) world-wide e-mail</div>
+    <div data-k="b" style="white-space:nowrap;text-transform:capitalize">don't stop e.g. foo_bar 3d</div>`);
+  for (const k of ['a', 'b']) near(factAtY(facts, mark[k].y).inkWidth, mark[k].rendered, 0.5, `capitalize ${k}`);
+});
+
+test('fix2 item 3: ink is placed on the FIRST line of wrapped text', async () => {
+  const { facts, mark } = await collectMeasured(
+    '<div data-k="w" style="width:140px;line-height:32px">บรรทัดแรกของข้อความที่ยาวพอจะขึ้นบรรทัดใหม่แน่นอน</div>');
+  const f = factAtY(facts, mark.w.y);
+  const first = mark.w.rects[0];
+  const last = mark.w.rects[mark.w.rects.length - 1];
+  assert.ok(f.lines >= 2 && last.top > first.bottom, 'fixture must wrap onto separate lines');
+  assert.ok(f.inkTop < first.bottom, `inkTop ${f.inkTop} must be inside the first line (bottom ${first.bottom})`);
+  assert.ok(f.inkBottom < last.top, `inkBottom ${f.inkBottom} must end before the last line (top ${last.top})`);
+});
+
+test('fix2 item 4: ink fields are page-absolute — scrolling 500px leaves them and the D2 offset unchanged', async () => {
+  const body = '<div style="height:1500px"></div><button style="display:block;height:40px;line-height:21px;font-size:14px">บันทึกข้อมูล</button><div style="height:1500px"></div>';
+  const still = one(await collect(body), 'บันทึกข้อมูล');
+  let scrolledBy = 0;
+  const scrolled = one(await collect(body, { prepare: async (page) => { scrolledBy = await page.evaluate(() => { window.scrollTo(0, 500); return window.scrollY; }); } }), 'บันทึกข้อมูล');
+  assert.equal(scrolledBy, 500);
+  const inkOffset = (f) => (f.inkTop + f.inkBottom) / 2 - (f.y + f.h / 2);
+  near(inkOffset(scrolled), inkOffset(still), 0.5, 'ink-centre offset');
+  near(scrolled.inkTop, still.inkTop, 0.5, 'inkTop');
+  near(scrolled.inkBottom, still.inkBottom, 0.5, 'inkBottom');
+  near(scrolled.inkTop - scrolled.textTop, still.inkTop - still.textTop, 0.5, 'inkTop vs textTop');
+});
+
+test('fix2 item 6: an svg above the anchor (nav logo) is not in the label iconRatios', async () => {
+  const facts = await collect(`<nav style="font-size:16px"><svg width="24" height="24"></svg>
+    <a href="#h" style="display:flex;gap:8px"><svg width="16" height="16"></svg><span>หน้าแรก</span></a></nav>`);
+  const f = one(facts, 'หน้าแรก');
+  assert.equal(f.kind, 'nav');
+  assert.deepEqual(f.iconRatios, [1]);
+});
+
+test('fix2 item 7: badge-neutral boundaries', async () => {
+  const facts = await collect(`
+    <div class="rounded-full" style="font-size:12px"><button role="tab"><span>ป้ายหนึ่ง</span><span>ป้ายสอง</span></button></div>
+    <nav><a href="#b" style="display:flex;gap:8px;height:40px;align-items:center"><span>กล่องข้อความ</span><span data-slot="badge"><b>5</b></span></a></nav>
+    <span class="rounded-full" style="font-size:13px">ป้ายสิบสาม</span>
+    <span class="rounded-full" style="font-size:14px">ป้ายสิบสี่</span>`);
+  // (a) the badge walk stops below the anchor: a badge-like wrapper ABOVE the tab does not neutralise the second label
+  assert.equal(one(facts, 'ป้ายหนึ่ง').kind, 'text');
+  assert.equal(one(facts, 'ป้ายสอง').kind, 'text');
+  // (b) text nested inside a badge stays neutral; it is itself a badge fact
+  assert.equal(one(facts, 'กล่องข้อความ').kind, 'nav');
+  assert.equal(one(facts, '5').kind, 'badge');
+  // (c) ≤13px is inclusive
+  assert.equal(one(facts, 'ป้ายสิบสาม').kind, 'badge');
+  assert.equal(one(facts, 'ป้ายสิบสี่').kind, 'text');
+});
+
+test('fix2 item 8: canvas mirrors italic (family with a real italic face) and lowercase', async () => {
+  const { facts, mark } = await collectMeasured(`
+    <div data-k="italic" style="white-space:nowrap;font-family:serif;font-style:italic">Italic Sample Text</div>
+    <div data-k="upright" style="white-space:nowrap;font-family:serif">Italic Sample Text</div>
+    <div data-k="lower" style="white-space:nowrap;text-transform:lowercase">HELLO WIDE WORLD</div>`);
+  const ink = {};
+  for (const k of ['italic', 'upright', 'lower']) {
+    ink[k] = factAtY(facts, mark[k].y);
+    near(ink[k].inkWidth, mark[k].rendered, 0.5, `${k} inkWidth vs rendered`);
+  }
+  assert.ok(Math.abs(ink.italic.inkWidth - ink.upright.inkWidth) > 0.5, 'the italic face really differs from upright');
+  assert.equal(ink.lower.text, 'HELLO WIDE WORLD');
 });

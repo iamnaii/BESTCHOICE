@@ -31,6 +31,7 @@
   var TEXT_MAX_CHARS = 60;
   var PROBE_ATTR = 'data-typography-audit-probe';
   var CANVAS_SENTINEL_FONT = '1px typography-audit-sentinel';
+  var wordSegmenter = null;
 
   // ---- rules.mjs mirrors (keep byte-for-byte equivalent semantics) ----
   function normalizeKeyText(text) {
@@ -225,11 +226,28 @@
     function fontString(cs) {
       return cs.fontStyle + ' ' + cs.fontWeight + ' ' + cs.fontSize + '/' + cs.lineHeight + ' ' + cs.fontFamily;
     }
+    // CSS capitalize upper-cases the first character of every word as split by the ICU word iterator
+    // ('(hello) world-wide e-mail' → '(Hello) World-Wide E-Mail', "don't" → "Don't", 'foo_bar' → 'Foo_bar');
+    // Intl.Segmenter uses the same ICU rules. Fallback: Unicode letter boundary.
+    function capitalizeWords(text) {
+      if (typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function') {
+        if (!wordSegmenter) wordSegmenter = new Intl.Segmenter(undefined, { granularity: 'word' });
+        var segments = Array.from(wordSegmenter.segment(text));
+        var out = '';
+        for (var i = 0; i < segments.length; i++) {
+          var chars = Array.from(segments[i].segment);
+          chars[0] = chars[0].toUpperCase();
+          out += chars.join('');
+        }
+        return out;
+      }
+      return text.replace(/(^|[^\p{L}\p{M}\p{N}])(\p{L})/gu, function (m, sep, ch) { return sep + ch.toUpperCase(); });
+    }
     // text-transform changes the rendered glyphs, so the measured string must follow it
     function transformed(text, transform) {
       if (transform === 'uppercase') return text.toUpperCase();
       if (transform === 'lowercase') return text.toLowerCase();
-      if (transform === 'capitalize') return text.replace(/(^|\s)(\S)/g, function (m, sep, ch) { return sep + ch.toUpperCase(); });
+      if (transform === 'capitalize') return capitalizeWords(text);
       return text;
     }
     // Canvas mirrors rendering: font-style/weight/size/line-height/family, letter-spacing, text-transform.
@@ -246,7 +264,10 @@
       var sentinel = ctx.font;
       ctx.font = font;
       if (ctx.font === sentinel) throw new Error('__collectTypography: canvas rejected font "' + font + '"');
-      if ('letterSpacing' in ctx) ctx.letterSpacing = spacing;
+      if ('letterSpacing' in ctx) {
+        ctx.letterSpacing = '0px'; // reset: the canvas silently keeps the old value for '10%' / 'calc(10% + 1px)'
+        ctx.letterSpacing = spacing;
+      }
       var m = ctx.measureText(shown === '' ? ' ' : shown);
       var fontBox = m.fontBoundingBoxAscent + m.fontBoundingBoxDescent;
       var result = {

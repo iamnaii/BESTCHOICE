@@ -356,3 +356,10 @@ test('fixr1: UI_FONT_RE / SARABUN_RE accept a lone family and still reject look-
   assert.ok(!has([fact({ fontFamily: 'Sarabun', inReadingBlock: true })], ctx({ app: 'shop' }), 'R8'));
   assert.ok(has([fact({ fontFamily: '"Sarabun New", serif', inReadingBlock: true })], ctx({ app: 'shop' }), 'R8'));
 });
+
+// ---- Task 2 fix round 2 ----
+
+test('fixr2: R8 is anchored on the FIRST family', () => {
+  assert.ok(rules([fact({ fontFamily: '"Noto Sans Thai Looped", "Noto Sans Thai", sans-serif' })], ctx()).includes('R8:P1'));
+  assert.ok(rules([fact({ fontFamily: '"Noto Serif", Sarabun', inReadingBlock: true })], ctx({ app: 'shop' })).includes('R8:P1'));
+});

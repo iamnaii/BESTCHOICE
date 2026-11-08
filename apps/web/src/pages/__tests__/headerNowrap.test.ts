@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
+// Limitation: cannot see <th> with no className or with cn()/template classNames.
 // Raw <th> tables (column headers; row-header names may wrap) outside the Table wrapper: headers never wrap, the table scrolls in its own box.
 const read = (p: string) => readFileSync(resolve(__dirname, '..', p), 'utf8');
 
@@ -12,6 +13,7 @@ function headerClasses(src: string) {
 describe.each([
   ['AccountRolesPage.tsx'],
   ['ExpenseDetailPage.tsx'],
+  ['WhtReportPage.tsx'],
   ['SettingsPage/components/UserPermissionTable.tsx'],
 ])('%s', (file) => {
   const src = read(file);

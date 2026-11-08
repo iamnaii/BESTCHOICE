@@ -12,6 +12,7 @@ const unit: ProductGroup = {
   condition: 'USED',
   minPrice: 12900,
   stockCount: 1,
+  monthlyPaymentFrom: null,
   stock: { display: 'พร้อมขาย', tone: 'normal' },
   images: [],
   tags: ['ประกันร้าน 60 วัน'],

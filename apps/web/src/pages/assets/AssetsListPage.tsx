@@ -196,7 +196,7 @@ export default function AssetsListPage() {
         render: (row: Asset): ReactNode => (
           <button
             onClick={() => navigate(`/assets/${row.id}`)}
-            className="font-mono text-primary hover:underline"
+            className="inline-flex items-center font-mono text-primary hover:underline max-lg:min-h-11 lg:min-h-8"
           >
             {row.assetCode}
           </button>

@@ -6,7 +6,7 @@ import type { ShopHomeResponse } from '../types';
 type Tab = 'model' | 'category';
 
 const TAB_CLASS =
-  'min-h-9 px-3.5 rounded-full border text-xs transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring';
+  'min-h-9 max-lg:min-h-11 px-3.5 rounded-full border text-xs transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring';
 
 /** ขายดี 30 วัน — สลับดูตามรุ่น/ตามหมวด แถบสัดส่วนเทียบอันดับ 1 */
 export default function TopSellersCard({ data }: { data: ShopHomeResponse['topSellers30d'] }) {

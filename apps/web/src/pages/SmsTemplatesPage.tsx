@@ -156,10 +156,11 @@ export default function SmsTemplatesPage() {
                           {t.parent && (
                             <Badge
                               variant="outline"
-                              className="text-xs bg-info/10 text-info border-info/30"
+                              className="max-w-full min-w-0 text-xs bg-info/10 text-info border-info/30"
+                              title={`รูปแบบย่อยของ ${t.parent.name}`}
                             >
                               <GitBranch className="w-3 h-3 mr-1" />
-                              รูปแบบย่อยของ {t.parent.name}
+                              <span className="truncate">รูปแบบย่อยของ {t.parent.name}</span>
                             </Badge>
                           )}
                         </div>

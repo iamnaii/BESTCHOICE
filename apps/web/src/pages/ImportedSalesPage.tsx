@@ -103,9 +103,9 @@ export default function ImportedSalesPage() {
       </div>
 
       {list && (
-        <div className="flex items-center gap-3 text-sm">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
           <button data-ui-control="button"
-            className="px-3 py-1 rounded border border-border text-foreground disabled:opacity-50"
+            className="px-3 py-1 rounded border border-border text-foreground whitespace-nowrap disabled:opacity-50"
             disabled={page <= 1}
             onClick={() => setPage((p) => p - 1)}
           >
@@ -113,7 +113,7 @@ export default function ImportedSalesPage() {
           </button>
           <span className="text-muted-foreground leading-snug">หน้า {list.page} · ทั้งหมด {list.total.toLocaleString('th-TH')} รายการ</span>
           <button data-ui-control="button"
-            className="px-3 py-1 rounded border border-border text-foreground disabled:opacity-50"
+            className="px-3 py-1 rounded border border-border text-foreground whitespace-nowrap disabled:opacity-50"
             disabled={page * list.limit >= list.total}
             onClick={() => setPage((p) => p + 1)}
           >

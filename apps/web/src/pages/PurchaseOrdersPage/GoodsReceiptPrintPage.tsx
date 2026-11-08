@@ -101,7 +101,7 @@ export default function GoodsReceiptPrintPage() {
           <button
             type="button"
             onClick={() => navigate(-1)}
-            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground max-lg:min-h-11 lg:min-h-8"
           >
             <ArrowLeft size={14} />
             กลับ

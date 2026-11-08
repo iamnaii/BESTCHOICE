@@ -279,7 +279,7 @@ export function buildStockColumns({
       sortable: true,
       hideable: false,
       align: 'right',
-      width: '96px',
+      width: '120px',
       render: (product) => (
         <div className="space-y-1">
           <StockPriceAmount
@@ -317,7 +317,7 @@ export function buildStockColumns({
             sortable: true,
             hideable: false,
             align: 'right' as const,
-            width: '116px',
+            width: '128px',
             render: (product: StockProduct) => (
               <StockMonthlyPayment plan={installments.get(product.id)} />
             ),
@@ -351,7 +351,7 @@ export function buildStockColumns({
             sortable: true,
             hideable: false,
             align: 'right' as const,
-            width: '62px',
+            width: '80px',
             render: (product: StockProduct) => <StockQuantity product={product} />,
           } satisfies StockColumn,
         ]

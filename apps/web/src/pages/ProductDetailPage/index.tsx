@@ -460,7 +460,7 @@ export default function ProductDetailPage() {
       <AdjustmentPendingBanner productId={product.id} status={product.status} />
 
       {/* Tabs — always shown; 'photos' only for PHONE_USED, 'online' for every category */}
-      <div className="flex gap-0.5 mb-5 border-b border-border/60">
+      <div className="flex max-w-full min-w-0 overflow-x-auto overflow-y-hidden gap-0.5 mb-5 border-b border-border/60">
         {([
           { key: 'info' as Tab, label: 'ข้อมูลสินค้า' },
           ...(product.category === 'PHONE_USED' ? [{ key: 'photos' as Tab, label: 'รูปถ่าย' }] : []),
@@ -469,7 +469,7 @@ export default function ProductDetailPage() {
           <button data-ui-control="button"
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            className={`px-4 py-2.5 max-lg:min-h-11 text-sm font-medium whitespace-nowrap shrink-0 border-b-2 transition-colors ${
               activeTab === tab.key
                 ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground'

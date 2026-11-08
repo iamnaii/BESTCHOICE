@@ -169,8 +169,9 @@ export function LateFeeSettingsCard() {
                 กำหนดค่าปรับล่าช้า จำนวนงวด และเกณฑ์ติดตามหนี้สำหรับสัญญาผ่อนชำระ
               </p>
             </div>
+            {/* hit area 44px mobile / 32px desktop; negative margins keep the 26px layout box */}
             {!editing && isOwner && !isLoading && !isError && (
-              <button onClick={startEdit} className="text-xs text-primary hover:underline px-2 py-1 shrink-0">
+              <button onClick={startEdit} className="inline-flex items-center text-xs text-primary hover:underline px-2 py-1 shrink-0 max-lg:min-h-11 lg:min-h-8 max-lg:-my-2.25 lg:-my-0.75">
                 แก้ไข
               </button>
             )}

@@ -34,7 +34,7 @@ export default function RecentActivityCard({
           <button
             type="button"
             onClick={onOpenJourney}
-            className="inline-flex items-center gap-0.5 text-[13px] leading-snug text-primary hover:underline"
+            className="inline-flex items-center gap-0.5 text-[13px] leading-snug text-primary hover:underline max-lg:min-h-11 lg:min-h-8"
           >
             ดูการเดินทางทั้งหมด
             <ChevronRight className="size-3.5" aria-hidden="true" />

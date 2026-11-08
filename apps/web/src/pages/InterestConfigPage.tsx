@@ -375,7 +375,7 @@ export default function InterestConfigPage() {
             )}
           </div>
           {!editingDefaults && (
-            <button onClick={() => setEditingDefaults(true)} className="text-xs text-primary hover:underline px-2 py-1 ml-4">แก้ไข</button>
+            <button onClick={() => setEditingDefaults(true)} className="inline-flex items-center text-xs text-primary hover:underline px-2 py-1 ml-4 max-lg:min-h-11 lg:min-h-8 max-lg:-my-2.25 lg:-my-0.75">แก้ไข</button>
           )}
         </div>
       </div>
@@ -392,7 +392,8 @@ export default function InterestConfigPage() {
       {configs.length === 0 ? (
         <div className="text-center py-12 rounded-xl border border-border/50 bg-card shadow-sm">
           <div className="text-muted-foreground text-sm mb-3">ยังไม่มีการตั้งค่าดอกเบี้ย</div>
-          <button onClick={openCreate} className="text-sm text-primary hover:underline">สร้างตั้งค่าแรก</button>
+          {/* hit area 44px mobile / 32px desktop; negative margins keep the empty state's height */}
+          <button onClick={openCreate} className="inline-flex items-center text-sm text-primary hover:underline max-lg:min-h-11 lg:min-h-8 max-lg:-my-3 lg:-my-1.5">สร้างตั้งค่าแรก</button>
         </div>
       ) : (
         <div className="grid gap-5 lg:gap-7.5">

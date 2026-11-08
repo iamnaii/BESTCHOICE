@@ -801,7 +801,7 @@ export default function ChatPanel({
                       : 'ตอบก่อนได้เป็นเจ้าของห้อง — กดเพื่อมอบหมาย'
                   }
                   className={cn(
-                    'inline-flex h-5 max-w-[11rem] items-center gap-1 truncate rounded-full border text-[11.5px] leading-none transition-colors',
+                    'inline-flex h-5 max-w-[11rem] items-center gap-1 truncate rounded-full border text-[11.5px] leading-snug transition-colors',
                     assigneeName
                       ? 'border-border bg-card pl-0.5 pr-2 text-foreground hover:bg-muted'
                       : 'border-dashed border-warning/60 bg-warning/10 px-2 text-amber-800 hover:bg-warning/20 dark:border-amber-400/50 dark:bg-amber-400/10 dark:text-amber-200 dark:hover:bg-amber-400/20',

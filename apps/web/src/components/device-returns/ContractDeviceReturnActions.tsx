@@ -76,10 +76,11 @@ export function ContractDeviceReturnActions({ contractId, contractStatus, role }
           variant="warning"
           appearance="light"
           size="lg"
+          className="max-w-full min-w-0"
           title={`ใบ ${pending.docNumber} รอ FINANCE ยืนยัน — ยืนยันได้ที่หน้า รับเครื่องคืน / ยึดคืน`}
         >
           <PackageX className="size-3.5" />
-          รับเครื่องคืนแล้ว รอ FINANCE ยืนยัน {pending.docNumber}
+          <span className="truncate">รับเครื่องคืนแล้ว รอ FINANCE ยืนยัน {pending.docNumber}</span>
         </Badge>
         {canPreview && (
           <button data-ui-control="button"

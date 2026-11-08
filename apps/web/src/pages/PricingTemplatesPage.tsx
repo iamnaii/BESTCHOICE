@@ -279,22 +279,22 @@ export default function PricingTemplatesPage() {
         title="ราคาตั้งต้น"
         subtitle="กำหนดราคาเงินสด / ผ่อน BESTCHOICE / ผ่อนไฟแนนซ์ ตามรุ่นสินค้า"
         action={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button data-ui-control="button"
               onClick={downloadTemplate}
-              className="px-3 py-2 text-sm text-muted-foreground border border-input rounded-lg hover:bg-muted/50"
+              className="px-3 py-2 text-sm whitespace-nowrap text-muted-foreground border border-input rounded-lg hover:bg-muted/50"
             >
               ดาวน์โหลดแบบฟอร์ม
             </button>
             <button data-ui-control="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={importMutation.isPending}
-              className="px-3 py-2 text-sm text-primary border border-primary/30 rounded-lg hover:bg-primary/5 dark:hover:bg-primary/10 disabled:opacity-50"
+              className="px-3 py-2 text-sm whitespace-nowrap text-primary border border-primary/30 rounded-lg hover:bg-primary/5 dark:hover:bg-primary/10 disabled:opacity-50"
             >
               {importMutation.isPending ? 'กำลังนำเข้า...' : 'นำเข้า Excel'}
             </button>
             <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileImport} />
-            <button data-ui-control="button" onClick={openCreate} className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90">
+            <button data-ui-control="button" onClick={openCreate} className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium whitespace-nowrap rounded-lg hover:bg-primary/90">
               + เพิ่มราคาตั้งต้น
             </button>
           </div>
@@ -335,7 +335,8 @@ export default function PricingTemplatesPage() {
       {templates.length === 0 ? (
         <div className="text-center py-12 rounded-xl border border-border/50 bg-card shadow-sm">
           <div className="text-muted-foreground text-sm mb-3">ยังไม่มีราคาตั้งต้น</div>
-          <button onClick={openCreate} className="text-sm text-primary hover:underline">เพิ่มราคาตั้งต้นรายการแรก</button>
+          {/* hit area 44px mobile / 32px desktop; negative margins keep the empty state's height */}
+          <button onClick={openCreate} className="inline-flex items-center text-sm text-primary hover:underline max-lg:min-h-11 lg:min-h-8 max-lg:-my-3 lg:-my-1.5">เพิ่มราคาตั้งต้นรายการแรก</button>
         </div>
       ) : (
         <Card className="overflow-hidden">

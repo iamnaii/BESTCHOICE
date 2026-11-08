@@ -295,7 +295,7 @@ export default function ChartOfAccountsPage() {
         </TabsList>
         <TabsContent value="chart" forceMount hidden={view !== 'chart'}>
       {/* Scope tabs — ผัง 2 ฝั่งในตารางเดียว แยกด้วย S-prefix (P3-SP5) */}
-      <div className="inline-flex rounded-lg border border-border overflow-hidden mb-4" role="group">
+      <div className="inline-flex max-w-full min-w-0 rounded-lg border border-border overflow-x-auto mb-4" role="group">
         {(
           [
             { key: 'FINANCE', label: `FINANCE (การเงิน) · ${scopeCounts.FINANCE}` },
@@ -313,7 +313,7 @@ export default function ChartOfAccountsPage() {
             }}
             aria-pressed={scope === t.key}
             className={cn(
-              'min-h-11 px-4 py-2 text-sm transition-colors leading-snug',
+              'min-h-11 px-4 py-2 text-sm whitespace-nowrap shrink-0 transition-colors leading-snug',
               scope === t.key
                 ? 'bg-primary text-primary-foreground'
                 : 'bg-background text-muted-foreground hover:bg-accent',

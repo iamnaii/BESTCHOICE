@@ -92,21 +92,21 @@ export function PersonalTable({ items }: { items: WhtItemPersonal[] }) {
       <ScreenTable className="w-full text-sm">
         <thead>
           <tr className="text-left text-xs text-muted-foreground border-b border-border">
-            <th className="py-2 pr-2">พนักงาน</th>
-            <th className="py-2 pr-2">เลขประจำตัวผู้เสียภาษี</th>
-            <th className="py-2 pr-2 text-right">เงินได้ (฿)</th>
+            <th className="whitespace-nowrap py-2 pr-2">พนักงาน</th>
+            <th className="whitespace-nowrap py-2 pr-2">เลขประจำตัวผู้เสียภาษี</th>
+            <th className="whitespace-nowrap py-2 pr-2 text-right">เงินได้ (฿)</th>
             {split ? (
               <>
-                <th className="py-2 pr-2 text-right">ภาษีเงินเดือน (฿)</th>
-                <th className="py-2 pr-2 text-right">ภาษีค่าคอม 3% (฿)</th>
+                <th className="whitespace-nowrap py-2 pr-2 text-right">ภาษีเงินเดือน (฿)</th>
+                <th className="whitespace-nowrap py-2 pr-2 text-right">ภาษีค่าคอม 3% (฿)</th>
                 {/* เว้นระยะก่อนวันจ่าย — ยอดตัวหนาชิดวันที่อ่านเป็นตัวเลขต่อกัน */}
-                <th className="py-2 pr-6 text-right">ภาษีที่หักรวม (฿)</th>
+                <th className="whitespace-nowrap py-2 pr-6 text-right">ภาษีที่หักรวม (฿)</th>
               </>
             ) : (
-              <th className="py-2 pr-2 text-right">WHT (฿)</th>
+              <th className="whitespace-nowrap py-2 pr-2 text-right">WHT (฿)</th>
             )}
-            <th className="py-2 pr-2">วันจ่าย</th>
-            <th className="py-2 pr-2">เอกสาร</th>
+            <th className="whitespace-nowrap py-2 pr-2">วันจ่าย</th>
+            <th className="whitespace-nowrap py-2 pr-2">เอกสาร</th>
           </tr>
         </thead>
         <tbody>
@@ -147,14 +147,14 @@ function VendorTable({ items }: { items: WhtItemVendor[] }) {
       <ScreenTable className="w-full text-sm">
         <thead>
           <tr className="text-left text-xs text-muted-foreground border-b border-border">
-            <th className="py-2 pr-2">ผู้รับเงิน</th>
-            <th className="py-2 pr-2">เลขประจำตัวผู้เสียภาษี</th>
-            <th className="py-2 pr-2">ประเภทเงินได้</th>
-            <th className="py-2 pr-2 text-right">จำนวนเงิน (฿)</th>
-            <th className="py-2 pr-2 text-right">อัตรา</th>
-            <th className="py-2 pr-2 text-right">WHT (฿)</th>
-            <th className="py-2 pr-2">วันจ่าย</th>
-            <th className="py-2 pr-2">เอกสาร</th>
+            <th className="whitespace-nowrap py-2 pr-2">ผู้รับเงิน</th>
+            <th className="whitespace-nowrap py-2 pr-2">เลขประจำตัวผู้เสียภาษี</th>
+            <th className="whitespace-nowrap py-2 pr-2">ประเภทเงินได้</th>
+            <th className="whitespace-nowrap py-2 pr-2 text-right">จำนวนเงิน (฿)</th>
+            <th className="whitespace-nowrap py-2 pr-2 text-right">อัตรา</th>
+            <th className="whitespace-nowrap py-2 pr-2 text-right">WHT (฿)</th>
+            <th className="whitespace-nowrap py-2 pr-2">วันจ่าย</th>
+            <th className="whitespace-nowrap py-2 pr-2">เอกสาร</th>
           </tr>
         </thead>
         <tbody>

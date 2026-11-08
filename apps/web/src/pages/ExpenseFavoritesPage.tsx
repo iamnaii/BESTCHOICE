@@ -87,7 +87,7 @@ export default function ExpenseFavoritesPage() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate('/expenses')}
-            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground max-lg:min-h-11 lg:min-h-8"
           >
             <ArrowLeft className="size-4" /> กลับ
           </button>

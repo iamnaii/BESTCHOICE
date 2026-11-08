@@ -180,14 +180,15 @@ export default function EquityViewPage() {
             <Card>
               <CardHeader className="font-semibold">ผู้ถือหุ้น</CardHeader>
               <CardContent>
+                <div className="overflow-x-auto">
                 <ScreenTable className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border text-left text-xs text-muted-foreground uppercase">
-                      <th className="py-2">ชื่อ</th>
-                      <th className="text-right">จำนวนเงิน</th>
-                      <th className="text-right">ส่วนเกิน</th>
-                      <th className="text-right">ชำระจริง</th>
-                      <th className="text-right">WHT</th>
+                      <th className="whitespace-nowrap py-2">ชื่อ</th>
+                      <th className="whitespace-nowrap text-right">จำนวนเงิน</th>
+                      <th className="whitespace-nowrap text-right">ส่วนเกิน</th>
+                      <th className="whitespace-nowrap text-right">ชำระจริง</th>
+                      <th className="whitespace-nowrap text-right">WHT</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -210,6 +211,7 @@ export default function EquityViewPage() {
                     ))}
                   </tbody>
                 </ScreenTable>
+                </div>
               </CardContent>
             </Card>
           )}

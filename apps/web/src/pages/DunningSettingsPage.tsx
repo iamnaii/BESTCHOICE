@@ -491,7 +491,8 @@ export default function DunningSettingsPage() {
             <p className="text-sm">ยังไม่มี กฎ ทวงหนี้</p>
             <button
               onClick={openCreate}
-              className="text-sm text-primary hover:underline"
+              // hit area 44px mobile / 32px desktop; negative margins keep the empty state's height
+              className="inline-flex items-center text-sm text-primary hover:underline max-lg:min-h-11 lg:min-h-8 max-lg:-my-3 lg:-my-1.5"
             >
               เพิ่ม กฎ แรก
             </button>

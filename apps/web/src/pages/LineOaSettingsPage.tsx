@@ -303,9 +303,10 @@ export default function LineOaSettingsPage() {
                   <button
                     type="button"
                     onClick={() => setShowSecrets((p) => ({ ...p, token: !p.token }))}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-primary hover:text-primary/80 px-2 py-1 bg-primary/10 rounded"
+                    // the transparent button is the 44px/32px hit area; the pill keeps its small look inside the input
+                    className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center rounded text-xs text-primary hover:text-primary/80 max-lg:min-h-11 lg:min-h-8"
                   >
-                    {showSecrets['token'] ? 'ซ่อน' : 'แสดง'}
+                    <span className="px-2 py-1 bg-primary/10 rounded">{showSecrets['token'] ? 'ซ่อน' : 'แสดง'}</span>
                   </button>
                 </div>
               </div>
@@ -325,9 +326,10 @@ export default function LineOaSettingsPage() {
                   <button
                     type="button"
                     onClick={() => setShowSecrets((p) => ({ ...p, secret: !p.secret }))}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-primary hover:text-primary/80 px-2 py-1 bg-primary/10 rounded"
+                    // the transparent button is the 44px/32px hit area; the pill keeps its small look inside the input
+                    className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center rounded text-xs text-primary hover:text-primary/80 max-lg:min-h-11 lg:min-h-8"
                   >
-                    {showSecrets['secret'] ? 'ซ่อน' : 'แสดง'}
+                    <span className="px-2 py-1 bg-primary/10 rounded">{showSecrets['secret'] ? 'ซ่อน' : 'แสดง'}</span>
                   </button>
                 </div>
               </div>

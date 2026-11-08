@@ -53,7 +53,7 @@ export function ProductSelectStep({
                 <DeviceDisclosureSummary product={p} />
                 <div className="text-xs text-muted-foreground mt-1">
                   สาขา: {p.branch?.name}
-                  <span className="ml-2 px-2 py-0.5 bg-secondary rounded-full text-2xs font-semibold">{p.category === 'PHONE_NEW' ? 'มือ 1' : p.category === 'PHONE_USED' ? 'มือ 2' : p.category}</span>
+                  <span className="ml-2 px-2 py-0.5 bg-secondary rounded-full text-2xs font-semibold whitespace-nowrap">{p.category === 'PHONE_NEW' ? 'มือ 1' : p.category === 'PHONE_USED' ? 'มือ 2' : p.category}</span>
                 </div>
               </div>
               <div className="text-right">

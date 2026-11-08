@@ -190,8 +190,9 @@ export function SettingsCard({
               <h3 className="text-lg font-bold text-foreground">{group.title}</h3>
               <p className="text-xs text-muted-foreground mt-0.5">{group.subtitle}</p>
             </div>
+            {/* hit area 44px mobile / 32px desktop; negative margins keep the 26px layout box */}
             {!isEditing && (
-              <button onClick={onEdit} className="text-xs text-primary hover:underline px-2 py-1 shrink-0">
+              <button onClick={onEdit} className="inline-flex items-center text-xs text-primary hover:underline px-2 py-1 shrink-0 max-lg:min-h-11 lg:min-h-8 max-lg:-my-2.25 lg:-my-0.75">
                 แก้ไข
               </button>
             )}

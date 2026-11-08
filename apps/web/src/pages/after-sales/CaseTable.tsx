@@ -44,10 +44,11 @@ function StageChip({ row }: { row: CaseRow }) {
     : STAGE_LABEL[row.stage];
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold leading-snug ${STAGE_TILE[row.stage]}`}
+      title={label}
+      className={`inline-flex max-w-full min-w-0 items-center gap-1 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold leading-snug ${STAGE_TILE[row.stage]}`}
     >
       <Icon aria-hidden className="h-3.5 w-3.5 shrink-0" />
-      {label}
+      <span className="truncate">{label}</span>
     </span>
   );
 }
@@ -61,7 +62,7 @@ function showAwaitingMgrChip(row: CaseRow): boolean {
 
 function AwaitingMgrChip() {
   return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-warning/40 bg-warning/10 px-2.5 py-0.5 text-xs font-semibold leading-snug text-warning-strong">
+    <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-warning/40 bg-warning/10 px-2.5 py-0.5 text-xs font-semibold leading-snug text-warning-strong">
       <Clock aria-hidden className="h-3.5 w-3.5 shrink-0" />
       รอ ผจก.
     </span>
@@ -86,14 +87,14 @@ export default function CaseTable({ rows }: CaseTableProps) {
         <ScreenTable className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-xs text-muted-foreground">
-              <th className="px-3 py-2 text-left font-normal">เลขเคส</th>
-              <th className="px-3 py-2 text-left font-normal">ลูกค้า</th>
-              <th className="px-3 py-2 text-left font-normal">เครื่อง / IMEI</th>
-              <th className="px-3 py-2 text-left font-normal">ที่มา</th>
-              <th className="px-3 py-2 text-left font-normal">ทางออก</th>
-              <th className="px-3 py-2 text-left font-normal">ขั้นตอนตอนนี้</th>
-              <th className="px-3 py-2 text-left font-normal">แจ้งเมื่อ</th>
-              <th className="px-3 py-2 text-right font-normal">ค่าใช้จ่าย</th>
+              <th className="whitespace-nowrap px-3 py-2 text-left font-normal">เลขเคส</th>
+              <th className="whitespace-nowrap px-3 py-2 text-left font-normal">ลูกค้า</th>
+              <th className="whitespace-nowrap px-3 py-2 text-left font-normal">เครื่อง / IMEI</th>
+              <th className="whitespace-nowrap px-3 py-2 text-left font-normal">ที่มา</th>
+              <th className="whitespace-nowrap px-3 py-2 text-left font-normal">ทางออก</th>
+              <th className="whitespace-nowrap px-3 py-2 text-left font-normal">ขั้นตอนตอนนี้</th>
+              <th className="whitespace-nowrap px-3 py-2 text-left font-normal">แจ้งเมื่อ</th>
+              <th className="whitespace-nowrap px-3 py-2 text-right font-normal">ค่าใช้จ่าย</th>
             </tr>
           </thead>
           <tbody>
@@ -116,7 +117,7 @@ export default function CaseTable({ rows }: CaseTableProps) {
                   <div className="text-xs text-muted-foreground">{row.deviceImei ?? '—'}</div>
                 </td>
                 <td className="px-3 py-2.5">
-                  <span className="inline-block rounded-full bg-muted px-2.5 py-0.5 text-xs font-semibold leading-snug">
+                  <span className="inline-block whitespace-nowrap rounded-full bg-muted px-2.5 py-0.5 text-xs font-semibold leading-snug">
                     {SOURCE_LABEL[row.source]}
                   </span>
                 </td>
@@ -145,9 +146,9 @@ export default function CaseTable({ rows }: CaseTableProps) {
             to={`/after-sales/${row.id}`}
             className="block rounded-lg border border-border bg-card p-3 text-sm hover:bg-accent"
           >
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
               <span className="font-semibold text-primary">{row.caseNumber}</span>
-              <div className="flex flex-wrap items-center gap-1.5">
+              <div className="flex min-w-0 max-w-full flex-wrap items-center gap-1.5">
                 <StageChip row={row} />
                 {showAwaitingMgrChip(row) && <AwaitingMgrChip />}
               </div>

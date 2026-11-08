@@ -252,7 +252,8 @@ export default function AssetEntryPage() {
           <button
             type="button"
             onClick={() => navigate('/assets')}
-            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-3"
+            // hit area 44px mobile / 32px desktop; negative margins keep the header where it was (was mb-3)
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors max-lg:min-h-11 lg:min-h-8 max-lg:-mt-3 max-lg:mb-0 lg:-mt-1.5 lg:mb-1.5"
           >
             <ArrowLeft className="size-4" />
             กลับไปหน้ารายการ
@@ -292,7 +293,7 @@ export default function AssetEntryPage() {
             </div>
             <ul className="space-y-1 text-sm text-foreground/90 list-disc pl-9">
               {flatErrors.map((e) => (
-                <li key={e.field}><button type="button" className="text-left underline underline-offset-2" onClick={() => form.setFocus(e.field as keyof AssetEntryFormValues)}>{e.message}</button></li>
+                <li key={e.field}><button type="button" className="inline-flex items-center text-left underline underline-offset-2 max-lg:min-h-11 lg:min-h-8" onClick={() => form.setFocus(e.field as keyof AssetEntryFormValues)}>{e.message}</button></li>
               ))}
             </ul>
           </div>

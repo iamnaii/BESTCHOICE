@@ -1401,7 +1401,8 @@ export default function ContractDetailPage() {
             </div>
             <button
               onClick={() => navigate(`/customers/${contract.customer.id}`)}
-              className="mt-3 text-xs text-primary hover:underline"
+              // hit area 44px mobile / 32px desktop; margins keep the card's layout box (was mt-3)
+              className="inline-flex items-center text-xs text-primary hover:underline max-lg:min-h-11 lg:min-h-8 max-lg:-mt-0.25 max-lg:-mb-3.25 lg:mt-1.25 lg:-mb-1.75"
             >
               ดูรายละเอียดลูกค้า (ข้อมูลปัจจุบัน)
             </button>
@@ -1434,7 +1435,8 @@ export default function ContractDetailPage() {
             </div>
             <button
               onClick={() => navigate(`/products/${contract.product.id}`)}
-              className="mt-3 text-xs text-primary hover:underline"
+              // hit area 44px mobile / 32px desktop; margins keep the card's layout box (was mt-3)
+              className="inline-flex items-center text-xs text-primary hover:underline max-lg:min-h-11 lg:min-h-8 max-lg:-mt-0.25 max-lg:-mb-3.25 lg:mt-1.25 lg:-mb-1.75"
             >
               ดูรายละเอียดสินค้า
             </button>

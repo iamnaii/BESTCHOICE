@@ -654,7 +654,7 @@ export default function LiffContract() {
                       </span>
                       {isCurrent && (
                         <span
-                          className="rounded-full text-white px-2 py-0.5 text-[9.5px] font-semibold tracking-wide shadow-sm leading-snug"
+                          className="whitespace-nowrap rounded-full text-white px-2 py-0.5 text-[9.5px] font-semibold tracking-wide shadow-sm leading-snug"
                           style={{ background: 'linear-gradient(90deg, rgb(16 185 129), rgb(13 148 136))' }}
                         >
                           ถึงกำหนด
@@ -704,7 +704,7 @@ export default function LiffContract() {
                 <li className="relative pl-7 pt-3">
                   <button
                     type="button"
-                    className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-700 leading-snug"
+                    className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-700 leading-snug max-lg:min-h-11 lg:min-h-8"
                     onClick={() => setShowAllPayments(!showAllPayments)}
                   >
                     {showAllPayments ? 'ย่อรายการ' : `แสดงอีก ${payments.length - 6} งวด`}

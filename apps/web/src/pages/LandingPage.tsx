@@ -133,7 +133,7 @@ export default function LandingPage() {
             <span className="inline-block px-4 py-1.5 text-xs font-semibold text-primary bg-primary/10 rounded-full mb-4">
               สินค้าของเรา
             </span>
-            <h2 className="text-3xl lg:text-4xl font-bold text-foreground">
+            <h2 className="text-3xl lg:text-4xl font-bold leading-[1.3] text-foreground">
               สินค้า<span className="text-primary">แนะนำ</span>
             </h2>
             <p className="mt-4 text-muted-foreground max-w-2xl mx-auto">
@@ -202,7 +202,7 @@ export default function LandingPage() {
             <span className="inline-block px-4 py-1.5 text-xs font-semibold text-primary bg-primary/10 rounded-full mb-4">
               ทำไมถึงเลือกเรา
             </span>
-            <h2 className="text-3xl lg:text-4xl font-bold text-foreground">
+            <h2 className="text-3xl lg:text-4xl font-bold leading-[1.3] text-foreground">
               บริการ<span className="text-primary">ของเรา</span>
             </h2>
           </div>
@@ -265,7 +265,7 @@ export default function LandingPage() {
       {/* CTA Section */}
       <section className="py-20 bg-hero-gradient">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-3xl lg:text-4xl font-bold text-primary-foreground">
+          <h2 className="text-3xl lg:text-4xl font-bold leading-[1.3] text-primary-foreground">
             พร้อมเป็นเจ้าของสมาร์ทโฟนในฝัน?
           </h2>
           <p className="mt-4 text-lg text-primary-foreground/70">
@@ -295,7 +295,7 @@ export default function LandingPage() {
             <span className="inline-block px-4 py-1.5 text-xs font-semibold text-primary bg-primary/10 rounded-full mb-4">
               ติดต่อเรา
             </span>
-            <h2 className="text-3xl lg:text-4xl font-bold text-foreground">
+            <h2 className="text-3xl lg:text-4xl font-bold leading-[1.3] text-foreground">
               ช่องทาง<span className="text-primary">ติดต่อ</span>
             </h2>
           </div>

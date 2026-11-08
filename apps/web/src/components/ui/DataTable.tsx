@@ -610,7 +610,7 @@ function DataTable<T extends { id: string }>({
                             header.column.getToggleSortingHandler()?.(event);
                           }}
                           className={cn(
-                            'flex min-h-6 w-full min-w-0 cursor-pointer items-center gap-1 rounded text-inherit hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                            'flex min-h-6 lg:min-h-8 w-full min-w-0 cursor-pointer whitespace-nowrap items-center gap-1 rounded text-inherit hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                             alignFlex[align],
                           )}
                           title={`เรียงตาม${src?.label ?? header.id}`}

@@ -25,9 +25,9 @@
 
 ## Review Focus
 
-1. **กรอบโฟกัสด้านใน (Task 4) ต้องมองเห็นบนแท็บที่เลือกทั้งสองธีม** — แท็บที่เลือกมีเส้นใต้ 2px สี primary ชิดขอบล่าง กรอบ `ring-inset` 2px จะทับเส้นนั้นพอดี ⇒ ยอมรับได้เพราะอีก 3 ด้านยังเห็น · harness ไม่ได้ focus แท็บ จึงปักด้วยเทสต์คลาสและเขียนเหตุผลใน PR
+1. **กรอบโฟกัสด้านใน (Task 4) ต้องมองเห็นบนแท็บที่เลือกทั้งสองธีม** — inset box-shadow วาดด้านในขอบ (padding box) จึงไม่ทับเส้นใต้ 2px ของแท็บที่เลือก · ตัวร่วม `tabs.tsx` ประกอบคลาสด้วย `cn` (twMerge) ⇒ `focus-visible:ring-offset-0` ใน compound variant ชนะ `ring-offset-2` ของ base ได้ · ปุ่มที่วาดเองได้ ring จากกฎกลาง `*:focus-visible` ใน `@layer base` (index.css ~387) ซึ่งแพ้ utilities ⇒ ใส่แค่ `focus-visible:ring-inset focus-visible:ring-offset-0` พอ · harness ไม่ได้ focus แท็บ จึงปักด้วยเทสต์คลาสและเขียนเหตุผลใน PR
 2. **`scrollIntoView` (Task 5) ต้องไม่เลื่อนทั้งหน้าแนวตั้ง** ตอนเปิดหน้า — ใช้ `block: 'nearest', inline: 'nearest'` เท่านั้น และเรียกเฉพาะเมื่อแถบเลื่อนได้จริง (`scrollWidth > clientWidth`)
-3. **ระยะขอบเซลล์ (Task 2) ต้องไม่ทำให้ตารางกว้างเกินจน ScreenTable เปลี่ยนเป็นการ์ดที่จอ 390** ทั้งที่รอบ 3 ยังเป็นตาราง — ถ้าเปลี่ยน ต้องรายงานใน Task 6
+3. **ระยะขอบเซลล์ (Task 2) จะทำให้ตารางนี้กลายเป็นการ์ดที่จอ 320 — คาดไว้แล้ว ไม่ใช่บั๊ก** — ชุดวัดรอบ 3 ที่ 320 ตารางกว้างถึง x=284 จากกรอบ ~288px (เหลือ ~4px) ⇒ ระยะขอบใด ๆ ทำให้ล้นกรอบ → `use-table-layout.ts` สลับเป็นการ์ดเมื่อกว้างน้อยกว่า 40rem (บรรทัด 45) · ที่ 390 ยังต้องเป็นตาราง (มีที่ว่าง ~70px) · Task 6 ต้องยืนยันทั้งสองข้อและเขียนในรายงาน (แบบเดียวกับข้อ 5 รอบ 3 ที่เจ้าของรับไว้)
 4. **ป้าย "ดูอย่างเดียว" ที่ย้ายออกจากแท็บ (Task 3) ต้องยังเห็นได้ตอนอยู่แท็บใบจ่าย** — อยู่ในหัวแผงของแท็บนั้น ไม่หายไป
 5. **ธีมมืด** — harness วัดทั้งสองธีมอยู่แล้ว ภาพตรวจ Task 6 ดูทั้งสองธีม
 
@@ -92,7 +92,7 @@ describe('EquityViewPage lines table — cells have horizontal padding', () => {
 ```
 
 - [ ] **Step 2: รัน** `npm --prefix apps/web run test -- headerNowrap` → FAIL
-- [ ] **Step 3: แก้** — `<th>`/`<td>` คอลัมน์แรก `pr-2` · คอลัมน์อื่น `px-2` (ไม่เปลี่ยน `text-right font-mono py-2`)
+- [ ] **Step 3: แก้** — `<th>`/`<td>` คอลัมน์แรก `pr-2` · คอลัมน์อื่น `px-2` (ไม่เปลี่ยน `text-right font-mono py-2`) · ผลที่คาด: จอ 320 ตารางนี้กลายเป็นการ์ด (Review Focus 3) จอ 390/1440 ยังเป็นตารางและคำหัวตารางห่างกัน 16px
 - [ ] **Step 4: รันเทสต์ซ้ำ** → PASS · tsc 0 · Doc guard `exit=1`
 - [ ] **Step 5: Commit** `fix(web): equity view table cells get horizontal padding so nowrap headers read apart (round 4 item 2)`
 
@@ -161,7 +161,7 @@ describe('ContractsPage keeps the selected tab in view', () => {
 ```
 
 - [ ] **Step 2: รัน** → FAIL
-- [ ] **Step 3: แก้** — `const tabBarRef = useRef<HTMLDivElement>(null)`; `useEffect(() => { const bar = tabBarRef.current; if (!bar || bar.scrollWidth <= bar.clientWidth) return; bar.querySelector<HTMLElement>('[aria-pressed="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }, [viewTab]);` — ปุ่มแท็บต้องมี `aria-pressed={viewTab === tab.key}` (เพิ่มถ้ายังไม่มี) · ห้ามใช้ `behavior: 'smooth'` (ตอนเปิดหน้า)
+- [ ] **Step 3: แก้** — ปุ่มแท็บทั้ง 3 ใน ContractsPage **ยังไม่มี** `aria-pressed` (ตรวจแล้ว 2026-11-08 บรรทัด 347–366) ⇒ เพิ่ม `aria-pressed={viewTab === '<key>'}` ให้ครบก่อน · `const tabBarRef = useRef<HTMLDivElement>(null)`; `useEffect(() => { const bar = tabBarRef.current; if (!bar || bar.scrollWidth <= bar.clientWidth) return; bar.querySelector<HTMLElement>('[aria-pressed="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }, [viewTab]);` · ห้ามใช้ `behavior: 'smooth'` (ตอนเปิดหน้า) · effect ทำงานทั้งตอนเปิดหน้าและตอนกดแท็บ (viewTab เปลี่ยน) — `nearest` ทำให้ไม่กระตุกเมื่อแท็บอยู่ในจออยู่แล้ว
 - [ ] **Step 4: รันเทสต์ซ้ำ** → PASS · tsc 0 · Doc guard `exit=1`
 - [ ] **Step 5: Commit** `fix(web): contracts tab bar scrolls the deep-linked tab into view (round 4 item 6)`
 

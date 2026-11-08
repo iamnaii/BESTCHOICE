@@ -158,3 +158,15 @@ describe('SellingPriceCard "ขึ้นเว็บ" readiness button', () => {
     expect(cls).toContain('whitespace-nowrap');
   });
 });
+
+describe('CommissionsPage "ดูอย่างเดียว" badge', () => {
+  it('lives in the payouts panel header, not inside the tab button', () => {
+    const src = read('pages/CommissionsPage.tsx');
+    const tabIdx = src.indexOf('ใบจ่ายรายเดือน\n'); // label text inside the tab button
+    const badgeIdx = src.indexOf('ดูอย่างเดียว\n');
+    const payoutsIdx = src.indexOf("activeTab === 'payouts' && (");
+    expect(badgeIdx).toBeGreaterThan(payoutsIdx);
+    expect(src.slice(tabIdx, tabIdx + 400)).not.toContain('ดูอย่างเดียว');
+    expect(classBefore(src, 'ดูอย่างเดียว\n', '<span')).toContain('whitespace-nowrap');
+  });
+});

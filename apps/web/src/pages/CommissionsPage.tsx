@@ -497,10 +497,6 @@ export default function CommissionsPage() {
           >
             <Sparkles className="size-4" aria-hidden="true" />
             ใบจ่ายรายเดือน
-            <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-border bg-muted px-2 py-0.5 text-2xs font-medium text-muted-foreground leading-snug">
-              <Eye className="size-3 shrink-0" aria-hidden="true" />
-              ดูอย่างเดียว
-            </span>
           </button>
         )}
       </div>
@@ -593,6 +589,10 @@ export default function CommissionsPage() {
       {activeTab === 'payouts' && (
         <>
           <div className="flex gap-3 mb-4 flex-wrap items-center">
+            <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-border bg-muted px-2 py-0.5 text-2xs font-medium text-muted-foreground leading-snug">
+              <Eye className="size-3 shrink-0" aria-hidden="true" />
+              ดูอย่างเดียว
+            </span>
             <input
               type="month"
               aria-label="เดือนของใบจ่าย"

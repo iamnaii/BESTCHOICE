@@ -154,10 +154,8 @@ test('fix1: R9 coerces string weights; web 300 ok, shop 300 flagged', () => {
 test('fix1: keyless facts get dup-indexed keys, shared by compareFacts', () => {
   const a = fact({ key: undefined, kind: 'button', text: 'ตกลง 1' });
   const b = fact({ key: undefined, kind: 'button', text: 'ตกลง 2' });
-  const f = evaluateTypography([a, b], ctx()).filter((x) => x.rule === 'R1' || x.rule === 'R7');
   const keys = evaluateTypography([{ ...a, fontSize: 15 }, { ...b, fontSize: 15 }], ctx()).filter((x) => x.rule === 'R1').map((x) => x.key);
   assert.deepEqual(keys, ['button|ตกลง #|0', 'button|ตกลง #|1']);
-  assert.ok(Array.isArray(f));
   const out = compareFacts([{ ...a, inkWidth: 100 }, { ...b, inkWidth: 100 }], [{ ...a, inkWidth: 100 }, { ...b, inkWidth: 130, text: 'ตกลง 2' }]);
   assert.equal(out.length, 1);
   assert.equal(out[0].key, 'button|ตกลง #|1');
@@ -187,4 +185,80 @@ test('fix1: mutant-killers for R1/R2/R3/R6/R7', () => {
   assert.ok(!has([fact({ kind: 'button', h: 20 })], ctx({ width: 600 }), 'R7'));
   assert.ok(!has([fact({ kind: 'th', overflowClip: 'none', scrollOverflowX: true })], ctx(), 'R6'));
   assert.ok(!has([fact({ kind: 'th', overflowClip: 'x', scrollOverflowX: false })], ctx(), 'R6'));
+});
+
+test('fix2: resolveKeys — keyed facts count toward dup, explicit keys verbatim, scoped by kind', () => {
+  const keyed = fact({ kind: 'button', text: 'ตกลง', key: 'button|ตกลง|0', fontSize: 15 });
+  const keyless = fact({ kind: 'button', text: 'ตกลง', key: undefined, fontSize: 15 });
+  const keys = evaluateTypography([keyed, keyless], ctx()).filter((f) => f.rule === 'R1').map((f) => f.key);
+  assert.deepEqual(keys, ['button|ตกลง|0', 'button|ตกลง|1']);
+  const fixture = fact({ kind: 'button', text: 'ตกลง', key: 'button|ตกลง|3', fontSize: 15 });
+  assert.equal(evaluateTypography([fixture], ctx()).find((f) => f.rule === 'R1').key, 'button|ตกลง|3');
+  const a = fact({ kind: 'button', text: 'a', key: undefined, fontSize: 15 });
+  const b = fact({ kind: 'text', text: 'a', key: undefined, fontSize: 15 });
+  assert.deepEqual(evaluateTypography([a, b], ctx()).filter((f) => f.rule === 'R1').map((f) => f.key), ['button|a|0', 'text|a|0']);
+});
+
+test('fix2: escalated ranks', () => {
+  const mk = (severity) => ({ rule: 'R3', severity, route: '/x', width: 1, theme: 't', role: 'r', key: 'k', text: '', detail: {} });
+  const esc = (b, a) => diffFindings([mk(b)], [mk(a)]).escalated.length;
+  assert.equal(esc('P2', 'P2'), 0);
+  assert.equal(esc('P3', 'P2'), 1);
+  assert.equal(esc('P3', 'P1'), 1);
+  assert.equal(esc('P1', 'P3'), 0);
+});
+
+test('fix2: diffFindings tolerates null/undefined options', () => {
+  assert.doesNotThrow(() => diffFindings([], [], null));
+  assert.doesNotThrow(() => diffFindings([], [], undefined));
+});
+
+test('fix2: R4 ink branch needs finite lineHeight; scroll needs Thai + vertical clip', () => {
+  const base = fact({ hasThai: true, overflowClip: 'y', lineHeight: null, inkHeight: 30, scrollOverflowY: false });
+  assert.ok(!has([base], ctx(), 'R4'));
+  assert.ok(has([{ ...base, overflowClip: 'both', scrollOverflowY: true }], ctx(), 'R4'));
+  assert.ok(!has([{ ...base, hasThai: false, scrollOverflowY: true }], ctx(), 'R4'));
+});
+
+test('fix2: R10 trusts the numericOnly flag even for truncated text', () => {
+  assert.ok(rules([fact({ tag: 'td', text: '1,2…', numericOnly: true })], ctx()).includes('R10:P3'));
+});
+
+test('fix2: D1 gated on raw text; differing text still eligible for D2', () => {
+  const key = factKey('text', 'ยอด 1,200', 0);
+  const b = fact({ key, text: 'ยอด 1,200', inkWidth: 100 });
+  assert.equal(compareFacts([b], [{ ...b, text: 'ยอด 1,300', inkWidth: 130 }]).filter((d) => d.rule === 'D1').length, 0);
+  assert.equal(compareFacts([b], [{ ...b, inkWidth: 130 }]).filter((d) => d.rule === 'D1').length, 1);
+  const btn = (text, textTop) => fact({ kind: 'button', text, key: 'button|k|0', y: 0, h: 40, textTop, textHeight: 18 });
+  const out = compareFacts([btn('ยอด 1', 11)], [btn('ยอด 2', 14)]);
+  assert.deepEqual(out.map((d) => d.rule), ['D2']);
+});
+
+test('fix2: R3 epsilon is float-noise only', () => {
+  assert.ok(rules([fact({ fontSize: 14, lineHeight: 19.53 })], ctx()).includes('R3:P2'));
+  assert.ok(!has([fact({ fontSize: 12, lineHeight: 12 * 1.4 })], ctx(), 'R3'));
+  assert.ok(rules([fact({ fontSize: 20, lineHeight: 23.9, hasThai: true })], ctx()).includes('R3:P1'));
+});
+
+test('fix2: D2 fixed-height guard boundary at 0.5px', () => {
+  const btn = (h, textTop) => fact({ kind: 'button', text: 'ตกลง', key: 'button|ตกลง|0', y: 0, h, textTop, textHeight: 18 });
+  // before: offset 0 (h 40, textTop 11); after offset = textTop + 9 - h/2
+  const d2 = (hAfter) => compareFacts([btn(40, 11)], [btn(hAfter, 14 + (hAfter - 40) / 2)]).filter((d) => d.rule === 'D2').length;
+  assert.equal(d2(40.5), 1);
+  assert.equal(d2(40.51), 0);
+});
+
+test('fix2: compareFacts ctx cannot override delta fields', () => {
+  const k = 'button|ตกลง|0';
+  const b = fact({ kind: 'button', text: 'ตกลง', key: k, y: 0, h: 40, textTop: 11, textHeight: 18, inkWidth: 100 });
+  const a = { ...b, inkWidth: 130, textTop: 14 };
+  const out = compareFacts([b], [a], { rule: 'X', key: 'K', kind: 'Z', text: 'T', detail: 'D', route: '/r' });
+  assert.deepEqual(out.map((d) => d.rule).sort(), ['D1', 'D2']);
+  for (const d of out) {
+    assert.equal(d.key, k);
+    assert.equal(d.kind, 'button');
+    assert.equal(d.text, 'ตกลง');
+    assert.equal(typeof d.detail, 'object');
+    assert.equal(d.route, '/r');
+  }
 });

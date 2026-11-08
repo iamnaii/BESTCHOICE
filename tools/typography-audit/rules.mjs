@@ -56,11 +56,10 @@ export const findingKey = (f) => `${f.route}|${f.width}|${f.theme}|${f.role}|${f
 export function resolveKeys(facts) {
   const seen = new Map();
   return facts.map((f) => {
-    if (f.key) return f.key;
     const base = `${f.kind}|${normalizeKeyText(f.text)}`;
     const dup = seen.get(base) ?? 0;
     seen.set(base, dup + 1);
-    return factKey(f.kind, f.text, dup);
+    return f.key ? f.key : factKey(f.kind, f.text, dup);
   });
 }
 
@@ -145,7 +144,8 @@ export function evaluateTypography(facts, ctx) {
 
 // persisting entries = AFTER finding + `before` (matching BEFORE finding).
 // escalated = persisting entries whose severity rank rose (P3 < P2 < P1).
-export function diffFindings(before, after, { excludeRules = NON_DIFF_RULES } = {}) {
+export function diffFindings(before, after, options) {
+  const excludeRules = options?.excludeRules ?? NON_DIFF_RULES;
   const keep = (list) => list.filter((f) => !excludeRules.includes(f.rule));
   const b = keep(before), a = keep(after);
   const bMap = new Map(b.map((f) => [findingKey(f), f]));
@@ -171,15 +171,15 @@ export function compareFacts(beforeFacts, afterFacts, ctx = {}) {
   for (const [i, a] of afterFacts.entries()) {
     const b = byKey.get(aKeys[i]);
     if (!b) continue;
-    const base = { key: aKeys[i], kind: a.kind, text: a.text, ...ctx };
+    const base = { ...ctx, key: aKeys[i], kind: a.kind, text: a.text };
     if (a.text === b.text && b.inkWidth > 0) {
       const change = (a.inkWidth - b.inkWidth) / b.inkWidth;
-      if (Math.abs(change) > D1_INK_WIDTH_CHANGE) out.push({ rule: 'D1', ...base, detail: { before: b.inkWidth, after: a.inkWidth, change } });
+      if (Math.abs(change) > D1_INK_WIDTH_CHANGE) out.push({ ...base, rule: 'D1', detail: { before: b.inkWidth, after: a.inkWidth, change } });
     }
     if (D2_KINDS.includes(a.kind) && Math.abs(a.h - b.h) <= D2_FIXED_HEIGHT_PX) {
       const beforeOffset = inkCentreOffset(b), afterOffset = inkCentreOffset(a);
       if (Math.abs(afterOffset) > D2_OFFSET_PX && Math.abs(afterOffset) > Math.abs(beforeOffset) + D2_WORSE_BY_PX) {
-        out.push({ rule: 'D2', ...base, detail: { beforeOffset, afterOffset, beforeH: b.h, afterH: a.h } });
+        out.push({ ...base, rule: 'D2', detail: { beforeOffset, afterOffset, beforeH: b.h, afterH: a.h } });
       }
     }
   }

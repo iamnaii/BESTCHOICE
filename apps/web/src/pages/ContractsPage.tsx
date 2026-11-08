@@ -346,21 +346,21 @@ export default function ContractsPage() {
       <div className="flex max-w-full min-w-0 overflow-x-auto overflow-y-hidden gap-0 mb-5 shadow-[inset_0_-1px_0_hsl(var(--border)/0.6)]">
         <button data-ui-control="button"
           onClick={() => updateParams({ tab: '', status: '', workflow: '', q: '', page: '' })}
-          className={`px-5 py-3 text-sm font-medium whitespace-nowrap shrink-0 border-b-2 transition-all ${viewTab === 'all' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          className={`px-5 py-3 text-sm font-medium whitespace-nowrap shrink-0 border-b-2 transition-all focus-visible:ring-inset focus-visible:ring-offset-0 ${viewTab === 'all' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           ทั้งหมด
           {result && <span className={`ml-2 text-xs px-1.5 py-0.5 rounded-full ${viewTab === 'all' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>{result.total}</span>}
         </button>
         <button data-ui-control="button"
           onClick={() => updateParams({ tab: 'my', status: '', workflow: '', q: '', page: '' })}
-          className={`px-5 py-3 text-sm font-medium whitespace-nowrap shrink-0 border-b-2 transition-all ${viewTab === 'my' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          className={`px-5 py-3 text-sm font-medium whitespace-nowrap shrink-0 border-b-2 transition-all focus-visible:ring-inset focus-visible:ring-offset-0 ${viewTab === 'my' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           สัญญาของฉัน
         </button>
         {isManager && (
           <button data-ui-control="button"
             onClick={() => updateParams({ tab: 'pending_review', status: '', workflow: '', q: '', page: '' })}
-            className={`px-5 py-3 text-sm font-medium whitespace-nowrap shrink-0 border-b-2 transition-all ${viewTab === 'pending_review' ? 'border-warning text-warning-strong' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+            className={`px-5 py-3 text-sm font-medium whitespace-nowrap shrink-0 border-b-2 transition-all focus-visible:ring-inset focus-visible:ring-offset-0 ${viewTab === 'pending_review' ? 'border-warning text-warning-strong' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
           >
             รอตรวจสอบ
           </button>

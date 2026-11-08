@@ -111,6 +111,8 @@ const tabsTriggerVariants = cva(
       { variant: 'line', size: 'md', className: 'py-2.5' },
       { variant: 'line', size: 'sm', className: 'py-2' },
       { variant: 'line', size: 'xs', className: 'py-1.5' },
+      // line tabs sit in scrollable bars (overflow clips an outside ring) -> draw the focus ring inside the tab
+      { variant: 'line', className: 'focus-visible:ring-inset focus-visible:ring-offset-0' },
     ],
     defaultVariants: {
       variant: 'default',

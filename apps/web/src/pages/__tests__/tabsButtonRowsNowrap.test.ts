@@ -170,3 +170,27 @@ describe('CommissionsPage "ดูอย่างเดียว" badge', () => {
     expect(classBefore(src, 'ดูอย่างเดียว\n', '<span')).toContain('whitespace-nowrap');
   });
 });
+
+// Keyboard focus ring: a scroll container clips an outside ring (offset 2-3px), so every tab button in a
+// scrollable bar draws the ring inset (inside its own box). Source-text pin; the harness cannot press Tab.
+describe('scrollable tab bars use an inset focus ring', () => {
+  it.each([
+    ['NotificationsPage/index.tsx', '{/* Tabs */}', 3],
+    ['CommissionsPage.tsx', '{/* Tabs */}', 2],
+    ['ContractsPage.tsx', '{/* View Tabs', 3],
+    ['PurchaseOrdersPage/index.tsx', '{/* Tabs */}', 2],
+    ['ProductDetailPage/index.tsx', '{/* Tabs — always shown', 1],
+    ['ChartOfAccountsPage.tsx', '{/* Scope tabs', 1],
+  ] as const)('%s: every tab button has ring-inset + ring-offset-0', (file, marker, expected) => {
+    const src = read(`pages/${file}`);
+    const i = src.indexOf(marker);
+    expect(i, `marker not found: ${marker}`).toBeGreaterThan(-1);
+    const bar = src.slice(i, src.indexOf('</div>', i));
+    const buttons = bar.split('<button').slice(1);
+    expect(buttons.length).toBe(expected);
+    for (const b of buttons) {
+      expect(b).toContain('focus-visible:ring-inset');
+      expect(b).toContain('focus-visible:ring-offset-0');
+    }
+  });
+});

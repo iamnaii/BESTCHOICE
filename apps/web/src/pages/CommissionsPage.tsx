@@ -474,7 +474,7 @@ export default function CommissionsPage() {
           type="button"
           onClick={() => setActiveTab('commissions')}
           aria-pressed={activeTab === 'commissions'}
-          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium leading-snug whitespace-nowrap shrink-0 border-b-2 transition-colors ${
+          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium leading-snug whitespace-nowrap shrink-0 border-b-2 transition-colors focus-visible:ring-inset focus-visible:ring-offset-0 ${
             activeTab === 'commissions'
               ? 'border-primary text-primary'
               : 'border-transparent text-muted-foreground hover:text-foreground'
@@ -489,7 +489,7 @@ export default function CommissionsPage() {
             type="button"
             onClick={() => setActiveTab('payouts')}
             aria-pressed={activeTab === 'payouts'}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium leading-snug whitespace-nowrap shrink-0 border-b-2 transition-colors ${
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium leading-snug whitespace-nowrap shrink-0 border-b-2 transition-colors focus-visible:ring-inset focus-visible:ring-offset-0 ${
               activeTab === 'payouts'
                 ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground'

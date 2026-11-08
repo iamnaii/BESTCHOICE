@@ -217,16 +217,16 @@ export default function PurchaseOrdersPage() {
       <PurchasingSummaryStrip summary={data.summary} onCardClick={onSummaryCardClick} readOnly={readOnly} />
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-5 border-b border-border/60">
+      <div className="flex max-w-full min-w-0 overflow-x-auto overflow-y-hidden gap-1 mb-5 border-b border-border/60">
         <button data-ui-control="button"
           onClick={() => data.setActiveTab('list')}
-          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${data.activeTab === 'list' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap shrink-0 border-b-2 transition-colors ${data.activeTab === 'list' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           รายการ PO
         </button>
         <button data-ui-control="button"
           onClick={() => data.setActiveTab('payable')}
-          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${data.activeTab === 'payable' ? 'border-destructive text-destructive' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap shrink-0 border-b-2 transition-colors ${data.activeTab === 'payable' ? 'border-destructive text-destructive' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           ยอดค้างชำระ ( ผู้จัดจำหน่าย )
           {ledger.data && Number(ledger.data.totals.closing) > 0 && (

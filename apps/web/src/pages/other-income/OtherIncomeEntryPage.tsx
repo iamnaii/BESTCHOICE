@@ -230,7 +230,7 @@ function SectionHeader({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between mb-3">
+    <div className="flex flex-wrap items-center justify-between gap-y-2 mb-3">
       <div className="flex items-center gap-2 min-w-0">
         <span className="size-6 rounded bg-primary/15 text-primary text-xs font-bold flex items-center justify-center shrink-0">
           {num}

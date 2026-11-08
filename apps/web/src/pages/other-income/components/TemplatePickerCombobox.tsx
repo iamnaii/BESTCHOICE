@@ -40,7 +40,7 @@ export function TemplatePickerCombobox({ onApply }: Props) {
       <button data-ui-control="button"
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-1 px-3 py-1.5 border rounded-md text-xs hover:bg-accent"
+        className="inline-flex items-center gap-1 whitespace-nowrap px-3 py-1.5 border rounded-md text-xs hover:bg-accent"
       >
         ใช้แม่แบบ <ChevronDown size={12} />
       </button>

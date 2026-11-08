@@ -468,13 +468,13 @@ export default function CommissionsPage() {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 border-b border-border">
+      <div className="flex max-w-full min-w-0 overflow-x-auto overflow-y-hidden gap-1 mb-6 border-b border-border">
         <button
           data-ui-control="button"
           type="button"
           onClick={() => setActiveTab('commissions')}
           aria-pressed={activeTab === 'commissions'}
-          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium leading-snug border-b-2 transition-colors ${
+          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium leading-snug whitespace-nowrap shrink-0 border-b-2 transition-colors ${
             activeTab === 'commissions'
               ? 'border-primary text-primary'
               : 'border-transparent text-muted-foreground hover:text-foreground'
@@ -489,7 +489,7 @@ export default function CommissionsPage() {
             type="button"
             onClick={() => setActiveTab('payouts')}
             aria-pressed={activeTab === 'payouts'}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium leading-snug border-b-2 transition-colors ${
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium leading-snug whitespace-nowrap shrink-0 border-b-2 transition-colors ${
               activeTab === 'payouts'
                 ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground'

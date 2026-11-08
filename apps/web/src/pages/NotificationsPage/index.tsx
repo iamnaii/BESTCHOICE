@@ -226,41 +226,41 @@ export default function NotificationsPage() {
       )}
 
       {/* Quick Actions */}
-      <div className="flex gap-3 mb-6">
+      <div className="flex flex-wrap gap-x-3 gap-y-2 mb-6">
         <button data-ui-control="button"
           onClick={() => sendRemindersMutation.mutate()}
           disabled={sendRemindersMutation.isPending}
-          className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
+          className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium whitespace-nowrap hover:bg-primary/90 disabled:opacity-50"
         >
           {sendRemindersMutation.isPending ? 'กำลังส่ง...' : 'ส่งเตือนก่อนครบกำหนด'}
         </button>
         <button data-ui-control="button"
           onClick={() => sendOverdueMutation.mutate()}
           disabled={sendOverdueMutation.isPending}
-          className="px-4 py-2 bg-warning text-warning-foreground rounded-lg text-sm font-medium hover:bg-warning/90 disabled:opacity-50"
+          className="px-4 py-2 bg-warning text-warning-foreground rounded-lg text-sm font-medium whitespace-nowrap hover:bg-warning/90 disabled:opacity-50"
         >
           {sendOverdueMutation.isPending ? 'กำลังส่ง...' : 'ส่งทวงหนี้ค้างชำระ'}
         </button>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-4 border-b">
+      <div className="flex max-w-full min-w-0 overflow-x-auto overflow-y-hidden gap-1 mb-4 border-b">
         <button data-ui-control="button"
           onClick={() => setActiveTab('logs')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${activeTab === 'logs' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          className={`px-4 py-2 text-sm font-medium whitespace-nowrap shrink-0 border-b-2 -mb-px ${activeTab === 'logs' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           ประวัติการส่ง
         </button>
         <button data-ui-control="button"
           onClick={() => setActiveTab('templates')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${activeTab === 'templates' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          className={`px-4 py-2 text-sm font-medium whitespace-nowrap shrink-0 border-b-2 -mb-px ${activeTab === 'templates' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           แม่แบบข้อความ
         </button>
         {isOwner && (
           <button data-ui-control="button"
             onClick={() => setActiveTab('staff')}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${activeTab === 'staff' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+            className={`px-4 py-2 text-sm font-medium whitespace-nowrap shrink-0 border-b-2 -mb-px ${activeTab === 'staff' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
           >
             แจ้งพนักงาน (LINE)
           </button>

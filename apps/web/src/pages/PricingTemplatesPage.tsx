@@ -279,22 +279,22 @@ export default function PricingTemplatesPage() {
         title="ราคาตั้งต้น"
         subtitle="กำหนดราคาเงินสด / ผ่อน BESTCHOICE / ผ่อนไฟแนนซ์ ตามรุ่นสินค้า"
         action={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button data-ui-control="button"
               onClick={downloadTemplate}
-              className="px-3 py-2 text-sm text-muted-foreground border border-input rounded-lg hover:bg-muted/50"
+              className="px-3 py-2 text-sm whitespace-nowrap text-muted-foreground border border-input rounded-lg hover:bg-muted/50"
             >
               ดาวน์โหลดแบบฟอร์ม
             </button>
             <button data-ui-control="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={importMutation.isPending}
-              className="px-3 py-2 text-sm text-primary border border-primary/30 rounded-lg hover:bg-primary/5 dark:hover:bg-primary/10 disabled:opacity-50"
+              className="px-3 py-2 text-sm whitespace-nowrap text-primary border border-primary/30 rounded-lg hover:bg-primary/5 dark:hover:bg-primary/10 disabled:opacity-50"
             >
               {importMutation.isPending ? 'กำลังนำเข้า...' : 'นำเข้า Excel'}
             </button>
             <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileImport} />
-            <button data-ui-control="button" onClick={openCreate} className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90">
+            <button data-ui-control="button" onClick={openCreate} className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium whitespace-nowrap rounded-lg hover:bg-primary/90">
               + เพิ่มราคาตั้งต้น
             </button>
           </div>

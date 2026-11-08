@@ -329,12 +329,12 @@ export default function OtherIncomeViewPage() {
         badge={doc ? <StatusBadge status={doc.status} /> : undefined}
         action={
           doc ? (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
               <button data-ui-control="button"
                 type="button"
                 disabled={isActionLoading}
                 onClick={() => copyMutation.mutate()}
-                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium border rounded-lg hover:bg-accent disabled:opacity-50"
+                className="inline-flex items-center gap-2 whitespace-nowrap px-3 py-2 text-sm font-medium border rounded-lg hover:bg-accent disabled:opacity-50"
               >
                 <Copy size={14} />
                 คัดลอก
@@ -343,7 +343,7 @@ export default function OtherIncomeViewPage() {
                 <button data-ui-control="button"
                   type="button"
                   onClick={() => setShowTemplateModal(true)}
-                  className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium border rounded-lg hover:bg-accent"
+                  className="inline-flex items-center gap-2 whitespace-nowrap px-3 py-2 text-sm font-medium border rounded-lg hover:bg-accent"
                 >
                   บันทึกเป็นแม่แบบ
                 </button>
@@ -355,7 +355,7 @@ export default function OtherIncomeViewPage() {
                     setPreviewId(doc.id)
                   }
                   disabled={previewId === doc.id}
-                  className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium border rounded-lg hover:bg-accent disabled:opacity-50"
+                  className="inline-flex items-center gap-2 whitespace-nowrap px-3 py-2 text-sm font-medium border rounded-lg hover:bg-accent disabled:opacity-50"
                 >
                   <Printer size={14} />
                   พิมพ์ใบเสร็จ
@@ -366,7 +366,7 @@ export default function OtherIncomeViewPage() {
                   <button data-ui-control="button"
                     type="button"
                     onClick={() => navigate(`/other-income/${doc.id}/edit`)}
-                    className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium border rounded-lg hover:bg-accent"
+                    className="inline-flex items-center gap-2 whitespace-nowrap px-3 py-2 text-sm font-medium border rounded-lg hover:bg-accent"
                   >
                     <Edit size={14} />
                     แก้ไข
@@ -376,7 +376,7 @@ export default function OtherIncomeViewPage() {
                       type="button"
                       onClick={() => requestApprovalMutation.mutate()}
                       disabled={requestApprovalMutation.isPending}
-                      className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
+                      className="inline-flex items-center gap-2 whitespace-nowrap px-4 py-2 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
                     >
                       <Send size={14} />
                       ส่งขออนุมัติ
@@ -385,7 +385,7 @@ export default function OtherIncomeViewPage() {
                     <button data-ui-control="button"
                       type="button"
                       onClick={() => navigate(`/other-income/${doc.id}/edit`)}
-                      className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
+                      className="inline-flex items-center gap-2 whitespace-nowrap px-4 py-2 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
                     >
                       <Check size={14} />
                       {permissions.can('INCOME_POST') ? "แก้ไขและ ลงบัญชี" : 'แก้ไขร่าง'}
@@ -725,7 +725,7 @@ export default function OtherIncomeViewPage() {
                       <button data-ui-control="button"
                         type="button"
                         onClick={() => navigate(`/other-income/${doc.id}/edit`)}
-                        className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/90"
+                        className="w-full inline-flex items-center justify-center gap-2 whitespace-nowrap px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/90"
                       >
                         <Edit size={14} />
                         {permissions.can('INCOME_POST') ? "แก้ไขและ ลงบัญชี" : 'แก้ไขร่าง'}

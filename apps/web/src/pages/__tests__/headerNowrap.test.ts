@@ -128,3 +128,26 @@ describe('ChatPanel assignee chip', () => {
     expect(cls).not.toContain('leading-none');
   });
 });
+
+// Round 4 Task 2: shareholder table cells need horizontal padding so nowrap headers read apart.
+// Anchored on this table's own <ScreenTable> ... </ScreenTable> (the doc.lines.map window would also take in neighbouring markup).
+describe('EquityViewPage shareholder table — cells have horizontal padding', () => {
+  const src = read('equity/EquityViewPage.tsx');
+  const open = src.indexOf('<ScreenTable className="w-full text-sm">');
+  const table = src.slice(open, src.indexOf('</ScreenTable>', open));
+  const cells = [...table.matchAll(/<(th|td) className="([^"]*)"/g)];
+  it('anchor found and every <th>/<td> has a plain className string (none skipped)', () => {
+    expect(open).toBeGreaterThan(-1);
+    expect(cells.length).toBe((table.match(/<(th|td)\b/g) ?? []).length);
+    expect(cells.length).toBeGreaterThan(0);
+  });
+  it.each(cells.map((m, i) => [`${i} ${m[1]} ${m[2]}`, m[2]]))('%s has px-2 or pr-2', (_name, cls) => {
+    expect(/\b(px-2|pr-2)\b/.test(cls)).toBe(true);
+  });
+  it('every <th> is still whitespace-nowrap', () => {
+    const ths = [...table.matchAll(/<th className="([^"]*)"/g)];
+    expect(ths.length).toBe((table.match(/<th\b/g) ?? []).length);
+    expect(ths.length).toBeGreaterThan(0);
+    for (const m of ths) expect(m[1]).toContain('whitespace-nowrap');
+  });
+});

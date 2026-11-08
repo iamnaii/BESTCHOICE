@@ -52,7 +52,8 @@ const buttonVariants = cva(
       mode: {
         default: 'focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-2',
         icon: 'max-lg:min-h-11 max-lg:min-w-11 focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-2 shrink-0',
-        link: 'text-primary h-auto p-0 bg-transparent rounded-none hover:bg-transparent data-[state=open]:bg-transparent',
+        // h-auto drops the size's desktop height; lg:min-h-8 keeps the 32px desktop touch minimum (mobile: size's max-lg:min-h-11)
+        link: 'text-primary h-auto lg:min-h-8 p-0 bg-transparent rounded-none hover:bg-transparent data-[state=open]:bg-transparent',
         input: `
             justify-start font-normal hover:bg-background [&_svg]:transition-colors [&_svg]:hover:text-foreground data-[state=open]:bg-background
             focus-visible:border-ring focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/30

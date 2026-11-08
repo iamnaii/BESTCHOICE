@@ -24,7 +24,7 @@ export default function PriceCard({ prices, onAdd, onRemove, onUpdate }: PriceCa
         <button
           type="button"
           onClick={onAdd}
-          className="text-sm text-primary hover:text-primary/80 font-medium"
+          className="inline-flex items-center text-sm text-primary hover:text-primary/80 font-medium max-lg:min-h-11 lg:min-h-8"
         >
           + เพิ่มราคา
         </button>

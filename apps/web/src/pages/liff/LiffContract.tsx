@@ -704,7 +704,7 @@ export default function LiffContract() {
                 <li className="relative pl-7 pt-3">
                   <button
                     type="button"
-                    className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-700 leading-snug"
+                    className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-700 leading-snug max-lg:min-h-11 lg:min-h-8"
                     onClick={() => setShowAllPayments(!showAllPayments)}
                   >
                     {showAllPayments ? 'ย่อรายการ' : `แสดงอีก ${payments.length - 6} งวด`}

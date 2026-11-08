@@ -671,7 +671,8 @@ export default function OtherIncomeEntryPage() {
             <button
               type="button"
               onClick={() => navigate('/other-income')}
-              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-2"
+              // hit area 44px mobile / 32px desktop; negative margins keep the header where it was (was mb-2)
+              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground max-lg:min-h-11 lg:min-h-8 max-lg:-mt-3.25 max-lg:-mb-1.25 lg:-mt-1.75 lg:mb-0.25"
             >
               <ArrowLeft size={14} /> กลับไปหน้ารายการ
             </button>
@@ -972,7 +973,8 @@ export default function OtherIncomeEntryPage() {
                             shouldValidate: true,
                           })
                         }
-                        className="inline-flex max-w-full min-h-6 max-lg:min-h-11 items-center gap-1 text-left text-xs text-primary font-semibold hover:underline"
+                        // desktop hit area 32px; negative margins keep the 24px label row so the input stays aligned
+                        className="inline-flex max-w-full max-lg:min-h-11 lg:min-h-8 lg:-my-1 items-center gap-1 text-left text-xs text-primary font-semibold hover:underline"
                       >
                         <Zap size={11} />
                         ใช้ยอดสุทธิ ({fmt(incomeTotals.net)})

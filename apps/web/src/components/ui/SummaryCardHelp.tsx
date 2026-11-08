@@ -19,7 +19,8 @@ export default function SummaryCardHelp({
             <button
               type="button"
               aria-label={`${label}: ${title}`}
-              className="inline-flex min-h-8 items-center gap-1.5 rounded-sm text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              // 44px hit area on mobile; max-lg:-my-1.5 keeps the original 32px layout box in the card
+              className="inline-flex min-h-8 max-lg:min-h-11 max-lg:-my-1.5 items-center gap-1.5 rounded-sm text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               {label}
               <Info className="size-3.5 shrink-0" aria-hidden="true" />

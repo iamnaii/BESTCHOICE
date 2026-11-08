@@ -71,7 +71,7 @@ export default function SellingPriceCard({
             <button
               type="button"
               onClick={onEdit}
-              className="text-sm text-primary hover:text-primary/80 font-medium leading-snug"
+              className="inline-flex items-center text-sm text-primary hover:text-primary/80 font-medium leading-snug max-lg:min-h-11 lg:min-h-8"
             >
               แก้ราคา
             </button>
@@ -122,7 +122,8 @@ export default function SellingPriceCard({
               <button
                 type="button"
                 onClick={onGoOnline}
-                className="inline-flex items-center gap-0.5 font-medium text-primary hover:underline"
+                // hit area 44px mobile / 32px desktop; negative margins keep the readiness row's height
+                className="inline-flex items-center gap-0.5 font-medium text-primary hover:underline max-lg:min-h-11 lg:min-h-8 max-lg:-my-3 lg:-my-1.5"
               >
                 ขึ้นเว็บ
                 <ChevronRight className="size-3.5" aria-hidden />

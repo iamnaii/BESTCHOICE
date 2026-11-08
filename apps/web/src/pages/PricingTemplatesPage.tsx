@@ -335,7 +335,8 @@ export default function PricingTemplatesPage() {
       {templates.length === 0 ? (
         <div className="text-center py-12 rounded-xl border border-border/50 bg-card shadow-sm">
           <div className="text-muted-foreground text-sm mb-3">ยังไม่มีราคาตั้งต้น</div>
-          <button onClick={openCreate} className="text-sm text-primary hover:underline">เพิ่มราคาตั้งต้นรายการแรก</button>
+          {/* hit area 44px mobile / 32px desktop; negative margins keep the empty state's height */}
+          <button onClick={openCreate} className="inline-flex items-center text-sm text-primary hover:underline max-lg:min-h-11 lg:min-h-8 max-lg:-my-3 lg:-my-1.5">เพิ่มราคาตั้งต้นรายการแรก</button>
         </div>
       ) : (
         <Card className="overflow-hidden">

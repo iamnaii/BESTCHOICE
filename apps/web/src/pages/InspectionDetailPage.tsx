@@ -152,7 +152,8 @@ export default function InspectionDetailPage() {
         action={
           <button
             onClick={() => navigate('/inspections')}
-            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            // hit area 44px mobile / 32px desktop; negative margins keep the header height
+            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors max-lg:min-h-11 lg:min-h-8 max-lg:-my-3 lg:-my-1.5"
           >
             <ArrowLeft className="size-4" />
             กลับ

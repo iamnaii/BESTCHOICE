@@ -245,7 +245,7 @@ export default function SupplierDetailPage() {
                   setConfirmDialog({ open: true, message: `ต้องการ${action}ผู้จัดจำหน่าย "${supplier.name}" ?`, action: () => toggleActiveMutation.mutate({ supplierId: supplier.id, isActive: !supplier.isActive }) });
                 }}
                 disabled={toggleActiveMutation.isPending}
-                className={`px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${
+                className={`whitespace-nowrap px-4 py-2 text-sm font-medium rounded-lg border transition-colors max-lg:min-h-11 lg:min-h-8 ${
                   supplier.isActive
                     ? 'text-destructive border-destructive/30 hover:bg-destructive/5 dark:hover:bg-destructive/10'
                     : 'text-success border-success/30 hover:bg-success/5 dark:hover:bg-success/10'

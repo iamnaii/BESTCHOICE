@@ -95,7 +95,7 @@ export function AssetEntrySection3Vendor() {
             <button
               type="button"
               onClick={clearSupplier}
-              className="mt-1 text-xs text-muted-foreground hover:text-foreground underline"
+              className="inline-flex items-center text-xs text-muted-foreground hover:text-foreground underline max-lg:min-h-11 lg:min-h-8"
             >
               ล้างชื่อผู้ขาย
             </button>

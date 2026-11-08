@@ -634,7 +634,7 @@ export default function SalesHistoryPage() {
                   <div className="mb-2">
                     <Popover>
                       <PopoverTrigger asChild>
-                        <button type="button" aria-label="วิธีคำนวณกำไรรวม" className="inline-flex min-h-8 items-center gap-1.5 -my-1 rounded-sm text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                        <button type="button" aria-label="วิธีคำนวณกำไรรวม" className="inline-flex min-h-8 max-lg:min-h-11 items-center gap-1.5 -my-1 max-lg:-my-2.5 rounded-sm text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                           กำไรรวม <Info className="size-3.5" aria-hidden="true" />
                         </button>
                       </PopoverTrigger>

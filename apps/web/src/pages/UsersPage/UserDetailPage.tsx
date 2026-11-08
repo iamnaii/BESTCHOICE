@@ -171,7 +171,9 @@ export default function UserDetailPage() {
   return (
     <QueryBoundary isLoading={!isNew && detail.isLoading} isError={detail.isError} error={detail.error} onRetry={detail.refetch} errorTitle="ไม่สามารถโหลดข้อมูลผู้ใช้ได้">
       <div className="pb-24">
-        <button onClick={() => navigate('/users')} className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1.5 mb-4">
+        {/* hit area 44px mobile / 32px desktop, grown downward into the old mb-4 gap (no space above:
+            PageShell is pt-0 under the sticky TopBar) — header stays put on desktop, moves 7px on mobile */}
+        <button onClick={() => navigate('/users')} className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1.5 max-lg:min-h-11 lg:min-h-8 max-lg:mb-0 lg:mb-1.25">
           <ChevronLeft className="size-4" /> กลับไปรายการผู้ใช้
         </button>
 

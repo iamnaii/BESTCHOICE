@@ -186,7 +186,7 @@ export function ProductCard({ product: p, priceMode = 'combined' }: Props) {
                 {tags.map((t) => (
                   <span
                     key={t.label}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-card/70 px-2 py-0.5 text-xs text-foreground ring-1 ring-inset ring-white/90 backdrop-blur-sm leading-snug max-w-full"
+                    className="inline-flex items-center gap-1.5 rounded-full bg-card/70 px-2 py-0.5 text-xs text-foreground ring-1 ring-inset ring-white/90 backdrop-blur-sm leading-snug max-w-full whitespace-nowrap"
                   >
                     <span
                       className={cn(
@@ -195,7 +195,7 @@ export function ProductCard({ product: p, priceMode = 'combined' }: Props) {
                       )}
                       aria-hidden
                     />
-                    {t.label}
+                    <span className="truncate">{t.label}</span>
                   </span>
                 ))}
               </div>

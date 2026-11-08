@@ -96,7 +96,7 @@ try {
           assert.ok(fields.length >= 2);
           for (const field of fields) {
             closeTo(field.height, rootSize * 2.75, `${tab}/${width}: ${field.label} height`);
-            assert.match(field.font, /Noto Sans Thai Looped/);
+            assert.match(field.font, /^["']?Noto Sans Thai["']?,/);
             assert.equal(field.size, `${rootSize * (width < 1024 ? 1 : .875)}px`, `${tab}/${width}: ${field.label} font size`);
             assert.ok(field.x >= 0 && field.x + field.width <= width + 1, `${field.label} fits viewport`);
           }

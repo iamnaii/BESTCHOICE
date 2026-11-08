@@ -226,7 +226,7 @@ scripts/                     # Deploy & backup scripts
 - **Routing**: lazy-loaded pages, `ProtectedRoute` wrapper, `MainLayout`
 - **API calls**: `api.get()` / `api.post()` from `@/lib/api`
 - **UI**: shadcn/ui components + Radix UI primitives + Tailwind CSS + lucide-react icons
-- **Theme**: Minimal Zinc + Emerald Accent (ธาตุไม้), White/Light sidebar, IBM Plex Sans Thai font
+- **Theme**: Minimal Zinc + Emerald Accent (ธาตุไม้), White/Light sidebar, Noto Sans Thai (UI ทุกจอ) · Sarabun เฉพาะ `reading-block` หน้าร้าน · ฟอนต์เอกสาร/สติกเกอร์/Tiptap ไม่เปลี่ยน (คำสั่งเจ้าของ 2026-11-08 — ดู `.claude/rules/frontend.md` และ `docs/superpowers/specs/2026-11-08-typography-noto-sans-thai-design.md`)
 - **Design tokens**: CSS variables in `index.css` — ห้ามใช้ hardcoded hex/gray colors, ใช้ tokens เท่านั้น (bg-primary, text-muted-foreground, etc.)
 
 ### Integrations

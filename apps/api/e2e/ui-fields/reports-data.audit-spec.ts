@@ -54,7 +54,7 @@ describe('Reports — real API data and branch-scoped export', () => {
           await page.evaluate(async () => { await document.fonts.ready; for (const a of document.getAnimations()) if (Number.isFinite(a.effect?.getComputedTiming().endTime)) a.finish(); });
           expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
           const fields = await page.locator('main input:visible, main select:visible').evaluateAll(nodes => nodes.map(node => ({ height: node.getBoundingClientRect().height, font: getComputedStyle(node).fontFamily, size: parseFloat(getComputedStyle(node).fontSize) })));
-          for (const field of fields) { expect(field.height).toBeGreaterThanOrEqual(config.root * 2.75 - 0.1); expect(field.font).toContain('Noto Sans Thai Looped'); }
+          for (const field of fields) { expect(field.height).toBeGreaterThanOrEqual(config.root * 2.75 - 0.1); expect(field.font).toMatch(/^["']?Noto Sans Thai["']?,/); }
           const screenshot = `${tab}-${config.width}-${config.root}.png`;
           await page.screenshot({ path: join(output, screenshot), fullPage: true, animations: 'disabled' });
           results.push({ ...config, tab, fields, screenshot, status: 'PASS' });

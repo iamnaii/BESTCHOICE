@@ -1,16 +1,13 @@
-/* ── Google Fonts: Inter + IBM Plex Sans Thai + IBM Plex Mono ───────────── */
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap')
-layer(base);
-
 @import 'tailwindcss';
 @import './styles/fonts.css';
+@import './styles/document-ui-fonts.css';
 
 @plugin 'tailwindcss-animate';
 
 @custom-variant dark (&:is(.dark *));
 
 @theme {
-  --font-sans: 'Noto Sans Thai Looped', system-ui, -apple-system, sans-serif;
+  --font-sans: 'Noto Sans Thai', system-ui, -apple-system, 'Segoe UI', Tahoma, sans-serif;
   --font-document-ui: 'Inter', 'IBM Plex Sans Thai', system-ui, -apple-system, sans-serif;
   --font-sarabun: 'TH Sarabun PSK', sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -394,7 +391,7 @@ layer(base);
 
 @layer utilities {
   /* ── TH Sarabun PSK — system document font ──── */
-  /* Primary Thai font is now IBM Plex Sans Thai (loaded via Google Fonts above) */
+  /* UI uses Noto Sans Thai (styles/fonts.css); document faces (Inter / IBM Plex) are self-hosted in styles/document-ui-fonts.css */
   @font-face {
     font-family: 'TH Sarabun PSK';
     src: url('/fonts/THSarabunPSK-Regular.ttf') format('truetype');

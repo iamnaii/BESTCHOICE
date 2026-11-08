@@ -106,7 +106,7 @@ export default function UsedIphoneLopburiPage() {
                 </Card>
               ))}
             </div>
-            <p className="mt-3 text-sm text-muted-foreground leading-snug">
+            <p className="mt-3 reading-block text-muted-foreground">
               ทุกเครื่องแสดงรูปถ่ายเครื่องจริง ราคาเงินสด และค่างวดผ่อนบนหน้า{' '}
               <Link to="/products" className="text-emerald-700 underline">สินค้าทั้งหมด</Link>{' '}
               — เงื่อนไขประกันอ่านได้ที่{' '}

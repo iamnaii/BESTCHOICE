@@ -1,5 +1,7 @@
 # Admin screen typography
 
+> **อัปเดต 2026-11-08:** UI ใช้ **Noto Sans Thai (ไม่มีหัว)** น้ำหนัก 300–700 แทน Looped 100–900 · ไฟล์อยู่ที่ `public/fonts/noto-sans-thai/` · ฟอนต์เอกสาร (Inter, IBM Plex Sans Thai/Mono) ประกาศใน `src/styles/document-ui-fonts.css` และโฮสต์เอง ฟอนต์เอกสารลูกค้าไม่เปลี่ยน · ข้อความด้านล่างที่ระบุ Looped / 100–900 เป็นประวัติของ 2026-10-14
+
 The application UI uses locally served **Noto Sans Thai Looped** for Thai, Latin and numbers (owner decision, 2026-10-14). This includes admin, auth/public pages, customer/LIFF screens, identifiers, portalled controls and notifications. `apps/web/src/styles/fonts.css` declares normal variable weights 100–900; `public/fonts/noto-sans-thai-looped/` contains official Google Fonts WOFF2 subsets, the OFL license and source hashes. Only the Thai subset is preloaded. The existing screen scale in `admin-typography.css` is retained.
 
 - Main page headings: 24px desktop, 22px below 1024px, line height 1.5.

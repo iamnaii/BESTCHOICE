@@ -135,7 +135,7 @@ export default function InstallmentLopburiPage() {
                 </Card>
               ))}
             </div>
-            <p className="mt-3 text-sm text-muted-foreground leading-snug">
+            <p className="mt-3 reading-block text-muted-foreground">
               อ่านขั้นตอนละเอียดได้ที่ <Link to="/how-it-works" className="text-emerald-700 underline">วิธีผ่อน</Link>{' '}
               และเงื่อนไขทั้งหมดที่ <Link to="/installment-terms" className="text-emerald-700 underline">เงื่อนไขการผ่อน</Link>
             </p>

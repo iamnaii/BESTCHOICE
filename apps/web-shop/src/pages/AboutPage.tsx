@@ -86,10 +86,10 @@ export default function AboutPage() {
                 <h2 className="text-2xl md:text-3xl font-bold leading-snug">
                   {copy.about.storyTitle}
                 </h2>
-                <p className="text-sm md:text-base text-muted-foreground leading-snug">
+                <p className="reading-block text-muted-foreground">
                   {copy.about.storyP1}
                 </p>
-                <p className="text-sm md:text-base text-muted-foreground leading-snug">
+                <p className="reading-block text-muted-foreground">
                   {copy.about.storyP2}
                 </p>
               </Stack>

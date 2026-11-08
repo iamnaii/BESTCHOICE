@@ -54,7 +54,7 @@ describe('Shared controls and stock forms on isolated full API', () => {
             expect(field.iconOffsetY).toBeCloseTo(0, 0);
             expect(field.paddingRight).toBeGreaterThanOrEqual(2.5 * config.root);
             expect(field.appearance).toBe('none');
-            expect(field.font).toContain('Noto Sans Thai Looped');
+            expect(field.font).toMatch(/^["']?Noto Sans Thai["']?,/);
             expect(field.x).toBeGreaterThanOrEqual(0);
             expect(field.right).toBeLessThanOrEqual(config.width);
           }

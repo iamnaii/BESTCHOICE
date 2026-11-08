@@ -1,5 +1,7 @@
 # ตรวจฟิลด์และฟอร์มหลังแก้ UI
 
+> **อัปเดต 2026-11-08:** ฟอนต์ UI เป็น Noto Sans Thai (ไม่มีหัว) แทน Looped · น้ำหนัก 300–700 · ไฟล์ `public/fonts/noto-sans-thai/` · ฟอนต์เอกสารอยู่ใน `src/styles/document-ui-fonts.css`
+
 มาตรฐานช่องกรอกและตัวกรองใน app shell อยู่ที่ `components/ui/form-styles.ts` และ `styles/admin-typography.css`: สูง 2.75 rem (44 px เมื่อ root 16 px), ตัวอักษรมือถือ 16 px และ desktop 14 px, ใช้ semantic tokens และ Noto Sans Thai Looped ช่องข้อความหลายบรรทัดคงความสูงตามเนื้อหา ส่วนตัวกระดาษ/PDF/editor และช่องยอดเงินขนาดใหญ่ใช้ข้อยกเว้นของตนเอง CSS ครอบคลุม modal ที่ render ผ่าน portal และมีข้อยกเว้นสำหรับ input ที่ฝังใน InputWrapper/QtyStepper
 
 ## การตรวจด้วย API จริงและฐานข้อมูลแยก

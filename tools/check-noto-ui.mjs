@@ -39,7 +39,7 @@ try {
       const oversizedLabels = await page.evaluate(async () => {
         const { getZoneConfigForRole } = await import('/src/config/menu.ts');
         const canvas = document.createElement('canvas').getContext('2d');
-        canvas.font = '700 12px "Noto Sans Thai Looped"';
+        canvas.font = '700 12px "Noto Sans Thai"';
         const oversized = [];
         for (const role of [
           'OWNER',
@@ -72,11 +72,11 @@ try {
       const result = await page.evaluate(() => ({
         family: getComputedStyle(document.body).fontFamily,
         loaded: [...document.fonts]
-          .filter((f) => f.family.includes('Noto Sans Thai Looped') && f.status === 'loaded')
+          .filter((f) => f.family.replace(/["']/g, '') === 'Noto Sans Thai' && f.status === 'loaded')
           .map((f) => f.unicodeRange),
         overflow: document.documentElement.scrollWidth > innerWidth + 1,
       }));
-      assert.match(result.family, /Noto Sans Thai Looped/);
+      assert.match(result.family, /^["']?Noto Sans Thai["']?,/);
       assert.ok(result.loaded.length >= 2, `Thai and Latin local faces loaded: ${path}`);
       assert.equal(result.overflow, false, `${path} ${width}px`);
       records.push({ path, width, ...result });

@@ -35,7 +35,7 @@ export async function checkInboxNavigationScale(navigation) {
   });
   assert.ok(items.length >= 3, 'Navigation includes chat, queue and analytics');
   for (const item of items) {
-    assert.match(item.font, /Noto Sans Thai Looped/, `${item.label}: UI font`);
+    assert.match(item.font, /^["']?Noto Sans Thai["']?,/, `${item.label}: UI font`);
     assert.equal(item.size, item.expectedSize, `${item.label}: button and link labels share the same scale`);
     assert.equal(item.lineHeight, item.size * 1.5, `${item.label}: Thai line height`);
     assert.ok(item.leftInset >= 3.9 && item.rightInset >= 3.9, `${item.label}: needs space on both sides`);

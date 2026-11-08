@@ -1,0 +1,20 @@
+{
+  "package": "Inter (Google Fonts, variable)",
+  "version": "Google Fonts v20",
+  "cssSource": "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap",
+  "license": "SIL Open Font License 1.1; see OFL.txt",
+  "files": [
+    {
+      "file": "inter-latin-ext-variable.woff2",
+      "bytes": 85272,
+      "sha256": "a28eb6d3ccb534ae0c94ca999371df024aab60b08c3c8a5720ee9e32fa0faaa2",
+      "source": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa25L7W0Q5n-wU.woff2"
+    },
+    {
+      "file": "inter-latin-variable.woff2",
+      "bytes": 48432,
+      "sha256": "c940764593d0fe5d596be327ca7558855e018039fb78509aa21921fd3644c3e4",
+      "source": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7W0Q5nw.woff2"
+    }
+  ]
+}

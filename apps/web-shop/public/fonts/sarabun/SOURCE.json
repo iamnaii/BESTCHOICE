@@ -1,0 +1,37 @@
+{
+  "package": "@fontsource/sarabun",
+  "version": "5.3.0",
+  "license": "SIL Open Font License 1.1; see OFL.txt",
+  "files": [
+    {
+      "file": "sarabun-latin-400-normal.woff2",
+      "bytes": 11396,
+      "sha256": "04548534510686923239aeda26dd40fa57bf6cc55166204ef52b483bcf9e4228"
+    },
+    {
+      "file": "sarabun-latin-700-normal.woff2",
+      "bytes": 11596,
+      "sha256": "b7e814f0f8a07648c77837917ff896c819d44ed4688a83f49b9cb29fdf7898fb"
+    },
+    {
+      "file": "sarabun-latin-ext-400-normal.woff2",
+      "bytes": 10488,
+      "sha256": "5af661b8dd7a46d7d8e6a77e56ca1fdc7378d81672785d7a00a0794af8b678d0"
+    },
+    {
+      "file": "sarabun-latin-ext-700-normal.woff2",
+      "bytes": 10492,
+      "sha256": "b64825bfdee3f7b01b48d6f9f94af61d88bc0b7c8f8903fbf12a9dc8eb850047"
+    },
+    {
+      "file": "sarabun-thai-400-normal.woff2",
+      "bytes": 9868,
+      "sha256": "444ccfffc6e9201b86993a233a42481bee7fe485fe5f330d956f22356249b392"
+    },
+    {
+      "file": "sarabun-thai-700-normal.woff2",
+      "bytes": 9812,
+      "sha256": "1ca031c8d598e7435f653e44f592fe0ac64e9e402066719fe061fdfe833cca1e"
+    }
+  ]
+}

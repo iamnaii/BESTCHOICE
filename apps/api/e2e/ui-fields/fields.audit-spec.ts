@@ -106,7 +106,7 @@ describe('Field audit across other admin pages',()=>{
         }).filter((entry):entry is NonNullable<typeof entry>=>entry!==null);
         const overflowingButtons=outsideButtons.filter(entry=>!entry.scrollable).map(entry=>entry.text);
         const scrollableButtons=outsideButtons.filter(entry=>entry.scrollable);
-        return {overflowingButtons,scrollableButtons,title:scope.querySelector('h1,h2')?.textContent,bodyOverflow:document.documentElement.scrollWidth>innerWidth+1,fields,controls:fields.length,unlabelled:fields.filter(f=>!f.label).length,wrongFont:fields.filter(f=>!f.font.includes('Noto Sans Thai Looped')).length,horizontalFieldOverflow:fields.filter(f=>f.x< -1||f.x+f.width>innerWidth+1),shortMobileFields:innerWidth<1024?fields.filter(f=>f.height<43.9):[],bodyText:scope.textContent?.trim().slice(0,300)};
+        return {overflowingButtons,scrollableButtons,title:scope.querySelector('h1,h2')?.textContent,bodyOverflow:document.documentElement.scrollWidth>innerWidth+1,fields,controls:fields.length,unlabelled:fields.filter(f=>!f.label).length,wrongFont:fields.filter(f=>!/^["']?Noto Sans Thai["']?,/.test(f.font)).length,horizontalFieldOverflow:fields.filter(f=>f.x< -1||f.x+f.width>innerWidth+1),shortMobileFields:innerWidth<1024?fields.filter(f=>f.height<43.9):[],bodyText:scope.textContent?.trim().slice(0,300)};
        });
        const file=`${c.name}-${width}-${dark?'dark':'light'}.png`;
        await p.screenshot({path:join(output,file),fullPage:true,animations:'disabled'});

@@ -35,7 +35,7 @@ export default function ShopFooter() {
                 <img src="/logo-icon.svg" alt="" className="size-7" aria-hidden />
               </span>
               {/* Guide footer wordmark: BEST in white, CHOICE in the mint. */}
-              <span className="font-brand text-base font-extrabold italic">
+              <span className="font-brand text-base font-bold italic">
                 <span className="text-white">BEST</span>
                 <span className="text-emerald-400">CHOICE</span>
               </span>

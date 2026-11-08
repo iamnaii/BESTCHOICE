@@ -41,7 +41,7 @@ export default function ReturnsPage() {
                   <h3 className="text-lg font-semibold leading-snug">
                     {copy.returns.warrantyTitle}
                   </h3>
-                  <p className="text-sm text-muted-foreground leading-snug">
+                  <p className="reading-block text-muted-foreground">
                     {copy.returns.warrantyBody}
                   </p>
                 </Stack>
@@ -57,7 +57,7 @@ export default function ReturnsPage() {
                   <h3 className="text-lg font-semibold leading-snug">
                     {copy.returns.refundTitle}
                   </h3>
-                  <p className="text-sm text-muted-foreground leading-snug">
+                  <p className="reading-block text-muted-foreground">
                     {copy.returns.refundBody}
                   </p>
                 </Stack>

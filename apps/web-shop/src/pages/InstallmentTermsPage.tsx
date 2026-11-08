@@ -125,7 +125,7 @@ export default function InstallmentTermsPage() {
                       <h2 className="font-semibold text-base md:text-lg leading-snug">{s.title}</h2>
                     </div>
                     {s.paragraphs.map((p, j) => (
-                      <p key={j} className="text-sm text-muted-foreground leading-snug">
+                      <p key={j} className="reading-block text-muted-foreground">
                         {p}
                       </p>
                     ))}

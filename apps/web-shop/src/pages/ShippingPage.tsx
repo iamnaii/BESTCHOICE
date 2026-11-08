@@ -83,10 +83,10 @@ export default function ShippingPage() {
       <Container>
         <Stack gap={6} className="py-8">
           <Stack gap={3} className="leading-snug">
-            <p className="text-sm md:text-base text-muted-foreground leading-snug">
+            <p className="reading-block text-muted-foreground">
               {copy.shipping.intro1}
             </p>
-            <p className="text-sm md:text-base text-muted-foreground leading-snug">
+            <p className="reading-block text-muted-foreground">
               {copy.shipping.intro2}
             </p>
           </Stack>

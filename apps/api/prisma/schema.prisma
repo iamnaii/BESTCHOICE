@@ -3191,7 +3191,8 @@ model AuditLog {
   rowHash        String? @map("row_hash") // hex-encoded SHA-256
   prevRowHash    String? @map("prev_row_hash")
 
-  user User @relation(fields: [userId], references: [id])
+  user                    User                          @relation(fields: [userId], references: [id])
+  chainAcknowledgedBreaks AuditChainAcknowledgedBreak[]
 
   @@index([entity, entityId])
   @@index([userId])
@@ -3199,6 +3200,33 @@ model AuditLog {
   @@index([archivedAt])
   @@index([sequenceNumber])
   @@map("audit_logs")
+}
+
+/// Audit chain "known break" acknowledgements (append-only: a DB trigger
+/// rejects UPDATE; DELETE is allowed as rollback and only makes the verifier
+/// stricter). verifyChain() skips the prev-link comparison for `sequenceNumber`
+/// ONLY while the row's id, rowHash, stored prevRowHash and the previous row's
+/// rowHash all still equal the values captured here. The row's own content
+/// hash is still verified. Migration 20261110000000.
+model AuditChainAcknowledgedBreak {
+  id                  String   @id @default(uuid())
+  sequenceNumber      BigInt   @unique @map("sequence_number")
+  auditLogId          String   @map("audit_log_id")
+  /// Only 'PREV_LINK_MISMATCH' is accepted (DB CHECK constraint).
+  breakType           String   @map("break_type")
+  /// rowHash of seq-1 at acknowledgement time
+  expectedPrevRowHash String   @map("expected_prev_row_hash")
+  /// prevRowHash stored on the acknowledged row (may be NULL)
+  actualPrevRowHash   String?  @map("actual_prev_row_hash")
+  /// rowHash of the acknowledged row at acknowledgement time
+  rowHashAtAck        String   @map("row_hash_at_ack")
+  reason              String
+  acknowledgedBy      String   @map("acknowledged_by")
+  acknowledgedAt      DateTime @default(now()) @map("acknowledged_at")
+
+  auditLog AuditLog @relation(fields: [auditLogId], references: [id], onDelete: Restrict)
+
+  @@map("audit_chain_acknowledged_breaks")
 }
 
 model SystemConfig {

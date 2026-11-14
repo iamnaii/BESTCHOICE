@@ -6,11 +6,12 @@ import { ChatWorkAccessService } from '../../src/modules/staff-chat/services/cha
 import { Body, Controller, Get, Logger, Post, Param, Res, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../src/prisma/prisma.service';
+import { isDisposablePreviewDatabase } from './preview-database';
 import { RoomManagerService } from '../../src/modules/chat-engine/services/room-manager.service';
 import { MessageRouterService } from '../../src/modules/chat-engine/services/message-router.service';
 import type { OutboundMessage } from '../../src/modules/chat-engine/interfaces/channel-adapter.interface';
 export function previewChatLibrary(db: PrismaService, manager: RoomManagerService, storage: StorageService, actorId: () => string) {
-  if (!process.env.DATABASE_URL?.includes('/bc_chat_credit_test?host=/tmp/bc-chat-credit.')) throw new Error('Library preview requires isolated database');
+  if (!isDisposablePreviewDatabase()) throw new Error('Library preview requires isolated database');
   let next: 'SUCCESS' | 'FAILED' | 'UNKNOWN' = 'SUCCESS';
   const sent: OutboundMessage[] = [];
   const adapter = { async sendMessage(message: OutboundMessage) {

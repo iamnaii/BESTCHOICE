@@ -1,4 +1,5 @@
 import { PrismaService } from '../../src/prisma/prisma.service';
+import { isDisposablePreviewDatabase } from './preview-database';
 import { BookingsService } from '../../src/modules/bookings/bookings.service';
 import { JournalAutoService } from '../../src/modules/journal/journal-auto.service';
 import { CompanyResolverService } from '../../src/modules/journal/company-resolver.service';
@@ -18,7 +19,7 @@ import { ShopExternalFinanceSaleTemplate } from '../../src/modules/journal/cpa-t
 
 /** Real local POS writes; only outbound warranty notifications are disabled. */
 export function previewPos(db: PrismaService) {
-  if (!process.env.DATABASE_URL?.includes('/bc_chat_credit_test?host=/tmp/bc-chat-credit.')) throw new Error('POS preview requires disposable PostgreSQL');
+  if (!isDisposablePreviewDatabase()) throw new Error('POS preview requires disposable PostgreSQL');
   const journal = new JournalAutoService(db), companies = new CompanyResolverService(db);
   const writer = new SaleWriterService(db, new ShopCashSaleTemplate(journal, db, companies), new ShopAccountResolver(db),
     new ShopExternalFinanceSaleTemplate(journal, db, companies));
@@ -35,7 +36,7 @@ export function previewBookings(db: PrismaService) {
 
 /** A real booking/deposit/conversion using only the disposable local database. */
 export async function seedPreviewSales(db: PrismaService, actor: { id: string; role: string }) {
-  if (!process.env.DATABASE_URL?.includes('/bc_chat_credit_test?host=/tmp/bc-chat-credit.')) throw new Error('Sales fixtures require disposable PostgreSQL');
+  if (!isDisposablePreviewDatabase()) throw new Error('Sales fixtures require disposable PostgreSQL');
   const note = `${TEST_NOTE_MARKER} LOCAL-MIXED-BOOKING-RECEIPT`;
   const existing = await db.booking.findFirst({ where: { notes: note, deletedAt: null } });
   if (existing?.convertedToSaleId) return { bookingId: existing.id, saleId: existing.convertedToSaleId };
@@ -66,7 +67,7 @@ export async function seedPreviewSales(db: PrismaService, actor: { id: string; r
  * ก่อนหน้านี้ฐานข้อมูล preview ไม่มีใบขายประเภทนี้เลย ⇒ ยืนยันไม่ได้ว่าทำงาน
  */
 export async function seedPreviewExternalFinanceSale(db: PrismaService, salespersonId: string) {
-  if (!process.env.DATABASE_URL?.includes('/bc_chat_credit_test?host=/tmp/bc-chat-credit.')) throw new Error('Sales fixtures require disposable PostgreSQL');
+  if (!isDisposablePreviewDatabase()) throw new Error('Sales fixtures require disposable PostgreSQL');
   const notes = `${TEST_NOTE_MARKER} LOCAL-EXTERNAL-FINANCE`;
   const existing = await db.sale.findFirst({ where: { notes } });
   if (existing && /^SL\d+$/.test(existing.saleNumber)) return { saleId: existing.id };

@@ -28,6 +28,19 @@ npm run local:stop     # หยุดเฉพาะชุด server ที่�
 
 ต้องมี dependencies, Chromium ของ Playwright และ PostgreSQL 16 พร้อม pgvector ตั้ง `CREDIT_PG_BIN` ได้ถ้าไม่ได้ติดตั้งในตำแหน่งมาตรฐาน ข้อมูลทดสอบอยู่ `/tmp/bc-chat-credit.*`; หลังระบบล้าง `/tmp` preview จะสร้างข้อมูลตัวอย่างใหม่
 
+### Windows
+
+`npm run local:preview` / `local:status` / `local:stop` ใช้บน Windows ได้ (ทดสอบบน Windows 11 + Node 24) ต้องมี **Docker Desktop ที่เปิดอยู่** และ **Git for Windows** — ไม่ต้องติดตั้ง PostgreSQL เอง
+
+- ฐานข้อมูลทดสอบรันในคอนเทนเนอร์ `pgvector/pgvector:pg16` ชื่อ `bc-chat-credit-<รหัส>` เปิดเฉพาะ `127.0.0.1` พอร์ตสุ่ม รหัสผ่านสุ่มเก็บใน `%TEMP%\bc-chat-credit.<รหัส>\pg-password` (Prisma ใช้ Unix socket บน Windows ไม่ได้ และ PostgreSQL ที่ลงในเครื่องไม่มี pgvector)
+- ข้อมูลทดสอบอยู่ใน Docker volume ชื่อเดียวกับคอนเทนเนอร์ — `local:stop` หยุดคอนเทนเนอร์แต่เก็บ volume ไว้ เปิดครั้งถัดไปได้ข้อมูลเดิม · `<รหัส>` คือส่วนท้ายของ `dataDir` ใน `.tmp\local-preview\state.json` (เช่น `bc-chat-credit.rSlMkI` → `rSlMkI`) · อยากเริ่มข้อมูลใหม่: `npm run local:stop` แล้ว `docker volume rm bc-chat-credit-<รหัส>` (เปิดครั้งถัดไปสร้างฐานใหม่เอง ไม่ต้องลบไฟล์อื่น) · ถ้า Windows ล้างโฟลเดอร์ `%TEMP%` ไป preview จะสร้างโฟลเดอร์และ volume ชุดใหม่ ส่วน volume เก่าค้างอยู่ — ดูด้วย `docker volume ls -q --filter name=bc-chat-credit-` แล้วลบตัวที่ไม่ใช้
+- **ถ้าตัวรันถูกปิดกะทันหัน** (ปิดจาก Task Manager, ปิด VS Code ระหว่างเปิดครั้งแรก ฯลฯ) หน้าเว็บ/ฐานข้อมูลอาจยังรันค้าง — รัน `npm run local:stop` หรือ `npm run local:preview` อีกครั้ง คำสั่งจะหยุดของที่ค้างของ checkout นี้เอง (ตรวจจากรหัสรอบการรันและชื่อ/ป้ายของคอนเทนเนอร์ ไม่แตะของ checkout อื่น) · ถ้ายังไม่หาย: `docker stop bc-chat-credit-<รหัส>` แล้วรันใหม่
+- ฐานข้อมูลสร้างแบบเดียวกับฝั่ง Linux/Mac (`--no-locale`, โซนเวลาของเครื่อง) — มีผลกับ volume ที่สร้างใหม่เท่านั้น
+- ตัวรันคือ `tools/preview-chat-credit-win.mjs` (คู่กับ `tools/preview-chat-credit.sh` ของ Linux/Mac — แก้ฝั่งหนึ่งต้องดูอีกฝั่ง) · Windows ไม่มี SIGTERM จึงสั่งหยุดด้วยไฟล์ `stop.request` ในโฟลเดอร์ข้อมูล
+- กฎ "ฐานทดสอบเท่านั้น" ของ fixture ทุกตัวอยู่ที่ `apps/api/e2e/support/preview-database.ts` ที่เดียว (เทส: `apps/api/src/utils/preview-database-guard.spec.ts`) · บน Windows ฐานต้องเป็นของโฟลเดอร์ preview นั้นจริง — รหัสผ่านใน URL ต้องตรงกับไฟล์ `pg-password` ของโฟลเดอร์
+- เปิดครั้งแรกนานกว่าปกติ (ดึง image + migrate) จึงรอได้ถึง 7 นาที (`LOCAL_PREVIEW_START_TIMEOUT_MS`) · หลังเปิด หน้าแรกอาจหมุนสักครู่ระหว่าง Vite คอมไพล์ครั้งแรก
+- **`npm run local:check` ยังไม่รองรับ Windows** — หยุดตั้งแต่ขั้นแรก "Local tooling": `tools/local-preview.test.mjs` และ `tools/preview-chat-credit.test.mjs` ใช้ `/tmp`, SIGTERM และตัวรัน bash · ใช้ `local:preview` เพื่อเปิดดูหน้าจอ แล้วรันขั้นตรวจที่ต้องการแยกเอง
+
 ## ขอบเขตของผลตรวจ
 
 ตรวจรับซื้อด้วยบริการจริงบนฐานตัวอย่าง: Quick Buy เงินสด/โอน → ลายเซ็น → ส่งต่อสินค้า → ตั้งราคา → รูป 6 มุม → เข้าคลัง และพิมพ์ PDF บนจอใหญ่ ภาพ `trade-in-payment-*.png`, `trade-in-handoff-*.png`, `trade-in-stock-*.png` อยู่ใน `.tmp/local-preview/` การตรวจแต่ละรอบเพิ่มรายการรับซื้อและสินค้าใหม่เฉพาะฐานตัวอย่าง

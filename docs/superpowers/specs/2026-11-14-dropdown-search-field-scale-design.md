@@ -68,7 +68,7 @@
 
 ### 4.3 ป้ายชื่อแบบ A — ขอบเขต
 
-"ทั้งระบบ" ในงานนี้ = (ก) ค่าตั้งต้นของ shadcn `FormLabel` (ทุกฟอร์มที่ใช้ shadcn Form ได้อัตโนมัติ) + (ข) 9 ฟอร์มที่ฝัง `AddressForm` (~170 ป้าย: `CompanySettingsPage` 28, `CustomerCreateDialog` 10 + 17 `FormLabel`, `CustomerCreateModal` 25, `CustomerEditModal` 24, `EditCustomerDialog` 23, `SupplierForm` 18 (มีแบบ A แล้ว 11), `QuickBuyModal` 17, `BranchesPage` 5, `CreateContactModal` 5) + (ค) ทุกฟอร์มที่แตะในรอบ 1/2 · ฟอร์มอื่น (~700 ป้ายที่เขียนเอง) **ย้ายเมื่อมีงานแตะ** (ตามหลัก DESIGN.md "ไม่ refactor ถ้าไม่ได้แตะ") — ผลข้างเคียงที่รู้: หน้าต่างสูงขึ้น ~10px ต่อแถวช่อง ตรวจว่าไม่เกิดเลื่อนซ้อนในหน้าต่างที่สูงชิดจอ
+"ทั้งระบบ" ในงานนี้ = (ก) ค่าตั้งต้นของ shadcn `FormLabel` (ทุกฟอร์มที่ใช้ shadcn Form ได้อัตโนมัติ) + (ข) 9 ฟอร์มที่ฝัง `AddressForm` (~170 ป้าย: `CompanySettingsPage` 28, `CustomerCreateDialog` 10 + 17 `FormLabel`, `CustomerCreateModal` 25, `CustomerEditModal` 24, `EditCustomerDialog` 23, `SupplierForm` 18 (มีแบบ A แล้ว 11), `QuickBuyModal` 17, `BranchesPage` 5, `CreateContactModal` 5) + (ค) ฟอร์มที่แก้ข้อพบในภาคผนวก ก (R1-3 ส่วนแรก) และฟอร์มที่รอบ 2 แปลงช่อง — **ไม่นับ**ไฟล์ที่ R1-3 แตะแค่เพื่อทำ class ของ dropdown ให้เข้าชุด (~74 ไฟล์ — ถ้านับจะกลายเป็นหลายร้อยป้าย) · ป้ายในแถวตารางแน่นและแถบกรองที่ป้ายอยู่ซ้ายช่องไม่เปลี่ยน · ฟอร์มอื่น (~700 ป้ายที่เขียนเอง) **ย้ายเมื่อมีงานแตะ** (ตามหลัก DESIGN.md "ไม่ refactor ถ้าไม่ได้แตะ") — ผลข้างเคียงที่รู้: หน้าต่างสูงขึ้น ~10px ต่อแถวช่อง ตรวจว่าไม่เกิดเลื่อนซ้อนในหน้าต่างที่สูงชิดจอ
 
 ## 5. ตัววัด (รันได้บนเครื่องนี้)
 
@@ -82,7 +82,7 @@
 | **F2** | ข้อความถูกตัด: placeholder กว้างกว่าพื้นที่เนื้อหา (วัดด้วย canvas) · native select: **ตัวเลือกที่ยาวที่สุด** กว้างกว่าพื้นที่เนื้อหา (บันทึกแค่ตัวเลขกับ boolean ไม่บันทึกข้อความ) · Radix `[data-slot=select-value]` `scrollWidth > clientWidth + 1` **หรือ** `scrollHeight > clientHeight + 1` | P2 |
 | **F3** | กล่องที่กดได้สองตัวทับกัน > 1px | P1 ถ้าทับพื้นที่กด ไม่งั้น P2 |
 | **F4** | ไอคอน/หน่วย/ปุ่มล้างแบบ `absolute` ทับหมึกตัวอักษร หรือ padding ฝั่งนั้นไม่พอกันที่ | P2 |
-| **F5** | **เทสสแกนโค้ด** (ไม่เปิดเมนูทุกหน้า): ห้ามเมนู `absolute` ที่ไม่ portal ใต้ trigger นอก allow-list (`NameAutocomplete`, `TemplatePickerCombobox`, `CatalogPicker`, `NoteMentionInput`) · บวก Playwright หนึ่งกรณีต่อ component ใน allow-list ว่ากล่องรายการอยู่ในกรอบบรรพบุรุษที่ตัด | P1 |
+| **F5** | **เทสสแกนโค้ด** (ไม่เปิดเมนูทุกหน้า): ห้ามเมนู `absolute` ที่ไม่ portal ใต้ trigger นอก allow-list (`NameAutocomplete`, `TemplatePickerCombobox`, `CatalogPicker`, `NoteMentionInput`, `SearchableSelect` จนถึง R2-2) · บวก Playwright หนึ่งกรณีต่อ component ใน allow-list ว่ากล่องรายการอยู่ในกรอบบรรพบุรุษที่ตัด · ตอนเขียนแผนสแกนพบเมนูแบบนี้อีก 8 ไฟล์ที่ spec ไม่ได้ระบุ (`BundleSearch`, `VariableAutocomplete`, `InstallmentPickerPopover`, `ExpensesPage` เมนูสร้างเอกสาร, POS `CustomerSearch`, `SettingsLayout` ค้นหา, `Customer360Panel` mention, `SessionActions`) — เข้า allow-list พร้อมเหตุผล ยังไม่แก้ในรอบนี้ · **พบจริง:** เมนู "ใช้แม่แบบ" (`TemplatePickerCombobox`) ล้นขอบจอที่ 1024 และ 390px — บันทึกเป็น known ในสคริปต์ รอเจ้าของตัดสินว่าจะแก้ในรอบนี้หรือไม่ | P1 |
 
 - **ต้องวัดก่อนแก้:** R1-1 ส่งตัววัด + ผลบน `main` เป็น **baseline** ก่อน PR ที่เปลี่ยนหน้าตาใด ๆ
 - **เกณฑ์รับ:** หน้าที่ PR แตะ F1–F4 ไม่เพิ่มจาก baseline และจุดที่ PR ตั้งใจแก้ = 0 · จุดที่ตั้งใจคงไว้บันทึกเหตุผลใน `tools/field-scale/allow.json`
@@ -151,7 +151,7 @@ props: `value: string | null` · `onChange(value, option)` · `options` · `sele
 |---|---|---|---|
 | **R1-1** | ตัววัด §5 (`tools/field-scale/`, `__collectFields`, `evaluateFields` + เทส) · route mocks · **baseline บน main** | — | สคริปต์รันบนเครื่องนี้ได้ · baseline เก็บใน `.tmp/field-scale/baseline` + สรุปใน PR |
 | **R1-2** | §4.2 ข้อ 1, 2, 3, 5 (props), 6, 7, 8 · S3-23 | R1-1 | เทสหน่วย + เทสสแกน · F1–F4 เทียบ baseline · Playwright: เมนูบัญชีเปิดอยู่ในการ์ดรายการและตาราง Override JV ที่ 1440 · ภาพ LIFF/หน้าสาธารณะ 390 |
-| **R1-3** | ภาคผนวก ก (แถว R1-3) + ทำ `NativeSelect` + ช่องข้าง ๆ ให้ใช้ `formControlClass` ทีละไฟล์ (62 จุด) + เปิดเทสสแกน §4.2 ข้อ 5 · แบ่งตามพื้นที่ถ้าเกิน ~15 ไฟล์ | R1-2 | F1–F4 ของหน้าที่แตะ: จุดที่ตั้งใจแก้ = 0, ไม่เพิ่มจาก baseline |
+| **R1-3** | ภาคผนวก ก (แถว R1-3) + ทำ `NativeSelect` + ช่องข้าง ๆ ให้ใช้ `formControlClass` ทีละไฟล์ (นับจริงตอนเขียนแผน: 110 จุด + ช่องข้าง ๆ 72 จุด ใน 74 ไฟล์ — ประมาณ 62 ในฉบับแรกต่ำไป · อีก ~102 จุดส่ง class ผ่านตัวแปร เทสสแกนมองไม่เห็น) + เปิดเทสสแกน §4.2 ข้อ 5 · แบ่งตามพื้นที่ | R1-2 | F1–F4 ของหน้าที่แตะ: จุดที่ตั้งใจแก้ = 0, ไม่เพิ่มจาก baseline |
 | **R1-4** | ป้ายแบบ A §4.3: `form.tsx` + ลบ override 3 ไฟล์ + 9 ฟอร์มที่ฝัง `AddressForm` | R1-2 | F1 (ป้าย) = 0 ในฟอร์มเหล่านั้น · ภาพหน้าต่างที่สูงชิดจอไม่มีเลื่อนซ้อน |
 | **R2-0** | mockup `Combobox` บน canvas เดิม: ปิด / เปิด / ค้นหา / ไม่พบ / กำลังโหลด / ผิดพลาด / ตัวเลือกปิด / ในหน้าต่าง / 390 | R1 ครบ | เจ้าของเคาะ |
 | **R2-1** | `Combobox` + `thai-search` + polyfill `scrollIntoView` ใน `src/test/setup.ts` + ตัวช่วยเทส `pickComboOption` + เทส (คีย์บอร์ดรวมค่า `''` แถวแรก, Esc ใน Dialog/Sheet/AlertDialog, เลื่อนในหน้าต่าง, async, ล้างค่า, `FormControl`, IME, ลำดับค้นหาไทย) | R2-0 | เทสหน่วย |

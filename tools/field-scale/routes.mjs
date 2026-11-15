@@ -116,7 +116,9 @@ async function openOverrideJournal(page) {
   await dialog.getByRole('button', { name: 'เปิดโหมดแก้ไข' }).click();
   await dialog.waitFor({ state: 'hidden' });
   await journalTable(page).waitFor();
-  if ((await journalTable(page).locator('tbody tr').count()) === 0) {
+  // The "รวม" totals row also lives in <tbody> (EditableJournalTable.tsx) — count only editable lines,
+  // i.e. rows whose first cell holds the account-menu trigger.
+  if ((await journalTable(page).locator('tbody tr td:first-child button').count()) === 0) {
     await page.getByRole('button', { name: 'เพิ่มบรรทัด' }).click();
   }
 }

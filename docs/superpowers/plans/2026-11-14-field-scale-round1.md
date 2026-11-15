@@ -51,10 +51,10 @@ Tasks 3–7 can be one PR (R1-2) or several; tasks 8–9 and 10–11 likewise. E
 - **`results.json`** keeps findings under `cells[].findings` (Task 2 Interfaces). F1 finding keys start with the property (`labelFontSize@…`, `background@…`) and name one control: `<property>@<memberKey>`, where `memberKey` = `kind|name|dup` and `dup` counts controls with the same `kind|name` page-wide in DOM order. When a row is inconsistent for a property, every member of the row is reported for it (no majority vote).
   - **What is guaranteed:** with the same set of measured controls in a row or check, changing values toward agreement never adds an F1 key, and a fully consistent row has no F1 keys.
   - **Exposed, not introduced — known ways a correct change can still add F1 keys:**
-    - (a) *dup renumbering.* Adding, removing, renaming or re-kinding a control renumbers every later control with the same `kind|name` page-wide (e.g. unnamed inputs `input||n`, repeated labels จำนวน / ราคา / หมายเหตุ). Their still-open findings come back under new keys.
+    - (a) *dup renumbering.* Adding, removing, renaming or re-kinding a control renumbers every later control with the same `kind|name` page-wide (e.g. unnamed inputs `input||n`, repeated labels จำนวน / ราคา / หมายเหตุ). Their still-open findings come back under new keys — and a renamed or re-kinded control itself gets new keys while its row is still inconsistent.
     - (b) *row/check membership growth.* A control becomes measured (a plain `<div>` → `ReadOnlyField`), stops being `largeText`, is re-kinded out of `textarea`, gets its label moved above it (it joins the labelled checks), or a geometry change merges two rows. If the row is inconsistent for a property, every member then gets keys for it, including members that did not change.
     - (c) *derived bottom.* `bottom` = y + h. A height or labelGap fix that removes an offset which used to compensate can make `bottom` mismatch for the first time.
-  - **Compare triage rule (every task's compare step).** If `--compare` exits 1, classify each NEW P1/P2 finding. It is accepted only if it is one of (a)/(b)/(c) above **and** the underlying mismatch already existed on main (for Task 9's `t9-*` compares: in the `t9-before` run) — show it: the same visual mismatch in the baseline screenshot or report, or the control was not measured at baseline. Record each accepted finding in the task report with its finding id, which of (a)/(b)/(c) it is, and the evidence. Anything else must be fixed: a mismatch the change introduced, any `MENU` or other P1 finding (clip/probe failures are never accepted), and any F2/F3/F4 finding. Acceptance lines below that say a compare "exits 0" mean "exits 0, or every new P1/P2 is accepted under this rule".
+  - **Compare triage rule (every task's compare step).** If `--compare` exits 1, classify each NEW P1/P2 finding. It is accepted only if it is one of (a)/(b)/(c) above **and** the underlying mismatch already existed on main (for Task 9's `t9-*` compares: in the `t9-before` run) — show it with the same visual mismatch in the baseline screenshot or report. A control that was not measured at baseline has no baseline key, so for it the baseline screenshot itself must show the same mismatch; "not measured" alone is not evidence. Record each accepted finding in the task report with its finding id, which of (a)/(b)/(c) it is, and the evidence. Anything else must be fixed: a mismatch the change introduced, any `MENU` or other P1 finding (clip/probe failures are never accepted), and any F2/F3/F4 finding. Acceptance lines below that say a compare "exits 0" mean "exits 0, or every new P1/P2 is accepted under this rule".
   - **Controls first measured by Task 8** (no baseline key exists for them): group A InterestConfig VAT `<div>` (S1-03, this plan ~line 6014), group C ItemsTable "ก่อนภาษี" (S2-07), group D ItemLinesSection "ก่อนภาษี" (S3-04, ~line 6843) and AdjustmentSection ยอดสุทธิ / ผลต่าง (S3-05, ~lines 6906 / 6917). Each becomes a `ReadOnlyField` with a label above it — case (b). What the baseline can list as "fixed" are the other row members' keys; the acceptance for these rows is that the row they now join is fully consistent (zero F1 keys for that row), with the screenshot comparison as the visual proof. If the row is not consistent, the new control's keys — and, for any property the row only now fails, every member's keys — show up as new. These are the rows the task sets out to fix, so the triage rule does not excuse them: fix the row.
 - **Line numbers** in Tasks 8–11 are from commit `b58250bbe`; earlier tasks shift them. Every edit is anchored on an exact unique string — use the string, treat the line as a guide.
 - **Account menu probe** (Task 2) finds the menu by the search box `aria-label="ค้นหารหัส หรือ ชื่อบัญชี"`; Task 6 keeps that label.
@@ -713,7 +713,8 @@ const F1_CHECKS = [
 // Guarantee: with the same set of measured controls in a row/check, changing values toward
 // agreement never adds a key, and a fully consistent row has no keys for that property. A correct
 // change can still add keys ("exposed, not introduced"): (a) adding / removing / renaming /
-// re-kinding a control renumbers later controls with the same kind|name page-wide; (b) the row or
+// re-kinding a control renumbers later controls with the same kind|name page-wide (and the renamed /
+// re-kinded control itself gets new keys while its row is inconsistent); (b) the row or
 // check gains members (newly measured, no longer largeText, re-kinded out of textarea, label moved
 // above, rows merged) while it is inconsistent; (c) derived bottom (y + h) newly mismatches after
 // a height / labelGap fix removes a compensating offset. --compare triage: plan cross-task notes.
@@ -6508,7 +6509,7 @@ node tools/field-scale/check.mjs --compare baseline t8-b
 ```
 
 Expected:
-- The compare exits 0, or every new P1/P2 is accepted under the compare triage rule (cross-task notes). The TodoForm tag-height F1 finding and the PaymentSection 40px-beside-44px finding are listed as fixed.
+- The compare exits 0, or every new P1/P2 is accepted under the compare triage rule (cross-task notes). S2-05 (TodoForm tag) and S2-08 (PaymentSection 40px beside 44px) have no baseline F1 key: the tag input and the PaymentSection text input are each the only F1-eligible control in their row (the file `<label>` and the `+ เพิ่ม` button are not measured fields), and S2-05 also re-kinds the control to `field-frame`. Prove them with this group's vitest tests plus the screenshot comparison, not with the compare "fixed" list.
 - In `.tmp/field-scale/t8-b/repossessions-1440-light.png` and the `stock-transfers*-1440-light.png` screenshots, the filter dropdown is 224px wide, not page-wide.
 - At 390 it is full width.
 
@@ -7052,7 +7053,7 @@ Expected:
 - The type check reports 0 errors.
 - Lint reports 0 errors. In particular, there are no unused imports: `formControlClass` in AuditLogs, `formTextareaClass` in ChatbotFinance, and `cn` in ItemsTable are all used.
 - Every vitest file passes, including `native-select.inventory.test.ts`. No new raw `<select>` was added. That test skips test files and `__tests__`.
-- The compare exits 0, or every new P1/P2 is accepted under the compare triage rule (cross-task notes). All 13 appendix rows are fixed: rows whose controls were measured at baseline are listed under "fixed"; S1-03, S2-07 "ก่อนภาษี", S3-04 and S3-05 (controls first measured in this task) are proven by zero F1 keys for their rows plus the screenshot comparison, as in the group A, C and D expectations.
+- The compare exits 0, or every new P1/P2 is accepted under the compare triage rule (cross-task notes). All 13 appendix rows are fixed: rows whose controls were measured at baseline are listed under "fixed"; S2-05 and S2-08 are proven by their vitest tests plus screenshots (no baseline F1 key — group B); S1-03, S2-07 "ก่อนภาษี", S3-04 and S3-05 (controls first measured in this task) are proven by zero F1 keys for their rows plus the screenshot comparison, as in the group A, C and D expectations.
 
 If a finding is intentionally kept, add it with a Thai reason to `tools/field-scale/allow.json` and commit that file using the same commit format as above.
 
@@ -9179,7 +9180,7 @@ EOF
 )"
 ```
 
-- [ ] **Step 30: Field-scale check: F1 (label) = 0 on these forms, nothing new compared with the baseline**
+- [ ] **Step 30: Field-scale check: F1 (label) = 0 on these forms, nothing new compared with the baseline (except findings accepted under the compare triage rule)**
 
 Start the preview (it detaches and returns):
 ```bash

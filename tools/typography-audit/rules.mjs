@@ -395,7 +395,8 @@ const F1_CHECKS = [
 // Guarantee: with the same set of measured controls in a row/check, changing values toward
 // agreement never adds a key, and a fully consistent row has no keys for that property. A correct
 // change can still add keys ("exposed, not introduced"): (a) adding / removing / renaming /
-// re-kinding a control renumbers later controls with the same kind|name page-wide; (b) the row or
+// re-kinding a control renumbers later controls with the same kind|name page-wide (and the renamed /
+// re-kinded control itself gets new keys while its row is inconsistent); (b) the row or
 // check gains members (newly measured, no longer largeText, re-kinded out of textarea, label moved
 // above, rows merged) while it is inconsistent; (c) derived bottom (y + h) newly mismatches after
 // a height / labelGap fix removes a compensating offset. --compare triage: plan cross-task notes.

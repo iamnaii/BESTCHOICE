@@ -634,10 +634,6 @@ const F5_NON_PORTAL_MENU_ALLOW: Record<string, { panels: number; reason: string 
     panels: 1,
     reason: 'มีอยู่ก่อนงานนี้ (ค้นของแถม) · นอก allow-list ของ spec — รอเจ้าของตัดสิน',
   },
-  'apps/web/src/components/template-editor/editor/VariableAutocomplete.tsx': {
-    panels: 1,
-    reason: 'มีอยู่ก่อนงานนี้ (ตัวแปรในแม่แบบเอกสาร วางตามตำแหน่งเคอร์เซอร์) · นอก allow-list ของ spec — รอเจ้าของตัดสิน',
-  },
   'apps/web/src/pages/CollectionsPage/components/InstallmentPickerPopover.tsx': {
     panels: 1,
     reason: 'มีอยู่ก่อนงานนี้ (เลือกงวดที่นัดจ่าย) · นอก allow-list ของ spec — รอเจ้าของตัดสิน',

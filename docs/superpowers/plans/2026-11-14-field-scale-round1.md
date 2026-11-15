@@ -11488,7 +11488,7 @@ Spec §5 row F5 and §2 bullet "เมนูถูกตัด". This task adds 
   - Output goes to `.tmp/field-scale/menu-clip-components/{results.json,<Component>-<width>.png}`.
   - It needs the current-checkout preview: `previewStatus().current`, the same check as `tools/check-admin-typography.mjs`.
 
-**Current offenders (found by running the detector below on HEAD, 2026-11-14): 15 panels in 13 files after Task 6 (16 in 14 before it replaces `AccountSearchDropdown`)**
+**Current offenders (found by running the detector below on HEAD, 2026-11-14; updated 2026-11-16): 14 panels in 12 files after Task 6 (15 in 13 before it replaces `AccountSearchDropdown`). `components/template-editor/editor/VariableAutocomplete.tsx` (1 panel, imported nowhere) was deleted as dead code on 2026-11-16 and is no longer listed.**
 
 | File:line (under `apps/web/src/`) | Panels | What it is | After this plan |
 |---|---|---|---|
@@ -11499,7 +11499,6 @@ Spec §5 row F5 and §2 bullet "เมนูถูกตัด". This task adds 
 | `pages/UnifiedInboxPage/components/NoteMentionInput.tsx:250` | 1 | @mention list | allow-listed (spec) |
 | `pages/other-income/components/AccountSearchDropdown.tsx:85` | 1 | account menu | **not on the list.** Task 6 replaces it with `PopoverContent`, and the detector then finds 0 panels in the file (fixture "after Task 6" below) |
 | `components/bundle/BundleSearch.tsx:155` | 1 | free-gift search | allow-listed: extra, not in spec |
-| `components/template-editor/editor/VariableAutocomplete.tsx:99` | 1 | caret variable list | allow-listed: extra |
 | `pages/CollectionsPage/components/InstallmentPickerPopover.tsx:54` | 1 | installment picker (`if (!open) return null`) | allow-listed: extra |
 | `pages/ExpensesPage.tsx:668` | 1 | "สร้างเอกสารใหม่" menu | allow-listed: extra |
 | `pages/POSPage/components/CustomerSearch.tsx:154` | 1 | POS customer search | allow-listed: extra |
@@ -11922,10 +11921,9 @@ Expected result:
 
 ```
 FAIL  src/components/ui/field-guards.inventory.test.ts > F5 — inline (non-portalled) menus (spec 2026-11-14 §5) > only allow-listed files render an absolute menu outside a portal
-AssertionError: expected { …(13) } to deeply equal {}
+AssertionError: expected { …(12) } to deeply equal {}
 + {
 +   "apps/web/src/components/bundle/BundleSearch.tsx": 1,
-+   "apps/web/src/components/template-editor/editor/VariableAutocomplete.tsx": 1,
 +   "apps/web/src/components/ui/NameAutocomplete.tsx": 1,
 +   "apps/web/src/components/ui/SearchableSelect.tsx": 2,
 +   "apps/web/src/pages/CollectionsPage/components/InstallmentPickerPopover.tsx": 1,
@@ -11942,7 +11940,7 @@ AssertionError: expected { …(13) } to deeply equal {}
 
 Check the list before going on:
 - If `AccountSearchDropdown.tsx` appears, Task 6 is not done. Stop.
-- If one of the 13 is missing, an earlier task already removed that menu. Leave it out of Step 4.
+- If one of the 12 is missing, an earlier task already removed that menu. Leave it out of Step 4.
 - If a file is listed that is not in the table above, a new inline menu was added. Portal it, do not allow-list it.
 
 - [ ] **Step 4: Fill the allow-list with exactly the remaining set (green)**
@@ -11982,10 +11980,6 @@ const F5_NON_PORTAL_MENU_ALLOW: Record<string, { panels: number; reason: string 
   'apps/web/src/components/bundle/BundleSearch.tsx': {
     panels: 1,
     reason: 'มีอยู่ก่อนงานนี้ (ค้นของแถม) · นอก allow-list ของ spec — รอเจ้าของตัดสิน',
-  },
-  'apps/web/src/components/template-editor/editor/VariableAutocomplete.tsx': {
-    panels: 1,
-    reason: 'มีอยู่ก่อนงานนี้ (ตัวแปรในแม่แบบเอกสาร วางตามตำแหน่งเคอร์เซอร์) · นอก allow-list ของ spec — รอเจ้าของตัดสิน',
   },
   'apps/web/src/pages/CollectionsPage/components/InstallmentPickerPopover.tsx': {
     panels: 1,

@@ -26,4 +26,20 @@ describe('AdjustmentSection — S3-05 กล่องค่าสองกล่
     expect(diff).toHaveAttribute('data-slot', 'readonly-field');
     expect(diff).toHaveValue('+1.50 (จ่ายเกิน → Cr)');
   });
+
+  it('ผลต่าง มี title เท่าค่าเต็ม — ที่ md ยอดใหญ่อาจตัดทิศ (จ่ายเกิน/จ่ายน้อย) ท้ายช่อง', () => {
+    render(
+      <AdjustmentSection
+        diff="-1234567.89"
+        amountPaid=""
+        onAmountPaidChange={() => {}}
+        adjustments={[]}
+        onChange={() => {}}
+        netExpected="1234.50"
+      />,
+    );
+    const diff = screen.getByLabelText('ผลต่างที่ต้องปรับ');
+    expect(diff).toHaveAttribute('title', (diff as HTMLInputElement).value);
+    expect((diff as HTMLInputElement).value).toMatch(/จ่ายน้อย → Dr/);
+  });
 });

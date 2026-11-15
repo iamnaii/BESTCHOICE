@@ -78,6 +78,8 @@ export function AdjustmentSection({
   );
   const diffNum = D(diff);
   const adjustmentsActive = adjustments.length > 0 || Math.abs(diffNum) > 0.005;
+  // ช่องผลต่างกว้างไม่พอที่ md เมื่อยอดใหญ่ → title แสดงค่าเต็ม (รวมทิศ Cr/Dr) เมื่อชี้
+  const diffText = `${diffNum >= 0 ? '+' : ''}${formatNumericText(diffNum.toFixed(2))}${diffNum > 0.005 ? ' (จ่ายเกิน → Cr)' : ''}${diffNum < -0.005 ? ' (จ่ายน้อย → Dr)' : ''}`;
 
   // Signed sum: side='CR' → +amount, side='DR' → −amount. This must equal diff.
   const signedSum = adjustments.reduce<number>(
@@ -147,7 +149,8 @@ export function AdjustmentSection({
           <ReadOnlyField
             id={`${fieldId}-diff`}
             tone={Math.abs(diffNum) < 0.005 ? 'default' : diffNum > 0 ? 'success' : 'warning'}
-            value={`${diffNum >= 0 ? '+' : ''}${formatNumericText(diffNum.toFixed(2))}${diffNum > 0.005 ? ' (จ่ายเกิน → Cr)' : ''}${diffNum < -0.005 ? ' (จ่ายน้อย → Dr)' : ''}`}
+            value={diffText}
+            title={diffText}
             className="font-mono tabular-nums"
           />
         </div>

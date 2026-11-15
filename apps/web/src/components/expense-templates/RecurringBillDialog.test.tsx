@@ -213,6 +213,16 @@ describe('กล่องตั้งบิลประจำ', () => {
     ).toBeInTheDocument();
   });
 
+  it('S3-09: คำอธิบายใต้ช่อง "วิธีจ่าย"/"เดือน" ผูกกับ select (aria-describedby) — ความหมายที่ตัวเลือกสั้นไม่ได้บอก', async () => {
+    const u = userEvent.setup();
+    mount();
+    await screen.findByRole('dialog');
+    expect(field('วิธีจ่าย')).toHaveAccessibleDescription('ไม่ตั้ง = ร่างลงเป็นตั้งหนี้ ต้องทำใบจ่ายเจ้าหนี้ต่อ');
+    await u.selectOptions(field('ความถี่'), 'QUARTERLY');
+    expect(field('เดือน')).toHaveAccessibleDescription(/เดือนที่ 1 = ม\.ค\.\/เม\.ย\.\/ก\.ค\.\/ต\.ค\./);
+    expect(field('บัญชีค่าใช้จ่าย')).toHaveAccessibleDescription('ไปอยู่ในบรรทัดของร่างใบรายจ่าย — แก้ในร่างได้');
+  });
+
   it('ผู้จัดการสาขาสร้างใหม่: สาขาถูกล็อกเป็นสาขาตนเอง', async () => {
     user = { id: 'u-bm', role: 'BRANCH_MANAGER', branchId: 'br-2' };
     mount();

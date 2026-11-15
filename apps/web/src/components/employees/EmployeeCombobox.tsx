@@ -67,7 +67,7 @@ export default function EmployeeCombobox({
           <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+      <PopoverContent className="w-(--radix-popover-trigger-width) min-w-64 p-0" align="start">
         <Command shouldFilter={false}>
           <CommandInput
             placeholder="ค้นหาพนักงาน (ชื่อ / ชื่อเล่น / รหัส)"

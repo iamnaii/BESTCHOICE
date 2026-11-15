@@ -1,4 +1,6 @@
 import { NativeSelect } from '@/components/ui/native-select';
+import { formControlClass, formTextareaClass } from '@/components/ui/form-styles';
+import { cn } from '@/lib/utils';
 import { useId as useUiFieldId, useEffect, useState } from 'react';
 import type { CreateBody, SmsChannel, SmsTemplate, TemplateVariable } from '../hooks/useSmsTemplates';
 
@@ -84,7 +86,7 @@ export function SmsTemplateForm({
           required
           maxLength={100}
           placeholder="เช่น เตือนค่างวด D-3"
-          className="w-full px-3 py-2 rounded-md border border-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+          className={formControlClass}
         />
       </div>
 
@@ -94,7 +96,6 @@ export function SmsTemplateForm({
           <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-2`}
             value={channel}
             onChange={(e) => setChannel(e.target.value as SmsChannel)}
-            className="px-3 py-2 rounded-md border border-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
           >
             {CHANNEL_OPTIONS.map((c) => (
               <option key={c.value} value={c.value}>
@@ -128,7 +129,7 @@ export function SmsTemplateForm({
           onChange={(e) => setSubject(e.target.value)}
           maxLength={200}
           placeholder="หัวข้อ (ใช้กับ SMS / ข้อความเกริ่น LINE)"
-          className="w-full px-3 py-2 rounded-md border border-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+          className={formControlClass}
         />
       </div>
 
@@ -154,7 +155,7 @@ export function SmsTemplateForm({
           rows={6}
           maxLength={2000}
           placeholder="สวัสดีคุณ {{customerName}} ค่างวด {{installmentNo}} ยอด {{amount}} บาท..."
-          className="w-full px-3 py-2 rounded-md border border-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+          className={cn(formTextareaClass, 'resize-none')}
         />
         <p className="text-xs text-muted-foreground mt-1 leading-snug">
           {body.length} / 2000 ตัวอักษร · ใช้ {`{{ชื่อตัวแปร}}`} เพื่อแทนค่าจริงตอนส่ง

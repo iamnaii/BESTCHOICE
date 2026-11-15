@@ -1,5 +1,7 @@
 import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
+import { formControlClass, formTextareaClass } from '@/components/ui/form-styles';
+import { cn } from '@/lib/utils';
 import { useId as useUiFieldId, useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -640,7 +642,7 @@ export default function DunningSettingsPage() {
               value={form.name}
               onChange={(e) => handleFormChange('name', e.target.value)}
               placeholder="เช่น ทวงหนี้วันที่ 3"
-              className="w-full px-3 py-2 rounded-md border border-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              className={formControlClass}
             />
           </div>
 
@@ -656,7 +658,7 @@ export default function DunningSettingsPage() {
                 onChange={(e) =>
                   handleFormChange('triggerDay', parseInt(e.target.value, 10) || 0)
                 }
-                className="w-full px-3 py-2 rounded-md border border-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                className={formControlClass}
               />
               <p className="text-xs text-muted-foreground mt-1">
                 {getTriggerLabel(form.triggerDay)}
@@ -667,7 +669,6 @@ export default function DunningSettingsPage() {
               <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-3`}
                 value={form.channel}
                 onChange={(e) => handleFormChange('channel', e.target.value as DunningChannel)}
-                className="px-3 py-2 rounded-md border border-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
               >
                 {CHANNEL_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>
@@ -688,7 +689,6 @@ export default function DunningSettingsPage() {
               <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-4`}
                 value={form.templateName}
                 onChange={(e) => handleFormChange('templateName', e.target.value)}
-                className="px-3 py-2 rounded-md border border-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
               >
                 <option value="">— ใช้ข้อความ inline ด้านล่าง —</option>
                 {smsTemplates
@@ -730,7 +730,7 @@ export default function DunningSettingsPage() {
               onChange={(e) => handleFormChange('messageTemplate', e.target.value)}
               rows={4}
               placeholder="ระบุข้อความ เช่น สวัสดีคุณ {{customerName}} ..."
-              className="w-full px-3 py-2 rounded-md border border-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+              className={cn(formTextareaClass, 'resize-none')}
             />
           </div>
 
@@ -745,7 +745,7 @@ export default function DunningSettingsPage() {
               value={form.escalateTo}
               onChange={(e) => handleFormChange('escalateTo', e.target.value)}
               placeholder="UUID ของ rule ปลายทาง"
-              className="w-full px-3 py-2 rounded-md border border-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              className={formControlClass}
             />
           </div>
 
@@ -759,7 +759,7 @@ export default function DunningSettingsPage() {
               onChange={(e) =>
                 handleFormChange('sortOrder', parseInt(e.target.value, 10) || 0)
               }
-              className="w-full px-3 py-2 rounded-md border border-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              className={formControlClass}
             />
           </div>
 

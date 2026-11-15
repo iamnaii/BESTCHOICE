@@ -156,7 +156,6 @@ export default function AcceptModal({
               <Label>สาขาที่รับเครื่อง *</Label>
               {canPickBranch ? (
                 <NativeSelect wrapperClassName="max-w-full mt-1.5 w-full" aria-label="สาขา"
-                  className="h-10 rounded-lg border border-input bg-background px-3 text-sm"
                   disabled={isPending}
                   value={branchId}
                   onChange={(e) => setBranchId(e.target.value)}

@@ -16,6 +16,7 @@ import { invalidateCustomerJourney } from '@/hooks/customer-journey/useCustomerJ
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { FinanceLineStatusRow } from '@/components/customer/FinanceLineStatusRow';
 import type { CustomerDetail, ReferenceData } from '../types';
+import { formControlClass, formLabelClass } from '@/components/ui/form-styles';
 
 interface EditCustomerDialogProps {
   customer: CustomerDetail;
@@ -233,7 +234,7 @@ export default function EditCustomerDialog({
                 <div>
                   <label
                     htmlFor="customer-edit-1"
-                    className="block text-xs font-medium text-foreground mb-1.5"
+                    className={formLabelClass}
                   >
                     คำนำหน้า
                   </label>
@@ -242,7 +243,6 @@ export default function EditCustomerDialog({
                     id="customer-edit-1"
                     value={editForm.prefix}
                     onChange={(e) => setEditForm({ ...editForm, prefix: e.target.value })}
-                    className="h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
                   >
                     <option value="">-- เลือก --</option>
                     {THAI_NAME_PREFIXES.map((p) => (
@@ -255,7 +255,7 @@ export default function EditCustomerDialog({
                 <div>
                   <label
                     htmlFor="customer-edit-2"
-                    className="block text-xs font-medium text-foreground mb-1.5"
+                    className={formLabelClass}
                   >
                     ชื่อ-นามสกุล <span className="text-destructive">*</span>
                   </label>
@@ -264,14 +264,14 @@ export default function EditCustomerDialog({
                     type="text"
                     value={editForm.name}
                     onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                    className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                    className={formControlClass}
                     required
                   />
                 </div>
                 <div>
                   <label
                     htmlFor="customer-edit-3"
-                    className="block text-xs font-medium text-foreground mb-1.5"
+                    className={formLabelClass}
                   >
                     ชื่อเล่น
                   </label>
@@ -280,13 +280,13 @@ export default function EditCustomerDialog({
                     type="text"
                     value={editForm.nickname}
                     onChange={(e) => setEditForm({ ...editForm, nickname: e.target.value })}
-                    className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                    className={formControlClass}
                   />
                 </div>
                 <div>
                   <label
                     htmlFor="customer-edit-4"
-                    className="block text-xs font-medium text-foreground mb-1.5"
+                    className={formLabelClass}
                   >
                     วันเกิด
                   </label>
@@ -294,7 +294,6 @@ export default function EditCustomerDialog({
                     id="customer-edit-4"
                     value={editForm.birthDate}
                     onChange={(e) => setEditForm({ ...editForm, birthDate: e.target.value })}
-                    className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
                   />
                 </div>
               </div>
@@ -370,7 +369,7 @@ export default function EditCustomerDialog({
               <div className="mt-3">
                 <label
                   htmlFor="customer-edit-6"
-                  className="block text-xs font-medium text-foreground mb-1.5"
+                  className={formLabelClass}
                 >
                   ลิงก์ Google Maps
                 </label>
@@ -413,7 +412,7 @@ export default function EditCustomerDialog({
                   {/* R41: ผู้สนใจจากแชทยังไม่มีเบอร์ — ช่องนี้ไม่ required สำหรับเขา ดาวจึงต้องหายไปด้วย ไม่ใช่ค้างอยู่ */}
                   <label
                     htmlFor="customer-edit-7"
-                    className="block text-xs font-medium text-foreground mb-1.5"
+                    className={formLabelClass}
                   >
                     เบอร์หลัก
                     {!customer?.chatPlaceholder && <span className="text-destructive"> *</span>}
@@ -430,7 +429,7 @@ export default function EditCustomerDialog({
                 <div>
                   <label
                     htmlFor="customer-edit-8"
-                    className="block text-xs font-medium text-foreground mb-1.5"
+                    className={formLabelClass}
                   >
                     เบอร์สำรอง
                   </label>
@@ -445,7 +444,7 @@ export default function EditCustomerDialog({
                 <div>
                   <label
                     htmlFor="customer-edit-9"
-                    className="block text-xs font-medium text-foreground mb-1.5"
+                    className={formLabelClass}
                   >
                     อีเมล
                   </label>
@@ -460,7 +459,7 @@ export default function EditCustomerDialog({
                 <div>
                   <label
                     htmlFor="customer-edit-11"
-                    className="block text-xs font-medium text-foreground mb-1.5"
+                    className={formLabelClass}
                   >
                     LINE ID (Shop / ร้าน)
                   </label>
@@ -481,7 +480,7 @@ export default function EditCustomerDialog({
                 <div>
                   <label
                     htmlFor="customer-edit-12"
-                    className="block text-xs font-medium text-foreground mb-1.5"
+                    className={formLabelClass}
                   >
                     ลิงก์ Facebook
                   </label>
@@ -496,7 +495,7 @@ export default function EditCustomerDialog({
                 <div>
                   <label
                     htmlFor="customer-edit-13"
-                    className="block text-xs font-medium text-foreground mb-1.5"
+                    className={formLabelClass}
                   >
                     ชื่อ Facebook
                   </label>
@@ -511,7 +510,7 @@ export default function EditCustomerDialog({
                 <div>
                   <label
                     htmlFor="customer-edit-14"
-                    className="block text-xs font-medium text-foreground mb-1.5"
+                    className={formLabelClass}
                   >
                     จำนวนเพื่อน Facebook
                   </label>
@@ -554,7 +553,7 @@ export default function EditCustomerDialog({
                 <div>
                   <label
                     htmlFor="customer-edit-15"
-                    className="block text-xs font-medium text-foreground mb-1.5"
+                    className={formLabelClass}
                   >
                     ชื่อที่ทำงาน
                   </label>
@@ -569,7 +568,7 @@ export default function EditCustomerDialog({
                 <div>
                   <label
                     htmlFor="customer-edit-16"
-                    className="block text-xs font-medium text-foreground mb-1.5"
+                    className={formLabelClass}
                   >
                     อาชีพ
                   </label>
@@ -584,7 +583,7 @@ export default function EditCustomerDialog({
                 <div>
                   <label
                     htmlFor="customer-edit-17"
-                    className="block text-xs font-medium text-foreground mb-1.5"
+                    className={formLabelClass}
                   >
                     รายละเอียดอาชีพ
                   </label>
@@ -599,7 +598,7 @@ export default function EditCustomerDialog({
                 <div>
                   <label
                     htmlFor="customer-edit-18"
-                    className="block text-xs font-medium text-foreground mb-1.5"
+                    className={formLabelClass}
                   >
                     เงินเดือน
                   </label>
@@ -614,7 +613,7 @@ export default function EditCustomerDialog({
                 </div>
               </div>
               <div className="mt-2">
-                <label className="block text-xs font-medium text-foreground mb-1.5">
+                <label className={formLabelClass}>
                   ที่อยู่ที่ทำงาน
                 </label>
                 <AddressForm value={editAddrWork} onChange={setEditAddrWork} />
@@ -657,7 +656,7 @@ export default function EditCustomerDialog({
                       <div>
                         <label
                           htmlFor={`customer-edit-19-${idx}`}
-                          className="block text-xs font-medium text-foreground mb-1.5"
+                          className={formLabelClass}
                         >
                           คำนำหน้า
                         </label>
@@ -666,7 +665,6 @@ export default function EditCustomerDialog({
                           id={`customer-edit-19-${idx}`}
                           value={ref.prefix || ''}
                           onChange={(e) => updateEditRef(idx, 'prefix', e.target.value)}
-                          className="h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
                         >
                           <option value="">-- เลือก --</option>
                           {THAI_NAME_PREFIXES.map((p) => (
@@ -679,7 +677,7 @@ export default function EditCustomerDialog({
                       <div>
                         <label
                           htmlFor={`customer-edit-20-${idx}`}
-                          className="block text-xs font-medium text-foreground mb-1.5"
+                          className={formLabelClass}
                         >
                           ชื่อ
                         </label>
@@ -688,13 +686,13 @@ export default function EditCustomerDialog({
                           type="text"
                           value={ref.firstName || ''}
                           onChange={(e) => updateEditRef(idx, 'firstName', e.target.value)}
-                          className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                          className={formControlClass}
                         />
                       </div>
                       <div>
                         <label
                           htmlFor={`customer-edit-21-${idx}`}
-                          className="block text-xs font-medium text-foreground mb-1.5"
+                          className={formLabelClass}
                         >
                           นามสกุล
                         </label>
@@ -703,13 +701,13 @@ export default function EditCustomerDialog({
                           type="text"
                           value={ref.lastName || ''}
                           onChange={(e) => updateEditRef(idx, 'lastName', e.target.value)}
-                          className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                          className={formControlClass}
                         />
                       </div>
                       <div>
                         <label
                           htmlFor={`customer-edit-22-${idx}`}
-                          className="block text-xs font-medium text-foreground mb-1.5"
+                          className={formLabelClass}
                         >
                           เบอร์โทร
                         </label>
@@ -718,13 +716,13 @@ export default function EditCustomerDialog({
                           type="tel"
                           value={ref.phone || ''}
                           onChange={(e) => updateEditRef(idx, 'phone', e.target.value)}
-                          className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                          className={formControlClass}
                         />
                       </div>
                       <div>
                         <label
                           htmlFor={`customer-edit-23-${idx}`}
-                          className="block text-xs font-medium text-foreground mb-1.5"
+                          className={formLabelClass}
                         >
                           ความสัมพันธ์
                         </label>
@@ -733,7 +731,6 @@ export default function EditCustomerDialog({
                           id={`customer-edit-23-${idx}`}
                           value={ref.relationship || ''}
                           onChange={(e) => updateEditRef(idx, 'relationship', e.target.value)}
-                          className="h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
                         >
                           <option value="">-- เลือก --</option>
                           {RELATIONSHIP_OPTIONS.map((r) => (

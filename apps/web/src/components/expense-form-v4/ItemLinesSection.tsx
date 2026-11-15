@@ -1,6 +1,7 @@
 import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
-import { formControlClass } from '@/components/ui/form-styles';
+import { formControlClass, formLabelClass } from '@/components/ui/form-styles';
+import { ReadOnlyField } from '@/components/ui/readonly-field';
 import { useId as useFieldId } from 'react';
 import { useCoaGroups } from '@/hooks/useCoa';
 import { Plus, Trash2 } from 'lucide-react';
@@ -66,7 +67,7 @@ export function ItemLinesSection({ lines, onChange, priceTypeLabel }: Props) {
           </div>
           <div className="space-y-3 p-4">
             <div>
-              <label htmlFor={`${fieldId}-${line.uid}-1`} className="mb-1 block text-xs font-medium">บัญชีค่าใช้จ่าย</label>
+              <label htmlFor={`${fieldId}-${line.uid}-1`} className={formLabelClass}>บัญชีค่าใช้จ่าย</label>
               <NativeSelect wrapperClassName="max-w-full w-full min-w-0" id={`${fieldId}-${line.uid}-1`}
                 value={line.category}
                 onChange={(e) => updateLine(line.uid, { category: e.target.value })}
@@ -111,14 +112,17 @@ export function ItemLinesSection({ lines, onChange, priceTypeLabel }: Props) {
                 options={whtOptions}
               />
               <div>
-                <label className="mb-1 block text-xs font-medium text-muted-foreground">ก่อนภาษี</label>
-                <div className="rounded-lg border border-border bg-muted/50 px-3 py-2 text-right font-mono text-sm">
-                  {formatNumberDecimal(computeBeforeVat(line))}
-                </div>
+                <label htmlFor={`${fieldId}-${line.uid}-before-vat`} className={formLabelClass}>ก่อนภาษี</label>
+                <ReadOnlyField
+                  id={`${fieldId}-${line.uid}-before-vat`}
+                  align="end"
+                  value={formatNumberDecimal(computeBeforeVat(line))}
+                  className="font-mono"
+                />
               </div>
             </div>
             <div>
-              <label htmlFor={`${fieldId}-${line.uid}-2`} className="mb-1 block text-xs font-medium">คำอธิบาย</label>
+              <label htmlFor={`${fieldId}-${line.uid}-2`} className={formLabelClass}>คำอธิบาย</label>
               <input id={`${fieldId}-${line.uid}-2`}
                 type="text"
                 value={line.description}
@@ -177,7 +181,7 @@ function Field({
   const fieldId = useFieldId();
   return (
     <div>
-      <label htmlFor={`${fieldId}-3`} className="mb-1 block text-xs font-medium">{label}</label>
+      <label htmlFor={`${fieldId}-3`} className={formLabelClass}>{label}</label>
       <NumberInput unstyled id={`${fieldId}-3`}
         step="0.01"
         value={value}
@@ -202,7 +206,7 @@ function SelectField({
   const fieldId = useFieldId();
   return (
     <div>
-      <label htmlFor={`${fieldId}-4`} className="mb-1 block text-xs font-medium">{label}</label>
+      <label htmlFor={`${fieldId}-4`} className={formLabelClass}>{label}</label>
       <NativeSelect wrapperClassName="max-w-full w-full min-w-0" id={`${fieldId}-4`}
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -237,7 +241,7 @@ function SelectFieldLabeled({
   const fieldId = useFieldId();
   return (
     <div>
-      <label htmlFor={`${fieldId}-5`} className="mb-1 block text-xs font-medium">{label}</label>
+      <label htmlFor={`${fieldId}-5`} className={formLabelClass}>{label}</label>
       <NativeSelect wrapperClassName="max-w-full w-full min-w-0" id={`${fieldId}-5`}
         value={value}
         onChange={(e) => onChange(e.target.value)}

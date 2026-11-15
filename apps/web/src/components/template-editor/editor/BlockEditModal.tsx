@@ -7,6 +7,7 @@ import { BLOCK_TYPES } from '@/constants/blockTypes';
 import { AVAILABLE_VARIABLES, VARIABLE_GROUPS } from '@/constants/variables';
 import { useTemplateStore } from '@/store/templateStore';
 import RichTextEditor from './RichTextEditor';
+import { formControlClass } from '@/components/ui/form-styles';
 
 export default function BlockEditModal() {
   const { editingBlock, setEditingBlock, updateBlock } = useTemplateStore();
@@ -91,7 +92,6 @@ export default function BlockEditModal() {
               <NativeSelect wrapperClassName="max-w-full w-full"
                 value={form.type}
                 onChange={e => setForm(prev => ({ ...prev, type: e.target.value as BlockType }))}
-                className="px-3 py-2.5 border border-input rounded-lg text-base focus:ring-2 focus:ring-primary focus:border-primary"
               >
                 {BLOCK_TYPES.map(t => (
                   <option key={t.value} value={t.value}>{t.label} — {t.description}</option>
@@ -108,7 +108,7 @@ export default function BlockEditModal() {
                     type="number"
                     value={form.clauseNumber || ''}
                     onChange={e => setForm(prev => ({ ...prev, clauseNumber: parseInt(e.target.value) || 0 }))}
-                    className="w-full px-3 py-2.5 border border-input rounded-lg text-base focus:ring-2 focus:ring-primary"
+                    className={formControlClass}
                     min={1}
                   />
                 </div>
@@ -118,7 +118,7 @@ export default function BlockEditModal() {
                     type="text"
                     value={form.clauseTitle || ''}
                     onChange={e => setForm(prev => ({ ...prev, clauseTitle: e.target.value }))}
-                    className="w-full px-3 py-2.5 border border-input rounded-lg text-base focus:ring-2 focus:ring-primary"
+                    className={formControlClass}
                     placeholder="เช่น วัตถุประสงค์และข้อจำกัด"
                   />
                 </div>

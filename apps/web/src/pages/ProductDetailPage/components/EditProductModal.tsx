@@ -7,6 +7,7 @@ import { ColorSelector, StorageSelector } from '@/components/product/VariantSele
 import { categoryOptions } from '@/lib/constants';
 import { productStatusMap } from '@/lib/status-badges';
 import { useId as useUiFieldId } from 'react';
+import { formControlClass } from '@/components/ui/form-styles';
 
 
 interface EditForm {
@@ -103,7 +104,6 @@ export default function EditProductModal({
             <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-2`}
               value={editForm.category}
               onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
-              className="px-3 py-2 border border-input rounded-lg text-sm"
             >
               {categoryOptions.map((c) => (
                 <option key={c.value} value={c.value}>{c.label}</option>
@@ -115,7 +115,6 @@ export default function EditProductModal({
             <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-3`}
               value={editForm.status}
               onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
-              className="px-3 py-2 border border-input rounded-lg text-sm disabled:opacity-60"
               disabled={statusLocked}
             >
               {Object.entries(productStatusMap)
@@ -258,7 +257,6 @@ export default function EditProductModal({
               <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-11`}
                 value={editForm.conditionGrade}
                 onChange={(e) => setEditForm({ ...editForm, conditionGrade: e.target.value })}
-                className="px-3 py-2 border border-input rounded-lg text-sm"
               >
                 <option value="">ไม่ระบุ</option>
                 <option value="A">เกรด A</option>
@@ -274,7 +272,7 @@ export default function EditProductModal({
                 step="1"
                 value={editForm.shopWarrantyDays}
                 onChange={(e) => setEditForm({ ...editForm, shopWarrantyDays: e.target.value })}
-                className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                className={formControlClass}
               />
             </div>
           </div>

@@ -1,5 +1,6 @@
 import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
+import { formLabelClass } from '@/components/ui/form-styles';
 import { useId as useUiFieldId, useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router';
@@ -376,10 +377,9 @@ export default function StockTransfersPage() {
       {activeTab === 'outgoing' && (
         <div>
           <div className="mb-4">
-            <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="สถานะ"
+            <NativeSelect wrapperClassName="w-full sm:w-56" aria-label="สถานะ"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
             >
               <option value="PENDING">รอจัดส่ง</option>
               <option value="IN_TRANSIT">ระหว่างโอนสินค้า</option>
@@ -536,10 +536,9 @@ export default function StockTransfersPage() {
       {activeTab === 'incoming' && (
         <div>
           <div className="mb-4">
-            <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="สาขา"
+            <NativeSelect wrapperClassName="w-full sm:w-56" aria-label="สาขา"
               value={selectedBranch}
               onChange={(e) => setSelectedBranch(e.target.value)}
-              className="px-3 py-2 border border-input rounded-lg text-sm"
             >
               <option value="">เลือกสาขา</option>
               {(branches || []).map((b: { id: string; name: string }) => (
@@ -653,10 +652,9 @@ export default function StockTransfersPage() {
       {activeTab === 'history' && (
         <div>
           <div className="mb-4">
-            <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="สาขา"
+            <NativeSelect wrapperClassName="w-full sm:w-56" aria-label="สาขา"
               value={selectedBranch}
               onChange={(e) => setSelectedBranch(e.target.value)}
-              className="px-3 py-2 border border-input rounded-lg text-sm"
             >
               <option value="">ทุกสาขา</option>
               {(branches || []).map((b: { id: string; name: string }) => (
@@ -908,7 +906,7 @@ export default function StockTransfersPage() {
 
             {/* Batch notes */}
             <div>
-              <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1">หมายเหตุรวม</label>
+              <label htmlFor={`${uiFieldId}-1`} className={formLabelClass}>หมายเหตุรวม</label>
               <textarea id={`${uiFieldId}-1`}
                 value={batchReceiveNotes}
                 onChange={(e) => setBatchReceiveNotes(e.target.value)}
@@ -948,7 +946,7 @@ export default function StockTransfersPage() {
       >
         <div className="space-y-4">
           <div>
-            <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1">หมายเหตุการจัดส่ง (ถ้ามี)</label>
+            <label htmlFor={`${uiFieldId}-2`} className={formLabelClass}>หมายเหตุการจัดส่ง (ถ้ามี)</label>
             <textarea id={`${uiFieldId}-2`}
               value={shippingNote}
               onChange={(e) => setShippingNote(e.target.value)}

@@ -12,6 +12,7 @@ import {
   FormLabel,
 } from '@/components/ui/form';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
+import { formLabelClass } from '@/components/ui/form-styles';
 import { TenderInput } from '@/components/tender/TenderInput';
 import type { TenderRow } from '@/components/tender/tender-utils';
 import { type PosSaleFormData } from '@/lib/schemas';
@@ -74,7 +75,7 @@ export default function SaleDetailsForm({
           {/* Price picker from product system */}
           {selectedProduct && selectedProduct.prices.length > 0 && (
             <div className="mb-3">
-              <label className="block text-xs text-muted-foreground mb-2">
+              <label className={formLabelClass}>
                 เลือกราคาขาย (จากระบบ) *
               </label>
               <div className="flex flex-wrap gap-2">
@@ -115,10 +116,7 @@ export default function SaleDetailsForm({
               name="sellingPrice"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel
-                    htmlFor={sellingPriceId}
-                    className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2"
-                  >
+                  <FormLabel htmlFor={sellingPriceId}>
                     ราคาขาย *<span className="ml-1 text-primary">(จากระบบ)</span>
                   </FormLabel>
                   <FormControl>
@@ -140,7 +138,7 @@ export default function SaleDetailsForm({
               name="discount"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                  <FormLabel>
                     ส่วนลด
                   </FormLabel>
                   <FormControl>
@@ -153,7 +151,7 @@ export default function SaleDetailsForm({
                     />
                   </FormControl>
                   {parseFloat(sellingPrice) > 0 && (
-                    <div className="flex gap-1 mt-1">
+                    <div className="flex gap-1 mt-1.5">
                       {[0, 5, 10].map((pct) => (
                         <button
                           key={pct}
@@ -203,7 +201,7 @@ export default function SaleDetailsForm({
                   name="financeCompany"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                      <FormLabel>
                         บริษัทไฟแนนซ์ *
                       </FormLabel>
                       <FormControl>
@@ -229,7 +227,7 @@ export default function SaleDetailsForm({
                   name="contractNumber"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                      <FormLabel>
                         เลขที่สัญญา
                       </FormLabel>
                       <FormControl>
@@ -252,7 +250,7 @@ export default function SaleDetailsForm({
                   name="downPayment"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                      <FormLabel>
                         เงินดาวน์
                       </FormLabel>
                       <FormControl>
@@ -298,7 +296,7 @@ export default function SaleDetailsForm({
               name="notes"
               render={({ field }) => (
                 <FormItem className="mt-3">
-                  <FormLabel className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                  <FormLabel>
                     หมายเหตุ
                   </FormLabel>
                   <FormControl>

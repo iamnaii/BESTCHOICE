@@ -1,4 +1,5 @@
 import { PrismaService } from '../../src/prisma/prisma.service';
+import { isDisposablePreviewDatabase } from './preview-database';
 import { StorageService } from '../../src/modules/storage/storage.service';
 import { TradeInService } from '../../src/modules/trade-in/trade-in.service';
 import { TradeInVoucherService } from '../../src/modules/trade-in/services/voucher.service';
@@ -18,7 +19,7 @@ import { AuditService } from '../../src/modules/audit/audit.service';
 
 /** Synthetic questionnaire only; upserts preserve edits made in the local preview. */
 export async function seedTradeInAppraisal(db: PrismaService) {
-  if (!process.env.DATABASE_URL?.includes('/bc_chat_credit_test?host=/tmp/bc-chat-credit.')) {
+  if (!isDisposablePreviewDatabase()) {
     throw new Error('Trade-in appraisal fixtures require the disposable PostgreSQL harness');
   }
   await db.tradeInValuation.upsert({
@@ -46,7 +47,7 @@ export async function seedTradeInAppraisal(db: PrismaService) {
 }
 
 export async function seedTradeInShop(db: PrismaService, branchName: string) {
-  if (!process.env.DATABASE_URL?.includes('/bc_chat_credit_test?host=/tmp/bc-chat-credit.')) {
+  if (!isDisposablePreviewDatabase()) {
     throw new Error('Trade-in fixtures require the disposable PostgreSQL harness');
   }
   const shop = await db.companyInfo.upsert({

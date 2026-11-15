@@ -72,7 +72,6 @@ export default function TaxDisallowedSummaryPage() {
         <NativeSelect wrapperClassName="max-w-full w-48" id={`${uiFieldId}-1`}
           value={year}
           onChange={(e) => setYear(Number(e.target.value))}
-          className="rounded-lg border border-input bg-background px-3 py-2 text-sm"
         >
           {yearOptions.map((y) => (
             <option key={y} value={y}>

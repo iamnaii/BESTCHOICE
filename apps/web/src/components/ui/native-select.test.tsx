@@ -55,3 +55,74 @@ describe('NativeSelect form compatibility', () => {
     expect(submit).toHaveBeenCalledWith({ branch: 'b' });
   });
 });
+
+describe('NativeSelect leadingIcon and tone', () => {
+  it('renders a decorative leading icon and owns the left padding over the caller className', () => {
+    render(
+      <NativeSelect
+        aria-label="ผู้รับมอบหมาย"
+        leadingIcon={<svg data-testid="lead-icon" />}
+        className="pl-9 rounded-xl"
+      >
+        {options}
+      </NativeSelect>,
+    );
+    const select = screen.getByRole('combobox', { name: 'ผู้รับมอบหมาย' });
+    expect(select).toHaveClass('pl-10');
+    expect(select).not.toHaveClass('pl-9');
+    const slot = screen.getByTestId('lead-icon').parentElement as HTMLElement;
+    expect(slot).toHaveAttribute('data-slot', 'native-select-leading-icon');
+    expect(slot).toHaveAttribute('aria-hidden', 'true');
+    expect(slot).toHaveClass(
+      'pointer-events-none',
+      'absolute',
+      'left-3',
+      'top-1/2',
+      '-translate-y-1/2',
+      'size-4',
+      'text-muted-foreground',
+    );
+  });
+
+  it('places the icon after the select so the disabled state dims it too', () => {
+    render(
+      <NativeSelect aria-label="ผู้รับมอบหมาย" disabled leadingIcon={<svg data-testid="lead-icon" />}>
+        {options}
+      </NativeSelect>,
+    );
+    const select = screen.getByRole('combobox', { name: 'ผู้รับมอบหมาย' });
+    const slot = screen.getByTestId('lead-icon').parentElement as HTMLElement;
+    expect(slot).toHaveClass('peer-disabled:opacity-50');
+    expect(select.compareDocumentPosition(slot) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('adds no icon slot and no extra left padding without leadingIcon', () => {
+    const { container } = render(<NativeSelect aria-label="สาขา">{options}</NativeSelect>);
+    expect(container.querySelector('[data-slot="native-select-leading-icon"]')).toBeNull();
+    expect(screen.getByRole('combobox', { name: 'สาขา' })).not.toHaveClass('pl-10');
+  });
+
+  it('tone="warning" appends border-warning last so it beats border-input and caller border colours', () => {
+    render(
+      <NativeSelect aria-label="แหล่งรหัสย่อย" tone="warning" className="border-border">
+        {options}
+      </NativeSelect>,
+    );
+    const select = screen.getByRole('combobox', { name: 'แหล่งรหัสย่อย' });
+    expect(select).toHaveClass('border-warning');
+    expect(select).not.toHaveClass('border-input');
+    expect(select).not.toHaveClass('border-border');
+    expect(select).not.toHaveAttribute('tone');
+  });
+
+  it('tone="default" keeps the standard border', () => {
+    render(
+      <NativeSelect aria-label="แหล่งรหัสย่อย" tone="default">
+        {options}
+      </NativeSelect>,
+    );
+    const select = screen.getByRole('combobox', { name: 'แหล่งรหัสย่อย' });
+    expect(select).toHaveClass('border-input');
+    expect(select).not.toHaveClass('border-warning');
+  });
+});

@@ -222,7 +222,6 @@ export function CreateBatchDialog({
               <NativeSelect wrapperClassName="max-w-full w-full"
                 id="ic-financeBankCode"
                 {...register('financeBankCode')}
-                className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring/30"
               >
                 {FINANCE_BANK_OPTIONS.map((o) => (
                   <option key={o.code} value={o.code}>
@@ -236,7 +235,6 @@ export function CreateBatchDialog({
               <NativeSelect wrapperClassName="max-w-full w-full"
                 id="ic-shopBankCode"
                 {...register('shopBankCode')}
-                className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring/30"
               >
                 {SHOP_BANK_OPTIONS.map((o) => (
                   <option key={o.code} value={o.code}>

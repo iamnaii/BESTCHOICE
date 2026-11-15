@@ -77,13 +77,12 @@ export function TodoFilters({
         </div>
 
         {onAssigneeFilterChange && (
-          <div className="relative min-w-0 w-full sm:w-auto">
-            <UserIcon className="absolute z-10 left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
+          <div className="min-w-0 w-full sm:w-auto">
             <NativeSelect wrapperClassName="max-w-full w-auto"
               aria-label="ผู้รับมอบหมาย"
+              leadingIcon={<UserIcon />}
               value={assigneeFilter}
               onChange={(e) => onAssigneeFilterChange(e.target.value)}
-              className="pl-9 pr-8 py-2.5 border border-input bg-card rounded-xl text-sm focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-hidden transition-colors appearance-none cursor-pointer"
             >
               <option value="">ผู้รับมอบหมายทั้งหมด</option>
               <option value="me">งานของฉัน</option>

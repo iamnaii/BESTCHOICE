@@ -1,4 +1,5 @@
 import { NativeSelect } from '@/components/ui/native-select';
+import { cn } from '@/lib/utils';
 import { bangkokInput, bangkokInstant } from '@/pages/UnifiedInboxPage/components/chat-work-time';
 import { getRequestCompany } from '@/lib/company-scope';
 import { useId as useUiFieldId, useState, useEffect, useRef } from 'react';
@@ -42,6 +43,7 @@ import {
   emptyForm,
 } from '../types';
 import { formatDateMedium } from '@/utils/formatters';
+import { formControlClass, formLabelClass } from '@/components/ui/form-styles';
 
 interface TodoFormProps {
   open: boolean;
@@ -333,7 +335,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
           <div className="px-6 py-5 space-y-5">
             {/* Title */}
             <div>
-              <label htmlFor={`${uiFieldId}-1`} className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+              <label htmlFor={`${uiFieldId}-1`} className={cn(formLabelClass, 'flex items-center gap-1.5')}>
                 <TypeIcon className="size-3.5" />
                 ชื่องาน <span className="text-destructive">*</span>
               </label>
@@ -349,7 +351,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
 
             {/* Description */}
             <div>
-              <label htmlFor={`${uiFieldId}-2`} className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+              <label htmlFor={`${uiFieldId}-2`} className={cn(formLabelClass, 'flex items-center gap-1.5')}>
                 <AlignLeft className="size-3.5" />
                 รายละเอียด
               </label>
@@ -371,7 +373,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
             {/* Priority + Status as button groups */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                <label className={cn(formLabelClass, 'flex items-center gap-1.5')}>
                   <Flag className="size-3.5" />
                   ความสำคัญ
                 </label>
@@ -399,7 +401,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
               </div>
 
               <div>
-                <label className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                <label className={cn(formLabelClass, 'flex items-center gap-1.5')}>
                   <CheckCircle2 className="size-3.5" />
                   สถานะ
                 </label>
@@ -435,7 +437,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
             {/* Date + Assignee */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label htmlFor={`${uiFieldId}-3`} className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+                <label htmlFor={`${uiFieldId}-3`} className={cn(formLabelClass, 'flex items-center gap-1.5')}>
                   <Calendar className="size-3.5" />
                   {roomId ? 'ครบกำหนด (เวลาไทย)' : 'ครบกำหนด'}
                 </label>
@@ -443,18 +445,17 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
                   type={roomId ? "datetime-local" : "date"}
                   value={form.dueDate || ''}
                   onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-input rounded-xl text-sm bg-card focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-hidden transition-colors"
+                  className={formControlClass}
                 />
               </div>
               <div>
-                <label htmlFor={`${uiFieldId}-4`} className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+                <label htmlFor={`${uiFieldId}-4`} className={cn(formLabelClass, 'flex items-center gap-1.5')}>
                   <UserIcon className="size-3.5" />
                   ผู้รับมอบหมาย
                 </label>
                 <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-4`}
                   value={form.assigneeId || ''}
                   onChange={(e) => setForm({ ...form, assigneeId: e.target.value })}
-                  className="px-4 py-2.5 border border-input rounded-xl text-sm bg-card focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-hidden transition-colors"
                 >
                   <option value="">ไม่ระบุ</option>
                   {(roomId ? eligible.data ?? [] : staffUsers).map((u) => (
@@ -468,11 +469,11 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
 
             {/* Tags */}
             <div>
-              <label htmlFor={`${uiFieldId}-5`} className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+              <label htmlFor={`${uiFieldId}-5`} className={cn(formLabelClass, 'flex items-center gap-1.5')}>
                 <Tag className="size-3.5" />
                 แท็ก
               </label>
-              <div className="flex flex-wrap items-center gap-1.5 px-3 py-2 border border-input rounded-xl bg-card focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/50 transition-colors">
+              <div data-field-frame className="flex min-h-11 flex-wrap items-center gap-1.5 px-3 py-1 border border-input rounded-xl bg-card focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/50 transition-colors">
                 {(form.tags || []).map((tag) => (
                   <span
                     key={tag}
@@ -488,7 +489,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
                     </button>
                   </span>
                 ))}
-                <input id={`${uiFieldId}-5`}
+                <input id={`${uiFieldId}-5`} data-field-embedded
                   type="text"
                   value={form.tagsInput || ''}
                   onChange={(e) => setForm({ ...form, tagsInput: e.target.value })}

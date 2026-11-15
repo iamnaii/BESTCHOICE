@@ -60,7 +60,6 @@ export function BulkTransferModal({
           <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-1`}
             value={transferBranchId}
             onChange={(e) => setTransferBranchId(e.target.value)}
-            className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
             required
           >
             <option value="">เลือกสาขา...</option>

@@ -37,7 +37,6 @@ export default function ReferenceQuestionnaire({
         <label className="space-y-1 text-sm">
           <span className="block font-medium">รุ่นและความจุ</span>
           <NativeSelect wrapperClassName="w-auto max-w-full"
-            className="min-h-11 rounded-lg border border-input bg-background px-3"
             value={active ? `${active.model}|${active.storage}` : ''}
             onChange={(event) => setSelection(event.target.value)}
           >

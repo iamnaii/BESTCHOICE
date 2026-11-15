@@ -345,7 +345,6 @@ export default function PromotionsPage() {
             <div>
               <Label htmlFor={`${uiFieldId}-2`}>ประเภท</Label>
               <NativeSelect wrapperClassName="max-w-full mt-1 w-full" id={`${uiFieldId}-2`}
-                className="h-10 rounded-md border border-input bg-background px-3 text-sm"
                 value={form.type}
                 onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}
               >

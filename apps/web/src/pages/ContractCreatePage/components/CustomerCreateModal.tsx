@@ -11,6 +11,7 @@ import type { emptyCustForm } from '../constants';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { FinanceLineCreateNote } from '@/components/customer/FinanceLineStatusRow';
 import { useId as useExtraFieldId, useId as useUiFieldId } from 'react';
+import { formControlClass, formLabelClass } from '@/components/ui/form-styles';
 
 export interface CustomerCreateModalProps {
   isOpen: boolean;
@@ -190,7 +191,7 @@ export function CustomerCreateModal({
                 <div>
                   <label
                     htmlFor={`${uiFieldId}-1`}
-                    className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2"
+                    className={formLabelClass}
                   >
                     คำนำหน้า
                   </label>
@@ -199,7 +200,6 @@ export function CustomerCreateModal({
                     id={`${uiFieldId}-1`}
                     value={custForm.prefix}
                     onChange={(e) => setCustForm({ ...custForm, prefix: e.target.value })}
-                    className="px-3 py-2 border border-input rounded-lg text-sm bg-background"
                   >
                     <option value="">-- เลือก --</option>
                     {THAI_NAME_PREFIXES.map((p) => (
@@ -212,7 +212,7 @@ export function CustomerCreateModal({
                 <div>
                   <label
                     htmlFor={`${uiFieldId}-2`}
-                    className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2"
+                    className={formLabelClass}
                   >
                     ชื่อ <span className="text-destructive">*</span>
                   </label>
@@ -228,7 +228,7 @@ export function CustomerCreateModal({
                 <div>
                   <label
                     htmlFor={`${uiFieldId}-3`}
-                    className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2"
+                    className={formLabelClass}
                   >
                     นามสกุล <span className="text-destructive">*</span>
                   </label>
@@ -244,7 +244,7 @@ export function CustomerCreateModal({
                 <div>
                   <label
                     htmlFor={`${uiFieldId}-4`}
-                    className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2"
+                    className={formLabelClass}
                   >
                     ชื่อเล่น
                   </label>
@@ -259,7 +259,7 @@ export function CustomerCreateModal({
                 <div>
                   <label
                     htmlFor={`${uiFieldId}-5`}
-                    className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2"
+                    className={formLabelClass}
                   >
                     เลขบัตรประชาชน (13 หลัก) <span className="text-destructive">*</span>
                   </label>
@@ -278,7 +278,7 @@ export function CustomerCreateModal({
                 <div>
                   <label
                     htmlFor={`${uiFieldId}-6`}
-                    className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2"
+                    className={formLabelClass}
                   >
                     วันเกิด
                   </label>
@@ -378,7 +378,7 @@ export function CustomerCreateModal({
               <div className="mt-3">
                 <label
                   htmlFor={`${uiFieldId}-7`}
-                  className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2"
+                  className={formLabelClass}
                 >
                   ลิงก์ Google Map
                 </label>
@@ -420,7 +420,7 @@ export function CustomerCreateModal({
                 <div>
                   <label
                     htmlFor={`${uiFieldId}-8`}
-                    className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2"
+                    className={formLabelClass}
                   >
                     เบอร์หลัก <span className="text-destructive">*</span>
                   </label>
@@ -436,7 +436,7 @@ export function CustomerCreateModal({
                 <div>
                   <label
                     htmlFor={`${uiFieldId}-9`}
-                    className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2"
+                    className={formLabelClass}
                   >
                     เบอร์สำรอง
                   </label>
@@ -451,7 +451,7 @@ export function CustomerCreateModal({
                 <div>
                   <label
                     htmlFor={`${uiFieldId}-10`}
-                    className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2"
+                    className={formLabelClass}
                   >
                     อีเมล
                   </label>
@@ -467,7 +467,7 @@ export function CustomerCreateModal({
                 <div>
                   <label
                     htmlFor={`${uiFieldId}-12`}
-                    className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2"
+                    className={formLabelClass}
                   >
                     LINE ID (Shop / ร้าน)
                   </label>
@@ -483,7 +483,7 @@ export function CustomerCreateModal({
                 <div>
                   <label
                     htmlFor={`${uiFieldId}-13`}
-                    className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2"
+                    className={formLabelClass}
                   >
                     ลิงก์ Facebook
                   </label>
@@ -499,7 +499,7 @@ export function CustomerCreateModal({
                 <div>
                   <label
                     htmlFor={`${uiFieldId}-14`}
-                    className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2"
+                    className={formLabelClass}
                   >
                     ชื่อ Facebook
                   </label>
@@ -514,7 +514,7 @@ export function CustomerCreateModal({
                 <div>
                   <label
                     htmlFor={`${uiFieldId}-15`}
-                    className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2"
+                    className={formLabelClass}
                   >
                     จำนวนเพื่อน Facebook
                   </label>
@@ -557,7 +557,7 @@ export function CustomerCreateModal({
                 <div>
                   <label
                     htmlFor={`${uiFieldId}-16`}
-                    className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2"
+                    className={formLabelClass}
                   >
                     ชื่อที่ทำงาน
                   </label>
@@ -566,13 +566,13 @@ export function CustomerCreateModal({
                     type="text"
                     value={custForm.workplace}
                     onChange={(e) => setCustForm({ ...custForm, workplace: e.target.value })}
-                    className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                    className={formControlClass}
                   />
                 </div>
                 <div>
                   <label
                     htmlFor={`${uiFieldId}-17`}
-                    className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2"
+                    className={formLabelClass}
                   >
                     อาชีพ
                   </label>
@@ -581,7 +581,6 @@ export function CustomerCreateModal({
                     id={`${uiFieldId}-17`}
                     value={custForm.occupation}
                     onChange={(e) => setCustForm({ ...custForm, occupation: e.target.value })}
-                    className="px-3 py-2 border border-input rounded-lg text-sm"
                   >
                     <option value="">-- เลือก --</option>
                     <option value="พนักงานบริษัท">พนักงานบริษัท</option>
@@ -603,7 +602,7 @@ export function CustomerCreateModal({
                 <div>
                   <label
                     htmlFor={`${uiFieldId}-18`}
-                    className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2"
+                    className={formLabelClass}
                   >
                     รายละเอียดอาชีพ
                   </label>
@@ -612,13 +611,13 @@ export function CustomerCreateModal({
                     type="text"
                     value={custForm.occupationDetail}
                     onChange={(e) => setCustForm({ ...custForm, occupationDetail: e.target.value })}
-                    className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                    className={formControlClass}
                   />
                 </div>
                 <div>
                   <label
                     htmlFor={`${uiFieldId}-19`}
-                    className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2"
+                    className={formLabelClass}
                   >
                     เงินเดือน
                   </label>
@@ -627,13 +626,13 @@ export function CustomerCreateModal({
                     id={`${uiFieldId}-19`}
                     value={custForm.salary}
                     onChange={(e) => setCustForm({ ...custForm, salary: e.target.value })}
-                    className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                    className={formControlClass}
                     placeholder="0.00"
                   />
                 </div>
               </div>
               <div className="mt-2">
-                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                <label className={formLabelClass}>
                   ที่อยู่ที่ทำงาน
                 </label>
                 <AddressForm value={custAddrWork} onChange={setCustAddrWork} />
@@ -676,7 +675,7 @@ export function CustomerCreateModal({
                       <div>
                         <label
                           htmlFor={`${uiExtraFieldId}-1-${idx}`}
-                          className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2"
+                          className={formLabelClass}
                         >
                           คำนำหน้า
                         </label>
@@ -685,7 +684,6 @@ export function CustomerCreateModal({
                           id={`${uiExtraFieldId}-1-${idx}`}
                           value={ref.prefix}
                           onChange={(e) => updateCustRef(idx, 'prefix', e.target.value)}
-                          className="px-3 py-2 border border-input rounded-lg text-sm bg-background"
                         >
                           <option value="">-- เลือก --</option>
                           {THAI_NAME_PREFIXES.map((p) => (
@@ -698,7 +696,7 @@ export function CustomerCreateModal({
                       <div>
                         <label
                           htmlFor={`${uiExtraFieldId}-2-${idx}`}
-                          className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2"
+                          className={formLabelClass}
                         >
                           ชื่อ
                         </label>
@@ -713,7 +711,7 @@ export function CustomerCreateModal({
                       <div>
                         <label
                           htmlFor={`${uiExtraFieldId}-3-${idx}`}
-                          className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2"
+                          className={formLabelClass}
                         >
                           นามสกุล
                         </label>
@@ -728,7 +726,7 @@ export function CustomerCreateModal({
                       <div>
                         <label
                           htmlFor={`${uiExtraFieldId}-4-${idx}`}
-                          className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2"
+                          className={formLabelClass}
                         >
                           เบอร์หลัก
                         </label>
@@ -743,7 +741,7 @@ export function CustomerCreateModal({
                       <div>
                         <label
                           htmlFor={`${uiExtraFieldId}-5-${idx}`}
-                          className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2"
+                          className={formLabelClass}
                         >
                           ความสัมพันธ์
                         </label>
@@ -752,7 +750,6 @@ export function CustomerCreateModal({
                           id={`${uiExtraFieldId}-5-${idx}`}
                           value={ref.relationship}
                           onChange={(e) => updateCustRef(idx, 'relationship', e.target.value)}
-                          className="px-3 py-2 border border-input rounded-lg text-sm bg-background"
                         >
                           <option value="">-- เลือก --</option>
                           {RELATIONSHIP_OPTIONS.map((r) => (

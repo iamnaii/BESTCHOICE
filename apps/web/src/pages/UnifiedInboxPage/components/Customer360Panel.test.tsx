@@ -244,35 +244,31 @@ describe('Customer360Panel extracted actions used by RoomDossier', () => {
   });
 });
 
-it('does not fetch hidden notes, cross-channel rooms or profile risk for the actions section', async () => {
+it('does not fetch hidden cross-channel rooms or profile risk for the actions section', async () => {
   mount();
   await screen.findByRole('button', { name: 'ดำเนินการ' });
   const urls = mocks.get.mock.calls.map(([url]) => url);
   expect(urls).toContain('/customers/customer1/chat-summary');
   expect(urls).not.toContain('/customers/customer1/risk-flag');
-  expect(urls).not.toContain('/staff-chat/rooms/room1/notes');
   expect(urls).not.toContain('/staff-chat/rooms/room1/cross-channel');
 });
 
-it('still fetches notes and cross-channel rooms when those sections are shown', async () => {
-  mount({ sections: ['notes', 'channels'] });
-  await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/staff-chat/rooms/room1/notes'));
-  expect(mocks.get).toHaveBeenCalledWith('/staff-chat/rooms/room1/cross-channel');
+it('still fetches cross-channel rooms when the channels section is shown', async () => {
+  mount({ sections: ['channels'] });
+  await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/staff-chat/rooms/room1/cross-channel'));
 });
 
 
 it('enables newly visible queries and stops refetching hidden sections without remounting', async () => {
   const { rerender, queryClient } = mount();
   await screen.findByRole('button', { name: 'ดำเนินการ' });
-  rerender({ bare: false, sections: ['notes', 'channels'] });
+  rerender({ bare: false, sections: ['channels'] });
   await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/customers/customer1/risk-flag'));
-  expect(mocks.get).toHaveBeenCalledWith('/staff-chat/rooms/room1/notes');
   expect(mocks.get).toHaveBeenCalledWith('/staff-chat/rooms/room1/cross-channel');
   rerender({ bare: true, sections: ['actions'] });
   mocks.get.mockClear();
   await queryClient.invalidateQueries();
   expect(mocks.get).not.toHaveBeenCalledWith('/customers/customer1/risk-flag');
-  expect(mocks.get).not.toHaveBeenCalledWith('/staff-chat/rooms/room1/notes');
   expect(mocks.get).not.toHaveBeenCalledWith('/staff-chat/rooms/room1/cross-channel');
 });
 

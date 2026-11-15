@@ -1059,7 +1059,6 @@ export function RecordPaymentWizard({
                         <NativeSelect wrapperClassName="max-w-full w-full"
                           value={waiverReasonCode}
                           onChange={(e) => setWaiverReasonCode(e.target.value)}
-                          className="rounded-lg border border-border bg-background px-2 py-1.5 text-sm text-foreground leading-snug"
                           aria-label="เหตุผลการอนุโลม"
                         >
                           <option value="">— เลือกเหตุผล —</option>

@@ -12,6 +12,8 @@ import { formatDateShort } from '@/utils/formatters';
 import { exportToExcel } from '@/utils/excel.util';
 import { toast } from 'sonner';
 import { Download } from 'lucide-react';
+import { formControlClass } from '@/components/ui/form-styles';
+import { cn } from '@/lib/utils';
 
 /**
  * AllTab — audit/admin "table of all overdue payments" view embedded inside
@@ -226,7 +228,7 @@ export default function AllTab() {
           placeholder="ค้นหาเลขสัญญา, ชื่อลูกค้า..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="px-3 py-2 border border-input rounded-lg text-sm min-w-[250px] focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background focus:border-transparent"
+          className={cn(formControlClass, 'w-auto min-w-[250px]')}
         />
         {overduePayments.length > 0 && (
           <button data-ui-control="button"
@@ -280,7 +282,6 @@ export default function AllTab() {
         <NativeSelect wrapperClassName="max-w-full w-auto"
           value={filter}
           onChange={(e) => setFilter(e.target.value as 'OVERDUE' | 'all')}
-          className="px-3 py-2 border border-input rounded-lg text-sm"
         >
           <option value="OVERDUE">เฉพาะเกินกำหนด</option>
           <option value="all">ทั้งหมด</option>
@@ -289,7 +290,6 @@ export default function AllTab() {
           <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="สาขา"
             value={branchFilter}
             onChange={(e) => setBranchFilter(e.target.value)}
-            className="px-3 py-2 border border-input rounded-lg text-sm"
           >
             <option value="">ทุกสาขา</option>
             {branches.map((b) => (

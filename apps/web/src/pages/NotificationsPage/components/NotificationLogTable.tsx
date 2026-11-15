@@ -114,7 +114,6 @@ export default function NotificationLogTable({
         <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="ช่องทางแจ้งเตือน"
           value={channelFilter}
           onChange={(e) => setChannelFilter(e.target.value)}
-          className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
         >
           <option value="">ทุกช่องทาง</option>
           <option value="LINE">LINE</option>
@@ -124,7 +123,6 @@ export default function NotificationLogTable({
         <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="สถานะ"
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
         >
           <option value="">ทุกสถานะ</option>
           <option value="SENT">ส่งแล้ว</option>

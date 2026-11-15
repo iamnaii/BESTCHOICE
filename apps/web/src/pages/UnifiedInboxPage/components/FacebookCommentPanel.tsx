@@ -107,7 +107,6 @@ export default function FacebookCommentPanel({ threadId }: { threadId: string })
         <label className="min-w-0 flex-1 space-y-1">
           <span>ผู้รับผิดชอบคอมเมนต์</span>
           <NativeSelect wrapperClassName="max-w-full w-full"
-            className="h-11 rounded-md border bg-background px-3"
             value={row.assigneeId ?? ''}
             disabled={busy || staff.isError}
             onChange={(e) =>

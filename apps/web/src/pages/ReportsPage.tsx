@@ -539,7 +539,6 @@ function EntityProfitReport() {
             <NativeSelect id={`${uiFieldId}-3`}
               value={entity}
               onChange={(e) => setEntity(e.target.value)}
-              className="h-9 px-3 text-sm border border-border rounded-lg bg-background"
             >
               <option value="ALL">ทั้งหมด</option>
               <option value="SHOP">BESTCHOICE SHOP</option>

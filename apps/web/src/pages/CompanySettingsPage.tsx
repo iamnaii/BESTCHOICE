@@ -24,6 +24,7 @@ import AddressForm, {
   emptyAddress,
   composeAddress,
 } from '@/components/ui/AddressForm';
+import { formLabelClass } from '@/components/ui/form-styles';
 
 interface Branch {
   id: string;
@@ -153,7 +154,7 @@ function EditCompanyDialog({
         <DialogBody>
           <form id="edit-company-form" onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label htmlFor={`${uiFieldId}-1`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-1`} className={formLabelClass}>
                 ชื่อบริษัท (ไทย)
               </label>
               <input id={`${uiFieldId}-1`}
@@ -164,7 +165,7 @@ function EditCompanyDialog({
               />
             </div>
             <div>
-              <label htmlFor={`${uiFieldId}-2`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-2`} className={formLabelClass}>
                 ชื่อบริษัท (อังกฤษ)
               </label>
               <input id={`${uiFieldId}-2`}
@@ -174,7 +175,7 @@ function EditCompanyDialog({
               />
             </div>
             <div>
-              <label htmlFor={`${uiFieldId}-3`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-3`} className={formLabelClass}>
                 เลขทะเบียนภาษี
               </label>
               <input id={`${uiFieldId}-3`}
@@ -188,7 +189,7 @@ function EditCompanyDialog({
               />
             </div>
             <div>
-              <label htmlFor={`${uiFieldId}-4`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-4`} className={formLabelClass}>
                 รหัสบริษัท
               </label>
               <input id={`${uiFieldId}-4`}
@@ -199,7 +200,7 @@ function EditCompanyDialog({
               />
             </div>
             <div className="sm:col-span-2">
-              <label htmlFor={`${uiFieldId}-5`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-5`} className={formLabelClass}>
                 ที่อยู่
               </label>
               <textarea id={`${uiFieldId}-5`}
@@ -210,7 +211,7 @@ function EditCompanyDialog({
               />
             </div>
             <div>
-              <label htmlFor={`${uiFieldId}-6`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-6`} className={formLabelClass}>
                 โทรศัพท์
               </label>
               <input id={`${uiFieldId}-6`}
@@ -223,12 +224,12 @@ function EditCompanyDialog({
                 placeholder="02-100-0000"
               />
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex items-start gap-4">
               <div className="flex-1">
-                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                <label className={formLabelClass}>
                   สถานะ VAT
                 </label>
-                <label className="flex items-center gap-2 cursor-pointer">
+                <label className="flex min-h-11 items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={form.vatRegistered}
@@ -239,7 +240,7 @@ function EditCompanyDialog({
                 </label>
               </div>
               <div className="flex-1">
-                <label htmlFor={`${uiFieldId}-7`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                <label htmlFor={`${uiFieldId}-7`} className={formLabelClass}>
                   อัตรา VAT (%)
                 </label>
                 <NumberInput unstyled id={`${uiFieldId}-7`}
@@ -260,7 +261,7 @@ function EditCompanyDialog({
               </div>
             </div>
             <div>
-              <label htmlFor={`${uiFieldId}-8`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-8`} className={formLabelClass}>
                 ธนาคาร
               </label>
               <input id={`${uiFieldId}-8`}
@@ -270,7 +271,7 @@ function EditCompanyDialog({
               />
             </div>
             <div>
-              <label htmlFor={`${uiFieldId}-9`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-9`} className={formLabelClass}>
                 ชื่อบัญชี
               </label>
               <input id={`${uiFieldId}-9`}
@@ -280,7 +281,7 @@ function EditCompanyDialog({
               />
             </div>
             <div>
-              <label htmlFor={`${uiFieldId}-10`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-10`} className={formLabelClass}>
                 เลขบัญชี
               </label>
               <input id={`${uiFieldId}-10`}
@@ -294,7 +295,7 @@ function EditCompanyDialog({
               />
             </div>
             <div>
-              <label htmlFor={`${uiFieldId}-11`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-11`} className={formLabelClass}>
                 ผู้มีอำนาจลงนาม
               </label>
               <input id={`${uiFieldId}-11`}
@@ -304,7 +305,7 @@ function EditCompanyDialog({
               />
             </div>
             <div>
-              <label htmlFor={`${uiFieldId}-12`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-12`} className={formLabelClass}>
                 ตำแหน่ง
               </label>
               <input id={`${uiFieldId}-12`}
@@ -433,7 +434,7 @@ function AddCompanyDialog({
             className="grid grid-cols-1 sm:grid-cols-2 gap-4"
           >
             <div>
-              <label htmlFor={`${uiFieldId}-1`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-1`} className={formLabelClass}>
                 ชื่อบริษัท (ไทย)
               </label>
               <input id={`${uiFieldId}-1`}
@@ -444,7 +445,7 @@ function AddCompanyDialog({
               />
             </div>
             <div>
-              <label htmlFor={`${uiFieldId}-2`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-2`} className={formLabelClass}>
                 ชื่อบริษัท (อังกฤษ)
               </label>
               <input id={`${uiFieldId}-2`}
@@ -454,10 +455,10 @@ function AddCompanyDialog({
               />
             </div>
             <div>
-              <label htmlFor={`${uiFieldId}-3`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-3`} className={formLabelClass}>
                 เลขทะเบียนภาษี
                 {!form.vatRegistered && (
-                  <span className="ml-1 text-muted-foreground normal-case tracking-normal">
+                  <span className="ml-1 font-normal text-muted-foreground">
                     (ไม่จำเป็น หากไม่จด VAT)
                   </span>
                 )}
@@ -471,7 +472,7 @@ function AddCompanyDialog({
               />
             </div>
             <div>
-              <label htmlFor={`${uiFieldId}-4`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-4`} className={formLabelClass}>
                 รหัสบริษัท (ระบบ)
               </label>
               <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-4`}
@@ -485,13 +486,13 @@ function AddCompanyDialog({
               </NativeSelect>
             </div>
             <div className="sm:col-span-2">
-              <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label className={formLabelClass}>
                 ที่อยู่
               </label>
               <AddressForm value={address} onChange={setAddress} />
             </div>
             <div>
-              <label htmlFor={`${uiFieldId}-5`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-5`} className={formLabelClass}>
                 โทรศัพท์
               </label>
               <input id={`${uiFieldId}-5`}
@@ -501,12 +502,12 @@ function AddCompanyDialog({
                 placeholder="02-100-0000"
               />
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex items-start gap-4">
               <div className="flex-1">
-                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                <label className={formLabelClass}>
                   สถานะ VAT
                 </label>
-                <label className="flex items-center gap-2 cursor-pointer">
+                <label className="flex min-h-11 items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={form.vatRegistered}
@@ -524,7 +525,7 @@ function AddCompanyDialog({
                 </label>
               </div>
               <div className="flex-1">
-                <label htmlFor={`${uiFieldId}-6`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                <label htmlFor={`${uiFieldId}-6`} className={formLabelClass}>
                   อัตรา VAT (%)
                 </label>
                 <NumberInput unstyled id={`${uiFieldId}-6`}
@@ -540,7 +541,7 @@ function AddCompanyDialog({
               </div>
             </div>
             <div>
-              <label htmlFor={`${uiFieldId}-7`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-7`} className={formLabelClass}>
                 ธนาคาร
               </label>
               <input id={`${uiFieldId}-7`}
@@ -550,7 +551,7 @@ function AddCompanyDialog({
               />
             </div>
             <div>
-              <label htmlFor={`${uiFieldId}-8`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-8`} className={formLabelClass}>
                 ชื่อบัญชี
               </label>
               <input id={`${uiFieldId}-8`}
@@ -560,7 +561,7 @@ function AddCompanyDialog({
               />
             </div>
             <div>
-              <label htmlFor={`${uiFieldId}-9`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-9`} className={formLabelClass}>
                 เลขบัญชี
               </label>
               <input id={`${uiFieldId}-9`}
@@ -571,7 +572,7 @@ function AddCompanyDialog({
               />
             </div>
             <div>
-              <label htmlFor={`${uiFieldId}-10`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-10`} className={formLabelClass}>
                 ผู้มีอำนาจลงนาม
               </label>
               <input id={`${uiFieldId}-10`}
@@ -582,7 +583,7 @@ function AddCompanyDialog({
               />
             </div>
             <div>
-              <label htmlFor={`${uiFieldId}-11`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              <label htmlFor={`${uiFieldId}-11`} className={formLabelClass}>
                 ตำแหน่ง
               </label>
               <input id={`${uiFieldId}-11`}

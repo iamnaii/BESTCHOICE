@@ -45,6 +45,7 @@ import AddressForm, {
   emptyAddress,
   composeAddress,
 } from '@/components/ui/AddressForm';
+import { formLabelClass } from '@/components/ui/form-styles';
 import SellerPaymentFields from './SellerPaymentFields';
 import { ContactCombobox } from '@/components/contacts/ContactCombobox';
 import { contactsApi } from '@/lib/api/contacts';
@@ -626,7 +627,7 @@ export default function QuickBuyModal({
         onInteractOutside={(event) => {
           if (sending.current) event.preventDefault();
         }}
-        className="flex max-h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] max-w-4xl flex-col gap-0 overflow-hidden rounded-2xl bg-card p-0 text-sm leading-snug shadow-2xl sm:max-h-[calc(100dvh-3rem)] sm:rounded-2xl [&_[data-slot=input]]:mt-2 [&_[data-slot=input]]:h-11 [&_[data-slot=input]]:rounded-lg [&_[data-slot=input]]:text-base [&_[data-slot=input]]:shadow-none sm:[&_[data-slot=input]]:text-sm [&_[data-slot=button]]:min-h-11 [&_[data-slot=label]]:text-sm [&_[role=combobox]]:min-h-11 [&_[role=combobox]]:rounded-lg"
+        className="flex max-h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] max-w-4xl flex-col gap-0 overflow-hidden rounded-2xl bg-card p-0 text-sm leading-snug shadow-2xl sm:max-h-[calc(100dvh-3rem)] sm:rounded-2xl [&_[data-slot=input]]:h-11 [&_[data-slot=input]]:rounded-lg [&_[data-slot=input]]:text-base [&_[data-slot=input]]:shadow-none sm:[&_[data-slot=input]]:text-sm [&_[data-slot=button]]:min-h-11 [&_[data-slot=label]]:text-sm [&_[role=combobox]]:min-h-11 [&_[role=combobox]]:rounded-lg"
       >
         {/* Header — sticky */}
         <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border bg-card px-4 py-4 sm:items-center sm:px-7 sm:py-5">
@@ -722,7 +723,7 @@ export default function QuickBuyModal({
                 </p>
               </div>
               <div>
-                <Label htmlFor="quick-buy-branch" className="text-sm font-semibold">
+                <Label htmlFor="quick-buy-branch" className={formLabelClass}>
                   สาขาที่รับซื้อ *
                 </Label>
                 <PurchaseSelect
@@ -780,8 +781,8 @@ export default function QuickBuyModal({
               {/* ลำดับเหมือนฟอร์มข้อมูลลูกค้า: ผู้ขาย (picker) → เลขบัตร → ที่อยู่ → แนบบัตร */}
               <div className="grid gap-5 sm:grid-cols-2">
                 <div className="sm:col-span-2">
-                  <Label>ผู้ขาย *</Label>
-                  <div className="mt-2">
+                  <Label className={formLabelClass}>ผู้ขาย *</Label>
+                  <div>
                     <ContactCombobox
                       roleNeeded="TRADE_IN_SELLER"
                       value={form.sellerName}
@@ -791,7 +792,7 @@ export default function QuickBuyModal({
                   </div>
                 </div>
                 <div className="sm:col-span-2">
-                  <Label htmlFor="buy-seller-name">ชื่อผู้ขายตามบัตรประชาชน *</Label>
+                  <Label htmlFor="buy-seller-name" className={formLabelClass}>ชื่อผู้ขายตามบัตรประชาชน *</Label>
                   <Input
                     id="buy-seller-name"
                     value={form.sellerName}
@@ -799,7 +800,7 @@ export default function QuickBuyModal({
                   />
                 </div>
                 <div>
-                  <Label htmlFor="buy-seller-phone">เบอร์โทรผู้ขาย *</Label>
+                  <Label htmlFor="buy-seller-phone" className={formLabelClass}>เบอร์โทรผู้ขาย *</Label>
                   <Input
                     id="buy-seller-phone"
                     inputMode="tel"
@@ -811,10 +812,10 @@ export default function QuickBuyModal({
                   />
                 </div>
                 <div>
-                  <Label htmlFor="buy-seller-id">เลขบัตรประชาชน *</Label>
+                  <Label htmlFor="buy-seller-id" className={formLabelClass}>เลขบัตรประชาชน *</Label>
                   <Input
                     id="buy-seller-id"
-                    className="mt-1 font-mono"
+                    className="font-mono"
                     maxLength={13}
                     placeholder="1234567890123"
                     value={form.sellerIdCardNumber}
@@ -831,8 +832,8 @@ export default function QuickBuyModal({
                   <AddressForm value={address} onChange={setAddress} label="ที่อยู่ตามบัตร" />
                 </div>
                 <div className="sm:col-span-2">
-                  <Label>แนบรูปบัตรประชาชน</Label>
-                  <label className="mt-2 flex min-h-16 cursor-pointer items-center justify-center gap-3 rounded-xl border border-dashed border-input bg-card p-4 text-sm transition-colors hover:border-primary/60 hover:bg-primary/5 has-focus-visible:ring-2 has-focus-visible:ring-ring">
+                  <Label className={formLabelClass}>แนบรูปบัตรประชาชน</Label>
+                  <label className="flex min-h-16 cursor-pointer items-center justify-center gap-3 rounded-xl border border-dashed border-input bg-card p-4 text-sm transition-colors hover:border-primary/60 hover:bg-primary/5 has-focus-visible:ring-2 has-focus-visible:ring-ring">
                     {form.idCardPhotoBase64 ? (
                       <>
                         <CheckCircle className="size-5 shrink-0 text-primary" />
@@ -888,7 +889,7 @@ export default function QuickBuyModal({
               ) : null}
               <div className="grid min-w-0 content-start gap-5 sm:grid-cols-2">
                 <div>
-                  <Label htmlFor="quick-buy-model">รุ่น iPhone *</Label>
+                  <Label htmlFor="quick-buy-model" className={formLabelClass}>รุ่น iPhone *</Label>
                   <PurchaseSelect
                     id="quick-buy-model"
                     value={form.deviceModel}
@@ -910,7 +911,7 @@ export default function QuickBuyModal({
                   />
                 </div>
                 <div>
-                  <Label htmlFor="quick-buy-storage">ความจุ *</Label>
+                  <Label htmlFor="quick-buy-storage" className={formLabelClass}>ความจุ *</Label>
                   <PurchaseSelect
                     id="quick-buy-storage"
                     value={form.deviceStorage}
@@ -927,7 +928,7 @@ export default function QuickBuyModal({
                   />
                 </div>
                 <div className="sm:col-span-2">
-                  <Label htmlFor="quick-buy-color">สีเครื่อง</Label>
+                  <Label htmlFor="quick-buy-color" className={formLabelClass}>สีเครื่อง</Label>
                   <PurchaseSelect
                     id="quick-buy-color"
                     value={form.deviceColor}
@@ -967,10 +968,10 @@ export default function QuickBuyModal({
                 <h3 className="text-base font-semibold leading-snug">หมายเลขประจำเครื่อง</h3>
                 <div className="grid gap-5 sm:grid-cols-2">
                   <div>
-                    <Label htmlFor="quick-buy-imei">IMEI</Label>
+                    <Label htmlFor="quick-buy-imei" className={formLabelClass}>IMEI</Label>
                     <Input
                       id="quick-buy-imei"
-                      className="mt-1 font-mono"
+                      className="font-mono"
                       inputMode="numeric"
                       maxLength={15}
                       placeholder="15 หลัก"
@@ -993,10 +994,10 @@ export default function QuickBuyModal({
                     )}
                   </div>
                   <div>
-                    <Label htmlFor="quick-buy-serial">Serial Number</Label>
+                    <Label htmlFor="quick-buy-serial" className={formLabelClass}>Serial Number</Label>
                     <Input
                       id="quick-buy-serial"
-                      className="mt-1 font-mono"
+                      className="font-mono"
                       maxLength={100}
                       placeholder="หมายเลขเครื่อง"
                       value={form.serialNumber}
@@ -1017,10 +1018,9 @@ export default function QuickBuyModal({
                     </p>
                     {!form.imei && (
                       <div className="mb-3">
-                        <Label htmlFor="buy-imei-reason">เหตุผลที่ไม่มี IMEI *</Label>
+                        <Label htmlFor="buy-imei-reason" className={formLabelClass}>เหตุผลที่ไม่มี IMEI *</Label>
                         <Input
                           id="buy-imei-reason"
-                          className="mt-1"
                           maxLength={300}
                           value={form.imeiMissingReason}
                           onChange={(event) =>
@@ -1031,10 +1031,9 @@ export default function QuickBuyModal({
                     )}
                     {!form.serialNumber.trim() && (
                       <div>
-                        <Label htmlFor="buy-serial-reason">เหตุผลที่ไม่มี Serial Number *</Label>
+                        <Label htmlFor="buy-serial-reason" className={formLabelClass}>เหตุผลที่ไม่มี Serial Number *</Label>
                         <Input
                           id="buy-serial-reason"
-                          className="mt-1"
                           maxLength={300}
                           value={form.serialNumberMissingReason}
                           onChange={(event) =>

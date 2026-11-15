@@ -1,4 +1,6 @@
 import { NumberInput } from '@/components/ui/NumberInput';
+import { formLabelClass } from '@/components/ui/form-styles';
+import { ReadOnlyField } from '@/components/ui/readonly-field';
 import { useId as useUiFieldId, useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
@@ -478,7 +480,7 @@ export default function InterestConfigPage() {
           <div className="space-y-4">
             {/* ชื่อ */}
             <div>
-              <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1">ชื่อ</label>
+              <label htmlFor={`${uiFieldId}-1`} className={formLabelClass}>ชื่อ</label>
               <input id={`${uiFieldId}-1`}
                 type="text"
                 value={form.name}
@@ -491,7 +493,7 @@ export default function InterestConfigPage() {
 
             {/* ประเภทสินค้า */}
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">ประเภทสินค้า</label>
+              <label className={formLabelClass}>ประเภทสินค้า</label>
               <div className="flex flex-wrap gap-2">
                 {CATEGORIES.map((cat) => (
                   <button data-ui-control="button"
@@ -514,7 +516,7 @@ export default function InterestConfigPage() {
             {/* ดอกเบี้ย + ดาวน์ขั้นต่ำ */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1">ดอกเบี้ย (%)</label>
+                <label htmlFor={`${uiFieldId}-2`} className={formLabelClass}>ดอกเบี้ย (%)</label>
                 <NumberInput unstyled id={`${uiFieldId}-2`}
                   value={form.interestRate}
                   onChange={(e) => setForm((f) => ({ ...f, interestRate: Number(e.target.value) }))}
@@ -526,7 +528,7 @@ export default function InterestConfigPage() {
                 {touched && errors.interestRate && <p className="text-xs text-destructive mt-1">{errors.interestRate}</p>}
               </div>
               <div>
-                <label htmlFor={`${uiFieldId}-3`} className="block text-sm font-medium text-foreground mb-1">ดาวน์ขั้นต่ำ (%)</label>
+                <label htmlFor={`${uiFieldId}-3`} className={formLabelClass}>ดาวน์ขั้นต่ำ (%)</label>
                 <NumberInput unstyled id={`${uiFieldId}-3`}
                   value={form.minDownPaymentPct}
                   onChange={(e) => setForm((f) => ({ ...f, minDownPaymentPct: Number(e.target.value) }))}
@@ -542,7 +544,7 @@ export default function InterestConfigPage() {
             {/* ค่าคอม + VAT */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label htmlFor={`${uiFieldId}-4`} className="block text-sm font-medium text-foreground mb-1">ค่าคอมหน้าร้าน (%)</label>
+                <label htmlFor={`${uiFieldId}-4`} className={formLabelClass}>ค่าคอมหน้าร้าน (%)</label>
                 <NumberInput unstyled id={`${uiFieldId}-4`}
                   value={form.storeCommissionPct}
                   onChange={(e) => setForm((f) => ({ ...f, storeCommissionPct: Number(e.target.value) }))}
@@ -554,15 +556,13 @@ export default function InterestConfigPage() {
                 {touched && errors.storeCommissionPct && <p className="text-xs text-destructive mt-1">{errors.storeCommissionPct}</p>}
               </div>
               <div>
-                {/* #22 — อ่านอย่างเดียว: VAT ของการผ่อนมาจากบริษัท FINANCE (ช่องนี้ไม่ถูกบันทึก) */}
-                <span className="block text-sm font-medium text-foreground mb-1">VAT (%)</span>
-                <div
+                {/* #22 — อ่านอย่างเดียว: VAT ของการผ่อนมาจากบริษัท FINANCE (ช่องนี้ไม่ถูกบันทึก) · S1-03 สูงเท่าช่องข้าง ๆ */}
+                <label htmlFor={`${uiFieldId}-vat`} className={formLabelClass}>VAT (%)</label>
+                <ReadOnlyField
+                  id={`${uiFieldId}-vat`}
                   data-testid="interest-vat-readonly"
-                  aria-readonly="true"
-                  className={`${inputClass} border-input bg-muted text-muted-foreground`}
-                >
-                  {vat.percentText}
-                </div>
+                  value={vat.percentText}
+                />
                 <VatSourceHint source={vat.source} />
               </div>
             </div>
@@ -570,7 +570,7 @@ export default function InterestConfigPage() {
             {/* งวดต่ำสุด + สูงสุด */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label htmlFor={`${uiFieldId}-6`} className="block text-sm font-medium text-foreground mb-1">งวดต่ำสุด (เดือน)</label>
+                <label htmlFor={`${uiFieldId}-6`} className={formLabelClass}>งวดต่ำสุด (เดือน)</label>
                 <NumberInput unstyled id={`${uiFieldId}-6`}
                   value={form.minInstallmentMonths}
                   onChange={(e) => setForm((f) => ({ ...f, minInstallmentMonths: Number(e.target.value) }))}
@@ -580,7 +580,7 @@ export default function InterestConfigPage() {
                 {touched && errors.minInstallmentMonths && <p className="text-xs text-destructive mt-1">{errors.minInstallmentMonths}</p>}
               </div>
               <div>
-                <label htmlFor={`${uiFieldId}-7`} className="block text-sm font-medium text-foreground mb-1">งวดสูงสุด (เดือน)</label>
+                <label htmlFor={`${uiFieldId}-7`} className={formLabelClass}>งวดสูงสุด (เดือน)</label>
                 <NumberInput unstyled id={`${uiFieldId}-7`}
                   value={form.maxInstallmentMonths}
                   onChange={(e) => setForm((f) => ({ ...f, maxInstallmentMonths: Number(e.target.value) }))}

@@ -1,10 +1,11 @@
 import { PrismaService } from '../../src/prisma/prisma.service';
+import { isDisposablePreviewDatabase } from './preview-database';
 import { DocumentsService } from '../../src/modules/contracts/documents.service';
 import { TEST_DOC_PREFIX, TEST_NAME_PREFIX, TEST_NOTE_MARKER } from '../../src/utils/test-data-markers';
 
 /** Synthetic identities, real document generation and local file storage only. */
 export async function seedPreviewDocuments(db: PrismaService, documents: DocumentsService, actorId: string) {
-  if (!process.env.DATABASE_URL?.includes('/bc_chat_credit_test?host=/tmp/bc-chat-credit.')) throw new Error('Disposable document preview required');
+  if (!isDisposablePreviewDatabase()) throw new Error('Disposable document preview required');
   const number = `${TEST_DOC_PREFIX}LOCAL-DOCUMENTS`;
   let contract = await db.contract.findUnique({ where: { contractNumber: number } });
   if (!contract) {

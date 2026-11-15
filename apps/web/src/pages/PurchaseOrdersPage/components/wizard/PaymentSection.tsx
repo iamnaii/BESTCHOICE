@@ -206,7 +206,7 @@ export function PaymentSection({
             <p className={cn(labelCls, 'mt-3')}>แนบสลิป/หลักฐาน — ต้องแนบสลิปโอน</p>
           )}
           <div className="flex gap-2">
-            <label className="inline-flex h-10 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg border border-primary/30 bg-primary/10 px-3 text-sm text-primary hover:bg-primary/15 dark:bg-primary/15 dark:hover:bg-primary/20">
+            <label className="inline-flex h-11 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg border border-primary/30 bg-primary/10 px-3 text-sm text-primary hover:bg-primary/15 dark:bg-primary/15 dark:hover:bg-primary/20">
               <ImagePlus className="size-4" />
               เลือกรูป
               <input
@@ -241,7 +241,7 @@ export function PaymentSection({
                   setAttachmentUrl('');
                 }
               }}
-              className="h-10 whitespace-nowrap rounded-lg bg-secondary px-3 text-sm hover:bg-muted/50"
+              className="h-11 whitespace-nowrap rounded-lg bg-secondary px-3 text-sm hover:bg-muted/50"
             >
               + เพิ่ม
             </button>

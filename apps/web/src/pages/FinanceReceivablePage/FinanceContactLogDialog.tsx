@@ -77,7 +77,6 @@ export default function FinanceContactLogDialog({
         <div>
           <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium mb-2">ผู้ติดต่อ</label>
           <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-1`}
-            className="px-3 py-2 border border-input rounded-lg bg-background"
             value={contactId ?? ''}
             onChange={(e) => setContactId(e.target.value || undefined)}
           >

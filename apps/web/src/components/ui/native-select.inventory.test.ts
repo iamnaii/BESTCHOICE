@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync } from 'node:fs';
-import { resolve, relative } from 'node:path';
+import { resolve, relative, sep } from 'node:path';
 import ts from 'typescript';
 import { describe, it, expect } from 'vitest';
 
@@ -19,6 +19,8 @@ const CANDIDATE = /<[\s\u0085\u200b]*(?:\/\*[\s\S]*?\*\/[\s\u0085\u200b]*)*(?:se
 // The scan is still I/O over the whole frontend tree; keep a generous ceiling so a
 // busy runner cannot turn a guard test into a deploy blocker.
 const SCAN_TIMEOUT_MS = 30_000;
+// Allow-list paths use `/`; `path.relative` returns `\` on Windows.
+const repoPath = (file: string) => relative(ROOT, file).split(sep).join('/');
 
 function listSourceFiles(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -69,8 +71,8 @@ describe('shared native dropdown inventory', () => {
         const source = readFileSync(file, 'utf8');
         if (!CANDIDATE.test(source)) continue;
         for (const tag of jsxTagsIn(file, source)) {
-          if (tag === 'select') found.push(relative(ROOT, file));
-          if (tag === 'datalist') datalists.push(relative(ROOT, file));
+          if (tag === 'select') found.push(repoPath(file));
+          if (tag === 'datalist') datalists.push(repoPath(file));
         }
       }
       expect(found.sort()).toEqual([...allowed].sort());

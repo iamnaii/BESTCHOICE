@@ -165,7 +165,6 @@ export default function FacebookCommentPageSettings() {
             <label className="block space-y-1">
               <span>สาขาที่ดูแลงานคอมเมนต์</span>
               <NativeSelect wrapperClassName="max-w-full w-full"
-                className="h-11 rounded-md border bg-background px-2"
                 disabled={busy}
                 value={branchId || row.binding?.branchId || ''}
                 onChange={(e) => setBranchId(e.target.value)}

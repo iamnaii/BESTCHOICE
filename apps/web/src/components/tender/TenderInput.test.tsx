@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { TenderInput, useTenders } from './TenderInput';
 import { TenderRow, initialTenders, tenderMethodsLabel, tenderStatus, toTenderPayload } from './tender-utils';
+import { formLabelClass } from '@/components/ui/form-styles';
 
 function Harness({ due }: { due: number }) {
   const { rows, setRows, status, payload } = useTenders(due);
@@ -105,6 +106,27 @@ describe('TenderInput', () => {
     expect(payloadOf()).toEqual([{ method: 'CASH', amount: 12500 }]);
     fireEvent.change(screen.getByLabelText('วิธีรับเงิน'), { target: { value: 'QR_EWALLET' } });
     expect(screen.queryByLabelText('ลูกค้ายื่นเงินมา')).not.toBeInTheDocument();
+  });
+
+  it('field labels use label style A (formLabelClass) — same size as the shadcn FormLabels of the POS card', () => {
+    render(<Harness due={12500} />);
+    fireEvent.change(screen.getByLabelText('วิธีรับเงิน'), { target: { value: 'BANK_TRANSFER' } });
+    fireEvent.click(screen.getByRole('button', { name: /เพิ่มวิธีรับเงิน/ }));
+    const names = ['วิธีรับเงิน วิธีที่ 1', 'จำนวนเงิน วิธีที่ 1', /เลขอ้างอิงการโอน วิธีที่ 1/];
+    for (const name of names) {
+      const control = screen.getByLabelText(name);
+      expect(document.querySelector(`label[for="${control.id}"]`)?.className).toBe(formLabelClass);
+    }
+    // method + amount share a row whose cells bottom-align when one label wraps on a phone
+    const row = screen.getByLabelText('วิธีรับเงิน วิธีที่ 1').closest('div.grid');
+    expect(row).toBe(screen.getByLabelText('จำนวนเงิน วิธีที่ 1').closest('div.grid'));
+    expect(row).toHaveClass('items-end');
+  });
+
+  it('the change helper label uses label style A too', () => {
+    render(<Harness due={12500} />);
+    const handed = screen.getByLabelText('ลูกค้ายื่นเงินมา');
+    expect(document.querySelector(`label[for="${handed.id}"]`)?.className).toBe(formLabelClass);
   });
 
   it('nothing due: renders a note and sends no rows', () => {

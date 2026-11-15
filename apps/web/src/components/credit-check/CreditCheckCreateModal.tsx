@@ -355,7 +355,6 @@ export default function CreditCheckCreateModal({
                   <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-5`}
                     value={statementBankName}
                     onChange={(e) => onStatementBankNameChange(e.target.value)}
-                    className="px-3 py-2 border border-input rounded-lg text-sm"
                   >
                     <option value="">-- เลือกธนาคาร --</option>
                     {BANK_OPTIONS.map((b) => (

@@ -113,7 +113,6 @@ export default function ExpenseFavoritesPage() {
           <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="ประเภทเอกสาร"
             value={filterType}
             onChange={(e) => setFilterType(e.target.value)}
-            className="px-3 py-2 border border-input rounded-lg text-sm bg-background"
           >
             <option value="">ทุกประเภท</option>
             <option value="EXPENSE">รายจ่าย</option>

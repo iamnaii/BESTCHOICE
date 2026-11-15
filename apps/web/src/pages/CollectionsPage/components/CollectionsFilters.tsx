@@ -1,6 +1,8 @@
 import { NativeSelect } from '@/components/ui/native-select';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { formControlClass } from '@/components/ui/form-styles';
+import { cn } from '@/lib/utils';
 
 interface Branch {
   id: string;
@@ -43,13 +45,12 @@ export default function CollectionsFilters({
         placeholder="ค้นหาเลขสัญญา, ชื่อลูกค้า, เบอร์โทร..."
         value={search}
         onChange={(e) => onSearchChange(e.target.value)}
-        className="px-3 py-2 border border-input bg-card rounded-lg text-sm min-w-[260px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[2px] focus-visible:ring-offset-background focus-visible:border-transparent leading-snug"
+        className={cn(formControlClass, 'w-auto min-w-[260px]')}
       />
       {showBranchFilter && (
         <NativeSelect wrapperClassName="max-w-full w-auto sm:min-w-[160px]" aria-label="สาขา"
           value={branchId}
           onChange={(e) => onBranchChange(e.target.value)}
-          className="px-3 py-2 border border-input bg-card rounded-lg text-sm leading-snug focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
         >
           <option value="">ทุกสาขา</option>
           {branches.map((b) => (

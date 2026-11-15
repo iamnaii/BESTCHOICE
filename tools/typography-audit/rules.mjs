@@ -297,3 +297,254 @@ export function compareFacts(beforeFacts, afterFacts, ctx = {}) {
   }
   return out;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Field scale (spec docs/superpowers/specs/2026-11-14-dropdown-search-field-scale-design.md §5).
+// Consumes FieldFact[] from window.__collectFields (collect.js documents every field) and produces
+// Finding[] for F1–F4 with the same shape as evaluateTypography, so findingKey / diffFindings work.
+// Keys: F1 <property>@<memberKey> (one per member of an inconsistent row) ·
+// F2 placeholder|option|value@<key> · F3 <targetKey>~<targetKey> · F4 left|right<n>@<key>.
+// Additive only: nothing above this line reads these exports. F5 is a source-scan unit test.
+
+export const F1_ROW_OVERLAP_MIN = 0.5; // vertical overlap ÷ the shorter control height
+export const F1_ROW_LAYOUTS = ['flex-row', 'grid']; // nearest common ancestor layouts that make a row
+export const F1_EXCLUDED_KINDS = ['textarea'];
+export const F1_HEIGHT_TOLERANCE_PX = 2;
+export const F1_RADIUS_TOLERANCE_PX = 1;
+export const F1_FONT_TOLERANCE_PX = 0.5;
+export const F1_BOTTOM_TOLERANCE_PX = 2;
+export const F1_LABEL_FONT_TOLERANCE_PX = 0.5;
+export const F1_LABEL_GAP_TOLERANCE_PX = 2;
+export const F2_TEXT_SLACK_PX = 1;
+export const F3_OVERLAP_MIN_PX = 1;
+export const F3_CONTAIN_SLACK_PX = 1;
+export const F4_RESERVE_SLACK_PX = 0.5;
+
+const controlFacts = (facts) => facts.filter((f) => f.type === 'control');
+const targetFacts = (facts) => facts.filter((f) => f.type === 'target');
+const spread = (values) => Math.max(...values) - Math.min(...values);
+const round2 = (n) => Math.round(n * 100) / 100;
+
+export function verticalOverlapRatio(a, b) {
+  const overlap = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+  const shorter = Math.min(a.h, b.h);
+  return shorter > 0 ? Math.max(0, overlap) / shorter : 0;
+}
+
+// first entry of a.ancestors (nearest first) that is also an ancestor of b
+export function nearestCommonAncestor(a, b) {
+  const ids = new Set((b.ancestors ?? []).map((n) => n.id));
+  return (a.ancestors ?? []).find((n) => ids.has(n.id)) ?? null;
+}
+
+export function sameFieldRow(a, b) {
+  if (a.scope !== b.scope) return false;
+  if (verticalOverlapRatio(a, b) < F1_ROW_OVERLAP_MIN) return false;
+  const common = nearestCommonAncestor(a, b);
+  return common !== null && F1_ROW_LAYOUTS.includes(common.layout);
+}
+
+const f1Eligible = (c) => !c.largeText && !F1_EXCLUDED_KINDS.includes(c.kind);
+
+// rows = connected components of sameFieldRow over F1-eligible controls; members keep DOM order
+export function groupFieldRows(facts) {
+  const controls = controlFacts(facts).filter(f1Eligible);
+  const parent = controls.map((_, i) => i);
+  const find = (i) => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  for (let i = 0; i < controls.length; i++) {
+    for (let j = i + 1; j < controls.length; j++) {
+      if (sameFieldRow(controls[i], controls[j])) parent[find(j)] = find(i);
+    }
+  }
+  const rows = new Map();
+  controls.forEach((c, i) => {
+    const root = find(i);
+    if (!rows.has(root)) rows.set(root, []);
+    rows.get(root).push(c);
+  });
+  return [...rows.values()].filter((row) => row.length >= 2);
+}
+
+const hasLabelAbove = (c) => Boolean(c.label && c.label.above);
+const F1_CHECKS = [
+  { property: 'height', value: (c) => c.h, tolerance: F1_HEIGHT_TOLERANCE_PX },
+  { property: 'radius', value: (c) => c.borderRadius, tolerance: F1_RADIUS_TOLERANCE_PX },
+  { property: 'fontSize', value: (c) => c.fontSize, tolerance: F1_FONT_TOLERANCE_PX },
+  { property: 'borderColor', value: (c) => c.borderColor, distinct: true },
+  // ReadOnlyField is darker on purpose (spec §4.1) — its fill must not count as a mismatch.
+  { property: 'background', value: (c) => c.backgroundColor, distinct: true, skipReadonly: true },
+  { property: 'bottom', value: (c) => c.y + c.h, tolerance: F1_BOTTOM_TOLERANCE_PX },
+  {
+    property: 'labelFontSize',
+    value: (c) => c.label.fontSize,
+    tolerance: F1_LABEL_FONT_TOLERANCE_PX,
+    labelled: true,
+  },
+  {
+    property: 'labelGap',
+    value: (c) => c.label.gap,
+    tolerance: F1_LABEL_GAP_TOLERANCE_PX,
+    labelled: true,
+  },
+];
+
+// The row decides whether a property is inconsistent (spread > tolerance, or values differ); when it
+// is, EVERY member of the row is reported for that property — no majority vote, so no member is
+// singled out as "the odd one". Each finding is keyed by its own member only
+// (`<property>@<memberKey>`, memberKey = kind|name|dup, dup counted page-wide in DOM order).
+// Guarantee: with the same set of measured controls in a row/check, changing values toward
+// agreement never adds a key, and a fully consistent row has no keys for that property. A correct
+// change can still add keys ("exposed, not introduced"): (a) adding / removing / renaming /
+// re-kinding a control renumbers later controls with the same kind|name page-wide (and the renamed /
+// re-kinded control itself gets new keys while its row is inconsistent); (b) the row or
+// check gains members (newly measured, no longer largeText, re-kinded out of textarea, label moved
+// above, rows merged) while it is inconsistent; (c) derived bottom (y + h) newly mismatches after
+// a height / labelGap fix removes a compensating offset. --compare triage: plan cross-task notes.
+function evaluateF1(facts, emit) {
+  for (const row of groupFieldRows(facts)) {
+    for (const check of F1_CHECKS) {
+      const members = (check.labelled ? row.filter(hasLabelAbove) : row).filter(
+        (c) => !(check.skipReadonly && c.kind === 'readonly'),
+      );
+      if (members.length < 2) continue;
+      const values = members.map(check.value);
+      const differs = check.distinct ? new Set(values).size > 1 : spread(values) > check.tolerance;
+      if (!differs) continue;
+      const keys = members.map((c) => c.key);
+      const rowDetail = {
+        ...(check.distinct ? {} : { spread: round2(spread(values)), tolerance: check.tolerance }),
+        members: members.map((c, i) => ({ key: c.key, value: values[i] })),
+      };
+      keys.forEach((key, i) => {
+        emit('F1', 'P2', `${check.property}@${key}`, `${key} (row: ${keys.join(' / ')})`, {
+          property: check.property,
+          value: values[i],
+          ...rowDetail,
+        });
+      });
+    }
+  }
+}
+
+function evaluateF2(facts, emit) {
+  for (const c of controlFacts(facts)) {
+    const room = c.contentWidth + F2_TEXT_SLACK_PX;
+    const contentWidth = round2(c.contentWidth);
+    if (
+      c.kind !== 'textarea' &&
+      Number.isFinite(c.placeholderInkWidth) &&
+      c.placeholderInkWidth > room
+    ) {
+      emit('F2', 'P2', `placeholder@${c.key}`, c.key, {
+        sub: 'placeholder',
+        inkWidth: round2(c.placeholderInkWidth),
+        contentWidth,
+      });
+    }
+    if (
+      c.kind === 'native-select' &&
+      Number.isFinite(c.longestOptionInkWidth) &&
+      c.longestOptionInkWidth > room
+    ) {
+      emit('F2', 'P2', `option@${c.key}`, c.key, {
+        sub: 'option',
+        inkWidth: round2(c.longestOptionInkWidth),
+        contentWidth,
+        optionCount: c.optionCount,
+      });
+    }
+    if (c.valueOverflowX || c.valueOverflowY) {
+      emit('F2', 'P2', `value@${c.key}`, c.key, {
+        sub: 'value',
+        overflowX: Boolean(c.valueOverflowX),
+        overflowY: Boolean(c.valueOverflowY),
+      });
+    }
+  }
+}
+
+const inDialog = (t) => String(t.scope).startsWith('dialog:');
+const containsBox = (outer, inner) =>
+  inner.x >= outer.x - F3_CONTAIN_SLACK_PX &&
+  inner.y >= outer.y - F3_CONTAIN_SLACK_PX &&
+  inner.x + inner.w <= outer.x + outer.w + F3_CONTAIN_SLACK_PX &&
+  inner.y + inner.h <= outer.y + outer.h + F3_CONTAIN_SLACK_PX;
+
+// F3 is about two pressable boxes laid out on top of each other, not about scroll occlusion: a
+// target in a sticky/fixed bar covers whatever its scroll container has under it at this scroll
+// position. The collector scrolls that container and records on the pinned target whether the other
+// target really came clear (TargetFact.scrollChecks). A pair is skipped only on that measured
+// clearsOnScroll === true — no check, or false (no room, a bar that moves with the content, a second
+// bar still on top), keeps the finding. Unrendered targets (closed <details>) are never facts.
+const clearsOnScroll = (pinned, other) =>
+  (pinned.scrollChecks ?? []).some((c) => c.other === other.id && c.clearsOnScroll === true);
+
+function evaluateF3(facts, emit) {
+  const targets = targetFacts(facts);
+  for (let i = 0; i < targets.length; i++) {
+    for (let j = i + 1; j < targets.length; j++) {
+      const a = targets[i];
+      const b = targets[j];
+      if ((a.scroller ?? null) !== (b.scroller ?? null)) continue;
+      if (a.scope !== b.scope && (inDialog(a) || inDialog(b))) continue;
+      if ((a.targetAncestors ?? []).includes(b.id) || (b.targetAncestors ?? []).includes(a.id))
+        continue;
+      const overlapX = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+      const overlapY = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+      if (overlapX <= F3_OVERLAP_MIN_PX || overlapY <= F3_OVERLAP_MIN_PX) continue;
+      const covered = a.coveredBy === b.id || b.coveredBy === a.id;
+      // a target inside another (clear button in a field) belongs to F4 unless it covers the other
+      if (!covered && (containsBox(a, b) || containsBox(b, a))) continue;
+      if (clearsOnScroll(a, b) || clearsOnScroll(b, a)) continue;
+      emit('F3', covered ? 'P1' : 'P2', `${a.key}~${b.key}`, `${a.key} / ${b.key}`, {
+        overlapX: round2(overlapX),
+        overlapY: round2(overlapY),
+        covered,
+      });
+    }
+  }
+}
+
+function evaluateF4(facts, emit) {
+  for (const c of controlFacts(facts)) {
+    const textInk = Math.max(c.placeholderInkWidth ?? 0, c.longestOptionInkWidth ?? 0);
+    const inkRight = c.contentLeft + Math.min(textInk, Math.max(0, c.contentWidth));
+    const perSide = { left: 0, right: 0 };
+    for (const ad of c.adornments ?? []) {
+      const n = perSide[ad.side]++;
+      const reserveShort = ad.side === 'left' ? ad.x + ad.w - c.contentLeft : c.contentRight - ad.x;
+      const inkOverlap =
+        textInk > 0
+          ? Math.max(0, Math.min(inkRight, ad.x + ad.w) - Math.max(c.contentLeft, ad.x))
+          : 0;
+      if (reserveShort <= F4_RESERVE_SLACK_PX && inkOverlap <= F4_RESERVE_SLACK_PX) continue;
+      emit('F4', 'P2', `${ad.side}${n}@${c.key}`, c.key, {
+        side: ad.side,
+        reserveShort: round2(Math.max(0, reserveShort)),
+        inkOverlap: round2(inkOverlap),
+      });
+    }
+  }
+}
+
+// ctx = { width, route?, theme?, role? } — copied onto every finding (findingKey needs them)
+export function evaluateFields(facts, ctx = {}) {
+  const out = [];
+  const emit = (rule, severity, key, text, detail) =>
+    out.push({
+      rule,
+      severity,
+      route: ctx.route,
+      width: ctx.width,
+      theme: ctx.theme,
+      role: ctx.role,
+      key,
+      text,
+      detail,
+    });
+  evaluateF1(facts, emit);
+  evaluateF2(facts, emit);
+  evaluateF3(facts, emit);
+  evaluateF4(facts, emit);
+  return out;
+}

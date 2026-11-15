@@ -23,7 +23,7 @@ export default function TradeInCreditPicker({ customerId, branchId, productId, v
   if (!customerId || !branchId) return null;
   return <div className="rounded-xl border p-4 space-y-2">
     <Label htmlFor="trade-in-credit">เครดิตเครื่องเทิร์นของลูกค้า</Label>
-    <NativeSelect wrapperClassName="max-w-full w-full" id="trade-in-credit" className="h-10 rounded-lg border bg-background px-3 text-sm"
+    <NativeSelect wrapperClassName="max-w-full w-full" id="trade-in-credit"
       value={value} disabled={disabled || query.isPending}
       onChange={(e) => onChange(e.target.value)}>
       <option value="">ไม่ใช้เครดิตเทิร์น</option>

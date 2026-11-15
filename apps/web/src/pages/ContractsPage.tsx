@@ -298,7 +298,7 @@ export default function ContractsPage() {
           <div className="flex flex-wrap gap-2">
             {contracts.length > 0 && (
               <>
-              <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="ขอบเขตการส่งออก" value={exportScope} onChange={e => setExportScope(e.target.value)} className="rounded-md border border-input bg-background px-2 text-sm">
+              <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="ขอบเขตการส่งออก" value={exportScope} onChange={e => setExportScope(e.target.value)}>
                 <option value="all">ตามตัวกรองทั้งหมด</option><option value="page">หน้าปัจจุบัน</option>
               </NativeSelect>
               <Button variant="outline" size="md" onClick={handleExport} disabled={isExporting || isError || isLoading}>

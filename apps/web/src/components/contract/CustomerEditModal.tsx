@@ -18,6 +18,7 @@ import {
   FinanceLineStatusRow,
   type FinanceLineStatus,
 } from '@/components/customer/FinanceLineStatusRow';
+import { formControlClass, formLabelClass } from '@/components/ui/form-styles';
 
 interface CustReferenceData {
   prefix?: string;
@@ -307,7 +308,7 @@ export default function CustomerEditModal({
                   <div>
                     <label
                       htmlFor={`${uiFieldId}-1`}
-                      className="block text-xs text-muted-foreground mb-1"
+                      className={formLabelClass}
                     >
                       คำนำหน้า
                     </label>
@@ -316,7 +317,6 @@ export default function CustomerEditModal({
                       id={`${uiFieldId}-1`}
                       value={form.prefix}
                       onChange={(e) => setForm({ ...form, prefix: e.target.value })}
-                      className="px-3 py-2 border border-input rounded-lg text-sm bg-background"
                     >
                       <option value="">-- เลือก --</option>
                       {THAI_NAME_PREFIXES.map((p) => (
@@ -329,7 +329,7 @@ export default function CustomerEditModal({
                   <div>
                     <label
                       htmlFor={`${uiFieldId}-2`}
-                      className="block text-xs text-muted-foreground mb-1"
+                      className={formLabelClass}
                     >
                       ชื่อ-นามสกุล <span className="text-destructive">*</span>
                     </label>
@@ -338,14 +338,14 @@ export default function CustomerEditModal({
                       type="text"
                       value={form.name}
                       onChange={(e) => setForm({ ...form, name: e.target.value })}
-                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                      className={formControlClass}
                       required
                     />
                   </div>
                   <div>
                     <label
                       htmlFor={`${uiFieldId}-3`}
-                      className="block text-xs text-muted-foreground mb-1"
+                      className={formLabelClass}
                     >
                       ชื่อเล่น
                     </label>
@@ -354,13 +354,13 @@ export default function CustomerEditModal({
                       type="text"
                       value={form.nickname}
                       onChange={(e) => setForm({ ...form, nickname: e.target.value })}
-                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                      className={formControlClass}
                     />
                   </div>
                   <div>
                     <label
                       htmlFor={`${uiFieldId}-4`}
-                      className="block text-xs text-muted-foreground mb-1"
+                      className={formLabelClass}
                     >
                       วันเกิด
                     </label>
@@ -368,7 +368,6 @@ export default function CustomerEditModal({
                       id={`${uiFieldId}-4`}
                       value={form.birthDate}
                       onChange={(e) => setForm({ ...form, birthDate: e.target.value })}
-                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
                     />
                   </div>
                 </div>
@@ -433,7 +432,7 @@ export default function CustomerEditModal({
                 <div className="mb-3">
                   <label
                     htmlFor={`${uiFieldId}-5`}
-                    className="block text-xs text-muted-foreground mb-1"
+                    className={formLabelClass}
                   >
                     ประเภทที่อยู่
                   </label>
@@ -442,7 +441,6 @@ export default function CustomerEditModal({
                     id={`${uiFieldId}-5`}
                     value={form.addressCurrentType || ''}
                     onChange={(e) => setForm({ ...form, addressCurrentType: e.target.value })}
-                    className="px-3 py-2 border border-input rounded-lg text-sm"
                   >
                     <option value="">-- เลือก --</option>
                     <option value="OWN">บ้านตัวเอง</option>
@@ -460,7 +458,7 @@ export default function CustomerEditModal({
                 <div className="mt-3">
                   <label
                     htmlFor={`${uiFieldId}-6`}
-                    className="block text-xs text-muted-foreground mb-1"
+                    className={formLabelClass}
                   >
                     ลิงก์ Google Map
                   </label>
@@ -469,7 +467,7 @@ export default function CustomerEditModal({
                     type="url"
                     value={form.googleMapLink}
                     onChange={(e) => setForm({ ...form, googleMapLink: e.target.value })}
-                    className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                    className={formControlClass}
                     placeholder="https://maps.google.com/..."
                   />
                 </div>
@@ -502,7 +500,7 @@ export default function CustomerEditModal({
                   <div>
                     <label
                       htmlFor={`${uiFieldId}-7`}
-                      className="block text-xs text-muted-foreground mb-1"
+                      className={formLabelClass}
                     >
                       เบอร์หลัก <span className="text-destructive">*</span>
                     </label>
@@ -511,14 +509,14 @@ export default function CustomerEditModal({
                       type="tel"
                       value={form.phone}
                       onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                      className={formControlClass}
                       required
                     />
                   </div>
                   <div>
                     <label
                       htmlFor={`${uiFieldId}-8`}
-                      className="block text-xs text-muted-foreground mb-1"
+                      className={formLabelClass}
                     >
                       เบอร์สำรอง
                     </label>
@@ -527,13 +525,13 @@ export default function CustomerEditModal({
                       type="tel"
                       value={form.phoneSecondary}
                       onChange={(e) => setForm({ ...form, phoneSecondary: e.target.value })}
-                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                      className={formControlClass}
                     />
                   </div>
                   <div>
                     <label
                       htmlFor={`${uiFieldId}-9`}
-                      className="block text-xs text-muted-foreground mb-1"
+                      className={formLabelClass}
                     >
                       อีเมล
                     </label>
@@ -542,13 +540,13 @@ export default function CustomerEditModal({
                       type="email"
                       value={form.email}
                       onChange={(e) => setForm({ ...form, email: e.target.value })}
-                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                      className={formControlClass}
                     />
                   </div>
                   <div>
                     <label
                       htmlFor={`${uiFieldId}-11`}
-                      className="block text-xs text-muted-foreground mb-1"
+                      className={formLabelClass}
                     >
                       LINE ID (Shop / ร้าน)
                     </label>
@@ -557,7 +555,7 @@ export default function CustomerEditModal({
                       type="text"
                       value={form.lineIdShop}
                       onChange={(e) => setForm({ ...form, lineIdShop: e.target.value })}
-                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                      className={formControlClass}
                       placeholder="U1234567890abcdef..."
                     />
                   </div>
@@ -570,7 +568,7 @@ export default function CustomerEditModal({
                   <div>
                     <label
                       htmlFor={`${uiFieldId}-12`}
-                      className="block text-xs text-muted-foreground mb-1"
+                      className={formLabelClass}
                     >
                       ลิงก์ Facebook
                     </label>
@@ -579,13 +577,13 @@ export default function CustomerEditModal({
                       type="url"
                       value={form.facebookLink}
                       onChange={(e) => setForm({ ...form, facebookLink: e.target.value })}
-                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                      className={formControlClass}
                     />
                   </div>
                   <div>
                     <label
                       htmlFor={`${uiFieldId}-13`}
-                      className="block text-xs text-muted-foreground mb-1"
+                      className={formLabelClass}
                     >
                       ชื่อ Facebook
                     </label>
@@ -594,13 +592,13 @@ export default function CustomerEditModal({
                       type="text"
                       value={form.facebookName}
                       onChange={(e) => setForm({ ...form, facebookName: e.target.value })}
-                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                      className={formControlClass}
                     />
                   </div>
                   <div>
                     <label
                       htmlFor={`${uiFieldId}-14`}
-                      className="block text-xs text-muted-foreground mb-1"
+                      className={formLabelClass}
                     >
                       จำนวนเพื่อน Facebook
                     </label>
@@ -609,7 +607,7 @@ export default function CustomerEditModal({
                       type="text"
                       value={form.facebookFriends}
                       onChange={(e) => setForm({ ...form, facebookFriends: e.target.value })}
-                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                      className={formControlClass}
                     />
                   </div>
                 </div>
@@ -643,7 +641,7 @@ export default function CustomerEditModal({
                   <div>
                     <label
                       htmlFor={`${uiFieldId}-15`}
-                      className="block text-xs text-muted-foreground mb-1"
+                      className={formLabelClass}
                     >
                       ชื่อที่ทำงาน
                     </label>
@@ -652,13 +650,13 @@ export default function CustomerEditModal({
                       type="text"
                       value={form.workplace}
                       onChange={(e) => setForm({ ...form, workplace: e.target.value })}
-                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                      className={formControlClass}
                     />
                   </div>
                   <div>
                     <label
                       htmlFor={`${uiFieldId}-16`}
-                      className="block text-xs text-muted-foreground mb-1"
+                      className={formLabelClass}
                     >
                       อาชีพ
                     </label>
@@ -667,13 +665,13 @@ export default function CustomerEditModal({
                       type="text"
                       value={form.occupation}
                       onChange={(e) => setForm({ ...form, occupation: e.target.value })}
-                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                      className={formControlClass}
                     />
                   </div>
                   <div>
                     <label
                       htmlFor={`${uiFieldId}-17`}
-                      className="block text-xs text-muted-foreground mb-1"
+                      className={formLabelClass}
                     >
                       รายละเอียดอาชีพ
                     </label>
@@ -682,13 +680,13 @@ export default function CustomerEditModal({
                       type="text"
                       value={form.occupationDetail}
                       onChange={(e) => setForm({ ...form, occupationDetail: e.target.value })}
-                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                      className={formControlClass}
                     />
                   </div>
                   <div>
                     <label
                       htmlFor={`${uiFieldId}-18`}
-                      className="block text-xs text-muted-foreground mb-1"
+                      className={formLabelClass}
                     >
                       เงินเดือน
                     </label>
@@ -697,13 +695,13 @@ export default function CustomerEditModal({
                       id={`${uiFieldId}-18`}
                       value={form.salary}
                       onChange={(e) => setForm({ ...form, salary: e.target.value })}
-                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                      className={formControlClass}
                       placeholder="0.00"
                     />
                   </div>
                 </div>
                 <div className="mt-2">
-                  <label className="block text-xs text-muted-foreground mb-1">
+                  <label className={formLabelClass}>
                     ที่อยู่ที่ทำงาน
                   </label>
                   <AddressForm value={addrWork} onChange={setAddrWork} />
@@ -746,7 +744,7 @@ export default function CustomerEditModal({
                         <div>
                           <label
                             htmlFor={`${uiExtraFieldId}-1-${idx}`}
-                            className="block text-xs text-muted-foreground mb-1"
+                            className={formLabelClass}
                           >
                             คำนำหน้า
                           </label>
@@ -755,7 +753,6 @@ export default function CustomerEditModal({
                             id={`${uiExtraFieldId}-1-${idx}`}
                             value={ref.prefix || ''}
                             onChange={(e) => updateRef(idx, 'prefix', e.target.value)}
-                            className="px-3 py-2 border border-input rounded-lg text-sm bg-background"
                           >
                             <option value="">-- เลือก --</option>
                             {THAI_NAME_PREFIXES.map((p) => (
@@ -768,7 +765,7 @@ export default function CustomerEditModal({
                         <div>
                           <label
                             htmlFor={`${uiExtraFieldId}-2-${idx}`}
-                            className="block text-xs text-muted-foreground mb-1"
+                            className={formLabelClass}
                           >
                             ชื่อ
                           </label>
@@ -777,13 +774,13 @@ export default function CustomerEditModal({
                             type="text"
                             value={ref.firstName || ''}
                             onChange={(e) => updateRef(idx, 'firstName', e.target.value)}
-                            className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                            className={formControlClass}
                           />
                         </div>
                         <div>
                           <label
                             htmlFor={`${uiExtraFieldId}-3-${idx}`}
-                            className="block text-xs text-muted-foreground mb-1"
+                            className={formLabelClass}
                           >
                             นามสกุล
                           </label>
@@ -792,13 +789,13 @@ export default function CustomerEditModal({
                             type="text"
                             value={ref.lastName || ''}
                             onChange={(e) => updateRef(idx, 'lastName', e.target.value)}
-                            className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                            className={formControlClass}
                           />
                         </div>
                         <div>
                           <label
                             htmlFor={`${uiExtraFieldId}-4-${idx}`}
-                            className="block text-xs text-muted-foreground mb-1"
+                            className={formLabelClass}
                           >
                             เบอร์โทร
                           </label>
@@ -807,13 +804,13 @@ export default function CustomerEditModal({
                             type="tel"
                             value={ref.phone || ''}
                             onChange={(e) => updateRef(idx, 'phone', e.target.value)}
-                            className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                            className={formControlClass}
                           />
                         </div>
                         <div>
                           <label
                             htmlFor={`${uiExtraFieldId}-5-${idx}`}
-                            className="block text-xs text-muted-foreground mb-1"
+                            className={formLabelClass}
                           >
                             ความสัมพันธ์
                           </label>
@@ -822,7 +819,6 @@ export default function CustomerEditModal({
                             id={`${uiExtraFieldId}-5-${idx}`}
                             value={ref.relationship || ''}
                             onChange={(e) => updateRef(idx, 'relationship', e.target.value)}
-                            className="px-3 py-2 border border-input rounded-lg text-sm bg-background"
                           >
                             <option value="">-- เลือก --</option>
                             {RELATIONSHIP_OPTIONS.map((r) => (

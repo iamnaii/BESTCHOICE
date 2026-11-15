@@ -441,7 +441,6 @@ export default function StockAlertsPage() {
         <NativeSelect wrapperClassName="w-full sm:w-64" aria-label="สาขา"
           value={filterBranch}
           onChange={(e) => setFilterBranch(e.target.value)}
-          className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
         >
           <option value="">ทุกสาขา</option>
           {branches?.map((b) => (
@@ -452,7 +451,6 @@ export default function StockAlertsPage() {
           <NativeSelect wrapperClassName="w-full sm:w-64" aria-label="สถานะ"
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
           >
             <option value="">ทุกสถานะ</option>
             <option value="ACTIVE">ต้องดำเนินการ</option>
@@ -589,7 +587,6 @@ export default function StockAlertsPage() {
                   <NativeSelect id={`${uiFieldId}-1`}
                     value={form.category}
                     onChange={(e) => setForm({ ...form, category: e.target.value, brand: '', model: '', storage: '' })}
-                    className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
                   >
                     {Object.entries(categoryLabels).filter(([key]) => key !== 'ACCESSORY').map(([key, val]) => (
                       <option key={key} value={key}>{val}</option>
@@ -601,7 +598,6 @@ export default function StockAlertsPage() {
                   <NativeSelect id={`${uiFieldId}-2`}
                     value={form.brand}
                     onChange={(e) => setForm({ ...form, brand: e.target.value, model: '', storage: '' })}
-                    className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
                     required
                   >
                     <option value="">-- เลือกแบรนด์ --</option>
@@ -621,7 +617,6 @@ export default function StockAlertsPage() {
                       const info = form.brand ? getModelInfo(form.brand, modelName) : undefined;
                       setForm({ ...form, model: modelName, storage: '', category: info?.category || form.category });
                     }}
-                    className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
                     required
                     disabled={!form.brand}
                   >
@@ -636,7 +631,6 @@ export default function StockAlertsPage() {
                   <NativeSelect id={`${uiFieldId}-4`}
                     value={form.storage}
                     onChange={(e) => setForm({ ...form, storage: e.target.value })}
-                    className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
                     disabled={!form.model}
                   >
                     <option value="">ทุกความจุ</option>
@@ -651,7 +645,6 @@ export default function StockAlertsPage() {
                 <NativeSelect id={`${uiFieldId}-5`}
                   value={form.branchId}
                   onChange={(e) => setForm({ ...form, branchId: e.target.value })}
-                  className="w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
                   required
                 >
                   <option value="">เลือกสาขา</option>

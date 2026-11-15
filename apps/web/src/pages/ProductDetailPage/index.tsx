@@ -605,7 +605,6 @@ export default function ProductDetailPage() {
             <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-1`}
               value={transferForm.toBranchId}
               onChange={(e) => setTransferForm({ ...transferForm, toBranchId: e.target.value })}
-              className="px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
               required
             >
               <option value="">เลือกสาขา</option>

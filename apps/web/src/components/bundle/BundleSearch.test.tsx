@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import BundleSearch, { type BundleProduct } from './BundleSearch';
+import { formLabelClass } from '@/components/ui/form-styles';
 
 const apiGet = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/api', () => ({
@@ -86,5 +87,25 @@ describe('BundleSearch — ของแถมเลือกได้เฉพ�
     expect(screen.getByRole('button', { name: 'นำออก' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'นำออก' }));
     expect(screen.queryByRole('button', { name: 'นำออก' })).not.toBeInTheDocument();
+  });
+});
+
+describe('BundleSearch — ป้ายช่องค้นหา', () => {
+  it('ใช้ป้ายแบบ A (formLabelClass) เท่ากับ FormLabel ของขั้นเงื่อนไขสัญญา', () => {
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <BundleSearch
+          bundleSearch=""
+          setBundleSearch={() => {}}
+          bundleProducts={[]}
+          excludeIds={[]}
+          onAddBundle={() => {}}
+          onRemoveBundle={() => {}}
+          searchLabel="ค้นหาของแถมเพิ่ม (เฉพาะอุปกรณ์เสริมของสาขานี้)"
+        />
+      </QueryClientProvider>,
+    );
+    const input = screen.getByLabelText('ค้นหาของแถมเพิ่ม (เฉพาะอุปกรณ์เสริมของสาขานี้)');
+    expect(document.querySelector(`label[for="${input.id}"]`)?.className).toBe(formLabelClass);
   });
 });

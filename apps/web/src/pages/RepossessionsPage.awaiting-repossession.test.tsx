@@ -219,3 +219,14 @@ describe('RepossessionsPage — ใบรับเครื่องคืน �
     );
   });
 });
+
+describe('RepossessionsPage — S2-03 ตัวกรองสถานะไม่ยืดเต็มหน้า', () => {
+  it('dropdown สถานะ: wrapper w-full บนมือถือ และ sm:w-56 ตั้งแต่จอ sm', async () => {
+    routeApi([]);
+    render(<RepossessionsPage />, { wrapper });
+    const status = await screen.findByRole('combobox', { name: 'สถานะ' });
+    const wrap = status.closest('[data-slot="native-select-wrapper"]');
+    expect(wrap).toHaveClass('w-full', 'sm:w-56');
+    expect(wrap).not.toHaveClass('w-auto');
+  });
+});

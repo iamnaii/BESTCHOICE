@@ -285,7 +285,6 @@ export default function ChatLibraryPicker({
                     setKind(e.target.value);
                     setPage(1);
                   }}
-                  className="h-10 rounded-md border border-input bg-background px-2 text-sm"
                 >
                   <option value="">ทั้งหมด</option>
                   <option value="image">รูปภาพ</option>

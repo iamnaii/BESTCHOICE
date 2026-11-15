@@ -380,6 +380,18 @@ describe('PayrollLinesSection — fix round 1', () => {
     expect(screen.getByText(/^\+[\d,]+\.\d{2}$/)).toBeInTheDocument();
   });
 
+  it('S3-07: คอลัมน์บัญชีของรายได้พิเศษกว้างอย่างน้อย 224px (min-w-56) — ชื่อบัญชีไม่ขาดกลางคำ', async () => {
+    const user = userEvent.setup();
+    const v = stored();
+    v.lines[0].customIncome = [{ uid: 'c1', accountCode: 'S52-1204', name: 'เบี้ยขยัน', amount: '500', isTaxable: true, isAdjustment: false }];
+    wrap(<Harness initial={v} />);
+    await user.click(screen.getByRole('button', { name: 'ขยาย' }));
+    const box = screen.getByText('+ รายได้พิเศษ (โบนัส / OT / เบี้ยเลี้ยง) — กรอกเอง').parentElement as HTMLElement;
+    const header = within(box).getByRole('columnheader', { name: 'บัญชี' });
+    expect(header).toHaveClass('min-w-56');
+    expect(header).not.toHaveClass('w-40');
+  });
+
   it('M3: the OT chip counts only attendance rows', () => {
     wrap(<Harness initial={stored()} />);
     expect(screen.getByText('OT 1 แถว')).toBeInTheDocument();

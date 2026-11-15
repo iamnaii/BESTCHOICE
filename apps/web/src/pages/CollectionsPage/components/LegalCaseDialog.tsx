@@ -225,7 +225,6 @@ export default function LegalCaseDialog({ open, onClose, contractId }: Props) {
                       id="legal-doc-kind"
                       value={docKind}
                       onChange={(e) => setDocKind(e.target.value as LegalDocKind)}
-                      className="rounded-md border border-border bg-background px-2 py-2 text-sm"
                     >
                       {DOC_KIND_OPTIONS.map((o) => (
                         <option key={o.value} value={o.value}>

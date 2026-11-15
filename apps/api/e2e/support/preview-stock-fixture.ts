@@ -1,8 +1,9 @@
 import { PrismaService } from '../../src/prisma/prisma.service';
+import { isDisposablePreviewDatabase } from './preview-database';
 
 /** Disposable preview only. Stable unit IDs preserve edits across preview restarts. */
 export async function seedPreviewStock(db: PrismaService) {
-  if (!process.env.DATABASE_URL?.includes('/bc_chat_credit_test?host=/tmp/bc-chat-credit.')) {
+  if (!isDisposablePreviewDatabase()) {
     throw new Error('Stock fixtures require the disposable PostgreSQL harness');
   }
   const branch = await db.branch.findFirstOrThrow({

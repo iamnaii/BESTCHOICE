@@ -94,7 +94,6 @@ export default function SalesDispositionControl({
               <NativeSelect wrapperClassName="max-w-full mt-2 w-full"
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                className="min-h-11 rounded-md border border-input bg-background px-3"
               >
                 <option value="">เลือกเหตุผล</option>
                 {Object.entries(JOURNEY_LOST_REASON_LABELS).map(([key, label]) => (

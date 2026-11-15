@@ -1,5 +1,5 @@
 import { NumberInput } from '@/components/ui/NumberInput';
-import { formControlClass } from '@/components/ui/form-styles';
+import { formControlClass, formLabelClass } from '@/components/ui/form-styles';
 import { useState } from 'react';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -238,7 +238,7 @@ export default function BranchesPage() {
                   </div>
                   <div className="space-y-4">
                     <div>
-                      <label htmlFor="branch-name" className="block text-xs font-medium text-foreground mb-1.5">ชื่อสาขา <span className="text-destructive">*</span></label>
+                      <label htmlFor="branch-name" className={formLabelClass}>ชื่อสาขา <span className="text-destructive">*</span></label>
                       <input
                         type="text"
                         id="branch-name"
@@ -249,7 +249,7 @@ export default function BranchesPage() {
                       />
                     </div>
                     <div>
-                      <label htmlFor="branch-phone" className="block text-xs font-medium text-foreground mb-1.5">โทรศัพท์</label>
+                      <label htmlFor="branch-phone" className={formLabelClass}>โทรศัพท์</label>
                       <input
                         type="text"
                         id="branch-phone"
@@ -260,7 +260,7 @@ export default function BranchesPage() {
                     </div>
                     {editingBranch && (
                       <div>
-                        <label className="block text-xs font-medium text-foreground mb-1.5">
+                        <label className={formLabelClass}>
                           ลิ้นชักเงินสดของสาขา (ฝั่งหน้าร้าน)
                         </label>
                         <CashAccountSelect
@@ -283,7 +283,7 @@ export default function BranchesPage() {
                     )}
                     {editingBranch && (
                       <div>
-                        <label htmlFor="branch-cash-float" className="block text-xs font-medium text-foreground mb-1.5">
+                        <label htmlFor="branch-cash-float" className={formLabelClass}>
                           เงินทอนตั้งต้นของลิ้นชัก (บาท)
                         </label>
                         <NumberInput step="any" unstyled

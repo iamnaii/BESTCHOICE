@@ -1,0 +1,4 @@
+{
+  "$comment": "Findings kept on purpose (spec §5 เกณฑ์รับ: จุดที่ตั้งใจคงไว้บันทึกเหตุผล). id = route|width|theme|rule|key copied from .tmp/field-scale/<label>/results.json; reason in Thai, at least 10 characters. Editing this file changes the preview fingerprint — rerun npm run local:preview before the next check.",
+  "entries": []
+}

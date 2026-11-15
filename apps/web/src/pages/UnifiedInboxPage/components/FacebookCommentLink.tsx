@@ -103,7 +103,6 @@ export default function FacebookCommentLink({
               <NativeSelect wrapperClassName="max-w-full w-full min-w-0"
                 value={selected}
                 onChange={(e) => setSelected(e.target.value)}
-                className="h-11 rounded-md border bg-background px-2"
               >
                 <option value="">
                   {query.data?.length ? 'เลือกจากผลค้นหา' : 'ไม่พบห้องที่เข้าถึงได้'}

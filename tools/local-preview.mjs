@@ -2,13 +2,17 @@ import { createHash, randomUUID } from 'node:crypto';
 import { execFileSync, spawn } from 'node:child_process';
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isPreviewDir, isWindows, previewDirPrefix, processIdentity, resolveCommand } from './lib/local-platform.mjs';
 
 export const repo = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), '..'));
 export const output = join(repo, '.tmp/local-preview');
 const stateFile = join(output, 'state.json');
-const runner = join(repo, 'tools/preview-chat-credit.sh');
+// Windows has its own runner (Docker database, no Unix sockets or signals); see that file.
+const runner = join(repo, isWindows ? 'tools/preview-chat-credit-win.mjs' : 'tools/preview-chat-credit.sh');
+// A first Windows start also boots a container and migrates a fresh volume.
+const startTimeoutMs = isWindows ? Number(process.env.LOCAL_PREVIEW_START_TIMEOUT_MS) || 420000 : 120000;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 export function git(...args) {
@@ -31,7 +35,10 @@ export function run(command, args, cwd = repo, logFile) {
   return new Promise((resolve, reject) => {
     const fd = logFile ? openSync(logFile, 'a') : null;
     let child;
-    try { child = spawn(command, args, { cwd, stdio: fd === null ? 'inherit' : ['ignore', fd, fd] }); }
+    try {
+      const [file, fileArgs] = resolveCommand(command, args, repo);
+      child = spawn(file, fileArgs, { cwd, stdio: fd === null ? 'inherit' : ['ignore', fd, fd], windowsHide: true });
+    }
     finally { if (fd !== null) closeSync(fd); }
     child.once('error', reject);
     child.once('exit', (code, signal) => code === 0 ? resolve() : reject(new Error(`${command} ${args.join(' ')} failed (${signal || code})`)));
@@ -48,12 +55,6 @@ async function infoAt(port) {
     const response = await fetch(`http://127.0.0.1:${port}/api/admin/preview/info`, { signal: AbortSignal.timeout(1500) });
     return response.ok ? await response.json() : null;
   } catch { return null; }
-}
-
-function processIdentity(pid) {
-  if (!Number.isSafeInteger(pid) || pid <= 1) return null;
-  try { return execFileSync('ps', ['-p', String(pid), '-o', 'lstart=', '-o', 'command='], { encoding: 'utf8' }).trim() || null; }
-  catch { return null; }
 }
 
 export function acquireLock(name) {
@@ -76,7 +77,9 @@ export function acquireLock(name) {
       const content = readFileSync(path, 'utf8');
       let previous;
       try { previous = JSON.parse(content); } catch { throw new Error(`Lock is being initialized; retry shortly: ${path}`); }
-      if (processIdentity(previous.pid) === previous.identity) throw new Error(`Another local ${name} command is running (${previous.pid}).`);
+      // A lock whose holder is gone must not block forever, even when its identity was never read (null).
+      const holder = processIdentity(previous.pid);
+      if (holder !== null && holder === previous.identity) throw new Error(`Another local ${name} command is running (${previous.pid}).`);
       if (readFileSync(path, 'utf8') === content) rmSync(path);
     }
   }
@@ -85,6 +88,40 @@ export function acquireLock(name) {
 
 function runnerAlive(state) {
   return Boolean(state?.repo === repo && state.identity && state.identity.includes(runner) && processIdentity(state.pid) === state.identity);
+}
+
+// Is the recorded runner PID still a process we must deal with? POSIX keeps the original
+// "any live PID" test. On Windows a hard-killed runner's PID is soon reused by an unrelated
+// process, so only our own runner counts.
+function runnerPresent(state) {
+  return isWindows ? runnerAlive(state) : Boolean(processIdentity(state?.pid));
+}
+
+function tryExec(command, args) {
+  try { return execFileSync(command, args, { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] }).trim(); }
+  catch { return null; }
+}
+
+/**
+ * Windows only. A runner that was killed without its cleanup (Task Manager, closing the IDE)
+ * leaves the API tree and the database container running, and no signal can reach them.
+ * Stop exactly what this checkout's dead runner started: the API proven ours by its run id,
+ * and the labelled container named after our data directory. Returns what was stopped.
+ */
+function cleanWindowsLeftovers(state, info) {
+  const stopped = [];
+  if (!isWindows || !state || state.repo !== repo || runnerAlive(state)) return stopped;
+  if (owned(state, info) && Number.isSafeInteger(info.apiPid) && info.apiPid > 1) {
+    if (tryExec('taskkill', ['/PID', String(info.apiPid), '/T', '/F']) !== null) stopped.push('preview server');
+  }
+  if (!isPreviewDir(state.dataDir)) return stopped;
+  const name = `bc-chat-credit-${basename(state.dataDir).slice('bc-chat-credit.'.length)}`;
+  if (/^bc-chat-credit-[A-Za-z0-9_-]+$/.test(name)) {
+    const running = tryExec('docker', ['ps', '--filter', `name=^/${name}$`, '--filter', 'label=bc-chat-credit=preview', '--format', '{{.Names}}']);
+    if (running === name && tryExec('docker', ['stop', '-t', '10', name]) !== null) stopped.push(`database ${name}`);
+  }
+  for (const file of ['runtime.json', 'api.pid', 'runner.pid', 'stop.request']) rmSync(join(state.dataDir, file), { force: true });
+  return stopped;
 }
 
 export function owned(state, info) {
@@ -107,8 +144,13 @@ async function stopOwned(state) {
   if (state.repo !== repo || identity !== state.identity || !identity.includes(runner)) {
     throw new Error('Preview process ownership does not match; no process was stopped.');
   }
-  process.kill(state.pid, 'SIGTERM');
-  const deadline = Date.now() + 30000;
+  // Windows has no SIGTERM (process.kill would skip the runner's cleanup and leave the API and
+  // database running), so the Windows runner watches for this file and shuts itself down.
+  if (isWindows) {
+    if (!isPreviewDir(state.dataDir)) throw new Error('Preview data directory is not recognised; no process was stopped.');
+    writeFileSync(join(state.dataDir, 'stop.request'), '');
+  } else process.kill(state.pid, 'SIGTERM');
+  const deadline = Date.now() + (isWindows ? 60000 : 30000);
   while (processIdentity(state.pid) === identity) {
     if (Date.now() > deadline) throw new Error(`Preview did not stop cleanly. Inspect ${state.log}; no forced kill was used.`);
     await sleep(200);
@@ -118,8 +160,9 @@ async function stopOwned(state) {
 export async function previewStatus() {
   const state = readState();
   const info = state ? await infoAt(state.port) : null;
-  const running = owned(state, info) && runnerAlive(state);
-  return { state, info, running, orphaned: owned(state, info) && !runnerAlive(state), current: running && info.sourceFingerprint === fingerprint() };
+  const alive = runnerAlive(state);
+  const running = owned(state, info) && alive;
+  return { state, info, running, orphaned: owned(state, info) && !alive, current: running && info.sourceFingerprint === fingerprint() };
 }
 
 export async function ensurePreview({ prepared = false } = {}) {
@@ -129,12 +172,13 @@ export async function ensurePreview({ prepared = false } = {}) {
     const port = Number(process.env.LOCAL_PREVIEW_PORT || previous?.port || 5195);
     if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('LOCAL_PREVIEW_PORT must be 1024–65535.');
     const sourceFingerprint = fingerprint();
-    const previousInfo = previous ? await infoAt(previous.port) : null;
+    let previousInfo = previous ? await infoAt(previous.port) : null;
+    if (cleanWindowsLeftovers(previous, previousInfo).length) previousInfo = await infoAt(previous.port);
     if (owned(previous, previousInfo) && !runnerAlive(previous)) throw new Error(`Orphaned preview is still listening. Inspect ${previous.log}; no server was reused or stopped.`);
     if (owned(previous, previousInfo) && previous.port === port && previousInfo.sourceFingerprint === sourceFingerprint) {
       return { ...previousInfo, url: `http://localhost:${port}/inbox`, reused: true };
     }
-    if (previous && processIdentity(previous.pid)) {
+    if (previous && runnerPresent(previous)) {
       if (!owned(previous, previousInfo)) throw new Error(`Existing preview could not be verified. Inspect ${previous.log} before restarting.`);
       await stopOwned(previous);
     }
@@ -145,30 +189,42 @@ export async function ensurePreview({ prepared = false } = {}) {
       await run(join(repo, 'node_modules/.bin/prisma'), ['generate', '--schema', 'apps/api/prisma-finance/schema.prisma']);
     }
     const runId = randomUUID();
-    const dataDir = previous?.repo === repo && previous.dataDir?.startsWith('/tmp/bc-chat-credit.')
-      ? previous.dataDir : mkdtempSync('/tmp/bc-chat-credit.');
+    const dataDir = previous?.repo === repo && isPreviewDir(previous.dataDir) && (!isWindows || existsSync(previous.dataDir))
+      ? previous.dataDir : mkdtempSync(previewDirPrefix);
     const log = join(output, 'server.log');
     const fd = openSync(log, 'w');
-    const child = spawn('bash', [runner], {
-      cwd: repo, detached: true, stdio: ['ignore', fd, fd],
+    const [runnerCommand, runnerArgs] = isWindows ? [process.execPath, [runner]] : ['bash', [runner]];
+    const child = spawn(runnerCommand, runnerArgs, {
+      cwd: repo, detached: true, stdio: ['ignore', fd, fd], windowsHide: true,
       env: { ...process.env, CREDIT_PREVIEW_PORT: String(port), CREDIT_PREVIEW_DIR: dataDir,
         CREDIT_REAL_OCR: '0', CREDIT_REAL_STORAGE: '0', CREDIT_LOCAL_RUN_ID: runId,
         CREDIT_SOURCE_FINGERPRINT: sourceFingerprint, CREDIT_SOURCE_REVISION: git('rev-parse', '--short', 'HEAD') },
     });
     closeSync(fd);
     await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
+    let runnerExited = false;
+    child.once('exit', () => { runnerExited = true; });
     child.unref();
-    const state = { repo, pid: child.pid, identity: processIdentity(child.pid), runId, port, dataDir, log };
+    let identity = processIdentity(child.pid);
+    // Without an identity the runner could never be recognised or stopped again. On Windows the
+    // lookup goes through PowerShell and can fail under load, so retry before giving up.
+    for (let attempt = 0; isWindows && !identity && !runnerExited && attempt < 3; attempt++) { await sleep(500); identity = processIdentity(child.pid); }
+    if (isWindows && !identity && !runnerExited) {
+      writeFileSync(join(dataDir, 'stop.request'), '');
+      throw new Error('Could not read the preview runner process; it was asked to stop. Run the command again.');
+    }
+    const state = { repo, pid: child.pid, identity, runId, port, dataDir, log };
     writeFileSync(stateFile, JSON.stringify(state, null, 2) + '\n');
     try {
-      const deadline = Date.now() + 120000;
+      const deadline = Date.now() + startTimeoutMs;
       while (Date.now() < deadline) {
         const info = await infoAt(port);
         if (owned(state, info)) {
           if (fingerprint() !== sourceFingerprint) throw new Error('Source changed during preview startup; run the command again.');
           return { ...info, url: `http://localhost:${port}/inbox`, reused: false };
         }
-        if (!processIdentity(child.pid)) break;
+        // The exit event spares Windows one PowerShell launch per iteration.
+        if (isWindows ? runnerExited : !processIdentity(child.pid)) break;
         await sleep(300);
       }
       throw new Error(`Local preview did not become ready. Inspect ${log}`);
@@ -185,9 +241,14 @@ async function main() {
   } else if (action === 'stop') {
     const release = acquireLock('manager');
     try {
-      const { state, info, orphaned } = await previewStatus();
+      let { state, info, orphaned } = await previewStatus();
+      const leftovers = cleanWindowsLeftovers(state, info);
+      if (leftovers.length) {
+        console.log(`The preview runner was no longer running; stopped what it left behind: ${leftovers.join(', ')}.`);
+        ({ state, info, orphaned } = await previewStatus());
+      }
       if (orphaned) throw new Error('Orphaned preview is still listening; no stopped status can be confirmed.');
-      if (state && processIdentity(state.pid)) {
+      if (state && runnerPresent(state)) {
         if (!owned(state, info)) throw new Error('Cannot verify managed preview; no process was stopped.');
         await stopOwned(state);
       }

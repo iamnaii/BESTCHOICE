@@ -365,7 +365,7 @@ export function BatchPaymentModal({
         </div>
         <div>
           <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium mb-1">วิธีชำระ</label>
-          <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-1`} value={batchPayMethod} onChange={(e) => onBatchPayMethodChange(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm">
+          <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-1`} value={batchPayMethod} onChange={(e) => onBatchPayMethodChange(e.target.value)}>
             <option value="CASH">เงินสด</option>
             <option value="BANK_TRANSFER">โอนเงิน</option>
             <option value="QR_EWALLET">QR/E-Wallet</option>

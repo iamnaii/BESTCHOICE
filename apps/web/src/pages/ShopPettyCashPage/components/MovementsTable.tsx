@@ -87,7 +87,7 @@ export function MovementsTable({ month, onMonthChange, page, loading }: Movement
               </button>
             ))}
           </div>
-          <NativeSelect aria-label="เดือน" wrapperClassName="w-auto max-w-full" value={month} onChange={(e) => onMonthChange(e.target.value)} className="h-11 rounded-lg border border-input bg-background px-3 text-sm">
+          <NativeSelect aria-label="เดือน" wrapperClassName="w-auto max-w-full" value={month} onChange={(e) => onMonthChange(e.target.value)}>
             {options.map((o) => (
               <option key={o.key} value={o.key}>{o.label}</option>
             ))}

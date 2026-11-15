@@ -512,7 +512,6 @@ export default function TemplateForm({
               onChange={(e) =>
                 setTemplateForm((prev) => ({ ...prev, category: e.target.value }))
               }
-              className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
             >
               <option value="DUNNING">DUNNING (ทวงหนี้)</option>
               <option value="REMINDER">REMINDER (เตือนก่อนงวด)</option>
@@ -526,7 +525,6 @@ export default function TemplateForm({
             <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-4`}
               value={templateForm.channel}
               onChange={(e) => setTemplateForm((prev) => ({ ...prev, channel: e.target.value }))}
-              className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
             >
               <option value="LINE">LINE</option>
               <option value="SMS">SMS</option>
@@ -542,7 +540,6 @@ export default function TemplateForm({
                   format: e.target.value as 'text' | 'flex',
                 }))
               }
-              className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
               disabled={templateForm.channel !== 'LINE'}
             >
               <option value="text">ข้อความ (Text)</option>

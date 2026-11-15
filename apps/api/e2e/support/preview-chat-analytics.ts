@@ -1,5 +1,6 @@
 import { Controller, Post, Param, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../src/prisma/prisma.service';
+import { isDisposablePreviewDatabase } from './preview-database';
 import { RoomManagerService } from '../../src/modules/chat-engine/services/room-manager.service';
 import { generateContractNumber, generateSaleNumber } from '../../src/utils/sequence.util';
 /** Synthetic source documents + real response-cycle writers, only on the disposable preview DB. */
@@ -9,7 +10,7 @@ export function previewChatAnalytics(
   actorId: () => string,
   receiverId: string,
 ) {
-  if (!process.env.DATABASE_URL?.includes('/bc_chat_credit_test?host=/tmp/bc-chat-credit.'))
+  if (!isDisposablePreviewDatabase())
     throw new Error('Analytics fixture requires isolated PostgreSQL');
   const fixtures = new Map<string, { customerId: string; aliasId: string; branchId: string }>();
   @Controller('preview/analytics')

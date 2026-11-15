@@ -193,6 +193,36 @@ describe('กล่องตั้งบิลประจำ', () => {
     expect(apiPost).not.toHaveBeenCalled();
   });
 
+  it('S3-09: ตัวเลือก "วิธีจ่าย"/"เดือน" สั้น ไม่ถูกตัด — คำอธิบายอยู่ใต้ช่อง', async () => {
+    const u = userEvent.setup();
+    mount();
+    await screen.findByRole('dialog');
+    const pay = field('วิธีจ่าย') as HTMLSelectElement;
+    expect(pay.options[0].textContent).toBe('ไม่ตั้ง');
+    expect(screen.getByText('ไม่ตั้ง = ร่างลงเป็นตั้งหนี้ ต้องทำใบจ่ายเจ้าหนี้ต่อ')).toBeInTheDocument();
+    await u.selectOptions(field('ความถี่'), 'QUARTERLY');
+    const month = field('เดือน') as HTMLSelectElement;
+    expect(Array.from(month.options).map((o) => o.textContent)).toEqual([
+      '— เลือก —',
+      'เดือนที่ 1 ของไตรมาส',
+      'เดือนที่ 2 ของไตรมาส',
+      'เดือนที่ 3 ของไตรมาส',
+    ]);
+    expect(
+      screen.getByText('เดือนที่ 1 = ม.ค./เม.ย./ก.ค./ต.ค. · เดือนที่ 2 = ก.พ./พ.ค./ส.ค./พ.ย. · เดือนที่ 3 = มี.ค./มิ.ย./ก.ย./ธ.ค.'),
+    ).toBeInTheDocument();
+  });
+
+  it('S3-09: คำอธิบายใต้ช่อง "วิธีจ่าย"/"เดือน" ผูกกับ select (aria-describedby) — ความหมายที่ตัวเลือกสั้นไม่ได้บอก', async () => {
+    const u = userEvent.setup();
+    mount();
+    await screen.findByRole('dialog');
+    expect(field('วิธีจ่าย')).toHaveAccessibleDescription('ไม่ตั้ง = ร่างลงเป็นตั้งหนี้ ต้องทำใบจ่ายเจ้าหนี้ต่อ');
+    await u.selectOptions(field('ความถี่'), 'QUARTERLY');
+    expect(field('เดือน')).toHaveAccessibleDescription(/เดือนที่ 1 = ม\.ค\.\/เม\.ย\.\/ก\.ค\.\/ต\.ค\./);
+    expect(field('บัญชีค่าใช้จ่าย')).toHaveAccessibleDescription('ไปอยู่ในบรรทัดของร่างใบรายจ่าย — แก้ในร่างได้');
+  });
+
   it('ผู้จัดการสาขาสร้างใหม่: สาขาถูกล็อกเป็นสาขาตนเอง', async () => {
     user = { id: 'u-bm', role: 'BRANCH_MANAGER', branchId: 'br-2' };
     mount();

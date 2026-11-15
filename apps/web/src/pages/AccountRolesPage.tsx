@@ -285,7 +285,7 @@ function EditRoleMapDialog({
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" aria-hidden />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+              <PopoverContent className="w-(--radix-popover-trigger-width) min-w-64 p-0">
                 <Command>
                   <CommandInput placeholder="ค้นหารหัส/ชื่อบัญชี..." />
                   <CommandList>

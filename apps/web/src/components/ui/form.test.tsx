@@ -31,4 +31,26 @@ describe('form field semantics', () => {
     await user.type(input, 'ทดสอบ');
     expect(input).toHaveAttribute('aria-invalid', 'false');
   });
+
+  it('uses label style A: FormLabel = formLabelClass and FormItem has no stacked gap', async () => {
+    const user = userEvent.setup();
+    render(<Example title="ลูกค้า" />);
+    const label = screen.getByText('ชื่อ', { selector: 'label' });
+    expect(label).toHaveClass('mb-3', 'block', 'text-sm', 'font-medium', 'leading-snug', 'text-foreground');
+    expect(label).not.toHaveClass('text-xs');
+    const item = label.closest('[data-slot="form-item"]');
+    expect(item).toHaveClass('min-w-0');
+    expect(item).not.toHaveClass('space-y-1.5');
+    await user.click(screen.getByRole('button', { name: 'บันทึก' }));
+    const message = await screen.findByText('กรุณากรอกชื่อ');
+    expect(message).toHaveClass('mt-1.5');
+    expect(label).toHaveClass('text-destructive');
+    expect(label).not.toHaveClass('text-foreground');
+  });
+
+  it('keeps a FormDescription off its control: the same mt-1.5 gap as FormMessage', () => {
+    render(<Example title="ลูกค้า" />);
+    const description = screen.getByText('ชื่อที่ใช้ติดต่อ');
+    expect(description).toHaveClass('mt-1.5', 'text-2xs', 'text-muted-foreground');
+  });
 });

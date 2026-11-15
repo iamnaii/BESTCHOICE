@@ -3,6 +3,7 @@ import { NumericFormat } from 'react-number-format';
 import Decimal from 'decimal.js';
 import { cn } from '@/lib/utils';
 import { inputVariants } from './input';
+import { withCallerFontSize } from './caller-font-size';
 import { formatNumericText, normalizeNumericText } from '@/utils/numericText';
 
 type NumberChange = { target: { value: string; name: string; valueAsNumber: number } };
@@ -83,7 +84,7 @@ export function NumberInput({
         aria-valuemax={max === undefined ? undefined : Number(max)}
         aria-valuenow={numeric == null ? undefined : Number(numeric)}
         aria-valuetext={formatNumericText(raw)}
-        className={cn(!unstyled && inputVariants({ variant }), 'tabular-nums', className)}
+        className={cn(!unstyled && withCallerFontSize(inputVariants({ variant }), className), 'tabular-nums', className)}
         onValueChange={(values, source) => {
           if (source.source === 'event') change(values.value);
         }}

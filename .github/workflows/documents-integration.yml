@@ -23,6 +23,7 @@ on:
       - 'packages/shared/**'
       - 'tools/docs-integration.*'
       - 'tools/local-preview.mjs'
+      - 'tools/lib/**'
       - '.github/workflows/documents-integration.yml'
   push:
     # Lets the DOC-11 branch prove the job itself runs; drop once the epic branch merges.

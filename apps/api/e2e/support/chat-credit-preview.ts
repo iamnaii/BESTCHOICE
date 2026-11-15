@@ -103,8 +103,9 @@ import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { createReadStream, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdir, writeFile, unlink } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { spawn } from 'node:child_process';
+import { isIsolatedPreview } from './preview-database';
 import { PDFDocument } from 'pdf-lib';
 import { parse } from 'dotenv';
 import { PrismaService } from '../../src/prisma/prisma.service';
@@ -156,11 +157,8 @@ import { CompanyResolverService } from '../../src/modules/journal/company-resolv
 import { CompanyService } from '../../src/modules/company/company.service';
 
 const root = process.env.CREDIT_PREVIEW_ROOT!;
-if (
-  !root?.startsWith('/tmp/bc-chat-credit.') ||
-  !process.env.DATABASE_URL?.includes(`/bc_chat_credit_test?host=${root}/socket`)
-)
-  throw new Error('Isolated preview database required');
+// The preview must never see an application database — rules in ./preview-database.
+if (!isIsolatedPreview(root)) throw new Error('Isolated preview database required');
 const realOcr = process.env.CREDIT_REAL_OCR === '1';
 const realStorage = process.env.CREDIT_REAL_STORAGE === '1';
 // Load only the requested provider configuration, never an application DATABASE_URL.
@@ -240,7 +238,7 @@ const ocr = realOcr
     };
 function localFile(key: string) {
   const target = resolve(root, 'storage', key);
-  if (!target.startsWith(`${resolve(root, 'storage')}/`))
+  if (!target.startsWith(`${resolve(root, 'storage')}${sep}`))
     throw new Error('Invalid local storage key');
   return target;
 }

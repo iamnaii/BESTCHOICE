@@ -167,7 +167,6 @@ export function ReverseConfirmDialog({
               id="icab-reason"
               value={reasonId}
               onChange={(e) => setReasonId(e.target.value)}
-              className="rounded-md border border-input bg-background px-3 py-2 text-sm leading-snug focus:outline-none focus:ring-2 focus:ring-ring"
               disabled={isLoading}
             >
               <option value="">— เลือกเหตุผล —</option>

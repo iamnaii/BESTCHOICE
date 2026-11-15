@@ -16,8 +16,9 @@ import { ProductsService } from '../src/modules/products/products.service';
 import { ShopBuybackController } from '../src/modules/shop-buyback/shop-buyback.controller';
 import { ShopBotDefenseGuard } from '../src/modules/shop-bot-defense/shop-bot-defense.guard';
 import { REFERENCE_PRICING_CONFIG_KEY, ReferencePricingCatalog } from '../src/modules/shop-buyback/reference-pricing.types';
+import { isDisposablePreviewDatabase } from './support/preview-database';
 
-if (!process.env.DATABASE_URL?.includes('/bc_chat_credit_test?host=/tmp/bc-chat-credit.')) {
+if (!isDisposablePreviewDatabase()) {
   throw new Error('Run tools/test-chat-credit.sh with its disposable database');
 }
 

@@ -20,6 +20,8 @@ import type {
   JournalPreview,
 } from '@/lib/equity.types';
 import { formatNumberDecimal } from '@/utils/formatters';
+import { formControlClass } from '@/components/ui/form-styles';
+import { cn } from '@/lib/utils';
 
 const NEEDS_RESOLUTION: EquityTxnType[] = [
   'CAP_INIT',
@@ -216,7 +218,7 @@ export default function EquityEntryPage() {
                 <span className="text-muted-foreground">วันที่ทำรายการ *</span>
                 <input
                   type="date"
-                  className="w-full border border-border rounded-md px-3 py-2 bg-background"
+                  className={formControlClass}
                   value={form.txnDate}
                   onChange={(e) => setForm({ ...form, txnDate: e.target.value })}
                 />
@@ -224,7 +226,7 @@ export default function EquityEntryPage() {
               <label className="text-sm space-y-1 md:col-span-3">
                 <span className="text-muted-foreground">คำอธิบาย</span>
                 <input
-                  className="w-full border border-border rounded-md px-3 py-2 bg-background"
+                  className={formControlClass}
                   value={form.description ?? ''}
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
                 />
@@ -234,7 +236,7 @@ export default function EquityEntryPage() {
                   <label className="text-sm space-y-1">
                     <span className="text-muted-foreground">เลขที่มติ *</span>
                     <input
-                      className="w-full border border-border rounded-md px-3 py-2 bg-background"
+                      className={formControlClass}
                       placeholder="เช่น BOD-2569-02"
                       value={form.resolutionNo ?? ''}
                       onChange={(e) => setForm({ ...form, resolutionNo: e.target.value })}
@@ -244,7 +246,7 @@ export default function EquityEntryPage() {
                     <span className="text-muted-foreground">วันที่มติ *</span>
                     <input
                       type="date"
-                      className="w-full border border-border rounded-md px-3 py-2 bg-background"
+                      className={formControlClass}
                       value={form.resolutionDate ?? ''}
                       onChange={(e) => setForm({ ...form, resolutionDate: e.target.value })}
                     />
@@ -255,7 +257,6 @@ export default function EquityEntryPage() {
                 <label className="text-sm space-y-1 md:col-span-2">
                   <span className="text-muted-foreground">ช่องทางเงินสด/ธนาคาร *</span>
                   <NativeSelect wrapperClassName="max-w-full w-full"
-                    className="border border-border rounded-md px-3 py-2 bg-background"
                     value={form.paymentAccountCode ?? ''}
                     onChange={(e) => setForm({ ...form, paymentAccountCode: e.target.value })}
                   >
@@ -289,7 +290,6 @@ export default function EquityEntryPage() {
                 {form.lines.map((ln, i) => (
                   <div key={i} className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
                     <label className="space-y-1 text-xs sm:col-span-4"><span>ผู้ถือหุ้น</span><NativeSelect wrapperClassName="max-w-full w-full"
-                      className="border border-border rounded-md px-2 py-2 text-sm bg-background"
                       value={ln.shareholderId}
                       onChange={(e) => setLine(i, { shareholderId: e.target.value })}
                     >
@@ -303,14 +303,14 @@ export default function EquityEntryPage() {
                         ))}
                     </NativeSelect></label>
                     <label className="space-y-1 text-xs sm:col-span-2"><span>{isInit ? 'มูลค่าจอง (par)' : 'จำนวนเงิน'}</span><NumberInput unstyled
-                      className="w-full border border-border rounded-md px-2 py-2 text-sm bg-background text-right font-mono"
+                      className={cn(formControlClass, 'text-right font-mono')}
                       placeholder={isInit ? 'มูลค่าจอง (par)' : 'จำนวนเงิน'}
                       value={ln.amount || ''}
                       onChange={(e) => setLine(i, { amount: parseFloat(e.target.value) || 0 })}
                     /></label>
                     {isInit && (
                       <label className="space-y-1 text-xs sm:col-span-2"><span>ชำระจริง</span><NumberInput unstyled
-                        className="w-full border border-border rounded-md px-2 py-2 text-sm bg-background text-right font-mono"
+                        className={cn(formControlClass, 'text-right font-mono')}
                         placeholder="ชำระจริง"
                         value={ln.paid ?? ''}
                         onChange={(e) =>
@@ -322,7 +322,7 @@ export default function EquityEntryPage() {
                     )}
                     {isInc && (
                       <label className="space-y-1 text-xs sm:col-span-2"><span>ส่วนเกินมูลค่า</span><NumberInput unstyled
-                        className="w-full border border-border rounded-md px-2 py-2 text-sm bg-background text-right font-mono"
+                        className={cn(formControlClass, 'text-right font-mono')}
                         placeholder="ส่วนเกินมูลค่า"
                         value={ln.premium ?? ''}
                         onChange={(e) =>
@@ -334,7 +334,7 @@ export default function EquityEntryPage() {
                     )}
                     {isDivPay && (
                       <label className="space-y-1 text-xs sm:col-span-2"><span>ภาษีหัก ณ ที่จ่าย</span><NumberInput unstyled
-                        className="w-full border border-border rounded-md px-2 py-2 text-sm bg-background text-right font-mono"
+                        className={cn(formControlClass, 'text-right font-mono')}
                         placeholder="WHT (เว้นว่าง = อัตโนมัติ)"
                         value={ln.wht ?? ''}
                         onChange={(e) =>
@@ -382,7 +382,6 @@ export default function EquityEntryPage() {
                 <label className="text-sm space-y-1">
                   <span className="text-muted-foreground">ทิศทาง *</span>
                   <NativeSelect wrapperClassName="max-w-full w-full"
-                    className="border border-border rounded-md px-3 py-2 bg-background"
                     value={form.paDirection ?? ''}
                     onChange={(e) => setForm({ ...form, paDirection: e.target.value })}
                   >
@@ -394,7 +393,7 @@ export default function EquityEntryPage() {
                 <label className="text-sm space-y-1">
                   <span className="text-muted-foreground">รหัสบัญชีคู่ *</span>
                   <input
-                    className="w-full border border-border rounded-md px-3 py-2 bg-background font-mono"
+                    className={cn(formControlClass, 'font-mono')}
                     placeholder="เช่น 11-1201"
                     value={form.paAccountCode ?? ''}
                     onChange={(e) => setForm({ ...form, paAccountCode: e.target.value })}
@@ -403,7 +402,7 @@ export default function EquityEntryPage() {
                 <label className="text-sm space-y-1">
                   <span className="text-muted-foreground">ยอดปรับปรุง *</span>
                   <NumberInput unstyled
-                    className="w-full border border-border rounded-md px-3 py-2 bg-background text-right font-mono"
+                    className={cn(formControlClass, 'text-right font-mono')}
                     value={form.paAmount ?? ''}
                     onChange={(e) =>
                       setForm({

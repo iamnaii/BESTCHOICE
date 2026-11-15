@@ -36,6 +36,8 @@ import { OverrideConfirmDialog } from './components/OverrideConfirmDialog';
 import { EditableJournalTable, getJournalIssues } from './components/EditableJournalTable';
 import type { EditableJournalLine } from './components/EditableJournalTable';
 import { InternalControlActionBar } from '@/components/accounting';
+import { formControlClass } from '@/components/ui/form-styles';
+import { cn } from '@/lib/utils';
 
 // Fallback while config is loading; live value comes from /other-income/config/attachment-threshold
 const ATTACHMENT_THRESHOLD_FALLBACK = 50_000;
@@ -783,7 +785,7 @@ export default function OtherIncomeEntryPage() {
                   <input id={`${uiExtraFieldId}-1`}
                     type="date"
                     {...form.register('issueDate')}
-                    className="mt-1 w-full border rounded-md px-3 py-2 text-sm bg-background"
+                    className={cn(formControlClass, 'mt-1')}
                   />
                   {form.formState.errors.issueDate && (
                     <p className="text-xs text-destructive mt-1">
@@ -798,14 +800,13 @@ export default function OtherIncomeEntryPage() {
                   <input id={`${uiExtraFieldId}-2`}
                     type="date"
                     {...form.register('dueDate')}
-                    className="mt-1 w-full border rounded-md px-3 py-2 text-sm bg-background"
+                    className={cn(formControlClass, 'mt-1')}
                   />
                 </div>
                 <div>
                   <label htmlFor={`${uiExtraFieldId}-3`} className="text-xs font-medium text-muted-foreground">ประเภท VAT</label>
                   <NativeSelect wrapperClassName="max-w-full mt-1 w-full" id={`${uiExtraFieldId}-3`}
                     {...form.register('priceType')}
-                    className="border rounded-md px-3 py-2 text-sm bg-background"
                   >
                     <option value="EXCLUSIVE">แยกภาษี</option>
                     <option value="INCLUSIVE">รวมภาษี</option>

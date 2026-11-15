@@ -216,7 +216,6 @@ export default function StuckContractsSection() {
             <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-1`}
               value={targetUserId}
               onChange={(e) => setTargetUserId(e.target.value)}
-              className="h-9 px-3 text-sm rounded-md border border-input bg-background"
             >
               <option value="">— เลือก —</option>
               {staff.map((u) => (

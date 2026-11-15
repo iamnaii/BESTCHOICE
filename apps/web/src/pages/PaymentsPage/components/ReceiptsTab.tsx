@@ -24,6 +24,8 @@ import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Download, MoreHorizontal, Send, XCircle } from 'lucide-react';
 import type { VoidedReceiptInfo } from '../types';
 import { RECEIPT_METHOD_LABELS, RECEIPT_TYPE_LABELS } from '@/lib/receipt-labels';
+import { formControlClass } from '@/components/ui/form-styles';
+import { cn } from '@/lib/utils';
 
 
 interface Receipt {
@@ -338,12 +340,11 @@ export default function ReceiptsTab({ onVoided }: ReceiptsTabProps) {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="ค้นหาเลขสัญญา / ชื่อลูกค้า / เบอร์โทร / เลขใบเสร็จ..."
-            className="px-3 py-2 border border-input rounded-lg text-sm md:col-span-1"
+            className={cn(formControlClass, 'md:col-span-1')}
           />
           <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="ประเภทใบเสร็จ"
             value={receiptType}
             onChange={(e) => setReceiptType(e.target.value)}
-            className="px-3 py-2 border border-input rounded-lg text-sm"
           >
             <option value="">ทุกประเภท</option>
             <option value="PAYMENT">งวดผ่อนชำระ</option>
@@ -355,13 +356,11 @@ export default function ReceiptsTab({ onVoided }: ReceiptsTabProps) {
           <ThaiDateInput aria-label="วันที่เริ่ม"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
-            className="px-3 py-2 border border-input rounded-lg text-sm"
             placeholder="จากวันที่"
           />
           <ThaiDateInput aria-label="วันที่สิ้นสุด"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
-            className="px-3 py-2 border border-input rounded-lg text-sm"
             placeholder="ถึงวันที่"
           />
         </div>

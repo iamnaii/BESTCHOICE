@@ -67,8 +67,11 @@ describe('InterestConfigPage — VAT is read-only from FINANCE (#22)', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'แก้ไข' })[1]);
 
     const vat = await screen.findByTestId('interest-vat-readonly');
-    expect(vat).toHaveTextContent('7%');
-    expect(screen.queryByLabelText('VAT (%)')).not.toBeInTheDocument();
+    // S1-03 (R1-3): กล่อง VAT เตี้ยกว่าช่องข้าง ๆ → ReadOnlyField (input readOnly 44px) ผูกป้าย "VAT (%)" — ยังแก้ไม่ได้
+    expect(vat).toHaveAttribute('data-slot', 'readonly-field');
+    expect(vat).toHaveAttribute('readonly');
+    expect(vat).toHaveValue('7%');
+    expect(screen.getByLabelText('VAT (%)')).toBe(vat);
     const link = screen.getAllByRole('link', { name: /บริษัทในเครือ/ })[0];
     expect(link).toHaveAttribute('href', '/settings/company/entities');
 

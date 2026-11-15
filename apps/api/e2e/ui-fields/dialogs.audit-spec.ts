@@ -34,7 +34,7 @@ describe('Whole-system secondary forms', () => {
         { name: 'expense-payroll', path: '/expenses/new?type=PR' },
         { name: 'expense-credit-note', path: '/expenses/new?type=CN' },
         { name: 'expense-settlement', path: '/expenses/new?type=SE' },
-        { name: 'expense-accrual', path: '/expenses/new', buttons: [/^ตั้งหนี้/] },
+        { name: 'expense-accrual', path: '/expenses/new', buttons: ['ยังไม่ชำระเงิน (ตั้งหนี้ไว้ก่อน)'] },
         { name: 'equity-capital', path: '/finance/equity/new' },
         { name: 'equity-increase', path: '/finance/equity/new', buttons: [/^เพิ่มทุน/] },
         { name: 'equity-withdrawal', path: '/finance/equity/new', buttons: [/^กรรมการถอนเงิน/] },

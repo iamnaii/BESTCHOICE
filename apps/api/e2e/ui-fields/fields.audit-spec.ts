@@ -217,6 +217,7 @@ describe('Field audit across other admin pages',()=>{
     await p.getByRole('button',{name:'ลบรายการ',exact:true}).last().click();
     await browserExpect(p.getByLabel('ราคา/หน่วย',{exact:true})).toHaveCount(1);
     await browserExpect(p.getByLabel('ราคา/หน่วย',{exact:true})).toHaveValue('1250.50');
+    await p.getByRole('radio',{name:'ขั้นสูง',exact:true}).check();
     await p.getByRole('button',{name:'เพิ่มแบบ manual',exact:true}).click();
     await browserExpect(p.getByLabel('Dr/Cr',{exact:true})).toBeVisible();
     await p.getByRole('button',{name:'ลบบัญชีปรับ #1',exact:true}).scrollIntoViewIfNeeded();

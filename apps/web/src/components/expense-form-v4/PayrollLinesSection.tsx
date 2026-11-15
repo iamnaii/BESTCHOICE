@@ -709,7 +709,7 @@ function CustomIncomeSubTable({
       <ScreenTable className="w-full text-xs">
         <thead className="bg-muted/30 text-muted-foreground">
           <tr>
-            <th className="text-left px-2 py-1 w-40">บัญชี</th>
+            <th className="text-left px-2 py-1 min-w-56">บัญชี</th>
             <th className="text-left px-2 py-1 min-w-32">รายการ</th>
             <th className="text-right px-2 py-1 w-28 whitespace-nowrap">จำนวน</th>
             <th className="text-center px-2 py-1 w-16 whitespace-nowrap">ภาษี</th>

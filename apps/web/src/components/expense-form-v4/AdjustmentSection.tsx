@@ -2,6 +2,7 @@ import { NumberInput } from '@/components/ui/NumberInput';
 import { formatNumericText } from '@/utils/numericText';
 import { NativeSelect } from '@/components/ui/native-select';
 import { formControlClass } from '@/components/ui/form-styles';
+import { ReadOnlyField } from '@/components/ui/readonly-field';
 import { useId as useFieldId } from 'react';
 // Section 5 — Multi-line Adjustment (Fix Report v1.0 P0-4).
 //
@@ -129,31 +130,26 @@ export function AdjustmentSection({
           <p className="mt-1 text-xs text-muted-foreground">เว้นว่างเพื่อใช้ยอด {formatNumericText(netExpected)}</p>
         </div>
         <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1">
+          <label htmlFor={`${fieldId}-net`} className="block text-xs font-medium text-muted-foreground mb-1">
             ยอดสุทธิหลังหักภาษี ณ ที่จ่าย
           </label>
-          <div className="rounded-md bg-muted px-3 py-2 text-sm font-mono tabular-nums text-foreground">
-            {formatNumericText(netExpected || '0.00')}
-          </div>
+          <ReadOnlyField
+            id={`${fieldId}-net`}
+            value={formatNumericText(netExpected || '0.00')}
+            className="font-mono tabular-nums"
+          />
         </div>
         <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1">
+          <label htmlFor={`${fieldId}-diff`} className="block text-xs font-medium text-muted-foreground mb-1">
             ผลต่างที่ต้องปรับ
           </label>
-          <div
-            className={`rounded-md px-3 py-2 text-sm font-mono tabular-nums ${
-              Math.abs(diffNum) < 0.005
-                ? 'bg-muted text-muted-foreground'
-                : diffNum > 0
-                  ? 'bg-success/10 text-success'
-                  : 'bg-warning/10 text-warning-strong'
-            }`}
-          >
-            {diffNum >= 0 ? '+' : ''}
-            {formatNumericText(diffNum.toFixed(2))}
-            {diffNum > 0.005 && ' (จ่ายเกิน → Cr)'}
-            {diffNum < -0.005 && ' (จ่ายน้อย → Dr)'}
-          </div>
+          {/* S3-05 — สีบอกทิศผลต่างคงไว้ด้วย tone (ไม่ override className สีพื้น) */}
+          <ReadOnlyField
+            id={`${fieldId}-diff`}
+            tone={Math.abs(diffNum) < 0.005 ? 'default' : diffNum > 0 ? 'success' : 'warning'}
+            value={`${diffNum >= 0 ? '+' : ''}${formatNumericText(diffNum.toFixed(2))}${diffNum > 0.005 ? ' (จ่ายเกิน → Cr)' : ''}${diffNum < -0.005 ? ' (จ่ายน้อย → Dr)' : ''}`}
+            className="font-mono tabular-nums"
+          />
         </div>
       </div>
 

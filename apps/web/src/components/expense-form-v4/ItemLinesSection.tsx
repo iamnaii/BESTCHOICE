@@ -1,6 +1,7 @@
 import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { formControlClass } from '@/components/ui/form-styles';
+import { ReadOnlyField } from '@/components/ui/readonly-field';
 import { useId as useFieldId } from 'react';
 import { useCoaGroups } from '@/hooks/useCoa';
 import { Plus, Trash2 } from 'lucide-react';
@@ -111,10 +112,13 @@ export function ItemLinesSection({ lines, onChange, priceTypeLabel }: Props) {
                 options={whtOptions}
               />
               <div>
-                <label className="mb-1 block text-xs font-medium text-muted-foreground">ก่อนภาษี</label>
-                <div className="rounded-lg border border-border bg-muted/50 px-3 py-2 text-right font-mono text-sm">
-                  {formatNumberDecimal(computeBeforeVat(line))}
-                </div>
+                <label htmlFor={`${fieldId}-${line.uid}-before-vat`} className="mb-1 block text-xs font-medium">ก่อนภาษี</label>
+                <ReadOnlyField
+                  id={`${fieldId}-${line.uid}-before-vat`}
+                  align="end"
+                  value={formatNumberDecimal(computeBeforeVat(line))}
+                  className="font-mono"
+                />
               </div>
             </div>
             <div>

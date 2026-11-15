@@ -260,7 +260,7 @@ export function RecurringBillDialog({ open, onClose, template = null, templateId
   const branchLocked = editing || !!lockedBranchId;
   const monthOptions =
     form.recurrence === 'QUARTERLY'
-      ? QUARTER_MONTHS_TH.map((months, i) => ({ value: String(i + 1), label: `เดือนที่ ${i + 1} ของไตรมาส (${months.join('/')})` }))
+      ? QUARTER_MONTHS_TH.map((_months, i) => ({ value: String(i + 1), label: `เดือนที่ ${i + 1} ของไตรมาส` }))
       : form.recurrence === 'YEARLY'
         ? MONTH_NAMES_TH.map((name, i) => ({ value: String(i + 1), label: name }))
         : [];
@@ -318,10 +318,10 @@ export function RecurringBillDialog({ open, onClose, template = null, templateId
             <div className="space-y-1">
               <Label htmlFor="rb-payment">วิธีจ่าย</Label>
               <NativeSelect id="rb-payment" value={form.paymentMethod} onChange={(e) => set('paymentMethod', e.target.value)} {...a11y('payment')}>
-                <option value="">ไม่ตั้ง — ร่างจะลงเป็นตั้งหนี้ ต้องทำใบจ่ายเจ้าหนี้ต่อ</option>
+                <option value="">ไม่ตั้ง</option>
                 {PAYMENT_METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
               </NativeSelect>
-              {err('payment')}
+              {err('payment') ?? hint('ไม่ตั้ง = ร่างลงเป็นตั้งหนี้ ต้องทำใบจ่ายเจ้าหนี้ต่อ')}
             </div>
             <div className="space-y-1">
               <Label htmlFor="rb-deposit">บัญชีที่จ่าย</Label>
@@ -348,7 +348,11 @@ export function RecurringBillDialog({ open, onClose, template = null, templateId
                 <option value="">{form.recurrence === 'MONTHLY' ? '— ทุกเดือน —' : '— เลือก —'}</option>
                 {monthOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </NativeSelect>
-              {err('recurringMonth') ?? hint('เปิดเมื่อเลือก ราย 3 เดือน (เดือนที่ 1/2/3 ของไตรมาส) หรือ รายปี (ม.ค.–ธ.ค.)')}
+              {err('recurringMonth') ?? hint(
+                form.recurrence === 'QUARTERLY'
+                  ? QUARTER_MONTHS_TH.map((months, i) => `เดือนที่ ${i + 1} = ${months.join('/')}`).join(' · ')
+                  : 'เปิดเมื่อเลือก ราย 3 เดือน (เดือนที่ 1/2/3 ของไตรมาส) หรือ รายปี (ม.ค.–ธ.ค.)',
+              )}
             </div>
             <div className="space-y-1">
               <Label htmlFor="rb-lead">เตือนล่วงหน้า (วัน)</Label>

@@ -12,6 +12,8 @@ import {
   selectRoutes,
   summarize,
 } from './lib.mjs';
+import { ACCOUNT_CODE_RE, coaByCodes, coaGrouped, coaList, loadCoa, parseCsvLine } from './coa.mjs';
+import { menuClipVerdict } from './menu-clip.mjs';
 
 const cell = (route, width, theme, findings, status = 'rendered', extra = {}) => ({
   route, width, theme, status, findings, probes: [], apiErrors: [], ...extra,
@@ -134,4 +136,44 @@ test('renderReport: totals, probes, api errors and unfinished cells', () => {
   assert.match(report, /\| a \| S2-01 \| 1 \| 1 \| 1 \| 1 \| 0 \| 1 \|/);
   assert.match(report, /- b\|1440\|light — open-failed: locator timed out/);
   assert.match(report, /\| GET \| \/purchase-orders\/summary \| 501 \| a, b \|/);
+});
+
+test('coa: parseCsvLine keeps quoted commas', () => {
+  assert.deepEqual(parseCsvLine('11-1101,"ชื่อ, มีจุลภาค",สินทรัพย์'), ['11-1101', 'ชื่อ, มีจุลภาค', 'สินทรัพย์']);
+});
+
+test('coa: the CPA CSV loads into the API shapes', () => {
+  const rows = loadCoa();
+  assert.ok(rows.length > 100, `${rows.length} accounts`);
+  assert.ok(rows.every((r) => ACCOUNT_CODE_RE.test(r.code)));
+  assert.equal(rows.find((r) => r.code === '42-1102')?.name, 'ดอกเบี้ยเงินฝาก');
+  const flat = coaGrouped(rows, {}).groups.flatMap((g) => g.accounts);
+  assert.equal(flat.length, rows.filter((r) => r.status === 'ใช้งาน').length);
+  assert.ok(flat.length < rows.length, 'inactive accounts are left out');
+  assert.ok(flat.some((a) => a.code === '42-1102'));
+  assert.deepEqual(Object.keys(flat[0]).sort(), ['code', 'name', 'normalBalance', 'notes', 'vatApplicable']);
+  const expense = coaGrouped(rows, { type: 'ค่าใช้จ่าย' }).groups.flatMap((g) => g.accounts);
+  assert.ok(expense.length > 0 && expense.every((a) => rows.find((r) => r.code === a.code).type === 'ค่าใช้จ่าย'));
+  assert.deepEqual(coaByCodes(rows, ['11-1201', ' 11-1101', '99-9999']).map((r) => r.code), ['11-1101', '11-1201']);
+  assert.ok(coaList(rows, { status: 'ใช้งาน' }).every((r) => r.status === 'ใช้งาน' && r.id === `coa-${r.code}`));
+});
+
+test('menuClipVerdict: fully visible menu passes; clipped or off-screen fails', () => {
+  const viewport = { width: 1440, height: 900 };
+  const menu = { top: 300, left: 100, bottom: 620, right: 500 };
+  assert.deepEqual(menuClipVerdict({ found: false }), { ok: false, reasons: ['ไม่พบเมนูบัญชีหลังกดเปิด'] });
+  assert.deepEqual(
+    menuClipVerdict({ found: true, menu, viewport, clippers: [{ tag: 'main', className: 'x', rect: { top: 0, left: 0, bottom: 900, right: 1440 } }] }),
+    { ok: true, reasons: [] },
+  );
+  assert.equal(menuClipVerdict({ found: true, menu: { ...menu, bottom: 900.8 }, viewport, clippers: [] }).ok, true, '1px tolerance');
+  const clipped = menuClipVerdict({
+    found: true, menu, viewport,
+    clippers: [{ tag: 'div', className: 'rounded-lg border bg-card overflow-hidden', rect: { top: 200, left: 90, bottom: 450, right: 700 } }],
+  });
+  assert.equal(clipped.ok, false);
+  assert.match(clipped.reasons[0], /ถูกตัดโดย <div class="rounded-lg border bg-card overflow-hidden">/);
+  const offscreen = menuClipVerdict({ found: true, menu: { ...menu, bottom: 950 }, viewport, clippers: [] });
+  assert.equal(offscreen.ok, false);
+  assert.match(offscreen.reasons[0], /ล้นจอ 1440×900/);
 });

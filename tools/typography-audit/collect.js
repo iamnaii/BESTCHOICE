@@ -625,3 +625,429 @@
 
   window.__collectTypography = collectTypography;
 })();
+
+/* Field scale collector (spec docs/superpowers/specs/2026-11-14-dropdown-search-field-scale-design.md §5).
+ *
+ * A second, independent export: window.__collectFields({ exclude, root }) → FieldFact[]. It shares no
+ * state with __collectTypography above, so R1–R12 facts and keys cannot change. Values never leave the
+ * page: no input value, no option text, no select-value text — only numbers and booleans (Ruling Q).
+ * Label text, aria-label and placeholder are UI copy and only feed the key.
+ *
+ * Two fact types, ids unique per call (controls first, then targets, each in DOM order):
+ *
+ * ControlFact { type: 'control', id, key, kind, tag, scope, ancestors, x, y, w, h, borderRadius,
+ *   borderWidth, borderColor, backgroundColor, fontSize, largeText, label, contentLeft, contentRight,
+ *   contentWidth, placeholderInkWidth, optionCount, longestOptionInkWidth, valueOverflowX,
+ *   valueOverflowY, adornments }
+ *   - one per visible OUTERMOST [data-slot=input-wrapper] | [data-field-frame] |
+ *     [data-slot=readonly-field] | [data-slot=select-trigger] | button[role=combobox] | select |
+ *     textarea | input (not hidden/checkbox/radio/file/range/color/button/submit/reset/image)
+ *   - kind: 'input-wrapper' | 'field-frame' | 'readonly' | 'select-trigger' | 'combobox' |
+ *     'native-select' | 'textarea' | 'input'
+ *   - key: kind|normalizeKeyText(label text || aria-label || placeholder)|dup
+ *   - scope: 'dialog:<n>' (n = index among [role=dialog],[role=alertdialog] in DOM order) | 'main'
+ *     (inside #main) | 'page'
+ *   - ancestors: [{ id, layout: 'flex-row' | 'flex-col' | 'grid' | 'other' }] parent first, up to and
+ *     including the scope root (body/html never); ids are per-call container ids
+ *   - x/y/w/h: page-absolute border box · borderRadius: largest corner px · borderWidth: top px ·
+ *     borderColor: computed top colour, 'none' when the top border is 0 or style none
+ *   - fontSize / content box / placeholder / options come from the text control: the element itself,
+ *     or for wrappers/frames its first inner input/select/textarea (button triggers use themselves)
+ *   - largeText: a text-lg+ class (text-lg, text-xl, text-2xl…, text-[18px+]) or font ≥ 17.5px
+ *   - label: { fontSize, gap, above } of the associated label (labels[0], else the first
+ *     aria-labelledby id) — gap = control top − label bottom; above = label ends at or above the
+ *     control top (+1px) and does not wrap it · null when none is visible
+ *   - placeholderInkWidth: canvas width of the placeholder (null when there is none)
+ *   - optionCount / longestOptionInkWidth: native select only (canvas, select font), else null
+ *   - valueOverflowX/Y: [data-slot=select-value] scroll extent > client + 1 (false when absent)
+ *   - adornments: [{ x, y, w, h, side: 'left' | 'right' }] position:absolute elements found within
+ *     the control and up to 3 ancestor levels that intersect the control box (> 0.5px both axes),
+ *     ignoring boxes that cover ≥ 90% of it on both axes
+ *
+ * TargetFact { type: 'target', id, key, role, scope, scroller, targetAncestors, x, y, w, h, coveredBy }
+ *   - one per visible interactive element: a[href], button, input (not hidden), select, textarea,
+ *     summary, [role=button|combobox|tab|switch|checkbox|radio|link|menuitem]
+ *   - role: the role attribute, else 'link' (a) | 'field' (input/select/textarea) | 'button'
+ *   - key: target-<role>|normalizeKeyText(aria-label, or own text for button/tab/menuitem)|dup
+ *   - scroller: container id of the nearest ancestor with overflow auto/scroll, null = the document
+ *   - targetAncestors: ids of target facts that contain this element
+ *   - coveredBy: id of another, unrelated target that elementFromPoint returns at this element centre
+ *     (a <label> resolves to its control) — only when the centre is inside the viewport, else null
+ */
+(function () {
+  'use strict';
+
+  var FIELD_SELECTOR =
+    '[data-slot=input-wrapper],[data-field-frame],[data-slot=readonly-field],' +
+    '[data-slot=select-trigger],button[role=combobox],select,textarea,input';
+  var INNER_TEXT_SELECTOR =
+    'input:not([type=hidden]):not([type=checkbox]):not([type=radio]),select,textarea';
+  var TARGET_SELECTOR =
+    'a[href],button,input,select,textarea,summary,[role=button],[role=combobox],[role=tab],' +
+    '[role=switch],[role=checkbox],[role=radio],[role=link],[role=menuitem]';
+  var NON_FIELD_INPUT_TYPES = {
+    hidden: true,
+    checkbox: true,
+    radio: true,
+    file: true,
+    range: true,
+    color: true,
+    button: true,
+    submit: true,
+    reset: true,
+    image: true,
+  };
+  var LARGE_TEXT_CLASS_RE = /(^|:)text-(?:lg|xl|[2-9]xl|\[(?:1[89]|[2-9]\d)px\])$/;
+  var LARGE_TEXT_MIN_PX = 17.5;
+  var ADORNMENT_LEVELS = 3;
+  var ADORNMENT_MIN_OVERLAP_PX = 0.5;
+  var ADORNMENT_OVERLAY_RATIO = 0.9;
+  var NAMED_BY_TEXT_ROLES = { button: true, tab: true, menuitem: true };
+
+  function px(value) {
+    var n = parseFloat(value);
+    return isFinite(n) ? n : 0;
+  }
+  function collapse(text) {
+    return String(text == null ? '' : text)
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+  // = rules.mjs normalizeKeyText
+  function normalizeKeyText(text) {
+    return collapse(text).replace(/[0-9]/g, '#').slice(0, 40);
+  }
+
+  function collectFields(options) {
+    var opts = options || {};
+    var exclude = typeof opts.exclude === 'string' ? opts.exclude.trim() : '';
+    var rootSelector = typeof opts.root === 'string' && opts.root.trim() ? opts.root : 'body';
+    var rootEl = document.querySelector(rootSelector);
+    if (!rootEl) throw new Error('__collectFields: root not found: ' + rootSelector);
+
+    var scrollX = window.scrollX;
+    var scrollY = window.scrollY;
+    var htmlEl = document.documentElement;
+    var bodyEl = document.body;
+    var styles = new Map();
+    var containerIds = new Map();
+    var dialogs = Array.prototype.slice.call(
+      document.querySelectorAll('[role=dialog],[role=alertdialog]'),
+    );
+    var dupCounts = new Map();
+    var canvasCtx = null;
+
+    function style(el) {
+      var cs = styles.get(el);
+      if (!cs) {
+        cs = getComputedStyle(el);
+        styles.set(el, cs);
+      }
+      return cs;
+    }
+    function containerId(el) {
+      var id = containerIds.get(el);
+      if (id === undefined) {
+        id = containerIds.size;
+        containerIds.set(el, id);
+      }
+      return id;
+    }
+    function box(el) {
+      var r = el.getBoundingClientRect();
+      return { x: r.left + scrollX, y: r.top + scrollY, w: r.width, h: r.height };
+    }
+    // laid out, not 1×1 (sr-only), not visibility:hidden / opacity 0
+    function rendered(el) {
+      var r = el.getBoundingClientRect();
+      if (r.width <= 1 || r.height <= 1) return false;
+      var cs = style(el);
+      return cs.visibility !== 'hidden' && cs.opacity !== '0';
+    }
+    function visible(el) {
+      return rendered(el) && !el.closest('[aria-hidden=true],[hidden]');
+    }
+    function excluded(el) {
+      return exclude !== '' && el.closest(exclude) !== null;
+    }
+    function keyed(prefix, name) {
+      var base = prefix + '|' + normalizeKeyText(name);
+      var dup = dupCounts.get(base) || 0;
+      dupCounts.set(base, dup + 1);
+      return base + '|' + dup;
+    }
+    function isField(el) {
+      if (!el.matches(FIELD_SELECTOR)) return false;
+      if (el.localName === 'input' && NON_FIELD_INPUT_TYPES[String(el.type).toLowerCase()])
+        return false;
+      return !(el.parentElement && el.parentElement.closest(FIELD_SELECTOR));
+    }
+    function isTarget(el) {
+      if (!el.matches(TARGET_SELECTOR)) return false;
+      return !(el.localName === 'input' && String(el.type).toLowerCase() === 'hidden');
+    }
+    function kindOf(el) {
+      if (el.matches('[data-slot=input-wrapper]')) return 'input-wrapper';
+      if (el.matches('[data-field-frame]')) return 'field-frame';
+      if (el.matches('[data-slot=readonly-field]')) return 'readonly';
+      if (el.matches('[data-slot=select-trigger]')) return 'select-trigger';
+      if (el.localName === 'button') return 'combobox';
+      if (el.localName === 'select') return 'native-select';
+      if (el.localName === 'textarea') return 'textarea';
+      return 'input';
+    }
+    function scopeOf(el) {
+      var dialog = el.closest('[role=dialog],[role=alertdialog]');
+      if (dialog) return { name: 'dialog:' + dialogs.indexOf(dialog), root: dialog };
+      var main = el.closest('#main');
+      if (main) return { name: 'main', root: main };
+      return { name: 'page', root: null };
+    }
+    function layoutOf(el) {
+      var cs = style(el);
+      if (cs.display === 'grid' || cs.display === 'inline-grid') return 'grid';
+      if (cs.display === 'flex' || cs.display === 'inline-flex') {
+        return cs.flexDirection === 'column' || cs.flexDirection === 'column-reverse'
+          ? 'flex-col'
+          : 'flex-row';
+      }
+      return 'other';
+    }
+    function ancestry(el, scopeRoot) {
+      var out = [];
+      for (var n = el.parentElement; n && n !== htmlEl && n !== bodyEl; n = n.parentElement) {
+        out.push({ id: containerId(n), layout: layoutOf(n) });
+        if (n === scopeRoot) break;
+      }
+      return out;
+    }
+    function hasLargeTextClass(el) {
+      for (var i = 0; i < el.classList.length; i++) {
+        if (LARGE_TEXT_CLASS_RE.test(el.classList[i])) return true;
+      }
+      return false;
+    }
+    function labelOf(control, textEl) {
+      var sources = [textEl, control];
+      var lab = null;
+      for (var i = 0; i < sources.length && !lab; i++) {
+        if (sources[i].labels && sources[i].labels.length) lab = sources[i].labels[0];
+      }
+      if (!lab) {
+        var ref = textEl.getAttribute('aria-labelledby') || control.getAttribute('aria-labelledby');
+        if (ref) lab = document.getElementById(ref.trim().split(/\s+/)[0]);
+      }
+      return lab && visible(lab) ? lab : null;
+    }
+    function canvas() {
+      if (!canvasCtx) {
+        canvasCtx =
+          typeof OffscreenCanvas !== 'undefined'
+            ? new OffscreenCanvas(1, 1).getContext('2d')
+            : document.createElement('canvas').getContext('2d');
+      }
+      return canvasCtx;
+    }
+    // canvas mirrors rendering: font-style/weight/size/family, letter-spacing, upper/lower case
+    function inkWidth(cs, text) {
+      if (text === '') return 0;
+      var ctx = canvas();
+      ctx.font = cs.fontStyle + ' ' + cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily;
+      if ('letterSpacing' in ctx) {
+        ctx.letterSpacing = '0px';
+        ctx.letterSpacing =
+          cs.letterSpacing && cs.letterSpacing !== 'normal' ? cs.letterSpacing : '0px';
+      }
+      var shown =
+        cs.textTransform === 'uppercase'
+          ? text.toUpperCase()
+          : cs.textTransform === 'lowercase'
+            ? text.toLowerCase()
+            : text;
+      return ctx.measureText(shown).width;
+    }
+    function adornmentsOf(control, b) {
+      var out = [];
+      var seen = new Set();
+      var host = control;
+      for (
+        var level = 0;
+        level <= ADORNMENT_LEVELS && host && host !== bodyEl && host !== htmlEl;
+        level++
+      ) {
+        var all = host.querySelectorAll('*');
+        for (var i = 0; i < all.length; i++) {
+          var el = all[i];
+          if (seen.has(el)) continue;
+          seen.add(el);
+          if (el.contains(control) || style(el).position !== 'absolute' || !rendered(el)) continue;
+          var a = box(el);
+          var overlapX = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+          var overlapY = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+          if (overlapX <= ADORNMENT_MIN_OVERLAP_PX || overlapY <= ADORNMENT_MIN_OVERLAP_PX) continue;
+          if (a.w >= b.w * ADORNMENT_OVERLAY_RATIO && a.h >= b.h * ADORNMENT_OVERLAY_RATIO) continue;
+          out.push({
+            x: a.x,
+            y: a.y,
+            w: a.w,
+            h: a.h,
+            side: a.x + a.w / 2 < b.x + b.w / 2 ? 'left' : 'right',
+          });
+        }
+        host = host.parentElement;
+      }
+      return out;
+    }
+
+    function controlFact(el, id) {
+      var kind = kindOf(el);
+      var textEl = el.matches('input,select,textarea')
+        ? el
+        : el.querySelector(INNER_TEXT_SELECTOR) || el;
+      var cs = style(el);
+      var tcs = style(textEl);
+      var b = box(el);
+      var scope = scopeOf(el);
+      var lab = labelOf(el, textEl);
+      var labelBox = lab ? box(lab) : null;
+      var placeholder = collapse(textEl.getAttribute('placeholder'));
+      var name =
+        (lab && collapse(lab.textContent)) ||
+        collapse(el.getAttribute('aria-label') || textEl.getAttribute('aria-label')) ||
+        placeholder;
+      var tr = textEl.getBoundingClientRect();
+      var contentLeft = tr.left + scrollX + px(tcs.borderLeftWidth) + px(tcs.paddingLeft);
+      var contentRight = tr.right + scrollX - px(tcs.borderRightWidth) - px(tcs.paddingRight);
+      var isSelect = textEl.localName === 'select';
+      var longest = null;
+      if (isSelect) {
+        longest = 0;
+        for (var i = 0; i < textEl.options.length; i++) {
+          var option = textEl.options[i];
+          longest = Math.max(longest, inkWidth(tcs, collapse(option.label || option.text)));
+        }
+      }
+      var valueEl = el.querySelector('[data-slot=select-value]');
+      var borderWidth = px(cs.borderTopWidth);
+      var fontSize = px(tcs.fontSize);
+      return {
+        type: 'control',
+        id: id,
+        key: keyed(kind, name),
+        kind: kind,
+        tag: el.localName,
+        scope: scope.name,
+        ancestors: ancestry(el, scope.root),
+        x: b.x,
+        y: b.y,
+        w: b.w,
+        h: b.h,
+        borderRadius: Math.max(
+          px(cs.borderTopLeftRadius),
+          px(cs.borderTopRightRadius),
+          px(cs.borderBottomRightRadius),
+          px(cs.borderBottomLeftRadius),
+        ),
+        borderWidth: borderWidth,
+        borderColor: borderWidth > 0 && cs.borderTopStyle !== 'none' ? cs.borderTopColor : 'none',
+        backgroundColor: cs.backgroundColor,
+        fontSize: fontSize,
+        largeText: fontSize >= LARGE_TEXT_MIN_PX || hasLargeTextClass(el) || hasLargeTextClass(textEl),
+        label: lab
+          ? {
+              fontSize: px(style(lab).fontSize),
+              gap: b.y - (labelBox.y + labelBox.h),
+              above: labelBox.y + labelBox.h <= b.y + 1 && !lab.contains(el),
+            }
+          : null,
+        contentLeft: contentLeft,
+        contentRight: contentRight,
+        contentWidth: contentRight - contentLeft,
+        placeholderInkWidth: placeholder === '' ? null : inkWidth(tcs, placeholder),
+        optionCount: isSelect ? textEl.options.length : null,
+        longestOptionInkWidth: longest,
+        valueOverflowX: Boolean(valueEl) && valueEl.scrollWidth > valueEl.clientWidth + 1,
+        valueOverflowY: Boolean(valueEl) && valueEl.scrollHeight > valueEl.clientHeight + 1,
+        adornments: adornmentsOf(el, b),
+      };
+    }
+
+    function targetRole(el) {
+      var role = el.getAttribute('role');
+      if (role) return role;
+      if (el.localName === 'a') return 'link';
+      if (el.matches('input,select,textarea')) return 'field';
+      return 'button';
+    }
+    function scrollerOf(el) {
+      for (var n = el.parentElement; n && n !== htmlEl && n !== bodyEl; n = n.parentElement) {
+        var cs = style(n);
+        if (/^(auto|scroll)$/.test(cs.overflowX) || /^(auto|scroll)$/.test(cs.overflowY))
+          return containerId(n);
+      }
+      return null;
+    }
+    function targetAt(node, targetIds) {
+      for (var n = node; n && n.nodeType === 1; n = n.parentElement) {
+        if (targetIds.has(n)) return n;
+        if (n.localName === 'label' && n.control && targetIds.has(n.control)) return n.control;
+      }
+      return null;
+    }
+    function targetFact(el, targetIds) {
+      var role = targetRole(el);
+      var b = box(el);
+      var name =
+        collapse(el.getAttribute('aria-label')) ||
+        (NAMED_BY_TEXT_ROLES[role] ? collapse(el.textContent) : '');
+      var ancestors = [];
+      for (var n = el.parentElement; n; n = n.parentElement) {
+        if (targetIds.has(n)) ancestors.push(targetIds.get(n));
+      }
+      var r = el.getBoundingClientRect();
+      var cx = r.left + r.width / 2;
+      var cy = r.top + r.height / 2;
+      var coveredBy = null;
+      if (cx >= 0 && cy >= 0 && cx < window.innerWidth && cy < window.innerHeight) {
+        var hit = document.elementFromPoint(cx, cy);
+        var other = hit ? targetAt(hit, targetIds) : null;
+        if (other && other !== el && !el.contains(other) && !other.contains(el))
+          coveredBy = targetIds.get(other);
+      }
+      return {
+        type: 'target',
+        id: targetIds.get(el),
+        key: keyed('target-' + role, name),
+        role: role,
+        scope: scopeOf(el).name,
+        scroller: scrollerOf(el),
+        targetAncestors: ancestors,
+        x: b.x,
+        y: b.y,
+        w: b.w,
+        h: b.h,
+        coveredBy: coveredBy,
+      };
+    }
+
+    var elements = [rootEl].concat(Array.prototype.slice.call(rootEl.querySelectorAll('*')));
+    var controlEls = [];
+    var targetEls = [];
+    for (var i = 0; i < elements.length; i++) {
+      var el = elements[i];
+      var field = isField(el);
+      var target = isTarget(el);
+      if ((!field && !target) || excluded(el) || !visible(el)) continue;
+      if (field) controlEls.push(el);
+      if (target) targetEls.push(el);
+    }
+    var facts = [];
+    for (var c = 0; c < controlEls.length; c++) facts.push(controlFact(controlEls[c], facts.length));
+    var targetIds = new Map();
+    for (var t = 0; t < targetEls.length; t++) targetIds.set(targetEls[t], controlEls.length + t);
+    for (var k = 0; k < targetEls.length; k++) facts.push(targetFact(targetEls[k], targetIds));
+    return facts;
+  }
+
+  window.__collectFields = collectFields;
+})();

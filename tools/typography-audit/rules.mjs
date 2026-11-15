@@ -391,9 +391,14 @@ const F1_CHECKS = [
 // The row decides whether a property is inconsistent (spread > tolerance, or values differ); when it
 // is, EVERY member of the row is reported for that property — no majority vote, so no member is
 // singled out as "the odd one". Each finding is keyed by its own member only
-// (`<property>@<memberKey>`), which keeps --compare monotonic under partial fixes: a member moving
-// toward agreement never adds a key, a renamed / re-kinded / removed member changes only its own
-// keys, and a row that becomes consistent loses all of its keys for that property.
+// (`<property>@<memberKey>`, memberKey = kind|name|dup, dup counted page-wide in DOM order).
+// Guarantee: with the same set of measured controls in a row/check, changing values toward
+// agreement never adds a key, and a fully consistent row has no keys for that property. A correct
+// change can still add keys ("exposed, not introduced"): (a) adding / removing / renaming /
+// re-kinding a control renumbers later controls with the same kind|name page-wide; (b) the row or
+// check gains members (newly measured, no longer largeText, re-kinded out of textarea, label moved
+// above, rows merged) while it is inconsistent; (c) derived bottom (y + h) newly mismatches after
+// a height / labelGap fix removes a compensating offset. --compare triage: plan cross-task notes.
 function evaluateF1(facts, emit) {
   for (const row of groupFieldRows(facts)) {
     for (const check of F1_CHECKS) {

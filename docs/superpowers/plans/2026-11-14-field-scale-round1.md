@@ -48,7 +48,14 @@ Tasks 3–7 can be one PR (R1-2) or several; tasks 8–9 and 10–11 likewise. E
 
 - **Shared files.** `apps/web/src/components/ui/field-guards.inventory.test.ts` is created by Task 7; Tasks 9 and 10 append to it. `native-select.inventory.test.ts` fails on Windows today (backslash paths) — Task 5 fixes it; later tasks must not re-fix it.
 - **Baseline label** is `baseline` (Task 2, Step 25). Every visual task compares with `node tools/field-scale/check.mjs --compare baseline <label>`; Task 9 additionally takes its own `t9-before` because it runs after Task 8 changed the same screens.
-- **`results.json`** keeps findings under `cells[].findings` (Task 2 Interfaces). F1 finding keys start with the property (`labelFontSize@…`, `background@…`) and name one control: `<property>@<memberKey>`. When a row is inconsistent for a property, every member of the row is reported for it (no majority vote). A partial fix therefore never adds an F1 key: a control moving toward the rest of the row keeps the row's keys or, once the row is consistent, removes all of them; fixing, relabelling, re-kinding or removing one control never changes another control's key; and `--compare` does not report an old, unfixed mismatch as new. The one way a fix produces a new F1 key: a control that is re-kinded, renamed or measured for the first time (e.g. a plain `<div>` that becomes a `ReadOnlyField`) while its row is still inconsistent for some property is reported under its new key. Task 8 group C does exactly this to "ก่อนภาษี", so that row must end consistent for every F1 property, or the readonly control's keys show up as new.
+- **`results.json`** keeps findings under `cells[].findings` (Task 2 Interfaces). F1 finding keys start with the property (`labelFontSize@…`, `background@…`) and name one control: `<property>@<memberKey>`, where `memberKey` = `kind|name|dup` and `dup` counts controls with the same `kind|name` page-wide in DOM order. When a row is inconsistent for a property, every member of the row is reported for it (no majority vote).
+  - **What is guaranteed:** with the same set of measured controls in a row or check, changing values toward agreement never adds an F1 key, and a fully consistent row has no F1 keys.
+  - **Exposed, not introduced — known ways a correct change can still add F1 keys:**
+    - (a) *dup renumbering.* Adding, removing, renaming or re-kinding a control renumbers every later control with the same `kind|name` page-wide (e.g. unnamed inputs `input||n`, repeated labels จำนวน / ราคา / หมายเหตุ). Their still-open findings come back under new keys.
+    - (b) *row/check membership growth.* A control becomes measured (a plain `<div>` → `ReadOnlyField`), stops being `largeText`, is re-kinded out of `textarea`, gets its label moved above it (it joins the labelled checks), or a geometry change merges two rows. If the row is inconsistent for a property, every member then gets keys for it, including members that did not change.
+    - (c) *derived bottom.* `bottom` = y + h. A height or labelGap fix that removes an offset which used to compensate can make `bottom` mismatch for the first time.
+  - **Compare triage rule (every task's compare step).** If `--compare` exits 1, classify each NEW P1/P2 finding. It is accepted only if it is one of (a)/(b)/(c) above **and** the underlying mismatch already existed on main (for Task 9's `t9-*` compares: in the `t9-before` run) — show it: the same visual mismatch in the baseline screenshot or report, or the control was not measured at baseline. Record each accepted finding in the task report with its finding id, which of (a)/(b)/(c) it is, and the evidence. Anything else must be fixed: a mismatch the change introduced, any `MENU` or other P1 finding (clip/probe failures are never accepted), and any F2/F3/F4 finding. Acceptance lines below that say a compare "exits 0" mean "exits 0, or every new P1/P2 is accepted under this rule".
+  - **Controls first measured by Task 8** (no baseline key exists for them): group A InterestConfig VAT `<div>` (S1-03, this plan ~line 6014), group C ItemsTable "ก่อนภาษี" (S2-07), group D ItemLinesSection "ก่อนภาษี" (S3-04, ~line 6843) and AdjustmentSection ยอดสุทธิ / ผลต่าง (S3-05, ~lines 6906 / 6917). Each becomes a `ReadOnlyField` with a label above it — case (b). What the baseline can list as "fixed" are the other row members' keys; the acceptance for these rows is that the row they now join is fully consistent (zero F1 keys for that row), with the screenshot comparison as the visual proof. If the row is not consistent, the new control's keys — and, for any property the row only now fails, every member's keys — show up as new. These are the rows the task sets out to fix, so the triage rule does not excuse them: fix the row.
 - **Line numbers** in Tasks 8–11 are from commit `b58250bbe`; earlier tasks shift them. Every edit is anchored on an exact unique string — use the string, treat the line as a guide.
 - **Account menu probe** (Task 2) finds the menu by the search box `aria-label="ค้นหารหัส หรือ ชื่อบัญชี"`; Task 6 keeps that label.
 - **Known limits** (accepted in the spec): ~102 `NativeSelect` sites pass `className` through a variable and are invisible to the skin guard; F2 measures synthetic data only; some deep flows (PO payment step, payroll lines, QuickBuy seller step) are reached only where the preview can open them — the tasks say which are manual.
@@ -95,7 +102,7 @@ Tasks 3–7 can be one PR (R1-2) or several; tasks 8–9 and 10–11 likewise. E
   - *Control*: the outermost of `[data-slot=input-wrapper]`, `[data-field-frame]`, `[data-slot=readonly-field]`, `[data-slot=select-trigger]`, `button[role=combobox]`, `select`, `textarea`, `input`.
   - *Row*: same scope, vertical overlap ÷ shorter height ≥ 0.5, and the nearest common ancestor is `flex-row` or `grid`. Rows are the connected components of that relation.
   - `page` (outside `#main` and any dialog) is its own scope on purpose. Only `apps/web/src/components/layout/MainLayout.tsx:189` renders `id="main"`, so LIFF/public pages measured at 390 would otherwise never be measured. Page chrome is compared only with other page chrome.
-  - Checks. The row decides whether a property is inconsistent (thresholds below). Then one finding is emitted for every eligible member of that row — there is no majority vote, so no member is picked as "the odd one". This keeps the finding set monotonic: a partial fix never adds a key (31 / 31 / 44 → 44 / 31 / 44 still reports the same three keys; it does not swap to B), and a row that becomes consistent loses all of its keys for that property.
+  - Checks. The row decides whether a property is inconsistent (thresholds below). Then one finding is emitted for every eligible member of that row — there is no majority vote, so no member is picked as "the odd one". With the same set of measured controls in the row, changing values toward agreement never adds a key (31 / 31 / 44 → 44 / 31 / 44 still reports the same three keys; it does not swap to B), and a row that becomes consistent loses all of its keys for that property. A correct change can still add keys when the controls change (dup renumbering, row membership growth, derived bottom) — see Cross-task notes.
     - height spread > 2px
     - largest-corner radius spread > 1px
     - font spread > 0.5px
@@ -702,9 +709,14 @@ const F1_CHECKS = [
 // The row decides whether a property is inconsistent (spread > tolerance, or values differ); when it
 // is, EVERY member of the row is reported for that property — no majority vote, so no member is
 // singled out as "the odd one". Each finding is keyed by its own member only
-// (`<property>@<memberKey>`), which keeps --compare monotonic under partial fixes: a member moving
-// toward agreement never adds a key, a renamed / re-kinded / removed member changes only its own
-// keys, and a row that becomes consistent loses all of its keys for that property.
+// (`<property>@<memberKey>`, memberKey = kind|name|dup, dup counted page-wide in DOM order).
+// Guarantee: with the same set of measured controls in a row/check, changing values toward
+// agreement never adds a key, and a fully consistent row has no keys for that property. A correct
+// change can still add keys ("exposed, not introduced"): (a) adding / removing / renaming /
+// re-kinding a control renumbers later controls with the same kind|name page-wide; (b) the row or
+// check gains members (newly measured, no longer largeText, re-kinded out of textarea, label moved
+// above, rows merged) while it is inconsistent; (c) derived bottom (y + h) newly mismatches after
+// a height / labelGap fix removes a compensating offset. --compare triage: plan cross-task notes.
 function evaluateF1(facts, emit) {
   for (const row of groupFieldRows(facts)) {
     for (const check of F1_CHECKS) {
@@ -1820,7 +1832,7 @@ Spec §5 + §7 R1-1: a field-scale checker that **runs on this Windows machine**
 - Read-only references: `tools/local-preview.mjs:9-10,160-166` (`repo`, `previewStatus()` → `{state.port, info.documentUrl, info.sourceRevision, running, current}`), `apps/api/e2e/support/chat-credit-preview.ts:637-711` (preview rewrites `/api/admin`→`/api`, serves an allow-list, everything else `501 LOCAL_PREVIEW_UNSUPPORTED`; actor is a fixed OWNER — **no login step exists in any `tools/check-local-*.mjs`**, `GET /api/admin/auth/me` just answers), `tools/check-mobile-density.mjs:50` (dark theme = `localStorage.setItem('theme', 'dark')` in an init script)
 
 **Interfaces:**
-- Consumes (Task 1): `window.__collectFields({ exclude, root })` injected from `tools/typography-audit/collect.js` (via `page.addScriptTag({ path })`) → `FieldFact[]`; `evaluateFields(facts, { width })` exported from `tools/typography-audit/rules.mjs` → `Finding[]`. This task relies on each Finding having `rule` (`'F1'|'F2'|'F3'|'F4'`), `severity` (`'P1'|'P2'|'P3'`) and a run-stable string `key`; `detail` is optional (used only as an identity fallback when `key` is missing). F1 keys name one control (`<property>@<memberKey>`) and every member of an inconsistent row is reported, so a partial fix never adds keys: when a later task fixes one control in a row, the other controls' still-open F1 findings keep their ids (the whole row's keys disappear once it is consistent) and compare does not report them as new. Only a control that is re-kinded, renamed or newly measured while its row is still inconsistent gets new keys.
+- Consumes (Task 1): `window.__collectFields({ exclude, root })` injected from `tools/typography-audit/collect.js` (via `page.addScriptTag({ path })`) → `FieldFact[]`; `evaluateFields(facts, { width })` exported from `tools/typography-audit/rules.mjs` → `Finding[]`. This task relies on each Finding having `rule` (`'F1'|'F2'|'F3'|'F4'`), `severity` (`'P1'|'P2'|'P3'`) and a run-stable string `key`; `detail` is optional (used only as an identity fallback when `key` is missing). F1 keys name one control (`<property>@<memberKey>`, `memberKey` = `kind|name|dup`) and every member of an inconsistent row is reported. Guarantee: with the same set of measured controls in a row or check, changing values toward agreement never adds an F1 key, and a fully consistent row has no F1 keys. A correct change can still add keys (exposed, not introduced): (a) dup renumbering when a control is added, removed, renamed or re-kinded; (b) row/check membership growth (newly measured control, no longer `largeText`, re-kinded out of `textarea`, label moved above, rows merged); (c) derived `bottom` newly mismatching after a height/labelGap fix. Later tasks triage such findings with the compare triage rule in the cross-task notes.
 - Consumes (R1-2 contract for the probe): `AccountSearchDropdown` keeps its search box `aria-label="ค้นหารหัส หรือ ชื่อบัญชี"` and its trigger keeps the selected account's name as text.
 - Produces:
   - CLI `node tools/field-scale/check.mjs --label <name> [--routes <id,id>] [--widths 1440,1024,390] [--themes light,dark]` → `.tmp/field-scale/<name>/{results.json, report.md, <route>-<width>-<theme>.png, <route>-<width>-<theme>-<probe>.png}`; exit 0 (report, not a gate), 2 on usage error / preview not running.
@@ -3241,7 +3253,7 @@ Open `.tmp/field-scale/baseline/report.md` and confirm:
 
 - [ ] **Step 27: Put the baseline summary into the R1-1 PR description (not the repo)**
 
-Do not commit anything from `.tmp/`. When the R1-1 PR is opened (not in this task — do not push), its description must contain a section "Baseline บน main (UI ยังไม่เปลี่ยน)" with: the header bullets of `.tmp/field-scale/baseline/report.md` (revision, widths, themes, open findings by severity), the tables "ข้อพบตามกฎ", "เมนูบัญชีถูกตัด (S2-01 / S2-02)" and "รายหน้า", the counts of "cell ที่วัดไม่ครบ" and "API ที่ตอบ error", plus the Windows note required by spec §8: "รันบน Windows: `node --test tools/field-scale/check.test.mjs` (17 pass), `npm run local:preview`, `node tools/field-scale/check.mjs --label baseline`; `npm run local:check` ไม่รองรับ Windows — ต้องรันบน Linux/CI". Save that text now as `.tmp/field-scale/baseline/pr-summary.md` (gitignored) so the PR author can paste it. Later PRs prove "ไม่เพิ่มจาก baseline" with `node tools/field-scale/check.mjs --label <pr-label>` then `node tools/field-scale/check.mjs --compare baseline <pr-label>` (exit 0 = no new P1/P2).
+Do not commit anything from `.tmp/`. When the R1-1 PR is opened (not in this task — do not push), its description must contain a section "Baseline บน main (UI ยังไม่เปลี่ยน)" with: the header bullets of `.tmp/field-scale/baseline/report.md` (revision, widths, themes, open findings by severity), the tables "ข้อพบตามกฎ", "เมนูบัญชีถูกตัด (S2-01 / S2-02)" and "รายหน้า", the counts of "cell ที่วัดไม่ครบ" and "API ที่ตอบ error", plus the Windows note required by spec §8: "รันบน Windows: `node --test tools/field-scale/check.test.mjs` (17 pass), `npm run local:preview`, `node tools/field-scale/check.mjs --label baseline`; `npm run local:check` ไม่รองรับ Windows — ต้องรันบน Linux/CI". Save that text now as `.tmp/field-scale/baseline/pr-summary.md` (gitignored) so the PR author can paste it. Later PRs prove "ไม่เพิ่มจาก baseline" with `node tools/field-scale/check.mjs --label <pr-label>` then `node tools/field-scale/check.mjs --compare baseline <pr-label>` (exit 0 = no new P1/P2; a PR may also pass when the compare exits 1 and every new P1/P2 is accepted under the compare triage rule in the cross-task notes, with each accepted finding and its evidence listed in the PR — never a `MENU`/P1 finding).
 
 ---
 
@@ -5102,7 +5114,7 @@ Expected:
    node tools/field-scale/check.mjs --compare baseline t6-account-menu
    ```
 
-   Expected: exit code 0, and no new P1/P2 findings on these routes. The account-menu finding(s) are listed as **fixed**.
+   Expected: the compare exits 0, or every new P1/P2 is accepted under the compare triage rule (cross-task notes). The account-menu finding(s) are listed as **fixed**, and there is no `MENU` or other P1 finding — those are never accepted.
 5. Stop the preview server (Ctrl+C in its window).
 
 - [ ] **Step 9: Commit**
@@ -6193,14 +6205,14 @@ node tools/field-scale/check.mjs --compare baseline t8-a
 ```
 
 Expected:
-- The compare exits with code 0, reports no new P1/P2 findings, and lists the baseline F1 findings for these files under "fixed":
+- The compare exits 0, or every new P1/P2 is accepted under the compare triage rule (cross-task notes), and lists the baseline F1 findings for these files under "fixed":
   - CompanySettings VAT row label/bottom offset
   - AuditLogs "รายการ" border and background
   - ChatbotFinance 3-column row
-  - InterestConfig VAT height
+- InterestConfig VAT (S1-03): the plain `<div>` was not measured at baseline, so there is no baseline key for it and nothing to list as fixed. It is measured for the first time as a `ReadOnlyField`. Acceptance: the row it now joins is fully consistent — zero F1 keys for that row in `.tmp/field-scale/t8-a/results.json` — and `settings-finance-interest-1440-light.png` compared with the baseline screenshot shows the VAT box at the same height as its neighbours.
 - Open `.tmp/field-scale/t8-a/settings-finance-interest-1440-dark.png` and confirm the read-only VAT value is readable in dark mode (spec §9).
 
-If the compare exits 1, read the new findings, fix them, and re-run.
+If the compare exits 1, triage the new findings under the compare triage rule (cross-task notes): fix every finding the rule does not accept, re-run, and record the accepted ones in the task report.
 
 - [ ] **Step 5: Commit group A**
 
@@ -6496,7 +6508,7 @@ node tools/field-scale/check.mjs --compare baseline t8-b
 ```
 
 Expected:
-- The compare exits 0 with no new P1/P2. The TodoForm tag-height F1 finding and the PaymentSection 40px-beside-44px finding are listed as fixed.
+- The compare exits 0, or every new P1/P2 is accepted under the compare triage rule (cross-task notes). The TodoForm tag-height F1 finding and the PaymentSection 40px-beside-44px finding are listed as fixed.
 - In `.tmp/field-scale/t8-b/repossessions-1440-light.png` and the `stock-transfers*-1440-light.png` screenshots, the filter dropdown is 224px wide, not page-wide.
 - At 390 it is full width.
 
@@ -6656,7 +6668,8 @@ node tools/field-scale/check.mjs --compare baseline t8-c
 ```
 
 Expected:
-- The compare exits 0 with no new P1/P2. The S2-07 F1 findings are listed as fixed: the "ก่อนภาษี" height and font size, and the number inputs' light border next to the select's dark border.
+- The compare exits 0, or every new P1/P2 is accepted under the compare triage rule (cross-task notes). The S2-07 F1 findings of the measured controls are listed as fixed: the number inputs' light border next to the select's dark border.
+- "ก่อนภาษี" (S2-07) was a plain `<div>` at baseline — not measured, so it has no baseline key and its height/font size cannot be listed as fixed. Acceptance: the item row it now joins as a `ReadOnlyField` is fully consistent — zero F1 keys for that row in `.tmp/field-scale/t8-c/results.json` — and `other-income-new-1440-light.png` compared with the baseline screenshot shows "ก่อนภาษี" at the same height and font size as the inputs beside it.
 - In `.tmp/field-scale/t8-c/other-income-new-1440-dark.png` the read-only value is readable.
 
 - [ ] **Step 13: Commit group C**
@@ -7006,11 +7019,10 @@ node tools/field-scale/check.mjs --compare baseline t8-d
 ```
 
 Expected:
-- The compare exits 0 with no new P1/P2. These findings are listed as fixed:
-  - S3-04: "ก่อนภาษี" is 38px with a bottom offset.
-  - S3-05: the two value boxes have a different height, radius and border.
+- The compare exits 0, or every new P1/P2 is accepted under the compare triage rule (cross-task notes). These findings are listed as fixed:
   - S3-07: F2 truncation of the payroll account select.
   - S3-09: F2 longest-option truncation on "วิธีจ่าย"/"เดือน".
+- S3-04 ("ก่อนภาษี" 38px with a bottom offset) and S3-05 (ยอดสุทธิ / ผลต่าง value boxes with a different height, radius and border) were plain `<div>`s at baseline — not measured, so there are no baseline keys for them to list as fixed. Acceptance: each row they now join as `ReadOnlyField`s is fully consistent — zero F1 keys for those rows in `.tmp/field-scale/t8-d/results.json` — and `expenses-new-1440-light.png` compared with the baseline screenshot shows the boxes at the same height, radius and border as their neighbours, bottoms aligned.
 - Check `.tmp/field-scale/t8-d/expenses-new-1440-dark.png` and confirm the S3-05 success/warning tones are readable in dark mode.
 
 - [ ] **Step 17: Commit group D**
@@ -7040,7 +7052,7 @@ Expected:
 - The type check reports 0 errors.
 - Lint reports 0 errors. In particular, there are no unused imports: `formControlClass` in AuditLogs, `formTextareaClass` in ChatbotFinance, and `cn` in ItemsTable are all used.
 - Every vitest file passes, including `native-select.inventory.test.ts`. No new raw `<select>` was added. That test skips test files and `__tests__`.
-- The compare exits 0 with no new P1/P2 findings, and all 13 appendix rows are listed as fixed.
+- The compare exits 0, or every new P1/P2 is accepted under the compare triage rule (cross-task notes). All 13 appendix rows are fixed: rows whose controls were measured at baseline are listed under "fixed"; S1-03, S2-07 "ก่อนภาษี", S3-04 and S3-05 (controls first measured in this task) are proven by zero F1 keys for their rows plus the screenshot comparison, as in the group A, C and D expectations.
 
 If a finding is intentionally kept, add it with a Thai reason to `tools/field-scale/allow.json` and commit that file using the same commit format as above.
 
@@ -7825,7 +7837,7 @@ Expected:
 - eslint prints nothing.
 - vitest: every test file passes, 0 failed.
 - Guard: still FAIL, now `expected [ …(101) ] to deeply equal []`.
-- Compare: no new P1/P2 findings and `exit=0`. F1 findings on inbox, canned-response and rich-menu pages may go down.
+- Compare: `exit=0`, or every new P1/P2 is accepted under the compare triage rule (cross-task notes). F1 findings on inbox, canned-response and rich-menu pages may go down.
 
 - [ ] **Step 10: Area A — commit**
 
@@ -7997,7 +8009,7 @@ node tools/field-scale/check.mjs --compare t9-before t9-b; echo "exit=$?"
 Expected:
 - `Web: OK`, no eslint output, every related test passes.
 - Guard: FAIL with `expected [ …(72) ] to deeply equal []`.
-- Compare: `exit=0`.
+- Compare: `exit=0`, or every new P1/P2 is accepted under the compare triage rule (cross-task notes).
 
 - [ ] **Step 13: Area B — commit**
 
@@ -8130,7 +8142,7 @@ node tools/field-scale/check.mjs --compare t9-before t9-c1; echo "exit=$?"
 Expected:
 - `Web: OK`, no eslint output, related tests pass.
 - Guard: FAIL with `expected [ …(54) ] to deeply equal []`.
-- Compare: `exit=0`.
+- Compare: `exit=0`, or every new P1/P2 is accepted under the compare triage rule (cross-task notes).
 
 - [ ] **Step 16: Area C1 — commit**
 
@@ -8252,7 +8264,7 @@ node tools/field-scale/check.mjs --compare t9-before t9-c2; echo "exit=$?"
 Expected:
 - `Web: OK`, no eslint output, related tests pass.
 - Guard: FAIL with `expected [ …(42) ] to deeply equal []`.
-- Compare: `exit=0`.
+- Compare: `exit=0`, or every new P1/P2 is accepted under the compare triage rule (cross-task notes).
 
 - [ ] **Step 19: Area C2 — commit**
 
@@ -8358,7 +8370,7 @@ node tools/field-scale/check.mjs --compare t9-before t9-d; echo "exit=$?"
 Expected:
 - `Web: OK`, no eslint output, related tests pass.
 - Guard: FAIL with `expected [ …(27) ] to deeply equal []`.
-- Compare: `exit=0`.
+- Compare: `exit=0`, or every new P1/P2 is accepted under the compare triage rule (cross-task notes).
 
 - [ ] **Step 22: Area D — commit**
 
@@ -8539,7 +8551,7 @@ node tools/field-scale/check.mjs --compare t9-before t9-e; echo "exit=$?"
 Expected:
 - `Web: OK`, no eslint output, related tests pass. `CreateContactModal`, `CustomerEditModal`, `CustomerCreateModal` and `EditCustomerDialog` are among R1-4's 9 forms; their tests must still pass.
 - Guard: **PASS**, every test in `field-guards.inventory.test.ts` green.
-- Compare: `exit=0`.
+- Compare: `exit=0`, or every new P1/P2 is accepted under the compare triage rule (cross-task notes).
 
 - [ ] **Step 25: Area E — commit**
 
@@ -9186,9 +9198,9 @@ node tools/field-scale/check.mjs --compare baseline r1-4
 node -e "const j=require('./.tmp/field-scale/r1-4/results.json');const all=j.cells.flatMap(c=>c.findings.filter(f=>!f.allowed));const f1=all.filter(f=>f.rule==='F1'&&/^label(FontSize|Gap)@/.test(f.key));console.log('F1 label findings:',f1.length);for(const f of f1)console.log(f.route,f.width,f.theme,JSON.stringify(f.detail??f));"
 ```
 Expected:
-- `--compare` exits 0 and prints no new P1/P2.
+- `--compare` exits 0, or every new P1/P2 is accepted under the compare triage rule (cross-task notes).
 - The last command prints `F1 label findings: 0`.
-- F1 height/radius/border findings may remain on these forms. Those belong to the control normalisation in R1-3/R2, but they must not exceed the baseline.
+- F1 height/radius/border findings may remain on these forms. Those belong to the control normalisation in R1-3/R2, but they must not exceed the baseline, except for findings accepted under the compare triage rule (cross-task notes).
 
 If any label finding remains, open `.tmp/field-scale/r1-4/<route>-<width>-<theme>.png`, find the label in the table above, fix it, then repeat Steps 26–30.
 
@@ -9865,7 +9877,7 @@ node tools/field-scale/check.mjs --label r1-3-labels --routes <ids>
 node tools/field-scale/check.mjs --compare baseline r1-3-labels
 ```
 Expected:
-- no new P1/P2 compared with baseline on these routes;
+- the compare exits 0, or every new P1/P2 compared with baseline on these routes is accepted under the compare triage rule (cross-task notes);
 - F1 `labelFontSize` / `labelGap` findings on these routes are gone. Remaining label findings may only come from the intentionally skipped labels in the table (checkbox labels, `<th>`, payroll table cells, Todo section headings) or from routes whose steps do not open the dialog.
 
 List any dialog the route steps do not open (e.g. Repossessions settlement/refund/ready-for-sale/update modals, Todo dialog, RecurringBillDialog, StockTransfers receive/ship modals) in the PR as "not measured". Label-only changes must not create F2–F4 findings. If one appears, investigate before committing.

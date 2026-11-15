@@ -99,6 +99,24 @@ const M = {
   suppliers: mock(/^\/suppliers$/, { data: [], total: 0, page: 1, totalPages: 1 }),
   purchaseOrders: mock(/^\/purchase-orders$/, EMPTY_PAGE),
   roleMap: mock(/^\/settings\/role-map$/, ROLE_MAP_ROWS),
+  // The preview's GET /branches is a bare findMany without `_count` — BranchesPage.tsx:158 reads
+  // b._count.users and the page crashes ("Cannot read properties of undefined (reading 'users')").
+  branches: mock(/^\/branches$/, [
+    {
+      id: 'preview-branch-1', name: 'สาขาตัวอย่าง (คลังหลัก)', location: 'กรุงเทพมหานคร', phone: '020000000',
+      isActive: true, isMainWarehouse: true, shopCashAccountCode: 'S11-1101', shopCashFloat: '2000',
+      _count: { users: 5, products: 120, contracts: 30 },
+    },
+    {
+      id: 'preview-branch-2', name: 'สาขาตัวอย่าง 2', location: null, phone: null,
+      isActive: true, isMainWarehouse: false, shopCashAccountCode: null, shopCashFloat: '0',
+      _count: { users: 2, products: 40, contracts: 8 },
+    },
+  ]),
+  // The preview's fixed actor is OWNER, and /todos is not in OWNER's menu (config/menu.ts OWNER_CONFIG) —
+  // MainLayout redirects it to "/". Present the actor as BRANCH_MANAGER (whose menu has /todos) to the
+  // web app only; the preview API still answers as OWNER.
+  branchManagerActor: mock(/^\/auth\/me$/, (url, ctx) => ({ ...ctx.me, role: 'BRANCH_MANAGER' })),
 };
 
 const clickButton = (name) => async (page) => {
@@ -166,8 +184,9 @@ export const ROUTES = [
     mocks: [] },
   { id: 'interest-config-form', path: '/settings/finance/interest', appendix: ['S1-03'],
     open: clickButton('+ สร้าง การตั้งค่า'), mocks: [M.interestConfigs] },
-  { id: 'branch-create', path: '/branches', appendix: ['S1-06', 'S3-12'], open: clickButton('+ เพิ่มสาขา'), mocks: [] },
-  { id: 'todo-form', path: '/todos', appendix: ['S2-05'], open: clickButton('เพิ่มงาน'), mocks: [] },
+  { id: 'branch-create', path: '/branches', appendix: ['S1-06', 'S3-12'], open: clickButton('+ เพิ่มสาขา'),
+    mocks: [M.branches] },
+  { id: 'todo-form', path: '/todos', appendix: ['S2-05'], open: clickButton('เพิ่มงาน'), mocks: [M.branchManagerActor] },
   { id: 'purchase-order-wizard', path: '/purchase-orders', appendix: ['S2-08'], open: clickButton('+ ซื้อสินค้า'),
     mocks: [M.purchaseOrders, M.suppliers] },
   { id: 'account-role-edit', path: '/settings/access/account-roles', appendix: ['S3-03'], mocks: [M.roleMap],
@@ -181,8 +200,14 @@ export const ROUTES = [
     } },
   { id: 'customer-edit-dialog', path: (ctx) => (ctx.customerId ? `/customers/${ctx.customerId}` : null),
     appendix: ['S3-12'], open: clickButton('แก้ไขข้อมูล'), mocks: [] },
-  { id: 'contract-customer-create', path: '/contracts/create', appendix: ['S3-12'], open: clickButton('เพิ่มลูกค้าใหม่'),
-    mocks: [] },
+  // Step 1 (เลือกสินค้า) must have a product before "ถัดไป" reaches the customer step — local wizard state only
+  // (useContractCreateData.ts writes only on the final submit).
+  { id: 'contract-customer-create', path: '/contracts/create', appendix: ['S3-12'], mocks: [],
+    open: async (page) => {
+      await page.locator('div.cursor-pointer').filter({ hasText: 'สาขา:' }).first().click();
+      await clickButton('ถัดไป')(page);
+      await clickButton('เพิ่มลูกค้าใหม่')(page);
+    } },
   { id: 'contract-customer-edit', path: (ctx) => ctx.contractPath, appendix: ['S3-12'], open: clickButton('แก้ไข'),
     mocks: [] },
   { id: 'supplier-form', path: '/suppliers', appendix: ['S3-12'], open: clickButton('เพิ่มผู้จัดจำหน่าย'),

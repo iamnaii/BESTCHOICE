@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import {
   UsageError,
   applyAllow,
@@ -226,4 +228,23 @@ test('routes: common mocks answer from the CPA chart of accounts and the preview
   assert.ok(perms.permissions.includes('INCOME_POST'));
   const roleMap = ROUTES.find((r) => r.id === 'account-role-edit').mocks[0].json();
   assert.ok(roleMap.every((row) => row.accountName), 'role-map names come from the CSV');
+});
+
+const CHECK = fileURLToPath(new URL('./check.mjs', import.meta.url));
+const runCheck = (...args) => spawnSync(process.execPath, [CHECK, ...args], { encoding: 'utf8' });
+
+test('check.mjs: usage errors exit 2 before touching the preview', () => {
+  const noLabel = runCheck();
+  assert.equal(noLabel.status, 2, noLabel.stderr);
+  assert.match(noLabel.stderr, /--label is required/);
+  assert.match(noLabel.stderr, /usage: node tools\/field-scale\/check\.mjs --label <name>/);
+  const badRoute = runCheck('--label', 'x', '--routes', 'no-such-route');
+  assert.equal(badRoute.status, 2, badRoute.stderr);
+  assert.match(badRoute.stderr, /unknown route id\(s\): no-such-route/);
+});
+
+test('check.mjs: --compare needs both runs on disk', () => {
+  const r = runCheck('--compare', 'field-scale-test-missing-a', 'field-scale-test-missing-b');
+  assert.equal(r.status, 2, r.stderr);
+  assert.match(r.stderr, /no results for "field-scale-test-missing-a"/);
 });

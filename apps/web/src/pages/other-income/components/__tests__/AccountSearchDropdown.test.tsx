@@ -95,6 +95,25 @@ describe('AccountSearchDropdown — portalled menu (S2-01/S2-02)', () => {
 });
 
 describe('AccountSearchDropdown — keyboard', () => {
+  it.each([['{Tab}'], ['{Shift>}{Tab}{/Shift}']])(
+    'Tab (%s) in the search box closes the menu without picking and keeps focus on the trigger',
+    async (keys) => {
+      const user = userEvent.setup();
+      const onPick = vi.fn();
+      render(<Harness filter={only42} initialValue="42-1105" onPick={onPick} />);
+      const trigger = screen.getByRole('combobox');
+      await user.click(trigger);
+      expect(screen.getByRole('textbox', { name: SEARCH })).toHaveFocus();
+
+      await user.keyboard(keys);
+
+      expect(screen.queryByRole('listbox')).toBeNull();
+      expect(onPick).not.toHaveBeenCalled();
+      expect(trigger).toHaveTextContent('รายได้ดอกเบี้ยธนาคาร');
+      await waitFor(() => expect(document.activeElement).toBe(trigger));
+    },
+  );
+
   it('ArrowDown/ArrowUp move the active option (skipping blocked), Enter selects, focus returns', async () => {
     const user = userEvent.setup();
     const onPick = vi.fn();
@@ -148,6 +167,30 @@ describe('AccountSearchDropdown — keyboard', () => {
   });
 });
 
+describe('AccountSearchDropdown — trigger accessible name', () => {
+  it("defaults to 'บัญชี'", () => {
+    render(<Harness filter={only42} />);
+    expect(screen.getByRole('combobox', { name: 'บัญชี' })).toHaveAttribute('data-slot', 'select-trigger');
+  });
+
+  it('uses a custom aria-label', () => {
+    render(<Harness filter={only42} aria-label="บัญชีรายได้" />);
+    expect(screen.getByRole('combobox', { name: 'บัญชีรายได้' })).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'บัญชี' })).toBeNull();
+  });
+
+  it('aria-labelledby wins over the default label', () => {
+    render(
+      <>
+        <span id="acc-label">บัญชีที่ใช้</span>
+        <Harness filter={only42} aria-labelledby="acc-label" />
+      </>,
+    );
+    const trigger = screen.getByRole('combobox', { name: 'บัญชีที่ใช้' });
+    expect(trigger).not.toHaveAttribute('aria-label');
+  });
+});
+
 describe('AccountSearchDropdown — blocked codes', () => {
   it('shows the blocked reason as text and ignores clicks on the blocked row', async () => {
     const user = userEvent.setup();
@@ -168,6 +211,18 @@ describe('AccountSearchDropdown — blocked codes', () => {
     await user.click(blocked);
     expect(onPick).not.toHaveBeenCalled();
     expect(screen.getByRole('listbox')).toBeInTheDocument();
+  });
+
+  it('a mouse click on a blocked row does not call onChange and keeps the menu open', async () => {
+    const user = userEvent.setup();
+    const onPick = vi.fn();
+    render(<Harness filter={only42} blockedCodes={['42-1104']} onPick={onPick} />);
+    await user.click(screen.getByRole('combobox'));
+    fireEvent.mouseDown(screen.getByRole('option', { name: /รายได้หักเงินเดือน/ }));
+    fireEvent.click(screen.getByRole('option', { name: /รายได้หักเงินเดือน/ }));
+    expect(onPick).not.toHaveBeenCalled();
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+    expect(screen.getByRole('combobox')).toHaveAttribute('aria-expanded', 'true');
   });
 
   it('does not open when disabled', async () => {

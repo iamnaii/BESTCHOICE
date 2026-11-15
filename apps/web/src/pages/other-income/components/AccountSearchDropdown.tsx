@@ -25,9 +25,14 @@ interface Props {
   blockedCodes?: string[];
   /** Reason shown as secondary text (and tooltip) on blocked rows. */
   blockedReason?: string;
+  /** Accessible name of the trigger. Defaults to 'บัญชี' unless aria-labelledby is given. */
+  'aria-label'?: string;
+  /** Id(s) of the element(s) that label the trigger; wins over the default aria-label. */
+  'aria-labelledby'?: string;
 }
 
 const DEFAULT_BLOCKED_REASON = 'บัญชีนี้ยังไม่รองรับในระบบ';
+const DEFAULT_TRIGGER_LABEL = 'บัญชี';
 
 /**
  * Searchable account-code dropdown — used by ItemsTable (42-XXXX), AdjustmentTable,
@@ -37,7 +42,9 @@ const DEFAULT_BLOCKED_REASON = 'บัญชีนี้ยังไม่รอ
  * card (`overflow-hidden`) / table box (`overflow-x-auto`) around it no longer clips
  * it (S2-01, S2-02). Keyboard: ArrowDown on the button opens; in the search box
  * ArrowUp/ArrowDown move the highlighted row (aria-activedescendant), Enter picks it,
- * Escape closes (Radix). Blocked codes stay listed with their reason as text and are
+ * Escape closes (Radix), Tab closes without picking and keeps focus on the button.
+ * The button is a combobox, so it takes its name from aria-label / aria-labelledby
+ * (default 'บัญชี'), not from its content. Blocked codes stay listed with their reason as text and are
  * skipped by the keyboard. wheel/touchmove stop at the menu so it scrolls inside a
  * modal Dialog (same escape as WizardStackedOverlay). R2-3a replaces the internals
  * with the shared Combobox.
@@ -50,11 +57,14 @@ export function AccountSearchDropdown({
   disabled,
   blockedCodes,
   blockedReason,
+  'aria-label': ariaLabel,
+  'aria-labelledby': ariaLabelledby,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [activeCode, setActiveCode] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const listboxId = useId();
   const { data: groups, isLoading } = useCoaGroups({});
 
@@ -112,6 +122,12 @@ export function AccountSearchDropdown({
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       move(-1);
+    } else if (e.key === 'Tab' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      // Keep focus on the trigger: Radix treats Tab-out as focus-outside and would not
+      // return it, dropping focus to the end of the document.
+      e.preventDefault();
+      changeOpen(false);
+      triggerRef.current?.focus();
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (active) choose(active);
@@ -126,11 +142,14 @@ export function AccountSearchDropdown({
     <Popover open={isOpen} onOpenChange={changeOpen}>
       <PopoverTrigger asChild disabled={disabled}>
         <button
+          ref={triggerRef}
           data-slot="select-trigger"
           type="button"
           role="combobox"
           aria-expanded={isOpen}
           aria-haspopup="listbox"
+          aria-label={ariaLabelledby ? undefined : (ariaLabel ?? DEFAULT_TRIGGER_LABEL)}
+          aria-labelledby={ariaLabelledby}
           disabled={disabled}
           onKeyDown={(e) => {
             if (e.key === 'ArrowDown' && !isOpen) {

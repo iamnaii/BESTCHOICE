@@ -51,10 +51,10 @@ Tasks 3–7 can be one PR (R1-2) or several; tasks 8–9 and 10–11 likewise. E
 - **`results.json`** keeps findings under `cells[].findings` (Task 2 Interfaces). F1 finding keys start with the property (`labelFontSize@…`, `background@…`) and name one control: `<property>@<memberKey>`, where `memberKey` = `kind|name|dup` and `dup` counts controls with the same `kind|name` page-wide in DOM order. When a row is inconsistent for a property, every member of the row is reported for it (no majority vote).
   - **What is guaranteed:** with the same set of measured controls in a row or check, changing values toward agreement never adds an F1 key, and a fully consistent row has no F1 keys.
   - **Exposed, not introduced — known ways a correct change can still add F1 keys:**
-    - (a) *dup renumbering.* Adding, removing, renaming or re-kinding a control renumbers every later control with the same `kind|name` page-wide (e.g. unnamed inputs `input||n`, repeated labels จำนวน / ราคา / หมายเหตุ). Their still-open findings come back under new keys — and a renamed or re-kinded control itself gets new keys while its row is still inconsistent.
+    - (a) *dup renumbering.* Adding, removing, renaming or re-kinding a control renumbers every later control with the same `kind|name` page-wide (e.g. unnamed inputs `input||n`, repeated labels จำนวน / ราคา / หมายเหตุ). Their still-open findings come back under new keys — and a renamed or re-kinded control itself gets new keys while its row is still inconsistent. Clause (a) also covers an F2/F3/F4 key of a renamed or re-kinded control when the finding's detail (geometry/values) is identical to a baseline key that the same compare lists under Fixed; the report must show both keys and the identical detail.
     - (b) *row/check membership growth.* A control becomes measured (a plain `<div>` → `ReadOnlyField`), stops being `largeText`, is re-kinded out of `textarea`, gets its label moved above it (it joins the labelled checks), or a geometry change merges two rows. If the row is inconsistent for a property, every member then gets keys for it, including members that did not change.
     - (c) *derived bottom.* `bottom` = y + h. A height or labelGap fix that removes an offset which used to compensate can make `bottom` mismatch for the first time.
-  - **Compare triage rule (every task's compare step).** If `--compare` exits 1, classify each NEW P1/P2 finding. It is accepted only if it is one of (a)/(b)/(c) above **and** the underlying mismatch already existed on main (for Task 9's `t9-*` compares: in the `t9-before` run) — show it with the same visual mismatch in the baseline screenshot or report. A control that was not measured at baseline has no baseline key, so for it the baseline screenshot itself must show the same mismatch; "not measured" alone is not evidence. Record each accepted finding in the task report with its finding id, which of (a)/(b)/(c) it is, and the evidence. Anything else must be fixed: a mismatch the change introduced, any `MENU` or other P1 finding (clip/probe failures are never accepted), and any F2/F3/F4 finding. Acceptance lines below that say a compare "exits 0" mean "exits 0, or every blocking line is accepted under this rule (including the MENU rule below)".
+  - **Compare triage rule (every task's compare step).** If `--compare` exits 1, classify each NEW P1/P2 finding. It is accepted only if it is one of (a)/(b)/(c) above **and** the underlying mismatch already existed on main (for Task 9's `t9-*` compares: in the `t9-before` run) — show it with the same visual mismatch in the baseline screenshot or report. A control that was not measured at baseline has no baseline key, so for it the baseline screenshot itself must show the same mismatch; "not measured" alone is not evidence. Record each accepted finding in the task report with its finding id, which of (a)/(b)/(c) it is, and the evidence. Anything else must be fixed: a mismatch the change introduced, any `MENU` or other P1 finding (clip/probe failures are never accepted), and any F2/F3/F4 finding other than the re-key case in clause (a). Acceptance lines below that say a compare "exits 0" mean "exits 0, or every blocking line is accepted under this rule (including the MENU rule below)".
   - **MENU before and after Task 6.** `--compare` blocks on every `MENU` line of the current run, baseline or not, so it exits 1 on the baseline itself until Task 6. Tasks 3, 4, 5 (and any task run before Task 6) accept exactly the 4 known account-menu lines (`other-income-items|1440|{light,dark}|MENU|account-menu-items-card`, `other-income-override|1440|{light,dark}|MENU|account-menu-override-jv`) and only when each is marked `[byte-identical to baseline: pre-existing S2-01/S2-02, fixed by Task 6]` — a line marked `reasons differ from baseline` or `not in baseline` (e.g. `…:error`, a probe that threw) must be fixed. Record the 4 lines in the task report. From Task 6 on, MENU must pass: the compare prints `MENU failures (…): 0` and lists the 4 ids under "Fixed".
   - **Lost or emptied cells are never accepted.** A cell rendered at baseline that is `error` / `open-failed` / `skipped` now, or whose fact count fell below 50% of its baseline, blocks; fix the change or the route (its open step, a mock), never the baseline.
   - **Nondeterminism.** Two runs of the same UI on the same preview must compare with 0 new / 0 fixed (Task 2 Step 25 proves this for the baseline). A route whose findings change between identical runs is a route bug — fix it in `routes.mjs` (mock the data it reads, wait for its stable state; `trade-in-quick-buy` was fixed this way: catalog mock + wait for the model select to be enabled; `contract-customer-edit` by opening the customer card's dialog instead of the contract card's inline edit, which left a run-dependent scroll position at 390) — it is not a triage class.
@@ -5185,9 +5185,9 @@ Optional visual check: run `npm run local:preview` and open http://localhost:519
   - `cn` from `@/lib/utils`.
   - T2 runner `tools/field-scale/check.mjs` and its account-menu assertion (verification step only).
 - Produces:
-  - Unchanged export `AccountSearchDropdown(props: { value: string; onChange: (code: string) => void; filter?: (a: {code: string; name: string}) => boolean; placeholder?: string; disabled?: boolean; blockedCodes?: string[]; blockedReason?: string })`.
+  - Unchanged export `AccountSearchDropdown(props: { value: string; onChange: (code: string) => void; filter?: (a: {code: string; name: string}) => boolean; placeholder?: string; disabled?: boolean; blockedCodes?: string[]; blockedReason?: string; 'aria-label'?: string; 'aria-labelledby'?: string })` (the last two are additive: the trigger's accessible name; default `aria-label="บัญชี"` when neither is passed, and `aria-labelledby` suppresses the default).
   - New DOM contract, for T2's account-menu assertion and later tests:
-    - trigger = `button[type=button][role=combobox][data-slot=select-trigger][aria-haspopup=listbox][aria-expanded]`
+    - trigger = `button[type=button][role=combobox][data-slot=select-trigger][aria-haspopup=listbox][aria-expanded]`, with an accessible name (`aria-label`, default `บัญชี`, overridable; `role=combobox` does not take its name from content)
     - open menu = `[data-slot=popover-content]`, a direct child of the Radix portal in `document.body`, containing:
       - search `input[aria-label="ค้นหารหัส หรือ ชื่อบัญชี"]` with `aria-controls`, `aria-activedescendant` and `aria-autocomplete=list`
       - `[role=listbox][aria-label="รายการบัญชี"]` (class `max-h-64 overflow-y-auto overscroll-contain`) containing `[role=option]` rows with `aria-selected`, `aria-disabled` on blocked rows, and `data-active` on the highlighted row.
@@ -5296,6 +5296,25 @@ describe('AccountSearchDropdown — portalled menu (S2-01/S2-02)', () => {
 });
 
 describe('AccountSearchDropdown — keyboard', () => {
+  it.each([['{Tab}'], ['{Shift>}{Tab}{/Shift}']])(
+    'Tab (%s) in the search box closes the menu without picking and keeps focus on the trigger',
+    async (keys) => {
+      const user = userEvent.setup();
+      const onPick = vi.fn();
+      render(<Harness filter={only42} initialValue="42-1105" onPick={onPick} />);
+      const trigger = screen.getByRole('combobox');
+      await user.click(trigger);
+      expect(screen.getByRole('textbox', { name: SEARCH })).toHaveFocus();
+
+      await user.keyboard(keys);
+
+      expect(screen.queryByRole('listbox')).toBeNull();
+      expect(onPick).not.toHaveBeenCalled();
+      expect(trigger).toHaveTextContent('รายได้ดอกเบี้ยธนาคาร');
+      await waitFor(() => expect(document.activeElement).toBe(trigger));
+    },
+  );
+
   it('ArrowDown/ArrowUp move the active option (skipping blocked), Enter selects, focus returns', async () => {
     const user = userEvent.setup();
     const onPick = vi.fn();
@@ -5349,6 +5368,30 @@ describe('AccountSearchDropdown — keyboard', () => {
   });
 });
 
+describe('AccountSearchDropdown — trigger accessible name', () => {
+  it("defaults to 'บัญชี'", () => {
+    render(<Harness filter={only42} />);
+    expect(screen.getByRole('combobox', { name: 'บัญชี' })).toHaveAttribute('data-slot', 'select-trigger');
+  });
+
+  it('uses a custom aria-label', () => {
+    render(<Harness filter={only42} aria-label="บัญชีรายได้" />);
+    expect(screen.getByRole('combobox', { name: 'บัญชีรายได้' })).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'บัญชี' })).toBeNull();
+  });
+
+  it('aria-labelledby wins over the default label', () => {
+    render(
+      <>
+        <span id="acc-label">บัญชีที่ใช้</span>
+        <Harness filter={only42} aria-labelledby="acc-label" />
+      </>,
+    );
+    const trigger = screen.getByRole('combobox', { name: 'บัญชีที่ใช้' });
+    expect(trigger).not.toHaveAttribute('aria-label');
+  });
+});
+
 describe('AccountSearchDropdown — blocked codes', () => {
   it('shows the blocked reason as text and ignores clicks on the blocked row', async () => {
     const user = userEvent.setup();
@@ -5369,6 +5412,18 @@ describe('AccountSearchDropdown — blocked codes', () => {
     await user.click(blocked);
     expect(onPick).not.toHaveBeenCalled();
     expect(screen.getByRole('listbox')).toBeInTheDocument();
+  });
+
+  it('a mouse click on a blocked row does not call onChange and keeps the menu open', async () => {
+    const user = userEvent.setup();
+    const onPick = vi.fn();
+    render(<Harness filter={only42} blockedCodes={['42-1104']} onPick={onPick} />);
+    await user.click(screen.getByRole('combobox'));
+    fireEvent.mouseDown(screen.getByRole('option', { name: /รายได้หักเงินเดือน/ }));
+    fireEvent.click(screen.getByRole('option', { name: /รายได้หักเงินเดือน/ }));
+    expect(onPick).not.toHaveBeenCalled();
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+    expect(screen.getByRole('combobox')).toHaveAttribute('aria-expanded', 'true');
   });
 
   it('does not open when disabled', async () => {
@@ -5451,9 +5506,14 @@ interface Props {
   blockedCodes?: string[];
   /** Reason shown as secondary text (and tooltip) on blocked rows. */
   blockedReason?: string;
+  /** Accessible name of the trigger. Defaults to 'บัญชี' unless aria-labelledby is given. */
+  'aria-label'?: string;
+  /** Id(s) of the element(s) that label the trigger; wins over the default aria-label. */
+  'aria-labelledby'?: string;
 }
 
 const DEFAULT_BLOCKED_REASON = 'บัญชีนี้ยังไม่รองรับในระบบ';
+const DEFAULT_TRIGGER_LABEL = 'บัญชี';
 
 /**
  * Searchable account-code dropdown — used by ItemsTable (42-XXXX), AdjustmentTable,
@@ -5463,7 +5523,9 @@ const DEFAULT_BLOCKED_REASON = 'บัญชีนี้ยังไม่รอ
  * card (`overflow-hidden`) / table box (`overflow-x-auto`) around it no longer clips
  * it (S2-01, S2-02). Keyboard: ArrowDown on the button opens; in the search box
  * ArrowUp/ArrowDown move the highlighted row (aria-activedescendant), Enter picks it,
- * Escape closes (Radix). Blocked codes stay listed with their reason as text and are
+ * Escape closes (Radix), Tab closes without picking and keeps focus on the button.
+ * The button is a combobox, so it takes its name from aria-label / aria-labelledby
+ * (default 'บัญชี'), not from its content. Blocked codes stay listed with their reason as text and are
  * skipped by the keyboard. wheel/touchmove stop at the menu so it scrolls inside a
  * modal Dialog (same escape as WizardStackedOverlay). R2-3a replaces the internals
  * with the shared Combobox.
@@ -5476,11 +5538,14 @@ export function AccountSearchDropdown({
   disabled,
   blockedCodes,
   blockedReason,
+  'aria-label': ariaLabel,
+  'aria-labelledby': ariaLabelledby,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [activeCode, setActiveCode] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const listboxId = useId();
   const { data: groups, isLoading } = useCoaGroups({});
 
@@ -5538,6 +5603,12 @@ export function AccountSearchDropdown({
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       move(-1);
+    } else if (e.key === 'Tab' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      // Keep focus on the trigger: Radix treats Tab-out as focus-outside and would not
+      // return it, dropping focus to the end of the document.
+      e.preventDefault();
+      changeOpen(false);
+      triggerRef.current?.focus();
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (active) choose(active);
@@ -5552,11 +5623,14 @@ export function AccountSearchDropdown({
     <Popover open={isOpen} onOpenChange={changeOpen}>
       <PopoverTrigger asChild disabled={disabled}>
         <button
+          ref={triggerRef}
           data-slot="select-trigger"
           type="button"
           role="combobox"
           aria-expanded={isOpen}
           aria-haspopup="listbox"
+          aria-label={ariaLabelledby ? undefined : (ariaLabel ?? DEFAULT_TRIGGER_LABEL)}
+          aria-labelledby={ariaLabelledby}
           disabled={disabled}
           onKeyDown={(e) => {
             if (e.key === 'ArrowDown' && !isOpen) {

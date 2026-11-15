@@ -13,6 +13,7 @@ import TaxDisallowedHint from './TaxDisallowedHint';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { AccountSearchDropdown } from '@/pages/other-income/components/AccountSearchDropdown';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
+import { cn } from '@/lib/utils';
 
 interface Props {
   lines: ExpenseLineForm[];
@@ -266,7 +267,7 @@ export function ItemLinesSection({ lines, onChange, priceTypeLabel }: Props) {
                     </SelectContent>
                   </Select>
                 </td>
-                <td rowSpan={2} className={`${cell} px-0`}>
+                <td rowSpan={2} className={cn(cell, 'px-0')}>
                   <button data-ui-control="button"
                     type="button"
                     onClick={() => removeLine(line.uid)}

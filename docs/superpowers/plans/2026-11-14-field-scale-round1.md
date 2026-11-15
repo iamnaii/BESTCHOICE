@@ -29,7 +29,7 @@
 
 | Task | Spec PR | Depends on | Deliverable |
 |---|---|---|---|
-| 1 Field collector + F1–F4 rules | R1-1 | — | `__collectFields`, `evaluateFields`, 29 tests |
+| 1 Field collector + F1–F4 rules | R1-1 | — | `__collectFields`, `evaluateFields`, 31 tests |
 | 2 Runner + route mocks + baseline | R1-1 | 1 | `tools/field-scale/*`, `baseline` on main (menu probes fail = S2-01/S2-02 proof) |
 | 3 Primitives: 8px corners, 16px mobile font | R1-2 | 2 | input/select/textarea + docs |
 | 4 `ReadOnlyField` + `LabeledField` | R1-2 | 3 | two components + tests |
@@ -48,7 +48,7 @@ Tasks 3–7 can be one PR (R1-2) or several; tasks 8–9 and 10–11 likewise. E
 
 - **Shared files.** `apps/web/src/components/ui/field-guards.inventory.test.ts` is created by Task 7; Tasks 9 and 10 append to it. `native-select.inventory.test.ts` fails on Windows today (backslash paths) — Task 5 fixes it; later tasks must not re-fix it.
 - **Baseline label** is `baseline` (Task 2, Step 25). Every visual task compares with `node tools/field-scale/check.mjs --compare baseline <label>`; Task 9 additionally takes its own `t9-before` because it runs after Task 8 changed the same screens.
-- **`results.json`** keeps findings under `cells[].findings` (Task 2 Interfaces). F1 finding keys start with the property (`labelFontSize@…`, `background@…`) and name one control: `<property>@<memberKey>`, one finding per inconsistent member of a row. Fixing, relabelling or re-kinding one control therefore never changes another control's F1 key, and `--compare` does not report an old, unfixed mismatch as new.
+- **`results.json`** keeps findings under `cells[].findings` (Task 2 Interfaces). F1 finding keys start with the property (`labelFontSize@…`, `background@…`) and name one control: `<property>@<memberKey>`. When a row is inconsistent for a property, every member of the row is reported for it (no majority vote). A partial fix therefore never adds an F1 key: a control moving toward the rest of the row keeps the row's keys or, once the row is consistent, removes all of them; fixing, relabelling, re-kinding or removing one control never changes another control's key; and `--compare` does not report an old, unfixed mismatch as new. The one way a fix produces a new F1 key: a control that is re-kinded, renamed or measured for the first time (e.g. a plain `<div>` that becomes a `ReadOnlyField`) while its row is still inconsistent for some property is reported under its new key. Task 8 group C does exactly this to "ก่อนภาษี", so that row must end consistent for every F1 property, or the readonly control's keys show up as new.
 - **Line numbers** in Tasks 8–11 are from commit `b58250bbe`; earlier tasks shift them. Every edit is anchored on an exact unique string — use the string, treat the line as a guide.
 - **Account menu probe** (Task 2) finds the menu by the search box `aria-label="ค้นหารหัส หรือ ชื่อบัญชี"`; Task 6 keeps that label.
 - **Known limits** (accepted in the spec): ~102 `NativeSelect` sites pass `className` through a variable and are invisible to the skin guard; F2 measures synthetic data only; some deep flows (PO payment step, payroll lines, QuickBuy seller step) are reached only where the preview can open them — the tasks say which are manual.
@@ -75,7 +75,7 @@ Tasks 3–7 can be one PR (R1-2) or several; tasks 8–9 and 10–11 likewise. E
   - `window.__collectFields({ exclude?: string, root?: string }) → FieldFact[]`, where `FieldFact = ControlFact | TargetFact`. Ids are unique per call: controls first, then targets, each in DOM order.
     - `ControlFact`: `{ type:'control', id, key, kind, tag, scope, ancestors, x, y, w, h, borderRadius, borderWidth, borderColor, backgroundColor, fontSize, largeText, label, contentLeft, contentRight, contentWidth, placeholderInkWidth, optionCount, longestOptionInkWidth, valueOverflowX, valueOverflowY, adornments }`
       - `kind`: `'input-wrapper'|'field-frame'|'readonly'|'select-trigger'|'combobox'|'native-select'|'textarea'|'input'`.
-      - `key`: `kind|normalizeKeyText(label text || aria-label || placeholder)|dup`. Label text is the label's own words only: fields, options, buttons, comboboxes, `[data-slot=select-value]` and contenteditable subtrees inside it are skipped, because a wrapping `<label>` contains its control.
+      - `key`: `kind|normalizeKeyText(label text || aria-label || placeholder)|dup`. Label text is the label's own words only: fields, options, buttons, comboboxes, `[role=listbox]`, `[role=option]`, `[role=textbox]`, `[data-slot=select-value]` and editable (`[contenteditable]` other than `"false"`) subtrees inside it are skipped, because a wrapping `<label>` contains its control.
       - `scope`: `'dialog:<n>'|'main'|'page'`.
       - `ancestors`: `[{ id, layout:'flex-row'|'flex-col'|'grid'|'other' }]`, parent first, up to and including the scope root.
       - `label`: `{ fontSize, gap, above } | null`.
@@ -84,7 +84,7 @@ Tasks 3–7 can be one PR (R1-2) or several; tasks 8–9 and 10–11 likewise. E
     - `TargetFact`: `{ type:'target', id, key, role, scope, scroller, targetAncestors, x, y, w, h, coveredBy }`.
       - `key`: `target-<role>|normalizeKeyText(aria-label, or own text for button/tab/menuitem)|dup`. Link text is never used. Own text skips the same value subtrees as label text.
   - `evaluateFields(facts, ctx = { width, route?, theme?, role? }) → Finding[]`, with `Finding = { rule:'F1'|'F2'|'F3'|'F4', severity:'P1'|'P2', route, width, theme, role, key, text, detail }`. This is the same shape as `evaluateTypography` findings, so `findingKey` and `diffFindings` work unchanged.
-    - F1 key: `<property>@<memberKey>` — one finding per inconsistent member; the other members and their values are in `text` and `detail.members`.
+    - F1 key: `<property>@<memberKey>` — one finding per member of a row that is inconsistent for that property (every member, not just the odd ones); the member's own value is `detail.value`, the whole row and its values are in `text` and `detail.members`.
     - F2 key: `placeholder|option|value@<controlKey>`.
     - F3 key: `<targetKey>~<targetKey>`.
     - F4 key: `left|right<n>@<controlKey>`.
@@ -95,7 +95,7 @@ Tasks 3–7 can be one PR (R1-2) or several; tasks 8–9 and 10–11 likewise. E
   - *Control*: the outermost of `[data-slot=input-wrapper]`, `[data-field-frame]`, `[data-slot=readonly-field]`, `[data-slot=select-trigger]`, `button[role=combobox]`, `select`, `textarea`, `input`.
   - *Row*: same scope, vertical overlap ÷ shorter height ≥ 0.5, and the nearest common ancestor is `flex-row` or `grid`. Rows are the connected components of that relation.
   - `page` (outside `#main` and any dialog) is its own scope on purpose. Only `apps/web/src/components/layout/MainLayout.tsx:189` renders `id="main"`, so LIFF/public pages measured at 390 would otherwise never be measured. Page chrome is compared only with other page chrome.
-  - Checks. The row decides whether a property is inconsistent (thresholds below). Then one finding is emitted per inconsistent member: members whose value agrees (equal, or within the tolerance) with the most other members are the majority, and every other member is reported. With no majority (e.g. two members that differ) every member is reported.
+  - Checks. The row decides whether a property is inconsistent (thresholds below). Then one finding is emitted for every eligible member of that row — there is no majority vote, so no member is picked as "the odd one". This keeps the finding set monotonic: a partial fix never adds a key (31 / 31 / 44 → 44 / 31 / 44 still reports the same three keys; it does not swap to B), and a row that becomes consistent loses all of its keys for that property.
     - height spread > 2px
     - largest-corner radius spread > 1px
     - font spread > 0.5px
@@ -200,7 +200,7 @@ const pair = (a = {}, b = {}) => [
 const CTX = { route: '/x', width: 1440, theme: 'light', role: 'owner' };
 const rulesOf = (facts) => evaluateFields(facts, CTX).map((f) => `${f.rule}:${f.severity}`);
 const f1Findings = (facts) => evaluateFields(facts, CTX).filter((f) => f.rule === 'F1');
-// properties that fired (one finding per inconsistent member, so a property can repeat)
+// properties that fired (one finding per member of an inconsistent row, so a property repeats)
 const f1 = (facts) => [...new Set(f1Findings(facts).map((f) => f.detail.property))];
 const f1Keys = (facts) => f1Findings(facts).map((f) => f.key);
 const tgt = (o = {}) => ({
@@ -287,7 +287,7 @@ test('F1 exclusions: text-lg+ control, textarea', () => {
   assert.deepEqual(f1(pair({}, { kind: 'textarea', tag: 'textarea', h: 96 })), []);
 });
 
-test('F1 groups a row; one finding per inconsistent member, row context in text/detail', () => {
+test('F1 groups a row; every member of an inconsistent row is reported, row context in text/detail', () => {
   const third = ctl({
     id: 2,
     key: 'field-frame|ราคา|0',
@@ -302,34 +302,59 @@ test('F1 groups a row; one finding per inconsistent member, row context in text/
     groupFieldRows(facts).map((row) => row.map((c) => c.id)),
     [[0, 1, 2]],
   );
-  // 44 / 44 / 31: only the odd member is reported, for height and for its bottom edge
-  assert.deepEqual(f1Keys(facts), ['height@field-frame|ราคา|0', 'bottom@field-frame|ราคา|0']);
-  const height = f1Findings(facts).find((f) => f.detail.property === 'height');
+  // 44 / 44 / 31: the row is inconsistent for height and bottom, so all three members are reported
+  assert.deepEqual(f1Keys(facts), [
+    'height@input|ชื่อลูกค้า|0',
+    'height@native-select|สาขา|0',
+    'height@field-frame|ราคา|0',
+    'bottom@input|ชื่อลูกค้า|0',
+    'bottom@native-select|สาขา|0',
+    'bottom@field-frame|ราคา|0',
+  ]);
+  const heights = f1Findings(facts).filter((f) => f.detail.property === 'height');
+  const height = heights[2];
   assert.equal(height.rule, 'F1');
   assert.equal(height.severity, 'P2');
   assert.equal(
     height.text,
     'field-frame|ราคา|0 (row: input|ชื่อลูกค้า|0 / native-select|สาขา|0 / field-frame|ราคา|0)',
   );
+  const members = [
+    { key: 'input|ชื่อลูกค้า|0', value: 44 },
+    { key: 'native-select|สาขา|0', value: 44 },
+    { key: 'field-frame|ราคา|0', value: 31 },
+  ];
   assert.deepEqual(height.detail, {
     property: 'height',
     value: 31,
     spread: 13,
     tolerance: 2,
-    members: [
-      { key: 'input|ชื่อลูกค้า|0', value: 44 },
-      { key: 'native-select|สาขา|0', value: 44 },
-      { key: 'field-frame|ราคา|0', value: 31 },
-    ],
+    members,
+  });
+  // a member that matches most of the row is still reported, with its own value
+  assert.equal(
+    heights[0].text,
+    'input|ชื่อลูกค้า|0 (row: input|ชื่อลูกค้า|0 / native-select|สาขา|0 / field-frame|ราคา|0)',
+  );
+  assert.deepEqual(heights[0].detail, {
+    property: 'height',
+    value: 44,
+    spread: 13,
+    tolerance: 2,
+    members,
   });
   assert.equal(findingKey(height), '/x|1440|light|owner|F1|height@field-frame|ราคา|0');
   // distinct checks carry the member's value and the row, no spread/tolerance
   const border = f1Findings([...pair(), { ...third, h: 44, borderColor: 'rgb(1, 2, 3)' }]);
   assert.deepEqual(
     border.map((f) => f.key),
-    ['borderColor@field-frame|ราคา|0'],
+    [
+      'borderColor@input|ชื่อลูกค้า|0',
+      'borderColor@native-select|สาขา|0',
+      'borderColor@field-frame|ราคา|0',
+    ],
   );
-  assert.deepEqual(border[0].detail, {
+  assert.deepEqual(border[2].detail, {
     property: 'borderColor',
     value: 'rgb(1, 2, 3)',
     members: [
@@ -343,13 +368,12 @@ test('F1 groups a row; one finding per inconsistent member, row context in text/
   assert.equal(groupFieldRows([...facts, ...lower]).length, 2);
 });
 
-test('F1 with no majority reports every member; a tolerance cluster is the majority', () => {
-  // two members that disagree: either could be the odd one, so both are reported
+test('F1 reports every member, including members inside a tolerance cluster', () => {
   assert.deepEqual(f1Keys(pair({}, { borderRadius: 6 })), [
     'radius@input|ชื่อลูกค้า|0',
     'radius@native-select|สาขา|0',
   ]);
-  // 44 / 45 / 31: 44 and 45 agree within 2px, 31 is the odd one
+  // 44 / 45 / 31: the row's spread is 14px, so all three are reported (no majority vote)
   const row = [
     ...pair({}, { h: 45 }),
     ctl({
@@ -362,11 +386,57 @@ test('F1 with no majority reports every member; a tolerance cluster is the major
   ];
   assert.deepEqual(
     f1Keys(row).filter((k) => k.startsWith('height@')),
-    ['height@input|ราคา|0'],
+    ['height@input|ชื่อลูกค้า|0', 'height@native-select|สาขา|0', 'height@input|ราคา|0'],
   );
 });
 
-test('F1 keys of unchanged members survive fixing or relabelling another member (--compare)', () => {
+// One row of controls side by side in a grid; `heights` in DOM order, keys input|<name>|0.
+const rowOf = (heights) =>
+  heights.map((h, i) =>
+    ctl({
+      id: i,
+      key: `input|${'ABCD'[i]}|0`,
+      x: i * 216,
+      h,
+      ancestors: [{ id: 10 + i, layout: 'other' }, GRID],
+    }),
+  );
+const assertNoNewKeys = (before, after) =>
+  assert.deepEqual(
+    after.filter((k) => !before.includes(k)),
+    [],
+    'a partial fix must not add F1 keys',
+  );
+const keysOf = (property, facts) => f1Keys(facts).filter((k) => k.startsWith(`${property}@`));
+
+test('F1 is monotonic: fixing A in 31 / 31 / 44 adds no key; a consistent row has none', () => {
+  const before = f1Keys(rowOf([31, 31, 44]));
+  assert.deepEqual(keysOf('height', rowOf([31, 31, 44])), [
+    'height@input|A|0',
+    'height@input|B|0',
+    'height@input|C|0',
+  ]);
+  const partial = f1Keys(rowOf([44, 31, 44]));
+  assertNoNewKeys(before, partial);
+  assert.ok(partial.includes('height@input|B|0'), 'B is still reported');
+  assert.deepEqual(f1Keys(rowOf([44, 44, 44])), [], 'consistent row ⇒ no F1 findings');
+});
+
+test('F1 is monotonic: fixing B in 44 / 36 / 36 / 36 (a tie) adds no key; a consistent row has none', () => {
+  const before = f1Keys(rowOf([44, 36, 36, 36]));
+  assert.deepEqual(keysOf('height', rowOf([44, 36, 36, 36])), [
+    'height@input|A|0',
+    'height@input|B|0',
+    'height@input|C|0',
+    'height@input|D|0',
+  ]);
+  const partial = f1Keys(rowOf([44, 44, 36, 36]));
+  assertNoNewKeys(before, partial);
+  assertNoNewKeys(partial, f1Keys(rowOf([44, 44, 44, 36])));
+  assert.deepEqual(f1Keys(rowOf([44, 44, 44, 44])), [], 'consistent row ⇒ no F1 findings');
+});
+
+test('F1 keys: a re-kinded, renamed or removed member changes only its own keys (--compare)', () => {
   const at = (id, x, o) =>
     ctl({ id, x, ancestors: [{ id: 10 + id, layout: 'other' }, GRID], ...o });
   // A, B match; C is a fake 31px field-frame with a light border; D is a 38px input
@@ -380,16 +450,32 @@ test('F1 keys of unchanged members survive fixing or relabelling another member 
     borderColor: 'rgb(228, 228, 231)',
   });
   const D = at(3, 648, { key: 'input|ส่วนลด|0', h: 38 });
+  const all = (property, members) => members.map((m) => `${property}@${m}`);
+  const names = [
+    'input|ชื่อลูกค้า|0',
+    'native-select|สาขา|0',
+    'field-frame|ก่อนภาษี|0',
+    'input|ส่วนลด|0',
+  ];
   const before = f1Keys([A, B, C, D]);
   assert.deepEqual(before, [
-    'height@field-frame|ก่อนภาษี|0',
-    'height@input|ส่วนลด|0',
-    'borderColor@field-frame|ก่อนภาษี|0',
-    'bottom@field-frame|ก่อนภาษี|0',
-    'bottom@input|ส่วนลด|0',
+    ...all('height', names),
+    ...all('borderColor', names),
+    ...all('bottom', names),
   ]);
-  // C becomes a ReadOnlyField: new kind, new key, 44px, same border ⇒ C's findings are gone and
-  // D's still-unfixed findings keep exactly the same keys (not reported as new by --compare)
+  const others = (keys, member) => keys.filter((k) => !k.endsWith(`@${member}`));
+  // renaming B's label and changing its kind replaces B's keys only
+  const renamedB = {
+    ...B,
+    key: 'select-trigger|สาขาที่ขาย|0',
+    kind: 'select-trigger',
+    tag: 'button',
+  };
+  const renamed = f1Keys([A, renamedB, C, D]);
+  assert.deepEqual(others(renamed, renamedB.key), others(before, B.key));
+  // C becomes a ReadOnlyField: new kind, new key, 44px, same border. Its old keys go, the border row
+  // is now consistent (all its keys go), and the height/bottom rows still differ because of D, so
+  // C is reported again under its new key — the other members keep exactly the same keys.
   const fixedC = {
     ...C,
     key: 'readonly|ก่อนภาษี|0',
@@ -400,19 +486,17 @@ test('F1 keys of unchanged members survive fixing or relabelling another member 
     backgroundColor: 'rgb(244, 244, 245)',
   };
   const afterFix = f1Keys([A, B, fixedC, D]);
-  assert.deepEqual(afterFix, ['height@input|ส่วนลด|0', 'bottom@input|ส่วนลด|0']);
-  assert.ok(
-    afterFix.every((k) => before.includes(k)),
-    'no unchanged member gets a new key',
-  );
-  // renaming B's label and changing its kind does not touch the other members' keys either
-  const renamedB = {
-    ...B,
-    key: 'select-trigger|สาขาที่ขาย|0',
-    kind: 'select-trigger',
-    tag: 'button',
-  };
-  assert.deepEqual(f1Keys([A, renamedB, C, D]), before);
+  assert.ok(!afterFix.some((k) => k.endsWith(`@${C.key}`)), "C's old keys are gone");
+  assert.ok(!afterFix.some((k) => k.startsWith('borderColor@')), 'border row is consistent');
+  assertNoNewKeys(before, others(afterFix, fixedC.key));
+  assert.deepEqual(others(afterFix, fixedC.key), [
+    ...all('height', [A.key, B.key, D.key]),
+    ...all('bottom', [A.key, B.key, D.key]),
+  ]);
+  // removing C drops C's keys; the border row becomes consistent; nothing new appears
+  assertNoNewKeys(before, f1Keys([A, B, D]));
+  // fixing D too makes the row consistent: no F1 findings at all
+  assert.deepEqual(f1Keys([A, B, fixedC, { ...D, h: 44 }]), []);
 });
 
 test('F2 placeholder wider than the content box (canvas ink vs content width + 1)', () => {
@@ -529,8 +613,8 @@ test('evaluateFields ignores typography facts and leaves evaluateTypography alon
 // Field scale (spec docs/superpowers/specs/2026-11-14-dropdown-search-field-scale-design.md §5).
 // Consumes FieldFact[] from window.__collectFields (collect.js documents every field) and produces
 // Finding[] for F1–F4 with the same shape as evaluateTypography, so findingKey / diffFindings work.
-// Keys: F1 <property>@<memberKey> (one per inconsistent member) · F2 placeholder|option|value@<key> ·
-// F3 <targetKey>~<targetKey> · F4 left|right<n>@<key>.
+// Keys: F1 <property>@<memberKey> (one per member of an inconsistent row) ·
+// F2 placeholder|option|value@<key> · F3 <targetKey>~<targetKey> · F4 left|right<n>@<key>.
 // Additive only: nothing above this line reads these exports. F5 is a source-scan unit test.
 
 export const F1_ROW_OVERLAP_MIN = 0.5; // vertical overlap ÷ the shorter control height
@@ -615,20 +699,12 @@ const F1_CHECKS = [
   },
 ];
 
-// The row decides WHETHER a property is inconsistent (spread > tolerance, or values differ); the
-// members decide WHO is reported. A member agrees with another when their values are equal
-// (distinct checks) or within the tolerance; the best-agreed members are the row's majority and
-// every other member is inconsistent. No majority (every member agrees with as many as any other,
-// e.g. two members that differ) ⇒ every member is reported. Each finding is keyed by its own member
-// only (`<property>@<memberKey>`), so --compare keeps an unfixed member's key when another member of
-// the row is fixed, relabelled or changes kind.
-function inconsistentMembers(values, check) {
-  const agrees = (a, b) => (check.distinct ? a === b : Math.abs(a - b) <= check.tolerance);
-  const support = values.map((v) => values.filter((w) => agrees(v, w)).length);
-  const best = Math.max(...support);
-  return values.map((_, i) => support[i] < best || support.every((s) => s === best));
-}
-
+// The row decides whether a property is inconsistent (spread > tolerance, or values differ); when it
+// is, EVERY member of the row is reported for that property — no majority vote, so no member is
+// singled out as "the odd one". Each finding is keyed by its own member only
+// (`<property>@<memberKey>`), which keeps --compare monotonic under partial fixes: a member moving
+// toward agreement never adds a key, a renamed / re-kinded / removed member changes only its own
+// keys, and a row that becomes consistent loses all of its keys for that property.
 function evaluateF1(facts, emit) {
   for (const row of groupFieldRows(facts)) {
     for (const check of F1_CHECKS) {
@@ -644,9 +720,8 @@ function evaluateF1(facts, emit) {
         ...(check.distinct ? {} : { spread: round2(spread(values)), tolerance: check.tolerance }),
         members: members.map((c, i) => ({ key: c.key, value: values[i] })),
       };
-      inconsistentMembers(values, check).forEach((odd, i) => {
-        if (!odd) return;
-        emit('F1', 'P2', `${check.property}@${keys[i]}`, `${keys[i]} (row: ${keys.join(' / ')})`, {
+      keys.forEach((key, i) => {
+        emit('F1', 'P2', `${check.property}@${key}`, `${key} (row: ${keys.join(' / ')})`, {
           property: check.property,
           value: values[i],
           ...rowDetail,
@@ -776,7 +851,7 @@ export function evaluateFields(facts, ctx = {}) {
   node --test tools/typography-audit/fields.test.mjs 2>&1 | grep -E "^ℹ (tests|pass|fail)"
   node --test tools/typography-audit/rules.test.mjs 2>&1 | grep -E "^ℹ (tests|pass|fail)"
   ```
-  - Expected: `ℹ tests 17` / `ℹ pass 17` / `ℹ fail 0`.
+  - Expected: `ℹ tests 19` / `ℹ pass 19` / `ℹ fail 0`.
   - Then `ℹ tests 51` / `ℹ pass 51` / `ℹ fail 0`, which shows R1–R12 are unchanged.
 
 - [ ] **Step 5: Commit**
@@ -968,6 +1043,7 @@ test('wrapping labels name controls by their own words only: no option, value or
     <label style="display:block">หมายเหตุ <textarea class="f" style="height:96px">ข้อความลับในช่อง</textarea></label>
     <label style="display:block">สถานะ <button type="button" role="combobox" data-slot="select-trigger" class="f"><span data-slot="select-value">สถานะลับ</span></button></label>
     <label style="display:block">แท็ก <div data-field-frame class="f" style="display:flex;align-items:center"><span>แท็กลับ</span><input style="border:0;padding:0;flex:1;min-width:0"></div></label>
+    <label style="display:block">ธนาคาร <input class="f"><div role="listbox"><div role="option">กสิกรลับ</div><div role="option">ไทยพาณิชย์ลับ</div></div></label>
     <button type="button">เลือกบัญชี <span data-slot="select-value">บัญชีลับ</span></button>`);
   const json = JSON.stringify(facts);
   const secrets = [
@@ -976,12 +1052,20 @@ test('wrapping labels name controls by their own words only: no option, value or
     'ข้อความลับในช่อง',
     'สถานะลับ',
     'แท็กลับ',
+    'กสิกรลับ',
+    'ไทยพาณิชย์ลับ',
     'บัญชีลับ',
   ];
   for (const secret of secrets) assert.ok(!json.includes(secret), secret);
   assert.deepEqual(
     controls(facts).map((f) => f.key),
-    ['native-select|สาขา|0', 'textarea|หมายเหตุ|0', 'select-trigger|สถานะ|0', 'field-frame|แท็ก|0'],
+    [
+      'native-select|สาขา|0',
+      'textarea|หมายเหตุ|0',
+      'select-trigger|สถานะ|0',
+      'field-frame|แท็ก|0',
+      'input|ธนาคาร|0',
+    ],
   );
   assert.ok(byKey(facts, 'target-button|เลือกบัญชี|0'), 'a button is named by its own words');
   const findings = JSON.stringify(evaluateFields(facts, CTX));
@@ -1258,8 +1342,9 @@ test('root option, missing root, determinism, no DOM residue, __collectTypograph
  *   - kind: 'input-wrapper' | 'field-frame' | 'readonly' | 'select-trigger' | 'combobox' |
  *     'native-select' | 'textarea' | 'input'
  *   - key: kind|normalizeKeyText(label text || aria-label || placeholder)|dup — label text is the
- *     label's own words only: fields, options, buttons, comboboxes, [data-slot=select-value] and
- *     contenteditable subtrees inside it are skipped (a wrapping label contains its control)
+ *     label's own words only: fields, options, buttons, comboboxes, listboxes, ARIA options and
+ *     textboxes, [data-slot=select-value] and editable (contenteditable ≠ "false") subtrees
+ *     inside it are skipped (a wrapping label contains its control)
  *   - scope: 'dialog:<n>' (n = index among [role=dialog],[role=alertdialog] in DOM order) | 'main'
  *     (inside #main) | 'page'
  *   - ancestors: [{ id, layout: 'flex-row' | 'flex-col' | 'grid' | 'other' }] parent first, up to and
@@ -1320,9 +1405,12 @@ test('root option, missing root, determinism, no DOM residue, __collectTypograph
   var ADORNMENT_OVERLAY_RATIO = 0.9;
   var NAMED_BY_TEXT_ROLES = { button: true, tab: true, menuitem: true };
   // Subtrees that hold values, not UI copy: never read for a name (a wrapping <label> contains its
-  // control; a trigger button contains its select-value; a tag frame contains chips).
+  // control; a trigger button contains its select-value; a tag frame contains chips; an inline
+  // listbox holds option text; an ARIA textbox or an editable region holds typed text).
   var VALUE_SUBTREE_SELECTOR =
-    FIELD_SELECTOR + ',option,button,[role=combobox],[data-slot=select-value],[contenteditable]';
+    FIELD_SELECTOR +
+    ',option,button,[role=combobox],[role=listbox],[role=option],[role=textbox],' +
+    '[data-slot=select-value],[contenteditable]:not([contenteditable="false"])';
 
   function px(value) {
     var n = parseFloat(value);
@@ -1692,7 +1780,7 @@ test('root option, missing root, determinism, no DOM residue, __collectTypograph
   ```
   - Expected: `ℹ tests 12` / `ℹ pass 12` / `ℹ fail 0`. Chromium, about 2 s.
   - Expected: `ℹ tests 51` / `ℹ pass 51` / `ℹ fail 0`. `__collectTypography` is unchanged.
-  - Expected: `ℹ tests 68` / `ℹ pass 68` / `ℹ fail 0`.
+  - Expected: `ℹ tests 70` / `ℹ pass 70` / `ℹ fail 0`.
   - If a geometry number is off by sub-pixels on another machine, the `.f` field is fixed at 200×44 with a 1px border. Check that `apps/web/public/fonts/noto-sans-thai/fonts.css` loaded. The harness does not assert this; it only waits for `document.fonts.ready`.
 
 - [ ] **Step 10: Commit**
@@ -1728,7 +1816,7 @@ Spec §5 + §7 R1-1: a field-scale checker that **runs on this Windows machine**
 - Read-only references: `tools/local-preview.mjs:9-10,160-166` (`repo`, `previewStatus()` → `{state.port, info.documentUrl, info.sourceRevision, running, current}`), `apps/api/e2e/support/chat-credit-preview.ts:637-711` (preview rewrites `/api/admin`→`/api`, serves an allow-list, everything else `501 LOCAL_PREVIEW_UNSUPPORTED`; actor is a fixed OWNER — **no login step exists in any `tools/check-local-*.mjs`**, `GET /api/admin/auth/me` just answers), `tools/check-mobile-density.mjs:50` (dark theme = `localStorage.setItem('theme', 'dark')` in an init script)
 
 **Interfaces:**
-- Consumes (Task 1): `window.__collectFields({ exclude, root })` injected from `tools/typography-audit/collect.js` (via `page.addScriptTag({ path })`) → `FieldFact[]`; `evaluateFields(facts, { width })` exported from `tools/typography-audit/rules.mjs` → `Finding[]`. This task relies on each Finding having `rule` (`'F1'|'F2'|'F3'|'F4'`), `severity` (`'P1'|'P2'|'P3'`) and a run-stable string `key`; `detail` is optional (used only as an identity fallback when `key` is missing). F1 keys name one control (`<property>@<memberKey>`, one finding per inconsistent member of a row), so when a later task fixes one control in a row, the other controls' still-open F1 findings keep their ids and compare does not report them as new.
+- Consumes (Task 1): `window.__collectFields({ exclude, root })` injected from `tools/typography-audit/collect.js` (via `page.addScriptTag({ path })`) → `FieldFact[]`; `evaluateFields(facts, { width })` exported from `tools/typography-audit/rules.mjs` → `Finding[]`. This task relies on each Finding having `rule` (`'F1'|'F2'|'F3'|'F4'`), `severity` (`'P1'|'P2'|'P3'`) and a run-stable string `key`; `detail` is optional (used only as an identity fallback when `key` is missing). F1 keys name one control (`<property>@<memberKey>`) and every member of an inconsistent row is reported, so a partial fix never adds keys: when a later task fixes one control in a row, the other controls' still-open F1 findings keep their ids (the whole row's keys disappear once it is consistent) and compare does not report them as new. Only a control that is re-kinded, renamed or newly measured while its row is still inconsistent gets new keys.
 - Consumes (R1-2 contract for the probe): `AccountSearchDropdown` keeps its search box `aria-label="ค้นหารหัส หรือ ชื่อบัญชี"` and its trigger keeps the selected account's name as text.
 - Produces:
   - CLI `node tools/field-scale/check.mjs --label <name> [--routes <id,id>] [--widths 1440,1024,390] [--themes light,dark]` → `.tmp/field-scale/<name>/{results.json, report.md, <route>-<width>-<theme>.png, <route>-<width>-<theme>-<probe>.png}`; exit 0 (report, not a gate), 2 on usage error / preview not running.
@@ -9219,7 +9307,7 @@ Expected: `Managed local preview stopped; test data retained.`, then a working t
 ---
 
 **Gaps / notes:**
-- Route ids for `tools/field-scale/check.mjs --routes` are defined by Task 2 and do not exist yet (`tools/field-scale/` is absent on `b58250bbe`). Step 30 finds them with grep instead of naming them. The 'F1 label' filter relies on the Task 1 shape: the rule id is in `rule` and label findings are keyed `labelFontSize@<controlKey>` / `labelGap@<controlKey>`, one per control whose label differs from the row's majority. Adjust the one-liner if T2 changes the results.json shape.
+- Route ids for `tools/field-scale/check.mjs --routes` are defined by Task 2 and do not exist yet (`tools/field-scale/` is absent on `b58250bbe`). Step 30 finds them with grep instead of naming them. The 'F1 label' filter relies on the Task 1 shape: the rule id is in `rule` and label findings are keyed `labelFontSize@<controlKey>` / `labelGap@<controlKey>`, one per labelled member of a row whose label font or gap is inconsistent (every member of that row, not only the odd one). Adjust the one-liner if T2 changes the results.json shape.
 - Step 31 drives QuickBuyModal to step 3 with the same selectors as `tools/check-local-trade-in.mjs`. It requests a price quote (`POST /trade-ins/quick-buy/preview`) but saves nothing. If a later change renames those controls, update both scripts. Step 4 (payment, SellerPaymentFields) is not screenshotted; the guard test and the T2 runner cover it.
 - Controls themselves are not normalised in this task, and F1 height/radius/background findings may remain on these forms. Examples: PurchaseSelect h-12/rounded-xl, CreateContactModal NativeSelect h-9 rounded-md, and the local inputClass in CompanySettingsPage/CustomerCreateModal/SaleDetailsForm/PlanDetailsStep. That work belongs to R1-3/R2. This task only drives the F1 *label* sub-check to 0.
 - Group-heading `<label>`s with no associated control are restyled with `formLabelClass` for visual consistency next to AddressForm's 14px labels: CompanySettingsPage 'ที่อยู่' and 'สถานะ VAT', the work-address headings in the 4 customer forms, and BranchesPage's cash-drawer label. Their element type is left unchanged. Converting them to `LabeledField` or a heading was not requested.

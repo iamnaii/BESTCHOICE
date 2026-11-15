@@ -302,8 +302,8 @@ export function compareFacts(beforeFacts, afterFacts, ctx = {}) {
 // Field scale (spec docs/superpowers/specs/2026-11-14-dropdown-search-field-scale-design.md §5).
 // Consumes FieldFact[] from window.__collectFields (collect.js documents every field) and produces
 // Finding[] for F1–F4 with the same shape as evaluateTypography, so findingKey / diffFindings work.
-// Keys: F1 <property>@<memberKey> (one per inconsistent member) · F2 placeholder|option|value@<key> ·
-// F3 <targetKey>~<targetKey> · F4 left|right<n>@<key>.
+// Keys: F1 <property>@<memberKey> (one per member of an inconsistent row) ·
+// F2 placeholder|option|value@<key> · F3 <targetKey>~<targetKey> · F4 left|right<n>@<key>.
 // Additive only: nothing above this line reads these exports. F5 is a source-scan unit test.
 
 export const F1_ROW_OVERLAP_MIN = 0.5; // vertical overlap ÷ the shorter control height
@@ -388,20 +388,12 @@ const F1_CHECKS = [
   },
 ];
 
-// The row decides WHETHER a property is inconsistent (spread > tolerance, or values differ); the
-// members decide WHO is reported. A member agrees with another when their values are equal
-// (distinct checks) or within the tolerance; the best-agreed members are the row's majority and
-// every other member is inconsistent. No majority (every member agrees with as many as any other,
-// e.g. two members that differ) ⇒ every member is reported. Each finding is keyed by its own member
-// only (`<property>@<memberKey>`), so --compare keeps an unfixed member's key when another member of
-// the row is fixed, relabelled or changes kind.
-function inconsistentMembers(values, check) {
-  const agrees = (a, b) => (check.distinct ? a === b : Math.abs(a - b) <= check.tolerance);
-  const support = values.map((v) => values.filter((w) => agrees(v, w)).length);
-  const best = Math.max(...support);
-  return values.map((_, i) => support[i] < best || support.every((s) => s === best));
-}
-
+// The row decides whether a property is inconsistent (spread > tolerance, or values differ); when it
+// is, EVERY member of the row is reported for that property — no majority vote, so no member is
+// singled out as "the odd one". Each finding is keyed by its own member only
+// (`<property>@<memberKey>`), which keeps --compare monotonic under partial fixes: a member moving
+// toward agreement never adds a key, a renamed / re-kinded / removed member changes only its own
+// keys, and a row that becomes consistent loses all of its keys for that property.
 function evaluateF1(facts, emit) {
   for (const row of groupFieldRows(facts)) {
     for (const check of F1_CHECKS) {
@@ -417,9 +409,8 @@ function evaluateF1(facts, emit) {
         ...(check.distinct ? {} : { spread: round2(spread(values)), tolerance: check.tolerance }),
         members: members.map((c, i) => ({ key: c.key, value: values[i] })),
       };
-      inconsistentMembers(values, check).forEach((odd, i) => {
-        if (!odd) return;
-        emit('F1', 'P2', `${check.property}@${keys[i]}`, `${keys[i]} (row: ${keys.join(' / ')})`, {
+      keys.forEach((key, i) => {
+        emit('F1', 'P2', `${check.property}@${key}`, `${key} (row: ${keys.join(' / ')})`, {
           property: check.property,
           value: values[i],
           ...rowDetail,

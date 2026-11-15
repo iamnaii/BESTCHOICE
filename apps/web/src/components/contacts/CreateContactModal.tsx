@@ -261,7 +261,7 @@ export default function CreateContactModal({
                     aria-label="คำนำหน้า"
                     value={prefix}
                     onChange={(e) => setPrefix(e.target.value)}
-                    className="h-9 rounded-md border border-input bg-background px-2 text-sm outline-hidden focus:ring-2 focus:ring-ring/30"
+                    className="h-9 rounded-lg border border-input bg-background px-2 text-sm outline-hidden focus:ring-2 focus:ring-ring/30"
                   >
                     <option value="">คำนำหน้า</option>
                     {(role === 'SUPPLIER' ? SUPPLIER_TITLE_OPTIONS : THAI_NAME_PREFIXES).map(

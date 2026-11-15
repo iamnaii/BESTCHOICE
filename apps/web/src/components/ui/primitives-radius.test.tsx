@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { Input, InputAddon } from './input';
+import { Input, InputAddon, InputWrapper, inputVariants } from './input';
+import { NumberInput } from './NumberInput';
 import { Select, SelectTrigger, SelectValue } from './select';
 import { Textarea } from './textarea';
 import { formControlClass } from './form-styles';
+import { cn } from '@/lib/utils';
 
 const SIZES = ['sm', 'md', 'lg'] as const;
 
@@ -65,5 +67,63 @@ describe('Input md — 16px below lg outside the app shell (S3-23)', () => {
     );
     expect(classes).not.toContain('rounded-md');
     expect(classes.filter((c) => /^text-(base|sm|xs|\[)/.test(c))).toEqual(['text-base']);
+  });
+});
+
+// tailwind-merge keeps `lg:text-sm` next to a bare caller size (`text-2xl`), so on >= 1024px
+// the variant's 14px would beat the caller's own size. admin-typography.css leaves
+// .text-lg/.text-xl/.text-2xl… inputs alone, so inside the shell nothing else fixes it.
+describe('Input md — caller font size wins at every width', () => {
+  it('Input className="text-2xl" ไม่มี lg:text-sm ของ variant', () => {
+    render(<Input aria-label="ยอดเงิน" className="text-2xl font-bold" />);
+    const input = screen.getByRole('textbox', { name: 'ยอดเงิน' });
+    expect(input).toHaveClass('text-2xl');
+    expect(input).not.toHaveClass('lg:text-sm');
+    expect(input).not.toHaveClass('text-base');
+  });
+
+  it('Input className="text-xs" ไม่ขยายเป็น 14px บนจอใหญ่', () => {
+    render(<Input aria-label="รหัส" className="text-xs" />);
+    expect(screen.getByRole('textbox', { name: 'รหัส' })).not.toHaveClass('lg:text-sm');
+  });
+
+  it('Input ค่าตั้งต้นยังเป็น text-base lg:text-sm', () => {
+    render(<Input aria-label="อีเมล" />);
+    expect(screen.getByRole('textbox', { name: 'อีเมล' })).toHaveClass('text-base', 'lg:text-sm');
+  });
+
+  it('className สี (text-muted-foreground) ไม่ตัด lg:text-sm', () => {
+    render(<Input aria-label="หมายเหตุ" className="text-muted-foreground" />);
+    expect(screen.getByRole('textbox', { name: 'หมายเหตุ' })).toHaveClass(
+      'text-base',
+      'lg:text-sm',
+      'text-muted-foreground',
+    );
+  });
+
+  it('Input className={formControlClass} ได้คลาสเท่าเดิมทุกตัวอักษร', () => {
+    render(<Input aria-label="ชื่อร้าน" className={formControlClass} />);
+    const input = screen.getByRole('textbox', { name: 'ชื่อร้าน' });
+    expect(input.className).toBe(cn(inputVariants(), formControlClass));
+    expect(input).toHaveClass('text-base', 'lg:text-sm');
+  });
+
+  it('NumberInput className="text-2xl" ไม่มี lg:text-sm ของ variant', () => {
+    render(<NumberInput aria-label="รับเงิน" className="text-2xl" />);
+    const input = screen.getByRole('spinbutton', { name: 'รับเงิน' });
+    expect(input).toHaveClass('text-2xl');
+    expect(input).not.toHaveClass('lg:text-sm');
+  });
+
+  it('NumberInput ค่าตั้งต้นยังเป็น text-base lg:text-sm', () => {
+    render(<NumberInput aria-label="จำนวน" />);
+    expect(screen.getByRole('spinbutton', { name: 'จำนวน' })).toHaveClass('text-base', 'lg:text-sm');
+  });
+
+  it('InputWrapper className="text-lg" ไม่มี lg:text-sm ของ variant', () => {
+    render(<InputWrapper data-testid="wrapper" className="text-lg" />);
+    const wrapper = screen.getByTestId('wrapper');
+    expect(wrapper).toHaveClass('text-lg');
+    expect(wrapper).not.toHaveClass('lg:text-sm');
   });
 });

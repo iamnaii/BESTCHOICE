@@ -223,12 +223,12 @@ function EditCompanyDialog({
                 placeholder="02-100-0000"
               />
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex items-start gap-4">
               <div className="flex-1">
                 <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
                   สถานะ VAT
                 </label>
-                <label className="flex items-center gap-2 cursor-pointer">
+                <label className="flex min-h-11 items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={form.vatRegistered}
@@ -501,12 +501,12 @@ function AddCompanyDialog({
                 placeholder="02-100-0000"
               />
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex items-start gap-4">
               <div className="flex-1">
                 <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
                   สถานะ VAT
                 </label>
-                <label className="flex items-center gap-2 cursor-pointer">
+                <label className="flex min-h-11 items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={form.vatRegistered}

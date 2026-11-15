@@ -1,6 +1,7 @@
 import { NumberInput } from '@/components/ui/NumberInput';
 import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
+import { formControlClass, formLabelClass, formTextareaClass } from '@/components/ui/form-styles';
 import { useId as useUiFieldId, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
@@ -219,23 +220,23 @@ function KnowledgeBaseTab() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label htmlFor={`${uiFieldId}-1`} className="text-xs text-muted-foreground">รหัสความต้องการลูกค้า (ภาษาอังกฤษ)</label>
+                  <label htmlFor={`${uiFieldId}-1`} className={formLabelClass}>รหัสความต้องการลูกค้า (ภาษาอังกฤษ)</label>
                   <input id={`${uiFieldId}-1`}
                     type="text"
                     value={form.intent}
                     onChange={(e) => setForm({ ...form, intent: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg text-sm mt-1"
+                    className={formControlClass}
                     placeholder="e.g. request_deferral"
                     required
                   />
                 </div>
                 <div>
-                  <label htmlFor={`${uiFieldId}-2`} className="text-xs text-muted-foreground">หมวดหมู่</label>
+                  <label htmlFor={`${uiFieldId}-2`} className={formLabelClass}>หมวดหมู่</label>
                   <input id={`${uiFieldId}-2`}
                     type="text"
                     value={form.category}
                     onChange={(e) => setForm({ ...form, category: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg text-sm mt-1"
+                    className={formControlClass}
                     placeholder="e.g. payment"
                     required
                   />
@@ -243,44 +244,43 @@ function KnowledgeBaseTab() {
               </div>
 
               <div>
-                <label htmlFor={`${uiFieldId}-3`} className="text-xs text-muted-foreground">คำค้นที่ใช้จับคู่ (คั่นด้วยจุลภาค)</label>
+                <label htmlFor={`${uiFieldId}-3`} className={formLabelClass}>คำค้นที่ใช้จับคู่ (คั่นด้วยจุลภาค)</label>
                 <input id={`${uiFieldId}-3`}
                   type="text"
                   value={form.triggerKeywords.join(', ')}
                   onChange={(e) => setForm({ ...form, triggerKeywords: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })}
-                  className="w-full px-3 py-2 border rounded-lg text-sm mt-1"
+                  className={formControlClass}
                   placeholder="ขอเลื่อน, ไม่ทัน, ไม่มีจ่าย"
                 />
               </div>
 
               <div>
-                <label htmlFor={`${uiFieldId}-4`} className="text-xs text-muted-foreground">ตัวอย่างคำถาม (บรรทัดละ 1 คำถาม)</label>
+                <label htmlFor={`${uiFieldId}-4`} className={formLabelClass}>ตัวอย่างคำถาม (บรรทัดละ 1 คำถาม)</label>
                 <textarea id={`${uiFieldId}-4`}
                   value={form.exampleQuestions.join('\n')}
                   onChange={(e) => setForm({ ...form, exampleQuestions: e.target.value.split('\n').map((s) => s.trim()).filter(Boolean) })}
-                  className="w-full px-3 py-2 border rounded-lg text-sm mt-1 font-mono"
+                  className={`${formTextareaClass} font-mono`}
                   rows={3}
                   placeholder={'ขอเลื่อนงวดนี้ได้ไหม\nจ่ายไม่ทัน รอเงินเดือน'}
                 />
               </div>
 
               <div>
-                <label htmlFor={`${uiFieldId}-5`} className="text-xs text-muted-foreground">แม่แบบคำตอบ</label>
+                <label htmlFor={`${uiFieldId}-5`} className={formLabelClass}>แม่แบบคำตอบ</label>
                 <textarea id={`${uiFieldId}-5`}
                   value={form.responseTemplate}
                   onChange={(e) => setForm({ ...form, responseTemplate: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg text-sm mt-1 font-mono"
+                  className={`${formTextareaClass} font-mono`}
                   rows={6}
                   required
                 />
               </div>
 
               <div>
-                <label htmlFor={`${uiFieldId}-6`} className="block text-sm font-medium text-foreground mb-1 leading-snug">
+                <label htmlFor={`${uiFieldId}-6`} className={formLabelClass}>
                   ช่องทางที่ใช้ คำถามที่พบบ่อย นี้
                 </label>
                 <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-6`}
-                  className="rounded-md border border-border bg-background px-3 py-2 text-sm"
                   value={form.channel ?? ''}
                   onChange={(e) => setForm({ ...form, channel: e.target.value || null })}
                 >
@@ -297,11 +297,10 @@ function KnowledgeBaseTab() {
 
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label htmlFor={`${uiFieldId}-7`} className="text-xs text-muted-foreground">รูปแบบคำตอบ</label>
-                  <NativeSelect wrapperClassName="max-w-full w-full mt-1" id={`${uiFieldId}-7`}
+                  <label htmlFor={`${uiFieldId}-7`} className={formLabelClass}>รูปแบบคำตอบ</label>
+                  <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-7`}
                     value={form.responseType}
                     onChange={(e) => setForm({ ...form, responseType: e.target.value })}
-                    className="px-3 py-2 border rounded-lg text-sm"
                   >
                     <option value="auto">บอตตอบอัตโนมัติ</option>
                     <option value="info">ข้อมูลสำหรับอธิบาย</option>
@@ -309,15 +308,15 @@ function KnowledgeBaseTab() {
                   </NativeSelect>
                 </div>
                 <div>
-                  <label htmlFor={`${uiFieldId}-8`} className="text-xs text-muted-foreground">ลำดับความสำคัญ</label>
+                  <label htmlFor={`${uiFieldId}-8`} className={formLabelClass}>ลำดับความสำคัญ</label>
                   <NumberInput unstyled id={`${uiFieldId}-8`}
                     value={form.priority}
                     onChange={(e) => setForm({ ...form, priority: Number(e.target.value) })}
-                    className="w-full px-3 py-2 border rounded-lg text-sm mt-1"
+                    className={formControlClass}
                   />
                 </div>
-                <div className="flex flex-col text-xs text-muted-foreground mt-1">
-                  <label className="flex items-center gap-2 mt-2">
+                <div className="flex flex-col justify-end gap-2 text-sm leading-snug text-foreground">
+                  <label className="flex items-center gap-2">
                     <input
                       type="checkbox"
                       checked={form.active}
@@ -325,7 +324,7 @@ function KnowledgeBaseTab() {
                     />
                     เปิดใช้งาน
                   </label>
-                  <label className="flex items-center gap-2 mt-1">
+                  <label className="flex items-center gap-2">
                     <input
                       type="checkbox"
                       checked={form.requiresAuth}

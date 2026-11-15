@@ -1,4 +1,5 @@
 import { NumberInput } from '@/components/ui/NumberInput';
+import { ReadOnlyField } from '@/components/ui/readonly-field';
 import { useId as useUiFieldId, useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
@@ -554,15 +555,13 @@ export default function InterestConfigPage() {
                 {touched && errors.storeCommissionPct && <p className="text-xs text-destructive mt-1">{errors.storeCommissionPct}</p>}
               </div>
               <div>
-                {/* #22 — อ่านอย่างเดียว: VAT ของการผ่อนมาจากบริษัท FINANCE (ช่องนี้ไม่ถูกบันทึก) */}
-                <span className="block text-sm font-medium text-foreground mb-1">VAT (%)</span>
-                <div
+                {/* #22 — อ่านอย่างเดียว: VAT ของการผ่อนมาจากบริษัท FINANCE (ช่องนี้ไม่ถูกบันทึก) · S1-03 สูงเท่าช่องข้าง ๆ */}
+                <label htmlFor={`${uiFieldId}-vat`} className="block text-sm font-medium text-foreground mb-1">VAT (%)</label>
+                <ReadOnlyField
+                  id={`${uiFieldId}-vat`}
                   data-testid="interest-vat-readonly"
-                  aria-readonly="true"
-                  className={`${inputClass} border-input bg-muted text-muted-foreground`}
-                >
-                  {vat.percentText}
-                </div>
+                  value={vat.percentText}
+                />
                 <VatSourceHint source={vat.source} />
               </div>
             </div>

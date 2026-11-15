@@ -1,5 +1,6 @@
 import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
+import { formControlClass } from '@/components/ui/form-styles';
 import { Fragment, useId as useUiFieldId, useState } from 'react';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery } from '@tanstack/react-query';
@@ -305,7 +306,7 @@ export default function AuditLogsPage() {
               value={entity}
               onChange={(e) => { setEntity(e.target.value); setPage(1); }}
               placeholder="เช่น products, contracts..."
-              className="w-full border rounded-lg px-3 py-2 text-sm"
+              className={formControlClass}
             />
           </div>
           <div>
@@ -313,7 +314,6 @@ export default function AuditLogsPage() {
             <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-2`}
               value={action}
               onChange={(e) => { setAction(e.target.value); setPage(1); }}
-              className="border rounded-lg px-3 py-2 text-sm"
             >
               <option value="">ทั้งหมด</option>
               <option value="POST">POST (สร้าง)</option>
@@ -332,7 +332,6 @@ export default function AuditLogsPage() {
               data-date-range-custom-start="true"
               value={dateFrom}
               onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
-              className="w-full border rounded-lg px-3 py-2 text-sm"
             />
           </div>
           <div>
@@ -340,7 +339,6 @@ export default function AuditLogsPage() {
             <ThaiDateInput id={`${uiFieldId}-4`}
               value={dateTo}
               onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
-              className="w-full border rounded-lg px-3 py-2 text-sm"
             />
           </div>
         </div>

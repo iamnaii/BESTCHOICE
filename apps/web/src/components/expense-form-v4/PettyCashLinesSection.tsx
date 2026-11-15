@@ -133,7 +133,6 @@ export function PettyCashLinesSection({ value, onChange }: Props) {
                   <NativeSelect wrapperClassName="max-w-full w-full"
                     value={l.vatPercent}
                     onChange={(e) => updateLine(l.uid, { vatPercent: e.target.value })}
-                    className="rounded-md border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   >
                     <option value="0">0</option>
                     <option value="7">7</option>

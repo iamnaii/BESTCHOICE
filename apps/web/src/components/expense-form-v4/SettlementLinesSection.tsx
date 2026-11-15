@@ -8,6 +8,8 @@ import { SettlementFormFields } from './types';
 import { formatNumberDecimal } from '@/utils/formatters';
 import { useUiFlags } from '@/hooks/useUiFlags';
 import { VendorCombobox } from './VendorCombobox';
+import { formControlClass } from '@/components/ui/form-styles';
+import { cn } from '@/lib/utils';
 
 /**
  * D1.3.6.2 — A bill is treated as "overdue" if its `documentDate` is older
@@ -180,7 +182,6 @@ export function SettlementLinesSection({ branchId, value, onChange }: Props) {
               onChange={(e) =>
                 onChange({ ...value, whtFormType: e.target.value as 'PND3' | 'PND53' | '' })
               }
-              className="px-3 py-2 border border-input rounded-lg text-sm bg-background"
             >
               <option value="">ไม่ระบุ</option>
               <option value="PND53">ภงด.53</option>
@@ -191,7 +192,7 @@ export function SettlementLinesSection({ branchId, value, onChange }: Props) {
               value={value.whtAmount}
               onChange={(e) => onChange({ ...value, whtAmount: e.target.value })}
               aria-label="ยอดภาษีหัก ณ ที่จ่าย" placeholder="ยอด WHT"
-              className="flex-1 px-3 py-2 border border-input rounded-lg text-sm bg-background text-right font-mono"
+              className={cn(formControlClass, 'flex-1 text-right font-mono')}
             />
           </div>
         </div>

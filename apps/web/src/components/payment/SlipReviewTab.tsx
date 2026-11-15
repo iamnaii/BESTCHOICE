@@ -10,6 +10,7 @@ import { exportToExcel } from '@/utils/excel.util';
 import { formatDateTime, formatDateShort } from '@/utils/formatters';
 import { toast } from 'sonner';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
+import { formControlClass } from '@/components/ui/form-styles';
 
 interface PaymentEvidence {
   id: string;
@@ -615,7 +616,7 @@ export default function SlipReviewTab() {
                       min="1"
                       value={selectedInstallmentNo}
                       onChange={(e) => setSelectedInstallmentNo(Number(e.target.value))}
-                      className="w-full border rounded-lg px-3 py-2"
+                      className={formControlClass}
                     />
                   </div>
 
@@ -626,7 +627,7 @@ export default function SlipReviewTab() {
                     <NumberInput unstyled id={`${uiFieldId}-2`}
                       value={approveAmount}
                       onChange={(e) => setApproveAmount(e.target.value)}
-                      className="w-full border rounded-lg px-3 py-2"
+                      className={formControlClass}
                       placeholder="จำนวนเงินในสลิป"
                     />
                   </div>
@@ -638,7 +639,6 @@ export default function SlipReviewTab() {
                     <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-3`}
                       value={approveMethod}
                       onChange={(e) => setApproveMethod(e.target.value)}
-                      className="border rounded-lg px-3 py-2"
                     >
                       <option value="BANK_TRANSFER">โอนเงิน</option>
                       <option value="QR_EWALLET">QR/E-Wallet</option>

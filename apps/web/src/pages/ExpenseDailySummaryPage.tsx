@@ -177,7 +177,6 @@ export default function ExpenseDailySummaryPage() {
               aria-label="สาขาของใบสรุปรายจ่าย"
               value={branchId}
               onChange={(e) => setBranchId(e.target.value)}
-              className="min-h-11 px-3 py-2 border border-input rounded-lg text-sm bg-background"
             >
               <option value="" disabled>เลือกสาขา</option>
               {branches.map((b) => (

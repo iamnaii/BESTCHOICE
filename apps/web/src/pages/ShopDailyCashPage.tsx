@@ -173,8 +173,7 @@ export default function ShopDailyCashPage() {
               </div>
             )}
             {data?.scope === 'ALL' && (
-              <NativeSelect wrapperClassName="max-w-full w-full min-w-0 sm:w-48" id="daily-cash-branch" aria-label="สาขา" value={branchId} onChange={(e) => setBranchId(e.target.value)}
-                className="h-11 rounded-lg border border-input bg-background px-3 text-sm">
+              <NativeSelect wrapperClassName="max-w-full w-full min-w-0 sm:w-48" id="daily-cash-branch" aria-label="สาขา" value={branchId} onChange={(e) => setBranchId(e.target.value)}>
                 <option value="">ทุกสาขา</option>
                 {data.branches.map((b) => <option key={b.id} value={b.id}>สาขา {b.name}</option>)}
               </NativeSelect>

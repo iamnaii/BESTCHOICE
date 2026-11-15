@@ -12,6 +12,7 @@ import {
   FormLabel,
 } from '@/components/ui/form';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
+import { formLabelClass } from '@/components/ui/form-styles';
 import { TenderInput } from '@/components/tender/TenderInput';
 import type { TenderRow } from '@/components/tender/tender-utils';
 import { type PosSaleFormData } from '@/lib/schemas';
@@ -74,7 +75,7 @@ export default function SaleDetailsForm({
           {/* Price picker from product system */}
           {selectedProduct && selectedProduct.prices.length > 0 && (
             <div className="mb-3">
-              <label className="block text-xs text-muted-foreground mb-2">
+              <label className={formLabelClass}>
                 เลือกราคาขาย (จากระบบ) *
               </label>
               <div className="flex flex-wrap gap-2">

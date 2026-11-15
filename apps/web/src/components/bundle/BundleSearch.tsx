@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
+import { formLabelClass } from '@/components/ui/form-styles';
 import api from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';
 import QuickBundlePicks from './QuickBundlePicks';
@@ -134,10 +135,7 @@ export default function BundleSearch<T extends BundleProduct>({
 
       <div className="relative">
         {searchLabel && (
-          <label
-            htmlFor="bundle-search"
-            className="block text-xs text-muted-foreground mb-1.5 leading-snug"
-          >
+          <label htmlFor="bundle-search" className={formLabelClass}>
             {searchLabel}
           </label>
         )}

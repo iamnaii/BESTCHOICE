@@ -191,6 +191,17 @@ describe('AccountSearchDropdown — trigger accessible name', () => {
   });
 });
 
+describe('AccountSearchDropdown — trigger skin (formControlClass)', () => {
+  it('looks like the fields next to it: 8px corner, border-input, bg-background, 44px, full width', () => {
+    render(<Harness filter={only42} />);
+    const trigger = screen.getByRole('combobox');
+    expect(trigger).toHaveClass('rounded-lg', 'border', 'border-input', 'bg-background', 'h-11', 'w-full');
+    expect(trigger).not.toHaveClass('rounded-md');
+    // a button, not a text field: content left-aligned, chevron pushed to the end
+    expect(trigger).toHaveClass('flex', 'items-center', 'justify-between', 'text-left');
+  });
+});
+
 describe('AccountSearchDropdown — blocked codes', () => {
   it('shows the blocked reason as text and ignores clicks on the blocked row', async () => {
     const user = userEvent.setup();

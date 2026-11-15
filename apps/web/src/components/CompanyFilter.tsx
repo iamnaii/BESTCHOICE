@@ -38,6 +38,7 @@ export default function CompanyFilter({ value, onChange, className }: CompanyFil
         นิติบุคคล
       </label>
       <NativeSelect id={`${uiFieldId}-1`}
+        wrapperClassName="min-w-[150px]"
         value={value}
         onChange={(e) => onChange(e.target.value)}
       >

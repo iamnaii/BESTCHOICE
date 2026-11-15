@@ -1,5 +1,6 @@
 import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
+import { formLabelClass } from '@/components/ui/form-styles';
 import { useEffect, useId, useState } from 'react';
 import { Plus } from 'lucide-react';
 import {
@@ -21,7 +22,8 @@ import {
 
 const fieldClass =
   'w-full h-11 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20 disabled:opacity-60';
-const labelClass = 'block text-xs text-muted-foreground mb-1 leading-snug';
+// Field labels use style A (formLabelClass): the POS "ราคาและรับเงิน" card puts shadcn FormLabels
+// next to this block, and one form must not mix label sizes (spec 2026-11-14 §9).
 
 /**
  * สถานะของช่องรับเงินสำหรับหน้าที่ใช้ — บรรทัดเดียว = ยอดตามยอดที่ต้องรับเสมอ (ผู้ใช้ไม่ต้องพิมพ์)
@@ -119,16 +121,16 @@ export function TenderInput({ due, value, onChange, dueLabel = 'ยอดที�
                 </button>
               </div>
             )}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 items-end gap-3">
               <div>
-                <label htmlFor={methodId} className={labelClass}>วิธีรับเงิน{single ? '' : ` วิธีที่ ${index + 1}`}</label>
+                <label htmlFor={methodId} className={formLabelClass}>วิธีรับเงิน{single ? '' : ` วิธีที่ ${index + 1}`}</label>
                 <NativeSelect wrapperClassName="max-w-full w-full" id={methodId} value={row.method} disabled={disabled} className={fieldClass}
                   onChange={(e) => update(index, { method: e.target.value as TenderMethod, reference: e.target.value === 'CASH' ? '' : row.reference })}>
                   {TENDER_METHOD_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </NativeSelect>
               </div>
               <div>
-                <label htmlFor={amountId} className={labelClass}>จำนวนเงิน{single ? '' : ` วิธีที่ ${index + 1}`}</label>
+                <label htmlFor={amountId} className={formLabelClass}>จำนวนเงิน{single ? '' : ` วิธีที่ ${index + 1}`}</label>
                 <NumberInput unstyled id={amountId} inputMode="decimal" min="0" step="0.01" value={row.amount}
                   // บรรทัดเดียว = ยอดเต็มเสมอ ไม่ให้แก้ (แก้ได้เมื่อแบ่งจ่ายหลายวิธี)
                   readOnly={single} disabled={disabled} className={`${fieldClass} text-right ${single ? 'bg-muted/40' : ''}`}
@@ -137,7 +139,7 @@ export function TenderInput({ due, value, onChange, dueLabel = 'ยอดที�
             </div>
             {needsReference(row.method) && (
               <div>
-                <label htmlFor={refId} className={labelClass}>
+                <label htmlFor={refId} className={formLabelClass}>
                   เลขอ้างอิงการโอน{single ? '' : ` วิธีที่ ${index + 1}`} <span className="text-destructive">*</span>
                 </label>
                 <input id={refId} type="text" value={row.reference} maxLength={MAX_REFERENCE_LENGTH} disabled={disabled}
@@ -156,7 +158,7 @@ export function TenderInput({ due, value, onChange, dueLabel = 'ยอดที�
       {showChangeHelper && single && value[0].method === 'CASH' && (
         <div className="grid grid-cols-2 gap-3 items-end rounded-lg bg-muted/40 p-3">
           <div>
-            <label htmlFor={`${uid}-handed`} className={labelClass}>ลูกค้ายื่นเงินมา</label>
+            <label htmlFor={`${uid}-handed`} className={formLabelClass}>ลูกค้ายื่นเงินมา</label>
             <NumberInput unstyled id={`${uid}-handed`} inputMode="decimal" min="0" value={handed} disabled={disabled}
               className={`${fieldClass} text-right`} onChange={(e) => setHanded(e.target.value)} />
           </div>

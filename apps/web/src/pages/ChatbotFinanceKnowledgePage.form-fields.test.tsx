@@ -43,4 +43,28 @@ describe('ChatbotFinanceKnowledgePage — S1-05 ทั้งฟอร์มใ�
       expect(document.querySelector(`label[for="${area.id}"]`)).toHaveClass('mb-3');
     }
   });
+
+  it('ช่องในแถวเดียวกันชิดขอบล่างเสมอ — ป้ายที่ขึ้นบรรทัดใหม่ที่ 390 ไม่ดันช่องให้เหลื่อม', async () => {
+    apiGet.mockResolvedValue({ data: [] });
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter>
+          <ChatbotFinanceKnowledgePage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: /เพิ่ม คำถามที่พบบ่อย/ }));
+
+    const rowOf = (name: string) => screen.getByLabelText(name).closest('div.grid');
+    const pairs: [string, string][] = [
+      ['รหัสความต้องการลูกค้า (ภาษาอังกฤษ)', 'หมวดหมู่'],
+      ['รูปแบบคำตอบ', 'ลำดับความสำคัญ'], // S1-05: 21px เหลื่อมที่ 390 ในรอบ final
+    ];
+    for (const [a, b] of pairs) {
+      const row = rowOf(a);
+      expect(row).not.toBeNull();
+      expect(row).toBe(rowOf(b));
+      expect(row).toHaveClass('items-end');
+    }
+  });
 });

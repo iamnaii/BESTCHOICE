@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useLocation } from 'react-router';
 import type { Product, Customer } from './types';
+import { formLabelClass } from '@/components/ui/form-styles';
 import POSPage from './index';
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), product: {} as Product }));
@@ -274,6 +275,21 @@ describe('POS price selection', () => {
     const chips = screen.getByRole('button', { name: '5%' }).parentElement;
     expect(chips).toHaveClass('flex', 'gap-1', 'mt-1.5');
     expect(chips).not.toHaveClass('mt-1');
+  });
+
+  it('one label size in the "ราคาและรับเงิน" card: price picker, FormLabels and TenderInput labels are all style A (spec §9)', async () => {
+    renderPOS();
+    await selectProduct();
+    const card = screen.getByText('3. ราคาและรับเงิน').closest('[data-slot="card"]') as HTMLElement;
+    expect(within(card).getByLabelText('วิธีรับเงิน')).toBeInTheDocument(); // TenderInput is in this card
+    const labels = [...card.querySelectorAll('label')];
+    expect(labels.map((l) => l.textContent?.trim())).toEqual(
+      expect.arrayContaining(['เลือกราคาขาย (จากระบบ) *', 'ส่วนลด', 'วิธีรับเงิน', 'จำนวนเงิน', 'ลูกค้ายื่นเงินมา']),
+    );
+    for (const label of labels) {
+      expect(label, label.textContent ?? '').toHaveClass(...formLabelClass.split(' '));
+      expect(label, label.textContent ?? '').not.toHaveClass('text-xs');
+    }
   });
 });
 

@@ -5976,6 +5976,17 @@ describe('AccountSearchDropdown — trigger accessible name', () => {
   });
 });
 
+describe('AccountSearchDropdown — trigger skin (formControlClass)', () => {
+  it('looks like the fields next to it: 8px corner, border-input, bg-background, 44px, full width', () => {
+    render(<Harness filter={only42} />);
+    const trigger = screen.getByRole('combobox');
+    expect(trigger).toHaveClass('rounded-lg', 'border', 'border-input', 'bg-background', 'h-11', 'w-full');
+    expect(trigger).not.toHaveClass('rounded-md');
+    // a button, not a text field: content left-aligned, chevron pushed to the end
+    expect(trigger).toHaveClass('flex', 'items-center', 'justify-between', 'text-left');
+  });
+});
+
 describe('AccountSearchDropdown — blocked codes', () => {
   it('shows the blocked reason as text and ignores clicks on the blocked row', async () => {
     const user = userEvent.setup();
@@ -6056,7 +6067,7 @@ npm run test --workspace=apps/web -- src/pages/other-income/components/__tests__
 
 Expected: FAIL. Every test errors with
 `TestingLibraryElementError: Unable to find an accessible element with the role "combobox"`
-(today the trigger is a plain `<button>`), and the summary line reads `Tests  8 failed (8)`.
+(today the trigger is a plain `<button>`), and the summary line reads `Tests  15 failed (15)` (count re-checked 2026-11-15 against the pre-Task-6 component after the review rounds added tests).
 
 - [ ] **Step 3: Replace the component with the portalled Popover implementation**
 
@@ -6066,6 +6077,7 @@ Overwrite `apps/web/src/pages/other-income/components/AccountSearchDropdown.tsx`
 import { useEffect, useId, useRef, useState } from 'react';
 import { Search, CheckCircle2, ChevronUp, ChevronDown } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { formControlClass } from '@/components/ui/form-styles';
 import { useCoaGroups } from '@/hooks/useCoa';
 import { cn } from '@/lib/utils';
 import { accountDisplayName } from '@/utils/accountName';
@@ -6222,7 +6234,7 @@ export function AccountSearchDropdown({
               changeOpen(true);
             }
           }}
-          className="w-full text-left px-3 py-2 rounded-md border bg-background text-sm flex items-center justify-between gap-2 hover:bg-accent disabled:opacity-50"
+          className={cn(formControlClass, 'items-center justify-between gap-2 text-left hover:bg-accent')}
         >
           {selected ? (
             <span className="flex items-baseline gap-2 truncate">
@@ -6330,7 +6342,7 @@ export function AccountSearchDropdown({
 ```
 
 Notes for the implementer (they hold for the code above, so do not "fix" them):
-- The trigger keeps the old `className` byte-for-byte. It already matched the central 44px rule through `[data-slot=select-trigger]` in `styles/admin-typography.css`, so adding `role=combobox` changes nothing visually. Changing the trigger's look belongs to R1-3/R2-3a.
+- The trigger's skin is `formControlClass` (8px corner, `border-input`, `bg-background`, `h-11`, `w-full`) plus `items-center justify-between gap-2 text-left hover:bg-accent` — changed in the final polish round (2026-11-15) from the old `rounded-md border` (6px, lighter `--border` colour) so it matches the fields next to it. Its height was already 44px through `[data-slot=select-trigger]` in `styles/admin-typography.css`; width stays `w-full`, and the DOM contract (role, `data-slot`, `aria-*`) and keyboard behaviour do not change.
 - Radix `Slot` merges props with the child's props winning. So `aria-haspopup="listbox"` and `data-slot="select-trigger"` override Radix's `dialog` and `popover-trigger`, while `aria-controls` (the content id) and `data-state` come from Radix.
 - `React.KeyboardEvent` / `React.SyntheticEvent` are global UMD types, used without import exactly like `src/components/WizardStackedOverlay.tsx:33`.
 - Behaviour changes from the old panel:
@@ -6344,7 +6356,7 @@ Notes for the implementer (they hold for the code above, so do not "fix" them):
 npm run test --workspace=apps/web -- src/pages/other-income/components/__tests__/AccountSearchDropdown.test.tsx
 ```
 
-Expected: `Test Files  1 passed (1)` and `Tests  8 passed (8)`.
+Expected: `Test Files  1 passed (1)` and `Tests  15 passed (15)`.
 
 - [ ] **Step 5: Run the neighbouring other-income + expense-form tests (no regressions)**
 

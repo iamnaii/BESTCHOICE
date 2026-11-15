@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { Search, CheckCircle2, ChevronUp, ChevronDown } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { formControlClass } from '@/components/ui/form-styles';
 import { useCoaGroups } from '@/hooks/useCoa';
 import { cn } from '@/lib/utils';
 import { accountDisplayName } from '@/utils/accountName';
@@ -157,7 +158,7 @@ export function AccountSearchDropdown({
               changeOpen(true);
             }
           }}
-          className="w-full text-left px-3 py-2 rounded-md border bg-background text-sm flex items-center justify-between gap-2 hover:bg-accent disabled:opacity-50"
+          className={cn(formControlClass, 'items-center justify-between gap-2 text-left hover:bg-accent')}
         >
           {selected ? (
             <span className="flex items-baseline gap-2 truncate">

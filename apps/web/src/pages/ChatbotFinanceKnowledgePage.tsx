@@ -218,7 +218,7 @@ function KnowledgeBaseTab() {
             >
               <h2 className="font-bold">{editing ? "แก้ไข คำถามที่พบบ่อย" : "เพิ่ม คำถามที่พบบ่อย ใหม่"}</h2>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 items-end gap-3">
                 <div>
                   <label htmlFor={`${uiFieldId}-1`} className={formLabelClass}>รหัสความต้องการลูกค้า (ภาษาอังกฤษ)</label>
                   <input id={`${uiFieldId}-1`}
@@ -295,7 +295,8 @@ function KnowledgeBaseTab() {
                 </p>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              {/* items-end: a label that wraps at 390 must not push its control below the others (S1-05) */}
+              <div className="grid grid-cols-3 items-end gap-3">
                 <div>
                   <label htmlFor={`${uiFieldId}-7`} className={formLabelClass}>รูปแบบคำตอบ</label>
                   <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-7`}

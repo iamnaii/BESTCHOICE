@@ -140,7 +140,6 @@ export default function PeakSyncPage() {
             <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="ปี"
               value={selectedYear}
               onChange={(e) => setSelectedYear(Number(e.target.value))}
-              className="text-sm border border-input rounded-lg px-3 py-2 bg-background"
             >
               {yearOptions.map((y) => (
                 <option key={y} value={y}>

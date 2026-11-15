@@ -27,6 +27,7 @@ import {
   UserX,
   type LucideIcon,
 } from 'lucide-react';
+import { formControlClass } from '@/components/ui/form-styles';
 
 /**
  * Payroll D4 ส่วนที่ 2 (Task 6, mockup กระดาน 4) — ค่าคอมจ่ายผ่านใบเงินเดือนเท่านั้น:
@@ -551,14 +552,13 @@ export default function CommissionsPage() {
               aria-label="เดือนคอมมิชชั่น"
               value={periodMonth}
               onChange={(e) => setPeriodMonth(e.target.value)}
-              className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background focus:border-transparent"
+              className={formControlClass}
             />
             <NativeSelect
               wrapperClassName="max-w-full w-auto"
               aria-label="สถานะ"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3 py-2 border border-input rounded-lg text-sm"
             >
               <option value="">ทุกสถานะ</option>
               <option value="PENDING">รออนุมัติ</option>
@@ -598,14 +598,13 @@ export default function CommissionsPage() {
               aria-label="เดือนของใบจ่าย"
               value={payoutPeriod}
               onChange={(e) => setPayoutPeriod(e.target.value)}
-              className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background focus:border-transparent"
+              className={formControlClass}
             />
             <NativeSelect
               wrapperClassName="max-w-full w-auto"
               aria-label="สถานะใบจ่าย"
               value={payoutStatusFilter}
               onChange={(e) => setPayoutStatusFilter(e.target.value)}
-              className="px-3 py-2 border border-input rounded-lg text-sm"
             >
               <option value="">ทุกสถานะ</option>
               <option value="DRAFT">ร่าง</option>

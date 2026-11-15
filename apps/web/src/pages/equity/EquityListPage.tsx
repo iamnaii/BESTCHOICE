@@ -14,6 +14,8 @@ import { equityApi, STATUS_COLORS, STATUS_LABELS, TXN_TYPE_LABELS } from '@/lib/
 import type { EquityDocument, Shareholder } from '@/lib/equity.types';
 import { formatThaiDateShort } from '@/lib/date';
 import { formatNumberDecimal } from '@/utils/formatters';
+import { formControlClass } from '@/components/ui/form-styles';
+import { cn } from '@/lib/utils';
 
 function docTotal(d: EquityDocument): number {
   if (d.txnType === 'PRIOR_ADJ') return parseFloat(d.paAmount ?? '0');
@@ -65,19 +67,18 @@ function ShareholdersTab() {
         <CardContent className="pt-6 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
             <input
-              className="border border-border rounded-md px-3 py-2 text-sm bg-background md:col-span-2"
+              className={cn(formControlClass, 'md:col-span-2')}
               placeholder="ชื่อผู้ถือหุ้น"
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
             />
             <input
-              className="border border-border rounded-md px-3 py-2 text-sm bg-background"
+              className={formControlClass}
               placeholder="เลขผู้เสียภาษี"
               value={form.taxId}
               onChange={(e) => setForm({ ...form, taxId: e.target.value })}
             />
             <NativeSelect wrapperClassName="max-w-full w-auto"
-              className="border border-border rounded-md px-3 py-2 text-sm bg-background"
               value={form.type}
               onChange={(e) => setForm({ ...form, type: e.target.value })}
             >
@@ -197,7 +198,6 @@ export default function EquityListPage() {
             <CardContent className="pt-4">
               <div className="mb-3">
                 <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="สถานะ"
-                  className="border border-border rounded-md px-3 py-2 text-sm bg-background"
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
                 >

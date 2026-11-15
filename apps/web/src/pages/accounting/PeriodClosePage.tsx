@@ -191,7 +191,6 @@ export default function PeriodClosePage() {
           value={year}
           disabled={isActing}
           onChange={(e) => setYear(Number(e.target.value))}
-          className="border border-border rounded-md px-3 py-1.5 text-sm bg-background"
           aria-label="เลือกปี"
         >
           {[currentYear - 1, currentYear, currentYear + 1].map((y) => (

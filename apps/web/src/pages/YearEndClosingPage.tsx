@@ -207,7 +207,6 @@ export default function YearEndClosingPage() {
                     id="year-input"
                     value={year}
                     onChange={(e) => setYear(Number(e.target.value))}
-                    className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring/30"
                   >
                     {yearOptions.map((y) => (
                       <option key={y} value={y}>

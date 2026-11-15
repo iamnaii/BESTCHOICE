@@ -68,7 +68,6 @@ export default function DividendRegisterPage() {
 
       <div className="flex items-center gap-2 flex-wrap">
         <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="ปี"
-          className="border border-border rounded-md px-3 py-2 text-sm bg-background"
           value={year}
           onChange={(e) => setYear(parseInt(e.target.value, 10))}
         >
@@ -79,8 +78,7 @@ export default function DividendRegisterPage() {
           ))}
         </NativeSelect>
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          <NativeSelect wrapperClassName="max-w-full w-auto"
-            className="border border-border rounded-md px-3 py-2 text-sm bg-background" aria-label="เดือนที่ส่งออก"
+          <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="เดือนที่ส่งออก"
             value={xlsxMonth}
             onChange={(e) => setXlsxMonth(parseInt(e.target.value, 10))}
           >

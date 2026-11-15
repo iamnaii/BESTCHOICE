@@ -199,7 +199,7 @@ export function ItemLinesSection({ lines, onChange, priceTypeLabel }: Props) {
             <col className="w-16" />
             <col className="w-24" />
             <col className="w-19" />
-            <col className="w-9" />
+            <col className="w-11" />
           </colgroup>
           <thead className="bg-muted/50">
             <tr>
@@ -266,7 +266,7 @@ export function ItemLinesSection({ lines, onChange, priceTypeLabel }: Props) {
                     </SelectContent>
                   </Select>
                 </td>
-                <td rowSpan={2} className={cell}>
+                <td rowSpan={2} className={`${cell} px-0`}>
                   <button data-ui-control="button"
                     type="button"
                     onClick={() => removeLine(line.uid)}

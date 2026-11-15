@@ -7,6 +7,8 @@ export const THEMES = ['light', 'dark'];
 export const SEVERITIES = ['P1', 'P2', 'P3'];
 export const BLOCKING_SEVERITIES = ['P1', 'P2'];
 export const COMPARABLE_STATUS = 'rendered';
+export const MENU_RULE = 'MENU';
+export const FACT_DROP_RATIO = 0.5;
 export const LABEL_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 export const REPORT_FINDINGS_MAX = 300;
 export const USAGE = [
@@ -74,6 +76,29 @@ export function selectRoutes(ids, routes) {
 
 export const cellId = (c) => `${c.route}|${c.width}|${c.theme}`;
 
+// A cell whose open step did not throw can still show the wrong screen: the app redirected (role
+// menu, missing record), an error fallback replaced the page, or nothing measurable is on it.
+// Query parameters may differ (the shell adds ?zone=); the pathname may not.
+export function screenProblem({ requestedPath, finalPath, factCount, fallbackText }) {
+  const pathname = (p) => new URL(p, 'http://preview.invalid').pathname;
+  if (!finalPath || pathname(finalPath) !== pathname(requestedPath)) {
+    return `landed on ${finalPath ?? '(nothing)'} instead of ${requestedPath}`;
+  }
+  if (fallbackText) return `error fallback visible: ${fallbackText}`;
+  if (!factCount) return 'no form fields measured (facts 0)';
+  return null;
+}
+
+// A failed account-menu probe is a MENU P1 finding; a probe that threw is keyed apart from a clip so
+// the two never stand in for each other in a compare.
+export function menuFinding(probe, where) {
+  if (probe.ok) return null;
+  return {
+    rule: MENU_RULE, severity: 'P1', key: probe.error ? `${probe.id}:error` : probe.id,
+    detail: { reasons: probe.reasons }, ...where,
+  };
+}
+
 export function findingId(f) {
   const key = typeof f.key === 'string' && f.key !== '' ? f.key : JSON.stringify(f.detail ?? null);
   return `${cellId(f)}|${f.rule}|${key}`;
@@ -86,6 +111,9 @@ export function parseAllow(json) {
   entries.forEach((e, i) => {
     if (typeof e?.id !== 'string' || e.id.split('|').length < 5) {
       throw new Error(`allow.json entries[${i}]: "id" must be a finding id (route|width|theme|rule|key)`);
+    }
+    if (e.id.split('|')[3] === MENU_RULE) {
+      throw new Error(`allow.json entries[${i}]: MENU findings (a clipped or broken account menu) cannot be allowed`);
     }
     if (typeof e.reason !== 'string' || e.reason.trim().length < 10) {
       throw new Error(`allow.json entries[${i}]: "reason" must say why the finding is kept (at least 10 characters)`);
@@ -104,49 +132,121 @@ export function applyAllow(findings, allow) {
 }
 
 const openFindings = (cells) => cells.flatMap((c) => c.findings).filter((f) => !f.allowed);
+const sameReasons = (a, b) => JSON.stringify(a.detail?.reasons ?? null) === JSON.stringify(b.detail?.reasons ?? null);
 
-// Only cells rendered in BOTH runs are compared: an errored / unopened / skipped cell has no findings,
-// which would otherwise read as "everything fixed".
+// Findings are compared only over cells rendered in BOTH runs: an errored / unopened / skipped cell has
+// no findings, which would otherwise read as "everything fixed". So the compare also blocks on
+//   - every MENU finding of the current run (a clipped or broken account menu is never accepted from the
+//     baseline; `vsBaseline` says whether the baseline had the same id with byte-identical reasons),
+//   - every cell rendered at baseline that is not rendered now (lostCells),
+//   - every compared cell whose fact count fell below FACT_DROP_RATIO of its baseline (factDrops).
+// Baseline cells the current run did not measure (--routes / --widths / --themes subset) are notRun.
 export function compareRuns(baseline, current) {
   const base = new Map(baseline.cells.map((c) => [cellId(c), c]));
   const curr = new Map(current.cells.map((c) => [cellId(c), c]));
-  const compared = [...curr.keys()].filter(
-    (id) => base.has(id) && base.get(id).status === COMPARABLE_STATUS && curr.get(id).status === COMPARABLE_STATUS,
-  );
+  const rendered = (map, id) => map.get(id)?.status === COMPARABLE_STATUS;
+  const compared = [...curr.keys()].filter((id) => rendered(base, id) && rendered(curr, id));
   const comparedSet = new Set(compared);
   const pick = (run) =>
     new Map(openFindings(run.cells.filter((c) => comparedSet.has(cellId(c)))).map((f) => [findingId(f), f]));
   const before = pick(baseline);
   const after = pick(current);
-  const newFindings = [...after].filter(([id]) => !before.has(id)).map(([, f]) => f);
+  const newFindings = [...after].filter(([id, f]) => !before.has(id) && f.rule !== MENU_RULE).map(([, f]) => f);
   const fixed = [...before].filter(([id]) => !after.has(id)).map(([, f]) => f);
-  const notCompared = [...new Set([...base.keys(), ...curr.keys()])].filter((id) => !comparedSet.has(id));
+  const baseMenu = new Map(
+    baseline.cells.flatMap((c) => c.findings).filter((f) => f.rule === MENU_RULE).map((f) => [findingId(f), f]),
+  );
+  const menuFailures = current.cells
+    .flatMap((c) => c.findings)
+    .filter((f) => f.rule === MENU_RULE)
+    .map((f) => {
+      const was = baseMenu.get(findingId(f));
+      return { ...f, vsBaseline: !was ? 'new' : sameReasons(was, f) ? 'identical' : 'changed' };
+    });
+  const lostCells = [...curr.keys()]
+    .filter((id) => rendered(base, id) && !rendered(curr, id))
+    .map((id) => {
+      const c = curr.get(id);
+      return { cell: id, status: c.status, reason: c.error ?? c.openError ?? '' };
+    });
+  const factDrops = compared
+    .filter((id) => base.get(id).factCount > 0 && curr.get(id).factCount < base.get(id).factCount * FACT_DROP_RATIO)
+    .map((id) => ({ cell: id, before: base.get(id).factCount, after: curr.get(id).factCount }));
+  const notRun = [...base.keys()].filter((id) => !curr.has(id));
+  const lostSet = new Set(lostCells.map((c) => c.cell));
+  const notCompared = [...curr.keys()].filter((id) => !comparedSet.has(id) && !lostSet.has(id));
+  const blocking = newFindings.filter((f) => BLOCKING_SEVERITIES.includes(f.severity));
   return {
     comparedCells: compared.length,
     notCompared,
+    notRun,
     newFindings,
     fixed,
-    blocking: newFindings.filter((f) => BLOCKING_SEVERITIES.includes(f.severity)),
+    blocking,
+    menuFailures,
+    lostCells,
+    factDrops,
+    failed: blocking.length + menuFailures.length + lostCells.length + factDrops.length > 0,
   };
 }
 
 const findingLine = (f) =>
   `${f.severity} ${f.rule} ${f.route} ${f.width} ${f.theme} ${f.key ?? JSON.stringify(f.detail ?? null)}`;
 
+const MENU_VS_BASELINE = {
+  identical: 'byte-identical to baseline: pre-existing S2-01/S2-02, fixed by Task 6',
+  changed: 'reasons differ from baseline',
+  new: 'not in baseline',
+};
+
+function failReasons(result) {
+  const identical = result.menuFailures.filter((f) => f.vsBaseline === 'identical').length;
+  return [
+    ...(result.blocking.length ? ['new P1/P2 findings'] : []),
+    ...(result.menuFailures.length
+      ? [`${result.menuFailures.length} MENU failures (${identical} byte-identical to baseline — the known S2-01/S2-02 clip, acceptable only before Task 6)`]
+      : []),
+    ...(result.lostCells.length ? [`${result.lostCells.length} cells stopped rendering`] : []),
+    ...(result.factDrops.length ? [`${result.factDrops.length} cells lost over half their measured fields`] : []),
+  ];
+}
+
 export function formatCompare(result, baselineLabel, label) {
+  const reasons = failReasons(result);
   return [
     `Compared ${result.comparedCells} cells (route × width × theme) of "${baselineLabel}" → "${label}"`,
     `New findings: ${result.newFindings.length} (blocking P1/P2: ${result.blocking.length})`,
     ...result.newFindings.map((f) => `  + ${findingLine(f)}`),
     `Fixed: ${result.fixed.length}`,
     ...result.fixed.map((f) => `  - ${findingLine(f)}`),
+    `MENU failures (account-menu probes — never accepted from the baseline): ${result.menuFailures.length}`,
+    ...result.menuFailures.map(
+      (f) => `  ! ${findingLine(f)} — ${(f.detail?.reasons ?? []).join('; ')} [${MENU_VS_BASELINE[f.vsBaseline]}]`,
+    ),
+    ...(result.lostCells.length
+      ? [
+          `Cells rendered in "${baselineLabel}" but not in "${label}" (blocking): ${result.lostCells.length}`,
+          ...result.lostCells.map((c) => `  ! ${c.cell} — ${c.status}: ${c.reason}`),
+        ]
+      : []),
+    ...(result.factDrops.length
+      ? [
+          `Cells whose fact count fell below ${FACT_DROP_RATIO * 100}% of "${baselineLabel}" (blocking): ${result.factDrops.length}`,
+          ...result.factDrops.map((c) => `  ! ${c.cell} — facts ${c.before} → ${c.after}`),
+        ]
+      : []),
     ...(result.notCompared.length
       ? [
-          `Not compared (missing from one run, or not rendered in both): ${result.notCompared.length}`,
+          `Not compared (not rendered in "${baselineLabel}", or new in "${label}"): ${result.notCompared.length}`,
           ...result.notCompared.map((id) => `  ? ${id}`),
         ]
       : []),
-    result.blocking.length ? 'FAIL: new P1/P2 findings' : 'PASS: no new P1/P2 findings',
+    ...(result.notRun.length
+      ? [`Not run in "${label}" (subset run — not blocking): ${result.notRun.length} cells`]
+      : []),
+    reasons.length
+      ? `FAIL: ${reasons.join('; ')}`
+      : 'PASS: no new P1/P2 findings, no MENU failures, no cell lost or emptied',
   ].join('\n');
 }
 

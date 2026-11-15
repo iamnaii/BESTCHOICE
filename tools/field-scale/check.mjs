@@ -6,10 +6,13 @@
 //   node tools/field-scale/check.mjs --label <name> [--routes <id,id>] [--widths 1440,1024,390] [--themes light,dark]
 //     → .tmp/field-scale/<name>/{results.json, report.md, <route>-<width>-<theme>.png}
 //   node tools/field-scale/check.mjs --compare <baselineLabel> <label>
-//     → prints new / fixed findings; exit 1 when a new P1/P2 finding appears
-// A report, not a CI gate (spec §3): a measuring run exits 0 even with findings.
-// Prerequisite: npm run local:preview — and run it again after editing anything under tools/ (the preview
-// fingerprints tools/; a stale preview is refused). Read-only: mocks answer GETs; open steps never save.
+//     → prints new / fixed findings; exit 1 when a new P1/P2 finding appears, when any MENU probe fails
+//       (even one the baseline had), or when a cell rendered at baseline is lost or emptied (lib.mjs compareRuns)
+// A report, not a CI gate (spec §3): a measuring run exits 0 even with findings. A cell counts as rendered
+// only when it shows the asked-for path, no error fallback and at least one measured field (screenProblem).
+// Prerequisite: npm run local:preview before EVERY measuring run — the preview fingerprints apps/, packages/
+// and tools/, so any source edit makes it stale and a stale preview is refused (exit 2); local:preview
+// restarts it. Read-only: mocks answer GETs; open steps never save.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,9 +25,11 @@ import {
   applyAllow,
   compareRuns,
   formatCompare,
+  menuFinding,
   parseAllow,
   parseArgs,
   renderReport,
+  screenProblem,
   selectRoutes,
   summarize,
 } from './lib.mjs';
@@ -55,7 +60,8 @@ async function previewContext(port, info) {
     return res.json();
   };
   const me = await get('/auth/me');
-  const customers = await get('/customers?limit=1');
+  // by name, not the default newest-first: a stable pick across preview restarts
+  const customers = await get('/customers?limit=1&sortBy=name&sortOrder=asc');
   return {
     origin: `http://localhost:${port}`,
     me,
@@ -101,8 +107,20 @@ async function runMenuProbe(page, probe, screenshotPath) {
     await page.keyboard.press('Escape');
     return { id: probe.id, ...menuClipVerdict(geometry), geometry };
   } catch (error) {
-    return { id: probe.id, ok: false, reasons: [`probe error: ${firstLine(error)}`], geometry: null };
+    return { id: probe.id, ok: false, error: true, reasons: [`probe error: ${firstLine(error)}`], geometry: null };
   }
+}
+
+// In the page: the heading of a visible error fallback — the root ErrorBoundary (ErrorBoundary.tsx:76,
+// which replaces .app-shell) or a QueryBoundary error (QueryBoundary.tsx:65-70) — or null.
+function readErrorFallback() {
+  const shown = (el) => !!el && el.getClientRects().length > 0;
+  if (!shown(document.querySelector('.app-shell'))) {
+    const h1 = [...document.querySelectorAll('h1')].find(shown);
+    return h1?.textContent.trim() || 'the app shell is gone';
+  }
+  const h2 = [...document.querySelectorAll('[role="alert"] > h2')].find(shown);
+  return h2 ? h2.textContent.trim() : null;
 }
 
 async function measureCell(browser, route, width, theme, ctx, outDir) {
@@ -154,16 +172,18 @@ async function measureCell(browser, route, width, theme, ctx, outDir) {
       return window.__collectFields({ exclude, root: 'body' });
     }, COLLECT_EXCLUDE);
     cell.factCount = facts.length;
+    const problem = screenProblem({
+      requestedPath: cell.path, finalPath: cell.finalPath, factCount: cell.factCount,
+      fallbackText: await page.evaluate(readErrorFallback),
+    });
+    if (problem) throw new Error(problem);
     cell.findings = evaluateFields(facts, { width }).map((f) => ({ ...f, route: route.id, width, theme }));
     for (const probe of route.probes ?? []) {
       if (!probe.widths.includes(width)) continue;
       const result = await runMenuProbe(page, probe, join(outDir, `${route.id}-${width}-${theme}-${probe.id}.png`));
       cell.probes.push(result);
-      if (!result.ok) {
-        cell.findings.push({
-          rule: 'MENU', severity: 'P1', key: probe.id, detail: { reasons: result.reasons }, route: route.id, width, theme,
-        });
-      }
+      const finding = menuFinding(result, { route: route.id, width, theme });
+      if (finding) cell.findings.push(finding);
     }
   } catch (error) {
     cell.status = 'error';
@@ -180,7 +200,10 @@ async function run(args) {
   const allow = loadAllow();
   const status = await previewStatus();
   if (!status.running || !status.current) {
-    console.error('Local preview is not running for this checkout, or is older than the source. Run: npm run local:preview');
+    console.error(
+      'Local preview is not running for this checkout, or is older than the source (any edit under apps/, packages/ ' +
+        'or tools/ makes it stale). Run: npm run local:preview — it restarts a stale preview — then run this command again.',
+    );
     process.exitCode = 2;
     return;
   }
@@ -199,7 +222,10 @@ async function run(args) {
           cells.push(cell);
           const probes = cell.probes.map((p) => ` · ${p.id} ${p.ok ? 'PASS' : 'FAIL'}`).join('');
           const open = cell.findings.filter((f) => !f.allowed).length;
-          console.log(`${route.id} ${width} ${theme}: ${cell.status} · facts ${cell.factCount} · findings ${open}${probes}`);
+          const why = cell.error ?? cell.openError;
+          console.log(
+            `${route.id} ${width} ${theme}: ${cell.status}${why ? ` (${why})` : ''} · facts ${cell.factCount} · findings ${open}${probes}`,
+          );
         }
       }
     }
@@ -245,7 +271,7 @@ function compare(args) {
   const reapply = (r) => ({ ...r, cells: r.cells.map((c) => ({ ...c, findings: applyAllow(c.findings, allow) })) });
   const result = compareRuns(reapply(baseline), reapply(current));
   console.log(formatCompare(result, args.baseline, args.label));
-  process.exitCode = result.blocking.length ? 1 : 0;
+  process.exitCode = result.failed ? 1 : 0;
 }
 
 async function main(argv) {

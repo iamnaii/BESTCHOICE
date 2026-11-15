@@ -2,8 +2,9 @@
 // that embed AddressForm (spec §4.3), as { id, path, appendix, open?, mocks, probes? }.
 //   path      string, or (ctx) => string | null (null = the preview has no sample record → cell "skipped")
 //   open      clicks that open the dialog / tab / mode to measure — never save, never pick a value that saves
-//   mocks     GET endpoints the local preview answers 501/404 for: { path: /^\/api-path$/, json(url, ctx) }.
-//             path is matched against the request pathname WITHOUT /api or /api/admin; GET only.
+//   mocks     GET endpoints the local preview answers 501/404 for, or answers from data that varies between
+//             preview starts: { path: /^\/api-path$/, json(url, ctx) }. path is matched against the request
+//             pathname WITHOUT /api or /api/admin; GET only; route mocks after COMMON_MOCKS, first match wins.
 //   probes    account-menu clipping check (S2-01 / S2-02): { id, widths, trigger(page) → Locator }
 // COMMON_MOCKS apply to every route. ctx = { origin, me (GET /auth/me), customerId, contractPath }.
 import { coaByCodes, coaGrouped, coaList, loadCoa } from './coa.mjs';
@@ -61,6 +62,14 @@ const ROLE_MAP_ROWS = [
 
 const EMPTY_PAGE = { data: [], total: 0, page: 1, limit: 50 };
 
+const PO_SUPPLIER = {
+  id: 'preview-supplier-1', name: 'ผู้จัดจำหน่ายตัวอย่าง', contactName: null, phone: '020000000', hasVat: true,
+  isActive: true,
+  paymentMethods: [
+    { paymentMethod: 'BANK_TRANSFER', bankName: 'กสิกรไทย', bankAccountNumber: '0000000000', isDefault: true },
+  ],
+};
+
 const M = {
   dunningRules: mock(/^\/overdue\/dunning-rules$/, DUNNING_RULES),
   smsTemplates: mock(/^\/sms-templates$/, []),
@@ -81,6 +90,8 @@ const M = {
       data: [],
     }),
     mock(/^\/device-returns\/awaiting-repossession$/, { data: [], total: 0 }),
+    // DeviceReturnList.tsx:61-65 — without it the list's QueryBoundary shows its error panel
+    mock(/^\/device-returns$/, { data: [], total: 0, page: 1, limit: 100 }),
   ],
   transfers: [
     mock(/^\/products\/transfers\/(pending|in-transit)$/, []),
@@ -97,6 +108,16 @@ const M = {
   ],
   interestConfigs: mock(/^\/interest-configs$/, []),
   suppliers: mock(/^\/suppliers$/, { data: [], total: 0, page: 1, totalPages: 1 }),
+  // the one supplier the purchase wizard's draft names (openPurchasePayment)
+  poSuppliers: mock(/^\/suppliers$/, { data: [PO_SUPPLIER], total: 1, page: 1, totalPages: 1 }),
+  // The preview answers this from its own data and the model select stays disabled until it lands
+  // (QuickBuyModal.tsx:188-196,895) — a fixed catalog keeps both selects in the same state every run.
+  buybackCatalog: mock(/^\/trade-ins\/quick-buy\/catalog$/, {
+    models: [
+      { model: 'iPhone 15', storages: [{ storage: '128GB', maxPrice: '14500' }, { storage: '256GB', maxPrice: '16500' }] },
+      { model: 'iPhone 15 Pro', storages: [{ storage: '256GB', maxPrice: '21500' }] },
+    ],
+  }),
   purchaseOrders: mock(/^\/purchase-orders$/, EMPTY_PAGE),
   roleMap: mock(/^\/settings\/role-map$/, ROLE_MAP_ROWS),
   // The preview's GET /branches is a bare findMany without `_count` — BranchesPage.tsx:158 reads
@@ -141,6 +162,38 @@ async function openOverrideJournal(page) {
   }
 }
 
+// S2-08 lives in PaymentSection, which the purchase wizard's summary renders only in "ของถึงแล้ว"
+// (receive) mode (StepSummary.tsx:193), and its file / URL row only once the status is a paid one
+// (PaymentSection.tsx:77,200). Local wizard state only: the draft is the wizard's own localStorage
+// draft (useCreatePoWizard.ts:17,78-105) naming the mocked supplier and one accessory line (no IMEI to
+// inspect — direct-receive.util.ts:26, receiving-flow.util.ts:55-75); nothing is submitted.
+async function openPurchasePayment(page) {
+  await page.evaluate((supplierId) => {
+    const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' });
+    localStorage.setItem('bestchoice-po-draft', JSON.stringify({
+      step: 0,
+      mode: 'receive',
+      form: {
+        supplierId, orderDate: today, expectedDate: '', notes: '', discount: '', discountAfterVat: '',
+        paymentStatus: 'UNPAID', paymentMethod: '', paidAmount: '', paymentNotes: '',
+      },
+      items: [{
+        brand: '', category: 'ACCESSORY', model: 'ฟิล์มกระจก', color: '', storage: '', quantity: '1', unitPrice: '35',
+        accessoryType: 'ฟิล์ม', accessoryBrand: 'iStar',
+      }],
+      savedAt: new Date().toISOString(),
+    }));
+  }, PO_SUPPLIER.id);
+  await clickButton('+ ซื้อสินค้า')(page);
+  await clickButton('ถัดไป: ตรวจรับ 1 ชิ้น')(page);
+  await page.locator('#group-cash').fill('59');
+  await clickButton('ถัดไป: สรุป + จ่ายเงิน')(page);
+  await page.locator('#po-payment-status').selectOption('FULLY_PAID');
+  // the S2-08 row into view for the screenshot, after the "draft recovered" toast (5 s) has gone
+  await page.getByRole('button', { name: '+ เพิ่ม', exact: true }).scrollIntoViewIfNeeded();
+  await page.locator('[data-sonner-toast]').first().waitFor({ state: 'detached', timeout: 10000 });
+}
+
 const ACCOUNT_MENU_ITEMS_CARD = {
   id: 'account-menu-items-card',
   widths: [1440],
@@ -169,6 +222,8 @@ export const ROUTES = [
     mocks: M.otherIncome, probes: [ACCOUNT_MENU_OVERRIDE_JV] },
   { id: 'company-entity-edit', path: '/settings/company/entities', appendix: ['S1-02', 'S3-12'],
     open: clickButton('แก้ไข'), mocks: [] },
+  { id: 'company-entity-create', path: '/settings/company/entities', appendix: ['S1-02'],
+    open: clickButton('เพิ่มนิติบุคคล'), mocks: [] },
   { id: 'audit-logs', path: '/audit-logs', appendix: ['S1-04'], mocks: [M.auditStats] },
   { id: 'finance-knowledge-form', path: '/chatbot-finance/knowledge', appendix: ['S1-05'],
     open: clickButton('+ เพิ่ม คำถามที่พบบ่อย'), mocks: M.knowledge },
@@ -177,18 +232,28 @@ export const ROUTES = [
   { id: 'stock-transfers-incoming', path: '/stock/transfers?view=incoming', appendix: ['S2-04'], mocks: M.transfers },
   { id: 'stock-transfers-history', path: '/stock/transfers?view=history', appendix: ['S2-04'], mocks: M.transfers },
   { id: 'expense-new', path: '/expenses/new', appendix: ['S3-02', 'S3-04', 'S3-05'], mocks: M.expense },
-  { id: 'payroll-new', path: '/expenses/new?type=PR', appendix: ['S3-07'], mocks: M.expense },
+  // S3-07 is the account select of a line's "รายได้พิเศษ" sub-table, rendered only when the line is expanded
+  // (PayrollLinesSection.tsx:475,535-540,639-652,808) — local form state, nothing is saved.
+  { id: 'payroll-new', path: '/expenses/new?type=PR', appendix: ['S3-07'], mocks: M.expense,
+    open: async (page) => {
+      await clickButton('เพิ่มพนักงาน')(page);
+      await clickButton('ขยาย')(page);
+      await clickButton('เพิ่มรายได้พิเศษ')(page);
+    } },
   { id: 'recurring-bill-dialog', path: '/expenses/favorites', appendix: ['S3-09'], open: clickButton('+ บิลประจำ'),
     mocks: M.expense },
-  { id: 'trade-in-quick-buy', path: '/trade-in', appendix: ['S3-10', 'S3-12'], open: clickButton('รับซื้อเครื่อง'),
-    mocks: [] },
+  { id: 'trade-in-quick-buy', path: '/trade-in', appendix: ['S3-10', 'S3-12'], mocks: [M.buybackCatalog],
+    open: async (page) => {
+      await clickButton('รับซื้อเครื่อง')(page);
+      await page.locator('#quick-buy-model:not([disabled])').waitFor();
+    } },
   { id: 'interest-config-form', path: '/settings/finance/interest', appendix: ['S1-03'],
     open: clickButton('+ สร้าง การตั้งค่า'), mocks: [M.interestConfigs] },
   { id: 'branch-create', path: '/branches', appendix: ['S1-06', 'S3-12'], open: clickButton('+ เพิ่มสาขา'),
     mocks: [M.branches] },
   { id: 'todo-form', path: '/todos', appendix: ['S2-05'], open: clickButton('เพิ่มงาน'), mocks: [M.branchManagerActor] },
-  { id: 'purchase-order-wizard', path: '/purchase-orders', appendix: ['S2-08'], open: clickButton('+ ซื้อสินค้า'),
-    mocks: [M.purchaseOrders, M.suppliers] },
+  { id: 'purchase-order-wizard', path: '/purchase-orders', appendix: ['S2-08'], open: openPurchasePayment,
+    mocks: [M.purchaseOrders, M.poSuppliers] },
   { id: 'account-role-edit', path: '/settings/access/account-roles', appendix: ['S3-03'], mocks: [M.roleMap],
     open: async (page) => {
       await page.getByRole('button', { name: /^แก้ไข / }).first().click();
@@ -212,6 +277,8 @@ export const ROUTES = [
     mocks: [] },
   { id: 'supplier-form', path: '/suppliers', appendix: ['S3-12'], open: clickButton('เพิ่มผู้จัดจำหน่าย'),
     mocks: [M.suppliers] },
+  // shadcn FormLabel callers whose labels R1-4 moves to style A (SaleDetailsForm renders without a product)
+  { id: 'pos-sale-form', path: '/pos', appendix: ['R1-4 FormLabel'], mocks: [] },
   { id: 'contact-create', path: '/contacts', appendix: ['S3-12'], mocks: [],
     open: async (page) => {
       await page.getByRole('button', { name: 'เพิ่มผู้ติดต่อ' }).click();

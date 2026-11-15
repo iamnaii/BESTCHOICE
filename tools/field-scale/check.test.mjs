@@ -8,9 +8,11 @@ import {
   compareRuns,
   findingId,
   formatCompare,
+  menuFinding,
   parseAllow,
   parseArgs,
   renderReport,
+  screenProblem,
   selectRoutes,
   summarize,
 } from './lib.mjs';
@@ -101,13 +103,126 @@ test('compareRuns: new, fixed and blocking findings over cells rendered in both 
   assert.deepEqual(r.newFindings.map((x) => x.key), ['new', 'minor']);
   assert.deepEqual(r.blocking.map((x) => x.key), ['new']);
   assert.deepEqual(r.fixed.map((x) => x.key), ['old']);
-  assert.deepEqual(r.notCompared.sort(), ['b|1440|light', 'c|1440|light', 'd|390|dark']);
+  assert.deepEqual(r.notCompared.sort(), ['b|1440|light', 'd|390|dark']);
+  assert.deepEqual(r.notRun, ['c|1440|light']);
+  assert.equal(r.failed, true);
   const text = formatCompare(r, 'baseline', 'r1-2');
   assert.match(text, /Compared 1 cells/);
   assert.match(text, /\+ P2 F4 a 1440 light new/);
   assert.match(text, /- P2 F1 a 1440 light old/);
+  assert.match(text, /Not run in "r1-2" \(subset run — not blocking\): 1 cells/);
   assert.match(text, /FAIL: new P1\/P2 findings/);
-  assert.match(formatCompare(compareRuns(baseline, baseline), 'baseline', 'baseline'), /PASS: no new P1\/P2 findings/);
+  const same = compareRuns(baseline, baseline);
+  assert.equal(same.failed, false);
+  assert.match(formatCompare(same, 'baseline', 'baseline'), /PASS: no new P1\/P2 findings/);
+});
+
+test('compareRuns: every MENU failure blocks, even one the baseline already had', () => {
+  const clip = (route, key, reasons) => ({ ...f(route, 1440, 'light', 'MENU', 'P1', key), detail: { reasons } });
+  const baseline = { cells: [
+    cell('m', 1440, 'light', [clip('m', 'menu-a', ['ถูกตัดโดย <div class="x">']), clip('m', 'menu-b', ['ถูกตัดโดย <div class="y">'])]),
+    cell('n', 1440, 'light', [clip('n', 'menu-c', ['ถูกตัดโดย <div class="z">'])]),
+  ] };
+  const current = { cells: [
+    cell('m', 1440, 'light', [
+      clip('m', 'menu-a', ['ถูกตัดโดย <div class="x">']), clip('m', 'menu-b', ['ถูกตัดโดย <div class="other">']),
+    ]),
+    cell('n', 1440, 'light', [clip('n', 'menu-c:error', ['probe error: locator.click: Timeout 15000ms exceeded'])]),
+  ] };
+  const r = compareRuns(baseline, current);
+  assert.deepEqual(r.newFindings, [], 'MENU is reported in its own section, not as a new finding');
+  assert.deepEqual(r.blocking, []);
+  assert.deepEqual(
+    r.menuFailures.map((x) => [x.key, x.vsBaseline]),
+    [['menu-a', 'identical'], ['menu-b', 'changed'], ['menu-c:error', 'new']],
+  );
+  assert.deepEqual(r.fixed.map((x) => x.key), ['menu-c'], 'the clip finding is gone, replaced by a probe error');
+  assert.equal(r.failed, true);
+  const text = formatCompare(r, 'baseline', 'r1-2');
+  assert.match(text, /MENU failures \(account-menu probes — never accepted from the baseline\): 3/);
+  assert.match(text, /! P1 MENU m 1440 light menu-a — ถูกตัดโดย <div class="x"> \[byte-identical to baseline: pre-existing S2-01\/S2-02, fixed by Task 6\]/);
+  assert.match(text, /! P1 MENU m 1440 light menu-b — .* \[reasons differ from baseline\]/);
+  assert.match(text, /! P1 MENU n 1440 light menu-c:error — probe error: .* \[not in baseline\]/);
+  assert.match(text, /FAIL: 3 MENU failures \(1 byte-identical to baseline/);
+  const self = compareRuns(baseline, baseline);
+  assert.equal(self.failed, true, 'a baseline with MENU failures fails against itself until Task 6');
+  assert.ok(self.menuFailures.every((x) => x.vsBaseline === 'identical'));
+  const menuFixed = compareRuns(baseline, { cells: [cell('m', 1440, 'light', []), cell('n', 1440, 'light', [])] });
+  assert.equal(menuFixed.failed, false);
+  assert.deepEqual(menuFixed.fixed.map((x) => x.key), ['menu-a', 'menu-b', 'menu-c']);
+  assert.match(formatCompare(menuFixed, 'baseline', 't6'), /MENU failures \(account-menu probes — never accepted from the baseline\): 0/);
+});
+
+test('compareRuns: a cell rendered at baseline that stops rendering blocks; one left out of a subset run does not', () => {
+  const baseline = { cells: [
+    cell('a', 1440, 'light', [f('a', 1440, 'light', 'F1', 'P2', 'k')], 'rendered', { factCount: 20 }),
+    cell('b', 1440, 'light', [], 'rendered', { factCount: 20 }),
+    cell('c', 390, 'dark', [], 'rendered', { factCount: 20 }),
+  ] };
+  const current = { cells: [
+    cell('a', 1440, 'light', [], 'error', { error: 'landed on /?zone=shop instead of /todos', factCount: 0 }),
+    cell('b', 1440, 'light', [], 'open-failed', { openError: 'locator.click: Timeout 15000ms exceeded', factCount: 18 }),
+  ] };
+  const r = compareRuns(baseline, current);
+  assert.equal(r.comparedCells, 0);
+  assert.deepEqual(r.fixed, [], 'findings of a cell that stopped rendering are not "fixed"');
+  assert.deepEqual(r.lostCells, [
+    { cell: 'a|1440|light', status: 'error', reason: 'landed on /?zone=shop instead of /todos' },
+    { cell: 'b|1440|light', status: 'open-failed', reason: 'locator.click: Timeout 15000ms exceeded' },
+  ]);
+  assert.deepEqual(r.notRun, ['c|390|dark']);
+  assert.deepEqual(r.notCompared, []);
+  assert.equal(r.failed, true);
+  const text = formatCompare(r, 'baseline', 'r1-2');
+  assert.match(text, /Cells rendered in "baseline" but not in "r1-2" \(blocking\): 2/);
+  assert.match(text, /! a\|1440\|light — error: landed on \/\?zone=shop instead of \/todos/);
+  assert.match(text, /FAIL: 2 cells stopped rendering/);
+  const subset = compareRuns(baseline, { cells: [baseline.cells[0]] });
+  assert.equal(subset.failed, false);
+  assert.deepEqual(subset.notRun, ['b|1440|light', 'c|390|dark']);
+});
+
+test('compareRuns: a fact count below half of the baseline cell blocks', () => {
+  const baseline = { cells: [
+    cell('a', 1440, 'light', [], 'rendered', { factCount: 64 }),
+    cell('b', 1440, 'light', [], 'rendered', { factCount: 40 }),
+  ] };
+  const current = { cells: [
+    cell('a', 1440, 'light', [], 'rendered', { factCount: 31 }),
+    cell('b', 1440, 'light', [], 'rendered', { factCount: 20 }),
+  ] };
+  const r = compareRuns(baseline, current);
+  assert.deepEqual(r.factDrops, [{ cell: 'a|1440|light', before: 64, after: 31 }], 'exactly half is not a drop');
+  assert.equal(r.failed, true);
+  assert.match(formatCompare(r, 'baseline', 'r1-2'), /! a\|1440\|light — facts 64 → 31/);
+  assert.match(formatCompare(r, 'baseline', 'r1-2'), /FAIL: 1 cells lost over half their measured fields/);
+});
+
+test('screenProblem: a redirect, an error fallback or an empty screen is not the screen that was asked for', () => {
+  const ok = { requestedPath: '/stock/transfers?view=history', finalPath: '/stock/transfers?view=history&zone=shop', factCount: 20, fallbackText: null };
+  assert.equal(screenProblem(ok), null, 'the app may add query parameters');
+  assert.equal(
+    screenProblem({ ...ok, requestedPath: '/todos', finalPath: '/?zone=shop' }),
+    'landed on /?zone=shop instead of /todos',
+  );
+  assert.equal(screenProblem({ ...ok, fallbackText: 'เกิดข้อผิดพลาด' }), 'error fallback visible: เกิดข้อผิดพลาด');
+  assert.equal(screenProblem({ ...ok, factCount: 0 }), 'no form fields measured (facts 0)');
+});
+
+test('menuFinding: a clipped menu and a probe that errored get different keys', () => {
+  const where = { route: 'r', width: 1440, theme: 'dark' };
+  assert.equal(menuFinding({ id: 'menu-a', ok: true, reasons: [] }, where), null);
+  assert.deepEqual(menuFinding({ id: 'menu-a', ok: false, reasons: ['ถูกตัดโดย <div>'] }, where), {
+    rule: 'MENU', severity: 'P1', key: 'menu-a', detail: { reasons: ['ถูกตัดโดย <div>'] }, ...where,
+  });
+  assert.equal(menuFinding({ id: 'menu-a', ok: false, error: true, reasons: ['probe error: x'] }, where).key, 'menu-a:error');
+});
+
+test('parseAllow refuses MENU findings — a clipped menu is never kept on purpose', () => {
+  assert.throws(
+    () => parseAllow({ entries: [{ id: 'other-income-items|1440|light|MENU|account-menu-items-card', reason: 'ตั้งใจให้เมนูถูกตัด' }] }),
+    /MENU/,
+  );
 });
 
 test('renderReport: totals, probes, api errors and unfinished cells', () => {
@@ -210,6 +325,25 @@ test('routes: cover appendix ก, the 9 AddressForm hosts and both account-menu 
     ['other-income-items', 'account-menu-items-card', [1440]],
     ['other-income-override', 'account-menu-override-jv', [1440]],
   ]);
+});
+
+test('routes: the deep screens later tasks measure, and a fixed buy-back catalog', async () => {
+  const byId = new Map(ROUTES.map((r) => [r.id, r]));
+  for (const id of ['company-entity-edit', 'company-entity-create', 'purchase-order-wizard', 'interest-config-form',
+    'finance-knowledge-form', 'todo-form', 'stock-transfers-outgoing', 'other-income-items', 'expense-new', 'payroll-new',
+    'recurring-bill-dialog', 'trade-in-quick-buy', 'pos-sale-form']) {
+    assert.ok(byId.has(id), id);
+  }
+  assert.equal(typeof byId.get('company-entity-create').open, 'function');
+  assert.ok(byId.get('company-entity-create').appendix.includes('S1-02'));
+  assert.equal(typeof byId.get('payroll-new').open, 'function', 'S3-07 needs an expanded line');
+  assert.ok(byId.get('purchase-order-wizard').appendix.includes('S2-08'));
+  const poSuppliers = await byId.get('purchase-order-wizard').mocks.find((m) => m.path.test('/suppliers')).json();
+  assert.equal(poSuppliers.data.length, 1, 'the wizard draft names the one mocked supplier');
+  const catalogMock = byId.get('trade-in-quick-buy').mocks.find((m) => m.path.test('/trade-ins/quick-buy/catalog'));
+  assert.ok(catalogMock, 'the catalog is mocked so the selects do not depend on preview data or timing');
+  const catalog = await catalogMock.json();
+  assert.ok(catalog.models.length > 0 && catalog.models.every((m) => m.storages.length > 0));
 });
 
 test('routes: common mocks answer from the CPA chart of accounts and the preview user', async () => {

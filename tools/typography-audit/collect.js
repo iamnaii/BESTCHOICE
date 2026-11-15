@@ -668,7 +668,8 @@
  *     the control and up to 3 ancestor levels that intersect the control box (> 0.5px both axes),
  *     ignoring boxes that cover ≥ 90% of it on both axes
  *
- * TargetFact { type: 'target', id, key, role, scope, scroller, targetAncestors, x, y, w, h, coveredBy }
+ * TargetFact { type: 'target', id, key, role, scope, scroller, targetAncestors, x, y, w, h, coveredBy,
+ *   stickyBar, scrollRoom }
  *   - one per visible interactive element: a[href], button, input (not hidden), select, textarea,
  *     summary, [role=button|combobox|tab|switch|checkbox|radio|link|menuitem]
  *   - role: the role attribute, else 'link' (a) | 'field' (input/select/textarea) | 'button'
@@ -678,6 +679,17 @@
  *   - targetAncestors: ids of target facts that contain this element
  *   - coveredBy: id of another, unrelated target that elementFromPoint returns at this element centre
  *     (a <label> resolves to its control) — only when the centre is inside the viewport, else null
+ *   - stickyBar: { position: 'sticky' | 'fixed', edge: 'top' | 'bottom' | null, scroller, x, y, w, h }
+ *     of the nearest element from this one up (html/body excluded) whose position is sticky or fixed,
+ *     else null. edge: sticky with only `bottom` set → 'bottom', only `top` → 'top'; fixed touching
+ *     only the viewport bottom → 'bottom', only its top → 'top'; else null. scroller: container id of
+ *     the box the bar stays put in — sticky: its nearest ancestor with overflow auto/scroll/hidden;
+ *     fixed: the bar's own `scroller` (as above); null = the document
+ *   - scrollRoom: { up, down } px the target's scroll container (the document when scroller is null)
+ *     can still scroll: up = scrollTop, down = scrollHeight − clientHeight − scrollTop (≥ 0)
+ *
+ * Visible (controls, targets, labels, adornments) also means painted: a box Chromium lays out but
+ * never paints or hit-tests is not measured — see painted() below.
  */
 (function () {
   'use strict';
@@ -708,6 +720,12 @@
   var ADORNMENT_MIN_OVERLAP_PX = 0.5;
   var ADORNMENT_OVERLAY_RATIO = 0.9;
   var NAMED_BY_TEXT_ROLES = { button: true, tab: true, menuitem: true };
+  var PAINT_CHECK = {
+    contentVisibilityAuto: true,
+    opacityProperty: true,
+    visibilityProperty: true,
+  };
+  var EDGE_SLACK_PX = 1;
   // Subtrees that hold values, not UI copy: never read for a name (a wrapping <label> contains its
   // control; a trigger button contains its select-value; a tag frame contains chips; an inline
   // listbox holds option text; an ARIA textbox, searchbox, spinbutton, an <output> or an editable
@@ -781,12 +799,37 @@
       var r = el.getBoundingClientRect();
       return { x: r.left + scrollX, y: r.top + scrollY, w: r.width, h: r.height };
     }
-    // laid out, not 1×1 (sr-only), not visibility:hidden / opacity 0
+    // laid out, not 1×1 (sr-only), not visibility:hidden / opacity 0, and painted
     function rendered(el) {
       var r = el.getBoundingClientRect();
       if (r.width <= 1 || r.height <= 1) return false;
       var cs = style(el);
-      return cs.visibility !== 'hidden' && cs.opacity !== '0';
+      return cs.visibility !== 'hidden' && cs.opacity !== '0' && painted(el);
+    }
+    // The content of a closed <details> (content-visibility: hidden in Chromium) still gets
+    // full-size boxes from getBoundingClientRect — stacked over the sections that follow — but it is
+    // never painted and never hit-tested, so measuring it reports overlaps nobody can see or press
+    // (F3). checkVisibility() is false for such subtrees (also for skipped content-visibility:auto
+    // ones and for opacity 0 / visibility hidden up the tree); where it is missing, the
+    // closed-<details> walk below still drops them. A closed <details>' own <summary> is painted.
+    function painted(el) {
+      if (typeof el.checkVisibility === 'function' && !el.checkVisibility(PAINT_CHECK))
+        return false;
+      return !inClosedDetails(el);
+    }
+    function inClosedDetails(el) {
+      for (var n = el; n && n.parentElement; n = n.parentElement) {
+        var d = n.parentElement;
+        if (d.localName === 'details' && !d.open && n !== summaryOf(d)) return true;
+      }
+      return false;
+    }
+    // the <summary> a <details> shows: its first <summary> child
+    function summaryOf(details) {
+      for (var c = details.firstElementChild; c; c = c.nextElementSibling) {
+        if (c.localName === 'summary') return c;
+      }
+      return null;
     }
     function visible(el) {
       return rendered(el) && !el.closest('[aria-hidden=true],[hidden]');
@@ -1004,13 +1047,59 @@
       if (el.matches('input,select,textarea')) return 'field';
       return 'button';
     }
-    function scrollerOf(el) {
+    // nearest ancestor whose overflow (either axis) matches re, null = the document
+    function overflowAncestor(el, re) {
       for (var n = el.parentElement; n && n !== htmlEl && n !== bodyEl; n = n.parentElement) {
         var cs = style(n);
-        if (/^(auto|scroll)$/.test(cs.overflowX) || /^(auto|scroll)$/.test(cs.overflowY))
-          return containerId(n);
+        if (re.test(cs.overflowX) || re.test(cs.overflowY)) return n;
       }
       return null;
+    }
+    function idOrNull(el) {
+      return el ? containerId(el) : null;
+    }
+    function scrollerOf(el) {
+      return idOrNull(overflowAncestor(el, /^(auto|scroll)$/));
+    }
+    // Scroll occlusion (F3): a sticky/fixed bar stays put while its scroll container moves the
+    // content under it. Record the bar and how far the container can still scroll; rules.mjs
+    // decides whether the overlapped target can be scrolled clear.
+    function stickyBarOf(el) {
+      var bar = null;
+      for (var n = el; n && n !== htmlEl && n !== bodyEl && !bar; n = n.parentElement) {
+        if (/^(sticky|fixed)$/.test(style(n).position)) bar = n;
+      }
+      if (!bar) return null;
+      var cs = style(bar);
+      var r = bar.getBoundingClientRect();
+      var b = box(bar);
+      var atTop;
+      var atBottom;
+      if (cs.position === 'sticky') {
+        atTop = cs.top !== 'auto'; // Chromium reports unset sticky insets as 'auto'
+        atBottom = cs.bottom !== 'auto';
+      } else {
+        atTop = r.top <= EDGE_SLACK_PX;
+        atBottom = r.bottom >= htmlEl.clientHeight - EDGE_SLACK_PX;
+      }
+      return {
+        position: cs.position,
+        edge: atBottom && !atTop ? 'bottom' : atTop && !atBottom ? 'top' : null,
+        // a sticky element sticks inside its nearest scroll box (overflow:hidden counts); a fixed one
+        // ignores every scroll container
+        scroller:
+          cs.position === 'sticky'
+            ? idOrNull(overflowAncestor(bar, /^(auto|scroll|hidden)$/))
+            : scrollerOf(bar),
+        x: b.x,
+        y: b.y,
+        w: b.w,
+        h: b.h,
+      };
+    }
+    function scrollRoomOf(el) {
+      var s = overflowAncestor(el, /^(auto|scroll)$/) || document.scrollingElement || htmlEl;
+      return { up: s.scrollTop, down: Math.max(0, s.scrollHeight - s.clientHeight - s.scrollTop) };
     }
     function targetAt(node, targetIds) {
       for (var n = node; n && n.nodeType === 1; n = n.parentElement) {
@@ -1051,6 +1140,8 @@
         w: b.w,
         h: b.h,
         coveredBy: coveredBy,
+        stickyBar: stickyBarOf(el),
+        scrollRoom: scrollRoomOf(el),
       };
     }
 

@@ -78,12 +78,23 @@ const tgt = (o = {}) => ({
   w: 100,
   h: 44,
   coveredBy: null,
+  stickyBar: null,
+  scrollRoom: { up: 0, down: 0 },
   ...o,
 });
 const two = (a = {}, b = {}) => [
   tgt({ id: 0, ...a }),
   tgt({ id: 1, key: 'target-button|ยกเลิก|0', x: 90, y: 10, ...b }),
 ];
+// A dialog form that scrolls (scroller 4) with a `sticky bottom-0` footer: b is the footer button
+// (90..190 × 10..54) in a bar at y 4..64; a is a field at y 0..44 that scrolls under it. Clearing
+// the bar takes field bottom 44 − bar top 4 = 40px of scroll room below.
+const FOOTER = { position: 'sticky', edge: 'bottom', scroller: 4, x: 0, y: 4, w: 400, h: 60 };
+const underFooter = (down, a = {}, b = {}) =>
+  two(
+    { key: 'target-field||5', role: 'field', scroller: 4, scrollRoom: { up: 0, down }, ...a },
+    { scroller: 4, stickyBar: FOOTER, scrollRoom: { up: 0, down }, ...b },
+  );
 
 test('a matched row has no findings', () => {
   assert.deepEqual(evaluateFields(pair(), CTX), []);
@@ -419,6 +430,62 @@ test('F3 skips ancestor/descendant, other scroll containers, dialog vs page, con
   const inner = { x: 70, y: 10, w: 24, h: 24 };
   assert.deepEqual(rulesOf(two({}, inner)), [], 'contained: left to F4');
   assert.deepEqual(rulesOf(two({ coveredBy: 1 }, inner)), ['F3:P1'], 'contained but covering');
+});
+
+test('F3 skips scroll occlusion: a field its container can scroll clear of a sticky/fixed bar', () => {
+  assert.deepEqual(rulesOf(underFooter(40)), [], 'exactly enough room below');
+  assert.deepEqual(
+    rulesOf(underFooter(400, { coveredBy: 1 })),
+    [],
+    'also when the bar covers the centre',
+  );
+  assert.deepEqual(rulesOf(underFooter(40).reverse()), [], 'either member may be the pinned one');
+  const fixedBar = { ...FOOTER, position: 'fixed', scroller: null };
+  assert.deepEqual(
+    rulesOf(underFooter(40, { scroller: null }, { scroller: null, stickyBar: fixedBar })),
+    [],
+    'a fixed bar over the scrolling document',
+  );
+  // sticky top-0 header: a is its button (0..44) in a bar at 0..50; b is a field at 10..54 that
+  // needs bar bottom 50 − field top 10 = 40px of scroll room above
+  const header = { position: 'sticky', edge: 'top', scroller: 4, x: 0, y: 0, w: 400, h: 50 };
+  const underHeader = (up) =>
+    two(
+      { scroller: 4, stickyBar: header },
+      { key: 'target-field||5', role: 'field', scroller: 4, scrollRoom: { up, down: 0 } },
+    );
+  assert.deepEqual(rulesOf(underHeader(40)), []);
+  assert.deepEqual(rulesOf(underHeader(39)), ['F3:P2']);
+});
+
+test('F3 keeps sticky-bar pairs that cannot scroll clear or are not scroll occlusion', () => {
+  assert.deepEqual(rulesOf(underFooter(39)), ['F3:P2'], 'one pixel short of clearing the bar');
+  assert.deepEqual(rulesOf(underFooter(39, { coveredBy: 1 })), ['F3:P1']);
+  assert.deepEqual(
+    rulesOf(underFooter(400, {}, { stickyBar: { ...FOOTER, scroller: 9 } })),
+    ['F3:P2'],
+    'bar pinned in a different scroll container: the field and the button scroll together',
+  );
+  assert.deepEqual(
+    rulesOf(underFooter(400, { stickyBar: FOOTER })),
+    ['F3:P2'],
+    'both inside the pinned bar: nothing scrolls between them',
+  );
+  assert.deepEqual(
+    rulesOf(underFooter(400, {}, { stickyBar: { ...FOOTER, edge: null } })),
+    ['F3:P2'],
+    'bar pinned to no top/bottom edge (a side column)',
+  );
+  assert.deepEqual(
+    rulesOf(underFooter(400, {}, { stickyBar: null })),
+    ['F3:P2'],
+    'two overlapping targets, neither in a sticky bar',
+  );
+  assert.deepEqual(
+    rulesOf(underFooter(400, { scroller: 3 })),
+    [],
+    'targets in different scroll containers never pair (unchanged)',
+  );
 });
 
 test('F4 absolute adornment inside the content box or over the text ink', () => {

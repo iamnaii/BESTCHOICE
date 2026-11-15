@@ -1126,7 +1126,6 @@ export default function RepossessionsPage() {
               <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-3`}
                 value={updateForm.status}
                 onChange={(e) => setUpdateForm({ ...updateForm, status: e.target.value })}
-                className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
               >
                 {/* Show only valid status transitions based on current status —
                     พร้อมขาย ตั้งผ่านปุ่ม "พร้อมขาย" เท่านั้น (สองราคา + คิวรอถ่ายรูป, 2026-09-07) */}

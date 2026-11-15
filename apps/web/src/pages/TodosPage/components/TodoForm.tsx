@@ -42,6 +42,7 @@ import {
   emptyForm,
 } from '../types';
 import { formatDateMedium } from '@/utils/formatters';
+import { formControlClass } from '@/components/ui/form-styles';
 
 interface TodoFormProps {
   open: boolean;
@@ -443,7 +444,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
                   type={roomId ? "datetime-local" : "date"}
                   value={form.dueDate || ''}
                   onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-input rounded-xl text-sm bg-card focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-hidden transition-colors"
+                  className={formControlClass}
                 />
               </div>
               <div>
@@ -454,7 +455,6 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
                 <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-4`}
                   value={form.assigneeId || ''}
                   onChange={(e) => setForm({ ...form, assigneeId: e.target.value })}
-                  className="px-4 py-2.5 border border-input rounded-xl text-sm bg-card focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-hidden transition-colors"
                 >
                   <option value="">ไม่ระบุ</option>
                   {(roomId ? eligible.data ?? [] : staffUsers).map((u) => (

@@ -352,7 +352,6 @@ export function PayrollLinesSection({
           <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-1`}
             value={value.year}
             onChange={(e) => setPeriod(Number(e.target.value), value.month)}
-            className="px-3 py-2 border border-input rounded-lg text-sm bg-background"
           >
             {[0, 1, 2, 3, 4].map((offset) => {
               const y = currentBuddhistYear - offset;
@@ -369,7 +368,6 @@ export function PayrollLinesSection({
           <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-2`}
             value={value.month}
             onChange={(e) => setPeriod(value.year, Number(e.target.value))}
-            className="px-3 py-2 border border-input rounded-lg text-sm bg-background"
           >
             {THAI_MONTHS_FULL.map((label, idx) => (
               <option key={idx} value={idx + 1}>
@@ -731,7 +729,6 @@ function CustomIncomeSubTable({
                 <NativeSelect wrapperClassName="max-w-full w-full" aria-label="บัญชี"
                   value={r.accountCode}
                   onChange={(e) => update(r.uid, { accountCode: e.target.value })}
-                  className="px-1.5 py-1 border border-input rounded text-xs bg-background"
                 >
                   {r.accountCode === '' && <option value="">— เลือกบัญชี —</option>}
                   {options.map((opt) => (

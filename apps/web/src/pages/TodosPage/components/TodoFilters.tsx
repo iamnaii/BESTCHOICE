@@ -83,7 +83,6 @@ export function TodoFilters({
               leadingIcon={<UserIcon />}
               value={assigneeFilter}
               onChange={(e) => onAssigneeFilterChange(e.target.value)}
-              className="py-2.5 border border-input bg-card rounded-xl text-sm focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-hidden transition-colors cursor-pointer"
             >
               <option value="">ผู้รับมอบหมายทั้งหมด</option>
               <option value="me">งานของฉัน</option>

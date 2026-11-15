@@ -54,12 +54,17 @@ describe('ItemLinesSection — ตารางและการ์ด', () => {
       '#', 'บัญชีค่าใช้จ่าย / คำอธิบาย', 'จำนวน', 'ราคา/หน่วย', 'ส่วนลด', 'VAT%', 'จำนวนเงิน', 'WHT%', 'ลบ',
     ]);
     // ปุ่ม WHT% แสดงข้อความสั้น — คำอธิบายเต็มอยู่ในรายการที่เปิดออกมา
-    expect(screen.getAllByRole('combobox', { name: 'WHT%' })[0]).toHaveTextContent('ไม่หัก');
+    expect(screen.getAllByRole('combobox', { name: 'WHT%' })[0]).toHaveTextContent('0%');
     expect(screen.queryByText('ก่อนภาษี')).not.toBeInTheDocument();
     for (const name of ['บัญชีค่าใช้จ่าย', 'คำอธิบาย', 'จำนวน', 'ราคา/หน่วย', 'ส่วนลด', 'VAT%', 'WHT%']) {
       expect(screen.getAllByLabelText(name)).toHaveLength(2);
     }
     expect(screen.getAllByRole('button', { name: 'ลบรายการ' })).toHaveLength(2);
+  });
+
+  it('จอใหญ่เป็นตารางธรรมดา ไม่ถูกห่อด้วยกรอบ responsive ของ ScreenTable (คงความกว้างคอลัมน์แบบ PEAK)', () => {
+    mount();
+    expect(screen.getByRole('table').closest('[data-table-layout]')).toBeNull();
   });
 
   it('จอเล็กเป็นการ์ดต่อบรรทัด ไม่มีตาราง และช่องยังมีชื่อเดิม', () => {

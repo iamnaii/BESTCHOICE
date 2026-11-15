@@ -10,7 +10,6 @@ import { formatNumberDecimal } from '@/utils/formatters';
 import { useUiFlags } from '@/hooks/useUiFlags';
 import { whtRatesToSelectOptions } from '@/lib/wht-rates';
 import TaxDisallowedHint from './TaxDisallowedHint';
-import ScreenTable from '@/components/ui/ScreenTable';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { AccountSearchDropdown } from '@/pages/other-income/components/AccountSearchDropdown';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
@@ -190,7 +189,7 @@ export function ItemLinesSection({ lines, onChange, priceTypeLabel }: Props) {
   return (
     <div className="space-y-3">
       <div className="overflow-x-auto rounded-lg border border-border">
-        <ScreenTable className="w-full min-w-[52rem] table-fixed text-sm">
+        <table className="w-full min-w-[52rem] table-fixed text-sm">
           <colgroup>
             <col className="w-6" />
             <col />
@@ -258,7 +257,7 @@ export function ItemLinesSection({ lines, onChange, priceTypeLabel }: Props) {
                   {/* ช่องแคบแบบ PEAK: ปุ่มแสดงแค่อัตรา · รายการที่เปิดออกมาแสดงคำอธิบายเต็ม ("3% — ค่าบริการ") */}
                   <Select value={line.whtPercent} onValueChange={(v) => updateLine(line.uid, { whtPercent: v })}>
                     <SelectTrigger aria-label="WHT%" className="h-11 w-full px-2">
-                      <span className="tabular-nums">{parseFloat(line.whtPercent) > 0 ? `${line.whtPercent}%` : 'ไม่หัก'}</span>
+                      <span className="tabular-nums">{`${parseFloat(line.whtPercent) || 0}%`}</span>
                     </SelectTrigger>
                     <SelectContent align="end">
                       {whtOptions.map((o) => (
@@ -306,7 +305,7 @@ export function ItemLinesSection({ lines, onChange, priceTypeLabel }: Props) {
               </tr>
             </tbody>
           ))}
-        </ScreenTable>
+        </table>
       </div>
       {footer}
     </div>

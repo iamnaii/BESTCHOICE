@@ -45,7 +45,7 @@ export default function CollectionsFilters({
         placeholder="ค้นหาเลขสัญญา, ชื่อลูกค้า, เบอร์โทร..."
         value={search}
         onChange={(e) => onSearchChange(e.target.value)}
-        className={cn(formControlClass, 'min-w-[260px]')}
+        className={cn(formControlClass, 'w-auto min-w-[260px]')}
       />
       {showBranchFilter && (
         <NativeSelect wrapperClassName="max-w-full w-auto sm:min-w-[160px]" aria-label="สาขา"

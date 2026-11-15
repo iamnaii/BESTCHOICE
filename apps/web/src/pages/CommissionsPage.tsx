@@ -28,6 +28,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { formControlClass } from '@/components/ui/form-styles';
+import { cn } from '@/lib/utils';
 
 /**
  * Payroll D4 ส่วนที่ 2 (Task 6, mockup กระดาน 4) — ค่าคอมจ่ายผ่านใบเงินเดือนเท่านั้น:
@@ -552,7 +553,7 @@ export default function CommissionsPage() {
               aria-label="เดือนคอมมิชชั่น"
               value={periodMonth}
               onChange={(e) => setPeriodMonth(e.target.value)}
-              className={formControlClass}
+              className={cn(formControlClass, 'w-auto')}
             />
             <NativeSelect
               wrapperClassName="max-w-full w-auto"
@@ -598,7 +599,7 @@ export default function CommissionsPage() {
               aria-label="เดือนของใบจ่าย"
               value={payoutPeriod}
               onChange={(e) => setPayoutPeriod(e.target.value)}
-              className={formControlClass}
+              className={cn(formControlClass, 'w-auto')}
             />
             <NativeSelect
               wrapperClassName="max-w-full w-auto"

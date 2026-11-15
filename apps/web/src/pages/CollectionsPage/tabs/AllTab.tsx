@@ -228,7 +228,7 @@ export default function AllTab() {
           placeholder="ค้นหาเลขสัญญา, ชื่อลูกค้า..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className={cn(formControlClass, 'min-w-[250px]')}
+          className={cn(formControlClass, 'w-auto min-w-[250px]')}
         />
         {overduePayments.length > 0 && (
           <button data-ui-control="button"

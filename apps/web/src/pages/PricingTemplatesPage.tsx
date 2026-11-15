@@ -418,7 +418,7 @@ export default function PricingTemplatesPage() {
                       value={form.brand}
                       onChange={(e) => setForm((f) => ({ ...f, brand: e.target.value }))}
                       placeholder="เช่น Apple, Samsung"
-                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                      className={formControlClass}
                     />
                   </div>
                   <div>
@@ -428,7 +428,7 @@ export default function PricingTemplatesPage() {
                       value={form.model}
                       onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
                       placeholder="เช่น iPhone 15, Galaxy S24"
-                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                      className={formControlClass}
                     />
                   </div>
                 </div>

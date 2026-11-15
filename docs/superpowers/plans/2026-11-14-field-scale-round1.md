@@ -7788,7 +7788,7 @@ Spec: `docs/superpowers/specs/2026-11-14-dropdown-search-field-scale-design.md` 
 - *Width on the select:* `w-*`, `min-w-*` and `max-w-*` in the select `className` are dropped, not moved. The tail already forces `w-full min-w-0 max-w-full` and tailwind-merge keeps the last value, so they had no effect. Moving them to `wrapperClassName` would change today's layout. Width that matters already lives on `wrapperClassName`, which this task does not touch. S2-03/S2-04 wrapper widths belong to T8.
 - If nothing is left, the `className` attribute is removed. Otherwise the leftover tokens stay (only `font-medium` and `font-mono` are left anywhere).
 - *Same-row sibling* = an `input`, `Input`, `NumberInput` or `ThaiDateInput` with a string-literal `className`. Its forbidden-token set must equal the select's, and it must sit inside the nearest grid or flex-row element at most 3 JSX elements above the select. Checkbox, radio, file, range, color and hidden inputs are skipped.
-  - `input`, `Input` and `NumberInput` get `className={formControlClass}`, or `className={cn(formControlClass, '<kept tokens>')}`. Kept tokens: layout and typography (`text-right`, `font-mono`, `mt-1`, `flex-1`, `md:col-span-2`, `min-w-[260px]`…) plus icon gutters `pl-*`/`pr-*`.
+  - `input`, `Input` and `NumberInput` get `className={formControlClass}`, or `className={cn(formControlClass, '<kept tokens>')}`. Kept tokens: layout and typography (`text-right`, `font-mono`, `mt-1`, `flex-1`, `md:col-span-2`, `min-w-[260px]`…) plus icon gutters `pl-*`/`pr-*`. **Width rule (fix round 1):** `formControlClass` carries `w-full`. A sibling whose old className had no `w-*` and that sits in a flex (non-grid) row without `flex-1` keeps its size by adding `w-auto`: `cn(formControlClass, 'w-auto', ...)` (e.g. `cn(formControlClass, 'w-auto min-w-[260px]')`). Without it the input stretches to the whole `flex-wrap` row and pushes the next control onto a new line (measured at 1440 and 390).
   - `ThaiDateInput` only loses its overrides. Its base skin already equals the standard skin and carries the `pr-9` icon gutter that `formControlClass`'s `px-3` would destroy (`ThaiDateInput.tsx:204-207`). The 44px height comes from the central CSS (`styles/admin-typography.css:49-51`).
 - *Imports:* when the file already has a named import from `…/form-styles` (e.g. `import { formLabelClass } from '@/components/ui/form-styles';`), `formControlClass` is added to it. Otherwise these lines are added after the last import: `import { formControlClass } from '@/components/ui/form-styles';` and, when `cn` is used and not imported, `import { cn } from '@/lib/utils';`.
 
@@ -7849,7 +7849,7 @@ Spec: `docs/superpowers/specs/2026-11-14-dropdown-search-field-scale-design.md` 
 | 24 | B | `pages/TradeInPage/components/ReferenceQuestionnaire.tsx` | 40 `rounded-lg bg-background px-3` | — |
 | 25 | B | `pages/TradeInPage/components/ValuationsTab.tsx` | 198 `rounded-lg bg-background px-3` | — |
 | 26 | C1 | `components/accounting/ReverseConfirmDialog.tsx` | 170 `rounded-md bg-background px-3 py-2` | — |
-| 27 | C1 | `pages/CommissionsPage.tsx` | 561 `px-3 py-2 rounded-lg`<br>608 `px-3 py-2 rounded-lg` | 554 `<input>`, 601 `<input>` |
+| 27 | C1 | `pages/CommissionsPage.tsx` | 561 `px-3 py-2 rounded-lg`<br>608 `px-3 py-2 rounded-lg` | 554 `<input>`, 601 `<input>` — new value `cn(formControlClass, 'w-auto')` (both `type="month"`) |
 | 28 | C1 | `pages/MonthlyClosePage.tsx` | 383 `px-3 py-2 rounded-lg` | — |
 | 29 | C1 | `pages/PeakSyncPage.tsx` | 143 `rounded-lg px-3 py-2 bg-background` | — |
 | 30 | C1 | `pages/ReportsPage.tsx` | 542 `px-3 border-border rounded-lg bg-background` | — |
@@ -7887,11 +7887,11 @@ Spec: `docs/superpowers/specs/2026-11-14-dropdown-search-field-scale-design.md` 
 | 62 | E | `components/contract/CustomerEditModal.tsx` | 319 `px-3 py-2 rounded-lg bg-background`<br>445 `px-3 py-2 rounded-lg`<br>758 `px-3 py-2 rounded-lg bg-background`<br>825 `px-3 py-2 rounded-lg bg-background` | 341, 357 `<input>`, 371 `<ThaiDateInput>`, 472, 514, 530, 545, 560, 582, 597, 612, 655, 670, 685 `<input>`, 700 `<NumberInput>`, 780, 795, 810 `<input>` |
 | 63 | E | `components/credit-check/CreditCheckCreateModal.tsx` | 358 `px-3 py-2 rounded-lg` | — |
 | 64 | E | `components/credit-check/CreditCheckOverrideDialog.tsx` | 185, 223, 242 — each `px-3 rounded-lg bg-background` | — |
-| 65 | E | `pages/CollectionsPage/components/CollectionsFilters.tsx` | 52 `px-3 py-2 bg-card rounded-lg` | 46 `<input>` |
+| 65 | E | `pages/CollectionsPage/components/CollectionsFilters.tsx` | 52 `px-3 py-2 bg-card rounded-lg` | 46 `<input>` — new value `cn(formControlClass, 'w-auto min-w-[260px]')` |
 | 66 | E | `pages/CollectionsPage/components/LegalCaseDialog.tsx` | 228 `rounded-md border-border bg-background px-2 py-2` | — |
 | 67 | E | `pages/CollectionsPage/components/SendLineAdHocDialog.tsx` | 130 `px-3 py-2 rounded-lg` | — |
 | 68 | E | `pages/CollectionsPage/components/StuckContractsSection.tsx` | 219 `px-3 rounded-md bg-background` | — |
-| 69 | E | `pages/CollectionsPage/tabs/AllTab.tsx` | 283, 292 — each `px-3 py-2 rounded-lg` | 229 `<input>` |
+| 69 | E | `pages/CollectionsPage/tabs/AllTab.tsx` | 283, 292 — each `px-3 py-2 rounded-lg` | 229 `<input>` — new value `cn(formControlClass, 'w-auto min-w-[250px]')` |
 | 70 | E | `pages/ContractCreatePage/components/CustomerCreateModal.tsx` | 202 `px-3 py-2 rounded-lg bg-background`<br>584 `px-3 py-2 rounded-lg`<br>688 `px-3 py-2 rounded-lg bg-background`<br>755 `px-3 py-2 rounded-lg bg-background` | 569 `<input>`, 615 `<input>`, 630 `<NumberInput>` |
 | 71 | E | `pages/ContractCreatePage/components/PlanDetailsStep.tsx` | 204, 233 — each `px-3 py-2 rounded-lg` | — |
 | 72 | E | `pages/ContractDetailPage.tsx` | 1132 `px-3 py-2 rounded-lg` | 1063, 1080, 1097, 1115 `<NumberInput>` |
@@ -8251,45 +8251,99 @@ Then append this block at the very end of the file:
 // NativeSelect renders cn(formControlClass, className, <size tail>), so a caller's radius,
 // border colour, fill or padding silently replaces the shared skin (the 2026-11-14 scan found
 // 128 such call sites). Width belongs on wrapperClassName, icon gutters on leadingIcon and the
-// warning outline on tone. Only literal class text is inspected: string literals, cn()/clsx()
-// arguments, both branches of ?:, &&/|| operands and template-literal text. A class held in a
-// variable (className={inputClass}) is not resolved.
-const NATIVE_SELECT_SKIN =
-  /^(?:[a-z0-9-]+:)*(?:rounded(?:-\S+)?|border-border|bg-\S+|p-\S+|px-\S+|py-\S+|pl-\S+|pr-\S+)$/;
+// warning outline on tone. Class text is read from string literals, template text, cn()/clsx()
+// arguments (including object keys and array items), both branches of ?:, && / || / ?? operands,
+// and through `as` / `satisfies` / `!` / parentheses. A plain identifier (className={formControlClass})
+// is allowed and not resolved. Any other expression kind cannot be read, so it FAILS the guard
+// with its file:line instead of being skipped silently.
+
+/** Variant prefixes such as hover:, data-[state=open]:, group-hover/i:, [&:hover]: end at the last top-level colon. */
+function stripVariants(token: string): string {
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < token.length; i += 1) {
+    const ch = token[i];
+    if (ch === '[' || ch === '(') depth += 1;
+    else if (ch === ']' || ch === ')') depth -= 1;
+    else if (ch === ':' && depth === 0) start = i + 1;
+  }
+  return token.slice(start);
+}
+
+const SKIN_BASE =
+  /^(?:rounded(?:-\S+)?|border-border|bg-\S+|p[xylrtbse]?-\S+|\[(?:border-radius|padding(?:-[a-z]+)*|background(?:-[a-z]+)*)\s*:[^\]]*\])$/;
+
+/** True when one class token (any variant, `!` important prefix or suffix) is radius, border colour, fill or padding. */
+function isNativeSelectSkinToken(token: string): boolean {
+  const base = stripVariants(token).replace(/^!/, '').replace(/!$/, '');
+  return SKIN_BASE.test(base);
+}
+
 const NATIVE_SELECT_CANDIDATE = /<NativeSelect\b/;
 
-function collectClassStrings(node: ts.Node, out: string[]): void {
-  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
-    out.push(node.text);
-    return;
-  }
-  if (ts.isTemplateExpression(node)) {
-    out.push(node.head.text);
-    for (const span of node.templateSpans) {
-      collectClassStrings(span.expression, out);
-      out.push(span.literal.text);
+interface ClassCollection {
+  strings: string[];
+  unreadable: { line: number; kind: string }[];
+}
+
+function collectClassStrings(node: ts.Node, ast: ts.SourceFile, out: ClassCollection): void {
+  const lineOf = (n: ts.Node) => ast.getLineAndCharacterOfPosition(n.getStart(ast)).line + 1;
+  const walk = (n: ts.Node): void => {
+    if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) {
+      out.strings.push(n.text);
+    } else if (ts.isTemplateExpression(n)) {
+      out.strings.push(n.head.text);
+      for (const span of n.templateSpans) {
+        walk(span.expression);
+        out.strings.push(span.literal.text);
+      }
+    } else if (ts.isJsxExpression(n)) {
+      if (n.expression) walk(n.expression);
+    } else if (ts.isCallExpression(n)) {
+      n.arguments.forEach(walk);
+    } else if (ts.isConditionalExpression(n)) {
+      walk(n.whenTrue); // the condition is not class text
+      walk(n.whenFalse);
+    } else if (ts.isBinaryExpression(n)) {
+      // `cond && 'x'`: the left side is a condition, not class text
+      if (n.operatorToken.kind !== ts.SyntaxKind.AmpersandAmpersandToken) walk(n.left);
+      walk(n.right);
+    } else if (ts.isObjectLiteralExpression(n)) {
+      for (const property of n.properties) {
+        const name = ts.isPropertyAssignment(property) || ts.isShorthandPropertyAssignment(property) ? property.name : null;
+        if (name && (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNoSubstitutionTemplateLiteral(name))) {
+          out.strings.push(name.text);
+        } else if (name && ts.isComputedPropertyName(name)) {
+          walk(name.expression);
+        } else {
+          out.unreadable.push({ line: lineOf(property), kind: ts.SyntaxKind[property.kind] });
+        }
+      }
+    } else if (ts.isArrayLiteralExpression(n)) {
+      n.elements.forEach(walk);
+    } else if (ts.isSpreadElement(n)) {
+      walk(n.expression);
+    } else if (
+      ts.isParenthesizedExpression(n) ||
+      ts.isAsExpression(n) ||
+      ts.isSatisfiesExpression(n) ||
+      ts.isNonNullExpression(n) ||
+      ts.isTypeAssertionExpression(n)
+    ) {
+      walk(n.expression);
+    } else if (
+      ts.isIdentifier(n) ||
+      ts.isNumericLiteral(n) ||
+      n.kind === ts.SyntaxKind.TrueKeyword ||
+      n.kind === ts.SyntaxKind.FalseKeyword ||
+      n.kind === ts.SyntaxKind.NullKeyword
+    ) {
+      // a class held in a variable is out of scope; flags and numbers carry no class text
+    } else {
+      out.unreadable.push({ line: lineOf(n), kind: ts.SyntaxKind[n.kind] });
     }
-    return;
-  }
-  if (ts.isJsxExpression(node)) {
-    if (node.expression) collectClassStrings(node.expression, out);
-    return;
-  }
-  if (ts.isCallExpression(node)) {
-    for (const arg of node.arguments) collectClassStrings(arg, out);
-    return;
-  }
-  if (ts.isConditionalExpression(node)) {
-    collectClassStrings(node.whenTrue, out);
-    collectClassStrings(node.whenFalse, out);
-    return;
-  }
-  if (ts.isBinaryExpression(node)) {
-    collectClassStrings(node.left, out);
-    collectClassStrings(node.right, out);
-    return;
-  }
-  if (ts.isParenthesizedExpression(node)) collectClassStrings(node.expression, out);
+  };
+  walk(node);
 }
 
 function nativeSelectSkinViolations(file: string, source: string): string[] {
@@ -8305,11 +8359,16 @@ function nativeSelectSkinViolations(file: string, source: string): string[] {
       for (const attribute of node.attributes.properties) {
         if (!ts.isJsxAttribute(attribute) || attribute.name.getText(ast) !== 'className') continue;
         if (!attribute.initializer) continue;
-        const strings: string[] = [];
-        collectClassStrings(attribute.initializer, strings);
-        const skin = strings
+        const collected: ClassCollection = { strings: [], unreadable: [] };
+        collectClassStrings(attribute.initializer, ast, collected);
+        for (const item of collected.unreadable) {
+          found.push(
+            `${where}:${item.line} NativeSelect className uses an expression the guard cannot read (${item.kind}); use literal class text or a plain identifier`,
+          );
+        }
+        const skin = collected.strings
           .flatMap((text) => text.split(/\s+/))
-          .filter((token) => NATIVE_SELECT_SKIN.test(token));
+          .filter((token) => token && isNativeSelectSkinToken(token));
         if (skin.length) {
           const line = ast.getLineAndCharacterOfPosition(attribute.getStart(ast)).line + 1;
           found.push(`${where}:${line} ${skin.join(' ')}`);
@@ -8323,24 +8382,74 @@ function nativeSelectSkinViolations(file: string, source: string): string[] {
 }
 
 describe('NativeSelect skin guard', () => {
+  it('matches radius, border colour, fill and padding in every spelling', () => {
+    const skin = [
+      'rounded',
+      'rounded-md',
+      'hover:rounded-lg',
+      '!rounded-md',
+      'rounded-md!',
+      'data-[state=open]:rounded-md',
+      'group-hover/i:bg-card',
+      '[&:hover]:px-2',
+      'md:hover:!py-1',
+      'border-border',
+      'bg-card',
+      'p-2',
+      'px-3',
+      'py-2',
+      'pl-9',
+      'pr-9',
+      'pt-1',
+      'pb-1',
+      'ps-2',
+      'pe-2',
+      '[border-radius:8px]',
+      '[padding:4px]',
+      '[padding-left:4px]',
+      '[background:red]',
+      'md:[background-color:red]',
+    ];
+    for (const token of skin) expect(isNativeSelectSkinToken(token), token).toBe(true);
+    const clean = [
+      'border-warning',
+      'font-mono',
+      'font-medium',
+      'w-40',
+      'sm:w-48',
+      'min-w-0',
+      'text-right',
+      'pointer-events-none',
+      'data-[state=open]:font-medium',
+      '[&:hover]:font-mono',
+      '[width:10px]',
+    ];
+    for (const token of clean) expect(isNativeSelectSkinToken(token), token).toBe(false);
+  });
+
+  it('reads cn()/clsx() objects, arrays and casts, and fails on expressions it cannot read', () => {
+    const sample = resolve(ROOT, 'apps/web/src/__guard-sample__.tsx');
+    const run = (className: string) => nativeSelectSkinViolations(sample, `<NativeSelect className=${className} />`);
+    expect(run('{cn("rounded-md", ok && `px-2 ${extra}`)}')).toEqual([expect.stringMatching(/:1 rounded-md px-2$/)]);
+    expect(run('{cn({ "rounded-md": on })}')).toEqual([expect.stringMatching(/:1 rounded-md$/)]);
+    expect(run('{clsx(["bg-card", cond ? "p-2" : undefined])}')).toEqual([expect.stringMatching(/:1 bg-card p-2$/)]);
+    expect(run('{("!rounded-md" as string)}')).toEqual([expect.stringMatching(/:1 !rounded-md$/)]);
+    expect(run('{("[padding:4px]" satisfies string)!}')).toEqual([expect.stringMatching(/:1 \[padding:4px\]$/)]);
+    // not class text, or out of scope
+    expect(run('{formControlClass}')).toEqual([]);
+    expect(run('{isDirty ? "border-warning" : ""}')).toEqual([]);
+    expect(run('{cn(a.b > 1 && "font-mono", "w-40 sm:w-48")}')).toEqual([]);
+    // unreadable expression kinds fail loudly, naming file:line
+    for (const expr of ['{styles.field}', '{map[key]}', '{!on}', '{tag`x`}', '{cn(styles.field)}']) {
+      const result = run(expr);
+      expect(result, expr).toHaveLength(1);
+      expect(result[0]).toMatch(/__guard-sample__\.tsx:1 NativeSelect className uses an expression the guard cannot read/);
+    }
+  });
+
   it(
     'NativeSelect className never carries radius, border colour, fill or padding',
     () => {
-      // The detector itself: cn() args and template text are read; tone/width classes pass.
-      const sample = resolve(ROOT, 'apps/web/src/__guard-sample__.tsx');
-      const caught = nativeSelectSkinViolations(
-        sample,
-        '<NativeSelect className={cn("rounded-md", ok && `px-2 ${extra}`)} />',
-      );
-      expect(caught).toHaveLength(1);
-      expect(caught[0]).toMatch(/:1 rounded-md px-2$/);
-      expect(
-        nativeSelectSkinViolations(
-          sample,
-          '<NativeSelect className={isDirty ? "border-warning" : ""} wrapperClassName="sm:w-56" />',
-        ),
-      ).toEqual([]);
-
       const files = listSourceFiles(resolve(ROOT, 'apps/web/src'));
       expect(files.length).toBeGreaterThan(500);
       const found: string[] = [];
@@ -8353,6 +8462,41 @@ describe('NativeSelect skin guard', () => {
     },
     SCAN_TIMEOUT_MS,
   );
+});
+
+// --- same-row siblings keep their size (Task 9 fix round 1) ---------------------------------
+// formControlClass carries w-full. An input that sits next to a select in a `flex flex-wrap`
+// filter row and had no width class before must say `w-auto`, or it stretches to the whole row
+// and pushes the select onto a new line (measured: commissions month 166 -> 1314px, collections
+// search 260 -> 1314px at 1440).
+describe('flex-wrap filter rows: siblings of NativeSelect keep w-auto', () => {
+  const sites: { file: string; pattern: RegExp; count: number }[] = [
+    {
+      file: 'apps/web/src/pages/CollectionsPage/components/CollectionsFilters.tsx',
+      pattern: /cn\(formControlClass, 'w-auto min-w-\[260px\]'\)/g,
+      count: 1,
+    },
+    {
+      file: 'apps/web/src/pages/CollectionsPage/tabs/AllTab.tsx',
+      pattern: /cn\(formControlClass, 'w-auto min-w-\[250px\]'\)/g,
+      count: 1,
+    },
+    {
+      file: 'apps/web/src/pages/CommissionsPage.tsx',
+      pattern: /cn\(formControlClass, 'w-auto'\)/g,
+      count: 2,
+    },
+  ];
+  for (const site of sites) {
+    it(`${site.file} keeps w-auto`, () => {
+      const source = readFileSync(resolve(ROOT, site.file), 'utf8');
+      expect(source.match(site.pattern)?.length ?? 0).toBe(site.count);
+      // no bare formControlClass left on the month inputs of the commissions page
+      if (site.file.endsWith('CommissionsPage.tsx')) {
+        expect(source).not.toMatch(/type="month"[\s\S]{0,200}className=\{formControlClass\}/);
+      }
+    });
+  }
 });
 ```
 

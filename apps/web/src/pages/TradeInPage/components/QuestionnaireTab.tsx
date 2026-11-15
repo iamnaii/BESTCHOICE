@@ -240,7 +240,6 @@ export default function QuestionnaireTab() {
                 </td>
                 <td className="p-2 w-28">
                   <NativeSelect wrapperClassName="max-w-full w-full"
-                    className="h-8 rounded-lg border border-input bg-background px-2 text-sm"
                     value={newChoice[q.id]?.deductType ?? 'PERCENT'}
                     onChange={(e) =>
                       setNewChoice((prev) => ({

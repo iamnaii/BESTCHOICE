@@ -347,7 +347,6 @@ export default function OnlineListingPanel({
               value={deviceOrigin}
               onChange={(e) => setDeviceOrigin(e.target.value as DeviceOrigin | '')}
               disabled={!canEdit || originMutation.isPending}
-              className="h-10 rounded-lg border border-input bg-background px-3 text-sm disabled:opacity-50"
             >
               <option value="">ยังไม่ระบุ</option>
               <option value="THAI">เครื่องไทย</option>

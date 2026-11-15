@@ -4,7 +4,7 @@ import { useRef as useReturnFocusRef } from 'react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Building2, User2 } from 'lucide-react';
 import AddressForm, { AddressData } from '@/components/ui/AddressForm';
-import { formLabelClass } from '@/components/ui/form-styles';
+import { formControlClass, formLabelClass } from '@/components/ui/form-styles';
 import { cn } from '@/lib/utils';
 import { formatIdNumberInput, formatPhoneInput } from '@/utils/mask.util';
 import type { PaymentMethod } from './SupplierTable';
@@ -260,7 +260,6 @@ export default function SupplierForm({
                     <NativeSelect id={`${uiFieldId}-1`}
                       value={form.titleName}
                       onChange={(e) => setForm({ ...form, titleName: e.target.value })}
-                      className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
                     >
                       <option value="">-- เลือก --</option>
                       {TITLE_OPTIONS.map((t) => (
@@ -281,7 +280,7 @@ export default function SupplierForm({
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
                     placeholder={isJuristic ? 'บริษัท ... จำกัด' : 'เช่น สมชาย ใจดี'}
-                    className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                    className={formControlClass}
                     required
                   />
                 </div>
@@ -295,7 +294,7 @@ export default function SupplierForm({
                     onChange={(e) => setForm({ ...form, phone: formatPhone(e.target.value) })}
                     placeholder="0XX-XXX-XXXX"
                     maxLength={12}
-                    className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                    className={formControlClass}
                     required
                   />
                 </div>
@@ -309,7 +308,7 @@ export default function SupplierForm({
                     }
                     placeholder="0XX-XXX-XXXX"
                     maxLength={12}
-                    className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                    className={formControlClass}
                   />
                 </div>
                 <div className={cn(isJuristic ? 'sm:col-span-2' : 'col-span-1')}>
@@ -318,7 +317,7 @@ export default function SupplierForm({
                     type="text"
                     value={form.lineId}
                     onChange={(e) => setForm({ ...form, lineId: e.target.value })}
-                    className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                    className={formControlClass}
                   />
                 </div>
                 {!isJuristic && (
@@ -328,7 +327,7 @@ export default function SupplierForm({
                       type="text"
                       value={form.nickname}
                       onChange={(e) => setForm({ ...form, nickname: e.target.value })}
-                      className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                      className={formControlClass}
                     />
                   </div>
                 )}
@@ -343,7 +342,7 @@ export default function SupplierForm({
                     onChange={(e) => setForm({ ...form, taxId: formatTaxId(e.target.value) })}
                     placeholder="X-XXXX-XXXXX-XX-X"
                     maxLength={17}
-                    className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                    className={formControlClass}
                     required
                   />
                 </div>
@@ -362,7 +361,7 @@ export default function SupplierForm({
                         placeholder="00000 = สำนักงานใหญ่"
                         maxLength={5}
                         inputMode="numeric"
-                        className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm font-mono transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                        className={cn(formControlClass, 'font-mono')}
                         required
                       />
                       <p className="mt-1 text-2xs text-muted-foreground">
@@ -530,7 +529,6 @@ export default function SupplierForm({
                       <NativeSelect id={`${uiExtraFieldId}-1-${index}`}
                         value={pm.paymentMethod}
                         onChange={(e) => updatePaymentMethod(index, 'paymentMethod', e.target.value)}
-                        className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
                         required
                       >
                         <option value="">-- เลือก --</option>
@@ -551,7 +549,7 @@ export default function SupplierForm({
                         }
                         placeholder="เช่น 30"
                         min={0}
-                        className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                        className={formControlClass}
                       />
                     </div>
                     {(pm.paymentMethod === 'BANK_TRANSFER' || pm.paymentMethod === 'CHECK') && (
@@ -565,7 +563,7 @@ export default function SupplierForm({
                             value={pm.bankName}
                             onChange={(e) => updatePaymentMethod(index, 'bankName', e.target.value)}
                             placeholder="เช่น กสิกรไทย, กรุงเทพ"
-                            className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                            className={formControlClass}
                           />
                         </div>
                         <div>
@@ -578,7 +576,7 @@ export default function SupplierForm({
                             onChange={(e) =>
                               updatePaymentMethod(index, 'bankAccountName', e.target.value)
                             }
-                            className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                            className={formControlClass}
                           />
                         </div>
                         <div className="sm:col-span-2">
@@ -592,7 +590,7 @@ export default function SupplierForm({
                               updatePaymentMethod(index, 'bankAccountNumber', e.target.value)
                             }
                             placeholder="XXX-X-XXXXX-X"
-                            className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                            className={formControlClass}
                           />
                         </div>
                       </>

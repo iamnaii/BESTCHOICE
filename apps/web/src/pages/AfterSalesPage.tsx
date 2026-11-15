@@ -170,7 +170,6 @@ export default function AfterSalesPage() {
               aria-label="สาขา"
               value={filters.branchId}
               onChange={(e) => setFilters((f) => ({ ...f, branchId: e.target.value, page: 1 }))}
-              className="h-11 rounded-lg border border-input bg-background px-3 text-sm"
             >
               <option value="">ทุกสาขา</option>
               {branches.data.map((b) => (

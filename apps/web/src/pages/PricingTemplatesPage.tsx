@@ -11,6 +11,8 @@ import Modal from '@/components/ui/Modal';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Card, CardContent } from '@/components/ui/card';
+import { formControlClass } from '@/components/ui/form-styles';
+import { cn } from '@/lib/utils';
 
 interface PricingTemplate {
   deviceOrigin?: string;
@@ -303,13 +305,12 @@ export default function PricingTemplatesPage() {
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3 mb-5">
-        <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="เครื่องไทย / เครื่องนอก" value={filterDeviceOrigin} onChange={e => setFilterDeviceOrigin(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm">
+        <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="เครื่องไทย / เครื่องนอก" value={filterDeviceOrigin} onChange={e => setFilterDeviceOrigin(e.target.value)}>
           <option value="">ไทย/นอกทั้งหมด</option><option value="THAI">เครื่องไทย</option><option value="IMPORTED">เครื่องนอก</option><option value="UNSPECIFIED">ยังไม่ระบุ</option>
         </NativeSelect>
         <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="ประเภทสินค้า"
           value={filterCategory}
           onChange={(e) => setFilterCategory(e.target.value)}
-          className="px-3 py-2 border border-input rounded-lg text-sm"
         >
           <option value="">ทุกประเภท</option>
           {CATEGORIES.map((c) => (
@@ -321,7 +322,7 @@ export default function PricingTemplatesPage() {
           placeholder="ค้นหายี่ห้อ..."
           value={filterBrand}
           onChange={(e) => setFilterBrand(e.target.value)}
-          className="px-3 py-2 border border-input rounded-lg text-sm flex-1 max-w-xs"
+          className={cn(formControlClass, 'flex-1 max-w-xs')}
         />
       </div>
 
@@ -403,7 +404,7 @@ export default function PricingTemplatesPage() {
         <Modal isOpen title={editId ? 'แก้ไขราคาตั้งต้น' : 'เพิ่มราคาตั้งต้น'} onClose={closeModal}>
           <div className="space-y-4">
             <label className="block text-sm">ประเภทเครื่องของราคากลาง
-              <NativeSelect wrapperClassName="max-w-full w-full" aria-label="ประเภทเครื่องของราคากลาง" value={form.deviceOrigin} disabled={!!editId} onChange={(e) => setForm((f) => ({ ...f, deviceOrigin: e.target.value }))} className="rounded-lg border border-input bg-background p-2">
+              <NativeSelect wrapperClassName="max-w-full w-full" aria-label="ประเภทเครื่องของราคากลาง" value={form.deviceOrigin} disabled={!!editId} onChange={(e) => setForm((f) => ({ ...f, deviceOrigin: e.target.value }))}>
                 <option value="UNSPECIFIED">ยังไม่แยกไทย/นอก</option><option value="THAI">เครื่องไทย</option><option value="IMPORTED">เครื่องนอก</option>
               </NativeSelect>
             </label>
@@ -439,7 +440,7 @@ export default function PricingTemplatesPage() {
                       value={form.storage}
                       onChange={(e) => setForm((f) => ({ ...f, storage: e.target.value }))}
                       placeholder="เช่น 128GB, 256GB (เว้นว่าง = ทุกความจุ)"
-                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                      className={formControlClass}
                     />
                   </div>
                   <div>
@@ -447,7 +448,6 @@ export default function PricingTemplatesPage() {
                     <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-4`}
                       value={form.category}
                       onChange={(e) => setForm((f) => ({ ...f, category: e.target.value, hasWarranty: e.target.value === 'PHONE_USED' ? f.hasWarranty : null }))}
-                      className="px-3 py-2 border border-input rounded-lg text-sm"
                     >
                       {CATEGORIES.map((c) => (
                         <option key={c.value} value={c.value}>{c.label}</option>

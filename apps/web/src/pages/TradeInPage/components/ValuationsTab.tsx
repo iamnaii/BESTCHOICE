@@ -195,7 +195,6 @@ export default function ValuationsTab() {
           <div>
             <Label htmlFor={`${uiFieldId}-5`}>เกรด</Label>
             <NativeSelect wrapperClassName="max-w-full mt-1 w-full" id={`${uiFieldId}-5`}
-              className="h-10 rounded-lg border border-input bg-background px-3 text-sm"
               value={form.condition}
               onChange={(e) => setForm((f) => ({ ...f, condition: e.target.value }))}
             >

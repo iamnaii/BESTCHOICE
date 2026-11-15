@@ -61,8 +61,7 @@ export default function ImportedSalesPage() {
       )}
 
       <div className="flex gap-2">
-        <NativeSelect wrapperClassName="max-w-full w-auto"
-          className="border border-border bg-background text-foreground rounded-md px-3 py-2 text-sm" aria-label="ช่องทางขาย"
+        <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="ช่องทางขาย"
           value={channel}
           onChange={(e) => { setChannel(e.target.value); setPage(1); }}
         >

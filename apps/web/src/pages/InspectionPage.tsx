@@ -127,7 +127,6 @@ export default function InspectionPage() {
         <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="สถานะ"
           value={statusFilter}
           onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-          className="px-4 py-2.5 rounded-lg border border-input bg-background text-sm focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30"
         >
           <option value="">ทุกสถานะ</option>
           <option value="RECEIVED">รอตรวจ</option>

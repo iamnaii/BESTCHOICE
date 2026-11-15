@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { useRef, useState, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import api from '@/lib/api';
 import { displayAddress } from '@/components/ui/AddressForm';
@@ -63,21 +63,9 @@ interface CrossRoomItem {
   messages?: { text: string }[];
 }
 
-interface InternalNoteItem {
-  id: string;
-  content: string;
-  createdAt: string;
-  staff?: { name: string };
-}
-
-interface StaffItem {
-  id: string;
-  name: string;
-}
-
 /** บล็อกในแผงเดิมที่แผงใหม่ (RoomDossier) หยิบไปวางในแท็บ — ค่าเริ่มต้น = ทั้งหมด (พฤติกรรมเดิม) */
 export type Customer360Section =
-  | 'product' | 'channels' | 'mdm' | 'warranty' | 'contracts' | 'payments' | 'history' | 'calls' | 'notes' | 'actions';
+  | 'product' | 'channels' | 'mdm' | 'warranty' | 'contracts' | 'payments' | 'history' | 'calls' | 'actions';
 
 interface Customer360PanelProps {
   customerId: string | null;
@@ -181,13 +169,6 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
     queryFn: () => api.get(`/customers/${customerId}/chat-summary`).then((r) => r.data?.data ?? r.data),
     enabled: !!customerId,
     staleTime: 30_000,
-  });
-
-  // ─── Notes ──────────────────────────────────────────
-  const { data: notesData } = useQuery({
-    queryKey: ['customer-notes', activeRoomId],
-    queryFn: () => api.get(`/staff-chat/rooms/${activeRoomId}/notes`).then((r) => r.data?.data ?? r.data),
-    enabled: !!activeRoomId && show('notes'),
   });
 
   // ─── Cross-channel rooms ─────────────────────────────
@@ -608,20 +589,6 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
 
       
       </>)}
-{show('notes') && (<>
-{/* ─── 6. Internal Notes ──────────────────────────── */}
-      {activeRoomId && (
-        <InternalNotesSection
-          key={activeRoomId}
-          roomId={activeRoomId}
-          notes={notesData ?? []}
-          collapsed={collapsed['notes']}
-          onToggle={() => toggleSection('notes')}
-        />
-      )}
-
-      
-      </>)}
 {show('actions') && (<>
 {/* ─── 7. Quick Actions ────────────────────────────── */}
       <div className="p-4">
@@ -924,174 +891,6 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
       </div>{/* end scrollable */}
 
       {dialogs}
-    </div>
-  );
-}
-
-// ─── InternalNotesSection ─────────────────────────────────
-
-function InternalNotesSection({
-  roomId,
-  notes,
-  collapsed,
-  onToggle,
-}: {
-  roomId: string;
-  notes: InternalNoteItem[];
-  collapsed?: boolean;
-  onToggle?: () => void;
-}) {
-  const queryClient = useQueryClient();
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [noteText, setNoteText] = useState('');
-  const [showMentionDropdown, setShowMentionDropdown] = useState(false);
-  const [mentionFilter, setMentionFilter] = useState('');
-  const [mentionStart, setMentionStart] = useState(-1);
-
-  const { data: onlineStaff } = useQuery({
-    queryKey: ['online-staff'],
-    queryFn: () => api.get('/staff-chat/staff/online').then((r) => r.data?.data ?? r.data),
-    staleTime: 30_000,
-  });
-
-  const addNote = useMutation({
-    mutationFn: (content: string) =>
-      api.post(`/staff-chat/rooms/${roomId}/notes`, { content }).then((r) => r.data),
-    onSuccess: () => {
-      setNoteText('');
-      queryClient.invalidateQueries({ queryKey: ['customer-notes', roomId] });
-      toast.success('บันทึกโน้ตแล้ว');
-    },
-    onError: () => toast.error('ไม่สามารถบันทึกโน้ตได้'),
-  });
-
-  const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const val = e.target.value;
-    setNoteText(val);
-
-    // Detect @mention: find last @ before cursor
-    const cursor = e.target.selectionStart ?? val.length;
-    const textBefore = val.slice(0, cursor);
-    const lastAt = textBefore.lastIndexOf('@');
-
-    if (lastAt !== -1) {
-      const afterAt = textBefore.slice(lastAt + 1);
-      // Only show if no space after @
-      if (!afterAt.includes(' ')) {
-        setMentionStart(lastAt);
-        setMentionFilter(afterAt.toLowerCase());
-        setShowMentionDropdown(true);
-        return;
-      }
-    }
-    setShowMentionDropdown(false);
-    setMentionFilter('');
-    setMentionStart(-1);
-  };
-
-  const handleSelectMention = (staffName: string) => {
-    if (mentionStart === -1) return;
-    const before = noteText.slice(0, mentionStart);
-    const cursor = textareaRef.current?.selectionStart ?? noteText.length;
-    const after = noteText.slice(cursor);
-    const inserted = `@${staffName} `;
-    setNoteText(before + inserted + after);
-    setShowMentionDropdown(false);
-    setMentionFilter('');
-    setMentionStart(-1);
-    // Refocus textarea
-    setTimeout(() => {
-      const ta = textareaRef.current;
-      if (ta) {
-        ta.focus();
-        const pos = before.length + inserted.length;
-        ta.setSelectionRange(pos, pos);
-      }
-    }, 0);
-  };
-
-  const filteredStaff = (Array.isArray(onlineStaff) ? (onlineStaff as StaffItem[]) : []).filter((s) =>
-    s.name?.toLowerCase().includes(mentionFilter),
-  );
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Escape') {
-      setShowMentionDropdown(false);
-    }
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      if (showMentionDropdown) return;
-      if (noteText.trim()) addNote.mutate(noteText.trim());
-    }
-  };
-
-  return (
-    <div className="p-4 border-b border-border">
-      <SectionHeader icon={FileText} label="บันทึกภายใน" collapsed={collapsed} onToggle={onToggle} />
-
-      {!collapsed && (
-        <>
-          {/* Existing notes */}
-          {notes.length > 0 && (
-            <div className="space-y-1.5 mb-3">
-              {notes.slice(0, 5).map((note) => (
-                <div key={note.id} className="p-2 bg-warning/10 rounded text-xs border border-warning/20">
-                  <p className="text-foreground/80 whitespace-pre-wrap">{note.content}</p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">
-                    {note.staff?.name} · {format(new Date(note.createdAt), 'dd/MM HH:mm')}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Note input with @mention */}
-          <div className="relative">
-            <textarea
-              ref={textareaRef}
-              value={noteText}
-              onChange={handleInput}
-              onKeyDown={handleKeyDown}
-              placeholder="เพิ่มโน้ต... (@ แท็กสมาชิก · Shift+Enter ขึ้นบรรทัด)"
-              rows={2}
-              className="w-full text-xs rounded-lg border border-border px-2.5 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-primary/30 placeholder:text-muted-foreground/50"
-            />
-
-            {/* @mention dropdown */}
-            {showMentionDropdown && filteredStaff.length > 0 && (
-              <div className="absolute bottom-full left-0 mb-1 w-full bg-card border border-border rounded-lg shadow-lg z-50 max-h-36 overflow-y-auto">
-                {filteredStaff.map((s: any) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onMouseDown={(e) => {
-                      e.preventDefault(); // prevent textarea blur
-                      handleSelectMention(s.name);
-                    }}
-                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-accent flex items-center gap-2"
-                  >
-                    <span className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[9px] font-bold shrink-0">
-                      {s.name?.[0]?.toUpperCase() ?? '?'}
-                    </span>
-                    <span className="truncate">{s.name}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <button data-ui-control="button"
-              type="button"
-              onClick={() => {
-                if (noteText.trim()) addNote.mutate(noteText.trim());
-              }}
-              disabled={!noteText.trim() || addNote.isPending}
-              className="mt-1.5 w-full text-xs bg-foreground/90 hover:bg-foreground/80 disabled:opacity-40 text-white rounded-lg py-1.5 transition-colors"
-            >
-              {addNote.isPending ? 'กำลังบันทึก...' : 'บันทึกโน้ต'}
-            </button>
-          </div>
-        </>
-      )}
     </div>
   );
 }

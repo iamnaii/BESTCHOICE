@@ -11488,7 +11488,7 @@ Spec §5 row F5 and §2 bullet "เมนูถูกตัด". This task adds 
   - Output goes to `.tmp/field-scale/menu-clip-components/{results.json,<Component>-<width>.png}`.
   - It needs the current-checkout preview: `previewStatus().current`, the same check as `tools/check-admin-typography.mjs`.
 
-**Current offenders (found by running the detector below on HEAD, 2026-11-14; updated 2026-11-16): 14 panels in 12 files after Task 6 (15 in 13 before it replaces `AccountSearchDropdown`). `components/template-editor/editor/VariableAutocomplete.tsx` (1 panel, imported nowhere) was deleted as dead code on 2026-11-16 and is no longer listed.**
+**Current offenders (found by running the detector below on HEAD, 2026-11-14; updated 2026-11-16): 13 panels in 11 files after Task 6 (14 in 12 before it replaces `AccountSearchDropdown`). `components/template-editor/editor/VariableAutocomplete.tsx` (1 panel, imported nowhere) was deleted as dead code on 2026-11-16 and is no longer listed. The notes section of `pages/UnifiedInboxPage/components/Customer360Panel.tsx` (1 panel, the @mention list in the customer note; no production caller renders it — the only caller, `RoomDossier.tsx`, passes `sections` `['actions']` or `['mdm']`) was deleted on 2026-11-16 and is no longer listed.**
 
 | File:line (under `apps/web/src/`) | Panels | What it is | After this plan |
 |---|---|---|---|
@@ -11503,7 +11503,6 @@ Spec §5 row F5 and §2 bullet "เมนูถูกตัด". This task adds 
 | `pages/ExpensesPage.tsx:668` | 1 | "สร้างเอกสารใหม่" menu | allow-listed: extra |
 | `pages/POSPage/components/CustomerSearch.tsx:154` | 1 | POS customer search | allow-listed: extra |
 | `pages/settings/SettingsLayout.tsx:91` | 1 | settings search results | allow-listed: extra |
-| `pages/UnifiedInboxPage/components/Customer360Panel.tsx:1062` | 1 | @mention in customer note | allow-listed: extra |
 | `pages/UnifiedInboxPage/components/SessionActions.tsx:139,203` | 2 | "โอนให้พนักงาน" / "สร้างสัญญา" `role=menu` | allow-listed: extra |
 
 Detector checks that were run (read-only):
@@ -11921,7 +11920,7 @@ Expected result:
 
 ```
 FAIL  src/components/ui/field-guards.inventory.test.ts > F5 — inline (non-portalled) menus (spec 2026-11-14 §5) > only allow-listed files render an absolute menu outside a portal
-AssertionError: expected { …(12) } to deeply equal {}
+AssertionError: expected { …(11) } to deeply equal {}
 + {
 +   "apps/web/src/components/bundle/BundleSearch.tsx": 1,
 +   "apps/web/src/components/ui/NameAutocomplete.tsx": 1,
@@ -11930,7 +11929,6 @@ AssertionError: expected { …(12) } to deeply equal {}
 +   "apps/web/src/pages/ExpensesPage.tsx": 1,
 +   "apps/web/src/pages/POSPage/components/CustomerSearch.tsx": 1,
 +   "apps/web/src/pages/PurchaseOrdersPage/components/wizard/items/CatalogPicker.tsx": 1,
-+   "apps/web/src/pages/UnifiedInboxPage/components/Customer360Panel.tsx": 1,
 +   "apps/web/src/pages/UnifiedInboxPage/components/NoteMentionInput.tsx": 1,
 +   "apps/web/src/pages/UnifiedInboxPage/components/SessionActions.tsx": 2,
 +   "apps/web/src/pages/other-income/components/TemplatePickerCombobox.tsx": 1,
@@ -11940,7 +11938,7 @@ AssertionError: expected { …(12) } to deeply equal {}
 
 Check the list before going on:
 - If `AccountSearchDropdown.tsx` appears, Task 6 is not done. Stop.
-- If one of the 12 is missing, an earlier task already removed that menu. Leave it out of Step 4.
+- If one of the 11 is missing, an earlier task already removed that menu. Leave it out of Step 4.
 - If a file is listed that is not in the table above, a new inline menu was added. Portal it, do not allow-list it.
 
 - [ ] **Step 4: Fill the allow-list with exactly the remaining set (green)**
@@ -11996,10 +11994,6 @@ const F5_NON_PORTAL_MENU_ALLOW: Record<string, { panels: number; reason: string 
   'apps/web/src/pages/settings/SettingsLayout.tsx': {
     panels: 1,
     reason: 'มีอยู่ก่อนงานนี้ (ผลค้นหาการตั้งค่า) · นอก allow-list ของ spec — รอเจ้าของตัดสิน',
-  },
-  'apps/web/src/pages/UnifiedInboxPage/components/Customer360Panel.tsx': {
-    panels: 1,
-    reason: 'มีอยู่ก่อนงานนี้ (@แท็กในโน้ตลูกค้า) · นอก allow-list ของ spec — รอเจ้าของตัดสิน',
   },
   'apps/web/src/pages/UnifiedInboxPage/components/SessionActions.tsx': {
     panels: 2,

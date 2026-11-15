@@ -650,10 +650,6 @@ const F5_NON_PORTAL_MENU_ALLOW: Record<string, { panels: number; reason: string 
     panels: 1,
     reason: 'มีอยู่ก่อนงานนี้ (ผลค้นหาการตั้งค่า) · นอก allow-list ของ spec — รอเจ้าของตัดสิน',
   },
-  'apps/web/src/pages/UnifiedInboxPage/components/Customer360Panel.tsx': {
-    panels: 1,
-    reason: 'มีอยู่ก่อนงานนี้ (@แท็กในโน้ตลูกค้า) · นอก allow-list ของ spec — รอเจ้าของตัดสิน',
-  },
   'apps/web/src/pages/UnifiedInboxPage/components/SessionActions.tsx': {
     panels: 2,
     reason: 'มีอยู่ก่อนงานนี้ (เมนู "โอนให้พนักงาน" + "สร้างสัญญา") · นอก allow-list ของ spec — รอเจ้าของตัดสิน',

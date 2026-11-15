@@ -472,7 +472,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
                 <Tag className="size-3.5" />
                 แท็ก
               </label>
-              <div className="flex flex-wrap items-center gap-1.5 px-3 py-2 border border-input rounded-xl bg-card focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/50 transition-colors">
+              <div data-field-frame className="flex min-h-11 flex-wrap items-center gap-1.5 px-3 py-1 border border-input rounded-xl bg-card focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/50 transition-colors">
                 {(form.tags || []).map((tag) => (
                   <span
                     key={tag}
@@ -488,7 +488,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
                     </button>
                   </span>
                 ))}
-                <input id={`${uiFieldId}-5`}
+                <input id={`${uiFieldId}-5`} data-field-embedded
                   type="text"
                   value={form.tagsInput || ''}
                   onChange={(e) => setForm({ ...form, tagsInput: e.target.value })}

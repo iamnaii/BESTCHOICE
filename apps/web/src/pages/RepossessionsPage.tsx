@@ -755,10 +755,9 @@ export default function RepossessionsPage() {
 
       {/* Filter */}
       <div className="mb-5">
-        <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="สถานะ"
+        <NativeSelect wrapperClassName="w-full sm:w-56" aria-label="สถานะ"
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-3 py-2 border border-input rounded-lg text-sm bg-background focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
         >
           <option value="">ทุกสถานะ</option>
           <option value="REPOSSESSED">ยึดคืนแล้ว</option>

@@ -376,10 +376,9 @@ export default function StockTransfersPage() {
       {activeTab === 'outgoing' && (
         <div>
           <div className="mb-4">
-            <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="สถานะ"
+            <NativeSelect wrapperClassName="w-full sm:w-56" aria-label="สถานะ"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden"
             >
               <option value="PENDING">รอจัดส่ง</option>
               <option value="IN_TRANSIT">ระหว่างโอนสินค้า</option>
@@ -536,10 +535,9 @@ export default function StockTransfersPage() {
       {activeTab === 'incoming' && (
         <div>
           <div className="mb-4">
-            <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="สาขา"
+            <NativeSelect wrapperClassName="w-full sm:w-56" aria-label="สาขา"
               value={selectedBranch}
               onChange={(e) => setSelectedBranch(e.target.value)}
-              className="px-3 py-2 border border-input rounded-lg text-sm"
             >
               <option value="">เลือกสาขา</option>
               {(branches || []).map((b: { id: string; name: string }) => (
@@ -653,10 +651,9 @@ export default function StockTransfersPage() {
       {activeTab === 'history' && (
         <div>
           <div className="mb-4">
-            <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="สาขา"
+            <NativeSelect wrapperClassName="w-full sm:w-56" aria-label="สาขา"
               value={selectedBranch}
               onChange={(e) => setSelectedBranch(e.target.value)}
-              className="px-3 py-2 border border-input rounded-lg text-sm"
             >
               <option value="">ทุกสาขา</option>
               {(branches || []).map((b: { id: string; name: string }) => (

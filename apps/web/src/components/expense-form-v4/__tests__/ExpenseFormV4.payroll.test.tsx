@@ -246,7 +246,7 @@ beforeEach(() => {
 
 const newClient = () => new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
-function mount(props: { editDocId?: string } = {}, client = newClient()) {
+function mount(props: { editDocId?: string; branchName?: string } = {}, client = newClient()) {
   const onSaved = vi.fn();
   const onClose = vi.fn();
   const { unmount } = render(
@@ -288,6 +288,15 @@ describe('ExpenseFormV4 payroll — editing a computed draft (R6)', () => {
     expect(await screen.findByRole('button', { name: 'สมศรี มีสุข' })).toBeInTheDocument();
     expect(screen.getByText(/บันทึกแล้วใบจะกลับเป็นร่าง/)).toBeInTheDocument();
     expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it("shows the document's own branch and number in the header, not the page branch", async () => {
+    docs['doc-1'] = { ...(storedDoc('doc-1', [ELIGIBLE_LINE]) as object), branchId: 'b2', branch: { id: 'b2', name: 'สาขา B' } };
+    mount({ editDocId: 'doc-1', branchName: 'สาขา A' });
+    await screen.findByRole('button', { name: 'สมศรี มีสุข' });
+    expect(screen.getByText('สาขา: สาขา B')).toBeInTheDocument();
+    expect(screen.queryByText('สาขา: สาขา A')).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue('PR-20261101-0001')).toBeInTheDocument();
   });
 
   it('refuses to open a POSTED payroll', async () => {

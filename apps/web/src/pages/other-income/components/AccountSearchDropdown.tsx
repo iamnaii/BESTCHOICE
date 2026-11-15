@@ -37,7 +37,7 @@ const DEFAULT_TRIGGER_LABEL = 'บัญชี';
 
 /**
  * Searchable account-code dropdown — used by ItemsTable (42-XXXX), AdjustmentTable,
- * EditableJournalTable (Override JV) and PettyCashLinesSection (53-XXXX).
+ * EditableJournalTable (Override JV), PettyCashLinesSection (53-XXXX) and the expense ItemLinesSection.
  *
  * The menu is a portalled Radix Popover (spec 2026-11-14 §4.2 item 6, R1-2) so the
  * card (`overflow-hidden`) / table box (`overflow-x-auto`) around it no longer clips

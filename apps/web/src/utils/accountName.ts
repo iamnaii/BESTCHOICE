@@ -7,7 +7,6 @@
  * in search values, the JE/journal preview, reports, the chart-of-accounts
  * manager, and PEAK export, where it is accounting-essential.
  *
- *
  * 2026-11-16 (owner): the SEARCHABLE account picker (`AccountSearchDropdown`) shows
  * `code - name` plus chart group headings, like PEAK. It still runs the name through
  * this function (parentheticals stay dropped). Plain `NativeSelect` account pickers

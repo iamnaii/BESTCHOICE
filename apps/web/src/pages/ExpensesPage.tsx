@@ -260,7 +260,8 @@ export default function ExpensesPage() {
     // The form only supports PATCH for payroll. Other document types create new records.
     // Payroll D4 คำตัดสิน 6 — ใบที่รออนุมัติ/อนุมัติแล้วแก้ได้ (บันทึกแล้ว server ตั้งกลับเป็นร่าง)
     if (!isPayrollEditable(e)) return;
-    navigate(payrollEditPath(e.id));
+    const listSearch = searchParams.toString();
+    navigate(payrollEditPath(e.id), { state: { listSearch: listSearch ? `?${listSearch}` : '' } });
   };
 
   // D1.2.1 — Approval Workflow. Flags + mutations stay at page level so all

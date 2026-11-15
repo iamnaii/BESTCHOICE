@@ -2,7 +2,6 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { ExpenseFormV4 } from '@/components/expense-form-v4/ExpenseFormV4';
-import { payrollEditPath } from '@/components/expense-form-v4/payroll-system/payroll-status';
 import { PAYROLL_ROLE_NOTICE, canManagePayroll } from '@/components/expense-form-v4/payroll-system/payroll-roles';
 import type { DocType } from '@/components/expense-form-v4/types';
 import { useAuth } from '@/contexts/AuthContext';
@@ -87,7 +86,13 @@ export default function ExpenseDocumentNewPage() {
       onClose={() => navigate(listPath)}
       onSaved={() => navigate(listPath)}
       // Payroll D4 — "บันทึกร่าง + คิดยอด" อยู่ในหน้าแก้ไขของร่างที่เพิ่งบันทึก (รีเฟรชแล้วไม่สร้างใบซ้ำ)
-      onDraftSaved={(id) => navigate(payrollEditPath(id), { replace: true })}
+      // คงสาขาที่เลือกและ router state (ตัวกรองรายการ) ไว้ ไม่งั้นสาขาของหน้าเปลี่ยน → ฟอร์มรีเมานต์ แล้วข้อความแจ้งหาย
+      onDraftSaved={(id) => {
+        const next = new URLSearchParams(searchParams);
+        next.delete('type');
+        next.set('edit', id);
+        navigate({ pathname: '/expenses/new', search: `?${next.toString()}` }, { replace: true, state: location.state });
+      }}
     />
   );
 }

@@ -104,7 +104,7 @@ export interface UiFlags {
   settlementMaxBillsPerDoc: number;
   /** D1.1.5.4 — Petty Cash replenish alert threshold (THB). Default 5000, 0 disables. */
   pettyCashReplenishThreshold: number;
-  /** D1.1.5.1 — Petty Cash feature flag. Default true. Hides DocTypePicker card + form section when false. */
+  /** D1.1.5.1 — Petty Cash feature flag. Default true. Hides the DocTypeMenu entry (components/expense-form-v4/layout) + form section when false. */
   pettyCashEnabled: boolean;
   /**
    * D1.2.5.3 — render the 3-column partial-payment breakdown (ยอดเดิม /

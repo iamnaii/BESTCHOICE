@@ -68,6 +68,7 @@ interface PayrollDocForEdit {
   documentType: string;
   status: string;
   branchId: string;
+  branch?: { id: string; name: string } | null;
   documentDate: string;
   depositAccountCode: string | null;
   description: string | null;
@@ -212,6 +213,8 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
   const [draftId, setDraftId] = useState<string | undefined>(editDocId);
   const [loadedStatus, setLoadedStatus] = useState<string | null>(null);
   const [loadedNumber, setLoadedNumber] = useState<string | undefined>();
+  // สาขาของใบที่โหลดมา (แก้ไข) — แสดงแทนสาขาของหน้า ซึ่งอาจเป็นคนละสาขากับใบ
+  const [loadedBranchName, setLoadedBranchName] = useState<string | undefined>();
   // ข้อความจาก server ของใบเงินเดือน (มี `code`) — แสดงในฟอร์มแทน toast
   const [payrollNotice, setPayrollNotice] = useState<{ message: string; tone: 'error' | 'warning' } | null>(null);
   const noticeRef = useRef<HTMLDivElement>(null);
@@ -244,6 +247,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
     }));
     setLoadedStatus(doc.status);
     setLoadedNumber(doc.number);
+    setLoadedBranchName(doc.branch?.name);
     setShowQuickStart(false);
   };
 
@@ -801,7 +805,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
           payrollEnabled={canManagePayroll(user?.role)}
           typeLocked={!!draftId}
           statusLabel={statusLabel}
-          branchName={branchName}
+          branchName={loadedBranchName ?? branchName}
           documentNumber={loadedNumber}
           taxInvoice={showVendor ? { value: state.taxInvoiceNo, onChange: (v) => patch({ taxInvoiceNo: v }) } : undefined}
         />

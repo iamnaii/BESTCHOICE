@@ -16,6 +16,7 @@ import { invalidateCustomerJourney } from '@/hooks/customer-journey/useCustomerJ
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { FinanceLineStatusRow } from '@/components/customer/FinanceLineStatusRow';
 import type { CustomerDetail, ReferenceData } from '../types';
+import { formControlClass } from '@/components/ui/form-styles';
 
 interface EditCustomerDialogProps {
   customer: CustomerDetail;
@@ -242,7 +243,6 @@ export default function EditCustomerDialog({
                     id="customer-edit-1"
                     value={editForm.prefix}
                     onChange={(e) => setEditForm({ ...editForm, prefix: e.target.value })}
-                    className="h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
                   >
                     <option value="">-- เลือก --</option>
                     {THAI_NAME_PREFIXES.map((p) => (
@@ -264,7 +264,7 @@ export default function EditCustomerDialog({
                     type="text"
                     value={editForm.name}
                     onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                    className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                    className={formControlClass}
                     required
                   />
                 </div>
@@ -280,7 +280,7 @@ export default function EditCustomerDialog({
                     type="text"
                     value={editForm.nickname}
                     onChange={(e) => setEditForm({ ...editForm, nickname: e.target.value })}
-                    className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                    className={formControlClass}
                   />
                 </div>
                 <div>
@@ -294,7 +294,6 @@ export default function EditCustomerDialog({
                     id="customer-edit-4"
                     value={editForm.birthDate}
                     onChange={(e) => setEditForm({ ...editForm, birthDate: e.target.value })}
-                    className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
                   />
                 </div>
               </div>
@@ -666,7 +665,6 @@ export default function EditCustomerDialog({
                           id={`customer-edit-19-${idx}`}
                           value={ref.prefix || ''}
                           onChange={(e) => updateEditRef(idx, 'prefix', e.target.value)}
-                          className="h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
                         >
                           <option value="">-- เลือก --</option>
                           {THAI_NAME_PREFIXES.map((p) => (
@@ -688,7 +686,7 @@ export default function EditCustomerDialog({
                           type="text"
                           value={ref.firstName || ''}
                           onChange={(e) => updateEditRef(idx, 'firstName', e.target.value)}
-                          className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                          className={formControlClass}
                         />
                       </div>
                       <div>
@@ -703,7 +701,7 @@ export default function EditCustomerDialog({
                           type="text"
                           value={ref.lastName || ''}
                           onChange={(e) => updateEditRef(idx, 'lastName', e.target.value)}
-                          className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                          className={formControlClass}
                         />
                       </div>
                       <div>
@@ -718,7 +716,7 @@ export default function EditCustomerDialog({
                           type="tel"
                           value={ref.phone || ''}
                           onChange={(e) => updateEditRef(idx, 'phone', e.target.value)}
-                          className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
+                          className={formControlClass}
                         />
                       </div>
                       <div>
@@ -733,7 +731,6 @@ export default function EditCustomerDialog({
                           id={`customer-edit-23-${idx}`}
                           value={ref.relationship || ''}
                           onChange={(e) => updateEditRef(idx, 'relationship', e.target.value)}
-                          className="h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20"
                         >
                           <option value="">-- เลือก --</option>
                           {RELATIONSHIP_OPTIONS.map((r) => (

@@ -127,7 +127,6 @@ export default function SendLineAdHocDialog({ open, contract, onClose, onSent }:
             <NativeSelect wrapperClassName="max-w-full w-full"
               value={templateId}
               onChange={(e) => setTemplateId(e.target.value)}
-              className="px-3 py-2 border border-input rounded-lg text-sm leading-snug"
             >
               <option value="">— เลือกแม่แบบ —</option>
               {rules.map((r) => (

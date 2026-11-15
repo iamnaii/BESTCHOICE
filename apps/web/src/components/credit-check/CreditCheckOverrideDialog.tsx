@@ -182,7 +182,6 @@ export default function CreditCheckOverrideDialog({
             <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-1`}
               value={status}
               onChange={(e) => { setAffordability(null); onStatusChange(e.target.value); }}
-              className="h-10 px-3 rounded-lg border border-input bg-background text-sm"
             >
               <option value="">-- เลือกสถานะ --</option>
               <option value="APPROVED">ผ่าน</option>
@@ -220,7 +219,6 @@ export default function CreditCheckOverrideDialog({
                 <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-2`}
                   value={reasonCategory}
                   onChange={(e) => onReasonCategoryChange(e.target.value)}
-                  className="h-10 px-3 rounded-lg border border-input bg-background text-sm"
                 >
                   <option value="">-- เลือกเหตุผล --</option>
                   {REASON_OPTIONS.map((opt) => (
@@ -239,7 +237,6 @@ export default function CreditCheckOverrideDialog({
                   <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-3`}
                     value={notes}
                     onChange={(e) => onNotesChange(e.target.value)}
-                    className="h-10 px-3 rounded-lg border border-input bg-background text-sm"
                   >
                     <option value="">-- เลือก % ดาวน์ --</option>
                     {DOWN_TIERS.map((t) => (

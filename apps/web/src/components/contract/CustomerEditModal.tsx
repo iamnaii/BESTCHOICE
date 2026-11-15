@@ -18,6 +18,7 @@ import {
   FinanceLineStatusRow,
   type FinanceLineStatus,
 } from '@/components/customer/FinanceLineStatusRow';
+import { formControlClass } from '@/components/ui/form-styles';
 
 interface CustReferenceData {
   prefix?: string;
@@ -316,7 +317,6 @@ export default function CustomerEditModal({
                       id={`${uiFieldId}-1`}
                       value={form.prefix}
                       onChange={(e) => setForm({ ...form, prefix: e.target.value })}
-                      className="px-3 py-2 border border-input rounded-lg text-sm bg-background"
                     >
                       <option value="">-- เลือก --</option>
                       {THAI_NAME_PREFIXES.map((p) => (
@@ -338,7 +338,7 @@ export default function CustomerEditModal({
                       type="text"
                       value={form.name}
                       onChange={(e) => setForm({ ...form, name: e.target.value })}
-                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                      className={formControlClass}
                       required
                     />
                   </div>
@@ -354,7 +354,7 @@ export default function CustomerEditModal({
                       type="text"
                       value={form.nickname}
                       onChange={(e) => setForm({ ...form, nickname: e.target.value })}
-                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                      className={formControlClass}
                     />
                   </div>
                   <div>
@@ -368,7 +368,6 @@ export default function CustomerEditModal({
                       id={`${uiFieldId}-4`}
                       value={form.birthDate}
                       onChange={(e) => setForm({ ...form, birthDate: e.target.value })}
-                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
                     />
                   </div>
                 </div>
@@ -442,7 +441,6 @@ export default function CustomerEditModal({
                     id={`${uiFieldId}-5`}
                     value={form.addressCurrentType || ''}
                     onChange={(e) => setForm({ ...form, addressCurrentType: e.target.value })}
-                    className="px-3 py-2 border border-input rounded-lg text-sm"
                   >
                     <option value="">-- เลือก --</option>
                     <option value="OWN">บ้านตัวเอง</option>
@@ -469,7 +467,7 @@ export default function CustomerEditModal({
                     type="url"
                     value={form.googleMapLink}
                     onChange={(e) => setForm({ ...form, googleMapLink: e.target.value })}
-                    className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                    className={formControlClass}
                     placeholder="https://maps.google.com/..."
                   />
                 </div>
@@ -511,7 +509,7 @@ export default function CustomerEditModal({
                       type="tel"
                       value={form.phone}
                       onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                      className={formControlClass}
                       required
                     />
                   </div>
@@ -527,7 +525,7 @@ export default function CustomerEditModal({
                       type="tel"
                       value={form.phoneSecondary}
                       onChange={(e) => setForm({ ...form, phoneSecondary: e.target.value })}
-                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                      className={formControlClass}
                     />
                   </div>
                   <div>
@@ -542,7 +540,7 @@ export default function CustomerEditModal({
                       type="email"
                       value={form.email}
                       onChange={(e) => setForm({ ...form, email: e.target.value })}
-                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                      className={formControlClass}
                     />
                   </div>
                   <div>
@@ -557,7 +555,7 @@ export default function CustomerEditModal({
                       type="text"
                       value={form.lineIdShop}
                       onChange={(e) => setForm({ ...form, lineIdShop: e.target.value })}
-                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                      className={formControlClass}
                       placeholder="U1234567890abcdef..."
                     />
                   </div>
@@ -579,7 +577,7 @@ export default function CustomerEditModal({
                       type="url"
                       value={form.facebookLink}
                       onChange={(e) => setForm({ ...form, facebookLink: e.target.value })}
-                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                      className={formControlClass}
                     />
                   </div>
                   <div>
@@ -594,7 +592,7 @@ export default function CustomerEditModal({
                       type="text"
                       value={form.facebookName}
                       onChange={(e) => setForm({ ...form, facebookName: e.target.value })}
-                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                      className={formControlClass}
                     />
                   </div>
                   <div>
@@ -609,7 +607,7 @@ export default function CustomerEditModal({
                       type="text"
                       value={form.facebookFriends}
                       onChange={(e) => setForm({ ...form, facebookFriends: e.target.value })}
-                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                      className={formControlClass}
                     />
                   </div>
                 </div>
@@ -652,7 +650,7 @@ export default function CustomerEditModal({
                       type="text"
                       value={form.workplace}
                       onChange={(e) => setForm({ ...form, workplace: e.target.value })}
-                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                      className={formControlClass}
                     />
                   </div>
                   <div>
@@ -667,7 +665,7 @@ export default function CustomerEditModal({
                       type="text"
                       value={form.occupation}
                       onChange={(e) => setForm({ ...form, occupation: e.target.value })}
-                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                      className={formControlClass}
                     />
                   </div>
                   <div>
@@ -682,7 +680,7 @@ export default function CustomerEditModal({
                       type="text"
                       value={form.occupationDetail}
                       onChange={(e) => setForm({ ...form, occupationDetail: e.target.value })}
-                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                      className={formControlClass}
                     />
                   </div>
                   <div>
@@ -697,7 +695,7 @@ export default function CustomerEditModal({
                       id={`${uiFieldId}-18`}
                       value={form.salary}
                       onChange={(e) => setForm({ ...form, salary: e.target.value })}
-                      className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                      className={formControlClass}
                       placeholder="0.00"
                     />
                   </div>
@@ -755,7 +753,6 @@ export default function CustomerEditModal({
                             id={`${uiExtraFieldId}-1-${idx}`}
                             value={ref.prefix || ''}
                             onChange={(e) => updateRef(idx, 'prefix', e.target.value)}
-                            className="px-3 py-2 border border-input rounded-lg text-sm bg-background"
                           >
                             <option value="">-- เลือก --</option>
                             {THAI_NAME_PREFIXES.map((p) => (
@@ -777,7 +774,7 @@ export default function CustomerEditModal({
                             type="text"
                             value={ref.firstName || ''}
                             onChange={(e) => updateRef(idx, 'firstName', e.target.value)}
-                            className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                            className={formControlClass}
                           />
                         </div>
                         <div>
@@ -792,7 +789,7 @@ export default function CustomerEditModal({
                             type="text"
                             value={ref.lastName || ''}
                             onChange={(e) => updateRef(idx, 'lastName', e.target.value)}
-                            className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                            className={formControlClass}
                           />
                         </div>
                         <div>
@@ -807,7 +804,7 @@ export default function CustomerEditModal({
                             type="tel"
                             value={ref.phone || ''}
                             onChange={(e) => updateRef(idx, 'phone', e.target.value)}
-                            className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                            className={formControlClass}
                           />
                         </div>
                         <div>
@@ -822,7 +819,6 @@ export default function CustomerEditModal({
                             id={`${uiExtraFieldId}-5-${idx}`}
                             value={ref.relationship || ''}
                             onChange={(e) => updateRef(idx, 'relationship', e.target.value)}
-                            className="px-3 py-2 border border-input rounded-lg text-sm bg-background"
                           >
                             <option value="">-- เลือก --</option>
                             {RELATIONSHIP_OPTIONS.map((r) => (

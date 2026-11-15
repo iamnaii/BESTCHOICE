@@ -62,6 +62,7 @@ import { DetailPageSkeleton } from '@/components/ui/page-skeletons';
 import { formatNumber, formatDateMedium } from '@/utils/formatters';
 import MdmDeviceWidget from '@/components/mdm/MdmDeviceWidget';
 import { CallButton } from '@/components/CallButton';
+import { formControlClass } from '@/components/ui/form-styles';
 
 interface Payment {
   id: string;
@@ -1060,7 +1061,7 @@ export default function ContractDetailPage() {
                     onChange={(e) =>
                       setEditForm({ ...editForm, sellingPrice: parseFloat(e.target.value) || 0 })
                     }
-                    className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                    className={formControlClass}
                   />
                 </div>
                 <div>
@@ -1077,7 +1078,7 @@ export default function ContractDetailPage() {
                     onChange={(e) =>
                       setEditForm({ ...editForm, downPayment: parseFloat(e.target.value) || 0 })
                     }
-                    className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                    className={formControlClass}
                   />
                 </div>
                 <div>
@@ -1094,7 +1095,7 @@ export default function ContractDetailPage() {
                     onChange={(e) =>
                       setEditForm({ ...editForm, totalMonths: parseInt(e.target.value) || 0 })
                     }
-                    className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                    className={formControlClass}
                   />
                 </div>
                 <div>
@@ -1112,7 +1113,7 @@ export default function ContractDetailPage() {
                     onChange={(e) =>
                       setEditForm({ ...editForm, interestRate: parseFloat(e.target.value) || 0 })
                     }
-                    className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                    className={formControlClass}
                   />
                 </div>
                 <div>
@@ -1129,7 +1130,6 @@ export default function ContractDetailPage() {
                     onChange={(e) =>
                       setEditForm({ ...editForm, paymentDueDay: parseInt(e.target.value) || 1 })
                     }
-                    className="px-3 py-2 border border-input rounded-lg text-sm"
                   >
                     {[...Array.from({ length: 28 }, (_, i) => i + 1), 31].map((d) => (
                       <option key={d} value={d}>

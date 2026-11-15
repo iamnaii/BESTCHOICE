@@ -5,6 +5,8 @@ import api, { getErrorMessage } from '@/lib/api';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import CreditAffordabilityForm, { type CreditApprovalPayload } from '@/components/credit-check/CreditAffordabilityForm';
+import { formControlClass } from '@/components/ui/form-styles';
+import { cn } from '@/lib/utils';
 
 interface CreditCheckData {
   id: string;
@@ -303,7 +305,6 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
                   aria-label="ผลพิจารณาเครดิต"
                   value={overrideStatus}
                   onChange={(e) => { setAffordability(null); setOverrideStatus(e.target.value); }}
-                  className="px-3 py-1.5 border border-input rounded-lg text-sm"
                 >
                   <option value="">เลือกสถานะ...</option>
                   <option value="APPROVED">อนุมัติ</option>
@@ -316,7 +317,7 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
                   onChange={(e) => setOverrideNotes(e.target.value)}
                   placeholder="เหตุผลการพิจารณา อย่างน้อย 20 ตัวอักษร"
                   aria-label="เหตุผลการพิจารณา"
-                  className="min-w-0 flex-1 px-3 py-1.5 border border-input rounded-lg text-sm"
+                  className={cn(formControlClass, 'min-w-0 flex-1')}
                 />
                 <button data-ui-control="button"
                   onClick={() => overrideMutation.mutate()}

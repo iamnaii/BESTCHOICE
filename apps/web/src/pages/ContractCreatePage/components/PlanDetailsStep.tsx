@@ -201,7 +201,6 @@ export function PlanDetailsStep({
                     field.onChange(val);
                     setTotalMonths(val);
                   }}
-                  className="px-3 py-2 border border-input rounded-lg text-sm"
                 >
                   {monthOptions.map((m) => (
                     <option key={m} value={m}>{m} เดือน</option>
@@ -230,7 +229,6 @@ export function PlanDetailsStep({
                     field.onChange(val);
                     setPaymentDueDay(val);
                   }}
-                  className="px-3 py-2 border border-input rounded-lg text-sm"
                 >
                   {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
                     <option key={d} value={d}>{d === 31 ? 'สิ้นเดือน (วันสุดท้ายของเดือน)' : `วันที่ ${d} ของทุกเดือน`}</option>

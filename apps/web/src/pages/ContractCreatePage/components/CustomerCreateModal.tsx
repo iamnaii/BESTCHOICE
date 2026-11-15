@@ -11,6 +11,7 @@ import type { emptyCustForm } from '../constants';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { FinanceLineCreateNote } from '@/components/customer/FinanceLineStatusRow';
 import { useId as useExtraFieldId, useId as useUiFieldId } from 'react';
+import { formControlClass } from '@/components/ui/form-styles';
 
 export interface CustomerCreateModalProps {
   isOpen: boolean;
@@ -199,7 +200,6 @@ export function CustomerCreateModal({
                     id={`${uiFieldId}-1`}
                     value={custForm.prefix}
                     onChange={(e) => setCustForm({ ...custForm, prefix: e.target.value })}
-                    className="px-3 py-2 border border-input rounded-lg text-sm bg-background"
                   >
                     <option value="">-- เลือก --</option>
                     {THAI_NAME_PREFIXES.map((p) => (
@@ -566,7 +566,7 @@ export function CustomerCreateModal({
                     type="text"
                     value={custForm.workplace}
                     onChange={(e) => setCustForm({ ...custForm, workplace: e.target.value })}
-                    className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                    className={formControlClass}
                   />
                 </div>
                 <div>
@@ -581,7 +581,6 @@ export function CustomerCreateModal({
                     id={`${uiFieldId}-17`}
                     value={custForm.occupation}
                     onChange={(e) => setCustForm({ ...custForm, occupation: e.target.value })}
-                    className="px-3 py-2 border border-input rounded-lg text-sm"
                   >
                     <option value="">-- เลือก --</option>
                     <option value="พนักงานบริษัท">พนักงานบริษัท</option>
@@ -612,7 +611,7 @@ export function CustomerCreateModal({
                     type="text"
                     value={custForm.occupationDetail}
                     onChange={(e) => setCustForm({ ...custForm, occupationDetail: e.target.value })}
-                    className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                    className={formControlClass}
                   />
                 </div>
                 <div>
@@ -627,7 +626,7 @@ export function CustomerCreateModal({
                     id={`${uiFieldId}-19`}
                     value={custForm.salary}
                     onChange={(e) => setCustForm({ ...custForm, salary: e.target.value })}
-                    className="w-full px-3 py-2 border border-input rounded-lg text-sm"
+                    className={formControlClass}
                     placeholder="0.00"
                   />
                 </div>
@@ -685,7 +684,6 @@ export function CustomerCreateModal({
                           id={`${uiExtraFieldId}-1-${idx}`}
                           value={ref.prefix}
                           onChange={(e) => updateCustRef(idx, 'prefix', e.target.value)}
-                          className="px-3 py-2 border border-input rounded-lg text-sm bg-background"
                         >
                           <option value="">-- เลือก --</option>
                           {THAI_NAME_PREFIXES.map((p) => (
@@ -752,7 +750,6 @@ export function CustomerCreateModal({
                           id={`${uiExtraFieldId}-5-${idx}`}
                           value={ref.relationship}
                           onChange={(e) => updateCustRef(idx, 'relationship', e.target.value)}
-                          className="px-3 py-2 border border-input rounded-lg text-sm bg-background"
                         >
                           <option value="">-- เลือก --</option>
                           {RELATIONSHIP_OPTIONS.map((r) => (

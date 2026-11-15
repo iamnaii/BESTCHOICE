@@ -523,7 +523,7 @@ export default function SupplierForm({
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label htmlFor={`${uiExtraFieldId}-1-${index}`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                      <label htmlFor={`${uiExtraFieldId}-1-${index}`} className={formLabelClass}>
                         วิธีชำระเงิน *
                       </label>
                       <NativeSelect id={`${uiExtraFieldId}-1-${index}`}
@@ -539,7 +539,7 @@ export default function SupplierForm({
                       </NativeSelect>
                     </div>
                     <div>
-                      <label htmlFor={`${uiExtraFieldId}-2-${index}`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                      <label htmlFor={`${uiExtraFieldId}-2-${index}`} className={formLabelClass}>
                         เครดิต (วัน)
                       </label>
                       <NumberInput unstyled id={`${uiExtraFieldId}-2-${index}`}
@@ -555,7 +555,7 @@ export default function SupplierForm({
                     {(pm.paymentMethod === 'BANK_TRANSFER' || pm.paymentMethod === 'CHECK') && (
                       <>
                         <div>
-                          <label htmlFor={`${uiExtraFieldId}-3-${index}`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                          <label htmlFor={`${uiExtraFieldId}-3-${index}`} className={formLabelClass}>
                             ธนาคาร
                           </label>
                           <input id={`${uiExtraFieldId}-3-${index}`}
@@ -567,7 +567,7 @@ export default function SupplierForm({
                           />
                         </div>
                         <div>
-                          <label htmlFor={`${uiExtraFieldId}-4-${index}`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                          <label htmlFor={`${uiExtraFieldId}-4-${index}`} className={formLabelClass}>
                             ชื่อบัญชี
                           </label>
                           <input id={`${uiExtraFieldId}-4-${index}`}
@@ -580,7 +580,7 @@ export default function SupplierForm({
                           />
                         </div>
                         <div className="sm:col-span-2">
-                          <label htmlFor={`${uiExtraFieldId}-5-${index}`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                          <label htmlFor={`${uiExtraFieldId}-5-${index}`} className={formLabelClass}>
                             เลขบัญชี
                           </label>
                           <input id={`${uiExtraFieldId}-5-${index}`}

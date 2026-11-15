@@ -37,7 +37,7 @@ export default function PurchaseSelect({
     >
       <SelectTrigger
         id={id}
-        className="mt-2 h-12 min-w-0 cursor-pointer gap-3 rounded-xl border-border bg-card px-4 text-base leading-snug shadow-sm transition-colors hover:border-primary/50 data-[state=open]:border-primary data-[state=open]:ring-2 data-[state=open]:ring-primary/15 disabled:cursor-not-allowed disabled:bg-muted/40 sm:text-sm [&>span]:min-w-0 [&>span]:text-left [&>svg]:shrink-0 [&>svg]:transition-transform data-[state=open]:[&>svg]:rotate-180"
+        className="h-12 min-w-0 cursor-pointer gap-3 rounded-xl border-border bg-card px-4 text-base leading-snug shadow-sm transition-colors hover:border-primary/50 data-[state=open]:border-primary data-[state=open]:ring-2 data-[state=open]:ring-primary/15 disabled:cursor-not-allowed disabled:bg-muted/40 sm:text-sm [&>span]:min-w-0 [&>span]:text-left [&>svg]:shrink-0 [&>svg]:transition-transform data-[state=open]:[&>svg]:rotate-180"
       >
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>

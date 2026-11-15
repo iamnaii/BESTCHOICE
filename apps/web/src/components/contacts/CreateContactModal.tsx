@@ -21,6 +21,7 @@ import AddressForm, {
   emptyAddress,
   serializeAddress,
 } from '@/components/ui/AddressForm';
+import { formLabelClass } from '@/components/ui/form-styles';
 import { THAI_NAME_PREFIXES } from '@/lib/constants';
 import { formatIdNumberInput, formatPhoneInput } from '@/utils/mask.util';
 
@@ -251,8 +252,8 @@ export default function CreateContactModal({
             )}
 
             {/* ── คำนำหน้า + ชื่อ (required) — คำนำหน้าเฉพาะบุคคลธรรมดา ── */}
-            <div className="space-y-1.5">
-              <Label htmlFor="ccm-name" className="leading-snug">
+            <div>
+              <Label htmlFor="ccm-name" className={formLabelClass}>
                 ชื่อ <span className="text-destructive">*</span>
               </Label>
               <div className="flex flex-col gap-2 sm:flex-row">
@@ -290,8 +291,8 @@ export default function CreateContactModal({
 
             {/* ── เลขประจำตัว (optional) + เบอร์โทร (required) — แถวเดียวกันบนจอกว้าง ── */}
             <div className="grid items-start gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="ccm-idnumber" className="leading-snug">
+              <div>
+                <Label htmlFor="ccm-idnumber" className={formLabelClass}>
                   {idLabel}
                 </Label>
                 <Input
@@ -308,14 +309,14 @@ export default function CreateContactModal({
                   data-lpignore="true"
                 />
                 {!idValid && (
-                  <p className="text-xs text-destructive leading-snug">
+                  <p className="mt-1.5 text-xs text-destructive leading-snug">
                     ต้องเป็นตัวเลขครบ 13 หลัก (กรอกแล้ว {idNumber.length} หลัก)
                   </p>
                 )}
               </div>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="ccm-phone" className="leading-snug">
+              <div>
+                <Label htmlFor="ccm-phone" className={formLabelClass}>
                   เบอร์โทร <span className="text-destructive">*</span>
                 </Label>
                 <Input
@@ -332,7 +333,7 @@ export default function CreateContactModal({
                   data-lpignore="true"
                 />
                 {role === 'CUSTOMER' && phone && !/^0[0-9]{9}$/.test(phone) && (
-                  <p className="text-xs text-destructive leading-snug">
+                  <p className="mt-1.5 text-xs text-destructive leading-snug">
                     เบอร์โทรต้องเป็นเลข 10 หลัก ขึ้นต้นด้วย 0
                   </p>
                 )}

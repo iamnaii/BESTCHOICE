@@ -2,6 +2,7 @@ import { NameAutocomplete } from '@/components/ui/NameAutocomplete';
 import { useId } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { formLabelClass } from '@/components/ui/form-styles';
 import { BANK_OPTIONS } from '@/components/credit-check/types';
 
 export interface SellerPayment {
@@ -37,18 +38,18 @@ export default function SellerPaymentFields({ value, onChange, disabled = false 
         <div className="space-y-3 rounded-lg border p-3">
           <p className="text-sm font-medium">บัญชีผู้ขายที่รับเงิน</p>
           <div>
-            <Label htmlFor={`${id}-bank`}>ธนาคารผู้ขาย *</Label>
+            <Label htmlFor={`${id}-bank`} className={formLabelClass}>ธนาคารผู้ขาย *</Label>
             <NameAutocomplete id={`${id}-bank`} value={value.transferBankName}
               options={BANK_OPTIONS} disabled={disabled}
               onChange={(transferBankName) => onChange({ transferBankName })} />
           </div>
           <div>
-            <Label htmlFor={`${id}-account`}>เลขบัญชีผู้ขาย *</Label>
+            <Label htmlFor={`${id}-account`} className={formLabelClass}>เลขบัญชีผู้ขาย *</Label>
             <Input id={`${id}-account`} inputMode="numeric" value={value.transferAccountNumber}
               onChange={(e) => onChange({ transferAccountNumber: e.target.value.replace(/[^\d-]/g, '') })} />
           </div>
           <div>
-            <Label htmlFor={`${id}-name`}>ชื่อบัญชีผู้ขาย *</Label>
+            <Label htmlFor={`${id}-name`} className={formLabelClass}>ชื่อบัญชีผู้ขาย *</Label>
             <Input id={`${id}-name`} value={value.transferAccountName}
               onChange={(e) => onChange({ transferAccountName: e.target.value })} />
           </div>

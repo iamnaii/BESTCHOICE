@@ -1,7 +1,7 @@
 import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useId as useFieldId } from 'react';
-import { formControlClass } from '@/components/ui/form-styles';
+import { formControlClass, formLabelClass } from '@/components/ui/form-styles';
 import { parseOcrAddress } from '@/lib/ocr-address';
 import { useRef, useState, type ReactNode } from 'react';
 import { useForm } from 'react-hook-form';
@@ -981,7 +981,7 @@ function CustomerCreateForm({
                     <div className="mb-3">
                       <label
                         htmlFor={`${fieldId}-1`}
-                        className="block text-xs font-medium text-foreground mb-1.5"
+                        className={formLabelClass}
                       >
                         ประเภทที่อยู่
                       </label>
@@ -1011,7 +1011,7 @@ function CustomerCreateForm({
                   <div>
                     <label
                       htmlFor={`${fieldId}-2`}
-                      className="block text-xs font-medium text-foreground mb-1.5"
+                      className={formLabelClass}
                     >
                       ลิงก์ Google Map
                     </label>
@@ -1152,7 +1152,7 @@ function CustomerCreateForm({
                     <div>
                       <label
                         htmlFor={`${fieldId}-3`}
-                        className="block text-xs font-medium text-foreground mb-1.5"
+                        className={formLabelClass}
                       >
                         จำนวนเพื่อน Facebook
                       </label>
@@ -1284,7 +1284,7 @@ function CustomerCreateForm({
                     </div>
                   </div>
                   <div className="mt-2">
-                    <label className="block text-xs font-medium text-foreground mb-1.5">
+                    <label className={formLabelClass}>
                       ที่อยู่ที่ทำงาน
                     </label>
                     <AddressForm value={addressWork} onChange={setAddressWork} />
@@ -1321,7 +1321,7 @@ function CustomerCreateForm({
                         <div className="min-w-0 sm:col-span-2">
                           <label
                             htmlFor={`${fieldId}-reference-${idx}-4`}
-                            className="block text-xs font-medium text-foreground mb-1.5"
+                            className={formLabelClass}
                           >
                             คำนำหน้า
                           </label>
@@ -1343,7 +1343,7 @@ function CustomerCreateForm({
                         <div className="min-w-0 sm:col-span-2">
                           <label
                             htmlFor={`${fieldId}-reference-${idx}-5`}
-                            className="block text-xs font-medium text-foreground mb-1.5"
+                            className={formLabelClass}
                           >
                             ชื่อ
                           </label>
@@ -1359,7 +1359,7 @@ function CustomerCreateForm({
                         <div className="min-w-0 sm:col-span-2">
                           <label
                             htmlFor={`${fieldId}-reference-${idx}-6`}
-                            className="block text-xs font-medium text-foreground mb-1.5"
+                            className={formLabelClass}
                           >
                             นามสกุล
                           </label>
@@ -1375,7 +1375,7 @@ function CustomerCreateForm({
                         <div className="min-w-0 sm:col-span-3">
                           <label
                             htmlFor={`${fieldId}-reference-${idx}-7`}
-                            className="block text-xs font-medium text-foreground mb-1.5"
+                            className={formLabelClass}
                           >
                             เบอร์หลัก
                           </label>
@@ -1391,7 +1391,7 @@ function CustomerCreateForm({
                         <div className="min-w-0 sm:col-span-3">
                           <label
                             htmlFor={`${fieldId}-reference-${idx}-8`}
-                            className="block text-xs font-medium text-foreground mb-1.5"
+                            className={formLabelClass}
                           >
                             ความสัมพันธ์
                           </label>

@@ -18,7 +18,7 @@ import {
   FinanceLineStatusRow,
   type FinanceLineStatus,
 } from '@/components/customer/FinanceLineStatusRow';
-import { formControlClass } from '@/components/ui/form-styles';
+import { formControlClass, formLabelClass } from '@/components/ui/form-styles';
 
 interface CustReferenceData {
   prefix?: string;
@@ -308,7 +308,7 @@ export default function CustomerEditModal({
                   <div>
                     <label
                       htmlFor={`${uiFieldId}-1`}
-                      className="block text-xs text-muted-foreground mb-1"
+                      className={formLabelClass}
                     >
                       คำนำหน้า
                     </label>
@@ -329,7 +329,7 @@ export default function CustomerEditModal({
                   <div>
                     <label
                       htmlFor={`${uiFieldId}-2`}
-                      className="block text-xs text-muted-foreground mb-1"
+                      className={formLabelClass}
                     >
                       ชื่อ-นามสกุล <span className="text-destructive">*</span>
                     </label>
@@ -345,7 +345,7 @@ export default function CustomerEditModal({
                   <div>
                     <label
                       htmlFor={`${uiFieldId}-3`}
-                      className="block text-xs text-muted-foreground mb-1"
+                      className={formLabelClass}
                     >
                       ชื่อเล่น
                     </label>
@@ -360,7 +360,7 @@ export default function CustomerEditModal({
                   <div>
                     <label
                       htmlFor={`${uiFieldId}-4`}
-                      className="block text-xs text-muted-foreground mb-1"
+                      className={formLabelClass}
                     >
                       วันเกิด
                     </label>
@@ -432,7 +432,7 @@ export default function CustomerEditModal({
                 <div className="mb-3">
                   <label
                     htmlFor={`${uiFieldId}-5`}
-                    className="block text-xs text-muted-foreground mb-1"
+                    className={formLabelClass}
                   >
                     ประเภทที่อยู่
                   </label>
@@ -458,7 +458,7 @@ export default function CustomerEditModal({
                 <div className="mt-3">
                   <label
                     htmlFor={`${uiFieldId}-6`}
-                    className="block text-xs text-muted-foreground mb-1"
+                    className={formLabelClass}
                   >
                     ลิงก์ Google Map
                   </label>
@@ -500,7 +500,7 @@ export default function CustomerEditModal({
                   <div>
                     <label
                       htmlFor={`${uiFieldId}-7`}
-                      className="block text-xs text-muted-foreground mb-1"
+                      className={formLabelClass}
                     >
                       เบอร์หลัก <span className="text-destructive">*</span>
                     </label>
@@ -516,7 +516,7 @@ export default function CustomerEditModal({
                   <div>
                     <label
                       htmlFor={`${uiFieldId}-8`}
-                      className="block text-xs text-muted-foreground mb-1"
+                      className={formLabelClass}
                     >
                       เบอร์สำรอง
                     </label>
@@ -531,7 +531,7 @@ export default function CustomerEditModal({
                   <div>
                     <label
                       htmlFor={`${uiFieldId}-9`}
-                      className="block text-xs text-muted-foreground mb-1"
+                      className={formLabelClass}
                     >
                       อีเมล
                     </label>
@@ -546,7 +546,7 @@ export default function CustomerEditModal({
                   <div>
                     <label
                       htmlFor={`${uiFieldId}-11`}
-                      className="block text-xs text-muted-foreground mb-1"
+                      className={formLabelClass}
                     >
                       LINE ID (Shop / ร้าน)
                     </label>
@@ -568,7 +568,7 @@ export default function CustomerEditModal({
                   <div>
                     <label
                       htmlFor={`${uiFieldId}-12`}
-                      className="block text-xs text-muted-foreground mb-1"
+                      className={formLabelClass}
                     >
                       ลิงก์ Facebook
                     </label>
@@ -583,7 +583,7 @@ export default function CustomerEditModal({
                   <div>
                     <label
                       htmlFor={`${uiFieldId}-13`}
-                      className="block text-xs text-muted-foreground mb-1"
+                      className={formLabelClass}
                     >
                       ชื่อ Facebook
                     </label>
@@ -598,7 +598,7 @@ export default function CustomerEditModal({
                   <div>
                     <label
                       htmlFor={`${uiFieldId}-14`}
-                      className="block text-xs text-muted-foreground mb-1"
+                      className={formLabelClass}
                     >
                       จำนวนเพื่อน Facebook
                     </label>
@@ -641,7 +641,7 @@ export default function CustomerEditModal({
                   <div>
                     <label
                       htmlFor={`${uiFieldId}-15`}
-                      className="block text-xs text-muted-foreground mb-1"
+                      className={formLabelClass}
                     >
                       ชื่อที่ทำงาน
                     </label>
@@ -656,7 +656,7 @@ export default function CustomerEditModal({
                   <div>
                     <label
                       htmlFor={`${uiFieldId}-16`}
-                      className="block text-xs text-muted-foreground mb-1"
+                      className={formLabelClass}
                     >
                       อาชีพ
                     </label>
@@ -671,7 +671,7 @@ export default function CustomerEditModal({
                   <div>
                     <label
                       htmlFor={`${uiFieldId}-17`}
-                      className="block text-xs text-muted-foreground mb-1"
+                      className={formLabelClass}
                     >
                       รายละเอียดอาชีพ
                     </label>
@@ -686,7 +686,7 @@ export default function CustomerEditModal({
                   <div>
                     <label
                       htmlFor={`${uiFieldId}-18`}
-                      className="block text-xs text-muted-foreground mb-1"
+                      className={formLabelClass}
                     >
                       เงินเดือน
                     </label>
@@ -701,7 +701,7 @@ export default function CustomerEditModal({
                   </div>
                 </div>
                 <div className="mt-2">
-                  <label className="block text-xs text-muted-foreground mb-1">
+                  <label className={formLabelClass}>
                     ที่อยู่ที่ทำงาน
                   </label>
                   <AddressForm value={addrWork} onChange={setAddrWork} />
@@ -744,7 +744,7 @@ export default function CustomerEditModal({
                         <div>
                           <label
                             htmlFor={`${uiExtraFieldId}-1-${idx}`}
-                            className="block text-xs text-muted-foreground mb-1"
+                            className={formLabelClass}
                           >
                             คำนำหน้า
                           </label>
@@ -765,7 +765,7 @@ export default function CustomerEditModal({
                         <div>
                           <label
                             htmlFor={`${uiExtraFieldId}-2-${idx}`}
-                            className="block text-xs text-muted-foreground mb-1"
+                            className={formLabelClass}
                           >
                             ชื่อ
                           </label>
@@ -780,7 +780,7 @@ export default function CustomerEditModal({
                         <div>
                           <label
                             htmlFor={`${uiExtraFieldId}-3-${idx}`}
-                            className="block text-xs text-muted-foreground mb-1"
+                            className={formLabelClass}
                           >
                             นามสกุล
                           </label>
@@ -795,7 +795,7 @@ export default function CustomerEditModal({
                         <div>
                           <label
                             htmlFor={`${uiExtraFieldId}-4-${idx}`}
-                            className="block text-xs text-muted-foreground mb-1"
+                            className={formLabelClass}
                           >
                             เบอร์โทร
                           </label>
@@ -810,7 +810,7 @@ export default function CustomerEditModal({
                         <div>
                           <label
                             htmlFor={`${uiExtraFieldId}-5-${idx}`}
-                            className="block text-xs text-muted-foreground mb-1"
+                            className={formLabelClass}
                           >
                             ความสัมพันธ์
                           </label>

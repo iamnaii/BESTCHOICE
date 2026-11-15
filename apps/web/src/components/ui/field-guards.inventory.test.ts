@@ -370,5 +370,57 @@ describe('label style A (R1-4, §4.3)', () => {
     30_000,
   );
 
-  // R1-4 host checks (Task 10 step 14) go here.
+  const STYLE_A_HOSTS = [
+    'apps/web/src/pages/CompanySettingsPage.tsx',
+    'apps/web/src/components/customer/CustomerCreateDialog.tsx',
+    'apps/web/src/pages/ContractCreatePage/components/CustomerCreateModal.tsx',
+    'apps/web/src/components/contract/CustomerEditModal.tsx',
+    'apps/web/src/pages/CustomerDetailPage/components/EditCustomerDialog.tsx',
+    'apps/web/src/pages/SuppliersPage/components/SupplierForm.tsx',
+    'apps/web/src/components/trade-in/QuickBuyModal.tsx',
+    // Rendered inside QuickBuyModal step 4 (and TradeInPage AcceptModal).
+    'apps/web/src/components/trade-in/SellerPaymentFields.tsx',
+    'apps/web/src/pages/BranchesPage.tsx',
+    'apps/web/src/components/contacts/CreateContactModal.tsx',
+  ];
+  // Checkbox labels sit beside their box (inline) — they are not field labels.
+  const INLINE_LABEL_FOR = new Set(['"customer-edit-5"', '"ccm-hasvat"']);
+  const LEGACY_LABEL_RECIPES = [
+    'block text-2xs font-medium text-muted-foreground uppercase tracking-wider',
+    'block text-xs font-medium text-foreground mb-1.5',
+    'block text-xs text-muted-foreground mb-1',
+  ];
+  const FIELD_LABEL = /<(?:label|Label)\s+htmlFor=(\{`[^`]*`\}|\{[^}]*\}|"[^"]*")([^>]*)>/g;
+
+  async function readRepoFile(rel: string): Promise<string> {
+    const { readFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    return readFileSync(resolve(__dirname, REPO_ROOT_FROM_UI, rel), 'utf8');
+  }
+
+  it('every field label in the 9 AddressForm hosts uses formLabelClass', async () => {
+    const offenders: string[] = [];
+    for (const rel of STYLE_A_HOSTS) {
+      const source = await readRepoFile(rel);
+      for (const recipe of LEGACY_LABEL_RECIPES) {
+        if (source.includes(recipe)) offenders.push(`${rel}: legacy label "${recipe}"`);
+      }
+      for (const match of source.matchAll(FIELD_LABEL)) {
+        if (INLINE_LABEL_FOR.has(match[1])) continue;
+        if (!match[2].includes('formLabelClass')) offenders.push(`${rel}: label htmlFor=${match[1]}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('QuickBuyModal controls no longer carry margins that compensated for inline labels', async () => {
+    const modal = await readRepoFile('apps/web/src/components/trade-in/QuickBuyModal.tsx');
+    const select = await readRepoFile('apps/web/src/components/trade-in/PurchaseSelect.tsx');
+    expect(modal).not.toContain('[&_[data-slot=input]]:mt-2');
+    expect(modal).not.toMatch(/className="mt-1(?: font-mono)?"/);
+    expect(modal).not.toContain('<div className="mt-2">');
+    expect(modal).not.toContain('className="mt-2 flex min-h-16');
+    expect(modal).not.toContain('<Label>');
+    expect(select).not.toContain('className="mt-2 h-12');
+  });
 });

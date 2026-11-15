@@ -1,5 +1,8 @@
 import { FormNumberInput } from '@/components/ui/FormNumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
+import { ReadOnlyField } from '@/components/ui/readonly-field';
+import { formControlClass } from '@/components/ui/form-styles';
+import { cn } from '@/lib/utils';
 import {
   useFieldArray,
   type Control,
@@ -30,6 +33,9 @@ interface Props {
 function fmt(n: number) {
   return formatNumberDecimal(n, 2);
 }
+
+/** S2-07 — ช่องตัวเลขทั้งแถวใช้หน้าตาเดียวกับ dropdown ข้าง ๆ (formControlClass) ชิดขวา */
+const numberControlClass = cn(formControlClass, 'mt-1 text-right font-mono tabular-nums');
 
 export function ItemsTable({ control, register, watch, setValue }: Props) {
   const uiExtraFieldId = useExtraFieldId();
@@ -112,7 +118,7 @@ export function ItemsTable({ control, register, watch, setValue }: Props) {
                   <FormNumberInput unstyled id={`${uiExtraFieldId}-1-${idx}`}
                     step="0.01"
                     name={`items.${idx}.quantity`} control={control}
-                    className="mt-1 w-full border rounded px-2 py-1.5 text-right font-mono bg-background"
+                    className={numberControlClass}
                   />
                 </div>
                 <div>
@@ -120,7 +126,7 @@ export function ItemsTable({ control, register, watch, setValue }: Props) {
                   <FormNumberInput unstyled id={`${uiExtraFieldId}-2-${idx}`}
                     step="0.01"
                     name={`items.${idx}.unitAmount`} control={control}
-                    className="mt-1 w-full border rounded px-2 py-1.5 text-right font-mono bg-background"
+                    className={numberControlClass}
                   />
                 </div>
                 <div>
@@ -128,14 +134,14 @@ export function ItemsTable({ control, register, watch, setValue }: Props) {
                   <FormNumberInput unstyled id={`${uiExtraFieldId}-3-${idx}`}
                     step="0.01"
                     name={`items.${idx}.discountAmount`} control={control}
-                    className="mt-1 w-full border rounded px-2 py-1.5 text-right font-mono bg-background"
+                    className={numberControlClass}
                   />
                 </div>
                 <div>
                   <label htmlFor={`${uiExtraFieldId}-4-${idx}`} className="text-muted-foreground font-medium">VAT%</label>
                   <NativeSelect wrapperClassName="max-w-full mt-1 w-full" id={`${uiExtraFieldId}-4-${idx}`}
                     {...register(`items.${idx}.vatPct`)}
-                    className="border rounded px-2 py-1.5 text-xs font-mono bg-background"
+                    className="font-mono"
                   >
                     <option value={0}>0%</option>
                     <option value={7}>7%</option>
@@ -157,7 +163,7 @@ export function ItemsTable({ control, register, watch, setValue }: Props) {
                   <NativeSelect wrapperClassName="max-w-full mt-1 w-full" id={`${uiExtraFieldId}-5-${idx}`}
                     {...register(`items.${idx}.whtPct`)}
                     title="แนะนำ: ดอกเบี้ย 15% / ค่าบริการ 3% / ค่าเช่า 5% / นิติบุคคล 1%"
-                    className="border rounded px-2 py-1.5 text-xs font-mono bg-background"
+                    className="font-mono"
                   >
                     {[0, 1, 2, 3, 5, 7, 10, 15].map((p) => (
                       <option key={p} value={p}>
@@ -178,10 +184,13 @@ export function ItemsTable({ control, register, watch, setValue }: Props) {
                   })()}
                 </div>
                 <div>
-                  <label className="text-muted-foreground font-medium">ก่อนภาษี</label>
-                  <div className="mt-1 w-full border rounded px-2 py-1.5 text-right font-mono bg-muted/40 text-foreground font-semibold">
-                    {fmt(row?.amountBeforeVat ?? 0)}
-                  </div>
+                  <label htmlFor={`${uiExtraFieldId}-7-${idx}`} className="text-muted-foreground font-medium">ก่อนภาษี</label>
+                  <ReadOnlyField
+                    id={`${uiExtraFieldId}-7-${idx}`}
+                    align="end"
+                    value={fmt(row?.amountBeforeVat ?? 0)}
+                    className="mt-1 font-mono font-semibold"
+                  />
                 </div>
               </div>
               <div>
@@ -189,7 +198,7 @@ export function ItemsTable({ control, register, watch, setValue }: Props) {
                 <input id={`${uiExtraFieldId}-6-${idx}`}
                   type="text"
                   {...register(`items.${idx}.description`)}
-                  className="mt-1 w-full border rounded px-2 py-1.5 text-xs bg-background"
+                  className={cn(formControlClass, 'mt-1')}
                   placeholder="เช่น ดอกเบี้ยเดือน พ.ค. 2569"
                 />
               </div>

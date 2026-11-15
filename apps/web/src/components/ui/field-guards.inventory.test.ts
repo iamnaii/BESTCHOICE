@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { relative, resolve, sep } from 'node:path';
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 // Repo root, derived from this file (apps/web/src/components/ui) so the scan does
@@ -68,6 +69,114 @@ describe('field guards (source scan)', () => {
     () => {
       const offenders = filesMatching(BG_INPUT).filter((file) => !BG_INPUT_ALLOWED.has(file));
       expect(offenders).toEqual([]);
+    },
+    SCAN_TIMEOUT_MS,
+  );
+});
+
+// --- NativeSelect owns its skin (spec 2026-11-14 §4.2 item 5) -------------------------------
+// NativeSelect renders cn(formControlClass, className, <size tail>), so a caller's radius,
+// border colour, fill or padding silently replaces the shared skin (the 2026-11-14 scan found
+// 128 such call sites). Width belongs on wrapperClassName, icon gutters on leadingIcon and the
+// warning outline on tone. Only literal class text is inspected: string literals, cn()/clsx()
+// arguments, both branches of ?:, &&/|| operands and template-literal text. A class held in a
+// variable (className={inputClass}) is not resolved.
+const NATIVE_SELECT_SKIN =
+  /^(?:[a-z0-9-]+:)*(?:rounded(?:-\S+)?|border-border|bg-\S+|p-\S+|px-\S+|py-\S+|pl-\S+|pr-\S+)$/;
+const NATIVE_SELECT_CANDIDATE = /<NativeSelect\b/;
+
+function collectClassStrings(node: ts.Node, out: string[]): void {
+  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
+    out.push(node.text);
+    return;
+  }
+  if (ts.isTemplateExpression(node)) {
+    out.push(node.head.text);
+    for (const span of node.templateSpans) {
+      collectClassStrings(span.expression, out);
+      out.push(span.literal.text);
+    }
+    return;
+  }
+  if (ts.isJsxExpression(node)) {
+    if (node.expression) collectClassStrings(node.expression, out);
+    return;
+  }
+  if (ts.isCallExpression(node)) {
+    for (const arg of node.arguments) collectClassStrings(arg, out);
+    return;
+  }
+  if (ts.isConditionalExpression(node)) {
+    collectClassStrings(node.whenTrue, out);
+    collectClassStrings(node.whenFalse, out);
+    return;
+  }
+  if (ts.isBinaryExpression(node)) {
+    collectClassStrings(node.left, out);
+    collectClassStrings(node.right, out);
+    return;
+  }
+  if (ts.isParenthesizedExpression(node)) collectClassStrings(node.expression, out);
+}
+
+function nativeSelectSkinViolations(file: string, source: string): string[] {
+  const kind = file.endsWith('x') ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+  const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, kind);
+  const where = relative(ROOT, file).split(sep).join('/');
+  const found: string[] = [];
+  const inspect = (node: ts.Node) => {
+    if (
+      (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) &&
+      node.tagName.getText(ast) === 'NativeSelect'
+    ) {
+      for (const attribute of node.attributes.properties) {
+        if (!ts.isJsxAttribute(attribute) || attribute.name.getText(ast) !== 'className') continue;
+        if (!attribute.initializer) continue;
+        const strings: string[] = [];
+        collectClassStrings(attribute.initializer, strings);
+        const skin = strings
+          .flatMap((text) => text.split(/\s+/))
+          .filter((token) => NATIVE_SELECT_SKIN.test(token));
+        if (skin.length) {
+          const line = ast.getLineAndCharacterOfPosition(attribute.getStart(ast)).line + 1;
+          found.push(`${where}:${line} ${skin.join(' ')}`);
+        }
+      }
+    }
+    ts.forEachChild(node, inspect);
+  };
+  inspect(ast);
+  return found;
+}
+
+describe('NativeSelect skin guard', () => {
+  it(
+    'NativeSelect className never carries radius, border colour, fill or padding',
+    () => {
+      // The detector itself: cn() args and template text are read; tone/width classes pass.
+      const sample = resolve(ROOT, 'apps/web/src/__guard-sample__.tsx');
+      const caught = nativeSelectSkinViolations(
+        sample,
+        '<NativeSelect className={cn("rounded-md", ok && `px-2 ${extra}`)} />',
+      );
+      expect(caught).toHaveLength(1);
+      expect(caught[0]).toMatch(/:1 rounded-md px-2$/);
+      expect(
+        nativeSelectSkinViolations(
+          sample,
+          '<NativeSelect className={isDirty ? "border-warning" : ""} wrapperClassName="sm:w-56" />',
+        ),
+      ).toEqual([]);
+
+      const files = listSourceFiles(resolve(ROOT, 'apps/web/src'));
+      expect(files.length).toBeGreaterThan(500);
+      const found: string[] = [];
+      for (const file of files) {
+        const source = readFileSync(file, 'utf8');
+        if (!NATIVE_SELECT_CANDIDATE.test(source)) continue;
+        found.push(...nativeSelectSkinViolations(file, source));
+      }
+      expect(found).toEqual([]);
     },
     SCAN_TIMEOUT_MS,
   );

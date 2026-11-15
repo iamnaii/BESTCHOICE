@@ -7641,11 +7641,14 @@ with:
           <ReadOnlyField
             id={`${fieldId}-diff`}
             tone={Math.abs(diffNum) < 0.005 ? 'default' : diffNum > 0 ? 'success' : 'warning'}
-            value={`${diffNum >= 0 ? '+' : ''}${formatNumericText(diffNum.toFixed(2))}${diffNum > 0.005 ? ' (จ่ายเกิน → Cr)' : ''}${diffNum < -0.005 ? ' (จ่ายน้อย → Dr)' : ''}`}
+            value={diffText}
+            title={diffText}
             className="font-mono tabular-nums"
           />
         </div>
 ```
+
+(Fix round 1, review of S3-05: at `md`/1024 a large amount clips the direction suffix inside the input, so the full text is also the `title`. `diffText` is a `const` declared after `adjustmentsActive`: the same template string `` `${diffNum >= 0 ? '+' : ''}${formatNumericText(diffNum.toFixed(2))}${diffNum > 0.005 ? ' (จ่ายเกิน → Cr)' : ''}${diffNum < -0.005 ? ' (จ่ายน้อย → Dr)' : ''}` ``. Test: "ผลต่าง มี title เท่าค่าเต็ม" in `AdjustmentSection.readonly.test.tsx`.)
 
 **S3-07, `apps/web/src/components/expense-form-v4/PayrollLinesSection.tsx` line 712.** Replace:
 
@@ -7709,6 +7712,8 @@ with:
 
 (`_months` follows the ESLint `argsIgnorePattern: '^_'` in `apps/web/eslint.config.mjs`, so it gives no unused-var warning.)
 
+(Fix round 1, review of S3-09: the hint `<p>` now carries the meaning, so it is linked to its control. In the shipped code `hint(key, text)` takes the `ErrorKey` first and renders `<p id={`${FIELD_IDS[key]}-hint`}>`, and `a11y(key, hinted = false)` sets `aria-describedby` to the error id and/or the hint id (hint id only while the hint is shown, i.e. no error). The `hint('…')` calls above therefore read `hint('payment', '…')` and `hint('recurringMonth', …)` in the file. New test: "คำอธิบายใต้ช่อง วิธีจ่าย/เดือน ผูกกับ select" using `toHaveAccessibleDescription`.)
+
 - [ ] **Step 16: Run the group D tests, the area's existing tests, and the field-scale comparison**
 
 ```bash
@@ -7717,7 +7722,7 @@ npm run test --workspace=apps/web -- src/components/expense-form-v4 src/componen
 
 Expected: every file passes. This includes:
 - the 2 new test files
-- `PayrollLinesSection.test.tsx` and `RecurringBillDialog.test.tsx`, each with 1 new test
+- `PayrollLinesSection.test.tsx` (1 new test), `RecurringBillDialog.test.tsx` (2 new tests) and `AdjustmentSection.readonly.test.tsx` (2 tests in total)
 - `ExpenseFormV4.payroll.test.tsx`, `DocTypePicker.payroll.test.tsx`, `PayrollReviewPanel.test.tsx`, `payroll-lines.test.ts`, `VendorCombobox.test.tsx`, `ApproverSection.test.tsx` and `RecurringBillsPage.test.tsx`
 
 ```bash
@@ -7787,10 +7792,10 @@ Spec: `docs/superpowers/specs/2026-11-14-dropdown-search-field-scale-design.md` 
   - `ThaiDateInput` only loses its overrides. Its base skin already equals the standard skin and carries the `pr-9` icon gutter that `formControlClass`'s `px-3` would destroy (`ThaiDateInput.tsx:204-207`). The 44px height comes from the central CSS (`styles/admin-typography.css:49-51`).
 - *Imports:* when the file already has a named import from `…/form-styles` (e.g. `import { formLabelClass } from '@/components/ui/form-styles';`), `formControlClass` is added to it. Otherwise these lines are added after the last import: `import { formControlClass } from '@/components/ui/form-styles';` and, when `cn` is used and not imported, `import { cn } from '@/lib/utils';`.
 
-**Ownership (do not normalize these here; the OWNED sweep in Step 7 only verifies them):**
+**Ownership (T5/T7/T8 normalize their own files; the OWNED sweep in Step 7 only picks up what they left at HEAD):**
 - **T5** owns `pages/TodosPage/components/TodoFilters.tsx` (`leadingIcon`) and `pages/SettingsPage/components/PeakMappingSettings.tsx` (`tone`). PeakMappingSettings has no forbidden tokens: `'border-warning'` is allowed.
 - **T7** owns `pages/DunningSettingsPage.tsx` and `pages/SmsTemplatesPage/components/SmsTemplateForm.tsx` (§4.2 item 8, the `bg-input` guard).
-- **T8** owns the appendix ก R1-3 files: `pages/CompanySettingsPage.tsx`, `pages/AuditLogsPage.tsx`, `pages/ChatbotFinanceKnowledgePage.tsx`, `pages/RepossessionsPage.tsx`, `pages/StockTransfersPage.tsx`, `pages/other-income/components/ItemsTable.tsx`, `components/expense-form-v4/ItemLinesSection.tsx`, `components/expense-form-v4/AdjustmentSection.tsx`, `components/expense-form-v4/PayrollLinesSection.tsx`, `components/expense-templates/RecurringBillDialog.tsx`, `pages/InterestConfigPage.tsx`, `pages/TodosPage/components/TodoForm.tsx` and `pages/PurchaseOrdersPage/components/wizard/PaymentSection.tsx`. Of these, only AuditLogsPage, ChatbotFinanceKnowledgePage, RepossessionsPage, StockTransfersPage, ItemsTable, PayrollLinesSection and TodoForm contain literal NativeSelect skin today.
+- **T8** owns the appendix ก R1-3 files: `pages/CompanySettingsPage.tsx`, `pages/AuditLogsPage.tsx`, `pages/ChatbotFinanceKnowledgePage.tsx`, `pages/RepossessionsPage.tsx`, `pages/StockTransfersPage.tsx`, `pages/other-income/components/ItemsTable.tsx`, `components/expense-form-v4/ItemLinesSection.tsx`, `components/expense-form-v4/AdjustmentSection.tsx`, `components/expense-form-v4/PayrollLinesSection.tsx`, `components/expense-templates/RecurringBillDialog.tsx`, `pages/InterestConfigPage.tsx`, `pages/TodosPage/components/TodoForm.tsx` and `pages/PurchaseOrdersPage/components/wizard/PaymentSection.tsx`. Of the 10 OWNED files, only `PayrollLinesSection.tsx` (355, 372, 734), `RepossessionsPage.tsx` (1129), `TodoForm.tsx` (457, plus its same-row `<input>` at 446) and `TodoFilters.tsx` (86) still contain NativeSelect skin at HEAD (6 sites, 1 sibling, 4 files). AuditLogsPage, ChatbotFinanceKnowledgePage, StockTransfersPage, ItemsTable, DunningSettingsPage and SmsTemplateForm are clean (`ItemsTable` keeps only `font-mono`, lines 144/166).
 
 **Files:**
 - Create (throwaway, git-ignored by `.gitignore:23-24`): `.tmp/t9-normalize.cjs`, `.tmp/t9-areas.sh`
@@ -7801,7 +7806,7 @@ Spec: `docs/superpowers/specs/2026-11-14-dropdown-search-field-scale-design.md` 
   - area C2, payments/expenses/cash: 12
   - area D, settings/admin/editors: 10
   - area E, customers/contracts/collections/credit: 15
-- Modify only if the owning task left skin behind: the 10 OWNED files listed in Step 3
+- Modify (Step 7, 4 files): `pages/TodosPage/components/TodoFilters.tsx`, `pages/RepossessionsPage.tsx`, `components/expense-form-v4/PayrollLinesSection.tsx`, `pages/TodosPage/components/TodoForm.tsx` (all under `apps/web/src/`)
 - Test (modify, created by T7): `apps/web/src/components/ui/field-guards.inventory.test.ts`. This task appends the third guard (a new `describe` at the end of the file).
 
 **Interfaces:**
@@ -7896,14 +7901,16 @@ Spec: `docs/superpowers/specs/2026-11-14-dropdown-search-field-scale-design.md` 
 | 76 | T8 | `pages/AuditLogsPage.tsx` | 316 `rounded-lg px-3 py-2` | 308 `<input>`, 335 `<ThaiDateInput>`, 343 `<ThaiDateInput>` |
 | 77 | T8 | `pages/ChatbotFinanceKnowledgePage.tsx` | 283 `rounded-md border-border bg-background px-3 py-2`<br>304 `px-3 py-2 rounded-lg` | 316 `<NumberInput>` |
 | 78 | T7 | `pages/DunningSettingsPage.tsx` | 670, 691 — each `px-3 py-2 rounded-md border-border bg-input` | 659 `<NumberInput>` |
-| 79 | T8 | `pages/RepossessionsPage.tsx` | 761 `px-3 py-2 rounded-lg bg-background`<br>1130 `px-3 py-2 rounded-lg` | — |
+| 79 | T8 | `pages/RepossessionsPage.tsx` | ~~761~~ (done by T8)<br>1129 `px-3 py-2 rounded-lg` | — |
 | 80 | T7 | `pages/SmsTemplatesPage/components/SmsTemplateForm.tsx` | 97 `px-3 py-2 rounded-md border-border bg-input` | — |
 | 81 | T8 | `pages/StockTransfersPage.tsx` | 382, 542, 659 — each `px-3 py-2 rounded-lg` | — |
-| 82 | T5 | `pages/TodosPage/components/TodoFilters.tsx` | 86 `pl-9 pr-8 py-2.5 bg-card rounded-xl` | — |
+| 82 | T5 | `pages/TodosPage/components/TodoFilters.tsx` | 86 `py-2.5 bg-card rounded-xl` (`pl-9 pr-8` went to `leadingIcon`) | — |
 | 83 | T8 | `pages/TodosPage/components/TodoForm.tsx` | 457 `px-4 py-2.5 rounded-xl bg-card` | 446 `<input>` |
-| 84 | T8 | `pages/other-income/components/ItemsTable.tsx` | 138, 160 — each `rounded px-2 py-1.5 bg-background` | — |
+| 84 | T8 | `pages/other-income/components/ItemsTable.tsx` | ~~138, 160~~ (done by T8; only `font-mono` is left, lines 144/166) | — |
 
-Totals: 128 NativeSelect sites · 78 same-row siblings · 84 files. Owned (T5/T7/T8): 18 sites and 6 siblings in 10 files. This task's areas: 110 sites and 72 siblings in 74 files.
+Totals at drafting: 128 NativeSelect sites · 78 same-row siblings · 84 files. Owned (T5/T7/T8): 18 sites and 6 siblings in 10 files. This task's areas: 110 sites and 72 siblings in 74 files.
+
+**At HEAD** (codemod dry-run over every file that renders `<NativeSelect`): 116 sites · 73 siblings · 78 files. The areas A–E are unchanged (110 / 72 / 74). T5/T7/T8 already normalized 12 of their 18 sites (rows 76, 77, 78, 80, 81, 84 and `RepossessionsPage` 761 are clean). What is left in the owned files is 6 sites and 1 sibling in 4 files (rows 75, 79, 82, 83), handled in Step 7.
 
 ---
 
@@ -8355,82 +8362,34 @@ describe('NativeSelect skin guard', () => {
 npm run test --workspace=apps/web -- src/components/ui/field-guards.inventory.test.ts
 ```
 Expected:
-- FAIL in `NativeSelect skin guard > NativeSelect className never carries radius, border colour, fill or padding` with `AssertionError: expected [ …(110) ] to deeply equal []`. The count is 110 when T5/T7/T8 cleaned their files; it is at most 128 otherwise.
+- FAIL in `NativeSelect skin guard > NativeSelect className never carries radius, border colour, fill or padding` with `AssertionError: expected [ …(116) ] to deeply equal []`. The count at HEAD is 116: 110 in this task's 74 files plus 6 left in `TodoFilters` (1), `PayrollLinesSection` (3), `RepossessionsPage` (1) and `TodoForm` (1). It drops to 110 after Step 7.
 - The `+ Received` diff lists entries such as `apps/web/src/components/CompanyFilter.tsx:43 px-3 py-2 rounded-lg`.
 - T7's guards in the same file still pass.
 
 Do not commit yet. The test file is committed in Step 27, once it passes.
 
-- [ ] **Step 7: Verify the OWNED files (T5/T7/T8) are already clean**
+- [ ] **Step 7: Normalize the skin still left in the OWNED files (T5/T8)**
 
 ```bash
 source .tmp/t9-areas.sh && node .tmp/t9-normalize.cjs --dry "${OWNED[@]}"
 ```
-Expected: ten `<file>: no change` lines, then `select sites: 0 · same-row siblings: 0 · files changed: 0`.
+Expected: edits are listed for exactly four files and the other six print `no change` (`DunningSettingsPage`, `SmsTemplateForm`, `AuditLogsPage`, `ChatbotFinanceKnowledgePage`, `StockTransfersPage`, `ItemsTable`). The last line is:
 
-If a file is listed with edits, the owning task left NativeSelect skin behind. For reference, this is what the codemod would do if nothing had been touched:
+`select sites: 6 · same-row siblings: 1 · files changed: 4`
 
-**`apps/web/src/pages/TodosPage/components/TodoFilters.tsx`** (T5)
+The four files and their edits (these are the only ones the codemod touches):
 
-| line | control | old `className` | new |
-|---|---|---|---|
-| 86 | NativeSelect | `pl-9 pr-8 py-2.5 border border-input bg-card rounded-xl text-sm focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-hidden transition-colors appearance-none cursor-pointer` | *(remove attribute)* |
-
-**`apps/web/src/pages/DunningSettingsPage.tsx`** (T7)
+**`apps/web/src/pages/TodosPage/components/TodoFilters.tsx`** (T5; `leadingIcon` is already on this select, so the icon gutter is safe)
 
 | line | control | old `className` | new |
 |---|---|---|---|
-| top | import | — | `import { formControlClass } from '@/components/ui/form-styles';` |
-| 659 | `<NumberInput>` (same row) | `w-full px-3 py-2 rounded-md border border-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary` | `className={formControlClass}` |
-| 670 | NativeSelect | `px-3 py-2 rounded-md border border-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary` | *(remove attribute)* |
-| 691 | NativeSelect | same as 670 | *(remove attribute)* |
+| 86 | NativeSelect | `py-2.5 border border-input bg-card rounded-xl text-sm focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-hidden transition-colors cursor-pointer` | *(remove attribute)* |
 
-**`apps/web/src/pages/SmsTemplatesPage/components/SmsTemplateForm.tsx`** (T7)
+**`apps/web/src/pages/RepossessionsPage.tsx`** (T8; the select at 761 is already clean)
 
 | line | control | old `className` | new |
 |---|---|---|---|
-| 97 | NativeSelect | `px-3 py-2 rounded-md border border-border bg-input text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary` | *(remove attribute)* |
-
-**`apps/web/src/pages/AuditLogsPage.tsx`** (T8)
-
-| line | control | old `className` | new |
-|---|---|---|---|
-| top | import | — | `import { formControlClass } from '@/components/ui/form-styles';` |
-| 308 | `<input>` (same row) | `w-full border rounded-lg px-3 py-2 text-sm` | `className={formControlClass}` |
-| 316 | NativeSelect | `border rounded-lg px-3 py-2 text-sm` | *(remove attribute)* |
-| 335 | `<ThaiDateInput>` (same row) | `w-full border rounded-lg px-3 py-2 text-sm` | *(remove attribute)* |
-| 343 | `<ThaiDateInput>` (same row) | `w-full border rounded-lg px-3 py-2 text-sm` | *(remove attribute)* |
-
-**`apps/web/src/pages/ChatbotFinanceKnowledgePage.tsx`** (T8)
-
-| line | control | old `className` | new |
-|---|---|---|---|
-| top | import | — | `import { formControlClass } from '@/components/ui/form-styles'; import { cn } from '@/lib/utils';` |
-| 283 | NativeSelect | `rounded-md border border-border bg-background px-3 py-2 text-sm` | *(remove attribute)* |
-| 304 | NativeSelect | `px-3 py-2 border rounded-lg text-sm` | *(remove attribute)* |
-| 316 | `<NumberInput>` (same row) | `w-full px-3 py-2 border rounded-lg text-sm mt-1` | `className={cn(formControlClass, 'mt-1')}` |
-
-**`apps/web/src/pages/RepossessionsPage.tsx`** (T8)
-
-| line | control | old `className` | new |
-|---|---|---|---|
-| 761 | NativeSelect | `px-3 py-2 border border-input rounded-lg text-sm bg-background focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden` | *(remove attribute)* |
-| 1130 | NativeSelect | `px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden` | *(remove attribute)* |
-
-**`apps/web/src/pages/StockTransfersPage.tsx`** (T8)
-
-| line | control | old `className` | new |
-|---|---|---|---|
-| 382 | NativeSelect | `px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden` | *(remove attribute)* |
-| 542 | NativeSelect | `px-3 py-2 border border-input rounded-lg text-sm` | *(remove attribute)* |
-| 659 | NativeSelect | `px-3 py-2 border border-input rounded-lg text-sm` | *(remove attribute)* |
-
-**`apps/web/src/pages/other-income/components/ItemsTable.tsx`** (T8)
-
-| line | control | old `className` | new |
-|---|---|---|---|
-| 138 | NativeSelect | `border rounded px-2 py-1.5 text-xs font-mono bg-background` | `className="font-mono"` |
-| 160 | NativeSelect | `border rounded px-2 py-1.5 text-xs font-mono bg-background` | `className="font-mono"` |
+| 1129 | NativeSelect | `px-3 py-2 border border-input rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden` | *(remove attribute)* |
 
 **`apps/web/src/components/expense-form-v4/PayrollLinesSection.tsx`** (T8)
 
@@ -8448,19 +8407,19 @@ If a file is listed with edits, the owning task left NativeSelect skin behind. F
 | 446 | `<input>` (same row) | `w-full px-4 py-2.5 border border-input rounded-xl text-sm bg-card focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-hidden transition-colors` | `className={formControlClass}` |
 | 457 | NativeSelect | `px-4 py-2.5 border border-input rounded-xl text-sm bg-card focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-hidden transition-colors` | *(remove attribute)* |
 
-If a leftover appears:
-- Never run `--write` on `TodoFilters.tsx` unless Step 1 showed `leadingIcon` in it. Removing `pl-9` without `leadingIcon` puts the icon over the text.
-- Otherwise apply the codemod only to the files the dry run listed with edits, and commit them on their own. Put exactly those paths (relative to `apps/web/src`) in `LEFT`. The example below uses `pages/StockTransfersPage.tsx`:
+If the dry run lists a different set (for example `TodoFilters.tsx` without `leadingIcon` on the select, which Step 1 checks), stop and compare with the tables above. Never run `--write` on `TodoFilters.tsx` unless Step 1 showed `leadingIcon` in it: removing the gutter without `leadingIcon` puts the icon over the text.
+
+Apply the codemod to those four files and commit them on their own:
 ```bash
-LEFT=(pages/StockTransfersPage.tsx)
+LEFT=(pages/TodosPage/components/TodoFilters.tsx pages/RepossessionsPage.tsx components/expense-form-v4/PayrollLinesSection.tsx pages/TodosPage/components/TodoForm.tsx)
 node .tmp/t9-normalize.cjs --write "${LEFT[@]}"
 git add $(printf 'apps/web/src/%s ' "${LEFT[@]}") && git commit -F - <<'EOF'
-style(web): finish NativeSelect skin cleanup left in owned files
+style(web): finish NativeSelect skin cleanup in TodoFilters, Repossessions, Payroll lines, TodoForm
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 EOF
 ```
-Expected: the codemod prints the edits for those files, then one commit containing only them. Re-run the dry run above; it must now print `select sites: 0 · same-row siblings: 0 · files changed: 0`.
+Expected: the codemod prints the edits above, then one commit containing only those four files. Re-run the dry run; it must now print `select sites: 0 · same-row siblings: 0 · files changed: 0`.
 
 ---
 
@@ -10119,7 +10078,7 @@ Expected: `Managed local preview stopped; test data retained.`, then a working t
 | ItemsTable.tsx:181 | ก่อนภาษี (Task 8 → `ReadOnlyField`) | `text-muted-foreground font-medium` | convert; remove `mt-1` if still on the field |
 | ItemsTable.tsx:188 | คำอธิบาย | `text-xs text-muted-foreground font-medium` | convert; remove input `mt-1` |
 | ItemLinesSection.tsx:69 / 121 / 180 / 205 / 240 | บัญชีค่าใช้จ่าย / คำอธิบาย / `Field` label (จำนวน, ราคา/หน่วย, ส่วนลด) / `SelectField` (VAT%) / `SelectFieldLabeled` (WHT%) | `mb-1 block text-xs font-medium` | convert |
-| ItemLinesSection.tsx:114 | ก่อนภาษี (Task 8 → `ReadOnlyField`) | `mb-1 block text-xs font-medium text-muted-foreground` | convert |
+| ItemLinesSection.tsx:114 | ก่อนภาษี (Task 8 → `ReadOnlyField`) | `mb-1 block text-xs font-medium` (Task 8 dropped `text-muted-foreground`) | convert |
 | ItemLinesSection.tsx:138 | ค่าใช้จ่ายต้องห้าม (checkbox) | `flex items-start gap-2 text-xs …` | **skip**: checkbox inline label |
 | AdjustmentSection.tsx:119 / 132 / 140 | ยอดที่จ่ายจริง / ยอดสุทธิหลังหักภาษี ณ ที่จ่าย / ผลต่างที่ต้องปรับ | `block text-xs font-medium text-muted-foreground mb-1` | convert |
 | AdjustmentSection.tsx:169 / 193 / 206 / 216 | บัญชี #n / Dr/Cr / จำนวน / หมายเหตุ | `block text-xs text-muted-foreground mb-1` | convert (bordered card rows that stack on mobile, not a table); the delete-button cell `md:pt-5` becomes `md:self-stretch` so it stays bottom-aligned |
@@ -10155,7 +10114,7 @@ c pages/StockTransfersPage.tsx 'className="block text-sm font-medium text-foregr
 c pages/TodosPage/components/TodoForm.tsx 'text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5"'  # expect 5
 c pages/other-income/components/ItemsTable.tsx 'className="text-muted-foreground font-medium">'       # expect 5
 c pages/other-income/components/ItemsTable.tsx 'className="text-xs text-muted-foreground font-medium">'  # expect 2
-c components/expense-form-v4/ItemLinesSection.tsx 'className="mb-1 block text-xs font-medium">'       # expect 5
+c components/expense-form-v4/ItemLinesSection.tsx 'className="mb-1 block text-xs font-medium">'       # expect 6 (Task 8 rewrote the ก่อนภาษี label without text-muted-foreground, so it now matches too)
 c components/expense-form-v4/AdjustmentSection.tsx 'className="block text-xs font-medium text-muted-foreground mb-1"'  # expect 3
 c components/expense-form-v4/AdjustmentSection.tsx 'className="block text-xs text-muted-foreground mb-1"'  # expect 4
 c components/expense-form-v4/PayrollLinesSection.tsx 'className="block text-xs font-medium mb-1"'      # expect 4
@@ -10191,7 +10150,7 @@ Run:
 ```bash
 npm run test --workspace=apps/web -- src/pages/InterestConfigPage.vat.test.tsx src/pages/__tests__/touchTargets.test.ts
 ```
-Expected: PASS. `queryByLabelText('VAT (%)')` (test :71) only depends on element type, which this step does not change.
+Expected: PASS. The test asserts `expect(screen.getByLabelText('VAT (%)')).toBe(vat)` (`InterestConfigPage.vat.test.tsx:74`). It depends on the `htmlFor`/`id` pairing and the element type, and this step changes neither (only `className`).
 
 - [ ] **Step 3: AuditLogsPage — convert 4 filter labels**
 
@@ -10342,38 +10301,42 @@ Edit D (account wrapper, single):
                 <div>
                   <AccountSearchDropdown
 ```
-Edit E: control margins. These are HEAD strings; Task 8 (S2-07) may have rewritten them.
+Edit E: control margins. Task 8 (S2-07) already rewrote the number controls, so three of the old anchors are gone. The current `mt-1` sites (`grep -n "mt-1"` on `ItemsTable.tsx` at HEAD) are:
 ```tsx
-// replace_all, 3 (จำนวน / ราคา/หน่วย / ส่วนลด)
+// single: numberControlClass (:38, shared by จำนวน / ราคา/หน่วย / ส่วนลด)
 // old
-className="mt-1 w-full border rounded px-2 py-1.5 text-right font-mono bg-background"
+const numberControlClass = cn(formControlClass, 'mt-1 text-right font-mono tabular-nums');
 // new
-className="w-full border rounded px-2 py-1.5 text-right font-mono bg-background"
+const numberControlClass = cn(formControlClass, 'text-right font-mono tabular-nums');
 
-// replace_all, 2 (VAT% / WHT%)
+// replace_all, 2 (VAT% :142 / WHT% :163)
 // old
 wrapperClassName="max-w-full mt-1 w-full"
 // new
 wrapperClassName="max-w-full w-full"
 
-// single (คำอธิบาย)
+// single: the "ก่อนภาษี" ReadOnlyField (:192)
 // old
-className="mt-1 w-full border rounded px-2 py-1.5 text-xs bg-background"
+className="mt-1 font-mono font-semibold"
 // new
-className="w-full border rounded px-2 py-1.5 text-xs bg-background"
+className="font-mono font-semibold"
+
+// single: the คำอธิบาย input (:201)
+// old
+className={cn(formControlClass, 'mt-1')}
+// new
+className={formControlClass}
 ```
-If an Edit E string is not found, Task 8 already rewrote that control. Then run:
-```bash
-grep -n "mt-1" "d:/BESTCHOICE APP/BESTCHOICE/apps/web/src/pages/other-income/components/ItemsTable.tsx"
-```
-Delete only the `mt-1` token from every hit that is a control, a control wrapper or the "ก่อนภาษี" `ReadOnlyField` under a converted label (e.g. `cn(formControlClass, 'mt-1 text-right font-mono')` → `cn(formControlClass, 'text-right font-mono')`).
+If `cn` is then unused in the file, keep the import (`numberControlClass` still calls it).
 
 End state of that grep: exactly one hit, the WHT suggestion `<p className="mt-1 text-[10px] text-muted-foreground inline-flex items-center gap-1">`.
 
-Imports. ItemsTable does not import `cn` at HEAD. Insert after `import { NativeSelect } from '@/components/ui/native-select';`, applying the import rule:
+Imports. ItemsTable already imports `cn` (`ItemsTable.tsx:5`) and `formControlClass` (`:4`, `import { formControlClass } from '@/components/ui/form-styles';`). Only add `formLabelClass` to that existing import:
 ```tsx
-import { formLabelClass } from '@/components/ui/form-styles';
-import { cn } from '@/lib/utils';
+// old
+import { formControlClass } from '@/components/ui/form-styles';
+// new
+import { formControlClass, formLabelClass } from '@/components/ui/form-styles';
 ```
 
 Run:
@@ -10384,19 +10347,12 @@ This covers `components/__tests__/ItemsTable.fields.test.tsx` (Task 8) and the e
 
 - [ ] **Step 9: ItemLinesSection — convert 6 label sites**
 
-Edit A (replace_all, 5: :69, :121, `Field`, `SelectField`, `SelectFieldLabeled`):
+Edit A (replace_all, 6: :69, :114 ก่อนภาษี, :121, `Field`, `SelectField`, `SelectFieldLabeled`). At HEAD the ก่อนภาษี label (Task 8) is `className="mb-1 block text-xs font-medium"` too, so the one anchor covers all six:
 ```tsx
 // old
 className="mb-1 block text-xs font-medium">
 // new
 className={formLabelClass}>
-```
-Edit B (single; anchor works whether or not Task 8 added `htmlFor`):
-```tsx
-// old
-className="mb-1 block text-xs font-medium text-muted-foreground">ก่อนภาษี
-// new
-className={formLabelClass}>ก่อนภาษี
 ```
 Import:
 ```tsx

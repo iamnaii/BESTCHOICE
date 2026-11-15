@@ -124,14 +124,14 @@ describe('AccountSearchDropdown — keyboard', () => {
     const search = screen.getByRole('textbox', { name: SEARCH });
     expect(search).toHaveFocus();
     const idOf = (name: RegExp) => screen.getByRole('option', { name }).id;
-    expect(search).toHaveAttribute('aria-activedescendant', idOf(/^รายได้ค่าบริการ$/));
+    expect(search).toHaveAttribute('aria-activedescendant', idOf(/^42-1101 - รายได้ค่าบริการ$/));
 
     await user.keyboard('{ArrowDown}');
-    expect(search).toHaveAttribute('aria-activedescendant', idOf(/^รายได้ค่าเช่า$/));
+    expect(search).toHaveAttribute('aria-activedescendant', idOf(/^42-1102 - รายได้ค่าเช่า$/));
     await user.keyboard('{ArrowDown}'); // 42-1104 is blocked → skipped
-    expect(search).toHaveAttribute('aria-activedescendant', idOf(/^รายได้ดอกเบี้ยธนาคาร$/));
+    expect(search).toHaveAttribute('aria-activedescendant', idOf(/^42-1105 - รายได้ดอกเบี้ยธนาคาร$/));
     await user.keyboard('{ArrowUp}');
-    expect(search).toHaveAttribute('aria-activedescendant', idOf(/^รายได้ค่าเช่า$/));
+    expect(search).toHaveAttribute('aria-activedescendant', idOf(/^42-1102 - รายได้ค่าเช่า$/));
 
     await user.keyboard('{Enter}');
     expect(onPick).toHaveBeenCalledWith('42-1102');
@@ -147,7 +147,7 @@ describe('AccountSearchDropdown — keyboard', () => {
     expect(trigger).toHaveTextContent('รายได้ดอกเบี้ยธนาคาร');
     trigger.focus();
     await user.keyboard('{ArrowDown}');
-    const current = screen.getByRole('option', { name: /^รายได้ดอกเบี้ยธนาคาร$/ });
+    const current = screen.getByRole('option', { name: '42-1105 - รายได้ดอกเบี้ยธนาคาร' });
     expect(current).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('textbox', { name: SEARCH })).toHaveAttribute(
       'aria-activedescendant',
@@ -255,12 +255,12 @@ describe('AccountSearchDropdown — search', () => {
 
     await user.type(search, '42-1105');
     let options = screen.getAllByRole('option');
-    expect(options.map((o) => o.textContent)).toEqual(['รายได้ดอกเบี้ยธนาคาร']);
+    expect(options.map((o) => o.textContent)).toEqual(['42-1105 - รายได้ดอกเบี้ยธนาคาร']);
 
     await user.clear(search);
     await user.type(search, 'ค่าเช่า');
     options = screen.getAllByRole('option');
-    expect(options.map((o) => o.textContent)).toEqual(['รายได้ค่าเช่า', 'ค่าเช่า']);
+    expect(options.map((o) => o.textContent)).toEqual(['42-1102 - รายได้ค่าเช่า', '53-1301 - ค่าเช่า']);
     expect(search).toHaveAttribute('aria-activedescendant', options[0].id);
 
     await user.clear(search);
@@ -268,5 +268,37 @@ describe('AccountSearchDropdown — search', () => {
     expect(screen.queryAllByRole('option')).toHaveLength(0);
     expect(screen.getByText('ไม่พบบัญชี')).toBeInTheDocument();
     expect(search).not.toHaveAttribute('aria-activedescendant');
+  });
+});
+
+describe('AccountSearchDropdown — code prefix and group headings', () => {
+  it('แสดงเลขบัญชีนำหน้าชื่อ ทั้งในปุ่มและในรายการ', async () => {
+    const user = userEvent.setup();
+    render(<Harness initialValue="42-1105" />);
+    expect(screen.getByRole('combobox')).toHaveTextContent('42-1105 - รายได้ดอกเบี้ยธนาคาร');
+    await user.click(screen.getByRole('combobox'));
+    expect(screen.getByRole('option', { name: '42-1101 - รายได้ค่าบริการ' })).toBeInTheDocument();
+    // ชื่อยังตัดข้อความในวงเล็บตามเดิม
+    expect(screen.getByRole('option', { name: '53-1301 - ค่าเช่า' })).toBeInTheDocument();
+  });
+
+  it('จัดตัวเลือกใต้หัวข้อกลุ่ม และไม่แสดงกลุ่มที่ไม่มีตัวเลือกเหลือ', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(screen.getByRole('combobox'));
+    const income = screen.getByRole('group', { name: 'รายได้อื่น' });
+    expect(within(income).getAllByRole('option')).toHaveLength(4);
+    expect(within(screen.getByRole('group', { name: 'ค่าใช้จ่าย' })).getAllByRole('option')).toHaveLength(1);
+    await user.type(screen.getByRole('textbox', { name: SEARCH }), '53-13');
+    expect(screen.queryByRole('group', { name: 'รายได้อื่น' })).not.toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '53-1301 - ค่าเช่า' })).toBeInTheDocument();
+  });
+
+  it('ตัวกรองของผู้เรียกยังมีผล — กลุ่มที่ถูกกรองออกทั้งกลุ่มไม่แสดง', async () => {
+    const user = userEvent.setup();
+    render(<Harness filter={only42} />);
+    await user.click(screen.getByRole('combobox'));
+    expect(screen.queryByRole('group', { name: 'ค่าใช้จ่าย' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('option')).toHaveLength(4);
   });
 });

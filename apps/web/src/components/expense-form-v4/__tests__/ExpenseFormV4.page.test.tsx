@@ -175,6 +175,20 @@ describe('ExpenseFormV4 — หน้าเต็ม', () => {
     expect((await bodyOf('/expense-documents')).amountPaid).toBeUndefined();
   });
 
+  it('จ่ายทันที แสดงยอดชำระสุทธิหลังหัก ณ ที่จ่าย และหายไปเมื่อเลือกยังไม่ชำระ', async () => {
+    const user = mount();
+    await fillExpenseLine(user, { account: '53-1101', unitPrice: '850' });
+    const net = await screen.findByText('ยอดชำระสุทธิ (หลังหัก ณ ที่จ่าย)');
+    await waitFor(() => expect(net.parentElement).toHaveTextContent('909.50 บาท'));
+    await chooseKind(user, 'EXPENSE_UNPAID');
+    expect(screen.queryByText('ยอดชำระสุทธิ (หลังหัก ณ ที่จ่าย)')).not.toBeInTheDocument();
+  });
+
+  it('ตัวเลือกบัญชีจ่ายเงินมีชื่อที่เข้าถึงได้ตรงกับป้าย ชำระโดย', () => {
+    mount();
+    expect(screen.getByRole('combobox', { name: 'ชำระโดย' })).toBeInTheDocument();
+  });
+
   it('ผูก beforeunload หลังผู้ใช้แก้ฟอร์ม', async () => {
     const add = vi.spyOn(window, 'addEventListener');
     const user = mount();

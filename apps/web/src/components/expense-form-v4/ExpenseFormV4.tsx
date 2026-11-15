@@ -886,7 +886,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
                 <label htmlFor={payById} className={formLabelClass}>ชำระโดย</label>
                 <CashAccountSelect
                   id={payById}
-                  placeholder="เลือกบัญชีจ่ายเงิน"
+                  placeholder="ชำระโดย"
                   value={state.depositAccountCode}
                   onChange={(code) => patch({ depositAccountCode: code })}
                   codes={
@@ -917,6 +917,11 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
                     ? 'เงินเดือนพนักงานสาขาจ่ายจากบัญชีของหน้าร้าน (SHOP) เท่านั้น'
                     : 'เงินเดือนส่วนกลางจ่ายจากบัญชีของ FINANCE'}
                 </p>
+              ) : isPreviewType ? (
+                <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+                  <span className="text-sm leading-snug text-muted-foreground">ยอดชำระสุทธิ (หลังหัก ณ ที่จ่าย)</span>
+                  <span className="text-lg font-bold tabular-nums leading-snug">{money(preview?.totals.netPayment)} บาท</span>
+                </div>
               ) : undefined
             }
           />

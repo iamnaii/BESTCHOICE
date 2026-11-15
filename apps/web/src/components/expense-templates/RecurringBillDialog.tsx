@@ -20,6 +20,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { formLabelClass } from '@/components/ui/form-styles';
 import { NativeSelect } from '@/components/ui/native-select';
 import { CashAccountSelect } from '@/components/CashAccountSelect';
 import { VendorCombobox } from '@/components/expense-form-v4/VendorCombobox';
@@ -274,9 +275,9 @@ export function RecurringBillDialog({ open, onClose, template = null, templateId
   };
   const err = (key: ErrorKey) =>
     errors[key] ? (
-      <p id={`${FIELD_IDS[key]}-error`} className="text-xs text-destructive" role="alert">{errors[key]}</p>
+      <p id={`${FIELD_IDS[key]}-error`} className="mt-1 text-xs text-destructive" role="alert">{errors[key]}</p>
     ) : null;
-  const hint = (key: ErrorKey, text: string) => <p id={`${FIELD_IDS[key]}-hint`} className="text-xs text-muted-foreground">{text}</p>;
+  const hint = (key: ErrorKey, text: string) => <p id={`${FIELD_IDS[key]}-hint`} className="mt-1 text-xs text-muted-foreground">{text}</p>;
   const req = <span aria-hidden="true" className="ml-0.5 text-destructive">*</span>;
 
   return (
@@ -290,18 +291,18 @@ export function RecurringBillDialog({ open, onClose, template = null, templateId
           <p className="py-6 text-center text-sm text-muted-foreground">กำลังโหลดแม่แบบ…</p>
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-1 md:col-span-2">
-              <div className="flex items-center"><Label htmlFor="rb-name">ชื่อบิล</Label>{req}</div>
+            <div className="md:col-span-2">
+              <div className="mb-3 flex items-center"><Label htmlFor="rb-name">ชื่อบิล</Label>{req}</div>
               <Input id="rb-name" value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="เช่น ค่าเช่าร้าน สาขาลาดพร้าว" required {...a11y('name')} />
               {err('name')}
             </div>
-            <div className="space-y-1 md:col-span-2">
-              <Label htmlFor="rb-vendor">ผู้รับเงิน / เจ้าหนี้</Label>
+            <div className="md:col-span-2">
+              <Label htmlFor="rb-vendor" className={formLabelClass}>ผู้รับเงิน / เจ้าหนี้</Label>
               <VendorCombobox id="rb-vendor" value={form.vendorName} onSelectSupplier={(s) => setForm((f) => ({ ...f, vendorName: s.name, vendorSupplierId: s.supplierId }))} />
               {hint('vendorName', 'พิมพ์เองหรือเลือกจากรายชื่อผู้จัดจำหน่าย')}
             </div>
-            <div className="space-y-1">
-              <div className="flex items-center"><Label htmlFor="rb-branch">สาขา</Label>{req}</div>
+            <div>
+              <div className="mb-3 flex items-center"><Label htmlFor="rb-branch">สาขา</Label>{req}</div>
               <NativeSelect id="rb-branch" value={form.branchId} disabled={branchLocked} onChange={(e) => set('branchId', e.target.value)} required {...a11y('branchId', editing)}>
                 <option value="">— เลือก —</option>
                 {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
@@ -309,34 +310,34 @@ export function RecurringBillDialog({ open, onClose, template = null, templateId
               </NativeSelect>
               {editing ? hint('branchId', 'ย้ายสาขา = ปิดบิลนี้แล้วตั้งใหม่') : err('branchId')}
             </div>
-            <div className="space-y-1">
-              <Label htmlFor="rb-category">บัญชีค่าใช้จ่าย</Label>
+            <div>
+              <Label htmlFor="rb-category" className={formLabelClass}>บัญชีค่าใช้จ่าย</Label>
               <NativeSelect id="rb-category" value={form.category} onChange={(e) => set('category', e.target.value)} {...a11y('category', true)}>
                 <option value="">— เลือก —</option>
                 {groups.flatMap((g) => g.accounts.map((a) => <option key={a.code} value={a.code}>{a.code} {accountDisplayName(a.name)}</option>))}
               </NativeSelect>
               {hint('category', 'ไปอยู่ในบรรทัดของร่างใบรายจ่าย — แก้ในร่างได้')}
             </div>
-            <div className="space-y-1">
-              <Label htmlFor="rb-amount">ยอดประมาณ (บาท)</Label>
+            <div>
+              <Label htmlFor="rb-amount" className={formLabelClass}>ยอดประมาณ (บาท)</Label>
               <Input id="rb-amount" type="number" min={0} step="0.01" inputMode="decimal" value={form.sampleAmount} onChange={(e) => set('sampleAmount', e.target.value)} {...a11y('sampleAmount', true)} />
               {err('sampleAmount') ?? hint('sampleAmount', 'ใช้เป็นยอดตั้งต้นของร่าง และคำนวณ "ยังต้องจ่ายเดือนนี้"')}
             </div>
-            <div className="space-y-1">
-              <Label htmlFor="rb-payment">วิธีจ่าย</Label>
+            <div>
+              <Label htmlFor="rb-payment" className={formLabelClass}>วิธีจ่าย</Label>
               <NativeSelect id="rb-payment" value={form.paymentMethod} onChange={(e) => set('paymentMethod', e.target.value)} {...a11y('payment', true)}>
                 <option value="">ไม่ตั้ง</option>
                 {PAYMENT_METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
               </NativeSelect>
               {err('payment') ?? hint('payment', 'ไม่ตั้ง = ร่างลงเป็นตั้งหนี้ ต้องทำใบจ่ายเจ้าหนี้ต่อ')}
             </div>
-            <div className="space-y-1">
-              <Label htmlFor="rb-deposit">บัญชีที่จ่าย</Label>
+            <div>
+              <Label htmlFor="rb-deposit" className={formLabelClass}>บัญชีที่จ่าย</Label>
               <CashAccountSelect id="rb-deposit" value={form.depositAccountCode} onChange={(code) => set('depositAccountCode', code)} placeholder="— เลือกบัญชีเงินสด/ธนาคาร —" />
               {hint('depositAccountCode', 'ตั้งทั้งสองช่อง = ร่างโพสต์เป็นจ่ายทันที ระบบปิดงวดให้เอง')}
             </div>
-            <div className="space-y-1">
-              <div className="flex items-center"><Label htmlFor="rb-recurrence">ความถี่</Label>{req}</div>
+            <div>
+              <div className="mb-3 flex items-center"><Label htmlFor="rb-recurrence">ความถี่</Label>{req}</div>
               <NativeSelect id="rb-recurrence" value={form.recurrence} onChange={(e) => onRecurrence(e.target.value as RecurrenceKind)} required {...a11y('recurrence')}>
                 <option value="MONTHLY">รายเดือน</option>
                 <option value="QUARTERLY">ราย 3 เดือน</option>
@@ -344,13 +345,13 @@ export function RecurringBillDialog({ open, onClose, template = null, templateId
               </NativeSelect>
               {err('recurrence')}
             </div>
-            <div className="space-y-1">
-              <div className="flex items-center"><Label htmlFor="rb-day">วันครบกำหนด (วันที่ของเดือน)</Label>{req}</div>
+            <div>
+              <div className="mb-3 flex items-center"><Label htmlFor="rb-day">วันครบกำหนด (วันที่ของเดือน)</Label>{req}</div>
               <Input id="rb-day" type="number" min={1} max={31} inputMode="numeric" value={form.recurringDay} onChange={(e) => set('recurringDay', e.target.value)} required {...a11y('recurringDay', true)} />
               {err('recurringDay') ?? hint('recurringDay', '1–31 · เดือนที่มีไม่ถึงวันนั้น ใช้วันสุดท้ายของเดือน (เช่น 31 → 28 ก.พ.)')}
             </div>
-            <div className="space-y-1">
-              <div className="flex items-center"><Label htmlFor="rb-month">เดือน</Label>{form.recurrence !== 'MONTHLY' && req}</div>
+            <div>
+              <div className="mb-3 flex items-center"><Label htmlFor="rb-month">เดือน</Label>{form.recurrence !== 'MONTHLY' && req}</div>
               <NativeSelect id="rb-month" value={form.recurringMonth} disabled={form.recurrence === 'MONTHLY'} onChange={(e) => set('recurringMonth', e.target.value)} {...a11y('recurringMonth', true)}>
                 <option value="">{form.recurrence === 'MONTHLY' ? '— ทุกเดือน —' : '— เลือก —'}</option>
                 {monthOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -362,13 +363,13 @@ export function RecurringBillDialog({ open, onClose, template = null, templateId
                   : 'เปิดเมื่อเลือก ราย 3 เดือน (เดือนที่ 1/2/3 ของไตรมาส) หรือ รายปี (ม.ค.–ธ.ค.)',
               )}
             </div>
-            <div className="space-y-1">
-              <Label htmlFor="rb-lead">เตือนล่วงหน้า (วัน)</Label>
+            <div>
+              <Label htmlFor="rb-lead" className={formLabelClass}>เตือนล่วงหน้า (วัน)</Label>
               <Input id="rb-lead" type="number" min={0} max={RECURRING_BILL_LEAD_DAYS_MAX} inputMode="numeric" value={form.reminderLeadDays} onChange={(e) => set('reminderLeadDays', e.target.value)} {...a11y('reminderLeadDays', true)} />
               {err('reminderLeadDays') ?? hint('reminderLeadDays', `ระบบสร้างร่าง + งาน + แจ้งเตือนก่อนครบกำหนดกี่วัน (0–${RECURRING_BILL_LEAD_DAYS_MAX}) · ค่าเริ่มต้น ${RECURRING_BILL_DEFAULT_LEAD_DAYS}`)}
             </div>
-            <div className="space-y-1">
-              <Label htmlFor="rb-starts">เริ่มนับงวดแรกตั้งแต่</Label>
+            <div>
+              <Label htmlFor="rb-starts" className={formLabelClass}>เริ่มนับงวดแรกตั้งแต่</Label>
               <Input id="rb-starts" type="date" value={form.startsOn} onChange={(e) => set('startsOn', e.target.value)} {...a11y('startsOn', true)} />
               {err('startsOn') ?? hint('startsOn', 'งวดที่ครบกำหนดก่อนวันนี้เกิน 7 วันจะถูกบันทึกเป็น "งวดหลุด" ไม่สร้างร่างย้อนหลัง')}
             </div>

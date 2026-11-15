@@ -1,6 +1,7 @@
 import { NumberInput } from '@/components/ui/NumberInput';
 import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
+import { formLabelClass } from '@/components/ui/form-styles';
 import DocumentDownloadButton from '@/components/DocumentDownloadButton';
 import { useId as useUiFieldId, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -839,7 +840,7 @@ export default function RepossessionsPage() {
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">
+              <label className={formLabelClass}>
                 บัญชีรับเงิน (FINANCE) <span className="text-destructive">*</span>
               </label>
               <CashAccountSelect
@@ -849,7 +850,7 @@ export default function RepossessionsPage() {
               />
             </div>
             <div>
-              <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1">
+              <label htmlFor={`${uiFieldId}-1`} className={formLabelClass}>
                 จำนวนเงินที่รับโอน <span className="text-destructive">*</span>
               </label>
               <NumberInput unstyled id={`${uiFieldId}-1`}
@@ -909,7 +910,7 @@ export default function RepossessionsPage() {
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">
+              <label className={formLabelClass}>
                 บัญชีจ่ายเงิน <span className="text-destructive">*</span>
               </label>
               <CashAccountSelect
@@ -919,7 +920,7 @@ export default function RepossessionsPage() {
               />
             </div>
             <div>
-              <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1">
+              <label htmlFor={`${uiFieldId}-2`} className={formLabelClass}>
                 จำนวนเงินที่จ่ายคืน <span className="text-destructive">*</span>
               </label>
               <NumberInput unstyled id={`${uiFieldId}-2`}
@@ -1040,7 +1041,7 @@ export default function RepossessionsPage() {
               <div>
                 <label
                   htmlFor="ready-for-sale-cash"
-                  className="block text-sm font-medium text-foreground mb-1"
+                  className={formLabelClass}
                 >
                   ราคาเงินสด (บาท) <span className="text-destructive">*</span>
                 </label>
@@ -1058,7 +1059,7 @@ export default function RepossessionsPage() {
               <div>
                 <label
                   htmlFor="ready-for-sale-installment"
-                  className="block text-sm font-medium text-foreground mb-1"
+                  className={formLabelClass}
                 >
                   ราคาผ่อน BESTCHOICE (บาท) <span className="text-destructive">*</span>
                 </label>
@@ -1122,7 +1123,7 @@ export default function RepossessionsPage() {
               </div>
             </div>
             <div>
-              <label htmlFor={`${uiFieldId}-3`} className="block text-sm font-medium text-foreground mb-1">สถานะ</label>
+              <label htmlFor={`${uiFieldId}-3`} className={formLabelClass}>สถานะ</label>
               <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-3`}
                 value={updateForm.status}
                 onChange={(e) => setUpdateForm({ ...updateForm, status: e.target.value })}
@@ -1155,7 +1156,7 @@ export default function RepossessionsPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label htmlFor={`${uiFieldId}-4`} className="block text-sm font-medium text-foreground mb-1">
+                <label htmlFor={`${uiFieldId}-4`} className={formLabelClass}>
                   ค่าซ่อม (บาท)
                 </label>
                 <NumberInput unstyled id={`${uiFieldId}-4`}
@@ -1166,7 +1167,7 @@ export default function RepossessionsPage() {
                 />
               </div>
               <div>
-                <label htmlFor={`${uiFieldId}-5`} className="block text-sm font-medium text-foreground mb-1">
+                <label htmlFor={`${uiFieldId}-5`} className={formLabelClass}>
                   ราคาขายต่อ (บาท)
                 </label>
                 <NumberInput unstyled id={`${uiFieldId}-5`}
@@ -1183,7 +1184,7 @@ export default function RepossessionsPage() {
               )}
             </div>
             <div>
-              <label htmlFor={`${uiFieldId}-6`} className="block text-sm font-medium text-foreground mb-1">หมายเหตุ</label>
+              <label htmlFor={`${uiFieldId}-6`} className={formLabelClass}>หมายเหตุ</label>
               <textarea id={`${uiFieldId}-6`}
                 value={updateForm.notes}
                 onChange={(e) => setUpdateForm({ ...updateForm, notes: e.target.value })}

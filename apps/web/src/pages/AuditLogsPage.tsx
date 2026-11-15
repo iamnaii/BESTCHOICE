@@ -1,6 +1,6 @@
 import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
-import { formControlClass } from '@/components/ui/form-styles';
+import { formControlClass, formLabelClass } from '@/components/ui/form-styles';
 import { Fragment, useId as useUiFieldId, useState } from 'react';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery } from '@tanstack/react-query';
@@ -300,7 +300,7 @@ export default function AuditLogsPage() {
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
-            <label htmlFor={`${uiFieldId}-1`} className="block text-xs font-medium text-muted-foreground mb-1">รายการ</label>
+            <label htmlFor={`${uiFieldId}-1`} className={formLabelClass}>รายการ</label>
             <input id={`${uiFieldId}-1`}
               type="text"
               value={entity}
@@ -310,7 +310,7 @@ export default function AuditLogsPage() {
             />
           </div>
           <div>
-            <label htmlFor={`${uiFieldId}-2`} className="block text-xs font-medium text-muted-foreground mb-1">จัดการ</label>
+            <label htmlFor={`${uiFieldId}-2`} className={formLabelClass}>จัดการ</label>
             <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-2`}
               value={action}
               onChange={(e) => { setAction(e.target.value); setPage(1); }}
@@ -327,7 +327,7 @@ export default function AuditLogsPage() {
             </NativeSelect>
           </div>
           <div>
-            <label htmlFor={`${uiFieldId}-3`} className="block text-xs font-medium text-muted-foreground mb-1">จากวันที่</label>
+            <label htmlFor={`${uiFieldId}-3`} className={formLabelClass}>จากวันที่</label>
             <ThaiDateInput id={`${uiFieldId}-3`}
               data-date-range-custom-start="true"
               value={dateFrom}
@@ -335,7 +335,7 @@ export default function AuditLogsPage() {
             />
           </div>
           <div>
-            <label htmlFor={`${uiFieldId}-4`} className="block text-xs font-medium text-muted-foreground mb-1">ถึงวันที่</label>
+            <label htmlFor={`${uiFieldId}-4`} className={formLabelClass}>ถึงวันที่</label>
             <ThaiDateInput id={`${uiFieldId}-4`}
               value={dateTo}
               onChange={(e) => { setDateTo(e.target.value); setPage(1); }}

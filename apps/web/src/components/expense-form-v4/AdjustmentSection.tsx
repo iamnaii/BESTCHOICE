@@ -1,7 +1,7 @@
 import { NumberInput } from '@/components/ui/NumberInput';
 import { formatNumericText } from '@/utils/numericText';
 import { NativeSelect } from '@/components/ui/native-select';
-import { formControlClass } from '@/components/ui/form-styles';
+import { formControlClass, formLabelClass } from '@/components/ui/form-styles';
 import { ReadOnlyField } from '@/components/ui/readonly-field';
 import { useId as useFieldId } from 'react';
 // Section 5 — Multi-line Adjustment (Fix Report v1.0 P0-4).
@@ -119,7 +119,7 @@ export function AdjustmentSection({
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
         <div>
-          <label htmlFor={`${fieldId}-1`} className="block text-xs font-medium text-muted-foreground mb-1">
+          <label htmlFor={`${fieldId}-1`} className={formLabelClass}>
             ยอดที่จ่ายจริง
           </label>
           <NumberInput unstyled id={`${fieldId}-1`}
@@ -132,7 +132,7 @@ export function AdjustmentSection({
           <p className="mt-1 text-xs text-muted-foreground">เว้นว่างเพื่อใช้ยอด {formatNumericText(netExpected)}</p>
         </div>
         <div>
-          <label htmlFor={`${fieldId}-net`} className="block text-xs font-medium text-muted-foreground mb-1">
+          <label htmlFor={`${fieldId}-net`} className={formLabelClass}>
             ยอดสุทธิหลังหักภาษี ณ ที่จ่าย
           </label>
           <ReadOnlyField
@@ -142,7 +142,7 @@ export function AdjustmentSection({
           />
         </div>
         <div>
-          <label htmlFor={`${fieldId}-diff`} className="block text-xs font-medium text-muted-foreground mb-1">
+          <label htmlFor={`${fieldId}-diff`} className={formLabelClass}>
             ผลต่างที่ต้องปรับ
           </label>
           {/* S3-05 — สีบอกทิศผลต่างคงไว้ด้วย tone (ไม่ override className สีพื้น) */}
@@ -165,7 +165,7 @@ export function AdjustmentSection({
                 className="grid grid-cols-12 gap-2 items-start rounded-lg border border-border bg-muted/30 p-3"
               >
                 <div className="col-span-12 md:col-span-5">
-                  <label htmlFor={`${fieldId}-${row.uid}-2`} className="block text-xs text-muted-foreground mb-1">
+                  <label htmlFor={`${fieldId}-${row.uid}-2`} className={formLabelClass}>
                     บัญชี #{idx + 1}
                   </label>
                   <NativeSelect wrapperClassName="max-w-full w-full min-w-0" id={`${fieldId}-${row.uid}-2`}
@@ -189,7 +189,7 @@ export function AdjustmentSection({
                   </NativeSelect>
                 </div>
                 <div className="col-span-12 sm:col-span-6 md:col-span-2">
-                  <label htmlFor={`${fieldId}-${row.uid}-3`} className="block text-xs text-muted-foreground mb-1">Dr/Cr</label>
+                  <label htmlFor={`${fieldId}-${row.uid}-3`} className={formLabelClass}>Dr/Cr</label>
                   <NativeSelect wrapperClassName="max-w-full w-full min-w-0" id={`${fieldId}-${row.uid}-3`}
                     value={row.side}
                     onChange={(e) =>
@@ -202,7 +202,7 @@ export function AdjustmentSection({
                   </NativeSelect>
                 </div>
                 <div className="col-span-12 sm:col-span-6 md:col-span-2">
-                  <label htmlFor={`${fieldId}-${row.uid}-4`} className="block text-xs text-muted-foreground mb-1">จำนวน</label>
+                  <label htmlFor={`${fieldId}-${row.uid}-4`} className={formLabelClass}>จำนวน</label>
                   <NumberInput unstyled id={`${fieldId}-${row.uid}-4`}
                     step="0.01"
                     min="0"
@@ -212,7 +212,7 @@ export function AdjustmentSection({
                   />
                 </div>
                 <div className="col-span-12 md:col-span-2">
-                  <label htmlFor={`${fieldId}-${row.uid}-5`} className="block text-xs text-muted-foreground mb-1">หมายเหตุ</label>
+                  <label htmlFor={`${fieldId}-${row.uid}-5`} className={formLabelClass}>หมายเหตุ</label>
                   <input id={`${fieldId}-${row.uid}-5`}
                     type="text"
                     value={row.note}
@@ -221,7 +221,7 @@ export function AdjustmentSection({
                     className={formControlClass}
                   />
                 </div>
-                <div className="col-span-12 flex items-end justify-end md:col-span-1 md:pt-5">
+                <div className="col-span-12 flex items-end justify-end md:col-span-1 md:self-stretch">
                   <button data-ui-control="button" data-ui-icon="true"
                     type="button"
                     onClick={() => removeRow(row.uid)}

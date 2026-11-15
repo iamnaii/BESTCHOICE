@@ -1,7 +1,7 @@
 import { FormNumberInput } from '@/components/ui/FormNumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { ReadOnlyField } from '@/components/ui/readonly-field';
-import { formControlClass } from '@/components/ui/form-styles';
+import { formControlClass, formLabelClass } from '@/components/ui/form-styles';
 import { cn } from '@/lib/utils';
 import {
   useFieldArray,
@@ -35,7 +35,7 @@ function fmt(n: number) {
 }
 
 /** S2-07 — ช่องตัวเลขทั้งแถวใช้หน้าตาเดียวกับ dropdown ข้าง ๆ (formControlClass) ชิดขวา */
-const numberControlClass = cn(formControlClass, 'mt-1 text-right font-mono tabular-nums');
+const numberControlClass = cn(formControlClass, 'text-right font-mono tabular-nums');
 
 export function ItemsTable({ control, register, watch, setValue }: Props) {
   const uiExtraFieldId = useExtraFieldId();
@@ -96,8 +96,8 @@ export function ItemsTable({ control, register, watch, setValue }: Props) {
             </div>
             <div className="p-3 space-y-3">
               <div>
-                <label className="text-xs text-muted-foreground font-medium">บัญชีรายได้</label>
-                <div className="mt-1">
+                <label className={formLabelClass}>บัญชีรายได้</label>
+                <div>
                   <AccountSearchDropdown
                     value={items[idx]?.accountCode ?? ''}
                     onChange={(c) => {
@@ -114,7 +114,7 @@ export function ItemsTable({ control, register, watch, setValue }: Props) {
               </div>
               <div className="grid grid-cols-2 md:grid-cols-6 gap-2 text-xs">
                 <div>
-                  <label htmlFor={`${uiExtraFieldId}-1-${idx}`} className="text-muted-foreground font-medium">จำนวน</label>
+                  <label htmlFor={`${uiExtraFieldId}-1-${idx}`} className={formLabelClass}>จำนวน</label>
                   <FormNumberInput unstyled id={`${uiExtraFieldId}-1-${idx}`}
                     step="0.01"
                     name={`items.${idx}.quantity`} control={control}
@@ -122,7 +122,7 @@ export function ItemsTable({ control, register, watch, setValue }: Props) {
                   />
                 </div>
                 <div>
-                  <label htmlFor={`${uiExtraFieldId}-2-${idx}`} className="text-muted-foreground font-medium">ราคา/หน่วย</label>
+                  <label htmlFor={`${uiExtraFieldId}-2-${idx}`} className={formLabelClass}>ราคา/หน่วย</label>
                   <FormNumberInput unstyled id={`${uiExtraFieldId}-2-${idx}`}
                     step="0.01"
                     name={`items.${idx}.unitAmount`} control={control}
@@ -130,7 +130,7 @@ export function ItemsTable({ control, register, watch, setValue }: Props) {
                   />
                 </div>
                 <div>
-                  <label htmlFor={`${uiExtraFieldId}-3-${idx}`} className="text-muted-foreground font-medium">ส่วนลด</label>
+                  <label htmlFor={`${uiExtraFieldId}-3-${idx}`} className={formLabelClass}>ส่วนลด</label>
                   <FormNumberInput unstyled id={`${uiExtraFieldId}-3-${idx}`}
                     step="0.01"
                     name={`items.${idx}.discountAmount`} control={control}
@@ -138,8 +138,8 @@ export function ItemsTable({ control, register, watch, setValue }: Props) {
                   />
                 </div>
                 <div>
-                  <label htmlFor={`${uiExtraFieldId}-4-${idx}`} className="text-muted-foreground font-medium">VAT%</label>
-                  <NativeSelect wrapperClassName="max-w-full mt-1 w-full" id={`${uiExtraFieldId}-4-${idx}`}
+                  <label htmlFor={`${uiExtraFieldId}-4-${idx}`} className={formLabelClass}>VAT%</label>
+                  <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiExtraFieldId}-4-${idx}`}
                     {...register(`items.${idx}.vatPct`)}
                     className="font-mono"
                   >
@@ -149,7 +149,7 @@ export function ItemsTable({ control, register, watch, setValue }: Props) {
                 </div>
                 <div>
                   <label htmlFor={`${uiExtraFieldId}-5-${idx}`}
-                    className="text-muted-foreground font-medium inline-flex items-center gap-1"
+                    className={cn(formLabelClass, 'flex items-center gap-1')}
                     title="แนะนำ: ดอกเบี้ย 15% / ค่าบริการ 3% / ค่าเช่า 5% / นิติบุคคล 1%"
                   >
                     WHT%
@@ -160,7 +160,7 @@ export function ItemsTable({ control, register, watch, setValue }: Props) {
                       </span>
                     )}
                   </label>
-                  <NativeSelect wrapperClassName="max-w-full mt-1 w-full" id={`${uiExtraFieldId}-5-${idx}`}
+                  <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiExtraFieldId}-5-${idx}`}
                     {...register(`items.${idx}.whtPct`)}
                     title="แนะนำ: ดอกเบี้ย 15% / ค่าบริการ 3% / ค่าเช่า 5% / นิติบุคคล 1%"
                     className="font-mono"
@@ -184,21 +184,21 @@ export function ItemsTable({ control, register, watch, setValue }: Props) {
                   })()}
                 </div>
                 <div>
-                  <label htmlFor={`${uiExtraFieldId}-7-${idx}`} className="text-muted-foreground font-medium">ก่อนภาษี</label>
+                  <label htmlFor={`${uiExtraFieldId}-7-${idx}`} className={formLabelClass}>ก่อนภาษี</label>
                   <ReadOnlyField
                     id={`${uiExtraFieldId}-7-${idx}`}
                     align="end"
                     value={fmt(row?.amountBeforeVat ?? 0)}
-                    className="mt-1 font-mono font-semibold"
+                    className="font-mono font-semibold"
                   />
                 </div>
               </div>
               <div>
-                <label htmlFor={`${uiExtraFieldId}-6-${idx}`} className="text-xs text-muted-foreground font-medium">คำอธิบาย</label>
+                <label htmlFor={`${uiExtraFieldId}-6-${idx}`} className={formLabelClass}>คำอธิบาย</label>
                 <input id={`${uiExtraFieldId}-6-${idx}`}
                   type="text"
                   {...register(`items.${idx}.description`)}
-                  className={cn(formControlClass, 'mt-1')}
+                  className={formControlClass}
                   placeholder="เช่น ดอกเบี้ยเดือน พ.ค. 2569"
                 />
               </div>

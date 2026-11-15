@@ -1,6 +1,7 @@
 import { NumberInput } from '@/components/ui/NumberInput';
 import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
+import { formLabelClass } from '@/components/ui/form-styles';
 import { useId as useUiFieldId, useState } from 'react';
 import { AlertTriangle, ChevronDown, ChevronRight, Clock, Coins, CopyPlus, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -287,7 +288,7 @@ export function PayrollLinesSection({
     <div className="space-y-4">
       {/* คำสั่งเจ้าของ 2026-08-06 — เอกสาร 1 ใบสังกัดฝั่งเดียว */}
       <div>
-        <label className="block text-xs font-medium mb-1">กลุ่มพนักงาน</label>
+        <label className={formLabelClass}>กลุ่มพนักงาน</label>
         <div className="inline-flex rounded-lg border border-border overflow-hidden" role="group">
           {(
             [
@@ -348,7 +349,7 @@ export function PayrollLinesSection({
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
-          <label htmlFor={`${uiFieldId}-1`} className="block text-xs font-medium mb-1">ปี (พ.ศ.)</label>
+          <label htmlFor={`${uiFieldId}-1`} className={formLabelClass}>ปี (พ.ศ.)</label>
           <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-1`}
             value={value.year}
             onChange={(e) => setPeriod(Number(e.target.value), value.month)}
@@ -364,7 +365,7 @@ export function PayrollLinesSection({
           </NativeSelect>
         </div>
         <div>
-          <label htmlFor={`${uiFieldId}-2`} className="block text-xs font-medium mb-1">เดือน</label>
+          <label htmlFor={`${uiFieldId}-2`} className={formLabelClass}>เดือน</label>
           <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-2`}
             value={value.month}
             onChange={(e) => setPeriod(value.year, Number(e.target.value))}
@@ -378,7 +379,7 @@ export function PayrollLinesSection({
         </div>
         <div>
           {/* คำตัดสินเจ้าของ 2026-10-28 — วันที่จ่ายเงิน = วันที่กดลงบัญชี (เลือกได้ที่หน้ารายละเอียดของใบตอนอนุมัติ/ลงบัญชี) */}
-          <span className="block text-xs font-medium mb-1">วันที่จ่ายเงิน</span>
+          <span className={formLabelClass}>วันที่จ่ายเงิน</span>
           <p className="rounded-lg border border-dashed border-border px-3 py-2 text-sm text-muted-foreground leading-snug">
             ใช้วันที่กดลงบัญชี — เลือกวันอื่นได้ตอนอนุมัติ/ลงบัญชี
           </p>

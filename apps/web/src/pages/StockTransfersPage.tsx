@@ -1,5 +1,6 @@
 import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
+import { formLabelClass } from '@/components/ui/form-styles';
 import { useId as useUiFieldId, useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router';
@@ -905,7 +906,7 @@ export default function StockTransfersPage() {
 
             {/* Batch notes */}
             <div>
-              <label htmlFor={`${uiFieldId}-1`} className="block text-sm font-medium text-foreground mb-1">หมายเหตุรวม</label>
+              <label htmlFor={`${uiFieldId}-1`} className={formLabelClass}>หมายเหตุรวม</label>
               <textarea id={`${uiFieldId}-1`}
                 value={batchReceiveNotes}
                 onChange={(e) => setBatchReceiveNotes(e.target.value)}
@@ -945,7 +946,7 @@ export default function StockTransfersPage() {
       >
         <div className="space-y-4">
           <div>
-            <label htmlFor={`${uiFieldId}-2`} className="block text-sm font-medium text-foreground mb-1">หมายเหตุการจัดส่ง (ถ้ามี)</label>
+            <label htmlFor={`${uiFieldId}-2`} className={formLabelClass}>หมายเหตุการจัดส่ง (ถ้ามี)</label>
             <textarea id={`${uiFieldId}-2`}
               value={shippingNote}
               onChange={(e) => setShippingNote(e.target.value)}

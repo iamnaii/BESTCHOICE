@@ -462,7 +462,7 @@ export default function PeakMappingSettings({ canEdit = false }: { canEdit?: boo
                             disabled={!canEdit || saveMutation.isPending}
                             onChange={(e) => onSourceChange(row, e.target.value)}
                             aria-label={`แหล่งรหัสย่อย สำหรับ ${row.code}`}
-                            className={isDirty ? 'border-warning' : ''}
+                            tone={isDirty ? 'warning' : 'default'}
                           >
                             {SUB_CODE_SOURCES.map((s) => (
                               <option key={s.value} value={s.value}>

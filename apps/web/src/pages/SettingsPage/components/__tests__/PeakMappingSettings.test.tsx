@@ -198,6 +198,18 @@ describe('PeakMappingSettings — sub-code columns', () => {
     });
   });
 
+  it('marks only the changed row source select with the warning border', async () => {
+    apiGet.mockResolvedValueOnce({ data: rows });
+    wrap(<PeakMappingSettings canEdit />);
+    await screen.findByText('53-1306');
+    const name = 'แหล่งรหัสย่อย สำหรับ 53-1306';
+    expect(screen.getByRole('combobox', { name })).not.toHaveClass('border-warning');
+    fireEvent.change(screen.getByRole('combobox', { name }), { target: { value: 'fixed' } });
+    expect(screen.getByRole('combobox', { name })).toHaveClass('border-warning');
+    expect(screen.getByRole('combobox', { name })).not.toHaveClass('border-input');
+    expect(screen.getByRole('combobox', { name: 'แหล่งรหัสย่อย สำหรับ 11-2101' })).not.toHaveClass('border-warning');
+  });
+
   it('switching a fixed row to a per-line source clears the sub-code', async () => {
     apiGet.mockResolvedValueOnce({ data: rows });
     apiPut.mockResolvedValueOnce({ data: { updated: 1 } });

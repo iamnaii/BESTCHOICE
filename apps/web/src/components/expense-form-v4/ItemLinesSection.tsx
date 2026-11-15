@@ -286,7 +286,7 @@ export function ItemLinesSection({ lines, onChange, priceTypeLabel }: Props) {
                     aria-label="คำอธิบาย"
                     value={line.description}
                     onChange={(e) => updateLine(line.uid, { description: e.target.value })}
-                    placeholder="ค่าไฟฟ้าสาขา A เดือน เม.ย. 2569"
+                    placeholder="คำอธิบายรายการ"
                     className={formControlClass}
                   />
                 </td>

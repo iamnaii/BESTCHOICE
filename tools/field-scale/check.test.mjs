@@ -14,6 +14,7 @@ import {
 } from './lib.mjs';
 import { ACCOUNT_CODE_RE, coaByCodes, coaGrouped, coaList, loadCoa, parseCsvLine } from './coa.mjs';
 import { menuClipVerdict } from './menu-clip.mjs';
+import { ADDRESS_FORM_HOSTS, COMMON_MOCKS, ROUTES } from './routes.mjs';
 
 const cell = (route, width, theme, findings, status = 'rendered', extra = {}) => ({
   route, width, theme, status, findings, probes: [], apiErrors: [], ...extra,
@@ -176,4 +177,53 @@ test('menuClipVerdict: fully visible menu passes; clipped or off-screen fails', 
   const offscreen = menuClipVerdict({ found: true, menu: { ...menu, bottom: 950 }, viewport, clippers: [] });
   assert.equal(offscreen.ok, false);
   assert.match(offscreen.reasons[0], /ล้นจอ 1440×900/);
+});
+
+test('routes: ids, paths, mocks and probes are well formed', () => {
+  const ids = ROUTES.map((r) => r.id);
+  assert.equal(new Set(ids).size, ids.length, 'unique ids');
+  for (const r of ROUTES) {
+    assert.match(r.id, /^[a-z0-9-]+$/);
+    assert.ok(typeof r.path === 'function' || (typeof r.path === 'string' && r.path.startsWith('/')), r.id);
+    assert.ok(Array.isArray(r.mocks) && Array.isArray(r.appendix), r.id);
+    assert.ok(r.open === undefined || typeof r.open === 'function', r.id);
+    for (const m of [...COMMON_MOCKS, ...r.mocks]) {
+      assert.ok(m.path instanceof RegExp && m.path.source.startsWith('^') && m.path.source.endsWith('$'), `${r.id}: ${m.path}`);
+      assert.equal(typeof m.json, 'function', `${r.id}: ${m.path}`);
+    }
+  }
+});
+
+test('routes: cover appendix ก, the 9 AddressForm hosts and both account-menu probes', () => {
+  const appendix = new Set(ROUTES.flatMap((r) => r.appendix));
+  for (const code of ['S1-01', 'S1-02', 'S1-03', 'S1-04', 'S1-05', 'S1-06', 'S2-01', 'S2-02', 'S2-03', 'S2-04', 'S2-05',
+    'S2-07', 'S2-08', 'S3-02', 'S3-03', 'S3-04', 'S3-05', 'S3-07', 'S3-09', 'S3-10', 'S3-12']) {
+    assert.ok(appendix.has(code), code);
+  }
+  const ids = new Set(ROUTES.map((r) => r.id));
+  assert.equal(ADDRESS_FORM_HOSTS.length, 9);
+  for (const id of ADDRESS_FORM_HOSTS) assert.ok(ids.has(id), id);
+  const probes = ROUTES.flatMap((r) => (r.probes ?? []).map((p) => [r.id, p.id, p.widths]));
+  assert.deepEqual(probes, [
+    ['other-income-items', 'account-menu-items-card', [1440]],
+    ['other-income-override', 'account-menu-override-jv', [1440]],
+  ]);
+});
+
+test('routes: common mocks answer from the CPA chart of accounts and the preview user', async () => {
+  const find = (path) => COMMON_MOCKS.find((m) => m.path.test(path));
+  const grouped = await find('/chart-of-accounts/grouped').json(new URL('http://x/api/admin/chart-of-accounts/grouped'), {});
+  assert.ok(grouped.groups.flatMap((g) => g.accounts).some((a) => a.code === '42-1102' && a.name === 'ดอกเบี้ยเงินฝาก'));
+  const byCodes = await find('/chart-of-accounts/by-codes').json(
+    new URL('http://x/api/admin/chart-of-accounts/by-codes?codes=11-1101,11-1201'), {},
+  );
+  assert.deepEqual(byCodes.map((r) => r.code), ['11-1101', '11-1201']);
+  assert.equal(find('/chart-of-accounts/grouped/x'), undefined, 'anchored');
+  const perms = await find('/accounting-permissions/me').json(new URL('http://x/'), {
+    me: { id: 'u1', name: 'ผู้ทดสอบ', role: 'OWNER' },
+  });
+  assert.deepEqual(perms.user, { id: 'u1', name: 'ผู้ทดสอบ', role: 'OWNER', branchId: null });
+  assert.ok(perms.permissions.includes('INCOME_POST'));
+  const roleMap = ROUTES.find((r) => r.id === 'account-role-edit').mocks[0].json();
+  assert.ok(roleMap.every((row) => row.accountName), 'role-map names come from the CSV');
 });

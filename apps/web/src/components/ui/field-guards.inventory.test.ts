@@ -593,8 +593,13 @@ const F5_SKIP_DIRS = new Set(['__tests__', 'test', 'tests', 'node_modules', 'dis
 const F5_TEST_FILE = /[.-](test|spec|docs-spec)\.[jt]sx?$/;
 const F5_MENU_ROLES = new Set(['listbox', 'menu']);
 const F5_ITEM_ROLES = new Set(['option', 'menuitem', 'listbox', 'menu']);
-const F5_INTERACTIVE_TAGS = new Set(['button', 'a', 'input', 'Button', 'CommandItem']);
-const F5_PORTAL_TAG = /Portal$|^PopoverContent$|^DropdownMenuContent$/;
+const F5_INTERACTIVE_TAGS = new Set(['button', 'a', 'input', 'Button', 'CommandItem', 'Link']);
+const F5_ITEM_HANDLERS = ['onClick', 'onMouseDown', 'onPointerDown', 'onSelect'];
+// Radix content components that render through a Portal (see components/ui: popover, dropdown-menu,
+// select, hover-card, context-menu; TooltipContent is portalled by the Radix tooltip primitive).
+const F5_PORTAL_TAG = /Portal$|^(Popover|DropdownMenu|Select|HoverCard|ContextMenu|Tooltip)Content$/;
+// Full-screen/edge overlays: `inset-0`, `inset-y-*`, `inset-[…]`. NOT `inset-x-*` (a full-width panel).
+const F5_OVERLAY_INSET = /^-?inset-(0|y-|\[)/;
 
 /**
  * Files allowed to keep an inline (non-portalled) `absolute` menu, with how many such
@@ -674,16 +679,30 @@ function f5ListTsx(dir: string, out: string[] = []): string[] {
 /**
  * 1-based lines of every inline menu panel in a .tsx source. A panel is a JSX element
  * whose className has `absolute` (any variant, resolving same-file `const` strings) and
- * no `inset-*`, that
+ * no overlay inset (`inset-0`, `inset-y-*`, `inset-[…]`; `inset-x-*` is a full-width panel
+ * and still counts), that
  *   (a) is placed against a trigger — `top-full` / `bottom-full` / `mt-*` / `mb-*`, a
  *       `style` with `top`/`bottom`, or role listbox/menu;
- *   (b) holds items — role listbox/menu, or a descendant button/a/input/Button/
- *       CommandItem, role option/menuitem, or onClick/onMouseDown;
- *   (c) is rendered on demand — right side of `&&`, a branch of `?:`, or the `return`
- *       after an `if (…) return null`;
- *   (d) is not inside *Portal / PopoverContent / DropdownMenuContent / createPortal().
- * Icons and clear buttons fail (a)/(c), badges and tooltips fail (b), image overlays use
- * `inset-*`, and Radix/cmdk menus are portalled (d).
+ *   (b) holds items — role listbox/menu, or a descendant button/a/input/Button/Link/
+ *       CommandItem, role option/menuitem, or onClick/onMouseDown/onPointerDown/onSelect;
+ *   (c) is rendered on demand — walking up through parentheses, fragments, wrapper
+ *       elements and `{…}` children, the nearest condition is the right side of `&&`, a
+ *       branch of `?:`, or the `return` after an `if (…) return null`;
+ *   (d) is not inside *Portal / Popover|DropdownMenu|Select|HoverCard|ContextMenu|Tooltip
+ *       Content / createPortal().
+ * Icons and clear buttons fail (a)/(c), badges and tooltips fail (b), image overlays and
+ * drawers use `inset-*`, and Radix/cmdk menus are portalled (d).
+ *
+ * Known limits (a static scan, not a layout engine):
+ *  - placement is recognised only by top-full, bottom-full, mt-N, mb-N, style top|bottom or a role;
+ *    a panel placed only with `top-N` / `right-N` classes is not seen;
+ *  - panels that are always rendered and shown with CSS (`hidden group-hover:block`,
+ *    `peer-focus:block`) are not "rendered on demand" and are not seen;
+ *  - a panel stored in a variable (`const panel = <div …/>`) and rendered as `{panel}`;
+ *  - class names built with clsx object syntax (`clsx({ absolute: open })`), and `style`
+ *    passed as a variable instead of an object literal;
+ *  - the allow-list counts panels per file: swapping one allow-listed panel for another in
+ *    the same file keeps the count and passes.
  */
 function findInlineMenuPanels(fileName: string, source: string): number[] {
   const ast = f5Ts.createSourceFile(fileName, source, f5Ts.ScriptTarget.Latest, true, f5Ts.ScriptKind.TSX);
@@ -748,21 +767,33 @@ function findInlineMenuPanels(fileName: string, source: string): number[] {
     );
   };
   const renderedOnDemand = (el: f5Ts.Node): boolean => {
+    // Walk up through wrappers (parentheses, fragments, elements, `{…}` children) to the nearest
+    // condition, so `{open && (<><backdrop/><div className="absolute …"/></>)}` still counts.
     let node = el;
-    while (node.parent && f5Ts.isParenthesizedExpression(node.parent)) node = node.parent;
-    const parent = node.parent;
-    if (!parent) return false;
-    if (f5Ts.isBinaryExpression(parent)) {
-      return parent.operatorToken.kind === f5Ts.SyntaxKind.AmpersandAmpersandToken && parent.right === node;
+    for (;;) {
+      const parent = node.parent;
+      if (!parent) return false;
+      if (
+        f5Ts.isParenthesizedExpression(parent) ||
+        f5Ts.isJsxFragment(parent) ||
+        f5Ts.isJsxElement(parent) ||
+        f5Ts.isJsxExpression(parent)
+      ) {
+        node = parent;
+        continue;
+      }
+      if (f5Ts.isBinaryExpression(parent)) {
+        return parent.operatorToken.kind === f5Ts.SyntaxKind.AmpersandAmpersandToken && parent.right === node;
+      }
+      if (f5Ts.isConditionalExpression(parent)) return parent.whenTrue === node || parent.whenFalse === node;
+      if (f5Ts.isReturnStatement(parent) && f5Ts.isBlock(parent.parent)) {
+        const body = parent.parent.statements;
+        return body
+          .slice(0, body.indexOf(parent))
+          .some((s) => f5Ts.isIfStatement(s) && /\breturn\s+null\b/.test(s.thenStatement.getText(ast)));
+      }
+      return false;
     }
-    if (f5Ts.isConditionalExpression(parent)) return parent.whenTrue === node || parent.whenFalse === node;
-    if (f5Ts.isReturnStatement(parent) && f5Ts.isBlock(parent.parent)) {
-      const body = parent.parent.statements;
-      return body
-        .slice(0, body.indexOf(parent))
-        .some((s) => f5Ts.isIfStatement(s) && /\breturn\s+null\b/.test(s.thenStatement.getText(ast)));
-    }
-    return false;
   };
   const insidePortal = (el: f5Ts.Node): boolean => {
     for (let node: f5Ts.Node | undefined = el.parent; node; node = node.parent) {
@@ -779,8 +810,7 @@ function findInlineMenuPanels(fileName: string, source: string): number[] {
         (f5Ts.isJsxOpeningElement(node) || f5Ts.isJsxSelfClosingElement(node)) &&
         (F5_INTERACTIVE_TAGS.has(node.tagName.getText(ast)) ||
           F5_ITEM_ROLES.has(roleOf(node)) ||
-          !!attr(node, 'onClick') ||
-          !!attr(node, 'onMouseDown'))
+          F5_ITEM_HANDLERS.some((handler) => !!attr(node, handler)))
       ) {
         found = true;
         return;
@@ -796,7 +826,7 @@ function findInlineMenuPanels(fileName: string, source: string): number[] {
     if (f5Ts.isJsxElement(node) || f5Ts.isJsxSelfClosingElement(node)) {
       const opening = f5Ts.isJsxElement(node) ? node.openingElement : node;
       const tokens = classTokens(opening);
-      if (tokens.includes('absolute') && !tokens.some((t) => /^-?inset-/.test(t))) {
+      if (tokens.includes('absolute') && !tokens.some((t) => F5_OVERLAY_INSET.test(t))) {
         const menuRole = F5_MENU_ROLES.has(roleOf(opening));
         const placed =
           menuRole ||
@@ -852,6 +882,49 @@ const F5_POSITIVE: [string, string][] = [
       return <div className="relative"><textarea />{show && (<div className="absolute z-50 w-80 bg-card shadow-xl" style={{ top: pos.top + 30, left: pos.left }}><button type="button">ตัวแปร</button></div>)}</div>;
     }`,
   ],
+  [
+    'fragment with a fixed inset-0 backdrop beside the panel',
+    `export function F({ open, setOpen }: { open: boolean; setOpen: (v: boolean) => void }) {
+      return <div className="relative">{open && (<><div className="fixed inset-0" onClick={() => setOpen(false)} />
+        <div className="absolute right-0 mt-2 w-56 rounded-md border bg-card shadow-lg"><button type="button">ลบ</button></div></>)}</div>;
+    }`,
+  ],
+  [
+    'panel inside a wrapper div that is under the condition',
+    `export function G({ open }: { open: boolean }) {
+      return <div className="relative">{open && (<div className="contents"><section><div className="absolute left-0 top-full mt-1"><button type="button">ก</button></div></section></div>)}</div>;
+    }`,
+  ],
+  [
+    'full-width panel with inset-x-0 top-full',
+    `export function H({ open }: { open: boolean }) {
+      return <div className="relative">{open && <div className="absolute inset-x-0 top-full z-20 border bg-card"><button type="button">ก</button></div>}</div>;
+    }`,
+  ],
+  [
+    'react-router <Link> items',
+    `export function I({ open }: { open: boolean }) {
+      return <div className="relative">{open && <div className="absolute right-0 mt-2 border bg-card"><Link to="/a">ก</Link></div>}</div>;
+    }`,
+  ],
+  [
+    'onSelect item',
+    `export function J({ open }: { open: boolean }) {
+      return <div className="relative">{open && <div className="absolute right-0 mt-2 border bg-card"><div onSelect={() => {}}>ก</div></div>}</div>;
+    }`,
+  ],
+  [
+    'onPointerDown item',
+    `export function K({ open }: { open: boolean }) {
+      return <div className="relative">{open && <div className="absolute right-0 mt-2 border bg-card"><li onPointerDown={() => {}}>ก</li></div>}</div>;
+    }`,
+  ],
+  [
+    'ternary panel inside a .map item',
+    `export function L({ rows, sel }: { rows: string[]; sel: string }) {
+      return <ul>{rows.map((r) => (<li key={r} className="relative">{r}{sel === r ? (<div className="absolute right-0 mt-1 border bg-card"><button type="button">ก</button></div>) : null}</li>))}</ul>;
+    }`,
+  ],
 ];
 
 const F5_NEGATIVE: [string, string][] = [
@@ -873,6 +946,26 @@ const F5_NEGATIVE: [string, string][] = [
         {open && (<div className="absolute mt-1 w-full"><button type="button">42-1102</button></div>)}
       </PopoverContent>
     </Popover>`,
+  ],
+  [
+    'inset-y-0 side drawer',
+    '<div>{open && (<div className="absolute inset-y-0 right-0 mt-0 w-80"><button type="button">ปิด</button></div>)}</div>',
+  ],
+  [
+    'inset-[…] overlay',
+    '<div>{open && (<div className="absolute inset-[2px] mt-1"><button type="button">ปิด</button></div>)}</div>',
+  ],
+  [
+    'Radix SelectContent portal',
+    '<Select>{open && (<SelectContent><div className="absolute mt-1"><button type="button">ก</button></div></SelectContent>)}</Select>',
+  ],
+  [
+    'Radix HoverCardContent portal',
+    '<HoverCard>{open && (<HoverCardContent><div className="absolute mt-1"><button type="button">ก</button></div></HoverCardContent>)}</HoverCard>',
+  ],
+  [
+    'Radix TooltipContent portal',
+    '<Tooltip>{open && (<TooltipContent><div className="absolute mt-1"><button type="button">ก</button></div></TooltipContent>)}</Tooltip>',
   ],
 ];
 

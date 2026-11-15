@@ -11476,7 +11476,7 @@ Spec §5 row F5 and §2 bullet "เมนูถูกตัด". This task adds 
   - Output goes to `.tmp/field-scale/menu-clip-components/{results.json,<Component>-<width>.png}`.
   - It needs the current-checkout preview: `previewStatus().current`, the same check as `tools/check-admin-typography.mjs`.
 
-**Current offenders (found by running the detector below on HEAD, 2026-11-14): 16 panels in 14 files**
+**Current offenders (found by running the detector below on HEAD, 2026-11-14): 15 panels in 13 files after Task 6 (16 in 14 before it replaces `AccountSearchDropdown`)**
 
 | File:line (under `apps/web/src/`) | Panels | What it is | After this plan |
 |---|---|---|---|
@@ -11535,8 +11535,13 @@ const F5_SKIP_DIRS = new Set(['__tests__', 'test', 'tests', 'node_modules', 'dis
 const F5_TEST_FILE = /[.-](test|spec|docs-spec)\.[jt]sx?$/;
 const F5_MENU_ROLES = new Set(['listbox', 'menu']);
 const F5_ITEM_ROLES = new Set(['option', 'menuitem', 'listbox', 'menu']);
-const F5_INTERACTIVE_TAGS = new Set(['button', 'a', 'input', 'Button', 'CommandItem']);
-const F5_PORTAL_TAG = /Portal$|^PopoverContent$|^DropdownMenuContent$/;
+const F5_INTERACTIVE_TAGS = new Set(['button', 'a', 'input', 'Button', 'CommandItem', 'Link']);
+const F5_ITEM_HANDLERS = ['onClick', 'onMouseDown', 'onPointerDown', 'onSelect'];
+// Radix content components that render through a Portal (see components/ui: popover, dropdown-menu,
+// select, hover-card, context-menu; TooltipContent is portalled by the Radix tooltip primitive).
+const F5_PORTAL_TAG = /Portal$|^(Popover|DropdownMenu|Select|HoverCard|ContextMenu|Tooltip)Content$/;
+// Full-screen/edge overlays: `inset-0`, `inset-y-*`, `inset-[…]`. NOT `inset-x-*` (a full-width panel).
+const F5_OVERLAY_INSET = /^-?inset-(0|y-|\[)/;
 
 /**
  * Files allowed to keep an inline (non-portalled) `absolute` menu, with how many such
@@ -11561,16 +11566,30 @@ function f5ListTsx(dir: string, out: string[] = []): string[] {
 /**
  * 1-based lines of every inline menu panel in a .tsx source. A panel is a JSX element
  * whose className has `absolute` (any variant, resolving same-file `const` strings) and
- * no `inset-*`, that
+ * no overlay inset (`inset-0`, `inset-y-*`, `inset-[…]`; `inset-x-*` is a full-width panel
+ * and still counts), that
  *   (a) is placed against a trigger — `top-full` / `bottom-full` / `mt-*` / `mb-*`, a
  *       `style` with `top`/`bottom`, or role listbox/menu;
- *   (b) holds items — role listbox/menu, or a descendant button/a/input/Button/
- *       CommandItem, role option/menuitem, or onClick/onMouseDown;
- *   (c) is rendered on demand — right side of `&&`, a branch of `?:`, or the `return`
- *       after an `if (…) return null`;
- *   (d) is not inside *Portal / PopoverContent / DropdownMenuContent / createPortal().
- * Icons and clear buttons fail (a)/(c), badges and tooltips fail (b), image overlays use
- * `inset-*`, and Radix/cmdk menus are portalled (d).
+ *   (b) holds items — role listbox/menu, or a descendant button/a/input/Button/Link/
+ *       CommandItem, role option/menuitem, or onClick/onMouseDown/onPointerDown/onSelect;
+ *   (c) is rendered on demand — walking up through parentheses, fragments, wrapper
+ *       elements and `{…}` children, the nearest condition is the right side of `&&`, a
+ *       branch of `?:`, or the `return` after an `if (…) return null`;
+ *   (d) is not inside *Portal / Popover|DropdownMenu|Select|HoverCard|ContextMenu|Tooltip
+ *       Content / createPortal().
+ * Icons and clear buttons fail (a)/(c), badges and tooltips fail (b), image overlays and
+ * drawers use `inset-*`, and Radix/cmdk menus are portalled (d).
+ *
+ * Known limits (a static scan, not a layout engine):
+ *  - placement is recognised only by top-full, bottom-full, mt-N, mb-N, style top|bottom or a role;
+ *    a panel placed only with `top-N` / `right-N` classes is not seen;
+ *  - panels that are always rendered and shown with CSS (`hidden group-hover:block`,
+ *    `peer-focus:block`) are not "rendered on demand" and are not seen;
+ *  - a panel stored in a variable (`const panel = <div …/>`) and rendered as `{panel}`;
+ *  - class names built with clsx object syntax (`clsx({ absolute: open })`), and `style`
+ *    passed as a variable instead of an object literal;
+ *  - the allow-list counts panels per file: swapping one allow-listed panel for another in
+ *    the same file keeps the count and passes.
  */
 function findInlineMenuPanels(fileName: string, source: string): number[] {
   const ast = f5Ts.createSourceFile(fileName, source, f5Ts.ScriptTarget.Latest, true, f5Ts.ScriptKind.TSX);
@@ -11635,21 +11654,33 @@ function findInlineMenuPanels(fileName: string, source: string): number[] {
     );
   };
   const renderedOnDemand = (el: f5Ts.Node): boolean => {
+    // Walk up through wrappers (parentheses, fragments, elements, `{…}` children) to the nearest
+    // condition, so `{open && (<><backdrop/><div className="absolute …"/></>)}` still counts.
     let node = el;
-    while (node.parent && f5Ts.isParenthesizedExpression(node.parent)) node = node.parent;
-    const parent = node.parent;
-    if (!parent) return false;
-    if (f5Ts.isBinaryExpression(parent)) {
-      return parent.operatorToken.kind === f5Ts.SyntaxKind.AmpersandAmpersandToken && parent.right === node;
+    for (;;) {
+      const parent = node.parent;
+      if (!parent) return false;
+      if (
+        f5Ts.isParenthesizedExpression(parent) ||
+        f5Ts.isJsxFragment(parent) ||
+        f5Ts.isJsxElement(parent) ||
+        f5Ts.isJsxExpression(parent)
+      ) {
+        node = parent;
+        continue;
+      }
+      if (f5Ts.isBinaryExpression(parent)) {
+        return parent.operatorToken.kind === f5Ts.SyntaxKind.AmpersandAmpersandToken && parent.right === node;
+      }
+      if (f5Ts.isConditionalExpression(parent)) return parent.whenTrue === node || parent.whenFalse === node;
+      if (f5Ts.isReturnStatement(parent) && f5Ts.isBlock(parent.parent)) {
+        const body = parent.parent.statements;
+        return body
+          .slice(0, body.indexOf(parent))
+          .some((s) => f5Ts.isIfStatement(s) && /\breturn\s+null\b/.test(s.thenStatement.getText(ast)));
+      }
+      return false;
     }
-    if (f5Ts.isConditionalExpression(parent)) return parent.whenTrue === node || parent.whenFalse === node;
-    if (f5Ts.isReturnStatement(parent) && f5Ts.isBlock(parent.parent)) {
-      const body = parent.parent.statements;
-      return body
-        .slice(0, body.indexOf(parent))
-        .some((s) => f5Ts.isIfStatement(s) && /\breturn\s+null\b/.test(s.thenStatement.getText(ast)));
-    }
-    return false;
   };
   const insidePortal = (el: f5Ts.Node): boolean => {
     for (let node: f5Ts.Node | undefined = el.parent; node; node = node.parent) {
@@ -11666,8 +11697,7 @@ function findInlineMenuPanels(fileName: string, source: string): number[] {
         (f5Ts.isJsxOpeningElement(node) || f5Ts.isJsxSelfClosingElement(node)) &&
         (F5_INTERACTIVE_TAGS.has(node.tagName.getText(ast)) ||
           F5_ITEM_ROLES.has(roleOf(node)) ||
-          !!attr(node, 'onClick') ||
-          !!attr(node, 'onMouseDown'))
+          F5_ITEM_HANDLERS.some((handler) => !!attr(node, handler)))
       ) {
         found = true;
         return;
@@ -11683,7 +11713,7 @@ function findInlineMenuPanels(fileName: string, source: string): number[] {
     if (f5Ts.isJsxElement(node) || f5Ts.isJsxSelfClosingElement(node)) {
       const opening = f5Ts.isJsxElement(node) ? node.openingElement : node;
       const tokens = classTokens(opening);
-      if (tokens.includes('absolute') && !tokens.some((t) => /^-?inset-/.test(t))) {
+      if (tokens.includes('absolute') && !tokens.some((t) => F5_OVERLAY_INSET.test(t))) {
         const menuRole = F5_MENU_ROLES.has(roleOf(opening));
         const placed =
           menuRole ||
@@ -11739,6 +11769,49 @@ const F5_POSITIVE: [string, string][] = [
       return <div className="relative"><textarea />{show && (<div className="absolute z-50 w-80 bg-card shadow-xl" style={{ top: pos.top + 30, left: pos.left }}><button type="button">ตัวแปร</button></div>)}</div>;
     }`,
   ],
+  [
+    'fragment with a fixed inset-0 backdrop beside the panel',
+    `export function F({ open, setOpen }: { open: boolean; setOpen: (v: boolean) => void }) {
+      return <div className="relative">{open && (<><div className="fixed inset-0" onClick={() => setOpen(false)} />
+        <div className="absolute right-0 mt-2 w-56 rounded-md border bg-card shadow-lg"><button type="button">ลบ</button></div></>)}</div>;
+    }`,
+  ],
+  [
+    'panel inside a wrapper div that is under the condition',
+    `export function G({ open }: { open: boolean }) {
+      return <div className="relative">{open && (<div className="contents"><section><div className="absolute left-0 top-full mt-1"><button type="button">ก</button></div></section></div>)}</div>;
+    }`,
+  ],
+  [
+    'full-width panel with inset-x-0 top-full',
+    `export function H({ open }: { open: boolean }) {
+      return <div className="relative">{open && <div className="absolute inset-x-0 top-full z-20 border bg-card"><button type="button">ก</button></div>}</div>;
+    }`,
+  ],
+  [
+    'react-router <Link> items',
+    `export function I({ open }: { open: boolean }) {
+      return <div className="relative">{open && <div className="absolute right-0 mt-2 border bg-card"><Link to="/a">ก</Link></div>}</div>;
+    }`,
+  ],
+  [
+    'onSelect item',
+    `export function J({ open }: { open: boolean }) {
+      return <div className="relative">{open && <div className="absolute right-0 mt-2 border bg-card"><div onSelect={() => {}}>ก</div></div>}</div>;
+    }`,
+  ],
+  [
+    'onPointerDown item',
+    `export function K({ open }: { open: boolean }) {
+      return <div className="relative">{open && <div className="absolute right-0 mt-2 border bg-card"><li onPointerDown={() => {}}>ก</li></div>}</div>;
+    }`,
+  ],
+  [
+    'ternary panel inside a .map item',
+    `export function L({ rows, sel }: { rows: string[]; sel: string }) {
+      return <ul>{rows.map((r) => (<li key={r} className="relative">{r}{sel === r ? (<div className="absolute right-0 mt-1 border bg-card"><button type="button">ก</button></div>) : null}</li>))}</ul>;
+    }`,
+  ],
 ];
 
 const F5_NEGATIVE: [string, string][] = [
@@ -11760,6 +11833,26 @@ const F5_NEGATIVE: [string, string][] = [
         {open && (<div className="absolute mt-1 w-full"><button type="button">42-1102</button></div>)}
       </PopoverContent>
     </Popover>`,
+  ],
+  [
+    'inset-y-0 side drawer',
+    '<div>{open && (<div className="absolute inset-y-0 right-0 mt-0 w-80"><button type="button">ปิด</button></div>)}</div>',
+  ],
+  [
+    'inset-[…] overlay',
+    '<div>{open && (<div className="absolute inset-[2px] mt-1"><button type="button">ปิด</button></div>)}</div>',
+  ],
+  [
+    'Radix SelectContent portal',
+    '<Select>{open && (<SelectContent><div className="absolute mt-1"><button type="button">ก</button></div></SelectContent>)}</Select>',
+  ],
+  [
+    'Radix HoverCardContent portal',
+    '<HoverCard>{open && (<HoverCardContent><div className="absolute mt-1"><button type="button">ก</button></div></HoverCardContent>)}</HoverCard>',
+  ],
+  [
+    'Radix TooltipContent portal',
+    '<Tooltip>{open && (<TooltipContent><div className="absolute mt-1"><button type="button">ก</button></div></TooltipContent>)}</Tooltip>',
   ],
 ];
 
@@ -11810,7 +11903,7 @@ npm run test --workspace=apps/web -- src/components/ui/field-guards.inventory.te
 ```
 
 Expected result:
-- The 12 `detector flags:` / `detector ignores:` tests pass.
+- The 24 `detector flags:` / `detector ignores:` tests pass.
 - `every allow-list entry says why it may stay` passes.
 - Tasks 7/9/10's existing tests pass.
 - Exactly one test fails:
@@ -11915,7 +12008,7 @@ const F5_NON_PORTAL_MENU_ALLOW: Record<string, { panels: number; reason: string 
 npm run test --workspace=apps/web -- src/components/ui/field-guards.inventory.test.ts
 ```
 
-Expected: every test in the file passes. That includes all 14 F5 tests: 5 `detector flags:`, 7 `detector ignores:`, `every allow-list entry says why it may stay`, and `only allow-listed files render an absolute menu outside a portal`. Exit code 0.
+Expected: every test in the file passes. That includes all 26 F5 tests: 12 `detector flags:`, 12 `detector ignores:`, `every allow-list entry says why it may stay`, and `only allow-listed files render an absolute menu outside a portal`. Exit code 0.
 
 - [ ] **Step 5: Lint and type-check the web app**
 
@@ -11932,8 +12025,12 @@ Expected: no new errors from `field-guards.inventory.test.ts`. The drafted block
 // F5 (spec 2026-11-14 §5): one browser case per component that the static guard
 // (apps/web/src/components/ui/field-guards.inventory.test.ts) lets keep an inline,
 // non-portalled menu. Opens each menu on the local preview and checks the list box is
-// inside the viewport and inside every ancestor that clips overflow. Saves nothing:
-// mutating requests on mocked routes are aborted, and no form is submitted.
+// inside the viewport and inside every ancestor that clips overflow. Saves nothing: every
+// non-GET /api request the browser makes is aborted (and listed in results.json), and no
+// form is submitted. The one write the script itself makes is the preview actor switch to
+// OWNER (a plain fetch from node, not from the browser). The preview exposes no way to read
+// or restore the previous actor, so the actor stays OWNER — which is the preview's startup
+// default (apps/api/e2e/support/chat-credit-preview.ts: actor = the OWNER preview user).
 //
 // Run: npm run local:preview (once) → node tools/field-scale/menu-clip-components.mjs
 import assert from 'node:assert/strict';
@@ -12052,35 +12149,14 @@ const CASES = [
   },
   {
     name: 'NameAutocomplete',
-    where: '/canned-responses → หมวดทดสอบ 01 → แม่แบบทดสอบเมนู 01 → ช่อง "หมวด"',
-    // The page puts a fixed 384px tree beside the editor, so at 390px the editor (and
-    // every field in it) is 0px wide — a page-layout problem, not the menu's.
-    skip: { 390: 'หน้า /canned-responses ไม่มีเลย์เอาต์มือถือ (ต้นไม้หมวดกว้าง 384px ตายตัว แผงแก้ไขเหลือ 0px)' },
+    where: '/assets/new → ช่อง "ผู้รับผิดชอบ"',
     async open(page, origin) {
-      const templates = Array.from({ length: 12 }, (_, i) => {
-        const n = String(i + 1).padStart(2, '0');
-        return {
-          id: `f5-template-${n}`,
-          shortcut: `/f5-${n}`,
-          title: `แม่แบบทดสอบเมนู ${n}`,
-          content: '',
-          category: `หมวดทดสอบ ${n}`,
-          sortOrder: i + 1,
-          isActive: true,
-          hideFromChat: false,
-          verifiedOnly: false,
-          createdAt: '2026-11-14T00:00:00.000Z',
-        };
-      });
-      await mockGet(page, /\/staff-chat\/canned-responses(?:\/[^/?]+\/(?:bubbles|quick-replies))?(?:\?|$)/, (url) =>
-        /\/(?:bubbles|quick-replies)$/.test(url.pathname) ? [] : templates,
-      );
-      await page.goto(`${origin}/canned-responses`);
-      await page.getByText('หมวดทดสอบ 01', { exact: true }).click();
-      await page.getByText('แม่แบบทดสอบเมนู 01', { exact: true }).click();
-      await page.getByRole('combobox', { name: 'หมวด', exact: true }).fill('หมวดทดสอบ');
+      await page.goto(`${origin}/assets/new`);
+      const field = page.getByRole('combobox', { name: 'ผู้รับผิดชอบ *', exact: true });
+      await field.evaluate((e) => e.scrollIntoView({ block: 'center' }));
+      await field.click();
       const list = page.getByRole('listbox', { name: 'รายชื่อที่แนะนำ', exact: true });
-      await expect(list.getByRole('option')).toHaveCount(12);
+      await expect(list.getByRole('option').first()).toBeVisible();
       return list.locator('xpath=..');
     },
   },
@@ -12135,8 +12211,10 @@ assert.ok(status.running && status.current, 'Run npm run local:preview in this c
 const origin = `http://localhost:${status.state.port}`;
 const info = await (await fetch(`${origin}/api/admin/preview/info`)).json();
 assert.equal(info.isolated, true, 'Only run against the isolated local preview');
-// Other local checks switch the synthetic actor; these pages need OWNER.
+// Other local checks switch the synthetic actor; these pages need OWNER. This is the only
+// write the script makes (from node, outside the browser); there is no endpoint to undo it.
 assert.equal((await fetch(`${origin}/api/preview/actor/owner`, { method: 'POST' })).status, 201);
+const apiRequests = [];
 
 const artifacts = join(repo, '.tmp/field-scale/menu-clip-components');
 mkdirSync(artifacts, { recursive: true });
@@ -12147,16 +12225,19 @@ try {
   for (const width of WIDTHS) {
     for (const c of CASES) {
       const label = `${c.name} ${width}px`;
-      if (c.skip?.[width]) {
-        results.push({ component: c.name, width, status: 'SKIP', reason: c.skip[width] });
-        console.log(`SKIP ${label}: ${c.skip[width]}`);
-        continue;
-      }
       const context = await browser.newContext({
         viewport: { width, height: width < 1024 ? 844 : 900 },
         reducedMotion: 'reduce',
       });
       await context.routeWebSocket('**/socket.io/**', (socket) => socket.close());
+      // Nothing may be saved: abort every non-GET API call the page makes (page-level mocks in
+      // mockGet run first and abort non-GET too). 'request' fires for aborted requests as well.
+      await context.route('**/api/**', (route) =>
+        route.request().method() === 'GET' ? route.fallback() : route.abort(),
+      );
+      context.on('request', (request) => {
+        if (request.url().includes('/api/')) apiRequests.push({ case: label, method: request.method(), url: new URL(request.url()).pathname });
+      });
       const page = await context.newPage();
       try {
         const list = await c.open(page, origin, info);
@@ -12166,11 +12247,15 @@ try {
         const issues = await list.evaluate(clipIssues);
         await page.screenshot({ path: join(artifacts, `${c.name}-${width}.png`) });
         const known = STRICT ? undefined : c.known?.[width];
-        if (known && issues.some((i) => i.by === known.by)) {
+        if (known && issues.length > 0 && issues.every((i) => i.by === known.by)) {
           results.push({ component: c.name, width, status: 'KNOWN', note: known.note, issues });
           console.log(`KNOWN ${label}: ${known.note}`);
         } else if (known) {
-          failures.push(`${label}: known issue "${known.note}" no longer reproduces — remove it from KNOWN`);
+          failures.push(
+            issues.some((i) => i.by === known.by)
+              ? `${label} (${c.where}): known issue "${known.note}" plus a new cut ${JSON.stringify(issues.filter((i) => i.by !== known.by))}`
+              : `${label}: known issue "${known.note}" no longer reproduces — remove it from KNOWN`,
+          );
           results.push({ component: c.name, width, status: 'FAIL', issues });
         } else if (issues.length) {
           failures.push(`${label} (${c.where}): list box is cut ${JSON.stringify(issues)}`);
@@ -12190,24 +12275,35 @@ try {
   }
 } finally {
   await browser.close();
-  writeFileSync(join(artifacts, 'results.json'), JSON.stringify({ origin, results, failures }, null, 2) + '\n');
+  writeFileSync(join(artifacts, 'results.json'), JSON.stringify(
+      {
+        origin,
+        results,
+        failures,
+        // every non-GET API request the browser attempted — all aborted
+        abortedWrites: apiRequests.filter((r) => r.method !== 'GET'),
+        apiRequestCount: apiRequests.length,
+      },
+      null,
+      2,
+    ) + '\n');
 }
 const count = (s) => results.filter((r) => r.status === s).length;
 if (failures.length) {
   console.error(`\nFAIL menu clip:\n- ${failures.join('\n- ')}`);
   process.exitCode = 1;
 } else {
-  console.log(`\nPASS menu clip: ${count('PASS')} passed · ${count('KNOWN')} known · ${count('SKIP')} skipped → ${artifacts}`);
+  console.log(`\nPASS menu clip: ${count('PASS')} passed · ${count('KNOWN')} known → ${artifacts}`);
 }
 ```
 
-How each case reaches its component. All are open-only: no save button is pressed, and every mocked route aborts non-GET requests.
+How each case reaches its component. All are open-only: no save button is pressed, and the browser context aborts every non-GET `/api` request (they are listed in `results.json` as `abortedWrites`). The script's only write is the actor switch to OWNER, sent from node; the preview has no endpoint to read or undo it and OWNER is its startup default.
 
 | Component | Page (preview) | Open action | Locator of the measured box | Mocks (preview answers 501 or empty) |
 |---|---|---|---|---|
 | NoteMentionInput | `/inbox/<info.chatWorkRooms.SHOP>?zone=shop` | radio `โน้ตภายใน` (on mobile: button `เลือกโหมดช่องพิมพ์` → menuitemradio `โน้ตภายใน · ลูกค้าไม่เห็น`), then click combobox `แจ้งเตือนเพื่อนร่วมทีม` | listbox `เพื่อนร่วมทีมที่มีสิทธิ์ในห้องนี้` | none (eligible-staff is real in preview) |
 | SearchableSelect | `/customers` | button `+ เพิ่มลูกค้าใหม่`/`+ เพิ่มผู้สนใจใหม่` → heading `ที่อยู่` (`<details>`) → first combobox `จังหวัด *` scrolled to the centre → click | listbox `-- เลือกจังหวัด --` (opens upwards) | none (address data is a bundled chunk) |
-| NameAutocomplete | `/canned-responses` | text `หมวดทดสอบ 01` (expand) → text `แม่แบบทดสอบเมนู 01` → fill combobox `หมวด` with `หมวดทดสอบ` | parent of listbox `รายชื่อที่แนะนำ` (the `absolute` div) | `GET /staff-chat/canned-responses?includeHidden=true` → `CannedResponse[]` (`id, shortcut, title, content, category, sortOrder, isActive, hideFromChat, verifiedOnly, createdAt`) · `GET …/:id/bubbles` and `…/:id/quick-replies` → `[]` |
+| NameAutocomplete | `/assets/new` | click combobox `ผู้รับผิดชอบ *` | parent of listbox `รายชื่อที่แนะนำ` (the `absolute` div) | none |
 | TemplatePickerCombobox | `/other-income/new` | button `ใช้แม่แบบ` | the trigger's following-sibling `div` (no role on this panel) | `GET /other-income/templates` → `[{ id, name, itemsJson: [{}], useCount }]` |
 | CatalogPicker | `/purchase-orders` | button `+ ซื้อสินค้า` → in dialog `ซื้อสินค้า` fill combobox `ค้นหารุ่น` with `iphone` | parent of the cmdk `listbox` (the `absolute` panel, including its footer) | `GET /purchase-orders` → `[]` · `/purchase-orders/summary` → `{}` · `/suppliers?limit=200&isActive=true` → `{ data: [], total: 0 }` |
 
@@ -12253,11 +12349,11 @@ KNOWN TemplatePickerCombobox 1024px: กล่องกว้าง 288px ชิ
 PASS CatalogPicker 1024px
 PASS NoteMentionInput 390px
 PASS SearchableSelect 390px
-SKIP NameAutocomplete 390px: หน้า /canned-responses ไม่มีเลย์เอาต์มือถือ (ต้นไม้หมวดกว้าง 384px ตายตัว แผงแก้ไขเหลือ 0px)
+PASS NameAutocomplete 390px
 KNOWN TemplatePickerCombobox 390px: เลยขอบขวาจอ (258→546 บนจอ 390)
 PASS CatalogPicker 390px
 
-PASS menu clip: 12 passed · 2 known · 1 skipped → D:\BESTCHOICE APP\BESTCHOICE\.tmp\field-scale\menu-clip-components
+PASS menu clip: 13 passed · 2 known → D:\BESTCHOICE APP\BESTCHOICE\.tmp\field-scale\menu-clip-components
 exit 0
 ```
 
@@ -12275,8 +12371,9 @@ test(field-scale): F5 guard for non-portalled menus + per-component clip checks
 
 - field-guards.inventory.test.ts: self-contained F5 block — TS-AST detector for inline
   `absolute` menu panels (placed against a trigger, holding items, rendered on demand,
-  not portalled), 12 fixture tests (icons/badges/tooltips/overlays/Radix wrappers and the
-  post-Task-6 PopoverContent are ignored), exact-match allow-list: the spec's four +
+  not portalled), 24 fixture tests (wrapped/fragment/full-width/Link/onSelect/onPointerDown/ternary-in-map panels
+  are flagged; icons/badges/tooltips/overlays/drawers/Radix wrappers and the post-Task-6
+  PopoverContent, SelectContent, HoverCardContent, TooltipContent are ignored), exact-match allow-list: the spec's four +
   SearchableSelect (R2-2 replaces it) + 8 pre-existing menus pending an owner decision.
   AccountSearchDropdown is not allow-listed (portalled by Task 6).
 - tools/field-scale/menu-clip-components.mjs: opens NoteMentionInput, SearchableSelect,

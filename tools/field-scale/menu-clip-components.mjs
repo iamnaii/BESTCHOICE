@@ -1,8 +1,12 @@
 // F5 (spec 2026-11-14 §5): one browser case per component that the static guard
 // (apps/web/src/components/ui/field-guards.inventory.test.ts) lets keep an inline,
 // non-portalled menu. Opens each menu on the local preview and checks the list box is
-// inside the viewport and inside every ancestor that clips overflow. Saves nothing:
-// mutating requests on mocked routes are aborted, and no form is submitted.
+// inside the viewport and inside every ancestor that clips overflow. Saves nothing: every
+// non-GET /api request the browser makes is aborted (and listed in results.json), and no
+// form is submitted. The one write the script itself makes is the preview actor switch to
+// OWNER (a plain fetch from node, not from the browser). The preview exposes no way to read
+// or restore the previous actor, so the actor stays OWNER — which is the preview's startup
+// default (apps/api/e2e/support/chat-credit-preview.ts: actor = the OWNER preview user).
 //
 // Run: npm run local:preview (once) → node tools/field-scale/menu-clip-components.mjs
 import assert from 'node:assert/strict';
@@ -121,35 +125,14 @@ const CASES = [
   },
   {
     name: 'NameAutocomplete',
-    where: '/canned-responses → หมวดทดสอบ 01 → แม่แบบทดสอบเมนู 01 → ช่อง "หมวด"',
-    // The page puts a fixed 384px tree beside the editor, so at 390px the editor (and
-    // every field in it) is 0px wide — a page-layout problem, not the menu's.
-    skip: { 390: 'หน้า /canned-responses ไม่มีเลย์เอาต์มือถือ (ต้นไม้หมวดกว้าง 384px ตายตัว แผงแก้ไขเหลือ 0px)' },
+    where: '/assets/new → ช่อง "ผู้รับผิดชอบ"',
     async open(page, origin) {
-      const templates = Array.from({ length: 12 }, (_, i) => {
-        const n = String(i + 1).padStart(2, '0');
-        return {
-          id: `f5-template-${n}`,
-          shortcut: `/f5-${n}`,
-          title: `แม่แบบทดสอบเมนู ${n}`,
-          content: '',
-          category: `หมวดทดสอบ ${n}`,
-          sortOrder: i + 1,
-          isActive: true,
-          hideFromChat: false,
-          verifiedOnly: false,
-          createdAt: '2026-11-14T00:00:00.000Z',
-        };
-      });
-      await mockGet(page, /\/staff-chat\/canned-responses(?:\/[^/?]+\/(?:bubbles|quick-replies))?(?:\?|$)/, (url) =>
-        /\/(?:bubbles|quick-replies)$/.test(url.pathname) ? [] : templates,
-      );
-      await page.goto(`${origin}/canned-responses`);
-      await page.getByText('หมวดทดสอบ 01', { exact: true }).click();
-      await page.getByText('แม่แบบทดสอบเมนู 01', { exact: true }).click();
-      await page.getByRole('combobox', { name: 'หมวด', exact: true }).fill('หมวดทดสอบ');
+      await page.goto(`${origin}/assets/new`);
+      const field = page.getByRole('combobox', { name: 'ผู้รับผิดชอบ *', exact: true });
+      await field.evaluate((e) => e.scrollIntoView({ block: 'center' }));
+      await field.click();
       const list = page.getByRole('listbox', { name: 'รายชื่อที่แนะนำ', exact: true });
-      await expect(list.getByRole('option')).toHaveCount(12);
+      await expect(list.getByRole('option').first()).toBeVisible();
       return list.locator('xpath=..');
     },
   },
@@ -204,8 +187,10 @@ assert.ok(status.running && status.current, 'Run npm run local:preview in this c
 const origin = `http://localhost:${status.state.port}`;
 const info = await (await fetch(`${origin}/api/admin/preview/info`)).json();
 assert.equal(info.isolated, true, 'Only run against the isolated local preview');
-// Other local checks switch the synthetic actor; these pages need OWNER.
+// Other local checks switch the synthetic actor; these pages need OWNER. This is the only
+// write the script makes (from node, outside the browser); there is no endpoint to undo it.
 assert.equal((await fetch(`${origin}/api/preview/actor/owner`, { method: 'POST' })).status, 201);
+const apiRequests = [];
 
 const artifacts = join(repo, '.tmp/field-scale/menu-clip-components');
 mkdirSync(artifacts, { recursive: true });
@@ -216,16 +201,19 @@ try {
   for (const width of WIDTHS) {
     for (const c of CASES) {
       const label = `${c.name} ${width}px`;
-      if (c.skip?.[width]) {
-        results.push({ component: c.name, width, status: 'SKIP', reason: c.skip[width] });
-        console.log(`SKIP ${label}: ${c.skip[width]}`);
-        continue;
-      }
       const context = await browser.newContext({
         viewport: { width, height: width < 1024 ? 844 : 900 },
         reducedMotion: 'reduce',
       });
       await context.routeWebSocket('**/socket.io/**', (socket) => socket.close());
+      // Nothing may be saved: abort every non-GET API call the page makes (page-level mocks in
+      // mockGet run first and abort non-GET too). 'request' fires for aborted requests as well.
+      await context.route('**/api/**', (route) =>
+        route.request().method() === 'GET' ? route.fallback() : route.abort(),
+      );
+      context.on('request', (request) => {
+        if (request.url().includes('/api/')) apiRequests.push({ case: label, method: request.method(), url: new URL(request.url()).pathname });
+      });
       const page = await context.newPage();
       try {
         const list = await c.open(page, origin, info);
@@ -235,11 +223,15 @@ try {
         const issues = await list.evaluate(clipIssues);
         await page.screenshot({ path: join(artifacts, `${c.name}-${width}.png`) });
         const known = STRICT ? undefined : c.known?.[width];
-        if (known && issues.some((i) => i.by === known.by)) {
+        if (known && issues.length > 0 && issues.every((i) => i.by === known.by)) {
           results.push({ component: c.name, width, status: 'KNOWN', note: known.note, issues });
           console.log(`KNOWN ${label}: ${known.note}`);
         } else if (known) {
-          failures.push(`${label}: known issue "${known.note}" no longer reproduces — remove it from KNOWN`);
+          failures.push(
+            issues.some((i) => i.by === known.by)
+              ? `${label} (${c.where}): known issue "${known.note}" plus a new cut ${JSON.stringify(issues.filter((i) => i.by !== known.by))}`
+              : `${label}: known issue "${known.note}" no longer reproduces — remove it from KNOWN`,
+          );
           results.push({ component: c.name, width, status: 'FAIL', issues });
         } else if (issues.length) {
           failures.push(`${label} (${c.where}): list box is cut ${JSON.stringify(issues)}`);
@@ -259,12 +251,23 @@ try {
   }
 } finally {
   await browser.close();
-  writeFileSync(join(artifacts, 'results.json'), JSON.stringify({ origin, results, failures }, null, 2) + '\n');
+  writeFileSync(join(artifacts, 'results.json'), JSON.stringify(
+      {
+        origin,
+        results,
+        failures,
+        // every non-GET API request the browser attempted — all aborted
+        abortedWrites: apiRequests.filter((r) => r.method !== 'GET'),
+        apiRequestCount: apiRequests.length,
+      },
+      null,
+      2,
+    ) + '\n');
 }
 const count = (s) => results.filter((r) => r.status === s).length;
 if (failures.length) {
   console.error(`\nFAIL menu clip:\n- ${failures.join('\n- ')}`);
   process.exitCode = 1;
 } else {
-  console.log(`\nPASS menu clip: ${count('PASS')} passed · ${count('KNOWN')} known · ${count('SKIP')} skipped → ${artifacts}`);
+  console.log(`\nPASS menu clip: ${count('PASS')} passed · ${count('KNOWN')} known → ${artifacts}`);
 }

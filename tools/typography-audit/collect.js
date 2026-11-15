@@ -669,7 +669,7 @@
  *     ignoring boxes that cover ≥ 90% of it on both axes
  *
  * TargetFact { type: 'target', id, key, role, scope, scroller, targetAncestors, x, y, w, h, coveredBy,
- *   stickyBar, scrollRoom }
+ *   stickyBar, scrollChecks }
  *   - one per visible interactive element: a[href], button, input (not hidden), select, textarea,
  *     summary, [role=button|combobox|tab|switch|checkbox|radio|link|menuitem]
  *   - role: the role attribute, else 'link' (a) | 'field' (input/select/textarea) | 'button'
@@ -679,17 +679,19 @@
  *   - targetAncestors: ids of target facts that contain this element
  *   - coveredBy: id of another, unrelated target that elementFromPoint returns at this element centre
  *     (a <label> resolves to its control) — only when the centre is inside the viewport, else null
- *   - stickyBar: { position: 'sticky' | 'fixed', edge: 'top' | 'bottom' | null, scroller, x, y, w, h }
- *     of the nearest element from this one up (html/body excluded) whose position is sticky or fixed,
- *     else null. edge: sticky with only `bottom` set → 'bottom', only `top` → 'top'; fixed touching
- *     only the viewport bottom → 'bottom', only its top → 'top'; else null. scroller: container id of
- *     the box the bar stays put in — sticky: its nearest ancestor with overflow auto/scroll/hidden;
- *     fixed: the bar's own `scroller` (as above); null = the document
- *   - scrollRoom: { up, down } px the target's scroll container (the document when scroller is null)
- *     can still scroll: up = scrollTop, down = scrollHeight − clientHeight − scrollTop (≥ 0)
+ *   - stickyBar: { position: 'sticky' | 'fixed', x, y, w, h } of the nearest element from this one up
+ *     (html/body excluded) whose position is sticky or fixed (the bar), else null
+ *   - scrollChecks: [{ other, clearsOnScroll }] — on a target in a bar only, one per target of the
+ *     same scroll container, outside that bar and not its ancestor/descendant, whose box overlaps this
+ *     one by > 1px on both axes (`other` = its id), in target order; [] otherwise. clearsOnScroll is
+ *     measured, not computed: the scroll container (the document when scroller is null) is scrolled
+ *     down, then up, step by step, and it is true only when the other target really comes fully into
+ *     the scrollport, off this target and out from under every sticky/fixed box hit-tested over it —
+ *     no room, a bar that moves with the content, or a second bar still on top give false. Every
+ *     scroll position is put back afterwards, also when a check throws — see clearsOnScroll() below.
  *
- * Visible (controls, targets, labels, adornments) also means painted: a box Chromium lays out but
- * never paints or hit-tests is not measured — see painted() below.
+ * Visible (controls, targets, labels, adornments) also means rendered: a box Chromium lays out but
+ * does not render (closed <details> content, visibility hidden) is not measured — see painted().
  */
 (function () {
   'use strict';
@@ -720,12 +722,10 @@
   var ADORNMENT_MIN_OVERLAP_PX = 0.5;
   var ADORNMENT_OVERLAY_RATIO = 0.9;
   var NAMED_BY_TEXT_ROLES = { button: true, tab: true, menuitem: true };
-  var PAINT_CHECK = {
-    contentVisibilityAuto: true,
-    opacityProperty: true,
-    visibilityProperty: true,
-  };
-  var EDGE_SLACK_PX = 1;
+  var PAINT_CHECK = { visibilityProperty: true };
+  var SCROLL_CHECK_STEPS = 8;
+  // an overlap this small is no overlap (= rules.mjs F3_OVERLAP_MIN_PX)
+  var SCROLL_CLEAR_PX = 1;
   // Subtrees that hold values, not UI copy: never read for a name (a wrapping <label> contains its
   // control; a trigger button contains its select-value; a tag frame contains chips; an inline
   // listbox holds option text; an ARIA textbox, searchbox, spinbutton, an <output> or an editable
@@ -808,10 +808,12 @@
     }
     // The content of a closed <details> (content-visibility: hidden in Chromium) still gets
     // full-size boxes from getBoundingClientRect — stacked over the sections that follow — but it is
-    // never painted and never hit-tested, so measuring it reports overlaps nobody can see or press
-    // (F3). checkVisibility() is false for such subtrees (also for skipped content-visibility:auto
-    // ones and for opacity 0 / visibility hidden up the tree); where it is missing, the
-    // closed-<details> walk below still drops them. A closed <details>' own <summary> is painted.
+    // not rendered: never painted, never hit-tested, so measuring it reports overlaps nobody can see
+    // or press (F3). checkVisibility() is false for such subtrees and for visibility hidden up the
+    // tree; where it is missing, the closed-<details> walk below still drops them. A closed
+    // <details>' own <summary> is rendered. checkVisibility is asked nothing else on purpose: a box
+    // inside an opacity-0 wrapper (a hover-reveal action) is still hit-tested and takes taps, and a
+    // skipped content-visibility:auto section is painted once it is scrolled to — both are measured.
     function painted(el) {
       if (typeof el.checkVisibility === 'function' && !el.checkVisibility(PAINT_CHECK))
         return false;
@@ -1055,51 +1057,145 @@
       }
       return null;
     }
-    function idOrNull(el) {
-      return el ? containerId(el) : null;
+    function scrollBoxOf(el) {
+      return overflowAncestor(el, /^(auto|scroll)$/);
     }
     function scrollerOf(el) {
-      return idOrNull(overflowAncestor(el, /^(auto|scroll)$/));
+      var s = scrollBoxOf(el);
+      return s ? containerId(s) : null;
     }
-    // Scroll occlusion (F3): a sticky/fixed bar stays put while its scroll container moves the
-    // content under it. Record the bar and how far the container can still scroll; rules.mjs
-    // decides whether the overlapped target can be scrolled clear.
-    function stickyBarOf(el) {
-      var bar = null;
-      for (var n = el; n && n !== htmlEl && n !== bodyEl && !bar; n = n.parentElement) {
-        if (/^(sticky|fixed)$/.test(style(n).position)) bar = n;
+    // the bar: the nearest element from el up (html/body excluded) whose position is sticky or fixed
+    function barOf(el) {
+      for (var n = el; n && n !== htmlEl && n !== bodyEl; n = n.parentElement) {
+        if (/^(sticky|fixed)$/.test(style(n).position)) return n;
       }
+      return null;
+    }
+    function stickyBarFact(bar) {
       if (!bar) return null;
-      var cs = style(bar);
-      var r = bar.getBoundingClientRect();
       var b = box(bar);
-      var atTop;
-      var atBottom;
-      if (cs.position === 'sticky') {
-        atTop = cs.top !== 'auto'; // Chromium reports unset sticky insets as 'auto'
-        atBottom = cs.bottom !== 'auto';
-      } else {
-        atTop = r.top <= EDGE_SLACK_PX;
-        atBottom = r.bottom >= htmlEl.clientHeight - EDGE_SLACK_PX;
-      }
-      return {
-        position: cs.position,
-        edge: atBottom && !atTop ? 'bottom' : atTop && !atBottom ? 'top' : null,
-        // a sticky element sticks inside its nearest scroll box (overflow:hidden counts); a fixed one
-        // ignores every scroll container
-        scroller:
-          cs.position === 'sticky'
-            ? idOrNull(overflowAncestor(bar, /^(auto|scroll|hidden)$/))
-            : scrollerOf(bar),
-        x: b.x,
-        y: b.y,
-        w: b.w,
-        h: b.h,
-      };
+      return { position: style(bar).position, x: b.x, y: b.y, w: b.w, h: b.h };
     }
-    function scrollRoomOf(el) {
-      var s = overflowAncestor(el, /^(auto|scroll)$/) || document.scrollingElement || htmlEl;
-      return { up: s.scrollTop, down: Math.max(0, s.scrollHeight - s.clientHeight - s.scrollTop) };
+
+    // Scroll occlusion (F3). A target in a sticky/fixed bar covers whatever its scroll container
+    // happens to have under it at this scroll position. That is not two boxes laid out on top of each
+    // other — if the container can really scroll the other target clear. Whether it can is measured,
+    // never computed from the bar's insets and the scroll room: a sticky bar its parent holds at its
+    // natural spot moves with the content, a fixed bar under a transformed/filtered/contained
+    // ancestor scrolls like an absolute one, and a second bar stacked on the first can still cover
+    // the target once it is off the first. Every check puts the scroll position back.
+    function scrollPosition(scroller) {
+      return scroller
+        ? { top: scroller.scrollTop, left: scroller.scrollLeft }
+        : { top: window.scrollY, left: window.scrollX };
+    }
+    function scrollToPosition(scroller, pos) {
+      // 'instant': a page with scroll-behavior: smooth must not turn the check asynchronous
+      var to = { top: pos.top, left: pos.left, behavior: 'instant' };
+      if (scroller) scroller.scrollTo(to);
+      else window.scrollTo(to);
+    }
+    // the visible part of the scroller's padding box: the viewport for the document
+    function portOf(scroller) {
+      var bottom = htmlEl.clientHeight;
+      if (!scroller) return { top: 0, bottom: bottom };
+      var top = scroller.getBoundingClientRect().top + scroller.clientTop;
+      return { top: Math.max(top, 0), bottom: Math.min(top + scroller.clientHeight, bottom) };
+    }
+    function overlaps(a, b) {
+      return (
+        Math.min(a.right, b.right) - Math.max(a.left, b.left) > SCROLL_CLEAR_PX &&
+        Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > SCROLL_CLEAR_PX
+      );
+    }
+    // what still covers `other` (viewport box o): the pinned target's own box, and every sticky/fixed
+    // box over it that is on top — hit-tested at the middle of the overlap, so a bar painted below
+    // `other` (a dialog's overlay) or one that lets taps through does not count. A box that contains
+    // `other` moves with it and never covers it.
+    function blockersOf(pinned, other, o, bars) {
+      var out = [];
+      var p = pinned.getBoundingClientRect();
+      if (overlaps(o, p)) out.push(p);
+      for (var i = 0; i < bars.length; i++) {
+        if (bars[i].contains(other)) continue;
+        var r = bars[i].getBoundingClientRect();
+        if (!overlaps(o, r)) continue;
+        var hit = document.elementFromPoint(
+          (Math.max(o.left, r.left) + Math.min(o.right, r.right)) / 2,
+          (Math.max(o.top, r.top) + Math.min(o.bottom, r.bottom)) / 2,
+        );
+        if (!hit || (!other.contains(hit) && bars[i].contains(hit))) out.push(r);
+      }
+      return out;
+    }
+    // Scrolls the container in steps (dir 1 = down, −1 = up), each by what the blockers still need,
+    // until `other` is fully inside the scrollport with nothing over it (true), stops moving (no room
+    // left), passes the far edge of the scrollport, or SCROLL_CHECK_STEPS run out (false).
+    function scrollsClear(scroller, pinned, other, bars, dir) {
+      for (var step = 0; step < SCROLL_CHECK_STEPS; step++) {
+        var o = other.getBoundingClientRect();
+        var port = portOf(scroller);
+        if (dir > 0 ? o.top < port.top - SCROLL_CLEAR_PX : o.bottom > port.bottom + SCROLL_CLEAR_PX)
+          return false;
+        var blockers = blockersOf(pinned, other, o, bars);
+        var need = dir > 0 ? o.bottom - port.bottom : port.top - o.top;
+        if (need <= SCROLL_CLEAR_PX && blockers.length === 0) return true;
+        for (var i = 0; i < blockers.length; i++) {
+          need = Math.max(need, dir > 0 ? o.bottom - blockers[i].top : blockers[i].bottom - o.top);
+        }
+        var before = scrollPosition(scroller);
+        scrollToPosition(scroller, {
+          top: before.top + dir * (Math.ceil(need) + 1),
+          left: before.left,
+        });
+        if (scrollPosition(scroller).top === before.top) return false;
+      }
+      return false;
+    }
+    function clearsOnScroll(scroller, pinned, other, bars) {
+      var start = scrollPosition(scroller);
+      try {
+        if (scrollsClear(scroller, pinned, other, bars, 1)) return true;
+        scrollToPosition(scroller, start);
+        return scrollsClear(scroller, pinned, other, bars, -1);
+      } finally {
+        scrollToPosition(scroller, start);
+      }
+    }
+    // every rendered sticky/fixed box of the page — only looked up when a pair needs a check
+    function pageBars() {
+      var out = [];
+      var all = bodyEl ? bodyEl.getElementsByTagName('*') : [];
+      for (var i = 0; i < all.length; i++) {
+        if (/^(sticky|fixed)$/.test(style(all[i]).position) && rendered(all[i])) out.push(all[i]);
+      }
+      return out;
+    }
+    function pageBox(f) {
+      return { left: f.x, right: f.x + f.w, top: f.y, bottom: f.y + f.h };
+    }
+    // fills TargetFact.scrollChecks once every fact is measured (see the header)
+    function addScrollChecks(facts, targetEls, targetBars, targetIds) {
+      var bars = null;
+      for (var i = 0; i < targetEls.length; i++) {
+        var bar = targetBars[i];
+        if (!bar) continue;
+        var pinned = targetEls[i];
+        var fact = facts[targetIds.get(pinned)];
+        for (var j = 0; j < targetEls.length; j++) {
+          var other = targetEls[j];
+          var otherFact = facts[targetIds.get(other)];
+          if (j === i || bar.contains(other) || other.contains(pinned) || pinned.contains(other))
+            continue;
+          if (otherFact.scroller !== fact.scroller) continue;
+          if (!overlaps(pageBox(fact), pageBox(otherFact))) continue;
+          if (!bars) bars = pageBars();
+          fact.scrollChecks.push({
+            other: otherFact.id,
+            clearsOnScroll: clearsOnScroll(scrollBoxOf(pinned), pinned, other, bars),
+          });
+        }
+      }
     }
     function targetAt(node, targetIds) {
       for (var n = node; n && n.nodeType === 1; n = n.parentElement) {
@@ -1108,7 +1204,7 @@
       }
       return null;
     }
-    function targetFact(el, targetIds) {
+    function targetFact(el, targetIds, bar) {
       var role = targetRole(el);
       var b = box(el);
       var name =
@@ -1140,8 +1236,8 @@
         w: b.w,
         h: b.h,
         coveredBy: coveredBy,
-        stickyBar: stickyBarOf(el),
-        scrollRoom: scrollRoomOf(el),
+        stickyBar: stickyBarFact(bar),
+        scrollChecks: [],
       };
     }
 
@@ -1159,8 +1255,16 @@
     var facts = [];
     for (var c = 0; c < controlEls.length; c++) facts.push(controlFact(controlEls[c], facts.length));
     var targetIds = new Map();
-    for (var t = 0; t < targetEls.length; t++) targetIds.set(targetEls[t], controlEls.length + t);
-    for (var k = 0; k < targetEls.length; k++) facts.push(targetFact(targetEls[k], targetIds));
+    var targetBars = [];
+    for (var t = 0; t < targetEls.length; t++) {
+      targetIds.set(targetEls[t], controlEls.length + t);
+      targetBars.push(barOf(targetEls[t]));
+    }
+    for (var k = 0; k < targetEls.length; k++) {
+      facts.push(targetFact(targetEls[k], targetIds, targetBars[k]));
+    }
+    // last: the checks scroll, and every box above was measured at the page's own scroll position
+    addScrollChecks(facts, targetEls, targetBars, targetIds);
     return facts;
   }
 

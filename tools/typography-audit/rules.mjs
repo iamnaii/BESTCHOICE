@@ -470,27 +470,14 @@ const containsBox = (outer, inner) =>
   inner.x + inner.w <= outer.x + outer.w + F3_CONTAIN_SLACK_PX &&
   inner.y + inner.h <= outer.y + outer.h + F3_CONTAIN_SLACK_PX;
 
-// F3 is about two pressable boxes laid out on top of each other, not about scroll occlusion. A
-// target in a sticky/fixed bar pinned inside its own scroll container (stickyBar.scroller ===
-// scroller) covers whatever that container scrolls under it at the current scroll position. The
-// pair is skipped when the other target scrolls with that container (it is not pinned there itself)
-// and the container can still scroll it clear of the bar: scrollRoom.down ≥ other bottom − bar top
-// for a bottom bar, scrollRoom.up ≥ bar bottom − other top for a top bar (the bar's box joined with
-// the pinned target's own box). No room, a bar with no top/bottom edge, or a bar pinned in another
-// container than the pair's keeps the finding. Unpainted targets (closed <details>) are never facts.
-const pinnedInOwnScroller = (t) =>
-  Boolean(t.stickyBar) && (t.stickyBar.scroller ?? null) === (t.scroller ?? null);
-
-function scrollsClearOfStickyBar(pinned, other) {
-  if (!pinnedInOwnScroller(pinned) || pinnedInOwnScroller(other)) return false;
-  if ((pinned.scroller ?? null) !== (other.scroller ?? null) || !other.scrollRoom) return false;
-  const bar = pinned.stickyBar;
-  const top = Math.min(bar.y, pinned.y);
-  const bottom = Math.max(bar.y + bar.h, pinned.y + pinned.h);
-  if (bar.edge === 'bottom') return other.scrollRoom.down >= other.y + other.h - top;
-  if (bar.edge === 'top') return other.scrollRoom.up >= bottom - other.y;
-  return false;
-}
+// F3 is about two pressable boxes laid out on top of each other, not about scroll occlusion: a
+// target in a sticky/fixed bar covers whatever its scroll container has under it at this scroll
+// position. The collector scrolls that container and records on the pinned target whether the other
+// target really came clear (TargetFact.scrollChecks). A pair is skipped only on that measured
+// clearsOnScroll === true — no check, or false (no room, a bar that moves with the content, a second
+// bar still on top), keeps the finding. Unrendered targets (closed <details>) are never facts.
+const clearsOnScroll = (pinned, other) =>
+  (pinned.scrollChecks ?? []).some((c) => c.other === other.id && c.clearsOnScroll === true);
 
 function evaluateF3(facts, emit) {
   const targets = targetFacts(facts);
@@ -508,7 +495,7 @@ function evaluateF3(facts, emit) {
       const covered = a.coveredBy === b.id || b.coveredBy === a.id;
       // a target inside another (clear button in a field) belongs to F4 unless it covers the other
       if (!covered && (containsBox(a, b) || containsBox(b, a))) continue;
-      if (scrollsClearOfStickyBar(a, b) || scrollsClearOfStickyBar(b, a)) continue;
+      if (clearsOnScroll(a, b) || clearsOnScroll(b, a)) continue;
       emit('F3', covered ? 'P1' : 'P2', `${a.key}~${b.key}`, `${a.key} / ${b.key}`, {
         overlapX: round2(overlapX),
         overlapY: round2(overlapY),

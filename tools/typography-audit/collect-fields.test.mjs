@@ -58,7 +58,7 @@ const TARGET_FIELDS = [
   'h',
   'coveredBy',
   'stickyBar',
-  'scrollRoom',
+  'scrollChecks',
 ];
 // Tailwind preflight equivalent + one shared 44px field look (.f) and label look (.lab).
 const BASE_STYLE = `body{margin:0;font-family:"Noto Sans Thai",sans-serif;font-size:16px;line-height:24px}
@@ -82,7 +82,11 @@ async function openPage(body) {
   await page.route(`${ORIGIN}/**`, async (route) => {
     const { pathname } = new URL(route.request().url());
     if (pathname === '/')
-      return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: html(body) });
+      return route.fulfill({
+        status: 200,
+        contentType: 'text/html; charset=utf-8',
+        body: html(body),
+      });
     const file = path.normalize(path.join(PUBLIC, decodeURIComponent(pathname)));
     if (pathname.startsWith('/fonts/') && file.startsWith(PUBLIC + path.sep)) {
       const contentType = file.endsWith('.css') ? 'text/css; charset=utf-8' : 'font/woff2';
@@ -117,6 +121,13 @@ const byKey = (facts, key) => {
 };
 const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg}: ${a} vs ${b}`);
 const CTX = { route: '/fixture', width: 1280, theme: 'light', role: 'owner' };
+const f3 = (facts) =>
+  evaluateFields(facts, CTX)
+    .filter((f) => f.rule === 'F3')
+    .map((f) => [f.key, f.severity]);
+// [partner key, clearsOnScroll] of every scroll check recorded on a target (ids = fact indexes)
+const checksOf = (facts, key) =>
+  byKey(facts, key).scrollChecks.map((c) => [facts[c.other].key, c.clearsOnScroll]);
 
 test('one control per outermost field, with its kind; non-field inputs are not controls', async () => {
   const facts = await collect(`
@@ -142,8 +153,10 @@ test('one control per outermost field, with its kind; non-field inputs are not c
       [7, 'input', 'input', 'input|ชื่อ|0'],
     ],
   );
-  for (const f of controls(facts)) assert.deepEqual(Object.keys(f).sort(), [...CONTROL_FIELDS].sort());
-  for (const f of targets(facts)) assert.deepEqual(Object.keys(f).sort(), [...TARGET_FIELDS].sort());
+  for (const f of controls(facts))
+    assert.deepEqual(Object.keys(f).sort(), [...CONTROL_FIELDS].sort());
+  for (const f of targets(facts))
+    assert.deepEqual(Object.keys(f).sort(), [...TARGET_FIELDS].sort());
   assert.deepEqual(
     facts.map((f) => f.id),
     facts.map((_, i) => i),
@@ -158,7 +171,15 @@ test('values never leave the page: typed value, option text, select-value text',
     <select class="f" aria-label="สาขา"><option>ลาดพร้าวลับ</option><option>บางนาลับ</option></select>
     <button type="button" role="combobox" data-slot="select-trigger" class="f"><span data-slot="select-value">สาขาลับ</span></button>`);
   const json = JSON.stringify(facts);
-  for (const secret of ['สมชาย', '0812345678', 'ยอดลับ', '9,999', 'ลาดพร้าวลับ', 'บางนาลับ', 'สาขาลับ'])
+  for (const secret of [
+    'สมชาย',
+    '0812345678',
+    'ยอดลับ',
+    '9,999',
+    'ลาดพร้าวลับ',
+    'บางนาลับ',
+    'สาขาลับ',
+  ])
     assert.ok(!json.includes(secret), secret);
   const select = byKey(facts, 'native-select|สาขา|0');
   assert.equal(select.optionCount, 2);
@@ -238,7 +259,10 @@ test('scope and ancestors: page / #main / dialog, layout of every ancestor up to
   const b = byKey(facts, 'input|ข|0');
   const c = byKey(facts, 'input|ค|0');
   const dialog = byKey(facts, 'input|ในกล่อง|0');
-  assert.deepEqual([pg.scope, a.scope, c.scope, dialog.scope], ['page', 'main', 'main', 'dialog:0']);
+  assert.deepEqual(
+    [pg.scope, a.scope, c.scope, dialog.scope],
+    ['page', 'main', 'main', 'dialog:0'],
+  );
   assert.deepEqual(layouts(pg), ['flex-row'], 'stops before body');
   assert.deepEqual(layouts(a), ['other', 'grid', 'other']);
   assert.deepEqual(layouts(c), ['flex-col', 'other']);
@@ -254,8 +278,16 @@ test('label: for= above with its gap, aria-labelledby, wrapping label, sr-only l
     <span id="lb" class="lab" style="font-size:12px;margin-bottom:6px">เบอร์โทร</span><button type="button" role="combobox" aria-labelledby="lb" class="f"></button>
     <label style="display:block">ที่อยู่ <input class="f" placeholder="บ้านเลขที่"></label>
     <label for="d" style="position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)">ซ่อน</label><input id="d" class="f" placeholder="ป้ายซ่อน">`);
-  assert.deepEqual(byKey(facts, 'input|ชื่อลูกค้า|0').label, { fontSize: 14, gap: 12, above: true });
-  assert.deepEqual(byKey(facts, 'combobox|เบอร์โทร|0').label, { fontSize: 12, gap: 6, above: true });
+  assert.deepEqual(byKey(facts, 'input|ชื่อลูกค้า|0').label, {
+    fontSize: 14,
+    gap: 12,
+    above: true,
+  });
+  assert.deepEqual(byKey(facts, 'combobox|เบอร์โทร|0').label, {
+    fontSize: 12,
+    gap: 6,
+    above: true,
+  });
   assert.equal(byKey(facts, 'input|ที่อยู่|0').label.above, false, 'a wrapping label is not above');
   assert.equal(byKey(facts, 'input|ป้ายซ่อน|0').label, null);
 });
@@ -415,9 +447,18 @@ test('closed <details> content is never a fact; its summary and open <details> c
     expected,
   );
   assert.deepEqual(evaluateFields(facts, CTX), []);
-  // without Element.checkVisibility the closed-<details> walk alone gives the same facts
   const page = await openPage(DETAILS_BODY);
   try {
+    // the collector's checkVisibility({ visibilityProperty }) alone already rejects closed content
+    assert.deepEqual(
+      await page.evaluate(() =>
+        ['#road', 'details summary', 'details[open] input'].map((s) =>
+          document.querySelector(s).checkVisibility({ visibilityProperty: true }),
+        ),
+      ),
+      [false, true, true],
+    );
+    // without Element.checkVisibility the closed-<details> walk alone gives the same facts
     const fallback = await page.evaluate((exclude) => {
       delete Element.prototype.checkVisibility;
       return window.__collectFields({ exclude });
@@ -431,11 +472,11 @@ test('closed <details> content is never a fact; its summary and open <details> c
   }
 });
 
-test('targets: sticky/fixed bar and scroll room — F3 skips only what scrolling can clear', async () => {
-  // a dialog-style form that scrolls (300px of 504px) with a sticky top-0 header and a sticky
-  // bottom-0 footer; at scroll 0 the field at 250..294 sits behind the footer (240..300)
-  const facts = await collect(`
-    <form style="height:300px;width:400px;overflow:auto;display:flex;flex-direction:column">
+// Scroll occlusion (F3): a dialog-style form that scrolls (300px of 504px) with a sticky top-0
+// header and a sticky bottom-0 footer; at scroll 0 the field at 250..294 sits behind the footer
+// (240..300). The form scrolls smoothly — the collector's checks must still be instant.
+const STICKY_FORM = `
+    <form id="form" style="height:300px;width:400px;overflow:auto;display:flex;flex-direction:column;scroll-behavior:smooth">
       <div style="position:sticky;top:0;flex:none;height:40px;background:rgb(255,255,255)"><a href="#help" style="display:block;width:80px;height:32px">ช่วยเหลือ</a></div>
       <div style="flex:none;height:210px"></div>
       <input class="f" placeholder="ชื่อเล่น" style="flex:none">
@@ -444,56 +485,209 @@ test('targets: sticky/fixed bar and scroll room — F3 skips only what scrolling
         <button type="button" style="width:100px;height:44px">ยกเลิก</button>
         <button type="button" style="width:100px;height:44px">บันทึก</button>
       </div>
-    </form>`);
-  const field = byKey(facts, 'target-field||0');
-  const cancel = byKey(facts, 'target-button|ยกเลิก|0');
-  const help = byKey(facts, 'target-link||0');
-  assert.equal(typeof field.scroller, 'number');
-  assert.equal(field.stickyBar, null);
-  assert.deepEqual(field.scrollRoom, { up: 0, down: 204 });
-  const footer = cancel.stickyBar;
-  assert.deepEqual(
-    [footer.position, footer.edge, footer.scroller],
-    ['sticky', 'bottom', field.scroller],
-  );
-  near(footer.y, 240, 0.5, 'footer stuck to the bottom of the scrollport');
-  near(footer.h, 60, 0.5, 'footer height');
-  assert.deepEqual(
-    [help.stickyBar.position, help.stickyBar.edge, help.stickyBar.scroller],
-    ['sticky', 'top', field.scroller],
-  );
-  assert.deepEqual(
-    evaluateFields(facts, CTX).filter((f) => f.rule === 'F3'),
-    [],
-    'ยกเลิก/บันทึก over the field is scroll occlusion: 54px to scroll, 204px of room',
-  );
-  // a fixed bar over a page that cannot scroll the field out from under it keeps its finding
-  const fixedBar = (after) => `
+    </form>`;
+// a fixed bottom-0 bar (740..800, button 748..792) over a field at 740..784 with `after`px of
+// page below it: the page can scroll after − 16px (viewport 800)
+const FIXED_BAR = (after) => `
     <div style="height:740px"></div>
-    <input class="f" placeholder="หมายเหตุ">${after}
+    <input class="f" placeholder="หมายเหตุ">
+    <div style="height:${after}px"></div>
     <div style="position:fixed;left:0;bottom:0;width:400px;height:60px;padding:8px;background:rgb(255,255,255)">
       <button type="button" style="width:100px;height:44px">ยืนยัน</button>
     </div>`;
-  const stuck = await collect(fixedBar(''));
-  const confirm = byKey(stuck, 'target-button|ยืนยัน|0');
+
+test('scroll occlusion: F3 skips a pair only when scrolling really clears it (sticky footer, fixed bar)', async () => {
+  const facts = await collect(STICKY_FORM);
+  const field = byKey(facts, 'target-field||0');
+  const cancel = byKey(facts, 'target-button|ยกเลิก|0');
+  assert.equal(field.stickyBar, null);
+  assert.deepEqual(field.scrollChecks, []);
+  assert.deepEqual(Object.keys(cancel.stickyBar).sort(), ['h', 'position', 'w', 'x', 'y']);
+  assert.equal(cancel.stickyBar.position, 'sticky');
+  near(cancel.stickyBar.y, 240, 0.5, 'footer stuck to the bottom of the scrollport');
+  near(cancel.stickyBar.h, 60, 0.5, 'footer height');
+  assert.equal(byKey(facts, 'target-link||0').stickyBar.position, 'sticky');
+  assert.deepEqual(checksOf(facts, 'target-link||0'), [], 'the header overlaps nothing');
+  assert.deepEqual(checksOf(facts, 'target-button|ยกเลิก|0'), [['target-field||0', true]]);
+  assert.deepEqual(checksOf(facts, 'target-button|บันทึก|0'), [['target-field||0', true]]);
+  assert.deepEqual(f3(facts), [], 'the form scrolls the field clear of ยกเลิก/บันทึก');
+  // a fixed bar over the document, 84px of room for the 44px it takes
+  const bar = await collect(FIXED_BAR(100));
+  assert.equal(byKey(bar, 'target-button|ยืนยัน|0').stickyBar.position, 'fixed');
+  assert.deepEqual(checksOf(bar, 'target-button|ยืนยัน|0'), [['target-field||0', true]]);
+  assert.deepEqual(f3(bar), []);
+});
+
+test('scroll occlusion counter-examples keep F3: no room, too little room, one bar, a bar that moves', async () => {
+  // A1 — the page cannot scroll its last field out from under a fixed bar
+  const a1 = await collect(FIXED_BAR(0));
+  assert.deepEqual(checksOf(a1, 'target-button|ยืนยัน|0'), [['target-field||0', false]]);
+  assert.deepEqual(f3(a1), [['target-field||0~target-button|ยืนยัน|0', 'P1']]);
+  // A2 — 24px of room, 44px needed
+  const a2 = await collect(FIXED_BAR(40));
+  assert.deepEqual(checksOf(a2, 'target-button|ยืนยัน|0'), [['target-field||0', false]]);
+  assert.deepEqual(f3(a2), [['target-field||0~target-button|ยืนยัน|0', 'P1']]);
+  // C1 / C2 — two buttons overlapping inside one sticky header / one fixed footer: nothing
+  // scrolls between them, so they are never checked
+  const c = await collect(`
+    <header style="position:sticky;top:0;height:60px;background:rgb(255,255,255)">
+      <button type="button" style="position:absolute;left:0;top:8px;width:120px;height:44px">ค้นหา</button>
+      <button type="button" style="position:absolute;left:40px;top:8px;width:120px;height:44px">ล้าง</button>
+    </header>
+    <div style="height:2000px"></div>
+    <div style="position:fixed;left:0;bottom:0;width:400px;height:60px;background:rgb(255,255,255)">
+      <button type="button" style="position:absolute;left:0;top:8px;width:120px;height:44px">ยกเลิก</button>
+      <button type="button" style="position:absolute;left:40px;top:8px;width:120px;height:44px">บันทึก</button>
+    </div>`);
+  for (const t of targets(c)) assert.deepEqual(t.scrollChecks, [], t.key);
+  assert.deepEqual(f3(c), [
+    ['target-button|ค้นหา|0~target-button|ล้าง|0', 'P1'],
+    ['target-button|ยกเลิก|0~target-button|บันทึก|0', 'P1'],
+  ]);
+  // D1 — a sticky bottom-0 bar its parent holds at its natural spot (302..362) over a field
+  // (280..324): scrolling the long page moves the bar with the field, the overlap never goes away
+  const d1 = await collect(`
+    <section>
+      <div style="height:280px"></div>
+      <input class="f" placeholder="รหัส">
+      <div style="position:sticky;bottom:0;margin-top:-22px;height:60px;padding:8px;background:rgb(255,255,255)">
+        <button type="button" style="width:100px;height:44px">บันทึก</button>
+      </div>
+    </section>
+    <div style="height:1500px"></div>`);
+  assert.deepEqual(checksOf(d1, 'target-button|บันทึก|0'), [['target-field||0', false]]);
+  assert.deepEqual(f3(d1), [['target-field||0~target-button|บันทึก|0', 'P2']]);
+  // E1 — position:fixed inside a transformed scroller lays out like absolute: it scrolls away
+  // together with the field
+  const e1 = await collect(`
+    <div style="height:800px;overflow:auto;transform:translateZ(0)">
+      <div style="height:740px"></div>
+      <input class="f" placeholder="ยอด">
+      <div style="height:600px"></div>
+      <div style="position:fixed;left:0;bottom:0;width:400px;height:60px;padding:8px;background:rgb(255,255,255)">
+        <button type="button" style="width:100px;height:44px">ยืนยัน</button>
+      </div>
+    </div>`);
+  const confirm = byKey(e1, 'target-button|ยืนยัน|0');
+  assert.equal(confirm.stickyBar.position, 'fixed');
+  assert.equal(typeof confirm.scroller, 'number');
+  assert.deepEqual(checksOf(e1, 'target-button|ยืนยัน|0'), [['target-field||0', false]]);
+  assert.deepEqual(f3(e1), [['target-field||0~target-button|ยืนยัน|0', 'P1']]);
+});
+
+test('stacked bars: the check keeps scrolling past a second bar, up to the room the page has', async () => {
+  // a field (750..794) under a fixed nav (740..800, link 748..792) with a fixed summary bar
+  // stacked on it (690..740); clearing the nav takes 55px, clearing both bars 105px
+  const stacked = (after) => `
+    <div style="height:750px"></div>
+    <input class="f" placeholder="หมายเหตุ">
+    <div style="height:${after}px"></div>
+    <div style="position:fixed;left:0;bottom:60px;width:400px;height:50px;background:rgb(255,255,255)">
+      <button type="button" style="margin-left:300px;width:90px;height:44px">ถัดไป</button>
+    </div>
+    <nav style="position:fixed;left:0;bottom:0;width:400px;height:60px;padding:8px;background:rgb(255,255,255)">
+      <a href="#home" style="display:block;width:120px;height:44px">หน้าหลัก</a>
+    </nav>`;
+  const roomy = await collect(stacked(300)); // 294px of room
+  assert.deepEqual(checksOf(roomy, 'target-link||0'), [['target-field||0', true]]);
+  assert.deepEqual(f3(roomy), []);
+  // 74px of room: the field clears the nav but stays under the summary bar
+  const tight = await collect(stacked(80));
+  assert.deepEqual(checksOf(tight, 'target-link||0'), [['target-field||0', false]]);
+  assert.deepEqual(f3(tight), [['target-field||0~target-link||0', 'P1']]);
+});
+
+test('scroll checks put every scroller back (also when a check throws) and are deterministic', async () => {
+  // document scrolled 30px, the form 10px: the form field (210..254) is under the form footer
+  // (210..270) and the page field (710..754) under the fixed bar (740..800); html scrolls smoothly
+  const page = await openPage(`<style>html{scroll-behavior:smooth}</style>${STICKY_FORM}
+    <div style="height:440px"></div>
+    <input class="f" placeholder="หมายเหตุ">
+    <div style="height:400px"></div>
+    <div style="position:fixed;left:0;bottom:0;width:400px;height:60px;padding:8px;background:rgb(255,255,255)">
+      <button type="button" style="width:100px;height:44px">ยืนยัน</button>
+    </div>`);
+  const positions = () =>
+    page.evaluate(() => [
+      window.scrollX,
+      window.scrollY,
+      document.getElementById('form').scrollTop,
+    ]);
+  const run = () => page.evaluate((exclude) => window.__collectFields({ exclude }), EXCLUDE);
+  try {
+    await page.evaluate(() => {
+      window.scrollTo({ top: 30, behavior: 'instant' });
+      document.getElementById('form').scrollTo({ top: 10, behavior: 'instant' });
+    });
+    assert.deepEqual(await positions(), [0, 30, 10]);
+    const facts = await run();
+    assert.deepEqual(await positions(), [0, 30, 10]);
+    assert.deepEqual(await run(), facts, 'deterministic');
+    assert.deepEqual(checksOf(facts, 'target-button|ยกเลิก|0'), [['target-field||0', true]]);
+    assert.deepEqual(checksOf(facts, 'target-button|ยืนยัน|0'), [['target-field||1', true]]);
+    assert.deepEqual(f3(facts), []);
+    // the first scroll of a check (form, then document) throws after it moved the scroller
+    for (const owner of ['element', 'window']) {
+      await page.evaluate((o) => {
+        const host = o === 'window' ? window : Element.prototype;
+        const original = host.scrollTo;
+        let calls = 0;
+        host.scrollTo = function (...args) {
+          original.apply(this, args);
+          calls += 1;
+          if (calls === 1) throw new Error('boom');
+        };
+        window.__restoreScrollTo = () => {
+          host.scrollTo = original;
+        };
+      }, owner);
+      await assert.rejects(run(), /boom/);
+      await page.evaluate(() => window.__restoreScrollTo());
+      assert.deepEqual(await positions(), [0, 30, 10], owner);
+    }
+  } finally {
+    await page.close();
+  }
+});
+
+test('an opacity-0 wrapper does not hide its targets: they are hit-tested, so they overlap (F3)', async () => {
+  // a hover-reveal action: invisible until hover, but it takes the taps on แก้ไข's centre
+  const facts = await collect(`
+    <div style="position:relative;height:60px">
+      <button type="button" style="position:absolute;left:0;top:0;width:120px;height:44px">แก้ไข</button>
+      <div style="opacity:0"><button type="button" style="position:absolute;left:40px;top:0;width:120px;height:44px">ลบ</button></div>
+    </div>`);
   assert.deepEqual(
-    [confirm.stickyBar.position, confirm.stickyBar.edge, confirm.stickyBar.scroller],
-    ['fixed', 'bottom', null],
+    targets(facts).map((f) => f.key),
+    ['target-button|แก้ไข|0', 'target-button|ลบ|0'],
   );
-  assert.deepEqual(byKey(stuck, 'target-field||0').scrollRoom, { up: 0, down: 0 });
-  assert.deepEqual(
-    evaluateFields(stuck, CTX)
-      .filter((f) => f.rule === 'F3')
-      .map((f) => [f.key, f.severity]),
-    [['target-field||0~target-button|ยืนยัน|0', 'P1']],
-  );
-  // …and loses it once the page has 100px more to scroll (44px are needed)
-  const scrollable = await collect(fixedBar('<div style="height:100px"></div>'));
-  assert.deepEqual(byKey(scrollable, 'target-field||0').scrollRoom, { up: 0, down: 84 });
-  assert.deepEqual(
-    evaluateFields(scrollable, CTX).filter((f) => f.rule === 'F3'),
-    [],
-  );
+  assert.deepEqual(f3(facts), [['target-button|แก้ไข|0~target-button|ลบ|0', 'P1']]);
+});
+
+test('a skipped content-visibility:auto section is measured: it is painted once scrolled to', async () => {
+  const page = await openPage(`
+    <div style="height:2000px"></div>
+    <section style="content-visibility:auto;contain-intrinsic-size:auto 200px;height:200px;position:relative">
+      <button type="button" style="position:absolute;left:0;top:0;width:120px;height:44px">ก</button>
+      <button type="button" style="position:absolute;left:60px;top:0;width:120px;height:44px">ข</button>
+    </section>`);
+  try {
+    assert.equal(
+      await page.evaluate(() =>
+        document.querySelector('section button').checkVisibility({ contentVisibilityAuto: true }),
+      ),
+      false,
+      'the section is skipped while off-screen',
+    );
+    const facts = await page.evaluate((exclude) => window.__collectFields({ exclude }), EXCLUDE);
+    assert.deepEqual(
+      targets(facts).map((f) => f.key),
+      ['target-button|ก|0', 'target-button|ข|0'],
+    );
+    assert.deepEqual(f3(facts), [['target-button|ก|0~target-button|ข|0', 'P2']]);
+  } finally {
+    await page.close();
+  }
 });
 
 test('hidden, aria-hidden, sr-only, display:none and excluded subtrees are skipped', async () => {

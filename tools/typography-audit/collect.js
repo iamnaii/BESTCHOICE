@@ -645,8 +645,9 @@
  *   - kind: 'input-wrapper' | 'field-frame' | 'readonly' | 'select-trigger' | 'combobox' |
  *     'native-select' | 'textarea' | 'input'
  *   - key: kind|normalizeKeyText(label text || aria-label || placeholder)|dup — label text is the
- *     label's own words only: fields, options, buttons, comboboxes, [data-slot=select-value] and
- *     contenteditable subtrees inside it are skipped (a wrapping label contains its control)
+ *     label's own words only: fields, options, buttons, comboboxes, listboxes, ARIA options and
+ *     textboxes, [data-slot=select-value] and editable (contenteditable ≠ "false") subtrees
+ *     inside it are skipped (a wrapping label contains its control)
  *   - scope: 'dialog:<n>' (n = index among [role=dialog],[role=alertdialog] in DOM order) | 'main'
  *     (inside #main) | 'page'
  *   - ancestors: [{ id, layout: 'flex-row' | 'flex-col' | 'grid' | 'other' }] parent first, up to and
@@ -707,9 +708,12 @@
   var ADORNMENT_OVERLAY_RATIO = 0.9;
   var NAMED_BY_TEXT_ROLES = { button: true, tab: true, menuitem: true };
   // Subtrees that hold values, not UI copy: never read for a name (a wrapping <label> contains its
-  // control; a trigger button contains its select-value; a tag frame contains chips).
+  // control; a trigger button contains its select-value; a tag frame contains chips; an inline
+  // listbox holds option text; an ARIA textbox or an editable region holds typed text).
   var VALUE_SUBTREE_SELECTOR =
-    FIELD_SELECTOR + ',option,button,[role=combobox],[data-slot=select-value],[contenteditable]';
+    FIELD_SELECTOR +
+    ',option,button,[role=combobox],[role=listbox],[role=option],[role=textbox],' +
+    '[data-slot=select-value],[contenteditable]:not([contenteditable="false"])';
 
   function px(value) {
     var n = parseFloat(value);

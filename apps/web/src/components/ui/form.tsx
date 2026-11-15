@@ -10,6 +10,7 @@ import {
 import { Slot } from '@radix-ui/react-slot';
 import { cn } from '@/lib/utils';
 import { Label } from '@/components/ui/label';
+import { formLabelClass } from '@/components/ui/form-styles';
 
 /* ─── Form Provider (re-export for convenience) ─── */
 const Form = FormProvider;
@@ -57,7 +58,7 @@ function FormItem({ className, ...props }: React.HTMLAttributes<HTMLDivElement>)
   const id = React.useId();
   return (
     <FormItemContext.Provider value={{ id }}>
-      <div data-slot="form-item" className={cn('min-w-0 space-y-1.5', className)} {...props} />
+      <div data-slot="form-item" className={cn('min-w-0', className)} {...props} />
     </FormItemContext.Provider>
   );
 }
@@ -70,7 +71,7 @@ function FormLabel({ className, ...props }: React.ComponentProps<typeof Label>) 
       data-slot="form-label"
       htmlFor={formItemId}
       className={cn(
-        'text-xs font-medium',
+        formLabelClass,
         error && 'text-destructive',
         className,
       )}
@@ -117,7 +118,7 @@ function FormMessage({ className, children, ...props }: React.HTMLAttributes<HTM
     <p
       id={formMessageId}
       data-slot="form-message"
-      className={cn('text-2xs font-medium text-destructive animate-in fade-in-0 slide-in-from-top-1 duration-200', className)}
+      className={cn('mt-1.5 text-2xs font-medium text-destructive animate-in fade-in-0 slide-in-from-top-1 duration-200', className)}
       {...props}
     >
       {body}

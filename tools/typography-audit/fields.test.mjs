@@ -61,10 +61,10 @@ const pair = (a = {}, b = {}) => [
 ];
 const CTX = { route: '/x', width: 1440, theme: 'light', role: 'owner' };
 const rulesOf = (facts) => evaluateFields(facts, CTX).map((f) => `${f.rule}:${f.severity}`);
-const f1 = (facts) =>
-  evaluateFields(facts, CTX)
-    .filter((f) => f.rule === 'F1')
-    .map((f) => f.detail.property);
+const f1Findings = (facts) => evaluateFields(facts, CTX).filter((f) => f.rule === 'F1');
+// properties that fired (one finding per inconsistent member, so a property can repeat)
+const f1 = (facts) => [...new Set(f1Findings(facts).map((f) => f.detail.property))];
+const f1Keys = (facts) => f1Findings(facts).map((f) => f.key);
 const tgt = (o = {}) => ({
   type: 'target',
   id: 0,
@@ -149,7 +149,7 @@ test('F1 exclusions: text-lg+ control, textarea', () => {
   assert.deepEqual(f1(pair({}, { kind: 'textarea', tag: 'textarea', h: 96 })), []);
 });
 
-test('F1 groups a whole row once; finding shape works with findingKey', () => {
+test('F1 groups a row; one finding per inconsistent member, row context in text/detail', () => {
   const third = ctl({
     id: 2,
     key: 'field-frame|ราคา|0',
@@ -164,13 +164,18 @@ test('F1 groups a whole row once; finding shape works with findingKey', () => {
     groupFieldRows(facts).map((row) => row.map((c) => c.id)),
     [[0, 1, 2]],
   );
-  const height = evaluateFields(facts, CTX).find((f) => f.detail.property === 'height');
+  // 44 / 44 / 31: only the odd member is reported, for height and for its bottom edge
+  assert.deepEqual(f1Keys(facts), ['height@field-frame|ราคา|0', 'bottom@field-frame|ราคา|0']);
+  const height = f1Findings(facts).find((f) => f.detail.property === 'height');
   assert.equal(height.rule, 'F1');
   assert.equal(height.severity, 'P2');
-  assert.equal(height.key, 'height@input|ชื่อลูกค้า|0+native-select|สาขา|0+field-frame|ราคา|0');
-  assert.equal(height.text, 'input|ชื่อลูกค้า|0 / native-select|สาขา|0 / field-frame|ราคา|0');
+  assert.equal(
+    height.text,
+    'field-frame|ราคา|0 (row: input|ชื่อลูกค้า|0 / native-select|สาขา|0 / field-frame|ราคา|0)',
+  );
   assert.deepEqual(height.detail, {
     property: 'height',
+    value: 31,
     spread: 13,
     tolerance: 2,
     members: [
@@ -179,13 +184,97 @@ test('F1 groups a whole row once; finding shape works with findingKey', () => {
       { key: 'field-frame|ราคา|0', value: 31 },
     ],
   });
-  assert.equal(
-    findingKey(height),
-    '/x|1440|light|owner|F1|height@input|ชื่อลูกค้า|0+native-select|สาขา|0+field-frame|ราคา|0',
+  assert.equal(findingKey(height), '/x|1440|light|owner|F1|height@field-frame|ราคา|0');
+  // distinct checks carry the member's value and the row, no spread/tolerance
+  const border = f1Findings([...pair(), { ...third, h: 44, borderColor: 'rgb(1, 2, 3)' }]);
+  assert.deepEqual(
+    border.map((f) => f.key),
+    ['borderColor@field-frame|ราคา|0'],
   );
+  assert.deepEqual(border[0].detail, {
+    property: 'borderColor',
+    value: 'rgb(1, 2, 3)',
+    members: [
+      { key: 'input|ชื่อลูกค้า|0', value: 'rgb(212, 212, 216)' },
+      { key: 'native-select|สาขา|0', value: 'rgb(212, 212, 216)' },
+      { key: 'field-frame|ราคา|0', value: 'rgb(1, 2, 3)' },
+    ],
+  });
   // a second row further down is its own group
   const lower = pair({ id: 3, y: 300 }, { id: 4, y: 300 });
   assert.equal(groupFieldRows([...facts, ...lower]).length, 2);
+});
+
+test('F1 with no majority reports every member; a tolerance cluster is the majority', () => {
+  // two members that disagree: either could be the odd one, so both are reported
+  assert.deepEqual(f1Keys(pair({}, { borderRadius: 6 })), [
+    'radius@input|ชื่อลูกค้า|0',
+    'radius@native-select|สาขา|0',
+  ]);
+  // 44 / 45 / 31: 44 and 45 agree within 2px, 31 is the odd one
+  const row = [
+    ...pair({}, { h: 45 }),
+    ctl({
+      id: 2,
+      key: 'input|ราคา|0',
+      x: 432,
+      h: 31,
+      ancestors: [{ id: 12, layout: 'other' }, GRID],
+    }),
+  ];
+  assert.deepEqual(
+    f1Keys(row).filter((k) => k.startsWith('height@')),
+    ['height@input|ราคา|0'],
+  );
+});
+
+test('F1 keys of unchanged members survive fixing or relabelling another member (--compare)', () => {
+  const at = (id, x, o) =>
+    ctl({ id, x, ancestors: [{ id: 10 + id, layout: 'other' }, GRID], ...o });
+  // A, B match; C is a fake 31px field-frame with a light border; D is a 38px input
+  const A = at(0, 0, { key: 'input|ชื่อลูกค้า|0' });
+  const B = at(1, 216, { key: 'native-select|สาขา|0', kind: 'native-select', tag: 'select' });
+  const C = at(2, 432, {
+    key: 'field-frame|ก่อนภาษี|0',
+    kind: 'field-frame',
+    tag: 'div',
+    h: 31,
+    borderColor: 'rgb(228, 228, 231)',
+  });
+  const D = at(3, 648, { key: 'input|ส่วนลด|0', h: 38 });
+  const before = f1Keys([A, B, C, D]);
+  assert.deepEqual(before, [
+    'height@field-frame|ก่อนภาษี|0',
+    'height@input|ส่วนลด|0',
+    'borderColor@field-frame|ก่อนภาษี|0',
+    'bottom@field-frame|ก่อนภาษี|0',
+    'bottom@input|ส่วนลด|0',
+  ]);
+  // C becomes a ReadOnlyField: new kind, new key, 44px, same border ⇒ C's findings are gone and
+  // D's still-unfixed findings keep exactly the same keys (not reported as new by --compare)
+  const fixedC = {
+    ...C,
+    key: 'readonly|ก่อนภาษี|0',
+    kind: 'readonly',
+    tag: 'input',
+    h: 44,
+    borderColor: A.borderColor,
+    backgroundColor: 'rgb(244, 244, 245)',
+  };
+  const afterFix = f1Keys([A, B, fixedC, D]);
+  assert.deepEqual(afterFix, ['height@input|ส่วนลด|0', 'bottom@input|ส่วนลด|0']);
+  assert.ok(
+    afterFix.every((k) => before.includes(k)),
+    'no unchanged member gets a new key',
+  );
+  // renaming B's label and changing its kind does not touch the other members' keys either
+  const renamedB = {
+    ...B,
+    key: 'select-trigger|สาขาที่ขาย|0',
+    kind: 'select-trigger',
+    tag: 'button',
+  };
+  assert.deepEqual(f1Keys([A, renamedB, C, D]), before);
 });
 
 test('F2 placeholder wider than the content box (canvas ink vs content width + 1)', () => {

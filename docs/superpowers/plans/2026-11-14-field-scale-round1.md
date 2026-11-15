@@ -29,7 +29,7 @@
 
 | Task | Spec PR | Depends on | Deliverable |
 |---|---|---|---|
-| 1 Field collector + F1–F4 rules | R1-1 | — | `__collectFields`, `evaluateFields`, 26 tests |
+| 1 Field collector + F1–F4 rules | R1-1 | — | `__collectFields`, `evaluateFields`, 29 tests |
 | 2 Runner + route mocks + baseline | R1-1 | 1 | `tools/field-scale/*`, `baseline` on main (menu probes fail = S2-01/S2-02 proof) |
 | 3 Primitives: 8px corners, 16px mobile font | R1-2 | 2 | input/select/textarea + docs |
 | 4 `ReadOnlyField` + `LabeledField` | R1-2 | 3 | two components + tests |
@@ -48,7 +48,7 @@ Tasks 3–7 can be one PR (R1-2) or several; tasks 8–9 and 10–11 likewise. E
 
 - **Shared files.** `apps/web/src/components/ui/field-guards.inventory.test.ts` is created by Task 7; Tasks 9 and 10 append to it. `native-select.inventory.test.ts` fails on Windows today (backslash paths) — Task 5 fixes it; later tasks must not re-fix it.
 - **Baseline label** is `baseline` (Task 2, Step 25). Every visual task compares with `node tools/field-scale/check.mjs --compare baseline <label>`; Task 9 additionally takes its own `t9-before` because it runs after Task 8 changed the same screens.
-- **`results.json`** keeps findings under `cells[].findings` (Task 2 Interfaces). F1 finding keys start with the property (`labelFontSize@…`, `background@…`).
+- **`results.json`** keeps findings under `cells[].findings` (Task 2 Interfaces). F1 finding keys start with the property (`labelFontSize@…`, `background@…`) and name one control: `<property>@<memberKey>`, one finding per inconsistent member of a row. Fixing, relabelling or re-kinding one control therefore never changes another control's F1 key, and `--compare` does not report an old, unfixed mismatch as new.
 - **Line numbers** in Tasks 8–11 are from commit `b58250bbe`; earlier tasks shift them. Every edit is anchored on an exact unique string — use the string, treat the line as a guide.
 - **Account menu probe** (Task 2) finds the menu by the search box `aria-label="ค้นหารหัส หรือ ชื่อบัญชี"`; Task 6 keeps that label.
 - **Known limits** (accepted in the spec): ~102 `NativeSelect` sites pass `className` through a variable and are invisible to the skin guard; F2 measures synthetic data only; some deep flows (PO payment step, payroll lines, QuickBuy seller step) are reached only where the preview can open them — the tasks say which are manual.
@@ -75,16 +75,16 @@ Tasks 3–7 can be one PR (R1-2) or several; tasks 8–9 and 10–11 likewise. E
   - `window.__collectFields({ exclude?: string, root?: string }) → FieldFact[]`, where `FieldFact = ControlFact | TargetFact`. Ids are unique per call: controls first, then targets, each in DOM order.
     - `ControlFact`: `{ type:'control', id, key, kind, tag, scope, ancestors, x, y, w, h, borderRadius, borderWidth, borderColor, backgroundColor, fontSize, largeText, label, contentLeft, contentRight, contentWidth, placeholderInkWidth, optionCount, longestOptionInkWidth, valueOverflowX, valueOverflowY, adornments }`
       - `kind`: `'input-wrapper'|'field-frame'|'readonly'|'select-trigger'|'combobox'|'native-select'|'textarea'|'input'`.
-      - `key`: `kind|normalizeKeyText(label text || aria-label || placeholder)|dup`.
+      - `key`: `kind|normalizeKeyText(label text || aria-label || placeholder)|dup`. Label text is the label's own words only: fields, options, buttons, comboboxes, `[data-slot=select-value]` and contenteditable subtrees inside it are skipped, because a wrapping `<label>` contains its control.
       - `scope`: `'dialog:<n>'|'main'|'page'`.
       - `ancestors`: `[{ id, layout:'flex-row'|'flex-col'|'grid'|'other' }]`, parent first, up to and including the scope root.
       - `label`: `{ fontSize, gap, above } | null`.
       - `adornments`: `[{ x, y, w, h, side:'left'|'right' }]`.
       - No values, option text or select-value text leave the page; those fields are numbers or booleans only.
     - `TargetFact`: `{ type:'target', id, key, role, scope, scroller, targetAncestors, x, y, w, h, coveredBy }`.
-      - `key`: `target-<role>|normalizeKeyText(aria-label, or own text for button/tab/menuitem)|dup`. Link text is never used.
+      - `key`: `target-<role>|normalizeKeyText(aria-label, or own text for button/tab/menuitem)|dup`. Link text is never used. Own text skips the same value subtrees as label text.
   - `evaluateFields(facts, ctx = { width, route?, theme?, role? }) → Finding[]`, with `Finding = { rule:'F1'|'F2'|'F3'|'F4', severity:'P1'|'P2', route, width, theme, role, key, text, detail }`. This is the same shape as `evaluateTypography` findings, so `findingKey` and `diffFindings` work unchanged.
-    - F1 key: `<property>@<memberKey>+<memberKey>…`.
+    - F1 key: `<property>@<memberKey>` — one finding per inconsistent member; the other members and their values are in `text` and `detail.members`.
     - F2 key: `placeholder|option|value@<controlKey>`.
     - F3 key: `<targetKey>~<targetKey>`.
     - F4 key: `left|right<n>@<controlKey>`.
@@ -95,7 +95,7 @@ Tasks 3–7 can be one PR (R1-2) or several; tasks 8–9 and 10–11 likewise. E
   - *Control*: the outermost of `[data-slot=input-wrapper]`, `[data-field-frame]`, `[data-slot=readonly-field]`, `[data-slot=select-trigger]`, `button[role=combobox]`, `select`, `textarea`, `input`.
   - *Row*: same scope, vertical overlap ÷ shorter height ≥ 0.5, and the nearest common ancestor is `flex-row` or `grid`. Rows are the connected components of that relation.
   - `page` (outside `#main` and any dialog) is its own scope on purpose. Only `apps/web/src/components/layout/MainLayout.tsx:189` renders `id="main"`, so LIFF/public pages measured at 390 would otherwise never be measured. Page chrome is compared only with other page chrome.
-  - Checks, each emitted once per row:
+  - Checks. The row decides whether a property is inconsistent (thresholds below). Then one finding is emitted per inconsistent member: members whose value agrees (equal, or within the tolerance) with the most other members are the majority, and every other member is reported. With no majority (e.g. two members that differ) every member is reported.
     - height spread > 2px
     - largest-corner radius spread > 1px
     - font spread > 0.5px
@@ -199,10 +199,10 @@ const pair = (a = {}, b = {}) => [
 ];
 const CTX = { route: '/x', width: 1440, theme: 'light', role: 'owner' };
 const rulesOf = (facts) => evaluateFields(facts, CTX).map((f) => `${f.rule}:${f.severity}`);
-const f1 = (facts) =>
-  evaluateFields(facts, CTX)
-    .filter((f) => f.rule === 'F1')
-    .map((f) => f.detail.property);
+const f1Findings = (facts) => evaluateFields(facts, CTX).filter((f) => f.rule === 'F1');
+// properties that fired (one finding per inconsistent member, so a property can repeat)
+const f1 = (facts) => [...new Set(f1Findings(facts).map((f) => f.detail.property))];
+const f1Keys = (facts) => f1Findings(facts).map((f) => f.key);
 const tgt = (o = {}) => ({
   type: 'target',
   id: 0,
@@ -287,7 +287,7 @@ test('F1 exclusions: text-lg+ control, textarea', () => {
   assert.deepEqual(f1(pair({}, { kind: 'textarea', tag: 'textarea', h: 96 })), []);
 });
 
-test('F1 groups a whole row once; finding shape works with findingKey', () => {
+test('F1 groups a row; one finding per inconsistent member, row context in text/detail', () => {
   const third = ctl({
     id: 2,
     key: 'field-frame|ราคา|0',
@@ -302,13 +302,18 @@ test('F1 groups a whole row once; finding shape works with findingKey', () => {
     groupFieldRows(facts).map((row) => row.map((c) => c.id)),
     [[0, 1, 2]],
   );
-  const height = evaluateFields(facts, CTX).find((f) => f.detail.property === 'height');
+  // 44 / 44 / 31: only the odd member is reported, for height and for its bottom edge
+  assert.deepEqual(f1Keys(facts), ['height@field-frame|ราคา|0', 'bottom@field-frame|ราคา|0']);
+  const height = f1Findings(facts).find((f) => f.detail.property === 'height');
   assert.equal(height.rule, 'F1');
   assert.equal(height.severity, 'P2');
-  assert.equal(height.key, 'height@input|ชื่อลูกค้า|0+native-select|สาขา|0+field-frame|ราคา|0');
-  assert.equal(height.text, 'input|ชื่อลูกค้า|0 / native-select|สาขา|0 / field-frame|ราคา|0');
+  assert.equal(
+    height.text,
+    'field-frame|ราคา|0 (row: input|ชื่อลูกค้า|0 / native-select|สาขา|0 / field-frame|ราคา|0)',
+  );
   assert.deepEqual(height.detail, {
     property: 'height',
+    value: 31,
     spread: 13,
     tolerance: 2,
     members: [
@@ -317,13 +322,97 @@ test('F1 groups a whole row once; finding shape works with findingKey', () => {
       { key: 'field-frame|ราคา|0', value: 31 },
     ],
   });
-  assert.equal(
-    findingKey(height),
-    '/x|1440|light|owner|F1|height@input|ชื่อลูกค้า|0+native-select|สาขา|0+field-frame|ราคา|0',
+  assert.equal(findingKey(height), '/x|1440|light|owner|F1|height@field-frame|ราคา|0');
+  // distinct checks carry the member's value and the row, no spread/tolerance
+  const border = f1Findings([...pair(), { ...third, h: 44, borderColor: 'rgb(1, 2, 3)' }]);
+  assert.deepEqual(
+    border.map((f) => f.key),
+    ['borderColor@field-frame|ราคา|0'],
   );
+  assert.deepEqual(border[0].detail, {
+    property: 'borderColor',
+    value: 'rgb(1, 2, 3)',
+    members: [
+      { key: 'input|ชื่อลูกค้า|0', value: 'rgb(212, 212, 216)' },
+      { key: 'native-select|สาขา|0', value: 'rgb(212, 212, 216)' },
+      { key: 'field-frame|ราคา|0', value: 'rgb(1, 2, 3)' },
+    ],
+  });
   // a second row further down is its own group
   const lower = pair({ id: 3, y: 300 }, { id: 4, y: 300 });
   assert.equal(groupFieldRows([...facts, ...lower]).length, 2);
+});
+
+test('F1 with no majority reports every member; a tolerance cluster is the majority', () => {
+  // two members that disagree: either could be the odd one, so both are reported
+  assert.deepEqual(f1Keys(pair({}, { borderRadius: 6 })), [
+    'radius@input|ชื่อลูกค้า|0',
+    'radius@native-select|สาขา|0',
+  ]);
+  // 44 / 45 / 31: 44 and 45 agree within 2px, 31 is the odd one
+  const row = [
+    ...pair({}, { h: 45 }),
+    ctl({
+      id: 2,
+      key: 'input|ราคา|0',
+      x: 432,
+      h: 31,
+      ancestors: [{ id: 12, layout: 'other' }, GRID],
+    }),
+  ];
+  assert.deepEqual(
+    f1Keys(row).filter((k) => k.startsWith('height@')),
+    ['height@input|ราคา|0'],
+  );
+});
+
+test('F1 keys of unchanged members survive fixing or relabelling another member (--compare)', () => {
+  const at = (id, x, o) =>
+    ctl({ id, x, ancestors: [{ id: 10 + id, layout: 'other' }, GRID], ...o });
+  // A, B match; C is a fake 31px field-frame with a light border; D is a 38px input
+  const A = at(0, 0, { key: 'input|ชื่อลูกค้า|0' });
+  const B = at(1, 216, { key: 'native-select|สาขา|0', kind: 'native-select', tag: 'select' });
+  const C = at(2, 432, {
+    key: 'field-frame|ก่อนภาษี|0',
+    kind: 'field-frame',
+    tag: 'div',
+    h: 31,
+    borderColor: 'rgb(228, 228, 231)',
+  });
+  const D = at(3, 648, { key: 'input|ส่วนลด|0', h: 38 });
+  const before = f1Keys([A, B, C, D]);
+  assert.deepEqual(before, [
+    'height@field-frame|ก่อนภาษี|0',
+    'height@input|ส่วนลด|0',
+    'borderColor@field-frame|ก่อนภาษี|0',
+    'bottom@field-frame|ก่อนภาษี|0',
+    'bottom@input|ส่วนลด|0',
+  ]);
+  // C becomes a ReadOnlyField: new kind, new key, 44px, same border ⇒ C's findings are gone and
+  // D's still-unfixed findings keep exactly the same keys (not reported as new by --compare)
+  const fixedC = {
+    ...C,
+    key: 'readonly|ก่อนภาษี|0',
+    kind: 'readonly',
+    tag: 'input',
+    h: 44,
+    borderColor: A.borderColor,
+    backgroundColor: 'rgb(244, 244, 245)',
+  };
+  const afterFix = f1Keys([A, B, fixedC, D]);
+  assert.deepEqual(afterFix, ['height@input|ส่วนลด|0', 'bottom@input|ส่วนลด|0']);
+  assert.ok(
+    afterFix.every((k) => before.includes(k)),
+    'no unchanged member gets a new key',
+  );
+  // renaming B's label and changing its kind does not touch the other members' keys either
+  const renamedB = {
+    ...B,
+    key: 'select-trigger|สาขาที่ขาย|0',
+    kind: 'select-trigger',
+    tag: 'button',
+  };
+  assert.deepEqual(f1Keys([A, renamedB, C, D]), before);
 });
 
 test('F2 placeholder wider than the content box (canvas ink vs content width + 1)', () => {
@@ -440,6 +529,8 @@ test('evaluateFields ignores typography facts and leaves evaluateTypography alon
 // Field scale (spec docs/superpowers/specs/2026-11-14-dropdown-search-field-scale-design.md §5).
 // Consumes FieldFact[] from window.__collectFields (collect.js documents every field) and produces
 // Finding[] for F1–F4 with the same shape as evaluateTypography, so findingKey / diffFindings work.
+// Keys: F1 <property>@<memberKey> (one per inconsistent member) · F2 placeholder|option|value@<key> ·
+// F3 <targetKey>~<targetKey> · F4 left|right<n>@<key>.
 // Additive only: nothing above this line reads these exports. F5 is a source-scan unit test.
 
 export const F1_ROW_OVERLAP_MIN = 0.5; // vertical overlap ÷ the shorter control height
@@ -524,6 +615,20 @@ const F1_CHECKS = [
   },
 ];
 
+// The row decides WHETHER a property is inconsistent (spread > tolerance, or values differ); the
+// members decide WHO is reported. A member agrees with another when their values are equal
+// (distinct checks) or within the tolerance; the best-agreed members are the row's majority and
+// every other member is inconsistent. No majority (every member agrees with as many as any other,
+// e.g. two members that differ) ⇒ every member is reported. Each finding is keyed by its own member
+// only (`<property>@<memberKey>`), so --compare keeps an unfixed member's key when another member of
+// the row is fixed, relabelled or changes kind.
+function inconsistentMembers(values, check) {
+  const agrees = (a, b) => (check.distinct ? a === b : Math.abs(a - b) <= check.tolerance);
+  const support = values.map((v) => values.filter((w) => agrees(v, w)).length);
+  const best = Math.max(...support);
+  return values.map((_, i) => support[i] < best || support.every((s) => s === best));
+}
+
 function evaluateF1(facts, emit) {
   for (const row of groupFieldRows(facts)) {
     for (const check of F1_CHECKS) {
@@ -532,15 +637,20 @@ function evaluateF1(facts, emit) {
       );
       if (members.length < 2) continue;
       const values = members.map(check.value);
-      const differs = check.distinct
-        ? new Set(values).size > 1
-        : spread(values) > check.tolerance;
+      const differs = check.distinct ? new Set(values).size > 1 : spread(values) > check.tolerance;
       if (!differs) continue;
       const keys = members.map((c) => c.key);
-      emit('F1', 'P2', `${check.property}@${keys.join('+')}`, keys.join(' / '), {
-        property: check.property,
+      const rowDetail = {
         ...(check.distinct ? {} : { spread: round2(spread(values)), tolerance: check.tolerance }),
         members: members.map((c, i) => ({ key: c.key, value: values[i] })),
+      };
+      inconsistentMembers(values, check).forEach((odd, i) => {
+        if (!odd) return;
+        emit('F1', 'P2', `${check.property}@${keys[i]}`, `${keys[i]} (row: ${keys.join(' / ')})`, {
+          property: check.property,
+          value: values[i],
+          ...rowDetail,
+        });
       });
     }
   }
@@ -666,7 +776,7 @@ export function evaluateFields(facts, ctx = {}) {
   node --test tools/typography-audit/fields.test.mjs 2>&1 | grep -E "^ℹ (tests|pass|fail)"
   node --test tools/typography-audit/rules.test.mjs 2>&1 | grep -E "^ℹ (tests|pass|fail)"
   ```
-  - Expected: `ℹ tests 15` / `ℹ pass 15` / `ℹ fail 0`.
+  - Expected: `ℹ tests 17` / `ℹ pass 17` / `ℹ fail 0`.
   - Then `ℹ tests 51` / `ℹ pass 51` / `ℹ fail 0`, which shows R1–R12 are unchanged.
 
 - [ ] **Step 5: Commit**
@@ -850,6 +960,32 @@ test('values never leave the page: typed value, option text, select-value text',
   const select = byKey(facts, 'native-select|สาขา|0');
   assert.equal(select.optionCount, 2);
   assert.equal(typeof select.longestOptionInkWidth, 'number');
+});
+
+test('wrapping labels name controls by their own words only: no option, value or chip text', async () => {
+  const facts = await collect(`
+    <label style="display:block">สาขา <select class="f"><option>ลาดพร้าวลับ</option><option>บางนาลับ</option></select></label>
+    <label style="display:block">หมายเหตุ <textarea class="f" style="height:96px">ข้อความลับในช่อง</textarea></label>
+    <label style="display:block">สถานะ <button type="button" role="combobox" data-slot="select-trigger" class="f"><span data-slot="select-value">สถานะลับ</span></button></label>
+    <label style="display:block">แท็ก <div data-field-frame class="f" style="display:flex;align-items:center"><span>แท็กลับ</span><input style="border:0;padding:0;flex:1;min-width:0"></div></label>
+    <button type="button">เลือกบัญชี <span data-slot="select-value">บัญชีลับ</span></button>`);
+  const json = JSON.stringify(facts);
+  const secrets = [
+    'ลาดพร้าวลับ',
+    'บางนาลับ',
+    'ข้อความลับในช่อง',
+    'สถานะลับ',
+    'แท็กลับ',
+    'บัญชีลับ',
+  ];
+  for (const secret of secrets) assert.ok(!json.includes(secret), secret);
+  assert.deepEqual(
+    controls(facts).map((f) => f.key),
+    ['native-select|สาขา|0', 'textarea|หมายเหตุ|0', 'select-trigger|สถานะ|0', 'field-frame|แท็ก|0'],
+  );
+  assert.ok(byKey(facts, 'target-button|เลือกบัญชี|0'), 'a button is named by its own words');
+  const findings = JSON.stringify(evaluateFields(facts, CTX));
+  assert.ok(!findings.includes('ลับ'), 'findings carry no values');
 });
 
 test('box, radius, border, background, font, content box and largeText', async () => {
@@ -1096,7 +1232,7 @@ test('root option, missing root, determinism, no DOM residue, __collectTypograph
   ```bash
   node --test tools/typography-audit/collect-fields.test.mjs 2>&1 | grep -E "__collectFields is not a function|^ℹ (tests|fail)" | head -4
   ```
-  - Expected: four lines. First the summary, `ℹ tests 11` and `ℹ fail 11`. Then two lines `page.evaluate: TypeError: window.__collectFields is not a function`.
+  - Expected: four lines. First the summary, `ℹ tests 12` and `ℹ fail 12`. Then two lines `page.evaluate: TypeError: window.__collectFields is not a function`.
 
 - [ ] **Step 8: Append the collector to `tools/typography-audit/collect.js`**
   - Add after line 627 (`})();`, the last line of the file). Leave one blank line, then paste this exact text.
@@ -1121,7 +1257,9 @@ test('root option, missing root, determinism, no DOM residue, __collectTypograph
  *     textarea | input (not hidden/checkbox/radio/file/range/color/button/submit/reset/image)
  *   - kind: 'input-wrapper' | 'field-frame' | 'readonly' | 'select-trigger' | 'combobox' |
  *     'native-select' | 'textarea' | 'input'
- *   - key: kind|normalizeKeyText(label text || aria-label || placeholder)|dup
+ *   - key: kind|normalizeKeyText(label text || aria-label || placeholder)|dup — label text is the
+ *     label's own words only: fields, options, buttons, comboboxes, [data-slot=select-value] and
+ *     contenteditable subtrees inside it are skipped (a wrapping label contains its control)
  *   - scope: 'dialog:<n>' (n = index among [role=dialog],[role=alertdialog] in DOM order) | 'main'
  *     (inside #main) | 'page'
  *   - ancestors: [{ id, layout: 'flex-row' | 'flex-col' | 'grid' | 'other' }] parent first, up to and
@@ -1145,7 +1283,8 @@ test('root option, missing root, determinism, no DOM residue, __collectTypograph
  *   - one per visible interactive element: a[href], button, input (not hidden), select, textarea,
  *     summary, [role=button|combobox|tab|switch|checkbox|radio|link|menuitem]
  *   - role: the role attribute, else 'link' (a) | 'field' (input/select/textarea) | 'button'
- *   - key: target-<role>|normalizeKeyText(aria-label, or own text for button/tab/menuitem)|dup
+ *   - key: target-<role>|normalizeKeyText(aria-label, or own text for button/tab/menuitem)|dup —
+ *     own text skips the same value subtrees as label text
  *   - scroller: container id of the nearest ancestor with overflow auto/scroll, null = the document
  *   - targetAncestors: ids of target facts that contain this element
  *   - coveredBy: id of another, unrelated target that elementFromPoint returns at this element centre
@@ -1180,6 +1319,10 @@ test('root option, missing root, determinism, no DOM residue, __collectTypograph
   var ADORNMENT_MIN_OVERLAP_PX = 0.5;
   var ADORNMENT_OVERLAY_RATIO = 0.9;
   var NAMED_BY_TEXT_ROLES = { button: true, tab: true, menuitem: true };
+  // Subtrees that hold values, not UI copy: never read for a name (a wrapping <label> contains its
+  // control; a trigger button contains its select-value; a tag frame contains chips).
+  var VALUE_SUBTREE_SELECTOR =
+    FIELD_SELECTOR + ',option,button,[role=combobox],[data-slot=select-value],[contenteditable]';
 
   function px(value) {
     var n = parseFloat(value);
@@ -1193,6 +1336,16 @@ test('root option, missing root, determinism, no DOM residue, __collectTypograph
   // = rules.mjs normalizeKeyText
   function normalizeKeyText(text) {
     return collapse(text).replace(/[0-9]/g, '#').slice(0, 40);
+  }
+  // el's own words: text nodes below el, skipping every VALUE_SUBTREE_SELECTOR descendant (el itself
+  // is read even when it matches — a button's own text is its name). Reads the DOM, never edits it.
+  function ownText(el) {
+    var out = '';
+    for (var n = el.firstChild; n; n = n.nextSibling) {
+      if (n.nodeType === 3) out += n.nodeValue;
+      else if (n.nodeType === 1 && !n.matches(VALUE_SUBTREE_SELECTOR)) out += ownText(n);
+    }
+    return collapse(out);
   }
 
   function collectFields(options) {
@@ -1388,8 +1541,9 @@ test('root option, missing root, determinism, no DOM residue, __collectTypograph
       var lab = labelOf(el, textEl);
       var labelBox = lab ? box(lab) : null;
       var placeholder = collapse(textEl.getAttribute('placeholder'));
+      // an aria-labelledby target that is itself a field or trigger holds a value, not a name
       var name =
-        (lab && collapse(lab.textContent)) ||
+        (lab && !lab.matches(VALUE_SUBTREE_SELECTOR) && ownText(lab)) ||
         collapse(el.getAttribute('aria-label') || textEl.getAttribute('aria-label')) ||
         placeholder;
       var tr = textEl.getBoundingClientRect();
@@ -1475,8 +1629,7 @@ test('root option, missing root, determinism, no DOM residue, __collectTypograph
       var role = targetRole(el);
       var b = box(el);
       var name =
-        collapse(el.getAttribute('aria-label')) ||
-        (NAMED_BY_TEXT_ROLES[role] ? collapse(el.textContent) : '');
+        collapse(el.getAttribute('aria-label')) || (NAMED_BY_TEXT_ROLES[role] ? ownText(el) : '');
       var ancestors = [];
       for (var n = el.parentElement; n; n = n.parentElement) {
         if (targetIds.has(n)) ancestors.push(targetIds.get(n));
@@ -1537,9 +1690,9 @@ test('root option, missing root, determinism, no DOM residue, __collectTypograph
   node --test tools/typography-audit/collect.test.mjs 2>&1 | grep -E "^ℹ (tests|pass|fail)"
   node --test tools/typography-audit/fields.test.mjs tools/typography-audit/rules.test.mjs 2>&1 | grep -E "^ℹ (tests|pass|fail)"
   ```
-  - Expected: `ℹ tests 11` / `ℹ pass 11` / `ℹ fail 0`. Chromium, about 2 s.
+  - Expected: `ℹ tests 12` / `ℹ pass 12` / `ℹ fail 0`. Chromium, about 2 s.
   - Expected: `ℹ tests 51` / `ℹ pass 51` / `ℹ fail 0`. `__collectTypography` is unchanged.
-  - Expected: `ℹ tests 66` / `ℹ pass 66` / `ℹ fail 0`.
+  - Expected: `ℹ tests 68` / `ℹ pass 68` / `ℹ fail 0`.
   - If a geometry number is off by sub-pixels on another machine, the `.f` field is fixed at 200×44 with a 1px border. Check that `apps/web/public/fonts/noto-sans-thai/fonts.css` loaded. The harness does not assert this; it only waits for `document.fonts.ready`.
 
 - [ ] **Step 10: Commit**
@@ -1575,7 +1728,7 @@ Spec §5 + §7 R1-1: a field-scale checker that **runs on this Windows machine**
 - Read-only references: `tools/local-preview.mjs:9-10,160-166` (`repo`, `previewStatus()` → `{state.port, info.documentUrl, info.sourceRevision, running, current}`), `apps/api/e2e/support/chat-credit-preview.ts:637-711` (preview rewrites `/api/admin`→`/api`, serves an allow-list, everything else `501 LOCAL_PREVIEW_UNSUPPORTED`; actor is a fixed OWNER — **no login step exists in any `tools/check-local-*.mjs`**, `GET /api/admin/auth/me` just answers), `tools/check-mobile-density.mjs:50` (dark theme = `localStorage.setItem('theme', 'dark')` in an init script)
 
 **Interfaces:**
-- Consumes (Task 1): `window.__collectFields({ exclude, root })` injected from `tools/typography-audit/collect.js` (via `page.addScriptTag({ path })`) → `FieldFact[]`; `evaluateFields(facts, { width })` exported from `tools/typography-audit/rules.mjs` → `Finding[]`. This task relies on each Finding having `rule` (`'F1'|'F2'|'F3'|'F4'`), `severity` (`'P1'|'P2'|'P3'`) and a run-stable string `key`; `detail` is optional (used only as an identity fallback when `key` is missing).
+- Consumes (Task 1): `window.__collectFields({ exclude, root })` injected from `tools/typography-audit/collect.js` (via `page.addScriptTag({ path })`) → `FieldFact[]`; `evaluateFields(facts, { width })` exported from `tools/typography-audit/rules.mjs` → `Finding[]`. This task relies on each Finding having `rule` (`'F1'|'F2'|'F3'|'F4'`), `severity` (`'P1'|'P2'|'P3'`) and a run-stable string `key`; `detail` is optional (used only as an identity fallback when `key` is missing). F1 keys name one control (`<property>@<memberKey>`, one finding per inconsistent member of a row), so when a later task fixes one control in a row, the other controls' still-open F1 findings keep their ids and compare does not report them as new.
 - Consumes (R1-2 contract for the probe): `AccountSearchDropdown` keeps its search box `aria-label="ค้นหารหัส หรือ ชื่อบัญชี"` and its trigger keeps the selected account's name as text.
 - Produces:
   - CLI `node tools/field-scale/check.mjs --label <name> [--routes <id,id>] [--widths 1440,1024,390] [--themes light,dark]` → `.tmp/field-scale/<name>/{results.json, report.md, <route>-<width>-<theme>.png, <route>-<width>-<theme>-<probe>.png}`; exit 0 (report, not a gate), 2 on usage error / preview not running.
@@ -9066,7 +9219,7 @@ Expected: `Managed local preview stopped; test data retained.`, then a working t
 ---
 
 **Gaps / notes:**
-- Route ids for `tools/field-scale/check.mjs --routes` are defined by Task 2 and do not exist yet (`tools/field-scale/` is absent on `b58250bbe`). Step 30 finds them with grep instead of naming them. The Finding shape is also unknown: the 'F1 label' filter assumes the rule id is in `rule` and that the finding JSON mentions 'label'. Adjust the one-liner to the real shape once T2 lands.
+- Route ids for `tools/field-scale/check.mjs --routes` are defined by Task 2 and do not exist yet (`tools/field-scale/` is absent on `b58250bbe`). Step 30 finds them with grep instead of naming them. The 'F1 label' filter relies on the Task 1 shape: the rule id is in `rule` and label findings are keyed `labelFontSize@<controlKey>` / `labelGap@<controlKey>`, one per control whose label differs from the row's majority. Adjust the one-liner if T2 changes the results.json shape.
 - Step 31 drives QuickBuyModal to step 3 with the same selectors as `tools/check-local-trade-in.mjs`. It requests a price quote (`POST /trade-ins/quick-buy/preview`) but saves nothing. If a later change renames those controls, update both scripts. Step 4 (payment, SellerPaymentFields) is not screenshotted; the guard test and the T2 runner cover it.
 - Controls themselves are not normalised in this task, and F1 height/radius/background findings may remain on these forms. Examples: PurchaseSelect h-12/rounded-xl, CreateContactModal NativeSelect h-9 rounded-md, and the local inputClass in CompanySettingsPage/CustomerCreateModal/SaleDetailsForm/PlanDetailsStep. That work belongs to R1-3/R2. This task only drives the F1 *label* sub-check to 0.
 - Group-heading `<label>`s with no associated control are restyled with `formLabelClass` for visual consistency next to AddressForm's 14px labels: CompanySettingsPage 'ที่อยู่' and 'สถานะ VAT', the work-address headings in the 4 customer forms, and BranchesPage's cash-drawer label. Their element type is left unchanged. Converting them to `LabeledField` or a heading was not requested.

@@ -273,8 +273,15 @@ export const ROUTES = [
       await clickButton('ถัดไป')(page);
       await clickButton('เพิ่มลูกค้าใหม่')(page);
     } },
-  { id: 'contract-customer-edit', path: (ctx) => ctx.contractPath, appendix: ['S3-12'], open: clickButton('แก้ไข'),
-    mocks: [] },
+  // The customer card's own "แก้ไข" opens CustomerEditModal (ContractDetailPage.tsx:1354-1368,1584); the first
+  // "แก้ไข" on the page is the contract card's inline edit, which is not an AddressForm host.
+  { id: 'contract-customer-edit', path: (ctx) => ctx.contractPath, appendix: ['S3-12'], mocks: [],
+    open: async (page) => {
+      await page.locator('div.rounded-xl')
+        .filter({ has: page.getByRole('heading', { name: 'ข้อมูลลูกค้า', exact: true }) })
+        .getByRole('button', { name: 'แก้ไข', exact: true }).click();
+      await page.getByRole('dialog').waitFor();
+    } },
   { id: 'supplier-form', path: '/suppliers', appendix: ['S3-12'], open: clickButton('เพิ่มผู้จัดจำหน่าย'),
     mocks: [M.suppliers] },
   // shadcn FormLabel callers whose labels R1-4 moves to style A (SaleDetailsForm renders without a product)

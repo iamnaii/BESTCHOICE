@@ -163,6 +163,32 @@ test('values never leave the page: typed value, option text, select-value text',
   assert.equal(typeof select.longestOptionInkWidth, 'number');
 });
 
+test('wrapping labels name controls by their own words only: no option, value or chip text', async () => {
+  const facts = await collect(`
+    <label style="display:block">สาขา <select class="f"><option>ลาดพร้าวลับ</option><option>บางนาลับ</option></select></label>
+    <label style="display:block">หมายเหตุ <textarea class="f" style="height:96px">ข้อความลับในช่อง</textarea></label>
+    <label style="display:block">สถานะ <button type="button" role="combobox" data-slot="select-trigger" class="f"><span data-slot="select-value">สถานะลับ</span></button></label>
+    <label style="display:block">แท็ก <div data-field-frame class="f" style="display:flex;align-items:center"><span>แท็กลับ</span><input style="border:0;padding:0;flex:1;min-width:0"></div></label>
+    <button type="button">เลือกบัญชี <span data-slot="select-value">บัญชีลับ</span></button>`);
+  const json = JSON.stringify(facts);
+  const secrets = [
+    'ลาดพร้าวลับ',
+    'บางนาลับ',
+    'ข้อความลับในช่อง',
+    'สถานะลับ',
+    'แท็กลับ',
+    'บัญชีลับ',
+  ];
+  for (const secret of secrets) assert.ok(!json.includes(secret), secret);
+  assert.deepEqual(
+    controls(facts).map((f) => f.key),
+    ['native-select|สาขา|0', 'textarea|หมายเหตุ|0', 'select-trigger|สถานะ|0', 'field-frame|แท็ก|0'],
+  );
+  assert.ok(byKey(facts, 'target-button|เลือกบัญชี|0'), 'a button is named by its own words');
+  const findings = JSON.stringify(evaluateFields(facts, CTX));
+  assert.ok(!findings.includes('ลับ'), 'findings carry no values');
+});
+
 test('box, radius, border, background, font, content box and largeText', async () => {
   const facts = await collect(`
     <input class="f" placeholder="ชื่อ" style="padding:0 40px 0 12px">

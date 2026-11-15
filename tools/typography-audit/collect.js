@@ -644,7 +644,9 @@
  *     textarea | input (not hidden/checkbox/radio/file/range/color/button/submit/reset/image)
  *   - kind: 'input-wrapper' | 'field-frame' | 'readonly' | 'select-trigger' | 'combobox' |
  *     'native-select' | 'textarea' | 'input'
- *   - key: kind|normalizeKeyText(label text || aria-label || placeholder)|dup
+ *   - key: kind|normalizeKeyText(label text || aria-label || placeholder)|dup — label text is the
+ *     label's own words only: fields, options, buttons, comboboxes, [data-slot=select-value] and
+ *     contenteditable subtrees inside it are skipped (a wrapping label contains its control)
  *   - scope: 'dialog:<n>' (n = index among [role=dialog],[role=alertdialog] in DOM order) | 'main'
  *     (inside #main) | 'page'
  *   - ancestors: [{ id, layout: 'flex-row' | 'flex-col' | 'grid' | 'other' }] parent first, up to and
@@ -668,7 +670,8 @@
  *   - one per visible interactive element: a[href], button, input (not hidden), select, textarea,
  *     summary, [role=button|combobox|tab|switch|checkbox|radio|link|menuitem]
  *   - role: the role attribute, else 'link' (a) | 'field' (input/select/textarea) | 'button'
- *   - key: target-<role>|normalizeKeyText(aria-label, or own text for button/tab/menuitem)|dup
+ *   - key: target-<role>|normalizeKeyText(aria-label, or own text for button/tab/menuitem)|dup —
+ *     own text skips the same value subtrees as label text
  *   - scroller: container id of the nearest ancestor with overflow auto/scroll, null = the document
  *   - targetAncestors: ids of target facts that contain this element
  *   - coveredBy: id of another, unrelated target that elementFromPoint returns at this element centre
@@ -703,6 +706,10 @@
   var ADORNMENT_MIN_OVERLAP_PX = 0.5;
   var ADORNMENT_OVERLAY_RATIO = 0.9;
   var NAMED_BY_TEXT_ROLES = { button: true, tab: true, menuitem: true };
+  // Subtrees that hold values, not UI copy: never read for a name (a wrapping <label> contains its
+  // control; a trigger button contains its select-value; a tag frame contains chips).
+  var VALUE_SUBTREE_SELECTOR =
+    FIELD_SELECTOR + ',option,button,[role=combobox],[data-slot=select-value],[contenteditable]';
 
   function px(value) {
     var n = parseFloat(value);
@@ -716,6 +723,16 @@
   // = rules.mjs normalizeKeyText
   function normalizeKeyText(text) {
     return collapse(text).replace(/[0-9]/g, '#').slice(0, 40);
+  }
+  // el's own words: text nodes below el, skipping every VALUE_SUBTREE_SELECTOR descendant (el itself
+  // is read even when it matches — a button's own text is its name). Reads the DOM, never edits it.
+  function ownText(el) {
+    var out = '';
+    for (var n = el.firstChild; n; n = n.nextSibling) {
+      if (n.nodeType === 3) out += n.nodeValue;
+      else if (n.nodeType === 1 && !n.matches(VALUE_SUBTREE_SELECTOR)) out += ownText(n);
+    }
+    return collapse(out);
   }
 
   function collectFields(options) {
@@ -911,8 +928,9 @@
       var lab = labelOf(el, textEl);
       var labelBox = lab ? box(lab) : null;
       var placeholder = collapse(textEl.getAttribute('placeholder'));
+      // an aria-labelledby target that is itself a field or trigger holds a value, not a name
       var name =
-        (lab && collapse(lab.textContent)) ||
+        (lab && !lab.matches(VALUE_SUBTREE_SELECTOR) && ownText(lab)) ||
         collapse(el.getAttribute('aria-label') || textEl.getAttribute('aria-label')) ||
         placeholder;
       var tr = textEl.getBoundingClientRect();
@@ -998,8 +1016,7 @@
       var role = targetRole(el);
       var b = box(el);
       var name =
-        collapse(el.getAttribute('aria-label')) ||
-        (NAMED_BY_TEXT_ROLES[role] ? collapse(el.textContent) : '');
+        collapse(el.getAttribute('aria-label')) || (NAMED_BY_TEXT_ROLES[role] ? ownText(el) : '');
       var ancestors = [];
       for (var n = el.parentElement; n; n = n.parentElement) {
         if (targetIds.has(n)) ancestors.push(targetIds.get(n));

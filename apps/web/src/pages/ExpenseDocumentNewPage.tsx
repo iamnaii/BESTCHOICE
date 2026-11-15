@@ -1,4 +1,4 @@
-import { useNavigate, useSearchParams } from 'react-router';
+import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { ExpenseFormV4 } from '@/components/expense-form-v4/ExpenseFormV4';
@@ -30,12 +30,22 @@ export default function ExpenseDocumentNewPage() {
     queryKey: ['branches'],
     queryFn: async () => (await api.get('/branches')).data,
   });
-  const branchId = user?.branchId || branches.data?.[0]?.id;
+  // ?branch= จากตัวกรองของหน้ารายการ — ใช้เฉพาะสาขาที่ผู้ใช้เห็นในรายการ
+  const requestedBranch = searchParams.get('branch') ?? '';
+  const waitingForBranches = !!requestedBranch && branches.isPending;
+  const requestedIsVisible = !!requestedBranch && !!branches.data?.some((b) => b.id === requestedBranch);
+  const branchId = waitingForBranches
+    ? undefined
+    : (requestedIsVisible ? requestedBranch : '') || user?.branchId || branches.data?.[0]?.id;
+  const branchName = branches.data?.find((b) => b.id === branchId)?.name;
+  // กลับหน้ารายการพร้อมตัวกรองที่ผู้ใช้ตั้งไว้ (หน้ารายการส่งมาใน router state)
+  const location = useLocation();
+  const listPath = `/expenses${(location.state as { listSearch?: string } | null)?.listSearch ?? ''}`;
 
   if (!branchId) {
     return (
       <div className="space-y-6">
-        <PageHeader title="สร้างค่าใช้จ่าย" onBack={() => navigate('/expenses')} />
+        <PageHeader title="สร้างค่าใช้จ่าย" onBack={() => navigate(listPath)} />
         <QueryBoundary
           isLoading={branches.isPending}
           isError={branches.isError}
@@ -57,7 +67,7 @@ export default function ExpenseDocumentNewPage() {
   if (editDocId && !canManagePayroll(user?.role)) {
     return (
       <div className="space-y-6">
-        <PageHeader title="แก้ไขใบเงินเดือน" onBack={() => navigate('/expenses')} />
+        <PageHeader title="แก้ไขใบเงินเดือน" onBack={() => navigate(listPath)} />
         <div className="rounded-xl border border-border bg-card p-6 text-center" role="status">
           <p className="font-medium leading-snug">{PAYROLL_ROLE_NOTICE}</p>
           <p className="mt-2 text-sm text-muted-foreground leading-snug">เปิดดูใบและพิมพ์สลิปได้ที่หน้ารายละเอียดของใบ</p>
@@ -69,11 +79,13 @@ export default function ExpenseDocumentNewPage() {
 
   return (
     <ExpenseFormV4
+      key={branchId}
       branchId={branchId}
+      branchName={branchName}
       initialDocType={editDocId ? 'PAYROLL' : initialDocType}
       editDocId={editDocId}
-      onClose={() => navigate('/expenses')}
-      onSaved={() => navigate('/expenses')}
+      onClose={() => navigate(listPath)}
+      onSaved={() => navigate(listPath)}
       // Payroll D4 — "บันทึกร่าง + คิดยอด" อยู่ในหน้าแก้ไขของร่างที่เพิ่งบันทึก (รีเฟรชแล้วไม่สร้างใบซ้ำ)
       onDraftSaved={(id) => navigate(payrollEditPath(id), { replace: true })}
     />

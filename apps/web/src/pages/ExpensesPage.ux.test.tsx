@@ -23,7 +23,7 @@ vi.mock('@/hooks/useUiFlags', () => ({ useUiFlags: () => ({
 }) }));
 vi.mock('@/hooks/useCoa', () => ({ useCoaGroups: () => ({ data: { groups: [] } }) }));
 vi.mock('@/components/accounting/ReopenedPeriodBanner', () => ({ ReopenedPeriodBanner: () => null }));
-vi.mock('@/components/expense-form-v4/ExpenseFormV4', () => ({ ExpenseFormV4: () => <div role="dialog" aria-label="สร้างรายจ่ายใหม่" /> }));
+vi.mock('@/components/expense-form-v4/ExpenseFormV4', () => ({ ExpenseFormV4: () => <div aria-label="สร้างรายจ่ายใหม่" /> }));
 import ExpensesPage from './ExpensesPage';
 
 let queryClient: QueryClient;
@@ -176,5 +176,20 @@ describe('list-page status changes refresh that document', () => {
         ]),
       );
     });
+  });
+});
+
+describe('สร้างเอกสารใหม่', () => {
+  it('รายจ่าย (EX) พาไปหน้าเต็มพร้อมสาขาที่กรองอยู่ ไม่เปิด dialog', async () => {
+    const user = userEvent.setup();
+    apiGet.mockImplementation((path: string) => Promise.resolve({ data: path.startsWith('/expense-documents?') ? { data: [], total: 0 } : [] }));
+    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={['/expenses?branch=branch-1']}><ExpensesPage /><LocationProbe /></MemoryRouter>
+    </QueryClientProvider>);
+    await user.click(await screen.findByRole('button', { name: /สร้างเอกสารใหม่/ }));
+    await user.click(screen.getByRole('button', { name: 'รายจ่าย (EX)' }));
+    expect(screen.getByTestId('location')).toHaveTextContent('/expenses/new?branch=branch-1');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });

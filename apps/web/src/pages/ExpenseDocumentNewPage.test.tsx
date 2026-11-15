@@ -7,14 +7,15 @@ const mocks = vi.hoisted(() => ({ get: vi.fn(), user: { branchId: null as string
 vi.mock('@/lib/api', () => ({ default: { get: mocks.get } }));
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: mocks.user }) }));
 vi.mock('@/components/expense-form-v4/ExpenseFormV4', () => ({
-  ExpenseFormV4: ({ branchId, initialDocType, editDocId, onDraftSaved }: { branchId: string; initialDocType?: string; editDocId?: string; onDraftSaved?: (id: string) => void }) =>
+  ExpenseFormV4: ({ branchId, initialDocType, editDocId, onDraftSaved, onSaved }: { branchId: string; initialDocType?: string; editDocId?: string; onDraftSaved?: (id: string) => void; onSaved?: () => void }) =>
     <div>
       <div data-testid="expense-form">{branchId} / {initialDocType} / {editDocId}</div>
       <button type="button" onClick={() => onDraftSaved?.('new-1')}>บันทึกร่าง + คิดยอด</button>
+      <button type="button" onClick={() => onSaved?.()}>บันทึก</button>
     </div>,
 }));
-function Location() { return <output data-testid="location">{useLocation().pathname}</output>; }
-function open(path = '/expenses/new') {
+function Location() { const l = useLocation(); return <output data-testid="location">{l.pathname + l.search}</output>; }
+function open(path: string | { pathname: string; state?: unknown } = '/expenses/new') {
   return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
     <MemoryRouter initialEntries={[path]}><ExpenseDocumentNewPage /><Location /></MemoryRouter>
   </QueryClientProvider>);
@@ -68,5 +69,36 @@ describe('expense creation branch resolution', () => {
     } finally {
       mocks.user.role = 'ACCOUNTANT';
     }
+  });
+
+  it('?branch= ที่อยู่ในรายการสาขา ใช้สาขานั้น แม้ผู้ใช้มีสาขาประจำ', async () => {
+    mocks.user.branchId = 'assigned';
+    mocks.get.mockResolvedValue({ data: [{ id: 'assigned', name: 'ก' }, { id: 'branch-x', name: 'ข' }] });
+    open('/expenses/new?branch=branch-x');
+    expect(await screen.findByTestId('expense-form')).toHaveTextContent('branch-x');
+  });
+  it('?branch= ที่ไม่อยู่ในรายการ ถูกเมิน', async () => {
+    mocks.user.branchId = 'assigned';
+    mocks.get.mockResolvedValue({ data: [{ id: 'assigned', name: 'ก' }] });
+    open('/expenses/new?branch=someone-else');
+    expect(await screen.findByTestId('expense-form')).toHaveTextContent('assigned');
+  });
+  it('มี ?branch= แต่รายการสาขายังไม่มา ยังไม่แสดงฟอร์ม', () => {
+    mocks.user.branchId = 'assigned';
+    mocks.get.mockReturnValue(new Promise(() => {}));
+    open('/expenses/new?branch=branch-x');
+    expect(screen.queryByTestId('expense-form')).not.toBeInTheDocument();
+  });
+  it('บันทึกแล้วกลับหน้ารายการพร้อมตัวกรองเดิม', async () => {
+    mocks.user.branchId = 'assigned'; mocks.get.mockReturnValue(new Promise(() => {}));
+    open({ pathname: '/expenses/new', state: { listSearch: '?tab=accrual&branch=b1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }));
+    expect(screen.getByTestId('location')).toHaveTextContent('/expenses?tab=accrual&branch=b1');
+  });
+  it('เปิดตรง ๆ ไม่มี state บันทึกแล้วกลับ /expenses', () => {
+    mocks.user.branchId = 'assigned'; mocks.get.mockReturnValue(new Promise(() => {}));
+    open();
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }));
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/expenses$/);
   });
 });

@@ -57,7 +57,6 @@ function SortableQuickReplyRow({
         <NativeSelect wrapperClassName="max-w-full w-auto"
           value={qr.type}
           onChange={(e) => onChange({ type: e.target.value as QuickReplyType })}
-          className="text-xs border border-border rounded px-2 py-1 bg-background"
         >
           <option value="MESSAGE">ส่งข้อความ</option>
           <option value="POSTBACK">Postback</option>
@@ -85,7 +84,6 @@ function SortableQuickReplyRow({
                   const tplId = e.target.value;
                   onChange({ payload: tplId ? `${POSTBACK_TEMPLATE_PREFIX}${tplId}` : '' });
                 }}
-                className="text-xs border border-border rounded px-2 py-1 bg-background"
               >
                 <option value="">— ตั้งเอง (custom payload) —</option>
                 <optgroup label="ส่ง แม่แบบตอบกลับ">

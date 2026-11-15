@@ -198,7 +198,6 @@ function ButtonEditor({
         <NativeSelect id={`${uiFieldId}-1`}
           value={layout}
           onChange={(e) => onLayoutChange(e.target.value as LayoutType)}
-          className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
         >
           {LAYOUT_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>

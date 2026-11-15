@@ -75,7 +75,7 @@ Tasks 3–7 can be one PR (R1-2) or several; tasks 8–9 and 10–11 likewise. E
   - `window.__collectFields({ exclude?: string, root?: string }) → FieldFact[]`, where `FieldFact = ControlFact | TargetFact`. Ids are unique per call: controls first, then targets, each in DOM order.
     - `ControlFact`: `{ type:'control', id, key, kind, tag, scope, ancestors, x, y, w, h, borderRadius, borderWidth, borderColor, backgroundColor, fontSize, largeText, label, contentLeft, contentRight, contentWidth, placeholderInkWidth, optionCount, longestOptionInkWidth, valueOverflowX, valueOverflowY, adornments }`
       - `kind`: `'input-wrapper'|'field-frame'|'readonly'|'select-trigger'|'combobox'|'native-select'|'textarea'|'input'`.
-      - `key`: `kind|normalizeKeyText(label text || aria-label || placeholder)|dup`. Label text is the label's own words only: fields, options, buttons, comboboxes, `[role=listbox]`, `[role=option]`, `[role=textbox]`, `[data-slot=select-value]` and editable (`[contenteditable]` other than `"false"`) subtrees inside it are skipped, because a wrapping `<label>` contains its control.
+      - `key`: `kind|normalizeKeyText(label text || aria-label || placeholder)|dup`. Label text is the label's own words only: fields, options, buttons, `<output>`, comboboxes, `[role=listbox]`, `[role=option]`, `[role=textbox]`, `[role=searchbox]`, `[role=spinbutton]`, `[data-slot=select-value]` and editable (`[contenteditable]` other than `"false"`) subtrees inside it are skipped, because a wrapping `<label>` contains its control.
       - `scope`: `'dialog:<n>'|'main'|'page'`.
       - `ancestors`: `[{ id, layout:'flex-row'|'flex-col'|'grid'|'other' }]`, parent first, up to and including the scope root.
       - `label`: `{ fontSize, gap, above } | null`.
@@ -1043,7 +1043,7 @@ test('wrapping labels name controls by their own words only: no option, value or
     <label style="display:block">หมายเหตุ <textarea class="f" style="height:96px">ข้อความลับในช่อง</textarea></label>
     <label style="display:block">สถานะ <button type="button" role="combobox" data-slot="select-trigger" class="f"><span data-slot="select-value">สถานะลับ</span></button></label>
     <label style="display:block">แท็ก <div data-field-frame class="f" style="display:flex;align-items:center"><span>แท็กลับ</span><input style="border:0;padding:0;flex:1;min-width:0"></div></label>
-    <label style="display:block">ธนาคาร <input class="f"><div role="listbox"><div role="option">กสิกรลับ</div><div role="option">ไทยพาณิชย์ลับ</div></div></label>
+    <label style="display:block">ธนาคาร <input class="f"><div role="listbox"><div role="option">กสิกรลับ</div><div role="option">ไทยพาณิชย์ลับ</div></div><span role="spinbutton">ค่าพิมพ์ลับ</span><span role="searchbox">ค่าพิมพ์ลับ</span><output>ค่าพิมพ์ลับ</output></label>
     <button type="button">เลือกบัญชี <span data-slot="select-value">บัญชีลับ</span></button>`);
   const json = JSON.stringify(facts);
   const secrets = [
@@ -1054,6 +1054,7 @@ test('wrapping labels name controls by their own words only: no option, value or
     'แท็กลับ',
     'กสิกรลับ',
     'ไทยพาณิชย์ลับ',
+    'ค่าพิมพ์ลับ',
     'บัญชีลับ',
   ];
   for (const secret of secrets) assert.ok(!json.includes(secret), secret);
@@ -1342,9 +1343,10 @@ test('root option, missing root, determinism, no DOM residue, __collectTypograph
  *   - kind: 'input-wrapper' | 'field-frame' | 'readonly' | 'select-trigger' | 'combobox' |
  *     'native-select' | 'textarea' | 'input'
  *   - key: kind|normalizeKeyText(label text || aria-label || placeholder)|dup — label text is the
- *     label's own words only: fields, options, buttons, comboboxes, listboxes, ARIA options and
- *     textboxes, [data-slot=select-value] and editable (contenteditable ≠ "false") subtrees
- *     inside it are skipped (a wrapping label contains its control)
+ *     label's own words only: fields, options, buttons, <output>, comboboxes, listboxes, ARIA
+ *     options, textboxes, searchboxes and spinbuttons, [data-slot=select-value] and editable
+ *     (contenteditable ≠ "false") subtrees inside it are skipped (a wrapping label contains its
+ *     control)
  *   - scope: 'dialog:<n>' (n = index among [role=dialog],[role=alertdialog] in DOM order) | 'main'
  *     (inside #main) | 'page'
  *   - ancestors: [{ id, layout: 'flex-row' | 'flex-col' | 'grid' | 'other' }] parent first, up to and
@@ -1406,11 +1408,13 @@ test('root option, missing root, determinism, no DOM residue, __collectTypograph
   var NAMED_BY_TEXT_ROLES = { button: true, tab: true, menuitem: true };
   // Subtrees that hold values, not UI copy: never read for a name (a wrapping <label> contains its
   // control; a trigger button contains its select-value; a tag frame contains chips; an inline
-  // listbox holds option text; an ARIA textbox or an editable region holds typed text).
+  // listbox holds option text; an ARIA textbox, searchbox, spinbutton, an <output> or an editable
+  // region holds typed or computed values).
   var VALUE_SUBTREE_SELECTOR =
     FIELD_SELECTOR +
-    ',option,button,[role=combobox],[role=listbox],[role=option],[role=textbox],' +
-    '[data-slot=select-value],[contenteditable]:not([contenteditable="false"])';
+    ',option,button,output,[role=combobox],[role=listbox],[role=option],[role=textbox],' +
+    '[role=searchbox],[role=spinbutton],[data-slot=select-value],' +
+    '[contenteditable]:not([contenteditable="false"])';
 
   function px(value) {
     var n = parseFloat(value);

@@ -169,7 +169,7 @@ test('wrapping labels name controls by their own words only: no option, value or
     <label style="display:block">หมายเหตุ <textarea class="f" style="height:96px">ข้อความลับในช่อง</textarea></label>
     <label style="display:block">สถานะ <button type="button" role="combobox" data-slot="select-trigger" class="f"><span data-slot="select-value">สถานะลับ</span></button></label>
     <label style="display:block">แท็ก <div data-field-frame class="f" style="display:flex;align-items:center"><span>แท็กลับ</span><input style="border:0;padding:0;flex:1;min-width:0"></div></label>
-    <label style="display:block">ธนาคาร <input class="f"><div role="listbox"><div role="option">กสิกรลับ</div><div role="option">ไทยพาณิชย์ลับ</div></div></label>
+    <label style="display:block">ธนาคาร <input class="f"><div role="listbox"><div role="option">กสิกรลับ</div><div role="option">ไทยพาณิชย์ลับ</div></div><span role="spinbutton">ค่าพิมพ์ลับ</span><span role="searchbox">ค่าพิมพ์ลับ</span><output>ค่าพิมพ์ลับ</output></label>
     <button type="button">เลือกบัญชี <span data-slot="select-value">บัญชีลับ</span></button>`);
   const json = JSON.stringify(facts);
   const secrets = [
@@ -180,6 +180,7 @@ test('wrapping labels name controls by their own words only: no option, value or
     'แท็กลับ',
     'กสิกรลับ',
     'ไทยพาณิชย์ลับ',
+    'ค่าพิมพ์ลับ',
     'บัญชีลับ',
   ];
   for (const secret of secrets) assert.ok(!json.includes(secret), secret);

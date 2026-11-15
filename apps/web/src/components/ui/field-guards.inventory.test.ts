@@ -578,3 +578,338 @@ describe('label style A (R1-4, §4.3)', () => {
     expect(select).not.toContain('className="mt-2 h-12');
   });
 });
+
+// ─── F5 (spec 2026-11-14 §5, Task 12): no non-portalled menu outside the allow-list ───
+// Self-contained on purpose: this block re-declares everything it needs under f5*/F5_*
+// names, so it does not depend on (or collide with) the helpers above it in this file.
+// `describe`/`it`/`expect` are vitest globals (vitest.config.ts `globals: true`).
+import * as f5Fs from 'node:fs';
+import * as f5Path from 'node:path';
+import f5Ts from 'typescript';
+
+const F5_ROOT = f5Path.resolve(__dirname, '../../../../..');
+const F5_SCAN_TIMEOUT_MS = 30_000;
+const F5_SKIP_DIRS = new Set(['__tests__', 'test', 'tests', 'node_modules', 'dist']);
+const F5_TEST_FILE = /[.-](test|spec|docs-spec)\.[jt]sx?$/;
+const F5_MENU_ROLES = new Set(['listbox', 'menu']);
+const F5_ITEM_ROLES = new Set(['option', 'menuitem', 'listbox', 'menu']);
+const F5_INTERACTIVE_TAGS = new Set(['button', 'a', 'input', 'Button', 'CommandItem']);
+const F5_PORTAL_TAG = /Portal$|^PopoverContent$|^DropdownMenuContent$/;
+
+/**
+ * Files allowed to keep an inline (non-portalled) `absolute` menu, with how many such
+ * panels each renders. Exact match both ways: a new menu fails, and so does an entry
+ * whose menu was removed or portalled (delete the entry in the same PR).
+ * Browser clip checks for the spec's allow-list: tools/field-scale/menu-clip-components.mjs
+ */
+const F5_NON_PORTAL_MENU_ALLOW: Record<string, { panels: number; reason: string }> = {
+  // spec §5 F5 allow-list + SearchableSelect (until R2-2) — each has a case in menu-clip-components.mjs
+  'apps/web/src/components/ui/SearchableSelect.tsx': {
+    panels: 2,
+    reason: 'R2-2 replaces it — AddressForm ย้ายไป Combobox แล้วลบไฟล์นี้ (listbox + กล่อง "ไม่พบผลลัพธ์")',
+  },
+  'apps/web/src/components/ui/NameAutocomplete.tsx': {
+    panels: 1,
+    reason: 'allow-list ใน spec §5 F5 — ช่องพิมพ์ชื่ออิสระ ไม่แปลงเป็น Combobox (§6.4)',
+  },
+  'apps/web/src/pages/other-income/components/TemplatePickerCombobox.tsx': {
+    panels: 1,
+    reason: 'allow-list ใน spec §5 F5 — เมนูคำสั่ง ไม่ใช่ตัวเลือก (§6.4) · เลยขอบขวาจอที่ 1024/390 (KNOWN ในสคริปต์)',
+  },
+  'apps/web/src/pages/PurchaseOrdersPage/components/wizard/items/CatalogPicker.tsx': {
+    panels: 1,
+    reason: 'allow-list ใน spec §5 F5 — อยู่ในกล่องเลื่อนของหน้าต่างโดยตั้งใจ เลื่อนลงดูผลได้',
+  },
+  'apps/web/src/pages/UnifiedInboxPage/components/NoteMentionInput.tsx': {
+    panels: 1,
+    reason: 'allow-list ใน spec §5 F5 — รายชื่อ @แจ้งเตือนเปิดขึ้นเหนือช่องในแผงโน้ต',
+  },
+  // Found by this scan, NOT in the spec's allow-list, no browser case yet — owner decides portal vs keep.
+  'apps/web/src/components/bundle/BundleSearch.tsx': {
+    panels: 1,
+    reason: 'มีอยู่ก่อนงานนี้ (ค้นของแถม) · นอก allow-list ของ spec — รอเจ้าของตัดสิน',
+  },
+  'apps/web/src/components/template-editor/editor/VariableAutocomplete.tsx': {
+    panels: 1,
+    reason: 'มีอยู่ก่อนงานนี้ (ตัวแปรในแม่แบบเอกสาร วางตามตำแหน่งเคอร์เซอร์) · นอก allow-list ของ spec — รอเจ้าของตัดสิน',
+  },
+  'apps/web/src/pages/CollectionsPage/components/InstallmentPickerPopover.tsx': {
+    panels: 1,
+    reason: 'มีอยู่ก่อนงานนี้ (เลือกงวดที่นัดจ่าย) · นอก allow-list ของ spec — รอเจ้าของตัดสิน',
+  },
+  'apps/web/src/pages/ExpensesPage.tsx': {
+    panels: 1,
+    reason: 'มีอยู่ก่อนงานนี้ (เมนู "สร้างเอกสารใหม่") · นอก allow-list ของ spec — รอเจ้าของตัดสิน',
+  },
+  'apps/web/src/pages/POSPage/components/CustomerSearch.tsx': {
+    panels: 1,
+    reason: 'มีอยู่ก่อนงานนี้ (ค้นลูกค้าหน้า POS) · นอก allow-list ของ spec — รอเจ้าของตัดสิน',
+  },
+  'apps/web/src/pages/settings/SettingsLayout.tsx': {
+    panels: 1,
+    reason: 'มีอยู่ก่อนงานนี้ (ผลค้นหาการตั้งค่า) · นอก allow-list ของ spec — รอเจ้าของตัดสิน',
+  },
+  'apps/web/src/pages/UnifiedInboxPage/components/Customer360Panel.tsx': {
+    panels: 1,
+    reason: 'มีอยู่ก่อนงานนี้ (@แท็กในโน้ตลูกค้า) · นอก allow-list ของ spec — รอเจ้าของตัดสิน',
+  },
+  'apps/web/src/pages/UnifiedInboxPage/components/SessionActions.tsx': {
+    panels: 2,
+    reason: 'มีอยู่ก่อนงานนี้ (เมนู "โอนให้พนักงาน" + "สร้างสัญญา") · นอก allow-list ของ spec — รอเจ้าของตัดสิน',
+  },
+};
+
+function f5ListTsx(dir: string, out: string[] = []): string[] {
+  for (const entry of f5Fs.readdirSync(dir, { withFileTypes: true })) {
+    const file = f5Path.resolve(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (!F5_SKIP_DIRS.has(entry.name)) f5ListTsx(file, out);
+    } else if (entry.name.endsWith('.tsx') && !F5_TEST_FILE.test(entry.name)) {
+      out.push(file);
+    }
+  }
+  return out;
+}
+
+/**
+ * 1-based lines of every inline menu panel in a .tsx source. A panel is a JSX element
+ * whose className has `absolute` (any variant, resolving same-file `const` strings) and
+ * no `inset-*`, that
+ *   (a) is placed against a trigger — `top-full` / `bottom-full` / `mt-*` / `mb-*`, a
+ *       `style` with `top`/`bottom`, or role listbox/menu;
+ *   (b) holds items — role listbox/menu, or a descendant button/a/input/Button/
+ *       CommandItem, role option/menuitem, or onClick/onMouseDown;
+ *   (c) is rendered on demand — right side of `&&`, a branch of `?:`, or the `return`
+ *       after an `if (…) return null`;
+ *   (d) is not inside *Portal / PopoverContent / DropdownMenuContent / createPortal().
+ * Icons and clear buttons fail (a)/(c), badges and tooltips fail (b), image overlays use
+ * `inset-*`, and Radix/cmdk menus are portalled (d).
+ */
+function findInlineMenuPanels(fileName: string, source: string): number[] {
+  const ast = f5Ts.createSourceFile(fileName, source, f5Ts.ScriptTarget.Latest, true, f5Ts.ScriptKind.TSX);
+  const consts = new Map<string, f5Ts.Expression>();
+  const collect = (node: f5Ts.Node): void => {
+    if (f5Ts.isVariableDeclaration(node) && f5Ts.isIdentifier(node.name) && node.initializer) {
+      consts.set(node.name.text, node.initializer);
+    }
+    f5Ts.forEachChild(node, collect);
+  };
+  collect(ast);
+
+  const strings = (node: f5Ts.Node, out: string[], seen: Set<string>): string[] => {
+    if (f5Ts.isIdentifier(node)) {
+      const init = consts.get(node.text);
+      if (init && !seen.has(node.text)) {
+        seen.add(node.text);
+        strings(init, out, seen);
+      }
+    } else if (f5Ts.isStringLiteral(node) || f5Ts.isNoSubstitutionTemplateLiteral(node)) {
+      out.push(node.text);
+    } else if (f5Ts.isTemplateExpression(node)) {
+      out.push(node.head.text);
+      for (const span of node.templateSpans) {
+        strings(span.expression, out, seen);
+        out.push(span.literal.text);
+      }
+    } else {
+      // forEachChild stops at the first truthy return value — keep this callback void.
+      f5Ts.forEachChild(node, (child) => {
+        strings(child, out, seen);
+      });
+    }
+    return out;
+  };
+
+  type Opening = f5Ts.JsxOpeningElement | f5Ts.JsxSelfClosingElement;
+  const attr = (el: Opening, name: string) =>
+    el.attributes.properties.find(
+      (a): a is f5Ts.JsxAttribute => f5Ts.isJsxAttribute(a) && a.name.getText(ast) === name,
+    );
+  const roleOf = (el: Opening): string => {
+    const init = attr(el, 'role')?.initializer;
+    return init && f5Ts.isStringLiteral(init) ? init.text : '';
+  };
+  const classTokens = (el: Opening): string[] => {
+    const init = attr(el, 'className')?.initializer;
+    if (!init) return [];
+    return strings(init, [], new Set())
+      .join(' ')
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((token) => token.split(':').pop() ?? token);
+  };
+  const styleSetsTopOrBottom = (el: Opening): boolean => {
+    const init = attr(el, 'style')?.initializer;
+    const expr = init && f5Ts.isJsxExpression(init) ? init.expression : undefined;
+    return (
+      !!expr &&
+      f5Ts.isObjectLiteralExpression(expr) &&
+      expr.properties.some((p) => !!p.name && ['top', 'bottom'].includes(p.name.getText(ast)))
+    );
+  };
+  const renderedOnDemand = (el: f5Ts.Node): boolean => {
+    let node = el;
+    while (node.parent && f5Ts.isParenthesizedExpression(node.parent)) node = node.parent;
+    const parent = node.parent;
+    if (!parent) return false;
+    if (f5Ts.isBinaryExpression(parent)) {
+      return parent.operatorToken.kind === f5Ts.SyntaxKind.AmpersandAmpersandToken && parent.right === node;
+    }
+    if (f5Ts.isConditionalExpression(parent)) return parent.whenTrue === node || parent.whenFalse === node;
+    if (f5Ts.isReturnStatement(parent) && f5Ts.isBlock(parent.parent)) {
+      const body = parent.parent.statements;
+      return body
+        .slice(0, body.indexOf(parent))
+        .some((s) => f5Ts.isIfStatement(s) && /\breturn\s+null\b/.test(s.thenStatement.getText(ast)));
+    }
+    return false;
+  };
+  const insidePortal = (el: f5Ts.Node): boolean => {
+    for (let node: f5Ts.Node | undefined = el.parent; node; node = node.parent) {
+      if (f5Ts.isJsxElement(node) && F5_PORTAL_TAG.test(node.openingElement.tagName.getText(ast))) return true;
+      if (f5Ts.isCallExpression(node) && /createPortal$/.test(node.expression.getText(ast))) return true;
+    }
+    return false;
+  };
+  const holdsItems = (el: f5Ts.JsxElement): boolean => {
+    let found = false;
+    const visit = (node: f5Ts.Node): void => {
+      if (found) return;
+      if (
+        (f5Ts.isJsxOpeningElement(node) || f5Ts.isJsxSelfClosingElement(node)) &&
+        (F5_INTERACTIVE_TAGS.has(node.tagName.getText(ast)) ||
+          F5_ITEM_ROLES.has(roleOf(node)) ||
+          !!attr(node, 'onClick') ||
+          !!attr(node, 'onMouseDown'))
+      ) {
+        found = true;
+        return;
+      }
+      f5Ts.forEachChild(node, visit);
+    };
+    el.children.forEach(visit);
+    return found;
+  };
+
+  const lines: number[] = [];
+  const visit = (node: f5Ts.Node): void => {
+    if (f5Ts.isJsxElement(node) || f5Ts.isJsxSelfClosingElement(node)) {
+      const opening = f5Ts.isJsxElement(node) ? node.openingElement : node;
+      const tokens = classTokens(opening);
+      if (tokens.includes('absolute') && !tokens.some((t) => /^-?inset-/.test(t))) {
+        const menuRole = F5_MENU_ROLES.has(roleOf(opening));
+        const placed =
+          menuRole ||
+          styleSetsTopOrBottom(opening) ||
+          tokens.some((t) => t === 'top-full' || t === 'bottom-full' || /^-?m[tb]-/.test(t));
+        const items = menuRole || (f5Ts.isJsxElement(node) && holdsItems(node));
+        if (placed && items && renderedOnDemand(node) && !insidePortal(node)) {
+          lines.push(ast.getLineAndCharacterOfPosition(opening.getStart(ast)).line + 1);
+        }
+      }
+    }
+    f5Ts.forEachChild(node, visit);
+  };
+  visit(ast);
+  return lines;
+}
+
+const F5_POSITIVE: [string, string][] = [
+  [
+    'listbox via cn() + same-file const (SearchableSelect)',
+    `export function A({ open, up }: { open: boolean; up: boolean }) {
+      const menuPos = up ? 'bottom-full mb-1' : 'mt-1';
+      return <div className="relative"><input role="combobox" aria-expanded={open} />
+        {open && (<div role="listbox" className={cn('absolute z-50 w-full', menuPos)}><button role="option">ก</button></div>)}
+      </div>;
+    }`,
+  ],
+  [
+    'early return null (InstallmentPickerPopover)',
+    `export function B({ open }: { open: boolean }) {
+      if (!open) return null;
+      return (<div className="absolute z-50 mt-1 w-full rounded-xl border bg-card shadow-lg"><button type="button">งวด 1</button></div>);
+    }`,
+  ],
+  [
+    'AccountSearchDropdown panel as of HEAD 2026-11-14 (Task 6 replaces it with PopoverContent)',
+    `export function C({ open, disabled }: { open: boolean; disabled: boolean }) {
+      return <div className="relative"><button data-slot="select-trigger" type="button">เลือก</button>
+        {open && !disabled && (
+          <div className="absolute z-30 w-full mt-1 rounded-md border shadow-lg bg-popover" style={{ maxHeight: 320 }}>
+            <input aria-label="ค้นหา" /><button type="button">42-1102</button>
+          </div>
+        )}</div>;
+    }`,
+  ],
+  [
+    'role=menu in a ternary, template-literal className',
+    'export function D({ show }: { show: boolean }) { return show ? (<div role="menu" className={`absolute left-0 top-full mt-1 ${show ? "block" : ""}`}><span>รายการ</span></div>) : null; }',
+  ],
+  [
+    'caret-positioned autocomplete (style top/left)',
+    `export function E({ show, pos }: { show: boolean; pos: { top: number; left: number } }) {
+      return <div className="relative"><textarea />{show && (<div className="absolute z-50 w-80 bg-card shadow-xl" style={{ top: pos.top + 30, left: pos.left }}><button type="button">ตัวแปร</button></div>)}</div>;
+    }`,
+  ],
+];
+
+const F5_NEGATIVE: [string, string][] = [
+  ['leading icon', '<div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" /><input /></div>'],
+  ['count badge', '<div className="relative">{count > 0 && <span className="absolute -top-1 -right-1 rounded-full bg-destructive">{count}</span>}</div>'],
+  ['hover tooltip', '<div className="relative">{hover && <div className="absolute bottom-full mb-2 rounded bg-popover px-2 text-xs shadow">คำอธิบาย</div>}</div>'],
+  ['clear button', '<div className="relative">{query && (<button type="button" className="absolute right-2 top-1/2 -translate-y-1/2"><X className="size-4" /></button>)}</div>'],
+  ['image overlay', '<div className="relative">{hover && (<div className="absolute inset-0 flex bg-background/80"><button type="button">ลบรูป</button></div>)}</div>'],
+  [
+    'positioned wrapper of a Radix DropdownMenu (BookingDetailSheet)',
+    '<div>{showMenu && (<div className="absolute right-14 top-2"><DropdownMenu><DropdownMenuTrigger asChild><Button aria-label="เพิ่มเติม" /></DropdownMenuTrigger></DropdownMenu></div>)}</div>',
+  ],
+  [
+    'AccountSearchDropdown after Task 6 (PopoverContent portal)',
+    `<Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild><button type="button" role="combobox">เลือกบัญชี</button></PopoverTrigger>
+      <PopoverContent className="w-(--radix-popover-trigger-width) min-w-64 p-0">
+        <Search className="absolute left-2 top-2.5 size-3.5" />
+        {open && (<div className="absolute mt-1 w-full"><button type="button">42-1102</button></div>)}
+      </PopoverContent>
+    </Popover>`,
+  ],
+];
+
+describe('F5 — inline (non-portalled) menus (spec 2026-11-14 §5)', () => {
+  it.each(F5_POSITIVE)('detector flags: %s', (_label, source) => {
+    expect(findInlineMenuPanels('fixture.tsx', source)).toHaveLength(1);
+  });
+
+  it.each(F5_NEGATIVE)('detector ignores: %s', (_label, source) => {
+    expect(findInlineMenuPanels('fixture.tsx', source)).toEqual([]);
+  });
+
+  it('every allow-list entry says why it may stay', () => {
+    const weak = Object.entries(F5_NON_PORTAL_MENU_ALLOW)
+      .filter(([, { panels, reason }]) => panels < 1 || reason.trim().length < 10)
+      .map(([file]) => file);
+    expect(weak).toEqual([]);
+  });
+
+  it(
+    'only allow-listed files render an absolute menu outside a portal',
+    () => {
+      const files = f5ListTsx(f5Path.resolve(F5_ROOT, 'apps/web/src'));
+      // Guard against the scan silently walking the wrong tree and passing vacuously.
+      expect(files.length).toBeGreaterThan(500);
+      const found: Record<string, number> = {};
+      for (const file of files) {
+        const source = f5Fs.readFileSync(file, 'utf8');
+        if (!/\babsolute\b/.test(source)) continue;
+        const panels = findInlineMenuPanels(file, source);
+        if (panels.length) found[f5Path.relative(F5_ROOT, file).split(f5Path.sep).join('/')] = panels.length;
+      }
+      const allowed = Object.fromEntries(
+        Object.entries(F5_NON_PORTAL_MENU_ALLOW).map(([file, { panels }]) => [file, panels]),
+      );
+      expect(found).toEqual(allowed);
+    },
+    F5_SCAN_TIMEOUT_MS,
+  );
+});

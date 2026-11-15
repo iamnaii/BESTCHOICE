@@ -101,7 +101,7 @@ function FormDescription({ className, ...props }: React.HTMLAttributes<HTMLParag
     <p
       id={formDescriptionId}
       data-slot="form-description"
-      className={cn('text-2xs text-muted-foreground', className)}
+      className={cn('mt-1.5 text-2xs text-muted-foreground', className)}
       {...props}
     />
   );

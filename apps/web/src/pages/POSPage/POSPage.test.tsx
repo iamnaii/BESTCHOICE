@@ -267,6 +267,14 @@ describe('POS price selection', () => {
       'true',
     );
   });
+
+  it('keeps the discount chips 6px below the discount field (FormItem has no stacked gap)', async () => {
+    renderPOS();
+    await selectProduct();
+    const chips = screen.getByRole('button', { name: '5%' }).parentElement;
+    expect(chips).toHaveClass('flex', 'gap-1', 'mt-1.5');
+    expect(chips).not.toHaveClass('mt-1');
+  });
 });
 
 describe('POSPage — กล่องหลังขายสำเร็จ (ก้อน 4)', () => {

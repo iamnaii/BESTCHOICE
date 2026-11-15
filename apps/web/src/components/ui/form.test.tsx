@@ -47,4 +47,10 @@ describe('form field semantics', () => {
     expect(label).toHaveClass('text-destructive');
     expect(label).not.toHaveClass('text-foreground');
   });
+
+  it('keeps a FormDescription off its control: the same mt-1.5 gap as FormMessage', () => {
+    render(<Example title="ลูกค้า" />);
+    const description = screen.getByText('ชื่อที่ใช้ติดต่อ');
+    expect(description).toHaveClass('mt-1.5', 'text-2xs', 'text-muted-foreground');
+  });
 });

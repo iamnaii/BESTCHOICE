@@ -150,7 +150,7 @@ export default function SaleDetailsForm({
                     />
                   </FormControl>
                   {parseFloat(sellingPrice) > 0 && (
-                    <div className="flex gap-1 mt-1">
+                    <div className="flex gap-1 mt-1.5">
                       {[0, 5, 10].map((pct) => (
                         <button
                           key={pct}

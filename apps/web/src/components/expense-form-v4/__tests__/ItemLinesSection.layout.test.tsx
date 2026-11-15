@@ -45,6 +45,14 @@ beforeAll(() => {
 });
 
 describe('ItemLinesSection — ตารางและการ์ด', () => {
+  it('กล่องเลื่อนของตารางเป็น containing block — หัวคอลัมน์ sr-only ไม่หลุดออกไปขยายหน้าจอมือถือ', () => {
+    mount();
+    // sr-only = position:absolute · ถ้ากล่องเลื่อนไม่ใช่ relative หัว "ลบ" จะยึดกรอบนอกกล่อง ไม่ถูกตัด
+    // แล้วดันหน้ากว้างเกินจอ (390 → 843px) จน useIsMobile อ่าน innerWidth ผิดและค้างที่ตาราง
+    const scroller = screen.getByRole('table').parentElement!;
+    expect(scroller).toHaveClass('overflow-x-auto', 'relative');
+  });
+
   it('จอใหญ่เป็นตารางเดียว หัวคอลัมน์ "จำนวนเงิน" และทุกช่องมีชื่อ', () => {
     mount();
     expect(screen.getAllByRole('table')).toHaveLength(1);

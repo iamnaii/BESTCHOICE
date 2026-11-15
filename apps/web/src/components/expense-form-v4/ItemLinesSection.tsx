@@ -189,7 +189,8 @@ export function ItemLinesSection({ lines, onChange, priceTypeLabel }: Props) {
   const head = 'px-2 py-2.5 text-xs font-semibold leading-snug text-muted-foreground whitespace-nowrap';
   return (
     <div className="space-y-3">
-      <div className="overflow-x-auto rounded-lg border border-border">
+      {/* relative: หัวคอลัมน์ sr-only (absolute) ต้องยึดกล่องนี้ จึงถูกตัดในกล่องเลื่อน ไม่ดันหน้ากว้างเกินจอมือถือ */}
+      <div className="relative overflow-x-auto rounded-lg border border-border">
         <table className="w-full min-w-[52rem] table-fixed text-sm">
           <colgroup>
             <col className="w-6" />

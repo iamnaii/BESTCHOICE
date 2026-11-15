@@ -3632,18 +3632,22 @@ Spec: `docs/superpowers/specs/2026-11-14-dropdown-search-field-scale-design.md` 
 
 Background for a zero-context implementer:
 - `rounded-lg` = `var(--radius)` = `0.5rem` = **8px** (`apps/web/src/index.css:131` and `:306`). `rounded-md` = 6px (`index.css:132`).
-- Inside the back office (`body:has(.app-shell)`), `apps/web/src/styles/admin-typography.css` forces controls to 44px tall and 14px text (16px when the screen is under 1024px). It is imported outside any `@layer`, so it beats Tailwind utilities. It sets **no** `border-radius`. So inside the shell this task changes only the corner radius. Outside the shell (LIFF, auth pages, public pages), the new `text-base lg:text-sm` on `Input` md becomes the real font size.
+- Inside the back office (`body:has(.app-shell)`), `apps/web/src/styles/admin-typography.css` forces controls to 44px tall and 14px text (16px when the screen is under 1024px). It is imported outside any `@layer`, so it beats Tailwind utilities. It sets **no** `border-radius`, and its 14px rules skip inputs that carry `.text-lg`, `.text-xl`, `.text-2xl`, `.text-3xl`, `.text-4xl`, `.text-[18px]`, `.text-[20px]` or `.text-[24px]` (`admin-typography.css:35` and `:49` — deliberate large-amount inputs). So inside the shell this task changes the corner radius of normal fields, and outside the shell (LIFF, auth pages, public pages) the new `text-base lg:text-sm` on `Input` md becomes the real font size.
+- **Caller font size is the exception (Steps 6a–6b).** tailwind-merge 3.6 merges only classes with the same variant prefix, so `cn('… text-base lg:text-sm …', 'text-2xl font-bold')` drops `text-base` but **keeps** `lg:text-sm`, which then wins at ≥ 1024px. Before this task a caller's size replaced `text-[0.8125rem]` completely. Without a fix, a caller's `text-xs` grows to 14px on desktop outside the shell, and a large input (e.g. the 18px emoji field `RichMenuPage.tsx:266`, `text-lg`) shrinks to 14px on desktop even **inside** the shell, because `admin-typography.css` deliberately leaves `.text-lg…` inputs alone. So `Input`, `InputWrapper` and `NumberInput` drop the variant's `lg:text-sm` when the caller's `className` carries a bare font-size utility (`withCallerFontSize`). The `inputVariants` md string itself and `formControlClass` do not change. A scan of `<Input>`/`<NumberInput>`/`<FormNumberInput>`/`<InputWrapper>` md call sites (no `variant`, not `unstyled`) found 15 `<Input>` sites whose literal `className` has a bare size: 7 `text-xs`, 6 `text-sm`, 1 `text-base` (`StockListTab.tsx:282`), 1 `text-lg` (`RichMenuPage.tsx:266`). Sites that pass `className` through a variable are not covered by that scan; the primitive fix covers them anyway.
 - No existing test asserts `rounded-md`, `text-[0.8125rem]` or `h-[34px]`. A grep over every `*.test.*`/`*.spec.*` file under `apps/web` found nothing, so you only add one new test file.
 - `InputGroup`/`InputWrapper` are not used anywhere outside `input.tsx` and `admin-typography.css`. Their corner rules (`[&_[data-slot=input-addon]:has(+[data-slot=input])]:rounded-r-none`, …) are parent-scoped selectors. They are more specific than a single `.rounded-lg` class, and `cn()`/tailwind-merge only merges classes on the same element. So they still square off the joined corners after `rounded-md` becomes `rounded-lg`, and they need no change.
 - `SelectContent` (`select.tsx:123`, the dropdown menu panel) keeps `rounded-md` on purpose, because it is a menu, not a field.
 
 **Files:**
-- Modify: `apps/web/src/components/ui/input.tsx` lines 18–20 (`inputVariants`) and lines 34–36 (`inputAddonVariants`)
+- Modify: `apps/web/src/components/ui/input.tsx` lines 18–20 (`inputVariants`), lines 34–36 (`inputAddonVariants`), the import block, `Input` (original lines 109–116) and `InputWrapper` (original lines 131–143)
+- Create: `apps/web/src/components/ui/caller-font-size.ts` (`callerSetsFontSize`, `withCallerFontSize`)
+- Modify: `apps/web/src/components/ui/NumberInput.tsx` (import block and the `className` line, original line 86)
 - Modify: `apps/web/src/components/ui/select.tsx` lines 54–56 (`selectTriggerVariants`)
 - Modify: `apps/web/src/components/ui/textarea.tsx` lines 14–16 (`textareaVariants`)
 - Modify: `DESIGN.md` lines 155–156 (§4.1 Radius)
 - Modify: `docs/guides/form-field-qa.md` after line 5
 - Create (test): `apps/web/src/components/ui/primitives-radius.test.tsx`
+- Create (test): `apps/web/src/components/ui/caller-font-size.test.ts`
 - Unchanged but verified: `apps/web/src/components/ui/form-styles.ts`. The `formControlClass` output stays the same: with tailwind-merge 3.6.0 it ends in `… px-3 file:pr-3 file:mr-3 h-11 min-h-11 min-w-0 rounded-lg py-2 text-base font-normal leading-normal lg:text-sm`.
 
 **Interfaces:**
@@ -3654,6 +3658,8 @@ Background for a zero-context implementer:
   - `selectTriggerVariants` `sm`/`md`/`lg` use `rounded-lg`. Font sizes are unchanged.
   - `textareaVariants` `sm`/`md`/`lg` use `rounded-lg`. Font sizes are unchanged.
   - `ReadOnlyField` (wraps `<Input readOnly>`), `NumberInput` and `formControlClass` all build on `inputVariants`, so they get the 8px radius and the mobile-safe font automatically.
+  - Behaviour: `Input`, `InputWrapper` and `NumberInput` (not `unstyled`) render `cn(withCallerFontSize(inputVariants({ variant }), className), …, className)`. With no `className`, or one without a bare font-size utility, the classes are exactly as before. With a bare size (`text-xs|2xs|2sm|sm|base|lg|xl|2xl…9xl`, optional `/line-height` or `!`, or `text-[<length>]`), the variant's `lg:text-sm` is dropped so the caller's size holds at every width. Colour/alignment classes (`text-muted-foreground`, `text-primary`, `text-[hsl(…)]`, `text-[#…]`, `text-right`) and prefixed sizes (`lg:text-2xl`) do not count. `className={formControlClass}` still renders exactly `cn(inputVariants(), formControlClass)`, because `formControlClass` carries its own `lg:text-sm`.
+  - `callerSetsFontSize(className?: string | null): boolean` and `withCallerFontSize(variantClasses: string, className?: string | null): string` are exported from `apps/web/src/components/ui/caller-font-size.ts`. Any later component that renders `inputVariants` md together with a caller `className` without going through `Input` must use `withCallerFontSize` the same way.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -3662,10 +3668,12 @@ Create `apps/web/src/components/ui/primitives-radius.test.tsx` with exactly this
 ```tsx
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { Input, InputAddon } from './input';
+import { Input, InputAddon, InputWrapper, inputVariants } from './input';
+import { NumberInput } from './NumberInput';
 import { Select, SelectTrigger, SelectValue } from './select';
 import { Textarea } from './textarea';
 import { formControlClass } from './form-styles';
+import { cn } from '@/lib/utils';
 
 const SIZES = ['sm', 'md', 'lg'] as const;
 
@@ -3729,6 +3737,156 @@ describe('Input md — 16px below lg outside the app shell (S3-23)', () => {
     expect(classes.filter((c) => /^text-(base|sm|xs|\[)/.test(c))).toEqual(['text-base']);
   });
 });
+
+// tailwind-merge keeps `lg:text-sm` next to a bare caller size (`text-2xl`), so on >= 1024px
+// the variant's 14px would beat the caller's own size. admin-typography.css leaves
+// .text-lg/.text-xl/.text-2xl… inputs alone, so inside the shell nothing else fixes it.
+describe('Input md — caller font size wins at every width', () => {
+  it('Input className="text-2xl" ไม่มี lg:text-sm ของ variant', () => {
+    render(<Input aria-label="ยอดเงิน" className="text-2xl font-bold" />);
+    const input = screen.getByRole('textbox', { name: 'ยอดเงิน' });
+    expect(input).toHaveClass('text-2xl');
+    expect(input).not.toHaveClass('lg:text-sm');
+    expect(input).not.toHaveClass('text-base');
+  });
+
+  it('Input className="text-xs" ไม่ขยายเป็น 14px บนจอใหญ่', () => {
+    render(<Input aria-label="รหัส" className="text-xs" />);
+    expect(screen.getByRole('textbox', { name: 'รหัส' })).not.toHaveClass('lg:text-sm');
+  });
+
+  it('Input ค่าตั้งต้นยังเป็น text-base lg:text-sm', () => {
+    render(<Input aria-label="อีเมล" />);
+    expect(screen.getByRole('textbox', { name: 'อีเมล' })).toHaveClass('text-base', 'lg:text-sm');
+  });
+
+  it('className สี (text-muted-foreground) ไม่ตัด lg:text-sm', () => {
+    render(<Input aria-label="หมายเหตุ" className="text-muted-foreground" />);
+    expect(screen.getByRole('textbox', { name: 'หมายเหตุ' })).toHaveClass(
+      'text-base',
+      'lg:text-sm',
+      'text-muted-foreground',
+    );
+  });
+
+  it('Input className={formControlClass} ได้คลาสเท่าเดิมทุกตัวอักษร', () => {
+    render(<Input aria-label="ชื่อร้าน" className={formControlClass} />);
+    const input = screen.getByRole('textbox', { name: 'ชื่อร้าน' });
+    expect(input.className).toBe(cn(inputVariants(), formControlClass));
+    expect(input).toHaveClass('text-base', 'lg:text-sm');
+  });
+
+  it('NumberInput className="text-2xl" ไม่มี lg:text-sm ของ variant', () => {
+    render(<NumberInput aria-label="รับเงิน" className="text-2xl" />);
+    const input = screen.getByRole('spinbutton', { name: 'รับเงิน' });
+    expect(input).toHaveClass('text-2xl');
+    expect(input).not.toHaveClass('lg:text-sm');
+  });
+
+  it('NumberInput ค่าตั้งต้นยังเป็น text-base lg:text-sm', () => {
+    render(<NumberInput aria-label="จำนวน" />);
+    expect(screen.getByRole('spinbutton', { name: 'จำนวน' })).toHaveClass('text-base', 'lg:text-sm');
+  });
+
+  it('InputWrapper className="text-lg" ไม่มี lg:text-sm ของ variant', () => {
+    render(<InputWrapper data-testid="wrapper" className="text-lg" />);
+    const wrapper = screen.getByTestId('wrapper');
+    expect(wrapper).toHaveClass('text-lg');
+    expect(wrapper).not.toHaveClass('lg:text-sm');
+  });
+});
+```
+
+Create `apps/web/src/components/ui/caller-font-size.test.ts` with exactly this content:
+
+```ts
+import { describe, it, expect } from 'vitest';
+import { callerSetsFontSize, withCallerFontSize } from './caller-font-size';
+import { inputVariants } from './input';
+import { formControlClass } from './form-styles';
+
+// Input md is `text-base lg:text-sm`. tailwind-merge does not treat a bare caller size
+// (`text-2xl`) and the responsive `lg:text-sm` as a conflict, so the variant's 14px
+// would win at >= 1024px over the caller's own size. These helpers detect a caller size.
+describe('callerSetsFontSize', () => {
+  it.each([
+    'text-2xs',
+    'text-xs',
+    'text-2sm',
+    'text-sm',
+    'text-base',
+    'text-lg',
+    'text-xl',
+    'text-2xl',
+    'text-5xl',
+    'text-9xl',
+    'text-lg/7',
+    'text-xl!',
+    '!text-xl',
+    'tabular-nums text-right text-2xl font-bold',
+  ])('ขนาดตัวอักษร "%s" = ผู้เรียกกำหนดขนาดเอง', (className) => {
+    expect(callerSetsFontSize(className)).toBe(true);
+  });
+
+  it.each([
+    'text-[13px]',
+    'text-[0.8125rem]',
+    'text-[1.5em]',
+    'text-[length:var(--field-size)]',
+    'text-[clamp(1rem,2vw,1.5rem)]',
+  ])('ขนาดแบบ arbitrary length "%s" = ผู้เรียกกำหนดขนาดเอง', (className) => {
+    expect(callerSetsFontSize(className)).toBe(true);
+  });
+
+  it.each([
+    'text-muted-foreground',
+    'text-primary',
+    'text-foreground',
+    'text-destructive',
+    'text-warning-strong',
+    'text-[hsl(var(--primary))]',
+    'text-[#1e3a5f]',
+    'text-[var(--brand)]',
+    'text-[color:var(--brand)]',
+    'text-right text-center text-left',
+    'text-ellipsis text-nowrap text-wrap',
+    'lg:text-2xl',
+    'md:text-base sm:text-lg',
+    'h-11 w-full rounded-lg',
+    '',
+  ])('สี/จัดแนว/ขนาดตามจอ "%s" ไม่นับเป็นขนาดของผู้เรียก', (className) => {
+    expect(callerSetsFontSize(className)).toBe(false);
+  });
+
+  it('ไม่มี className = false', () => {
+    expect(callerSetsFontSize(undefined)).toBe(false);
+    expect(callerSetsFontSize(null)).toBe(false);
+  });
+
+  it('formControlClass มี text-base จึงนับเป็นขนาดของผู้เรียก', () => {
+    expect(callerSetsFontSize(formControlClass)).toBe(true);
+  });
+});
+
+describe('withCallerFontSize', () => {
+  const md = inputVariants();
+
+  it('ไม่มีขนาดของผู้เรียก = คืนคลาสของ variant เหมือนเดิมทุกตัวอักษร', () => {
+    expect(withCallerFontSize(md, undefined)).toBe(md);
+    expect(withCallerFontSize(md, 'text-muted-foreground')).toBe(md);
+  });
+
+  it('ผู้เรียกกำหนดขนาด = ตัด lg:text-sm ของ variant ออก (ส่วนอื่นคงเดิม)', () => {
+    const out = withCallerFontSize(md, 'text-2xl');
+    expect(out.split(/\s+/)).not.toContain('lg:text-sm');
+    expect(out.split(/\s+/)).toEqual(md.split(/\s+/).filter((c) => c && c !== 'lg:text-sm'));
+  });
+
+  it('formControlClass: ผลลัพธ์รวมยังมี lg:text-sm ของ formControlClass เอง', () => {
+    const merged = withCallerFontSize(md, formControlClass) + ' ' + formControlClass;
+    expect(merged.split(/\s+/)).toContain('lg:text-sm');
+  });
+});
 ```
 
 - [ ] **Step 2: Run the test and watch it fail**
@@ -3736,12 +3894,15 @@ describe('Input md — 16px below lg outside the app shell (S3-23)', () => {
 From the repo root in Git Bash:
 
 ```bash
-npm run test --workspace=apps/web -- src/components/ui/primitives-radius.test.tsx
+npm run test --workspace=apps/web -- src/components/ui/primitives-radius.test.tsx src/components/ui/caller-font-size.test.ts
 ```
 
-Expected: the run FAILS. The `formControlClass` test already passes, because it guards against regressions rather than driving the change. The output includes:
+Expected: the run FAILS. `caller-font-size.test.ts` cannot load (its module is created in Step 6a). In `primitives-radius.test.tsx` the `formControlClass` test already passes, because it guards against regressions rather than driving the change. The caller-font-size component tests that assert "no `lg:text-sm`" and the `formControlClass` identity also pass now, because the old md variant has no `lg:text-sm`; they start failing after Step 3 and pass again after Step 6b (Step 3 alone gives `4 failed` there). The output includes:
 
 ```
+ FAIL  src/components/ui/caller-font-size.test.ts [ src/components/ui/caller-font-size.test.ts ]
+Error: Failed to resolve import "./caller-font-size" from "src/components/ui/caller-font-size.test.ts". Does the file exist?
+...
  FAIL  src/components/ui/primitives-radius.test.tsx > form primitives — 8px radius (§4.1) > Input variant sm ใช้ rounded-lg
 Error: expect(element).toHaveClass("rounded-lg")
 
@@ -3751,10 +3912,13 @@ Received:
   flex w-full bg-background border border-input ... rounded-md ...
 ...
  FAIL  ... > Input md — 16px below lg outside the app shell (S3-23) > Input ค่าตั้งต้นใช้ text-base และ lg:text-sm แทน 13px
-Error: expect(element).toHaveClass("text-base", "lg:text-sm", "leading-snug")
+Error: expect(element).toHaveClass("text-base lg:text-sm leading-snug")
 ...
- Test Files  1 failed (1)
-      Tests  13 failed | 1 passed (14)
+ FAIL  ... > Input md — caller font size wins at every width > NumberInput ค่าตั้งต้นยังเป็น text-base lg:text-sm
+Error: expect(element).toHaveClass("text-base lg:text-sm")
+...
+ Test Files  2 failed (2)
+      Tests  16 failed | 6 passed (22)
 ```
 
 - [ ] **Step 3: Change `inputVariants` in `apps/web/src/components/ui/input.tsx`**
@@ -3772,7 +3936,9 @@ with:
 ```ts
         lg: 'h-10 px-4 text-sm leading-snug rounded-lg file:pr-4 file:mr-4',
         // S3-23: 16px below lg so iOS Safari does not zoom on focus outside the app shell
-        // (LIFF, auth pages, public pages). Inside .app-shell admin-typography.css still wins.
+        // (LIFF, auth pages, public pages). Inside .app-shell admin-typography.css sets 14px,
+        // except on .text-lg/.text-xl/… inputs. A caller's own size drops lg:text-sm
+        // (withCallerFontSize in Input/InputWrapper/NumberInput).
         md: 'h-[34px] px-3 text-base lg:text-sm leading-snug rounded-lg file:pr-3 file:mr-3',
         sm: 'h-7 px-2.5 text-xs leading-snug rounded-lg file:pr-2.5 file:mr-2.5',
 ```
@@ -3781,7 +3947,7 @@ Keep `leading-snug` **after** `text-base`. tailwind-merge drops a `leading-*` cl
 
 - [ ] **Step 4: Change `inputAddonVariants` in the same file**
 
-Replace the original lines 34–36. After Step 3 added two comment lines, they are now lines 36–38:
+Replace the original lines 34–36. After Step 3 added four comment lines, they are now lines 38–40:
 
 ```ts
         sm: 'rounded-md h-7 min-w-[28px] text-xs leading-snug px-2.5 [&_svg:not([class*=size-])]:size-3.5',
@@ -3837,17 +4003,117 @@ with:
         lg: 'px-4 py-4 text-sm rounded-lg',
 ```
 
-- [ ] **Step 7: Run the new test and see it pass**
+- [ ] **Step 6a: Create `apps/web/src/components/ui/caller-font-size.ts`**
+
+Create the file with exactly this content:
+
+```ts
+// Input md is `text-base lg:text-sm` (16px below lg so iOS Safari does not zoom, S3-23).
+// tailwind-merge only merges classes with the same variant prefix, so a bare caller size
+// such as `text-2xl` replaces `text-base` but keeps `lg:text-sm`, and the variant's 14px
+// would win at >= 1024px. When the caller sets its own size, drop the variant's
+// responsive size so the caller's size holds at every width.
+
+/** Bare theme sizes, including this app's `2xs`/`2sm`; optional `/line-height` and `!`. */
+const THEME_SIZE = /^!?text-(?:2xs|xs|2sm|sm|base|lg|xl|[2-9]xl)(?:\/[^\s!]+)?!?$/;
+/** `text-[13px]`, `text-[0.8125rem]`, `text-[length:…]`, `text-[clamp(…)]` — not colours. */
+const ARBITRARY_SIZE =
+  /^!?text-\[(?:length:[^\]]+|-?\d*\.?\d+(?:px|rem|em|%|vw|vh|vmin|vmax|svh|dvh|lvh|ch|ex|pt|pc|cm|mm|in|lh|rlh|cqw|cqh)|(?:calc|clamp|min|max)\([^\]]*\))\](?:\/[^\s!]+)?!?$/;
+
+/** The variant classes this helper may drop. Only Input md carries one today. */
+const RESPONSIVE_VARIANT_SIZES = new Set(['lg:text-sm']);
+
+/** True when `className` has an unprefixed font-size utility (colour classes do not count). */
+export function callerSetsFontSize(className?: string | null): boolean {
+  if (!className) return false;
+  return className
+    .split(/\s+/)
+    .some((token) => THEME_SIZE.test(token) || ARBITRARY_SIZE.test(token));
+}
+
+/**
+ * `variantClasses` unchanged, or without its responsive font size when the caller
+ * sets its own size. Use as `cn(withCallerFontSize(inputVariants({ variant }), className), className)`.
+ */
+export function withCallerFontSize(variantClasses: string, className?: string | null): string {
+  if (!callerSetsFontSize(className)) return variantClasses;
+  return variantClasses
+    .split(/\s+/)
+    .filter((token) => token && !RESPONSIVE_VARIANT_SIZES.has(token))
+    .join(' ');
+}
+```
+
+`RESPONSIVE_VARIANT_SIZES` lists the only responsive font size a variant carries today (Input md). Keep `inputVariants` md as it is: `formControlClass`, `appointmentControlClass` and later tasks depend on that exact string.
+
+- [ ] **Step 6b: Use it in `Input`, `InputWrapper` and `NumberInput`**
+
+In `apps/web/src/components/ui/input.tsx`, add this import after the `class-variance-authority` import (line 3):
+
+```ts
+import { withCallerFontSize } from './caller-font-size';
+```
+
+Replace the `Input` body (original line 115):
+
+```tsx
+  return <input data-slot="input" type={type} className={cn(inputVariants({ variant }), className)} {...props} />;
+```
+
+with:
+
+```tsx
+  return (
+    <input
+      data-slot="input"
+      type={type}
+      className={cn(withCallerFontSize(inputVariants({ variant }), className), className)}
+      {...props}
+    />
+  );
+```
+
+In `InputWrapper`, replace:
+
+```tsx
+      className={cn(inputVariants({ variant }), inputWrapperVariants({ variant }), className)}
+```
+
+with:
+
+```tsx
+      className={cn(
+        withCallerFontSize(inputVariants({ variant }), className),
+        inputWrapperVariants({ variant }),
+        className,
+      )}
+```
+
+In `apps/web/src/components/ui/NumberInput.tsx`, add `import { withCallerFontSize } from './caller-font-size';` after `import { inputVariants } from './input';`, and replace:
+
+```tsx
+        className={cn(!unstyled && inputVariants({ variant }), 'tabular-nums', className)}
+```
+
+with:
+
+```tsx
+        className={cn(!unstyled && withCallerFontSize(inputVariants({ variant }), className), 'tabular-nums', className)}
+```
+
+`FormNumberInput` renders `NumberInput`, so it is covered. `formControlClass` (`form-styles.ts`) and `appointmentControlClass` (`components/appointments/field-styles.ts`) are fixed class strings that already end in `lg:text-sm`; they need no change.
+
+- [ ] **Step 7: Run the new tests and see them pass**
 
 ```bash
-npm run test --workspace=apps/web -- src/components/ui/primitives-radius.test.tsx
+npm run test --workspace=apps/web -- src/components/ui/primitives-radius.test.tsx src/components/ui/caller-font-size.test.ts
 ```
 
 Expected:
 
 ```
- Test Files  1 passed (1)
-      Tests  14 passed (14)
+ Test Files  2 passed (2)
+      Tests  61 passed (61)
 ```
 
 - [ ] **Step 8: Run the neighbouring primitive tests (regression)**
@@ -3856,13 +4122,13 @@ Expected:
 npm run test --workspace=apps/web -- src/components/ui
 ```
 
-Expected: every test file passes, with 0 failed. If no other task has added ui tests yet, that is `Test Files  9 passed (9)`: the 8 existing ui test files plus the new one. A higher count is fine as long as nothing fails. NumberInput, NativeSelect, form, SearchableSelect and NameAutocomplete all render `inputVariants`/`formControlClass`.
+Expected: every test file passes, with 0 failed. If no other task has added ui tests yet, that is `Test Files  10 passed (10)`: the 8 existing ui test files plus the two new ones. A higher count is fine as long as nothing fails. NumberInput, NativeSelect, form, SearchableSelect and NameAutocomplete all render `inputVariants`/`formControlClass`.
 
 - [ ] **Step 9: Type check and lint**
 
 ```bash
 bash tools/check-types.sh web
-cd apps/web && npx eslint src/components/ui/input.tsx src/components/ui/select.tsx src/components/ui/textarea.tsx src/components/ui/primitives-radius.test.tsx; cd ../..
+cd apps/web && npx eslint src/components/ui/input.tsx src/components/ui/select.tsx src/components/ui/textarea.tsx src/components/ui/NumberInput.tsx src/components/ui/caller-font-size.ts src/components/ui/caller-font-size.test.ts src/components/ui/primitives-radius.test.tsx; cd ../..
 ```
 
 Expected:
@@ -3874,11 +4140,12 @@ Running the full `npm run lint --workspace=apps/web` instead is also fine, as lo
 - [ ] **Step 10: Commit the code change**
 
 ```bash
-git add apps/web/src/components/ui/input.tsx apps/web/src/components/ui/select.tsx apps/web/src/components/ui/textarea.tsx apps/web/src/components/ui/primitives-radius.test.tsx && git commit -m "$(cat <<'EOF'
+git add apps/web/src/components/ui/input.tsx apps/web/src/components/ui/select.tsx apps/web/src/components/ui/textarea.tsx apps/web/src/components/ui/NumberInput.tsx apps/web/src/components/ui/caller-font-size.ts apps/web/src/components/ui/caller-font-size.test.ts apps/web/src/components/ui/primitives-radius.test.tsx && git commit -m "$(cat <<'EOF'
 fix(web): ตัวกลางช่องกรอกมุม 8px + ตัวอักษร 16px บนมือถือนอก app shell (S3-23)
 
 Input / InputAddon / SelectTrigger / Textarea: rounded-md -> rounded-lg ทุก variant (spec 2026-11-14 §4.1)
 Input md: text-[0.8125rem] -> text-base lg:text-sm (iPhone ไม่ซูมเมื่อแตะช่องนอกหลังบ้าน)
+ขนาดตัวอักษรที่ผู้เรียกใส่เองใน className ตัด lg:text-sm ของ variant (withCallerFontSize — Input/InputWrapper/NumberInput)
 ภายใน .app-shell ขนาดตัวอักษร/ความสูงยังมาจาก admin-typography.css เหมือนเดิม
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
@@ -3907,7 +4174,7 @@ with:
 Line 5 is the paragraph that starts with `มาตรฐานช่องกรอกและตัวกรองใน app shell อยู่ที่`. After it, insert a blank line and then this paragraph:
 
 ```md
-ตัวกลาง `Input` / `SelectTrigger` / `Textarea` ใช้มุม 8 px (`rounded-lg`) ทุก variant และ `Input` ค่าตั้งต้น (`md`) ใช้ตัวอักษร 16 px บนจอ < 1024 px / 14 px จอใหญ่ (`text-base lg:text-sm`) จึงไม่ซูมบน iPhone แม้อยู่นอก app shell (LIFF, หน้าเข้าสู่ระบบ, หน้าสาธารณะ) (spec 2026-11-14 §4.1, S3-23)
+ตัวกลาง `Input` / `SelectTrigger` / `Textarea` ใช้มุม 8 px (`rounded-lg`) ทุก variant และ `Input` ค่าตั้งต้น (`md`) ใช้ตัวอักษร 16 px บนจอ < 1024 px / 14 px จอใหญ่ (`text-base lg:text-sm`) จึงไม่ซูมบน iPhone แม้อยู่นอก app shell (LIFF, หน้าเข้าสู่ระบบ, หน้าสาธารณะ) (spec 2026-11-14 §4.1, S3-23) — ยกเว้นเมื่อผู้เรียกใส่ขนาดตัวอักษรเองใน `className` (เช่น `text-lg`, `text-xs`, `text-[13px]`; คลาสสีอย่าง `text-muted-foreground` ไม่นับ): `Input` / `NumberInput` / `InputWrapper` ตัด `lg:text-sm` ของ variant ออก (`withCallerFontSize` ใน `components/ui/caller-font-size.ts`) ขนาดของผู้เรียกจึงใช้ทุกความกว้างจอ — ภายใน app shell ช่องที่ไม่ใช่ขนาดใหญ่ (`text-lg` ขึ้นไป) ยังถูก `admin-typography.css` ตั้ง 14 px ตามเดิม
 ```
 
 - [ ] **Step 13: Commit the docs**
@@ -3971,7 +4238,7 @@ Two new shared field primitives. **No call site is migrated in this task** (appe
 - Create: `apps/web/src/components/ui/readonly-field.test.tsx`
 - Create: `apps/web/src/components/ui/labeled-field.tsx`
 - Create: `apps/web/src/components/ui/labeled-field.test.tsx`
-- Read only (no edits): `apps/web/src/components/ui/input.tsx:5-27` (`inputVariants`, note line 10 `[[readonly]]:bg-muted/80 [[readonly]]:cursor-not-allowed`), `apps/web/src/components/ui/input.tsx:109-116` (`Input`, spreads `...props` after `data-slot="input"`, so our `data-slot` wins), `apps/web/src/components/ui/form-styles.ts:5-8` (`formControlClass`), `apps/web/src/components/ui/form-styles.ts:13` (`formLabelClass`), `apps/web/src/lib/utils.ts` (`cn` = `twMerge(clsx(...))`).
+- Read only (no edits): `apps/web/src/components/ui/input.tsx:6-32` (`inputVariants`, note line 11 `[[readonly]]:bg-muted/80 [[readonly]]:cursor-not-allowed`), `apps/web/src/components/ui/input.tsx:114-128` (`Input`, spreads `...props` after `data-slot="input"`, so our `data-slot` wins; a caller `className` with a bare font size drops the variant's `lg:text-sm` — Task 3 Step 6b), `apps/web/src/components/ui/form-styles.ts:5-8` (`formControlClass`), `apps/web/src/components/ui/form-styles.ts:13` (`formLabelClass`), `apps/web/src/lib/utils.ts` (`cn` = `twMerge(clsx(...))`).
 
 **Interfaces:**
 - Consumes:
@@ -7536,7 +7803,7 @@ Spec: `docs/superpowers/specs/2026-11-14-dropdown-search-field-scale-design.md` 
 | 57 | D | `pages/NotificationsPage/components/TemplateManager.tsx` | 97 `px-3 py-2 rounded-lg` | — |
 | 58 | D | `pages/PDPAPage.tsx` | 328, 418 — each `px-3 py-2 rounded-lg` | — |
 | 59 | D | `pages/settings/SettingsLayout.tsx` | 116 `rounded-lg border-border bg-background py-2 px-3` | — |
-| 60 | E | `components/contacts/CreateContactModal.tsx` | 264 `rounded-md bg-background px-2` | — |
+| 60 | E | `components/contacts/CreateContactModal.tsx` | 264 `rounded-lg bg-background px-2` (was `rounded-md` at `b58250bbe`; Task 3 fix round 1 made it `rounded-lg` to match the 8px name `Input` — still forbidden, so still normalised here) | — |
 | 61 | E | `components/contract/CreditCheckPanel.tsx` | 306 `px-3 py-1.5 rounded-lg` | 319 `<input>` |
 | 62 | E | `components/contract/CustomerEditModal.tsx` | 319 `px-3 py-2 rounded-lg bg-background`<br>445 `px-3 py-2 rounded-lg`<br>758 `px-3 py-2 rounded-lg bg-background`<br>825 `px-3 py-2 rounded-lg bg-background` | 341, 357 `<input>`, 371 `<ThaiDateInput>`, 472, 514, 530, 545, 560, 582, 597, 612, 655, 670, 685 `<input>`, 700 `<NumberInput>`, 780, 795, 810 `<input>` |
 | 63 | E | `components/credit-check/CreditCheckCreateModal.tsx` | 358 `px-3 py-2 rounded-lg` | — |
@@ -8772,7 +9039,7 @@ source .tmp/t9-areas.sh && node .tmp/t9-normalize.cjs --write "${E[@]}" && git d
 
 | line | control | old `className` | new |
 |---|---|---|---|
-| 264 | NativeSelect | `h-9 rounded-md border border-input bg-background px-2 text-sm outline-hidden focus:ring-2 focus:ring-ring/30` | *(remove attribute)* |
+| 264 | NativeSelect | `h-9 rounded-lg border border-input bg-background px-2 text-sm outline-hidden focus:ring-2 focus:ring-ring/30` | *(remove attribute)* |
 
 **`apps/web/src/components/contract/CreditCheckPanel.tsx`**
 
@@ -9695,7 +9962,7 @@ Expected: `Managed local preview stopped; test data retained.`, then a working t
 **Gaps / notes:**
 - Route ids for `tools/field-scale/check.mjs --routes` are defined by Task 2 and do not exist yet (`tools/field-scale/` is absent on `b58250bbe`). Step 30 finds them with grep instead of naming them. The 'F1 label' filter relies on the Task 1 shape: the rule id is in `rule` and label findings are keyed `labelFontSize@<controlKey>` / `labelGap@<controlKey>`, one per labelled member of a row whose label font or gap is inconsistent (every member of that row, not only the odd one). Adjust the one-liner if T2 changes the results.json shape.
 - Step 31 drives QuickBuyModal to step 3 with the same selectors as `tools/check-local-trade-in.mjs`. It requests a price quote (`POST /trade-ins/quick-buy/preview`) but saves nothing. If a later change renames those controls, update both scripts. Step 4 (payment, SellerPaymentFields) is not screenshotted; the guard test and the T2 runner cover it.
-- Controls themselves are not normalised in this task, and F1 height/radius/background findings may remain on these forms. Examples: PurchaseSelect h-12/rounded-xl, CreateContactModal NativeSelect h-9 rounded-md, and the local inputClass in CompanySettingsPage/CustomerCreateModal/SaleDetailsForm/PlanDetailsStep. That work belongs to R1-3/R2. This task only drives the F1 *label* sub-check to 0.
+- Controls themselves are not normalised in this task, and F1 height/radius/background findings may remain on these forms. Examples: PurchaseSelect h-12/rounded-xl, CreateContactModal NativeSelect h-9 rounded-lg, and the local inputClass in CompanySettingsPage/CustomerCreateModal/SaleDetailsForm/PlanDetailsStep. That work belongs to R1-3/R2. This task only drives the F1 *label* sub-check to 0.
 - Group-heading `<label>`s with no associated control are restyled with `formLabelClass` for visual consistency next to AddressForm's 14px labels: CompanySettingsPage 'ที่อยู่' and 'สถานะ VAT', the work-address headings in the 4 customer forms, and BranchesPage's cash-drawer label. Their element type is left unchanged. Converting them to `LabeledField` or a heading was not requested.
 - SellerPaymentFields.tsx and PurchaseSelect.tsx are outside the 9-file list. They are touched because removing QuickBuyModal's global `[&_[data-slot=input]]:mt-2` would otherwise collapse their label→input gap. The SellerPaymentFields change also restyles TradeInPage AcceptModal.
 - Not converted: CreateContactModal :228 'ประเภท' (an inline label beside the segmented buttons), SaleDetailsForm :77 (raw price-picker group label, not a FormLabel), QuickBuyModal :1223 (signature section heading).

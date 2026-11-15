@@ -152,8 +152,8 @@ Deep warm zinc base (`230 6% 10%`), same emerald primary. Sidebar darkens to `23
 
 `--radius: 0.5rem` (8px) base. Derived scale:
 - `rounded-sm` — 4px (badges, checkboxes)
-- `rounded-md` — 6px (inputs, small buttons)
-- `rounded-lg` — 8px (cards, buttons — **default**)
+- `rounded-md` — 6px (small buttons, menu panels)
+- `rounded-lg` — 8px (cards, buttons, **all form fields** — `Input`, `SelectTrigger`, `Textarea`, `NativeSelect`/`formControlClass`, `NumberInput` — **default**)
 - `rounded-xl` — 12px (stat cards, dialogs)
 - `rounded-2xl` — 16px (hero cards)
 - `rounded-full` — avatars, pill badges

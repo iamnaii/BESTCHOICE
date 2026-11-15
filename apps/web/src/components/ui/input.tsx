@@ -15,9 +15,11 @@ const inputVariants = cva(
   {
     variants: {
       variant: {
-        lg: 'h-10 px-4 text-sm leading-snug rounded-md file:pr-4 file:mr-4',
-        md: 'h-[34px] px-3 text-[0.8125rem] leading-snug rounded-md file:pr-3 file:mr-3',
-        sm: 'h-7 px-2.5 text-xs leading-snug rounded-md file:pr-2.5 file:mr-2.5',
+        lg: 'h-10 px-4 text-sm leading-snug rounded-lg file:pr-4 file:mr-4',
+        // S3-23: 16px below lg so iOS Safari does not zoom on focus outside the app shell
+        // (LIFF, auth pages, public pages). Inside .app-shell admin-typography.css still wins.
+        md: 'h-[34px] px-3 text-base lg:text-sm leading-snug rounded-lg file:pr-3 file:mr-3',
+        sm: 'h-7 px-2.5 text-xs leading-snug rounded-lg file:pr-2.5 file:mr-2.5',
       },
     },
     defaultVariants: {
@@ -31,9 +33,9 @@ const inputAddonVariants = cva(
   {
     variants: {
       variant: {
-        sm: 'rounded-md h-7 min-w-[28px] text-xs leading-snug px-2.5 [&_svg:not([class*=size-])]:size-3.5',
-        md: 'rounded-md h-[34px] min-w-[34px] px-3 text-[0.8125rem] leading-snug [&_svg:not([class*=size-])]:size-[18px]',
-        lg: 'rounded-md h-10 min-w-[40px] px-4 text-sm leading-snug [&_svg:not([class*=size-])]:size-[18px]',
+        sm: 'rounded-lg h-7 min-w-[28px] text-xs leading-snug px-2.5 [&_svg:not([class*=size-])]:size-3.5',
+        md: 'rounded-lg h-[34px] min-w-[34px] px-3 text-[0.8125rem] leading-snug [&_svg:not([class*=size-])]:size-[18px]',
+        lg: 'rounded-lg h-10 min-w-[40px] px-4 text-sm leading-snug [&_svg:not([class*=size-])]:size-[18px]',
       },
       mode: {
         default: '',

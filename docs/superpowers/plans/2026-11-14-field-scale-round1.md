@@ -54,7 +54,11 @@ Tasks 3–7 can be one PR (R1-2) or several; tasks 8–9 and 10–11 likewise. E
     - (a) *dup renumbering.* Adding, removing, renaming or re-kinding a control renumbers every later control with the same `kind|name` page-wide (e.g. unnamed inputs `input||n`, repeated labels จำนวน / ราคา / หมายเหตุ). Their still-open findings come back under new keys — and a renamed or re-kinded control itself gets new keys while its row is still inconsistent.
     - (b) *row/check membership growth.* A control becomes measured (a plain `<div>` → `ReadOnlyField`), stops being `largeText`, is re-kinded out of `textarea`, gets its label moved above it (it joins the labelled checks), or a geometry change merges two rows. If the row is inconsistent for a property, every member then gets keys for it, including members that did not change.
     - (c) *derived bottom.* `bottom` = y + h. A height or labelGap fix that removes an offset which used to compensate can make `bottom` mismatch for the first time.
-  - **Compare triage rule (every task's compare step).** If `--compare` exits 1, classify each NEW P1/P2 finding. It is accepted only if it is one of (a)/(b)/(c) above **and** the underlying mismatch already existed on main (for Task 9's `t9-*` compares: in the `t9-before` run) — show it with the same visual mismatch in the baseline screenshot or report. A control that was not measured at baseline has no baseline key, so for it the baseline screenshot itself must show the same mismatch; "not measured" alone is not evidence. Record each accepted finding in the task report with its finding id, which of (a)/(b)/(c) it is, and the evidence. Anything else must be fixed: a mismatch the change introduced, any `MENU` or other P1 finding (clip/probe failures are never accepted), and any F2/F3/F4 finding. Acceptance lines below that say a compare "exits 0" mean "exits 0, or every new P1/P2 is accepted under this rule".
+  - **Compare triage rule (every task's compare step).** If `--compare` exits 1, classify each NEW P1/P2 finding. It is accepted only if it is one of (a)/(b)/(c) above **and** the underlying mismatch already existed on main (for Task 9's `t9-*` compares: in the `t9-before` run) — show it with the same visual mismatch in the baseline screenshot or report. A control that was not measured at baseline has no baseline key, so for it the baseline screenshot itself must show the same mismatch; "not measured" alone is not evidence. Record each accepted finding in the task report with its finding id, which of (a)/(b)/(c) it is, and the evidence. Anything else must be fixed: a mismatch the change introduced, any `MENU` or other P1 finding (clip/probe failures are never accepted), and any F2/F3/F4 finding. Acceptance lines below that say a compare "exits 0" mean "exits 0, or every blocking line is accepted under this rule (including the MENU rule below)".
+  - **MENU before and after Task 6.** `--compare` blocks on every `MENU` line of the current run, baseline or not, so it exits 1 on the baseline itself until Task 6. Tasks 3, 4, 5 (and any task run before Task 6) accept exactly the 4 known account-menu lines (`other-income-items|1440|{light,dark}|MENU|account-menu-items-card`, `other-income-override|1440|{light,dark}|MENU|account-menu-override-jv`) and only when each is marked `[byte-identical to baseline: pre-existing S2-01/S2-02, fixed by Task 6]` — a line marked `reasons differ from baseline` or `not in baseline` (e.g. `…:error`, a probe that threw) must be fixed. Record the 4 lines in the task report. From Task 6 on, MENU must pass: the compare prints `MENU failures (…): 0` and lists the 4 ids under "Fixed".
+  - **Lost or emptied cells are never accepted.** A cell rendered at baseline that is `error` / `open-failed` / `skipped` now, or whose fact count fell below 50% of its baseline, blocks; fix the change or the route (its open step, a mock), never the baseline.
+  - **Nondeterminism.** Two runs of the same UI on the same preview must compare with 0 new / 0 fixed (Task 2 Step 25 proves this for the baseline). A route whose findings change between identical runs is a route bug — fix it in `routes.mjs` (mock the data it reads, wait for its stable state; `trade-in-quick-buy` was fixed this way: catalog mock + wait for the model select to be enabled) — it is not a triage class.
+  - **Refresh before every run.** The preview fingerprints `apps/`, `packages/` and `tools/`; after any source edit `check.mjs` exits 2 until `npm run local:preview` has restarted it. Every `check.mjs --label …` step below is preceded by `npm run local:preview`.
   - **Controls first measured by Task 8** (no baseline key exists for them): group A InterestConfig VAT `<div>` (S1-03, this plan ~line 6014), group C ItemsTable "ก่อนภาษี" (S2-07), group D ItemLinesSection "ก่อนภาษี" (S3-04, ~line 6843) and AdjustmentSection ยอดสุทธิ / ผลต่าง (S3-05, ~lines 6906 / 6917). Each becomes a `ReadOnlyField` with a label above it — case (b). What the baseline can list as "fixed" are the other row members' keys; the acceptance for these rows is that the row they now join is fully consistent (zero F1 keys for that row), with the screenshot comparison as the visual proof. If the row is not consistent, the new control's keys — and, for any property the row only now fails, every member's keys — show up as new. These are the rows the task sets out to fix, so the triage rule does not excuse them: fix the row.
 - **Line numbers** in Tasks 8–11 are from commit `b58250bbe`; earlier tasks shift them. Every edit is anchored on an exact unique string — use the string, treat the line as a guide.
 - **Account menu probe** (Task 2) finds the menu by the search box `aria-label="ค้นหารหัส หรือ ชื่อบัญชี"`; Task 6 keeps that label.
@@ -1826,7 +1830,7 @@ Spec §5 + §7 R1-1: a field-scale checker that **runs on this Windows machine**
 - Create: `tools/field-scale/lib.mjs` — pure layer: CLI parsing, finding identity, allow-list, compare, Markdown report
 - Create: `tools/field-scale/coa.mjs` — chart of accounts from `apps/api/src/modules/journal/__tests__/fixtures/cpa-cases/finance-coa.csv` in the shapes of `GET /chart-of-accounts`, `/grouped`, `/by-codes` (mirrors `apps/api/src/modules/chart-of-accounts/chart-of-accounts.service.ts:66-98` and the CSV rules of `apps/api/src/modules/journal/__tests__/csv-fixture-loader.ts:50-75,125-142`)
 - Create: `tools/field-scale/menu-clip.mjs` — in-page menu geometry reader + pure clip verdict
-- Create: `tools/field-scale/routes.mjs` — `ROUTES` (26 entries) + `COMMON_MOCKS` + probes
+- Create: `tools/field-scale/routes.mjs` — `ROUTES` (28 entries) + `COMMON_MOCKS` + probes
 - Create: `tools/field-scale/allow.json` — empty allow-list
 - Create: `tools/field-scale/check.mjs` — Playwright runner (pattern of `tools/check-admin-typography.mjs:8-13,97-104`)
 - Test: `tools/field-scale/check.test.mjs` — `node:test` (pure parts + CLI exit codes; no browser, no preview)
@@ -1836,8 +1840,8 @@ Spec §5 + §7 R1-1: a field-scale checker that **runs on this Windows machine**
 - Consumes (Task 1): `window.__collectFields({ exclude, root })` injected from `tools/typography-audit/collect.js` (via `page.addScriptTag({ path })`) → `FieldFact[]`; `evaluateFields(facts, { width })` exported from `tools/typography-audit/rules.mjs` → `Finding[]`. This task relies on each Finding having `rule` (`'F1'|'F2'|'F3'|'F4'`), `severity` (`'P1'|'P2'|'P3'`) and a run-stable string `key`; `detail` is optional (used only as an identity fallback when `key` is missing). F1 keys name one control (`<property>@<memberKey>`, `memberKey` = `kind|name|dup`) and every member of an inconsistent row is reported. Guarantee: with the same set of measured controls in a row or check, changing values toward agreement never adds an F1 key, and a fully consistent row has no F1 keys. A correct change can still add keys (exposed, not introduced): (a) dup renumbering when a control is added, removed, renamed or re-kinded; (b) row/check membership growth (newly measured control, no longer `largeText`, re-kinded out of `textarea`, label moved above, rows merged); (c) derived `bottom` newly mismatching after a height/labelGap fix. Later tasks triage such findings with the compare triage rule in the cross-task notes.
 - Consumes (R1-2 contract for the probe): `AccountSearchDropdown` keeps its search box `aria-label="ค้นหารหัส หรือ ชื่อบัญชี"` and its trigger keeps the selected account's name as text.
 - Produces:
-  - CLI `node tools/field-scale/check.mjs --label <name> [--routes <id,id>] [--widths 1440,1024,390] [--themes light,dark]` → `.tmp/field-scale/<name>/{results.json, report.md, <route>-<width>-<theme>.png, <route>-<width>-<theme>-<probe>.png}`; exit 0 (report, not a gate), 2 on usage error / preview not running.
-  - CLI `node tools/field-scale/check.mjs --compare <baselineLabel> <label>` → prints new/fixed findings; exit 1 when a new P1/P2 (incl. `MENU`) appears, 0 otherwise, 2 when a run is missing.
+  - CLI `node tools/field-scale/check.mjs --label <name> [--routes <id,id>] [--widths 1440,1024,390] [--themes light,dark]` → `.tmp/field-scale/<name>/{results.json, report.md, <route>-<width>-<theme>.png, <route>-<width>-<theme>-<probe>.png}`; exit 0 (report, not a gate), 2 on usage error / preview not running or not current. The preview fingerprints `apps/`, `packages/` and `tools/`, so **every** measuring run must be preceded by `npm run local:preview` (it restarts a stale preview). A cell is `rendered` only when the open step did not throw, the final pathname equals the requested pathname (the query may differ — the shell adds `?zone=`), no error fallback is visible (root `ErrorBoundary`, `QueryBoundary` alert) and at least one field fact was collected (`screenProblem` in `lib.mjs`); otherwise it is `error` with that reason.
+  - CLI `node tools/field-scale/check.mjs --compare <baselineLabel> <label>` → prints new/fixed findings, a MENU section, lost cells and fact drops; exit 1 when (a) a new non-MENU P1/P2 appears, (b) **any** `MENU` finding is in the current run, even one the baseline had (each line says `byte-identical to baseline` / `reasons differ from baseline` / `not in baseline`; a probe that threw is keyed `<probe>:error`, apart from a clip), (c) a cell rendered at baseline is not rendered now, or (d) a compared cell's `factCount` fell below 50% of its baseline; 0 otherwise; 2 when a run is missing. Baseline cells absent from a `--routes` / `--widths` / `--themes` subset run are listed as "not run" and do not block. Because of (b) the baseline compared with itself exits 1 until Task 6 fixes S2-01/S2-02 (cross-task notes, "MENU before and after Task 6").
   - `results.json`: `{ label, startedAt, finishedAt, origin, sourceRevision, widths, themes, routes: string[], routeMeta: [{id, path, appendix}], cells: Cell[] }` where `Cell = { route, path, width, theme, status: 'rendered'|'open-failed'|'skipped'|'error', finalPath, openError, error, factCount, screenshot, mocked: string[], apiErrors: [{method, path, status}], findings: (Finding & {route, width, theme, allowed, allowReason?})[], probes: [{id, ok, reasons, geometry}] }`.
   - Finding id (used by `allow.json` and compare): `route|width|theme|rule|key`.
   - `tools/field-scale/allow.json`: `{ "entries": [{ "id": "<finding id>", "reason": "<Thai, ≥ 10 chars>" }] }`.
@@ -1858,9 +1862,11 @@ import {
   compareRuns,
   findingId,
   formatCompare,
+  menuFinding,
   parseAllow,
   parseArgs,
   renderReport,
+  screenProblem,
   selectRoutes,
   summarize,
 } from './lib.mjs';
@@ -1948,13 +1954,126 @@ test('compareRuns: new, fixed and blocking findings over cells rendered in both 
   assert.deepEqual(r.newFindings.map((x) => x.key), ['new', 'minor']);
   assert.deepEqual(r.blocking.map((x) => x.key), ['new']);
   assert.deepEqual(r.fixed.map((x) => x.key), ['old']);
-  assert.deepEqual(r.notCompared.sort(), ['b|1440|light', 'c|1440|light', 'd|390|dark']);
+  assert.deepEqual(r.notCompared.sort(), ['b|1440|light', 'd|390|dark']);
+  assert.deepEqual(r.notRun, ['c|1440|light']);
+  assert.equal(r.failed, true);
   const text = formatCompare(r, 'baseline', 'r1-2');
   assert.match(text, /Compared 1 cells/);
   assert.match(text, /\+ P2 F4 a 1440 light new/);
   assert.match(text, /- P2 F1 a 1440 light old/);
+  assert.match(text, /Not run in "r1-2" \(subset run — not blocking\): 1 cells/);
   assert.match(text, /FAIL: new P1\/P2 findings/);
-  assert.match(formatCompare(compareRuns(baseline, baseline), 'baseline', 'baseline'), /PASS: no new P1\/P2 findings/);
+  const same = compareRuns(baseline, baseline);
+  assert.equal(same.failed, false);
+  assert.match(formatCompare(same, 'baseline', 'baseline'), /PASS: no new P1\/P2 findings/);
+});
+
+test('compareRuns: every MENU failure blocks, even one the baseline already had', () => {
+  const clip = (route, key, reasons) => ({ ...f(route, 1440, 'light', 'MENU', 'P1', key), detail: { reasons } });
+  const baseline = { cells: [
+    cell('m', 1440, 'light', [clip('m', 'menu-a', ['ถูกตัดโดย <div class="x">']), clip('m', 'menu-b', ['ถูกตัดโดย <div class="y">'])]),
+    cell('n', 1440, 'light', [clip('n', 'menu-c', ['ถูกตัดโดย <div class="z">'])]),
+  ] };
+  const current = { cells: [
+    cell('m', 1440, 'light', [
+      clip('m', 'menu-a', ['ถูกตัดโดย <div class="x">']), clip('m', 'menu-b', ['ถูกตัดโดย <div class="other">']),
+    ]),
+    cell('n', 1440, 'light', [clip('n', 'menu-c:error', ['probe error: locator.click: Timeout 15000ms exceeded'])]),
+  ] };
+  const r = compareRuns(baseline, current);
+  assert.deepEqual(r.newFindings, [], 'MENU is reported in its own section, not as a new finding');
+  assert.deepEqual(r.blocking, []);
+  assert.deepEqual(
+    r.menuFailures.map((x) => [x.key, x.vsBaseline]),
+    [['menu-a', 'identical'], ['menu-b', 'changed'], ['menu-c:error', 'new']],
+  );
+  assert.deepEqual(r.fixed.map((x) => x.key), ['menu-c'], 'the clip finding is gone, replaced by a probe error');
+  assert.equal(r.failed, true);
+  const text = formatCompare(r, 'baseline', 'r1-2');
+  assert.match(text, /MENU failures \(account-menu probes — never accepted from the baseline\): 3/);
+  assert.match(text, /! P1 MENU m 1440 light menu-a — ถูกตัดโดย <div class="x"> \[byte-identical to baseline: pre-existing S2-01\/S2-02, fixed by Task 6\]/);
+  assert.match(text, /! P1 MENU m 1440 light menu-b — .* \[reasons differ from baseline\]/);
+  assert.match(text, /! P1 MENU n 1440 light menu-c:error — probe error: .* \[not in baseline\]/);
+  assert.match(text, /FAIL: 3 MENU failures \(1 byte-identical to baseline/);
+  const self = compareRuns(baseline, baseline);
+  assert.equal(self.failed, true, 'a baseline with MENU failures fails against itself until Task 6');
+  assert.ok(self.menuFailures.every((x) => x.vsBaseline === 'identical'));
+  const menuFixed = compareRuns(baseline, { cells: [cell('m', 1440, 'light', []), cell('n', 1440, 'light', [])] });
+  assert.equal(menuFixed.failed, false);
+  assert.deepEqual(menuFixed.fixed.map((x) => x.key), ['menu-a', 'menu-b', 'menu-c']);
+  assert.match(formatCompare(menuFixed, 'baseline', 't6'), /MENU failures \(account-menu probes — never accepted from the baseline\): 0/);
+});
+
+test('compareRuns: a cell rendered at baseline that stops rendering blocks; one left out of a subset run does not', () => {
+  const baseline = { cells: [
+    cell('a', 1440, 'light', [f('a', 1440, 'light', 'F1', 'P2', 'k')], 'rendered', { factCount: 20 }),
+    cell('b', 1440, 'light', [], 'rendered', { factCount: 20 }),
+    cell('c', 390, 'dark', [], 'rendered', { factCount: 20 }),
+  ] };
+  const current = { cells: [
+    cell('a', 1440, 'light', [], 'error', { error: 'landed on /?zone=shop instead of /todos', factCount: 0 }),
+    cell('b', 1440, 'light', [], 'open-failed', { openError: 'locator.click: Timeout 15000ms exceeded', factCount: 18 }),
+  ] };
+  const r = compareRuns(baseline, current);
+  assert.equal(r.comparedCells, 0);
+  assert.deepEqual(r.fixed, [], 'findings of a cell that stopped rendering are not "fixed"');
+  assert.deepEqual(r.lostCells, [
+    { cell: 'a|1440|light', status: 'error', reason: 'landed on /?zone=shop instead of /todos' },
+    { cell: 'b|1440|light', status: 'open-failed', reason: 'locator.click: Timeout 15000ms exceeded' },
+  ]);
+  assert.deepEqual(r.notRun, ['c|390|dark']);
+  assert.deepEqual(r.notCompared, []);
+  assert.equal(r.failed, true);
+  const text = formatCompare(r, 'baseline', 'r1-2');
+  assert.match(text, /Cells rendered in "baseline" but not in "r1-2" \(blocking\): 2/);
+  assert.match(text, /! a\|1440\|light — error: landed on \/\?zone=shop instead of \/todos/);
+  assert.match(text, /FAIL: 2 cells stopped rendering/);
+  const subset = compareRuns(baseline, { cells: [baseline.cells[0]] });
+  assert.equal(subset.failed, false);
+  assert.deepEqual(subset.notRun, ['b|1440|light', 'c|390|dark']);
+});
+
+test('compareRuns: a fact count below half of the baseline cell blocks', () => {
+  const baseline = { cells: [
+    cell('a', 1440, 'light', [], 'rendered', { factCount: 64 }),
+    cell('b', 1440, 'light', [], 'rendered', { factCount: 40 }),
+  ] };
+  const current = { cells: [
+    cell('a', 1440, 'light', [], 'rendered', { factCount: 31 }),
+    cell('b', 1440, 'light', [], 'rendered', { factCount: 20 }),
+  ] };
+  const r = compareRuns(baseline, current);
+  assert.deepEqual(r.factDrops, [{ cell: 'a|1440|light', before: 64, after: 31 }], 'exactly half is not a drop');
+  assert.equal(r.failed, true);
+  assert.match(formatCompare(r, 'baseline', 'r1-2'), /! a\|1440\|light — facts 64 → 31/);
+  assert.match(formatCompare(r, 'baseline', 'r1-2'), /FAIL: 1 cells lost over half their measured fields/);
+});
+
+test('screenProblem: a redirect, an error fallback or an empty screen is not the screen that was asked for', () => {
+  const ok = { requestedPath: '/stock/transfers?view=history', finalPath: '/stock/transfers?view=history&zone=shop', factCount: 20, fallbackText: null };
+  assert.equal(screenProblem(ok), null, 'the app may add query parameters');
+  assert.equal(
+    screenProblem({ ...ok, requestedPath: '/todos', finalPath: '/?zone=shop' }),
+    'landed on /?zone=shop instead of /todos',
+  );
+  assert.equal(screenProblem({ ...ok, fallbackText: 'เกิดข้อผิดพลาด' }), 'error fallback visible: เกิดข้อผิดพลาด');
+  assert.equal(screenProblem({ ...ok, factCount: 0 }), 'no form fields measured (facts 0)');
+});
+
+test('menuFinding: a clipped menu and a probe that errored get different keys', () => {
+  const where = { route: 'r', width: 1440, theme: 'dark' };
+  assert.equal(menuFinding({ id: 'menu-a', ok: true, reasons: [] }, where), null);
+  assert.deepEqual(menuFinding({ id: 'menu-a', ok: false, reasons: ['ถูกตัดโดย <div>'] }, where), {
+    rule: 'MENU', severity: 'P1', key: 'menu-a', detail: { reasons: ['ถูกตัดโดย <div>'] }, ...where,
+  });
+  assert.equal(menuFinding({ id: 'menu-a', ok: false, error: true, reasons: ['probe error: x'] }, where).key, 'menu-a:error');
+});
+
+test('parseAllow refuses MENU findings — a clipped menu is never kept on purpose', () => {
+  assert.throws(
+    () => parseAllow({ entries: [{ id: 'other-income-items|1440|light|MENU|account-menu-items-card', reason: 'ตั้งใจให้เมนูถูกตัด' }] }),
+    /MENU/,
+  );
 });
 
 test('renderReport: totals, probes, api errors and unfinished cells', () => {
@@ -2008,6 +2127,8 @@ export const THEMES = ['light', 'dark'];
 export const SEVERITIES = ['P1', 'P2', 'P3'];
 export const BLOCKING_SEVERITIES = ['P1', 'P2'];
 export const COMPARABLE_STATUS = 'rendered';
+export const MENU_RULE = 'MENU';
+export const FACT_DROP_RATIO = 0.5;
 export const LABEL_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 export const REPORT_FINDINGS_MAX = 300;
 export const USAGE = [
@@ -2075,6 +2196,29 @@ export function selectRoutes(ids, routes) {
 
 export const cellId = (c) => `${c.route}|${c.width}|${c.theme}`;
 
+// A cell whose open step did not throw can still show the wrong screen: the app redirected (role
+// menu, missing record), an error fallback replaced the page, or nothing measurable is on it.
+// Query parameters may differ (the shell adds ?zone=); the pathname may not.
+export function screenProblem({ requestedPath, finalPath, factCount, fallbackText }) {
+  const pathname = (p) => new URL(p, 'http://preview.invalid').pathname;
+  if (!finalPath || pathname(finalPath) !== pathname(requestedPath)) {
+    return `landed on ${finalPath ?? '(nothing)'} instead of ${requestedPath}`;
+  }
+  if (fallbackText) return `error fallback visible: ${fallbackText}`;
+  if (!factCount) return 'no form fields measured (facts 0)';
+  return null;
+}
+
+// A failed account-menu probe is a MENU P1 finding; a probe that threw is keyed apart from a clip so
+// the two never stand in for each other in a compare.
+export function menuFinding(probe, where) {
+  if (probe.ok) return null;
+  return {
+    rule: MENU_RULE, severity: 'P1', key: probe.error ? `${probe.id}:error` : probe.id,
+    detail: { reasons: probe.reasons }, ...where,
+  };
+}
+
 export function findingId(f) {
   const key = typeof f.key === 'string' && f.key !== '' ? f.key : JSON.stringify(f.detail ?? null);
   return `${cellId(f)}|${f.rule}|${key}`;
@@ -2087,6 +2231,9 @@ export function parseAllow(json) {
   entries.forEach((e, i) => {
     if (typeof e?.id !== 'string' || e.id.split('|').length < 5) {
       throw new Error(`allow.json entries[${i}]: "id" must be a finding id (route|width|theme|rule|key)`);
+    }
+    if (e.id.split('|')[3] === MENU_RULE) {
+      throw new Error(`allow.json entries[${i}]: MENU findings (a clipped or broken account menu) cannot be allowed`);
     }
     if (typeof e.reason !== 'string' || e.reason.trim().length < 10) {
       throw new Error(`allow.json entries[${i}]: "reason" must say why the finding is kept (at least 10 characters)`);
@@ -2105,49 +2252,121 @@ export function applyAllow(findings, allow) {
 }
 
 const openFindings = (cells) => cells.flatMap((c) => c.findings).filter((f) => !f.allowed);
+const sameReasons = (a, b) => JSON.stringify(a.detail?.reasons ?? null) === JSON.stringify(b.detail?.reasons ?? null);
 
-// Only cells rendered in BOTH runs are compared: an errored / unopened / skipped cell has no findings,
-// which would otherwise read as "everything fixed".
+// Findings are compared only over cells rendered in BOTH runs: an errored / unopened / skipped cell has
+// no findings, which would otherwise read as "everything fixed". So the compare also blocks on
+//   - every MENU finding of the current run (a clipped or broken account menu is never accepted from the
+//     baseline; `vsBaseline` says whether the baseline had the same id with byte-identical reasons),
+//   - every cell rendered at baseline that is not rendered now (lostCells),
+//   - every compared cell whose fact count fell below FACT_DROP_RATIO of its baseline (factDrops).
+// Baseline cells the current run did not measure (--routes / --widths / --themes subset) are notRun.
 export function compareRuns(baseline, current) {
   const base = new Map(baseline.cells.map((c) => [cellId(c), c]));
   const curr = new Map(current.cells.map((c) => [cellId(c), c]));
-  const compared = [...curr.keys()].filter(
-    (id) => base.has(id) && base.get(id).status === COMPARABLE_STATUS && curr.get(id).status === COMPARABLE_STATUS,
-  );
+  const rendered = (map, id) => map.get(id)?.status === COMPARABLE_STATUS;
+  const compared = [...curr.keys()].filter((id) => rendered(base, id) && rendered(curr, id));
   const comparedSet = new Set(compared);
   const pick = (run) =>
     new Map(openFindings(run.cells.filter((c) => comparedSet.has(cellId(c)))).map((f) => [findingId(f), f]));
   const before = pick(baseline);
   const after = pick(current);
-  const newFindings = [...after].filter(([id]) => !before.has(id)).map(([, f]) => f);
+  const newFindings = [...after].filter(([id, f]) => !before.has(id) && f.rule !== MENU_RULE).map(([, f]) => f);
   const fixed = [...before].filter(([id]) => !after.has(id)).map(([, f]) => f);
-  const notCompared = [...new Set([...base.keys(), ...curr.keys()])].filter((id) => !comparedSet.has(id));
+  const baseMenu = new Map(
+    baseline.cells.flatMap((c) => c.findings).filter((f) => f.rule === MENU_RULE).map((f) => [findingId(f), f]),
+  );
+  const menuFailures = current.cells
+    .flatMap((c) => c.findings)
+    .filter((f) => f.rule === MENU_RULE)
+    .map((f) => {
+      const was = baseMenu.get(findingId(f));
+      return { ...f, vsBaseline: !was ? 'new' : sameReasons(was, f) ? 'identical' : 'changed' };
+    });
+  const lostCells = [...curr.keys()]
+    .filter((id) => rendered(base, id) && !rendered(curr, id))
+    .map((id) => {
+      const c = curr.get(id);
+      return { cell: id, status: c.status, reason: c.error ?? c.openError ?? '' };
+    });
+  const factDrops = compared
+    .filter((id) => base.get(id).factCount > 0 && curr.get(id).factCount < base.get(id).factCount * FACT_DROP_RATIO)
+    .map((id) => ({ cell: id, before: base.get(id).factCount, after: curr.get(id).factCount }));
+  const notRun = [...base.keys()].filter((id) => !curr.has(id));
+  const lostSet = new Set(lostCells.map((c) => c.cell));
+  const notCompared = [...curr.keys()].filter((id) => !comparedSet.has(id) && !lostSet.has(id));
+  const blocking = newFindings.filter((f) => BLOCKING_SEVERITIES.includes(f.severity));
   return {
     comparedCells: compared.length,
     notCompared,
+    notRun,
     newFindings,
     fixed,
-    blocking: newFindings.filter((f) => BLOCKING_SEVERITIES.includes(f.severity)),
+    blocking,
+    menuFailures,
+    lostCells,
+    factDrops,
+    failed: blocking.length + menuFailures.length + lostCells.length + factDrops.length > 0,
   };
 }
 
 const findingLine = (f) =>
   `${f.severity} ${f.rule} ${f.route} ${f.width} ${f.theme} ${f.key ?? JSON.stringify(f.detail ?? null)}`;
 
+const MENU_VS_BASELINE = {
+  identical: 'byte-identical to baseline: pre-existing S2-01/S2-02, fixed by Task 6',
+  changed: 'reasons differ from baseline',
+  new: 'not in baseline',
+};
+
+function failReasons(result) {
+  const identical = result.menuFailures.filter((f) => f.vsBaseline === 'identical').length;
+  return [
+    ...(result.blocking.length ? ['new P1/P2 findings'] : []),
+    ...(result.menuFailures.length
+      ? [`${result.menuFailures.length} MENU failures (${identical} byte-identical to baseline — the known S2-01/S2-02 clip, acceptable only before Task 6)`]
+      : []),
+    ...(result.lostCells.length ? [`${result.lostCells.length} cells stopped rendering`] : []),
+    ...(result.factDrops.length ? [`${result.factDrops.length} cells lost over half their measured fields`] : []),
+  ];
+}
+
 export function formatCompare(result, baselineLabel, label) {
+  const reasons = failReasons(result);
   return [
     `Compared ${result.comparedCells} cells (route × width × theme) of "${baselineLabel}" → "${label}"`,
     `New findings: ${result.newFindings.length} (blocking P1/P2: ${result.blocking.length})`,
     ...result.newFindings.map((f) => `  + ${findingLine(f)}`),
     `Fixed: ${result.fixed.length}`,
     ...result.fixed.map((f) => `  - ${findingLine(f)}`),
+    `MENU failures (account-menu probes — never accepted from the baseline): ${result.menuFailures.length}`,
+    ...result.menuFailures.map(
+      (f) => `  ! ${findingLine(f)} — ${(f.detail?.reasons ?? []).join('; ')} [${MENU_VS_BASELINE[f.vsBaseline]}]`,
+    ),
+    ...(result.lostCells.length
+      ? [
+          `Cells rendered in "${baselineLabel}" but not in "${label}" (blocking): ${result.lostCells.length}`,
+          ...result.lostCells.map((c) => `  ! ${c.cell} — ${c.status}: ${c.reason}`),
+        ]
+      : []),
+    ...(result.factDrops.length
+      ? [
+          `Cells whose fact count fell below ${FACT_DROP_RATIO * 100}% of "${baselineLabel}" (blocking): ${result.factDrops.length}`,
+          ...result.factDrops.map((c) => `  ! ${c.cell} — facts ${c.before} → ${c.after}`),
+        ]
+      : []),
     ...(result.notCompared.length
       ? [
-          `Not compared (missing from one run, or not rendered in both): ${result.notCompared.length}`,
+          `Not compared (not rendered in "${baselineLabel}", or new in "${label}"): ${result.notCompared.length}`,
           ...result.notCompared.map((id) => `  ? ${id}`),
         ]
       : []),
-    result.blocking.length ? 'FAIL: new P1/P2 findings' : 'PASS: no new P1/P2 findings',
+    ...(result.notRun.length
+      ? [`Not run in "${label}" (subset run — not blocking): ${result.notRun.length} cells`]
+      : []),
+    reasons.length
+      ? `FAIL: ${reasons.join('; ')}`
+      : 'PASS: no new P1/P2 findings, no MENU failures, no cell lost or emptied',
   ].join('\n');
 }
 
@@ -2276,7 +2495,7 @@ export function renderReport(results) {
 - [ ] **Step 4: Run the tests — expect PASS**
 
 Run: `node --test tools/field-scale/check.test.mjs`
-Expected (tail): `ℹ tests 9` · `ℹ pass 9` · `ℹ fail 0`.
+Expected (tail): `ℹ tests 15` · `ℹ pass 15` · `ℹ fail 0`.
 
 - [ ] **Step 5: Commit**
 
@@ -2536,7 +2755,7 @@ export function menuClipVerdict(geo) {
 - [ ] **Step 10: Run the tests — expect PASS**
 
 Run: `node --test tools/field-scale/check.test.mjs`
-Expected (tail): `ℹ tests 12` · `ℹ pass 12` · `ℹ fail 0`.
+Expected (tail): `ℹ tests 18` · `ℹ pass 18` · `ℹ fail 0`.
 
 - [ ] **Step 11: Commit**
 
@@ -2607,6 +2826,25 @@ test('routes: cover appendix ก, the 9 AddressForm hosts and both account-menu 
   ]);
 });
 
+test('routes: the deep screens later tasks measure, and a fixed buy-back catalog', async () => {
+  const byId = new Map(ROUTES.map((r) => [r.id, r]));
+  for (const id of ['company-entity-edit', 'company-entity-create', 'purchase-order-wizard', 'interest-config-form',
+    'finance-knowledge-form', 'todo-form', 'stock-transfers-outgoing', 'other-income-items', 'expense-new', 'payroll-new',
+    'recurring-bill-dialog', 'trade-in-quick-buy', 'pos-sale-form']) {
+    assert.ok(byId.has(id), id);
+  }
+  assert.equal(typeof byId.get('company-entity-create').open, 'function');
+  assert.ok(byId.get('company-entity-create').appendix.includes('S1-02'));
+  assert.equal(typeof byId.get('payroll-new').open, 'function', 'S3-07 needs an expanded line');
+  assert.ok(byId.get('purchase-order-wizard').appendix.includes('S2-08'));
+  const poSuppliers = await byId.get('purchase-order-wizard').mocks.find((m) => m.path.test('/suppliers')).json();
+  assert.equal(poSuppliers.data.length, 1, 'the wizard draft names the one mocked supplier');
+  const catalogMock = byId.get('trade-in-quick-buy').mocks.find((m) => m.path.test('/trade-ins/quick-buy/catalog'));
+  assert.ok(catalogMock, 'the catalog is mocked so the selects do not depend on preview data or timing');
+  const catalog = await catalogMock.json();
+  assert.ok(catalog.models.length > 0 && catalog.models.every((m) => m.storages.length > 0));
+});
+
 test('routes: common mocks answer from the CPA chart of accounts and the preview user', async () => {
   const find = (path) => COMMON_MOCKS.find((m) => m.path.test(path));
   const grouped = await find('/chart-of-accounts/grouped').json(new URL('http://x/api/admin/chart-of-accounts/grouped'), {});
@@ -2642,8 +2880,9 @@ Create `tools/field-scale/routes.mjs`:
 // that embed AddressForm (spec §4.3), as { id, path, appendix, open?, mocks, probes? }.
 //   path      string, or (ctx) => string | null (null = the preview has no sample record → cell "skipped")
 //   open      clicks that open the dialog / tab / mode to measure — never save, never pick a value that saves
-//   mocks     GET endpoints the local preview answers 501/404 for: { path: /^\/api-path$/, json(url, ctx) }.
-//             path is matched against the request pathname WITHOUT /api or /api/admin; GET only.
+//   mocks     GET endpoints the local preview answers 501/404 for, or answers from data that varies between
+//             preview starts: { path: /^\/api-path$/, json(url, ctx) }. path is matched against the request
+//             pathname WITHOUT /api or /api/admin; GET only; route mocks after COMMON_MOCKS, first match wins.
 //   probes    account-menu clipping check (S2-01 / S2-02): { id, widths, trigger(page) → Locator }
 // COMMON_MOCKS apply to every route. ctx = { origin, me (GET /auth/me), customerId, contractPath }.
 import { coaByCodes, coaGrouped, coaList, loadCoa } from './coa.mjs';
@@ -2701,6 +2940,14 @@ const ROLE_MAP_ROWS = [
 
 const EMPTY_PAGE = { data: [], total: 0, page: 1, limit: 50 };
 
+const PO_SUPPLIER = {
+  id: 'preview-supplier-1', name: 'ผู้จัดจำหน่ายตัวอย่าง', contactName: null, phone: '020000000', hasVat: true,
+  isActive: true,
+  paymentMethods: [
+    { paymentMethod: 'BANK_TRANSFER', bankName: 'กสิกรไทย', bankAccountNumber: '0000000000', isDefault: true },
+  ],
+};
+
 const M = {
   dunningRules: mock(/^\/overdue\/dunning-rules$/, DUNNING_RULES),
   smsTemplates: mock(/^\/sms-templates$/, []),
@@ -2721,6 +2968,8 @@ const M = {
       data: [],
     }),
     mock(/^\/device-returns\/awaiting-repossession$/, { data: [], total: 0 }),
+    // DeviceReturnList.tsx:61-65 — without it the list's QueryBoundary shows its error panel
+    mock(/^\/device-returns$/, { data: [], total: 0, page: 1, limit: 100 }),
   ],
   transfers: [
     mock(/^\/products\/transfers\/(pending|in-transit)$/, []),
@@ -2737,8 +2986,36 @@ const M = {
   ],
   interestConfigs: mock(/^\/interest-configs$/, []),
   suppliers: mock(/^\/suppliers$/, { data: [], total: 0, page: 1, totalPages: 1 }),
+  // the one supplier the purchase wizard's draft names (openPurchasePayment)
+  poSuppliers: mock(/^\/suppliers$/, { data: [PO_SUPPLIER], total: 1, page: 1, totalPages: 1 }),
+  // The preview answers this from its own data and the model select stays disabled until it lands
+  // (QuickBuyModal.tsx:188-196,895) — a fixed catalog keeps both selects in the same state every run.
+  buybackCatalog: mock(/^\/trade-ins\/quick-buy\/catalog$/, {
+    models: [
+      { model: 'iPhone 15', storages: [{ storage: '128GB', maxPrice: '14500' }, { storage: '256GB', maxPrice: '16500' }] },
+      { model: 'iPhone 15 Pro', storages: [{ storage: '256GB', maxPrice: '21500' }] },
+    ],
+  }),
   purchaseOrders: mock(/^\/purchase-orders$/, EMPTY_PAGE),
   roleMap: mock(/^\/settings\/role-map$/, ROLE_MAP_ROWS),
+  // The preview's GET /branches is a bare findMany without `_count` — BranchesPage.tsx:158 reads
+  // b._count.users and the page crashes ("Cannot read properties of undefined (reading 'users')").
+  branches: mock(/^\/branches$/, [
+    {
+      id: 'preview-branch-1', name: 'สาขาตัวอย่าง (คลังหลัก)', location: 'กรุงเทพมหานคร', phone: '020000000',
+      isActive: true, isMainWarehouse: true, shopCashAccountCode: 'S11-1101', shopCashFloat: '2000',
+      _count: { users: 5, products: 120, contracts: 30 },
+    },
+    {
+      id: 'preview-branch-2', name: 'สาขาตัวอย่าง 2', location: null, phone: null,
+      isActive: true, isMainWarehouse: false, shopCashAccountCode: null, shopCashFloat: '0',
+      _count: { users: 2, products: 40, contracts: 8 },
+    },
+  ]),
+  // The preview's fixed actor is OWNER, and /todos is not in OWNER's menu (config/menu.ts OWNER_CONFIG) —
+  // MainLayout redirects it to "/". Present the actor as BRANCH_MANAGER (whose menu has /todos) to the
+  // web app only; the preview API still answers as OWNER.
+  branchManagerActor: mock(/^\/auth\/me$/, (url, ctx) => ({ ...ctx.me, role: 'BRANCH_MANAGER' })),
 };
 
 const clickButton = (name) => async (page) => {
@@ -2756,9 +3033,43 @@ async function openOverrideJournal(page) {
   await dialog.getByRole('button', { name: 'เปิดโหมดแก้ไข' }).click();
   await dialog.waitFor({ state: 'hidden' });
   await journalTable(page).waitFor();
-  if ((await journalTable(page).locator('tbody tr').count()) === 0) {
+  // The "รวม" totals row also lives in <tbody> (EditableJournalTable.tsx) — count only editable lines,
+  // i.e. rows whose first cell holds the account-menu trigger.
+  if ((await journalTable(page).locator('tbody tr td:first-child button').count()) === 0) {
     await page.getByRole('button', { name: 'เพิ่มบรรทัด' }).click();
   }
+}
+
+// S2-08 lives in PaymentSection, which the purchase wizard's summary renders only in "ของถึงแล้ว"
+// (receive) mode (StepSummary.tsx:193), and its file / URL row only once the status is a paid one
+// (PaymentSection.tsx:77,200). Local wizard state only: the draft is the wizard's own localStorage
+// draft (useCreatePoWizard.ts:17,78-105) naming the mocked supplier and one accessory line (no IMEI to
+// inspect — direct-receive.util.ts:26, receiving-flow.util.ts:55-75); nothing is submitted.
+async function openPurchasePayment(page) {
+  await page.evaluate((supplierId) => {
+    const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' });
+    localStorage.setItem('bestchoice-po-draft', JSON.stringify({
+      step: 0,
+      mode: 'receive',
+      form: {
+        supplierId, orderDate: today, expectedDate: '', notes: '', discount: '', discountAfterVat: '',
+        paymentStatus: 'UNPAID', paymentMethod: '', paidAmount: '', paymentNotes: '',
+      },
+      items: [{
+        brand: '', category: 'ACCESSORY', model: 'ฟิล์มกระจก', color: '', storage: '', quantity: '1', unitPrice: '35',
+        accessoryType: 'ฟิล์ม', accessoryBrand: 'iStar',
+      }],
+      savedAt: new Date().toISOString(),
+    }));
+  }, PO_SUPPLIER.id);
+  await clickButton('+ ซื้อสินค้า')(page);
+  await clickButton('ถัดไป: ตรวจรับ 1 ชิ้น')(page);
+  await page.locator('#group-cash').fill('59');
+  await clickButton('ถัดไป: สรุป + จ่ายเงิน')(page);
+  await page.locator('#po-payment-status').selectOption('FULLY_PAID');
+  // the S2-08 row into view for the screenshot, after the "draft recovered" toast (5 s) has gone
+  await page.getByRole('button', { name: '+ เพิ่ม', exact: true }).scrollIntoViewIfNeeded();
+  await page.locator('[data-sonner-toast]').first().waitFor({ state: 'detached', timeout: 10000 });
 }
 
 const ACCOUNT_MENU_ITEMS_CARD = {
@@ -2789,6 +3100,8 @@ export const ROUTES = [
     mocks: M.otherIncome, probes: [ACCOUNT_MENU_OVERRIDE_JV] },
   { id: 'company-entity-edit', path: '/settings/company/entities', appendix: ['S1-02', 'S3-12'],
     open: clickButton('แก้ไข'), mocks: [] },
+  { id: 'company-entity-create', path: '/settings/company/entities', appendix: ['S1-02'],
+    open: clickButton('เพิ่มนิติบุคคล'), mocks: [] },
   { id: 'audit-logs', path: '/audit-logs', appendix: ['S1-04'], mocks: [M.auditStats] },
   { id: 'finance-knowledge-form', path: '/chatbot-finance/knowledge', appendix: ['S1-05'],
     open: clickButton('+ เพิ่ม คำถามที่พบบ่อย'), mocks: M.knowledge },
@@ -2797,17 +3110,28 @@ export const ROUTES = [
   { id: 'stock-transfers-incoming', path: '/stock/transfers?view=incoming', appendix: ['S2-04'], mocks: M.transfers },
   { id: 'stock-transfers-history', path: '/stock/transfers?view=history', appendix: ['S2-04'], mocks: M.transfers },
   { id: 'expense-new', path: '/expenses/new', appendix: ['S3-02', 'S3-04', 'S3-05'], mocks: M.expense },
-  { id: 'payroll-new', path: '/expenses/new?type=PR', appendix: ['S3-07'], mocks: M.expense },
+  // S3-07 is the account select of a line's "รายได้พิเศษ" sub-table, rendered only when the line is expanded
+  // (PayrollLinesSection.tsx:475,535-540,639-652,808) — local form state, nothing is saved.
+  { id: 'payroll-new', path: '/expenses/new?type=PR', appendix: ['S3-07'], mocks: M.expense,
+    open: async (page) => {
+      await clickButton('เพิ่มพนักงาน')(page);
+      await clickButton('ขยาย')(page);
+      await clickButton('เพิ่มรายได้พิเศษ')(page);
+    } },
   { id: 'recurring-bill-dialog', path: '/expenses/favorites', appendix: ['S3-09'], open: clickButton('+ บิลประจำ'),
     mocks: M.expense },
-  { id: 'trade-in-quick-buy', path: '/trade-in', appendix: ['S3-10', 'S3-12'], open: clickButton('รับซื้อเครื่อง'),
-    mocks: [] },
+  { id: 'trade-in-quick-buy', path: '/trade-in', appendix: ['S3-10', 'S3-12'], mocks: [M.buybackCatalog],
+    open: async (page) => {
+      await clickButton('รับซื้อเครื่อง')(page);
+      await page.locator('#quick-buy-model:not([disabled])').waitFor();
+    } },
   { id: 'interest-config-form', path: '/settings/finance/interest', appendix: ['S1-03'],
     open: clickButton('+ สร้าง การตั้งค่า'), mocks: [M.interestConfigs] },
-  { id: 'branch-create', path: '/branches', appendix: ['S1-06', 'S3-12'], open: clickButton('+ เพิ่มสาขา'), mocks: [] },
-  { id: 'todo-form', path: '/todos', appendix: ['S2-05'], open: clickButton('เพิ่มงาน'), mocks: [] },
-  { id: 'purchase-order-wizard', path: '/purchase-orders', appendix: ['S2-08'], open: clickButton('+ ซื้อสินค้า'),
-    mocks: [M.purchaseOrders, M.suppliers] },
+  { id: 'branch-create', path: '/branches', appendix: ['S1-06', 'S3-12'], open: clickButton('+ เพิ่มสาขา'),
+    mocks: [M.branches] },
+  { id: 'todo-form', path: '/todos', appendix: ['S2-05'], open: clickButton('เพิ่มงาน'), mocks: [M.branchManagerActor] },
+  { id: 'purchase-order-wizard', path: '/purchase-orders', appendix: ['S2-08'], open: openPurchasePayment,
+    mocks: [M.purchaseOrders, M.poSuppliers] },
   { id: 'account-role-edit', path: '/settings/access/account-roles', appendix: ['S3-03'], mocks: [M.roleMap],
     open: async (page) => {
       await page.getByRole('button', { name: /^แก้ไข / }).first().click();
@@ -2819,12 +3143,20 @@ export const ROUTES = [
     } },
   { id: 'customer-edit-dialog', path: (ctx) => (ctx.customerId ? `/customers/${ctx.customerId}` : null),
     appendix: ['S3-12'], open: clickButton('แก้ไขข้อมูล'), mocks: [] },
-  { id: 'contract-customer-create', path: '/contracts/create', appendix: ['S3-12'], open: clickButton('เพิ่มลูกค้าใหม่'),
-    mocks: [] },
+  // Step 1 (เลือกสินค้า) must have a product before "ถัดไป" reaches the customer step — local wizard state only
+  // (useContractCreateData.ts writes only on the final submit).
+  { id: 'contract-customer-create', path: '/contracts/create', appendix: ['S3-12'], mocks: [],
+    open: async (page) => {
+      await page.locator('div.cursor-pointer').filter({ hasText: 'สาขา:' }).first().click();
+      await clickButton('ถัดไป')(page);
+      await clickButton('เพิ่มลูกค้าใหม่')(page);
+    } },
   { id: 'contract-customer-edit', path: (ctx) => ctx.contractPath, appendix: ['S3-12'], open: clickButton('แก้ไข'),
     mocks: [] },
   { id: 'supplier-form', path: '/suppliers', appendix: ['S3-12'], open: clickButton('เพิ่มผู้จัดจำหน่าย'),
     mocks: [M.suppliers] },
+  // shadcn FormLabel callers whose labels R1-4 moves to style A (SaleDetailsForm renders without a product)
+  { id: 'pos-sale-form', path: '/pos', appendix: ['R1-4 FormLabel'], mocks: [] },
   { id: 'contact-create', path: '/contacts', appendix: ['S3-12'], mocks: [],
     open: async (page) => {
       await page.getByRole('button', { name: 'เพิ่มผู้ติดต่อ' }).click();
@@ -2847,7 +3179,7 @@ Create `tools/field-scale/allow.json`:
 - [ ] **Step 16: Run the tests — expect PASS**
 
 Run: `node --test tools/field-scale/check.test.mjs`
-Expected (tail): `ℹ tests 15` · `ℹ pass 15` · `ℹ fail 0`.
+Expected (tail): `ℹ tests 22` · `ℹ pass 22` · `ℹ fail 0`.
 
 - [ ] **Step 17: Commit**
 
@@ -2913,7 +3245,7 @@ test('check.mjs: --compare needs both runs on disk', () => {
 - [ ] **Step 19: Run the tests — expect FAIL**
 
 Run: `node --test tools/field-scale/check.test.mjs`
-Expected: `✖ check.mjs: usage errors exit 2 before touching the preview` and `✖ check.mjs: --compare needs both runs on disk`, each with `AssertionError [ERR_ASSERTION]: … Cannot find module '…\tools\field-scale\check.mjs'` (status 1 ≠ 2); tail `ℹ pass 15` · `ℹ fail 2`.
+Expected: `✖ check.mjs: usage errors exit 2 before touching the preview` and `✖ check.mjs: --compare needs both runs on disk`, each with `AssertionError [ERR_ASSERTION]: … Cannot find module '…\tools\field-scale\check.mjs'` (status 1 ≠ 2); tail `ℹ pass 22` · `ℹ fail 2`.
 
 - [ ] **Step 20: Implement the runner**
 
@@ -2928,10 +3260,13 @@ Create `tools/field-scale/check.mjs`:
 //   node tools/field-scale/check.mjs --label <name> [--routes <id,id>] [--widths 1440,1024,390] [--themes light,dark]
 //     → .tmp/field-scale/<name>/{results.json, report.md, <route>-<width>-<theme>.png}
 //   node tools/field-scale/check.mjs --compare <baselineLabel> <label>
-//     → prints new / fixed findings; exit 1 when a new P1/P2 finding appears
-// A report, not a CI gate (spec §3): a measuring run exits 0 even with findings.
-// Prerequisite: npm run local:preview — and run it again after editing anything under tools/ (the preview
-// fingerprints tools/; a stale preview is refused). Read-only: mocks answer GETs; open steps never save.
+//     → prints new / fixed findings; exit 1 when a new P1/P2 finding appears, when any MENU probe fails
+//       (even one the baseline had), or when a cell rendered at baseline is lost or emptied (lib.mjs compareRuns)
+// A report, not a CI gate (spec §3): a measuring run exits 0 even with findings. A cell counts as rendered
+// only when it shows the asked-for path, no error fallback and at least one measured field (screenProblem).
+// Prerequisite: npm run local:preview before EVERY measuring run — the preview fingerprints apps/, packages/
+// and tools/, so any source edit makes it stale and a stale preview is refused (exit 2); local:preview
+// restarts it. Read-only: mocks answer GETs; open steps never save.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -2944,9 +3279,11 @@ import {
   applyAllow,
   compareRuns,
   formatCompare,
+  menuFinding,
   parseAllow,
   parseArgs,
   renderReport,
+  screenProblem,
   selectRoutes,
   summarize,
 } from './lib.mjs';
@@ -2977,7 +3314,8 @@ async function previewContext(port, info) {
     return res.json();
   };
   const me = await get('/auth/me');
-  const customers = await get('/customers?limit=1');
+  // by name, not the default newest-first: a stable pick across preview restarts
+  const customers = await get('/customers?limit=1&sortBy=name&sortOrder=asc');
   return {
     origin: `http://localhost:${port}`,
     me,
@@ -3023,8 +3361,20 @@ async function runMenuProbe(page, probe, screenshotPath) {
     await page.keyboard.press('Escape');
     return { id: probe.id, ...menuClipVerdict(geometry), geometry };
   } catch (error) {
-    return { id: probe.id, ok: false, reasons: [`probe error: ${firstLine(error)}`], geometry: null };
+    return { id: probe.id, ok: false, error: true, reasons: [`probe error: ${firstLine(error)}`], geometry: null };
   }
+}
+
+// In the page: the heading of a visible error fallback — the root ErrorBoundary (ErrorBoundary.tsx:76,
+// which replaces .app-shell) or a QueryBoundary error (QueryBoundary.tsx:65-70) — or null.
+function readErrorFallback() {
+  const shown = (el) => !!el && el.getClientRects().length > 0;
+  if (!shown(document.querySelector('.app-shell'))) {
+    const h1 = [...document.querySelectorAll('h1')].find(shown);
+    return h1?.textContent.trim() || 'the app shell is gone';
+  }
+  const h2 = [...document.querySelectorAll('[role="alert"] > h2')].find(shown);
+  return h2 ? h2.textContent.trim() : null;
 }
 
 async function measureCell(browser, route, width, theme, ctx, outDir) {
@@ -3076,16 +3426,18 @@ async function measureCell(browser, route, width, theme, ctx, outDir) {
       return window.__collectFields({ exclude, root: 'body' });
     }, COLLECT_EXCLUDE);
     cell.factCount = facts.length;
+    const problem = screenProblem({
+      requestedPath: cell.path, finalPath: cell.finalPath, factCount: cell.factCount,
+      fallbackText: await page.evaluate(readErrorFallback),
+    });
+    if (problem) throw new Error(problem);
     cell.findings = evaluateFields(facts, { width }).map((f) => ({ ...f, route: route.id, width, theme }));
     for (const probe of route.probes ?? []) {
       if (!probe.widths.includes(width)) continue;
       const result = await runMenuProbe(page, probe, join(outDir, `${route.id}-${width}-${theme}-${probe.id}.png`));
       cell.probes.push(result);
-      if (!result.ok) {
-        cell.findings.push({
-          rule: 'MENU', severity: 'P1', key: probe.id, detail: { reasons: result.reasons }, route: route.id, width, theme,
-        });
-      }
+      const finding = menuFinding(result, { route: route.id, width, theme });
+      if (finding) cell.findings.push(finding);
     }
   } catch (error) {
     cell.status = 'error';
@@ -3102,7 +3454,10 @@ async function run(args) {
   const allow = loadAllow();
   const status = await previewStatus();
   if (!status.running || !status.current) {
-    console.error('Local preview is not running for this checkout, or is older than the source. Run: npm run local:preview');
+    console.error(
+      'Local preview is not running for this checkout, or is older than the source (any edit under apps/, packages/ ' +
+        'or tools/ makes it stale). Run: npm run local:preview — it restarts a stale preview — then run this command again.',
+    );
     process.exitCode = 2;
     return;
   }
@@ -3121,7 +3476,10 @@ async function run(args) {
           cells.push(cell);
           const probes = cell.probes.map((p) => ` · ${p.id} ${p.ok ? 'PASS' : 'FAIL'}`).join('');
           const open = cell.findings.filter((f) => !f.allowed).length;
-          console.log(`${route.id} ${width} ${theme}: ${cell.status} · facts ${cell.factCount} · findings ${open}${probes}`);
+          const why = cell.error ?? cell.openError;
+          console.log(
+            `${route.id} ${width} ${theme}: ${cell.status}${why ? ` (${why})` : ''} · facts ${cell.factCount} · findings ${open}${probes}`,
+          );
         }
       }
     }
@@ -3167,7 +3525,7 @@ function compare(args) {
   const reapply = (r) => ({ ...r, cells: r.cells.map((c) => ({ ...c, findings: applyAllow(c.findings, allow) })) });
   const result = compareRuns(reapply(baseline), reapply(current));
   console.log(formatCompare(result, args.baseline, args.label));
-  process.exitCode = result.blocking.length ? 1 : 0;
+  process.exitCode = result.failed ? 1 : 0;
 }
 
 async function main(argv) {
@@ -3193,7 +3551,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
 - [ ] **Step 21: Run the tests — expect PASS**
 
 Run: `node --test tools/field-scale/check.test.mjs`
-Expected (tail): `ℹ tests 17` · `ℹ pass 17` · `ℹ fail 0`.
+Expected (tail): `ℹ tests 24` · `ℹ pass 24` · `ℹ fail 0`.
 (If the two CLI tests fail with `does not provide an export named 'evaluateFields'`, Task 1 is not merged into this branch yet — merge it first; nothing in this task works without it.)
 
 - [ ] **Step 22: Commit**
@@ -3204,7 +3562,8 @@ feat(tools): field-scale runner — Playwright on local:preview, report, compare
 
 Measures every appendix ก screen + the 9 AddressForm hosts at 1440/1024/390 x light/dark with
 __collectFields + evaluateFields, records the account-menu clip check (S2-01/S2-02) as rule MENU P1,
-writes .tmp/field-scale/<label>/{results.json,report.md,*.png}; --compare exits 1 on new P1/P2.
+writes .tmp/field-scale/<label>/{results.json,report.md,*.png}; --compare exits 1 on new P1/P2, on any
+MENU failure (even one already in the baseline), and on a baseline-rendered cell that is lost or emptied.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 EOF
@@ -3233,9 +3592,9 @@ Then open `.tmp/field-scale/smoke/report.md`, section "เมนูบัญช�
 
 - [ ] **Step 25: Run the baseline (main's UI)**
 
-Run (takes roughly 20–40 minutes for 26 routes × 3 widths × 2 themes = 156 cells):
+Run `npm run local:preview` first (Step 23 — any edit under `tools/` since then makes the preview stale and the runner exits 2). Then (takes roughly 10–40 minutes for 28 routes × 3 widths × 2 themes = 168 cells):
 `mkdir -p .tmp/field-scale && node tools/field-scale/check.mjs --label baseline 2>&1 | tee .tmp/field-scale/baseline.log`
-Expected: 156 progress lines, then
+Expected: 168 progress lines, then
 ```
 open findings: <N> (P1 <a> · P2 <b> · P3 <c>) · allowed 0
 menu probes: 0 pass · 4 fail
@@ -3244,17 +3603,19 @@ wrote D:\BESTCHOICE APP\BESTCHOICE\.tmp\field-scale\baseline\results.json and re
 ```
 `menu probes: 0 pass · 4 fail` (2 probes × 1440 × 2 themes) is the recorded proof of S2-01/S2-02 on main. The runner's own exit status: run `echo "exit=${PIPESTATUS[0]}"` as the very next command (a plain `echo $?` reports `tee`'s status) → `exit=0`.
 
+Then prove the run is repeatable — the compare gate is only as good as two runs of the same UI agreeing. Run `node tools/field-scale/check.mjs --label det-a` and `--label det-b` (same preview, no source edits in between), then `node tools/field-scale/check.mjs --compare baseline det-a` and `--compare det-a det-b`. Expected for both: `New findings: 0`, `Fixed: 0`, no "Cells rendered … but not in …" and no "fact count fell" section, `MENU failures (account-menu probes — never accepted from the baseline): 4` with every line marked `[byte-identical to baseline: pre-existing S2-01/S2-02, fixed by Task 6]`, and exit 1 (`echo "exit=$?"` → `exit=1`) — the 4 MENU failures block on purpose until Task 6. Any other difference is nondeterminism in a route: fix it in `routes.mjs` (mock the data the screen reads, wait for the stable state in the open step), commit, and rerun this step from `npm run local:preview`.
+
 - [ ] **Step 26: Check the baseline is usable**
 
 Open `.tmp/field-scale/baseline/report.md` and confirm:
 1. "ข้อพบตามกฎ" has a `MENU` row with P1 = 4.
 2. "รายหน้า": every route has `cell` = 6; note every route whose `วัดได้` < 6.
-3. "cell ที่วัดไม่ครบ": for each `open-failed` / `error` cell look at its PNG (`<route>-<width>-<theme>.png`). An `open-failed` at 390 where the button is hidden in a mobile menu is acceptable (record it in the PR); an `open-failed`/`error` at 1440 or 1024 means a wrong locator or a missing mock — fix `routes.mjs` (add a `mock(/^\/path$/, <shape read from the page's code>)` for an endpoint in "API ที่ตอบ error" that blocks rendering), commit, rerun Steps 23 and 25.
+3. "cell ที่วัดไม่ครบ": for each `open-failed` / `error` cell look at its PNG (`<route>-<width>-<theme>.png`). An `error` reason `landed on … instead of …` is a redirect (role menu, missing record), `error fallback visible: …` an error boundary, `no form fields measured (facts 0)` an empty screen — each means the screen the later tasks fix was not measured. An `open-failed` at 390 where the button is hidden in a mobile menu is acceptable (record it in the PR); an `open-failed`/`error` at 1440 or 1024 means a wrong locator or a missing mock — fix `routes.mjs` (add a `mock(/^\/path$/, <shape read from the page's code>)` for an endpoint in "API ที่ตอบ error" that blocks rendering), commit, rerun Steps 23 and 25.
 4. `git status --short` shows nothing under `.tmp/` (gitignored, `.gitignore:23`).
 
 - [ ] **Step 27: Put the baseline summary into the R1-1 PR description (not the repo)**
 
-Do not commit anything from `.tmp/`. When the R1-1 PR is opened (not in this task — do not push), its description must contain a section "Baseline บน main (UI ยังไม่เปลี่ยน)" with: the header bullets of `.tmp/field-scale/baseline/report.md` (revision, widths, themes, open findings by severity), the tables "ข้อพบตามกฎ", "เมนูบัญชีถูกตัด (S2-01 / S2-02)" and "รายหน้า", the counts of "cell ที่วัดไม่ครบ" and "API ที่ตอบ error", plus the Windows note required by spec §8: "รันบน Windows: `node --test tools/field-scale/check.test.mjs` (17 pass), `npm run local:preview`, `node tools/field-scale/check.mjs --label baseline`; `npm run local:check` ไม่รองรับ Windows — ต้องรันบน Linux/CI". Save that text now as `.tmp/field-scale/baseline/pr-summary.md` (gitignored) so the PR author can paste it. Later PRs prove "ไม่เพิ่มจาก baseline" with `node tools/field-scale/check.mjs --label <pr-label>` then `node tools/field-scale/check.mjs --compare baseline <pr-label>` (exit 0 = no new P1/P2; a PR may also pass when the compare exits 1 and every new P1/P2 is accepted under the compare triage rule in the cross-task notes, with each accepted finding and its evidence listed in the PR — never a `MENU`/P1 finding).
+Do not commit anything from `.tmp/`. When the R1-1 PR is opened (not in this task — do not push), its description must contain a section "Baseline บน main (UI ยังไม่เปลี่ยน)" with: the header bullets of `.tmp/field-scale/baseline/report.md` (revision, widths, themes, open findings by severity), the tables "ข้อพบตามกฎ", "เมนูบัญชีถูกตัด (S2-01 / S2-02)" and "รายหน้า", the counts of "cell ที่วัดไม่ครบ" and "API ที่ตอบ error", plus the Windows note required by spec §8: "รันบน Windows: `node --test tools/field-scale/check.test.mjs` (24 pass), `npm run local:preview`, `node tools/field-scale/check.mjs --label baseline`; `npm run local:check` ไม่รองรับ Windows — ต้องรันบน Linux/CI". Also add the repeatability result of Step 25 (both compares: 0 new / 0 fixed, only the 4 byte-identical MENU failures, exit 1 by design until Task 6). Save that text now as `.tmp/field-scale/baseline/pr-summary.md` (gitignored) so the PR author can paste it. Later PRs prove "ไม่เพิ่มจาก baseline" with `npm run local:preview`, then `node tools/field-scale/check.mjs --label <pr-label>`, then `node tools/field-scale/check.mjs --compare baseline <pr-label>` (exit 0 = nothing blocks; a PR may also pass when the compare exits 1 and every blocking line is accepted under the compare triage rule in the cross-task notes, with each accepted finding and its evidence listed in the PR — never a lost/emptied cell, and a `MENU` line only before Task 6 and only when byte-identical to the baseline).
 
 ---
 
@@ -5091,32 +5452,25 @@ Expected:
 
 - [ ] **Step 8: Verify in the browser with the T2 field-scale runner (expect the account-menu assertion to pass now)**
 
-1. In a second Git Bash window, run `npm run local:preview` and wait for `http://localhost:5195`.
-2. Find the route ids that the T2 runner uses for the account-menu assertion (the other-income entry card for S2-01, and the Override JV table for S2-02):
+1. Run `npm run local:preview` (it restarts the preview, which is stale after this task's source edits) and wait for `Started http://localhost:5195/inbox`.
+2. The account-menu probes live on two route ids in `tools/field-scale/routes.mjs`: `other-income-items` (probe `account-menu-items-card`, the other-income entry card — S2-01) and `other-income-override` (probe `account-menu-override-jv`, the Override JV table — S2-02). Run the runner on those ids at 1440, in both themes:
 
    ```bash
-   grep -n "account-menu" tools/field-scale/check.mjs
+   node tools/field-scale/check.mjs --label t6-account-menu --routes other-income-items,other-income-override --widths 1440 --themes light,dark
    ```
 
-3. Run the runner on those ids at 1440, in both themes:
+   Expected: the run prints `menu probes: 4 pass · 0 fail`, and `.tmp/field-scale/t6-account-menu/report.md` section "เมนูบัญชีถูกตัด (S2-01 / S2-02)" lists all 4 rows as `PASS`. That means the menu found by its search box `aria-label="ค้นหารหัส หรือ ชื่อบัญชี"` has no clipping ancestor and lies inside the viewport (`tools/field-scale/menu-clip.mjs`).
 
-   ```bash
-   node tools/field-scale/check.mjs --label t6-account-menu --routes <ids printed by the grep, comma-separated> --widths 1440 --themes light,dark
-   ```
-
-   Expected: `.tmp/field-scale/t6-account-menu/report.md` lists the account-menu assertion as passing for both routes. That means:
-   - the open `[role=listbox]` is not inside a clipping ancestor;
-   - the last option is inside the viewport and hit-testable.
-
-   On `main` (the baseline) the same assertion failed. Also open `.tmp/field-scale/t6-account-menu/*-1440-light.png` and check that the menu is drawn over the card or table edge.
-4. Compare against the baseline:
+   On `main` (the baseline) the same probes failed. Also open `.tmp/field-scale/t6-account-menu/*-1440-light-account-menu-*.png` and check that the menu is drawn over the card or table edge.
+3. Compare against the baseline:
 
    ```bash
    node tools/field-scale/check.mjs --compare baseline t6-account-menu
+   echo "exit=$?"
    ```
 
-   Expected: the compare exits 0, or every new P1/P2 is accepted under the compare triage rule (cross-task notes). The account-menu finding(s) are listed as **fixed**, and there is no `MENU` or other P1 finding — those are never accepted.
-5. Stop the preview server (Ctrl+C in its window).
+   Expected: `MENU failures (account-menu probes — never accepted from the baseline): 0`, the 4 MENU ids (`…|MENU|account-menu-items-card`, `…|MENU|account-menu-override-jv`, light and dark) listed under **Fixed**, no "Cells rendered … but not in …" or "fact count fell" section (the other 164 baseline cells are reported only as "Not run … (subset run — not blocking)"), and `exit=0` — or every remaining blocking line is a new F1 P2 accepted under the compare triage rule (cross-task notes). A `MENU` line of any kind (`byte-identical to baseline` included — from this task on MENU must pass) or a `:error` probe key means the fix is incomplete.
+4. Leave the verified preview running (AGENTS.md); `npm run local:stop` stops it when you are done for the day.
 
 - [ ] **Step 9: Commit**
 
@@ -5723,24 +6077,25 @@ This task does **not** clean every `NativeSelect className` in the touched files
   - Payment method option: "ไม่ตั้ง", with the helper below it "ไม่ตั้ง = ร่างลงเป็นตั้งหนี้ ต้องทำใบจ่ายเจ้าหนี้ต่อ".
   - Quarterly month options: "เดือนที่ N ของไตรมาส", with the helper "เดือนที่ 1 = ม.ค./เม.ย./ก.ค./ต.ค. · เดือนที่ 2 = ก.พ./พ.ค./ส.ค./พ.ย. · เดือนที่ 3 = มี.ค./มิ.ย./ก.ย./ธ.ค.".
 
-**Route ids for the runner.** These are the expected ids. The ids live in `tools/field-scale/routes.mjs`, so if one differs, use the id whose `path` matches the path column below.
+**Route ids for the runner.** These are the ids defined in `tools/field-scale/routes.mjs` (Task 2); every command below uses them. Screenshots are `.tmp/field-scale/<label>/<route id>-<width>-<theme>.png`.
 
-| Group | Expected route id | Path / opening step |
-|---|---|---|
-| A | `settings-company-entities` | `/settings/company/entities`, open the "แก้ไข" and "เพิ่มนิติบุคคล" dialogs |
-| A | `settings-finance-interest` | `/settings/finance/interest`, open "แก้ไข" on a config |
-| A | `audit-logs` | `/audit-logs` |
-| A | `chatbot-finance-knowledge` | `/chatbot-finance/knowledge`, click "+ เพิ่ม คำถามที่พบบ่อย" |
-| B | `repossessions` | `/repossessions` |
-| B | `stock-transfers`, `stock-transfers-incoming`, `stock-transfers-history` | `/stock/transfers?view=outgoing|incoming|history` |
-| B | `todos` | `/todos`, open the new-task dialog |
-| B | `purchase-orders` | `/purchase-orders`, open the wizard to the payment summary step |
-| C | `other-income-new` | `/other-income/new` |
-| D | `expenses-new` | `/expenses/new` |
-| D | `expenses-new-payroll` | `/expenses/new`, payroll type with the first line expanded |
-| D | `expenses-favorites` | `/expenses/favorites`, open the "ตั้งบิลประจำ" dialog |
+| Group | Route id | Path / opening step (`routes.mjs`) | Rows |
+|---|---|---|---|
+| A | `company-entity-edit` | `/settings/company/entities`, clicks "แก้ไข" (EditCompanyDialog) | S1-02 |
+| A | `company-entity-create` | `/settings/company/entities`, clicks "เพิ่มนิติบุคคล" (AddCompanyDialog) | S1-02 |
+| A | `interest-config-form` | `/settings/finance/interest`, clicks "+ สร้าง การตั้งค่า" — the same Modal/form as "แก้ไข" (`InterestConfigPage.tsx:477`; the mock returns no configs, so there is no "แก้ไข" row) | S1-03 |
+| A | `audit-logs` | `/audit-logs` | S1-04 |
+| A | `finance-knowledge-form` | `/chatbot-finance/knowledge`, clicks "+ เพิ่ม คำถามที่พบบ่อย" | S1-05 |
+| B | `repossessions` | `/repossessions` | S2-03 |
+| B | `stock-transfers-outgoing`, `stock-transfers-incoming`, `stock-transfers-history` | `/stock/transfers?view=outgoing\|incoming\|history` | S2-04 |
+| B | `todo-form` | `/todos` (actor shown as BRANCH_MANAGER), clicks "เพิ่มงาน" | S2-05 |
+| B | `purchase-order-wizard` | `/purchase-orders`: seeds the wizard's own localStorage draft (mocked supplier + one accessory line, "ของถึงแล้ว" mode), "+ ซื้อสินค้า" → "ถัดไป: ตรวจรับ 1 ชิ้น" → cash price → "ถัดไป: สรุป + จ่ายเงิน" → status "จ่ายครบแล้ว"; the PaymentSection file / URL / "+ เพิ่ม" row is scrolled into view. PaymentSection renders only in that mode's summary (`StepSummary.tsx:193`); nothing is submitted | S2-08 |
+| C | `other-income-items` | `/other-income/new` (item card; also runs the account-menu probe) | S2-07 |
+| D | `expense-new` | `/expenses/new` | S3-04, S3-05 |
+| D | `payroll-new` | `/expenses/new?type=PR`, clicks "เพิ่มพนักงาน" → "ขยาย" → "เพิ่มรายได้พิเศษ" (first line expanded, one extra-income row) | S3-07 |
+| D | `recurring-bill-dialog` | `/expenses/favorites`, clicks "+ บิลประจำ" | S3-09 |
 
-Run all commands from the repo root in Git Bash. The web test script is `vitest run`. Test paths after `--` are relative to `apps/web`, and each one is a substring filter. Before Steps 4, 9, 12 and 16, start the preview once in a second terminal with `npm run local:preview` (it serves http://localhost:5195) and keep it running.
+Run all commands from the repo root in Git Bash. The web test script is `vitest run`. Test paths after `--` are relative to `apps/web`, and each one is a substring filter. Each `check.mjs --label …` command below must be preceded by `npm run local:preview` in the same step: this task's source edits make the preview stale and the runner then exits 2 (cross-task notes, "Refresh before every run"). `local:preview` restarts it (http://localhost:5195) and leaves it running.
 
 ---
 
@@ -6198,10 +6553,11 @@ npm run test --workspace=apps/web -- src/pages/CompanySettingsPage.vat-row.test.
 
 Expected: `Test Files  4 passed (4)` and `Tests  6 passed (6)`.
 
-With `npm run local:preview` running:
+Refresh the preview (this group's edits made it stale), then measure:
 
 ```bash
-node tools/field-scale/check.mjs --label t8-a --routes settings-company-entities,settings-finance-interest,audit-logs,chatbot-finance-knowledge --widths 1440,1024,390 --themes light,dark
+npm run local:preview
+node tools/field-scale/check.mjs --label t8-a --routes company-entity-edit,company-entity-create,interest-config-form,audit-logs,finance-knowledge-form --widths 1440,1024,390 --themes light,dark
 node tools/field-scale/check.mjs --compare baseline t8-a
 ```
 
@@ -6210,8 +6566,8 @@ Expected:
   - CompanySettings VAT row label/bottom offset
   - AuditLogs "รายการ" border and background
   - ChatbotFinance 3-column row
-- InterestConfig VAT (S1-03): the plain `<div>` was not measured at baseline, so there is no baseline key for it and nothing to list as fixed. It is measured for the first time as a `ReadOnlyField`. Acceptance: the row it now joins is fully consistent — zero F1 keys for that row in `.tmp/field-scale/t8-a/results.json` — and `settings-finance-interest-1440-light.png` compared with the baseline screenshot shows the VAT box at the same height as its neighbours.
-- Open `.tmp/field-scale/t8-a/settings-finance-interest-1440-dark.png` and confirm the read-only VAT value is readable in dark mode (spec §9).
+- InterestConfig VAT (S1-03): the plain `<div>` was not measured at baseline, so there is no baseline key for it and nothing to list as fixed. It is measured for the first time as a `ReadOnlyField`. Acceptance: the row it now joins is fully consistent — zero F1 keys for that row in `.tmp/field-scale/t8-a/results.json` — and `interest-config-form-1440-light.png` compared with the baseline screenshot shows the VAT box at the same height as its neighbours.
+- Open `.tmp/field-scale/t8-a/interest-config-form-1440-dark.png` and confirm the read-only VAT value is readable in dark mode (spec §9).
 
 If the compare exits 1, triage the new findings under the compare triage rule (cross-task notes): fix every finding the rule does not accept, re-run, and record the accepted ones in the task report.
 
@@ -6504,12 +6860,13 @@ Expected: every file passes. This run covers:
 - the 4 new test files
 
 ```bash
-node tools/field-scale/check.mjs --label t8-b --routes repossessions,stock-transfers,stock-transfers-incoming,stock-transfers-history,todos,purchase-orders --widths 1440,1024,390 --themes light,dark
+npm run local:preview
+node tools/field-scale/check.mjs --label t8-b --routes repossessions,stock-transfers-outgoing,stock-transfers-incoming,stock-transfers-history,todo-form,purchase-order-wizard --widths 1440,1024,390 --themes light,dark
 node tools/field-scale/check.mjs --compare baseline t8-b
 ```
 
 Expected:
-- The compare exits 0, or every new P1/P2 is accepted under the compare triage rule (cross-task notes). S2-05 (TodoForm tag) and S2-08 (PaymentSection 40px beside 44px) have no baseline F1 key: the tag input and the PaymentSection text input are each the only F1-eligible control in their row (the file `<label>` and the `+ เพิ่ม` button are not measured fields), and S2-05 also re-kinds the control to `field-frame`. Prove them with this group's vitest tests plus the screenshot comparison, not with the compare "fixed" list.
+- The compare exits 0, or every new P1/P2 is accepted under the compare triage rule (cross-task notes). S2-05 (TodoForm tag) and S2-08 (PaymentSection 40px beside 44px) have no baseline F1 key: the tag input and the PaymentSection text input are each the only F1-eligible control in their row (the file `<label>` and the `+ เพิ่ม` button are not measured fields), and S2-05 also re-kinds the control to `field-frame`. Prove them with this group's vitest tests plus the screenshot comparison, not with the compare "fixed" list: `.tmp/field-scale/t8-b/purchase-order-wizard-1440-light.png` against `.tmp/field-scale/baseline/purchase-order-wizard-1440-light.png` (the route opens the receive-mode summary with status "จ่ายครบแล้ว" and scrolls the "เลือกรูป" / URL / "+ เพิ่ม" row into view — "เลือกรูป" and "+ เพิ่ม" now as tall as the URL input), and `todo-form-1440-light.png` likewise for the tag field.
 - In `.tmp/field-scale/t8-b/repossessions-1440-light.png` and the `stock-transfers*-1440-light.png` screenshots, the filter dropdown is 224px wide, not page-wide.
 - At 390 it is full width.
 
@@ -6664,14 +7021,15 @@ npm run test --workspace=apps/web -- src/pages/other-income
 Expected: every file under `src/pages/other-income` passes. That includes the new `ItemsTable.fields.test.tsx`, `OtherIncomeDailySheetPage.test.tsx`, `AuditJournalTable.test.tsx`, `DateRangeChips.test.tsx`, `EditableJournalTable.test.ts`, `AutoJournalPreview.test.tsx` and `OverrideConfirmDialog.test.tsx`.
 
 ```bash
-node tools/field-scale/check.mjs --label t8-c --routes other-income-new --widths 1440,1024,390 --themes light,dark
+npm run local:preview
+node tools/field-scale/check.mjs --label t8-c --routes other-income-items --widths 1440,1024,390 --themes light,dark
 node tools/field-scale/check.mjs --compare baseline t8-c
 ```
 
 Expected:
 - The compare exits 0, or every new P1/P2 is accepted under the compare triage rule (cross-task notes). The S2-07 F1 findings of the measured controls are listed as fixed: the number inputs' light border next to the select's dark border.
-- "ก่อนภาษี" (S2-07) was a plain `<div>` at baseline — not measured, so it has no baseline key and its height/font size cannot be listed as fixed. Acceptance: the item row it now joins as a `ReadOnlyField` is fully consistent — zero F1 keys for that row in `.tmp/field-scale/t8-c/results.json` — and `other-income-new-1440-light.png` compared with the baseline screenshot shows "ก่อนภาษี" at the same height and font size as the inputs beside it.
-- In `.tmp/field-scale/t8-c/other-income-new-1440-dark.png` the read-only value is readable.
+- "ก่อนภาษี" (S2-07) was a plain `<div>` at baseline — not measured, so it has no baseline key and its height/font size cannot be listed as fixed. Acceptance: the item row it now joins as a `ReadOnlyField` is fully consistent — zero F1 keys for that row in `.tmp/field-scale/t8-c/results.json` — and `other-income-items-1440-light.png` compared with the baseline screenshot shows "ก่อนภาษี" at the same height and font size as the inputs beside it.
+- In `.tmp/field-scale/t8-c/other-income-items-1440-dark.png` the read-only value is readable.
 
 - [ ] **Step 13: Commit group C**
 
@@ -7015,7 +7373,8 @@ Expected: every file passes. This includes:
 - `ExpenseFormV4.payroll.test.tsx`, `DocTypePicker.payroll.test.tsx`, `PayrollReviewPanel.test.tsx`, `payroll-lines.test.ts`, `VendorCombobox.test.tsx`, `ApproverSection.test.tsx` and `RecurringBillsPage.test.tsx`
 
 ```bash
-node tools/field-scale/check.mjs --label t8-d --routes expenses-new,expenses-new-payroll,expenses-favorites --widths 1440,1024,390 --themes light,dark
+npm run local:preview
+node tools/field-scale/check.mjs --label t8-d --routes expense-new,payroll-new,recurring-bill-dialog --widths 1440,1024,390 --themes light,dark
 node tools/field-scale/check.mjs --compare baseline t8-d
 ```
 
@@ -7023,8 +7382,8 @@ Expected:
 - The compare exits 0, or every new P1/P2 is accepted under the compare triage rule (cross-task notes). These findings are listed as fixed:
   - S3-07: F2 truncation of the payroll account select.
   - S3-09: F2 longest-option truncation on "วิธีจ่าย"/"เดือน".
-- S3-04 ("ก่อนภาษี" 38px with a bottom offset) and S3-05 (ยอดสุทธิ / ผลต่าง value boxes with a different height, radius and border) were plain `<div>`s at baseline — not measured, so there are no baseline keys for them to list as fixed. Acceptance: each row they now join as `ReadOnlyField`s is fully consistent — zero F1 keys for those rows in `.tmp/field-scale/t8-d/results.json` — and `expenses-new-1440-light.png` compared with the baseline screenshot shows the boxes at the same height, radius and border as their neighbours, bottoms aligned.
-- Check `.tmp/field-scale/t8-d/expenses-new-1440-dark.png` and confirm the S3-05 success/warning tones are readable in dark mode.
+- S3-04 ("ก่อนภาษี" 38px with a bottom offset) and S3-05 (ยอดสุทธิ / ผลต่าง value boxes with a different height, radius and border) were plain `<div>`s at baseline — not measured, so there are no baseline keys for them to list as fixed. Acceptance: each row they now join as `ReadOnlyField`s is fully consistent — zero F1 keys for those rows in `.tmp/field-scale/t8-d/results.json` — and `expense-new-1440-light.png` compared with the baseline screenshot shows the boxes at the same height, radius and border as their neighbours, bottoms aligned.
+- Check `.tmp/field-scale/t8-d/expense-new-1440-dark.png` and confirm the S3-05 success/warning tones are readable in dark mode.
 
 - [ ] **Step 17: Commit group D**
 
@@ -7045,7 +7404,8 @@ EOF
 bash tools/check-types.sh web
 npm run lint --workspace=apps/web
 npm run test --workspace=apps/web
-node tools/field-scale/check.mjs --label t8-all --routes settings-company-entities,settings-finance-interest,audit-logs,chatbot-finance-knowledge,repossessions,stock-transfers,stock-transfers-incoming,stock-transfers-history,todos,purchase-orders,other-income-new,expenses-new,expenses-new-payroll,expenses-favorites
+npm run local:preview
+node tools/field-scale/check.mjs --label t8-all --routes company-entity-edit,company-entity-create,interest-config-form,audit-logs,finance-knowledge-form,repossessions,stock-transfers-outgoing,stock-transfers-incoming,stock-transfers-history,todo-form,purchase-order-wizard,other-income-items,expense-new,payroll-new,recurring-bill-dialog
 node tools/field-scale/check.mjs --compare baseline t8-all
 ```
 
@@ -7516,7 +7876,7 @@ Expected: `8 17 12 12 10 15 10`
 ```bash
 npm run local:preview
 ```
-Expected: `Started http://localhost:5195` (or `Reused http://localhost:5195`) and a `Workspace:` line. The command starts the preview in the background and returns. It keeps running until `npm run local:stop` in Step 27.
+Expected: `Started http://localhost:5195` (or `Reused http://localhost:5195`) and a `Workspace:` line. The command starts the preview in the background and returns. Every later `check.mjs --label t9-*` run is preceded by `npm run local:preview` again, because each area's source edits make the preview stale (the runner exits 2 on a stale preview); the preview keeps running until `npm run local:stop` in Step 27.
 
 ```bash
 node tools/field-scale/check.mjs --label t9-before
@@ -7830,6 +8190,7 @@ bash tools/check-types.sh web
 source .tmp/t9-areas.sh && (cd apps/web && npx eslint $(printf 'src/%s ' "${A[@]}"))
 source .tmp/t9-areas.sh && (cd apps/web && npx vitest related --run --passWithNoTests $(printf 'src/%s ' "${A[@]}"))
 npm run test --workspace=apps/web -- src/components/ui/field-guards.inventory.test.ts
+npm run local:preview
 node tools/field-scale/check.mjs --label t9-a
 node tools/field-scale/check.mjs --compare t9-before t9-a; echo "exit=$?"
 ```
@@ -8004,6 +8365,7 @@ bash tools/check-types.sh web
 source .tmp/t9-areas.sh && (cd apps/web && npx eslint $(printf 'src/%s ' "${B[@]}"))
 source .tmp/t9-areas.sh && (cd apps/web && npx vitest related --run --passWithNoTests $(printf 'src/%s ' "${B[@]}"))
 npm run test --workspace=apps/web -- src/components/ui/field-guards.inventory.test.ts
+npm run local:preview
 node tools/field-scale/check.mjs --label t9-b
 node tools/field-scale/check.mjs --compare t9-before t9-b; echo "exit=$?"
 ```
@@ -8137,6 +8499,7 @@ bash tools/check-types.sh web
 source .tmp/t9-areas.sh && (cd apps/web && npx eslint $(printf 'src/%s ' "${C1[@]}"))
 source .tmp/t9-areas.sh && (cd apps/web && npx vitest related --run --passWithNoTests $(printf 'src/%s ' "${C1[@]}"))
 npm run test --workspace=apps/web -- src/components/ui/field-guards.inventory.test.ts
+npm run local:preview
 node tools/field-scale/check.mjs --label t9-c1
 node tools/field-scale/check.mjs --compare t9-before t9-c1; echo "exit=$?"
 ```
@@ -8259,6 +8622,7 @@ bash tools/check-types.sh web
 source .tmp/t9-areas.sh && (cd apps/web && npx eslint $(printf 'src/%s ' "${C2[@]}"))
 source .tmp/t9-areas.sh && (cd apps/web && npx vitest related --run --passWithNoTests $(printf 'src/%s ' "${C2[@]}"))
 npm run test --workspace=apps/web -- src/components/ui/field-guards.inventory.test.ts
+npm run local:preview
 node tools/field-scale/check.mjs --label t9-c2
 node tools/field-scale/check.mjs --compare t9-before t9-c2; echo "exit=$?"
 ```
@@ -8365,6 +8729,7 @@ bash tools/check-types.sh web
 source .tmp/t9-areas.sh && (cd apps/web && npx eslint $(printf 'src/%s ' "${D[@]}"))
 source .tmp/t9-areas.sh && (cd apps/web && npx vitest related --run --passWithNoTests $(printf 'src/%s ' "${D[@]}"))
 npm run test --workspace=apps/web -- src/components/ui/field-guards.inventory.test.ts
+npm run local:preview
 node tools/field-scale/check.mjs --label t9-d
 node tools/field-scale/check.mjs --compare t9-before t9-d; echo "exit=$?"
 ```
@@ -8546,6 +8911,7 @@ bash tools/check-types.sh web
 source .tmp/t9-areas.sh && (cd apps/web && npx eslint $(printf 'src/%s ' "${E[@]}"))
 source .tmp/t9-areas.sh && (cd apps/web && npx vitest related --run --passWithNoTests $(printf 'src/%s ' "${E[@]}"))
 npm run test --workspace=apps/web -- src/components/ui/field-guards.inventory.test.ts
+npm run local:preview
 node tools/field-scale/check.mjs --label t9-e
 node tools/field-scale/check.mjs --compare t9-before t9-e; echo "exit=$?"
 ```
@@ -9182,19 +9548,15 @@ EOF
 
 - [ ] **Step 30: Field-scale check: F1 (label) = 0 on these forms, nothing new compared with the baseline (except findings accepted under the compare triage rule)**
 
-Start the preview (it detaches and returns):
+Start (restart) the preview — this task's source edits made it stale (it detaches and returns):
 ```bash
 cd "/d/BESTCHOICE APP/BESTCHOICE" && npm run local:preview
 ```
 Expected output: `Started http://localhost:5195` (or `Reused http://localhost:5195`).
 
-Find the route ids Task 2 registered for these forms (CompanySettings add/edit company, customer create, contract-create customer modal, contract customer edit, customer detail edit, supplier form, trade-in quick buy, branches, contacts create, POS, contract create plan):
+The route ids Task 2 registered for these forms (`tools/field-scale/routes.mjs`): CompanySettings edit / add company = `company-entity-edit`, `company-entity-create`; customer create = `customer-create-dialog`; contract-create customer modal = `contract-customer-create`; contract customer edit = `contract-customer-edit`; customer detail edit = `customer-edit-dialog`; supplier form = `supplier-form`; trade-in quick buy = `trade-in-quick-buy`; branches = `branch-create`; contacts create = `contact-create`; POS (SaleDetailsForm) = `pos-sale-form`. **The contract-create plan step (PlanDetailsStep) is not measured**: reaching step 3 needs a customer whose credit check is approved and a blacklist result (`useContractCreateData.ts:659-668`, fail-closed), and the preview has no credit-approved sample customer and answers `GET /customers/:id/blacklist` 501. PlanDetailsStep is proven by `PlanDetailsStep.payday.test.tsx` + the Step 7 guard, and listed in the PR as "not measured". Run the check with those ids and compare against the `baseline` label created in Task 2 (`.tmp/field-scale/baseline/`).
 ```bash
-grep -nE "company|customers|contracts|suppliers|trade-in|branches|contacts|pos" tools/field-scale/*.mjs
-```
-Run the check with those ids (comma-separated) and compare against the `baseline` label created in Task 2 (`.tmp/field-scale/baseline/`).
-```bash
-node tools/field-scale/check.mjs --label r1-4 --routes <ids-from-grep> --widths 1440,1024,390 --themes light,dark
+node tools/field-scale/check.mjs --label r1-4 --routes company-entity-edit,company-entity-create,customer-create-dialog,contract-customer-create,contract-customer-edit,customer-edit-dialog,supplier-form,trade-in-quick-buy,branch-create,contact-create,pos-sale-form --widths 1440,1024,390 --themes light,dark
 node tools/field-scale/check.mjs --compare baseline r1-4
 node -e "const j=require('./.tmp/field-scale/r1-4/results.json');const all=j.cells.flatMap(c=>c.findings.filter(f=>!f.allowed));const f1=all.filter(f=>f.rule==='F1'&&/^label(FontSize|Gap)@/.test(f.key));console.log('F1 label findings:',f1.length);for(const f of f1)console.log(f.route,f.width,f.theme,JSON.stringify(f.detail??f));"
 ```
@@ -9857,31 +10219,18 @@ Expected: no output.
 
 - [ ] **Step 14: Field-scale compare against the baseline**
 
-Find the route ids. `tools/field-scale/routes.mjs` is created by Task 2. The app routes at HEAD are:
-- `/settings/finance/interest`
-- `/audit-logs`
-- `/repossessions`
-- `/stock/transfers`
-- `/todos`
-- `/purchase-orders` (the PO wizard)
-- `/other-income/new`
-- `/expenses/new`
-- `/expenses/favorites`
-- `/expenses/recurring-bills`
+The route ids (`tools/field-scale/routes.mjs`, Task 2) for the forms this task edits: `/settings/finance/interest` = `interest-config-form` (opens the create/edit modal) · `/audit-logs` = `audit-logs` · `/repossessions` = `repossessions` · `/stock/transfers` = `stock-transfers-outgoing`, `stock-transfers-incoming`, `stock-transfers-history` · `/todos` = `todo-form` (opens the new-task dialog) · `/purchase-orders` = `purchase-order-wizard` (receive-mode summary with PaymentSection) · `/other-income/new` = `other-income-items` · `/expenses/new` = `expense-new`, `payroll-new` (first payroll line expanded) · `/expenses/favorites` = `recurring-bill-dialog` (opens RecurringBillDialog). There is no route for `/expenses/recurring-bills`; RecurringBillDialog is measured through `recurring-bill-dialog`. Refresh the preview (this task's edits made it stale), then:
 ```bash
 cd "d:/BESTCHOICE APP/BESTCHOICE"
-grep -nE "settings/finance/interest|audit-logs|repossessions|stock/transfers|todos|purchase-orders|other-income|expenses/(new|favorites|recurring-bills)" tools/field-scale/routes.mjs
-```
-Take the `id` of each matching entry and join them with commas. Then, with `npm run local:preview` running:
-```bash
-node tools/field-scale/check.mjs --label r1-3-labels --routes <ids>
+npm run local:preview
+node tools/field-scale/check.mjs --label r1-3-labels --routes interest-config-form,audit-logs,repossessions,stock-transfers-outgoing,stock-transfers-incoming,stock-transfers-history,todo-form,purchase-order-wizard,other-income-items,expense-new,payroll-new,recurring-bill-dialog
 node tools/field-scale/check.mjs --compare baseline r1-3-labels
 ```
 Expected:
 - the compare exits 0, or every new P1/P2 compared with baseline on these routes is accepted under the compare triage rule (cross-task notes);
 - F1 `labelFontSize` / `labelGap` findings on these routes are gone. Remaining label findings may only come from the intentionally skipped labels in the table (checkbox labels, `<th>`, payroll table cells, Todo section headings) or from routes whose steps do not open the dialog.
 
-List any dialog the route steps do not open (e.g. Repossessions settlement/refund/ready-for-sale/update modals, Todo dialog, RecurringBillDialog, StockTransfers receive/ship modals) in the PR as "not measured". Label-only changes must not create F2–F4 findings. If one appears, investigate before committing.
+List any dialog the route steps do not open (e.g. Repossessions settlement/refund/ready-for-sale/update modals, StockTransfers receive/ship modals, the AuditLogs detail dialog) in the PR as "not measured" — the Todo dialog (`todo-form`), RecurringBillDialog (`recurring-bill-dialog`), the InterestConfig modal and the PO PaymentSection are opened by their routes. Label-only changes must not create F2–F4 findings. If one appears, investigate before committing.
 
 - [ ] **Step 15: Commit**
 

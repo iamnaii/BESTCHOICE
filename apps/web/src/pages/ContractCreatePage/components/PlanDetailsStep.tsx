@@ -163,7 +163,7 @@ export function PlanDetailsStep({
           name="downPayment"
           render={({ field }) => (
             <FormItem>
-              <FormLabel htmlFor={`${dueDayInputId}-down`} className="text-sm font-medium text-foreground">
+              <FormLabel htmlFor={`${dueDayInputId}-down`}>
                 เงินดาวน์ที่รับเป็นเงินสด/โอน <InfoTip text="กรอกเฉพาะเงินที่รับเพิ่ม ระบบรวมมูลค่าเครื่องเทิร์นให้ในการคำนวณยอดจัด" />
               </FormLabel>
               <FormControl>
@@ -180,7 +180,7 @@ export function PlanDetailsStep({
                   min={0}
                 />
               </FormControl>
-              <div className="text-xs text-muted-foreground">เงินสด/โอนขั้นต่ำเพิ่ม {Math.max(0, Math.ceil(sellingPrice * minDownPct) - tradeInBaseAmount).toLocaleString()} ฿ (ยอดดาวน์รวมขั้นต่ำ {(minDownPct * 100).toFixed(0)}%)</div>
+              <div className="mt-1.5 text-xs text-muted-foreground">เงินสด/โอนขั้นต่ำเพิ่ม {Math.max(0, Math.ceil(sellingPrice * minDownPct) - tradeInBaseAmount).toLocaleString()} ฿ (ยอดดาวน์รวมขั้นต่ำ {(minDownPct * 100).toFixed(0)}%)</div>
               <FormMessage />
             </FormItem>
           )}
@@ -191,7 +191,7 @@ export function PlanDetailsStep({
           name="totalMonths"
           render={({ field }) => (
             <FormItem>
-              <FormLabel htmlFor={`${dueDayInputId}-months`} className="text-sm font-medium text-foreground">จำนวนงวด (เดือน)</FormLabel>
+              <FormLabel htmlFor={`${dueDayInputId}-months`}>จำนวนงวด (เดือน)</FormLabel>
               <FormControl>
                 <NativeSelect wrapperClassName="max-w-full w-full"
                   id={`${dueDayInputId}-months`}
@@ -218,7 +218,7 @@ export function PlanDetailsStep({
           name="paymentDueDay"
           render={({ field, fieldState }) => (
             <FormItem>
-              <FormLabel htmlFor={dueDayInputId} className="text-sm font-medium text-foreground">วันที่ครบกำหนดชำระ (ตามวันเงินเดือนออก)</FormLabel>
+              <FormLabel htmlFor={dueDayInputId}>วันที่ครบกำหนดชำระ (ตามวันเงินเดือนออก)</FormLabel>
               <FormControl>
                 <NativeSelect wrapperClassName="max-w-full w-full"
                   id={dueDayInputId}
@@ -235,7 +235,7 @@ export function PlanDetailsStep({
                   ))}
                 </NativeSelect>
               </FormControl>
-              <div className="text-xs text-muted-foreground">
+              <div className="mt-1.5 text-xs text-muted-foreground">
                 {selectedCustomer?.salaryPayDay && field.value === selectedCustomer.salaryPayDay
                   ? `กำหนดชำระตามวันเงินเดือนออก (วันที่ ${selectedCustomer.salaryPayDay})`
                   : `ลูกค้าจะต้องชำระเงิน${field.value === 31 ? 'ทุกสิ้นเดือน' : `ทุกวันที่ ${field.value} ของเดือน`}`
@@ -251,7 +251,7 @@ export function PlanDetailsStep({
           name="notes"
           render={({ field }) => (
             <FormItem>
-              <FormLabel className="text-sm font-medium text-foreground">หมายเหตุ</FormLabel>
+              <FormLabel>หมายเหตุ</FormLabel>
               <FormControl>
                 <textarea
                   {...field}

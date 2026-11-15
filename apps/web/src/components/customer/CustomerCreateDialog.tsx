@@ -527,7 +527,7 @@ function CustomerCreateForm({
         name="nationalId"
         render={({ field }) => (
           <FormItem>
-            <FormLabel className="text-xs font-medium">
+            <FormLabel>
               เลขบัตรประชาชน (13 หลัก){' '}
               {isFill ? (
                 <span className="font-normal text-muted-foreground">
@@ -560,7 +560,7 @@ function CustomerCreateForm({
         name="phone"
         render={({ field }) => (
           <FormItem>
-            <FormLabel className="text-xs font-medium">
+            <FormLabel>
               เบอร์โทร <span className="text-destructive">*</span>
             </FormLabel>
             <FormControl>
@@ -585,7 +585,7 @@ function CustomerCreateForm({
         name="nickname"
         render={({ field }) => (
           <FormItem>
-            <FormLabel className="text-xs font-medium">ชื่อเล่น</FormLabel>
+            <FormLabel>ชื่อเล่น</FormLabel>
             <FormControl>
               <input type="text" {...field} className={inputClass} placeholder="ชื่อเล่น" />
             </FormControl>
@@ -779,7 +779,7 @@ function CustomerCreateForm({
                     name="prefix"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-xs font-medium">
+                        <FormLabel>
                           คำนำหน้า <span className="text-destructive">*</span>
                         </FormLabel>
                         <FormControl>
@@ -807,7 +807,7 @@ function CustomerCreateForm({
                     name="firstName"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-xs font-medium">
+                        <FormLabel>
                           ชื่อ <span className="text-destructive">*</span>
                         </FormLabel>
                         <FormControl>
@@ -830,7 +830,7 @@ function CustomerCreateForm({
                     name="lastName"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-xs font-medium">
+                        <FormLabel>
                           {isFill ? (
                             <>
                               นามสกุล{' '}
@@ -867,7 +867,7 @@ function CustomerCreateForm({
                         name="facebookName"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className="text-xs font-medium">ชื่อ Facebook</FormLabel>
+                            <FormLabel>ชื่อ Facebook</FormLabel>
                             <FormControl>
                               <input
                                 type="text"
@@ -896,7 +896,7 @@ function CustomerCreateForm({
                       name="birthDate"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-xs font-medium">วันเกิด</FormLabel>
+                          <FormLabel>วันเกิด</FormLabel>
                           <FormControl>
                             <ThaiDateInput
                               value={field.value ?? ''}
@@ -1051,7 +1051,7 @@ function CustomerCreateForm({
                         name="phoneSecondary"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className="text-xs font-medium">เบอร์สำรอง</FormLabel>
+                            <FormLabel>เบอร์สำรอง</FormLabel>
                             <FormControl>
                               <input
                                 type="tel"
@@ -1071,7 +1071,7 @@ function CustomerCreateForm({
                         name="email"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className="text-xs font-medium">อีเมล</FormLabel>
+                            <FormLabel>อีเมล</FormLabel>
                             <FormControl>
                               <input
                                 type="email"
@@ -1093,7 +1093,7 @@ function CustomerCreateForm({
                         name="lineIdShop"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className="text-xs font-medium">
+                            <FormLabel>
                               LINE ID (Shop / ร้าน)
                             </FormLabel>
                             <FormControl>
@@ -1115,7 +1115,7 @@ function CustomerCreateForm({
                         name="facebookLink"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className="text-xs font-medium">ลิงก์ Facebook</FormLabel>
+                            <FormLabel>ลิงก์ Facebook</FormLabel>
                             <FormControl>
                               <input
                                 type="url"
@@ -1135,7 +1135,7 @@ function CustomerCreateForm({
                         name="facebookName"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className="text-xs font-medium">ชื่อ Facebook</FormLabel>
+                            <FormLabel>ชื่อ Facebook</FormLabel>
                             <FormControl>
                               <input
                                 type="text"
@@ -1193,7 +1193,7 @@ function CustomerCreateForm({
                         name="workplace"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className="text-xs font-medium">ชื่อที่ทำงาน</FormLabel>
+                            <FormLabel>ชื่อที่ทำงาน</FormLabel>
                             <FormControl>
                               <input
                                 type="text"
@@ -1213,7 +1213,7 @@ function CustomerCreateForm({
                         name="occupation"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className="text-xs font-medium">อาชีพ</FormLabel>
+                            <FormLabel>อาชีพ</FormLabel>
                             <FormControl>
                               <NativeSelect
                                 wrapperClassName="max-w-full w-full min-w-0"
@@ -1248,7 +1248,7 @@ function CustomerCreateForm({
                         name="occupationDetail"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className="text-xs font-medium">รายละเอียดอาชีพ</FormLabel>
+                            <FormLabel>รายละเอียดอาชีพ</FormLabel>
                             <FormControl>
                               <input
                                 type="text"
@@ -1268,7 +1268,7 @@ function CustomerCreateForm({
                         name="salary"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className="text-xs font-medium">เงินเดือน</FormLabel>
+                            <FormLabel>เงินเดือน</FormLabel>
                             <FormControl>
                               <NumberInput
                                 unstyled

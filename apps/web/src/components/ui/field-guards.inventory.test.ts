@@ -325,3 +325,50 @@ describe('flex-wrap filter rows: siblings of NativeSelect keep w-auto', () => {
     });
   }
 });
+
+// ── R1-4 · §4.3 — ป้ายแบบ A (label style A) ─────────────────────────────────────
+// Self-contained on purpose: local helpers + dynamic node imports, so this block does not
+// depend on (or clash with) the helpers declared earlier in this file.
+describe('label style A (R1-4, §4.3)', () => {
+  const REPO_ROOT_FROM_UI = '../../../../..';
+
+  it(
+    'no FormLabel caller overrides the default label size or spacing',
+    async () => {
+      const { readFileSync, readdirSync } = await import('node:fs');
+      const { resolve, relative } = await import('node:path');
+      const root = resolve(__dirname, REPO_ROOT_FROM_UI);
+      const walk = (dir: string, out: string[] = []): string[] => {
+        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+          const file = resolve(dir, entry.name);
+          if (entry.isDirectory()) {
+            if (entry.name !== 'node_modules' && entry.name !== 'dist') walk(file, out);
+          } else if (/\.tsx?$/.test(entry.name) && !/[.-](test|spec)\.tsx?$/.test(entry.name)) {
+            out.push(file);
+          }
+        }
+        return out;
+      };
+      const files = walk(resolve(root, 'apps/web/src'));
+      // Guard against walking the wrong tree and passing vacuously (~1.3k files today).
+      expect(files.length).toBeGreaterThan(500);
+      const OVERRIDE = /<FormLabel\b[^>]*?className="([^"]*)"/g;
+      const SIZE_OR_SPACING =
+        /(?:^|\s)(?:text-(?:2xs|xs|sm|base|lg)|uppercase|tracking-\S+|m[tbyx]?-\S+|block)(?=\s|$)/;
+      const offenders: string[] = [];
+      for (const file of files) {
+        const source = readFileSync(file, 'utf8');
+        if (!source.includes('<FormLabel')) continue;
+        for (const match of source.matchAll(OVERRIDE)) {
+          if (SIZE_OR_SPACING.test(match[1])) {
+            offenders.push(`${relative(root, file)}: "${match[1]}"`);
+          }
+        }
+      }
+      expect(offenders).toEqual([]);
+    },
+    30_000,
+  );
+
+  // R1-4 host checks (Task 10 step 14) go here.
+});

@@ -115,10 +115,7 @@ export default function SaleDetailsForm({
               name="sellingPrice"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel
-                    htmlFor={sellingPriceId}
-                    className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2"
-                  >
+                  <FormLabel htmlFor={sellingPriceId}>
                     ราคาขาย *<span className="ml-1 text-primary">(จากระบบ)</span>
                   </FormLabel>
                   <FormControl>
@@ -140,7 +137,7 @@ export default function SaleDetailsForm({
               name="discount"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                  <FormLabel>
                     ส่วนลด
                   </FormLabel>
                   <FormControl>
@@ -203,7 +200,7 @@ export default function SaleDetailsForm({
                   name="financeCompany"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                      <FormLabel>
                         บริษัทไฟแนนซ์ *
                       </FormLabel>
                       <FormControl>
@@ -229,7 +226,7 @@ export default function SaleDetailsForm({
                   name="contractNumber"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                      <FormLabel>
                         เลขที่สัญญา
                       </FormLabel>
                       <FormControl>
@@ -252,7 +249,7 @@ export default function SaleDetailsForm({
                   name="downPayment"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                      <FormLabel>
                         เงินดาวน์
                       </FormLabel>
                       <FormControl>
@@ -298,7 +295,7 @@ export default function SaleDetailsForm({
               name="notes"
               render={({ field }) => (
                 <FormItem className="mt-3">
-                  <FormLabel className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                  <FormLabel>
                     หมายเหตุ
                   </FormLabel>
                   <FormControl>

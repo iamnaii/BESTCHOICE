@@ -13,6 +13,20 @@ describe('โครงหน้าเอกสาร', () => {
     expect(within(row).getByRole('button', { name: 'ย่อ/ขยาย' })).toBeInTheDocument();
   });
 
+  it.each([true, false])('FormRow complete=%s แสดงเครื่องหมายสถานะที่ซ่อนจาก screen reader', (complete) => {
+    render(<FormRow title="ข้อมูลผู้ขาย" complete={complete}><p>x</p></FormRow>);
+    const row = screen.getByRole('region', { name: 'ข้อมูลผู้ขาย' });
+    const icons = row.querySelectorAll('svg');
+    expect(icons).toHaveLength(1);
+    expect(icons[0]).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('FormRow ไม่แสดงเครื่องหมายเมื่อไม่ส่ง complete', () => {
+    render(<FormRow title="ข้อมูลผู้ขาย"><p>x</p></FormRow>);
+    const row = screen.getByRole('region', { name: 'ข้อมูลผู้ขาย' });
+    expect(row.querySelectorAll('svg')).toHaveLength(0);
+  });
+
   it('SummaryBox แสดงตัวเลขตามที่ได้รับ ไม่คำนวณเอง', () => {
     render(<SummaryBox rows={[{ label: 'มูลค่าก่อนภาษี', value: '850.00' }, { label: 'ภาษีมูลค่าเพิ่ม', value: '—' }]} total={{ label: 'จำนวนเงินทั้งสิ้น', value: '909.50' }} />);
     expect(screen.getByText('มูลค่าก่อนภาษี').nextElementSibling).toHaveTextContent('850.00');

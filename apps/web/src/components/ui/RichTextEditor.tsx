@@ -269,7 +269,6 @@ export default function RichTextEditor({ value, onChange, placeholder, minHeight
         {/* Heading select */}
         <NativeSelect wrapperClassName="max-w-full w-auto mr-1"
           onChange={(e) => handleHeading(e.target.value)}
-          className="px-1.5 py-1 text-xs border border-border rounded bg-card hover:bg-muted"
           defaultValue="p"
         >
           <option value="p">ย่อหน้า</option>
@@ -283,7 +282,6 @@ export default function RichTextEditor({ value, onChange, placeholder, minHeight
         <NativeSelect wrapperClassName="max-w-full w-auto mr-1"
           value={fontSize}
           onChange={(e) => handleFontSize(e.target.value)}
-          className="px-1.5 py-1 text-xs border border-border rounded bg-card hover:bg-muted"
         >
           <option value="1">เล็กมาก</option>
           <option value="2">เล็ก</option>

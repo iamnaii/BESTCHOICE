@@ -113,7 +113,6 @@ export function SettingsLayout() {
           <NativeSelect wrapperClassName="max-w-full w-full"
             value={categoryId}
             onChange={(e) => navigate(`/settings/${e.target.value}`)}
-            className="rounded-lg border border-border bg-background py-2 px-3 text-sm"
             aria-label="เลือกหมวดตั้งค่า"
           >
             {cats.map((c) => (

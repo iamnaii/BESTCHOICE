@@ -325,7 +325,6 @@ function PDPAPage() {
               <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-1`}
                 value={processForm.status}
                 onChange={(e) => setProcessForm({ ...processForm, status: e.target.value })}
-                className="px-3 py-2 border rounded-lg text-sm"
               >
                 <option value="COMPLETED">เสร็จสิ้น</option>
                 <option value="IN_PROGRESS">กำลังดำเนินการ</option>
@@ -415,7 +414,6 @@ function PDPAPage() {
               <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-5`}
                 value={dsarForm.requestType}
                 onChange={(e) => setDsarForm({ ...dsarForm, requestType: e.target.value })}
-                className="px-3 py-2 border rounded-lg text-sm"
               >
                 {Object.entries(requestTypeLabels).map(([value, label]) => (
                   <option key={value} value={value}>{label}</option>

@@ -106,7 +106,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
         value={currentTemplate.id}
         onChange={handleTemplateChange}
         disabled={isLoading}
-        className="min-h-11 px-3 py-2 text-base font-medium border border-input rounded-lg bg-background focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50"
+        className="font-medium"
       >
         {templates.length === 0 && (
           <option value="">กำลังโหลด...</option>

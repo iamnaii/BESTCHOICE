@@ -29,7 +29,7 @@
 
 | Task | Spec PR | Depends on | Deliverable |
 |---|---|---|---|
-| 1 Field collector + F1–F4 rules | R1-1 | — | `__collectFields`, `evaluateFields`, 31 tests |
+| 1 Field collector + F1–F4 rules | R1-1 | — | `__collectFields`, `evaluateFields`, 35 tests |
 | 2 Runner + route mocks + baseline | R1-1 | 1 | `tools/field-scale/*`, `baseline` on main (menu probes fail = S2-01/S2-02 proof) |
 | 3 Primitives: 8px corners, 16px mobile font | R1-2 | 2 | input/select/textarea + docs |
 | 4 `ReadOnlyField` + `LabeledField` | R1-2 | 3 | two components + tests |
@@ -60,6 +60,10 @@ Tasks 3–7 can be one PR (R1-2) or several; tasks 8–9 and 10–11 likewise. E
   - **Nondeterminism.** Two runs of the same UI on the same preview must compare with 0 new / 0 fixed (Task 2 Step 25 proves this for the baseline). A route whose findings change between identical runs is a route bug — fix it in `routes.mjs` (mock the data it reads, wait for its stable state; `trade-in-quick-buy` was fixed this way: catalog mock + wait for the model select to be enabled; `contract-customer-edit` by opening the customer card's dialog instead of the contract card's inline edit, which left a run-dependent scroll position at 390) — it is not a triage class.
   - **Refresh before every run.** The preview fingerprints `apps/`, `packages/` and `tools/`; after any source edit `check.mjs` exits 2 until `npm run local:preview` has restarted it. Every `check.mjs --label …` step below is preceded by `npm run local:preview`.
   - **Controls first measured by Task 8** (no baseline key exists for them): group A InterestConfig VAT `<div>` (S1-03, this plan ~line 6014), group C ItemsTable "ก่อนภาษี" (S2-07), group D ItemLinesSection "ก่อนภาษี" (S3-04, ~line 6843) and AdjustmentSection ยอดสุทธิ / ผลต่าง (S3-05, ~lines 6906 / 6917). Each becomes a `ReadOnlyField` with a label above it — case (b). What the baseline can list as "fixed" are the other row members' keys; the acceptance for these rows is that the row they now join is fully consistent (zero F1 keys for that row), with the screenshot comparison as the visual proof. If the row is not consistent, the new control's keys — and, for any property the row only now fails, every member's keys — show up as new. These are the rows the task sets out to fix, so the triage rule does not excuse them: fix the row.
+- **What F3 measures (clarified 2026-11-15, after Task 10).** F3 = two pressable boxes laid out on top of each other (spec §5). Two things are not F3 and produce no finding:
+  - *Unpainted targets.* A box Chromium lays out but never paints or hit-tests is not a target or a control: the content of a closed `<details>` (content-visibility: hidden — its boxes overlap the sections below), a skipped content-visibility:auto subtree, or opacity 0 / visibility hidden on the element or an ancestor. The collector asks `Element.checkVisibility({ contentVisibilityAuto: true, opacityProperty: true, visibilityProperty: true })` and also walks closed `<details>` (the fallback where that API is missing). A closed `<details>`' own `<summary>` and the content of an open one are still measured.
+  - *Scroll occlusion by a sticky/fixed bar.* A pair is skipped when one target sits in a `position: sticky|fixed` bar pinned inside that target's own scroll container, the other target scrolls in the same container and is not pinned there, the bar is pinned to the top or bottom edge, and the container can still scroll the other target clear of the bar: `scrollRoom.down ≥ other bottom − bar top` (bottom bar) or `scrollRoom.up ≥ bar bottom − other top` (top bar), where the bar box is joined with the pinned target's own box. If the container cannot scroll it clear (no room left, a bar with no top/bottom edge, a bar pinned in another container) the finding stays — that overlap is a real defect.
+  - *Compares against `baseline`.* `baseline` was measured before this clarification, so its closed-`<details>` and sticky-footer F3 findings show under **Fixed** in every later compare (the tools change, not a UI fix), and dropping unpainted controls/targets can renumber later `kind|name|dup` keys in the same cell (clause (a)). Read a compare's Fixed count with that in mind; the Task 10 report lists the tools-change share by class.
 - **Line numbers** in Tasks 8–11 are from commit `b58250bbe`; earlier tasks shift them. Every edit is anchored on an exact unique string — use the string, treat the line as a guide.
 - **Account menu probe** (Task 2) finds the menu by the search box `aria-label="ค้นหารหัส หรือ ชื่อบัญชี"`; Task 6 keeps that label.
 - **Known limits** (accepted in the spec): ~102 `NativeSelect` sites pass `className` through a variable and are invisible to the skin guard; F2 measures synthetic data only; some deep flows (PO payment step, payroll lines, QuickBuy seller step) are reached only where the preview can open them — the tasks say which are manual.
@@ -71,6 +75,8 @@ Tasks 3–7 can be one PR (R1-2) or several; tasks 8–9 and 10–11 likewise. E
 ### Task 1: Field facts collector + F1–F4 rules (R1-1 part 1)
 
 **Goal:** Add the measuring half of spec §5. `tools/typography-audit/collect.js` gets a second, independent in-page export, `window.__collectFields({ exclude, root })`, which returns `FieldFact[]`. `tools/typography-audit/rules.mjs` gets the pure `evaluateFields(facts, ctx)`, which returns F1–F4 `Finding[]`. Both changes only append code. Nothing in `__collectTypography`, `evaluateTypography`, `diffFindings`, `compareFacts` or any existing export changes, so the R1–R12 results stay the same. F5 is a source-scan test, not a runtime rule, and is out of scope here. The Playwright runner `tools/field-scale/check.mjs` that injects the collector is Task 2.
+
+**Note (2026-11-15, after Task 10):** F3 was clarified — unpainted targets (closed `<details>` content) are not collected, and a field a sticky/fixed bar covers only until its scroll container scrolls it clear is not an F3 pair (Cross-task notes, "What F3 measures"). The code and tests below already contain that fix: `painted()`, `stickyBar` and `scrollRoom` in the collector, `scrollsClearOfStickyBar` in the rules, 2 rule tests and 2 collector tests.
 
 **How the collector is tested (same as today):** `collect.test.mjs` already launches real Chromium through `@playwright/test` from `node:test`. It serves the page and `apps/web/public/fonts` from a fake origin with `page.route`, and injects `collect.js` with `page.addScriptTag`. jsdom is not used: it has no layout, so it cannot measure boxes or canvas text. The new collector test copies that harness. No server or `local:preview` is needed.
 
@@ -92,8 +98,11 @@ Tasks 3–7 can be one PR (R1-2) or several; tasks 8–9 and 10–11 likewise. E
       - `label`: `{ fontSize, gap, above } | null`.
       - `adornments`: `[{ x, y, w, h, side:'left'|'right' }]`.
       - No values, option text or select-value text leave the page; those fields are numbers or booleans only.
-    - `TargetFact`: `{ type:'target', id, key, role, scope, scroller, targetAncestors, x, y, w, h, coveredBy }`.
+    - `TargetFact`: `{ type:'target', id, key, role, scope, scroller, targetAncestors, x, y, w, h, coveredBy, stickyBar, scrollRoom }`.
       - `key`: `target-<role>|normalizeKeyText(aria-label, or own text for button/tab/menuitem)|dup`. Link text is never used. Own text skips the same value subtrees as label text.
+      - `stickyBar`: `{ position:'sticky'|'fixed', edge:'top'|'bottom'|null, scroller, x, y, w, h } | null` — the nearest sticky/fixed element from the target up; `scroller` = the container the bar stays put in (sticky: nearest overflow auto/scroll/hidden ancestor; fixed: the bar's own scroll container).
+      - `scrollRoom`: `{ up, down }` — how far the target's scroll container (the document when `scroller` is null) can still scroll up / down.
+    - Controls and targets are only collected when painted (`Element.checkVisibility(...)` plus a closed-`<details>` walk).
   - `evaluateFields(facts, ctx = { width, route?, theme?, role? }) → Finding[]`, with `Finding = { rule:'F1'|'F2'|'F3'|'F4', severity:'P1'|'P2', route, width, theme, role, key, text, detail }`. This is the same shape as `evaluateTypography` findings, so `findingKey` and `diffFindings` work unchanged.
     - F1 key: `<property>@<memberKey>` — one finding per member of a row that is inconsistent for that property (every member, not just the odd ones); the member's own value is `detail.value`, the whole row and its values are in `text` and `detail.members`.
     - F2 key: `placeholder|option|value@<controlKey>`.
@@ -124,6 +133,8 @@ Tasks 3–7 can be one PR (R1-2) or several; tasks 8–9 and 10–11 likewise. E
   - Fires when the overlap is > 1px on both axes. It is P1 when one target's centre hit-test (`elementFromPoint`) lands on the other, otherwise P2.
   - Pairs are skipped when one is an ancestor of the other, when they are in different scroll containers, or when they are in different dialog scopes (page and `#main` still compare).
   - A target fully contained in another is skipped unless it covers the other's centre; contained targets are F4's job.
+  - Unpainted targets (closed `<details>` content and other boxes `checkVisibility` rejects) are never facts, so they never pair.
+  - Scroll occlusion is skipped (P1 or P2): one target is in a sticky/fixed bar pinned in its own scroll container, the other scrolls in that container and is not pinned there, and the container can still scroll it clear of the bar — `scrollRoom.down ≥ other bottom − top` for a bottom bar, `scrollRoom.up ≥ bottom − other top` for a top bar, with top/bottom = the bar box joined with the pinned target's box. Otherwise the pair is reported as usual.
 - **F4 (P2), per absolutely positioned adornment that intersects a control:**
   - right side: `reserveShort = contentRight − adornment.left`; left side: `reserveShort = adornment.right − contentLeft`;
   - `inkOverlap` = overlap of the adornment with `[contentLeft, contentLeft + min(textInk, contentWidth)]`, where `textInk = max(placeholderInk, longestOptionInk)`;
@@ -227,12 +238,23 @@ const tgt = (o = {}) => ({
   w: 100,
   h: 44,
   coveredBy: null,
+  stickyBar: null,
+  scrollRoom: { up: 0, down: 0 },
   ...o,
 });
 const two = (a = {}, b = {}) => [
   tgt({ id: 0, ...a }),
   tgt({ id: 1, key: 'target-button|ยกเลิก|0', x: 90, y: 10, ...b }),
 ];
+// A dialog form that scrolls (scroller 4) with a `sticky bottom-0` footer: b is the footer button
+// (90..190 × 10..54) in a bar at y 4..64; a is a field at y 0..44 that scrolls under it. Clearing
+// the bar takes field bottom 44 − bar top 4 = 40px of scroll room below.
+const FOOTER = { position: 'sticky', edge: 'bottom', scroller: 4, x: 0, y: 4, w: 400, h: 60 };
+const underFooter = (down, a = {}, b = {}) =>
+  two(
+    { key: 'target-field||5', role: 'field', scroller: 4, scrollRoom: { up: 0, down }, ...a },
+    { scroller: 4, stickyBar: FOOTER, scrollRoom: { up: 0, down }, ...b },
+  );
 
 test('a matched row has no findings', () => {
   assert.deepEqual(evaluateFields(pair(), CTX), []);
@@ -570,6 +592,62 @@ test('F3 skips ancestor/descendant, other scroll containers, dialog vs page, con
   assert.deepEqual(rulesOf(two({ coveredBy: 1 }, inner)), ['F3:P1'], 'contained but covering');
 });
 
+test('F3 skips scroll occlusion: a field its container can scroll clear of a sticky/fixed bar', () => {
+  assert.deepEqual(rulesOf(underFooter(40)), [], 'exactly enough room below');
+  assert.deepEqual(
+    rulesOf(underFooter(400, { coveredBy: 1 })),
+    [],
+    'also when the bar covers the centre',
+  );
+  assert.deepEqual(rulesOf(underFooter(40).reverse()), [], 'either member may be the pinned one');
+  const fixedBar = { ...FOOTER, position: 'fixed', scroller: null };
+  assert.deepEqual(
+    rulesOf(underFooter(40, { scroller: null }, { scroller: null, stickyBar: fixedBar })),
+    [],
+    'a fixed bar over the scrolling document',
+  );
+  // sticky top-0 header: a is its button (0..44) in a bar at 0..50; b is a field at 10..54 that
+  // needs bar bottom 50 − field top 10 = 40px of scroll room above
+  const header = { position: 'sticky', edge: 'top', scroller: 4, x: 0, y: 0, w: 400, h: 50 };
+  const underHeader = (up) =>
+    two(
+      { scroller: 4, stickyBar: header },
+      { key: 'target-field||5', role: 'field', scroller: 4, scrollRoom: { up, down: 0 } },
+    );
+  assert.deepEqual(rulesOf(underHeader(40)), []);
+  assert.deepEqual(rulesOf(underHeader(39)), ['F3:P2']);
+});
+
+test('F3 keeps sticky-bar pairs that cannot scroll clear or are not scroll occlusion', () => {
+  assert.deepEqual(rulesOf(underFooter(39)), ['F3:P2'], 'one pixel short of clearing the bar');
+  assert.deepEqual(rulesOf(underFooter(39, { coveredBy: 1 })), ['F3:P1']);
+  assert.deepEqual(
+    rulesOf(underFooter(400, {}, { stickyBar: { ...FOOTER, scroller: 9 } })),
+    ['F3:P2'],
+    'bar pinned in a different scroll container: the field and the button scroll together',
+  );
+  assert.deepEqual(
+    rulesOf(underFooter(400, { stickyBar: FOOTER })),
+    ['F3:P2'],
+    'both inside the pinned bar: nothing scrolls between them',
+  );
+  assert.deepEqual(
+    rulesOf(underFooter(400, {}, { stickyBar: { ...FOOTER, edge: null } })),
+    ['F3:P2'],
+    'bar pinned to no top/bottom edge (a side column)',
+  );
+  assert.deepEqual(
+    rulesOf(underFooter(400, {}, { stickyBar: null })),
+    ['F3:P2'],
+    'two overlapping targets, neither in a sticky bar',
+  );
+  assert.deepEqual(
+    rulesOf(underFooter(400, { scroller: 3 })),
+    [],
+    'targets in different scroll containers never pair (unchanged)',
+  );
+});
+
 test('F4 absolute adornment inside the content box or over the text ink', () => {
   // NativeSelect geometry: pr-10 ⇒ content right at 159; chevron at 171..187 ⇒ no finding
   const select = ctl({
@@ -792,6 +870,28 @@ const containsBox = (outer, inner) =>
   inner.x + inner.w <= outer.x + outer.w + F3_CONTAIN_SLACK_PX &&
   inner.y + inner.h <= outer.y + outer.h + F3_CONTAIN_SLACK_PX;
 
+// F3 is about two pressable boxes laid out on top of each other, not about scroll occlusion. A
+// target in a sticky/fixed bar pinned inside its own scroll container (stickyBar.scroller ===
+// scroller) covers whatever that container scrolls under it at the current scroll position. The
+// pair is skipped when the other target scrolls with that container (it is not pinned there itself)
+// and the container can still scroll it clear of the bar: scrollRoom.down ≥ other bottom − bar top
+// for a bottom bar, scrollRoom.up ≥ bar bottom − other top for a top bar (the bar's box joined with
+// the pinned target's own box). No room, a bar with no top/bottom edge, or a bar pinned in another
+// container than the pair's keeps the finding. Unpainted targets (closed <details>) are never facts.
+const pinnedInOwnScroller = (t) =>
+  Boolean(t.stickyBar) && (t.stickyBar.scroller ?? null) === (t.scroller ?? null);
+
+function scrollsClearOfStickyBar(pinned, other) {
+  if (!pinnedInOwnScroller(pinned) || pinnedInOwnScroller(other)) return false;
+  if ((pinned.scroller ?? null) !== (other.scroller ?? null) || !other.scrollRoom) return false;
+  const bar = pinned.stickyBar;
+  const top = Math.min(bar.y, pinned.y);
+  const bottom = Math.max(bar.y + bar.h, pinned.y + pinned.h);
+  if (bar.edge === 'bottom') return other.scrollRoom.down >= other.y + other.h - top;
+  if (bar.edge === 'top') return other.scrollRoom.up >= bottom - other.y;
+  return false;
+}
+
 function evaluateF3(facts, emit) {
   const targets = targetFacts(facts);
   for (let i = 0; i < targets.length; i++) {
@@ -808,6 +908,7 @@ function evaluateF3(facts, emit) {
       const covered = a.coveredBy === b.id || b.coveredBy === a.id;
       // a target inside another (clear button in a field) belongs to F4 unless it covers the other
       if (!covered && (containsBox(a, b) || containsBox(b, a))) continue;
+      if (scrollsClearOfStickyBar(a, b) || scrollsClearOfStickyBar(b, a)) continue;
       emit('F3', covered ? 'P1' : 'P2', `${a.key}~${b.key}`, `${a.key} / ${b.key}`, {
         overlapX: round2(overlapX),
         overlapY: round2(overlapY),
@@ -868,7 +969,7 @@ export function evaluateFields(facts, ctx = {}) {
   node --test tools/typography-audit/fields.test.mjs 2>&1 | grep -E "^ℹ (tests|pass|fail)"
   node --test tools/typography-audit/rules.test.mjs 2>&1 | grep -E "^ℹ (tests|pass|fail)"
   ```
-  - Expected: `ℹ tests 19` / `ℹ pass 19` / `ℹ fail 0`.
+  - Expected: `ℹ tests 21` / `ℹ pass 21` / `ℹ fail 0`.
   - Then `ℹ tests 51` / `ℹ pass 51` / `ℹ fail 0`, which shows R1–R12 are unchanged.
 
 - [ ] **Step 5: Commit**
@@ -948,6 +1049,8 @@ const TARGET_FIELDS = [
   'w',
   'h',
   'coveredBy',
+  'stickyBar',
+  'scrollRoom',
 ];
 // Tailwind preflight equivalent + one shared 44px field look (.f) and label look (.lab).
 const BASE_STYLE = `body{margin:0;font-family:"Noto Sans Thai",sans-serif;font-size:16px;line-height:24px}
@@ -1280,6 +1383,111 @@ test('targets: role, ancestors, scroller, coveredBy (F3 P2 and P1)', async () =>
   );
 });
 
+// Chromium lays the content of a closed <details> (content-visibility: hidden) out in full-size boxes
+// that overlap the next sections, but never paints or hit-tests them: they are not facts.
+const DETAILS_BODY = `
+  <details><summary>ที่อยู่ <button type="button">แก้</button></summary>
+    <label class="lab" for="road">ถนน</label><input id="road" class="f" placeholder="ถนน">
+    <button type="button" style="width:200px;height:44px">ล้าง</button></details>
+  <details><summary>ที่ทำงาน</summary><input class="f" placeholder="อาชีพ"><a href="#map">แผนที่</a></details>
+  <details open><summary>ติดต่อ</summary><input class="f" placeholder="LINE"></details>`;
+
+test('closed <details> content is never a fact; its summary and open <details> content are', async () => {
+  const expected = [
+    'input|LINE|0',
+    'target-button|ที่อยู่|0',
+    'target-button|แก้|0',
+    'target-button|ที่ทำงาน|0',
+    'target-button|ติดต่อ|0',
+    'target-field||0',
+  ];
+  const facts = await collect(DETAILS_BODY);
+  assert.deepEqual(
+    facts.map((f) => f.key),
+    expected,
+  );
+  assert.deepEqual(evaluateFields(facts, CTX), []);
+  // without Element.checkVisibility the closed-<details> walk alone gives the same facts
+  const page = await openPage(DETAILS_BODY);
+  try {
+    const fallback = await page.evaluate((exclude) => {
+      delete Element.prototype.checkVisibility;
+      return window.__collectFields({ exclude });
+    }, EXCLUDE);
+    assert.deepEqual(
+      fallback.map((f) => f.key),
+      expected,
+    );
+  } finally {
+    await page.close();
+  }
+});
+
+test('targets: sticky/fixed bar and scroll room — F3 skips only what scrolling can clear', async () => {
+  // a dialog-style form that scrolls (300px of 504px) with a sticky top-0 header and a sticky
+  // bottom-0 footer; at scroll 0 the field at 250..294 sits behind the footer (240..300)
+  const facts = await collect(`
+    <form style="height:300px;width:400px;overflow:auto;display:flex;flex-direction:column">
+      <div style="position:sticky;top:0;flex:none;height:40px;background:rgb(255,255,255)"><a href="#help" style="display:block;width:80px;height:32px">ช่วยเหลือ</a></div>
+      <div style="flex:none;height:210px"></div>
+      <input class="f" placeholder="ชื่อเล่น" style="flex:none">
+      <div style="flex:none;height:150px"></div>
+      <div style="position:sticky;bottom:0;flex:none;height:60px;display:flex;gap:8px;padding:8px;background:rgb(255,255,255)">
+        <button type="button" style="width:100px;height:44px">ยกเลิก</button>
+        <button type="button" style="width:100px;height:44px">บันทึก</button>
+      </div>
+    </form>`);
+  const field = byKey(facts, 'target-field||0');
+  const cancel = byKey(facts, 'target-button|ยกเลิก|0');
+  const help = byKey(facts, 'target-link||0');
+  assert.equal(typeof field.scroller, 'number');
+  assert.equal(field.stickyBar, null);
+  assert.deepEqual(field.scrollRoom, { up: 0, down: 204 });
+  const footer = cancel.stickyBar;
+  assert.deepEqual(
+    [footer.position, footer.edge, footer.scroller],
+    ['sticky', 'bottom', field.scroller],
+  );
+  near(footer.y, 240, 0.5, 'footer stuck to the bottom of the scrollport');
+  near(footer.h, 60, 0.5, 'footer height');
+  assert.deepEqual(
+    [help.stickyBar.position, help.stickyBar.edge, help.stickyBar.scroller],
+    ['sticky', 'top', field.scroller],
+  );
+  assert.deepEqual(
+    evaluateFields(facts, CTX).filter((f) => f.rule === 'F3'),
+    [],
+    'ยกเลิก/บันทึก over the field is scroll occlusion: 54px to scroll, 204px of room',
+  );
+  // a fixed bar over a page that cannot scroll the field out from under it keeps its finding
+  const fixedBar = (after) => `
+    <div style="height:740px"></div>
+    <input class="f" placeholder="หมายเหตุ">${after}
+    <div style="position:fixed;left:0;bottom:0;width:400px;height:60px;padding:8px;background:rgb(255,255,255)">
+      <button type="button" style="width:100px;height:44px">ยืนยัน</button>
+    </div>`;
+  const stuck = await collect(fixedBar(''));
+  const confirm = byKey(stuck, 'target-button|ยืนยัน|0');
+  assert.deepEqual(
+    [confirm.stickyBar.position, confirm.stickyBar.edge, confirm.stickyBar.scroller],
+    ['fixed', 'bottom', null],
+  );
+  assert.deepEqual(byKey(stuck, 'target-field||0').scrollRoom, { up: 0, down: 0 });
+  assert.deepEqual(
+    evaluateFields(stuck, CTX)
+      .filter((f) => f.rule === 'F3')
+      .map((f) => [f.key, f.severity]),
+    [['target-field||0~target-button|ยืนยัน|0', 'P1']],
+  );
+  // …and loses it once the page has 100px more to scroll (44px are needed)
+  const scrollable = await collect(fixedBar('<div style="height:100px"></div>'));
+  assert.deepEqual(byKey(scrollable, 'target-field||0').scrollRoom, { up: 0, down: 84 });
+  assert.deepEqual(
+    evaluateFields(scrollable, CTX).filter((f) => f.rule === 'F3'),
+    [],
+  );
+});
+
 test('hidden, aria-hidden, sr-only, display:none and excluded subtrees are skipped', async () => {
   const facts = await collect(`
     <input class="f" placeholder="เห็น">
@@ -1334,7 +1542,7 @@ test('root option, missing root, determinism, no DOM residue, __collectTypograph
   ```bash
   node --test tools/typography-audit/collect-fields.test.mjs 2>&1 | grep -E "__collectFields is not a function|^ℹ (tests|fail)" | head -4
   ```
-  - Expected: four lines. First the summary, `ℹ tests 12` and `ℹ fail 12`. Then two lines `page.evaluate: TypeError: window.__collectFields is not a function`.
+  - Expected: four lines. First the summary, `ℹ tests 14` and `ℹ fail 14`. Then two lines `page.evaluate: TypeError: window.__collectFields is not a function`.
 
 - [ ] **Step 8: Append the collector to `tools/typography-audit/collect.js`**
   - Add after line 627 (`})();`, the last line of the file). Leave one blank line, then paste this exact text.
@@ -1383,7 +1591,8 @@ test('root option, missing root, determinism, no DOM residue, __collectTypograph
  *     the control and up to 3 ancestor levels that intersect the control box (> 0.5px both axes),
  *     ignoring boxes that cover ≥ 90% of it on both axes
  *
- * TargetFact { type: 'target', id, key, role, scope, scroller, targetAncestors, x, y, w, h, coveredBy }
+ * TargetFact { type: 'target', id, key, role, scope, scroller, targetAncestors, x, y, w, h, coveredBy,
+ *   stickyBar, scrollRoom }
  *   - one per visible interactive element: a[href], button, input (not hidden), select, textarea,
  *     summary, [role=button|combobox|tab|switch|checkbox|radio|link|menuitem]
  *   - role: the role attribute, else 'link' (a) | 'field' (input/select/textarea) | 'button'
@@ -1393,6 +1602,17 @@ test('root option, missing root, determinism, no DOM residue, __collectTypograph
  *   - targetAncestors: ids of target facts that contain this element
  *   - coveredBy: id of another, unrelated target that elementFromPoint returns at this element centre
  *     (a <label> resolves to its control) — only when the centre is inside the viewport, else null
+ *   - stickyBar: { position: 'sticky' | 'fixed', edge: 'top' | 'bottom' | null, scroller, x, y, w, h }
+ *     of the nearest element from this one up (html/body excluded) whose position is sticky or fixed,
+ *     else null. edge: sticky with only `bottom` set → 'bottom', only `top` → 'top'; fixed touching
+ *     only the viewport bottom → 'bottom', only its top → 'top'; else null. scroller: container id of
+ *     the box the bar stays put in — sticky: its nearest ancestor with overflow auto/scroll/hidden;
+ *     fixed: the bar's own `scroller` (as above); null = the document
+ *   - scrollRoom: { up, down } px the target's scroll container (the document when scroller is null)
+ *     can still scroll: up = scrollTop, down = scrollHeight − clientHeight − scrollTop (≥ 0)
+ *
+ * Visible (controls, targets, labels, adornments) also means painted: a box Chromium lays out but
+ * never paints or hit-tests is not measured — see painted() below.
  */
 (function () {
   'use strict';
@@ -1423,6 +1643,12 @@ test('root option, missing root, determinism, no DOM residue, __collectTypograph
   var ADORNMENT_MIN_OVERLAP_PX = 0.5;
   var ADORNMENT_OVERLAY_RATIO = 0.9;
   var NAMED_BY_TEXT_ROLES = { button: true, tab: true, menuitem: true };
+  var PAINT_CHECK = {
+    contentVisibilityAuto: true,
+    opacityProperty: true,
+    visibilityProperty: true,
+  };
+  var EDGE_SLACK_PX = 1;
   // Subtrees that hold values, not UI copy: never read for a name (a wrapping <label> contains its
   // control; a trigger button contains its select-value; a tag frame contains chips; an inline
   // listbox holds option text; an ARIA textbox, searchbox, spinbutton, an <output> or an editable
@@ -1496,12 +1722,37 @@ test('root option, missing root, determinism, no DOM residue, __collectTypograph
       var r = el.getBoundingClientRect();
       return { x: r.left + scrollX, y: r.top + scrollY, w: r.width, h: r.height };
     }
-    // laid out, not 1×1 (sr-only), not visibility:hidden / opacity 0
+    // laid out, not 1×1 (sr-only), not visibility:hidden / opacity 0, and painted
     function rendered(el) {
       var r = el.getBoundingClientRect();
       if (r.width <= 1 || r.height <= 1) return false;
       var cs = style(el);
-      return cs.visibility !== 'hidden' && cs.opacity !== '0';
+      return cs.visibility !== 'hidden' && cs.opacity !== '0' && painted(el);
+    }
+    // The content of a closed <details> (content-visibility: hidden in Chromium) still gets
+    // full-size boxes from getBoundingClientRect — stacked over the sections that follow — but it is
+    // never painted and never hit-tested, so measuring it reports overlaps nobody can see or press
+    // (F3). checkVisibility() is false for such subtrees (also for skipped content-visibility:auto
+    // ones and for opacity 0 / visibility hidden up the tree); where it is missing, the
+    // closed-<details> walk below still drops them. A closed <details>' own <summary> is painted.
+    function painted(el) {
+      if (typeof el.checkVisibility === 'function' && !el.checkVisibility(PAINT_CHECK))
+        return false;
+      return !inClosedDetails(el);
+    }
+    function inClosedDetails(el) {
+      for (var n = el; n && n.parentElement; n = n.parentElement) {
+        var d = n.parentElement;
+        if (d.localName === 'details' && !d.open && n !== summaryOf(d)) return true;
+      }
+      return false;
+    }
+    // the <summary> a <details> shows: its first <summary> child
+    function summaryOf(details) {
+      for (var c = details.firstElementChild; c; c = c.nextElementSibling) {
+        if (c.localName === 'summary') return c;
+      }
+      return null;
     }
     function visible(el) {
       return rendered(el) && !el.closest('[aria-hidden=true],[hidden]');
@@ -1719,13 +1970,59 @@ test('root option, missing root, determinism, no DOM residue, __collectTypograph
       if (el.matches('input,select,textarea')) return 'field';
       return 'button';
     }
-    function scrollerOf(el) {
+    // nearest ancestor whose overflow (either axis) matches re, null = the document
+    function overflowAncestor(el, re) {
       for (var n = el.parentElement; n && n !== htmlEl && n !== bodyEl; n = n.parentElement) {
         var cs = style(n);
-        if (/^(auto|scroll)$/.test(cs.overflowX) || /^(auto|scroll)$/.test(cs.overflowY))
-          return containerId(n);
+        if (re.test(cs.overflowX) || re.test(cs.overflowY)) return n;
       }
       return null;
+    }
+    function idOrNull(el) {
+      return el ? containerId(el) : null;
+    }
+    function scrollerOf(el) {
+      return idOrNull(overflowAncestor(el, /^(auto|scroll)$/));
+    }
+    // Scroll occlusion (F3): a sticky/fixed bar stays put while its scroll container moves the
+    // content under it. Record the bar and how far the container can still scroll; rules.mjs
+    // decides whether the overlapped target can be scrolled clear.
+    function stickyBarOf(el) {
+      var bar = null;
+      for (var n = el; n && n !== htmlEl && n !== bodyEl && !bar; n = n.parentElement) {
+        if (/^(sticky|fixed)$/.test(style(n).position)) bar = n;
+      }
+      if (!bar) return null;
+      var cs = style(bar);
+      var r = bar.getBoundingClientRect();
+      var b = box(bar);
+      var atTop;
+      var atBottom;
+      if (cs.position === 'sticky') {
+        atTop = cs.top !== 'auto'; // Chromium reports unset sticky insets as 'auto'
+        atBottom = cs.bottom !== 'auto';
+      } else {
+        atTop = r.top <= EDGE_SLACK_PX;
+        atBottom = r.bottom >= htmlEl.clientHeight - EDGE_SLACK_PX;
+      }
+      return {
+        position: cs.position,
+        edge: atBottom && !atTop ? 'bottom' : atTop && !atBottom ? 'top' : null,
+        // a sticky element sticks inside its nearest scroll box (overflow:hidden counts); a fixed one
+        // ignores every scroll container
+        scroller:
+          cs.position === 'sticky'
+            ? idOrNull(overflowAncestor(bar, /^(auto|scroll|hidden)$/))
+            : scrollerOf(bar),
+        x: b.x,
+        y: b.y,
+        w: b.w,
+        h: b.h,
+      };
+    }
+    function scrollRoomOf(el) {
+      var s = overflowAncestor(el, /^(auto|scroll)$/) || document.scrollingElement || htmlEl;
+      return { up: s.scrollTop, down: Math.max(0, s.scrollHeight - s.clientHeight - s.scrollTop) };
     }
     function targetAt(node, targetIds) {
       for (var n = node; n && n.nodeType === 1; n = n.parentElement) {
@@ -1766,6 +2063,8 @@ test('root option, missing root, determinism, no DOM residue, __collectTypograph
         w: b.w,
         h: b.h,
         coveredBy: coveredBy,
+        stickyBar: stickyBarOf(el),
+        scrollRoom: scrollRoomOf(el),
       };
     }
 
@@ -1799,9 +2098,9 @@ test('root option, missing root, determinism, no DOM residue, __collectTypograph
   node --test tools/typography-audit/collect.test.mjs 2>&1 | grep -E "^ℹ (tests|pass|fail)"
   node --test tools/typography-audit/fields.test.mjs tools/typography-audit/rules.test.mjs 2>&1 | grep -E "^ℹ (tests|pass|fail)"
   ```
-  - Expected: `ℹ tests 12` / `ℹ pass 12` / `ℹ fail 0`. Chromium, about 2 s.
+  - Expected: `ℹ tests 14` / `ℹ pass 14` / `ℹ fail 0`. Chromium, about 2 s.
   - Expected: `ℹ tests 51` / `ℹ pass 51` / `ℹ fail 0`. `__collectTypography` is unchanged.
-  - Expected: `ℹ tests 70` / `ℹ pass 70` / `ℹ fail 0`.
+  - Expected: `ℹ tests 72` / `ℹ pass 72` / `ℹ fail 0`.
   - If a geometry number is off by sub-pixels on another machine, the `.f` field is fixed at 200×44 with a 1px border. Check that `apps/web/public/fonts/noto-sans-thai/fonts.css` loaded. The harness does not assert this; it only waits for `document.fonts.ready`.
 
 - [ ] **Step 10: Commit**

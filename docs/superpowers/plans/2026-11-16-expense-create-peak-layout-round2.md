@@ -23,7 +23,7 @@
 - ตารางที่มี `min-w-*` ต้องอยู่ในกล่อง `relative overflow-x-auto` และ**ห้ามใส่ `sr-only` ในตาราง** — หัวคอลัมน์ที่ไม่มีข้อความใช้ `aria-label` บน `<th>` (บั๊กรอบ 1: `sr-only` หลุดกล่องเลื่อน ดันหน้ากว้าง 843px บนจอ 390)
 - ไม่ย้ายและไม่เปลี่ยนชื่อ `AdjustmentSection.tsx` และคงข้อความ `เพิ่มแบบ ด้วยตนเอง` (`pages/__tests__/tabsButtonRowsNowrap.test.ts` อ่านซอร์สไฟล์นี้)
 - คำสั่งเทสต์ทุกตัวรันจาก `apps/web`: `npx vitest run <path>` · เครื่อง Windows นี้มีเทสต์ล้มอยู่ก่อนที่ไม่เกี่ยว: 9 ตัวใน `src/pages/__tests__/headerNowrap*` + `tabsButtonRowsNowrap*`, `RecordPaymentWizard.preview-params`, TradeInFlow/ProductsPage timeout — ไม่ต้องแก้
-- Commit ลงท้ายด้วยบรรทัดว่างแล้ว `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` · ห้าม push / merge / deploy เอง
+- Commit ลงท้ายด้วยบรรทัดว่างแล้ว `Co-Authored-By:` ของโมเดลที่เขียน commit นั้น (คำสั่ง commit ในแผนใช้ Opus 5.5 เป็นตัวอย่าง) · ห้าม push / merge / deploy เอง
 
 ## โครงไฟล์
 

@@ -196,7 +196,8 @@ function CompatibleModelsPicker({ selected, onToggle }: { selected: string[]; on
           <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-80 p-0" align="start">
+      {/* The Drawer's scroll lock preventDefault()s wheel/touchmove from this portalled list — stop them here (as Combobox does). */}
+      <PopoverContent className="w-80 p-0" align="start" onWheel={(e) => e.stopPropagation()} onTouchMove={(e) => e.stopPropagation()}>
         <Command>
           <CommandInput placeholder="ค้นหารุ่น..." />
           <CommandList className="max-h-64">

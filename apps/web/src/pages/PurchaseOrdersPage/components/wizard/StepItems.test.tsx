@@ -269,6 +269,24 @@ describe('StepItems — accessory rows (one line each, type fixed from the chip)
     expect(p.toggleModel).toHaveBeenCalledWith(0, 'iPhone 17 Pro Max');
   });
 
+  it('ฟิล์ม: wheel and touchmove on the open list never reach the Drawer scroll lock (document)', () => {
+    const onDocumentScroll = vi.fn();
+    document.addEventListener('wheel', onDocumentScroll);
+    document.addEventListener('touchmove', onDocumentScroll);
+    try {
+      renderStep([film]);
+      fireEvent.click(row(1).getByRole('button', { name: 'สำหรับรุ่น' }));
+      const option = screen.getByRole('option', { name: 'iPhone 17 Pro Max' });
+      // true = nobody called preventDefault, so the browser scrolls the list.
+      expect(fireEvent.wheel(option, { deltaY: 120 })).toBe(true);
+      expect(fireEvent.touchMove(option)).toBe(true);
+      expect(onDocumentScroll).not.toHaveBeenCalled();
+    } finally {
+      document.removeEventListener('wheel', onDocumentScroll);
+      document.removeEventListener('touchmove', onDocumentScroll);
+    }
+  });
+
   it('ชุดชาร์จ: connector select', () => {
     const p = renderStep([charger]);
     fireEvent.change(row(1).getByRole('combobox', { name: 'หัวชาร์จ' }), { target: { value: 'Type-C' } });

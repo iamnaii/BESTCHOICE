@@ -22,6 +22,7 @@ import { payrollMetaQuery } from './payroll-system/payroll-meta';
 import { CashAccountSelect, SHOP_CASH_ACCOUNT_CODES } from '@/components/CashAccountSelect';
 import { formLabelClass } from '@/components/ui/form-styles';
 import { useFormCompute } from './useFormCompute';
+import { useLeaveGuard } from './useLeaveGuard';
 import { QuickStartPanel } from './QuickStartPanel';
 import { canManagePayroll } from './payroll-system/payroll-roles';
 import { VendorSection, PricingSection } from './VendorSection';
@@ -199,6 +200,8 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
   );
 
   const patch = (p: Partial<ExpenseFormState>) => setState((s) => ({ ...s, ...p }));
+  // คำเตือนก่อนปิดแท็บ — ประกาศก่อน effect ของระบบด้านล่าง (ปิดเงินสดย่อย) ที่ใช้ asSystem
+  const leaveGuard = useLeaveGuard(state);
 
   // R3-2 — โหลดใบเงินเดือนมาเติมฟอร์ม (edit mode) · Payroll D4 — รวมใบที่รออนุมัติ/อนุมัติแล้ว (ส่งกลับเป็นร่าง)
   const [editLoaded, setEditLoaded] = useState(false);
@@ -284,6 +287,8 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
     setEditLoaded(true);
     onDraftSaved?.(id);
     const { data } = await api.get<PayrollDocForEdit>(`/expense-documents/${id}`);
+    // ใบที่โหลดกลับคือใบที่บันทึกแล้ว — ไม่ใช่การแก้ค้าง (ทั้งหลัง "บันทึกร่าง + คิดยอด" และหลังส่งขออนุมัติ/ลงบัญชีไม่ผ่าน)
+    leaveGuard.markPristine();
     if (data.payroll) applyPayrollDoc({ ...data, payroll: data.payroll });
   };
 
@@ -314,7 +319,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
   // documentDate change.
   useEffect(() => {
     if (!pettyCashEnabled && state.docType === 'PETTY_CASH_REIMBURSEMENT') {
-      patch({ docType: 'EXPENSE_SAMEDAY' });
+      leaveGuard.asSystem(() => patch({ docType: 'EXPENSE_SAMEDAY' }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pettyCashEnabled]);
@@ -565,6 +570,8 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
       return { id: createdId, submittedForApproval };
     },
     onSuccess: async (result, { stay }) => {
+      // บันทึกแล้ว — ปลดคำเตือนก่อนออกจากหน้า (แทน effect saveMutation.isSuccess เดิม)
+      leaveGuard.markPristine();
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
       queryClient.invalidateQueries({ queryKey: ['expenses-summary'] });
       if (state.docType === 'PAYROLL' && result.id) forgetCachedPayroll(result.id);
@@ -631,31 +638,6 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
   // ---- ส่วนของหน้าจอ (ไม่มีผลกับ payload) ----
   const [showJe, setShowJe] = useState(false);
   const jePanelId = useId();
-  const [dirty, setDirty] = useState(false);
-  // ผู้ใช้แตะฟอร์มแล้วหรือยัง — state ที่ระบบเปลี่ยนเองตอนเปิดหน้า (ติ๊กเจ้าหนี้ให้, flag) ไม่นับเป็นการแก้
-  const interacted = useRef(false);
-  const markInteracted = () => {
-    interacted.current = true;
-  };
-  useEffect(() => {
-    if (!dirty) return;
-    const warn = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-      e.returnValue = '';
-    };
-    window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
-  }, [dirty]);
-  // ลำดับสำคัญ: effect นี้ต้องอยู่ก่อน effect [state] — บันทึกแล้วโหลดร่างกลับมา (state เปลี่ยน) ต้องไม่นับเป็นการแก้
-  useEffect(() => {
-    if (saveMutation.isSuccess) {
-      interacted.current = false;
-      setDirty(false);
-    }
-  }, [saveMutation.isSuccess, saveMutation.submittedAt]);
-  useEffect(() => {
-    if (interacted.current) setDirty(true);
-  }, [state]);
 
   const money = (v?: string) => (v === undefined ? '—' : formatNumberDecimal(v));
   // จ่ายเจ้าหนี้ — ตัวเลขชุดเดียวกับที่ตารางเคยแสดงท้ายกล่อง (ยังไม่เลือกใบใด = —)
@@ -730,12 +712,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
     : null;
 
   return (
-    <div
-      className="-mb-[calc(5rem+env(safe-area-inset-bottom,0px))] pt-4 lg:-mb-8"
-      onPointerDownCapture={markInteracted}
-      onKeyDownCapture={markInteracted}
-      onChangeCapture={markInteracted}
-    >
+    <div className="-mb-[calc(5rem+env(safe-area-inset-bottom,0px))] pt-4 lg:-mb-8" {...leaveGuard.captureProps}>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <button
           type="button"
@@ -756,8 +733,11 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
           <QuickStartPanel
             branchId={state.branchId}
             onMode={(m) => {
-              if (m === 'blank')
+              if (m === 'blank') {
+                // ฟอร์มกลับเป็นฟอร์มเปล่า — ไม่มีอะไรให้เสีย ไม่ต้องเตือนก่อนออก
+                leaveGuard.markPristine();
                 setState(initial(branchId, user?.defaultCashAccountCode || '11-1101'));
+              }
               if (m === 'copy')
                 toast.info('เปิดหน้ารายการเพื่อเลือกเอกสารเดิมที่จะคัดลอก');
               if (m === 'template') toast.info("เลือกแม่แบบจาก ใช้บ่อย ด้านล่าง");
@@ -880,6 +860,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
               branchId={state.branchId}
               value={state.settlement}
               onChange={(s) => patch({ settlement: s })}
+              onAutoChange={(s) => leaveGuard.asSystem(() => patch({ settlement: s }))}
             />
           </FormRow>
         )}

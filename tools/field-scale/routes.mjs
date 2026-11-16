@@ -176,12 +176,13 @@ async function openOverrideJournal(page) {
 // draft (useCreatePoWizard.ts:17,78-105) naming the mocked supplier and one accessory line (no IMEI to
 // inspect — direct-receive.util.ts:26, receiving-flow.util.ts:55-75); nothing is submitted.
 async function openPurchasePayment(page) {
-  await page.evaluate((supplierId) => {
+  // page.evaluate runs in the browser: module constants must be passed in as arguments
+  await page.evaluate(({ supplierId, orderDate }) => {
     localStorage.setItem('bestchoice-po-draft', JSON.stringify({
       step: 0,
       mode: 'receive',
       form: {
-        supplierId, orderDate: FIXED_DAY, expectedDate: '', notes: '', discount: '', discountAfterVat: '',
+        supplierId, orderDate, expectedDate: '', notes: '', discount: '', discountAfterVat: '',
         paymentStatus: 'UNPAID', paymentMethod: '', paidAmount: '', paymentNotes: '',
       },
       items: [{
@@ -190,7 +191,7 @@ async function openPurchasePayment(page) {
       }],
       savedAt: new Date().toISOString(),
     }));
-  }, PO_SUPPLIER.id);
+  }, { supplierId: PO_SUPPLIER.id, orderDate: FIXED_DAY });
   await clickButton('+ ซื้อสินค้า')(page);
   await clickButton('ถัดไป: ตรวจรับ 1 ชิ้น')(page);
   await page.locator('#group-cash').fill('59');
@@ -390,12 +391,13 @@ const QUICK_REPLIES = [
 // A purchase-wizard draft (useCreatePoWizard.ts:17) on step 0 with one case line: StepSupplier's supplier picker and
 // AccessoryItemRow's "สำหรับรุ่น" (เคส) are both on screen. Local storage only — nothing is submitted.
 async function openPurchaseItems(page) {
-  await page.evaluate((supplierId) => {
+  // page.evaluate runs in the browser: module constants must be passed in as arguments
+  await page.evaluate(({ supplierId, orderDate }) => {
     localStorage.setItem('bestchoice-po-draft', JSON.stringify({
       step: 0,
       mode: 'po',
       form: {
-        supplierId, orderDate: FIXED_DAY, expectedDate: '', notes: '', discount: '', discountAfterVat: '',
+        supplierId, orderDate, expectedDate: '', notes: '', discount: '', discountAfterVat: '',
         paymentStatus: 'UNPAID', paymentMethod: '', paidAmount: '', paymentNotes: '',
       },
       items: [{
@@ -404,7 +406,7 @@ async function openPurchaseItems(page) {
       }],
       savedAt: new Date().toISOString(),
     }));
-  }, PO_SUPPLIER.id);
+  }, { supplierId: PO_SUPPLIER.id, orderDate: FIXED_DAY });
   await clickButton('+ ซื้อสินค้า')(page);
   await page.getByRole('combobox', { name: 'สำหรับรุ่น' }).first().waitFor();
   // the "draft recovered" toast (5 s) can sit over the row at 390
@@ -568,9 +570,11 @@ const ACCOUNT_MENU_GL = {
   id: 'account-menu-gl', widths: [1440, 390], menu: 'controls',
   trigger: (page) => page.locator('#main button[role=combobox]').first(),
 };
+// PEAK-layout /expenses/new is a full page (no dialog); PettyCashLinesSection names its picker หมวดบัญชี
+// (desktop table row and mobile card alike)
 const ACCOUNT_MENU_PETTY_CASH = {
   id: 'account-menu-petty-cash', widths: [1440, 390], menu: 'controls',
-  trigger: (page) => page.getByRole('dialog').getByRole('combobox', { name: 'บัญชี', exact: true }).first(),
+  trigger: (page) => page.getByRole('combobox', { name: 'หมวดบัญชี', exact: true }).first(),
 };
 const BOOKING_CUSTOMER_MENU = {
   id: 'booking-customer-menu', widths: [1440, 390], menu: 'controls',
@@ -654,7 +658,10 @@ export const R2_ROUTES = [
     } },
   { id: 'r2-petty-cash-lines', path: '/expenses/new', appendix: ['R2-3a PettyCash', 'R2-3b VendorCombobox'],
     mocks: M.expense, open: async (page) => {
-      await page.getByRole('button', { name: /^เงินสดย่อย/ }).click();
+      // PEAK layout: the doc type is picked from the title menu (layout/DocTypeMenu.tsx)
+      await page.getByRole('button', { name: /^เปลี่ยนประเภทเอกสาร/ }).click();
+      await page.getByRole('menuitemradio', { name: 'เงินสดย่อย' }).click();
+      await page.getByRole('combobox', { name: 'หมวดบัญชี', exact: true }).first().waitFor();
     }, probes: [ACCOUNT_MENU_PETTY_CASH] },
   // R2-4c expense account fields (+ the credit-note copy of ItemLinesSection)
   { id: 'r2-expenses-list', path: '/expenses', appendix: ['R2-4c ExpensesPage'], mocks: R2.expensesList },

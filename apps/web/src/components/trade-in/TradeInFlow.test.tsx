@@ -8,6 +8,7 @@ import AcceptModal from '@/pages/TradeInPage/components/AcceptModal';
 import { EMPTY_ACCEPT_FORM, type TradeIn } from '@/pages/TradeInPage/types';
 import TradeInProductHandoff from './TradeInProductHandoff';
 import api from '@/lib/api';
+import { pickComboOption } from '@/test/combobox';
 import { readSmartCard, type SmartCardData } from '@/lib/cardReader';
 import { TRADE_IN_DECLARATION_CLAUSES, TRADE_IN_DECLARATION_VERSION, type BuybackQuestionsResponse, type BuybackQuoteResult } from '@installment/shared';
 
@@ -86,8 +87,13 @@ async function selectPurchaseOption(user: ReturnType<typeof userEvent.setup>, la
   await user.click(trigger);
   await user.click(await screen.findByRole('option', { name: option }));
 }
+/** รุ่น iPhone is a Combobox (R2-4b); ความจุ / สีเครื่อง / สาขา stay PurchaseSelect. */
+async function selectModel(user: ReturnType<typeof userEvent.setup>, model = 'iPhone 15') {
+  await waitFor(() => expect(screen.getByRole('combobox', { name: 'รุ่น iPhone *' })).toBeEnabled());
+  await pickComboOption(user, 'รุ่น iPhone *', model);
+}
 async function selectDevice(user: ReturnType<typeof userEvent.setup>) {
-  await selectPurchaseOption(user, 'รุ่น iPhone *', 'iPhone 15');
+  await selectModel(user);
   await selectPurchaseOption(user, 'ความจุ *', '128GB');
   await user.type(screen.getByLabelText('IMEI'), '359000000000081');
   await user.type(screen.getByLabelText('Serial Number'), '  BC-SN-00081  ');
@@ -184,6 +190,43 @@ describe('Counter purchase, seller payment and stock handoff', () => {
     expect(purchaseCalls()).toHaveLength(0);
   });
 
+  it('รุ่น iPhone keeps id quick-buy-model and a native disabled attribute until the catalog loads', async () => {
+    const gate = deferred<{ data: typeof catalog }>();
+    const get = vi.mocked(api.get).getMockImplementation()!;
+    vi.mocked(api.get).mockImplementation((url, options) =>
+      String(url).endsWith('/catalog') ? gate.promise : get(url, options));
+    render(<QuickBuyModal open onClose={vi.fn()} onSuccess={vi.fn()} onIncomplete={vi.fn()} />, { wrapper });
+    const model = screen.getByRole('combobox', { name: 'รุ่น iPhone *' });
+    expect(model).toHaveAttribute('id', 'quick-buy-model');
+    expect(model).toHaveAttribute('disabled');
+    await act(async () => gate.resolve({ data: catalog }));
+    // tools/field-scale/routes.mjs (trade-in-quick-buy) waits for exactly this selector
+    await waitFor(() => expect(document.querySelector('#quick-buy-model:not([disabled])')).toBe(model));
+  });
+
+  it('a new รุ่น iPhone clears storage and the inspection; re-picking the current model keeps both', async () => {
+    render(<QuickBuyModal open onClose={vi.fn()} onSuccess={vi.fn()} onIncomplete={vi.fn()} />, { wrapper });
+    const user = userEvent.setup();
+    await preparePrice(user);
+    await user.click(backButton());
+    await selectModel(user, 'iPhone 15');
+    expect(screen.getByRole('combobox', { name: 'ความจุ *' })).toHaveTextContent('128GB');
+    await user.click(nextButton());
+    expect(await screen.findByRole('radio', { name: 'หน้าจอสมบูรณ์' })).toBeChecked();
+
+    await user.click(backButton());
+    await pickComboOption(user, 'รุ่น iPhone *', 'iPhone 17', { search: '17' });
+    expect(screen.getByRole('combobox', { name: 'ความจุ *' })).toHaveTextContent('เลือกความจุ');
+    await selectPurchaseOption(user, 'ความจุ *', '256GB');
+    await user.click(nextButton());
+    expect(await screen.findByRole('radio', { name: 'หน้าจอสมบูรณ์' })).not.toBeChecked();
+    await user.click(screen.getByRole('radio', { name: 'หน้าจอสมบูรณ์' }));
+    await user.click(screen.getByRole('checkbox', { name: 'ตรวจแล้ว ไม่พบปัญหา' }));
+    await user.click(screen.getByRole('checkbox', { name: 'ยืนยันเครื่องผ่านเงื่อนไขรับซื้อ' }));
+    await waitFor(() =>
+      expect(previewCalls().at(-1)?.[1]).toMatchObject({ deviceModel: 'iPhone 17', deviceStorage: '256GB' }));
+  });
+
   it('selects Thai/imported origin only in inspection and includes it in the price assessment', async () => {
     const get = vi.mocked(api.get).getMockImplementation()!;
     vi.mocked(api.get).mockImplementation((url, options) => String(url).endsWith('/questions')
@@ -228,7 +271,7 @@ describe('Counter purchase, seller payment and stock handoff', () => {
   it('requires device identifiers or an explicit missing-identifier reason before assessment', async () => {
     render(<QuickBuyModal open onClose={vi.fn()} onSuccess={vi.fn()} onIncomplete={vi.fn()} />, { wrapper });
     const user = userEvent.setup();
-    await selectPurchaseOption(user, 'รุ่น iPhone *', 'iPhone 15');
+    await selectModel(user);
     await selectPurchaseOption(user, 'ความจุ *', '128GB');
     await user.click(nextButton());
     expect(screen.getByText('ขั้นที่ 1 / 4')).toBeVisible();

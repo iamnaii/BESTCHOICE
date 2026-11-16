@@ -1,5 +1,5 @@
-import { NativeSelect } from '@/components/ui/native-select';
-import { useState } from 'react';
+import { useId, useState } from 'react';
+import { Combobox } from '@/components/ui/combobox';
 import type { BuybackQuestion } from '@installment/shared';
 import { buybackSourceName } from '@installment/shared';
 
@@ -16,6 +16,7 @@ export default function ReferenceQuestionnaire({
 }: {
   catalog: ReferenceQuestionnaireCatalog;
 }) {
+  const fieldId = useId();
   const [selection, setSelection] = useState('');
   const assignments = catalog.assignments;
   const active =
@@ -34,22 +35,19 @@ export default function ReferenceQuestionnaire({
             รวมค่าหักเป็นบาท แล้วใช้เปอร์เซ็นต์หักที่สูงที่สุดจากผลตรวจทั้งหมด
           </p>
         </div>
-        <label className="space-y-1 text-sm">
-          <span className="block font-medium">รุ่นและความจุ</span>
-          <NativeSelect wrapperClassName="w-auto max-w-full"
+        <div className="w-full min-w-0 space-y-1 text-sm sm:w-auto">
+          <label htmlFor={fieldId} className="block font-medium">รุ่นและความจุ</label>
+          <Combobox
+            id={fieldId}
             value={active ? `${active.model}|${active.storage}` : ''}
-            onChange={(event) => setSelection(event.target.value)}
-          >
-            {assignments.map((entry) => (
-              <option
-                key={`${entry.model}|${entry.storage}`}
-                value={`${entry.model}|${entry.storage}`}
-              >
-                {entry.model} · {entry.storage}
-              </option>
-            ))}
-          </NativeSelect>
-        </label>
+            onChange={(value) => setSelection(value)}
+            options={assignments.map((entry) => ({
+              value: `${entry.model}|${entry.storage}`,
+              label: `${entry.model} · ${entry.storage}`,
+            }))}
+            wrapperClassName="w-full sm:w-72"
+          />
+        </div>
       </div>
       {profile && (
         <>

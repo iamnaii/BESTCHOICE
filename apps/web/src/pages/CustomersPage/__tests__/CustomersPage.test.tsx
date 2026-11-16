@@ -1,10 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import CustomersPage from '../index';
 import { formatLastContact } from '../components/CustomerCells';
 import type { CustomerRow, ProspectRow } from '../types';
+import { pickComboOption } from '@/test/combobox';
 
 /**
  * เทสต์ชุดแรกของหน้า /customers (เดิมไม่มีเลย) — harness ลอกจาก
@@ -990,5 +992,44 @@ describe('คำบอกทิศทางการเรียง', () => {
     show('/customers?zone=shop&sortBy=createdAt&sortDirection=desc');
     await screen.findByText('สมชาย ผ่อนดี');
     expect(screen.getByText(/เรียงตามวันที่เพิ่ม ใหม่ → เก่า/)).toBeInTheDocument();
+  });
+});
+
+describe('ตัวกรองผู้ดูแล — Combobox (R2-4a)', () => {
+  it('ค้นหาแล้วเลือกได้ เขียน URL owner และส่ง assignedToId — "ทุกคน" ล้างค่า', async () => {
+    const user = userEvent.setup();
+    show('/customers?zone=shop&view=prospects');
+    await screen.findByText('ผู้สนใจ หนึ่ง');
+    const owner = screen.getByRole('combobox', { name: 'ผู้ดูแล' });
+    expect(owner).toHaveAttribute('data-slot', 'combobox-trigger');
+    expect(owner.closest('[data-slot="combobox"]')).toHaveClass('max-w-[130px]');
+    expect(owner).toHaveTextContent('ทุกคน');
+    await waitFor(() =>
+      expect(mocks.get).toHaveBeenCalledWith('/users', { params: { limit: 200 } }),
+    );
+
+    await pickComboOption(user, 'ผู้ดูแล', 'ยังไม่มีผู้ดูแล');
+    await waitFor(() => expect(lastListParams().assignedToId).toBe('unassigned'));
+    expect(locationText()).toContain('owner=unassigned');
+
+    await pickComboOption(user, 'ผู้ดูแล', 'พนักงาน ขายเก่ง', { search: 'ขายเก่ง' });
+    await waitFor(() => expect(lastListParams().assignedToId).toBe('u9'));
+    expect(locationText()).toContain('owner=u9');
+    expect(owner).toHaveTextContent('พนักงาน ขายเก่ง');
+
+    await pickComboOption(user, 'ผู้ดูแล', 'ทุกคน');
+    await waitFor(() => expect(lastListParams().assignedToId).toBeUndefined());
+    expect(locationText()).not.toContain('owner=');
+  });
+
+  it('เลือกผู้ดูแลคนเดิมซ้ำไม่รีเซ็ตหน้า', async () => {
+    const user = userEvent.setup();
+    show('/customers?zone=shop&view=prospects&owner=u9&page=3');
+    await screen.findByText('ผู้สนใจ หนึ่ง');
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', { name: 'ผู้ดูแล' })).toHaveTextContent('พนักงาน ขายเก่ง'),
+    );
+    await pickComboOption(user, 'ผู้ดูแล', 'พนักงาน ขายเก่ง');
+    expect(locationText()).toContain('page=3');
   });
 });

@@ -1,9 +1,11 @@
 import { NativeSelect } from '@/components/ui/native-select';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Link } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
+import { Combobox, type ComboOption } from '@/components/ui/combobox';
+import { formControlClass, formLabelClass, formTextareaClass } from '@/components/ui/form-styles';
 import { STAGE_LABEL } from '@/pages/after-sales/after-sales';
 import type { AfterSalesStage } from '@/pages/after-sales/after-sales';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -24,6 +26,7 @@ export default function ChatServiceRequestCard({ requestId }: { requestId: strin
   const work = useChatWorkSettings(),
     client = useQueryClient(),
     request = useChatServiceRequest(requestId);
+  const uid = useId();
   const [editing, setEditing] = useState(false),
     [linking, setLinking] = useState(false),
     [due, setDue] = useState(''),
@@ -109,6 +112,16 @@ export default function ChatServiceRequestCard({ requestId }: { requestId: strin
   const row = request.data;
   if (!row) return <p role="status">กำลังโหลดใบรับเรื่อง…</p>;
   const active = ['TODO', 'DOING', 'REVIEW'].includes(row.todo.status);
+  // The current assignee stays the first row, as in the native list: picking it again means
+  // "keep" — the PATCH sends assigneeId only when it differs from row.todo.assigneeId.
+  const assigneeOptions: ComboOption[] = [
+    { value: row.todo.assigneeId || '', label: row.todo.assignee?.name || 'ไม่ระบุ' },
+    ...(staff.isError
+      ? []
+      : (staff.data ?? [])
+          .filter((s) => s.id !== row.todo.assigneeId)
+          .map((s) => ({ value: s.id, label: s.detail ? `${s.name} ${s.detail}` : s.name }))),
+  ];
   return (
     <section
       aria-label="รายละเอียดรับเรื่องหลังการขาย"
@@ -210,26 +223,17 @@ export default function ChatServiceRequestCard({ requestId }: { requestId: strin
             if (!conflict && !save.isPending) save.mutate('edit');
           }}
         >
-          <label className="block">
-            ผู้รับผิดชอบ
-            <NativeSelect wrapperClassName="max-w-full mt-1 w-full min-w-0"
-              className={`${field} mt-0`}
+          <div>
+            <label htmlFor={`${uid}-assignee`} className={formLabelClass}>
+              ผู้รับผิดชอบ
+            </label>
+            <Combobox
+              id={`${uid}-assignee`}
               value={assignee}
-              onChange={(e) => setAssignee(e.target.value)}
-            >
-              <option value={row.todo.assigneeId || ''}>
-                {row.todo.assignee?.name || 'ไม่ระบุ'}
-              </option>
-              {!staff.isError &&
-                staff.data
-                  ?.filter((s) => s.id !== row.todo.assigneeId)
-                  .map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} {s.detail}
-                    </option>
-                  ))}
-            </NativeSelect>
-          </label>
+              onChange={(value) => setAssignee(value)}
+              options={assigneeOptions}
+            />
+          </div>
           {staff.isError && (
             <p role="alert">
               โหลดผู้รับงานไม่ได้{' '}
@@ -238,22 +242,28 @@ export default function ChatServiceRequestCard({ requestId }: { requestId: strin
               </Button>
             </p>
           )}
-          <label className="block">
-            นัดติดตาม (เวลาไทย)
+          <div>
+            <label htmlFor={`${uid}-due`} className={formLabelClass}>
+              นัดติดตาม (เวลาไทย)
+            </label>
             <input
+              id={`${uid}-due`}
               type="datetime-local"
-              className={field}
+              className={formControlClass}
               value={due}
               required
               onChange={(e) => setDue(e.target.value)}
             />
-          </label>
+          </div>
           {row.status !== 'LINKED' && (
             <>
-              <label className="block">
-                สถานะรับเรื่อง
-                <NativeSelect wrapperClassName="max-w-full mt-1 w-full min-w-0"
-                  className={`${field} mt-0`}
+              <div>
+                <label htmlFor={`${uid}-status`} className={formLabelClass}>
+                  สถานะรับเรื่อง
+                </label>
+                <NativeSelect
+                  id={`${uid}-status`}
+                  wrapperClassName="max-w-full w-full min-w-0"
                   value={status}
                   onChange={(e) => setStatus(e.target.value)}
                 >
@@ -265,18 +275,21 @@ export default function ChatServiceRequestCard({ requestId }: { requestId: strin
                       </option>
                     ))}
                 </NativeSelect>
-              </label>
+              </div>
               {['RESOLVED', 'CANCELLED'].includes(status) && (
-                <label className="block">
-                  เหตุผล
+                <div>
+                  <label htmlFor={`${uid}-reason`} className={formLabelClass}>
+                    เหตุผล
+                  </label>
                   <textarea
+                    id={`${uid}-reason`}
                     required
-                    className={field}
+                    className={formTextareaClass}
                     value={reason}
                     maxLength={1000}
                     onChange={(e) => setReason(e.target.value)}
                   />
-                </label>
+                </div>
               )}
             </>
           )}

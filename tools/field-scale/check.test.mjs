@@ -12,13 +12,15 @@ import {
   parseAllow,
   parseArgs,
   renderReport,
+  routeRequest,
   screenProblem,
   selectRoutes,
   summarize,
 } from './lib.mjs';
+import { chromium } from '@playwright/test';
 import { ACCOUNT_CODE_RE, coaByCodes, coaGrouped, coaList, loadCoa, parseCsvLine } from './coa.mjs';
-import { menuClipVerdict } from './menu-clip.mjs';
-import { ADDRESS_FORM_HOSTS, COMMON_MOCKS, ROUTES } from './routes.mjs';
+import { menuClipVerdict, readMenuGeometry } from './menu-clip.mjs';
+import { ADDRESS_FORM_HOSTS, COMMON_MOCKS, PENDING_PROBES, R2_ROUTES, ROUTES } from './routes.mjs';
 
 const cell = (route, width, theme, findings, status = 'rendered', extra = {}) => ({
   route, width, theme, status, findings, probes: [], apiErrors: [], ...extra,
@@ -311,7 +313,7 @@ test('routes: ids, paths, mocks and probes are well formed', () => {
   }
 });
 
-test('routes: cover appendix ก, the 9 AddressForm hosts and both account-menu probes', () => {
+test('routes: cover appendix ก, the 9 AddressForm hosts and every menu probe', () => {
   const appendix = new Set(ROUTES.flatMap((r) => r.appendix));
   for (const code of ['S1-01', 'S1-02', 'S1-03', 'S1-04', 'S1-05', 'S1-06', 'S2-01', 'S2-02', 'S2-03', 'S2-04', 'S2-05',
     'S2-07', 'S2-08', 'S3-02', 'S3-03', 'S3-04', 'S3-05', 'S3-07', 'S3-09', 'S3-10', 'S3-12']) {
@@ -320,11 +322,196 @@ test('routes: cover appendix ก, the 9 AddressForm hosts and both account-menu 
   const ids = new Set(ROUTES.map((r) => r.id));
   assert.equal(ADDRESS_FORM_HOSTS.length, 9);
   for (const id of ADDRESS_FORM_HOSTS) assert.ok(ids.has(id), id);
-  const probes = ROUTES.flatMap((r) => (r.probes ?? []).map((p) => [r.id, p.id, p.widths]));
+  const probes = ROUTES.flatMap((r) => (r.probes ?? []).map((p) => [r.id, p.id, p.widths, p.menu ?? 'search-label']));
   assert.deepEqual(probes, [
-    ['other-income-items', 'account-menu-items-card', [1440]],
-    ['other-income-override', 'account-menu-override-jv', [1440]],
+    ['other-income-items', 'account-menu-items-card', [1440], 'controls'],
+    ['other-income-override', 'account-menu-override-jv', [1440], 'controls'],
+    ['trade-in-quick-buy', 'quick-buy-model-menu', [1440, 390], 'controls'],
+    ['r2-general-ledger', 'account-menu-gl', [1440, 390], 'controls'],
+    ['r2-petty-cash-lines', 'account-menu-petty-cash', [1440, 390], 'controls'],
+    ['r2-po-wizard-items', 'po-accessory-model-menu', [1440, 390], 'controls'],
+    ['r2-booking-create', 'booking-customer-menu', [1440, 390], 'controls'],
+    ['r2-inbox-filter', 'inbox-owner-menu', [1440, 390], 'controls'],
+    ['r2-prospect-filters', 'prospect-owner-menu', [1440, 390], 'controls'],
+    ['r2-stock-alert-create', 'stock-alert-model-menu', [1440, 390], 'controls'],
+    ['r2-profile-yeastar', 'profile-extension-menu', [1440, 390], 'controls'],
   ]);
+});
+
+// A probe on a native <select> fails today (no aria-controls) and a MENU failure blocks every compare — so it waits
+// in PENDING_PROBES until the task that converts the field attaches it to the route and deletes the entry.
+test('routes: pending probes name an existing route and are not attached yet', () => {
+  const byId = new Map(ROUTES.map((r) => [r.id, r]));
+  const attached = new Set(ROUTES.flatMap((r) => (r.probes ?? []).map((p) => p.id)));
+  const pending = Object.entries(PENDING_PROBES).flatMap(([id, probes]) => probes.map((p) => [id, p.id, p.widths, p.menu]));
+  assert.deepEqual(pending, [
+    ['r2-expenses-list', 'account-menu-expense-filter', [1440], 'controls'],
+    ['expense-new', 'account-menu-expense-line', [1440], 'controls'],
+    ['recurring-bill-dialog', 'account-menu-recurring-bill', [1440], 'controls'],
+  ]);
+  for (const [id, probeId] of pending) {
+    assert.ok(byId.has(id), id);
+    assert.ok(!attached.has(probeId), `${probeId} is attached — delete it from PENDING_PROBES`);
+  }
+});
+
+// Round 1 reports stay comparable: every Round 1 id is still there, in the same order, before the r2- routes.
+const ROUND1_IDS = [
+  'dunning-rule-dialog', 'sms-template-form', 'other-income-items', 'other-income-override', 'company-entity-edit',
+  'company-entity-create', 'audit-logs', 'finance-knowledge-form', 'repossessions', 'stock-transfers-outgoing',
+  'stock-transfers-incoming', 'stock-transfers-history', 'expense-new', 'payroll-new', 'recurring-bill-dialog',
+  'trade-in-quick-buy', 'interest-config-form', 'branch-create', 'todo-form', 'purchase-order-wizard',
+  'account-role-edit', 'customer-create-dialog', 'customer-edit-dialog', 'contract-customer-create',
+  'contract-customer-edit', 'supplier-form', 'pos-sale-form', 'contact-create',
+];
+
+test('routes: Round 1 ids unchanged; Round 2 routes are r2-<screen>', () => {
+  assert.deepEqual(ROUTES.slice(0, ROUND1_IDS.length).map((r) => r.id), ROUND1_IDS);
+  assert.deepEqual(ROUTES.slice(ROUND1_IDS.length), R2_ROUTES);
+  for (const r of R2_ROUTES) {
+    assert.match(r.id, /^r2-[a-z0-9-]+$/, r.id);
+    assert.ok(r.appendix.length > 0 && r.appendix.every((a) => /^R2-(2|3a|3b|4a|4b|4c|4d) /.test(a)), r.id);
+  }
+});
+
+test('routes: the AddressForm hosts are the routes that leave the address fields on screen', () => {
+  assert.deepEqual(ADDRESS_FORM_HOSTS, [
+    'company-entity-create', 'r2-customer-create-address', 'contract-customer-create', 'contract-customer-edit',
+    'customer-edit-dialog', 'supplier-form', 'r2-trade-in-quick-buy-address', 'branch-create', 'contact-create',
+  ]);
+  for (const notAHost of ['company-entity-edit', 'customer-create-dialog', 'trade-in-quick-buy']) {
+    assert.ok(!ADDRESS_FORM_HOSTS.includes(notAHost), `${notAHost} leaves the address off screen`);
+  }
+});
+
+// Every screen Round 2 Tasks 5–15 convert (plan header table; appendix ค; facts-comboboxes consumers).
+const R2_SCREENS = {
+  'R2-2 AddressForm': ['r2-customer-create-address', 'r2-trade-in-quick-buy-address', 'r2-supplier-edit'],
+  'R2-3a GL': ['r2-general-ledger'],
+  'R2-3a AccountRoles': ['r2-account-role-dialog'],
+  'R2-3a AdjustmentTable': ['r2-other-income-adjustment'],
+  'R2-3a PettyCash': ['r2-petty-cash-lines'],
+  'R2-4c ExpensesPage': ['r2-expenses-list'],
+  'R2-4c ItemLinesSection': ['r2-credit-note-lines'],
+  'R2-3b VendorCombobox': ['r2-petty-cash-lines', 'r2-settlement-new'],
+  'R2-3b ContactCombobox': ['r2-trade-in-quick-buy-address', 'r2-asset-new', 'r2-after-sales-walk-in', 'r2-po-wizard-items'],
+  'R2-3b CustomerCombobox': ['r2-booking-create', 'r2-store-appointments'],
+  'R2-4a ChannelFilter': ['r2-inbox-filter'],
+  'R2-4a ChatFollowUpDialog': ['r2-inbox-follow-up'],
+  'R2-4a ChatServiceRequestDialog': ['r2-inbox-service-request'],
+  'R2-4a ChatServiceRequestCard': ['r2-inbox-service-request-edit'],
+  'R2-4a FacebookCommentPanel': ['r2-inbox-facebook-comment'],
+  'R2-4a TodoFilters': ['r2-todos-list'],
+  'R2-4a StuckContractsSection': ['r2-collections-stuck-reassign'],
+  'R2-4a ProspectFilterBar': ['r2-prospect-filters'],
+  'R2-4b ProductInfoCard': ['r2-product-create'],
+  'R2-4b BranchSupplierCard': ['r2-product-create'],
+  'R2-4b StockAlertsPage': ['r2-stock-alert-create'],
+  'R2-4b AccessoryItemRow': ['r2-po-wizard-items'],
+  'R2-4b ReferenceQuestionnaire': ['r2-trade-in-questions'],
+  'R2-4b POListTab': ['r2-purchase-orders-list'],
+  'R2-4d ChatAnalyticsPage': ['r2-chat-analytics'],
+  'R2-4d SalesHistoryPage': ['r2-sales-history'],
+  'R2-4d QuickReplyEditor': ['r2-canned-quick-reply'],
+  'R2-4d UserProfilePage': ['r2-profile-yeastar'],
+};
+
+test('routes: one Round 2 route per converted screen, tagged with it', () => {
+  const byId = new Map(R2_ROUTES.map((r) => [r.id, r]));
+  for (const [tag, ids] of Object.entries(R2_SCREENS)) {
+    for (const id of ids) assert.ok(byId.get(id)?.appendix.includes(tag), `${tag} → ${id}`);
+  }
+  const tagged = new Set(Object.values(R2_SCREENS).flat());
+  assert.deepEqual(R2_ROUTES.map((r) => r.id).filter((id) => !tagged.has(id)), [], 'no untagged r2 route');
+});
+
+test('routes: a mock answers GET, or POST only for a /preview quote; only inbox-room routes block writes', async () => {
+  for (const r of ROUTES) {
+    for (const m of [...COMMON_MOCKS, ...r.mocks]) {
+      assert.ok(m.method === undefined || (m.method === 'POST' && /\\\/preview\$$/.test(m.path.source)),
+        `${r.id}: ${m.method} ${m.path}`);
+    }
+    assert.ok(r.blockWrites === undefined || r.blockWrites === true, r.id);
+  }
+  assert.deepEqual(ROUTES.filter((r) => r.blockWrites).map((r) => r.id),
+    ['r2-inbox-follow-up', 'r2-inbox-service-request', 'r2-inbox-service-request-edit']);
+  const room = ROUTES.find((r) => r.id === 'r2-inbox-follow-up');
+  assert.equal(await room.path({ shopRoomId: null }), null, 'no synthetic room → cell skipped');
+  assert.equal(await room.path({ shopRoomId: 'room-1' }), '/inbox/room-1?zone=shop');
+});
+
+test('routeRequest: mocks by method + path, blocks writes only on blockWrites routes, else passes', () => {
+  const get = { path: /^\/a$/, json: () => 'get' };
+  const quote = { path: /^\/a\/preview$/, json: () => 'quote', method: 'POST' };
+  const mocks = [get, quote];
+  assert.deepEqual(routeRequest({}, mocks, 'GET', '/a'), { action: 'mock', mock: get });
+  assert.deepEqual(routeRequest({}, mocks, 'POST', '/a/preview'), { action: 'mock', mock: quote });
+  assert.deepEqual(routeRequest({}, mocks, 'POST', '/a'), { action: 'pass' }, 'a GET mock never answers a POST');
+  assert.deepEqual(routeRequest({}, mocks, 'GET', '/a/preview'), { action: 'pass' }, 'a POST mock never answers a GET');
+  assert.deepEqual(routeRequest({ blockWrites: true }, mocks, 'POST', '/rooms/1/read'), { action: 'block' });
+  assert.deepEqual(routeRequest({ blockWrites: true }, mocks, 'PATCH', '/x'), { action: 'block' });
+  assert.deepEqual(routeRequest({ blockWrites: true }, mocks, 'GET', '/x'), { action: 'pass' });
+  assert.deepEqual(routeRequest({ blockWrites: true }, mocks, 'POST', '/a/preview'), { action: 'mock', mock: quote });
+});
+
+test('routes: Round 2 mocks — fixed staff/ids (preview ids change per start), room-bound service request', async () => {
+  const byId = new Map(R2_ROUTES.map((r) => [r.id, r]));
+  const find = (id, path) => byId.get(id).mocks.find((m) => m.path.test(path));
+  const ctx = { shopRoomId: 'room-1' };
+  const list = await find('r2-inbox-service-request-edit', '/staff-chat/rooms/room-1/service-requests').json(null, ctx);
+  assert.equal(list.total, 1);
+  assert.equal(list.data[0].roomId, 'room-1');
+  assert.equal(list.data[0].todo.status, 'TODO', 'an active request shows "แก้ไขการติดตาม"');
+  const detail = await find('r2-inbox-service-request-edit', `/staff-chat/service-requests/${list.data[0].id}`).json(null, ctx);
+  assert.deepEqual(detail, list.data[0]);
+  const staff = await find('r2-inbox-follow-up', '/staff-chat/rooms/room-1/eligible-staff').json();
+  assert.ok(staff.length >= 2 && staff.every((s) => s.id.startsWith('preview-staff-') && s.detail));
+  const options = await find('r2-chat-analytics', '/chat-analytics/v2/filter-options').json();
+  assert.ok(options.staff.every((s) => s.id.startsWith('preview-staff-')));
+  const quote = byId.get('r2-trade-in-quick-buy-address').mocks.find((m) => m.method === 'POST');
+  const q = await quote.json();
+  assert.ok(q.available && q.previewToken && q.grade && Number(q.cashPrice) > 0, 'priceReady (QuickBuyModal.tsx:274-280)');
+  const walkIn = await find('r2-after-sales-walk-in', '/after-sales/lookup').json();
+  assert.equal(walkIn.found, false, 'walk-in → the customer picker is shown');
+  assert.ok(walkIn.outcomes.some((o) => o.outcome === 'REPAIR' && o.enabled && o.implemented), 'REPAIR → the repair centre picker');
+  const summary = await find('r2-booking-create', '/bookings/summary').json();
+  assert.ok(summary.total > 0, 'not the first-use empty state, so the header button "สร้างใบจอง" is shown');
+  const suppliers = await find('r2-supplier-edit', '/suppliers').json();
+  assert.equal(suppliers.data.length, 1);
+  const address = JSON.parse(suppliers.data[0].address);
+  assert.ok(address.province && address.district && address.subdistrict && address.postalCode,
+    'deserializeAddress (AddressForm.tsx:67-88) fills every picker, so อำเภอ / ตำบล are enabled');
+});
+
+// readMenuGeometry runs in a real page (Playwright serialises it), so it is checked in Chromium.
+test('readMenuGeometry: a trigger finds its menu through aria-controls; the search-label path is unchanged', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({ viewport: { width: 400, height: 300 } });
+    await page.setContent(`<!doctype html><body style="margin:0">
+      <button id="t" aria-controls="m">open</button>
+      <button id="t2" aria-controls="missing">open</button>
+      <button id="t3">no menu</button>
+      <div style="position:fixed;left:250px;top:40px"><div id="m" style="width:200px;height:120px">
+        <input aria-label="ค้นหารหัส หรือ ชื่อบัญชี"></div></div>
+      <div style="position:relative;overflow:hidden;width:100px;height:50px">
+        <div style="position:absolute;top:10px;left:10px;width:300px;height:80px"><input aria-label="clipped"></div></div>
+    </body>`);
+    const fromTrigger = await page.locator('#t').evaluate(readMenuGeometry);
+    assert.equal(fromTrigger.found, true);
+    assert.equal(fromTrigger.position, 'fixed');
+    assert.deepEqual(fromTrigger.menu, { top: 40, left: 250, bottom: 160, right: 450 });
+    assert.match(menuClipVerdict(fromTrigger).reasons[0], /ล้นจอ 400×300/, 'runs past the right edge');
+    assert.deepEqual(await page.locator('#t2').evaluate(readMenuGeometry), { found: false });
+    assert.deepEqual(await page.locator('#t3').evaluate(readMenuGeometry), { found: false });
+    const fromLabel = await page.evaluate(readMenuGeometry, 'ค้นหารหัส หรือ ชื่อบัญชี');
+    assert.deepEqual(fromLabel.menu, fromTrigger.menu, 'same panel either way');
+    const clipped = await page.evaluate(readMenuGeometry, 'clipped');
+    assert.equal(clipped.position, 'absolute');
+    assert.match(menuClipVerdict(clipped).reasons.join(' '), /ถูกตัดโดย <div/);
+  } finally {
+    await browser.close();
+  }
 });
 
 test('routes: the deep screens later tasks measure, and a fixed buy-back catalog', async () => {

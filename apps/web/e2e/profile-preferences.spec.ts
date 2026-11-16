@@ -53,7 +53,12 @@ test('Profile preferences — provider failure recovery and save/reload on a pri
   });
   await expect(extension).toContainText('101');
   await extension.click();
-  await page.getByRole('option', { name: /^102/ }).click();
+  // the Combobox menu is portalled and searchable (R2-4d)
+  const extensionMenu = page.locator('[data-slot=combobox-content]');
+  await extensionMenu.getByRole('combobox', { name: 'ค้นหา', exact: true }).fill('ใหม่');
+  await extensionMenu.getByRole('option', { name: /^102/ }).click();
+  await expect(extensionMenu).toHaveCount(0);
+  await expect(extension).toContainText('102');
   const saveExtension = page.waitForResponse(
     (r) =>
       r.request().method() === 'PATCH' && new URL(r.url()).pathname.endsWith('/users/me/extension'),

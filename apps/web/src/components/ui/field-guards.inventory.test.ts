@@ -608,18 +608,10 @@ const F5_OVERLAY_INSET = /^-?inset-(0|y-|\[)/;
  * Browser clip checks for the spec's allow-list: tools/field-scale/menu-clip-components.mjs
  */
 const F5_NON_PORTAL_MENU_ALLOW: Record<string, { panels: number; reason: string }> = {
-  // spec §5 F5 allow-list + SearchableSelect (until R2-2) — each has a case in menu-clip-components.mjs
-  'apps/web/src/components/ui/SearchableSelect.tsx': {
-    panels: 2,
-    reason: 'R2-2 replaces it — AddressForm ย้ายไป Combobox แล้วลบไฟล์นี้ (listbox + กล่อง "ไม่พบผลลัพธ์")',
-  },
+  // spec §5 F5 allow-list — each has a case in menu-clip-components.mjs
   'apps/web/src/components/ui/NameAutocomplete.tsx': {
     panels: 1,
     reason: 'allow-list ใน spec §5 F5 — ช่องพิมพ์ชื่ออิสระ ไม่แปลงเป็น Combobox (§6.4)',
-  },
-  'apps/web/src/pages/other-income/components/TemplatePickerCombobox.tsx': {
-    panels: 1,
-    reason: 'allow-list ใน spec §5 F5 — เมนูคำสั่ง ไม่ใช่ตัวเลือก (§6.4) · เลยขอบขวาจอที่ 1024/390 (KNOWN ในสคริปต์)',
   },
   'apps/web/src/pages/PurchaseOrdersPage/components/wizard/items/CatalogPicker.tsx': {
     panels: 1,
@@ -838,7 +830,7 @@ function findInlineMenuPanels(fileName: string, source: string): number[] {
 
 const F5_POSITIVE: [string, string][] = [
   [
-    'listbox via cn() + same-file const (SearchableSelect)',
+    'listbox via cn() + same-file const (inline input + listbox)',
     `export function A({ open, up }: { open: boolean; up: boolean }) {
       const menuPos = up ? 'bottom-full mb-1' : 'mt-1';
       return <div className="relative"><input role="combobox" aria-expanded={open} />
@@ -996,5 +988,67 @@ describe('F5 — inline (non-portalled) menus (spec 2026-11-14 §5)', () => {
       expect(found).toEqual(allowed);
     },
     F5_SCAN_TIMEOUT_MS,
+  );
+});
+
+// Combobox sizing guard. admin-typography.css sets an unlayered `max-width:100%` and `height` on
+// `button[role=combobox]`, so a w-/max-w-/min-w-/h- utility in the trigger `className` does nothing
+// (and a narrow trigger would leave the clear button outside the field). Size it with `wrapperClassName`.
+const COMBOBOX_SIZE_TOKEN = /^(?:w|max-w|min-w|h)-\S/;
+
+function comboboxSizeViolations(file: string, source: string): string[] {
+  const kind = file.endsWith('x') ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+  const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, kind);
+  const where = relative(ROOT, file).split(sep).join('/');
+  const found: string[] = [];
+  const inspect = (node: ts.Node) => {
+    if (
+      (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) &&
+      node.tagName.getText(ast) === 'Combobox'
+    ) {
+      for (const attribute of node.attributes.properties) {
+        if (!ts.isJsxAttribute(attribute) || attribute.name.getText(ast) !== 'className') continue;
+        if (!attribute.initializer) continue;
+        const collected: ClassCollection = { strings: [], unreadable: [] };
+        collectClassStrings(attribute.initializer, ast, collected);
+        const line = ast.getLineAndCharacterOfPosition(attribute.getStart(ast)).line + 1;
+        for (const item of collected.unreadable) {
+          found.push(`${where}:${line} Combobox className uses an expression the guard cannot read (${item.kind})`);
+        }
+        const sizing = collected.strings
+          .flatMap((text) => text.split(/\s+/))
+          .filter((token) => token && COMBOBOX_SIZE_TOKEN.test(stripVariants(token).replace(/^!/, '').replace(/!$/, '')));
+        if (sizing.length) {
+          found.push(`${where}:${line} ${sizing.join(' ')} — move it to wrapperClassName`);
+        }
+      }
+    }
+    ts.forEachChild(node, inspect);
+  };
+  inspect(ast);
+  return found;
+}
+
+describe('Combobox sizing guard', () => {
+  it('flags width/height utilities in a Combobox className in every spelling', () => {
+    const sample = resolve(ROOT, 'apps/web/src/__guard-sample__.tsx');
+    const run = (className: string) => comboboxSizeViolations(sample, `<Combobox className=${className} />`);
+    expect(run('"max-w-[130px]"')).toHaveLength(1);
+    expect(run('"sm:w-56"')).toHaveLength(1);
+    expect(run('{cn("font-mono", ok && "h-9")}')).toHaveLength(1);
+    expect(run('"font-mono text-right"')).toEqual([]);
+    expect(comboboxSizeViolations(sample, '<Combobox wrapperClassName="max-w-[130px]" />')).toEqual([]);
+  });
+
+  it(
+    'no production <Combobox> sets width, max-width, min-width or height in its className',
+    () => {
+      const found = listSourceFiles(WEB_SRC)
+        .map((file) => ({ file, source: readFileSync(file, 'utf8') }))
+        .filter(({ source }) => /<Combobox\b/.test(source))
+        .flatMap(({ file, source }) => comboboxSizeViolations(file, source));
+      expect(found).toEqual([]);
+    },
+    SCAN_TIMEOUT_MS,
   );
 });

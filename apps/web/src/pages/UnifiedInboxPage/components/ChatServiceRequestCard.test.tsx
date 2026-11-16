@@ -1,8 +1,10 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ChatServiceRequestCard from './ChatServiceRequestCard';
+import { pickComboOption } from '@/test/combobox';
 const mocks = vi.hoisted(() => ({ api: { get: vi.fn(), patch: vi.fn(), post: vi.fn() } }));
 vi.mock('@/lib/api', () => ({ default: mocks.api, getErrorMessage: () => 'บันทึกไม่ได้' }));
 vi.mock('../hooks/useChatWork', () => ({
@@ -91,5 +93,72 @@ describe('Service request card', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'บันทึกการติดตาม' })).toBeEnabled(),
     );
+  });
+  it('picks a new assignee from the eligible staff and PATCHes it (R2-4a)', async () => {
+    const user = userEvent.setup();
+    mocks.api.get.mockImplementation((url: string) =>
+      Promise.resolve({
+        data: url.endsWith('eligible-staff')
+          ? [
+              { id: 'u', name: 'เมย์' },
+              { id: 'v', name: 'ต้น', detail: 'สาขาลาดพร้าว · SALES · 00000v' },
+            ]
+          : row,
+      }),
+    );
+    mocks.api.patch.mockResolvedValue({ data: {} });
+    view();
+    await user.click(await screen.findByRole('button', { name: 'แก้ไขการติดตาม' }));
+    const assignee = screen.getByRole('combobox', { name: 'ผู้รับผิดชอบ' });
+    expect(assignee).toHaveTextContent('เมย์');
+    await waitFor(() =>
+      expect(mocks.api.get).toHaveBeenCalledWith(
+        '/staff-chat/rooms/room/eligible-staff',
+        expect.anything(),
+      ),
+    );
+
+    await pickComboOption(user, 'ผู้รับผิดชอบ', 'ต้น สาขาลาดพร้าว · SALES · 00000v', {
+      search: 'ต้น',
+    });
+
+    expect(assignee).toHaveTextContent('ต้น สาขาลาดพร้าว · SALES · 00000v');
+    await user.click(screen.getByRole('button', { name: 'บันทึกการติดตาม' }));
+    await waitFor(() =>
+      expect(mocks.api.patch).toHaveBeenCalledWith(
+        '/staff-chat/service-requests/intake',
+        expect.objectContaining({ expectedRevision: 0, status: 'OPEN', assigneeId: 'v' }),
+        { params: { company: 'SHOP' } },
+      ),
+    );
+  });
+  it('keeps an assignee who left the eligible list as the first row; picking it back sends no assigneeId', async () => {
+    const user = userEvent.setup();
+    const formerRow = {
+      ...row,
+      todo: { ...row.todo, assigneeId: 'gone', assignee: { name: 'คนเดิม' } },
+    };
+    mocks.api.get.mockImplementation((url: string) =>
+      Promise.resolve({
+        data: url.endsWith('eligible-staff') ? [{ id: 'v', name: 'ต้น' }] : formerRow,
+      }),
+    );
+    mocks.api.patch.mockResolvedValue({ data: {} });
+    view();
+    await user.click(await screen.findByRole('button', { name: 'แก้ไขการติดตาม' }));
+    const assignee = screen.getByRole('combobox', { name: 'ผู้รับผิดชอบ' });
+    expect(assignee).toHaveTextContent('คนเดิม');
+    await waitFor(() =>
+      expect(mocks.api.get).toHaveBeenCalledWith(
+        '/staff-chat/rooms/room/eligible-staff',
+        expect.anything(),
+      ),
+    );
+    await pickComboOption(user, 'ผู้รับผิดชอบ', 'ต้น');
+    await pickComboOption(user, 'ผู้รับผิดชอบ', 'คนเดิม');
+    expect(assignee).toHaveTextContent('คนเดิม');
+    await user.click(screen.getByRole('button', { name: 'บันทึกการติดตาม' }));
+    await waitFor(() => expect(mocks.api.patch).toHaveBeenCalledTimes(1));
+    expect(mocks.api.patch.mock.calls[0][1]).not.toHaveProperty('assigneeId');
   });
 });

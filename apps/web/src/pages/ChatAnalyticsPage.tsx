@@ -1,5 +1,6 @@
 import { NativeSelect } from '@/components/ui/native-select';
-import { useState } from 'react';
+import { Combobox } from '@/components/ui/combobox';
+import { useId, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router';
 import { BarChart3, RefreshCw, Settings } from 'lucide-react';
@@ -82,6 +83,7 @@ export default function ChatAnalyticsPage() {
   );
 }
 function AnalyticsDashboard() {
+  const staffFieldId = useId();
   const work = useChatWorkSettings(),
     [search, setSearch] = useSearchParams();
   const validDate = (value: string | null, fallback: () => string) =>
@@ -269,21 +271,24 @@ function AnalyticsDashboard() {
             ))}
           </NativeSelect>
         </label>
-        <label className="min-w-0 text-sm">
-          พนักงาน
-          <NativeSelect wrapperClassName="max-w-full mt-1 w-full min-w-0"
-            className={`${field} mt-0`}
+        <div className="min-w-0 text-sm">
+          <label htmlFor={staffFieldId}>พนักงาน</label>
+          <Combobox
+            id={staffFieldId}
             value={draft.staffId}
-            onChange={(e) => setDraft({ ...draft, staffId: e.target.value })}
-          >
-            <option value="">ทุกคน</option>
-            {options.data?.staff.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name} · {s.id.slice(-6)}
-              </option>
-            ))}
-          </NativeSelect>
-        </label>
+            onChange={(staffId) => setDraft({ ...draft, staffId })}
+            options={[
+              { value: '', label: 'ทุกคน' },
+              ...(options.data?.staff ?? []).map((s) => ({
+                value: s.id,
+                label: `${s.name} · ${s.id.slice(-6)}`,
+              })),
+            ]}
+            loading={options.isLoading}
+            wrapperClassName="max-w-full mt-1 w-full min-w-0"
+            className={`${field} mt-0`}
+          />
+        </div>
         <Button type="submit" className="min-h-11">
           แสดงรายงาน
         </Button>

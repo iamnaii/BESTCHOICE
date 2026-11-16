@@ -292,6 +292,30 @@ test('label: for= above with its gap, aria-labelledby, wrapping label, sr-only l
   assert.equal(byKey(facts, 'input|ป้ายซ่อน|0').label, null);
 });
 
+// Round 2 Combobox trigger (plan header DOM contract): a raw button[role=combobox] named by its <label for>,
+// showing the picked value as text. F1 must see it as kind 'combobox' with the label's words as its name.
+test('a Combobox trigger is a combobox field named by its <label for>, never by the value it shows', async () => {
+  const facts = await collect(`
+    <div style="display:grid;grid-template-columns:200px 200px;gap:16px">
+      <div><label for="cb" class="lab">ผู้รับผิดชอบ</label><button type="button" role="combobox" id="cb" aria-haspopup="listbox" aria-expanded="false" data-slot="combobox-trigger" class="f" style="display:flex;align-items:center;justify-content:space-between"><span>นายสมชาย ใจดีลับ</span><svg width="16" height="16" aria-hidden="true"></svg></button></div>
+      <div><label for="in" class="lab">เบอร์โทร</label><input id="in" class="f" style="height:40px"></div>
+    </div>`);
+  const trigger = byKey(facts, 'combobox|ผู้รับผิดชอบ|0');
+  assert.deepEqual([trigger.kind, trigger.tag], ['combobox', 'button']);
+  assert.deepEqual(trigger.label, { fontSize: 14, gap: 12, above: true });
+  assert.equal(trigger.h, 44);
+  assert.equal(trigger.placeholderInkWidth, null, 'a button has no placeholder attribute');
+  assert.ok(!JSON.stringify(facts).includes('สมชาย'), 'the shown value never leaves the page');
+  const f1 = evaluateFields(facts, CTX).filter((f) => f.rule === 'F1').map((f) => f.key);
+  assert.deepEqual(
+    f1.filter((k) => k.startsWith('height@')),
+    ['height@combobox|ผู้รับผิดชอบ|0', 'height@input|เบอร์โทร|0'],
+    'one F1 row with the input next to it',
+  );
+  const target = facts.filter((f) => f.type === 'target' && f.role === 'combobox');
+  assert.deepEqual(target.map((t) => t.key), ['target-combobox||0'], 'a combobox target is named by aria-label only');
+});
+
 test('placeholder and longest native option are canvas-measured against the content box (F2)', async () => {
   const PH = 'ค้นหาด้วยชื่อลูกค้า เบอร์โทร หรือเลขสัญญา';
   const page = await openPage(`

@@ -1,20 +1,32 @@
 // Field-scale check — "is the account menu clipped?" (appendix ก S2-01 / S2-02; spec §7 R1-2 acceptance
 // "เมนูบัญชีเปิดอยู่ในการ์ดรายการและตาราง Override JV ที่ 1440").
 // readMenuGeometry runs INSIDE the page (Playwright serialises its source — no imports, no outer
-// variables). It finds the visible account-search box by its aria-label, walks up to the menu panel
-// (first absolutely/fixed positioned ancestor — the old absolute dropdown, or Radix's fixed popper
-// wrapper after R1-2), then lists every overflow-clipping ancestor at or above the panel's containing
-// block. menuClipVerdict is the pure decision (tested in check.test.mjs).
+// variables). Its argument says where the open menu is: a string = the aria-label of the menu's search
+// box (the Round 1 account menu: the visible box with that name); an element = the trigger
+// (Locator.evaluate passes it), whose aria-controls names the menu — Radix Popover / Select triggers and
+// the Round 2 Combobox always carry it. It walks up from there to the menu panel (first absolutely/fixed
+// positioned ancestor — the old absolute dropdown, or Radix's fixed popper wrapper), then lists every
+// overflow-clipping ancestor at or above the panel's containing block. menuClipVerdict is the pure
+// decision (both tested in check.test.mjs).
 
 export const MENU_TOLERANCE_PX = 1;
 
-export function readMenuGeometry(searchLabel) {
-  const inputs = Array.from(document.querySelectorAll('input')).filter(
-    (el) => el.getAttribute('aria-label') === searchLabel && el.checkVisibility(),
-  );
-  const input = inputs[inputs.length - 1];
-  if (!input) return { found: false };
-  let panel = input.parentElement;
+export function readMenuGeometry(target) {
+  let start = null;
+  if (typeof target === 'string') {
+    const inputs = Array.from(document.querySelectorAll('input')).filter(
+      (el) => el.getAttribute('aria-label') === target && el.checkVisibility(),
+    );
+    const input = inputs[inputs.length - 1];
+    if (!input) return { found: false };
+    start = input.parentElement;
+  } else {
+    const id = target && typeof target.getAttribute === 'function' ? target.getAttribute('aria-controls') : null;
+    const menu = id ? document.getElementById(id) : null;
+    if (!menu || !menu.checkVisibility()) return { found: false };
+    start = menu;
+  }
+  let panel = start;
   while (panel && panel !== document.body) {
     const position = getComputedStyle(panel).position;
     if (position === 'absolute' || position === 'fixed') break;

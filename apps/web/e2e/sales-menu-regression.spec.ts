@@ -362,7 +362,8 @@ for (const width of [1440, 390]) {
       await page.getByRole('combobox', { name: 'ประเภทการขาย', exact: true }).selectOption('CASH');
       await page.getByRole('combobox', { name: 'วิธีชำระ', exact: true }).selectOption('CASH');
       await page.getByRole('combobox', { name: 'สาขา', exact: true }).selectOption('ux-branch');
-      await page.getByRole('combobox', { name: 'พนักงานขาย', exact: true }).selectOption('ux-actor');
+      await page.getByRole('combobox', { name: 'พนักงานขาย', exact: true }).click();
+      await page.locator('[data-slot=combobox-content]').getByRole('option', { name: 'พนักงานตัวอย่าง UX', exact: true }).click();
       await page.getByRole('button', { name: 'เดือนนี้', exact: true }).click();
       await page.getByRole('switch', { name: 'แสดงใบที่ยกเลิกแล้ว', exact: true }).check();
       await page.getByRole('textbox', { name: 'ค้นหารายการขาย', exact: true }).fill('SALE-UX');

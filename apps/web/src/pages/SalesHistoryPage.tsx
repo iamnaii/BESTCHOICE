@@ -1,4 +1,5 @@
 import { NativeSelect } from '@/components/ui/native-select';
+import { Combobox } from '@/components/ui/combobox';
 import { saleMargin } from '@/lib/sale-margin';
 import { BookingSaleReceipt, type BookingSaleReceiptData } from '@/components/sales/BookingSaleReceipt';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
@@ -738,16 +739,17 @@ export default function SalesHistoryPage() {
         {/* Row 3: Salesperson + Branch (role-based) + show-voided switch */}
         {isOwnerOrManager && (
           <div className="flex flex-wrap items-center gap-3">
-            <NativeSelect wrapperClassName="w-auto min-w-0 max-w-full"
-              aria-label="พนักงานขาย" value={salespersonFilter}
-              onChange={(e) => setSalespersonFilter(e.target.value)}
+            <Combobox
+              aria-label="พนักงานขาย"
+              value={salespersonFilter}
+              onChange={(value) => setSalespersonFilter(value)}
+              options={[
+                { value: '', label: 'ทุกพนักงาน' },
+                ...salespersons.map((sp) => ({ value: sp.id, label: sp.name })),
+              ]}
+              wrapperClassName="w-full min-w-0 max-w-full sm:w-56"
               className={inputClass}
-            >
-              <option value="">ทุกพนักงาน</option>
-              {salespersons.map((sp) => (
-                <option key={sp.id} value={sp.id}>{sp.name}</option>
-              ))}
-            </NativeSelect>
+            />
             {isOwner && (
               <NativeSelect wrapperClassName="w-auto min-w-0 max-w-full"
                 aria-label="สาขา" value={branchFilter}

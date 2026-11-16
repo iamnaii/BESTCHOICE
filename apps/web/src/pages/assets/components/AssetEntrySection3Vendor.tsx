@@ -85,6 +85,7 @@ export function AssetEntrySection3Vendor() {
         <div>
           <Label htmlFor="vendor-combobox">ชื่อผู้ขาย / บริษัท *</Label>
           <ContactCombobox
+            id="vendor-combobox"
             roleNeeded="SUPPLIER"
             value={supplierName}
             invalid={!!errors.supplierName}

@@ -66,7 +66,12 @@ export default function ProductCreatePage() {
     },
   });
 
-  const { data: supplierResult, isLoading: suppliersLoading, isError: suppliersError } = useQuery<{
+  const {
+    data: supplierResult,
+    isLoading: suppliersLoading,
+    isError: suppliersError,
+    refetch: refetchSuppliers,
+  } = useQuery<{
     data: { id: string; name: string }[];
   }>({
     queryKey: ['suppliers-active'],
@@ -378,6 +383,7 @@ export default function ProductCreatePage() {
             suppliers={suppliers}
             suppliersLoading={suppliersLoading}
             suppliersError={suppliersError}
+            onRetrySuppliers={() => void refetchSuppliers()}
             inputCls={inputCls}
             onChange={handleFormFieldChange}
           />

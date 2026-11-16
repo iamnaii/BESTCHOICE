@@ -1,6 +1,8 @@
 // F5 (spec 2026-11-14 §5): one browser case per component that the static guard
 // (apps/web/src/components/ui/field-guards.inventory.test.ts) lets keep an inline,
-// non-portalled menu. Opens each menu on the local preview and checks the list box is
+// non-portalled menu, plus one portalled Combobox case (the AddressForm province list in the
+// branch modal — browser proof that appendix ก S1-06 is closed since R2-2 deleted
+// SearchableSelect). Opens each menu on the local preview and checks the list box is
 // inside the viewport and inside every ancestor that clips overflow. Saves nothing: every
 // non-GET /api request the browser makes is aborted (and listed in results.json), and no
 // form is submitted. The one write the script itself makes is the preview actor switch to
@@ -89,6 +91,16 @@ async function mockGet(page, pattern, json) {
   });
 }
 
+// The preview's GET /branches is a bare findMany without `_count`, which BranchesPage reads
+// (same reason and shape as tools/field-scale/routes.mjs M.branches).
+const BRANCHES = [
+  {
+    id: 'f5-branch-1', name: 'สาขาตัวอย่าง (คลังหลัก)', location: 'กรุงเทพมหานคร', phone: '020000000',
+    isActive: true, isMainWarehouse: true, shopCashAccountCode: 'S11-1101', shopCashFloat: '2000',
+    _count: { users: 5, products: 120, contracts: 30 },
+  },
+];
+
 const CASES = [
   {
     name: 'NoteMentionInput',
@@ -108,17 +120,20 @@ const CASES = [
     },
   },
   {
-    name: 'SearchableSelect',
-    where: '/customers → "+ เพิ่มลูกค้าใหม่" → ที่อยู่ → จังหวัด (ที่อยู่ตามบัตร)',
+    name: 'Combobox',
+    where: '/branches → "+ เพิ่มสาขา" → ที่ตั้ง → จังหวัด, ช่องเลื่อนไปบนสุดของฟอร์ม (S1-06)',
     async open(page, origin) {
-      await page.goto(`${origin}/customers`);
-      await page.getByRole('button', { name: /^\+ เพิ่ม(ลูกค้า|ผู้สนใจ)ใหม่$/ }).click();
-      const dialog = page.getByRole('dialog', { name: 'เพิ่มลูกค้าใหม่' });
-      await dialog.getByRole('heading', { name: 'ที่อยู่', exact: true }).click();
-      const province = dialog.getByRole('combobox', { name: 'จังหวัด *', exact: true }).first();
-      await province.evaluate((e) => e.scrollIntoView({ block: 'center' }));
+      await mockGet(page, /\/branches(?:\?|$)/, () => BRANCHES);
+      await page.goto(`${origin}/branches`);
+      await page.getByRole('button', { name: '+ เพิ่มสาขา', exact: true }).click();
+      const dialog = page.getByRole('dialog', { name: 'เพิ่มสาขาใหม่' });
+      const province = dialog.getByRole('combobox', { name: 'จังหวัด *', exact: true });
+      // S1-06: the old SearchableSelect list opened upward inside the modal's scrolling form, so
+      // with the field at the top of the form it ran above the form's edge. The Combobox list is
+      // portalled to <body> and flips by itself.
+      await province.evaluate((e) => e.scrollIntoView({ block: 'start' }));
       await province.click();
-      const list = page.getByRole('listbox', { name: '-- เลือกจังหวัด --', exact: true });
+      const list = page.getByRole('listbox', { name: 'รายชื่อจังหวัด', exact: true });
       await expect(list.getByRole('option').first()).toBeVisible();
       return list;
     },
@@ -139,12 +154,9 @@ const CASES = [
   {
     name: 'TemplatePickerCombobox',
     where: '/other-income/new → ส่วน 2 → ปุ่ม "ใช้แม่แบบ"',
-    // Measured 2026-11-14 on the local preview: the w-72 panel is left-aligned to a
-    // right-aligned button, so it runs past the right edge of the screen.
-    known: {
-      1024: { by: 'viewport', note: 'กล่องกว้าง 288px ชิดซ้ายของปุ่มที่อยู่ขวาสุด → เลยขอบขวาจอ (856→1144 บนจอ 1024)' },
-      390: { by: 'viewport', note: 'เลยขอบขวาจอ (258→546 บนจอ 390)' },
-    },
+    // Until Round 2 Task 15 the w-72 panel was left-aligned to the right-hand button and ran past
+    // the right edge (856→1144 at 1024, 258→546 at 390). It is now a portalled Popover aligned to
+    // the button's end: expected PASS at every width.
     async open(page, origin) {
       const templates = Array.from({ length: 8 }, (_, i) => ({
         id: `f5-other-income-${i + 1}`,
@@ -157,7 +169,7 @@ const CASES = [
       const trigger = page.getByRole('button', { name: 'ใช้แม่แบบ', exact: true });
       await trigger.evaluate((e) => e.scrollIntoView({ block: 'center' }));
       await trigger.click();
-      const panel = trigger.locator('xpath=following-sibling::div[1]');
+      const panel = page.getByRole('dialog', { name: 'แม่แบบรายได้', exact: true });
       await expect(panel.getByText('แม่แบบรายได้ทดสอบ 8', { exact: true })).toBeVisible();
       return panel;
     },

@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { pickComboOption } from '@/test/combobox';
 import { StepItems } from './StepItems';
 import type { ItemForm } from '../../types';
 
@@ -238,12 +240,23 @@ describe('StepItems — accessory rows (one line each, type fixed from the chip)
     expect(p.updateItem).toHaveBeenCalledWith(0, 'accessoryBrand', 'Spigen');
   });
 
-  it('เคส: one compatible model from a select', () => {
+  it('เคส: one compatible model from a searchable list', async () => {
+    const user = userEvent.setup();
     const p = renderStep([caseItem]);
-    const sel = row(1).getByRole('combobox', { name: 'สำหรับรุ่น' });
-    expect(within(sel).getByRole('option', { name: 'iPhone 16 Pro' })).toBeInTheDocument();
-    fireEvent.change(sel, { target: { value: 'iPhone 16 Pro' } });
+    expect(row(1).getByRole('combobox', { name: 'สำหรับรุ่น' })).toHaveTextContent('— เลือกรุ่น —');
+    await pickComboOption(user, 'สำหรับรุ่น', 'iPhone 16 Pro', { search: '16 pro' });
     expect(p.updateItem).toHaveBeenCalledWith(0, 'model', 'iPhone 16 Pro');
+    expect(p.updateItem).toHaveBeenCalledTimes(1);
+  });
+
+  it('เคส: "— เลือกรุ่น —" clears the model (it is optional); re-picking the current model changes nothing', async () => {
+    const user = userEvent.setup();
+    const p = renderStep([{ ...caseItem, model: 'iPhone 16 Pro' }]);
+    expect(row(1).getByRole('combobox', { name: 'สำหรับรุ่น' })).toHaveTextContent('iPhone 16 Pro');
+    await pickComboOption(user, 'สำหรับรุ่น', 'iPhone 16 Pro', { search: '16 pro' });
+    expect(p.updateItem).not.toHaveBeenCalled();
+    await pickComboOption(user, 'สำหรับรุ่น', '— เลือกรุ่น —');
+    expect(p.updateItem).toHaveBeenCalledWith(0, 'model', '');
   });
 
   it('ฟิล์ม: one box listing the chosen models with a count, opening a multi-pick list', () => {
@@ -254,6 +267,24 @@ describe('StepItems — accessory rows (one line each, type fixed from the chip)
     fireEvent.click(btn);
     fireEvent.click(screen.getByRole('option', { name: 'iPhone 17 Pro Max' }));
     expect(p.toggleModel).toHaveBeenCalledWith(0, 'iPhone 17 Pro Max');
+  });
+
+  it('ฟิล์ม: wheel and touchmove on the open list never reach the Drawer scroll lock (document)', () => {
+    const onDocumentScroll = vi.fn();
+    document.addEventListener('wheel', onDocumentScroll);
+    document.addEventListener('touchmove', onDocumentScroll);
+    try {
+      renderStep([film]);
+      fireEvent.click(row(1).getByRole('button', { name: 'สำหรับรุ่น' }));
+      const option = screen.getByRole('option', { name: 'iPhone 17 Pro Max' });
+      // true = nobody called preventDefault, so the browser scrolls the list.
+      expect(fireEvent.wheel(option, { deltaY: 120 })).toBe(true);
+      expect(fireEvent.touchMove(option)).toBe(true);
+      expect(onDocumentScroll).not.toHaveBeenCalled();
+    } finally {
+      document.removeEventListener('wheel', onDocumentScroll);
+      document.removeEventListener('touchmove', onDocumentScroll);
+    }
   });
 
   it('ชุดชาร์จ: connector select', () => {

@@ -16,14 +16,17 @@ import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { AssetEntrySection3Vendor } from '../components/AssetEntrySection3Vendor';
 
 // Mock the shared ContactCombobox so the section can be rendered in JSDOM
-// without Radix portal issues. The mock renders a plain combobox button that
-// exposes the same role/aria-label as the real component.
+// without Radix portal issues. The mock renders a plain combobox button and, like
+// the real component, puts `id` on the trigger and drops its fallback aria-label
+// when an id is given (the caller's <label htmlFor> names it then).
 vi.mock('@/components/contacts/ContactCombobox', () => ({
   ContactCombobox: ({
+    id,
     value,
     placeholder,
     invalid,
   }: {
+    id?: string;
     value: string;
     placeholder?: string;
     invalid?: boolean;
@@ -33,7 +36,8 @@ vi.mock('@/components/contacts/ContactCombobox', () => ({
     <button
       type="button"
       role="combobox"
-      aria-label="ผู้ขาย"
+      id={id}
+      aria-label={id ? undefined : 'ผู้ขาย'}
       aria-invalid={invalid}
       aria-expanded={false}
     >
@@ -79,6 +83,13 @@ describe('AssetEntrySection3Vendor — P1a ContactCombobox integration', () => {
     renderSection();
     const combobox = await screen.findByRole('combobox', { name: /ผู้ขาย/ });
     expect(combobox).toBeInTheDocument();
+  });
+
+  it('the vendor combobox is named by its visible label "ชื่อผู้ขาย / บริษัท *" (R2-3b: id linked)', async () => {
+    renderSection();
+    const combobox = await screen.findByRole('combobox', { name: 'ชื่อผู้ขาย / บริษัท *' });
+    expect(combobox).toHaveAttribute('id', 'vendor-combobox');
+    expect(combobox).not.toHaveAttribute('aria-label');
   });
 
   it('renders the "จำนวนเงินที่จ่าย" partial-payment input', async () => {

@@ -1,5 +1,6 @@
 import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
+import { Combobox } from '@/components/ui/combobox';
 import { useId as useUiFieldId, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -98,6 +99,8 @@ export default function StockAlertsPage() {
     reorderQuantity: '5',
   });
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
+  // รุ่น was guarded by the browser's `required` popup only; the Combobox needs an explicit check.
+  const [modelError, setModelError] = useState('');
 
   // ---- Queries ----
 
@@ -212,6 +215,7 @@ export default function StockAlertsPage() {
 
   const resetForm = () => {
     setForm({ brand: '', model: '', storage: '', category: 'PHONE_NEW', branchId: '', minQuantity: '1', reorderQuantity: '5' });
+    setModelError('');
   };
 
   // ---- Table Columns ----
@@ -574,6 +578,10 @@ export default function StockAlertsPage() {
                 },
               });
             } else {
+              if (!form.model) {
+                setModelError('กรุณาเลือกรุ่น');
+                return;
+              }
               createMutation.mutate(form);
             }
           }}
@@ -610,21 +618,28 @@ export default function StockAlertsPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label htmlFor={`${uiFieldId}-3`} className="block text-sm font-medium text-foreground mb-3">รุ่น</label>
-                  <NativeSelect id={`${uiFieldId}-3`}
+                  <Combobox
+                    id={`${uiFieldId}-3`}
                     value={form.model}
-                    onChange={(e) => {
-                      const modelName = e.target.value;
+                    onChange={(modelName) => {
+                      setModelError('');
+                      // A native select fired no change for the same option — keep the storage.
+                      if (modelName === form.model) return;
                       const info = form.brand ? getModelInfo(form.brand, modelName) : undefined;
                       setForm({ ...form, model: modelName, storage: '', category: info?.category || form.category });
                     }}
+                    options={form.brand ? getModels(form.brand, form.category).map((m) => ({ value: m.name, label: m.name })) : []}
+                    placeholder="-- เลือกรุ่น --"
                     required
+                    invalid={!!modelError}
+                    aria-describedby={modelError ? `${uiFieldId}-3-error` : undefined}
                     disabled={!form.brand}
-                  >
-                    <option value="">-- เลือกรุ่น --</option>
-                    {form.brand && getModels(form.brand, form.category).map((m) => (
-                      <option key={m.name} value={m.name}>{m.name}</option>
-                    ))}
-                  </NativeSelect>
+                  />
+                  {modelError && (
+                    <p id={`${uiFieldId}-3-error`} role="alert" className="mt-1 text-xs leading-snug text-destructive">
+                      {modelError}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label htmlFor={`${uiFieldId}-4`} className="block text-sm font-medium text-foreground mb-3">ความจุ (ไม่บังคับ)</label>

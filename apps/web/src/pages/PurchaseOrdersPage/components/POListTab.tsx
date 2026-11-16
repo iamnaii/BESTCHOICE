@@ -27,6 +27,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { formControlClass } from '@/components/ui/form-styles';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Combobox } from '@/components/ui/combobox';
 
 type PeriodFilter = '' | 'this-month' | 'last-month' | 'this-quarter' | 'this-year';
 
@@ -495,10 +496,20 @@ export function POListTab({
             { value: 'CANCELLED', label: 'ยกเลิก' },
           ]}
         />
-        <FilterSelect label="ผู้จัดจำหน่าย"
+        <Combobox
+          aria-label="ผู้จัดจำหน่าย"
           value={supplierFilter}
-          onChange={setSupplierFilter}
+          onChange={(value) => setSupplierFilter(value)}
           options={[{ value: '', label: 'ทุกผู้จัดจำหน่าย' }, ...suppliers.map((supplier) => ({ value: supplier.id, label: supplier.name }))]}
+          className="shadow-none"
+          // A long unbroken supplier name wraps inside the menu (po-filters.audit-spec.ts); renderOption
+          // replaces the whole row, so it draws the mark on the current value itself.
+          renderOption={(option, { selected }) => (
+            <>
+              <span className="min-w-0 flex-1 whitespace-normal break-words leading-snug">{option.label}</span>
+              {selected && <Check aria-hidden="true" className="ml-auto size-4 shrink-0 text-primary!" />}
+            </>
+          )}
         />
         <FilterSelect label="ช่วงเวลา"
           value={periodFilter}

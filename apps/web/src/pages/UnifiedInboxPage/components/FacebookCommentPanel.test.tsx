@@ -1,7 +1,9 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { it, expect, vi, beforeEach } from 'vitest';
 import FacebookCommentPanel, { canReplyPublic } from './FacebookCommentPanel';
+import { pickComboOption } from '@/test/combobox';
 const mocks = vi.hoisted(() => ({ api: { get: vi.fn(), post: vi.fn(), patch: vi.fn() } }));
 vi.mock('@/lib/api', () => ({
   default: mocks.api,
@@ -148,4 +150,67 @@ it('can request the authoritative root when only a child was received', async ()
   fireEvent.click(await screen.findByRole('button', { name: 'ตรวจคอมเมนต์ต้นทางจาก Meta' }));
   await waitFor(() => expect(mocks.api.post).toHaveBeenCalledWith('/staff-chat/facebook-comments/thread/refresh-root', {}, { params: { company: 'SHOP' } }));
   await screen.findByText('ยังตรวจยืนยันคอมเมนต์ต้นทางไม่ได้ กรุณาลองอีกครั้ง');
+});
+
+it('saves the assignee only when a different person is picked — never on open, search or re-pick (R2-4a)', async () => {
+  const user = userEvent.setup();
+  mocks.api.get.mockImplementation((url: string) =>
+    Promise.resolve({
+      data: url.endsWith('eligible-staff')
+        ? [{ id: 'staff-000001', name: 'เมย์', role: 'SALES' }]
+        : fixture,
+    }),
+  );
+  mocks.api.patch.mockResolvedValue({ data: {} });
+  view();
+  await screen.findByText('ราคาเท่าไร');
+  const assignee = screen.getByRole('combobox', { name: 'ผู้รับผิดชอบคอมเมนต์' });
+  expect(assignee).toHaveTextContent('ยังไม่มีผู้รับผิดชอบ');
+  await waitFor(() =>
+    expect(mocks.api.get).toHaveBeenCalledWith(
+      '/staff-chat/facebook-comments/thread/eligible-staff',
+      expect.anything(),
+    ),
+  );
+
+  await user.click(assignee);
+  await user.keyboard('เมย์');
+  await user.keyboard('{Escape}');
+  expect(mocks.api.patch).not.toHaveBeenCalled();
+
+  await pickComboOption(user, 'ผู้รับผิดชอบคอมเมนต์', 'ยังไม่มีผู้รับผิดชอบ');
+  expect(mocks.api.patch).not.toHaveBeenCalled();
+
+  await pickComboOption(user, 'ผู้รับผิดชอบคอมเมนต์', 'เมย์ · SALES · 000001', { search: 'เมย์' });
+  await waitFor(() =>
+    expect(mocks.api.patch).toHaveBeenCalledExactlyOnceWith(
+      '/staff-chat/facebook-comments/thread/assign',
+      { expectedRevision: 1, assigneeId: 'staff-000001' },
+      { params: { company: 'SHOP' } },
+    ),
+  );
+});
+
+it('shows a former assignee outside the eligible list and clears to null (R2-4a)', async () => {
+  const user = userEvent.setup();
+  mocks.api.get.mockImplementation((url: string) =>
+    Promise.resolve({
+      data: url.endsWith('eligible-staff') ? [] : { ...fixture, assigneeId: 'gone-123456' },
+    }),
+  );
+  mocks.api.patch.mockResolvedValue({ data: {} });
+  view();
+  await screen.findByText('ราคาเท่าไร');
+  const assignee = screen.getByRole('combobox', { name: 'ผู้รับผิดชอบคอมเมนต์' });
+  await waitFor(() => expect(assignee).toHaveTextContent('ผู้รับเดิม · ต้องตรวจสิทธิ์'));
+
+  await pickComboOption(user, 'ผู้รับผิดชอบคอมเมนต์', 'ยังไม่มีผู้รับผิดชอบ');
+
+  await waitFor(() =>
+    expect(mocks.api.patch).toHaveBeenCalledExactlyOnceWith(
+      '/staff-chat/facebook-comments/thread/assign',
+      { expectedRevision: 1, assigneeId: null },
+      { params: { company: 'SHOP' } },
+    ),
+  );
 });

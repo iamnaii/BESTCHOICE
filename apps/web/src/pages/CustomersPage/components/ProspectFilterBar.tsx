@@ -1,6 +1,7 @@
 import { Search } from 'lucide-react';
 import { PROSPECT_SOURCES } from '@installment/shared';
 import ResponsiveFilterPanel from '@/components/ui/ResponsiveFilterPanel';
+import { Combobox } from '@/components/ui/combobox';
 import { customerCreditStatusMap } from '@/lib/status-badges';
 import FilterSelect, { type FilterOption } from './FilterSelect';
 import { SOURCE_LABELS } from './sourceLabels';
@@ -127,18 +128,22 @@ export default function ProspectFilterBar({
             },
           ]}
         />
-        <FilterSelect
-          ariaLabel="ผู้ดูแล"
-          placeholder="ทุกคน"
-          width={130}
+        {/* The only searchable filter here (staff list up to 200) — the siblings stay FilterSelect.
+            '' = ทุกคน, so FilterSelect's ALL sentinel is not needed. */}
+        <Combobox
+          aria-label="ผู้ดูแล"
           value={owner}
-          onChange={(value) => setFilters({ owner: value })}
-          groups={[
-            { options: [{ value: UNASSIGNED, label: 'ยังไม่มีผู้ดูแล' }] },
-            ...(staff.length > 0
-              ? [{ label: 'พนักงาน', options: staff.map((s) => ({ value: s.id, label: s.name })) }]
-              : []),
+          // A re-pick of the current owner keeps the page (FilterSelect fired no change).
+          onChange={(value) => {
+            if (value !== owner) setFilters({ owner: value });
+          }}
+          options={[
+            { value: '', label: 'ทุกคน' },
+            { value: UNASSIGNED, label: 'ยังไม่มีผู้ดูแล' },
+            ...staff.map((s) => ({ value: s.id, label: s.name, group: 'พนักงาน' })),
           ]}
+          placeholder="ทุกคน"
+          wrapperClassName="max-w-[130px]"
         />
       </div>
     </ResponsiveFilterPanel>

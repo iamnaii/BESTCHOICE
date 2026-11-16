@@ -153,7 +153,8 @@ describe('Field audit across other admin pages',()=>{
    try {
     await p.goto(web.origin+'/customers',{waitUntil:'networkidle'});
     await p.getByRole('button',{name:/เพิ่มลูกค้าใหม่/}).first().click();
-    const dialog=p.getByRole('dialog');
+    // Named: an open Combobox list is a second, portalled layer on the page.
+    const dialog=p.getByRole('dialog',{name:'เพิ่มลูกค้าใหม่'});
     await dialog.getByRole('button',{name:'บันทึก',exact:true}).click();
     const name=dialog.locator('input[name="firstName"]');
     await browserExpect(name).toHaveAttribute('aria-invalid','true');
@@ -169,31 +170,45 @@ describe('Field audit across other admin pages',()=>{
     const subdistrict=dialog.getByRole('combobox',{name:'ตำบล/แขวง *',exact:true}).first();
     const postal=dialog.getByLabel('รหัสไปรษณีย์',{exact:true}).first();
     await browserExpect(district).toBeDisabled();
-    await province.click(); await province.fill('กรุงเทพ');
-    await province.press('ArrowDown'); await province.press('Enter');
-    await browserExpect(province).toHaveValue('กรุงเทพมหานคร');
-    await district.click(); await district.fill('พระนคร');
-    await district.press('ArrowDown'); await district.press('Enter');
-    await subdistrict.click(); await subdistrict.press('ArrowDown'); await subdistrict.press('Enter');
-    await browserExpect(postal).not.toHaveValue('');
-    // Pointer selection must reopen on the same focused input; changing province resets dependents.
-    await province.click(); await province.fill('เชียงใหม่');
-    await dialog.getByRole('option',{name:'เชียงใหม่',exact:true}).click();
-    await browserExpect(district).toHaveValue('');
+    // Combobox (R2-2): the trigger is a button; a click opens the list and focuses its search box,
+    // typing filters and highlights the first match, Enter picks it. The shown value is the text.
+    await province.click(); await browserExpect(p.getByRole('combobox',{name:'ค้นหาจังหวัด'})).toBeFocused();
+    await p.keyboard.type('กรุงเทพ'); await p.keyboard.press('Enter');
+    await browserExpect(province).toHaveText('กรุงเทพมหานคร');
+    await district.click(); await browserExpect(p.getByRole('combobox',{name:'ค้นหาอำเภอ/เขต'})).toBeFocused();
+    await p.keyboard.type('พระนคร'); await p.keyboard.press('Enter');
+    await browserExpect(district).toHaveText('เขตพระนคร');
+    await subdistrict.click(); await browserExpect(p.getByRole('combobox',{name:'ค้นหาตำบล/แขวง'})).toBeFocused();
+    await p.keyboard.type('พระบรม'); await p.keyboard.press('Enter');
+    await browserExpect(subdistrict).toHaveText('แขวงพระบรมมหาราชวัง');
+    await browserExpect(postal).toHaveValue('10200');
+    // A click reopens the list after a pick; changing province resets dependents. The list is
+    // portalled to <body>, so its options are found on the page, not inside the dialog.
+    await province.click(); await browserExpect(p.getByRole('combobox',{name:'ค้นหาจังหวัด'})).toBeFocused();
+    await p.keyboard.type('เชียงใหม่');
+    await p.getByRole('option',{name:'เชียงใหม่',exact:true}).click();
+    await browserExpect(province).toHaveText('เชียงใหม่');
+    await browserExpect(district).toHaveText('-- เลือกอำเภอ/เขต --');
     await browserExpect(subdistrict).toBeDisabled();
     await browserExpect(postal).toHaveValue('');
+    // First Escape closes only the list. Focus is in the list's search box, so press on the page.
     await province.click(); await browserExpect(province).toHaveAttribute('aria-expanded','true');
-    await province.press('Escape'); await browserExpect(dialog).toBeVisible();
+    await p.keyboard.press('Escape');
+    await browserExpect(province).toHaveAttribute('aria-expanded','false');
+    await browserExpect(dialog).toBeVisible();
     await dialog.getByRole('button',{name:'ยกเลิก',exact:true}).click();
     await p.getByRole('button',{name:/เพิ่มลูกค้าใหม่/}).first().click();
     await browserExpect(p.locator('input[name="firstName"]')).toHaveValue('');
 
     await p.goto(web.origin+'/products/create',{waitUntil:'networkidle'});
     await p.getByLabel('ยี่ห้อ *',{exact:true}).selectOption({label:'Apple'});
-    await browserExpect(p.getByLabel('รุ่น *',{exact:true})).toBeEnabled();
-    const model=p.getByLabel('รุ่น *',{exact:true});
-    const modelValue=await model.locator('option').nth(1).getAttribute('value');
-    expect(modelValue).toBeTruthy(); await model.selectOption(modelValue!);
+    const model=p.getByRole('combobox',{name:'รุ่น *',exact:true});
+    await browserExpect(model).toBeEnabled();
+    await model.click();
+    const firstModel=p.locator('[data-slot=combobox-content]').getByRole('option').first();
+    const modelName=(await firstModel.innerText()).trim();
+    expect(modelName).toBeTruthy(); await firstModel.click();
+    await browserExpect(model).toContainText(modelName);
     await p.getByLabel('ประเภท *',{exact:true}).selectOption('ACCESSORY');
     await p.getByLabel('ประเภทอุปกรณ์ *',{exact:true}).selectOption('ชุดชาร์จ');
     await p.getByLabel('ชนิด *',{exact:true}).selectOption('Type-C');

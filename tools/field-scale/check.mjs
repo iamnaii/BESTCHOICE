@@ -1,8 +1,9 @@
 // Field-scale check (spec docs/superpowers/specs/2026-11-14-dropdown-search-field-scale-design.md §5).
 // Runs the field collector (tools/typography-audit/collect.js → window.__collectFields) and evaluateFields
 // (rules F1–F4, tools/typography-audit/rules.mjs) on every screen in tools/field-scale/routes.mjs against
-// this checkout's local preview, at each width × theme. On the other-income screens it also opens the
-// account menu and records whether it is clipped (S2-01 / S2-02 → rule MENU, P1).
+// this checkout's local preview, at each width × theme. On the screens with probes it also opens a menu
+// and records whether it is clipped (the account menu S2-01 / S2-02, Round 2's GL / booking / inbox
+// menus → rule MENU, P1).
 //   node tools/field-scale/check.mjs --label <name> [--routes <id,id>] [--widths 1440,1024,390] [--themes light,dark]
 //     → .tmp/field-scale/<name>/{results.json, report.md, <route>-<width>-<theme>.png}
 //   node tools/field-scale/check.mjs --compare <baselineLabel> <label>
@@ -12,7 +13,8 @@
 // only when it shows the asked-for path, no error fallback and at least one measured field (screenProblem).
 // Prerequisite: npm run local:preview before EVERY measuring run — the preview fingerprints apps/, packages/
 // and tools/, so any source edit makes it stale and a stale preview is refused (exit 2); local:preview
-// restarts it. Read-only: mocks answer GETs; open steps never save.
+// restarts it. Read-only: mocks answer GETs (and quote-only POSTs); open steps never save; a route with
+// blockWrites aborts every other non-GET request (results.json lists them per cell as blockedWrites).
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -29,6 +31,7 @@ import {
   parseAllow,
   parseArgs,
   renderReport,
+  routeRequest,
   screenProblem,
   selectRoutes,
   summarize,
@@ -67,22 +70,31 @@ async function previewContext(port, info) {
     me,
     customerId: customers?.data?.[0]?.id ?? null,
     contractPath: info?.documentUrl ? new URL(info.documentUrl).pathname : null,
+    // the synthetic SHOP chat room (same one menu-clip-components.mjs opens) — the Round 2 inbox routes
+    shopRoomId: info?.chatWorkRooms?.SHOP ?? null,
   };
 }
 
 async function installNetwork(page, route, ctx, cell) {
   const mocks = [...COMMON_MOCKS, ...route.mocks];
   const mocked = new Set();
+  const blocked = new Set();
   const errors = new Map();
   await page.routeWebSocket('**/socket.io/**', (socket) => socket.close());
   await page.route((url) => url.pathname.startsWith('/api/'), async (r) => {
     const request = r.request();
     const url = new URL(request.url());
     const path = apiPathOf(url);
-    const found = request.method() === 'GET' ? mocks.find((m) => m.path.test(path)) : undefined;
-    if (!found) return r.fallback();
-    mocked.add(path);
-    return r.fulfill({ json: await found.json(url, ctx) });
+    const decision = routeRequest(route, mocks, request.method(), path);
+    if (decision.action === 'mock') {
+      mocked.add(path);
+      return r.fulfill({ json: await decision.mock.json(url, ctx) });
+    }
+    if (decision.action === 'block') {
+      blocked.add(`${request.method()} ${path}`);
+      return r.abort();
+    }
+    return r.fallback();
   });
   page.on('response', (res) => {
     const url = new URL(res.url());
@@ -92,6 +104,7 @@ async function installNetwork(page, route, ctx, cell) {
   });
   return () => {
     cell.mocked = [...mocked].sort();
+    cell.blockedWrites = [...blocked].sort();
     cell.apiErrors = [...errors.values()];
   };
 }
@@ -100,9 +113,15 @@ async function runMenuProbe(page, probe, screenshotPath) {
   try {
     const trigger = probe.trigger(page);
     await trigger.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+    // Held before the click: a modal Radix menu (Select) hides everything else from the accessibility
+    // tree once open, so a role-based locator no longer finds its own trigger.
+    const handle = await trigger.elementHandle();
     await trigger.click();
     await page.waitForTimeout(300);
-    const geometry = await page.evaluate(readMenuGeometry, MENU_SEARCH_LABEL);
+    const geometry =
+      probe.menu === 'controls'
+        ? await handle.evaluate(readMenuGeometry)
+        : await page.evaluate(readMenuGeometry, MENU_SEARCH_LABEL);
     await page.screenshot({ path: screenshotPath, animations: 'disabled' });
     await page.keyboard.press('Escape');
     return { id: probe.id, ...menuClipVerdict(geometry), geometry };
@@ -126,7 +145,7 @@ function readErrorFallback() {
 async function measureCell(browser, route, width, theme, ctx, outDir) {
   const cell = {
     route: route.id, path: null, width, theme, status: 'rendered', finalPath: null, openError: null, error: null,
-    factCount: 0, screenshot: null, mocked: [], apiErrors: [], findings: [], probes: [],
+    factCount: 0, screenshot: null, mocked: [], blockedWrites: [], apiErrors: [], findings: [], probes: [],
   };
   const context = await browser.newContext({ viewport: viewportFor(width), reducedMotion: 'reduce' });
   await context.addInitScript((value) => {

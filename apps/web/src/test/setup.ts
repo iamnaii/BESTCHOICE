@@ -42,3 +42,16 @@ if (typeof window.matchMedia !== 'function') {
     dispatchEvent: () => true,
   });
 }
+
+// jsdom has no Element.scrollIntoView. cmdk (Combobox, CommandPalette, the cmdk pickers) calls it
+// on the highlighted row when a list opens and on every keyboard move, and throws without it.
+// A writable, configurable no-op on Element.prototype: test files that install their own on
+// HTMLElement.prototype (no-ops or vi.fn() spies) shadow it, and their restore (defineProperty
+// back / Reflect.deleteProperty) falls back to this one.
+if (typeof Element.prototype.scrollIntoView !== 'function') {
+  Object.defineProperty(Element.prototype, 'scrollIntoView', {
+    configurable: true,
+    writable: true,
+    value: function scrollIntoView() {},
+  });
+}

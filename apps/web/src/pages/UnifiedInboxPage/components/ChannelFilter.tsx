@@ -10,7 +10,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
+import { Combobox, type ComboOption } from '@/components/ui/combobox';
+import { formLabelClass } from '@/components/ui/form-styles';
 
 const TABS = [
   { key: 'waiting', label: 'รอตอบ' },
@@ -34,7 +35,6 @@ export interface StaffOption {
 }
 
 const ALL = '__all__';
-const FREE = '__free__';
 
 interface FilterValues {
   channel: string | null;
@@ -164,6 +164,16 @@ export default function ChannelFilter({
   ];
   const unknownOwner =
     draftWho !== 'all' && draftWho !== 'free' && !staff.some((person) => person.id === draftWho);
+  // The owner values are the WhoFilter strings themselves ('all' / 'free' / a staff id) —
+  // the old '__all__' / '__free__' existed only because a Radix Select item cannot hold ''.
+  const ownerOptions: ComboOption[] = [
+    { value: 'all', label: mineTab ? 'คุณ · มุมมองของฉัน' : 'ทุกคน' },
+    { value: 'free', label: 'ยังไม่มีผู้ดูแล' },
+    ...staff.map((person) => ({
+      value: person.id,
+      label: `${person.name}${person.id === currentUserId ? ' (คุณ)' : ''}`,
+    })),
+  ];
 
   return (
     <Dialog
@@ -235,43 +245,21 @@ export default function ChannelFilter({
             </div>
           </fieldset>
           <div className="mt-6">
-            <label
-              id={`${id}-owner-label`}
-              htmlFor={`${id}-owner`}
-              className="mb-3 block text-sm font-medium"
-            >
+            <label id={`${id}-owner-label`} htmlFor={`${id}-owner`} className={formLabelClass}>
               ผู้ดูแล
             </label>
-            <Select
-              value={
-                mineTab ? ALL : draftWho === 'all' ? ALL : draftWho === 'free' ? FREE : draftWho
-              }
-              onValueChange={(value) =>
-                setDraftWho(value === ALL ? 'all' : value === FREE ? 'free' : value)
+            <Combobox
+              id={`${id}-owner`}
+              aria-labelledby={`${id}-owner-label`}
+              value={mineTab ? 'all' : draftWho}
+              onChange={(value) => setDraftWho(value)}
+              options={ownerOptions}
+              selectedOption={unknownOwner ? { value: draftWho, label: 'ผู้ดูแลที่เลือก' } : null}
+              renderValue={() =>
+                mineTab ? 'คุณ · มุมมองของฉัน' : ownerLabel(draftWho, staff, currentUserId)
               }
               disabled={mineTab}
-            >
-              <SelectTrigger
-                id={`${id}-owner`}
-                aria-labelledby={`${id}-owner-label`}
-                className="w-full min-w-0"
-              >
-                <span className="truncate">
-                  {mineTab ? 'คุณ · มุมมองของฉัน' : ownerLabel(draftWho, staff, currentUserId)}
-                </span>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>{mineTab ? 'คุณ · มุมมองของฉัน' : 'ทุกคน'}</SelectItem>
-                <SelectItem value={FREE}>ยังไม่มีผู้ดูแล</SelectItem>
-                {unknownOwner && <SelectItem value={draftWho}>ผู้ดูแลที่เลือก</SelectItem>}
-                {staff.map((person) => (
-                  <SelectItem key={person.id} value={person.id}>
-                    {person.name}
-                    {person.id === currentUserId ? ' (คุณ)' : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            />
           </div>
           <div className="inbox-filter-actions">
             <Button

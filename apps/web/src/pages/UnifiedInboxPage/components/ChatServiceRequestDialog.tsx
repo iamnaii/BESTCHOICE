@@ -1,15 +1,15 @@
 import { NativeSelect } from '@/components/ui/native-select';
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
+import { Combobox, type ComboOption } from '@/components/ui/combobox';
+import { formControlClass, formLabelClass, formTextareaClass } from '@/components/ui/form-styles';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useChatWorkSettings } from '../hooks/useChatWork';
 import { bangkokInstant } from './chat-work-time';
-const field =
-  'mt-1 min-h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm';
 type Choice = { id: string; kind: 'SALE' | 'CONTRACT' | 'MESSAGE'; label: string };
 export default function ChatServiceRequestDialog({
   roomId,
@@ -22,6 +22,7 @@ export default function ChatServiceRequestDialog({
 }) {
   const work = useChatWorkSettings(),
     client = useQueryClient();
+  const uid = useId();
   const [symptom, setSymptom] = useState(''),
     [assignee, setAssignee] = useState(''),
     [due, setDue] = useState(''),
@@ -83,6 +84,12 @@ export default function ChatServiceRequestDialog({
       }
     },
   });
+  const staffOptions: ComboOption[] = staff.isError
+    ? []
+    : (staff.data ?? []).map((s) => ({
+        value: s.id,
+        label: s.detail ? `${s.name} ${s.detail}` : s.name,
+      }));
   return (
     <Dialog open onOpenChange={(o) => !o && !create.isPending && onClose()}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
@@ -96,10 +103,13 @@ export default function ChatServiceRequestDialog({
           }}
         >
           <fieldset disabled={!!submitted || create.isPending} className="min-w-0 space-y-4">
-            <label className="block">
-              อาการที่ลูกค้าแจ้ง
+            <div>
+              <label htmlFor={`${uid}-symptom`} className={formLabelClass}>
+                อาการที่ลูกค้าแจ้ง
+              </label>
               <textarea
-                className={field}
+                id={`${uid}-symptom`}
+                className={formTextareaClass}
                 value={symptom}
                 required
                 minLength={5}
@@ -107,35 +117,35 @@ export default function ChatServiceRequestDialog({
                 rows={3}
                 onChange={(e) => setSymptom(e.target.value)}
               />
-            </label>
+            </div>
             <div className="grid min-w-0 gap-3 sm:grid-cols-2">
-              <label className="block min-w-0">
-                ผู้รับผิดชอบ
-                <NativeSelect wrapperClassName="max-w-full mt-1 w-full min-w-0"
-                  className={`${field} mt-0`}
+              <div className="min-w-0">
+                <label htmlFor={`${uid}-assignee`} className={formLabelClass}>
+                  ผู้รับผิดชอบ
+                </label>
+                <Combobox
+                  id={`${uid}-assignee`}
                   required
                   value={assignee}
-                  onChange={(e) => setAssignee(e.target.value)}
-                >
-                  <option value="">เลือกผู้ติดตาม</option>
-                  {!staff.isError &&
-                    staff.data?.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name} {s.detail}
-                      </option>
-                    ))}
-                </NativeSelect>
-              </label>
-              <label className="block min-w-0">
-                นัดติดตาม (เวลาไทย)
+                  onChange={(value) => setAssignee(value)}
+                  options={staffOptions}
+                  placeholder="เลือกผู้ติดตาม"
+                  loading={staff.isLoading}
+                />
+              </div>
+              <div className="min-w-0">
+                <label htmlFor={`${uid}-due`} className={formLabelClass}>
+                  นัดติดตาม (เวลาไทย)
+                </label>
                 <input
+                  id={`${uid}-due`}
                   type="datetime-local"
-                  className={field}
+                  className={formControlClass}
                   value={due}
                   required
                   onChange={(e) => setDue(e.target.value)}
                 />
-              </label>
+              </div>
             </div>
             {staff.isError && (
               <p role="alert">
@@ -154,10 +164,13 @@ export default function ChatServiceRequestDialog({
                   เลือกจากหลักฐานของลูกค้าที่ผูกกับห้องนี้ หากยังไม่ทราบเครื่อง
                   สามารถรับเรื่องก่อนได้
                 </p>
-                <label className="block">
-                  ประเภทข้อมูล
-                  <NativeSelect wrapperClassName="max-w-full mt-1 w-full min-w-0"
-                    className={`${field} mt-0`}
+                <div>
+                  <label htmlFor={`${uid}-kind`} className={formLabelClass}>
+                    ประเภทข้อมูล
+                  </label>
+                  <NativeSelect
+                    id={`${uid}-kind`}
+                    wrapperClassName="max-w-full w-full min-w-0"
                     value={kind}
                     onChange={(e) => {
                       setKind(e.target.value as Choice['kind']);
@@ -169,11 +182,14 @@ export default function ChatServiceRequestDialog({
                     <option value="CONTRACT">สัญญา / เครื่อง</option>
                     <option value="MESSAGE">ข้อความในแชท</option>
                   </NativeSelect>
-                </label>
-                <label className="block">
-                  ค้นหาข้อมูลอ้างอิง
+                </div>
+                <div>
+                  <label htmlFor={`${uid}-search`} className={formLabelClass}>
+                    ค้นหาข้อมูลอ้างอิง
+                  </label>
                   <input
-                    className={field}
+                    id={`${uid}-search`}
+                    className={formControlClass}
                     value={search}
                     maxLength={100}
                     onChange={(e) => {
@@ -182,7 +198,7 @@ export default function ChatServiceRequestDialog({
                     }}
                     placeholder={kind === 'MESSAGE' ? 'คำในข้อความ' : 'รุ่น, IMEI หรือเลขเอกสาร'}
                   />
-                </label>
+                </div>
                 {options.isError ? (
                   <p role="alert">
                     โหลดข้อมูลไม่ได้{' '}

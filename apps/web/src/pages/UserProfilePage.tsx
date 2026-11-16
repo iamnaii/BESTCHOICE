@@ -8,13 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Combobox } from '@/components/ui/combobox';
 import { CashAccountSelect } from '@/components/CashAccountSelect';
 
 interface PbxExtension {
@@ -42,6 +36,12 @@ export default function UserProfilePage() {
   });
 
   const pbxExtensions = pbxQuery.data ?? [];
+  const extensionOptions = pbxExtensions.map((e) => ({ value: e.number, label: `${e.number} — ${e.name}` }));
+  // A saved extension the PBX no longer lists still shows its number (Radix showed an empty field).
+  const unlistedExtension =
+    yeastarExtension && !pbxExtensions.some((e) => e.number === yeastarExtension)
+      ? { value: yeastarExtension, label: yeastarExtension }
+      : null;
 
   const saveExtensionMutation = useMutation({
     mutationFn: (extension: string) => api.patch('/users/me/extension', { extension }),
@@ -132,18 +132,15 @@ export default function UserProfilePage() {
                   Extension Yeastar (โทรศัพท์)
                 </label>
                 <div className="flex flex-col sm:flex-row gap-2">
-                  <Select value={yeastarExtension} onValueChange={setYeastarExtension}>
-                    <SelectTrigger id={`${uiFieldId}-1`} className="w-full min-w-0 sm:flex-1">
-                      <SelectValue placeholder="เลือก extension" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {pbxExtensions.map((e) => (
-                        <SelectItem key={e.number} value={e.number}>
-                          {e.number} — {e.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Combobox
+                    id={`${uiFieldId}-1`}
+                    value={yeastarExtension}
+                    onChange={(value) => setYeastarExtension(value)}
+                    options={extensionOptions}
+                    selectedOption={unlistedExtension}
+                    placeholder="เลือก extension"
+                    wrapperClassName="w-full min-w-0 sm:flex-1"
+                  />
                   <Button
                     size="sm"
                     onClick={() => saveExtensionMutation.mutate(yeastarExtension)}

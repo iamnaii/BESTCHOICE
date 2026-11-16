@@ -1,8 +1,8 @@
 // apps/web/src/components/expense-form-v4/__tests__/ExpenseFormV4.round2.test.tsx
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   chooseCreditNoteStandalone, chooseKind, fillCreditNoteReason, fillExpenseLine, fillPettyCashLine, pickCreditNoteSource, saveDraft, waitForSettlementDoc,
@@ -230,6 +230,40 @@ describe('ใบลดหนี้ — รับเงินคืนเข้�
     await chooseKind(user, 'CREDIT_NOTE');
     await chooseCreditNoteStandalone(user);
     expect(screen.queryByRole('region', { name: 'รับเงินคืนเข้า' })).not.toBeInTheDocument();
+  });
+
+  it('เลือกเอกสารต้นฉบับแล้วโฟกัสไปที่การ์ดเอกสารที่เลือก · กด เปลี่ยน แล้วโฟกัสกลับช่องค้นหา', async () => {
+    const user = mount();
+    await chooseKind(user, 'CREDIT_NOTE');
+    await pickCreditNoteSource(user, 'EX-0', /EX-001/);
+    const card = await screen.findByRole('group', { name: 'เอกสารต้นฉบับที่เลือก EX-001' });
+    expect(card).toHaveFocus();
+    await user.click(within(card).getByRole('button', { name: 'เปลี่ยน' }));
+    expect(screen.getByLabelText('ค้นหาเลข EX-... / ผู้ขาย (3 ตัวขึ้นไป)')).toHaveFocus();
+  });
+
+  it('ผลค้นหาโหลดใหม่ (กลับมาที่หน้าต่าง) แล้วไม่มีเอกสารนั้น — การ์ดและแถว รับเงินคืนเข้า ยังอยู่', async () => {
+    const user = mount();
+    await chooseKind(user, 'CREDIT_NOTE');
+    await pickCreditNoteSource(user, 'EX-0', /EX-001/);
+    await screen.findByRole('region', { name: 'รับเงินคืนเข้า' });
+    const searchCalls = () => apiGet.mock.calls.filter((c) => String(c[0]).includes('search=')).length;
+    const before = searchCalls();
+    const base = apiGet.getMockImplementation()!;
+    apiGet.mockImplementation((path: string) =>
+      path.startsWith('/expense-documents?') && path.includes('search=')
+        ? Promise.resolve({ data: { data: [] } })
+        : base(path),
+    );
+    try {
+      act(() => focusManager.setFocused(false));
+      act(() => focusManager.setFocused(true));
+      await waitFor(() => expect(searchCalls()).toBeGreaterThan(before));
+      expect(screen.getByRole('group', { name: 'เอกสารต้นฉบับที่เลือก EX-001' })).toBeInTheDocument();
+      expect(screen.getByRole('region', { name: 'รับเงินคืนเข้า' })).toBeInTheDocument();
+    } finally {
+      focusManager.setFocused(undefined);
+    }
   });
 });
 

@@ -1,4 +1,4 @@
-import { NativeSelect } from '@/components/ui/native-select';
+import { Combobox, type ComboOption } from '@/components/ui/combobox';
 import { ListTodo, Clock, CalendarDays, AlertCircle, CheckCircle2, Search, User as UserIcon } from 'lucide-react';
 import { type TodoView, type AssigneeRef } from '../types';
 
@@ -32,6 +32,15 @@ export function TodoFilters({
   assigneeFilter = '',
   onAssigneeFilterChange,
 }: TodoFiltersProps) {
+  const assigneeOptions: ComboOption[] = [
+    { value: '', label: 'ผู้รับมอบหมายทั้งหมด' },
+    { value: 'me', label: 'งานของฉัน' },
+    ...staffUsers.map((u) => ({
+      value: u.id,
+      label: u.nickname || u.name,
+      keywords: u.nickname ? [u.name] : undefined,
+    })),
+  ];
   return (
     <>
       {/* Tabs (pill style) */}
@@ -77,21 +86,21 @@ export function TodoFilters({
         </div>
 
         {onAssigneeFilterChange && (
-          <div className="min-w-0 w-full sm:w-auto">
-            <NativeSelect wrapperClassName="max-w-full w-auto"
+          <div className="min-w-0 w-full sm:w-56">
+            <Combobox
               aria-label="ผู้รับมอบหมาย"
-              leadingIcon={<UserIcon />}
               value={assigneeFilter}
-              onChange={(e) => onAssigneeFilterChange(e.target.value)}
-            >
-              <option value="">ผู้รับมอบหมายทั้งหมด</option>
-              <option value="me">งานของฉัน</option>
-              {staffUsers.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.nickname || u.name}
-                </option>
-              ))}
-            </NativeSelect>
+              onChange={(value) => onAssigneeFilterChange(value)}
+              options={assigneeOptions}
+              // An ?assigneeId outside the list: the native select showed its first option.
+              placeholder="ผู้รับมอบหมายทั้งหมด"
+              renderValue={(option) => (
+                <span className="flex min-w-0 items-center gap-3">
+                  <UserIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="truncate">{option.label}</span>
+                </span>
+              )}
+            />
           </div>
         )}
       </div>

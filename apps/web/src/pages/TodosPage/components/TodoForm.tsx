@@ -1,4 +1,4 @@
-import { NativeSelect } from '@/components/ui/native-select';
+import { Combobox, type ComboOption } from '@/components/ui/combobox';
 import { cn } from '@/lib/utils';
 import { bangkokInput, bangkokInstant } from '@/pages/UnifiedInboxPage/components/chat-work-time';
 import { getRequestCompany } from '@/lib/company-scope';
@@ -317,6 +317,25 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
   const removeChecklist = (id: string) =>
     setForm({ ...form, checklist: (form.checklist || []).filter((c) => c.id !== id) });
 
+  const assigneeList = roomId ? (eligible.data ?? []) : staffUsers;
+  const assigneeOptions: ComboOption[] = [
+    { value: '', label: 'ไม่ระบุ' },
+    ...assigneeList.map((u) => ({
+      value: u.id,
+      label: u.nickname || u.name,
+      keywords: u.nickname ? [u.name] : undefined,
+    })),
+  ];
+  // Editing a todo whose assignee is not in this list (e.g. GET /users is OWNER-only): show the
+  // saved assignee's name instead of the native select's first row. The id is sent unchanged.
+  const assigneeFallback: ComboOption | null =
+    form.assigneeId &&
+    editing?.assigneeId === form.assigneeId &&
+    editing.assignee &&
+    !assigneeList.some((u) => u.id === form.assigneeId)
+      ? { value: form.assigneeId, label: editing.assignee.nickname || editing.assignee.name }
+      : null;
+
   return (
     <>
       {/* Create / Edit Dialog */}
@@ -453,17 +472,15 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
                   <UserIcon className="size-3.5" />
                   ผู้รับมอบหมาย
                 </label>
-                <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-4`}
+                <Combobox
+                  id={`${uiFieldId}-4`}
                   value={form.assigneeId || ''}
-                  onChange={(e) => setForm({ ...form, assigneeId: e.target.value })}
-                >
-                  <option value="">ไม่ระบุ</option>
-                  {(roomId ? eligible.data ?? [] : staffUsers).map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.nickname || u.name}
-                    </option>
-                  ))}
-                </NativeSelect>
+                  onChange={(value) => setForm({ ...form, assigneeId: value })}
+                  options={assigneeOptions}
+                  selectedOption={assigneeFallback}
+                  // an id outside the list with no saved name: the native select showed "ไม่ระบุ"
+                  placeholder="ไม่ระบุ"
+                />
               </div>
             </div>
 

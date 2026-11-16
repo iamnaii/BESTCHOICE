@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { Dialog, DialogContent, DialogTitle } from './dialog';
+import { openCombobox, pickComboOption } from '@/test/combobox';
 import AddressForm, {
   composeAddress,
   deserializeAddress,
@@ -406,5 +407,65 @@ describe('AddressForm — keyboard, Escape and pointer (SearchableSelect behavio
     await user.click(within(listbox).getByRole('option', { name: 'เชียงใหม่' }));
     expect(onChange).toHaveBeenLastCalledWith({ ...emptyAddress, province: 'เชียงใหม่' });
     expect(shown(field(PROVINCE))).toBe('เชียงใหม่');
+  });
+});
+
+describe('AddressForm on Combobox (R2-2)', () => {
+  it('strict: pickComboOption through province → district → subdistrict saves the whole address', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(<Host initial={{ ...emptyAddress, houseNo: '7' }} onChange={onChange} />);
+
+    await pickComboOption(user, PROVINCE, 'เชียงใหม่', { search: 'เชียงใ' });
+    await pickComboOption(user, DISTRICT, 'อำเภอเมืองเชียงใหม่', { search: 'เมือง' });
+    await pickComboOption(user, SUBDISTRICT, 'ตำบลหายยา', { search: 'หาย' });
+
+    expect(onChange).toHaveBeenCalledTimes(3);
+    expect(onChange).toHaveBeenLastCalledWith({
+      ...emptyAddress,
+      houseNo: '7',
+      province: 'เชียงใหม่',
+      district: 'อำเภอเมืองเชียงใหม่',
+      subdistrict: 'ตำบลหายยา',
+      postalCode: '50100',
+    });
+    expect(field(SUBDISTRICT)).toHaveTextContent('ตำบลหายยา');
+  });
+
+  it('search ranks districts and subdistricts by the name after the เขต/แขวง prefix; the full name still finds them', async () => {
+    const user = userEvent.setup();
+    render(<Host initial={BANGKOK} onChange={vi.fn()} />);
+
+    await openCombobox(user, DISTRICT);
+    const districtSearch = screen.getByRole('combobox', { name: 'ค้นหาอำเภอ/เขต' });
+    await user.type(districtSearch, 'วัฒนา');
+    expect(optionNames()).toEqual(['เขตวัฒนา', 'เขตทวีวัฒนา']);
+    await user.clear(districtSearch);
+    await user.type(districtSearch, 'เขตวัฒ');
+    expect(optionNames()).toEqual(['เขตวัฒนา']);
+    await user.keyboard('{Escape}');
+
+    await openCombobox(user, SUBDISTRICT);
+    await user.keyboard('วัง');
+    expect(optionNames()).toEqual(['แขวงวังบูรพาภิรมย์', 'แขวงพระบรมมหาราชวัง']);
+  });
+
+  it('opens a portalled list named per field, focuses its search box, and the trigger is a 44px form-control button', async () => {
+    const user = userEvent.setup();
+    const { container } = render(<Host initial={emptyAddress} onChange={vi.fn()} />);
+    const trigger = field(PROVINCE);
+
+    expect(trigger.tagName).toBe('BUTTON');
+    expect(trigger).toHaveAttribute('type', 'button');
+    expect(trigger).toHaveAttribute('aria-haspopup', 'listbox');
+    expect(trigger).toHaveClass('h-11', 'rounded-lg', 'border-input', 'bg-background');
+    expect(trigger).toHaveTextContent('-- เลือกจังหวัด --');
+    expect(container.querySelector('[data-inline-combobox]')).toBeNull();
+
+    const listbox = await openCombobox(user, PROVINCE);
+    expect(listbox).toHaveAccessibleName('รายชื่อจังหวัด');
+    expect(container).not.toContainElement(listbox);
+    expect(document.body).toContainElement(listbox);
+    expect(screen.getByRole('combobox', { name: 'ค้นหาจังหวัด' })).toHaveFocus();
   });
 });

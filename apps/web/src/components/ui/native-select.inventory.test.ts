@@ -47,7 +47,7 @@ function jsxTagsIn(file: string, source: string): string[] {
 }
 
 // Prevent one-off native fields from silently reintroducing the old browser arrow.
-// Custom Radix/SearchableSelect widgets keep their own accessible implementation.
+// Custom Radix/Combobox widgets keep their own accessible implementation.
 describe('shared native dropdown inventory', () => {
   it(
     'only renders raw single-choice selects inside the two app primitives',

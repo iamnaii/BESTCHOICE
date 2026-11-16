@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useId } from 'react';
 import { Input } from '@/components/ui/input';
+import { Combobox, type ComboOption } from '@/components/ui/combobox';
+import { filterAndRank } from '@/lib/thai-search';
 import { formControlClass, formLabelClass } from './form-styles';
-import SearchableSelect from '@/components/ui/SearchableSelect';
 
 // Lazy-loaded address data (loaded only when AddressForm mounts, ~400KB separate chunk)
 let cachedData: [string, string, string, string][] | null = null;
@@ -100,6 +101,30 @@ export function displayAddress(str: string | null | undefined): string {
   return str;
 }
 
+// District and subdistrict names keep their prefix in the data ("เขตพระนคร", "ตำบลศรีภูมิ").
+const ADDRESS_PREFIX = /^(อำเภอ|เขต|ตำบล|แขวง)/;
+
+/** Rank on the name without its prefix (typing "วัฒนา" lists "เขตวัฒนา" before "เขตทวีวัฒนา");
+ *  the full name stays a keyword, so "เขตวัฒ" still finds it. */
+function filterAddressOptions(options: ComboOption[], query: string): ComboOption[] {
+  const ranked = filterAndRank(
+    options.map((option, index) => ({
+      index,
+      label: option.label.replace(ADDRESS_PREFIX, ''),
+      keywords: [option.label],
+    })),
+    query,
+  );
+  return ranked.map((r) => options[r.index]);
+}
+
+const toOptions = (names: readonly string[]): ComboOption[] =>
+  names.map((name) => ({ value: name, label: name }));
+
+/** A stored name that is not in the list (card reader without prefix, OCR, old free text) still shows. */
+const outsideList = (names: readonly string[], current: string): ComboOption | null =>
+  current && !names.includes(current) ? { value: current, label: current } : null;
+
 interface Props {
   value: AddressData;
   onChange: (addr: AddressData) => void;
@@ -149,6 +174,11 @@ export default function AddressForm({ value, onChange, label }: Props) {
       .map(([, , s, z]) => ({ name: s, zipcode: z }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [addressData, selectedProvince, selectedDistrict]);
+
+  const subdistrictNames = useMemo(() => subdistricts.map((s) => s.name), [subdistricts]);
+  const provinceOptions = useMemo(() => toOptions(provinces), [provinces]);
+  const districtOptions = useMemo(() => toOptions(districts), [districts]);
+  const subdistrictOptions = useMemo(() => toOptions(subdistrictNames), [subdistrictNames]);
 
   const update = (field: keyof AddressData, val: string) => {
     onChange({ ...value, [field]: val });
@@ -237,40 +267,45 @@ export default function AddressForm({ value, onChange, label }: Props) {
         </div>
         <div>
           <label htmlFor={`${id}-province`} className={formLabelClass}>จังหวัด *</label>
-          <SearchableSelect
-            inputClassName={formControlClass}
+          <Combobox
             id={`${id}-province`}
             value={value.province}
             onChange={handleProvinceChange}
-            options={provinces}
+            options={provinceOptions}
+            selectedOption={outsideList(provinces, value.province)}
             placeholder="-- เลือกจังหวัด --"
-            openDirection="up"
+            searchLabel="ค้นหาจังหวัด"
+            listLabel="รายชื่อจังหวัด"
           />
         </div>
         <div>
           <label htmlFor={`${id}-district`} className={formLabelClass}>อำเภอ/เขต *</label>
-          <SearchableSelect
-            inputClassName={formControlClass}
+          <Combobox
             id={`${id}-district`}
             value={value.district}
             onChange={handleDistrictChange}
-            options={districts}
+            options={districtOptions}
+            selectedOption={outsideList(districts, value.district)}
+            filter={filterAddressOptions}
             placeholder="-- เลือกอำเภอ/เขต --"
+            searchLabel="ค้นหาอำเภอ/เขต"
+            listLabel="รายชื่ออำเภอ/เขต"
             disabled={!selectedProvince}
-            openDirection="up"
           />
         </div>
         <div>
           <label htmlFor={`${id}-subdistrict`} className={formLabelClass}>ตำบล/แขวง *</label>
-          <SearchableSelect
-            inputClassName={formControlClass}
+          <Combobox
             id={`${id}-subdistrict`}
             value={value.subdistrict}
             onChange={handleSubdistrictChange}
-            options={subdistricts.map((s) => s.name)}
+            options={subdistrictOptions}
+            selectedOption={outsideList(subdistrictNames, value.subdistrict)}
+            filter={filterAddressOptions}
             placeholder="-- เลือกตำบล/แขวง --"
+            searchLabel="ค้นหาตำบล/แขวง"
+            listLabel="รายชื่อตำบล/แขวง"
             disabled={!selectedDistrict}
-            openDirection="up"
           />
         </div>
         <div>

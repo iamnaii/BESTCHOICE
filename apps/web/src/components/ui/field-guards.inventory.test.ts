@@ -608,11 +608,7 @@ const F5_OVERLAY_INSET = /^-?inset-(0|y-|\[)/;
  * Browser clip checks for the spec's allow-list: tools/field-scale/menu-clip-components.mjs
  */
 const F5_NON_PORTAL_MENU_ALLOW: Record<string, { panels: number; reason: string }> = {
-  // spec §5 F5 allow-list + SearchableSelect (until R2-2) — each has a case in menu-clip-components.mjs
-  'apps/web/src/components/ui/SearchableSelect.tsx': {
-    panels: 2,
-    reason: 'R2-2 replaces it — AddressForm ย้ายไป Combobox แล้วลบไฟล์นี้ (listbox + กล่อง "ไม่พบผลลัพธ์")',
-  },
+  // spec §5 F5 allow-list — each has a case in menu-clip-components.mjs
   'apps/web/src/components/ui/NameAutocomplete.tsx': {
     panels: 1,
     reason: 'allow-list ใน spec §5 F5 — ช่องพิมพ์ชื่ออิสระ ไม่แปลงเป็น Combobox (§6.4)',
@@ -838,7 +834,7 @@ function findInlineMenuPanels(fileName: string, source: string): number[] {
 
 const F5_POSITIVE: [string, string][] = [
   [
-    'listbox via cn() + same-file const (SearchableSelect)',
+    'listbox via cn() + same-file const (inline input + listbox)',
     `export function A({ open, up }: { open: boolean; up: boolean }) {
       const menuPos = up ? 'bottom-full mb-1' : 'mt-1';
       return <div className="relative"><input role="combobox" aria-expanded={open} />

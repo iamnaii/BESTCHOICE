@@ -48,10 +48,10 @@ describe('useIsMobile', () => {
     Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: originalInnerWidth });
   });
 
-  it('ถามด้วย media query (max-width: 1023px) — 1024 ขึ้นไปเป็นจอใหญ่', () => {
+  it('ถามด้วย media query ส่วนกลับของ lg (min-width: 1024px) — 1024 ขึ้นไปเป็นจอใหญ่', () => {
     const { matchMedia } = installMatchMediaMock({ matches: false });
     renderHook(() => useIsMobile());
-    expect(matchMedia).toHaveBeenCalledWith('(max-width: 1023px)');
+    expect(matchMedia).toHaveBeenCalledWith('not all and (min-width: 1024px)');
   });
 
   it('จอแคบ: ค่าใน render แรกเป็น true เลย ไม่วาดแบบจอใหญ่ก่อนหนึ่งเฟรม', () => {

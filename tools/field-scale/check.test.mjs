@@ -326,9 +326,12 @@ test('routes: cover appendix ก, the 9 AddressForm hosts and every menu probe',
   assert.deepEqual(probes, [
     ['other-income-items', 'account-menu-items-card', [1440], 'controls'],
     ['other-income-override', 'account-menu-override-jv', [1440], 'controls'],
+    ['expense-new', 'account-menu-expense-line', [1440], 'controls'],
+    ['recurring-bill-dialog', 'account-menu-recurring-bill', [1440], 'controls'],
     ['trade-in-quick-buy', 'quick-buy-model-menu', [1440, 390], 'controls'],
     ['r2-general-ledger', 'account-menu-gl', [1440, 390], 'controls'],
     ['r2-petty-cash-lines', 'account-menu-petty-cash', [1440, 390], 'controls'],
+    ['r2-expenses-list', 'account-menu-expense-filter', [1440], 'controls'],
     ['r2-po-wizard-items', 'po-accessory-model-menu', [1440, 390], 'controls'],
     ['r2-booking-create', 'booking-customer-menu', [1440, 390], 'controls'],
     ['r2-inbox-filter', 'inbox-owner-menu', [1440, 390], 'controls'],
@@ -345,9 +348,6 @@ test('routes: pending probes name an existing route and are not attached yet', (
   const attached = new Set(ROUTES.flatMap((r) => (r.probes ?? []).map((p) => p.id)));
   const pending = Object.entries(PENDING_PROBES).flatMap(([id, probes]) => probes.map((p) => [id, p.id, p.widths, p.menu]));
   assert.deepEqual(pending, [
-    ['r2-expenses-list', 'account-menu-expense-filter', [1440], 'controls'],
-    ['expense-new', 'account-menu-expense-line', [1440], 'controls'],
-    ['recurring-bill-dialog', 'account-menu-recurring-bill', [1440], 'controls'],
   ]);
   for (const [id, probeId] of pending) {
     assert.ok(byId.has(id), id);

@@ -23,7 +23,7 @@ import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { formatDateShortThai, formatNumberDecimal } from '@/utils/formatters';
-import { accountDisplayName } from '@/utils/accountName';
+import { AccountCombobox } from '@/components/accounting/AccountCombobox';
 import { ReopenedPeriodBanner } from '@/components/accounting/ReopenedPeriodBanner';
 import { useApprovalActions, getApprovalReason, toastActionError } from '@/hooks/useApprovalActions';
 import { invalidateExpenseDoc } from '@/lib/expense-document-cache';
@@ -648,23 +648,19 @@ export default function ExpensesPage() {
         >
           <SlidersHorizontal className="size-4" />
         </button>
-        <NativeSelect wrapperClassName="max-w-full w-full min-w-0 sm:w-auto sm:min-w-[150px]"
+        {/* R2-4c — searchable; CoA category = the old optgroup; rows "<code> - <name>" (owner 2026-11-16 Q4).
+            sm:w-72 keeps the toolbar from jumping with the picked name (long names truncate, title shows all). */}
+        <AccountCombobox
+          wrapperClassName="max-w-full w-full min-w-0 sm:w-72"
           aria-label="ประเภทค่าใช้จ่าย"
           value={categoryFilter}
-          onChange={(e) => setFilter('category', e.target.value)}
-          className={cn(formControlClass, "")}
-        >
-          <option value="">ทุกประเภท</option>
-          {coaGroups.map((g) => (
-            <optgroup key={g.category} label={g.category}>
-              {g.accounts.map((a) => (
-                <option key={a.code} value={a.code}>
-                  {accountDisplayName(a.name)}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </NativeSelect>
+          onChange={(code) => {
+            // A native select fired no change when the same type was picked again — keep the page.
+            if (code !== categoryFilter) setFilter('category', code);
+          }}
+          coaFilter={{ type: 'ค่าใช้จ่าย' }}
+          emptyOption="ทุกประเภท"
+        />
         <div className="relative" onClick={(ev) => ev.stopPropagation()}>
           <Button variant="primary" size="md" onClick={() => setShowCreateMenu((v) => !v)}>
             <Plus className="size-4" /> สร้างเอกสารใหม่ <ChevronDown className="size-3" />

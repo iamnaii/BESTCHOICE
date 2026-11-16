@@ -218,6 +218,17 @@ const ACCOUNT_MENU_OVERRIDE_JV = {
   trigger: (page) => journalTable(page).locator('tbody tr').first().locator('td').first().locator('button').first(),
 };
 
+// Round 2 Task 13 attached these two from PENDING_PROBES (the expense-account fields are AccountCombobox now).
+// Defined before R1_ROUTES: the two Round 1 routes below use them.
+const ACCOUNT_MENU_EXPENSE_LINE = {
+  id: 'account-menu-expense-line', widths: [1440], menu: 'controls',
+  trigger: (page) => page.getByRole('combobox', { name: 'บัญชีค่าใช้จ่าย' }).first(),
+};
+const ACCOUNT_MENU_RECURRING_BILL = {
+  id: 'account-menu-recurring-bill', widths: [1440], menu: 'controls',
+  trigger: (page) => page.getByRole('dialog').getByRole('combobox', { name: 'บัญชีค่าใช้จ่าย' }),
+};
+
 // Round 2 (Task 1): a portalled Radix Select inside QuickBuyModal (a Radix Dialog); R2-4b keeps id="quick-buy-model"
 // (the route's open step waits for it)
 const QUICK_BUY_MODEL_MENU = {
@@ -254,7 +265,8 @@ const R1_ROUTES = [
   { id: 'stock-transfers-outgoing', path: '/stock/transfers?view=outgoing', appendix: ['S2-04'], mocks: M.transfers },
   { id: 'stock-transfers-incoming', path: '/stock/transfers?view=incoming', appendix: ['S2-04'], mocks: M.transfers },
   { id: 'stock-transfers-history', path: '/stock/transfers?view=history', appendix: ['S2-04'], mocks: M.transfers },
-  { id: 'expense-new', path: '/expenses/new', appendix: ['S3-02', 'S3-04', 'S3-05'], mocks: M.expense },
+  { id: 'expense-new', path: '/expenses/new', appendix: ['S3-02', 'S3-04', 'S3-05'], mocks: M.expense,
+    probes: [ACCOUNT_MENU_EXPENSE_LINE] },
   // S3-07 is the account select of a line's "รายได้พิเศษ" sub-table, rendered only when the line is expanded
   // (PayrollLinesSection.tsx:475,535-540,639-652,808) — local form state, nothing is saved.
   { id: 'payroll-new', path: '/expenses/new?type=PR', appendix: ['S3-07'], mocks: M.expense,
@@ -264,7 +276,7 @@ const R1_ROUTES = [
       await clickButton('เพิ่มรายได้พิเศษ')(page);
     } },
   { id: 'recurring-bill-dialog', path: '/expenses/favorites', appendix: ['S3-09'], open: clickButton('+ บิลประจำ'),
-    mocks: M.expense },
+    mocks: M.expense, probes: [ACCOUNT_MENU_RECURRING_BILL] },
   { id: 'trade-in-quick-buy', path: '/trade-in', appendix: ['S3-10', 'S3-12'], mocks: [M.buybackCatalog],
     open: async (page) => {
       await clickButton('รับซื้อเครื่อง')(page);
@@ -597,19 +609,13 @@ const PROFILE_EXTENSION_MENU = {
 // Probes on fields that are native <select>s today: a native select has no aria-controls, so on baseline-r2 the
 // probe would fail ("menu not found") and a MENU failure blocks every compare. The task that converts the field
 // attaches the probe to its route (`probes: [X]`) and deletes the entry here — the probe then PASSes.
+// Round 2 Task 13 attached it (the /expenses type filter is AccountCombobox now).
+const ACCOUNT_MENU_EXPENSE_FILTER = {
+  id: 'account-menu-expense-filter', widths: [1440], menu: 'controls',
+  trigger: (page) => page.getByRole('combobox', { name: 'ประเภทค่าใช้จ่าย' }),
+};
+
 export const PENDING_PROBES = {
-  'r2-expenses-list': [{ // Task 13
-    id: 'account-menu-expense-filter', widths: [1440], menu: 'controls',
-    trigger: (page) => page.getByRole('combobox', { name: 'ประเภทค่าใช้จ่าย' }),
-  }],
-  'expense-new': [{ // Task 13
-    id: 'account-menu-expense-line', widths: [1440], menu: 'controls',
-    trigger: (page) => page.getByRole('combobox', { name: 'บัญชีค่าใช้จ่าย' }).first(),
-  }],
-  'recurring-bill-dialog': [{ // Task 13
-    id: 'account-menu-recurring-bill', widths: [1440], menu: 'controls',
-    trigger: (page) => page.getByRole('dialog').getByRole('combobox', { name: 'บัญชีค่าใช้จ่าย' }),
-  }],
 };
 // Round 2 Task 12 attached these two from PENDING_PROBES (the model fields are Combobox now).
 const STOCK_ALERT_MODEL_MENU = { // menu inside a Radix Dialog
@@ -664,7 +670,8 @@ export const R2_ROUTES = [
       await page.getByRole('combobox', { name: 'หมวดบัญชี', exact: true }).first().waitFor();
     }, probes: [ACCOUNT_MENU_PETTY_CASH] },
   // R2-4c expense account fields (+ the credit-note copy of ItemLinesSection)
-  { id: 'r2-expenses-list', path: '/expenses', appendix: ['R2-4c ExpensesPage'], mocks: R2.expensesList },
+  { id: 'r2-expenses-list', path: '/expenses', appendix: ['R2-4c ExpensesPage'], mocks: R2.expensesList,
+    probes: [ACCOUNT_MENU_EXPENSE_FILTER] },
   { id: 'r2-credit-note-lines', path: '/expenses/new?type=CN', appendix: ['R2-4c ItemLinesSection'], mocks: M.expense,
     open: async (page) => {
       await page.getByRole('button', { name: /^ไม่มีเอกสารต้นทาง/ }).click();

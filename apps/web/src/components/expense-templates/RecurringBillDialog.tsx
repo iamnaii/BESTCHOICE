@@ -13,8 +13,7 @@ import {
 } from '@installment/shared';
 import api, { getErrorMessage } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
-import { useCoaGroups } from '@/hooks/useCoa';
-import { accountDisplayName } from '@/utils/accountName';
+import { AccountCombobox } from '@/components/accounting/AccountCombobox';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -201,9 +200,6 @@ export function RecurringBillDialog({ open, onClose, template = null, templateId
     queryFn: async () => (await api.get('/branches')).data,
     enabled: open,
   });
-  const { data: coa } = useCoaGroups({ type: 'ค่าใช้จ่าย' });
-  const groups = coa?.groups ?? [];
-
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((s) => ({ ...s, [key]: value }));
   const onRecurrence = (value: RecurrenceKind) => setForm((s) => ({ ...s, recurrence: value, recurringMonth: value === 'MONTHLY' ? '' : s.recurringMonth }));
 
@@ -312,10 +308,7 @@ export function RecurringBillDialog({ open, onClose, template = null, templateId
             </div>
             <div>
               <Label htmlFor="rb-category" className={formLabelClass}>บัญชีค่าใช้จ่าย</Label>
-              <NativeSelect id="rb-category" value={form.category} onChange={(e) => set('category', e.target.value)} {...a11y('category', true)}>
-                <option value="">— เลือก —</option>
-                {groups.flatMap((g) => g.accounts.map((a) => <option key={a.code} value={a.code}>{a.code} {accountDisplayName(a.name)}</option>))}
-              </NativeSelect>
+              <AccountCombobox id="rb-category" value={form.category} onChange={(code) => set('category', code)} coaFilter={{ type: 'ค่าใช้จ่าย' }} emptyOption="— เลือก —" {...a11y('category', true)} />
               {hint('category', 'ไปอยู่ในบรรทัดของร่างใบรายจ่าย — แก้ในร่างได้')}
             </div>
             <div>

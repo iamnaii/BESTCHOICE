@@ -3,7 +3,7 @@ import ScreenTable from '@/components/ui/ScreenTable';
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Lock, Check, ChevronsUpDown } from 'lucide-react';
+import { Lock } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -19,17 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@/components/ui/command';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { cn } from '@/lib/utils';
-import { accountDisplayName } from '@/utils/accountName';
+import { AccountCombobox } from '@/components/accounting/AccountCombobox';
 
 interface RoleMapRow {
   id: string;
@@ -42,12 +32,6 @@ interface RoleMapRow {
   required: boolean;
 }
 
-interface ChartOfAccount {
-  id: string;
-  code: string;
-  name: string;
-  status: string;
-}
 
 /**
  * D1.1.1.4 — Admin UI for `account_role_map` (Q7=WIRE IT). OWNER-only
@@ -218,14 +202,6 @@ function EditRoleMapDialog({
   const [priority, setPriority] = useState(String(row.priority));
   const [isActive, setIsActive] = useState(row.isActive);
   const [note, setNote] = useState(row.note ?? '');
-  const [coaOpen, setCoaOpen] = useState(false);
-
-  const coaQuery = useQuery<ChartOfAccount[]>({
-    queryKey: ['chart-of-accounts', 'active'],
-    queryFn: async () =>
-      (await api.get<ChartOfAccount[]>('/chart-of-accounts', { params: { status: 'ใช้งาน' } })).data,
-    enabled: open,
-  });
 
   const updateMutation = useMutation({
     mutationFn: async () => {
@@ -272,49 +248,15 @@ function EditRoleMapDialog({
             <label className="text-sm font-medium leading-snug" htmlFor="ar-coa-trigger">
               รหัสบัญชี
             </label>
-            <Popover open={coaOpen} onOpenChange={setCoaOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  id="ar-coa-trigger"
-                  variant="outline"
-                  role="combobox"
-                  aria-expanded={coaOpen}
-                  className="w-full justify-between font-mono"
-                >
-                  {accountCode || 'เลือกบัญชี...'}
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" aria-hidden />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-(--radix-popover-trigger-width) min-w-64 p-0">
-                <Command>
-                  <CommandInput placeholder="ค้นหารหัส/ชื่อบัญชี..." />
-                  <CommandList>
-                    <CommandEmpty>ไม่พบบัญชี</CommandEmpty>
-                    <CommandGroup>
-                      {(coaQuery.data ?? []).map((acc) => (
-                        <CommandItem
-                          key={acc.id}
-                          value={`${acc.code} ${acc.name}`}
-                          onSelect={() => {
-                            setAccountCode(acc.code);
-                            setCoaOpen(false);
-                          }}
-                        >
-                          <Check
-                            className={cn(
-                              'mr-2 h-4 w-4',
-                              accountCode === acc.code ? 'opacity-100' : 'opacity-0',
-                            )}
-                            aria-hidden
-                          />
-                          <span className="leading-snug">{accountDisplayName(acc.name)}</span>
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
+            {/* R2-3a — same active accounts as the old /chart-of-accounts?status=ใช้งาน query;
+                rows "<code> - <name>" (owner 2026-11-16 Q4), the trigger the code (as before) */}
+            <AccountCombobox
+              id="ar-coa-trigger"
+              value={accountCode}
+              onChange={setAccountCode}
+              valueDisplay="code"
+              placeholder="เลือกบัญชี..."
+            />
           </div>
 
           {/* Priority */}

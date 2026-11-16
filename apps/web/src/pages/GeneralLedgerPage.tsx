@@ -1,5 +1,5 @@
 import ScreenTable from '@/components/ui/ScreenTable';
-import { useId as useUiFieldId, useMemo, useState } from 'react';
+import { useId as useUiFieldId, useState } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -8,25 +8,12 @@ import QueryBoundary from '@/components/QueryBoundary';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@/components/ui/command';
-import { BookOpen, ChevronsUpDown, Check, Download, FileSpreadsheet } from 'lucide-react';
+import { BookOpen, Download, FileSpreadsheet } from 'lucide-react';
 import { formatDateMedium } from '@/utils/formatters';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { DateRangeChips } from '@/components/ui/DateRangeChips';
 import CompanyFilter from '@/components/CompanyFilter';
-import { useCoaGroups } from '@/hooks/useCoa';
+import { AccountCombobox } from '@/components/accounting/AccountCombobox';
 import { useUiFlags } from '@/hooks/useUiFlags';
 
 export interface GLLine {
@@ -94,35 +81,8 @@ export function GeneralLedgerPage() {
   const [endDate, setEndDate] = useState(toLocalIso(new Date(now.getFullYear(), now.getMonth() + 1, 0)));
   const [companyId, setCompanyId] = useState('');
   const [accountCode, setAccountCode] = useState('');
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [pickerSearch, setPickerSearch] = useState('');
   const { cacheTtlReports } = useUiFlags();
   const reportsStaleTime = cacheTtlReports * 1000;
-
-  // Load CoA groups for the picker
-  const coaQ = useCoaGroups({});
-  const allAccounts = useMemo(() => {
-    const flat: { code: string; name: string; category: string }[] = [];
-    for (const g of coaQ.data?.groups ?? []) {
-      for (const a of g.accounts) {
-        flat.push({ code: a.code, name: a.name, category: g.category });
-      }
-    }
-    return flat;
-  }, [coaQ.data]);
-
-  const filteredAccounts = useMemo(() => {
-    const q = pickerSearch.trim().toLowerCase();
-    if (!q) return allAccounts;
-    return allAccounts.filter(
-      (a) => a.code.toLowerCase().includes(q) || a.name.toLowerCase().includes(q),
-    );
-  }, [pickerSearch, allAccounts]);
-
-  const selectedAccount = useMemo(
-    () => allAccounts.find((a) => a.code === accountCode),
-    [allAccounts, accountCode],
-  );
 
   const {
     data: gl,
@@ -224,69 +184,17 @@ export function GeneralLedgerPage() {
       </div>
       <div className="flex flex-wrap gap-3 mb-6">
         <div className="min-w-[260px]">
-          <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+          <label htmlFor={`${uiFieldId}-0`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
             รหัสบัญชี
           </label>
-          <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                role="combobox"
-                aria-label="เลือกบัญชี"
-                aria-expanded={pickerOpen}
-                className="w-full justify-between font-normal"
-              >
-                {selectedAccount ? (
-                  <span className="truncate leading-snug">
-                    <span className="font-mono text-xs text-muted-foreground mr-2">
-                      {selectedAccount.code}
-                    </span>
-                    {selectedAccount.name}
-                  </span>
-                ) : (
-                  <span className="text-muted-foreground leading-snug">
-                    เลือกบัญชี…
-                  </span>
-                )}
-                <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-[380px] p-0" align="start">
-              <Command shouldFilter={false}>
-                <CommandInput
-                  placeholder="ค้นหารหัสหรือชื่อบัญชี…"
-                  value={pickerSearch}
-                  onValueChange={setPickerSearch}
-                />
-                <CommandList>
-                  <CommandEmpty>ไม่พบบัญชี</CommandEmpty>
-                  <CommandGroup>
-                    {filteredAccounts.slice(0, 200).map((a) => (
-                      <CommandItem
-                        key={a.code}
-                        value={a.code}
-                        onSelect={() => {
-                          setAccountCode(a.code);
-                          setPickerOpen(false);
-                          setPickerSearch('');
-                        }}
-                      >
-                        <Check
-                          className={`mr-2 size-4 ${
-                            accountCode === a.code ? 'opacity-100' : 'opacity-0'
-                          }`}
-                        />
-                        <span className="font-mono text-xs text-muted-foreground mr-2">
-                          {a.code}
-                        </span>
-                        <span className="leading-snug">{a.name}</span>
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                </CommandList>
-              </Command>
-            </PopoverContent>
-          </Popover>
+          {/* R2-3a — rows "<code> - <name>" (owner 2026-11-16 Q4), first 200 matches (as before) */}
+          <AccountCombobox
+            id={`${uiFieldId}-0`}
+            value={accountCode}
+            onChange={setAccountCode}
+            limit={200}
+            placeholder="เลือกบัญชี…"
+          />
         </div>
         <div>
           <label htmlFor={`${uiFieldId}-1`} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">

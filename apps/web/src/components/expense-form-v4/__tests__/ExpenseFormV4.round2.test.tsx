@@ -247,3 +247,16 @@ describe('เงินสดย่อย', () => {
     expect(within(summary).getByText('จำนวนเงินทั้งสิ้น').parentElement).toHaveTextContent('120.00');
   });
 });
+
+describe('ลำดับแถว', () => {
+  const regionNames = () =>
+    screen.getAllByRole('region').map((r) => r.getAttribute('aria-labelledby')).map((id) => document.getElementById(id!)?.textContent?.trim());
+
+  it.each([['VENDOR_SETTLEMENT'], ['PETTY_CASH']] as const)('%s: สรุปข้อมูลอยู่ก่อนชำระเงิน', async (kind) => {
+    const user = mount();
+    await chooseKind(user, kind);
+    const names = regionNames();
+    expect(names.indexOf('สรุปข้อมูล')).toBeGreaterThan(-1);
+    expect(names.indexOf('สรุปข้อมูล')).toBeLessThan(names.indexOf('ชำระเงิน'));
+  });
+});

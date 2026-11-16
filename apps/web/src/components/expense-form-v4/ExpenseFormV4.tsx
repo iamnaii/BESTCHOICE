@@ -906,6 +906,30 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
           </FormRow>
         )}
 
+        {state.docType === 'VENDOR_SETTLEMENT' && (
+          <FormRow title="สรุปข้อมูล">
+            <SummaryBox
+              rows={[
+                { label: 'รวมยอดที่จ่าย', value: seMoney(seTotals.sumSelected) },
+                { label: 'หัก ณ ที่จ่าย', value: seMoney(seTotals.wht) },
+              ]}
+              total={{ label: 'ตัดเงินสดสุทธิ', value: seMoney(seTotals.cashLeg) }}
+            />
+          </FormRow>
+        )}
+
+        {state.docType === 'PETTY_CASH_REIMBURSEMENT' && pettyCashEnabled && (
+          <FormRow title="สรุปข้อมูล">
+            <SummaryBox
+              rows={[
+                { label: 'มูลค่าก่อนภาษี', value: pcMoney(pcTotals.sumBase) },
+                { label: 'ภาษีมูลค่าเพิ่ม', value: pcMoney(pcTotals.sumVat) },
+              ]}
+              total={{ label: 'จำนวนเงินทั้งสิ้น', value: pcMoney(pcTotals.sumTotal) }}
+            />
+          </FormRow>
+        )}
+
         {showPayment && (
           <PaymentSection
             picker={
@@ -952,30 +976,6 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
               ) : undefined
             }
           />
-        )}
-
-        {state.docType === 'VENDOR_SETTLEMENT' && (
-          <FormRow title="สรุปข้อมูล">
-            <SummaryBox
-              rows={[
-                { label: 'รวมยอดที่จ่าย', value: seMoney(seTotals.sumSelected) },
-                { label: 'หัก ณ ที่จ่าย', value: seMoney(seTotals.wht) },
-              ]}
-              total={{ label: 'ตัดเงินสดสุทธิ', value: seMoney(seTotals.cashLeg) }}
-            />
-          </FormRow>
-        )}
-
-        {state.docType === 'PETTY_CASH_REIMBURSEMENT' && pettyCashEnabled && (
-          <FormRow title="สรุปข้อมูล">
-            <SummaryBox
-              rows={[
-                { label: 'มูลค่าก่อนภาษี', value: pcMoney(pcTotals.sumBase) },
-                { label: 'ภาษีมูลค่าเพิ่ม', value: pcMoney(pcTotals.sumVat) },
-              ]}
-              total={{ label: 'จำนวนเงินทั้งสิ้น', value: pcMoney(pcTotals.sumTotal) }}
-            />
-          </FormRow>
         )}
 
         {isPreviewType && (

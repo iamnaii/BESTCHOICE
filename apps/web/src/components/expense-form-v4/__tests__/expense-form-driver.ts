@@ -11,7 +11,7 @@ export async function fillExpenseLine(
   line: { account: string; unitPrice: string },
   index = 0,
 ) {
-  // เทสต์ที่ใช้ driver นี้แทน AccountSearchDropdown ด้วยปุ่มที่เลือก 53-1101 เสมอ
+  // เทสต์ที่ใช้ driver นี้แทน AccountCombobox ด้วยปุ่มที่เลือก 53-1101 เสมอ
   expect(line.account).toBe('53-1101');
   await user.click(screen.getAllByRole('button', { name: 'บัญชีค่าใช้จ่าย' })[index]);
   const price = screen.getAllByLabelText('ราคา/หน่วย')[index];
@@ -74,7 +74,7 @@ export async function fillCreditNoteReason(user: UserEvent, reason: string) {
   await user.type(await screen.findByLabelText(/^เหตุผล/), reason);
 }
 
-/** เงินสดย่อย — บรรทัดแรก: เลือกผู้ขาย (ปุ่มแทน VendorCombobox) · เลือกบัญชี 53-1101 (ปุ่มแทน AccountSearchDropdown) · กรอกยอด */
+/** เงินสดย่อย — บรรทัดแรก: เลือกผู้ขาย (ปุ่มแทน VendorCombobox) · เลือกบัญชี 53-1101 (ปุ่มแทน AccountCombobox) · กรอกยอด */
 export async function fillPettyCashLine(user: UserEvent, line: { amount: string }) {
   // จอแคบมีป้าย "ผู้ขาย/ผู้รับเงิน" ผูกกับปุ่ม (ชื่อจากป้ายทับข้อความในปุ่ม) · จอกว้างไม่มีป้าย
   await user.click(screen.getByRole('button', { name: /^(เลือกผู้ขาย|ผู้ขาย\/ผู้รับเงิน)$/ }));

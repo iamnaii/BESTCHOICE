@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { openCombobox, pickComboOption } from '@/test/combobox';
 import type { ExpenseTemplate } from './RecurringBillDialog';
 
 const apiGet = vi.fn();
@@ -18,7 +19,7 @@ vi.mock('@/lib/api', () => ({
 }));
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user }) }));
 vi.mock('@/hooks/useCoa', () => ({
-  useCoaGroups: () => ({ data: { groups: [{ name: 'ค่าใช้จ่ายดำเนินงาน', accounts: [{ code: '53-1302', name: 'ค่าโทรศัพท์และอินเทอร์เน็ต' }, { code: '53-1301', name: 'ค่าเช่า' }] }] } }),
+  useCoaGroups: () => ({ data: { groups: [{ category: 'ค่าใช้จ่ายดำเนินงาน', accounts: [{ code: '53-1302', name: 'ค่าโทรศัพท์และอินเทอร์เน็ต' }, { code: '53-1301', name: 'ค่าเช่า' }] }] } }),
 }));
 vi.mock('@/components/expense-form-v4/VendorCombobox', () => ({
   VendorCombobox: ({ id, value, onSelectSupplier }: { id?: string; value: string; onSelectSupplier: (s: { name: string; taxId: string; supplierId: string }) => void }) => (
@@ -121,7 +122,7 @@ describe('กล่องตั้งบิลประจำ', () => {
     await u.type(field('ชื่อบิล'), 'อินเทอร์เน็ต AIS Fibre');
     await u.type(field('ผู้รับเงิน / เจ้าหนี้'), 'บมจ.ทิพยประกันภัย');
     await u.selectOptions(field('สาขา'), 'br-2');
-    await u.selectOptions(field('บัญชีค่าใช้จ่าย'), '53-1302');
+    await pickComboOption(u, 'บัญชีค่าใช้จ่าย', '53-1302 - ค่าโทรศัพท์และอินเทอร์เน็ต');
     await u.type(field('ยอดประมาณ (บาท)'), '1284');
     await u.type(field('วันครบกำหนด (วันที่ของเดือน)'), '24');
     await u.selectOptions(field('วิธีจ่าย'), 'BANK_TRANSFER');
@@ -221,6 +222,59 @@ describe('กล่องตั้งบิลประจำ', () => {
     await u.selectOptions(field('ความถี่'), 'QUARTERLY');
     expect(field('เดือน')).toHaveAccessibleDescription(/เดือนที่ 1 = ม\.ค\.\/เม\.ย\.\/ก\.ค\.\/ต\.ค\./);
     expect(field('บัญชีค่าใช้จ่าย')).toHaveAccessibleDescription('ไปอยู่ในบรรทัดของร่างใบรายจ่าย — แก้ในร่างได้');
+  });
+
+  it('โหมดแก้ไข: บัญชีค่าใช้จ่ายเดิมส่งกลับใน prefilledData ตามเดิม (R2-4c)', async () => {
+    const u = userEvent.setup();
+    mount({ template });
+    await screen.findByRole('dialog');
+    await u.clear(field('เตือนล่วงหน้า (วัน)'));
+    await u.type(field('เตือนล่วงหน้า (วัน)'), '5');
+    await u.click(submit());
+    await waitFor(() => expect(apiPatch).toHaveBeenCalled());
+    expect(apiPatch.mock.calls[0][1]).toMatchObject({ prefilledData: { category: '53-1301' } });
+  });
+
+  it('โหมดแก้ไข: รหัสบัญชีที่ไม่อยู่ในผังแล้วไม่ถูกล้างตอนบันทึก (R2-4c)', async () => {
+    const u = userEvent.setup();
+    mount({ template: { ...template, prefilledData: { ...template.prefilledData, category: '53-9999' } } });
+    await screen.findByRole('dialog');
+    await u.click(submit());
+    await waitFor(() => expect(apiPatch).toHaveBeenCalled());
+    expect(apiPatch.mock.calls[0][1]).toMatchObject({ prefilledData: { category: '53-9999' } });
+  });
+
+  it('บัญชีค่าใช้จ่ายเป็นช่องค้นหา: แถวแสดงรหัส + ชื่อ ค้นด้วยรหัสได้ (R2-4c)', async () => {
+    const u = userEvent.setup();
+    mount();
+    await screen.findByRole('dialog');
+    const list = await openCombobox(u, 'บัญชีค่าใช้จ่าย');
+    expect(within(list).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      '— เลือก —',
+      '53-1302 - ค่าโทรศัพท์และอินเทอร์เน็ต',
+      '53-1301 - ค่าเช่า',
+    ]);
+    await u.keyboard('{Escape}');
+    await pickComboOption(u, 'บัญชีค่าใช้จ่าย', '53-1301 - ค่าเช่า', { search: '1301' });
+    expect(field('บัญชีค่าใช้จ่าย')).toHaveTextContent('53-1301 - ค่าเช่า');
+    expect(screen.getByRole('dialog')).toBeInTheDocument(); // picking does not close the dialog
+  });
+
+  it('โหมดแก้ไข: ช่องแสดงบัญชีเดิม · เลือก "— เลือก —" แล้ว PATCH ไม่มี category (R2-4c)', async () => {
+    const u = userEvent.setup();
+    mount({ template });
+    await screen.findByRole('dialog');
+    expect(field('บัญชีค่าใช้จ่าย')).toHaveTextContent('53-1301 - ค่าเช่า');
+    await pickComboOption(u, 'บัญชีค่าใช้จ่าย', '— เลือก —');
+    await u.click(submit());
+    await waitFor(() => expect(apiPatch).toHaveBeenCalled());
+    expect((apiPatch.mock.calls[0][1] as { prefilledData: Record<string, unknown> }).prefilledData).not.toHaveProperty('category');
+  });
+
+  it('โหมดแก้ไข: รหัสที่ไม่อยู่ในผังแสดงเป็นรหัส ไม่ใช่ "— เลือก —" (R2-4c)', async () => {
+    mount({ template: { ...template, prefilledData: { ...template.prefilledData, category: '53-9999' } } });
+    await screen.findByRole('dialog');
+    expect(field('บัญชีค่าใช้จ่าย')).toHaveTextContent('53-9999');
   });
 
   it('ผู้จัดการสาขาสร้างใหม่: สาขาถูกล็อกเป็นสาขาตนเอง', async () => {

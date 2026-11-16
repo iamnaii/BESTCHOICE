@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { openCombobox, pickComboOption } from '@/test/combobox';
 
 const apiGet = vi.fn();
 const apiPost = vi.fn();
@@ -21,7 +22,8 @@ vi.mock('@/hooks/useUiFlags', () => ({ useUiFlags: () => ({
   paginationSize: 20, templatesEnabled: false, approvalEnabled,
   approvalThreshold: 1000, approvalRequiredDocTypes: [], reverseReasons: [], reverseReasonRequired: false,
 }) }));
-vi.mock('@/hooks/useCoa', () => ({ useCoaGroups: () => ({ data: { groups: [] } }) }));
+const coaGroups = vi.hoisted(() => ({ current: [] as { category: string; accounts: { code: string; name: string }[] }[] }));
+vi.mock('@/hooks/useCoa', () => ({ useCoaGroups: () => ({ data: { groups: coaGroups.current } }) }));
 vi.mock('@/components/accounting/ReopenedPeriodBanner', () => ({ ReopenedPeriodBanner: () => null }));
 vi.mock('@/components/expense-form-v4/ExpenseFormV4', () => ({ ExpenseFormV4: () => <div aria-label="สร้างรายจ่ายใหม่" /> }));
 import ExpensesPage from './ExpensesPage';
@@ -29,7 +31,7 @@ import ExpensesPage from './ExpensesPage';
 let queryClient: QueryClient;
 function LocationProbe() { const l = useLocation(); return <output data-testid="location">{l.pathname + l.search}</output>; }
 function StateProbe() { const l = useLocation(); return <output data-testid="state">{JSON.stringify(l.state)}</output>; }
-function mount(status = 'DRAFT', documentType = 'EXPENSE') {
+function mount(status = 'DRAFT', documentType = 'EXPENSE', path = '/expenses') {
   const row = { id: 'expense-1', number: 'EX-001', status, documentType, vendorName: 'ผู้ขายตัวอย่าง',
     branchId: 'branch-1', branch: { id: 'branch-1', name: 'สาขาตัวอย่าง' },
     documentDate: '2026-10-19', createdAt: '2026-10-19', totalAmount: '1000', netPayment: '1000', expenseDetail: { lines: [] },
@@ -40,12 +42,12 @@ function mount(status = 'DRAFT', documentType = 'EXPENSE') {
   }));
   queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(<QueryClientProvider client={queryClient}>
-    <MemoryRouter initialEntries={['/expenses']}><ExpensesPage /><LocationProbe /></MemoryRouter>
+    <MemoryRouter initialEntries={[path]}><ExpensesPage /><LocationProbe /></MemoryRouter>
   </QueryClientProvider>);
 }
 const trigger = () => screen.getByRole('button', { name: 'เมนู EX-001' });
 beforeEach(() => {
-  apiGet.mockReset(); apiPost.mockReset(); approvalEnabled = false; allowed = true;
+  apiGet.mockReset(); apiPost.mockReset(); approvalEnabled = false; allowed = true; coaGroups.current = [];
   Object.values(toast).forEach((f) => f.mockReset());
 });
 
@@ -211,5 +213,39 @@ describe('สร้างเอกสารใหม่', () => {
     await userEvent.click(await screen.findByRole('menuitem', { name: 'แก้ไข' }));
     expect(screen.getByTestId('location')).toHaveTextContent('/expenses/new?edit=expense-1');
     expect(screen.getByTestId('state')).toHaveTextContent('"listSearch":"?branch=branch-1"');
+  });
+});
+
+// R2-4c — ตัวกรอง "ประเภทค่าใช้จ่าย" เป็นช่องค้นหา (กลุ่มตามหมวดบัญชีแทน optgroup) · ส่งรหัสบัญชีใน ?category= เหมือนเดิม
+describe('expense category filter', () => {
+  beforeEach(() => {
+    coaGroups.current = [
+      { category: 'OpEx-สถานที่', accounts: [{ code: '53-1301', name: 'ค่าเช่า (สำนักงาน)' }, { code: '53-1302', name: 'ค่าโทรศัพท์และอินเทอร์เน็ต' }] },
+      { category: 'OpEx-วิชาชีพ', accounts: [{ code: '53-1501', name: 'ค่าทำบัญชี' }] },
+    ];
+  });
+
+  it('lists ทุกประเภท and the accounts under their category; picking one filters the list by its code', async () => {
+    const user = userEvent.setup(); mount();
+    expect(screen.getByRole('combobox', { name: 'ประเภทค่าใช้จ่าย' })).toHaveTextContent('ทุกประเภท');
+    const list = await openCombobox(user, 'ประเภทค่าใช้จ่าย');
+    expect(within(list).getAllByRole('option').map((o) => o.textContent)).toEqual(['ทุกประเภท', '53-1301 - ค่าเช่า', '53-1302 - ค่าโทรศัพท์และอินเทอร์เน็ต', '53-1501 - ค่าทำบัญชี']);
+    expect(within(list).getByText('OpEx-วิชาชีพ')).toBeInTheDocument();
+    await user.click(within(list).getByRole('option', { name: '53-1302 - ค่าโทรศัพท์และอินเทอร์เน็ต' }));
+    expect(screen.getByTestId('location')).toHaveTextContent('/expenses?category=53-1302&page=1');
+    await waitFor(() => expect(apiGet).toHaveBeenCalledWith(expect.stringMatching(/^\/expense-documents\?.*category=53-1302/)));
+  });
+
+  it('ทุกประเภท removes the category from the URL', async () => {
+    const user = userEvent.setup(); mount('DRAFT', 'EXPENSE', '/expenses?category=53-1302');
+    expect(screen.getByRole('combobox', { name: 'ประเภทค่าใช้จ่าย' })).toHaveTextContent('53-1302 - ค่าโทรศัพท์และอินเทอร์เน็ต');
+    await pickComboOption(user, 'ประเภทค่าใช้จ่าย', 'ทุกประเภท');
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/expenses\?page=1$/);
+  });
+
+  it('picking the current type again keeps the page (a native select fired no change)', async () => {
+    const user = userEvent.setup(); mount('DRAFT', 'EXPENSE', '/expenses?category=53-1302&page=3');
+    await pickComboOption(user, 'ประเภทค่าใช้จ่าย', '53-1302 - ค่าโทรศัพท์และอินเทอร์เน็ต');
+    expect(screen.getByTestId('location')).toHaveTextContent('/expenses?category=53-1302&page=3');
   });
 });

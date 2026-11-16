@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form';
 import { describe, expect, it, vi } from 'vitest';
 import type { OtherIncomeFormValues } from '@/lib/otherIncome.schema';
 
-vi.mock('../AccountSearchDropdown', () => ({ AccountSearchDropdown: () => <div data-testid="account-dropdown" /> }));
+vi.mock('@/components/accounting/AccountCombobox', () => ({ AccountCombobox: () => <div data-testid="account-dropdown" /> }));
 
 import { ItemsTable } from '../ItemsTable';
 

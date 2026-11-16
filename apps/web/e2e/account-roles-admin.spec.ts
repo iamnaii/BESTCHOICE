@@ -88,7 +88,7 @@ test.describe('AccountRolesPage — admin', () => {
     await expect(dialog).toBeVisible({ timeout: 5000 });
 
     // CoA combobox trigger should be in the dialog.
-    const combobox = dialog.getByRole('combobox').first();
+    const combobox = dialog.getByRole('combobox', { name: 'รหัสบัญชี' });
     await expect(combobox).toBeVisible({ timeout: 5000 });
 
     // Cancel via Escape — don't persist any change.

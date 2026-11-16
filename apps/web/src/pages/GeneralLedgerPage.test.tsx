@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
+import { openCombobox, pickComboOption } from '@/test/combobox';
 import React from 'react';
 
 const apiGet = vi.fn();
@@ -227,9 +228,10 @@ describe('GeneralLedgerPage — default date range (PR #1327)', () => {
     });
     expect(screen.getByTestId('date-range-label')).toHaveTextContent(/^กรกฎาคม 2569$/);
 
-    // Select an account — the GL query is gated on accountCode.
-    await userEvent.click(screen.getByRole('combobox', { name: 'เลือกบัญชี' }));
-    await userEvent.click(await screen.findByText('ลูกหนี้ผ่อนชำระ'));
+    // Select an account — the GL query is gated on accountCode. (R2-3a characterization:
+    // the page's only combobox, picked by role so it passes before and after AccountCombobox.)
+    await userEvent.click(screen.getByRole('combobox'));
+    await userEvent.click(await screen.findByRole('option', { name: /ลูกหนี้ผ่อนชำระ/ }));
 
     // The GL API call must use the local-month boundaries — NOT the UTC-shifted
     // 2026-06-30 start the old toISOString() code produced, and NOT "today" as
@@ -239,5 +241,63 @@ describe('GeneralLedgerPage — default date range (PR #1327)', () => {
         '/expenses/ledger/general-ledger?accountCode=11-2101&periodStart=2026-07-01&periodEnd=2026-07-31',
       );
     });
+  });
+});
+
+describe('GeneralLedgerPage — account picker (R2-3a)', () => {
+  beforeEach(() => {
+    apiGet.mockReset();
+  });
+
+  it('the visible label "รหัสบัญชี" names the picker; picking loads that account', async () => {
+    apiGet.mockImplementation(async (url: string) => {
+      if (url.startsWith('/chart-of-accounts/grouped')) {
+        return {
+          data: {
+            groups: [
+              {
+                category: 'สินทรัพย์หมุนเวียน',
+                accounts: [
+                  { code: '11-2101', name: 'ลูกหนี้ผ่อนชำระ (HP)', normalBalance: 'Dr', vatApplicable: false, notes: null },
+                ],
+              },
+            ],
+          },
+        };
+      }
+      if (url.startsWith('/expenses/ledger/general-ledger')) return { data: null };
+      throw new Error(`unexpected url ${url}`);
+    });
+    renderPage();
+    await pickComboOption(userEvent.setup(), 'รหัสบัญชี', '11-2101 - ลูกหนี้ผ่อนชำระ');
+    expect(screen.getByRole('combobox', { name: 'รหัสบัญชี' })).toHaveTextContent(
+      '11-2101 - ลูกหนี้ผ่อนชำระ',
+    );
+    await waitFor(() =>
+      expect(apiGet).toHaveBeenCalledWith(
+        expect.stringMatching(/^\/expenses\/ledger\/general-ledger\?accountCode=11-2101&/),
+      ),
+    );
+  });
+
+  it('lists "<code> - <name>" and shows at most 200 accounts (as before)', async () => {
+    const accounts = Array.from({ length: 205 }, (_, i) => ({
+      code: `53-${1000 + i}`,
+      name: `ค่าใช้จ่ายทดสอบ ${i} (หมายเหตุ)`,
+      normalBalance: 'Dr',
+      vatApplicable: false,
+      notes: null,
+    }));
+    apiGet.mockImplementation(async (url: string) => {
+      if (url.startsWith('/chart-of-accounts/grouped')) {
+        return { data: { groups: [{ category: 'ค่าใช้จ่าย', accounts }] } };
+      }
+      throw new Error(`unexpected url ${url}`);
+    });
+    renderPage();
+    const listbox = await openCombobox(userEvent.setup(), 'รหัสบัญชี');
+    const options = await within(listbox).findAllByRole('option');
+    expect(options).toHaveLength(200);
+    expect(options[0]).toHaveTextContent(/^53-1000 - ค่าใช้จ่ายทดสอบ 0$/);
   });
 });

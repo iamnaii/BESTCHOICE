@@ -7,10 +7,10 @@
  * in search values, the JE/journal preview, reports, the chart-of-accounts
  * manager, and PEAK export, where it is accounting-essential.
  *
- * 2026-11-16 (owner): the SEARCHABLE account picker (`AccountSearchDropdown`) shows
- * `code - name` plus chart group headings, like PEAK. It still runs the name through
- * this function (parentheticals stay dropped). Plain `NativeSelect` account pickers
- * keep name-only until the shared `AccountCombobox` (dropdown spec 2026-11-14 §9.1).
+ * 2026-11-16 (owner): the SEARCHABLE account picker (`AccountCombobox`, its default `display`)
+ * shows `code - name` plus chart group headings, like PEAK. It still runs the name through
+ * this function (parentheticals stay dropped). Plain `NativeSelect` account pickers keep
+ * name-only (dropdown spec 2026-11-14 §9.1).
  *
  * This only strips a leading code if it happens to be embedded in the name; the
  * common case is that callers already pass just `account.name`.

@@ -176,13 +176,13 @@ async function openOverrideJournal(page) {
 // draft (useCreatePoWizard.ts:17,78-105) naming the mocked supplier and one accessory line (no IMEI to
 // inspect — direct-receive.util.ts:26, receiving-flow.util.ts:55-75); nothing is submitted.
 async function openPurchasePayment(page) {
-  await page.evaluate((supplierId) => {
-    const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' });
+  // page.evaluate runs in the browser: module constants must be passed in as arguments
+  await page.evaluate(({ supplierId, orderDate }) => {
     localStorage.setItem('bestchoice-po-draft', JSON.stringify({
       step: 0,
       mode: 'receive',
       form: {
-        supplierId, orderDate: today, expectedDate: '', notes: '', discount: '', discountAfterVat: '',
+        supplierId, orderDate, expectedDate: '', notes: '', discount: '', discountAfterVat: '',
         paymentStatus: 'UNPAID', paymentMethod: '', paidAmount: '', paymentNotes: '',
       },
       items: [{
@@ -191,7 +191,7 @@ async function openPurchasePayment(page) {
       }],
       savedAt: new Date().toISOString(),
     }));
-  }, PO_SUPPLIER.id);
+  }, { supplierId: PO_SUPPLIER.id, orderDate: FIXED_DAY });
   await clickButton('+ ซื้อสินค้า')(page);
   await clickButton('ถัดไป: ตรวจรับ 1 ชิ้น')(page);
   await page.locator('#group-cash').fill('59');
@@ -216,6 +216,17 @@ const ACCOUNT_MENU_OVERRIDE_JV = {
   widths: [1440],
   menu: 'controls',
   trigger: (page) => journalTable(page).locator('tbody tr').first().locator('td').first().locator('button').first(),
+};
+
+// Round 2 Task 13 attached these two from PENDING_PROBES (the expense-account fields are AccountCombobox now).
+// Defined before R1_ROUTES: the two Round 1 routes below use them.
+const ACCOUNT_MENU_EXPENSE_LINE = {
+  id: 'account-menu-expense-line', widths: [1440], menu: 'controls',
+  trigger: (page) => page.getByRole('combobox', { name: 'บัญชีค่าใช้จ่าย' }).first(),
+};
+const ACCOUNT_MENU_RECURRING_BILL = {
+  id: 'account-menu-recurring-bill', widths: [1440], menu: 'controls',
+  trigger: (page) => page.getByRole('dialog').getByRole('combobox', { name: 'บัญชีค่าใช้จ่าย' }),
 };
 
 // Round 2 (Task 1): a portalled Radix Select inside QuickBuyModal (a Radix Dialog); R2-4b keeps id="quick-buy-model"
@@ -254,7 +265,8 @@ const R1_ROUTES = [
   { id: 'stock-transfers-outgoing', path: '/stock/transfers?view=outgoing', appendix: ['S2-04'], mocks: M.transfers },
   { id: 'stock-transfers-incoming', path: '/stock/transfers?view=incoming', appendix: ['S2-04'], mocks: M.transfers },
   { id: 'stock-transfers-history', path: '/stock/transfers?view=history', appendix: ['S2-04'], mocks: M.transfers },
-  { id: 'expense-new', path: '/expenses/new', appendix: ['S3-02', 'S3-04', 'S3-05'], mocks: M.expense },
+  { id: 'expense-new', path: '/expenses/new', appendix: ['S3-02', 'S3-04', 'S3-05'], mocks: M.expense,
+    probes: [ACCOUNT_MENU_EXPENSE_LINE] },
   // S3-07 is the account select of a line's "รายได้พิเศษ" sub-table, rendered only when the line is expanded
   // (PayrollLinesSection.tsx:475,535-540,639-652,808) — local form state, nothing is saved.
   { id: 'payroll-new', path: '/expenses/new?type=PR', appendix: ['S3-07'], mocks: M.expense,
@@ -264,7 +276,7 @@ const R1_ROUTES = [
       await clickButton('เพิ่มรายได้พิเศษ')(page);
     } },
   { id: 'recurring-bill-dialog', path: '/expenses/favorites', appendix: ['S3-09'], open: clickButton('+ บิลประจำ'),
-    mocks: M.expense },
+    mocks: M.expense, probes: [ACCOUNT_MENU_RECURRING_BILL] },
   { id: 'trade-in-quick-buy', path: '/trade-in', appendix: ['S3-10', 'S3-12'], mocks: [M.buybackCatalog],
     open: async (page) => {
       await clickButton('รับซื้อเครื่อง')(page);
@@ -319,6 +331,10 @@ const R1_ROUTES = [
 // ---- Round 2 (plan 2026-11-16, spec §7 R2-2 … R2-4d + owner 2026-11-16) --------------------------------------
 // One route per screen Tasks 5–15 convert, opened until the converted field is on screen. Every list a picker
 // shows comes from a mock below (or the CPA chart in COMMON_MOCKS), so two runs measure the same options.
+
+// Fixed so PO-wizard draft dates (orderDate) do not drift between a baseline and a later compare (R2 T1-m2).
+// savedAt stays "now": the wizard discards drafts older than 24h (useCreatePoWizard.ts DRAFT_TTL_MS).
+const FIXED_DAY = '2026-11-16';
 
 const PREVIEW_STAFF = [
   { id: 'preview-staff-1', name: 'พนักงานตัวอย่าง หนึ่ง', role: 'SALES', branch: 'สาขาตัวอย่าง (คลังหลัก)' },
@@ -387,13 +403,13 @@ const QUICK_REPLIES = [
 // A purchase-wizard draft (useCreatePoWizard.ts:17) on step 0 with one case line: StepSupplier's supplier picker and
 // AccessoryItemRow's "สำหรับรุ่น" (เคส) are both on screen. Local storage only — nothing is submitted.
 async function openPurchaseItems(page) {
-  await page.evaluate((supplierId) => {
-    const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' });
+  // page.evaluate runs in the browser: module constants must be passed in as arguments
+  await page.evaluate(({ supplierId, orderDate }) => {
     localStorage.setItem('bestchoice-po-draft', JSON.stringify({
       step: 0,
       mode: 'po',
       form: {
-        supplierId, orderDate: today, expectedDate: '', notes: '', discount: '', discountAfterVat: '',
+        supplierId, orderDate, expectedDate: '', notes: '', discount: '', discountAfterVat: '',
         paymentStatus: 'UNPAID', paymentMethod: '', paidAmount: '', paymentNotes: '',
       },
       items: [{
@@ -402,7 +418,7 @@ async function openPurchaseItems(page) {
       }],
       savedAt: new Date().toISOString(),
     }));
-  }, PO_SUPPLIER.id);
+  }, { supplierId: PO_SUPPLIER.id, orderDate: FIXED_DAY });
   await clickButton('+ ซื้อสินค้า')(page);
   await page.getByRole('combobox', { name: 'สำหรับรุ่น' }).first().waitFor();
   // the "draft recovered" toast (5 s) can sit over the row at 390
@@ -566,9 +582,11 @@ const ACCOUNT_MENU_GL = {
   id: 'account-menu-gl', widths: [1440, 390], menu: 'controls',
   trigger: (page) => page.locator('#main button[role=combobox]').first(),
 };
+// PEAK-layout /expenses/new is a full page (no dialog); PettyCashLinesSection names its picker หมวดบัญชี
+// (desktop table row and mobile card alike)
 const ACCOUNT_MENU_PETTY_CASH = {
   id: 'account-menu-petty-cash', widths: [1440, 390], menu: 'controls',
-  trigger: (page) => page.getByRole('dialog').getByRole('combobox', { name: 'บัญชี', exact: true }).first(),
+  trigger: (page) => page.getByRole('combobox', { name: 'หมวดบัญชี', exact: true }).first(),
 };
 const BOOKING_CUSTOMER_MENU = {
   id: 'booking-customer-menu', widths: [1440, 390], menu: 'controls',
@@ -591,19 +609,13 @@ const PROFILE_EXTENSION_MENU = {
 // Probes on fields that are native <select>s today: a native select has no aria-controls, so on baseline-r2 the
 // probe would fail ("menu not found") and a MENU failure blocks every compare. The task that converts the field
 // attaches the probe to its route (`probes: [X]`) and deletes the entry here — the probe then PASSes.
+// Round 2 Task 13 attached it (the /expenses type filter is AccountCombobox now).
+const ACCOUNT_MENU_EXPENSE_FILTER = {
+  id: 'account-menu-expense-filter', widths: [1440], menu: 'controls',
+  trigger: (page) => page.getByRole('combobox', { name: 'ประเภทค่าใช้จ่าย' }),
+};
+
 export const PENDING_PROBES = {
-  'r2-expenses-list': [{ // Task 13
-    id: 'account-menu-expense-filter', widths: [1440], menu: 'controls',
-    trigger: (page) => page.getByRole('combobox', { name: 'ประเภทค่าใช้จ่าย' }),
-  }],
-  'expense-new': [{ // Task 13
-    id: 'account-menu-expense-line', widths: [1440], menu: 'controls',
-    trigger: (page) => page.getByRole('combobox', { name: 'บัญชีค่าใช้จ่าย' }).first(),
-  }],
-  'recurring-bill-dialog': [{ // Task 13
-    id: 'account-menu-recurring-bill', widths: [1440], menu: 'controls',
-    trigger: (page) => page.getByRole('dialog').getByRole('combobox', { name: 'บัญชีค่าใช้จ่าย' }),
-  }],
 };
 // Round 2 Task 12 attached these two from PENDING_PROBES (the model fields are Combobox now).
 const STOCK_ALERT_MODEL_MENU = { // menu inside a Radix Dialog
@@ -652,10 +664,14 @@ export const R2_ROUTES = [
     } },
   { id: 'r2-petty-cash-lines', path: '/expenses/new', appendix: ['R2-3a PettyCash', 'R2-3b VendorCombobox'],
     mocks: M.expense, open: async (page) => {
-      await page.getByRole('button', { name: /^เงินสดย่อย/ }).click();
+      // PEAK layout: the doc type is picked from the title menu (layout/DocTypeMenu.tsx)
+      await page.getByRole('button', { name: /^เปลี่ยนประเภทเอกสาร/ }).click();
+      await page.getByRole('menuitemradio', { name: 'เงินสดย่อย' }).click();
+      await page.getByRole('combobox', { name: 'หมวดบัญชี', exact: true }).first().waitFor();
     }, probes: [ACCOUNT_MENU_PETTY_CASH] },
   // R2-4c expense account fields (+ the credit-note copy of ItemLinesSection)
-  { id: 'r2-expenses-list', path: '/expenses', appendix: ['R2-4c ExpensesPage'], mocks: R2.expensesList },
+  { id: 'r2-expenses-list', path: '/expenses', appendix: ['R2-4c ExpensesPage'], mocks: R2.expensesList,
+    probes: [ACCOUNT_MENU_EXPENSE_FILTER] },
   { id: 'r2-credit-note-lines', path: '/expenses/new?type=CN', appendix: ['R2-4c ItemLinesSection'], mocks: M.expense,
     open: async (page) => {
       await page.getByRole('button', { name: /^ไม่มีเอกสารต้นทาง/ }).click();

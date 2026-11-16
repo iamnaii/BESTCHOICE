@@ -7,7 +7,7 @@ import { NativeSelect } from '@/components/ui/native-select';
 import { ReadOnlyField } from '@/components/ui/readonly-field';
 import { formControlClass, formLabelClass } from '@/components/ui/form-styles';
 import { useIsMobile } from '@/hooks/useIsMobile';
-import { AccountSearchDropdown } from '@/pages/other-income/components/AccountSearchDropdown';
+import { AccountCombobox } from '@/components/accounting/AccountCombobox';
 import { useUserNames } from '@/hooks/useUserNames';
 import { formatNumberDecimal } from '@/utils/formatters';
 import { cn } from '@/lib/utils';
@@ -146,7 +146,7 @@ export function PettyCashLinesSection({ value, onChange }: Props) {
                   />
                 </td>
                 <td className={cell}>
-                  <AccountSearchDropdown
+                  <AccountCombobox
                     aria-label="หมวดบัญชี"
                     value={l.category}
                     onChange={(code) => updateLine(l.uid, { category: code })}
@@ -271,10 +271,9 @@ function PettyCashLineCard({
           />
         </div>
         <div>
-          {/* ปุ่มเลือกบัญชีมีชื่อจาก aria-label — ป้ายนี้เป็นตัวหนังสือบนจอ */}
-          <span className={formLabelClass}>หมวดบัญชี</span>
-          <AccountSearchDropdown
-            aria-label="หมวดบัญชี"
+          <label htmlFor={`${id}-category`} className={formLabelClass}>หมวดบัญชี</label>
+          <AccountCombobox
+            id={`${id}-category`}
             value={line.category}
             onChange={(code) => onPatch({ category: code })}
             filter={(a) => a.code.startsWith('53-')}

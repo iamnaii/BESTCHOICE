@@ -60,10 +60,10 @@ vi.mock('../VendorCombobox', () => ({
     </button>
   ),
 }));
-vi.mock('@/pages/other-income/components/AccountSearchDropdown', () => ({
+vi.mock('@/components/accounting/AccountCombobox', () => ({
   // ตัวเลือกบัญชีจริงเป็น popover ค้นหาได้ (มีเทสต์ของตัวเอง) — แทนด้วยปุ่มที่เลือก 53-1101
-  AccountSearchDropdown: (props: { value: string; onChange: (code: string) => void; 'aria-label'?: string }) => (
-    <button type="button" aria-label={props['aria-label'] ?? 'บัญชี'} onClick={() => props.onChange('53-1101')}>
+  AccountCombobox: (props: { value: string; onChange: (code: string) => void; id?: string; 'aria-label'?: string }) => (
+    <button type="button" id={props.id} aria-label={props['aria-label'] ?? (props.id ? undefined : 'บัญชี')} onClick={() => props.onChange('53-1101')}>
       {props.value || '—'}
     </button>
   ),

@@ -22,17 +22,24 @@ function CommandInput({
   className,
   ...props
 }: React.ComponentProps<typeof CommandPrimitive.Input>) {
+  // ช่องมีกรอบของตัวเองและไอคอนอยู่ในกรอบ — กรอบโฟกัสของแอป (outline ห่าง 3px) จึงล้อมทั้งช่องรวมไอคอน
+  // p-2 เผื่อที่ให้กรอบโฟกัส ไม่ถูก Command (overflow-hidden) ตัดขอบ · หน้าตาเดียวกับช่องค้นหาของตัวเลือกบัญชี
   return (
-    <div className="flex items-center border-b border-border px-3" data-slot="command-input-wrapper">
-      <Search className="mr-2 size-4 shrink-0 opacity-50" />
-      <CommandPrimitive.Input
-        data-slot="command-input"
-        className={cn(
-          'flex h-11 w-full bg-transparent text-sm outline-none focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50',
-          className,
-        )}
-        {...props}
-      />
+    <div className="border-b border-border p-2" data-slot="command-input-wrapper">
+      <div className="relative">
+        <Search
+          aria-hidden="true"
+          className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+        />
+        <CommandPrimitive.Input
+          data-slot="command-input"
+          className={cn(
+            'flex h-10 w-full rounded-md border border-input bg-background py-2 pl-9 pr-3 text-sm leading-snug placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50',
+            className,
+          )}
+          {...props}
+        />
+      </div>
     </div>
   );
 }

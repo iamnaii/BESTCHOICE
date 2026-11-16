@@ -240,13 +240,27 @@ describe('ExpenseFormV4 — หน้าเต็ม', () => {
   });
 
   it('แก้ฟอร์มแล้วกด เริ่มเปล่า — ฟอร์มกลับเป็นเปล่าและถอด beforeunload', async () => {
+    const add = vi.spyOn(window, 'addEventListener');
     const remove = vi.spyOn(window, 'removeEventListener');
-    const user = mount();
-    await fillExpenseLine(user, { account: '53-1101', unitPrice: '850' });
-    await user.click(screen.getByRole('button', { name: /^เริ่มเปล่า/ }));
-    await waitFor(() => expect(remove.mock.calls.some((c) => c[0] === 'beforeunload')).toBe(true));
-    expect(screen.getAllByLabelText('ราคา/หน่วย')[0]).not.toHaveDisplayValue('850');
-    remove.mockRestore();
+    // ลำดับเหตุการณ์ beforeunload จริง (เพิ่ม/ถอด) — ต้องจบที่ "ถอด"
+    const events = () =>
+      [
+        ...add.mock.calls.map((c, i) => ({ kind: 'add', order: add.mock.invocationCallOrder[i], type: c[0] })),
+        ...remove.mock.calls.map((c, i) => ({ kind: 'remove', order: remove.mock.invocationCallOrder[i], type: c[0] })),
+      ]
+        .filter((e) => e.type === 'beforeunload')
+        .sort((a, b) => a.order - b.order);
+    try {
+      const user = mount();
+      await fillExpenseLine(user, { account: '53-1101', unitPrice: '850' });
+      await waitFor(() => expect(events().at(-1)?.kind).toBe('add'));
+      await user.click(screen.getByRole('button', { name: /^เริ่มเปล่า/ }));
+      await waitFor(() => expect(events().at(-1)?.kind).toBe('remove'));
+      expect(screen.getAllByLabelText('ราคา/หน่วย')[0]).not.toHaveDisplayValue('850');
+    } finally {
+      add.mockRestore();
+      remove.mockRestore();
+    }
   });
 
   it('จ่ายเจ้าหนี้: คลิก/กดแป้นก่อนรายการตั้งหนี้โหลด แล้วระบบติ๊กใบให้ — ไม่ผูก beforeunload', async () => {

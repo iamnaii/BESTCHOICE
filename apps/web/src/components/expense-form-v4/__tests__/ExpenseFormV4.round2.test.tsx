@@ -4,7 +4,9 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { chooseCreditNoteStandalone, chooseKind, pickCreditNoteSource, waitForSettlementDoc } from './expense-form-driver';
+import {
+  chooseCreditNoteStandalone, chooseKind, fillCreditNoteReason, pickCreditNoteSource, saveDraft, waitForSettlementDoc,
+} from './expense-form-driver';
 
 /**
  * เนื้อในของ จ่ายเจ้าหนี้ / ใบลดหนี้ / เงินสดย่อย (แผนรอบ 2) — mock ชุดเดียวกับ ExpenseFormV4.page.test.tsx
@@ -145,7 +147,6 @@ function mount() {
 }
 
 // ใช้ใน Task 4 และ Task 8
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const bodyOf = async (path: string) => {
   await waitFor(() => expect(apiPost.mock.calls.some((c) => c[0] === path)).toBe(true));
   return apiPost.mock.calls.find((c) => c[0] === path)![1];
@@ -197,5 +198,38 @@ describe('ใบลดหนี้', () => {
     expect(mark()).toHaveClass('text-primary');
     await chooseCreditNoteStandalone(user);
     expect(mark()).toHaveClass('text-muted-foreground');
+  });
+});
+
+describe('ใบลดหนี้ — รับเงินคืนเข้า', () => {
+  it('เอกสารต้นฉบับจ่ายแล้ว: บัญชีที่เลือกในแถว รับเงินคืนเข้า คือค่าที่ส่งไป', async () => {
+    const user = mount();
+    await chooseKind(user, 'CREDIT_NOTE');
+    await pickCreditNoteSource(user, 'EX-0', /EX-001/);
+    await fillCreditNoteReason(user, 'คืนสินค้า');
+    const row = await screen.findByRole('region', { name: 'รับเงินคืนเข้า' });
+    const account = within(row).getByRole('combobox');
+    expect(account).toHaveValue('11-1101');
+    await user.selectOptions(account, '11-1201');
+    await saveDraft(user);
+    expect(await bodyOf('/expense-documents/credit-note')).toMatchObject({
+      mode: 'LINKED', originalDocumentId: 'orig-1', reason: 'คืนสินค้า', depositAccountCode: '11-1201',
+    });
+  });
+
+  it('เอกสารต้นฉบับยังตั้งหนี้อยู่: ไม่มีแถว รับเงินคืนเข้า', async () => {
+    source.status = 'ACCRUAL';
+    const user = mount();
+    await chooseKind(user, 'CREDIT_NOTE');
+    await pickCreditNoteSource(user, 'EX-0', /EX-001/);
+    await screen.findByRole('region', { name: 'รายการที่จะลด' });
+    expect(screen.queryByRole('region', { name: 'รับเงินคืนเข้า' })).not.toBeInTheDocument();
+  });
+
+  it('โหมดไม่มีเอกสารต้นทาง: ไม่มีแถว รับเงินคืนเข้า', async () => {
+    const user = mount();
+    await chooseKind(user, 'CREDIT_NOTE');
+    await chooseCreditNoteStandalone(user);
+    expect(screen.queryByRole('region', { name: 'รับเงินคืนเข้า' })).not.toBeInTheDocument();
   });
 });

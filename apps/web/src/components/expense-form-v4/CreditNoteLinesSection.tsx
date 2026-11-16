@@ -6,6 +6,7 @@ import { ExpenseFormState, ExpenseLineForm } from './types';
 import { ItemLinesSection } from './ItemLinesSection';
 import { FormRow } from './layout/FormRow';
 import { formControlClass, formLabelClass } from '@/components/ui/form-styles';
+import { CashAccountSelect } from '@/components/CashAccountSelect';
 import { formatNumberDecimal } from '@/utils/formatters';
 import { cn } from '@/lib/utils';
 
@@ -284,6 +285,21 @@ export function CreditNoteLinesSection({ state, onChange, onLinesChange }: Props
               <span>ยอดรายการเกินที่ลดได้สูงสุด {formatNumberDecimal(remaining)} ฿</span>
             </div>
           )}
+        </FormRow>
+      )}
+
+      {/* เอกสารต้นฉบับที่จ่ายแล้ว (POSTED) — server ลง Dr บัญชีนี้ · ต้นฉบับที่ยังตั้งหนี้ลดเจ้าหนี้ ไม่ใช้บัญชีเงิน */}
+      {!isStandalone && selectedDoc?.status === 'POSTED' && (
+        <FormRow title="รับเงินคืนเข้า" complete={!!state.depositAccountCode}>
+          <div className="w-full sm:max-w-md">
+            <label htmlFor={`${uiFieldId}-refund`} className="sr-only">รับเงินคืนเข้า</label>
+            <CashAccountSelect
+              id={`${uiFieldId}-refund`}
+              placeholder="รับเงินคืนเข้า"
+              value={state.depositAccountCode}
+              onChange={(code) => onChange({ depositAccountCode: code })}
+            />
+          </div>
         </FormRow>
       )}
     </>

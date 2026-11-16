@@ -143,9 +143,6 @@ export default function ProspectFilterBar({
             ...staff.map((s) => ({ value: s.id, label: s.name, group: 'พนักงาน' })),
           ]}
           placeholder="ทุกคน"
-          className="max-w-[130px]"
-          // admin-typography.css sets max-width:100% on button[role=combobox] (unlayered, so it
-          // beats this utility): the wrapper carries the effective 130px cap.
           wrapperClassName="max-w-[130px]"
         />
       </div>

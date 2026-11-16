@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -51,7 +51,7 @@ describe('QuickReplyEditor — เมื่อกด (Combobox, saves on pick)',
     expect(screen.getByRole('option', { name: '— ตั้งเอง (custom payload) —' })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: /ข้อความนี้เอง/ })).toBeNull();
     expect(screen.queryByRole('option', { name: /แม่แบบที่ปิดแล้ว/ })).toBeNull();
-    expect(listbox).toBeInTheDocument();
+    expect(within(listbox).getByText('ส่ง แม่แบบตอบกลับ')).toBeInTheDocument();
     await user.type(screen.getByRole('combobox', { name: 'ค้นหา' }), 'ผ่อน');
     expect(api.patch).not.toHaveBeenCalled();
 

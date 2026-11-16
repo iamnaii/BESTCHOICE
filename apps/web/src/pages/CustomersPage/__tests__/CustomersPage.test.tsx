@@ -1002,7 +1002,7 @@ describe('ตัวกรองผู้ดูแล — Combobox (R2-4a)', () =
     await screen.findByText('ผู้สนใจ หนึ่ง');
     const owner = screen.getByRole('combobox', { name: 'ผู้ดูแล' });
     expect(owner).toHaveAttribute('data-slot', 'combobox-trigger');
-    expect(owner).toHaveClass('max-w-[130px]');
+    expect(owner.closest('[data-slot="combobox"]')).toHaveClass('max-w-[130px]');
     expect(owner).toHaveTextContent('ทุกคน');
     await waitFor(() =>
       expect(mocks.get).toHaveBeenCalledWith('/users', { params: { limit: 200 } }),

@@ -302,6 +302,7 @@ describe('AddressForm — values that are not in the lists', () => {
     expect(shown(field(PROVINCE))).toBe('กรุงเทพฯ');
     expect(field(DISTRICT)).toBeEnabled();
     await user.click(field(DISTRICT));
+    expect(field(DISTRICT)).toHaveAttribute('aria-expanded', 'true');
     expect(screen.queryAllByRole('option')).toHaveLength(0);
   });
 

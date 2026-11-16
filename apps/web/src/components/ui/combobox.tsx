@@ -52,6 +52,7 @@ interface ComboboxProps<M = unknown> {
   /**
    * Gets (options, raw query); its order is rendered as-is — also in server mode. Default:
    * `filterAndRank`, except in server mode, where the rows are not filtered again.
+   * It must return the same option objects it receives (no copies): rows are keyed by identity.
    */
   filter?: (options: ComboOption<M>[], query: string) => ComboOption<M>[];
   /** Server mode: the caller owns useDebounce/useQuery and passes the results as `options`. */
@@ -92,8 +93,13 @@ interface ComboboxProps<M = unknown> {
   /** From `LabeledField`; `required` wins when true. */
   'aria-required'?: React.AriaAttributes['aria-required'];
   onBlur?: React.FocusEventHandler<HTMLButtonElement>;
-  /** Trigger. */
+  /**
+   * Trigger skin only. Width, max-width, min-width and height go on `wrapperClassName`:
+   * `admin-typography.css` sets unlayered `max-width:100%` and `height` on
+   * `button[role=combobox]`, so such utilities here have no effect.
+   */
   className?: string;
+  /** Sizes the field (the trigger fills it); the clear button is positioned against this wrapper. */
   wrapperClassName?: string;
   contentClassName?: string;
   align?: 'start' | 'center' | 'end';
@@ -472,6 +478,7 @@ function Combobox<M = unknown>({
         )}
         <PopoverContent
           data-slot="combobox-content"
+          aria-label={listLabel}
           align={align}
           side={side}
           className={cn(

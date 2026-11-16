@@ -11,7 +11,7 @@ import { useUiFlags } from '@/hooks/useUiFlags';
 import { whtRatesToSelectOptions } from '@/lib/wht-rates';
 import TaxDisallowedHint from './TaxDisallowedHint';
 import { useIsMobile } from '@/hooks/useIsMobile';
-import { AccountSearchDropdown } from '@/pages/other-income/components/AccountSearchDropdown';
+import { AccountCombobox } from '@/components/accounting/AccountCombobox';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 
@@ -35,10 +35,10 @@ export function ItemLinesSection({ lines, onChange, priceTypeLabel }: Props) {
   );
   const isMobile = useIsMobile();
 
-  // ชุดบัญชีเดิมของ dropdown นี้ — AccountSearchDropdown โหลดผังทั้งหมด จึงกรองด้วยรหัสชุดนี้
+  // ชุดบัญชีเดิมของ dropdown นี้ — AccountCombobox โหลดผังทั้งหมด จึงกรองด้วยรหัสชุดนี้
   const expenseCodes = new Set(groups.flatMap((g) => g.accounts.map((a) => a.code)));
   const accountPicker = (line: ExpenseLineForm) => (
-    <AccountSearchDropdown
+    <AccountCombobox
       aria-label="บัญชีค่าใช้จ่าย"
       value={line.category}
       onChange={(code) => updateLine(line.uid, { category: code })}

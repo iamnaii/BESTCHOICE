@@ -13,8 +13,8 @@ vi.mock('../VendorCombobox', () => ({
     </button>
   ),
 }));
-vi.mock('@/pages/other-income/components/AccountSearchDropdown', () => ({
-  AccountSearchDropdown: (props: { value: string; onChange: (code: string) => void; 'aria-label'?: string }) => (
+vi.mock('@/components/accounting/AccountCombobox', () => ({
+  AccountCombobox: (props: { value: string; onChange: (code: string) => void; 'aria-label'?: string }) => (
     <button type="button" aria-label={props['aria-label'] ?? 'บัญชี'} onClick={() => props.onChange('53-1101')}>
       {props.value || '—'}
     </button>

@@ -11,7 +11,7 @@ import {
   type UseFormSetValue,
 } from 'react-hook-form';
 import { Plus, Trash2, Lightbulb } from 'lucide-react';
-import { AccountSearchDropdown } from './AccountSearchDropdown';
+import { AccountCombobox } from '@/components/accounting/AccountCombobox';
 import { formatNumberDecimal } from '@/utils/formatters';
 import type { OtherIncomeFormValues } from '@/lib/otherIncome.schema';
 import { useId as useExtraFieldId } from 'react';
@@ -96,9 +96,10 @@ export function ItemsTable({ control, register, watch, setValue }: Props) {
             </div>
             <div className="p-3 space-y-3">
               <div>
-                <label className={formLabelClass}>บัญชีรายได้</label>
+                <label htmlFor={`${uiExtraFieldId}-0-${idx}`} className={formLabelClass}>บัญชีรายได้</label>
                 <div>
-                  <AccountSearchDropdown
+                  <AccountCombobox
+                    id={`${uiExtraFieldId}-0-${idx}`}
                     value={items[idx]?.accountCode ?? ''}
                     onChange={(c) => {
                       setValue(`items.${idx}.accountCode`, c, { shouldValidate: true });

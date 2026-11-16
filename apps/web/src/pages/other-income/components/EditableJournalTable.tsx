@@ -5,7 +5,7 @@ import { useMemo } from 'react';
 import { Trash2, Plus, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { AccountSearchDropdown } from './AccountSearchDropdown';
+import { AccountCombobox } from '@/components/accounting/AccountCombobox';
 import { journalTotalsCents } from './journalCents';
 
 const journalAccountFilter = (a: { code: string }) =>
@@ -116,7 +116,7 @@ export function EditableJournalTable({ lines, onChange }: Props) {
             {lines.map((line, idx) => (
               <tr key={idx} className="border-t border-border">
                 <td className="px-2 py-1">
-                  <AccountSearchDropdown
+                  <AccountCombobox
                     value={line.accountCode}
                     onChange={(code) => updateLine(idx, { accountCode: code })}
                     filter={journalAccountFilter}

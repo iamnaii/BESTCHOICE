@@ -7,7 +7,7 @@ import {
   type UseFormSetValue,
 } from 'react-hook-form';
 import { Plus, Trash2 } from 'lucide-react';
-import { AccountSearchDropdown } from './AccountSearchDropdown';
+import { AccountCombobox } from '@/components/accounting/AccountCombobox';
 import type { OtherIncomeFormValues } from '@/lib/otherIncome.schema';
 
 interface Props {
@@ -57,7 +57,7 @@ export function AdjustmentTable({
               {idx + 1}
             </span>
             <div className="col-span-2 min-w-0 sm:col-span-5">
-              <AccountSearchDropdown
+              <AccountCombobox
                 value={watchedAdjustments[idx]?.accountCode ?? ''}
                 onChange={(code) => {
                   setValue(`adjustments.${idx}.accountCode`, code, { shouldValidate: true });

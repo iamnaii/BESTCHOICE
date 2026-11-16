@@ -1,5 +1,5 @@
 // apps/web/src/components/expense-form-v4/__tests__/ItemLinesSection.layout.test.tsx
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
@@ -98,5 +98,22 @@ describe('ItemLinesSection — ตารางและการ์ด', () => {
     mount();
     const ids = screen.getAllByLabelText('ราคา/หน่วย').map((n) => n.id).filter(Boolean);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('ปุ่มลบอยู่แถวล่างของบรรทัด — Tab ไล่ WHT% → คำอธิบาย → ต้องห้าม → ? → ลบ', async () => {
+    const user = userEvent.setup();
+    mount();
+    const del = screen.getAllByRole('button', { name: 'ลบรายการ' })[0];
+    const description = screen.getAllByLabelText('คำอธิบาย')[0];
+    expect(del.closest('tr')).toBe(description.closest('tr'));
+    act(() => screen.getAllByRole('combobox', { name: 'WHT%' })[0].focus());
+    await user.tab();
+    expect(description).toHaveFocus();
+    await user.tab();
+    expect(screen.getAllByRole('checkbox', { name: /ค่าใช้จ่ายต้องห้าม/ })[0]).toHaveFocus();
+    await user.tab();
+    expect(screen.getAllByRole('button', { name: 'ดูประเภทค่าใช้จ่ายต้องห้าม (ม.65 ตรี)' })[0]).toHaveFocus();
+    await user.tab();
+    expect(del).toHaveFocus();
   });
 });

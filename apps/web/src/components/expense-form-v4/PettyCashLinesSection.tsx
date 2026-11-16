@@ -179,17 +179,8 @@ export function PettyCashLinesSection({ value, onChange }: Props) {
                 <td className={cn(cell, 'px-2 pt-4 text-right font-medium tabular-nums')}>
                   {money(totals.lines[idx].total)}
                 </td>
-                <td rowSpan={2} className={cn(cell, 'px-0')}>
-                  <button data-ui-control="button" data-ui-icon="true"
-                    type="button"
-                    onClick={() => removeLine(l.uid)}
-                    disabled={value.lines.length === 1}
-                    aria-label={`ลบรายการ #${idx + 1}`}
-                    className="flex min-h-11 w-full items-center justify-center rounded-md text-muted-foreground hover:text-destructive disabled:cursor-not-allowed disabled:opacity-30"
-                  >
-                    <Trash2 className="size-4" aria-hidden="true" />
-                  </button>
-                </td>
+                {/* ปุ่มลบอยู่แถวล่าง — Tab ไล่ตามที่ตาเห็น: ผู้ขาย → บัญชี → ยอด → VAT → เลขใบกำกับฯ → รายละเอียด → ลบ (เจ้าของเลือก 2026-11-16) */}
+                <td className={cell} />
               </tr>
               <tr>
                 <td className={cn(cell, 'pt-0 pb-2.5')}>
@@ -213,6 +204,17 @@ export function PettyCashLinesSection({ value, onChange }: Props) {
                   />
                 </td>
                 <td colSpan={3} />
+                <td className={cn(cell, 'px-0 pt-0 pb-2.5')}>
+                  <button data-ui-control="button" data-ui-icon="true"
+                    type="button"
+                    onClick={() => removeLine(l.uid)}
+                    disabled={value.lines.length === 1}
+                    aria-label={`ลบรายการ #${idx + 1}`}
+                    className="flex min-h-11 w-full items-center justify-center rounded-md text-muted-foreground hover:text-destructive disabled:cursor-not-allowed disabled:opacity-30"
+                  >
+                    <Trash2 className="size-4" aria-hidden="true" />
+                  </button>
+                </td>
               </tr>
             </tbody>
           ))}

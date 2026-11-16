@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import ThaiDateInput from './ThaiDateInput';
 import { formControlClass } from './form-styles';
+import { cn } from '@/lib/utils';
 
 /**
  * `min` / `max` are YYYY-MM-DD (CE). Days outside the range must not be
@@ -57,15 +58,29 @@ describe('ThaiDateInput — min / max', () => {
 });
 
 describe('ThaiDateInput — หน้าตาเท่าช่องกรอกอื่น', () => {
-  it('รับ formControlClass แล้วไม่ได้พื้นเทาโปร่งและเคอร์เซอร์ห้ามกดของช่อง readonly (readOnly มีไว้กันพิมพ์ ช่องยังกดเลือกวันได้)', () => {
+  it('รับ formControlClass แล้วไม่เหลือสไตล์ช่อง readonly (readOnly มีไว้กันพิมพ์ ช่องยังกดเลือกวันได้)', () => {
     render(
       <ThaiDateInput value="2026-09-13" onChange={vi.fn()} aria-label="วันที่ใบกำกับ" className={formControlClass} />,
     );
     const input = screen.getByLabelText('วันที่ใบกำกับ');
     expect(input).toHaveAttribute('readonly');
-    expect(input).not.toHaveClass('[[readonly]]:bg-muted/80');
-    expect(input).not.toHaveClass('[[readonly]]:cursor-not-allowed');
-    expect(input).toHaveClass('[[readonly]]:bg-background', '[[readonly]]:cursor-pointer');
+    expect([...input.classList].some((c) => c.startsWith('[[readonly]]:'))).toBe(false);
+    expect(input).toHaveClass('bg-background', 'cursor-pointer');
+  });
+
+  it('ผู้เรียกกำหนดพื้นเอง (bg-card) → พื้นของผู้เรียกชนะ ไม่มีสไตล์ readonly มาทับ', () => {
+    render(
+      <ThaiDateInput
+        value="2026-09-13"
+        onChange={vi.fn()}
+        aria-label="วันที่ใบกำกับ"
+        className={cn(formControlClass, 'bg-card')}
+      />,
+    );
+    const input = screen.getByLabelText('วันที่ใบกำกับ');
+    expect(input).toHaveClass('bg-card');
+    expect(input).not.toHaveClass('bg-background');
+    expect([...input.classList].some((c) => c.startsWith('[[readonly]]:'))).toBe(false);
   });
 
   it('disabled ยังเป็นช่องปิดใช้งาน', () => {

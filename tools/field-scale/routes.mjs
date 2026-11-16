@@ -604,14 +604,15 @@ export const PENDING_PROBES = {
     id: 'account-menu-recurring-bill', widths: [1440], menu: 'controls',
     trigger: (page) => page.getByRole('dialog').getByRole('combobox', { name: 'บัญชีค่าใช้จ่าย' }),
   }],
-  'r2-stock-alert-create': [{ // Task 12 (menu inside a Radix Dialog)
-    id: 'stock-alert-model-menu', widths: [1440, 390], menu: 'controls',
-    trigger: (page) => page.getByRole('dialog').getByRole('combobox', { name: 'รุ่น', exact: true }),
-  }],
-  'r2-po-wizard-items': [{ // Task 12 (overflow-x-auto table; vaul Drawer below 1024)
-    id: 'po-accessory-model-menu', widths: [1440, 390], menu: 'controls',
-    trigger: (page) => page.getByRole('combobox', { name: 'สำหรับรุ่น' }).first(),
-  }],
+};
+// Round 2 Task 12 attached these two from PENDING_PROBES (the model fields are Combobox now).
+const STOCK_ALERT_MODEL_MENU = { // menu inside a Radix Dialog
+  id: 'stock-alert-model-menu', widths: [1440, 390], menu: 'controls',
+  trigger: (page) => page.getByRole('dialog').getByRole('combobox', { name: 'รุ่น', exact: true }),
+};
+const PO_ACCESSORY_MODEL_MENU = { // overflow-x-auto table; vaul Drawer below 1024
+  id: 'po-accessory-model-menu', widths: [1440, 390], menu: 'controls',
+  trigger: (page) => page.getByRole('combobox', { name: 'สำหรับรุ่น' }).first(),
 };
 
 const room = (ctx) => (ctx.shopRoomId ? `/inbox/${ctx.shopRoomId}?zone=shop` : null);
@@ -667,7 +668,8 @@ export const R2_ROUTES = [
   { id: 'r2-after-sales-walk-in', path: '/after-sales/new?imei=356000000000005', appendix: ['R2-3b ContactCombobox'],
     mocks: [R2.afterSalesWalkIn] },
   { id: 'r2-po-wizard-items', path: '/purchase-orders', appendix: ['R2-3b ContactCombobox', 'R2-4b AccessoryItemRow'],
-    mocks: [M.purchaseOrders, M.poSuppliers, R2.purchaseOrdersSummary], open: openPurchaseItems },
+    mocks: [M.purchaseOrders, M.poSuppliers, R2.purchaseOrdersSummary], open: openPurchaseItems,
+    probes: [PO_ACCESSORY_MODEL_MENU] },
   { id: 'r2-booking-create', path: '/bookings', appendix: ['R2-3b CustomerCombobox'], mocks: R2.bookings,
     open: clickButton('สร้างใบจอง'), probes: [BOOKING_CUSTOMER_MENU] },
   { id: 'r2-store-appointments', path: '/appointments', appendix: ['R2-3b CustomerCombobox'], mocks: [] },
@@ -724,7 +726,7 @@ export const R2_ROUTES = [
     mocks: [...R2.stockAlerts, M.branches], open: async (page) => {
       await clickButton('+ จุดสั่งซื้อซ้ำ')(page);
       await page.getByRole('dialog').getByLabel('แบรนด์', { exact: true }).selectOption('Apple');
-    } },
+    }, probes: [STOCK_ALERT_MODEL_MENU] },
   { id: 'r2-trade-in-questions', path: '/trade-in', appendix: ['R2-4b ReferenceQuestionnaire'],
     mocks: [R2.buybackReference, R2.sellConfig], open: async (page) => {
       await page.getByRole('radio', { name: 'แบบตรวจสภาพ', exact: true }).click();

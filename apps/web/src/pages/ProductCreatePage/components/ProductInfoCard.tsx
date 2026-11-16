@@ -1,5 +1,6 @@
 import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
+import { Combobox } from '@/components/ui/combobox';
 import { useId as useFieldId } from 'react';
 import { DeviceDisclosureFields } from '@/components/product/DeviceDisclosureFields';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
@@ -231,20 +232,18 @@ export default function ProductInfoCard({
               {/* รุ่น */}
               <div>
                 <label htmlFor={`${fieldId}-7`} className="block text-sm font-medium text-foreground mb-3">รุ่น *</label>
-                <NativeSelect id={`${fieldId}-7`}
+                <Combobox
+                  id={`${fieldId}-7`}
                   value={form.model}
-                  onChange={(e) => onModelChange(e.target.value)}
-                  className={inputCls}
+                  onChange={(model) => {
+                    // A native select fired no change for the same option — keep colour/storage.
+                    if (model !== form.model) onModelChange(model);
+                  }}
+                  options={availableModels.map((m) => ({ value: m.name, label: m.name }))}
+                  placeholder="เลือกรุ่น"
                   required
                   disabled={!form.brand}
-                >
-                  <option value="">เลือกรุ่น</option>
-                  {availableModels.map((m) => (
-                    <option key={m.name} value={m.name}>
-                      {m.name}
-                    </option>
-                  ))}
-                </NativeSelect>
+                />
                 {form.brand && availableModels.length === 0 && (
                   <p className="text-xs text-muted-foreground mt-1">ไม่พบรุ่นสำหรับประเภทนี้</p>
                 )}

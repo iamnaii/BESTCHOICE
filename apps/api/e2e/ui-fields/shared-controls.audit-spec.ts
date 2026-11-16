@@ -71,11 +71,15 @@ describe('Shared controls and stock forms on isolated full API', () => {
           await page.goto(`${web.origin}/products/create`, { waitUntil: 'networkidle' });
           await page.addStyleTag({ content: `html { font-size: ${config.root}px !important; }` });
           await page.getByLabel('ยี่ห้อ *', { exact: true }).selectOption('Apple');
-          const model = page.getByLabel('รุ่น *', { exact: true });
+          // รุ่น is a Combobox (R2-4b): pick the first catalog model from its portalled menu.
+          const model = page.getByRole('combobox', { name: 'รุ่น *', exact: true });
           await browserExpect(model).toBeEnabled();
-          const option = await model.locator('option').nth(1).getAttribute('value');
-          await model.selectOption(option!);
-          await browserExpect(model).toHaveValue(option!);
+          await model.click();
+          const firstModel = page.locator('[data-slot=combobox-content]').getByRole('option').first();
+          const modelName = (await firstModel.innerText()).trim();
+          await firstModel.click();
+          await browserExpect(page.locator('[data-slot=combobox-content]')).toHaveCount(0);
+          await browserExpect(model).toContainText(modelName);
           await page.getByLabel('เครื่องไทย / เครื่องนอก', { exact: true }).selectOption('THAI');
           await capture('product-selected');
           await page.getByLabel('ประเภท *', { exact: true }).selectOption('ACCESSORY');
@@ -84,11 +88,14 @@ describe('Shared controls and stock forms on isolated full API', () => {
           await capture('product-accessory');
 
           await web.navigate(page, '/stock/alerts');
-          await page.getByRole('button', { name: '+ Reorder Point', exact: true }).click();
-          const dialog = page.getByRole('dialog');
+          // pre-existing: the button reads "+ จุดสั่งซื้อซ้ำ" (StockAlertsPage.tsx:411), not "+ Reorder Point"
+          await page.getByRole('button', { name: '+ จุดสั่งซื้อซ้ำ', exact: true }).click();
+          // named: the open รุ่น menu is also role=dialog
+          const dialog = page.getByRole('dialog', { name: 'สร้าง จุดสั่งซื้อซ้ำ ใหม่', exact: true });
           await dialog.getByLabel('แบรนด์', { exact: true }).selectOption('Apple');
-          const stockModel = dialog.getByLabel('รุ่น', { exact: true });
-          await stockModel.selectOption(await stockModel.locator('option').nth(1).getAttribute('value') as string);
+          await dialog.getByRole('combobox', { name: 'รุ่น', exact: true }).click();
+          await page.locator('[data-slot=combobox-content]').getByRole('option').first().click();
+          await browserExpect(page.locator('[data-slot=combobox-content]')).toHaveCount(0);
           await dialog.getByLabel('สาขา', { exact: true }).selectOption(world.branches.a.id);
           await capture('stock-alert-create');
           await page.keyboard.press('Escape');

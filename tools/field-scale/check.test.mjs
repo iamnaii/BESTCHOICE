@@ -329,9 +329,11 @@ test('routes: cover appendix ก, the 9 AddressForm hosts and every menu probe',
     ['trade-in-quick-buy', 'quick-buy-model-menu', [1440, 390], 'controls'],
     ['r2-general-ledger', 'account-menu-gl', [1440, 390], 'controls'],
     ['r2-petty-cash-lines', 'account-menu-petty-cash', [1440, 390], 'controls'],
+    ['r2-po-wizard-items', 'po-accessory-model-menu', [1440, 390], 'controls'],
     ['r2-booking-create', 'booking-customer-menu', [1440, 390], 'controls'],
     ['r2-inbox-filter', 'inbox-owner-menu', [1440, 390], 'controls'],
     ['r2-prospect-filters', 'prospect-owner-menu', [1440, 390], 'controls'],
+    ['r2-stock-alert-create', 'stock-alert-model-menu', [1440, 390], 'controls'],
     ['r2-profile-yeastar', 'profile-extension-menu', [1440, 390], 'controls'],
   ]);
 });
@@ -346,8 +348,6 @@ test('routes: pending probes name an existing route and are not attached yet', (
     ['r2-expenses-list', 'account-menu-expense-filter', [1440], 'controls'],
     ['expense-new', 'account-menu-expense-line', [1440], 'controls'],
     ['recurring-bill-dialog', 'account-menu-recurring-bill', [1440], 'controls'],
-    ['r2-stock-alert-create', 'stock-alert-model-menu', [1440, 390], 'controls'],
-    ['r2-po-wizard-items', 'po-accessory-model-menu', [1440, 390], 'controls'],
   ]);
   for (const [id, probeId] of pending) {
     assert.ok(byId.has(id), id);

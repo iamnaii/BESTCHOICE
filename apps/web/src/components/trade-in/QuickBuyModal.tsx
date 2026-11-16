@@ -51,6 +51,11 @@ import { ContactCombobox } from '@/components/contacts/ContactCombobox';
 import { contactsApi } from '@/lib/api/contacts';
 import { getModels } from '@/data/productCatalog';
 import PurchaseSelect from './PurchaseSelect';
+import { Combobox } from '@/components/ui/combobox';
+
+/** รุ่น iPhone sits beside PurchaseSelect (ความจุ) — same fill, border, padding and open ring. */
+const MODEL_TRIGGER_SKIN =
+  'cursor-pointer gap-3 border-border bg-card px-4 shadow-sm transition-colors hover:border-primary/50 data-[state=open]:border-primary data-[state=open]:ring-2 data-[state=open]:ring-primary/15 disabled:cursor-not-allowed disabled:bg-muted/40';
 
 export interface QuickBuyResult {
   id: string;
@@ -890,7 +895,7 @@ export default function QuickBuyModal({
               <div className="grid min-w-0 content-start gap-5 sm:grid-cols-2">
                 <div>
                   <Label htmlFor="quick-buy-model" className={formLabelClass}>รุ่น iPhone *</Label>
-                  <PurchaseSelect
+                  <Combobox
                     id="quick-buy-model"
                     value={form.deviceModel}
                     disabled={catalog.isPending || catalog.isError}
@@ -899,7 +904,9 @@ export default function QuickBuyModal({
                       value: entry.model,
                       label: entry.model,
                     }))}
-                    onValueChange={(value) => {
+                    onChange={(value) => {
+                      // Radix Select ignored a re-pick of the current model — keep storage, colour and answers.
+                      if (value === form.deviceModel) return;
                       clearInspection();
                       setForm((f) => ({
                         ...f,
@@ -908,6 +915,7 @@ export default function QuickBuyModal({
                         deviceColor: '',
                       }));
                     }}
+                    className={MODEL_TRIGGER_SKIN}
                   />
                 </div>
                 <div>

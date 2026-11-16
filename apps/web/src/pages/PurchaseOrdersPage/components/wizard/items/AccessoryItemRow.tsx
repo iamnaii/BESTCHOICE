@@ -1,4 +1,5 @@
 import { NativeSelect } from '@/components/ui/native-select';
+import { Combobox, type ComboOption } from '@/components/ui/combobox';
 import { useState } from 'react';
 import { Check, ChevronDown } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -76,6 +77,16 @@ export function AccessoryItemRow({ item, idx, onChange, onToggleModel, onDuplica
   );
 }
 
+/** เคส "สำหรับรุ่น": the whole catalog; '' first because the model is optional (po-catalog.util allItemsComplete). */
+let caseModelOptions: ComboOption[] | null = null;
+function getCaseModelOptions(): ComboOption[] {
+  caseModelOptions ??= [
+    { value: '', label: '— เลือกรุ่น —' },
+    ...catalogEntries().map((e) => ({ value: e.name, label: e.name })),
+  ];
+  return caseModelOptions;
+}
+
 /** The one control each accessory kind needs, in a fixed label track so all rows line up. */
 function DetailControl({
   item,
@@ -111,14 +122,17 @@ function DetailControl({
     case 'เคส':
       return (
         <LabeledControl label="สำหรับรุ่น">
-          <NativeSelect wrapperClassName="max-w-full w-full" aria-label="สำหรับรุ่น" value={item.model} onChange={(e) => onChange('model', e.target.value)} className={selectCls}>
-            <option value="">— เลือกรุ่น —</option>
-            {catalogEntries().map((e) => (
-              <option key={e.name} value={e.name}>
-                {e.name}
-              </option>
-            ))}
-          </NativeSelect>
+          <Combobox
+            aria-label="สำหรับรุ่น"
+            value={item.model}
+            onChange={(model) => {
+              // A native select fired no change for the same option — keep colour/storage.
+              if (model !== item.model) onChange('model', model);
+            }}
+            options={getCaseModelOptions()}
+            wrapperClassName="max-w-full w-full"
+            className={selectCls}
+          />
         </LabeledControl>
       );
     case 'ชุดชาร์จ':

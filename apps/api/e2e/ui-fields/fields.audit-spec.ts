@@ -202,10 +202,13 @@ describe('Field audit across other admin pages',()=>{
 
     await p.goto(web.origin+'/products/create',{waitUntil:'networkidle'});
     await p.getByLabel('ยี่ห้อ *',{exact:true}).selectOption({label:'Apple'});
-    await browserExpect(p.getByLabel('รุ่น *',{exact:true})).toBeEnabled();
-    const model=p.getByLabel('รุ่น *',{exact:true});
-    const modelValue=await model.locator('option').nth(1).getAttribute('value');
-    expect(modelValue).toBeTruthy(); await model.selectOption(modelValue!);
+    const model=p.getByRole('combobox',{name:'รุ่น *',exact:true});
+    await browserExpect(model).toBeEnabled();
+    await model.click();
+    const firstModel=p.locator('[data-slot=combobox-content]').getByRole('option').first();
+    const modelName=(await firstModel.innerText()).trim();
+    expect(modelName).toBeTruthy(); await firstModel.click();
+    await browserExpect(model).toContainText(modelName);
     await p.getByLabel('ประเภท *',{exact:true}).selectOption('ACCESSORY');
     await p.getByLabel('ประเภทอุปกรณ์ *',{exact:true}).selectOption('ชุดชาร์จ');
     await p.getByLabel('ชนิด *',{exact:true}).selectOption('Type-C');

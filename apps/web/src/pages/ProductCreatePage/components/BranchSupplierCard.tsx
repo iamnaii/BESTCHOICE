@@ -1,5 +1,6 @@
 import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
+import { Combobox } from '@/components/ui/combobox';
 import { useId as useFieldId } from 'react';
 import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card';
 
@@ -11,6 +12,8 @@ interface BranchSupplierCardProps {
   suppliers: { id: string; name: string }[];
   suppliersLoading: boolean;
   suppliersError: boolean;
+  /** Refetch the supplier list (the field's "ลองใหม่" button). */
+  onRetrySuppliers: () => void;
   inputCls: string;
   onChange: (field: string, value: string) => void;
 }
@@ -23,6 +26,7 @@ export default function BranchSupplierCard({
   suppliers,
   suppliersLoading,
   suppliersError,
+  onRetrySuppliers,
   inputCls,
   onChange,
 }: BranchSupplierCardProps) {
@@ -52,20 +56,18 @@ export default function BranchSupplierCard({
           </div>
           <div>
             <label htmlFor={`${fieldId}-2`} className="block text-sm font-medium text-foreground mb-3">ผู้จัดจำหน่าย</label>
-            <NativeSelect id={`${fieldId}-2`}
+            <Combobox
+              id={`${fieldId}-2`}
               value={supplierId}
-              onChange={(e) => onChange('supplierId', e.target.value)}
-              className={inputCls}
-            >
-              <option value="">
-                {suppliersLoading ? 'กำลังโหลด...' : suppliersError ? 'โหลดข้อมูลไม่ได้' : 'ไม่ระบุ'}
-              </option>
-              {suppliers.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </NativeSelect>
+              onChange={(value) => onChange('supplierId', value)}
+              options={[
+                { value: '', label: 'ไม่ระบุ' },
+                ...suppliers.map((s) => ({ value: s.id, label: s.name })),
+              ]}
+              loading={suppliersLoading}
+              error={suppliersError}
+              onRetry={onRetrySuppliers}
+            />
           </div>
           <div>
             <label htmlFor={`${fieldId}-3`} className="block text-sm font-medium text-foreground mb-3">ราคาทุน (บาท) *</label>

@@ -64,7 +64,7 @@ describe('PO filter alignment and selection', () => {
               const box = element.getBoundingClientRect();
               const style = getComputedStyle(element);
               const arrow = element.querySelector('svg')?.getBoundingClientRect();
-              const text = element.querySelector('[data-slot=select-value]')?.getBoundingClientRect();
+              const text = element.querySelector('[data-slot=select-value],[data-slot=combobox-value]')?.getBoundingClientRect();
               return {
                 label: element.getAttribute('aria-label'), x: box.x, y: box.y, width: box.width, height: box.height,
                 font: style.fontFamily, size: style.fontSize, paddingLeft: style.paddingLeft,
@@ -108,14 +108,18 @@ describe('PO filter alignment and selection', () => {
           await supplier.click();
           const longOption = page.getByRole('option', { name: unbrokenName, exact: true });
           await longOption.scrollIntoViewIfNeeded();
-          const popup = await longOption.evaluate(element => {
-            const label = element.lastElementChild as HTMLElement;
-            const box = element.closest('[role=listbox]')!.getBoundingClientRect();
+          const popup = await longOption.evaluate((element, name) => {
+            // Combobox row: the label is the leaf element holding the whole name (renderOption in POListTab)
+            const label = ([...element.querySelectorAll<HTMLElement>('*')].find(node => node.childElementCount === 0 && node.textContent === name) ?? element) as HTMLElement;
+            // the portalled menu, border included, is as wide as the trigger (w-(--radix-popover-trigger-width))
+            const box = element.closest('[data-slot=combobox-content]')!.getBoundingClientRect();
             return { x: box.x, right: box.right, width: box.width, labelWidth: label.clientWidth, labelScroll: label.scrollWidth, labelHeight: label.clientHeight };
-          });
+          }, unbrokenName);
           expect(popup.x).toBeGreaterThanOrEqual(0);
           expect(popup.right).toBeLessThanOrEqual(config.width);
-          expect(popup.width).toBeCloseTo(selects[1].width, 0);
+          // the Combobox menu is never narrower than min-w-64 (16rem); on the xl row (1440/1280, sidebar expanded)
+          // the supplier column is narrower (~217/185px), so there the menu is 16rem wide
+          expect(popup.width).toBeCloseTo(Math.max(selects[1].width, 16 * config.root), 0);
           expect(popup.labelScroll).toBeLessThanOrEqual(popup.labelWidth + 1);
           expect(popup.labelHeight).toBeGreaterThan(2 * config.root);
           await page.screenshot({ path: join(output, `${prefix}-supplier-open.png`), animations: 'disabled' });

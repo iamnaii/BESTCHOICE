@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, within, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { openCombobox, pickComboOption } from '@/test/combobox';
 import { POListTab } from './POListTab';
 import type { PurchaseOrder } from '../types';
 
@@ -22,7 +24,7 @@ const po = (over: Partial<PurchaseOrder>): PurchaseOrder =>
   }) as PurchaseOrder;
 
 const mut = { isPending: false, mutate: vi.fn() } as never;
-function renderTab(pos: PurchaseOrder[], readOnly = false) {
+function renderTab(pos: PurchaseOrder[], readOnly = false, suppliers = [{ id: 's1', name: 'QA' }]) {
   const openDetailModal = vi.fn();
   render(
     <POListTab
@@ -39,7 +41,7 @@ function renderTab(pos: PurchaseOrder[], readOnly = false) {
       rejectPOMutation={mut}
       cancelMutation={mut}
       setConfirmDialog={vi.fn()}
-      suppliers={[{ id: 's1', name: 'QA' }]}
+      suppliers={suppliers}
       overdueOnly={false}
       setOverdueOnly={vi.fn()}
     />,
@@ -122,5 +124,35 @@ describe('POListTab — ดูอย่างเดียว (ผจก.กา�
     const row = screen.getByRole('button', { name: 'PO-2026-09-010' }).closest('tr') as HTMLElement;
     expect(within(row).getByTitle('บันทึกการจ่าย')).toBeInTheDocument();
     expect(within(row).getByRole('button', { name: 'รับสินค้า PO-2026-09-010' })).toBeInTheDocument();
+  });
+});
+
+describe('POListTab — ผู้จัดจำหน่าย filter (Combobox, client-side)', () => {
+  it('picks a supplier from the searchable list, filters the rows and clears back to ทุกผู้จัดจำหน่าย', async () => {
+    const user = userEvent.setup();
+    const idea = { id: 's2', name: 'บริษัท ไอเดียโมบาย จำกัด', contactName: null, phone: '', hasVat: false };
+    renderTab(
+      [po({}), po({ id: 'po-2', poNumber: 'PO-2026-09-009', supplier: idea })],
+      false,
+      [{ id: 's1', name: 'QA' }, { id: 's2', name: idea.name }],
+    );
+    const trigger = screen.getByRole('combobox', { name: 'ผู้จัดจำหน่าย' });
+    expect(trigger).toHaveTextContent('ทุกผู้จัดจำหน่าย');
+
+    await pickComboOption(user, 'ผู้จัดจำหน่าย', idea.name, { search: 'ไอเดีย' });
+    expect(trigger).toHaveTextContent(idea.name);
+    expect(screen.queryByRole('button', { name: 'PO-2026-09-010' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'PO-2026-09-009' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: `ลบ ผู้จัดจำหน่าย: ${idea.name}` })).toBeInTheDocument();
+    // renderOption keeps the mark on the current value
+    const list = await openCombobox(user, 'ผู้จัดจำหน่าย');
+    expect(within(list).getByRole('option', { name: idea.name }).querySelector('svg.lucide-check')).not.toBeNull();
+    expect(within(list).getByRole('option', { name: 'ทุกผู้จัดจำหน่าย' }).querySelector('svg.lucide-check')).toBeNull();
+    await user.keyboard('{Escape}');
+
+    await pickComboOption(user, 'ผู้จัดจำหน่าย', 'ทุกผู้จัดจำหน่าย');
+    expect(trigger).toHaveTextContent('ทุกผู้จัดจำหน่าย');
+    expect(screen.getByRole('button', { name: 'PO-2026-09-010' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^ลบ ผู้จัดจำหน่าย:/ })).toBeNull();
   });
 });

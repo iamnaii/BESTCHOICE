@@ -146,7 +146,6 @@ function mount() {
   return userEvent.setup();
 }
 
-// ใช้ใน Task 4 และ Task 8
 const bodyOf = async (path: string) => {
   await waitFor(() => expect(apiPost.mock.calls.some((c) => c[0] === path)).toBe(true));
   return apiPost.mock.calls.find((c) => c[0] === path)![1];
@@ -272,6 +271,19 @@ describe('จอมือถือ', () => {
       documentType: 'EXPENSE', branchId: 'b1', documentDate: today, priceType: 'EXCLUSIVE',
       paymentMethod: 'CASH', depositAccountCode: '11-1101', taxDisallowed: false,
       lines: [{ category: '53-1101', quantity: 1, unitPrice: 850, discount: 0, vatPercent: 7, whtPercent: 0 }],
+    });
+  });
+
+  it('เงินสดย่อยเป็นการ์ด และ body ที่ส่งเหมือนจอใหญ่', async () => {
+    mobile.value = true;
+    const user = mount();
+    await chooseKind(user, 'PETTY_CASH');
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    await fillPettyCashLine(user, { amount: '120' });
+    await saveDraft(user);
+    expect(await bodyOf('/expense-documents/petty-cash')).toEqual({
+      branchId: 'b1', documentDate: today, depositAccountCode: '11-1101',
+      lines: [{ supplierName: 'ร้านตัวอย่าง', supplierId: 'sup-1', category: '53-1101', amount: 120, vatPercent: 0 }],
     });
   });
 });

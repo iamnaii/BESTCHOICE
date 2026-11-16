@@ -58,6 +58,13 @@ describe('DocTypeMenu', () => {
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
+  it('locked: ชื่อเอกสารอยู่ใน span ในหัวเรื่อง (ขนาดเท่าตอนเลือกประเภทได้ ไม่ถูกกฎ h1 ทั่วทั้งหน้าทับ)', () => {
+    render(<DocTypeMenu value="PAYROLL" onChange={() => {}} locked />);
+    const h1 = screen.getByRole('heading', { level: 1, name: 'เงินเดือน' });
+    expect(h1).toHaveClass('m-0');
+    expect(h1.firstElementChild?.tagName).toBe('SPAN');
+  });
+
   it('ชื่อเอกสารเป็นหัวเรื่องระดับ 1 ของหน้า', () => {
     render(<DocTypeMenu value="EXPENSE_SAMEDAY" onChange={() => {}} />);
     expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument();

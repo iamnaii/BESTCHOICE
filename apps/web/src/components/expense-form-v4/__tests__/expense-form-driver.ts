@@ -76,7 +76,8 @@ export async function fillCreditNoteReason(user: UserEvent, reason: string) {
 
 /** เงินสดย่อย — บรรทัดแรก: เลือกผู้ขาย (ปุ่มแทน VendorCombobox) · เลือกบัญชี 53-1101 (ปุ่มแทน AccountSearchDropdown) · กรอกยอด */
 export async function fillPettyCashLine(user: UserEvent, line: { amount: string }) {
-  await user.click(screen.getByRole('button', { name: 'เลือกผู้ขาย' }));
+  // จอแคบมีป้าย "ผู้ขาย/ผู้รับเงิน" ผูกกับปุ่ม (ชื่อจากป้ายทับข้อความในปุ่ม) · จอกว้างไม่มีป้าย
+  await user.click(screen.getByRole('button', { name: /^(เลือกผู้ขาย|ผู้ขาย\/ผู้รับเงิน)$/ }));
   await user.click(screen.getByRole('button', { name: 'หมวดบัญชี' }));
   await user.type(screen.getByLabelText('จำนวน'), line.amount);
 }

@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { chooseKind, fillExpenseLine, openAdjustments, saveDraft } from './expense-form-driver';
+import { chooseKind, fillExpenseLine, openAdjustments, saveDraft, waitForSettlementDoc } from './expense-form-driver';
 
 /**
  * พฤติกรรมของหน้าเต็มแบบ PEAK (แผน Task 6) — mock ชุดเดียวกับ ExpenseFormV4.payloads.test.tsx
@@ -72,6 +72,7 @@ vi.mock('@/components/ui/ThaiDateInput', () => ({
 }));
 
 import { ExpenseFormV4 } from '../ExpenseFormV4';
+import type { DocType } from '../types';
 
 const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
 const ACCRUAL_DOC = {
@@ -118,7 +119,7 @@ beforeEach(() => {
   });
 });
 
-function mount(props: { branchName?: string } = {}) {
+function mount(props: { branchName?: string; initialDocType?: DocType } = {}) {
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <MemoryRouter>
@@ -218,5 +219,14 @@ describe('ExpenseFormV4 — หน้าเต็ม', () => {
     await bodyOf('/expense-documents');
     await waitFor(() => expect(remove.mock.calls.some((c) => c[0] === 'beforeunload')).toBe(true));
     remove.mockRestore();
+  });
+
+  it('เปิดจ่ายเจ้าหนี้แล้วระบบติ๊กใบให้เอง ไม่นับเป็นการแก้ (ไม่ผูก beforeunload)', async () => {
+    const add = vi.spyOn(window, 'addEventListener');
+    mount({ initialDocType: 'VENDOR_SETTLEMENT' });
+    await waitForSettlementDoc('EX-009');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(add.mock.calls.some((c) => c[0] === 'beforeunload')).toBe(false);
+    add.mockRestore();
   });
 });

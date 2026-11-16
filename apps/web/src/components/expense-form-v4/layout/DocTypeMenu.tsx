@@ -39,7 +39,13 @@ const titleClass = 'text-xl font-semibold leading-snug text-primary sm:text-2xl'
 
 export function DocTypeMenu({ value, onChange, pettyCashEnabled = true, payrollEnabled = true, locked = false }: Props) {
   const current = menuKeyOf(value);
-  if (locked) return <h1 className={titleClass}>{docTypeLabel(value)}</h1>;
+  if (locked) {
+    return (
+      <h1 className="m-0">
+        <span className={titleClass}>{docTypeLabel(value)}</span>
+      </h1>
+    );
+  }
 
   const items = ITEMS.filter(
     (item) =>

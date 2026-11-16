@@ -106,7 +106,7 @@ export function AdjustmentSection({
   return (
     <section className="rounded-xl border border-border bg-card p-5">
       <div className="mb-3">
-        <h4 className="text-base font-semibold leading-snug">บัญชีปรับผลต่าง</h4>
+        <h3 className="text-base font-semibold leading-snug">บัญชีปรับผลต่าง</h3>
         <p className="text-xs leading-snug text-muted-foreground">
           ใช้เมื่อจำนวนเงินที่จ่ายจริงไม่ตรงกับยอดที่ใบกำกับฯ ระบุ (ปัดเศษ / ส่วนลดเล็กน้อย / จ่ายเกิน / จ่ายน้อย)
         </p>

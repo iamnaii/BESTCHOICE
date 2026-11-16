@@ -32,7 +32,7 @@ interface Props {
  *
  * Mode LINKED (default) — pick source EX, auto-load lines, cap-capped by server.
  * Mode STANDALONE — free-form supplier + free-form lines, no source FK.
- * คืน FormRow ของตัวเอง (อ้างอิงเอกสาร / รายการที่จะลด) — ผู้เรียกไม่ต้องห่อ FormRow
+ * คืน FormRow ของตัวเอง สูงสุดสามแถว (อ้างอิงเอกสาร / รายการที่จะลด / รับเงินคืนเข้า) — ผู้เรียกไม่ต้องห่อ FormRow
  */
 export function CreditNoteLinesSection({ state, onChange, onLinesChange }: Props) {
   const uiFieldId = useUiFieldId();

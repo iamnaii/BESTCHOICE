@@ -3,7 +3,10 @@ import { Plus, Trash2 } from 'lucide-react';
 import { NumberInput } from '@/components/ui/NumberInput';
 import { NameAutocomplete } from '@/components/ui/NameAutocomplete';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
-import { formControlClass } from '@/components/ui/form-styles';
+import { NativeSelect } from '@/components/ui/native-select';
+import { ReadOnlyField } from '@/components/ui/readonly-field';
+import { formControlClass, formLabelClass } from '@/components/ui/form-styles';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { AccountSearchDropdown } from '@/pages/other-income/components/AccountSearchDropdown';
 import { useUserNames } from '@/hooks/useUserNames';
 import { formatNumberDecimal } from '@/utils/formatters';
@@ -23,7 +26,7 @@ export function PettyCashCustodianField({ value, onChange }: Props) {
   const custodianNames = useUserNames();
   return (
     <div className="w-full sm:max-w-md">
-      <label htmlFor={custodianId} className="sr-only">ผู้ดูแลเงินสดย่อย</label>
+      <label htmlFor={custodianId} className="sr-only">ผู้ดูแลเงินสดย่อย (ไม่บังคับ)</label>
       <NameAutocomplete
         id={custodianId}
         value={value.custodianName}
@@ -52,7 +55,54 @@ export function PettyCashLinesSection({ value, onChange }: Props) {
   const addLine = () => onChange({ ...value, lines: [...value.lines, newPettyCashLine()] });
 
   const totals = pettyCashTotals(value);
-  const money = (n: number) => formatNumberDecimal(n.toString(), 2);
+  const money = (n: number) => formatNumberDecimal(n);
+  const isMobile = useIsMobile();
+
+  const addButton = (
+    <button data-ui-control="button"
+      type="button"
+      onClick={addLine}
+      className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-border py-3 text-sm leading-snug text-muted-foreground hover:border-primary hover:text-foreground lg:w-auto lg:px-6"
+    >
+      <Plus className="size-4" aria-hidden="true" /> เพิ่มรายการ
+    </button>
+  );
+
+  if (isMobile) {
+    return (
+      <div className="space-y-3">
+        {value.lines.map((l, idx) => (
+          <PettyCashLineCard
+            key={l.uid}
+            line={l}
+            index={idx}
+            total={money(totals.lines[idx].total)}
+            canRemove={value.lines.length > 1}
+            onPatch={(p) => updateLine(l.uid, p)}
+            onRemove={() => removeLine(l.uid)}
+          />
+        ))}
+        <dl
+          data-testid="petty-cash-totals"
+          className="space-y-1.5 rounded-xl border border-border bg-muted/30 px-4 py-3 text-sm leading-snug tabular-nums"
+        >
+          <div className="flex justify-between gap-3">
+            <dt className="text-muted-foreground">รวม: ฐาน</dt>
+            <dd>{money(totals.sumBase)}</dd>
+          </div>
+          <div className="flex justify-between gap-3">
+            <dt className="text-muted-foreground">VAT</dt>
+            <dd>{money(totals.sumVat)}</dd>
+          </div>
+          <div className="flex justify-between gap-3 font-medium">
+            <dt>รวม</dt>
+            <dd>{money(totals.sumTotal)}</dd>
+          </div>
+        </dl>
+        {addButton}
+      </div>
+    );
+  }
 
   const cell = 'px-[3px] py-1.5 align-top';
   const head = 'px-2 py-2.5 text-xs font-semibold leading-snug text-muted-foreground whitespace-nowrap';
@@ -178,13 +228,113 @@ export function PettyCashLinesSection({ value, onChange }: Props) {
         </table>
       </div>
 
-      <button data-ui-control="button"
-        type="button"
-        onClick={addLine}
-        className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-border py-3 text-sm leading-snug text-muted-foreground hover:border-primary hover:text-foreground lg:w-auto lg:px-6"
-      >
-        <Plus className="size-4" aria-hidden="true" /> เพิ่มรายการ
-      </button>
+      {addButton}
+    </div>
+  );
+}
+
+type PettyCashLine = PettyCashFormFields['lines'][number];
+
+/** การ์ดต่อบรรทัดของจอแคบ — ทุกช่องมีป้ายที่มองเห็นผูกกับตัวช่อง */
+function PettyCashLineCard({
+  line, index, total, canRemove, onPatch, onRemove,
+}: {
+  line: PettyCashLine;
+  index: number;
+  total: string;
+  canRemove: boolean;
+  onPatch: (p: Partial<PettyCashLine>) => void;
+  onRemove: () => void;
+}) {
+  const id = useId();
+  return (
+    <div className="rounded-xl border border-border bg-card">
+      <div className="flex items-center justify-between border-b border-border px-4 py-2">
+        <span className="font-mono text-xs text-muted-foreground">#{index + 1}</span>
+        <button data-ui-control="button" data-ui-icon="true"
+          type="button"
+          onClick={onRemove}
+          disabled={!canRemove}
+          aria-label={`ลบรายการ #${index + 1}`}
+          className="flex min-h-11 min-w-11 items-center justify-center rounded-md text-muted-foreground hover:text-destructive disabled:cursor-not-allowed disabled:opacity-30"
+        >
+          <Trash2 className="size-4" aria-hidden="true" />
+        </button>
+      </div>
+      <div className="space-y-3 p-4">
+        <div>
+          <label htmlFor={`${id}-vendor`} className={formLabelClass}>ผู้ขาย/ผู้รับเงิน</label>
+          <VendorCombobox
+            id={`${id}-vendor`}
+            value={line.supplierName}
+            onSelectSupplier={(s) => onPatch({ supplierName: s.name, supplierId: s.supplierId })}
+          />
+        </div>
+        <div>
+          {/* ปุ่มเลือกบัญชีมีชื่อจาก aria-label — ป้ายนี้เป็นตัวหนังสือบนจอ */}
+          <span className={formLabelClass}>หมวดบัญชี</span>
+          <AccountSearchDropdown
+            aria-label="หมวดบัญชี"
+            value={line.category}
+            onChange={(code) => onPatch({ category: code })}
+            filter={(a) => a.code.startsWith('53-')}
+            placeholder="เลือกหมวดบัญชี"
+          />
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label htmlFor={`${id}-amount`} className={formLabelClass}>จำนวน</label>
+            <NumberInput unstyled
+              id={`${id}-amount`}
+              step="0.01"
+              min="0"
+              value={line.amount}
+              onChange={(e) => onPatch({ amount: e.target.value })}
+              placeholder="0.00"
+              className={cn(formControlClass, 'text-right tabular-nums')}
+            />
+          </div>
+          <div>
+            <label htmlFor={`${id}-vat`} className={formLabelClass}>VAT %</label>
+            <NativeSelect
+              id={`${id}-vat`}
+              wrapperClassName="max-w-full w-full min-w-0"
+              value={line.vatPercent}
+              onChange={(e) => onPatch({ vatPercent: e.target.value })}
+              className={formControlClass}
+            >
+              <option value="0">0%</option>
+              <option value="7">7%</option>
+            </NativeSelect>
+          </div>
+          <div>
+            <label htmlFor={`${id}-inv`} className={formLabelClass}>เลขใบกำกับฯ</label>
+            <input
+              id={`${id}-inv`}
+              type="text"
+              value={line.taxInvoiceNo}
+              onChange={(e) => onPatch({ taxInvoiceNo: e.target.value })}
+              placeholder="เลขใบกำกับฯ"
+              className={formControlClass}
+            />
+          </div>
+          <div>
+            <label htmlFor={`${id}-total`} className={formLabelClass}>รวม</label>
+            <ReadOnlyField id={`${id}-total`} align="end" value={total} />
+          </div>
+        </div>
+        <div>
+          <label htmlFor={`${id}-desc`} className={formLabelClass}>รายละเอียด</label>
+          <input
+            id={`${id}-desc`}
+            type="text"
+            value={line.description}
+            onChange={(e) => onPatch({ description: e.target.value })}
+            placeholder="รายละเอียด"
+            className={formControlClass}
+          />
+        </div>
+      </div>
     </div>
   );
 }

@@ -25,10 +25,10 @@ export function PaymentSection({ picker, unpaid, advanced, footer }: Props) {
       <section aria-labelledby={headingId} className="border-t border-border py-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm leading-snug">
-            <h3 id={headingId} className="flex items-center gap-2 font-semibold">
+            <h2 id={headingId} className="flex items-center gap-2 font-semibold">
               <Clock className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
               ชำระเงิน
-            </h3>
+            </h2>
             <span className="text-muted-foreground">ยังไม่ชำระเงิน — ตั้งหนี้ไว้ก่อน</span>
           </div>
           <button type="button" className={linkClass} onClick={unpaid.onMarkPaid}>เพิ่มข้อมูลชำระเงิน</button>
@@ -55,10 +55,10 @@ export function PaymentSection({ picker, unpaid, advanced, footer }: Props) {
     <section aria-labelledby={headingId} className="border-t border-border py-5">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-x-6 gap-y-1">
-          <h3 id={headingId} className="flex items-center gap-2 text-sm font-semibold leading-snug">
+          <h2 id={headingId} className="flex items-center gap-2 text-sm font-semibold leading-snug">
             <CheckCircle2 className="size-4 shrink-0 text-primary" aria-hidden="true" />
             ชำระเงิน
-          </h3>
+          </h2>
           {advanced && (
             <div role="radiogroup" aria-label="โหมดชำระเงิน" className="flex gap-4 text-sm leading-snug">
               <label className="flex min-h-11 items-center gap-1.5">

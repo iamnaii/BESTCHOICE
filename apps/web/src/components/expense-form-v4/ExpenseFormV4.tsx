@@ -711,12 +711,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
         if (isPreviewType) {
           netExpected = preview?.totals.netPayment ?? '0.00';
         } else {
-          const sumSettled = [...state.settlement.selections.values()].reduce(
-            (s, sel) => s + (parseFloat(sel.amount) || 0),
-            0,
-          );
-          const wht = parseFloat(state.settlement.whtAmount) || 0;
-          netExpected = (sumSettled - wht).toFixed(2);
+          netExpected = seTotals.cashLeg.toFixed(2);
         }
         const paidNum = state.amountPaid.trim() !== '' ? parseFloat(state.amountPaid) : parseFloat(netExpected);
         const netNum = parseFloat(netExpected) || 0;

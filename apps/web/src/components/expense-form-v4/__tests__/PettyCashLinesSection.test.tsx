@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+const mobile = vi.hoisted(() => ({ value: false }));
+vi.mock('@/hooks/useIsMobile', () => ({ useIsMobile: () => mobile.value }));
 vi.mock('@/hooks/useUserNames', () => ({ useUserNames: () => ['สมชาย ใจดี'] }));
 vi.mock('../VendorCombobox', () => ({
   VendorCombobox: ({ value, onSelectSupplier }: { value: string; onSelectSupplier: (s: unknown) => void }) => (
@@ -35,6 +37,8 @@ function Harness() {
 }
 
 describe('PettyCashLinesSection', () => {
+  beforeEach(() => { mobile.value = false; });
+
   it('หัวคอลัมน์ตามสัดส่วนใหม่ และทุกช่องในตารางมีชื่อ', () => {
     render(<Harness />);
     expect(screen.getAllByRole('columnheader').map((h) => h.textContent || h.getAttribute('aria-label'))).toEqual([
@@ -71,7 +75,39 @@ describe('PettyCashLinesSection', () => {
     expect(screen.getAllByLabelText('จำนวน')).toHaveLength(2);
     await user.click(screen.getByRole('button', { name: 'ลบรายการ #2' }));
     expect(screen.getAllByLabelText('จำนวน')).toHaveLength(1);
-    expect(screen.getByLabelText('ผู้ดูแลเงินสดย่อย')).toBeInTheDocument();
+    expect(screen.getByLabelText('ผู้ดูแลเงินสดย่อย (ไม่บังคับ)')).toBeInTheDocument();
     expect(screen.getByText('ไม่บังคับ')).toBeInTheDocument();
+  });
+
+  describe('จอมือถือ (ต่ำกว่า lg)', () => {
+    beforeEach(() => { mobile.value = true; });
+
+    it('เป็นการ์ดต่อบรรทัด ไม่มีตาราง และทุกช่องหาเจอจากป้าย', () => {
+      render(<Harness />);
+      expect(screen.queryByRole('table')).not.toBeInTheDocument();
+      for (const name of ['จำนวน', 'VAT %', 'เลขใบกำกับฯ', 'รายละเอียด']) {
+        expect(screen.getByLabelText(name)).toBeInTheDocument();
+      }
+      expect(screen.getByRole('button', { name: 'หมวดบัญชี' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'ลบรายการ #1' })).toBeDisabled();
+      for (const label of ['ผู้ขาย/ผู้รับเงิน', 'หมวดบัญชี', 'จำนวน', 'VAT %', 'เลขใบกำกับฯ', 'รายละเอียด', 'รวม']) {
+        expect(screen.getAllByText(label).length).toBeGreaterThan(0);
+      }
+    });
+
+    it('เพิ่ม/ลบรายการได้ และสรุปรวมท้ายการ์ดคิดจากยอดที่กรอก', async () => {
+      const user = userEvent.setup();
+      render(<Harness />);
+      await user.type(screen.getByLabelText('จำนวน'), '100');
+      await user.selectOptions(screen.getByLabelText('VAT %'), '7');
+      const totals = screen.getByTestId('petty-cash-totals');
+      expect(totals).toHaveTextContent('100.00');
+      expect(totals).toHaveTextContent('7.00');
+      expect(totals).toHaveTextContent('107.00');
+      await user.click(screen.getByRole('button', { name: 'เพิ่มรายการ' }));
+      expect(screen.getAllByLabelText('จำนวน')).toHaveLength(2);
+      await user.click(screen.getByRole('button', { name: 'ลบรายการ #2' }));
+      expect(screen.getAllByLabelText('จำนวน')).toHaveLength(1);
+    });
   });
 });

@@ -353,6 +353,29 @@ describe('ExpenseFormV4 payroll — บันทึกร่าง + คิด�
     expect(onSaved).not.toHaveBeenCalled();
   });
 
+  it('หลังบันทึกร่าง + คิดยอดแล้วโหลดใบกลับมา ไม่ถือว่าผู้ใช้แก้ค้าง (beforeunload ถูกถอดครั้งสุดท้าย)', async () => {
+    const events: string[] = [];
+    const add = vi.spyOn(window, 'addEventListener').mockImplementation(((type: string) => {
+      if (type === 'beforeunload') events.push('add');
+    }) as typeof window.addEventListener);
+    const remove = vi.spyOn(window, 'removeEventListener').mockImplementation(((type: string) => {
+      if (type === 'beforeunload') events.push('remove');
+    }) as typeof window.removeEventListener);
+    try {
+      const user = userEvent.setup();
+      mount();
+      await user.click(await screen.findByRole('button', { name: 'เลือกพนักงาน' }));
+      await waitFor(() => expect(events).toContain('add'));
+      docs['new-1'] = storedDoc('new-1', [ELIGIBLE_LINE]);
+      await user.click(screen.getByRole('button', { name: 'บันทึกร่าง + คิดยอด' }));
+      expect(await screen.findByRole('heading', { name: 'วันที่ต้องตรวจ (1)' })).toBeInTheDocument();
+      await waitFor(() => expect(events[events.length - 1]).toBe('remove'));
+    } finally {
+      add.mockRestore();
+      remove.mockRestore();
+    }
+  });
+
   it('shows the column รายได้พิเศษ with system + typed income', async () => {
     mount({ editDocId: 'doc-1' });
     expect(await screen.findByRole('columnheader', { name: 'รายได้พิเศษ' })).toBeInTheDocument();

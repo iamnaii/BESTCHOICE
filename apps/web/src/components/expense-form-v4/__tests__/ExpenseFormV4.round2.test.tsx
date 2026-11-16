@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { chooseKind, waitForSettlementDoc } from './expense-form-driver';
+import { chooseCreditNoteStandalone, chooseKind, pickCreditNoteSource, waitForSettlementDoc } from './expense-form-driver';
 
 /**
  * เนื้อในของ จ่ายเจ้าหนี้ / ใบลดหนี้ / เงินสดย่อย (แผนรอบ 2) — mock ชุดเดียวกับ ExpenseFormV4.page.test.tsx
@@ -165,5 +165,37 @@ describe('จ่ายชำระเจ้าหนี้', () => {
     await user.type(screen.getByLabelText('ยอดภาษีหัก ณ ที่จ่าย'), '30');
     expect(within(summary).getByText('หัก ณ ที่จ่าย').parentElement).toHaveTextContent('30.00');
     expect(within(summary).getByText('ตัดเงินสดสุทธิ').parentElement).toHaveTextContent('970.00');
+  });
+});
+
+describe('ใบลดหนี้', () => {
+  it('แยกเป็นแถว อ้างอิงเอกสาร และ รายการที่จะลด — ตารางขึ้นหลังเลือกเอกสารต้นฉบับ', async () => {
+    const user = mount();
+    await chooseKind(user, 'CREDIT_NOTE');
+    expect(screen.getByRole('region', { name: 'อ้างอิงเอกสาร' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'รายการที่จะลด' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: /เอกสารต้นฉบับ \+ รายการ/ })).not.toBeInTheDocument();
+    await pickCreditNoteSource(user, 'EX-0', /EX-001/);
+    expect(await screen.findByRole('region', { name: 'รายการที่จะลด' })).toBeInTheDocument();
+    expect(screen.getAllByLabelText(/^เหตุผล/)).toHaveLength(1);
+  });
+
+  it('โหมดไม่มีเอกสารต้นทาง มีช่องเหตุผลช่องเดียว และตารางรายการขึ้นทันที', async () => {
+    const user = mount();
+    await chooseKind(user, 'CREDIT_NOTE');
+    await chooseCreditNoteStandalone(user);
+    expect(screen.getByRole('region', { name: 'รายการที่จะลด' })).toBeInTheDocument();
+    expect(screen.getAllByLabelText(/^เหตุผล/)).toHaveLength(1);
+    expect(screen.getByLabelText(/^ชื่อผู้ขาย/)).toBeInTheDocument();
+  });
+
+  it('โหมดอ้างอิง: แถวข้อมูลผู้ขายครบเมื่อมีวันที่ · โหมดไม่มีเอกสารต้นทางต้องมีชื่อผู้ขายด้วย', async () => {
+    const user = mount();
+    await chooseKind(user, 'CREDIT_NOTE');
+    const mark = () =>
+      within(screen.getByRole('region', { name: 'ข้อมูลผู้ขาย' })).getByRole('heading').querySelector('svg');
+    expect(mark()).toHaveClass('text-primary');
+    await chooseCreditNoteStandalone(user);
+    expect(mark()).toHaveClass('text-muted-foreground');
   });
 });

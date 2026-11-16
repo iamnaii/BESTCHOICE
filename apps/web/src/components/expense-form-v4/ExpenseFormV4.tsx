@@ -815,7 +815,14 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
         />
 
         {showVendor && (
-          <FormRow title="ข้อมูลผู้ขาย" complete={!!state.vendorName && !!state.documentDate}>
+          <FormRow
+            title="ข้อมูลผู้ขาย"
+            complete={
+              state.docType === 'CREDIT_NOTE' && state.cnMode === 'LINKED'
+                ? !!state.documentDate
+                : !!state.vendorName && !!state.documentDate
+            }
+          >
             <VendorSection state={state} onChange={patch} />
           </FormRow>
         )}
@@ -874,9 +881,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
           </FormRow>
         )}
         {state.docType === 'CREDIT_NOTE' && (
-          <FormRow title="ใบลดหนี้ — เอกสารต้นฉบับ + รายการ" layout="stacked">
-            <CreditNoteLinesSection state={state} onChange={patch} onLinesChange={(lines) => patch({ lines })} />
-          </FormRow>
+          <CreditNoteLinesSection state={state} onChange={patch} onLinesChange={(lines) => patch({ lines })} />
         )}
 
         {isPreviewType && (

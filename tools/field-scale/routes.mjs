@@ -177,12 +177,11 @@ async function openOverrideJournal(page) {
 // inspect — direct-receive.util.ts:26, receiving-flow.util.ts:55-75); nothing is submitted.
 async function openPurchasePayment(page) {
   await page.evaluate((supplierId) => {
-    const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' });
     localStorage.setItem('bestchoice-po-draft', JSON.stringify({
       step: 0,
       mode: 'receive',
       form: {
-        supplierId, orderDate: today, expectedDate: '', notes: '', discount: '', discountAfterVat: '',
+        supplierId, orderDate: FIXED_DAY, expectedDate: '', notes: '', discount: '', discountAfterVat: '',
         paymentStatus: 'UNPAID', paymentMethod: '', paidAmount: '', paymentNotes: '',
       },
       items: [{
@@ -320,6 +319,10 @@ const R1_ROUTES = [
 // One route per screen Tasks 5–15 convert, opened until the converted field is on screen. Every list a picker
 // shows comes from a mock below (or the CPA chart in COMMON_MOCKS), so two runs measure the same options.
 
+// Fixed so PO-wizard draft dates (orderDate) do not drift between a baseline and a later compare (R2 T1-m2).
+// savedAt stays "now": the wizard discards drafts older than 24h (useCreatePoWizard.ts DRAFT_TTL_MS).
+const FIXED_DAY = '2026-11-16';
+
 const PREVIEW_STAFF = [
   { id: 'preview-staff-1', name: 'พนักงานตัวอย่าง หนึ่ง', role: 'SALES', branch: 'สาขาตัวอย่าง (คลังหลัก)' },
   { id: 'preview-staff-2', name: 'พนักงานตัวอย่างที่มีชื่อยาวมากเป็นพิเศษ สอง', role: 'BRANCH_MANAGER', branch: 'สาขาตัวอย่าง 2' },
@@ -388,12 +391,11 @@ const QUICK_REPLIES = [
 // AccessoryItemRow's "สำหรับรุ่น" (เคส) are both on screen. Local storage only — nothing is submitted.
 async function openPurchaseItems(page) {
   await page.evaluate((supplierId) => {
-    const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' });
     localStorage.setItem('bestchoice-po-draft', JSON.stringify({
       step: 0,
       mode: 'po',
       form: {
-        supplierId, orderDate: today, expectedDate: '', notes: '', discount: '', discountAfterVat: '',
+        supplierId, orderDate: FIXED_DAY, expectedDate: '', notes: '', discount: '', discountAfterVat: '',
         paymentStatus: 'UNPAID', paymentMethod: '', paidAmount: '', paymentNotes: '',
       },
       items: [{

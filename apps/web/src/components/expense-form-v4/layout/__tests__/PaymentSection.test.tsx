@@ -57,4 +57,21 @@ describe('PaymentSection', () => {
     await userEvent.click(screen.getByRole('button', { name: 'ล้างรายการปรับปรุง' }));
     expect(onClear).toHaveBeenCalledTimes(1);
   });
+
+  it('ข้อมูลปรับปรุงหมดแล้ว ยังอยู่ที่ขั้นสูงจนกว่าผู้ใช้จะกดพื้นฐานเอง', async () => {
+    const props = { hasData: true, onClear: vi.fn(), content };
+    const { rerender } = render(<PaymentSection picker={picker} advanced={props} />);
+    rerender(<PaymentSection picker={picker} advanced={{ ...props, hasData: false }} />);
+    expect(screen.getByText('รายการปรับปรุง')).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'พื้นฐาน' })).toBeEnabled();
+    await userEvent.click(screen.getByRole('radio', { name: 'พื้นฐาน' }));
+    expect(screen.queryByText('รายการปรับปรุง')).not.toBeInTheDocument();
+  });
+
+  it('ปุ่มพื้นฐานที่ล็อกอยู่ มีคำอธิบายผูกไว้', () => {
+    render(<PaymentSection picker={picker} advanced={{ hasData: true, onClear: vi.fn(), content }} />);
+    expect(screen.getByRole('radio', { name: 'พื้นฐาน' })).toHaveAccessibleDescription(
+      'มีรายการปรับปรุงอยู่ จึงกลับไป "พื้นฐาน" ไม่ได้จนกว่าจะล้างรายการ',
+    );
+  });
 });

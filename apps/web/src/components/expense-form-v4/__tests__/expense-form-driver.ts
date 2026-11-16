@@ -37,7 +37,7 @@ export async function chooseKind(user: UserEvent, kind: Kind) {
     return;
   }
   await user.click(screen.getByRole('button', { name: /^เปลี่ยนประเภทเอกสาร/ }));
-  await user.click(await screen.findByRole('menuitem', { name: MENU_ITEM[kind]! }));
+  await user.click(await screen.findByRole('menuitemradio', { name: MENU_ITEM[kind]! }));
 }
 
 export async function openAdjustments(user: UserEvent) {

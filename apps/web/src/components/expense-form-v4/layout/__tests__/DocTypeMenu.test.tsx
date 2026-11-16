@@ -18,7 +18,7 @@ describe('DocTypeMenu', () => {
   it('แสดงครบ 5 รายการเมื่อเปิดทุกอย่าง', async () => {
     render(<DocTypeMenu value="EXPENSE_SAMEDAY" onChange={() => {}} />);
     await open();
-    expect((await screen.findAllByRole('menuitem')).map((i) => i.textContent)).toEqual([
+    expect((await screen.findAllByRole('menuitemradio')).map((i) => i.textContent)).toEqual([
       'บันทึกค่าใช้จ่าย', 'จ่ายชำระเจ้าหนี้', 'เงินเดือน', 'ใบลดหนี้', 'เงินสดย่อย',
     ]);
   });
@@ -27,20 +27,20 @@ describe('DocTypeMenu', () => {
   it('ไม่มีเงินเดือนเมื่อ payrollEnabled=false และไม่มีเงินสดย่อยเมื่อปิด flag', async () => {
     render(<DocTypeMenu value="EXPENSE_SAMEDAY" onChange={() => {}} payrollEnabled={false} pettyCashEnabled={false} />);
     await open();
-    expect(await screen.findByRole('menuitem', { name: 'ใบลดหนี้' })).toBeInTheDocument();
-    expect(screen.queryByRole('menuitem', { name: 'เงินเดือน' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('menuitem', { name: 'เงินสดย่อย' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('menuitemradio', { name: 'ใบลดหนี้' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitemradio', { name: 'เงินเดือน' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitemradio', { name: 'เงินสดย่อย' })).not.toBeInTheDocument();
   });
 
   it('เลือกประเภทอื่นแล้วส่งค่า · เลือกบันทึกค่าใช้จ่ายจากประเภทอื่นได้จ่ายทันที', async () => {
     const onChange = vi.fn();
     const { rerender } = render(<DocTypeMenu value="EXPENSE_SAMEDAY" onChange={onChange} />);
     let user = await open();
-    await user.click(await screen.findByRole('menuitem', { name: 'ใบลดหนี้' }));
+    await user.click(await screen.findByRole('menuitemradio', { name: 'ใบลดหนี้' }));
     expect(onChange).toHaveBeenLastCalledWith('CREDIT_NOTE');
     rerender(<DocTypeMenu value="CREDIT_NOTE" onChange={onChange} />);
     user = await open();
-    await user.click(await screen.findByRole('menuitem', { name: 'บันทึกค่าใช้จ่าย' }));
+    await user.click(await screen.findByRole('menuitemradio', { name: 'บันทึกค่าใช้จ่าย' }));
     expect(onChange).toHaveBeenLastCalledWith('EXPENSE_SAMEDAY');
   });
 
@@ -48,13 +48,25 @@ describe('DocTypeMenu', () => {
     const onChange = vi.fn();
     render(<DocTypeMenu value="EXPENSE_ACCRUAL" onChange={onChange} />);
     const user = await open();
-    await user.click(await screen.findByRole('menuitem', { name: 'บันทึกค่าใช้จ่าย' }));
+    await user.click(await screen.findByRole('menuitemradio', { name: 'บันทึกค่าใช้จ่าย' }));
     expect(onChange).not.toHaveBeenCalled();
   });
 
   it('locked แสดงชื่ออย่างเดียว ไม่มีปุ่มเปิดเมนู', () => {
     render(<DocTypeMenu value="PAYROLL" onChange={() => {}} locked />);
-    expect(screen.getByRole('heading', { name: 'เงินเดือน' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'เงินเดือน' })).toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('ชื่อเอกสารเป็นหัวเรื่องระดับ 1 ของหน้า', () => {
+    render(<DocTypeMenu value="EXPENSE_SAMEDAY" onChange={() => {}} />);
+    expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument();
+  });
+
+  it('บอกรายการที่เลือกอยู่ด้วย aria-checked', async () => {
+    render(<DocTypeMenu value="CREDIT_NOTE" onChange={() => {}} />);
+    await open();
+    expect(await screen.findByRole('menuitemradio', { name: 'ใบลดหนี้' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('menuitemradio', { name: 'เงินเดือน' })).toHaveAttribute('aria-checked', 'false');
   });
 });

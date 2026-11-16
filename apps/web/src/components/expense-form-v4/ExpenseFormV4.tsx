@@ -630,6 +630,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
 
   // ---- ส่วนของหน้าจอ (ไม่มีผลกับ payload) ----
   const [showJe, setShowJe] = useState(false);
+  const jePanelId = useId();
   const [dirty, setDirty] = useState(false);
   const markDirty = () => setDirty(true);
   useEffect(() => {
@@ -996,16 +997,21 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
                 </span>
                 <button
                   type="button"
+                  aria-label="ย่อ/ขยาย ตัวอย่างรายการบัญชี"
                   aria-expanded={showJe || !!error}
+                  aria-controls={jePanelId}
+                  disabled={!!error}
                   onClick={() => setShowJe((v) => !v)}
-                  className="min-h-11 px-1 text-sm font-medium leading-snug text-primary"
+                  className="min-h-11 px-1 text-sm font-medium leading-snug text-primary disabled:opacity-50"
                 >
                   ย่อ/ขยาย
                 </button>
               </div>
             }
           >
-            {(showJe || !!error) && <JePreview preview={preview} loading={loading} error={error} />}
+            <div id={jePanelId}>
+              {(showJe || !!error) && <JePreview preview={preview} loading={loading} error={error} />}
+            </div>
           </FormRow>
         )}
 

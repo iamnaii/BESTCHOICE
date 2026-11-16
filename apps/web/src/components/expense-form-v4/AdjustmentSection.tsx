@@ -105,16 +105,11 @@ export function AdjustmentSection({
 
   return (
     <section className="rounded-xl border border-border bg-card p-5">
-      <div className="flex items-start gap-3 mb-3">
-        <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary text-sm font-bold">
-          5
-        </div>
-        <div className="min-w-0">
-          <h2 className="text-base font-semibold">บัญชีปรับผลต่าง</h2>
-          <p className="text-xs text-muted-foreground">
-            ใช้เมื่อจำนวนเงินที่จ่ายจริงไม่ตรงกับยอดที่ใบกำกับฯ ระบุ (ปัดเศษ / ส่วนลดเล็กน้อย / จ่ายเกิน / จ่ายน้อย)
-          </p>
-        </div>
+      <div className="mb-3">
+        <h4 className="text-base font-semibold leading-snug">บัญชีปรับผลต่าง</h4>
+        <p className="text-xs leading-snug text-muted-foreground">
+          ใช้เมื่อจำนวนเงินที่จ่ายจริงไม่ตรงกับยอดที่ใบกำกับฯ ระบุ (ปัดเศษ / ส่วนลดเล็กน้อย / จ่ายเกิน / จ่ายน้อย)
+        </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">

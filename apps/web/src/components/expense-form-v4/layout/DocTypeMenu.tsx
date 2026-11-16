@@ -1,8 +1,9 @@
-import { Check, ChevronDown } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import type { DocType } from '../types';
@@ -38,7 +39,7 @@ const titleClass = 'text-xl font-semibold leading-snug text-primary sm:text-2xl'
 
 export function DocTypeMenu({ value, onChange, pettyCashEnabled = true, payrollEnabled = true, locked = false }: Props) {
   const current = menuKeyOf(value);
-  if (locked) return <h2 className={titleClass}>{docTypeLabel(value)}</h2>;
+  if (locked) return <h1 className={titleClass}>{docTypeLabel(value)}</h1>;
 
   const items = ITEMS.filter(
     (item) =>
@@ -51,7 +52,7 @@ export function DocTypeMenu({ value, onChange, pettyCashEnabled = true, payrollE
   };
 
   return (
-    <h2 className="m-0">
+    <h1 className="m-0">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
@@ -64,18 +65,16 @@ export function DocTypeMenu({ value, onChange, pettyCashEnabled = true, payrollE
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="min-w-64">
-          {items.map((item) => (
-            <DropdownMenuItem
-              key={item.key}
-              onSelect={() => pick(item.key)}
-              className="flex min-h-11 items-center justify-between gap-3 text-sm leading-snug"
-            >
-              {item.label}
-              {item.key === current && <Check className="size-4 text-primary" aria-hidden="true" />}
-            </DropdownMenuItem>
-          ))}
+          {/* radio item: จุดหน้ารายการ + aria-checked บอกประเภทที่เลือกอยู่ */}
+          <DropdownMenuRadioGroup value={current} onValueChange={(key) => pick(key as MenuKey)}>
+            {items.map((item) => (
+              <DropdownMenuRadioItem key={item.key} value={item.key} className="min-h-11 text-sm leading-snug">
+                {item.label}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
         </DropdownMenuContent>
       </DropdownMenu>
-    </h2>
+    </h1>
   );
 }

@@ -15,6 +15,8 @@ const linkClass = 'min-h-11 px-1 text-sm font-medium leading-snug text-primary u
 export function PaymentSection({ picker, unpaid, advanced, footer }: Props) {
   const headingId = useId();
   const [mode, setMode] = useState<'basic' | 'advanced'>('basic');
+  // มีข้อมูลปรับปรุง = ค้างที่ขั้นสูง — ลบข้อมูลจนหมดแล้วก็ไม่ยุบเอง ผู้ใช้กด "พื้นฐาน" เอง
+  if (advanced?.hasData && mode === 'basic') setMode('advanced');
   // ข้อมูลที่กรอกไว้ต้องมองเห็นเสมอ — มีข้อมูลปรับปรุง = ขั้นสูง
   const showAdvanced = !!advanced && (mode === 'advanced' || advanced.hasData);
 
@@ -66,6 +68,7 @@ export function PaymentSection({ picker, unpaid, advanced, footer }: Props) {
                   className="size-4 accent-primary"
                   checked={!showAdvanced}
                   disabled={advanced.hasData}
+                  aria-describedby={advanced.hasData ? `${headingId}-locked` : undefined}
                   onChange={() => setMode('basic')}
                 />
                 พื้นฐาน
@@ -97,7 +100,7 @@ export function PaymentSection({ picker, unpaid, advanced, footer }: Props) {
             {advanced.content}
             {advanced.hasData && (
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-sm leading-snug text-muted-foreground">
+                <p id={`${headingId}-locked`} className="text-sm leading-snug text-muted-foreground">
                   มีรายการปรับปรุงอยู่ จึงกลับไป "พื้นฐาน" ไม่ได้จนกว่าจะล้างรายการ
                 </p>
                 <Button type="button" variant="outline" className="min-h-11" onClick={advanced.onClear}>ล้างรายการปรับปรุง</Button>

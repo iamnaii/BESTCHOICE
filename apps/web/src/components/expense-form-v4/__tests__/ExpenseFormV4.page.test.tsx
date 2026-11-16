@@ -158,8 +158,12 @@ describe('ExpenseFormV4 — หน้าเต็ม', () => {
     const row = screen.getByRole('region', { name: 'ตัวอย่างรายการบัญชี' });
     await within(row).findByText(/สมดุล/);
     expect(within(row).queryByRole('table')).not.toBeInTheDocument();
-    await user.click(within(row).getByRole('button', { name: 'ย่อ/ขยาย' }));
+    const toggle = within(row).getByRole('button', { name: 'ย่อ/ขยาย ตัวอย่างรายการบัญชี' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await user.click(toggle);
     expect(await within(row).findByRole('table')).toBeInTheDocument();
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(document.getElementById(toggle.getAttribute('aria-controls')!)).toContainElement(within(row).getByRole('table'));
   });
 
   it('กดยังไม่ชำระเงินขณะมียอดจ่ายจริง ขึ้นคำเตือนและล้างได้', async () => {

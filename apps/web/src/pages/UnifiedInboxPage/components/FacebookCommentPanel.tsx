@@ -1,9 +1,10 @@
-import { NativeSelect } from '@/components/ui/native-select';
 import FacebookCommentLink from './FacebookCommentLink';
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { ExternalLink, Globe, Loader2 } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
+import { Combobox, type ComboOption } from '@/components/ui/combobox';
+import { formLabelClass } from '@/components/ui/form-styles';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useFacebookComments, type CommentReply } from '../hooks/useFacebookComments';
@@ -24,6 +25,7 @@ const replyStates = {
 };
 export default function FacebookCommentPanel({ threadId }: { threadId: string }) {
   const [page, setPage] = useState(1);
+  const uid = useId();
   const { query, staff, scope, refresh } = useFacebookComments(threadId, page);
   const [text, setText] = useState('');
   const latestText = useRef(text);
@@ -86,6 +88,17 @@ export default function FacebookCommentPanel({ threadId }: { threadId: string })
   const echoIds = new Set(
     row.replies.filter((r) => r.status === 'CONFIRMED').map((r) => r.externalId),
   );
+  const assigneeOptions: ComboOption[] = [
+    { value: '', label: 'ยังไม่มีผู้รับผิดชอบ' },
+    ...(staff.data ?? []).map((s) => ({
+      value: s.id,
+      label: `${s.name} · ${s.role} · ${s.id.slice(-6)}`,
+    })),
+  ];
+  const formerAssignee: ComboOption | null =
+    row.assigneeId && !staff.data?.some((s) => s.id === row.assigneeId)
+      ? { value: row.assigneeId, label: 'ผู้รับเดิม · ต้องตรวจสิทธิ์' }
+      : null;
   return (
     <div className="min-w-0 space-y-4 text-sm leading-snug" aria-busy={busy}>
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -104,32 +117,30 @@ export default function FacebookCommentPanel({ threadId }: { threadId: string })
         </a>
       </div>
       <div className="flex flex-wrap items-end gap-2">
-        <label className="min-w-0 flex-1 space-y-1">
-          <span>ผู้รับผิดชอบคอมเมนต์</span>
-          <NativeSelect wrapperClassName="max-w-full w-full"
+        <div className="min-w-0 flex-1">
+          <label htmlFor={`${uid}-assignee`} className={formLabelClass}>
+            ผู้รับผิดชอบคอมเมนต์
+          </label>
+          <Combobox
+            id={`${uid}-assignee`}
             value={row.assigneeId ?? ''}
             disabled={busy || staff.isError}
-            onChange={(e) =>
+            onChange={(value) => {
+              // Saves on pick only: the native select fired no change for the row already
+              // selected, so re-picking it must not PATCH either.
+              if (value === (row.assigneeId ?? '')) return;
               void act(() =>
                 api.patch(
                   `/staff-chat/facebook-comments/${threadId}/assign`,
-                  { expectedRevision: row.revision, assigneeId: e.target.value || null },
+                  { expectedRevision: row.revision, assigneeId: value || null },
                   { params: scope },
                 ),
-              )
-            }
-          >
-            <option value="">ยังไม่มีผู้รับผิดชอบ</option>
-            {row.assigneeId && !staff.data?.some((s) => s.id === row.assigneeId) && (
-              <option value={row.assigneeId}>ผู้รับเดิม · ต้องตรวจสิทธิ์</option>
-            )}
-            {staff.data?.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name} · {s.role} · {s.id.slice(-6)}
-              </option>
-            ))}
-          </NativeSelect>
-        </label>
+              );
+            }}
+            options={assigneeOptions}
+            selectedOption={formerAssignee}
+          />
+        </div>
         <Button
           variant="outline"
           className="min-h-11"

@@ -2,6 +2,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import ChannelFilter, { ActiveInboxFilters, InboxTabs } from './ChannelFilter';
+import { pickComboOption } from '@/test/combobox';
 
 const base = {
   activeTab: 'waiting' as const,
@@ -92,5 +93,51 @@ describe('Inbox filter drafts', () => {
     expect(screen.getByRole('button', { name: 'ทั้งหมด' })).not.toHaveTextContent('582');
     fireEvent.click(screen.getByRole('button', { name: 'ของฉัน 1 ห้อง' }));
     expect(onTabChange).toHaveBeenCalledWith('mine');
+  });
+});
+
+describe('Inbox filter — owner combobox (R2-4a)', () => {
+  it('searches and picks an owner; Apply sends the staff id, never a sentinel', async () => {
+    const user = userEvent.setup();
+    const onApply = vi.fn();
+    render(<ChannelFilter {...base} onApply={onApply} />);
+    await user.click(screen.getByRole('button', { name: 'ตัวกรองแชท' }));
+    const owner = screen.getByRole('combobox', { name: 'ผู้ดูแล' });
+    expect(owner).toHaveAttribute('data-slot', 'combobox-trigger');
+    expect(owner).toHaveTextContent('ทุกคน');
+
+    await pickComboOption(user, 'ผู้ดูแล', 'ผู้ดูแลคนอื่น', { search: 'คนอื่น' });
+
+    expect(owner).toHaveTextContent('ผู้ดูแลคนอื่น');
+    expect(screen.getByRole('dialog', { name: 'ตัวกรองแชท' })).toBeInTheDocument();
+    expect(onApply).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'แสดงแชท' }));
+    expect(onApply).toHaveBeenCalledExactlyOnceWith({ channel: null, who: 'other' });
+  });
+
+  it('shows the signed-in owner as "คุณ" and applies "ยังไม่มีผู้ดูแล" as who=free', async () => {
+    const user = userEvent.setup();
+    const onApply = vi.fn();
+    render(<ChannelFilter {...base} onApply={onApply} />);
+    await user.click(screen.getByRole('button', { name: 'ตัวกรองแชท' }));
+    const owner = screen.getByRole('combobox', { name: 'ผู้ดูแล' });
+
+    await pickComboOption(user, 'ผู้ดูแล', 'พนักงานทดสอบ (คุณ)');
+    expect(owner).toHaveTextContent(/^คุณ$/);
+
+    await pickComboOption(user, 'ผู้ดูแล', 'ยังไม่มีผู้ดูแล');
+    expect(owner).toHaveTextContent('ยังไม่มีผู้ดูแล');
+    await user.click(screen.getByRole('button', { name: 'แสดงแชท' }));
+    expect(onApply).toHaveBeenCalledExactlyOnceWith({ channel: null, who: 'free' });
+  });
+
+  it('keeps an applied owner who is not in the staff list', async () => {
+    const user = userEvent.setup();
+    const onApply = vi.fn();
+    render(<ChannelFilter {...base} who="left-company" onApply={onApply} />);
+    await user.click(screen.getByRole('button', { name: 'ตัวกรองแชท' }));
+    expect(screen.getByRole('combobox', { name: 'ผู้ดูแล' })).toHaveTextContent('ผู้ดูแลที่เลือก');
+    await user.click(screen.getByRole('button', { name: 'แสดงแชท' }));
+    expect(onApply).toHaveBeenCalledExactlyOnceWith({ channel: null, who: 'left-company' });
   });
 });

@@ -1,10 +1,12 @@
 import { NativeSelect } from '@/components/ui/native-select';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import { getCompanyScopeRevision } from '@/lib/company-scope';
 import { Button } from '@/components/ui/button';
+import { Combobox, type ComboOption } from '@/components/ui/combobox';
+import { formControlClass, formLabelClass, formTextareaClass } from '@/components/ui/form-styles';
 import {
   Dialog,
   DialogContent,
@@ -46,6 +48,7 @@ export default function ChatFollowUpDialog({
 }) {
   const work = useChatWorkSettings();
   const client = useQueryClient();
+  const uid = useId();
   const [title, setTitle] = useState('');
   const [note, setNote] = useState('');
   const [due, setDue] = useState('');
@@ -128,8 +131,11 @@ export default function ChatFollowUpDialog({
     },
     onError: (e) => toast.error(getErrorMessage(e)),
   });
-  const field =
-    'mt-1 min-h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm';
+  const staffOptions: ComboOption[] = (staff.data ?? []).map((person) => ({
+    value: person.id,
+    label: `${person.nickname || person.name}${'detail' in person ? ` · ${String(person.detail)}` : ''}`,
+    keywords: person.nickname ? [person.name] : undefined,
+  }));
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
@@ -148,60 +154,66 @@ export default function ChatFollowUpDialog({
             if (!conflict && !save.isPending) save.mutate();
           }}
         >
-          <label className="block text-sm font-medium">
-            {handoff ? 'เรื่องที่ฝาก' : 'เรื่องที่ติดตาม'}
+          <div>
+            <label htmlFor={`${uid}-title`} className={formLabelClass}>
+              {handoff ? 'เรื่องที่ฝาก' : 'เรื่องที่ติดตาม'}
+            </label>
             <input
-              className={field}
+              id={`${uid}-title`}
+              className={formControlClass}
               required
               maxLength={255}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
             />
-          </label>
+          </div>
           {handoff && (
-            <label className="block text-sm font-medium">
-              รายละเอียดงาน
+            <div>
+              <label htmlFor={`${uid}-note`} className={formLabelClass}>
+                รายละเอียดงาน
+              </label>
               <textarea
-                className={field}
+                id={`${uid}-note`}
+                className={formTextareaClass}
                 rows={3}
                 maxLength={5000}
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
               />
-            </label>
+            </div>
           )}
-          <label className="block text-sm font-medium">
-            วันเวลานัด (เวลาไทย)
+          <div>
+            <label htmlFor={`${uid}-due`} className={formLabelClass}>
+              วันเวลานัด (เวลาไทย)
+            </label>
             <input
-              className={field}
+              id={`${uid}-due`}
+              className={formControlClass}
               required
               type="datetime-local"
               value={due}
               onChange={(e) => setDue(e.target.value)}
             />
-          </label>
+          </div>
           {due && new Date(`${due}+07:00`).getTime() < Date.now() && (
             <p className="text-sm text-warning-strong">
               นัดนี้เป็นเวลาในอดีต จะแสดงเป็นงานเกินกำหนด
             </p>
           )}
-          <label className="block text-sm font-medium">
-            ผู้รับผิดชอบงาน
-            <NativeSelect wrapperClassName="max-w-full mt-1 w-full min-w-0"
-              className={`${field} mt-0`}
+          <div>
+            <label htmlFor={`${uid}-assignee`} className={formLabelClass}>
+              ผู้รับผิดชอบงาน
+            </label>
+            <Combobox
+              id={`${uid}-assignee`}
               required
               value={assignee}
-              onChange={(e) => setAssignee(e.target.value)}
-            >
-              <option value="">เลือกผู้รับผิดชอบ</option>
-              {staff.data?.map((person) => (
-                <option key={person.id} value={person.id}>
-                  {person.nickname || person.name}
-                  {'detail' in person ? ` · ${String(person.detail)}` : ''}
-                </option>
-              ))}
-            </NativeSelect>
-          </label>
+              onChange={(value) => setAssignee(value)}
+              options={staffOptions}
+              placeholder="เลือกผู้รับผิดชอบ"
+              loading={staff.isLoading}
+            />
+          </div>
           {staff.isError && (
             <div role="alert" className="text-sm text-destructive">
               โหลดผู้รับงานไม่ได้
@@ -211,10 +223,13 @@ export default function ChatFollowUpDialog({
             </div>
           )}
           {editing && (
-            <label className="block text-sm font-medium">
-              สถานะนัด
-              <NativeSelect wrapperClassName="max-w-full mt-1 w-full min-w-0"
-                className={`${field} mt-0`}
+            <div>
+              <label htmlFor={`${uid}-status`} className={formLabelClass}>
+                สถานะนัด
+              </label>
+              <NativeSelect
+                id={`${uid}-status`}
+                wrapperClassName="max-w-full w-full min-w-0"
                 value={status}
                 onChange={(e) => setStatus(e.target.value as TodoStatus)}
               >
@@ -224,7 +239,7 @@ export default function ChatFollowUpDialog({
                   </option>
                 ))}
               </NativeSelect>
-            </label>
+            </div>
           )}
           {conflict && (
             <div

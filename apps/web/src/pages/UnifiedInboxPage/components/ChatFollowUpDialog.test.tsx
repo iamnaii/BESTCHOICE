@@ -1,7 +1,9 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import ChatFollowUpDialog from './ChatFollowUpDialog';
+import { pickComboOption } from '@/test/combobox';
 const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), patch: vi.fn() }));
 vi.mock('@/lib/api', () => ({ default: api, getErrorMessage: () => 'บันทึกไม่ได้' }));
 vi.mock('../hooks/useChatWork', () => ({
@@ -59,7 +61,9 @@ describe('Chat follow-up form', () => {
     fireEvent.change(screen.getByLabelText('เรื่องที่ติดตาม'), {
       target: { value: 'เลื่อนนัดที่พิมพ์ไว้' },
     });
-    await screen.findByRole('option', { name: 'เมย์' });
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', { name: 'ผู้รับผิดชอบงาน' })).toHaveTextContent('เมย์'),
+    );
     fireEvent.click(screen.getByRole('button', { name: 'บันทึกนัด' }));
     await screen.findByText(/มีคนแก้ไขนัดนี้แล้ว/);
     expect(screen.getByLabelText('เรื่องที่ติดตาม')).toHaveValue('เลื่อนนัดที่พิมพ์ไว้');
@@ -86,6 +90,7 @@ describe('Chat follow-up form', () => {
   it.each([false, true])(
     'recovers a committed create and explicitly updates the retained edited draft (handoff=%s)',
     async (handoff) => {
+      const user = userEvent.setup();
       const titleLabel = handoff ? 'เรื่องที่ฝาก' : 'เรื่องที่ติดตาม';
       const saveLabel = handoff ? 'ส่งงาน' : 'บันทึกนัด';
       api.post.mockRejectedValueOnce(new Error('response lost')).mockRejectedValueOnce({
@@ -100,8 +105,7 @@ describe('Chat follow-up form', () => {
       fireEvent.change(screen.getByLabelText('วันเวลานัด (เวลาไทย)'), {
         target: { value: '2026-10-06T10:30' },
       });
-      await screen.findByRole('option', { name: 'เมย์' });
-      fireEvent.change(screen.getByLabelText('ผู้รับผิดชอบงาน'), { target: { value: 'staff' } });
+      await pickComboOption(user, 'ผู้รับผิดชอบงาน', 'เมย์');
       fireEvent.click(screen.getByRole('button', { name: saveLabel }));
       await waitFor(() =>
         expect(screen.getByRole('button', { name: saveLabel })).not.toBeDisabled(),
@@ -140,14 +144,14 @@ describe('Chat follow-up form', () => {
     },
   );
   it('uses one request token when retrying a failed create', async () => {
+    const user = userEvent.setup();
     api.post.mockRejectedValueOnce(new Error()).mockResolvedValue({ data: {} });
     view();
     fireEvent.change(screen.getByLabelText('เรื่องที่ติดตาม'), { target: { value: 'โทรติดตาม' } });
     fireEvent.change(screen.getByLabelText('วันเวลานัด (เวลาไทย)'), {
       target: { value: '2026-10-06T10:30' },
     });
-    await screen.findByRole('option', { name: 'เมย์' });
-    fireEvent.change(screen.getByLabelText('ผู้รับผิดชอบงาน'), { target: { value: 'staff' } });
+    await pickComboOption(user, 'ผู้รับผิดชอบงาน', 'เมย์');
     fireEvent.click(screen.getByRole('button', { name: 'บันทึกนัด' }));
     await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
     await waitFor(() =>
@@ -157,6 +161,51 @@ describe('Chat follow-up form', () => {
     await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
     expect(api.post.mock.calls[0][1].clientRequestId).toBe(
       api.post.mock.calls[1][1].clientRequestId,
+    );
+  });
+  it('create: save waits for a picked assignee and the body carries the picked id (R2-4a)', async () => {
+    const user = userEvent.setup();
+    api.get.mockResolvedValue({
+      data: [
+        { id: 'staff', name: 'เมย์' },
+        {
+          id: 'staff-2',
+          name: 'สมชาย ใจดี',
+          nickname: 'ชาย',
+          detail: 'สาขาลาดพร้าว · SALES · 0000s2',
+        },
+      ],
+    });
+    api.post.mockResolvedValue({ data: {} });
+    view();
+    fireEvent.change(screen.getByLabelText('เรื่องที่ติดตาม'), { target: { value: 'โทรติดตาม' } });
+    fireEvent.change(screen.getByLabelText('วันเวลานัด (เวลาไทย)'), {
+      target: { value: '2026-10-06T10:30' },
+    });
+    const save = screen.getByRole('button', { name: 'บันทึกนัด' });
+    const assignee = screen.getByRole('combobox', { name: 'ผู้รับผิดชอบงาน' });
+    expect(assignee).toHaveAttribute('aria-required', 'true');
+    expect(assignee).toHaveTextContent('เลือกผู้รับผิดชอบ');
+    expect(save).toBeDisabled();
+
+    // the label shows the nickname; the full name is a search keyword
+    await pickComboOption(user, 'ผู้รับผิดชอบงาน', 'ชาย · สาขาลาดพร้าว · SALES · 0000s2', {
+      search: 'สมชาย',
+    });
+
+    expect(assignee).toHaveTextContent('ชาย · สาขาลาดพร้าว · SALES · 0000s2');
+    await waitFor(() => expect(save).toBeEnabled());
+    await user.click(save);
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        '/staff-chat/rooms/room/follow-ups',
+        expect.objectContaining({
+          title: 'โทรติดตาม',
+          dueAt: '2026-10-06T03:30:00.000Z',
+          assigneeId: 'staff-2',
+        }),
+        { params: { company: 'SHOP' } },
+      ),
     );
   });
 });

@@ -613,10 +613,6 @@ const F5_NON_PORTAL_MENU_ALLOW: Record<string, { panels: number; reason: string 
     panels: 1,
     reason: 'allow-list ใน spec §5 F5 — ช่องพิมพ์ชื่ออิสระ ไม่แปลงเป็น Combobox (§6.4)',
   },
-  'apps/web/src/pages/other-income/components/TemplatePickerCombobox.tsx': {
-    panels: 1,
-    reason: 'allow-list ใน spec §5 F5 — เมนูคำสั่ง ไม่ใช่ตัวเลือก (§6.4) · เลยขอบขวาจอที่ 1024/390 (KNOWN ในสคริปต์)',
-  },
   'apps/web/src/pages/PurchaseOrdersPage/components/wizard/items/CatalogPicker.tsx': {
     panels: 1,
     reason: 'allow-list ใน spec §5 F5 — อยู่ในกล่องเลื่อนของหน้าต่างโดยตั้งใจ เลื่อนลงดูผลได้',

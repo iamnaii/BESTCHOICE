@@ -154,12 +154,9 @@ const CASES = [
   {
     name: 'TemplatePickerCombobox',
     where: '/other-income/new → ส่วน 2 → ปุ่ม "ใช้แม่แบบ"',
-    // Measured 2026-11-14 on the local preview: the w-72 panel is left-aligned to a
-    // right-aligned button, so it runs past the right edge of the screen.
-    known: {
-      1024: { by: 'viewport', note: 'กล่องกว้าง 288px ชิดซ้ายของปุ่มที่อยู่ขวาสุด → เลยขอบขวาจอ (856→1144 บนจอ 1024)' },
-      390: { by: 'viewport', note: 'เลยขอบขวาจอ (258→546 บนจอ 390)' },
-    },
+    // Until Round 2 Task 15 the w-72 panel was left-aligned to the right-hand button and ran past
+    // the right edge (856→1144 at 1024, 258→546 at 390). It is now a portalled Popover aligned to
+    // the button's end: expected PASS at every width.
     async open(page, origin) {
       const templates = Array.from({ length: 8 }, (_, i) => ({
         id: `f5-other-income-${i + 1}`,
@@ -172,7 +169,7 @@ const CASES = [
       const trigger = page.getByRole('button', { name: 'ใช้แม่แบบ', exact: true });
       await trigger.evaluate((e) => e.scrollIntoView({ block: 'center' }));
       await trigger.click();
-      const panel = trigger.locator('xpath=following-sibling::div[1]');
+      const panel = page.getByRole('dialog', { name: 'แม่แบบรายได้', exact: true });
       await expect(panel.getByText('แม่แบบรายได้ทดสอบ 8', { exact: true })).toBeVisible();
       return panel;
     },

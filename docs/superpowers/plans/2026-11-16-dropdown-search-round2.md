@@ -16593,3 +16593,14 @@ What each task's code and tests were run against while the plan was written (202
 - Not run: field-scale, menu probes, e2e / `ui-fields` audits, build.
 
 **Known gaps for the implementer:** Tasks 6, 9, 10, 11, 12 and 14 now pass against the real Task 4 (above), but only on a main-based copy. Tasks 7, 8 and 13 were checked on the PEAK-layout base (final pass). No `field-scale` compare of any converted screen has been run; the expected re-key pairs are derived from `collect.js` (`kindOf`, naming), not measured.
+
+## Progress notes
+
+### Task 2 — Combobox mockup (R2-0)
+- Date: 2026-11-16 · Canvas: https://claude.ai/artifact/P9HZMn9fL6V17TdWyG5QDn (the owner's canvas; Step 1 hash matched `8647c728…`, so `canvas.json` was overwritten with the Step 6 file) · Version: 1794791511-5f10
+- Boards added: ComboboxLight, ComboboxDark, ComboboxMobileLight, ComboboxMobileDark, ComboboxChecks + title note "Combobox — dropdown ค้นหาได้ (รอบ 2 · R2-0)"
+- Owner reply (verbatim): "อมุมัติ"
+- Decision: approved
+- Answers: 1 row height 44px kept · 2 disabled rows as drawn · 3 phone list focus as drawn · 4 converted account fields — one "อนุมัติ" for all five; read as yes, code - name like the searchable picker (to be confirmed with the owner before Task 8 / Task 13 start — both also wait for the PEAK-layout merge) · 5 highlight kept
+- Changes made after the first publish: none
+- Task 4 visual contract (Task 2 Produces table): unchanged

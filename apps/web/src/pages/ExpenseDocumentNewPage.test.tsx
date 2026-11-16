@@ -9,13 +9,14 @@ vi.mock('@/lib/api', () => ({ default: { get: mocks.get } }));
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: mocks.user }) }));
 let formInstances = 0;
 vi.mock('@/components/expense-form-v4/ExpenseFormV4', () => ({
-  ExpenseFormV4: ({ branchId, initialDocType, editDocId, onDraftSaved, onSaved }: { branchId: string; initialDocType?: string; editDocId?: string; onDraftSaved?: (id: string) => void; onSaved?: () => void }) => {
+  ExpenseFormV4: ({ branchId, initialDocType, editDocId, onDraftSaved, onSaved, onClose }: { branchId: string; initialDocType?: string; editDocId?: string; onDraftSaved?: (id: string) => void; onSaved?: () => void; onClose?: () => void }) => {
     const [instance] = useState(() => ++formInstances);
     return (<div>
       <div data-testid="instance">{instance}</div>
       <div data-testid="expense-form">{branchId} / {initialDocType} / {editDocId}</div>
       <button type="button" onClick={() => onDraftSaved?.('new-1')}>บันทึกร่าง + คิดยอด</button>
       <button type="button" onClick={() => onSaved?.()}>บันทึก</button>
+      <button type="button" onClick={() => onClose?.()}>ยกเลิก</button>
     </div>);
   },
 }));
@@ -120,5 +121,21 @@ describe('expense creation branch resolution', () => {
     expect(screen.getByTestId('state')).toHaveTextContent('"listSearch":"?tab=accrual&branch=branch-x"');
     fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }));
     expect(screen.getByTestId('location')).toHaveTextContent('/expenses?tab=accrual&branch=branch-x');
+  });
+
+  it.each([['CN', 'CREDIT_NOTE'], ['SE', 'VENDOR_SETTLEMENT']])(
+    '?type=%s&branch= เปิดฟอร์มประเภทนั้นในสาขาที่ส่งมา',
+    async (type, docType) => {
+      mocks.user.branchId = 'assigned';
+      mocks.get.mockResolvedValue({ data: [{ id: 'assigned', name: 'ก' }, { id: 'branch-x', name: 'ข' }] });
+      open(`/expenses/new?type=${type}&branch=branch-x`);
+      expect(await screen.findByTestId('expense-form')).toHaveTextContent(`branch-x / ${docType} /`);
+    },
+  );
+  it('ยกเลิกแล้วกลับหน้ารายการพร้อมตัวกรองเดิม', () => {
+    mocks.user.branchId = 'assigned'; mocks.get.mockReturnValue(new Promise(() => {}));
+    open({ pathname: '/expenses/new', search: '?type=CN', state: { listSearch: '?tab=accrual&branch=b1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'ยกเลิก' }));
+    expect(screen.getByTestId('location')).toHaveTextContent('/expenses?tab=accrual&branch=b1');
   });
 });

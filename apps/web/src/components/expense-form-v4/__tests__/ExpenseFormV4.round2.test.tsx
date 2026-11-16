@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  chooseCreditNoteStandalone, chooseKind, fillCreditNoteReason, fillPettyCashLine, pickCreditNoteSource, saveDraft, waitForSettlementDoc,
+  chooseCreditNoteStandalone, chooseKind, fillCreditNoteReason, fillExpenseLine, fillPettyCashLine, pickCreditNoteSource, saveDraft, waitForSettlementDoc,
 } from './expense-form-driver';
 
 /**
@@ -258,5 +258,20 @@ describe('ลำดับแถว', () => {
     const names = regionNames();
     expect(names.indexOf('สรุปข้อมูล')).toBeGreaterThan(-1);
     expect(names.indexOf('สรุปข้อมูล')).toBeLessThan(names.indexOf('ชำระเงิน'));
+  });
+});
+
+describe('จอมือถือ', () => {
+  it('รายการเป็นการ์ด และ body ที่ส่งเหมือนจอใหญ่', async () => {
+    mobile.value = true;
+    const user = mount();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    await fillExpenseLine(user, { account: '53-1101', unitPrice: '850' });
+    await saveDraft(user);
+    expect(await bodyOf('/expense-documents')).toEqual({
+      documentType: 'EXPENSE', branchId: 'b1', documentDate: today, priceType: 'EXCLUSIVE',
+      paymentMethod: 'CASH', depositAccountCode: '11-1101', taxDisallowed: false,
+      lines: [{ category: '53-1101', quantity: 1, unitPrice: 850, discount: 0, vatPercent: 7, whtPercent: 0 }],
+    });
   });
 });

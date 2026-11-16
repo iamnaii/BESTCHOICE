@@ -28,6 +28,7 @@ import ExpensesPage from './ExpensesPage';
 
 let queryClient: QueryClient;
 function LocationProbe() { const l = useLocation(); return <output data-testid="location">{l.pathname + l.search}</output>; }
+function StateProbe() { const l = useLocation(); return <output data-testid="state">{JSON.stringify(l.state)}</output>; }
 function mount(status = 'DRAFT', documentType = 'EXPENSE') {
   const row = { id: 'expense-1', number: 'EX-001', status, documentType, vendorName: 'ผู้ขายตัวอย่าง',
     branchId: 'branch-1', branch: { id: 'branch-1', name: 'สาขาตัวอย่าง' },
@@ -191,5 +192,24 @@ describe('สร้างเอกสารใหม่', () => {
     await user.click(screen.getByRole('button', { name: 'รายจ่าย (EX)' }));
     expect(screen.getByTestId('location')).toHaveTextContent('/expenses/new?branch=branch-1');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('แก้ไขใบเงินเดือนจากรายการที่กรองอยู่ ส่งตัวกรองไปกับหน้าแก้ไข', async () => {
+    const row = { id: 'expense-1', number: 'EX-001', status: 'DRAFT', documentType: 'PAYROLL', vendorName: 'ผู้ขายตัวอย่าง',
+      branchId: 'branch-1', branch: { id: 'branch-1', name: 'สาขาตัวอย่าง' },
+      documentDate: '2026-10-19', createdAt: '2026-10-19', totalAmount: '1000', netPayment: '1000', expenseDetail: { lines: [] },
+    };
+    apiGet.mockImplementation((path: string) => Promise.resolve({ data:
+      path.startsWith('/expense-documents?') ? { data: [row], total: 1 }
+      : path.includes('/summary') ? { totalCount: 1, byStatus: {}, accrualUnpaidCount: 0, accrualUnpaidTotal: '0' } : [],
+    }));
+    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={['/expenses?branch=branch-1']}><ExpensesPage /><LocationProbe /><StateProbe /></MemoryRouter>
+    </QueryClientProvider>);
+    await userEvent.click(await screen.findByRole('button', { name: 'เมนู EX-001' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'แก้ไข' }));
+    expect(screen.getByTestId('location')).toHaveTextContent('/expenses/new?edit=expense-1');
+    expect(screen.getByTestId('state')).toHaveTextContent('"listSearch":"?branch=branch-1"');
   });
 });

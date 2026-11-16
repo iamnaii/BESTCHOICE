@@ -1,5 +1,6 @@
 // apps/web/src/components/expense-form-v4/__tests__/useLeaveGuard.test.tsx
-import { act, renderHook } from '@testing-library/react';
+import { act, render, renderHook, screen } from '@testing-library/react';
+import { useEffect, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useLeaveGuard } from '../useLeaveGuard';
 
@@ -61,5 +62,45 @@ describe('useLeaveGuard', () => {
     touch(result.current);
     rerender({ state: { n: 3 } });
     expect(result.current.dirty).toBe(true);
+  });
+});
+
+describe('useLeaveGuard — effect ของลูกที่เรียก asSystem', () => {
+  type S = { n: number; m: number };
+  let guardRef: { current: Guard | null };
+  let setStateRef: { current: ((u: (s: S) => S) => void) | null };
+
+  function Child({ state, guard, onN }: { state: S; guard: Guard; onN: number }) {
+    useEffect(() => {
+      if (state.n === onN) guard.asSystem(() => setStateRef.current!((s) => ({ ...s, m: s.m + 1, n: s.n + (onN === 1 ? 1 : 0) })));
+    }, [state.n]); // eslint-disable-line react-hooks/exhaustive-deps
+    return null;
+  }
+
+  function Host({ onN }: { onN: number }) {
+    const [state, setState] = useState<S>({ n: 0, m: 0 });
+    setStateRef = { current: setState };
+    const guard = useLeaveGuard(state);
+    guardRef = { current: guard };
+    return (
+      <div data-testid="host" data-dirty={String(guard.dirty)}>
+        <Child state={state} guard={guard} onN={onN} />
+      </div>
+    );
+  }
+  const dirty = () => screen.getByTestId('host').dataset.dirty;
+
+  it('chain: การเปลี่ยนของระบบที่ไปกระตุ้น asSystem ของ effect ลูกต่อ → ไม่นับเป็นการแก้ของผู้ใช้', () => {
+    render(<Host onN={1} />);
+    act(() => guardRef.current!.captureProps.onKeyDownCapture());
+    act(() => guardRef.current!.asSystem(() => setStateRef.current!((s) => ({ ...s, n: 1 }))));
+    expect(dirty()).toBe('false');
+  });
+
+  it('commit เดียวกัน: ผู้ใช้เปลี่ยนค่า + effect ลูกเรียก asSystem → ผู้ใช้นับ (dirty)', () => {
+    render(<Host onN={1} />);
+    act(() => guardRef.current!.captureProps.onKeyDownCapture());
+    act(() => setStateRef.current!((s) => ({ ...s, n: 1 })));
+    expect(dirty()).toBe('true');
   });
 });

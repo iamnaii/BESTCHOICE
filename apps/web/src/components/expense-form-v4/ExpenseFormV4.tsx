@@ -200,7 +200,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
   );
 
   const patch = (p: Partial<ExpenseFormState>) => setState((s) => ({ ...s, ...p }));
-  // คำเตือนก่อนปิดแท็บ — ประกาศก่อน effect ของระบบด้านล่าง (ปิดเงินสดย่อย) ที่ใช้ asSystem
+  // คำเตือนก่อนปิดแท็บเมื่อแก้ฟอร์มแล้วยังไม่บันทึก
   const leaveGuard = useLeaveGuard(state);
 
   // R3-2 — โหลดใบเงินเดือนมาเติมฟอร์ม (edit mode) · Payroll D4 — รวมใบที่รออนุมัติ/อนุมัติแล้ว (ส่งกลับเป็นร่าง)

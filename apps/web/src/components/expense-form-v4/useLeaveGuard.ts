@@ -1,5 +1,5 @@
 // apps/web/src/components/expense-form-v4/useLeaveGuard.ts
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 /**
  * คำเตือนก่อนปิด/รีเฟรชแท็บ (beforeunload) เมื่อผู้ใช้แก้ฟอร์มแล้วยังไม่บันทึก
@@ -10,8 +10,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
  *   ปิดเงินสดย่อยตามค่าตั้ง) แม้ผู้ใช้เพิ่งกดแป้นก่อนข้อมูลโหลดเสร็จ
  * - หลัง `markPristine` — ฟอร์มตรงกับของที่บันทึกแล้ว หรือเพิ่งล้างเป็นฟอร์มเปล่า (การแตะก่อนหน้านั้นไม่นับอีก)
  *
- * ข้อจำกัดที่รู้: ถ้าการเปลี่ยนของระบบกับของผู้ใช้ลงใน commit เดียวกัน รอบนั้นไม่ถูกนับ — ผลไม่ผิด
- * เพราะการกด/พิมพ์ตั้ง "แตะแล้ว" ไว้ และการเปลี่ยนรอบถัดไป (รวมของระบบที่ตามมา) จะถูกนับ
+ * ทำไมเช็คใน useLayoutEffect: layout effect ของ commit หนึ่งรันก่อน passive effect ทุกตัวของ commit เดียวกัน
+ * flag ที่ `asSystem` ตั้งจาก passive effect (ของลูกหรือของแม่) จึงถูกใช้โดย commit ถัดไปเท่านั้น —
+ * ลำดับการประกาศ hook ไม่มีผล และการเปลี่ยนของระบบที่ไปกระตุ้น asSystem ของ effect ลูกต่อ (chain) ไม่ถูกนับ
+ *
+ * ข้อควรรู้:
+ * - พิมพ์ระหว่างกำลังบันทึก (in-flight save) ไม่เตือน — เมื่อสำเร็จฟอร์มถูกแทนที่/ปิดอยู่แล้ว
+ * - `asSystem` ต้องห่อเฉพาะการเปลี่ยนที่เปลี่ยน state จริง ไม่งั้น flag ค้างแล้วกลืนการแก้ครั้งถัดไปของผู้ใช้
  */
 export function useLeaveGuard(state: unknown) {
   const [dirty, setDirty] = useState(false);
@@ -28,7 +33,7 @@ export function useLeaveGuard(state: unknown) {
     return () => window.removeEventListener('beforeunload', warn);
   }, [dirty]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (systemChangePending.current) {
       systemChangePending.current = false;
       return;

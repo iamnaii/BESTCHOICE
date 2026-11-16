@@ -201,4 +201,22 @@ describe('ExpenseFormV4 — หน้าเต็ม', () => {
     expect(add.mock.calls.some((c) => c[0] === 'beforeunload')).toBe(true);
     add.mockRestore();
   });
+
+  it('เลือกบัญชีด้วยการคลิกอย่างเดียว ก็ผูก beforeunload', async () => {
+    const add = vi.spyOn(window, 'addEventListener');
+    const user = mount();
+    await user.click(screen.getAllByRole('button', { name: 'บัญชีค่าใช้จ่าย' })[0]);
+    await waitFor(() => expect(add.mock.calls.some((c) => c[0] === 'beforeunload')).toBe(true));
+    add.mockRestore();
+  });
+
+  it('บันทึกสำเร็จแล้วถอด beforeunload', async () => {
+    const remove = vi.spyOn(window, 'removeEventListener');
+    const user = mount();
+    await fillExpenseLine(user, { account: '53-1101', unitPrice: '850' });
+    await saveDraft(user);
+    await bodyOf('/expense-documents');
+    await waitFor(() => expect(remove.mock.calls.some((c) => c[0] === 'beforeunload')).toBe(true));
+    remove.mockRestore();
+  });
 });

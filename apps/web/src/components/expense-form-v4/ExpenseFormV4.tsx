@@ -632,7 +632,11 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
   const [showJe, setShowJe] = useState(false);
   const jePanelId = useId();
   const [dirty, setDirty] = useState(false);
-  const markDirty = () => setDirty(true);
+  // ผู้ใช้แตะฟอร์มแล้วหรือยัง — state ที่ระบบเปลี่ยนเองตอนเปิดหน้า (ติ๊กเจ้าหนี้ให้, flag) ไม่นับเป็นการแก้
+  const interacted = useRef(false);
+  const markInteracted = () => {
+    interacted.current = true;
+  };
   useEffect(() => {
     if (!dirty) return;
     const warn = (e: BeforeUnloadEvent) => {
@@ -642,9 +646,16 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
   }, [dirty]);
+  // ลำดับสำคัญ: effect นี้ต้องอยู่ก่อน effect [state] — บันทึกแล้วโหลดร่างกลับมา (state เปลี่ยน) ต้องไม่นับเป็นการแก้
   useEffect(() => {
-    if (saveMutation.isSuccess) setDirty(false);
+    if (saveMutation.isSuccess) {
+      interacted.current = false;
+      setDirty(false);
+    }
   }, [saveMutation.isSuccess, saveMutation.submittedAt]);
+  useEffect(() => {
+    if (interacted.current) setDirty(true);
+  }, [state]);
 
   const money = (v?: string) => (v === undefined ? '—' : formatNumberDecimal(v));
   // จ่ายเจ้าหนี้ — ตัวเลขชุดเดียวกับที่ตารางเคยแสดงท้ายกล่อง (ยังไม่เลือกใบใด = —)
@@ -726,8 +737,9 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
   return (
     <div
       className="-mb-[calc(5rem+env(safe-area-inset-bottom,0px))] pt-4 lg:-mb-8"
-      onInputCapture={markDirty}
-      onChangeCapture={markDirty}
+      onPointerDownCapture={markInteracted}
+      onKeyDownCapture={markInteracted}
+      onChangeCapture={markInteracted}
     >
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <button

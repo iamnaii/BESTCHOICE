@@ -27,7 +27,8 @@ import { canManagePayroll } from './payroll-system/payroll-roles';
 import { VendorSection, PricingSection } from './VendorSection';
 import { ItemLinesSection } from './ItemLinesSection';
 import { PayrollLinesSection } from './PayrollLinesSection';
-import { SettlementLinesSection } from './SettlementLinesSection';
+import { SettlementLinesSection, SettlementPayeeFields } from './SettlementLinesSection';
+import { settlementTotals } from './settlement-totals';
 import { PettyCashLinesSection } from './PettyCashLinesSection';
 import { CreditNoteLinesSection } from './CreditNoteLinesSection';
 import { JePreview } from './JePreview';
@@ -644,6 +645,9 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
   }, [saveMutation.isSuccess, saveMutation.submittedAt]);
 
   const money = (v?: string) => (v === undefined ? '—' : formatNumberDecimal(v));
+  // จ่ายเจ้าหนี้ — ตัวเลขชุดเดียวกับที่ตารางเคยแสดงท้ายกล่อง (ยังไม่เลือกใบใด = —)
+  const seTotals = settlementTotals(state.settlement);
+  const seMoney = (n: number) => (seTotals.count === 0 ? '—' : formatNumberDecimal(n));
   const hasAdjustmentData = state.adjustments.length > 0 || state.amountPaid.trim() !== '';
   const clearAdjustments = () => patch({ adjustments: [], amountPaid: '' });
   const backdatedHint =
@@ -847,7 +851,12 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
           </FormRow>
         )}
         {state.docType === 'VENDOR_SETTLEMENT' && (
-          <FormRow title="เอกสารตั้งหนี้ที่จะล้าง" layout="stacked">
+          <FormRow title="ข้อมูลผู้รับเงิน" complete>
+            <SettlementPayeeFields value={state.settlement} onChange={(s) => patch({ settlement: s })} />
+          </FormRow>
+        )}
+        {state.docType === 'VENDOR_SETTLEMENT' && (
+          <FormRow title="เอกสารตั้งหนี้ที่จะล้าง" layout="stacked" complete={itemCount > 0}>
             <SettlementLinesSection
               branchId={state.branchId}
               value={state.settlement}
@@ -929,6 +938,18 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
               ) : undefined
             }
           />
+        )}
+
+        {state.docType === 'VENDOR_SETTLEMENT' && (
+          <FormRow title="สรุปข้อมูล">
+            <SummaryBox
+              rows={[
+                { label: 'รวมยอดที่จ่าย', value: seMoney(seTotals.sumSelected) },
+                { label: 'หัก ณ ที่จ่าย', value: seMoney(seTotals.wht) },
+              ]}
+              total={{ label: 'ตัดเงินสดสุทธิ', value: seMoney(seTotals.cashLeg) }}
+            />
+          </FormRow>
         )}
 
         {isPreviewType && (

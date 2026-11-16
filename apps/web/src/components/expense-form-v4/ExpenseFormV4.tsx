@@ -29,7 +29,8 @@ import { ItemLinesSection } from './ItemLinesSection';
 import { PayrollLinesSection } from './PayrollLinesSection';
 import { SettlementLinesSection, SettlementPayeeFields } from './SettlementLinesSection';
 import { settlementTotals } from './settlement-totals';
-import { PettyCashLinesSection } from './PettyCashLinesSection';
+import { PettyCashCustodianField, PettyCashLinesSection } from './PettyCashLinesSection';
+import { pettyCashTotals } from './petty-cash-totals';
 import { CreditNoteLinesSection } from './CreditNoteLinesSection';
 import { JePreview } from './JePreview';
 import { DocCard } from './layout/DocCard';
@@ -648,6 +649,9 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
   // จ่ายเจ้าหนี้ — ตัวเลขชุดเดียวกับที่ตารางเคยแสดงท้ายกล่อง (ยังไม่เลือกใบใด = —)
   const seTotals = settlementTotals(state.settlement);
   const seMoney = (n: number) => (seTotals.count === 0 ? '—' : formatNumberDecimal(n));
+  // เงินสดย่อย — ตัวเลขชุดเดียวกับแถวรวมท้ายตาราง (ยังไม่มียอด = —)
+  const pcTotals = pettyCashTotals(state.pettyCash);
+  const pcMoney = (n: number) => (pcTotals.sumTotal === 0 ? '—' : formatNumberDecimal(n));
   const hasAdjustmentData = state.adjustments.length > 0 || state.amountPaid.trim() !== '';
   const clearAdjustments = () => patch({ adjustments: [], amountPaid: '' });
   const backdatedHint =
@@ -876,7 +880,12 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
             while the flag is off, but we keep the && here as a second
             line of defense for race conditions during the flag fetch. */}
         {state.docType === 'PETTY_CASH_REIMBURSEMENT' && pettyCashEnabled && (
-          <FormRow title="รายการเงินสดย่อย" layout="stacked">
+          <FormRow title="ผู้ดูแลเงินสดย่อย" complete>
+            <PettyCashCustodianField value={state.pettyCash} onChange={(pc) => patch({ pettyCash: pc })} />
+          </FormRow>
+        )}
+        {state.docType === 'PETTY_CASH_REIMBURSEMENT' && pettyCashEnabled && (
+          <FormRow title="รายการเงินสดย่อย" layout="stacked" complete={itemCount > 0}>
             <PettyCashLinesSection value={state.pettyCash} onChange={(pc) => patch({ pettyCash: pc })} />
           </FormRow>
         )}
@@ -953,6 +962,18 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
                 { label: 'หัก ณ ที่จ่าย', value: seMoney(seTotals.wht) },
               ]}
               total={{ label: 'ตัดเงินสดสุทธิ', value: seMoney(seTotals.cashLeg) }}
+            />
+          </FormRow>
+        )}
+
+        {state.docType === 'PETTY_CASH_REIMBURSEMENT' && pettyCashEnabled && (
+          <FormRow title="สรุปข้อมูล">
+            <SummaryBox
+              rows={[
+                { label: 'มูลค่าก่อนภาษี', value: pcMoney(pcTotals.sumBase) },
+                { label: 'ภาษีมูลค่าเพิ่ม', value: pcMoney(pcTotals.sumVat) },
+              ]}
+              total={{ label: 'จำนวนเงินทั้งสิ้น', value: pcMoney(pcTotals.sumTotal) }}
             />
           </FormRow>
         )}

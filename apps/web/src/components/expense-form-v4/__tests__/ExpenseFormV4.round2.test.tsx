@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  chooseCreditNoteStandalone, chooseKind, fillCreditNoteReason, pickCreditNoteSource, saveDraft, waitForSettlementDoc,
+  chooseCreditNoteStandalone, chooseKind, fillCreditNoteReason, fillPettyCashLine, pickCreditNoteSource, saveDraft, waitForSettlementDoc,
 } from './expense-form-driver';
 
 /**
@@ -231,5 +231,19 @@ describe('ใบลดหนี้ — รับเงินคืนเข้�
     await chooseKind(user, 'CREDIT_NOTE');
     await chooseCreditNoteStandalone(user);
     expect(screen.queryByRole('region', { name: 'รับเงินคืนเข้า' })).not.toBeInTheDocument();
+  });
+});
+
+describe('เงินสดย่อย', () => {
+  it('มีแถวผู้ดูแลเงินสดย่อย และกล่องสรุปคิดจากรายการ', async () => {
+    const user = mount();
+    await chooseKind(user, 'PETTY_CASH');
+    expect(screen.getByRole('region', { name: 'ผู้ดูแลเงินสดย่อย' })).toBeInTheDocument();
+    const summary = screen.getByRole('region', { name: 'สรุปข้อมูล' });
+    expect(within(summary).getByText('จำนวนเงินทั้งสิ้น').parentElement).toHaveTextContent('—');
+    await fillPettyCashLine(user, { amount: '120' });
+    expect(within(summary).getByText('มูลค่าก่อนภาษี').parentElement).toHaveTextContent('120.00');
+    expect(within(summary).getByText('ภาษีมูลค่าเพิ่ม').parentElement).toHaveTextContent('0.00');
+    expect(within(summary).getByText('จำนวนเงินทั้งสิ้น').parentElement).toHaveTextContent('120.00');
   });
 });

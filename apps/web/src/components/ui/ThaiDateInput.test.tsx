@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import ThaiDateInput from './ThaiDateInput';
+import { formControlClass } from './form-styles';
 
 /**
  * `min` / `max` are YYYY-MM-DD (CE). Days outside the range must not be
@@ -52,5 +53,25 @@ describe('ThaiDateInput — min / max', () => {
     openCalendar('วันที่คาดรับ');
     fireEvent.click(screen.getByRole('button', { name: 'วันนี้' }));
     expect(onChange).not.toHaveBeenCalled();
+  });
+});
+
+describe('ThaiDateInput — หน้าตาเท่าช่องกรอกอื่น', () => {
+  it('รับ formControlClass แล้วไม่ได้พื้นเทาโปร่งและเคอร์เซอร์ห้ามกดของช่อง readonly (readOnly มีไว้กันพิมพ์ ช่องยังกดเลือกวันได้)', () => {
+    render(
+      <ThaiDateInput value="2026-09-13" onChange={vi.fn()} aria-label="วันที่ใบกำกับ" className={formControlClass} />,
+    );
+    const input = screen.getByLabelText('วันที่ใบกำกับ');
+    expect(input).toHaveAttribute('readonly');
+    expect(input).not.toHaveClass('[[readonly]]:bg-muted/80');
+    expect(input).not.toHaveClass('[[readonly]]:cursor-not-allowed');
+    expect(input).toHaveClass('[[readonly]]:bg-background', '[[readonly]]:cursor-pointer');
+  });
+
+  it('disabled ยังเป็นช่องปิดใช้งาน', () => {
+    render(
+      <ThaiDateInput value="2026-09-13" onChange={vi.fn()} aria-label="วันที่ใบกำกับ" className={formControlClass} disabled />,
+    );
+    expect(screen.getByLabelText('วันที่ใบกำกับ')).toBeDisabled();
   });
 });

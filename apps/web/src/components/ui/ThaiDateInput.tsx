@@ -204,6 +204,8 @@ export default function ThaiDateInput({
             className={cn(
               'w-full px-3 py-2 pr-9 border border-input rounded-lg text-sm bg-background cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-ring/30',
               className,
+              // readOnly มีไว้กันพิมพ์เท่านั้น — ช่องนี้กดเลือกวันได้ จึงทับพื้นเทา/เคอร์เซอร์ห้ามกดของช่อง readonly ใน inputVariants
+              '[[readonly]]:bg-background [[readonly]]:cursor-pointer',
             )}
           />
           </PopoverTrigger>

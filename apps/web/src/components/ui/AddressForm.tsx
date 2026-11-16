@@ -185,12 +185,14 @@ export default function AddressForm({ value, onChange, label }: Props) {
   };
 
   const handleProvinceChange = (province: string) => {
+    if (province === value.province) return; // owner 2026-11-16: re-picking the current value keeps what is below
     setSelectedProvince(province);
     setSelectedDistrict('');
     onChange({ ...value, province, district: '', subdistrict: '', postalCode: '' });
   };
 
   const handleDistrictChange = (district: string) => {
+    if (district === value.district) return; // owner 2026-11-16: re-picking the current value keeps what is below
     setSelectedDistrict(district);
     onChange({ ...value, district, subdistrict: '', postalCode: '' });
   };

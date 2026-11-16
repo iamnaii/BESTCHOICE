@@ -170,25 +170,37 @@ describe('AddressForm — cascade จังหวัด → อำเภอ → 
     });
   });
 
-  it('re-picking the same province or district still clears what is below it (current behaviour)', async () => {
+  it('re-picking the current province or district keeps what is below it; a different one still resets', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     render(<Host initial={BANGKOK} onChange={onChange} />);
 
-    await pick(user, DISTRICT, 'เขตพระนคร', 'พระนคร');
-    expect(onChange).toHaveBeenLastCalledWith({ ...BANGKOK, subdistrict: '', postalCode: '' });
-
-    await pick(user, SUBDISTRICT, 'แขวงพระบรมมหาราชวัง');
-    expect(onChange).toHaveBeenLastCalledWith(BANGKOK);
-
+    // owner 2026-11-16: same province again is a no-op
     await pick(user, PROVINCE, 'กรุงเทพมหานคร', 'กรุงเทพ');
+    expect(onChange).not.toHaveBeenCalled();
+    expect(shown(field(DISTRICT))).toBe('เขตพระนคร');
+    expect(shown(field(SUBDISTRICT))).toBe('แขวงพระบรมมหาราชวัง');
+    expect(screen.getByLabelText(POSTAL)).toHaveValue('10200');
+
+    // same district again: same
+    await pick(user, DISTRICT, 'เขตพระนคร', 'พระนคร');
+    expect(onChange).not.toHaveBeenCalled();
+    expect(shown(field(SUBDISTRICT))).toBe('แขวงพระบรมมหาราชวัง');
+    expect(screen.getByLabelText(POSTAL)).toHaveValue('10200');
+
+    // a different province still resets everything below it
+    await pick(user, PROVINCE, 'เชียงใหม่');
+    expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenLastCalledWith({
       ...BANGKOK,
+      province: 'เชียงใหม่',
       district: '',
       subdistrict: '',
       postalCode: '',
     });
-    expect(onChange).toHaveBeenCalledTimes(3);
+    expect(shown(field(DISTRICT))).toBe('');
+    expect(shown(field(SUBDISTRICT))).toBe('');
+    expect(screen.getByLabelText(POSTAL)).toHaveValue('');
   });
 
   it('lists every province, only the chosen province’s districts and the chosen district’s subdistricts, in the same order', async () => {

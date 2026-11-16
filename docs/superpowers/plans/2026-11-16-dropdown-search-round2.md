@@ -16601,6 +16601,6 @@ What each task's code and tests were run against while the plan was written (202
 - Boards added: ComboboxLight, ComboboxDark, ComboboxMobileLight, ComboboxMobileDark, ComboboxChecks + title note "Combobox — dropdown ค้นหาได้ (รอบ 2 · R2-0)"
 - Owner reply (verbatim): "อมุมัติ"
 - Decision: approved
-- Answers: 1 row height 44px kept · 2 disabled rows as drawn · 3 phone list focus as drawn · 4 converted account fields — one "อนุมัติ" for all five; read as yes, code - name like the searchable picker (to be confirmed with the owner before Task 8 / Task 13 start — both also wait for the PEAK-layout merge) · 5 highlight kept
+- Answers: 1 row height 44px kept · 2 disabled rows as drawn · 3 phone list focus as drawn · 4 converted account fields — one "อนุมัติ" for all five; read as yes, code - name like the searchable picker; asked to confirm that reading, the owner replied "ทำได้เลย" (2026-11-16) — so Task 8 and Task 13 drop their explicit display props (header "Account codes"); both still wait for the PEAK-layout merge · 5 highlight kept
 - Changes made after the first publish: none
 - Task 4 visual contract (Task 2 Produces table): unchanged

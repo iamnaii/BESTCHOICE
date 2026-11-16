@@ -1,14 +1,14 @@
 import { NumberInput } from '@/components/ui/NumberInput';
 import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useId, useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { SettlementFormFields } from './types';
 import { formatNumberDecimal } from '@/utils/formatters';
 import { useUiFlags } from '@/hooks/useUiFlags';
 import { VendorCombobox } from './VendorCombobox';
-import { formControlClass } from '@/components/ui/form-styles';
+import { formControlClass, formLabelClass } from '@/components/ui/form-styles';
 import { cn } from '@/lib/utils';
 
 /**
@@ -34,6 +34,54 @@ interface Props {
   branchId: string;
   value: SettlementFormFields;
   onChange: (v: SettlementFormFields) => void;
+}
+
+/** ผู้รับเงิน + ภาษีหัก ณ ที่จ่าย — แถว "ข้อมูลผู้รับเงิน" ของหน้า (ช่องเดิม ค่าเดิม) */
+export function SettlementPayeeFields({ value, onChange }: Pick<Props, 'value' | 'onChange'>) {
+  const fieldId = useId();
+  return (
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <div>
+        <label htmlFor={`${fieldId}-payee`} className={formLabelClass}>
+          ผู้รับเงิน (ถ้ารวมเจ้าหนี้คนเดียว)
+        </label>
+        <VendorCombobox
+          id={`${fieldId}-payee`}
+          value={value.vendorName}
+          onSelectSupplier={(s) =>
+            onChange({
+              ...value,
+              vendorName: s.name,
+              vendorSupplierId: s.supplierId,
+              ...(s.whtFormType ? { whtFormType: s.whtFormType } : {}),
+            })
+          }
+        />
+      </div>
+      <div role="group" aria-labelledby={`${fieldId}-wht`}>
+        <span id={`${fieldId}-wht`} className={formLabelClass}>หัก ณ ที่จ่าย</span>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="ประเภทภาษีหัก ณ ที่จ่าย"
+            value={value.whtFormType}
+            onChange={(e) =>
+              onChange({ ...value, whtFormType: e.target.value as 'PND3' | 'PND53' | '' })
+            }
+          >
+            <option value="">ไม่ระบุ</option>
+            <option value="PND53">ภงด.53</option>
+            <option value="PND3">ภงด.3</option>
+          </NativeSelect>
+          <NumberInput unstyled
+            step="0.01"
+            value={value.whtAmount}
+            onChange={(e) => onChange({ ...value, whtAmount: e.target.value })}
+            aria-label="ยอดภาษีหัก ณ ที่จ่าย" placeholder="ยอด WHT"
+            className={cn(formControlClass, 'text-right font-mono')}
+          />
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function SettlementLinesSection({ branchId, value, onChange }: Props) {
@@ -148,59 +196,12 @@ export function SettlementLinesSection({ branchId, value, onChange }: Props) {
     onChange({ ...value, selections: next });
   };
 
-  const sumSelected = [...value.selections.values()].reduce(
-    (s, sel) => s + (parseFloat(sel.amount) || 0),
-    0,
-  );
-  const whtN = parseFloat(value.whtAmount) || 0;
-  const cashLeg = sumSelected - whtN;
-
+  const noticeClass = 'rounded-lg border px-3 py-2 text-xs leading-snug';
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-xs font-medium mb-1">
-            ผู้รับเงิน (ถ้ารวมเจ้าหนี้คนเดียว)
-          </label>
-          <VendorCombobox
-            value={value.vendorName}
-            onSelectSupplier={(s) =>
-              onChange({
-                ...value,
-                vendorName: s.name,
-                vendorSupplierId: s.supplierId,
-                ...(s.whtFormType ? { whtFormType: s.whtFormType } : {}),
-              })
-            }
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium mb-1">หัก ณ ที่จ่าย</label>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <NativeSelect wrapperClassName="max-w-full w-auto" aria-label="ประเภทภาษีหัก ณ ที่จ่าย"
-              value={value.whtFormType}
-              onChange={(e) =>
-                onChange({ ...value, whtFormType: e.target.value as 'PND3' | 'PND53' | '' })
-              }
-            >
-              <option value="">ไม่ระบุ</option>
-              <option value="PND53">ภงด.53</option>
-              <option value="PND3">ภงด.3</option>
-            </NativeSelect>
-            <NumberInput unstyled
-              step="0.01"
-              value={value.whtAmount}
-              onChange={(e) => onChange({ ...value, whtAmount: e.target.value })}
-              aria-label="ยอดภาษีหัก ณ ที่จ่าย" placeholder="ยอด WHT"
-              className={cn(formControlClass, 'flex-1 text-right font-mono')}
-            />
-          </div>
-        </div>
-      </div>
-
       {!settlementPartialPaymentEnabled && (
         <div
-          className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs leading-snug text-amber-700"
+          className={cn(noticeClass, 'border-warning/40 bg-warning/10 text-warning-strong')}
           role="status"
           aria-live="polite"
         >
@@ -210,11 +211,12 @@ export function SettlementLinesSection({ branchId, value, onChange }: Props) {
 
       {(showApproachingCap || exceedsCap) && (
         <div
-          className={`rounded-lg border px-3 py-2 text-xs leading-snug ${
+          className={cn(
+            noticeClass,
             exceedsCap
               ? 'border-destructive/40 bg-destructive/10 text-destructive'
-              : 'border-amber-500/40 bg-amber-500/10 text-amber-700'
-          }`}
+              : 'border-warning/40 bg-warning/10 text-warning-strong',
+          )}
           role="status"
           aria-live="polite"
         >
@@ -224,24 +226,24 @@ export function SettlementLinesSection({ branchId, value, onChange }: Props) {
         </div>
       )}
 
-      <div className="rounded-xl border border-border overflow-hidden">
-        <div className="bg-muted/50 px-4 py-2 text-xs font-medium border-b border-border">
+      <div className="overflow-hidden rounded-lg border border-border">
+        <div className="border-b border-border bg-muted/50 px-4 py-2.5 text-xs font-medium leading-snug">
           เจ้าหนี้คงค้างของสาขา ({docs.length} รายการรอจ่าย — เลือกที่ต้องการเคลียร์ สูงสุด {settlementMaxBillsPerDoc} ใบ/เอกสาร)
         </div>
         {docs.length === 0 ? (
-          <div className="p-6 text-center text-sm text-muted-foreground">
+          <div className="p-6 text-center text-sm leading-snug text-muted-foreground">
             ไม่มีเจ้าหนี้คงค้างในสาขานี้
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="relative overflow-x-auto">
             <ScreenTable className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-xs text-muted-foreground">
-                  <th className="w-10 p-2"></th>
-                  <th className="text-left p-2">เลขเอกสาร</th>
-                  <th className="text-left p-2">ผู้ขาย</th>
-                  <th className="text-right p-2">ยอดรวม</th>
-                  <th className="text-right p-2">จำนวนที่จ่าย</th>
+                  <th scope="col" aria-label="เลือก" className="w-11 p-2" />
+                  <th scope="col" className="p-2 text-left">เลขเอกสาร</th>
+                  <th scope="col" className="p-2 text-left">ผู้ขาย</th>
+                  <th scope="col" className="p-2 text-right">ยอดรวม</th>
+                  <th scope="col" className="p-2 text-right">จำนวนที่จ่าย</th>
                 </tr>
               </thead>
               <tbody>
@@ -249,24 +251,22 @@ export function SettlementLinesSection({ branchId, value, onChange }: Props) {
                   const isSelected = value.selections.has(doc.id);
                   const sel = value.selections.get(doc.id);
                   return (
-                    <tr
-                      key={doc.id}
-                      className={`border-b border-border/50 ${isSelected ? 'bg-primary/5' : ''}`}
-                    >
-                      <td className="p-2">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggle(doc)}
-                          className="size-4 accent-primary"
-                        />
+                    <tr key={doc.id} className={cn('border-b border-border/50', isSelected && 'bg-primary/5')}>
+                      <td className="p-0">
+                        <label className="flex min-h-11 min-w-11 cursor-pointer items-center justify-center">
+                          <input
+                            type="checkbox"
+                            aria-label={`เลือก ${doc.number}`}
+                            checked={isSelected}
+                            onChange={() => toggle(doc)}
+                            className="size-4 accent-primary"
+                          />
+                        </label>
                       </td>
                       <td className="p-2 font-mono text-sm">{doc.number}</td>
-                      <td className="p-2">{doc.vendorName ?? '—'}</td>
-                      <td className="p-2 text-right font-mono">
-                        {formatNumberDecimal(doc.totalAmount)}
-                      </td>
-                      <td className="p-1.5 text-right">
+                      <td className="p-2 leading-snug">{doc.vendorName ?? '—'}</td>
+                      <td className="p-2 text-right font-mono">{formatNumberDecimal(doc.totalAmount)}</td>
+                      <td className="p-1.5">
                         {isSelected &&
                           (settlementPartialPaymentEnabled ? (
                             <NumberInput unstyled
@@ -274,13 +274,11 @@ export function SettlementLinesSection({ branchId, value, onChange }: Props) {
                               min="0.01"
                               value={sel!.amount}
                               onChange={(e) => updateAmount(doc.id, e.target.value)}
-                              className="w-32 px-2 py-1 border border-input rounded text-sm bg-background text-right font-mono inline-block"
+                              aria-label={`จำนวนที่จ่ายของ ${doc.number}`}
+                              className={cn(formControlClass, 'ml-auto w-36 px-2 text-right font-mono')}
                             />
                           ) : (
-                            // D1.3.6.3 OFF — locked to full totalAmount. Show as
-                            // disabled input + matching value so the column lines
-                            // up with the unlocked layout. Title surfaces the policy
-                            // reason for keyboard / a11y users.
+                            // D1.3.6.3 OFF — ล็อกที่ยอดเต็ม · title บอกเหตุผลของนโยบาย
                             <NumberInput unstyled
                               step="0.01"
                               min="0.01"
@@ -289,7 +287,7 @@ export function SettlementLinesSection({ branchId, value, onChange }: Props) {
                               disabled
                               title="การชำระบางส่วนถูกปิดในการตั้งค่าระบบ — ต้องชำระเต็มจำนวน"
                               aria-label={`ยอดที่จ่ายของ ${doc.number} ล็อกที่ยอดเต็ม`}
-                              className="w-32 px-2 py-1 border border-input rounded text-sm bg-muted text-right font-mono inline-block cursor-not-allowed opacity-70"
+                              className={cn(formControlClass, 'ml-auto w-36 cursor-not-allowed px-2 text-right font-mono opacity-70')}
                             />
                           ))}
                       </td>
@@ -298,24 +296,6 @@ export function SettlementLinesSection({ branchId, value, onChange }: Props) {
                 })}
               </tbody>
             </ScreenTable>
-          </div>
-        )}
-        {value.selections.size > 0 && (
-          <div className="bg-muted/30 px-4 py-3 border-t border-border space-y-1 text-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">รวมยอดที่จ่าย</span>
-              <span className="font-mono font-medium">{formatNumberDecimal(sumSelected)}</span>
-            </div>
-            {whtN > 0 && (
-              <div className="flex items-center justify-between text-destructive">
-                <span>หัก ณ ที่จ่าย</span>
-                <span className="font-mono font-medium">({formatNumberDecimal(whtN)})</span>
-              </div>
-            )}
-            <div className="flex items-center justify-between border-t border-primary/20 pt-2 font-bold">
-              <span className="text-primary">ตัดเงินสดสุทธิ</span>
-              <span className="text-primary font-mono">{formatNumberDecimal(cashLeg)}</span>
-            </div>
           </div>
         )}
       </div>

@@ -42,4 +42,19 @@ describe('AdjustmentSection — S3-05 กล่องค่าสองกล่
     expect(diff).toHaveAttribute('title', (diff as HTMLInputElement).value);
     expect((diff as HTMLInputElement).value).toMatch(/จ่ายน้อย → Dr/);
   });
+
+  it('หัวข้อเป็นระดับ 3 (อยู่ใต้หัวข้อ ชำระเงิน) และไม่มีเลขขั้นของฟอร์มแบบเดิม', () => {
+    render(
+      <AdjustmentSection
+        diff="0.00"
+        amountPaid=""
+        onAmountPaidChange={() => {}}
+        adjustments={[]}
+        onChange={() => {}}
+        netExpected="100.00"
+      />,
+    );
+    expect(screen.getByRole('heading', { level: 3, name: 'บัญชีปรับผลต่าง' })).toBeInTheDocument();
+    expect(screen.queryByText('5')).not.toBeInTheDocument();
+  });
 });

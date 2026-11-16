@@ -24,7 +24,6 @@ import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { formatDateShortThai, formatNumberDecimal } from '@/utils/formatters';
 import { accountDisplayName } from '@/utils/accountName';
-import { ExpenseFormV4 } from '@/components/expense-form-v4/ExpenseFormV4';
 import { ReopenedPeriodBanner } from '@/components/accounting/ReopenedPeriodBanner';
 import { useApprovalActions, getApprovalReason, toastActionError } from '@/hooks/useApprovalActions';
 import { invalidateExpenseDoc } from '@/lib/expense-document-cache';
@@ -152,7 +151,6 @@ export default function ExpensesPage() {
   const [search, setSearch] = useState(searchParams.get('search') || '');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const debouncedSearch = useDebounce(search, 300);
-  const [showForm, setShowForm] = useState(false);
   const menuTriggers = useRef(new Map<string, HTMLButtonElement>());
   const activeMenuRecord = useRef<string | null>(null);
   const restoreMenuFocus = (event: Event) => {
@@ -200,7 +198,6 @@ export default function ExpensesPage() {
     { label: 'ปีนี้', fn: () => setDateRange(getReportDateRange('this_year')) },
   ];
 
-  const invalidateAll = () => { queryClient.invalidateQueries({ queryKey: ['expenses'] }); queryClient.invalidateQueries({ queryKey: ['expenses-summary'] }); };
 
   const { data: branches = [] } = useQuery<{ id: string; name: string }[]>({ queryKey: ['branches'], queryFn: async () => (await api.get('/branches')).data });
 
@@ -250,14 +247,22 @@ export default function ExpensesPage() {
     onError: toastActionError,
   });
 
-  const openCreate = () => { setShowForm(true); };
+  // หน้าสร้างรับสาขาจากตัวกรอง และกลับมาที่ตัวกรองเดิมหลังบันทึก/ยกเลิก
+  const goCreate = (type?: 'CN' | 'PR' | 'SE') => {
+    const params = new URLSearchParams();
+    if (type) params.set('type', type);
+    if (branchFilter) params.set('branch', branchFilter);
+    const query = params.toString();
+    const listSearch = searchParams.toString();
+    navigate(`/expenses/new${query ? `?${query}` : ''}`, { state: { listSearch: listSearch ? `?${listSearch}` : '' } });
+  };
   const openEdit = (e: Expense) => {
     // The form only supports PATCH for payroll. Other document types create new records.
     // Payroll D4 คำตัดสิน 6 — ใบที่รออนุมัติ/อนุมัติแล้วแก้ได้ (บันทึกแล้ว server ตั้งกลับเป็นร่าง)
     if (!isPayrollEditable(e)) return;
-    navigate(payrollEditPath(e.id));
+    const listSearch = searchParams.toString();
+    navigate(payrollEditPath(e.id), { state: { listSearch: listSearch ? `?${listSearch}` : '' } });
   };
-  const handleFormSaved = () => { setShowForm(false); invalidateAll(); };
 
   // D1.2.1 — Approval Workflow. Flags + mutations stay at page level so all
   // row actions share the same react-query cache invalidations + sonner toasts.
@@ -666,15 +671,15 @@ export default function ExpensesPage() {
           </Button>
           {showCreateMenu && (
             <div className="absolute right-0 top-full mt-1 z-10 bg-card border border-border rounded-lg shadow-lg py-1 min-w-[160px]">
-              <button onClick={() => { setShowCreateMenu(false); openCreate(); }}
+              <button onClick={() => { setShowCreateMenu(false); goCreate(); }}
                 className="w-full px-3 py-2 text-sm text-left hover:bg-muted">รายจ่าย (EX)</button>
-              <button onClick={() => { setShowCreateMenu(false); navigate('/expenses/new?type=CN'); }}
+              <button onClick={() => { setShowCreateMenu(false); goCreate('CN'); }}
                 className="w-full px-3 py-2 text-sm text-left hover:bg-muted">ใบลดหนี้ (CN)</button>
               {payrollManager && (
-                <button onClick={() => { setShowCreateMenu(false); navigate('/expenses/new?type=PR'); }}
+                <button onClick={() => { setShowCreateMenu(false); goCreate('PR'); }}
                   className="w-full px-3 py-2 text-sm text-left hover:bg-muted">เงินเดือน (PR)</button>
               )}
-              <button onClick={() => { setShowCreateMenu(false); navigate('/expenses/new?type=SE'); }}
+              <button onClick={() => { setShowCreateMenu(false); goCreate('SE'); }}
                 className="w-full px-3 py-2 text-sm text-left hover:bg-muted">จ่ายเจ้าหนี้ (SE)</button>
             </div>
           )}
@@ -730,15 +735,6 @@ export default function ExpensesPage() {
         onPageChange={setPage}
         onSizeChange={setSize}
       />
-
-      {/* Unified Expense Form V4 */}
-      {showForm && (
-        <ExpenseFormV4
-          branchId={(branchFilter) || branches[0]?.id || ''}
-          onClose={() => { setShowForm(false); }}
-          onSaved={handleFormSaved}
-        />
-      )}
 
       <ConfirmDialog onCloseAutoFocus={restoreMenuFocus} open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))} description={confirmDialog.message} onConfirm={confirmDialog.action} />
 

@@ -1,12 +1,12 @@
 import { buildExpenseLinePayload } from './expense-line-payload';
 import { useAccountingPermissions } from '@/hooks/useAccountingPermissions';
 import { getApprovalReason } from '@/hooks/useApprovalActions';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useId } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
-import { AlertTriangle, ArrowLeft, Receipt, Users, Banknote, FileText, Check, CheckCircle2, Clock } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCircle2, Clock, Star } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUiFlags } from '@/hooks/useUiFlags';
 import { cn } from '@/lib/utils';
@@ -19,20 +19,27 @@ import {
   type StoredPayrollLine,
 } from './payroll-system/payroll-lines';
 import { payrollMetaQuery } from './payroll-system/payroll-meta';
-// (Clock/Users etc. imported above from lucide-react)
-import { SHOP_CASH_ACCOUNT_CODES } from '@/components/CashAccountSelect';
+import { CashAccountSelect, SHOP_CASH_ACCOUNT_CODES } from '@/components/CashAccountSelect';
+import { formLabelClass } from '@/components/ui/form-styles';
 import { useFormCompute } from './useFormCompute';
 import { QuickStartPanel } from './QuickStartPanel';
-import { DocTypePicker } from './DocTypePicker';
 import { canManagePayroll } from './payroll-system/payroll-roles';
-import { VendorSection } from './VendorSection';
+import { VendorSection, PricingSection } from './VendorSection';
 import { ItemLinesSection } from './ItemLinesSection';
 import { PayrollLinesSection } from './PayrollLinesSection';
-import { SettlementLinesSection } from './SettlementLinesSection';
-import { PettyCashLinesSection } from './PettyCashLinesSection';
+import { SettlementLinesSection, SettlementPayeeFields } from './SettlementLinesSection';
+import { settlementTotals } from './settlement-totals';
+import { PettyCashCustodianField, PettyCashLinesSection } from './PettyCashLinesSection';
+import { pettyCashTotals } from './petty-cash-totals';
 import { CreditNoteLinesSection } from './CreditNoteLinesSection';
-import { CashAccountVisualPicker } from './CashAccountVisualPicker';
 import { JePreview } from './JePreview';
+import { DocCard } from './layout/DocCard';
+import { DocHeader } from './layout/DocHeader';
+import { docTypeLabel } from './layout/DocTypeMenu';
+import { FormRow } from './layout/FormRow';
+import { PaymentSection } from './layout/PaymentSection';
+import { StickyActionBar } from './layout/StickyActionBar';
+import { SummaryBox } from './layout/SummaryBox';
 import { ApproverSection } from './ApproverSection';
 import { AdjustmentSection } from './AdjustmentSection';
 import { isPayrollEditable } from './payroll-system/payroll-status';
@@ -52,14 +59,18 @@ interface Props {
   editDocId?: string;
   /** Payroll D4 — "บันทึกร่าง + คิดยอด" บันทึกแล้วอยู่ในโหมดแก้ไขของร่างนั้น · หน้าที่เปิดฟอร์มเปลี่ยน URL เป็น ?edit=<id> ได้ */
   onDraftSaved?: (id: string) => void;
+  /** ชื่อสาขาของเอกสาร — แสดงที่หัวการ์ด */
+  branchName?: string;
 }
 
 /** ใบเงินเดือนตามที่ `GET /expense-documents/:id` คืน (เฉพาะที่ฟอร์มใช้) */
 interface PayrollDocForEdit {
   id: string;
+  number?: string;
   documentType: string;
   status: string;
   branchId: string;
+  branch?: { id: string; name: string } | null;
   documentDate: string;
   depositAccountCode: string | null;
   description: string | null;
@@ -167,10 +178,11 @@ const initial = (
   };
 };
 
-export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, editDocId, onDraftSaved }: Props) {
+export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, editDocId, onDraftSaved, branchName }: Props) {
   const { user } = useAuth();
   const permissions = useAccountingPermissions();
   const queryClient = useQueryClient();
+  const payById = useId();
   // D1.1.5.1 — Petty Cash feature flag. When disabled, the picker hides the
   // PETTY_CASH_REIMBURSEMENT chip and the form section is not rendered.
   // Auto-flip away from PETTY_CASH_REIMBURSEMENT when the flag flips off
@@ -202,6 +214,9 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
   // ใบที่ฟอร์มนี้แก้อยู่ — เริ่มจาก ?edit= หรือได้มาหลัง "บันทึกร่าง + คิดยอด" สร้างใบ (บันทึกครั้งถัดไป = PATCH)
   const [draftId, setDraftId] = useState<string | undefined>(editDocId);
   const [loadedStatus, setLoadedStatus] = useState<string | null>(null);
+  const [loadedNumber, setLoadedNumber] = useState<string | undefined>();
+  // สาขาของใบที่โหลดมา (แก้ไข) — แสดงแทนสาขาของหน้า ซึ่งอาจเป็นคนละสาขากับใบ
+  const [loadedBranchName, setLoadedBranchName] = useState<string | undefined>();
   // ข้อความจาก server ของใบเงินเดือน (มี `code`) — แสดงในฟอร์มแทน toast
   const [payrollNotice, setPayrollNotice] = useState<{ message: string; tone: 'error' | 'warning' } | null>(null);
   const noticeRef = useRef<HTMLDivElement>(null);
@@ -233,6 +248,8 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
       },
     }));
     setLoadedStatus(doc.status);
+    setLoadedNumber(doc.number);
+    setLoadedBranchName(doc.branch?.name);
     setShowQuickStart(false);
   };
 
@@ -611,406 +628,467 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
     ? !!preview && preview.totals.balanced && itemCount > 0
     : itemCount > 0;
 
+  // ---- ส่วนของหน้าจอ (ไม่มีผลกับ payload) ----
+  const [showJe, setShowJe] = useState(false);
+  const jePanelId = useId();
+  const [dirty, setDirty] = useState(false);
+  // ผู้ใช้แตะฟอร์มแล้วหรือยัง — state ที่ระบบเปลี่ยนเองตอนเปิดหน้า (ติ๊กเจ้าหนี้ให้, flag) ไม่นับเป็นการแก้
+  const interacted = useRef(false);
+  const markInteracted = () => {
+    interacted.current = true;
+  };
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty]);
+  // ลำดับสำคัญ: effect นี้ต้องอยู่ก่อน effect [state] — บันทึกแล้วโหลดร่างกลับมา (state เปลี่ยน) ต้องไม่นับเป็นการแก้
+  useEffect(() => {
+    if (saveMutation.isSuccess) {
+      interacted.current = false;
+      setDirty(false);
+    }
+  }, [saveMutation.isSuccess, saveMutation.submittedAt]);
+  useEffect(() => {
+    if (interacted.current) setDirty(true);
+  }, [state]);
+
+  const money = (v?: string) => (v === undefined ? '—' : formatNumberDecimal(v));
+  // จ่ายเจ้าหนี้ — ตัวเลขชุดเดียวกับที่ตารางเคยแสดงท้ายกล่อง (ยังไม่เลือกใบใด = —)
+  const seTotals = settlementTotals(state.settlement);
+  const seMoney = (n: number) => (seTotals.count === 0 ? '—' : formatNumberDecimal(n));
+  // เงินสดย่อย — ตัวเลขชุดเดียวกับแถวรวมท้ายตาราง (ยังไม่มียอด = —)
+  const pcTotals = pettyCashTotals(state.pettyCash);
+  const pcMoney = (n: number) => (pcTotals.sumTotal === 0 ? '—' : formatNumberDecimal(n));
+  const hasAdjustmentData = state.adjustments.length > 0 || state.amountPaid.trim() !== '';
+  const clearAdjustments = () => patch({ adjustments: [], amountPaid: '' });
+  const backdatedHint =
+    smartDoctypeSwitchEnabled &&
+    state.docType === 'EXPENSE_ACCRUAL' &&
+    !invoiceIsToday &&
+    daysBackdated > smartSwitchThresholdDays;
+  const statusLabel = (loadedStatus && SENT_BACK_STATUS_LABEL[loadedStatus]) || 'ร่าง';
+  const showVendor = isPreviewType || state.docType === 'CREDIT_NOTE';
+  const showPayment = isPreviewType || state.docType === 'PAYROLL' || state.docType === 'VENDOR_SETTLEMENT' || state.docType === 'PETTY_CASH_REIMBURSEMENT';
+  const hasAdjustmentSection = isPreviewType || state.docType === 'VENDOR_SETTLEMENT';
+
   // R3-2 — edit mode: อย่าแสดงฟอร์มเปล่าระหว่างโหลดร่าง (กันผู้ใช้เริ่มกรอกผิดใบ)
   if (editDocId && !editLoaded) {
     // โหลดไม่สำเร็จ (เครือข่าย / ไม่มีสิทธิ์ / ใบถูกลบ) — เดิมหมุนค้างไม่มีทางออก
     if (editQuery.isError) {
       return (
-        <div role="dialog" aria-modal="true" aria-label="โหลดใบเงินเดือนไม่สำเร็จ" className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div role="alert" className="bg-background rounded-xl shadow-modal px-6 py-5 flex max-w-md flex-col gap-3 text-sm">
+        <DocCard>
+          <div role="alert" className="flex flex-col gap-3 py-8 text-sm">
             <p className="flex items-center gap-2 font-semibold leading-snug text-destructive">
               <AlertTriangle className="size-4 shrink-0" aria-hidden="true" /> โหลดใบเงินเดือนไม่สำเร็จ
             </p>
             <p className="text-muted-foreground leading-snug">{getErrorMessage(editQuery.error)}</p>
-            <div className="flex flex-wrap justify-end gap-2">
-              <Button type="button" variant="outline" className="min-h-11 lg:min-h-9" onClick={onClose}>ปิด</Button>
-              <Button type="button" className="min-h-11 lg:min-h-9" onClick={() => void editQuery.refetch()}>ลองใหม่</Button>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" className="min-h-11" onClick={onClose}>ปิด</Button>
+              <Button type="button" className="min-h-11" onClick={() => void editQuery.refetch()}>ลองใหม่</Button>
             </div>
           </div>
-        </div>
+        </DocCard>
       );
     }
     return (
-      <div role="dialog" aria-modal="true" aria-label="กำลังโหลดร่างใบเงินเดือน" className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-        <div role="status" className="bg-background rounded-xl shadow-modal px-8 py-6 flex items-center gap-3 text-sm text-muted-foreground">
+      <DocCard>
+        <div role="status" className="flex items-center gap-3 py-8 text-sm text-muted-foreground">
           <Clock className="size-4 animate-pulse" aria-hidden="true" /> กำลังโหลดร่างใบเงินเดือน…
         </div>
-      </div>
+      </DocCard>
     );
   }
 
-  return (
-    <div role="dialog" aria-modal="true" aria-label="บันทึกค่าใช้จ่ายใหม่" className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-0 sm:p-4">
-      <div className="w-full min-w-0 max-w-5xl bg-background sm:rounded-xl shadow-modal h-dvh sm:h-auto max-h-dvh sm:max-h-[95dvh] flex flex-col overflow-hidden">
-        {/* Header — flex-none so it doesn't shrink */}
-        <div className="flex-none bg-background border-b px-3 py-2 sm:px-6 sm:py-4 flex items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex min-h-11 shrink-0 items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-            >
-              <ArrowLeft className="size-4" /> กลับ
-            </button>
-            <h2 className="flex min-w-0 items-center gap-2 text-base sm:text-lg font-semibold">
-              <Receipt className="hidden size-5 shrink-0 text-primary sm:block" /> บันทึกค่าใช้จ่าย
-            </h2>
-          </div>
-          <span className="shrink-0 text-xs px-2 py-1 rounded bg-muted text-muted-foreground leading-snug">
-            {(loadedStatus && SENT_BACK_STATUS_LABEL[loadedStatus]) || 'ร่าง'}
-          </span>
-        </div>
+  // บัญชีปรับผลต่าง — สูตรเดิม (SAMEDAY อ่านยอดสุทธิจาก server · SE คิดจากบิลที่เลือก − ภาษีหัก ณ ที่จ่าย)
+  const adjustmentNode = hasAdjustmentSection
+    ? (() => {
+        let netExpected = '0.00';
+        if (isPreviewType) {
+          netExpected = preview?.totals.netPayment ?? '0.00';
+        } else {
+          netExpected = seTotals.cashLeg.toFixed(2);
+        }
+        const paidNum = state.amountPaid.trim() !== '' ? parseFloat(state.amountPaid) : parseFloat(netExpected);
+        const netNum = parseFloat(netExpected) || 0;
+        const diff = (paidNum - netNum).toFixed(2);
+        return (
+          <AdjustmentSection
+            diff={diff}
+            amountPaid={state.amountPaid}
+            onAmountPaidChange={(v) => patch({ amountPaid: v })}
+            adjustments={state.adjustments}
+            onChange={(rows) => patch({ adjustments: rows })}
+            netExpected={netExpected}
+          />
+        );
+      })()
+    : null;
 
-        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-3 sm:p-6 space-y-5">
-          {loadedStatus && SENT_BACK_STATUS_LABEL[loadedStatus] && (
+  return (
+    <div
+      className="-mb-[calc(5rem+env(safe-area-inset-bottom,0px))] pt-4 lg:-mb-8"
+      onPointerDownCapture={markInteracted}
+      onKeyDownCapture={markInteracted}
+      onChangeCapture={markInteracted}
+    >
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={onClose}
+          className="flex min-h-11 shrink-0 items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="size-4" /> กลับ
+        </button>
+        {!showQuickStart && !editDocId && (
+          <Button type="button" variant="outline" className="min-h-11 gap-1.5" onClick={() => setShowQuickStart(true)}>
+            <Star className="size-4" aria-hidden="true" /> ใช้แม่แบบ
+          </Button>
+        )}
+      </div>
+
+      {showQuickStart && (
+        <div className="mb-4">
+          <QuickStartPanel
+            branchId={state.branchId}
+            onMode={(m) => {
+              if (m === 'blank')
+                setState(initial(branchId, user?.defaultCashAccountCode || '11-1101'));
+              if (m === 'copy')
+                toast.info('เปิดหน้ารายการเพื่อเลือกเอกสารเดิมที่จะคัดลอก');
+              if (m === 'template') toast.info("เลือกแม่แบบจาก ใช้บ่อย ด้านล่าง");
+            }}
+            onPickTemplate={async (tplId) => {
+              try {
+                const { data } = await api.post(`/expense-templates/${tplId}/instantiate`);
+                setState((s) => ({
+                  ...s,
+                  fromTemplateId: tplId,
+                  vendorName: data.vendorName ?? '',
+                  lines:
+                    (data.expenseDetail?.lines ?? []).length > 0
+                      ? data.expenseDetail.lines.map(
+                          (l: {
+                            category: string;
+                            description?: string;
+                            quantity: string;
+                            unitPrice: string;
+                            discount?: string;
+                            vatPercent: string;
+                            whtPercent: string;
+                          }) =>
+                            newLine({
+                              category: l.category,
+                              description: l.description ?? '',
+                              quantity: l.quantity?.toString() ?? '1',
+                              unitPrice: l.unitPrice?.toString() ?? '',
+                              discount: l.discount?.toString() ?? '0',
+                              vatPercent: l.vatPercent?.toString() ?? '7',
+                              whtPercent: l.whtPercent?.toString() ?? '0',
+                            }),
+                        )
+                      : [newLine()],
+                }));
+                toast.success("นำเข้าแม่แบบสำเร็จ");
+              } catch (e) {
+                toast.error(getErrorMessage(e));
+              }
+            }}
+            onClose={() => setShowQuickStart(false)}
+          />
+        </div>
+      )}
+
+      <DocCard
+        banner={
+          loadedStatus && SENT_BACK_STATUS_LABEL[loadedStatus] ? (
             <p role="status" className="flex items-start gap-2 rounded-lg border border-info/30 bg-info/10 px-3 py-2 text-sm text-foreground leading-snug">
               {/* ตัวหนังสือสีฟ้าบนพื้นฟ้าอ่อนต่ำกว่า 4.5:1 — สีอยู่ที่ไอคอน ตัวหนังสือใช้สีปกติ */}
               <Clock className="size-4 mt-0.5 shrink-0 text-info" aria-hidden="true" />
               {`ใบนี้${SENT_BACK_STATUS_LABEL[loadedStatus]} — บันทึกแล้วใบจะกลับเป็นร่าง ต้องส่งขออนุมัติอีกครั้ง`}
             </p>
-          )}
-          {/* Quick Start */}
-          {showQuickStart && (
-            <QuickStartPanel
-              branchId={state.branchId}
-              onMode={(m) => {
-                if (m === 'blank')
-                  setState(initial(branchId, user?.defaultCashAccountCode || '11-1101'));
-                if (m === 'copy')
-                  toast.info('เปิดหน้ารายการเพื่อเลือกเอกสารเดิมที่จะคัดลอก');
-                if (m === 'template') toast.info("เลือกแม่แบบจาก ใช้บ่อย ด้านล่าง");
-              }}
-              onPickTemplate={async (tplId) => {
-                try {
-                  const { data } = await api.post(`/expense-templates/${tplId}/instantiate`);
-                  setState((s) => ({
-                    ...s,
-                    fromTemplateId: tplId,
-                    vendorName: data.vendorName ?? '',
-                    lines:
-                      (data.expenseDetail?.lines ?? []).length > 0
-                        ? data.expenseDetail.lines.map(
-                            (l: {
-                              category: string;
-                              description?: string;
-                              quantity: string;
-                              unitPrice: string;
-                              discount?: string;
-                              vatPercent: string;
-                              whtPercent: string;
-                            }) =>
-                              newLine({
-                                category: l.category,
-                                description: l.description ?? '',
-                                quantity: l.quantity?.toString() ?? '1',
-                                unitPrice: l.unitPrice?.toString() ?? '',
-                                discount: l.discount?.toString() ?? '0',
-                                vatPercent: l.vatPercent?.toString() ?? '7',
-                                whtPercent: l.whtPercent?.toString() ?? '0',
-                              }),
-                          )
-                        : [newLine()],
-                  }));
-                  toast.success("นำเข้าแม่แบบสำเร็จ");
-                } catch (e) {
-                  toast.error(getErrorMessage(e));
-                }
-              }}
-              onClose={() => setShowQuickStart(false)}
-            />
-          )}
+          ) : undefined
+        }
+      >
+        <DocHeader
+          docType={state.docType}
+          onDocTypeChange={(t) => patch({ docType: t })}
+          pettyCashEnabled={pettyCashEnabled}
+          payrollEnabled={canManagePayroll(user?.role)}
+          typeLocked={!!draftId}
+          statusLabel={statusLabel}
+          branchName={loadedBranchName ?? branchName}
+          documentNumber={loadedNumber}
+          taxInvoice={showVendor ? { value: state.taxInvoiceNo, onChange: (v) => patch({ taxInvoiceNo: v }) } : undefined}
+        />
 
-          {/* Dynamic section numbers — sections are conditionally rendered so we
-              compute the counter inline to avoid visible gaps (e.g. 1,3,4,5,6). */}
-          {(() => {
-            let n = 0;
-            const next = () => ++n;
-            const showVendor =
-              state.docType === 'EXPENSE_SAMEDAY' ||
-              state.docType === 'EXPENSE_ACCRUAL' ||
-              state.docType === 'CREDIT_NOTE';
-            const showCash =
-              state.docType === 'EXPENSE_SAMEDAY' ||
-              state.docType === 'PAYROLL' ||
-              state.docType === 'VENDOR_SETTLEMENT' ||
-              state.docType === 'PETTY_CASH_REIMBURSEMENT';
-            return (
-              <>
-                {/* Section: Doc-type picker — always visible (P2-1 chip cards) */}
-                <Section num={next()} title="ประเภทเอกสาร" Icon={FileText}>
-                  <DocTypePicker
-                    value={state.docType}
-                    onChange={(t) => patch({ docType: t })}
-                    invoiceDateIsToday={invoiceIsToday}
-                    smartDoctypeSwitchEnabled={smartDoctypeSwitchEnabled}
-                    pettyCashEnabled={pettyCashEnabled}
-                    payrollEnabled={canManagePayroll(user?.role)}
-                  />
-                </Section>
-
-                {/* Section: Vendor — EX/CN only */}
-                {showVendor && (
-                  <Section num={next()} title="ผู้ขาย & วันที่ใบกำกับ" Icon={Users}>
-                    <VendorSection state={state} onChange={patch} />
-                  </Section>
-                )}
-
-                {/* Section: Lines — mutually exclusive per docType */}
-                {(state.docType === 'EXPENSE_SAMEDAY' || state.docType === 'EXPENSE_ACCRUAL') && (
-                  <Section num={next()} title="รายการบัญชี" Icon={Receipt}>
-                    <ItemLinesSection
-                      lines={state.lines}
-                      onChange={(lines) => patch({ lines })}
-                      priceTypeLabel={state.priceType === 'INCLUSIVE' ? 'ราคารวม VAT' : 'ราคาไม่รวม VAT'}
-                    />
-                  </Section>
-                )}
-                {state.docType === 'PAYROLL' && (
-                  <Section num={next()} title="งวดเงินเดือน + พนักงาน" Icon={Users}>
-                    <PayrollLinesSection
-                      value={state.payroll}
-                      onChange={(p) => patch({ payroll: p })}
-                      documentDate={state.documentDate}
-                      onDocumentDateChange={(d) => patch({ documentDate: d })}
-                      branchId={state.branchId}
-                      documentId={draftId}
-                      onSaveAndCompute={() => startSave({ andPost: false, stay: true })}
-                      computing={saveMutation.isPending}
-                      computeDisabled={!ready}
-                      viewer={user ? { role: user.role, branchId: user.branchId } : null}
-                    />
-                  </Section>
-                )}
-                {state.docType === 'VENDOR_SETTLEMENT' && (
-                  <Section num={next()} title="เอกสารตั้งหนี้ที่จะล้าง" Icon={FileText}>
-                    <SettlementLinesSection
-                      branchId={state.branchId}
-                      value={state.settlement}
-                      onChange={(s) => patch({ settlement: s })}
-                    />
-                  </Section>
-                )}
-                {/* D1.1.5.1 — gated by pettyCashEnabled flag. The auto-flip
-                    effect above guarantees state.docType won't be Petty Cash
-                    while the flag is off, but we keep the && here as a second
-                    line of defense for race conditions during the flag fetch. */}
-                {state.docType === 'PETTY_CASH_REIMBURSEMENT' && pettyCashEnabled && (
-                  <Section num={next()} title="รายการเงินสดย่อย" Icon={Receipt}>
-                    <PettyCashLinesSection
-                      value={state.pettyCash}
-                      onChange={(pc) => patch({ pettyCash: pc })}
-                    />
-                  </Section>
-                )}
-                {state.docType === 'CREDIT_NOTE' && (
-                  <Section num={next()} title="ใบลดหนี้ — เอกสารต้นฉบับ + รายการ" Icon={Receipt}>
-                    <CreditNoteLinesSection
-                      state={state}
-                      onChange={patch}
-                      onLinesChange={(lines) => patch({ lines })}
-                    />
-                  </Section>
-                )}
-
-                {/* Section: Cash account (SAMEDAY, PAYROLL, VENDOR_SETTLEMENT) */}
-                {showCash && (
-                  <Section num={next()} title="ช่องทางจ่ายเงิน" Icon={Banknote}>
-                    <CashAccountVisualPicker
-                      value={state.depositAccountCode}
-                      onChange={(code) => patch({ depositAccountCode: code })}
-                      codes={
-                        state.docType === 'PAYROLL' && state.payroll.entityScope === 'SHOP'
-                          ? SHOP_CASH_ACCOUNT_CODES
-                          : undefined
-                      }
-                    />
-                    {state.docType === 'PAYROLL' && (
-                      <p className="mt-2 text-xs text-muted-foreground leading-snug">
-                        {state.payroll.entityScope === 'SHOP'
-                          ? 'เงินเดือนพนักงานสาขาจ่ายจากบัญชีของหน้าร้าน (SHOP) เท่านั้น'
-                          : 'เงินเดือนส่วนกลางจ่ายจากบัญชีของ FINANCE'}
-                      </p>
-                    )}
-                    {state.docType === 'EXPENSE_SAMEDAY' && (
-                      <div className="grid grid-cols-3 gap-2 mt-4 text-xs">
-                        <Stat label="ที่ต้องจ่าย" value={preview?.totals.netPayment ?? '0.00'} />
-                        <Stat label="จ่ายจริง" value={preview?.totals.netPayment ?? '0.00'} />
-                        <Stat label="ผลต่าง" value="0.00" highlight />
-                      </div>
-                    )}
-                  </Section>
-                )}
-
-                {/* Section: Multi-line Adjustment (Fix Report P0-4, B2 for SE).
-                    Shown for SAMEDAY (cash leg = totalAmount − wht; covers
-                    overpay/underpay/rounding) and VENDOR_SETTLEMENT (cash leg
-                    = sumSettled − wht; covers supplier discounts/fees). ACCRUAL,
-                    PAYROLL, CREDIT_NOTE have no client-driven cash leg so the
-                    section is hidden. */}
-                {(state.docType === 'EXPENSE_SAMEDAY' || state.docType === 'VENDOR_SETTLEMENT') && (
-                  <Section num={next()} title="บัญชีปรับผลต่าง (ถ้ามี)" Icon={Receipt}>
-                    {(() => {
-                      // SAMEDAY pulls netExpected from JE preview (server-computed).
-                      // SE has no JE preview yet, so compute locally:
-                      // netExpected = Σ selections.amount − whtAmount.
-                      let netExpected = '0.00';
-                      if (state.docType === 'EXPENSE_SAMEDAY') {
-                        netExpected = preview?.totals.netPayment ?? '0.00';
-                      } else {
-                        const sumSettled = [...state.settlement.selections.values()].reduce(
-                          (s, sel) => s + (parseFloat(sel.amount) || 0),
-                          0,
-                        );
-                        const wht = parseFloat(state.settlement.whtAmount) || 0;
-                        netExpected = (sumSettled - wht).toFixed(2);
-                      }
-                      const paidNum =
-                        state.amountPaid.trim() !== ''
-                          ? parseFloat(state.amountPaid)
-                          : parseFloat(netExpected);
-                      const netNum = parseFloat(netExpected) || 0;
-                      const diff = (paidNum - netNum).toFixed(2);
-                      return (
-                        <AdjustmentSection
-                          diff={diff}
-                          amountPaid={state.amountPaid}
-                          onAmountPaidChange={(v) => patch({ amountPaid: v })}
-                          adjustments={state.adjustments}
-                          onChange={(rows) => patch({ adjustments: rows })}
-                          netExpected={netExpected}
-                        />
-                      );
-                    })()}
-                  </Section>
-                )}
-
-                {/* Section: JE Preview — only meaningful for EXPENSE flows.
-                    JePreviewService server-side only handles EXPENSE_SAMEDAY /
-                    EXPENSE_ACCRUAL today; PAYROLL / VENDOR_SETTLEMENT /
-                    CREDIT_NOTE previews are deferred (I3). */}
-                {(state.docType === 'EXPENSE_SAMEDAY' || state.docType === 'EXPENSE_ACCRUAL') && (
-                  <Section num={next()} title="ตัวอย่างรายการบัญชี" Icon={Check}>
-                    <JePreview preview={preview} loading={loading} error={error} />
-                  </Section>
-                )}
-
-                {/* Section: Approver */}
-                <Section num={next()} title="ผู้บันทึก & ผู้อนุมัติ" Icon={Users}>
-                  <ApproverSection />
-                </Section>
-              </>
-            );
-          })()}
-        </div>
-
-        {!maySubmit && (
-          <p className="px-6 py-2 text-sm text-muted-foreground" role="status">
-            {permissions.isError ? 'โหลดสิทธิ์ไม่สำเร็จ' : permissions.isPending ? 'กำลังตรวจสอบสิทธิ์…' : "ไม่มีสิทธิ์ลงบัญชี รายจ่าย — สามารถบันทึกร่างได้"}
-            {permissions.isError && <Button variant="ghost" onClick={() => permissions.refetch()}>ลองใหม่</Button>}
-          </p>
-        )}
-        {payrollNotice && (
-          <div
-            ref={noticeRef}
-            tabIndex={-1}
-            role="alert"
-            className={cn(
-              'flex-none flex items-start gap-2 border-t px-3 py-2 text-sm leading-snug sm:px-6 focus:outline-hidden',
-              payrollNotice.tone === 'warning'
-                ? 'border-warning/40 bg-warning/10 text-warning-strong'
-                : 'border-destructive/30 bg-destructive/10 text-destructive',
-            )}
+        {showVendor && (
+          <FormRow
+            title="ข้อมูลผู้ขาย"
+            complete={
+              state.docType === 'CREDIT_NOTE' && state.cnMode === 'LINKED'
+                ? !!state.documentDate
+                : !!state.vendorName && !!state.documentDate
+            }
           >
-            {payrollNotice.tone === 'warning' ? (
-              <Clock className="size-4 mt-0.5 shrink-0" aria-hidden="true" />
-            ) : (
-              <AlertTriangle className="size-4 mt-0.5 shrink-0" aria-hidden="true" />
-            )}
-            <p className="min-w-0">{payrollNotice.message}</p>
-          </div>
+            <VendorSection state={state} onChange={patch} />
+          </FormRow>
         )}
-        {/* Footer */}
-        <div className="flex-none bg-background border-t px-3 py-3 sm:px-6 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:justify-between pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <Button variant="ghost" onClick={onClose} className="min-h-11 justify-start gap-1.5">
-            <ArrowLeft className="size-4" />
-            ยกเลิก
-          </Button>
-          <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1 text-xs">
-            <span>{itemCount} รายการ</span>
+        {showVendor && (
+          <FormRow title="ราคาและภาษี" complete>
+            <PricingSection state={state} onChange={patch} />
+          </FormRow>
+        )}
+
+        {isPreviewType && (
+          <FormRow title="รายการ" layout="stacked" complete={itemCount > 0}>
+            <ItemLinesSection
+              lines={state.lines}
+              onChange={(lines) => patch({ lines })}
+              priceTypeLabel={state.priceType === 'INCLUSIVE' ? 'ราคารวม VAT' : 'ราคาไม่รวม VAT'}
+            />
+          </FormRow>
+        )}
+        {state.docType === 'PAYROLL' && (
+          <FormRow title="งวดเงินเดือน + พนักงาน" layout="stacked">
+            <PayrollLinesSection
+              value={state.payroll}
+              onChange={(p) => patch({ payroll: p })}
+              documentDate={state.documentDate}
+              onDocumentDateChange={(d) => patch({ documentDate: d })}
+              branchId={state.branchId}
+              documentId={draftId}
+              onSaveAndCompute={() => startSave({ andPost: false, stay: true })}
+              computing={saveMutation.isPending}
+              computeDisabled={!ready}
+              viewer={user ? { role: user.role, branchId: user.branchId } : null}
+            />
+          </FormRow>
+        )}
+        {state.docType === 'VENDOR_SETTLEMENT' && (
+          <FormRow title="ข้อมูลผู้รับเงิน" complete>
+            <SettlementPayeeFields value={state.settlement} onChange={(s) => patch({ settlement: s })} />
+          </FormRow>
+        )}
+        {state.docType === 'VENDOR_SETTLEMENT' && (
+          <FormRow title="เอกสารตั้งหนี้ที่จะล้าง" layout="stacked" complete={itemCount > 0}>
+            <SettlementLinesSection
+              branchId={state.branchId}
+              value={state.settlement}
+              onChange={(s) => patch({ settlement: s })}
+            />
+          </FormRow>
+        )}
+        {/* D1.1.5.1 — gated by pettyCashEnabled flag. The auto-flip
+            effect above guarantees state.docType won't be Petty Cash
+            while the flag is off, but we keep the && here as a second
+            line of defense for race conditions during the flag fetch. */}
+        {state.docType === 'PETTY_CASH_REIMBURSEMENT' && pettyCashEnabled && (
+          <FormRow title="ผู้ดูแลเงินสดย่อย" complete>
+            <PettyCashCustodianField value={state.pettyCash} onChange={(pc) => patch({ pettyCash: pc })} />
+          </FormRow>
+        )}
+        {state.docType === 'PETTY_CASH_REIMBURSEMENT' && pettyCashEnabled && (
+          <FormRow title="รายการเงินสดย่อย" layout="stacked" complete={itemCount > 0}>
+            <PettyCashLinesSection value={state.pettyCash} onChange={(pc) => patch({ pettyCash: pc })} />
+          </FormRow>
+        )}
+        {state.docType === 'CREDIT_NOTE' && (
+          <CreditNoteLinesSection state={state} onChange={patch} onLinesChange={(lines) => patch({ lines })} />
+        )}
+
+        {isPreviewType && (
+          <FormRow title="สรุปข้อมูล">
+            <SummaryBox
+              rows={[
+                { label: 'มูลค่าก่อนภาษี', value: money(preview?.totals.subtotal) },
+                { label: 'ภาษีมูลค่าเพิ่ม', value: money(preview?.totals.vatAmount) },
+                { label: 'หัก ณ ที่จ่าย', value: money(preview?.totals.withholdingTax) },
+              ]}
+              total={{ label: 'จำนวนเงินทั้งสิ้น', value: money(preview?.totals.totalAmount) }}
+            />
+          </FormRow>
+        )}
+
+        {state.docType === 'VENDOR_SETTLEMENT' && (
+          <FormRow title="สรุปข้อมูล">
+            <SummaryBox
+              rows={[
+                { label: 'รวมยอดที่จ่าย', value: seMoney(seTotals.sumSelected) },
+                { label: 'หัก ณ ที่จ่าย', value: seMoney(seTotals.wht) },
+              ]}
+              total={{ label: 'ตัดเงินสดสุทธิ', value: seMoney(seTotals.cashLeg) }}
+            />
+          </FormRow>
+        )}
+
+        {state.docType === 'PETTY_CASH_REIMBURSEMENT' && pettyCashEnabled && (
+          <FormRow title="สรุปข้อมูล">
+            <SummaryBox
+              rows={[
+                { label: 'มูลค่าก่อนภาษี', value: pcMoney(pcTotals.sumBase) },
+                { label: 'ภาษีมูลค่าเพิ่ม', value: pcMoney(pcTotals.sumVat) },
+              ]}
+              total={{ label: 'จำนวนเงินทั้งสิ้น', value: pcMoney(pcTotals.sumTotal) }}
+            />
+          </FormRow>
+        )}
+
+        {showPayment && (
+          <PaymentSection
+            picker={
+              <div className="w-full sm:max-w-md">
+                <label htmlFor={payById} className={formLabelClass}>ชำระโดย</label>
+                <CashAccountSelect
+                  id={payById}
+                  placeholder="ชำระโดย"
+                  value={state.depositAccountCode}
+                  onChange={(code) => patch({ depositAccountCode: code })}
+                  codes={
+                    state.docType === 'PAYROLL' && state.payroll.entityScope === 'SHOP'
+                      ? SHOP_CASH_ACCOUNT_CODES
+                      : undefined
+                  }
+                />
+              </div>
+            }
+            unpaid={
+              isPreviewType
+                ? {
+                    active: state.docType === 'EXPENSE_ACCRUAL',
+                    onMarkUnpaid: () => patch({ docType: 'EXPENSE_ACCRUAL' }),
+                    onMarkPaid: () => patch({ docType: 'EXPENSE_SAMEDAY' }),
+                    backdatedHint,
+                  }
+                : undefined
+            }
+            advanced={
+              adjustmentNode ? { hasData: hasAdjustmentData, onClear: clearAdjustments, content: adjustmentNode } : undefined
+            }
+            footer={
+              state.docType === 'PAYROLL' ? (
+                <p className="text-xs text-muted-foreground leading-snug">
+                  {state.payroll.entityScope === 'SHOP'
+                    ? 'เงินเดือนพนักงานสาขาจ่ายจากบัญชีของหน้าร้าน (SHOP) เท่านั้น'
+                    : 'เงินเดือนส่วนกลางจ่ายจากบัญชีของ FINANCE'}
+                </p>
+              ) : isPreviewType ? (
+                <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+                  <span className="text-sm leading-snug text-muted-foreground">ยอดชำระสุทธิ (หลังหัก ณ ที่จ่าย)</span>
+                  <span className="text-lg font-bold tabular-nums leading-snug">{money(preview?.totals.netPayment)} บาท</span>
+                </div>
+              ) : undefined
+            }
+          />
+        )}
+
+        {isPreviewType && (
+          <FormRow
+            title="ตัวอย่างรายการบัญชี"
+            layout="stacked"
+            action={
+              <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1">
+                <span className={cn('flex items-center gap-1.5 text-sm leading-snug', preview?.totals.balanced ? 'text-primary' : 'text-muted-foreground')}>
+                  {preview?.totals.balanced && <CheckCircle2 className="size-4 shrink-0" aria-hidden="true" />}
+                  {error
+                    ? 'คำนวณไม่ได้'
+                    : !preview
+                      ? loading ? 'กำลังคำนวณ…' : 'ยังไม่มีรายการ'
+                      : preview.totals.balanced
+                        ? `สมดุล เดบิต ${formatNumberDecimal(preview.totals.drSum)} = เครดิต ${formatNumberDecimal(preview.totals.crSum)}`
+                        : 'ยังไม่สมดุล'}
+                </span>
+                <button
+                  type="button"
+                  aria-label="ย่อ/ขยาย ตัวอย่างรายการบัญชี"
+                  aria-expanded={showJe || !!error}
+                  aria-controls={jePanelId}
+                  disabled={!!error}
+                  onClick={() => setShowJe((v) => !v)}
+                  className="min-h-11 px-1 text-sm font-medium leading-snug text-primary disabled:opacity-50"
+                >
+                  ย่อ/ขยาย
+                </button>
+              </div>
+            }
+          >
+            <div id={jePanelId}>
+              {(showJe || !!error) && <JePreview preview={preview} loading={loading} error={error} />}
+            </div>
+          </FormRow>
+        )}
+
+        <FormRow title="ผู้บันทึก & ผู้อนุมัติ">
+          <ApproverSection />
+        </FormRow>
+      </DocCard>
+
+      <StickyActionBar
+        notices={
+          <>
+            {!maySubmit && (
+              <p className="mx-auto w-full max-w-6xl px-4 py-2 text-sm text-muted-foreground lg:px-7" role="status">
+                {permissions.isError ? 'โหลดสิทธิ์ไม่สำเร็จ' : permissions.isPending ? 'กำลังตรวจสอบสิทธิ์…' : "ไม่มีสิทธิ์ลงบัญชี รายจ่าย — สามารถบันทึกร่างได้"}
+                {permissions.isError && <Button variant="ghost" onClick={() => permissions.refetch()}>ลองใหม่</Button>}
+              </p>
+            )}
+            {payrollNotice && (
+              <div
+                ref={noticeRef}
+                tabIndex={-1}
+                role="alert"
+                className={cn(
+                  'flex items-start gap-2 border-b px-4 py-2 text-sm leading-snug focus:outline-hidden lg:px-7',
+                  payrollNotice.tone === 'warning'
+                    ? 'border-warning/40 bg-warning/10 text-warning-strong'
+                    : 'border-destructive/30 bg-destructive/10 text-destructive',
+                )}
+              >
+                {payrollNotice.tone === 'warning' ? (
+                  <Clock className="size-4 mt-0.5 shrink-0" aria-hidden="true" />
+                ) : (
+                  <AlertTriangle className="size-4 mt-0.5 shrink-0" aria-hidden="true" />
+                )}
+                <p className="min-w-0">{payrollNotice.message}</p>
+              </div>
+            )}
+          </>
+        }
+        summary={
+          <>
+            <span className="font-semibold">{docTypeLabel(state.docType)}</span>
+            <span className="text-muted-foreground">{itemCount} รายการ</span>
             <span className={cn('flex items-center gap-1', ready ? 'text-success' : 'text-muted-foreground')}>
               {ready ? <CheckCircle2 className="size-3" /> : <Clock className="size-3" />}
               {ready ? 'พร้อมบันทึก' : 'ยังไม่ครบ'}
             </span>
-          </div>
-          <div className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:flex">
-            <Button
-              className="h-auto min-h-11 whitespace-normal py-2"
-              variant="outline"
-              onClick={() => startSave({ andPost: false })}
-              disabled={!ready || saveMutation.isPending}
-            >
-              บันทึกร่าง
-            </Button>
-            <Button
-              className="h-auto min-h-11 whitespace-normal py-2"
-              onClick={() => startSave({ andPost: true })}
-              disabled={!ready || saveMutation.isPending || !maySubmit}
-              title={!maySubmit ? "ไม่มีสิทธิ์ลงบัญชี รายจ่าย — สามารถบันทึกร่างได้" : undefined}
-            >
-              {requiresApproval
-                ? 'บันทึกและขออนุมัติ'
-                : 'บันทึกและลงบัญชี'}
-            </Button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Section({
-  num,
-  title,
-  Icon,
-  children,
-}: {
-  num: number;
-  title: string;
-  Icon: React.ComponentType<{ className?: string }>;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="min-w-0 rounded-xl border border-border bg-card p-4 sm:p-5">
-      <div className="flex items-center gap-2.5 mb-4">
-        <span className="flex items-center justify-center size-7 rounded bg-primary/10 text-primary text-sm font-mono font-medium">
-          {num}
-        </span>
-        <Icon className="size-4 text-muted-foreground" />
-        <span className="text-sm font-semibold leading-snug">{title}</span>
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  highlight,
-}: {
-  label: string;
-  value: string;
-  highlight?: boolean;
-}) {
-  return (
-    <div
-      className={cn(
-        'rounded-lg p-2',
-        highlight ? 'bg-success/10 border border-success/30' : 'bg-muted/30',
-      )}
-    >
-      <div className="text-muted-foreground leading-snug">{label}</div>
-      <div className="font-mono font-semibold">{formatNumberDecimal(value)}</div>
+          </>
+        }
+      >
+        <Button variant="ghost" onClick={onClose} className="col-span-2 min-h-11 sm:col-span-1">
+          ยกเลิก
+        </Button>
+        <Button
+          className="h-auto min-h-11 whitespace-normal py-2"
+          variant="outline"
+          onClick={() => startSave({ andPost: false })}
+          disabled={!ready || saveMutation.isPending}
+        >
+          บันทึกร่าง
+        </Button>
+        <Button
+          className="h-auto min-h-11 whitespace-normal py-2"
+          onClick={() => startSave({ andPost: true })}
+          disabled={!ready || saveMutation.isPending || !maySubmit}
+          title={!maySubmit ? "ไม่มีสิทธิ์ลงบัญชี รายจ่าย — สามารถบันทึกร่างได้" : undefined}
+        >
+          {requiresApproval ? 'บันทึกและขออนุมัติ' : 'บันทึกและลงบัญชี'}
+        </Button>
+      </StickyActionBar>
     </div>
   );
 }

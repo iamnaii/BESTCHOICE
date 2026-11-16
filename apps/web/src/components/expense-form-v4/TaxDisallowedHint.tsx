@@ -36,9 +36,9 @@ export default function TaxDisallowedHint({ compact = false }: Props) {
         className="w-[min(28rem,calc(100vw-2rem))] max-h-[60vh] overflow-y-auto p-0"
       >
         <div className="sticky top-0 border-b border-border bg-popover/95 backdrop-blur-xs px-4 py-3">
-          <h4 className="text-sm font-semibold leading-snug text-foreground">
+          <h3 className="text-sm font-semibold leading-snug text-foreground">
             ประเภทค่าใช้จ่ายต้องห้าม (ม.65 ตรี ป.รัษฎากร)
-          </h4>
+          </h3>
           <p className="mt-1 text-xs leading-snug text-muted-foreground">
             ติ๊กเลือกเฉพาะรายการที่หักลดหย่อนภาษีนิติบุคคลไม่ได้ — ตัวอย่างที่พบบ่อย
           </p>

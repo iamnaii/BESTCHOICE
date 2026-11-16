@@ -13,6 +13,7 @@ import { Sheet, SheetContent, SheetBody, SheetTitle, SheetDescription } from '@/
 import CommandPalette from '@/components/CommandPalette';
 import ShortcutsHelpOverlay from '@/components/ShortcutsHelpOverlay';
 import MobileBottomNav from './MobileBottomNav';
+import { showsMobileBottomNav } from './mobile-nav-visibility';
 import { SkipLink } from './SkipLink';
 import TestModeBanner from './TestModeBanner';
 import { InboundCallPopup } from '@/components/InboundCallPopup';
@@ -203,7 +204,7 @@ function MainContent() {
       </div>
 
       {/* Mobile bottom tab bar */}
-      {isMobile && !/^\/inbox(?:\/|$)/.test(pathname) && <MobileBottomNav />}
+      {isMobile && showsMobileBottomNav(pathname) && <MobileBottomNav />}
 
       {/* Inbound call popup (Yeastar PBX) */}
       <InboundCallPopup />

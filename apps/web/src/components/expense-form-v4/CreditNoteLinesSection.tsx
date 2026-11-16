@@ -1,10 +1,14 @@
 import { useId as useUiFieldId, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
-import { Search, FileText, AlertCircle, Link2, FilePlus2 } from 'lucide-react';
+import { Search, AlertCircle, Link2, FilePlus2 } from 'lucide-react';
 import { ExpenseFormState, ExpenseLineForm } from './types';
 import { ItemLinesSection } from './ItemLinesSection';
+import { FormRow } from './layout/FormRow';
+import { formControlClass, formLabelClass } from '@/components/ui/form-styles';
+import { CashAccountSelect } from '@/components/CashAccountSelect';
 import { formatNumberDecimal } from '@/utils/formatters';
+import { cn } from '@/lib/utils';
 
 interface OriginalDoc {
   id: string;
@@ -28,6 +32,7 @@ interface Props {
  *
  * Mode LINKED (default) — pick source EX, auto-load lines, cap-capped by server.
  * Mode STANDALONE — free-form supplier + free-form lines, no source FK.
+ * คืน FormRow ของตัวเอง สูงสุดสามแถว (อ้างอิงเอกสาร / รายการที่จะลด / รับเงินคืนเข้า) — ผู้เรียกไม่ต้องห่อ FormRow
  */
 export function CreditNoteLinesSection({ state, onChange, onLinesChange }: Props) {
   const uiFieldId = useUiFieldId();
@@ -86,241 +91,217 @@ export function CreditNoteLinesSection({ state, onChange, onLinesChange }: Props
     setSearch('');
   };
 
-  return (
-    <div className="space-y-4">
-      {/* C4.1 — Mode selector (radio-style chip cards) */}
-      <div>
-        <div className="text-xs font-medium text-muted-foreground mb-2">โหมดใบลดหนี้</div>
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={() => switchMode('LINKED')}
-            className={`flex items-start gap-2 rounded-lg border p-3 text-left transition ${
-              !isStandalone
-                ? 'border-primary bg-primary/5 ring-1 ring-primary/40'
-                : 'border-border bg-card hover:bg-accent'
-            }`}
-            aria-pressed={!isStandalone}
-          >
-            <Link2 className={`size-4 mt-0.5 ${!isStandalone ? 'text-primary' : 'text-muted-foreground'}`} />
-            <div className="space-y-0.5">
-              <div className="text-sm font-medium">อ้างอิงใบเดิม</div>
-              <div className="text-xs text-muted-foreground leading-snug">
-                ลด/คืนจากเอกสาร EX ต้นทาง · ภ.30 link อัตโนมัติ
-              </div>
-            </div>
-          </button>
-          <button
-            type="button"
-            onClick={() => switchMode('STANDALONE')}
-            className={`flex items-start gap-2 rounded-lg border p-3 text-left transition ${
-              isStandalone
-                ? 'border-primary bg-primary/5 ring-1 ring-primary/40'
-                : 'border-border bg-card hover:bg-accent'
-            }`}
-            aria-pressed={isStandalone}
-          >
-            <FilePlus2 className={`size-4 mt-0.5 ${isStandalone ? 'text-primary' : 'text-muted-foreground'}`} />
-            <div className="space-y-0.5">
-              <div className="text-sm font-medium">ไม่มีเอกสารต้นทาง</div>
-              <div className="text-xs text-muted-foreground leading-snug">
-                ผู้ขายคืนเงินโดยไม่มีใบกำกับเดิม · ระบุผู้ขายเอง
-              </div>
-            </div>
-          </button>
-        </div>
-      </div>
+  const validCount = state.lines.filter((l) => l.category && parseFloat(l.unitPrice) > 0).length;
+  const referenceComplete =
+    !!state.cnReason.trim() && (isStandalone ? !!state.vendorName.trim() : !!state.originalDocumentId);
+  const modeCard = (active: boolean) =>
+    cn(
+      'flex min-h-11 items-start gap-2 rounded-lg border p-3 text-left transition',
+      active ? 'border-primary bg-primary/5 ring-1 ring-primary/40' : 'border-border bg-card hover:bg-accent',
+    );
 
-      {/* LINKED — source doc picker */}
-      {!isStandalone && (
-        <div className="rounded-xl border border-border bg-card">
-          <div className="px-4 py-2 border-b border-border flex items-center gap-2">
-            <FileText className="size-4 text-primary" />
-            <span className="text-sm font-medium">เอกสารต้นฉบับ</span>
-            <span className="text-xs text-muted-foreground ml-1">
-              เลือกเอกสาร EX ที่ต้องการลดหนี้
-            </span>
-          </div>
-          <div className="p-4 space-y-3">
-            {state.originalDocumentId && selectedDoc ? (
-              <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 flex items-center justify-between">
-                <div>
-                  <div className="font-mono text-sm">{selectedDoc.number}</div>
-                  <div className="text-sm">
-                    {selectedDoc.vendorName ?? '—'} · ยอด{' '}
-                    {formatNumberDecimal(selectedDoc.totalAmount)} ฿
+  return (
+    <>
+      <FormRow title="อ้างอิงเอกสาร" complete={referenceComplete}>
+        <div className="space-y-4">
+          {/* C4.1 — เลือกโหมด */}
+          <div role="group" aria-labelledby={`${uiFieldId}-mode`}>
+            <span id={`${uiFieldId}-mode`} className={formLabelClass}>โหมดใบลดหนี้</span>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <button type="button" onClick={() => switchMode('LINKED')} className={modeCard(!isStandalone)} aria-pressed={!isStandalone}>
+                <Link2 className={cn('mt-0.5 size-4 shrink-0', !isStandalone ? 'text-primary' : 'text-muted-foreground')} aria-hidden="true" />
+                <div className="space-y-0.5">
+                  <div className="text-sm font-medium leading-snug">อ้างอิงใบเดิม</div>
+                  <div className="text-xs leading-snug text-muted-foreground">
+                    ลด/คืนจากเอกสาร EX ต้นทาง · ภ.30 link อัตโนมัติ
                   </div>
-                  {capInfo && (
-                    <div className="text-xs text-muted-foreground mt-1">
-                      เหลือลดได้: {formatNumberDecimal(capInfo.remainingCap)} ฿ (ใช้ไปแล้ว{' '}
-                      {formatNumberDecimal(capInfo.usedTotal)} ฿)
+                </div>
+              </button>
+              <button type="button" onClick={() => switchMode('STANDALONE')} className={modeCard(isStandalone)} aria-pressed={isStandalone}>
+                <FilePlus2 className={cn('mt-0.5 size-4 shrink-0', isStandalone ? 'text-primary' : 'text-muted-foreground')} aria-hidden="true" />
+                <div className="space-y-0.5">
+                  <div className="text-sm font-medium leading-snug">ไม่มีเอกสารต้นทาง</div>
+                  <div className="text-xs leading-snug text-muted-foreground">
+                    ผู้ขายคืนเงินโดยไม่มีใบกำกับเดิม · ระบุผู้ขายเอง
+                  </div>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          {/* โหมดอ้างอิง — เลือกเอกสารต้นฉบับ */}
+          {!isStandalone && (
+            <div>
+              <span className={formLabelClass}>เอกสารต้นฉบับ</span>
+              {state.originalDocumentId && selectedDoc ? (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 p-3">
+                  <div className="min-w-0 leading-snug">
+                    <div className="font-mono text-sm">{selectedDoc.number}</div>
+                    <div className="text-sm">
+                      {selectedDoc.vendorName ?? '—'} · ยอด {formatNumberDecimal(selectedDoc.totalAmount)} ฿
+                    </div>
+                    {capInfo && (
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        เหลือลดได้: {formatNumberDecimal(capInfo.remainingCap)} ฿ (ใช้ไปแล้ว{' '}
+                        {formatNumberDecimal(capInfo.usedTotal)} ฿)
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onChange({ originalDocumentId: '' });
+                      setSearch('');
+                    }}
+                    className="min-h-11 px-2 text-sm leading-snug text-destructive hover:underline"
+                  >
+                    เปลี่ยน
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                    <input aria-label="ค้นหาเลข EX-... / ผู้ขาย (3 ตัวขึ้นไป)"
+                      type="text"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="ค้นหาเลข EX-... / ผู้ขาย (3 ตัวขึ้นไป)"
+                      className={cn(formControlClass, 'pl-10')}
+                    />
+                  </div>
+                  <p className="text-xs leading-snug text-muted-foreground">เลือกเอกสาร EX ที่ต้องการลดหนี้</p>
+                  {(searchResults?.data ?? []).length > 0 && (
+                    <div className="max-h-56 overflow-y-auto rounded-lg border border-border">
+                      {searchResults!.data
+                        .filter((d) => ['POSTED', 'ACCRUAL'].includes(d.status))
+                        .map((doc) => (
+                          <button
+                            type="button"
+                            key={doc.id}
+                            onClick={() => {
+                              onChange({ originalDocumentId: doc.id });
+                              // เติมรายการจากเอกสารต้นฉบับ (ถ้ามี)
+                              const sourceLines = doc.expenseDetail?.lines ?? [];
+                              if (sourceLines.length > 0) {
+                                onLinesChange(
+                                  sourceLines.map((l, idx) => ({
+                                    uid: `cn-${idx}-${Math.random().toString(36).slice(2)}`,
+                                    category: l.category,
+                                    description: '',
+                                    quantity: '1',
+                                    unitPrice: l.amountBeforeVat,
+                                    discount: '0',
+                                    vatPercent: '7',
+                                    whtPercent: '0',
+                                  })),
+                                );
+                              }
+                            }}
+                            className="flex min-h-11 w-full items-center justify-between gap-3 border-b border-border px-3 py-2 text-left text-sm leading-snug last:border-b-0 hover:bg-accent"
+                          >
+                            <div className="min-w-0">
+                              <div className="font-mono">{doc.number}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {doc.vendorName ?? '—'} · {doc.status}
+                              </div>
+                            </div>
+                            <div className="shrink-0 font-mono text-sm">{formatNumberDecimal(doc.totalAmount)}</div>
+                          </button>
+                        ))}
                     </div>
                   )}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onChange({ originalDocumentId: '' });
-                    setSearch('');
-                  }}
-                  className="text-xs text-destructive hover:underline"
-                >
-                  เปลี่ยน
-                </button>
-              </div>
-            ) : (
-              <>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                  <input aria-label="ค้นหาเลข EX-... / ผู้ขาย (3 ตัวขึ้นไป)"
+              )}
+            </div>
+          )}
+
+          {/* โหมดไม่มีเอกสารต้นทาง — ระบุผู้ขายเอง */}
+          {isStandalone && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label htmlFor={`${uiFieldId}-2`} className={formLabelClass}>
+                    ชื่อผู้ขาย <span className="text-destructive">*</span>
+                  </label>
+                  <input id={`${uiFieldId}-2`}
                     type="text"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="ค้นหาเลข EX-... / ผู้ขาย (3 ตัวขึ้นไป)"
-                    className="w-full pl-10 pr-3 py-2 border border-input rounded-lg text-sm bg-background"
+                    value={state.vendorName}
+                    onChange={(e) => onChange({ vendorName: e.target.value })}
+                    placeholder="เช่น บจก. แอลฟ่า เซอร์วิส"
+                    maxLength={255}
+                    className={formControlClass}
                   />
                 </div>
-                {(searchResults?.data ?? []).length > 0 && (
-                  <div className="rounded-lg border border-border max-h-48 overflow-y-auto">
-                    {searchResults!.data
-                      .filter((d) => ['POSTED', 'ACCRUAL'].includes(d.status))
-                      .map((doc) => (
-                        <button
-                          type="button"
-                          key={doc.id}
-                          onClick={() => {
-                            onChange({ originalDocumentId: doc.id });
-                            // Pre-populate CN lines from original doc if available
-                            const sourceLines = doc.expenseDetail?.lines ?? [];
-                            if (sourceLines.length > 0) {
-                              onLinesChange(
-                                sourceLines.map((l, idx) => ({
-                                  uid: `cn-${idx}-${Math.random().toString(36).slice(2)}`,
-                                  category: l.category,
-                                  description: '',
-                                  quantity: '1',
-                                  unitPrice: l.amountBeforeVat,
-                                  discount: '0',
-                                  vatPercent: '7',
-                                  whtPercent: '0',
-                                })),
-                              );
-                            }
-                          }}
-                          className="w-full flex items-center justify-between px-3 py-2 text-left text-sm hover:bg-accent border-b border-border last:border-b-0"
-                        >
-                          <div>
-                            <div className="font-mono">{doc.number}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {doc.vendorName ?? '—'} · {doc.status}
-                            </div>
-                          </div>
-                          <div className="font-mono text-sm">
-                            {formatNumberDecimal(doc.totalAmount)}
-                          </div>
-                        </button>
-                      ))}
-                  </div>
-                )}
-              </>
-            )}
-
-            <div>
-              <label htmlFor={`${uiFieldId}-1`} className="block text-xs font-medium mb-1">
-                เหตุผลลดหนี้ <span className="text-destructive">*</span>
-              </label>
-              <input id={`${uiFieldId}-1`}
-                type="text"
-                value={state.cnReason}
-                onChange={(e) => onChange({ cnReason: e.target.value })}
-                placeholder="เช่น สินค้าคืน, ปรับราคา, ส่วนลดหลังการขาย"
-                className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background"
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* STANDALONE — vendor inputs + reason */}
-      {isStandalone && (
-        <div className="rounded-xl border border-border bg-card">
-          <div className="px-4 py-2 border-b border-border flex items-center gap-2">
-            <FilePlus2 className="size-4 text-primary" />
-            <span className="text-sm font-medium">ข้อมูลผู้ขาย</span>
-            <span className="text-xs text-muted-foreground ml-1">
-              ระบุเอง — ไม่มีเอกสารต้นฉบับ
-            </span>
-          </div>
-          <div className="p-4 space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label htmlFor={`${uiFieldId}-2`} className="block text-xs font-medium mb-1">
-                  ชื่อผู้ขาย <span className="text-destructive">*</span>
-                </label>
-                <input id={`${uiFieldId}-2`}
-                  type="text"
-                  value={state.vendorName}
-                  onChange={(e) => onChange({ vendorName: e.target.value })}
-                  placeholder="เช่น บจก. แอลฟ่า เซอร์วิส"
-                  maxLength={255}
-                  className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background"
-                />
+                <div>
+                  <label htmlFor={`${uiFieldId}-3`} className={formLabelClass}>เลขผู้เสียภาษี (ทางเลือก)</label>
+                  <input id={`${uiFieldId}-3`}
+                    type="text"
+                    value={state.vendorTaxId}
+                    onChange={(e) => onChange({ vendorTaxId: e.target.value })}
+                    placeholder="13 หลัก"
+                    maxLength={20}
+                    className={cn(formControlClass, 'font-mono')}
+                  />
+                </div>
               </div>
-              <div>
-                <label htmlFor={`${uiFieldId}-3`} className="block text-xs font-medium mb-1">
-                  เลขผู้เสียภาษี (ทางเลือก)
-                </label>
-                <input id={`${uiFieldId}-3`}
-                  type="text"
-                  value={state.vendorTaxId}
-                  onChange={(e) => onChange({ vendorTaxId: e.target.value })}
-                  placeholder="13 หลัก"
-                  maxLength={20}
-                  className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background font-mono"
-                />
+              <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-2 text-xs leading-snug text-warning-strong">
+                <AlertCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                <span>ใบลดหนี้ที่ไม่มีเอกสารต้นทางไม่จำกัดยอดตามเอกสารเดิม โปรดตรวจยอดก่อนลงบัญชี</span>
               </div>
             </div>
+          )}
 
-            <div>
-              <label htmlFor={`${uiFieldId}-4`} className="block text-xs font-medium mb-1">
-                เหตุผลลดหนี้ <span className="text-destructive">*</span>
-              </label>
-              <input id={`${uiFieldId}-4`}
-                type="text"
-                value={state.cnReason}
-                onChange={(e) => onChange({ cnReason: e.target.value })}
-                placeholder="เช่น คืนเงินมัดจำ, ส่วนลดพิเศษ, ปรับยอด AP"
-                className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background"
-              />
-            </div>
-
-            <div className="rounded-lg border border-warning/30 bg-warning/5 p-2 text-xs text-warning-strong flex items-start gap-2">
-              <AlertCircle className="size-3.5 mt-0.5 shrink-0" />
-              <span>
-                ใบลดหนี้ที่ไม่มีเอกสารต้นทางไม่จำกัดยอดตามเอกสารเดิม โปรดตรวจยอดก่อนลงบัญชี
-              </span>
-            </div>
+          <div>
+            <label htmlFor={`${uiFieldId}-1`} className={formLabelClass}>
+              เหตุผลลดหนี้ <span className="text-destructive">*</span>
+            </label>
+            <input id={`${uiFieldId}-1`}
+              type="text"
+              value={state.cnReason}
+              onChange={(e) => onChange({ cnReason: e.target.value })}
+              placeholder={
+                isStandalone
+                  ? 'เช่น คืนเงินมัดจำ, ส่วนลดพิเศษ, ปรับยอด AP'
+                  : 'เช่น สินค้าคืน, ปรับราคา, ส่วนลดหลังการขาย'
+              }
+              className={formControlClass}
+            />
           </div>
         </div>
-      )}
+      </FormRow>
 
-      {/* Credit lines — shown for STANDALONE always, LINKED only after source picked */}
+      {/* รายการ — โหมดไม่มีเอกสารต้นทางแสดงเสมอ · โหมดอ้างอิงแสดงหลังเลือกเอกสาร */}
       {(isStandalone || state.originalDocumentId) && (
-        <div>
-          <div className="text-xs text-muted-foreground mb-2">รายการที่จะลด</div>
+        <FormRow title="รายการที่จะลด" layout="stacked" complete={validCount > 0}>
           <ItemLinesSection
             lines={state.lines}
             onChange={onLinesChange}
             priceTypeLabel={state.priceType === 'INCLUSIVE' ? 'ราคารวม VAT' : 'ราคาไม่รวม VAT'}
           />
           {exceedsCap && (
-            <div className="flex items-start gap-2 text-destructive text-sm mt-2">
-              <AlertCircle className="size-4 mt-0.5 shrink-0" />
+            <div role="alert" className="mt-2 flex items-start gap-2 text-sm leading-snug text-destructive">
+              <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
               <span>ยอดรายการเกินที่ลดได้สูงสุด {formatNumberDecimal(remaining)} ฿</span>
             </div>
           )}
-        </div>
+        </FormRow>
       )}
-    </div>
+
+      {/* เอกสารต้นฉบับที่จ่ายแล้ว (POSTED) — server ลง Dr บัญชีนี้ · ต้นฉบับที่ยังตั้งหนี้ลดเจ้าหนี้ ไม่ใช้บัญชีเงิน */}
+      {!isStandalone && selectedDoc?.status === 'POSTED' && (
+        <FormRow title="รับเงินคืนเข้า" complete={!!state.depositAccountCode}>
+          <div className="w-full sm:max-w-md">
+            <label htmlFor={`${uiFieldId}-refund`} className="sr-only">รับเงินคืนเข้า</label>
+            <CashAccountSelect
+              id={`${uiFieldId}-refund`}
+              placeholder="รับเงินคืนเข้า"
+              value={state.depositAccountCode}
+              onChange={(code) => onChange({ depositAccountCode: code })}
+            />
+          </div>
+        </FormRow>
+      )}
+    </>
   );
 }

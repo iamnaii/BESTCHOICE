@@ -37,7 +37,7 @@ const DEFAULT_TRIGGER_LABEL = 'บัญชี';
 
 /**
  * Searchable account-code dropdown — used by ItemsTable (42-XXXX), AdjustmentTable,
- * EditableJournalTable (Override JV) and PettyCashLinesSection (53-XXXX).
+ * EditableJournalTable (Override JV), PettyCashLinesSection (53-XXXX) and the expense ItemLinesSection.
  *
  * The menu is a portalled Radix Popover (spec 2026-11-14 §4.2 item 6, R1-2) so the
  * card (`overflow-hidden`) / table box (`overflow-x-auto`) around it no longer clips
@@ -72,15 +72,22 @@ export function AccountSearchDropdown({
   const isBlocked = (code: string) => blockedCodes?.includes(code) ?? false;
   const optionId = (code: string) => `${listboxId}-${code}`;
 
-  const allAccounts: CoaItem[] = (groups?.groups ?? []).flatMap((g) => g.accounts);
+  const allGroups = groups?.groups ?? [];
+  const allAccounts: CoaItem[] = allGroups.flatMap((g) => g.accounts);
   const term = search.toLowerCase();
-  const filtered = allAccounts
-    .filter((a) => (filter ? filter(a) : true))
-    .filter((a) =>
-      term ? a.code.toLowerCase().includes(term) || a.name.toLowerCase().includes(term) : true,
-    );
+  const matches = (a: CoaItem) =>
+    (filter ? filter(a) : true) &&
+    (term ? a.code.toLowerCase().includes(term) || a.name.toLowerCase().includes(term) : true);
+  // กลุ่มตามผังบัญชี — กลุ่มที่ไม่มีตัวเลือกเหลือหลังกรอง/ค้นหาไม่แสดง
+  const visibleGroups = allGroups
+    .map((g) => ({ category: g.category, accounts: g.accounts.filter(matches) }))
+    .filter((g) => g.accounts.length > 0);
+  // ลำดับของคีย์บอร์ด = ลำดับที่แสดงบนจอ
+  const filtered = visibleGroups.flatMap((g) => g.accounts);
   const selectable = filtered.filter((a) => !isBlocked(a.code));
   const selected = allAccounts.find((a) => a.code === value);
+  /** เลขบัญชีนำหน้าชื่อ (คำตัดสินเจ้าของ 2026-11-16 — แบบหน้า PEAK) */
+  const labelOf = (a: CoaItem) => `${a.code} - ${accountDisplayName(a.name)}`;
 
   const isOpen = open && !disabled;
   // Highlight: the row the user moved to; otherwise the current value (when not
@@ -162,7 +169,7 @@ export function AccountSearchDropdown({
         >
           {selected ? (
             <span className="flex items-baseline gap-2 truncate">
-              <span className="truncate">{accountDisplayName(selected.name)}</span>
+              <span className="truncate">{labelOf(selected)}</span>
             </span>
           ) : (
             <span className="text-muted-foreground">{placeholder}</span>
@@ -221,43 +228,50 @@ export function AccountSearchDropdown({
           className="max-h-64 overflow-y-auto overscroll-contain"
         >
           {!isLoading &&
-            filtered.map((a) => {
-              const isSel = a.code === value;
-              const blocked = isBlocked(a.code);
-              const reason = blocked ? (blockedReason ?? DEFAULT_BLOCKED_REASON) : undefined;
-              const isActive = !blocked && active?.code === a.code;
-              return (
-                <div
-                  key={a.code}
-                  id={optionId(a.code)}
-                  role="option"
-                  aria-selected={isSel}
-                  aria-disabled={blocked || undefined}
-                  data-active={isActive || undefined}
-                  title={reason}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onMouseMove={() => {
-                    if (!blocked && !isActive) setActiveCode(a.code);
-                  }}
-                  onClick={() => choose(a)}
-                  className={cn(
-                    'flex w-full items-center gap-2 border-b px-3 py-2 text-left text-xs leading-snug',
-                    blocked
-                      ? 'cursor-not-allowed bg-muted/40 text-muted-foreground'
-                      : 'cursor-pointer data-[active]:bg-accent data-[active]:text-accent-foreground',
-                    isSel && !blocked && 'font-medium',
-                  )}
-                >
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate">{accountDisplayName(a.name)}</span>
-                    {reason && <span className="text-muted-foreground">{reason}</span>}
-                  </span>
-                  {isSel && !blocked && (
-                    <CheckCircle2 size={12} aria-hidden="true" className="shrink-0 text-primary" />
-                  )}
+            visibleGroups.map((g) => (
+              <div key={g.category} role="group" aria-label={g.category}>
+                <div aria-hidden="true" className="px-3 pt-2 pb-1 text-xs leading-snug text-muted-foreground">
+                  {g.category}
                 </div>
-              );
-            })}
+                {g.accounts.map((a) => {
+                  const isSel = a.code === value;
+                  const blocked = isBlocked(a.code);
+                  const reason = blocked ? (blockedReason ?? DEFAULT_BLOCKED_REASON) : undefined;
+                  const isActive = !blocked && active?.code === a.code;
+                  return (
+                    <div
+                      key={a.code}
+                      id={optionId(a.code)}
+                      role="option"
+                      aria-selected={isSel}
+                      aria-disabled={blocked || undefined}
+                      data-active={isActive || undefined}
+                      title={reason}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onMouseMove={() => {
+                        if (!blocked && !isActive) setActiveCode(a.code);
+                      }}
+                      onClick={() => choose(a)}
+                      className={cn(
+                        'flex w-full items-center gap-2 border-b px-3 py-2 text-left text-xs leading-snug',
+                        blocked
+                          ? 'cursor-not-allowed bg-muted/40 text-muted-foreground'
+                          : 'cursor-pointer data-[active]:bg-accent data-[active]:text-accent-foreground',
+                        isSel && !blocked && 'font-medium',
+                      )}
+                    >
+                      <span className="flex min-w-0 flex-1 flex-col">
+                        <span className="truncate">{labelOf(a)}</span>
+                        {reason && <span className="text-muted-foreground">{reason}</span>}
+                      </span>
+                      {isSel && !blocked && (
+                        <CheckCircle2 size={12} aria-hidden="true" className="shrink-0 text-primary" />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
         </div>
       </PopoverContent>
     </Popover>

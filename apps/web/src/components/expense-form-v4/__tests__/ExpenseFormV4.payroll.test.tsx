@@ -246,7 +246,7 @@ beforeEach(() => {
 
 const newClient = () => new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
-function mount(props: { editDocId?: string } = {}, client = newClient()) {
+function mount(props: { editDocId?: string; branchName?: string } = {}, client = newClient()) {
   const onSaved = vi.fn();
   const onClose = vi.fn();
   const { unmount } = render(
@@ -288,6 +288,15 @@ describe('ExpenseFormV4 payroll — editing a computed draft (R6)', () => {
     expect(await screen.findByRole('button', { name: 'สมศรี มีสุข' })).toBeInTheDocument();
     expect(screen.getByText(/บันทึกแล้วใบจะกลับเป็นร่าง/)).toBeInTheDocument();
     expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it("shows the document's own branch and number in the header, not the page branch", async () => {
+    docs['doc-1'] = { ...(storedDoc('doc-1', [ELIGIBLE_LINE]) as object), branchId: 'b2', branch: { id: 'b2', name: 'สาขา B' } };
+    mount({ editDocId: 'doc-1', branchName: 'สาขา A' });
+    await screen.findByRole('button', { name: 'สมศรี มีสุข' });
+    expect(screen.getByText('สาขา: สาขา B')).toBeInTheDocument();
+    expect(screen.queryByText('สาขา: สาขา A')).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue('PR-20261101-0001')).toBeInTheDocument();
   });
 
   it('refuses to open a POSTED payroll', async () => {
@@ -342,6 +351,29 @@ describe('ExpenseFormV4 payroll — บันทึกร่าง + คิด�
     ]);
     expect(apiPost.mock.calls.filter((c) => c[0] === '/expense-documents/payroll')).toHaveLength(1);
     expect(onSaved).not.toHaveBeenCalled();
+  });
+
+  it('หลังบันทึกร่าง + คิดยอดแล้วโหลดใบกลับมา ไม่ถือว่าผู้ใช้แก้ค้าง (beforeunload ถูกถอดครั้งสุดท้าย)', async () => {
+    const events: string[] = [];
+    const add = vi.spyOn(window, 'addEventListener').mockImplementation(((type: string) => {
+      if (type === 'beforeunload') events.push('add');
+    }) as typeof window.addEventListener);
+    const remove = vi.spyOn(window, 'removeEventListener').mockImplementation(((type: string) => {
+      if (type === 'beforeunload') events.push('remove');
+    }) as typeof window.removeEventListener);
+    try {
+      const user = userEvent.setup();
+      mount();
+      await user.click(await screen.findByRole('button', { name: 'เลือกพนักงาน' }));
+      await waitFor(() => expect(events).toContain('add'));
+      docs['new-1'] = storedDoc('new-1', [ELIGIBLE_LINE]);
+      await user.click(screen.getByRole('button', { name: 'บันทึกร่าง + คิดยอด' }));
+      expect(await screen.findByRole('heading', { name: 'วันที่ต้องตรวจ (1)' })).toBeInTheDocument();
+      await waitFor(() => expect(events[events.length - 1]).toBe('remove'));
+    } finally {
+      add.mockRestore();
+      remove.mockRestore();
+    }
   });
 
   it('shows the column รายได้พิเศษ with system + typed income', async () => {

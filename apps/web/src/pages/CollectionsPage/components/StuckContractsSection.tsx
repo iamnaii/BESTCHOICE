@@ -1,5 +1,6 @@
 import ScreenTable from '@/components/ui/ScreenTable';
-import { NativeSelect } from '@/components/ui/native-select';
+import { Combobox } from '@/components/ui/combobox';
+import { formLabelClass } from '@/components/ui/form-styles';
 import { useId as useUiFieldId, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { UserPlus, Clock } from 'lucide-react';
@@ -39,7 +40,7 @@ export default function StuckContractsSection() {
 
   const { data = [], isLoading, isError, error, refetch } = useStuckContracts(days);
 
-  const { data: staff = [] } = useQuery<StaffUser[]>({
+  const { data: staff = [], isLoading: staffLoading } = useQuery<StaffUser[]>({
     queryKey: ['staff-users'],
     queryFn: async () => {
       const res = await api.get('/users');
@@ -209,21 +210,18 @@ export default function StuckContractsSection() {
           <DialogHeader>
             <DialogTitle>มอบหมาย {selected.size} สัญญา</DialogTitle>
           </DialogHeader>
-          <div className="space-y-2">
-            <label htmlFor={`${uiFieldId}-1`} className="text-xs text-muted-foreground leading-snug">
+          <div>
+            <label htmlFor={`${uiFieldId}-1`} className={formLabelClass}>
               เลือกผู้รับผิดชอบใหม่
             </label>
-            <NativeSelect wrapperClassName="max-w-full w-full" id={`${uiFieldId}-1`}
+            <Combobox
+              id={`${uiFieldId}-1`}
               value={targetUserId}
-              onChange={(e) => setTargetUserId(e.target.value)}
-            >
-              <option value="">— เลือก —</option>
-              {staff.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name} ({u.role})
-                </option>
-              ))}
-            </NativeSelect>
+              onChange={(value) => setTargetUserId(value)}
+              options={staff.map((u) => ({ value: u.id, label: `${u.name} (${u.role})` }))}
+              placeholder="— เลือก —"
+              loading={staffLoading}
+            />
           </div>
           <DialogFooter>
             <button data-ui-control="button"

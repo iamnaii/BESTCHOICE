@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { openCombobox, pickComboOption } from '@/test/combobox';
 
 const coa = vi.hoisted(() => ({ filters: [] as unknown[] }));
@@ -19,6 +19,8 @@ vi.mock('@/hooks/useCoa', () => ({
   },
 }));
 vi.mock('@/hooks/useUiFlags', () => ({ useUiFlags: () => ({ whtRates: [] }) }));
+const mobile = vi.hoisted(() => ({ value: false }));
+vi.mock('@/hooks/useIsMobile', () => ({ useIsMobile: () => mobile.value }));
 
 import { ItemLinesSection } from '../ItemLinesSection';
 import { newLine, type ExpenseLineForm } from '../types';
@@ -37,6 +39,8 @@ function Harness({ onLines, category = '' }: { onLines: (l: ExpenseLineForm[]) =
     />
   );
 }
+
+beforeEach(() => { mobile.value = false; });
 
 // R2-4c — the expense-line account is the searchable AccountCombobox: "<code> - <name>" under the CoA
 // category (owner 2026-11-16, spec §9.1); the value written to the line is still the code.
@@ -76,5 +80,23 @@ describe('ItemLinesSection — บัญชีค่าใช้จ่าย (R2
   it('a saved account shows "<code> - <name>" on the trigger', () => {
     render(<Harness onLines={vi.fn()} category="53-1301" />);
     expect(screen.getByRole('combobox', { name: 'บัญชีค่าใช้จ่าย' })).toHaveTextContent('53-1301 - ค่าเช่า');
+  });
+
+  // owner 2026-11-16 (R2 T7 review): the mobile card's visible label is a real <label htmlFor> on the picker,
+  // so the accessible name stays the same without an aria-label; the desktop table cell has no visible label.
+  it('mobile card: the visible label names the picker through htmlFor (no aria-label)', () => {
+    mobile.value = true;
+    render(<Harness onLines={vi.fn()} />);
+    const trigger = screen.getByLabelText('บัญชีค่าใช้จ่าย');
+    expect(trigger).toBe(screen.getByRole('combobox', { name: 'บัญชีค่าใช้จ่าย' }));
+    expect(trigger).not.toHaveAttribute('aria-label');
+    expect(trigger.id).toBeTruthy();
+  });
+
+  it('desktop table: the picker keeps its aria-label (no visible label in the cell)', () => {
+    render(<Harness onLines={vi.fn()} />);
+    const trigger = screen.getByLabelText('บัญชีค่าใช้จ่าย');
+    expect(trigger).toBe(screen.getByRole('combobox', { name: 'บัญชีค่าใช้จ่าย' }));
+    expect(trigger).toHaveAttribute('aria-label', 'บัญชีค่าใช้จ่าย');
   });
 });

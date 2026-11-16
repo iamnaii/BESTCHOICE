@@ -37,9 +37,10 @@ export function ItemLinesSection({ lines, onChange, priceTypeLabel }: Props) {
 
   // ชุดบัญชีเดิมของ dropdown นี้ — AccountCombobox โหลดผังทั้งหมด จึงกรองด้วยรหัสชุดนี้
   const expenseCodes = new Set(groups.flatMap((g) => g.accounts.map((a) => a.code)));
-  const accountPicker = (line: ExpenseLineForm) => (
+  // id ให้ → ป้ายบนจอผูกกับปุ่มด้วย <label htmlFor> (การ์ดมือถือ) · ไม่ให้ id → ตารางจอใหญ่ไม่มีป้าย ใช้ aria-label
+  const accountPicker = (line: ExpenseLineForm, id?: string) => (
     <AccountCombobox
-      aria-label="บัญชีค่าใช้จ่าย"
+      {...(id ? { id } : { 'aria-label': 'บัญชีค่าใช้จ่าย' })}
       value={line.category}
       onChange={(code) => updateLine(line.uid, { category: code })}
       filter={(a) => expenseCodes.has(a.code)}
@@ -102,9 +103,8 @@ export function ItemLinesSection({ lines, onChange, priceTypeLabel }: Props) {
             </div>
             <div className="space-y-3 p-4">
               <div>
-                {/* ปุ่มเลือกบัญชีมีชื่อจาก aria-label แล้ว — ป้ายนี้เป็นตัวหนังสือบนจอ */}
-                <span className={formLabelClass}>บัญชีค่าใช้จ่าย</span>
-                {accountPicker(line)}
+                <label htmlFor={`${fieldId}-${line.uid}-account`} className={formLabelClass}>บัญชีค่าใช้จ่าย</label>
+                {accountPicker(line, `${fieldId}-${line.uid}-account`)}
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
                 <Field

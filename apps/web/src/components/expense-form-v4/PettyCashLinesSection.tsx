@@ -271,10 +271,9 @@ function PettyCashLineCard({
           />
         </div>
         <div>
-          {/* ปุ่มเลือกบัญชีมีชื่อจาก aria-label — ป้ายนี้เป็นตัวหนังสือบนจอ */}
-          <span className={formLabelClass}>หมวดบัญชี</span>
+          <label htmlFor={`${id}-category`} className={formLabelClass}>หมวดบัญชี</label>
           <AccountCombobox
-            aria-label="หมวดบัญชี"
+            id={`${id}-category`}
             value={line.category}
             onChange={(code) => onPatch({ category: code })}
             filter={(a) => a.code.startsWith('53-')}

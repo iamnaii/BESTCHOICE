@@ -1,4 +1,5 @@
 import { NativeSelect } from '@/components/ui/native-select';
+import { Combobox } from '@/components/ui/combobox';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -45,6 +46,7 @@ function SortableQuickReplyRow({
   selfId: string;
 }) {
   const uiFieldId = useUiFieldId();
+  const templateId = parseTemplatePostback(qr.payload) ?? '';
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: qr.id });
   const style = { transform: CSS.Transform.toString(transform), transition };
 
@@ -78,25 +80,26 @@ function SortableQuickReplyRow({
           <>
             <div className="flex items-center gap-2">
               <label htmlFor={`${uiFieldId}-1`} className="text-[11px] text-muted-foreground shrink-0">เมื่อกด:</label>
-              <NativeSelect wrapperClassName="max-w-full w-auto flex-1" id={`${uiFieldId}-1`}
-                value={parseTemplatePostback(qr.payload) ?? ''}
-                onChange={(e) => {
-                  const tplId = e.target.value;
+              <Combobox
+                id={`${uiFieldId}-1`}
+                value={templateId}
+                onChange={(tplId) => {
+                  // Saves on pick only. A native select fired no change for the same option — no PATCH.
+                  if (tplId === templateId) return;
                   onChange({ payload: tplId ? `${POSTBACK_TEMPLATE_PREFIX}${tplId}` : '' });
                 }}
-              >
-                <option value="">— ตั้งเอง (custom payload) —</option>
-                <optgroup label="ส่ง แม่แบบตอบกลับ">
-                  {allTemplates
+                options={[
+                  { value: '', label: '— ตั้งเอง (custom payload) —' },
+                  ...allTemplates
                     .filter((t) => t.id !== selfId && t.isActive !== false)
-                    .map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.title}
-                        {t.category ? ` · ${t.category}` : ''}
-                      </option>
-                    ))}
-                </optgroup>
-              </NativeSelect>
+                    .map((t) => ({
+                      value: t.id,
+                      label: `${t.title}${t.category ? ` · ${t.category}` : ''}`,
+                      group: 'ส่ง แม่แบบตอบกลับ',
+                    })),
+                ]}
+                wrapperClassName="min-w-0 flex-1"
+              />
             </div>
             <Input
               value={qr.payload ?? ''}

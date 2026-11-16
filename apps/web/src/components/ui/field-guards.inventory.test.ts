@@ -996,6 +996,11 @@ describe('F5 — inline (non-portalled) menus (spec 2026-11-14 §5)', () => {
 // (and a narrow trigger would leave the clear button outside the field). Size it with `wrapperClassName`.
 const COMBOBOX_SIZE_TOKEN = /^(?:w|max-w|min-w|h)-\S/;
 
+// Tags whose `className` reaches the shared `Combobox` trigger: `Combobox` itself and the wrappers that
+// forward it (`<Combobox ... className={className} />`, checked in each file). `EmployeeCombobox` takes no
+// `className`; `VendorCombobox` / `RepairCenterCombobox` hand theirs to `ContactCombobox`.
+const COMBOBOX_TAGS = new Set<string>(['Combobox', 'AccountCombobox', 'ContactCombobox', 'CustomerCombobox']);
+
 function comboboxSizeViolations(file: string, source: string): string[] {
   const kind = file.endsWith('x') ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
   const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, kind);
@@ -1004,7 +1009,7 @@ function comboboxSizeViolations(file: string, source: string): string[] {
   const inspect = (node: ts.Node) => {
     if (
       (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) &&
-      node.tagName.getText(ast) === 'Combobox'
+      COMBOBOX_TAGS.has(node.tagName.getText(ast))
     ) {
       for (const attribute of node.attributes.properties) {
         if (!ts.isJsxAttribute(attribute) || attribute.name.getText(ast) !== 'className') continue;
@@ -1038,6 +1043,8 @@ describe('Combobox sizing guard', () => {
     expect(run('{cn("font-mono", ok && "h-9")}')).toHaveLength(1);
     expect(run('"font-mono text-right"')).toEqual([]);
     expect(comboboxSizeViolations(sample, '<Combobox wrapperClassName="max-w-[130px]" />')).toEqual([]);
+    expect(comboboxSizeViolations(sample, '<AccountCombobox className="w-40" />')).toHaveLength(1);
+    expect(comboboxSizeViolations(sample, '<AccountCombobox wrapperClassName="w-40" />')).toEqual([]);
   });
 
   it(
@@ -1045,7 +1052,7 @@ describe('Combobox sizing guard', () => {
     () => {
       const found = listSourceFiles(WEB_SRC)
         .map((file) => ({ file, source: readFileSync(file, 'utf8') }))
-        .filter(({ source }) => /<Combobox\b/.test(source))
+        .filter(({ source }) => /<(?:Combobox|AccountCombobox|ContactCombobox|CustomerCombobox)\b/.test(source))
         .flatMap(({ file, source }) => comboboxSizeViolations(file, source));
       expect(found).toEqual([]);
     },

@@ -10,11 +10,12 @@ export interface AccountItem {
 
 /**
  * What a row shows (and the trigger, unless `valueDisplay="code"`):
- * - `code-dash-name` (default) — `<code> - <display name>` under the CoA group headings: the
- *   searchable account picker the owner chose on 2026-11-16 (spec §9.1, `utils/accountName.ts`)
- * - `name` — the display name only (entry-form `NativeSelect` pickers before Round 2)
- * - `code-name` — code + display name (the recurring-bill account select)
- * - `code-full-name` — code + the full chart name, "(...)" kept (reports: general ledger)
+ * - `code-dash-name` (default) — `<code> - <display name>` under the CoA group headings. Every caller
+ *   uses it: the owner chose it for all account pickers on 2026-11-16 (spec §9.1, question 4 answered
+ *   yes; `utils/accountName.ts`)
+ * - `name`, `code-name`, `code-full-name` — kept (with their tests) in case the owner reverses that
+ *   decision; no caller passes them today. `name` = display name only, `code-name` = code + display
+ *   name, `code-full-name` = code + the full chart name with "(...)" kept
  */
 export type AccountDisplay = 'code-dash-name' | 'name' | 'code-name' | 'code-full-name';
 
@@ -40,6 +41,10 @@ export interface AccountComboboxProps {
   emptyOption?: string;
   /** Show at most this many rows after searching (the general ledger caps at 200). */
   limit?: number;
+  /**
+   * Turns off the default name `บัญชี`: pass it only together with a `<label htmlFor={id}>` (or
+   * `aria-labelledby`), otherwise the trigger has no accessible name.
+   */
   id?: string;
   invalid?: boolean;
   'aria-invalid'?: boolean | 'true' | 'false';
@@ -47,6 +52,10 @@ export interface AccountComboboxProps {
   'aria-label'?: string;
   'aria-labelledby'?: string;
   'aria-describedby'?: string;
+  /**
+   * The trigger's skin only. Width/height caps go on `wrapperClassName`: `admin-typography.css` sets an
+   * unlayered `max-width:100%`/`height` on `button[role=combobox]`.
+   */
   className?: string;
   wrapperClassName?: string;
 }

@@ -232,9 +232,6 @@ export const ROUTES = [
   { id: 'stock-transfers-incoming', path: '/stock/transfers?view=incoming', appendix: ['S2-04'], mocks: M.transfers },
   { id: 'stock-transfers-history', path: '/stock/transfers?view=history', appendix: ['S2-04'], mocks: M.transfers },
   { id: 'expense-new', path: '/expenses/new', appendix: ['S3-02', 'S3-04', 'S3-05'], mocks: M.expense },
-  // หน้าใบลดหนี้ / จ่ายเจ้าหนี้แบบ PEAK (รอบ 2) — ไม่อยู่ใน appendix ก ของ spec 2026-11-14
-  { id: 'credit-note-new', path: '/expenses/new?type=CN', appendix: [], mocks: M.expense },
-  { id: 'settlement-new', path: '/expenses/new?type=SE', appendix: [], mocks: M.expense },
   // S3-07 is the account select of a line's "รายได้พิเศษ" sub-table, rendered only when the line is expanded
   // (PayrollLinesSection.tsx:475,535-540,639-652,808) — local form state, nothing is saved.
   { id: 'payroll-new', path: '/expenses/new?type=PR', appendix: ['S3-07'], mocks: M.expense,

@@ -15,6 +15,8 @@ const linkClass = 'min-h-11 px-1 text-sm font-medium leading-snug text-primary u
 export function PaymentSection({ picker, unpaid, advanced, footer }: Props) {
   const headingId = useId();
   const [mode, setMode] = useState<'basic' | 'advanced'>('basic');
+  // มีข้อมูลปรับปรุง = ค้างที่ขั้นสูง — ลบข้อมูลจนหมดแล้วก็ไม่ยุบเอง ผู้ใช้กด "พื้นฐาน" เอง
+  if (advanced?.hasData && mode === 'basic') setMode('advanced');
   // ข้อมูลที่กรอกไว้ต้องมองเห็นเสมอ — มีข้อมูลปรับปรุง = ขั้นสูง
   const showAdvanced = !!advanced && (mode === 'advanced' || advanced.hasData);
 
@@ -23,10 +25,10 @@ export function PaymentSection({ picker, unpaid, advanced, footer }: Props) {
       <section aria-labelledby={headingId} className="border-t border-border py-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm leading-snug">
-            <h3 id={headingId} className="flex items-center gap-2 font-semibold">
+            <h2 id={headingId} className="flex items-center gap-2 font-semibold">
               <Clock className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
               ชำระเงิน
-            </h3>
+            </h2>
             <span className="text-muted-foreground">ยังไม่ชำระเงิน — ตั้งหนี้ไว้ก่อน</span>
           </div>
           <button type="button" className={linkClass} onClick={unpaid.onMarkPaid}>เพิ่มข้อมูลชำระเงิน</button>
@@ -53,10 +55,10 @@ export function PaymentSection({ picker, unpaid, advanced, footer }: Props) {
     <section aria-labelledby={headingId} className="border-t border-border py-5">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-x-6 gap-y-1">
-          <h3 id={headingId} className="flex items-center gap-2 text-sm font-semibold leading-snug">
+          <h2 id={headingId} className="flex items-center gap-2 text-sm font-semibold leading-snug">
             <CheckCircle2 className="size-4 shrink-0 text-primary" aria-hidden="true" />
             ชำระเงิน
-          </h3>
+          </h2>
           {advanced && (
             <div role="radiogroup" aria-label="โหมดชำระเงิน" className="flex gap-4 text-sm leading-snug">
               <label className="flex min-h-11 items-center gap-1.5">
@@ -66,6 +68,7 @@ export function PaymentSection({ picker, unpaid, advanced, footer }: Props) {
                   className="size-4 accent-primary"
                   checked={!showAdvanced}
                   disabled={advanced.hasData}
+                  aria-describedby={advanced.hasData ? `${headingId}-locked` : undefined}
                   onChange={() => setMode('basic')}
                 />
                 พื้นฐาน
@@ -97,7 +100,7 @@ export function PaymentSection({ picker, unpaid, advanced, footer }: Props) {
             {advanced.content}
             {advanced.hasData && (
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-sm leading-snug text-muted-foreground">
+                <p id={`${headingId}-locked`} className="text-sm leading-snug text-muted-foreground">
                   มีรายการปรับปรุงอยู่ จึงกลับไป "พื้นฐาน" ไม่ได้จนกว่าจะล้างรายการ
                 </p>
                 <Button type="button" variant="outline" className="min-h-11" onClick={advanced.onClear}>ล้างรายการปรับปรุง</Button>

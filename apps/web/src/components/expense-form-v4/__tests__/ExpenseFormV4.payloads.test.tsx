@@ -4,7 +4,10 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { chooseKind, fillExpenseLine, openAdjustments, saveDraft, type Kind } from './expense-form-driver';
+import {
+  chooseCreditNoteStandalone, chooseKind, fillCreditNoteReason, fillCreditNoteVendorName, fillExpenseLine,
+  fillPettyCashLine, openAdjustments, pickCreditNoteSource, saveDraft, waitForSettlementDoc,
+} from './expense-form-driver';
 
 /**
  * จับ body ที่ฟอร์มส่งไป API ของทุกประเภทเอกสาร (เงินเดือนอยู่ใน ExpenseFormV4.payroll.test.tsx)
@@ -190,7 +193,7 @@ describe('ExpenseFormV4 — body ที่ส่งไป API', () => {
   it('จ่ายเจ้าหนี้ ส่งเอกสารที่เลือกและบัญชีเงิน', async () => {
     const user = mount();
     await chooseKind(user, 'VENDOR_SETTLEMENT');
-    await screen.findByText('EX-009');
+    await waitForSettlementDoc('EX-009');
     await saveDraft(user);
     expect(await bodyOf('/expense-documents/settlement')).toEqual({
       branchId: 'b1', documentDate: today, depositAccountCode: '11-1101', paymentMethod: 'BANK_TRANSFER',
@@ -201,9 +204,8 @@ describe('ExpenseFormV4 — body ที่ส่งไป API', () => {
   it('ใบลดหนี้แบบอ้างอิงเอกสาร ส่งเอกสารต้นฉบับและบัญชีเงิน', async () => {
     const user = mount();
     await chooseKind(user, 'CREDIT_NOTE');
-    await user.type(screen.getByLabelText('ค้นหาเลข EX-... / ผู้ขาย (3 ตัวขึ้นไป)'), 'EX-0');
-    await user.click(await screen.findByRole('button', { name: /EX-001/ }));
-    await user.type(await screen.findByLabelText(/^เหตุผล/), 'คืนสินค้า');
+    await pickCreditNoteSource(user, 'EX-0', /EX-001/);
+    await fillCreditNoteReason(user, 'คืนสินค้า');
     await saveDraft(user);
     expect(await bodyOf('/expense-documents/credit-note')).toEqual({
       mode: 'LINKED', branchId: 'b1', documentDate: today, originalDocumentId: 'orig-1',
@@ -215,9 +217,9 @@ describe('ExpenseFormV4 — body ที่ส่งไป API', () => {
   it('ใบลดหนี้แบบไม่มีเอกสารต้นทาง ส่งชื่อผู้ขาย ไม่ส่งบัญชีเงิน', async () => {
     const user = mount();
     await chooseKind(user, 'CREDIT_NOTE');
-    await user.click(screen.getByRole('button', { name: /^ไม่มีเอกสารต้นทาง/ }));
-    await user.type(screen.getByLabelText(/^ชื่อผู้ขาย/), 'ร้านตัวอย่าง');
-    await user.type(screen.getByLabelText(/^เหตุผล/), 'ส่วนลดพิเศษ');
+    await chooseCreditNoteStandalone(user);
+    await fillCreditNoteVendorName(user, 'ร้านตัวอย่าง');
+    await fillCreditNoteReason(user, 'ส่วนลดพิเศษ');
     await fillExpenseLine(user, { account: '53-1101', unitPrice: '500' });
     await saveDraft(user);
     expect(await bodyOf('/expense-documents/credit-note')).toEqual({
@@ -229,10 +231,8 @@ describe('ExpenseFormV4 — body ที่ส่งไป API', () => {
 
   it('เงินสดย่อย ส่งบรรทัดพร้อมผู้ขายและบัญชีเงิน', async () => {
     const user = mount();
-    await chooseKind(user, 'PETTY_CASH' as Kind);
-    await user.click(screen.getByRole('button', { name: 'เลือกผู้ขาย' }));
-    await user.click(screen.getByRole('button', { name: 'บัญชี' }));
-    await user.type(screen.getByPlaceholderText('0.00'), '120');
+    await chooseKind(user, 'PETTY_CASH');
+    await fillPettyCashLine(user, { amount: '120' });
     await saveDraft(user);
     expect(await bodyOf('/expense-documents/petty-cash')).toEqual({
       branchId: 'b1', documentDate: today, depositAccountCode: '11-1101',

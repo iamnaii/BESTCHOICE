@@ -21,12 +21,12 @@ export function FormRow({ title, layout = 'side', complete, action, children }: 
       className={cn('border-t border-border py-5', layout === 'side' && 'lg:grid lg:grid-cols-[200px_minmax(0,1fr)] lg:gap-6')}
     >
       <div className={cn('mb-3 flex items-center justify-between gap-3', layout === 'side' && 'lg:mb-0 lg:items-start')}>
-        <h3 id={headingId} className="flex items-center gap-2 text-sm font-semibold leading-snug">
+        <h2 id={headingId} className="flex items-center gap-2 text-sm font-semibold leading-snug">
           {complete !== undefined && (
             <Mark className={cn('size-4 shrink-0', complete ? 'text-primary' : 'text-muted-foreground')} aria-hidden="true" />
           )}
           {title}
-        </h3>
+        </h2>
         {action}
       </div>
       <div className="min-w-0">{children}</div>

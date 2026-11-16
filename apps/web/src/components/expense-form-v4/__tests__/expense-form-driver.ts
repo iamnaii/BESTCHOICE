@@ -37,7 +37,7 @@ export async function chooseKind(user: UserEvent, kind: Kind) {
     return;
   }
   await user.click(screen.getByRole('button', { name: /^เปลี่ยนประเภทเอกสาร/ }));
-  await user.click(await screen.findByRole('menuitem', { name: MENU_ITEM[kind]! }));
+  await user.click(await screen.findByRole('menuitemradio', { name: MENU_ITEM[kind]! }));
 }
 
 export async function openAdjustments(user: UserEvent) {
@@ -49,4 +49,35 @@ export async function saveDraft(user: UserEvent) {
   const button = screen.getByRole('button', { name: 'บันทึกร่าง' });
   await waitFor(() => expect(button).toBeEnabled());
   await user.click(button);
+}
+
+/** จ่ายเจ้าหนี้ — รอให้รายการเอกสารตั้งหนี้โหลด (ระบบติ๊กให้เองตามค่าตั้ง) */
+export async function waitForSettlementDoc(docNumber: string) {
+  await screen.findByText(docNumber);
+}
+
+/** ใบลดหนี้โหมดอ้างอิง — ค้นเอกสารต้นฉบับแล้วเลือก */
+export async function pickCreditNoteSource(user: UserEvent, search: string, docNumber: RegExp) {
+  await user.type(screen.getByLabelText('ค้นหาเลข EX-... / ผู้ขาย (3 ตัวขึ้นไป)'), search);
+  await user.click(await screen.findByRole('button', { name: docNumber }));
+}
+
+export async function chooseCreditNoteStandalone(user: UserEvent) {
+  await user.click(screen.getByRole('button', { name: /^ไม่มีเอกสารต้นทาง/ }));
+}
+
+export async function fillCreditNoteVendorName(user: UserEvent, name: string) {
+  await user.type(screen.getByLabelText(/^ชื่อผู้ขาย/), name);
+}
+
+export async function fillCreditNoteReason(user: UserEvent, reason: string) {
+  await user.type(await screen.findByLabelText(/^เหตุผล/), reason);
+}
+
+/** เงินสดย่อย — บรรทัดแรก: เลือกผู้ขาย (ปุ่มแทน VendorCombobox) · เลือกบัญชี 53-1101 (ปุ่มแทน AccountSearchDropdown) · กรอกยอด */
+export async function fillPettyCashLine(user: UserEvent, line: { amount: string }) {
+  // จอแคบมีป้าย "ผู้ขาย/ผู้รับเงิน" ผูกกับปุ่ม (ชื่อจากป้ายทับข้อความในปุ่ม) · จอกว้างไม่มีป้าย
+  await user.click(screen.getByRole('button', { name: /^(เลือกผู้ขาย|ผู้ขาย\/ผู้รับเงิน)$/ }));
+  await user.click(screen.getByRole('button', { name: 'หมวดบัญชี' }));
+  await user.type(screen.getByLabelText('จำนวน'), line.amount);
 }

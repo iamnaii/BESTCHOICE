@@ -27,8 +27,10 @@ import { canManagePayroll } from './payroll-system/payroll-roles';
 import { VendorSection, PricingSection } from './VendorSection';
 import { ItemLinesSection } from './ItemLinesSection';
 import { PayrollLinesSection } from './PayrollLinesSection';
-import { SettlementLinesSection } from './SettlementLinesSection';
-import { PettyCashLinesSection } from './PettyCashLinesSection';
+import { SettlementLinesSection, SettlementPayeeFields } from './SettlementLinesSection';
+import { settlementTotals } from './settlement-totals';
+import { PettyCashCustodianField, PettyCashLinesSection } from './PettyCashLinesSection';
+import { pettyCashTotals } from './petty-cash-totals';
 import { CreditNoteLinesSection } from './CreditNoteLinesSection';
 import { JePreview } from './JePreview';
 import { DocCard } from './layout/DocCard';
@@ -628,8 +630,13 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
 
   // ---- ส่วนของหน้าจอ (ไม่มีผลกับ payload) ----
   const [showJe, setShowJe] = useState(false);
+  const jePanelId = useId();
   const [dirty, setDirty] = useState(false);
-  const markDirty = () => setDirty(true);
+  // ผู้ใช้แตะฟอร์มแล้วหรือยัง — state ที่ระบบเปลี่ยนเองตอนเปิดหน้า (ติ๊กเจ้าหนี้ให้, flag) ไม่นับเป็นการแก้
+  const interacted = useRef(false);
+  const markInteracted = () => {
+    interacted.current = true;
+  };
   useEffect(() => {
     if (!dirty) return;
     const warn = (e: BeforeUnloadEvent) => {
@@ -639,11 +646,24 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
   }, [dirty]);
+  // ลำดับสำคัญ: effect นี้ต้องอยู่ก่อน effect [state] — บันทึกแล้วโหลดร่างกลับมา (state เปลี่ยน) ต้องไม่นับเป็นการแก้
   useEffect(() => {
-    if (saveMutation.isSuccess) setDirty(false);
+    if (saveMutation.isSuccess) {
+      interacted.current = false;
+      setDirty(false);
+    }
   }, [saveMutation.isSuccess, saveMutation.submittedAt]);
+  useEffect(() => {
+    if (interacted.current) setDirty(true);
+  }, [state]);
 
   const money = (v?: string) => (v === undefined ? '—' : formatNumberDecimal(v));
+  // จ่ายเจ้าหนี้ — ตัวเลขชุดเดียวกับที่ตารางเคยแสดงท้ายกล่อง (ยังไม่เลือกใบใด = —)
+  const seTotals = settlementTotals(state.settlement);
+  const seMoney = (n: number) => (seTotals.count === 0 ? '—' : formatNumberDecimal(n));
+  // เงินสดย่อย — ตัวเลขชุดเดียวกับแถวรวมท้ายตาราง (ยังไม่มียอด = —)
+  const pcTotals = pettyCashTotals(state.pettyCash);
+  const pcMoney = (n: number) => (pcTotals.sumTotal === 0 ? '—' : formatNumberDecimal(n));
   const hasAdjustmentData = state.adjustments.length > 0 || state.amountPaid.trim() !== '';
   const clearAdjustments = () => patch({ adjustments: [], amountPaid: '' });
   const backdatedHint =
@@ -691,12 +711,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
         if (isPreviewType) {
           netExpected = preview?.totals.netPayment ?? '0.00';
         } else {
-          const sumSettled = [...state.settlement.selections.values()].reduce(
-            (s, sel) => s + (parseFloat(sel.amount) || 0),
-            0,
-          );
-          const wht = parseFloat(state.settlement.whtAmount) || 0;
-          netExpected = (sumSettled - wht).toFixed(2);
+          netExpected = seTotals.cashLeg.toFixed(2);
         }
         const paidNum = state.amountPaid.trim() !== '' ? parseFloat(state.amountPaid) : parseFloat(netExpected);
         const netNum = parseFloat(netExpected) || 0;
@@ -717,8 +732,9 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
   return (
     <div
       className="-mb-[calc(5rem+env(safe-area-inset-bottom,0px))] pt-4 lg:-mb-8"
-      onInputCapture={markDirty}
-      onChangeCapture={markDirty}
+      onPointerDownCapture={markInteracted}
+      onKeyDownCapture={markInteracted}
+      onChangeCapture={markInteracted}
     >
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <button
@@ -811,7 +827,14 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
         />
 
         {showVendor && (
-          <FormRow title="ข้อมูลผู้ขาย" complete={!!state.vendorName && !!state.documentDate}>
+          <FormRow
+            title="ข้อมูลผู้ขาย"
+            complete={
+              state.docType === 'CREDIT_NOTE' && state.cnMode === 'LINKED'
+                ? !!state.documentDate
+                : !!state.vendorName && !!state.documentDate
+            }
+          >
             <VendorSection state={state} onChange={patch} />
           </FormRow>
         )}
@@ -847,7 +870,12 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
           </FormRow>
         )}
         {state.docType === 'VENDOR_SETTLEMENT' && (
-          <FormRow title="เอกสารตั้งหนี้ที่จะล้าง" layout="stacked">
+          <FormRow title="ข้อมูลผู้รับเงิน" complete>
+            <SettlementPayeeFields value={state.settlement} onChange={(s) => patch({ settlement: s })} />
+          </FormRow>
+        )}
+        {state.docType === 'VENDOR_SETTLEMENT' && (
+          <FormRow title="เอกสารตั้งหนี้ที่จะล้าง" layout="stacked" complete={itemCount > 0}>
             <SettlementLinesSection
               branchId={state.branchId}
               value={state.settlement}
@@ -860,14 +888,17 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
             while the flag is off, but we keep the && here as a second
             line of defense for race conditions during the flag fetch. */}
         {state.docType === 'PETTY_CASH_REIMBURSEMENT' && pettyCashEnabled && (
-          <FormRow title="รายการเงินสดย่อย" layout="stacked">
+          <FormRow title="ผู้ดูแลเงินสดย่อย" complete>
+            <PettyCashCustodianField value={state.pettyCash} onChange={(pc) => patch({ pettyCash: pc })} />
+          </FormRow>
+        )}
+        {state.docType === 'PETTY_CASH_REIMBURSEMENT' && pettyCashEnabled && (
+          <FormRow title="รายการเงินสดย่อย" layout="stacked" complete={itemCount > 0}>
             <PettyCashLinesSection value={state.pettyCash} onChange={(pc) => patch({ pettyCash: pc })} />
           </FormRow>
         )}
         {state.docType === 'CREDIT_NOTE' && (
-          <FormRow title="ใบลดหนี้ — เอกสารต้นฉบับ + รายการ" layout="stacked">
-            <CreditNoteLinesSection state={state} onChange={patch} onLinesChange={(lines) => patch({ lines })} />
-          </FormRow>
+          <CreditNoteLinesSection state={state} onChange={patch} onLinesChange={(lines) => patch({ lines })} />
         )}
 
         {isPreviewType && (
@@ -879,6 +910,30 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
                 { label: 'หัก ณ ที่จ่าย', value: money(preview?.totals.withholdingTax) },
               ]}
               total={{ label: 'จำนวนเงินทั้งสิ้น', value: money(preview?.totals.totalAmount) }}
+            />
+          </FormRow>
+        )}
+
+        {state.docType === 'VENDOR_SETTLEMENT' && (
+          <FormRow title="สรุปข้อมูล">
+            <SummaryBox
+              rows={[
+                { label: 'รวมยอดที่จ่าย', value: seMoney(seTotals.sumSelected) },
+                { label: 'หัก ณ ที่จ่าย', value: seMoney(seTotals.wht) },
+              ]}
+              total={{ label: 'ตัดเงินสดสุทธิ', value: seMoney(seTotals.cashLeg) }}
+            />
+          </FormRow>
+        )}
+
+        {state.docType === 'PETTY_CASH_REIMBURSEMENT' && pettyCashEnabled && (
+          <FormRow title="สรุปข้อมูล">
+            <SummaryBox
+              rows={[
+                { label: 'มูลค่าก่อนภาษี', value: pcMoney(pcTotals.sumBase) },
+                { label: 'ภาษีมูลค่าเพิ่ม', value: pcMoney(pcTotals.sumVat) },
+              ]}
+              total={{ label: 'จำนวนเงินทั้งสิ้น', value: pcMoney(pcTotals.sumTotal) }}
             />
           </FormRow>
         )}
@@ -949,16 +1004,21 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
                 </span>
                 <button
                   type="button"
+                  aria-label="ย่อ/ขยาย ตัวอย่างรายการบัญชี"
                   aria-expanded={showJe || !!error}
+                  aria-controls={jePanelId}
+                  disabled={!!error}
                   onClick={() => setShowJe((v) => !v)}
-                  className="min-h-11 px-1 text-sm font-medium leading-snug text-primary"
+                  className="min-h-11 px-1 text-sm font-medium leading-snug text-primary disabled:opacity-50"
                 >
                   ย่อ/ขยาย
                 </button>
               </div>
             }
           >
-            {(showJe || !!error) && <JePreview preview={preview} loading={loading} error={error} />}
+            <div id={jePanelId}>
+              {(showJe || !!error) && <JePreview preview={preview} loading={loading} error={error} />}
+            </div>
           </FormRow>
         )}
 

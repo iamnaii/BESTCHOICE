@@ -143,6 +143,7 @@ describe('Combobox — DOM contract', () => {
 
     expect(searchBox()).toHaveAttribute('placeholder', 'พิมพ์เพื่อค้นหา…');
     expect(searchBox()).toHaveAttribute('aria-label', 'ค้นหา'); // tools select it by attribute
+    expect(searchBox()).toHaveAttribute('data-combobox-search'); // opts out of the clipped admin focus outline
     const listbox = within(content!).getByRole('listbox', { name: 'ตัวเลือก' });
     expect(listbox).toHaveClass('overscroll-contain');
     expect(within(listbox).getAllByRole('option')).toHaveLength(4);

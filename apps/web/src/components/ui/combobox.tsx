@@ -498,6 +498,9 @@ function Combobox<M = unknown>({
                 // same text as an attribute keeps `input[aria-label=…]` selectors working
                 // (tools/field-scale/menu-clip.mjs readMenuGeometry).
                 aria-label={searchLabel}
+                // The admin global focus outline would be clipped by the menu's overflow; the open
+                // menu is the focus indicator (R2-0 mockup). Opt-out lives in admin-colors.css.
+                data-combobox-search=""
                 placeholder={searchPlaceholder}
                 value={search}
                 onValueChange={changeSearch}

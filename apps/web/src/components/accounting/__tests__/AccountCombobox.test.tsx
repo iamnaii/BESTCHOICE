@@ -303,6 +303,16 @@ describe('AccountCombobox — AccountSearchDropdown behaviour kept (characteriza
     expect(screen.queryByRole('group', { name: 'ค่าใช้จ่าย' })).toBeNull();
     expect(screen.getAllByRole('option')).toHaveLength(4);
   });
+
+  it('re-picking the row that is already selected calls onChange again', async () => {
+    const user = userEvent.setup();
+    const onPick = vi.fn();
+    render(<Harness filter={only42} initialValue="42-1105" onPick={onPick} />);
+    await user.click(trigger());
+    await user.click(screen.getByRole('option', { name: '42-1105 - รายได้ดอกเบี้ยธนาคาร' }));
+    expect(onPick).toHaveBeenCalledTimes(1);
+    expect(onPick).toHaveBeenCalledWith('42-1105');
+  });
 });
 
 describe('AccountCombobox — Round 2 (shared Combobox)', () => {
@@ -390,6 +400,11 @@ describe('AccountCombobox — Round 2 (shared Combobox)', () => {
   it('a code that is not in the chart shows the code instead of the placeholder', () => {
     render(<Harness filter={only42} initialValue="99-9999" />);
     expect(trigger()).toHaveTextContent('99-9999');
+  });
+
+  it("valueDisplay='code' with emptyOption shows the empty row's label for ''", () => {
+    render(<Harness filter={only42} valueDisplay="code" emptyOption="— ทั้งหมด —" initialValue="" />);
+    expect(trigger()).toHaveTextContent('— ทั้งหมด —');
   });
 
   it("emptyOption lists a '' row first, shows it for '' and picks ''", async () => {

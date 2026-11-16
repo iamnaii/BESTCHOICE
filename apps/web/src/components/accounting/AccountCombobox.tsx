@@ -63,9 +63,8 @@ function accountLabel(a: AccountItem, display: AccountDisplay): string {
   return display === 'code-name' ? `${a.code} ${name}` : name;
 }
 
-const codeOnly = (option: ComboOption<AccountItem>) => (
-  <span className="font-mono">{option.value}</span>
-);
+const codeOnly = (option: ComboOption<AccountItem>) =>
+  option.value ? <span className="font-mono">{option.value}</span> : option.label;
 
 /**
  * The one chart-of-accounts picker (spec 2026-11-14 §6.4 "ผังบัญชี", R2-3a): the shared

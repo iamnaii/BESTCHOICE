@@ -16604,3 +16604,13 @@ What each task's code and tests were run against while the plan was written (202
 - Answers: 1 row height 44px kept · 2 disabled rows as drawn · 3 phone list focus as drawn · 4 converted account fields — one "อนุมัติ" for all five; read as yes, code - name like the searchable picker; asked to confirm that reading, the owner replied "ทำได้เลย" (2026-11-16) — so Task 8 and Task 13 drop their explicit display props (header "Account codes"); both still wait for the PEAK-layout merge · 5 highlight kept
 - Changes made after the first publish: none
 - Task 4 visual contract (Task 2 Produces table): unchanged
+
+### Round 2 part 1 — executed (2026-11-16)
+- Done and reviewed (task review each, then one whole-branch review): Tasks 1, 2, 3, 4, 5, 6, 9, 10, 11, 12, 14, 15. Not done: Tasks 7, 8, 13 — they wait for the expense-create PEAK-layout work (PR #1781) to reach main; they ship as a separate PR.
+- Extra commits beyond the task list: 783e42507 (the menu's search box opts out of the admin focus outline, which the menu's overflow clipped — the R2-0 mockup shows a caret only); cef848a07 (whole-branch review batch: the width rule — width/height go on `wrapperClassName` because `admin-typography.css` sets unlayered `max-width:100%`/`height` on `button[role=combobox]` — written into `combobox.tsx` JSDoc and DESIGN.md and enforced by a new `field-guards` scan; the menu is named `aria-label={listLabel}`); 0ac403717 and e8f6f59d5 (owner decisions below).
+- Owner decisions after the whole-branch review (AskUserQuestion, 2026-11-16):
+  - Open the PR for this part now; Tasks 7/8/13 follow in their own PR.
+  - AddressForm: picking the current province or district again no longer resets what is below it (it did before Round 2 and in Task 6, which kept that behaviour) — commit 0ac403717; a different province/district still resets.
+  - The ฟิล์ม "สำหรับรุ่น" multi-pick in the PO accessory row (not converted) did not scroll inside the PO Drawer on touch/wheel; fixed the same way as `Combobox` (stop wheel/touchmove at the content) — commit e8f6f59d5.
+  - SalesHistory › พนักงานขาย filter at 224px (`sm:w-56`, was ~303px with the native select sizing to its longest name): accepted as is.
+- Before Tasks 7/8/13 start (from the whole-branch review): fix T4-m1 in code if `CustomerSearchCombobox` keeps `className` + `clearable`; T4-m6 if `AccountCombobox` uses `description`; check T4-m2 (`onBlur` fires when the menu opens) against any react-hook-form host; fix T1-m2 (mock dates) before the next compare; record `baseline-r2-peak` after rebasing on the PEAK merge.

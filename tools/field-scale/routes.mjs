@@ -1,12 +1,18 @@
 // Field-scale check — what to measure (spec §5 "หน้าที่วัด"): every screen in appendix ก plus the 9 forms
-// that embed AddressForm (spec §4.3), as { id, path, appendix, open?, mocks, probes? }.
+// that embed AddressForm (spec §4.3), as { id, path, appendix, open?, mocks, probes?, blockWrites? }; Round 2
+// adds R2_ROUTES (ids r2-<screen>) for every screen the Round 2 plan converts.
 //   path      string, or (ctx) => string | null (null = the preview has no sample record → cell "skipped")
 //   open      clicks that open the dialog / tab / mode to measure — never save, never pick a value that saves
 //   mocks     GET endpoints the local preview answers 501/404 for, or answers from data that varies between
-//             preview starts: { path: /^\/api-path$/, json(url, ctx) }. path is matched against the request
-//             pathname WITHOUT /api or /api/admin; GET only; route mocks after COMMON_MOCKS, first match wins.
-//   probes    account-menu clipping check (S2-01 / S2-02): { id, widths, trigger(page) → Locator }
-// COMMON_MOCKS apply to every route. ctx = { origin, me (GET /auth/me), customerId, contractPath }.
+//             preview starts: { path: /^\/api-path$/, json(url, ctx), method? }. path is matched against the
+//             request pathname WITHOUT /api or /api/admin; route mocks after COMMON_MOCKS, first match wins.
+//             GET only — except quoteMock(): a POST that prices a quote and stores nothing (path ends in /preview).
+//   blockWrites  true = every other non-GET /api request the page makes is aborted and listed in the cell
+//             (screens that write just by being open — an inbox room marks itself read and asks for suggestions)
+//   probes    menu clipping check (rule MENU): { id, widths, trigger(page) → Locator, menu? }. menu 'controls' =
+//             the menu is the element the trigger's aria-controls names (Radix Popover / Select, the Round 2
+//             Combobox); default = the Round 1 account menu, found by its search box MENU_SEARCH_LABEL.
+// COMMON_MOCKS apply to every route. ctx = { origin, me (GET /auth/me), customerId, contractPath, shopRoomId }.
 import { coaByCodes, coaGrouped, coaList, loadCoa } from './coa.mjs';
 
 const COA = loadCoa();
@@ -22,6 +28,8 @@ export const MENU_SEARCH_LABEL = 'ค้นหารหัส หรือ ช�
 export const viewportFor = (width) => ({ width, height: width <= 430 ? 844 : 900 });
 
 export const mock = (path, json) => ({ path, json: typeof json === 'function' ? json : () => json });
+// A POST that only prices a quote: the one non-GET a mock may answer (check.test.mjs pins the /preview path).
+export const quoteMock = (path, json) => ({ ...mock(path, json), method: 'POST' });
 
 export const ACCOUNTING_PERMISSIONS = [
   'EXPENSE_POST', 'EXPENSE_APPROVE', 'EXPENSE_CANCEL', 'INCOME_POST', 'INCOME_APPROVE', 'INCOME_CANCEL',
@@ -194,24 +202,39 @@ async function openPurchasePayment(page) {
   await page.locator('[data-sonner-toast]').first().waitFor({ state: 'detached', timeout: 10000 });
 }
 
+// menu 'controls' (Round 2 Task 1): the menu is found through the trigger's aria-controls, not the search box's
+// aria-label, so R2-3a's AccountCombobox may name its search box through cmdk's <Command label> instead.
 const ACCOUNT_MENU_ITEMS_CARD = {
   id: 'account-menu-items-card',
   widths: [1440],
+  menu: 'controls',
   // item #1 defaults to 42-1102 — the trigger shows its name (role-agnostic: R1-2 may add role=combobox)
   trigger: (page) => page.locator('button', { hasText: 'ดอกเบี้ยเงินฝาก' }).first(),
 };
 const ACCOUNT_MENU_OVERRIDE_JV = {
   id: 'account-menu-override-jv',
   widths: [1440],
+  menu: 'controls',
   trigger: (page) => journalTable(page).locator('tbody tr').first().locator('td').first().locator('button').first(),
 };
 
+// Round 2 (Task 1): a portalled Radix Select inside QuickBuyModal (a Radix Dialog); R2-4b keeps id="quick-buy-model"
+// (the route's open step waits for it)
+const QUICK_BUY_MODEL_MENU = {
+  id: 'quick-buy-model-menu', widths: [1440, 390], menu: 'controls',
+  trigger: (page) => page.locator('#quick-buy-model'),
+};
+
+// The route of each of the 9 AddressForm hosts (spec §4.3) whose open step leaves the address fields on screen.
+// Not 'company-entity-edit' (EditCompanyDialog's ที่อยู่ is a textarea — AddCompanyDialog is the host), not
+// 'customer-create-dialog' (the address <details> stays closed) and not 'trade-in-quick-buy' (step 1 — the
+// address is on step 3): the r2- routes below open those.
 export const ADDRESS_FORM_HOSTS = [
-  'company-entity-edit', 'customer-create-dialog', 'contract-customer-create', 'contract-customer-edit',
-  'customer-edit-dialog', 'supplier-form', 'trade-in-quick-buy', 'branch-create', 'contact-create',
+  'company-entity-create', 'r2-customer-create-address', 'contract-customer-create', 'contract-customer-edit',
+  'customer-edit-dialog', 'supplier-form', 'r2-trade-in-quick-buy-address', 'branch-create', 'contact-create',
 ];
 
-export const ROUTES = [
+const R1_ROUTES = [
   { id: 'dunning-rule-dialog', path: '/settings/comms/dunning', appendix: ['S1-01'], open: clickButton('เพิ่ม กฎ'),
     mocks: [M.dunningRules, M.smsTemplates] },
   { id: 'sms-template-form', path: '/settings/comms/sms', appendix: ['§4.2 ข้อ 8'], open: clickButton('เพิ่มแม่แบบ'),
@@ -246,7 +269,7 @@ export const ROUTES = [
     open: async (page) => {
       await clickButton('รับซื้อเครื่อง')(page);
       await page.locator('#quick-buy-model:not([disabled])').waitFor();
-    } },
+    }, probes: [QUICK_BUY_MODEL_MENU] },
   { id: 'interest-config-form', path: '/settings/finance/interest', appendix: ['S1-03'],
     open: clickButton('+ สร้าง การตั้งค่า'), mocks: [M.interestConfigs] },
   { id: 'branch-create', path: '/branches', appendix: ['S1-06', 'S3-12'], open: clickButton('+ เพิ่มสาขา'),
@@ -292,3 +315,434 @@ export const ROUTES = [
       await page.getByRole('menuitem', { name: 'เพิ่มลูกค้า' }).click();
     } },
 ];
+
+// ---- Round 2 (plan 2026-11-16, spec §7 R2-2 … R2-4d + owner 2026-11-16) --------------------------------------
+// One route per screen Tasks 5–15 convert, opened until the converted field is on screen. Every list a picker
+// shows comes from a mock below (or the CPA chart in COMMON_MOCKS), so two runs measure the same options.
+
+const PREVIEW_STAFF = [
+  { id: 'preview-staff-1', name: 'พนักงานตัวอย่าง หนึ่ง', role: 'SALES', branch: 'สาขาตัวอย่าง (คลังหลัก)' },
+  { id: 'preview-staff-2', name: 'พนักงานตัวอย่างที่มีชื่อยาวมากเป็นพิเศษ สอง', role: 'BRANCH_MANAGER', branch: 'สาขาตัวอย่าง 2' },
+];
+const roomStaff = PREVIEW_STAFF.map((s) => ({
+  id: s.id, name: s.name, nickname: null, role: s.role, detail: [s.branch, s.role, s.id.slice(-6)].join(' · '),
+}));
+
+const serviceRequest = (ctx) => ({
+  id: 'preview-service-request-1', roomId: ctx.shopRoomId, symptom: 'จอกระพริบหลังใช้งานสองสัปดาห์', revision: 1,
+  status: 'OPEN',
+  todo: {
+    id: 'preview-service-todo-1', status: 'TODO', assigneeId: PREVIEW_STAFF[0].id,
+    assignee: { name: PREVIEW_STAFF[0].name }, dueDate: '2026-12-01T03:00:00.000Z',
+  },
+  sourceMessages: [], currentCustomerId: null, canOpenCase: false, canLinkCase: false, linkedCase: null,
+});
+
+const FB_THREAD_ID = 'preview-fb-thread-1';
+const FB_RECORD = { authorName: 'ลูกค้า Facebook ตัวอย่าง', text: 'รุ่นนี้ผ่อนได้ไหมครับ', deletedAt: null };
+const FB_THREAD = {
+  id: FB_THREAD_ID, revision: 1, status: 'OPEN', rootDeleted: false, needsReconciliation: false, assigneeId: null,
+  customerId: null, roomId: null, permalink: 'https://www.facebook.com/preview/posts/1',
+  capabilities: { publicReply: true, privateReply: false, reason: null },
+  records: [{ id: 'preview-fb-record-1', commentId: 'preview-comment-1', parentCommentId: null, ...FB_RECORD }],
+  replies: [], recordsTotal: 1, repliesTotal: 0, unresolvedReply: null,
+};
+
+const BUYBACK_QUESTIONS = {
+  bonusPct: '0',
+  questions: [{
+    id: 'preview-question-1', key: 'screen', title: 'สภาพหน้าจอ', helpText: null, selectType: 'SINGLE',
+    choices: [{ id: 'preview-choice-1', label: 'ไม่มีรอย', deductType: 'PERCENT', deductValue: '0', isNoneChoice: true }],
+  }],
+};
+const BUYBACK_QUOTE = {
+  available: true, previewToken: 'preview-token', grade: 'A', model: 'iPhone 15', storage: '128GB', price: '14500',
+  maxPrice: '14500', cashPrice: '14500', exchangePrice: '15000', bonusPct: '0',
+};
+// The questionnaire tab's reference catalog: 3 model/storage pairs, one profile.
+const BUYBACK_REFERENCE = {
+  questions: [],
+  reference: {
+    source: 'https://www.applehouseth.com/', capturedAt: '2026-11-01T00:00:00.000Z',
+    assignments: [
+      { model: 'iPhone 15', storage: '128GB', profileId: 'preview-profile-1' },
+      { model: 'iPhone 15', storage: '256GB', profileId: 'preview-profile-1' },
+      { model: 'iPhone 15 Pro Max', storage: '1TB', profileId: 'preview-profile-1' },
+    ],
+    profiles: { 'preview-profile-1': { questions: [], eligibilityText: 'เครื่องเปิดติด ไม่ติดล็อก iCloud' } },
+  },
+};
+
+const CANNED_TEMPLATES = [
+  { id: 'preview-canned-1', shortcut: '/ผ่อน', title: 'ตอบเรื่องผ่อนชำระ', content: 'ผ่อนได้สูงสุด 12 งวดค่ะ', category: 'ทักทาย',
+    sortOrder: 0, isActive: true, createdAt: '2026-11-01T00:00:00.000Z' },
+  { id: 'preview-canned-2', shortcut: '/โปร', title: 'โปรโมชันเดือนนี้', content: 'โปรประจำเดือน', category: 'ทักทาย',
+    sortOrder: 1, isActive: true, createdAt: '2026-11-01T00:00:00.000Z' },
+];
+const QUICK_REPLIES = [
+  { id: 'preview-quick-reply-1', cannedResponseId: 'preview-canned-1', label: 'ดูโปรผ่อน', type: 'POSTBACK',
+    payload: 'TEMPLATE:preview-canned-2', url: null, message: null, sortOrder: 0, createdAt: '2026-11-01T00:00:00.000Z' },
+];
+
+// A purchase-wizard draft (useCreatePoWizard.ts:17) on step 0 with one case line: StepSupplier's supplier picker and
+// AccessoryItemRow's "สำหรับรุ่น" (เคส) are both on screen. Local storage only — nothing is submitted.
+async function openPurchaseItems(page) {
+  await page.evaluate((supplierId) => {
+    const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' });
+    localStorage.setItem('bestchoice-po-draft', JSON.stringify({
+      step: 0,
+      mode: 'po',
+      form: {
+        supplierId, orderDate: today, expectedDate: '', notes: '', discount: '', discountAfterVat: '',
+        paymentStatus: 'UNPAID', paymentMethod: '', paidAmount: '', paymentNotes: '',
+      },
+      items: [{
+        brand: '', category: 'ACCESSORY', model: '', color: '', storage: '', quantity: '1', unitPrice: '120',
+        accessoryType: 'เคส', accessoryBrand: '',
+      }],
+      savedAt: new Date().toISOString(),
+    }));
+  }, PO_SUPPLIER.id);
+  await clickButton('+ ซื้อสินค้า')(page);
+  await page.getByRole('combobox', { name: 'สำหรับรุ่น' }).first().waitFor();
+  // the "draft recovered" toast (5 s) can sit over the row at 390
+  await page.locator('[data-sonner-toast]').first().waitFor({ state: 'detached', timeout: 10000 });
+}
+
+const pickRadixOption = async (page, id, option) => {
+  await page.locator(`#${id}`).click();
+  await page.getByRole('option', { name: option, exact: true }).click();
+};
+
+// QuickBuyModal step 1 → 2 → 3 (AddressForm "ที่อยู่ตามบัตร" + the seller picker). Every value is wizard state; the
+// one POST is the price quote (quoteMock) — nothing is bought (step 4 "ยืนยัน" is never reached).
+async function openQuickBuyAddress(page) {
+  await clickButton('รับซื้อเครื่อง')(page);
+  await page.locator('#quick-buy-model:not([disabled])').waitFor();
+  await pickRadixOption(page, 'quick-buy-model', 'iPhone 15');
+  await pickRadixOption(page, 'quick-buy-storage', '128GB');
+  await page.locator('#quick-buy-imei').fill('356000000000005');
+  await page.locator('#quick-buy-serial').fill('PREVIEWSERIAL01');
+  await clickButton('ถัดไป')(page);
+  await page.getByText('ไม่มีรอย', { exact: true }).click();
+  await page.locator('button:not([disabled])', { hasText: 'ถัดไป' }).waitFor();
+  await clickButton('ถัดไป')(page);
+  await page.getByText('ที่อยู่ตามบัตร', { exact: true }).waitFor();
+}
+
+// The inbox room's customer panel is a column at ≥1280 and a sheet below (UnifiedInboxPage/index.tsx:518-519).
+async function openRoomDossier(page) {
+  if (page.viewportSize().width >= 1280) return;
+  await page.getByRole('button', { name: /^(เปิด)?ข้อมูลลูกค้า$/ }).first().click();
+  await page.getByRole('dialog').first().waitFor();
+}
+
+const R2 = {
+  roomStaff: mock(/^\/staff-chat\/rooms\/[^/]+\/eligible-staff$/, roomStaff),
+  onlineStaff: mock(/^\/staff-chat\/staff\/online$/, PREVIEW_STAFF.map((s) => ({
+    id: s.id, name: s.name, email: `${s.id}@preview.invalid`, activeCount: 0,
+  }))),
+  users: mock(/^\/users$/, {
+    data: PREVIEW_STAFF.map((s) => ({ id: s.id, name: s.name, role: s.role, isActive: true })),
+    total: PREVIEW_STAFF.length, page: 1, limit: 50,
+  }),
+  serviceRequests: [
+    mock(/^\/staff-chat\/rooms\/[^/]+\/service-requests$/, (url, ctx) => ({ data: [serviceRequest(ctx)], total: 1 })),
+    mock(/^\/staff-chat\/service-requests\/preview-service-request-1$/, (url, ctx) => serviceRequest(ctx)),
+    // the dialog's customer/case picker (ChatServiceRequestDialog.tsx:46-52) — empty, the same on every start
+    mock(/^\/staff-chat\/rooms\/[^/]+\/service-intake-options$/, { data: [], total: 0 }),
+  ],
+  // one supplier whose address is the AddressForm JSON, so the edit dialog opens with every picker filled
+  // (create mode leaves อำเภอ / ตำบล disabled)
+  supplierEdit: mock(/^\/suppliers$/, {
+    data: [{
+      id: 'preview-supplier-edit-1', type: 'JURISTIC', name: 'ผู้จัดจำหน่ายตัวอย่าง', titleName: null,
+      contactName: 'ผู้ติดต่อตัวอย่าง', contactPhone: '020000001', contactPosition: null, nickname: null,
+      branchCode: '00000', phone: '020000000', phoneSecondary: null, lineId: null,
+      address: JSON.stringify({
+        houseNo: '12', moo: '', village: '', soi: '', road: 'ราชดำเนินใน', province: 'กรุงเทพมหานคร',
+        district: 'เขตพระนคร', subdistrict: 'แขวงพระบรมมหาราชวัง', postalCode: '10200',
+      }),
+      taxId: '0105500000000', hasVat: true, paymentMethods: [], notes: null, isActive: true,
+      createdAt: '2026-11-01T00:00:00.000Z', _count: { products: 0, purchaseOrders: 0 },
+    }],
+    total: 1, page: 1, totalPages: 1,
+  }),
+  sellConfig: mock(/^\/trade-ins\/sell-config$/, { exchangeBonusPct: 10 }),
+  facebookComments: [
+    mock(/^\/staff-chat\/facebook-comments$/, {
+      data: [{ id: FB_THREAD_ID, rootDeleted: false, records: [FB_RECORD] }], total: 1,
+    }),
+    mock(/^\/staff-chat\/work-targets\/FACEBOOK_COMMENT\/preview-fb-thread-1$/, {
+      targetType: 'FACEBOOK_COMMENT', targetId: FB_THREAD_ID, roomId: null, title: 'คอมเมนต์ใต้โพสต์ Facebook',
+    }),
+    mock(/^\/staff-chat\/facebook-comments\/preview-fb-thread-1$/, FB_THREAD),
+    mock(/^\/staff-chat\/facebook-comments\/preview-fb-thread-1\/eligible-staff$/,
+      PREVIEW_STAFF.map(({ id, name, role }) => ({ id, name, role }))),
+  ],
+  expensesList: [
+    mock(/^\/expense-documents$/, { data: [], total: 0, page: 1, limit: 20 }),
+    mock(/^\/expense-documents\/summary$/, {
+      totalCount: 0, byStatus: {}, accrualUnpaidCount: 0, accrualUnpaidTotal: '0.00',
+    }),
+    mock(/^\/expenses\/periods\/reopened$/, []),
+  ],
+  // the "วิเคราะห์" tab (CollectionsPage/tabs/AnalyticsTab.tsx) and every card on it — empty except the one
+  // stuck contract the reassign dialog needs
+  collections: [
+    mock(/^\/overdue\/analytics$/, {
+      range: '30d', weeklyCollectionRate: [], promiseKeptTrend: [], dunningActionVolume: [], letterDispatchByType: [],
+      mdmLockVolume: [],
+    }),
+    mock(/^\/overdue\/analytics\/(aging|leaderboard|recovery)$/, []),
+    // WorkloadGrid on the same tab reads the whole queue (the default tab reads it too, before the switch)
+    mock(/^\/overdue\/queue$/, { data: [], total: 0, page: 1, limit: 500, truncated: false }),
+    mock(/^\/overdue\/analytics\/stuck$/, [{
+      contractId: 'preview-stuck-1', contractNumber: 'CT-PREVIEW-0001', customerName: 'ลูกค้าตัวอย่าง',
+      customerPhone: null, branchName: 'สาขาตัวอย่าง (คลังหลัก)', assignedToId: null, assignedToName: null,
+      daysIdle: 21, outstanding: 4500,
+    }]),
+    mock(/^\/reporting\/compliance\/dunning-frequency$/, { threshold: 5, rows: [] }),
+    mock(/^\/reporting\/compliance\/legal-pipeline$/, { windows: [], rows: [] }),
+    mock(/^\/reporting\/compliance\/audit-summary$/, (url) => ({
+      period: url.searchParams.get('period') === 'month' ? 'month' : 'week', since: '2026-11-09T00:00:00.000Z',
+      actionsByUser: [], actionsByType: [], anomalyCount: 0,
+    })),
+    mock(/^\/reporting\/compliance\/voice-memo-retention$/, {
+      hotDays: 30, deleteDays: 365, eligibleForGlacier: { count: 0, sample: [] }, eligibleForDelete: { count: 0, sample: [] },
+    }),
+  ],
+  stockAlerts: [
+    mock(/^\/reorder-points\/low-stock$/, { totalLowStock: 0, items: [] }),
+    mock(/^\/reorder-points$/, []),
+    mock(/^\/reorder-points\/alerts$/, { data: [], total: 0 }),
+  ],
+  purchaseOrdersSummary: mock(/^\/purchase-orders\/summary$/, {}),
+  quickBuy: [
+    mock(/^\/trade-ins\/quick-buy\/questions$/, BUYBACK_QUESTIONS),
+    quoteMock(/^\/trade-ins\/quick-buy\/preview$/, BUYBACK_QUOTE),
+    mock(/^\/trade-ins\/check-imei\/\d+$/, { result: 'ok', occurrences: [] }),
+  ],
+  buybackReference: mock(/^\/trade-ins\/buyback-questions$/, BUYBACK_REFERENCE),
+  canned: [
+    mock(/^\/staff-chat\/canned-responses$/, CANNED_TEMPLATES),
+    mock(/^\/staff-chat\/canned-responses\/preview-canned-1\/quick-replies$/, QUICK_REPLIES),
+    mock(/^\/staff-chat\/canned-responses\/[^/]+\/bubbles$/, []),
+  ],
+  // the staff option label ends with the id's last 6 characters (ChatAnalyticsPage.tsx:280-283) — preview ids change
+  // on every preview start, so the list is fixed here
+  chatAnalyticsOptions: mock(/^\/chat-analytics\/v2\/filter-options$/, {
+    branches: [{ id: 'preview-branch-1', name: 'สาขาตัวอย่าง (คลังหลัก)' }, { id: 'preview-branch-2', name: 'สาขาตัวอย่าง 2' }],
+    staff: PREVIEW_STAFF.map(({ id, name }) => ({ id, name })),
+  }),
+  salespersons: mock(/^\/sales\/salespersons$/, PREVIEW_STAFF.map(({ id, name }) => ({ id, name }))),
+  yeastar: mock(/^\/yeastar\/extensions$/, [
+    { number: '101', name: 'หน้าร้าน สาขาตัวอย่าง', status: 'Registered' },
+    { number: '102', name: 'ฝ่ายการเงิน', status: 'Unavailable' },
+  ]),
+  assetCode: mock(/^\/assets\/generate-code$/, { assetCode: 'AST-PREVIEW-0001' }),
+  afterSalesWalkIn: mock(/^\/after-sales\/lookup$/, {
+    found: false, source: 'WALK_IN', lineLinked: false, product: null, customer: null, contract: null, sale: null,
+    warranty: {
+      status: 'WALK_IN', daysRemainingIn7Day: 0, purchasedAt: null, shopWarrantyEndDate: null,
+      manufacturerWarrantyEndDate: null, checkedAt: '2026-11-16T00:00:00.000Z',
+    },
+    purchasePhotos: null, openCase: null,
+    outcomes: [{ outcome: 'REPAIR', enabled: true, implemented: true, payerDefault: 'CUSTOMER' }],
+  }),
+  // total 1 keeps the page off its first-use empty state, so the header's "สร้างใบจอง" is the way in
+  bookings: [
+    mock(/^\/bookings\/summary$/, {
+      total: 1, open: 0, pendingDeposit: 0, paid: 0, paidDepositHeld: '0.00', expiringWithin3Days: 0,
+      closed: { converted: 1, canceled: 0, expired: 0, total: 1 }, forfeitedThisMonth: '0.00',
+    }),
+    mock(/^\/bookings$/, { data: [], total: 0, page: 1, limit: 20 }),
+  ],
+};
+
+// Menu probes (rule MENU) on triggers that are portalled Radix menus today and stay one after their task
+// (located by role + accessible name the converting task keeps; the menu is found through aria-controls).
+const ACCOUNT_MENU_GL = {
+  id: 'account-menu-gl', widths: [1440, 390], menu: 'controls',
+  trigger: (page) => page.locator('#main button[role=combobox]').first(),
+};
+const ACCOUNT_MENU_PETTY_CASH = {
+  id: 'account-menu-petty-cash', widths: [1440, 390], menu: 'controls',
+  trigger: (page) => page.getByRole('dialog').getByRole('combobox', { name: 'บัญชี', exact: true }).first(),
+};
+const BOOKING_CUSTOMER_MENU = {
+  id: 'booking-customer-menu', widths: [1440, 390], menu: 'controls',
+  trigger: (page) => page.getByRole('dialog').getByRole('combobox', { name: 'ลูกค้า', exact: true }),
+};
+const INBOX_OWNER_MENU = {
+  id: 'inbox-owner-menu', widths: [1440, 390], menu: 'controls',
+  trigger: (page) => page.getByRole('dialog', { name: 'ตัวกรองแชท' }).getByRole('combobox', { name: 'ผู้ดูแล', exact: true }),
+};
+// 130 px trigger, 256 px list (Task 11); below 1024 the filters are a sheet (the route's open step opens it)
+const PROSPECT_OWNER_MENU = {
+  id: 'prospect-owner-menu', widths: [1440, 390], menu: 'controls',
+  trigger: (page) => page.getByRole('combobox', { name: 'ผู้ดูแล', exact: true }),
+};
+const PROFILE_EXTENSION_MENU = {
+  id: 'profile-extension-menu', widths: [1440, 390], menu: 'controls',
+  trigger: (page) => page.getByRole('combobox', { name: 'Extension Yeastar (โทรศัพท์)', exact: true }),
+};
+
+// Probes on fields that are native <select>s today: a native select has no aria-controls, so on baseline-r2 the
+// probe would fail ("menu not found") and a MENU failure blocks every compare. The task that converts the field
+// attaches the probe to its route (`probes: [X]`) and deletes the entry here — the probe then PASSes.
+export const PENDING_PROBES = {
+  'r2-expenses-list': [{ // Task 13
+    id: 'account-menu-expense-filter', widths: [1440], menu: 'controls',
+    trigger: (page) => page.getByRole('combobox', { name: 'ประเภทค่าใช้จ่าย' }),
+  }],
+  'expense-new': [{ // Task 13
+    id: 'account-menu-expense-line', widths: [1440], menu: 'controls',
+    trigger: (page) => page.getByRole('combobox', { name: 'บัญชีค่าใช้จ่าย' }).first(),
+  }],
+  'recurring-bill-dialog': [{ // Task 13
+    id: 'account-menu-recurring-bill', widths: [1440], menu: 'controls',
+    trigger: (page) => page.getByRole('dialog').getByRole('combobox', { name: 'บัญชีค่าใช้จ่าย' }),
+  }],
+  'r2-stock-alert-create': [{ // Task 12 (menu inside a Radix Dialog)
+    id: 'stock-alert-model-menu', widths: [1440, 390], menu: 'controls',
+    trigger: (page) => page.getByRole('dialog').getByRole('combobox', { name: 'รุ่น', exact: true }),
+  }],
+  'r2-po-wizard-items': [{ // Task 12 (overflow-x-auto table; vaul Drawer below 1024)
+    id: 'po-accessory-model-menu', widths: [1440, 390], menu: 'controls',
+    trigger: (page) => page.getByRole('combobox', { name: 'สำหรับรุ่น' }).first(),
+  }],
+};
+
+const room = (ctx) => (ctx.shopRoomId ? `/inbox/${ctx.shopRoomId}?zone=shop` : null);
+
+export const R2_ROUTES = [
+  // R2-2 AddressForm hosts the Round 1 routes left closed
+  { id: 'r2-customer-create-address', path: '/customers', appendix: ['R2-2 AddressForm'], mocks: [],
+    open: async (page) => {
+      await page.getByRole('button', { name: /^\+ เพิ่ม(ลูกค้า|ผู้สนใจ)ใหม่$/ }).first().click();
+      const dialog = page.getByRole('dialog', { name: 'เพิ่มลูกค้าใหม่' });
+      await dialog.locator('summary').filter({ hasText: 'ที่อยู่' }).first().click();
+      await dialog.locator('summary').filter({ hasText: 'ข้อมูลที่ทำงาน' }).first().click();
+    } },
+  { id: 'r2-trade-in-quick-buy-address', path: '/trade-in', appendix: ['R2-2 AddressForm', 'R2-3b ContactCombobox'],
+    mocks: [M.buybackCatalog, ...R2.quickBuy], open: openQuickBuyAddress },
+  // SupplierForm in edit mode (supplier-form is the create mode: อำเภอ / ตำบล disabled until a province is picked)
+  { id: 'r2-supplier-edit', path: '/suppliers', appendix: ['R2-2 AddressForm'], mocks: [R2.supplierEdit],
+    open: async (page) => {
+      await page.getByRole('button', { name: /^แก้ไข / }).first().click();
+      await page.getByRole('dialog', { name: 'แก้ไขผู้จัดจำหน่าย' }).waitFor();
+    } },
+  // R2-3a account pickers the Round 1 routes do not show
+  { id: 'r2-general-ledger', path: '/finance/general-ledger', appendix: ['R2-3a GL'], mocks: [],
+    probes: [ACCOUNT_MENU_GL] },
+  { id: 'r2-account-role-dialog', path: '/settings/access/account-roles', appendix: ['R2-3a AccountRoles'],
+    mocks: [M.roleMap], open: async (page) => {
+      await page.getByRole('button', { name: /^แก้ไข / }).first().click();
+      await page.getByRole('dialog').waitFor();
+    } },
+  // AdjustmentTable shows once the amount received differs from the lines (OtherIncomeEntryPage.tsx:1015);
+  // its "เพิ่มผลต่างที่เหลือ …" button adds one adjustment row (with its account picker). Form state only.
+  { id: 'r2-other-income-adjustment', path: '/other-income/new', appendix: ['R2-3a AdjustmentTable'],
+    mocks: M.otherIncome, open: async (page) => {
+      await page.getByLabel(/^จำนวนเงินที่ได้รับจริง/).fill('100');
+      await page.getByRole('button', { name: /^เพิ่มผลต่างที่เหลือ/ }).click();
+      await page.getByRole('textbox', { name: 'หมายเหตุผลต่างรายการ 1' }).waitFor();
+    } },
+  { id: 'r2-petty-cash-lines', path: '/expenses/new', appendix: ['R2-3a PettyCash', 'R2-3b VendorCombobox'],
+    mocks: M.expense, open: async (page) => {
+      await page.getByRole('button', { name: /^เงินสดย่อย/ }).click();
+    }, probes: [ACCOUNT_MENU_PETTY_CASH] },
+  // R2-4c expense account fields (+ the credit-note copy of ItemLinesSection)
+  { id: 'r2-expenses-list', path: '/expenses', appendix: ['R2-4c ExpensesPage'], mocks: R2.expensesList },
+  { id: 'r2-credit-note-lines', path: '/expenses/new?type=CN', appendix: ['R2-4c ItemLinesSection'], mocks: M.expense,
+    open: async (page) => {
+      await page.getByRole('button', { name: /^ไม่มีเอกสารต้นทาง/ }).click();
+    } },
+  // R2-3b ContactCombobox / EmployeeCombobox / CustomerCombobox hosts the Round 1 routes do not show
+  // SettlementLinesSection lists the branch's open ACCRUAL bills (GET /expense-documents) — none here
+  { id: 'r2-settlement-new', path: '/expenses/new?type=SE', appendix: ['R2-3b VendorCombobox'],
+    mocks: [...M.expense, R2.expensesList[0]] },
+  { id: 'r2-asset-new', path: '/assets/new', appendix: ['R2-3b ContactCombobox'], mocks: [R2.assetCode] },
+  { id: 'r2-after-sales-walk-in', path: '/after-sales/new?imei=356000000000005', appendix: ['R2-3b ContactCombobox'],
+    mocks: [R2.afterSalesWalkIn] },
+  { id: 'r2-po-wizard-items', path: '/purchase-orders', appendix: ['R2-3b ContactCombobox', 'R2-4b AccessoryItemRow'],
+    mocks: [M.purchaseOrders, M.poSuppliers, R2.purchaseOrdersSummary], open: openPurchaseItems },
+  { id: 'r2-booking-create', path: '/bookings', appendix: ['R2-3b CustomerCombobox'], mocks: R2.bookings,
+    open: clickButton('สร้างใบจอง'), probes: [BOOKING_CUSTOMER_MENU] },
+  { id: 'r2-store-appointments', path: '/appointments', appendix: ['R2-3b CustomerCombobox'], mocks: [] },
+  // R2-4a staff fields
+  { id: 'r2-inbox-filter', path: '/inbox?zone=shop', appendix: ['R2-4a ChannelFilter'], mocks: [R2.onlineStaff],
+    open: clickButton('ตัวกรองแชท'), probes: [INBOX_OWNER_MENU] },
+  { id: 'r2-inbox-follow-up', path: room, appendix: ['R2-4a ChatFollowUpDialog'], mocks: [R2.roomStaff],
+    blockWrites: true, open: async (page) => {
+      await openRoomDossier(page);
+      await clickButton('ตั้งนัดติดตาม')(page);
+      await page.getByRole('dialog').getByText('ผู้รับผิดชอบงาน').waitFor();
+    } },
+  { id: 'r2-inbox-service-request', path: room, appendix: ['R2-4a ChatServiceRequestDialog'],
+    mocks: [R2.roomStaff, ...R2.serviceRequests], blockWrites: true, open: async (page) => {
+      await openRoomDossier(page);
+      await clickButton('บริการหลังการขาย')(page);
+      await clickButton('รับเรื่องหลังการขาย')(page);
+      await page.getByRole('dialog').getByText('ผู้รับผิดชอบ').waitFor();
+    } },
+  { id: 'r2-inbox-service-request-edit', path: room, appendix: ['R2-4a ChatServiceRequestCard'],
+    mocks: [R2.roomStaff, ...R2.serviceRequests], blockWrites: true, open: async (page) => {
+      await openRoomDossier(page);
+      await clickButton('บริการหลังการขาย')(page);
+      await page.getByRole('button', { name: /จอกระพริบหลังใช้งานสองสัปดาห์/ }).click();
+      await clickButton('แก้ไขการติดตาม')(page);
+    } },
+  { id: 'r2-inbox-facebook-comment', path: '/inbox?zone=shop', appendix: ['R2-4a FacebookCommentPanel'],
+    mocks: R2.facebookComments, open: async (page) => {
+      await clickButton('คอมเมนต์')(page);
+      await page.getByRole('button', { name: /ลูกค้า Facebook ตัวอย่าง/ }).click();
+      await page.getByText('ผู้รับผิดชอบคอมเมนต์', { exact: true }).waitFor();
+    } },
+  // TodoFilters is on the page; todo-form (above) covers TodoForm in its dialog
+  { id: 'r2-todos-list', path: '/todos', appendix: ['R2-4a TodoFilters'], mocks: [M.branchManagerActor] },
+  { id: 'r2-collections-stuck-reassign', path: '/collections', appendix: ['R2-4a StuckContractsSection'],
+    mocks: [...R2.collections, R2.users], open: async (page) => {
+      await page.getByRole('button', { name: /^วิเคราะห์/ }).click();
+      await page.getByRole('checkbox', { name: 'เลือก CT-PREVIEW-0001' }).click();
+      await page.getByRole('button', { name: /^มอบหมายใหม่/ }).click();
+      await page.getByRole('dialog').waitFor();
+    } },
+  // ProspectFilterBar is a sheet below 1024 (ResponsiveFilterPanel)
+  { id: 'r2-prospect-filters', path: '/customers?view=prospects', appendix: ['R2-4a ProspectFilterBar'],
+    mocks: [R2.users], open: async (page) => {
+      if (page.viewportSize().width < 1024) await page.getByRole('button', { name: 'เปิดตัวกรอง' }).click();
+    }, probes: [PROSPECT_OWNER_MENU] },
+  // R2-4b models + suppliers (QuickBuyModal's model field: trade-in-quick-buy above)
+  // ยี่ห้อ Apple enables รุ่น (local form state only)
+  { id: 'r2-product-create', path: '/products/create', appendix: ['R2-4b ProductInfoCard', 'R2-4b BranchSupplierCard'],
+    mocks: [M.poSuppliers, M.branches], open: async (page) => {
+      await page.getByLabel('ยี่ห้อ *', { exact: true }).selectOption('Apple');
+    } },
+  { id: 'r2-stock-alert-create', path: '/stock/alerts', appendix: ['R2-4b StockAlertsPage'],
+    mocks: [...R2.stockAlerts, M.branches], open: async (page) => {
+      await clickButton('+ จุดสั่งซื้อซ้ำ')(page);
+      await page.getByRole('dialog').getByLabel('แบรนด์', { exact: true }).selectOption('Apple');
+    } },
+  { id: 'r2-trade-in-questions', path: '/trade-in', appendix: ['R2-4b ReferenceQuestionnaire'],
+    mocks: [R2.buybackReference, R2.sellConfig], open: async (page) => {
+      await page.getByRole('radio', { name: 'แบบตรวจสภาพ', exact: true }).click();
+      await page.getByText('รุ่นและความจุ', { exact: true }).waitFor();
+    } },
+  { id: 'r2-purchase-orders-list', path: '/purchase-orders', appendix: ['R2-4b POListTab'],
+    mocks: [M.purchaseOrders, M.poSuppliers, R2.purchaseOrdersSummary] },
+  // R2-4d others
+  { id: 'r2-chat-analytics', path: '/chat-analytics', appendix: ['R2-4d ChatAnalyticsPage'], mocks: [R2.chatAnalyticsOptions] },
+  { id: 'r2-sales-history', path: '/sales', appendix: ['R2-4d SalesHistoryPage'], mocks: [R2.salespersons] },
+  { id: 'r2-canned-quick-reply', path: '/canned-responses', appendix: ['R2-4d QuickReplyEditor'], mocks: R2.canned,
+    open: async (page) => {
+      await page.getByRole('button', { name: 'ขยาย', exact: true }).first().click();
+      await page.getByText('ตอบเรื่องผ่อนชำระ', { exact: true }).click();
+      await page.getByText('เมื่อกด:', { exact: true }).waitFor();
+    } },
+  { id: 'r2-profile-yeastar', path: '/profile', appendix: ['R2-4d UserProfilePage'], mocks: [R2.yeastar],
+    probes: [PROFILE_EXTENSION_MENU] },
+];
+
+export const ROUTES = [...R1_ROUTES, ...R2_ROUTES];

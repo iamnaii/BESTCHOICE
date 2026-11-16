@@ -76,6 +76,16 @@ export function selectRoutes(ids, routes) {
 
 export const cellId = (c) => `${c.route}|${c.width}|${c.theme}`;
 
+// How a route's network rule answers one /api request (path WITHOUT /api or /api/admin): the first mock
+// whose method (default GET) and path match → 'mock'; else a non-GET on a blockWrites route → 'block'
+// (aborted, listed in the cell as blockedWrites); else 'pass' to the preview.
+export function routeRequest(route, mocks, method, path) {
+  const mock = mocks.find((m) => (m.method ?? 'GET') === method && m.path.test(path));
+  if (mock) return { action: 'mock', mock };
+  if (route.blockWrites && method !== 'GET') return { action: 'block' };
+  return { action: 'pass' };
+}
+
 // A cell whose open step did not throw can still show the wrong screen: the app redirected (role
 // menu, missing record), an error fallback replaced the page, or nothing measurable is on it.
 // Query parameters may differ (the shell adds ?zone=); the pathname may not.

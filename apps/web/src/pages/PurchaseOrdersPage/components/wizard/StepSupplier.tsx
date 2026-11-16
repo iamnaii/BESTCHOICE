@@ -118,10 +118,10 @@ export function StepSupplier({
           <ContactCombobox
             id={`${uiFieldId}-1`}
             roleNeeded="SUPPLIER"
-            value={selectedSupplier?.name ?? (suppliersLoading ? 'กำลังโหลด...' : '')}
+            value={selectedSupplier?.name ?? ''}
             onSelect={onSupplierSelect}
             invalid={!form.supplierId && suppliersError}
-            placeholder="เลือก/ค้นหาผู้จัดจำหน่าย"
+            placeholder={suppliersLoading ? 'กำลังโหลด…' : 'เลือก/ค้นหาผู้จัดจำหน่าย'}
           />
           {selectedSupplier && (
             <div className="mt-1.5 flex gap-2 flex-wrap">

@@ -3,7 +3,9 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { StepSupplier } from './StepSupplier';
 
 vi.mock('@/components/contacts/ContactCombobox', () => ({
-  ContactCombobox: () => <div data-testid="contact-combobox" />,
+  ContactCombobox: ({ value, placeholder }: { value: string; placeholder?: string }) => (
+    <div data-testid="contact-combobox" data-value={value} data-placeholder={placeholder} />
+  ),
 }));
 
 const ERROR = 'วันที่คาดรับสินค้าต้องไม่ก่อนวันที่สั่ง';
@@ -76,5 +78,36 @@ describe('StepSupplier — วิธีซื้อ toggle (one wizard, two ways
     expect(receive).toHaveAttribute('type', 'button');
     fireEvent.click(receive);
     expect(onModeChange).toHaveBeenCalledWith('receive');
+  });
+});
+
+describe('StepSupplier — supplier field while the supplier list loads (R2-3b)', () => {
+  it('loading shows "กำลังโหลด…" as the placeholder, never as a value', () => {
+    renderStep({ suppliersLoading: true });
+    const combo = screen.getByTestId('contact-combobox');
+    expect(combo).toHaveAttribute('data-value', '');
+    expect(combo).toHaveAttribute('data-placeholder', 'กำลังโหลด…');
+  });
+
+  it('loaded: the picker placeholder, and the chosen supplier name as the value', () => {
+    const { unmount } = renderStep();
+    expect(screen.getByTestId('contact-combobox')).toHaveAttribute(
+      'data-placeholder',
+      'เลือก/ค้นหาผู้จัดจำหน่าย',
+    );
+    unmount();
+    renderStep({
+      selectedSupplier: {
+        id: 's1',
+        name: 'ซัพพลายเออร์ หนึ่ง',
+        contactName: null,
+        hasVat: false,
+        paymentMethods: [],
+      },
+    });
+    expect(screen.getByTestId('contact-combobox')).toHaveAttribute(
+      'data-value',
+      'ซัพพลายเออร์ หนึ่ง',
+    );
   });
 });

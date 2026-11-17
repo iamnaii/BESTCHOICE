@@ -98,21 +98,23 @@ describe('getSidebarForRole — populated ZONE_CONFIG', () => {
     expect(sales?.items.map((i) => i.path)).not.toContain('/shop/daily-cash');
   });
 
-  it('OWNER fin sections include all FIN-zone keys (regression guard)', () => {
+  it('OWNER fin sections have exact expected keys (regression guard — PEAK 2026-11-17)', () => {
     const keys = getSidebarForRole('OWNER', 'fin').map((s) => s.key);
-    // Union of all FIN zone sections (SP5 + P4 SP1-5)
-    expect(keys).toContain('owner-overview');
-    // owner-fin-collection removed — collection links merged into owner-fin-revenue
-    expect(keys).toContain('owner-fin-revenue');
-    expect(keys).toContain('owner-fin-expense');
-    expect(keys).toContain('owner-tax');
-    expect(keys).toContain('owner-accounting');
-    expect(keys).toContain('owner-reports');
-    expect(keys).toContain('owner-bank');
+    expect(keys).toEqual([
+      'owner-overview',
+      'fin-revenue',
+      'owner-collection',
+      'fin-expense',
+      'asset',
+      'fin-cash',
+      'fin-tax',
+      'fin-statements',
+      'owner-period-close',
+      'owner-reports',
+    ]);
     // owner-doc-config + owner-fin-integrations removed (dedupe 2026-06-24) — both duplicated the settings submenu
-    expect(keys).not.toContain('owner-doc-config'); // → settings › บัญชี & ภาษี › เลขที่/รูปแบบเอกสาร
+    expect(keys).not.toContain('owner-doc-config');
     expect(keys).not.toContain('owner-fin-integrations');
-    expect(keys).toContain('owner-fin-notifications');
   });
 
   it('OWNER settings zone is a single registry-driven "settings" section (contacts moved inside it)', () => {
@@ -156,10 +158,10 @@ describe('getSidebarForRole — populated ZONE_CONFIG', () => {
     expect(allPaths).toContain('/contracts');
   });
 
-  it('ACCOUNTANT fin sections include bank but no longer doc-config (removed — OWNER-only page)', () => {
+  it('ACCOUNTANT fin sections include cash/bank but no longer doc-config (removed — OWNER-only page)', () => {
     const keys = getSidebarForRole('ACCOUNTANT', 'fin').map((s) => s.key);
     expect(keys).not.toContain('acc-doc-config'); // removed 2026-06-24 (document-config is OWNER-only; lived in settings)
-    expect(keys).toContain('acc-bank');
+    expect(keys).toContain('fin-cash');
   });
 });
 

@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { NAV_LABELS } from '@/config/work-navigation';
 import { toast } from 'sonner';
 import api from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -380,7 +381,7 @@ export default function VatPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="VAT (ภ.พ.30) — รายเดือน"
+        title={`${NAV_LABELS.vat} — รายเดือน`}
         icon={<Calculator className="size-5" />}
       />
       <Card>

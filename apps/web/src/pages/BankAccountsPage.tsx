@@ -1,5 +1,6 @@
 import { useId as useUiFieldId, useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { NAV_LABELS } from '@/config/work-navigation';
 import { Landmark, Wallet, Plus, RefreshCw, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
@@ -365,7 +366,7 @@ function AccountDrawer({ accountCode, open, onOpenChange }: AccountDrawerProps) 
                             <p className="text-xs text-muted-foreground leading-snug mb-2">
                               แสดง {MAX_DRAWER_LINES} รายการล่าสุดจากทั้งหมด{' '}
                               {displayLines.length} รายการ — ดูครบทุกรายการที่หน้า
-                              สมุดแยกประเภท หรือย่อช่วงเวลาลง
+                              {NAV_LABELS.generalLedger} หรือย่อช่วงเวลาลง
                             </p>
                           )}
                           <div className="border border-border rounded-md divide-y divide-border">
@@ -562,7 +563,7 @@ export default function BankAccountsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="บัญชีเงินสดและธนาคาร"
+        title={NAV_LABELS.cashBank}
         subtitle="ภาพรวมยอดเงินสดและบัญชีธนาคาร (อ้างอิงผังบัญชี 11-1101..1203)"
         icon={<Landmark className="size-5" />}
         action={

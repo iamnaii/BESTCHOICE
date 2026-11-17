@@ -1,5 +1,6 @@
 import ScreenTable from '@/components/ui/ScreenTable';
 import { useId as useUiFieldId, useState } from 'react';
+import { NAV_LABELS } from '@/config/work-navigation';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -166,7 +167,7 @@ export function GeneralLedgerPage() {
   return (
     <div>
       <PageHeader
-        title="บัญชีแยกประเภท"
+        title={NAV_LABELS.generalLedger}
         subtitle="บัญชีแยกประเภท — รายการเดินบัญชีแยกตามรหัสบัญชี"
         icon={<BookOpen className="size-6" />}
       />

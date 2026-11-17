@@ -70,7 +70,7 @@ const pages: NavEntry[] = [
   { label: 'สั่งซื้อ', path: '/purchase-orders', icon: Warehouse, keywords: 'purchase order PO สั่งซื้อ', roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
   { label: 'รอถ่ายรูป', path: '/purchase-orders/qc', icon: ClipboardCheck, keywords: 'qc ถ่ายรูป 6 มุม มือสอง photo pending รอถ่ายรูป', roles: ['OWNER', 'BRANCH_MANAGER'] },
   { label: 'รายงาน', path: '/reports', icon: BarChart3, keywords: 'report รายงาน', roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
-  { label: 'งบกำไรขาดทุน', path: '/profit-loss', icon: DollarSign, keywords: 'profit loss กำไร ขาดทุน', roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
+  { label: NAV_LABELS.profitLoss, path: '/profit-loss', icon: DollarSign, keywords: 'profit loss กำไร ขาดทุน', roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
   { label: 'แจ้งเตือน', path: '/notifications', icon: Bell, keywords: 'notification แจ้งเตือน', roles: ['OWNER', 'BRANCH_MANAGER'] },
   { label: 'สาขา', path: '/branches', icon: Building2, keywords: 'branch สาขา', roles: ['OWNER'] },
   { label: 'จัดการผู้ใช้', path: '/users', icon: UserCog, keywords: 'user ผู้ใช้', roles: ['OWNER'] },

@@ -1,5 +1,6 @@
 import { NativeSelect } from '@/components/ui/native-select';
 import { formControlClass } from '@/components/ui/form-styles';
+import { NAV_LABELS } from '@/config/work-navigation';
 import { useId as useFieldId } from 'react';
 import { getReportDateRange } from '@/lib/date';
 import { useAccountingPermissions } from '@/hooks/useAccountingPermissions';
@@ -532,8 +533,8 @@ export default function ExpensesPage() {
             <Receipt className="size-5 text-primary" />
           </div>
           <div className="min-w-0">
-            <h1 className="text-base font-semibold leading-snug text-foreground break-words">ค่าใช้จ่าย</h1>
-            <p className="text-sm text-muted-foreground leading-snug">บันทึกรายจ่ายและติดตามการจ่ายเงิน</p>
+            <h1 className="text-base font-semibold leading-snug text-foreground break-words">{NAV_LABELS.expenses}</h1>
+            <p className="text-sm text-muted-foreground leading-snug">รายการค่าใช้จ่ายและติดตามการจ่ายเงิน</p>
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">

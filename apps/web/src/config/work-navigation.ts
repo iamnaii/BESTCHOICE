@@ -10,6 +10,18 @@ export const NAV_LABELS = {
   payments: 'รับชำระค่างวด',
   stock: 'คลังสินค้า',
   chat: 'แชทลูกค้า',
+  // โซนไฟแนนซ์ — ศัพท์บัญชีตาม PEAK (2026-11-17) · ใช้ทั้งเมนูและหัวหน้า ห้ามเขียนชื่อเองที่อื่น
+  overdue: 'ติดตามลูกค้าค้างชำระ',
+  expenses: 'บันทึกค่าใช้จ่าย',
+  cashBank: 'เงินสด/ธนาคาร',
+  vat: 'ภาษีมูลค่าเพิ่ม (ภ.พ.30)',
+  wht: 'ภาษีหัก ณ ที่จ่าย (ภ.ง.ด.1/3/53)',
+  generalJournal: 'สมุดรายวัน',
+  generalLedger: 'บัญชีแยกประเภท',
+  balanceSheet: 'งบฐานะการเงิน',
+  profitLoss: 'งบกำไรขาดทุน',
+  cashFlow: 'งบกระแสเงินสด',
+  equityStatement: 'งบส่วนของผู้ถือหุ้น',
 } as const;
 
 export interface WorkAction {

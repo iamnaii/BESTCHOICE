@@ -177,6 +177,13 @@ export default function ThaiDateInput({
     cell.month === today.getMonth() &&
     cell.year === today.getFullYear();
 
+  // readOnly มีไว้กันพิมพ์เท่านั้น — ตัดสไตล์ช่อง readonly (inputVariants) ที่ติดมากับ className ของผู้เรียก
+  // ไม่ทับด้วย [[readonly]]:… เพราะ selector นั้นแรงกว่า bg ของผู้เรียก (เช่น bg-card ของช่องข้าง ๆ)
+  const callerClass = className
+    ?.split(/\s+/)
+    .filter((c) => c && !c.startsWith('[[readonly]]:'))
+    .join(' ');
+
   return (
     <Popover open={open} onOpenChange={changeOpen}>
         <div
@@ -203,7 +210,7 @@ export default function ThaiDateInput({
             }}
             className={cn(
               'w-full px-3 py-2 pr-9 border border-input rounded-lg text-sm bg-background cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-ring/30',
-              className,
+              callerClass,
             )}
           />
           </PopoverTrigger>

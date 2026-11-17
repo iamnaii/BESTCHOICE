@@ -514,6 +514,42 @@ describe('ExpenseFormV4 payroll — save and submit before the cutoff', () => {
     await waitFor(() => expect(apiPatch).toHaveBeenCalledWith('/expense-documents/new-1/payroll', expect.anything()));
     expect(apiPost.mock.calls.filter((c) => c[0] === '/expense-documents/payroll')).toHaveLength(1);
   });
+
+  it('ส่งขออนุมัติไม่ผ่านแต่ใบบันทึกแล้ว: โหลดใบกลับมาแล้วไม่เหลือคำเตือนก่อนออกจากหน้า', async () => {
+    flags.approvalEnabled = true;
+    flags.approvalRequiredDocTypes = ['PAYROLL'];
+    const events: string[] = [];
+    const add = vi.spyOn(window, 'addEventListener').mockImplementation(((type: string) => {
+      if (type === 'beforeunload') events.push('add');
+    }) as typeof window.addEventListener);
+    const remove = vi.spyOn(window, 'removeEventListener').mockImplementation(((type: string) => {
+      if (type === 'beforeunload') events.push('remove');
+    }) as typeof window.removeEventListener);
+    try {
+      apiPost.mockImplementation((path: string) => {
+        if (path === '/expense-documents/payroll') return Promise.resolve({ data: { id: 'new-1' } });
+        if (path === '/expense-documents/new-1/submit-for-approval') {
+          return Promise.reject({
+            response: { status: 409, data: { code: 'PAYROLL_SUBMIT_CUTOFF', message: CUTOFF_MESSAGE } },
+          });
+        }
+        return Promise.resolve({ data: {} });
+      });
+      const user = userEvent.setup();
+      mount();
+      await user.click(await screen.findByRole('button', { name: 'เลือกพนักงาน' }));
+      await waitFor(() => expect(events).toContain('add'));
+      docs['new-1'] = storedDoc('new-1', [ELIGIBLE_LINE]);
+      await user.click(screen.getByRole('button', { name: 'บันทึกและขออนุมัติ' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent(CUTOFF_MESSAGE);
+      // ใบที่บันทึกแล้วถูกโหลดกลับ (แผงตรวจมาจากใบที่เก็บไว้)
+      expect(await screen.findByRole('heading', { name: 'วันที่ต้องตรวจ (1)' })).toBeInTheDocument();
+      await waitFor(() => expect(events[events.length - 1]).toBe('remove'));
+    } finally {
+      add.mockRestore();
+      remove.mockRestore();
+    }
+  });
 });
 
 describe('ExpenseFormV4 payroll — fix round 1', () => {

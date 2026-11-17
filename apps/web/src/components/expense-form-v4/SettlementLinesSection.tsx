@@ -34,6 +34,8 @@ interface Props {
   branchId: string;
   value: SettlementFormFields;
   onChange: (v: SettlementFormFields) => void;
+  /** การเปลี่ยนที่ระบบทำเอง (ติ๊กใบตามค่าตั้ง · ปรับยอดเมื่อปิดจ่ายบางส่วน) — ไม่ส่ง = ใช้ onChange */
+  onAutoChange?: (v: SettlementFormFields) => void;
 }
 
 /** ผู้รับเงิน + ภาษีหัก ณ ที่จ่าย — แถว "ข้อมูลผู้รับเงิน" ของหน้า (ช่องเดิม ค่าเดิม) */
@@ -84,7 +86,7 @@ export function SettlementPayeeFields({ value, onChange }: Pick<Props, 'value' |
   );
 }
 
-export function SettlementLinesSection({ branchId, value, onChange }: Props) {
+export function SettlementLinesSection({ branchId, value, onChange, onAutoChange = onChange }: Props) {
   // D1.3.6.2 — OWNER-configurable pre-tick preference.
   // D1.3.6.1 — `settlement_max_bills_per_doc` (default 100). One fetch limit
   // matches the server-enforced cap so the user can never tick a doc the
@@ -150,7 +152,7 @@ export function SettlementLinesSection({ branchId, value, onChange }: Props) {
         added += 1;
       }
     }
-    if (added > 0) onChange({ ...value, selections: pre });
+    if (added > 0) onAutoChange({ ...value, selections: pre });
     // We intentionally exclude `value` + `onChange` from deps: the effect
     // should only re-fire on docs/branch/preference change, not when the
     // user toggles a row.
@@ -174,7 +176,7 @@ export function SettlementLinesSection({ branchId, value, onChange }: Props) {
         mutated = true;
       }
     }
-    if (mutated) onChange({ ...value, selections: next });
+    if (mutated) onAutoChange({ ...value, selections: next });
     // Excludes `value`/`onChange` so this only fires on flag/docs change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settlementPartialPaymentEnabled, docs]);

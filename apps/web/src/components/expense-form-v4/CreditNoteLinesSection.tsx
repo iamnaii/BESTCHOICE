@@ -1,4 +1,4 @@
-import { useId as useUiFieldId, useState } from 'react';
+import { useEffect, useId as useUiFieldId, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { Search, AlertCircle, Link2, FilePlus2 } from 'lucide-react';
@@ -51,7 +51,28 @@ export function CreditNoteLinesSection({ state, onChange, onLinesChange }: Props
     enabled: !isStandalone && search.trim().length >= 3,
   });
 
-  const selectedDoc = searchResults?.data.find((d) => d.id === state.originalDocumentId);
+  // เอกสารที่ผู้ใช้เลือกเก็บไว้เอง — ผลค้นหาโหลดใหม่ (กลับมาที่หน้าต่าง) แล้วไม่มีเอกสารนั้น การ์ดและแถว "รับเงินคืนเข้า" ต้องไม่หาย
+  const [pickedDoc, setPickedDoc] = useState<OriginalDoc | null>(null);
+  const selectedDoc =
+    pickedDoc && pickedDoc.id === state.originalDocumentId
+      ? pickedDoc
+      : searchResults?.data.find((d) => d.id === state.originalDocumentId);
+
+  // ปุ่มที่ผู้ใช้กดหายไปหลังเลือก/เปลี่ยนเอกสาร — ย้ายโฟกัสไปที่สิ่งที่เพิ่งขึ้นมา ไม่ให้หลุดไปที่ body
+  const selectedCardRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const focusAfterRender = useRef<'selected' | 'search' | null>(null);
+  useEffect(() => {
+    const target =
+      focusAfterRender.current === 'selected'
+        ? selectedCardRef.current
+        : focusAfterRender.current === 'search'
+          ? searchInputRef.current
+          : null;
+    if (!target) return;
+    focusAfterRender.current = null;
+    target.focus();
+  });
 
   const { data: capInfo } = useQuery<{
     originalTotal: string;
@@ -89,6 +110,7 @@ export function CreditNoteLinesSection({ state, onChange, onLinesChange }: Props
       vendorTaxId: mode === 'STANDALONE' ? state.vendorTaxId : '',
     });
     setSearch('');
+    setPickedDoc(null);
   };
 
   const validCount = state.lines.filter((l) => l.category && parseFloat(l.unitPrice) > 0).length;
@@ -134,7 +156,13 @@ export function CreditNoteLinesSection({ state, onChange, onLinesChange }: Props
             <div>
               <span className={formLabelClass}>เอกสารต้นฉบับ</span>
               {state.originalDocumentId && selectedDoc ? (
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 p-3">
+                <div
+                  ref={selectedCardRef}
+                  tabIndex={-1}
+                  role="group"
+                  aria-label={`เอกสารต้นฉบับที่เลือก ${selectedDoc.number}`}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 p-3"
+                >
                   <div className="min-w-0 leading-snug">
                     <div className="font-mono text-sm">{selectedDoc.number}</div>
                     <div className="text-sm">
@@ -152,6 +180,8 @@ export function CreditNoteLinesSection({ state, onChange, onLinesChange }: Props
                     onClick={() => {
                       onChange({ originalDocumentId: '' });
                       setSearch('');
+                      setPickedDoc(null);
+                      focusAfterRender.current = 'search';
                     }}
                     className="min-h-11 px-2 text-sm leading-snug text-destructive hover:underline"
                   >
@@ -162,7 +192,7 @@ export function CreditNoteLinesSection({ state, onChange, onLinesChange }: Props
                 <div className="space-y-2">
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-                    <input aria-label="ค้นหาเลข EX-... / ผู้ขาย (3 ตัวขึ้นไป)"
+                    <input ref={searchInputRef} aria-label="ค้นหาเลข EX-... / ผู้ขาย (3 ตัวขึ้นไป)"
                       type="text"
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
@@ -180,6 +210,8 @@ export function CreditNoteLinesSection({ state, onChange, onLinesChange }: Props
                             type="button"
                             key={doc.id}
                             onClick={() => {
+                              setPickedDoc(doc);
+                              focusAfterRender.current = 'selected';
                               onChange({ originalDocumentId: doc.id });
                               // เติมรายการจากเอกสารต้นฉบับ (ถ้ามี)
                               const sourceLines = doc.expenseDetail?.lines ?? [];

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -109,5 +109,22 @@ describe('PettyCashLinesSection', () => {
       await user.click(screen.getByRole('button', { name: 'ลบรายการ #2' }));
       expect(screen.getAllByLabelText('จำนวน')).toHaveLength(1);
     });
+  });
+
+  it('ปุ่มลบอยู่แถวล่างของบรรทัด — Tab ไล่ VAT % → เลขใบกำกับฯ → รายละเอียด → ลบ', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    // สองบรรทัด — ปุ่มลบของบรรทัดแรกจึงกดได้ (บรรทัดเดียวปุ่มถูกปิด ไม่อยู่ในลำดับ Tab)
+    await user.click(screen.getByRole('button', { name: 'เพิ่มรายการ' }));
+    const del = screen.getByRole('button', { name: 'ลบรายการ #1' });
+    const invoice = screen.getAllByLabelText('เลขใบกำกับฯ')[0];
+    expect(del.closest('tr')).toBe(invoice.closest('tr'));
+    act(() => screen.getAllByRole('combobox', { name: 'VAT %' })[0].focus());
+    await user.tab();
+    expect(invoice).toHaveFocus();
+    await user.tab();
+    expect(screen.getAllByLabelText('รายละเอียด')[0]).toHaveFocus();
+    await user.tab();
+    expect(del).toHaveFocus();
   });
 });

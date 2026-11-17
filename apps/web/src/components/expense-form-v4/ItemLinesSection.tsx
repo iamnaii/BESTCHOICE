@@ -268,17 +268,8 @@ export function ItemLinesSection({ lines, onChange, priceTypeLabel }: Props) {
                     </SelectContent>
                   </Select>
                 </td>
-                <td rowSpan={2} className={cn(cell, 'px-0')}>
-                  <button data-ui-control="button"
-                    type="button"
-                    onClick={() => removeLine(line.uid)}
-                    disabled={lines.length === 1}
-                    className="flex min-h-11 w-full items-center justify-center rounded-md text-muted-foreground hover:text-destructive disabled:opacity-30"
-                    aria-label="ลบรายการ"
-                  >
-                    <Trash2 className="size-4" />
-                  </button>
-                </td>
+                {/* ปุ่มลบอยู่แถวล่าง — Tab ไล่ตามที่ตาเห็น: บัญชี → ตัวเลข → คำอธิบาย → ต้องห้าม → ลบ (เจ้าของเลือก 2026-11-16) */}
+                <td className={cell} />
               </tr>
               <tr>
                 <td className={`${cell} pt-0 pb-2.5`}>
@@ -303,6 +294,17 @@ export function ItemLinesSection({ lines, onChange, priceTypeLabel }: Props) {
                     </label>
                     <TaxDisallowedHint compact />
                   </div>
+                </td>
+                <td className={cn(cell, 'px-0 pt-0 pb-2.5')}>
+                  <button data-ui-control="button"
+                    type="button"
+                    onClick={() => removeLine(line.uid)}
+                    disabled={lines.length === 1}
+                    className="flex min-h-11 w-full items-center justify-center rounded-md text-muted-foreground hover:text-destructive disabled:opacity-30"
+                    aria-label="ลบรายการ"
+                  >
+                    <Trash2 className="size-4" />
+                  </button>
                 </td>
               </tr>
             </tbody>

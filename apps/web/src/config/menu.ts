@@ -929,7 +929,7 @@ const ZONE_CONFIG: Record<string, RoleZoneConfig> = {
       ],
       fin: [
         { label: NAV_LABELS.home, path: '/finance-portfolio', icon: CircleDollarSign },
-        { label: NAV_LABELS.overdue, path: '/overdue', icon: AlertTriangle },
+        { label: 'ค้างชำระ', path: '/overdue', icon: AlertTriangle },
         { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
         { label: 'ชำระ', path: '/payments', icon: HandCoins },
         { label: 'แชท', path: '/inbox', icon: MessageSquareMore, badgeKey: 'chat-unread' },
@@ -954,7 +954,7 @@ const ZONE_CONFIG: Record<string, RoleZoneConfig> = {
     bottomNav: {
       shop: BRANCH_MANAGER_CONFIG.bottomNav,
       fin: [
-        { label: NAV_LABELS.overdue, path: '/overdue', icon: AlertTriangle },
+        { label: 'ค้างชำระ', path: '/overdue', icon: AlertTriangle },
         { label: 'จดหมาย', path: '/letters', icon: Mail },
         { label: 'รายงาน', path: '/reports', icon: BarChart3 },
         { label: 'แชท', path: '/inbox', icon: MessageSquareMore, badgeKey: 'chat-unread' },

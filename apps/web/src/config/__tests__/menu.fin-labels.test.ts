@@ -55,4 +55,11 @@ describe('ชื่อเมนูศัพท์บัญชี — ชื่�
     expect(labels).not.toContain('งบดุล');
     expect(labels).not.toContain('P&L');
   });
+
+  it('แถบล่างมือถือใช้ชื่อสั้นเดิม (ไม่ใช้ชื่อยาวของเมนูข้าง)', () => {
+    for (const role of ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER']) {
+      const overdue = getZoneConfigForRole(role)!.bottomNav.fin.find((i) => i.path === '/overdue');
+      expect(overdue?.label).toBe('ค้างชำระ');
+    }
+  });
 });

@@ -242,7 +242,6 @@ const FIN_REPORT_ITEMS: MenuItem[] = [
 ];
 const COMMISSIONS_REPORT_ITEM: MenuItem = { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins };
 
-
 /* ── SALES — พนักงานขาย ────────────────────────────── */
 
 const SALES_CONFIG: RoleMenuConfig = {
@@ -1024,7 +1023,7 @@ export function getLandingPathForRole(role: string): string {
   // แต่ไม่มี '/finance-portfolio' ในเมนูตัวเอง (และ route ก็ไม่อนุญาต) ⇒ ล็อกอินเสร็จจะเจอ
   // toast 'คุณไม่มีสิทธิ์เข้าถึงหน้านี้' แล้วถูกเด้งกลับ '/'
   // ACCOUNTANT เคยมีอาการเดียวกันแต่แก้ที่ต้นเหตุแล้ว (เพิ่ม /finance-portfolio เข้าเมนู
-  // acc-daily) — route อนุญาต ACC อยู่แล้ว ทางเลี่ยงนี้จึงเหลือไว้เพื่อ VIEWER
+  // acc-overview) — route อนุญาต ACC อยู่แล้ว ทางเลี่ยงนี้จึงเหลือไว้เพื่อ VIEWER
   return getZoneEntryPathForRole(role, config.defaultZone);
 }
 
@@ -1038,10 +1037,10 @@ export const COMMON_PATHS = new Set<string>(['/']);
 /**
  * ปลายทางที่ "ปลอดภัย" เมื่อพา role กลับเข้าโซนหนึ่ง.
  *
- * ห้ามใช้ ZONE_LANDING ตรง ๆ: ACCOUNTANT มี defaultZone = 'fin' แต่ '/finance-portfolio'
- * ไม่ได้อยู่ในเมนูของ ACCOUNTANT ⇒ resolveZoneForPath คืน null, role อื่นมีหน้านี้
- * ⇒ MainLayout ยิง toast 'คุณไม่มีสิทธิ์เข้าถึงหน้านี้' แล้วเด้งกลับ '/' ทั้งที่ router
- * อนุญาตจริง. เลือกจากเมนูของ role เองแทนเมื่อ landing ใช้ไม่ได้.
+ * ห้ามใช้ ZONE_LANDING ตรง ๆ: role ที่ landing ของโซนไม่อยู่ในเมนูตัวเอง (เช่น VIEWER ที่ defaultZone = 'fin'
+ * แต่ไม่มี '/finance-portfolio' ในเมนู) ⇒ resolveZoneForPath คืน null ⇒ MainLayout ยิง toast
+ * 'คุณไม่มีสิทธิ์เข้าถึงหน้านี้' แล้วเด้งกลับ '/'. เลือกรายการแรกของเมนู role เองแทน.
+ * (ACCOUNTANT มี /finance-portfolio ในเมนูแล้ว กลุ่ม acc-overview — fallback นี้เหลือไว้สำหรับ role อย่าง VIEWER)
  */
 export function getZoneEntryPathForRole(role: string, zone: Zone): string {
   if (zone === 'shop' && (role === 'ACCOUNTANT' || role === 'VIEWER')) return '/shop/accounting';

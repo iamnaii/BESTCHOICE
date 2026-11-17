@@ -366,7 +366,7 @@ function AccountDrawer({ accountCode, open, onOpenChange }: AccountDrawerProps) 
                             <p className="text-xs text-muted-foreground leading-snug mb-2">
                               แสดง {MAX_DRAWER_LINES} รายการล่าสุดจากทั้งหมด{' '}
                               {displayLines.length} รายการ — ดูครบทุกรายการที่หน้า
-                              สมุดแยกประเภท หรือย่อช่วงเวลาลง
+                              {NAV_LABELS.generalLedger} หรือย่อช่วงเวลาลง
                             </p>
                           )}
                           <div className="border border-border rounded-md divide-y divide-border">

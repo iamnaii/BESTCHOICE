@@ -78,4 +78,9 @@ describe('โซนไฟแนนซ์ — กลุ่มที่สิท�
       expect(keys).not.toContain(gone);
     }
   });
+
+  it.each(['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'])('%s: ไม่มีเมนูซ้ำในโซนไฟแนนซ์ (ซ้ำ = ไฮไลต์สองที่)', (role) => {
+    const all = fin(role).flatMap((s) => s.items.map((i) => i.path));
+    expect(new Set(all).size).toBe(all.length);
+  });
 });

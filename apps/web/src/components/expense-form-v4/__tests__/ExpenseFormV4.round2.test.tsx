@@ -265,6 +265,37 @@ describe('ใบลดหนี้ — รับเงินคืนเข้�
       focusManager.setFocused(undefined);
     }
   });
+
+  it('สลับไปประเภทอื่นแล้วกลับมาใบลดหนี้ — การ์ดเอกสารต้นฉบับและแถว รับเงินคืนเข้า กลับมาครบ', async () => {
+    const base = apiGet.getMockImplementation()!;
+    apiGet.mockImplementation((path: string) =>
+      path === '/expense-documents/orig-1' ? Promise.resolve({ data: originalDoc() }) : base(path),
+    );
+    const user = mount();
+    await chooseKind(user, 'CREDIT_NOTE');
+    await pickCreditNoteSource(user, 'EX-0', /EX-001/);
+    await screen.findByRole('region', { name: 'รับเงินคืนเข้า' });
+    await chooseKind(user, 'PETTY_CASH');
+    await chooseKind(user, 'CREDIT_NOTE');
+    expect(await screen.findByRole('group', { name: 'เอกสารต้นฉบับที่เลือก EX-001' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'รับเงินคืนเข้า' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('ค้นหาเลข EX-... / ผู้ขาย (3 ตัวขึ้นไป)')).not.toBeInTheDocument();
+  });
+
+  it('กลับมาใบลดหนี้แล้วโหลดเอกสารต้นฉบับไม่สำเร็จ — แสดงช่องค้นหาให้เลือกใหม่', async () => {
+    const base = apiGet.getMockImplementation()!;
+    apiGet.mockImplementation((path: string) =>
+      path === '/expense-documents/orig-1' ? Promise.reject(new Error('ไม่พบเอกสาร')) : base(path),
+    );
+    const user = mount();
+    await chooseKind(user, 'CREDIT_NOTE');
+    await pickCreditNoteSource(user, 'EX-0', /EX-001/);
+    await screen.findByRole('region', { name: 'รับเงินคืนเข้า' });
+    await chooseKind(user, 'PETTY_CASH');
+    await chooseKind(user, 'CREDIT_NOTE');
+    expect(await screen.findByLabelText('ค้นหาเลข EX-... / ผู้ขาย (3 ตัวขึ้นไป)')).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: /^เอกสารต้นฉบับที่เลือก/ })).not.toBeInTheDocument();
+  });
 });
 
 describe('เงินสดย่อย', () => {

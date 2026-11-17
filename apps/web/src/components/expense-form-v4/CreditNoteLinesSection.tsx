@@ -53,10 +53,21 @@ export function CreditNoteLinesSection({ state, onChange, onLinesChange }: Props
 
   // เอกสารที่ผู้ใช้เลือกเก็บไว้เอง — ผลค้นหาโหลดใหม่ (กลับมาที่หน้าต่าง) แล้วไม่มีเอกสารนั้น การ์ดและแถว "รับเงินคืนเข้า" ต้องไม่หาย
   const [pickedDoc, setPickedDoc] = useState<OriginalDoc | null>(null);
-  const selectedDoc =
-    pickedDoc && pickedDoc.id === state.originalDocumentId
-      ? pickedDoc
-      : searchResults?.data.find((d) => d.id === state.originalDocumentId);
+  const fromPick = pickedDoc && pickedDoc.id === state.originalDocumentId ? pickedDoc : undefined;
+  const fromSearch = searchResults?.data.find((d) => d.id === state.originalDocumentId);
+  // ส่วนนี้ถูกสร้างใหม่ (สลับประเภทเอกสารไปแล้วกลับมา) — pickedDoc และคำค้นหาหาย แต่ฟอร์มยังจำ id ไว้
+  // ⇒ โหลดเอกสารนั้นตาม id · โหลดไม่สำเร็จ = แสดงช่องค้นหาให้เลือกใหม่ตามเดิม
+  const needsOriginalLoad = !isStandalone && !!state.originalDocumentId && !fromPick && !fromSearch;
+  const originalQuery = useQuery<OriginalDoc>({
+    queryKey: ['cn-original', state.originalDocumentId],
+    queryFn: async () => (await api.get(`/expense-documents/${state.originalDocumentId}`)).data,
+    enabled: needsOriginalLoad,
+    retry: false,
+  });
+  const fromLoad =
+    needsOriginalLoad && originalQuery.data?.id === state.originalDocumentId ? originalQuery.data : undefined;
+  const selectedDoc = fromPick ?? fromSearch ?? fromLoad;
+  const loadingOriginal = needsOriginalLoad && originalQuery.isPending && !originalQuery.isError;
 
   // ปุ่มที่ผู้ใช้กดหายไปหลังเลือก/เปลี่ยนเอกสาร — ย้ายโฟกัสไปที่สิ่งที่เพิ่งขึ้นมา ไม่ให้หลุดไปที่ body
   const selectedCardRef = useRef<HTMLDivElement>(null);
@@ -155,7 +166,7 @@ export function CreditNoteLinesSection({ state, onChange, onLinesChange }: Props
           {!isStandalone && (
             <div>
               <span className={formLabelClass}>เอกสารต้นฉบับ</span>
-              {state.originalDocumentId && selectedDoc ? (
+              {loadingOriginal ? null : state.originalDocumentId && selectedDoc ? (
                 <div
                   ref={selectedCardRef}
                   tabIndex={-1}

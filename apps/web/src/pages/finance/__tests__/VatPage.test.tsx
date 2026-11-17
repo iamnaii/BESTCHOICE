@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 import { setRequestCompany } from '@/lib/company-scope';
 
 /**
- * หน้า /finance/vat (เมนู "VAT (ภ.พ.30)") — ภาษีขายจากตัวคำนวณเดียวของ ภ.พ.30 (2026-09-30)
+ * หน้า /finance/vat (เมนู "ภาษีมูลค่าเพิ่ม (ภ.พ.30)") — ภาษีขายจากตัวคำนวณเดียวของ ภ.พ.30 (2026-09-30)
  * ตัวเลขเดือนตุลาคมเดียวกับ spec ต่อฐานจริง `apps/api/src/modules/accounting/pp30-output-vat.integration.spec.ts`
  * ภาษีขาย 60 วัน (21-2103) สุทธิรวมในยอดตั้งแต่ 16/10/2569 (ฝ่ายบัญชีข้อ 11.1 — `mandatory60DayIncluded: true`)
  * snapshot/TaxReport ที่เก็บก่อนหน้านั้นยัง `false` ⇒ หน้าแสดงแถวและหัวข้อแบบเดิม

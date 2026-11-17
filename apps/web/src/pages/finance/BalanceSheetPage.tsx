@@ -1,5 +1,6 @@
 import { toBangkokDateString } from '@/lib/date';
 import { useId as useUiFieldId, useState } from 'react';
+import { NAV_LABELS } from '@/config/work-navigation';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -109,7 +110,7 @@ export default function BalanceSheetPage() {
   return (
     <div>
       <PageHeader
-        title="งบดุล"
+        title={NAV_LABELS.balanceSheet}
         subtitle="Balance Sheet — ณ วันที่ระบุ"
         icon={<Scale className="size-6" />}
       />
@@ -133,7 +134,7 @@ export default function BalanceSheetPage() {
         isError={isError}
         error={error}
         onRetry={refetch}
-        errorTitle="ไม่สามารถโหลดงบดุลได้"
+        errorTitle={`ไม่สามารถโหลด${NAV_LABELS.balanceSheet}ได้`}
       >
         {bs ? (
           <>

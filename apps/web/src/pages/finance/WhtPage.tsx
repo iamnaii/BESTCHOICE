@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { NAV_LABELS } from '@/config/work-navigation';
 import api from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
 import PageHeader from '@/components/ui/PageHeader';
@@ -104,7 +105,7 @@ export default function WhtPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="WHT (ภ.ง.ด. 1/3/53) — รายเดือน"
+        title={`${NAV_LABELS.wht} — รายเดือน`}
         icon={<Calculator className="size-5" />}
       />
       <Card>

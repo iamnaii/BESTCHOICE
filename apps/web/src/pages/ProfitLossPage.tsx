@@ -1,5 +1,6 @@
 import { NativeSelect } from '@/components/ui/native-select';
 import { getReportDateRange } from '@/lib/date';
+import { NAV_LABELS } from '@/config/work-navigation';
 import { useId as useUiFieldId, useState, lazy, Suspense } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -147,7 +148,7 @@ export default function ProfitLossPage() {
   return (
     <div>
       <PageHeader
-        title="งบกำไรขาดทุน"
+        title={NAV_LABELS.profitLoss}
         subtitle="งบกำไรขาดทุนตามผังบัญชีไทย"
         icon={<DollarSign className="size-6" />}
       />
@@ -189,7 +190,7 @@ export default function ProfitLossPage() {
         isError={isError}
         error={error}
         onRetry={refetch}
-        errorTitle="ไม่สามารถโหลดงบกำไรขาดทุนได้"
+        errorTitle={`ไม่สามารถโหลด${NAV_LABELS.profitLoss}ได้`}
       >
       {pl ? (
         <>

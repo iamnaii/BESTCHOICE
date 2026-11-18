@@ -22,7 +22,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { bangkokDateRange } from '../../utils/date.util';
+import { bangkokDateRange, reportAsOf, reportDayEnd, reportDayStart } from '../../utils/date.util';
 
 /**
  * Legacy expenses CRUD endpoints have been removed (Phase: expense-documents PR-1).
@@ -55,7 +55,7 @@ export class AccountingController {
     @Query('scope') scope?: 'FINANCE' | 'SHOP' | 'ALL',
   ) {
     return this.service.getTrialBalance(
-      asOfDate ? new Date(asOfDate) : undefined,
+      asOfDate ? reportAsOf(asOfDate) : undefined,
       scope ?? 'FINANCE',
     );
   }
@@ -67,9 +67,8 @@ export class AccountingController {
     @Query('periodEnd') periodEnd: string,
     @Query('scope') scope?: 'FINANCE' | 'SHOP' | 'ALL',
   ) {
-    const start = new Date(periodStart);
-    const end = new Date(periodEnd);
-    end.setHours(23, 59, 59, 999);
+    const start = reportDayStart(periodStart);
+    const end = reportDayEnd(periodEnd);
     return this.service.getProfitLossFromJournal(start, end, undefined, scope ?? 'FINANCE');
   }
 
@@ -91,7 +90,7 @@ export class AccountingController {
   @Get('ledger/shop/trial-balance')
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
   getShopTrialBalance(@Query('asOfDate') asOfDate?: string) {
-    return this.service.getTrialBalance(asOfDate ? new Date(asOfDate) : undefined, 'SHOP');
+    return this.service.getTrialBalance(asOfDate ? reportAsOf(asOfDate) : undefined, 'SHOP');
   }
 
   @Get('ledger/shop/profit-loss')
@@ -100,16 +99,15 @@ export class AccountingController {
     @Query('periodStart') periodStart: string,
     @Query('periodEnd') periodEnd: string,
   ) {
-    const start = new Date(periodStart);
-    const end = new Date(periodEnd);
-    end.setHours(23, 59, 59, 999);
+    const start = reportDayStart(periodStart);
+    const end = reportDayEnd(periodEnd);
     return this.service.getProfitLossFromJournal(start, end, undefined, 'SHOP');
   }
 
   @Get('ledger/balance-sheet')
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
   getBalanceSheetFromJournal(@Query('asOfDate') asOfDate?: string) {
-    return this.service.getBalanceSheetFromJournal(asOfDate ? new Date(asOfDate) : undefined);
+    return this.service.getBalanceSheetFromJournal(asOfDate ? reportAsOf(asOfDate) : undefined);
   }
 
   // ─── P4-SP1: Aging Report ────────────────────────────────────────────────
@@ -146,9 +144,8 @@ export class AccountingController {
     @Query('periodEnd') periodEnd: string,
     @Query('companyId') companyId?: string,
   ) {
-    const start = new Date(periodStart);
-    const end = new Date(periodEnd);
-    end.setHours(23, 59, 59, 999);
+    const start = reportDayStart(periodStart);
+    const end = reportDayEnd(periodEnd);
     return this.service.getCashFlowFromJournal(start, end, companyId);
   }
 
@@ -159,9 +156,8 @@ export class AccountingController {
     @Query('periodEnd') periodEnd: string,
     @Query('companyId') companyId?: string,
   ) {
-    const start = new Date(periodStart);
-    const end = new Date(periodEnd);
-    end.setHours(23, 59, 59, 999);
+    const start = reportDayStart(periodStart);
+    const end = reportDayEnd(periodEnd);
     return this.service.getEquityStatementFromJournal(start, end, companyId);
   }
 
@@ -249,9 +245,8 @@ export class AccountingController {
     @Query('periodEnd') periodEnd: string,
     @Query('companyId') companyId?: string,
   ) {
-    const start = new Date(periodStart);
-    const end = new Date(periodEnd);
-    end.setHours(23, 59, 59, 999);
+    const start = reportDayStart(periodStart);
+    const end = reportDayEnd(periodEnd);
     return this.service.getGeneralLedger(accountCode, start, end, companyId);
   }
 

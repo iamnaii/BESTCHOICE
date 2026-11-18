@@ -130,7 +130,8 @@ export class RevenueReportService {
   async getDailyPaymentSummary(date: string, branchId?: string, page = 1, limit = 50) {
     const safeLimit = Math.min(limit, 100);
     const start = reportDayStart(date);
-    const end = new Date(start.getTime() + 24 * 60 * 60 * 1000); // ไทยไม่มี DST — 00:00 ของวันถัดไป
+    // ไทยไม่มี DST — 00:00 ของวันถัดไป
+    const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
     const branchFilter = branchId ? { contract: { branchId } } : {};
 
     const where = {

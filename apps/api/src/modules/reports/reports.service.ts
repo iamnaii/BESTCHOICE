@@ -199,7 +199,8 @@ export class ReportsService {
     const endMonth = startMonth + 2;
     const startDate = `${year}-${String(startMonth).padStart(2, '0')}-01`;
     // วันสุดท้ายของเดือนสุดท้ายในไตรมาส — สตริงล้วน ไม่ผ่าน Date.toISOString (ซึ่งเลื่อนเป็น "วันก่อนหน้า" บนเวลาไทย)
-    const endDate = `${year}-${String(endMonth).padStart(2, '0')}-${String(daysInMonth(year, endMonth - 1)).padStart(2, '0')}`;
+    const lastDay = String(daysInMonth(year, endMonth - 1)).padStart(2, '0');
+    const endDate = `${year}-${String(endMonth).padStart(2, '0')}-${lastDay}`;
     return this.accounting.getProfitLossReport(startDate, endDate, branchId, branchIds, includeFinanceExpenses);
   }
 }

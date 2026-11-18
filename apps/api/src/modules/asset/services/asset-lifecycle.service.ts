@@ -13,6 +13,7 @@ import { AssetDisposalTemplate } from '../../journal/cpa-templates/asset-disposa
 import { AssetDisposalReverseTemplate } from '../../journal/cpa-templates/asset-disposal-reverse.template';
 import { AssetInvoiceReceivedTemplate } from '../../journal/cpa-templates/asset-invoice-received.template';
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
+import { isFutureBkkDay } from '../../../utils/date.util';
 
 /**
  * AssetLifecycleService — the 5 JE-posting transactions for a fixed asset
@@ -360,7 +361,8 @@ export class AssetLifecycleService {
     }
 
     const disposalDate = new Date(dto.disposalDate);
-    if (disposalDate.getTime() > Date.now()) {
+    // เทียบระดับวันปฏิทินไทย — 'YYYY-MM-DD' ถูกแปลงเป็น 07:00 น. ไทยของวันนั้น ซึ่งยังไม่ถึงเวลาจริงช่วง 00:00-06:59 น. ของวันเดียวกัน
+    if (isFutureBkkDay(disposalDate)) {
       throw new BadRequestException('วันที่จำหน่ายต้องไม่อยู่ในอนาคต (future date not allowed)');
     }
 

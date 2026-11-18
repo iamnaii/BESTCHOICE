@@ -233,9 +233,28 @@ describe('IntercoSettlementController', () => {
       expect(agingService.getShopReceivableAging).toHaveBeenCalledWith(undefined, undefined);
     });
 
-    it('parses asOf to a Date and thresholdDays to a number', async () => {
+    it('asOf แบบ YYYY-MM-DD = สิ้นวันไทย (23:59:59.999 น.) · thresholdDays เป็นตัวเลข', async () => {
       await controller.aging('2026-08-21', '60');
-      expect(agingService.getShopReceivableAging).toHaveBeenCalledWith(new Date('2026-08-21'), 60);
+      expect(agingService.getShopReceivableAging).toHaveBeenCalledWith(
+        new Date('2026-08-21T16:59:59.999Z'),
+        60,
+      );
+    });
+
+    it('asOf แบบ ISO เต็ม = ตามที่ส่งมา (ไม่ปัดเป็นสิ้นวัน)', async () => {
+      await controller.aging('2026-08-21T03:00:00.000Z', undefined);
+      expect(agingService.getShopReceivableAging).toHaveBeenCalledWith(
+        new Date('2026-08-21T03:00:00.000Z'),
+        undefined,
+      );
+    });
+
+    it('รายการที่ลงบัญชีบ่ายของวัน asOf ไม่ได้อายุติดลบ (เดิม asOf = 07:00 น. ⇒ −1 วัน)', async () => {
+      await controller.aging('2026-08-21', undefined);
+      const asOf = agingService.getShopReceivableAging.mock.calls[0][0] as Date;
+      const postedAfternoon = new Date('2026-08-21T14:00:00+07:00');
+      // สูตรเดียวกับ IntercoAgingService: floor((asOf − postedAt) / DAY_MS)
+      expect(Math.floor((asOf.getTime() - postedAfternoon.getTime()) / 86_400_000)).toBe(0);
     });
 
     it('rejects an invalid asOf with a Thai BadRequestException before touching the service', () => {

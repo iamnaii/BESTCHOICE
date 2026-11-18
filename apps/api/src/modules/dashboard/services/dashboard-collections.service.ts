@@ -318,33 +318,32 @@ export class DashboardCollectionsService {
         cu.phone AS "customerPhone",
         c.id AS "contractId",
         c.contract_number AS "contractNumber",
-        COUNT(p.id) FILTER (
+        COUNT(DISTINCT p.id) FILTER (
           WHERE ${LATE_PAYMENT_SQL}
         ) AS "latePaymentCount",
-        COUNT(p.id) FILTER (WHERE p.status = 'PARTIALLY_PAID') AS "partialPaymentCount",
+        COUNT(DISTINCT p.id) FILTER (WHERE p.status = 'PARTIALLY_PAID') AS "partialPaymentCount",
         (c.dunning_last_action_at IS NOT NULL AND c.dunning_stage = 'NONE') AS "hadDunningReset",
-        MIN(p2.due_date) AS "nextDueDate",
-        MIN(p2.amount_due) AS "nextAmountDue"
+        (SELECT p2.due_date FROM payments p2 WHERE p2.contract_id = c.id AND p2.deleted_at IS NULL AND p2.status IN ('PENDING', 'OVERDUE') ORDER BY p2.due_date, p2.installment_no, p2.id LIMIT 1) AS "nextDueDate",
+        (SELECT p2.amount_due FROM payments p2 WHERE p2.contract_id = c.id AND p2.deleted_at IS NULL AND p2.status IN ('PENDING', 'OVERDUE') ORDER BY p2.due_date, p2.installment_no, p2.id LIMIT 1) AS "nextAmountDue"
       FROM customers cu
       JOIN contracts c ON c.customer_id = cu.id AND c.deleted_at IS NULL
-      LEFT JOIN payments p ON p.contract_id = c.id
-      LEFT JOIN payments p2 ON p2.contract_id = c.id AND p2.status IN ('PENDING', 'OVERDUE')
+      LEFT JOIN payments p ON p.contract_id = c.id AND p.deleted_at IS NULL
       WHERE cu.deleted_at IS NULL
         AND c.status = 'ACTIVE'
         ${branchFilter}
       GROUP BY cu.id, c.id
       HAVING
-        COUNT(p.id) FILTER (
+        COUNT(DISTINCT p.id) FILTER (
           WHERE ${LATE_PAYMENT_SQL}
         ) >= 2
-        OR COUNT(p.id) FILTER (WHERE p.status = 'PARTIALLY_PAID') >= 1
+        OR COUNT(DISTINCT p.id) FILTER (WHERE p.status = 'PARTIALLY_PAID') >= 1
         OR (c.dunning_last_action_at IS NOT NULL AND c.dunning_stage = 'NONE')
       ORDER BY
         (
-          LEAST(COUNT(p.id) FILTER (
+          LEAST(COUNT(DISTINCT p.id) FILTER (
             WHERE ${LATE_PAYMENT_SQL}
           ), 5)
-          + COUNT(p.id) FILTER (WHERE p.status = 'PARTIALLY_PAID') * 2
+          + COUNT(DISTINCT p.id) FILTER (WHERE p.status = 'PARTIALLY_PAID') * 2
           + CASE WHEN c.dunning_last_action_at IS NOT NULL AND c.dunning_stage = 'NONE' THEN 3 ELSE 0 END
         ) DESC
       LIMIT 20

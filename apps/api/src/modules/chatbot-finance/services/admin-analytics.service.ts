@@ -143,7 +143,7 @@ export class AdminAnalyticsService {
     const [dailyStats, totalCostAgg, handoffCount] = await Promise.all([
       this.prisma.$queryRaw<{ date: Date; messages: bigint; cost: number }[]>`
         SELECT
-          date_trunc('day', cm.created_at) AS date,
+          date_trunc('day', (cm.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Bangkok') AS date,
           COUNT(*)::bigint AS messages,
           COALESCE(SUM(cm.cost_usd), 0)::float AS cost
         FROM chat_messages cm
@@ -151,7 +151,7 @@ export class AdminAnalyticsService {
         WHERE cr.channel = 'LINE_FINANCE'
           AND cm.created_at >= ${startDate}
           AND cm.created_at <= ${endDate}
-        GROUP BY date_trunc('day', cm.created_at)
+        GROUP BY date_trunc('day', (cm.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Bangkok')
         ORDER BY date ASC
       `,
       this.prisma.chatMessage.aggregate({

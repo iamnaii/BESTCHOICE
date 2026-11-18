@@ -88,17 +88,49 @@ describe('FinanceReceivableService', () => {
       expect(arg.where.financeCompany).toBe('GFIN');
     });
 
-    it('expands endDate to end-of-day so the bound is inclusive', async () => {
+    it('startDate = 00:00 น. ไทย · endDate = 23:59:59.999 น. ไทย (รวมทั้งวัน ไม่ขึ้นกับ TZ ของโปรเซส)', async () => {
+      prisma.financeReceivable.findMany.mockResolvedValue([]);
+      prisma.financeReceivable.count.mockResolvedValue(0);
+
+      await service.findAll({ startDate: '2026-04-01', endDate: '2026-04-09' });
+
+      const arg = prisma.financeReceivable.findMany.mock.calls[0][0];
+      const range = arg.where.expectedDate as { gte: Date; lte: Date };
+      expect(range.gte.toISOString()).toBe('2026-03-31T17:00:00.000Z');
+      expect(range.lte.toISOString()).toBe('2026-04-09T16:59:59.999Z');
+    });
+
+    it('แถววันคาดรับ 00:00 น. ไทยของวันเริ่มอยู่ในช่วง · 00:00 น. ไทยของวันถัดจากวันสิ้นสุดอยู่นอกช่วง', async () => {
+      prisma.financeReceivable.findMany.mockResolvedValue([]);
+      prisma.financeReceivable.count.mockResolvedValue(0);
+
+      await service.findAll({ startDate: '2026-04-01', endDate: '2026-04-09' });
+
+      const { gte, lte } = prisma.financeReceivable.findMany.mock.calls[0][0].where.expectedDate as {
+        gte: Date;
+        lte: Date;
+      };
+      const earlyMorningOnStartDay = new Date('2026-04-01T03:00:00+07:00');
+      const eveningOnEndDay = new Date('2026-04-09T22:00:00+07:00');
+      const nextMidnight = new Date('2026-04-10T00:00:00+07:00');
+      expect(earlyMorningOnStartDay >= gte && earlyMorningOnStartDay <= lte).toBe(true);
+      expect(eveningOnEndDay <= lte).toBe(true);
+      expect(nextMidnight <= lte).toBe(false);
+    });
+
+    it('ส่งแค่ endDate = ใส่เฉพาะ lte · ส่งแค่ startDate = ใส่เฉพาะ gte', async () => {
       prisma.financeReceivable.findMany.mockResolvedValue([]);
       prisma.financeReceivable.count.mockResolvedValue(0);
 
       await service.findAll({ endDate: '2026-04-09' });
+      expect(prisma.financeReceivable.findMany.mock.calls[0][0].where.expectedDate).toEqual({
+        lte: new Date('2026-04-09T16:59:59.999Z'),
+      });
 
-      const arg = prisma.financeReceivable.findMany.mock.calls[0][0];
-      const lte = arg.where.expectedDate.lte as Date;
-      expect(lte.getHours()).toBe(23);
-      expect(lte.getMinutes()).toBe(59);
-      expect(lte.getSeconds()).toBe(59);
+      await service.findAll({ startDate: '2026-04-01' });
+      expect(prisma.financeReceivable.findMany.mock.calls[1][0].where.expectedDate).toEqual({
+        gte: new Date('2026-03-31T17:00:00.000Z'),
+      });
     });
   });
 

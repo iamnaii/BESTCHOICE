@@ -110,6 +110,37 @@ export function bangkokDateRange(startDate?: string, endDate?: string): { gte?: 
   return { ...(start ? { gte: start } : {}), ...(end ? { lt: new Date(end.getTime() + 86_400_000) } : {}) };
 }
 
+const REPORT_DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * วันเริ่มของช่วงรายงาน — 'YYYY-MM-DD' = 00:00 น. เวลาไทยของวันนั้น (ไม่ขึ้นกับ TZ ของโปรเซส)
+ * ค่ารูปแบบอื่น = new Date(value) ตามเดิม
+ */
+export function reportDayStart(value: string): Date {
+  if (REPORT_DATE_ONLY.test(value)) return bangkokDateRange(value, value).gte!;
+  return new Date(value);
+}
+
+/**
+ * วันสิ้นสุดของช่วงรายงาน (รวมทั้งวัน) — 'YYYY-MM-DD' = 23:59:59.999 น. เวลาไทยของวันนั้น
+ * ค่ารูปแบบอื่น = พฤติกรรมเดิมของ endpoint แบบช่วง (สิ้นวันตามเวลาโปรเซส)
+ */
+export function reportDayEnd(value: string): Date {
+  if (REPORT_DATE_ONLY.test(value)) return new Date(bangkokDateRange(value, value).lt!.getTime() - 1);
+  const end = new Date(value);
+  end.setHours(23, 59, 59, 999);
+  return end;
+}
+
+/**
+ * จุดตัดยอดของรายงาน "ณ วันที่" — 'YYYY-MM-DD' = สิ้นวันไทยของวันนั้น (รวมรายการทั้งวัน)
+ * ค่ารูปแบบอื่น = new Date(value) ตามเดิม
+ */
+export function reportAsOf(value: string): Date {
+  if (REPORT_DATE_ONLY.test(value)) return reportDayEnd(value);
+  return new Date(value);
+}
+
 export function bangkokDateString(now: Date = new Date()): string {
   return new Date(now.getTime() + BANGKOK_OFFSET_MS).toISOString().slice(0, 10);
 }

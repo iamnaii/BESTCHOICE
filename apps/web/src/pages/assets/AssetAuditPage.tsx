@@ -12,6 +12,7 @@ import { formatDateTime } from '@/utils/formatters';
 import { assetsApi } from './api';
 import type { AuditLogEntry, GlobalAuditLogEntry } from './types';
 import AssetHubTabs from './components/AssetHubTabs';
+import { isAuditLogInDayRange } from './utils/auditDateFilter';
 
 const ACTION_LABEL: Record<string, string> = {
   ASSET_CREATE: 'สร้าง',
@@ -64,13 +65,7 @@ export default function AssetAuditPage() {
     if (isGlobal) return logs; // server already filtered by action/date
     return logs.filter((log) => {
       if (actionFilter && log.action !== actionFilter) return false;
-      if (fromDate && new Date(log.createdAt) < new Date(fromDate)) return false;
-      if (toDate) {
-        const end = new Date(toDate);
-        end.setHours(23, 59, 59, 999);
-        if (new Date(log.createdAt) > end) return false;
-      }
-      return true;
+      return isAuditLogInDayRange(log.createdAt, fromDate, toDate);
     });
   }, [isGlobal, logs, actionFilter, fromDate, toDate]);
 

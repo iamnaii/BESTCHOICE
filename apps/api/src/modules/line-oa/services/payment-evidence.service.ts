@@ -4,6 +4,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { financeLineRecipient } from '../../line-oa/services/otp-verified-customer';
 import { toNum as d, calcOutstanding as sumOutstanding } from '../../../utils/decimal.util';
 import { formatDateShort } from '../../../utils/thai-date.util';
+import { reportDayEnd, reportDayStart } from '../../../utils/date.util';
 import { LineOaService } from '../line-oa.service';
 import { StorageService } from '../../storage/storage.service';
 import { PaymentLinkService } from '../payment-links/payment-link.service';
@@ -67,12 +68,8 @@ export class PaymentEvidenceService {
 
     if (dateFrom || dateTo) {
       const dateFilter: Record<string, Date> = {};
-      if (dateFrom) dateFilter.gte = new Date(dateFrom);
-      if (dateTo) {
-        const end = new Date(dateTo);
-        end.setHours(23, 59, 59, 999);
-        dateFilter.lte = end;
-      }
+      if (dateFrom) dateFilter.gte = reportDayStart(dateFrom);
+      if (dateTo) dateFilter.lte = reportDayEnd(dateTo);
       where.createdAt = dateFilter;
     }
 

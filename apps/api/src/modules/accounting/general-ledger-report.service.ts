@@ -256,6 +256,91 @@ export class GeneralLedgerReportService {
   }
 
   /**
+   * งบทดลองแบบช่วงเวลา (แบบ PEAK): ยอดยกมา / ระหว่างงวด / ยอดคงเหลือ
+   *
+   * ประกอบจาก getTrialBalance สองครั้ง — ยอดสะสมก่อนวันเริ่ม กับยอดสะสมถึงวันสิ้นสุด —
+   * จึงใช้ตัวกรองบริษัท/ผังบัญชี/สถานะรายการชุดเดียวกับงบทดลอง ณ วันที่ ไม่มี query ชุดที่สอง
+   *   - ยอดยกมา · ยอดคงเหลือ = ยอดสุทธิของบัญชี แสดงฝั่งเดียว (เดบิตเมื่อสุทธิ > 0 · เครดิตเมื่อ < 0)
+   *   - ระหว่างงวด = เดบิตรวมและเครดิตรวมของรายการในช่วง (ยอดสะสมปลายงวด − ยอดสะสมต้นงวด)
+   */
+  async getPeriodTrialBalance(
+    periodStart: Date,
+    periodEnd: Date,
+    scope: 'FINANCE' | 'SHOP' | 'ALL' = 'FINANCE',
+  ) {
+    const opening = await this.getTrialBalance(new Date(periodStart.getTime() - 1), scope);
+    const closing = await this.getTrialBalance(periodEnd, scope);
+    // บริษัทที่ใช้กรองงบนี้ — ส่งกลับไปให้ลิงก์ไปบัญชีแยกประเภทกรองบริษัทเดียวกัน (ALL = ไม่กรอง)
+    const companyId =
+      scope === 'SHOP'
+        ? await this.companyResolver.getShopCompanyId()
+        : scope === 'FINANCE'
+          ? await this.companyResolver.getFinanceCompanyId()
+          : null;
+
+    const zero = new Prisma.Decimal(0);
+    const oneSided = (net: Prisma.Decimal) => ({
+      dr: net.gt(0) ? net : zero,
+      cr: net.lt(0) ? net.neg() : zero,
+    });
+    const emptyAmounts = () => ({
+      openingDr: zero, openingCr: zero, periodDr: zero, periodCr: zero, closingDr: zero, closingCr: zero,
+    });
+    type Amounts = ReturnType<typeof emptyAmounts>;
+    const addInto = (target: Amounts, row: Amounts) => {
+      target.openingDr = target.openingDr.add(row.openingDr);
+      target.openingCr = target.openingCr.add(row.openingCr);
+      target.periodDr = target.periodDr.add(row.periodDr);
+      target.periodCr = target.periodCr.add(row.periodCr);
+      target.closingDr = target.closingDr.add(row.closingDr);
+      target.closingCr = target.closingCr.add(row.closingCr);
+    };
+
+    const openingByCode = new Map(
+      opening.sections.flatMap((s) => s.rows).map((r) => [r.code, r] as const),
+    );
+
+    const totals = emptyAmounts();
+    // ยอดสะสมถึงวันสิ้นสุดครอบทุกบัญชีที่มียอดก่อนวันเริ่มอยู่แล้ว ⇒ ไล่จากฝั่งปลายงวดอย่างเดียวพอ
+    const sections = closing.sections.map((section) => {
+      const sectionTotals = emptyAmounts();
+      const rows = section.rows.map((row) => {
+        const before = openingByCode.get(row.code);
+        const beforeDr = before?.drBalance ?? zero;
+        const beforeCr = before?.crBalance ?? zero;
+        const open = oneSided(beforeDr.sub(beforeCr));
+        const close = oneSided(row.drBalance.sub(row.crBalance));
+        const amounts: Amounts = {
+          openingDr: open.dr,
+          openingCr: open.cr,
+          periodDr: row.drBalance.sub(beforeDr),
+          periodCr: row.crBalance.sub(beforeCr),
+          closingDr: close.dr,
+          closingCr: close.cr,
+        };
+        addInto(sectionTotals, amounts);
+        addInto(totals, amounts);
+        return { code: row.code, name: row.name, type: row.type, normalBalance: row.normalBalance, ...amounts };
+      });
+      return { sectionName: section.sectionName, codePrefix: section.codePrefix, rows, totals: sectionTotals };
+    });
+
+    return {
+      periodStart,
+      periodEnd,
+      scope,
+      companyId,
+      sections,
+      totals,
+      isBalanced: {
+        opening: totals.openingDr.equals(totals.openingCr),
+        period: totals.periodDr.equals(totals.periodCr),
+        closing: totals.closingDr.equals(totals.closingCr),
+      },
+    };
+  }
+
+  /**
    * Get P&L from journal lines for a given period.
    *
    * Revenue = net Cr balance of accounts 41 + 42 for the period.

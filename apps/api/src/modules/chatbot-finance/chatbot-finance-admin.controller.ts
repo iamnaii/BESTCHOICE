@@ -19,6 +19,7 @@ import { KnowledgeService } from './services/knowledge.service';
 import { LearningService } from './services/learning.service';
 import { FeedbackService } from './services/feedback.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { reportAsOf, reportDayStart } from '../../utils/date.util';
 import {
   ListSessionsQueryDto,
   CreateKbDto,
@@ -65,8 +66,8 @@ export class ChatbotFinanceAdminController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
-    const start = startDate ? new Date(startDate) : new Date(Date.now() - 30 * 86400_000);
-    const end = endDate ? new Date(endDate) : new Date();
+    const start = startDate ? reportDayStart(startDate) : new Date(Date.now() - 30 * 86400_000);
+    const end = endDate ? reportAsOf(endDate) : new Date();
     return this.analytics.getDateRangeStats(start, end);
   }
 
@@ -216,8 +217,8 @@ export class ChatbotFinanceAdminController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
-    const start = startDate ? new Date(startDate) : new Date(Date.now() - 30 * 86400_000);
-    const end = endDate ? new Date(endDate) : new Date();
+    const start = startDate ? reportDayStart(startDate) : new Date(Date.now() - 30 * 86400_000);
+    const end = endDate ? reportAsOf(endDate) : new Date();
     return this.feedbackService.getStats(start, end);
   }
 }

@@ -18,6 +18,7 @@ const EXPECTED: Record<string, string> = {
   '/finance/wht': NAV_LABELS.wht,
   '/finance/general-journal': NAV_LABELS.generalJournal,
   '/finance/general-ledger': NAV_LABELS.generalLedger,
+  '/finance/trial-balance': NAV_LABELS.trialBalance,
   '/finance/balance-sheet': NAV_LABELS.balanceSheet,
   '/profit-loss': NAV_LABELS.profitLoss,
   '/finance/cash-flow': NAV_LABELS.cashFlow,
@@ -33,10 +34,13 @@ describe('ชื่อเมนูศัพท์บัญชี — ชื่�
     expect(NAV_LABELS.balanceSheet).toBe('งบฐานะการเงิน');
     expect(NAV_LABELS.profitLoss).toBe('งบกำไรขาดทุน');
     expect(NAV_LABELS.generalLedger).toBe('บัญชีแยกประเภท');
+    expect(NAV_LABELS.trialBalance).toBe('งบทดลอง');
     expect(NAV_LABELS.expenses).toBe('บันทึกค่าใช้จ่าย');
     expect(NAV_LABELS.vat).toBe('ภาษีมูลค่าเพิ่ม (ภ.พ.30)');
     expect(NAV_LABELS.wht).toBe('ภาษีหัก ณ ที่จ่าย (ภ.ง.ด.1/3/53)');
     expect(NAV_LABELS.cashBank).toBe('เงินสด/ธนาคาร');
+    // เจ้าของเคาะ 2026-11-18: ตรงกับหัวหน้า /collections ("ติดตามหนี้")
+    expect(NAV_LABELS.overdue).toBe('ติดตามหนี้');
   });
 
   for (const role of ROLES) {

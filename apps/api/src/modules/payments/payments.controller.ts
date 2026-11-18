@@ -32,6 +32,7 @@ import { PaySolutionsService } from '../paysolutions/paysolutions.service';
 import { RescheduleService } from '../installments/reschedule.service';
 import { RescheduleCollectService } from './services/reschedule-collect.service';
 import { clientIp } from '../../utils/client-ip.util';
+import { bangkokDateString, bkkYearMonth } from '../../utils/date.util';
 
 class CreatePartialQrDto {
   @IsNumber()
@@ -143,7 +144,7 @@ export class PaymentsController {
   ) {
     const effectiveBranchId = this.getEffectiveBranchId(branchId, user);
     return this.paymentsService.getDailySummaryDates(
-      month || new Date().toISOString().slice(0, 7),
+      month || bkkYearMonth(new Date()),
       effectiveBranchId,
     );
   }
@@ -161,7 +162,7 @@ export class PaymentsController {
     const parsedPage = page ? parseInt(page, 10) : undefined;
     const parsedLimit = limit ? Math.min(parseInt(limit, 10), 200) : undefined;
     return this.paymentsService.getDailySummary(
-      date || new Date().toISOString().split('T')[0],
+      date || bangkokDateString(),
       effectiveBranchId,
       parsedPage && !isNaN(parsedPage) ? parsedPage : undefined,
       parsedLimit && !isNaN(parsedLimit) ? parsedLimit : undefined,

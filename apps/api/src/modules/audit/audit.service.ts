@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'crypto';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { sanitizeAuditValue } from './audit-sanitize.util';
+import { reportAsOf, reportDayStart } from '../../utils/date.util';
 
 export interface AuditEntry {
   userId?: string;
@@ -286,8 +287,8 @@ export class AuditService {
     if (filters.entityId) where.entityId = filters.entityId;
     if (filters.from || filters.to) {
       where.createdAt = {
-        ...(filters.from ? { gte: new Date(filters.from) } : {}),
-        ...(filters.to ? { lte: new Date(filters.to) } : {}),
+        ...(filters.from ? { gte: reportDayStart(filters.from) } : {}),
+        ...(filters.to ? { lte: reportAsOf(filters.to) } : {}),
       };
     }
 

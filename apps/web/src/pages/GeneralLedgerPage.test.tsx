@@ -25,13 +25,17 @@ vi.mock('@/components/CompanyFilter', () => ({
 
 import { GeneralLedgerPage } from './GeneralLedgerPage';
 
-function renderPage() {
+function renderPage(initialEntries?: string[]) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     React.createElement(
       QueryClientProvider,
       { client: qc },
-      React.createElement(MemoryRouter, null, React.createElement(GeneralLedgerPage)),
+      React.createElement(
+        MemoryRouter,
+        initialEntries ? { initialEntries } : null,
+        React.createElement(GeneralLedgerPage),
+      ),
     ),
   );
 }
@@ -299,5 +303,82 @@ describe('GeneralLedgerPage — account picker (R2-3a)', () => {
     const options = await within(listbox).findAllByRole('option');
     expect(options).toHaveLength(200);
     expect(options[0]).toHaveTextContent(/^53-1000 - ค่าใช้จ่ายทดสอบ 0$/);
+  });
+});
+
+describe('GeneralLedgerPage — เปิดจากงบทดลอง (?account=&start=&end=&from=)', () => {
+  const FROM_TB =
+    '/finance/general-ledger?account=11-1201&start=2026-11-01&end=2026-11-17&from=trial-balance';
+
+  beforeEach(() => {
+    apiGet.mockReset();
+    apiGet.mockImplementation(async (url: string) => {
+      if (url.startsWith('/chart-of-accounts/grouped')) {
+        return {
+          data: {
+            groups: [
+              {
+                category: 'สินทรัพย์หมุนเวียน',
+                accounts: [
+                  { code: '11-1201', name: 'ธนาคาร KBank', normalBalance: 'Dr', vatApplicable: false, notes: null },
+                ],
+              },
+            ],
+          },
+        };
+      }
+      if (url.startsWith('/expenses/ledger/general-ledger')) return { data: null };
+      throw new Error(`unexpected url ${url}`);
+    });
+  });
+
+  const glCalls = () =>
+    apiGet.mock.calls.map((c) => c[0] as string).filter((u) => u.startsWith('/expenses/ledger/general-ledger'));
+
+  it('รับบัญชีและช่วงวันที่จากลิงก์ โดยไม่ต้องเลือกบัญชีเอง', async () => {
+    renderPage([FROM_TB]);
+    await waitFor(() => expect(glCalls().length).toBeGreaterThan(0));
+    const url = glCalls()[0];
+    expect(url).toContain('accountCode=11-1201');
+    expect(url).toContain('periodStart=2026-11-01');
+    expect(url).toContain('periodEnd=2026-11-17');
+  });
+
+  it('มีลิงก์กลับไปงบทดลองช่วงวันที่เดิม', async () => {
+    renderPage([FROM_TB]);
+    const link = await screen.findByRole('link', { name: 'กลับไปงบทดลอง' });
+    expect(link).toHaveAttribute('href', '/finance/trial-balance?start=2026-11-01&end=2026-11-17');
+  });
+
+  it('ไม่มีพารามิเตอร์ = พฤติกรรมเดิม (ไม่มีลิงก์กลับ ไม่เรียก general-ledger)', async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByText(/เลือกบัญชีจากด้านบน/)).toBeInTheDocument());
+    expect(screen.queryByRole('link', { name: 'กลับไปงบทดลอง' })).toBeNull();
+    expect(glCalls()).toHaveLength(0);
+  });
+
+  it('รับบริษัทจากลิงก์ (company=) และส่ง companyId ไป API · ไม่มี = ไม่ส่ง', async () => {
+    renderPage([`${FROM_TB}&company=c-fin`]);
+    await waitFor(() => expect(glCalls().length).toBeGreaterThan(0));
+    expect(glCalls()[0]).toContain('companyId=c-fin');
+  });
+
+  it('ไม่มี company= ไม่ส่ง companyId', async () => {
+    renderPage([FROM_TB]);
+    await waitFor(() => expect(glCalls().length).toBeGreaterThan(0));
+    expect(glCalls()[0]).not.toContain('companyId');
+  });
+
+  it('company= ที่มีอักขระแปลกถูกละทิ้ง', async () => {
+    renderPage([`${FROM_TB}&company=${encodeURIComponent('a b;x')}`]);
+    await waitFor(() => expect(glCalls().length).toBeGreaterThan(0));
+    expect(glCalls()[0]).not.toContain('companyId');
+  });
+
+  it('วันที่รูปแบบผิดใช้ค่าเริ่มต้นเดิมของหน้า', async () => {
+    renderPage(['/finance/general-ledger?account=11-1201&start=abc&end=2026-11-17']);
+    await waitFor(() => expect(glCalls().length).toBeGreaterThan(0));
+    expect(glCalls()[0]).not.toContain('periodStart=abc');
+    expect(glCalls()[0]).toMatch(/periodStart=\d{4}-\d{2}-01/);
   });
 });

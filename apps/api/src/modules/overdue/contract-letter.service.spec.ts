@@ -159,6 +159,35 @@ describe('ContractLetterService', () => {
     });
   });
 
+  describe('list — from/to ขอบวันตามเวลาไทย (2026-11-18)', () => {
+    const START = new Date('2026-10-31T17:00:00.000Z'); // 2026-11-01 00:00 น. ไทย
+    const END = new Date('2026-11-17T16:59:59.999Z'); // 2026-11-17 23:59:59.999 น. ไทย
+
+    it('from/to แบบ YYYY-MM-DD → triggeredAt [00:00 from, 23:59:59.999 to] เวลาไทย', async () => {
+      mockPrisma.contractLetter.findMany.mockResolvedValueOnce([]);
+      mockPrisma.contractLetter.count.mockResolvedValueOnce(0);
+
+      await service.list({ from: '2026-11-01', to: '2026-11-17', user: { role: 'OWNER', branchId: null } });
+
+      const triggeredAt = mockPrisma.contractLetter.findMany.mock.calls[0][0].where.triggeredAt;
+      expect(triggeredAt).toEqual({ gte: START, lte: END });
+      expect(new Date('2026-11-17T15:00:00+07:00') <= triggeredAt.lte).toBe(true); // บ่ายของวันสุดท้ายอยู่ในช่วง (เดิมหาย)
+      expect(new Date('2026-11-18T00:00:00+07:00') <= triggeredAt.lte).toBe(false);
+      expect(mockPrisma.contractLetter.count.mock.calls[0][0].where.triggeredAt).toEqual({ gte: START, lte: END });
+    });
+
+    it('to แบบ ISO มีเวลา → ขอบบนตรงตัวเหมือนเดิม', async () => {
+      mockPrisma.contractLetter.findMany.mockResolvedValueOnce([]);
+      mockPrisma.contractLetter.count.mockResolvedValueOnce(0);
+
+      await service.list({ to: '2026-11-17T05:00:00.000Z', user: { role: 'OWNER', branchId: null } });
+
+      expect(mockPrisma.contractLetter.findMany.mock.calls[0][0].where.triggeredAt).toEqual({
+        lte: new Date('2026-11-17T05:00:00.000Z'),
+      });
+    });
+  });
+
   describe('markPdfGenerated', () => {
     it('transitions PENDING_DISPATCH -> PDF_GENERATED and records URL', async () => {
       mockPrisma.contractLetter.findFirst.mockResolvedValueOnce({
@@ -645,5 +674,19 @@ describe('ContractLetterService.list (v2)', () => {
     const result = await service.list({ page: 1, limit: 50, user: { role: 'SALES', branchId: null } });
     expect(result).toEqual({ data: [], total: 0, page: 1, limit: 50 });
     expect(prisma.contractLetter.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('getCountsByStatus — from/to ขอบวันตามเวลาไทย (2026-11-18)', () => {
+  it('ตัวนับแท็บใช้ขอบเดียวกับรายการ: triggeredAt [00:00 from, 23:59:59.999 to] เวลาไทย', async () => {
+    const prismaMock = { contractLetter: { groupBy: jest.fn().mockResolvedValue([]) } };
+    const svc = new ContractLetterService(prismaMock as any, {} as any);
+
+    await svc.getCountsByStatus({ from: '2026-11-01', to: '2026-11-17', user: { role: 'OWNER', branchId: null } });
+
+    expect(prismaMock.contractLetter.groupBy.mock.calls[0][0].where.triggeredAt).toEqual({
+      gte: new Date('2026-10-31T17:00:00.000Z'),
+      lte: new Date('2026-11-17T16:59:59.999Z'),
+    });
   });
 });

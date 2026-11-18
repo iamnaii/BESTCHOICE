@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { sqlBkkLocal } from '../../utils/bangkok-sql.util';
 
 export interface AnalyticsResult {
   range: '30d' | '90d';
@@ -95,13 +96,13 @@ export class OverdueAnalyticsService {
     try {
       const rows = await this.prisma.$queryRaw<WeeklyCollectionRow[]>`
         SELECT
-          date_trunc('week', p.paid_date)::date  AS week_start,
+          date_trunc('week', ${sqlBkkLocal('p.paid_date')})::date AS week_start,
           COUNT(*) FILTER (WHERE p.status = 'PAID') AS paid_count,
           COUNT(*) AS due_count
         FROM payments p
         WHERE p.deleted_at IS NULL
           AND p.paid_date >= ${since}
-        GROUP BY date_trunc('week', p.paid_date)
+        GROUP BY date_trunc('week', ${sqlBkkLocal('p.paid_date')})
         ORDER BY week_start ASC
       `;
       return rows.map((r) => ({
@@ -127,7 +128,7 @@ export class OverdueAnalyticsService {
     try {
       const rows = await this.prisma.$queryRaw<PromiseKeptRow[]>`
         SELECT
-          date_trunc('week', COALESCE(broken_at, settlement_date))::date AS week_start,
+          date_trunc('week', ${sqlBkkLocal('COALESCE(broken_at, settlement_date)')})::date AS week_start,
           COUNT(*) FILTER (WHERE broken_at IS NULL AND settlement_date IS NOT NULL) AS kept,
           COUNT(*) FILTER (WHERE broken_at IS NOT NULL) AS broken
         FROM call_logs
@@ -135,7 +136,7 @@ export class OverdueAnalyticsService {
           AND result = 'PROMISED'
           AND COALESCE(broken_at, settlement_date) >= ${since}
           AND COALESCE(broken_at, settlement_date) IS NOT NULL
-        GROUP BY date_trunc('week', COALESCE(broken_at, settlement_date))
+        GROUP BY date_trunc('week', ${sqlBkkLocal('COALESCE(broken_at, settlement_date)')})
         ORDER BY week_start ASC
       `;
       return rows.map((r) => ({
@@ -158,13 +159,13 @@ export class OverdueAnalyticsService {
     try {
       const rows = await this.prisma.$queryRaw<DunningVolumeRow[]>`
         SELECT
-          date_trunc('day', created_at)::date AS day,
+          date_trunc('day', ${sqlBkkLocal('created_at')})::date AS day,
           COUNT(*) FILTER (WHERE status = 'SENT') AS sent,
           COUNT(*) FILTER (WHERE status = 'FAILED') AS failed
         FROM dunning_actions
         WHERE deleted_at IS NULL
           AND created_at >= ${since}
-        GROUP BY date_trunc('day', created_at)
+        GROUP BY date_trunc('day', ${sqlBkkLocal('created_at')})
         ORDER BY day ASC
       `;
       return rows.map((r) => ({
@@ -188,13 +189,13 @@ export class OverdueAnalyticsService {
       const rows = await this.prisma.$queryRaw<LetterDispatchRow[]>`
         SELECT
           letter_type,
-          date_trunc('month', dispatched_at)::date AS month,
+          date_trunc('month', ${sqlBkkLocal('dispatched_at')})::date AS month,
           COUNT(*) AS cnt
         FROM contract_letters
         WHERE deleted_at IS NULL
           AND dispatched_at IS NOT NULL
           AND dispatched_at >= ${since}
-        GROUP BY letter_type, date_trunc('month', dispatched_at)
+        GROUP BY letter_type, date_trunc('month', ${sqlBkkLocal('dispatched_at')})
         ORDER BY month ASC, letter_type ASC
       `;
       return rows.map((r) => ({
@@ -217,13 +218,13 @@ export class OverdueAnalyticsService {
     try {
       const rows = await this.prisma.$queryRaw<MdmVolumeRow[]>`
         SELECT
-          date_trunc('day', proposed_at)::date AS day,
+          date_trunc('day', ${sqlBkkLocal('proposed_at')})::date AS day,
           COUNT(*) AS proposed,
           COUNT(*) FILTER (WHERE status = 'APPROVED') AS approved
         FROM mdm_lock_requests
         WHERE deleted_at IS NULL
           AND proposed_at >= ${since}
-        GROUP BY date_trunc('day', proposed_at)
+        GROUP BY date_trunc('day', ${sqlBkkLocal('proposed_at')})
         ORDER BY day ASC
       `;
       return rows.map((r) => ({

@@ -35,6 +35,7 @@ import { CreateBatchDto } from './dto/create-batch.dto';
 import { ApproveBatchDto } from './dto/approve-batch.dto';
 import { ReverseBatchDto } from './dto/reverse-batch.dto';
 import { SettleRecallCashDto } from './dto/settle-recall-cash.dto';
+import { reportAsOf } from '../../utils/date.util';
 
 /**
  * เมนู "จ่ายให้หน้าร้าน (INTER-CO)" — รอบจ่าย batch endpoints.
@@ -88,11 +89,16 @@ export class IntercoSettlementController {
   aging(@Query('asOf') asOf?: string, @Query('thresholdDays') thresholdDays?: string) {
     let asOfDate: Date | undefined;
     if (asOf !== undefined && asOf !== '') {
-      asOfDate = new Date(asOf);
+      const invalidAsOf = () =>
+        new BadRequestException('รูปแบบวันที่ (asOf) ไม่ถูกต้อง — ใช้รูปแบบ ISO เช่น 2026-08-21');
+      try {
+        asOfDate = reportAsOf(asOf);
+      } catch {
+        // YYYY-MM-DD ที่ไม่มีจริงในปฏิทิน (เช่น 2026-99-99) — ตัวช่วยโยน 400 ข้อความกลาง; คงข้อความเดิมของ endpoint นี้
+        throw invalidAsOf();
+      }
       if (Number.isNaN(asOfDate.getTime())) {
-        throw new BadRequestException(
-          'รูปแบบวันที่ (asOf) ไม่ถูกต้อง — ใช้รูปแบบ ISO เช่น 2026-08-21',
-        );
+        throw invalidAsOf();
       }
     }
     let threshold: number | undefined;

@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { reportDayEnd, reportDayStart } from '../../../utils/date.util';
 
 /**
  * Operational-domain read reports extracted from ReportsService
@@ -16,9 +17,8 @@ export class OperationalReportService {
    * Branch comparison report
    */
   async getBranchComparisonReport(startDate: string, endDate: string) {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    end.setHours(23, 59, 59, 999);
+    const start = reportDayStart(startDate);
+    const end = reportDayEnd(endDate);
 
     const branches = await this.prisma.branch.findMany({
       where: { isActive: true },
@@ -137,13 +137,10 @@ export class OperationalReportService {
     if (filters.status) where.status = filters.status;
     if (filters.branchId) where.branchId = filters.branchId;
     if (filters.startDate || filters.endDate) {
-      where.createdAt = {};
-      if (filters.startDate) (where.createdAt as Record<string, unknown>).gte = new Date(filters.startDate);
-      if (filters.endDate) {
-        const end = new Date(filters.endDate);
-        end.setHours(23, 59, 59, 999);
-        (where.createdAt as Record<string, unknown>).lte = end;
-      }
+      const createdAt: Record<string, unknown> = {};
+      if (filters.startDate) createdAt.gte = reportDayStart(filters.startDate);
+      if (filters.endDate) createdAt.lte = reportDayEnd(filters.endDate);
+      where.createdAt = createdAt;
     }
 
     const contracts = await this.prisma.contract.findMany({

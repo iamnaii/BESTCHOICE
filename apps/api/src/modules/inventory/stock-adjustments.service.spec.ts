@@ -944,3 +944,41 @@ describe('StockAdjustmentsService — เครื่องจากใบสั
     expect(noteRows.every((r) => r.poUnbooked === false)).toBe(true);
   });
 });
+
+// ────────────────────────────────────────────────────────────────────────────────
+// 2026-11-18 — startDate/endDate 'YYYY-MM-DD' = วันตามปฏิทินไทย (เดิม = 07:00 น. ⇒ คำขอ 00:00–06:59 น. ของวันที่ 1 ไม่ถูกนับในการ์ด "เดือนนี้")
+// ────────────────────────────────────────────────────────────────────────────────
+describe('StockAdjustmentsService — ขอบวันตามเวลาไทย (findAll / getSummary)', () => {
+  const START = new Date('2026-10-31T17:00:00.000Z'); // 2026-11-01 00:00 น. ไทย
+  const END = new Date('2026-11-17T16:59:59.999Z'); // 2026-11-17 23:59:59.999 น. ไทย
+
+  it('findAll: createdAt = [00:00 startDate, 23:59:59.999 endDate] ทั้ง findMany และ count (การ์ด total ใช้ where เดียวกัน)', async () => {
+    const { service, prisma } = build();
+
+    await service.findAll({ startDate: '2026-11-01', endDate: '2026-11-17' }, OWNER);
+
+    expect(prisma.stockAdjustment.findMany.mock.calls[0][0].where.createdAt).toEqual({ gte: START, lte: END });
+    expect(prisma.stockAdjustment.count.mock.calls[0][0].where.createdAt).toEqual({ gte: START, lte: END });
+    const { gte, lte } = prisma.stockAdjustment.findMany.mock.calls[0][0].where.createdAt;
+    expect(new Date('2026-11-01T00:00:00+07:00') >= gte).toBe(true); // คำขอเที่ยงคืนไทยของวันเริ่มอยู่ในช่วง
+    expect(new Date('2026-11-18T00:00:00+07:00') <= lte).toBe(false); // เที่ยงคืนไทยของวันถัดจากวันสิ้นสุดอยู่นอกช่วง
+  });
+
+  it('findAll: ส่งแค่ startDate (การ์ด "เดือนนี้" ของหน้าเว็บ) → มีแต่ขอบล่าง 00:00 น. ไทย', async () => {
+    const { service, prisma } = build();
+
+    await service.findAll({ startDate: '2026-11-01', limit: 1 }, OWNER);
+
+    expect(prisma.stockAdjustment.findMany.mock.calls[0][0].where.createdAt).toEqual({ gte: START });
+  });
+
+  it('getSummary: createdAt = [00:00 startDate, 23:59:59.999 endDate] ทั้ง groupBy และ findMany', async () => {
+    const { service, prisma } = build();
+    prisma.stockAdjustment.groupBy = jest.fn().mockResolvedValue([]);
+
+    await service.getSummary({ startDate: '2026-11-01', endDate: '2026-11-17' });
+
+    expect(prisma.stockAdjustment.groupBy.mock.calls[0][0].where.createdAt).toEqual({ gte: START, lte: END });
+    expect(prisma.stockAdjustment.findMany.mock.calls[0][0].where.createdAt).toEqual({ gte: START, lte: END });
+  });
+});

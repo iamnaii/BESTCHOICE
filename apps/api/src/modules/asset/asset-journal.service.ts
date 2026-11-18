@@ -2,6 +2,7 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../prisma/prisma.service';
+import { reportDayEnd, reportDayStart } from '../../utils/date.util';
 
 const ASSET_FLOWS = [
   'asset-purchase',
@@ -53,12 +54,8 @@ export class AssetJournalService {
 
     if (filters.fromDate || filters.toDate) {
       where.entryDate = {};
-      if (filters.fromDate) where.entryDate.gte = new Date(filters.fromDate);
-      if (filters.toDate) {
-        const end = new Date(filters.toDate);
-        end.setHours(23, 59, 59, 999);
-        where.entryDate.lte = end;
-      }
+      if (filters.fromDate) where.entryDate.gte = reportDayStart(filters.fromDate);
+      if (filters.toDate) where.entryDate.lte = reportDayEnd(filters.toDate);
     }
 
     if (filters.search) {

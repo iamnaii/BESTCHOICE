@@ -8,6 +8,7 @@ import { StructuredLoggerService } from '../../common/logger';
 import { FinanceReceivableStatus, Prisma } from '@prisma/client';
 import { RecordReceiveDto, UpdateFinanceReceivableDto } from './dto/finance-receivable.dto';
 import { ShopExternalFinanceReceiptTemplate } from '../journal/cpa-templates/shop-external-finance-receipt.template';
+import { reportDayEnd, reportDayStart } from '../../utils/date.util';
 
 @Injectable()
 export class FinanceReceivableService {
@@ -40,12 +41,8 @@ export class FinanceReceivableService {
     if (externalFinanceCompanyId) where.externalFinanceCompanyId = externalFinanceCompanyId;
     if (startDate || endDate) {
       where.expectedDate = {};
-      if (startDate) where.expectedDate.gte = new Date(startDate);
-      if (endDate) {
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
-        where.expectedDate.lte = end;
-      }
+      if (startDate) where.expectedDate.gte = reportDayStart(startDate);
+      if (endDate) where.expectedDate.lte = reportDayEnd(endDate);
     }
     if (brokenPromiseOnly) {
       where.contactLogs = {

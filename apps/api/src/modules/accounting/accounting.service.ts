@@ -186,6 +186,15 @@ export class AccountingService implements OnModuleInit {
     return this.generalLedgerReport.getTrialBalance(asOfDate, scope);
   }
 
+  /** งบทดลองแบบช่วงเวลา (ยอดยกมา / ระหว่างงวด / ยอดคงเหลือ) — ดู GeneralLedgerReportService.getPeriodTrialBalance */
+  async getPeriodTrialBalance(
+    periodStart: Date,
+    periodEnd: Date,
+    scope: 'FINANCE' | 'SHOP' | 'ALL' = 'FINANCE',
+  ) {
+    return this.generalLedgerReport.getPeriodTrialBalance(periodStart, periodEnd, scope);
+  }
+
   /**
    * Get P&L from journal lines for a given period.
    *

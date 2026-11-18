@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CompanyResolverService } from '../journal/company-resolver.service';
 import { EXPENSE_ACCOUNT_CATEGORY } from './accounting-section-map.util';
+import { reportDayEnd, reportDayStart } from '../../utils/date.util';
 
 /**
  * Wave-4 P5: transactional (sales/payment-aggregate-based) financial reports
@@ -129,9 +130,8 @@ export class TransactionalReportService {
     branchIds?: string[],
     includeFinanceExpenses = false,
   ) {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    end.setHours(23, 59, 59, 999);
+    const start = reportDayStart(startDate);
+    const end = reportDayEnd(endDate);
     const branchFilter =
       branchIds !== undefined
         ? { branchId: { in: branchIds } }
@@ -789,9 +789,8 @@ export class TransactionalReportService {
   // ─── Cash Flow Statement (derived from existing data, no general ledger) ──────
 
   async getCashFlowStatement(startDate: string, endDate: string, branchId?: string, branchIds?: string[]) {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    end.setHours(23, 59, 59, 999);
+    const start = reportDayStart(startDate);
+    const end = reportDayEnd(endDate);
     const dateRange = { gte: start, lte: end };
     const branchFilter =
       branchIds !== undefined

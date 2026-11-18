@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { bangkokMidnight } from '../../../utils/date.util';
 import { INSTALLMENT_INPUT_VAT_FLOW } from '../../journal/cpa-templates/installment-input-vat.template';
 import { EntityScope, ensureTaxTypeAllowedForEntity } from '../tax-entity.util';
 import { payrollLineWithheld, payrollTaxableGross } from '../../expense-documents/payroll-system/payroll-pay';
@@ -968,8 +969,8 @@ export class TaxPreviewService {
    * annual wage total the accountant needs for กท.20ก.
    */
   async previewPnd1Annual(year: number) {
-    const startDate = new Date(Date.UTC(year, 0, 1));
-    const endDate = new Date(Date.UTC(year, 11, 31, 23, 59, 59, 999));
+    const startDate = bangkokMidnight(year, 0, 1);
+    const endDate = new Date(bangkokMidnight(year + 1, 0, 1).getTime() - 1);
 
     const docs = await this.prisma.expenseDocument.findMany({
       where: {

@@ -1,7 +1,7 @@
 import { outstandingOf, UNPAID_INSTALLMENT_WHERE } from '../../contracts/contract-outstanding';
 import { currentPartyQuery } from '../../employee-access/access-party-query-plan';
 import { domainAccessClient } from '../../employee-access/access-execution-context';
-import { calculatePaymentWatchRisk } from '../../../utils/payment-watch-risk.util';
+import { calculatePaymentWatchRisk, LATE_PAYMENT_SQL } from '../../../utils/payment-watch-risk.util';
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -339,7 +339,7 @@ export class CustomerAnalyticsService {
         c.id AS "contractId",
         c.contract_number AS "contractNumber",
         COUNT(DISTINCT p.id) FILTER (
-          WHERE p.paid_date IS NOT NULL AND p.paid_date::date > p.due_date::date
+          WHERE ${LATE_PAYMENT_SQL}
         ) AS "latePaymentCount",
         COUNT(DISTINCT p.id) FILTER (WHERE p.status = 'PARTIALLY_PAID') AS "partialPaymentCount",
         (c.dunning_last_action_at IS NOT NULL AND c.dunning_stage = 'NONE') AS "hadDunningReset",
@@ -358,14 +358,14 @@ export class CustomerAnalyticsService {
       GROUP BY cu.id, c.id
       HAVING
         COUNT(DISTINCT p.id) FILTER (
-          WHERE p.paid_date IS NOT NULL AND p.paid_date::date > p.due_date::date
+          WHERE ${LATE_PAYMENT_SQL}
         ) >= 2
         OR COUNT(DISTINCT p.id) FILTER (WHERE p.status = 'PARTIALLY_PAID') >= 1
         OR (c.dunning_last_action_at IS NOT NULL AND c.dunning_stage = 'NONE')
       ORDER BY
         (
           LEAST(COUNT(DISTINCT p.id) FILTER (
-            WHERE p.paid_date IS NOT NULL AND p.paid_date::date > p.due_date::date
+            WHERE ${LATE_PAYMENT_SQL}
           ), 5)
           + COUNT(DISTINCT p.id) FILTER (WHERE p.status = 'PARTIALLY_PAID') * 2
           + CASE WHEN c.dunning_last_action_at IS NOT NULL AND c.dunning_stage = 'NONE' THEN 3 ELSE 0 END

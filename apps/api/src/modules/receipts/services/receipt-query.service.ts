@@ -1,6 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
+import { reportDayEnd, reportDayStart } from '../../../utils/date.util';
 import {
   ADVANCE_SURPLUS_RECEIPT_TYPE,
   INSTALLMENT_MONEY_RECEIPT_TYPES,
@@ -45,12 +46,10 @@ export class ReceiptQueryService {
     if (filters.dateFrom || filters.dateTo) {
       where.paidDate = {};
       if (filters.dateFrom) {
-        where.paidDate.gte = new Date(filters.dateFrom);
+        where.paidDate.gte = reportDayStart(filters.dateFrom);
       }
       if (filters.dateTo) {
-        const endDate = new Date(filters.dateTo);
-        endDate.setHours(23, 59, 59, 999);
-        where.paidDate.lte = endDate;
+        where.paidDate.lte = reportDayEnd(filters.dateTo);
       }
     }
 

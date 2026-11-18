@@ -40,7 +40,7 @@ describe('โซนไฟแนนซ์ — กลุ่มใช้ร่ว�
 
   it('บัญชี & งบการเงิน รวมสมุดรายวันกับบัญชีแยกประเภท', () => {
     expect(paths('OWNER', 'fin-statements')).toEqual([
-      '/finance/general-journal', '/finance/general-ledger', '/finance/balance-sheet',
+      '/finance/general-journal', '/finance/general-ledger', '/finance/trial-balance', '/finance/balance-sheet',
       '/profit-loss', '/finance/cash-flow', '/finance/equity-statement',
     ]);
   });

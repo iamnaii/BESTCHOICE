@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ReportsService } from './reports.service';
+import { addBkkDays, bangkokDateString, bangkokStartOfDay } from '../../utils/date.util';
 
 /**
  * Auto-generates daily/weekly summary reports and stores them in DB.
@@ -29,9 +30,9 @@ export class ReportGeneratorService {
     newCustomers: number;
   }> {
     const d = date || new Date();
-    const startOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    const endOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
-    const dateStr = startOfDay.toISOString().slice(0, 10);
+    const startOfDay = bangkokStartOfDay(d);
+    const endOfDay = addBkkDays(startOfDay, 1);
+    const dateStr = bangkokDateString(d);
 
     const [payments, newContracts, newCustomers, overdueCount] = await Promise.all([
       this.prisma.payment.aggregate({
@@ -86,16 +87,12 @@ export class ReportGeneratorService {
     avgDailyRevenue: number;
     dailySummaries: Record<string, unknown>[];
   }> {
-    const now = new Date();
-    const weekEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const weekStart = new Date(weekEnd);
-    weekStart.setDate(weekStart.getDate() - 7);
+    const weekEnd = bangkokStartOfDay(new Date());
+    const weekStart = addBkkDays(weekEnd, -7);
 
     const dailySummaries: Record<string, unknown>[] = [];
     for (let i = 0; i < 7; i++) {
-      const d = new Date(weekStart);
-      d.setDate(d.getDate() + i);
-      const dateStr = d.toISOString().slice(0, 10);
+      const dateStr = bangkokDateString(addBkkDays(weekStart, i));
       const key = `daily_report_${dateStr}`;
       const config = await this.prisma.systemConfig.findUnique({ where: { key } });
       if (config) {
@@ -107,8 +104,9 @@ export class ReportGeneratorService {
     const totalPayments = dailySummaries.reduce((s, d) => s + (Number(d.paymentsCount) || 0), 0);
 
     const summary = {
-      weekStart: weekStart.toISOString().slice(0, 10),
-      weekEnd: weekEnd.toISOString().slice(0, 10),
+      weekStart: bangkokDateString(weekStart),
+      // วันสุดท้ายที่รวมจริง (อาทิตย์) — ค่าเดิมก็เป็นวันนี้ จึงไม่เปลี่ยน
+      weekEnd: bangkokDateString(addBkkDays(weekEnd, -1)),
       totalRevenue,
       totalPayments,
       avgDailyRevenue: Math.round(totalRevenue / 7),

@@ -207,6 +207,7 @@ const GeneralLedgerPage = lazy(() =>
 );
 // P4-SP1 — Financial report pages
 const BalanceSheetPage = lazy(() => import('@/pages/finance/BalanceSheetPage'));
+const TrialBalancePage = lazy(() => import('@/pages/finance/TrialBalancePage'));
 const GeneralJournalPage = lazy(() => import('@/pages/finance/GeneralJournalPage'));
 const AgingReportPage = lazy(() => import('@/pages/finance/AgingReportPage'));
 const BadDebtReportPage = lazy(() => import('@/pages/finance/BadDebtReportPage'));
@@ -970,6 +971,14 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <GeneralLedgerPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/finance/trial-balance"
+            element={
+              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
+                <TrialBalancePage />
               </ProtectedRoute>
             }
           />

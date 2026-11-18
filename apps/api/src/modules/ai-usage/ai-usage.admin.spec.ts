@@ -220,7 +220,7 @@ describe('AiUsage admin queries', () => {
       expect(call.where.createdAt.gte).toBeInstanceOf(Date);
     });
 
-    it('honors explicit from/to window', async () => {
+    it('honors explicit from/to window เป็นวันตามปฏิทินไทย (00:00 น. วันเริ่ม — 23:59:59.999 น. วันสิ้นสุด)', async () => {
       prisma.aiUsageLog.groupBy.mockResolvedValue([]);
       await service.getBreakdown({
         groupBy: 'service',
@@ -228,8 +228,30 @@ describe('AiUsage admin queries', () => {
         to: '2026-03-31',
       });
       const call = prisma.aiUsageLog.groupBy.mock.calls[0][0];
-      expect(call.where.createdAt.gte).toEqual(new Date('2026-03-01'));
-      expect(call.where.createdAt.lte).toEqual(new Date('2026-03-31'));
+      expect(call.where.createdAt.gte.toISOString()).toBe('2026-02-28T17:00:00.000Z');
+      expect(call.where.createdAt.lte.toISOString()).toBe('2026-03-31T16:59:59.999Z');
+    });
+
+    it('ขอบ: เรียก 00:00 น. ไทยของวันเริ่มอยู่ในช่วง · 00:00 น. ของวันถัดจากวันสิ้นสุดอยู่นอกช่วง', async () => {
+      prisma.aiUsageLog.groupBy.mockResolvedValue([]);
+      await service.getBreakdown({ groupBy: 'service', from: '2026-11-01', to: '2026-11-17' });
+      const { gte, lte } = prisma.aiUsageLog.groupBy.mock.calls[0][0].where.createdAt;
+      const firstInstant = new Date('2026-11-01T00:00:00+07:00').getTime();
+      const nextDayMidnight = new Date('2026-11-18T00:00:00+07:00').getTime();
+      expect(firstInstant >= gte.getTime() && firstInstant <= lte.getTime()).toBe(true);
+      expect(nextDayMidnight <= lte.getTime()).toBe(false);
+    });
+
+    it('from/to ที่เป็น ISO เต็ม ใช้ตามเดิม', async () => {
+      prisma.aiUsageLog.groupBy.mockResolvedValue([]);
+      await service.getBreakdown({
+        groupBy: 'service',
+        from: '2026-03-01T03:00:00.000Z',
+        to: '2026-03-31T10:00:00.000Z',
+      });
+      const call = prisma.aiUsageLog.groupBy.mock.calls[0][0];
+      expect(call.where.createdAt.gte.toISOString()).toBe('2026-03-01T03:00:00.000Z');
+      expect(call.where.createdAt.lte.toISOString()).toBe('2026-03-31T10:00:00.000Z');
     });
   });
 
@@ -242,20 +264,24 @@ describe('AiUsage admin queries', () => {
       expect(res.every((r) => r.calls === 0)).toBe(true);
     });
 
-    it('sums rows into matching day bucket', async () => {
-      const today = new Date();
-      today.setUTCHours(10, 0, 0, 0);
-      prisma.aiUsageLog.findMany.mockResolvedValue([
-        { createdAt: today, costUsd: new Prisma.Decimal('1.5'), service: 'finance-ai' },
-        { createdAt: today, costUsd: new Prisma.Decimal('0.25'), service: 'chatbot' },
-      ]);
+    it('sums rows into matching day bucket (วันไทย)', async () => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date('2026-11-18T18:30:00.000Z')); // 2026-11-19 01:30 น. ไทย
+      try {
+        const sameDay = new Date('2026-11-18T10:00:00.000Z'); // 17:00 น. ไทยของวันที่ 18
+        prisma.aiUsageLog.findMany.mockResolvedValue([
+          { createdAt: sameDay, costUsd: new Prisma.Decimal('1.5'), service: 'finance-ai' },
+          { createdAt: sameDay, costUsd: new Prisma.Decimal('0.25'), service: 'chatbot' },
+        ]);
 
-      const res = await service.getDailyTrend(3);
-      const todayKey = today.toISOString().slice(0, 10);
-      const bucket = res.find((r) => r.date === todayKey);
-      expect(bucket).toBeDefined();
-      expect(bucket!.costUsd).toBeCloseTo(1.75, 4);
-      expect(bucket!.calls).toBe(2);
+        const res = await service.getDailyTrend(3);
+        const bucket = res.find((r) => r.date === '2026-11-18');
+        expect(bucket).toBeDefined();
+        expect(bucket!.costUsd).toBeCloseTo(1.75, 4);
+        expect(bucket!.calls).toBe(2);
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it('ignores rows outside the requested window', async () => {
@@ -265,6 +291,70 @@ describe('AiUsage admin queries', () => {
       ]);
       const res = await service.getDailyTrend(5);
       expect(res.reduce((s, r) => s + r.costUsd, 0)).toBe(0);
+    });
+  });
+
+  describe('วันตามเวลาไทย — ปักเวลา 2026-11-19 01:30 น. ไทย (2026-11-18T18:30:00.000Z)', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date('2026-11-18T18:30:00.000Z'));
+    });
+    afterEach(() => jest.useRealTimers());
+
+    it('getSummary: "วันนี้" เริ่ม 00:00 น. ไทย · 7 วัน/30 วันนับจากเที่ยงคืนไทย (ตรงกับ ai-budget.cron)', async () => {
+      prisma.aiUsageLog.aggregate.mockResolvedValue({
+        _sum: { costUsd: null, inputTokens: null, outputTokens: null },
+        _count: 0,
+      });
+      prisma.aiUsageLog.groupBy.mockResolvedValue([]);
+      prisma.aiUsageLog.count.mockResolvedValue(0);
+
+      await service.getSummary();
+
+      const gte = (n: number): string =>
+        prisma.aiUsageLog.aggregate.mock.calls[n][0].where.createdAt.gte.toISOString();
+      expect(gte(0)).toBe('2026-11-18T17:00:00.000Z'); // วันนี้ = 19 พ.ย. 00:00 น. ไทย
+      expect(gte(1)).toBe('2026-11-11T17:00:00.000Z'); // 7 วันก่อน
+      expect(gte(2)).toBe('2026-10-19T17:00:00.000Z'); // 30 วันก่อน
+      expect(prisma.aiUsageLog.groupBy.mock.calls[0][0].where.createdAt.gte.toISOString()).toBe(
+        '2026-11-18T17:00:00.000Z',
+      );
+      expect(prisma.aiUsageLog.count.mock.calls[0][0].where.createdAt.gte.toISOString()).toBe(
+        '2026-11-18T17:00:00.000Z',
+      );
+    });
+
+    it('getDailyTrend: ช่วงเริ่ม 00:00 น. ไทย และป้ายวันเป็นวันไทย', async () => {
+      prisma.aiUsageLog.findMany.mockResolvedValue([]);
+
+      const res = await service.getDailyTrend(3);
+
+      expect(prisma.aiUsageLog.findMany.mock.calls[0][0].where.createdAt.gte.toISOString()).toBe(
+        '2026-11-16T17:00:00.000Z',
+      );
+      expect(res.map((r) => r.date)).toEqual(['2026-11-17', '2026-11-18', '2026-11-19']);
+    });
+
+    it('getDailyTrend: เรียก 00:30 น. ไทยนับเป็นวันใหม่ · 23:59:59.999 น. ไทยนับเป็นวันเดิม', async () => {
+      prisma.aiUsageLog.findMany.mockResolvedValue([
+        { createdAt: new Date('2026-11-18T17:30:00.000Z'), costUsd: new Prisma.Decimal('2'), service: 'a' }, // 19 พ.ย. 00:30 น.
+        { createdAt: new Date('2026-11-18T16:59:59.999Z'), costUsd: new Prisma.Decimal('1'), service: 'a' }, // 18 พ.ย. 23:59:59.999 น.
+      ]);
+
+      const res = await service.getDailyTrend(3);
+
+      expect(res.find((r) => r.date === '2026-11-19')).toMatchObject({ calls: 1, costUsd: 2 });
+      expect(res.find((r) => r.date === '2026-11-18')).toMatchObject({ calls: 1, costUsd: 1 });
+    });
+
+    it('getBreakdown ไม่ส่ง from/to: ค่าเริ่มต้น = 30 วันก่อน ตั้งแต่ 00:00 น. ไทย', async () => {
+      prisma.aiUsageLog.groupBy.mockResolvedValue([]);
+
+      await service.getBreakdown({ groupBy: 'service' });
+
+      expect(prisma.aiUsageLog.groupBy.mock.calls[0][0].where.createdAt.gte.toISOString()).toBe(
+        '2026-10-19T17:00:00.000Z',
+      );
     });
   });
 

@@ -22,7 +22,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { bangkokDateRange } from '../../utils/date.util';
+import { bangkokDateRange, reportAsOf, reportDayEnd, reportDayStart } from '../../utils/date.util';
 
 /**
  * Legacy expenses CRUD endpoints have been removed (Phase: expense-documents PR-1).
@@ -53,9 +53,18 @@ export class AccountingController {
   getTrialBalance(
     @Query('asOfDate') asOfDate?: string,
     @Query('scope') scope?: 'FINANCE' | 'SHOP' | 'ALL',
+    @Query('periodStart') periodStart?: string,
+    @Query('periodEnd') periodEnd?: string,
   ) {
+    // มี periodStart = งบทดลองแบบช่วงเวลา (ยอดยกมา / ระหว่างงวด / ยอดคงเหลือ) · ไม่มี = งบ ณ วันที่ ตามเดิม
+    if (periodStart) {
+      if (!periodEnd) throw new BadRequestException('กรุณาระบุวันสิ้นสุด');
+      // พารามิเตอร์ใหม่ — รับเฉพาะ YYYY-MM-DD (รูปแบบผิด/วันไม่มีจริง/วันเริ่มหลังวันสิ้นสุด = 400)
+      const { gte, lt } = bangkokDateRange(periodStart, periodEnd);
+      return this.service.getPeriodTrialBalance(gte!, new Date(lt!.getTime() - 1), scope ?? 'FINANCE');
+    }
     return this.service.getTrialBalance(
-      asOfDate ? new Date(asOfDate) : undefined,
+      asOfDate ? reportAsOf(asOfDate) : undefined,
       scope ?? 'FINANCE',
     );
   }
@@ -67,9 +76,8 @@ export class AccountingController {
     @Query('periodEnd') periodEnd: string,
     @Query('scope') scope?: 'FINANCE' | 'SHOP' | 'ALL',
   ) {
-    const start = new Date(periodStart);
-    const end = new Date(periodEnd);
-    end.setHours(23, 59, 59, 999);
+    const start = reportDayStart(periodStart);
+    const end = reportDayEnd(periodEnd);
     return this.service.getProfitLossFromJournal(start, end, undefined, scope ?? 'FINANCE');
   }
 
@@ -91,7 +99,7 @@ export class AccountingController {
   @Get('ledger/shop/trial-balance')
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
   getShopTrialBalance(@Query('asOfDate') asOfDate?: string) {
-    return this.service.getTrialBalance(asOfDate ? new Date(asOfDate) : undefined, 'SHOP');
+    return this.service.getTrialBalance(asOfDate ? reportAsOf(asOfDate) : undefined, 'SHOP');
   }
 
   @Get('ledger/shop/profit-loss')
@@ -100,16 +108,15 @@ export class AccountingController {
     @Query('periodStart') periodStart: string,
     @Query('periodEnd') periodEnd: string,
   ) {
-    const start = new Date(periodStart);
-    const end = new Date(periodEnd);
-    end.setHours(23, 59, 59, 999);
+    const start = reportDayStart(periodStart);
+    const end = reportDayEnd(periodEnd);
     return this.service.getProfitLossFromJournal(start, end, undefined, 'SHOP');
   }
 
   @Get('ledger/balance-sheet')
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
   getBalanceSheetFromJournal(@Query('asOfDate') asOfDate?: string) {
-    return this.service.getBalanceSheetFromJournal(asOfDate ? new Date(asOfDate) : undefined);
+    return this.service.getBalanceSheetFromJournal(asOfDate ? reportAsOf(asOfDate) : undefined);
   }
 
   // ─── P4-SP1: Aging Report ────────────────────────────────────────────────
@@ -117,7 +124,8 @@ export class AccountingController {
   @Get('ledger/aging')
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
   getAgingReport(@Query('asOf') asOf?: string) {
-    return this.service.getAgingReport(asOf ? new Date(asOf) : new Date());
+    // reportAsOf: YYYY-MM-DD = สิ้นวันไทย · ค่าอื่นคงตามที่ส่งมา (เดิมไม่ขยายเป็นสิ้นวัน)
+    return this.service.getAgingReport(asOf ? reportAsOf(asOf) : new Date());
   }
 
   // ─── P4-SP1: Bad Debt Report ──────────────────────────────────────────────
@@ -129,7 +137,11 @@ export class AccountingController {
     @Query('end') end: string,
     @Query('companyId') companyId?: string,
   ) {
-    return this.service.getBadDebtReport(new Date(start), new Date(end), companyId);
+    if (!start || !end) {
+      throw new BadRequestException('กรุณาระบุวันเริ่มต้น (start) และวันสิ้นสุด (end)');
+    }
+    // reportAsOf: YYYY-MM-DD = สิ้นวันไทย · ค่าอื่นคงตามที่ส่งมา (เดิมไม่ขยายเป็นสิ้นวัน)
+    return this.service.getBadDebtReport(reportDayStart(start), reportAsOf(end), companyId);
   }
 
   // Balance Sheet & Cash Flow endpoints are in ReportsController (/reports/balance-sheet, /reports/cash-flow)
@@ -146,9 +158,8 @@ export class AccountingController {
     @Query('periodEnd') periodEnd: string,
     @Query('companyId') companyId?: string,
   ) {
-    const start = new Date(periodStart);
-    const end = new Date(periodEnd);
-    end.setHours(23, 59, 59, 999);
+    const start = reportDayStart(periodStart);
+    const end = reportDayEnd(periodEnd);
     return this.service.getCashFlowFromJournal(start, end, companyId);
   }
 
@@ -159,9 +170,8 @@ export class AccountingController {
     @Query('periodEnd') periodEnd: string,
     @Query('companyId') companyId?: string,
   ) {
-    const start = new Date(periodStart);
-    const end = new Date(periodEnd);
-    end.setHours(23, 59, 59, 999);
+    const start = reportDayStart(periodStart);
+    const end = reportDayEnd(periodEnd);
     return this.service.getEquityStatementFromJournal(start, end, companyId);
   }
 
@@ -234,7 +244,11 @@ export class AccountingController {
     @Query('limit') limit?: string,
     @Query('companyId') companyId?: string,
   ) {
-    return this.service.getGeneralJournal(new Date(start), new Date(end), {
+    if (!start || !end) {
+      throw new BadRequestException('กรุณาระบุวันเริ่มต้น (start) และวันสิ้นสุด (end)');
+    }
+    // reportAsOf: YYYY-MM-DD = สิ้นวันไทย · ค่าอื่นคงตามที่ส่งมา (เดิมไม่ขยายเป็นสิ้นวัน)
+    return this.service.getGeneralJournal(reportDayStart(start), reportAsOf(end), {
       page: page ? parseInt(page, 10) : 1,
       limit: limit ? parseInt(limit, 10) : 50,
       companyId,
@@ -249,9 +263,8 @@ export class AccountingController {
     @Query('periodEnd') periodEnd: string,
     @Query('companyId') companyId?: string,
   ) {
-    const start = new Date(periodStart);
-    const end = new Date(periodEnd);
-    end.setHours(23, 59, 59, 999);
+    const start = reportDayStart(periodStart);
+    const end = reportDayEnd(periodEnd);
     return this.service.getGeneralLedger(accountCode, start, end, companyId);
   }
 
@@ -372,6 +385,7 @@ export class AccountingController {
     if (!start || !end) {
       throw new BadRequestException('กรุณาระบุ start และ end (ISO date string)');
     }
-    return this.intercoReportService.getReport(new Date(start), new Date(end));
+    // reportAsOf: YYYY-MM-DD = สิ้นวันไทย · ค่าอื่นคงตามที่ส่งมา (เดิมไม่ขยายเป็นสิ้นวัน)
+    return this.intercoReportService.getReport(reportDayStart(start), reportAsOf(end));
   }
 }

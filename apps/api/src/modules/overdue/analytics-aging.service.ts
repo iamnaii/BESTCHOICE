@@ -1,5 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { sqlBkkDate } from '../../utils/bangkok-sql.util';
+import { bangkokDateString } from '../../utils/date.util';
 
 /**
  * Aging buckets used by Collections AnalyticsTab (Task 15).
@@ -47,8 +50,11 @@ export class AnalyticsAgingService {
 
   private async compute(branchId: string | null): Promise<AgingBucketRow[]> {
     try {
-      const rows = await this.prisma.$queryRawUnsafe<RawRow[]>(
-        `
+      // อายุหนี้ = วันนี้ตามปฏิทินไทย − วันครบกำหนดของงวดเก่าสุดตามปฏิทินไทย (2026-11-18)
+      // due_date เก็บเที่ยงคืนไทย (= 17:00Z ของวันก่อน) ⇒ เดิม CURRENT_DATE - oldest_due::date ได้อายุเกินจริง 1 วัน
+      // และ CURRENT_DATE ตาม TZ ของ session ฐานข้อมูล — วันนี้จึงคำนวณใน JS แล้วส่งเป็นพารามิเตอร์
+      const today = bangkokDateString();
+      const rows = await this.prisma.$queryRaw<RawRow[]>(Prisma.sql`
         WITH oldest AS (
           SELECT
             p.contract_id,
@@ -61,29 +67,31 @@ export class AnalyticsAgingService {
             AND c.status IN ('OVERDUE', 'DEFAULT', 'TERMINATED')
             AND p.status IN ('PENDING', 'OVERDUE', 'PARTIALLY_PAID')
             AND p.due_date < NOW()
-            ${branchId ? 'AND c.branch_id = $1' : ''}
+            ${branchId ? Prisma.sql`AND c.branch_id = ${branchId}` : Prisma.empty}
           GROUP BY p.contract_id
+        ),
+        aged AS (
+          SELECT ${today}::date - ${sqlBkkDate('oldest_due')} AS days, outstanding
+          FROM oldest
         ),
         bucketed AS (
           SELECT
             CASE
-              WHEN (CURRENT_DATE - oldest_due::date) BETWEEN 1 AND 7 THEN '1-7'
-              WHEN (CURRENT_DATE - oldest_due::date) BETWEEN 8 AND 30 THEN '8-30'
-              WHEN (CURRENT_DATE - oldest_due::date) BETWEEN 31 AND 60 THEN '31-60'
-              WHEN (CURRENT_DATE - oldest_due::date) BETWEEN 61 AND 90 THEN '61-90'
-              WHEN (CURRENT_DATE - oldest_due::date) > 90 THEN '90+'
+              WHEN days BETWEEN 1 AND 7 THEN '1-7'
+              WHEN days BETWEEN 8 AND 30 THEN '8-30'
+              WHEN days BETWEEN 31 AND 60 THEN '31-60'
+              WHEN days BETWEEN 61 AND 90 THEN '61-90'
+              WHEN days > 90 THEN '90+'
               ELSE NULL
             END AS bucket,
             outstanding
-          FROM oldest
+          FROM aged
         )
         SELECT bucket, COUNT(*)::bigint AS cnt, SUM(outstanding)::numeric AS outstanding
         FROM bucketed
         WHERE bucket IS NOT NULL
         GROUP BY bucket
-        `,
-        ...(branchId ? [branchId] : []),
-      );
+      `);
 
       const order: AgingBucketCode[] = ['1-7', '8-30', '31-60', '61-90', '90+'];
       const map = new Map<AgingBucketCode, AgingBucketRow>();

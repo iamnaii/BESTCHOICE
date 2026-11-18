@@ -857,6 +857,29 @@ describe('RepairTicketsService.findAll', () => {
       ]),
     );
   });
+
+  // 2026-11-18 — from/to 'YYYY-MM-DD' = วันตามปฏิทินไทย (เดิม lte = 07:00 น. ของวันสุดท้าย ⇒ ตัดเกือบทั้งวัน)
+  it('from/to แบบ YYYY-MM-DD → createdAt [00:00 from, 23:59:59.999 to] เวลาไทย', async () => {
+    await svc.findAll({ from: '2026-11-01', to: '2026-11-17' } as any, OWNER);
+
+    const createdAt = prisma.repairTicket.findMany.mock.calls[0][0].where.createdAt;
+    expect(createdAt).toEqual({
+      gte: new Date('2026-10-31T17:00:00.000Z'),
+      lte: new Date('2026-11-17T16:59:59.999Z'),
+    });
+    expect(new Date('2026-11-01T00:00:00+07:00') >= createdAt.gte).toBe(true); // เที่ยงคืนไทยของวันเริ่มอยู่ในช่วง
+    expect(new Date('2026-11-17T15:00:00+07:00') <= createdAt.lte).toBe(true); // บ่ายของวันสุดท้ายอยู่ในช่วง (เดิมหาย)
+    expect(new Date('2026-11-18T00:00:00+07:00') <= createdAt.lte).toBe(false); // เที่ยงคืนไทยของวันถัดไปอยู่นอกช่วง
+  });
+
+  it('to แบบ ISO มีเวลา → ขอบบนตรงตัวเหมือนเดิม (ไม่ขยายเป็นสิ้นวัน)', async () => {
+    await svc.findAll({ from: '2026-11-01T03:00:00.000Z', to: '2026-11-17T05:00:00.000Z' } as any, OWNER);
+
+    expect(prisma.repairTicket.findMany.mock.calls[0][0].where.createdAt).toEqual({
+      gte: new Date('2026-11-01T03:00:00.000Z'),
+      lte: new Date('2026-11-17T05:00:00.000Z'),
+    });
+  });
 });
 
 // ─── RepairTicketsService.findOne ──────────────────────────────────────────

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { bangkokCalendarParts, bangkokMidnight } from '../../../utils/date.util';
 
 const D = Prisma.Decimal;
 type Decimal = Prisma.Decimal;
@@ -157,7 +158,8 @@ export class ValidationService {
 
     // V8 — Issue date must be in an OPEN accounting period
     if (doc.issueDate && !ctx.isPeriodOpen(doc.issueDate)) {
-      const ym = `${doc.issueDate.getFullYear()}-${String(doc.issueDate.getMonth() + 1).padStart(2, '0')}`;
+      const { year: by, month: bm } = bangkokCalendarParts(doc.issueDate);
+      const ym = `${by}-${String(bm + 1).padStart(2, '0')}`;
       errors.push({
         rule: 'V8',
         msg: `งวด ${ym} ปิดบัญชีแล้ว — ไม่สามารถบันทึกได้`,
@@ -262,22 +264,17 @@ export class ValidationService {
     const hasLateFeeItem = items.some((it) => it.accountCode === '42-1103');
     if (!hasLateFeeItem) return [];
 
-    // BKK month bounds for issueDate
-    // We compare against Payment.dueDate (the installment's billing month),
-    // which is the field used by PaymentReceipt2BTemplate to attach lateFee
-    // to 42-1103. We use UTC-month bounds here because Payment.dueDate values
-    // are stored as the contract's installment due-day at 00:00 UTC, which
-    // already lines up with BKK calendar months for all production data.
-    const y = issueDate.getFullYear();
-    const m = issueDate.getMonth();
-    const monthStart = new Date(Date.UTC(y, m, 1, 0, 0, 0, 0));
-    const monthEnd = new Date(Date.UTC(y, m + 1, 0, 23, 59, 59, 999));
+    // เดือนปฏิทินไทยของ issueDate เทียบกับ Payment.dueDate (งวดที่ผูกค่าปรับเข้า 42-1103 ผ่าน PaymentReceipt2BTemplate)
+    // Payment.dueDate เก็บที่ 00:00 น. ไทยของวันครบกำหนด (ไม่ใช่ 00:00 UTC) ⇒ ขอบเดือนต้องเป็นเที่ยงคืนไทย
+    const { year: y, month: m } = bangkokCalendarParts(issueDate);
+    const monthStart = bangkokMidnight(y, m, 1);
+    const nextMonthStart = bangkokMidnight(y, m + 1, 1);
 
     const colliding = await this.prisma.payment.findFirst({
       where: {
         contract: { customerId },
         lateFee: { gt: 0 },
-        dueDate: { gte: monthStart, lte: monthEnd },
+        dueDate: { gte: monthStart, lt: nextMonthStart },
         deletedAt: null,
       },
       select: { id: true, installmentNo: true, lateFee: true, dueDate: true },

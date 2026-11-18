@@ -32,6 +32,7 @@ import { ReceiptVoidReversalTemplate } from '../journal/cpa-templates/receipt-vo
 import { ReceiptNumberService } from '../receipts/services/receipt-number.service';
 import { glContractBalance } from '../journal/gl-contract-balance';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
+import { reportAsOf, reportDayStart } from '../../utils/date.util';
 import { emitDeferredWarnings, type DeferredWarning } from '../journal/deferred-warning';
 import { Prisma } from '@prisma/client';
 import { voidReceiptInTx, storedTaxColumnsOf } from '../receipts/services/receipt-void-core';
@@ -760,8 +761,9 @@ export class DefectExchangeService {
     const where: Record<string, unknown> = { action: 'DEFECT_EXCHANGE' };
     if (filters.from || filters.to) {
       where.createdAt = {
-        ...(filters.from ? { gte: new Date(filters.from) } : {}),
-        ...(filters.to ? { lte: new Date(filters.to) } : {}),
+        ...(filters.from ? { gte: reportDayStart(filters.from) } : {}),
+        // reportAsOf: YYYY-MM-DD = สิ้นวันไทย · ค่าอื่นคงตามที่ส่งมา (เดิมไม่ขยายเป็นสิ้นวัน)
+        ...(filters.to ? { lte: reportAsOf(filters.to) } : {}),
       };
     }
     const fetchBatch = (cursor?: string) => this.prisma.auditLog.findMany({

@@ -4,6 +4,7 @@ import { NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { d, dAdd, dSub, dSum } from '../../../utils/decimal.util';
+import { reportDayEnd, reportDayStart } from '../../../utils/date.util';
 import { countPhotoAngles } from '../../quality-control/photo-angles.util';
 
 // Accounts-payable ("ค้างจ่าย") = money actually owed to a supplier: either the
@@ -214,12 +215,8 @@ export class PoQueryService {
     const where: Record<string, unknown> = { poId, deletedAt: null };
     if (filters.startDate || filters.endDate) {
       const dateFilter: Record<string, Date> = {};
-      if (filters.startDate) dateFilter.gte = new Date(filters.startDate);
-      if (filters.endDate) {
-        const end = new Date(filters.endDate);
-        end.setHours(23, 59, 59, 999);
-        dateFilter.lte = end;
-      }
+      if (filters.startDate) dateFilter.gte = reportDayStart(filters.startDate);
+      if (filters.endDate) dateFilter.lte = reportDayEnd(filters.endDate);
       where.createdAt = dateFilter;
     }
 
@@ -281,12 +278,8 @@ export class PoQueryService {
     const receivingWhere: Record<string, unknown> = { poId };
     if (filters.startDate || filters.endDate) {
       const dateFilter: Record<string, Date> = {};
-      if (filters.startDate) dateFilter.gte = new Date(filters.startDate);
-      if (filters.endDate) {
-        const end = new Date(filters.endDate);
-        end.setHours(23, 59, 59, 999);
-        dateFilter.lte = end;
-      }
+      if (filters.startDate) dateFilter.gte = reportDayStart(filters.startDate);
+      if (filters.endDate) dateFilter.lte = reportDayEnd(filters.endDate);
       receivingWhere.createdAt = dateFilter;
     }
 

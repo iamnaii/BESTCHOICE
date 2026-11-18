@@ -53,7 +53,7 @@ import {
   Mail,
   // Unified contact party-master — สมุดผู้ติดต่อ
   ArrowLeft,
-  BookUser, Camera, Clock, Timer,
+  BookUser, Camera, Clock, Timer, Scale,
 } from 'lucide-react';
 
 /* ── Types ─────────────────────────────────────────── */
@@ -210,6 +210,8 @@ const finStatementsSection: MenuSection = {
   items: [
     { label: NAV_LABELS.generalJournal, path: '/finance/general-journal', icon: BookOpen },
     { label: NAV_LABELS.generalLedger, path: '/finance/general-ledger', icon: BookOpen },
+    // งบทดลองแบบช่วงเวลา (ยอดยกมา / ระหว่างงวด / ยอดคงเหลือ) — กดบัญชีแล้วเปิดบัญชีแยกประเภท (2026-11-18)
+    { label: NAV_LABELS.trialBalance, path: '/finance/trial-balance', icon: Scale },
     // CSV §5 — "งบ 4 ประเภท" (full 4-statement set per TFRS)
     { label: NAV_LABELS.balanceSheet, path: '/finance/balance-sheet', icon: Landmark },
     { label: NAV_LABELS.profitLoss, path: '/profit-loss', icon: PieChart },

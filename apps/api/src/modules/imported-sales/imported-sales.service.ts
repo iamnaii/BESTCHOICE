@@ -4,6 +4,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { QueryImportedSalesDto } from './dto/query-imported-sales.dto';
+import { bkkYearMonth, reportAsOf, reportDayStart } from '../../utils/date.util';
 
 export interface Bucket { key: string; count: number; sales: string; profit: string | null }
 
@@ -19,8 +20,8 @@ export class ImportedSalesService {
     if (q.salespersonName) where.salespersonName = { contains: q.salespersonName };
     if (q.startDate || q.endDate) {
       where.soldAt = {};
-      if (q.startDate) where.soldAt.gte = new Date(q.startDate);
-      if (q.endDate) where.soldAt.lte = new Date(q.endDate);
+      if (q.startDate) where.soldAt.gte = reportDayStart(q.startDate);
+      if (q.endDate) where.soldAt.lte = reportAsOf(q.endDate);
     }
     return where;
   }
@@ -72,10 +73,7 @@ export class ImportedSalesService {
     const totalProfit = rows.reduce((a, r) => a.plus(r.profit), new Prisma.Decimal(0));
     const totalCost = rows.reduce((a, r) => a.plus(r.costTotal), new Prisma.Decimal(0));
 
-    const monthKey = (r: (typeof rows)[number]) => {
-      const d = r.soldAt;
-      return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
-    };
+    const monthKey = (r: (typeof rows)[number]) => bkkYearMonth(r.soldAt);
 
     return {
       totals: { count: rows.length, sales: totalSales.toString(), profit: profit ? totalProfit.toString() : null, cost: cost ? totalCost.toString() : null },

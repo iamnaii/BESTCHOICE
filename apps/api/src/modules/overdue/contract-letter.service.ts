@@ -9,6 +9,7 @@ import { LetterType, LetterStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DunningEngineService } from './dunning-engine.service';
 import { getBranchScope } from '../auth/branch-access.util';
+import { reportAsOf, reportDayStart } from '../../utils/date.util';
 
 @Injectable()
 export class ContractLetterService {
@@ -117,8 +118,9 @@ export class ContractLetterService {
       ...(params.letterType && { letterType: params.letterType }),
       ...((params.from || params.to) && {
         triggeredAt: {
-          ...(params.from && { gte: new Date(params.from) }),
-          ...(params.to && { lte: new Date(params.to) }),
+          ...(params.from && { gte: reportDayStart(params.from) }),
+          // reportAsOf: YYYY-MM-DD = สิ้นวันไทย · ค่าอื่นคงตามที่ส่งมา (เดิมไม่ขยายเป็นสิ้นวัน)
+          ...(params.to && { lte: reportAsOf(params.to) }),
         },
       }),
       ...(effectiveBranchId && {
@@ -520,8 +522,9 @@ export class ContractLetterService {
       ...(params.letterType && { letterType: params.letterType }),
       ...((params.from || params.to) && {
         triggeredAt: {
-          ...(params.from && { gte: new Date(params.from) }),
-          ...(params.to && { lte: new Date(params.to) }),
+          ...(params.from && { gte: reportDayStart(params.from) }),
+          // reportAsOf: YYYY-MM-DD = สิ้นวันไทย · ค่าอื่นคงตามที่ส่งมา (เดิมไม่ขยายเป็นสิ้นวัน)
+          ...(params.to && { lte: reportAsOf(params.to) }),
         },
       }),
       ...(effectiveBranchId && { contract: { branchId: effectiveBranchId } }),

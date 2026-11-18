@@ -2,6 +2,7 @@ import { domainAccessClient, currentDomainAccess } from '../../employee-access/a
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger, InternalServerErrorException, HttpException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { reportDayEnd, reportDayStart } from '../../../utils/date.util';
 import { TransferProductDto, BulkTransferDto } from '../dto/transfer-product.dto';
 
 // Core StockTransfer select - only columns guaranteed to exist
@@ -236,12 +237,8 @@ export class StockTransferService {
     }
     if (filters.startDate || filters.endDate) {
       const dateFilter: Record<string, Date> = {};
-      if (filters.startDate) dateFilter.gte = new Date(filters.startDate);
-      if (filters.endDate) {
-        const end = new Date(filters.endDate);
-        end.setHours(23, 59, 59, 999);
-        dateFilter.lte = end;
-      }
+      if (filters.startDate) dateFilter.gte = reportDayStart(filters.startDate);
+      if (filters.endDate) dateFilter.lte = reportDayEnd(filters.endDate);
       where.createdAt = dateFilter;
     }
 

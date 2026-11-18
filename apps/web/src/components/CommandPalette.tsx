@@ -65,7 +65,7 @@ const pages: NavEntry[] = [
   { label: NAV_LABELS.payments, path: '/payments', icon: DollarSign, keywords: 'payment ชำระ จ่าย' },
   { label: 'ใบเสร็จรับเงิน', path: '/payments?tab=receipts', icon: Receipt, keywords: 'receipt ใบเสร็จ', roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
   { label: 'ตรวจสอบสลิป', path: '/payments?tab=slip-review', icon: FileCheck, keywords: 'slip review สลิป', roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
-  { label: 'ติดตามหนี้', path: '/overdue', icon: AlertTriangle, keywords: 'overdue หนี้ ค้าง ติดตาม' },
+  { label: NAV_LABELS.overdue, path: '/overdue', icon: AlertTriangle, keywords: 'overdue หนี้ ค้าง ติดตาม' },
   { label: NAV_LABELS.stock, path: '/stock', icon: Warehouse, keywords: 'stock inventory สต็อก คลัง' },
   { label: 'สั่งซื้อ', path: '/purchase-orders', icon: Warehouse, keywords: 'purchase order PO สั่งซื้อ', roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
   { label: 'รอถ่ายรูป', path: '/purchase-orders/qc', icon: ClipboardCheck, keywords: 'qc ถ่ายรูป 6 มุม มือสอง photo pending รอถ่ายรูป', roles: ['OWNER', 'BRANCH_MANAGER'] },

@@ -37,6 +37,8 @@ describe('ชื่อเมนูศัพท์บัญชี — ชื่�
     expect(NAV_LABELS.vat).toBe('ภาษีมูลค่าเพิ่ม (ภ.พ.30)');
     expect(NAV_LABELS.wht).toBe('ภาษีหัก ณ ที่จ่าย (ภ.ง.ด.1/3/53)');
     expect(NAV_LABELS.cashBank).toBe('เงินสด/ธนาคาร');
+    // เจ้าของเคาะ 2026-11-18: ตรงกับหัวหน้า /collections ("ติดตามหนี้")
+    expect(NAV_LABELS.overdue).toBe('ติดตามหนี้');
   });
 
   for (const role of ROLES) {

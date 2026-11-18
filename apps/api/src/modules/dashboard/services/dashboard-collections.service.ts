@@ -1,4 +1,4 @@
-import { calculatePaymentWatchRisk } from '../../../utils/payment-watch-risk.util';
+import { calculatePaymentWatchRisk, LATE_PAYMENT_SQL } from '../../../utils/payment-watch-risk.util';
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
@@ -319,7 +319,7 @@ export class DashboardCollectionsService {
         c.id AS "contractId",
         c.contract_number AS "contractNumber",
         COUNT(p.id) FILTER (
-          WHERE p.paid_date IS NOT NULL AND p.paid_date::date > p.due_date::date
+          WHERE ${LATE_PAYMENT_SQL}
         ) AS "latePaymentCount",
         COUNT(p.id) FILTER (WHERE p.status = 'PARTIALLY_PAID') AS "partialPaymentCount",
         (c.dunning_last_action_at IS NOT NULL AND c.dunning_stage = 'NONE') AS "hadDunningReset",
@@ -335,14 +335,14 @@ export class DashboardCollectionsService {
       GROUP BY cu.id, c.id
       HAVING
         COUNT(p.id) FILTER (
-          WHERE p.paid_date IS NOT NULL AND p.paid_date::date > p.due_date::date
+          WHERE ${LATE_PAYMENT_SQL}
         ) >= 2
         OR COUNT(p.id) FILTER (WHERE p.status = 'PARTIALLY_PAID') >= 1
         OR (c.dunning_last_action_at IS NOT NULL AND c.dunning_stage = 'NONE')
       ORDER BY
         (
           LEAST(COUNT(p.id) FILTER (
-            WHERE p.paid_date IS NOT NULL AND p.paid_date::date > p.due_date::date
+            WHERE ${LATE_PAYMENT_SQL}
           ), 5)
           + COUNT(p.id) FILTER (WHERE p.status = 'PARTIALLY_PAID') * 2
           + CASE WHEN c.dunning_last_action_at IS NOT NULL AND c.dunning_stage = 'NONE' THEN 3 ELSE 0 END

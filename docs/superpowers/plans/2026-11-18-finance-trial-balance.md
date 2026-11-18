@@ -1184,4 +1184,6 @@ Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>"
 ## นอกขอบเขต (แจ้งเจ้าของ)
 
 - `MonthlyCloseService.generateReportSnapshots` (`monthly-close.service.ts` — `getTrialBalance(new Date(asOfDate), 'ALL')`) และ `ConsolidatedController` ยังแปลงวันที่แบบเดิม — ภาพงบทดลองที่เก็บตอนปิดงวดอาจไม่รวมรายการหลัง 07:00 น. ของวันสุดท้าย · ต้องให้เจ้าของ/ฝ่ายบัญชีตัดสินก่อนแตะขั้นตอนปิดงวด
+- endpoint ที่ยังแปลงวันที่แบบเดิม (พบตอนตรวจทั้ง branch 2026-11-18): `ledger/general-journal` (สมุดรายวัน — กรองด้วย `postedAt` จาก 07:00 น. วันเริ่มถึง 07:00 น. วันสิ้นสุด จึงไม่แสดงเกือบทั้งวันสุดท้าย · อยู่กลุ่มเมนูเดียวกับงบทดลอง ควรเป็นงานถัดไป) · `ledger/aging` · `ledger/bad-debt` · `inter-co/report`
+- หน้า "งบกำไรขาดทุน" (`/profit-loss`) คำนวณจากยอดขาย (`/reports/profit-loss`) ไม่ใช่จากสมุดบัญชี ⇒ ยอดรายได้/ค่าใช้จ่ายไม่ตรงกับงบทดลองช่วงเดียวกัน (เป็นมาก่อนงานนี้)
 - ปุ่มส่งออก Excel ของงบทดลอง · งบทดลองสำหรับ VIEWER · e2e ของหน้าใหม่

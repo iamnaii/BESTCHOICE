@@ -16,6 +16,7 @@ import { bkkYyyymmdd } from '../../utils/document-number-format.util';
 import { evidenceImageExtension, isEvidenceImage } from '../../utils/upload-image.util';
 import { AuditEntry, AuditService } from '../audit/audit.service';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
+import { reportDayEnd, reportDayStart } from '../../utils/date.util';
 import { CROSS_BRANCH_ROLES } from '../auth/branch-access.util';
 import { CompanyResolverService } from '../journal/company-resolver.service';
 import {
@@ -1180,12 +1181,8 @@ export class StockAdjustmentsService {
     }
     if (filters.startDate || filters.endDate) {
       const dateFilter: Prisma.DateTimeFilter = {};
-      if (filters.startDate) dateFilter.gte = new Date(filters.startDate);
-      if (filters.endDate) {
-        const end = new Date(filters.endDate);
-        end.setHours(23, 59, 59, 999);
-        dateFilter.lte = end;
-      }
+      if (filters.startDate) dateFilter.gte = reportDayStart(filters.startDate);
+      if (filters.endDate) dateFilter.lte = reportDayEnd(filters.endDate);
       where.createdAt = dateFilter;
     }
 
@@ -1282,12 +1279,8 @@ export class StockAdjustmentsService {
     if (filters.branchId) where.branchId = filters.branchId;
     if (filters.startDate || filters.endDate) {
       const dateFilter: Prisma.DateTimeFilter = {};
-      if (filters.startDate) dateFilter.gte = new Date(filters.startDate);
-      if (filters.endDate) {
-        const end = new Date(filters.endDate);
-        end.setHours(23, 59, 59, 999);
-        dateFilter.lte = end;
-      }
+      if (filters.startDate) dateFilter.gte = reportDayStart(filters.startDate);
+      if (filters.endDate) dateFilter.lte = reportDayEnd(filters.endDate);
       where.createdAt = dateFilter;
     }
 

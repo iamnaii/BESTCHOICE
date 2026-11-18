@@ -3,6 +3,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateJournalEntryDto } from './dto/journal.dto';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
+import { reportAsOf, reportDayStart } from '../../utils/date.util';
 import { nextEntryNumber } from './entry-number.util';
 import { isJournalBalanced } from './journal-balance';
 import {
@@ -128,10 +129,11 @@ export class JournalService {
     if (filters.startDate || filters.endDate) {
       const entryDate: Record<string, Date> = {};
       if (filters.startDate) {
-        entryDate.gte = new Date(filters.startDate);
+        entryDate.gte = reportDayStart(filters.startDate);
       }
       if (filters.endDate) {
-        entryDate.lte = new Date(filters.endDate);
+        // reportAsOf: YYYY-MM-DD = สิ้นวันไทย · ค่าอื่นคงตามที่ส่งมา (เดิมไม่ขยายเป็นสิ้นวัน)
+        entryDate.lte = reportAsOf(filters.endDate);
       }
       where.entryDate = entryDate;
     }

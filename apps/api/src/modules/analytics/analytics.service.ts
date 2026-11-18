@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { sqlBkkLocal } from '../../utils/bangkok-sql.util';
 import { d } from '../../utils/decimal.util';
 
 @Injectable()
@@ -28,7 +29,7 @@ export class AnalyticsService {
       WITH first_contracts AS (
         SELECT
           c.customer_id,
-          DATE_TRUNC('month', MIN(c.created_at)) AS cohort_month
+          DATE_TRUNC('month', MIN(${sqlBkkLocal('c.created_at')})) AS cohort_month
         FROM contracts c
         WHERE c.deleted_at IS NULL
           ${branchFilter}
@@ -38,7 +39,7 @@ export class AnalyticsService {
         SELECT
           fc.customer_id,
           fc.cohort_month,
-          DATE_TRUNC('month', p.paid_date) AS activity_month
+          DATE_TRUNC('month', ${sqlBkkLocal('p.paid_date')}) AS activity_month
         FROM first_contracts fc
         JOIN contracts c ON c.customer_id = fc.customer_id AND c.deleted_at IS NULL
         JOIN payments p ON p.contract_id = c.id AND p.status = 'PAID' AND p.paid_date IS NOT NULL
@@ -107,7 +108,7 @@ export class AnalyticsService {
       { month: string; amount: string }[]
     >(Prisma.sql`
       SELECT
-        TO_CHAR(DATE_TRUNC('month', p.paid_date), 'YYYY-MM') AS month,
+        TO_CHAR(DATE_TRUNC('month', ${sqlBkkLocal('p.paid_date')}), 'YYYY-MM') AS month,
         SUM(p.amount_paid)::text AS amount
       FROM payments p
       JOIN contracts c ON c.id = p.contract_id AND c.deleted_at IS NULL
@@ -115,7 +116,7 @@ export class AnalyticsService {
         AND p.paid_date IS NOT NULL
         AND p.paid_date >= NOW() - INTERVAL '6 months'
         ${branchFilter}
-      GROUP BY DATE_TRUNC('month', p.paid_date)
+      GROUP BY DATE_TRUNC('month', ${sqlBkkLocal('p.paid_date')})
       ORDER BY month ASC
     `);
 
@@ -193,8 +194,8 @@ export class AnalyticsService {
       { day: number; hour: number; count: string; amount: string }[]
     >(Prisma.sql`
       SELECT
-        EXTRACT(DOW FROM s.created_at)::int AS day,
-        EXTRACT(HOUR FROM s.created_at)::int AS hour,
+        EXTRACT(DOW FROM ${sqlBkkLocal('s.created_at')})::int AS day,
+        EXTRACT(HOUR FROM ${sqlBkkLocal('s.created_at')})::int AS hour,
         COUNT(s.id)::text AS count,
         COALESCE(SUM(s.total_amount), 0)::text AS amount
       FROM sales s

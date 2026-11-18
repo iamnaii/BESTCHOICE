@@ -27,6 +27,8 @@ export interface PeriodTbBalanced {
 export interface PeriodTbData {
   periodStart: string;
   periodEnd: string;
+  /** บริษัทที่งบนี้กรอง (ทั้งหมด = null) — ส่งต่อให้บัญชีแยกประเภทกรองตรงกัน */
+  companyId?: string | null;
   sections: PeriodTbSection[];
   totals: PeriodTbAmounts;
   isBalanced: PeriodTbBalanced;
@@ -55,10 +57,17 @@ export function visibleSections(sections: PeriodTbSection[], hideZero: boolean):
     .filter((section) => section.rows.length > 0);
 }
 
-/** ลิงก์ไปบัญชีแยกประเภทของบัญชีนั้น ช่วงวันที่เดียวกับงบทดลอง */
-export function ledgerHref(code: string, startDate: string, endDate: string): string {
-  const params = new URLSearchParams({ account: code, start: startDate, end: endDate, from: 'trial-balance' });
+/** ลิงก์ไปบัญชีแยกประเภทของบัญชีนั้น ช่วงวันที่และบริษัทเดียวกับงบทดลอง */
+export function ledgerHref(code: string, startDate: string, endDate: string, companyId?: string | null): string {
+  const params = new URLSearchParams({ account: code, start: startDate, end: endDate });
+  if (companyId) params.set('company', companyId);
+  params.set('from', 'trial-balance');
   return `/finance/general-ledger?${params}`;
+}
+
+/** รหัสที่มีรายการแต่ไม่อยู่ในผังบัญชี (type 'ไม่ระบุ') — บัญชีแยกประเภทตอบ 404 จึงไม่ทำเป็นลิงก์ */
+export function canOpenLedger(row: PeriodTbRow): boolean {
+  return row.type !== 'ไม่ระบุ';
 }
 
 /** ชื่อคู่คอลัมน์ที่เดบิตรวมไม่เท่าเครดิตรวม (ว่าง = สมดุลครบ) */

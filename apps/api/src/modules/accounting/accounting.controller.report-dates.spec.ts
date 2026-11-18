@@ -73,4 +73,11 @@ describe('AccountingController — วันที่ของรายงาน
     expect(() => controller.getTrialBalance(undefined, undefined, '2026-11-18', '2026-11-17')).toThrow(BadRequestException);
     expect(service.getPeriodTrialBalance).not.toHaveBeenCalled();
   });
+
+  it('งบทดลองแบบช่วงเวลา: รูปแบบวันที่ผิด = 400 (ไม่ใช่ 500)', () => {
+    expect(() => controller.getTrialBalance(undefined, undefined, 'abc', '2026-11-17')).toThrow(BadRequestException);
+    expect(() => controller.getTrialBalance(undefined, undefined, '2026-11-01T00:00:00Z', '2026-11-17')).toThrow(BadRequestException);
+    expect(() => controller.getTrialBalance(undefined, undefined, '2026-11-01', 'xyz')).toThrow(BadRequestException);
+    expect(service.getPeriodTrialBalance).not.toHaveBeenCalled();
+  });
 });

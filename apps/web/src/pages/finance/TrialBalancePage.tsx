@@ -16,6 +16,7 @@ import { formControlClass, formLabelClass } from '@/components/ui/form-styles';
 import {
   TB_AMOUNT_KEYS,
   fmtAmount,
+  canOpenLedger,
   ledgerHref,
   unbalancedLabels,
   visibleSections,
@@ -192,16 +193,21 @@ export default function TrialBalancePage() {
                           </th>
                         </tr>
                         {section.rows.map((row) => {
-                          const href = ledgerHref(row.code, startDate, endDate);
+                          const href = ledgerHref(row.code, startDate, endDate, data.companyId);
+                          const linkable = canOpenLedger(row);
                           return (
                             <tr key={row.code} className="border-t border-border">
                               <td className="whitespace-nowrap px-4 py-3 align-top font-mono">
-                                <Link to={href} className="text-primary hover:underline" aria-label={`${row.code} ${row.name} — ดูบัญชีแยกประเภท`}>
-                                  {row.code}
-                                </Link>
+                                {linkable ? (
+                                  <Link to={href} className="text-primary hover:underline" aria-label={`${row.code} ${row.name} — ดูบัญชีแยกประเภท`}>
+                                    {row.code}
+                                  </Link>
+                                ) : (
+                                  row.code
+                                )}
                               </td>
                               <td className="break-words px-4 py-3 align-top">
-                                <Link to={href} className="text-primary hover:underline">{row.name}</Link>
+                                {linkable ? <Link to={href} className="text-primary hover:underline">{row.name}</Link> : row.name}
                               </td>
                               {TB_AMOUNT_KEYS.map((key, index) => (
                                 <td key={key} className={`${numberCell} ${index % 2 === 0 ? groupEdge : ''}`}>

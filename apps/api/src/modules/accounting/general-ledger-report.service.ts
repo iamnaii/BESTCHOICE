@@ -270,6 +270,13 @@ export class GeneralLedgerReportService {
   ) {
     const opening = await this.getTrialBalance(new Date(periodStart.getTime() - 1), scope);
     const closing = await this.getTrialBalance(periodEnd, scope);
+    // บริษัทที่ใช้กรองงบนี้ — ส่งกลับไปให้ลิงก์ไปบัญชีแยกประเภทกรองบริษัทเดียวกัน (ALL = ไม่กรอง)
+    const companyId =
+      scope === 'SHOP'
+        ? await this.companyResolver.getShopCompanyId()
+        : scope === 'FINANCE'
+          ? await this.companyResolver.getFinanceCompanyId()
+          : null;
 
     const zero = new Prisma.Decimal(0);
     const oneSided = (net: Prisma.Decimal) => ({
@@ -322,6 +329,7 @@ export class GeneralLedgerReportService {
       periodStart,
       periodEnd,
       scope,
+      companyId,
       sections,
       totals,
       isBalanced: {

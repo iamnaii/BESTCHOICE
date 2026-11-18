@@ -59,12 +59,9 @@ export class AccountingController {
     // มี periodStart = งบทดลองแบบช่วงเวลา (ยอดยกมา / ระหว่างงวด / ยอดคงเหลือ) · ไม่มี = งบ ณ วันที่ ตามเดิม
     if (periodStart) {
       if (!periodEnd) throw new BadRequestException('กรุณาระบุวันสิ้นสุด');
-      const start = reportDayStart(periodStart);
-      const end = reportDayEnd(periodEnd);
-      if (start.getTime() > end.getTime()) {
-        throw new BadRequestException('วันเริ่มต้นต้องไม่เกินวันสิ้นสุด');
-      }
-      return this.service.getPeriodTrialBalance(start, end, scope ?? 'FINANCE');
+      // พารามิเตอร์ใหม่ — รับเฉพาะ YYYY-MM-DD (รูปแบบผิด/วันไม่มีจริง/วันเริ่มหลังวันสิ้นสุด = 400)
+      const { gte, lt } = bangkokDateRange(periodStart, periodEnd);
+      return this.service.getPeriodTrialBalance(gte!, new Date(lt!.getTime() - 1), scope ?? 'FINANCE');
     }
     return this.service.getTrialBalance(
       asOfDate ? reportAsOf(asOfDate) : undefined,

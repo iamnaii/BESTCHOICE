@@ -357,6 +357,24 @@ describe('GeneralLedgerPage — เปิดจากงบทดลอง (?acc
     expect(glCalls()).toHaveLength(0);
   });
 
+  it('รับบริษัทจากลิงก์ (company=) และส่ง companyId ไป API · ไม่มี = ไม่ส่ง', async () => {
+    renderPage([`${FROM_TB}&company=c-fin`]);
+    await waitFor(() => expect(glCalls().length).toBeGreaterThan(0));
+    expect(glCalls()[0]).toContain('companyId=c-fin');
+  });
+
+  it('ไม่มี company= ไม่ส่ง companyId', async () => {
+    renderPage([FROM_TB]);
+    await waitFor(() => expect(glCalls().length).toBeGreaterThan(0));
+    expect(glCalls()[0]).not.toContain('companyId');
+  });
+
+  it('company= ที่มีอักขระแปลกถูกละทิ้ง', async () => {
+    renderPage([`${FROM_TB}&company=${encodeURIComponent('a b;x')}`]);
+    await waitFor(() => expect(glCalls().length).toBeGreaterThan(0));
+    expect(glCalls()[0]).not.toContain('companyId');
+  });
+
   it('วันที่รูปแบบผิดใช้ค่าเริ่มต้นเดิมของหน้า', async () => {
     renderPage(['/finance/general-ledger?account=11-1201&start=abc&end=2026-11-17']);
     await waitFor(() => expect(glCalls().length).toBeGreaterThan(0));

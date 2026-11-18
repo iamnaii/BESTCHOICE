@@ -621,6 +621,12 @@ describe('AccountingService', () => {
       expect(orphan.closingCr.toFixed(2)).toBe('0.00');
     });
 
+    it('ส่ง companyId ของบริษัทตาม scope กลับไปด้วย (ALL = null) เพื่อให้ลิงก์ไปบัญชีแยกประเภทกรองตรงกัน', async () => {
+      expect((await service.getPeriodTrialBalance(START, END)).companyId).toBe('finance-co-id');
+      expect((await service.getPeriodTrialBalance(START, END, 'SHOP')).companyId).toBe('shop-co-id');
+      expect((await service.getPeriodTrialBalance(START, END, 'ALL')).companyId).toBeNull();
+    });
+
     it('รวมทั้งสิ้นและธงสมดุลของทั้ง 3 คู่', async () => {
       const result = await service.getPeriodTrialBalance(START, END);
       expect(result.totals.openingDr.toFixed(2)).toBe('250000.00');

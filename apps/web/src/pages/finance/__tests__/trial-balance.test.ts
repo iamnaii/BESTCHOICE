@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fmtAmount, ledgerHref, unbalancedLabels, visibleSections, type PeriodTbSection } from '../trial-balance';
+import { canOpenLedger, fmtAmount, ledgerHref, unbalancedLabels, visibleSections, type PeriodTbSection } from '../trial-balance';
 
 const amounts = (o: Partial<Record<'openingDr' | 'openingCr' | 'periodDr' | 'periodCr' | 'closingDr' | 'closingCr', string>>) => ({
   openingDr: '0', openingCr: '0', periodDr: '0', periodCr: '0', closingDr: '0', closingCr: '0', ...o,
@@ -32,6 +32,19 @@ describe('trial-balance helpers', () => {
     expect(ledgerHref('11-1201', '2026-11-01', '2026-11-17')).toBe(
       '/finance/general-ledger?account=11-1201&start=2026-11-01&end=2026-11-17&from=trial-balance',
     );
+  });
+
+  it('ledgerHref: มีบริษัทก็พาไปด้วย (ก่อน from) · ไม่มี/ว่าง = ไม่ใส่', () => {
+    expect(ledgerHref('11-1201', '2026-11-01', '2026-11-17', 'c-fin')).toBe(
+      '/finance/general-ledger?account=11-1201&start=2026-11-01&end=2026-11-17&company=c-fin&from=trial-balance',
+    );
+    expect(ledgerHref('11-1201', '2026-11-01', '2026-11-17', null)).not.toContain('company=');
+    expect(ledgerHref('11-1201', '2026-11-01', '2026-11-17', '')).not.toContain('company=');
+  });
+
+  it('canOpenLedger: รหัสที่ไม่พบในผังบัญชี (type ไม่ระบุ) เปิดบัญชีแยกประเภทไม่ได้', () => {
+    expect(canOpenLedger(row('11-1201'))).toBe(true);
+    expect(canOpenLedger({ ...row('99-9999'), type: 'ไม่ระบุ' })).toBe(false);
   });
 
   it('unbalancedLabels: บอกคู่ที่ไม่สมดุลเป็นคำ', () => {

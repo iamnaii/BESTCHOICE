@@ -91,7 +91,9 @@ export function GeneralLedgerPage() {
   const [endDate, setEndDate] = useState(
     dateParam('end') ?? toLocalIso(new Date(now.getFullYear(), now.getMonth() + 1, 0)),
   );
-  const [companyId, setCompanyId] = useState('');
+  // บริษัทที่งบทดลองกรองอยู่ (?company=<id>) — รับเฉพาะ id ที่หน้าตาปกติ
+  const companyParam = searchParams.get('company')?.trim() ?? '';
+  const [companyId, setCompanyId] = useState(/^[A-Za-z0-9-]+$/.test(companyParam) ? companyParam : '');
   const [accountCode, setAccountCode] = useState(searchParams.get('account') ?? '');
   const { cacheTtlReports } = useUiFlags();
   const reportsStaleTime = cacheTtlReports * 1000;

@@ -17,6 +17,7 @@ import TrialBalancePage from '../TrialBalancePage';
 const DATA = {
   periodStart: '2026-10-31T17:00:00.000Z',
   periodEnd: '2026-11-17T16:59:59.999Z',
+  companyId: 'c-fin',
   sections: [
     {
       sectionName: 'สินทรัพย์หมุนเวียน', codePrefix: '11',
@@ -72,8 +73,30 @@ describe('TrialBalancePage', () => {
     const link = await screen.findByRole('link', { name: 'ธนาคาร KBank' });
     expect(link).toHaveAttribute(
       'href',
-      '/finance/general-ledger?account=11-1201&start=2026-11-01&end=2026-11-17&from=trial-balance',
+      '/finance/general-ledger?account=11-1201&start=2026-11-01&end=2026-11-17&company=c-fin&from=trial-balance',
     );
+  });
+
+  it('รหัสที่ไม่พบในผังบัญชี (type ไม่ระบุ) แสดงเป็นข้อความ ไม่เป็นลิงก์', async () => {
+    const orphanName = '[ไม่พบในผังบัญชี] 99-9999';
+    apiGet.mockResolvedValue({
+      data: {
+        ...DATA,
+        sections: [
+          {
+            ...DATA.sections[0],
+            rows: [
+              ...DATA.sections[0].rows,
+              { code: '99-9999', name: orphanName, type: 'ไม่ระบุ', normalBalance: 'Dr', openingDr: '0', openingCr: '0', periodDr: '100', periodCr: '0', closingDr: '100', closingCr: '0' },
+            ],
+          },
+        ],
+      },
+    });
+    renderPage();
+    expect(await screen.findByText(orphanName)).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: orphanName })).toBeNull();
+    expect(screen.getByRole('link', { name: 'ธนาคาร KBank' })).toBeInTheDocument();
   });
 
   it('ซ่อนบัญชีที่ไม่มียอดเป็นค่าเริ่มต้น และแสดงเมื่อยกเลิกติ๊ก', async () => {

@@ -3,7 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import * as Sentry from '@sentry/nestjs';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { bangkokStartOfDay } from '../../../utils/date.util';
+import { addBkkDays, bangkokStartOfDay } from '../../../utils/date.util';
 
 @Injectable()
 export class BrokenPromiseFinanceCron {
@@ -15,14 +15,16 @@ export class BrokenPromiseFinanceCron {
   @Cron('0 2 * * *', { timeZone: 'Asia/Bangkok' })
   async handleCron(): Promise<number> {
     try {
-      // นัดที่ "เลยวันนัดแล้ว" = วันนัด (ปฏิทินไทย) ก่อนวันนี้ (ปฏิทินไทย) ⇔ promised_date < 00:00 น. ไทยของวันนี้ (2026-11-18)
-      // เดิม CURRENT_DATE ตาม TZ ของ session (prod = UTC) ⇒ รอบ 02:00 น. ไทยได้ "เมื่อวาน" ⇒ ตัดผิดนัดช้าไป 1 วัน
-      // ส่งเป็นข้อความ ISO แล้ว ::timestamp เทียบกับ promised_date (timestamp เก็บ UTC) ตรง ๆ ไม่ผ่าน TZ ของ session
-      const todayStart = bangkokStartOfDay();
+      // ตัด "ผิดนัด" เมื่อวันนัด (ปฏิทินไทย) ผ่านไปเต็มหนึ่งวันแล้ว ⇔ promised_date < 00:00 น. ไทยของเมื่อวาน (2026-11-18)
+      // = จังหวะเดิมบน prod (CURRENT_DATE ของ session UTC ตอน 02:00 น. ไทย = เมื่อวาน) แต่เขียนให้ชัดและไม่ขึ้นกับ TZ ของ session
+      // ตั้งใจเว้นหนึ่งวัน: รับเงินตามนัดแล้วพนักงานบันทึกเช้าวันถัดไปยังนับว่า "รักษานัด" (finance-receivable.service
+      // ตั้ง kept เฉพาะเมื่อยังไม่ถูกตัดผิดนัด) — ตัดเร็วขึ้นจะทำให้นัดนั้นค้างเป็นผิดนัดถาวร (รีวิวรวมแผน ง ข้อ Important 2)
+      // ส่งเป็นข้อความ ISO แล้ว ::timestamp เทียบกับ promised_date (timestamp เก็บ UTC) ตรง ๆ
+      const cutoff = addBkkDays(bangkokStartOfDay(), -1);
       const affected = await this.prisma.$executeRaw(Prisma.sql`
         UPDATE finance_receivable_contact_logs
         SET promised_broken_at = now()
-        WHERE promised_date < ${todayStart.toISOString()}::timestamp
+        WHERE promised_date < ${cutoff.toISOString()}::timestamp
           AND promised_broken_at IS NULL
           AND promised_kept_at IS NULL
           AND result = 'PROMISED'

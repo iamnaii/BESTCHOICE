@@ -6,7 +6,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { bangkokDateString } from '../../utils/date.util';
+import { bangkokCalendarParts, bangkokDateString } from '../../utils/date.util';
 
 @ApiTags('Reports')
 @ApiBearerAuth('JWT')
@@ -45,7 +45,7 @@ export class ReportsController {
   ) {
     if (user.role === 'BRANCH_MANAGER') {
       const effectiveBranch = user.branchId || undefined;
-      return this.reportsService.getMonthlyPLSummary(parseInt(year) || new Date().getFullYear(), effectiveBranch);
+      return this.reportsService.getMonthlyPLSummary(parseInt(year) || bangkokCalendarParts(new Date()).year, effectiveBranch);
     }
     const resolvedBranchIds = await this.reportsService.resolveCompanyBranches(companyId, branchId);
     const includeFinanceExpenses = await this.reportsService.shouldIncludeFinanceExpenses(
@@ -54,7 +54,7 @@ export class ReportsController {
       companyId,
     );
     return this.reportsService.getMonthlyPLSummary(
-      parseInt(year) || new Date().getFullYear(),
+      parseInt(year) || bangkokCalendarParts(new Date()).year,
       undefined,
       resolvedBranchIds,
       includeFinanceExpenses,
@@ -104,8 +104,8 @@ export class ReportsController {
       undefined,
     );
     return this.reportsService.getComparativePL(
-      parseInt(year) || new Date().getFullYear(),
-      parseInt(month) || new Date().getMonth() + 1,
+      parseInt(year) || bangkokCalendarParts(new Date()).year,
+      parseInt(month) || bangkokCalendarParts(new Date()).month + 1,
       effectiveBranch,
       undefined,
       includeFinanceExpenses,
@@ -249,7 +249,7 @@ export class ReportsController {
       undefined,
     );
     return this.reportsService.getQuarterlyReport(
-      parseInt(year) || new Date().getFullYear(),
+      parseInt(year) || bangkokCalendarParts(new Date()).year,
       parseInt(quarter) || 1,
       effectiveBranch,
       undefined,

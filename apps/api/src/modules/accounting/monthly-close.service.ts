@@ -650,7 +650,8 @@ export class MonthlyCloseService {
       // P3-SP5 W1: pass explicit 'ALL' scope so the monthly-close snapshot
       // includes BOTH FINANCE and SHOP rows. Without this the SHOP half
       // gets silently dropped because the default scope is 'FINANCE'.
-      this.accountingService.getTrialBalance(new Date(asOfDate), 'ALL'),
+      this.accountingService.getTrialBalance(this.periodEnd(year, month), 'ALL'),
+      // P&L ยังส่งสตริง 'YYYY-MM-01' .. 'YYYY-MM-DD' — getProfitLossReport แปลงเป็น 00:00 น. .. 23:59:59.999 น. ไทยเอง
       this.accountingService.getProfitLossReport(startDate, asOfDate, undefined, branchIds, includeFinanceExpenses),
       this.accountingService.getBalanceSheet(asOfDate, undefined, branchIds),
       this.taxService.previewPP30(companyId, year, month),

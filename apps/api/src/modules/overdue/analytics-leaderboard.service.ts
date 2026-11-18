@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { bangkokCalendarParts, bangkokMidnight } from '../../utils/date.util';
 
 export interface LeaderboardRow {
   collectorId: string;
@@ -42,6 +43,10 @@ export class AnalyticsLeaderboardService {
       // + avg days from contract assignment-equivalent (createdAt of first
       // CallLog after assignment) + recovery this month (sum of payments
       // amountPaid where paidDate in current month, recordedById = collector).
+      // "เดือนนี้" = ตั้งแต่ 00:00 น. วันที่ 1 ตามเวลาไทย คำนวณใน JS (เดิม date_trunc('month', NOW()) ตาม TZ ของ session
+      // ฐานข้อมูล = เริ่ม 07:00 น. ไทยบน prod) · ส่งเป็นข้อความ ISO แล้ว ::timestamp เทียบกับ paid_date (timestamp เก็บ UTC) ตรง ๆ
+      const { year, month } = bangkokCalendarParts(new Date());
+      const monthStart = bangkokMidnight(year, month, 1);
       const rows = await this.prisma.$queryRawUnsafe<RawLeaderboardRow[]>(`
         WITH active_collectors AS (
           SELECT u.id AS collector_id, u.name
@@ -82,7 +87,7 @@ export class AnalyticsLeaderboardService {
           FROM payments p
           WHERE p.deleted_at IS NULL
             AND p.recorded_by_id IS NOT NULL
-            AND p.paid_date >= date_trunc('month', NOW())
+            AND p.paid_date >= $1::timestamp
           GROUP BY p.recorded_by_id
         )
         SELECT
@@ -103,7 +108,7 @@ export class AnalyticsLeaderboardService {
           OR COALESCE(p.total, 0) > 0
           OR COALESCE(r.recovery_amt, 0) > 0
         ORDER BY recovery_this_month DESC, assigned_count DESC
-      `);
+      `, monthStart.toISOString());
 
       return rows.map((r) => {
         const total = Number(r.promise_total);

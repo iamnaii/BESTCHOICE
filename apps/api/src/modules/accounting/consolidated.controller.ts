@@ -1,8 +1,9 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { ConsolidatedService } from './consolidated.service';
+import { reportAsOf, reportDayStart } from '../../utils/date.util';
 
 /**
  * SP7.6 — Consolidated cross-entity reports for OWNER + ACCOUNTANT.
@@ -20,7 +21,7 @@ export class ConsolidatedController {
    */
   @Get('trial-balance')
   trialBalance(@Query('asOf') asOf?: string) {
-    return this.svc.getConsolidatedTrialBalance(asOf ? new Date(asOf) : undefined);
+    return this.svc.getConsolidatedTrialBalance(asOf ? reportAsOf(asOf) : undefined);
   }
 
   /**
@@ -29,7 +30,11 @@ export class ConsolidatedController {
    */
   @Get('profit-loss')
   profitLoss(@Query('start') start: string, @Query('end') end: string) {
-    return this.svc.getConsolidatedProfitLoss(new Date(start), new Date(end));
+    if (!start || !end) {
+      throw new BadRequestException('กรุณาระบุวันเริ่มต้น (start) และวันสิ้นสุด (end)');
+    }
+    // reportAsOf: YYYY-MM-DD = สิ้นวันไทย · ค่าอื่นคงตามที่ส่งมา (เดิมไม่ขยายเป็นสิ้นวัน)
+    return this.svc.getConsolidatedProfitLoss(reportDayStart(start), reportAsOf(end));
   }
 
   /**
@@ -38,6 +43,6 @@ export class ConsolidatedController {
    */
   @Get('dashboard')
   dashboard(@Query('asOf') asOf?: string) {
-    return this.svc.getConsolidatedDashboard(asOf ? new Date(asOf) : undefined);
+    return this.svc.getConsolidatedDashboard(asOf ? reportAsOf(asOf) : undefined);
   }
 }

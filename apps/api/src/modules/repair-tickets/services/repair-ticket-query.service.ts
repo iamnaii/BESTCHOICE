@@ -9,6 +9,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ListRepairTicketsDto } from '../dto/list-repair-tickets.dto';
 import { hasCrossBranchAccess } from '../../auth/branch-access.util';
+import { reportAsOf, reportDayStart } from '../../../utils/date.util';
 
 type ReqUser = { id: string; role: string; branchId?: string | null };
 
@@ -36,8 +37,9 @@ export class RepairTicketQueryService {
     if (dto.repairSupplierId) where.repairSupplierId = dto.repairSupplierId;
     if (dto.from || dto.to) {
       where.createdAt = {};
-      if (dto.from) where.createdAt.gte = new Date(dto.from);
-      if (dto.to) where.createdAt.lte = new Date(dto.to);
+      if (dto.from) where.createdAt.gte = reportDayStart(dto.from);
+      // reportAsOf: YYYY-MM-DD = สิ้นวันไทย · ค่าอื่นคงตามที่ส่งมา (เดิมไม่ขยายเป็นสิ้นวัน)
+      if (dto.to) where.createdAt.lte = reportAsOf(dto.to);
     }
 
     // Branch scope — OWNER/ACCOUNTANT/FINANCE_MANAGER are cross-branch

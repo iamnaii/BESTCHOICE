@@ -11,8 +11,12 @@ import { join, relative, sep } from 'node:path';
  * ทางที่ถูก: ตัวช่วยใน utils/date.util.ts — reportDayStart / reportDayEnd / reportAsOf / bangkokDateRange
  * (วันที่ 'YYYY-MM-DD' = วันตามปฏิทินไทย ไม่ขึ้นกับ TZ ของโปรเซส)
  *
+ * กฎ SQL_DAY_NO_BKK (แผน ง 2026-11-18): raw SQL ที่แบ่งวัน/สัปดาห์/เดือน/ชั่วโมงด้วย date_trunc / EXTRACT / ::date / CURRENT_DATE
+ * บนคอลัมน์ timestamp (เก็บ UTC) ตรง ๆ = แบ่งตาม UTC ช้ากว่าไทย 7 ชั่วโมง — ใช้ sqlBkkLocal / sqlBkkDate จาก
+ * utils/bangkok-sql.util.ts (หรือ AT TIME ZONE ในบรรทัดเดียวกัน) · "วันนี้" ให้คำนวณใน JS แล้วส่งเป็นพารามิเตอร์
+ *
  * เทสต์นี้สแกน apps/api/src/**\/*.ts (ไม่นับ *.spec.ts · __tests__/ · src/cli/ · utils/date.util.ts · คอมเมนต์)
- * หาสามรูปแบบ (RULES ข้างล่าง) ที่ต้องอยู่ใน ALLOWED พร้อมเหตุผลบรรทัดเดียว — เพิ่มรายการ = อธิบายในรีวิวว่าทำไม
+ * หาสี่รูปแบบ (RULES ข้างล่าง) ที่ต้องอยู่ใน ALLOWED พร้อมเหตุผลบรรทัดเดียว — เพิ่มรายการ = อธิบายในรีวิวว่าทำไม
  * ไม่ใช้ตัวช่วย · คีย์ = พาธนับจาก src/ หรือ `พาธ#ข้อความที่อยู่ในบรรทัดนั้น` (ไฟล์ที่มีทั้งการใช้ที่ถูกและต้องห้าม)
  * รายการที่ไม่ตรงกับอะไรแล้ว (stale) ทำให้เทสต์แดง — ลบออกเมื่อแก้โค้ดจุดนั้นแล้ว
  *
@@ -87,6 +91,12 @@ const ALLOWED: Record<string, string> = {
     'แก้โปรโมชัน: เขียนวันเริ่ม/สิ้นสุดโปรโมชัน (เก็บค่า ไม่ใช่กรอง) — วันเริ่มคงเก็บเที่ยงคืน UTC ตามเดิม',
   'modules/promotions/promotions.service.ts#data.endDate = new Date(dto.endDate)':
     'แก้โปรโมชัน: เขียนวันเริ่ม/สิ้นสุดโปรโมชัน (เก็บค่า ไม่ใช่กรอง) — วันเริ่มคงเก็บเที่ยงคืน UTC ตามเดิม',
+  'modules/analytics/analytics.service.ts#EXTRACT(MONTH FROM AGE(activity_month, cohort_month))':
+    'SQL_DAY_NO_BKK: นับเดือนห่างจาก AGE() ของสองค่าที่ตัดเดือนตามเวลาไทยแล้ว (cohort_month / activity_month) ไม่ได้อ่านคอลัมน์ timestamp ตรง',
+  'modules/analytics/analytics.service.ts#EXTRACT(YEAR FROM AGE(activity_month, cohort_month))':
+    'SQL_DAY_NO_BKK: นับปีห่างจาก AGE() ของสองค่าที่ตัดเดือนตามเวลาไทยแล้ว (cohort_month / activity_month) ไม่ได้อ่านคอลัมน์ timestamp ตรง',
+  "modules/chat-analytics/chat-analytics-sql.ts#+INTERVAL '7 hours')::date":
+    "SQL_DAY_NO_BKK: แปลงเป็นวันไทยด้วย + INTERVAL '7 hours' อยู่แล้ว (ไทยไม่มี DST — เท่ากับ AT TIME ZONE) สำหรับนาทีทำการของ SLA แชท",
 };
 
 /** พาธ src/ — ไฟล์นี้อยู่ที่ src/utils/ */
@@ -116,8 +126,10 @@ const WATCHED_NAMES = [
 const WATCHED_PREFIXES = ['dto', 'query', 'q', 'filters', 'filter', 'params', 'opts', 'options', 'input'];
 
 interface Rule {
-  id: 'RAW_PARSE' | 'TEMPLATE_NO_OFFSET' | 'UTC_MIDNIGHT';
+  id: 'RAW_PARSE' | 'TEMPLATE_NO_OFFSET' | 'UTC_MIDNIGHT' | 'SQL_DAY_NO_BKK';
   re: RegExp;
+  /** บรรทัดที่ตรง `re` แต่ตรง `ok` ด้วย = ถูกแล้ว (ไม่นับเป็น offender) */
+  ok?: RegExp;
   hint: string;
 }
 
@@ -139,7 +151,15 @@ const RULES: Rule[] = [
     re: /\.setUTCHours\(\s*0\s*,\s*0\s*,\s*0\s*,\s*0\s*\)/,
     hint: 'เที่ยงคืน UTC = 07:00 น. ไทย — ใช้ bangkokStartOfDay() / bangkokMidnight()',
   },
+  {
+    id: 'SQL_DAY_NO_BKK',
+    re: /date_trunc\(\s*'(?:hour|day|week|month|quarter|year)'|EXTRACT\(\s*(?:DOW|ISODOW|HOUR|DAY|DOY|WEEK|MONTH|QUARTER|YEAR)\s+FROM|(?<!['}])::date\b|\bCURRENT_DATE\b/i,
+    ok: /AT TIME ZONE|sqlBkk(?:Local|Date)\(/i,
+    hint: "คอลัมน์ timestamp เก็บ UTC — ห่อด้วย sqlBkkLocal()/sqlBkkDate() จาก utils/bangkok-sql.util · 'วันนี้' ส่งเป็นพารามิเตอร์ (bangkokDateString / bangkokStartOfDay)",
+  },
 ];
+
+const ruleHits = (rule: Rule, text: string): boolean => rule.re.test(text) && !rule.ok?.test(text);
 
 interface Offender {
   file: string;
@@ -178,7 +198,7 @@ function collectOffenders(): Offender[] {
       .split('\n')
       .forEach((text, index) => {
         for (const rule of RULES) {
-          if (rule.re.test(text)) out.push({ file, line: index + 1, rule: rule.id, text: text.trim() });
+          if (ruleHits(rule, text)) out.push({ file, line: index + 1, rule: rule.id, text: text.trim() });
         }
       });
   }
@@ -195,7 +215,7 @@ function allowKeyFor(offender: Offender): string | undefined {
 }
 
 const flaggedRules = (line: string): string[] =>
-  RULES.filter((rule) => rule.re.test(code(line))).map((rule) => rule.id);
+  RULES.filter((rule) => ruleHits(rule, code(line))).map((rule) => rule.id);
 
 describe('ตัวกันถอยหลัง: สตริงวันที่ YYYY-MM-DD ห้ามแปลงเป็น 07:00 น. ไทย', () => {
   const offenders = collectOffenders();
@@ -239,6 +259,12 @@ describe('ตัวกันถอยหลัง: สตริงวันท�
     expect(flaggedRules('const d = new Date(`${startDate}T00:00:00`);')).toEqual(['TEMPLATE_NO_OFFSET']);
     expect(flaggedRules('const d = new Date(`${endDate}T23:59:59.999`);')).toEqual(['TEMPLATE_NO_OFFSET']);
     expect(flaggedRules('today.setUTCHours(0, 0, 0, 0);')).toEqual(['UTC_MIDNIGHT']);
+    expect(flaggedRules("date_trunc('week', p.paid_date)::date AS week_start,")).toEqual(['SQL_DAY_NO_BKK']);
+    expect(flaggedRules("GROUP BY DATE_TRUNC('month', p.paid_date)")).toEqual(['SQL_DAY_NO_BKK']);
+    expect(flaggedRules('EXTRACT(HOUR FROM s.created_at)::int AS hour,')).toEqual(['SQL_DAY_NO_BKK']);
+    expect(flaggedRules('extract(dow from s.created_at)')).toEqual(['SQL_DAY_NO_BKK']);
+    expect(flaggedRules('WHERE p.paid_date IS NOT NULL AND p.paid_date::date > p.due_date::date')).toEqual(['SQL_DAY_NO_BKK']);
+    expect(flaggedRules('WHERE promised_date < CURRENT_DATE')).toEqual(['SQL_DAY_NO_BKK']);
   });
 
   it('ไม่จับรูปแบบที่ปลอดภัย · ไม่นับคอมเมนต์', () => {
@@ -251,5 +277,13 @@ describe('ตัวกันถอยหลัง: สตริงวันท�
     expect(flaggedRules('// new Date(startDate)')).toEqual([]);
     expect(flaggedRules('/* new Date(startDate) */')).toEqual([]);
     expect(flaggedRules("const url = 'http://x'; // new Date(from)")).toEqual([]);
+    expect(flaggedRules("date_trunc('day', (cm.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Bangkok') AS date")).toEqual([]);
+    expect(flaggedRules("date_trunc('week', ${sqlBkkLocal('p.paid_date')})::date AS week_start,")).toEqual([]);
+    expect(flaggedRules("SELECT ${today}::date - ${sqlBkkDate('oldest_due')} AS days, outstanding")).toEqual([]);
+    expect(flaggedRules('AND work_date = ${by.key.workDate}::date FOR UPDATE')).toEqual([]);
+    expect(flaggedRules("MIN(CASE WHEN p.warranty_expired THEN '0001-01-01'::date ELSE p.warranty_expire_date END)")).toEqual([]);
+    expect(flaggedRules('AVG(EXTRACT(EPOCH FROM (cl.called_at - c.created_at)) / 86400.0) AS avg_days')).toEqual([]);
+    expect(flaggedRules("date_trunc('milliseconds', transaction_timestamp())")).toEqual([]);
+    expect(flaggedRules('this.lineSrc.extract({ channel: x, since })')).toEqual([]);
   });
 });

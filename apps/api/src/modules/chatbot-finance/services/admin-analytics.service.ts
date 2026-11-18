@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ChatChannel, MessageRole, Prisma } from '@prisma/client';
+import { addBkkDays, bangkokStartOfDay } from '../../../utils/date.util';
 
 export interface AnalyticsOverview {
   today: {
@@ -28,12 +29,8 @@ export class AdminAnalyticsService {
   constructor(private prisma: PrismaService) {}
 
   async getOverview(): Promise<AnalyticsOverview> {
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
-
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
-    sevenDaysAgo.setHours(0, 0, 0, 0);
+    const startOfToday = bangkokStartOfDay();
+    const sevenDaysAgo = addBkkDays(startOfToday, -6);
 
     const [
       sessionsToday,
@@ -102,12 +99,12 @@ export class AdminAnalyticsService {
         LIMIT 10
       `,
       this.prisma.$queryRaw<{ date: Date; count: bigint }[]>`
-        SELECT date_trunc('day', cm.created_at) AS date, COUNT(*)::bigint AS count
+        SELECT date_trunc('day', (cm.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Bangkok') AS date, COUNT(*)::bigint AS count
         FROM chat_messages cm
         JOIN chat_rooms cr ON cr.id = cm.room_id
         WHERE cr.channel = 'LINE_FINANCE'
           AND cm.created_at >= ${sevenDaysAgo}
-        GROUP BY date_trunc('day', cm.created_at)
+        GROUP BY date_trunc('day', (cm.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Bangkok')
         ORDER BY date ASC
       `,
     ]);

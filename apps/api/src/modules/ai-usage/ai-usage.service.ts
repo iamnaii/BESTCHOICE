@@ -4,6 +4,13 @@ import { Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { computeCostUsd } from './ai-pricing';
+import {
+  addBkkDays,
+  bangkokDateString,
+  bangkokStartOfDay,
+  reportAsOf,
+  reportDayStart,
+} from '../../utils/date.util';
 
 export interface UsageRecord {
   service: string;
@@ -75,14 +82,10 @@ export class AiUsageService {
   async getSummary() {
     const budget = Number(this.config.get<string>('ANTHROPIC_DAILY_BUDGET_USD') ?? '10');
 
-    const todayStart = new Date();
-    todayStart.setUTCHours(0, 0, 0, 0);
-
-    const sevenDaysAgo = new Date(Date.now() - 7 * 86400000);
-    sevenDaysAgo.setUTCHours(0, 0, 0, 0);
-
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
-    thirtyDaysAgo.setUTCHours(0, 0, 0, 0);
+    // เที่ยงคืนตามปฏิทินไทย — ฟังก์ชันเดียวกับ ai-budget.cron (ยอด "วันนี้" ต้องตรงกับยอดที่ cron ใช้เตือนงบ)
+    const todayStart = bangkokStartOfDay();
+    const sevenDaysAgo = addBkkDays(todayStart, -7);
+    const thirtyDaysAgo = addBkkDays(todayStart, -30);
 
     const [todayAgg, sevenDayAgg, thirtyDayAgg, todayByService, errorCount] = await Promise.all([
       this.prisma.aiUsageLog.aggregate({
@@ -210,9 +213,7 @@ export class AiUsageService {
    * chart doesn't leave gaps.
    */
   async getDailyTrend(days: number) {
-    const start = new Date();
-    start.setUTCHours(0, 0, 0, 0);
-    start.setUTCDate(start.getUTCDate() - (days - 1));
+    const start = addBkkDays(bangkokStartOfDay(), -(days - 1));
 
     const rows = await this.prisma.aiUsageLog.findMany({
       where: { createdAt: { gte: start } },
@@ -221,14 +222,12 @@ export class AiUsageService {
 
     const buckets = new Map<string, { date: string; costUsd: number; calls: number }>();
     for (let i = 0; i < days; i++) {
-      const d = new Date(start);
-      d.setUTCDate(d.getUTCDate() + i);
-      const key = d.toISOString().slice(0, 10);
+      const key = bangkokDateString(addBkkDays(start, i));
       buckets.set(key, { date: key, costUsd: 0, calls: 0 });
     }
 
     for (const row of rows) {
-      const key = row.createdAt.toISOString().slice(0, 10);
+      const key = bangkokDateString(row.createdAt);
       const bucket = buckets.get(key);
       if (bucket) {
         bucket.costUsd += Number(row.costUsd);
@@ -282,12 +281,10 @@ export class AiUsageService {
     const where: Prisma.AiUsageLogWhereInput = {};
     if (from || to) {
       where.createdAt = {};
-      if (from) (where.createdAt as Prisma.DateTimeFilter).gte = new Date(from);
-      if (to) (where.createdAt as Prisma.DateTimeFilter).lte = new Date(to);
+      if (from) (where.createdAt as Prisma.DateTimeFilter).gte = reportDayStart(from);
+      if (to) (where.createdAt as Prisma.DateTimeFilter).lte = reportAsOf(to);
     } else {
-      const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
-      thirtyDaysAgo.setHours(0, 0, 0, 0);
-      where.createdAt = { gte: thirtyDaysAgo };
+      where.createdAt = { gte: addBkkDays(bangkokStartOfDay(), -30) };
     }
     return where;
   }

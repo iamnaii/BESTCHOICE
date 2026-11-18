@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
+import { bangkokStartOfDay } from '../../utils/date.util';
 
 /**
  * Hourly cost check. If cumulative USD spend for the current Asia/Bangkok
@@ -26,8 +27,7 @@ export class AiBudgetCron {
   async checkDailyBudget(): Promise<{ totalUsd: number; breached: boolean }> {
     try {
       const budget = Number(this.config.get<string>('ANTHROPIC_DAILY_BUDGET_USD') ?? '10');
-      const start = new Date();
-      start.setHours(0, 0, 0, 0);
+      const start = bangkokStartOfDay();
 
       const rows = await this.prisma.aiUsageLog.groupBy({
         by: ['service'],

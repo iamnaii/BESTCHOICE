@@ -36,6 +36,21 @@ describe('AiBudgetCron.checkDailyBudget', () => {
     cron = mod.get(AiBudgetCron);
   });
 
+  describe('ตัดวันตามเวลาไทย', () => {
+    afterEach(() => jest.useRealTimers());
+
+    it('นับยอดตั้งแต่ 00:00 น. ไทยของวันนี้ (ค่าเดียวกับ AiUsageService.getSummary — ไม่ขึ้นกับ TZ ของโปรเซส)', async () => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date('2026-11-18T18:30:00.000Z')); // 2026-11-19 01:30 น. ไทย
+
+      await cron.checkDailyBudget();
+
+      expect(prisma.aiUsageLog.groupBy.mock.calls[0][0].where.createdAt.gte.toISOString()).toBe(
+        '2026-11-18T17:00:00.000Z',
+      );
+    });
+  });
+
   it('returns 0 breach when no usage', async () => {
     const result = await cron.checkDailyBudget();
     expect(result.totalUsd).toBe(0);

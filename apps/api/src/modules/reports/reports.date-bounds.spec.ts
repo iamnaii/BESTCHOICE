@@ -117,3 +117,50 @@ describe('getEntityProfitReport — ขอบวันตามเวลาไ�
     expect(res.finance.lateFeeIncome).toBe(150.5);
   });
 });
+
+describe('getBranchComparisonReport — ขอบวันตามเวลาไทย', () => {
+  it('ส่ง createdAt ของสัญญาใหม่ และ paidDate ของยอดรับ เป็นช่วงเวลาไทย', async () => {
+    const contractGroupBy = jest.fn().mockResolvedValue([]);
+    const paymentGroupBy = jest.fn().mockResolvedValue([]);
+    const svc = svcWith({
+      branch: { findMany: jest.fn().mockResolvedValue([{ id: 'b1', name: 'สาขา A' }]) },
+      contract: { groupBy: contractGroupBy, findMany: jest.fn().mockResolvedValue([]) },
+      payment: { groupBy: paymentGroupBy },
+      product: { groupBy: jest.fn().mockResolvedValue([]) },
+    });
+
+    await svc.getBranchComparisonReport('2026-11-01', '2026-11-17');
+
+    // contract.groupBy ครั้งแรก = newByBranch
+    expect(contractGroupBy.mock.calls[0][0].where.createdAt).toEqual({ gte: START, lte: END });
+    expect(paymentGroupBy.mock.calls[0][0].where.paidDate).toEqual({ gte: START, lte: END });
+    const range = contractGroupBy.mock.calls[0][0].where.createdAt as Range;
+    expect(contains(range, AT_START_MIDNIGHT)).toBe(true);
+    expect(contains(range, AT_NEXT_DAY_MIDNIGHT)).toBe(false);
+  });
+});
+
+describe('exportContracts — ขอบวันตามเวลาไทย (latent: เว็บยังไม่ส่งวันที่)', () => {
+  it('startDate/endDate แบบ YYYY-MM-DD → createdAt [00:00, 23:59:59.999] เวลาไทย', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const svc = svcWith({ contract: { findMany } });
+
+    await svc.exportContracts({ startDate: '2026-11-01', endDate: '2026-11-17' });
+
+    const range = findMany.mock.calls[0][0].where.createdAt as Range;
+    expect(range).toEqual({ gte: START, lte: END });
+    expect(contains(range, AT_START_MIDNIGHT)).toBe(true);
+    expect(contains(range, AT_NEXT_DAY_MIDNIGHT)).toBe(false);
+  });
+
+  it('ส่งแค่ startDate → ไม่มีขอบบน · ไม่ส่งวันที่เลย → ไม่มีตัวกรอง createdAt', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const svc = svcWith({ contract: { findMany } });
+
+    await svc.exportContracts({ startDate: '2026-11-01' });
+    expect(findMany.mock.calls[0][0].where.createdAt).toEqual({ gte: START });
+
+    await svc.exportContracts({});
+    expect(findMany.mock.calls[1][0].where.createdAt).toBeUndefined();
+  });
+});

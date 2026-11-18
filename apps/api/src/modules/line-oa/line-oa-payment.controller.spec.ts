@@ -199,12 +199,43 @@ describe('LineOaPaymentController (characterization)', () => {
           { customer: { name: { contains: 'สมชาย', mode: 'insensitive' } } },
         ],
       });
-      expect(arg.where.createdAt.gte).toEqual(new Date('2026-01-01'));
-      const expectedEnd = new Date('2026-01-31');
-      expectedEnd.setHours(23, 59, 59, 999);
-      expect(arg.where.createdAt.lte).toEqual(expectedEnd);
+      expect(arg.where.createdAt.gte.toISOString()).toBe('2025-12-31T17:00:00.000Z');
+      expect(arg.where.createdAt.lte.toISOString()).toBe('2026-01-31T16:59:59.999Z');
       expect(arg.where.amount).toEqual({ gte: 100, lte: 5000 });
       expect(arg.take).toBe(10000); // min(99999, 10000)
+    });
+
+    it('dateFrom = dateTo = วันเดียว ได้ช่วงเต็มวันไทย (00:00:00.000 – 23:59:59.999 น.)', async () => {
+      prisma.paymentEvidence.findMany.mockResolvedValue([]);
+
+      await controller.getEvidenceList(undefined, undefined, '2026-11-18', '2026-11-18');
+
+      const { gte, lte } = prisma.paymentEvidence.findMany.mock.calls[0][0].where.createdAt;
+      expect(gte.toISOString()).toBe('2026-11-17T17:00:00.000Z');
+      expect(lte.toISOString()).toBe('2026-11-18T16:59:59.999Z');
+    });
+
+    it('ขอบ: สลิป 00:00 น. ไทยของวันเริ่มอยู่ในช่วง · 00:00 น. ของวันถัดจากวันสิ้นสุดอยู่นอกช่วง', async () => {
+      prisma.paymentEvidence.findMany.mockResolvedValue([]);
+
+      await controller.getEvidenceList(undefined, undefined, '2026-11-01', '2026-11-17');
+
+      const { gte, lte } = prisma.paymentEvidence.findMany.mock.calls[0][0].where.createdAt;
+      const firstInstant = new Date('2026-11-01T00:00:00+07:00').getTime();
+      const nextDayMidnight = new Date('2026-11-18T00:00:00+07:00').getTime();
+      expect(firstInstant >= gte.getTime() && firstInstant <= lte.getTime()).toBe(true);
+      expect(nextDayMidnight <= lte.getTime()).toBe(false);
+    });
+
+    it('ส่งแค่ dateFrom ได้ขอบเริ่มอย่างเดียว · ส่งแค่ dateTo ได้ขอบสิ้นสุดอย่างเดียว', async () => {
+      prisma.paymentEvidence.findMany.mockResolvedValue([]);
+
+      await controller.getEvidenceList(undefined, undefined, '2026-11-01');
+      expect(Object.keys(prisma.paymentEvidence.findMany.mock.calls[0][0].where.createdAt)).toEqual(['gte']);
+
+      prisma.paymentEvidence.findMany.mockClear();
+      await controller.getEvidenceList(undefined, undefined, undefined, '2026-11-17');
+      expect(Object.keys(prisma.paymentEvidence.findMany.mock.calls[0][0].where.createdAt)).toEqual(['lte']);
     });
 
     it('signs S3 keys via getSignedDownloadUrl, mutates imageUrl, leaves http/absolute keys alone', async () => {

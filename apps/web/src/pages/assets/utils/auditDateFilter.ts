@@ -5,6 +5,7 @@ import { toBangkokDateString } from '@/lib/date';
  * เทียบกับวันไทยของ `createdAt` ตรง ๆ ไม่สร้าง Date จากสตริงวันที่ (ไม่ขึ้นกับ TZ ของเบราว์เซอร์)
  */
 export function isAuditLogInDayRange(createdAt: string, fromDate: string, toDate: string): boolean {
+  if (!fromDate && !toDate) return true;
   const day = toBangkokDateString(new Date(createdAt));
   if (fromDate && day < fromDate) return false;
   if (toDate && day > toDate) return false;

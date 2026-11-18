@@ -31,4 +31,9 @@ describe('isAuditLogInDayRange', () => {
   it('ไม่เลือกวันที่ = ผ่านทั้งหมด', () => {
     expect(isAuditLogInDayRange('2026-11-17T12:00:00+07:00', '', '')).toBe(true);
   });
+
+  it('ไม่เลือกวันทั้งสองช่อง → true โดยไม่แตะ createdAt (createdAt ผิดรูปไม่พัง)', () => {
+    expect(() => isAuditLogInDayRange('not-a-date', '', '')).not.toThrow();
+    expect(isAuditLogInDayRange('not-a-date', '', '')).toBe(true);
+  });
 });

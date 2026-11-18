@@ -124,7 +124,8 @@ export class AccountingController {
   @Get('ledger/aging')
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'VIEWER')
   getAgingReport(@Query('asOf') asOf?: string) {
-    return this.service.getAgingReport(asOf ? new Date(asOf) : new Date());
+    // reportAsOf: YYYY-MM-DD = สิ้นวันไทย · ค่าอื่นคงตามที่ส่งมา (เดิมไม่ขยายเป็นสิ้นวัน)
+    return this.service.getAgingReport(asOf ? reportAsOf(asOf) : new Date());
   }
 
   // ─── P4-SP1: Bad Debt Report ──────────────────────────────────────────────

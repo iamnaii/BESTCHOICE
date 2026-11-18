@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ValidationService } from '../services/validation.service';
+import { goldenCases } from './fixtures/golden-cases';
 
 /**
  * C14 — checkLateFeeCollision: ขอบเดือนของ Payment.dueDate ต้องเป็นเดือนปฏิทินไทย (2026-11-18)
@@ -64,5 +65,23 @@ describe('C14 — checkLateFeeCollision: ขอบเดือนตามปฏ
     });
     const warnings = await service.checkLateFeeCollision(customerId, new Date('2026-05-31T18:00:00.000Z'), items);
     expect(warnings[0].msg).toMatch(/งวด 2026-06/);
+  });
+});
+
+/**
+ * V8 — ป้ายเดือนในข้อความ "งวด YYYY-MM ปิดบัญชีแล้ว" ต้องเป็นเดือนปฏิทินไทย (final review แผน ก)
+ * 2026-05-31T18:00Z = 1 มิ.ย. 01:00 น. ไทย ⇒ ป้ายต้องเป็น 2026-06 (เดิมใช้ getMonth ตาม TZ ของโปรเซส)
+ */
+describe('V8 — ป้ายเดือนตามปฏิทินไทย', () => {
+  it('issueDate = 1 มิ.ย. 01:00 น. ไทย → "งวด 2026-06"', async () => {
+    const module = await Test.createTestingModule({
+      providers: [ValidationService, { provide: PrismaService, useValue: {} }],
+    }).compile();
+    const service = module.get(ValidationService);
+    const result = service.validate(
+      { ...goldenCases.bankInterest, issueDate: new Date('2026-05-31T18:00:00.000Z') },
+      { isPeriodOpen: () => false, attachmentThreshold: 50000, hasAttachment: false },
+    );
+    expect(result.errors.find((e) => e.rule === 'V8')?.msg).toMatch(/งวด 2026-06 ปิดบัญชีแล้ว/);
   });
 });

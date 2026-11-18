@@ -23,7 +23,7 @@
 
 **ข้อกำหนดเฉพาะแผน ก:**
 
-- ขอบเขตของ `YYYY-MM-DD` ที่ไม่มีจริงในปฏิทิน (เช่น `2026-02-31`) = 400 `วันที่ไม่ถูกต้อง` ตามพฤติกรรมของตัวช่วย (เดิมได้ `Invalid Date` ส่งเข้า Prisma แล้วเป็น 500) — ถือเป็นการเปลี่ยนที่ตั้งใจ
+- `YYYY-MM-DD` ที่ไม่มีจริงในปฏิทิน = 400 `วันที่ไม่ถูกต้อง` ตามพฤติกรรมของตัวช่วย — แก้ข้อความเดิมที่เขียนว่าเดิมเป็น `Invalid Date` → 500 ทุกกรณี: ที่จริง **วันล้นเดือน เช่น `2026-02-31` เดิมไหลเงียบ ๆ ไปเดือนถัดไป** (`new Date` ได้ 3 มี.ค.) ส่วน `Invalid Date` เกิดเฉพาะเดือน > 12 / วัน > 31 · ตอนนี้ทั้งสองแบบเป็น 400 `วันที่ไม่ถูกต้อง` — ถือเป็นการเปลี่ยนที่ตั้งใจ
 - ข้อยกเว้นข้อ "ค่าที่ไม่ใช่ `YYYY-MM-DD` ต้องได้พฤติกรรมเดิม" ที่แผนนี้เปลี่ยนเป็น 400 มีเฉพาะ: `start` / `end` ที่ **ไม่ส่งหรือว่าง** ของ `ledger/bad-debt` · `ledger/general-journal` · `accounting/consolidated/profit-loss` (Task 1, 2) — ข้อความ `กรุณาระบุวันเริ่มต้น (start) และวันสิ้นสุด (end)`
 - **เลือกตัวช่วยของขอบสิ้นสุดตามโค้ดเดิม:** ที่เดิมเรียก `setHours(23,59,59,999)` กับขอบสิ้นสุดอยู่แล้ว (Task 3 · 7 · 9) ใช้ `reportDayEnd` · ที่เดิมเป็น `new Date(end)` เปล่า ไม่ขยายเป็นสิ้นวัน (Task 1 · 2 · 5 · 6 · 12) ใช้ `reportAsOf` — `'YYYY-MM-DD'` = สิ้นวันไทย · ค่าอื่นคงตามที่ส่งมาทุกประการ ⇒ ไม่มีข้อยกเว้นของกติกา "ค่าที่ไม่ใช่ `YYYY-MM-DD` ต้องได้พฤติกรรมเดิม" ในจุดเหล่านี้ · ทุกจุดที่ใช้ `reportAsOf` ใส่คอมเมนต์ `// reportAsOf: YYYY-MM-DD = สิ้นวันไทย · ค่าอื่นคงตามที่ส่งมา (เดิมไม่ขยายเป็นสิ้นวัน)`
 - ลำดับ task: **Task 3 ต้องมาก่อน Task 4** (Task 4 ต่อสายจริงผ่าน `TransactionalReportService`) · task อื่นไม่ขึ้นต่อกัน
@@ -80,7 +80,7 @@
 
 **ที่มาของข้อบกพร่อง (เปิดโค้ดแล้ว):** service ของทั้งสามรายงานกรอง `postedAt` / `entryDate` ด้วย `gte` + `lte` (`receivables-report.service.ts:getBadDebtReport` · `general-ledger-report.service.ts:getGeneralJournal` · `intercompany-report.service.ts:getReport` — ยอดยกมาใช้ `lt periodStart`) · controller ส่ง `new Date('YYYY-MM-DD')` = 07:00 น. ไทย ⇒ รายการตั้งลูกหนี้งวดที่ลง 00:00 น. ของวันครบกำหนด และรายการ 00:00–06:59 น. ของวันเริ่มหายไป + ทุกรายการหลัง 07:00 น. ของวันสิ้นสุดหาย (วันสิ้นสุด = วันนี้ ⇒ รายงานไม่เห็นรายการของวันนี้) · ที่ inter-co ยอดยกมาใช้ `lt periodStart` ⇒ รายการ 00:00–06:59 น. ของวันเริ่มถูกนับเป็น "ยอดยกมา" แทนที่จะเป็น "ระหว่างงวด" ยอดคงเหลือปลายงวดจึงผิดด้วย · `getBadDebtReport` และ `getGeneralJournal` ยังส่ง `new Date(undefined)` (Invalid Date) เข้า Prisma เมื่อไม่ส่ง `start`/`end` — เฉพาะ `inter-co/report` ที่ตรวจอยู่แล้ว
 
-**`:127 getAgingReport` — ตรวจแล้ว ไม่แก้** (เหตุผลเต็มอยู่หัวข้อ "ตรวจแล้วไม่ต้องแก้" แถว A1): `Payment.dueDate` เก็บที่ 00:00 น. ไทยเสมอ ⇒ ชุดแถวและจำนวนวันค้างที่ได้จาก `asOf` = 07:00 น. เท่ากับสิ้นวันไทยทุกแถว
+**`:127 getAgingReport` — แก้ในรอบตรวจทั้งแผน (final review)**: ตอนเขียนแผนตรวจแล้วเห็นว่าผลเท่ากันสำหรับ due date ที่ระบบเขียน จึงไม่แก้ (แถว A1) แต่ guard ของแผน ค ไม่ให้มีข้อยกเว้น จึงเปลี่ยนเป็น `asOf ? reportAsOf(asOf) : new Date()` พร้อมเทสใน `accounting.controller.range-dates.spec.ts`
 
 - [ ] **Step 1: เขียนเทสต์ที่ต้องล้ม**
 
@@ -2296,7 +2296,7 @@ Expected: jest PASS ทั้งหมด · type check 0 errors · diff ขอ�
 
 | ที่ | ผลตรวจ | เหตุผล |
 |---|---|---|
-| **A1** `accounting.controller.ts:127` `getAgingReport` (`GET /expenses/ledger/aging?asOf`) | OK | `Payment.dueDate` ถูกเขียนที่ 00:00 น. ไทยเสมอ (`installment-schedule.util.ts` `bangkokMidnight` · `installment.util.ts` anchor `Date.UTC − 7h`) · ตัวกรอง `dueDate lt asOf` และ `daysOverdue = floor((asOf − dueDate)/86,400,000)` ให้ผลเท่ากันทุกแถวระหว่าง `asOf` = 07:00 น. กับสิ้นวันไทย: ครบกำหนดวัน D → รวมอยู่ (0 วัน = 7 ชม. / 23.99 ชม.) · ครบกำหนด D+1 → ไม่รวมทั้งคู่ · ครบกำหนด D−k → k วันทั้งคู่ · ต่างกันเฉพาะแถวที่ `dueDate` ไม่ใช่เที่ยงคืนไทย ซึ่งไม่มีผู้เขียนใด ๆ · วิดเจ็ต `AgingSummaryWidget` ส่ง ISO เต็มซึ่งผ่านเป็นพฤติกรรมเดิมอยู่แล้ว · ไม่เปลี่ยนจึงไม่เพิ่มความเสี่ยง |
+| **A1** `accounting.controller.ts:127` `getAgingReport` (`GET /expenses/ledger/aging?asOf`) | **แก้แล้วใน final-review fix** | ผลลัพธ์เท่ากันสำหรับ `Payment.dueDate` ที่ระบบเขียน (00:00 น. ไทยเสมอ) จึงเดิมถูกจัดเป็น "ไม่ต้องแก้" · แต่เปลี่ยนเป็น `reportAsOf(asOf)` เพื่อให้ regression guard ของแผน ค ไม่ต้องมีข้อยกเว้น (ไม่เปลี่ยนผลสำหรับ due date ของระบบ · ค่าที่ไม่ใช่ `YYYY-MM-DD` ผ่านตามเดิม) · เทส: `accounting.controller.range-dates.spec.ts` |
 | `accounting/monthly-close.service.ts:316-317,556-557` (`syncToPeak`, `runDataAudit`) · `:655` `getBalanceSheet(asOfDate)` · `:656` `previewPP30` | OK | ขอบมาจาก `periodStart/periodEnd` (`bangkokMidnight`) อยู่แล้ว · งบฐานะการเงินตัดสิ้นวันด้วย `setHours` ถูกภายใต้ `TZ=Asia/Bangkok` · `previewPP30` ใช้ขอบเดือนไทย (`pp30MonthRange`) |
 | `accounting/transactional-report.service.ts:408-409,450-451` `getMonthlyPLSummary` · `:589-590` `getBalanceSheet` | OK (ขึ้นกับ TZ ของโปรเซส) | ใช้ปี/เดือนเป็นเลขจำนวนเต็มและ `new Date(y,m,d)` / `setHours(23,59,59,999)` ซึ่งเท่ากับขอบไทยเมื่อ `TZ=Asia/Bangkok` (`app.setup.ts:20` ตั้งไม่มีเงื่อนไข) · ไม่มีหน้าเว็บส่งสตริงวันที่ (`/reports/balance-sheet` ไม่มีผู้เรียกเว็บ) |
 | `accounting/general-ledger-report.service.ts:1018` ต้นปีของงบส่วนของผู้ถือหุ้น | OK (ขึ้นกับ TZ) | `new Date(periodEnd.getFullYear(),0,1)` — `periodEnd` มาจาก `reportDayEnd` ของ controller อยู่แล้ว ปีตามเวลาโปรเซสเท่ากับปีไทยเมื่อ `TZ=Asia/Bangkok` |
@@ -2314,6 +2314,10 @@ Expected: jest PASS ทั้งหมด · type check 0 errors · diff ขอ�
 | `finance-tax/finance-tax.service.ts:39-42` `buildPeriod` · `:90` | OK (ขึ้นกับ TZ) | ขอบเดือน `new Date(y,m-1,1)` / `(y,m,1)` และ `pp30MonthRange` · `finance-tax.service.spec.ts:150-151` ฝังค่า `…T17:00:00.000Z` จึงเขียวเฉพาะเครื่องที่ `TZ=Asia/Bangkok` (jest ไม่ pin TZ) — เป็นข้อสังเกตของเทสต์ ไม่ใช่บั๊กโค้ด |
 | `peak/peak-sync.cron.ts:34` ช่วง `เมื่อวาน 00:00 → ตอนนี้` | OK (ขึ้นกับ TZ) | ใช้ `setDate` / `setHours(0,0,0,0)` ตามโปรเซสซึ่งเป็นเวลาไทย · ส่ง `Date` ตรงเข้า service · กรองซ้ำด้วย `peakSyncedAt: null` |
 | `GET /reports/quarterly` — `reports.service.ts:200` `new Date(year, endMonth, 0).toISOString().split('T')[0]` | นอกขอบเขตแผน ก | อยู่ใต้ `reports/` (แผนอื่นเป็นเจ้าของ) · ตามรายงานตรวจ ได้วันสิ้นไตรมาสถอยหลังหนึ่งวันแล้วส่งเข้า `getProfitLossReport` — Task 3 ไม่แก้และไม่ทำให้แย่ลง |
+
+## ตามต่อ (นอกขอบเขตแผนนี้)
+
+- สมุดรายวันทั่วไป (`general-ledger-report.service.ts` ~:1188) และรายงานหนี้สูญ (`receivables-report.service.ts` ~:104) กรองด้วย `postedAt` ขณะที่รายงานอื่น (งบทดลอง · ส่งออก PEAK) กรองด้วย `entryDate` ⇒ รายการที่ลงย้อนวันอาจโผล่ต่างเดือนกันระหว่างสมุดรายวันกับงบทดลอง/PEAK · จะให้สมุดรายวันใช้วันที่ลงรายการหรือไม่เป็นการตัดสินใจทางธุรกิจ
 
 ## ต้องให้เจ้าของตัดสิน
 

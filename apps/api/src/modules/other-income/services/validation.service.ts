@@ -158,7 +158,8 @@ export class ValidationService {
 
     // V8 — Issue date must be in an OPEN accounting period
     if (doc.issueDate && !ctx.isPeriodOpen(doc.issueDate)) {
-      const ym = `${doc.issueDate.getFullYear()}-${String(doc.issueDate.getMonth() + 1).padStart(2, '0')}`;
+      const { year: by, month: bm } = bangkokCalendarParts(doc.issueDate);
+      const ym = `${by}-${String(bm + 1).padStart(2, '0')}`;
       errors.push({
         rule: 'V8',
         msg: `งวด ${ym} ปิดบัญชีแล้ว — ไม่สามารถบันทึกได้`,

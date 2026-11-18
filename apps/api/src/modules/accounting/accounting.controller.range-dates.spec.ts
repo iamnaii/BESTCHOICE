@@ -11,7 +11,7 @@ import { AccountingController } from './accounting.controller';
 describe('AccountingController — ช่วงวันที่ bad-debt / general-journal / inter-co', () => {
   const START = '2026-10-31T17:00:00.000Z';
   const END = '2026-11-17T16:59:59.999Z';
-  const service = { getBadDebtReport: jest.fn(), getGeneralJournal: jest.fn() };
+  const service = { getBadDebtReport: jest.fn(), getGeneralJournal: jest.fn(), getAgingReport: jest.fn() };
   const intercoReportService = { getReport: jest.fn() };
   const controller = new AccountingController(
     service as never,
@@ -87,5 +87,17 @@ describe('AccountingController — ช่วงวันที่ bad-debt / gen
   it('inter-co/report: ไม่ส่ง start หรือ end = 400 เหมือนเดิม', () => {
     expect(() => controller.getInterCoReport('2026-11-01', undefined as never)).toThrow(BadRequestException);
     expect(intercoReportService.getReport).not.toHaveBeenCalled();
+  });
+
+  it('aging: asOf=YYYY-MM-DD = สิ้นวันไทย · ISO เต็มผ่านตามที่ส่งมา · ไม่ส่ง = ตอนนี้', () => {
+    controller.getAgingReport('2026-11-17');
+    expect(iso(service.getAgingReport.mock.calls[0][0])).toBe('2026-11-17T16:59:59.999Z');
+    controller.getAgingReport('2026-11-17T03:04:05.000Z');
+    expect(iso(service.getAgingReport.mock.calls[1][0])).toBe('2026-11-17T03:04:05.000Z');
+    const before = Date.now();
+    controller.getAgingReport(undefined);
+    const arg = service.getAgingReport.mock.calls[2][0];
+    expect(arg).toBeInstanceOf(Date);
+    expect(Math.abs(arg.getTime() - before)).toBeLessThan(5000);
   });
 });

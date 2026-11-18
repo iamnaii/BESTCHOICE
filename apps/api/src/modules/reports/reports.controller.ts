@@ -6,6 +6,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { bangkokDateString } from '../../utils/date.util';
 
 @ApiTags('Reports')
 @ApiBearerAuth('JWT')
@@ -120,7 +121,7 @@ export class ReportsController {
   ) {
     const resolvedBranchIds = await this.reportsService.resolveCompanyBranches(companyId, branchId);
     return this.reportsService.getBalanceSheet(
-      asOfDate || new Date().toISOString().split('T')[0],
+      asOfDate || bangkokDateString(),
       undefined,
       resolvedBranchIds,
     );

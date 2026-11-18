@@ -4,6 +4,7 @@ import { AccountingService } from '../accounting/accounting.service';
 import { ReceivablesReportService } from './services/receivables-report.service';
 import { RevenueReportService } from './services/revenue-report.service';
 import { OperationalReportService } from './services/operational-report.service';
+import { daysInMonth } from '../../utils/date.util';
 
 @Injectable()
 export class ReportsService {
@@ -197,7 +198,8 @@ export class ReportsService {
     const startMonth = (quarter - 1) * 3 + 1;
     const endMonth = startMonth + 2;
     const startDate = `${year}-${String(startMonth).padStart(2, '0')}-01`;
-    const endDate = new Date(year, endMonth, 0).toISOString().split('T')[0];
+    // วันสุดท้ายของเดือนสุดท้ายในไตรมาส — สตริงล้วน ไม่ผ่าน Date.toISOString (ซึ่งเลื่อนเป็น "วันก่อนหน้า" บนเวลาไทย)
+    const endDate = `${year}-${String(endMonth).padStart(2, '0')}-${String(daysInMonth(year, endMonth - 1)).padStart(2, '0')}`;
     return this.accounting.getProfitLossReport(startDate, endDate, branchId, branchIds, includeFinanceExpenses);
   }
 }

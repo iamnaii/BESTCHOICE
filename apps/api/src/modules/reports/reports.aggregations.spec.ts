@@ -18,7 +18,7 @@ import { ReportsService } from './reports.service';
  *   - getBranchComparisonReport(346-392) payments-by-branch reduce + empty-group zeros
  *   - resolveCompanyBranches   (22-31)   branchId / companyId / empty / neither
  *   - getQuarterlyReport       (926-941) quarter -> date window + BadRequest guard
- *       (NOTE: endDate is TZ-shifted one day under UTC+7 — pinned as a quirk below)
+ *       (endDate = วันสุดท้ายของไตรมาสแบบสตริงล้วน — แก้ 2026-11-18 ให้ไม่ขึ้นกับ TZ)
  *
  * Mock-only: a hand-mocked PrismaService + a stubbed AccountingService cover
  * every injected dependency (see the 2-arg ReportsService constructor). No real DB.
@@ -534,30 +534,20 @@ describe('ReportsService aggregations (Wave 3 characterization)', () => {
       return { svc, getProfitLossReport };
     }
 
-    // QUIRK (TZ-DEPENDENT SOURCE BEHAVIOUR): endDate =
-    // `new Date(year, endMonth, 0).toISOString().split('T')[0]`. `new Date(y, m, 0)`
-    // is LOCAL midnight of the quarter's last day; `.toISOString()` converts to UTC.
-    // On Bangkok (UTC+7) this rolls back to the PREVIOUS day (Q1 -> 03-30); on UTC
-    // (e.g. CI) it stays 03-31. We compute the expected endDate with the SOURCE's
-    // OWN formula so the assertion is TZ-PORTABLE (passes under any runner TZ).
-    // The startDate is a literal template string (no Date round-trip), so it is exact.
-    const qEnd = (endMonth: number) =>
-      new Date(2026, endMonth, 0).toISOString().split('T')[0];
-
-    it('Q1 2026 -> start 2026-01-01, end = last day of Q1 (TZ-dependent quirk)', async () => {
+    // endDate = วันสุดท้ายของไตรมาสตามปฏิทิน เขียนเป็นสตริงตรง ๆ ไม่ผ่าน Date → toISOString จึงเท่ากันทุก TZ ของเครื่องรันเทสต์
+    // (2026-11-18: เดิมสูตร `new Date(year, endMonth, 0).toISOString()` ได้ "วันก่อนหน้า" บนเครื่องเวลาไทย — Q1 → 03-30 —
+    //  และเทสต์ชุดนี้เคยคำนวณค่าคาดหวังด้วยสูตรเดียวกัน จึงปักบั๊กไว้แทนที่จะจับมัน)
+    it.each([
+      [1, '2026-01-01', '2026-03-31'],
+      [2, '2026-04-01', '2026-06-30'],
+      [3, '2026-07-01', '2026-09-30'],
+      [4, '2026-10-01', '2026-12-31'],
+    ])('Q%i 2026 -> start %s, end = วันสุดท้ายของไตรมาส %s', async (quarter, start, end) => {
       const { svc, getProfitLossReport } = make();
-      await svc.getQuarterlyReport(2026, 1);
-      const [start, end] = getProfitLossReport.mock.calls[0];
-      expect(start).toBe('2026-01-01');
-      expect(end).toBe(qEnd(3)); // endMonth = (1-1)*3+1+2 = 3
-    });
-
-    it('Q4 2026 -> start 2026-10-01, end = last day of Q4 (TZ-dependent quirk)', async () => {
-      const { svc, getProfitLossReport } = make();
-      await svc.getQuarterlyReport(2026, 4);
-      const [start, end] = getProfitLossReport.mock.calls[0];
-      expect(start).toBe('2026-10-01');
-      expect(end).toBe(qEnd(12)); // endMonth = (4-1)*3+1+2 = 12
+      await svc.getQuarterlyReport(2026, quarter);
+      const [s, e] = getProfitLossReport.mock.calls[0];
+      expect(s).toBe(start);
+      expect(e).toBe(end);
     });
 
     it('delegates branch args + includeFinanceExpenses through to AccountingService', async () => {
@@ -565,7 +555,7 @@ describe('ReportsService aggregations (Wave 3 characterization)', () => {
       await svc.getQuarterlyReport(2026, 2, 'branch-3', ['branch-3', 'branch-4'], true);
       expect(getProfitLossReport).toHaveBeenCalledWith(
         '2026-04-01',
-        qEnd(6), // Q2 endMonth = (2-1)*3+1+2 = 6
+        '2026-06-30',
         'branch-3',
         ['branch-3', 'branch-4'],
         true,

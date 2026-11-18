@@ -47,6 +47,7 @@ describe('StaffChatController', () => {
   let aiAssistant: AiAssistantService;
   let aiSuggest: AiSuggestService;
   let config: ConfigService;
+  let aiMetrics: AiMetricsService;
   let samePerson: { findForRoom: jest.Mock; dismiss: jest.Mock };
 
   beforeEach(async () => {
@@ -99,7 +100,7 @@ describe('StaffChatController', () => {
         { provide: AiTrainingService, useValue: {} },
         { provide: AiAutoReplyService, useValue: { getRuntimeStatus: jest.fn() } },
         { provide: AiImportService, useValue: {} },
-        { provide: AiMetricsService, useValue: {} },
+        { provide: AiMetricsService, useValue: { getMetrics: jest.fn().mockResolvedValue({}) } },
         { provide: ConfigService, useValue: { get: jest.fn() } },
         { provide: TrainingExtractCron, useValue: {} },
         { provide: EmbeddingBackfillCron, useValue: {} },
@@ -151,6 +152,7 @@ describe('StaffChatController', () => {
     aiAssistant = module.get(AiAssistantService);
     aiSuggest = module.get(AiSuggestService);
     config = module.get(ConfigService);
+    aiMetrics = module.get(AiMetricsService);
   });
 
   describe('inbox work-company selection', () => {
@@ -635,6 +637,40 @@ describe('StaffChatController', () => {
 
       expect(roomManager.getCrossChannelRooms).toHaveBeenCalledWith('room-1', { id: 'staff-1' }, { company: 'SHOP' });
       expect(result).toEqual(rooms);
+    });
+  });
+
+  describe('GET /staff-chat/ai/metrics — วันที่ตามเวลาไทย', () => {
+    const getMetrics = () => aiMetrics.getMetrics as jest.Mock;
+    const iso = (d: Date | undefined) => d?.toISOString();
+
+    beforeEach(() => getMetrics().mockClear());
+
+    it('from/to แบบ YYYY-MM-DD = 00:00 น. วันเริ่ม ถึง 23:59:59.999 น. วันสิ้นสุด (เวลาไทย)', async () => {
+      await controller.getAiMetrics('2026-11-01', '2026-11-17');
+      const [from, to] = getMetrics().mock.calls[0];
+      expect(iso(from)).toBe('2026-10-31T17:00:00.000Z');
+      expect(iso(to)).toBe('2026-11-17T16:59:59.999Z');
+    });
+
+    it('from = to = วันนี้ ได้ช่วงเต็มวัน ไม่ใช่ช่วงที่เริ่มและจบ 07:00 น. เดียวกัน', async () => {
+      await controller.getAiMetrics('2026-11-18', '2026-11-18');
+      const [from, to] = getMetrics().mock.calls[0] as [Date, Date];
+      expect(iso(from)).toBe('2026-11-17T17:00:00.000Z');
+      expect(iso(to)).toBe('2026-11-18T16:59:59.999Z');
+      expect(to.getTime() - from.getTime()).toBe(86_400_000 - 1);
+    });
+
+    it('ไม่ส่ง from/to = undefined ตามเดิม', async () => {
+      await controller.getAiMetrics();
+      expect(getMetrics()).toHaveBeenCalledWith(undefined, undefined);
+    });
+
+    it('ส่งแค่ from ได้ to เป็น undefined', async () => {
+      await controller.getAiMetrics('2026-11-01');
+      const [from, to] = getMetrics().mock.calls[0];
+      expect(iso(from)).toBe('2026-10-31T17:00:00.000Z');
+      expect(to).toBeUndefined();
     });
   });
 

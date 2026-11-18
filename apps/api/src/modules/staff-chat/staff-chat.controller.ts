@@ -64,6 +64,7 @@ import { StaffChatGateway } from './staff-chat.gateway';
 import { CHAT_EVENTS, CHAT_ROOMS } from '../chat-engine/constants/chat-events';
 import { SamePersonService } from '../chat-prospects/same-person.service';
 import { isChatPlaceholder } from '../chat-prospects/chat-placeholder';
+import { reportAsOf, reportDayStart } from '../../utils/date.util';
 
 @Controller('staff-chat')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -810,8 +811,8 @@ export class StaffChatController {
   @Roles('OWNER')
   async getAiMetrics(@Query('from') from?: string, @Query('to') to?: string) {
     return this.aiMetrics.getMetrics(
-      from ? new Date(from) : undefined,
-      to ? new Date(to) : undefined,
+      from ? reportDayStart(from) : undefined,
+      to ? reportAsOf(to) : undefined,
     );
   }
 

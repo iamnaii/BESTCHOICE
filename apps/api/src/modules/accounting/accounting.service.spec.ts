@@ -537,6 +537,103 @@ describe('AccountingService', () => {
     });
   });
 
+  describe('getPeriodTrialBalance (งบทดลองแบบช่วงเวลา)', () => {
+    const coa = (code: string, name: string, normalBalance: string) => ({
+      id: code, code, name, type: 'ทดสอบ', normalBalance,
+      category: null, vatApplicable: false, notes: null, status: 'ใช้งาน', deletedAt: null,
+    });
+    const sum = (accountCode: string, debit: number, credit: number) => ({
+      accountCode,
+      _sum: { debit: new Prisma.Decimal(debit), credit: new Prisma.Decimal(credit) },
+    });
+    const START = new Date('2026-10-31T17:00:00.000Z'); // 1 พ.ย. 00:00 น. ไทย
+    const END = new Date('2026-11-17T16:59:59.999Z'); // 17 พ.ย. 23:59:59.999 น. ไทย
+
+    beforeEach(() => {
+      prisma.chartOfAccount = {
+        findMany: jest.fn().mockResolvedValue([
+          coa('11-1201', 'ธนาคาร KBank', 'Dr'),
+          coa('11-2106', 'รายได้รอตัดบัญชี-ดอกเบี้ย', 'Cr'),
+          coa('21-1101', 'เจ้าหนี้-หน้าร้าน', 'Cr'),
+          coa('53-1101', 'เงินเดือน', 'Dr'),
+        ]),
+      };
+      // ยอดสะสมก่อนวันเริ่ม (ยกมา) กับยอดสะสมถึงวันสิ้นสุด — แยกด้วยจุดตัดที่ service ส่งมา
+      prisma.journalLine = {
+        groupBy: jest.fn().mockImplementation(({ where }) => {
+          const cutoff: Date = where.journalEntry.entryDate.lte;
+          return Promise.resolve(
+            cutoff.getTime() < START.getTime()
+              ? [sum('11-1201', 250000, 0), sum('11-2106', 0, 96000), sum('21-1101', 0, 154000)]
+              : [
+                  sum('11-1201', 295480, 138000),
+                  sum('11-2106', 9000, 110400),
+                  sum('21-1101', 120000, 204000),
+                  sum('53-1101', 18000, 0),
+                  sum('99-9999', 85920, 85920 + 0),
+                ],
+          );
+        }),
+      };
+    });
+
+    const rowOf = (result: Awaited<ReturnType<typeof service.getPeriodTrialBalance>>, code: string) =>
+      result.sections.flatMap((s) => s.rows).find((r) => r.code === code)!;
+
+    it('จุดตัดยอดยกมา = 1 มิลลิวินาทีก่อนวันเริ่ม · จุดตัดยอดคงเหลือ = วันสิ้นสุด', async () => {
+      await service.getPeriodTrialBalance(START, END);
+      const cutoffs = prisma.journalLine.groupBy.mock.calls.map(
+        (c: [{ where: { journalEntry: { entryDate: { lte: Date } } } }]) => c[0].where.journalEntry.entryDate.lte.toISOString(),
+      );
+      expect(cutoffs).toEqual(['2026-10-31T16:59:59.999Z', '2026-11-17T16:59:59.999Z']);
+    });
+
+    it('ยอดยกมา/ยอดคงเหลือเป็นยอดสุทธิฝั่งเดียว · ระหว่างงวดเป็นเดบิตรวมและเครดิตรวมของช่วง', async () => {
+      const result = await service.getPeriodTrialBalance(START, END);
+      const bank = rowOf(result, '11-1201');
+      expect(bank.openingDr.toFixed(2)).toBe('250000.00');
+      expect(bank.openingCr.toFixed(2)).toBe('0.00');
+      expect(bank.periodDr.toFixed(2)).toBe('45480.00');
+      expect(bank.periodCr.toFixed(2)).toBe('138000.00');
+      expect(bank.closingDr.toFixed(2)).toBe('157480.00');
+      expect(bank.closingCr.toFixed(2)).toBe('0.00');
+
+      const unearned = rowOf(result, '11-2106'); // บัญชีปกติฝั่งเครดิต
+      expect(unearned.openingCr.toFixed(2)).toBe('96000.00');
+      expect(unearned.periodDr.toFixed(2)).toBe('9000.00');
+      expect(unearned.periodCr.toFixed(2)).toBe('14400.00');
+      expect(unearned.closingCr.toFixed(2)).toBe('101400.00');
+      expect(unearned.closingDr.toFixed(2)).toBe('0.00');
+    });
+
+    it('บัญชีที่เพิ่งมีรายการในช่วง: ยกมา 0 · ระหว่างงวด = ยอดทั้งหมด', async () => {
+      const salary = rowOf(await service.getPeriodTrialBalance(START, END), '53-1101');
+      expect(salary.openingDr.toFixed(2)).toBe('0.00');
+      expect(salary.periodDr.toFixed(2)).toBe('18000.00');
+      expect(salary.closingDr.toFixed(2)).toBe('18000.00');
+    });
+
+    it('รหัสที่ไม่มีในผังบัญชีแต่มีรายการ ยังอยู่ในงบ', async () => {
+      const orphan = rowOf(await service.getPeriodTrialBalance(START, END), '99-9999');
+      expect(orphan.periodDr.toFixed(2)).toBe('85920.00');
+      expect(orphan.periodCr.toFixed(2)).toBe('85920.00');
+      expect(orphan.closingDr.toFixed(2)).toBe('0.00');
+      expect(orphan.closingCr.toFixed(2)).toBe('0.00');
+    });
+
+    it('รวมทั้งสิ้นและธงสมดุลของทั้ง 3 คู่', async () => {
+      const result = await service.getPeriodTrialBalance(START, END);
+      expect(result.totals.openingDr.toFixed(2)).toBe('250000.00');
+      expect(result.totals.openingCr.toFixed(2)).toBe('250000.00');
+      expect(result.totals.periodDr.toFixed(2)).toBe('278400.00');
+      expect(result.totals.periodCr.toFixed(2)).toBe('288320.00');
+      expect(result.isBalanced).toEqual({ opening: true, period: false, closing: false });
+      const assets = result.sections.find((s) => s.codePrefix === '11')!;
+      expect(assets.totals.closingDr.toFixed(2)).toBe('157480.00');
+      expect(assets.totals.closingCr.toFixed(2)).toBe('101400.00');
+    });
+  });
+
   describe('getProfitLossFromJournal (T17)', () => {
     beforeEach(() => {
       prisma.chartOfAccount = { findMany: jest.fn().mockResolvedValue([]) };

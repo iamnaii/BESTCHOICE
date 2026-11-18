@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { AccountingController } from './accounting.controller';
 
 /**
@@ -9,6 +10,7 @@ describe('AccountingController — วันที่ของรายงาน
   const END = '2026-11-17T16:59:59.999Z';
   const service = {
     getTrialBalance: jest.fn(),
+    getPeriodTrialBalance: jest.fn(),
     getProfitLossFromJournal: jest.fn(),
     getBalanceSheetFromJournal: jest.fn(),
     getCashFlowFromJournal: jest.fn(),
@@ -55,5 +57,20 @@ describe('AccountingController — วันที่ของรายงาน
     const args = (mock as jest.Mock).mock.calls[0];
     expect(iso(args[startIndex])).toBe(START);
     expect(iso(args[startIndex + 1])).toBe(END);
+  });
+
+  it('งบทดลองแบบช่วงเวลา: มี periodStart = เรียก getPeriodTrialBalance ด้วยขอบวันไทย', () => {
+    controller.getTrialBalance(undefined, undefined, '2026-11-01', '2026-11-17');
+    expect(service.getTrialBalance).not.toHaveBeenCalled();
+    const [start, end, scope] = service.getPeriodTrialBalance.mock.calls[0];
+    expect(iso(start)).toBe(START);
+    expect(iso(end)).toBe(END);
+    expect(scope).toBe('FINANCE');
+  });
+
+  it('งบทดลองแบบช่วงเวลา: ไม่มีวันสิ้นสุด หรือวันเริ่มหลังวันสิ้นสุด = 400', () => {
+    expect(() => controller.getTrialBalance(undefined, undefined, '2026-11-01')).toThrow(BadRequestException);
+    expect(() => controller.getTrialBalance(undefined, undefined, '2026-11-18', '2026-11-17')).toThrow(BadRequestException);
+    expect(service.getPeriodTrialBalance).not.toHaveBeenCalled();
   });
 });

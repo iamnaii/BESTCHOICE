@@ -53,7 +53,19 @@ export class AccountingController {
   getTrialBalance(
     @Query('asOfDate') asOfDate?: string,
     @Query('scope') scope?: 'FINANCE' | 'SHOP' | 'ALL',
+    @Query('periodStart') periodStart?: string,
+    @Query('periodEnd') periodEnd?: string,
   ) {
+    // มี periodStart = งบทดลองแบบช่วงเวลา (ยอดยกมา / ระหว่างงวด / ยอดคงเหลือ) · ไม่มี = งบ ณ วันที่ ตามเดิม
+    if (periodStart) {
+      if (!periodEnd) throw new BadRequestException('กรุณาระบุวันสิ้นสุด');
+      const start = reportDayStart(periodStart);
+      const end = reportDayEnd(periodEnd);
+      if (start.getTime() > end.getTime()) {
+        throw new BadRequestException('วันเริ่มต้นต้องไม่เกินวันสิ้นสุด');
+      }
+      return this.service.getPeriodTrialBalance(start, end, scope ?? 'FINANCE');
+    }
     return this.service.getTrialBalance(
       asOfDate ? reportAsOf(asOfDate) : undefined,
       scope ?? 'FINANCE',

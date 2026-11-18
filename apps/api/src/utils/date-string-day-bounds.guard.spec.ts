@@ -21,13 +21,17 @@ import { join, relative, sep } from 'node:path';
 const ALLOWED: Record<string, string> = {
   'modules/chat-engine/services/room-manager.service.ts#gte: new Date(from)':
     'from/to เป็นเวลา epoch มิลลิวินาที (ตัวเลข) ไม่ใช่สตริงวันที่',
-  'modules/chat-analytics/chat-analytics-v2.service.ts':
+  'modules/chat-analytics/chat-analytics-v2.service.ts#const from = new Date(input.from)':
+    'DTO บังคับ ISO ที่มี Z/offset ก่อนใช้ (regex บรรทัด 58) — ไม่ใช่วันที่ล้วน',
+  'modules/chat-analytics/chat-analytics-v2.service.ts#to = new Date(input.to)':
     'DTO บังคับ ISO ที่มี Z/offset ก่อนใช้ (regex บรรทัด 58) — ไม่ใช่วันที่ล้วน',
   'modules/employee-access/access-defect-boundaries.ts#new Date(q.from) > new Date(q.to)':
     'เทียบลำดับ from > to เพื่อตรวจ input เท่านั้น ไม่ได้ใช้เป็นขอบของ query',
-  'modules/reporting/reporting.controller.ts':
+  'modules/reporting/reporting.controller.ts#const to = dto.to ? new Date(dto.to)':
     'เว็บส่ง ISO instant เต็มจาก toISOString() โดยสัญญา (PdfExportButton) ไม่ใช่วันที่ล้วน',
-  'modules/sso-config/sso-config.controller.ts':
+  'modules/reporting/reporting.controller.ts#? new Date(dto.from)':
+    'เว็บส่ง ISO instant เต็มจาก toISOString() โดยสัญญา (PdfExportButton) ไม่ใช่วันที่ล้วน',
+  'modules/sso-config/sso-config.controller.ts#const when = date ? new Date(date)':
     'เทียบกับคอลัมน์ effectiveFrom/effectiveTo ที่เป็น @db.Date (วันที่ล้วน) — ไม่อยู่ในขอบเขต',
   'modules/users/users.service.ts#dto.startDate ? new Date(dto.startDate) : null':
     'เขียนวันเริ่มงานลงคอลัมน์ ไม่ใช่การกรอง',
@@ -41,18 +45,48 @@ const ALLOWED: Record<string, string> = {
     'วันซื้อ/ขายสินทรัพย์เก็บที่ 07:00 น. ไทย ตรงกับขอบ จึงนับครบ',
   'modules/asset/asset-reports.service.ts#const asOfDate = filters.asOfDate ? new Date(filters.asOfDate)':
     'เหตุผลเดียวกับ asset-query.service.ts — วันซื้อ/ขายสินทรัพย์เก็บที่ 07:00 น. ไทย',
-  'modules/asset/asset-transfer.service.ts':
+  'modules/asset/asset-transfer.service.ts#range.gte = new Date(filters.fromDate)':
+    'วันโอนสินทรัพย์เก็บที่ 07:00 น. ไทย ขอบเริ่มตรงพอดี',
+  'modules/asset/asset-transfer.service.ts#const end = new Date(filters.toDate)':
     'วันโอนสินทรัพย์เก็บที่ 07:00 น. ไทย ขอบสิ้นสุดใช้ setHours',
-  'modules/expense-documents/services/expense-document-query.service.ts':
-    'documentDate เก็บที่ 07:00 น. (หรือ 12:00 น. ของบิลประจำ) นับครบทั้งขอบเริ่ม/สิ้นสุด',
-  'modules/other-income/services/other-income-report.service.ts':
+  'modules/expense-documents/services/expense-document-query.service.ts#where.documentDate.gte = new Date(':
+    'documentDate เก็บที่ 07:00 น. (หรือ 12:00 น. ของบิลประจำ) นับครบทั้งขอบเริ่ม/สิ้นสุด (ขอบเริ่ม บรรทัด 103/159/225)',
+  'modules/expense-documents/services/expense-document-query.service.ts#const end = new Date(query.endDate)':
+    'documentDate เก็บที่ 07:00 น. (หรือ 12:00 น. ของบิลประจำ) นับครบทั้งขอบเริ่ม/สิ้นสุด (ขอบสิ้นสุด setHours)',
+  'modules/expense-documents/services/expense-document-query.service.ts#const end = new Date(filters.endDate)':
+    'documentDate เก็บที่ 07:00 น. (หรือ 12:00 น. ของบิลประจำ) นับครบทั้งขอบเริ่ม/สิ้นสุด (ขอบสิ้นสุด setHours)',
+  'modules/expense-documents/services/expense-document-query.service.ts#const end = new Date(filters.to)':
+    'documentDate เก็บที่ 07:00 น. (หรือ 12:00 น. ของบิลประจำ) นับครบทั้งขอบเริ่ม/สิ้นสุด (ขอบสิ้นสุด setHours)',
+  'modules/expense-documents/services/expense-document-query.service.ts#new Date(filters.date)':
+    'มุมมองรายวัน: new Date(filters.date) + setHours(0)/setHours(23,59,59,999) ถูกเฉพาะเมื่อ TZ ของโปรเซส = Asia/Bangkok (installRuntimeGlobals) — ไม่ใช่เพราะ documentDate เก็บ 07:00 น.',
+  'modules/other-income/services/other-income-report.service.ts#gte: new Date(query.startDate)':
     'issueDate เก็บที่ 07:00 น. ไทยทุกทางที่ใช้งานจริง',
-  'modules/reports/services/receivables-report.service.ts':
-    'T00:00:00/T23:59:59.999 ไม่มี offset ถูกเมื่อ TZ=Asia/Bangkok (เว็บส่ง YYYY-MM-DD เสมอ) — แผน ข ตั้งใจไม่แปลง',
-  'modules/payments/services/payment-query.service.ts':
-    'ขอบวันครบกำหนด/สมุดสรุปรายวันแบบ local ถูกเมื่อ TZ=Asia/Bangkok — แผน ข ตั้งใจไม่แปลง',
-  'modules/promotions/promotions.service.ts':
-    'เขียนวันเริ่ม/สิ้นสุดโปรโมชัน (เก็บค่า ไม่ใช่กรอง) — วันเริ่มคงเก็บเที่ยงคืน UTC ตามเดิม',
+  'modules/other-income/services/other-income-report.service.ts#lte: new Date(query.endDate)':
+    'issueDate เก็บที่ 07:00 น. ไทยทุกทางที่ใช้งานจริง',
+  'modules/reports/services/receivables-report.service.ts#${startDate}T00:00:00':
+    'T00:00:00 ไม่มี offset ถูกเมื่อ TZ=Asia/Bangkok (เว็บส่ง YYYY-MM-DD เสมอ) — แผน ข ตั้งใจไม่แปลง',
+  'modules/reports/services/receivables-report.service.ts#${endDate}T23:59:59.999':
+    'T23:59:59.999 ไม่มี offset ถูกเมื่อ TZ=Asia/Bangkok (เว็บส่ง YYYY-MM-DD เสมอ) — แผน ข ตั้งใจไม่แปลง',
+  'modules/payments/services/payment-query.service.ts#const f = new Date(dueFrom)':
+    'ขอบเริ่มวันครบกำหนดแบบ local ถูกเมื่อ TZ=Asia/Bangkok เท่านั้น (getFullYear/getMonth/getDate ของโปรเซส) — แผน ข ตั้งใจไม่แปลง',
+  'modules/payments/services/payment-query.service.ts#const t = new Date(dueTo)':
+    'ขอบสิ้นสุดวันครบกำหนดแบบ local ถูกเมื่อ TZ=Asia/Bangkok เท่านั้น (getFullYear/getMonth/getDate ของโปรเซส) — แผน ข ตั้งใจไม่แปลง',
+  'modules/payments/services/payment-query.service.ts#const d = new Date(filters.date)':
+    'ตัวกรองวันครบกำหนดรายวันแบบ local ถูกเมื่อ TZ=Asia/Bangkok เท่านั้น (getFullYear/getMonth/getDate ของโปรเซส) — แผน ข ตั้งใจไม่แปลง',
+  'modules/payments/services/payment-query.service.ts#const d = new Date(date)':
+    'สมุดสรุปรายวัน (getDailySummary) แบบ local ถูกเมื่อ TZ=Asia/Bangkok เท่านั้น (getFullYear/getMonth/getDate ของโปรเซส) — แผน ข ตั้งใจไม่แปลง',
+  'modules/promotions/promotions.service.ts#startDate: new Date(dto.startDate)':
+    'สร้างโปรโมชัน: เขียนวันเริ่ม/สิ้นสุดโปรโมชัน (เก็บค่า ไม่ใช่กรอง) — วันเริ่มคงเก็บเที่ยงคืน UTC ตามเดิม',
+  'modules/promotions/promotions.service.ts#endDate: new Date(dto.endDate)':
+    'สร้างโปรโมชัน: เขียนวันเริ่ม/สิ้นสุดโปรโมชัน (เก็บค่า ไม่ใช่กรอง) — วันเริ่มคงเก็บเที่ยงคืน UTC ตามเดิม',
+  'modules/promotions/promotions.service.ts#current.startDate : new Date(dto.startDate)':
+    'แก้โปรโมชัน: เขียนวันเริ่ม/สิ้นสุดโปรโมชัน (เก็บค่า ไม่ใช่กรอง) — วันเริ่มคงเก็บเที่ยงคืน UTC ตามเดิม',
+  'modules/promotions/promotions.service.ts#current.endDate : new Date(dto.endDate)':
+    'แก้โปรโมชัน: เขียนวันเริ่ม/สิ้นสุดโปรโมชัน (เก็บค่า ไม่ใช่กรอง) — วันเริ่มคงเก็บเที่ยงคืน UTC ตามเดิม',
+  'modules/promotions/promotions.service.ts#data.startDate = new Date(dto.startDate)':
+    'แก้โปรโมชัน: เขียนวันเริ่ม/สิ้นสุดโปรโมชัน (เก็บค่า ไม่ใช่กรอง) — วันเริ่มคงเก็บเที่ยงคืน UTC ตามเดิม',
+  'modules/promotions/promotions.service.ts#data.endDate = new Date(dto.endDate)':
+    'แก้โปรโมชัน: เขียนวันเริ่ม/สิ้นสุดโปรโมชัน (เก็บค่า ไม่ใช่กรอง) — วันเริ่มคงเก็บเที่ยงคืน UTC ตามเดิม',
 };
 
 /** พาธ src/ — ไฟล์นี้อยู่ที่ src/utils/ */

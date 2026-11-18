@@ -136,7 +136,11 @@ export class AccountingController {
     @Query('end') end: string,
     @Query('companyId') companyId?: string,
   ) {
-    return this.service.getBadDebtReport(new Date(start), new Date(end), companyId);
+    if (!start || !end) {
+      throw new BadRequestException('กรุณาระบุวันเริ่มต้น (start) และวันสิ้นสุด (end)');
+    }
+    // reportAsOf: YYYY-MM-DD = สิ้นวันไทย · ค่าอื่นคงตามที่ส่งมา (เดิมไม่ขยายเป็นสิ้นวัน)
+    return this.service.getBadDebtReport(reportDayStart(start), reportAsOf(end), companyId);
   }
 
   // Balance Sheet & Cash Flow endpoints are in ReportsController (/reports/balance-sheet, /reports/cash-flow)
@@ -239,7 +243,11 @@ export class AccountingController {
     @Query('limit') limit?: string,
     @Query('companyId') companyId?: string,
   ) {
-    return this.service.getGeneralJournal(new Date(start), new Date(end), {
+    if (!start || !end) {
+      throw new BadRequestException('กรุณาระบุวันเริ่มต้น (start) และวันสิ้นสุด (end)');
+    }
+    // reportAsOf: YYYY-MM-DD = สิ้นวันไทย · ค่าอื่นคงตามที่ส่งมา (เดิมไม่ขยายเป็นสิ้นวัน)
+    return this.service.getGeneralJournal(reportDayStart(start), reportAsOf(end), {
       page: page ? parseInt(page, 10) : 1,
       limit: limit ? parseInt(limit, 10) : 50,
       companyId,
@@ -376,6 +384,7 @@ export class AccountingController {
     if (!start || !end) {
       throw new BadRequestException('กรุณาระบุ start และ end (ISO date string)');
     }
-    return this.intercoReportService.getReport(new Date(start), new Date(end));
+    // reportAsOf: YYYY-MM-DD = สิ้นวันไทย · ค่าอื่นคงตามที่ส่งมา (เดิมไม่ขยายเป็นสิ้นวัน)
+    return this.intercoReportService.getReport(reportDayStart(start), reportAsOf(end));
   }
 }

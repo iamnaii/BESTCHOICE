@@ -9,6 +9,7 @@ import { CreateInterCompanyTransactionDto } from './dto/inter-company.dto';
 import { agingBucket } from '../../utils/aging-bucket.util';
 import { Prisma, InterCompanyTransactionStatus } from '@prisma/client';
 import { d, dAdd } from '../../utils/decimal.util';
+import { reportAsOf, reportDayStart } from '../../utils/date.util';
 
 @Injectable()
 export class InterCompanyService {
@@ -174,8 +175,9 @@ export class InterCompanyService {
     }
     if (params.startDate || params.endDate) {
       where.createdAt = {};
-      if (params.startDate) (where.createdAt as Record<string, unknown>).gte = new Date(params.startDate);
-      if (params.endDate) (where.createdAt as Record<string, unknown>).lte = new Date(params.endDate);
+      if (params.startDate) (where.createdAt as Record<string, unknown>).gte = reportDayStart(params.startDate);
+      // reportAsOf: YYYY-MM-DD = สิ้นวันไทย · ค่าอื่นคงตามที่ส่งมา (เดิมไม่ขยายเป็นสิ้นวัน)
+      if (params.endDate) (where.createdAt as Record<string, unknown>).lte = reportAsOf(params.endDate);
     }
 
     const [data, total] = await Promise.all([
@@ -275,8 +277,9 @@ export class InterCompanyService {
     }
     if (params.startDate || params.endDate) {
       where.createdAt = {};
-      if (params.startDate) (where.createdAt as Record<string, unknown>).gte = new Date(params.startDate);
-      if (params.endDate) (where.createdAt as Record<string, unknown>).lte = new Date(params.endDate);
+      if (params.startDate) (where.createdAt as Record<string, unknown>).gte = reportDayStart(params.startDate);
+      // reportAsOf: YYYY-MM-DD = สิ้นวันไทย · ค่าอื่นคงตามที่ส่งมา (เดิมไม่ขยายเป็นสิ้นวัน)
+      if (params.endDate) (where.createdAt as Record<string, unknown>).lte = reportAsOf(params.endDate);
     }
 
     const transactions = await this.prisma.interCompanyTransaction.findMany({

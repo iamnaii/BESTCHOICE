@@ -3,6 +3,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { Prisma, AssetCategory, AssetStatus } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { buildDepreciationSchedule } from '../depreciation-schedule.util';
+import { reportDayEnd, reportDayStart } from '../../../utils/date.util';
 
 /**
  * AssetQueryService — read-only / reporting paths for fixed assets:
@@ -440,12 +441,8 @@ export class AssetQueryService {
     if (params.action) where.action = params.action;
     if (params.fromDate || params.toDate) {
       const range: Record<string, Date> = {};
-      if (params.fromDate) range.gte = new Date(params.fromDate);
-      if (params.toDate) {
-        const end = new Date(params.toDate);
-        end.setHours(23, 59, 59, 999);
-        range.lte = end;
-      }
+      if (params.fromDate) range.gte = reportDayStart(params.fromDate);
+      if (params.toDate) range.lte = reportDayEnd(params.toDate);
       where.createdAt = range;
     }
 

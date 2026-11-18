@@ -18,6 +18,7 @@ export const NAV_LABELS = {
   wht: 'ภาษีหัก ณ ที่จ่าย (ภ.ง.ด.1/3/53)',
   generalJournal: 'สมุดรายวัน',
   generalLedger: 'บัญชีแยกประเภท',
+  trialBalance: 'งบทดลอง',
   balanceSheet: 'งบฐานะการเงิน',
   profitLoss: 'งบกำไรขาดทุน',
   cashFlow: 'งบกระแสเงินสด',

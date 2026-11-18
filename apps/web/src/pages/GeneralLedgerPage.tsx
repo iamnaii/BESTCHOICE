@@ -1,7 +1,7 @@
 import ScreenTable from '@/components/ui/ScreenTable';
 import { useId as useUiFieldId, useState } from 'react';
 import { NAV_LABELS } from '@/config/work-navigation';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api from '@/lib/api';
@@ -9,7 +9,7 @@ import QueryBoundary from '@/components/QueryBoundary';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { BookOpen, Download, FileSpreadsheet } from 'lucide-react';
+import { ArrowLeft, BookOpen, Download, FileSpreadsheet } from 'lucide-react';
 import { formatDateMedium } from '@/utils/formatters';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { DateRangeChips } from '@/components/ui/DateRangeChips';
@@ -78,10 +78,21 @@ export function GeneralLedgerPage() {
   const toLocalIso = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const now = new Date();
-  const [startDate, setStartDate] = useState(toLocalIso(new Date(now.getFullYear(), now.getMonth(), 1)));
-  const [endDate, setEndDate] = useState(toLocalIso(new Date(now.getFullYear(), now.getMonth() + 1, 0)));
+  // งบทดลองส่งบัญชีและช่วงวันที่มาทาง URL (?account=&start=&end=&from=trial-balance) — 2026-11-18
+  const [searchParams] = useSearchParams();
+  const dateParam = (key: string) => {
+    const value = searchParams.get(key);
+    return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+  };
+  const fromTrialBalance = searchParams.get('from') === 'trial-balance';
+  const [startDate, setStartDate] = useState(
+    dateParam('start') ?? toLocalIso(new Date(now.getFullYear(), now.getMonth(), 1)),
+  );
+  const [endDate, setEndDate] = useState(
+    dateParam('end') ?? toLocalIso(new Date(now.getFullYear(), now.getMonth() + 1, 0)),
+  );
   const [companyId, setCompanyId] = useState('');
-  const [accountCode, setAccountCode] = useState('');
+  const [accountCode, setAccountCode] = useState(searchParams.get('account') ?? '');
   const { cacheTtlReports } = useUiFlags();
   const reportsStaleTime = cacheTtlReports * 1000;
 
@@ -166,6 +177,15 @@ export function GeneralLedgerPage() {
 
   return (
     <div>
+      {fromTrialBalance && (
+        <Link
+          to={`/finance/trial-balance?start=${startDate}&end=${endDate}`}
+          className="mb-2 inline-flex min-h-11 items-center gap-1.5 text-sm font-medium leading-snug text-primary hover:underline"
+        >
+          <ArrowLeft aria-hidden="true" className="size-4" />
+          กลับไป{NAV_LABELS.trialBalance}
+        </Link>
+      )}
       <PageHeader
         title={NAV_LABELS.generalLedger}
         subtitle="บัญชีแยกประเภท — รายการเดินบัญชีแยกตามรหัสบัญชี"

@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { reportDayEnd, reportDayStart } from '../../../utils/date.util';
 
 /**
  * Revenue-domain read reports extracted from ReportsService.
@@ -15,9 +16,8 @@ export class RevenueReportService {
    * Revenue / Profit-Loss Report
    */
   async getRevenuePLReport(startDate: string, endDate: string, branchId?: string) {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    end.setHours(23, 59, 59, 999);
+    const start = reportDayStart(startDate);
+    const end = reportDayEnd(endDate);
     const branchFilter = branchId ? { branchId } : {};
 
     const [interestIncomePayments, lateFeeIncome, totalPayments, newContracts] = await Promise.all([
@@ -82,9 +82,8 @@ export class RevenueReportService {
    */
   async getSalesComparisonReport(startDate: string, endDate: string, branchId?: string, page = 1, limit = 50) {
     const safeLimit = Math.min(limit, 100);
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    end.setHours(23, 59, 59, 999);
+    const start = reportDayStart(startDate);
+    const end = reportDayEnd(endDate);
     const branchFilter = branchId ? { branchId } : {};
 
     const contracts = await this.prisma.contract.findMany({
@@ -130,8 +129,8 @@ export class RevenueReportService {
    */
   async getDailyPaymentSummary(date: string, branchId?: string, page = 1, limit = 50) {
     const safeLimit = Math.min(limit, 100);
-    const start = new Date(date);
-    const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+    const start = reportDayStart(date);
+    const end = new Date(start.getTime() + 24 * 60 * 60 * 1000); // ไทยไม่มี DST — 00:00 ของวันถัดไป
     const branchFilter = branchId ? { contract: { branchId } } : {};
 
     const where = {
@@ -210,9 +209,8 @@ export class RevenueReportService {
    * Uses InterCompanyTransaction data to calculate profit per entity.
    */
   async getEntityProfitReport(startDate: string, endDate: string, branchId?: string, entity?: string) {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    end.setHours(23, 59, 59, 999);
+    const start = reportDayStart(startDate);
+    const end = reportDayEnd(endDate);
 
     const where: Record<string, unknown> = {
       deletedAt: null,

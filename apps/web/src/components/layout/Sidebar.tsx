@@ -106,16 +106,32 @@ const expandedMenuClassNames: AccordionMenuClassNames = {
     'data-[selected=true]:before:rounded-r-full',
   ].join(' '),
   sub: '',
+  // หัวกลุ่มย่อยภายในหมวด (เมนูที่มีเมนูลูก) — หน้าตาเดียวกับรายการปกติ
   subTrigger: [
-    'h-[32px] rounded-none text-[13px] font-semibold tracking-wider uppercase leading-snug',
-    'text-muted-foreground hover:text-foreground hover:bg-transparent',
-    'data-[state=open]:text-foreground/80 data-[state=open]:bg-transparent',
-    'dark:text-muted-foreground dark:data-[state=open]:text-foreground/90',
-    'transition-colors duration-150 px-2 mt-3 mb-1',
-    'border-t border-sidebar-border pt-3',
+    'h-[34px] rounded-md text-[15px] font-medium leading-snug',
+    'text-foreground/75 hover:text-foreground hover:bg-sidebar-hover',
+    'dark:text-foreground/80 dark:hover:text-foreground',
+    'data-[state=open]:text-foreground',
+    'transition-colors duration-150',
   ].join(' '),
   subContent: 'py-0.5 pl-0 border-l-0 ml-0',
 };
+
+/**
+ * หัวหมวดระดับบนสุดของเมนูข้าง (ภาพรวม · รายรับ · ติดตามหนี้ …) — 2026-11-18
+ * เดิม h-32 + mt-3 + pt-3 + เส้นคั่นบนทุกหัว ⇒ ช่องว่างระหว่างหัวราว 56px ดูโหรง และ uppercase/tracking ไม่มีผลกับภาษาไทย
+ * (tracking กลับทำให้สระ/วรรณยุกต์ห่างกัน) · ตอนนี้: แถวสูง 40px กดง่าย · ระยะห่างแนวตั้งคงที่ 4px · เส้นคั่นบาง ๆ
+ * อยู่ที่ตัวกลุ่ม (ไม่ใช่ปุ่ม) จึงไม่ซ้อนกับพื้นตอนชี้ · ไอคอนเว้นช่องเท่ากันทุกหัว
+ */
+const SECTION_CLASS =
+  'border-t border-sidebar-border/70 pt-1 mt-1 first:border-t-0 first:pt-0 first:mt-0';
+const SECTION_TRIGGER_CLASS = [
+  'h-10 rounded-lg px-2.5 gap-2.5 text-[14px] font-semibold leading-snug',
+  'text-foreground/70 hover:text-foreground hover:bg-sidebar-hover',
+  'data-[state=open]:text-foreground',
+  'dark:text-foreground/75 dark:data-[state=open]:text-foreground',
+  'transition-colors duration-150',
+].join(' ');
 
 /* ─── useRoleMenu ───────────────────────────────── */
 function useRoleMenu(role: string, zone: Zone): MenuSection[] {
@@ -551,9 +567,14 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
           classNames={expandedMenuClassNames}
         >
           {sections.map((section) => (
-            <AccordionMenuSub key={section.key} value={section.key} data-testid={`nav-${section.key}`}>
-              <AccordionMenuSubTrigger>
-                <section.icon data-slot="accordion-menu-icon" className="size-[15px] shrink-0" />
+            <AccordionMenuSub
+              key={section.key}
+              value={section.key}
+              data-testid={`nav-${section.key}`}
+              className={SECTION_CLASS}
+            >
+              <AccordionMenuSubTrigger className={SECTION_TRIGGER_CLASS}>
+                <section.icon data-slot="accordion-menu-icon" className="size-4 shrink-0" />
                 <span data-slot="accordion-menu-title">{section.label}</span>
               </AccordionMenuSubTrigger>
               <AccordionMenuSubContent parentValue={section.key} type="single" collapsible>
@@ -709,9 +730,14 @@ function MobileSidebarContent() {
           classNames={expandedMenuClassNames}
         >
           {sections.map((section) => (
-            <AccordionMenuSub key={section.key} value={section.key} data-testid={`nav-mobile-${section.key}`}>
-              <AccordionMenuSubTrigger>
-                <section.icon data-slot="accordion-menu-icon" className="size-[15px] shrink-0" />
+            <AccordionMenuSub
+              key={section.key}
+              value={section.key}
+              data-testid={`nav-mobile-${section.key}`}
+              className={SECTION_CLASS}
+            >
+              <AccordionMenuSubTrigger className={SECTION_TRIGGER_CLASS}>
+                <section.icon data-slot="accordion-menu-icon" className="size-4 shrink-0" />
                 <span data-slot="accordion-menu-title">{section.label}</span>
               </AccordionMenuSubTrigger>
               <AccordionMenuSubContent parentValue={section.key} type="single" collapsible>

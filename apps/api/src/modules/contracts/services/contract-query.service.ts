@@ -2,7 +2,7 @@ import { canAccess } from '@installment/shared';
 import { currentDomainAccess, domainAccessClient } from '../../employee-access/access-execution-context';
 import { assertPreparationCredit } from '../../employee-access/access-preparation-credit';
 import { assertExportRowCount, EXPORT_ROW_LIMIT, readExportSnapshot } from '../../../common/helpers/export-snapshot';
-import { bangkokDateRange } from '../../../utils/date.util';
+import { bangkokCalendarParts, bangkokDateRange, bangkokMidnight } from '../../../utils/date.util';
 import { resolveInstallmentVat } from '../../../utils/config.util';
 import { contractSignatureRequirements } from '../../../utils/validation.util';
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
@@ -348,9 +348,10 @@ export class ContractQueryService {
    */
   async getMilestonesSummary() {
     const now = new Date();
-    // Current month bounds (UTC — server stores UTC but created_at/due_date are aligned to BKK days)
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    // เดือนปัจจุบันตามปฏิทินไทย — ไม่ขึ้นกับ TZ ของโปรเซส (ผลเท่าเดิมบนโปรเซสเวลาไทย)
+    const { year, month } = bangkokCalendarParts(now);
+    const monthStart = bangkokMidnight(year, month, 1);
+    const monthEnd = new Date(bangkokMidnight(year, month + 1, 1).getTime() - 1);
 
     // --- newThisMonth: contracts created this month (ACTIVE or later = signed & activated) ---
     const newContracts = await this.prisma.contract.findMany({

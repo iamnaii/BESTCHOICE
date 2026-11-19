@@ -151,7 +151,7 @@ describe('ProductsService — คอลัมน์ราคา (B0)', () => {
   it('create: fix round 1 [Critical] — ส่ง prices[] อย่างเดียว (ไม่มีคอลัมน์ cashPrice) + มีเทมเพลตตรง → ต้องไม่ autofill ทับ', async () => {
     tx.pricingTemplate.findMany.mockResolvedValue([
       {
-        id: 't1', brand: 'Apple', model: '15', storage: '', category: 'PHONE_NEW',
+        id: 't1', deviceOrigin: 'UNSPECIFIED', brand: 'Apple', model: '15', storage: '', category: 'PHONE_NEW',
         hasWarranty: false, cashPrice: new Prisma.Decimal('28900'),
         installmentBestchoicePrice: new Prisma.Decimal('2500'),
       },
@@ -171,7 +171,7 @@ describe('ProductsService — คอลัมน์ราคา (B0)', () => {
   it('create: ไม่ส่งอะไรเลย (ไม่มีทั้ง cashPrice และ prices[]) + มีเทมเพลตตรง → autofill ต้องทำงานจริง', async () => {
     tx.pricingTemplate.findMany.mockResolvedValue([
       {
-        id: 't1', brand: 'Apple', model: '15', storage: '', category: 'PHONE_NEW',
+        id: 't1', deviceOrigin: 'UNSPECIFIED', brand: 'Apple', model: '15', storage: '', category: 'PHONE_NEW',
         hasWarranty: false, cashPrice: new Prisma.Decimal('28900'),
         installmentBestchoicePrice: new Prisma.Decimal('2500'),
       },

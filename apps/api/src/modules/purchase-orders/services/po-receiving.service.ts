@@ -44,10 +44,7 @@ import { loadVatRateDecimal } from '../../../utils/vat-rate.util';
 import { generateGRNumber, generatePONumber } from '../../../utils/sequence.util';
 import { syncPriceRowsFromColumns } from '../../../utils/product-price-sync.util';
 import { anglesComplete, pickAnglePhotos } from '../../quality-control/photo-angles.util';
-import {
-  autofillProductPriceFromTemplate,
-  resolveInstallmentSemantics,
-} from '../../../utils/product-price-autofill.util';
+import { autofillProductPriceFromTemplate } from '../../../utils/product-price-autofill.util';
 
 /** Journal dependencies handed in by the PurchaseOrdersService facade (Nest-managed). */
 export interface PoReceivingJournalDeps {
@@ -245,11 +242,6 @@ export class PoReceivingService {
       }
     }
 
-    // Fix round 1 [Minor]: resolve the installment-semantics SystemConfig flag ONCE
-    // before the per-unit loop below, not once per unit — a 50-unit receiving batch
-    // was reading SystemConfig 50 times inside this same Serializable tx.
-    const installmentSemantics = await resolveInstallmentSemantics(tx, this.logger);
-
     const unitCosts = this.resolveUnitCosts(lineCosts, po.items, dto.items, freshByPoItem);
     const unitVats = this.resolveUnitCosts(lineVats, po.items, dto.items, freshByPoItem);
     // ลงบัญชีตอนรับของเฉพาะหน่วยที่เข้าคลังทันที — หน่วยที่รอถ่ายรูปลงตอนผ่านเข้าคลัง
@@ -363,7 +355,6 @@ export class PoReceivingService {
                 currentCashPrice: null,
               },
               this.logger,
-              installmentSemantics,
             );
           } catch (e) {
             const code = (e as { code?: string })?.code;

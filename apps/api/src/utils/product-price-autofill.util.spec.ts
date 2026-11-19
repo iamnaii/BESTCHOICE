@@ -5,17 +5,18 @@ const D = (n: string) => new Prisma.Decimal(n);
 
 const TPL = (over: Record<string, unknown> = {}) => ({
   id: 't1',
+  deviceOrigin: 'UNSPECIFIED',
   brand: 'Apple',
   model: 'iPhone 15',
   storage: '128GB',
   category: 'PHONE_NEW',
   hasWarranty: false,
   cashPrice: D('28900'),
-  installmentBestchoicePrice: D('2500'),
+  installmentBestchoicePrice: D('31900'),
   ...over,
 });
 
-function makeTx(templates: unknown[], semantics: string | null = null) {
+function makeTx(templates: unknown[]) {
   return {
     pricingTemplate: { findMany: jest.fn().mockResolvedValue(templates) },
     product: { update: jest.fn().mockResolvedValue({ id: 'p1' }) },
@@ -25,9 +26,7 @@ function makeTx(templates: unknown[], semantics: string | null = null) {
       update: jest.fn().mockResolvedValue({ id: 'row-1' }),
       updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
-    systemConfig: {
-      findFirst: jest.fn().mockResolvedValue(semantics ? { value: semantics } : null),
-    },
+    systemConfig: { findFirst: jest.fn().mockResolvedValue(null) },
   };
 }
 
@@ -62,19 +61,6 @@ describe('autofillProductPriceFromTemplate', () => {
     expect(data.priceAutofilledAt).toBeInstanceOf(Date);
   });
 
-  it('semantics PER_MONTH (default) → ไม่เติม installmentPrice', async () => {
-    const tx = makeTx([TPL()]);
-    await autofillProductPriceFromTemplate(tx as never, BASE);
-    expect(tx.product.update.mock.calls[0][0].data).not.toHaveProperty('installmentPrice');
-  });
-
-  it('semantics TOTAL → เติม installmentPrice ด้วย', async () => {
-    const tx = makeTx([TPL({ installmentBestchoicePrice: D('31900') })], 'TOTAL');
-    const r = await autofillProductPriceFromTemplate(tx as never, BASE);
-    expect(r.installmentPrice?.toString()).toBe('31900');
-    expect(tx.product.update.mock.calls[0][0].data.installmentPrice.toString()).toBe('31900');
-  });
-
   it('ไม่มีแถวความจุตรง → ใช้แถว storage ว่าง (fallback)', async () => {
     const tx = makeTx([TPL({ storage: '', cashPrice: D('27500') })]);
     const r = await autofillProductPriceFromTemplate(tx as never, BASE);
@@ -98,29 +84,6 @@ describe('autofillProductPriceFromTemplate', () => {
     expect(r.templateId).toBe('a');
     expect(r.cashPrice?.toString()).toBe('20000');
     expect(log).toHaveBeenCalled();
-  });
-
-  it('semantics พิมพ์ผิด (เช่น "total ") → warn + ใช้ PER_MONTH ไม่เขียน installmentPrice', async () => {
-    const warn = jest.fn();
-    const tx = makeTx([TPL({ installmentBestchoicePrice: D('31900') })], 'TOTALL');
-    const r = await autofillProductPriceFromTemplate(tx as never, BASE, { warn, log: jest.fn() });
-    expect(r.filled).toBe(true);
-    expect(r.installmentPrice).toBeUndefined();
-    expect(tx.product.update.mock.calls[0][0].data).not.toHaveProperty('installmentPrice');
-    expect(warn).toHaveBeenCalled();
-  });
-
-  // sanity guard: flag เป็น TOTAL แต่เลขต่ำกว่าราคาเงินสด = เกือบแน่ว่าเป็นค่างวดต่อเดือน
-  // ปล่อยผ่านแล้วสัญญาจะคิดจาก 2,500 แทน 28,900 (installmentPrice ชนะทุกแถวหลัง Task 1)
-  it('TOTAL แต่ราคาผ่อน < ราคาเงินสด → เติมเฉพาะเงินสด + reason INSTALLMENT_LOOKS_PER_MONTH', async () => {
-    const warn = jest.fn();
-    const tx = makeTx([TPL({ cashPrice: D('28900'), installmentBestchoicePrice: D('2500') })], 'TOTAL');
-    const r = await autofillProductPriceFromTemplate(tx as never, BASE, { warn, log: jest.fn() });
-    expect(r.filled).toBe(true);
-    expect(r.reason).toBe('INSTALLMENT_LOOKS_PER_MONTH');
-    expect(r.installmentPrice).toBeUndefined();
-    expect(tx.product.update.mock.calls[0][0].data).not.toHaveProperty('installmentPrice');
-    expect(warn).toHaveBeenCalled();
   });
 
   it('PHONE_USED + ไม่รู้ประกัน + มีแถวเดียว → ใช้แถวนั้นได้', async () => {
@@ -152,5 +115,51 @@ describe('autofillProductPriceFromTemplate', () => {
     expect(tx.productPrice.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ label: 'ราคาเงินสด' }) }),
     );
+  });
+
+  it('ราคาผ่อน BESTCHOICE ของราคากลาง = ราคาเต็ม → เติม installmentPrice พร้อมเงินสดเสมอ ไม่อ่านค่าตั้งใด ๆ (สเปค 3.1)', async () => {
+    const tx = makeTx([TPL()]);
+    const r = await autofillProductPriceFromTemplate(tx as never, BASE);
+    expect(r).toMatchObject({ filled: true, reason: 'FILLED' });
+    expect(r.installmentPrice?.toString()).toBe('31900');
+    expect(tx.product.update.mock.calls[0][0].data.installmentPrice.toString()).toBe('31900');
+    expect(tx.systemConfig.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('มือ 2 ที่ราคาผ่อนต่ำกว่าเงินสด (ทุกรุ่นในชีต) ก็ยังเติมราคาผ่อน', async () => {
+    const tx = makeTx([
+      TPL({ category: 'PHONE_USED', hasWarranty: false, cashPrice: D('8900'), installmentBestchoicePrice: D('7000') }),
+    ]);
+    const r = await autofillProductPriceFromTemplate(tx as never, {
+      ...BASE,
+      category: 'PHONE_USED',
+      hasWarranty: false,
+    });
+    expect(r.installmentPrice?.toString()).toBe('7000');
+  });
+
+  it('เครื่องไทยไม่มีแถวของตัวเอง → ใช้แถว "ไม่ระบุ" (สเปค 7.1)', async () => {
+    const tx = makeTx([TPL({ id: 'u1', deviceOrigin: 'UNSPECIFIED' })]);
+    const r = await autofillProductPriceFromTemplate(tx as never, { ...BASE, deviceOrigin: 'THAI' });
+    expect(r.templateId).toBe('u1');
+    expect(tx.pricingTemplate.findMany.mock.calls[0][0].where.deviceOrigin).toEqual({
+      in: ['THAI', 'UNSPECIFIED'],
+    });
+  });
+
+  it('มีทั้งแถวเครื่องไทยและ "ไม่ระบุ" → ใช้แถวเครื่องไทย', async () => {
+    const tx = makeTx([
+      TPL({ id: 'u1', deviceOrigin: 'UNSPECIFIED', cashPrice: D('28900') }),
+      TPL({ id: 'th', deviceOrigin: 'THAI', cashPrice: D('29900') }),
+    ]);
+    const r = await autofillProductPriceFromTemplate(tx as never, { ...BASE, deviceOrigin: 'THAI' });
+    expect(r.templateId).toBe('th');
+    expect(r.cashPrice?.toString()).toBe('29900');
+  });
+
+  it('เครื่องที่ไม่ระบุที่มา → ค้นเฉพาะแถว "ไม่ระบุ"', async () => {
+    const tx = makeTx([TPL()]);
+    await autofillProductPriceFromTemplate(tx as never, BASE);
+    expect(tx.pricingTemplate.findMany.mock.calls[0][0].where.deviceOrigin).toEqual({ in: ['UNSPECIFIED'] });
   });
 });

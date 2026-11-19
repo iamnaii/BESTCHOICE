@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import Decimal from 'decimal.js';
+import { displayInstallment } from '@installment/shared';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { calcBcInstallment } from '../../../utils/installment-calc.util';
 import { resolveBcConfigForCategory } from '../../../utils/bc-installment-config.util';
@@ -12,7 +13,8 @@ export const CALCULATE_INSTALLMENT_TOOL = {
     'คำนวณค่างวดจริงของเครื่องที่ระบุ ด้วยเครื่องคิดตัวเดียวกับที่ใช้ทำสัญญา (รวมค่าคอม/VAT ตาม InterestConfig). ' +
     'ต้องมี productId จากผลลัพธ์ search_products ก่อนเสมอ — ห้ามเดา id. ' +
     'downPct เป็นเปอร์เซ็นต์ 0-100 ถ้าไม่ส่งจะใช้ดาวน์ขั้นต่ำตามที่ตั้งค่าไว้. ' +
-    'error=rate_not_configured แปลว่าจำนวนงวดนี้ไม่มีในตาราง ให้เสนอจำนวนงวดอื่นหรือส่งต่อพนักงาน. ' +
+    'error=rate_not_configured + allowedMonths แปลว่าจำนวนงวดนี้ทำไม่ได้ ให้บอกลูกค้าว่าเลือกได้เฉพาะงวดใน allowedMonths ' +
+    '(ไม่มี allowedMonths = ยังไม่ได้ตั้งอัตรา ให้ส่งต่อพนักงาน). monthlyThb ปัดขึ้นเป็นบาทแล้ว พูดตามได้เลย. ' +
     'ห้าม quote ตัวเลขใด ๆ ที่ไม่ได้มาจากผลลัพธ์นี้.',
   input_schema: {
     type: 'object',
@@ -67,7 +69,11 @@ export class CalculateInstallmentTool {
     // งวดที่ไม่มีในตาราง = ตอบ rate_not_configured เหมือนพฤติกรรมเดิม (#1335)
     // ไม่ปล่อยเป็น invalid_installment เพราะ persona มี flow แยกไว้แล้ว
     if (!config.allowedMonths.includes(input.tenureMonths)) {
-      return { error: 'rate_not_configured' };
+      return {
+        error: 'rate_not_configured',
+        allowedMonths: config.allowedMonths,
+        message: `ผ่อน ${input.tenureMonths} งวดไม่ได้ — เลือกได้ ${config.allowedMonths.join(', ')} งวด`,
+      };
     }
 
     const result = calcBcInstallment({
@@ -95,7 +101,8 @@ export class CalculateInstallmentTool {
       financedThb: result.financedAmount.toNumber(),
       tenureMonths: input.tenureMonths,
       ratePct: result.interestPct.mul(100).toNumber(),
-      monthlyThb: result.monthlyPayment.toNumber(),
+      // ค่างวดที่บอกลูกค้าปัดขึ้นเป็นบาท — สัญญาจริงยังเก็บสตางค์ (สเปคข้อ 4.1)
+      monthlyThb: displayInstallment(result.monthlyPayment),
       totalPaidThb: result.downAmount.add(result.totalWithVat).toNumber(),
       photoUrl: product.gallery[0] ?? null,
       webUrl: base ? `${base}/api/shop/share/${product.id}` : null,

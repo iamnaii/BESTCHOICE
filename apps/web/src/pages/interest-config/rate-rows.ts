@@ -1,3 +1,6 @@
+import Decimal from 'decimal.js';
+import type { BcConfig } from '@installment/shared';
+
 /** แถวของตารางดอกเบี้ยรายงวดในฟอร์ม — `ratePct` เป็นเปอร์เซ็นต์ (50 = 50%) · ส่ง API เป็นเศษส่วน (÷ 100) */
 export interface RateRowForm {
   months: number;
@@ -35,4 +38,33 @@ export function totalInterestPct(
   const row = rows.find((r) => r.months === months);
   if (row) return row.ratePct;
   return monthlyRatePct * months;
+}
+
+/**
+ * BcConfig สำหรับตัวอย่างคำนวณ — ส่งเข้า `calcBcInstallment` ตัวเดียวกับสัญญา/หน้าราคา
+ * หน่วยอินพุต: `minDownPct`, `commissionPct`, `monthlyRatePct`, `rows[].ratePct` เป็นเปอร์เซ็นต์ (15 = 15%) ·
+ * `vatPct` เป็นเศษส่วน (0.07) · ผลลัพธ์เป็นเศษส่วนทั้งหมด (ตามที่ BcConfig ต้องการ)
+ */
+export function previewBcConfig(input: {
+  minDownPct: number;
+  commissionPct: number;
+  vatPct: number;
+  monthlyRatePct: number;
+  rows: RateRowForm[];
+  months: number;
+}): BcConfig {
+  const { rows, months } = input;
+  const ratePctByMonths = new Map<number, Decimal>();
+  if (rows.length > 0) {
+    for (const r of rows) ratePctByMonths.set(r.months, new Decimal(r.ratePct).div(100));
+  } else {
+    ratePctByMonths.set(months, new Decimal(input.monthlyRatePct).mul(months).div(100));
+  }
+  return {
+    minDownPct: new Decimal(input.minDownPct).div(100),
+    commissionPct: new Decimal(input.commissionPct).div(100),
+    vatPct: new Decimal(input.vatPct),
+    ratePctByMonths,
+    allowedMonths: rows.length > 0 ? rows.map((r) => r.months) : [months],
+  };
 }

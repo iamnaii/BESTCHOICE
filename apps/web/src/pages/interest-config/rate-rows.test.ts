@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { previewMonths, totalInterestPct, validateRateRows } from './rate-rows';
+import Decimal from 'decimal.js';
+import { calcBcInstallment } from '@installment/shared';
+import { previewBcConfig, previewMonths, totalInterestPct, validateRateRows } from './rate-rows';
 
 describe('validateRateRows', () => {
   it('ตารางว่างผ่าน', () => {
@@ -56,5 +58,29 @@ describe('totalInterestPct', () => {
 
   it('ไม่มีตาราง → ดอกเบี้ยต่อเดือน × งวด', () => {
     expect(totalInterestPct([], 5, 12)).toBe(60);
+  });
+});
+
+describe('previewBcConfig', () => {
+  const base = { minDownPct: 15, commissionPct: 10, vatPct: 0.07, monthlyRatePct: 5 };
+
+  it('มีตาราง → ใช้อัตราในตารางและงวดตามตาราง · ตัวเลขตรงเครื่องคิดเลขกลาง', () => {
+    const rows = [{ months: 10, ratePct: 50 }, { months: 12, ratePct: 50 }];
+    const config = previewBcConfig({ ...base, rows, months: 12 });
+    expect(config.allowedMonths).toEqual([10, 12]);
+    expect(config.ratePctByMonths.get(12)?.toString()).toBe('0.5');
+    expect(config.minDownPct.toString()).toBe('0.15');
+    expect(config.commissionPct.toString()).toBe('0.1');
+    const out = calcBcInstallment({ installmentPrice: new Decimal(12900), months: 12, config });
+    expect(out.errors).toEqual([]);
+    expect(out.downAmount.toString()).toBe('2000');
+    expect(out.interestAmount.toString()).toBe('5450');
+    expect(out.monthlyPayment.toFixed(2)).toBe('1555.06');
+  });
+
+  it('ไม่มีตาราง → ต่อเดือน × งวด สำหรับงวดตัวอย่าง', () => {
+    const config = previewBcConfig({ ...base, rows: [], months: 12 });
+    expect(config.allowedMonths).toEqual([12]);
+    expect(config.ratePctByMonths.get(12)?.toString()).toBe('0.6');
   });
 });

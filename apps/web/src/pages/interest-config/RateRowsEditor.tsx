@@ -7,15 +7,32 @@ import type { RateRowForm } from './rate-rows';
 export default function RateRowsEditor({
   rows,
   onChange,
+  minMonths,
+  maxMonths,
   error,
 }: {
   rows: RateRowForm[];
   onChange: (rows: RateRowForm[]) => void;
+  minMonths: number;
+  maxMonths: number;
   error?: string;
 }) {
   const fieldId = useId();
   const update = (index: number, patch: Partial<RateRowForm>) =>
     onChange(rows.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+
+  // งวดใหม่ = งวดที่ยังไม่ถูกใช้ตัวเล็กสุดในช่วง · ใช้ครบแล้ว = งวดสูงสุด · ดอกเบี้ย 0 เพื่อให้ต้องกรอกเอง
+  const addRow = () => {
+    const used = new Set(rows.map((r) => r.months));
+    let months = maxMonths;
+    for (let m = Math.max(1, minMonths); m <= maxMonths; m++) {
+      if (!used.has(m)) {
+        months = m;
+        break;
+      }
+    }
+    onChange([...rows, { months, ratePct: 0 }]);
+  };
 
   return (
     <section aria-labelledby={`${fieldId}-title`} className="rounded-lg border border-border p-3">
@@ -36,7 +53,7 @@ export default function RateRowsEditor({
           {rows.map((row, index) => (
             <div key={index} className="grid grid-cols-[1fr_1fr_auto] items-end gap-2">
               <div>
-                <label htmlFor={`${fieldId}-m-${index}`} className="mb-1 block text-xs text-muted-foreground">
+                <label htmlFor={`${fieldId}-m-${index}`} className="mb-1 block text-xs leading-snug text-muted-foreground">
                   จำนวนงวด
                 </label>
                 <NumberInput
@@ -50,7 +67,7 @@ export default function RateRowsEditor({
                 />
               </div>
               <div>
-                <label htmlFor={`${fieldId}-r-${index}`} className="mb-1 block text-xs text-muted-foreground">
+                <label htmlFor={`${fieldId}-r-${index}`} className="mb-1 block text-xs leading-snug text-muted-foreground">
                   ดอกเบี้ยรวม (%)
                 </label>
                 <NumberInput
@@ -80,7 +97,7 @@ export default function RateRowsEditor({
       <button
         type="button"
         data-ui-control="button"
-        onClick={() => onChange([...rows, { months: 12, ratePct: 50 }])}
+        onClick={addRow}
         className="mt-3 rounded-lg border border-input px-3 text-sm text-foreground hover:bg-accent"
       >
         + เพิ่มงวด

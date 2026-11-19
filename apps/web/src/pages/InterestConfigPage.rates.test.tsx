@@ -106,11 +106,37 @@ describe('InterestConfigPage — ตารางดอกเบี้ยรา�
     expect(mocks.put).not.toHaveBeenCalled();
   });
 
-  it('ตัวอย่างคำนวณในการ์ดใช้อัตราในตาราง (12 งวด 50%)', async () => {
+  it('ตัวอย่างคำนวณในการ์ดใช้เครื่องคิดเลขกลาง (12 งวด 50%)', async () => {
     open();
     await screen.findByText('มือ 2');
-    // 12,900 × 15% = 1,935 · ยอดปล่อย 10,965 · ดอกเบี้ย 50% = 5,482.5 → แสดงปัดเป็น 5,483
+    // ดาวน์ 15% ของ 12,900 = 1,935 → ปัดขึ้นร้อย 2,000 · ดอกเบี้ย 5,450 · ค่างวด 1,555.06 (ตัวเลขเดียวกับสัญญา)
     expect(screen.getByText('ตัวอย่างคำนวณ (ราคา 12,900 บาท / 12 งวด)')).toBeInTheDocument();
-    expect(screen.getAllByText('5,483 ฿').length).toBeGreaterThan(0);
+    expect(screen.getByText('2,000 ฿')).toBeInTheDocument();
+    expect(screen.getByText('5,450 ฿')).toBeInTheDocument();
+    expect(screen.getByText('1,555.06 ฿')).toBeInTheDocument();
+  });
+
+  it('ฟอร์ม: ตัวอย่างคำนวณตรงกับการ์ด และแสดงค่าคอมจริง', async () => {
+    open();
+    await screen.findByText('มือ 2');
+    fireEvent.click(screen.getAllByRole('button', { name: 'แก้ไข' })[1]);
+    await screen.findAllByLabelText('จำนวนงวด');
+    expect(screen.getByText(/ค่าคอม 10%/)).toBeInTheDocument();
+    expect(screen.getAllByText('1,555.06 ฿').length).toBeGreaterThan(1);
+  });
+
+  it('+ เพิ่มงวด: ได้งวดว่างตัวเล็กสุดในช่วง ดอกเบี้ย 0 (ต้องกรอกเอง) และบันทึกไม่ได้', async () => {
+    open();
+    await screen.findByText('มือ 2');
+    fireEvent.click(screen.getAllByRole('button', { name: 'แก้ไข' })[1]);
+    await screen.findAllByLabelText('จำนวนงวด');
+    fireEvent.click(screen.getByRole('button', { name: '+ เพิ่มงวด' }));
+    const months = screen.getAllByLabelText('จำนวนงวด').map((el) => (el as HTMLInputElement).value);
+    expect(months).toEqual(['10', '12', '6']);
+    const rates = screen.getAllByLabelText('ดอกเบี้ยรวม (%)').map((el) => (el as HTMLInputElement).value);
+    expect(rates[2]).toBe('0');
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }));
+    expect(await screen.findByText('ดอกเบี้ยรวมต้องมากกว่า 0% และไม่เกิน 999.99%')).toBeInTheDocument();
+    expect(mocks.put).not.toHaveBeenCalled();
   });
 });

@@ -10,10 +10,12 @@ import QueryBoundary from '@/components/QueryBoundary';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Badge } from '@/components/ui/badge';
+import Decimal from 'decimal.js';
+import { calcBcInstallment } from '@installment/shared';
 import RateRowsEditor from './interest-config/RateRowsEditor';
 import {
+  previewBcConfig,
   previewMonths,
-  totalInterestPct,
   validateRateRows,
   type RateRowForm,
 } from './interest-config/rate-rows';
@@ -42,6 +44,9 @@ interface InterestConfig {
   createdAt: string;
   rates?: { months: number; ratePct: string }[];
 }
+
+const PREVIEW_PRICE = 12900;
+const money2 = { minimumFractionDigits: 2, maximumFractionDigits: 2 } as const;
 
 const CATEGORIES = [
   { value: 'PHONE_NEW', label: 'มือถือมือ 1' },
@@ -293,22 +298,32 @@ export default function InterestConfigPage() {
 
   // Simulation calculation for preview
   const simulateCalc = (config: InterestConfig) => {
-    const price = 12900;
-    const downPct = parseFloat(config.minDownPaymentPct);
     const rate = parseFloat(config.interestRate);
-    const commPct = parseFloat(config.storeCommissionPct);
-    const vatFraction = parseFloat(config.vatPct); // = FINANCE VAT (API replaces the column — #22)
     const rows = (config.rates ?? []).map((r) => ({ months: r.months, ratePct: parseFloat(r.ratePct) * 100 }));
     const months = previewMonths(rows, config.maxInstallmentMonths);
-
-    const down = price * downPct;
-    const loan = price - down;
-    const commission = loan * commPct;
-    const interest = loan * (totalInterestPct(rows, rate * 100, months) / 100);
-    const vatAmount = (loan + commission + interest) * vatFraction;
-    const total = loan + commission + interest + vatAmount;
-    const monthly = Math.ceil(total / months);
-    return { down, loan, interest, commission, vatAmount, total, monthly, months };
+    // ตัวเลขเดียวกับสัญญา/หน้าราคา: ดาวน์ปัดขึ้นร้อย + เครื่องคิดเลขกลาง (vatPct = VAT ของ FINANCE — #22)
+    const out = calcBcInstallment({
+      installmentPrice: new Decimal(PREVIEW_PRICE),
+      months,
+      config: previewBcConfig({
+        minDownPct: parseFloat(config.minDownPaymentPct) * 100,
+        commissionPct: parseFloat(config.storeCommissionPct) * 100,
+        vatPct: parseFloat(config.vatPct),
+        monthlyRatePct: rate * 100,
+        rows,
+        months,
+      }),
+    });
+    return {
+      down: out.downAmount.toNumber(),
+      loan: out.financedAmount.toNumber(),
+      interest: out.interestAmount.toNumber(),
+      commission: out.commissionAmount.toNumber(),
+      vatAmount: out.vatAmount.toNumber(),
+      total: out.totalWithVat.toNumber(),
+      monthly: out.monthlyPayment.toNumber(),
+      months,
+    };
   };
 
   const inputClass = 'w-full px-3 py-2 border rounded-lg text-sm outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background';
@@ -483,7 +498,7 @@ export default function InterestConfigPage() {
                         <div><span className="text-muted-foreground">ค่าคอม:</span> <span className="font-medium">{sim.commission.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span></div>
                         <div><span className="text-muted-foreground">VAT:</span> <span className="font-medium">{sim.vatAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span></div>
                         <div><span className="text-muted-foreground">รวมจัดไฟแนนซ์:</span> <span className="font-medium">{sim.total.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span></div>
-                        <div className="col-span-2"><span className="text-muted-foreground">ค่างวด/เดือน:</span> <span className="font-bold text-primary">{sim.monthly.toLocaleString()} ฿</span></div>
+                        <div className="col-span-2"><span className="text-muted-foreground">ค่างวด/เดือน:</span> <span className="font-bold text-primary">{sim.monthly.toLocaleString(undefined, money2)} ฿</span></div>
                       </div>
                     </div>
                   </div>
@@ -625,41 +640,47 @@ export default function InterestConfigPage() {
             <RateRowsEditor
               rows={form.rates}
               onChange={(rates) => setForm((f) => ({ ...f, rates }))}
+              minMonths={form.minInstallmentMonths}
+              maxMonths={form.maxInstallmentMonths}
               error={touched ? errors.rates : undefined}
             />
 
             {/* Preview Calculation */}
-            {form.name && form.interestRate > 0 && form.minDownPaymentPct > 0 && (
-              <div className="bg-muted rounded-lg p-3 border border-border">
-                {(() => {
-                  const months = previewMonths(form.rates, form.maxInstallmentMonths);
-                  const price = 12900;
-                  const down = price * (form.minDownPaymentPct / 100);
-                  const loan = price - down;
-                  const commission = loan * (form.storeCommissionPct / 100);
-                  const interest = loan * (totalInterestPct(form.rates, form.interestRate, months) / 100);
-                  const vatAmount = (loan + commission + interest) * vat.fraction;
-                  const total = loan + commission + interest + vatAmount;
-                  const monthly = Math.ceil(total / months);
-                  return (
-                    <>
-                    <div className="text-xs font-medium text-muted-foreground mb-2">ตัวอย่างคำนวณ (ราคาสินค้า 12,900 บาท / {months} งวด)</div>
-                    <div className="grid grid-cols-2 gap-1 text-xs">
-                      <div>เงินดาวน์: <span className="font-medium">{down.toLocaleString()} ฿</span></div>
-                      <div>ยอดปล่อย: <span className="font-medium">{loan.toLocaleString()} ฿</span></div>
-                      <div>ดอกเบี้ย: <span className="font-medium">{interest.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span></div>
-                      <div>ค่าคอม 10%: <span className="font-medium">{commission.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span></div>
-                      <div>VAT: <span className="font-medium">{vatAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span></div>
-                      <div>รวมจัดไฟแนนซ์: <span className="font-medium">{total.toLocaleString(undefined, { maximumFractionDigits: 0 })} ฿</span></div>
-                      <div className="col-span-2 pt-1 border-t border-border">
-                        <span className="text-muted-foreground">ค่างวด/เดือน:</span> <span className="font-bold text-primary">{monthly.toLocaleString()} ฿</span>
-                      </div>
+            {(() => {
+              if (!form.name || !(form.interestRate > 0) || !(form.minDownPaymentPct > 0)) return null;
+              if (validateRateRows(form.rates, form.minInstallmentMonths, form.maxInstallmentMonths) !== null) return null;
+              const months = previewMonths(form.rates, form.maxInstallmentMonths);
+              if (!Number.isFinite(months) || months < 1) return null;
+              const out = calcBcInstallment({
+                installmentPrice: new Decimal(PREVIEW_PRICE),
+                months,
+                config: previewBcConfig({
+                  minDownPct: form.minDownPaymentPct,
+                  commissionPct: form.storeCommissionPct,
+                  vatPct: vat.fraction,
+                  monthlyRatePct: form.interestRate,
+                  rows: form.rates,
+                  months,
+                }),
+              });
+              const baht0 = (d: Decimal) => d.toNumber().toLocaleString(undefined, { maximumFractionDigits: 0 });
+              return (
+                <div className="bg-muted rounded-lg p-3 border border-border">
+                  <div className="text-xs font-medium leading-snug text-muted-foreground mb-2">ตัวอย่างคำนวณ (ราคาสินค้า 12,900 บาท / {months} งวด)</div>
+                  <div className="grid grid-cols-2 gap-1 text-xs">
+                    <div>เงินดาวน์: <span className="font-medium">{out.downAmount.toNumber().toLocaleString()} ฿</span></div>
+                    <div>ยอดปล่อย: <span className="font-medium">{out.financedAmount.toNumber().toLocaleString()} ฿</span></div>
+                    <div>ดอกเบี้ย: <span className="font-medium">{baht0(out.interestAmount)} ฿</span></div>
+                    <div>ค่าคอม {form.storeCommissionPct}%: <span className="font-medium">{baht0(out.commissionAmount)} ฿</span></div>
+                    <div>VAT: <span className="font-medium">{baht0(out.vatAmount)} ฿</span></div>
+                    <div>รวมจัดไฟแนนซ์: <span className="font-medium">{baht0(out.totalWithVat)} ฿</span></div>
+                    <div className="col-span-2 pt-1 border-t border-border">
+                      <span className="text-muted-foreground">ค่างวด/เดือน:</span> <span className="font-bold text-primary">{out.monthlyPayment.toNumber().toLocaleString(undefined, money2)} ฿</span>
                     </div>
-                    </>
-                  );
-                })()}
-              </div>
-            )}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Buttons */}
             <div className="flex gap-3 pt-2">

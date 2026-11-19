@@ -261,6 +261,14 @@ export function buildPricingImportReview(
     }) };
 }
 
+/** ป้ายแถวเดิมในรูปแบบเดียวกับแถวในไฟล์ (ยี่ห้อ รุ่น ความจุ ประเภท ประกัน เครื่องไทย/นอก) */
+export function existingPricingLabel(t: ExistingPricingTemplate): string {
+  const category = t.category === 'PHONE_NEW' ? 'มือ 1' : t.category === 'PHONE_USED' ? 'มือ 2' : t.category;
+  const warranty = t.category === 'PHONE_USED' && t.hasWarranty != null ? (t.hasWarranty ? 'มีประกัน' : 'ไม่มีประกัน') : '';
+  const origin = t.deviceOrigin === 'THAI' ? 'เครื่องไทย' : t.deviceOrigin === 'IMPORTED' ? 'เครื่องนอก' : '';
+  return [t.brand, t.model, t.storage, category, warranty, origin].filter(Boolean).join(' ');
+}
+
 export interface PricingImportResponse {
   success: number;
   skipped: number;

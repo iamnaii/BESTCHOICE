@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { PencilLine, Plus, SkipForward, TriangleAlert } from 'lucide-react';
+import { PencilLine, Plus, SkipForward, Trash2, TriangleAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -34,6 +34,8 @@ interface Props {
   warning?: string | null;
   /** จำนวนแถวที่เปิดใช้อยู่แต่ไม่อยู่ในไฟล์ — 0 / ไม่ส่ง = ไม่มีตัวเลือกปิดแถว */
   deactivateCount?: number;
+  /** รายชื่อแถวที่จะถูกปิด — แสดงใต้ตัวเลือกเพื่อให้ตรวจก่อนติ๊ก */
+  deactivateRows?: { label: string }[];
   pending: boolean;
   progress?: string | null;
   onCancel: () => void;
@@ -46,6 +48,7 @@ export function ImportReviewDialog({
   rows,
   warning,
   deactivateCount = 0,
+  deactivateRows,
   pending,
   progress,
   onCancel,
@@ -105,6 +108,23 @@ export function ImportReviewDialog({
               />
               ปิดแถวที่เปิดใช้อยู่แต่ไม่อยู่ในไฟล์ ({deactivateCount} แถว)
             </label>
+          )}
+          {deactivateCount > 0 && deactivateRows && deactivateRows.length > 0 && (
+            <ul
+              aria-label="แถวที่จะถูกปิด"
+              tabIndex={0}
+              className="max-h-[30vh] divide-y divide-border overflow-y-auto rounded-lg border border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {deactivateRows.map((r, i) => (
+                <li key={`${i}-${r.label}`} className="flex items-start gap-3 px-3 py-2 text-sm">
+                  <span className="inline-flex w-14 shrink-0 items-center gap-1 font-medium text-destructive">
+                    <Trash2 className="size-4" aria-hidden="true" />
+                    ปิด
+                  </span>
+                  <span className="min-w-0 flex-1 leading-snug">{r.label}</span>
+                </li>
+              ))}
+            </ul>
           )}
           {progress && (
             <p role="status" aria-live="polite" className="text-sm text-muted-foreground leading-snug">

@@ -18,6 +18,7 @@ import { ImportBatchError } from '@/utils/excel-cell.util';
 import {
   PRICING_IMPORT_HEADERS,
   buildPricingImportReview,
+  existingPricingLabel,
   sendPricingImport,
   type ExistingPricingTemplate,
   type PricingImportItem,
@@ -581,6 +582,7 @@ export default function PricingTemplatesPage() {
           title="ตรวจไฟล์ราคากลางก่อนนำเข้า"
           rows={review.rows}
           deactivateCount={review.missingActive.length}
+          deactivateRows={review.missingActive.map((t) => ({ label: existingPricingLabel(t) }))}
           pending={importMutation.isPending}
           progress={importProgress}
           onCancel={() => setReview(null)}

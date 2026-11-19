@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ImportReviewDialog, type ImportReviewRow } from './ImportReviewDialog';
 
@@ -45,5 +45,21 @@ describe('ImportReviewDialog', () => {
     render(<ImportReviewDialog {...base} rows={rows} pending progress="กำลังนำเข้า ชุด 1/2" />);
     expect(screen.getByRole('button', { name: 'กำลังนำเข้า...' })).toBeDisabled();
     expect(screen.getByText('กำลังนำเข้า ชุด 1/2')).toBeInTheDocument();
+  });
+
+  it('แสดงรายชื่อแถวที่จะถูกปิดใต้ตัวเลือก พร้อมคำว่า ปิด', () => {
+    render(
+      <ImportReviewDialog
+        {...base}
+        rows={rows}
+        deactivateCount={2}
+        deactivateRows={[{ label: 'Apple iPhone 11 64GB มือ 1' }, { label: 'Apple iPhone XR มือ 2 มีประกัน' }]}
+      />,
+    );
+    const list = screen.getByRole('list', { name: 'แถวที่จะถูกปิด' });
+    expect(list).toHaveAttribute('tabindex', '0');
+    expect(within(list).getByText('Apple iPhone 11 64GB มือ 1')).toBeInTheDocument();
+    expect(within(list).getByText('Apple iPhone XR มือ 2 มีประกัน')).toBeInTheDocument();
+    expect(within(list).getAllByText('ปิด')).toHaveLength(2);
   });
 });

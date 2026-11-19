@@ -5,6 +5,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateStickerTemplateDto, UpdateStickerTemplateDto } from './dto/sticker.dto';
+import { loadTemplateTerms, type TemplateTerms } from '../../utils/pricing-template-terms.util';
 
 /**
  * ข้อมูลเครื่องสำหรับพิมพ์สติกเกอร์ติดเครื่อง — อ่านจาก "ตัวเครื่อง" ล้วน ๆ
@@ -37,6 +38,11 @@ export interface StickerProductData {
   /** ราคาขาย GFIN ของเครื่อง — ค่างวดเรท 2 บนดวงคิดจากราคานี้ (ว่าง = ราคาผ่อน) */
   financePrice: string | null;
   prices: { label: string; amount: string; isDefault: boolean }[];
+  /**
+   * เงื่อนไขผ่อนของราคากลางที่ตรงกับเครื่อง (งวด/ดาวน์ — ไม่มีราคาขาย) · ค่าตั้งต้นของค่างวดบนดวงชุดเดียวกับหน้าราคาและบอท
+   * (ราคาบนดวงยังอ่านจากตัวเครื่องตามคำตัดสิน 2026-09-11) · null = หาราคากลางไม่ได้
+   */
+  templateTerms: TemplateTerms | null;
 }
 
 /** จำนวนเครื่องสูงสุดต่อคำขอ (ตรงกับด่านใน controller) */
@@ -167,10 +173,11 @@ export class StickersService {
         ordered.push(row);
       }
     }
-    return ordered.map((row) => this.toStickerData(row));
+    const terms = await loadTemplateTerms(this.prisma, ordered);
+    return ordered.map((row) => this.toStickerData(row, terms.get(row.id) ?? null));
   }
 
-  private toStickerData(product: StickerProductRow): StickerProductData {
+  private toStickerData(product: StickerProductRow, templateTerms: TemplateTerms | null): StickerProductData {
     return {
       productId: product.id,
       name: product.name,
@@ -199,6 +206,7 @@ export class StickersService {
         amount: p.amount.toString(),
         isDefault: p.isDefault,
       })),
+      templateTerms,
     };
   }
 

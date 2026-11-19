@@ -1117,6 +1117,33 @@ describe('ProductsService.findOne — activeContract (สรุปสัญญ�
     expect(prisma.contract.findFirst).not.toHaveBeenCalled();
   });
 
+  it('แนบเงื่อนไขผ่อนของราคากลางของเครื่อง (templateTerms) ให้เครื่องคำนวณ/สรุปส่งลูกค้าเริ่มจากค่าเดียวกับหน้าราคา', async () => {
+    prisma.product.findUnique.mockResolvedValue({
+      ...productRow('IN_STOCK'),
+      brand: 'Apple', model: 'iPhone 17 Pro', storage: '256GB', category: 'PHONE_NEW',
+      deviceOrigin: 'THAI', warrantyExpired: null, warrantyExpireDate: null,
+    });
+    prisma.pricingTemplate = {
+      findMany: jest.fn().mockResolvedValue([
+        {
+          id: 't', brand: 'Apple', model: 'iPhone 17 Pro', storage: '256GB', category: 'PHONE_NEW',
+          hasWarranty: false, deviceOrigin: 'UNSPECIFIED', installmentBestchoicePrice: new Prisma.Decimal('49900'),
+          rate1TermMonths: 12, rate1DownPayment: new Prisma.Decimal('15000'), rate2TermMonths: null,
+        },
+      ]),
+    };
+
+    const product = await service.findOneDetail('p-1');
+
+    expect(product.templateTerms).toEqual({ bcPrice: '49900', rate1TermMonths: 12, rate1DownPayment: '15000', rate2TermMonths: null });
+  });
+
+  it('เครื่องที่หาราคากลางไม่ได้ → templateTerms = null', async () => {
+    prisma.product.findUnique.mockResolvedValue(productRow('IN_STOCK'));
+    const product = await service.findOneDetail('p-1');
+    expect(product.templateTerms).toBeNull();
+  });
+
   it('ขายผ่อนแล้วแต่หาสัญญาไม่เจอ (ข้อมูลเก่า) → activeContract = null', async () => {
     prisma.product.findUnique.mockResolvedValue(productRow('SOLD_INSTALLMENT'));
     prisma.contract.findFirst.mockResolvedValue(null);

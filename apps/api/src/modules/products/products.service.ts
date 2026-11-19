@@ -30,6 +30,7 @@ import { ReceivingAcceptanceJournal } from '../purchase-orders/services/receivin
 import { assertProductNotHeld, changedIdentityFields } from './product-hold.util';
 import { resolveBookedInventory } from '../inventory/booked-inventory.util';
 import { autofillProductPriceFromTemplate } from '../../utils/product-price-autofill.util';
+import { loadTemplateTerms } from '../../utils/pricing-template-terms.util';
 import {
   fillFinancePriceFromTemplate,
   resolveHasWarranty,
@@ -226,7 +227,9 @@ export class ProductsService {
     const product = await this.findOne(id);
     const activeContract =
       product.status === 'SOLD_INSTALLMENT' ? await this.loadActiveContract(product.id) : null;
-    return { ...product, activeContract };
+    // เงื่อนไขผ่อนของราคากลาง — ค่าตั้งต้นของเครื่องคำนวณ/สรุปส่งลูกค้าชุดเดียวกับหน้าราคาและบอท (final review C1 I1)
+    const templateTerms = (await loadTemplateTerms(this.prisma, [product])).get(product.id) ?? null;
+    return { ...product, activeContract, templateTerms };
   }
 
   private async loadActiveContract(productId: string): Promise<ActiveContractSummary | null> {

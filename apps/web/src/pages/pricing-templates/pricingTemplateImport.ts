@@ -219,6 +219,7 @@ export function buildPricingImportReview(
 ): PricingImportReview {
   const byKey = new Map(existing.map((t) => [pricingKey(t), t]));
   const seen = new Map<string, number>();
+  const skippedKeys = new Set<string>();
   const review: ImportReviewRow[] = [];
   const toSend: PricingImportItem[] = [];
 
@@ -228,7 +229,7 @@ export function buildPricingImportReview(
     if (!parsed) return;
     if ('error' in parsed) {
       const skippedKey = skippedRowKey(row);
-      if (skippedKey && !seen.has(skippedKey)) seen.set(skippedKey, rowNumber);
+      if (skippedKey) skippedKeys.add(skippedKey);
       review.push({ rowNumber, label: parsed.label, action: 'SKIP', detail: parsed.error });
       return;
     }
@@ -254,7 +255,10 @@ export function buildPricingImportReview(
     toSend.push(parsed.item);
   });
 
-  return { rows: review, toSend, missingActive: existing.filter((t) => !seen.has(pricingKey(t))) };
+  return { rows: review, toSend, missingActive: existing.filter((t) => {
+      const k = pricingKey(t);
+      return !seen.has(k) && !skippedKeys.has(k);
+    }) };
 }
 
 export interface PricingImportResponse {

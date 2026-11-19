@@ -150,6 +150,16 @@ describe('buildPricingImportReview', () => {
     expect(review.missingActive).toEqual([]);
   });
 
+  it('แถวผิดตามด้วยแถวถูกคีย์เดียวกัน → แถวถูกไม่ถูกตีเป็นซ้ำ และแถวเดิมไม่อยู่ใน missingActive', () => {
+    const review = buildPricingImportReview(
+      [row({ 'ราคาเงินสด': 'abc' }), row({ 'ราคาเงินสด': 41000 })],
+      [existing()],
+    );
+    expect(review.rows.map((r) => r.action)).toEqual(['SKIP', 'UPDATE']);
+    expect(review.toSend).toHaveLength(1);
+    expect(review.missingActive).toEqual([]);
+  });
+
   it('ที่มาเครื่องเป็นชื่อสืบทอด (constructor) → ข้ามด้วยข้อความผิดปกติ', () => {
     const review = buildPricingImportReview([row({ 'เครื่องไทย/นอก': 'constructor' })], []);
     expect(review.rows[0]).toMatchObject({

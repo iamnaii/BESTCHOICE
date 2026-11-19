@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import { gsap, useGSAP } from '@/components/motion/gsap';
 import { MessageCircle } from 'lucide-react';
 import { Card, CardHeader, CardBody, CardTitle, Button } from '@/components';
+import { minDownAmountFromPct } from '@installment/shared';
 import { lineOaMessageUrl, productShareUrl } from '@/lib/copy';
 
 interface PreviewResponse {
@@ -68,7 +69,7 @@ function DownPaymentInput({
   useEffect(() => setPctRaw(String(pct)), [pct]);
   useEffect(() => setAmtRaw(String(amount)), [amount]);
 
-  const minAmount = Math.ceil((installmentPrice * minDownPct) / 100);
+  const minAmount = minDownAmountFromPct(installmentPrice, minDownPct / 100);
   const pctTyped = Number(pctRaw);
   const amtTyped = Number(amtRaw.replace(/,/g, ''));
   const belowMin =
@@ -111,7 +112,7 @@ function DownPaymentInput({
     if (v === pct && pctRaw === String(v)) return; // already settled
     const t = setTimeout(() => {
       setPctRaw(String(v));
-      setAmtRaw(String(Math.ceil((installmentPrice * v) / 100)));
+      setAmtRaw(String(minDownAmountFromPct(installmentPrice, v / 100)));
       onCommitPct(v);
     }, SETTLE_MS);
     return () => clearTimeout(t);
@@ -335,7 +336,7 @@ function InstallmentCalculator({
     if (bcResult?.minDownPct != null) setMinDownPct(bcResult.minDownPct);
   }, [bcResult?.minDownPct]);
   const effectiveDownAmount =
-    bcResult?.downAmount ?? downAmountInput ?? Math.round((installmentPrice * downPct) / 100);
+    bcResult?.downAmount ?? downAmountInput ?? minDownAmountFromPct(installmentPrice, downPct / 100);
 
   return (
     <Card>

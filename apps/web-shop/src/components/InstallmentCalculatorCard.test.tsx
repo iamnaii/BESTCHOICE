@@ -35,12 +35,12 @@ beforeEach(() => {
   );
 });
 afterEach(() => clients.splice(0).forEach((client) => client.clear()));
-function setup(id = 'device-1') {
+function setup(id = 'device-1', price = 20000) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   clients.push(client);
   const view = (productId: string) => (
     <QueryClientProvider client={client}>
-      <InstallmentCalculatorCard productId={productId} cashPrice={12000} installmentPrice={20000} />
+      <InstallmentCalculatorCard productId={productId} cashPrice={12000} installmentPrice={price} />
     </QueryClientProvider>
   );
   const rendered = render(view(id));
@@ -141,5 +141,16 @@ describe('installment quote interactions', () => {
     expect(requests.slice(-2).every((request) => request.params.get('downPct') === '0.25')).toBe(
       true,
     );
+  });
+  it('rounds the percentage-derived minimum and prefill up to the next 100 baht', async () => {
+    setup('device-1', 25900);
+    await answer(requests.slice(), 1290, { minDownPct: 15, downAmount: 3900 });
+    expect(
+      await screen.findByText('พิมพ์เป็น % หรือเป็นบาทก็ได้ · ขั้นต่ำ 15% (฿3,900)'),
+    ).toBeInTheDocument();
+    const pct = screen.getByLabelText('เงินดาวน์ เป็นเปอร์เซ็นต์');
+    fireEvent.change(pct, { target: { value: '20' } });
+    fireEvent.blur(pct);
+    await waitFor(() => expect(screen.getByLabelText('เงินดาวน์ เป็นบาท')).toHaveValue(5200));
   });
 });

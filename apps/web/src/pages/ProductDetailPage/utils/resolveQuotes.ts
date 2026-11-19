@@ -18,6 +18,8 @@ export interface ResolvedBc {
   months: number;
   downAmount: number;
   minDownAmount: number;
+  /** % ขั้นต่ำที่ตั้งไว้ (เต็มจำนวน เช่น 15) — ใช้เป็นป้าย ไม่คำนวณย้อนจากยอดที่ปัดขึ้นแล้ว */
+  minDownPct: number;
   quote: BcQuote;
 }
 
@@ -72,6 +74,7 @@ export function resolveQuotes({
       months,
       downAmount,
       minDownAmount,
+      minDownPct: Math.round(bcConfig.minDownPct * 100),
       quote: buildBcQuote(bcConfig, installmentPrice, months, downAmount),
     };
   }

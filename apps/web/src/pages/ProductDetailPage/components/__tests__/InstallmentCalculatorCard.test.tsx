@@ -14,7 +14,7 @@ import { resolveQuotes, type ProductForQuotes } from '../../utils/resolveQuotes'
 import { INITIAL_CALC_STATE, type CalcState, type CalcStatePatch } from '../../hooks/useInstallmentCalcState';
 import type { GfinTables } from '../../utils/gfinQuote';
 
-// golden config เดียวกับ bcQuote.test.ts (19,900 → 12 งวด/2,985/2,413.20)
+// golden config เดียวกับ bcQuote.test.ts (19,900 → 12 งวด/3,000/2,411.06)
 const bcConfig = {
   minDownPct: 0.15,
   commissionPct: 0.1,
@@ -113,11 +113,11 @@ describe('InstallmentCalculatorCard — การ์ดเดียว สลั
     authState.role = 'OWNER';
   });
 
-  it('เริ่มที่ BESTCHOICE: ค่างวด 2,413.20 · dropdown บอกค่างวดในตัวเลือก · แถวคอม (กางรายละเอียด) · ปุ่มทำสัญญา · บรรทัดเทียบ GFIN 3,327', async () => {
+  it('เริ่มที่ BESTCHOICE: ค่างวด 2,411.06 · dropdown บอกค่างวดในตัวเลือก · แถวคอม (กางรายละเอียด) · ปุ่มทำสัญญา · บรรทัดเทียบ GFIN 3,327', async () => {
     renderCard();
     expect(screen.getByRole('tab', { name: /BESTCHOICE/ })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getAllByText(/2,413\.20/).length).toBeGreaterThan(0);
-    expect(screen.getByRole('combobox', { name: 'งวด' })).toHaveTextContent('12 งวด · ผ่อนเดือนละ 2,413.20');
+    expect(screen.getAllByText(/2,411\.06/).length).toBeGreaterThan(0);
+    expect(screen.getByRole('combobox', { name: 'งวด' })).toHaveTextContent('12 งวด · ผ่อนเดือนละ 2,411.06');
     // รายละเอียดพับเป็นค่าเริ่มต้น — กางแล้วต้องเห็นแถวคอม
     expect(screen.queryByText(/^คอม/)).toBeNull();
     await userEvent.click(screen.getByRole('button', { name: 'รายละเอียดการคำนวณ' }));
@@ -211,7 +211,7 @@ describe('InstallmentCalculatorCard — การ์ดเดียว สลั
   it('แบตต่ำกว่า 80% → แถบเตือนเปลี่ยนแบตก่อนขาย (ไม่บล็อกการคำนวณ) · 80% ขึ้นไปไม่เตือน', () => {
     renderCard({ product: { ...iphone15, category: 'PHONE_USED', batteryHealth: 78 } });
     expect(screen.getByText('แบต 78% · เปลี่ยนแบตก่อนขาย')).toBeInTheDocument();
-    expect(screen.getAllByText(/2,413\.20/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/2,411\.06/).length).toBeGreaterThan(0);
     cleanup();
 
     renderCard({ product: { ...iphone15, category: 'PHONE_USED', batteryHealth: 80 } });
@@ -224,5 +224,10 @@ describe('InstallmentCalculatorCard — การ์ดเดียว สลั
     await userEvent.clear(down);
     await userEvent.type(down, '5000');
     expect(onChange).toHaveBeenLastCalledWith(expect.any(Function));
+  });
+  it('ป้ายดาวน์ขั้นต่ำแสดง % ที่ตั้งไว้ (15%) ไม่เพี้ยนตามยอดที่ปัดขึ้น: 4,500 × 15% = 675 → 700', () => {
+    renderCard({ product: { ...iphone15, cashPrice: '4500', installmentPrice: '4500' } });
+    expect(screen.getByText(/ดาวน์ขั้นต่ำ 15% = 700 ฿/)).toBeInTheDocument();
+    expect(screen.queryByText(/ดาวน์ขั้นต่ำ 16%/)).toBeNull();
   });
 });

@@ -61,13 +61,13 @@ const product = {
 };
 
 describe('resolveQuotes', () => {
-  it('ค่าตั้งต้น: BESTCHOICE 12 งวด ดาวน์ขั้นต่ำ 2,985 → 2,413.20 · GFIN 12 งวด ดาวน์ 25% คอม 15 → 3,327', () => {
+  it('ค่าตั้งต้น: BESTCHOICE 12 งวด ดาวน์ขั้นต่ำ 3,000 → 2,411.06 · GFIN 12 งวด ดาวน์ 25% คอม 15 → 3,327', () => {
     const r = resolveQuotes({ product, state: INITIAL_CALC_STATE, bcConfig, gfinTables });
     expect(r.installmentPrice).toBe(19900);
     expect(r.bc).not.toBeNull();
     expect(r.bc!.months).toBe(12);
-    expect(r.bc!.downAmount).toBe(2985);
-    expect(r.bc!.quote.result.monthlyPayment.toNumber()).toBeCloseTo(2413.2, 2);
+    expect(r.bc!.downAmount).toBe(3000);
+    expect(r.bc!.quote.result.monthlyPayment.toNumber()).toBeCloseTo(2411.06, 2);
     expect(r.gfin).not.toBeNull();
     expect(r.gfin!.months).toBe(12);
     expect(r.gfin!.downPct).toBe(25);

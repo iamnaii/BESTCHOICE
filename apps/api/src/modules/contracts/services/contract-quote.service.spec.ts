@@ -10,13 +10,13 @@ describe('ContractQuoteService effective configuration and amounts', () => {
   const actor = { id: 'staff', role: 'SALES', branchId: 'branch' };
   let service: ContractQuoteService;
   let db: ReturnType<typeof makeDb>;
-  const previousFlag = process.env.USE_NEW_RATE_LOOKUP;
   const config = { id: 'config-oldest', interestRate: new D('.01'), minDownPaymentPct: new D('.15'),
     storeCommissionPct: new D('.10'), vatPct: new D('.07'), minInstallmentMonths: 6, maxInstallmentMonths: 12, deletedAt: null };
   const makeDb = () => ({
     product: { findUnique: jest.fn().mockResolvedValue({ id: 'product', branchId: 'branch', category: 'PHONE_NEW', deletedAt: null, costPrice: new D(6000) }) },
     interestConfig: { findFirst: jest.fn().mockResolvedValue(config), findUnique: jest.fn().mockResolvedValue(config) },
-    interestConfigRate: { findUnique: jest.fn().mockResolvedValue({ ratePct: new D('.12'), deletedAt: null }) },
+    // ไม่มีแถวรายงวด = ดอกเบี้ยต่อเดือน × งวด (ค่าเริ่มต้นของชุดนี้)
+    interestConfigRate: { findMany: jest.fn().mockResolvedValue([]) },
     systemConfig: { findMany: jest.fn().mockResolvedValue([]) },
     // สาขาผูกบริษัท SHOP (ไม่จด VAT) — สภาพหลังตั้ง branches.company_id = SHOP (impact C1, 2026-10-31) · VAT ของสัญญาผ่อนต้องไม่อ่านจากตรงนี้
     branch: {
@@ -40,13 +40,11 @@ describe('ContractQuoteService effective configuration and amounts', () => {
         where.companyCode === 'FINANCE' ? { vatRegistered, vatRate: new D('.07') } : null,
     );
   beforeEach(() => {
-    process.env.USE_NEW_RATE_LOOKUP = 'false';
     jest.useFakeTimers().setSystemTime(new Date('2026-01-31T16:30:00.000Z'));
     db = makeDb(); service = new ContractQuoteService(db as unknown as PrismaService);
   });
   afterEach(() => {
     jest.useRealTimers(); jest.restoreAllMocks();
-    if (previousFlag === undefined) delete process.env.USE_NEW_RATE_LOOKUP; else process.env.USE_NEW_RATE_LOOKUP = previousFlag;
   });
   // เดิม: "matches branch VAT registration" — VAT อ่านจากบริษัทของสาขา ⇒ สาขาที่ผูก SHOP (ไม่จด VAT) ทำให้สัญญาผ่อนได้ VAT 0 (impact C1).
   // สัญญาผ่อนเป็นของ FINANCE ไม่ว่าทำที่สาขาไหน ⇒ ความคาดหวังเดิมย้ายไปที่การจด VAT ของ FINANCE (ตัวเลขเดิมทุกตัว)
@@ -78,16 +76,20 @@ describe('ContractQuoteService effective configuration and amounts', () => {
     expect(quote.principal).toBe(row.principal); expect(quote.totalPayable).toBe(row.total); expect(quote.monthlyPayment).toBe(row.monthly);
   });
 
-  it('selects a deterministic oldest config and respects the per-term rate flag', async () => {
-    process.env.USE_NEW_RATE_LOOKUP = 'true';
+  it('selects a deterministic oldest config and uses the per-term rate row when the config has any', async () => {
+    db.interestConfigRate.findMany.mockResolvedValue([{ months: 6, ratePct: new D('.12') }]);
     const quote = await service.resolve(input, actor);
     expect(quote.interestTotal).toBe('960.00');
     expect(db.interestConfig.findFirst).toHaveBeenCalledWith(expect.objectContaining({ orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] }));
-    expect(db.interestConfigRate.findUnique).toHaveBeenCalledWith({ where: { configId_months: { configId: 'config-oldest', months: 6 } } });
+    expect(db.interestConfigRate.findMany).toHaveBeenCalledWith({
+      where: { configId: 'config-oldest', deletedAt: null },
+      select: { months: true, ratePct: true },
+      orderBy: { months: 'asc' },
+    });
   });
-  it('fails closed when the enabled rate table lacks the requested term', async () => {
-    process.env.USE_NEW_RATE_LOOKUP = 'true'; db.interestConfigRate.findUnique.mockResolvedValue(null);
-    await expect(service.resolve(input, actor)).rejects.toThrow(/ไม่พบอัตราดอกเบี้ย/);
+  it('fails closed when the rate table lacks the requested term', async () => {
+    db.interestConfigRate.findMany.mockResolvedValue([{ months: 12, ratePct: new D('.12') }]);
+    await expect(service.resolve(input, actor)).rejects.toThrow('ไม่มีอัตราดอกเบี้ยสำหรับ 6 งวด — เลือกได้: 12 งวด');
   });
   it('keeps fingerprints stable within a Thai calendar month and invalidates changed effective config', async () => {
     const first = await service.resolve(input, actor);

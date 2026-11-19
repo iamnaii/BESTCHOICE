@@ -47,6 +47,7 @@ function makePrisma(finance: Finance, systemVat: string | null = null) {
       ),
     },
     companyInfo: { findFirst: jest.fn().mockResolvedValue(finance) },
+    interestConfigRate: { findMany: jest.fn().mockResolvedValue([]) },
     systemConfig: {
       findMany: jest
         .fn()

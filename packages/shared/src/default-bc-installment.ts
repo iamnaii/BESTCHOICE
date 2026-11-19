@@ -1,5 +1,6 @@
 import Decimal from 'decimal.js';
 import { calcBcInstallment } from './installment-calc';
+import { minDownAmountFromPct } from './installment-rounding';
 
 /** shape ของ GET /interest-configs/resolved?category=... */
 export interface BcConfigJson {
@@ -30,7 +31,7 @@ export function computeDefaultBcInstallment(
   if (!config || !config.allowedMonths || config.allowedMonths.length === 0) return null;
 
   const months = config.allowedMonths.includes(12) ? 12 : config.allowedMonths[0];
-  const downAmount = Math.round(installmentPrice * config.minDownPct);
+  const downAmount = minDownAmountFromPct(installmentPrice, config.minDownPct);
 
   const result = calcBcInstallment({
     installmentPrice: new Decimal(installmentPrice),

@@ -1,4 +1,29 @@
-import { IsString, IsNumber, IsArray, IsBoolean, IsOptional, Min, Max } from 'class-validator';
+import {
+  IsString,
+  IsNumber,
+  IsArray,
+  IsBoolean,
+  IsOptional,
+  IsInt,
+  IsPositive,
+  Min,
+  Max,
+  ValidateNested,
+} from 'class-validator';
+import { Type } from 'class-transformer';
+
+/** แถวของตารางดอกเบี้ยรายงวด — `ratePct` = ดอกเบี้ยรวมทั้งสัญญาเป็นเศษส่วน (0.5 = 50%) */
+export class InterestRateRowDto {
+  @IsInt({ message: 'จำนวนงวดต้องเป็นจำนวนเต็ม' })
+  @Min(1, { message: 'จำนวนงวดต้องอย่างน้อย 1' })
+  @Max(120, { message: 'จำนวนงวดต้องไม่เกิน 120' })
+  months: number;
+
+  @IsNumber({ maxDecimalPlaces: 4 }, { message: 'ดอกเบี้ยรวมทศนิยมได้ไม่เกิน 4 ตำแหน่ง' })
+  @IsPositive({ message: 'ดอกเบี้ยรวมต้องมากกว่า 0' })
+  @Max(9.9999, { message: 'ดอกเบี้ยรวมต้องไม่เกิน 999.99%' })
+  ratePct: number;
+}
 
 /**
  * ไม่มีช่อง `vatPct` (คำตัดสินเจ้าของ #22, 2026-10-31): VAT ของตั้งค่าดอกเบี้ยอ่านจากบริษัท FINANCE ที่เดียว — แก้ที่
@@ -35,6 +60,13 @@ export class CreateInterestConfigDto {
   @IsNumber()
   @Min(1, { message: 'จำนวนงวดสูงสุดต้องอย่างน้อย 1' })
   maxInstallmentMonths: number;
+
+  /** ไม่ส่ง = ไม่แตะตาราง · [] = ลบทุกแถว (ใช้ดอกเบี้ยต่อเดือน × งวด) · มีค่า = แทนทั้งชุด */
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => InterestRateRowDto)
+  rates?: InterestRateRowDto[];
 }
 
 export class UpdateInterestConfigDto {
@@ -78,4 +110,11 @@ export class UpdateInterestConfigDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+
+  /** ไม่ส่ง = ไม่แตะตาราง · [] = ลบทุกแถว (ใช้ดอกเบี้ยต่อเดือน × งวด) · มีค่า = แทนทั้งชุด */
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => InterestRateRowDto)
+  rates?: InterestRateRowDto[];
 }

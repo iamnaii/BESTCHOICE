@@ -1,4 +1,5 @@
 import Decimal from 'decimal.js';
+import { downFromPct } from './installment-rounding';
 import type {
   BcCalcInput,
   BcCalcOutput,
@@ -26,10 +27,11 @@ export function calcBcInstallment(input: BcCalcInput): BcCalcOutput {
       ? customDownAmount.div(installmentPrice)
       : downPct ?? config.minDownPct;
 
+  // ดาวน์ที่คิดจาก % ปัดขึ้นหลักร้อย (คำตัดสินเจ้าของ 2026-11-19) · ดาวน์ที่ส่งเป็นจำนวนเงินไม่ถูกปัด
   const downAmount =
     customDownAmount !== undefined
       ? round2(customDownAmount)
-      : round2(installmentPrice.mul(resolvedDownPct));
+      : downFromPct(installmentPrice, resolvedDownPct);
 
   if (!config.allowedMonths.includes(months)) {
     errors.push(`จำนวนงวด ${months} ไม่อยู่ในตารางอัตราดอกเบี้ย`);

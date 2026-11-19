@@ -5,7 +5,19 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { resolveInstallmentVat } from '../../utils/config.util';
-import { CreateInterestConfigDto, UpdateInterestConfigDto } from './dto/interest-config.dto';
+import {
+  CreateInterestConfigDto,
+  UpdateInterestConfigDto,
+  InterestRateRowDto,
+} from './dto/interest-config.dto';
+
+const RATES_INCLUDE = {
+  rates: {
+    where: { deletedAt: null },
+    select: { months: true, ratePct: true },
+    orderBy: { months: 'asc' as const },
+  },
+};
 
 @Injectable()
 export class InterestConfigService {
@@ -31,6 +43,7 @@ export class InterestConfigService {
       await this.prisma.interestConfig.findMany({
         where: { deletedAt: null },
         orderBy: { createdAt: 'asc' },
+        include: RATES_INCLUDE,
       }),
     );
   }
@@ -38,6 +51,7 @@ export class InterestConfigService {
   async findOne(id: string) {
     const config = await this.prisma.interestConfig.findFirst({
       where: { id, deletedAt: null },
+      include: RATES_INCLUDE,
     });
     if (!config) throw new NotFoundException('ไม่พบการตั้งค่าดอกเบี้ย');
     const [withVat] = await this.withFinanceVat([config]);
@@ -59,13 +73,19 @@ export class InterestConfigService {
     });
     if (!config) return config;
     const [withVat] = await this.withFinanceVat([config]);
-    return withVat;
+    // งวดที่หน้าสร้างสัญญาให้เลือก — กติกาเดียวกับ getRateForMonths: มีแถวรายงวด = รับเฉพาะงวดที่มีแถว
+    const rates = await this.prisma.interestConfigRate.findMany({
+      where: { configId: config.id, deletedAt: null },
+      select: { months: true },
+      orderBy: { months: 'asc' },
+    });
+    return { ...withVat, allowedMonths: rates.map((r) => r.months) };
   }
 
   async create(dto: CreateInterestConfigDto) {
     this.validateMonths(dto.minInstallmentMonths, dto.maxInstallmentMonths);
-    const created = await writeSharedReference(this.base, (tx) =>
-      tx.interestConfig.create({
+    const created = await writeSharedReference(this.base, async (tx) => {
+      const row = await tx.interestConfig.create({
         data: {
           name: dto.name,
           productCategories: dto.productCategories,
@@ -76,8 +96,12 @@ export class InterestConfigService {
           minInstallmentMonths: dto.minInstallmentMonths,
           maxInstallmentMonths: dto.maxInstallmentMonths,
         },
-      }),
-    );
+      });
+      if (dto.rates !== undefined) {
+        await this.replaceRates(tx, row.id, dto.rates, dto.minInstallmentMonths, dto.maxInstallmentMonths);
+      }
+      return row;
+    });
     // managed path คืน `{ id }` (boundary) — ทางปกติคืนแถว ⇒ แทน vatPct ด้วยค่า FINANCE เหมือนตอนอ่าน
     return 'vatPct' in created ? (await this.withFinanceVat([created]))[0] : created;
   }
@@ -86,16 +110,34 @@ export class InterestConfigService {
     const updated = await writeSharedReference(this.base, async (tx) => {
       const config = await tx.interestConfig.findFirst({ where: { id, deletedAt: null } });
       if (!config) throw new NotFoundException('ไม่พบการตั้งค่าดอกเบี้ย');
-      this.validateMonths(
-        dto.minInstallmentMonths ?? config.minInstallmentMonths,
-        dto.maxInstallmentMonths ?? config.maxInstallmentMonths,
-      );
+      const minMonths = dto.minInstallmentMonths ?? config.minInstallmentMonths;
+      const maxMonths = dto.maxInstallmentMonths ?? config.maxInstallmentMonths;
+      this.validateMonths(minMonths, maxMonths);
       // #22: vatPct จากหน้าเว็บรุ่นเก่า (ถ้ามี) ไม่ถูกเขียน — VAT ของการผ่อนมาจาก FINANCE
-      const { vatPct: _ignoredVatPct, ...data } = dto as UpdateInterestConfigDto & {
+      const { vatPct: _ignoredVatPct, rates, ...data } = dto as UpdateInterestConfigDto & {
         vatPct?: unknown;
       };
       void _ignoredVatPct;
-      return tx.interestConfig.update({ where: { id }, data });
+      if (rates !== undefined) {
+        await this.replaceRates(tx, id, rates, minMonths, maxMonths);
+      } else if (dto.minInstallmentMonths !== undefined || dto.maxInstallmentMonths !== undefined) {
+        // ช่วงงวดเปลี่ยนแต่ไม่ได้ส่งตาราง — แถวเดิมต้องยังอยู่ในช่วง (ไม่งั้นหน้าราคาเสนองวดที่สัญญาปฏิเสธ)
+        const current = await tx.interestConfigRate.findMany({
+          where: { configId: id, deletedAt: null },
+          select: { months: true },
+        });
+        const outside = current.find((r) => r.months < minMonths || r.months > maxMonths);
+        if (outside) {
+          throw new BadRequestException(
+            `${this.outsideRangeMessage(outside.months, minMonths, maxMonths)} — แก้ตารางรายงวดก่อน`,
+          );
+        }
+      }
+      // แก้เฉพาะตาราง → ยังต้องแตะแถว config เพื่อให้ updatedAt ตรงความจริง (row fence ของใบเสนอสัญญา)
+      return tx.interestConfig.update({
+        where: { id },
+        data: rates !== undefined ? { ...data, updatedAt: new Date() } : data,
+      });
     });
     return 'vatPct' in updated ? (await this.withFinanceVat([updated]))[0] : updated;
   }
@@ -110,6 +152,42 @@ export class InterestConfigService {
         data: { isActive: false, deletedAt: new Date() },
       });
     });
+  }
+
+  /** แทนตารางรายงวดของ config ทั้งชุด — แถวที่ไม่อยู่ในชุดถูก soft delete · แถวที่เคยลบถูกชุบ (unique รวมแถวที่ลบ) */
+  private async replaceRates(
+    tx: Prisma.TransactionClient,
+    configId: string,
+    rates: InterestRateRowDto[],
+    minMonths: number,
+    maxMonths: number,
+  ) {
+    const seen = new Set<number>();
+    for (const r of rates) {
+      if (seen.has(r.months)) {
+        throw new BadRequestException(`จำนวนงวดซ้ำกันในตารางรายงวด: ${r.months} งวด`);
+      }
+      seen.add(r.months);
+      if (r.months < minMonths || r.months > maxMonths) {
+        throw new BadRequestException(this.outsideRangeMessage(r.months, minMonths, maxMonths));
+      }
+    }
+    const months = rates.map((r) => r.months);
+    await tx.interestConfigRate.updateMany({
+      where: { configId, deletedAt: null, months: { notIn: months } },
+      data: { deletedAt: new Date() },
+    });
+    for (const r of rates) {
+      await tx.interestConfigRate.upsert({
+        where: { configId_months: { configId, months: r.months } },
+        update: { ratePct: r.ratePct, deletedAt: null },
+        create: { configId, months: r.months, ratePct: r.ratePct },
+      });
+    }
+  }
+
+  private outsideRangeMessage(months: number, minMonths: number, maxMonths: number) {
+    return `ตารางรายงวดมี ${months} งวด ซึ่งอยู่นอกช่วงงวดต่ำสุด–สูงสุด (${minMonths}–${maxMonths} งวด)`;
   }
 
   private validateMonths(min: number, max: number) {

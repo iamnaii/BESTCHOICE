@@ -14,9 +14,16 @@ import { join, relative, sep } from 'node:path';
  * กฎ SQL_DAY_NO_BKK (แผน ง 2026-11-18): raw SQL ที่แบ่งวัน/สัปดาห์/เดือน/ชั่วโมงด้วย date_trunc / EXTRACT / ::date / CURRENT_DATE
  * บนคอลัมน์ timestamp (เก็บ UTC) ตรง ๆ = แบ่งตาม UTC ช้ากว่าไทย 7 ชั่วโมง — ใช้ sqlBkkLocal / sqlBkkDate จาก
  * utils/bangkok-sql.util.ts (หรือ AT TIME ZONE ในบรรทัดเดียวกัน) · "วันนี้" ให้คำนวณใน JS แล้วส่งเป็นพารามิเตอร์
+ * ครอบ date_trunc / EXTRACT / date_part / DATE( / to_char(<col>, รูปแบบวัน-เวลา) / ::date / CURRENT_DATE · บรรทัดจะผ่านก็ต่อเมื่อ "ทุกจุด" ที่แบ่งวัน/เวลา
+ * ถูกห่อใน operand ของมันเอง (ตัวช่วยที่จุดหนึ่งไม่ยกเว้นอีกจุดในบรรทัดเดียวกัน) · และท่าผิด `col AT TIME ZONE 'Asia/Bangkok'` ขั้นเดียว
+ * บนคอลัมน์ naive-UTC (ต้องเป็น `(col AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Bangkok'`) ก็ติดด้วย
+ * RAW_PARSE รับ optional chaining (dto?.from) · cast (as string) · String(...) · prefix body./range./req.query. · ชื่อ month / reportDate
+ * UTC_DAY_END จับ setUTCHours(23, 59, 59, 999) คู่กับ UTC_MIDNIGHT
+ * ช่องว่างที่ยอมรับ: ตัวสแกนเป็น "ต่อบรรทัด" — การเรียกที่ข้ามหลายบรรทัด (`new Date(\n dto.from,\n)` · `date_trunc(\n'day'` · operand ของ
+ * AT TIME ZONE อยู่คนละบรรทัด) และ `.sql` ไม่ถูกสแกน · `${col}::date` (ชิ้นส่วนคอลัมน์ในเทมเพลต) ไม่ถูกจับเพราะแยกจากพารามิเตอร์ไม่ได้
  *
  * เทสต์นี้สแกน apps/api/src/**\/*.ts (ไม่นับ *.spec.ts · __tests__/ · src/cli/ · utils/date.util.ts · คอมเมนต์)
- * หาสี่รูปแบบ (RULES ข้างล่าง) ที่ต้องอยู่ใน ALLOWED พร้อมเหตุผลบรรทัดเดียว — เพิ่มรายการ = อธิบายในรีวิวว่าทำไม
+ * หาห้ารูปแบบ (RULES ข้างล่าง) ที่ต้องอยู่ใน ALLOWED พร้อมเหตุผลบรรทัดเดียว — เพิ่มรายการ = อธิบายในรีวิวว่าทำไม
  * ไม่ใช้ตัวช่วย · คีย์ = พาธนับจาก src/ หรือ `พาธ#ข้อความที่อยู่ในบรรทัดนั้น` (ไฟล์ที่มีทั้งการใช้ที่ถูกและต้องห้าม)
  * รายการที่ไม่ตรงกับอะไรแล้ว (stale) ทำให้เทสต์แดง — ลบออกเมื่อแก้โค้ดจุดนั้นแล้ว
  *
@@ -91,6 +98,8 @@ const ALLOWED: Record<string, string> = {
     'แก้โปรโมชัน: เขียนวันเริ่ม/สิ้นสุดโปรโมชัน (เก็บค่า ไม่ใช่กรอง) — วันเริ่มคงเก็บเที่ยงคืน UTC ตามเดิม',
   'modules/promotions/promotions.service.ts#data.endDate = new Date(dto.endDate)':
     'แก้โปรโมชัน: เขียนวันเริ่ม/สิ้นสุดโปรโมชัน (เก็บค่า ไม่ใช่กรอง) — วันเริ่มคงเก็บเที่ยงคืน UTC ตามเดิม',
+  "modules/analytics/analytics.service.ts#TO_CHAR(cohort_month, 'YYYY-MM')":
+    "SQL_DAY_NO_BKK: จัดรูป 'YYYY-MM' ของ cohort_month ซึ่งตัดเดือนตามเวลาไทยแล้ว (DATE_TRUNC บน sqlBkkLocal ใน CTE first_contracts) ไม่ได้อ่านคอลัมน์ timestamp ตรง",
   'modules/analytics/analytics.service.ts#EXTRACT(MONTH FROM AGE(activity_month, cohort_month))':
     'SQL_DAY_NO_BKK: นับเดือนห่างจาก AGE() ของสองค่าที่ตัดเดือนตามเวลาไทยแล้ว (cohort_month / activity_month) ไม่ได้อ่านคอลัมน์ timestamp ตรง',
   'modules/analytics/analytics.service.ts#EXTRACT(YEAR FROM AGE(activity_month, cohort_month))':
@@ -121,45 +130,130 @@ const WATCHED_NAMES = [
   'toDate',
   'dueFrom',
   'dueTo',
+  'month',
+  'reportDate',
   'date',
 ];
-const WATCHED_PREFIXES = ['dto', 'query', 'q', 'filters', 'filter', 'params', 'opts', 'options', 'input'];
+const WATCHED_PREFIXES = [
+  'req\\.query',
+  'dto',
+  'query',
+  'q',
+  'filters',
+  'filter',
+  'params',
+  'opts',
+  'options',
+  'input',
+  'body',
+  'range',
+];
+
+/** อ้างอิงชื่อที่เฝ้า: `from` · `dto.from` · `dto?.from` · `req.query.from` */
+const WATCHED_REF = `(?:(?:${WATCHED_PREFIXES.join('|')})\\??\\.)?(?:${WATCHED_NAMES.join('|')})`;
+/** `as string` · `as unknown as string` · `as string | undefined` */
+const AS_CAST = '(?:\\s+as\\s+[\\w.]+(?:\\s*\\|\\s*[\\w.]+)*)*';
+/** `name` · `name!` · `name as string` · `String(name)` */
+const RAW_PARSE_ARG = `(?:String\\(\\s*${WATCHED_REF}\\s*!?\\s*\\)|${WATCHED_REF}\\s*!?${AS_CAST})`;
+
+const SQL_WRAPPED = /AT TIME ZONE|sqlBkk(?:Local|Date)\(/i;
+/** รูปแบบวันที่/เวลาของ to_char (YYYY-MM-DD · YYYY-MM · HH24 · D ...) — ตัวเลขอย่าง 'FM999,999.00' ไม่ตรง */
+const TO_CHAR_DATE_FORMAT = /'(?:[^']*(?:YYYY|IYYY|MM|DD|HH24|HH12|HH|DY|DAY|MON|WW)[^']*|D)'/i;
+/** ฟังก์ชันแบ่งวัน/เวลา: ตำแหน่ง '(' ของการเรียกเป็นตัวกำหนดว่า operand คืออะไร */
+const SQL_CALL_RE =
+  /date_trunc\(\s*'(?:hour|day|week|month|quarter|year)'|EXTRACT\(\s*(?:DOW|ISODOW|HOUR|DAY|DOY|WEEK|MONTH|QUARTER|YEAR|ISOYEAR)\s+FROM|date_part\(\s*'(?:hour|day|dow|isodow|doy|week|month|quarter|year|isoyear)'|(?<![\w.])(?<!new\s+)(?<!\$\{)DATE\(|to_char\(/gi;
+/** `date(x)` ตัวพิมพ์เล็กมักเป็นฟังก์ชัน JS (จัดรูปวันที่) — นับเป็น SQL เมื่อบรรทัดมีคีย์เวิร์ด SQL ตัวพิมพ์ใหญ่ · `DATE(` ตัวใหญ่นับเสมอ */
+const SQL_KEYWORD_RE = /\b(?:SELECT|FROM|WHERE|GROUP BY|ORDER BY|JOIN|ON|AS|AND|OR|BY)\b/;
+const SQL_CAST_DATE_RE = /(?<!['}])::date\b/gi;
+const SQL_CURRENT_DATE_RE = /\bCURRENT_DATE\b/i;
+const SQL_BKK_SINGLE_STEP_RE = /AT TIME ZONE\s+'Asia\/Bangkok'/gi;
+/** ก่อน `AT TIME ZONE 'Asia/Bangkok'` ต้องเป็น `AT TIME ZONE 'UTC'` (คอลัมน์ naive-UTC) หรือค่า timestamptz อยู่แล้ว (NOW() / ::timestamptz) */
+const SQL_BKK_PRECEDED_OK_RE =
+  /(?:AT TIME ZONE\s+'UTC'|NOW\(\)|CURRENT_TIMESTAMP|transaction_timestamp\(\)|clock_timestamp\(\)|::timestamptz)\s*\)?\s*$/i;
+
+/** ข้อความในวงเล็บที่เปิดที่ openIdx จนถึงวงเล็บปิดคู่กัน (ไม่พบคู่ = ถึงท้ายบรรทัด) */
+function callArgs(text: string, openIdx: number): string {
+  let depth = 0;
+  for (let i = openIdx; i < text.length; i++) {
+    if (text[i] === '(') depth++;
+    else if (text[i] === ')' && --depth === 0) return text.slice(openIdx + 1, i);
+  }
+  return text.slice(openIdx + 1);
+}
+
+/** ข้อความในวงเล็บที่ปิดที่ closeIdx (ย้อนหาคู่ · ไม่พบคู่ = ตั้งแต่ต้นบรรทัด) */
+function parenBefore(text: string, closeIdx: number): string {
+  let depth = 0;
+  for (let i = closeIdx; i >= 0; i--) {
+    if (text[i] === ')') depth++;
+    else if (text[i] === '(' && --depth === 0) return text.slice(i + 1, closeIdx);
+  }
+  return text.slice(0, closeIdx);
+}
+
+/**
+ * SQL_DAY_NO_BKK ต่อบรรทัด: บรรทัดผ่านก็ต่อเมื่อ **ทุกจุด** ที่แบ่งวัน/เวลาถูกห่อ (AT TIME ZONE หรือ sqlBkkLocal/sqlBkkDate
+ * ใน operand ของมันเอง) — มีตัวช่วยที่ใดที่หนึ่งในบรรทัดไม่พอ · และท่าเขียนผิด `col AT TIME ZONE 'Asia/Bangkok'` ขั้นเดียว
+ * บนคอลัมน์ naive-UTC (อ่านค่า UTC เป็นเวลาไทย = เลื่อนผิดทาง) ติดด้วย
+ */
+function sqlDayHits(text: string): boolean {
+  if (SQL_CURRENT_DATE_RE.test(text)) return true;
+  for (const m of text.matchAll(SQL_CALL_RE)) {
+    const open = m.index! + m[0].indexOf('(');
+    const args = callArgs(text, open);
+    if (/^to_char\(/i.test(m[0]) && !TO_CHAR_DATE_FORMAT.test(args)) continue;
+    if (/^date\(/i.test(m[0]) && !m[0].startsWith('DATE') && !SQL_KEYWORD_RE.test(text)) continue;
+    if (!SQL_WRAPPED.test(args)) return true;
+  }
+  for (const m of text.matchAll(SQL_CAST_DATE_RE)) {
+    const before = text.slice(0, m.index!);
+    const operand = before.endsWith(')') ? parenBefore(text, before.length - 1) : (/[\w.]+$/.exec(before)?.[0] ?? '');
+    if (!SQL_WRAPPED.test(operand)) return true;
+  }
+  for (const m of text.matchAll(SQL_BKK_SINGLE_STEP_RE)) {
+    const before = text.slice(0, m.index!);
+    if (before.trim() === '') continue; // operand อยู่บรรทัดก่อนหน้า — ช่องว่างหลายบรรทัดที่ยอมรับ
+    if (!SQL_BKK_PRECEDED_OK_RE.test(before)) return true;
+  }
+  return false;
+}
 
 interface Rule {
-  id: 'RAW_PARSE' | 'TEMPLATE_NO_OFFSET' | 'UTC_MIDNIGHT' | 'SQL_DAY_NO_BKK';
-  re: RegExp;
-  /** บรรทัดที่ตรง `re` แต่ตรง `ok` ด้วย = ถูกแล้ว (ไม่นับเป็น offender) */
-  ok?: RegExp;
+  id: 'RAW_PARSE' | 'TEMPLATE_NO_OFFSET' | 'UTC_MIDNIGHT' | 'UTC_DAY_END' | 'SQL_DAY_NO_BKK';
+  /** บรรทัด (ตัดคอมเมนต์แล้ว) ที่ตรง = offender */
+  hits: (text: string) => boolean;
   hint: string;
 }
 
 const RULES: Rule[] = [
   {
     id: 'RAW_PARSE',
-    re: new RegExp(
-      `new Date\\(\\s*(?:(?:${WATCHED_PREFIXES.join('|')})\\.)?(?:${WATCHED_NAMES.join('|')})\\s*!?\\s*\\)`,
-    ),
+    hits: (text) => new RegExp(`new Date\\(\\s*${RAW_PARSE_ARG}\\s*\\)`).test(text),
     hint: "ใช้ reportDayStart (ขอบเริ่ม) / reportAsOf (ขอบสิ้นสุดหรือ ณ วันที่) / reportDayEnd / bangkokDateRange จาก utils/date.util",
   },
   {
     id: 'TEMPLATE_NO_OFFSET',
-    re: /new Date\(\s*`\$\{[^}]+\}T(?:00:00(?::00)?|23:59(?::59)?)(?:\.\d{1,3})?`\s*\)/,
+    hits: (text) => /new Date\(\s*`\$\{[^}]+\}T(?:00:00(?::00)?|23:59(?::59)?)(?:\.\d{1,3})?`\s*\)/.test(text),
     hint: 'ใส่ +07:00 หรือใช้ reportDayStart/reportDayEnd แทน — ไม่มี offset = ตามโซนของโปรเซส',
   },
   {
     id: 'UTC_MIDNIGHT',
-    re: /\.setUTCHours\(\s*0\s*,\s*0\s*,\s*0\s*,\s*0\s*\)/,
+    hits: (text) => /\.setUTCHours\(\s*0\s*,\s*0\s*,\s*0\s*,\s*0\s*\)/.test(text),
     hint: 'เที่ยงคืน UTC = 07:00 น. ไทย — ใช้ bangkokStartOfDay() / bangkokMidnight()',
   },
   {
+    id: 'UTC_DAY_END',
+    hits: (text) => /\.setUTCHours\(\s*23\s*,\s*59\s*,\s*59\s*,\s*999\s*\)/.test(text),
+    hint: 'สิ้นวัน UTC = 06:59:59.999 น. ไทยของวันถัดไป — ใช้ reportDayEnd() / reportAsOf() จาก utils/date.util',
+  },
+  {
     id: 'SQL_DAY_NO_BKK',
-    re: /date_trunc\(\s*'(?:hour|day|week|month|quarter|year)'|EXTRACT\(\s*(?:DOW|ISODOW|HOUR|DAY|DOY|WEEK|MONTH|QUARTER|YEAR)\s+FROM|(?<!['}])::date\b|\bCURRENT_DATE\b/i,
-    ok: /AT TIME ZONE|sqlBkk(?:Local|Date)\(/i,
-    hint: "คอลัมน์ timestamp เก็บ UTC — ห่อด้วย sqlBkkLocal()/sqlBkkDate() จาก utils/bangkok-sql.util · 'วันนี้' ส่งเป็นพารามิเตอร์ (bangkokDateString / bangkokStartOfDay)",
+    hits: sqlDayHits,
+    hint: "คอลัมน์ timestamp เก็บ UTC — ห่อด้วย sqlBkkLocal()/sqlBkkDate() จาก utils/bangkok-sql.util ทุกจุดในบรรทัด · ห้าม `col AT TIME ZONE 'Asia/Bangkok'` ขั้นเดียว · 'วันนี้' ส่งเป็นพารามิเตอร์ (bangkokDateString / bangkokStartOfDay)",
   },
 ];
 
-const ruleHits = (rule: Rule, text: string): boolean => rule.re.test(text) && !rule.ok?.test(text);
+const ruleHits = (rule: Rule, text: string): boolean => rule.hits(text);
 
 interface Offender {
   file: string;
@@ -285,5 +379,75 @@ describe('ตัวกันถอยหลัง: สตริงวันท�
     expect(flaggedRules('AVG(EXTRACT(EPOCH FROM (cl.called_at - c.created_at)) / 86400.0) AS avg_days')).toEqual([]);
     expect(flaggedRules("date_trunc('milliseconds', transaction_timestamp())")).toEqual([]);
     expect(flaggedRules('this.lineSrc.extract({ channel: x, since })')).toEqual([]);
+  });
+
+  it('RAW_PARSE จับ optional chaining · cast · String() · prefix เพิ่ม (body / range / req.query) · month / reportDate', () => {
+    expect(flaggedRules('const f = new Date(dto?.from);')).toEqual(['RAW_PARSE']);
+    expect(flaggedRules('const f = new Date(q.from as string);')).toEqual(['RAW_PARSE']);
+    expect(flaggedRules('const t = new Date(String(q.to));')).toEqual(['RAW_PARSE']);
+    expect(flaggedRules('const t = new Date(q?.to as unknown as string);')).toEqual(['RAW_PARSE']);
+    expect(flaggedRules('const t = new Date(body.endDate)')).toEqual(['RAW_PARSE']);
+    expect(flaggedRules('const t = new Date(range.start)')).toEqual(['RAW_PARSE']);
+    expect(flaggedRules('const f = new Date(req.query.from)')).toEqual(['RAW_PARSE']);
+    expect(flaggedRules('const m = new Date(dto.month)')).toEqual(['RAW_PARSE']);
+    expect(flaggedRules('const d = new Date(reportDate)')).toEqual(['RAW_PARSE']);
+  });
+
+  it('RAW_PARSE ไม่จับชื่อ/รูปแบบอื่นที่ไม่ใช่สตริงวันที่ดิบ', () => {
+    expect(flaggedRules('new Date(dto?.entryDate)')).toEqual([]);
+    expect(flaggedRules('new Date(body.createdAt as string)')).toEqual([]);
+    expect(flaggedRules('new Date(String(row.date))')).toEqual([]);
+    expect(flaggedRules('new Date(reportDayStart(dto.from))')).toEqual([]);
+    expect(flaggedRules('const x = other.month;')).toEqual([]);
+  });
+
+  it('UTC_DAY_END จับ setUTCHours(23, 59, 59, 999) · ไม่จับค่าอื่น', () => {
+    expect(flaggedRules('end.setUTCHours(23, 59, 59, 999);')).toEqual(['UTC_DAY_END']);
+    expect(flaggedRules('end.setUTCHours(23,59,59,999)')).toEqual(['UTC_DAY_END']);
+    expect(flaggedRules('end.setUTCHours(16, 59, 59, 999);')).toEqual([]);
+    expect(flaggedRules('end.setHours(23, 59, 59, 999);')).toEqual([]);
+  });
+
+  it('SQL_DAY_NO_BKK จับ DATE( / date_part( / to_char( บนคอลัมน์ดิบ', () => {
+    expect(flaggedRules('SELECT DATE(p.paid_date) AS d')).toEqual(['SQL_DAY_NO_BKK']);
+    expect(flaggedRules('GROUP BY date(s.created_at)')).toEqual(['SQL_DAY_NO_BKK']);
+    expect(flaggedRules("date_part('hour', s.created_at)")).toEqual(['SQL_DAY_NO_BKK']);
+    expect(flaggedRules("date_part('dow', s.created_at)::int AS dow")).toEqual(['SQL_DAY_NO_BKK']);
+    expect(flaggedRules("to_char(p.paid_date, 'YYYY-MM-DD') AS day")).toEqual(['SQL_DAY_NO_BKK']);
+    expect(flaggedRules("to_char(p.paid_date, 'YYYY-MM') AS month")).toEqual(['SQL_DAY_NO_BKK']);
+    expect(flaggedRules("to_char(s.created_at, 'HH24') AS hour")).toEqual(['SQL_DAY_NO_BKK']);
+    expect(flaggedRules("to_char(s.created_at, 'D') AS dow")).toEqual(['SQL_DAY_NO_BKK']);
+  });
+
+  it('SQL_DAY_NO_BKK ไม่จับรูปที่ถูก: DATE( / date_part( / to_char( ที่ห่อด้วย AT TIME ZONE หรือ sqlBkk* · to_char ที่ไม่ใช่รูปแบบวันที่ · new Date(', () => {
+    expect(flaggedRules("SELECT DATE(${sqlBkkLocal('p.paid_date')}) AS d")).toEqual([]);
+    expect(flaggedRules("date_part('hour', ${sqlBkkLocal('s.created_at')})")).toEqual([]);
+    expect(flaggedRules("date_part('hour', (s.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Bangkok')")).toEqual([]);
+    expect(flaggedRules("to_char(${sqlBkkLocal('p.paid_date')}, 'YYYY-MM-DD') AS day")).toEqual([]);
+    expect(flaggedRules("to_char((p.paid_date AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Bangkok', 'YYYY-MM') AS m")).toEqual([]);
+    expect(flaggedRules("to_char(s.amount, 'FM999,999.00') AS amount")).toEqual([]);
+    expect(flaggedRules('const d = new Date(row.createdAt);')).toEqual([]);
+    expect(flaggedRules('const d = new Date();')).toEqual([]);
+  });
+
+  it('SQL_DAY_NO_BKK ต่อบรรทัดต้องห่อ "ทุกจุด" — ตัวช่วยที่จุดหนึ่งไม่ยกเว้นอีกจุด', () => {
+    // half-revert: จุดแรกห่อแล้ว แต่ due_date::date ดิบ
+    expect(flaggedRules("${sqlBkkDate('p.paid_date')} > p.due_date::date")).toEqual(['SQL_DAY_NO_BKK']);
+    expect(flaggedRules("${sqlBkkDate('p.paid_date')} > DATE(p.due_date)")).toEqual(['SQL_DAY_NO_BKK']);
+    expect(flaggedRules("date_trunc('day', ${sqlBkkLocal('a')}) = date_trunc('day', b.created_at)")).toEqual(['SQL_DAY_NO_BKK']);
+    expect(flaggedRules("${sqlBkkDate('p.paid_date')} < CURRENT_DATE")).toEqual(['SQL_DAY_NO_BKK']);
+    // ถูกทุกจุด
+    expect(flaggedRules("${sqlBkkDate('p.paid_date')} > ${sqlBkkDate('p.due_date')}")).toEqual([]);
+    expect(flaggedRules("date_trunc('day', ${sqlBkkLocal('a')}) = date_trunc('day', ${sqlBkkLocal('b')})")).toEqual([]);
+    expect(flaggedRules("(p.paid_date AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok')::date > ${dueDay}::date")).toEqual([]);
+  });
+
+  it("SQL_DAY_NO_BKK จับท่าผิด `col AT TIME ZONE 'Asia/Bangkok'` ขั้นเดียวบนคอลัมน์ naive-UTC · ไม่จับท่าสองขั้น/timestamptz", () => {
+    expect(flaggedRules("SELECT p.paid_date AT TIME ZONE 'Asia/Bangkok' AS local_paid")).toEqual(['SQL_DAY_NO_BKK']);
+    expect(flaggedRules("WHERE (s.created_at AT TIME ZONE 'Asia/Bangkok')::time > '10:00'")).toEqual(['SQL_DAY_NO_BKK']);
+    expect(flaggedRules("SELECT (p.paid_date AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Bangkok' AS local_paid")).toEqual([]);
+    expect(flaggedRules("SELECT p.paid_date AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok' AS local_paid")).toEqual([]);
+    expect(flaggedRules("SELECT NOW() AT TIME ZONE 'Asia/Bangkok' AS bkk_now")).toEqual([]);
+    expect(flaggedRules("SELECT ${at}::timestamptz AT TIME ZONE 'Asia/Bangkok' AS bkk_at")).toEqual([]);
   });
 });

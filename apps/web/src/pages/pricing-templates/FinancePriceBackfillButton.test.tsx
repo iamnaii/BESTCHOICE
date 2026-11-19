@@ -32,7 +32,7 @@ describe('FinancePriceBackfillButton', () => {
     expect(await screen.findByText(/ให้เครื่องในสต๊อกที่ยังว่าง 7 เครื่อง/)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'เติม 7 เครื่อง' }));
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/pricing-templates/backfill-finance-price'));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/pricing-templates/backfill-finance-price', undefined, { timeout: 120000 }));
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('เติมราคาขาย GFIN แล้ว 7 เครื่อง'));
   });
 
@@ -42,5 +42,35 @@ describe('FinancePriceBackfillButton', () => {
     expect(
       await screen.findByRole('button', { name: 'เติมราคาขาย GFIN ให้เครื่องในสต๊อก (0 เครื่อง)' }),
     ).toBeDisabled();
+  });
+
+  it('ยกเลิกใน dialog → ไม่เรียกเขียน', async () => {
+    vi.mocked(api.post).mockResolvedValue({ data: { count: 3 } });
+    const user = userEvent.setup();
+    renderButton();
+    await user.click(await screen.findByRole('button', { name: /\(3 เครื่อง\)/ }));
+    await user.click(await screen.findByRole('button', { name: 'ยกเลิก' }));
+    expect(api.post).toHaveBeenCalledTimes(1);
+  });
+
+  it('เขียนล้ม → แสดง error ของ API และนับจำนวนใหม่', async () => {
+    vi.mocked(api.post).mockImplementation(async (url: string) => {
+      if (url.includes('dryRun')) return { data: { count: 2 } };
+      throw new Error('boom');
+    });
+    const user = userEvent.setup();
+    renderButton();
+    await user.click(await screen.findByRole('button', { name: /\(2 เครื่อง\)/ }));
+    await user.click(await screen.findByRole('button', { name: 'เติม 2 เครื่อง' }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('ผิดพลาด'));
+    await waitFor(() =>
+      expect(vi.mocked(api.post).mock.calls.filter((c) => String(c[0]).includes('dryRun=true'))).toHaveLength(2),
+    );
+  });
+
+  it('นับ (dry run) ล้ม → แสดงข้อความ error ใต้ปุ่ม', async () => {
+    vi.mocked(api.post).mockRejectedValue(new Error('boom'));
+    renderButton();
+    expect(await screen.findByText('ผิดพลาด')).toBeInTheDocument();
   });
 });

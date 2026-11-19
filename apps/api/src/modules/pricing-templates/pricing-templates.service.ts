@@ -133,31 +133,37 @@ export class PricingTemplatesService {
     if (dryRun || fills.length === 0) return { count: fills.length };
 
     const written: string[] = [];
-    for (let i = 0; i < fills.length; i += FINANCE_BACKFILL_CHUNK) {
-      const chunk = fills.slice(i, i + FINANCE_BACKFILL_CHUNK);
-      await this.base.$transaction(async (tx) => {
-        for (const fill of chunk) {
-          const updated = await tx.product.updateMany({
-            where: { id: fill.id, financePrice: null, deletedAt: null },
-            data: { financePrice: fill.price },
-          });
-          if (updated.count !== 1) continue;
-          await syncFinancePriceRow(tx, fill.id, fill.price);
-          written.push(fill.id);
-        }
-      });
-    }
-
-    if (userId && written.length > 0) {
-      await this.base.auditLog.create({
-        data: {
-          userId,
-          action: 'PRODUCT_FINANCE_PRICE_BACKFILLED',
-          entity: 'product',
-          entityId: 'batch',
-          newValue: { count: written.length, productIds: written },
-        },
-      });
+    try {
+      for (let i = 0; i < fills.length; i += FINANCE_BACKFILL_CHUNK) {
+        const chunk = fills.slice(i, i + FINANCE_BACKFILL_CHUNK);
+        const chunkWritten: string[] = [];
+        await this.base.$transaction(async (tx) => {
+          chunkWritten.length = 0; // กัน tx ถูกลองใหม่
+          for (const fill of chunk) {
+            const updated = await tx.product.updateMany({
+              where: { id: fill.id, financePrice: null, deletedAt: null, status: { in: FINANCE_BACKFILL_STATUSES } },
+              data: { financePrice: fill.price },
+            });
+            if (updated.count !== 1) continue;
+            await syncFinancePriceRow(tx, fill.id, fill.price);
+            chunkWritten.push(fill.id);
+          }
+        });
+        written.push(...chunkWritten); // นับเฉพาะชุดที่ commit แล้ว
+      }
+    } finally {
+      // ชุดที่ commit แล้วต้องมี audit เสมอ แม้ชุดถัดไปล้ม
+      if (userId && written.length > 0) {
+        await this.base.auditLog.create({
+          data: {
+            userId,
+            action: 'PRODUCT_FINANCE_PRICE_BACKFILLED',
+            entity: 'product',
+            entityId: 'batch',
+            newValue: { count: written.length, productIds: written },
+          },
+        });
+      }
     }
     return { count: written.length };
   }

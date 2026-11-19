@@ -76,6 +76,9 @@ export class PricingTemplatesController {
   @Post('backfill-finance-price')
   @Roles('OWNER')
   backfillFinancePrice(@Query('dryRun') dryRun: string | undefined, @CurrentUser() user: { id: string }) {
+    if (dryRun !== undefined && dryRun !== 'true' && dryRun !== 'false') {
+      throw new BadRequestException('dryRun ต้องเป็น true หรือ false');
+    }
     return this.service.backfillFinancePrice({ dryRun: dryRun === 'true', userId: user?.id ?? null });
   }
 

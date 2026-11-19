@@ -70,7 +70,9 @@ describe('PricingTemplatesService.backfillFinancePrice — เติมราค
     await expect(service.backfillFinancePrice({ dryRun: false, userId: 'owner-1' })).resolves.toEqual({ count: 1 });
     expect(db.product.updateMany).toHaveBeenCalledTimes(1);
     const args = db.product.updateMany.mock.calls[0][0];
-    expect(args.where).toEqual({ id: 'p15', financePrice: null, deletedAt: null });
+    expect(args.where).toEqual({
+      id: 'p15', financePrice: null, deletedAt: null, status: { in: ['IN_STOCK', 'RESERVED', 'PHOTO_PENDING'] },
+    });
     expect(args.data.financePrice.toString()).toBe('26500');
     expect(db.productPrice.create).toHaveBeenCalledWith({
       data: { productId: 'p15', label: 'ราคาผ่อนไฟแนนซ์', amount: D('26500'), isDefault: false },
@@ -107,7 +109,7 @@ describe('PricingTemplatesService.backfillFinancePrice — เติมราค
     ]);
     await expect(service.backfillFinancePrice({ dryRun: false, userId: 'owner-1' })).resolves.toEqual({ count: 4 });
     const priceOf = (id: string) =>
-      db.product.updateMany.mock.calls.find((c: any) => c[0].where.id === id)[0].data.financePrice.toString();
+      db.product.updateMany.mock.calls.find((c: [{ where: { id: string } }]) => c[0].where.id === id)[0].data.financePrice.toString();
     expect(priceOf('thai')).toBe('26500'); // ถอยไปแถว "ไม่ระบุ"
     expect(priceOf('imp')).toBe('24000');
     expect(priceOf('used-w')).toBe('17000');
@@ -119,5 +121,26 @@ describe('PricingTemplatesService.backfillFinancePrice — เติมราค
     await expect(service.backfillFinancePrice({ dryRun: false, userId: 'owner-1' })).resolves.toEqual({ count: 120 });
     expect(db.$transaction).toHaveBeenCalledTimes(3);
     expect(db.auditLog.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('เขียนเฉพาะเครื่องที่ยังอยู่ในสถานะพร้อมขาย (ขายระหว่างรันไม่ถูกเขียน)', async () => {
+    await service.backfillFinancePrice({ dryRun: false, userId: 'owner-1' });
+    expect(db.product.updateMany.mock.calls[0][0].where.status).toEqual({ in: ['IN_STOCK', 'RESERVED', 'PHOTO_PENDING'] });
+  });
+
+  it('ชุดที่ 2 ล้ม → โยน error ต่อ และ audit รายการของชุดแรกที่ commit ไปแล้ว', async () => {
+    db.product.findMany.mockResolvedValue(Array.from({ length: 120 }, (_, i) => UNIT(`p${i}`)));
+    let calls = 0;
+    db.$transaction.mockImplementation(async (work: (tx: unknown) => unknown) => {
+      calls += 1;
+      if (calls === 2) throw new Error('db down');
+      return work(db);
+    });
+    await expect(service.backfillFinancePrice({ dryRun: false, userId: 'owner-1' })).rejects.toThrow('db down');
+    expect(db.auditLog.create).toHaveBeenCalledTimes(1);
+    const audit = db.auditLog.create.mock.calls[0][0].data.newValue;
+    expect(audit.count).toBe(50);
+    expect(audit.productIds).toHaveLength(50);
+    expect(audit.productIds[0]).toBe('p0');
   });
 });

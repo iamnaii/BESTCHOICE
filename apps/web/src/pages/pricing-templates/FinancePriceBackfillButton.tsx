@@ -22,16 +22,17 @@ export function FinancePriceBackfillButton() {
   });
 
   const fill = useMutation({
-    mutationFn: async () => (await api.post<{ count: number }>(BACKFILL_URL)).data.count,
+    mutationFn: async () => (await api.post<{ count: number }>(BACKFILL_URL, undefined, { timeout: 120000 })).data.count,
     onSuccess: (count) => {
       toast.success(`เติมราคาขาย GFIN แล้ว ${count.toLocaleString('th-TH')} เครื่อง`);
-      queryClient.invalidateQueries({ queryKey: FINANCE_BACKFILL_COUNT_KEY });
       queryClient.invalidateQueries({ queryKey: ['stock'] });
       queryClient.invalidateQueries({ queryKey: ['stock-list'] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['product'] });
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
+    // สำเร็จหรือล้มก็นับใหม่ (ล้มกลางทางอาจเขียนไปแล้วบางชุด)
+    onSettled: () => queryClient.invalidateQueries({ queryKey: FINANCE_BACKFILL_COUNT_KEY }),
   });
 
   const count = countQuery.data;
@@ -42,7 +43,7 @@ export function FinancePriceBackfillButton() {
       : `เติมราคาขาย GFIN ให้เครื่องในสต๊อก (${countText} เครื่อง)`;
 
   return (
-    <>
+    <div className="flex flex-col items-end gap-1">
       <button
         data-ui-control="button"
         type="button"
@@ -52,6 +53,9 @@ export function FinancePriceBackfillButton() {
       >
         {fill.isPending ? 'กำลังเติมราคา...' : label}
       </button>
+      {countQuery.isError && (
+        <p className="text-xs text-destructive leading-snug">{getErrorMessage(countQuery.error)}</p>
+      )}
       <ConfirmDialog
         open={open}
         onOpenChange={setOpen}
@@ -61,6 +65,6 @@ export function FinancePriceBackfillButton() {
         loading={fill.isPending}
         onConfirm={() => fill.mutate()}
       />
-    </>
+    </div>
   );
 }

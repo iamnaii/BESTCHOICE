@@ -3,6 +3,7 @@ import { BadRequestException } from '@nestjs/common';
 import { Controller, Get, Post, Put, Delete, Param, Body, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { PricingTemplatesService } from './pricing-templates.service';
+import { PricingQuoteService, QUOTE_CATEGORIES, type QuoteCategory } from './pricing-quote.service';
 import { CreatePricingTemplateDto, UpdatePricingTemplateDto } from './dto/pricing-template.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -13,7 +14,10 @@ import { Roles } from '../auth/decorators/roles.decorator';
 @Controller('pricing-templates')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class PricingTemplatesController {
-  constructor(private service: PricingTemplatesService) {}
+  constructor(
+    private service: PricingTemplatesService,
+    private quoteService: PricingQuoteService,
+  ) {}
 
   @Get()
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
@@ -35,6 +39,17 @@ export class PricingTemplatesController {
     if (!Object.values(PricingDeviceOrigin).includes(origin as PricingDeviceOrigin)) throw new BadRequestException('Invalid device origin');
     const hw = hasWarranty === 'true' ? true : hasWarranty === 'false' ? false : null;
     return this.service.lookup(brand, model, storage || null, category || 'PHONE_NEW', hw, origin as PricingDeviceOrigin);
+  }
+
+  /** หน้า "ราคาและเรทผ่อน" — ดาวน์ / ค่างวด / งวด ของทุกรุ่นจากตัวคำนวณกลาง · ไม่มีทุน กำไร ราคาส่ง GFIN (สเปคข้อ 6) */
+  @Get('quotes')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  quotes(@Query('category') category?: string, @Query('origin') origin?: string, @Query('q') q?: string) {
+    const c = category || 'PHONE_NEW';
+    if (!QUOTE_CATEGORIES.includes(c as QuoteCategory)) throw new BadRequestException('ประเภทสินค้าไม่ถูกต้อง');
+    const o = origin || 'THAI';
+    if (o !== 'THAI' && o !== 'IMPORTED') throw new BadRequestException('เครื่องไทย/เครื่องนอกไม่ถูกต้อง');
+    return this.quoteService.listQuotes({ category: c as QuoteCategory, origin: o, q: q?.slice(0, 80) });
   }
 
   @Get(':id')

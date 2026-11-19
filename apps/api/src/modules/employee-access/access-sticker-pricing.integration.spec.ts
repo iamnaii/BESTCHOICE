@@ -17,6 +17,7 @@ import { StickersController } from '../stickers/stickers.controller';
 import { StickersService } from '../stickers/stickers.service';
 import { PricingTemplatesController } from '../pricing-templates/pricing-templates.controller';
 import { PricingTemplatesService } from '../pricing-templates/pricing-templates.service';
+import { PricingQuoteService } from '../pricing-templates/pricing-quote.service';
 import { AuditInterceptor } from '../audit/audit.interceptor';
 import { AuditService } from '../audit/audit.service';
 
@@ -149,6 +150,7 @@ beforeAll(async () => {
       AccessStickerPricingBoundaries,
       StickersService,
       PricingTemplatesService,
+      PricingQuoteService,
       AccessResourceService,
       AccessPolicyService,
       AuditService,
@@ -204,6 +206,7 @@ const cases = [
   ['get', () => `/sticker-templates/products/data?ids=${productId}`, undefined, 200],
   ['get', '/pricing-templates', undefined, 200],
   ['get', '/pricing-templates/lookup?brand=Owned&model=Absent', undefined, 200],
+  ['get', '/pricing-templates/quotes?category=PHONE_NEW&origin=THAI&q=Owned', undefined, 200],
   ['get', () => `/pricing-templates/${pricingId}`, undefined, 200],
   ['post', '/pricing-templates', pricing, 201],
   ['put', () => `/pricing-templates/${pricingId}`, () => ({ cashPrice: 456.78 }), 200],

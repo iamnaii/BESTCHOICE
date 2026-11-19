@@ -136,7 +136,7 @@ describe('ProductCreatePage — การ์ดราคาขาย (แบบ 
     expect(await screen.findByText('ไม่พบรุ่นนี้ในตารางราคากลาง — กรอกราคาเอง')).toBeInTheDocument();
     expect(screen.getByLabelText('เงินสด')).toHaveValue('');
     await user.click(screen.getByRole('button', { name: 'บันทึกสินค้า' }));
-    expect(toast.error).toHaveBeenCalledWith('กรุณากรอกราคาขายอย่างน้อย 1 ราคา');
+    expect(toast.error).toHaveBeenCalledWith('กรุณากรอกราคาเงินสดหรือราคาผ่อน BESTCHOICE อย่างน้อย 1 ราคา');
     expect(api.post).not.toHaveBeenCalled();
   });
 

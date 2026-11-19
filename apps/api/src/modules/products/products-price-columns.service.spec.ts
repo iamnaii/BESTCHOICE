@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { BadRequestException } from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CREATE_NO_SELLING_PRICE_MESSAGE } from './product-enter-stock.util';
 
 describe('ProductsService — คอลัมน์ราคา (B0)', () => {
   let service: ProductsService;
@@ -16,7 +17,8 @@ describe('ProductsService — คอลัมน์ราคา (B0)', () => {
       product: {
         create: jest.fn().mockImplementation(async ({ data }: any) => ({ id: 'p1', ...data })),
         update: jest.fn().mockResolvedValue({ id: 'p1' }),
-        findUnique: jest.fn().mockResolvedValue({ id: 'p1', deletedAt: null }),
+        // หลังสร้าง: เครื่องมีราคาขายแล้ว (ด่าน IN_STOCK ของ create อ่านแถวนี้)
+        findUnique: jest.fn().mockResolvedValue({ id: 'p1', deletedAt: null, cashPrice: new Prisma.Decimal('18000'), prices: [] }),
       },
       productPrice: {
         findMany: jest.fn().mockResolvedValue([]),
@@ -264,6 +266,42 @@ describe('ProductsService — คอลัมน์ราคา (B0)', () => {
     expect(tx.productPrice.updateMany).toHaveBeenCalledWith({
       where: { productId: 'p1', label: 'ราคาผ่อนไฟแนนซ์', isDefault: false, deletedAt: null },
       data: { deletedAt: expect.any(Date) },
+    });
+  });
+  describe('create: เครื่องที่เข้าคลังพร้อมขายต้องมีราคาเงินสดหรือราคาผ่อน BESTCHOICE (final review I-2)', () => {
+    const FINANCE_ONLY = {
+      id: 'p1', deletedAt: null, status: 'IN_STOCK', cashPrice: null, installmentPrice: null,
+      financePrice: new Prisma.Decimal('26500'),
+      prices: [{ label: 'ราคาผ่อนไฟแนนซ์', amount: new Prisma.Decimal('26500'), isDefault: false, deletedAt: null }],
+    };
+
+    it('มีแต่ราคาขาย GFIN + สถานะ IN_STOCK (ค่าเริ่มต้น) → 400 ภาษาไทย ทั้งธุรกรรมถอย', async () => {
+      tx.product.findUnique.mockResolvedValue(FINANCE_ONLY);
+      await expect(
+        service.create({
+          name: 'iPhone 15', brand: 'Apple', model: '15', category: 'PHONE_NEW',
+          costPrice: 15000, branchId: 'b1', cashPrice: null, installmentPrice: null, financePrice: 26500,
+        } as never),
+      ).rejects.toThrow(new BadRequestException(CREATE_NO_SELLING_PRICE_MESSAGE));
+    });
+
+    it('มีแต่ราคาขาย GFIN แต่สถานะไม่ใช่ IN_STOCK → สร้างได้', async () => {
+      tx.product.findUnique.mockResolvedValue({ ...FINANCE_ONLY, status: 'PHOTO_PENDING' });
+      await expect(
+        service.create({
+          name: 'iPhone 15', brand: 'Apple', model: '15', category: 'PHONE_NEW', status: 'PHOTO_PENDING',
+          costPrice: 15000, branchId: 'b1', cashPrice: null, installmentPrice: null, financePrice: 26500,
+        } as never),
+      ).resolves.toBeTruthy();
+    });
+
+    it('ราคาเงินสดมาจากราคากลาง (เติมอัตโนมัติ) → ตรวจหลังเติม ผ่าน', async () => {
+      tx.product.findUnique.mockResolvedValue({ ...FINANCE_ONLY, cashPrice: new Prisma.Decimal('25900') });
+      await expect(
+        service.create({
+          name: 'iPhone 15', brand: 'Apple', model: '15', category: 'PHONE_NEW', costPrice: 15000, branchId: 'b1',
+        } as never),
+      ).resolves.toBeTruthy();
     });
   });
 });

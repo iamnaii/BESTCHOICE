@@ -115,6 +115,14 @@ export const NO_PRICE_MESSAGE =
   'ยังไม่ได้ตั้งราคาขายของเครื่องนี้ — ตั้งราคาขาย (เงินสด/ผ่อน) ก่อนจึงจะนำเข้าคลังพร้อมขายได้ ' +
   '(เครื่องที่อยู่ในคลังต้องขายที่ POS ได้ทันที)';
 
+/**
+ * หน้าเพิ่มสินค้า (`POST /products`) สร้างเครื่องเป็น IN_STOCK แต่ไม่มีราคาเงินสด/ผ่อน BESTCHOICE (เช่นกรอกแต่ราคาขาย GFIN)
+ * — ชี้ช่องในฟอร์มเดียวกัน (ข้อความเดียวกับ toast ของหน้าเพิ่มสินค้า)
+ */
+export const CREATE_NO_SELLING_PRICE_MESSAGE =
+  'กรุณากรอกราคาเงินสดหรือราคาผ่อน BESTCHOICE อย่างน้อย 1 ราคา — เครื่องที่เข้าคลังต้องขายที่ POS ได้ทันที ' +
+  '(ราคาขาย GFIN ไม่นับเป็นราคาขาย)';
+
 /** โยน `BadRequestException` เมื่อเครื่องยังไม่มีราคาขาย — ใช้ทุกประตูที่เข้า IN_STOCK */
 export function assertSellableOnEnterStock(product: EnterStockProduct): void {
   if (!hasSellingPrice(product)) {

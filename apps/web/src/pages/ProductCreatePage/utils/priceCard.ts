@@ -168,7 +168,12 @@ export function toPricePayload(category: string, fields: PriceFields, opts: { gf
   };
 }
 
-/** ต้องมีราคาอย่างน้อย 1 ช่องจึงบันทึกได้ (เท่ากติกาเดิม) */
+/**
+ * ต้องมีราคาเงินสดหรือราคาผ่อน BESTCHOICE อย่างน้อย 1 ช่องจึงบันทึกได้ — ราคาขาย GFIN ไม่นับเป็นราคาขาย
+ * (เครื่องที่เข้าคลังต้องขายที่ POS ได้ทันที · เซิร์ฟเวอร์ตรวจซ้ำตอนสร้าง)
+ */
 export function hasAnyPrice(payload: PricePayload): boolean {
-  return [payload.cashPrice, payload.installmentPrice, payload.financePrice].some((v) => v != null);
+  return payload.cashPrice != null || payload.installmentPrice != null;
 }
+
+export const NO_SELLING_PRICE_MESSAGE = 'กรุณากรอกราคาเงินสดหรือราคาผ่อน BESTCHOICE อย่างน้อย 1 ราคา';

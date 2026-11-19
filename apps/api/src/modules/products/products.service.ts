@@ -19,7 +19,9 @@ import { syncPriceRowsFromColumns } from '../../utils/product-price-sync.util';
 import { assertManualStatusChangeAllowed, productStatusLabel } from './product-status.util';
 import {
   assertSellableOnEnterStock,
+  CREATE_NO_SELLING_PRICE_MESSAGE,
   enterStockAuditData,
+  hasSellingPrice,
   positiveDecimalOrNull,
   unconfirmedLeftoverPrices,
   unconfirmedPriceMessage,
@@ -357,7 +359,13 @@ export class ProductsService {
         financePrice: financeDecimal ?? null,
       });
 
-      return tx.product.findUnique({ where: { id: product.id }, include: productInclude });
+      const created = await tx.product.findUnique({ where: { id: product.id }, include: productInclude });
+      // IN_STOCK = ขายที่ POS ได้ทันที ⇒ ต้องมีราคาเงินสดหรือผ่อน BESTCHOICE หลังเติมจากราคากลางแล้ว
+      // (ราคาขาย GFIN / แถว "ราคาผ่อนไฟแนนซ์" ไม่นับ — `hasSellingPrice` ตัวเดียวกับประตูเข้าคลังอื่น) · ล้ม = ถอยทั้งธุรกรรม
+      if (isInStock && (!created || !hasSellingPrice(created))) {
+        throw new BadRequestException(CREATE_NO_SELLING_PRICE_MESSAGE);
+      }
+      return created;
     });
   }
 

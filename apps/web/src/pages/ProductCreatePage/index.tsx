@@ -21,6 +21,7 @@ import {
   computeCardQuote,
   gfinBlocked,
   hasAnyPrice,
+  NO_SELLING_PRICE_MESSAGE,
   mergeTemplate,
   templateFields,
   templateLabelOf,
@@ -362,7 +363,7 @@ export default function ProductCreatePage() {
       return;
     }
     if (!hasAnyPrice(toPricePayload(form.category, priceFields, { gfinBlocked: isGfinBlocked }))) {
-      toast.error('กรุณากรอกราคาขายอย่างน้อย 1 ราคา');
+      toast.error(NO_SELLING_PRICE_MESSAGE);
       return;
     }
     if (pricesLoading) return;

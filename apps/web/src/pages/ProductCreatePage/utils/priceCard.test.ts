@@ -172,9 +172,11 @@ describe('payload ของหน้าเพิ่มสินค้า', () =>
     expect(toPricePayload('ACCESSORY', { cash: '290', bc: '5', finance: '5' }, { gfinBlocked: false })).toEqual({ cashPrice: 290 });
   });
 
-  it('hasAnyPrice: ต้องมีอย่างน้อย 1 ช่อง', () => {
+  it('hasAnyPrice: ต้องมีราคาเงินสดหรือราคาผ่อน BESTCHOICE อย่างน้อย 1 ช่อง — ราคาขาย GFIN อย่างเดียวไม่พอ', () => {
     expect(hasAnyPrice({ cashPrice: null, installmentPrice: null, financePrice: null })).toBe(false);
     expect(hasAnyPrice({ cashPrice: null, installmentPrice: 9000, financePrice: null })).toBe(true);
+    expect(hasAnyPrice({ cashPrice: 8000, installmentPrice: null, financePrice: null })).toBe(true);
+    expect(hasAnyPrice({ cashPrice: null, installmentPrice: null, financePrice: 26500 })).toBe(false);
   });
 
   it('accessoryProfit: ราคาขาย − ทุน · ไม่มีทุนหรือราคา = null', () => {

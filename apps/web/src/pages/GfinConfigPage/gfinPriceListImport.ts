@@ -86,6 +86,9 @@ export function buildGfinImportReview(
     if (!condition) return void skip('ช่อง มือ 1/มือ 2 ต้องเป็น มือ 1 หรือ มือ 2');
     const price = Number(priceText.replace(/,/g, ''));
     if (!Number.isFinite(price) || !(price > 0)) return void skip('ราคาต้องเป็นตัวเลขมากกว่า 0');
+    // DTO ของเซิร์ฟเวอร์ maxDecimalPlaces 2 — แถวเดียวเกินทำให้ทั้งชุด 400 ⇒ ข้ามที่นี่ (เทียบแบบเผื่อ float: 17900.29 × 100)
+    if (Math.abs(price * 100 - Math.round(price * 100)) > 1e-6)
+      return void skip('ราคาต้องมีทศนิยมไม่เกิน 2 ตำแหน่ง');
 
     // ลงทะเบียนคีย์เฉพาะแถวที่ถูกต้อง — แถวผิดไม่บังแถวถูกที่ตามมา
     const key = keyOf(model, storage, condition);

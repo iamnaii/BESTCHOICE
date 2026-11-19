@@ -92,6 +92,18 @@ describe('buildGfinImportReview', () => {
     expect(review.toSend).toEqual([{ model: 'iPhone 18', storage: '256GB', condition: 'HAND_1', maxPrice: 40000 }]);
   });
 
+  it('ราคาทศนิยมเกิน 2 ตำแหน่ง → ข้ามพร้อมเหตุผล ไม่ส่ง (เซิร์ฟเวอร์ปฏิเสธทั้งชุด) · 2 ตำแหน่งยังรับ', () => {
+    const review = buildGfinImportReview(
+      [row('iPhone 15', '128GB', 'มือ 2', 16900.125), row('iPhone 15', '256GB', 'มือ 2', '17,900.50')],
+      [],
+    );
+    expect(review.rows.map((r) => [r.rowNumber, r.action, r.detail])).toEqual([
+      [2, 'SKIP', 'ราคาต้องมีทศนิยมไม่เกิน 2 ตำแหน่ง'],
+      [3, 'ADD', undefined],
+    ]);
+    expect(review.toSend).toEqual([{ model: 'iPhone 15', storage: '256GB', condition: 'HAND_2', maxPrice: 17900.5 }]);
+  });
+
   it('มือ 1 กับ มือ 2 ของรุ่นเดียวกันไม่ถือว่าซ้ำ', () => {
     const review = buildGfinImportReview(
       [row('iPhone 18', '256GB', 'มือ 1', 40000), row('iPhone 18', '256GB', 'มือ 2', 30000)],

@@ -143,6 +143,21 @@ describe('buildPricingImportReview', () => {
     expect(review.rows[0]).toMatchObject({ action: 'UPDATE', detail: 'ดาวน์เรท 1 15,000 → ว่าง' });
   });
 
+  it('แถวในไฟล์ที่ถูกข้าม (ราคาผิด) ยังนับว่าอยู่ในไฟล์ → ไม่อยู่ใน missingActive', () => {
+    const review = buildPricingImportReview([row({ 'ราคาเงินสด': 'abc' })], [existing()]);
+    expect(review.rows[0]).toMatchObject({ action: 'SKIP' });
+    expect(review.toSend).toEqual([]);
+    expect(review.missingActive).toEqual([]);
+  });
+
+  it('ที่มาเครื่องเป็นชื่อสืบทอด (constructor) → ข้ามด้วยข้อความผิดปกติ', () => {
+    const review = buildPricingImportReview([row({ 'เครื่องไทย/นอก': 'constructor' })], []);
+    expect(review.rows[0]).toMatchObject({
+      action: 'SKIP',
+      detail: 'เครื่องไทย/นอก ต้องเป็น เครื่องไทย · เครื่องนอก · หรือเว้นว่าง',
+    });
+  });
+
   it('มือ 2 มีประกัน กับ ไม่มีประกัน เป็นคนละแถว', () => {
     const used = (warranty: string) => row({ 'ประเภท': 'มือ 2', 'ประกัน': warranty });
     const review = buildPricingImportReview([used('มีประกัน'), used('ไม่มีประกัน')], []);
@@ -185,5 +200,15 @@ describe('sendPricingImport', () => {
     const error = await sendPricingImport(post, Array(150).fill(item), []).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ImportBatchError);
     expect((error as Error).message).toBe('ชุดที่ 2 ถูกปฏิเสธ (ROW_2:INVALID_ROW) — บันทึกแล้ว 100 แถวจากชุดก่อนหน้า');
+  });
+
+  it('post ล้มเหลว (เครือข่าย/HTTP) ในชุดที่ 2 → ImportBatchError บอกจำนวนที่บันทึกแล้ว', async () => {
+    const post = vi
+      .fn()
+      .mockResolvedValueOnce({ success: 100, skipped: 0, errors: [] })
+      .mockRejectedValueOnce(new Error('Network Error'));
+    const error = await sendPricingImport(post, Array(150).fill(item), []).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ImportBatchError);
+    expect((error as Error).message).toBe('ชุดที่ 2 ส่งไม่สำเร็จ (Network Error) — บันทึกแล้ว 100 แถวจากชุดก่อนหน้า');
   });
 });

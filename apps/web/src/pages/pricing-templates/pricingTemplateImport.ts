@@ -133,7 +133,7 @@ export function parsePricingRow(row: Record<string, unknown>): ParsedRow {
   const label = [brand, model, storage, categoryText, warrantyText, originText].filter(Boolean).join(' ');
 
   if (!brand || !model) return { label, error: 'ไม่มียี่ห้อหรือรุ่น' };
-  if (!(originText in ORIGINS))
+  if (!Object.prototype.hasOwnProperty.call(ORIGINS, originText))
     return { label, error: 'เครื่องไทย/นอก ต้องเป็น เครื่องไทย · เครื่องนอก · หรือเว้นว่าง' };
   const compact = categoryText.replace(/\s+/g, '');
   const category = compact === 'มือ1' ? 'PHONE_NEW' : compact === 'มือ2' ? 'PHONE_USED' : null;
@@ -179,6 +179,24 @@ export function parsePricingRow(row: Record<string, unknown>): ParsedRow {
   };
 }
 
+/** คีย์ของแถวที่ถูกข้าม — อ่านยี่ห้อ/รุ่น/ประเภทได้ก็ถือว่า "อยู่ในไฟล์" (กันปิดแถวเดิมผิด) */
+function skippedRowKey(row: Record<string, unknown>): string | null {
+  const brand = cell(row, PRICING_HEADER.brand);
+  const model = cell(row, PRICING_HEADER.model);
+  const compact = cell(row, PRICING_HEADER.category).replace(/\s+/g, '');
+  const category = compact === 'มือ1' ? 'PHONE_NEW' : compact === 'มือ2' ? 'PHONE_USED' : null;
+  if (!brand || !model || !category) return null;
+  const originText = cell(row, PRICING_HEADER.origin);
+  return pricingKey({
+    brand,
+    model,
+    storage: cell(row, PRICING_HEADER.storage),
+    category,
+    hasWarranty: cell(row, PRICING_HEADER.warranty) === 'มีประกัน',
+    deviceOrigin: Object.prototype.hasOwnProperty.call(ORIGINS, originText) ? ORIGINS[originText] : 'UNSPECIFIED',
+  });
+}
+
 const num = (v: string | number | null): number | null => (v === null || v === '' ? null : Number(v));
 const show = (v: number | null) => (v === null ? 'ว่าง' : v.toLocaleString('th-TH'));
 
@@ -209,6 +227,8 @@ export function buildPricingImportReview(
     const parsed = parsePricingRow(row);
     if (!parsed) return;
     if ('error' in parsed) {
+      const skippedKey = skippedRowKey(row);
+      if (skippedKey && !seen.has(skippedKey)) seen.set(skippedKey, rowNumber);
       review.push({ rowNumber, label: parsed.label, action: 'SKIP', detail: parsed.error });
       return;
     }
@@ -259,10 +279,16 @@ export async function sendPricingImport(
   for (let i = 0; i < batches.length; i++) {
     onProgress?.(i + 1, batches.length);
     const last = i === batches.length - 1;
-    const res = await post({
-      items: batches[i],
-      ...(last && deactivateIds.length > 0 ? { deactivateIds } : {}),
-    });
+    let res: PricingImportResponse;
+    try {
+      res = await post({
+        items: batches[i],
+        ...(last && deactivateIds.length > 0 ? { deactivateIds } : {}),
+      });
+    } catch (e) {
+      const reason = e instanceof Error ? e.message : String(e);
+      throw new ImportBatchError(`ชุดที่ ${i + 1} ส่งไม่สำเร็จ (${reason}) — บันทึกแล้ว ${saved} แถวจากชุดก่อนหน้า`);
+    }
     if (res.errors.length > 0)
       throw new ImportBatchError(
         `ชุดที่ ${i + 1} ถูกปฏิเสธ (${res.errors.join(', ')}) — บันทึกแล้ว ${saved} แถวจากชุดก่อนหน้า`,

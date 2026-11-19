@@ -25,8 +25,6 @@ export interface PreviewResult {
   totalWithVat?: number;
   financedAmount?: number;
   months?: number;
-  gfinSubmitPrice?: number;
-  downDiscount?: number;
   /** BC only — the minimum down payment, in percent. */
   minDownPct?: number;
   /** BC only — งวดที่ตั้งค่าดอกเบี้ยมีอัตรา (ตัวเลือกจำนวนงวดของเว็บ shop) */
@@ -233,8 +231,7 @@ export class InstallmentPreviewService {
       downAmount: result.downAmountActual.toNumber(),
       financedAmount: result.financedAmount.toNumber(),
       months: dto.months,
-      gfinSubmitPrice: result.gfinSubmitPrice.toNumber(),
-      downDiscount: result.downDiscount.toNumber(),
+      // ราคาส่ง GFIN / ส่วนลดดาวน์ไม่ออกเว็บร้าน (กติการวม — ราคาส่ง − ส่วนลด = ราคาขาย GFIN ของเครื่อง)
     };
   }
 }

@@ -309,7 +309,7 @@ describe('InstallmentPreviewService', () => {
 
     const result = await service.preview({ productId: 'p1', provider: 'GFIN', months: 12 });
     // ราคาส่ง 21,500 + OVER 500 = 22,000 → ดาวน์ตามสูตร 6,600 → ยอดจัด 15,400
-    expect(result.gfinSubmitPrice).toBe(22000);
+    expect(result).not.toHaveProperty('gfinSubmitPrice'); // ราคาส่ง GFIN ห้ามออกเว็บร้าน (กติการวม)
     expect(result.financedAmount).toBe(15400);
     expect(result.monthlyPayment).toBe(2861); // ceil(15,400 × 0.179238) + 100
     expect(result.downAmount).toBe(4500); // 6,600 − (22,000 − 19,900)
@@ -449,7 +449,10 @@ describe('InstallmentPreviewService', () => {
     expect(json).not.toContain('21500');               // maxPrice
     expect(json).not.toContain('0.179238');            // factor
     expect(json).not.toContain('iPhone 14|iPhone 15'); // seriesPattern
-    // gfinSubmitPrice IS exposed (22500 = 21500 + 1000) — that's fine, it's the customer-visible derived value
+    // ราคาส่ง GFIN (22,500 = 21,500 + 1,000) และส่วนลดดาวน์ห้ามออกเว็บร้าน — ราคาส่ง − ส่วนลด = ราคาขาย GFIN ของเครื่อง
+    expect(result).not.toHaveProperty('gfinSubmitPrice');
+    expect(result).not.toHaveProperty('downDiscount');
+    expect(json).not.toContain('22500');
   });
 
   describe('GFIN: ดาวน์ขั้นต่ำตามกติกา OVER (สเปค 3.3 / 4.3)', () => {

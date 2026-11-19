@@ -16,8 +16,6 @@ interface PreviewResponse {
   totalWithVat?: number;
   financedAmount?: number;
   months?: number;
-  gfinSubmitPrice?: number;
-  downDiscount?: number;
   /** BC only — the minimum down payment in percent, straight from the rate
    *  table. The old hardcoded 15 went stale the moment the owner edited it. */
   minDownPct?: number;

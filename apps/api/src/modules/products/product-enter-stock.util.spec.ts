@@ -158,3 +158,18 @@ describe('unconfirmedLeftoverPrices — ราคาบวกที่ค้า�
     expect(ENTER_STOCK_AUDIT_ACTION).toBe('PRODUCT_RETURNED_TO_STOCK');
   });
 });
+
+describe('hasSellingPrice — แถว "ราคาผ่อนไฟแนนซ์" ไม่ใช่ราคาขายหน้าร้าน', () => {
+  const row = (label: string, isDefault = false) => ({ label, amount: D('21900'), isDefault, deletedAt: null });
+
+  it('เครื่องที่มีแค่ราคาขาย GFIN (แถวไม่ใช่ค่าเริ่มต้น) → false', () => {
+    expect(
+      hasSellingPrice({ cashPrice: null, installmentPrice: null, prices: [row('ราคาผ่อนไฟแนนซ์')] }),
+    ).toBe(false);
+  });
+
+  it('มีแถวเงินสด หรือแถวผ่อน BESTCHOICE → true', () => {
+    expect(hasSellingPrice({ prices: [row('ราคาเงินสด', true), row('ราคาผ่อนไฟแนนซ์')] })).toBe(true);
+    expect(hasSellingPrice({ prices: [row('ราคาผ่อน BESTCHOICE')] })).toBe(true);
+  });
+});

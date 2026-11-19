@@ -9,7 +9,7 @@ import { StockProduct } from '../types';
 
 /**
  * Task 13 — is this the label `syncPriceRowsFromColumns` (apps/api) write-through
- * targets? If so the row mirrors `Product.cashPrice`/`installmentPrice` (source
+ * targets? If so the row mirrors `Product.cashPrice`/`installmentPrice`/`financePrice` (source
  * of truth) and must be edited via the column PATCH, never the row-level
  * `/products/:id/prices` CRUD.
  */
@@ -214,6 +214,10 @@ export function PriceManagementModal({
                       </p>
                     )}
                     <div className="flex items-center justify-between">
+                      {price.label.trim() === FINANCE_LABEL ? (
+                        // แถวสำเนาราคาขาย GFIN เป็นค่าเริ่มต้นไม่ได้ (API ปฏิเสธ) — ไม่แสดง checkbox
+                        <span />
+                      ) : (
                       <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
                         <input
                           type="checkbox"
@@ -223,6 +227,7 @@ export function PriceManagementModal({
                         />
                         ค่าเริ่มต้น
                       </label>
+                      )}
                       <div className="flex gap-2">
                         <button data-ui-control="button" type="button" onClick={cancelEditPrice} className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground">
                           ยกเลิก

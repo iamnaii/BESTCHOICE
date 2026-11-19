@@ -475,7 +475,11 @@ export class ProductsService {
             via: 'PATCH',
             before: existing,
             // ราคาที่ใบนี้เขียนจริง (ถ้ามี) — ไม่ส่ง = ไม่แตะ ⇒ helper จะ echo ราคาเดิม
-            after: { cashPrice: cashDecimal ?? null, installmentPrice: installmentDecimal ?? null },
+            after: {
+              cashPrice: cashDecimal ?? null,
+              installmentPrice: installmentDecimal ?? null,
+              ...(financeDecimal !== undefined ? { financePrice: financeDecimal } : {}),
+            },
           }),
         });
       }
@@ -596,7 +600,7 @@ export class ProductsService {
           fromStatus: product.status,
           via: 'BUTTON',
           before: product,
-          after: { cashPrice: cashDecimal, installmentPrice: installmentDecimal },
+          after: { cashPrice: cashDecimal, installmentPrice: installmentDecimal, financePrice },
           note: input.note,
         }),
       });

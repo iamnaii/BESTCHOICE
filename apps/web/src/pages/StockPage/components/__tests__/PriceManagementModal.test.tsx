@@ -184,6 +184,13 @@ describe('PriceManagementModal — Task 13 column-awareness', () => {
     expect(apiPatch).not.toHaveBeenCalledWith('/products/p-1/prices/pr-f', expect.anything());
   });
 
+  it('(G) แก้แถว "ราคาผ่อนไฟแนนซ์" → ไม่มี checkbox ค่าเริ่มต้น (แถวนี้เป็นค่าเริ่มต้นไม่ได้)', () => {
+    renderHarness(makeProduct([{ id: 'pr-f', label: 'ราคาผ่อนไฟแนนซ์', amount: '21900', isDefault: false }]));
+    fireEvent.click(screen.getByTitle('แก้ไข'));
+    expect(screen.queryByLabelText('ค่าเริ่มต้น')).toBeNull();
+    expect(screen.queryByRole('checkbox')).toBeNull();
+  });
+
   it('(b) แก้แถว label อื่น → ยิงเส้น /prices เดิม ไม่แตะ PATCH คอลัมน์', async () => {
     apiPatch.mockResolvedValue({ data: {} });
     const product = makeProduct([{ id: 'pr-2', label: 'ราคาส่ง', amount: '13000', isDefault: false }]);

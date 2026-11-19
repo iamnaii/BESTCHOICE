@@ -61,6 +61,7 @@ export interface EnterStockPriceRow {
 export interface EnterStockProduct {
   cashPrice?: Prisma.Decimal | string | number | null;
   installmentPrice?: Prisma.Decimal | string | number | null;
+  financePrice?: Prisma.Decimal | string | number | null;
   prices?: EnterStockPriceRow[];
 }
 
@@ -103,7 +104,10 @@ export function hasSellingPrice(product: EnterStockProduct): boolean {
   if (isPositiveAmount(product.cashPrice) || isPositiveAmount(product.installmentPrice)) {
     return true;
   }
-  return liveRows(product).some((r) => isPositiveAmount(r.amount));
+  // แถว "ราคาผ่อนไฟแนนซ์" ที่ไม่ใช่ค่าเริ่มต้นคือสำเนาราคาขาย GFIN — ไม่ใช่ราคาที่ POS ขายได้
+  return liveRows(product).some(
+    (r) => !(r.label === FINANCE_LABEL && !r.isDefault) && isPositiveAmount(r.amount),
+  );
 }
 
 export const NO_PRICE_MESSAGE =
@@ -255,11 +259,17 @@ export function enterStockAuditData(input: {
   fromStatus: string;
   via: EnterStockVia;
   before: EnterStockProduct;
-  after?: { cashPrice?: Prisma.Decimal | null; installmentPrice?: Prisma.Decimal | null };
+  after?: {
+    cashPrice?: Prisma.Decimal | null;
+    installmentPrice?: Prisma.Decimal | null;
+    /** undefined = ประตูนั้นไม่แตะ (echo ค่าเดิม) · null = ล้างจริง */
+    financePrice?: Prisma.Decimal | null;
+  };
   note?: string | null;
 }) {
   const beforeCash = amountText(input.before.cashPrice);
   const beforeInstallment = amountText(input.before.installmentPrice);
+  const beforeFinance = amountText(input.before.financePrice);
   return {
     userId: input.userId,
     action: ENTER_STOCK_AUDIT_ACTION,
@@ -269,6 +279,7 @@ export function enterStockAuditData(input: {
       status: input.fromStatus,
       cashPrice: beforeCash,
       installmentPrice: beforeInstallment,
+      financePrice: beforeFinance,
     },
     newValue: {
       status: 'IN_STOCK',
@@ -276,6 +287,8 @@ export function enterStockAuditData(input: {
       // ไม่ส่งค่าใหม่มา = ประตูนั้นไม่ได้แตะราคา → ราคาหลังเข้าคลัง = ราคาเดิม
       cashPrice: amountText(input.after?.cashPrice) ?? beforeCash,
       installmentPrice: amountText(input.after?.installmentPrice) ?? beforeInstallment,
+      financePrice:
+        input.after?.financePrice === undefined ? beforeFinance : amountText(input.after.financePrice),
       note: input.note ?? null,
     },
   };

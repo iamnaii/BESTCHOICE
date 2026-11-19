@@ -87,7 +87,7 @@ describe('ProductCreatePage — รุ่น (Combobox)', () => {
     await user.selectOptions(await screen.findByLabelText('ยี่ห้อ *'), 'Apple');
     await user.selectOptions(screen.getByLabelText('สาขา *'), 'branch-1');
     await user.type(screen.getByLabelText('ราคาทุน (บาท) *'), '25000');
-    await user.type(screen.getByLabelText('ราคาเงินสด'), '30000');
+    await user.type(screen.getByLabelText('เงินสด'), '30000');
     await user.click(screen.getByRole('button', { name: 'บันทึกสินค้า' }));
 
     expect(toast.error).toHaveBeenCalledWith('กรุณาเลือกรุ่น');

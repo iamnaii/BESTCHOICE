@@ -22,10 +22,13 @@ function renderCard(over: Partial<PriceCardProps> = {}) {
     templatePrices: TPL,
     templateLabel: 'iPhone 15 128GB มือ 1',
     templateNotFound: false,
+    templateFailed: false,
     onUseTemplate: vi.fn(),
+    onRetry: vi.fn(),
     quote: QUOTE,
     gfinBlocked: false,
     bcConfigMissing: false,
+    bcConfigFailed: false,
     accessoryProfit: null,
     costEntered: true,
     ...over,
@@ -38,7 +41,7 @@ describe('PriceCard (แบบ D)', () => {
   it('ตามราคากลาง: ป้ายหัวการ์ด + 3 แถวพร้อมดาวน์ / ค่างวด / กำไร', () => {
     renderCard();
     expect(screen.getByText('ตามตารางราคากลาง · iPhone 15 128GB มือ 1')).toBeInTheDocument();
-    expect(screen.getByLabelText('ราคาเงินสด')).toHaveValue('25,900');
+    expect(screen.getByLabelText('เงินสด')).toHaveValue('25,900');
     expect(screen.getByText(paragraph('ดาวน์ 3,900 · ผ่อน 3,139 × 12 งวด'))).toBeInTheDocument();
     expect(screen.getByText(paragraph('ยอดจัด 22,000'))).toBeInTheDocument();
     expect(screen.getByText(paragraph('ดาวน์ 6,500 · ผ่อน 3,403 × 12 งวด'))).toBeInTheDocument();
@@ -49,7 +52,7 @@ describe('PriceCard (แบบ D)', () => {
 
   it('แก้ราคาเอง: กรอบเตือน + "ราคากลาง X" + ปุ่ม "ใช้ราคากลางทั้งหมด"', async () => {
     const props = renderCard({ fields: { ...TPL, bc: '27000' } });
-    const bc = screen.getByLabelText('ราคาผ่อน BESTCHOICE');
+    const bc = screen.getByLabelText('ผ่อน BESTCHOICE');
     expect(bc.className).toContain('border-warning');
     expect(screen.getByText('ราคากลาง 25,900')).toBeInTheDocument();
     expect(screen.getByText('แก้ 1 ราคาจากตารางราคากลาง')).toBeInTheDocument();
@@ -59,7 +62,7 @@ describe('PriceCard (แบบ D)', () => {
 
   it('พิมพ์ราคา → แจ้งช่องที่แก้', async () => {
     const props = renderCard({ fields: { cash: '', bc: '', finance: '' } });
-    await userEvent.type(screen.getByLabelText('ราคาเงินสด'), '9');
+    await userEvent.type(screen.getByLabelText('เงินสด'), '9');
     expect(props.onFieldChange).toHaveBeenLastCalledWith('cash', '9');
   });
 
@@ -74,7 +77,7 @@ describe('PriceCard (แบบ D)', () => {
       gfinBlocked: true,
       quote: { ...QUOTE, rate2: { available: false, reason: 'NO_PRICE_LIST', message: 'GFIN ไม่รับรุ่นนี้' } },
     });
-    const finance = screen.getByLabelText('ราคาขาย GFIN');
+    const finance = screen.getByLabelText('ผ่อน GFIN ราคาขาย');
     expect(finance).toBeDisabled();
     expect(finance).toHaveValue('');
     expect(screen.getByText('GFIN ไม่รับรุ่นนี้ — ขายได้แค่เงินสดและผ่อน BESTCHOICE')).toBeInTheDocument();
@@ -86,7 +89,7 @@ describe('PriceCard (แบบ D)', () => {
       fields: { cash: '', bc: '', finance: '' },
       quote: { cash: null, rate1: null, rate2: { available: false, reason: 'NO_PRICE', message: 'กรอกราคาขาย GFIN หรือราคาผ่อน' } },
     });
-    expect(screen.getByLabelText('ราคาขาย GFIN')).toBeDisabled();
+    expect(screen.getByLabelText('ผ่อน GFIN ราคาขาย')).toBeDisabled();
     expect(screen.getByText('GFIN ไม่รับรุ่นนี้ — ขายได้แค่เงินสดและผ่อน BESTCHOICE')).toBeInTheDocument();
     expect(screen.queryByText('กรอกราคาขาย GFIN หรือราคาผ่อน')).not.toBeInTheDocument();
   });
@@ -108,14 +111,14 @@ describe('PriceCard (แบบ D)', () => {
       quote: { cash: null, rate1: null, rate2: { available: false, reason: 'NO_PRICE', message: 'กรอกราคาขาย GFIN หรือราคาผ่อน' } },
     });
     expect(screen.getByText('ไม่พบรุ่นนี้ในตารางราคากลาง — กรอกราคาเอง')).toBeInTheDocument();
-    expect(screen.getByLabelText('ราคาเงินสด')).toHaveValue('');
+    expect(screen.getByLabelText('เงินสด')).toHaveValue('');
     expect(screen.queryByText(/ตามตารางราคากลาง/)).not.toBeInTheDocument();
   });
 
   it('อุปกรณ์เสริม: แถวเดียว "ราคาขาย"', () => {
     renderCard({ category: 'ACCESSORY', fields: { cash: '290', bc: '', finance: '' }, templatePrices: null, quote: null, accessoryProfit: 265 });
     expect(screen.getByLabelText('ราคาขาย')).toHaveValue('290');
-    expect(screen.queryByLabelText('ราคาผ่อน BESTCHOICE')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('ผ่อน BESTCHOICE')).not.toBeInTheDocument();
     expect(screen.getByText('กำไร 265')).toBeInTheDocument();
   });
 
@@ -130,5 +133,27 @@ describe('PriceCard (แบบ D)', () => {
     });
     expect(screen.queryByText(/^กำไร /)).not.toBeInTheDocument();
     expect(screen.getByText('กรอกราคาทุนเพื่อดูกำไร')).toBeInTheDocument();
+  });
+
+  it('ชื่อช่อง (accessible name) ขึ้นต้นด้วยคำที่เห็นบนป้าย — WCAG 2.5.3', () => {
+    renderCard();
+    expect(screen.getByRole('spinbutton', { name: 'เงินสด' })).toBeInTheDocument();
+    expect(screen.getByRole('spinbutton', { name: 'ผ่อน BESTCHOICE' })).toBeInTheDocument();
+    expect(screen.getByRole('spinbutton', { name: 'ผ่อน GFIN ราคาขาย' })).toBeInTheDocument();
+  });
+
+  it('ค้นราคากลางไม่สำเร็จ → "โหลดราคากลางไม่สำเร็จ — ลองใหม่" ไม่ใช่ "ไม่พบรุ่นนี้" · กดลองใหม่ได้', async () => {
+    const props = renderCard({ templatePrices: null, templateFailed: true, fields: { cash: '30000', bc: '', finance: '' } });
+    expect(screen.getByText(paragraph('โหลดราคากลางไม่สำเร็จ — ลองใหม่'))).toBeInTheDocument();
+    expect(screen.queryByText('ไม่พบรุ่นนี้ในตารางราคากลาง — กรอกราคาเอง')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('เงินสด')).toHaveValue('30,000');
+    await userEvent.click(screen.getByRole('button', { name: 'ลองใหม่' }));
+    expect(props.onRetry).toHaveBeenCalled();
+  });
+
+  it('โหลดตั้งค่าดอกเบี้ยไม่สำเร็จ → แถวผ่อน BESTCHOICE บอกโหลดไม่สำเร็จ ไม่ใช่ "ยังไม่มีตั้งค่าดอกเบี้ย"', () => {
+    renderCard({ bcConfigFailed: true, bcConfigMissing: false, quote: { ...QUOTE, rate1: null } });
+    expect(screen.getByText(paragraph('โหลดราคากลางไม่สำเร็จ — ลองใหม่'))).toBeInTheDocument();
+    expect(screen.queryByText(/ยังไม่มีตั้งค่าดอกเบี้ย/)).not.toBeInTheDocument();
   });
 });

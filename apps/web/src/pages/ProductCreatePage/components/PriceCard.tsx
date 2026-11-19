@@ -22,13 +22,19 @@ export interface PriceCardProps {
   /** "iPhone 15 128GB มือ 1" — แสดงเมื่อมีราคากลาง */
   templateLabel: string;
   templateNotFound: boolean;
+  /** ค้นราคากลางไม่สำเร็จ (เครือข่าย/เซิร์ฟเวอร์) — ไม่ใช่ "ไม่พบรุ่น" · ช่องราคาคงเดิม */
+  templateFailed: boolean;
   onUseTemplate: () => void;
+  /** โหลดราคากลาง / ตั้งค่าดอกเบี้ยที่ล้มใหม่ */
+  onRetry: () => void;
   /** null = อุปกรณ์เสริม / ยังไม่เลือกยี่ห้อและรุ่น */
   quote: ModelQuote | null;
   /** รุ่นนี้ไม่มีในใบราคา GFIN (`gfinBlocked` จากตารางรุ่น ไม่ขึ้นกับช่องราคา) — ช่อง GFIN ปิดและบันทึกเป็นค่าว่าง */
   gfinBlocked: boolean;
   /** หมวดนี้ไม่มีตั้งค่าดอกเบี้ย (เช่น แท็บเล็ต) — เรท 1 คิดไม่ได้ */
   bcConfigMissing: boolean;
+  /** โหลดตั้งค่าดอกเบี้ยไม่สำเร็จ — ไม่ใช่ "ยังไม่มีตั้งค่า" */
+  bcConfigFailed: boolean;
   accessoryProfit: number | null;
   costEntered: boolean;
 }
@@ -52,6 +58,22 @@ function ProfitBadge({ profit }: { profit: number | null }) {
 
 function Muted({ children }: { children: ReactNode }) {
   return <p className="text-xs leading-snug text-muted-foreground">{children}</p>;
+}
+
+/** "โหลดราคากลางไม่สำเร็จ — ลองใหม่" — ปุ่มลองใหม่อยู่ในประโยค */
+function RetryNotice({ onRetry }: { onRetry: () => void }) {
+  return (
+    <p className="text-xs leading-snug text-warning-strong">
+      โหลดราคากลางไม่สำเร็จ —{' '}
+      <button
+        type="button"
+        onClick={onRetry}
+        className="inline-flex items-center font-medium text-primary underline underline-offset-2 max-lg:min-h-11 lg:min-h-8"
+      >
+        ลองใหม่
+      </button>
+    </p>
+  );
 }
 
 function Plan({ down, monthly, months }: { down: number; monthly: number; months: number }) {
@@ -80,6 +102,7 @@ function PriceRow({
   id: string;
   label: string;
   sub?: string;
+  /** ชื่อช่อง — ขึ้นต้นด้วยคำบนป้าย (WCAG 2.5.3) */
   ariaLabel: string;
   value: string;
   onChange: (value: string) => void;
@@ -142,10 +165,13 @@ export default function PriceCard({
   templatePrices,
   templateLabel,
   templateNotFound,
+  templateFailed,
   onUseTemplate,
+  onRetry,
   quote,
   gfinBlocked: blocked,
   bcConfigMissing,
+  bcConfigFailed,
   accessoryProfit,
   costEntered,
 }: PriceCardProps) {
@@ -186,6 +212,7 @@ export default function PriceCard({
             )}
           </div>
         )}
+        {!accessory && templateFailed && <RetryNotice onRetry={onRetry} />}
       </CardHeader>
       <CardContent className="p-0">
         {accessory ? (
@@ -206,7 +233,7 @@ export default function PriceCard({
             <PriceRow
               id={`${baseId}-cash`}
               label="เงินสด"
-              ariaLabel="ราคาเงินสด"
+              ariaLabel="เงินสด"
               value={fields.cash}
               onChange={(v) => onFieldChange('cash', v)}
               edited={isEdited('cash')}
@@ -219,7 +246,7 @@ export default function PriceCard({
               id={`${baseId}-bc`}
               label="ผ่อน BESTCHOICE"
               sub="เรท 1"
-              ariaLabel="ราคาผ่อน BESTCHOICE"
+              ariaLabel="ผ่อน BESTCHOICE"
               value={fields.bc}
               onChange={(v) => onFieldChange('bc', v)}
               edited={isEdited('bc')}
@@ -233,6 +260,8 @@ export default function PriceCard({
                   <Plan down={rate1.downAmount} monthly={rate1.monthlyDisplay} months={rate1.months} />
                   <Muted>ยอดจัด {formatBahtPlain(rate1.price - rate1.downAmount)}</Muted>
                 </>
+              ) : bcConfigFailed ? (
+                <RetryNotice onRetry={onRetry} />
               ) : (
                 <Muted>
                   {bcConfigMissing ? 'ยังไม่มีตั้งค่าดอกเบี้ยของหมวดนี้ — คิดค่างวดไม่ได้' : 'กรอกราคาเพื่อดูดาวน์และค่างวด'}
@@ -243,7 +272,7 @@ export default function PriceCard({
               id={`${baseId}-finance`}
               label="ผ่อน GFIN"
               sub="เรท 2 · ราคาขาย"
-              ariaLabel="ราคาขาย GFIN"
+              ariaLabel="ผ่อน GFIN ราคาขาย"
               value={blocked ? '' : fields.finance}
               onChange={(v) => onFieldChange('finance', v)}
               disabled={blocked}

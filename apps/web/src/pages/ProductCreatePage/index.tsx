@@ -3,6 +3,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { Loader2 } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -121,18 +122,22 @@ export default function ProductCreatePage() {
     enabled: lookupQuery !== null,
     retry: false,
   });
-  // undefined = ยังรอคำตอบ (ไม่แตะช่อง) · null = ไม่มีราคากลาง (ยังไม่เลือกรุ่น / ไม่พบ / ค้นไม่สำเร็จ — กรอกเองได้)
-  const template: PriceTemplate | null | undefined =
-    lookupQuery === null
-      ? null
-      : templateQuery.isSuccess
-        ? templateQuery.data
-        : templateQuery.isError
-          ? null
-          : undefined;
+  // undefined = ยังไม่มีคำตอบที่ใช้ได้ (รอ / ค้นไม่สำเร็จ — ไม่เติมช่อง) · null = ไม่มีราคากลาง (ยังไม่เลือกรุ่น / ไม่พบ — กรอกเอง)
+  const template: PriceTemplate | null | undefined = lookupQuery === null ? null : templateQuery.data;
+  const templatePending = lookupQuery !== null && templateQuery.isPending;
+  const templateFailed = lookupQuery !== null && templateQuery.isError && templateQuery.data === undefined;
   const templatePrices = useMemo(() => (template === undefined ? undefined : templateFields(template)), [template]);
   // ราคากลางชุดที่เติมล่าสุด — ช่องที่ยังเท่าชุดนี้ถือว่า "อัตโนมัติ" เปลี่ยนตามรุ่นได้ ช่องที่แก้เองคงไว้
   const appliedTemplate = useRef<PriceFields | null>(null);
+  const appliedLookup = useRef<string | null>(null);
+  // เปลี่ยนรุ่น / ความจุ / ไทย-นอก / ประกัน / หมวด → ล้างช่องอัตโนมัติของชุดเดิมทันที ไม่ให้ราคารุ่นก่อนค้างระหว่างรอ
+  useEffect(() => {
+    if (appliedLookup.current === lookupQuery) return;
+    appliedLookup.current = lookupQuery;
+    const previous = appliedTemplate.current;
+    appliedTemplate.current = null;
+    setPriceFields((current) => mergeTemplate(current, previous, null));
+  }, [lookupQuery]);
   useEffect(() => {
     if (templatePrices === undefined) return;
     const previous = appliedTemplate.current;
@@ -141,7 +146,14 @@ export default function ProductCreatePage() {
   }, [templatePrices]);
 
   const bcConfigQuery = useBcConfig(form.category, !accessory);
-  const gfinTables = useGfinTables(!accessory).tables;
+  const gfinQuery = useGfinTables(!accessory);
+  const gfinTables = gfinQuery.tables;
+  // ราคากลางของรุ่นนี้ / ตาราง GFIN (ตัดสินว่าส่งราคา GFIN ได้ไหม) ยังไม่มา → ยังบันทึกไม่ได้
+  const pricesLoading = templatePending || (!accessory && gfinTables === undefined && !gfinQuery.isError);
+  const retryPriceLookups = () => {
+    if (templateQuery.isError) void templateQuery.refetch();
+    if (bcConfigQuery.isError) void bcConfigQuery.refetch();
+  };
   // แปลงตั้งค่าครั้งเดียวต่อชุดข้อมูล/หมวด — พิมพ์ราคาแล้วคิดเฉพาะตัวเลข ไม่แปลงตาราง GFIN ใหม่ทุกตัวอักษร
   const quoteContexts = useMemo(
     () => toQuoteContexts(form.category, bcConfigQuery.data, gfinTables),
@@ -276,6 +288,8 @@ export default function ProductCreatePage() {
 
   // --- Form field change handlers ---
   const handleCategoryChange = (newCategory: string) => {
+    // อุปกรณ์เสริมมีช่องเดียว — ราคาที่กรอกไว้ของมือถือ/แท็บเล็ตไม่ใช่ราคาของอุปกรณ์ (และกลับกัน)
+    if ((newCategory === 'ACCESSORY') !== (form.category === 'ACCESSORY')) setPriceFields(EMPTY_PRICE_FIELDS);
     setForm({
       ...form,
       category: newCategory,
@@ -351,6 +365,7 @@ export default function ProductCreatePage() {
       toast.error('กรุณากรอกราคาขายอย่างน้อย 1 ราคา');
       return;
     }
+    if (pricesLoading) return;
     createMutation.mutate();
   };
 
@@ -414,18 +429,29 @@ export default function ProductCreatePage() {
             templatePrices={templatePrices ?? null}
             templateLabel={templateLabelOf(form)}
             templateNotFound={lookupQuery !== null && template === null}
+            templateFailed={templateFailed}
             onUseTemplate={() => {
               if (templatePrices) setPriceFields(templatePrices);
             }}
+            onRetry={retryPriceLookups}
             quote={quote}
             gfinBlocked={isGfinBlocked}
-            bcConfigMissing={!accessory && bcConfigQuery.data === undefined && !bcConfigQuery.isFetching}
+            bcConfigMissing={
+              !accessory && !bcConfigQuery.isError && bcConfigQuery.data === undefined && !bcConfigQuery.isFetching
+            }
+            bcConfigFailed={!accessory && bcConfigQuery.isError}
             accessoryProfit={accessory ? accessoryProfit(priceFields.cash, form.costPrice) : null}
             costEntered={form.costPrice.trim() !== ''}
           />
 
           {/* Submit */}
-          <div className="flex justify-end gap-3">
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            {pricesLoading && (
+              <p role="status" className="inline-flex items-center gap-1.5 text-sm leading-snug text-muted-foreground">
+                <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden="true" />
+                กำลังโหลดราคากลาง…
+              </p>
+            )}
             <button data-ui-control="button"
               type="button"
               onClick={() => navigate('/products')}
@@ -435,7 +461,7 @@ export default function ProductCreatePage() {
             </button>
             <button data-ui-control="button"
               type="submit"
-              disabled={createMutation.isPending}
+              disabled={createMutation.isPending || pricesLoading}
               className="px-6 py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
             >
               {createMutation.isPending ? 'กำลังบันทึก...' : 'บันทึกสินค้า'}

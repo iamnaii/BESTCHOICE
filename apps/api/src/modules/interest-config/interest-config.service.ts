@@ -133,7 +133,11 @@ export class InterestConfigService {
           );
         }
       }
-      return tx.interestConfig.update({ where: { id }, data });
+      // แก้เฉพาะตาราง → ยังต้องแตะแถว config เพื่อให้ updatedAt ตรงความจริง (row fence ของใบเสนอสัญญา)
+      return tx.interestConfig.update({
+        where: { id },
+        data: rates !== undefined ? { ...data, updatedAt: new Date() } : data,
+      });
     });
     return 'vatPct' in updated ? (await this.withFinanceVat([updated]))[0] : updated;
   }

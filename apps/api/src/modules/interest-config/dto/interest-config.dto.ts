@@ -5,16 +5,13 @@ import {
   IsBoolean,
   IsOptional,
   IsInt,
+  IsPositive,
   Min,
   Max,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
-/**
- * ไม่มีช่อง `vatPct` (คำตัดสินเจ้าของ #22, 2026-10-31): VAT ของตั้งค่าดอกเบี้ยอ่านจากบริษัท FINANCE ที่เดียว — แก้ที่
- * ตั้งค่า › บริษัท & สาขา › บริษัทในเครือ · ค่าที่หน้าเว็บรุ่นเก่าส่งมาถูก ValidationPipe (whitelist) ตัดทิ้ง
- */
 /** แถวของตารางดอกเบี้ยรายงวด — `ratePct` = ดอกเบี้ยรวมทั้งสัญญาเป็นเศษส่วน (0.5 = 50%) */
 export class InterestRateRowDto {
   @IsInt({ message: 'จำนวนงวดต้องเป็นจำนวนเต็ม' })
@@ -23,11 +20,15 @@ export class InterestRateRowDto {
   months: number;
 
   @IsNumber({ maxDecimalPlaces: 4 }, { message: 'ดอกเบี้ยรวมทศนิยมได้ไม่เกิน 4 ตำแหน่ง' })
-  @Min(0, { message: 'ดอกเบี้ยรวมต้องไม่น้อยกว่า 0' })
+  @IsPositive({ message: 'ดอกเบี้ยรวมต้องมากกว่า 0' })
   @Max(9.9999, { message: 'ดอกเบี้ยรวมต้องไม่เกิน 999.99%' })
   ratePct: number;
 }
 
+/**
+ * ไม่มีช่อง `vatPct` (คำตัดสินเจ้าของ #22, 2026-10-31): VAT ของตั้งค่าดอกเบี้ยอ่านจากบริษัท FINANCE ที่เดียว — แก้ที่
+ * ตั้งค่า › บริษัท & สาขา › บริษัทในเครือ · ค่าที่หน้าเว็บรุ่นเก่าส่งมาถูก ValidationPipe (whitelist) ตัดทิ้ง
+ */
 export class CreateInterestConfigDto {
   @IsString()
   name: string;

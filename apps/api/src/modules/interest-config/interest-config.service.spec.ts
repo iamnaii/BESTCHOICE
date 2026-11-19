@@ -186,6 +186,17 @@ describe('InterestConfigService', () => {
       });
     });
 
+    it('ส่ง rates อย่างเดียว → เขียน updatedAt ลงแถว config (ไม่ส่ง = ไม่เขียน)', async () => {
+      await service.update('cfg-1', { rates: [{ months: 12, ratePct: 0.5 }] });
+      expect(prisma.interestConfig.update).toHaveBeenCalledWith({
+        where: { id: 'cfg-1' },
+        data: { updatedAt: expect.any(Date) },
+      });
+      prisma.interestConfig.update.mockClear();
+      await service.update('cfg-1', { name: 'มือ 1' });
+      expect(prisma.interestConfig.update.mock.calls[0][0].data).toEqual({ name: 'มือ 1' });
+    });
+
     it('rates: [] → ลบทุกแถว', async () => {
       await service.update('cfg-1', { rates: [] });
       expect(prisma.interestConfigRate.updateMany).toHaveBeenCalledWith({

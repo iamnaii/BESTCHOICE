@@ -5,6 +5,8 @@
 // Vite's manualChunks splits exceljs into its own chunk, and the
 // `import('exceljs')` calls below trigger the chunk download lazily.
 
+import { cellText } from './excel-cell.util';
+
 export interface ExcelColumn {
   header: string;
   key: string;
@@ -63,7 +65,7 @@ export async function importFromExcel(file: File): Promise<Record<string, unknow
   const headerRow = ws.getRow(1);
   const colIndex: Record<string, number> = {};
   headerRow.eachCell((cell, colNumber) => {
-    colIndex[String(cell.value || '').trim()] = colNumber;
+    colIndex[cellText(cell.value).trim()] = colNumber;
   });
 
   const rows: Record<string, unknown>[] = [];

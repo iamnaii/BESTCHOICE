@@ -149,3 +149,21 @@ describe('importFromExcel', () => {
     });
   });
 });
+
+describe('importFromExcel header text', () => {
+  it('matches a header with trailing/leading spaces and a rich-text header', async () => {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Sheet1');
+    ws.addRow(['plain ', ' spaced']);
+    ws.getCell('C1').value = { richText: [{ text: 'rich' }, { text: ' text ' }] };
+    ws.addRow(['a', 'b', 'c']);
+    const buffer = await wb.xlsx.writeBuffer();
+    const file = { arrayBuffer: () => Promise.resolve(buffer as ArrayBuffer) } as unknown as File;
+
+    const rows = await importFromExcel(file);
+
+    expect(rows[0].plain).toBe('a');
+    expect(rows[0].spaced).toBe('b');
+    expect(rows[0]['rich text']).toBe('c');
+  });
+});

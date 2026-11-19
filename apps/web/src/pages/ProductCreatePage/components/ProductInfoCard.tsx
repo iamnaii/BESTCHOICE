@@ -1,12 +1,12 @@
-import { NumberInput } from '@/components/ui/NumberInput';
+import UsedDeviceDetailsFields from '@/components/product/UsedDeviceDetailsFields';
 import { NativeSelect } from '@/components/ui/native-select';
 import { Combobox } from '@/components/ui/combobox';
 import { useId as useFieldId } from 'react';
 import { DeviceDisclosureFields } from '@/components/product/DeviceDisclosureFields';
-import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card';
 import { brands, getModels, getModelInfo } from '@/data/productCatalog';
 import { categoryOptions } from '@/lib/constants';
+import { buildAutoProductName } from '../utils/autoProductName';
 
 const accessoryTypes = [
   { value: 'ฟิล์ม', label: 'ฟิล์ม' },
@@ -71,6 +71,7 @@ export default function ProductInfoCard({
   const modelInfo = form.brand && form.model ? getModelInfo(form.brand, form.model) : undefined;
   const availableColors = modelInfo?.colors ?? [];
   const availableStorage = modelInfo?.storage ?? [];
+  const autoName = buildAutoProductName(form);
 
   return (
     <Card>
@@ -321,7 +322,7 @@ export default function ProductInfoCard({
             </>
           )}
 
-          {/* ชื่อสินค้า */}
+          {/* ชื่อสินค้า — เว้นว่าง = ใช้ชื่ออัตโนมัติ (พรีวิวสดจากตัวคำนวณเดียวกับตอนบันทึก) */}
           <div>
             <label htmlFor={`${fieldId}-8`} className="block text-sm font-medium text-foreground mb-3">ชื่อสินค้า</label>
             <input id={`${fieldId}-8`}
@@ -329,12 +330,38 @@ export default function ProductInfoCard({
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               placeholder={
-                form.category === 'ACCESSORY'
+                autoName ||
+                (form.category === 'ACCESSORY'
                   ? 'อัตโนมัติจาก ประเภท + ยี่ห้ออุปกรณ์ + รุ่น'
-                  : 'อัตโนมัติจาก ยี่ห้อ + รุ่น + สี + ความจุ'
+                  : 'อัตโนมัติจาก ยี่ห้อ + รุ่น + สี + ความจุ')
               }
+              aria-describedby={`${fieldId}-8-hint`}
               className={inputCls}
             />
+            <p id={`${fieldId}-8-hint`} className="mt-1.5 text-xs leading-snug text-muted-foreground">
+              {form.name.trim() ? (
+                autoName ? (
+                  <>
+                    ตั้งชื่อเองแล้ว ·{' '}
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, name: '' })}
+                      className="font-medium text-primary underline-offset-2 hover:underline"
+                    >
+                      ใช้ชื่ออัตโนมัติแทน
+                    </button>
+                  </>
+                ) : null
+              ) : autoName ? (
+                <>
+                  ระบบจะใช้ชื่อ <span className="font-medium text-foreground">{autoName}</span> · พิมพ์ทับเพื่อตั้งเอง
+                </>
+              ) : form.category === 'ACCESSORY' ? (
+                'เลือกประเภทอุปกรณ์ก่อน ระบบจะตั้งชื่อให้'
+              ) : (
+                'เลือกยี่ห้อและรุ่นก่อน ระบบจะตั้งชื่อให้'
+              )}
+            </p>
           </div>
 
           {form.category !== 'ACCESSORY' && (
@@ -385,89 +412,35 @@ export default function ProductInfoCard({
           </div>
         </div>
 
-        {/* Accessory auto name preview */}
-        {form.category === 'ACCESSORY' && (form.accessoryType || form.accessoryBrand) && (
-          <div className="mt-3 text-sm text-primary bg-primary/5 border border-primary/20 rounded-lg px-3 py-2">
-            ชื่อสินค้าอัตโนมัติ:{' '}
-            {(() => {
-              const isCharger = form.accessoryType === 'ชุดชาร์จ';
-              if (isCharger)
-                return [form.accessoryType, form.accessoryBrand, form.model]
-                  .filter(Boolean)
-                  .join(' ');
-              const accParts = [form.accessoryType, form.accessoryBrand].filter(Boolean);
-              return form.model
-                ? `${accParts.join(' ')} สำหรับ ${form.model}`
-                : accParts.join(' ');
-            })()}
-          </div>
-        )}
-
-        {/* Used phone fields */}
+        {/* Used phone fields — ทุกช่องใช้แถวป้าย (mb-3) + กล่อง 44px เท่ากัน ⇒ 3 คอลัมน์ตรงแนวกัน */}
         {form.category === 'PHONE_USED' && (
-          <div className="col-span-2 mt-2 border border-warning/20 bg-warning/5 dark:bg-warning/10 rounded-lg p-4 space-y-4">
-            <h3 className="text-sm font-semibold text-warning-strong">ข้อมูลมือสอง</h3>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              <div>
-                <label htmlFor={`${fieldId}-12`} className="block text-sm font-medium text-foreground mb-3">% แบตเตอรี่</label>
-                <NumberInput unstyled id={`${fieldId}-12`}
-                  value={form.batteryHealth}
-                  onChange={(e) => setForm({ ...form, batteryHealth: e.target.value })}
-                  placeholder="เช่น 87"
-                  className={inputCls}
-                  min="0"
-                  max="100"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-3">ประกันศูนย์</label>
-                <div className="flex items-center gap-3 mt-1">
-                  <label className="flex items-center gap-1.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={form.warrantyExpired}
-                      onChange={(e) =>
-                        setForm({
-                          ...form,
-                          warrantyExpired: e.target.checked,
-                          warrantyExpireDate: e.target.checked ? '' : form.warrantyExpireDate,
-                        })
-                      }
-                      className="rounded"
-                    />
-                    <span className="text-sm text-muted-foreground">หมดประกันแล้ว</span>
-                  </label>
-                </div>
-                {!form.warrantyExpired && (
-                  <ThaiDateInput
-                    aria-label="วันหมดประกันศูนย์"
-                    value={form.warrantyExpireDate}
-                    onChange={(e) => setForm({ ...form, warrantyExpireDate: e.target.value })}
-                    className={`${inputCls} mt-2`}
-                  />
-                )}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-3">กล่อง</label>
-                <div className="flex gap-2 mt-1">
-                  <button data-ui-control="button"
-                    type="button"
-                    onClick={() => setForm({ ...form, hasBox: true })}
-                    className={`min-h-11 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${form.hasBox ? 'bg-success text-success-foreground' : 'bg-secondary text-muted-foreground hover:bg-success/10'}`}
-                  >
-                    มีกล่อง
-                  </button>
-                  <button data-ui-control="button"
-                    type="button"
-                    onClick={() => setForm({ ...form, hasBox: false })}
-                    className={`min-h-11 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${!form.hasBox ? 'bg-destructive text-destructive-foreground' : 'bg-secondary text-muted-foreground hover:bg-destructive/10'}`}
-                  >
-                    ไม่มีกล่อง
-                  </button>
-                </div>
-              </div>
+          <section
+            aria-labelledby={`${fieldId}-used`}
+            className="mt-6 rounded-lg border border-warning/20 bg-warning/5 p-4 dark:bg-warning/10 sm:p-5"
+          >
+            <h3 id={`${fieldId}-used`} className="text-sm font-semibold leading-snug text-warning-strong">
+              ข้อมูลมือสอง
+            </h3>
+            <div className="mt-4">
+              {/* ชุดช่องเดียวกับหน้าแก้ไขสินค้าและหน้ารับของ PO — ป้ายสูงเท่ากัน ทุกช่องจัดแนวล่าง (items-end) */}
+              <UsedDeviceDetailsFields
+                idPrefix={fieldId}
+                value={{
+                  batteryHealth: form.batteryHealth,
+                  warrantyExpired: form.warrantyExpired,
+                  warrantyExpireDate: form.warrantyExpireDate,
+                  hasBox: form.hasBox,
+                }}
+                onChange={(patch) =>
+                  setForm({
+                    ...form,
+                    ...patch,
+                    ...(patch.warrantyExpired ? { warrantyExpireDate: '' } : {}),
+                  })
+                }
+              />
             </div>
-          </div>
+          </section>
         )}
       </CardContent>
     </Card>

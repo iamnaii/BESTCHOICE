@@ -12,6 +12,7 @@ import ProductInfoCard from './components/ProductInfoCard';
 import PhotoUpload from './components/PhotoUpload';
 import BranchSupplierCard from './components/BranchSupplierCard';
 import PriceCard, { PriceRow } from './components/PriceCard';
+import { buildAutoProductName } from './utils/autoProductName';
 
 const inputCls = formControlClass;
 
@@ -123,19 +124,8 @@ export default function ProductCreatePage() {
   const createMutation = useMutation({
     mutationFn: async () => {
       const isAccessory = form.category === 'ACCESSORY';
-      const isCharger = isAccessory && form.accessoryType === 'ชุดชาร์จ';
-      const autoName = isAccessory
-        ? isCharger
-          ? [form.accessoryType, form.accessoryBrand, form.model].filter(Boolean).join(' ')
-          : (() => {
-              const accParts = [form.accessoryType, form.accessoryBrand].filter(Boolean);
-              return form.model
-                ? `${accParts.join(' ')} สำหรับ ${form.model}`
-                : accParts.join(' ');
-            })()
-        : [form.brand, form.model, form.color, form.storage].filter(Boolean).join(' ');
       const payload = {
-        name: form.name || autoName,
+        name: form.name.trim() || buildAutoProductName(form),
         brand: form.brand,
         model: form.model,
         color: isAccessory ? undefined : form.color || undefined,

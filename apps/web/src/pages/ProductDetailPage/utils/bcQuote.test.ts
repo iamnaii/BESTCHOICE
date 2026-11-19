@@ -11,13 +11,13 @@ const config = {
 };
 
 describe('buildBcQuote', () => {
-  it('19,900 · 12 งวด · ดาวน์ขั้นต่ำ 15% = 2,985 → 2,413.20/เดือน และตัวเลือกงวดเรียงจากน้อยไปมากพร้อมค่างวด', () => {
-    const q = buildBcQuote(config, 19900, 12, 2985);
-    expect(q.minDownAmount).toBe(2985);
+  it('19,900 · 12 งวด · ดาวน์ขั้นต่ำ 15% = 3,000 → 2,411.06/เดือน และตัวเลือกงวดเรียงจากน้อยไปมากพร้อมค่างวด', () => {
+    const q = buildBcQuote(config, 19900, 12, 3000);
+    expect(q.minDownAmount).toBe(3000);
     expect(q.result.isValid).toBe(true);
-    expect(q.result.monthlyPayment.toNumber()).toBeCloseTo(2413.2, 2);
+    expect(q.result.monthlyPayment.toNumber()).toBeCloseTo(2411.06, 2);
     expect(q.monthsOptions.map((o) => o.months)).toEqual([5, 6, 7, 8, 10, 12]);
-    expect(q.monthsOptions[5].monthly).toBeCloseTo(2413.2, 2);
+    expect(q.monthsOptions[5].monthly).toBeCloseTo(2411.06, 2);
     expect(q.monthsOptions[0].monthly).toBeGreaterThan(q.monthsOptions[5].monthly);
   });
 

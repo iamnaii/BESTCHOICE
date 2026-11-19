@@ -127,13 +127,13 @@ beforeEach(() => {
 describe('Stock product pricing', () => {
   it('shows cost, cash, starting down and monthly quote without the installment selling price', async () => {
     showProducts([product(), product({ id: 'used-2', model: 'iPhone 14' })]);
-    await screen.findAllByText('2,985 ฿');
+    await screen.findAllByText('3,000 ฿');
     for (const label of ['ราคาทุน', 'ราคาเต็มจำนวน', 'ดาวน์', 'ยอดผ่อนต่อเดือน']) {
       expect(screen.getByRole('columnheader', { name: label })).toBeInTheDocument();
     }
     const row = screen.getByRole('row', { name: /iPhone 13/ });
     expect(within(row).getByRole('button', { name: 'iPhone 13' })).toBeInTheDocument();
-    for (const value of ['10,000 ฿', '15,900 ฿', '2,985 ฿', '2,413.20 ฿', 'ต่อเดือน · 12 งวด']) {
+    for (const value of ['10,000 ฿', '15,900 ฿', '3,000 ฿', '2,411.06 ฿', 'ต่อเดือน · 12 งวด']) {
       expect(within(row).getByText(value)).toBeInTheDocument();
     }
     expect(within(row).queryByText('29,900 ฿')).not.toBeInTheDocument();
@@ -153,20 +153,20 @@ describe('Stock product pricing', () => {
       product({ id: 'new-1', model: 'iPhone 16', category: 'PHONE_NEW' }),
       product({ id: 'legacy', model: 'iPhone 12', cashPrice: null, installmentPrice: null }),
     ]);
-    await screen.findByText('3,980 ฿');
+    await screen.findByText('4,000 ฿');
     expect(
       within(screen.getByRole('row', { name: /iPhone 16/ })).getByText('ต่อเดือน · 6 งวด'),
     ).toBeInTheDocument();
     const legacy = within(screen.getByRole('row', { name: /iPhone 12/ }));
     expect(legacy.getByText('9,900 ฿')).toBeInTheDocument();
     expect(legacy.queryByText('29,900 ฿')).not.toBeInTheDocument();
-    expect(legacy.getByText('4,485 ฿')).toBeInTheDocument();
+    expect(legacy.getByText('4,500 ฿')).toBeInTheDocument();
   });
 
   it('hides cost and price editing for sales staff', async () => {
     mocks.role = 'SALES';
     showProducts([product()]);
-    await screen.findByText('2,985 ฿');
+    await screen.findByText('3,000 ฿');
     expect(screen.queryByRole('columnheader', { name: 'ราคาทุน' })).not.toBeInTheDocument();
     expect(screen.queryByText('10,000 ฿')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'จัดการราคา' })).not.toBeInTheDocument();
@@ -193,7 +193,7 @@ describe('Stock product pricing', () => {
     expect(screen.getByText('15,900 ฿')).toBeInTheDocument();
     mocks.get.mockResolvedValueOnce({ data: config });
     fireEvent.click(screen.getByRole('button', { name: 'ลองใหม่' }));
-    await screen.findByText('2,985 ฿');
+    await screen.findByText('3,000 ฿');
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
   });
 
@@ -256,7 +256,7 @@ describe('New phone stock view', () => {
     expect(cells[2]).toHaveTextContent('128GB');
     expect(cells[3]).toHaveTextContent('Black');
     expect(cells[4]).toHaveTextContent('15,900 ฿');
-    expect(cells[5]).toHaveTextContent('3,980 ฿');
+    expect(cells[5]).toHaveTextContent('4,000 ฿');
     expect(cells[6]).toHaveTextContent('ต่อเดือน · 6 งวด');
     expect(cells[7]).toHaveTextContent('ยังไม่ระบุ');
     expect(cells[8]).toHaveTextContent('พร้อมขาย');
@@ -297,7 +297,7 @@ describe('New phone stock view', () => {
       'ราคาเต็มจำนวน',
       '15,900 ฿',
       'ดาวน์',
-      '3,980 ฿',
+      '4,000 ฿',
       'ยอดผ่อนต่อเดือน',
       'ต่อเดือน · 6 งวด',
       'พร้อมขาย',
@@ -367,8 +367,8 @@ describe('Used phone stock view', () => {
         'มี',
         'ถึง 12/03/2570',
         '15,900 ฿',
-        '2,985 ฿',
-        '2,413.20 ฿',
+        '3,000 ฿',
+        '2,411.06 ฿',
         'ต่อเดือน · 12 งวด',
         'พร้อมขาย',
         'สาขาทดสอบ',
@@ -409,8 +409,8 @@ describe('Used phone stock view', () => {
           [5, 'มี'],
           [6, 'ถึง 12/03/2570'],
           [7, '15,900 ฿'],
-          [8, '2,985 ฿'],
-          [9, '2,413.20 ฿'],
+          [8, '3,000 ฿'],
+          [9, '2,411.06 ฿'],
           [10, 'ยังไม่ระบุ'],
           [11, 'พร้อมขาย'],
           [12, 'สาขาทดสอบ'],
@@ -486,8 +486,8 @@ describe('New tablet stock view', () => {
         'Black',
         'Wi-Fi',
         '15,900 ฿',
-        '2,985 ฿',
-        '2,413.20 ฿',
+        '3,000 ฿',
+        '2,411.06 ฿',
         'ต่อเดือน · 12 งวด',
         'พร้อมขาย',
         'สาขาทดสอบ',
@@ -561,7 +561,7 @@ describe('All categories and accessory stock views', () => {
           status: 'RESERVED',
         }),
       ]);
-      await screen.findAllByText('2,985 ฿');
+      await screen.findAllByText('3,000 ฿');
       if (!mobile) {
         expect(
           screen
@@ -750,7 +750,7 @@ describe('Stock workspace interactions', () => {
     mocks.role = role;
     mocks.mobile = true;
     showProducts([product()]);
-    await screen.findByText('2,985 ฿');
+    await screen.findByText('3,000 ฿');
     const card = within(
       within(screen.getByRole('list', { name: 'รายการสินค้า' })).getByRole('listitem'),
     );
@@ -760,8 +760,8 @@ describe('Stock workspace interactions', () => {
       'ดาวน์',
       'ยอดผ่อนต่อเดือน',
       '15,900 ฿',
-      '2,985 ฿',
-      '2,413.20 ฿',
+      '3,000 ฿',
+      '2,411.06 ฿',
       'ต่อเดือน · 12 งวด',
     ]) {
       expect(card.getByText(value)).toBeInTheDocument();

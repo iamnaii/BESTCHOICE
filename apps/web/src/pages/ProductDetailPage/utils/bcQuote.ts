@@ -1,12 +1,18 @@
 import Decimal from 'decimal.js';
-import { calcBcInstallment, type BcCalcOutput, type BcConfig, type BcConfigJson } from '@installment/shared';
+import {
+  calcBcInstallment,
+  minDownAmountFromPct,
+  type BcCalcOutput,
+  type BcConfig,
+  type BcConfigJson,
+} from '@installment/shared';
 import type { MonthOption } from './monthsOptions';
 
 export interface BcQuote {
   result: BcCalcOutput;
   /** ตัวเลือกงวดทั้งหมด (allowedMonths เรียงจากน้อยไปมาก) พร้อมค่างวดจากดาวน์ที่กรอกอยู่ */
   monthsOptions: MonthOption[];
-  /** ดาวน์ขั้นต่ำ = ราคาผ่อน × minDownPct ปัดเป็นบาท (ค่าตั้งต้นของช่องเงินดาวน์) */
+  /** ดาวน์ขั้นต่ำ = ราคาผ่อน × minDownPct ปัดขึ้นหลักร้อย (ค่าตั้งต้นของช่องเงินดาวน์) */
   minDownAmount: number;
 }
 
@@ -23,7 +29,7 @@ export function toBcConfig(json: BcConfigJson): BcConfig {
 }
 
 export function bcMinDownAmount(json: BcConfigJson, installmentPrice: number): number {
-  return Math.round(installmentPrice * json.minDownPct);
+  return minDownAmountFromPct(installmentPrice, json.minDownPct);
 }
 
 /**

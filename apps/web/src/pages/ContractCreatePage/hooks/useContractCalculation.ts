@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import Decimal from 'decimal.js';
+import { minDownAmountFromPct } from '@installment/shared';
 import type { Product, InterestConfig } from '../types';
 import { getPositiveDisplayPrices } from '@/utils/getDisplayPrices';
 
@@ -73,7 +74,9 @@ export function useContractCalculation({
   const [downPaymentTouched, setDownPaymentTouched] = useState(preserveDownPayment);
   useEffect(() => {
     if (!downPaymentTouched && sellingPrice > 0 && minDownPct > 0) {
-      setDownPayment(Decimal.max(0, new Decimal(sellingPrice).mul(minDownPct).ceil().minus(tradeInBaseAmount)).toNumber());
+      setDownPayment(
+        Decimal.max(0, new Decimal(minDownAmountFromPct(sellingPrice, minDownPct)).minus(tradeInBaseAmount)).toNumber(),
+      );
     }
   }, [sellingPrice, minDownPct, downPaymentTouched, tradeInBaseAmount]);
 

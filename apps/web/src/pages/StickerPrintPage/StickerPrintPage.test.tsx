@@ -11,7 +11,7 @@ vi.mock('@/lib/api', () => ({
   getErrorMessage: () => 'โหลดไม่สำเร็จ',
 }));
 
-// ตารางดอกเบี้ยชุดเดียวกับที่ใช้ render หน้ารายการสินค้า/หน้าสินค้า — 19,900 → ดาวน์ 2,985 · 1,840.07 × 12
+// ตารางดอกเบี้ยชุดเดียวกับที่ใช้ render หน้ารายการสินค้า/หน้าสินค้า — 19,900 → ดาวน์ 3,000 · 1,838.43 × 12
 const bcConfig = {
   minDownPct: 0.15,
   commissionPct: 0.1,
@@ -158,8 +158,8 @@ describe('หน้าพิมพ์สติกเกอร์ — ตาร�
     expect(within(row).getByText('ดำ · 128GB')).toBeInTheDocument();
     expect(within(row).getByText('27/08/27')).toBeInTheDocument();
     expect(within(row).getByText('19,900')).toBeInTheDocument();
-    await waitFor(() => expect(within(row).getByText('1,840.07')).toBeInTheDocument());
-    expect(within(row).getByText('ดาวน์ 2,985')).toBeInTheDocument();
+    await waitFor(() => expect(within(row).getByText('1,838.43')).toBeInTheDocument());
+    expect(within(row).getByText('ดาวน์ 3,000')).toBeInTheDocument();
     expect(within(row).getByText('3,327')).toBeInTheDocument();
     expect(within(row).getByText('ดาวน์ 1,900')).toBeInTheDocument();
     expect(within(row).getByText('11/08/2569')).toBeInTheDocument();
@@ -223,7 +223,7 @@ describe('หน้าพิมพ์สติกเกอร์ — คิว�
     expect(within(first).getByTestId('sticker-qr').querySelector('svg')).not.toBeNull();
     expect(first).toHaveClass('sticker--60x40');
     expect(pageStyles()).toContain('@page { size: 60mm 40mm; margin: 0; }');
-    await waitFor(() => expect(within(first).getByText('ดาวน์ 2,985')).toBeInTheDocument());
+    await waitFor(() => expect(within(first).getByText('ดาวน์ 3,000')).toBeInTheDocument());
 
     const used = stickers[1];
     expect(within(used).getByText('แบต 91%')).toBeInTheDocument();

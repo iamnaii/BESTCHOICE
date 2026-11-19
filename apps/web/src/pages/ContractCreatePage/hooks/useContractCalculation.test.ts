@@ -223,3 +223,22 @@ describe('useContractCalculation', () => {
     });
   });
 });
+
+describe('ดาวน์ตั้งต้นปัดขึ้นหลักร้อย (คำตัดสินเจ้าของ 2026-11-19)', () => {
+  it('25,900 × 15% = 3,885 → ตั้งต้น 3,900', () => {
+    const { result } = setupHook({
+      product: makeProduct(25900),
+      config: makeConfig({ minDownPaymentPct: '0.15' }),
+    });
+    expect(result.current.downPayment).toBe(3900);
+  });
+
+  it('มีเครดิตเทิร์น: หักจากดาวน์ที่ปัดแล้ว (3,900 − 1,000 = 2,900)', () => {
+    const { result } = setupHook({
+      product: makeProduct(25900),
+      config: makeConfig({ minDownPaymentPct: '0.15' }),
+      tradeInBaseAmount: 1000,
+    });
+    expect(result.current.downPayment).toBe(2900);
+  });
+});

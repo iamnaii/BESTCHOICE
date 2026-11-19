@@ -74,7 +74,7 @@ describe('InstallmentPreviewService', () => {
     expect(where.AND).toContainEqual({ NOT: { name: { startsWith: '[DEMO]' } } });
   });
 
-  it('BC: returns canonical worked example monthly payment 2,413.21', async () => {
+  it('BC: returns canonical worked example monthly payment 2,411.06', async () => {
     prisma.product.findFirst.mockResolvedValue({
       id: 'p1',
       installmentPrice: new Prisma.Decimal('19900'),
@@ -99,8 +99,8 @@ describe('InstallmentPreviewService', () => {
     });
     const result = await service.preview({ productId: 'p1', provider: 'BC', months: 12 });
     expect(result.available).toBe(true);
-    expect(result.monthlyPayment).toBeCloseTo(2413.20, 2);
-    expect(result.downAmount).toBeCloseTo(2985, 2);
+    expect(result.monthlyPayment).toBeCloseTo(2411.06, 2);
+    expect(result.downAmount).toBeCloseTo(3000, 2);
   });
 
   it('GFIN: returns canonical worked example monthly payment 2,923.00', async () => {

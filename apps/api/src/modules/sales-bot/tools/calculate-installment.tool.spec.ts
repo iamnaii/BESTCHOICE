@@ -131,13 +131,13 @@ describe('CalculateInstallmentTool.run', () => {
       string,
       number
     >;
-    // down = 35900 × 0.20 = 7180; financed = 28720; rate12 = 1.2; interest = 34464
-    // subtotal = 63184; monthly = 63184 / 12 = 5265.33; total = 7180 + 63184 = 70364
-    expect(r.downAmountThb).toBe(7180);
-    expect(r.financedThb).toBe(28720);
+    // down = 35900 × 0.20 = 7180 → ปัดขึ้นหลักร้อย 7200; financed = 28700; rate12 = 1.2; interest = 34440
+    // subtotal = 63140; monthly = 63140 / 12 = 5261.66 (ปัดลง 2 ตำแหน่ง); total = 7200 + 63140 = 70340
+    expect(r.downAmountThb).toBe(7200);
+    expect(r.financedThb).toBe(28700);
     expect(r.ratePct).toBe(120);
-    expect(r.monthlyThb).toBeCloseTo(5265.33, 2);
-    expect(r.totalPaidThb).toBeCloseTo(70364, 2);
+    expect(r.monthlyThb).toBeCloseTo(5261.66, 2);
+    expect(r.totalPaidThb).toBeCloseTo(70340, 2);
   });
 
   it('ไม่ส่ง downPct → ใช้ minDownPaymentPct ของ InterestConfig (เลิก hardcode 20%)', async () => {
@@ -149,7 +149,7 @@ describe('CalculateInstallmentTool.run', () => {
       number
     >;
     expect(r.downPct).toBe(30);
-    expect(r.downAmountThb).toBe(10770); // 35900 × 0.30
+    expect(r.downAmountThb).toBe(10800); // 35900 × 0.30 = 10770 → ปัดขึ้นหลักร้อย
   });
 
   it('fallback ไป prices[] label ราคาผ่อน เมื่อคอลัมน์ยังว่าง (parity กับ preview)', async () => {

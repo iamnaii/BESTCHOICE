@@ -112,8 +112,8 @@ describe('ผ่อนเริ่มต้นหน้ารายการ ===
 
     expect(p.available).toBe(true);
     expect(list.data[0].monthlyPaymentFrom).toBe(Math.ceil(p.monthlyPayment!));
-    // golden: 19,900 / 12 งวด / ดาวน์ 15% → 2,413.21 → ปัดขึ้นเป็น 2,414
-    expect(list.data[0].monthlyPaymentFrom).toBe(2414);
+    // golden: 19,900 / 12 งวด / ดาวน์ 15% (2,985 → ปัดขึ้น 3,000) → 2,411.06 → ปัดขึ้นเป็น 2,412
+    expect(list.data[0].monthlyPaymentFrom).toBe(2412);
   });
 
   // review round 1 [Important]: fixture เดิมมี tenure เดียว — mutation เลือก allowedMonths[0]

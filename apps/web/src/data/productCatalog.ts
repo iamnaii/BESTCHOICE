@@ -14,6 +14,20 @@ export const productCatalog: BrandCatalog[] = [
   {
     brand: 'Apple',
     models: [
+      // === iPhone 18 Pro Series (2026) — สีตาม apple.com/iphone-18-pro/specs · ความจุตามชีต MASTER ===
+      {
+        name: 'iPhone 18 Pro Max',
+        category: 'PHONE_NEW',
+        colors: ['Black', 'Silver', 'Glacier', 'Burgundy'],
+        storage: ['256GB', '512GB', '1TB', '2TB'],
+      },
+      {
+        name: 'iPhone 18 Pro',
+        category: 'PHONE_NEW',
+        colors: ['Black', 'Silver', 'Glacier', 'Burgundy'],
+        storage: ['256GB', '512GB', '1TB', '2TB'],
+      },
+
       // === iPhone 17 Series (2025) ===
       {
         name: 'iPhone 17 Pro Max',

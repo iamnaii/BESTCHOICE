@@ -11,7 +11,7 @@ import {
 describe('catalogEntries', () => {
   it('flattens the catalog with the brand on each entry, catalog order preserved', () => {
     const all = catalogEntries();
-    expect(all[0]).toMatchObject({ brand: 'Apple', name: 'iPhone 17 Pro Max', category: 'PHONE_NEW' });
+    expect(all[0]).toMatchObject({ brand: 'Apple', name: 'iPhone 18 Pro Max', category: 'PHONE_NEW' });
     expect(all.length).toBeGreaterThan(40);
   });
 });
@@ -34,7 +34,7 @@ describe('searchCatalog — พิมพ์ค้นหารุ่น', () => {
 
   it('returns the whole kind in catalog order when the query is empty', () => {
     const phones = searchCatalog('', 'PHONE');
-    expect(phones[0].name).toBe('iPhone 17 Pro Max');
+    expect(phones[0].name).toBe('iPhone 18 Pro Max');
     expect(phones.every((e) => e.category === 'PHONE_NEW')).toBe(true);
   });
 
@@ -49,7 +49,7 @@ describe('searchCatalog — พิมพ์ค้นหารุ่น', () => {
 
 describe('latestModels', () => {
   it('returns the first n of a kind in catalog order (newest first)', () => {
-    expect(latestModels('PHONE', 3).map((e) => e.name)).toEqual(['iPhone 17 Pro Max', 'iPhone 17 Pro', 'iPhone Air']);
+    expect(latestModels('PHONE', 3).map((e) => e.name)).toEqual(['iPhone 18 Pro Max', 'iPhone 18 Pro', 'iPhone 17 Pro Max']);
     expect(latestModels('TABLET', 1)[0].category).toBe('TABLET');
   });
 });

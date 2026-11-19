@@ -8,6 +8,7 @@
  * รัน: DATABASE_URL=... [APPLY=true] npm --prefix apps/api run backfill:product-prices
  */
 import { PrismaClient, Prisma } from '@prisma/client';
+import { isInstallmentPriceLabel } from '../src/utils/product-price-sync.util';
 
 const APPLY = process.env.APPLY === 'true';
 const INSTALLMENT_EXACT = 'ราคาผ่อน BESTCHOICE';
@@ -35,12 +36,13 @@ function isUsablePrice(amount: Prisma.Decimal): boolean {
 // ใช้ร่วมกันทั้ง pickCash และ cashSkipReason — แถวที่ label ขึ้นต้น 'ราคาผ่อน' ไม่ใช่ผู้สมัคร
 // ราคาเงินสดเด็ดขาด (กัน Task 9 [Important เดิม]: ราคาผ่อนสูงกว่าไม่ให้ถูกยกเป็นราคาเงินสด)
 const isCashCandidate = (r: PriceRow) => !r.label.startsWith(INSTALLMENT_PREFIX);
-const isInstallmentCandidate = (r: PriceRow) => r.label.startsWith(INSTALLMENT_PREFIX);
+// แถว "ราคาผ่อนไฟแนนซ์" (ราคาขาย GFIN) ไม่ใช่ราคาผ่อน BESTCHOICE — ข้ามเสมอ
+const isInstallmentCandidate = (r: PriceRow) => isInstallmentPriceLabel(r.label);
 
 function pickInstallment(rows: PriceRow[]): { amount: Prisma.Decimal; source: string } | null {
   const exact = rows.find((r) => r.label === INSTALLMENT_EXACT && isUsablePrice(r.amount));
   if (exact) return { amount: exact.amount, source: INSTALLMENT_EXACT };
-  const prefix = rows.find((r) => r.label.startsWith(INSTALLMENT_PREFIX) && isUsablePrice(r.amount));
+  const prefix = rows.find((r) => isInstallmentPriceLabel(r.label) && isUsablePrice(r.amount));
   if (prefix) return { amount: prefix.amount, source: `prefix:${prefix.label}` };
   return null;
 }

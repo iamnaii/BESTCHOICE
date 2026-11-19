@@ -171,6 +171,7 @@ export class InstallmentPreviewService {
       condition: r.condition as 'HAND_1' | 'HAND_2',
       allowance: new Decimal(r.allowance.toString()),
       maxMonths: r.maxMonths ?? null,
+      minDownPct: r.minDownPct ?? null,
       isActive: r.isActive,
     }));
 

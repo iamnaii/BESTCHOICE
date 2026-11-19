@@ -16,6 +16,7 @@ export {
   findGfinOverpriceRule,
   findGfinRateFactor,
   gfinAllowanceFactor,
+  resolveGfinDownPct,
 } from './installment-calc';
 export type * from './installment-calc.types';
 export * from './gfin-customer-summary';

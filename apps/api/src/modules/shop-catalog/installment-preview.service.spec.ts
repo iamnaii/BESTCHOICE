@@ -153,7 +153,7 @@ describe('InstallmentPreviewService', () => {
     const result = await service.preview({ productId: 'p1', provider: 'GFIN', months: 12 });
     expect(result.available).toBe(true);
     expect(result.monthlyPayment).toBeCloseTo(2923.00, 2);
-    expect(result.downAmount).toBeCloseTo(4150, 2); // downAmountActual = 6750 - 2600
+    expect(result.downAmount).toBeCloseTo(4200, 2); // downAmountActual = 6750 − 2600 = 4150 → ปัดขึ้นหลักร้อย
     // เรทถูกเลือกด้วยคู่ (งวด, %คอมตามหมวด) — มือถือ = 15
     expect(prisma.gfinRateFactor.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({

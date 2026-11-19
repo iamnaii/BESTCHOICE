@@ -60,6 +60,8 @@ export interface GfinOverpriceRuleRow {
   allowance: Decimal;
   /** ผ่อนได้สูงสุด (งวด) ของซีรีส์/สภาพนี้ตามตารางราคา GFIN — null = ไม่จำกัด */
   maxMonths: number | null;
+  /** ดาวน์ขั้นต่ำ % ของกลุ่มรุ่นนี้ (เต็มร้อย: 30 = 30%) · null = ใช้ค่าตั้ง gfin.minDownPct */
+  minDownPct: number | null;
   isActive: boolean;
 }
 
@@ -116,7 +118,7 @@ export interface GfinCalcOutput {
   downPct: Decimal;
   /** ดาวน์ที่แจ้ง GFIN = ราคาส่ง × downPct */
   downAmountByFormula: Decimal;
-  /** ดาวน์ที่ลูกค้าจ่ายจริง = ดาวน์ตามสูตร − ส่วนลดดาวน์ (ไม่ต่ำกว่า 0) */
+  /** ดาวน์ที่ลูกค้าจ่ายจริง = ปัดขึ้นหลักร้อย(ดาวน์ตามสูตร − ส่วนลดดาวน์) ไม่ต่ำกว่า 0 (คำตัดสินเจ้าของ 2026-11-19) */
   downAmountActual: Decimal;
   /** ยอดจัดสินเชื่อหลังหักเงินดาวน์ */
   financedAmount: Decimal;

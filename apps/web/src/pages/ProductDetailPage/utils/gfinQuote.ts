@@ -31,6 +31,8 @@ export interface OverpriceApi {
   condition: 'HAND_1' | 'HAND_2';
   allowance: string;
   maxMonths?: number | null;
+  /** ดาวน์ขั้นต่ำ % ของกลุ่มรุ่น (เต็มร้อย) — null/ไม่มี = ใช้ค่าตั้ง GFIN */
+  minDownPct?: number | null;
   isActive: boolean;
 }
 export interface RateFactorApi {
@@ -112,7 +114,12 @@ function toMappingRow(m: MaxPriceApi): GfinModelMappingRow {
   return { ...m, maxPrice: new Decimal(m.maxPrice) };
 }
 function toRuleRow(r: OverpriceApi): GfinOverpriceRuleRow {
-  return { ...r, allowance: new Decimal(r.allowance), maxMonths: r.maxMonths ?? null };
+  return {
+    ...r,
+    allowance: new Decimal(r.allowance),
+    maxMonths: r.maxMonths ?? null,
+    minDownPct: r.minDownPct ?? null,
+  };
 }
 function toFactorRow(f: RateFactorApi): GfinRateFactorRow {
   return {

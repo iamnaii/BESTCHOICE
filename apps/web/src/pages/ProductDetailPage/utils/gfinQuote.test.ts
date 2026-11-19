@@ -83,7 +83,7 @@ describe('buildGfinQuote', () => {
     if (!imported.available) return;
     expect(imported.result.allowanceApplied.toNumber()).toBe(500);
     expect(imported.result.gfinSubmitPrice.toNumber()).toBe(23500);
-    expect(imported.result.downAmountActual.toNumber()).toBe(2275);
+    expect(imported.result.downAmountActual.toNumber()).toBe(2300); // 5,875 − 3,600 = 2,275 → ปัดขึ้นหลักร้อย
     expect(imported.result.monthlyPayment.toNumber()).toBe(3260);
     expect(imported.monthsOptions.find((o) => o.months === 12)?.monthly).toBe(3260);
 

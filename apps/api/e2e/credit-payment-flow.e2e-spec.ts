@@ -62,7 +62,7 @@ if (!process.env.DATABASE_URL?.includes('/bc_chat_credit_test?host=/tmp/bc-chat-
   throw new Error('Only the disposable tools/test-chat-credit.sh database is allowed');
 }
 const db = new PrismaService();
-const originalEnv = { node: process.env.NODE_ENV, rate: process.env.USE_NEW_RATE_LOOKUP, salt: process.env.PII_HASH_SALT };
+const originalEnv = { node: process.env.NODE_ENV, salt: process.env.PII_HASH_SALT };
 const image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1xkAAAAASUVORK5CYII=';
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const readEntries = (contractId: string) => db.journalEntry.findMany({
@@ -87,7 +87,6 @@ describe('approved credit → real create/sign/activate → partial/complete pay
   const pdfJobs: Promise<unknown>[] = [];
   beforeAll(async () => {
     process.env.NODE_ENV = 'production'; // Exercise production workflow gates in the isolated DB.
-    process.env.USE_NEW_RATE_LOOKUP = 'false';
     process.env.PII_HASH_SALT = 'isolated-trade-credit-test-salt-00000000000000000000000000000000';
     await db.$connect();
     await seedFinanceCoa(db); await seedShopCoa(db);
@@ -153,7 +152,6 @@ describe('approved credit → real create/sign/activate → partial/complete pay
   afterAll(async () => {
     jest.useRealTimers();
     if (originalEnv.node === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = originalEnv.node;
-    if (originalEnv.rate === undefined) delete process.env.USE_NEW_RATE_LOOKUP; else process.env.USE_NEW_RATE_LOOKUP = originalEnv.rate;
     if (originalEnv.salt === undefined) delete process.env.PII_HASH_SALT; else process.env.PII_HASH_SALT = originalEnv.salt;
     await Promise.all(pdfJobs); await db.$disconnect(); // Parent runner destroys this entire database.
   });

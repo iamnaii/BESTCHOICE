@@ -181,7 +181,11 @@ export function InstallmentCalculatorCard({
       <CardHeader>
         <CardTitle>คำนวณค่างวด</CardTitle>
         <span className="text-xs text-muted-foreground leading-snug">
-          {fin === 'gfin' && quotes.gfinSalePrice != null ? 'คิดจากราคาขาย GFIN' : 'คิดจากราคาผ่อน'}{' '}
+          {fin === 'gfin' && quotes.hasFinancePrice
+            ? 'คิดจากราคาขาย GFIN'
+            : fin === 'gfin'
+              ? 'คิดจากราคาผ่อน BESTCHOICE (ยังไม่ได้ตั้งราคาขาย GFIN)'
+              : 'คิดจากราคาผ่อน'}{' '}
           <span className="font-mono tabular-nums">
             {formatBaht(fin === 'gfin' && quotes.gfinSalePrice != null ? quotes.gfinSalePrice : installmentPrice)}
           </span>{' '}

@@ -149,6 +149,7 @@ describe('resolveQuotes', () => {
     const r = resolveQuotes({ product: { ...product, financePrice: '21000' }, state: INITIAL_CALC_STATE, bcConfig, gfinTables });
     expect(r.installmentPrice).toBe(19900);
     expect(r.gfinSalePrice).toBe(21000);
+    expect(r.hasFinancePrice).toBe(true);
     expect(r.bc!.downAmount).toBe(3000);
     // ส่วนลดดาวน์ = 24,000 − 21,000 = 3,000 ⇒ ดาวน์ลูกค้า 6,000 − 3,000 = 3,000
     expect(r.gfin!.quote.available && r.gfin!.quote.result.downAmountActual.toNumber()).toBe(3000);
@@ -157,6 +158,7 @@ describe('resolveQuotes', () => {
   it('financePrice ว่าง → เรท 2 ใช้ราคาผ่อน BESTCHOICE', () => {
     const r = resolveQuotes({ product: { ...product, financePrice: null }, state: INITIAL_CALC_STATE, bcConfig, gfinTables });
     expect(r.gfinSalePrice).toBe(19900);
+    expect(r.hasFinancePrice).toBe(false);
     // ส่วนลดดาวน์ = 24,000 − 19,900 = 4,100 ⇒ 6,000 − 4,100 = 1,900
     expect(r.gfin!.quote.available && r.gfin!.quote.result.downAmountActual.toNumber()).toBe(1900);
   });

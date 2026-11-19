@@ -46,6 +46,8 @@ export interface ResolvedQuotes {
   installmentPrice: number | null;
   /** ราคาที่เรท 2 ใช้คิด = financePrice ?? ราคาผ่อน (null = ไม่มีทั้งคู่) */
   gfinSalePrice: number | null;
+  /** เครื่องนี้ตั้งราคาขาย GFIN (financePrice > 0) เอง — false = gfinSalePrice เป็นแค่ราคาผ่อน BESTCHOICE ที่ใช้แทน */
+  hasFinancePrice: boolean;
   bc: ResolvedBc | null;
   gfin: ResolvedGfin | null;
   gfinAvailable: boolean;
@@ -70,9 +72,11 @@ export function resolveQuotes({
 }): ResolvedQuotes {
   const { installment } = getPositiveDisplayPrices(product);
   const installmentPrice = installment ?? null;
-  const gfinSalePrice = normalizePositive(product.financePrice) ?? installmentPrice;
+  const financePrice = normalizePositive(product.financePrice);
+  const hasFinancePrice = financePrice != null;
+  const gfinSalePrice = financePrice ?? installmentPrice;
   if (installmentPrice == null && gfinSalePrice == null) {
-    return { installmentPrice: null, gfinSalePrice: null, bc: null, gfin: null, gfinAvailable: false };
+    return { installmentPrice: null, gfinSalePrice: null, hasFinancePrice, bc: null, gfin: null, gfinAvailable: false };
   }
 
   let bc: ResolvedBc | null = null;
@@ -136,5 +140,5 @@ export function resolveQuotes({
     gfinAvailable = quote.available;
   }
 
-  return { installmentPrice, gfinSalePrice, bc, gfin, gfinAvailable };
+  return { installmentPrice, gfinSalePrice, hasFinancePrice, bc, gfin, gfinAvailable };
 }

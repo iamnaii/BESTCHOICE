@@ -126,6 +126,23 @@ describe('InstallmentCalculatorCard — การ์ดเดียว สลั
     expect(screen.getByText(/3,327/)).toBeInTheDocument();
   });
 
+  it('แท็บ GFIN + เครื่องมีราคาขาย GFIN → หัวการ์ดบอก "คิดจากราคาขาย GFIN" และโชว์ราคานั้น', () => {
+    renderCard({
+      product: { ...iphone15, financePrice: '21000' },
+      state: { ...INITIAL_CALC_STATE, fin: 'gfin' },
+    });
+    expect(screen.getByText(/คิดจากราคาขาย GFIN/)).toBeInTheDocument();
+    expect(screen.queryByText(/ยังไม่ได้ตั้งราคาขาย GFIN/)).toBeNull();
+  });
+
+  it('แท็บ GFIN + เครื่องไม่มีราคาขาย GFIN → ไม่อ้างว่าเป็นราคาขาย GFIN แต่บอกว่าคิดจากราคาผ่อน BESTCHOICE', () => {
+    renderCard({ state: { ...INITIAL_CALC_STATE, fin: 'gfin' } });
+    expect(screen.queryByText(/คิดจากราคาขาย GFIN/)).toBeNull();
+    expect(
+      screen.getByText(/คิดจากราคาผ่อน BESTCHOICE \(ยังไม่ได้ตั้งราคาขาย GFIN\)/),
+    ).toBeInTheDocument();
+  });
+
   it('คลิกแท็บ GFIN → onChange({ fin: "gfin" })', async () => {
     const { onChange } = renderCard();
     await userEvent.click(screen.getByRole('tab', { name: /GFIN/ }));

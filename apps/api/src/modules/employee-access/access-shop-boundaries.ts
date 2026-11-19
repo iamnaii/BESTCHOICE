@@ -5,6 +5,7 @@ import { Company, PermissionKey, canAccess } from '@installment/shared';
 import { ACCESS_BOUNDARIES, ACCESS_POLICIES } from './access-policy.registry';
 import { AccessResourceService, PersistedAccessResolver, ResolvedAccessResources } from './access-resource.service';
 import { AccessSensitiveService } from './access-sensitive.service';
+import { productWriteCapabilities } from './access-shop-price-capabilities';
 import { ProductsController } from '../products/products.controller';
 import { InspectionsController } from '../quality-control/inspections.controller';
 import { ProductPhotosController } from '../quality-control/product-photos.controller';
@@ -204,9 +205,7 @@ export class AccessShopBoundaries implements OnModuleInit {
         resources.push(branch);
       }
       if (route.startsWith('ProductsController.')) {
-        const extra: PermissionKey[] = [];
-        if (['create', 'update'].includes(method) && req.body?.costPrice !== undefined) extra.push('products.cost.update');
-        if (['addPrice', 'updatePrice', 'removePrice'].includes(method) || ['cashPrice', 'installmentPrice', 'prices'].some(key => req.body?.[key] !== undefined)) extra.push('pricing.update');
+        const extra = productWriteCapabilities(method, req.body);
         for (const capability of extra) if (resources.some(resource => !canAccess(snapshot, capability, resource))) throw new ForbiddenException('ไม่มีสิทธิ์แก้ไขต้นทุนหรือราคาขาย');
       }
       if (resources.some(resource => resource.company !== company)) throw new ForbiddenException('บริษัทเจ้าของข้อมูลไม่ตรงกับส่วนงาน');

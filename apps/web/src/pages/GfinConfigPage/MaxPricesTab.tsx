@@ -96,6 +96,7 @@ export function MaxPricesTab() {
         async (body) => (await api.post('/gfin-config/max-prices/import', body)).data,
         items,
         (done, total) => setImportProgress(`กำลังนำเข้า ชุด ${done}/${total}`),
+        getErrorMessage,
       ),
     onSuccess: ({ created, updated, unchanged }) => {
       qc.invalidateQueries({ queryKey: ['gfin-max-prices'] });
@@ -110,16 +111,20 @@ export function MaxPricesTab() {
   });
 
   const downloadTemplate = async () => {
-    const ExcelJS = (await import('exceljs')).default;
-    const wb = new ExcelJS.Workbook();
-    const ws = wb.addWorksheet('ใบราคา GFIN');
-    ws.columns = GFIN_IMPORT_HEADERS.map((header) => ({ header, key: header, width: header === 'รุ่น' ? 22 : 14 }));
-    ws.addRows([
-      { 'รุ่น': 'iPhone 15 Pro Max', 'ความจุ': '256GB', 'มือ 1/มือ 2': 'มือ 1', 'ราคา': 34900 },
-      { 'รุ่น': 'iPhone 13', 'ความจุ': '128GB', 'มือ 1/มือ 2': 'มือ 2', 'ราคา': 12900 },
-    ]);
-    const buffer = await wb.xlsx.writeBuffer();
-    downloadExcelBuffer(buffer, 'แบบฟอร์มใบราคา-GFIN.xlsx');
+    try {
+      const ExcelJS = (await import('exceljs')).default;
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet('ใบราคา GFIN');
+      ws.columns = GFIN_IMPORT_HEADERS.map((header) => ({ header, key: header, width: header === 'รุ่น' ? 22 : 14 }));
+      ws.addRows([
+        { 'รุ่น': 'iPhone 15 Pro Max', 'ความจุ': '256GB', 'มือ 1/มือ 2': 'มือ 1', 'ราคา': 34900 },
+        { 'รุ่น': 'iPhone 13', 'ความจุ': '128GB', 'มือ 1/มือ 2': 'มือ 2', 'ราคา': 12900 },
+      ]);
+      const buffer = await wb.xlsx.writeBuffer();
+      downloadExcelBuffer(buffer, 'แบบฟอร์มใบราคา-GFIN.xlsx');
+    } catch {
+      toast.error('สร้างไฟล์แบบฟอร์มไม่สำเร็จ กรุณาลองใหม่');
+    }
   };
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {

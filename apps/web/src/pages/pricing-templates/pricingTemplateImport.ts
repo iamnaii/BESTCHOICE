@@ -282,6 +282,7 @@ export async function sendPricingImport(
   items: PricingImportItem[],
   deactivateIds: string[],
   onProgress?: (done: number, total: number) => void,
+  describeError: (e: unknown) => string = (e) => (e instanceof Error ? e.message : String(e)),
 ): Promise<{ saved: number; deactivated: number }> {
   if (items.length === 0 && deactivateIds.length === 0) return { saved: 0, deactivated: 0 };
   const batches = chunk(items, IMPORT_BATCH_SIZE);
@@ -298,7 +299,7 @@ export async function sendPricingImport(
         ...(last && deactivateIds.length > 0 ? { deactivateIds } : {}),
       });
     } catch (e) {
-      const reason = e instanceof Error ? e.message : String(e);
+      const reason = describeError(e);
       throw new ImportBatchError(`ชุดที่ ${i + 1} ส่งไม่สำเร็จ (${reason}) — บันทึกแล้ว ${saved} แถวจากชุดก่อนหน้า`);
     }
     if (res.errors.length > 0)

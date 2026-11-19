@@ -122,6 +122,17 @@ describe('sendGfinImport', () => {
     expect((error as Error).message).toBe('ชุดที่ 2 ส่งไม่สำเร็จ (Network Error) — บันทึกแล้ว 90 แถวจากชุดก่อนหน้า');
   });
 
+  it('ใช้ describeError แสดงข้อความของ API แทนข้อความ axios', async () => {
+    const axiosErr = { message: 'Request failed with status code 400', response: { status: 400, data: { message: 'ข้อความไทยจาก API' } } };
+    const post = vi
+      .fn()
+      .mockResolvedValueOnce({ created: 100, updated: 0, unchanged: 0 })
+      .mockRejectedValueOnce(axiosErr);
+    const describeError = (e: unknown) => (e as typeof axiosErr).response.data.message;
+    const error = await sendGfinImport(post, Array(150).fill(item), undefined, describeError).catch((e: unknown) => e);
+    expect((error as Error).message).toBe('ชุดที่ 2 ส่งไม่สำเร็จ (ข้อความไทยจาก API) — บันทึกแล้ว 100 แถวจากชุดก่อนหน้า');
+  });
+
   it('ชุดแรกล้ม → บันทึกแล้ว 0 แถว', async () => {
     const post = vi.fn().mockRejectedValueOnce(new Error('boom'));
     const error = await sendGfinImport(post, [item]).catch((e: unknown) => e);

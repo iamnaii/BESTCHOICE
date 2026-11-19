@@ -212,6 +212,18 @@ describe('sendPricingImport', () => {
     expect((error as Error).message).toBe('ชุดที่ 2 ถูกปฏิเสธ (ROW_2:INVALID_ROW) — บันทึกแล้ว 100 แถวจากชุดก่อนหน้า');
   });
 
+  it('ใช้ describeError แสดงข้อความของ API แทนข้อความ axios', async () => {
+    const axiosErr = { message: 'Request failed with status code 400', response: { status: 400, data: { message: 'ข้อความไทยจาก API' } } };
+    const post = vi
+      .fn()
+      .mockResolvedValueOnce({ success: 100, skipped: 0, errors: [] })
+      .mockRejectedValueOnce(axiosErr);
+    const describeError = (e: unknown) => (e as typeof axiosErr).response.data.message;
+    const error = await sendPricingImport(post, Array(150).fill(item), [], undefined, describeError).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ImportBatchError);
+    expect((error as Error).message).toBe('ชุดที่ 2 ส่งไม่สำเร็จ (ข้อความไทยจาก API) — บันทึกแล้ว 100 แถวจากชุดก่อนหน้า');
+  });
+
   it('post ล้มเหลว (เครือข่าย/HTTP) ในชุดที่ 2 → ImportBatchError บอกจำนวนที่บันทึกแล้ว', async () => {
     const post = vi
       .fn()

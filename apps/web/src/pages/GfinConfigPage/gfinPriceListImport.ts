@@ -117,6 +117,7 @@ export async function sendGfinImport(
   post: (body: { items: GfinImportItem[] }) => Promise<GfinImportResult>,
   items: GfinImportItem[],
   onProgress?: (done: number, total: number) => void,
+  describeError: (e: unknown) => string = (e) => (e instanceof Error ? e.message : String(e)),
 ): Promise<GfinImportResult> {
   const batches = chunk(items, GFIN_IMPORT_BATCH_SIZE);
   const total: GfinImportResult = { created: 0, updated: 0, unchanged: 0 };
@@ -126,7 +127,7 @@ export async function sendGfinImport(
     try {
       res = await post({ items: batches[i] });
     } catch (e) {
-      const reason = e instanceof Error ? e.message : String(e);
+      const reason = describeError(e);
       throw new ImportBatchError(
         `ชุดที่ ${i + 1} ส่งไม่สำเร็จ (${reason}) — บันทึกแล้ว ${total.created + total.updated} แถวจากชุดก่อนหน้า`,
       );

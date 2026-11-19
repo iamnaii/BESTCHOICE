@@ -138,6 +138,7 @@ export default function PricingTemplatesPage() {
         items,
         deactivateIds,
         (done, total) => setImportProgress(`กำลังนำเข้า ชุด ${done}/${total}`),
+        getErrorMessage,
       ),
     onSuccess: ({ saved, deactivated }) => {
       queryClient.invalidateQueries({ queryKey: ['pricing-templates'] });

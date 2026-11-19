@@ -63,7 +63,7 @@ describe('MaxPricesTab — นำเข้าใบราคา', () => {
     );
     apiPost
       .mockResolvedValueOnce({ data: { created: 100, updated: 0, unchanged: 0 } })
-      .mockRejectedValueOnce(new Error('Network Error'));
+      .mockRejectedValueOnce({ response: { status: 400, data: { message: 'รุ่นซ้ำในไฟล์' } } });
     const { container } = render(<Wrapper><MaxPricesTab /></Wrapper>);
     await screen.findByText('iPhone 14');
     fireEvent.change(container.querySelector('input[type="file"]') as HTMLInputElement, {
@@ -71,7 +71,7 @@ describe('MaxPricesTab — นำเข้าใบราคา', () => {
     });
     await userEvent.click(await screen.findByRole('button', { name: 'ยืนยันนำเข้า' }));
     await waitFor(() =>
-      expect(toast.error).toHaveBeenCalledWith('ชุดที่ 2 ส่งไม่สำเร็จ (Network Error) — บันทึกแล้ว 100 แถวจากชุดก่อนหน้า'),
+      expect(toast.error).toHaveBeenCalledWith('ชุดที่ 2 ส่งไม่สำเร็จ (รุ่นซ้ำในไฟล์) — บันทึกแล้ว 100 แถวจากชุดก่อนหน้า'),
     );
   });
 });

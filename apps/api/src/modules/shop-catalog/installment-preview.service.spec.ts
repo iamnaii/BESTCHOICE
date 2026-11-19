@@ -354,4 +354,85 @@ describe('InstallmentPreviewService', () => {
     expect(json).not.toContain('iPhone 14|iPhone 15'); // seriesPattern
     // gfinSubmitPrice IS exposed (22500 = 21500 + 1000) — that's fine, it's the customer-visible derived value
   });
+
+  describe('GFIN: ดาวน์ขั้นต่ำตามกติกา OVER (สเปค 3.3 / 4.3)', () => {
+    // iPhone 14 Pro 128GB มือ 2 เครื่องไทย: ราคาส่ง 21,500 + OVER 1,000 = 22,500 · ราคาผ่อน 19,900 → ส่วนลดดาวน์ 2,600
+    function mockIphone14Pro(ruleMinDownPct: number | null) {
+      prisma.systemConfig.findFirst.mockResolvedValue(null); // ค่าตั้ง gfin.minDownPct = ค่าเริ่ม 25
+      prisma.product.findFirst.mockResolvedValue({
+        id: 'p1',
+        installmentPrice: new Prisma.Decimal('19900'),
+        prices: [],
+        category: 'PHONE_USED',
+        brand: 'Apple',
+        model: 'iPhone 14 Pro',
+        storage: '128GB',
+        deviceOrigin: 'THAI',
+        deletedAt: null,
+      });
+      prisma.gfinModelMapping.findMany.mockResolvedValue([
+        {
+          id: 'm1',
+          gfinSeries: 'iPhone 14 Pro',
+          gfinVariant: null,
+          storage: '128GB',
+          condition: 'HAND_2',
+          maxPrice: new Prisma.Decimal('21500'),
+          modelMatchPattern: 'iPhone 14 Pro',
+          isActive: true,
+        },
+      ]);
+      prisma.gfinOverpriceRule.findMany.mockResolvedValue([
+        {
+          id: 'r1',
+          label: 'iPhone 14 Pro มือ 2',
+          seriesPattern: 'iPhone 14 Pro',
+          condition: 'HAND_2',
+          allowance: new Prisma.Decimal('1000'),
+          maxMonths: 12,
+          minDownPct: ruleMinDownPct,
+          isActive: true,
+        },
+      ]);
+      prisma.gfinRateFactor.findFirst.mockResolvedValue({
+        months: 12,
+        shopCommissionPct: 15,
+        factor: new Prisma.Decimal('0.179238'),
+        feePerInstallment: new Prisma.Decimal('100'),
+        isActive: true,
+      });
+    }
+
+    it('กติกาตั้ง 30% ชนะค่าตั้ง 25%: 6,750 − 2,600 = 4,150 → 4,200 · ยอดจัด 15,750 · 2,923', async () => {
+      mockIphone14Pro(30);
+      const result = await service.preview({ productId: 'p1', provider: 'GFIN', months: 12 });
+      expect(result.available).toBe(true);
+      expect(result.downAmount).toBe(4200);
+      expect(result.financedAmount).toBe(15750);
+      expect(result.monthlyPayment).toBe(2923);
+    });
+
+    it('กติกาไม่ตั้ง → ค่าตั้ง 25%: 5,625 − 2,600 = 3,025 → 3,100 · ยอดจัด 16,875 · 3,125', async () => {
+      mockIphone14Pro(null);
+      const result = await service.preview({ productId: 'p1', provider: 'GFIN', months: 12 });
+      expect(result.downAmount).toBe(3100);
+      expect(result.financedAmount).toBe(16875);
+      expect(result.monthlyPayment).toBe(3125);
+    });
+
+    it('เว็บ shop ส่ง 15% (ดาวน์เรท 1) → ยกขึ้นเป็นขั้นต่ำของรุ่น 30%', async () => {
+      mockIphone14Pro(30);
+      const result = await service.preview({ productId: 'p1', provider: 'GFIN', months: 12, downPct: 0.15 });
+      expect(result.downAmount).toBe(4200);
+      expect(result.monthlyPayment).toBe(2923);
+    });
+
+    it('ส่ง % สูงกว่าขั้นต่ำ (40%) → ใช้ตามที่ส่ง: 9,000 − 2,600 = 6,400 · ยอดจัด 13,500 · 2,520', async () => {
+      mockIphone14Pro(30);
+      const result = await service.preview({ productId: 'p1', provider: 'GFIN', months: 12, downPct: 0.4 });
+      expect(result.downAmount).toBe(6400);
+      expect(result.financedAmount).toBe(13500);
+      expect(result.monthlyPayment).toBe(2520);
+    });
+  });
 });

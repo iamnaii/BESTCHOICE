@@ -6,6 +6,7 @@ import {
   calcGfinInstallment,
   findGfinMapping,
   findGfinOverpriceRule,
+  resolveGfinDownPct,
 } from '../../utils/installment-calc.util';
 import { productReadinessWhere } from '../../utils/product-readiness.util';
 import { readBoolFlag } from '../../utils/config.util';
@@ -181,6 +182,12 @@ export class InstallmentPreviewService {
       return { available: false, reason: 'months_over_max' };
     }
 
+    // ดาวน์ขั้นต่ำ: กติกา OVER ของรุ่นก่อน ไม่มีแล้วใช้ค่าตั้ง gfin.minDownPct (สเปค price-master-retire 3.3)
+    // เว็บ shop ส่ง % เดียวกับเรท 1 มาด้วย (ค่าเริ่ม 15%) — GFIN ไม่รับดาวน์ต่ำกว่าขั้นต่ำ จึงยกขึ้นเป็นขั้นต่ำ
+    const minDownPct = resolveGfinDownPct(rule, new Decimal(settings.minDownPct).div(100));
+    const downPct =
+      dto.downPct !== undefined ? Decimal.max(new Decimal(dto.downPct), minDownPct) : minDownPct;
+
     const result = calcGfinInstallment({
       installmentPrice,
       product: {
@@ -190,11 +197,7 @@ export class InstallmentPreviewService {
         category: gfinCategory,
       },
       months: dto.months,
-      // ดาวน์ขั้นต่ำเป็นค่าต่อร้านจากตั้งค่า GFIN (ไม่ใช่ 30% ตายตัวอีกต่อไป)
-      downPct:
-        dto.downPct !== undefined
-          ? new Decimal(dto.downPct)
-          : new Decimal(settings.minDownPct).div(100),
+      downPct,
       shopCommissionPct: new Decimal(commissionPct),
       contractFee: new Decimal(settings.contractFee),
       mapping,

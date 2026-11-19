@@ -166,6 +166,40 @@ describe('TradeInLifecycleService.accept() — SHOP JE wiring (Task 2)', () => {
     expect(financeWrite?.[0]).toEqual({ where: { id: 'p-new' }, data: { financePrice: new Prisma.Decimal(9900) } });
   });
 
+  it('ตัวเติมราคาเงินสดกับราคาขาย GFIN เลือกแถวราคากลางแถวเดียวกัน (ประกันจาก resolveHasWarranty)', async () => {
+    tx.tradeIn.findUnique.mockResolvedValue({
+      id: 'ti-10', status: 'APPRAISED', deletedAt: null, flow: 'BUYBACK', branchId: 'br-1',
+      offeredPrice: new Decimal(5000), estimatedValue: null, imei: null,
+      deviceBrand: 'Apple', deviceModel: 'iPhone 12', deviceColor: null, deviceStorage: null,
+      deviceCondition: 'A', notes: null,
+    });
+    // เครื่องยังอยู่ในประกัน (warrantyExpired === false) → ต้องใช้แถว "มีประกัน" ทั้งสองขั้น
+    tx.product.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
+      id: 'p-new', warrantyExpired: false, warrantyExpireDate: null, ...data,
+    }));
+    const row = (hasWarranty: boolean, cash: number, fin: number) => ({
+      id: 't-' + hasWarranty, brand: 'Apple', model: 'iPhone 12', storage: '', category: 'PHONE_USED',
+      hasWarranty, deviceOrigin: 'UNSPECIFIED',
+      cashPrice: new Decimal(cash), installmentBestchoicePrice: new Decimal(cash),
+      installmentFinancePrice: new Decimal(fin),
+    });
+    tx.pricingTemplate.findMany.mockResolvedValue([row(false, 8000, 9000), row(true, 11000, 12000)]);
+    tx.tradeIn.update.mockResolvedValue({ id: 'ti-10', status: 'ACCEPTED' });
+    shopAccountResolver.resolveOutflowCashAccount.mockResolvedValue('S11-1102');
+
+    await service.accept(
+      'ti-10',
+      { sellerName: 'TEST SELLER', sellerPhone: '0000000000', sellerAddress: 'TEST ADDRESS', sellerIdCardNumber: '0000000000001', serialNumber: 'TEST-SN', imeiMissingReason: 'TEST: no cellular radio', idCardVerified: true, sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: 'data:image/png;base64,dGVzdA==', paymentMethod: 'CASH' } as any,
+      'u-1',
+    );
+
+    const updates = tx.product.update.mock.calls.map(([a]: [{ data: Record<string, unknown> }]) => a.data);
+    const cash = updates.find((d: Record<string, unknown>) => d.cashPrice !== undefined);
+    const fin = updates.find((d: Record<string, unknown>) => d.financePrice !== undefined);
+    expect(String(cash?.cashPrice)).toBe('11000');
+    expect(String(fin?.financePrice)).toBe('12000');
+  });
+
   // ─── Test 2: EXCHANGE → does NOT post ShopTradeIn JE ─────────────────────
   it('does NOT post ShopTradeIn for an EXCHANGE accept', async () => {
     tx.tradeIn.findUnique.mockResolvedValue({

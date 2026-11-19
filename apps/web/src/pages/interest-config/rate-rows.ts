@@ -68,3 +68,11 @@ export function previewBcConfig(input: {
     allowedMonths: rows.length > 0 ? rows.map((r) => r.months) : [months],
   };
 }
+
+/**
+ * ตารางรายงวดใช้งานได้ (มีอย่างน้อย 1 แถวและผ่านกติกา) — สัญญา/หน้าราคาจะใช้แถวเหล่านี้ทั้งหมด
+ * ดอกเบี้ยต่อเดือนจึงเว้นเป็น 0 ได้ (ใช้เฉพาะเมื่อไม่มีตาราง — `getRateForMonths`, `toBcConfig`)
+ */
+export function hasUsableRateRows(rows: RateRowForm[], minMonths: number, maxMonths: number): boolean {
+  return rows.length > 0 && validateRateRows(rows, minMonths, maxMonths) === null;
+}

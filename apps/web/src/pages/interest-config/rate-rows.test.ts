@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import Decimal from 'decimal.js';
 import { calcBcInstallment } from '@installment/shared';
-import { previewBcConfig, previewMonths, totalInterestPct, validateRateRows } from './rate-rows';
+import { hasUsableRateRows, previewBcConfig, previewMonths, totalInterestPct, validateRateRows } from './rate-rows';
 
 describe('validateRateRows', () => {
   it('ตารางว่างผ่าน', () => {
@@ -82,5 +82,20 @@ describe('previewBcConfig', () => {
     const config = previewBcConfig({ ...base, rows: [], months: 12 });
     expect(config.allowedMonths).toEqual([12]);
     expect(config.ratePctByMonths.get(12)?.toString()).toBe('0.6');
+  });
+});
+
+describe('hasUsableRateRows', () => {
+  it('มีอย่างน้อย 1 แถวและผ่านกติกา → true', () => {
+    expect(hasUsableRateRows([{ months: 12, ratePct: 50 }], 6, 12)).toBe(true);
+  });
+
+  it('ตารางว่าง → false', () => {
+    expect(hasUsableRateRows([], 6, 12)).toBe(false);
+  });
+
+  it('มีแถวแต่ผิดกติกา (ดอกเบี้ย 0 / นอกช่วง) → false', () => {
+    expect(hasUsableRateRows([{ months: 12, ratePct: 0 }], 6, 12)).toBe(false);
+    expect(hasUsableRateRows([{ months: 15, ratePct: 60 }], 6, 12)).toBe(false);
   });
 });

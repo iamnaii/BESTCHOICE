@@ -14,6 +14,7 @@ import Decimal from 'decimal.js';
 import { calcBcInstallment } from '@installment/shared';
 import RateRowsEditor from './interest-config/RateRowsEditor';
 import {
+  hasUsableRateRows,
   previewBcConfig,
   previewMonths,
   validateRateRows,
@@ -72,7 +73,12 @@ function validateForm(form: typeof defaultForm): FormErrors {
   const errors: FormErrors = {};
   if (!form.name.trim()) errors.name = 'กรุณากรอกชื่อ';
   if (form.productCategories.length === 0) errors.productCategories = 'กรุณาเลือกประเภทสินค้าอย่างน้อย 1 รายการ';
-  if (form.interestRate <= 0) errors.interestRate = 'ดอกเบี้ยต้องมากกว่า 0';
+  // มีตารางรายงวดที่ใช้ได้ = สัญญาใช้แถวทั้งหมด ดอกเบี้ยต่อเดือนเว้นเป็น 0 ได้ (ช่องว่าง = 0)
+  const termRatesUsable = hasUsableRateRows(form.rates, form.minInstallmentMonths, form.maxInstallmentMonths);
+  if (!(form.interestRate >= 0)) errors.interestRate = 'ดอกเบี้ยต่อเดือนต้องไม่ติดลบ';
+  else if (form.interestRate === 0 && !termRatesUsable) {
+    errors.interestRate = 'ดอกเบี้ยต่อเดือนต้องมากกว่า 0 — หรือใส่ตารางดอกเบี้ยรายงวดอย่างน้อย 1 แถว';
+  }
   if (form.minDownPaymentPct <= 0 || form.minDownPaymentPct > 100) errors.minDownPaymentPct = 'ดาวน์ขั้นต่ำต้องอยู่ระหว่าง 0-100%';
   if (form.storeCommissionPct < 0 || form.storeCommissionPct > 100) errors.storeCommissionPct = 'ค่าคอมต้องอยู่ระหว่าง 0-100%';
   if (form.minInstallmentMonths < 1) errors.minInstallmentMonths = 'งวดต่ำสุดต้อง >= 1';
@@ -570,7 +576,7 @@ export default function InterestConfigPage() {
                   max="100"
                   className={touched && errors.interestRate ? errorInputClass : `${inputClass} border-input`}
                 />
-                <p className="mt-1 text-xs leading-snug text-muted-foreground">ใช้เมื่อไม่มีตารางดอกเบี้ยรายงวด</p>
+                <p className="mt-1 text-xs leading-snug text-muted-foreground">ใช้เมื่อไม่มีตารางดอกเบี้ยรายงวด · มีตารางแล้วเว้นเป็น 0 ได้</p>
                 {touched && errors.interestRate && <p className="text-xs text-destructive mt-1">{errors.interestRate}</p>}
               </div>
               <div>
@@ -647,7 +653,11 @@ export default function InterestConfigPage() {
 
             {/* Preview Calculation */}
             {(() => {
-              if (!form.name || !(form.interestRate > 0) || !(form.minDownPaymentPct > 0)) return null;
+              if (!form.name || !(form.minDownPaymentPct > 0)) return null;
+              if (
+                !(form.interestRate > 0) &&
+                !hasUsableRateRows(form.rates, form.minInstallmentMonths, form.maxInstallmentMonths)
+              ) return null;
               if (validateRateRows(form.rates, form.minInstallmentMonths, form.maxInstallmentMonths) !== null) return null;
               const months = previewMonths(form.rates, form.maxInstallmentMonths);
               if (!Number.isFinite(months) || months < 1) return null;

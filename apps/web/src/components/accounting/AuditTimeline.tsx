@@ -35,6 +35,7 @@ const EVENT_META: Record<
   AUTO_POSTED: { icon: CheckCircle2, tone: 'text-success', label: 'ลงบัญชี (อัตโนมัติหลังอนุมัติ)' },
   SENT_BACK_TO_DRAFT: { icon: Undo2, tone: 'text-warning-strong', label: 'ส่งกลับเป็นร่างเพื่อแก้ไข' },
   DELETED: { icon: XCircle, tone: 'text-destructive', label: 'ลบเอกสาร' },
+  UPDATED: { icon: PenLine, tone: 'text-info', label: 'แก้ไขเอกสาร' },
 };
 
 function metaFor(event: string) {
@@ -89,6 +90,9 @@ export function AuditTimeline({ events, compact = false }: AuditTimelineProps) {
                 {formatDateTime(evt.timestamp)}
                 {!compact && evt.detail ? ` · ${evt.detail}` : null}
               </div>
+              {evt.changes ? (
+                <div className="text-xs text-muted-foreground leading-snug">{evt.changes}</div>
+              ) : null}
               {/* Reason (e.g. reverse reason) is decoupled from `compact`:
                   the inline preview is compact, yet a standard 3-event
                   reversed doc must still show WHY it was reversed. */}

@@ -10,7 +10,7 @@ export { AuditTimeline } from './AuditTimeline';
 export type { AuditTimelineProps } from './AuditTimeline';
 export { resolveCanReverse } from './reverse-permission';
 export type { ReversePermissionMode } from './reverse-permission';
-export { mapAuditEvents } from './audit-events';
+export { mapAuditEvents, withCreatedEvent, latestEvents } from './audit-events';
 export type { RawAuditEntry } from './audit-events';
 export type {
   IcabAuditEvent,

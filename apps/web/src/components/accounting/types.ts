@@ -33,6 +33,8 @@ export interface IcabAuditEvent {
   detail?: string;
   /** Free-form note attached to the event (e.g. reverse reason). */
   reason?: string;
+  /** สรุปการแก้ไข (เหตุการณ์ UPDATED) — "แก้: ผู้ขาย · รายการ · ยอดรวม 500.00 → 1,070.00" · แสดงทั้งโหมด compact */
+  changes?: string;
 }
 
 /**

@@ -35,6 +35,7 @@ describe('ExpenseDocumentCreateService (via facade) — characterization', () =>
       },
       expenseDetail: { update: jest.fn().mockResolvedValue({}) },
       expenseLine: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
       chartOfAccount: {
         findMany: jest
           .fn()
@@ -181,6 +182,55 @@ describe('ExpenseDocumentCreateService (via facade) — characterization', () =>
       expect(updArg.data.subtotal.toFixed(2)).toBe('1000.00');
       expect(updArg.data.vatAmount.toFixed(2)).toBe('70.00');
       expect(updArg.data.totalAmount.toFixed(2)).toBe('1070.00');
+    });
+  });
+
+  // ─── 2a. ประวัติการทำงาน — update() เขียน UPDATED พร้อมผู้แก้ (2026-11-19) ──
+  describe('update — บันทึก "แก้ไขเอกสาร" ลงประวัติในทรานแซกชันเดียวกัน', () => {
+    it('เขียน auditLog UPDATED: ผู้แก้ · ช่องที่แก้ · ยอดรวมก่อน/หลัง (ไม่มีค่าช่องอื่น)', async () => {
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-1', number: 'EX-2611-001', status: 'DRAFT', deletedAt: null,
+        depositAccountCode: '11-1103', totalAmount: new Prisma.Decimal('500'),
+        expenseDetail: { priceType: 'EXCLUSIVE', lines: [] },
+      });
+
+      await service.update(
+        'doc-1',
+        {
+          vendorName: 'บริษัท ใหม่',
+          description: 'edited',
+          lines: [{ category: '53-1101', quantity: 1, unitPrice: 1000, vatPercent: 7, whtPercent: 0 }],
+        } as never,
+        'user-9',
+      );
+
+      expect(prisma.auditLog.create).toHaveBeenCalledTimes(1);
+      const arg = JSON.parse(JSON.stringify(prisma.auditLog.create.mock.calls[0][0]));
+      expect(arg).toEqual({
+        data: {
+          action: 'UPDATED',
+          entity: 'expense_document',
+          entityId: 'doc-1',
+          userId: 'user-9',
+          oldValue: { totalAmount: '500' },
+          newValue: {
+            documentNumber: 'EX-2611-001',
+            changedFields: ['vendorName', 'description', 'lines'],
+            totalAmount: '1070',
+          },
+        },
+      });
+    });
+
+    it('ไม่ได้แก้รายการ → ยอดรวมหลัง = ยอดเดิม', async () => {
+      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+        id: 'doc-1', number: 'EX-2611-001', status: 'DRAFT', deletedAt: null,
+        depositAccountCode: null, totalAmount: new Prisma.Decimal('500'),
+        expenseDetail: { priceType: 'EXCLUSIVE', lines: [] },
+      });
+      await service.update('doc-1', { note: 'n' } as never, 'user-9');
+      const arg = JSON.parse(JSON.stringify(prisma.auditLog.create.mock.calls[0][0]));
+      expect(arg.data.newValue).toEqual({ documentNumber: 'EX-2611-001', changedFields: ['note'], totalAmount: '500' });
     });
   });
 

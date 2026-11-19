@@ -12,6 +12,7 @@ import QueryBoundary from '@/components/QueryBoundary';
 import {
   InternalControlActionBar,
   mapAuditEvents,
+  withCreatedEvent,
   type RawAuditEntry,
   type IcabStatus,
 } from '@/components/accounting';
@@ -81,6 +82,7 @@ interface ExpenseDocument {
   netPayment: string | null;
   branch?: { id: string; name: string } | null;
   createdBy?: { id: string; name: string } | null;
+  createdAt?: string;
   expenseDetail?: { lines: ExpenseLine[] } | null;
   /** R20 — ฉบับที่หน้านี้วาด · ส่งกลับตอนอนุมัติ/ลงบัญชี (`expectedUpdatedAt`) */
   updatedAt?: string;
@@ -432,10 +434,13 @@ export default function ExpenseDetailPage() {
           docNumber={doc.number}
           docAmount={Number(doc.netPayment ?? doc.totalAmount)}
           docSubtitle={doc.vendorName ?? undefined}
-          auditLog={mapAuditEvents((auditQuery.data ?? []).map((event) => ({
-            ...event,
-            action: event.action === 'EXPENSE_VOIDED' ? 'REVERSED' : event.action,
-          })))}
+          auditLog={withCreatedEvent(
+            mapAuditEvents((auditQuery.data ?? []).map((event) => ({
+              ...event,
+              action: event.action === 'EXPENSE_VOIDED' ? 'REVERSED' : event.action,
+            }))),
+            { userId: doc.createdBy?.id, userName: doc.createdBy?.name, timestamp: doc.createdAt },
+          )}
           recorderName={doc.createdBy?.name}
           currentUser={{
             id: user.id,

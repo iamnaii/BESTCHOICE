@@ -677,6 +677,25 @@ export class ExpenseDocumentCreateService {
       include: PAYROLL_LINES_INCLUDE,
     }));
 
+    if (!sentBack && !opts.storedLines) {
+      // ประวัติการทำงาน (2026-11-19) — แก้ร่างใบเงินเดือนด้วยมือ = "แก้ไขเอกสาร" · ไม่เก็บเงินเดือนรายคน (PII)
+      // ใบรอ/อนุมัติแล้วที่ถูกแก้มี SENT_BACK_TO_DRAFT อยู่แล้ว · ตอนส่งขออนุมัติ (storedLines) ไม่ใช่การแก้ของผู้ใช้
+      await tx.auditLog.create({
+        data: {
+          action: 'UPDATED',
+          entity: 'expense_document',
+          entityId: id,
+          userId: user.id,
+          oldValue: { totalAmount: existing.totalAmount?.toString() ?? null },
+          newValue: {
+            documentNumber: existing.number,
+            changedFields: ['payroll'],
+            totalAmount: totals.totalAmount?.toString() ?? null,
+          },
+        },
+      });
+    }
+
     if (sentBack) {
       // Expense lifecycle pattern — audit atomic with the status flip (tx.auditLog.create).
       // PII-safe payload: no salary lines.
@@ -1187,7 +1206,7 @@ export class ExpenseDocumentCreateService {
   }
 
   // ─── Update (DRAFT only) ─────────────────────────────────────────────
-  async update(id: string, dto: UpdateExpenseDocumentDto, _userId: string) {
+  async update(id: string, dto: UpdateExpenseDocumentDto, userId: string) {
     return this.prisma.$transaction(async (tx) => {
       await tx.$executeRawUnsafe('SELECT pg_advisory_xact_lock(hashtext($1))', `post:${id}`);
       const existing = await tx.expenseDocument.findUniqueOrThrow({
@@ -1256,11 +1275,33 @@ export class ExpenseDocumentCreateService {
         });
       }
 
-      return tx.expenseDocument.update({
+      const updated = await tx.expenseDocument.update({
         where: { id },
         data,
         include: { expenseDetail: { include: { lines: { orderBy: { lineNo: 'asc' } } } } },
       });
+
+      // ประวัติการทำงานของเอกสาร (2026-11-19) — "แก้ไขเอกสาร" โดยใคร · ช่องไหน · ยอดรวมก่อน/หลัง
+      // atomic กับการแก้ (pattern เดียวกับ SENT_BACK_TO_DRAFT / lifecycle) · ไม่เก็บค่าของช่องอื่น
+      const changedFields = Object.keys(dto).filter(
+        (k) => (dto as Record<string, unknown>)[k] !== undefined,
+      );
+      const totalAfter = (data.totalAmount as Prisma.Decimal | undefined) ?? existing.totalAmount;
+      await tx.auditLog.create({
+        data: {
+          action: 'UPDATED',
+          entity: 'expense_document',
+          entityId: id,
+          userId,
+          oldValue: { totalAmount: existing.totalAmount?.toString() ?? null },
+          newValue: {
+            documentNumber: existing.number,
+            changedFields,
+            totalAmount: totalAfter?.toString() ?? null,
+          },
+        },
+      });
+      return updated;
     });
   }
 }

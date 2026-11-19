@@ -20,6 +20,8 @@ describe('ExpenseDocumentsService.updatePayroll', () => {
     id: DOC_ID,
     documentType: 'PAYROLL',
     status: 'DRAFT',
+    number: 'PR-20260805-0001',
+    totalAmount: '1000',
     branchId: 'b1',
     deletedAt: null,
     payroll: { entityScope: 'SHOP' },
@@ -105,9 +107,19 @@ describe('ExpenseDocumentsService.updatePayroll', () => {
     expect(arg.data.withholdingTax.toString()).toBe('200');
     // net = (13000−650) + (19000−875−200) = 12,350 + 17,925 = 30,275
     expect(arg.data.netPayment.toString()).toBe('30275');
-    // DRAFT คงเป็น DRAFT — ไม่แตะ status / ไม่มี audit ส่งกลับ
+    // DRAFT คงเป็น DRAFT — ไม่แตะ status · ไม่มี audit ส่งกลับ แต่มี UPDATED (ประวัติการทำงาน 2026-11-19 · ไม่มีเงินเดือนรายคน)
     expect(arg.data).not.toHaveProperty('status');
-    expect(prisma.auditLog.create).not.toHaveBeenCalled();
+    expect(prisma.auditLog.create).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(JSON.stringify(prisma.auditLog.create.mock.calls[0][0]))).toEqual({
+      data: {
+        action: 'UPDATED',
+        entity: 'expense_document',
+        entityId: DOC_ID,
+        userId: 'u-owner',
+        oldValue: { totalAmount: '1000' },
+        newValue: { documentNumber: 'PR-20260805-0001', changedFields: ['payroll'], totalAmount: '32000' },
+      },
+    });
     expect(arg.data.payroll.create.entityScope).toBe('SHOP');
     expect(arg.data.payroll.create.lines.create).toHaveLength(2);
     expect(doc.id).toBe(DOC_ID);

@@ -103,6 +103,36 @@ describe('InstallmentPreviewService', () => {
     expect(result.downAmount).toBeCloseTo(3000, 2);
   });
 
+  it('BC: ทุกคำตอบแนบงวดที่มีอัตรา (ตัวเลือกจำนวนงวดของเว็บ shop) — คิดได้และคิดไม่ได้', async () => {
+    prisma.product.findFirst.mockResolvedValue({
+      id: 'p1',
+      installmentPrice: new Prisma.Decimal('25900'),
+      prices: [],
+      category: 'PHONE_NEW',
+      brand: 'Apple',
+      model: 'iPhone 15',
+      storage: '128GB',
+      deletedAt: null,
+    });
+    prisma.interestConfig.findFirst.mockResolvedValue({
+      id: 'c1',
+      minDownPaymentPct: new Prisma.Decimal('0.15'),
+      storeCommissionPct: new Prisma.Decimal('0.10'),
+      vatPct: new Prisma.Decimal('0.07'),
+      minInstallmentMonths: 10,
+      maxInstallmentMonths: 12,
+      interestRate: new Prisma.Decimal('0.05'),
+      rates: [
+        { months: 10, ratePct: new Prisma.Decimal('0.50'), deletedAt: null },
+        { months: 12, ratePct: new Prisma.Decimal('0.50'), deletedAt: null },
+      ],
+    });
+    const ok = await service.preview({ productId: 'p1', provider: 'BC', months: 12 });
+    expect(ok).toMatchObject({ available: true, allowedMonths: [10, 12], monthlyPayment: 3138.66 });
+    const bad = await service.preview({ productId: 'p1', provider: 'BC', months: 6 });
+    expect(bad).toMatchObject({ available: false, reason: 'invalid', allowedMonths: [10, 12] });
+  });
+
   it('GFIN: returns canonical worked example monthly payment 2,923.00', async () => {
     prisma.product.findFirst.mockResolvedValue({
       id: 'p1',

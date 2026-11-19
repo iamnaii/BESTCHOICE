@@ -5,7 +5,7 @@ import { api } from '@/lib/api';
 import { gsap, useGSAP } from '@/components/motion/gsap';
 import { MessageCircle } from 'lucide-react';
 import { Card, CardHeader, CardBody, CardTitle, Button } from '@/components';
-import { minDownAmountFromPct } from '@installment/shared';
+import { displayInstallment, minDownAmountFromPct } from '@installment/shared';
 import { lineOaMessageUrl, productShareUrl } from '@/lib/copy';
 
 interface PreviewResponse {
@@ -21,6 +21,8 @@ interface PreviewResponse {
   /** BC only — the minimum down payment in percent, straight from the rate
    *  table. The old hardcoded 15 went stale the moment the owner edited it. */
   minDownPct?: number;
+  /** BC only — งวดที่มีอัตราดอกเบี้ย · เลือกได้เฉพาะงวดเหล่านี้ */
+  allowedMonths?: number[];
 }
 
 interface Props {
@@ -33,7 +35,8 @@ function formatTHB(n: number): string {
   return n.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
-const MONTHS_OPTIONS = [3, 4, 5, 6, 7, 8, 10, 12];
+/** งวดของคำขอแรก — ตัวเลือกจริงมาจากคำตอบ BC (allowedMonths) */
+const INITIAL_MONTHS = 12;
 
 /** Only used until the first BC answer arrives with the real floor. */
 const DEFAULT_DOWN_PCT = 15;
@@ -258,7 +261,7 @@ function QuoteOption({
         ) : result?.available ? (
           <>
             <p className="num text-2xl font-bold text-primary leading-snug">
-              ฿{formatTHB(result.monthlyPayment ?? 0)}
+              ฿{formatTHB(displayInstallment(result.monthlyPayment ?? 0))}
               <span className="text-sm font-normal"> / เดือน</span>
             </p>
             <p className="text-sm text-muted-foreground leading-snug">
@@ -279,7 +282,8 @@ function InstallmentCalculator({
   productId,
   installmentPrice,
 }: Props & { installmentPrice: number }) {
-  const [months, setMonths] = useState(12);
+  const [months, setMonths] = useState(INITIAL_MONTHS);
+  const [termOptions, setTermOptions] = useState<number[]>([INITIAL_MONTHS]);
   const [downPct, setDownPct] = useState(DEFAULT_DOWN_PCT);
   const [downMode, setDownMode] = useState<'PCT' | 'AMOUNT'>('PCT');
   const [downAmountInput, setDownAmountInput] = useState<number | null>(null);
@@ -335,6 +339,13 @@ function InstallmentCalculator({
   useEffect(() => {
     if (bcResult?.minDownPct != null) setMinDownPct(bcResult.minDownPct);
   }, [bcResult?.minDownPct]);
+  // เลือกได้เฉพาะงวดที่ตั้งค่าดอกเบี้ยมีอัตรา · งวดที่เลือกอยู่ไม่มีแล้ว → 12 ถ้ามี ไม่งั้นงวดแรก
+  useEffect(() => {
+    const allowed = bcResult?.allowedMonths;
+    if (!allowed || allowed.length === 0) return;
+    setTermOptions(allowed);
+    setMonths((current) => (allowed.includes(current) ? current : allowed.includes(12) ? 12 : allowed[0]));
+  }, [bcResult?.allowedMonths]);
   const effectiveDownAmount =
     bcResult?.downAmount ?? downAmountInput ?? minDownAmountFromPct(installmentPrice, downPct / 100);
 
@@ -355,7 +366,7 @@ function InstallmentCalculator({
               onChange={(event) => setMonths(Number(event.target.value))}
               className="min-h-11 rounded-md border border-border bg-background px-3 py-1 text-base md:text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
             >
-              {MONTHS_OPTIONS.map((value) => (
+              {termOptions.map((value) => (
                 <option key={value} value={value}>
                   {value} งวด
                 </option>

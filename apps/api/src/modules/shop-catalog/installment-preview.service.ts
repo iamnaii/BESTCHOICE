@@ -28,6 +28,8 @@ export interface PreviewResult {
   downDiscount?: number;
   /** BC only — the minimum down payment, in percent. */
   minDownPct?: number;
+  /** BC only — งวดที่ตั้งค่าดอกเบี้ยมีอัตรา (ตัวเลือกจำนวนงวดของเว็บ shop) */
+  allowedMonths?: number[];
 }
 
 @Injectable()
@@ -86,15 +88,17 @@ export class InstallmentPreviewService {
     // enforce it in the input instead of hardcoding a percentage that silently
     // goes stale the day the owner edits the rate table.
     const minDownPct = resolved.config!.minDownPct.mul(100).toNumber();
+    const allowedMonths = [...resolved.config!.allowedMonths];
 
     if (!result.isValid) {
-      return { available: false, reason: 'invalid', errors: result.errors, minDownPct };
+      return { available: false, reason: 'invalid', errors: result.errors, minDownPct, allowedMonths };
     }
 
     return {
       available: true,
       provider: 'BC',
       minDownPct,
+      allowedMonths,
       monthlyPayment: result.monthlyPayment.toNumber(),
       downAmount: result.downAmount.toNumber(),
       totalWithVat: result.totalWithVat.toNumber(),

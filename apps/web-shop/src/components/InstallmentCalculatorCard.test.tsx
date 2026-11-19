@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InstallmentCalculatorCard } from './InstallmentCalculatorCard';
@@ -11,6 +11,7 @@ type Result = {
   downAmount?: number;
   months?: number;
   minDownPct?: number;
+  allowedMonths?: number[];
 };
 type Request = {
   params: URLSearchParams;
@@ -55,6 +56,7 @@ async function answer(batch: Request[], monthlyPayment: number, extra: Partial<R
           monthlyPayment,
           downAmount: 3000,
           months: Number(request.params.get('months')),
+          allowedMonths: [6, 8, 10, 12],
           ...extra,
         },
       }),
@@ -66,19 +68,19 @@ describe('installment quote interactions', () => {
   it('hides stale prices while loading and ignores late responses to older selections', async () => {
     setup();
     await answer(requests.slice(), 1234.56);
-    expect(await screen.findAllByText('฿1,234.56')).toHaveLength(2);
+    expect(await screen.findAllByText('฿1,235')).toHaveLength(2);
     fireEvent.change(screen.getByLabelText('จำนวนงวด:'), { target: { value: '6' } });
     const older = requests.slice(-2);
-    expect(screen.queryByText('฿1,234.56')).not.toBeInTheDocument();
+    expect(screen.queryByText('฿1,235')).not.toBeInTheDocument();
     expect(screen.getByText('กำลังคำนวณค่างวดล่าสุด…')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('จำนวนงวด:'), { target: { value: '8' } });
     const latest = requests.slice(-2);
     expect(older.every((request) => request.signal.aborted)).toBe(true);
     await answer(latest, 2567.89);
-    expect(await screen.findAllByText('฿2,567.89')).toHaveLength(2);
+    expect(await screen.findAllByText('฿2,568')).toHaveLength(2);
     await answer(older, 9999);
     expect(screen.queryByText('฿9,999')).not.toBeInTheDocument();
-    expect(screen.getAllByText('฿2,567.89')).toHaveLength(2);
+    expect(screen.getAllByText('฿2,568')).toHaveLength(2);
   });
 
   it('distinguishes request errors from unavailable plans and retries only the failed provider', async () => {
@@ -152,5 +154,26 @@ describe('installment quote interactions', () => {
     fireEvent.change(pct, { target: { value: '20' } });
     fireEvent.blur(pct);
     await waitFor(() => expect(screen.getByLabelText('เงินดาวน์ เป็นบาท')).toHaveValue(5200));
+  });
+  it('offers only the terms that have an interest rate (from the BC answer)', async () => {
+    setup();
+    await answer(requests.slice(), 3139, { allowedMonths: [10, 12] });
+    const select = screen.getByLabelText('จำนวนงวด:');
+    await waitFor(() =>
+      expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual(['10 งวด', '12 งวด']),
+    );
+  });
+
+  it('moves to 12, else the first allowed term, when the current term has no rate', async () => {
+    setup();
+    await answer(requests.slice(), 3139, { allowedMonths: [10] });
+    await waitFor(() => expect(screen.getByLabelText('จำนวนงวด:')).toHaveValue('10'));
+    expect(requests.slice(-2).every((request) => request.params.get('months') === '10')).toBe(true);
+  });
+
+  it('shows the monthly payment rounded up to whole baht', async () => {
+    setup();
+    await answer(requests.slice(), 3138.66);
+    expect(await screen.findAllByText('฿3,139')).toHaveLength(2);
   });
 });

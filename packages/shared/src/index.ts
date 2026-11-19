@@ -22,6 +22,7 @@ export type * from './installment-calc.types';
 export * from './gfin-customer-summary';
 export * from './default-bc-installment';
 export * from './installment-rounding';
+export * from './model-quote';
 export * from './stock-sort';
 export * from './customer-sort';
 export * from './customer-journey';

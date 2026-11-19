@@ -176,6 +176,10 @@ describe('ProductsService — คอลัมน์ราคา (B0)', () => {
         installmentBestchoicePrice: new Prisma.Decimal('2500'),
       },
     ]);
+    // ตัวเลือกแถวกลางไม่อ่านฐานข้อมูลเมื่อไม่มียี่ห้อ/รุ่น → mock แถวที่สร้างต้องมีฟิลด์เครื่องจริง
+    tx.product.create.mockResolvedValue({
+      id: 'p1', brand: 'Apple', model: '15', storage: null, category: 'PHONE_NEW', deviceOrigin: null,
+    });
     await service.create({
       name: 'iPhone 15', brand: 'Apple', model: '15', category: 'PHONE_NEW',
       costPrice: 15000, branchId: 'b1',

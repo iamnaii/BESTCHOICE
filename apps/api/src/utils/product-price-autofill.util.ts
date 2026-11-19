@@ -1,6 +1,6 @@
-import { Prisma, ProductCategory, type PricingTemplate } from '@prisma/client';
-import { normalizeStorage } from './device-query-normalize.util';
+import { Prisma, ProductCategory } from '@prisma/client';
 import { syncPriceRowsFromColumns } from './product-price-sync.util';
+import { findPricingTemplate } from './pricing-template-match.util';
 
 export interface AutofillResult {
   filled: boolean;
@@ -24,34 +24,6 @@ export interface AutofillInput {
 
 type Logger = { warn: (m: string) => void; log: (m: string) => void };
 
-/** เลือกแถวจากชุดเดียวกัน (ที่มาเครื่องเดียว): ความจุตรงก่อน → แถวไม่ระบุความจุ · ประกันแบบ deterministic */
-function pickTemplate(
-  rows: PricingTemplate[],
-  input: AutofillInput,
-  logger?: Logger,
-): PricingTemplate | null {
-  const wanted = normalizeStorage(input.storage);
-  let candidates = rows.filter((r) => normalizeStorage(r.storage) === wanted);
-  if (candidates.length === 0) candidates = rows.filter((r) => normalizeStorage(r.storage) === '');
-  if (candidates.length === 0) return null;
-
-  if (input.category !== 'PHONE_USED') {
-    const noWarranty = candidates.filter((r) => r.hasWarranty === false);
-    if (noWarranty.length > 0) candidates = noWarranty;
-  } else if (input.hasWarranty !== null) {
-    candidates = candidates.filter((r) => r.hasWarranty === input.hasWarranty);
-  } else if (candidates.length > 1) {
-    // ไม่รู้สถานะประกัน (เครื่องเทิร์น/รับซื้อส่ง null เสมอ) และเทมเพลตมี 2 แถวต่อรุ่น
-    // → เลือก "ไม่มีประกัน" = ราคาต่ำกว่า (อนุรักษ์นิยม ไม่ตั้งราคาสูงเกินจริง)
-    const noWarranty = candidates.filter((r) => r.hasWarranty === false);
-    if (noWarranty.length > 0) candidates = noWarranty;
-    logger?.log(
-      `[autofill] product=${input.productId} ไม่รู้สถานะประกัน — ใช้ราคาแถว "ไม่มีประกัน" (${input.brand} ${input.model} ${wanted || 'ไม่ระบุความจุ'})`,
-    );
-  }
-  return candidates[0] ?? null;
-}
-
 /**
  * B0 §2.1 — เติมราคาตั้งต้นจากตารางราคากลางตอนสร้าง Product
  *
@@ -71,29 +43,14 @@ export async function autofillProductPriceFromTemplate(
     return { filled: false, reason: 'ALREADY_PRICED' };
   }
 
-  const origin = input.deviceOrigin ?? 'UNSPECIFIED';
-  const origins: ('THAI' | 'IMPORTED' | 'UNSPECIFIED')[] =
-    origin === 'UNSPECIFIED' ? ['UNSPECIFIED'] : [origin, 'UNSPECIFIED'];
-  const rows = await tx.pricingTemplate.findMany({
-    where: {
-      deviceOrigin: { in: origins },
-      isActive: true,
-      deletedAt: null,
-      category: input.category,
-      brand: { equals: input.brand, mode: 'insensitive' },
-      model: { equals: input.model, mode: 'insensitive' },
-    },
-    // deterministic: hasWarranty asc = แถว false (ไม่มีประกัน / ราคาถูกกว่า) มาก่อนเสมอ
-    orderBy: [{ hasWarranty: 'asc' }, { createdAt: 'asc' }],
-  });
-  if (rows.length === 0) return { filled: false, reason: 'NO_TEMPLATE' };
-
-  let template: PricingTemplate | null = null;
-  for (const o of origins) {
-    template = pickTemplate(rows.filter((r) => r.deviceOrigin === o), input, logger);
-    if (template) break;
-  }
+  // ตัวเลือกแถวตัวเดียวกับราคาขาย GFIN (`fillFinancePriceFromTemplate`) — ความจุ · ประกัน · ถอยไป "ไม่ระบุ" (ข้อ 7.1)
+  const template = await findPricingTemplate(tx, input);
   if (!template) return { filled: false, reason: 'NO_TEMPLATE' };
+  if (input.category === 'PHONE_USED' && input.hasWarranty === null) {
+    logger?.log(
+      `[autofill] product=${input.productId} ไม่รู้สถานะประกัน — ใช้ราคาแถว "ไม่มีประกัน" ถ้ามี (${input.brand} ${input.model} ${input.storage ?? 'ไม่ระบุความจุ'})`,
+    );
+  }
 
   const cashPrice = new Prisma.Decimal(template.cashPrice.toString());
   if (!cashPrice.greaterThan(0)) return { filled: false, reason: 'ZERO_PRICE' };

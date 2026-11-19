@@ -50,14 +50,7 @@ describe('calculateInstallment ↔ calculateInstallmentWithInterest equivalence'
   });
 });
 
-describe('Contract math — feature flag off (legacy preserved)', () => {
-  beforeAll(() => {
-    process.env.USE_NEW_RATE_LOOKUP = 'false';
-  });
-  afterAll(() => {
-    delete process.env.USE_NEW_RATE_LOOKUP;
-  });
-
+describe('Contract math — no per-term rate rows (monthly rate × months)', () => {
   it('refactored bridge produces same output as legacy calculateInstallment for canonical inputs', () => {
     // This is a unit-level pin (NOT a service test) — verifies the bridge equivalence
     // for the same inputs that contracts.service uses internally.
@@ -76,7 +69,7 @@ describe('Contract math — feature flag off (legacy preserved)', () => {
       commissionPct,
       vatPct,
     );
-    const ratePct = interestRate * months; // simulates getRateForMonths flag-off
+    const ratePct = interestRate * months; // simulates no per-term rate rows (monthly rate × months)
     const principal = roundBaht(sellingPrice - downPayment);
     const interestTotal = roundBaht(principal * ratePct);
     const refactor = calculateInstallmentWithInterest(

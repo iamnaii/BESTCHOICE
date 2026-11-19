@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException } from '@nestjs/common';
 import { getRateForMonths } from '../../../utils/get-rate-for-months.util';
 import * as creditApproval from '../../credit-check/services/credit-approval';
 /**
@@ -268,8 +268,8 @@ describe('ContractLifecycleService — ShopDownPayment wiring', () => {
 
   it('returns the missing-rate error before any contract or credit write', async () => {
     tx.interestConfig.findFirst.mockResolvedValue({ id: 'config' });
-    (getRateForMonths as jest.Mock).mockRejectedValueOnce(new NotFoundException('ไม่พบอัตราดอกเบี้ย'));
-    await expect(service.create({ ...baseDto, notes: undefined }, 'sp-1')).rejects.toBeInstanceOf(NotFoundException);
+    (getRateForMonths as jest.Mock).mockRejectedValueOnce(new BadRequestException('ไม่มีอัตราดอกเบี้ยสำหรับ 9 งวด — เลือกได้: 10, 12 งวด'));
+    await expect(service.create({ ...baseDto, notes: undefined }, 'sp-1')).rejects.toBeInstanceOf(BadRequestException);
     expect(tx.contract.create).not.toHaveBeenCalled();
     expect(creditApproval.claimCreditApproval).not.toHaveBeenCalled();
     expect(shopDownPaymentTemplate.execute).not.toHaveBeenCalled();

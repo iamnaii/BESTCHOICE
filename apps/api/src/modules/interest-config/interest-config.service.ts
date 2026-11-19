@@ -59,7 +59,13 @@ export class InterestConfigService {
     });
     if (!config) return config;
     const [withVat] = await this.withFinanceVat([config]);
-    return withVat;
+    // งวดที่หน้าสร้างสัญญาให้เลือก — กติกาเดียวกับ getRateForMonths: มีแถวรายงวด = รับเฉพาะงวดที่มีแถว
+    const rates = await this.prisma.interestConfigRate.findMany({
+      where: { configId: config.id, deletedAt: null },
+      select: { months: true },
+      orderBy: { months: 'asc' },
+    });
+    return { ...withVat, allowedMonths: rates.map((r) => r.months) };
   }
 
   async create(dto: CreateInterestConfigDto) {

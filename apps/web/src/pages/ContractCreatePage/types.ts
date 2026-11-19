@@ -44,6 +44,8 @@ export interface InterestConfig {
   vatPct: string;
   minInstallmentMonths: number;
   maxInstallmentMonths: number;
+  /** งวดที่มีอัตราดอกเบี้ยรายงวด (เรียงน้อยไปมาก) · ว่าง/ไม่มี = ไม่มีตารางรายงวด ใช้ช่วงต่ำสุด–สูงสุด */
+  allowedMonths?: number[];
 }
 
 export interface CustReferenceData {

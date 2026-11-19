@@ -90,10 +90,25 @@ export function useContractCalculation({
     });
   }, [minMonths, maxMonths, configPending]);
 
+  // มีตารางดอกเบี้ยรายงวด = เลือกได้เฉพาะงวดที่มีอัตรา (เซิร์ฟเวอร์ปฏิเสธงวดอื่น — getRateForMonths)
+  const rateMonths = (interestConfig?.allowedMonths ?? []).filter((m) => m >= minMonths && m <= maxMonths);
   const monthOptions: number[] = [];
-  for (let m = minMonths; m <= maxMonths; m++) {
-    monthOptions.push(m);
+  if (rateMonths.length > 0) {
+    monthOptions.push(...rateMonths);
+  } else {
+    for (let m = minMonths; m <= maxMonths; m++) {
+      monthOptions.push(m);
+    }
   }
+  const monthOptionsKey = monthOptions.join(',');
+
+  // งวดที่เลือกอยู่ไม่มีในตัวเลือก → ย้ายไป 12 ถ้ามี ไม่งั้นงวดแรก
+  useEffect(() => {
+    if (configPending || monthOptions.length === 0) return;
+    setTotalMonths((prev) =>
+      monthOptions.includes(prev) ? prev : monthOptions.includes(12) ? 12 : monthOptions[0],
+    );
+  }, [monthOptionsKey, configPending]);
 
   return {
     grossSellingPrice, totalDownPayment,

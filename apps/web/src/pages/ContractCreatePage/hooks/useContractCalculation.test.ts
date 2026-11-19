@@ -242,3 +242,40 @@ describe('ดาวน์ตั้งต้นปัดขึ้นหลัก�
     expect(result.current.downPayment).toBe(2900);
   });
 });
+
+describe('ตัวเลือกจำนวนงวดตามตารางดอกเบี้ยรายงวด', () => {
+  it('มี allowedMonths → เลือกได้เฉพาะงวดนั้นที่อยู่ในช่วงต่ำสุด–สูงสุด', () => {
+    const { result } = setupHook({
+      product: makeProduct(25900),
+      config: makeConfig({ minInstallmentMonths: 6, maxInstallmentMonths: 12, allowedMonths: [5, 10, 12, 15] }),
+    });
+    expect(result.current.monthOptions).toEqual([10, 12]);
+  });
+
+  it('งวดที่เลือกอยู่ไม่มีอัตรา → ย้ายไป 12 ถ้ามี', () => {
+    const { result } = setupHook({
+      product: makeProduct(25900),
+      config: makeConfig({ minInstallmentMonths: 6, maxInstallmentMonths: 12, allowedMonths: [10, 12] }),
+      initialMonths: 8,
+    });
+    expect(result.current.totalMonths).toBe(12);
+  });
+
+  it('งวดที่เลือกอยู่ไม่มีอัตรา และไม่มี 12 → ย้ายไปงวดแรกที่มี', () => {
+    const { result } = setupHook({
+      product: makeProduct(25900),
+      config: makeConfig({ minInstallmentMonths: 6, maxInstallmentMonths: 12, allowedMonths: [6, 10] }),
+      initialMonths: 8,
+    });
+    expect(result.current.totalMonths).toBe(6);
+  });
+
+  it('allowedMonths ว่างหรือไม่ส่งมา → ช่วงต่ำสุด–สูงสุดตามเดิม', () => {
+    const { result } = setupHook({
+      product: makeProduct(25900),
+      config: makeConfig({ minInstallmentMonths: 6, maxInstallmentMonths: 8, allowedMonths: [] }),
+      initialMonths: 6,
+    });
+    expect(result.current.monthOptions).toEqual([6, 7, 8]);
+  });
+});

@@ -21,6 +21,9 @@ describe('InterestConfigService', () => {
       companyInfo: {
         findFirst: jest.fn().mockResolvedValue({ vatRegistered: true, vatRate: 0.07 }),
       },
+      interestConfigRate: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
     };
 
     prisma.$executeRaw = jest.fn().mockResolvedValue(0);
@@ -107,6 +110,34 @@ describe('InterestConfigService', () => {
 
       await expect(service.remove('cfg-missing')).rejects.toThrow(NotFoundException);
       expect(prisma.interestConfig.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('findByCategory — allowedMonths', () => {
+    const config = { id: 'cfg-1', name: 'มือถือใหม่', vatPct: 0.07, minInstallmentMonths: 6, maxInstallmentMonths: 12 };
+
+    it('คืนงวดที่มีแถวรายงวด เรียงน้อยไปมาก', async () => {
+      prisma.interestConfig.findFirst.mockResolvedValue(config);
+      prisma.interestConfigRate.findMany.mockResolvedValue([{ months: 10 }, { months: 12 }]);
+      const result = await service.findByCategory('PHONE_NEW');
+      expect(result).toMatchObject({ id: 'cfg-1', allowedMonths: [10, 12] });
+      expect(prisma.interestConfigRate.findMany).toHaveBeenCalledWith({
+        where: { configId: 'cfg-1', deletedAt: null },
+        select: { months: true },
+        orderBy: { months: 'asc' },
+      });
+    });
+
+    it('ไม่มีแถวรายงวด → allowedMonths ว่าง', async () => {
+      prisma.interestConfig.findFirst.mockResolvedValue(config);
+      const result = await service.findByCategory('PHONE_NEW');
+      expect(result).toMatchObject({ allowedMonths: [] });
+    });
+
+    it('ไม่พบตั้งค่าดอกเบี้ยของหมวด → คืนค่าเดิม (null) ไม่อ่านแถวรายงวด', async () => {
+      prisma.interestConfig.findFirst.mockResolvedValue(null);
+      expect(await service.findByCategory('PHONE_NEW')).toBeNull();
+      expect(prisma.interestConfigRate.findMany).not.toHaveBeenCalled();
     });
   });
 });

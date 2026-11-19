@@ -118,10 +118,12 @@ export class PricingTemplatesService {
     if (
       deactivateIds !== undefined &&
       (!Array.isArray(deactivateIds) ||
-        deactivateIds.length > 1000 ||
         deactivateIds.some((id) => typeof id !== 'string'))
     )
       throw new BadRequestException('รายการแถวที่จะปิดไม่ถูกต้อง');
+    // รวม id ซ้ำ/ว่างก่อน แล้วค่อยนับเพดาน 1000
+    const requestedIds = [...new Set((deactivateIds as string[] | undefined) ?? [])].filter(Boolean);
+    if (requestedIds.length > 1000) throw new BadRequestException('รายการแถวที่จะปิดไม่ถูกต้อง');
     const errors: string[] = [];
     const valid: CreatePricingTemplateDto[] = [];
     for (let i = 0; i < items.length; i++) {
@@ -136,8 +138,8 @@ export class PricingTemplatesService {
       else valid.push(dto);
     }
     if (errors.length) return { success: 0, skipped: items.length, errors };
-    const ids = (deactivateIds as string[] | undefined) ?? [];
     return writeSharedReference(this.base, async (tx) => {
+      const written = new Set<string>();
       for (const item of valid) {
         const key = {
           brand: item.brand,
@@ -162,13 +164,17 @@ export class PricingTemplatesService {
           rate1DownPayment: item.rate1DownPayment ?? null,
           rate2TermMonths: item.rate2TermMonths ?? null,
         };
-        await tx.pricingTemplate.upsert({
+        const row = await tx.pricingTemplate.upsert({
           where: { brand_model_storage_category_hasWarranty_deviceOrigin: key },
           update: { ...values, isActive: true },
           create: { ...key, ...values },
         });
+        const writtenId = row?.id ?? existing?.id;
+        if (writtenId) written.add(writtenId);
       }
       // "ปิดแถวที่เปิดใช้อยู่แต่ไม่อยู่ในไฟล์" — หน้าเว็บส่ง id มากับชุดสุดท้าย
+      // แถวที่เพิ่งนำเข้าในคำขอนี้ห้ามถูกปิด แม้ client จะส่ง id มาด้วย
+      const ids = requestedIds.filter((id) => !written.has(id));
       const deactivated = ids.length
         ? (
             await tx.pricingTemplate.updateMany({

@@ -103,6 +103,33 @@ describe('pricing templates by device origin', () => {
     expect(result).toEqual({ success: 0, skipped: 0, errors: [], deactivated: 2 });
   });
 
+  it('id ที่ถูกนำเข้าในคำขอเดียวกันไม่ถูกปิด · ไม่นับใน deactivated', async () => {
+    db.pricingTemplate.upsert.mockResolvedValue({ id: 'a' });
+    db.pricingTemplate.updateMany.mockResolvedValue({ count: 1 });
+    const result = await service.bulkImport([ITEM], ['a', 'b']);
+    expect(db.pricingTemplate.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['b'] }, isActive: true, deletedAt: null },
+      data: { isActive: false },
+    });
+    expect(result).toMatchObject({ success: 1, deactivated: 1 });
+  });
+
+  it('ทุก id ถูกนำเข้าในคำขอเดียวกัน → ไม่เรียก updateMany', async () => {
+    db.pricingTemplate.findUnique.mockResolvedValue({ id: 'a', deletedAt: null });
+    db.pricingTemplate.upsert.mockResolvedValue(undefined);
+    const result = await service.bulkImport([ITEM], ['a']);
+    expect(db.pricingTemplate.updateMany).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ deactivated: 0 });
+  });
+
+  it('deactivateIds ซ้ำ/ว่าง → รวมเหลือค่าเดียว และเพดาน 1000 นับเฉพาะที่ไม่ซ้ำ', async () => {
+    db.pricingTemplate.updateMany.mockResolvedValue({ count: 2 });
+    await service.bulkImport([], ['a', 'b', 'a', '', 'b']);
+    expect(db.pricingTemplate.updateMany.mock.calls[0][0].where.id).toEqual({ in: ['a', 'b'] });
+    const many = Array.from({ length: 1200 }, (_, i) => `id${i % 1000}`);
+    await expect(service.bulkImport([], many)).resolves.toBeDefined();
+  });
+
   it('ไม่ส่ง deactivateIds → ไม่ปิดแถวใด และผลรูปเดิม', async () => {
     const result = await service.bulkImport([ITEM]);
     expect(db.pricingTemplate.updateMany).not.toHaveBeenCalled();

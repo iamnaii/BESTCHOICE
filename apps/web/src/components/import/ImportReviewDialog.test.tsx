@@ -20,6 +20,12 @@ describe('ImportReviewDialog', () => {
     expect(screen.queryByRole('checkbox')).toBeNull();
   });
 
+  it('รายการในไฟล์ (เลื่อนได้) โฟกัสด้วยคีย์บอร์ดได้และมีชื่อให้โปรแกรมอ่านหน้าจอ', () => {
+    render(<ImportReviewDialog {...base} rows={rows} />);
+    const list = screen.getByRole('list', { name: 'รายการในไฟล์' });
+    expect(list).toHaveAttribute('tabindex', '0');
+  });
+
   it('ติ๊ก "ปิดแถวที่เปิดใช้อยู่แต่ไม่อยู่ในไฟล์" แล้วยืนยัน → ส่ง deactivateMissing', async () => {
     const onConfirm = vi.fn();
     render(<ImportReviewDialog {...base} rows={rows} deactivateCount={3} onConfirm={onConfirm} />);

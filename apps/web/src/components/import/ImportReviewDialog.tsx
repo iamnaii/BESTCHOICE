@@ -78,7 +78,8 @@ export function ImportReviewDialog({
           )}
           <ul
             aria-label="รายการในไฟล์"
-            className="max-h-[50vh] divide-y divide-border overflow-y-auto rounded-lg border border-border"
+            tabIndex={0}
+            className="max-h-[50vh] divide-y divide-border overflow-y-auto rounded-lg border border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             {rows.map((r) => {
               const a = ACTION[r.action];

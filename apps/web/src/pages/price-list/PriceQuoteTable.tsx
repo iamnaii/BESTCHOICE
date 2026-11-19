@@ -47,22 +47,23 @@ export default function PriceQuoteTable({ rows }: { rows: PriceQuoteRow[] }) {
   return (
     <div className="rounded-xl border border-border bg-card shadow-card">
       <Table>
+        <caption className="sr-only">ตารางราคาและเรทผ่อน</caption>
         <TableHeader>
           <TableRow className="bg-muted/50">
-            <TableHead rowSpan={2}>รุ่น · ความจุ</TableHead>
-            <TableHead rowSpan={2} className="text-right">
+            <TableHead rowSpan={2} scope="col">รุ่น · ความจุ</TableHead>
+            <TableHead rowSpan={2} scope="col" className="text-right">
               เงินสด
             </TableHead>
-            <TableHead colSpan={3} className="text-center">
+            <TableHead colSpan={3} scope="colgroup" className="text-center">
               {RATE1_TITLE}
             </TableHead>
-            <TableHead colSpan={3} className="text-center">
+            <TableHead colSpan={3} scope="colgroup" className="text-center">
               {RATE2_TITLE}
             </TableHead>
           </TableRow>
           <TableRow className="bg-muted/50">
             {SUB_HEADERS.map(([key, label]) => (
-              <TableHead key={key} className="text-right">
+              <TableHead key={key} scope="col" className="text-right">
                 {label}
               </TableHead>
             ))}

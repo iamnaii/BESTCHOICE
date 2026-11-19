@@ -242,4 +242,44 @@ describe('PriceListPage — หน้า "ราคาและเรทผ่�
     fireEvent.click(screen.getByRole('button', { name: 'ลองใหม่' }));
     expect(await screen.findByText('iPhone 15 · 128GB')).toBeInTheDocument();
   });
+
+  it('สลับเครื่องนอกแล้วรอผล → ไม่เห็นราคาชุดเก่า แสดง skeleton', async () => {
+    serve();
+    open();
+    await screen.findByText('iPhone 15 · 128GB');
+    mocks.get.mockReturnValue(new Promise(() => {}));
+    fireEvent.click(screen.getByRole('button', { name: 'เครื่องนอก' }));
+    expect(await screen.findByRole('status', { name: 'กำลังโหลด' })).toBeInTheDocument();
+    expect(screen.queryByText('iPhone 15 · 128GB')).toBeNull();
+    expect(screen.queryByText('3,403')).toBeNull();
+  });
+
+  it('ไม่พบ แล้วเปลี่ยนคำค้นและรอผล → ไม่แสดงข้อความไม่พบของคำใหม่', async () => {
+    serve();
+    open();
+    await screen.findByText('iPhone 15 · 128GB');
+    fireEvent.change(screen.getByRole('searchbox', { name: 'ค้นหารุ่น' }), { target: { value: 'iPhone 11' } });
+    await screen.findByText(/ไม่พบ "iPhone 11"/);
+    mocks.get.mockReturnValue(new Promise(() => {}));
+    fireEvent.change(screen.getByRole('searchbox', { name: 'ค้นหารุ่น' }), { target: { value: 'iPhone 99' } });
+    await waitFor(() => expect(mocks.get).toHaveBeenLastCalledWith(URL, params({ category: 'PHONE_NEW', origin: 'THAI', q: 'iPhone 99' })));
+    expect(screen.queryByText(/ไม่พบ "iPhone 99"/)).toBeNull();
+  });
+
+  it('ตารางมี caption และ scope ของหัวคอลัมน์', async () => {
+    serve();
+    open();
+    await screen.findByText('iPhone 15 · 128GB');
+    expect(screen.getByRole('table', { name: 'ตารางราคาและเรทผ่อน' })).toBeInTheDocument();
+    expect(screen.getAllByRole('columnheader', { name: /^เรท/ })[0]).toHaveAttribute('scope', 'colgroup');
+  });
+
+  it('ข้อความไม่พบอยู่ใน role=status', async () => {
+    serve();
+    open();
+    await screen.findByText('iPhone 15 · 128GB');
+    fireEvent.change(screen.getByRole('searchbox', { name: 'ค้นหารุ่น' }), { target: { value: 'iPhone 11' } });
+    const msg = await screen.findByText(/ไม่พบ "iPhone 11"/);
+    expect(msg.closest('[role="status"]')).not.toBeNull();
+  });
 });

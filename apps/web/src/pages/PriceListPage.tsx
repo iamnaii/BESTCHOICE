@@ -81,7 +81,7 @@ export default function PriceListPage() {
       </p>
 
       <QueryBoundary
-        isLoading={quotes.isLoading}
+        isLoading={quotes.isLoading || (stale && rows.length === 0)}
         isError={quotes.isError}
         error={quotes.error}
         onRetry={() => void quotes.refetch()}
@@ -89,7 +89,7 @@ export default function PriceListPage() {
       >
         <div aria-busy={stale} className={cn('transition-opacity', stale && 'opacity-60')}>
           {rows.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 py-12 text-center">
+            <div role="status" className="flex flex-col items-center gap-3 py-12 text-center">
               <SearchX className="size-12 text-muted-foreground" aria-hidden="true" />
               <p className="max-w-md text-sm leading-snug text-muted-foreground">
                 {q ? notFoundMessage(q, category) : emptyListMessage(category)}

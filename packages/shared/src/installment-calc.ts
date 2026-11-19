@@ -191,6 +191,13 @@ export function findGfinMapping(
   // มือสองเท่านั้นที่เป็น HAND_2 — เครื่องใหม่และ iPad (TABLET) ถือเป็นมือ 1
   const condition = product.category === 'PHONE_USED' ? 'HAND_2' : 'HAND_1';
   const modelLower = product.model.toLowerCase();
+  const modelName = modelLower.trim();
+  const isExactName = (m: GfinModelMappingRow) => m.modelMatchPattern.trim().toLowerCase() === modelName;
+
+  // สเปค price-master-retire 4.3: ชื่อรุ่นตรงกับคำจับคู่ของแถวที่เปิดใช้แถวใดก็ตาม (ไม่ดูสภาพ/ความจุ)
+  // = ใบราคามีรุ่นนี้ → ใช้ได้เฉพาะแถวที่ตรงชื่อทั้งคำ · ไม่มีแถวของสภาพ + ความจุนั้น = GFIN ไม่รับ
+  // (เดิม iPhone 13 Pro มือ 1 ได้ราคาของ iPhone 13 มือ 1 เพราะ "iPhone 13 Pro" มีคำว่า "iPhone 13")
+  const exactOnly = modelName !== '' && mappings.some((m) => m.isActive && isExactName(m));
 
   // Sort by pattern length descending so more-specific patterns (e.g. "iPhone 14 Pro Max")
   // are checked before shorter ones (e.g. "iPhone 14 Pro") — prevents false substring matches.
@@ -200,6 +207,10 @@ export function findGfinMapping(
     if (!m.isActive) continue;
     if (m.condition !== condition) continue;
     if (m.storage.replace(/\s+/g, '').toUpperCase() !== normStorage) continue;
+    if (exactOnly) {
+      if (isExactName(m)) return m;
+      continue;
+    }
     const patternLower = m.modelMatchPattern.toLowerCase();
     // Match whole-pattern: after the match position, ensure no additional word characters follow.
     const idx = modelLower.indexOf(patternLower);

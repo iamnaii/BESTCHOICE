@@ -591,3 +591,54 @@ describe('calcGfinInstallment — ดาวน์ลูกค้าปัดข�
     expect(o.monthlyPayment.toFixed(2)).toBe('1745.00');
   });
 });
+
+describe('findGfinMapping — ชื่อรุ่นตรงทั้งคำก่อน (สเปค 4.3)', () => {
+  // ใบราคา G-Finn 16/10/2569: iPhone 13 128GB มือ 1 = 14,900 · มือ 2 = 12,900 · iPhone 13 Pro 128GB มีแต่มือ 2 = 15,900
+  const m13h1: GfinModelMappingRow = {
+    id: '13-h1',
+    gfinSeries: 'iPhone 13',
+    gfinVariant: null,
+    storage: '128GB',
+    condition: 'HAND_1',
+    maxPrice: new Decimal('14900'),
+    modelMatchPattern: 'iPhone 13',
+    isActive: true,
+  };
+  const m13h2: GfinModelMappingRow = { ...m13h1, id: '13-h2', condition: 'HAND_2', maxPrice: new Decimal('12900') };
+  const m13ProH2: GfinModelMappingRow = {
+    ...m13h1,
+    id: '13pro-h2',
+    gfinSeries: 'iPhone 13 Pro',
+    condition: 'HAND_2',
+    maxPrice: new Decimal('15900'),
+    modelMatchPattern: 'iPhone 13 Pro',
+  };
+  const sheet = [m13h1, m13h2, m13ProH2];
+  const p = (model: string, category: ProductForGfin['category']): ProductForGfin => ({
+    brand: 'Apple',
+    model,
+    storage: '128GB',
+    category,
+  });
+
+  it('iPhone 13 Pro 128GB มือ 1 = GFIN ไม่รับ ทั้งที่มี iPhone 13 128GB มือ 1', () => {
+    expect(findGfinMapping(p('iPhone 13 Pro', 'PHONE_NEW'), sheet)).toBeNull();
+  });
+
+  it('iPhone 13 Pro 128GB มือ 2 ได้แถวของตัวเอง · iPhone 13 128GB มือ 1 ยังได้แถว iPhone 13', () => {
+    expect(findGfinMapping(p('iPhone 13 Pro', 'PHONE_USED'), sheet)?.id).toBe('13pro-h2');
+    expect(findGfinMapping(p('iPhone 13', 'PHONE_NEW'), sheet)?.id).toBe('13-h1');
+  });
+
+  it('เทียบชื่อแบบไม่สนตัวพิมพ์และช่องว่างหัวท้าย', () => {
+    expect(findGfinMapping(p('  iphone 13 pro ', 'PHONE_NEW'), sheet)).toBeNull();
+    expect(findGfinMapping(p('  iphone 13 pro ', 'PHONE_USED'), sheet)?.id).toBe('13pro-h2');
+  });
+
+  it('ไม่มีแถวที่เปิดใช้ตั้งชื่อรุ่นนี้ → จับแบบเดิม (ชื่อรุ่นมีคำนี้)', () => {
+    expect(findGfinMapping(p('iPhone 13 Pro', 'PHONE_NEW'), [m13h1, m13h2])?.id).toBe('13-h1');
+    expect(
+      findGfinMapping(p('iPhone 13 Pro', 'PHONE_NEW'), [m13h1, { ...m13ProH2, isActive: false }])?.id,
+    ).toBe('13-h1');
+  });
+});

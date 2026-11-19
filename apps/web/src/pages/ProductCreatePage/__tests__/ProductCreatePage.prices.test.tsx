@@ -256,8 +256,54 @@ describe('ProductCreatePage — การ์ดราคาขาย (แบบ 
     renderPage();
     await fillIphone15(user);
     await screen.findByText(BADGE);
-    expect(await screen.findByText(paragraph('โหลดราคากลางไม่สำเร็จ — ลองใหม่'))).toBeInTheDocument();
+    expect(await screen.findByText(paragraph('โหลดตั้งค่าดอกเบี้ยไม่สำเร็จ — ลองใหม่'))).toBeInTheDocument();
     expect(screen.queryByText(/ยังไม่มีตั้งค่าดอกเบี้ย/)).not.toBeInTheDocument();
+  });
+
+  it('ตั้งค่าดอกเบี้ยมีแต่ไม่มีงวดที่มีอัตรา → "ยังไม่มีตั้งค่าดอกเบี้ยของหมวดนี้" ไม่ใช่ "กรอกราคาเพื่อดู…"', async () => {
+    bcConfig = async () => ({ data: { ...BC_CONFIG, ratePctByMonths: {}, allowedMonths: [] } });
+    const user = userEvent.setup();
+    renderPage();
+    await fillIphone15(user);
+    await screen.findByText(BADGE);
+    expect(await screen.findByText('ยังไม่มีตั้งค่าดอกเบี้ยของหมวดนี้ — คิดค่างวดไม่ได้')).toBeInTheDocument();
+    expect(screen.queryByText('กรอกราคาเพื่อดูดาวน์และค่างวด')).not.toBeInTheDocument();
+  });
+
+  it('โหลดตาราง GFIN ไม่สำเร็จ → ช่อง GFIN ปิด + ลองใหม่ · บันทึกได้ (ราคาขาย GFIN เป็น null) · ลองใหม่แล้วช่องกลับมา', async () => {
+    let fail = true;
+    gfinSettings = async () => {
+      if (fail) throw new Error('500');
+      return { data: GFIN_SETTINGS };
+    };
+    const user = userEvent.setup();
+    renderPage();
+    await fillIphone15(user);
+    await screen.findByText(BADGE);
+    expect(await screen.findByText(paragraph('โหลดตาราง GFIN ไม่สำเร็จ — ลองใหม่'))).toBeInTheDocument();
+    const finance = screen.getByLabelText('ผ่อน GFIN ราคาขาย');
+    expect(finance).toBeDisabled();
+    const save = screen.getByRole('button', { name: 'บันทึกสินค้า' });
+    expect(save).toBeEnabled();
+    fail = false;
+    await user.click(screen.getByRole('button', { name: 'ลองใหม่' }));
+    await waitFor(() => expect(screen.getByLabelText('ผ่อน GFIN ราคาขาย')).toBeEnabled());
+    expect(screen.getByLabelText('ผ่อน GFIN ราคาขาย')).toHaveValue('25,900');
+    expect(screen.queryByText(paragraph('โหลดตาราง GFIN ไม่สำเร็จ — ลองใหม่'))).not.toBeInTheDocument();
+  });
+
+  it('โหลดตาราง GFIN ไม่สำเร็จแล้วบันทึกเลย → ส่ง financePrice: null (ไม่ส่งราคากลางของรุ่นที่ GFIN อาจไม่รับ)', async () => {
+    gfinSettings = async () => {
+      throw new Error('500');
+    };
+    const user = userEvent.setup();
+    renderPage();
+    await fillIphone15(user);
+    await screen.findByText(BADGE);
+    await screen.findByText(paragraph('โหลดตาราง GFIN ไม่สำเร็จ — ลองใหม่'));
+    await user.click(screen.getByRole('button', { name: 'บันทึกสินค้า' }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(api.post).mock.calls[0][1]).toMatchObject({ cashPrice: 25900, installmentPrice: 25900, financePrice: null });
   });
 
   it('สลับเข้า/ออกอุปกรณ์เสริม → ล้างราคาที่กรอกไว้', async () => {

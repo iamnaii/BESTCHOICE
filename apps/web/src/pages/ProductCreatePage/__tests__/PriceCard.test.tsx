@@ -29,6 +29,7 @@ function renderCard(over: Partial<PriceCardProps> = {}) {
     gfinBlocked: false,
     bcConfigMissing: false,
     bcConfigFailed: false,
+    gfinTablesState: 'ready',
     accessoryProfit: null,
     costEntered: true,
     ...over,
@@ -151,9 +152,27 @@ describe('PriceCard (แบบ D)', () => {
     expect(props.onRetry).toHaveBeenCalled();
   });
 
-  it('โหลดตั้งค่าดอกเบี้ยไม่สำเร็จ → แถวผ่อน BESTCHOICE บอกโหลดไม่สำเร็จ ไม่ใช่ "ยังไม่มีตั้งค่าดอกเบี้ย"', () => {
+  it('โหลดตั้งค่าดอกเบี้ยไม่สำเร็จ → แถวผ่อน BESTCHOICE บอก "โหลดตั้งค่าดอกเบี้ยไม่สำเร็จ" ไม่ใช่ราคากลาง / "ยังไม่มีตั้งค่าดอกเบี้ย"', () => {
     renderCard({ bcConfigFailed: true, bcConfigMissing: false, quote: { ...QUOTE, rate1: null } });
-    expect(screen.getByText(paragraph('โหลดราคากลางไม่สำเร็จ — ลองใหม่'))).toBeInTheDocument();
+    expect(screen.getByText(paragraph('โหลดตั้งค่าดอกเบี้ยไม่สำเร็จ — ลองใหม่'))).toBeInTheDocument();
+    expect(screen.queryByText(paragraph('โหลดราคากลางไม่สำเร็จ — ลองใหม่'))).not.toBeInTheDocument();
     expect(screen.queryByText(/ยังไม่มีตั้งค่าดอกเบี้ย/)).not.toBeInTheDocument();
+  });
+
+  it('โหลดตาราง GFIN ไม่สำเร็จ → ช่อง GFIN ปิด ว่าง + "โหลดตาราง GFIN ไม่สำเร็จ — ลองใหม่" · กดลองใหม่ได้ · ไม่นับเป็นช่องที่แก้', async () => {
+    const props = renderCard({ gfinTablesState: 'failed', fields: { ...TPL, finance: '' }, quote: { ...QUOTE, rate2: { available: false, reason: 'NO_CONFIG', message: 'ยังไม่ได้ตั้งค่า GFIN' } } });
+    const finance = screen.getByLabelText('ผ่อน GFIN ราคาขาย');
+    expect(finance).toBeDisabled();
+    expect(finance).toHaveValue('');
+    expect(screen.getByText(paragraph('โหลดตาราง GFIN ไม่สำเร็จ — ลองใหม่'))).toBeInTheDocument();
+    expect(screen.queryByText('ยังไม่ได้ตั้งค่า GFIN')).not.toBeInTheDocument();
+    expect(screen.getByText('ตามตารางราคากลาง · iPhone 15 128GB มือ 1')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'ลองใหม่' }));
+    expect(props.onRetry).toHaveBeenCalled();
+  });
+
+  it('ตาราง GFIN กำลังโหลด → ช่อง GFIN ปิดไว้ก่อน', () => {
+    renderCard({ gfinTablesState: 'loading' });
+    expect(screen.getByLabelText('ผ่อน GFIN ราคาขาย')).toBeDisabled();
   });
 });

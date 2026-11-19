@@ -25,16 +25,21 @@ export interface PriceCardProps {
   /** ค้นราคากลางไม่สำเร็จ (เครือข่าย/เซิร์ฟเวอร์) — ไม่ใช่ "ไม่พบรุ่น" · ช่องราคาคงเดิม */
   templateFailed: boolean;
   onUseTemplate: () => void;
-  /** โหลดราคากลาง / ตั้งค่าดอกเบี้ยที่ล้มใหม่ */
+  /** โหลดราคากลาง / ตั้งค่าดอกเบี้ย / ตาราง GFIN ที่ล้มใหม่ */
   onRetry: () => void;
   /** null = อุปกรณ์เสริม / ยังไม่เลือกยี่ห้อและรุ่น */
   quote: ModelQuote | null;
   /** รุ่นนี้ไม่มีในใบราคา GFIN (`gfinBlocked` จากตารางรุ่น ไม่ขึ้นกับช่องราคา) — ช่อง GFIN ปิดและบันทึกเป็นค่าว่าง */
   gfinBlocked: boolean;
-  /** หมวดนี้ไม่มีตั้งค่าดอกเบี้ย (เช่น แท็บเล็ต) — เรท 1 คิดไม่ได้ */
+  /** หมวดนี้ไม่มีตั้งค่าดอกเบี้ยที่ใช้ได้ (ไม่มีแถว หรือไม่มีงวดที่มีอัตรา) — เรท 1 คิดไม่ได้ */
   bcConfigMissing: boolean;
   /** โหลดตั้งค่าดอกเบี้ยไม่สำเร็จ — ไม่ใช่ "ยังไม่มีตั้งค่า" */
   bcConfigFailed: boolean;
+  /**
+   * ตาราง GFIN (ตัดสินว่ารุ่นนี้ GFIN รับไหม): ยังไม่ `ready` = ช่องราคาขาย GFIN ปิดและบันทึกเป็นค่าว่าง
+   * — ไม่ส่งราคากลางของรุ่นที่ GFIN อาจไม่รับ · `failed` = มีปุ่มลองใหม่
+   */
+  gfinTablesState: 'ready' | 'loading' | 'failed';
   accessoryProfit: number | null;
   costEntered: boolean;
 }
@@ -60,11 +65,11 @@ function Muted({ children }: { children: ReactNode }) {
   return <p className="text-xs leading-snug text-muted-foreground">{children}</p>;
 }
 
-/** "โหลดราคากลางไม่สำเร็จ — ลองใหม่" — ปุ่มลองใหม่อยู่ในประโยค */
-function RetryNotice({ onRetry }: { onRetry: () => void }) {
+/** "โหลด…ไม่สำเร็จ — ลองใหม่" — ปุ่มลองใหม่อยู่ในประโยค */
+function RetryNotice({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <p className="text-xs leading-snug text-warning-strong">
-      โหลดราคากลางไม่สำเร็จ —{' '}
+      {message} —{' '}
       <button
         type="button"
         onClick={onRetry}
@@ -172,13 +177,16 @@ export default function PriceCard({
   gfinBlocked: blocked,
   bcConfigMissing,
   bcConfigFailed,
+  gfinTablesState,
   accessoryProfit,
   costEntered,
 }: PriceCardProps) {
   const baseId = useId();
   const accessory = category === 'ACCESSORY';
-  // ช่อง GFIN ที่ปิดอยู่ไม่นับเป็น "แก้จากราคากลาง" (ค่าในช่องไม่ถูกบันทึก)
-  const edited = editedKeys(fields, templatePrices).filter((k) => !(blocked && k === 'finance'));
+  // ช่อง GFIN ปิด: รุ่นที่ GFIN ไม่รับ หรือยังไม่รู้ (ตาราง GFIN ยังไม่มา) — ค่าในช่องไม่ถูกบันทึก
+  const financeDisabled = blocked || gfinTablesState !== 'ready';
+  // ช่อง GFIN ที่ปิดอยู่ไม่นับเป็น "แก้จากราคากลาง"
+  const edited = editedKeys(fields, templatePrices).filter((k) => !(financeDisabled && k === 'finance'));
   const isEdited = (k: PriceKey) => edited.includes(k);
   const rate1 = quote?.rate1 ?? null;
   const rate2 = quote?.rate2 ?? null;
@@ -212,7 +220,7 @@ export default function PriceCard({
             )}
           </div>
         )}
-        {!accessory && templateFailed && <RetryNotice onRetry={onRetry} />}
+        {!accessory && templateFailed && <RetryNotice message="โหลดราคากลางไม่สำเร็จ" onRetry={onRetry} />}
       </CardHeader>
       <CardContent className="p-0">
         {accessory ? (
@@ -261,7 +269,7 @@ export default function PriceCard({
                   <Muted>ยอดจัด {formatBahtPlain(rate1.price - rate1.downAmount)}</Muted>
                 </>
               ) : bcConfigFailed ? (
-                <RetryNotice onRetry={onRetry} />
+                <RetryNotice message="โหลดตั้งค่าดอกเบี้ยไม่สำเร็จ" onRetry={onRetry} />
               ) : (
                 <Muted>
                   {bcConfigMissing ? 'ยังไม่มีตั้งค่าดอกเบี้ยของหมวดนี้ — คิดค่างวดไม่ได้' : 'กรอกราคาเพื่อดูดาวน์และค่างวด'}
@@ -273,16 +281,20 @@ export default function PriceCard({
               label="ผ่อน GFIN"
               sub="เรท 2 · ราคาขาย"
               ariaLabel="ผ่อน GFIN ราคาขาย"
-              value={blocked ? '' : fields.finance}
+              value={financeDisabled ? '' : fields.finance}
               onChange={(v) => onFieldChange('finance', v)}
-              disabled={blocked}
-              placeholder={blocked ? undefined : 'เท่าราคาผ่อน'}
+              disabled={financeDisabled}
+              placeholder={financeDisabled ? undefined : 'เท่าราคาผ่อน'}
               edited={isEdited('finance')}
               templateValue={templatePrices?.finance}
               profit={rate2?.available ? rate2.profit : null}
             >
               {blocked ? (
                 <Muted>{NO_GFIN}</Muted>
+              ) : gfinTablesState === 'failed' ? (
+                <RetryNotice message="โหลดตาราง GFIN ไม่สำเร็จ" onRetry={onRetry} />
+              ) : gfinTablesState === 'loading' && quote ? (
+                <Muted>กำลังโหลดตาราง GFIN…</Muted>
               ) : !quote || !rate2 ? (
                 waiting
               ) : rate2.available ? (

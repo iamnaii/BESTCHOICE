@@ -151,9 +151,13 @@ export default function ProductCreatePage() {
   const gfinTables = gfinQuery.tables;
   // ราคากลางของรุ่นนี้ / ตาราง GFIN (ตัดสินว่าส่งราคา GFIN ได้ไหม) ยังไม่มา → ยังบันทึกไม่ได้
   const pricesLoading = templatePending || (!accessory && gfinTables === undefined && !gfinQuery.isError);
+  // ตาราง GFIN ยังไม่มา (รอ/ล้ม) → ยังไม่รู้ว่ารุ่นนี้ GFIN รับไหม ⇒ ช่องราคาขาย GFIN ปิดและบันทึกเป็นค่าว่าง (บันทึกได้)
+  const gfinTablesState: 'ready' | 'loading' | 'failed' =
+    gfinTables !== undefined ? 'ready' : gfinQuery.isError ? 'failed' : 'loading';
   const retryPriceLookups = () => {
     if (templateQuery.isError) void templateQuery.refetch();
     if (bcConfigQuery.isError) void bcConfigQuery.refetch();
+    if (gfinQuery.isError) gfinQuery.retry();
   };
   // แปลงตั้งค่าครั้งเดียวต่อชุดข้อมูล/หมวด — พิมพ์ราคาแล้วคิดเฉพาะตัวเลข ไม่แปลงตาราง GFIN ใหม่ทุกตัวอักษร
   const quoteContexts = useMemo(
@@ -229,7 +233,7 @@ export default function ProductCreatePage() {
             }
           : {}),
         photos: photoPreviews.length > 0 ? photoPreviews : undefined,
-        ...toPricePayload(form.category, priceFields, { gfinBlocked: isGfinBlocked }),
+        ...toPricePayload(form.category, priceFields, { gfinBlocked: isGfinBlocked || gfinTablesState !== 'ready' }),
       };
       return api.post('/products', payload);
     },
@@ -438,9 +442,14 @@ export default function ProductCreatePage() {
             quote={quote}
             gfinBlocked={isGfinBlocked}
             bcConfigMissing={
-              !accessory && !bcConfigQuery.isError && bcConfigQuery.data === undefined && !bcConfigQuery.isFetching
+              !accessory &&
+              !bcConfigQuery.isError &&
+              !bcConfigQuery.isFetching &&
+              // ไม่มีตั้งค่า หรือมีแต่ไม่มีงวดที่มีอัตรา — เรท 1 คิดไม่ได้ทั้งคู่
+              !(bcConfigQuery.data?.allowedMonths?.length)
             }
             bcConfigFailed={!accessory && bcConfigQuery.isError}
+            gfinTablesState={accessory ? 'ready' : gfinTablesState}
             accessoryProfit={accessory ? accessoryProfit(priceFields.cash, form.costPrice) : null}
             costEntered={form.costPrice.trim() !== ''}
           />

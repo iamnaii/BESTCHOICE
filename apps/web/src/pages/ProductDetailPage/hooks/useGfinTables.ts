@@ -48,5 +48,9 @@ export function useGfinTables(enabled = true) {
     tables,
     isLoading: mappings.isLoading || rules.isLoading || factors.isLoading || settings.isLoading,
     isError: mappings.isError || rules.isError || factors.isError || settings.isError,
+    /** โหลดเฉพาะชุดที่ล้มใหม่ (ปุ่ม "ลองใหม่") */
+    retry: () => {
+      for (const q of [mappings, rules, factors, settings]) if (q.isError) void q.refetch();
+    },
   };
 }

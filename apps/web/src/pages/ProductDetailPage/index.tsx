@@ -93,6 +93,7 @@ interface Product {
   conditionGrade: string | null;
   cashPrice: string | null;
   installmentPrice: string | null;
+  financePrice: string | null;
   priceAutofilledAt: string | null;
   shopWarrantyDays: number | null;
   accessoriesIncluded: string[] | null;

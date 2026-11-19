@@ -208,6 +208,57 @@ describe('InstallmentPreviewService', () => {
     );
   });
 
+  // สเปค 2026-11-19 ข้อ 3.2 — เว็บ shop คิดเรท 2 จากราคาขาย GFIN ของเครื่อง
+  it('GFIN: มี financePrice → ส่วนลดดาวน์คิดจากราคาขาย GFIN (ไม่ใช่ราคาผ่อน)', async () => {
+    prisma.product.findFirst.mockResolvedValue({
+      id: 'p1',
+      installmentPrice: new Prisma.Decimal('19900'),
+      financePrice: new Prisma.Decimal('21500'),
+      prices: [],
+      category: 'PHONE_USED',
+      brand: 'Apple',
+      model: 'iPhone 14 Pro',
+      storage: '128GB',
+      deviceOrigin: 'THAI',
+      deletedAt: null,
+    });
+    prisma.gfinModelMapping.findMany.mockResolvedValue([
+      { id: 'm1', gfinSeries: 'iPhone 14', gfinVariant: 'Pro', storage: '128GB', condition: 'HAND_2', maxPrice: new Prisma.Decimal('21500'), modelMatchPattern: 'iPhone 14 Pro', isActive: true },
+    ]);
+    prisma.gfinOverpriceRule.findMany.mockResolvedValue([
+      { id: 'r1', label: 'iPhone 14 มือ 2', seriesPattern: 'iPhone 14|iPhone 15', condition: 'HAND_2', allowance: new Prisma.Decimal('1000'), isActive: true },
+    ]);
+    prisma.gfinRateFactor.findFirst.mockResolvedValue({
+      months: 12, shopCommissionPct: 15, factor: new Prisma.Decimal('0.179238'), feePerInstallment: new Prisma.Decimal('100'), isActive: true,
+    });
+    prisma.systemConfig.findFirst.mockImplementation(({ where }: { where: { key: string } }) =>
+      Promise.resolve(where.key === 'gfin.minDownPct' ? { value: '30' } : null),
+    );
+
+    const result = await service.preview({ productId: 'p1', provider: 'GFIN', months: 12 });
+    expect(result.available).toBe(true);
+    // ราคาส่ง 22,500 · ดาวน์ 30% = 6,750 · ส่วนลด 22,500 − 21,500 = 1,000 ⇒ 5,750 → ปัดขึ้นหลักร้อย 5,800
+    expect(result.downAmount).toBe(5800);
+    expect(result.monthlyPayment).toBeCloseTo(2923.0, 2);
+  });
+
+  it('GFIN: มี financePrice แต่ไม่มีราคาผ่อน → คิดได้ · BC ยังต้องมีราคาผ่อน', async () => {
+    prisma.product.findFirst.mockResolvedValue({
+      id: 'p1',
+      installmentPrice: null,
+      financePrice: new Prisma.Decimal('21500'),
+      prices: [],
+      category: 'PHONE_USED',
+      brand: 'Apple',
+      model: 'iPhone 14 Pro',
+      storage: '128GB',
+      deviceOrigin: 'THAI',
+      deletedAt: null,
+    });
+    const bc = await service.preview({ productId: 'p1', provider: 'BC', months: 12 });
+    expect(bc).toEqual({ available: false, reason: 'no_installment_price' });
+  });
+
   it.each([
     ['IMPORTED' as const, 'เครื่องนอก'],
     [null, 'ยังไม่ระบุที่มา (คิดแบบเครื่องนอกไว้ก่อน)'],

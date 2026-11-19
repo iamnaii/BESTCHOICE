@@ -34,6 +34,8 @@ export interface StickerProductData {
   stockInDate: string | null;
   cashPrice: string | null;
   installmentPrice: string | null;
+  /** ราคาขาย GFIN ของเครื่อง — ค่างวดเรท 2 บนดวงคิดจากราคานี้ (ว่าง = ราคาผ่อน) */
+  financePrice: string | null;
   prices: { label: string; amount: string; isDefault: boolean }[];
 }
 
@@ -61,6 +63,7 @@ const stickerProductArgs = Prisma.validator<Prisma.ProductDefaultArgs>()({
     stockInDate: true,
     cashPrice: true,
     installmentPrice: true,
+    financePrice: true,
     prices: {
       where: { deletedAt: null },
       orderBy: { createdAt: 'asc' },
@@ -190,6 +193,7 @@ export class StickersService {
       cashPrice: product.cashPrice != null ? product.cashPrice.toString() : null,
       installmentPrice:
         product.installmentPrice != null ? product.installmentPrice.toString() : null,
+      financePrice: product.financePrice != null ? product.financePrice.toString() : null,
       prices: product.prices.map((p) => ({
         label: p.label,
         amount: p.amount.toString(),

@@ -86,6 +86,7 @@ function toQuotable(product: StockProduct | StickerProductData): QuotableProduct
     deviceOrigin: product.deviceOrigin,
     cashPrice: product.cashPrice,
     installmentPrice: product.installmentPrice,
+    financePrice: product.financePrice ?? null,
     prices: product.prices,
   };
 }

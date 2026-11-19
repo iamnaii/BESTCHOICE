@@ -23,6 +23,8 @@ export interface StickerProductData {
   stockInDate: string | null;
   cashPrice: string | null;
   installmentPrice: string | null;
+  /** ราคาขาย GFIN — optional เพราะ API รุ่นก่อนช่วง 4 ไม่ส่ง */
+  financePrice?: string | null;
   prices: ProductPriceRow[];
 }
 

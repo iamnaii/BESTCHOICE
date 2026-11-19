@@ -57,15 +57,19 @@ export class InstallmentPreviewService {
       product.prices.find((p) => isInstallmentPriceLabel(p.label))?.amount ??
       null;
 
-    if (!installmentPriceRaw) {
-      return { available: false, reason: 'no_installment_price' };
-    }
-    const installmentPrice = new Decimal(installmentPriceRaw.toString());
-
     if (dto.provider === 'BC') {
-      return this.previewBc(product, installmentPrice, dto);
+      if (!installmentPriceRaw) return { available: false, reason: 'no_installment_price' };
+      return this.previewBc(product, new Decimal(installmentPriceRaw.toString()), dto);
     }
-    return this.previewGfin(product, installmentPrice, dto);
+
+    // สเปค 2026-11-19 ข้อ 3.2: เรท 2 คิดจากราคาขาย GFIN ของเครื่อง · ว่าง = ราคาผ่อน BESTCHOICE (พฤติกรรมเดิม)
+    // ราคานี้เป็นแค่ input ของการคำนวณฝั่ง server — ไม่ถูกส่งกลับในผลลัพธ์
+    const gfinSaleRaw =
+      product.financePrice != null && product.financePrice.gt(0)
+        ? product.financePrice
+        : installmentPriceRaw;
+    if (!gfinSaleRaw) return { available: false, reason: 'no_installment_price' };
+    return this.previewGfin(product, new Decimal(gfinSaleRaw.toString()), dto);
   }
 
   private async previewBc(

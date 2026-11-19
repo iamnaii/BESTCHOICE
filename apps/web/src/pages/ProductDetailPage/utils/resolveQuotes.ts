@@ -1,5 +1,5 @@
 import type { BcConfigJson, GfinDeviceOrigin } from '@installment/shared';
-import { getPositiveDisplayPrices, type ProductForDisplay } from '@/utils/getDisplayPrices';
+import { getPositiveDisplayPrices, normalizePositive, type ProductForDisplay } from '@/utils/getDisplayPrices';
 import type { CalcState } from '../hooks/useInstallmentCalcState';
 import { bcMinDownAmount, buildBcQuote, type BcQuote } from './bcQuote';
 import {
@@ -18,6 +18,8 @@ export interface ProductForQuotes extends ProductForDisplay {
   storage: string | null;
   /** ที่มาเครื่อง — มีผลกับ OVER ของ GFIN (ไทยเต็ม · นอก/ยังไม่ระบุครึ่งเดียว) */
   deviceOrigin?: GfinDeviceOrigin | null;
+  /** ราคาขาย GFIN ของเครื่อง (ราคาเต็ม — สเปค 2026-11-19 ข้อ 3.2) · ว่าง/ไม่บวก = เรท 2 ใช้ราคาผ่อน BESTCHOICE */
+  financePrice?: string | number | null;
 }
 
 export interface ResolvedBc {
@@ -42,6 +44,8 @@ export interface ResolvedGfin {
 export interface ResolvedQuotes {
   /** ราคาผ่อนที่ใช้คิด — ผ่าน getPositiveDisplayPrices เสมอ (null = ยังไม่ตั้งราคาผ่อน) */
   installmentPrice: number | null;
+  /** ราคาที่เรท 2 ใช้คิด = financePrice ?? ราคาผ่อน (null = ไม่มีทั้งคู่) */
+  gfinSalePrice: number | null;
   bc: ResolvedBc | null;
   gfin: ResolvedGfin | null;
   gfinAvailable: boolean;
@@ -66,12 +70,13 @@ export function resolveQuotes({
 }): ResolvedQuotes {
   const { installment } = getPositiveDisplayPrices(product);
   const installmentPrice = installment ?? null;
-  if (installmentPrice == null) {
-    return { installmentPrice: null, bc: null, gfin: null, gfinAvailable: false };
+  const gfinSalePrice = normalizePositive(product.financePrice) ?? installmentPrice;
+  if (installmentPrice == null && gfinSalePrice == null) {
+    return { installmentPrice: null, gfinSalePrice: null, bc: null, gfin: null, gfinAvailable: false };
   }
 
   let bc: ResolvedBc | null = null;
-  if (bcConfig && bcConfig.allowedMonths && bcConfig.allowedMonths.length > 0) {
+  if (installmentPrice != null && bcConfig && bcConfig.allowedMonths && bcConfig.allowedMonths.length > 0) {
     const months =
       state.bc.months != null && bcConfig.allowedMonths.includes(state.bc.months)
         ? state.bc.months
@@ -89,7 +94,7 @@ export function resolveQuotes({
 
   let gfin: ResolvedGfin | null = null;
   let gfinAvailable = false;
-  if (gfinTables) {
+  if (gfinTables && gfinSalePrice != null) {
     const commissionPct =
       state.gfin.commissionPct ?? defaultCommissionPct(gfinTables.settings, product.category);
     const productForGfin = {
@@ -106,7 +111,7 @@ export function resolveQuotes({
     let months: number | null = preferred;
     let quote = buildGfinQuote(gfinTables, {
       product: productForGfin,
-      installmentPrice,
+      installmentPrice: gfinSalePrice,
       months: preferred,
       downPct,
       commissionPct,
@@ -120,7 +125,7 @@ export function resolveQuotes({
       if (months != null) {
         quote = buildGfinQuote(gfinTables, {
           product: productForGfin,
-          installmentPrice,
+          installmentPrice: gfinSalePrice,
           months,
           downPct,
           commissionPct,
@@ -131,5 +136,5 @@ export function resolveQuotes({
     gfinAvailable = quote.available;
   }
 
-  return { installmentPrice, bc, gfin, gfinAvailable };
+  return { installmentPrice, gfinSalePrice, bc, gfin, gfinAvailable };
 }

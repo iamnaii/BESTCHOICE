@@ -106,7 +106,7 @@ export function InstallmentCalculatorCard({
         <GfinPanel
           gfin={{ ...gfin, months: gfin.months, quote: q }}
           settings={gfinSettings}
-          installmentPrice={installmentPrice}
+          installmentPrice={quotes.gfinSalePrice ?? installmentPrice}
           deviceOrigin={product.deviceOrigin}
           isManager={!isSales}
           commissionOptions={commissionOptions}
@@ -181,8 +181,11 @@ export function InstallmentCalculatorCard({
       <CardHeader>
         <CardTitle>คำนวณค่างวด</CardTitle>
         <span className="text-xs text-muted-foreground leading-snug">
-          คิดจากราคาผ่อน{' '}
-          <span className="font-mono tabular-nums">{formatBaht(installmentPrice)}</span> ฿
+          {fin === 'gfin' && quotes.gfinSalePrice != null ? 'คิดจากราคาขาย GFIN' : 'คิดจากราคาผ่อน'}{' '}
+          <span className="font-mono tabular-nums">
+            {formatBaht(fin === 'gfin' && quotes.gfinSalePrice != null ? quotes.gfinSalePrice : installmentPrice)}
+          </span>{' '}
+          ฿
         </span>
       </CardHeader>
       <CardContent className="space-y-4">

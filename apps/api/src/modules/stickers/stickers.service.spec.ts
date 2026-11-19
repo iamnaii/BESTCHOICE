@@ -40,6 +40,7 @@ describe('StickersService — ข้อมูลเครื่องสำห�
     stockInDate: new Date('2026-08-11T03:00:00.000Z'),
     cashPrice: new Decimal(19900),
     installmentPrice: new Decimal(19900),
+    financePrice: new Decimal(20900),
     prices: [
       { label: 'ราคาเงินสด', amount: new Decimal(19900), isDefault: true },
       { label: 'ราคาผ่อน BESTCHOICE', amount: new Decimal(19900), isDefault: false },
@@ -69,6 +70,7 @@ describe('StickersService — ข้อมูลเครื่องสำห�
       stockInDate: '2026-08-11T03:00:00.000Z',
       cashPrice: '19900',
       installmentPrice: '19900',
+      financePrice: '20900',
       prices: [
         { label: 'ราคาเงินสด', amount: '19900', isDefault: true },
         { label: 'ราคาผ่อน BESTCHOICE', amount: '19900', isDefault: false },
@@ -128,6 +130,7 @@ describe('StickersService — ข้อมูลเครื่องสำห�
         ...baseProduct,
         cashPrice: null,
         installmentPrice: null,
+        financePrice: null,
         prices: [],
         batteryHealth: 87,
         hasBox: false,
@@ -139,6 +142,7 @@ describe('StickersService — ข้อมูลเครื่องสำห�
 
     expect(result.cashPrice).toBeNull();
     expect(result.installmentPrice).toBeNull();
+    expect(result.financePrice).toBeNull();
     expect(result.prices).toEqual([]);
     expect(result.batteryHealth).toBe(87);
     expect(result.hasBox).toBe(false);

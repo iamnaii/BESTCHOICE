@@ -10,6 +10,7 @@ import {
   type GfinModelMappingRow,
   type GfinOverpriceRuleRow,
   type GfinRateFactorRow,
+  type ModelQuoteGfinContext,
   type ProductCategoryForGfin,
 } from '@installment/shared';
 import type { MonthOption } from './monthsOptions';
@@ -219,5 +220,20 @@ export function buildGfinQuote(tables: GfinTables, input: GfinQuoteInput): GfinQ
     factor,
     maxMonths,
     monthsOptions,
+  };
+}
+
+/**
+ * ตาราง GFIN ของเว็บ → บริบทของ `buildModelQuote` (สเปค 2026-11-19 ข้อ 5 — การ์ดราคาขายหน้าเพิ่มสินค้า)
+ * ดาวน์ขั้นต่ำของตั้งค่าเป็น % เต็ม (25) → สัดส่วน (0.25) · คอมตามหมวด (มือถือ 15 · iPad 5)
+ */
+export function toModelQuoteGfinContext(tables: GfinTables, category: string): ModelQuoteGfinContext {
+  return {
+    mappings: tables.mappings.map(toMappingRow),
+    rules: tables.rules.map(toRuleRow),
+    rateFactors: tables.factors.map(toFactorRow),
+    settingMinDownPct: new Decimal(tables.settings.minDownPct).div(100),
+    commissionPct: defaultCommissionPct(tables.settings, category),
+    contractFee: new Decimal(tables.settings.contractFee),
   };
 }

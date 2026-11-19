@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { InterestConfigService } from './interest-config.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -247,6 +248,89 @@ describe('InterestConfigService', () => {
         update: { ratePct: 0.5, deletedAt: null },
         create: { configId: 'cfg-new', months: 10, ratePct: 0.5 },
       });
+    });
+  });
+  describe('กันดอกเบี้ย 0% — ต่อเดือน 0 และไม่มีแถวรายงวด', () => {
+    const MSG = 'ต้องมีดอกเบี้ยต่อเดือนมากกว่า 0 หรือมีตารางดอกเบี้ยรายงวดอย่างน้อย 1 แถว';
+    const stored = (interestRate: unknown) => ({
+      id: 'cfg-1',
+      interestRate,
+      minInstallmentMonths: 6,
+      maxInstallmentMonths: 12,
+      deletedAt: null,
+    });
+    const createDto = (over: Record<string, unknown> = {}) => ({
+      name: 'มือ 2',
+      productCategories: ['PHONE_USED'],
+      interestRate: 0,
+      minDownPaymentPct: 0.15,
+      minInstallmentMonths: 6,
+      maxInstallmentMonths: 12,
+      ...over,
+    });
+
+    beforeEach(() => {
+      prisma.interestConfig.update.mockResolvedValue({ id: 'cfg-1', vatPct: 0.07 });
+      prisma.interestConfig.create.mockResolvedValue({ id: 'cfg-new', vatPct: 0.07 });
+    });
+
+    it('update: เก็บต่อเดือน 0 แล้วส่ง rates: [] → ปฏิเสธ ไม่เขียน', async () => {
+      prisma.interestConfig.findFirst.mockResolvedValue(stored(0));
+      await expect(service.update('cfg-1', { rates: [] })).rejects.toThrow(MSG);
+      expect(prisma.interestConfigRate.updateMany).not.toHaveBeenCalled();
+      expect(prisma.interestConfig.update).not.toHaveBeenCalled();
+    });
+
+    it('update: ส่ง interestRate 0 (ไม่ส่ง rates) ขณะไม่มีแถวใช้งาน → ปฏิเสธ', async () => {
+      prisma.interestConfig.findFirst.mockResolvedValue(stored(0.05));
+      prisma.interestConfigRate.findMany.mockResolvedValue([]);
+      await expect(service.update('cfg-1', { interestRate: 0 })).rejects.toThrow(MSG);
+      expect(prisma.interestConfig.update).not.toHaveBeenCalled();
+    });
+
+    it('update: interestRate 0 + rates: [] → ปฏิเสธ', async () => {
+      prisma.interestConfig.findFirst.mockResolvedValue(stored(0.05));
+      await expect(service.update('cfg-1', { interestRate: 0, rates: [] })).rejects.toThrow(MSG);
+      expect(prisma.interestConfig.update).not.toHaveBeenCalled();
+    });
+
+    it('update: ต่อเดือน 0 + ไม่ส่ง rates + มีแถวใช้งาน → ผ่าน', async () => {
+      prisma.interestConfig.findFirst.mockResolvedValue(stored(0.05));
+      prisma.interestConfigRate.findMany.mockResolvedValue([{ months: 12 }]);
+      await service.update('cfg-1', { interestRate: 0 });
+      expect(prisma.interestConfig.update).toHaveBeenCalled();
+    });
+
+    it('update: ต่อเดือน 0 + ส่ง rates ≥ 1 แถว → ผ่าน', async () => {
+      prisma.interestConfig.findFirst.mockResolvedValue(stored(0.05));
+      await service.update('cfg-1', { interestRate: 0, rates: [{ months: 12, ratePct: 0.5 }] });
+      expect(prisma.interestConfigRate.upsert).toHaveBeenCalledTimes(1);
+    });
+
+    it('update: ต่อเดือน > 0 + rates: [] → ผ่าน', async () => {
+      prisma.interestConfig.findFirst.mockResolvedValue(stored(0.05));
+      await service.update('cfg-1', { rates: [] });
+      expect(prisma.interestConfig.update).toHaveBeenCalled();
+    });
+
+    it('update: เก็บค่าเป็น Decimal 0 ก็ถือว่า 0', async () => {
+      prisma.interestConfig.findFirst.mockResolvedValue(stored(new Prisma.Decimal(0)));
+      await expect(service.update('cfg-1', { rates: [] })).rejects.toThrow(MSG);
+    });
+
+    it('create: ต่อเดือน 0 ไม่ส่ง rates → ปฏิเสธ ไม่เขียน', async () => {
+      await expect(service.create(createDto())).rejects.toThrow(MSG);
+      expect(prisma.interestConfig.create).not.toHaveBeenCalled();
+    });
+
+    it('create: ต่อเดือน 0 + rates: [] → ปฏิเสธ', async () => {
+      await expect(service.create(createDto({ rates: [] }))).rejects.toThrow(MSG);
+      expect(prisma.interestConfig.create).not.toHaveBeenCalled();
+    });
+
+    it('create: ต่อเดือน 0 + rates ≥ 1 แถว → ผ่าน', async () => {
+      await service.create(createDto({ rates: [{ months: 12, ratePct: 0.5 }] }));
+      expect(prisma.interestConfig.create).toHaveBeenCalled();
     });
   });
 });

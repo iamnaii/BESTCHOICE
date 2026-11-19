@@ -84,6 +84,7 @@ export class InterestConfigService {
 
   async create(dto: CreateInterestConfigDto) {
     this.validateMonths(dto.minInstallmentMonths, dto.maxInstallmentMonths);
+    this.assertHasInterest(dto.interestRate, dto.rates?.length ?? 0);
     const created = await writeSharedReference(this.base, async (tx) => {
       const row = await tx.interestConfig.create({
         data: {
@@ -118,6 +119,15 @@ export class InterestConfigService {
         vatPct?: unknown;
       };
       void _ignoredVatPct;
+      // กันสัญญาดอกเบี้ย 0%: ต่อเดือน 0 ต้องมีแถวรายงวดอย่างน้อย 1 แถว (นับก่อนเขียนอะไร)
+      const monthly = dto.interestRate ?? config.interestRate;
+      const rowCount =
+        rates !== undefined
+          ? rates.length
+          : monthly !== undefined && Number(monthly) <= 0
+            ? (await tx.interestConfigRate.findMany({ where: { configId: id, deletedAt: null }, select: { months: true } })).length
+            : 1;
+      this.assertHasInterest(monthly, rowCount);
       if (rates !== undefined) {
         await this.replaceRates(tx, id, rates, minMonths, maxMonths);
       } else if (dto.minInstallmentMonths !== undefined || dto.maxInstallmentMonths !== undefined) {
@@ -188,6 +198,15 @@ export class InterestConfigService {
 
   private outsideRangeMessage(months: number, minMonths: number, maxMonths: number) {
     return `ตารางรายงวดมี ${months} งวด ซึ่งอยู่นอกช่วงงวดต่ำสุด–สูงสุด (${minMonths}–${maxMonths} งวด)`;
+  }
+
+  /** ต่อเดือน ≤ 0 และไม่มีแถวรายงวด = สัญญาได้ดอกเบี้ย 0% — ไม่รับ */
+  private assertHasInterest(monthly: unknown, rowCount: number) {
+    if (Number(monthly) <= 0 && rowCount === 0) {
+      throw new BadRequestException(
+        'ต้องมีดอกเบี้ยต่อเดือนมากกว่า 0 หรือมีตารางดอกเบี้ยรายงวดอย่างน้อย 1 แถว',
+      );
+    }
   }
 
   private validateMonths(min: number, max: number) {

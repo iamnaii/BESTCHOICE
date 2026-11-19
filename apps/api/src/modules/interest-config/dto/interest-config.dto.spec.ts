@@ -21,7 +21,7 @@ describe('UpdateInterestConfigDto — rates', () => {
   });
 });
 
-describe('ดอกเบี้ยต่อเดือน 0 (ใช้ตารางรายงวดอย่างเดียว) — ปักพฤติกรรมเดิมของ DTO', () => {
+describe('DTO รับดอกเบี้ยต่อเดือน 0 (@Min(0)) — กติกา 0 ต้องมีแถวรายงวด อยู่ที่ InterestConfigService', () => {
   it('CreateInterestConfigDto รับ interestRate 0 พร้อมแถวรายงวด', async () => {
     const dto = plainToInstance(CreateInterestConfigDto, {
       name: 'มือถือมือ 1',

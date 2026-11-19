@@ -83,7 +83,7 @@ function makeDb(rows: unknown[]) {
 
 function build(rows: unknown[]) {
   const db = makeDb(rows);
-  return { db, service: new PricingQuoteService(db as never, new PricingTemplatesService(db as never)) };
+  return { db, service: new PricingQuoteService(db as never, new PricingTemplatesService(db as never, { log: jest.fn() } as never)) };
 }
 
 describe('PricingQuoteService.listQuotes', () => {

@@ -15,7 +15,7 @@ describe('pricing templates by device origin', () => {
       updateMany: jest.fn(),
     },
   };
-  const service = new PricingTemplatesService(db as never);
+  const service = new PricingTemplatesService(db as never, { log: jest.fn() } as never);
   beforeEach(() => {
     jest.resetAllMocks();
     db.$transaction.mockImplementation((work) => work(db));

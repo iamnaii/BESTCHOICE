@@ -18,6 +18,7 @@ describe('PricingTemplatesService.backfillFinancePrice — เติมราค
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let db: any;
   let service: PricingTemplatesService;
+  const audit = { log: jest.fn().mockResolvedValue(undefined) };
 
   beforeEach(() => {
     db = {
@@ -44,7 +45,8 @@ describe('PricingTemplatesService.backfillFinancePrice — เติมราค
       auditLog: { create: jest.fn().mockResolvedValue({}) },
       $transaction: jest.fn(async (work: (tx: unknown) => unknown) => work(db)),
     };
-    service = new PricingTemplatesService(db as never);
+    audit.log.mockClear();
+    service = new PricingTemplatesService(db as never, audit as never);
   });
 
   it('อ่านเฉพาะเครื่องพร้อมขายที่ช่องว่าง', async () => {
@@ -63,7 +65,7 @@ describe('PricingTemplatesService.backfillFinancePrice — เติมราค
   it('dryRun นับเฉพาะเครื่องที่รุ่นมีราคาขาย GFIN ในราคากลาง และไม่เขียนอะไร', async () => {
     await expect(service.backfillFinancePrice({ dryRun: true, userId: 'owner-1' })).resolves.toEqual({ count: 1 });
     expect(db.product.updateMany).not.toHaveBeenCalled();
-    expect(db.auditLog.create).not.toHaveBeenCalled();
+    expect(audit.log).not.toHaveBeenCalled();
   });
 
   it('เติม: เขียนคอลัมน์โดยมีเงื่อนไข financePrice: null (ไม่ทับค่าที่มี) + แถวไฟแนนซ์ + audit', async () => {
@@ -77,15 +79,15 @@ describe('PricingTemplatesService.backfillFinancePrice — เติมราค
     expect(db.productPrice.create).toHaveBeenCalledWith({
       data: { productId: 'p15', label: 'ราคาผ่อนไฟแนนซ์', amount: D('26500'), isDefault: false },
     });
-    expect(db.auditLog.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        userId: 'owner-1',
-        action: 'PRODUCT_FINANCE_PRICE_BACKFILLED',
-        entity: 'product',
-        entityId: 'batch',
-        newValue: { count: 1, productIds: ['p15'] },
-      }),
+    // audit ผ่าน AuditService.log หลัง commit (อยู่ใน hash chain) — ไม่เขียน auditLog ตรง
+    expect(audit.log).toHaveBeenCalledWith({
+      userId: 'owner-1',
+      action: 'PRODUCT_FINANCE_PRICE_BACKFILLED',
+      entity: 'product',
+      entityId: 'batch',
+      newValue: { count: 1, productIds: ['p15'] },
     });
+    expect(db.auditLog.create).not.toHaveBeenCalled();
   });
 
   it('มีคนตั้งราคาระหว่างนั้น (updateMany ได้ 0 แถว) → ไม่ทับ ไม่นับ', async () => {
@@ -120,7 +122,7 @@ describe('PricingTemplatesService.backfillFinancePrice — เติมราค
     db.product.findMany.mockResolvedValue(Array.from({ length: 120 }, (_, i) => UNIT(`p${i}`)));
     await expect(service.backfillFinancePrice({ dryRun: false, userId: 'owner-1' })).resolves.toEqual({ count: 120 });
     expect(db.$transaction).toHaveBeenCalledTimes(3);
-    expect(db.auditLog.create).toHaveBeenCalledTimes(1);
+    expect(audit.log).toHaveBeenCalledTimes(1);
   });
 
   it('เขียนเฉพาะเครื่องที่ยังอยู่ในสถานะพร้อมขาย (ขายระหว่างรันไม่ถูกเขียน)', async () => {
@@ -137,10 +139,10 @@ describe('PricingTemplatesService.backfillFinancePrice — เติมราค
       return work(db);
     });
     await expect(service.backfillFinancePrice({ dryRun: false, userId: 'owner-1' })).rejects.toThrow('db down');
-    expect(db.auditLog.create).toHaveBeenCalledTimes(1);
-    const audit = db.auditLog.create.mock.calls[0][0].data.newValue;
-    expect(audit.count).toBe(50);
-    expect(audit.productIds).toHaveLength(50);
-    expect(audit.productIds[0]).toBe('p0');
+    expect(audit.log).toHaveBeenCalledTimes(1);
+    const logged = audit.log.mock.calls[0][0].newValue;
+    expect(logged.count).toBe(50);
+    expect(logged.productIds).toHaveLength(50);
+    expect(logged.productIds[0]).toBe('p0');
   });
 });

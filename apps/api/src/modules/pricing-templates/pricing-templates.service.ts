@@ -9,6 +9,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { CreatePricingTemplateDto, UpdatePricingTemplateDto } from './dto/pricing-template.dto';
 import { Prisma, ProductCategory, ProductStatus, PricingDeviceOrigin } from '@prisma/client';
 import { pickPricingTemplate, positiveDecimal, TEMPLATE_ORDER } from '../../utils/pricing-template-match.util';
@@ -22,7 +23,10 @@ const FINANCE_BACKFILL_CHUNK = 50;
 
 @Injectable()
 export class PricingTemplatesService {
-  constructor(private readonly base: PrismaService) {}
+  constructor(
+    private readonly base: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
   private get prisma() {
     return currentDomainAccess()?.client ?? this.base;
   }
@@ -152,16 +156,15 @@ export class PricingTemplatesService {
         written.push(...chunkWritten); // นับเฉพาะชุดที่ commit แล้ว
       }
     } finally {
-      // ชุดที่ commit แล้วต้องมี audit เสมอ แม้ชุดถัดไปล้ม
+      // ชุดที่ commit แล้วต้องมี audit เสมอ แม้ชุดถัดไปล้ม · AuditService.log หลัง commit = อยู่ใน hash chain
+      // และกลืน error ของตัวเอง ⇒ ไม่บัง error เดิมของชุดที่ล้ม
       if (userId && written.length > 0) {
-        await this.base.auditLog.create({
-          data: {
-            userId,
-            action: 'PRODUCT_FINANCE_PRICE_BACKFILLED',
-            entity: 'product',
-            entityId: 'batch',
-            newValue: { count: written.length, productIds: written },
-          },
+        await this.audit.log({
+          userId,
+          action: 'PRODUCT_FINANCE_PRICE_BACKFILLED',
+          entity: 'product',
+          entityId: 'batch',
+          newValue: { count: written.length, productIds: written },
         });
       }
     }

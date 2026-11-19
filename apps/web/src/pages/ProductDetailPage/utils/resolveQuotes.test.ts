@@ -117,4 +117,29 @@ describe('resolveQuotes', () => {
     expect(r2.gfinAvailable).toBe(false);
     expect(r2.gfin!.quote.available).toBe(false);
   });
+
+  it('กติกา OVER ตั้งดาวน์ขั้นต่ำ 30% → ค่าเริ่ม GFIN 30% (สติกเกอร์ใช้ค่าเดียวกัน): 7,200 − 4,100 = 3,100 · 3,112/เดือน', () => {
+    const tables30: GfinTables = { ...gfinTables, rules: [{ ...gfinTables.rules[0], minDownPct: 30 }] };
+    const r = resolveQuotes({ product, state: INITIAL_CALC_STATE, bcConfig, gfinTables: tables30 });
+    expect(r.gfin!.minDownPct).toBe(30);
+    expect(r.gfin!.downPct).toBe(30);
+    if (!r.gfin!.quote.available) throw new Error('expected GFIN quote');
+    expect(r.gfin!.quote.result.downAmountByFormula.toNumber()).toBe(7200);
+    expect(r.gfin!.quote.result.downAmountActual.toNumber()).toBe(3100);
+    expect(r.gfin!.quote.result.monthlyPayment.toNumber()).toBe(3112);
+  });
+
+  it('กติกาไม่ตั้ง → ขั้นต่ำ = ค่าตั้ง 25 · % ที่ผู้ใช้เลือกยังทับค่าเริ่มได้', () => {
+    const r = resolveQuotes({ product, state: INITIAL_CALC_STATE, bcConfig, gfinTables });
+    expect(r.gfin!.minDownPct).toBe(25);
+    const tables30: GfinTables = { ...gfinTables, rules: [{ ...gfinTables.rules[0], minDownPct: 30 }] };
+    const chosen = resolveQuotes({
+      product,
+      state: { ...INITIAL_CALC_STATE, gfin: { months: null, downPct: 40, commissionPct: null } },
+      bcConfig,
+      gfinTables: tables30,
+    });
+    expect(chosen.gfin!.minDownPct).toBe(30);
+    expect(chosen.gfin!.downPct).toBe(40);
+  });
 });

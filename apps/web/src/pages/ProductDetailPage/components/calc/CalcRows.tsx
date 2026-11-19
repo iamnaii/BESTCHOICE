@@ -173,7 +173,7 @@ export function DownCallout({
       </div>
       <p className="col-span-3 text-xs text-muted-foreground leading-snug">
         หักส่วนต่าง ราคาส่งสูงสุด {formatBaht(submit)} − ราคาผ่อนที่ต้องการ {formatBaht(ourPrice)} ={' '}
-        {formatBaht(discount)} ฿ (กติกาของร้าน)
+        {formatBaht(discount)} ฿ แล้วปัดขึ้นหลักร้อย (กติกาของร้าน)
       </p>
     </div>
   );

@@ -208,6 +208,18 @@ describe('InstallmentCalculatorCard — การ์ดเดียว สลั
     expect(screen.getByText(/ยังไม่ระบุเครื่องไทย\/เครื่องนอก — คิด OVER ครึ่งเดียวไว้ก่อน/)).toBeInTheDocument();
   });
 
+  it('กติกา OVER ตั้งดาวน์ขั้นต่ำ 30% → การ์ดเริ่มที่ 30% · แจ้ง GFIN 7,200 → ลูกค้าจ่าย 3,100 · 3,112/เดือน', () => {
+    const tables30: GfinTables = { ...gfinTables, rules: [{ ...gfinTables.rules[0], minDownPct: 30 }] };
+    renderCard({ state: { ...INITIAL_CALC_STATE, fin: 'gfin' }, tables: tables30 });
+    expect(screen.getByRole('combobox', { name: 'ดาวน์ (%)' })).toHaveTextContent('30 %');
+    expect(screen.getByText('ดาวน์ที่แจ้ง GFIN (30%)')).toBeInTheDocument();
+    expect(screen.getByText('7,200 ฿')).toBeInTheDocument();
+    expect(screen.getByText('3,100 ฿')).toBeInTheDocument();
+    expect(screen.getByText(/เริ่มจากดาวน์ขั้นต่ำของรุ่นนี้ 30%/)).toBeInTheDocument();
+    expect(screen.getByText(/ปัดขึ้นหลักร้อย/)).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'ผ่อนชำระ' })).toHaveTextContent('12 งวด · ผ่อนเดือนละ 3,112');
+  });
+
   it('แบตต่ำกว่า 80% → แถบเตือนเปลี่ยนแบตก่อนขาย (ไม่บล็อกการคำนวณ) · 80% ขึ้นไปไม่เตือน', () => {
     renderCard({ product: { ...iphone15, category: 'PHONE_USED', batteryHealth: 78 } });
     expect(screen.getByText('แบต 78% · เปลี่ยนแบตก่อนขาย')).toBeInTheDocument();

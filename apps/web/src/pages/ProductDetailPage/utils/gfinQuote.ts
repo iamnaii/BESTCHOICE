@@ -4,6 +4,7 @@ import {
   findGfinMapping,
   findGfinOverpriceRule,
   findGfinRateFactor,
+  resolveGfinDownPct,
   type GfinCalcOutput,
   type GfinDeviceOrigin,
   type GfinModelMappingRow,
@@ -121,6 +122,21 @@ function toRuleRow(r: OverpriceApi): GfinOverpriceRuleRow {
     minDownPct: r.minDownPct ?? null,
   };
 }
+/**
+ * ดาวน์ขั้นต่ำ GFIN ของเครื่องนี้ เป็นเต็มร้อย (30) — กติกา OVER ของรุ่นก่อน ไม่มีแล้วใช้ค่าตั้ง GFIN
+ * (สเปค price-master-retire 3.3: iPhone 17 / 18 / Air = 30%) · หมวดที่ไม่รับ / รุ่นไม่อยู่ในใบราคา = ค่าตั้ง
+ */
+export function gfinMinDownPctFor(tables: GfinTables, product: GfinQuoteInput['product']): number {
+  const category = gfinCategoryOf(product.category);
+  if (!category) return tables.settings.minDownPct;
+  const mappingRow = findGfinMapping(
+    { brand: product.brand, model: product.model, storage: product.storage ?? '', category },
+    tables.mappings.map(toMappingRow),
+  );
+  const ruleRow = mappingRow ? findGfinOverpriceRule(mappingRow, tables.rules.map(toRuleRow)) : null;
+  return resolveGfinDownPct(ruleRow, new Decimal(tables.settings.minDownPct).div(100)).mul(100).toNumber();
+}
+
 function toFactorRow(f: RateFactorApi): GfinRateFactorRow {
   return {
     months: f.months,

@@ -114,15 +114,11 @@ export function GfinPanel({
   compare,
 }: Props) {
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const { quote, months, downPct, commissionPct } = gfin;
+  const { quote, months, downPct, minDownPct, commissionPct } = gfin;
   const r = quote.result;
   const submit = r.gfinSubmitPrice.toNumber();
 
-  const downOptions = gfinDownPctOptions(
-    settings.minDownPct,
-    settings.maxDownPct,
-    settings.downStepPct,
-  );
+  const downOptions = gfinDownPctOptions(minDownPct, settings.maxDownPct, settings.downStepPct);
   if (!downOptions.includes(downPct)) downOptions.push(downPct);
   downOptions.sort((a, b) => a - b);
 
@@ -179,7 +175,7 @@ export function GfinPanel({
           </div>
         </div>
         <HintLine>
-          เริ่มจากขั้นต่ำที่ GFIN ตั้งให้ร้าน {settings.minDownPct}% ถึง {settings.maxDownPct}% ขั้นละ{' '}
+          เริ่มจากดาวน์ขั้นต่ำของรุ่นนี้ {minDownPct}% ถึง {settings.maxDownPct}% ขั้นละ{' '}
           {settings.downStepPct}% · พิมพ์ทับได้ · คิดจากราคาส่ง GFIN {formatBaht(submit)}
         </HintLine>
       </div>

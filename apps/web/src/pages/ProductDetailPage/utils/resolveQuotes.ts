@@ -2,7 +2,13 @@ import type { BcConfigJson, GfinDeviceOrigin } from '@installment/shared';
 import { getPositiveDisplayPrices, type ProductForDisplay } from '@/utils/getDisplayPrices';
 import type { CalcState } from '../hooks/useInstallmentCalcState';
 import { bcMinDownAmount, buildBcQuote, type BcQuote } from './bcQuote';
-import { buildGfinQuote, defaultCommissionPct, type GfinQuote, type GfinTables } from './gfinQuote';
+import {
+  buildGfinQuote,
+  defaultCommissionPct,
+  gfinMinDownPctFor,
+  type GfinQuote,
+  type GfinTables,
+} from './gfinQuote';
 import { pickDefaultMonths } from './monthsOptions';
 
 export interface ProductForQuotes extends ProductForDisplay {
@@ -27,6 +33,8 @@ export interface ResolvedGfin {
   /** null = ไม่มีงวดให้เลือกเลย (ตารางเรทว่าง) */
   months: number | null;
   downPct: number;
+  /** ดาวน์ขั้นต่ำของรุ่นนี้ (เต็มร้อย) — กติกา OVER ก่อน ไม่มีแล้วค่าตั้ง GFIN · ตัวเลือก % ในการ์ดเริ่มที่ค่านี้ */
+  minDownPct: number;
   commissionPct: number;
   quote: GfinQuote;
 }
@@ -84,8 +92,6 @@ export function resolveQuotes({
   if (gfinTables) {
     const commissionPct =
       state.gfin.commissionPct ?? defaultCommissionPct(gfinTables.settings, product.category);
-    const downPct = state.gfin.downPct ?? gfinTables.settings.minDownPct;
-    const preferred = state.gfin.months ?? 12;
     const productForGfin = {
       brand: product.brand,
       model: product.model,
@@ -93,6 +99,10 @@ export function resolveQuotes({
       category: product.category,
       deviceOrigin: product.deviceOrigin,
     };
+    // ดาวน์ขั้นต่ำตามกติกา OVER ของรุ่น (ไม่มีแล้วค่าตั้ง GFIN) — ค่าเริ่มของการ์ดและสติกเกอร์
+    const minDownPct = gfinMinDownPctFor(gfinTables, productForGfin);
+    const downPct = state.gfin.downPct ?? minDownPct;
+    const preferred = state.gfin.months ?? 12;
     let months: number | null = preferred;
     let quote = buildGfinQuote(gfinTables, {
       product: productForGfin,
@@ -117,7 +127,7 @@ export function resolveQuotes({
         });
       }
     }
-    gfin = { months: quote.available ? months : null, downPct, commissionPct, quote };
+    gfin = { months: quote.available ? months : null, downPct, minDownPct, commissionPct, quote };
     gfinAvailable = quote.available;
   }
 

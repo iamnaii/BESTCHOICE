@@ -3,6 +3,7 @@ import {
   buildGfinQuote,
   defaultCommissionPct,
   gfinCategoryOf,
+  gfinMinDownPctFor,
   type GfinTables,
 } from './gfinQuote';
 import { pickDefaultMonths } from './monthsOptions';
@@ -175,5 +176,21 @@ describe('gfinCategoryOf / defaultCommissionPct / pickDefaultMonths', () => {
     expect(pickDefaultMonths([6, 10, 15])).toBe(10);
     expect(pickDefaultMonths([15, 18])).toBe(15);
     expect(pickDefaultMonths([])).toBeNull();
+  });
+});
+
+describe('gfinMinDownPctFor — ดาวน์ขั้นต่ำของเครื่อง (กติกา OVER ก่อน ไม่มีแล้วค่าตั้ง)', () => {
+  const tables30: GfinTables = { ...tables, rules: [{ ...tables.rules[0], minDownPct: 30 }] };
+
+  it('กติกาของรุ่นตั้ง 30 → 30', () => {
+    expect(gfinMinDownPctFor(tables30, iphone15)).toBe(30);
+  });
+
+  it('กติกาไม่ตั้ง → ค่าตั้ง 25 · รุ่นไม่อยู่ในใบราคา / หมวดที่ไม่รับ → ค่าตั้ง', () => {
+    expect(gfinMinDownPctFor(tables, iphone15)).toBe(25);
+    expect(
+      gfinMinDownPctFor(tables30, { brand: 'Samsung', model: 'Galaxy S24', storage: '256GB', category: 'PHONE_USED' }),
+    ).toBe(25);
+    expect(gfinMinDownPctFor(tables30, { brand: 'Apple', model: 'AirPods', storage: null, category: 'ACCESSORY' })).toBe(25);
   });
 });

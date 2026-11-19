@@ -135,7 +135,7 @@ export class GfinConfigService {
         );
         const maxPrice = new Prisma.Decimal(item.maxPrice);
         if (!match) {
-          const row = await tx.gfinModelMapping.create({
+          await tx.gfinModelMapping.create({
             data: {
               gfinSeries: model,
               gfinVariant: null,
@@ -146,7 +146,6 @@ export class GfinConfigService {
               isActive: true,
             },
           });
-          existing.push(row);
           created++;
           continue;
         }
@@ -154,11 +153,10 @@ export class GfinConfigService {
           unchanged++;
           continue;
         }
-        const row = await tx.gfinModelMapping.update({
+        await tx.gfinModelMapping.update({
           where: { id: match.id },
           data: { maxPrice, modelMatchPattern: model, isActive: true },
         });
-        existing.splice(existing.indexOf(match), 1, row);
         updated++;
       }
     });

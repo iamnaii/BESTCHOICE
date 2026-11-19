@@ -51,7 +51,10 @@ export class ProductsPricingService {
       if (!price) throw new NotFoundException('ไม่พบราคาขาย');
 
       const finalLabel = (dto.label ?? price.label ?? '').trim();
-      if (dto.isDefault && finalLabel === FINANCE_LABEL) {
+      // ผลลัพธ์เป็นแถวไฟแนนซ์ที่เป็นค่าเริ่มต้น และเป็นการ "ทำให้เป็น" ตอนนี้ (ตั้งค่าเริ่มต้น หรือเปลี่ยนชื่อมา)
+      // — แถว legacy ที่เป็นค่าเริ่มต้นอยู่แล้วยังแก้ตัวเลข/ปลดค่าเริ่มต้นได้
+      const becomesFinance = finalLabel === FINANCE_LABEL && (price.label ?? '').trim() !== FINANCE_LABEL;
+      if ((dto.isDefault ?? price.isDefault) && finalLabel === FINANCE_LABEL && (dto.isDefault === true || becomesFinance)) {
         throw new BadRequestException(FINANCE_DEFAULT_MESSAGE);
       }
 

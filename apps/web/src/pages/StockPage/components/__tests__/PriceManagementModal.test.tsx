@@ -191,6 +191,12 @@ describe('PriceManagementModal — Task 13 column-awareness', () => {
     expect(screen.queryByRole('checkbox')).toBeNull();
   });
 
+  it('(G2) แถว "ราคาผ่อนไฟแนนซ์" ที่เป็นค่าเริ่มต้นอยู่ (legacy) → ยังมี checkbox ให้ปลด', () => {
+    renderHarness(makeProduct([{ id: 'pr-f', label: 'ราคาผ่อนไฟแนนซ์', amount: '21900', isDefault: true }]));
+    fireEvent.click(screen.getByTitle('แก้ไข'));
+    expect((screen.getByLabelText('ค่าเริ่มต้น') as HTMLInputElement).checked).toBe(true);
+  });
+
   it('(b) แก้แถว label อื่น → ยิงเส้น /prices เดิม ไม่แตะ PATCH คอลัมน์', async () => {
     apiPatch.mockResolvedValue({ data: {} });
     const product = makeProduct([{ id: 'pr-2', label: 'ราคาส่ง', amount: '13000', isDefault: false }]);

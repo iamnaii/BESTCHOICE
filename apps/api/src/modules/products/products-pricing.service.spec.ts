@@ -48,4 +48,17 @@ describe('ProductsPricingService — แถว "ราคาผ่อนไฟ�
       service.updatePrice('p-1', 'pr-x', { label: 'ราคาผ่อนไฟแนนซ์', isDefault: true }),
     ).rejects.toThrow(BadRequestException);
   });
+
+  it('updatePrice: เปลี่ยนชื่อแถวที่เป็นค่าเริ่มต้นอยู่แล้วเป็นไฟแนนซ์ (ไม่ส่ง isDefault) → 400', async () => {
+    tx.productPrice.findFirst.mockResolvedValue({ id: 'pr-d', label: 'ราคาเงินสด', isDefault: true });
+    await expect(
+      service.updatePrice('p-1', 'pr-d', { label: 'ราคาผ่อนไฟแนนซ์' }),
+    ).rejects.toThrow(BadRequestException);
+    expect(tx.productPrice.update).not.toHaveBeenCalled();
+  });
+
+  it('updatePrice: แถวไฟแนนซ์เดิมที่เป็นค่าเริ่มต้นอยู่ (legacy) ปลดค่าเริ่มต้นได้', async () => {
+    tx.productPrice.findFirst.mockResolvedValue({ id: 'pr-f', label: 'ราคาผ่อนไฟแนนซ์', isDefault: true });
+    await expect(service.updatePrice('p-1', 'pr-f', { isDefault: false })).resolves.toBeDefined();
+  });
 });

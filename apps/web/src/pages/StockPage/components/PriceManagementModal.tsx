@@ -214,8 +214,8 @@ export function PriceManagementModal({
                       </p>
                     )}
                     <div className="flex items-center justify-between">
-                      {price.label.trim() === FINANCE_LABEL ? (
-                        // แถวสำเนาราคาขาย GFIN เป็นค่าเริ่มต้นไม่ได้ (API ปฏิเสธ) — ไม่แสดง checkbox
+                      {price.label.trim() === FINANCE_LABEL && !price.isDefault ? (
+                        // แถวสำเนาราคาขาย GFIN เป็นค่าเริ่มต้นไม่ได้ (API ปฏิเสธ) — ไม่แสดง checkbox · แถว legacy ที่เป็นค่าเริ่มต้นอยู่ยังปลดได้
                         <span />
                       ) : (
                       <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">

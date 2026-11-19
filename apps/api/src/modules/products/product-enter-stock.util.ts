@@ -48,13 +48,14 @@ export const ENTER_STOCK_AUDIT_ACTION = 'PRODUCT_RETURNED_TO_STOCK';
 export type EnterStockVia = 'BUTTON' | 'PATCH' | 'PHOTO_COMPLETE';
 
 /**
- * แถว `ProductPrice` เท่าที่ด่านนี้ต้องรู้ — `label`/`isDefault` เป็น optional เพราะ
- * ผู้เรียกบางรายเลือกมาแค่ `{ amount, deletedAt }` (พอสำหรับ `hasSellingPrice`)
+ * แถว `ProductPrice` เท่าที่ด่านนี้ต้องรู้ — `label`/`isDefault` **บังคับ**: `hasSellingPrice`
+ * ต้องแยกแถว "ราคาผ่อนไฟแนนซ์" (สำเนาราคาขาย GFIN) ออก ผู้เรียกที่ `select` แถวราคาเอง
+ * ต้องดึงสองฟิลด์นี้มาด้วย ไม่งั้นไม่ผ่าน type check (fail closed)
  */
 export interface EnterStockPriceRow {
-  label?: string;
+  label: string;
   amount: Prisma.Decimal | string | number;
-  isDefault?: boolean;
+  isDefault: boolean;
   deletedAt?: Date | null;
 }
 

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import Decimal from 'decimal.js';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -12,6 +12,7 @@ import {
   CreateRateFactorDto,
   UpdateRateFactorDto,
   UpdateGfinSettingsDto,
+  ImportMaxPricesDto,
 } from './dto';
 import { GFIN_SETTINGS_KEYS, loadGfinSettings, type GfinSettings } from './gfin-settings.util';
 
@@ -98,6 +99,77 @@ export class GfinConfigService {
       oldValue: existing as unknown as Record<string, unknown>,
     });
     return updated;
+  }
+
+  /**
+   * นำเข้าใบราคาจาก Excel (สเปคข้อ 7.7) — หนึ่งแถว = ชื่อรุ่นเต็ม + ความจุ + สภาพ
+   * หาแถวเดิมเอง (unique ของฐานข้อมูลกันซ้ำไม่ได้เพราะ gfinVariant ว่าง) · แถวรูปแบบเก่าที่มีรุ่นย่อยไม่ถูกแตะ
+   */
+  async importMaxPrices(dto: ImportMaxPricesDto, userId: string) {
+    const norm = (s: string) => s.replace(/\s+/g, '').toUpperCase();
+    // ตรวจก่อนเขียน: รุ่น+ความจุ+สภาพ ห้ามซ้ำในไฟล์เดียว
+    const seen = new Set<string>();
+    for (const item of dto.items) {
+      const key = `${item.model.trim().toLowerCase()}|${norm(item.storage)}|${item.condition}`;
+      if (seen.has(key)) {
+        throw new BadRequestException(
+          `ใบราคามีแถวซ้ำ: ${item.model.trim()} ${norm(item.storage)} (${item.condition === 'HAND_1' ? 'มือ 1' : 'มือ 2'}) — รุ่น ความจุ และสภาพเดียวกันต้องมีได้แถวเดียว`,
+        );
+      }
+      seen.add(key);
+    }
+    let created = 0;
+    let updated = 0;
+    let unchanged = 0;
+    await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.gfinModelMapping.findMany({ where: { deletedAt: null } });
+      for (const item of dto.items) {
+        const model = item.model.trim();
+        const storage = norm(item.storage);
+        const match = existing.find(
+          (r) =>
+            !r.gfinVariant &&
+            r.gfinSeries.trim().toLowerCase() === model.toLowerCase() &&
+            norm(r.storage) === storage &&
+            r.condition === item.condition,
+        );
+        const maxPrice = new Prisma.Decimal(item.maxPrice);
+        if (!match) {
+          const row = await tx.gfinModelMapping.create({
+            data: {
+              gfinSeries: model,
+              gfinVariant: null,
+              storage,
+              condition: item.condition,
+              maxPrice,
+              modelMatchPattern: model,
+              isActive: true,
+            },
+          });
+          existing.push(row);
+          created++;
+          continue;
+        }
+        if (new Decimal(match.maxPrice.toString()).eq(item.maxPrice) && match.modelMatchPattern === model && match.isActive) {
+          unchanged++;
+          continue;
+        }
+        const row = await tx.gfinModelMapping.update({
+          where: { id: match.id },
+          data: { maxPrice, modelMatchPattern: model, isActive: true },
+        });
+        existing.splice(existing.indexOf(match), 1, row);
+        updated++;
+      }
+    });
+    await this.auditService.log({
+      action: 'GFIN_MAX_PRICE_IMPORTED',
+      entity: 'gfin_model_mapping',
+      entityId: 'batch',
+      userId,
+      newValue: { created, updated, unchanged, count: dto.items.length },
+    });
+    return { created, updated, unchanged };
   }
 
   // ===== Overprice Rules =====

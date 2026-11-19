@@ -490,4 +490,96 @@ describe('GfinConfigService', () => {
       expect(result.match).toBeNull();
     });
   });
+  // ===== นำเข้าใบราคา (สเปค 7.7) =====
+
+  describe('importMaxPrices', () => {
+    const row = (over: Record<string, unknown> = {}) => ({
+      id: 'm1',
+      gfinSeries: 'iPhone 15',
+      gfinVariant: null,
+      storage: '128GB',
+      condition: 'HAND_2',
+      maxPrice: new Prisma.Decimal(16900),
+      modelMatchPattern: 'iPhone 15',
+      isActive: true,
+      deletedAt: null,
+      ...over,
+    });
+
+    beforeEach(() => {
+      prisma.$transaction = jest.fn((fn: (tx: unknown) => unknown) => fn(prisma));
+      prisma.gfinModelMapping.create.mockImplementation(({ data }: { data: object }) => ({ id: 'new', ...data }));
+      prisma.gfinModelMapping.update.mockImplementation(({ data }: { data: object }) => ({ ...row(), ...data }));
+    });
+
+    it('ไม่มีแถวเดิม → สร้างด้วยชื่อรุ่นเต็ม · รุ่นย่อยว่าง · ความจุตัดช่องว่าง', async () => {
+      prisma.gfinModelMapping.findMany.mockResolvedValue([]);
+      const result = await service.importMaxPrices(
+        { items: [{ model: 'iPhone 15 Pro Max', storage: '256 gb', condition: 'HAND_1', maxPrice: 34900 }] },
+        'u1',
+      );
+      expect(prisma.gfinModelMapping.findMany).toHaveBeenCalledWith({ where: { deletedAt: null } });
+      expect(prisma.gfinModelMapping.create).toHaveBeenCalledWith({
+        data: {
+          gfinSeries: 'iPhone 15 Pro Max',
+          gfinVariant: null,
+          storage: '256GB',
+          condition: 'HAND_1',
+          maxPrice: new Prisma.Decimal(34900),
+          modelMatchPattern: 'iPhone 15 Pro Max',
+          isActive: true,
+        },
+      });
+      expect(result).toEqual({ created: 1, updated: 0, unchanged: 0 });
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'GFIN_MAX_PRICE_IMPORTED', userId: 'u1', newValue: { created: 1, updated: 0, unchanged: 0, count: 1 } }),
+      );
+    });
+
+    it('หาแถวเดิมด้วย (ชื่อรุ่น, ความจุ, สภาพ) เอง → แก้ราคา + เปิดใช้', async () => {
+      prisma.gfinModelMapping.findMany.mockResolvedValue([row({ maxPrice: new Prisma.Decimal(16000), isActive: false })]);
+      const result = await service.importMaxPrices(
+        { items: [{ model: 'iphone 15', storage: '128GB', condition: 'HAND_2', maxPrice: 16900 }] },
+        'u1',
+      );
+      expect(prisma.gfinModelMapping.update).toHaveBeenCalledWith({
+        where: { id: 'm1' },
+        data: { maxPrice: new Prisma.Decimal(16900), modelMatchPattern: 'iphone 15', isActive: true },
+      });
+      expect(result).toEqual({ created: 0, updated: 1, unchanged: 0 });
+    });
+
+    it('นำเข้าซ้ำค่าเท่าเดิม → ไม่สร้าง ไม่แก้', async () => {
+      prisma.gfinModelMapping.findMany.mockResolvedValue([row()]);
+      const result = await service.importMaxPrices(
+        { items: [{ model: 'iPhone 15', storage: '128GB', condition: 'HAND_2', maxPrice: 16900 }] },
+        'u1',
+      );
+      expect(prisma.gfinModelMapping.create).not.toHaveBeenCalled();
+      expect(prisma.gfinModelMapping.update).not.toHaveBeenCalled();
+      expect(result).toEqual({ created: 0, updated: 0, unchanged: 1 });
+    });
+
+    it('แถวเดิมแบบรุ่นหลัก + รุ่นย่อย (รูปแบบเก่า) ไม่นับเป็นรุ่นเดียวกัน → สร้างแถวใหม่', async () => {
+      prisma.gfinModelMapping.findMany.mockResolvedValue([row({ gfinVariant: 'Pro' })]);
+      const result = await service.importMaxPrices(
+        { items: [{ model: 'iPhone 15', storage: '128GB', condition: 'HAND_2', maxPrice: 16900 }] },
+        'u1',
+      );
+      expect(result).toEqual({ created: 1, updated: 0, unchanged: 0 });
+    });
+
+    it('รุ่น+ความจุ+สภาพซ้ำในไฟล์เดียว → ปฏิเสธด้วยข้อความไทย ก่อนเขียนอะไร', async () => {
+      const item = { model: 'iPhone 16', storage: '128 GB', condition: 'HAND_1' as const };
+      await expect(
+        service.importMaxPrices(
+          { items: [{ ...item, maxPrice: 26900 }, { ...item, model: 'IPHONE 16', storage: '128GB', maxPrice: 27900 }] },
+          'u1',
+        ),
+      ).rejects.toThrow(/ซ้ำ/);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(prisma.gfinModelMapping.create).not.toHaveBeenCalled();
+      expect(audit.log).not.toHaveBeenCalled();
+    });
+  });
 });

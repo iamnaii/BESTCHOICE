@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { CreatePricingTemplateDto } from './dto/pricing-template.dto';
 import { PricingTemplatesService } from './pricing-templates.service';
 
@@ -11,6 +12,7 @@ describe('pricing templates by device origin', () => {
       findUnique: jest.fn(),
       create: jest.fn(),
       upsert: jest.fn(),
+      updateMany: jest.fn(),
     },
   };
   const service = new PricingTemplatesService(db as never);
@@ -68,5 +70,47 @@ describe('pricing templates by device origin', () => {
         ([args]) => args.where.brand_model_storage_category_hasWarranty_deviceOrigin.deviceOrigin,
       ),
     ).toEqual(['UNSPECIFIED', 'IMPORTED']);
+  });
+  const ITEM = {
+    brand: 'Apple',
+    model: 'iPhone 17 Pro',
+    storage: '256GB',
+    category: 'PHONE_NEW' as CreatePricingTemplateDto['category'],
+    cashPrice: 39000,
+    installmentBestchoicePrice: 39000,
+    installmentFinancePrice: 39000,
+  };
+
+  it('นำเข้าเขียนงวด/ดาวน์จากไฟล์ทั้งตอนสร้างและตอนแก้ · ช่องว่าง = null (สเปค 7.4)', async () => {
+    await service.bulkImport([
+      { ...ITEM, rate1TermMonths: 12, rate1DownPayment: 15000, rate2TermMonths: 15 },
+      { ...ITEM, model: 'iPhone 16' },
+    ]);
+    const [first, second] = db.pricingTemplate.upsert.mock.calls.map(([args]) => args);
+    expect(first.update).toMatchObject({ rate1TermMonths: 12, rate1DownPayment: 15000, rate2TermMonths: 15, isActive: true });
+    expect(first.create).toMatchObject({ rate1TermMonths: 12, rate1DownPayment: 15000, rate2TermMonths: 15 });
+    expect(second.update).toMatchObject({ rate1TermMonths: null, rate1DownPayment: null, rate2TermMonths: null });
+    expect(first.update).not.toHaveProperty('rate2DownPayment');
+  });
+
+  it('ปิดแถวที่เปิดใช้อยู่แต่ไม่อยู่ในไฟล์ตาม id ที่ส่งมา', async () => {
+    db.pricingTemplate.updateMany.mockResolvedValue({ count: 2 });
+    const result = await service.bulkImport([], ['a', 'b']);
+    expect(db.pricingTemplate.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['a', 'b'] }, isActive: true, deletedAt: null },
+      data: { isActive: false },
+    });
+    expect(result).toEqual({ success: 0, skipped: 0, errors: [], deactivated: 2 });
+  });
+
+  it('ไม่ส่ง deactivateIds → ไม่ปิดแถวใด และผลรูปเดิม', async () => {
+    const result = await service.bulkImport([ITEM]);
+    expect(db.pricingTemplate.updateMany).not.toHaveBeenCalled();
+    expect(result).toEqual({ success: 1, skipped: 0, errors: [] });
+  });
+
+  it('deactivateIds ผิดรูป → 400', async () => {
+    await expect(service.bulkImport([], 'a')).rejects.toThrow(BadRequestException);
+    await expect(service.bulkImport([], [1])).rejects.toThrow(BadRequestException);
   });
 });

@@ -112,9 +112,16 @@ export class PricingTemplatesService {
     return this.update(id, { isActive: false });
   }
 
-  async bulkImport(items: CreatePricingTemplateDto[]) {
+  async bulkImport(items: CreatePricingTemplateDto[], deactivateIds?: unknown) {
     if (!Array.isArray(items) || items.length > 100)
       throw new BadRequestException('รายการนำเข้าต้องเป็นอาร์เรย์ไม่เกิน 100 แถว');
+    if (
+      deactivateIds !== undefined &&
+      (!Array.isArray(deactivateIds) ||
+        deactivateIds.length > 1000 ||
+        deactivateIds.some((id) => typeof id !== 'string'))
+    )
+      throw new BadRequestException('รายการแถวที่จะปิดไม่ถูกต้อง');
     const errors: string[] = [];
     const valid: CreatePricingTemplateDto[] = [];
     for (let i = 0; i < items.length; i++) {
@@ -129,6 +136,7 @@ export class PricingTemplatesService {
       else valid.push(dto);
     }
     if (errors.length) return { success: 0, skipped: items.length, errors };
+    const ids = (deactivateIds as string[] | undefined) ?? [];
     return writeSharedReference(this.base, async (tx) => {
       for (const item of valid) {
         const key = {
@@ -145,18 +153,36 @@ export class PricingTemplatesService {
         if (existing?.deletedAt) throw new ConflictException('ข้อมูลอ้างอิงถูกลบแล้ว');
         if (existing)
           await tx.$queryRaw`SELECT id FROM pricing_templates WHERE id = ${existing.id} FOR UPDATE`;
-        const prices = {
+        // ไฟล์คือค่าจริงของรุ่น (สเปคข้อ 7.4) — งวด/ดาวน์ที่ว่างในไฟล์ = ใช้กติกาตั้งต้น จึงเขียน null
+        const values = {
           cashPrice: item.cashPrice,
           installmentBestchoicePrice: item.installmentBestchoicePrice,
           installmentFinancePrice: item.installmentFinancePrice,
+          rate1TermMonths: item.rate1TermMonths ?? null,
+          rate1DownPayment: item.rate1DownPayment ?? null,
+          rate2TermMonths: item.rate2TermMonths ?? null,
         };
         await tx.pricingTemplate.upsert({
           where: { brand_model_storage_category_hasWarranty_deviceOrigin: key },
-          update: { ...prices, isActive: true },
-          create: { ...key, ...prices },
+          update: { ...values, isActive: true },
+          create: { ...key, ...values },
         });
       }
-      return { success: valid.length, skipped: 0, errors: [] as string[] };
+      // "ปิดแถวที่เปิดใช้อยู่แต่ไม่อยู่ในไฟล์" — หน้าเว็บส่ง id มากับชุดสุดท้าย
+      const deactivated = ids.length
+        ? (
+            await tx.pricingTemplate.updateMany({
+              where: { id: { in: ids }, isActive: true, deletedAt: null },
+              data: { isActive: false },
+            })
+          ).count
+        : 0;
+      return {
+        success: valid.length,
+        skipped: 0,
+        errors: [] as string[],
+        ...(deactivateIds !== undefined ? { deactivated } : {}),
+      };
     });
   }
 }

@@ -440,16 +440,10 @@ describe('Atomic bounded import and durable evidence', () => {
       .send({ ...pricing(), cashPrice: -1, rate1DownPayment: -2, rate1TermMonths: 1 })
       .expect(201);
   });
-  it('processes duplicate keys in order and preserves existing down/term while new imports keep defaults', async () => {
+  it('processes duplicate keys in order, writes down/term from the file (blank = null) and deactivates listed rows', async () => {
     const data = pricing();
     const p = await db.pricingTemplate.create({
-      data: {
-        ...data,
-        category: 'PHONE_NEW',
-        rate1DownPayment: 20,
-        rate1TermMonths: 6,
-        isActive: false,
-      },
+      data: { ...data, category: 'PHONE_NEW', rate1DownPayment: 20, rate1TermMonths: 6, isActive: false },
     });
     const res = await http('post', '/pricing-templates/import?company=SHOP')
       .send({
@@ -460,23 +454,26 @@ describe('Atomic bounded import and durable evidence', () => {
       })
       .expect(201);
     expect(res.body).toEqual({ success: 2, skipped: 0, errors: [] });
-    expect(await db.pricingTemplate.findUnique({ where: { id: p.id } })).toMatchObject({
-      cashPrice: expect.objectContaining({}),
-      rate1TermMonths: 6,
-      isActive: true,
-    });
     const row = await db.pricingTemplate.findUniqueOrThrow({ where: { id: p.id } });
     expect(row.cashPrice.toString()).toBe('30');
-    expect(row.rate1DownPayment?.toString()).toBe('20');
+    expect(row.rate1DownPayment).toBeNull();
+    expect(row.rate1TermMonths).toBeNull();
+    expect(row.isActive).toBe(true);
     const fresh = pricing();
     await http('post', '/pricing-templates/import?company=SHOP')
-      .send({ items: [{ ...fresh, rate1DownPayment: 99, rate1TermMonths: 3 }] })
+      .send({ items: [{ ...fresh, rate1DownPayment: 99, rate1TermMonths: 3, rate2TermMonths: 15 }] })
       .expect(201);
-    expect(await db.pricingTemplate.findFirst({ where: { model: fresh.model } })).toMatchObject({
-      rate1DownPayment: null,
-      rate1TermMonths: null,
-    });
+    const created = await db.pricingTemplate.findFirstOrThrow({ where: { model: fresh.model } });
+    expect(created.rate1DownPayment?.toString()).toBe('99');
+    expect(created.rate1TermMonths).toBe(3);
+    expect(created.rate2TermMonths).toBe(15);
+    const off = await http('post', '/pricing-templates/import?company=SHOP')
+      .send({ items: [], deactivateIds: [created.id] })
+      .expect(201);
+    expect(off.body).toEqual({ success: 0, skipped: 0, errors: [], deactivated: 1 });
+    expect((await db.pricingTemplate.findUniqueOrThrow({ where: { id: created.id } })).isActive).toBe(false);
   });
+
   it('deleted-key collision and SQL failure roll back previous rows, with safe errors and no resurrection', async () => {
     const dead = { ...pricing(), category: 'PHONE_NEW' as const };
     const p = await db.pricingTemplate.create({ data: { ...dead, deletedAt: new Date() } });

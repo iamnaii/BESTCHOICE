@@ -66,9 +66,9 @@ export class PricingTemplatesController {
 
   @Post('import')
   @Roles('OWNER')
-  bulkImport(@Body() body: { items: CreatePricingTemplateDto[] }) {
+  bulkImport(@Body() body: { items: CreatePricingTemplateDto[]; deactivateIds?: string[] }) {
     if (!body || typeof body !== 'object' || !Array.isArray(body.items)) throw new BadRequestException('รายการนำเข้าต้องเป็นอาร์เรย์ไม่เกิน 100 แถว');
-    return this.service.bulkImport(body.items);
+    return this.service.bulkImport(body.items, body.deactivateIds);
   }
 
   @Put(':id')

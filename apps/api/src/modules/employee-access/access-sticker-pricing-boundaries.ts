@@ -113,7 +113,7 @@ export class AccessStickerPricingBoundaries implements OnModuleInit {
                   }
                   const result = await handler();
                   if (output || mutation) {
-                    const value = result as { id?: string; success?: number; skipped?: number };
+                    const value = result as { id?: string; success?: number; skipped?: number; deactivated?: number };
                     const ids = output
                       ? (Array.isArray(result) ? result : [result]).map(
                           (r: { productId: string }) => r.productId,
@@ -151,7 +151,7 @@ export class AccessStickerPricingBoundaries implements OnModuleInit {
                             : {
                                 operation: method,
                                 ...(method === 'bulkImport'
-                                  ? { success: value.success ?? 0, skipped: value.skipped ?? 0 }
+                                  ? { success: value.success ?? 0, skipped: value.skipped ?? 0, deactivated: value.deactivated ?? 0 }
                                   : {}),
                               }),
                         },

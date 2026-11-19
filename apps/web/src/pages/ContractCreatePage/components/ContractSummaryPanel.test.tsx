@@ -23,3 +23,27 @@ describe('ContractSummaryPanel — ของแถม', () => {
     expect(screen.queryByText(/ของแถม/)).not.toBeInTheDocument();
   });
 });
+
+describe('ContractSummaryPanel — ดอกเบี้ย', () => {
+  it('มีตารางรายงวด → ดอกเบี้ยรวมทั้งสัญญาของงวดที่เลือก', () => {
+    render(
+      <ContractSummaryPanel
+        {...base}
+        totalMonths={12}
+        interestRate={0.0417}
+        contractRatePct={0.5}
+        interestConfig={{
+          id: 'ic-1', name: 'มือถือมือ 1', productCategories: ['PHONE_NEW'], interestRate: '0',
+          minDownPaymentPct: '0.15', storeCommissionPct: '0.10', vatPct: '0.07',
+          minInstallmentMonths: 6, maxInstallmentMonths: 12, allowedMonths: [10, 12],
+        }}
+      />,
+    );
+    expect(screen.getByText('50% ทั้งสัญญา (12 เดือน) (มือถือมือ 1)')).toBeInTheDocument();
+  });
+
+  it('ไม่มีตาราง → ต่อเดือนแบบเดิม', () => {
+    render(<ContractSummaryPanel {...base} />);
+    expect(screen.getByText('1.00%')).toBeInTheDocument();
+  });
+});

@@ -1,3 +1,4 @@
+import { formatRatePct, hasTermRates } from '../rate-label';
 import type { Product, Customer, InterestConfig, ContractBundleProduct } from '../types';
 
 export interface ContractSummaryPanelProps {
@@ -9,6 +10,8 @@ export interface ContractSummaryPanelProps {
   totalMonths: number;
   monthlyPayment: number;
   interestRate: number;
+  /** ดอกเบี้ยรวมทั้งสัญญาจากใบเสนอราคา (`ContractQuote.ratePct` เศษส่วน) — ใช้เมื่อหมวดมีตารางรายงวด */
+  contractRatePct?: number;
   interestConfig: InterestConfig | null | undefined;
   /** ของแถม (อุปกรณ์เสริม) ที่จะจองไปกับสัญญา */
   bundleProducts?: ContractBundleProduct[];
@@ -23,9 +26,13 @@ export function ContractSummaryPanel({
   totalMonths,
   monthlyPayment,
   interestRate,
+  contractRatePct = 0,
   interestConfig,
   bundleProducts = [],
 }: ContractSummaryPanelProps) {
+  const rateText = hasTermRates(interestConfig)
+    ? `${formatRatePct(contractRatePct)} ทั้งสัญญา (${totalMonths} เดือน)`
+    : `${(interestRate * 100).toFixed(2)}%`;
   return (
     <details className="mt-4">
       <summary className="cursor-pointer text-sm font-semibold text-foreground hover:text-primary">สรุปสัญญาก่อนยืนยัน</summary>
@@ -38,7 +45,7 @@ export function ContractSummaryPanel({
           <div><span className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">เงินดาวน์</span><div className="font-medium tabular-nums font-mono mt-0.5">{downPayment.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</div></div>
           <div><span className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">จำนวนงวด</span><div className="font-medium mt-0.5">{totalMonths} เดือน</div></div>
           <div><span className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">ค่างวด/เดือน</span><div className="font-bold text-primary tabular-nums font-mono mt-0.5">{monthlyPayment.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</div></div>
-          <div className="col-span-2"><span className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">ดอกเบี้ย</span><div className="font-medium mt-0.5">{(interestRate * 100).toFixed(2)}%{interestConfig ? ` (${interestConfig.name})` : ''}</div></div>
+          <div className="col-span-2"><span className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">ดอกเบี้ย</span><div className="font-medium mt-0.5">{rateText}{interestConfig ? ` (${interestConfig.name})` : ''}</div></div>
           {bundleProducts.length > 0 && (
             <div className="col-span-2 border-t border-border/60 pt-3">
               <span className="text-2xs font-medium text-muted-foreground tracking-wider">ของแถม ({bundleProducts.length} รายการ · ไม่คิดเงิน)</span>

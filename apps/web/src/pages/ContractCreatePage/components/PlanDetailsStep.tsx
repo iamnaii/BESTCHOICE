@@ -14,6 +14,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { contractPlanSchema, type ContractPlanFormData } from '@/lib/schemas';
+import { formatRatePct, hasTermRates } from '../rate-label';
 
 /** Info icon with tooltip for financial field explanations */
 function InfoTip({ text }: { text: string }) {
@@ -52,6 +53,8 @@ export interface PlanDetailsStepProps {
   paymentDueDay: number;
   setPaymentDueDay: (v: number) => void;
   interestRate: number;
+  /** ดอกเบี้ยรวมทั้งสัญญาจากใบเสนอราคาของเซิร์ฟเวอร์ (`ContractQuote.ratePct` เศษส่วน: 0.5 = 50%) */
+  contractRatePct?: number;
   storeCommPct: number;
   vatPct: number;
   principal: number;
@@ -84,6 +87,7 @@ export function PlanDetailsStep({
   paymentDueDay,
   setPaymentDueDay,
   interestRate,
+  contractRatePct = 0,
   storeCommPct,
   vatPct,
   principal,
@@ -95,6 +99,7 @@ export function PlanDetailsStep({
   monthOptions,
 }: PlanDetailsStepProps) {
   const dueDayInputId = useId();
+  const termRates = hasTermRates(interestConfig);
   const form = useForm<ContractPlanFormData>({
     resolver: standardSchemaResolver(contractPlanSchema),
     defaultValues: {
@@ -148,7 +153,11 @@ export function PlanDetailsStep({
           <div className="bg-primary/5 border border-primary/30 rounded-lg p-3 flex items-center gap-2">
             <span className="text-xs text-primary">ใช้ดอกเบี้ยตาม:</span>
             <span className="text-sm font-medium text-primary">{interestConfig.name}</span>
-            <span className="text-xs text-primary">({(interestRate * 100).toFixed(2)}% | ดาวน์ขั้นต่ำ {(minDownPct * 100).toFixed(0)}% | {minMonths}-{maxMonths} เดือน)</span>
+            <span className="text-xs leading-snug text-primary">
+              {termRates
+                ? `(ดอกเบี้ย ${formatRatePct(contractRatePct)} ทั้งสัญญา | ดาวน์ขั้นต่ำ ${(minDownPct * 100).toFixed(0)}% | เลือกได้ ${monthOptions.join(', ')} เดือน)`
+                : `(${(interestRate * 100).toFixed(2)}% | ดาวน์ขั้นต่ำ ${(minDownPct * 100).toFixed(0)}% | ${minMonths}-${maxMonths} เดือน)`}
+            </span>
           </div>
         )}
 
@@ -324,7 +333,11 @@ export function PlanDetailsStep({
                     <span className="tabular-nums font-mono">{fmt(storeCommission)} ฿</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">+ ดอกเบี้ย ({(interestRate * 100).toFixed(2)}% × {totalMonths} เดือน)</span>
+                    <span className="text-muted-foreground">
+                      {termRates
+                        ? `+ ดอกเบี้ย (${formatRatePct(contractRatePct)} ทั้งสัญญา ${totalMonths} เดือน)`
+                        : `+ ดอกเบี้ย (${(interestRate * 100).toFixed(2)}% × ${totalMonths} เดือน)`}
+                    </span>
                     <span className="tabular-nums font-mono">{fmt(interestTotal)} ฿</span>
                   </div>
                   <div className="border-t border-primary/10 pt-1.5 flex justify-between font-medium">

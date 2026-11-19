@@ -225,4 +225,9 @@ describe('InstallmentCalculatorCard — การ์ดเดียว สลั
     await userEvent.type(down, '5000');
     expect(onChange).toHaveBeenLastCalledWith(expect.any(Function));
   });
+  it('ป้ายดาวน์ขั้นต่ำแสดง % ที่ตั้งไว้ (15%) ไม่เพี้ยนตามยอดที่ปัดขึ้น: 4,500 × 15% = 675 → 700', () => {
+    renderCard({ product: { ...iphone15, cashPrice: '4500', installmentPrice: '4500' } });
+    expect(screen.getByText(/ดาวน์ขั้นต่ำ 15% = 700 ฿/)).toBeInTheDocument();
+    expect(screen.queryByText(/ดาวน์ขั้นต่ำ 16%/)).toBeNull();
+  });
 });

@@ -137,7 +137,7 @@ export function InstallmentCalculatorCard({
       return (
         <BcPanel
           bc={bc}
-          minDownPct={Math.round(bc.minDownAmount === 0 ? 0 : (bc.minDownAmount / installmentPrice) * 100)}
+          minDownPct={bc.minDownPct}
           hideCommission={isSales}
           canCreateContract={canCreateContract}
           onMonthsChange={(months) => onChange((prev) => ({ ...prev, bc: { ...prev.bc, months } }))}

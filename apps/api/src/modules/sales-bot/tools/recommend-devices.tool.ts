@@ -361,8 +361,11 @@ export class RecommendDevicesTool {
         rows.filter(
           (r) =>
             r.category === t.category &&
-            // ใบเสนอราคาจาก listQuotes ไม่ผูกที่มาเครื่อง (deviceOrigin ว่าง) → นับทุกเครื่องของรุ่นนี้
-            (t.deviceOrigin === undefined || (r.deviceOrigin ?? 'UNSPECIFIED') === t.deviceOrigin) &&
+            // ใบเสนอราคาจาก listQuotes คิดแบบเครื่องไทย (deviceOrigin ว่าง) → นับเครื่องไทย/ไม่ระบุ ไม่นับเครื่องนอก
+            // (เรท GFIN ของเครื่องนอกต่างกัน — ห้ามเอาเครื่องนอกมาเป็นตัวอย่างของราคาเครื่องไทย)
+            (t.deviceOrigin === undefined
+              ? r.deviceOrigin !== 'IMPORTED'
+              : (r.deviceOrigin ?? 'UNSPECIFIED') === t.deviceOrigin) &&
             normalizeStorage(r.storage) === normalizeStorage(t.storage) &&
             sameModel(r.model, t.model),
         ),

@@ -33,6 +33,7 @@ interface StockFixture {
   model: string;
   storage: string;
   category?: string;
+  deviceOrigin?: string | null;
   color?: string | null;
   batteryHealth?: number | null;
   gallery?: string[];
@@ -142,6 +143,20 @@ describe('RecommendDevicesTool.run', () => {
     expect(r.recommended).toEqual([]);
     expect(r.nearMiss).toEqual([]);
     expect(r.reason).toBe('ไม่มีรุ่นที่ใหม่กว่า iPhone 15 Pro Max ในตารางราคา');
+  });
+
+  it('เครื่องนอกไม่ถูกนับ/ไม่เป็น sampleUnit ของใบเสนอราคาเครื่องไทย · เครื่องไทย/ไม่ระบุ/null นับ', async () => {
+    const { tool } = build([tpl({ model: 'iPhone 13' })], {
+      products: [
+        stock({ id: 'imp', model: 'iPhone 13', storage: '128GB', batteryHealth: 99, deviceOrigin: 'IMPORTED' }),
+        stock({ id: 'thai', model: 'iPhone 13', storage: '128GB', batteryHealth: 90, deviceOrigin: 'THAI' }),
+        stock({ id: 'unspec', model: 'iPhone 13', storage: '128GB', batteryHealth: 80, deviceOrigin: 'UNSPECIFIED' }),
+        stock({ id: 'nul', model: 'iPhone 13', storage: '128GB', batteryHealth: 70, deviceOrigin: null }),
+      ],
+    });
+    const r = await tool.run({ currentModel: 'iPhone 11', downBudget: 99_999, monthlyBudget: 99_999 });
+    expect(r.recommended[0].unitCount).toBe(3);
+    expect(r.recommended[0].sampleUnit?.productId).toBe('thai');
   });
 
   it('(3) inStock เรียงก่อน generation: 13 ที่มีของชนะ 14 ที่ไม่มี + sampleUnit = แบตสูงสุด + where เหมือน search_products', async () => {

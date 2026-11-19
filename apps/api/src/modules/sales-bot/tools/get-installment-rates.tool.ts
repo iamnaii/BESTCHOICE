@@ -23,7 +23,7 @@ export const GET_INSTALLMENT_RATES_TOOL = {
     '`query` MUST be ONLY the model name (brand/model, optionally storage) — e.g. "iPhone 15 128GB" — with ' +
     'NO other words: matching requires the stored model to contain the query text, so greetings or extra ' +
     'words ("มีไหมคะ") make it match nothing. Returns up to 3 matches. rate2 can be null with ' +
-    'rate2Unavailable (Thai reason, e.g. "GFIN ไม่รับรุ่นนี้") — then offer rate1 only. allowedTerms lists ' +
+    'rate2Unavailable (customer-safe Thai reason, e.g. "GFIN ไม่รับรุ่นนี้") — then offer rate1 only. allowedTerms lists ' +
     'the ONLY terms rate1 can be done at; if the customer asks for another term, say which terms are ' +
     'available (e.g. "ผ่อนได้ 10 หรือ 12 งวด") instead of computing a number. Matches can be sibling ' +
     'models (asked "iPhone 15", got "iPhone 15 Pro Max") — ALWAYS attribute quoted numbers to the ' +
@@ -32,7 +32,8 @@ export const GET_INSTALLMENT_RATES_TOOL = {
     "going silent. No match → templates: [] — do NOT guess a rate and do NOT ask for the customer's " +
     'budget; retry once with the plain English model name without storage, then follow the persona rule ' +
     'for an empty table. deviceOrigin and condition are internal labels — never print ' +
-    "THAI/IMPORTED/UNSPECIFIED to the customer; UNSPECIFIED rows are the shop's regular (Thai) table. " +
+    'THAI/IMPORTED to the customer; deviceOrigin is the origin the numbers were quoted for ' +
+    "(THAI = the shop's regular table unless the customer asked for an imported phone). " +
     'Pass deviceOrigin IMPORTED only when the customer wants an imported phone (GFIN gives imported ' +
     'phones a lower price, so rate2 differs). Never quote these rows for the imported free-down promo ' +
     '(promo rates come from search_knowledge_base only). Each match carries `condition` ("มือ 1" = new, ' +
@@ -125,9 +126,17 @@ const conditionOf = (category: string): RateCondition => (category === 'PHONE_NE
 /** ลูกค้าขอเครื่องนอก → คิดแบบเครื่องนอก (OVER ครึ่ง) · นอกนั้น = เครื่องไทย (ค่าเริ่มต้นหน้า "ราคาและเรทผ่อน") */
 const quoteOrigin = (origin: string | undefined): QuoteOrigin => (origin === 'IMPORTED' ? 'IMPORTED' : 'THAI');
 
-function fromQuote(t: PricingTemplateRow, q: ModelQuote): PricingTemplateRateMatch {
+/** ข้อความถึงลูกค้าตามรหัสเหตุผล — ไม่ส่งข้อความภายในของตัวคำนวณ (เช่น "ยังไม่ได้ตั้งค่า GFIN") */
+function rate2UnavailableText(reason: string): string {
+  if (reason === 'NO_PRICE_LIST') return 'GFIN ไม่รับรุ่นนี้';
+  if (reason === 'NO_RATE') return 'GFIN ไม่มีแผนผ่อนจำนวนงวดนี้';
+  return 'ยังไม่มีราคาผ่อน GFIN สำหรับรุ่นนี้';
+}
+
+function fromQuote(t: PricingTemplateRow, q: ModelQuote, origin: QuoteOrigin): PricingTemplateRateMatch {
   return {
-    deviceOrigin: t.deviceOrigin,
+    // ป้ายต้องตรงกับที่มาที่ใช้คิดตัวเลขจริง (ไม่ใช่ป้ายของแถวที่รอดการตัดซ้ำ)
+    deviceOrigin: origin,
     condition: conditionOf(t.category),
     brand: t.brand,
     model: t.model,
@@ -139,7 +148,7 @@ function fromQuote(t: PricingTemplateRow, q: ModelQuote): PricingTemplateRateMat
     rate2: q.rate2.available
       ? { downPayment: q.rate2.downAmount, monthlyPrice: q.rate2.monthly, termMonths: q.rate2.months }
       : null,
-    ...(q.rate2.available ? {} : { rate2Unavailable: q.rate2.message }),
+    ...(q.rate2.available ? {} : { rate2Unavailable: rate2UnavailableText(q.rate2.reason) }),
     allowedTerms: q.rate1?.allowedMonths ?? [],
   };
 }
@@ -223,7 +232,7 @@ export class GetInstallmentRatesTool {
         hasWarranty: t.hasWarranty,
         origin,
       });
-      if (q) templates.push(fromQuote(t, q));
+      if (q) templates.push(fromQuote(t, q, origin));
     }
     return { templates };
   }

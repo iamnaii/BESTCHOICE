@@ -62,7 +62,7 @@ describe('GetInstallmentRatesTool.run', () => {
     const r = await tool.run({ query: 'iPhone 15 128GB' });
     expect(r.templates).toEqual([
       {
-        deviceOrigin: 'UNSPECIFIED',
+        deviceOrigin: 'THAI',
         condition: 'มือ 1',
         brand: 'Apple',
         model: 'iPhone 15',
@@ -91,6 +91,35 @@ describe('GetInstallmentRatesTool.run', () => {
     const r = await tool.run({ query: 'iPhone 15' });
     expect(r.templates[0].rate2).toBeNull();
     expect(r.templates[0].rate2Unavailable).toBe('GFIN ไม่รับรุ่นนี้');
+  });
+
+  it('deviceOrigin ที่ส่งให้โมเดล = ที่มาที่ใช้คิดจริง (ไม่ใช่ป้ายของแถวที่รอดการตัดซ้ำ)', async () => {
+    const a = build([row({ deviceOrigin: 'IMPORTED' })]);
+    const r1 = await a.tool.run({ query: 'iPhone 15' });
+    expect(a.quotes.quoteForModel.mock.calls[0][0].origin).toBe('THAI');
+    expect(r1.templates[0].deviceOrigin).toBe('THAI');
+
+    const b = build([row({ deviceOrigin: 'UNSPECIFIED' })]);
+    const r2 = await b.tool.run({ query: 'iPhone 15', deviceOrigin: 'IMPORTED' });
+    expect(b.quotes.quoteForModel.mock.calls[0][0].origin).toBe('IMPORTED');
+    expect(r2.templates[0].deviceOrigin).toBe('IMPORTED');
+  });
+
+  it('rate2Unavailable เป็นข้อความสำเร็จรูปตาม reason (ไม่ส่งข้อความภายในของตัวคำนวณ)', async () => {
+    const cases: [string, string][] = [
+      ['NO_PRICE_LIST', 'GFIN ไม่รับรุ่นนี้'],
+      ['NO_RATE', 'GFIN ไม่มีแผนผ่อนจำนวนงวดนี้'],
+      ['NO_PRICE', 'ยังไม่มีราคาผ่อน GFIN สำหรับรุ่นนี้'],
+      ['NO_CONFIG', 'ยังไม่มีราคาผ่อน GFIN สำหรับรุ่นนี้'],
+    ];
+    for (const [reason, text] of cases) {
+      const { tool } = build(
+        [row()],
+        quote({ rate2: { available: false, reason, message: 'ยังไม่ได้ตั้งค่า GFIN (staff)' } as never }),
+      );
+      const r = await tool.run({ query: 'iPhone 15' });
+      expect(r.templates[0].rate2Unavailable).toBe(text);
+    }
   });
 
   it('ลูกค้าบอกเครื่องนอก → คิดแบบเครื่องนอก และค้นแถวเครื่องนอก + "ไม่ระบุ"', async () => {
@@ -175,7 +204,7 @@ describe('GetInstallmentRatesTool.run', () => {
 });
 
 describe('ข้อมูลภายในต้องไม่หลุดถึงลูกค้า (บอทคุยกับลูกค้า)', () => {
-  const FORBIDDEN = /submitPrice|recordedSalePrice|profit|cost/i;
+  const FORBIDDEN = /submitPrice|recordedSalePrice|profit|cost|commission|คอมมิชชั่น/i;
 
   it('run(): ผลที่ส่งให้โมเดลไม่มี submitPrice / recordedSalePrice / profit / cost', async () => {
     const { tool } = build([row()], quote({ cash: { price: 25900, profit: 1234 } }));
@@ -253,9 +282,9 @@ describe('GET_INSTALLMENT_RATES_TOOL description', () => {
     expect(d).toContain('retry once with the plain English model name');
   });
 
-  it('ป้ายภายในห้ามพิมพ์ · UNSPECIFIED = ตารางปกติ · ห้ามใช้กับโปรฟรีดาวน์เครื่องนอก', () => {
-    expect(d).toContain('never print THAI/IMPORTED/UNSPECIFIED');
-    expect(d).toContain("UNSPECIFIED rows are the shop's regular (Thai) table");
+  it('ป้ายภายในห้ามพิมพ์ · deviceOrigin = ที่มาที่คิดจริง · ห้ามใช้กับโปรฟรีดาวน์เครื่องนอก', () => {
+    expect(d).toContain('never print THAI/IMPORTED');
+    expect(d).toContain('the origin the numbers were quoted for');
     expect(d).toContain('Never quote these rows for the imported free-down promo');
   });
 

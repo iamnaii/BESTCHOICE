@@ -510,8 +510,8 @@ describe('SalesBotService', () => {
   // HALLUCINATION_BLOCKED. These two specs pin that contract both ways.
   describe('get_installment_rates grounding (#1337 — baht from PricingTemplate)', () => {
     // Sticker-exact shape (#1337 follow-up): each rate carries its OWN
-    // monthlyPrice — rate1 = installmentBestchoicePrice, rate2 =
-    // installmentFinancePrice (stickers.service.ts:175/:185). BOTH monthlies
+    // monthlyPrice — rate1 / rate2 monthly both come from the shared
+    // model-quote calculator (PricingQuoteService). BOTH monthlies
     // must be groundable so the bot can quote the sticker's two lines.
     const toolResult = {
       templates: [

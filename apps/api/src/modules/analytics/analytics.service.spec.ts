@@ -38,6 +38,13 @@ describe('AnalyticsService (characterization)', () => {
   // getRevenueForecast — linear regression y = a + b*x
   // -------------------------------------------------------------------------
   describe('getRevenueForecast', () => {
+    // ช่วงข้อมูล = 6 เดือนเต็มก่อนเดือนนี้ (2026-11-19) ⇒ ล็อกวันที่ให้ชุดข้อมูล ม.ค.–เม.ย. 2026 เป็นเดือนเต็มล่าสุด
+    beforeEach(() => {
+      jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+      jest.setSystemTime(new Date('2026-05-01T03:00:00.000Z')); // 1 พ.ค. 2026 10:00 น. ไทย
+    });
+    afterEach(() => jest.useRealTimers());
+
     /**
      * KNOWN dataset (amount comes back as a string from `SUM(...)::text`, then
      * passed through d(...).toNumber()):

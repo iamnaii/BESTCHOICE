@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { sqlBkkLocal } from '../../utils/bangkok-sql.util';
 import { d } from '../../utils/decimal.util';
+import { bangkokCalendarParts, bangkokMidnight } from '../../utils/date.util';
 
 @Injectable()
 export class AnalyticsService {
@@ -96,13 +97,24 @@ export class AnalyticsService {
   }
 
   /**
-   * Revenue forecast using simple linear regression on last 6 months of data.
+   * Revenue forecast using simple linear regression on the last 6 FULL Bangkok calendar months
+   * (the current month is excluded — it is not over yet — and becomes the first forecast month).
+   * Months without payments (after the first month with data) count as 0 so the regression x-axis stays one step per month (2026-11-19).
    * Returns historical + 3-month forecast with confidence interval.
    */
   async getRevenueForecast(branchId?: string) {
     const branchFilter = branchId
       ? Prisma.sql`AND c.branch_id = ${branchId}`
       : Prisma.empty;
+
+    const HISTORY_MONTHS = 6;
+    const { year: curYear, month: curMonth0 } = bangkokCalendarParts(new Date());
+    const windowStart = bangkokMidnight(curYear, curMonth0 - HISTORY_MONTHS, 1);
+    const windowEnd = bangkokMidnight(curYear, curMonth0, 1);
+    const monthKeys = Array.from({ length: HISTORY_MONTHS }, (_, i) => {
+      const dt = new Date(Date.UTC(curYear, curMonth0 - HISTORY_MONTHS + i, 1));
+      return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}`;
+    });
 
     const rows = await this.prisma.$queryRaw<
       { month: string; amount: string }[]
@@ -114,18 +126,22 @@ export class AnalyticsService {
       JOIN contracts c ON c.id = p.contract_id AND c.deleted_at IS NULL
       WHERE p.status = 'PAID'
         AND p.paid_date IS NOT NULL
-        AND p.paid_date >= NOW() - INTERVAL '6 months'
+        AND p.paid_date >= ${windowStart.toISOString()}::timestamp
+        AND p.paid_date < ${windowEnd.toISOString()}::timestamp
         ${branchFilter}
       GROUP BY DATE_TRUNC('month', ${sqlBkkLocal('p.paid_date')})
       ORDER BY month ASC
     `);
 
-    const historical = rows.map((r) => ({
-      month: r.month,
-      amount: d(r.amount).toNumber(),
+    const byMonth = new Map(rows.map((r) => [r.month, d(r.amount).toNumber()]));
+    // เติม 0 เฉพาะเดือนหลังเดือนแรกที่มีข้อมูล (ร้านที่เพิ่งเริ่มไม่ได้ 0 นำหน้า) จนถึงเดือนเต็มล่าสุด
+    const firstIdx = monthKeys.findIndex((m) => byMonth.has(m));
+    const historical = (firstIdx < 0 ? [] : monthKeys.slice(firstIdx)).map((month) => ({
+      month,
+      amount: byMonth.get(month) ?? 0,
     }));
 
-    if (historical.length < 2) {
+    if (rows.length < 2) {
       return {
         historical,
         forecast: [],

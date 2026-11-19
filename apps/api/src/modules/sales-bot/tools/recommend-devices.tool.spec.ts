@@ -366,4 +366,24 @@ describe('RecommendDevicesTool — โหมดไม่มีสต๊อก (�
     expect(JSON.stringify(s)).not.toContain('https://cdn/x.jpg');
     expect(raw.recommended[0].sampleUnit).toBeDefined(); // ต้นฉบับไม่ถูกแก้
   });
+  it('เรท 2 ใช้ไม่ได้ (GFIN ไม่รับ) → พิจารณาเฉพาะเรท 1', async () => {
+    const { tool } = build([
+      tpl({
+        model: 'iPhone 13',
+        rate1: { downPayment: 1600, monthlyPrice: 1227, termMonths: 12 },
+        rate2: null,
+        rate2Unavailable: 'GFIN ไม่รับรุ่นนี้',
+      }),
+    ]);
+    const r = await tool.run({ downBudget: 2000, monthlyBudget: 1300 });
+    expect(r.recommended).toHaveLength(1);
+    expect(r.recommended[0]).toMatchObject({ rateLabel: 'เรทที่ 1', monthlyPrice: 1227 });
+  });
+
+  it('แถวที่คิดไม่ได้ทั้งสองเรท → ไม่ถูกแนะนำและไม่ทำให้ล้ม', async () => {
+    const { tool } = build([tpl({ model: 'iPhone 13', rate1: null, rate2: null })]);
+    const r = await tool.run({ downBudget: 5000, monthlyBudget: 5000 });
+    expect(r.recommended).toEqual([]);
+    expect(r.nearMiss).toEqual([]);
+  });
 });

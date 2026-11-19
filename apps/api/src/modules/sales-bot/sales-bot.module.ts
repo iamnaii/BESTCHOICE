@@ -16,6 +16,7 @@ import { StaffChatModule } from '../staff-chat/staff-chat.module';
 import { ChatProspectsModule } from '../chat-prospects/chat-prospects.module';
 import { CustomerPiiModule } from '../customers/customer-pii.module';
 import { CustomerJourneyModule } from '../customer-journey/customer-journey.module';
+import { PricingTemplatesModule } from '../pricing-templates/pricing-templates.module';
 import { ClaudeProvider } from './providers/claude.provider';
 import { GeminiProvider } from './providers/gemini.provider';
 import { LlmProviderRegistry } from './providers/llm-provider.registry';
@@ -31,6 +32,8 @@ import { LlmProviderRegistry } from './providers/llm-provider.registry';
     ChatProspectsModule,
     CustomerPiiModule,
     CustomerJourneyModule,
+    // GetInstallmentRatesTool: PricingQuoteService (ใบเสนอราคาตามรุ่นจากตัวคำนวณกลาง)
+    PricingTemplatesModule,
   ],
   providers: [
     SalesBotService,

@@ -16,8 +16,8 @@ export const RECOMMEND_DEVICES_TOOL = {
   name: 'recommend_devices',
   description:
     "Recommend up to 2 iPhone models that fit the customer's budget, computed ENTIRELY " +
-    'server-side from the same PricingTemplate rates get_installment_rates reads (sticker-exact ' +
-    'baht), live stock counts, and the official Apple spec table. Call this ONCE — only in the ' +
+    'server-side from the same price-table quotes get_installment_rates returns (whole baht, same ' +
+    'calculator as contracts), live stock counts, and the official Apple spec table. Call this ONCE — only in the ' +
     'recommendation flow: the customer asked you to pick for them ("แนะนำหน่อย", "รุ่นไหนดี", ' +
     '"เลือกไม่ถูก") AND you already know at least one budget (downBudget and/or monthlyBudget, ' +
     'ideally both — ask first if neither is known; without any budget the tool returns reason ' +
@@ -219,7 +219,8 @@ export class RecommendDevicesTool {
       estimateTradeIn(this.prisma, currentSpec, currentText),
     ]);
     const phoneCats = new Set<string>(SHOP_PHONE_CATEGORIES);
-    const templates = allRates.filter((t) => phoneCats.has(t.category));
+    // แถวที่คิดไม่ได้ทั้งสองเรท (ไม่มีราคาผ่อน / ไม่มีตั้งค่า) ไม่มีอะไรให้แนะนำ
+    const templates = allRates.filter((t) => phoneCats.has(t.category) && (t.rate1 !== null || t.rate2 !== null));
 
     const base: RecommendDevicesResult = {
       current,
@@ -360,7 +361,8 @@ export class RecommendDevicesTool {
         rows.filter(
           (r) =>
             r.category === t.category &&
-            (r.deviceOrigin ?? 'UNSPECIFIED') === (t.deviceOrigin ?? 'UNSPECIFIED') &&
+            // ใบเสนอราคาจาก listQuotes ไม่ผูกที่มาเครื่อง (deviceOrigin ว่าง) → นับทุกเครื่องของรุ่นนี้
+            (t.deviceOrigin === undefined || (r.deviceOrigin ?? 'UNSPECIFIED') === t.deviceOrigin) &&
             normalizeStorage(r.storage) === normalizeStorage(t.storage) &&
             sameModel(r.model, t.model),
         ),
@@ -429,10 +431,9 @@ function pickRates(
   down: number | null,
   monthly: number | null,
 ): Pick<Candidate, 'fit' | 'closest'> {
-  const options: { label: RateLabel; rate: InstallmentRateOption }[] = [
-    { label: 'เรทที่ 1', rate: t.rate1 },
-    { label: 'เรทที่ 2', rate: t.rate2 },
-  ];
+  const options: { label: RateLabel; rate: InstallmentRateOption }[] = [];
+  if (t.rate1) options.push({ label: 'เรทที่ 1', rate: t.rate1 });
+  if (t.rate2) options.push({ label: 'เรทที่ 2', rate: t.rate2 });
   const overOf = (r: InstallmentRateOption) => ({
     down: down !== null ? Math.max(0, r.downPayment - down) : 0,
     monthly: monthly !== null ? Math.max(0, r.monthlyPrice - monthly) : 0,

@@ -1,5 +1,4 @@
-import { readIntFlag, readNumberFlag } from '../../utils/config.util';
-import { PrismaService } from '../../prisma/prisma.service';
+import { readIntFlag, readNumberFlag, type SystemConfigReader } from '../../utils/config.util';
 
 /**
  * ค่าตั้งค่า GFIN นอกตารางราคา/เรท — อ่านจาก system_config (key `gfin.*`) พร้อม default
@@ -31,7 +30,7 @@ export const GFIN_SETTINGS_DEFAULTS: GfinSettings = {
   commissionPctByCategory: { PHONE: 15, TABLET: 5 },
 };
 
-export async function loadGfinSettings(prisma: PrismaService): Promise<GfinSettings> {
+export async function loadGfinSettings(prisma: SystemConfigReader): Promise<GfinSettings> {
   const d = GFIN_SETTINGS_DEFAULTS;
   const [minDownPct, commissionPhone, commissionTablet, contractFee] = await Promise.all([
     readIntFlag(prisma, GFIN_SETTINGS_KEYS.minDownPct, d.minDownPct, 0, d.maxDownPct),

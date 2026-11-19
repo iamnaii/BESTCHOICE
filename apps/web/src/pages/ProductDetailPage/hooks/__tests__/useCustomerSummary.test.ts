@@ -83,7 +83,8 @@ describe('useCustomerSummary', () => {
     await waitFor(() => expect(result.current.summaryText).toContain('เรทที่ 1'));
     expect(result.current.summaryText).toContain('ราคาเงินสด 15,900 บาท');
     expect(result.current.summaryText).toContain(
-      'เรทที่ 1 ดาวน์ 3,000 บาท ผ่อนเดือนละ 2,411.06 บาท 12 งวด',
+      // ค่างวดเรท 1 ที่แสดงปัดขึ้นบาทเต็ม (2,411.06 → 2,412) เหมือนหน้าราคาและบอท — สัญญายังเก็บสตางค์
+      'เรทที่ 1 ดาวน์ 3,000 บาท ผ่อนเดือนละ 2,412 บาท 12 งวด',
     );
   });
 
@@ -131,7 +132,8 @@ describe('useCustomerSummary', () => {
     });
 
     await waitFor(() => expect(result.current.summaryText).toContain('เรทที่ 2'));
-    const bcMonthly = quotes.bc!.quote.result.monthlyPayment.toNumber();
+    const bcMonthly = Math.ceil(quotes.bc!.quote.result.monthlyPayment.toNumber());
+    expect(Number.isInteger(bcMonthly)).toBe(true);
     expect(result.current.summaryText).toContain(
       `เรทที่ 1 ดาวน์ 5,000 บาท ผ่อนเดือนละ ${formatBaht(bcMonthly)} บาท 10 งวด`,
     );
@@ -205,5 +207,35 @@ describe('useCustomerSummary', () => {
         'ดูรายละเอียด: https://www.bestchoicephone.com/api/shop/share/p-3',
       ),
     );
+  });
+
+  it('แท็บเล็ตมีตั้งค่าดอกเบี้ยแล้ว (เหมือน useBcConfig) → สรุปมีบรรทัดผ่อนเรท 1', async () => {
+    mockApi({ isReady: false });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const product = {
+      id: 'p-tab',
+      brand: 'Apple',
+      model: 'iPad Air',
+      storage: '128GB',
+      color: null,
+      category: 'TABLET',
+      conditionGrade: null,
+      batteryHealth: null,
+      shopWarrantyDays: null,
+      accessoriesIncluded: null,
+      cosmeticNotes: null,
+      cashPrice: '19900',
+      installmentPrice: '19900',
+      imeiSerial: null,
+      branch: { name: 'ลาดพร้าว' },
+      prices: [],
+    };
+
+    const { result } = renderHook(() => useCustomerSummary(product), { wrapper: makeWrapper(client) });
+
+    await waitFor(() =>
+      expect(result.current.summaryText).toContain('เรทที่ 1 ดาวน์ 3,000 บาท ผ่อนเดือนละ 2,412 บาท 12 งวด'),
+    );
+    expect(get).toHaveBeenCalledWith('/interest-configs/resolved?category=TABLET');
   });
 });

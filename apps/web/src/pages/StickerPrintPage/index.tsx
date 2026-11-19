@@ -75,7 +75,10 @@ function saveRecent(keys: string[]) {
   }
 }
 
-function toQuotable(product: StockProduct | StickerProductData): QuotableProduct {
+function toQuotable(
+  product: StockProduct | StickerProductData,
+  templateTerms: StickerProductData['templateTerms'],
+): QuotableProduct {
   return {
     id: 'productId' in product ? product.productId : product.id,
     brand: product.brand,
@@ -88,6 +91,7 @@ function toQuotable(product: StockProduct | StickerProductData): QuotableProduct
     installmentPrice: product.installmentPrice,
     financePrice: product.financePrice ?? null,
     prices: product.prices,
+    templateTerms: templateTerms ?? null,
   };
 }
 
@@ -176,14 +180,31 @@ export default function StickerPrintPage() {
     return map;
   }, [dataQuery.data]);
 
+  /* ─── เงื่อนไขผ่อนของราคากลางของเครื่องในหน้าตาราง — `/products` ไม่ส่ง จึงขอจากเส้นข้อมูลสติกเกอร์ (≤ 20 เครื่อง) ─ */
+  const pageIdsKey = (stockQuery.data?.data ?? []).map((product) => product.id).join(',');
+  const pageTermsQuery = useQuery<Map<string, StickerProductData['templateTerms']>>({
+    queryKey: ['sticker-terms', pageIdsKey],
+    queryFn: async () => {
+      const res = await api.get(`/sticker-templates/products/data?ids=${encodeURIComponent(pageIdsKey)}`);
+      const rows = Array.isArray(res.data) ? (res.data as StickerProductData[]) : [];
+      return new Map(rows.map((row) => [row.productId, row.templateTerms ?? null]));
+    },
+    enabled: pageIdsKey !== '',
+  });
+
   /* ─── ค่างวด (เรท 1/เรท 2) ของทั้งคิวและหน้าตาราง — สูตรเดียวกับหน้ารายละเอียดสินค้า ─ */
   const quotable = useMemo(() => {
     const map = new Map<string, QuotableProduct>();
-    for (const product of stockQuery.data?.data ?? []) map.set(product.id, toQuotable(product));
-    for (const product of dataQuery.data ?? []) map.set(product.productId, toQuotable(product));
+    for (const product of stockQuery.data?.data ?? []) {
+      map.set(product.id, toQuotable(product, pageTermsQuery.data?.get(product.id)));
+    }
+    for (const product of dataQuery.data ?? []) map.set(product.productId, toQuotable(product, product.templateTerms));
     return [...map.values()];
-  }, [stockQuery.data, dataQuery.data]);
-  const { quotes, isLoading: quotesLoading } = useStickerQuotes(quotable);
+  }, [stockQuery.data, dataQuery.data, pageTermsQuery.data]);
+  const stickerQuotes = useStickerQuotes(quotable);
+  const quotes = stickerQuotes.quotes;
+  // ค่างวดในตารางรอเงื่อนไขของราคากลางก่อน (ล้ม = ค่าตั้งต้นทั่วไป ไม่ค้างโหลด)
+  const quotesLoading = stickerQuotes.isLoading || (pageIdsKey !== '' && pageTermsQuery.isPending);
 
   const queue = useMemo(
     () =>

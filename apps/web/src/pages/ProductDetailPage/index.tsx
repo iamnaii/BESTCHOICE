@@ -43,7 +43,7 @@ import { useCustomerSummary } from './hooks/useCustomerSummary';
 import { useBcConfig } from './hooks/useBcConfig';
 import { useGfinTables } from './hooks/useGfinTables';
 import { useInstallmentCalcState } from './hooks/useInstallmentCalcState';
-import { resolveQuotes } from './utils/resolveQuotes';
+import { resolveQuotes, type TemplateTermsJson } from './utils/resolveQuotes';
 import {
   buildSellingPricePayload,
   isSellingPricePayloadEmpty,
@@ -95,6 +95,8 @@ interface Product {
   cashPrice: string | null;
   installmentPrice: string | null;
   financePrice: string | null;
+  /** เงื่อนไขผ่อนของราคากลางของเครื่อง — งวด/ดาวน์ตั้งต้นของเครื่องคำนวณและสรุปส่งลูกค้า (API รุ่นก่อนไม่ส่ง) */
+  templateTerms?: TemplateTermsJson | null;
   priceAutofilledAt: string | null;
   shopWarrantyDays: number | null;
   accessoriesIncluded: string[] | null;

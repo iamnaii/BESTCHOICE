@@ -138,6 +138,21 @@ export function gfinMinDownPctFor(tables: GfinTables, product: GfinQuoteInput['p
   return resolveGfinDownPct(ruleRow, new Decimal(tables.settings.minDownPct).div(100)).mul(100).toNumber();
 }
 
+/**
+ * งวดสูงสุดของกติกา OVER ของเครื่องนี้ — งวดเรท 2 ตั้งต้นเมื่อราคากลางไม่ได้ตั้งงวดเอง (กติกาเดียวกับ `buildModelQuote`)
+ * null = หมวดไม่รับ / ไม่อยู่ในใบราคา / ไม่มีกติกาหรือกติกาไม่จำกัดงวด
+ */
+export function gfinMaxMonthsFor(tables: GfinTables, product: GfinQuoteInput['product']): number | null {
+  const category = gfinCategoryOf(product.category);
+  if (!category) return null;
+  const mappingRow = findGfinMapping(
+    { brand: product.brand, model: product.model, storage: product.storage ?? '', category },
+    tables.mappings.map(toMappingRow),
+  );
+  const ruleRow = mappingRow ? findGfinOverpriceRule(mappingRow, tables.rules.map(toRuleRow)) : null;
+  return ruleRow?.maxMonths ?? null;
+}
+
 function toFactorRow(f: RateFactorApi): GfinRateFactorRow {
   return {
     months: f.months,

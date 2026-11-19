@@ -1,6 +1,7 @@
 import type { DefaultInstallment } from '@installment/shared';
 import { formatBaht } from '@/pages/ProductDetailPage/utils/buildCustomerSummary';
 import { getPositiveDisplayPrices, type ProductPriceRow } from '@/utils/getDisplayPrices';
+import type { TemplateTermsJson } from '@/pages/ProductDetailPage/utils/resolveQuotes';
 
 /** ข้อมูลเครื่องจาก GET /sticker-templates/products/data (อ่านจากตัวเครื่อง ไม่ใช่ตารางราคากลาง) */
 export interface StickerProductData {
@@ -26,6 +27,8 @@ export interface StickerProductData {
   /** ราคาขาย GFIN — optional เพราะ API รุ่นก่อนช่วง 4 ไม่ส่ง */
   financePrice?: string | null;
   prices: ProductPriceRow[];
+  /** เงื่อนไขผ่อนของราคากลาง (งวด/ดาวน์ตั้งต้น) — optional เพราะ API รุ่นก่อนไม่ส่ง */
+  templateTerms?: TemplateTermsJson | null;
 }
 
 /** เรทที่ 1 = ผ่อนกับร้าน (BESTCHOICE) · เรทที่ 2 = ไฟแนนซ์ภายนอก — คำนวณด้วยสูตรเดียวกับหน้าสินค้า */

@@ -5,11 +5,24 @@ import { bcMinDownAmount, buildBcQuote, type BcQuote } from './bcQuote';
 import {
   buildGfinQuote,
   defaultCommissionPct,
+  gfinMaxMonthsFor,
   gfinMinDownPctFor,
   type GfinQuote,
   type GfinTables,
 } from './gfinQuote';
 import { pickDefaultMonths } from './monthsOptions';
+
+/**
+ * เงื่อนไขผ่อนของราคากลางที่ตรงกับเครื่อง (API: `templateTerms` ของ `GET /products/:id` และข้อมูลสติกเกอร์ — ตัวเลือกแถว
+ * เดียวกับตอนสร้างเครื่อง) · Decimal มาเป็น string
+ */
+export interface TemplateTermsJson {
+  /** ราคาผ่อน BESTCHOICE ของราคากลาง — ดาวน์เรท 1 ของราคากลางใช้เฉพาะเมื่อราคาผ่อนของเครื่องเท่านี้ */
+  bcPrice: string | number | null;
+  rate1TermMonths: number | null;
+  rate1DownPayment: string | number | null;
+  rate2TermMonths: number | null;
+}
 
 export interface ProductForQuotes extends ProductForDisplay {
   category: string;
@@ -20,6 +33,8 @@ export interface ProductForQuotes extends ProductForDisplay {
   deviceOrigin?: GfinDeviceOrigin | null;
   /** ราคาขาย GFIN ของเครื่อง (ราคาเต็ม — สเปค 2026-11-19 ข้อ 3.2) · ว่าง/ไม่บวก = เรท 2 ใช้ราคาผ่อน BESTCHOICE */
   financePrice?: string | number | null;
+  /** เงื่อนไขผ่อนของราคากลาง — ค่าตั้งต้นของงวด/ดาวน์ · ไม่มี = ค่าตั้งต้นทั่วไป */
+  templateTerms?: TemplateTermsJson | null;
 }
 
 export interface ResolvedBc {
@@ -54,10 +69,12 @@ export interface ResolvedQuotes {
 }
 
 /**
- * ค่าที่เครื่องคำนวณ "ใช้จริง" จาก state + ค่าตั้งต้น — ใช้ร่วมกันระหว่างการ์ดคำนวณและสรุปส่งลูกค้า
+ * ค่าที่เครื่องคำนวณ "ใช้จริง" จาก state + ค่าตั้งต้น — ใช้ร่วมกันระหว่างการ์ดคำนวณ สติกเกอร์ และสรุปส่งลูกค้า
  * เพื่อให้ตัวเลขที่พนักงานเห็นกับที่คัดลอกไปเป็นชุดเดียวกัน
- * ค่าตั้งต้น: BESTCHOICE 12 งวด (หรืองวดใกล้ 12 ที่สุดที่เปิด) + ดาวน์ขั้นต่ำ · GFIN 12 งวด (ไม่เกินเพดานของรุ่น)
- * + ดาวน์ขั้นต่ำที่ GFIN ตั้งให้ร้าน + คอมตามหมวด (มือถือ 15 · iPad 5)
+ * ค่าตั้งต้นชุดเดียวกับ `buildModelQuote` (การ์ดหน้าเพิ่มสินค้า · หน้า "ราคาและเรทผ่อน" · บอท):
+ * BESTCHOICE = งวดของราคากลาง (ถ้าตั้งค่าดอกเบี้ยมีอัตรา) ไม่งั้น 12 (หรืองวดใกล้ 12 ที่สุดที่เปิด) + ดาวน์ของราคากลาง
+ * (เฉพาะเมื่อราคาผ่อนของเครื่องเท่าราคากลาง) ไม่งั้นดาวน์ขั้นต่ำ · GFIN = งวดของราคากลาง ไม่งั้นงวดสูงสุดของกติกา OVER
+ * ไม่งั้น 12 + ดาวน์ขั้นต่ำที่ GFIN ตั้งให้ร้าน + คอมตามหมวด (มือถือ 15 · iPad 5) · ค่าที่ผู้ใช้เลือก (state) ทับได้เสมอ
  */
 export function resolveQuotes({
   product,
@@ -79,14 +96,22 @@ export function resolveQuotes({
     return { installmentPrice: null, gfinSalePrice: null, hasFinancePrice, bc: null, gfin: null, gfinAvailable: false };
   }
 
+  const terms = product.templateTerms ?? null;
   let bc: ResolvedBc | null = null;
   if (installmentPrice != null && bcConfig && bcConfig.allowedMonths && bcConfig.allowedMonths.length > 0) {
+    const allowed = bcConfig.allowedMonths;
+    const templateMonths = terms?.rate1TermMonths ?? null;
     const months =
-      state.bc.months != null && bcConfig.allowedMonths.includes(state.bc.months)
+      state.bc.months != null && allowed.includes(state.bc.months)
         ? state.bc.months
-        : (pickDefaultMonths(bcConfig.allowedMonths) as number);
+        : templateMonths != null && allowed.includes(templateMonths)
+          ? templateMonths
+          : (pickDefaultMonths(allowed) as number);
     const minDownAmount = bcMinDownAmount(bcConfig, installmentPrice);
-    const downAmount = state.bc.downAmount ?? minDownAmount;
+    // ดาวน์กำหนดเองของราคากลางผูกกับราคาผ่อนของราคากลาง — ราคาผ่อนของเครื่องต่างไป = ดาวน์ขั้นต่ำ (ไม่ปัด — จำนวนเงินที่ตั้งไว้)
+    const templateDown =
+      terms && normalizePositive(terms.bcPrice) === installmentPrice ? normalizePositive(terms.rate1DownPayment) : null;
+    const downAmount = state.bc.downAmount ?? templateDown ?? minDownAmount;
     bc = {
       months,
       downAmount,
@@ -111,7 +136,8 @@ export function resolveQuotes({
     // ดาวน์ขั้นต่ำตามกติกา OVER ของรุ่น (ไม่มีแล้วค่าตั้ง GFIN) — ค่าเริ่มของการ์ดและสติกเกอร์
     const minDownPct = gfinMinDownPctFor(gfinTables, productForGfin);
     const downPct = state.gfin.downPct ?? minDownPct;
-    const preferred = state.gfin.months ?? 12;
+    const preferred =
+      state.gfin.months ?? terms?.rate2TermMonths ?? gfinMaxMonthsFor(gfinTables, productForGfin) ?? 12;
     let months: number | null = preferred;
     let quote = buildGfinQuote(gfinTables, {
       product: productForGfin,

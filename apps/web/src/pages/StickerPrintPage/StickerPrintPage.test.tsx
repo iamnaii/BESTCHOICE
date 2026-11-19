@@ -87,8 +87,12 @@ function toStickerData(row: StockProduct) {
     cashPrice: row.cashPrice,
     installmentPrice: row.installmentPrice,
     prices: row.prices,
+    templateTerms: termsById[row.id] ?? null,
   };
 }
+
+// เงื่อนไขผ่อนของราคากลางต่อเครื่อง (API แนบมากับข้อมูลสติกเกอร์) — ค่าเริ่มต้น: ไม่มีราคากลาง
+let termsById: Record<string, unknown> = {};
 
 // ธงจาก GET /settings/ui-flags — ค่าเริ่มต้น {} = เซิร์ฟเวอร์รุ่นก่อนที่ยังไม่ส่ง stickerSize/stickerShowQr
 let uiFlags: Record<string, unknown> = {};
@@ -134,6 +138,7 @@ const lastStockParams = () => {
 beforeEach(() => {
   mocks.get.mockReset();
   uiFlags = {};
+  termsById = {};
   mockApi();
   window.localStorage.clear();
 });
@@ -158,7 +163,8 @@ describe('หน้าพิมพ์สติกเกอร์ — ตาร�
     expect(within(row).getByText('ดำ · 128GB')).toBeInTheDocument();
     expect(within(row).getByText('27/08/27')).toBeInTheDocument();
     expect(within(row).getByText('19,900')).toBeInTheDocument();
-    await waitFor(() => expect(within(row).getByText('1,838.43')).toBeInTheDocument());
+    // ค่างวดเรท 1 ที่แสดงปัดขึ้นบาทเต็ม (1,838.43 → 1,839) เหมือนหน้าราคาและบอท
+    await waitFor(() => expect(within(row).getByText('1,839')).toBeInTheDocument());
     expect(within(row).getByText('ดาวน์ 3,000')).toBeInTheDocument();
     expect(within(row).getByText('3,327')).toBeInTheDocument();
     expect(within(row).getByText('ดาวน์ 1,900')).toBeInTheDocument();
@@ -201,6 +207,19 @@ describe('หน้าพิมพ์สติกเกอร์ — ตาร�
         params: { status: 'IN_STOCK', page: 1, limit: 20, sortBy: 'stockInDate', sortDirection: 'desc', search: 'S24' },
       }),
     );
+  });
+});
+
+describe('หน้าพิมพ์สติกเกอร์ — ค่าตั้งต้นจากราคากลาง (ตัวเลขเดียวกับหน้าราคาและบอท)', () => {
+  it('ราคากลางตั้งดาวน์เรท 1 (ราคาผ่อนเท่าราคากลาง) → ตารางและดวงใช้ดาวน์ของราคากลาง', async () => {
+    termsById = { p1: { bcPrice: '19900', rate1TermMonths: 12, rate1DownPayment: '5000', rate2TermMonths: null } };
+    renderPage('/stickers?productIds=p1');
+
+    await waitFor(() => expect(screen.getByText('iPhone 17')).toBeInTheDocument());
+    const table = screen.getByTestId('data-table');
+    const row = within(table).getByText('351000000007919').closest('tr')!;
+    await waitFor(() => expect(within(row).getByText('ดาวน์ 5,000')).toBeInTheDocument());
+    await waitFor(() => expect(within(screen.getAllByTestId('sticker')[0]).getByText('ดาวน์ 5,000')).toBeInTheDocument());
   });
 });
 

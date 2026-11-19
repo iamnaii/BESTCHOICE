@@ -1,12 +1,11 @@
-import { useQuery } from '@tanstack/react-query';
-import api from '@/lib/api';
+import { displayInstallment } from '@installment/shared';
 import { getPositiveDisplayPrices, type ProductPriceRow } from '@/utils/getDisplayPrices';
 import {
   buildCustomerSummary,
   buildShopProductUrl,
   computeDefaultBcInstallment,
-  type BcConfigJson,
 } from '../utils/buildCustomerSummary';
+import { useBcConfig } from './useBcConfig';
 import { useProductReadiness } from './useProductReadiness';
 import type { ResolvedQuotes } from '../utils/resolveQuotes';
 
@@ -51,23 +50,10 @@ export function useCustomerSummary(product: ProductForSummary | undefined, quote
     ? getPositiveDisplayPrices(product)
     : { cash: null, installment: null };
 
-  // queryKey เดียวกับ InstallmentCalculatorCard → react-query ยิงครั้งเดียว
-  const { data: bcConfig } = useQuery<BcConfigJson>({
-    queryKey: ['interest-config', product?.category, 'bc'],
-    queryFn: async () => {
-      const { data } = await api.get(`/interest-configs/resolved?category=${product?.category}`);
-      return data;
-    },
-    // ยิงเฉพาะหมวดที่มีตารางดอกเบี้ยจริง — ACCESSORY/TABLET จะได้ error จาก
-    // resolveConfig (interest-config.controller.ts:39-43) ซึ่งไม่ควร retry
-    // (M2) ถ้า config โหลดพลาด (network/5xx/หมวดไม่มีตาราง) bcConfig จะค้างเป็น undefined →
-    // computeDefaultBcInstallment คืน null → buildCustomerSummary ตัดบรรทัด "ผ่อน..." ทิ้งไปเงียบๆ
-    // แทนที่จะโชว์ตัวเลขพัง — เป็น behavior เดิมของฟังก์ชันนี้ตั้งแต่ก่อน fix round นี้ ยอมรับได้
-    enabled:
-      displayPrices.installment != null &&
-      (product?.category === 'PHONE_NEW' || product?.category === 'PHONE_USED'),
-    retry: false,
-  });
+  // useBcConfig = key/หมวดชุดเดียวกับการ์ดคำนวณและสติกเกอร์ (มือถือ + แท็บเล็ต) → react-query ยิงครั้งเดียว
+  // (M2) ถ้า config โหลดพลาด bcConfig ค้างเป็น undefined → computeDefaultBcInstallment คืน null →
+  // buildCustomerSummary ตัดบรรทัด "ผ่อน..." ทิ้งเงียบ ๆ แทนที่จะโชว์ตัวเลขพัง — พฤติกรรมเดิม ยอมรับได้
+  const { data: bcConfig } = useBcConfig(product?.category, displayPrices.installment != null);
 
   // fix-round 1 (C2): gate บรรทัดลิงก์ในสรุปด้วย readiness จริง — dedupe query key เดียวกับ
   // ReadinessCard (Task 8, ผ่าน PRODUCT_READINESS_QUERY_KEY ภายใน useProductReadiness เอง)
@@ -76,16 +62,18 @@ export function useCustomerSummary(product: ProductForSummary | undefined, quote
   if (!product) return { summaryText: '', shareUrl: '' };
 
   // ค่าที่เลือกอยู่ในเครื่องคำนวณมาก่อน (ถ้า valid) — ตกไปค่าตั้งต้นเมื่อการ์ดยังไม่โหลด/ดาวน์ไม่ผ่านเงื่อนไข
+  // ค่างวดเรท 1 ที่ส่งลูกค้าปัดขึ้นบาทเต็ม (หน้าราคา · บอท · สติกเกอร์) — สัญญายังเก็บสตางค์
   const bcSelected =
     quotes?.bc && quotes.bc.quote.result.isValid
       ? {
           months: quotes.bc.months,
           downAmount: quotes.bc.downAmount,
-          monthlyPayment: quotes.bc.quote.result.monthlyPayment.toNumber(),
+          monthlyPayment: displayInstallment(quotes.bc.quote.result.monthlyPayment),
         }
       : null;
+  const fallback = bcSelected ? null : computeDefaultBcInstallment(displayPrices.installment, bcConfig ?? null);
   const installment =
-    bcSelected ?? computeDefaultBcInstallment(displayPrices.installment, bcConfig ?? null);
+    bcSelected ?? (fallback ? { ...fallback, monthlyPayment: displayInstallment(fallback.monthlyPayment) } : null);
   const installment2 =
     quotes?.gfin?.quote.available && quotes.gfin.months != null
       ? {

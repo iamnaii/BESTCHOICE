@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import type {
@@ -34,10 +35,14 @@ export function useGfinTables(enabled = true) {
     enabled,
   });
 
-  const tables: GfinTables | undefined =
-    mappings.data && rules.data && factors.data && settings.data
-      ? { mappings: mappings.data, rules: rules.data, factors: factors.data, settings: settings.data }
-      : undefined;
+  // อ้างอิงเดิมตราบที่ข้อมูลทั้ง 4 ชุดไม่เปลี่ยน — useMemo ของผู้ใช้ (การ์ดราคาหน้าเพิ่มสินค้า ฯลฯ) จึงไม่คิดใหม่ทุก render
+  const tables = useMemo<GfinTables | undefined>(
+    () =>
+      mappings.data && rules.data && factors.data && settings.data
+        ? { mappings: mappings.data, rules: rules.data, factors: factors.data, settings: settings.data }
+        : undefined,
+    [mappings.data, rules.data, factors.data, settings.data],
+  );
 
   return {
     tables,

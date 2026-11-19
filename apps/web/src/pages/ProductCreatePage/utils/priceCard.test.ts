@@ -11,6 +11,7 @@ import {
   templateFields,
   templateLabelOf,
   toPricePayload,
+  toQuoteContexts,
   type CardQuoteInput,
   type PriceTemplate,
 } from './priceCard';
@@ -135,6 +136,13 @@ describe('computeCardQuote — ตัวคำนวณกลางตัวเ�
     expect(ctx.commissionPct).toBe(5);
     expect(ctx.settingMinDownPct.toNumber()).toBe(0.25);
     expect(toModelQuoteGfinContext(gfinTables, 'PHONE_NEW').commissionPct).toBe(15);
+  });
+
+  it('ตั้งค่าที่แปลงไว้แล้ว (contexts) → ผลเท่าการแปลงเอง · หน้าจำไว้ไม่ต้องแปลงใหม่ทุกครั้งที่พิมพ์', () => {
+    const contexts = toQuoteContexts('PHONE_NEW', bcConfig, gfinTables);
+    expect(contexts.gfin?.commissionPct).toBe(15);
+    expect(computeCardQuote({ ...INPUT, bcConfig: undefined, gfinTables: undefined, contexts })).toEqual(computeCardQuote(INPUT));
+    expect(toQuoteContexts('PHONE_NEW', undefined, undefined)).toEqual({ bc: null, gfin: null });
   });
 
   it('กำไรติดลบคงติดลบ · ทุนว่างช่องว่าง/มีคอมมา', () => {

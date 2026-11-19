@@ -35,6 +35,15 @@ beforeEach(() => {
     if (url.startsWith('/pricing-templates/lookup?')) {
       return { data: { cashPrice: '30000', installmentBestchoicePrice: '35000', installmentFinancePrice: '36000' } };
     }
+    if (url.startsWith('/interest-configs/resolved?')) {
+      return { data: { minDownPct: 0.15, commissionPct: 0.1, vatPct: 0.07, ratePctByMonths: { 12: 0.5 }, allowedMonths: [12] } };
+    }
+    if (url === '/gfin-config/max-prices' || url === '/gfin-config/overprice-rules' || url === '/gfin-config/rate-factors') {
+      return { data: [] };
+    }
+    if (url === '/gfin-config/settings') {
+      return { data: { minDownPct: 25, maxDownPct: 80, downStepPct: 5, contractFee: 100, commissionPctByCategory: { PHONE: 15, TABLET: 5 } } };
+    }
     throw new Error(`unexpected GET ${url}`);
   });
   vi.mocked(api.post).mockResolvedValue({ data: { id: 'product-1' } });
@@ -78,7 +87,7 @@ describe('ProductCreatePage — รุ่น (Combobox)', () => {
     await user.selectOptions(await screen.findByLabelText('ยี่ห้อ *'), 'Apple');
     await user.selectOptions(screen.getByLabelText('สาขา *'), 'branch-1');
     await user.type(screen.getByLabelText('ราคาทุน (บาท) *'), '25000');
-    await user.type(screen.getByLabelText('จำนวนเงินราคา 1'), '30000');
+    await user.type(screen.getByLabelText('ราคาเงินสด'), '30000');
     await user.click(screen.getByRole('button', { name: 'บันทึกสินค้า' }));
 
     expect(toast.error).toHaveBeenCalledWith('กรุณาเลือกรุ่น');

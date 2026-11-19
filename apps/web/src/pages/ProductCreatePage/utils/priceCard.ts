@@ -1,4 +1,4 @@
-import { buildModelQuote, type BcConfigJson, type ModelQuote } from '@installment/shared';
+import { buildModelQuote, type BcConfig, type BcConfigJson, type ModelQuote, type ModelQuoteGfinContext } from '@installment/shared';
 import { toBcConfig } from '@/pages/ProductDetailPage/utils/bcQuote';
 import { gfinCategoryOf, hasGfinMapping, toModelQuoteGfinContext, type GfinTables } from '@/pages/ProductDetailPage/utils/gfinQuote';
 
@@ -86,6 +86,22 @@ export interface CardQuoteInput {
   costPrice: string;
   bcConfig?: BcConfigJson;
   gfinTables?: GfinTables;
+  /** ตั้งค่าที่แปลงแล้ว (`toQuoteContexts`) — หน้าจำไว้ด้วย useMemo · ส่งมาแล้วไม่แปลง bcConfig / gfinTables ซ้ำ */
+  contexts?: QuoteContexts;
+}
+
+/** ตั้งค่าดอกเบี้ย BESTCHOICE + ตาราง GFIN ในรูปที่ `buildModelQuote` ใช้ */
+export interface QuoteContexts {
+  bc: BcConfig | null;
+  gfin: ModelQuoteGfinContext | null;
+}
+
+/** แปลงตั้งค่าของเว็บ → บริบทของตัวคำนวณ (ขึ้นกับหมวดเพราะคอม GFIN มือถือ/แท็บเล็ตต่างกัน) */
+export function toQuoteContexts(category: string, bcConfig?: BcConfigJson, gfinTables?: GfinTables): QuoteContexts {
+  return {
+    bc: bcConfig ? toBcConfig(bcConfig) : null,
+    gfin: gfinTables ? toModelQuoteGfinContext(gfinTables, category) : null,
+  };
 }
 
 /**
@@ -98,6 +114,7 @@ export function computeCardQuote(input: CardQuoteInput): ModelQuote | null {
   const tpl = templateFields(input.template);
   const bcUntouched = tpl !== null && tpl.bc !== '' && positive(input.fields.bc) === positive(tpl.bc);
   const cost = parseAmount(input.costPrice);
+  const contexts = input.contexts ?? toQuoteContexts(input.category, input.bcConfig, input.gfinTables);
   return buildModelQuote({
     product: { brand: input.brand, model: input.model, storage: input.storage, category },
     deviceOrigin: input.deviceOrigin === 'THAI' || input.deviceOrigin === 'IMPORTED' ? input.deviceOrigin : null,
@@ -108,8 +125,8 @@ export function computeCardQuote(input: CardQuoteInput): ModelQuote | null {
     // ดาวน์กำหนดเองของรุ่นผูกกับราคาผ่อนของรุ่น — แก้ราคาผ่อนแล้วกลับไปใช้ดาวน์ขั้นต่ำ
     rate1DownPayment: bcUntouched ? positive(input.template?.rate1DownPayment) : null,
     rate2TermMonths: input.template?.rate2TermMonths ?? null,
-    bcConfig: input.bcConfig ? toBcConfig(input.bcConfig) : null,
-    gfin: input.gfinTables ? toModelQuoteGfinContext(input.gfinTables, input.category) : null,
+    bcConfig: contexts.bc,
+    gfin: contexts.gfin,
     costPrice: cost,
   });
 }

@@ -2,7 +2,7 @@ import { NumberInput } from '@/components/ui/NumberInput';
 import { useState } from 'react';
 import { PackageCheck } from 'lucide-react';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { CASH_LABEL, INSTALLMENT_LABEL } from '@/utils/getDisplayPrices';
+import { CASH_LABEL, FINANCE_LABEL, INSTALLMENT_LABEL } from '@/utils/getDisplayPrices';
 
 export interface ReturnToStockPayload {
   cashPrice?: number;
@@ -71,6 +71,9 @@ function leftoverRows(
     const idx = rows.findIndex((r) => r.label === INSTALLMENT_LABEL);
     if (idx >= 0) overwritten.add(idx);
   }
+  // กระจกของ API: ปุ่มนี้ตั้งราคาขาย GFIN ใหม่เอง ⇒ แถว "ราคาผ่อนไฟแนนซ์" ที่ไม่ใช่ค่าเริ่มต้นไม่ต้องยืนยัน
+  const financeIdx = rows.findIndex((r) => r.label === FINANCE_LABEL && !r.isDefault);
+  if (financeIdx >= 0) overwritten.add(financeIdx);
 
   const leftover = rows
     .map((r, i) => ({ r, i }))

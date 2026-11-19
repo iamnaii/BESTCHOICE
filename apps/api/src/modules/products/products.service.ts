@@ -32,6 +32,7 @@ import {
   fillFinancePriceFromTemplate,
   resolveHasWarranty,
   syncFinancePriceRow,
+  templateFinancePrice,
   templateKeyOf,
 } from '../../utils/product-finance-price.util';
 import { isAccessoryProductCode } from '../../utils/accessory-type.util';
@@ -559,6 +560,8 @@ export class ProductsService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      // สเปค 2026-11-19 ข้อ 3.2: ระบบตั้งราคาเครื่องใหม่ → ราคาขาย GFIN ตามราคากลางของหมวดปัจจุบัน · ไม่มี = ล้าง
+      const financePrice = await templateFinancePrice(tx, templateKeyOf(product));
       // updateMany + count===1 = ด่านกันแข่ง (double-click / สองคนกดพร้อมกัน): เงื่อนไข
       // สถานะอยู่ใน WHERE เอง ⇒ ผู้กดคนที่สองไม่ได้แถว และไม่มี AuditLog ใบซ้ำตามมา
       const locked = await tx.product.updateMany({
@@ -569,6 +572,7 @@ export class ProductsService {
           // ไม่ส่งราคาไหนมา = ไม่แตะคอลัมน์นั้น (ไม่ล้างเป็น null)
           ...(cashDecimal ? { cashPrice: cashDecimal } : {}),
           ...(installmentDecimal ? { installmentPrice: installmentDecimal } : {}),
+          financePrice,
           // ราคาที่มนุษย์ยืนยัน = เลิกเป็นราคาที่เติมอัตโนมัติ (badge ฝั่ง B1 อ่านฟิลด์นี้)
           priceAutofilledAt: null,
         },
@@ -582,6 +586,7 @@ export class ProductsService {
         cashPrice: cashDecimal,
         installmentPrice: installmentDecimal,
       });
+      await syncFinancePriceRow(tx, id, financePrice);
       await new ReceivingAcceptanceJournal(this.prisma).bookIfPending(tx, id);
 
       await tx.auditLog.create({

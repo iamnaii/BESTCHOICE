@@ -169,6 +169,21 @@ describe('PriceManagementModal — Task 13 column-awareness', () => {
     expect(apiPatch).not.toHaveBeenCalledWith('/products/p-1/prices/pr-1', expect.anything());
   });
 
+  it('(F) แก้แถว "ราคาผ่อนไฟแนนซ์" → PATCH financePrice (ไม่ใช่ installmentPrice) ไม่ยิงเส้น /prices', async () => {
+    apiPatch.mockResolvedValue({ data: {} });
+    const product = makeProduct([{ id: 'pr-f', label: 'ราคาผ่อนไฟแนนซ์', amount: '21900', isDefault: false }]);
+    renderHarness(product);
+
+    fireEvent.click(screen.getByTitle('แก้ไข'));
+    fireEvent.change(screen.getByPlaceholderText('ราคา (บาท)'), { target: { value: '22500' } });
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }));
+
+    await waitFor(() => expect(apiPatch).toHaveBeenCalled());
+    expect(apiPatch).toHaveBeenCalledWith('/products/p-1', { financePrice: 22500 });
+    expect(apiPatch).not.toHaveBeenCalledWith('/products/p-1', { installmentPrice: 22500 });
+    expect(apiPatch).not.toHaveBeenCalledWith('/products/p-1/prices/pr-f', expect.anything());
+  });
+
   it('(b) แก้แถว label อื่น → ยิงเส้น /prices เดิม ไม่แตะ PATCH คอลัมน์', async () => {
     apiPatch.mockResolvedValue({ data: {} });
     const product = makeProduct([{ id: 'pr-2', label: 'ราคาส่ง', amount: '13000', isDefault: false }]);

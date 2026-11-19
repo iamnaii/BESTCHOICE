@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { CASH_LABEL, INSTALLMENT_LABEL } from '../../utils/product-price-sync.util';
+import { CASH_LABEL, FINANCE_LABEL, INSTALLMENT_LABEL } from '../../utils/product-price-sync.util';
 
 /**
  * ด่านเดียวของคำถาม "เครื่องนี้เข้า IN_STOCK ได้หรือยัง" + รูป AuditLog ของการเข้าคลัง
@@ -179,6 +179,10 @@ export function unconfirmedLeftoverPrices(
     const idx = rows.findIndex((r) => r.label === INSTALLMENT_LABEL);
     if (idx >= 0) overwritten.add(idx);
   }
+  // สเปค 2026-11-19 ข้อ 3.2: ปุ่มนำเข้าคลังตั้งราคาขาย GFIN ใหม่จากราคากลางเสมอ (`syncFinancePriceRow`) ⇒
+  // แถว "ราคาผ่อนไฟแนนซ์" ที่ไม่ใช่ค่าเริ่มต้นถูกระบบทับ/ลบ ไม่ใช่ราคาที่ต้องให้คนยืนยัน
+  const financeIdx = rows.findIndex((r) => r.label === FINANCE_LABEL && !r.isDefault);
+  if (financeIdx >= 0) overwritten.add(financeIdx);
 
   const leftoverIndexes = rows
     .map((r, i) => ({ r, i }))

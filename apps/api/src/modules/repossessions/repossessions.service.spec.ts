@@ -168,6 +168,8 @@ describe('RepossessionsService', () => {
       productPhoto: {
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
+      // สเปค 2026-11-19 ข้อ 3.2 — "พร้อมขาย" ตั้งราคาขาย GFIN ใหม่ตามราคากลางของหมวดปัจจุบัน
+      pricingTemplate: { findMany: jest.fn().mockResolvedValue([]) },
       // Phase 3 Task 6 — findAll's batched CN lookup (creditNote attach).
       receipt: {
         findMany: jest.fn().mockResolvedValue([]),
@@ -1836,6 +1838,49 @@ describe('RepossessionsService', () => {
       prisma.productPrice.updateMany = jest.fn().mockResolvedValue({ count: 0 });
       prisma.productPrice.create.mockResolvedValue({ id: 'row-1' });
     };
+
+    const usedProduct = {
+      id: 'prod-1', prices: [], brand: 'Apple', model: 'iPhone 14', storage: '128GB',
+      category: 'PHONE_USED', deviceOrigin: null, warrantyExpired: null, warrantyExpireDate: null,
+    };
+
+    it('ราคาขาย GFIN ตั้งใหม่ตามราคากลางมือ 2 (สเปค 2026-11-19 ข้อ 3.2)', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(repoRow({ product: usedProduct }));
+      arm();
+      prisma.pricingTemplate.findMany.mockResolvedValue([
+        {
+          id: 't14u', brand: 'Apple', model: 'iPhone 14', storage: '128GB', category: 'PHONE_USED',
+          hasWarranty: false, deviceOrigin: 'UNSPECIFIED',
+          cashPrice: decimal(15900), installmentBestchoicePrice: decimal(17900), installmentFinancePrice: decimal(18500),
+        },
+      ]);
+
+      await service.markReadyForSale('r1', { resellPrice: 15000, installmentPrice: 16900 });
+
+      const priceUpdate = prisma.product.update.mock.calls.find(
+        (c: [{ data: { cashPrice?: unknown } }]) => c[0].data.cashPrice !== undefined,
+      );
+      expect(priceUpdate[0].data.financePrice.toString()).toBe('18500');
+      expect(prisma.productPrice.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ label: 'ราคาผ่อนไฟแนนซ์', isDefault: false }) }),
+      );
+    });
+
+    it('ไม่มีราคากลางของหมวดปัจจุบัน → ล้างราคาขาย GFIN (ไม่ปล่อยค่าตอนเป็นเครื่องใหม่ค้าง)', async () => {
+      prisma.repossession.findUnique.mockResolvedValue(repoRow({ product: usedProduct }));
+      arm();
+
+      await service.markReadyForSale('r1', { resellPrice: 15000, installmentPrice: 16900 });
+
+      const priceUpdate = prisma.product.update.mock.calls.find(
+        (c: [{ data: { cashPrice?: unknown } }]) => c[0].data.cashPrice !== undefined,
+      );
+      expect(priceUpdate[0].data.financePrice).toBeNull();
+      expect(prisma.productPrice.updateMany).toHaveBeenCalledWith({
+        where: { productId: 'prod-1', label: 'ราคาผ่อนไฟแนนซ์', isDefault: false, deletedAt: null },
+        data: { deletedAt: expect.any(Date) },
+      });
+    });
 
     it('เขียนราคาเงินสด + ราคาผ่อนลงคอลัมน์ และสร้างแถวราคาทั้งสอง', async () => {
       prisma.repossession.findUnique.mockResolvedValue(repoRow());

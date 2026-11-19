@@ -3,7 +3,7 @@ import { UseMutationResult, useMutation, useQueryClient } from '@tanstack/react-
 import { toast } from 'sonner';
 import Modal from '@/components/ui/Modal';
 import api, { getErrorMessage } from '@/lib/api';
-import { CANONICAL_PRICE_LABELS, CASH_LABEL } from '@/utils/getDisplayPrices';
+import { CANONICAL_PRICE_LABELS, CASH_LABEL, FINANCE_LABEL } from '@/utils/getDisplayPrices';
 import { PRODUCT_READINESS_QUERY_KEY } from '@/pages/ProductDetailPage/hooks/useProductReadiness';
 import { StockProduct } from '../types';
 
@@ -17,8 +17,13 @@ function isCanonicalLabel(label: string): boolean {
   return (CANONICAL_PRICE_LABELS as readonly string[]).includes(label.trim());
 }
 
-function canonicalLabelToField(label: string): 'cashPrice' | 'installmentPrice' {
-  return label.trim() === CASH_LABEL ? 'cashPrice' : 'installmentPrice';
+type PriceColumnField = 'cashPrice' | 'installmentPrice' | 'financePrice';
+
+function canonicalLabelToField(label: string): PriceColumnField {
+  const trimmed = label.trim();
+  if (trimmed === CASH_LABEL) return 'cashPrice';
+  if (trimmed === FINANCE_LABEL) return 'financePrice';
+  return 'installmentPrice';
 }
 
 export interface PriceManagementModalProps {
@@ -64,7 +69,7 @@ export function PriceManagementModal({
       amount,
     }: {
       productId: string;
-      field: 'cashPrice' | 'installmentPrice';
+      field: PriceColumnField;
       amount: number;
     }) => api.patch(`/products/${productId}`, { [field]: amount }),
     onSuccess: (_data, variables) => {

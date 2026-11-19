@@ -80,6 +80,21 @@ describe('unconfirmedLeftoverPrices — ราคาบวกที่ค้า�
     expect(left.rows).toEqual([]);
   });
 
+  it('แถว "ราคาผ่อนไฟแนนซ์" ที่ไม่ใช่ค่าเริ่มต้นไม่นับเป็นค้าง — ปุ่มนำเข้าคลังตั้งราคาขาย GFIN ใหม่เอง (สเปค 2026-11-19 ข้อ 3.2)', () => {
+    const left = unconfirmedLeftoverPrices(
+      {
+        cashPrice: null,
+        installmentPrice: null,
+        prices: [
+          { label: 'ราคาเงินสด', amount: D('15900'), isDefault: true, deletedAt: null },
+          { label: 'ราคาผ่อนไฟแนนซ์', amount: D('21900'), isDefault: false, deletedAt: null },
+        ],
+      },
+      { cashPrice: D('9900'), installmentPrice: null },
+    );
+    expect(left.rows).toEqual([]);
+  });
+
   it('แถวที่ไม่ถูกทับแม้ยืนยันครบสองช่อง (แถวโปรโมชั่นค้าง) → ยังต้องจัดการก่อน', () => {
     const left = unconfirmedLeftoverPrices(
       {

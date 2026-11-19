@@ -253,4 +253,19 @@ describe('ReturnToStockAction — ข้อความแถวค้างต�
     expect(await screen.findByText(/จัดการราคา/)).toBeTruthy();
     expect(screen.queryByText(/ยืนยัน "ราคาเงินสด"/)).toBeNull();
   });
+
+  it('แถว "ราคาผ่อนไฟแนนซ์" ค้าง (ไม่ใช่ค่าเริ่มต้น) ไม่บล็อก — ระบบตั้งราคาขาย GFIN ใหม่ตอนนำเข้าคลัง', async () => {
+    const onConfirm = vi.fn();
+    render(
+      <ReturnToStockAction
+        {...base}
+        prices={[{ id: 'pr-f', label: 'ราคาผ่อนไฟแนนซ์', amount: '21900', isDefault: false }]}
+        onConfirm={onConfirm}
+      />,
+    );
+    await userEvent.click(screen.getByRole('button', { name: BUTTON }));
+    expect(screen.queryByText(/แถวราคา/)).toBeNull();
+    await userEvent.click(await screen.findByRole('button', { name: CONFIRM }));
+    expect(onConfirm).toHaveBeenCalled();
+  });
 });

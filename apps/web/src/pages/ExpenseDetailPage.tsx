@@ -327,19 +327,20 @@ export default function ExpenseDetailPage() {
                 </div>
               </div>
 
-              <dl className="mt-4 grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2 text-sm">
-                <div className="flex justify-between gap-3">
-                  <dt className="text-muted-foreground leading-snug">ผู้ขาย / ผู้รับเงิน</dt>
-                  <dd className="font-medium leading-snug text-right">{doc.vendorName ?? '—'}</dd>
+              {/* หัวข้อเล็กอยู่เหนือค่า ชิดซ้าย — ชื่อผู้ขายกับเลขผู้เสียภาษีอยู่ติดกันอ่านเป็นคู่ (เดิม justify-between ในช่องครึ่งจอ ⇒ ป้ายกับค่าห่างกันสุดขอบ) */}
+              <dl className="mt-4 flex flex-wrap gap-x-10 gap-y-3 border-t border-border pt-4 text-sm">
+                <div className="min-w-0">
+                  <dt className="text-xs text-muted-foreground leading-snug">ผู้ขาย / ผู้รับเงิน</dt>
+                  <dd className="mt-0.5 font-medium leading-snug break-words">{doc.vendorName ?? '—'}</dd>
                 </div>
-                <div className="flex justify-between gap-3">
-                  <dt className="text-muted-foreground leading-snug">เลขผู้เสียภาษีผู้ขาย</dt>
-                  <dd className="font-medium leading-snug text-right">{doc.vendorTaxId ?? '—'}</dd>
+                <div className="min-w-0">
+                  <dt className="text-xs text-muted-foreground leading-snug">เลขผู้เสียภาษีผู้ขาย</dt>
+                  <dd className="mt-0.5 font-medium leading-snug tabular-nums">{doc.vendorTaxId ?? '—'}</dd>
                 </div>
                 {doc.description ? (
-                  <div className="flex justify-between gap-3 sm:col-span-2">
-                    <dt className="text-muted-foreground leading-snug">รายละเอียด</dt>
-                    <dd className="font-medium leading-snug text-right">{doc.description}</dd>
+                  <div className="min-w-0 basis-full">
+                    <dt className="text-xs text-muted-foreground leading-snug">รายละเอียด</dt>
+                    <dd className="mt-0.5 font-medium leading-snug break-words">{doc.description}</dd>
                   </div>
                 ) : null}
               </dl>

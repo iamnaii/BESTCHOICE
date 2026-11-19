@@ -41,6 +41,14 @@ describe('downFromPct', () => {
     expect(downFromPct(new Decimal('290'), new Decimal('0.30')).toFixed(2)).toBe('100.00');
   });
 
+  it('ปัดแล้วเท่าราคาพอดี → ใช้ค่าก่อนปัด (100 × 30% = 30.00)', () => {
+    expect(downFromPct(new Decimal('100'), new Decimal('0.30')).toFixed(2)).toBe('30.00');
+  });
+
+  it('ราคาสตางค์ที่ HALF_UP จะปัดลง → ปัดขึ้นเสมอ ไม่ต่ำกว่า price × pct (90.01 × 30% = 27.003 → 27.01)', () => {
+    expect(downFromPct(new Decimal('90.01'), new Decimal('0.30')).toFixed(2)).toBe('27.01');
+  });
+
   it('% เป็นศูนย์ → 0', () => {
     expect(downFromPct(new Decimal('19900'), new Decimal('0')).toFixed(2)).toBe('0.00');
   });

@@ -13,9 +13,10 @@ export function roundUpToStep(amount: Decimal, step: number = DOWN_PAYMENT_STEP)
  * เพื่อไม่ให้ดาวน์ ≥ ราคาขายเพราะการปัดอย่างเดียว
  */
 export function downFromPct(price: Decimal, pct: Decimal): Decimal {
-  const raw = price.mul(pct).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-  const rounded = roundUpToStep(raw);
-  return rounded.lt(price) ? rounded : raw;
+  const exact = price.mul(pct);
+  const rounded = roundUpToStep(exact);
+  // fallback ปัดขึ้นเป็นสตางค์ (ไม่ HALF_UP) เพื่อไม่ให้ต่ำกว่า price × pct ที่เซิร์ฟเวอร์ใช้ตรวจ
+  return rounded.lt(price) ? rounded : exact.toDecimalPlaces(2, Decimal.ROUND_UP);
 }
 
 /** รูปแบบ number ของ `downFromPct` สำหรับหน้าเว็บที่เก็บราคาเป็น number */

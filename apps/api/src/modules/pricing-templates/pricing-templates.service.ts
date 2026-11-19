@@ -44,7 +44,9 @@ export class PricingTemplatesService {
   }
 
   /**
-   * Lookup pricing template for auto-fill when creating a product
+   * ค้นราคากลางของรุ่นตอนสร้างสินค้า / หน้า "ราคาและเรทผ่อน" / บอท
+   * ไม่มีแถวของเครื่องไทย/เครื่องนอก → ถอยไปแถว "ไม่ระบุ" (สเปคข้อ 7.1) · ไม่ข้ามไปอีกฝั่ง
+   * ในแต่ละที่มาเครื่อง: ความจุตรงก่อน แล้วค่อยแถวที่ไม่ระบุความจุ
    */
   async lookup(
     brand: string,
@@ -54,38 +56,26 @@ export class PricingTemplatesService {
     hasWarranty: boolean | null,
     deviceOrigin: PricingDeviceOrigin = 'UNSPECIFIED',
   ) {
-    // Try exact match first
-    const template = await this.prisma.pricingTemplate.findFirst({
-      where: {
-        deviceOrigin,
-        brand: { equals: brand, mode: 'insensitive' },
-        model: { equals: model, mode: 'insensitive' },
-        storage: storage || '',
-        category: category as ProductCategory,
-        hasWarranty: category === 'PHONE_USED' ? (hasWarranty ?? false) : false,
-        isActive: true,
-        deletedAt: null,
-      },
-    });
-
-    if (template) return template;
-
-    // Fallback: try without storage
-    if (storage) {
-      return this.prisma.pricingTemplate.findFirst({
-        where: {
-          deviceOrigin,
-          brand: { equals: brand, mode: 'insensitive' },
-          model: { equals: model, mode: 'insensitive' },
-          storage: '',
-          category: category as ProductCategory,
-          hasWarranty: category === 'PHONE_USED' ? (hasWarranty ?? false) : false,
-          isActive: true,
-          deletedAt: null,
-        },
-      });
+    const origins: PricingDeviceOrigin[] =
+      deviceOrigin === 'UNSPECIFIED' ? ['UNSPECIFIED'] : [deviceOrigin, 'UNSPECIFIED'];
+    const storages = storage ? [storage, ''] : [''];
+    for (const origin of origins) {
+      for (const s of storages) {
+        const template = await this.prisma.pricingTemplate.findFirst({
+          where: {
+            deviceOrigin: origin,
+            brand: { equals: brand, mode: 'insensitive' },
+            model: { equals: model, mode: 'insensitive' },
+            storage: s,
+            category: category as ProductCategory,
+            hasWarranty: category === 'PHONE_USED' ? (hasWarranty ?? false) : false,
+            isActive: true,
+            deletedAt: null,
+          },
+        });
+        if (template) return template;
+      }
     }
-
     return null;
   }
 

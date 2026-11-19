@@ -12,6 +12,7 @@ import { productReadinessWhere } from '../../utils/product-readiness.util';
 import { readBoolFlag } from '../../utils/config.util';
 import { resolveBcConfigForCategory } from '../../utils/bc-installment-config.util';
 import { commissionPctForCategory, loadGfinSettings } from '../gfin-config/gfin-settings.util';
+import { isInstallmentPriceLabel } from '../../utils/product-price-sync.util';
 import { InstallmentPreviewDto } from './dto/installment-preview.dto';
 
 export interface PreviewResult {
@@ -53,7 +54,7 @@ export class InstallmentPreviewService {
     const installmentPriceRaw =
       product.installmentPrice ??
       product.prices.find((p) => p.label === 'ราคาผ่อน BESTCHOICE')?.amount ??
-      product.prices.find((p) => p.label.startsWith('ราคาผ่อน'))?.amount ??
+      product.prices.find((p) => isInstallmentPriceLabel(p.label))?.amount ??
       null;
 
     if (!installmentPriceRaw) {

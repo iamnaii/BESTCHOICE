@@ -56,6 +56,22 @@ describe('InstallmentPreviewService', () => {
     expect(result.reason).toBe('no_installment_price');
   });
 
+  it('มีแถว "ราคาผ่อนไฟแนนซ์" อย่างเดียว → ไม่นับเป็นราคาผ่อน BESTCHOICE (no_installment_price)', async () => {
+    prisma.product.findFirst.mockResolvedValue({
+      id: 'p1',
+      installmentPrice: null,
+      prices: [{ label: 'ราคาผ่อนไฟแนนซ์', amount: new Prisma.Decimal('41000') }],
+      category: 'PHONE_USED',
+      brand: 'Apple',
+      model: 'iPhone 14 Pro',
+      storage: '128GB',
+      deletedAt: null,
+    });
+    const result = await service.preview({ productId: 'p1', provider: 'BC', months: 12 });
+    expect(result.available).toBe(false);
+    expect(result.reason).toBe('no_installment_price');
+  });
+
   it('sends the readiness fragment into the product lookup — quote ได้เฉพาะเครื่องที่พร้อมขายบนเว็บจริง', async () => {
     prisma.product.findFirst.mockResolvedValue(null);
     await service.preview({ productId: 'p1', provider: 'BC', months: 12 });

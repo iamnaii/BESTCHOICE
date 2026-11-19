@@ -1,5 +1,11 @@
 import { Prisma } from '@prisma/client';
-import { syncPriceRowsFromColumns, CASH_LABEL, INSTALLMENT_LABEL } from './product-price-sync.util';
+import {
+  syncPriceRowsFromColumns,
+  CASH_LABEL,
+  FINANCE_LABEL,
+  INSTALLMENT_LABEL,
+  isInstallmentPriceLabel,
+} from './product-price-sync.util';
 
 type Row = { id: string; label: string; amount: Prisma.Decimal; isDefault: boolean };
 
@@ -175,5 +181,47 @@ describe('syncPriceRowsFromColumns', () => {
     expect(tx.productPrice.create).not.toHaveBeenCalled();
     expect(tx.state[0]).toMatchObject({ id: 'r1', label: 'ราคาขาย', isDefault: true });
     expect(tx.state[0].amount.toString()).toBe('17000');
+  });
+
+  // สเปค 2026-11-19 ข้อ 3.2 — คอลัมน์ financePrice เป็นตัวจริง แถว "ราคาผ่อนไฟแนนซ์" เป็นสำเนา (ไม่เป็นค่าเริ่มต้น)
+  it('upsert แถว "ราคาผ่อนไฟแนนซ์" จาก financePrice — ไม่เป็นค่าเริ่มต้น และไม่แตะแถวเงินสด', async () => {
+    const tx = makeTx([{ id: 'r1', label: CASH_LABEL, amount: D('18000'), isDefault: true }]);
+    const result = await syncPriceRowsFromColumns(tx as any, 'p1', { financePrice: D('21000') });
+    const fin = tx.state.find((r) => r.label === FINANCE_LABEL)!;
+    expect(fin.amount.toString()).toBe('21000');
+    expect(fin.isDefault).toBe(false);
+    expect(result.financeRowId).toBe(fin.id);
+    expect(tx.state.find((r) => r.id === 'r1')).toMatchObject({ label: CASH_LABEL, isDefault: true });
+  });
+
+  it('มีแถว "ราคาผ่อนไฟแนนซ์" เดิมอยู่แล้ว → อัปเดตยอดในแถวเดิม ไม่สร้างซ้ำ', async () => {
+    const tx = makeTx([
+      { id: 'r1', label: CASH_LABEL, amount: D('18000'), isDefault: true },
+      { id: 'r2', label: FINANCE_LABEL, amount: D('900'), isDefault: false },
+    ]);
+    await syncPriceRowsFromColumns(tx as any, 'p1', { financePrice: D('21000') });
+    expect(tx.productPrice.create).not.toHaveBeenCalled();
+    expect(tx.state.find((r) => r.id === 'r2')!.amount.toString()).toBe('21000');
+  });
+
+  it('มีแค่ financePrice และยังไม่มีแถวค่าเริ่มต้นเลย → แถวไฟแนนซ์ไม่ถูกตั้งเป็นค่าเริ่มต้น', async () => {
+    const tx = makeTx([]);
+    await syncPriceRowsFromColumns(tx as any, 'p1', { financePrice: D('21000') });
+    expect(tx.state).toHaveLength(1);
+    expect(tx.state.filter((r) => r.isDefault)).toHaveLength(0);
+  });
+
+  it('financePrice = 0 → ปฏิบัติเหมือน null (ไม่สร้างแถว)', async () => {
+    const tx = makeTx([]);
+    const result = await syncPriceRowsFromColumns(tx as any, 'p1', { financePrice: D('0') });
+    expect(tx.productPrice.create).not.toHaveBeenCalled();
+    expect(result.financeRowId).toBeNull();
+  });
+
+  it('isInstallmentPriceLabel: ราคาผ่อนอื่นนับ แต่ "ราคาผ่อนไฟแนนซ์" ไม่นับเป็นราคาผ่อน BESTCHOICE', () => {
+    expect(isInstallmentPriceLabel(INSTALLMENT_LABEL)).toBe(true);
+    expect(isInstallmentPriceLabel('ราคาผ่อน')).toBe(true);
+    expect(isInstallmentPriceLabel(FINANCE_LABEL)).toBe(false);
+    expect(isInstallmentPriceLabel(CASH_LABEL)).toBe(false);
   });
 });

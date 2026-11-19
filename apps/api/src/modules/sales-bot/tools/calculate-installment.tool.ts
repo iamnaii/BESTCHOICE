@@ -4,6 +4,7 @@ import { displayInstallment } from '@installment/shared';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { calcBcInstallment } from '../../../utils/installment-calc.util';
 import { resolveBcConfigForCategory } from '../../../utils/bc-installment-config.util';
+import { isInstallmentPriceLabel } from '../../../utils/product-price-sync.util';
 import { shopBaseUrl } from '../../../utils/shop-base-url.util';
 import { DEMO_NAME_PREFIX } from '../../../utils/product-readiness.util';
 
@@ -51,7 +52,7 @@ export class CalculateInstallmentTool {
     const baseRaw =
       product.installmentPrice ??
       product.prices.find((p) => p.label === 'ราคาผ่อน BESTCHOICE')?.amount ??
-      product.prices.find((p) => p.label.startsWith('ราคาผ่อน'))?.amount ??
+      product.prices.find((p) => isInstallmentPriceLabel(p.label))?.amount ??
       null;
     if (baseRaw == null) return { error: 'price_not_configured' };
     const installmentPrice = new Decimal(baseRaw.toString());

@@ -41,6 +41,29 @@ describe('resolveProductPrices — columns-first แล้วค่อย fallba
     ).toEqual({ cash: 20000, installment: 22000 });
   });
 
+  it('มีทั้งแถว "ราคาผ่อนไฟแนนซ์" และ "ราคาผ่อน BESTCHOICE" → ผ่อน = แถว BESTCHOICE เสมอ (ไม่ขึ้นกับลำดับ)', () => {
+    const rows = [
+      { label: 'ราคาผ่อนไฟแนนซ์', amount: '41000' },
+      { label: 'ราคาผ่อน BESTCHOICE', amount: '35900' },
+    ];
+    for (const prices of [rows, [...rows].reverse()]) {
+      expect(
+        resolveProductPrices({ category: 'PHONE_NEW', cashPrice: null, installmentPrice: null, prices }),
+      ).toEqual({ cash: null, installment: 35900 });
+    }
+  });
+
+  it('มีแค่แถว "ราคาผ่อนไฟแนนซ์" → ผ่อน = null (ไม่อ่านราคาขาย GFIN เป็นราคาผ่อน BESTCHOICE)', () => {
+    expect(
+      resolveProductPrices({
+        category: 'PHONE_NEW',
+        cashPrice: null,
+        installmentPrice: null,
+        prices: [{ label: 'ราคาผ่อนไฟแนนซ์', amount: '41000' }],
+      }),
+    ).toEqual({ cash: null, installment: null });
+  });
+
   it('ไม่มีทั้งคอลัมน์และ row → null (ห้าม fallback prices[0])', () => {
     expect(
       resolveProductPrices({

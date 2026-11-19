@@ -43,4 +43,11 @@ describe('getDisplayPrices', () => {
     });
     expect(out.installment).toBe(19700);
   });
+
+  it('ไม่อ่านแถว "ราคาผ่อนไฟแนนซ์" เป็นราคาผ่อน BESTCHOICE (มีทั้งสองแถว → ได้ BESTCHOICE, มีแถวไฟแนนซ์อย่างเดียว → null)', () => {
+    const fin = { label: 'ราคาผ่อนไฟแนนซ์', amount: '24900', isDefault: false };
+    const bc = { label: 'ราคาผ่อน BESTCHOICE', amount: '19900', isDefault: false };
+    expect(getDisplayPrices({ cashPrice: null, installmentPrice: null, prices: [fin, bc] }).installment).toBe(19900);
+    expect(getDisplayPrices({ cashPrice: null, installmentPrice: null, prices: [fin] }).installment).toBeNull();
+  });
 });

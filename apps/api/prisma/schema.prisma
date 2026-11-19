@@ -2256,6 +2256,8 @@ model Product {
   costPrice           Decimal                @map("cost_price") @db.Decimal(12, 2)
   cashPrice           Decimal?               @map("cash_price") @db.Decimal(12, 2)
   installmentPrice    Decimal?               @map("installment_price") @db.Decimal(12, 2)
+  /// ราคาขาย GFIN ของเครื่อง (ราคาเต็ม) — ว่าง = เรท 2 ใช้ installmentPrice (สเปค 2026-11-19 ข้อ 3.2)
+  financePrice        Decimal?               @map("finance_price") @db.Decimal(12, 2)
   supplierId          String?                @map("supplier_id")
   poId                String?                @map("po_id")
   branchId            String                 @map("branch_id")

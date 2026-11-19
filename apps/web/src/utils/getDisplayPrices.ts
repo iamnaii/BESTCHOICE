@@ -15,6 +15,8 @@ export interface ProductPriceRow {
  */
 export const CASH_LABEL = 'ราคาเงินสด';
 export const INSTALLMENT_LABEL = 'ราคาผ่อน BESTCHOICE';
+/** แถวสำเนาของ `Product.financePrice` — ขึ้นต้น `ราคาผ่อน` แต่ไม่ใช่ราคาผ่อน BESTCHOICE ห้ามอ่านผ่าน prefix fallback */
+export const FINANCE_LABEL = 'ราคาผ่อนไฟแนนซ์';
 export const CANONICAL_PRICE_LABELS = [CASH_LABEL, INSTALLMENT_LABEL] as const;
 
 export interface ProductForDisplay {
@@ -31,7 +33,7 @@ export interface DisplayPrices {
 function pickFromPrices(prices: ProductPriceRow[], exactLabel: string, prefix: string): number | null {
   const exact = prices.find((p) => p.label === exactLabel);
   if (exact) return Number(exact.amount);
-  const prefixMatch = prices.find((p) => p.label.startsWith(prefix));
+  const prefixMatch = prices.find((p) => p.label.startsWith(prefix) && p.label !== FINANCE_LABEL);
   if (prefixMatch) return Number(prefixMatch.amount);
   return null;
 }

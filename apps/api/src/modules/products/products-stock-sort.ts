@@ -8,7 +8,7 @@ import {
 } from '@installment/shared';
 import { KNOWN_ACCESSORY_TYPES } from '../../utils/accessory-type.util';
 import { resolveBcConfig } from '../interest-config/resolve-bc-config';
-import { CASH_LABEL, INSTALLMENT_LABEL } from '../../utils/product-price-sync.util';
+import { CASH_LABEL, FINANCE_LABEL, INSTALLMENT_LABEL } from '../../utils/product-price-sync.util';
 
 type Candidate = { key: string; category: string; value: string | number | null };
 const collator = new Intl.Collator('th', { numeric: true, sensitivity: 'base' });
@@ -78,7 +78,7 @@ export async function sortedStockPageKeys(
     ? Prisma.sql`
     SELECT p.*, COALESCE(CASE WHEN ${priceColumn} > 0 THEN ${priceColumn} END, legacy.amount) AS display_price
     FROM filtered p LEFT JOIN LATERAL (
-      SELECT amount FROM product_prices WHERE product_id = p.id AND deleted_at IS NULL AND label LIKE ${`${prefix}%`}
+      SELECT amount FROM product_prices WHERE product_id = p.id AND deleted_at IS NULL AND label LIKE ${`${prefix}%`} AND label <> ${FINANCE_LABEL}
       ORDER BY (label = ${label}) DESC, created_at ASC, id ASC LIMIT 1
     ) legacy ON ${priceColumn} IS NULL OR ${priceColumn} <= 0
   `

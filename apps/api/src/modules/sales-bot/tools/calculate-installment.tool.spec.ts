@@ -171,6 +171,35 @@ describe('CalculateInstallmentTool.run', () => {
     expect(r.priceThb).toBe(35900);
   });
 
+  it('มีแถว "ราคาผ่อนไฟแนนซ์" อย่างเดียว → ไม่ถูกอ่านเป็นราคาผ่อน BESTCHOICE (price_not_configured)', async () => {
+    const tool = new CalculateInstallmentTool(
+      makePrisma(
+        productRow({ installmentPrice: null, prices: [{ label: 'ราคาผ่อนไฟแนนซ์', amount: D('41000') }] }),
+        cfgRow(),
+      ),
+    );
+    expect(await tool.run({ productId: 'prd-1', tenureMonths: 12 })).toEqual({
+      error: 'price_not_configured',
+    });
+  });
+
+  it('มีทั้งแถวไฟแนนซ์ (มาก่อน) และแถวผ่อน BESTCHOICE → ใช้แถว BESTCHOICE', async () => {
+    const tool = new CalculateInstallmentTool(
+      makePrisma(
+        productRow({
+          installmentPrice: null,
+          prices: [
+            { label: 'ราคาผ่อนไฟแนนซ์', amount: D('41000') },
+            { label: 'ราคาผ่อน BESTCHOICE', amount: D('35900') },
+          ],
+        }),
+        cfgRow(),
+      ),
+    );
+    const r = (await tool.run({ productId: 'prd-1', tenureMonths: 12 })) as unknown as Record<string, number>;
+    expect(r.priceThb).toBe(35900);
+  });
+
   it('ไม่มีราคาผ่อนเลย → price_not_configured', async () => {
     const tool = new CalculateInstallmentTool(
       makePrisma(productRow({ installmentPrice: null, prices: [] }), cfgRow()),

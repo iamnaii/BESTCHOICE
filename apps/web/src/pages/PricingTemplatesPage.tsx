@@ -10,6 +10,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import Modal from '@/components/ui/Modal';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { FinancePriceBackfillButton } from './pricing-templates/FinancePriceBackfillButton';
 import { Card, CardContent } from '@/components/ui/card';
 import { formControlClass } from '@/components/ui/form-styles';
 import { cn } from '@/lib/utils';
@@ -280,6 +281,7 @@ export default function PricingTemplatesPage() {
         subtitle="ราคาเงินสด / ราคาผ่อน BESTCHOICE / ราคาขาย GFIN (ราคาเต็มทั้งสองช่อง) และงวด/ดาวน์ ตามรุ่นสินค้า"
         action={
           <div className="flex flex-wrap gap-2">
+            <FinancePriceBackfillButton />
             <button data-ui-control="button"
               onClick={downloadTemplate}
               className="px-3 py-2 text-sm whitespace-nowrap text-muted-foreground border border-input rounded-lg hover:bg-muted/50"

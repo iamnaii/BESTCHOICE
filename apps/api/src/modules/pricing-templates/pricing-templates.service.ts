@@ -10,7 +10,15 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePricingTemplateDto, UpdatePricingTemplateDto } from './dto/pricing-template.dto';
-import { Prisma, ProductCategory, PricingDeviceOrigin } from '@prisma/client';
+import { Prisma, ProductCategory, ProductStatus, PricingDeviceOrigin } from '@prisma/client';
+import { pickPricingTemplate, positiveDecimal, TEMPLATE_ORDER } from '../../utils/pricing-template-match.util';
+import { syncFinancePriceRow, templateKeyOf } from '../../utils/product-finance-price.util';
+
+/** "เครื่องในสต๊อก" ของปุ่มเติมราคาขาย GFIN — ยังไม่ขาย และมีราคาขายแล้ว (สเปค 2026-11-19 ข้อ 3.2) */
+export const FINANCE_BACKFILL_STATUSES: ProductStatus[] = ['IN_STOCK', 'RESERVED', 'PHOTO_PENDING'];
+const FINANCE_BACKFILL_CATEGORIES: ProductCategory[] = ['PHONE_NEW', 'PHONE_USED', 'TABLET'];
+/** เขียนทีละชุด — tx เดียวทั้งสต๊อกอาจเกินเวลาของ interactive transaction */
+const FINANCE_BACKFILL_CHUNK = 50;
 
 @Injectable()
 export class PricingTemplatesService {
@@ -77,6 +85,81 @@ export class PricingTemplatesService {
       }
     }
     return null;
+  }
+
+  /**
+   * ปุ่ม "เติมราคาขาย GFIN ให้เครื่องในสต๊อก" (สเปค 2026-11-19 ข้อ 3.2 / 7.5) — กลไกเดียวสำหรับเครื่องเดิม
+   * เติมเฉพาะเครื่องพร้อมขายที่ช่องว่างและรุ่นมีราคาขาย GFIN ในราคากลาง (ตัวเลือกแถวเดียวกับตอนสร้างเครื่อง)
+   * ไม่ทับค่าที่มี: เงื่อนไข `financePrice: null` อยู่ใน WHERE ของการเขียนเอง (มีคนตั้งราคาระหว่างนั้น = ข้าม)
+   * เส้นทางนี้ OWNER เท่านั้น (ไม่มี access boundary) ⇒ ใช้ `this.base` ตรง
+   */
+  async backfillFinancePrice({
+    dryRun,
+    userId,
+  }: {
+    dryRun: boolean;
+    userId: string | null;
+  }): Promise<{ count: number }> {
+    const [products, templates] = await Promise.all([
+      this.base.product.findMany({
+        where: {
+          deletedAt: null,
+          financePrice: null,
+          status: { in: FINANCE_BACKFILL_STATUSES },
+          category: { in: FINANCE_BACKFILL_CATEGORIES },
+        },
+        select: {
+          id: true,
+          brand: true,
+          model: true,
+          storage: true,
+          category: true,
+          deviceOrigin: true,
+          warrantyExpired: true,
+          warrantyExpireDate: true,
+        },
+        orderBy: { id: 'asc' },
+      }),
+      this.base.pricingTemplate.findMany({
+        where: { isActive: true, deletedAt: null },
+        orderBy: TEMPLATE_ORDER,
+      }),
+    ]);
+
+    const fills = products.flatMap((p) => {
+      const price = positiveDecimal(pickPricingTemplate(templates, templateKeyOf(p))?.installmentFinancePrice);
+      return price ? [{ id: p.id, price }] : [];
+    });
+    if (dryRun || fills.length === 0) return { count: fills.length };
+
+    const written: string[] = [];
+    for (let i = 0; i < fills.length; i += FINANCE_BACKFILL_CHUNK) {
+      const chunk = fills.slice(i, i + FINANCE_BACKFILL_CHUNK);
+      await this.base.$transaction(async (tx) => {
+        for (const fill of chunk) {
+          const updated = await tx.product.updateMany({
+            where: { id: fill.id, financePrice: null, deletedAt: null },
+            data: { financePrice: fill.price },
+          });
+          if (updated.count !== 1) continue;
+          await syncFinancePriceRow(tx, fill.id, fill.price);
+          written.push(fill.id);
+        }
+      });
+    }
+
+    if (userId && written.length > 0) {
+      await this.base.auditLog.create({
+        data: {
+          userId,
+          action: 'PRODUCT_FINANCE_PRICE_BACKFILLED',
+          entity: 'product',
+          entityId: 'batch',
+          newValue: { count: written.length, productIds: written },
+        },
+      });
+    }
+    return { count: written.length };
   }
 
   async create(dto: CreatePricingTemplateDto) {

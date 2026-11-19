@@ -8,6 +8,7 @@ import { CreatePricingTemplateDto, UpdatePricingTemplateDto } from './dto/pricin
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @ApiTags('Settings')
 @ApiBearerAuth('JWT')
@@ -69,6 +70,13 @@ export class PricingTemplatesController {
   bulkImport(@Body() body: { items: CreatePricingTemplateDto[]; deactivateIds?: string[] }) {
     if (!body || typeof body !== 'object' || !Array.isArray(body.items)) throw new BadRequestException('รายการนำเข้าต้องเป็นอาร์เรย์ไม่เกิน 100 แถว');
     return this.service.bulkImport(body.items, body.deactivateIds);
+  }
+
+  /** สเปค 2026-11-19 ข้อ 3.2 — เติมราคาขาย GFIN ให้เครื่องในสต๊อกที่ช่องว่าง · ?dryRun=true = นับอย่างเดียว */
+  @Post('backfill-finance-price')
+  @Roles('OWNER')
+  backfillFinancePrice(@Query('dryRun') dryRun: string | undefined, @CurrentUser() user: { id: string }) {
+    return this.service.backfillFinancePrice({ dryRun: dryRun === 'true', userId: user?.id ?? null });
   }
 
   @Put(':id')

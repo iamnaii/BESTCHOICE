@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BcConfigJson } from '@installment/shared';
-import type { GfinTables } from '@/pages/ProductDetailPage/utils/gfinQuote';
+import { toModelQuoteGfinContext, type GfinTables } from '@/pages/ProductDetailPage/utils/gfinQuote';
 import {
   accessoryProfit,
   computeCardQuote,
@@ -112,8 +112,39 @@ describe('computeCardQuote — ตัวคำนวณกลางตัวเ�
   it('รุ่นที่ไม่มีใบราคา GFIN → gfinBlocked', () => {
     const q = computeCardQuote({ ...INPUT, model: 'iPhone 12', storage: '64GB' });
     expect(q?.rate2).toMatchObject({ available: false, reason: 'NO_PRICE_LIST' });
-    expect(gfinBlocked(q)).toBe(true);
-    expect(gfinBlocked(computeCardQuote(INPUT))).toBe(false);
+    expect(gfinBlocked({ ...INPUT, model: 'iPhone 12', storage: '64GB' })).toBe(true);
+    expect(gfinBlocked(INPUT)).toBe(false);
+  });
+
+  it('gfinBlocked ตัดสินจากใบราคาอย่างเดียว — ช่องราคาว่างหมดก็ยังปิด/เปิดถูก', () => {
+    const empty = { cash: '', bc: '', finance: '' };
+    expect(gfinBlocked({ ...INPUT, fields: empty, model: 'iPhone 12', storage: '64GB' })).toBe(true);
+    expect(gfinBlocked({ ...INPUT, fields: empty })).toBe(false);
+    expect(gfinBlocked({ ...INPUT, gfinTables: undefined, model: 'iPhone 12', storage: '64GB' })).toBe(false);
+    expect(gfinBlocked({ ...INPUT, category: 'ACCESSORY' })).toBe(false);
+    expect(gfinBlocked({ ...INPUT, model: '' })).toBe(false);
+  });
+
+  it('เครื่องนอก → ครึ่ง OVER แต่ไม่ใช่ originNote (เลือกแล้ว)', () => {
+    const q = computeCardQuote({ ...INPUT, deviceOrigin: 'IMPORTED' })!;
+    expect(q.rate2).toMatchObject({ available: true, submitPrice: 25400, originNote: false });
+  });
+
+  it('แท็บเล็ต → คอม 5% ผ่าน toModelQuoteGfinContext', () => {
+    const ctx = toModelQuoteGfinContext(gfinTables, 'TABLET');
+    expect(ctx.commissionPct).toBe(5);
+    expect(ctx.settingMinDownPct.toNumber()).toBe(0.25);
+    expect(toModelQuoteGfinContext(gfinTables, 'PHONE_NEW').commissionPct).toBe(15);
+  });
+
+  it('กำไรติดลบคงติดลบ · ทุนว่างช่องว่าง/มีคอมมา', () => {
+    expect(computeCardQuote({ ...INPUT, costPrice: '26000' })!.cash?.profit).toBe(-100);
+    expect(computeCardQuote({ ...INPUT, costPrice: '   ' })!.cash?.profit).toBeNull();
+    expect(computeCardQuote({ ...INPUT, costPrice: '25,800' })!.cash?.profit).toBe(100);
+  });
+
+  it('ยังไม่เลือกยี่ห้อ → null', () => {
+    expect(computeCardQuote({ ...INPUT, brand: '' })).toBeNull();
   });
 
   it('อุปกรณ์เสริม / ยังไม่เลือกรุ่น → null', () => {

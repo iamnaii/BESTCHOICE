@@ -1,6 +1,6 @@
 import { buildModelQuote, type BcConfigJson, type ModelQuote } from '@installment/shared';
 import { toBcConfig } from '@/pages/ProductDetailPage/utils/bcQuote';
-import { gfinCategoryOf, toModelQuoteGfinContext, type GfinTables } from '@/pages/ProductDetailPage/utils/gfinQuote';
+import { gfinCategoryOf, hasGfinMapping, toModelQuoteGfinContext, type GfinTables } from '@/pages/ProductDetailPage/utils/gfinQuote';
 
 /** ช่องราคาของการ์ด D: เงินสด · ผ่อน BESTCHOICE (เรท 1) · ราคาขาย GFIN (เรท 2) */
 export type PriceKey = 'cash' | 'bc' | 'finance';
@@ -22,6 +22,14 @@ function positive(value: string | number | null | undefined): number | null {
   if (value === null || value === undefined || value === '') return null;
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** ช่องตัวเลขของฟอร์ม → ตัวเลข (ตัดช่องว่าง/คอมมา) · ว่าง = null */
+function parseAmount(raw: string): number | null {
+  const t = raw.replace(/,/g, '').trim();
+  if (t === '') return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
 }
 
 function asField(value: string | number | null | undefined): string {
@@ -89,7 +97,7 @@ export function computeCardQuote(input: CardQuoteInput): ModelQuote | null {
   if (!category || !input.brand || !input.model) return null;
   const tpl = templateFields(input.template);
   const bcUntouched = tpl !== null && tpl.bc !== '' && positive(input.fields.bc) === positive(tpl.bc);
-  const cost = input.costPrice === '' ? null : Number(input.costPrice);
+  const cost = parseAmount(input.costPrice);
   return buildModelQuote({
     product: { brand: input.brand, model: input.model, storage: input.storage, category },
     deviceOrigin: input.deviceOrigin === 'THAI' || input.deviceOrigin === 'IMPORTED' ? input.deviceOrigin : null,
@@ -102,21 +110,26 @@ export function computeCardQuote(input: CardQuoteInput): ModelQuote | null {
     rate2TermMonths: input.template?.rate2TermMonths ?? null,
     bcConfig: input.bcConfig ? toBcConfig(input.bcConfig) : null,
     gfin: input.gfinTables ? toModelQuoteGfinContext(input.gfinTables, input.category) : null,
-    costPrice: cost != null && Number.isFinite(cost) ? cost : null,
+    costPrice: cost,
   });
 }
 
-/** GFIN ไม่มีใบราคาของรุ่นนี้ → ช่องราคาขาย GFIN ปิด และบันทึกเป็นค่าว่าง */
-export function gfinBlocked(quote: ModelQuote | null): boolean {
-  return quote !== null && !quote.rate2.available && quote.rate2.reason === 'NO_PRICE_LIST';
+/** GFIN ไม่มีใบราคาของรุ่นนี้ → ช่องราคาขาย GFIN ปิด และบันทึกเป็นค่าว่าง (ดูจากตารางรุ่นอย่างเดียว ไม่ขึ้นกับช่องราคา) */
+export function gfinBlocked(input: CardQuoteInput): boolean {
+  if (!input.gfinTables) return false;
+  return (
+    hasGfinMapping(
+      { brand: input.brand, model: input.model, storage: input.storage, category: input.category },
+      input.gfinTables,
+    ) === false
+  );
 }
 
 /** อุปกรณ์เสริม: กำไร = ราคาขาย − ทุน (ไม่มีผ่อน) */
 export function accessoryProfit(cash: string, costPrice: string): number | null {
   const price = positive(cash);
-  if (price == null || costPrice === '') return null;
-  const cost = Number(costPrice);
-  return Number.isFinite(cost) ? price - cost : null;
+  const cost = parseAmount(costPrice);
+  return price == null || cost == null ? null : price - cost;
 }
 
 export interface PricePayload {

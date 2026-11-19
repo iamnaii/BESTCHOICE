@@ -237,3 +237,21 @@ export function toModelQuoteGfinContext(tables: GfinTables, category: string): M
     contractFee: new Decimal(tables.settings.contractFee),
   };
 }
+
+/**
+ * ใบราคา GFIN มีรุ่นนี้ไหม — ตัดสินจากตารางรุ่นอย่างเดียว (ไม่ขึ้นกับว่ากรอกราคาแล้วหรือยัง)
+ * null = ยังตัดสินไม่ได้ (หมวดไม่รับ / ข้อมูลรุ่นไม่ครบ)
+ */
+export function hasGfinMapping(
+  product: { brand: string; model: string; storage?: string | null; category: string },
+  tables: GfinTables,
+): boolean | null {
+  const category = gfinCategoryOf(product.category);
+  if (!category || !product.brand || !product.model) return null;
+  return (
+    findGfinMapping(
+      { brand: product.brand, model: product.model, storage: product.storage ?? '', category },
+      tables.mappings.map(toMappingRow),
+    ) !== null
+  );
+}

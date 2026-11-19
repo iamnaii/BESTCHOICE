@@ -76,6 +76,7 @@ const OWNER_PAGES: HealthRoute[] = [
   { url: '/stock/adjustments', name: 'ตัดสินค้า' },
   { url: '/stock/count', name: 'นับสต็อก' },
   { url: '/stock/workflow', name: 'Inventory Workflow' },
+  { url: '/prices', name: 'ราคาและเรทผ่อน' },
   { url: '/stickers', name: 'พิมพ์สติกเกอร์' },
   { url: '/suppliers', name: 'ผู้จัดจำหน่าย' },
   { url: '/purchase-orders', name: 'ใบสั่งซื้อ' },

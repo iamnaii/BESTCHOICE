@@ -113,6 +113,7 @@ const StockAlertsPage = lazy(() => import('@/pages/StockAlertsPage'));
 const StockAdjustmentsPage = lazy(() => import('@/pages/StockAdjustmentsPage'));
 const StockCountPage = lazy(() => import('@/pages/StockCountPage'));
 const InventoryWorkflowPage = lazy(() => import('@/pages/InventoryWorkflowPage'));
+const PriceListPage = lazy(() => import('@/pages/PriceListPage'));
 const InspectionPage = lazy(() => import('@/pages/InspectionPage'));
 const InspectionDetailPage = lazy(() => import('@/pages/InspectionDetailPage'));
 const SystemStatusPage = lazy(() => import('@/pages/SystemStatusPage'));
@@ -455,6 +456,16 @@ function App() {
             }
           />
           <Route path="/stock/branch-receiving" element={<Navigate to="/stock/transfers?view=incoming" replace />} />
+
+          {/* ราคาและเรทผ่อน — ทุกตำแหน่งที่ทำงานหน้าร้าน รวมพนักงานขาย (สเปค 2026-11-19 ข้อ 6) */}
+          <Route
+            path="/prices"
+            element={
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES']}>
+                <PriceListPage />
+              </ProtectedRoute>
+            }
+          />
 
           {/* ตรวจสอบสินค้า (Inspections) */}
           <Route

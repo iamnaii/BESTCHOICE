@@ -7,6 +7,7 @@ import { formControlClass } from '@/components/ui/form-styles';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { NAV_LABELS } from '@/config/work-navigation';
 import { cn } from '@/lib/utils';
 import PriceQuoteCards from './price-list/PriceQuoteCards';
 import PriceQuoteTable from './price-list/PriceQuoteTable';
@@ -14,8 +15,6 @@ import SegmentedToggle, { type SegmentOption } from './price-list/SegmentedToggl
 import { emptyListMessage, formatUpdatedAt, notFoundMessage } from './price-list/format';
 import type { PriceListCategory } from './price-list/types';
 import { usePriceQuotes } from './price-list/usePriceQuotes';
-
-const PRICE_LIST_TITLE = 'ราคาและเรทผ่อน';
 
 const CATEGORY_OPTIONS: SegmentOption<PriceListCategory>[] = [
   { value: 'PHONE_NEW', label: 'มือ 1' },
@@ -34,7 +33,7 @@ const ORIGIN_OPTIONS: SegmentOption<GfinDeviceOrigin>[] = [
  * เครื่องไทย / เครื่องนอก มีผลกับเรท 2 เท่านั้น (สเปคข้อ 3.4 — เครื่องนอกได้ OVER ครึ่งเดียว)
  */
 export default function PriceListPage() {
-  useDocumentTitle(PRICE_LIST_TITLE);
+  useDocumentTitle(NAV_LABELS.prices);
   const isMobile = useIsMobile();
   const [category, setCategory] = useState<PriceListCategory>('PHONE_NEW');
   const [origin, setOrigin] = useState<GfinDeviceOrigin>('THAI');
@@ -49,7 +48,7 @@ export default function PriceListPage() {
   return (
     <div>
       <PageHeader
-        title={PRICE_LIST_TITLE}
+        title={NAV_LABELS.prices}
         subtitle="ราคาเงินสดและเรทผ่อนของแต่ละรุ่น สำหรับตอบลูกค้า"
         action={
           updatedText ? (

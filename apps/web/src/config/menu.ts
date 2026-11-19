@@ -285,6 +285,7 @@ const SALES_CONFIG: RoleMenuConfig = {
       zone: 'shop',
       items: [
         { label: NAV_LABELS.stock, path: '/stock', icon: Warehouse },
+        { label: NAV_LABELS.prices, path: '/prices', icon: BadgePercent },
         { label: 'รายการสินค้า', path: '/stock/products', icon: ClipboardList },
         { label: 'ตัดสินค้า', path: '/stock/adjustments', icon: PackageMinus, badgeKey: 'stock-adjustment-pending' },
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
@@ -351,6 +352,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
       // ผจก.สาขาไม่มี 'รับซื้อมือสอง' ตรงนี้ — อยู่ในหมวด "ขาย" ของ role นี้
       items: [
         { label: NAV_LABELS.stock, path: '/stock', icon: Warehouse },
+        { label: NAV_LABELS.prices, path: '/prices', icon: BadgePercent },
         { label: 'ผู้จัดจำหน่าย', path: '/suppliers', icon: Building2 },
         { label: 'สั่งซื้อ (PO)', path: '/purchase-orders', icon: ClipboardList },
         { label: 'รอถ่ายรูป', path: '/purchase-orders/qc', icon: Camera, badgeKey: 'qc-pending-count' },
@@ -442,6 +444,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         // route อนุญาต role นี้อยู่แล้ว แต่เดิมไม่มีในเมนู ⇒ MainLayout เด้งกลับ Dashboard
         // พร้อม toast "ไม่มีสิทธิ์" ทั้งที่มีสิทธิ์ (E2E role-access จับไว้ ปักที่ route-reachability.test.ts)
         { label: NAV_LABELS.stock, path: '/stock', icon: Warehouse },
+        { label: NAV_LABELS.prices, path: '/prices', icon: BadgePercent },
         // ก้อน 5 — ผจก.การเงินเห็นภาษีซื้อต่อเครื่องบนใบรับของ (อ่านอย่างเดียว · API เปิดให้อยู่แล้ว)
         { label: 'สั่งซื้อ (PO)', path: '/purchase-orders', icon: ClipboardList },
         // P3-SP5 W6 — SHOP-side accounting (visible to FM in SHOP zone for cross-side overview)
@@ -571,6 +574,7 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: NAV_LABELS.contracts, path: '/contracts', icon: FileCheck },
         { label: NAV_LABELS.stock, path: '/stock', icon: Warehouse },
+        { label: NAV_LABELS.prices, path: '/prices', icon: BadgePercent },
         // ก้อน 5 (Q1) — ฝ่ายบัญชีบันทึก/แก้ใบกำกับภาษีที่มาทีหลังที่ใบรับของ
         { label: 'สั่งซื้อ (PO)', path: '/purchase-orders', icon: ClipboardList },
         { label: 'รายการสินค้า', path: '/stock/products', icon: ClipboardList },
@@ -617,6 +621,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       // ต่างก็เขียนสถานะ PHOTO_PENDING) — อย่าย้ายไปแทรกกลาง
       items: [
         { label: NAV_LABELS.stock, path: '/stock', icon: Warehouse },
+        { label: NAV_LABELS.prices, path: '/prices', icon: BadgePercent },
         { label: 'ผู้จัดจำหน่าย', path: '/suppliers', icon: Building2 },
         { label: 'สั่งซื้อ (PO)', path: '/purchase-orders', icon: ClipboardList },
         { label: 'รับซื้อมือสอง', path: '/trade-in', icon: Smartphone },

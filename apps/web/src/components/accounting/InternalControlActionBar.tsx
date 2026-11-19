@@ -17,6 +17,7 @@ import { useUiFlags } from '@/hooks/useUiFlags';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { AuditTimeline } from './AuditTimeline';
+import { latestEvents } from './audit-events';
 import { ReverseConfirmDialog } from './ReverseConfirmDialog';
 import {
   ICAB_MODULE_DEFAULTS,
@@ -346,7 +347,7 @@ export function InternalControlActionBar(props: InternalControlActionBarProps) {
                 </Popover>
               )}
             </div>
-            <AuditTimeline events={auditLog.slice(-3)} compact />
+            <AuditTimeline events={latestEvents(auditLog, 3)} compact />
           </div>
         </div>
 

@@ -30,40 +30,40 @@ describe('calcBcInstallment — canonical worked example (iPhone 14 Pro 128GB, 1
     expect(out.errors).toEqual([]);
   });
 
-  it('downAmount = 2,985', () => {
-    expect(out.downAmount.toFixed(2)).toBe('2985.00');
+  it('downAmount = 3,000 (2,985 ปัดขึ้นหลักร้อย)', () => {
+    expect(out.downAmount.toFixed(2)).toBe('3000.00');
   });
 
-  it('financedAmount = 16,915', () => {
-    expect(out.financedAmount.toFixed(2)).toBe('16915.00');
+  it('financedAmount = 16,900', () => {
+    expect(out.financedAmount.toFixed(2)).toBe('16900.00');
   });
 
-  it('interestAmount = 8,457.50', () => {
-    expect(out.interestAmount.toFixed(2)).toBe('8457.50');
+  it('interestAmount = 8,450.00', () => {
+    expect(out.interestAmount.toFixed(2)).toBe('8450.00');
   });
 
-  it('commissionAmount = 1,691.50', () => {
-    expect(out.commissionAmount.toFixed(2)).toBe('1691.50');
+  it('commissionAmount = 1,690.00', () => {
+    expect(out.commissionAmount.toFixed(2)).toBe('1690.00');
   });
 
-  it('subtotal = 27,064.00', () => {
-    expect(out.subtotal.toFixed(2)).toBe('27064.00');
+  it('subtotal = 27,040.00', () => {
+    expect(out.subtotal.toFixed(2)).toBe('27040.00');
   });
 
-  it('vatAmount = 1,894.48', () => {
-    expect(out.vatAmount.toFixed(2)).toBe('1894.48');
+  it('vatAmount = 1,892.80', () => {
+    expect(out.vatAmount.toFixed(2)).toBe('1892.80');
   });
 
-  it('totalWithVat = 28,958.48', () => {
-    expect(out.totalWithVat.toFixed(2)).toBe('28958.48');
+  it('totalWithVat = 28,932.80', () => {
+    expect(out.totalWithVat.toFixed(2)).toBe('28932.80');
   });
 
-  it('monthlyPayment = 2,413.20', () => {
-    expect(out.monthlyPayment.toFixed(2)).toBe('2413.20');
+  it('monthlyPayment = 2,411.06', () => {
+    expect(out.monthlyPayment.toFixed(2)).toBe('2411.06');
   });
 
-  it('financeToShop = 18,606.50', () => {
-    expect(out.financeToShop.toFixed(2)).toBe('18606.50');
+  it('financeToShop = 18,590.00', () => {
+    expect(out.financeToShop.toFixed(2)).toBe('18590.00');
   });
 });
 
@@ -108,8 +108,8 @@ describe('calcBcInstallment — edge cases', () => {
       config: DEFAULT_CONFIG,
     });
     expect(out.isValid).toBe(true);
-    expect(out.downAmount.toFixed(2)).toBe('9950.00');
-    expect(out.financedAmount.toFixed(2)).toBe('9950.00');
+    expect(out.downAmount.toFixed(2)).toBe('10000.00');
+    expect(out.financedAmount.toFixed(2)).toBe('9900.00');
   });
 
   it('handles 5-mo with 40% rate', () => {
@@ -120,8 +120,8 @@ describe('calcBcInstallment — edge cases', () => {
     });
     expect(out.isValid).toBe(true);
     expect(out.interestPct.toFixed(2)).toBe('0.40');
-    // financed = 16915, interest = 16915 × 0.40 = 6766
-    expect(out.interestAmount.toFixed(2)).toBe('6766.00');
+    // financed = 16900, interest = 16900 × 0.40 = 6760
+    expect(out.interestAmount.toFixed(2)).toBe('6760.00');
   });
 
   it('handles 7-mo with 50% rate (transition boundary)', () => {
@@ -143,6 +143,40 @@ describe('calcBcInstallment — edge cases', () => {
     });
     expect(out.downAmount.toFixed(2)).toBe('5000.00');
     expect(out.financedAmount.toFixed(2)).toBe('14900.00');
+  });
+
+  it('ดาวน์ที่ส่งเป็นจำนวนเงินไม่ถูกปัด (2,985 คง 2,985)', () => {
+    const out = calcBcInstallment({
+      installmentPrice: new Decimal('19900'),
+      months: 12,
+      customDownAmount: new Decimal('2985'),
+      config: DEFAULT_CONFIG,
+    });
+    expect(out.downAmount.toFixed(2)).toBe('2985.00');
+    expect(out.monthlyPayment.toFixed(2)).toBe('2413.20');
+  });
+
+  it('ดาวน์ขั้นต่ำที่ปัดแล้วยังผ่านการตรวจ % ขั้นต่ำ', () => {
+    const out = calcBcInstallment({
+      installmentPrice: new Decimal('25900'),
+      months: 12,
+      config: DEFAULT_CONFIG,
+    });
+    expect(out.isValid).toBe(true);
+    expect(out.downAmount.toFixed(2)).toBe('3900.00');
+    expect(out.financedAmount.toFixed(2)).toBe('22000.00');
+    expect(out.monthlyPayment.toFixed(2)).toBe('3138.66');
+  });
+
+  it('ราคาต่ำมาก: ดาวน์ไม่ถูกปัดจนเท่าหรือเกินราคา', () => {
+    const out = calcBcInstallment({
+      installmentPrice: new Decimal('90'),
+      months: 12,
+      downPct: new Decimal('0.30'),
+      config: DEFAULT_CONFIG,
+    });
+    expect(out.downAmount.toFixed(2)).toBe('27.00');
+    expect(out.errors.some((e) => e.includes('ต้องน้อยกว่าราคาขาย'))).toBe(false);
   });
 });
 

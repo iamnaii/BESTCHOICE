@@ -50,6 +50,8 @@ export class PricingTemplatesController {
     if (!QUOTE_CATEGORIES.includes(c as QuoteCategory)) throw new BadRequestException('ประเภทสินค้าไม่ถูกต้อง');
     const o = origin || 'THAI';
     if (o !== 'THAI' && o !== 'IMPORTED') throw new BadRequestException('เครื่องไทย/เครื่องนอกไม่ถูกต้อง');
+    // ?q= ซ้ำ → Express ให้เป็น array (ตัวค้นหาเรียก string method → 500) — รับเฉพาะข้อความเดียว
+    if (q !== undefined && typeof q !== 'string') throw new BadRequestException('คำค้นไม่ถูกต้อง');
     return this.quoteService.listQuotes({ category: c as QuoteCategory, origin: o, q: q?.slice(0, 80) });
   }
 

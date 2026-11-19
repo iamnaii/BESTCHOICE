@@ -20,6 +20,13 @@ describe('PricingTemplatesController.quotes', () => {
     expect(() => controller.quotes('ACCESSORY', 'THAI')).toThrow(BadRequestException);
     expect(() => controller.quotes('PHONE_NEW', 'UNSPECIFIED')).toThrow(BadRequestException);
   });
+
+  it('ส่ง ?q= ซ้ำ (Express ให้เป็น array) → 400 ไม่ใช่ 500 และไม่ค้น', () => {
+    expect(() => controller.quotes('PHONE_NEW', 'THAI', ['a', 'b'] as unknown as string)).toThrow(
+      BadRequestException,
+    );
+    expect(listQuotes).not.toHaveBeenCalled();
+  });
 });
 
 describe('PricingTemplatesController.backfillFinancePrice dryRun', () => {

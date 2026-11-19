@@ -39,6 +39,7 @@ import { TradeInQueryService } from './trade-in-query.service';
 import { TradeInValuationService } from './trade-in-valuation.service';
 import { ShopTradeInTemplate } from '../../journal/cpa-templates/shop-trade-in.template';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
+import { fillFinancePriceFromTemplate, templateKeyOf } from '../../../utils/product-finance-price.util';
 import { autofillProductPriceFromTemplate } from '../../../utils/product-price-autofill.util';
 import {
   isTestCustomer,
@@ -647,6 +648,15 @@ export class TradeInLifecycleService {
       } catch (e) {
         this.logger.error(
           `[autofill] product=${product.id} ข้ามการเติมราคาอัตโนมัติ — เกิด error ระหว่างเรียก autofillProductPriceFromTemplate (รับซื้อต่อได้ปกติ ไม่มีราคาตั้งต้นให้กรอกทีหลัง): ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+
+      // สเปค 2026-11-19 ข้อ 3.2: ราคาขาย GFIN เป็นขั้นของตัวเอง — fail-soft เหมือนตัวเติมราคาด้านบน
+      try {
+        await fillFinancePriceFromTemplate(tx, product.id, templateKeyOf(product));
+      } catch (e) {
+        this.logger.error(
+          `[finance-price] product=${product.id} ข้ามการเติมราคาขาย GFIN (รับซื้อต่อได้ปกติ): ${e instanceof Error ? e.message : String(e)}`,
         );
       }
 

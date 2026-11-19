@@ -1,5 +1,6 @@
 import { TRADE_IN_DECLARATION_VERSION } from '@installment/shared';
 import { Decimal } from '@prisma/client/runtime/library';
+import { Prisma } from '@prisma/client';
 import { TradeInLifecycleService } from './trade-in-lifecycle.service';
 import { ShopTradeInTemplate } from '../../journal/cpa-templates/shop-trade-in.template';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
@@ -19,6 +20,13 @@ function makeTx() {
     product: {
       create: jest.fn(),
       findFirst: jest.fn().mockResolvedValue(null),
+      update: jest.fn().mockResolvedValue({}),
+    },
+    productPrice: {
+      findMany: jest.fn().mockResolvedValue([]),
+      create: jest.fn().mockResolvedValue({ id: 'row-1' }),
+      update: jest.fn().mockResolvedValue({}),
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
     customer: { findUnique: jest.fn().mockResolvedValue({ id: 'cust-1', phone: '0000000000', addressCurrent: null }) },
     // B0 §2.1: autofill hook queries pricingTemplate — empty means NO_TEMPLATE,
@@ -122,6 +130,40 @@ describe('TradeInLifecycleService.accept() — SHOP JE wiring (Task 2)', () => {
     expect(input.tradeInPrice.toString()).toBe('5000');
     expect(input.inventoryAccountCode).toBeUndefined(); // defaults to S11-2002 inside template
     expect(shopTradeInTemplate.execute.mock.calls[0][1]).toBeDefined(); // tx passed
+  });
+
+  // ─── สเปค 2026-11-19 ข้อ 3.2: เครื่องเทิร์นได้ราคาขาย GFIN จากราคากลางมือ 2 ─────────
+  it('รับเทิร์น → เติมราคาขาย GFIN จากราคากลางมือ 2 (เครื่องนอกถอยไปแถว "ไม่ระบุ")', async () => {
+    tx.tradeIn.findUnique.mockResolvedValue({
+      id: 'ti-9', status: 'APPRAISED', deletedAt: null, flow: 'BUYBACK', branchId: 'br-1',
+      offeredPrice: new Decimal(5000), estimatedValue: null, imei: null,
+      deviceBrand: 'Apple', deviceModel: 'iPhone 12', deviceColor: null, deviceStorage: null,
+      deviceCondition: 'A', notes: null,
+    });
+    tx.product.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
+      id: 'p-new', warrantyExpired: null, warrantyExpireDate: null, ...data,
+    }));
+    tx.pricingTemplate.findMany.mockResolvedValue([
+      {
+        id: 't12', brand: 'Apple', model: 'iPhone 12', storage: '', category: 'PHONE_USED',
+        hasWarranty: false, deviceOrigin: 'UNSPECIFIED',
+        cashPrice: new Decimal(8900), installmentBestchoicePrice: new Decimal(8900),
+        installmentFinancePrice: new Decimal(9900),
+      },
+    ]);
+    tx.tradeIn.update.mockResolvedValue({ id: 'ti-9', status: 'ACCEPTED' });
+    shopAccountResolver.resolveOutflowCashAccount.mockResolvedValue('S11-1102');
+
+    await service.accept(
+      'ti-9',
+      { sellerName: 'TEST SELLER', sellerPhone: '0000000000', sellerAddress: 'TEST ADDRESS', sellerIdCardNumber: '0000000000001', serialNumber: 'TEST-SN', imeiMissingReason: 'TEST: no cellular radio', idCardVerified: true, sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: 'data:image/png;base64,dGVzdA==', paymentMethod: 'CASH', deviceOrigin: 'IMPORTED' } as any,
+      'u-1',
+    );
+
+    const financeWrite = tx.product.update.mock.calls.find(
+      ([args]: [{ data: Record<string, unknown> }]) => args.data.financePrice !== undefined,
+    );
+    expect(financeWrite?.[0]).toEqual({ where: { id: 'p-new' }, data: { financePrice: new Prisma.Decimal(9900) } });
   });
 
   // ─── Test 2: EXCHANGE → does NOT post ShopTradeIn JE ─────────────────────

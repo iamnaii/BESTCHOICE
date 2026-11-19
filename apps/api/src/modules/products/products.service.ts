@@ -28,6 +28,12 @@ import { ReceivingAcceptanceJournal } from '../purchase-orders/services/receivin
 import { assertProductNotHeld, changedIdentityFields } from './product-hold.util';
 import { resolveBookedInventory } from '../inventory/booked-inventory.util';
 import { autofillProductPriceFromTemplate } from '../../utils/product-price-autofill.util';
+import {
+  fillFinancePriceFromTemplate,
+  resolveHasWarranty,
+  syncFinancePriceRow,
+  templateKeyOf,
+} from '../../utils/product-finance-price.util';
 import { isAccessoryProductCode } from '../../utils/accessory-type.util';
 import { findAccessoryGroupWhere, findStockGroups, StockListFilters } from './products-stock-groups';
 
@@ -242,7 +248,7 @@ export class ProductsService {
   }
 
   async create(dto: CreateProductDto) {
-    const { prices, costPrice, warrantyExpireDate, cashPrice, installmentPrice, accessoriesIncluded, ...data } = dto;
+    const { prices, costPrice, warrantyExpireDate, cashPrice, installmentPrice, financePrice, accessoriesIncluded, ...data } = dto;
 
     // DTO guard: prices[] ที่มี isDefault:true (หรือ fallback ของ element แรกที่ไม่ได้ระบุ)
     // มากกว่า 1 รายการ จะชน DB partial unique index `product_prices_one_default` เป็น P2002
@@ -265,6 +271,8 @@ export class ProductsService {
         : installmentPrice === null
           ? null
           : new Prisma.Decimal(installmentPrice);
+    const financeDecimal =
+      financePrice === undefined ? undefined : financePrice === null ? null : new Prisma.Decimal(financePrice);
     // Json? column: ส่ง JS `null` ตรงๆ เขียนเป็น JSON literal null (column ไม่เป็น SQL NULL —
     // `accessories_included IS NULL` จะ false, Prisma filter หา null ไม่เจอ) ต้องแปลงเป็น
     // Prisma.DbNull ตอนต้องการ "เคลียร์" คอลัมน์จริงๆ
@@ -282,6 +290,7 @@ export class ProductsService {
           costPrice,
           ...(cashDecimal !== undefined ? { cashPrice: cashDecimal } : {}),
           ...(installmentDecimal !== undefined ? { installmentPrice: installmentDecimal } : {}),
+          ...(financeDecimal !== undefined ? { financePrice: financeDecimal } : {}),
           ...(accessoriesIncludedValue !== undefined
             ? { accessoriesIncluded: accessoriesIncludedValue }
             : {}),
@@ -333,11 +342,18 @@ export class ProductsService {
         );
       }
 
+      // สเปค 2026-11-19 ข้อ 3.2: ราคาขาย GFIN เป็นขั้นของตัวเอง — เติมจากราคากลางแม้ผู้สร้างกรอกราคาเงินสดเอง
+      // ไม่ส่งมา (undefined) = เติม · ส่ง null = ยืนยันว่าไม่มี ห้ามเติม
+      if (financeDecimal === undefined) {
+        await fillFinancePriceFromTemplate(tx, product.id, templateKeyOf(product));
+      }
+
       // B0 §2.1: write-through คอลัมน์ → prices[] (ผู้อ่านเดิม POS/สัญญา/บอท ไม่พัง)
       // null ส่งเข้าไปได้ — util จะ "ข้ามฟิลด์นั้น" (ไม่ sync ไม่ลบแถว) ตามกติกาข้อ 4
       await syncPriceRowsFromColumns(tx, product.id, {
         cashPrice: cashDecimal ?? null,
         installmentPrice: installmentDecimal ?? null,
+        financePrice: financeDecimal ?? null,
       });
 
       return tx.product.findUnique({ where: { id: product.id }, include: productInclude });
@@ -385,8 +401,8 @@ export class ProductsService {
     if (identityFields.length > 0) {
       await assertProductNotHeld(this.prisma, existing, 'CHANGE_IDENTITY', identityFields);
     }
-    const { costPrice, warrantyExpireDate, cashPrice, installmentPrice, accessoriesIncluded, ...data } = dto;
-    const touchesPrice = cashPrice !== undefined || installmentPrice !== undefined;
+    const { costPrice, warrantyExpireDate, cashPrice, installmentPrice, financePrice, accessoriesIncluded, ...data } = dto;
+    const touchesPrice = cashPrice !== undefined || installmentPrice !== undefined || financePrice !== undefined;
     // 3 สถานะเหมือน create — null ต้องเขียนลงคอลัมน์ได้ (ล้างราคา) ห้ามส่งเข้า Prisma.Decimal
     const cashDecimal =
       cashPrice === undefined ? undefined : cashPrice === null ? null : new Prisma.Decimal(cashPrice);
@@ -396,6 +412,8 @@ export class ProductsService {
         : installmentPrice === null
           ? null
           : new Prisma.Decimal(installmentPrice);
+    const financeDecimal =
+      financePrice === undefined ? undefined : financePrice === null ? null : new Prisma.Decimal(financePrice);
     // Json? column — เหมือน create: null ต้องแปลงเป็น Prisma.DbNull ไม่งั้นเขียนเป็น JSON
     // literal null (SQL column ไม่เป็น NULL จริง)
     const accessoriesIncludedValue =
@@ -416,6 +434,7 @@ export class ProductsService {
           ...(costPrice !== undefined ? { costPrice } : {}),
           ...(cashDecimal !== undefined ? { cashPrice: cashDecimal } : {}),
           ...(installmentDecimal !== undefined ? { installmentPrice: installmentDecimal } : {}),
+          ...(financeDecimal !== undefined ? { financePrice: financeDecimal } : {}),
           ...(accessoriesIncludedValue !== undefined
             ? { accessoriesIncluded: accessoriesIncludedValue }
             : {}),
@@ -432,6 +451,11 @@ export class ProductsService {
           cashPrice: cashDecimal ?? null,
           installmentPrice: installmentDecimal ?? null,
         });
+      }
+
+      // แก้ราคาขาย GFIN ด้วยมือ: เขียนเฉพาะเมื่อส่งมา · null = ล้างคอลัมน์และลบแถวสำเนา
+      if (financeDecimal !== undefined) {
+        await syncFinancePriceRow(tx, id, financeDecimal);
       }
 
       // เครื่องจากใบสั่งซื้อที่ยังไม่ลงบัญชีรับของ (รอถ่ายรูป) → ลงตอนเข้าคลัง (คำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8)
@@ -893,17 +917,4 @@ export class ProductsService {
       hasInstallmentPrice: product.installmentPrice != null,
     };
   }
-}
-
-/** สรุปสถานะประกันของเครื่องสำหรับเลือกแถวตารางราคากลาง — null = ไม่รู้ */
-function resolveHasWarranty(p: {
-  category: string;
-  warrantyExpired: boolean | null;
-  warrantyExpireDate: Date | null;
-}): boolean | null {
-  if (p.category !== 'PHONE_USED') return false;
-  if (p.warrantyExpired === true) return false;
-  if (p.warrantyExpired === false) return true;
-  if (p.warrantyExpireDate) return p.warrantyExpireDate.getTime() > Date.now();
-  return null;
 }

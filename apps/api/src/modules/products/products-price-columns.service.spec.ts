@@ -14,7 +14,7 @@ describe('ProductsService — คอลัมน์ราคา (B0)', () => {
   beforeEach(async () => {
     tx = {
       product: {
-        create: jest.fn().mockResolvedValue({ id: 'p1' }),
+        create: jest.fn().mockImplementation(async ({ data }: any) => ({ id: 'p1', ...data })),
         update: jest.fn().mockResolvedValue({ id: 'p1' }),
         findUnique: jest.fn().mockResolvedValue({ id: 'p1', deletedAt: null }),
       },
@@ -161,8 +161,8 @@ describe('ProductsService — คอลัมน์ราคา (B0)', () => {
       costPrice: 15000, branchId: 'b1',
       prices: [{ label: 'ราคาขาย', amount: 25000, isDefault: true }],
     } as never);
-    // autofill ต้องไม่ทำงานเลย — ไม่อ่านเทมเพลต ไม่แตะคอลัมน์ราคาผ่าน product.update
-    expect(tx.pricingTemplate.findMany).not.toHaveBeenCalled();
+    // ราคากลางถูกอ่านเพื่อหาราคาขาย GFIN (ขั้นของตัวเอง — สเปค 2026-11-19 ข้อ 3.2) แต่ราคาเงินสดต้องไม่ถูกเติมทับ
+    // (เทมเพลตนี้ไม่มีราคาขาย GFIN ⇒ ไม่มี product.update เลย)
     expect(tx.product.update).not.toHaveBeenCalled();
     // แถวราคาที่พนักงานกรอกเองต้องไม่ถูก relabel/overwrite ผ่าน sync
     expect(tx.productPrice.update).not.toHaveBeenCalled();
@@ -201,5 +201,69 @@ describe('ProductsService — คอลัมน์ราคา (B0)', () => {
     // util ข้ามฟิลด์ที่เป็น null → ไม่สร้าง/ไม่ลบแถว
     expect(tx.productPrice.create).not.toHaveBeenCalled();
     expect(tx.productPrice.update).not.toHaveBeenCalled();
+  });
+
+  // ── สเปค 2026-11-19 ข้อ 3.2 — ราคาขาย GFIN ของเครื่อง ──────────────────────────────
+  const GFIN_TEMPLATE = {
+    id: 't1', brand: 'Apple', model: '15', storage: '', category: 'PHONE_NEW',
+    hasWarranty: false, deviceOrigin: 'UNSPECIFIED',
+    cashPrice: new Prisma.Decimal('28900'),
+    installmentBestchoicePrice: new Prisma.Decimal('29900'),
+    installmentFinancePrice: new Prisma.Decimal('30900'),
+  };
+
+  it('create: กรอกราคาเงินสดเอง + ไม่ส่ง financePrice → ยังเติมราคาขาย GFIN จากราคากลาง (ขั้นของตัวเอง)', async () => {
+    tx.pricingTemplate.findMany.mockResolvedValue([GFIN_TEMPLATE]);
+    await service.create({
+      name: 'iPhone 15', brand: 'Apple', model: '15', category: 'PHONE_NEW',
+      costPrice: 15000, branchId: 'b1', cashPrice: 25000,
+    } as never);
+    expect(tx.product.update).toHaveBeenCalledTimes(1);
+    const data = tx.product.update.mock.calls[0][0].data;
+    expect(data).toEqual({ financePrice: new Prisma.Decimal('30900') });
+    expect(tx.productPrice.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ label: 'ราคาผ่อนไฟแนนซ์', isDefault: false }) }),
+    );
+  });
+
+  it('create: ส่ง financePrice มาเอง → เขียนคอลัมน์ + แถวไฟแนนซ์ ไม่อ่านราคากลาง', async () => {
+    await service.create({
+      name: 'iPhone 15', brand: 'Apple', model: '15', category: 'PHONE_NEW',
+      costPrice: 15000, branchId: 'b1', cashPrice: 25000, financePrice: 27000,
+    } as never);
+    expect(tx.product.create.mock.calls[0][0].data.financePrice.toString()).toBe('27000');
+    expect(tx.pricingTemplate.findMany).not.toHaveBeenCalled();
+    expect(tx.productPrice.create).toHaveBeenCalledWith({
+      data: { productId: 'p1', label: 'ราคาผ่อนไฟแนนซ์', amount: new Prisma.Decimal('27000'), isDefault: false },
+    });
+  });
+
+  it('create: financePrice: null = ยืนยันว่าไม่มี → ไม่เติมจากราคากลาง', async () => {
+    tx.pricingTemplate.findMany.mockResolvedValue([GFIN_TEMPLATE]);
+    await service.create({
+      name: 'iPhone 15', brand: 'Apple', model: '15', category: 'PHONE_NEW',
+      costPrice: 15000, branchId: 'b1', cashPrice: 25000, financePrice: null,
+    } as never);
+    expect(tx.product.create.mock.calls[0][0].data.financePrice).toBeNull();
+    expect(tx.pricingTemplate.findMany).not.toHaveBeenCalled();
+  });
+
+  it('update: แก้ราคาขาย GFIN → เขียนคอลัมน์ + เคลียร์ป้ายเติมอัตโนมัติ + แถวไฟแนนซ์', async () => {
+    await service.update('p1', { financePrice: 31900 } as never);
+    const data = tx.product.update.mock.calls[0][0].data;
+    expect(data.financePrice.toString()).toBe('31900');
+    expect(data.priceAutofilledAt).toBeNull();
+    expect(tx.productPrice.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ label: 'ราคาผ่อนไฟแนนซ์' }) }),
+    );
+  });
+
+  it('update: financePrice: null → ล้างคอลัมน์ + ลบแถวไฟแนนซ์ (soft)', async () => {
+    await service.update('p1', { financePrice: null } as never);
+    expect(tx.product.update.mock.calls[0][0].data.financePrice).toBeNull();
+    expect(tx.productPrice.updateMany).toHaveBeenCalledWith({
+      where: { productId: 'p1', label: 'ราคาผ่อนไฟแนนซ์', isDefault: false, deletedAt: null },
+      data: { deletedAt: expect.any(Date) },
+    });
   });
 });

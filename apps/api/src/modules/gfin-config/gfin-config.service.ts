@@ -117,6 +117,7 @@ export class GfinConfigService {
         condition: dto.condition,
         allowance: new Prisma.Decimal(dto.allowance),
         maxMonths: dto.maxMonths ?? null,
+        minDownPct: dto.minDownPct ?? null,
         isActive: dto.isActive ?? true,
       },
     });
@@ -140,6 +141,7 @@ export class GfinConfigService {
     if (dto.condition !== undefined) data.condition = dto.condition;
     if (dto.allowance !== undefined) data.allowance = new Prisma.Decimal(dto.allowance);
     if (dto.maxMonths !== undefined) data.maxMonths = dto.maxMonths;
+    if (dto.minDownPct !== undefined) data.minDownPct = dto.minDownPct;
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
 
     const updated = await this.prisma.gfinOverpriceRule.update({ where: { id }, data });

@@ -335,6 +335,58 @@ describe('GfinConfigService', () => {
     });
   });
 
+  describe('overprice rule — minDownPct', () => {
+    it('createOverpriceRule ส่ง minDownPct · ไม่ส่ง = null (ใช้ค่าตั้ง gfin.minDownPct)', async () => {
+      prisma.gfinOverpriceRule.create.mockResolvedValue({ id: 'r9' });
+
+      await service.createOverpriceRule(
+        {
+          label: 'iPhone 17 มือ 1',
+          seriesPattern: 'iPhone 17|iPhone 17 Pro|iPhone 17 Pro Max|iPhone Air',
+          condition: 'HAND_1',
+          allowance: 2000,
+          maxMonths: 15,
+          minDownPct: 30,
+        },
+        'user-1',
+      );
+      expect(prisma.gfinOverpriceRule.create).toHaveBeenLastCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ minDownPct: 30 }) }),
+      );
+
+      await service.createOverpriceRule(
+        { label: 'iPhone 16 มือ 1', seriesPattern: 'iPhone 16', condition: 'HAND_1', allowance: 2000 },
+        'user-1',
+      );
+      expect(prisma.gfinOverpriceRule.create).toHaveBeenLastCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ minDownPct: null }) }),
+      );
+    });
+
+    it('updateOverpriceRule ตั้ง/ล้าง minDownPct ได้ · ไม่ส่งมา = ไม่แตะ', async () => {
+      prisma.gfinOverpriceRule.findUnique.mockResolvedValue({ id: 'r1', deletedAt: null });
+      prisma.gfinOverpriceRule.update.mockResolvedValue({ id: 'r1' });
+
+      await service.updateOverpriceRule('r1', { minDownPct: 30 }, 'user-1');
+      expect(prisma.gfinOverpriceRule.update).toHaveBeenLastCalledWith({
+        where: { id: 'r1' },
+        data: { minDownPct: 30 },
+      });
+
+      await service.updateOverpriceRule('r1', { minDownPct: null }, 'user-1');
+      expect(prisma.gfinOverpriceRule.update).toHaveBeenLastCalledWith({
+        where: { id: 'r1' },
+        data: { minDownPct: null },
+      });
+
+      await service.updateOverpriceRule('r1', { label: 'iPhone 17 มือ 1 (30%)' }, 'user-1');
+      expect(prisma.gfinOverpriceRule.update).toHaveBeenLastCalledWith({
+        where: { id: 'r1' },
+        data: { label: 'iPhone 17 มือ 1 (30%)' },
+      });
+    });
+  });
+
   // ===== ค่าตั้งค่า GFIN (system_config gfin.*) =====
 
   describe('gfin settings', () => {

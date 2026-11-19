@@ -23,3 +23,11 @@ export function downFromPct(price: Decimal, pct: Decimal): Decimal {
 export function minDownAmountFromPct(price: number, pct: number): number {
   return downFromPct(new Decimal(price), new Decimal(pct)).toNumber();
 }
+
+/**
+ * ค่างวดที่แสดง / ที่บอทบอกลูกค้า — ปัดขึ้นเป็นบาทเต็ม (คำตัดสินเจ้าของ 2026-11-19)
+ * ค่างวดในสัญญายังเก็บถึงสตางค์ตามเดิม ห้ามใช้ตัวนี้กับยอดที่ลงสัญญา/บัญชี
+ */
+export function displayInstallment(amount: Decimal | number): number {
+  return new Decimal(amount).ceil().toNumber();
+}

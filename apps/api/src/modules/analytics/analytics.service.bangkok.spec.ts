@@ -62,3 +62,55 @@ describe('AnalyticsService — เดือน/วัน/ชั่วโมง�
     expect(res.peakHour).toBe(18);
   });
 });
+
+/**
+ * คาดการณ์รายได้ใช้ 6 เดือนเต็มตามปฏิทินไทยก่อนเดือนนี้ (2026-11-19)
+ * เดิม paid_date >= NOW() - 6 เดือน ⇒ เดือนแรกได้แค่บางส่วน + เดือนปัจจุบัน (ยังไม่จบ) ถูกนับเป็นประวัติ ⇒ เส้นแนวโน้มเอียงลง
+ * และเดือนที่ไม่มีการรับชำระหายจากแถว ⇒ ลำดับเดือน (x) ในการถดถอยเลื่อน
+ */
+describe('AnalyticsService.getRevenueForecast — 6 เดือนเต็มก่อนเดือนนี้', () => {
+  const prisma = { $queryRaw: jest.fn() };
+  const service = new AnalyticsService(prisma as never);
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-11-30T18:00:00.000Z')); // 1 ธ.ค. 2026 01:00 น. ไทย
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it('ช่วงข้อมูล = [00:00 น. ไทย 1 มิ.ย., 00:00 น. ไทย 1 ธ.ค.) ส่งเป็น ::timestamp · ไม่ใช้ NOW()', async () => {
+    prisma.$queryRaw.mockResolvedValue([]);
+    await service.getRevenueForecast();
+    const { text, values } = renderSqlCall(prisma.$queryRaw.mock.calls[0]);
+    expect(text).not.toContain('NOW()');
+    expect(text).toContain('AND p.paid_date >= ?::timestamp');
+    expect(text).toContain('AND p.paid_date < ?::timestamp');
+    expect(values).toEqual(['2026-05-31T17:00:00.000Z', '2026-11-30T17:00:00.000Z']);
+  });
+
+  it('เดือนที่ไม่มีการรับชำระเติม 0 · ประวัติครบ 6 เดือน (มิ.ย.–พ.ย.) · คาดการณ์เริ่มเดือนนี้ (ธ.ค.)', async () => {
+    prisma.$queryRaw.mockResolvedValue([
+      { month: '2026-06', amount: '1000' },
+      { month: '2026-08', amount: '3000' },
+      { month: '2026-11', amount: '6000' },
+    ]);
+    const res = await service.getRevenueForecast();
+    expect(res.historical).toEqual([
+      { month: '2026-06', amount: 1000 },
+      { month: '2026-07', amount: 0 },
+      { month: '2026-08', amount: 3000 },
+      { month: '2026-09', amount: 0 },
+      { month: '2026-10', amount: 0 },
+      { month: '2026-11', amount: 6000 },
+    ]);
+    expect(res.forecast.map((f) => f.month)).toEqual(['2026-12', '2027-01', '2027-02']);
+  });
+
+  it('ยังมีเดือนที่รับชำระน้อยกว่า 2 เดือน → ไม่พยากรณ์ (ข้อความเดิม)', async () => {
+    prisma.$queryRaw.mockResolvedValue([{ month: '2026-11', amount: '6000' }]);
+    const res = await service.getRevenueForecast();
+    expect(res.forecast).toEqual([]);
+    expect(res.note).toBe('ข้อมูลไม่เพียงพอสำหรับการพยากรณ์ (ต้องการอย่างน้อย 2 เดือน)');
+  });
+});

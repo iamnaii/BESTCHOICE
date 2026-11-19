@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>สต๊อคเครื่องวันนี้ — BESTCHOICE ลพบุรี</title>
+    <meta
+      name="description"
+      content="iPhone มือสองพร้อมส่งวันนี้ที่ BESTCHOICE ลพบุรี — ดูรุ่น สี แบตเตอรี่ และยอดดาวน์ ผ่อนได้ใช้บัตรประชาชนใบเดียว"
+    />
+    <link rel="canonical" href="https://www.bestchoicephone.com/stock" />
+    <meta property="og:site_name" content="BESTCHOICE Phone Shop" />
+    <meta property="og:locale" content="th_TH" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="สต๊อคเครื่องวันนี้ — BESTCHOICE ลพบุรี" />
+    <meta
+      property="og:description"
+      content="iPhone มือสองพร้อมส่งวันนี้ ดูรุ่น สี แบตเตอรี่ และยอดดาวน์ ผ่อนได้ใช้บัตรประชาชนใบเดียว"
+    />
+    <meta property="og:url" content="https://www.bestchoicephone.com/stock" />
+    <meta property="og:image" content="https://www.bestchoicephone.com/media/og-default.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="alternate icon" href="/favicon.ico" sizes="48x48 32x32 16x16" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
+    <meta name="theme-color" content="#F4F7F6" />
+    <!--
+      หน้า "สต๊อคเครื่องวันนี้" — ไฟล์ static ล้วน ไม่ผ่าน React/SPA (Firebase เสิร์ฟไฟล์ตรง
+      ก่อนถึง rewrite ** เสมอ และ trailingSlash:false ทำให้ /stock ได้ไฟล์นี้)
+
+      เนื้อหามาจากหน้า "สต๊อควันนี้" ของเว็บแอป Google Apps Script ที่ผูกกับชีต
+      "ตารางผ่อน MASTER (BESTCHOICE)" — พนักงานอัปเดตสต๊อคจาก TOOLTIFY ที่นั่นทุกเย็น
+      หน้านี้แค่ฝังหน้านั้นเต็มจอ เพื่อให้ลูกค้าเห็นที่อยู่เป็น bestchoicephone.com
+      (ฝังแล้วแถบแจ้งเตือนของ Google ด้านบนจะไม่แสดง)
+
+      ถ้า deploy เว็บแอปเป็น deployment ใหม่ (URL /exec เปลี่ยน) ต้องแก้ src ของ iframe ด้านล่าง
+      — การ deploy "เวอร์ชันใหม่" บน deployment เดิม URL ไม่เปลี่ยน ไม่ต้องแก้อะไร
+    -->
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: #f4f7f6;
+        font-family: 'Noto Sans Thai', system-ui, -apple-system, 'Segoe UI', sans-serif;
+        color: #1c2422;
+      }
+      #stock-loading {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        padding: 24px;
+        text-align: center;
+        font-size: 15px;
+        color: #5b6663;
+      }
+      #stock-loading img {
+        width: 56px;
+        height: 56px;
+      }
+      #stock-loading a {
+        color: #167f5e;
+        font-weight: 600;
+      }
+      #stock-frame {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        border: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="stock-loading" role="status">
+      <img src="/logo-icon.svg" alt="" />
+      <div>กำลังโหลดสต๊อคเครื่องวันนี้…</div>
+      <div>
+        สอบถามได้ที่ <a href="tel:0955678887">095-567-8887</a> หรือ
+        <a href="https://lin.ee/o1tWXnQ" target="_blank" rel="noopener">LINE</a>
+      </div>
+    </div>
+    <iframe
+      id="stock-frame"
+      title="สต๊อคเครื่องวันนี้ BESTCHOICE"
+      src="https://script.google.com/macros/s/AKfycbxyxMiWPOP8OPWwh3WVmAUTsjmfUmUHfKFavXhoQhJD8Taj7segiQd6lKSzyd27Z6S-/exec?p=stock"
+      allow="clipboard-write; web-share"
+    ></iframe>
+    <noscript>
+      <p style="padding: 24px">
+        กรุณาเปิด JavaScript เพื่อดูสต๊อค หรือโทร 095-567-8887
+      </p>
+    </noscript>
+  </body>
+</html>

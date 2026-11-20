@@ -16,7 +16,12 @@ import {
   BulkUpsertOverpriceRulesDto,
   CloseMaxPricesDto,
 } from './dto';
-import { GFIN_SETTINGS_KEYS, loadGfinSettings, type GfinSettings } from './gfin-settings.util';
+import {
+  GFIN_SETTINGS_KEYS,
+  loadGfinSettings,
+  loadGfinSheetInfo,
+  type GfinSettingsView,
+} from './gfin-settings.util';
 
 export const PER_MODEL_ONLY_MESSAGE = 'เงื่อนไขเก็บรายรุ่นแล้ว — แก้ทีละรุ่น (ใส่ชื่อรุ่นเดียว ไม่ใช้ |)';
 export const RULE_EXISTS_MESSAGE = 'รุ่นนี้มีเงื่อนไขของสภาพนี้อยู่แล้ว — แก้แถวที่มีอยู่แทน';
@@ -453,17 +458,31 @@ export class GfinConfigService {
 
   // ===== ค่าตั้งค่า GFIN (system_config gfin.*) =====
 
-  getSettings(): Promise<GfinSettings> {
-    return loadGfinSettings(this.prisma);
+  async getSettings(): Promise<GfinSettingsView> {
+    const [settings, sheet] = await Promise.all([loadGfinSettings(this.prisma), loadGfinSheetInfo(this.prisma)]);
+    return { ...settings, ...sheet };
   }
 
-  async updateSettings(dto: UpdateGfinSettingsDto, userId: string): Promise<GfinSettings> {
+  async updateSettings(dto: UpdateGfinSettingsDto, userId: string): Promise<GfinSettingsView> {
     const before = await this.getSettings();
-    const writes: Array<[string, number | undefined, string]> = [
+    // สเปก 2026-11-20 §5: ตรวจเฉพาะเมื่อค่าคอม iPhone เปลี่ยน — ไม่มีตารางค่างวดของ % ใหม่ = GFIN คิดผ่อนไม่ได้ทุกเครื่อง
+    if (dto.commissionPhone !== undefined && dto.commissionPhone !== before.commissionPctByCategory.PHONE) {
+      const factors = await this.prisma.gfinRateFactor.count({
+        where: { shopCommissionPct: dto.commissionPhone, isActive: true, deletedAt: null },
+      });
+      if (factors === 0) {
+        throw new BadRequestException(
+          `ยังไม่มีตารางค่างวดของคอม ${dto.commissionPhone}% — เพิ่มตารางค่างวดก่อน แล้วค่อยเปลี่ยนค่าคอม`,
+        );
+      }
+    }
+    const writes: Array<[string, string | number | undefined, string]> = [
       [GFIN_SETTINGS_KEYS.minDownPct, dto.minDownPct, 'GFIN: % ดาวน์ขั้นต่ำที่ GFIN ตั้งให้ร้าน'],
       [GFIN_SETTINGS_KEYS.commissionPhone, dto.commissionPhone, 'GFIN: % คอมมิชชั่นตั้งต้น มือถือ'],
       [GFIN_SETTINGS_KEYS.commissionTablet, dto.commissionTablet, 'GFIN: % คอมมิชชั่นตั้งต้น iPad'],
       [GFIN_SETTINGS_KEYS.contractFee, dto.contractFee, 'GFIN: ค่าทำสัญญาที่หักจากยอดโอนให้ร้าน'],
+      [GFIN_SETTINGS_KEYS.sheetVersion, dto.sheetVersion?.trim(), 'GFIN: เวอร์ชันใบเงื่อนไข G Finn'],
+      [GFIN_SETTINGS_KEYS.sheetEffectiveDate, dto.sheetEffectiveDate, 'GFIN: วันเริ่มใช้ใบเงื่อนไข G Finn'],
     ];
     for (const [key, value, label] of writes) {
       if (value === undefined) continue;

@@ -1,4 +1,4 @@
-import { IsInt, IsNumber, IsOptional, Max, Min } from 'class-validator';
+import { IsInt, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator';
 
 /**
  * ค่าตั้งค่า GFIN ที่ไม่ใช่ตารางราคา/เรท — เก็บใน system_config (key `gfin.*`)
@@ -31,4 +31,17 @@ export class UpdateGfinSettingsDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   contractFee?: number;
+
+  /** เวอร์ชันใบเงื่อนไข G Finn เช่น "6.5" — "" = ล้าง */
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  sheetVersion?: string;
+
+  /** วันเริ่มใช้ใบเงื่อนไข YYYY-MM-DD — "" = ล้าง */
+  @IsOptional()
+  @IsString()
+  @ValidateIf((_o, v) => v !== '')
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'วันที่ต้องเป็นรูปแบบ ปปปป-ดด-วว' })
+  sheetEffectiveDate?: string;
 }

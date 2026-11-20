@@ -26,6 +26,7 @@ describe('GfinConfigService', () => {
         update: jest.fn(),
       },
       gfinRateFactor: {
+        count: jest.fn().mockResolvedValue(1),
         findMany: jest.fn(),
         findUnique: jest.fn(),
         create: jest.fn(),
@@ -426,6 +427,8 @@ describe('GfinConfigService', () => {
         downStepPct: 5,
         contractFee: 100,
         commissionPctByCategory: { PHONE: 15, TABLET: 5 },
+        sheetVersion: null,
+        sheetEffectiveDate: null,
       });
     });
 
@@ -463,6 +466,38 @@ describe('GfinConfigService', () => {
       expect(audit.log).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'GFIN_SETTINGS_UPDATED', userId: 'user-1' }),
       );
+    });
+  });
+
+  describe('settings — เวอร์ชันใบเงื่อนไข + ด่านค่าคอม (สเปก 2026-11-20 §3.3, §5)', () => {
+    const cfg = (values: Record<string, string>) =>
+      prisma.systemConfig.findFirst.mockImplementation(({ where }: { where: { key: string } }) =>
+        Promise.resolve(where.key in values ? { value: values[where.key] } : null));
+
+    it('GET คืนเวอร์ชัน/วันที่ · ไม่ตั้ง = null', async () => {
+      cfg({ 'gfin.sheetVersion': '6.5', 'gfin.sheetEffectiveDate': '2026-10-16' });
+      await expect(service.getSettings()).resolves.toMatchObject({ sheetVersion: '6.5', sheetEffectiveDate: '2026-10-16', minDownPct: 25 });
+      cfg({});
+      await expect(service.getSettings()).resolves.toMatchObject({ sheetVersion: null, sheetEffectiveDate: null });
+    });
+
+    it('PATCH เวอร์ชัน/วันที่ → upsert คีย์ gfin.sheetVersion / gfin.sheetEffectiveDate', async () => {
+      await service.updateSettings({ sheetVersion: '6.6', sheetEffectiveDate: '2027-01-01' }, 'u1');
+      expect(prisma.systemConfig.upsert).toHaveBeenCalledWith(expect.objectContaining({ where: { key: 'gfin.sheetVersion' }, update: { value: '6.6', deletedAt: null } }));
+      expect(prisma.systemConfig.upsert).toHaveBeenCalledWith(expect.objectContaining({ where: { key: 'gfin.sheetEffectiveDate' }, update: { value: '2027-01-01', deletedAt: null } }));
+    });
+
+    it('เปลี่ยนค่าคอม iPhone เป็น % ที่ไม่มีตารางค่างวด → 400 ไม่บันทึก', async () => {
+      prisma.gfinRateFactor.count.mockResolvedValue(0);
+      await expect(service.updateSettings({ commissionPhone: 10 }, 'u1'))
+        .rejects.toThrow(new BadRequestException('ยังไม่มีตารางค่างวดของคอม 10% — เพิ่มตารางค่างวดก่อน แล้วค่อยเปลี่ยนค่าคอม'));
+      expect(prisma.systemConfig.upsert).not.toHaveBeenCalled();
+    });
+
+    it('ส่งค่าคอมเดิม (15) หรือค่าคอม iPad 5% → ไม่ตรวจตารางค่างวด', async () => {
+      prisma.gfinRateFactor.count.mockResolvedValue(0);
+      await service.updateSettings({ commissionPhone: 15, commissionTablet: 5 }, 'u1');
+      expect(prisma.gfinRateFactor.count).not.toHaveBeenCalled();
     });
   });
 

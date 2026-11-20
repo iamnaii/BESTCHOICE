@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
 import api from '@/lib/api';
 import { pickComboOption } from '@/test/combobox';
+import { DEFAULT_RECEIPT_WARRANTY_TERMS, RECEIPT_WARRANTY_TERMS_KEY } from '@installment/shared';
 import ProductCreatePage from '../index';
 
 vi.mock('@/lib/api', () => ({
@@ -72,7 +73,7 @@ async function fillIphone15(user: UserEvent, storage = '128GB') {
   await user.selectOptions(await screen.findByLabelText('ยี่ห้อ *'), 'Apple');
   await pickComboOption(user, 'รุ่น *', 'iPhone 15');
   await user.click(screen.getByRole('button', { name: storage }));
-  await user.selectOptions(screen.getByLabelText('เครื่องไทย / เครื่องนอก'), 'THAI');
+  await user.click(screen.getByRole('button', { name: 'เครื่องไทย' }));
   await user.selectOptions(screen.getByLabelText('สาขา *'), 'branch-1');
   await user.type(screen.getByLabelText('ราคาทุน (บาท) *'), '25800');
 }
@@ -178,7 +179,7 @@ describe('ProductCreatePage — การ์ดราคาขาย (แบบ 
   it('อุปกรณ์เสริม → ช่องเดียว "ราคาขาย" ส่งเฉพาะ cashPrice', async () => {
     const user = userEvent.setup();
     renderPage();
-    await user.selectOptions(await screen.findByLabelText('ประเภท *'), 'ACCESSORY');
+    await user.click(await screen.findByRole('button', { name: 'อุปกรณ์เสริม' }));
     await user.selectOptions(screen.getByLabelText('ประเภทอุปกรณ์ *'), 'ฟิล์ม');
     await user.selectOptions(screen.getByLabelText('สาขา *'), 'branch-1');
     await user.type(screen.getByLabelText('ราคาทุน (บาท) *'), '25');
@@ -241,7 +242,7 @@ describe('ProductCreatePage — การ์ดราคาขาย (แบบ 
   it('แท็บเล็ต → แถวผ่อน BESTCHOICE คิดดาวน์และค่างวดด้วย (ตั้งค่าดอกเบี้ยหมวด TABLET)', async () => {
     const user = userEvent.setup();
     renderPage();
-    await user.selectOptions(await screen.findByLabelText('ประเภท *'), 'TABLET');
+    await user.click(await screen.findByRole('button', { name: 'แท็บเล็ต' }));
     await user.selectOptions(screen.getByLabelText('ยี่ห้อ *'), 'Apple');
     await pickComboOption(user, 'รุ่น *', 'iPad Pro 11" (M4)', { search: 'iPad Pro 11' });
     expect(await screen.findByText(paragraph('ดาวน์ 3,900 · ผ่อน 3,139 × 12 งวด'))).toBeInTheDocument();
@@ -331,10 +332,68 @@ describe('ProductCreatePage — การ์ดราคาขาย (แบบ 
     const user = userEvent.setup();
     renderPage();
     await user.type(await screen.findByLabelText('เงินสด'), '12345');
-    await user.selectOptions(screen.getByLabelText('ประเภท *'), 'ACCESSORY');
+    await user.click(screen.getByRole('button', { name: 'อุปกรณ์เสริม' }));
     expect(screen.getByLabelText('ราคาขาย')).toHaveValue('');
     await user.type(screen.getByLabelText('ราคาขาย'), '290');
-    await user.selectOptions(screen.getByLabelText('ประเภท *'), 'PHONE_NEW');
+    await user.click(screen.getByRole('button', { name: 'มือถือใหม่' }));
     expect(screen.getByLabelText('เงินสด')).toHaveValue('');
+  });
+});
+
+describe('ProductCreatePage — ประกันร้าน (เลือก 30 / 60 วัน · เงื่อนไขค่าเริ่มต้น)', () => {
+  const TERMS_LABEL = 'ผู้รับประกันและเงื่อนไขความคุ้มครอง';
+  const savedPayload = async (user: UserEvent) => {
+    const save = screen.getByRole('button', { name: 'บันทึกสินค้า' });
+    await waitFor(() => expect(save).toBeEnabled());
+    await user.click(save);
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    return vi.mocked(api.post).mock.calls[0][1] as Record<string, unknown>;
+  };
+
+  it('มือถือใหม่: ค่าเริ่มต้นไม่มีประกันร้าน → ส่ง null ทั้งวันและเงื่อนไข', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await fillIphone15(user);
+    expect(screen.getByRole('button', { name: /^ไม่มี/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByLabelText(TERMS_LABEL)).toHaveValue('');
+    const payload = await savedPayload(user);
+    expect(payload).toMatchObject({ shopWarrantyDays: null, warrantyTerms: null });
+  });
+
+  it('เลือก 30 วัน → เติมเงื่อนไขมาตรฐานของร้านให้ และส่งไปกับสินค้า', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await fillIphone15(user);
+    await user.click(screen.getByRole('button', { name: /^30 วัน/ }));
+    expect(screen.getByLabelText(TERMS_LABEL)).toHaveValue(DEFAULT_RECEIPT_WARRANTY_TERMS);
+    const payload = await savedPayload(user);
+    expect(payload).toMatchObject({ shopWarrantyDays: 30, warrantyTerms: DEFAULT_RECEIPT_WARRANTY_TERMS });
+  });
+
+  it('มือสอง: ค่าเริ่มต้น 60 วัน + ข้อความจากตั้งค่าใบเสร็จ · แก้แล้วกด "ใช้ข้อความเริ่มต้น" กลับได้', async () => {
+    const base = vi.mocked(api.get).getMockImplementation()!;
+    vi.mocked(api.get).mockImplementation(async (url: string) =>
+      url === '/settings' ? { data: [{ key: RECEIPT_WARRANTY_TERMS_KEY, value: 'เงื่อนไขของร้านเรา' }] } : base(url),
+    );
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'มือถือมือสอง' }));
+    expect(screen.getByRole('button', { name: /^60 วัน/ })).toHaveAttribute('aria-pressed', 'true');
+    const terms = screen.getByLabelText(TERMS_LABEL);
+    await waitFor(() => expect(terms).toHaveValue('เงื่อนไขของร้านเรา'));
+    await user.clear(terms);
+    await user.type(terms, 'เฉพาะเครื่องนี้');
+    await user.click(screen.getByRole('button', { name: 'ใช้ข้อความเริ่มต้น' }));
+    expect(terms).toHaveValue('เงื่อนไขของร้านเรา');
+    await fillIphone15(user);
+    const payload = await savedPayload(user);
+    expect(payload).toMatchObject({ category: 'PHONE_USED', shopWarrantyDays: 60, warrantyTerms: 'เงื่อนไขของร้านเรา' });
+  });
+
+  it('อุปกรณ์เสริม: ไม่มีส่วนประกันร้าน และไม่ส่งค่าประกัน', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'อุปกรณ์เสริม' }));
+    expect(screen.queryByLabelText(TERMS_LABEL)).not.toBeInTheDocument();
   });
 });

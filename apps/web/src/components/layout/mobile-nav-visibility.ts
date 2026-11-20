@@ -1,5 +1,5 @@
 /** หน้าที่มีแถบของตัวเองติดขอบล่างจอ — ไม่แสดงเมนูล่างของแอป */
-const HIDDEN = /^\/(?:inbox(?:\/|$)|expenses\/new$)/;
+const HIDDEN = /^\/(?:inbox(?:\/|$)|expenses\/new$|products\/create$)/;
 
 export function showsMobileBottomNav(pathname: string): boolean {
   return !HIDDEN.test(pathname);

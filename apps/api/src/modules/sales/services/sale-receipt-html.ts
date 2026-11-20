@@ -8,7 +8,12 @@ import {
   transactionDocumentCss,
 } from '@installment/shared';
 import { BESTCHOICE_LOGO_SVG } from '../../../assets/bestchoice-logo-svg';
-import { escapeHtml, fmtDateShort, fmtMoney, formatAddress } from '../../../utils/document-format.util';
+import {
+  escapeHtml,
+  fmtDateShort,
+  fmtMoney,
+  formatAddress,
+} from '../../../utils/document-format.util';
 import { disclosureText, readProductDisclosure } from '../../../utils/product-disclosure.util';
 import { thaiBahtText } from '../../../utils/thai-baht-text.util';
 
@@ -58,7 +63,11 @@ export interface SaleForReceipt {
   salesperson: { name: string };
   shopTenders: { method: string; amount: Money; reference: string | null; seq: number }[];
   bundleProducts: { name: string; imeiSerial: string | null; legacyProductCode: string | null }[];
-  receiptBreakdown: { depositAmount: string | null; depositMethod: string | null; additionalAmount: string | null } | null;
+  receiptBreakdown: {
+    depositAmount: string | null;
+    depositMethod: string | null;
+    additionalAmount: string | null;
+  } | null;
 }
 
 export interface SaleReceiptModel {
@@ -72,7 +81,13 @@ export interface SaleReceiptModel {
   tenders: { label: string; amount: string; reference: string | null }[];
   depositLine: { label: string; amount: string } | null;
   finance: { company: string; refNumber: string; amount: string } | null;
-  mainItem: { name: string; idLabel: 'IMEI' | 'S/N' | null; idValue: string; note: string; price: string };
+  mainItem: {
+    name: string;
+    idLabel: 'IMEI' | 'S/N' | null;
+    idValue: string;
+    note: string;
+    price: string;
+  };
   bundleItems: { name: string; idText: string }[];
   totals: {
     gross: string;
@@ -108,37 +123,62 @@ function fmtDateTimeThai(d: Date): string {
 function tradeInLine(snapshot: unknown): SaleReceiptModel['totals']['tradeIn'] {
   if (!snapshot || typeof snapshot !== 'object') return null;
   const s = snapshot as { baseAmount?: unknown; voucherNumber?: unknown; tradeInId?: unknown };
-  const amount = dec(typeof s.baseAmount === 'string' || typeof s.baseAmount === 'number' ? s.baseAmount : 0);
+  const amount = dec(
+    typeof s.baseAmount === 'string' || typeof s.baseAmount === 'number' ? s.baseAmount : 0,
+  );
   if (amount.lte(0)) return null;
-  const voucher = typeof s.voucherNumber === 'string' && s.voucherNumber ? s.voucherNumber : String(s.tradeInId ?? '');
+  const voucher =
+    typeof s.voucherNumber === 'string' && s.voucherNumber
+      ? s.voucherNumber
+      : String(s.tradeInId ?? '');
   return { voucher, amount: amount.toFixed(2) };
 }
 
 export function toSaleReceiptModel(
   sale: SaleForReceipt,
   ctx: {
-    company: { nameTh: string; address: string | null; taxId: string | null; phone: string | null } | null;
+    company: {
+      nameTh: string;
+      address: string | null;
+      taxId: string | null;
+      phone: string | null;
+    } | null;
     terms: string;
     qrDataUrl: string;
   },
 ): SaleReceiptModel {
-  const saleType: SaleReceiptType = sale.saleType === 'EXTERNAL_FINANCE' ? 'EXTERNAL_FINANCE' : 'CASH';
-  const methodLabel = (m: string | null) => (m && PAYMENT_METHOD_RECEIPT_LABEL[m]) || m || 'ไม่ระบุ';
+  const saleType: SaleReceiptType =
+    sale.saleType === 'EXTERNAL_FINANCE' ? 'EXTERNAL_FINANCE' : 'CASH';
+  const methodLabel = (m: string | null) =>
+    (m && PAYMENT_METHOD_RECEIPT_LABEL[m]) || m || 'ไม่ระบุ';
 
   // ใบจากการจอง: มัดจำเป็น tender ของ Booking ไม่ใช่ของ Sale (bookings.service convertToSale เขียนเฉพาะส่วนที่รับเพิ่ม;
   // จ่ายครบล่วงหน้า = ไม่มี tender เลย) ⇒ เงินที่รับ = มัดจำ + Σ tender ของใบขาย และห้ามถอยไปใช้ paymentMethod ซ้ำซ้อนกับมัดจำ
   const deposit = sale.receiptBreakdown?.depositAmount;
   const depositAmount = deposit ? dec(deposit) : new Prisma.Decimal(0);
   const depositLine = deposit
-    ? { label: `มัดจำจอง (${methodLabel(sale.receiptBreakdown?.depositMethod ?? null)})`, amount: fixed(deposit) }
+    ? {
+        label: `มัดจำจอง (${methodLabel(sale.receiptBreakdown?.depositMethod ?? null)})`,
+        amount: fixed(deposit),
+      }
     : null;
 
   const tenderRows = [...sale.shopTenders].sort((a, b) => a.seq - b.seq);
   const tenders: SaleReceiptModel['tenders'] = tenderRows.length
-    ? tenderRows.map((t) => ({ label: methodLabel(t.method), amount: fixed(t.amount), reference: t.reference || null }))
+    ? tenderRows.map((t) => ({
+        label: methodLabel(t.method),
+        amount: fixed(t.amount),
+        reference: t.reference || null,
+      }))
     : deposit
       ? []
-      : [{ label: methodLabel(sale.paymentMethod), amount: fixed(sale.amountReceived ?? sale.netAmount), reference: null }];
+      : [
+          {
+            label: methodLabel(sale.paymentMethod),
+            amount: fixed(sale.amountReceived ?? sale.netAmount),
+            reference: null,
+          },
+        ];
   const receivedFromTenders = tenderRows.length
     ? tenderRows.reduce((sum, t) => sum.plus(dec(t.amount)), depositAmount)
     : deposit
@@ -147,21 +187,50 @@ export function toSaleReceiptModel(
 
   const finance =
     saleType === 'EXTERNAL_FINANCE'
-      ? { company: sale.financeCompany || 'ไฟแนนซ์', refNumber: sale.financeRefNumber || '-', amount: fixed(sale.financeAmount) }
+      ? {
+          company: sale.financeCompany || 'ไฟแนนซ์',
+          refNumber: sale.financeRefNumber || '-',
+          amount: fixed(sale.financeAmount),
+        }
       : null;
 
-  const received = saleType === 'EXTERNAL_FINANCE' ? fixed(sale.downPaymentAmount ?? receivedFromTenders) : receivedFromTenders.toFixed(2);
+  const received =
+    saleType === 'EXTERNAL_FINANCE'
+      ? fixed(sale.downPaymentAmount ?? receivedFromTenders)
+      : receivedFromTenders.toFixed(2);
 
   const disclosure = readProductDisclosure(sale.productDisclosure);
-  const noteParts = [CATEGORY_LABEL[sale.product.category] ?? '', disclosureText(sale.productDisclosure)].filter(Boolean);
-  const idLabel: SaleReceiptModel['mainItem']['idLabel'] = sale.product.imeiSerial ? 'IMEI' : sale.product.serialNumber ? 'S/N' : null;
+  // เงื่อนไขของเครื่องที่ตรงกับข้อความมาตรฐานท้ายใบเสร็จ (หน้าเพิ่มสินค้าเติมให้เป็นค่าเริ่มต้น) — พิมพ์ในกล่องประกันครั้งเดียว
+  const shopTerms = ctx.terms?.trim() || DEFAULT_RECEIPT_WARRANTY_TERMS;
+  const productTerms = disclosure?.warrantyTerms?.trim() || null;
+  const ownTerms = productTerms && productTerms !== shopTerms ? productTerms : null;
+  const noteDisclosure =
+    disclosure && productTerms && !ownTerms
+      ? { ...(sale.productDisclosure as object), warrantyTerms: null }
+      : sale.productDisclosure;
+  const noteParts = [
+    CATEGORY_LABEL[sale.product.category] ?? '',
+    disclosureText(noteDisclosure),
+  ].filter(Boolean);
+  const idLabel: SaleReceiptModel['mainItem']['idLabel'] = sale.product.imeiSerial
+    ? 'IMEI'
+    : sale.product.serialNumber
+      ? 'S/N'
+      : null;
 
   let headline: string;
   if (sale.shopWarrantyEndDate) {
     const days =
       disclosure && disclosure.shopWarrantyDays > 0
         ? disclosure.shopWarrantyDays
-        : Math.max(1, Math.round((sale.shopWarrantyEndDate.getTime() - (sale.shopWarrantyStartDate ?? sale.createdAt).getTime()) / 86_400_000));
+        : Math.max(
+            1,
+            Math.round(
+              (sale.shopWarrantyEndDate.getTime() -
+                (sale.shopWarrantyStartDate ?? sale.createdAt).getTime()) /
+                86_400_000,
+            ),
+          );
     headline = `ประกันร้าน ${days} วัน · ${fmtDateShort(sale.shopWarrantyStartDate ?? sale.createdAt)} – ${fmtDateShort(sale.shopWarrantyEndDate)}`;
   } else {
     headline = 'ไม่มีประกันร้าน · ประกันศูนย์ตามเงื่อนไขผู้ผลิต';
@@ -183,7 +252,11 @@ export function toSaleReceiptModel(
       taxId: ctx.company?.taxId || '',
       phone: ctx.company?.phone || '',
     },
-    customer: { name: sale.customer.name, phone: sale.customer.phone || '', memberCode: sale.customer.legacyMemberCode || null },
+    customer: {
+      name: sale.customer.name,
+      phone: sale.customer.phone || '',
+      memberCode: sale.customer.legacyMemberCode || null,
+    },
     salespersonName: sale.salesperson.name,
     tenders,
     depositLine,
@@ -195,7 +268,10 @@ export function toSaleReceiptModel(
       note: noteParts.join(' · '),
       price: fixed(sale.sellingPrice),
     },
-    bundleItems: sale.bundleProducts.map((b) => ({ name: b.name, idText: b.imeiSerial || b.legacyProductCode || '' })),
+    bundleItems: sale.bundleProducts.map((b) => ({
+      name: b.name,
+      idText: b.imeiSerial || b.legacyProductCode || '',
+    })),
     totals: {
       gross: fixed(sale.sellingPrice),
       discount: fixed(sale.discount),
@@ -204,7 +280,7 @@ export function toSaleReceiptModel(
       received,
       downPayment: saleType === 'EXTERNAL_FINANCE' ? fixed(sale.downPaymentAmount) : null,
     },
-    warranty: { headline, terms: ctx.terms?.trim() || DEFAULT_RECEIPT_WARRANTY_TERMS, productTerms: disclosure?.warrantyTerms || null },
+    warranty: { headline, terms: shopTerms, productTerms: ownTerms },
     notice,
     qrDataUrl: ctx.qrDataUrl,
     voided: sale.deletedAt ? { at: sale.deletedAt, reason: sale.voidReason || null } : null,
@@ -219,16 +295,25 @@ export function buildSaleReceiptHtml(m: SaleReceiptModel, fontCss: string): stri
   const kicker = `RECEIPT · ต้นฉบับ${isFinance ? ' · เงินดาวน์' : ''}`;
 
   const tenderHtml = [
-    ...(m.depositLine ? [`<span>${e(m.depositLine.label)}</span><span>${money(m.depositLine.amount)} บาท</span>`] : []),
+    ...(m.depositLine
+      ? [`<span>${e(m.depositLine.label)}</span><span>${money(m.depositLine.amount)} บาท</span>`]
+      : []),
     ...m.tenders.map(
-      (t) => `<span>${e(t.label)}</span><span>${money(t.amount)} บาท${t.reference ? ` · อ้างอิง ${e(t.reference)}` : ''}</span>`,
+      (t) =>
+        `<span>${e(t.label)}</span><span>${money(t.amount)} บาท${t.reference ? ` · อ้างอิง ${e(t.reference)}` : ''}</span>`,
     ),
-    ...(m.finance ? [`<span>ไฟแนนซ์</span><span>${e(m.finance.company)} · เลขอ้างอิง ${e(m.finance.refNumber)}</span>`] : []),
+    ...(m.finance
+      ? [
+          `<span>ไฟแนนซ์</span><span>${e(m.finance.company)} · เลขอ้างอิง ${e(m.finance.refNumber)}</span>`,
+        ]
+      : []),
     `<span>พนักงานขาย</span><span>${e(m.salespersonName)}</span>`,
   ].join('');
 
   const mainRow = `<tr><td><span class="item-name">${e(m.mainItem.name)}</span>${
-    m.mainItem.idLabel ? `<br><span class="item-meta mono">${m.mainItem.idLabel} ${e(m.mainItem.idValue)}</span>` : ''
+    m.mainItem.idLabel
+      ? `<br><span class="item-meta mono">${m.mainItem.idLabel} ${e(m.mainItem.idValue)}</span>`
+      : ''
   }${m.mainItem.note ? `<br><span class="item-meta">${e(m.mainItem.note)}</span>` : ''}</td><td class="right">1</td><td class="right">${money(m.mainItem.price)}</td><td class="right">${money(m.mainItem.price)}</td></tr>`;
   const bundleRows = m.bundleItems
     .map(
@@ -240,15 +325,21 @@ export function buildSaleReceiptHtml(m: SaleReceiptModel, fontCss: string): stri
   // ลำดับต้องบวกลบลงตัวตามนิยามของระบบ: netAmount = ราคา − ส่วนลด (ยังไม่หัก base เทิร์น) · เงินที่รับ = net − เครดิตเทิร์น − ยอดจัดไฟแนนซ์
   const totalsRows = [
     `<span>รวมรายการ</span><span>${money(m.totals.gross)}</span>`,
-    Number(m.totals.discount) > 0 ? `<span>ส่วนลด</span><span>−${money(m.totals.discount)}</span>` : '',
+    Number(m.totals.discount) > 0
+      ? `<span>ส่วนลด</span><span>−${money(m.totals.discount)}</span>`
+      : '',
     `<span><strong>ยอดสุทธิ</strong></span><span><strong>${money(m.totals.net)}</strong></span>`,
-    m.totals.tradeIn ? `<span>หักเครดิตเทิร์น (ใบรับเทิร์น ${e(m.totals.tradeIn.voucher)})</span><span>−${money(m.totals.tradeIn.amount)}</span>` : '',
-    m.finance ? `<span>จัดไฟแนนซ์ ${e(m.finance.company)}</span><span>−${money(m.finance.amount)}</span>` : '',
+    m.totals.tradeIn
+      ? `<span>หักเครดิตเทิร์น (ใบรับเทิร์น ${e(m.totals.tradeIn.voucher)})</span><span>−${money(m.totals.tradeIn.amount)}</span>`
+      : '',
+    m.finance
+      ? `<span>จัดไฟแนนซ์ ${e(m.finance.company)}</span><span>−${money(m.finance.amount)}</span>`
+      : '',
   ]
     .filter(Boolean)
     .join('');
   const grandLabel = isFinance ? 'เงินดาวน์ที่รับ' : 'จำนวนเงินที่รับ';
-  const grandAmount = isFinance ? m.totals.downPayment ?? m.totals.received : m.totals.received;
+  const grandAmount = isFinance ? (m.totals.downPayment ?? m.totals.received) : m.totals.received;
 
   const warrantyHtml = `<div class="wbox"><strong>${e(m.warranty.headline)}</strong><p>${e(m.warranty.terms)}</p>${
     m.warranty.productTerms ? `<p>${e(m.warranty.productTerms)}</p>` : ''

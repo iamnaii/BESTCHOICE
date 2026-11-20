@@ -123,4 +123,26 @@ describe('trash registry — per-type restore rules', () => {
     await trashEntry('buyback_question')!.restoreExtra!(ctx(h.tx), { id: 'q1', key: 'k', title: 't', deletedAt: NOW });
     expect(h.m('buybackChoice').updateMany).toHaveBeenCalledWith({ where: { questionId: 'q1', deletedAt: NOW }, data: { deletedAt: null } });
   });
+  it('G1 gfin_overprice_rule: กติกากลุ่มเดิม (มี |) กู้ไม่ได้ — เงื่อนไขเก็บรายรุ่นแล้ว', async () => {
+    const h = tx({ gfinOverpriceRule: { findFirst: jest.fn().mockResolvedValue(null) } });
+    const err = await trashEntry('gfin_overprice_rule')!.check!(ctx(h.tx), { id: 'g1', label: 'มือ2 17/Air', seriesPattern: 'iPhone 17|iPhone Air', condition: 'HAND_2', allowance: '2000', deletedAt: NOW }).catch((e) => e);
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect(err.message).toBe('กติกากลุ่มเดิมกู้ไม่ได้ — เงื่อนไขเก็บรายรุ่นแล้ว (ดูค่าเดิมในรายการนี้ได้)');
+  });
+
+  it('G2 gfin_overprice_rule: กติการายรุ่นที่มีแถวของรุ่น+สภาพเดียวกันอยู่แล้ว → 409', async () => {
+    const h = tx({ gfinOverpriceRule: { findFirst: jest.fn().mockResolvedValue({ id: 'live' }) } });
+    const err = await trashEntry('gfin_overprice_rule')!.check!(ctx(h.tx), { id: 'g2', label: 'iPhone 17 มือ 2', seriesPattern: 'iPhone 17', condition: 'HAND_2', allowance: '2000', deletedAt: NOW }).catch((e) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect(err.message).toBe('กู้ไม่ได้: iPhone 17 มือ 2 มีเงื่อนไขอยู่แล้ว — แก้แถวที่มีอยู่แทน');
+    expect(h.m('gfinOverpriceRule').findFirst).toHaveBeenCalledWith({
+      where: { seriesPattern: 'iPhone 17', condition: 'HAND_2', deletedAt: null, id: { not: 'g2' } },
+      select: { id: true },
+    });
+  });
+
+  it('G3 gfin_overprice_rule: กติการายรุ่นที่ไม่มีแถวซ้ำ → กู้ได้', async () => {
+    const h = tx({ gfinOverpriceRule: { findFirst: jest.fn().mockResolvedValue(null) } });
+    await expect(trashEntry('gfin_overprice_rule')!.check!(ctx(h.tx), { id: 'g3', label: 'iPhone 17 มือ 1', seriesPattern: 'iPhone 17', condition: 'HAND_1', allowance: '2000', deletedAt: NOW })).resolves.toBeUndefined();
+  });
 });

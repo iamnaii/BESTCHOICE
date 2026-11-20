@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { GfinConfigService } from './gfin-config.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -179,7 +179,7 @@ describe('GfinConfigService', () => {
       const created = {
         id: 'r1',
         label: 'iPhone 14 Series',
-        seriesPattern: 'iPhone 14|iPhone 14 Pro',
+        seriesPattern: 'iPhone 14',
         condition: 'HAND_2',
         allowance: new Prisma.Decimal('500'),
         isActive: true,
@@ -192,7 +192,7 @@ describe('GfinConfigService', () => {
       await service.createOverpriceRule(
         {
           label: 'iPhone 14 Series',
-          seriesPattern: 'iPhone 14|iPhone 14 Pro',
+          seriesPattern: 'iPhone 14',
           condition: 'HAND_2' as any,
           allowance: 500,
         },
@@ -207,6 +207,32 @@ describe('GfinConfigService', () => {
           userId: 'user-1',
         }),
       );
+    });
+  });
+
+  describe('กติการายรุ่นเท่านั้น (สเปก 2026-11-20 §5)', () => {
+    const base = { label: 'x', seriesPattern: 'iPhone 17', condition: 'HAND_2' as const, allowance: 2000, maxMonths: 15 };
+
+    it('สร้างกติกาหลายรุ่น → 400 ไม่เขียน', async () => {
+      await expect(service.createOverpriceRule({ ...base, seriesPattern: 'iPhone 17|iPhone Air' }, 'u1'))
+        .rejects.toThrow(new BadRequestException('เงื่อนไขเก็บรายรุ่นแล้ว — แก้ทีละรุ่น (ใส่ชื่อรุ่นเดียว ไม่ใช้ |)'));
+      expect(prisma.gfinOverpriceRule.create).not.toHaveBeenCalled();
+    });
+
+    it('แก้เป็นหลายรุ่น → 400 ไม่เขียน', async () => {
+      prisma.gfinOverpriceRule.findUnique.mockResolvedValue({ id: 'r1', deletedAt: null });
+      await expect(service.updateOverpriceRule('r1', { seriesPattern: 'iPhone 17|iPhone Air' }, 'u1'))
+        .rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.gfinOverpriceRule.update).not.toHaveBeenCalled();
+    });
+
+    it('ชน unique index (รุ่น+สภาพซ้ำ) → 409', async () => {
+      prisma.gfinOverpriceRule.create.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: 'test' }),
+      );
+      await expect(service.createOverpriceRule(base, 'u1'))
+        .rejects.toThrow(new ConflictException('รุ่นนี้มีเงื่อนไขของสภาพนี้อยู่แล้ว — แก้แถวที่มีอยู่แทน'));
+      expect(audit.log).not.toHaveBeenCalled();
     });
   });
 
@@ -342,7 +368,7 @@ describe('GfinConfigService', () => {
       await service.createOverpriceRule(
         {
           label: 'iPhone 17 มือ 1',
-          seriesPattern: 'iPhone 17|iPhone 17 Pro|iPhone 17 Pro Max|iPhone Air',
+          seriesPattern: 'iPhone 17',
           condition: 'HAND_1',
           allowance: 2000,
           maxMonths: 15,

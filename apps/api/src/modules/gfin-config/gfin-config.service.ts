@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import Decimal from 'decimal.js';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -15,6 +15,20 @@ import {
   ImportMaxPricesDto,
 } from './dto';
 import { GFIN_SETTINGS_KEYS, loadGfinSettings, type GfinSettings } from './gfin-settings.util';
+
+export const PER_MODEL_ONLY_MESSAGE = 'เงื่อนไขเก็บรายรุ่นแล้ว — แก้ทีละรุ่น (ใส่ชื่อรุ่นเดียว ไม่ใช้ |)';
+export const RULE_EXISTS_MESSAGE = 'รุ่นนี้มีเงื่อนไขของสภาพนี้อยู่แล้ว — แก้แถวที่มีอยู่แทน';
+
+export function isUniqueViolation(e: unknown): boolean {
+  return e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002';
+}
+
+/** สเปค 2026-11-20 §5: กติกากลุ่มใหม่ไม่มีผล (กติการายรุ่นชนะเสมอใน findGfinOverpriceRule) → ปฏิเสธตั้งแต่ต้น */
+function assertSingleSeries(seriesPattern: string | undefined): void {
+  if (seriesPattern !== undefined && seriesPattern.includes('|')) {
+    throw new BadRequestException(PER_MODEL_ONLY_MESSAGE);
+  }
+}
 
 @Injectable()
 export class GfinConfigService {
@@ -180,17 +194,24 @@ export class GfinConfigService {
   }
 
   async createOverpriceRule(dto: CreateOverpriceRuleDto, userId: string) {
-    const row = await this.prisma.gfinOverpriceRule.create({
-      data: {
-        label: dto.label,
-        seriesPattern: dto.seriesPattern,
-        condition: dto.condition,
-        allowance: new Prisma.Decimal(dto.allowance),
-        maxMonths: dto.maxMonths ?? null,
-        minDownPct: dto.minDownPct ?? null,
-        isActive: dto.isActive ?? true,
-      },
-    });
+    assertSingleSeries(dto.seriesPattern);
+    let row;
+    try {
+      row = await this.prisma.gfinOverpriceRule.create({
+        data: {
+          label: dto.label,
+          seriesPattern: dto.seriesPattern.trim(),
+          condition: dto.condition,
+          allowance: new Prisma.Decimal(dto.allowance),
+          maxMonths: dto.maxMonths ?? null,
+          minDownPct: dto.minDownPct ?? null,
+          isActive: dto.isActive ?? true,
+        },
+      });
+    } catch (e) {
+      if (isUniqueViolation(e)) throw new ConflictException(RULE_EXISTS_MESSAGE);
+      throw e;
+    }
     await this.auditService.log({
       action: 'GFIN_OVERPRICE_RULE_CREATED',
       entity: 'gfin_overprice_rule',
@@ -202,19 +223,26 @@ export class GfinConfigService {
   }
 
   async updateOverpriceRule(id: string, dto: UpdateOverpriceRuleDto, userId: string) {
+    assertSingleSeries(dto.seriesPattern);
     const existing = await this.prisma.gfinOverpriceRule.findUnique({ where: { id } });
     if (!existing || existing.deletedAt) throw new NotFoundException('ไม่พบ row นี้');
 
     const data: Prisma.GfinOverpriceRuleUpdateInput = {};
     if (dto.label !== undefined) data.label = dto.label;
-    if (dto.seriesPattern !== undefined) data.seriesPattern = dto.seriesPattern;
+    if (dto.seriesPattern !== undefined) data.seriesPattern = dto.seriesPattern.trim();
     if (dto.condition !== undefined) data.condition = dto.condition;
     if (dto.allowance !== undefined) data.allowance = new Prisma.Decimal(dto.allowance);
     if (dto.maxMonths !== undefined) data.maxMonths = dto.maxMonths;
     if (dto.minDownPct !== undefined) data.minDownPct = dto.minDownPct;
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
 
-    const updated = await this.prisma.gfinOverpriceRule.update({ where: { id }, data });
+    let updated;
+    try {
+      updated = await this.prisma.gfinOverpriceRule.update({ where: { id }, data });
+    } catch (e) {
+      if (isUniqueViolation(e)) throw new ConflictException(RULE_EXISTS_MESSAGE);
+      throw e;
+    }
     await this.auditService.log({
       action: 'GFIN_OVERPRICE_RULE_UPDATED',
       entity: 'gfin_overprice_rule',

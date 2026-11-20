@@ -123,4 +123,34 @@ describe('trash registry — per-type restore rules', () => {
     await trashEntry('buyback_question')!.restoreExtra!(ctx(h.tx), { id: 'q1', key: 'k', title: 't', deletedAt: NOW });
     expect(h.m('buybackChoice').updateMany).toHaveBeenCalledWith({ where: { questionId: 'q1', deletedAt: NOW }, data: { deletedAt: null } });
   });
+  it('G1 gfin_overprice_rule: กติกากลุ่มเดิม (มี |) กู้ไม่ได้ — เงื่อนไขเก็บรายรุ่นแล้ว', async () => {
+    const h = tx({ gfinOverpriceRule: { findFirst: jest.fn().mockResolvedValue(null) } });
+    const err = await trashEntry('gfin_overprice_rule')!.check!(ctx(h.tx), { id: 'g1', label: 'มือ2 17/Air', seriesPattern: 'iPhone 17|iPhone Air', condition: 'HAND_2', allowance: '2000', deletedAt: NOW }).catch((e) => e);
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect(err.message).toBe('กติกากลุ่มเดิมกู้ไม่ได้ — เงื่อนไขเก็บรายรุ่นแล้ว (ดูค่าเดิมในรายการนี้ได้)');
+  });
+
+  it('G0 gfin_overprice_rule: แถวถังขยะโชว์รุ่น สภาพ OVER ผ่อนสูงสุด ดาวน์ ตามที่ข้อความ 400 บอกให้ดู', () => {
+    const entry = trashEntry('gfin_overprice_rule')!;
+    expect(entry.select).toMatchObject({ maxMonths: true, minDownPct: true, seriesPattern: true });
+    const full = entry.toRow({ id: 'g', label: 'iPhone 17 มือ 2', seriesPattern: 'iPhone 17', condition: 'HAND_2', allowance: '2000', maxMonths: 15, minDownPct: 30, deletedAt: NOW });
+    expect(full.subtitle).toBe('iPhone 17 · มือ 2 · OVER 2,000.00 · ผ่อนสูงสุด 15 งวด · ดาวน์ 30%');
+    const bare = entry.toRow({ id: 'g', label: 'x', seriesPattern: 'iPhone 17', condition: 'HAND_1', allowance: '500', maxMonths: null, minDownPct: null, deletedAt: NOW });
+    expect(bare.subtitle).toBe('iPhone 17 · มือ 1 · OVER 500.00');
+  });
+  it('G2 gfin_overprice_rule: กติการายรุ่นที่มีแถวของรุ่น+สภาพเดียวกันอยู่แล้ว → 409', async () => {
+    const h = tx({ gfinOverpriceRule: { findFirst: jest.fn().mockResolvedValue({ id: 'live' }) } });
+    const err = await trashEntry('gfin_overprice_rule')!.check!(ctx(h.tx), { id: 'g2', label: 'iPhone 17 มือ 2', seriesPattern: 'iPhone 17', condition: 'HAND_2', allowance: '2000', deletedAt: NOW }).catch((e) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect(err.message).toBe('กู้ไม่ได้: iPhone 17 มือ 2 มีเงื่อนไขอยู่แล้ว — แก้แถวที่มีอยู่แทน');
+    expect(h.m('gfinOverpriceRule').findFirst).toHaveBeenCalledWith({
+      where: { seriesPattern: 'iPhone 17', condition: 'HAND_2', deletedAt: null, id: { not: 'g2' } },
+      select: { id: true },
+    });
+  });
+
+  it('G3 gfin_overprice_rule: กติการายรุ่นที่ไม่มีแถวซ้ำ → กู้ได้', async () => {
+    const h = tx({ gfinOverpriceRule: { findFirst: jest.fn().mockResolvedValue(null) } });
+    await expect(trashEntry('gfin_overprice_rule')!.check!(ctx(h.tx), { id: 'g3', label: 'iPhone 17 มือ 1', seriesPattern: 'iPhone 17', condition: 'HAND_1', allowance: '2000', deletedAt: NOW })).resolves.toBeUndefined();
+  });
 });

@@ -85,7 +85,7 @@ export type Rate2Quote =
       /** true เมื่อไม่รู้ไทย/นอก (คิด OVER ครึ่งไว้ก่อน) */
       originNote: boolean;
     }
-  | { available: false; reason: 'NO_PRICE_LIST' | 'NO_RATE' | 'NO_PRICE' | 'NO_CONFIG'; message: string };
+  | { available: false; reason: 'NO_PRICE_LIST' | 'NO_RULE' | 'NO_RATE' | 'NO_PRICE' | 'NO_CONFIG'; message: string };
 
 export interface ModelQuote {
   cash: CashQuote | null;
@@ -137,7 +137,7 @@ function buildRate1(input: ModelQuoteInput): Rate1Quote | null {
 }
 
 function unavailable(
-  reason: 'NO_PRICE_LIST' | 'NO_RATE' | 'NO_PRICE' | 'NO_CONFIG',
+  reason: 'NO_PRICE_LIST' | 'NO_RULE' | 'NO_RATE' | 'NO_PRICE' | 'NO_CONFIG',
   message: string,
 ): Rate2Quote {
   return { available: false, reason, message };
@@ -151,8 +151,10 @@ function buildRate2(input: ModelQuoteInput): Rate2Quote {
   const mapping = findGfinMapping(input.product, g.mappings);
   if (!mapping) return unavailable('NO_PRICE_LIST', 'GFIN ไม่รับรุ่นนี้');
   const rule = findGfinOverpriceRule(mapping, g.rules);
-  // งวดกำหนดเองของรุ่น · ไม่มี = งวดสูงสุดของกติกา OVER · ไม่มีกติกา = 12
-  const months = positive(input.rate2TermMonths) ?? rule?.maxMonths ?? 12;
+  // สเปก 2026-11-20 §4: มีราคาแต่ไม่มีเงื่อนไขของรุ่น = ยังคิดไม่ได้ (เดิมคิดแบบไม่จำกัดงวด + OVER 0)
+  if (!rule) return unavailable('NO_RULE', 'ยังไม่ได้ตั้งเงื่อนไข GFIN ของรุ่นนี้');
+  // งวดกำหนดเองของรุ่น · ไม่มี = งวดสูงสุดของกติกา OVER · กติกาไม่จำกัดงวด = 12
+  const months = positive(input.rate2TermMonths) ?? rule.maxMonths ?? 12;
   const rateFactor = findGfinRateFactor(g.rateFactors, months, g.commissionPct);
   if (!rateFactor) return unavailable('NO_RATE', `ยังไม่มีเรท GFIN ${months} งวด`);
   const out = calcGfinInstallment({

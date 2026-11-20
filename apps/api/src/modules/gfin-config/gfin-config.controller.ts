@@ -20,11 +20,13 @@ import {
   CreateMaxPriceDto,
   UpdateMaxPriceDto,
   CreateOverpriceRuleDto,
+  BulkUpsertOverpriceRulesDto,
   UpdateOverpriceRuleDto,
   CreateRateFactorDto,
   UpdateRateFactorDto,
   UpdateGfinSettingsDto,
   ImportMaxPricesDto,
+  CloseMaxPricesDto,
 } from './dto';
 
 @Controller('gfin-config')
@@ -67,6 +69,12 @@ export class GfinConfigController {
     return this.service.importMaxPrices(dto, req.user.id);
   }
 
+  @Post('max-prices/close')
+  @Roles('OWNER')
+  closeMaxPrices(@Body() dto: CloseMaxPricesDto, @Req() req: { user: { id: string } }) {
+    return this.service.closeMaxPrices(dto, req.user.id);
+  }
+
   @Patch('max-prices/:id')
   @Roles('OWNER')
   updateMaxPrice(@Param('id') id: string, @Body() dto: UpdateMaxPriceDto, @Req() req: any) {
@@ -91,6 +99,12 @@ export class GfinConfigController {
   @Roles('OWNER')
   createOverpriceRule(@Body() dto: CreateOverpriceRuleDto, @Req() req: any) {
     return this.service.createOverpriceRule(dto, req.user.id);
+  }
+
+  @Post('overprice-rules/bulk-upsert')
+  @Roles('OWNER')
+  bulkUpsertOverpriceRules(@Body() dto: BulkUpsertOverpriceRulesDto, @Req() req: { user: { id: string } }) {
+    return this.service.bulkUpsertOverpriceRules(dto, req.user.id);
   }
 
   @Patch('overprice-rules/:id')

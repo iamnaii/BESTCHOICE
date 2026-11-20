@@ -54,7 +54,9 @@ function ProfitBadge({ profit }: { profit: number | null }) {
     <span
       className={cn(
         'inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-0.5 text-xs font-medium leading-snug tabular-nums',
-        loss ? 'bg-destructive/10 text-destructive dark:bg-destructive/15' : 'bg-success/10 text-success dark:bg-success/15',
+        loss
+          ? 'bg-destructive/10 text-destructive dark:bg-destructive/15'
+          : 'bg-success/10 text-success dark:bg-success/15',
       )}
     >
       <Icon className="size-3.5 shrink-0" aria-hidden="true" />
@@ -123,8 +125,11 @@ function PriceRow({
   const hintId = `${id}-template`;
   const showHint = edited && !!templateValue;
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,10rem)] items-start gap-x-3 gap-y-2 border-b border-border/60 px-4 py-3 last:border-b-0 sm:grid-cols-[9.5rem_10rem_minmax(0,1fr)_auto] sm:items-center sm:px-5">
-      <label htmlFor={id} className="pt-2.5 text-sm font-medium leading-snug text-foreground sm:pt-0">
+    <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,10rem)] items-start gap-x-3 gap-y-2 border-b border-border/60 px-5 py-3 last:border-b-0 @xl:grid-cols-[9.5rem_10rem_minmax(0,1fr)_auto] @xl:items-center">
+      <label
+        htmlFor={id}
+        className="pt-2.5 text-sm font-medium leading-snug text-foreground @xl:pt-0"
+      >
         {label}
         {sub && <span className="block text-xs font-normal text-muted-foreground">{sub}</span>}
       </label>
@@ -153,15 +158,22 @@ function PriceRow({
           </p>
         )}
       </div>
-      <div className="col-span-2 min-w-0 space-y-0.5 text-[13px] tabular-nums text-foreground sm:col-span-1">{children}</div>
-      <div className="col-span-2 sm:col-span-1 sm:justify-self-end">
-        <ProfitBadge profit={profit ?? null} />
+      <div className="col-span-2 min-w-0 space-y-0.5 text-[13px] tabular-nums text-foreground @xl:col-span-1">
+        {children}
       </div>
+      {/* ไม่มีกำไรให้แสดง = ไม่วางช่องว่าง (ช่องเปล่าในกริดเพิ่มระยะล่างของแถว) · flex ตัดช่องว่างใต้ป้ายแบบ inline */}
+      {profit != null && (
+        <div className="col-span-2 flex @xl:col-span-1 @xl:justify-self-end">
+          <ProfitBadge profit={profit} />
+        </div>
+      )}
     </div>
   );
 }
 
 /**
+ * แถวราคาจัดตามความกว้างของการ์ด (container query) — คอลัมน์ขวาของหน้าเพิ่มสินค้าแคบ ⇒ แถวซ้อน 2 บรรทัด
+ *
  * การ์ด "ราคาขาย" แบบ D (สเปค 2026-11-19 ข้อ 5) — มือถือ/แท็บเล็ต 3 แถวตายตัว · อุปกรณ์เสริมแถวเดียว
  * ค่าที่คิดให้มาจาก `buildModelQuote` (ส่งมาเป็น `quote`) · กำไรแสดงเมื่อกรอกทุนในฟอร์มนี้
  */
@@ -189,7 +201,9 @@ export default function PriceCard({
   // ช่อง GFIN ปิด: รุ่นที่ GFIN ไม่รับ หรือยังไม่รู้ (ตาราง GFIN ยังไม่มา) — ค่าในช่องไม่ถูกบันทึก
   const financeDisabled = blocked || gfinTablesState !== 'ready';
   // ช่อง GFIN ที่ปิดอยู่ไม่นับเป็น "แก้จากราคากลาง"
-  const edited = editedKeys(fields, templatePrices).filter((k) => !(financeDisabled && k === 'finance'));
+  const edited = editedKeys(fields, templatePrices).filter(
+    (k) => !(financeDisabled && k === 'finance'),
+  );
   const isEdited = (k: PriceKey) => edited.includes(k);
   const rate1 = quote?.rate1 ?? null;
   const rate2 = quote?.rate2 ?? null;
@@ -197,7 +211,7 @@ export default function PriceCard({
 
   return (
     <Card>
-      <CardHeader className="flex-wrap gap-2">
+      <CardHeader className="flex-wrap gap-2 py-4">
         <CardTitle>ราคาขาย</CardTitle>
         {!accessory && templatePrices && (
           <div className="flex flex-wrap items-center gap-2">
@@ -223,9 +237,11 @@ export default function PriceCard({
             )}
           </div>
         )}
-        {!accessory && templateFailed && <RetryNotice message="โหลดราคากลางไม่สำเร็จ" onRetry={onRetry} />}
+        {!accessory && templateFailed && (
+          <RetryNotice message="โหลดราคากลางไม่สำเร็จ" onRetry={onRetry} />
+        )}
       </CardHeader>
-      <CardContent className="p-0">
+      <CardContent className="@container p-0">
         {accessory ? (
           <PriceRow
             id={`${baseId}-cash`}
@@ -268,14 +284,20 @@ export default function PriceCard({
                 waiting
               ) : rate1 ? (
                 <>
-                  <Plan down={rate1.downAmount} monthly={rate1.monthlyDisplay} months={rate1.months} />
+                  <Plan
+                    down={rate1.downAmount}
+                    monthly={rate1.monthlyDisplay}
+                    months={rate1.months}
+                  />
                   <Muted>ยอดจัด {formatBahtPlain(rate1.price - rate1.downAmount)}</Muted>
                 </>
               ) : bcConfigFailed ? (
                 <RetryNotice message="โหลดตั้งค่าดอกเบี้ยไม่สำเร็จ" onRetry={onRetry} />
               ) : (
                 <Muted>
-                  {bcConfigMissing ? 'ยังไม่มีตั้งค่าดอกเบี้ยของหมวดนี้ — คิดค่างวดไม่ได้' : 'กรอกราคาเพื่อดูดาวน์และค่างวด'}
+                  {bcConfigMissing
+                    ? 'ยังไม่มีตั้งค่าดอกเบี้ยของหมวดนี้ — คิดค่างวดไม่ได้'
+                    : 'กรอกราคาเพื่อดูดาวน์และค่างวด'}
                 </Muted>
               )}
             </PriceRow>
@@ -319,8 +341,10 @@ export default function PriceCard({
             </PriceRow>
           </>
         )}
-        <p className="border-t border-border/60 bg-muted/40 px-4 py-2.5 text-xs leading-snug text-muted-foreground sm:px-5">
-          {costEntered ? 'กำไรคิดจากช่อง "ราคาทุน" ในฟอร์มนี้ · เห็นเฉพาะคนที่เห็นทุน' : 'กรอกราคาทุนเพื่อดูกำไร'}
+        <p className="border-t border-border/60 bg-muted/40 px-5 py-2.5 text-xs leading-snug text-muted-foreground">
+          {costEntered
+            ? 'กำไรคิดจากช่อง "ราคาทุน" ในฟอร์มนี้ · เห็นเฉพาะคนที่เห็นทุน'
+            : 'กรอกราคาทุนเพื่อดูกำไร'}
         </p>
       </CardContent>
     </Card>

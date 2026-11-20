@@ -2,11 +2,16 @@ import UsedDeviceDetailsFields from '@/components/product/UsedDeviceDetailsField
 import { NativeSelect } from '@/components/ui/native-select';
 import { Combobox } from '@/components/ui/combobox';
 import { useId as useFieldId } from 'react';
-import { DeviceDisclosureFields } from '@/components/product/DeviceDisclosureFields';
-import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card';
 import { brands, getModels, getModelInfo } from '@/data/productCatalog';
-import { categoryOptions } from '@/lib/constants';
 import { buildAutoProductName } from '../utils/autoProductName';
+import FormSection, { SegmentedChoice } from './FormSection';
+import CategoryChips from './CategoryChips';
+
+const ORIGIN_OPTIONS = [
+  { value: 'THAI', label: 'เครื่องไทย' },
+  { value: 'IMPORTED', label: 'เครื่องนอก' },
+  { value: '', label: 'ยังไม่ระบุ' },
+];
 
 const accessoryTypes = [
   { value: 'ฟิล์ม', label: 'ฟิล์ม' },
@@ -22,7 +27,9 @@ const chargerConnectorTypes = [
 ];
 
 interface ProductFormState {
-  deviceOrigin: string; shopWarrantyDays: string; warrantyTerms: string;
+  deviceOrigin: string;
+  shopWarrantyDays: string;
+  warrantyTerms: string;
   name: string;
   brand: string;
   model: string;
@@ -46,7 +53,6 @@ interface ProductFormState {
 interface ProductInfoCardProps {
   form: ProductFormState;
   setForm: (form: ProductFormState) => void;
-  statusOptions: { value: string; label: string }[];
   inputCls: string;
   onCategoryChange: (newCategory: string) => void;
   onBrandChange: (newBrand: string) => void;
@@ -58,7 +64,6 @@ interface ProductInfoCardProps {
 export default function ProductInfoCard({
   form,
   setForm,
-  statusOptions,
   inputCls,
   onCategoryChange,
   onBrandChange,
@@ -73,38 +78,28 @@ export default function ProductInfoCard({
   const availableStorage = modelInfo?.storage ?? [];
   const autoName = buildAutoProductName(form);
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>ข้อมูลสินค้า</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:gap-7.5">
-          {form.category !== 'ACCESSORY' && <DeviceDisclosureFields value={form} onChange={(key, value) => setForm({ ...form, [key]: value })} />}
-          {/* ประเภท - FIRST */}
-          <div>
-            <label htmlFor={`${fieldId}-1`} className="block text-sm font-medium text-foreground mb-3">ประเภท *</label>
-            <NativeSelect id={`${fieldId}-1`}
-              value={form.category}
-              onChange={(e) => onCategoryChange(e.target.value)}
-              className={inputCls}
-            >
-              {categoryOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </NativeSelect>
-          </div>
+  const accessory = form.category === 'ACCESSORY';
 
+  return (
+    <>
+      <FormSection number={1} title="ประเภทสินค้า *">
+        <CategoryChips value={form.category} onChange={onCategoryChange} />
+      </FormSection>
+
+      <FormSection number={2} title={accessory ? 'รายละเอียดอุปกรณ์' : 'รุ่นและสเปก'}>
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
           {form.category === 'ACCESSORY' ? (
             <>
               {/* ประเภทอุปกรณ์ */}
               <div>
-                <label htmlFor={`${fieldId}-2`} className="block text-sm font-medium text-foreground mb-3">
+                <label
+                  htmlFor={`${fieldId}-2`}
+                  className="block text-sm font-medium text-foreground mb-3"
+                >
                   ประเภทอุปกรณ์ *
                 </label>
-                <NativeSelect id={`${fieldId}-2`}
+                <NativeSelect
+                  id={`${fieldId}-2`}
                   value={form.accessoryType}
                   onChange={(e) => onAccessoryTypeChange(e.target.value)}
                   className={inputCls}
@@ -122,8 +117,14 @@ export default function ProductInfoCard({
               {form.accessoryType === 'ชุดชาร์จ' ? (
                 /* Charger: connector type */
                 <div>
-                  <label htmlFor={`${fieldId}-3`} className="block text-sm font-medium text-foreground mb-3">ชนิด *</label>
-                  <NativeSelect id={`${fieldId}-3`}
+                  <label
+                    htmlFor={`${fieldId}-3`}
+                    className="block text-sm font-medium text-foreground mb-3"
+                  >
+                    ชนิด *
+                  </label>
+                  <NativeSelect
+                    id={`${fieldId}-3`}
                     value={form.model}
                     onChange={(e) => setForm({ ...form, model: e.target.value })}
                     className={inputCls}
@@ -140,10 +141,14 @@ export default function ProductInfoCard({
               ) : form.accessoryType ? (
                 /* Non-charger: compatible phone brand */
                 <div>
-                  <label htmlFor={`${fieldId}-4`} className="block text-sm font-medium text-foreground mb-3">
+                  <label
+                    htmlFor={`${fieldId}-4`}
+                    className="block text-sm font-medium text-foreground mb-3"
+                  >
                     สำหรับยี่ห้อ
                   </label>
-                  <NativeSelect id={`${fieldId}-4`}
+                  <NativeSelect
+                    id={`${fieldId}-4`}
                     value={form.brand}
                     onChange={(e) => onBrandChange(e.target.value)}
                     className={inputCls}
@@ -174,7 +179,8 @@ export default function ProductInfoCard({
                           : [];
                         const isSelected = selectedModels.includes(m.name);
                         return (
-                          <button data-ui-control="button"
+                          <button
+                            data-ui-control="button"
                             key={m.name}
                             type="button"
                             aria-pressed={isSelected}
@@ -200,8 +206,14 @@ export default function ProductInfoCard({
 
               {/* ยี่ห้ออุปกรณ์ */}
               <div>
-                <label htmlFor={`${fieldId}-5`} className="block text-sm font-medium text-foreground mb-3">ยี่ห้ออุปกรณ์</label>
-                <input id={`${fieldId}-5`}
+                <label
+                  htmlFor={`${fieldId}-5`}
+                  className="block text-sm font-medium text-foreground mb-3"
+                >
+                  ยี่ห้ออุปกรณ์
+                </label>
+                <input
+                  id={`${fieldId}-5`}
                   type="text"
                   value={form.accessoryBrand}
                   onChange={(e) => setForm({ ...form, accessoryBrand: e.target.value })}
@@ -214,8 +226,14 @@ export default function ProductInfoCard({
             <>
               {/* ยี่ห้อ */}
               <div>
-                <label htmlFor={`${fieldId}-6`} className="block text-sm font-medium text-foreground mb-3">ยี่ห้อ *</label>
-                <NativeSelect id={`${fieldId}-6`}
+                <label
+                  htmlFor={`${fieldId}-6`}
+                  className="block text-sm font-medium text-foreground mb-3"
+                >
+                  ยี่ห้อ *
+                </label>
+                <NativeSelect
+                  id={`${fieldId}-6`}
                   value={form.brand}
                   onChange={(e) => onBrandChange(e.target.value)}
                   className={inputCls}
@@ -232,7 +250,12 @@ export default function ProductInfoCard({
 
               {/* รุ่น */}
               <div>
-                <label htmlFor={`${fieldId}-7`} className="block text-sm font-medium text-foreground mb-3">รุ่น *</label>
+                <label
+                  htmlFor={`${fieldId}-7`}
+                  className="block text-sm font-medium text-foreground mb-3"
+                >
+                  รุ่น *
+                </label>
                 <Combobox
                   id={`${fieldId}-7`}
                   value={form.model}
@@ -250,13 +273,49 @@ export default function ProductInfoCard({
                 )}
               </div>
 
+              {/* ความจุ — chip selector */}
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-3">ความจุ</label>
+                {availableStorage.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {availableStorage.map((s) => (
+                      <button
+                        data-ui-control="button"
+                        key={s}
+                        type="button"
+                        aria-pressed={form.storage === s}
+                        onClick={() => setForm({ ...form, storage: s })}
+                        disabled={!form.model}
+                        className={`min-h-11 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+                          form.storage === s
+                            ? 'border-primary bg-primary/5 text-primary ring-2 ring-primary/20'
+                            : 'border-border hover:border-input text-foreground disabled:opacity-50'
+                        }`}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <input
+                    type="text"
+                    aria-label="ความจุ"
+                    value={form.storage}
+                    onChange={(e) => setForm({ ...form, storage: e.target.value })}
+                    className={inputCls}
+                    placeholder="พิมพ์ความจุ"
+                    disabled={!form.model}
+                  />
+                )}
+              </div>
               {/* สี — chip selector */}
               <div>
-                <label className="block text-sm font-medium text-foreground mb-3.5">สี</label>
+                <label className="block text-sm font-medium text-foreground mb-3">สี</label>
                 {availableColors.length > 0 ? (
                   <div className="flex flex-wrap gap-2">
                     {availableColors.map((c) => (
-                      <button data-ui-control="button"
+                      <button
+                        data-ui-control="button"
                         key={c}
                         type="button"
                         aria-pressed={form.color === c}
@@ -285,47 +344,29 @@ export default function ProductInfoCard({
                 )}
               </div>
 
-              {/* ความจุ — chip selector */}
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-3.5">ความจุ</label>
-                {availableStorage.length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {availableStorage.map((s) => (
-                      <button data-ui-control="button"
-                        key={s}
-                        type="button"
-                        aria-pressed={form.storage === s}
-                        onClick={() => setForm({ ...form, storage: s })}
-                        disabled={!form.model}
-                        className={`min-h-11 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
-                          form.storage === s
-                            ? 'border-primary bg-primary/5 text-primary ring-2 ring-primary/20'
-                            : 'border-border hover:border-input text-foreground disabled:opacity-50'
-                        }`}
-                      >
-                        {s}
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <input
-                    type="text"
-                    aria-label="ความจุ"
-                    value={form.storage}
-                    onChange={(e) => setForm({ ...form, storage: e.target.value })}
-                    className={inputCls}
-                    placeholder="พิมพ์ความจุ"
-                    disabled={!form.model}
-                  />
-                )}
+              {/* เครื่องไทย / เครื่องนอก — มีผลกับราคากลางและราคาส่ง GFIN (เดิมอยู่บนสุดก่อนเลือกประเภท) */}
+              <div className="sm:col-span-2">
+                <SegmentedChoice
+                  label="เครื่องไทย / เครื่องนอก"
+                  options={ORIGIN_OPTIONS}
+                  value={form.deviceOrigin}
+                  onChange={(deviceOrigin) => setForm({ ...form, deviceOrigin })}
+                  hint="มีผลกับราคากลางและราคาส่ง GFIN"
+                />
               </div>
             </>
           )}
 
           {/* ชื่อสินค้า — เว้นว่าง = ใช้ชื่ออัตโนมัติ (พรีวิวสดจากตัวคำนวณเดียวกับตอนบันทึก) */}
-          <div>
-            <label htmlFor={`${fieldId}-8`} className="block text-sm font-medium text-foreground mb-3">ชื่อสินค้า</label>
-            <input id={`${fieldId}-8`}
+          <div className="sm:col-span-2">
+            <label
+              htmlFor={`${fieldId}-8`}
+              className="block text-sm font-medium text-foreground mb-3"
+            >
+              ชื่อสินค้า
+            </label>
+            <input
+              id={`${fieldId}-8`}
               type="text"
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -338,7 +379,10 @@ export default function ProductInfoCard({
               aria-describedby={`${fieldId}-8-hint`}
               className={inputCls}
             />
-            <p id={`${fieldId}-8-hint`} className="mt-1.5 text-xs leading-snug text-muted-foreground">
+            <p
+              id={`${fieldId}-8-hint`}
+              className="mt-1.5 text-xs leading-snug text-muted-foreground"
+            >
               {form.name.trim() ? (
                 autoName ? (
                   <>
@@ -354,7 +398,8 @@ export default function ProductInfoCard({
                 ) : null
               ) : autoName ? (
                 <>
-                  ระบบจะใช้ชื่อ <span className="font-medium text-foreground">{autoName}</span> · พิมพ์ทับเพื่อตั้งเอง
+                  ระบบจะใช้ชื่อ <span className="font-medium text-foreground">{autoName}</span> ·
+                  พิมพ์ทับเพื่อตั้งเอง
                 </>
               ) : form.category === 'ACCESSORY' ? (
                 'เลือกประเภทอุปกรณ์ก่อน ระบบจะตั้งชื่อให้'
@@ -363,86 +408,84 @@ export default function ProductInfoCard({
               )}
             </p>
           </div>
-
-          {form.category !== 'ACCESSORY' && (
-            <>
-              {/* IMEI */}
-              <div>
-                <label htmlFor={`${fieldId}-9`} className="block text-sm font-medium text-foreground mb-3">IMEI</label>
-                <input id={`${fieldId}-9`}
-                  type="text"
-                  value={form.imeiSerial}
-                  onChange={(e) => setForm({ ...form, imeiSerial: e.target.value })}
-                  placeholder="เลข IMEI 15 หลัก"
-                  className={`${inputCls} font-mono`}
-                  maxLength={15}
-                />
-              </div>
-
-              {/* Serial Number */}
-              <div>
-                <label htmlFor={`${fieldId}-10`} className="block text-sm font-medium text-foreground mb-3">
-                  Serial Number
-                </label>
-                <input id={`${fieldId}-10`}
-                  type="text"
-                  value={form.serialNumber}
-                  onChange={(e) => setForm({ ...form, serialNumber: e.target.value })}
-                  placeholder="หมายเลข Serial"
-                  className={`${inputCls} font-mono`}
-                />
-              </div>
-            </>
-          )}
-
-          {/* สถานะ */}
-          <div>
-            <label htmlFor={`${fieldId}-11`} className="block text-sm font-medium text-foreground mb-3">สถานะ *</label>
-            <NativeSelect id={`${fieldId}-11`}
-              value={form.status}
-              onChange={(e) => setForm({ ...form, status: e.target.value })}
-              className={inputCls}
-            >
-              {statusOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </NativeSelect>
-          </div>
         </div>
+      </FormSection>
 
-        {/* Used phone fields — ทุกช่องใช้แถวป้าย (mb-3) + กล่อง 44px เท่ากัน ⇒ 3 คอลัมน์ตรงแนวกัน */}
-        {form.category === 'PHONE_USED' && (
-          <section
-            aria-labelledby={`${fieldId}-used`}
-            className="mt-6 rounded-lg border border-warning/20 bg-warning/5 p-4 dark:bg-warning/10 sm:p-5"
-          >
-            <h3 id={`${fieldId}-used`} className="text-sm font-semibold leading-snug text-warning-strong">
-              ข้อมูลมือสอง
-            </h3>
-            <div className="mt-4">
-              {/* ชุดช่องเดียวกับหน้าแก้ไขสินค้าและหน้ารับของ PO — ป้ายสูงเท่ากัน ทุกช่องจัดแนวล่าง (items-end) */}
-              <UsedDeviceDetailsFields
-                idPrefix={fieldId}
-                value={{
-                  batteryHealth: form.batteryHealth,
-                  warrantyExpired: form.warrantyExpired,
-                  warrantyExpireDate: form.warrantyExpireDate,
-                  hasBox: form.hasBox,
-                }}
-                onChange={(patch) =>
-                  setForm({
-                    ...form,
-                    ...patch,
-                    ...(patch.warrantyExpired ? { warrantyExpireDate: '' } : {}),
-                  })
-                }
+      {!accessory && (
+        <FormSection number={3} title="ตัวเครื่อง">
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+            {/* IMEI */}
+            <div>
+              <label
+                htmlFor={`${fieldId}-9`}
+                className="block text-sm font-medium text-foreground mb-3"
+              >
+                IMEI
+              </label>
+              <input
+                id={`${fieldId}-9`}
+                type="text"
+                value={form.imeiSerial}
+                onChange={(e) => setForm({ ...form, imeiSerial: e.target.value })}
+                placeholder="เลข IMEI 15 หลัก"
+                className={`${inputCls} font-mono`}
+                maxLength={15}
               />
             </div>
-          </section>
-        )}
-      </CardContent>
-    </Card>
+
+            {/* Serial Number */}
+            <div>
+              <label
+                htmlFor={`${fieldId}-10`}
+                className="block text-sm font-medium text-foreground mb-3"
+              >
+                Serial Number
+              </label>
+              <input
+                id={`${fieldId}-10`}
+                type="text"
+                value={form.serialNumber}
+                onChange={(e) => setForm({ ...form, serialNumber: e.target.value })}
+                placeholder="หมายเลข Serial"
+                className={`${inputCls} font-mono`}
+              />
+            </div>
+          </div>
+          {/* Used phone fields — ทุกช่องใช้แถวป้าย (mb-3) + กล่อง 44px เท่ากัน ⇒ 3 คอลัมน์ตรงแนวกัน */}
+          {form.category === 'PHONE_USED' && (
+            <section
+              aria-labelledby={`${fieldId}-used`}
+              className="mt-5 rounded-lg border border-warning/20 bg-warning/5 p-4 dark:bg-warning/10 sm:p-5"
+            >
+              <h3
+                id={`${fieldId}-used`}
+                className="text-sm font-semibold leading-snug text-warning-strong"
+              >
+                สภาพมือสอง
+              </h3>
+              <div className="mt-4">
+                {/* ชุดช่องเดียวกับหน้าแก้ไขสินค้าและหน้ารับของ PO — ป้ายสูงเท่ากัน ทุกช่องจัดแนวล่าง (items-end) */}
+                <UsedDeviceDetailsFields
+                  idPrefix={fieldId}
+                  value={{
+                    batteryHealth: form.batteryHealth,
+                    warrantyExpired: form.warrantyExpired,
+                    warrantyExpireDate: form.warrantyExpireDate,
+                    hasBox: form.hasBox,
+                  }}
+                  onChange={(patch) =>
+                    setForm({
+                      ...form,
+                      ...patch,
+                      ...(patch.warrantyExpired ? { warrantyExpireDate: '' } : {}),
+                    })
+                  }
+                />
+              </div>
+            </section>
+          )}
+        </FormSection>
+      )}
+    </>
   );
 }

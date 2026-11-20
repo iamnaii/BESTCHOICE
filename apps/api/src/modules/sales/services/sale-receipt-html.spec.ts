@@ -35,17 +35,33 @@ function cashSale(overrides: Partial<SaleForReceipt> = {}): SaleForReceipt {
     bundleProductIds: ['b1', 'b2'],
     shopWarrantyStartDate: new Date('2026-10-22T00:00:00Z'),
     shopWarrantyEndDate: new Date('2026-10-29T00:00:00Z'),
-    productDisclosure: { version: 1, deviceOrigin: 'THAI', shopWarrantyDays: 7, warrantyTerms: null },
+    productDisclosure: {
+      version: 1,
+      deviceOrigin: 'THAI',
+      shopWarrantyDays: 7,
+      warrantyTerms: null,
+    },
     tradeInCreditSnapshot: {
-      version: 1, redemptionId: 'r1', tradeInId: 'ti1', voucherNumber: 'TI-20261022-0003',
-      baseAmount: '8000.00', bonusAmount: '0.00', cashDownAmount: '22900.00', totalDownAmount: '30900.00',
+      version: 1,
+      redemptionId: 'r1',
+      tradeInId: 'ti1',
+      voucherNumber: 'TI-20261022-0003',
+      baseAmount: '8000.00',
+      bonusAmount: '0.00',
+      cashDownAmount: '22900.00',
+      totalDownAmount: '30900.00',
     },
     deletedAt: null,
     voidReason: null,
     customer: { name: 'คุณสมหญิง ใจดี', phone: '089-999-9999', legacyMemberCode: 'C-00412' },
     product: {
-      name: 'Apple iPhone 15 Pro Max 256GB ดำ', brand: 'Apple', model: 'iPhone 15 Pro Max', storage: '256GB',
-      imeiSerial: '357200606382344', serialNumber: null, category: 'PHONE_USED',
+      name: 'Apple iPhone 15 Pro Max 256GB ดำ',
+      brand: 'Apple',
+      model: 'iPhone 15 Pro Max',
+      storage: '256GB',
+      imeiSerial: '357200606382344',
+      serialNumber: null,
+      category: 'PHONE_USED',
     },
     branch: { name: 'ลพบุรี' },
     salesperson: { name: 'สมชาย ใจดี' },
@@ -80,17 +96,31 @@ function financeSale(): SaleForReceipt {
     tradeInCreditSnapshot: null,
     shopWarrantyStartDate: null,
     shopWarrantyEndDate: null,
-    productDisclosure: { version: 1, deviceOrigin: 'THAI', shopWarrantyDays: 0, warrantyTerms: null },
+    productDisclosure: {
+      version: 1,
+      deviceOrigin: 'THAI',
+      shopWarrantyDays: 0,
+      warrantyTerms: null,
+    },
     product: {
-      name: 'Samsung Galaxy S24 Ultra 512GB', brand: 'Samsung', model: 'Galaxy S24 Ultra', storage: '512GB',
-      imeiSerial: '352099001761481', serialNumber: null, category: 'PHONE_NEW',
+      name: 'Samsung Galaxy S24 Ultra 512GB',
+      brand: 'Samsung',
+      model: 'Galaxy S24 Ultra',
+      storage: '512GB',
+      imeiSerial: '352099001761481',
+      serialNumber: null,
+      category: 'PHONE_NEW',
     },
     customer: { name: 'นายสมชาย รักดี', phone: '082-222-2222', legacyMemberCode: null },
     shopTenders: [{ method: 'BANK_TRANSFER', amount: D('5000'), reference: '2510221510', seq: 1 }],
   });
 }
 
-const ctx = { company, terms: DEFAULT_RECEIPT_WARRANTY_TERMS, qrDataUrl: 'data:image/png;base64,QR' };
+const ctx = {
+  company,
+  terms: DEFAULT_RECEIPT_WARRANTY_TERMS,
+  qrDataUrl: 'data:image/png;base64,QR',
+};
 
 describe('toSaleReceiptModel', () => {
   it('maps cash tenders with method labels and keeps the reference only where it exists', () => {
@@ -103,7 +133,10 @@ describe('toSaleReceiptModel', () => {
   });
 
   it('falls back to paymentMethod + amountReceived when the sale has no tenders (legacy rows)', () => {
-    const m = toSaleReceiptModel(cashSale({ shopTenders: [], paymentMethod: 'QR_EWALLET', amountReceived: D('22900') }), ctx);
+    const m = toSaleReceiptModel(
+      cashSale({ shopTenders: [], paymentMethod: 'QR_EWALLET', amountReceived: D('22900') }),
+      ctx,
+    );
     expect(m.tenders).toEqual([{ label: 'QR/e-Wallet', amount: '22900.00', reference: null }]);
     expect(m.totals.received).toBe('22900.00');
   });
@@ -118,24 +151,41 @@ describe('toSaleReceiptModel', () => {
   });
 
   it('adds the booking deposit to the amount received and never prints a fallback tender beside it', () => {
-    const noTradeIn = { tradeInCreditSnapshot: null, sellingPrice: D('23900'), discount: D('1000'), netAmount: D('22900') };
+    const noTradeIn = {
+      tradeInCreditSnapshot: null,
+      sellingPrice: D('23900'),
+      discount: D('1000'),
+      netAmount: D('22900'),
+    };
     const balancePaid = toSaleReceiptModel(
       cashSale({
         ...noTradeIn,
-        receiptBreakdown: { depositAmount: '5000.00', depositMethod: 'BANK_TRANSFER', additionalAmount: '17900.00' },
-        shopTenders: [{ method: 'BANK_TRANSFER', amount: D('17900'), reference: '2510221432', seq: 1 }],
+        receiptBreakdown: {
+          depositAmount: '5000.00',
+          depositMethod: 'BANK_TRANSFER',
+          additionalAmount: '17900.00',
+        },
+        shopTenders: [
+          { method: 'BANK_TRANSFER', amount: D('17900'), reference: '2510221432', seq: 1 },
+        ],
       }),
       ctx,
     );
     expect(balancePaid.depositLine).toEqual({ label: 'มัดจำจอง (โอน)', amount: '5000.00' });
-    expect(balancePaid.tenders).toEqual([{ label: 'โอน', amount: '17900.00', reference: '2510221432' }]);
+    expect(balancePaid.tenders).toEqual([
+      { label: 'โอน', amount: '17900.00', reference: '2510221432' },
+    ]);
     expect(balancePaid.totals.received).toBe('22900.00');
 
     const prepaid = toSaleReceiptModel(
       cashSale({
         ...noTradeIn,
         amountReceived: D('22900'),
-        receiptBreakdown: { depositAmount: '22900.00', depositMethod: 'CASH', additionalAmount: '0.00' },
+        receiptBreakdown: {
+          depositAmount: '22900.00',
+          depositMethod: 'CASH',
+          additionalAmount: '0.00',
+        },
         shopTenders: [],
       }),
       ctx,
@@ -154,10 +204,17 @@ describe('toSaleReceiptModel', () => {
   });
 
   it('labels the device identifier as IMEI, then S/N, then nothing', () => {
-    expect(toSaleReceiptModel(cashSale(), ctx).mainItem).toMatchObject({ idLabel: 'IMEI', idValue: '357200606382344' });
-    const sn = cashSale({ product: { ...cashSale().product, imeiSerial: null, serialNumber: 'SN-1' } });
+    expect(toSaleReceiptModel(cashSale(), ctx).mainItem).toMatchObject({
+      idLabel: 'IMEI',
+      idValue: '357200606382344',
+    });
+    const sn = cashSale({
+      product: { ...cashSale().product, imeiSerial: null, serialNumber: 'SN-1' },
+    });
     expect(toSaleReceiptModel(sn, ctx).mainItem).toMatchObject({ idLabel: 'S/N', idValue: 'SN-1' });
-    const none = cashSale({ product: { ...cashSale().product, imeiSerial: null, serialNumber: null } });
+    const none = cashSale({
+      product: { ...cashSale().product, imeiSerial: null, serialNumber: null },
+    });
     expect(toSaleReceiptModel(none, ctx).mainItem.idLabel).toBeNull();
   });
 
@@ -165,19 +222,48 @@ describe('toSaleReceiptModel', () => {
     const m = toSaleReceiptModel(cashSale(), ctx);
     expect(m.mainItem.note.startsWith('มือสอง')).toBe(true);
     expect(m.mainItem.note).toContain('เครื่องไทย');
-    expect(toSaleReceiptModel(financeSale(), ctx).mainItem.note.startsWith('เครื่องใหม่')).toBe(true);
+    expect(toSaleReceiptModel(financeSale(), ctx).mainItem.note.startsWith('เครื่องใหม่')).toBe(
+      true,
+    );
   });
 
   it('builds the warranty headline from the real dates, and a no-warranty line otherwise', () => {
     const m = toSaleReceiptModel(cashSale(), ctx);
     expect(m.warranty.headline).toBe('ประกันร้าน 7 วัน · 22/10/2569 – 29/10/2569');
     expect(m.warranty.terms).toBe(DEFAULT_RECEIPT_WARRANTY_TERMS);
-    expect(toSaleReceiptModel(financeSale(), ctx).warranty.headline).toBe('ไม่มีประกันร้าน · ประกันศูนย์ตามเงื่อนไขผู้ผลิต');
+    expect(toSaleReceiptModel(financeSale(), ctx).warranty.headline).toBe(
+      'ไม่มีประกันร้าน · ประกันศูนย์ตามเงื่อนไขผู้ผลิต',
+    );
+  });
+
+  it('prints product terms once — skips them when they equal the shop terms (default filled by the create page)', () => {
+    const disclosure = {
+      version: 1,
+      deviceOrigin: 'THAI',
+      shopWarrantyDays: 7,
+      warrantyTerms: DEFAULT_RECEIPT_WARRANTY_TERMS,
+    };
+    const same = toSaleReceiptModel(cashSale({ productDisclosure: disclosure }), ctx);
+    expect(same.warranty.productTerms).toBeNull();
+    expect(same.mainItem.note).not.toContain(DEFAULT_RECEIPT_WARRANTY_TERMS);
+    expect(same.mainItem.note).toContain('ประกันร้าน 7 วัน');
+    const own = toSaleReceiptModel(
+      cashSale({ productDisclosure: { ...disclosure, warrantyTerms: 'รับประกันจอ 30 วัน' } }),
+      ctx,
+    );
+    expect(own.warranty.productTerms).toBe('รับประกันจอ 30 วัน');
+    expect(own.mainItem.note).toContain('รับประกันจอ 30 วัน');
   });
 
   it('adds a booking-deposit line when the sale came from a booking', () => {
     const m = toSaleReceiptModel(
-      cashSale({ receiptBreakdown: { depositAmount: '2000.00', depositMethod: 'BANK_TRANSFER', additionalAmount: '20900.00' } }),
+      cashSale({
+        receiptBreakdown: {
+          depositAmount: '2000.00',
+          depositMethod: 'BANK_TRANSFER',
+          additionalAmount: '20900.00',
+        },
+      }),
       ctx,
     );
     expect(m.depositLine?.label.startsWith('มัดจำจอง')).toBe(true);
@@ -185,7 +271,10 @@ describe('toSaleReceiptModel', () => {
   });
 
   it('carries void info when the sale was cancelled', () => {
-    const m = toSaleReceiptModel(cashSale({ deletedAt: new Date('2026-10-23T01:00:00Z'), voidReason: 'คีย์ผิดเครื่อง' }), ctx);
+    const m = toSaleReceiptModel(
+      cashSale({ deletedAt: new Date('2026-10-23T01:00:00Z'), voidReason: 'คีย์ผิดเครื่อง' }),
+      ctx,
+    );
     expect(m.voided).toEqual({ at: new Date('2026-10-23T01:00:00Z'), reason: 'คีย์ผิดเครื่อง' });
   });
 });
@@ -240,14 +329,20 @@ describe('buildSaleReceiptHtml', () => {
   });
 
   it('omits the QR block when there is no public link (voided sale that never had a token)', () => {
-    const html = buildSaleReceiptHtml(toSaleReceiptModel(cashSale(), { ...ctx, qrDataUrl: '' }), fontCss);
+    const html = buildSaleReceiptHtml(
+      toSaleReceiptModel(cashSale(), { ...ctx, qrDataUrl: '' }),
+      fontCss,
+    );
     expect(html).not.toContain('<img src="data:image');
     expect(html).not.toContain('สแกนเพื่อเปิดใบเสร็จ');
     expect(html).toContain('ติดต่อ');
   });
 
   it('stamps the void watermark and cancellation line on a voided sale', () => {
-    const sale = cashSale({ deletedAt: new Date('2026-10-23T01:00:00Z'), voidReason: 'คีย์ผิดเครื่อง' });
+    const sale = cashSale({
+      deletedAt: new Date('2026-10-23T01:00:00Z'),
+      voidReason: 'คีย์ผิดเครื่อง',
+    });
     const html = buildSaleReceiptHtml(toSaleReceiptModel(sale, ctx), fontCss);
     expect(html).toContain('ยกเลิกเมื่อ');
     expect(html).toContain('คีย์ผิดเครื่อง');

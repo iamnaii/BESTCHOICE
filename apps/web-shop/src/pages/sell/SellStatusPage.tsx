@@ -99,10 +99,7 @@ export default function SellStatusPage() {
     <ShopLayout>
       <CategoryHero
         title={`${copy.sell.statusTitle} ${data.id.slice(0, 8)}`}
-        breadcrumbs={[
-          { label: copy.sell.pageTitle, to: '/sell' },
-          { label: 'สถานะ' },
-        ]}
+        breadcrumbs={[{ label: copy.sell.pageTitle, to: '/sell' }, { label: 'สถานะ' }]}
       />
 
       <Container narrow className="py-6 md:py-10">
@@ -111,7 +108,7 @@ export default function SellStatusPage() {
             steps={
               isInstantQuote
                 ? [
-                    { label: 'ยืนยันราคาแล้ว' },
+                    { label: 'ส่งข้อมูลประเมินแล้ว' },
                     { label: isExchange ? 'เข้าร้านเลือกเครื่องใหม่' : 'เข้าร้านตรวจเครื่อง' },
                     { label: 'เสร็จสิ้น' },
                   ]
@@ -125,11 +122,11 @@ export default function SellStatusPage() {
             <Badge variant={STATUS_BADGE[data.status] ?? 'default'} size="lg">
               {data.status === 'PENDING_APPRAISAL' && isInstantQuote
                 ? isExchange
-                  ? 'ยืนยันมูลค่าเทิร์นแล้ว — รอนัดเข้าร้าน'
-                  : 'ยืนยันราคาแล้ว — รอนัดเข้าร้าน'
+                  ? 'ส่งข้อมูลเทิร์นแล้ว — รอตรวจเครื่องที่ร้าน'
+                  : 'ส่งข้อมูลขายสดแล้ว — รอตรวจเครื่องที่ร้าน'
                 : data.status === 'REJECTED' && isExchange
                   ? 'ไม่รับเทิร์น'
-                  : STATUS_LABEL[data.status] ?? data.status}
+                  : (STATUS_LABEL[data.status] ?? data.status)}
             </Badge>
           </div>
 
@@ -137,7 +134,7 @@ export default function SellStatusPage() {
             <Card variant="elevated" className="bg-emerald-50 border-emerald-200">
               <CardBody className="space-y-2 leading-snug">
                 <div className="text-sm font-medium text-emerald-800 leading-snug">
-                  {isExchange ? 'มูลค่าเทิร์นที่ยืนยันแล้ว' : copy.sell.quotedTitle}
+                  {isExchange ? 'มูลค่าเครดิตเทิร์นโดยประมาณ' : copy.sell.quotedTitle}
                 </div>
                 <div className="text-4xl font-bold text-emerald-600 leading-snug num">
                   ฿{estimated.toLocaleString()}
@@ -149,29 +146,34 @@ export default function SellStatusPage() {
                       <span>฿{Number(data.quoteBreakdown.maxPrice).toLocaleString()}</span>
                     </div>
                     {data.quoteBreakdown.lines
-                      .filter((l) => Number(l.amount) > 0)
+                      .filter((l) => l.applied !== false && Number(l.amount) > 0)
                       .map((l, i) => (
                         <div key={i} className="flex justify-between">
                           <span>{l.label}</span>
                           <span>−฿{Number(l.amount).toLocaleString()}</span>
                         </div>
                       ))}
-                    {isExchange && data.quoteBreakdown.cashPrice && data.quoteBreakdown.exchangePrice && (
-                      <div className="flex justify-between font-medium">
-                        <span>โบนัสเทิร์น +{Number(data.quoteBreakdown.bonusPct ?? 0)}%</span>
-                        <span>
-                          +฿{(
-                            Number(data.quoteBreakdown.exchangePrice) -
-                            Number(data.quoteBreakdown.cashPrice)
-                          ).toLocaleString()}
-                        </span>
-                      </div>
-                    )}
+                    {isExchange &&
+                      data.quoteBreakdown.cashPrice &&
+                      data.quoteBreakdown.exchangePrice && (
+                        <div className="flex justify-between font-medium">
+                          <span>โบนัสเทิร์น +{Number(data.quoteBreakdown.bonusPct ?? 0)}%</span>
+                          <span>
+                            +฿
+                            {(
+                              Number(data.quoteBreakdown.exchangePrice) -
+                              Number(data.quoteBreakdown.cashPrice)
+                            ).toLocaleString()}
+                          </span>
+                        </div>
+                      )}
                   </div>
                 )}
                 <p className="text-xs text-emerald-800 leading-snug">{copy.sell.priceCondition}</p>
                 {isExchange && (
-                  <p className="text-xs text-emerald-800 leading-snug">{copy.sell.exchangeCreditNote}</p>
+                  <p className="text-xs text-emerald-800 leading-snug">
+                    {copy.sell.exchangeCreditNote}
+                  </p>
                 )}
                 {offered !== null && offered !== estimated && (
                   <p className="text-xs font-semibold text-emerald-900 leading-snug">
@@ -232,18 +234,8 @@ export default function SellStatusPage() {
 
           {showOfferActions && (
             <div className="grid gap-3 sm:grid-cols-2">
-              <Button
-                asChild
-                variant="line"
-                size="lg"
-                fullWidth
-                data-testid="buyback-accept"
-              >
-                <a
-                  href={shopInfo.lineUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                >
+              <Button asChild variant="line" size="lg" fullWidth data-testid="buyback-accept">
+                <a href={shopInfo.lineUrl} target="_blank" rel="noreferrer">
                   <MessageCircle className="size-4" aria-hidden="true" />
                   {copy.sell.acceptPrice}
                 </a>
@@ -256,11 +248,7 @@ export default function SellStatusPage() {
                 className="text-destructive hover:text-destructive border-destructive/40"
                 data-testid="buyback-reject"
               >
-                <a
-                  href={shopInfo.lineUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                >
+                <a href={shopInfo.lineUrl} target="_blank" rel="noreferrer">
                   <Phone className="size-4" aria-hidden="true" />
                   {copy.sell.rejectPrice}
                 </a>
@@ -268,9 +256,7 @@ export default function SellStatusPage() {
             </div>
           )}
 
-          <p className="text-xs text-muted-foreground leading-snug">
-            {copy.sell.followUp}
-          </p>
+          <p className="text-xs text-muted-foreground leading-snug">{copy.sell.followUp}</p>
         </Stack>
       </Container>
     </ShopLayout>

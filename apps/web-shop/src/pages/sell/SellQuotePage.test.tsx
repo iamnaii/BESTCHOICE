@@ -70,11 +70,20 @@ async function seller() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.spyOn(window, "scrollTo").mockImplementation(() => {});
   mocks.get.mockImplementation((url: string) => Promise.resolve({ data: url.endsWith('/catalog') ? catalog : config }));
   mocks.post.mockResolvedValue({ data: result });
 });
 
 describe('SellQuotePage scoped assessment', () => {
+  it('renders a focused sell form without storefront navigation', async () => {
+    mount();
+    await screen.findByLabelText('รุ่น');
+    expect(screen.getByRole('banner')).toHaveTextContent('เบสท์ช้อยส์');
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    expect(screen.getByText('เลือกเครื่องและเช็กสภาพ')).toBeInTheDocument();
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+  });
   it('labels AppleHouse as the benchmark and shop rules as the deductions', async () => {
     mocks.get.mockImplementation((url: string) => Promise.resolve({ data: url.endsWith('/catalog') ? catalog : {
       ...config, source: 'https://applehouseth.com/', pricingMode: 'SUM_PERCENT_FLOOR10', eligibilityRequired: false,

@@ -8,12 +8,11 @@ import { CheckCircle2, ChevronDown, MessageCircle } from 'lucide-react';
 import { api } from '@/lib/api';
 import { copy, shopInfo } from '@/lib/copy';
 import { useTrackEvent } from '@/hooks/useTrackEvent';
-import ShopLayout from '@/components/layout/ShopLayout';
+import SellFlowLayout from './components/SellFlowLayout';
 import {
   Button,
   Card,
   CardBody,
-  CategoryHero,
   Container,
   Input,
   Label,
@@ -55,12 +54,12 @@ export default function SellQuotePage() {
   });
 
   if (catalog.isLoading) {
-    return <ShopLayout><Container narrow className="py-10"><LoadingState /></Container></ShopLayout>;
+    return <SellFlowLayout title="ขายหรือเทิร์นไอโฟน" progressText="เลือกเครื่องและเช็กสภาพ"><Container narrow className="py-10"><LoadingState /></Container></SellFlowLayout>;
   }
   if (catalog.isError) {
-    return <ShopLayout><Container narrow className="py-10">
+    return <SellFlowLayout title="ขายหรือเทิร์นไอโฟน" progressText="เลือกเครื่องและเช็กสภาพ"><Container narrow className="py-10">
       <ErrorState title={copy.sell.quoteError} onRetry={() => void catalog.refetch()} />
-    </Container></ShopLayout>;
+    </Container></SellFlowLayout>;
   }
 
   return <SellQuoteForm
@@ -222,11 +221,8 @@ function SellQuoteForm({ model, storage, onModelChange, onStorageChange, models,
   }
 
   return (
-    <ShopLayout>
-      <CategoryHero
-        title={copy.sell.quoteCta}
-        breadcrumbs={[{ label: copy.sell.pageTitle, to: '/sell' }, { label: 'เช็คราคา' }]}
-      />
+    <SellFlowLayout title="ขายหรือเทิร์นไอโฟน" progressText="เลือกเครื่องและเช็กสภาพ">
+
 
       <Container narrow className="py-6 md:py-10 space-y-6 leading-snug">
         {/* Step 1: เลือกเครื่อง */}
@@ -575,6 +571,6 @@ function SellQuoteForm({ model, storage, onModelChange, onStorageChange, models,
         </Button>
       </StickyBottomBar>
       <StickyBottomBarSpacer />
-    </ShopLayout>
+    </SellFlowLayout>
   );
 }

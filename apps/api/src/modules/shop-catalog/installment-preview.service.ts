@@ -202,18 +202,18 @@ export class InstallmentPreviewService {
     // งวดของ GFIN มาจากฝั่ง GFIN (ไม่ใช่งวดของตั้งค่าดอกเบี้ย BC): งวดที่มีเรทของคอมหมวดนี้ ไม่เกินเพดานกติกา OVER
     // งวดตั้งต้น = งวดเรท 2 ของราคากลาง ไม่มีแล้วเพดานกติกา OVER (สูตรเดียวกับ buildModelQuote — หน้า "ราคาและเรทผ่อน" / บอท / สติกเกอร์)
     const allowedMonths = [...new Set(factorMonths.map((f) => f.months))]
-      .filter((m) => rule?.maxMonths == null || m <= rule.maxMonths)
+      .filter((m) => rule.maxMonths == null || m <= rule.maxMonths)
       .sort((a, b) => a - b);
     const terms = (
       await loadTemplateTerms(this.prisma, [{ ...product, brand: product.brand ?? '' }])
     ).get(product.id);
     const templateMonths = terms?.rate2TermMonths && terms.rate2TermMonths > 0 ? terms.rate2TermMonths : null;
-    const defaultMonths = pickDefaultMonths(templateMonths ?? rule?.maxMonths ?? 12, allowedMonths);
+    const defaultMonths = pickDefaultMonths(templateMonths ?? rule.maxMonths ?? 12, allowedMonths);
     const months = dto.months ?? defaultMonths;
     const termInfo = { allowedMonths, defaultMonths };
 
     // ผ่อนได้สูงสุดต่อซีรีส์/สภาพตามตารางราคา GFIN (12 series = 10 · 13-15 = 12 · 16-17 = 15)
-    if (rule?.maxMonths != null && months > rule.maxMonths) {
+    if (rule.maxMonths != null && months > rule.maxMonths) {
       return { available: false, reason: 'months_over_max', ...termInfo };
     }
 

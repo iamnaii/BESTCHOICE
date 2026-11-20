@@ -367,7 +367,7 @@ export class GfinConfigService {
           }
         }
         return out;
-      });
+      }, { timeout: 30_000 });
     } catch (e) {
       if (isUniqueViolation(e)) {
         throw new ConflictException('มีการแก้เงื่อนไขของรุ่นเดียวกันพร้อมกัน — โหลดหน้าใหม่แล้วลองอีกครั้ง');

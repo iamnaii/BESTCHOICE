@@ -232,6 +232,12 @@ describe('resolveGfinQuote — ตัวเดียวของหน้าส�
     expect(r.quote.available).toBe(true);
   });
 
+  it('งวดที่เลือกต่ำกว่าทุกตัวเลือก → ถอยไปงวดน้อยสุดที่มีเรท (ไม่นับเรทที่ปิดใช้) — 9 → 10', () => {
+    const r = resolveGfinQuote(tables, iphone15, 25000, { ...none, months: 9 });
+    expect(r.months).toBe(10);
+    expect(r.quote.available).toBe(true);
+  });
+
   it('ไม่มีกติกาของรุ่น → no_rule และ months = null', () => {
     const r = resolveGfinQuote({ ...tables, rules: [] }, iphone15, 25000, none);
     expect(r.months).toBeNull();

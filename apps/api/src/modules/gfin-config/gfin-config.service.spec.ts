@@ -237,6 +237,16 @@ describe('GfinConfigService', () => {
         .rejects.toThrow(new ConflictException('รุ่นนี้มีเงื่อนไขของสภาพนี้อยู่แล้ว — แก้แถวที่มีอยู่แทน'));
       expect(audit.log).not.toHaveBeenCalled();
     });
+
+    it('แก้แล้วชน unique index → 409 และไม่เขียน audit', async () => {
+      prisma.gfinOverpriceRule.findUnique.mockResolvedValue({ id: 'r1', deletedAt: null });
+      prisma.gfinOverpriceRule.update.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: 'test' }),
+      );
+      await expect(service.updateOverpriceRule('r1', { condition: 'HAND_1' }, 'u1'))
+        .rejects.toThrow(new ConflictException('รุ่นนี้มีเงื่อนไขของสภาพนี้อยู่แล้ว — แก้แถวที่มีอยู่แทน'));
+      expect(audit.log).not.toHaveBeenCalled();
+    });
   });
 
   describe('softDeleteOverpriceRule', () => {

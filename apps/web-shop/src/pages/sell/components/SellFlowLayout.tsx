@@ -20,7 +20,7 @@ export default function SellFlowLayout({
     window.scrollTo?.({ top: 0, behavior: 'instant' });
   }, [title, progressText]);
   return (
-    <div className="min-h-dvh bg-background text-foreground leading-snug py-0 min-[700px]:py-8">
+    <div className="min-h-dvh bg-background text-foreground leading-snug [&_button:disabled]:opacity-100 [&_button:disabled]:bg-border [&_button:disabled]:text-foreground py-0 min-[700px]:py-8">
       <div className="mx-auto flex min-h-dvh w-full flex-col bg-card min-[700px]:min-h-[min(680px,calc(100dvh-64px))] min-[700px]:max-w-[560px] min-[700px]:rounded-3xl min-[700px]:border min-[700px]:border-border">
         <header className="flex items-center gap-3 border-b border-border px-4 py-4 min-[700px]:px-6">
           {onBack && (

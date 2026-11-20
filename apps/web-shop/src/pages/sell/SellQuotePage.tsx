@@ -156,6 +156,17 @@ export default function SellQuotePage() {
     // Hydrate once from a validated catalog; navigation within the form must not reapply the shared link.
   }, [catalog.data, initialized]);
   useLayoutEffect(() => {
+    if (!catalog.data || !initialized || !model || submitting.current) return;
+    const valid = resolveDevice(catalog.data.models, model, storage);
+    if (valid.model !== model || (storage && valid.storage !== storage)) {
+      clearProfile();
+      setModel(valid.model);
+      setStorage(valid.storage);
+      if (!valid.model) setSeriesId('');
+      navigation.reset({ kind: valid.model ? 'storage' : 'device' });
+    }
+  }, [catalog.data]);
+  useLayoutEffect(() => {
     if (!fingerprint) return;
     if (profile.current && profile.current !== fingerprint) {
       clearProfile();

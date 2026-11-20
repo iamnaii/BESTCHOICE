@@ -1,0 +1,1962 @@
+{
+  "catalog": {
+    "models": [
+      {
+        "model": "iPhone 17 Pro",
+        "storages": [
+          {
+            "storage": "256GB",
+            "maxPrice": "27500.00"
+          },
+          {
+            "storage": "512GB",
+            "maxPrice": "29500.00"
+          }
+        ]
+      },
+      {
+        "model": "iPhone 16 Pro",
+        "storages": [
+          {
+            "storage": "128GB",
+            "maxPrice": "18000.00"
+          },
+          {
+            "storage": "256GB",
+            "maxPrice": "19000.00"
+          },
+          {
+            "storage": "512GB",
+            "maxPrice": "20000.00"
+          }
+        ]
+      },
+      {
+        "model": "iPhone Air",
+        "storages": [
+          {
+            "storage": "256GB",
+            "maxPrice": "19000.00"
+          },
+          {
+            "storage": "512GB",
+            "maxPrice": "20000.00"
+          }
+        ]
+      }
+    ]
+  },
+  "profiles": {
+    "iPhone 17 Pro|256GB": {
+      "bonusPct": "10",
+      "pricingMode": "SUM_PERCENT_FLOOR10",
+      "eligibilityRequired": false,
+      "source": "https://applehouseth.com/",
+      "capturedAt": "2026-11-20T00:00:00+07:00",
+      "questions": [
+        {
+          "id": "2764bc97-e847-407c-a262-0fc94a5eae1e",
+          "key": "device-origin",
+          "title": "เครื่องศูนย์",
+          "helpText": null,
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "f2af307b-bce8-4e70-838c-48546e3f4988",
+              "label": "เครื่องศูนย์ไทย (TH)",
+              "deductType": "FIXED",
+              "deductValue": "0"
+            },
+            {
+              "id": "5009984b-8a76-4c56-b753-1f8d81f289c4",
+              "label": "เครื่องนอก (โมเดลอื่น)",
+              "deductType": "FIXED",
+              "deductValue": "1500"
+            }
+          ]
+        },
+        {
+          "id": "abc2aa91-d294-4a8a-81c3-273753f3aead",
+          "key": "warranty",
+          "title": "ประกัน Apple",
+          "helpText": "เช็คได้ที่ Settings > General > About หรือ checkcoverage.apple.com",
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "1ed4bb03-d5d2-4266-a2a2-e38bb3d8e47a",
+              "label": "ประกันเหลือมากกว่า 4 เดือน",
+              "deductType": "FIXED",
+              "deductValue": "0"
+            },
+            {
+              "id": "95f69352-0d5c-4f9b-8881-85e3dc7d89e4",
+              "label": "ประกันเหลือน้อยกว่า 4 เดือน",
+              "deductType": "FIXED",
+              "deductValue": "300"
+            },
+            {
+              "id": "12566779-80c0-40de-b96a-b391ee6abc7f",
+              "label": "หมดประกัน",
+              "deductType": "FIXED",
+              "deductValue": "500"
+            }
+          ]
+        },
+        {
+          "id": "6beb06f8-ac95-4411-8047-29ddc5391d80",
+          "key": "body-condition",
+          "title": "สภาพตัวเครื่อง",
+          "helpText": null,
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "323a0d0c-e0e6-482e-bc21-1dce34df7a32",
+              "label": "ไม่มีรอยขีดข่วน",
+              "deductType": "PERCENT",
+              "deductValue": "0"
+            },
+            {
+              "id": "a636a8c2-e897-4d56-a4b5-5bf3f237d9f1",
+              "label": "มีรอยนิดหน่อย รอยเคส",
+              "deductType": "PERCENT",
+              "deductValue": "8"
+            },
+            {
+              "id": "725a93e4-62b9-4d11-8a7d-a8ff993608b3",
+              "label": "มีรอยมาก ถลอก สีหลุด",
+              "deductType": "PERCENT",
+              "deductValue": "18"
+            },
+            {
+              "id": "9109a580-99c9-4aaa-9c14-07e0b50ffb16",
+              "label": "ตัวเครื่องมีรอยตก / เบี้ยว / แตก / งอ",
+              "deductType": "PERCENT",
+              "deductValue": "51"
+            },
+            {
+              "id": "0d39143a-203f-414e-9473-ba9b1cee832d",
+              "label": "ฝาหลัง / กระจกหลังแตก",
+              "deductType": "PERCENT",
+              "deductValue": "51"
+            }
+          ]
+        },
+        {
+          "id": "b239db65-97d9-456e-aee2-502af60ec309",
+          "key": "screen-scratch",
+          "title": "รอยหน้าจอ",
+          "helpText": null,
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "5c139da0-0ded-4e61-911d-b288d35ab1e6",
+              "label": "หน้าจอไม่มีรอย",
+              "deductType": "PERCENT",
+              "deductValue": "0"
+            },
+            {
+              "id": "7603746a-d165-450c-93ee-43d2b40d2e72",
+              "label": "หน้าจอมีรอยบางๆ",
+              "deductType": "PERCENT",
+              "deductValue": "8"
+            },
+            {
+              "id": "ec6cd4a2-8e41-4d00-aa9d-e270982a1262",
+              "label": "หน้าจอมีรอยสะดุด",
+              "deductType": "PERCENT",
+              "deductValue": "18"
+            },
+            {
+              "id": "0bc02455-07c1-4743-97f6-3c852e827148",
+              "label": "หน้าจอมีรอยแตกชำรุด",
+              "deductType": "PERCENT",
+              "deductValue": "70"
+            }
+          ]
+        },
+        {
+          "id": "d98e073c-ce89-4f40-a79f-c368dea11122",
+          "key": "display",
+          "title": "การแสดงผลหน้าจอ",
+          "helpText": null,
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "348c4945-f356-47a8-8c0c-0a1571a51f1d",
+              "label": "แสดงภาพปกติ",
+              "deductType": "PERCENT",
+              "deductValue": "0"
+            },
+            {
+              "id": "8c26447f-29bc-457a-bff9-8555bc722b8c",
+              "label": "จุด Bright / ฝุ่นในจอ / ขอบจอเงา",
+              "deductType": "PERCENT",
+              "deductValue": "35"
+            },
+            {
+              "id": "dbeadb66-ea17-4176-99d6-4ef80b851232",
+              "label": "จุด Dead / จุดสี / ลายเส้น / จอปลอม",
+              "deductType": "PERCENT",
+              "deductValue": "70"
+            },
+            {
+              "id": "3c8dcc42-48a6-488e-b1b9-35c63d46d866",
+              "label": "ไม่สามารถแสดงภาพหน้าจอ",
+              "deductType": "PERCENT",
+              "deductValue": "85"
+            }
+          ]
+        },
+        {
+          "id": "d4d00da0-b8fd-451d-a48b-bca554a4b6bd",
+          "key": "battery",
+          "title": "สุขภาพแบตเตอรี่",
+          "helpText": "เช็คได้ที่ Settings > Battery > Battery Health",
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "35dce7cd-b89a-4050-889b-46630ac3a04e",
+              "label": "แบตเตอรี่ 80% ขึ้นไป",
+              "deductType": "FIXED",
+              "deductValue": "0"
+            },
+            {
+              "id": "319c4bb3-f9d1-4b8e-86a7-1d051616a88c",
+              "label": "แบตเตอรี่ต่ำกว่า 80%",
+              "deductType": "FIXED",
+              "deductValue": "1500"
+            }
+          ]
+        },
+        {
+          "id": "af3091d9-7990-44bb-be03-769c4ae07322",
+          "key": "box-accessories",
+          "title": "กล่อง / อุปกรณ์",
+          "helpText": null,
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "9edde931-7de6-45b2-aa5f-85c57647c7d2",
+              "label": "มีกล่อง อุปกรณ์ครบ",
+              "deductType": "FIXED",
+              "deductValue": "0"
+            },
+            {
+              "id": "ca01d1eb-4cde-493e-950c-95d8ecd9ce41",
+              "label": "มีกล่อง อุปกรณ์ไม่ครบ",
+              "deductType": "FIXED",
+              "deductValue": "200"
+            },
+            {
+              "id": "ad588454-0562-465e-a665-b1e192287550",
+              "label": "ไม่มีกล่อง",
+              "deductType": "FIXED",
+              "deductValue": "500"
+            }
+          ]
+        },
+        {
+          "id": "01363e80-7aad-4813-90f8-1285adbe92a8",
+          "key": "functional-issues",
+          "title": "ปัญหาการใช้งาน (เลือกได้หลายข้อ — ไม่เลือก = ไม่มีปัญหา)",
+          "helpText": null,
+          "selectType": "MULTI",
+          "choices": [
+            {
+              "id": "e5600509-6488-4a5c-91c7-5364667613b4",
+              "label": "ระบบสัมผัส (ทัชสกรีน)",
+              "deductType": "PERCENT",
+              "deductValue": "75"
+            },
+            {
+              "id": "c9f1b03f-6999-4a65-a3c3-ede125afe3b2",
+              "label": "WiFi / Bluetooth / GPS",
+              "deductType": "PERCENT",
+              "deductValue": "85"
+            },
+            {
+              "id": "2b0ebc11-76d6-4440-94ad-29c388b83fb6",
+              "label": "ระบบสั่น",
+              "deductType": "PERCENT",
+              "deductValue": "35"
+            },
+            {
+              "id": "12392dad-a855-40c5-9cc1-ae22966f5c48",
+              "label": "โทรออก-รับสาย / ไมค์ มีปัญหา",
+              "deductType": "PERCENT",
+              "deductValue": "75"
+            },
+            {
+              "id": "ca104169-753c-4438-b7ed-1cdc6a152628",
+              "label": "Face ID / สแกนนิ้ว",
+              "deductType": "PERCENT",
+              "deductValue": "51"
+            },
+            {
+              "id": "34544b37-1d27-45c8-b392-3cf6148ddae1",
+              "label": "ลำโพงบน-ล่าง",
+              "deductType": "PERCENT",
+              "deductValue": "35"
+            },
+            {
+              "id": "206d0b4e-2cc7-462b-af02-98595a10ec1c",
+              "label": "กล้องหน้า-หลัง / แฟลช",
+              "deductType": "PERCENT",
+              "deductValue": "70"
+            },
+            {
+              "id": "8f89e72e-e4c3-4b5e-959f-618dc7fa8d25",
+              "label": "Sensor",
+              "deductType": "PERCENT",
+              "deductValue": "51"
+            },
+            {
+              "id": "7446cec2-8f55-4df3-8c13-ac9511dc54f9",
+              "label": "ปุ่มล็อก power / volume",
+              "deductType": "PERCENT",
+              "deductValue": "35"
+            }
+          ]
+        }
+      ]
+    },
+    "iPhone 17 Pro|512GB": {
+      "bonusPct": "10",
+      "pricingMode": "SUM_PERCENT_FLOOR10",
+      "eligibilityRequired": false,
+      "source": "https://applehouseth.com/",
+      "capturedAt": "2026-11-20T00:00:00+07:00",
+      "questions": [
+        {
+          "id": "2764bc97-e847-407c-a262-0fc94a5eae1e",
+          "key": "device-origin",
+          "title": "เครื่องศูนย์",
+          "helpText": null,
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "f2af307b-bce8-4e70-838c-48546e3f4988",
+              "label": "เครื่องศูนย์ไทย (TH)",
+              "deductType": "FIXED",
+              "deductValue": "0"
+            },
+            {
+              "id": "5009984b-8a76-4c56-b753-1f8d81f289c4",
+              "label": "เครื่องนอก (โมเดลอื่น)",
+              "deductType": "FIXED",
+              "deductValue": "1500"
+            }
+          ]
+        },
+        {
+          "id": "abc2aa91-d294-4a8a-81c3-273753f3aead",
+          "key": "warranty",
+          "title": "ประกัน Apple",
+          "helpText": "เช็คได้ที่ Settings > General > About หรือ checkcoverage.apple.com",
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "1ed4bb03-d5d2-4266-a2a2-e38bb3d8e47a",
+              "label": "ประกันเหลือมากกว่า 4 เดือน",
+              "deductType": "FIXED",
+              "deductValue": "0"
+            },
+            {
+              "id": "95f69352-0d5c-4f9b-8881-85e3dc7d89e4",
+              "label": "ประกันเหลือน้อยกว่า 4 เดือน",
+              "deductType": "FIXED",
+              "deductValue": "300"
+            },
+            {
+              "id": "12566779-80c0-40de-b96a-b391ee6abc7f",
+              "label": "หมดประกัน",
+              "deductType": "FIXED",
+              "deductValue": "500"
+            }
+          ]
+        },
+        {
+          "id": "6beb06f8-ac95-4411-8047-29ddc5391d80",
+          "key": "body-condition",
+          "title": "สภาพตัวเครื่อง",
+          "helpText": null,
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "323a0d0c-e0e6-482e-bc21-1dce34df7a32",
+              "label": "ไม่มีรอยขีดข่วน",
+              "deductType": "PERCENT",
+              "deductValue": "0"
+            },
+            {
+              "id": "a636a8c2-e897-4d56-a4b5-5bf3f237d9f1",
+              "label": "มีรอยนิดหน่อย รอยเคส",
+              "deductType": "PERCENT",
+              "deductValue": "8"
+            },
+            {
+              "id": "725a93e4-62b9-4d11-8a7d-a8ff993608b3",
+              "label": "มีรอยมาก ถลอก สีหลุด",
+              "deductType": "PERCENT",
+              "deductValue": "18"
+            },
+            {
+              "id": "9109a580-99c9-4aaa-9c14-07e0b50ffb16",
+              "label": "ตัวเครื่องมีรอยตก / เบี้ยว / แตก / งอ",
+              "deductType": "PERCENT",
+              "deductValue": "51"
+            },
+            {
+              "id": "0d39143a-203f-414e-9473-ba9b1cee832d",
+              "label": "ฝาหลัง / กระจกหลังแตก",
+              "deductType": "PERCENT",
+              "deductValue": "51"
+            }
+          ]
+        },
+        {
+          "id": "b239db65-97d9-456e-aee2-502af60ec309",
+          "key": "screen-scratch",
+          "title": "รอยหน้าจอ",
+          "helpText": null,
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "5c139da0-0ded-4e61-911d-b288d35ab1e6",
+              "label": "หน้าจอไม่มีรอย",
+              "deductType": "PERCENT",
+              "deductValue": "0"
+            },
+            {
+              "id": "7603746a-d165-450c-93ee-43d2b40d2e72",
+              "label": "หน้าจอมีรอยบางๆ",
+              "deductType": "PERCENT",
+              "deductValue": "8"
+            },
+            {
+              "id": "ec6cd4a2-8e41-4d00-aa9d-e270982a1262",
+              "label": "หน้าจอมีรอยสะดุด",
+              "deductType": "PERCENT",
+              "deductValue": "18"
+            },
+            {
+              "id": "0bc02455-07c1-4743-97f6-3c852e827148",
+              "label": "หน้าจอมีรอยแตกชำรุด",
+              "deductType": "PERCENT",
+              "deductValue": "70"
+            }
+          ]
+        },
+        {
+          "id": "d98e073c-ce89-4f40-a79f-c368dea11122",
+          "key": "display",
+          "title": "การแสดงผลหน้าจอ",
+          "helpText": null,
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "348c4945-f356-47a8-8c0c-0a1571a51f1d",
+              "label": "แสดงภาพปกติ",
+              "deductType": "PERCENT",
+              "deductValue": "0"
+            },
+            {
+              "id": "8c26447f-29bc-457a-bff9-8555bc722b8c",
+              "label": "จุด Bright / ฝุ่นในจอ / ขอบจอเงา",
+              "deductType": "PERCENT",
+              "deductValue": "35"
+            },
+            {
+              "id": "dbeadb66-ea17-4176-99d6-4ef80b851232",
+              "label": "จุด Dead / จุดสี / ลายเส้น / จอปลอม",
+              "deductType": "PERCENT",
+              "deductValue": "70"
+            },
+            {
+              "id": "3c8dcc42-48a6-488e-b1b9-35c63d46d866",
+              "label": "ไม่สามารถแสดงภาพหน้าจอ",
+              "deductType": "PERCENT",
+              "deductValue": "85"
+            }
+          ]
+        },
+        {
+          "id": "d4d00da0-b8fd-451d-a48b-bca554a4b6bd",
+          "key": "battery",
+          "title": "สุขภาพแบตเตอรี่",
+          "helpText": "เช็คได้ที่ Settings > Battery > Battery Health",
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "35dce7cd-b89a-4050-889b-46630ac3a04e",
+              "label": "แบตเตอรี่ 80% ขึ้นไป",
+              "deductType": "FIXED",
+              "deductValue": "0"
+            },
+            {
+              "id": "319c4bb3-f9d1-4b8e-86a7-1d051616a88c",
+              "label": "แบตเตอรี่ต่ำกว่า 80%",
+              "deductType": "FIXED",
+              "deductValue": "1500"
+            }
+          ]
+        },
+        {
+          "id": "af3091d9-7990-44bb-be03-769c4ae07322",
+          "key": "box-accessories",
+          "title": "กล่อง / อุปกรณ์",
+          "helpText": null,
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "9edde931-7de6-45b2-aa5f-85c57647c7d2",
+              "label": "มีกล่อง อุปกรณ์ครบ",
+              "deductType": "FIXED",
+              "deductValue": "0"
+            },
+            {
+              "id": "ca01d1eb-4cde-493e-950c-95d8ecd9ce41",
+              "label": "มีกล่อง อุปกรณ์ไม่ครบ",
+              "deductType": "FIXED",
+              "deductValue": "200"
+            },
+            {
+              "id": "ad588454-0562-465e-a665-b1e192287550",
+              "label": "ไม่มีกล่อง",
+              "deductType": "FIXED",
+              "deductValue": "500"
+            }
+          ]
+        },
+        {
+          "id": "01363e80-7aad-4813-90f8-1285adbe92a8",
+          "key": "functional-issues",
+          "title": "ปัญหาการใช้งาน (เลือกได้หลายข้อ — ไม่เลือก = ไม่มีปัญหา)",
+          "helpText": null,
+          "selectType": "MULTI",
+          "choices": [
+            {
+              "id": "e5600509-6488-4a5c-91c7-5364667613b4",
+              "label": "ระบบสัมผัส (ทัชสกรีน)",
+              "deductType": "PERCENT",
+              "deductValue": "75"
+            },
+            {
+              "id": "c9f1b03f-6999-4a65-a3c3-ede125afe3b2",
+              "label": "WiFi / Bluetooth / GPS",
+              "deductType": "PERCENT",
+              "deductValue": "85"
+            },
+            {
+              "id": "2b0ebc11-76d6-4440-94ad-29c388b83fb6",
+              "label": "ระบบสั่น",
+              "deductType": "PERCENT",
+              "deductValue": "35"
+            },
+            {
+              "id": "12392dad-a855-40c5-9cc1-ae22966f5c48",
+              "label": "โทรออก-รับสาย / ไมค์ มีปัญหา",
+              "deductType": "PERCENT",
+              "deductValue": "75"
+            },
+            {
+              "id": "ca104169-753c-4438-b7ed-1cdc6a152628",
+              "label": "Face ID / สแกนนิ้ว",
+              "deductType": "PERCENT",
+              "deductValue": "51"
+            },
+            {
+              "id": "34544b37-1d27-45c8-b392-3cf6148ddae1",
+              "label": "ลำโพงบน-ล่าง",
+              "deductType": "PERCENT",
+              "deductValue": "35"
+            },
+            {
+              "id": "206d0b4e-2cc7-462b-af02-98595a10ec1c",
+              "label": "กล้องหน้า-หลัง / แฟลช",
+              "deductType": "PERCENT",
+              "deductValue": "70"
+            },
+            {
+              "id": "8f89e72e-e4c3-4b5e-959f-618dc7fa8d25",
+              "label": "Sensor",
+              "deductType": "PERCENT",
+              "deductValue": "51"
+            },
+            {
+              "id": "7446cec2-8f55-4df3-8c13-ac9511dc54f9",
+              "label": "ปุ่มล็อก power / volume",
+              "deductType": "PERCENT",
+              "deductValue": "35"
+            }
+          ]
+        }
+      ]
+    },
+    "iPhone 16 Pro|128GB": {
+      "bonusPct": "10",
+      "pricingMode": "SUM_PERCENT_FLOOR10",
+      "eligibilityRequired": false,
+      "source": "https://applehouseth.com/",
+      "capturedAt": "2026-11-20T00:00:00+07:00",
+      "questions": [
+        {
+          "id": "2764bc97-e847-407c-a262-0fc94a5eae1e",
+          "key": "device-origin",
+          "title": "เครื่องศูนย์",
+          "helpText": null,
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "f2af307b-bce8-4e70-838c-48546e3f4988",
+              "label": "เครื่องศูนย์ไทย (TH)",
+              "deductType": "FIXED",
+              "deductValue": "0"
+            },
+            {
+              "id": "5009984b-8a76-4c56-b753-1f8d81f289c4",
+              "label": "เครื่องนอก (โมเดลอื่น)",
+              "deductType": "FIXED",
+              "deductValue": "1500"
+            }
+          ]
+        },
+        {
+          "id": "abc2aa91-d294-4a8a-81c3-273753f3aead",
+          "key": "warranty",
+          "title": "ประกัน Apple",
+          "helpText": "เช็คได้ที่ Settings > General > About หรือ checkcoverage.apple.com",
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "1ed4bb03-d5d2-4266-a2a2-e38bb3d8e47a",
+              "label": "ประกันเหลือมากกว่า 4 เดือน",
+              "deductType": "FIXED",
+              "deductValue": "0"
+            },
+            {
+              "id": "95f69352-0d5c-4f9b-8881-85e3dc7d89e4",
+              "label": "ประกันเหลือน้อยกว่า 4 เดือน",
+              "deductType": "FIXED",
+              "deductValue": "300"
+            },
+            {
+              "id": "12566779-80c0-40de-b96a-b391ee6abc7f",
+              "label": "หมดประกัน",
+              "deductType": "FIXED",
+              "deductValue": "500"
+            }
+          ]
+        },
+        {
+          "id": "6beb06f8-ac95-4411-8047-29ddc5391d80",
+          "key": "body-condition",
+          "title": "สภาพตัวเครื่อง",
+          "helpText": null,
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "323a0d0c-e0e6-482e-bc21-1dce34df7a32",
+              "label": "ไม่มีรอยขีดข่วน",
+              "deductType": "PERCENT",
+              "deductValue": "0"
+            },
+            {
+              "id": "a636a8c2-e897-4d56-a4b5-5bf3f237d9f1",
+              "label": "มีรอยนิดหน่อย รอยเคส",
+              "deductType": "PERCENT",
+              "deductValue": "8"
+            },
+            {
+              "id": "725a93e4-62b9-4d11-8a7d-a8ff993608b3",
+              "label": "มีรอยมาก ถลอก สีหลุด",
+              "deductType": "PERCENT",
+              "deductValue": "18"
+            },
+            {
+              "id": "9109a580-99c9-4aaa-9c14-07e0b50ffb16",
+              "label": "ตัวเครื่องมีรอยตก / เบี้ยว / แตก / งอ",
+              "deductType": "PERCENT",
+              "deductValue": "51"
+            },
+            {
+              "id": "0d39143a-203f-414e-9473-ba9b1cee832d",
+              "label": "ฝาหลัง / กระจกหลังแตก",
+              "deductType": "PERCENT",
+              "deductValue": "51"
+            }
+          ]
+        },
+        {
+          "id": "b239db65-97d9-456e-aee2-502af60ec309",
+          "key": "screen-scratch",
+          "title": "รอยหน้าจอ",
+          "helpText": null,
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "5c139da0-0ded-4e61-911d-b288d35ab1e6",
+              "label": "หน้าจอไม่มีรอย",
+              "deductType": "PERCENT",
+              "deductValue": "0"
+            },
+            {
+              "id": "7603746a-d165-450c-93ee-43d2b40d2e72",
+              "label": "หน้าจอมีรอยบางๆ",
+              "deductType": "PERCENT",
+              "deductValue": "8"
+            },
+            {
+              "id": "ec6cd4a2-8e41-4d00-aa9d-e270982a1262",
+              "label": "หน้าจอมีรอยสะดุด",
+              "deductType": "PERCENT",
+              "deductValue": "18"
+            },
+            {
+              "id": "0bc02455-07c1-4743-97f6-3c852e827148",
+              "label": "หน้าจอมีรอยแตกชำรุด",
+              "deductType": "PERCENT",
+              "deductValue": "70"
+            }
+          ]
+        },
+        {
+          "id": "d98e073c-ce89-4f40-a79f-c368dea11122",
+          "key": "display",
+          "title": "การแสดงผลหน้าจอ",
+          "helpText": null,
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "348c4945-f356-47a8-8c0c-0a1571a51f1d",
+              "label": "แสดงภาพปกติ",
+              "deductType": "PERCENT",
+              "deductValue": "0"
+            },
+            {
+              "id": "8c26447f-29bc-457a-bff9-8555bc722b8c",
+              "label": "จุด Bright / ฝุ่นในจอ / ขอบจอเงา",
+              "deductType": "PERCENT",
+              "deductValue": "35"
+            },
+            {
+              "id": "dbeadb66-ea17-4176-99d6-4ef80b851232",
+              "label": "จุด Dead / จุดสี / ลายเส้น / จอปลอม",
+              "deductType": "PERCENT",
+              "deductValue": "70"
+            },
+            {
+              "id": "3c8dcc42-48a6-488e-b1b9-35c63d46d866",
+              "label": "ไม่สามารถแสดงภาพหน้าจอ",
+              "deductType": "PERCENT",
+              "deductValue": "85"
+            }
+          ]
+        },
+        {
+          "id": "d4d00da0-b8fd-451d-a48b-bca554a4b6bd",
+          "key": "battery",
+          "title": "สุขภาพแบตเตอรี่",
+          "helpText": "เช็คได้ที่ Settings > Battery > Battery Health",
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "35dce7cd-b89a-4050-889b-46630ac3a04e",
+              "label": "แบตเตอรี่ 80% ขึ้นไป",
+              "deductType": "FIXED",
+              "deductValue": "0"
+            },
+            {
+              "id": "319c4bb3-f9d1-4b8e-86a7-1d051616a88c",
+              "label": "แบตเตอรี่ต่ำกว่า 80%",
+              "deductType": "FIXED",
+              "deductValue": "1500"
+            }
+          ]
+        },
+        {
+          "id": "af3091d9-7990-44bb-be03-769c4ae07322",
+          "key": "box-accessories",
+          "title": "กล่อง / อุปกรณ์",
+          "helpText": null,
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "9edde931-7de6-45b2-aa5f-85c57647c7d2",
+              "label": "มีกล่อง อุปกรณ์ครบ",
+              "deductType": "FIXED",
+              "deductValue": "0"
+            },
+            {
+              "id": "ca01d1eb-4cde-493e-950c-95d8ecd9ce41",
+              "label": "มีกล่อง อุปกรณ์ไม่ครบ",
+              "deductType": "FIXED",
+              "deductValue": "200"
+            },
+            {
+              "id": "ad588454-0562-465e-a665-b1e192287550",
+              "label": "ไม่มีกล่อง",
+              "deductType": "FIXED",
+              "deductValue": "500"
+            }
+          ]
+        },
+        {
+          "id": "01363e80-7aad-4813-90f8-1285adbe92a8",
+          "key": "functional-issues",
+          "title": "ปัญหาการใช้งาน (เลือกได้หลายข้อ — ไม่เลือก = ไม่มีปัญหา)",
+          "helpText": null,
+          "selectType": "MULTI",
+          "choices": [
+            {
+              "id": "e5600509-6488-4a5c-91c7-5364667613b4",
+              "label": "ระบบสัมผัส (ทัชสกรีน)",
+              "deductType": "PERCENT",
+              "deductValue": "75"
+            },
+            {
+              "id": "c9f1b03f-6999-4a65-a3c3-ede125afe3b2",
+              "label": "WiFi / Bluetooth / GPS",
+              "deductType": "PERCENT",
+              "deductValue": "85"
+            },
+            {
+              "id": "2b0ebc11-76d6-4440-94ad-29c388b83fb6",
+              "label": "ระบบสั่น",
+              "deductType": "PERCENT",
+              "deductValue": "35"
+            },
+            {
+              "id": "12392dad-a855-40c5-9cc1-ae22966f5c48",
+              "label": "โทรออก-รับสาย / ไมค์ มีปัญหา",
+              "deductType": "PERCENT",
+              "deductValue": "75"
+            },
+            {
+              "id": "ca104169-753c-4438-b7ed-1cdc6a152628",
+              "label": "Face ID / สแกนนิ้ว",
+              "deductType": "PERCENT",
+              "deductValue": "51"
+            },
+            {
+              "id": "34544b37-1d27-45c8-b392-3cf6148ddae1",
+              "label": "ลำโพงบน-ล่าง",
+              "deductType": "PERCENT",
+              "deductValue": "35"
+            },
+            {
+              "id": "206d0b4e-2cc7-462b-af02-98595a10ec1c",
+              "label": "กล้องหน้า-หลัง / แฟลช",
+              "deductType": "PERCENT",
+              "deductValue": "70"
+            },
+            {
+              "id": "8f89e72e-e4c3-4b5e-959f-618dc7fa8d25",
+              "label": "Sensor",
+              "deductType": "PERCENT",
+              "deductValue": "51"
+            },
+            {
+              "id": "7446cec2-8f55-4df3-8c13-ac9511dc54f9",
+              "label": "ปุ่มล็อก power / volume",
+              "deductType": "PERCENT",
+              "deductValue": "35"
+            }
+          ]
+        }
+      ]
+    },
+    "iPhone 16 Pro|256GB": {
+      "bonusPct": "10",
+      "pricingMode": "SUM_PERCENT_FLOOR10",
+      "eligibilityRequired": false,
+      "source": "https://applehouseth.com/",
+      "capturedAt": "2026-11-20T00:00:00+07:00",
+      "questions": [
+        {
+          "id": "2764bc97-e847-407c-a262-0fc94a5eae1e",
+          "key": "device-origin",
+          "title": "เครื่องศูนย์",
+          "helpText": null,
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "f2af307b-bce8-4e70-838c-48546e3f4988",
+              "label": "เครื่องศูนย์ไทย (TH)",
+              "deductType": "FIXED",
+              "deductValue": "0"
+            },
+            {
+              "id": "5009984b-8a76-4c56-b753-1f8d81f289c4",
+              "label": "เครื่องนอก (โมเดลอื่น)",
+              "deductType": "FIXED",
+              "deductValue": "1500"
+            }
+          ]
+        },
+        {
+          "id": "abc2aa91-d294-4a8a-81c3-273753f3aead",
+          "key": "warranty",
+          "title": "ประกัน Apple",
+          "helpText": "เช็คได้ที่ Settings > General > About หรือ checkcoverage.apple.com",
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "1ed4bb03-d5d2-4266-a2a2-e38bb3d8e47a",
+              "label": "ประกันเหลือมากกว่า 4 เดือน",
+              "deductType": "FIXED",
+              "deductValue": "0"
+            },
+            {
+              "id": "95f69352-0d5c-4f9b-8881-85e3dc7d89e4",
+              "label": "ประกันเหลือน้อยกว่า 4 เดือน",
+              "deductType": "FIXED",
+              "deductValue": "300"
+            },
+            {
+              "id": "12566779-80c0-40de-b96a-b391ee6abc7f",
+              "label": "หมดประกัน",
+              "deductType": "FIXED",
+              "deductValue": "500"
+            }
+          ]
+        },
+        {
+          "id": "6beb06f8-ac95-4411-8047-29ddc5391d80",
+          "key": "body-condition",
+          "title": "สภาพตัวเครื่อง",
+          "helpText": null,
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "323a0d0c-e0e6-482e-bc21-1dce34df7a32",
+              "label": "ไม่มีรอยขีดข่วน",
+              "deductType": "PERCENT",
+              "deductValue": "0"
+            },
+            {
+              "id": "a636a8c2-e897-4d56-a4b5-5bf3f237d9f1",
+              "label": "มีรอยนิดหน่อย รอยเคส",
+              "deductType": "PERCENT",
+              "deductValue": "8"
+            },
+            {
+              "id": "725a93e4-62b9-4d11-8a7d-a8ff993608b3",
+              "label": "มีรอยมาก ถลอก สีหลุด",
+              "deductType": "PERCENT",
+              "deductValue": "18"
+            },
+            {
+              "id": "9109a580-99c9-4aaa-9c14-07e0b50ffb16",
+              "label": "ตัวเครื่องมีรอยตก / เบี้ยว / แตก / งอ",
+              "deductType": "PERCENT",
+              "deductValue": "51"
+            },
+            {
+              "id": "0d39143a-203f-414e-9473-ba9b1cee832d",
+              "label": "ฝาหลัง / กระจกหลังแตก",
+              "deductType": "PERCENT",
+              "deductValue": "51"
+            }
+          ]
+        },
+        {
+          "id": "b239db65-97d9-456e-aee2-502af60ec309",
+          "key": "screen-scratch",
+          "title": "รอยหน้าจอ",
+          "helpText": null,
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "5c139da0-0ded-4e61-911d-b288d35ab1e6",
+              "label": "หน้าจอไม่มีรอย",
+              "deductType": "PERCENT",
+              "deductValue": "0"
+            },
+            {
+              "id": "7603746a-d165-450c-93ee-43d2b40d2e72",
+              "label": "หน้าจอมีรอยบางๆ",
+              "deductType": "PERCENT",
+              "deductValue": "8"
+            },
+            {
+              "id": "ec6cd4a2-8e41-4d00-aa9d-e270982a1262",
+              "label": "หน้าจอมีรอยสะดุด",
+              "deductType": "PERCENT",
+              "deductValue": "18"
+            },
+            {
+              "id": "0bc02455-07c1-4743-97f6-3c852e827148",
+              "label": "หน้าจอมีรอยแตกชำรุด",
+              "deductType": "PERCENT",
+              "deductValue": "70"
+            }
+          ]
+        },
+        {
+          "id": "d98e073c-ce89-4f40-a79f-c368dea11122",
+          "key": "display",
+          "title": "การแสดงผลหน้าจอ",
+          "helpText": null,
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "348c4945-f356-47a8-8c0c-0a1571a51f1d",
+              "label": "แสดงภาพปกติ",
+              "deductType": "PERCENT",
+              "deductValue": "0"
+            },
+            {
+              "id": "8c26447f-29bc-457a-bff9-8555bc722b8c",
+              "label": "จุด Bright / ฝุ่นในจอ / ขอบจอเงา",
+              "deductType": "PERCENT",
+              "deductValue": "35"
+            },
+            {
+              "id": "dbeadb66-ea17-4176-99d6-4ef80b851232",
+              "label": "จุด Dead / จุดสี / ลายเส้น / จอปลอม",
+              "deductType": "PERCENT",
+              "deductValue": "70"
+            },
+            {
+              "id": "3c8dcc42-48a6-488e-b1b9-35c63d46d866",
+              "label": "ไม่สามารถแสดงภาพหน้าจอ",
+              "deductType": "PERCENT",
+              "deductValue": "85"
+            }
+          ]
+        },
+        {
+          "id": "d4d00da0-b8fd-451d-a48b-bca554a4b6bd",
+          "key": "battery",
+          "title": "สุขภาพแบตเตอรี่",
+          "helpText": "เช็คได้ที่ Settings > Battery > Battery Health",
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "35dce7cd-b89a-4050-889b-46630ac3a04e",
+              "label": "แบตเตอรี่ 80% ขึ้นไป",
+              "deductType": "FIXED",
+              "deductValue": "0"
+            },
+            {
+              "id": "319c4bb3-f9d1-4b8e-86a7-1d051616a88c",
+              "label": "แบตเตอรี่ต่ำกว่า 80%",
+              "deductType": "FIXED",
+              "deductValue": "1500"
+            }
+          ]
+        },
+        {
+          "id": "af3091d9-7990-44bb-be03-769c4ae07322",
+          "key": "box-accessories",
+          "title": "กล่อง / อุปกรณ์",
+          "helpText": null,
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "9edde931-7de6-45b2-aa5f-85c57647c7d2",
+              "label": "มีกล่อง อุปกรณ์ครบ",
+              "deductType": "FIXED",
+              "deductValue": "0"
+            },
+            {
+              "id": "ca01d1eb-4cde-493e-950c-95d8ecd9ce41",
+              "label": "มีกล่อง อุปกรณ์ไม่ครบ",
+              "deductType": "FIXED",
+              "deductValue": "200"
+            },
+            {
+              "id": "ad588454-0562-465e-a665-b1e192287550",
+              "label": "ไม่มีกล่อง",
+              "deductType": "FIXED",
+              "deductValue": "500"
+            }
+          ]
+        },
+        {
+          "id": "01363e80-7aad-4813-90f8-1285adbe92a8",
+          "key": "functional-issues",
+          "title": "ปัญหาการใช้งาน (เลือกได้หลายข้อ — ไม่เลือก = ไม่มีปัญหา)",
+          "helpText": null,
+          "selectType": "MULTI",
+          "choices": [
+            {
+              "id": "e5600509-6488-4a5c-91c7-5364667613b4",
+              "label": "ระบบสัมผัส (ทัชสกรีน)",
+              "deductType": "PERCENT",
+              "deductValue": "75"
+            },
+            {
+              "id": "c9f1b03f-6999-4a65-a3c3-ede125afe3b2",
+              "label": "WiFi / Bluetooth / GPS",
+              "deductType": "PERCENT",
+              "deductValue": "85"
+            },
+            {
+              "id": "2b0ebc11-76d6-4440-94ad-29c388b83fb6",
+              "label": "ระบบสั่น",
+              "deductType": "PERCENT",
+              "deductValue": "35"
+            },
+            {
+              "id": "12392dad-a855-40c5-9cc1-ae22966f5c48",
+              "label": "โทรออก-รับสาย / ไมค์ มีปัญหา",
+              "deductType": "PERCENT",
+              "deductValue": "75"
+            },
+            {
+              "id": "ca104169-753c-4438-b7ed-1cdc6a152628",
+              "label": "Face ID / สแกนนิ้ว",
+              "deductType": "PERCENT",
+              "deductValue": "51"
+            },
+            {
+              "id": "34544b37-1d27-45c8-b392-3cf6148ddae1",
+              "label": "ลำโพงบน-ล่าง",
+              "deductType": "PERCENT",
+              "deductValue": "35"
+            },
+            {
+              "id": "206d0b4e-2cc7-462b-af02-98595a10ec1c",
+              "label": "กล้องหน้า-หลัง / แฟลช",
+              "deductType": "PERCENT",
+              "deductValue": "70"
+            },
+            {
+              "id": "8f89e72e-e4c3-4b5e-959f-618dc7fa8d25",
+              "label": "Sensor",
+              "deductType": "PERCENT",
+              "deductValue": "51"
+            },
+            {
+              "id": "7446cec2-8f55-4df3-8c13-ac9511dc54f9",
+              "label": "ปุ่มล็อก power / volume",
+              "deductType": "PERCENT",
+              "deductValue": "35"
+            }
+          ]
+        }
+      ]
+    },
+    "iPhone 16 Pro|512GB": {
+      "bonusPct": "10",
+      "pricingMode": "SUM_PERCENT_FLOOR10",
+      "eligibilityRequired": false,
+      "source": "https://applehouseth.com/",
+      "capturedAt": "2026-11-20T00:00:00+07:00",
+      "questions": [
+        {
+          "id": "2764bc97-e847-407c-a262-0fc94a5eae1e",
+          "key": "device-origin",
+          "title": "เครื่องศูนย์",
+          "helpText": null,
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "f2af307b-bce8-4e70-838c-48546e3f4988",
+              "label": "เครื่องศูนย์ไทย (TH)",
+              "deductType": "FIXED",
+              "deductValue": "0"
+            },
+            {
+              "id": "5009984b-8a76-4c56-b753-1f8d81f289c4",
+              "label": "เครื่องนอก (โมเดลอื่น)",
+              "deductType": "FIXED",
+              "deductValue": "1500"
+            }
+          ]
+        },
+        {
+          "id": "abc2aa91-d294-4a8a-81c3-273753f3aead",
+          "key": "warranty",
+          "title": "ประกัน Apple",
+          "helpText": "เช็คได้ที่ Settings > General > About หรือ checkcoverage.apple.com",
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "1ed4bb03-d5d2-4266-a2a2-e38bb3d8e47a",
+              "label": "ประกันเหลือมากกว่า 4 เดือน",
+              "deductType": "FIXED",
+              "deductValue": "0"
+            },
+            {
+              "id": "95f69352-0d5c-4f9b-8881-85e3dc7d89e4",
+              "label": "ประกันเหลือน้อยกว่า 4 เดือน",
+              "deductType": "FIXED",
+              "deductValue": "300"
+            },
+            {
+              "id": "12566779-80c0-40de-b96a-b391ee6abc7f",
+              "label": "หมดประกัน",
+              "deductType": "FIXED",
+              "deductValue": "500"
+            }
+          ]
+        },
+        {
+          "id": "6beb06f8-ac95-4411-8047-29ddc5391d80",
+          "key": "body-condition",
+          "title": "สภาพตัวเครื่อง",
+          "helpText": null,
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "323a0d0c-e0e6-482e-bc21-1dce34df7a32",
+              "label": "ไม่มีรอยขีดข่วน",
+              "deductType": "PERCENT",
+              "deductValue": "0"
+            },
+            {
+              "id": "a636a8c2-e897-4d56-a4b5-5bf3f237d9f1",
+              "label": "มีรอยนิดหน่อย รอยเคส",
+              "deductType": "PERCENT",
+              "deductValue": "8"
+            },
+            {
+              "id": "725a93e4-62b9-4d11-8a7d-a8ff993608b3",
+              "label": "มีรอยมาก ถลอก สีหลุด",
+              "deductType": "PERCENT",
+              "deductValue": "18"
+            },
+            {
+              "id": "9109a580-99c9-4aaa-9c14-07e0b50ffb16",
+              "label": "ตัวเครื่องมีรอยตก / เบี้ยว / แตก / งอ",
+              "deductType": "PERCENT",
+              "deductValue": "51"
+            },
+            {
+              "id": "0d39143a-203f-414e-9473-ba9b1cee832d",
+              "label": "ฝาหลัง / กระจกหลังแตก",
+              "deductType": "PERCENT",
+              "deductValue": "51"
+            }
+          ]
+        },
+        {
+          "id": "b239db65-97d9-456e-aee2-502af60ec309",
+          "key": "screen-scratch",
+          "title": "รอยหน้าจอ",
+          "helpText": null,
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "5c139da0-0ded-4e61-911d-b288d35ab1e6",
+              "label": "หน้าจอไม่มีรอย",
+              "deductType": "PERCENT",
+              "deductValue": "0"
+            },
+            {
+              "id": "7603746a-d165-450c-93ee-43d2b40d2e72",
+              "label": "หน้าจอมีรอยบางๆ",
+              "deductType": "PERCENT",
+              "deductValue": "8"
+            },
+            {
+              "id": "ec6cd4a2-8e41-4d00-aa9d-e270982a1262",
+              "label": "หน้าจอมีรอยสะดุด",
+              "deductType": "PERCENT",
+              "deductValue": "18"
+            },
+            {
+              "id": "0bc02455-07c1-4743-97f6-3c852e827148",
+              "label": "หน้าจอมีรอยแตกชำรุด",
+              "deductType": "PERCENT",
+              "deductValue": "70"
+            }
+          ]
+        },
+        {
+          "id": "d98e073c-ce89-4f40-a79f-c368dea11122",
+          "key": "display",
+          "title": "การแสดงผลหน้าจอ",
+          "helpText": null,
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "348c4945-f356-47a8-8c0c-0a1571a51f1d",
+              "label": "แสดงภาพปกติ",
+              "deductType": "PERCENT",
+              "deductValue": "0"
+            },
+            {
+              "id": "8c26447f-29bc-457a-bff9-8555bc722b8c",
+              "label": "จุด Bright / ฝุ่นในจอ / ขอบจอเงา",
+              "deductType": "PERCENT",
+              "deductValue": "35"
+            },
+            {
+              "id": "dbeadb66-ea17-4176-99d6-4ef80b851232",
+              "label": "จุด Dead / จุดสี / ลายเส้น / จอปลอม",
+              "deductType": "PERCENT",
+              "deductValue": "70"
+            },
+            {
+              "id": "3c8dcc42-48a6-488e-b1b9-35c63d46d866",
+              "label": "ไม่สามารถแสดงภาพหน้าจอ",
+              "deductType": "PERCENT",
+              "deductValue": "85"
+            }
+          ]
+        },
+        {
+          "id": "d4d00da0-b8fd-451d-a48b-bca554a4b6bd",
+          "key": "battery",
+          "title": "สุขภาพแบตเตอรี่",
+          "helpText": "เช็คได้ที่ Settings > Battery > Battery Health",
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "35dce7cd-b89a-4050-889b-46630ac3a04e",
+              "label": "แบตเตอรี่ 80% ขึ้นไป",
+              "deductType": "FIXED",
+              "deductValue": "0"
+            },
+            {
+              "id": "319c4bb3-f9d1-4b8e-86a7-1d051616a88c",
+              "label": "แบตเตอรี่ต่ำกว่า 80%",
+              "deductType": "FIXED",
+              "deductValue": "1500"
+            }
+          ]
+        },
+        {
+          "id": "af3091d9-7990-44bb-be03-769c4ae07322",
+          "key": "box-accessories",
+          "title": "กล่อง / อุปกรณ์",
+          "helpText": null,
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "9edde931-7de6-45b2-aa5f-85c57647c7d2",
+              "label": "มีกล่อง อุปกรณ์ครบ",
+              "deductType": "FIXED",
+              "deductValue": "0"
+            },
+            {
+              "id": "ca01d1eb-4cde-493e-950c-95d8ecd9ce41",
+              "label": "มีกล่อง อุปกรณ์ไม่ครบ",
+              "deductType": "FIXED",
+              "deductValue": "200"
+            },
+            {
+              "id": "ad588454-0562-465e-a665-b1e192287550",
+              "label": "ไม่มีกล่อง",
+              "deductType": "FIXED",
+              "deductValue": "500"
+            }
+          ]
+        },
+        {
+          "id": "01363e80-7aad-4813-90f8-1285adbe92a8",
+          "key": "functional-issues",
+          "title": "ปัญหาการใช้งาน (เลือกได้หลายข้อ — ไม่เลือก = ไม่มีปัญหา)",
+          "helpText": null,
+          "selectType": "MULTI",
+          "choices": [
+            {
+              "id": "e5600509-6488-4a5c-91c7-5364667613b4",
+              "label": "ระบบสัมผัส (ทัชสกรีน)",
+              "deductType": "PERCENT",
+              "deductValue": "75"
+            },
+            {
+              "id": "c9f1b03f-6999-4a65-a3c3-ede125afe3b2",
+              "label": "WiFi / Bluetooth / GPS",
+              "deductType": "PERCENT",
+              "deductValue": "85"
+            },
+            {
+              "id": "2b0ebc11-76d6-4440-94ad-29c388b83fb6",
+              "label": "ระบบสั่น",
+              "deductType": "PERCENT",
+              "deductValue": "35"
+            },
+            {
+              "id": "12392dad-a855-40c5-9cc1-ae22966f5c48",
+              "label": "โทรออก-รับสาย / ไมค์ มีปัญหา",
+              "deductType": "PERCENT",
+              "deductValue": "75"
+            },
+            {
+              "id": "ca104169-753c-4438-b7ed-1cdc6a152628",
+              "label": "Face ID / สแกนนิ้ว",
+              "deductType": "PERCENT",
+              "deductValue": "51"
+            },
+            {
+              "id": "34544b37-1d27-45c8-b392-3cf6148ddae1",
+              "label": "ลำโพงบน-ล่าง",
+              "deductType": "PERCENT",
+              "deductValue": "35"
+            },
+            {
+              "id": "206d0b4e-2cc7-462b-af02-98595a10ec1c",
+              "label": "กล้องหน้า-หลัง / แฟลช",
+              "deductType": "PERCENT",
+              "deductValue": "70"
+            },
+            {
+              "id": "8f89e72e-e4c3-4b5e-959f-618dc7fa8d25",
+              "label": "Sensor",
+              "deductType": "PERCENT",
+              "deductValue": "51"
+            },
+            {
+              "id": "7446cec2-8f55-4df3-8c13-ac9511dc54f9",
+              "label": "ปุ่มล็อก power / volume",
+              "deductType": "PERCENT",
+              "deductValue": "35"
+            }
+          ]
+        }
+      ]
+    },
+    "iPhone Air|256GB": {
+      "bonusPct": "10",
+      "pricingMode": "SUM_PERCENT_FLOOR10",
+      "eligibilityRequired": false,
+      "source": "https://applehouseth.com/",
+      "capturedAt": "2026-11-20T00:00:00+07:00",
+      "questions": [
+        {
+          "id": "2764bc97-e847-407c-a262-0fc94a5eae1e",
+          "key": "device-origin",
+          "title": "เครื่องศูนย์",
+          "helpText": null,
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "f2af307b-bce8-4e70-838c-48546e3f4988",
+              "label": "เครื่องศูนย์ไทย (TH)",
+              "deductType": "FIXED",
+              "deductValue": "0"
+            },
+            {
+              "id": "5009984b-8a76-4c56-b753-1f8d81f289c4",
+              "label": "เครื่องนอก (โมเดลอื่น)",
+              "deductType": "FIXED",
+              "deductValue": "1500"
+            }
+          ]
+        },
+        {
+          "id": "abc2aa91-d294-4a8a-81c3-273753f3aead",
+          "key": "warranty",
+          "title": "ประกัน Apple",
+          "helpText": "เช็คได้ที่ Settings > General > About หรือ checkcoverage.apple.com",
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "1ed4bb03-d5d2-4266-a2a2-e38bb3d8e47a",
+              "label": "ประกันเหลือมากกว่า 4 เดือน",
+              "deductType": "FIXED",
+              "deductValue": "0"
+            },
+            {
+              "id": "95f69352-0d5c-4f9b-8881-85e3dc7d89e4",
+              "label": "ประกันเหลือน้อยกว่า 4 เดือน",
+              "deductType": "FIXED",
+              "deductValue": "300"
+            },
+            {
+              "id": "12566779-80c0-40de-b96a-b391ee6abc7f",
+              "label": "หมดประกัน",
+              "deductType": "FIXED",
+              "deductValue": "500"
+            }
+          ]
+        },
+        {
+          "id": "6beb06f8-ac95-4411-8047-29ddc5391d80",
+          "key": "body-condition",
+          "title": "สภาพตัวเครื่อง",
+          "helpText": null,
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "323a0d0c-e0e6-482e-bc21-1dce34df7a32",
+              "label": "ไม่มีรอยขีดข่วน",
+              "deductType": "PERCENT",
+              "deductValue": "0"
+            },
+            {
+              "id": "a636a8c2-e897-4d56-a4b5-5bf3f237d9f1",
+              "label": "มีรอยนิดหน่อย รอยเคส",
+              "deductType": "PERCENT",
+              "deductValue": "8"
+            },
+            {
+              "id": "725a93e4-62b9-4d11-8a7d-a8ff993608b3",
+              "label": "มีรอยมาก ถลอก สีหลุด",
+              "deductType": "PERCENT",
+              "deductValue": "18"
+            },
+            {
+              "id": "9109a580-99c9-4aaa-9c14-07e0b50ffb16",
+              "label": "ตัวเครื่องมีรอยตก / เบี้ยว / แตก / งอ",
+              "deductType": "PERCENT",
+              "deductValue": "51"
+            },
+            {
+              "id": "0d39143a-203f-414e-9473-ba9b1cee832d",
+              "label": "ฝาหลัง / กระจกหลังแตก",
+              "deductType": "PERCENT",
+              "deductValue": "51"
+            }
+          ]
+        },
+        {
+          "id": "b239db65-97d9-456e-aee2-502af60ec309",
+          "key": "screen-scratch",
+          "title": "รอยหน้าจอ",
+          "helpText": null,
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "5c139da0-0ded-4e61-911d-b288d35ab1e6",
+              "label": "หน้าจอไม่มีรอย",
+              "deductType": "PERCENT",
+              "deductValue": "0"
+            },
+            {
+              "id": "7603746a-d165-450c-93ee-43d2b40d2e72",
+              "label": "หน้าจอมีรอยบางๆ",
+              "deductType": "PERCENT",
+              "deductValue": "8"
+            },
+            {
+              "id": "ec6cd4a2-8e41-4d00-aa9d-e270982a1262",
+              "label": "หน้าจอมีรอยสะดุด",
+              "deductType": "PERCENT",
+              "deductValue": "18"
+            },
+            {
+              "id": "0bc02455-07c1-4743-97f6-3c852e827148",
+              "label": "หน้าจอมีรอยแตกชำรุด",
+              "deductType": "PERCENT",
+              "deductValue": "70"
+            }
+          ]
+        },
+        {
+          "id": "d98e073c-ce89-4f40-a79f-c368dea11122",
+          "key": "display",
+          "title": "การแสดงผลหน้าจอ",
+          "helpText": null,
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "348c4945-f356-47a8-8c0c-0a1571a51f1d",
+              "label": "แสดงภาพปกติ",
+              "deductType": "PERCENT",
+              "deductValue": "0"
+            },
+            {
+              "id": "8c26447f-29bc-457a-bff9-8555bc722b8c",
+              "label": "จุด Bright / ฝุ่นในจอ / ขอบจอเงา",
+              "deductType": "PERCENT",
+              "deductValue": "35"
+            },
+            {
+              "id": "dbeadb66-ea17-4176-99d6-4ef80b851232",
+              "label": "จุด Dead / จุดสี / ลายเส้น / จอปลอม",
+              "deductType": "PERCENT",
+              "deductValue": "70"
+            },
+            {
+              "id": "3c8dcc42-48a6-488e-b1b9-35c63d46d866",
+              "label": "ไม่สามารถแสดงภาพหน้าจอ",
+              "deductType": "PERCENT",
+              "deductValue": "85"
+            }
+          ]
+        },
+        {
+          "id": "d4d00da0-b8fd-451d-a48b-bca554a4b6bd",
+          "key": "battery",
+          "title": "สุขภาพแบตเตอรี่",
+          "helpText": "เช็คได้ที่ Settings > Battery > Battery Health",
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "35dce7cd-b89a-4050-889b-46630ac3a04e",
+              "label": "แบตเตอรี่ 80% ขึ้นไป",
+              "deductType": "FIXED",
+              "deductValue": "0"
+            },
+            {
+              "id": "319c4bb3-f9d1-4b8e-86a7-1d051616a88c",
+              "label": "แบตเตอรี่ต่ำกว่า 80%",
+              "deductType": "FIXED",
+              "deductValue": "1500"
+            }
+          ]
+        },
+        {
+          "id": "af3091d9-7990-44bb-be03-769c4ae07322",
+          "key": "box-accessories",
+          "title": "กล่อง / อุปกรณ์",
+          "helpText": null,
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "9edde931-7de6-45b2-aa5f-85c57647c7d2",
+              "label": "มีกล่อง อุปกรณ์ครบ",
+              "deductType": "FIXED",
+              "deductValue": "0"
+            },
+            {
+              "id": "ca01d1eb-4cde-493e-950c-95d8ecd9ce41",
+              "label": "มีกล่อง อุปกรณ์ไม่ครบ",
+              "deductType": "FIXED",
+              "deductValue": "200"
+            },
+            {
+              "id": "ad588454-0562-465e-a665-b1e192287550",
+              "label": "ไม่มีกล่อง",
+              "deductType": "FIXED",
+              "deductValue": "500"
+            }
+          ]
+        },
+        {
+          "id": "01363e80-7aad-4813-90f8-1285adbe92a8",
+          "key": "functional-issues",
+          "title": "ปัญหาการใช้งาน (เลือกได้หลายข้อ — ไม่เลือก = ไม่มีปัญหา)",
+          "helpText": null,
+          "selectType": "MULTI",
+          "choices": [
+            {
+              "id": "e5600509-6488-4a5c-91c7-5364667613b4",
+              "label": "ระบบสัมผัส (ทัชสกรีน)",
+              "deductType": "PERCENT",
+              "deductValue": "75"
+            },
+            {
+              "id": "c9f1b03f-6999-4a65-a3c3-ede125afe3b2",
+              "label": "WiFi / Bluetooth / GPS",
+              "deductType": "PERCENT",
+              "deductValue": "85"
+            },
+            {
+              "id": "2b0ebc11-76d6-4440-94ad-29c388b83fb6",
+              "label": "ระบบสั่น",
+              "deductType": "PERCENT",
+              "deductValue": "35"
+            },
+            {
+              "id": "12392dad-a855-40c5-9cc1-ae22966f5c48",
+              "label": "โทรออก-รับสาย / ไมค์ มีปัญหา",
+              "deductType": "PERCENT",
+              "deductValue": "75"
+            },
+            {
+              "id": "ca104169-753c-4438-b7ed-1cdc6a152628",
+              "label": "Face ID / สแกนนิ้ว",
+              "deductType": "PERCENT",
+              "deductValue": "51"
+            },
+            {
+              "id": "34544b37-1d27-45c8-b392-3cf6148ddae1",
+              "label": "ลำโพงบน-ล่าง",
+              "deductType": "PERCENT",
+              "deductValue": "35"
+            },
+            {
+              "id": "206d0b4e-2cc7-462b-af02-98595a10ec1c",
+              "label": "กล้องหน้า-หลัง / แฟลช",
+              "deductType": "PERCENT",
+              "deductValue": "70"
+            },
+            {
+              "id": "8f89e72e-e4c3-4b5e-959f-618dc7fa8d25",
+              "label": "Sensor",
+              "deductType": "PERCENT",
+              "deductValue": "51"
+            },
+            {
+              "id": "7446cec2-8f55-4df3-8c13-ac9511dc54f9",
+              "label": "ปุ่มล็อก power / volume",
+              "deductType": "PERCENT",
+              "deductValue": "35"
+            }
+          ]
+        }
+      ]
+    },
+    "iPhone Air|512GB": {
+      "bonusPct": "10",
+      "pricingMode": "SUM_PERCENT_FLOOR10",
+      "eligibilityRequired": false,
+      "source": "https://applehouseth.com/",
+      "capturedAt": "2026-11-20T00:00:00+07:00",
+      "questions": [
+        {
+          "id": "2764bc97-e847-407c-a262-0fc94a5eae1e",
+          "key": "device-origin",
+          "title": "เครื่องศูนย์",
+          "helpText": null,
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "f2af307b-bce8-4e70-838c-48546e3f4988",
+              "label": "เครื่องศูนย์ไทย (TH)",
+              "deductType": "FIXED",
+              "deductValue": "0"
+            },
+            {
+              "id": "5009984b-8a76-4c56-b753-1f8d81f289c4",
+              "label": "เครื่องนอก (โมเดลอื่น)",
+              "deductType": "FIXED",
+              "deductValue": "1500"
+            }
+          ]
+        },
+        {
+          "id": "abc2aa91-d294-4a8a-81c3-273753f3aead",
+          "key": "warranty",
+          "title": "ประกัน Apple",
+          "helpText": "เช็คได้ที่ Settings > General > About หรือ checkcoverage.apple.com",
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "1ed4bb03-d5d2-4266-a2a2-e38bb3d8e47a",
+              "label": "ประกันเหลือมากกว่า 4 เดือน",
+              "deductType": "FIXED",
+              "deductValue": "0"
+            },
+            {
+              "id": "95f69352-0d5c-4f9b-8881-85e3dc7d89e4",
+              "label": "ประกันเหลือน้อยกว่า 4 เดือน",
+              "deductType": "FIXED",
+              "deductValue": "300"
+            },
+            {
+              "id": "12566779-80c0-40de-b96a-b391ee6abc7f",
+              "label": "หมดประกัน",
+              "deductType": "FIXED",
+              "deductValue": "500"
+            }
+          ]
+        },
+        {
+          "id": "6beb06f8-ac95-4411-8047-29ddc5391d80",
+          "key": "body-condition",
+          "title": "สภาพตัวเครื่อง",
+          "helpText": null,
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "323a0d0c-e0e6-482e-bc21-1dce34df7a32",
+              "label": "ไม่มีรอยขีดข่วน",
+              "deductType": "PERCENT",
+              "deductValue": "0"
+            },
+            {
+              "id": "a636a8c2-e897-4d56-a4b5-5bf3f237d9f1",
+              "label": "มีรอยนิดหน่อย รอยเคส",
+              "deductType": "PERCENT",
+              "deductValue": "8"
+            },
+            {
+              "id": "725a93e4-62b9-4d11-8a7d-a8ff993608b3",
+              "label": "มีรอยมาก ถลอก สีหลุด",
+              "deductType": "PERCENT",
+              "deductValue": "18"
+            },
+            {
+              "id": "9109a580-99c9-4aaa-9c14-07e0b50ffb16",
+              "label": "ตัวเครื่องมีรอยตก / เบี้ยว / แตก / งอ",
+              "deductType": "PERCENT",
+              "deductValue": "51"
+            },
+            {
+              "id": "0d39143a-203f-414e-9473-ba9b1cee832d",
+              "label": "ฝาหลัง / กระจกหลังแตก",
+              "deductType": "PERCENT",
+              "deductValue": "51"
+            }
+          ]
+        },
+        {
+          "id": "b239db65-97d9-456e-aee2-502af60ec309",
+          "key": "screen-scratch",
+          "title": "รอยหน้าจอ",
+          "helpText": null,
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "5c139da0-0ded-4e61-911d-b288d35ab1e6",
+              "label": "หน้าจอไม่มีรอย",
+              "deductType": "PERCENT",
+              "deductValue": "0"
+            },
+            {
+              "id": "7603746a-d165-450c-93ee-43d2b40d2e72",
+              "label": "หน้าจอมีรอยบางๆ",
+              "deductType": "PERCENT",
+              "deductValue": "8"
+            },
+            {
+              "id": "ec6cd4a2-8e41-4d00-aa9d-e270982a1262",
+              "label": "หน้าจอมีรอยสะดุด",
+              "deductType": "PERCENT",
+              "deductValue": "18"
+            },
+            {
+              "id": "0bc02455-07c1-4743-97f6-3c852e827148",
+              "label": "หน้าจอมีรอยแตกชำรุด",
+              "deductType": "PERCENT",
+              "deductValue": "70"
+            }
+          ]
+        },
+        {
+          "id": "d98e073c-ce89-4f40-a79f-c368dea11122",
+          "key": "display",
+          "title": "การแสดงผลหน้าจอ",
+          "helpText": null,
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "348c4945-f356-47a8-8c0c-0a1571a51f1d",
+              "label": "แสดงภาพปกติ",
+              "deductType": "PERCENT",
+              "deductValue": "0"
+            },
+            {
+              "id": "8c26447f-29bc-457a-bff9-8555bc722b8c",
+              "label": "จุด Bright / ฝุ่นในจอ / ขอบจอเงา",
+              "deductType": "PERCENT",
+              "deductValue": "35"
+            },
+            {
+              "id": "dbeadb66-ea17-4176-99d6-4ef80b851232",
+              "label": "จุด Dead / จุดสี / ลายเส้น / จอปลอม",
+              "deductType": "PERCENT",
+              "deductValue": "70"
+            },
+            {
+              "id": "3c8dcc42-48a6-488e-b1b9-35c63d46d866",
+              "label": "ไม่สามารถแสดงภาพหน้าจอ",
+              "deductType": "PERCENT",
+              "deductValue": "85"
+            }
+          ]
+        },
+        {
+          "id": "d4d00da0-b8fd-451d-a48b-bca554a4b6bd",
+          "key": "battery",
+          "title": "สุขภาพแบตเตอรี่",
+          "helpText": "เช็คได้ที่ Settings > Battery > Battery Health",
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "35dce7cd-b89a-4050-889b-46630ac3a04e",
+              "label": "แบตเตอรี่ 80% ขึ้นไป",
+              "deductType": "FIXED",
+              "deductValue": "0"
+            },
+            {
+              "id": "319c4bb3-f9d1-4b8e-86a7-1d051616a88c",
+              "label": "แบตเตอรี่ต่ำกว่า 80%",
+              "deductType": "FIXED",
+              "deductValue": "1500"
+            }
+          ]
+        },
+        {
+          "id": "af3091d9-7990-44bb-be03-769c4ae07322",
+          "key": "box-accessories",
+          "title": "กล่อง / อุปกรณ์",
+          "helpText": null,
+          "selectType": "SINGLE",
+          "choices": [
+            {
+              "id": "9edde931-7de6-45b2-aa5f-85c57647c7d2",
+              "label": "มีกล่อง อุปกรณ์ครบ",
+              "deductType": "FIXED",
+              "deductValue": "0"
+            },
+            {
+              "id": "ca01d1eb-4cde-493e-950c-95d8ecd9ce41",
+              "label": "มีกล่อง อุปกรณ์ไม่ครบ",
+              "deductType": "FIXED",
+              "deductValue": "200"
+            },
+            {
+              "id": "ad588454-0562-465e-a665-b1e192287550",
+              "label": "ไม่มีกล่อง",
+              "deductType": "FIXED",
+              "deductValue": "500"
+            }
+          ]
+        },
+        {
+          "id": "01363e80-7aad-4813-90f8-1285adbe92a8",
+          "key": "functional-issues",
+          "title": "ปัญหาการใช้งาน (เลือกได้หลายข้อ — ไม่เลือก = ไม่มีปัญหา)",
+          "helpText": null,
+          "selectType": "MULTI",
+          "choices": [
+            {
+              "id": "e5600509-6488-4a5c-91c7-5364667613b4",
+              "label": "ระบบสัมผัส (ทัชสกรีน)",
+              "deductType": "PERCENT",
+              "deductValue": "75"
+            },
+            {
+              "id": "c9f1b03f-6999-4a65-a3c3-ede125afe3b2",
+              "label": "WiFi / Bluetooth / GPS",
+              "deductType": "PERCENT",
+              "deductValue": "85"
+            },
+            {
+              "id": "2b0ebc11-76d6-4440-94ad-29c388b83fb6",
+              "label": "ระบบสั่น",
+              "deductType": "PERCENT",
+              "deductValue": "35"
+            },
+            {
+              "id": "12392dad-a855-40c5-9cc1-ae22966f5c48",
+              "label": "โทรออก-รับสาย / ไมค์ มีปัญหา",
+              "deductType": "PERCENT",
+              "deductValue": "75"
+            },
+            {
+              "id": "ca104169-753c-4438-b7ed-1cdc6a152628",
+              "label": "Face ID / สแกนนิ้ว",
+              "deductType": "PERCENT",
+              "deductValue": "51"
+            },
+            {
+              "id": "34544b37-1d27-45c8-b392-3cf6148ddae1",
+              "label": "ลำโพงบน-ล่าง",
+              "deductType": "PERCENT",
+              "deductValue": "35"
+            },
+            {
+              "id": "206d0b4e-2cc7-462b-af02-98595a10ec1c",
+              "label": "กล้องหน้า-หลัง / แฟลช",
+              "deductType": "PERCENT",
+              "deductValue": "70"
+            },
+            {
+              "id": "8f89e72e-e4c3-4b5e-959f-618dc7fa8d25",
+              "label": "Sensor",
+              "deductType": "PERCENT",
+              "deductValue": "51"
+            },
+            {
+              "id": "7446cec2-8f55-4df3-8c13-ac9511dc54f9",
+              "label": "ปุ่มล็อก power / volume",
+              "deductType": "PERCENT",
+              "deductValue": "35"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

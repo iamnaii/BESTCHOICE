@@ -534,3 +534,28 @@ describe('request and history boundaries', () => {
     await screen.findByRole('heading', { name: 'ตัวเครื่อง' });
   });
 });
+
+describe('catalog availability changes', () => {
+  it('returns to device selection when the selected model is removed', async () => {
+    const client = mount();
+    await device();
+    await body();
+    act(() => client.setQueryData(['buyback-catalog'], { models: [catalog.models[1]] }));
+    await screen.findByRole('heading', { name: 'คุณใช้ไอโฟนรุ่นไหน?', level: 1 });
+    expect(screen.queryByRole('button', { name: 'ซีรีส์ 12' })).not.toBeInTheDocument();
+    expect(mocks.post).not.toHaveBeenCalled();
+  });
+  it('returns to storage selection when the selected capacity is removed', async () => {
+    const client = mount();
+    await device();
+    await body();
+    act(() =>
+      client.setQueryData(['buyback-catalog'], {
+        models: [{ ...catalog.models[0], storages: [catalog.models[0].storages[1]] }],
+      }),
+    );
+    await screen.findByRole('heading', { name: 'เครื่องมีความจุเท่าไร?', level: 1 });
+    expect(screen.queryByRole('button', { name: '64 กิกะไบต์' })).not.toBeInTheDocument();
+    expect(mocks.post).not.toHaveBeenCalled();
+  });
+});

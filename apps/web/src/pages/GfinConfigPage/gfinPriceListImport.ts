@@ -50,6 +50,21 @@ export function conditionOf(text: string): 'HAND_1' | 'HAND_2' | null {
 export const keyOf = (model: string, storage: string, condition: string) =>
   `${model.trim().toLowerCase()}|${normalizeGfinStorage(storage)}|${condition}`;
 
+export type GfinPriceCheck = { price: number } | { problem: 'NOT_POSITIVE' | 'DECIMALS' };
+
+/** เกณฑ์ราคาที่ใช้ได้ชุดเดียว (ใช้ทั้งหน้าตรวจราคาและเงื่อนไขจากไฟล์) — DTO ของเซิร์ฟเวอร์ maxDecimalPlaces 2 เทียบแบบเผื่อ float */
+export function checkGfinPrice(text: string): GfinPriceCheck {
+  const price = Number(text.replace(/,/g, ''));
+  if (!Number.isFinite(price) || !(price > 0)) return { problem: 'NOT_POSITIVE' };
+  if (Math.abs(price * 100 - Math.round(price * 100)) > 1e-6) return { problem: 'DECIMALS' };
+  return { price };
+}
+
+export function parseGfinPrice(text: string): number | null {
+  const r = checkGfinPrice(text);
+  return 'price' in r ? r.price : null;
+}
+
 /** หัวคอลัมน์ที่มีช่องว่างหัวท้ายยังอ่านได้ */
 export function trimKeys(row: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -84,11 +99,12 @@ export function buildGfinImportReview(
     if (!model || !storage) return void skip('ไม่มีรุ่นหรือความจุ');
     const condition = conditionOf(handText);
     if (!condition) return void skip('ช่อง มือ 1/มือ 2 ต้องเป็น มือ 1 หรือ มือ 2');
-    const price = Number(priceText.replace(/,/g, ''));
-    if (!Number.isFinite(price) || !(price > 0)) return void skip('ราคาต้องเป็นตัวเลขมากกว่า 0');
-    // DTO ของเซิร์ฟเวอร์ maxDecimalPlaces 2 — แถวเดียวเกินทำให้ทั้งชุด 400 ⇒ ข้ามที่นี่ (เทียบแบบเผื่อ float: 17900.29 × 100)
-    if (Math.abs(price * 100 - Math.round(price * 100)) > 1e-6)
-      return void skip('ราคาต้องมีทศนิยมไม่เกิน 2 ตำแหน่ง');
+    const checked = checkGfinPrice(priceText);
+    if ('problem' in checked)
+      return void skip(
+        checked.problem === 'NOT_POSITIVE' ? 'ราคาต้องเป็นตัวเลขมากกว่า 0' : 'ราคาต้องมีทศนิยมไม่เกิน 2 ตำแหน่ง',
+      );
+    const price = checked.price;
 
     // ลงทะเบียนคีย์เฉพาะแถวที่ถูกต้อง — แถวผิดไม่บังแถวถูกที่ตามมา
     const key = keyOf(model, storage, condition);

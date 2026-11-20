@@ -119,6 +119,45 @@ describe('buildImportTermsReview', () => {
     expect(resolveTermsPlan(review, {}).missing).toEqual(['iPhone 14 Pro|HAND_2']);
   });
 
+  it('แถวที่หน้าตรวจราคาข้าม (ทศนิยมเกิน 2 ตำแหน่ง) ไม่ทำให้เกิดคู่เงื่อนไข · แถวซ้ำที่ถูกต้องภายหลังใช้แทน', () => {
+    const only = buildImportTermsReview([row('iPhone 18', '128GB', 'มือ 1', 12900.123, 500, 12)], existing, []);
+    expect(only.pairs).toEqual([]);
+    const mixed = buildImportTermsReview(
+      [row('iPhone 18', '128GB', 'มือ 1', 12900.123, 500, 12), row('iPhone 18', '128GB', 'มือ 1', 12900, 700, 15)],
+      existing,
+      [],
+    );
+    expect(mixed.pairs).toHaveLength(1);
+    expect(mixed.pairs[0].allowance).toEqual({ kind: 'value', value: 700 });
+    expect(mixed.pairs[0].maxMonths).toEqual({ kind: 'value', value: 15 });
+  });
+
+  it('ชื่อรุ่นต่างตัวพิมพ์ในไฟล์เดียวกัน = คู่เดียว ใช้การสะกดของแถวแรก', () => {
+    const review = buildImportTermsReview(
+      [row('iPhone 18 Pro', '128GB', 'มือ 1', 40000, 1000, 12), row('iphone 18 pro', '256GB', 'มือ 1', 45000, 1000, 12)],
+      existing,
+      [],
+    );
+    expect(review.pairs).toHaveLength(1);
+    expect(review.pairs[0].series).toBe('iPhone 18 Pro');
+    expect(review.pairs[0].status).toBe('NEW');
+  });
+
+  it('OVER 0 เป็นค่าจริง · คู่ใหม่ที่มีแค่ OVER อยู่ใน missing · คำเตือนเฉพาะแถวที่ใช้จริง', () => {
+    const zero = buildImportTermsReview([row('iPhone 18', '128GB', 'มือ 1', 40000, 0, 12)], existing, []);
+    expect(resolveTermsPlan(zero, {}).changes).toEqual([
+      { series: 'iPhone 18', condition: 'HAND_1', allowance: 0, maxMonths: 12 },
+    ]);
+    const overOnly = buildImportTermsReview([row('iPhone 18', '128GB', 'มือ 1', 40000, 500)], existing, []);
+    expect(resolveTermsPlan(overOnly, {}).missing).toEqual(['iPhone 18|HAND_1']);
+    const warn = buildImportTermsReview(
+      [row('iPhone 18', '128GB', 'มือ 1', 40000, 500, 12), row('iPhone 18', '128GB', 'มือ 1', 40000, 'abc', 99)],
+      existing,
+      [],
+    );
+    expect(warn.warnings).toEqual([]);
+  });
+
   it('resolveTermsPlan: CHOOSE ใช้ค่าแรกถ้าไม่เลือก · ส่งเฉพาะฟิลด์ที่ต่างจากระบบ · ruleChangeText', () => {
     const review = buildImportTermsReview(
       [row('iPhone 14 Pro', '128GB', 'มือ 2', 20000, 2000, 12), row('iPhone 14 Pro', '1TB', 'มือ 2', 28000, 0, 12)],

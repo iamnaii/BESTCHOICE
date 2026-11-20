@@ -5,6 +5,7 @@ import {
   conditionOf,
   keyOf,
   normalizeGfinStorage,
+  parseGfinPrice,
   trimKeys,
   type ExistingMaxPrice,
   type GfinImportItem,
@@ -41,12 +42,15 @@ function fileKey(raw: Record<string, unknown>) {
 function parseRows(rows: Record<string, unknown>[]): { parsed: ParsedRow[]; warnings: string[] } {
   const parsed: ParsedRow[] = [];
   const warnings: string[] = [];
+  const seen = new Set<string>();
   rows.forEach((raw, index) => {
     const key = fileKey(raw);
     if (!key) return;
     const row = trimKeys(raw);
-    const price = Number(cellText(row['ราคา']).replace(/,/g, ''));
-    if (!Number.isFinite(price) || !(price > 0)) return; // แถวราคาผิด buildGfinImportReview รายงานแล้ว
+    if (parseGfinPrice(cellText(row['ราคา'])) === null) return; // แถวราคาผิด buildGfinImportReview ข้ามและรายงานแล้ว
+    const dedupeKey = keyOf(key.model, key.storage, key.condition);
+    if (seen.has(dedupeKey)) return; // แถวซ้ำใช้แถวแรกที่ถูกต้อง (ตรงกับหน้าตรวจราคา)
+    seen.add(dedupeKey);
     const rowNumber = index + 2;
     const overText = cellText(row['OVER']).replace(/,/g, '').trim();
     const monthsText = cellText(row['ผ่อนสูงสุด']).trim();
@@ -183,15 +187,16 @@ export function buildImportTermsReview(
   );
   const groups = new Map<string, { series: string; condition: Hand; rows: ParsedRow[] }>();
   for (const p of parsed) {
-    const series = seriesName.get(p.series.toLowerCase()) ?? p.series;
-    const key = rowKeyOf(series, p.condition);
-    const g = groups.get(key);
-    if (!g) groups.set(key, { series, condition: p.condition, rows: [p] });
-    else if (!g.rows.some((r) => r.storage === p.storage)) g.rows.push(p); // แถวซ้ำใช้แถวแรก (ตรงกับหน้าตรวจราคา)
+    // จัดกลุ่มไม่สนตัวพิมพ์ (เหมือน keyOf ของหน้าตรวจราคา) · ชื่อตามระบบถ้ามี ไม่งั้นใช้การสะกดของแถวแรก
+    const lower = p.series.toLowerCase();
+    const groupKey = `${lower}|${p.condition}`;
+    const g = groups.get(groupKey);
+    if (!g) groups.set(groupKey, { series: seriesName.get(lower) ?? p.series, condition: p.condition, rows: [p] });
+    else g.rows.push(p); // parseRows ตัดแถวซ้ำแล้ว
   }
   const differs = (f: TermField, cur: number | null) => f.kind === 'value' && f.value !== cur;
-  const pairs = [...groups.entries()]
-    .map(([key, g]): TermsPair => {
+  const pairs = [...groups.values()]
+    .map((g): TermsPair => {
       const rule = rules.find((r) => r.isActive && r.seriesPattern.trim() === g.series && r.condition === g.condition);
       const current = rule ? { allowance: Number(rule.allowance), maxMonths: rule.maxMonths ?? null } : null;
       const allowance = termField(g.rows.map((r) => ({ storage: r.storage, value: r.over })));
@@ -203,7 +208,7 @@ export function buildImportTermsReview(
           : differs(allowance, current.allowance) || differs(maxMonths, current.maxMonths)
             ? 'CHANGE'
             : 'MATCH';
-      return { key, series: g.series, condition: g.condition, current, allowance, maxMonths, status };
+      return { key: rowKeyOf(g.series, g.condition), series: g.series, condition: g.condition, current, allowance, maxMonths, status };
     })
     .sort((a, b) => a.series.localeCompare(b.series) || a.condition.localeCompare(b.condition));
   return { hasTermColumns, pairs, warnings };

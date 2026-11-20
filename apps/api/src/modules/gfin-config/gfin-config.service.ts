@@ -14,6 +14,7 @@ import {
   UpdateGfinSettingsDto,
   ImportMaxPricesDto,
   BulkUpsertOverpriceRulesDto,
+  CloseMaxPricesDto,
 } from './dto';
 import { GFIN_SETTINGS_KEYS, loadGfinSettings, type GfinSettings } from './gfin-settings.util';
 
@@ -183,6 +184,23 @@ export class GfinConfigService {
       newValue: { created, updated, unchanged, count: dto.items.length },
     });
     return { created, updated, unchanged };
+  }
+
+  /** ปิดราคาที่ GFIN ไม่รับแล้ว (สเปค 2026-11-20 §5) — ปิดแล้วไม่หาย เปิดคืนได้ด้วย PATCH max-prices/:id */
+  async closeMaxPrices(dto: CloseMaxPricesDto, userId: string) {
+    const ids = [...new Set(dto.ids)];
+    const { count } = await this.prisma.gfinModelMapping.updateMany({
+      where: { id: { in: ids }, deletedAt: null, isActive: true },
+      data: { isActive: false },
+    });
+    await this.auditService.log({
+      action: 'GFIN_MAX_PRICES_CLOSED',
+      entity: 'gfin_model_mapping',
+      entityId: 'batch',
+      userId,
+      newValue: { ids, closed: count },
+    });
+    return { closed: count };
   }
 
   // ===== Overprice Rules =====

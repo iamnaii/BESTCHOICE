@@ -26,6 +26,7 @@ import {
   UpdateRateFactorDto,
   UpdateGfinSettingsDto,
   ImportMaxPricesDto,
+  CloseMaxPricesDto,
 } from './dto';
 
 @Controller('gfin-config')
@@ -66,6 +67,12 @@ export class GfinConfigController {
   @Roles('OWNER')
   importMaxPrices(@Body() dto: ImportMaxPricesDto, @Req() req: { user: { id: string } }) {
     return this.service.importMaxPrices(dto, req.user.id);
+  }
+
+  @Post('max-prices/close')
+  @Roles('OWNER')
+  closeMaxPrices(@Body() dto: CloseMaxPricesDto, @Req() req: { user: { id: string } }) {
+    return this.service.closeMaxPrices(dto, req.user.id);
   }
 
   @Patch('max-prices/:id')

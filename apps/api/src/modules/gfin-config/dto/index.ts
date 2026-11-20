@@ -4,3 +4,4 @@ export * from './rate-factor.dto';
 export * from './gfin-settings.dto';
 export * from './import-max-prices.dto';
 export * from './bulk-upsert-overprice-rules.dto';
+export * from './close-max-prices.dto';

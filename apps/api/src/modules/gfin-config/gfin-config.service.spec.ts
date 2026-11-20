@@ -17,6 +17,7 @@ describe('GfinConfigService', () => {
         findUnique: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
+        updateMany: jest.fn(),
       },
       gfinOverpriceRule: {
         findMany: jest.fn(),
@@ -515,6 +516,22 @@ describe('GfinConfigService', () => {
 
       const result = await service.matchPreview('p2');
       expect(result.match).toBeNull();
+    });
+  });
+
+  describe('closeMaxPrices', () => {
+    it('ปิดเฉพาะแถวที่ยังเปิดและไม่ถูกลบ · audit หลังบันทึก', async () => {
+      prisma.gfinModelMapping.updateMany.mockResolvedValue({ count: 3 });
+      const res = await service.closeMaxPrices({ ids: ['a', 'b', 'c'] }, 'u1');
+      expect(prisma.gfinModelMapping.updateMany).toHaveBeenCalledWith({
+        where: { id: { in: ['a', 'b', 'c'] }, deletedAt: null, isActive: true },
+        data: { isActive: false },
+      });
+      expect(res).toEqual({ closed: 3 });
+      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({
+        action: 'GFIN_MAX_PRICES_CLOSED', entity: 'gfin_model_mapping', entityId: 'batch',
+        newValue: { ids: ['a', 'b', 'c'], closed: 3 },
+      }));
     });
   });
   // ===== นำเข้าใบราคา (สเปค 7.7) =====

@@ -7,7 +7,6 @@ import {
   IsInt,
   IsNotEmpty,
   IsNumber,
-  IsOptional,
   IsString,
   Max,
   MaxLength,
@@ -36,19 +35,18 @@ export class BulkUpsertOverpriceRulesDto {
   @Type(() => BulkRuleTargetDto)
   items!: BulkRuleTargetDto[];
 
-  @IsOptional()
+  @ValidateIf((_o, v) => v !== undefined)
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   allowance?: number;
 
-  @IsOptional()
+  @ValidateIf((_o, v) => v !== undefined)
   @IsInt()
   @Min(1)
   @Max(36)
   maxMonths?: number;
 
-  @IsOptional()
-  @ValidateIf((_o, v) => v !== null)
+  @ValidateIf((_o, v) => v !== null && v !== undefined)
   @IsInt()
   @Min(0)
   @Max(80)

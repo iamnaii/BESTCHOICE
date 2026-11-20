@@ -203,4 +203,67 @@ describeDb('migration gfin_rules_per_model (snapshot ระบบจริง 20
     });
     expect(live).toBe(0);
   });
+  it('กติการายรุ่นที่ปิดใช้ (inactive) ไม่บัง: คู่ที่กลุ่มครอบได้ค่าของกลุ่ม · ค่าที่ใช้จริงก่อน=หลัง', async () => {
+    const rules = [
+      { label: 'กลุ่ม', seriesPattern: 'iPhone 99|iPhone 98', condition: 'HAND_1' as const, allowance: '500', maxMonths: 10, minDownPct: 20, isActive: true, createdAt: '2026-01-01T00:00:00Z' },
+      { label: 'รายรุ่นปิด', seriesPattern: 'iPhone 99', condition: 'HAND_1' as const, allowance: '111', maxMonths: 6, minDownPct: 40, isActive: false, createdAt: '2026-02-01T00:00:00Z' },
+    ];
+    const mappings = [{ gfinSeries: 'iPhone 99', storage: '128GB', condition: 'HAND_1' as const, maxPrice: '10000', modelMatchPattern: 'iPhone 99' }];
+    const { before, after, live } = await inRolledBackTx(prisma, async (tx) => {
+      await seed(tx, rules, mappings);
+      const before = await effective(tx);
+      await runMigration(tx);
+      const after = await effective(tx);
+      const live = await tx.gfinOverpriceRule.findMany({ where: { deletedAt: null, seriesPattern: 'iPhone 99', condition: 'HAND_1' } });
+      return { before, after, live };
+    });
+    expect(after).toEqual(before);
+    expect(live).toHaveLength(1);
+    expect(live[0].isActive).toBe(true);
+    expect(live[0].allowance.toString()).toBe('500');
+    expect(live[0].maxMonths).toBe(10);
+    expect(live[0].minDownPct).toBe(20);
+  });
+
+  it('มี partial unique index gfin_overprice_rules_one_per_series', async () => {
+    const rows = await prisma.$queryRawUnsafe<Array<{ one: number }>>(
+      `SELECT 1 AS one FROM pg_indexes WHERE indexname = 'gfin_overprice_rules_one_per_series'`,
+    );
+    expect(rows).toHaveLength(1);
+  });
+
+  it('กลุ่มเล็ก (2 รุ่น) ชนะกลุ่มใหญ่ (3 รุ่น) สำหรับรุ่นเดียวกัน', async () => {
+    const rules = [
+      { label: 'ใหญ่', seriesPattern: 'iPhone 99|iPhone 98|iPhone 97', condition: 'HAND_1' as const, allowance: '900', maxMonths: 15, minDownPct: null, isActive: true, createdAt: '2026-01-01T00:00:00Z' },
+      { label: 'เล็ก', seriesPattern: 'iPhone 99|iPhone 98', condition: 'HAND_1' as const, allowance: '500', maxMonths: 10, minDownPct: null, isActive: true, createdAt: '2026-02-01T00:00:00Z' },
+    ];
+    const mappings = [{ gfinSeries: 'iPhone 99', storage: '128GB', condition: 'HAND_1' as const, maxPrice: '10000', modelMatchPattern: 'iPhone 99' }];
+    const row = await inRolledBackTx(prisma, async (tx) => {
+      await seed(tx, rules, mappings);
+      await runMigration(tx);
+      return tx.gfinOverpriceRule.findFirst({ where: { deletedAt: null, seriesPattern: 'iPhone 99', condition: 'HAND_1' } });
+    });
+    expect(row?.allowance.toString()).toBe('500');
+    expect(row?.maxMonths).toBe(10);
+  });
+
+  it('กติการายรุ่นที่เปิดใช้อยู่แล้วไม่ถูกแตะ (id/ค่าเดิม) และไม่สร้างซ้ำ', async () => {
+    const rules = [
+      { label: 'กลุ่ม', seriesPattern: 'iPhone 99|iPhone 98', condition: 'HAND_1' as const, allowance: '500', maxMonths: 10, minDownPct: null, isActive: true, createdAt: '2026-01-01T00:00:00Z' },
+      { label: 'รายรุ่น', seriesPattern: 'iPhone 99', condition: 'HAND_1' as const, allowance: '777', maxMonths: 8, minDownPct: 35, isActive: true, createdAt: '2026-02-01T00:00:00Z' },
+    ];
+    const mappings = [{ gfinSeries: 'iPhone 99', storage: '128GB', condition: 'HAND_1' as const, maxPrice: '10000', modelMatchPattern: 'iPhone 99' }];
+    const { beforeRow, rows } = await inRolledBackTx(prisma, async (tx) => {
+      await seed(tx, rules, mappings);
+      const beforeRow = await tx.gfinOverpriceRule.findFirstOrThrow({ where: { deletedAt: null, seriesPattern: 'iPhone 99' } });
+      await runMigration(tx);
+      const rows = await tx.gfinOverpriceRule.findMany({ where: { deletedAt: null, seriesPattern: 'iPhone 99', condition: 'HAND_1' } });
+      return { beforeRow, rows };
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].id).toBe(beforeRow.id);
+    expect(rows[0].allowance.toString()).toBe('777');
+    expect(rows[0].maxMonths).toBe(8);
+    expect(rows[0].minDownPct).toBe(35);
+  });
 });

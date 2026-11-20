@@ -9233,6 +9233,9 @@ model GfinModelMapping {
   @@map("gfin_model_mappings")
 }
 
+/// Partial unique `gfin_overprice_rules_one_per_series` ON (series_pattern, condition) WHERE deleted_at IS NULL
+/// (raw SQL ใน migration 20261121000000 — Prisma เขียน partial unique ไม่ได้; precedent device_returns_one_open_per_contract):
+/// หนึ่งรุ่นมีเงื่อนไขที่ยังไม่ลบได้ใบเดียวต่อสภาพ. ห้ามรับ diff ของ `migrate dev` ที่ DROP index นี้.
 model GfinOverpriceRule {
   id            String        @id @default(uuid())
   label         String

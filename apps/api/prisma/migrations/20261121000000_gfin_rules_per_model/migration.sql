@@ -1,3 +1,10 @@
+-- ตัวคำนวณไม่เคยใช้กติการายรุ่นที่ปิดใช้ (is_active = false) — ลบแบบกู้คืนได้ก่อน ค่าที่ใช้จริงจึงไม่เปลี่ยน
+-- (ไม่งั้น NOT EXISTS ด้านล่างเห็นแถวปิดแล้วข้ามการสร้าง แล้วกลุ่มถูกลบ ⇒ คู่นั้นเสียกติกา และ unique index จะชน)
+-- Engine never uses inactive rules: soft-deleting them keeps effective values unchanged and avoids unique-index conflicts.
+UPDATE gfin_overprice_rules
+SET deleted_at = now(), updated_at = now()
+WHERE deleted_at IS NULL AND is_active = false AND series_pattern NOT LIKE '%|%';
+-- statement-break
 -- สเปก 2026-11-20 §3.2 — แปลงกติกา GFIN แบบกลุ่ม (series_pattern มี '|') เป็นหนึ่งแถวต่อ (รุ่น, สภาพ)
 -- เลือกกติกาด้วยวิธีเดียวกับ findGfinOverpriceRule: เปิดใช้ · ไม่ถูกลบ · สภาพตรง · มีรุ่นนี้ในรายการ · รุ่นน้อยสุดชนะ (เท่ากัน = สร้างก่อน)
 -- สร้างเฉพาะคู่ที่มีแถวราคา (gfin_variant IS NULL ไม่ถูกลบ) · คู่ที่มีกติการายรุ่นอยู่แล้วไม่แตะ · รันซ้ำได้

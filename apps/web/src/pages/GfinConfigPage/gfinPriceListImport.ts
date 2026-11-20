@@ -1,5 +1,5 @@
 import type { ImportReviewRow } from '@/components/import/ImportReviewDialog';
-import { ImportBatchError, cellText, chunk } from '@/utils/excel-cell.util';
+import { cellText } from '@/utils/excel-cell.util';
 
 /** หัวคอลัมน์ไฟล์ใบราคา GFIN (สเปคข้อ 7.7) — สคริปต์เตรียมไฟล์จากชีตตรวจเทียบกับรายการนี้ */
 export const GFIN_IMPORT_HEADERS = ['รุ่น', 'ความจุ', 'มือ 1/มือ 2', 'ราคา'] as const;
@@ -132,30 +132,4 @@ export function buildGfinImportReview(
   });
 
   return { rows: review, toSend, legacyActive: existing.filter((e) => e.isActive && e.gfinVariant).length };
-}
-
-export async function sendGfinImport(
-  post: (body: { items: GfinImportItem[] }) => Promise<GfinImportResult>,
-  items: GfinImportItem[],
-  onProgress?: (done: number, total: number) => void,
-  describeError: (e: unknown) => string = (e) => (e instanceof Error ? e.message : String(e)),
-): Promise<GfinImportResult> {
-  const batches = chunk(items, GFIN_IMPORT_BATCH_SIZE);
-  const total: GfinImportResult = { created: 0, updated: 0, unchanged: 0 };
-  for (let i = 0; i < batches.length; i++) {
-    onProgress?.(i + 1, batches.length);
-    let res: GfinImportResult;
-    try {
-      res = await post({ items: batches[i] });
-    } catch (e) {
-      const reason = describeError(e);
-      throw new ImportBatchError(
-        `ชุดที่ ${i + 1} ส่งไม่สำเร็จ (${reason}) — บันทึกแล้ว ${total.created + total.updated} แถวจากชุดก่อนหน้า`,
-      );
-    }
-    total.created += res.created;
-    total.updated += res.updated;
-    total.unchanged += res.unchanged;
-  }
-  return total;
 }

@@ -30,7 +30,7 @@ export function GfinPrecheckSettingsPanel() {
     queryKey: GFIN_PRECHECK_SETTINGS_QUERY_KEY,
     queryFn: async () => (await api.get<GfinPrecheckSettingsApi>('/gfin-precheck-settings')).data,
   });
-  // ค่าที่พิมพ์/เลือกค้างไว้ (edits) ทับค่าจาก API ทีละช่อง จนกดบันทึก — เหมือน GfinSettingsPanel
+  // ค่าที่พิมพ์/เลือกค้างไว้ (edits) ทับค่าจาก API ทีละช่อง จนกดบันทึก
   // (ห้ามใช้ useEffect sync จาก data: refetch พื้นหลัง เช่น reconnect/invalidate จากที่อื่น
   // จะมาเขียนทับข้อความที่ผู้ใช้พิมพ์ค้างไว้โดยไม่ได้กดบันทึกทันที)
   const [edits, setEdits] = useState<{ groupId?: string | null; template?: string }>({});

@@ -798,7 +798,7 @@ export default function ChatPanel({
                   title={
                     assigneeFullName
                       ? `ผู้ดูแล: ${assigneeFullName} — กดเพื่อมอบหมาย/โอน`
-                      : 'ตอบก่อนได้เป็นเจ้าของห้อง — กดเพื่อมอบหมาย'
+                      : 'ยังไม่มีผู้ดูแล — กดเพื่อดูการมอบหมาย'
                   }
                   className={cn(
                     'inline-flex h-5 max-w-[11rem] items-center gap-1 truncate rounded-full border text-[11.5px] leading-snug transition-colors',

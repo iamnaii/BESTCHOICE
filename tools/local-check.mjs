@@ -1,3 +1,4 @@
+import { checkChatDispatch } from './check-local-chat-dispatch.mjs';
 import { checkChatSetup } from './check-local-chat-setup.mjs';
 import { checkChatLibrary } from './check-local-chat-library.mjs';
 import { checkChatAnalytics } from './check-local-chat-analytics.mjs';
@@ -66,6 +67,8 @@ try {
     report.checks.push({ label: 'Inbox search: single focus ring, real scoped message search and older-message navigation on desktop/mobile, context failure and retry', status: 'PASS' });
     report.checks.push({ label: 'Inbox shell: consistent navigation scale and compact rail without app sidebar on desktop, compact header on phones, flags off, light/dark at 320–1512px', status: 'PASS' });
     await checkChatSetup(browser, info.url, output);
+    await checkChatDispatch(browser, info.url, output);
+    report.checks.push({ label: 'Chat dispatch: actual ready/pause API, round-robin assignments and desktop/mobile controls on isolated preview', status: 'PASS' });
     report.checks.push({ label: 'Owner setup from disabled navigation, explicit simulated feed subscription, queue activation at 320/1440px', status: 'PASS' });
     await checkInboxLayout(browser, info.url, output);
     report.checks.push({ label: 'Inbox layout: light/dark, 320–1920px, chat/note focus and multiline drafts', status: 'PASS' });

@@ -48,6 +48,7 @@ export interface StaffInboxInput {
 
 export const CHAT_WORK_FLAGS = [
   'chat_work_queue_enabled',
+  'chat_round_robin_enabled',
   'chat_sla_alerts_enabled',
   'chat_follow_up_enabled',
   'chat_mentions_enabled',
@@ -68,4 +69,13 @@ export interface ChatSalesContext {
     label: string;
     href?: string;
   }>;
+}
+
+export interface ChatDispatchState {
+  enabled: boolean;
+  ready: boolean;
+  generation: string | null;
+  expiresAt: string | null;
+  position: number | null;
+  readyCount: number;
 }

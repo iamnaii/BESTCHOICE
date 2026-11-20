@@ -1,3 +1,6 @@
+import { ChatDispatchService } from '../../src/modules/chat-engine/services/chat-dispatch.service';
+import { previewShopHome } from './preview-shop-home';
+import { ChatDispatchController } from '../../src/modules/staff-chat/chat-dispatch.controller';
 import { GeneratedDocumentsService } from '../../src/modules/contracts/services/generated-documents.service';
 import { AccessGeneratedDocumentsBoundaries } from '../../src/modules/employee-access/access-generated-documents-boundaries';
 import { AccessContractFilesBoundaries } from '../../src/modules/employee-access/access-contract-files-boundaries';
@@ -98,7 +101,7 @@ import { CreateContractDto } from '../../src/modules/contracts/dto/contract.dto'
 import { loadInstallmentConfig } from '../../src/utils/config.util';
 /** Isolated manual preview. Never imported by AppModule or deployed with API source. */
 import 'reflect-metadata';
-import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, ValidationPipe } from '@nestjs/common';
+import { BadRequestException, Logger, Body, Controller, Get, Param, Patch, Post, Query, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { createReadStream, existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -197,6 +200,7 @@ const customerJourney = new CustomerJourneyService(db, new JourneySummaryService
 const revenueReports = new RevenueReportService(db);
 const transactionalReports = new TransactionalReportService(db, new CompanyResolverService(db));
 const companies = new CompanyService(db);
+const shopHome = previewShopHome(db);
 const products = new ProductsService(db);
 const poQuery = new PoQueryService(db);
 const interestConfigs = new InterestConfigService(db);
@@ -206,10 +210,13 @@ const lifecycle = new ContractLifecycleService(db, contractQuery,
   { execute: async () => ({}) } as never, { execute: async () => ({}) } as never,
   { resolveBranchCashAccount: async () => 'S11-1101', resolveInflowCashAccount: async () => 'S11-1101' } as never,
   new CustomerBlacklistService(db, new CustomerPiiService(db)));
+const dispatch = new ChatDispatchService(db, new ChatWorkAccessService(db));
 const manager = Object.assign(Object.create(RoomManagerService.prototype), {
   prisma: db,
   storageService: { configured: false },
   responseCycles: new ResponseCycleService(db),
+  dispatch,
+  logger: new Logger(RoomManagerService.name),
 }) as RoomManagerService;
 const sampleResult = {
   accountName: 'บัญชีตัวอย่าง — ผล AI จำลอง',
@@ -316,6 +323,7 @@ class PreviewController {
     return db.user.findMany({ select: { id: true, name: true }, take: 200 });
   }
   @Get('companies') companies() { return companies.findAll(); }
+  @Get('shop-home') shopHome(@Query('branchId') branchId?: string) { return shopHome.get(actor, branchId); }
   @Get('dashboard/kpis') dashboardKpis() { return dashboardOverview.computeKPIs(); }
   @Get('dashboard/monthly-trend') dashboardTrend() { return dashboardOverview.getMonthlyTrend(); }
   @Get('dashboard/status-distribution') dashboardStatuses() { return dashboardOverview.getStatusDistribution(); }
@@ -482,6 +490,9 @@ class PreviewController {
   //   GET customers/:id        → findOne + ปิดบังเลขบัตรให้ SALES (อินบ็อกซ์/สร้างสัญญา/OCR ใช้)
   //   GET customers/:id/detail → findDetail + ปิดบังเลขบัตรให้ SALES (หน้ารายละเอียดลูกค้าใช้)
   // เดิม endpoint นี้คืน raw customer row + contracts/sales ว่างเปล่า ทำให้หน้ารายละเอียดลูกค้าพังบน preview (R9)
+  @Get('customers/:id/blacklist') customerBlacklist(@Param('id') id: string) {
+    return new CustomerBlacklistService(db, new CustomerPiiService(db)).evaluate(id);
+  }
   @Get('customers/:id/detail') async customerDetail(@Param('id') id: string) {
     return maskForActor(await customerQuery.findDetail(id));
   }
@@ -582,9 +593,10 @@ async function main() {
   await db.cannedResponse.upsert({where:{shortcut:'/preview-thanks'},create:{shortcut:'/preview-thanks',title:'ขอบคุณ (ตัวอย่าง)',content:'ขอบคุณที่สนใจ BESTCHOICE ครับ'},update:{}});
   const appointmentFixture = await seedAppointmentPreview(db, actor.id);
   const library = previewChatLibrary(db, manager, storageForPreview as StorageService, () => actor.id);
+  Object.assign(library.router, { dispatch });
   const afterSales = previewAfterSales(db, storageForPreview as StorageService, () => actor);
   const module = await Test.createTestingModule({
-    controllers: [StoreAppointmentsController, AppointmentLinksController, AppointmentPublicController, ChatLibraryController, library.controller, previewChatAnalytics(db,manager,()=>actor.id,previewActors.receiver.id), ChatAnalyticsController,
+    controllers: [ChatDispatchController, StoreAppointmentsController, AppointmentLinksController, AppointmentPublicController, ChatLibraryController, library.controller, previewChatAnalytics(db,manager,()=>actor.id,previewActors.receiver.id), ChatAnalyticsController,
       ChatServiceRequestController, AfterSalesController, afterSales.controller,
       FacebookCommentsController, facebookComments.controller,
       ChatHandoffController, RoomNotesController, TodosController, ChatFollowUpController, ChatSalesContextController, ChatWorkController, ChatWorkSettingsController, StaffInboxController, previewWorkController(db, manager, () => actor.id),
@@ -597,7 +609,7 @@ async function main() {
       GlobalCreditCheckController,
       PreviewController,
     ],
-    providers: [GeneratedDocumentsService, AccessGeneratedDocumentsBoundaries, ContractSignaturesAccessService, AccessSignaturesBoundaries, AppointmentConfirmationService, StoreAppointmentsService, AppointmentScheduleService, AppointmentLinksService, ChatLibraryService, ChatLibraryDeliveryService, { provide: MessageRouterService, useValue: library.router }, ChatAnalyticsV2Service, ChatSalesAttributionService,
+    providers: [{ provide: ChatDispatchService, useValue: dispatch }, GeneratedDocumentsService, AccessGeneratedDocumentsBoundaries, ContractSignaturesAccessService, AccessSignaturesBoundaries, AppointmentConfirmationService, StoreAppointmentsService, AppointmentScheduleService, AppointmentLinksService, ChatLibraryService, ChatLibraryDeliveryService, { provide: MessageRouterService, useValue: library.router }, ChatAnalyticsV2Service, ChatSalesAttributionService,
       ChatServiceRequestService, ChatServiceCaseLinkService, ...afterSales.providers,
       FacebookCommentRefreshService, { provide: FacebookCommentIngestService, useValue: facebookComments.ingest }, FacebookCommentWorkService, FacebookCommentReplyService, { provide: FacebookCommentClient, useValue: facebookComments.client },
       ChatHandoffService, NoteMentionService, { provide: StaffMessageService, useValue: Object.assign(Object.create(StaffMessageService.prototype), { prisma: db }) }, ChatSalesDispositionService, TodosService, ChatFollowUpService, ChatSalesContextService, JourneySummaryService, JourneyStateService, ChatWorkQueryService, ChatWorkSettingsService, StaffInboxService, ChatWorkAccessService,
@@ -695,14 +707,14 @@ async function main() {
     if (
       /^\/api\/(store-appointments|store-appointment-links|store-appointments-public)(\/|$)/.test(path) ||
       /^\/api\/(todos|trade-ins|contacts|promotions|gfin-config|documents|preview|auth\/me|credit-checks|ocr\/bank-statement|products|contracts|interest-configs|sales|bookings)/.test(path) || path.startsWith('/api/chat-analytics/v2/') || path.startsWith('/api/staff-chat/facebook-comments') || path.startsWith('/api/staff-chat/service-requests/') || path.startsWith('/api/after-sales') || path === '/api/customers' || path === '/api/users' ||
-      /^\/api\/customers\/(search|[^/]+(?:\/credit-check.*|\/detail|\/journey(?:\/summary)?)?)$/.test(path) ||
+      /^\/api\/customers\/(search|[^/]+(?:\/credit-check.*|\/blacklist|\/detail|\/journey(?:\/summary)?)?)$/.test(path) ||
       (path === '/api/staff-chat/canned-responses' || /^\/api\/staff-chat\/rooms\/[^/]+\/canned-responses\/[^/]+\/preview$/.test(path)) ||
       /^\/api\/staff-chat\/library\//.test(path) ||
       /^\/api\/staff-chat\/rooms(?:\/(counts|[^/]+(?:\/(messages(?:\/search)?|read|notes(?:\/[^/]+(?:\/pin)?)?|products|cross-channel|sales-disposition|eligible-staff|handoffs|follow-ups|service-requests|service-intake-options|finance-applications|sales-context(?:\/credit\/[^/]+)?|customer|prepare-offer|credit-check.*))?))?$/.test(
         path,
       ) ||
-      /^\/api\/staff-chat\/(handoffs\/[^/]+|follow-ups\/[^/]+|work|work-settings|work-notifications(?:\/[^/]+\/read)?|work-targets\/[^/]+\/[^/]+)$/.test(path) ||
-      path === '/api/staff-chat/ai/settings' || path === '/api/reports/finance-portfolio' ||
+      /^\/api\/staff-chat\/(handoffs\/[^/]+|follow-ups\/[^/]+|dispatch(?:\/(?:readiness|heartbeat))?|work|work-settings|work-notifications(?:\/[^/]+\/read)?|work-targets\/[^/]+\/[^/]+)$/.test(path) ||
+      path === '/api/staff-chat/ai/settings' || path === '/api/shop-home' || path === '/api/reports/finance-portfolio' ||
       path === '/api/external-finance/companies' || path === '/api/settings/ui-flags' || path === '/api/branches' || path === '/api/companies' || path === '/api/overdue/pipeline' || path === '/api/purchase-orders/qc-pending' ||
       /^\/api\/dashboard\/(kpis|monthly-trend|status-distribution|branch-comparison|monthly-revenue|top-overdue|aging-summary|watch-list|alerts|staff-performance)$/.test(path) ||
       /^\/api\/reports\/(entity-profit|comparative-pl)$/.test(path)

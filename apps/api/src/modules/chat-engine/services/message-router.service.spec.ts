@@ -1653,3 +1653,31 @@ describe('MessageRouterService — lane CHAT ROUTING (2026-09-22)', () => {
     });
   });
 });
+
+describe('Round-robin send boundaries', () => {
+  function setup() {
+    const manager = {
+      findById: jest.fn().mockResolvedValue({ id: 'room', channel: ChatChannel.FACEBOOK, externalUserId: 'psid' }),
+      saveMessage: jest.fn().mockResolvedValue({ id: 'message' }),
+      markOutboundSent: jest.fn(),
+    };
+    const dispatch = { assertMayReply: jest.fn().mockRejectedValue(new Error('Not your turn')), enabled: jest.fn().mockResolvedValue(true) };
+    const router = new MessageRouterService(manager as any, {} as any, {} as any, undefined, undefined, undefined, undefined, undefined, undefined, dispatch as any);
+    const adapter = { channel: ChatChannel.FACEBOOK, sendMessage: jest.fn().mockResolvedValue({ success: true }) };
+    router.registerAdapter(adapter as any);
+    return { router, manager, dispatch, adapter };
+  }
+  it('checks employee ownership before sending text or canned content to the provider', async () => {
+    const { router, adapter, manager } = setup();
+    await expect(router.sendStaffMessage({ roomId: 'room', staffId: 'staff', text: 'hello' })).rejects.toThrow('Not your turn');
+    await expect(router.sendStaffOutbound('room', { text: 'hello' }, 'staff')).rejects.toThrow('Not your turn');
+    expect(adapter.sendMessage).not.toHaveBeenCalled(); expect(manager.saveMessage).not.toHaveBeenCalled();
+  });
+  it('customer template postbacks remain BOT messages and bypass employee ownership checks', async () => {
+    const { router, manager, dispatch, adapter } = setup();
+    await expect(router.sendStaffOutbound('room', { text: 'automatic reply' }, 'system', true)).resolves.toMatchObject({ success: true });
+    expect(dispatch.assertMayReply).not.toHaveBeenCalled();
+    expect(manager.saveMessage).toHaveBeenCalledWith(expect.objectContaining({ role: MessageRole.BOT }));
+    expect(adapter.sendMessage).toHaveBeenCalledTimes(1);
+  });
+});

@@ -1,3 +1,5 @@
+import ChatDispatchCard from './ChatDispatchCard';
+import { useChatDispatch } from '../hooks/useChatDispatch';
 import ChatServiceRequestCard from './ChatServiceRequestCard';
 import FacebookCommentPanel from './FacebookCommentPanel';
 import FacebookCommentList from './FacebookCommentList';
@@ -126,6 +128,8 @@ export default function InboxWorkTools({
         ? 'NOTE'
         : 'TODO';
   const flags = work.settings.data?.flags;
+  const dispatchEnabled = !!flags?.chat_round_robin_enabled && work.enabled;
+  const dispatch = useChatDispatch(work.company, work.key, dispatchEnabled);
   const linkEnabled =
     linkedType === 'FACEBOOK_COMMENT'
       ? work.company === 'SHOP' && !!flags?.chat_facebook_comments_enabled
@@ -174,6 +178,10 @@ export default function InboxWorkTools({
   // admin control scale enlarges only buttons, leaving the analytics link smaller.
   const workNavigation = (
     <nav aria-label="การสื่อสารและงานทีม" className="inbox-work-navigation">
+      {dispatchEnabled && <Button variant="outline" className="text-sm" onClick={() => setPanel('queue')}>
+        <span className={`size-2 shrink-0 rounded-full ${dispatch.query.data?.ready && !dispatch.query.isError ? 'bg-success' : 'bg-muted-foreground'}`} aria-hidden="true" />
+        <span>{dispatch.query.isError ? 'ตรวจสอบคิว' : dispatch.query.data?.ready ? `รับแชท · คิว ${dispatch.query.data.position}` : 'พร้อมรับแชท'}</span>
+      </Button>}
       <Button
         variant="ghost"
         aria-current={chatActive ? 'page' : undefined}
@@ -362,7 +370,7 @@ export default function InboxWorkTools({
     <header className="inbox-workspace-header">
       <nav className="inbox-mobile-bottom-nav" aria-label="การสื่อสารและงานทีม">
         <button type="button" aria-current={chatActive ? 'page' : undefined} onClick={() => setPanel(null)}><Inbox aria-hidden="true" className="size-5" /><span>แชท</span></button>
-        <button type="button" aria-label="คิวงาน" disabled={!work.enabled} onClick={() => setPanel('queue')}><ListTodo aria-hidden="true" className="size-5" /><span>คิวงาน{waitingCount ? ` (${waitingCount > 99 ? '99+' : waitingCount})` : ''}</span></button>
+        <button type="button" aria-label="คิวงาน" disabled={!work.enabled} onClick={() => setPanel('queue')}><ListTodo aria-hidden="true" className="size-5" /><span>{dispatchEnabled && !dispatch.query.data?.ready ? 'เข้าคิว' : 'คิวงาน'}{waitingCount ? ` (${waitingCount > 99 ? '99+' : waitingCount})` : ''}</span></button>
         {work.company === 'SHOP' && <button type="button" disabled={!flags?.chat_facebook_comments_enabled} onClick={() => setPanel('comments')}><Globe aria-hidden="true" className="size-5" /><span>คอมเมนต์</span></button>}
         <button type="button" aria-label="เมนูงานแชท" onClick={() => setMobileMenuOpen(true)}><Menu aria-hidden="true" className="size-5" /><span>เมนู</span></button>
       </nav>
@@ -389,7 +397,7 @@ export default function InboxWorkTools({
       <Sheet open={!!panel} onOpenChange={(o) => !o && setPanel(null)}>
         <SheetContent
           side="left"
-          className="flex w-full max-w-full flex-col gap-0 p-0 sm:max-w-lg"
+          className="flex w-full max-w-full flex-col gap-0 p-0 sm:max-w-lg [@media(max-height:500px)]:overflow-y-auto"
           aria-busy={opening}
         >
           <div className="border-b px-4 py-5 pr-12">
@@ -410,6 +418,8 @@ export default function InboxWorkTools({
               onOpen={(id) => void open('FACEBOOK_COMMENT', id)}
             />
           ) : panel === 'queue' ? (
+            <div className="flex min-h-0 flex-1 flex-col [@media(max-height:500px)]:min-h-[420px] [@media(max-height:500px)]:flex-none">
+            {dispatchEnabled && <ChatDispatchCard dispatch={dispatch} />}
             <WorkQueue
               data={work.queue.data}
               loading={work.queue.isLoading}
@@ -423,6 +433,7 @@ export default function InboxWorkTools({
               onRetry={() => work.queue.refetch()}
               onOpen={(item) => void open(item.targetType, item.targetId)}
             />
+            </div>
           ) : (
             <StaffWorkInbox
               items={work.inbox.data?.data}

@@ -1,3 +1,4 @@
+import { ChatDispatchService, lockChatDispatch } from '../../chat-engine/services/chat-dispatch.service';
 import { ResponseCycleService } from '../../chat-engine/services/response-cycle.service';
 import { Injectable, Logger, Optional, Inject, forwardRef } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
@@ -32,6 +33,7 @@ export class ChatRoomService {
     @Optional()
     private merge?: CustomerMergeService,
     @Optional() private responseCycles?: ResponseCycleService,
+    @Optional() private dispatch?: ChatDispatchService,
   ) {}
 
   /** หา room เดิม หรือสร้างใหม่ */
@@ -111,7 +113,7 @@ export class ChatRoomService {
     costUsd?: number;
     visionExtracted?: Prisma.InputJsonValue;
   }) {
-    const save = async (db: Prisma.TransactionClient, tracking = false) => {
+    const save = async (db: Prisma.TransactionClient, tracking = false, dispatching = false) => {
       if (tracking) await this.responseCycles!.lock(db, params.roomId);
       const msg = await db.chatMessage.create({
         data: {
@@ -148,12 +150,24 @@ export class ChatRoomService {
           receivedAt: msg.createdAt,
         });
       }
+      if (dispatching) {
+        await db.chatRoom.updateMany({ where: { id: params.roomId }, data: { resolvedAt: null, status: 'ACTIVE' } });
+        await this.dispatch!.enqueueInTx(db, params.roomId, msg.createdAt);
+      }
       return msg;
     };
-    const tracking = this.responseCycles && (await this.responseCycles.enabled());
-    const msg = tracking
-      ? await this.prisma.$transaction((tx) => save(tx, true))
+    const tracking = !!this.responseCycles && await this.responseCycles.enabled();
+    const dispatching = params.role === MessageRole.CUSTOMER && !!this.dispatch && await this.dispatch.enabled();
+    const msg = tracking || dispatching
+      ? await this.prisma.$transaction(async tx => {
+          if (dispatching) await lockChatDispatch(tx);
+          return save(tx, tracking, dispatching && await this.dispatch!.enabled(tx));
+        })
       : await save(this.prisma);
+    if (dispatching) {
+      try { await this.dispatch!.drain('FINANCE'); }
+      catch (error) { this.logger.error('Queued finance chat will be retried by dispatch recovery', error); }
+    }
 
     // Emit to Unified Inbox via WebSocket (best-effort)
     try {

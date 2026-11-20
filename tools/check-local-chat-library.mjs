@@ -58,7 +58,7 @@ export async function checkChatLibrary(page,origin,output,width){
  await openComposerTool(page, 'อิโมจิ / สติกเกอร์');await expect(page.getByRole('button',{name:'😊 อีโมจิ',exact:true})).toBeVisible();await page.keyboard.press('Escape');
  await openComposerTool(page, 'ส่งข้อมูลสินค้า');await expect(page.getByPlaceholder('ค้นหาชื่อรุ่น / ยี่ห้อ / IMEI')).toBeVisible();await page.getByPlaceholder('ค้นหาชื่อรุ่น / ยี่ห้อ / IMEI').fill('iPhone');await page.keyboard.press('Escape');
  await page.getByRole('button',{name:'ข้อความสำเร็จรูป',exact:true}).click();await page.getByRole('textbox', { name: 'ค้นหาข้อความสำเร็จรูป', exact: true }).fill('ขอบคุณ (ตัวอย่าง)');await page.getByText('ขอบคุณ (ตัวอย่าง)',{exact:true}).click();await page.getByRole('button',{name:'ใส่ข้อความ',exact:true}).click();await expect(page.getByRole('textbox',{name:'พิมพ์ข้อความ',exact:true})).toHaveValue('ขอบคุณที่สนใจ BESTCHOICE ครับ');
- if(width<1280)await page.getByRole('button',{name:'ข้อมูลลูกค้า',exact:true}).click();
+ if(width<1280)await page.getByRole('button',{name:/^ข้อมูลลูกค้า/}).filter({visible:true}).first().click();
  const creditToggle=page.locator('aside[aria-label="ข้อมูลลูกค้า"]:visible').getByRole('button',{name:'ตรวจเครดิต',exact:true});
  if(await creditToggle.getAttribute('aria-expanded')==='false')await creditToggle.click();
  await page.getByRole('button',{name:'เลือกจากคลังไฟล์',exact:true}).click();await page.getByRole('dialog').getByLabel('ค้นหาไฟล์',{exact:true}).fill(name);await page.getByRole('dialog').getByRole('checkbox',{name:`เลือก ${name}`,exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'เพิ่มไฟล์ที่เลือก',exact:true}).click();

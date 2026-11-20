@@ -12,13 +12,13 @@ export async function checkWorkCompany(page, origin, output, width) {
     }
   };
   const tab = zone => page.getByRole('tab', { name: zone === 'shop' ? 'งานหน้าร้าน (SHOP)' : 'งานการเงิน (FINANCE)', exact: true });
-  const dashboard = () => page.getByRole('heading', { name: 'แดชบอร์ด', exact: true });
+  const dashboard = () => page.getByRole('heading', { name: 'หน้าหลักหน้าร้าน', exact: true });
   const portfolio = () => page.getByRole('heading', { name: 'พอร์ตสัญญา BESTCHOICE FINANCE', exact: true });
   const readCompany = async response => {
     assert.equal(response.status(), 200);
     return new URL(response.url()).searchParams.get('company');
   };
-  const shopResponse = page.waitForResponse(r => r.url().includes('/dashboard/kpis'));
+  const shopResponse = page.waitForResponse(r => new URL(r.url()).pathname.endsWith('/shop-home'));
   await page.goto(new URL('/?zone=shop&company=finance', origin).href, { waitUntil: 'domcontentloaded' });
   assert.equal(await readCompany(await shopResponse), 'shop');
   await expect(dashboard()).toBeVisible();

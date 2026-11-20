@@ -1,3 +1,4 @@
+import { ChatDispatchService } from '../../src/modules/chat-engine/services/chat-dispatch.service';
 import { StaffMessageService } from '../../src/modules/staff-chat/services/staff-message.service';
 import { CannedResponseVariableService } from '../../src/modules/staff-chat/services/canned-response-variable.service';
 import { FinanceApplicationService } from '../../src/modules/external-finance-application/services/finance-application.service';
@@ -12,6 +13,7 @@ import { RoomManagerService } from '../../src/modules/chat-engine/services/room-
 import { ChatWorkAccessService } from '../../src/modules/staff-chat/services/chat-work-access.service';
 import { StaffInboxService } from '../../src/modules/staff-chat/services/staff-inbox.service';
 export async function seedChatWork(db: PrismaService, manager: RoomManagerService, actorId: string) {
+  await db.systemConfig.upsert({ where: { key: 'chat_round_robin_enabled' }, create: { key: 'chat_round_robin_enabled', value: 'true' }, update: { value: 'true', deletedAt: null } });
   await db.systemConfig.upsert({ where: { key: 'chat_work_queue_enabled' }, create: { key: 'chat_work_queue_enabled', value: 'true' }, update: { value: 'true', deletedAt: null } });
   await db.systemConfig.upsert({ where: { key: 'chat_follow_up_enabled' }, create: { key: 'chat_follow_up_enabled', value: 'true' }, update: { value: 'true', deletedAt: null } });
   await db.systemConfig.upsert({ where: { key: 'chat_mentions_enabled' }, create: { key: 'chat_mentions_enabled', value: 'true' }, update: { value: 'true', deletedAt: null } });
@@ -53,10 +55,16 @@ export function previewWorkController(db: PrismaService, manager: RoomManagerSer
       return products.detectProducts(rows.map(row => row.text || ''));
     }
     @Get('staff-chat/rooms/:id/finance-applications') finance(@Param('id') id: string) { return finance.listForRoom(id, { id: actorId(), role: 'OWNER' }); }
+    @Post('preview/chat-dispatch/room') async dispatchRoom() {
+      const room = await db.chatRoom.create({ data: { channel: 'FACEBOOK', displayName: 'ลูกค้าทดลองแจกคิว' } });
+      await manager.saveMessage({ roomId: room.id, role: 'CUSTOMER', text: 'ข้อความจำลองทดสอบวนคิว' });
+      return db.chatRoom.findUniqueOrThrow({ where: { id: room.id }, select: { id: true, assignedToId: true } });
+    }
     @Post('preview/chat-work/:id/inbound') inbound(@Param('id') roomId: string) { return manager.saveMessage({ roomId, role: 'CUSTOMER', text: 'ข้อความทดลองรอตอบ' }); }
     @Post('preview/chat-work/:id/fail-next') fail(@Param('id') id: string) { failNext.add(id); return { synthetic: true }; }
     @Post('staff-chat/rooms/:id/read') read(@Param('id') id: string) { return db.chatRoom.update({ where: { id }, data: { unreadCount: 0 } }); }
     @Post('staff-chat/rooms/:id/messages') async send(@Param('id') roomId: string, @Body() body: { text: string; clientMessageId?: string }) {
+      await new ChatDispatchService(db, new ChatWorkAccessService(db)).assertMayReply(roomId, actorId());
       const token = body.clientMessageId || randomUUID();
       const existing = await db.chatMessage.findFirst({ where: { roomId, clientMessageId: token } });
       if (existing?.outboundSentAt) return { success: true, messageId: existing.id };

@@ -31,7 +31,7 @@ export async function checkChatAnalytics(page,origin,output,width){
  await page.getByRole('button',{name:/ห้องรอคนตอบ/}).click();
  const dialog=page.getByRole('dialog');await expect(dialog.getByRole('heading',{name:'ห้องรอคนตอบ',exact:true})).toBeVisible();await expect(dialog.getByText(`${overview.openWorkNow.roomWaits} รายการ`,{exact:true})).toBeVisible();await page.keyboard.press('Escape');
  await page.getByRole('button',{name:'ดูเอกสารขาย',exact:true}).click();await expect(page.getByRole('dialog')).toContainText(source[0].number);await page.keyboard.press('Escape');
- await page.getByRole('button',{name:'ตั้งค่างานแชท',exact:true}).click();await expect(page.getByRole('dialog').getByLabel('เตือนผู้ดูแลเมื่อรอ (นาที)')).toBeVisible();await page.keyboard.press('Escape');
+ await page.getByRole('button',{name:'ตั้งค่างานแชท',exact:true}).click();await page.getByRole('dialog').getByRole('tab',{name:'แจ้งเตือน',exact:true}).click();await expect(page.getByRole('dialog').getByLabel('เตือนผู้ดูแลเมื่อรอ (นาที)')).toBeVisible();await page.keyboard.press('Escape');
  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Analytics overflow');await page.screenshot({path:join(output,`chat-analytics-${width}.png`),fullPage:true,animations:'disabled'});
  await page.goto(`${origin}/chat-analytics?zone=fin&start=${day}&end=${day}`);await expect(page.getByText('งานการเงิน · FINANCE · หลักฐานการตอบ งานทีม และการขาย')).toBeVisible();await expect(page.getByRole('heading',{name:'ความเร็วตอบของคนกับบอท'})).toBeVisible();
  await page.goto(`${origin}/inbox?zone=shop`);

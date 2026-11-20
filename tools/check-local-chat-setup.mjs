@@ -28,7 +28,7 @@ export async function checkChatSetup(browser, origin, output) {
     });
     await context.route('**/staff-chat/facebook-comments/page-config*', async route => {
       assert.equal(route.request().method(), 'GET');
-      await route.fulfill({ json: { pageId: '123', branches: [{ id: 'branch', name: 'สาขาทดสอบ' }], binding: { branchId: 'branch', enabled: true }, capabilities: {
+      await route.fulfill({ json: { pageId: '123', branches: [{ id: 'branch', name: 'สาขาทดสอบ' }, { id: 'branch-2', name: 'สาขาทดสอบสอง' }], binding: { branchId: 'branch', enabled: true }, capabilities: {
         receive: subscribed, publicReply: subscribed, privateReply: false,
         reason: subscribed ? null : 'ยังไม่สมัครรับคอมเมนต์',
         checks: [{ key: 'pages_manage_metadata', label: 'สิทธิ์จัดการเหตุการณ์', passed: true }, { key: 'feed', label: 'สมัคร feed แล้ว', passed: subscribed }],
@@ -46,6 +46,7 @@ export async function checkChatSetup(browser, origin, output) {
       await (await showWorkControl(page, 'ตั้งค่างานแชท')).click();
       const dialog = page.getByRole('dialog', { name: 'ตั้งค่างานแชท', exact: true });
       await expect(dialog).toBeVisible();
+      await dialog.getByRole('tab', { name: 'Facebook', exact: true }).click();
       await dialog.getByText('ตั้งค่า Page และสาขา', { exact: true }).click();
       await expect(dialog.getByLabel('สถานะคอมเมนต์')).toContainText('ยังไม่พร้อม');
       assert.equal(subscriptions, 0, 'Reading setup must not change provider subscription');
@@ -55,10 +56,23 @@ export async function checkChatSetup(browser, origin, output) {
       assert.equal(subscriptions, 1);
       // Provider readiness alone must not pretend the application feature is enabled.
       await expect(dialog.getByLabel('สถานะคอมเมนต์')).toContainText('ยังไม่พร้อม');
-      await dialog.getByRole('checkbox', { name: 'คิวงานแชท', exact: true }).check();
-      await dialog.getByRole('checkbox', { name: 'คอมเมนต์ Facebook', exact: true }).check();
+      await dialog.getByRole('combobox', { name: 'สาขาที่ดูแลงานคอมเมนต์', exact: true }).selectOption('branch-2');
+      await dialog.getByRole('switch', { name: 'คอมเมนต์ Facebook', exact: true }).check();
+      await dialog.getByRole('tab', { name: 'งานแชท', exact: true }).click();
+      await dialog.getByRole('switch', { name: 'คิวงานแชท', exact: true }).check();
+      const saveButton = dialog.getByRole('button', { name: 'บันทึกการตั้งค่า', exact: true });
+      await expect(saveButton).toBeInViewport();
+      await page.screenshot({ animations: 'disabled', path: join(output, `chat-settings-features-${width}.png`) });
+      await dialog.getByRole('tab', { name: 'แจ้งเตือน', exact: true }).click();
+      await expect(dialog.getByRole('spinbutton', { name: 'เตือนผู้ดูแลเมื่อรอ (นาที)' })).toBeVisible();
+      await expect(saveButton).toBeInViewport();
+      await page.screenshot({ animations: 'disabled', path: join(output, `chat-settings-alerts-${width}.png`) });
+      await dialog.getByRole('tab', { name: 'Facebook', exact: true }).click();
+      await expect(dialog.getByRole('combobox', { name: 'สาขาที่ดูแลงานคอมเมนต์', exact: true })).toHaveValue('branch-2');
+      await expect(saveButton).toBeInViewport();
+      await dialog.getByRole('tab', { name: 'งานแชท', exact: true }).click();
       assert.equal(await dialog.evaluate(el => el.scrollWidth > el.clientWidth + 1), false, 'Setup dialog overflow');
-      await page.screenshot({ path: join(output, `chat-setup-${width}.png`) });
+      await page.screenshot({ animations: 'disabled', path: join(output, `chat-setup-${width}.png`) });
       await dialog.getByRole('button', { name: 'บันทึกการตั้งค่า', exact: true }).click();
       await expect(dialog).toBeHidden();
       assert.equal(saves, 1);

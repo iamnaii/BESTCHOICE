@@ -913,6 +913,7 @@ model Branch {
 }
 
 model User {
+  chatDispatchMemberships ChatDispatchMember[]
   managedPayoffEvidence      ManagedPayoffEvidence[]
   capturedContractConsents   PDPAConsent[]              @relation("ContractConsentCapturer")
   issuedCustomerDelegations  CustomerAccessToken[]      @relation("CustomerDelegationIssuer")
@@ -6335,6 +6336,9 @@ model ChatRoom {
   pinnedAt   DateTime? @map("pinned_at")
   pinnedById String?   @map("pinned_by_id")
 
+  /// Pending round-robin delivery, set only by new customer messages after routing is enabled.
+  dispatchQueuedAt DateTime? @map("dispatch_queued_at")
+
   // Assignment
   assignedToId String? @map("assigned_to_id")
   assignedTo   User?   @relation("ChatAssignedStaff", fields: [assignedToId], references: [id])
@@ -6413,6 +6417,7 @@ model ChatRoom {
   @@index([waitingSince])
   @@index([channel, lastCustomerAt])
   @@map("chat_rooms")
+  @@index([dispatchQueuedAt, assignedToId, deletedAt])
 }
 
 model RoomCreditFile {
@@ -10504,4 +10509,21 @@ model AttendanceCorrection {
 
   @@index([dayId, createdAt])
   @@map("attendance_corrections")
+}
+
+/// Self-service readiness lease; one membership per employee and work company.
+model ChatDispatchMember {
+  id String @id @default(uuid())
+  staffId String @map("staff_id")
+  staff User @relation(fields: [staffId], references: [id], onDelete: Restrict)
+  company String
+  position BigInt @default(0)
+  generation String @default(uuid())
+  readyUntil DateTime? @map("ready_until")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  @@unique([staffId, company])
+  @@index([company, readyUntil, position])
+  @@map("chat_dispatch_members")
 }

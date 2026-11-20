@@ -1,3 +1,4 @@
+import { ChatDispatchService } from './services/chat-dispatch.service';
 import { ChatSlaNotifierService } from './services/chat-sla-notifier.service';
 import { ResponseCycleService } from './services/response-cycle.service';
 import { Module, forwardRef } from '@nestjs/common';
@@ -32,6 +33,7 @@ import { AfterHoursService } from './services/after-hours.service';
     MessageRouterService,
     HandoffManagerService,
     AssignmentService,
+    ChatDispatchService,
     ConversationTagService,
     ChatCronService,
     AfterHoursService,
@@ -42,6 +44,7 @@ import { AfterHoursService } from './services/after-hours.service';
     MessageRouterService,
     HandoffManagerService,
     AssignmentService,
+    ChatDispatchService,
     ConversationTagService,
     AfterHoursService,
   ],

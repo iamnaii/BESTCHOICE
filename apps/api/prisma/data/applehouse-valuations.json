@@ -1,7 +1,7 @@
 {
   "source": "https://applehouseth.com/",
   "estimator": "https://sure.applehouseth.com/",
-  "fetchedAt": "2026-09-21T05:32:07.886Z",
+  "fetchedAt": "2026-11-20T05:25:39.824Z",
   "currency": "THB",
   "basis": {
     "region": "เครื่องไทย",
@@ -18,190 +18,190 @@
     {
       "model": "iPhone 17 Pro Max",
       "storage": "256GB",
-      "basePrice": 32500,
-      "estimatePrice": 31000,
+      "basePrice": 32000,
+      "estimatePrice": 30500,
       "promotion": 1500
     },
     {
       "model": "iPhone 17 Pro Max",
       "storage": "512GB",
-      "basePrice": 33500,
-      "estimatePrice": 32000,
+      "basePrice": 33000,
+      "estimatePrice": 31500,
       "promotion": 1500
     },
     {
       "model": "iPhone 17 Pro",
       "storage": "256GB",
-      "basePrice": 28500,
-      "estimatePrice": 27000,
+      "basePrice": 27500,
+      "estimatePrice": 26000,
       "promotion": 1500
     },
     {
       "model": "iPhone 17 Pro",
       "storage": "512GB",
-      "basePrice": 30000,
-      "estimatePrice": 28500,
+      "basePrice": 29500,
+      "estimatePrice": 28000,
       "promotion": 1500
     },
     {
       "model": "iPhone Air",
       "storage": "256GB",
-      "basePrice": 20000,
-      "estimatePrice": 18500,
-      "promotion": 1500
-    },
-    {
-      "model": "iPhone Air",
-      "storage": "512GB",
-      "basePrice": 20500,
-      "estimatePrice": 19000,
-      "promotion": 1500
-    },
-    {
-      "model": "iPhone 17",
-      "storage": "256GB",
-      "basePrice": 22000,
-      "estimatePrice": 20500,
-      "promotion": 1500
-    },
-    {
-      "model": "iPhone 17",
-      "storage": "512GB",
-      "basePrice": 23000,
-      "estimatePrice": 21500,
-      "promotion": 1500
-    },
-    {
-      "model": "iPhone 16 Pro Max",
-      "storage": "256GB",
-      "basePrice": 24500,
-      "estimatePrice": 23000,
-      "promotion": 1500
-    },
-    {
-      "model": "iPhone 16 Pro Max",
-      "storage": "512GB",
-      "basePrice": 25500,
-      "estimatePrice": 24000,
-      "promotion": 1500
-    },
-    {
-      "model": "iPhone 16 Pro",
-      "storage": "128GB",
       "basePrice": 19000,
       "estimatePrice": 17500,
       "promotion": 1500
     },
     {
-      "model": "iPhone 16 Pro",
-      "storage": "256GB",
+      "model": "iPhone Air",
+      "storage": "512GB",
       "basePrice": 20000,
       "estimatePrice": 18500,
       "promotion": 1500
     },
     {
-      "model": "iPhone 16 Pro",
-      "storage": "512GB",
+      "model": "iPhone 17",
+      "storage": "256GB",
       "basePrice": 21000,
       "estimatePrice": 19500,
       "promotion": 1500
     },
     {
-      "model": "iPhone 16 Plus",
+      "model": "iPhone 17",
+      "storage": "512GB",
+      "basePrice": 22600,
+      "estimatePrice": 21100,
+      "promotion": 1500
+    },
+    {
+      "model": "iPhone 16 Pro Max",
+      "storage": "256GB",
+      "basePrice": 23500,
+      "estimatePrice": 22000,
+      "promotion": 1500
+    },
+    {
+      "model": "iPhone 16 Pro Max",
+      "storage": "512GB",
+      "basePrice": 24500,
+      "estimatePrice": 23000,
+      "promotion": 1500
+    },
+    {
+      "model": "iPhone 16 Pro",
       "storage": "128GB",
+      "basePrice": 18000,
+      "estimatePrice": 16500,
+      "promotion": 1500
+    },
+    {
+      "model": "iPhone 16 Pro",
+      "storage": "256GB",
       "basePrice": 19000,
       "estimatePrice": 17500,
       "promotion": 1500
     },
     {
-      "model": "iPhone 16 Plus",
-      "storage": "256GB",
-      "basePrice": 19500,
-      "estimatePrice": 18000,
-      "promotion": 1500
-    },
-    {
-      "model": "iPhone 16 Plus",
+      "model": "iPhone 16 Pro",
       "storage": "512GB",
       "basePrice": 20000,
       "estimatePrice": 18500,
       "promotion": 1500
     },
     {
+      "model": "iPhone 16 Plus",
+      "storage": "128GB",
+      "basePrice": 18500,
+      "estimatePrice": 17000,
+      "promotion": 1500
+    },
+    {
+      "model": "iPhone 16 Plus",
+      "storage": "256GB",
+      "basePrice": 19000,
+      "estimatePrice": 17500,
+      "promotion": 1500
+    },
+    {
+      "model": "iPhone 16 Plus",
+      "storage": "512GB",
+      "basePrice": 19500,
+      "estimatePrice": 18000,
+      "promotion": 1500
+    },
+    {
       "model": "iPhone 16",
       "storage": "128GB",
+      "basePrice": 17000,
+      "estimatePrice": 15500,
+      "promotion": 1500
+    },
+    {
+      "model": "iPhone 16",
+      "storage": "256GB",
       "basePrice": 17500,
       "estimatePrice": 16000,
       "promotion": 1500
     },
     {
       "model": "iPhone 16",
-      "storage": "256GB",
-      "basePrice": 18000,
-      "estimatePrice": 16500,
+      "storage": "512GB",
+      "basePrice": 18500,
+      "estimatePrice": 17000,
       "promotion": 1500
     },
     {
-      "model": "iPhone 16",
-      "storage": "512GB",
+      "model": "iPhone 15 Pro Max",
+      "storage": "256GB",
       "basePrice": 19000,
       "estimatePrice": 17500,
       "promotion": 1500
     },
     {
       "model": "iPhone 15 Pro Max",
-      "storage": "256GB",
-      "basePrice": 20500,
-      "estimatePrice": 19000,
-      "promotion": 1500
-    },
-    {
-      "model": "iPhone 15 Pro Max",
       "storage": "512GB",
-      "basePrice": 21000,
-      "estimatePrice": 19500,
+      "basePrice": 19500,
+      "estimatePrice": 18000,
       "promotion": 1500
     },
     {
       "model": "iPhone 15 Pro",
       "storage": "128GB",
+      "basePrice": 15000,
+      "estimatePrice": 13500,
+      "promotion": 1500
+    },
+    {
+      "model": "iPhone 15 Pro",
+      "storage": "256GB",
+      "basePrice": 15500,
+      "estimatePrice": 14000,
+      "promotion": 1500
+    },
+    {
+      "model": "iPhone 15 Pro",
+      "storage": "512GB",
       "basePrice": 16500,
       "estimatePrice": 15000,
       "promotion": 1500
     },
     {
-      "model": "iPhone 15 Pro",
-      "storage": "256GB",
-      "basePrice": 17000,
-      "estimatePrice": 15500,
-      "promotion": 1500
-    },
-    {
-      "model": "iPhone 15 Pro",
-      "storage": "512GB",
-      "basePrice": 18000,
-      "estimatePrice": 16500,
-      "promotion": 1500
-    },
-    {
       "model": "iPhone 15 Plus",
       "storage": "128GB",
-      "basePrice": 15000,
-      "estimatePrice": 13500,
+      "basePrice": 13500,
+      "estimatePrice": 12000,
       "promotion": 1500
     },
     {
       "model": "iPhone 15 Plus",
       "storage": "256GB",
-      "basePrice": 15500,
-      "estimatePrice": 14000,
+      "basePrice": 14000,
+      "estimatePrice": 12500,
       "promotion": 1500
     },
     {
       "model": "iPhone 15 Plus",
       "storage": "512GB",
-      "basePrice": 16000,
-      "estimatePrice": 14500,
+      "basePrice": 14500,
+      "estimatePrice": 13000,
       "promotion": 1500
     },
     {
@@ -228,127 +228,127 @@
     {
       "model": "iPhone 14 Pro Max",
       "storage": "128GB",
-      "basePrice": 16000,
-      "estimatePrice": 14500,
-      "promotion": 1500
-    },
-    {
-      "model": "iPhone 14 Pro Max",
-      "storage": "256GB",
-      "basePrice": 17000,
-      "estimatePrice": 15500,
-      "promotion": 1500
-    },
-    {
-      "model": "iPhone 14 Pro Max",
-      "storage": "512GB",
-      "basePrice": 18000,
-      "estimatePrice": 16500,
-      "promotion": 1500
-    },
-    {
-      "model": "iPhone 14 Pro",
-      "storage": "128GB",
       "basePrice": 14000,
       "estimatePrice": 12500,
       "promotion": 1500
     },
     {
-      "model": "iPhone 14 Pro",
+      "model": "iPhone 14 Pro Max",
       "storage": "256GB",
-      "basePrice": 14500,
-      "estimatePrice": 13000,
+      "basePrice": 15000,
+      "estimatePrice": 13500,
+      "promotion": 1500
+    },
+    {
+      "model": "iPhone 14 Pro Max",
+      "storage": "512GB",
+      "basePrice": 16000,
+      "estimatePrice": 14500,
       "promotion": 1500
     },
     {
       "model": "iPhone 14 Pro",
-      "storage": "512GB",
-      "basePrice": 15500,
-      "estimatePrice": 14000,
-      "promotion": 1500
-    },
-    {
-      "model": "iPhone 14 Plus",
       "storage": "128GB",
       "basePrice": 12000,
       "estimatePrice": 10500,
       "promotion": 1500
     },
     {
-      "model": "iPhone 14 Plus",
-      "storage": "256GB",
-      "basePrice": 12500,
-      "estimatePrice": 11000,
-      "promotion": 1500
-    },
-    {
-      "model": "iPhone 14 Plus",
-      "storage": "512GB",
-      "basePrice": 13500,
-      "estimatePrice": 12000,
-      "promotion": 1500
-    },
-    {
-      "model": "iPhone 14",
-      "storage": "128GB",
-      "basePrice": 10500,
-      "estimatePrice": 9000,
-      "promotion": 1500
-    },
-    {
-      "model": "iPhone 14",
-      "storage": "256GB",
-      "basePrice": 11000,
-      "estimatePrice": 9500,
-      "promotion": 1500
-    },
-    {
-      "model": "iPhone 14",
-      "storage": "512GB",
-      "basePrice": 11500,
-      "estimatePrice": 10000,
-      "promotion": 1500
-    },
-    {
-      "model": "iPhone 13 Pro Max",
-      "storage": "128GB",
-      "basePrice": 11500,
-      "estimatePrice": 10000,
-      "promotion": 1500
-    },
-    {
-      "model": "iPhone 13 Pro Max",
+      "model": "iPhone 14 Pro",
       "storage": "256GB",
       "basePrice": 13000,
       "estimatePrice": 11500,
       "promotion": 1500
     },
     {
-      "model": "iPhone 13 Pro Max",
+      "model": "iPhone 14 Pro",
       "storage": "512GB",
       "basePrice": 14000,
       "estimatePrice": 12500,
       "promotion": 1500
     },
     {
-      "model": "iPhone 13 Pro",
+      "model": "iPhone 14 Plus",
       "storage": "128GB",
       "basePrice": 10500,
       "estimatePrice": 9000,
       "promotion": 1500
     },
     {
-      "model": "iPhone 13 Pro",
+      "model": "iPhone 14 Plus",
       "storage": "256GB",
       "basePrice": 11500,
       "estimatePrice": 10000,
       "promotion": 1500
     },
     {
-      "model": "iPhone 13 Pro",
+      "model": "iPhone 14 Plus",
+      "storage": "512GB",
+      "basePrice": 12500,
+      "estimatePrice": 11000,
+      "promotion": 1500
+    },
+    {
+      "model": "iPhone 14",
+      "storage": "128GB",
+      "basePrice": 10500,
+      "estimatePrice": 9000,
+      "promotion": 1500
+    },
+    {
+      "model": "iPhone 14",
+      "storage": "256GB",
+      "basePrice": 11500,
+      "estimatePrice": 10000,
+      "promotion": 1500
+    },
+    {
+      "model": "iPhone 14",
       "storage": "512GB",
       "basePrice": 12000,
       "estimatePrice": 10500,
+      "promotion": 1500
+    },
+    {
+      "model": "iPhone 13 Pro Max",
+      "storage": "128GB",
+      "basePrice": 11000,
+      "estimatePrice": 9500,
+      "promotion": 1500
+    },
+    {
+      "model": "iPhone 13 Pro Max",
+      "storage": "256GB",
+      "basePrice": 12000,
+      "estimatePrice": 10500,
+      "promotion": 1500
+    },
+    {
+      "model": "iPhone 13 Pro Max",
+      "storage": "512GB",
+      "basePrice": 12500,
+      "estimatePrice": 11000,
+      "promotion": 1500
+    },
+    {
+      "model": "iPhone 13 Pro",
+      "storage": "128GB",
+      "basePrice": 9500,
+      "estimatePrice": 8000,
+      "promotion": 1500
+    },
+    {
+      "model": "iPhone 13 Pro",
+      "storage": "256GB",
+      "basePrice": 10500,
+      "estimatePrice": 9000,
+      "promotion": 1500
+    },
+    {
+      "model": "iPhone 13 Pro",
+      "storage": "512GB",
+      "basePrice": 11000,
+      "estimatePrice": 9500,
       "promotion": 1500
     },
     {

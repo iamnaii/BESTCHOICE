@@ -103,6 +103,14 @@ export default function ProductCreatePage() {
 
   // --- การ์ดราคาขาย (แบบ D) — เติมจากตารางราคากลางเมื่อเลือกยี่ห้อ + รุ่น (+ ความจุ / ประกัน / ไทย-นอก) ---
   const accessory = form.category === 'ACCESSORY';
+  // รุ่นในแคตตาล็อกที่มีความจุให้เลือกแต่ยังไม่เลือก = คีย์ค้นราคายังไม่ครบ → ยังไม่บอก "ไม่พบรุ่นนี้…" / "GFIN ไม่รับรุ่นนี้"
+  // (ผลค้นตอนนี้ยังไม่ใช่คำตอบของเครื่องนี้ — final manual check B6) · การเติมราคา / ช่อง GFIN ที่ปิดอยู่ทำงานเหมือนเดิม
+  const storageMissing =
+    !accessory &&
+    !!form.brand &&
+    !!form.model &&
+    !form.storage &&
+    (getModelInfo(form.brand, form.model)?.storage?.length ?? 0) > 0;
   const lookupQuery =
     !accessory && form.brand && form.model
       ? new URLSearchParams({
@@ -433,7 +441,8 @@ export default function ProductCreatePage() {
             onFieldChange={(key: PriceKey, value: string) => setPriceFields((f) => ({ ...f, [key]: value }))}
             templatePrices={templatePrices ?? null}
             templateLabel={templateLabelOf(form)}
-            templateNotFound={lookupQuery !== null && template === null}
+            templateNotFound={lookupQuery !== null && template === null && !storageMissing}
+            storageMissing={storageMissing}
             templateFailed={templateFailed}
             onUseTemplate={() => {
               if (templatePrices) setPriceFields(templatePrices);

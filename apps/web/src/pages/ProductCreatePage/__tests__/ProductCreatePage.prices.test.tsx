@@ -140,6 +140,27 @@ describe('ProductCreatePage — การ์ดราคาขาย (แบบ 
     expect(api.post).not.toHaveBeenCalled();
   });
 
+  // final manual check B6 — รุ่นที่มีความจุให้เลือก: ยังไม่เลือกความจุ = คีย์ค้นราคายังไม่ครบ → ยังไม่บอก "ไม่พบ" / "GFIN ไม่รับ"
+  it('เลือกรุ่นแล้วแต่ยังไม่เลือกความจุ → ไม่ขึ้น "ไม่พบรุ่นนี้…" / "GFIN ไม่รับรุ่นนี้" · บอกให้เลือกความจุ · เลือกแล้วค่อยบอกผล', async () => {
+    template = '';
+    const user = userEvent.setup();
+    renderPage();
+    await user.selectOptions(await screen.findByLabelText('ยี่ห้อ *'), 'Apple');
+    await pickComboOption(user, 'รุ่น *', 'iPhone 15');
+    // ให้ตาราง GFIN มาครบก่อนตรวจ (ไม่งั้น "GFIN ไม่รับ" ยังไม่มีโอกาสขึ้นอยู่แล้ว)
+    await waitFor(() =>
+      expect(vi.mocked(api.get).mock.calls.some(([url]) => url === '/gfin-config/settings')).toBe(true),
+    );
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByText('ไม่พบรุ่นนี้ในตารางราคากลาง — กรอกราคาเอง')).not.toBeInTheDocument();
+    expect(screen.queryByText('GFIN ไม่รับรุ่นนี้ — ขายได้แค่เงินสดและผ่อน BESTCHOICE')).not.toBeInTheDocument();
+    expect(screen.getByText('เลือกความจุก่อน ระบบจะบอกว่า GFIN รับรุ่นนี้ไหม')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '256GB' }));
+    expect(await screen.findByText('ไม่พบรุ่นนี้ในตารางราคากลาง — กรอกราคาเอง')).toBeInTheDocument();
+    expect(screen.getByText('GFIN ไม่รับรุ่นนี้ — ขายได้แค่เงินสดและผ่อน BESTCHOICE')).toBeInTheDocument();
+    expect(screen.queryByText('เลือกความจุก่อน ระบบจะบอกว่า GFIN รับรุ่นนี้ไหม')).not.toBeInTheDocument();
+  });
+
   it('รุ่นที่ไม่มีในใบราคา GFIN → ช่อง GFIN ปิด + ข้อความ · บันทึก financePrice เป็น null', async () => {
     const user = userEvent.setup();
     renderPage();

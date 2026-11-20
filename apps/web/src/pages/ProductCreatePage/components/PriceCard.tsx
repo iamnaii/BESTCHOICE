@@ -22,6 +22,8 @@ export interface PriceCardProps {
   /** "iPhone 15 128GB มือ 1" — แสดงเมื่อมีราคากลาง */
   templateLabel: string;
   templateNotFound: boolean;
+  /** รุ่นมีความจุให้เลือกแต่ยังไม่เลือก — ยังไม่บอกผลว่า GFIN รับรุ่นนี้ไหม (ยังไม่ใช่คำตอบของเครื่องนี้) */
+  storageMissing?: boolean;
   /** ค้นราคากลางไม่สำเร็จ (เครือข่าย/เซิร์ฟเวอร์) — ไม่ใช่ "ไม่พบรุ่น" · ช่องราคาคงเดิม */
   templateFailed: boolean;
   onUseTemplate: () => void;
@@ -170,6 +172,7 @@ export default function PriceCard({
   templatePrices,
   templateLabel,
   templateNotFound,
+  storageMissing = false,
   templateFailed,
   onUseTemplate,
   onRetry,
@@ -289,7 +292,9 @@ export default function PriceCard({
               templateValue={templatePrices?.finance}
               profit={rate2?.available ? rate2.profit : null}
             >
-              {blocked ? (
+              {blocked && storageMissing ? (
+                <Muted>เลือกความจุก่อน ระบบจะบอกว่า GFIN รับรุ่นนี้ไหม</Muted>
+              ) : blocked ? (
                 <Muted>{NO_GFIN}</Muted>
               ) : gfinTablesState === 'failed' ? (
                 <RetryNotice message="โหลดตาราง GFIN ไม่สำเร็จ" onRetry={onRetry} />

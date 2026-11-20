@@ -79,17 +79,21 @@ function renderCard({
   onChange = vi.fn<(patch: CalcStatePatch) => void>(),
   canEditPrice = true,
   onEditPrice = vi.fn<() => void>(),
-  tables = gfinTables as GfinTables | undefined,
+  tables: tablesArg = gfinTables as GfinTables | null,
   config = bcConfig as typeof bcConfig | undefined,
+  loading = false,
 }: {
   product?: typeof iphone15;
   state?: CalcState;
   onChange?: Mock<(patch: CalcStatePatch) => void>;
   canEditPrice?: boolean;
   onEditPrice?: Mock<() => void>;
-  tables?: GfinTables | undefined;
+  /** null = ตาราง GFIN ยังไม่มา (กำลังโหลด / โหลดไม่สำเร็จ) */
+  tables?: GfinTables | null;
   config?: typeof bcConfig | undefined;
+  loading?: boolean;
 } = {}) {
+  const tables = tablesArg ?? undefined;
   const quotes = resolveQuotes({ product, state, bcConfig: config, gfinTables: tables });
   render(
     <BrowserRouter>
@@ -101,7 +105,7 @@ function renderCard({
         canEditPrice={canEditPrice}
         onEditPrice={onEditPrice}
         gfinSettings={tables?.settings}
-        loading={false}
+        loading={loading}
       />
     </BrowserRouter>,
   );
@@ -188,6 +192,58 @@ describe('InstallmentCalculatorCard — การ์ดเดียว สลั
     renderCard({ product: samsung });
     expect(screen.getByRole('tab', { name: /GFIN/ })).toBeDisabled();
     expect(screen.getByText(/รุ่นนี้ไม่อยู่ในตารางราคาของ GFIN/)).toBeInTheDocument();
+  });
+
+  // final manual check B3 — GFIN ตั้งต้นที่เพดาน OVER (15) ส่วน BESTCHOICE 12 → ห้ามเขียนว่า "งวดเดียวกัน"
+  describe('บรรทัดเทียบอีกไฟแนนซ์บอกงวดของตัวเอง', () => {
+    const tables15: GfinTables = {
+      ...gfinTables,
+      rules: [{ ...gfinTables.rules[0], maxMonths: 15 }],
+      factors: [
+        ...gfinTables.factors,
+        { id: 'f15', months: 15, shopCommissionPct: 15, factor: '0.1467', feePerInstallment: '100', isActive: true },
+      ],
+    };
+
+    it('งวดเท่ากัน (12 กับ 12) → "งวดเดียวกัน"', () => {
+      renderCard();
+      expect(screen.getByText('· งวดเดียวกัน')).toBeInTheDocument();
+    });
+
+    it('แท็บ BESTCHOICE 12 งวด เทียบ GFIN 15 งวด → บอก "15 งวด" ไม่ใช่ "งวดเดียวกัน"', () => {
+      renderCard({ tables: tables15 });
+      expect(screen.queryByText(/งวดเดียวกัน/)).toBeNull();
+      expect(screen.getByText('· 15 งวด')).toBeInTheDocument();
+    });
+
+    it('แท็บ GFIN 15 งวด เทียบ BESTCHOICE 12 งวด → บอก "12 งวด"', () => {
+      renderCard({ tables: tables15, state: { ...INITIAL_CALC_STATE, fin: 'gfin' } });
+      expect(screen.queryByText(/งวดเดียวกัน/)).toBeNull();
+      expect(screen.getByText('· 12 งวด')).toBeInTheDocument();
+    });
+  });
+
+  // final manual check B4 — ตาราง GFIN ยังโหลด / โหลดไม่สำเร็จ ≠ "ไม่มีข้อมูลรุ่นนี้"
+  describe('ปุ่ม GFIN ระหว่างโหลดตาราง GFIN', () => {
+    it('กำลังโหลด → "กำลังโหลด…" (ไม่ใช่ "ไม่มีข้อมูลรุ่นนี้")', () => {
+      renderCard({ tables: null, loading: true });
+      const tab = screen.getByRole('tab', { name: /GFIN/ });
+      expect(tab).toBeDisabled();
+      expect(tab).toHaveTextContent('กำลังโหลด…');
+      expect(tab).not.toHaveTextContent('ไม่มีข้อมูลรุ่นนี้');
+    });
+
+    it('โหลดไม่สำเร็จ → "โหลดข้อมูล GFIN ไม่สำเร็จ"', () => {
+      renderCard({ tables: null, loading: false });
+      const tab = screen.getByRole('tab', { name: /GFIN/ });
+      expect(tab).toHaveTextContent('โหลดข้อมูล GFIN ไม่สำเร็จ');
+      expect(tab).not.toHaveTextContent('ไม่มีข้อมูลรุ่นนี้');
+    });
+
+    it('รุ่นที่ GFIN ไม่มีในตาราง (ตารางโหลดแล้ว) → ยังเป็น "ไม่มีข้อมูลรุ่นนี้"', () => {
+      renderCard({ product: { ...iphone15, model: 'Galaxy S24', brand: 'Samsung' } });
+      expect(screen.getByRole('tab', { name: /GFIN/ })).toHaveTextContent('ไม่มีข้อมูลรุ่นนี้');
+    });
   });
 
   it('ไม่มีราคาผ่อน → กล่องเตือนเดิม + ปุ่มไปแก้ราคาเมื่อ canEditPrice', async () => {

@@ -36,7 +36,7 @@ export interface PriceQuoteRow {
   model: string;
   storage: string;
   category: QuoteCategory;
-  /** null = มือ 2 ที่มี/ไม่มีประกันตัวเลขเท่ากัน รวมเป็นแถวเดียว */
+  /** null = ไม่มีป้ายประกัน: มือ 1 / แท็บเล็ต หรือมือ 2 ที่มี/ไม่มีประกันตัวเลขเท่ากัน รวมเป็นแถวเดียว */
   hasWarranty: boolean | null;
   cashPrice: number | null;
   /** monthly = ค่างวดที่แสดง (ปัดขึ้นเป็นบาท) */
@@ -76,13 +76,15 @@ function preferOrigin(rows: PricingTemplate[], origin: QuoteOrigin): PricingTemp
 }
 
 function toQuoteRow(r: PricingTemplate, q: ModelQuote): PriceQuoteRow {
+  // ป้ายประกันมีความหมายแค่มือ 2 — มือ 1 / แท็บเล็ตในฐานข้อมูลเก็บ false ไว้เฉย ๆ ห้ามอ่านเป็น "ไม่มีประกัน" (สเปคข้อ 6)
+  const hasWarranty = r.category === 'PHONE_USED' ? r.hasWarranty : null;
   return {
-    key: keyOf(r),
+    key: keyOf({ ...r, hasWarranty }),
     brand: r.brand,
     model: r.model,
     storage: r.storage,
     category: r.category as QuoteCategory,
-    hasWarranty: r.hasWarranty,
+    hasWarranty,
     cashPrice: q.cash?.price ?? null,
     rate1: q.rate1
       ? { downAmount: q.rate1.downAmount, monthly: q.rate1.monthlyDisplay, months: q.rate1.months }

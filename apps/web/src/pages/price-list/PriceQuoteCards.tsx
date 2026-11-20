@@ -1,4 +1,4 @@
-import { RATE1_TITLE, RATE2_TITLE, formatCash, rate1View, rate2View, rowLabel, rowTitle } from './format';
+import { RATE1_TITLE, RATE2_TITLE, formatCash, rate1View, rate2View, rowLabel, rowTitle, rowWarranty } from './format';
 import { RateBlock, WarrantyBadge } from './parts';
 import type { PriceQuoteRow } from './types';
 
@@ -15,7 +15,7 @@ export default function PriceQuoteCards({ rows }: { rows: PriceQuoteRow[] }) {
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <h2 className="flex min-w-0 flex-wrap items-center gap-2 text-sm font-semibold leading-snug text-foreground">
                 <span>{rowTitle(row)}</span>
-                <WarrantyBadge hasWarranty={row.hasWarranty} />
+                <WarrantyBadge hasWarranty={rowWarranty(row)} />
               </h2>
               <p className="text-sm leading-snug text-muted-foreground tabular-nums">
                 เงินสด <span className="text-base font-semibold text-foreground">{formatCash(row.cashPrice)}</span>

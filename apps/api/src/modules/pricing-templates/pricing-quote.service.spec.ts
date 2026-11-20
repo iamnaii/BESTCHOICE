@@ -94,12 +94,12 @@ describe('PricingQuoteService.listQuotes', () => {
       updatedAt: '2026-11-19T03:00:00.000Z',
       rows: [
         {
-          key: 'Apple|iPhone 15|128GB|false',
+          key: 'Apple|iPhone 15|128GB|null',
           brand: 'Apple',
           model: 'iPhone 15',
           storage: '128GB',
           category: 'PHONE_NEW',
-          hasWarranty: false,
+          hasWarranty: null,
           cashPrice: 25900,
           rate1: { downAmount: 3900, monthly: 3139, months: 12 },
           rate2: { downAmount: 6500, monthly: 3403, months: 12 },
@@ -133,6 +133,22 @@ describe('PricingQuoteService.listQuotes', () => {
     const { service } = build([tpl()]);
     const result = await service.listQuotes({ category: 'PHONE_NEW', origin: 'IMPORTED' });
     expect(result.rows[0].rate2).toEqual({ downAmount: 6400, monthly: 3339, months: 12 });
+  });
+
+  it('มือ 1 / แท็บเล็ต → hasWarranty = null (ไม่มีป้ายประกัน — สเปคข้อ 6 ป้ายมีแค่มือ 2 ที่ราคาต่าง)', async () => {
+    const neu = await build([tpl()]).service.listQuotes({ category: 'PHONE_NEW', origin: 'THAI' });
+    expect(neu.rows.map((r) => [r.hasWarranty, r.key])).toEqual([[null, 'Apple|iPhone 15|128GB|null']]);
+    const tab = await build([tpl({ id: 'ipad', model: 'iPad Air M1', storage: '64GB', category: 'TABLET' })]).service.listQuotes({
+      category: 'TABLET',
+      origin: 'THAI',
+    });
+    expect(tab.rows.map((r) => r.hasWarranty)).toEqual([null]);
+  });
+
+  it('มือ 2 แถวเดียว (ไม่มีแฝด) → คงค่าประกันของแถว', async () => {
+    const { service } = build([used13({ hasWarranty: false })]);
+    const result = await service.listQuotes({ category: 'PHONE_USED', origin: 'THAI' });
+    expect(result.rows.map((r) => r.hasWarranty)).toEqual([false]);
   });
 
   it('มือ 2 มีประกัน / ไม่มีประกันตัวเลขเท่ากัน → แถวเดียว hasWarranty = null', async () => {

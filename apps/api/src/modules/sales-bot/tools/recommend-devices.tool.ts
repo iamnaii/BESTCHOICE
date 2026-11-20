@@ -62,7 +62,8 @@ export interface RecommendedDevice {
   brand: string;
   model: string;
   storage: string;
-  hasWarranty: boolean;
+  /** null = มือ 1 — ไม่มีเรื่องประกันให้พูด */
+  hasWarranty: boolean | null;
   condition: DeviceCondition;
   rateLabel: RateLabel;
   downPayment: number;

@@ -67,7 +67,7 @@ describe('GetInstallmentRatesTool.run', () => {
         brand: 'Apple',
         model: 'iPhone 15',
         storage: '128GB',
-        hasWarranty: false,
+        hasWarranty: null,
         rate1: { downPayment: 3900, monthlyPrice: 3139, termMonths: 12 },
         rate2: { downPayment: 6500, monthlyPrice: 3403, termMonths: 12 },
         allowedTerms: [10, 12],
@@ -81,6 +81,20 @@ describe('GetInstallmentRatesTool.run', () => {
       hasWarranty: false,
       origin: 'THAI',
     });
+  });
+
+  it('ป้ายประกันมีแค่มือสอง — มือ 1 / แท็บเล็ต = null (ห้ามบอกลูกค้าว่าเครื่องใหม่ "ไม่มีประกัน")', async () => {
+    const { tool } = build([
+      row(),
+      row({ model: 'iPad Air M1', category: 'TABLET' }),
+      row({ model: 'iPhone 14', category: 'PHONE_USED', hasWarranty: true }),
+    ]);
+    const r = await tool.run({ query: 'i' });
+    expect(r.templates.map((t) => [t.model, t.hasWarranty])).toEqual([
+      ['iPhone 15', null],
+      ['iPad Air M1', null],
+      ['iPhone 14', true],
+    ]);
   });
 
   it('GFIN ไม่รับรุ่นนี้ → rate2 = null พร้อมเหตุผล', async () => {
@@ -270,6 +284,31 @@ describe('GetInstallmentRatesTool.listAllRates (recommend_devices)', () => {
         rate2: null,
         rate2Unavailable: 'GFIN ไม่รับรุ่นนี้',
       },
+    ]);
+  });
+});
+
+describe('GetInstallmentRatesTool.listAllRates — ป้ายประกัน', () => {
+  it('แถวมือ 1 → hasWarranty = null · มือ 2 คงค่าเดิม', async () => {
+    const base = {
+      brand: 'Apple',
+      storage: '128GB',
+      cashPrice: 25900,
+      rate1: { downAmount: 3900, monthly: 3139, months: 12 },
+      rate2: { downAmount: 6500, monthly: 3403, months: 12 },
+    };
+    const { tool, quotes } = build([]);
+    quotes.listQuotes.mockImplementation(async ({ category }: { category: string }) => ({
+      updatedAt: null,
+      rows:
+        category === 'PHONE_NEW'
+          ? [{ ...base, key: 'n', model: 'iPhone 15', category: 'PHONE_NEW', hasWarranty: null }]
+          : [{ ...base, key: 'u', model: 'iPhone 14', category: 'PHONE_USED', hasWarranty: true }],
+    }));
+    const rows = await tool.listAllRates();
+    expect(rows.map((r) => [r.model, r.hasWarranty])).toEqual([
+      ['iPhone 15', null],
+      ['iPhone 14', true],
     ]);
   });
 });

@@ -79,7 +79,8 @@ export interface PricingTemplateRateMatch {
   brand: string;
   model: string;
   storage: string;
-  hasWarranty: boolean;
+  /** มือสองที่มีประกันร้าน (true) / ไม่มี (false) · null = มือ 1 / แท็บเล็ต / มือสองที่ราคาเท่ากัน — ไม่มีเรื่องประกันให้พูด */
+  hasWarranty: boolean | null;
   /** เรท 1 (ผ่อนกับร้าน) — null = คิดไม่ได้ (ไม่มีราคาผ่อน / ตั้งค่าดอกเบี้ย) */
   rate1: InstallmentRateOption | null;
   /** เรท 2 (GFIN) — null = ใช้ไม่ได้ ดูเหตุผลที่ rate2Unavailable */
@@ -123,6 +124,10 @@ const RATE_ORDER_BY = [
 
 const conditionOf = (category: string): RateCondition => (category === 'PHONE_NEW' ? 'มือ 1' : 'มือสอง');
 
+/** ป้ายประกันมีความหมายแค่มือสอง — มือ 1 / แท็บเล็ตในฐานข้อมูลเก็บ false ไว้เฉย ๆ ห้ามส่งให้โมเดลอ่านเป็น "ไม่มีประกัน" */
+const warrantyOf = (category: string, hasWarranty: boolean | null): boolean | null =>
+  category === 'PHONE_USED' ? hasWarranty : null;
+
 /** ลูกค้าขอเครื่องนอก → คิดแบบเครื่องนอก (OVER ครึ่ง) · นอกนั้น = เครื่องไทย (ค่าเริ่มต้นหน้า "ราคาและเรทผ่อน") */
 const quoteOrigin = (origin: string | undefined): QuoteOrigin => (origin === 'IMPORTED' ? 'IMPORTED' : 'THAI');
 
@@ -141,7 +146,7 @@ function fromQuote(t: PricingTemplateRow, q: ModelQuote, origin: QuoteOrigin): P
     brand: t.brand,
     model: t.model,
     storage: t.storage,
-    hasWarranty: t.hasWarranty,
+    hasWarranty: warrantyOf(t.category, t.hasWarranty),
     rate1: q.rate1
       ? { downPayment: q.rate1.downAmount, monthlyPrice: q.rate1.monthlyDisplay, termMonths: q.rate1.months }
       : null,
@@ -161,7 +166,8 @@ function fromQuoteRow(r: PriceQuoteRow): PricingTemplateRateRow {
     brand: r.brand,
     model: r.model,
     storage: r.storage,
-    hasWarranty: r.hasWarranty === true,
+    // มือสองที่ราคามี/ไม่มีประกันเท่ากัน (null) คงเดิม = false
+    hasWarranty: r.category === 'PHONE_USED' ? r.hasWarranty === true : null,
     rate1: r.rate1
       ? { downPayment: r.rate1.downAmount, monthlyPrice: r.rate1.monthly, termMonths: r.rate1.months }
       : null,

@@ -109,12 +109,12 @@ describe('RecommendDevicesTool.run', () => {
 
   it('(1b) condition มาจาก category ไม่ใช่ hasWarranty — PHONE_NEW = มือ 1, มือสองมีประกัน = มือสอง', async () => {
     const { tool } = build([
-      tpl({ model: 'iPhone 16', category: 'PHONE_NEW', hasWarranty: false }),
+      tpl({ model: 'iPhone 16', category: 'PHONE_NEW', hasWarranty: null }),
       tpl({ model: 'iPhone 15', category: 'PHONE_USED', hasWarranty: true }),
     ]);
     const r = await tool.run({ downBudget: 99_999, monthlyBudget: 99_999 });
     expect(r.recommended.map((d) => [d.model, d.condition, d.hasWarranty])).toEqual([
-      ['iPhone 16', 'มือ 1', false],
+      ['iPhone 16', 'มือ 1', null],
       ['iPhone 15', 'มือสอง', true],
     ]);
   });

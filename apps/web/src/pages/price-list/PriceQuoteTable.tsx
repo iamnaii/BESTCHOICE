@@ -8,6 +8,7 @@ import {
   rate1View,
   rate2View,
   rowTitle,
+  rowWarranty,
   type RateView,
 } from './format';
 import { WarrantyBadge } from './parts';
@@ -75,7 +76,7 @@ export default function PriceQuoteTable({ rows }: { rows: PriceQuoteRow[] }) {
               <TableCell>
                 <div className="flex flex-wrap items-center gap-2 leading-snug">
                   <span className="font-medium text-foreground">{rowTitle(row)}</span>
-                  <WarrantyBadge hasWarranty={row.hasWarranty} />
+                  <WarrantyBadge hasWarranty={rowWarranty(row)} />
                 </div>
               </TableCell>
               <TableCell className={cn(MONEY, 'font-semibold')}>{formatCash(row.cashPrice)}</TableCell>

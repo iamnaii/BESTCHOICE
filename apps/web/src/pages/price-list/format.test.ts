@@ -10,6 +10,7 @@ import {
   rate2View,
   rowLabel,
   rowTitle,
+  rowWarranty,
   warrantyLabel,
 } from './format';
 
@@ -40,8 +41,21 @@ describe('ชื่อแถว', () => {
   });
 
   it('ชื่อสำหรับโปรแกรมอ่านจอรวมป้ายประกัน', () => {
-    expect(rowLabel({ model: 'iPhone 13', storage: '128GB', hasWarranty: true })).toBe('iPhone 13 · 128GB (มีประกัน)');
-    expect(rowLabel({ model: 'iPhone 15', storage: '128GB', hasWarranty: null })).toBe('iPhone 15 · 128GB');
+    expect(rowLabel({ model: 'iPhone 13', storage: '128GB', category: 'PHONE_USED', hasWarranty: true })).toBe(
+      'iPhone 13 · 128GB (มีประกัน)',
+    );
+    expect(rowLabel({ model: 'iPhone 15', storage: '128GB', category: 'PHONE_USED', hasWarranty: null })).toBe(
+      'iPhone 15 · 128GB',
+    );
+  });
+
+  it('ป้ายประกันมีแค่มือ 2 — มือ 1 / แท็บเล็ตที่ได้ false มาก็ไม่มีป้าย (สเปคข้อ 6)', () => {
+    expect(rowWarranty({ category: 'PHONE_NEW', hasWarranty: false })).toBeNull();
+    expect(rowWarranty({ category: 'TABLET', hasWarranty: false })).toBeNull();
+    expect(rowWarranty({ category: 'PHONE_USED', hasWarranty: false })).toBe(false);
+    expect(rowLabel({ model: 'iPhone 15', storage: '128GB', category: 'PHONE_NEW', hasWarranty: false })).toBe(
+      'iPhone 15 · 128GB',
+    );
   });
 });
 

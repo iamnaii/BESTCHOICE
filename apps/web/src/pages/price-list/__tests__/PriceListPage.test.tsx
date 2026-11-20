@@ -137,6 +137,29 @@ describe('PriceListPage — หน้า "ราคาและเรทผ่�
     expect(document.body).not.toHaveTextContent(/ทุน|กำไร|ราคาส่ง/);
   });
 
+  it('มือ 1 ที่ API ส่ง hasWarranty = false มา → ไม่มีป้าย "ไม่มีประกัน" (ตารางและการ์ด)', async () => {
+    mocks.get.mockResolvedValue({
+      data: {
+        updatedAt: UPDATED_AT,
+        rows: [
+          row({
+            model: 'iPhone 15', storage: '128GB', category: 'PHONE_NEW', hasWarranty: false, cashPrice: 25900,
+            rate1: { downAmount: 3900, monthly: 3139, months: 12 },
+            rate2: { downAmount: 6500, monthly: 3403, months: 12 },
+          }),
+        ],
+      },
+    });
+    const view = open();
+    await screen.findByText('iPhone 15 · 128GB');
+    expect(document.body).not.toHaveTextContent('ประกัน');
+    view.unmount();
+    mocks.mobile = true;
+    open();
+    await screen.findByRole('article', { name: 'iPhone 15 · 128GB' });
+    expect(document.body).not.toHaveTextContent('ประกัน');
+  });
+
   it('มือ 2: รุ่นที่ GFIN ไม่รับ · แยกแถวมีประกัน / ไม่มีประกันพร้อมป้าย', async () => {
     serve();
     open();

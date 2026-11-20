@@ -28,9 +28,14 @@ export function warrantyLabel(hasWarranty: boolean | null): string | null {
   return hasWarranty ? 'มีประกัน' : 'ไม่มีประกัน';
 }
 
+/** ป้ายประกันของแถว — มีแค่มือ 2 (สเปคข้อ 6) · มือ 1 / แท็บเล็ต = null เสมอ */
+export function rowWarranty(row: Pick<PriceQuoteRow, 'category' | 'hasWarranty'>): boolean | null {
+  return row.category === 'PHONE_USED' ? row.hasWarranty : null;
+}
+
 /** ชื่อแถวสำหรับโปรแกรมอ่านจอ — แถวมือ 2 ที่แยกตามประกันต้องแยกชื่อกันได้ */
-export function rowLabel(row: Pick<PriceQuoteRow, 'model' | 'storage' | 'hasWarranty'>): string {
-  const warranty = warrantyLabel(row.hasWarranty);
+export function rowLabel(row: Pick<PriceQuoteRow, 'model' | 'storage' | 'category' | 'hasWarranty'>): string {
+  const warranty = warrantyLabel(rowWarranty(row));
   return warranty ? `${rowTitle(row)} (${warranty})` : rowTitle(row);
 }
 

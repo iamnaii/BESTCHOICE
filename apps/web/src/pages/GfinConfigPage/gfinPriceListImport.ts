@@ -40,18 +40,18 @@ export interface GfinImportResult {
 
 export const normalizeGfinStorage = (s: string) => s.replace(/\s+/g, '').toUpperCase();
 
-function conditionOf(text: string): 'HAND_1' | 'HAND_2' | null {
+export function conditionOf(text: string): 'HAND_1' | 'HAND_2' | null {
   const t = text.replace(/\s+/g, '');
   if (t === 'มือ1') return 'HAND_1';
   if (t === 'มือ2' || t === 'มือสอง') return 'HAND_2';
   return null;
 }
 
-const keyOf = (model: string, storage: string, condition: string) =>
+export const keyOf = (model: string, storage: string, condition: string) =>
   `${model.trim().toLowerCase()}|${normalizeGfinStorage(storage)}|${condition}`;
 
 /** หัวคอลัมน์ที่มีช่องว่างหัวท้ายยังอ่านได้ */
-function trimKeys(row: Record<string, unknown>): Record<string, unknown> {
+export function trimKeys(row: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(row)) out[k.trim()] = v;
   return out;

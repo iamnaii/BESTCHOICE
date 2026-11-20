@@ -130,6 +130,14 @@ describe('trash registry — per-type restore rules', () => {
     expect(err.message).toBe('กติกากลุ่มเดิมกู้ไม่ได้ — เงื่อนไขเก็บรายรุ่นแล้ว (ดูค่าเดิมในรายการนี้ได้)');
   });
 
+  it('G0 gfin_overprice_rule: แถวถังขยะโชว์รุ่น สภาพ OVER ผ่อนสูงสุด ดาวน์ ตามที่ข้อความ 400 บอกให้ดู', () => {
+    const entry = trashEntry('gfin_overprice_rule')!;
+    expect(entry.select).toMatchObject({ maxMonths: true, minDownPct: true, seriesPattern: true });
+    const full = entry.toRow({ id: 'g', label: 'iPhone 17 มือ 2', seriesPattern: 'iPhone 17', condition: 'HAND_2', allowance: '2000', maxMonths: 15, minDownPct: 30, deletedAt: NOW });
+    expect(full.subtitle).toBe('iPhone 17 · มือ 2 · OVER 2,000.00 · ผ่อนสูงสุด 15 งวด · ดาวน์ 30%');
+    const bare = entry.toRow({ id: 'g', label: 'x', seriesPattern: 'iPhone 17', condition: 'HAND_1', allowance: '500', maxMonths: null, minDownPct: null, deletedAt: NOW });
+    expect(bare.subtitle).toBe('iPhone 17 · มือ 1 · OVER 500.00');
+  });
   it('G2 gfin_overprice_rule: กติการายรุ่นที่มีแถวของรุ่น+สภาพเดียวกันอยู่แล้ว → 409', async () => {
     const h = tx({ gfinOverpriceRule: { findFirst: jest.fn().mockResolvedValue({ id: 'live' }) } });
     const err = await trashEntry('gfin_overprice_rule')!.check!(ctx(h.tx), { id: 'g2', label: 'iPhone 17 มือ 2', seriesPattern: 'iPhone 17', condition: 'HAND_2', allowance: '2000', deletedAt: NOW }).catch((e) => e);

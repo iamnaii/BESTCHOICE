@@ -401,10 +401,19 @@ export const TRASH_REGISTRY: readonly TrashEntry[] = [
   },
   {
     type: 'gfin_overprice_rule', label: 'GFIN — กฎราคาเกิน', group: 'ตั้งค่า', model: 'gfinOverpriceRule',
-    select: { ...BASE_SELECT, label: true, seriesPattern: true, condition: true, allowance: true },
+    select: { ...BASE_SELECT, label: true, seriesPattern: true, condition: true, allowance: true, maxMonths: true, minDownPct: true },
     searchFields: ['label'],
     auditEntities: ['gfin-config'],
-    toRow: (r) => ({ title: r.label, subtitle: joinParts(r.condition, `เผื่อ ${money(r.allowance)}`) }),
+    toRow: (r) => ({
+      title: r.label,
+      subtitle: joinParts(
+        r.seriesPattern,
+        r.condition === 'HAND_1' ? 'มือ 1' : 'มือ 2',
+        `OVER ${money(r.allowance)}`,
+        r.maxMonths ? `ผ่อนสูงสุด ${r.maxMonths} งวด` : null,
+        r.minDownPct != null ? `ดาวน์ ${r.minDownPct}%` : null,
+      ),
+    }),
     restorable: true,
     // สเปก 2026-11-20 §5: เงื่อนไขเก็บรายรุ่นแล้ว — กติกากลุ่มเดิม (ลบตอน migration) กู้กลับไม่มีผล · คู่ (รุ่น, สภาพ) ห้ามซ้ำ
     check: async ({ tx }, r) => {

@@ -1,10 +1,19 @@
-/** Preview by default. Apply explicitly with --apply after migrations/deployment. */
+/**
+ * Preview by default. Apply explicitly with --apply.
+ * --guard: refuse to write when checkImportGuard finds a suspicious change (used by the
+ * unattended run in .github/workflows/applehouse-prices-refresh.yml — logs GUARD_BLOCKED).
+ * APPLEHOUSE_SNAPSHOT_B64 (base64 JSON, same shape as the data file) overrides the file so
+ * that run can import a fresh fetch without a commit + deploy.
+ */
 import { Prisma, PrismaClient } from '@prisma/client';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { APPLEHOUSE_NOTE_PREFIX, planAppleHouseImport } from './applehouse-import-plan';
+import { APPLEHOUSE_NOTE_PREFIX, checkImportGuard, planAppleHouseImport } from './applehouse-import-plan';
 
-const snapshot = JSON.parse(readFileSync(join(__dirname, 'data/applehouse-valuations.json'), 'utf8')) as {
+const fromRun = process.env.APPLEHOUSE_SNAPSHOT_B64;
+const snapshot = JSON.parse(fromRun
+  ? Buffer.from(fromRun, 'base64').toString('utf8')
+  : readFileSync(join(__dirname, 'data/applehouse-valuations.json'), 'utf8')) as {
   source: string; fetchedAt: string; rows: Array<{ model: string; storage: string; basePrice: number }>;
 };
 if (snapshot.source !== 'https://applehouseth.com/' || !Number.isFinite(Date.parse(snapshot.fetchedAt)) || !snapshot.rows.length) {
@@ -27,6 +36,8 @@ async function main() {
     return;
   }
   const apply = process.argv.includes('--apply');
+  const guard = process.argv.includes('--guard');
+  console.log(`ราคาจาก${fromRun ? 'รอบดึงอัตโนมัติ' : 'ไฟล์ใน repo'} · ดึงเมื่อ ${snapshot.fetchedAt} · ${snapshot.rows.length} รุ่น`);
   const note = `${APPLEHOUSE_NOTE_PREFIX}${snapshot.fetchedAt.slice(0, 10)} · เครื่องไทย แบต 80–100% มีกล่อง ประกันเหลือ ≥4 เดือน ไม่มีรอย/ตำหนิ · รวมโปรโมชัน ณ วันที่ดึงข้อมูล · เครื่องนอกและสภาพอื่นหักตามเกณฑ์ร้าน`;
   await prisma.$transaction(async tx => {
     const questions = await tx.buybackQuestion.findMany({
@@ -50,6 +61,14 @@ async function main() {
     // importer withdrew come back when the source prices them again, rows deleted
     // any other way stay deleted.
     const plan = planAppleHouseImport(existing, snapshot.rows, note);
+    const blocked = checkImportGuard(plan, existing);
+    if (blocked.length) {
+      console.log(`ด่านตรวจไม่ผ่าน ${blocked.length} ข้อ:`);
+      for (const reason of blocked) console.log(`  - ${reason}`);
+      if (guard) throw new Error('GUARD_BLOCKED — ไม่บันทึกอะไร ต้องให้คนตรวจก่อน');
+    } else {
+      console.log('ด่านตรวจผ่าน');
+    }
     const now = new Date();
     for (const action of plan) {
       const label = `${action.model} ${action.storage}`;

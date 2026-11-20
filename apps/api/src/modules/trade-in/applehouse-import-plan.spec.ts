@@ -1,6 +1,7 @@
 import {
   APPLEHOUSE_NOTE_PREFIX,
   AUTO_WITHDRAWN_PREFIX,
+  checkImportGuard,
   ExistingValuation,
   planAppleHouseImport,
 } from '../../../prisma/applehouse-import-plan';
@@ -93,5 +94,43 @@ describe('planAppleHouseImport', () => {
   it('refuses duplicate rows that normalise to the same model', () => {
     expect(() => planAppleHouseImport([row({ id: 'a' }), row({ id: 'b', model: 'iphone 15' })], [], NOTE))
       .toThrow(/Duplicate normalized/);
+  });
+});
+
+describe('checkImportGuard', () => {
+  const models = Array.from({ length: 10 }, (_, i) => row({ id: `m${i}`, model: `iPhone 1${i}`, basePrice: 10000 }));
+  const snapshotFor = (rows: ExistingValuation[], price: (i: number) => number) =>
+    rows.map((r, i) => ({ model: r.model, storage: r.storage, basePrice: price(i) }));
+
+  it('passes a normal round (moves under 15%, nothing withdrawn)', () => {
+    const plan = planAppleHouseImport(models, snapshotFor(models, i => 10000 - i * 100), NOTE);
+    expect(checkImportGuard(plan, models)).toEqual([]);
+  });
+
+  it('blocks a price that moves 15% or more, either way', () => {
+    const plan = planAppleHouseImport(models, snapshotFor(models, i => (i === 0 ? 8500 : i === 1 ? 11500 : 10000)), NOTE);
+    expect(checkImportGuard(plan, models)).toEqual([
+      'iPhone 10 128GB ราคาขยับ -15% (10000 → 8500)',
+      'iPhone 11 128GB ราคาขยับ 15% (10000 → 11500)',
+    ]);
+  });
+
+  it('blocks when 20% or more of the source-managed models disappear', () => {
+    const plan = planAppleHouseImport(models, snapshotFor(models.slice(0, 8), () => 10000), NOTE);
+    expect(checkImportGuard(plan, models)).toEqual(['รุ่นที่ AppleHouse ไม่มีราคาแล้ว 2 จาก 10 รุ่น']);
+  });
+
+  it('lets one missing model through', () => {
+    const plan = planAppleHouseImport(models, snapshotFor(models.slice(0, 9), () => 10000), NOTE);
+    expect(checkImportGuard(plan, models)).toEqual([]);
+  });
+
+  it('ignores shop-kept prices and new models', () => {
+    const shop = row({ id: 's', model: 'iPhone 9', basePrice: 20000, note: 'ร้านปรับราคาแล้ว · x' });
+    const plan = planAppleHouseImport([shop], [
+      { model: 'iPhone 9', storage: '128GB', basePrice: 5000 },
+      { model: 'iPhone 18', storage: '256GB', basePrice: 40000 },
+    ], NOTE);
+    expect(checkImportGuard(plan, [shop])).toEqual([]);
   });
 });

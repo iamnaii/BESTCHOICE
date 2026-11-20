@@ -1,4 +1,4 @@
-import { readIntFlag, readNumberFlag, type SystemConfigReader } from '../../utils/config.util';
+import { readIntFlag, readNumberFlag, readStringFlag, type SystemConfigReader } from '../../utils/config.util';
 
 /**
  * ค่าตั้งค่า GFIN นอกตารางราคา/เรท — อ่านจาก system_config (key `gfin.*`) พร้อม default
@@ -20,6 +20,8 @@ export const GFIN_SETTINGS_KEYS = {
   commissionPhone: 'gfin.commissionPct.PHONE',
   commissionTablet: 'gfin.commissionPct.TABLET',
   contractFee: 'gfin.contractFee',
+  sheetVersion: 'gfin.sheetVersion',
+  sheetEffectiveDate: 'gfin.sheetEffectiveDate',
 } as const;
 
 export const GFIN_SETTINGS_DEFAULTS: GfinSettings = {
@@ -46,6 +48,22 @@ export async function loadGfinSettings(prisma: SystemConfigReader): Promise<Gfin
     commissionPctByCategory: { PHONE: commissionPhone, TABLET: commissionTablet },
   };
 }
+
+/** เวอร์ชัน/วันเริ่มใช้ของใบเงื่อนไข G Finn (สเปก 2026-11-20 §3.3) — ไม่ตั้ง = null */
+export interface GfinSheetInfo {
+  sheetVersion: string | null;
+  sheetEffectiveDate: string | null;
+}
+
+export async function loadGfinSheetInfo(prisma: SystemConfigReader): Promise<GfinSheetInfo> {
+  const [version, date] = await Promise.all([
+    readStringFlag(prisma, GFIN_SETTINGS_KEYS.sheetVersion, ''),
+    readStringFlag(prisma, GFIN_SETTINGS_KEYS.sheetEffectiveDate, ''),
+  ]);
+  return { sheetVersion: version || null, sheetEffectiveDate: date || null };
+}
+
+export type GfinSettingsView = GfinSettings & GfinSheetInfo;
 
 /** % คอมมิชชั่นตั้งต้นตามหมวดสินค้า — TABLET ใช้ค่า iPad, ที่เหลือ (มือถือใหม่/มือสอง) ใช้ค่ามือถือ */
 export function commissionPctForCategory(settings: GfinSettings, category: string): number {

@@ -339,7 +339,18 @@ describe('InstallmentPreviewService', () => {
         isActive: true,
       },
     ]);
-    prisma.gfinOverpriceRule.findMany.mockResolvedValue([]);
+    prisma.gfinOverpriceRule.findMany.mockResolvedValue([
+      {
+        id: 'rt',
+        label: 'iPad 10 มือ 1',
+        seriesPattern: 'iPad 10',
+        condition: 'HAND_1',
+        allowance: new Prisma.Decimal('0'),
+        maxMonths: null,
+        minDownPct: null,
+        isActive: true,
+      },
+    ]);
     prisma.gfinRateFactor.findFirst.mockResolvedValue({
       months: 12,
       shopCommissionPct: 5,
@@ -355,6 +366,37 @@ describe('InstallmentPreviewService', () => {
         where: expect.objectContaining({ months: 12, shopCommissionPct: 5 }),
       }),
     );
+  });
+
+  it('GFIN: มีราคาในใบราคาแต่ไม่มีเงื่อนไขของรุ่น → available:false reason no_gfin_rule', async () => {
+    prisma.product.findFirst.mockResolvedValue({
+      id: 'p12',
+      installmentPrice: new Prisma.Decimal('11000'),
+      prices: [],
+      category: 'PHONE_USED',
+      brand: 'Apple',
+      model: 'iPhone 12',
+      storage: '64GB',
+      deviceOrigin: 'THAI',
+      deletedAt: null,
+    });
+    prisma.gfinModelMapping.findMany.mockResolvedValue([
+      {
+        id: 'm12',
+        gfinSeries: 'iPhone 12',
+        gfinVariant: null,
+        storage: '64GB',
+        condition: 'HAND_2',
+        maxPrice: new Prisma.Decimal('9000'),
+        modelMatchPattern: 'iPhone 12',
+        isActive: true,
+      },
+    ]);
+    prisma.gfinOverpriceRule.findMany.mockResolvedValue([]);
+
+    const result = await service.preview({ productId: 'p12', provider: 'GFIN', months: 12 });
+    expect(result).toEqual({ available: false, reason: 'no_gfin_rule' });
+    expect(prisma.gfinRateFactor.findFirst).not.toHaveBeenCalled();
   });
 
   it('GFIN: งวดเกินเพดานของซีรีส์ (maxMonths) → available:false reason months_over_max', async () => {

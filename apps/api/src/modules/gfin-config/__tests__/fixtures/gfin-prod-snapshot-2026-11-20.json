@@ -1,0 +1,850 @@
+{
+ "source": "prod 2026-11-20 14:53 (read-only export, no customer data)",
+ "mappings": [
+  {
+   "gfinSeries": "iPhone 12",
+   "storage": "128GB",
+   "condition": "HAND_2",
+   "maxPrice": "10000",
+   "modelMatchPattern": "iPhone 12"
+  },
+  {
+   "gfinSeries": "iPhone 12",
+   "storage": "256GB",
+   "condition": "HAND_2",
+   "maxPrice": "11000",
+   "modelMatchPattern": "iPhone 12"
+  },
+  {
+   "gfinSeries": "iPhone 12",
+   "storage": "64GB",
+   "condition": "HAND_2",
+   "maxPrice": "9000",
+   "modelMatchPattern": "iPhone 12"
+  },
+  {
+   "gfinSeries": "iPhone 13",
+   "storage": "128GB",
+   "condition": "HAND_1",
+   "maxPrice": "14900",
+   "modelMatchPattern": "iPhone 13"
+  },
+  {
+   "gfinSeries": "iPhone 13",
+   "storage": "128GB",
+   "condition": "HAND_2",
+   "maxPrice": "12900",
+   "modelMatchPattern": "iPhone 13"
+  },
+  {
+   "gfinSeries": "iPhone 13",
+   "storage": "256GB",
+   "condition": "HAND_2",
+   "maxPrice": "13900",
+   "modelMatchPattern": "iPhone 13"
+  },
+  {
+   "gfinSeries": "iPhone 13",
+   "storage": "512GB",
+   "condition": "HAND_2",
+   "maxPrice": "14900",
+   "modelMatchPattern": "iPhone 13"
+  },
+  {
+   "gfinSeries": "iPhone 13 Pro",
+   "storage": "128GB",
+   "condition": "HAND_2",
+   "maxPrice": "15900",
+   "modelMatchPattern": "iPhone 13 Pro"
+  },
+  {
+   "gfinSeries": "iPhone 13 Pro",
+   "storage": "1TB",
+   "condition": "HAND_2",
+   "maxPrice": "18900",
+   "modelMatchPattern": "iPhone 13 Pro"
+  },
+  {
+   "gfinSeries": "iPhone 13 Pro",
+   "storage": "256GB",
+   "condition": "HAND_2",
+   "maxPrice": "16900",
+   "modelMatchPattern": "iPhone 13 Pro"
+  },
+  {
+   "gfinSeries": "iPhone 13 Pro",
+   "storage": "512GB",
+   "condition": "HAND_2",
+   "maxPrice": "17900",
+   "modelMatchPattern": "iPhone 13 Pro"
+  },
+  {
+   "gfinSeries": "iPhone 13 Pro Max",
+   "storage": "128GB",
+   "condition": "HAND_2",
+   "maxPrice": "17900",
+   "modelMatchPattern": "iPhone 13 Pro Max"
+  },
+  {
+   "gfinSeries": "iPhone 13 Pro Max",
+   "storage": "1TB",
+   "condition": "HAND_2",
+   "maxPrice": "20900",
+   "modelMatchPattern": "iPhone 13 Pro Max"
+  },
+  {
+   "gfinSeries": "iPhone 13 Pro Max",
+   "storage": "256GB",
+   "condition": "HAND_2",
+   "maxPrice": "18900",
+   "modelMatchPattern": "iPhone 13 Pro Max"
+  },
+  {
+   "gfinSeries": "iPhone 13 Pro Max",
+   "storage": "512GB",
+   "condition": "HAND_2",
+   "maxPrice": "19900",
+   "modelMatchPattern": "iPhone 13 Pro Max"
+  },
+  {
+   "gfinSeries": "iPhone 14",
+   "storage": "128GB",
+   "condition": "HAND_1",
+   "maxPrice": "16900",
+   "modelMatchPattern": "iPhone 14"
+  },
+  {
+   "gfinSeries": "iPhone 14",
+   "storage": "128GB",
+   "condition": "HAND_2",
+   "maxPrice": "12900",
+   "modelMatchPattern": "iPhone 14"
+  },
+  {
+   "gfinSeries": "iPhone 14",
+   "storage": "256GB",
+   "condition": "HAND_1",
+   "maxPrice": "20900",
+   "modelMatchPattern": "iPhone 14"
+  },
+  {
+   "gfinSeries": "iPhone 14",
+   "storage": "256GB",
+   "condition": "HAND_2",
+   "maxPrice": "13900",
+   "modelMatchPattern": "iPhone 14"
+  },
+  {
+   "gfinSeries": "iPhone 14",
+   "storage": "512GB",
+   "condition": "HAND_2",
+   "maxPrice": "14900",
+   "modelMatchPattern": "iPhone 14"
+  },
+  {
+   "gfinSeries": "iPhone 14 Plus",
+   "storage": "128GB",
+   "condition": "HAND_1",
+   "maxPrice": "22900",
+   "modelMatchPattern": "iPhone 14 Plus"
+  },
+  {
+   "gfinSeries": "iPhone 14 Plus",
+   "storage": "128GB",
+   "condition": "HAND_2",
+   "maxPrice": "15900",
+   "modelMatchPattern": "iPhone 14 Plus"
+  },
+  {
+   "gfinSeries": "iPhone 14 Plus",
+   "storage": "256GB",
+   "condition": "HAND_1",
+   "maxPrice": "25900",
+   "modelMatchPattern": "iPhone 14 Plus"
+  },
+  {
+   "gfinSeries": "iPhone 14 Plus",
+   "storage": "256GB",
+   "condition": "HAND_2",
+   "maxPrice": "16900",
+   "modelMatchPattern": "iPhone 14 Plus"
+  },
+  {
+   "gfinSeries": "iPhone 14 Plus",
+   "storage": "512GB",
+   "condition": "HAND_2",
+   "maxPrice": "17900",
+   "modelMatchPattern": "iPhone 14 Plus"
+  },
+  {
+   "gfinSeries": "iPhone 14 Pro",
+   "storage": "128GB",
+   "condition": "HAND_2",
+   "maxPrice": "18900",
+   "modelMatchPattern": "iPhone 14 Pro"
+  },
+  {
+   "gfinSeries": "iPhone 14 Pro",
+   "storage": "1TB",
+   "condition": "HAND_2",
+   "maxPrice": "21900",
+   "modelMatchPattern": "iPhone 14 Pro"
+  },
+  {
+   "gfinSeries": "iPhone 14 Pro",
+   "storage": "256GB",
+   "condition": "HAND_2",
+   "maxPrice": "19900",
+   "modelMatchPattern": "iPhone 14 Pro"
+  },
+  {
+   "gfinSeries": "iPhone 14 Pro",
+   "storage": "512GB",
+   "condition": "HAND_2",
+   "maxPrice": "20900",
+   "modelMatchPattern": "iPhone 14 Pro"
+  },
+  {
+   "gfinSeries": "iPhone 14 Pro Max",
+   "storage": "128GB",
+   "condition": "HAND_2",
+   "maxPrice": "21900",
+   "modelMatchPattern": "iPhone 14 Pro Max"
+  },
+  {
+   "gfinSeries": "iPhone 14 Pro Max",
+   "storage": "1TB",
+   "condition": "HAND_2",
+   "maxPrice": "24900",
+   "modelMatchPattern": "iPhone 14 Pro Max"
+  },
+  {
+   "gfinSeries": "iPhone 14 Pro Max",
+   "storage": "256GB",
+   "condition": "HAND_2",
+   "maxPrice": "22900",
+   "modelMatchPattern": "iPhone 14 Pro Max"
+  },
+  {
+   "gfinSeries": "iPhone 14 Pro Max",
+   "storage": "512GB",
+   "condition": "HAND_2",
+   "maxPrice": "23900",
+   "modelMatchPattern": "iPhone 14 Pro Max"
+  },
+  {
+   "gfinSeries": "iPhone 15",
+   "storage": "128GB",
+   "condition": "HAND_1",
+   "maxPrice": "24900",
+   "modelMatchPattern": "iPhone 15"
+  },
+  {
+   "gfinSeries": "iPhone 15",
+   "storage": "128GB",
+   "condition": "HAND_2",
+   "maxPrice": "16900",
+   "modelMatchPattern": "iPhone 15"
+  },
+  {
+   "gfinSeries": "iPhone 15",
+   "storage": "256GB",
+   "condition": "HAND_1",
+   "maxPrice": "27900",
+   "modelMatchPattern": "iPhone 15"
+  },
+  {
+   "gfinSeries": "iPhone 15",
+   "storage": "256GB",
+   "condition": "HAND_2",
+   "maxPrice": "17900",
+   "modelMatchPattern": "iPhone 15"
+  },
+  {
+   "gfinSeries": "iPhone 15",
+   "storage": "512GB",
+   "condition": "HAND_2",
+   "maxPrice": "18900",
+   "modelMatchPattern": "iPhone 15"
+  },
+  {
+   "gfinSeries": "iPhone 15 Plus",
+   "storage": "128GB",
+   "condition": "HAND_1",
+   "maxPrice": "25900",
+   "modelMatchPattern": "iPhone 15 Plus"
+  },
+  {
+   "gfinSeries": "iPhone 15 Plus",
+   "storage": "128GB",
+   "condition": "HAND_2",
+   "maxPrice": "19900",
+   "modelMatchPattern": "iPhone 15 Plus"
+  },
+  {
+   "gfinSeries": "iPhone 15 Plus",
+   "storage": "256GB",
+   "condition": "HAND_1",
+   "maxPrice": "29900",
+   "modelMatchPattern": "iPhone 15 Plus"
+  },
+  {
+   "gfinSeries": "iPhone 15 Plus",
+   "storage": "256GB",
+   "condition": "HAND_2",
+   "maxPrice": "20900",
+   "modelMatchPattern": "iPhone 15 Plus"
+  },
+  {
+   "gfinSeries": "iPhone 15 Plus",
+   "storage": "512GB",
+   "condition": "HAND_2",
+   "maxPrice": "21900",
+   "modelMatchPattern": "iPhone 15 Plus"
+  },
+  {
+   "gfinSeries": "iPhone 15 Pro",
+   "storage": "128GB",
+   "condition": "HAND_1",
+   "maxPrice": "28900",
+   "modelMatchPattern": "iPhone 15 Pro"
+  },
+  {
+   "gfinSeries": "iPhone 15 Pro",
+   "storage": "128GB",
+   "condition": "HAND_2",
+   "maxPrice": "22900",
+   "modelMatchPattern": "iPhone 15 Pro"
+  },
+  {
+   "gfinSeries": "iPhone 15 Pro",
+   "storage": "1TB",
+   "condition": "HAND_2",
+   "maxPrice": "25900",
+   "modelMatchPattern": "iPhone 15 Pro"
+  },
+  {
+   "gfinSeries": "iPhone 15 Pro",
+   "storage": "256GB",
+   "condition": "HAND_1",
+   "maxPrice": "31900",
+   "modelMatchPattern": "iPhone 15 Pro"
+  },
+  {
+   "gfinSeries": "iPhone 15 Pro",
+   "storage": "256GB",
+   "condition": "HAND_2",
+   "maxPrice": "23900",
+   "modelMatchPattern": "iPhone 15 Pro"
+  },
+  {
+   "gfinSeries": "iPhone 15 Pro",
+   "storage": "512GB",
+   "condition": "HAND_1",
+   "maxPrice": "34900",
+   "modelMatchPattern": "iPhone 15 Pro"
+  },
+  {
+   "gfinSeries": "iPhone 15 Pro",
+   "storage": "512GB",
+   "condition": "HAND_2",
+   "maxPrice": "24900",
+   "modelMatchPattern": "iPhone 15 Pro"
+  },
+  {
+   "gfinSeries": "iPhone 15 Pro Max",
+   "storage": "1TB",
+   "condition": "HAND_1",
+   "maxPrice": "39900",
+   "modelMatchPattern": "iPhone 15 Pro Max"
+  },
+  {
+   "gfinSeries": "iPhone 15 Pro Max",
+   "storage": "1TB",
+   "condition": "HAND_2",
+   "maxPrice": "30900",
+   "modelMatchPattern": "iPhone 15 Pro Max"
+  },
+  {
+   "gfinSeries": "iPhone 15 Pro Max",
+   "storage": "256GB",
+   "condition": "HAND_1",
+   "maxPrice": "34900",
+   "modelMatchPattern": "iPhone 15 Pro Max"
+  },
+  {
+   "gfinSeries": "iPhone 15 Pro Max",
+   "storage": "256GB",
+   "condition": "HAND_2",
+   "maxPrice": "28900",
+   "modelMatchPattern": "iPhone 15 Pro Max"
+  },
+  {
+   "gfinSeries": "iPhone 15 Pro Max",
+   "storage": "512GB",
+   "condition": "HAND_1",
+   "maxPrice": "37900",
+   "modelMatchPattern": "iPhone 15 Pro Max"
+  },
+  {
+   "gfinSeries": "iPhone 15 Pro Max",
+   "storage": "512GB",
+   "condition": "HAND_2",
+   "maxPrice": "29900",
+   "modelMatchPattern": "iPhone 15 Pro Max"
+  },
+  {
+   "gfinSeries": "iPhone 16",
+   "storage": "128GB",
+   "condition": "HAND_1",
+   "maxPrice": "26900",
+   "modelMatchPattern": "iPhone 16"
+  },
+  {
+   "gfinSeries": "iPhone 16",
+   "storage": "128GB",
+   "condition": "HAND_2",
+   "maxPrice": "21900",
+   "modelMatchPattern": "iPhone 16"
+  },
+  {
+   "gfinSeries": "iPhone 16",
+   "storage": "256GB",
+   "condition": "HAND_1",
+   "maxPrice": "29900",
+   "modelMatchPattern": "iPhone 16"
+  },
+  {
+   "gfinSeries": "iPhone 16",
+   "storage": "256GB",
+   "condition": "HAND_2",
+   "maxPrice": "22900",
+   "modelMatchPattern": "iPhone 16"
+  },
+  {
+   "gfinSeries": "iPhone 16",
+   "storage": "512GB",
+   "condition": "HAND_2",
+   "maxPrice": "23900",
+   "modelMatchPattern": "iPhone 16"
+  },
+  {
+   "gfinSeries": "iPhone 16e",
+   "storage": "128GB",
+   "condition": "HAND_1",
+   "maxPrice": "19900",
+   "modelMatchPattern": "iPhone 16e"
+  },
+  {
+   "gfinSeries": "iPhone 16e",
+   "storage": "128GB",
+   "condition": "HAND_2",
+   "maxPrice": "15900",
+   "modelMatchPattern": "iPhone 16e"
+  },
+  {
+   "gfinSeries": "iPhone 16e",
+   "storage": "256GB",
+   "condition": "HAND_1",
+   "maxPrice": "23900",
+   "modelMatchPattern": "iPhone 16e"
+  },
+  {
+   "gfinSeries": "iPhone 16e",
+   "storage": "256GB",
+   "condition": "HAND_2",
+   "maxPrice": "18900",
+   "modelMatchPattern": "iPhone 16e"
+  },
+  {
+   "gfinSeries": "iPhone 16e",
+   "storage": "512GB",
+   "condition": "HAND_2",
+   "maxPrice": "20900",
+   "modelMatchPattern": "iPhone 16e"
+  },
+  {
+   "gfinSeries": "iPhone 16 Plus",
+   "storage": "128GB",
+   "condition": "HAND_1",
+   "maxPrice": "29900",
+   "modelMatchPattern": "iPhone 16 Plus"
+  },
+  {
+   "gfinSeries": "iPhone 16 Plus",
+   "storage": "128GB",
+   "condition": "HAND_2",
+   "maxPrice": "23900",
+   "modelMatchPattern": "iPhone 16 Plus"
+  },
+  {
+   "gfinSeries": "iPhone 16 Plus",
+   "storage": "256GB",
+   "condition": "HAND_1",
+   "maxPrice": "33900",
+   "modelMatchPattern": "iPhone 16 Plus"
+  },
+  {
+   "gfinSeries": "iPhone 16 Plus",
+   "storage": "256GB",
+   "condition": "HAND_2",
+   "maxPrice": "24900",
+   "modelMatchPattern": "iPhone 16 Plus"
+  },
+  {
+   "gfinSeries": "iPhone 16 Plus",
+   "storage": "512GB",
+   "condition": "HAND_1",
+   "maxPrice": "38900",
+   "modelMatchPattern": "iPhone 16 Plus"
+  },
+  {
+   "gfinSeries": "iPhone 16 Plus",
+   "storage": "512GB",
+   "condition": "HAND_2",
+   "maxPrice": "25900",
+   "modelMatchPattern": "iPhone 16 Plus"
+  },
+  {
+   "gfinSeries": "iPhone 16 Pro",
+   "storage": "128GB",
+   "condition": "HAND_1",
+   "maxPrice": "33900",
+   "modelMatchPattern": "iPhone 16 Pro"
+  },
+  {
+   "gfinSeries": "iPhone 16 Pro",
+   "storage": "128GB",
+   "condition": "HAND_2",
+   "maxPrice": "27900",
+   "modelMatchPattern": "iPhone 16 Pro"
+  },
+  {
+   "gfinSeries": "iPhone 16 Pro",
+   "storage": "256GB",
+   "condition": "HAND_1",
+   "maxPrice": "37900",
+   "modelMatchPattern": "iPhone 16 Pro"
+  },
+  {
+   "gfinSeries": "iPhone 16 Pro",
+   "storage": "256GB",
+   "condition": "HAND_2",
+   "maxPrice": "28900",
+   "modelMatchPattern": "iPhone 16 Pro"
+  },
+  {
+   "gfinSeries": "iPhone 16 Pro",
+   "storage": "512GB",
+   "condition": "HAND_1",
+   "maxPrice": "43900",
+   "modelMatchPattern": "iPhone 16 Pro"
+  },
+  {
+   "gfinSeries": "iPhone 16 Pro",
+   "storage": "512GB",
+   "condition": "HAND_2",
+   "maxPrice": "30900",
+   "modelMatchPattern": "iPhone 16 Pro"
+  },
+  {
+   "gfinSeries": "iPhone 16 Pro Max",
+   "storage": "1TB",
+   "condition": "HAND_2",
+   "maxPrice": "38900",
+   "modelMatchPattern": "iPhone 16 Pro Max"
+  },
+  {
+   "gfinSeries": "iPhone 16 Pro Max",
+   "storage": "256GB",
+   "condition": "HAND_1",
+   "maxPrice": "40900",
+   "modelMatchPattern": "iPhone 16 Pro Max"
+  },
+  {
+   "gfinSeries": "iPhone 16 Pro Max",
+   "storage": "256GB",
+   "condition": "HAND_2",
+   "maxPrice": "34900",
+   "modelMatchPattern": "iPhone 16 Pro Max"
+  },
+  {
+   "gfinSeries": "iPhone 16 Pro Max",
+   "storage": "512GB",
+   "condition": "HAND_1",
+   "maxPrice": "45900",
+   "modelMatchPattern": "iPhone 16 Pro Max"
+  },
+  {
+   "gfinSeries": "iPhone 16 Pro Max",
+   "storage": "512GB",
+   "condition": "HAND_2",
+   "maxPrice": "36900",
+   "modelMatchPattern": "iPhone 16 Pro Max"
+  },
+  {
+   "gfinSeries": "iPhone 17",
+   "storage": "256GB",
+   "condition": "HAND_1",
+   "maxPrice": "29900",
+   "modelMatchPattern": "iPhone 17"
+  },
+  {
+   "gfinSeries": "iPhone 17",
+   "storage": "256GB",
+   "condition": "HAND_2",
+   "maxPrice": "24900",
+   "modelMatchPattern": "iPhone 17"
+  },
+  {
+   "gfinSeries": "iPhone 17",
+   "storage": "512GB",
+   "condition": "HAND_1",
+   "maxPrice": "37900",
+   "modelMatchPattern": "iPhone 17"
+  },
+  {
+   "gfinSeries": "iPhone 17",
+   "storage": "512GB",
+   "condition": "HAND_2",
+   "maxPrice": "31900",
+   "modelMatchPattern": "iPhone 17"
+  },
+  {
+   "gfinSeries": "iPhone 17e",
+   "storage": "256GB",
+   "condition": "HAND_1",
+   "maxPrice": "22900",
+   "modelMatchPattern": "iPhone 17e"
+  },
+  {
+   "gfinSeries": "iPhone 17e",
+   "storage": "256GB",
+   "condition": "HAND_2",
+   "maxPrice": "17900",
+   "modelMatchPattern": "iPhone 17e"
+  },
+  {
+   "gfinSeries": "iPhone 17e",
+   "storage": "512GB",
+   "condition": "HAND_1",
+   "maxPrice": "28900",
+   "modelMatchPattern": "iPhone 17e"
+  },
+  {
+   "gfinSeries": "iPhone 17e",
+   "storage": "512GB",
+   "condition": "HAND_2",
+   "maxPrice": "22900",
+   "modelMatchPattern": "iPhone 17e"
+  },
+  {
+   "gfinSeries": "iPhone 17 Pro",
+   "storage": "1TB",
+   "condition": "HAND_1",
+   "maxPrice": "55900",
+   "modelMatchPattern": "iPhone 17 Pro"
+  },
+  {
+   "gfinSeries": "iPhone 17 Pro",
+   "storage": "256GB",
+   "condition": "HAND_1",
+   "maxPrice": "39900",
+   "modelMatchPattern": "iPhone 17 Pro"
+  },
+  {
+   "gfinSeries": "iPhone 17 Pro",
+   "storage": "256GB",
+   "condition": "HAND_2",
+   "maxPrice": "35900",
+   "modelMatchPattern": "iPhone 17 Pro"
+  },
+  {
+   "gfinSeries": "iPhone 17 Pro",
+   "storage": "512GB",
+   "condition": "HAND_1",
+   "maxPrice": "47900",
+   "modelMatchPattern": "iPhone 17 Pro"
+  },
+  {
+   "gfinSeries": "iPhone 17 Pro",
+   "storage": "512GB",
+   "condition": "HAND_2",
+   "maxPrice": "43900",
+   "modelMatchPattern": "iPhone 17 Pro"
+  },
+  {
+   "gfinSeries": "iPhone 17 Pro Max",
+   "storage": "1TB",
+   "condition": "HAND_1",
+   "maxPrice": "59900",
+   "modelMatchPattern": "iPhone 17 Pro Max"
+  },
+  {
+   "gfinSeries": "iPhone 17 Pro Max",
+   "storage": "256GB",
+   "condition": "HAND_1",
+   "maxPrice": "44900",
+   "modelMatchPattern": "iPhone 17 Pro Max"
+  },
+  {
+   "gfinSeries": "iPhone 17 Pro Max",
+   "storage": "256GB",
+   "condition": "HAND_2",
+   "maxPrice": "40900",
+   "modelMatchPattern": "iPhone 17 Pro Max"
+  },
+  {
+   "gfinSeries": "iPhone 17 Pro Max",
+   "storage": "512GB",
+   "condition": "HAND_1",
+   "maxPrice": "52900",
+   "modelMatchPattern": "iPhone 17 Pro Max"
+  },
+  {
+   "gfinSeries": "iPhone 17 Pro Max",
+   "storage": "512GB",
+   "condition": "HAND_2",
+   "maxPrice": "41900",
+   "modelMatchPattern": "iPhone 17 Pro Max"
+  },
+  {
+   "gfinSeries": "iPhone 18 Pro",
+   "storage": "256GB",
+   "condition": "HAND_1",
+   "maxPrice": "48900",
+   "modelMatchPattern": "iPhone 18 Pro"
+  },
+  {
+   "gfinSeries": "iPhone 18 Pro",
+   "storage": "512GB",
+   "condition": "HAND_1",
+   "maxPrice": "56900",
+   "modelMatchPattern": "iPhone 18 Pro"
+  },
+  {
+   "gfinSeries": "iPhone 18 Pro Max",
+   "storage": "256GB",
+   "condition": "HAND_1",
+   "maxPrice": "52900",
+   "modelMatchPattern": "iPhone 18 Pro Max"
+  },
+  {
+   "gfinSeries": "iPhone 18 Pro Max",
+   "storage": "512GB",
+   "condition": "HAND_1",
+   "maxPrice": "60900",
+   "modelMatchPattern": "iPhone 18 Pro Max"
+  },
+  {
+   "gfinSeries": "iPhone Air",
+   "storage": "256GB",
+   "condition": "HAND_1",
+   "maxPrice": "29900",
+   "modelMatchPattern": "iPhone Air"
+  },
+  {
+   "gfinSeries": "iPhone Air",
+   "storage": "256GB",
+   "condition": "HAND_2",
+   "maxPrice": "25900",
+   "modelMatchPattern": "iPhone Air"
+  },
+  {
+   "gfinSeries": "iPhone Air",
+   "storage": "512GB",
+   "condition": "HAND_1",
+   "maxPrice": "37900",
+   "modelMatchPattern": "iPhone Air"
+  },
+  {
+   "gfinSeries": "iPhone Air",
+   "storage": "512GB",
+   "condition": "HAND_2",
+   "maxPrice": "30900",
+   "modelMatchPattern": "iPhone Air"
+  }
+ ],
+ "rules": [
+  {
+   "label": "มือ1 13-15 Plus",
+   "seriesPattern": "iPhone 13|iPhone 14|iPhone 14 Plus|iPhone 15|iPhone 15 Plus",
+   "condition": "HAND_1",
+   "allowance": "1000",
+   "maxMonths": 12,
+   "minDownPct": null,
+   "isActive": true,
+   "createdAt": "2026-11-19T23:39:20.171Z"
+  },
+  {
+   "label": "มือ1 15 Pro/Max",
+   "seriesPattern": "iPhone 15 Pro|iPhone 15 Pro Max",
+   "condition": "HAND_1",
+   "allowance": "1000",
+   "maxMonths": 15,
+   "minDownPct": null,
+   "isActive": true,
+   "createdAt": "2026-11-19T23:39:20.377Z"
+  },
+  {
+   "label": "มือ1 16 ทุกรุ่น",
+   "seriesPattern": "iPhone 16|iPhone 16e|iPhone 16 Plus|iPhone 16 Pro|iPhone 16 Pro Max",
+   "condition": "HAND_1",
+   "allowance": "2000",
+   "maxMonths": 15,
+   "minDownPct": null,
+   "isActive": true,
+   "createdAt": "2026-11-19T23:39:20.593Z"
+  },
+  {
+   "label": "มือ1 17/Air/18",
+   "seriesPattern": "iPhone 17|iPhone 17e|iPhone 17 Pro|iPhone 17 Pro Max|iPhone Air|iPhone 18 Pro|iPhone 18 Pro Max",
+   "condition": "HAND_1",
+   "allowance": "2000",
+   "maxMonths": 15,
+   "minDownPct": 30,
+   "isActive": true,
+   "createdAt": "2026-11-19T23:39:20.818Z"
+  },
+  {
+   "label": "มือ2 13 ทุกรุ่น",
+   "seriesPattern": "iPhone 13|iPhone 13 Pro|iPhone 13 Pro Max",
+   "condition": "HAND_2",
+   "allowance": "0",
+   "maxMonths": 12,
+   "minDownPct": null,
+   "isActive": true,
+   "createdAt": "2026-11-19T23:39:20.964Z"
+  },
+  {
+   "label": "มือ2 14-15 Pro",
+   "seriesPattern": "iPhone 14|iPhone 14 Plus|iPhone 14 Pro|iPhone 14 Pro Max|iPhone 15|iPhone 15 Plus|iPhone 15 Pro",
+   "condition": "HAND_2",
+   "allowance": "2000",
+   "maxMonths": 12,
+   "minDownPct": null,
+   "isActive": true,
+   "createdAt": "2026-11-19T23:39:21.117Z"
+  },
+  {
+   "label": "มือ2 15PM-16",
+   "seriesPattern": "iPhone 15 Pro Max|iPhone 16|iPhone 16e|iPhone 16 Plus|iPhone 16 Pro|iPhone 16 Pro Max",
+   "condition": "HAND_2",
+   "allowance": "2000",
+   "maxMonths": 15,
+   "minDownPct": null,
+   "isActive": true,
+   "createdAt": "2026-11-19T23:39:21.263Z"
+  },
+  {
+   "label": "มือ2 17/Air",
+   "seriesPattern": "iPhone 17|iPhone 17e|iPhone 17 Pro|iPhone 17 Pro Max|iPhone Air",
+   "condition": "HAND_2",
+   "allowance": "2000",
+   "maxMonths": 15,
+   "minDownPct": 30,
+   "isActive": true,
+   "createdAt": "2026-11-19T23:39:21.415Z"
+  }
+ ]
+}

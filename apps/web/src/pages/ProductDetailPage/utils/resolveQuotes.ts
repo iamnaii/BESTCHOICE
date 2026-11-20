@@ -2,14 +2,7 @@ import type { BcConfigJson, GfinDeviceOrigin } from '@installment/shared';
 import { getPositiveDisplayPrices, normalizePositive, type ProductForDisplay } from '@/utils/getDisplayPrices';
 import type { CalcState } from '../hooks/useInstallmentCalcState';
 import { bcMinDownAmount, buildBcQuote, type BcQuote } from './bcQuote';
-import {
-  buildGfinQuote,
-  defaultCommissionPct,
-  gfinMaxMonthsFor,
-  gfinMinDownPctFor,
-  type GfinQuote,
-  type GfinTables,
-} from './gfinQuote';
+import { resolveGfinQuote, type GfinTables, type ResolvedGfin } from './gfinQuote';
 import { pickDefaultMonths } from './monthsOptions';
 
 /**
@@ -46,15 +39,7 @@ export interface ResolvedBc {
   quote: BcQuote;
 }
 
-export interface ResolvedGfin {
-  /** null = ไม่มีงวดให้เลือกเลย (ตารางเรทว่าง) */
-  months: number | null;
-  downPct: number;
-  /** ดาวน์ขั้นต่ำของรุ่นนี้ (เต็มร้อย) — กติกา OVER ก่อน ไม่มีแล้วค่าตั้ง GFIN · ตัวเลือก % ในการ์ดเริ่มที่ค่านี้ */
-  minDownPct: number;
-  commissionPct: number;
-  quote: GfinQuote;
-}
+export type { ResolvedGfin } from './gfinQuote';
 
 export interface ResolvedQuotes {
   /** ราคาผ่อนที่ใช้คิด — ผ่าน getPositiveDisplayPrices เสมอ (null = ยังไม่ตั้งราคาผ่อน) */
@@ -124,46 +109,19 @@ export function resolveQuotes({
   let gfin: ResolvedGfin | null = null;
   let gfinAvailable = false;
   if (gfinTables && gfinSalePrice != null) {
-    const commissionPct =
-      state.gfin.commissionPct ?? defaultCommissionPct(gfinTables.settings, product.category);
-    const productForGfin = {
-      brand: product.brand,
-      model: product.model,
-      storage: product.storage,
-      category: product.category,
-      deviceOrigin: product.deviceOrigin,
-    };
-    // ดาวน์ขั้นต่ำตามกติกา OVER ของรุ่น (ไม่มีแล้วค่าตั้ง GFIN) — ค่าเริ่มของการ์ดและสติกเกอร์
-    const minDownPct = gfinMinDownPctFor(gfinTables, productForGfin);
-    const downPct = state.gfin.downPct ?? minDownPct;
-    const preferred =
-      state.gfin.months ?? terms?.rate2TermMonths ?? gfinMaxMonthsFor(gfinTables, productForGfin) ?? 12;
-    let months: number | null = preferred;
-    let quote = buildGfinQuote(gfinTables, {
-      product: productForGfin,
-      installmentPrice: gfinSalePrice,
-      months: preferred,
-      downPct,
-      commissionPct,
-    });
-    // งวดที่เลือก/ตั้งต้นไม่มีเรทหรือเกินเพดานของรุ่น → ถอยไปงวดใกล้ 12 ที่สุดในตัวเลือกที่มี
-    if (!quote.available && quote.reason === 'no_factor') {
-      months = pickDefaultMonths(
-        quote.monthsOptions.map((o) => o.months),
-        preferred,
-      );
-      if (months != null) {
-        quote = buildGfinQuote(gfinTables, {
-          product: productForGfin,
-          installmentPrice: gfinSalePrice,
-          months,
-          downPct,
-          commissionPct,
-        });
-      }
-    }
-    gfin = { months: quote.available ? months : null, downPct, minDownPct, commissionPct, quote };
-    gfinAvailable = quote.available;
+    gfin = resolveGfinQuote(
+      gfinTables,
+      {
+        brand: product.brand,
+        model: product.model,
+        storage: product.storage,
+        category: product.category,
+        deviceOrigin: product.deviceOrigin,
+      },
+      gfinSalePrice,
+      { ...state.gfin, templateMonths: terms?.rate2TermMonths ?? null },
+    );
+    gfinAvailable = gfin.quote.available;
   }
 
   return { installmentPrice, gfinSalePrice, hasFinancePrice, bc, gfin, gfinAvailable };

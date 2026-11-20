@@ -1,5 +1,5 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma, type GfinOverpriceRule } from '@prisma/client';
 import Decimal from 'decimal.js';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -13,8 +13,29 @@ import {
   UpdateRateFactorDto,
   UpdateGfinSettingsDto,
   ImportMaxPricesDto,
+  BulkUpsertOverpriceRulesDto,
+  CloseMaxPricesDto,
 } from './dto';
-import { GFIN_SETTINGS_KEYS, loadGfinSettings, type GfinSettings } from './gfin-settings.util';
+import {
+  GFIN_SETTINGS_KEYS,
+  loadGfinSettings,
+  loadGfinSheetInfo,
+  type GfinSettingsView,
+} from './gfin-settings.util';
+
+export const PER_MODEL_ONLY_MESSAGE = 'เงื่อนไขเก็บรายรุ่นแล้ว — แก้ทีละรุ่น (ใส่ชื่อรุ่นเดียว ไม่ใช้ |)';
+export const RULE_EXISTS_MESSAGE = 'รุ่นนี้มีเงื่อนไขของสภาพนี้อยู่แล้ว — แก้แถวที่มีอยู่แทน';
+
+export function isUniqueViolation(e: unknown): boolean {
+  return e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002';
+}
+
+/** สเปค 2026-11-20 §5: กติกากลุ่มใหม่ไม่มีผล (กติการายรุ่นชนะเสมอใน findGfinOverpriceRule) → ปฏิเสธตั้งแต่ต้น */
+function assertSingleSeries(seriesPattern: string | undefined): void {
+  if (seriesPattern !== undefined && seriesPattern.includes('|')) {
+    throw new BadRequestException(PER_MODEL_ONLY_MESSAGE);
+  }
+}
 
 @Injectable()
 export class GfinConfigService {
@@ -170,6 +191,23 @@ export class GfinConfigService {
     return { created, updated, unchanged };
   }
 
+  /** ปิดราคาที่ GFIN ไม่รับแล้ว (สเปค 2026-11-20 §5) — ปิดแล้วไม่หาย เปิดคืนได้ด้วย PATCH max-prices/:id */
+  async closeMaxPrices(dto: CloseMaxPricesDto, userId: string) {
+    const ids = [...new Set(dto.ids)];
+    const { count } = await this.prisma.gfinModelMapping.updateMany({
+      where: { id: { in: ids }, deletedAt: null, isActive: true },
+      data: { isActive: false },
+    });
+    await this.auditService.log({
+      action: 'GFIN_MAX_PRICES_CLOSED',
+      entity: 'gfin_model_mapping',
+      entityId: 'batch',
+      userId,
+      newValue: { ids, closed: count },
+    });
+    return { closed: count };
+  }
+
   // ===== Overprice Rules =====
 
   listOverpriceRules() {
@@ -180,17 +218,24 @@ export class GfinConfigService {
   }
 
   async createOverpriceRule(dto: CreateOverpriceRuleDto, userId: string) {
-    const row = await this.prisma.gfinOverpriceRule.create({
-      data: {
-        label: dto.label,
-        seriesPattern: dto.seriesPattern,
-        condition: dto.condition,
-        allowance: new Prisma.Decimal(dto.allowance),
-        maxMonths: dto.maxMonths ?? null,
-        minDownPct: dto.minDownPct ?? null,
-        isActive: dto.isActive ?? true,
-      },
-    });
+    assertSingleSeries(dto.seriesPattern);
+    let row;
+    try {
+      row = await this.prisma.gfinOverpriceRule.create({
+        data: {
+          label: dto.label,
+          seriesPattern: dto.seriesPattern.trim(),
+          condition: dto.condition,
+          allowance: new Prisma.Decimal(dto.allowance),
+          maxMonths: dto.maxMonths ?? null,
+          minDownPct: dto.minDownPct ?? null,
+          isActive: dto.isActive ?? true,
+        },
+      });
+    } catch (e) {
+      if (isUniqueViolation(e)) throw new ConflictException(RULE_EXISTS_MESSAGE);
+      throw e;
+    }
     await this.auditService.log({
       action: 'GFIN_OVERPRICE_RULE_CREATED',
       entity: 'gfin_overprice_rule',
@@ -202,19 +247,26 @@ export class GfinConfigService {
   }
 
   async updateOverpriceRule(id: string, dto: UpdateOverpriceRuleDto, userId: string) {
+    assertSingleSeries(dto.seriesPattern);
     const existing = await this.prisma.gfinOverpriceRule.findUnique({ where: { id } });
     if (!existing || existing.deletedAt) throw new NotFoundException('ไม่พบ row นี้');
 
     const data: Prisma.GfinOverpriceRuleUpdateInput = {};
     if (dto.label !== undefined) data.label = dto.label;
-    if (dto.seriesPattern !== undefined) data.seriesPattern = dto.seriesPattern;
+    if (dto.seriesPattern !== undefined) data.seriesPattern = dto.seriesPattern.trim();
     if (dto.condition !== undefined) data.condition = dto.condition;
     if (dto.allowance !== undefined) data.allowance = new Prisma.Decimal(dto.allowance);
     if (dto.maxMonths !== undefined) data.maxMonths = dto.maxMonths;
     if (dto.minDownPct !== undefined) data.minDownPct = dto.minDownPct;
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
 
-    const updated = await this.prisma.gfinOverpriceRule.update({ where: { id }, data });
+    let updated;
+    try {
+      updated = await this.prisma.gfinOverpriceRule.update({ where: { id }, data });
+    } catch (e) {
+      if (isUniqueViolation(e)) throw new ConflictException(RULE_EXISTS_MESSAGE);
+      throw e;
+    }
     await this.auditService.log({
       action: 'GFIN_OVERPRICE_RULE_UPDATED',
       entity: 'gfin_overprice_rule',
@@ -241,6 +293,95 @@ export class GfinConfigService {
       oldValue: existing as unknown as Record<string, unknown>,
     });
     return updated;
+  }
+
+  /**
+   * แก้เงื่อนไขหลายรุ่นพร้อมกัน (สเปก 2026-11-20 §5) — ทั้งชุดใน transaction เดียว (พลาดแถวเดียว = ไม่บันทึกเลย)
+   * คู่ที่มีกติกาแล้ว (รวมที่ปิดใช้) = แก้แถวเดิม + เปิดใช้ · คู่ใหม่ต้องมี OVER และผ่อนสูงสุด · audit ครั้งเดียวหลัง commit
+   */
+  async bulkUpsertOverpriceRules(dto: BulkUpsertOverpriceRulesDto, userId: string) {
+    const hand = (c: string) => (c === 'HAND_1' ? 'มือ 1' : 'มือ 2');
+    const items = dto.items.map((i) => ({ series: i.series.trim(), condition: i.condition }));
+    if (dto.allowance === undefined && dto.maxMonths === undefined && dto.minDownPct === undefined) {
+      throw new BadRequestException('ไม่มีค่าที่จะเปลี่ยน — เลือก OVER ผ่อนสูงสุด หรือดาวน์อย่างน้อยหนึ่งอย่าง');
+    }
+    const seen = new Set<string>();
+    for (const i of items) {
+      const key = `${i.series}|${i.condition}`;
+      if (seen.has(key)) throw new BadRequestException(`เลือก ${i.series} ${hand(i.condition)} ซ้ำ`);
+      seen.add(key);
+    }
+    const seriesList = [...new Set(items.map((i) => i.series))];
+
+    type Change = { series: string; condition: string; before: unknown; after: unknown };
+    let result: {
+      created: number;
+      updated: number;
+      rows: GfinOverpriceRule[];
+      changes: Change[];
+    };
+    try {
+      result = await this.prisma.$transaction(async (tx) => {
+        const priced = await tx.gfinModelMapping.findMany({
+          where: { deletedAt: null, gfinVariant: null, gfinSeries: { in: seriesList } },
+          select: { gfinSeries: true },
+        });
+        const pricedSet = new Set(priced.map((p) => p.gfinSeries));
+        const missing = seriesList.find((s) => !pricedSet.has(s));
+        if (missing) throw new BadRequestException(`ไม่พบรุ่น ${missing} ในใบราคา — นำเข้าใบราคาที่มีรุ่นนี้ก่อน`);
+
+        const existing = await tx.gfinOverpriceRule.findMany({
+          where: { deletedAt: null, seriesPattern: { in: seriesList } },
+        });
+        const out = { created: 0, updated: 0, rows: [] as GfinOverpriceRule[], changes: [] as Change[] };
+        for (const i of items) {
+          const ex = existing.find((r) => r.seriesPattern === i.series && r.condition === i.condition);
+          if (ex) {
+            const data: Prisma.GfinOverpriceRuleUpdateInput = {};
+            if (dto.allowance !== undefined) data.allowance = new Prisma.Decimal(dto.allowance);
+            if (dto.maxMonths !== undefined) data.maxMonths = dto.maxMonths;
+            if (dto.minDownPct !== undefined) data.minDownPct = dto.minDownPct;
+            data.isActive = true;
+            const row = await tx.gfinOverpriceRule.update({ where: { id: ex.id }, data });
+            out.updated++;
+            out.rows.push(row);
+            out.changes.push({ series: i.series, condition: i.condition, before: ex, after: row });
+          } else {
+            if (dto.allowance === undefined || dto.maxMonths === undefined) {
+              throw new BadRequestException(`${i.series} ${hand(i.condition)} ยังไม่มีเงื่อนไข — ต้องระบุ OVER และผ่อนสูงสุด`);
+            }
+            const row = await tx.gfinOverpriceRule.create({
+              data: {
+                label: `${i.series} ${hand(i.condition)}`,
+                seriesPattern: i.series,
+                condition: i.condition,
+                allowance: new Prisma.Decimal(dto.allowance),
+                maxMonths: dto.maxMonths,
+                minDownPct: dto.minDownPct ?? null,
+                isActive: true,
+              },
+            });
+            out.created++;
+            out.rows.push(row);
+            out.changes.push({ series: i.series, condition: i.condition, before: null, after: row });
+          }
+        }
+        return out;
+      }, { timeout: 30_000 });
+    } catch (e) {
+      if (isUniqueViolation(e)) {
+        throw new ConflictException('มีการแก้เงื่อนไขของรุ่นเดียวกันพร้อมกัน — โหลดหน้าใหม่แล้วลองอีกครั้ง');
+      }
+      throw e;
+    }
+    await this.auditService.log({
+      action: 'GFIN_RULES_BULK_UPSERTED',
+      entity: 'gfin_overprice_rule',
+      entityId: 'bulk',
+      userId,
+      newValue: { changes: result.changes } as unknown as Record<string, unknown>,
+    });
+    return { created: result.created, updated: result.updated, rows: result.rows };
   }
 
   // ===== Rate Factors =====
@@ -317,17 +458,31 @@ export class GfinConfigService {
 
   // ===== ค่าตั้งค่า GFIN (system_config gfin.*) =====
 
-  getSettings(): Promise<GfinSettings> {
-    return loadGfinSettings(this.prisma);
+  async getSettings(): Promise<GfinSettingsView> {
+    const [settings, sheet] = await Promise.all([loadGfinSettings(this.prisma), loadGfinSheetInfo(this.prisma)]);
+    return { ...settings, ...sheet };
   }
 
-  async updateSettings(dto: UpdateGfinSettingsDto, userId: string): Promise<GfinSettings> {
+  async updateSettings(dto: UpdateGfinSettingsDto, userId: string): Promise<GfinSettingsView> {
     const before = await this.getSettings();
-    const writes: Array<[string, number | undefined, string]> = [
+    // สเปก 2026-11-20 §5: ตรวจเฉพาะเมื่อค่าคอม iPhone เปลี่ยน — ไม่มีตารางค่างวดของ % ใหม่ = GFIN คิดผ่อนไม่ได้ทุกเครื่อง
+    if (dto.commissionPhone !== undefined && dto.commissionPhone !== before.commissionPctByCategory.PHONE) {
+      const factors = await this.prisma.gfinRateFactor.count({
+        where: { shopCommissionPct: dto.commissionPhone, isActive: true, deletedAt: null },
+      });
+      if (factors === 0) {
+        throw new BadRequestException(
+          `ยังไม่มีตารางค่างวดของคอม ${dto.commissionPhone}% — เพิ่มตารางค่างวดก่อน แล้วค่อยเปลี่ยนค่าคอม`,
+        );
+      }
+    }
+    const writes: Array<[string, string | number | undefined, string]> = [
       [GFIN_SETTINGS_KEYS.minDownPct, dto.minDownPct, 'GFIN: % ดาวน์ขั้นต่ำที่ GFIN ตั้งให้ร้าน'],
       [GFIN_SETTINGS_KEYS.commissionPhone, dto.commissionPhone, 'GFIN: % คอมมิชชั่นตั้งต้น มือถือ'],
       [GFIN_SETTINGS_KEYS.commissionTablet, dto.commissionTablet, 'GFIN: % คอมมิชชั่นตั้งต้น iPad'],
       [GFIN_SETTINGS_KEYS.contractFee, dto.contractFee, 'GFIN: ค่าทำสัญญาที่หักจากยอดโอนให้ร้าน'],
+      [GFIN_SETTINGS_KEYS.sheetVersion, dto.sheetVersion?.trim(), 'GFIN: เวอร์ชันใบเงื่อนไข G Finn'],
+      [GFIN_SETTINGS_KEYS.sheetEffectiveDate, dto.sheetEffectiveDate, 'GFIN: วันเริ่มใช้ใบเงื่อนไข G Finn'],
     ];
     for (const [key, value, label] of writes) {
       if (value === undefined) continue;

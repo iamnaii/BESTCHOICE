@@ -311,8 +311,8 @@ function OverpriceRuleFormDialog({ initial, onClose, onSaved }: DialogProps) {
               placeholder="ว่าง = ใช้ค่าตั้งต้น"
             />
             <p className="text-xs text-muted-foreground mt-1 leading-snug">
-              ดาวน์ขั้นต่ำที่ GFIN กำหนดให้กลุ่มรุ่นนี้ เช่น iPhone 17 / 18 / Air = 30 · ว่าง = ใช้ "ดาวน์ขั้นต่ำที่ GFIN
-              ตั้งให้ร้าน" ในแท็บค่าตั้งต้น
+              ดาวน์ขั้นต่ำที่ GFIN กำหนดให้กลุ่มรุ่นนี้ เช่น iPhone 17 / 18 / Air มือ 1 = 30 · มือ 2 ใช้ค่าตั้งต้น 25 (เว้นว่าง)
+              · ว่าง = ใช้ "ดาวน์ขั้นต่ำที่ GFIN ตั้งให้ร้าน" ในแท็บค่าตั้งต้น
             </p>
           </div>
         </div>

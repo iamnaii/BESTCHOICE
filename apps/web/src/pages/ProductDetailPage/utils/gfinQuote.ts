@@ -125,7 +125,7 @@ function toRuleRow(r: OverpriceApi): GfinOverpriceRuleRow {
 }
 /**
  * ดาวน์ขั้นต่ำ GFIN ของเครื่องนี้ เป็นเต็มร้อย (30) — กติกา OVER ของรุ่นก่อน ไม่มีแล้วใช้ค่าตั้ง GFIN
- * (สเปค price-master-retire 3.3: iPhone 17 / 18 / Air = 30%) · หมวดที่ไม่รับ / รุ่นไม่อยู่ในใบราคา = ค่าตั้ง
+ * (เงื่อนไข GFIN v6.5: iPhone 17 / 18 / Air มือ 1 = 30% · มือ 2 = ค่าตั้ง 25%) · หมวดที่ไม่รับ / รุ่นไม่อยู่ในใบราคา = ค่าตั้ง
  */
 export function gfinMinDownPctFor(tables: GfinTables, product: GfinQuoteInput['product']): number {
   const category = gfinCategoryOf(product.category);

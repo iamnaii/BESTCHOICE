@@ -113,7 +113,7 @@ function installmentPreview(url: URL) {
   return {
     available: true, months, downAmount: down, financedAmount: total - down,
     monthlyPayment: Math.round(((total - down) * 1.07) / months), totalWithVat: Math.round((total - down) * 1.07),
-    minDownPct: 15, ...(gfin ? { gfinSubmitPrice: total } : {}),
+    minDownPct: 15,
   };
 }
 

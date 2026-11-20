@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { CASH_LABEL, INSTALLMENT_LABEL } from '../../utils/product-price-sync.util';
+import { CASH_LABEL, FINANCE_LABEL, INSTALLMENT_LABEL } from '../../utils/product-price-sync.util';
 
 /**
  * ด่านเดียวของคำถาม "เครื่องนี้เข้า IN_STOCK ได้หรือยัง" + รูป AuditLog ของการเข้าคลัง
@@ -48,19 +48,21 @@ export const ENTER_STOCK_AUDIT_ACTION = 'PRODUCT_RETURNED_TO_STOCK';
 export type EnterStockVia = 'BUTTON' | 'PATCH' | 'PHOTO_COMPLETE';
 
 /**
- * แถว `ProductPrice` เท่าที่ด่านนี้ต้องรู้ — `label`/`isDefault` เป็น optional เพราะ
- * ผู้เรียกบางรายเลือกมาแค่ `{ amount, deletedAt }` (พอสำหรับ `hasSellingPrice`)
+ * แถว `ProductPrice` เท่าที่ด่านนี้ต้องรู้ — `label`/`isDefault` **บังคับ**: `hasSellingPrice`
+ * ต้องแยกแถว "ราคาผ่อนไฟแนนซ์" (สำเนาราคาขาย GFIN) ออก ผู้เรียกที่ `select` แถวราคาเอง
+ * ต้องดึงสองฟิลด์นี้มาด้วย ไม่งั้นไม่ผ่าน type check (fail closed)
  */
 export interface EnterStockPriceRow {
-  label?: string;
+  label: string;
   amount: Prisma.Decimal | string | number;
-  isDefault?: boolean;
+  isDefault: boolean;
   deletedAt?: Date | null;
 }
 
 export interface EnterStockProduct {
   cashPrice?: Prisma.Decimal | string | number | null;
   installmentPrice?: Prisma.Decimal | string | number | null;
+  financePrice?: Prisma.Decimal | string | number | null;
   prices?: EnterStockPriceRow[];
 }
 
@@ -103,12 +105,23 @@ export function hasSellingPrice(product: EnterStockProduct): boolean {
   if (isPositiveAmount(product.cashPrice) || isPositiveAmount(product.installmentPrice)) {
     return true;
   }
-  return liveRows(product).some((r) => isPositiveAmount(r.amount));
+  // แถว "ราคาผ่อนไฟแนนซ์" ที่ไม่ใช่ค่าเริ่มต้นคือสำเนาราคาขาย GFIN — ไม่ใช่ราคาที่ POS ขายได้
+  return liveRows(product).some(
+    (r) => !(r.label === FINANCE_LABEL && !r.isDefault) && isPositiveAmount(r.amount),
+  );
 }
 
 export const NO_PRICE_MESSAGE =
   'ยังไม่ได้ตั้งราคาขายของเครื่องนี้ — ตั้งราคาขาย (เงินสด/ผ่อน) ก่อนจึงจะนำเข้าคลังพร้อมขายได้ ' +
   '(เครื่องที่อยู่ในคลังต้องขายที่ POS ได้ทันที)';
+
+/**
+ * หน้าเพิ่มสินค้า (`POST /products`) สร้างเครื่องเป็น IN_STOCK แต่ไม่มีราคาเงินสด/ผ่อน BESTCHOICE (เช่นกรอกแต่ราคาขาย GFIN)
+ * — ชี้ช่องในฟอร์มเดียวกัน (ข้อความเดียวกับ toast ของหน้าเพิ่มสินค้า)
+ */
+export const CREATE_NO_SELLING_PRICE_MESSAGE =
+  'กรุณากรอกราคาเงินสดหรือราคาผ่อน BESTCHOICE อย่างน้อย 1 ราคา — เครื่องที่เข้าคลังต้องขายที่ POS ได้ทันที ' +
+  '(ราคาขาย GFIN ไม่นับเป็นราคาขาย)';
 
 /** โยน `BadRequestException` เมื่อเครื่องยังไม่มีราคาขาย — ใช้ทุกประตูที่เข้า IN_STOCK */
 export function assertSellableOnEnterStock(product: EnterStockProduct): void {
@@ -179,6 +192,10 @@ export function unconfirmedLeftoverPrices(
     const idx = rows.findIndex((r) => r.label === INSTALLMENT_LABEL);
     if (idx >= 0) overwritten.add(idx);
   }
+  // สเปค 2026-11-19 ข้อ 3.2: ปุ่มนำเข้าคลังตั้งราคาขาย GFIN ใหม่จากราคากลางเสมอ (`syncFinancePriceRow`) ⇒
+  // แถว "ราคาผ่อนไฟแนนซ์" ที่ไม่ใช่ค่าเริ่มต้นถูกระบบทับ/ลบ ไม่ใช่ราคาที่ต้องให้คนยืนยัน
+  const financeIdx = rows.findIndex((r) => r.label === FINANCE_LABEL && !r.isDefault);
+  if (financeIdx >= 0) overwritten.add(financeIdx);
 
   const leftoverIndexes = rows
     .map((r, i) => ({ r, i }))
@@ -251,11 +268,17 @@ export function enterStockAuditData(input: {
   fromStatus: string;
   via: EnterStockVia;
   before: EnterStockProduct;
-  after?: { cashPrice?: Prisma.Decimal | null; installmentPrice?: Prisma.Decimal | null };
+  after?: {
+    cashPrice?: Prisma.Decimal | null;
+    installmentPrice?: Prisma.Decimal | null;
+    /** undefined = ประตูนั้นไม่แตะ (echo ค่าเดิม) · null = ล้างจริง */
+    financePrice?: Prisma.Decimal | null;
+  };
   note?: string | null;
 }) {
   const beforeCash = amountText(input.before.cashPrice);
   const beforeInstallment = amountText(input.before.installmentPrice);
+  const beforeFinance = amountText(input.before.financePrice);
   return {
     userId: input.userId,
     action: ENTER_STOCK_AUDIT_ACTION,
@@ -265,6 +288,7 @@ export function enterStockAuditData(input: {
       status: input.fromStatus,
       cashPrice: beforeCash,
       installmentPrice: beforeInstallment,
+      financePrice: beforeFinance,
     },
     newValue: {
       status: 'IN_STOCK',
@@ -272,6 +296,8 @@ export function enterStockAuditData(input: {
       // ไม่ส่งค่าใหม่มา = ประตูนั้นไม่ได้แตะราคา → ราคาหลังเข้าคลัง = ราคาเดิม
       cashPrice: amountText(input.after?.cashPrice) ?? beforeCash,
       installmentPrice: amountText(input.after?.installmentPrice) ?? beforeInstallment,
+      financePrice:
+        input.after?.financePrice === undefined ? beforeFinance : amountText(input.after.financePrice),
       note: input.note ?? null,
     },
   };

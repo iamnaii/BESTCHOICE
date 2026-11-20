@@ -149,6 +149,7 @@ describe('calcGfinInstallment', () => {
     condition: 'HAND_1',
     allowance: d('500'),
     maxMonths: null,
+    minDownPct: null,
     isActive: true,
   };
   const product: ProductForGfin = {
@@ -175,7 +176,7 @@ describe('calcGfinInstallment', () => {
     expect(r.downDiscount.toFixed(2)).toBe('1500.00'); // max(11500 - 10000, 0)
     expect(r.downPct.toFixed(2)).toBe('0.30');
     expect(r.downAmountByFormula.toFixed(2)).toBe('3450.00'); // 11500 * 0.30
-    expect(r.downAmountActual.toFixed(2)).toBe('1950.00'); // max(3450 - 1500, 0)
+    expect(r.downAmountActual.toFixed(2)).toBe('2000.00'); // max(3450 - 1500, 0) = 1950 → ปัดขึ้นหลักร้อย
     expect(r.financedAmount.toFixed(2)).toBe('8050.00'); // 11500 - 3450
     // 2026-09-11: GFIN ปัดขึ้นเป็นบาท — ceil(0.05 * 8050 = 402.5) = 403 + 50
     expect(r.monthlyPayment.toFixed(2)).toBe('453.00');
@@ -285,6 +286,7 @@ describe('findGfinOverpriceRule', () => {
     seriesPattern: 'iPhone 14 | iPhone 15',
     condition: 'HAND_1',
     allowance: new Decimal('500'),
+    minDownPct: null,
     maxMonths: null,
     isActive: true,
   };

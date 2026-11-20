@@ -43,6 +43,7 @@ import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { isFutureBkkDay, bkkYearMonth } from '../../utils/date.util';
 import { getBranchScope } from '../auth/branch-access.util';
 import { syncPriceRowsFromColumns } from '../../utils/product-price-sync.util';
+import { syncFinancePriceRow, templateFinancePrice, templateKeyOf } from '../../utils/product-finance-price.util';
 import { countPhotoAngles } from '../quality-control/photo-angles.util';
 import {
   assertNoPendingBankRefund,
@@ -1265,16 +1266,19 @@ export class RepossessionsService {
       });
 
       // B0 §2.1: คอลัมน์ราคาเป็นแหล่งจริง — write-through สร้าง/อัปเดตแถว ProductPrice ให้เอง
+      // สเปค 2026-11-19 ข้อ 3.2: ราคาขาย GFIN = ราคากลางของหมวดปัจจุบัน (มือ 2 — เปลี่ยนตอนยึด) · ไม่มี = ล้าง
       const cashPrice = new Prisma.Decimal(resellPrice);
       const installment = new Prisma.Decimal(installmentPrice);
+      const financePrice = await templateFinancePrice(tx, templateKeyOf(repo.product));
       await tx.product.update({
         where: { id: repo.product.id },
-        data: { cashPrice, installmentPrice: installment },
+        data: { cashPrice, installmentPrice: installment, financePrice },
       });
       await syncPriceRowsFromColumns(tx, repo.product.id, {
         cashPrice,
         installmentPrice: installment,
       });
+      await syncFinancePriceRow(tx, repo.product.id, financePrice);
 
       // รูป 6 มุมชุดเก่าใช้ไม่ได้แล้ว — เครื่องต้องถูกถ่ายใหม่ในคิว
       await tx.productPhoto.updateMany({

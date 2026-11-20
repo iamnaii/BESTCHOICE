@@ -5,6 +5,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateStickerTemplateDto, UpdateStickerTemplateDto } from './dto/sticker.dto';
+import { loadTemplateTerms, type TemplateTerms } from '../../utils/pricing-template-terms.util';
 
 /**
  * ข้อมูลเครื่องสำหรับพิมพ์สติกเกอร์ติดเครื่อง — อ่านจาก "ตัวเครื่อง" ล้วน ๆ
@@ -34,7 +35,14 @@ export interface StickerProductData {
   stockInDate: string | null;
   cashPrice: string | null;
   installmentPrice: string | null;
+  /** ราคาขาย GFIN ของเครื่อง — ค่างวดเรท 2 บนดวงคิดจากราคานี้ (ว่าง = ราคาผ่อน) */
+  financePrice: string | null;
   prices: { label: string; amount: string; isDefault: boolean }[];
+  /**
+   * เงื่อนไขผ่อนของราคากลางที่ตรงกับเครื่อง (งวด/ดาวน์ — ไม่มีราคาขาย) · ค่าตั้งต้นของค่างวดบนดวงชุดเดียวกับหน้าราคาและบอท
+   * (ราคาบนดวงยังอ่านจากตัวเครื่องตามคำตัดสิน 2026-09-11) · null = หาราคากลางไม่ได้
+   */
+  templateTerms: TemplateTerms | null;
 }
 
 /** จำนวนเครื่องสูงสุดต่อคำขอ (ตรงกับด่านใน controller) */
@@ -61,6 +69,7 @@ const stickerProductArgs = Prisma.validator<Prisma.ProductDefaultArgs>()({
     stockInDate: true,
     cashPrice: true,
     installmentPrice: true,
+    financePrice: true,
     prices: {
       where: { deletedAt: null },
       orderBy: { createdAt: 'asc' },
@@ -164,10 +173,11 @@ export class StickersService {
         ordered.push(row);
       }
     }
-    return ordered.map((row) => this.toStickerData(row));
+    const terms = await loadTemplateTerms(this.prisma, ordered);
+    return ordered.map((row) => this.toStickerData(row, terms.get(row.id) ?? null));
   }
 
-  private toStickerData(product: StickerProductRow): StickerProductData {
+  private toStickerData(product: StickerProductRow, templateTerms: TemplateTerms | null): StickerProductData {
     return {
       productId: product.id,
       name: product.name,
@@ -190,11 +200,13 @@ export class StickersService {
       cashPrice: product.cashPrice != null ? product.cashPrice.toString() : null,
       installmentPrice:
         product.installmentPrice != null ? product.installmentPrice.toString() : null,
+      financePrice: product.financePrice != null ? product.financePrice.toString() : null,
       prices: product.prices.map((p) => ({
         label: p.label,
         amount: p.amount.toString(),
         isDefault: p.isDefault,
       })),
+      templateTerms,
     };
   }
 

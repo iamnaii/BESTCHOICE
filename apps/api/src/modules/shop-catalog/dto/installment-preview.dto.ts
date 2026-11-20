@@ -8,11 +8,13 @@ export class InstallmentPreviewDto {
   @IsEnum(['BC', 'GFIN'])
   provider!: 'BC' | 'GFIN';
 
+  /** GFIN ไม่ส่ง = งวดตั้งต้นของเครื่อง (งวดเรท 2 ของราคากลาง ไม่มีแล้วเพดานกติกา OVER) · BC ต้องส่ง */
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
   @Max(36)
-  months!: number;
+  months?: number;
 
   @IsOptional()
   @Type(() => Number)

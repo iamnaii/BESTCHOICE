@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { resolveQuotes } from './resolveQuotes';
+import { buildModelQuote } from '@installment/shared';
+import { resolveQuotes, type TemplateTermsJson } from './resolveQuotes';
 import { INITIAL_CALC_STATE } from '../hooks/useInstallmentCalcState';
-import type { GfinTables } from './gfinQuote';
+import { toModelQuoteGfinContext, type GfinTables } from './gfinQuote';
+import { toBcConfig } from './bcQuote';
 
 const bcConfig = {
   minDownPct: 0.15,
@@ -116,5 +118,128 @@ describe('resolveQuotes', () => {
     const r2 = resolveQuotes({ product: samsung, state: INITIAL_CALC_STATE, bcConfig, gfinTables });
     expect(r2.gfinAvailable).toBe(false);
     expect(r2.gfin!.quote.available).toBe(false);
+  });
+
+  it('กติกา OVER ตั้งดาวน์ขั้นต่ำ 30% → ค่าเริ่ม GFIN 30% (สติกเกอร์ใช้ค่าเดียวกัน): 7,200 − 4,100 = 3,100 · 3,112/เดือน', () => {
+    const tables30: GfinTables = { ...gfinTables, rules: [{ ...gfinTables.rules[0], minDownPct: 30 }] };
+    const r = resolveQuotes({ product, state: INITIAL_CALC_STATE, bcConfig, gfinTables: tables30 });
+    expect(r.gfin!.minDownPct).toBe(30);
+    expect(r.gfin!.downPct).toBe(30);
+    if (!r.gfin!.quote.available) throw new Error('expected GFIN quote');
+    expect(r.gfin!.quote.result.downAmountByFormula.toNumber()).toBe(7200);
+    expect(r.gfin!.quote.result.downAmountActual.toNumber()).toBe(3100);
+    expect(r.gfin!.quote.result.monthlyPayment.toNumber()).toBe(3112);
+  });
+
+  it('กติกาไม่ตั้ง → ขั้นต่ำ = ค่าตั้ง 25 · % ที่ผู้ใช้เลือกยังทับค่าเริ่มได้', () => {
+    const r = resolveQuotes({ product, state: INITIAL_CALC_STATE, bcConfig, gfinTables });
+    expect(r.gfin!.minDownPct).toBe(25);
+    const tables30: GfinTables = { ...gfinTables, rules: [{ ...gfinTables.rules[0], minDownPct: 30 }] };
+    const chosen = resolveQuotes({
+      product,
+      state: { ...INITIAL_CALC_STATE, gfin: { months: null, downPct: 40, commissionPct: null } },
+      bcConfig,
+      gfinTables: tables30,
+    });
+    expect(chosen.gfin!.minDownPct).toBe(30);
+    expect(chosen.gfin!.downPct).toBe(40);
+  });
+
+  // สเปค 2026-11-19 ข้อ 3.2 — ราคาขาย GFIN ของเครื่องใช้กับเรท 2 เท่านั้น · ว่าง = ราคาผ่อน (พฤติกรรมเดิม)
+  // ราคาส่ง GFIN = 23,000 + OVER 1,000 = 24,000 · ดาวน์ขั้นต่ำ 25% = 6,000
+  it('financePrice → เรท 2 คิดจากราคาขาย GFIN · เรท 1 ยังคิดจากราคาผ่อน', () => {
+    const r = resolveQuotes({ product: { ...product, financePrice: '21000' }, state: INITIAL_CALC_STATE, bcConfig, gfinTables });
+    expect(r.installmentPrice).toBe(19900);
+    expect(r.gfinSalePrice).toBe(21000);
+    expect(r.hasFinancePrice).toBe(true);
+    expect(r.bc!.downAmount).toBe(3000);
+    // ส่วนลดดาวน์ = 24,000 − 21,000 = 3,000 ⇒ ดาวน์ลูกค้า 6,000 − 3,000 = 3,000
+    expect(r.gfin!.quote.available && r.gfin!.quote.result.downAmountActual.toNumber()).toBe(3000);
+  });
+
+  it('financePrice ว่าง → เรท 2 ใช้ราคาผ่อน BESTCHOICE', () => {
+    const r = resolveQuotes({ product: { ...product, financePrice: null }, state: INITIAL_CALC_STATE, bcConfig, gfinTables });
+    expect(r.gfinSalePrice).toBe(19900);
+    expect(r.hasFinancePrice).toBe(false);
+    // ส่วนลดดาวน์ = 24,000 − 19,900 = 4,100 ⇒ 6,000 − 4,100 = 1,900
+    expect(r.gfin!.quote.available && r.gfin!.quote.result.downAmountActual.toNumber()).toBe(1900);
+  });
+
+  // final review C1 I1 — ตัวเลขเดียวกันทุกที่: สติกเกอร์ / เครื่องคำนวณ / สรุปส่งลูกค้าเริ่มจากเงื่อนไขของราคากลาง
+  // ชุดเดียวกับการ์ดหน้าเพิ่มสินค้า · หน้า "ราคาและเรทผ่อน" · บอท (`buildModelQuote`)
+  describe('ค่าตั้งต้นจากราคากลางของเครื่อง (templateTerms)', () => {
+    const tables15: GfinTables = { ...gfinTables, rules: [{ ...gfinTables.rules[0], maxMonths: 15 }] };
+    const thai = { ...product, deviceOrigin: 'THAI' as const };
+    const NO_TERMS: TemplateTermsJson = { bcPrice: '19900', rate1TermMonths: null, rate1DownPayment: null, rate2TermMonths: null };
+    const modelQuote = (terms: TemplateTermsJson, bcPrice = 19900) =>
+      buildModelQuote({
+        product: { brand: 'Apple', model: 'iPhone 15', storage: '128GB', category: 'PHONE_NEW' },
+        deviceOrigin: 'THAI',
+        cashPrice: 19900,
+        bcPrice,
+        financePrice: null,
+        rate1TermMonths: terms.rate1TermMonths,
+        rate1DownPayment: Number(terms.bcPrice) === bcPrice && terms.rate1DownPayment != null ? Number(terms.rate1DownPayment) : null,
+        rate2TermMonths: terms.rate2TermMonths,
+        bcConfig: toBcConfig(bcConfig),
+        gfin: toModelQuoteGfinContext(tables15, 'PHONE_NEW'),
+      });
+
+    it('ไม่ตั้งงวดเรท 2 → งวดสูงสุดของกติกา OVER (15) ไม่ใช่ 12 · เท่าตัวคำนวณกลาง', () => {
+      const r = resolveQuotes({ product: { ...thai, templateTerms: NO_TERMS }, state: INITIAL_CALC_STATE, bcConfig, gfinTables: tables15 });
+      const m = modelQuote(NO_TERMS);
+      if (!m.rate2.available || !r.gfin!.quote.available) throw new Error('expected GFIN quote');
+      expect(r.gfin!.months).toBe(15);
+      expect(m.rate2.months).toBe(15);
+      expect(r.gfin!.quote.result.monthlyPayment.toNumber()).toBe(m.rate2.monthly);
+      expect(r.gfin!.quote.result.downAmountActual.toNumber()).toBe(m.rate2.downAmount);
+    });
+
+    it('ไม่มีราคากลางเลย → งวดเรท 2 ก็ใช้งวดสูงสุดของกติกา OVER เหมือนกัน', () => {
+      const r = resolveQuotes({ product: thai, state: INITIAL_CALC_STATE, bcConfig, gfinTables: tables15 });
+      expect(r.gfin!.months).toBe(15);
+    });
+
+    it('ราคากลางตั้งงวด/ดาวน์เรท 1 และงวดเรท 2 → ใช้ค่าของราคากลาง · เท่าตัวคำนวณกลาง', () => {
+      const terms: TemplateTermsJson = { bcPrice: '19900.00', rate1TermMonths: 10, rate1DownPayment: '5000.00', rate2TermMonths: 12 };
+      const r = resolveQuotes({ product: { ...thai, templateTerms: terms }, state: INITIAL_CALC_STATE, bcConfig, gfinTables: tables15 });
+      const m = modelQuote(terms);
+      expect(r.bc!.months).toBe(10);
+      expect(r.bc!.downAmount).toBe(5000);
+      expect(r.bc!.minDownAmount).toBe(3000);
+      expect(m.rate1!.months).toBe(10);
+      expect(m.rate1!.downAmount).toBe(5000);
+      expect(r.bc!.quote.result.monthlyPayment.toNumber()).toBe(m.rate1!.monthlyContract);
+      expect(r.gfin!.months).toBe(12);
+    });
+
+    it('ราคาผ่อนของเครื่องต่างจากราคากลาง → ดาวน์เรท 1 กลับเป็นขั้นต่ำ (กติกาเดียวกับการ์ดหน้าเพิ่มสินค้า) · งวดยังตามราคากลาง', () => {
+      const terms: TemplateTermsJson = { bcPrice: '21900', rate1TermMonths: 10, rate1DownPayment: '5000', rate2TermMonths: null };
+      const r = resolveQuotes({ product: { ...thai, templateTerms: terms }, state: INITIAL_CALC_STATE, bcConfig, gfinTables: tables15 });
+      const m = modelQuote(terms);
+      expect(r.bc!.downAmount).toBe(3000);
+      expect(m.rate1!.downAmount).toBe(3000);
+      expect(r.bc!.months).toBe(10);
+    });
+
+    it('งวดเรท 1 ของราคากลางไม่อยู่ในตั้งค่าดอกเบี้ย → 12 (กติกาเดียวกับตัวคำนวณกลาง)', () => {
+      const terms: TemplateTermsJson = { ...NO_TERMS, rate1TermMonths: 9 };
+      const r = resolveQuotes({ product: { ...thai, templateTerms: terms }, state: INITIAL_CALC_STATE, bcConfig, gfinTables: tables15 });
+      expect(r.bc!.months).toBe(12);
+      expect(modelQuote(terms).rate1!.months).toBe(12);
+    });
+
+    it('ค่าที่ผู้ใช้เลือกในเครื่องคำนวณยังทับค่าของราคากลางได้', () => {
+      const terms: TemplateTermsJson = { bcPrice: '19900', rate1TermMonths: 10, rate1DownPayment: '5000', rate2TermMonths: 12 };
+      const r = resolveQuotes({
+        product: { ...thai, templateTerms: terms },
+        state: { fin: 'bc', bc: { months: 12, downAmount: 4000 }, gfin: { months: 10, downPct: null, commissionPct: null } },
+        bcConfig,
+        gfinTables: tables15,
+      });
+      expect(r.bc!.months).toBe(12);
+      expect(r.bc!.downAmount).toBe(4000);
+      expect(r.gfin!.months).toBe(10);
+    });
   });
 });

@@ -10,9 +10,21 @@ import PageHeader from '@/components/ui/PageHeader';
 import Modal from '@/components/ui/Modal';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { FinancePriceBackfillButton } from './pricing-templates/FinancePriceBackfillButton';
 import { Card, CardContent } from '@/components/ui/card';
 import { formControlClass } from '@/components/ui/form-styles';
 import { cn } from '@/lib/utils';
+import { ImportReviewDialog } from '@/components/import/ImportReviewDialog';
+import { ImportBatchError } from '@/utils/excel-cell.util';
+import {
+  PRICING_IMPORT_HEADERS,
+  buildPricingImportReview,
+  existingPricingLabel,
+  sendPricingImport,
+  type ExistingPricingTemplate,
+  type PricingImportItem,
+  type PricingImportReview,
+} from './pricing-templates/pricingTemplateImport';
 
 interface PricingTemplate {
   deviceOrigin?: string;
@@ -26,7 +38,7 @@ interface PricingTemplate {
   installmentBestchoicePrice: string;
   installmentFinancePrice: string;
   isActive: boolean;
-  rate1DownPayment: number | null;
+  rate1DownPayment: string | number | null;
   rate1TermMonths: number | null;
   rate2DownPayment: number | null;
   rate2TermMonths: number | null;
@@ -64,6 +76,8 @@ export default function PricingTemplatesPage() {
   const [filterDeviceOrigin, setFilterDeviceOrigin] = useState('');
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [review, setReview] = useState<PricingImportReview | null>(null);
+  const [importProgress, setImportProgress] = useState<string | null>(null);
 
   const { data: templates = [], isLoading, isError, error, refetch } = useQuery<PricingTemplate[]>({
     queryKey: ['pricing-templates', filterCategory, filterBrand, filterDeviceOrigin],
@@ -94,7 +108,6 @@ export default function PricingTemplatesPage() {
           installmentFinancePrice: payload.installmentFinancePrice,
           rate1DownPayment: form.rate1DownPayment ?? null,
           rate1TermMonths: form.rate1TermMonths ?? null,
-          rate2DownPayment: form.rate2DownPayment ?? null,
           rate2TermMonths: form.rate2TermMonths ?? null,
         });
         return data;
@@ -120,19 +133,24 @@ export default function PricingTemplatesPage() {
   });
 
   const importMutation = useMutation({
-    mutationFn: async (items: { brand: string; model: string; storage?: string; category: string; hasWarranty?: boolean; cashPrice: number; installmentBestchoicePrice: number; installmentFinancePrice: number }[]) => {
-      const { data } = await api.post('/pricing-templates/import', { items });
-      return data;
-    },
-    onSuccess: (data: { success: number; skipped: number; errors: string[] }) => {
+    mutationFn: ({ items, deactivateIds }: { items: PricingImportItem[]; deactivateIds: string[] }) =>
+      sendPricingImport(
+        async (body) => (await api.post('/pricing-templates/import', body)).data,
+        items,
+        deactivateIds,
+        (done, total) => setImportProgress(`กำลังนำเข้า ชุด ${done}/${total}`),
+        getErrorMessage,
+      ),
+    onSuccess: ({ saved, deactivated }) => {
       queryClient.invalidateQueries({ queryKey: ['pricing-templates'] });
-      if (data.errors.length > 0) {
-        toast.success(`นำเข้าสำเร็จ ${data.success} รายการ, ข้ามไป ${data.skipped} รายการ`);
-      } else {
-        toast.success(`นำเข้าสำเร็จทั้งหมด ${data.success} รายการ`);
-      }
+      toast.success(deactivated > 0 ? `นำเข้าแล้ว ${saved} แถว · ปิด ${deactivated} แถว` : `นำเข้าแล้ว ${saved} แถว`);
+      setReview(null);
     },
-    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+    onError: (err: unknown) => {
+      queryClient.invalidateQueries({ queryKey: ['pricing-templates'] });
+      toast.error(err instanceof ImportBatchError ? err.message : getErrorMessage(err));
+    },
+    onSettled: () => setImportProgress(null),
   });
 
   const downloadTemplate = async () => {
@@ -140,44 +158,43 @@ export default function PricingTemplatesPage() {
     const ExcelJS = (await import('exceljs')).default;
     const wb = new ExcelJS.Workbook();
 
-    // Data sheet
     const ws = wb.addWorksheet('ราคาตั้งต้น');
-    ws.columns = [
-      { header: 'ยี่ห้อ', key: 'brand', width: 12 },
-      { header: 'รุ่น', key: 'model', width: 18 },
-      { header: 'ความจุ', key: 'storage', width: 10 },
-      { header: 'เครื่องไทย/นอก', key: 'deviceOrigin', width: 16 },
-      { header: 'ประเภท', key: 'category', width: 10 },
-      { header: 'ประกัน', key: 'warranty', width: 14 },
-      { header: 'ราคาเงินสด', key: 'cash', width: 14 },
-      { header: 'ราคาผ่อน BESTCHOICE', key: 'bestchoice', width: 20 },
-      { header: 'ราคาผ่อนไฟแนนซ์', key: 'finance', width: 18 },
-    ];
+    ws.columns = PRICING_IMPORT_HEADERS.map((header) => ({ header, key: header, width: Math.max(10, header.length + 4) }));
+    const sample = (
+      model: string, storage: string, category: string, warranty: string,
+      cash: number, bc: number, finance: number, term1: number, down1: number | null, term2: number | null,
+    ) => ({
+      'ยี่ห้อ': 'Apple', 'รุ่น': model, 'ความจุ': storage, 'เครื่องไทย/นอก': '', 'ประเภท': category, 'ประกัน': warranty,
+      'ราคาเงินสด': cash, 'ราคาผ่อน BESTCHOICE (ราคาเต็ม)': bc, 'ราคาขาย GFIN (ราคาเต็ม)': finance,
+      'งวดเรท 1': term1, 'ดาวน์เรท 1': down1, 'งวดเรท 2': term2,
+    });
     ws.addRows([
-      { brand: 'Apple', model: 'iPhone 15', storage: '128GB', category: 'มือ 1', warranty: '', cash: 25000, bestchoice: 27000, finance: 26000 },
-      { brand: 'Apple', model: 'iPhone 15', storage: '128GB', category: 'มือ 2', warranty: 'มีประกัน', cash: 18000, bestchoice: 20000, finance: 19000 },
-      { brand: 'Apple', model: 'iPhone 15', storage: '128GB', category: 'มือ 2', warranty: 'ไม่มีประกัน', cash: 16000, bestchoice: 18000, finance: 17000 },
-      { brand: 'Samsung', model: 'Galaxy S24', storage: '256GB', category: 'มือ 1', warranty: '', cash: 28000, bestchoice: 30000, finance: 29000 },
+      sample('iPhone 15', '128GB', 'มือ 1', '', 25900, 25900, 25900, 12, null, null),
+      sample('iPhone 18 Pro', '256GB', 'มือ 1', '', 48900, 48900, 48900, 12, 18000, 15),
+      sample('iPhone 13', '128GB', 'มือ 2', 'มีประกัน', 12500, 10200, 9600, 12, null, null),
+      sample('iPhone 13', '128GB', 'มือ 2', 'ไม่มีประกัน', 12500, 10200, 9600, 12, null, null),
     ]);
 
-    // Instruction sheet
     const wsInstr = wb.addWorksheet('คำอธิบาย');
-    wsInstr.columns = [{ width: 22 }, { width: 60 }];
+    wsInstr.columns = [{ width: 30 }, { width: 70 }];
     wsInstr.addRows([
       ['คำอธิบายคอลัมน์', ''],
-      ['ยี่ห้อ', 'ชื่อยี่ห้อ เช่น Apple, Samsung, OPPO'],
-      ['รุ่น', 'ชื่อรุ่น เช่น iPhone 15, Galaxy S24'],
-      ['ความจุ', 'เว้นว่างได้ เช่น 128GB, 256GB'],
-      ['เครื่องไทย/นอก', 'เครื่องไทย หรือ เครื่องนอก; เว้นว่าง = ยังไม่ระบุ (ราคาแยกกัน)'],
+      ['ยี่ห้อ', 'ชื่อยี่ห้อ เช่น Apple'],
+      ['รุ่น', 'ชื่อรุ่นให้ตรงรายชื่อรุ่นในโปรแกรม เช่น iPhone 15 Pro Max'],
+      ['ความจุ', 'เช่น 128GB, 1TB · เว้นว่าง = ทุกความจุ'],
+      ['เครื่องไทย/นอก', 'เครื่องไทย หรือ เครื่องนอก · เว้นว่าง = ไม่ระบุ (ใช้เมื่อไม่มีแถวของเครื่องไทย/นอก)'],
       ['ประเภท', '"มือ 1" หรือ "มือ 2"'],
-      ['ประกัน', 'สำหรับมือ 2: "มีประกัน" หรือ "ไม่มีประกัน" (มือ 1 เว้นว่าง)'],
-      ['ราคาเงินสด', 'ตัวเลข เช่น 25000'],
-      ['ราคาผ่อน BESTCHOICE', 'ตัวเลข เช่น 27000'],
-      ['ราคาผ่อนไฟแนนซ์', 'ตัวเลข เช่น 26000'],
+      ['ประกัน', 'มือ 2: "มีประกัน" หรือ "ไม่มีประกัน" · มือ 1 เว้นว่าง'],
+      ['ราคาเงินสด', 'ตัวเลข'],
+      ['ราคาผ่อน BESTCHOICE (ราคาเต็ม)', 'ราคาเต็มที่ใช้คิดผ่อนกับร้าน (ไม่ใช่ค่างวด)'],
+      ['ราคาขาย GFIN (ราคาเต็ม)', 'ราคาขายเมื่อผ่อนกับ GFIN (ไม่ใช่ค่างวด)'],
+      ['งวดเรท 1', 'จำนวนงวดผ่อนกับร้าน · เว้นว่าง = 12 งวด (ถ้าตั้งค่าดอกเบี้ยไม่มี 12 ใช้งวดแรกที่มี)'],
+      ['ดาวน์เรท 1', 'ดาวน์ผ่อนกับร้านเป็นบาท · เว้นว่าง = ดาวน์ขั้นต่ำปัดขึ้นหลักร้อย'],
+      ['งวดเรท 2', 'จำนวนงวด GFIN · เว้นว่าง = งวดสูงสุดตามกติกา OVER'],
       [],
       ['หมายเหตุ', ''],
-      ['- หากมีข้อมูลซ้ำ (ยี่ห้อ+รุ่น+ความจุ+ประเภท+ประกัน+เครื่องไทย/นอก) จะอัปเดตราคาทับ', ''],
-      ['- มือ 2 ต้องระบุว่า "มีประกัน" หรือ "ไม่มีประกัน"', ''],
+      ['- แถวที่ ยี่ห้อ+รุ่น+ความจุ+ประเภท+ประกัน+เครื่องไทย/นอก ตรงกับของเดิม จะแก้ทับ (ช่องที่เว้นว่างจะถูกล้าง)', ''],
+      ['- ก่อนบันทึกจะมีหน้าตรวจ: เพิ่ม / แก้ / ข้าม พร้อมเหตุผล', ''],
     ]);
 
     const buffer = await wb.xlsx.writeBuffer();
@@ -189,46 +206,28 @@ export default function PricingTemplatesPage() {
     if (!file) return;
     if (fileInputRef.current) fileInputRef.current.value = '';
 
+    let rows: Record<string, unknown>[];
     try {
-      const rows = await importFromExcel(file);
-      if (rows.length === 0) {
-        toast.error('ไฟล์ไม่มีข้อมูล');
-        return;
-      }
-
-      const items = rows.map((row) => {
-        const originRaw = String(row['เครื่องไทย/นอก'] || '').trim();
-        const origins: Record<string, string> = { '': 'UNSPECIFIED', 'ยังไม่ระบุ': 'UNSPECIFIED', 'เครื่องไทย': 'THAI', 'เครื่องนอก': 'IMPORTED', THAI: 'THAI', IMPORTED: 'IMPORTED', UNSPECIFIED: 'UNSPECIFIED' };
-        if (!(originRaw in origins)) throw new Error('เครื่องไทย/นอกไม่ถูกต้อง');
-        const categoryRaw = String(row['ประเภท'] || '').trim();
-        const category = categoryRaw === 'มือ 2' ? 'PHONE_USED' : 'PHONE_NEW';
-        const warrantyRaw = String(row['ประกัน'] || '').trim();
-        let hasWarranty = false;
-        if (category === 'PHONE_USED') {
-          hasWarranty = warrantyRaw === 'มีประกัน';
-        }
-        return {
-          brand: String(row['ยี่ห้อ'] || '').trim(),
-          deviceOrigin: origins[originRaw],
-          model: String(row['รุ่น'] || '').trim(),
-          storage: String(row['ความจุ'] || '').trim() || undefined,
-          category,
-          hasWarranty,
-          cashPrice: Number(row['ราคาเงินสด']) || 0,
-          installmentBestchoicePrice: Number(row['ราคาผ่อน BESTCHOICE']) || 0,
-          installmentFinancePrice: Number(row['ราคาผ่อนไฟแนนซ์']) || 0,
-        };
-      }).filter((item) => item.brand && item.model && item.cashPrice > 0);
-
-      if (items.length === 0) {
+      rows = await importFromExcel(file);
+    } catch {
+      toast.error('ไม่สามารถอ่านไฟล์ได้ กรุณาใช้ไฟล์ .xlsx');
+      return;
+    }
+    if (rows.length === 0) {
+      toast.error('ไฟล์ไม่มีข้อมูล');
+      return;
+    }
+    try {
+      // เทียบกับแถวที่เปิดใช้อยู่ทั้งหมด (ไม่ใช้ตัวกรองของหน้า)
+      const { data: current } = await api.get<ExistingPricingTemplate[]>('/pricing-templates');
+      const next = buildPricingImportReview(rows, current);
+      if (next.rows.length === 0) {
         toast.error('ไม่พบข้อมูลที่ถูกต้อง กรุณาตรวจสอบหัวคอลัมน์');
         return;
       }
-
-      toast.success(`พบ ${items.length} รายการ กำลังนำเข้า...`);
-      importMutation.mutate(items);
-    } catch {
-      toast.error('ไม่สามารถอ่านไฟล์ได้ กรุณาใช้ไฟล์ .xlsx');
+      setReview(next);
+    } catch (err) {
+      toast.error(getErrorMessage(err));
     }
   };
 
@@ -250,7 +249,7 @@ export default function PricingTemplatesPage() {
       cashPrice: t.cashPrice,
       installmentBestchoicePrice: t.installmentBestchoicePrice,
       installmentFinancePrice: t.installmentFinancePrice,
-      rate1DownPayment: t.rate1DownPayment ?? undefined,
+      rate1DownPayment: t.rate1DownPayment != null ? Number(t.rate1DownPayment) : undefined,
       rate1TermMonths: t.rate1TermMonths ?? undefined,
       rate2DownPayment: t.rate2DownPayment ?? undefined,
       rate2TermMonths: t.rate2TermMonths ?? undefined,
@@ -279,9 +278,10 @@ export default function PricingTemplatesPage() {
     <div>
       <PageHeader
         title="ราคาตั้งต้น"
-        subtitle="กำหนดราคาเงินสด / ผ่อน BESTCHOICE / ผ่อนไฟแนนซ์ ตามรุ่นสินค้า"
+        subtitle="ราคาเงินสด / ราคาผ่อน BESTCHOICE / ราคาขาย GFIN (ราคาเต็มทั้งสองช่อง) และงวด/ดาวน์ ตามรุ่นสินค้า"
         action={
           <div className="flex flex-wrap gap-2">
+            <FinancePriceBackfillButton />
             <button data-ui-control="button"
               onClick={downloadTemplate}
               className="px-3 py-2 text-sm whitespace-nowrap text-muted-foreground border border-input rounded-lg hover:bg-muted/50"
@@ -350,8 +350,9 @@ export default function PricingTemplatesPage() {
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">ความจุ</th>
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground">ประเภท</th>
                   <th className="text-right px-4 py-3 font-medium text-muted-foreground">เงินสด</th>
-                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">ผ่อน BESTCHOICE</th>
-                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">ผ่อนไฟแนนซ์</th>
+                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">ราคาผ่อน BESTCHOICE (ราคาเต็ม)</th>
+                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">ราคาขาย GFIN (ราคาเต็ม)</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">งวด / ดาวน์</th>
                   <th className="text-right px-4 py-3 font-medium text-muted-foreground"></th>
                 </tr>
               </thead>
@@ -380,6 +381,13 @@ export default function PricingTemplatesPage() {
                     <td className="px-4 py-3 text-right font-medium tabular-nums">{fmt(t.cashPrice)} ฿</td>
                     <td className="px-4 py-3 text-right font-medium tabular-nums">{fmt(t.installmentBestchoicePrice)} ฿</td>
                     <td className="px-4 py-3 text-right font-medium tabular-nums">{fmt(t.installmentFinancePrice)} ฿</td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground leading-snug">
+                      <div>
+                        เรท 1: {t.rate1TermMonths ? `${t.rate1TermMonths} งวด` : 'งวดตั้งต้น'} ·{' '}
+                        {t.rate1DownPayment != null ? `ดาวน์ ${fmt(String(t.rate1DownPayment))}` : 'ดาวน์ขั้นต่ำ'}
+                      </div>
+                      <div>เรท 2: {t.rate2TermMonths ? `${t.rate2TermMonths} งวด` : 'งวดสูงสุดของ GFIN'}</div>
+                    </td>
                     <td className="px-4 py-3 text-right">
                       <button onClick={() => openEdit(t)} className="text-xs text-primary hover:underline mr-2">แก้ไข</button>
                       <button
@@ -505,7 +513,7 @@ export default function PricingTemplatesPage() {
                 />
               </div>
               <div>
-                <label htmlFor={`${uiFieldId}-6`} className="block text-sm font-medium text-foreground mb-1">ราคาผ่อน BESTCHOICE (บาท) *</label>
+                <label htmlFor={`${uiFieldId}-6`} className="block text-sm font-medium text-foreground mb-1">ราคาผ่อน BESTCHOICE (ราคาเต็ม, บาท) *</label>
                 <NumberInput unstyled id={`${uiFieldId}-6`}
                   value={form.installmentBestchoicePrice}
                   onChange={(e) => setForm((f) => ({ ...f, installmentBestchoicePrice: e.target.value }))}
@@ -514,7 +522,7 @@ export default function PricingTemplatesPage() {
                 />
               </div>
               <div>
-                <label htmlFor={`${uiFieldId}-7`} className="block text-sm font-medium text-foreground mb-1">ราคาผ่อนไฟแนนซ์ (บาท) *</label>
+                <label htmlFor={`${uiFieldId}-7`} className="block text-sm font-medium text-foreground mb-1">ราคาขาย GFIN (ราคาเต็ม, บาท) *</label>
                 <NumberInput unstyled id={`${uiFieldId}-7`}
                   value={form.installmentFinancePrice}
                   onChange={(e) => setForm((f) => ({ ...f, installmentFinancePrice: e.target.value }))}
@@ -526,11 +534,11 @@ export default function PricingTemplatesPage() {
 
             <div className="mt-4 pt-4 border-t border-border/40">
               <h3 className="text-sm font-medium text-muted-foreground mb-3">
-                ดาวน์ + จำนวนเดือน (เว้นว่าง = ใช้ค่าเริ่มต้นจาก Settings)
+                งวด / ดาวน์ของรุ่นนี้ (เว้นว่าง = ใช้กติกาตั้งต้น)
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor={`${uiFieldId}-8`} className="block text-sm font-medium text-foreground mb-1">ดาวน์เรทที่ 1 (บาท)</label>
+                  <label htmlFor={`${uiFieldId}-8`} className="block text-sm font-medium text-foreground mb-1">ดาวน์เรท 1 (บาท · ว่าง = ขั้นต่ำปัดขึ้นหลักร้อย)</label>
                   <NumberInput unstyled id={`${uiFieldId}-8`}
                     min={0}
                     value={form.rate1DownPayment ?? ''}
@@ -539,7 +547,7 @@ export default function PricingTemplatesPage() {
                   />
                 </div>
                 <div>
-                  <label htmlFor={`${uiFieldId}-9`} className="block text-sm font-medium text-foreground mb-1">จำนวนเดือนเรทที่ 1</label>
+                  <label htmlFor={`${uiFieldId}-9`} className="block text-sm font-medium text-foreground mb-1">งวดเรท 1 (ว่าง = 12 งวด)</label>
                   <NumberInput unstyled id={`${uiFieldId}-9`}
                     min={1}
                     value={form.rate1TermMonths ?? ''}
@@ -548,16 +556,7 @@ export default function PricingTemplatesPage() {
                   />
                 </div>
                 <div>
-                  <label htmlFor={`${uiFieldId}-10`} className="block text-sm font-medium text-foreground mb-1">ดาวน์เรทที่ 2 (บาท)</label>
-                  <NumberInput unstyled id={`${uiFieldId}-10`}
-                    min={0}
-                    value={form.rate2DownPayment ?? ''}
-                    onChange={(e) => setForm((f) => ({ ...f, rate2DownPayment: e.target.value === '' ? undefined : Number(e.target.value) }))}
-                    className="w-full px-3 py-2 border border-input rounded-lg text-sm"
-                  />
-                </div>
-                <div>
-                  <label htmlFor={`${uiFieldId}-11`} className="block text-sm font-medium text-foreground mb-1">จำนวนเดือนเรทที่ 2</label>
+                  <label htmlFor={`${uiFieldId}-11`} className="block text-sm font-medium text-foreground mb-1">งวดเรท 2 (ว่าง = งวดสูงสุดของ GFIN)</label>
                   <NumberInput unstyled id={`${uiFieldId}-11`}
                     min={1}
                     value={form.rate2TermMonths ?? ''}
@@ -581,6 +580,24 @@ export default function PricingTemplatesPage() {
           </div>
         </Modal>
       )}
+      {review && (
+        <ImportReviewDialog
+          title="ตรวจไฟล์ราคากลางก่อนนำเข้า"
+          rows={review.rows}
+          deactivateCount={review.missingActive.length}
+          deactivateRows={review.missingActive.map((t) => ({ label: existingPricingLabel(t) }))}
+          pending={importMutation.isPending}
+          progress={importProgress}
+          onCancel={() => setReview(null)}
+          onConfirm={({ deactivateMissing }) =>
+            importMutation.mutate({
+              items: review.toSend,
+              deactivateIds: deactivateMissing ? review.missingActive.map((t) => t.id) : [],
+            })
+          }
+        />
+      )}
+
       <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))} description={confirmDialog.message} variant="destructive" onConfirm={confirmDialog.action} />
     </div>
   );

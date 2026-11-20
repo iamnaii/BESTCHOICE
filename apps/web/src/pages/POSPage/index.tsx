@@ -24,6 +24,7 @@ import type { Product, Customer } from './types';
 import SaleDoneDialog, { type DoneSale } from './components/SaleDoneDialog';
 import {
   CASH_LABEL,
+  FINANCE_LABEL,
   INSTALLMENT_LABEL,
   getPositiveDisplayPrices,
   normalizePositive,
@@ -53,7 +54,7 @@ function defaultPrice(product: Product, saleType: SaleType) {
   const matchingRows = product.prices.filter((price) => normalizePositive(price.amount) === amount);
   const matching =
     matchingRows.find((price) => price.label === label) ??
-    matchingRows.find((price) => price.label.startsWith(prefix));
+    matchingRows.find((price) => price.label.startsWith(prefix) && price.label !== FINANCE_LABEL);
   return { amount, priceId: matching?.id ?? '' };
 }
 

@@ -33,6 +33,7 @@ interface StockFixture {
   model: string;
   storage: string;
   category?: string;
+  deviceOrigin?: string | null;
   color?: string | null;
   batteryHealth?: number | null;
   gallery?: string[];
@@ -108,12 +109,12 @@ describe('RecommendDevicesTool.run', () => {
 
   it('(1b) condition มาจาก category ไม่ใช่ hasWarranty — PHONE_NEW = มือ 1, มือสองมีประกัน = มือสอง', async () => {
     const { tool } = build([
-      tpl({ model: 'iPhone 16', category: 'PHONE_NEW', hasWarranty: false }),
+      tpl({ model: 'iPhone 16', category: 'PHONE_NEW', hasWarranty: null }),
       tpl({ model: 'iPhone 15', category: 'PHONE_USED', hasWarranty: true }),
     ]);
     const r = await tool.run({ downBudget: 99_999, monthlyBudget: 99_999 });
     expect(r.recommended.map((d) => [d.model, d.condition, d.hasWarranty])).toEqual([
-      ['iPhone 16', 'มือ 1', false],
+      ['iPhone 16', 'มือ 1', null],
       ['iPhone 15', 'มือสอง', true],
     ]);
   });
@@ -142,6 +143,20 @@ describe('RecommendDevicesTool.run', () => {
     expect(r.recommended).toEqual([]);
     expect(r.nearMiss).toEqual([]);
     expect(r.reason).toBe('ไม่มีรุ่นที่ใหม่กว่า iPhone 15 Pro Max ในตารางราคา');
+  });
+
+  it('เครื่องนอกไม่ถูกนับ/ไม่เป็น sampleUnit ของใบเสนอราคาเครื่องไทย · เครื่องไทย/ไม่ระบุ/null นับ', async () => {
+    const { tool } = build([tpl({ model: 'iPhone 13' })], {
+      products: [
+        stock({ id: 'imp', model: 'iPhone 13', storage: '128GB', batteryHealth: 99, deviceOrigin: 'IMPORTED' }),
+        stock({ id: 'thai', model: 'iPhone 13', storage: '128GB', batteryHealth: 90, deviceOrigin: 'THAI' }),
+        stock({ id: 'unspec', model: 'iPhone 13', storage: '128GB', batteryHealth: 80, deviceOrigin: 'UNSPECIFIED' }),
+        stock({ id: 'nul', model: 'iPhone 13', storage: '128GB', batteryHealth: 70, deviceOrigin: null }),
+      ],
+    });
+    const r = await tool.run({ currentModel: 'iPhone 11', downBudget: 99_999, monthlyBudget: 99_999 });
+    expect(r.recommended[0].unitCount).toBe(3);
+    expect(r.recommended[0].sampleUnit?.productId).toBe('thai');
   });
 
   it('(3) inStock เรียงก่อน generation: 13 ที่มีของชนะ 14 ที่ไม่มี + sampleUnit = แบตสูงสุด + where เหมือน search_products', async () => {
@@ -365,5 +380,25 @@ describe('RecommendDevicesTool — โหมดไม่มีสต๊อก (�
     expect(JSON.stringify(s)).not.toContain('ม่วงพาสเทล');
     expect(JSON.stringify(s)).not.toContain('https://cdn/x.jpg');
     expect(raw.recommended[0].sampleUnit).toBeDefined(); // ต้นฉบับไม่ถูกแก้
+  });
+  it('เรท 2 ใช้ไม่ได้ (GFIN ไม่รับ) → พิจารณาเฉพาะเรท 1', async () => {
+    const { tool } = build([
+      tpl({
+        model: 'iPhone 13',
+        rate1: { downPayment: 1600, monthlyPrice: 1227, termMonths: 12 },
+        rate2: null,
+        rate2Unavailable: 'GFIN ไม่รับรุ่นนี้',
+      }),
+    ]);
+    const r = await tool.run({ downBudget: 2000, monthlyBudget: 1300 });
+    expect(r.recommended).toHaveLength(1);
+    expect(r.recommended[0]).toMatchObject({ rateLabel: 'เรทที่ 1', monthlyPrice: 1227 });
+  });
+
+  it('แถวที่คิดไม่ได้ทั้งสองเรท → ไม่ถูกแนะนำและไม่ทำให้ล้ม', async () => {
+    const { tool } = build([tpl({ model: 'iPhone 13', rate1: null, rate2: null })]);
+    const r = await tool.run({ downBudget: 5000, monthlyBudget: 5000 });
+    expect(r.recommended).toEqual([]);
+    expect(r.nearMiss).toEqual([]);
   });
 });

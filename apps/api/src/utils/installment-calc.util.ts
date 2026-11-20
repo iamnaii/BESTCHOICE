@@ -4,4 +4,5 @@ export {
   calcGfinInstallment,
   findGfinMapping,
   findGfinOverpriceRule,
+  resolveGfinDownPct,
 } from '@installment/shared';

@@ -35,6 +35,14 @@ export class CreateOverpriceRuleDto {
   @Max(36)
   maxMonths?: number | null;
 
+  /** ดาวน์ขั้นต่ำ % ของกลุ่มรุ่นนี้ (เต็มร้อย) — null/ไม่ส่ง = ใช้ค่าตั้ง gfin.minDownPct · ช่วงเดียวกับค่าตั้ง (0–80) */
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsInt()
+  @Min(0)
+  @Max(80)
+  minDownPct?: number | null;
+
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
@@ -65,6 +73,14 @@ export class UpdateOverpriceRuleDto {
   @Min(1)
   @Max(36)
   maxMonths?: number | null;
+
+  /** ดาวน์ขั้นต่ำ % ของกลุ่มรุ่นนี้ (เต็มร้อย) — null/ไม่ส่ง = ใช้ค่าตั้ง gfin.minDownPct · ช่วงเดียวกับค่าตั้ง (0–80) */
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsInt()
+  @Min(0)
+  @Max(80)
+  minDownPct?: number | null;
 
   @IsOptional()
   @IsBoolean()

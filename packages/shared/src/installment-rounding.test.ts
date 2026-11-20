@@ -2,6 +2,7 @@ import Decimal from 'decimal.js';
 import { describe, it, expect } from 'vitest';
 import {
   DOWN_PAYMENT_STEP,
+  displayInstallment,
   downFromPct,
   minDownAmountFromPct,
   roundUpToStep,
@@ -58,5 +59,19 @@ describe('minDownAmountFromPct', () => {
   it('รับ/คืนเป็น number สำหรับหน้าเว็บ', () => {
     expect(minDownAmountFromPct(19900, 0.15)).toBe(3000);
     expect(minDownAmountFromPct(25900, 0.15)).toBe(3900);
+  });
+});
+
+describe('displayInstallment', () => {
+  it('ปัดสตางค์ขึ้นเป็นบาทเต็ม (ตัวเลขสเปคข้อ 4.5)', () => {
+    expect(displayInstallment(new Decimal('3138.66'))).toBe(3139);
+    expect(displayInstallment(1010.08)).toBe(1011);
+    expect(displayInstallment(new Decimal('1226.93'))).toBe(1227);
+  });
+
+  it('ค่าที่เป็นบาทเต็มอยู่แล้วไม่เปลี่ยน', () => {
+    expect(displayInstallment(new Decimal('3424.00'))).toBe(3424);
+    expect(displayInstallment(3403)).toBe(3403);
+    expect(displayInstallment(0)).toBe(0);
   });
 });

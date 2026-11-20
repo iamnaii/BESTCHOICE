@@ -43,10 +43,11 @@ import { useCustomerSummary } from './hooks/useCustomerSummary';
 import { useBcConfig } from './hooks/useBcConfig';
 import { useGfinTables } from './hooks/useGfinTables';
 import { useInstallmentCalcState } from './hooks/useInstallmentCalcState';
-import { resolveQuotes } from './utils/resolveQuotes';
+import { resolveQuotes, type TemplateTermsJson } from './utils/resolveQuotes';
 import {
   buildSellingPricePayload,
   isSellingPricePayloadEmpty,
+  type SellingPriceFormValues,
   type SellingPricePayload,
 } from './utils/buildSellingPricePayload';
 import { buildEditProductPayload, type EditForm } from './utils/buildEditProductPayload';
@@ -93,6 +94,9 @@ interface Product {
   conditionGrade: string | null;
   cashPrice: string | null;
   installmentPrice: string | null;
+  financePrice: string | null;
+  /** เงื่อนไขผ่อนของราคากลางของเครื่อง — งวด/ดาวน์ตั้งต้นของเครื่องคำนวณและสรุปส่งลูกค้า (API รุ่นก่อนไม่ส่ง) */
+  templateTerms?: TemplateTermsJson | null;
   priceAutofilledAt: string | null;
   shopWarrantyDays: number | null;
   accessoriesIncluded: string[] | null;
@@ -128,9 +132,9 @@ export default function ProductDetailPage() {
 
   // Selling price modal state (cashPrice/installmentPrice columns — B0/Task 7)
   const [isSellingPriceModalOpen, setIsSellingPriceModalOpen] = useState(false);
-  const [sellingPriceForm, setSellingPriceForm] = useState({ cashPrice: '', installmentPrice: '' });
+  const [sellingPriceForm, setSellingPriceForm] = useState<SellingPriceFormValues>({ cashPrice: '', installmentPrice: '', financePrice: '' });
   // ค่า ณ ตอนเปิด modal — ใช้เทียบว่าฟิลด์ไหน "เปลี่ยนจริง" ก่อนส่ง payload (Task 11 deferred fix)
-  const [sellingPriceInitial, setSellingPriceInitial] = useState({ cashPrice: '', installmentPrice: '' });
+  const [sellingPriceInitial, setSellingPriceInitial] = useState<SellingPriceFormValues>({ cashPrice: '', installmentPrice: '', financePrice: '' });
 
   // Edit product modal state
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -234,8 +238,8 @@ export default function ProductDetailPage() {
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
-  // หมายเหตุที่ตั้งใจ: ช่องว่าง = "ไม่แก้ค่านี้" (ส่ง undefined → axios ตัดคีย์ทิ้ง)
-  // ไม่ใช่ "ล้างราคาเป็น null" — การล้างราคาเป็น follow-up (มี UI ปุ่มเคลียร์ราคาชัดเจน)
+  // หมายเหตุที่ตั้งใจ: ช่องเงินสด/ผ่อนว่าง = "ไม่แก้ค่านี้" (ส่ง undefined → axios ตัดคีย์ทิ้ง)
+  // ส่วนราคาขาย GFIN: เคยมีค่าแล้วลบช่องจนว่าง = ส่ง null เพื่อล้างราคา (ทางเดียวที่ล้างได้ — PriceManagementModal ล้างไม่ได้)
 
   // Transfer mutation
   const transferMutation = useMutation({
@@ -378,13 +382,17 @@ export default function ProductDetailPage() {
   const openSellingPriceModal = () => {
     const rawCash = normalizePositive(product.cashPrice);
     const rawInstallment = normalizePositive(product.installmentPrice);
+    const rawFinance = normalizePositive(product.financePrice);
+    const financeText = rawFinance != null ? String(rawFinance) : '';
     setSellingPriceForm({
       cashPrice: displayCashPrice != null ? String(displayCashPrice) : '',
       installmentPrice: displayInstallmentPrice != null ? String(displayInstallmentPrice) : '',
+      financePrice: financeText,
     });
     setSellingPriceInitial({
       cashPrice: rawCash != null ? String(rawCash) : '',
       installmentPrice: rawInstallment != null ? String(rawInstallment) : '',
+      financePrice: financeText,
     });
     setIsSellingPriceModalOpen(true);
   };
@@ -560,8 +568,7 @@ export default function ProductDetailPage() {
       <EditSellingPriceModal
         isOpen={isSellingPriceModalOpen}
         onClose={() => setIsSellingPriceModalOpen(false)}
-        cashPrice={sellingPriceForm.cashPrice}
-        installmentPrice={sellingPriceForm.installmentPrice}
+        values={sellingPriceForm}
         onChange={setSellingPriceForm}
         onSubmit={(e) => {
           e.preventDefault();

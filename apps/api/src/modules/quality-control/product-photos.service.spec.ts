@@ -153,6 +153,52 @@ describe('ProductPhotosService.completePhotos — ด่านเข้าคล
     expect(res.status).toBe('IN_STOCK');
   });
 
+  it('เครื่องมีแค่ราคาขาย GFIN (แถว "ราคาผ่อนไฟแนนซ์" ไม่ใช่ค่าเริ่มต้น) → ไม่เข้าคลังอัตโนมัติ', async () => {
+    tx.product.findUnique.mockResolvedValue(
+      productRow({
+        cashPrice: null,
+        installmentPrice: null,
+        financePrice: '21900',
+        prices: [{ label: 'ราคาผ่อนไฟแนนซ์', amount: '21900', isDefault: false, deletedAt: null }],
+      }),
+    );
+
+    const res = await service.completePhotos('p-1', 'user-9');
+
+    expect(res.enteredStock).toBe(false);
+    expect(res.status).toBe('PHOTO_PENDING');
+    expect(tx.product.update).not.toHaveBeenCalled();
+  });
+
+  it('มีแถวเงินสดคู่กับแถว GFIN → เข้าคลังได้ และ audit บันทึกราคาขาย GFIN จริง', async () => {
+    tx.product.findUnique.mockResolvedValue(
+      productRow({
+        cashPrice: null,
+        installmentPrice: null,
+        financePrice: '21900',
+        prices: [
+          { label: 'ราคาเงินสด', amount: '15900', isDefault: true, deletedAt: null },
+          { label: 'ราคาผ่อนไฟแนนซ์', amount: '21900', isDefault: false, deletedAt: null },
+        ],
+      }),
+    );
+
+    const res = await service.completePhotos('p-1', 'user-9');
+
+    expect(res.enteredStock).toBe(true);
+    const data = tx.auditLog.create.mock.calls[0][0].data;
+    expect(data.newValue.financePrice).toBe('21900');
+  });
+
+  it('select ของ product ต้องดึง label/isDefault ของแถวราคาและ financePrice (ไม่งั้นด่านมองแถว GFIN ไม่ออก)', async () => {
+    await service.completePhotos('p-1', 'user-9');
+    const select = tx.product.findUnique.mock.calls[0][0].select;
+    expect(select.financePrice).toBe(true);
+    expect(select.prices.select).toEqual(
+      expect.objectContaining({ label: true, isDefault: true, amount: true, deletedAt: true }),
+    );
+  });
+
   it('สถานะ IN_STOCK/RESERVED (ยืนยันรูปเฉย ๆ) ไม่โดนด่านราคา และไม่เขียน audit เข้าคลัง', async () => {
     tx.product.findUnique.mockResolvedValue(
       productRow({ status: 'RESERVED', cashPrice: null, installmentPrice: null }),

@@ -38,6 +38,8 @@ interface OverpriceRule {
   allowance: string;
   /** ผ่อนได้สูงสุด (งวด) ตามตารางราคา GFIN — null = ไม่จำกัด */
   maxMonths: number | null;
+  /** ดาวน์ขั้นต่ำ % ของกลุ่มรุ่น (เต็มร้อย) — null = ใช้ค่าตั้ง "ดาวน์ขั้นต่ำที่ GFIN ตั้งให้ร้าน" */
+  minDownPct: number | null;
   isActive: boolean;
   updatedAt: string;
 }
@@ -116,6 +118,7 @@ export function OverpriceRulesTab() {
             <TableHead>สภาพ</TableHead>
             <TableHead className="text-right">ส่วนเพิ่มที่อนุญาต (฿)</TableHead>
             <TableHead className="text-right">ผ่อนสูงสุด</TableHead>
+            <TableHead className="text-right">ดาวน์ขั้นต่ำ</TableHead>
             <TableHead>ใช้งาน</TableHead>
             <TableHead>การกระทำ</TableHead>
           </TableRow>
@@ -131,6 +134,9 @@ export function OverpriceRulesTab() {
               </TableCell>
               <TableCell className="text-right">
                 {row.maxMonths != null ? `${row.maxMonths} งวด` : 'ไม่จำกัด'}
+              </TableCell>
+              <TableCell className="text-right">
+                {row.minDownPct != null ? `${row.minDownPct}%` : 'ตามค่าตั้งต้น'}
               </TableCell>
               <TableCell>
                 <Switch
@@ -163,7 +169,7 @@ export function OverpriceRulesTab() {
           ))}
           {filtered.length === 0 && (
             <TableRow>
-              <TableCell colSpan={7} className="text-center text-muted-foreground">
+              <TableCell colSpan={8} className="text-center text-muted-foreground">
                 ไม่พบรายการ
               </TableCell>
             </TableRow>
@@ -203,6 +209,7 @@ function OverpriceRuleFormDialog({ initial, onClose, onSaved }: DialogProps) {
     condition: (initial?.condition ?? 'HAND_2') as 'HAND_1' | 'HAND_2',
     allowance: initial?.allowance ?? '',
     maxMonths: initial?.maxMonths != null ? String(initial.maxMonths) : '',
+    minDownPct: initial?.minDownPct != null ? String(initial.minDownPct) : '',
   });
 
   const save = useMutation({
@@ -211,6 +218,7 @@ function OverpriceRuleFormDialog({ initial, onClose, onSaved }: DialogProps) {
         ...form,
         allowance: Number(form.allowance),
         maxMonths: form.maxMonths.trim() === '' ? null : Number(form.maxMonths),
+        minDownPct: form.minDownPct.trim() === '' ? null : Number(form.minDownPct),
       };
       return initial
         ? api.patch(`/gfin-config/overprice-rules/${initial.id}`, payload)
@@ -291,6 +299,20 @@ function OverpriceRuleFormDialog({ initial, onClose, onSaved }: DialogProps) {
             />
             <p className="text-xs text-muted-foreground mt-1 leading-snug">
               ตามคอลัมน์ "ผ่อนสูงสุด" ในตารางราคา GFIN (12 ตระกูลรุ่น = 10 · 13-15 = 12 · 16-17 = 15)
+            </p>
+          </div>
+          <div>
+            <label htmlFor={`${uiFieldId}-6`} className="text-sm font-medium">ดาวน์ขั้นต่ำ %</label>
+            <NumberInput id={`${uiFieldId}-6`}
+              min="0"
+              max="80"
+              value={form.minDownPct}
+              onChange={(e) => setForm((f) => ({ ...f, minDownPct: e.target.value }))}
+              placeholder="ว่าง = ใช้ค่าตั้งต้น"
+            />
+            <p className="text-xs text-muted-foreground mt-1 leading-snug">
+              ดาวน์ขั้นต่ำที่ GFIN กำหนดให้กลุ่มรุ่นนี้ เช่น iPhone 17 / 18 / Air = 30 · ว่าง = ใช้ "ดาวน์ขั้นต่ำที่ GFIN
+              ตั้งให้ร้าน" ในแท็บค่าตั้งต้น
             </p>
           </div>
         </div>

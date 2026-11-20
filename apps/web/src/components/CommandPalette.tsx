@@ -35,6 +35,7 @@ import {
   ClipboardCheck,
   Landmark,
   Coins,
+  BadgePercent,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -67,6 +68,7 @@ const pages: NavEntry[] = [
   { label: 'ตรวจสอบสลิป', path: '/payments?tab=slip-review', icon: FileCheck, keywords: 'slip review สลิป', roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
   { label: NAV_LABELS.overdue, path: '/overdue', icon: AlertTriangle, keywords: 'overdue หนี้ ค้าง ติดตาม' },
   { label: NAV_LABELS.stock, path: '/stock', icon: Warehouse, keywords: 'stock inventory สต็อก คลัง' },
+  { label: NAV_LABELS.prices, path: '/prices', icon: BadgePercent, keywords: 'price rate ราคา เรท ผ่อน ดาวน์ ค่างวด gfin', roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES'] },
   { label: 'สั่งซื้อ', path: '/purchase-orders', icon: Warehouse, keywords: 'purchase order PO สั่งซื้อ', roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
   { label: 'รอถ่ายรูป', path: '/purchase-orders/qc', icon: ClipboardCheck, keywords: 'qc ถ่ายรูป 6 มุม มือสอง photo pending รอถ่ายรูป', roles: ['OWNER', 'BRANCH_MANAGER'] },
   { label: 'รายงาน', path: '/reports', icon: BarChart3, keywords: 'report รายงาน', roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },

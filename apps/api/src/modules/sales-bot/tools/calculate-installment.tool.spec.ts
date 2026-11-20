@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { displayInstallment } from '@installment/shared';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CalculateInstallmentTool } from './calculate-installment.tool';
 import { InstallmentPreviewService } from '../../shop-catalog/installment-preview.service';
@@ -136,7 +137,8 @@ describe('CalculateInstallmentTool.run', () => {
     expect(r.downAmountThb).toBe(7200);
     expect(r.financedThb).toBe(28700);
     expect(r.ratePct).toBe(120);
-    expect(r.monthlyThb).toBeCloseTo(5261.66, 2);
+    // ค่างวดในสัญญา 5,261.66 · ที่บอทบอกลูกค้าปัดขึ้นเป็นบาท (คำตัดสินเจ้าของ 2026-11-19)
+    expect(r.monthlyThb).toBe(5262);
     expect(r.totalPaidThb).toBeCloseTo(70340, 2);
   });
 
@@ -169,6 +171,35 @@ describe('CalculateInstallmentTool.run', () => {
     expect(r.priceThb).toBe(35900);
   });
 
+  it('มีแถว "ราคาผ่อนไฟแนนซ์" อย่างเดียว → ไม่ถูกอ่านเป็นราคาผ่อน BESTCHOICE (price_not_configured)', async () => {
+    const tool = new CalculateInstallmentTool(
+      makePrisma(
+        productRow({ installmentPrice: null, prices: [{ label: 'ราคาผ่อนไฟแนนซ์', amount: D('41000') }] }),
+        cfgRow(),
+      ),
+    );
+    expect(await tool.run({ productId: 'prd-1', tenureMonths: 12 })).toEqual({
+      error: 'price_not_configured',
+    });
+  });
+
+  it('มีทั้งแถวไฟแนนซ์ (มาก่อน) และแถวผ่อน BESTCHOICE → ใช้แถว BESTCHOICE', async () => {
+    const tool = new CalculateInstallmentTool(
+      makePrisma(
+        productRow({
+          installmentPrice: null,
+          prices: [
+            { label: 'ราคาผ่อนไฟแนนซ์', amount: D('41000') },
+            { label: 'ราคาผ่อน BESTCHOICE', amount: D('35900') },
+          ],
+        }),
+        cfgRow(),
+      ),
+    );
+    const r = (await tool.run({ productId: 'prd-1', tenureMonths: 12 })) as unknown as Record<string, number>;
+    expect(r.priceThb).toBe(35900);
+  });
+
   it('ไม่มีราคาผ่อนเลย → price_not_configured', async () => {
     const tool = new CalculateInstallmentTool(
       makePrisma(productRow({ installmentPrice: null, prices: [] }), cfgRow()),
@@ -185,10 +216,25 @@ describe('CalculateInstallmentTool.run', () => {
     });
   });
 
-  it('จำนวนงวดนอกตาราง → rate_not_configured (ไม่ throw, persona พา handoff เอง)', async () => {
+  it('จำนวนงวดนอกตาราง → rate_not_configured พร้อมงวดที่เลือกได้ (ไม่ throw)', async () => {
     const tool = new CalculateInstallmentTool(makePrisma(productRow(), cfgRow()));
     expect(await tool.run({ productId: 'prd-1', tenureMonths: 36 })).toEqual({
       error: 'rate_not_configured',
+      allowedMonths: [6, 7, 8, 9, 10, 11, 12],
+      message: 'ผ่อน 36 งวดไม่ได้ — เลือกได้ 6, 7, 8, 9, 10, 11, 12 งวด',
+    });
+  });
+
+  it('ตั้งค่าดอกเบี้ยมีแถวรายงวด 10/12 → บอกเฉพาะ 10, 12', async () => {
+    const tool = new CalculateInstallmentTool(
+      makePrisma(
+        productRow(),
+        cfgRow({ rates: [{ months: 10, ratePct: D('0.5') }, { months: 12, ratePct: D('0.5') }] }),
+      ),
+    );
+    expect(await tool.run({ productId: 'prd-1', tenureMonths: 6 })).toMatchObject({
+      error: 'rate_not_configured',
+      allowedMonths: [10, 12],
     });
   });
 
@@ -284,7 +330,7 @@ describe('golden parity: calculate_installment === InstallmentPreviewService', (
     } as never);
 
     expect(fromWeb.available).toBe(true);
-    expect(fromBot.monthlyThb).toBe(fromWeb.monthlyPayment);
+    expect(fromBot.monthlyThb).toBe(displayInstallment(fromWeb.monthlyPayment!));
     expect(fromBot.downAmountThb).toBe(fromWeb.downAmount);
     expect(fromBot.financedThb).toBe(fromWeb.financedAmount);
   });

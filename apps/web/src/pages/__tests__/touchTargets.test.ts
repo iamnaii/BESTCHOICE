@@ -50,7 +50,7 @@ describe.each<[string, string | RegExp, { keepsBox?: boolean; desktopOnlyBox?: b
   ['DunningSettingsPage.tsx', 'เพิ่ม กฎ แรก', { keepsBox: true }],
   ['LineOaSettingsPage.tsx', "showSecrets['token'] ? 'ซ่อน' : 'แสดง'", {}],
   ['LineOaSettingsPage.tsx', "showSecrets['secret'] ? 'ซ่อน' : 'แสดง'", {}],
-  ['ProductCreatePage/components/PriceCard.tsx', '+ เพิ่มราคา', {}],
+  ['ProductCreatePage/components/PriceCard.tsx', 'ใช้ราคากลางทั้งหมด', {}],
   ['ProductDetailPage/components/SellingPriceCard.tsx', />\s*แก้ราคา\s*</, {}],
   ['ProductDetailPage/components/SellingPriceCard.tsx', />\s*ขึ้นเว็บ\s*</, { keepsBox: true }],
   ['CustomerDetailPage/components/RecentActivityCard.tsx', 'ดูการเดินทางทั้งหมด', {}],

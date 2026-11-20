@@ -192,7 +192,9 @@ export class ProductPhotosService {
           // ด่านราคาของการเข้าคลัง (เฉพาะกิ่ง PHOTO_PENDING → IN_STOCK ด้านล่าง)
           cashPrice: true,
           installmentPrice: true,
-          prices: { select: { amount: true, deletedAt: true } },
+          financePrice: true,
+          // label/isDefault: `hasSellingPrice` ต้องแยกแถวสำเนาราคาขาย GFIN ออก (ไม่ใช่ราคาที่ POS ขายได้)
+          prices: { select: { label: true, amount: true, isDefault: true, deletedAt: true } },
         },
       });
       if (!product || product.deletedAt) throw new NotFoundException('ไม่พบสินค้า');

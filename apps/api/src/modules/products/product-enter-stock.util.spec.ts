@@ -80,6 +80,21 @@ describe('unconfirmedLeftoverPrices — ราคาบวกที่ค้า�
     expect(left.rows).toEqual([]);
   });
 
+  it('แถว "ราคาผ่อนไฟแนนซ์" ที่ไม่ใช่ค่าเริ่มต้นไม่นับเป็นค้าง — ปุ่มนำเข้าคลังตั้งราคาขาย GFIN ใหม่เอง (สเปค 2026-11-19 ข้อ 3.2)', () => {
+    const left = unconfirmedLeftoverPrices(
+      {
+        cashPrice: null,
+        installmentPrice: null,
+        prices: [
+          { label: 'ราคาเงินสด', amount: D('15900'), isDefault: true, deletedAt: null },
+          { label: 'ราคาผ่อนไฟแนนซ์', amount: D('21900'), isDefault: false, deletedAt: null },
+        ],
+      },
+      { cashPrice: D('9900'), installmentPrice: null },
+    );
+    expect(left.rows).toEqual([]);
+  });
+
   it('แถวที่ไม่ถูกทับแม้ยืนยันครบสองช่อง (แถวโปรโมชั่นค้าง) → ยังต้องจัดการก่อน', () => {
     const left = unconfirmedLeftoverPrices(
       {
@@ -141,5 +156,20 @@ describe('unconfirmedLeftoverPrices — ราคาบวกที่ค้า�
 
   it('action ของ AuditLog เข้าคลังเป็นค่าคงที่ตัวเดียวทุกประตู', () => {
     expect(ENTER_STOCK_AUDIT_ACTION).toBe('PRODUCT_RETURNED_TO_STOCK');
+  });
+});
+
+describe('hasSellingPrice — แถว "ราคาผ่อนไฟแนนซ์" ไม่ใช่ราคาขายหน้าร้าน', () => {
+  const row = (label: string, isDefault = false) => ({ label, amount: D('21900'), isDefault, deletedAt: null });
+
+  it('เครื่องที่มีแค่ราคาขาย GFIN (แถวไม่ใช่ค่าเริ่มต้น) → false', () => {
+    expect(
+      hasSellingPrice({ cashPrice: null, installmentPrice: null, prices: [row('ราคาผ่อนไฟแนนซ์')] }),
+    ).toBe(false);
+  });
+
+  it('มีแถวเงินสด หรือแถวผ่อน BESTCHOICE → true', () => {
+    expect(hasSellingPrice({ prices: [row('ราคาเงินสด', true), row('ราคาผ่อนไฟแนนซ์')] })).toBe(true);
+    expect(hasSellingPrice({ prices: [row('ราคาผ่อน BESTCHOICE')] })).toBe(true);
   });
 });

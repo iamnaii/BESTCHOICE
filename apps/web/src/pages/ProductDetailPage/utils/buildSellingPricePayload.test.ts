@@ -61,4 +61,30 @@ describe('buildSellingPricePayload', () => {
     const payload = buildSellingPricePayload(current, initial);
     expect(isSellingPricePayloadEmpty(payload)).toBe(true);
   });
+
+  it('แก้เฉพาะราคาขาย GFIN → payload มีแค่ financePrice', () => {
+    const initial = { cashPrice: '15900', installmentPrice: '19900', financePrice: '' };
+    const current = { cashPrice: '15900', installmentPrice: '19900', financePrice: '20900' };
+    const payload = buildSellingPricePayload(current, initial);
+    expect(payload).toEqual({ financePrice: 20900 });
+    expect(isSellingPricePayloadEmpty(payload)).toBe(false);
+  });
+
+  it('ราคาขาย GFIN เท่าเดิม → payload ว่าง', () => {
+    const values = { cashPrice: '15900', installmentPrice: '19900', financePrice: '20900' };
+    expect(isSellingPricePayloadEmpty(buildSellingPricePayload(values, { ...values }))).toBe(true);
+  });
+
+  it('ล้างช่องราคาขาย GFIN ที่เคยมีค่า → financePrice: null (ล้างค่า) · ช่องอื่นไม่ถูกแตะ', () => {
+    const initial = { cashPrice: '15900', installmentPrice: '19900', financePrice: '20900' };
+    const current = { cashPrice: '15900', installmentPrice: '19900', financePrice: '' };
+    const payload = buildSellingPricePayload(current, initial);
+    expect(payload).toEqual({ financePrice: null });
+    expect(isSellingPricePayloadEmpty(payload)).toBe(false);
+  });
+
+  it('ช่องราคาขาย GFIN ว่างทั้งก่อนและหลัง → ไม่ส่ง null', () => {
+    const values = { cashPrice: '15900', installmentPrice: '19900', financePrice: '' };
+    expect(buildSellingPricePayload(values, { ...values })).toEqual({});
+  });
 });

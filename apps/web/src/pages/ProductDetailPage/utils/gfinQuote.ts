@@ -4,11 +4,13 @@ import {
   findGfinMapping,
   findGfinOverpriceRule,
   findGfinRateFactor,
+  resolveGfinDownPct,
   type GfinCalcOutput,
   type GfinDeviceOrigin,
   type GfinModelMappingRow,
   type GfinOverpriceRuleRow,
   type GfinRateFactorRow,
+  type ModelQuoteGfinContext,
   type ProductCategoryForGfin,
 } from '@installment/shared';
 import type { MonthOption } from './monthsOptions';
@@ -31,6 +33,8 @@ export interface OverpriceApi {
   condition: 'HAND_1' | 'HAND_2';
   allowance: string;
   maxMonths?: number | null;
+  /** ดาวน์ขั้นต่ำ % ของกลุ่มรุ่น (เต็มร้อย) — null/ไม่มี = ใช้ค่าตั้ง GFIN */
+  minDownPct?: number | null;
   isActive: boolean;
 }
 export interface RateFactorApi {
@@ -112,8 +116,43 @@ function toMappingRow(m: MaxPriceApi): GfinModelMappingRow {
   return { ...m, maxPrice: new Decimal(m.maxPrice) };
 }
 function toRuleRow(r: OverpriceApi): GfinOverpriceRuleRow {
-  return { ...r, allowance: new Decimal(r.allowance), maxMonths: r.maxMonths ?? null };
+  return {
+    ...r,
+    allowance: new Decimal(r.allowance),
+    maxMonths: r.maxMonths ?? null,
+    minDownPct: r.minDownPct ?? null,
+  };
 }
+/**
+ * ดาวน์ขั้นต่ำ GFIN ของเครื่องนี้ เป็นเต็มร้อย (30) — กติกา OVER ของรุ่นก่อน ไม่มีแล้วใช้ค่าตั้ง GFIN
+ * (สเปค price-master-retire 3.3: iPhone 17 / 18 / Air = 30%) · หมวดที่ไม่รับ / รุ่นไม่อยู่ในใบราคา = ค่าตั้ง
+ */
+export function gfinMinDownPctFor(tables: GfinTables, product: GfinQuoteInput['product']): number {
+  const category = gfinCategoryOf(product.category);
+  if (!category) return tables.settings.minDownPct;
+  const mappingRow = findGfinMapping(
+    { brand: product.brand, model: product.model, storage: product.storage ?? '', category },
+    tables.mappings.map(toMappingRow),
+  );
+  const ruleRow = mappingRow ? findGfinOverpriceRule(mappingRow, tables.rules.map(toRuleRow)) : null;
+  return resolveGfinDownPct(ruleRow, new Decimal(tables.settings.minDownPct).div(100)).mul(100).toNumber();
+}
+
+/**
+ * งวดสูงสุดของกติกา OVER ของเครื่องนี้ — งวดเรท 2 ตั้งต้นเมื่อราคากลางไม่ได้ตั้งงวดเอง (กติกาเดียวกับ `buildModelQuote`)
+ * null = หมวดไม่รับ / ไม่อยู่ในใบราคา / ไม่มีกติกาหรือกติกาไม่จำกัดงวด
+ */
+export function gfinMaxMonthsFor(tables: GfinTables, product: GfinQuoteInput['product']): number | null {
+  const category = gfinCategoryOf(product.category);
+  if (!category) return null;
+  const mappingRow = findGfinMapping(
+    { brand: product.brand, model: product.model, storage: product.storage ?? '', category },
+    tables.mappings.map(toMappingRow),
+  );
+  const ruleRow = mappingRow ? findGfinOverpriceRule(mappingRow, tables.rules.map(toRuleRow)) : null;
+  return ruleRow?.maxMonths ?? null;
+}
+
 function toFactorRow(f: RateFactorApi): GfinRateFactorRow {
   return {
     months: f.months,
@@ -197,4 +236,37 @@ export function buildGfinQuote(tables: GfinTables, input: GfinQuoteInput): GfinQ
     maxMonths,
     monthsOptions,
   };
+}
+
+/**
+ * ตาราง GFIN ของเว็บ → บริบทของ `buildModelQuote` (สเปค 2026-11-19 ข้อ 5 — การ์ดราคาขายหน้าเพิ่มสินค้า)
+ * ดาวน์ขั้นต่ำของตั้งค่าเป็น % เต็ม (25) → สัดส่วน (0.25) · คอมตามหมวด (มือถือ 15 · iPad 5)
+ */
+export function toModelQuoteGfinContext(tables: GfinTables, category: string): ModelQuoteGfinContext {
+  return {
+    mappings: tables.mappings.map(toMappingRow),
+    rules: tables.rules.map(toRuleRow),
+    rateFactors: tables.factors.map(toFactorRow),
+    settingMinDownPct: new Decimal(tables.settings.minDownPct).div(100),
+    commissionPct: defaultCommissionPct(tables.settings, category),
+    contractFee: new Decimal(tables.settings.contractFee),
+  };
+}
+
+/**
+ * ใบราคา GFIN มีรุ่นนี้ไหม — ตัดสินจากตารางรุ่นอย่างเดียว (ไม่ขึ้นกับว่ากรอกราคาแล้วหรือยัง)
+ * null = ยังตัดสินไม่ได้ (หมวดไม่รับ / ข้อมูลรุ่นไม่ครบ)
+ */
+export function hasGfinMapping(
+  product: { brand: string; model: string; storage?: string | null; category: string },
+  tables: GfinTables,
+): boolean | null {
+  const category = gfinCategoryOf(product.category);
+  if (!category || !product.brand || !product.model) return null;
+  return (
+    findGfinMapping(
+      { brand: product.brand, model: product.model, storage: product.storage ?? '', category },
+      tables.mappings.map(toMappingRow),
+    ) !== null
+  );
 }

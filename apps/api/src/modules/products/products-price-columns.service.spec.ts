@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { BadRequestException } from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CREATE_NO_SELLING_PRICE_MESSAGE } from './product-enter-stock.util';
 
 describe('ProductsService — คอลัมน์ราคา (B0)', () => {
   let service: ProductsService;
@@ -14,9 +15,10 @@ describe('ProductsService — คอลัมน์ราคา (B0)', () => {
   beforeEach(async () => {
     tx = {
       product: {
-        create: jest.fn().mockResolvedValue({ id: 'p1' }),
+        create: jest.fn().mockImplementation(async ({ data }: any) => ({ id: 'p1', ...data })),
         update: jest.fn().mockResolvedValue({ id: 'p1' }),
-        findUnique: jest.fn().mockResolvedValue({ id: 'p1', deletedAt: null }),
+        // หลังสร้าง: เครื่องมีราคาขายแล้ว (ด่าน IN_STOCK ของ create อ่านแถวนี้)
+        findUnique: jest.fn().mockResolvedValue({ id: 'p1', deletedAt: null, cashPrice: new Prisma.Decimal('18000'), prices: [] }),
       },
       productPrice: {
         findMany: jest.fn().mockResolvedValue([]),
@@ -151,7 +153,7 @@ describe('ProductsService — คอลัมน์ราคา (B0)', () => {
   it('create: fix round 1 [Critical] — ส่ง prices[] อย่างเดียว (ไม่มีคอลัมน์ cashPrice) + มีเทมเพลตตรง → ต้องไม่ autofill ทับ', async () => {
     tx.pricingTemplate.findMany.mockResolvedValue([
       {
-        id: 't1', brand: 'Apple', model: '15', storage: '', category: 'PHONE_NEW',
+        id: 't1', deviceOrigin: 'UNSPECIFIED', brand: 'Apple', model: '15', storage: '', category: 'PHONE_NEW',
         hasWarranty: false, cashPrice: new Prisma.Decimal('28900'),
         installmentBestchoicePrice: new Prisma.Decimal('2500'),
       },
@@ -161,8 +163,8 @@ describe('ProductsService — คอลัมน์ราคา (B0)', () => {
       costPrice: 15000, branchId: 'b1',
       prices: [{ label: 'ราคาขาย', amount: 25000, isDefault: true }],
     } as never);
-    // autofill ต้องไม่ทำงานเลย — ไม่อ่านเทมเพลต ไม่แตะคอลัมน์ราคาผ่าน product.update
-    expect(tx.pricingTemplate.findMany).not.toHaveBeenCalled();
+    // ราคากลางถูกอ่านเพื่อหาราคาขาย GFIN (ขั้นของตัวเอง — สเปค 2026-11-19 ข้อ 3.2) แต่ราคาเงินสดต้องไม่ถูกเติมทับ
+    // (เทมเพลตนี้ไม่มีราคาขาย GFIN ⇒ ไม่มี product.update เลย)
     expect(tx.product.update).not.toHaveBeenCalled();
     // แถวราคาที่พนักงานกรอกเองต้องไม่ถูก relabel/overwrite ผ่าน sync
     expect(tx.productPrice.update).not.toHaveBeenCalled();
@@ -171,11 +173,15 @@ describe('ProductsService — คอลัมน์ราคา (B0)', () => {
   it('create: ไม่ส่งอะไรเลย (ไม่มีทั้ง cashPrice และ prices[]) + มีเทมเพลตตรง → autofill ต้องทำงานจริง', async () => {
     tx.pricingTemplate.findMany.mockResolvedValue([
       {
-        id: 't1', brand: 'Apple', model: '15', storage: '', category: 'PHONE_NEW',
+        id: 't1', deviceOrigin: 'UNSPECIFIED', brand: 'Apple', model: '15', storage: '', category: 'PHONE_NEW',
         hasWarranty: false, cashPrice: new Prisma.Decimal('28900'),
         installmentBestchoicePrice: new Prisma.Decimal('2500'),
       },
     ]);
+    // ตัวเลือกแถวกลางไม่อ่านฐานข้อมูลเมื่อไม่มียี่ห้อ/รุ่น → mock แถวที่สร้างต้องมีฟิลด์เครื่องจริง
+    tx.product.create.mockResolvedValue({
+      id: 'p1', brand: 'Apple', model: '15', storage: null, category: 'PHONE_NEW', deviceOrigin: null,
+    });
     await service.create({
       name: 'iPhone 15', brand: 'Apple', model: '15', category: 'PHONE_NEW',
       costPrice: 15000, branchId: 'b1',
@@ -197,5 +203,105 @@ describe('ProductsService — คอลัมน์ราคา (B0)', () => {
     // util ข้ามฟิลด์ที่เป็น null → ไม่สร้าง/ไม่ลบแถว
     expect(tx.productPrice.create).not.toHaveBeenCalled();
     expect(tx.productPrice.update).not.toHaveBeenCalled();
+  });
+
+  // ── สเปค 2026-11-19 ข้อ 3.2 — ราคาขาย GFIN ของเครื่อง ──────────────────────────────
+  const GFIN_TEMPLATE = {
+    id: 't1', brand: 'Apple', model: '15', storage: '', category: 'PHONE_NEW',
+    hasWarranty: false, deviceOrigin: 'UNSPECIFIED',
+    cashPrice: new Prisma.Decimal('28900'),
+    installmentBestchoicePrice: new Prisma.Decimal('29900'),
+    installmentFinancePrice: new Prisma.Decimal('30900'),
+  };
+
+  it('create: กรอกราคาเงินสดเอง + ไม่ส่ง financePrice → ยังเติมราคาขาย GFIN จากราคากลาง (ขั้นของตัวเอง)', async () => {
+    tx.pricingTemplate.findMany.mockResolvedValue([GFIN_TEMPLATE]);
+    await service.create({
+      name: 'iPhone 15', brand: 'Apple', model: '15', category: 'PHONE_NEW',
+      costPrice: 15000, branchId: 'b1', cashPrice: 25000,
+    } as never);
+    expect(tx.product.update).toHaveBeenCalledTimes(1);
+    const data = tx.product.update.mock.calls[0][0].data;
+    expect(data).toEqual({ financePrice: new Prisma.Decimal('30900') });
+    expect(tx.productPrice.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ label: 'ราคาผ่อนไฟแนนซ์', isDefault: false }) }),
+    );
+  });
+
+  it('create: ส่ง financePrice มาเอง → เขียนคอลัมน์ + แถวไฟแนนซ์ ไม่อ่านราคากลาง', async () => {
+    await service.create({
+      name: 'iPhone 15', brand: 'Apple', model: '15', category: 'PHONE_NEW',
+      costPrice: 15000, branchId: 'b1', cashPrice: 25000, financePrice: 27000,
+    } as never);
+    expect(tx.product.create.mock.calls[0][0].data.financePrice.toString()).toBe('27000');
+    expect(tx.pricingTemplate.findMany).not.toHaveBeenCalled();
+    expect(tx.productPrice.create).toHaveBeenCalledWith({
+      data: { productId: 'p1', label: 'ราคาผ่อนไฟแนนซ์', amount: new Prisma.Decimal('27000'), isDefault: false },
+    });
+  });
+
+  it('create: financePrice: null = ยืนยันว่าไม่มี → ไม่เติมจากราคากลาง', async () => {
+    tx.pricingTemplate.findMany.mockResolvedValue([GFIN_TEMPLATE]);
+    await service.create({
+      name: 'iPhone 15', brand: 'Apple', model: '15', category: 'PHONE_NEW',
+      costPrice: 15000, branchId: 'b1', cashPrice: 25000, financePrice: null,
+    } as never);
+    expect(tx.product.create.mock.calls[0][0].data.financePrice).toBeNull();
+    expect(tx.pricingTemplate.findMany).not.toHaveBeenCalled();
+  });
+
+  it('update: แก้ราคาขาย GFIN → เขียนคอลัมน์ + เคลียร์ป้ายเติมอัตโนมัติ + แถวไฟแนนซ์', async () => {
+    await service.update('p1', { financePrice: 31900 } as never);
+    const data = tx.product.update.mock.calls[0][0].data;
+    expect(data.financePrice.toString()).toBe('31900');
+    expect(data.priceAutofilledAt).toBeNull();
+    expect(tx.productPrice.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ label: 'ราคาผ่อนไฟแนนซ์' }) }),
+    );
+  });
+
+  it('update: financePrice: null → ล้างคอลัมน์ + ลบแถวไฟแนนซ์ (soft)', async () => {
+    await service.update('p1', { financePrice: null } as never);
+    expect(tx.product.update.mock.calls[0][0].data.financePrice).toBeNull();
+    expect(tx.productPrice.updateMany).toHaveBeenCalledWith({
+      where: { productId: 'p1', label: 'ราคาผ่อนไฟแนนซ์', isDefault: false, deletedAt: null },
+      data: { deletedAt: expect.any(Date) },
+    });
+  });
+  describe('create: เครื่องที่เข้าคลังพร้อมขายต้องมีราคาเงินสดหรือราคาผ่อน BESTCHOICE (final review I-2)', () => {
+    const FINANCE_ONLY = {
+      id: 'p1', deletedAt: null, status: 'IN_STOCK', cashPrice: null, installmentPrice: null,
+      financePrice: new Prisma.Decimal('26500'),
+      prices: [{ label: 'ราคาผ่อนไฟแนนซ์', amount: new Prisma.Decimal('26500'), isDefault: false, deletedAt: null }],
+    };
+
+    it('มีแต่ราคาขาย GFIN + สถานะ IN_STOCK (ค่าเริ่มต้น) → 400 ภาษาไทย ทั้งธุรกรรมถอย', async () => {
+      tx.product.findUnique.mockResolvedValue(FINANCE_ONLY);
+      await expect(
+        service.create({
+          name: 'iPhone 15', brand: 'Apple', model: '15', category: 'PHONE_NEW',
+          costPrice: 15000, branchId: 'b1', cashPrice: null, installmentPrice: null, financePrice: 26500,
+        } as never),
+      ).rejects.toThrow(new BadRequestException(CREATE_NO_SELLING_PRICE_MESSAGE));
+    });
+
+    it('มีแต่ราคาขาย GFIN แต่สถานะไม่ใช่ IN_STOCK → สร้างได้', async () => {
+      tx.product.findUnique.mockResolvedValue({ ...FINANCE_ONLY, status: 'PHOTO_PENDING' });
+      await expect(
+        service.create({
+          name: 'iPhone 15', brand: 'Apple', model: '15', category: 'PHONE_NEW', status: 'PHOTO_PENDING',
+          costPrice: 15000, branchId: 'b1', cashPrice: null, installmentPrice: null, financePrice: 26500,
+        } as never),
+      ).resolves.toBeTruthy();
+    });
+
+    it('ราคาเงินสดมาจากราคากลาง (เติมอัตโนมัติ) → ตรวจหลังเติม ผ่าน', async () => {
+      tx.product.findUnique.mockResolvedValue({ ...FINANCE_ONLY, cashPrice: new Prisma.Decimal('25900') });
+      await expect(
+        service.create({
+          name: 'iPhone 15', brand: 'Apple', model: '15', category: 'PHONE_NEW', costPrice: 15000, branchId: 'b1',
+        } as never),
+      ).resolves.toBeTruthy();
+    });
   });
 });

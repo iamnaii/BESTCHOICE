@@ -44,10 +44,8 @@ import { loadVatRateDecimal } from '../../../utils/vat-rate.util';
 import { generateGRNumber, generatePONumber } from '../../../utils/sequence.util';
 import { syncPriceRowsFromColumns } from '../../../utils/product-price-sync.util';
 import { anglesComplete, pickAnglePhotos } from '../../quality-control/photo-angles.util';
-import {
-  autofillProductPriceFromTemplate,
-  resolveInstallmentSemantics,
-} from '../../../utils/product-price-autofill.util';
+import { fillFinancePriceFromTemplate, resolveHasWarranty, templateKeyOf } from '../../../utils/product-finance-price.util';
+import { autofillProductPriceFromTemplate } from '../../../utils/product-price-autofill.util';
 
 /** Journal dependencies handed in by the PurchaseOrdersService facade (Nest-managed). */
 export interface PoReceivingJournalDeps {
@@ -245,11 +243,6 @@ export class PoReceivingService {
       }
     }
 
-    // Fix round 1 [Minor]: resolve the installment-semantics SystemConfig flag ONCE
-    // before the per-unit loop below, not once per unit — a 50-unit receiving batch
-    // was reading SystemConfig 50 times inside this same Serializable tx.
-    const installmentSemantics = await resolveInstallmentSemantics(tx, this.logger);
-
     const unitCosts = this.resolveUnitCosts(lineCosts, po.items, dto.items, freshByPoItem);
     const unitVats = this.resolveUnitCosts(lineVats, po.items, dto.items, freshByPoItem);
     // ลงบัญชีตอนรับของเฉพาะหน่วยที่เข้าคลังทันที — หน่วยที่รอถ่ายรูปลงตอนผ่านเข้าคลัง
@@ -347,23 +340,15 @@ export class PoReceivingService {
               tx,
               {
                 productId: product.id,
-            deviceOrigin: product.deviceOrigin,
+                deviceOrigin: product.deviceOrigin,
                 brand: product.brand,
                 model: product.model,
                 storage: product.storage,
                 category: product.category,
-                hasWarranty:
-                  productCategory !== 'PHONE_USED'
-                    ? false
-                    : item.warrantyExpired === true
-                      ? false
-                      : item.warrantyExpired === false
-                        ? true
-                        : null,
+                hasWarranty: resolveHasWarranty(product),
                 currentCashPrice: null,
               },
               this.logger,
-              installmentSemantics,
             );
           } catch (e) {
             const code = (e as { code?: string })?.code;
@@ -372,6 +357,18 @@ export class PoReceivingService {
               `[autofill] product=${product.id} ข้ามการเติมราคาอัตโนมัติ — เกิด error ระหว่างเรียก autofillProductPriceFromTemplate (รับเข้าต่อได้ปกติ ไม่มีราคาตั้งต้นให้กรอกทีหลัง): ${e instanceof Error ? e.message : String(e)}`,
             );
           }
+        }
+
+        // สเปค 2026-11-19 ข้อ 3.2: ราคาขาย GFIN เป็นขั้นของตัวเอง — เติมแม้กรอกราคาขายตอนรับมาแล้ว
+        // fail-soft เหมือนตัวเติมราคา แต่ปล่อย P2002/P2034 ขึ้นไปให้ retry loop ของ goodsReceiving()
+        try {
+          await fillFinancePriceFromTemplate(tx, product.id, templateKeyOf(product));
+        } catch (e) {
+          const code = (e as { code?: string })?.code;
+          if (code === 'P2002' || code === 'P2034') throw e;
+          this.logger.error(
+            `[finance-price] product=${product.id} ข้ามการเติมราคาขาย GFIN (รับเข้าต่อได้ปกติ): ${e instanceof Error ? e.message : String(e)}`,
+          );
         }
 
         // Create receiving item linked to product

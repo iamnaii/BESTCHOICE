@@ -79,17 +79,21 @@ function renderCard({
   onChange = vi.fn<(patch: CalcStatePatch) => void>(),
   canEditPrice = true,
   onEditPrice = vi.fn<() => void>(),
-  tables = gfinTables as GfinTables | undefined,
+  tables: tablesArg = gfinTables as GfinTables | null,
   config = bcConfig as typeof bcConfig | undefined,
+  loading = false,
 }: {
   product?: typeof iphone15;
   state?: CalcState;
   onChange?: Mock<(patch: CalcStatePatch) => void>;
   canEditPrice?: boolean;
   onEditPrice?: Mock<() => void>;
-  tables?: GfinTables | undefined;
+  /** null = ตาราง GFIN ยังไม่มา (กำลังโหลด / โหลดไม่สำเร็จ) */
+  tables?: GfinTables | null;
   config?: typeof bcConfig | undefined;
+  loading?: boolean;
 } = {}) {
+  const tables = tablesArg ?? undefined;
   const quotes = resolveQuotes({ product, state, bcConfig: config, gfinTables: tables });
   render(
     <BrowserRouter>
@@ -101,7 +105,7 @@ function renderCard({
         canEditPrice={canEditPrice}
         onEditPrice={onEditPrice}
         gfinSettings={tables?.settings}
-        loading={false}
+        loading={loading}
       />
     </BrowserRouter>,
   );
@@ -124,6 +128,23 @@ describe('InstallmentCalculatorCard — การ์ดเดียว สลั
     expect(screen.getByText(/^คอม/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'ใช้ราคานี้ทำสัญญา' })).toBeInTheDocument();
     expect(screen.getByText(/3,327/)).toBeInTheDocument();
+  });
+
+  it('แท็บ GFIN + เครื่องมีราคาขาย GFIN → หัวการ์ดบอก "คิดจากราคาขาย GFIN" และโชว์ราคานั้น', () => {
+    renderCard({
+      product: { ...iphone15, financePrice: '21000' },
+      state: { ...INITIAL_CALC_STATE, fin: 'gfin' },
+    });
+    expect(screen.getByText(/คิดจากราคาขาย GFIN/)).toBeInTheDocument();
+    expect(screen.queryByText(/ยังไม่ได้ตั้งราคาขาย GFIN/)).toBeNull();
+  });
+
+  it('แท็บ GFIN + เครื่องไม่มีราคาขาย GFIN → ไม่อ้างว่าเป็นราคาขาย GFIN แต่บอกว่าคิดจากราคาผ่อน BESTCHOICE', () => {
+    renderCard({ state: { ...INITIAL_CALC_STATE, fin: 'gfin' } });
+    expect(screen.queryByText(/คิดจากราคาขาย GFIN/)).toBeNull();
+    expect(
+      screen.getByText(/คิดจากราคาผ่อน BESTCHOICE \(ยังไม่ได้ตั้งราคาขาย GFIN\)/),
+    ).toBeInTheDocument();
   });
 
   it('คลิกแท็บ GFIN → onChange({ fin: "gfin" })', async () => {
@@ -173,6 +194,58 @@ describe('InstallmentCalculatorCard — การ์ดเดียว สลั
     expect(screen.getByText(/รุ่นนี้ไม่อยู่ในตารางราคาของ GFIN/)).toBeInTheDocument();
   });
 
+  // final manual check B3 — GFIN ตั้งต้นที่เพดาน OVER (15) ส่วน BESTCHOICE 12 → ห้ามเขียนว่า "งวดเดียวกัน"
+  describe('บรรทัดเทียบอีกไฟแนนซ์บอกงวดของตัวเอง', () => {
+    const tables15: GfinTables = {
+      ...gfinTables,
+      rules: [{ ...gfinTables.rules[0], maxMonths: 15 }],
+      factors: [
+        ...gfinTables.factors,
+        { id: 'f15', months: 15, shopCommissionPct: 15, factor: '0.1467', feePerInstallment: '100', isActive: true },
+      ],
+    };
+
+    it('งวดเท่ากัน (12 กับ 12) → "งวดเดียวกัน"', () => {
+      renderCard();
+      expect(screen.getByText('· งวดเดียวกัน')).toBeInTheDocument();
+    });
+
+    it('แท็บ BESTCHOICE 12 งวด เทียบ GFIN 15 งวด → บอก "15 งวด" ไม่ใช่ "งวดเดียวกัน"', () => {
+      renderCard({ tables: tables15 });
+      expect(screen.queryByText(/งวดเดียวกัน/)).toBeNull();
+      expect(screen.getByText('· 15 งวด')).toBeInTheDocument();
+    });
+
+    it('แท็บ GFIN 15 งวด เทียบ BESTCHOICE 12 งวด → บอก "12 งวด"', () => {
+      renderCard({ tables: tables15, state: { ...INITIAL_CALC_STATE, fin: 'gfin' } });
+      expect(screen.queryByText(/งวดเดียวกัน/)).toBeNull();
+      expect(screen.getByText('· 12 งวด')).toBeInTheDocument();
+    });
+  });
+
+  // final manual check B4 — ตาราง GFIN ยังโหลด / โหลดไม่สำเร็จ ≠ "ไม่มีข้อมูลรุ่นนี้"
+  describe('ปุ่ม GFIN ระหว่างโหลดตาราง GFIN', () => {
+    it('กำลังโหลด → "กำลังโหลด…" (ไม่ใช่ "ไม่มีข้อมูลรุ่นนี้")', () => {
+      renderCard({ tables: null, loading: true });
+      const tab = screen.getByRole('tab', { name: /GFIN/ });
+      expect(tab).toBeDisabled();
+      expect(tab).toHaveTextContent('กำลังโหลด…');
+      expect(tab).not.toHaveTextContent('ไม่มีข้อมูลรุ่นนี้');
+    });
+
+    it('โหลดไม่สำเร็จ → "โหลดข้อมูล GFIN ไม่สำเร็จ"', () => {
+      renderCard({ tables: null, loading: false });
+      const tab = screen.getByRole('tab', { name: /GFIN/ });
+      expect(tab).toHaveTextContent('โหลดข้อมูล GFIN ไม่สำเร็จ');
+      expect(tab).not.toHaveTextContent('ไม่มีข้อมูลรุ่นนี้');
+    });
+
+    it('รุ่นที่ GFIN ไม่มีในตาราง (ตารางโหลดแล้ว) → ยังเป็น "ไม่มีข้อมูลรุ่นนี้"', () => {
+      renderCard({ product: { ...iphone15, model: 'Galaxy S24', brand: 'Samsung' } });
+      expect(screen.getByRole('tab', { name: /GFIN/ })).toHaveTextContent('ไม่มีข้อมูลรุ่นนี้');
+    });
+  });
+
   it('ไม่มีราคาผ่อน → กล่องเตือนเดิม + ปุ่มไปแก้ราคาเมื่อ canEditPrice', async () => {
     const { onEditPrice } = renderCard({
       product: { ...iphone15, installmentPrice: null },
@@ -206,6 +279,18 @@ describe('InstallmentCalculatorCard — การ์ดเดียว สลั
     renderCard({ product: { ...iphone15, deviceOrigin: null }, state: { ...INITIAL_CALC_STATE, fin: 'gfin' } });
     expect(screen.getByText('OVER ครึ่งเดียว')).toBeInTheDocument();
     expect(screen.getByText(/ยังไม่ระบุเครื่องไทย\/เครื่องนอก — คิด OVER ครึ่งเดียวไว้ก่อน/)).toBeInTheDocument();
+  });
+
+  it('กติกา OVER ตั้งดาวน์ขั้นต่ำ 30% → การ์ดเริ่มที่ 30% · แจ้ง GFIN 7,200 → ลูกค้าจ่าย 3,100 · 3,112/เดือน', () => {
+    const tables30: GfinTables = { ...gfinTables, rules: [{ ...gfinTables.rules[0], minDownPct: 30 }] };
+    renderCard({ state: { ...INITIAL_CALC_STATE, fin: 'gfin' }, tables: tables30 });
+    expect(screen.getByRole('combobox', { name: 'ดาวน์ (%)' })).toHaveTextContent('30 %');
+    expect(screen.getByText('ดาวน์ที่แจ้ง GFIN (30%)')).toBeInTheDocument();
+    expect(screen.getByText('7,200 ฿')).toBeInTheDocument();
+    expect(screen.getByText('3,100 ฿')).toBeInTheDocument();
+    expect(screen.getByText(/เริ่มจากดาวน์ขั้นต่ำของรุ่นนี้ 30%/)).toBeInTheDocument();
+    expect(screen.getByText(/ปัดขึ้นหลักร้อย/)).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'ผ่อนชำระ' })).toHaveTextContent('12 งวด · ผ่อนเดือนละ 3,112');
   });
 
   it('แบตต่ำกว่า 80% → แถบเตือนเปลี่ยนแบตก่อนขาย (ไม่บล็อกการคำนวณ) · 80% ขึ้นไปไม่เตือน', () => {

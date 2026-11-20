@@ -1,8 +1,9 @@
 import { formControlClass } from '@/components/ui/form-styles';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { Loader2 } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -11,7 +12,26 @@ import { createProductStatusOptions } from '@/lib/constants';
 import ProductInfoCard from './components/ProductInfoCard';
 import PhotoUpload from './components/PhotoUpload';
 import BranchSupplierCard from './components/BranchSupplierCard';
-import PriceCard, { PriceRow } from './components/PriceCard';
+import PriceCard from './components/PriceCard';
+import { useBcConfig } from '@/pages/ProductDetailPage/hooks/useBcConfig';
+import { useGfinTables } from '@/pages/ProductDetailPage/hooks/useGfinTables';
+import {
+  EMPTY_PRICE_FIELDS,
+  accessoryProfit,
+  computeCardQuote,
+  gfinBlocked,
+  hasAnyPrice,
+  NO_SELLING_PRICE_MESSAGE,
+  mergeTemplate,
+  templateFields,
+  templateLabelOf,
+  toPricePayload,
+  toQuoteContexts,
+  type PriceFields,
+  type PriceKey,
+  type PriceTemplate,
+} from './utils/priceCard';
+import { buildAutoProductName } from './utils/autoProductName';
 
 const inputCls = formControlClass;
 
@@ -45,9 +65,7 @@ export default function ProductCreatePage() {
     accessoryBrand: '',
   });
 
-  const [prices, setPrices] = useState<PriceRow[]>([
-    { label: 'ราคาผ่อน', amount: '', isDefault: true },
-  ]);
+  const [priceFields, setPriceFields] = useState<PriceFields>(EMPTY_PRICE_FIELDS);
 
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
@@ -83,59 +101,114 @@ export default function ProductCreatePage() {
   });
   const suppliers = supplierResult?.data ?? [];
 
-  // Ignore stale requests and clear only prices that were filled automatically.
-  const lastAutomaticPrices = useRef<string | null>(null);
-  const pricesRef = useRef(prices);
-  pricesRef.current = prices;
+  // --- การ์ดราคาขาย (แบบ D) — เติมจากตารางราคากลางเมื่อเลือกยี่ห้อ + รุ่น (+ ความจุ / ประกัน / ไทย-นอก) ---
+  const accessory = form.category === 'ACCESSORY';
+  // รุ่นในแคตตาล็อกที่มีความจุให้เลือกแต่ยังไม่เลือก = คีย์ค้นราคายังไม่ครบ → ยังไม่บอก "ไม่พบรุ่นนี้…" / "GFIN ไม่รับรุ่นนี้"
+  // (ผลค้นตอนนี้ยังไม่ใช่คำตอบของเครื่องนี้ — final manual check B6) · การเติมราคา / ช่อง GFIN ที่ปิดอยู่ทำงานเหมือนเดิม
+  const storageMissing =
+    !accessory &&
+    !!form.brand &&
+    !!form.model &&
+    !form.storage &&
+    (getModelInfo(form.brand, form.model)?.storage?.length ?? 0) > 0;
+  const lookupQuery =
+    !accessory && form.brand && form.model
+      ? new URLSearchParams({
+          brand: form.brand,
+          model: form.model,
+          category: form.category,
+          deviceOrigin: form.deviceOrigin || 'UNSPECIFIED',
+          ...(form.storage ? { storage: form.storage } : {}),
+          ...(form.category === 'PHONE_USED' ? { hasWarranty: String(!form.warrantyExpired) } : {}),
+        }).toString()
+      : null;
+  const templateQuery = useQuery<PriceTemplate | null>({
+    queryKey: ['pricing-template-lookup', lookupQuery],
+    queryFn: async () => {
+      const { data } = await api.get(`/pricing-templates/lookup?${lookupQuery}`);
+      return data || null;
+    },
+    enabled: lookupQuery !== null,
+    retry: false,
+  });
+  // undefined = ยังไม่มีคำตอบที่ใช้ได้ (รอ / ค้นไม่สำเร็จ — ไม่เติมช่อง) · null = ไม่มีราคากลาง (ยังไม่เลือกรุ่น / ไม่พบ — กรอกเอง)
+  const template: PriceTemplate | null | undefined = lookupQuery === null ? null : templateQuery.data;
+  const templatePending = lookupQuery !== null && templateQuery.isPending;
+  const templateFailed = lookupQuery !== null && templateQuery.isError && templateQuery.data === undefined;
+  const templatePrices = useMemo(() => (template === undefined ? undefined : templateFields(template)), [template]);
+  // ราคากลางชุดที่เติมล่าสุด — ช่องที่ยังเท่าชุดนี้ถือว่า "อัตโนมัติ" เปลี่ยนตามรุ่นได้ ช่องที่แก้เองคงไว้
+  const appliedTemplate = useRef<PriceFields | null>(null);
+  const appliedLookup = useRef<string | null>(null);
+  // เปลี่ยนรุ่น / ความจุ / ไทย-นอก / ประกัน / หมวด → ล้างช่องอัตโนมัติของชุดเดิมทันที ไม่ให้ราคารุ่นก่อนค้างระหว่างรอ
   useEffect(() => {
-    let cancelled = false;
-    const before = JSON.stringify(pricesRef.current);
-    const automatic = lastAutomaticPrices.current;
-    const mayAutofill = before === automatic || pricesRef.current.every(p => !p.amount);
-    if (before === automatic) {
-      setPrices(current => current.map(p => ({ ...p, amount: '' })));
-      lastAutomaticPrices.current = null;
-    }
-    if (!form.brand || !form.model || form.category === 'ACCESSORY' || !mayAutofill) return;
-    const params = new URLSearchParams({
-      brand: form.brand, model: form.model, category: form.category,
-      deviceOrigin: form.deviceOrigin || 'UNSPECIFIED',
-    });
-    if (form.storage) params.set('storage', form.storage);
-    if (form.category === 'PHONE_USED') params.set('hasWarranty', String(!form.warrantyExpired));
-    api.get(`/pricing-templates/lookup?${params}`).then(({ data }) => {
-      if (cancelled || !data) return;
-      setPrices(current => {
-        // The operator may have entered prices while the request was pending.
-        if (JSON.stringify(current) !== before && current.some(p => p.amount)) return current;
-        const next = [
-          { label: 'ราคาเงินสด', amount: String(Number(data.cashPrice)), isDefault: true },
-          { label: 'ราคาผ่อน BESTCHOICE', amount: String(Number(data.installmentBestchoicePrice)), isDefault: false },
-          { label: 'ราคาผ่อนไฟแนนซ์', amount: String(Number(data.installmentFinancePrice)), isDefault: false },
-        ];
-        lastAutomaticPrices.current = JSON.stringify(next);
-        return next;
-      });
-    }).catch(() => { /* Manual entry remains available if no matching template exists. */ });
-    return () => { cancelled = true; };
-  }, [form.brand, form.model, form.storage, form.category, form.warrantyExpired, form.deviceOrigin]);
+    if (appliedLookup.current === lookupQuery) return;
+    appliedLookup.current = lookupQuery;
+    const previous = appliedTemplate.current;
+    appliedTemplate.current = null;
+    setPriceFields((current) => mergeTemplate(current, previous, null));
+  }, [lookupQuery]);
+  useEffect(() => {
+    if (templatePrices === undefined) return;
+    const previous = appliedTemplate.current;
+    appliedTemplate.current = templatePrices;
+    setPriceFields((current) => mergeTemplate(current, previous, templatePrices));
+  }, [templatePrices]);
+
+  const bcConfigQuery = useBcConfig(form.category, !accessory);
+  const gfinQuery = useGfinTables(!accessory);
+  const gfinTables = gfinQuery.tables;
+  // ราคากลางของรุ่นนี้ / ตาราง GFIN (ตัดสินว่าส่งราคา GFIN ได้ไหม) ยังไม่มา → ยังบันทึกไม่ได้
+  const pricesLoading = templatePending || (!accessory && gfinTables === undefined && !gfinQuery.isError);
+  // ตาราง GFIN ยังไม่มา (รอ/ล้ม) → ยังไม่รู้ว่ารุ่นนี้ GFIN รับไหม ⇒ ช่องราคาขาย GFIN ปิดและบันทึกเป็นค่าว่าง (บันทึกได้)
+  const gfinTablesState: 'ready' | 'loading' | 'failed' =
+    gfinTables !== undefined ? 'ready' : gfinQuery.isError ? 'failed' : 'loading';
+  const retryPriceLookups = () => {
+    if (templateQuery.isError) void templateQuery.refetch();
+    if (bcConfigQuery.isError) void bcConfigQuery.refetch();
+    if (gfinQuery.isError) gfinQuery.retry();
+  };
+  // แปลงตั้งค่าครั้งเดียวต่อชุดข้อมูล/หมวด — พิมพ์ราคาแล้วคิดเฉพาะตัวเลข ไม่แปลงตาราง GFIN ใหม่ทุกตัวอักษร
+  const quoteContexts = useMemo(
+    () => toQuoteContexts(form.category, bcConfigQuery.data, gfinTables),
+    [form.category, bcConfigQuery.data, gfinTables],
+  );
+  const quote = useMemo(
+    () =>
+      computeCardQuote({
+        category: form.category,
+        brand: form.brand,
+        model: form.model,
+        storage: form.storage,
+        deviceOrigin: form.deviceOrigin,
+        fields: priceFields,
+        template: template ?? null,
+        costPrice: form.costPrice,
+        contexts: quoteContexts,
+      }),
+    [form.category, form.brand, form.model, form.storage, form.deviceOrigin, form.costPrice, priceFields, template, quoteContexts],
+  );
+  // ใบราคา GFIN มีรุ่นนี้ไหม — ขึ้นกับรุ่นอย่างเดียว ไม่คิดใหม่ตอนพิมพ์ราคา
+  const isGfinBlocked = useMemo(
+    () =>
+      gfinBlocked({
+        category: form.category,
+        brand: form.brand,
+        model: form.model,
+        storage: form.storage,
+        deviceOrigin: '',
+        fields: EMPTY_PRICE_FIELDS,
+        template: null,
+        costPrice: '',
+        gfinTables,
+      }),
+    [form.category, form.brand, form.model, form.storage, gfinTables],
+  );
 
   const createMutation = useMutation({
     mutationFn: async () => {
       const isAccessory = form.category === 'ACCESSORY';
-      const isCharger = isAccessory && form.accessoryType === 'ชุดชาร์จ';
-      const autoName = isAccessory
-        ? isCharger
-          ? [form.accessoryType, form.accessoryBrand, form.model].filter(Boolean).join(' ')
-          : (() => {
-              const accParts = [form.accessoryType, form.accessoryBrand].filter(Boolean);
-              return form.model
-                ? `${accParts.join(' ')} สำหรับ ${form.model}`
-                : accParts.join(' ');
-            })()
-        : [form.brand, form.model, form.color, form.storage].filter(Boolean).join(' ');
       const payload = {
-        name: form.name || autoName,
+        name: form.name.trim() || buildAutoProductName(form),
         brand: form.brand,
         model: form.model,
         color: isAccessory ? undefined : form.color || undefined,
@@ -168,13 +241,7 @@ export default function ProductCreatePage() {
             }
           : {}),
         photos: photoPreviews.length > 0 ? photoPreviews : undefined,
-        prices: prices
-          .filter((p) => p.label && p.amount && !isNaN(parseFloat(p.amount)))
-          .map((p) => ({
-            label: p.label,
-            amount: parseFloat(p.amount),
-            isDefault: p.isDefault,
-          })),
+        ...toPricePayload(form.category, priceFields, { gfinBlocked: isGfinBlocked || gfinTablesState !== 'ready' }),
       };
       return api.post('/products', payload);
     },
@@ -186,29 +253,6 @@ export default function ProductCreatePage() {
       toast.error(getErrorMessage(err));
     },
   });
-
-  // --- Price handlers ---
-  const addPriceRow = () => {
-    setPrices([...prices, { label: '', amount: '', isDefault: false }]);
-  };
-
-  const removePriceRow = (index: number) => {
-    if (prices.length <= 1) return;
-    const newPrices = prices.filter((_, i) => i !== index);
-    if (prices[index].isDefault && newPrices.length > 0) {
-      newPrices[0].isDefault = true;
-    }
-    setPrices(newPrices);
-  };
-
-  const updatePrice = (index: number, field: keyof PriceRow, value: string | boolean) => {
-    const newPrices = [...prices];
-    if (field === 'isDefault' && value === true) {
-      newPrices.forEach((p) => (p.isDefault = false));
-    }
-    (newPrices[index] as unknown as Record<string, unknown>)[field] = value;
-    setPrices(newPrices);
-  };
 
   // --- Photo handlers ---
   const handlePhotoAdd = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -257,6 +301,8 @@ export default function ProductCreatePage() {
 
   // --- Form field change handlers ---
   const handleCategoryChange = (newCategory: string) => {
+    // อุปกรณ์เสริมมีช่องเดียว — ราคาที่กรอกไว้ของมือถือ/แท็บเล็ตไม่ใช่ราคาของอุปกรณ์ (และกลับกัน)
+    if ((newCategory === 'ACCESSORY') !== (form.category === 'ACCESSORY')) setPriceFields(EMPTY_PRICE_FIELDS);
     setForm({
       ...form,
       category: newCategory,
@@ -328,10 +374,11 @@ export default function ProductCreatePage() {
       toast.error('กรุณาระบุราคาทุน');
       return;
     }
-    if (prices.filter((p) => p.label && p.amount).length === 0) {
-      toast.error('กรุณาเพิ่มอย่างน้อย 1 ราคาขาย');
+    if (!hasAnyPrice(toPricePayload(form.category, priceFields, { gfinBlocked: isGfinBlocked }))) {
+      toast.error(NO_SELLING_PRICE_MESSAGE);
       return;
     }
+    if (pricesLoading) return;
     createMutation.mutate();
   };
 
@@ -389,14 +436,41 @@ export default function ProductCreatePage() {
           />
 
           <PriceCard
-            prices={prices}
-            onAdd={addPriceRow}
-            onRemove={removePriceRow}
-            onUpdate={updatePrice}
+            category={form.category}
+            fields={priceFields}
+            onFieldChange={(key: PriceKey, value: string) => setPriceFields((f) => ({ ...f, [key]: value }))}
+            templatePrices={templatePrices ?? null}
+            templateLabel={templateLabelOf(form)}
+            templateNotFound={lookupQuery !== null && template === null && !storageMissing}
+            storageMissing={storageMissing}
+            templateFailed={templateFailed}
+            onUseTemplate={() => {
+              if (templatePrices) setPriceFields(templatePrices);
+            }}
+            onRetry={retryPriceLookups}
+            quote={quote}
+            gfinBlocked={isGfinBlocked}
+            bcConfigMissing={
+              !accessory &&
+              !bcConfigQuery.isError &&
+              !bcConfigQuery.isFetching &&
+              // ไม่มีตั้งค่า หรือมีแต่ไม่มีงวดที่มีอัตรา — เรท 1 คิดไม่ได้ทั้งคู่
+              !(bcConfigQuery.data?.allowedMonths?.length)
+            }
+            bcConfigFailed={!accessory && bcConfigQuery.isError}
+            gfinTablesState={accessory ? 'ready' : gfinTablesState}
+            accessoryProfit={accessory ? accessoryProfit(priceFields.cash, form.costPrice) : null}
+            costEntered={form.costPrice.trim() !== ''}
           />
 
           {/* Submit */}
-          <div className="flex justify-end gap-3">
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            {pricesLoading && (
+              <p role="status" className="inline-flex items-center gap-1.5 text-sm leading-snug text-muted-foreground">
+                <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden="true" />
+                กำลังโหลดราคากลาง…
+              </p>
+            )}
             <button data-ui-control="button"
               type="button"
               onClick={() => navigate('/products')}
@@ -406,7 +480,7 @@ export default function ProductCreatePage() {
             </button>
             <button data-ui-control="button"
               type="submit"
-              disabled={createMutation.isPending}
+              disabled={createMutation.isPending || pricesLoading}
               className="px-6 py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
             >
               {createMutation.isPending ? 'กำลังบันทึก...' : 'บันทึกสินค้า'}

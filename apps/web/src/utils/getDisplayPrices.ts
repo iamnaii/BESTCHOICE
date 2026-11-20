@@ -5,9 +5,9 @@ export interface ProductPriceRow {
 }
 
 /**
- * Canonical `ProductPrice.label` values — the ONLY two labels
+ * Canonical `ProductPrice.label` values — the labels
  * `syncPriceRowsFromColumns` (apps/api) write-through targets when
- * `Product.cashPrice`/`installmentPrice` (columns, source of truth) change.
+ * `Product.cashPrice`/`installmentPrice`/`financePrice` (columns, source of truth) change.
  * A price row with one of these labels is not an independent editable row —
  * it mirrors a column and must be edited via `PATCH /products/:id` instead
  * of the generic `/products/:id/prices` CRUD (Task 13, StockPage
@@ -15,7 +15,9 @@ export interface ProductPriceRow {
  */
 export const CASH_LABEL = 'ราคาเงินสด';
 export const INSTALLMENT_LABEL = 'ราคาผ่อน BESTCHOICE';
-export const CANONICAL_PRICE_LABELS = [CASH_LABEL, INSTALLMENT_LABEL] as const;
+/** แถวสำเนาของ `Product.financePrice` — ขึ้นต้น `ราคาผ่อน` แต่ไม่ใช่ราคาผ่อน BESTCHOICE ห้ามอ่านผ่าน prefix fallback */
+export const FINANCE_LABEL = 'ราคาผ่อนไฟแนนซ์';
+export const CANONICAL_PRICE_LABELS = [CASH_LABEL, INSTALLMENT_LABEL, FINANCE_LABEL] as const;
 
 export interface ProductForDisplay {
   cashPrice?: string | number | null;
@@ -31,7 +33,7 @@ export interface DisplayPrices {
 function pickFromPrices(prices: ProductPriceRow[], exactLabel: string, prefix: string): number | null {
   const exact = prices.find((p) => p.label === exactLabel);
   if (exact) return Number(exact.amount);
-  const prefixMatch = prices.find((p) => p.label.startsWith(prefix));
+  const prefixMatch = prices.find((p) => p.label.startsWith(prefix) && p.label !== FINANCE_LABEL);
   if (prefixMatch) return Number(prefixMatch.amount);
   return null;
 }

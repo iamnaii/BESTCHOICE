@@ -106,7 +106,7 @@ export function InstallmentCalculatorCard({
         <GfinPanel
           gfin={{ ...gfin, months: gfin.months, quote: q }}
           settings={gfinSettings}
-          installmentPrice={installmentPrice}
+          installmentPrice={quotes.gfinSalePrice ?? installmentPrice}
           deviceOrigin={product.deviceOrigin}
           isManager={!isSales}
           commissionOptions={commissionOptions}
@@ -126,6 +126,8 @@ export function InstallmentCalculatorCard({
                 tone="primary"
                 monthly={formatTHB(bc.quote.result.monthlyPayment.toNumber())}
                 detail={`ดาวน์ ${formatBaht(bc.downAmount)} ฿`}
+                months={bc.months}
+                currentMonths={gfin.months}
                 onSwitch={() => setFin('bc')}
               />
             ) : null
@@ -150,12 +152,14 @@ export function InstallmentCalculatorCard({
             )
           }
           compare={
-            gfin?.quote.available ? (
+            gfin?.quote.available && gfin.months != null ? (
               <CompareRow
                 name="GFIN"
                 tone="info"
                 monthly={formatBaht(gfin.quote.result.monthlyPayment.toNumber())}
                 detail={`ลูกค้าดาวน์จริง ${formatBaht(gfin.quote.result.downAmountActual.toNumber())} ฿ · คอม ${gfin.commissionPct}%`}
+                months={gfin.months}
+                currentMonths={bc.months}
                 onSwitch={() => setFin('gfin')}
               />
             ) : gfinCompareNotice ? (
@@ -181,8 +185,15 @@ export function InstallmentCalculatorCard({
       <CardHeader>
         <CardTitle>คำนวณค่างวด</CardTitle>
         <span className="text-xs text-muted-foreground leading-snug">
-          คิดจากราคาผ่อน{' '}
-          <span className="font-mono tabular-nums">{formatBaht(installmentPrice)}</span> ฿
+          {fin === 'gfin' && quotes.hasFinancePrice
+            ? 'คิดจากราคาขาย GFIN'
+            : fin === 'gfin'
+              ? 'คิดจากราคาผ่อน BESTCHOICE (ยังไม่ได้ตั้งราคาขาย GFIN)'
+              : 'คิดจากราคาผ่อน'}{' '}
+          <span className="font-mono tabular-nums">
+            {formatBaht(fin === 'gfin' && quotes.gfinSalePrice != null ? quotes.gfinSalePrice : installmentPrice)}
+          </span>{' '}
+          ฿
         </span>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -209,7 +220,12 @@ export function InstallmentCalculatorCard({
             ไม่รับเครื่องแบตต่ำกว่า {GFIN_MIN_BATTERY_HEALTH}% · เปลี่ยนแบตแล้วแก้ % แบตในข้อมูลเครื่อง แถบนี้จะหายเอง
           </NoticeBox>
         )}
-        <FinanceSwitch value={fin} onChange={setFin} gfinDisabled={!gfinAvailable} />
+        <FinanceSwitch
+          value={fin}
+          onChange={setFin}
+          gfinDisabled={!gfinAvailable}
+          gfinStatus={gfin ? 'ready' : loading ? 'loading' : 'failed'}
+        />
         {body}
       </CardContent>
     </Card>

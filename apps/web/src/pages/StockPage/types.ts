@@ -15,6 +15,7 @@ export interface StockProduct {
   // not previously typed here.
   cashPrice: string | null;
   installmentPrice: string | null;
+  financePrice?: string | null;
   status: string;
   color: string | null;
   storage: string | null;

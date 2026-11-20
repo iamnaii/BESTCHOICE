@@ -48,8 +48,8 @@ try {
       },
     });
     assert.equal(bc.isValid, true);
-    assert.equal(bc.monthlyPayment.toFixed(2), '2413.20');
-    assert.equal(bc.totalWithVat.toFixed(2), '28958.48');
+    assert.equal(bc.monthlyPayment.toFixed(2), '2411.06');
+    assert.equal(bc.totalWithVat.toFixed(2), '28932.80');
     const product = { brand: 'Apple', model: 'iPhone 14 Pro', storage: '128 GB', category: 'PHONE_USED' };
     const mappings = [{ id: 'm1', gfinSeries: 'iPhone 14', gfinVariant: 'Pro', storage: '128GB', condition: 'HAND_2', maxPrice: new Decimal('21500'), modelMatchPattern: 'iPhone 14 Pro', isActive: true }];
     const rules = [{ id: 'r1', label: 'Used iPhone 14', seriesPattern: 'iPhone 14|iPhone 15', condition: 'HAND_2', allowance: new Decimal('1000'), isActive: true }];
@@ -64,7 +64,7 @@ try {
     assert.equal(gfin.isValid, true);
     assert.equal(gfin.monthlyPayment.toFixed(2), '2923.00');
     assert.equal(gfin.totalPayback.toFixed(2), '35076.00');
-    assert.equal(gfin.downAmountActual.toFixed(2), '4150.00');
+    assert.equal(gfin.downAmountActual.toFixed(2), '4200.00');
     assert(Object.keys(require.cache).every(file => !file.endsWith('.ts')));
     assert(Object.keys(require.cache).every(file => file.startsWith(process.cwd() + path.sep)), 'All runtime modules must resolve within the isolated layout');
     console.log(JSON.stringify({

@@ -202,6 +202,7 @@ export default function ContractCreatePage() {
             paymentDueDay={data.paymentDueDay}
             setPaymentDueDay={data.setPaymentDueDay}
             interestRate={calculation.interestRate}
+            contractRatePct={Number(quote?.ratePct ?? 0)}
             storeCommPct={calculation.storeCommPct}
             vatPct={calculation.vatPct}
             principal={calculation.principal}
@@ -273,6 +274,7 @@ export default function ContractCreatePage() {
               totalMonths={data.totalMonths}
               monthlyPayment={calculation.monthlyPayment}
               interestRate={calculation.interestRate}
+              contractRatePct={Number(quote?.ratePct ?? 0)}
               interestConfig={data.interestConfig}
               bundleProducts={data.bundleProducts}
             />

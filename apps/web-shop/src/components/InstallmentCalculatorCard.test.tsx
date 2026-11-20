@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InstallmentCalculatorCard } from './InstallmentCalculatorCard';
@@ -11,6 +11,8 @@ type Result = {
   downAmount?: number;
   months?: number;
   minDownPct?: number;
+  allowedMonths?: number[];
+  defaultMonths?: number;
 };
 type Request = {
   params: URLSearchParams;
@@ -46,6 +48,9 @@ function setup(id = 'device-1', price = 20000) {
   const rendered = render(view(id));
   return { ...rendered, changeDevice: (next: string) => rendered.rerender(view(next)) };
 }
+const BC_TERM = 'จำนวนงวด BESTCHOICE';
+const GFIN_TERM = 'จำนวนงวด GFIN';
+const provider = (request: Request) => request.params.get('provider');
 async function answer(batch: Request[], monthlyPayment: number, extra: Partial<Result> = {}) {
   await act(async () =>
     batch.forEach((request) =>
@@ -54,7 +59,8 @@ async function answer(batch: Request[], monthlyPayment: number, extra: Partial<R
           available: true,
           monthlyPayment,
           downAmount: 3000,
-          months: Number(request.params.get('months')),
+          months: Number(request.params.get('months') ?? 12),
+          allowedMonths: [6, 8, 10, 12],
           ...extra,
         },
       }),
@@ -66,19 +72,21 @@ describe('installment quote interactions', () => {
   it('hides stale prices while loading and ignores late responses to older selections', async () => {
     setup();
     await answer(requests.slice(), 1234.56);
-    expect(await screen.findAllByText('฿1,234.56')).toHaveLength(2);
-    fireEvent.change(screen.getByLabelText('จำนวนงวด:'), { target: { value: '6' } });
-    const older = requests.slice(-2);
-    expect(screen.queryByText('฿1,234.56')).not.toBeInTheDocument();
+    expect(await screen.findAllByText('฿1,235')).toHaveLength(2);
+    // ลดดาวน์/งวดของ BESTCHOICE คิดใหม่แค่ BESTCHOICE — GFIN มีงวดของตัวเอง
+    fireEvent.change(screen.getByLabelText(BC_TERM), { target: { value: '6' } });
+    const older = requests.slice(-1);
+    expect(older.map(provider)).toEqual(['BC']);
+    expect(screen.getAllByText('฿1,235')).toHaveLength(1);
     expect(screen.getByText('กำลังคำนวณค่างวดล่าสุด…')).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('จำนวนงวด:'), { target: { value: '8' } });
-    const latest = requests.slice(-2);
+    fireEvent.change(screen.getByLabelText(BC_TERM), { target: { value: '8' } });
+    const latest = requests.slice(-1);
     expect(older.every((request) => request.signal.aborted)).toBe(true);
     await answer(latest, 2567.89);
-    expect(await screen.findAllByText('฿2,567.89')).toHaveLength(2);
+    expect(await screen.findAllByText('฿2,568')).toHaveLength(1);
     await answer(older, 9999);
     expect(screen.queryByText('฿9,999')).not.toBeInTheDocument();
-    expect(screen.getAllByText('฿2,567.89')).toHaveLength(2);
+    expect(screen.getAllByText('฿2,568')).toHaveLength(1);
   });
 
   it('distinguishes request errors from unavailable plans and retries only the failed provider', async () => {
@@ -115,9 +123,9 @@ describe('installment quote interactions', () => {
           request.params.get('downPct') === '0.23',
       ),
     ).toBe(true);
-    fireEvent.change(screen.getByLabelText('จำนวนงวด:'), { target: { value: '6' } });
+    fireEvent.change(screen.getByLabelText(BC_TERM), { target: { value: '6' } });
     changeDevice('device-2');
-    expect(screen.getByLabelText('จำนวนงวด:')).toHaveValue('12');
+    expect(screen.getByLabelText(BC_TERM)).toHaveValue('12');
     expect(screen.getByLabelText('เงินดาวน์ เป็นเปอร์เซ็นต์')).toHaveValue(15);
     expect(
       requests
@@ -152,5 +160,58 @@ describe('installment quote interactions', () => {
     fireEvent.change(pct, { target: { value: '20' } });
     fireEvent.blur(pct);
     await waitFor(() => expect(screen.getByLabelText('เงินดาวน์ เป็นบาท')).toHaveValue(5200));
+  });
+  it('offers only the terms that have an interest rate (from the BC answer)', async () => {
+    setup();
+    await answer(requests.slice(), 3139, { allowedMonths: [10, 12] });
+    const select = screen.getByLabelText(BC_TERM);
+    await waitFor(() =>
+      expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual(['10 งวด', '12 งวด']),
+    );
+  });
+
+  it('moves to 12, else the first allowed term, when the current term has no rate', async () => {
+    setup();
+    await answer(requests.slice(), 3139, { allowedMonths: [10] });
+    await waitFor(() => expect(screen.getByLabelText(BC_TERM)).toHaveValue('10'));
+    expect(requests.slice(-1).map((r) => [provider(r), r.params.get('months')])).toEqual([['BC', '10']]);
+  });
+
+  // final manual check B2 — GFIN ใช้งวดของฝั่ง GFIN (iPhone 17 Pro: 15 งวด ตรงกับหน้า "ราคาและเรทผ่อน" / บอท / สติกเกอร์)
+  it('GFIN: first request has no term — the server picks the staff-quote term · options come from the GFIN answer', async () => {
+    setup('device-17pro', 39000);
+    const [bc, gfin] = requests;
+    expect(provider(bc)).toBe('BC');
+    expect(bc.params.get('months')).toBe('12');
+    expect(provider(gfin)).toBe('GFIN');
+    expect(gfin.params.has('months')).toBe(false);
+    await answer([bc], 3424, { allowedMonths: [10, 12], downAmount: 5900 });
+    await answer([gfin], 4403, { months: 15, allowedMonths: [10, 12, 15], defaultMonths: 15, downAmount: 9700 });
+    const gfinSelect = await screen.findByLabelText(GFIN_TERM);
+    expect(within(gfinSelect).getAllByRole('option').map((o) => o.textContent)).toEqual(['10 งวด', '12 งวด', '15 งวด']);
+    expect(gfinSelect).toHaveValue('15');
+    expect(within(screen.getByLabelText(BC_TERM)).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      '10 งวด',
+      '12 งวด',
+    ]);
+    expect(screen.getByText('฿4,403')).toBeInTheDocument();
+    expect(screen.getByText('ดาวน์ ฿9,700 · 15 งวด')).toBeInTheDocument();
+  });
+
+  it('GFIN: picking a GFIN term asks only GFIN for that term', async () => {
+    setup('device-17pro', 39000);
+    await answer([requests[0]], 3424, { allowedMonths: [10, 12] });
+    await answer([requests[1]], 4403, { months: 15, allowedMonths: [10, 12, 15], defaultMonths: 15 });
+    const before = requests.length;
+    fireEvent.change(await screen.findByLabelText(GFIN_TERM), { target: { value: '12' } });
+    const asked = requests.slice(before);
+    expect(asked.map((r) => [provider(r), r.params.get('months')])).toEqual([['GFIN', '12']]);
+    expect(screen.getByLabelText(BC_TERM)).toHaveValue('12');
+  });
+
+  it('shows the monthly payment rounded up to whole baht', async () => {
+    setup();
+    await answer(requests.slice(), 3138.66);
+    expect(await screen.findAllByText('฿3,139')).toHaveLength(2);
   });
 });

@@ -1,5 +1,5 @@
 import Decimal from 'decimal.js';
-import { downFromPct } from './installment-rounding';
+import { downFromPct, roundUpToStep } from './installment-rounding';
 import type {
   BcCalcInput,
   BcCalcOutput,
@@ -101,7 +101,9 @@ export function calcGfinInstallment(input: GfinCalcInput): GfinCalcOutput {
   // default เดิม 30% คงไว้เพื่อผู้เรียกเก่า — หน้าเว็บ/preview ส่งค่าจากตั้งค่า GFIN (gfin.minDownPct) เข้ามาเอง
   const resolvedDownPct = downPct ?? new Decimal('0.30');
   const downAmountByFormula = round2(gfinSubmitPrice.mul(resolvedDownPct));
-  const downAmountActual = round2(Decimal.max(downAmountByFormula.sub(downDiscount), 0));
+  // ดาวน์ลูกค้าปัดขึ้นหลักร้อย (คำตัดสินเจ้าของ 2026-11-19 · สเปค price-master-retire 4.3)
+  // ยอดจัดยังคิดจากดาวน์ตามสูตรที่แจ้ง GFIN (ไม่ปัด) — การปัดเปลี่ยนแค่เงินที่ร้านเก็บจากลูกค้า
+  const downAmountActual = roundUpToStep(Decimal.max(downAmountByFormula.sub(downDiscount), 0));
   const financedAmount = round2(gfinSubmitPrice.sub(downAmountByFormula));
 
   if (rateFactor.months !== months) {
@@ -159,6 +161,15 @@ export function gfinAllowanceFactor(deviceOrigin: 'THAI' | 'IMPORTED' | null | u
   return new Decimal('0.5');
 }
 
+/**
+ * ดาวน์ขั้นต่ำ GFIN เป็นสัดส่วน (0.30) — กติกา OVER ก่อน ไม่มีแล้วใช้ค่าตั้ง (settingMinDownPct เป็นสัดส่วน เช่น 0.25)
+ * ใช้ตั้ง 30% ให้ iPhone 17 / 18 / Air ตามชีต MASTER (สเปค 3.3) · 0 = ตั้งเป็น 0% จริง ไม่ถอยไปค่าตั้ง
+ */
+export function resolveGfinDownPct(rule: GfinOverpriceRuleRow | null, settingMinDownPct: Decimal): Decimal {
+  if (rule?.minDownPct != null) return new Decimal(rule.minDownPct).div(100);
+  return settingMinDownPct;
+}
+
 /** เรทของ GFIN ต่อคู่ (จำนวนงวด, %คอมมิชชั่น) — เฉพาะแถวที่เปิดใช้งาน */
 export function findGfinRateFactor(
   factors: GfinRateFactorRow[],
@@ -180,6 +191,13 @@ export function findGfinMapping(
   // มือสองเท่านั้นที่เป็น HAND_2 — เครื่องใหม่และ iPad (TABLET) ถือเป็นมือ 1
   const condition = product.category === 'PHONE_USED' ? 'HAND_2' : 'HAND_1';
   const modelLower = product.model.toLowerCase();
+  const modelName = modelLower.trim();
+  const isExactName = (m: GfinModelMappingRow) => m.modelMatchPattern.trim().toLowerCase() === modelName;
+
+  // สเปค price-master-retire 4.3: ชื่อรุ่นตรงกับคำจับคู่ของแถวที่เปิดใช้แถวใดก็ตาม (ไม่ดูสภาพ/ความจุ)
+  // = ใบราคามีรุ่นนี้ → ใช้ได้เฉพาะแถวที่ตรงชื่อทั้งคำ · ไม่มีแถวของสภาพ + ความจุนั้น = GFIN ไม่รับ
+  // (เดิม iPhone 13 Pro มือ 1 ได้ราคาของ iPhone 13 มือ 1 เพราะ "iPhone 13 Pro" มีคำว่า "iPhone 13")
+  const exactOnly = modelName !== '' && mappings.some((m) => m.isActive && isExactName(m));
 
   // Sort by pattern length descending so more-specific patterns (e.g. "iPhone 14 Pro Max")
   // are checked before shorter ones (e.g. "iPhone 14 Pro") — prevents false substring matches.
@@ -189,6 +207,10 @@ export function findGfinMapping(
     if (!m.isActive) continue;
     if (m.condition !== condition) continue;
     if (m.storage.replace(/\s+/g, '').toUpperCase() !== normStorage) continue;
+    if (exactOnly) {
+      if (isExactName(m)) return m;
+      continue;
+    }
     const patternLower = m.modelMatchPattern.toLowerCase();
     // Match whole-pattern: after the match position, ensure no additional word characters follow.
     const idx = modelLower.indexOf(patternLower);

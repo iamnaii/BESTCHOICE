@@ -70,25 +70,37 @@ export function DetailRow({
   );
 }
 
-/** บรรทัดเทียบอีกไฟแนนซ์งวดเดียวกัน — กด "สลับไปดู" เพื่อเปลี่ยนฝั่ง */
+/**
+ * บรรทัดเทียบอีกไฟแนนซ์ — กด "สลับไปดู" เพื่อเปลี่ยนฝั่ง
+ * งวดของสองฝั่งไม่เท่ากันได้ (GFIN ตั้งต้นที่งวดของราคากลาง/เพดาน OVER เช่น 15) → บอกงวดของตัวเองแทน "งวดเดียวกัน"
+ */
 export function CompareRow({
   name,
   tone,
   monthly,
   detail,
+  months,
+  currentMonths,
   onSwitch,
 }: {
   name: string;
   tone: CalcTone;
   monthly: string;
   detail: string;
+  /** งวดของตัวเลขที่เทียบ */
+  months: number;
+  /** งวดของฝั่งที่ดูอยู่ */
+  currentMonths: number;
   onSwitch: () => void;
 }) {
   return (
     <div className={cn('rounded-lg border px-3.5 py-2.5', toneBox[tone].replace('/10', '/5'))}>
       <div className="flex items-center justify-between gap-3">
         <span className={cn('text-xs font-semibold', toneText[tone])}>
-          {name} <span className="font-normal text-muted-foreground">· งวดเดียวกัน</span>
+          {name}{' '}
+          <span className="font-normal text-muted-foreground">
+            {months === currentMonths ? '· งวดเดียวกัน' : `· ${months} งวด`}
+          </span>
         </span>
         <button
           type="button"
@@ -173,7 +185,7 @@ export function DownCallout({
       </div>
       <p className="col-span-3 text-xs text-muted-foreground leading-snug">
         หักส่วนต่าง ราคาส่งสูงสุด {formatBaht(submit)} − ราคาผ่อนที่ต้องการ {formatBaht(ourPrice)} ={' '}
-        {formatBaht(discount)} ฿ (กติกาของร้าน)
+        {formatBaht(discount)} ฿ แล้วปัดขึ้นหลักร้อย (กติกาของร้าน)
       </p>
     </div>
   );

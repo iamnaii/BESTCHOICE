@@ -10,10 +10,10 @@ import { PrismaService } from '../../prisma/prisma.service';
  */
 describe('StickersService — ข้อมูลเครื่องสำหรับพิมพ์สติกเกอร์', () => {
   let service: StickersService;
-  let prisma: { product: { findMany: jest.Mock } };
+  let prisma: { product: { findMany: jest.Mock }; pricingTemplate: { findMany: jest.Mock } };
 
   beforeEach(async () => {
-    prisma = { product: { findMany: jest.fn() } };
+    prisma = { product: { findMany: jest.fn() }, pricingTemplate: { findMany: jest.fn().mockResolvedValue([]) } };
     const moduleRef = await Test.createTestingModule({
       providers: [StickersService, { provide: PrismaService, useValue: prisma }],
     }).compile();
@@ -40,6 +40,7 @@ describe('StickersService — ข้อมูลเครื่องสำห�
     stockInDate: new Date('2026-08-11T03:00:00.000Z'),
     cashPrice: new Decimal(19900),
     installmentPrice: new Decimal(19900),
+    financePrice: new Decimal(20900),
     prices: [
       { label: 'ราคาเงินสด', amount: new Decimal(19900), isDefault: true },
       { label: 'ราคาผ่อน BESTCHOICE', amount: new Decimal(19900), isDefault: false },
@@ -69,11 +70,29 @@ describe('StickersService — ข้อมูลเครื่องสำห�
       stockInDate: '2026-08-11T03:00:00.000Z',
       cashPrice: '19900',
       installmentPrice: '19900',
+      financePrice: '20900',
       prices: [
         { label: 'ราคาเงินสด', amount: '19900', isDefault: true },
         { label: 'ราคาผ่อน BESTCHOICE', amount: '19900', isDefault: false },
       ],
+      templateTerms: null,
     });
+  });
+
+  it('แนบเงื่อนไขผ่อนของราคากลาง (templateTerms) — งวด/ดาวน์บนดวงเริ่มจากค่าเดียวกับหน้าราคาและบอท', async () => {
+    prisma.product.findMany.mockResolvedValue([baseProduct]);
+    prisma.pricingTemplate.findMany.mockResolvedValue([
+      {
+        id: 't', brand: 'Apple', model: 'iPhone 15', storage: '128GB', category: 'PHONE_NEW', hasWarranty: false,
+        deviceOrigin: 'UNSPECIFIED', installmentBestchoicePrice: new Decimal(19900), rate1TermMonths: 10,
+        rate1DownPayment: new Decimal(5000), rate2TermMonths: 15,
+      },
+    ]);
+
+    const [result] = await service.getStickerDataBatch(['product-1']);
+
+    expect(prisma.pricingTemplate.findMany).toHaveBeenCalledTimes(1);
+    expect(result.templateTerms).toEqual({ bcPrice: '19900', rate1TermMonths: 10, rate1DownPayment: '5000', rate2TermMonths: 15 });
   });
 
   it('ค้นได้ทั้ง Product ID และ IMEI (ยิงบาร์โค้ดจากช่องสแกน) — คืนตามลำดับที่ขอ ไม่ซ้ำ', async () => {
@@ -128,6 +147,7 @@ describe('StickersService — ข้อมูลเครื่องสำห�
         ...baseProduct,
         cashPrice: null,
         installmentPrice: null,
+        financePrice: null,
         prices: [],
         batteryHealth: 87,
         hasBox: false,
@@ -139,6 +159,7 @@ describe('StickersService — ข้อมูลเครื่องสำห�
 
     expect(result.cashPrice).toBeNull();
     expect(result.installmentPrice).toBeNull();
+    expect(result.financePrice).toBeNull();
     expect(result.prices).toEqual([]);
     expect(result.batteryHealth).toBe(87);
     expect(result.hasBox).toBe(false);

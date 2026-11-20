@@ -335,6 +335,58 @@ describe('GfinConfigService', () => {
     });
   });
 
+  describe('overprice rule — minDownPct', () => {
+    it('createOverpriceRule ส่ง minDownPct · ไม่ส่ง = null (ใช้ค่าตั้ง gfin.minDownPct)', async () => {
+      prisma.gfinOverpriceRule.create.mockResolvedValue({ id: 'r9' });
+
+      await service.createOverpriceRule(
+        {
+          label: 'iPhone 17 มือ 1',
+          seriesPattern: 'iPhone 17|iPhone 17 Pro|iPhone 17 Pro Max|iPhone Air',
+          condition: 'HAND_1',
+          allowance: 2000,
+          maxMonths: 15,
+          minDownPct: 30,
+        },
+        'user-1',
+      );
+      expect(prisma.gfinOverpriceRule.create).toHaveBeenLastCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ minDownPct: 30 }) }),
+      );
+
+      await service.createOverpriceRule(
+        { label: 'iPhone 16 มือ 1', seriesPattern: 'iPhone 16', condition: 'HAND_1', allowance: 2000 },
+        'user-1',
+      );
+      expect(prisma.gfinOverpriceRule.create).toHaveBeenLastCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ minDownPct: null }) }),
+      );
+    });
+
+    it('updateOverpriceRule ตั้ง/ล้าง minDownPct ได้ · ไม่ส่งมา = ไม่แตะ', async () => {
+      prisma.gfinOverpriceRule.findUnique.mockResolvedValue({ id: 'r1', deletedAt: null });
+      prisma.gfinOverpriceRule.update.mockResolvedValue({ id: 'r1' });
+
+      await service.updateOverpriceRule('r1', { minDownPct: 30 }, 'user-1');
+      expect(prisma.gfinOverpriceRule.update).toHaveBeenLastCalledWith({
+        where: { id: 'r1' },
+        data: { minDownPct: 30 },
+      });
+
+      await service.updateOverpriceRule('r1', { minDownPct: null }, 'user-1');
+      expect(prisma.gfinOverpriceRule.update).toHaveBeenLastCalledWith({
+        where: { id: 'r1' },
+        data: { minDownPct: null },
+      });
+
+      await service.updateOverpriceRule('r1', { label: 'iPhone 17 มือ 1 (30%)' }, 'user-1');
+      expect(prisma.gfinOverpriceRule.update).toHaveBeenLastCalledWith({
+        where: { id: 'r1' },
+        data: { label: 'iPhone 17 มือ 1 (30%)' },
+      });
+    });
+  });
+
   // ===== ค่าตั้งค่า GFIN (system_config gfin.*) =====
 
   describe('gfin settings', () => {
@@ -436,6 +488,98 @@ describe('GfinConfigService', () => {
 
       const result = await service.matchPreview('p2');
       expect(result.match).toBeNull();
+    });
+  });
+  // ===== นำเข้าใบราคา (สเปค 7.7) =====
+
+  describe('importMaxPrices', () => {
+    const row = (over: Record<string, unknown> = {}) => ({
+      id: 'm1',
+      gfinSeries: 'iPhone 15',
+      gfinVariant: null,
+      storage: '128GB',
+      condition: 'HAND_2',
+      maxPrice: new Prisma.Decimal(16900),
+      modelMatchPattern: 'iPhone 15',
+      isActive: true,
+      deletedAt: null,
+      ...over,
+    });
+
+    beforeEach(() => {
+      prisma.$transaction = jest.fn((fn: (tx: unknown) => unknown) => fn(prisma));
+      prisma.gfinModelMapping.create.mockImplementation(({ data }: { data: object }) => ({ id: 'new', ...data }));
+      prisma.gfinModelMapping.update.mockImplementation(({ data }: { data: object }) => ({ ...row(), ...data }));
+    });
+
+    it('ไม่มีแถวเดิม → สร้างด้วยชื่อรุ่นเต็ม · รุ่นย่อยว่าง · ความจุตัดช่องว่าง', async () => {
+      prisma.gfinModelMapping.findMany.mockResolvedValue([]);
+      const result = await service.importMaxPrices(
+        { items: [{ model: 'iPhone 15 Pro Max', storage: '256 gb', condition: 'HAND_1', maxPrice: 34900 }] },
+        'u1',
+      );
+      expect(prisma.gfinModelMapping.findMany).toHaveBeenCalledWith({ where: { deletedAt: null } });
+      expect(prisma.gfinModelMapping.create).toHaveBeenCalledWith({
+        data: {
+          gfinSeries: 'iPhone 15 Pro Max',
+          gfinVariant: null,
+          storage: '256GB',
+          condition: 'HAND_1',
+          maxPrice: new Prisma.Decimal(34900),
+          modelMatchPattern: 'iPhone 15 Pro Max',
+          isActive: true,
+        },
+      });
+      expect(result).toEqual({ created: 1, updated: 0, unchanged: 0 });
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'GFIN_MAX_PRICE_IMPORTED', userId: 'u1', newValue: { created: 1, updated: 0, unchanged: 0, count: 1 } }),
+      );
+    });
+
+    it('หาแถวเดิมด้วย (ชื่อรุ่น, ความจุ, สภาพ) เอง → แก้ราคา + เปิดใช้', async () => {
+      prisma.gfinModelMapping.findMany.mockResolvedValue([row({ maxPrice: new Prisma.Decimal(16000), isActive: false })]);
+      const result = await service.importMaxPrices(
+        { items: [{ model: 'iphone 15', storage: '128GB', condition: 'HAND_2', maxPrice: 16900 }] },
+        'u1',
+      );
+      expect(prisma.gfinModelMapping.update).toHaveBeenCalledWith({
+        where: { id: 'm1' },
+        data: { maxPrice: new Prisma.Decimal(16900), modelMatchPattern: 'iphone 15', isActive: true },
+      });
+      expect(result).toEqual({ created: 0, updated: 1, unchanged: 0 });
+    });
+
+    it('นำเข้าซ้ำค่าเท่าเดิม → ไม่สร้าง ไม่แก้', async () => {
+      prisma.gfinModelMapping.findMany.mockResolvedValue([row()]);
+      const result = await service.importMaxPrices(
+        { items: [{ model: 'iPhone 15', storage: '128GB', condition: 'HAND_2', maxPrice: 16900 }] },
+        'u1',
+      );
+      expect(prisma.gfinModelMapping.create).not.toHaveBeenCalled();
+      expect(prisma.gfinModelMapping.update).not.toHaveBeenCalled();
+      expect(result).toEqual({ created: 0, updated: 0, unchanged: 1 });
+    });
+
+    it('แถวเดิมแบบรุ่นหลัก + รุ่นย่อย (รูปแบบเก่า) ไม่นับเป็นรุ่นเดียวกัน → สร้างแถวใหม่', async () => {
+      prisma.gfinModelMapping.findMany.mockResolvedValue([row({ gfinVariant: 'Pro' })]);
+      const result = await service.importMaxPrices(
+        { items: [{ model: 'iPhone 15', storage: '128GB', condition: 'HAND_2', maxPrice: 16900 }] },
+        'u1',
+      );
+      expect(result).toEqual({ created: 1, updated: 0, unchanged: 0 });
+    });
+
+    it('รุ่น+ความจุ+สภาพซ้ำในไฟล์เดียว → ปฏิเสธด้วยข้อความไทย ก่อนเขียนอะไร', async () => {
+      const item = { model: 'iPhone 16', storage: '128 GB', condition: 'HAND_1' as const };
+      await expect(
+        service.importMaxPrices(
+          { items: [{ ...item, maxPrice: 26900 }, { ...item, model: 'IPHONE 16', storage: '128GB', maxPrice: 27900 }] },
+          'u1',
+        ),
+      ).rejects.toThrow(/ซ้ำ/);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(prisma.gfinModelMapping.create).not.toHaveBeenCalled();
+      expect(audit.log).not.toHaveBeenCalled();
     });
   });
 });

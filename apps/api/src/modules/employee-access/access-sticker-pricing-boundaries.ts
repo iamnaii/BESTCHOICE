@@ -21,6 +21,7 @@ export const STICKER_PRICING_ROUTES = [
   'StickersController.getStickerDataBatch',
   'PricingTemplatesController.findAll',
   'PricingTemplatesController.lookup',
+  'PricingTemplatesController.quotes',
   'PricingTemplatesController.findOne',
   'PricingTemplatesController.create',
   'PricingTemplatesController.update',
@@ -112,7 +113,7 @@ export class AccessStickerPricingBoundaries implements OnModuleInit {
                   }
                   const result = await handler();
                   if (output || mutation) {
-                    const value = result as { id?: string; success?: number; skipped?: number };
+                    const value = result as { id?: string; success?: number; skipped?: number; deactivated?: number };
                     const ids = output
                       ? (Array.isArray(result) ? result : [result]).map(
                           (r: { productId: string }) => r.productId,
@@ -150,7 +151,7 @@ export class AccessStickerPricingBoundaries implements OnModuleInit {
                             : {
                                 operation: method,
                                 ...(method === 'bulkImport'
-                                  ? { success: value.success ?? 0, skipped: value.skipped ?? 0 }
+                                  ? { success: value.success ?? 0, skipped: value.skipped ?? 0, deactivated: value.deactivated ?? 0 }
                                   : {}),
                               }),
                         },
@@ -189,7 +190,9 @@ export class AccessStickerPricingBoundaries implements OnModuleInit {
                         'hasWarranty',
                         'deviceOrigin',
                       ]
-                    : ['company', 'brand', 'category', 'deviceOrigin'];
+                    : method === 'quotes'
+                      ? ['company', 'category', 'origin', 'q']
+                      : ['company', 'brand', 'category', 'deviceOrigin'];
                 if (Object.keys(q).some((key) => !allowed.includes(key)))
                   throw new BadRequestException('ตัวกรองไม่ถูกต้อง');
                 if (
@@ -228,6 +231,7 @@ export class AccessStickerPricingBoundaries implements OnModuleInit {
                     q.hasWarranty,
                     q.deviceOrigin,
                   );
+                if (method === 'quotes') return controller.quotes(q.category, q.origin, q.q);
                 return controller.findAll(q.brand, q.category, q.deviceOrigin);
               }),
           };

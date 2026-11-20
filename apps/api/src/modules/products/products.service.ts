@@ -19,7 +19,9 @@ import { syncPriceRowsFromColumns } from '../../utils/product-price-sync.util';
 import { assertManualStatusChangeAllowed, productStatusLabel } from './product-status.util';
 import {
   assertSellableOnEnterStock,
+  CREATE_NO_SELLING_PRICE_MESSAGE,
   enterStockAuditData,
+  hasSellingPrice,
   positiveDecimalOrNull,
   unconfirmedLeftoverPrices,
   unconfirmedPriceMessage,
@@ -28,6 +30,14 @@ import { ReceivingAcceptanceJournal } from '../purchase-orders/services/receivin
 import { assertProductNotHeld, changedIdentityFields } from './product-hold.util';
 import { resolveBookedInventory } from '../inventory/booked-inventory.util';
 import { autofillProductPriceFromTemplate } from '../../utils/product-price-autofill.util';
+import { loadTemplateTerms } from '../../utils/pricing-template-terms.util';
+import {
+  fillFinancePriceFromTemplate,
+  resolveHasWarranty,
+  syncFinancePriceRow,
+  templateFinancePrice,
+  templateKeyOf,
+} from '../../utils/product-finance-price.util';
 import { isAccessoryProductCode } from '../../utils/accessory-type.util';
 import { findAccessoryGroupWhere, findStockGroups, StockListFilters } from './products-stock-groups';
 
@@ -217,7 +227,9 @@ export class ProductsService {
     const product = await this.findOne(id);
     const activeContract =
       product.status === 'SOLD_INSTALLMENT' ? await this.loadActiveContract(product.id) : null;
-    return { ...product, activeContract };
+    // เงื่อนไขผ่อนของราคากลาง — ค่าตั้งต้นของเครื่องคำนวณ/สรุปส่งลูกค้าชุดเดียวกับหน้าราคาและบอท (final review C1 I1)
+    const templateTerms = (await loadTemplateTerms(this.prisma, [product])).get(product.id) ?? null;
+    return { ...product, activeContract, templateTerms };
   }
 
   private async loadActiveContract(productId: string): Promise<ActiveContractSummary | null> {
@@ -242,7 +254,7 @@ export class ProductsService {
   }
 
   async create(dto: CreateProductDto) {
-    const { prices, costPrice, warrantyExpireDate, cashPrice, installmentPrice, accessoriesIncluded, ...data } = dto;
+    const { prices, costPrice, warrantyExpireDate, cashPrice, installmentPrice, financePrice, accessoriesIncluded, ...data } = dto;
 
     // DTO guard: prices[] ที่มี isDefault:true (หรือ fallback ของ element แรกที่ไม่ได้ระบุ)
     // มากกว่า 1 รายการ จะชน DB partial unique index `product_prices_one_default` เป็น P2002
@@ -265,6 +277,8 @@ export class ProductsService {
         : installmentPrice === null
           ? null
           : new Prisma.Decimal(installmentPrice);
+    const financeDecimal =
+      financePrice === undefined ? undefined : financePrice === null ? null : new Prisma.Decimal(financePrice);
     // Json? column: ส่ง JS `null` ตรงๆ เขียนเป็น JSON literal null (column ไม่เป็น SQL NULL —
     // `accessories_included IS NULL` จะ false, Prisma filter หา null ไม่เจอ) ต้องแปลงเป็น
     // Prisma.DbNull ตอนต้องการ "เคลียร์" คอลัมน์จริงๆ
@@ -282,6 +296,7 @@ export class ProductsService {
           costPrice,
           ...(cashDecimal !== undefined ? { cashPrice: cashDecimal } : {}),
           ...(installmentDecimal !== undefined ? { installmentPrice: installmentDecimal } : {}),
+          ...(financeDecimal !== undefined ? { financePrice: financeDecimal } : {}),
           ...(accessoriesIncludedValue !== undefined
             ? { accessoriesIncluded: accessoriesIncludedValue }
             : {}),
@@ -333,14 +348,27 @@ export class ProductsService {
         );
       }
 
+      // สเปค 2026-11-19 ข้อ 3.2: ราคาขาย GFIN เป็นขั้นของตัวเอง — เติมจากราคากลางแม้ผู้สร้างกรอกราคาเงินสดเอง
+      // ไม่ส่งมา (undefined) = เติม · ส่ง null = ยืนยันว่าไม่มี ห้ามเติม
+      if (financeDecimal === undefined) {
+        await fillFinancePriceFromTemplate(tx, product.id, templateKeyOf(product));
+      }
+
       // B0 §2.1: write-through คอลัมน์ → prices[] (ผู้อ่านเดิม POS/สัญญา/บอท ไม่พัง)
       // null ส่งเข้าไปได้ — util จะ "ข้ามฟิลด์นั้น" (ไม่ sync ไม่ลบแถว) ตามกติกาข้อ 4
       await syncPriceRowsFromColumns(tx, product.id, {
         cashPrice: cashDecimal ?? null,
         installmentPrice: installmentDecimal ?? null,
+        financePrice: financeDecimal ?? null,
       });
 
-      return tx.product.findUnique({ where: { id: product.id }, include: productInclude });
+      const created = await tx.product.findUnique({ where: { id: product.id }, include: productInclude });
+      // IN_STOCK = ขายที่ POS ได้ทันที ⇒ ต้องมีราคาเงินสดหรือผ่อน BESTCHOICE หลังเติมจากราคากลางแล้ว
+      // (ราคาขาย GFIN / แถว "ราคาผ่อนไฟแนนซ์" ไม่นับ — `hasSellingPrice` ตัวเดียวกับประตูเข้าคลังอื่น) · ล้ม = ถอยทั้งธุรกรรม
+      if (isInStock && (!created || !hasSellingPrice(created))) {
+        throw new BadRequestException(CREATE_NO_SELLING_PRICE_MESSAGE);
+      }
+      return created;
     });
   }
 
@@ -385,8 +413,8 @@ export class ProductsService {
     if (identityFields.length > 0) {
       await assertProductNotHeld(this.prisma, existing, 'CHANGE_IDENTITY', identityFields);
     }
-    const { costPrice, warrantyExpireDate, cashPrice, installmentPrice, accessoriesIncluded, ...data } = dto;
-    const touchesPrice = cashPrice !== undefined || installmentPrice !== undefined;
+    const { costPrice, warrantyExpireDate, cashPrice, installmentPrice, financePrice, accessoriesIncluded, ...data } = dto;
+    const touchesPrice = cashPrice !== undefined || installmentPrice !== undefined || financePrice !== undefined;
     // 3 สถานะเหมือน create — null ต้องเขียนลงคอลัมน์ได้ (ล้างราคา) ห้ามส่งเข้า Prisma.Decimal
     const cashDecimal =
       cashPrice === undefined ? undefined : cashPrice === null ? null : new Prisma.Decimal(cashPrice);
@@ -396,6 +424,8 @@ export class ProductsService {
         : installmentPrice === null
           ? null
           : new Prisma.Decimal(installmentPrice);
+    const financeDecimal =
+      financePrice === undefined ? undefined : financePrice === null ? null : new Prisma.Decimal(financePrice);
     // Json? column — เหมือน create: null ต้องแปลงเป็น Prisma.DbNull ไม่งั้นเขียนเป็น JSON
     // literal null (SQL column ไม่เป็น NULL จริง)
     const accessoriesIncludedValue =
@@ -416,6 +446,7 @@ export class ProductsService {
           ...(costPrice !== undefined ? { costPrice } : {}),
           ...(cashDecimal !== undefined ? { cashPrice: cashDecimal } : {}),
           ...(installmentDecimal !== undefined ? { installmentPrice: installmentDecimal } : {}),
+          ...(financeDecimal !== undefined ? { financePrice: financeDecimal } : {}),
           ...(accessoriesIncludedValue !== undefined
             ? { accessoriesIncluded: accessoriesIncludedValue }
             : {}),
@@ -434,6 +465,11 @@ export class ProductsService {
         });
       }
 
+      // แก้ราคาขาย GFIN ด้วยมือ: เขียนเฉพาะเมื่อส่งมา · null = ล้างคอลัมน์และลบแถวสำเนา
+      if (financeDecimal !== undefined) {
+        await syncFinancePriceRow(tx, id, financeDecimal);
+      }
+
       // เครื่องจากใบสั่งซื้อที่ยังไม่ลงบัญชีรับของ (รอถ่ายรูป) → ลงตอนเข้าคลัง (คำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8)
       if (entersStock) {
         await new ReceivingAcceptanceJournal(this.prisma).bookIfPending(tx, id);
@@ -450,7 +486,11 @@ export class ProductsService {
             via: 'PATCH',
             before: existing,
             // ราคาที่ใบนี้เขียนจริง (ถ้ามี) — ไม่ส่ง = ไม่แตะ ⇒ helper จะ echo ราคาเดิม
-            after: { cashPrice: cashDecimal ?? null, installmentPrice: installmentDecimal ?? null },
+            after: {
+              cashPrice: cashDecimal ?? null,
+              installmentPrice: installmentDecimal ?? null,
+              ...(financeDecimal !== undefined ? { financePrice: financeDecimal } : {}),
+            },
           }),
         });
       }
@@ -535,6 +575,8 @@ export class ProductsService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      // สเปค 2026-11-19 ข้อ 3.2: ระบบตั้งราคาเครื่องใหม่ → ราคาขาย GFIN ตามราคากลางของหมวดปัจจุบัน · ไม่มี = ล้าง
+      const financePrice = await templateFinancePrice(tx, templateKeyOf(product));
       // updateMany + count===1 = ด่านกันแข่ง (double-click / สองคนกดพร้อมกัน): เงื่อนไข
       // สถานะอยู่ใน WHERE เอง ⇒ ผู้กดคนที่สองไม่ได้แถว และไม่มี AuditLog ใบซ้ำตามมา
       const locked = await tx.product.updateMany({
@@ -545,6 +587,7 @@ export class ProductsService {
           // ไม่ส่งราคาไหนมา = ไม่แตะคอลัมน์นั้น (ไม่ล้างเป็น null)
           ...(cashDecimal ? { cashPrice: cashDecimal } : {}),
           ...(installmentDecimal ? { installmentPrice: installmentDecimal } : {}),
+          financePrice,
           // ราคาที่มนุษย์ยืนยัน = เลิกเป็นราคาที่เติมอัตโนมัติ (badge ฝั่ง B1 อ่านฟิลด์นี้)
           priceAutofilledAt: null,
         },
@@ -558,6 +601,7 @@ export class ProductsService {
         cashPrice: cashDecimal,
         installmentPrice: installmentDecimal,
       });
+      await syncFinancePriceRow(tx, id, financePrice);
       await new ReceivingAcceptanceJournal(this.prisma).bookIfPending(tx, id);
 
       await tx.auditLog.create({
@@ -567,7 +611,7 @@ export class ProductsService {
           fromStatus: product.status,
           via: 'BUTTON',
           before: product,
-          after: { cashPrice: cashDecimal, installmentPrice: installmentDecimal },
+          after: { cashPrice: cashDecimal, installmentPrice: installmentDecimal, financePrice },
           note: input.note,
         }),
       });
@@ -893,17 +937,4 @@ export class ProductsService {
       hasInstallmentPrice: product.installmentPrice != null,
     };
   }
-}
-
-/** สรุปสถานะประกันของเครื่องสำหรับเลือกแถวตารางราคากลาง — null = ไม่รู้ */
-function resolveHasWarranty(p: {
-  category: string;
-  warrantyExpired: boolean | null;
-  warrantyExpireDate: Date | null;
-}): boolean | null {
-  if (p.category !== 'PHONE_USED') return false;
-  if (p.warrantyExpired === true) return false;
-  if (p.warrantyExpired === false) return true;
-  if (p.warrantyExpireDate) return p.warrantyExpireDate.getTime() > Date.now();
-  return null;
 }

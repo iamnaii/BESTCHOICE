@@ -1,38 +1,53 @@
 import { Injectable } from '@nestjs/common';
+import type { ModelQuote } from '@installment/shared';
 import { PrismaService } from '../../../prisma/prisma.service';
 import {
   extractStorageToken,
   normalizeStorage,
   stripStorageToken,
 } from '../../../utils/device-query-normalize.util';
+import {
+  PricingQuoteService,
+  type PriceQuoteRow,
+  type QuoteCategory,
+  type QuoteOrigin,
+} from '../../pricing-templates/pricing-quote.service';
 
 export const GET_INSTALLMENT_RATES_TOOL = {
   name: 'get_installment_rates',
   description:
-    "Look up the shop's REAL baht installment rates for a phone model from PricingTemplate — " +
-    'the same table stickers.service.ts uses to print price stickers, so numbers here always ' +
-    "match what's printed in-store. `query` MUST be ONLY the model name (brand/model, optionally " +
-    'storage) — e.g. "iPhone 15 128GB" — with NO other words: matching requires the stored model ' +
-    'to contain the query text, so greetings or extra words ("มีไหมคะ") make it match nothing. ' +
-    'Returns up to 3 matches, each with BOTH rate plans (rate1/rate2), and each plan carries its ' +
-    'OWN down-payment, monthly baht payment, and term — ALL BAHT, ready to quote directly (the ' +
-    'two plans usually have different monthly amounts, exactly like the two lines on the physical ' +
-    'sticker). Matches can be sibling models (asked "iPhone 15", got "iPhone 15 Pro Max") — ALWAYS ' +
-    'attribute quoted numbers to the returned brand+model+storage verbatim. Use this whenever ' +
-    'search_products found nothing (or every hit has priceMissing) so the bot can still answer with ' +
-    'real down/monthly/term numbers instead of going silent. No match → templates: [] — do NOT guess ' +
-    "a rate and do NOT ask for the customer's budget; retry once with the plain English model name " +
-    'without storage, then follow the persona rule for an empty table. ' +
-    'deviceOrigin and condition are internal labels — never print THAI/IMPORTED/UNSPECIFIED to the ' +
-    "customer; UNSPECIFIED rows are the shop's regular (Thai) table. Never quote these rows for the " +
-    'imported free-down promo (promo rates come from search_knowledge_base only). ' +
-    'Each match carries `condition` ("มือ 1" = new, "มือสอง" = used) — the same model+storage can have BOTH rows ' +
-    'with different numbers (มือ 1 rows come first); quote ONLY the row whose condition matches what the ' +
-    'customer is buying (pass `condition` to filter). deviceOrigin THAI also returns rows not yet labelled (UNSPECIFIED).',
+    "Look up the shop's installment quotes for a phone model from the price table (PricingTemplate). " +
+    'Numbers come from the same calculator as the staff price page and contracts: rate1 = ผ่อนกับร้าน ' +
+    '(BESTCHOICE), rate2 = ผ่อนกับ GFIN; each plan has its own downPayment / monthlyPrice / termMonths in ' +
+    'whole baht (monthly already rounded up) — quote them directly, never round or recompute. ' +
+    '`query` MUST be ONLY the model name (brand/model, optionally storage) — e.g. "iPhone 15 128GB" — with ' +
+    'NO other words: matching requires the stored model to contain the query text, so greetings or extra ' +
+    'words ("มีไหมคะ") make it match nothing. Returns up to 3 matches. rate2 can be null with ' +
+    'rate2Unavailable (customer-safe Thai reason, e.g. "GFIN ไม่รับรุ่นนี้") — then offer rate1 only. allowedTerms lists ' +
+    'the ONLY terms rate1 can be done at; if the customer asks for another term, say which terms are ' +
+    'available (e.g. "ผ่อนได้ 10 หรือ 12 งวด") instead of computing a number. Matches can be sibling ' +
+    'models (asked "iPhone 15", got "iPhone 15 Pro Max") — ALWAYS attribute quoted numbers to the ' +
+    'returned brand+model+storage verbatim. Use this whenever search_products found nothing (or every ' +
+    'hit has priceMissing) so the bot can still answer with real down/monthly/term numbers instead of ' +
+    "going silent. No match → templates: [] — do NOT guess a rate and do NOT ask for the customer's " +
+    'budget; retry once with the plain English model name without storage, then follow the persona rule ' +
+    'for an empty table. deviceOrigin and condition are internal labels — never print ' +
+    'THAI/IMPORTED to the customer; deviceOrigin is the origin the numbers were quoted for ' +
+    "(THAI = the shop's regular table unless the customer asked for an imported phone). " +
+    'Pass deviceOrigin IMPORTED only when the customer wants an imported phone (GFIN gives imported ' +
+    'phones a lower price, so rate2 differs). Never quote these rows for the imported free-down promo ' +
+    '(promo rates come from search_knowledge_base only). Each match carries `condition` ("มือ 1" = new, ' +
+    '"มือสอง" = used) — the same model+storage can have BOTH rows with different numbers (มือ 1 rows ' +
+    'come first); quote ONLY the row whose condition matches what the customer is buying (pass ' +
+    '`condition` to filter).',
   input_schema: {
     type: 'object',
     properties: {
-      deviceOrigin: { type: 'string', enum: ['THAI', 'IMPORTED', 'UNSPECIFIED'], description: 'Device origin requested by the customer, if specified' },
+      deviceOrigin: {
+        type: 'string',
+        enum: ['THAI', 'IMPORTED', 'UNSPECIFIED'],
+        description: 'Device origin requested by the customer, if specified',
+      },
       condition: {
         type: 'string',
         enum: ['มือ 1', 'มือสอง'],
@@ -49,7 +64,6 @@ export const GET_INSTALLMENT_RATES_TOOL = {
   },
 };
 
-/** Same shape as StickerRate (stickers.service.ts) — sticker-exact parity. */
 export interface InstallmentRateOption {
   downPayment: number;
   monthlyPrice: number;
@@ -60,49 +74,38 @@ export type RateCondition = 'มือ 1' | 'มือสอง';
 
 export interface PricingTemplateRateMatch {
   deviceOrigin?: string;
-  /** มือ 1 (PHONE_NEW) / มือสอง (อื่น ๆ) — รุ่น+ความจุเดียวกันมีได้ทั้งสองแถวที่ตัวเลขต่างกัน */
+  /** มือ 1 (PHONE_NEW) / มือสอง (อื่น ๆ) */
   condition: RateCondition;
   brand: string;
   model: string;
   storage: string;
-  hasWarranty: boolean;
-  rate1: InstallmentRateOption;
-  rate2: InstallmentRateOption;
+  /** มือสองที่มีประกันร้าน (true) / ไม่มี (false) · null = มือ 1 / แท็บเล็ต / มือสองที่ราคาเท่ากัน — ไม่มีเรื่องประกันให้พูด */
+  hasWarranty: boolean | null;
+  /** เรท 1 (ผ่อนกับร้าน) — null = คิดไม่ได้ (ไม่มีราคาผ่อน / ตั้งค่าดอกเบี้ย) */
+  rate1: InstallmentRateOption | null;
+  /** เรท 2 (GFIN) — null = ใช้ไม่ได้ ดูเหตุผลที่ rate2Unavailable */
+  rate2: InstallmentRateOption | null;
+  rate2Unavailable?: string;
+  /** งวดที่เรท 1 ทำได้ (ตั้งค่าดอกเบี้ย) — ลูกค้าขอวดอื่นให้บอกตัวเลือกนี้ */
+  allowedTerms?: number[];
 }
 
 export interface GetInstallmentRatesResult {
   templates: PricingTemplateRateMatch[];
 }
 
-/**
- * แถวเต็มจาก `listAllRates()` — ผลของ `run()` บอกแค่ `condition` (มือ 1/มือสอง) ส่วนผู้เรียกภายใน
- * (recommend_devices) ต้องรู้ category ดิบ — `hasWarranty` **ไม่ใช่** ตัวบอกมือ 1
- * (schema: true = มือสองที่ยังมีประกัน — ดู stickers.service.ts composeOne)
- */
+/** แถวของ listAllRates() — ผู้เรียกภายใน (recommend_devices) ต้องรู้ category ดิบ */
 export interface PricingTemplateRateRow extends PricingTemplateRateMatch {
   category: string;
 }
 
-interface RateDefaults {
-  rate1Down: number;
-  rate1Term: number;
-  rate2Down: number;
-  rate2Term: number;
-}
-
 interface PricingTemplateRow {
-  deviceOrigin?: string;
+  deviceOrigin: string;
   brand: string;
   model: string;
   storage: string;
   category: string;
   hasWarranty: boolean;
-  installmentBestchoicePrice: unknown;
-  installmentFinancePrice: unknown;
-  rate1DownPayment: unknown;
-  rate1TermMonths: number | null;
-  rate2DownPayment: unknown;
-  rate2TermMonths: number | null;
 }
 
 const MAX_MATCHES = 3;
@@ -110,7 +113,6 @@ const MAX_MATCHES = 3;
 /**
  * เรียงผลให้คงที่ และแถวแฝด (รุ่น+ความจุเดียวกัน) ออก มือ 1 ก่อน มือสอง — enum ProductCategory ใน
  * Postgres เรียงตามลำดับประกาศ (PHONE_NEW, PHONE_USED, …) ⇒ category asc = PHONE_NEW ก่อน
- * (เดิมไม่มี category ใน orderBy ⇒ ลำดับแถวแฝดขึ้นกับ DB และ MAX_MATCHES ตัดทิ้งแถวไหนก็ได้ — synth C04)
  */
 const RATE_ORDER_BY = [
   { brand: 'asc' as const },
@@ -120,9 +122,66 @@ const RATE_ORDER_BY = [
   { hasWarranty: 'asc' as const },
 ];
 
+const conditionOf = (category: string): RateCondition => (category === 'PHONE_NEW' ? 'มือ 1' : 'มือสอง');
+
+/** ป้ายประกันมีความหมายแค่มือสอง — มือ 1 / แท็บเล็ตในฐานข้อมูลเก็บ false ไว้เฉย ๆ ห้ามส่งให้โมเดลอ่านเป็น "ไม่มีประกัน" */
+const warrantyOf = (category: string, hasWarranty: boolean | null): boolean | null =>
+  category === 'PHONE_USED' ? hasWarranty : null;
+
+/** ลูกค้าขอเครื่องนอก → คิดแบบเครื่องนอก (OVER ครึ่ง) · นอกนั้น = เครื่องไทย (ค่าเริ่มต้นหน้า "ราคาและเรทผ่อน") */
+const quoteOrigin = (origin: string | undefined): QuoteOrigin => (origin === 'IMPORTED' ? 'IMPORTED' : 'THAI');
+
+/** ข้อความถึงลูกค้าตามรหัสเหตุผล — ไม่ส่งข้อความภายในของตัวคำนวณ (เช่น "ยังไม่ได้ตั้งค่า GFIN") */
+function rate2UnavailableText(reason: string): string {
+  if (reason === 'NO_PRICE_LIST') return 'GFIN ไม่รับรุ่นนี้';
+  if (reason === 'NO_RATE') return 'GFIN ไม่มีแผนผ่อนจำนวนงวดนี้';
+  return 'ยังไม่มีราคาผ่อน GFIN สำหรับรุ่นนี้';
+}
+
+function fromQuote(t: PricingTemplateRow, q: ModelQuote, origin: QuoteOrigin): PricingTemplateRateMatch {
+  return {
+    // ป้ายต้องตรงกับที่มาที่ใช้คิดตัวเลขจริง (ไม่ใช่ป้ายของแถวที่รอดการตัดซ้ำ)
+    deviceOrigin: origin,
+    condition: conditionOf(t.category),
+    brand: t.brand,
+    model: t.model,
+    storage: t.storage,
+    hasWarranty: warrantyOf(t.category, t.hasWarranty),
+    rate1: q.rate1
+      ? { downPayment: q.rate1.downAmount, monthlyPrice: q.rate1.monthlyDisplay, termMonths: q.rate1.months }
+      : null,
+    rate2: q.rate2.available
+      ? { downPayment: q.rate2.downAmount, monthlyPrice: q.rate2.monthly, termMonths: q.rate2.months }
+      : null,
+    ...(q.rate2.available ? {} : { rate2Unavailable: rate2UnavailableText(q.rate2.reason) }),
+    allowedTerms: q.rate1?.allowedMonths ?? [],
+  };
+}
+
+function fromQuoteRow(r: PriceQuoteRow): PricingTemplateRateRow {
+  const rate2 = 'unavailable' in r.rate2 ? null : r.rate2;
+  return {
+    category: r.category,
+    condition: conditionOf(r.category),
+    brand: r.brand,
+    model: r.model,
+    storage: r.storage,
+    // มือสองที่ราคามี/ไม่มีประกันเท่ากัน (null) คงเดิม = false
+    hasWarranty: r.category === 'PHONE_USED' ? r.hasWarranty === true : null,
+    rate1: r.rate1
+      ? { downPayment: r.rate1.downAmount, monthlyPrice: r.rate1.monthly, termMonths: r.rate1.months }
+      : null,
+    rate2: rate2 ? { downPayment: rate2.downAmount, monthlyPrice: rate2.monthly, termMonths: rate2.months } : null,
+    ...('unavailable' in r.rate2 ? { rate2Unavailable: r.rate2.unavailable } : {}),
+  };
+}
+
 @Injectable()
 export class GetInstallmentRatesTool {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly quotes: PricingQuoteService,
+  ) {}
 
   async run(
     input: { query?: string; deviceOrigin?: string; condition?: string } = {},
@@ -131,9 +190,7 @@ export class GetInstallmentRatesTool {
     if (!rawQuery) return { templates: [] };
 
     const storageToken = extractStorageToken(rawQuery);
-    // Strip the storage token from the text used for the brand/model contains
-    // match — a stored model like "iPhone 15 Pro Max" would never contain the
-    // literal "256GB" substring the customer typed alongside it.
+    // ตัดความจุออกจากคำค้นรุ่น — ชื่อรุ่นที่เก็บไม่มีคำ "256GB" อยู่ในตัว
     const modelQuery = storageToken ? stripStorageToken(rawQuery) : rawQuery;
     if (!modelQuery) return { templates: [] };
 
@@ -149,96 +206,65 @@ export class GetInstallmentRatesTool {
         ],
       },
       orderBy: RATE_ORDER_BY,
+      select: { deviceOrigin: true, brand: true, model: true, storage: true, category: true, hasWarranty: true },
     });
-
     if (rows.length === 0) return { templates: [] };
 
-    // Storage refine: a narrowing HINT, not a filter — if the query names a
-    // storage size and at least one row actually has it, narrow to those;
-    // otherwise keep the full candidate set (mirrors PricingTemplatesService
-    // .lookup()'s exact-then-fallback shape without discarding real hits).
+    // ความจุเป็นตัวแคบผล ไม่ใช่ตัวกรอง — ไม่มีแถวของความจุนั้นก็คงทุกแถวไว้
     let candidates = rows;
     if (storageToken) {
       const bySize = rows.filter((r) => normalizeStorage(r.storage) === storageToken);
       if (bySize.length > 0) candidates = bySize;
     }
 
-    const defaults = await this.loadDefaults();
-    return {
-      templates: candidates.slice(0, MAX_MATCHES).map((t) => this.toMatch(t, defaults)),
-    };
+    // แถวของเครื่องไทย/นอกกับ "ไม่ระบุ" ของรุ่นเดียวกัน = คิดครั้งเดียว (quoteForModel เลือกแถวตามกติกาข้อ 7.1 เอง)
+    const seen = new Set<string>();
+    const unique = candidates.filter((r) => {
+      if (r.category === 'ACCESSORY') return false;
+      const k = `${r.brand.toLowerCase()}|${r.model.toLowerCase()}|${normalizeStorage(r.storage)}|${r.category}|${r.hasWarranty}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+
+    const origin = quoteOrigin(input.deviceOrigin);
+    const templates: PricingTemplateRateMatch[] = [];
+    for (const t of unique.slice(0, MAX_MATCHES)) {
+      const q = await this.quotes.quoteForModel({
+        brand: t.brand,
+        model: t.model,
+        storage: t.storage,
+        category: t.category as QuoteCategory,
+        hasWarranty: t.hasWarranty,
+        origin,
+      });
+      if (q) templates.push(fromQuote(t, q, origin));
+    }
+    return { templates };
   }
 
   /**
-   * ทุก template ที่ใช้งานอยู่ แปลงเป็น rate1/rate2 ด้วยสูตรเดียวกับ `run()`
-   * (toMatch + loadDefaults) — ให้ tool อื่น (recommend_devices) inject ใช้
-   * แทนการก๊อปสูตร sticker-parity ไปซ้ำอีกที่
+   * ใบเสนอราคาทุกรุ่นของมือ 1 / มือ 2 (เครื่องไทย) ให้ recommend_devices — อ่าน listQuotes ซึ่งโหลด
+   * ตั้งค่าครั้งเดียวต่อหมวด แทนการเรียก quoteForModel ทีละแถว
    */
   async listAllRates(): Promise<PricingTemplateRateRow[]> {
-    const rows: PricingTemplateRow[] = await this.prisma.pricingTemplate.findMany({
-      where: { isActive: true, deletedAt: null },
-      orderBy: RATE_ORDER_BY,
-    });
-    if (rows.length === 0) return [];
-    const defaults = await this.loadDefaults();
-    return rows.map((t) => ({ ...this.toMatch(t, defaults), category: String(t.category) }));
-  }
-
-  // Sticker-exact parity with StickersService.composeOne(): rate1 monthly =
-  // installmentBestchoicePrice (stickers.service.ts:175), rate2 monthly =
-  // installmentFinancePrice (stickers.service.ts:185). The bot must quote the
-  // same two lines customers see on the physical in-store sticker (#1337).
-  private toMatch(t: PricingTemplateRow, defaults: RateDefaults): PricingTemplateRateMatch {
-    return {
-      deviceOrigin: t.deviceOrigin ?? 'UNSPECIFIED',
-      condition: String(t.category) === 'PHONE_NEW' ? 'มือ 1' : 'มือสอง',
-      brand: t.brand,
-      model: t.model,
-      storage: t.storage,
-      hasWarranty: t.hasWarranty,
-      rate1: {
-        downPayment:
-          t.rate1DownPayment !== null && t.rate1DownPayment !== undefined
-            ? Number(t.rate1DownPayment)
-            : defaults.rate1Down,
-        monthlyPrice: Number(t.installmentBestchoicePrice),
-        termMonths: t.rate1TermMonths ?? defaults.rate1Term,
-      },
-      rate2: {
-        downPayment:
-          t.rate2DownPayment !== null && t.rate2DownPayment !== undefined
-            ? Number(t.rate2DownPayment)
-            : defaults.rate2Down,
-        monthlyPrice: Number(t.installmentFinancePrice),
-        termMonths: t.rate2TermMonths ?? defaults.rate2Term,
-      },
-    };
-  }
-
-  // Same SystemConfig source stickers.service.ts's loadDefaults() reads —
-  // keeps the bot's quoted rate consistent with the printed sticker when a
-  // template hasn't set an explicit rate1/rate2 down/term.
-  private async loadDefaults(): Promise<RateDefaults> {
-    const rows = await this.prisma.systemConfig.findMany({
-      where: { key: { startsWith: 'sticker.' } },
-    });
-    const map = new Map((rows ?? []).map((r: { key: string; value: string }) => [r.key, r.value]));
-    return {
-      rate1Down: Number(map.get('sticker.rate1.defaultDown') ?? 0),
-      rate1Term: Number(map.get('sticker.rate1.defaultTerm') ?? 24),
-      rate2Down: Number(map.get('sticker.rate2.defaultDown') ?? 0),
-      rate2Term: Number(map.get('sticker.rate2.defaultTerm') ?? 12),
-    };
+    const out: PricingTemplateRateRow[] = [];
+    for (const category of ['PHONE_NEW', 'PHONE_USED'] as const) {
+      const { rows } = await this.quotes.listQuotes({ category, origin: 'THAI' });
+      out.push(...rows.map(fromQuoteRow));
+    }
+    return out;
   }
 }
 
 /**
- * THAI นับรวมแถวที่ยังไม่ติดป้าย (UNSPECIFIED) — ตารางเรทบน prod ทั้งชุดเป็นแถวก่อน #1619
- * (ยังไม่ระบุ origin) ถ้ากรองตรงตัว ลูกค้าที่เลือก "เครื่องไทย" จะได้ผลว่างทุกรุ่น
+ * THAI / IMPORTED รวมแถว "ไม่ระบุ" (สเปคข้อ 7.1 — ไม่มีแถวของที่มาเครื่องนั้นให้ใช้แถว "ไม่ระบุ")
+ * ไม่ส่ง = ไม่กรอง
  */
 function originFilter(origin: string | undefined) {
-  if (origin === 'THAI') return { deviceOrigin: { in: ['THAI', 'UNSPECIFIED'] as ('THAI' | 'UNSPECIFIED')[] } };
-  if (origin === 'IMPORTED' || origin === 'UNSPECIFIED') return { deviceOrigin: origin as 'IMPORTED' | 'UNSPECIFIED' };
+  if (origin === 'THAI' || origin === 'IMPORTED')
+    return { deviceOrigin: { in: [origin, 'UNSPECIFIED'] as ('THAI' | 'IMPORTED' | 'UNSPECIFIED')[] } };
+  if (origin === 'UNSPECIFIED') return { deviceOrigin: 'UNSPECIFIED' as const };
   return {};
 }
 

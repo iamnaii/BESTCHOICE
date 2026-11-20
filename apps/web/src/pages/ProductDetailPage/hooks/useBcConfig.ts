@@ -7,8 +7,8 @@ export const BC_CONFIG_QUERY_KEY = (category: string | undefined) =>
 
 /**
  * ตารางดอกเบี้ย BESTCHOICE ของหมวดสินค้า (GET /interest-configs/resolved) — key เดิมของ
- * InstallmentCalculatorCard/useCustomerSummary จึง dedupe กันเอง · ยิงเฉพาะมือถือ (หมวดอื่นไม่มีตาราง
- * และ endpoint ตอบ error ซึ่งไม่ควร retry)
+ * InstallmentCalculatorCard/useCustomerSummary/สติกเกอร์ จึง dedupe กันเอง · ยิงเฉพาะมือถือและแท็บเล็ต
+ * (ชุดเดียวกับสติกเกอร์ · endpoint คืนตั้งค่าของหมวดหรือค่าตั้งต้นของระบบ) · อุปกรณ์เสริมไม่มีผ่อน
  */
 export function useBcConfig(category: string | undefined, enabled = true) {
   return useQuery<BcConfigJson>({
@@ -19,7 +19,7 @@ export function useBcConfig(category: string | undefined, enabled = true) {
       );
       return data;
     },
-    enabled: enabled && (category === 'PHONE_NEW' || category === 'PHONE_USED'),
+    enabled: enabled && (category === 'PHONE_NEW' || category === 'PHONE_USED' || category === 'TABLET'),
     retry: false,
   });
 }

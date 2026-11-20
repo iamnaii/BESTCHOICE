@@ -5,7 +5,7 @@ import { api } from '@/lib/api';
 import { gsap, useGSAP } from '@/components/motion/gsap';
 import { MessageCircle } from 'lucide-react';
 import { Card, CardHeader, CardBody, CardTitle, Button } from '@/components';
-import { minDownAmountFromPct } from '@installment/shared';
+import { displayInstallment, minDownAmountFromPct } from '@installment/shared';
 import { lineOaMessageUrl, productShareUrl } from '@/lib/copy';
 
 interface PreviewResponse {
@@ -16,12 +16,18 @@ interface PreviewResponse {
   totalWithVat?: number;
   financedAmount?: number;
   months?: number;
-  gfinSubmitPrice?: number;
-  downDiscount?: number;
   /** BC only — the minimum down payment in percent, straight from the rate
    *  table. The old hardcoded 15 went stale the moment the owner edited it. */
   minDownPct?: number;
+  /** งวดที่เลือกได้ของผู้ให้ผ่อนนั้น — BC: งวดที่มีอัตราดอกเบี้ย · GFIN: งวดที่ GFIN รับสำหรับเครื่องนี้ */
+  allowedMonths?: number[];
+  /** GFIN only — งวดตั้งต้นของเครื่อง (ตัวเดียวกับหน้า "ราคาและเรทผ่อน" / บอท / สติกเกอร์) */
+  defaultMonths?: number;
 }
+
+type Provider = 'BC' | 'GFIN';
+
+const PROVIDER_LABEL: Record<Provider, string> = { BC: 'BESTCHOICE', GFIN: 'GFIN' };
 
 interface Props {
   productId: string;
@@ -33,7 +39,8 @@ function formatTHB(n: number): string {
   return n.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
-const MONTHS_OPTIONS = [3, 4, 5, 6, 7, 8, 10, 12];
+/** งวดของคำขอแรกของ BESTCHOICE — ตัวเลือกจริงมาจากคำตอบ BC (allowedMonths) · GFIN ให้ server เลือกงวดตั้งต้นเอง */
+const INITIAL_MONTHS = 12;
 
 /** Only used until the first BC answer arrives with the real floor. */
 const DEFAULT_DOWN_PCT = 15;
@@ -198,12 +205,51 @@ function DownPaymentInput({
   );
 }
 
+/** ตัวเลือกจำนวนงวดของผู้ให้ผ่อนแต่ละเจ้า — BESTCHOICE กับ GFIN มีงวดไม่เหมือนกัน */
+function TermSelect({
+  provider,
+  options,
+  value,
+  onChange,
+}: {
+  provider: Provider;
+  options: number[];
+  value: number | null;
+  onChange: (months: number) => void;
+}) {
+  if (options.length === 0 || value == null) return null;
+  const id = `months-select-${provider.toLowerCase()}`;
+  return (
+    <div className="flex items-center gap-2">
+      <label htmlFor={id} className="text-sm font-medium leading-snug">
+        จำนวนงวด
+      </label>
+      <NativeSelect
+        wrapperClassName="max-w-full w-auto"
+        id={id}
+        aria-label={`จำนวนงวด ${PROVIDER_LABEL[provider]}`}
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className="min-h-11 rounded-md border border-border bg-background px-3 py-1 text-base md:text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+      >
+        {options.map((months) => (
+          <option key={months} value={months}>
+            {months} งวด
+          </option>
+        ))}
+      </NativeSelect>
+    </div>
+  );
+}
+
 function QuoteOption({
   label,
   query,
+  term,
 }: {
   label: string;
   query: UseQueryResult<PreviewResponse, Error>;
+  term: React.ReactNode;
 }) {
   const highlight = useRef<HTMLDivElement>(null);
   const result = query.data;
@@ -235,6 +281,7 @@ function QuoteOption({
       />
       <div className="relative space-y-2">
         <h3 className="text-sm font-semibold text-primary leading-snug">{label}</h3>
+        {term}
         {query.isFetching || query.isPending ? (
           <div aria-hidden="true" className="space-y-2">
             <div className="h-8 w-2/3 animate-pulse rounded bg-muted" />
@@ -258,7 +305,7 @@ function QuoteOption({
         ) : result?.available ? (
           <>
             <p className="num text-2xl font-bold text-primary leading-snug">
-              ฿{formatTHB(result.monthlyPayment ?? 0)}
+              ฿{formatTHB(displayInstallment(result.monthlyPayment ?? 0))}
               <span className="text-sm font-normal"> / เดือน</span>
             </p>
             <p className="text-sm text-muted-foreground leading-snug">
@@ -279,7 +326,14 @@ function InstallmentCalculator({
   productId,
   installmentPrice,
 }: Props & { installmentPrice: number }) {
-  const [months, setMonths] = useState(12);
+  const [months, setMonths] = useState(INITIAL_MONTHS);
+  const [termOptions, setTermOptions] = useState<number[]>([INITIAL_MONTHS]);
+  // GFIN: null = ยังไม่เลือก → ให้ server ใช้งวดตั้งต้นของเครื่อง (งวดเรท 2 ของราคากลาง / เพดานกติกา OVER)
+  const [gfinMonths, setGfinMonths] = useState<number | null>(null);
+  const [gfinTerms, setGfinTerms] = useState<{ options: number[]; defaultMonths: number | null }>({
+    options: [],
+    defaultMonths: null,
+  });
   const [downPct, setDownPct] = useState(DEFAULT_DOWN_PCT);
   const [downMode, setDownMode] = useState<'PCT' | 'AMOUNT'>('PCT');
   const [downAmountInput, setDownAmountInput] = useState<number | null>(null);
@@ -299,44 +353,69 @@ function InstallmentCalculator({
   );
 
   const quotes = useQueries({
-    queries: ['BC', 'GFIN'].map((provider) => ({
-      queryKey: [
-        'shop-installment-options',
-        productId,
-        installmentPrice,
-        provider,
-        months,
-        downPct,
-        downMode,
-        downAmountInput,
-      ],
-      queryFn: async ({ signal }: { signal: AbortSignal }) => {
-        // Endpoint expects a fraction; exact baht are also sent to BOTH providers.
-        const params = new URLSearchParams({
+    queries: (['BC', 'GFIN'] as const).map((provider) => {
+      const term = provider === 'BC' ? months : gfinMonths;
+      return {
+        queryKey: [
+          'shop-installment-options',
           productId,
+          installmentPrice,
           provider,
-          months: String(months),
-          downPct: String(downPct / 100),
-        });
-        if (downMode === 'AMOUNT' && downAmountInput != null)
-          params.set('customDownAmount', String(downAmountInput));
-        const { data } = await api.get<PreviewResponse>(`/api/shop/installment-preview?${params}`, {
-          signal,
-        });
-        return data;
-      },
-      retry: false,
-    })),
+          term,
+          downPct,
+          downMode,
+          downAmountInput,
+        ],
+        queryFn: async ({ signal }: { signal: AbortSignal }) => {
+          // Endpoint expects a fraction; exact baht are also sent to BOTH providers.
+          const params = new URLSearchParams({
+            productId,
+            provider,
+            downPct: String(downPct / 100),
+          });
+          if (term != null) params.set('months', String(term));
+          if (downMode === 'AMOUNT' && downAmountInput != null)
+            params.set('customDownAmount', String(downAmountInput));
+          const { data } = await api.get<PreviewResponse>(
+            `/api/shop/installment-preview?${params}`,
+            {
+              signal,
+            },
+          );
+          return data;
+        },
+        retry: false,
+      };
+    }),
   });
   const bcResult = quotes[0].data;
+  const gfinResult = quotes[1].data;
   const loading = quotes.some((query) => query.isFetching || query.isPending);
   const hasError = quotes.some((query) => query.isError);
   const anyAvailable = quotes.some((query) => query.data?.available);
   useEffect(() => {
     if (bcResult?.minDownPct != null) setMinDownPct(bcResult.minDownPct);
   }, [bcResult?.minDownPct]);
+  // เลือกได้เฉพาะงวดที่ตั้งค่าดอกเบี้ยมีอัตรา · งวดที่เลือกอยู่ไม่มีแล้ว → 12 ถ้ามี ไม่งั้นงวดแรก
+  useEffect(() => {
+    const allowed = bcResult?.allowedMonths;
+    if (!allowed || allowed.length === 0) return;
+    setTermOptions(allowed);
+    setMonths((current) =>
+      allowed.includes(current) ? current : allowed.includes(12) ? 12 : allowed[0],
+    );
+  }, [bcResult?.allowedMonths]);
+  // งวดของ GFIN มาจากคำตอบ GFIN (ไม่ใช่งวดของตั้งค่าดอกเบี้ย BESTCHOICE)
+  useEffect(() => {
+    const allowed = gfinResult?.allowedMonths;
+    if (!allowed || allowed.length === 0) return;
+    setGfinTerms({ options: allowed, defaultMonths: gfinResult?.defaultMonths ?? null });
+    setGfinMonths((current) => (current == null || allowed.includes(current) ? current : null));
+  }, [gfinResult?.allowedMonths, gfinResult?.defaultMonths]);
   const effectiveDownAmount =
-    bcResult?.downAmount ?? downAmountInput ?? minDownAmountFromPct(installmentPrice, downPct / 100);
+    bcResult?.downAmount ??
+    downAmountInput ??
+    minDownAmountFromPct(installmentPrice, downPct / 100);
 
   return (
     <Card>
@@ -345,23 +424,6 @@ function InstallmentCalculator({
       </CardHeader>
       <CardBody className="space-y-4">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
-          <div className="flex items-center gap-2">
-            <label htmlFor="months-select" className="text-sm font-medium">
-              จำนวนงวด:
-            </label>
-            <NativeSelect wrapperClassName="max-w-full w-auto"
-              id="months-select"
-              value={months}
-              onChange={(event) => setMonths(Number(event.target.value))}
-              className="min-h-11 rounded-md border border-border bg-background px-3 py-1 text-base md:text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-            >
-              {MONTHS_OPTIONS.map((value) => (
-                <option key={value} value={value}>
-                  {value} งวด
-                </option>
-              ))}
-            </NativeSelect>
-          </div>
           <DownPaymentInput
             installmentPrice={installmentPrice}
             minDownPct={minDownPct}
@@ -381,8 +443,25 @@ function InstallmentCalculator({
                 : 'ยังไม่มีแผนผ่อนสำหรับตัวเลือกนี้'}
         </p>
         <div aria-label="ผลคำนวณค่างวด" aria-busy={loading} className="grid gap-3 md:grid-cols-2">
-          <QuoteOption label="BESTCHOICE" query={quotes[0]} />
-          <QuoteOption label="GFIN" query={quotes[1]} />
+          <QuoteOption
+            label="BESTCHOICE"
+            query={quotes[0]}
+            term={
+              <TermSelect provider="BC" options={termOptions} value={months} onChange={setMonths} />
+            }
+          />
+          <QuoteOption
+            label="GFIN"
+            query={quotes[1]}
+            term={
+              <TermSelect
+                provider="GFIN"
+                options={gfinTerms.options}
+                value={gfinMonths ?? gfinTerms.defaultMonths ?? gfinResult?.months ?? null}
+                onChange={setGfinMonths}
+              />
+            }
+          />
         </div>
         <p className="text-xs text-muted-foreground leading-snug">
           ค่างวดข้างต้นเป็นการประมาณการ — ราคาจริงเป็นไปตามสัญญาที่ลงนาม

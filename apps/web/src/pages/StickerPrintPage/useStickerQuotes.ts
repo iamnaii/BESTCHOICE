@@ -1,6 +1,6 @@
 import { useQueries } from '@tanstack/react-query';
 import api from '@/lib/api';
-import type { BcConfigJson, DefaultInstallment } from '@installment/shared';
+import { displayInstallment, type BcConfigJson, type DefaultInstallment } from '@installment/shared';
 import { BC_CONFIG_QUERY_KEY } from '@/pages/ProductDetailPage/hooks/useBcConfig';
 import { useGfinTables } from '@/pages/ProductDetailPage/hooks/useGfinTables';
 import { INITIAL_CALC_STATE } from '@/pages/ProductDetailPage/hooks/useInstallmentCalcState';
@@ -22,7 +22,8 @@ const BC_CATEGORIES = new Set(['PHONE_NEW', 'PHONE_USED', 'TABLET']);
 
 function toBcRate(bc: ResolvedBc | null): DefaultInstallment | null {
   if (!bc || !bc.quote.result.isValid) return null;
-  const monthly = bc.quote.result.monthlyPayment.toNumber();
+  // ค่างวดที่แสดงปัดขึ้นบาทเต็ม (หน้าราคา · บอท · การ์ดหน้าเพิ่มสินค้า) — สัญญายังเก็บสตางค์
+  const monthly = displayInstallment(bc.quote.result.monthlyPayment);
   return Number.isFinite(monthly) ? { months: bc.months, downAmount: bc.downAmount, monthlyPayment: monthly } : null;
 }
 
@@ -37,8 +38,8 @@ function toGfinRate(gfin: ResolvedGfin | null): DefaultInstallment | null {
 
 /**
  * ค่างวดสำหรับสติกเกอร์ของหลายเครื่อง — เรท 1 (ผ่อนกับร้าน) + เรท 2 (ไฟแนนซ์ภายนอก) จาก `resolveQuotes`
- * ด้วยค่าตั้งต้นของเครื่องคำนวณหน้าสินค้า (12 งวด · ดาวน์ขั้นต่ำ · คอมตามหมวด) ⇒ ตัวเลขบนดวงเท่ากับ
- * หน้ารายละเอียดสินค้าและสรุปส่งลูกค้าเป๊ะ · ตารางดอกเบี้ยยิงครั้งเดียวต่อหมวด (query key เดียวกับหน้าสินค้า)
+ * ด้วยค่าตั้งต้นของเครื่องคำนวณหน้าสินค้า (งวด/ดาวน์ของราคากลาง `templateTerms` ไม่มีแล้วค่าทั่วไป · คอมตามหมวด) ⇒
+ * ตัวเลขบนดวงเท่ากับหน้ารายละเอียดสินค้า สรุปส่งลูกค้า หน้าราคา และบอท · ตารางดอกเบี้ยยิงครั้งเดียวต่อหมวด
  */
 export function useStickerQuotes(products: QuotableProduct[]) {
   const categories = [

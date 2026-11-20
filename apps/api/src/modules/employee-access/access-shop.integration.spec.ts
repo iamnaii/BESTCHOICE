@@ -250,6 +250,8 @@ test('safe legacy reference reads work before first use; new templates persist a
 });
 test('price authority cannot be bypassed by generic product update or price endpoints', async () => {
   await patch(`/products/${productA}`).send({ cashPrice: 19999 }).expect(403);
+  await patch(`/products/${productA}`).send({ financePrice: 19999 }).expect(403);
+  await patch(`/products/${productA}`).send({ financePrice: null }).expect(403);
   await post(`/products/${productA}/prices`).send({ label: 'Cash', amount: 19999 }).expect(403);
   const position = await grant(['pricing.update', 'products.cost.update'], [branchA]);
   await patch(`/products/${productA}`).send({ costPrice: 9876, cashPrice: 19999 }).expect(200);

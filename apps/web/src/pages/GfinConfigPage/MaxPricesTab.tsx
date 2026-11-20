@@ -1,8 +1,8 @@
 import { NumberInput } from '@/components/ui/NumberInput';
-import { useId as useUiFieldId, useState } from 'react';
+import { useId as useUiFieldId, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -28,7 +28,18 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { Pencil, Trash2 } from 'lucide-react';
+import { Download, Pencil, Trash2, Upload } from 'lucide-react';
+import { downloadExcelBuffer, importFromExcel } from '@/utils/excel.util';
+import { ImportBatchError } from '@/utils/excel-cell.util';
+import { ImportReviewDialog } from '@/components/import/ImportReviewDialog';
+import {
+  GFIN_IMPORT_HEADERS,
+  buildGfinImportReview,
+  sendGfinImport,
+  type ExistingMaxPrice,
+  type GfinImportItem,
+  type GfinImportReview,
+} from './gfinPriceListImport';
 
 interface MaxPrice {
   id: string;
@@ -75,6 +86,64 @@ export function MaxPricesTab() {
     onError: () => toast.error('ลบไม่สำเร็จ'),
   });
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [review, setReview] = useState<GfinImportReview | null>(null);
+  const [importProgress, setImportProgress] = useState<string | null>(null);
+
+  const importMutation = useMutation({
+    mutationFn: (items: GfinImportItem[]) =>
+      sendGfinImport(
+        async (body) => (await api.post('/gfin-config/max-prices/import', body)).data,
+        items,
+        (done, total) => setImportProgress(`กำลังนำเข้า ชุด ${done}/${total}`),
+        getErrorMessage,
+      ),
+    onSuccess: ({ created, updated, unchanged }) => {
+      qc.invalidateQueries({ queryKey: ['gfin-max-prices'] });
+      toast.success(`นำเข้าใบราคาแล้ว — เพิ่ม ${created} · แก้ ${updated} · เท่าเดิม ${unchanged} แถว`);
+      setReview(null);
+    },
+    onError: (err: unknown) => {
+      qc.invalidateQueries({ queryKey: ['gfin-max-prices'] });
+      toast.error(err instanceof ImportBatchError ? err.message : getErrorMessage(err));
+    },
+    onSettled: () => setImportProgress(null),
+  });
+
+  const downloadTemplate = async () => {
+    try {
+      const ExcelJS = (await import('exceljs')).default;
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet('ใบราคา GFIN');
+      ws.columns = GFIN_IMPORT_HEADERS.map((header) => ({ header, key: header, width: header === 'รุ่น' ? 22 : 14 }));
+      ws.addRows([
+        { 'รุ่น': 'iPhone 15 Pro Max', 'ความจุ': '256GB', 'มือ 1/มือ 2': 'มือ 1', 'ราคา': 34900 },
+        { 'รุ่น': 'iPhone 13', 'ความจุ': '128GB', 'มือ 1/มือ 2': 'มือ 2', 'ราคา': 12900 },
+      ]);
+      const buffer = await wb.xlsx.writeBuffer();
+      downloadExcelBuffer(buffer, 'แบบฟอร์มใบราคา-GFIN.xlsx');
+    } catch {
+      toast.error('สร้างไฟล์แบบฟอร์มไม่สำเร็จ กรุณาลองใหม่');
+    }
+  };
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    try {
+      const rows = await importFromExcel(file);
+      const next = buildGfinImportReview(rows, (data ?? []) as ExistingMaxPrice[]);
+      if (next.rows.length === 0) {
+        toast.error('ไม่พบข้อมูลที่ถูกต้อง กรุณาตรวจสอบหัวคอลัมน์ (รุ่น · ความจุ · มือ 1/มือ 2 · ราคา)');
+        return;
+      }
+      setReview(next);
+    } catch {
+      toast.error('ไม่สามารถอ่านไฟล์ได้ กรุณาใช้ไฟล์ .xlsx');
+    }
+  };
+
   if (isLoading) return <div className="p-4 text-muted-foreground">กำลังโหลด...</div>;
   if (error) return <div className="p-4 text-destructive">เกิดข้อผิดพลาด — โปรดลองรีเฟรช</div>;
 
@@ -97,13 +166,22 @@ export function MaxPricesTab() {
           <span>อัปเดตล่าสุด: {lastUpdated.toLocaleString('th-TH')}</span>
         )}
       </div>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <Input aria-label="ค้นหา ตระกูลรุ่น หรือ pattern"
           placeholder="ค้นหา ตระกูลรุ่น หรือ pattern..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="max-w-md"
         />
+        <Button variant="outline" onClick={downloadTemplate}>
+          <Download className="size-4" aria-hidden="true" />
+          ดาวน์โหลดแบบฟอร์ม
+        </Button>
+        <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={importMutation.isPending}>
+          <Upload className="size-4" aria-hidden="true" />
+          นำเข้า Excel
+        </Button>
+        <input ref={fileInputRef} type="file" accept=".xlsx" className="hidden" onChange={handleFile} />
         <Button variant="primary" onClick={() => setCreating(true)}>
           + เพิ่ม
         </Button>
@@ -175,6 +253,21 @@ export function MaxPricesTab() {
         </TableBody>
       </Table>
 
+      {review && (
+        <ImportReviewDialog
+          title="ตรวจใบราคา GFIN ก่อนนำเข้า"
+          rows={review.rows}
+          warning={
+            review.legacyActive > 0
+              ? `มีแถวเดิม ${review.legacyActive} แถวที่ตั้งชื่อแบบรุ่นหลัก + รุ่นย่อย — ไฟล์นี้ไม่แก้แถวเหล่านั้น ควรปิดแถวเหล่านั้นหลังนำเข้า เพื่อไม่ให้จับคู่ราคาซ้ำ`
+              : null
+          }
+          pending={importMutation.isPending}
+          progress={importProgress}
+          onCancel={() => setReview(null)}
+          onConfirm={() => importMutation.mutate(review.toSend)}
+        />
+      )}
       {(editing || creating) && (
         <MaxPriceFormDialog
           initial={editing}

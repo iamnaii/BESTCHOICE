@@ -3,6 +3,7 @@ import Decimal from 'decimal.js';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { calcBcInstallment } from '../../../utils/installment-calc.util';
 import { toBcConfig } from '../../../utils/bc-installment-config.util';
+import { FINANCE_LABEL } from '../../../utils/product-price-sync.util';
 import { resolveInstallmentVat } from '../../../utils/config.util';
 
 export type DecimalLike = string | number | { toString(): string };
@@ -78,7 +79,8 @@ function resolvePriceSources(p: ProductPriceInput): {
 } {
   const rows = (p.prices ?? []).filter((r) => positiveOrNull(r.amount) != null);
   const pick = (exact: string, prefix: string) =>
-    rows.find((r) => r.label === exact) ?? rows.find((r) => r.label.startsWith(prefix));
+    rows.find((r) => r.label === exact) ??
+    rows.find((r) => r.label.startsWith(prefix) && r.label !== FINANCE_LABEL);
 
   const cashRow = pick('ราคาเงินสด', 'ราคาเงินสด');
   const instRow = pick('ราคาผ่อน BESTCHOICE', 'ราคาผ่อน');

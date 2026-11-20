@@ -232,6 +232,7 @@ function runRates(input: Record<string, unknown>): { templates: unknown[] } {
       hasWarranty: false,
       rate1: opt(r.rate1),
       rate2: opt(r.rate2),
+      allowedTerms: [10, 12],
     })),
   };
 }

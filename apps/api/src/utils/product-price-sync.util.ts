@@ -2,7 +2,17 @@ import { Prisma } from '@prisma/client';
 
 export const CASH_LABEL = 'ราคาเงินสด';
 export const INSTALLMENT_LABEL = 'ราคาผ่อน BESTCHOICE';
+/** สำเนาของคอลัมน์ `Product.financePrice` (สเปค 2026-11-19 ข้อ 3.2) — ไม่เป็นค่าเริ่มต้นเสมอ */
+export const FINANCE_LABEL = 'ราคาผ่อนไฟแนนซ์';
 const INSTALLMENT_PREFIX = 'ราคาผ่อน';
+
+/**
+ * label นี้นับเป็น "ราคาผ่อน" (fallback แบบ prefix) หรือไม่ — `FINANCE_LABEL` ขึ้นต้นด้วย
+ * `ราคาผ่อน` ด้วย แต่เป็นราคาขาย GFIN ไม่ใช่ราคาผ่อน BESTCHOICE จึงต้องไม่ถูกอ่านเป็นราคาผ่อน
+ */
+export function isInstallmentPriceLabel(label: string): boolean {
+  return label.startsWith(INSTALLMENT_PREFIX) && label !== FINANCE_LABEL;
+}
 
 /**
  * B0 §2.1 — write-through ทางเดียว: คอลัมน์ราคา (`Product.cashPrice` / `installmentPrice`) → แถว `ProductPrice`
@@ -37,11 +47,18 @@ function isUsablePrice(value: Prisma.Decimal | null | undefined): value is Prism
 export async function syncPriceRowsFromColumns(
   tx: Prisma.TransactionClient,
   productId: string,
-  columns: { cashPrice?: Prisma.Decimal | null; installmentPrice?: Prisma.Decimal | null },
-): Promise<{ cashRowId: string | null; installmentRowId: string | null }> {
+  columns: {
+    cashPrice?: Prisma.Decimal | null;
+    installmentPrice?: Prisma.Decimal | null;
+    financePrice?: Prisma.Decimal | null;
+  },
+): Promise<{ cashRowId: string | null; installmentRowId: string | null; financeRowId: string | null }> {
   const hasCash = isUsablePrice(columns.cashPrice);
   const hasInstallment = isUsablePrice(columns.installmentPrice);
-  if (!hasCash && !hasInstallment) return { cashRowId: null, installmentRowId: null };
+  const hasFinance = isUsablePrice(columns.financePrice);
+  if (!hasCash && !hasInstallment && !hasFinance) {
+    return { cashRowId: null, installmentRowId: null, financeRowId: null };
+  }
 
   const rows = await tx.productPrice.findMany({
     where: { productId, deletedAt: null },
@@ -88,6 +105,23 @@ export async function syncPriceRowsFromColumns(
     }
   }
 
+  // แถวราคาขาย GFIN — upsert ด้วย label ตรงเท่านั้น สร้างใหม่เป็น isDefault:false และ phase 2
+  // ด้านล่างไม่เคยเลือกแถวนี้เป็นค่าเริ่มต้น (POS/บอทที่ `isDefault take:1` ต้องได้เงินสดหรือผ่อน)
+  let financeRowId: string | null = null;
+  if (hasFinance) {
+    const amount = columns.financePrice as Prisma.Decimal;
+    const exact = rows.find((r) => r.label === FINANCE_LABEL);
+    if (exact) {
+      await tx.productPrice.update({ where: { id: exact.id }, data: { amount } });
+      financeRowId = exact.id;
+    } else {
+      const created = await tx.productPrice.create({
+        data: { productId, label: FINANCE_LABEL, amount, isDefault: false },
+      });
+      financeRowId = created.id;
+    }
+  }
+
   // Phase 2 — บังคับ default เดียว: แถวเงินสดชนะเสมอถ้ามี; ถ้าไม่มีแถวเงินสดและก่อนหน้านี้
   // ยังไม่มี default ใดๆ เลย (สินค้าที่ยังไม่เคยมีแถวราคา) ใช้แถวผ่อนแทน
   const keepDefaultId =
@@ -103,5 +137,5 @@ export async function syncPriceRowsFromColumns(
     await tx.productPrice.update({ where: { id: keepDefaultId }, data: { isDefault: true } });
   }
 
-  return { cashRowId, installmentRowId };
+  return { cashRowId, installmentRowId, financeRowId };
 }

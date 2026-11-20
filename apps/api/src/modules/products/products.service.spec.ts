@@ -518,6 +518,7 @@ describe('ProductsService.returnToStock — นำเข้าคลังพร
 
   // fix round 2 [Important 2]: ฟิกซ์เจอร์มีราคาเก่าทั้งสองช่อง ⇒ ต้องยืนยันครบทั้งคู่
   const dto = { cashPrice: 9900, installmentPrice: 11900, note: 'ตรวจสภาพแล้ว' };
+  const usedRowForAudit = { brand: 'Apple', model: 'iPhone 13', storage: '128GB', category: 'PHONE_USED', deviceOrigin: 'THAI', warrantyExpired: true, warrantyExpireDate: null };
 
   beforeEach(async () => {
     tx = {
@@ -532,6 +533,7 @@ describe('ProductsService.returnToStock — นำเข้าคลังพร
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
       auditLog: { create: jest.fn().mockResolvedValue({}) },
+      pricingTemplate: { findMany: jest.fn().mockResolvedValue([]) },
     };
     prisma = {
       product: { findUnique: jest.fn().mockResolvedValue(productRow()) },
@@ -585,6 +587,34 @@ describe('ProductsService.returnToStock — นำเข้าคลังพร
       }),
     });
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('AuditLog บันทึกราคาขาย GFIN เก่า→ใหม่ (ระบบตั้งใหม่จากราคากลาง)', async () => {
+    prisma.product.findUnique.mockResolvedValue(
+      productRow({ ...usedRowForAudit, financePrice: '21900' }),
+    );
+    tx.pricingTemplate.findMany.mockResolvedValue([
+      {
+        id: 't13', brand: 'Apple', model: 'iPhone 13', storage: '128GB', category: 'PHONE_USED',
+        hasWarranty: false, deviceOrigin: 'UNSPECIFIED',
+        cashPrice: new Prisma.Decimal('12500'), installmentBestchoicePrice: new Prisma.Decimal('10200'),
+        installmentFinancePrice: new Prisma.Decimal('9600'),
+      },
+    ]);
+    await service.returnToStock('p-1', 'user-1', dto);
+    const data = tx.auditLog.create.mock.calls[0][0].data;
+    expect(data.oldValue.financePrice).toBe('21900');
+    expect(data.newValue.financePrice).toBe('9600');
+  });
+
+  it('AuditLog: ไม่มีราคากลาง → financePrice ใหม่เป็น null (ล้าง) ไม่ echo ค่าเก่า', async () => {
+    prisma.product.findUnique.mockResolvedValue(
+      productRow({ ...usedRowForAudit, financePrice: '21900' }),
+    );
+    await service.returnToStock('p-1', 'user-1', dto);
+    const data = tx.auditLog.create.mock.calls[0][0].data;
+    expect(data.oldValue.financePrice).toBe('21900');
+    expect(data.newValue.financePrice).toBeNull();
   });
 
   it('note เป็น optional — ไม่ส่งก็บันทึกได้ (newValue.note = null)', async () => {
@@ -678,6 +708,42 @@ describe('ProductsService.returnToStock — นำเข้าคลังพร
 
     await expect(service.returnToStock('p-1', 'user-1', dto)).rejects.toThrow(ConflictException);
     expect(tx.auditLog.create).not.toHaveBeenCalled();
+  });
+  // สเปค 2026-11-19 ข้อ 3.2 — ระบบตั้งราคาเครื่องใหม่ ⇒ ราคาขาย GFIN ตามราคากลางของหมวดปัจจุบัน
+  const usedRow = { brand: 'Apple', model: 'iPhone 13', storage: '128GB', category: 'PHONE_USED', deviceOrigin: 'THAI', warrantyExpired: true, warrantyExpireDate: null };
+
+  it('ราคาขาย GFIN ตั้งใหม่จากราคากลางมือ 2 ใน tx เดียวกับการเข้าคลัง', async () => {
+    prisma.product.findUnique.mockResolvedValue(productRow(usedRow));
+    tx.pricingTemplate.findMany.mockResolvedValue([
+      {
+        id: 't13', brand: 'Apple', model: 'iPhone 13', storage: '128GB', category: 'PHONE_USED',
+        hasWarranty: false, deviceOrigin: 'UNSPECIFIED',
+        cashPrice: new Prisma.Decimal('12500'), installmentBestchoicePrice: new Prisma.Decimal('10200'),
+        installmentFinancePrice: new Prisma.Decimal('9600'),
+      },
+    ]);
+    await service.returnToStock('p-1', 'user-1', dto);
+    expect(tx.product.updateMany.mock.calls[0][0].data.financePrice.toString()).toBe('9600');
+    expect(tx.productPrice.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ label: 'ราคาผ่อนไฟแนนซ์', isDefault: false }) }),
+    );
+  });
+
+  it('ไม่มีราคากลาง → ล้างราคาขาย GFIN และลบแถวสำเนา', async () => {
+    prisma.product.findUnique.mockResolvedValue(productRow(usedRow));
+    await service.returnToStock('p-1', 'user-1', dto);
+    expect(tx.product.updateMany.mock.calls[0][0].data.financePrice).toBeNull();
+    expect(tx.productPrice.updateMany).toHaveBeenCalledWith({
+      where: { productId: 'p-1', label: 'ราคาผ่อนไฟแนนซ์', isDefault: false, deletedAt: null },
+      data: { deletedAt: expect.any(Date) },
+    });
+  });
+
+  it('แถว "ราคาผ่อนไฟแนนซ์" ที่ค้างอยู่ไม่บล็อกการนำเข้าคลัง (ระบบตั้งใหม่ให้เอง)', async () => {
+    prisma.product.findUnique.mockResolvedValue(
+      productRow({ ...usedRow, prices: [{ label: 'ราคาผ่อนไฟแนนซ์', amount: new Prisma.Decimal('21900'), isDefault: false, deletedAt: null }] }),
+    );
+    await expect(service.returnToStock('p-1', 'user-1', dto)).resolves.toBeDefined();
   });
 });
 
@@ -1049,6 +1115,33 @@ describe('ProductsService.findOne — activeContract (สรุปสัญญ�
 
     expect(product.activeContract).toBeNull();
     expect(prisma.contract.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('แนบเงื่อนไขผ่อนของราคากลางของเครื่อง (templateTerms) ให้เครื่องคำนวณ/สรุปส่งลูกค้าเริ่มจากค่าเดียวกับหน้าราคา', async () => {
+    prisma.product.findUnique.mockResolvedValue({
+      ...productRow('IN_STOCK'),
+      brand: 'Apple', model: 'iPhone 17 Pro', storage: '256GB', category: 'PHONE_NEW',
+      deviceOrigin: 'THAI', warrantyExpired: null, warrantyExpireDate: null,
+    });
+    prisma.pricingTemplate = {
+      findMany: jest.fn().mockResolvedValue([
+        {
+          id: 't', brand: 'Apple', model: 'iPhone 17 Pro', storage: '256GB', category: 'PHONE_NEW',
+          hasWarranty: false, deviceOrigin: 'UNSPECIFIED', installmentBestchoicePrice: new Prisma.Decimal('49900'),
+          rate1TermMonths: 12, rate1DownPayment: new Prisma.Decimal('15000'), rate2TermMonths: null,
+        },
+      ]),
+    };
+
+    const product = await service.findOneDetail('p-1');
+
+    expect(product.templateTerms).toEqual({ bcPrice: '49900', rate1TermMonths: 12, rate1DownPayment: '15000', rate2TermMonths: null });
+  });
+
+  it('เครื่องที่หาราคากลางไม่ได้ → templateTerms = null', async () => {
+    prisma.product.findUnique.mockResolvedValue(productRow('IN_STOCK'));
+    const product = await service.findOneDetail('p-1');
+    expect(product.templateTerms).toBeNull();
   });
 
   it('ขายผ่อนแล้วแต่หาสัญญาไม่เจอ (ข้อมูลเก่า) → activeContract = null', async () => {

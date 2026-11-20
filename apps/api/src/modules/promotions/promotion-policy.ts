@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { Prisma, ProductCategory, PromotionType } from '@prisma/client';
+import { FINANCE_LABEL } from '../../utils/product-price-sync.util';
 
 export type PromotionDefinition = {
   type: string;
@@ -151,7 +152,7 @@ export function promotionBaseline(
     const exactRows = product.prices.filter((p) => p.label === exact);
     const rows = exactRows.length
       ? exactRows
-      : product.prices.filter((p) => p.label.startsWith(prefix));
+      : product.prices.filter((p) => p.label.startsWith(prefix) && p.label !== FINANCE_LABEL);
     if (rows.length > 1) throw new BadRequestException('ราคาสินค้าไม่ชัดเจน กรุณาเลือก priceId');
     return rows[0]?.amount.isPositive()
       ? { source: `price:${rows[0].id}`, amount: rows[0].amount }

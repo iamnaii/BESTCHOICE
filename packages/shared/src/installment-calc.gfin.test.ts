@@ -5,6 +5,7 @@ import {
   findGfinMapping,
   findGfinOverpriceRule,
   findGfinRateFactor,
+  resolveGfinDownPct,
 } from './installment-calc';
 import { formatRateLine, gfinDownPctOptions } from './gfin-customer-summary';
 import type {
@@ -32,6 +33,7 @@ const overpriceIphone14Hand2: GfinOverpriceRuleRow = {
   condition: 'HAND_2',
   allowance: new Decimal('1000'),
   maxMonths: 12,
+  minDownPct: null,
   isActive: true,
 };
 
@@ -72,8 +74,8 @@ describe('calcGfinInstallment — canonical worked example', () => {
     expect(out.downAmountByFormula.toFixed(2)).toBe('6750.00');
   });
 
-  it('downAmountActual = 4,150', () => {
-    expect(out.downAmountActual.toFixed(2)).toBe('4150.00');
+  it('downAmountActual = 4,200 (6,750 − 2,600 = 4,150 ปัดขึ้นหลักร้อย)', () => {
+    expect(out.downAmountActual.toFixed(2)).toBe('4200.00');
   });
 
   it('financedAmount = 15,750', () => {
@@ -179,6 +181,7 @@ const over15h1: GfinOverpriceRuleRow = {
   condition: 'HAND_1',
   allowance: new Decimal('1000'),
   maxMonths: 12,
+  minDownPct: null,
   isActive: true,
 };
 const factor12c15: GfinRateFactorRow = {
@@ -382,6 +385,7 @@ describe('calcGfinInstallment — OVER ตามที่มาเครื่�
     condition: 'HAND_2',
     allowance: new Decimal('2000'),
     maxMonths: 15,
+    minDownPct: null,
     isActive: true,
   };
   const factor15: GfinRateFactorRow = {
@@ -451,6 +455,7 @@ describe('findGfinOverpriceRule — กฎที่เจาะจงกว่�
     condition: 'HAND_2',
     allowance: new Decimal('2000'),
     maxMonths: 12,
+    minDownPct: null,
     isActive: true,
   };
   const specific: GfinOverpriceRuleRow = {
@@ -468,5 +473,172 @@ describe('findGfinOverpriceRule — กฎที่เจาะจงกว่�
 
   it('รุ่นอื่นในกฎรวมยังได้กฎรวม', () => {
     expect(findGfinOverpriceRule({ ...mapping15PM, gfinSeries: 'iPhone 15 Pro' }, [specific, broad])?.id).toBe('broad');
+  });
+});
+
+describe('resolveGfinDownPct — ดาวน์ขั้นต่ำ: กติกา OVER ก่อน ไม่มีแล้วค่าตั้ง (สเปค 3.3)', () => {
+  const setting = new Decimal('0.25');
+
+  it('กติกาตั้ง 30 → 0.3', () => {
+    expect(resolveGfinDownPct({ ...over15h1, minDownPct: 30 }, setting).toString()).toBe('0.3');
+  });
+
+  it('กติกาไม่ตั้ง (null) หรือไม่มีกติกา → ค่าตั้ง', () => {
+    expect(resolveGfinDownPct(over15h1, setting).toString()).toBe('0.25');
+    expect(resolveGfinDownPct(null, setting).toString()).toBe('0.25');
+  });
+
+  it('0 เป็นค่าที่ตั้งจริง ไม่ถอยไปค่าตั้ง', () => {
+    expect(resolveGfinDownPct({ ...over15h1, minDownPct: 0 }, setting).toString()).toBe('0');
+  });
+});
+
+describe('calcGfinInstallment — ดาวน์ลูกค้าปัดขึ้นหลักร้อย (ชีต MASTER 2026-11-19 · เครื่องไทย)', () => {
+  const factor15m: GfinRateFactorRow = {
+    months: 15,
+    shopCommissionPct: 15,
+    factor: new Decimal('0.1467'),
+    feePerInstallment: new Decimal('100'),
+    isActive: true,
+  };
+
+  it('iPhone 16 Plus 128GB มือ 2: 6,475 − 3,600 = 2,875 → 2,900 · ยอดจัดยังคิดจากดาวน์ที่แจ้ง 6,475 · 2,950 × 15', () => {
+    const o = calcGfinInstallment({
+      installmentPrice: new Decimal('22300'),
+      product: { brand: 'Apple', model: 'iPhone 16 Plus', storage: '128GB', category: 'PHONE_USED' },
+      months: 15,
+      downPct: new Decimal('0.25'),
+      mapping: {
+        id: 'm16plus',
+        gfinSeries: 'iPhone 16 Plus',
+        gfinVariant: null,
+        storage: '128GB',
+        condition: 'HAND_2',
+        maxPrice: new Decimal('23900'),
+        modelMatchPattern: 'iPhone 16 Plus',
+        isActive: true,
+      },
+      overpriceRule: {
+        id: 'r16plus-h2',
+        label: 'iPhone 16 Plus มือ 2',
+        seriesPattern: 'iPhone 16 Plus',
+        condition: 'HAND_2',
+        allowance: new Decimal('2000'),
+        maxMonths: 15,
+        minDownPct: null,
+        isActive: true,
+      },
+      rateFactor: factor15m,
+      deviceOrigin: 'THAI',
+    });
+    expect(o.gfinSubmitPrice.toFixed(2)).toBe('25900.00');
+    expect(o.downAmountByFormula.toFixed(2)).toBe('6475.00');
+    expect(o.downAmountActual.toFixed(2)).toBe('2900.00');
+    expect(o.financedAmount.toFixed(2)).toBe('19425.00');
+    expect(o.monthlyPayment.toFixed(2)).toBe('2950.00');
+    // ร้านรับรวม = ดาวน์ที่ปัดแล้ว + (19,425 + คอม 2,913.75 − ค่าทำสัญญา 100)
+    expect(o.netTransferToShop.toFixed(2)).toBe('22238.75');
+    expect(o.shopTotalReceived.toFixed(2)).toBe('25138.75');
+  });
+
+  it('iPhone 17 Pro 256GB มือ 1 กติกา 30%: 12,570 − 2,900 = 9,670 → 9,700 · 4,403 × 15', () => {
+    const rule17: GfinOverpriceRuleRow = {
+      id: 'r17',
+      label: 'iPhone 17 มือ 1',
+      seriesPattern: 'iPhone 17|iPhone 17 Pro|iPhone 17 Pro Max|iPhone Air',
+      condition: 'HAND_1',
+      allowance: new Decimal('2000'),
+      maxMonths: 15,
+      minDownPct: 30,
+      isActive: true,
+    };
+    const o = calcGfinInstallment({
+      installmentPrice: new Decimal('39000'),
+      product: { brand: 'Apple', model: 'iPhone 17 Pro', storage: '256GB', category: 'PHONE_NEW' },
+      months: 15,
+      downPct: resolveGfinDownPct(rule17, new Decimal('0.25')),
+      mapping: {
+        id: 'm17p',
+        gfinSeries: 'iPhone 17 Pro',
+        gfinVariant: null,
+        storage: '256GB',
+        condition: 'HAND_1',
+        maxPrice: new Decimal('39900'),
+        modelMatchPattern: 'iPhone 17 Pro',
+        isActive: true,
+      },
+      overpriceRule: rule17,
+      rateFactor: factor15m,
+      deviceOrigin: 'THAI',
+    });
+    expect(o.downAmountByFormula.toFixed(2)).toBe('12570.00');
+    expect(o.downAmountActual.toFixed(2)).toBe('9700.00');
+    expect(o.monthlyPayment.toFixed(2)).toBe('4403.00');
+  });
+
+  it('ส่วนลดมากกว่าดาวน์ → 0 (ไม่ปัดเป็น 100)', () => {
+    const o = calcGfinInstallment({
+      installmentPrice: new Decimal('9600'),
+      product: { brand: 'Apple', model: 'iPhone 13', storage: '128GB', category: 'PHONE_USED' },
+      months: 12,
+      downPct: new Decimal('0.25'),
+      mapping: { ...mapping14Pro128, id: 'm13', gfinSeries: 'iPhone 13', gfinVariant: null, maxPrice: new Decimal('12900'), modelMatchPattern: 'iPhone 13' },
+      overpriceRule: null,
+      rateFactor: { ...factor12, factor: new Decimal('0.17') },
+      deviceOrigin: 'THAI',
+    });
+    expect(o.downAmountActual.toFixed(2)).toBe('0.00');
+    expect(o.monthlyPayment.toFixed(2)).toBe('1745.00');
+  });
+});
+
+describe('findGfinMapping — ชื่อรุ่นตรงทั้งคำก่อน (สเปค 4.3)', () => {
+  // ใบราคา G-Finn 16/10/2569: iPhone 13 128GB มือ 1 = 14,900 · มือ 2 = 12,900 · iPhone 13 Pro 128GB มีแต่มือ 2 = 15,900
+  const m13h1: GfinModelMappingRow = {
+    id: '13-h1',
+    gfinSeries: 'iPhone 13',
+    gfinVariant: null,
+    storage: '128GB',
+    condition: 'HAND_1',
+    maxPrice: new Decimal('14900'),
+    modelMatchPattern: 'iPhone 13',
+    isActive: true,
+  };
+  const m13h2: GfinModelMappingRow = { ...m13h1, id: '13-h2', condition: 'HAND_2', maxPrice: new Decimal('12900') };
+  const m13ProH2: GfinModelMappingRow = {
+    ...m13h1,
+    id: '13pro-h2',
+    gfinSeries: 'iPhone 13 Pro',
+    condition: 'HAND_2',
+    maxPrice: new Decimal('15900'),
+    modelMatchPattern: 'iPhone 13 Pro',
+  };
+  const sheet = [m13h1, m13h2, m13ProH2];
+  const p = (model: string, category: ProductForGfin['category']): ProductForGfin => ({
+    brand: 'Apple',
+    model,
+    storage: '128GB',
+    category,
+  });
+
+  it('iPhone 13 Pro 128GB มือ 1 = GFIN ไม่รับ ทั้งที่มี iPhone 13 128GB มือ 1', () => {
+    expect(findGfinMapping(p('iPhone 13 Pro', 'PHONE_NEW'), sheet)).toBeNull();
+  });
+
+  it('iPhone 13 Pro 128GB มือ 2 ได้แถวของตัวเอง · iPhone 13 128GB มือ 1 ยังได้แถว iPhone 13', () => {
+    expect(findGfinMapping(p('iPhone 13 Pro', 'PHONE_USED'), sheet)?.id).toBe('13pro-h2');
+    expect(findGfinMapping(p('iPhone 13', 'PHONE_NEW'), sheet)?.id).toBe('13-h1');
+  });
+
+  it('เทียบชื่อแบบไม่สนตัวพิมพ์และช่องว่างหัวท้าย', () => {
+    expect(findGfinMapping(p('  iphone 13 pro ', 'PHONE_NEW'), sheet)).toBeNull();
+    expect(findGfinMapping(p('  iphone 13 pro ', 'PHONE_USED'), sheet)?.id).toBe('13pro-h2');
+  });
+
+  it('ไม่มีแถวที่เปิดใช้ตั้งชื่อรุ่นนี้ → จับแบบเดิม (ชื่อรุ่นมีคำนี้)', () => {
+    expect(findGfinMapping(p('iPhone 13 Pro', 'PHONE_NEW'), [m13h1, m13h2])?.id).toBe('13-h1');
+    expect(
+      findGfinMapping(p('iPhone 13 Pro', 'PHONE_NEW'), [m13h1, { ...m13ProH2, isActive: false }])?.id,
+    ).toBe('13-h1');
   });
 });

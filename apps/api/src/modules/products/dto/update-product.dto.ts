@@ -77,6 +77,15 @@ export class UpdateProductDto {
   @IsOptional()
   installmentPrice?: number | null;
 
+  /**
+   * ราคาขาย GFIN ของเครื่อง (ราคาเต็ม — สเปค 2026-11-19 ข้อ 3.2) ·
+   * ไม่ส่ง = สร้าง: เติมจากราคากลาง / แก้: ไม่แตะ · ตัวเลข ≥ 1 = ตั้ง · null = ไม่มี/ล้าง
+   */
+  @IsNumber({}, { message: 'ราคาขาย GFIN ต้องเป็นตัวเลข' })
+  @Min(1, { message: 'ราคาขาย GFIN ต้องมากกว่า 0 (ถ้าต้องการล้างราคาให้ส่ง null)' })
+  @IsOptional()
+  financePrice?: number | null;
+
   @IsIn(['A', 'B', 'C', 'D'], { message: 'เกรดเครื่องต้องเป็น A, B, C หรือ D' })
   @IsOptional()
   conditionGrade?: string;

@@ -3,13 +3,13 @@ import { UseMutationResult, useMutation, useQueryClient } from '@tanstack/react-
 import { toast } from 'sonner';
 import Modal from '@/components/ui/Modal';
 import api, { getErrorMessage } from '@/lib/api';
-import { CANONICAL_PRICE_LABELS, CASH_LABEL } from '@/utils/getDisplayPrices';
+import { CANONICAL_PRICE_LABELS, CASH_LABEL, FINANCE_LABEL } from '@/utils/getDisplayPrices';
 import { PRODUCT_READINESS_QUERY_KEY } from '@/pages/ProductDetailPage/hooks/useProductReadiness';
 import { StockProduct } from '../types';
 
 /**
  * Task 13 — is this the label `syncPriceRowsFromColumns` (apps/api) write-through
- * targets? If so the row mirrors `Product.cashPrice`/`installmentPrice` (source
+ * targets? If so the row mirrors `Product.cashPrice`/`installmentPrice`/`financePrice` (source
  * of truth) and must be edited via the column PATCH, never the row-level
  * `/products/:id/prices` CRUD.
  */
@@ -17,8 +17,13 @@ function isCanonicalLabel(label: string): boolean {
   return (CANONICAL_PRICE_LABELS as readonly string[]).includes(label.trim());
 }
 
-function canonicalLabelToField(label: string): 'cashPrice' | 'installmentPrice' {
-  return label.trim() === CASH_LABEL ? 'cashPrice' : 'installmentPrice';
+type PriceColumnField = 'cashPrice' | 'installmentPrice' | 'financePrice';
+
+function canonicalLabelToField(label: string): PriceColumnField {
+  const trimmed = label.trim();
+  if (trimmed === CASH_LABEL) return 'cashPrice';
+  if (trimmed === FINANCE_LABEL) return 'financePrice';
+  return 'installmentPrice';
 }
 
 export interface PriceManagementModalProps {
@@ -64,7 +69,7 @@ export function PriceManagementModal({
       amount,
     }: {
       productId: string;
-      field: 'cashPrice' | 'installmentPrice';
+      field: PriceColumnField;
       amount: number;
     }) => api.patch(`/products/${productId}`, { [field]: amount }),
     onSuccess: (_data, variables) => {
@@ -209,6 +214,10 @@ export function PriceManagementModal({
                       </p>
                     )}
                     <div className="flex items-center justify-between">
+                      {price.label.trim() === FINANCE_LABEL && !price.isDefault ? (
+                        // แถวสำเนาราคาขาย GFIN เป็นค่าเริ่มต้นไม่ได้ (API ปฏิเสธ) — ไม่แสดง checkbox · แถว legacy ที่เป็นค่าเริ่มต้นอยู่ยังปลดได้
+                        <span />
+                      ) : (
                       <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
                         <input
                           type="checkbox"
@@ -218,6 +227,7 @@ export function PriceManagementModal({
                         />
                         ค่าเริ่มต้น
                       </label>
+                      )}
                       <div className="flex gap-2">
                         <button data-ui-control="button" type="button" onClick={cancelEditPrice} className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground">
                           ยกเลิก

@@ -196,6 +196,8 @@ export class InstallmentPreviewService {
     }));
 
     const rule = findGfinOverpriceRule(mapping, ruleObjects);
+    // สเปก 2026-11-20 §4: มีราคาแต่ไม่มีเงื่อนไขของรุ่น = ยังคิดไม่ได้ (เว็บ shop ไม่โชว์ GFIN)
+    if (!rule) return { available: false, reason: 'no_gfin_rule' };
 
     // งวดของ GFIN มาจากฝั่ง GFIN (ไม่ใช่งวดของตั้งค่าดอกเบี้ย BC): งวดที่มีเรทของคอมหมวดนี้ ไม่เกินเพดานกติกา OVER
     // งวดตั้งต้น = งวดเรท 2 ของราคากลาง ไม่มีแล้วเพดานกติกา OVER (สูตรเดียวกับ buildModelQuote — หน้า "ราคาและเรทผ่อน" / บอท / สติกเกอร์)

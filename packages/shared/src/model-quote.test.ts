@@ -288,6 +288,12 @@ describe('buildModelQuote — 53 แถวของชีต MASTER (สเป�
 });
 
 describe('buildModelQuote — กติกาเพิ่มเติม', () => {
+  it('มีราคาในใบราคาแต่ไม่มีเงื่อนไขของรุ่น → NO_RULE (ไม่คิดแบบไม่จำกัดงวด)', () => {
+    const row = golden('iPhone 15', '128GB', 'PHONE_NEW');
+    const q = buildModelQuote(inputFor(row, { gfin: { ...gfinFor(row), rules: [] } }));
+    expect(q.rate2).toEqual({ available: false, reason: 'NO_RULE', message: 'ยังไม่ได้ตั้งเงื่อนไข GFIN ของรุ่นนี้' });
+  });
+
   const iphone15 = golden('iPhone 15', '128GB', 'PHONE_NEW');
 
   it('เครื่องนอก → OVER ครึ่ง (ราคาส่ง 24,900 + 500)', () => {

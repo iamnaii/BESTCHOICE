@@ -194,6 +194,12 @@ describe('InstallmentCalculatorCard — การ์ดเดียว สลั
     expect(screen.getByText(/รุ่นนี้ไม่อยู่ในตารางราคาของ GFIN/)).toBeInTheDocument();
   });
 
+  it('มีราคาแต่ยังไม่ตั้งเงื่อนไข GFIN → แท็บ GFIN กดไม่ได้ + บอกให้ตั้งเงื่อนไข', () => {
+    renderCard({ tables: { ...gfinTables, rules: [] } });
+    expect(screen.getByRole('tab', { name: /GFIN/ })).toBeDisabled();
+    expect(screen.getByText('GFIN: รุ่นนี้ยังไม่ได้ตั้งเงื่อนไข — ตั้งใน ตั้งค่า → GFIN')).toBeInTheDocument();
+  });
+
   // final manual check B3 — GFIN ตั้งต้นที่เพดาน OVER (15) ส่วน BESTCHOICE 12 → ห้ามเขียนว่า "งวดเดียวกัน"
   describe('บรรทัดเทียบอีกไฟแนนซ์บอกงวดของตัวเอง', () => {
     const tables15: GfinTables = {

@@ -82,7 +82,7 @@ export interface GfinQuoteInput {
 export type GfinQuote =
   | {
       available: false;
-      reason: 'unsupported_category' | 'no_mapping' | 'no_factor';
+      reason: 'unsupported_category' | 'no_mapping' | 'no_rule' | 'no_factor';
       maxMonths: number | null;
       monthsOptions: MonthOption[];
     }
@@ -186,8 +186,12 @@ export function buildGfinQuote(tables: GfinTables, input: GfinQuoteInput): GfinQ
   }
   const mapping = tables.mappings.find((m) => m.id === mappingRow.id)!;
   const ruleRow = findGfinOverpriceRule(mappingRow, tables.rules.map(toRuleRow));
-  const rule = ruleRow ? (tables.rules.find((r) => r.id === ruleRow.id) ?? null) : null;
-  const maxMonths = ruleRow?.maxMonths ?? null;
+  // สเปก 2026-11-20 §4: มีราคาแต่ไม่มีเงื่อนไขของรุ่น = ยังคิดไม่ได้
+  if (!ruleRow) {
+    return { available: false, reason: 'no_rule', maxMonths: null, monthsOptions: [] };
+  }
+  const rule = tables.rules.find((r) => r.id === ruleRow.id) ?? null;
+  const maxMonths = ruleRow.maxMonths ?? null;
 
   const factorRows = tables.factors.map(toFactorRow);
   const installmentPrice = new Decimal(input.installmentPrice);

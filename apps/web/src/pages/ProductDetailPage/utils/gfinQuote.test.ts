@@ -51,6 +51,17 @@ const tables: GfinTables = {
 const iphone15 = { brand: 'Apple', model: 'iPhone 15', storage: '128GB', category: 'PHONE_NEW' };
 
 describe('buildGfinQuote', () => {
+  it('มีราคาในใบราคาแต่ไม่มีกติกาของรุ่น → no_rule', () => {
+    const q = buildGfinQuote({ ...tables, rules: [] }, {
+      product: iphone15,
+      installmentPrice: 25000,
+      months: 12,
+      downPct: 25,
+      commissionPct: 15,
+    });
+    expect(q).toEqual({ available: false, reason: 'no_rule', maxMonths: null, monthsOptions: [] });
+  });
+
   it('12 งวด ดาวน์ 25% คอม 15 → 3,327/เดือน ลูกค้าดาวน์จริง 1,900 · ตัวเลือกงวด [10, 12] (15 ถูกตัดโดยผ่อนสูงสุด 12, 8 ปิดใช้งาน)', () => {
     const q = buildGfinQuote(tables, {
       product: iphone15,

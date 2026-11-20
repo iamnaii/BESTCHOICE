@@ -80,6 +80,8 @@ export function InstallmentCalculatorCard({
         return 'GFIN ไม่รับสินค้าหมวดนี้';
       case 'no_mapping':
         return 'GFIN: รุ่นนี้ไม่อยู่ในตารางราคาของ GFIN — เพิ่มใน ตั้งค่า → GFIN ถ้า GFIN รับ';
+      case 'no_rule':
+        return 'GFIN: รุ่นนี้ยังไม่ได้ตั้งเงื่อนไข — ตั้งใน ตั้งค่า → GFIN';
       case 'no_factor':
         return `GFIN: ยังไม่มีเรทสำหรับคอม ${gfin.commissionPct}% — เพิ่มใน ตั้งค่า → GFIN`;
       default:

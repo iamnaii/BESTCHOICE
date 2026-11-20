@@ -213,3 +213,81 @@ test('disabled form controls remain readable and explain what is missing', async
   });
   expect(contrast).toBeGreaterThanOrEqual(4.5);
 });
+
+test('review discards unconfirmed symptoms and preserves review intent through Forward', async ({
+  page,
+}) => {
+  const log = await installSellApiFixtures(page);
+  await start(page);
+  await assess(page);
+  await page.getByRole('button', { name: 'ตรวจหรือแก้คำตอบ', exact: true }).click();
+  const question = profile.questions.find((q) => q.selectType === 'MULTI')!;
+  await page.getByRole('button', { name: `แก้ ${question.title}`, exact: true }).click();
+  await page.getByRole('button', { name: 'มีอาการผิดปกติ', exact: true }).click();
+  const symptom = page.getByRole('checkbox', { name: question.choices[0].label, exact: true });
+  await symptom.check();
+  await page.getByRole('button', { name: 'ย้อนกลับ', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('ทบทวนคำตอบ');
+  await expect(page.getByText('ใช้งานได้ปกติทุกอย่าง', { exact: true })).toBeVisible();
+  await page.goForward();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(question.title);
+  await expect(symptom).toHaveCount(0);
+  await page.getByRole('button', { name: 'ใช้งานได้ปกติทุกอย่าง', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('ทบทวนคำตอบ');
+  await page.getByRole('button', { name: 'ดูราคาประเมิน', exact: true }).click();
+  await expect(page.getByText('27,500 บาท', { exact: true })).toBeVisible();
+  expect(log.quotePayloads.at(-1)?.answers).toEqual(
+    expect.arrayContaining([{ questionKey: question.key, choiceIds: [] }]),
+  );
+});
+
+test('shared device header Back reaches capacity then model', async ({ page }) => {
+  await installSellApiFixtures(page);
+  await page.goto('/sell/quote?model=iPhone%2017%20Pro&storage=256GB&utm_source=line');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(profile.questions[0].title);
+  await page.getByRole('button', { name: 'ย้อนกลับ', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('เครื่องมีความจุเท่าไร?');
+  await page.getByRole('button', { name: 'ย้อนกลับ', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('คุณใช้ไอโฟนรุ่นไหน?');
+  expect(new URL(page.url()).searchParams.get('utm_source')).toBe('line');
+});
+
+for (const backWhilePending of [false, true])
+  test(`mobile submit failure remains visible and retryable${backWhilePending ? ' after browser Back' : ''}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 320, height: 740 });
+    await installSellApiFixtures(page);
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let fail = true;
+    await page.route('**/api/shop/buyback/submit', async (route) => {
+      if (!fail) return route.fallback();
+      fail = false;
+      await pending;
+      await route.fulfill({ status: 503, json: { message: 'ส่งไม่สำเร็จ ลองอีกครั้ง' } });
+    });
+    await start(page);
+    await assess(page);
+    await page.getByRole('button', { name: 'เลือกขายสด · กรอกข้อมูล', exact: true }).click();
+    await page.getByLabel('ชื่อ-นามสกุล', { exact: true }).fill('ลูกค้าทดสอบ');
+    await page.getByLabel('เบอร์โทร (10 หลัก)', { exact: true }).fill('0812345678');
+    await page.getByText('ข้อมูลเพิ่มเติม (ไม่บังคับ)', { exact: true }).click();
+    const submit = page.getByRole('button', { name: 'ส่งข้อมูลขายสด', exact: true });
+    const requested = page.waitForRequest('**/api/shop/buyback/submit');
+    await submit.click();
+    await requested;
+    if (backWhilePending) await page.goBack();
+    release();
+    const alert = page.getByRole('alert');
+    await expect(alert).toHaveText('ส่งไม่สำเร็จ ลองอีกครั้ง');
+    await expect(alert).toBeFocused();
+    await expect(alert).toBeInViewport();
+    await expect(page.getByLabel('ชื่อ-นามสกุล', { exact: true })).toHaveValue('ลูกค้าทดสอบ');
+    await expect(page.getByLabel('เบอร์โทร (10 หลัก)', { exact: true })).toHaveValue('0812345678');
+    await expect(submit).toBeEnabled();
+    await submit.click();
+    await expect(page).toHaveURL(/\/sell\/local-request$/);
+  });

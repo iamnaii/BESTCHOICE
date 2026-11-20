@@ -473,6 +473,7 @@ describe('price review and contact', () => {
     });
     await click('ส่งข้อมูลเทิร์น');
     await screen.findByText('ส่งไม่สำเร็จ ลองอีกครั้ง');
+    expect(screen.getByRole('alert')).toHaveFocus();
     expect(screen.getByLabelText('เบอร์โทร (10 หลัก)')).toHaveValue('081-234-5678');
     expect(mocks.post).toHaveBeenLastCalledWith(
       '/api/shop/buyback/submit',
@@ -492,6 +493,64 @@ describe('price review and contact', () => {
   });
 });
 describe('request and history boundaries', () => {
+  it('discards unconfirmed issue edits on Back and Forward before requesting a price', async () => {
+    await ready();
+    await click('ตรวจหรือแก้คำตอบ');
+    await click('แก้ การใช้งาน');
+    await click('มีอาการผิดปกติ');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'กล้องผิดปกติ' }));
+    await click('ย้อนกลับ');
+    expect(screen.getByText('ใช้งานได้ปกติทุกอย่าง')).toBeInTheDocument();
+    act(() => testNavigate(1));
+    expect(
+      screen.queryByRole('checkbox', { name: 'กล้องผิดปกติ', checked: true }),
+    ).not.toBeInTheDocument();
+    await click('ใช้งานได้ปกติทุกอย่าง');
+    await screen.findByRole('heading', { name: 'ทบทวนคำตอบ' });
+    await click('ดูราคาประเมิน');
+    await screen.findByText('4,321.65 บาท');
+    expect(mocks.post).toHaveBeenLastCalledWith(
+      '/api/shop/buyback/quote',
+      expect.objectContaining({
+        answers: [
+          { questionKey: 'body', choiceIds: ['good'] },
+          { questionKey: 'functions', choiceIds: [] },
+        ],
+      }),
+    );
+  });
+  it('restores the contact draft and retry error after Back during a rejected submission', async () => {
+    let reject!: (error: unknown) => void;
+    const pending = new Promise((_resolve, fail) => {
+      reject = fail;
+    });
+    await ready();
+    await seller();
+    mocks.post.mockReturnValueOnce(pending);
+    await click('ส่งข้อมูลขายสด');
+    act(() => testNavigate(-1));
+    await act(async () => {
+      reject({ response: { data: { message: 'ส่งไม่สำเร็จ ลองอีกครั้ง' } } });
+    });
+    expect(await screen.findByRole('alert')).toHaveTextContent('ส่งไม่สำเร็จ ลองอีกครั้ง');
+    expect(screen.getByLabelText('ชื่อ-นามสกุล')).toHaveValue('ลูกค้าทดสอบ');
+    expect(screen.getByLabelText('เบอร์โทร (10 หลัก)')).toHaveValue('0812345678');
+    expect(screen.getByRole('button', { name: 'ส่งข้อมูลขายสด' })).toBeEnabled();
+    mocks.post.mockResolvedValueOnce({
+      data: { id: 'retry-success', status: 'APPRAISED', price: '4321.65' },
+    });
+    await click('ส่งข้อมูลขายสด');
+    await screen.findByText('ส่งข้อมูลสำเร็จแล้ว');
+  });
+  it('backs out of a shared device link through capacity to model without looping', async () => {
+    mount('/sell/quote?model=iPhone%2012&storage=64GB&utm_source=line');
+    await screen.findByRole('heading', { name: 'ตัวเครื่อง', level: 1 });
+    await click('ย้อนกลับ');
+    await screen.findByRole('heading', { name: 'เครื่องมีความจุเท่าไร?', level: 1 });
+    await click('ย้อนกลับ');
+    await screen.findByRole('heading', { name: 'คุณใช้ไอโฟนรุ่นไหน?', level: 1 });
+    expect(new URLSearchParams(testSearch).get('utm_source')).toBe('line');
+  });
   it('locks result controls even when browser Back is pressed during submission', async () => {
     const pending = deferred<{ data: { id: string; status: string; price: string } }>();
     mocks.post.mockResolvedValueOnce({ data: result }).mockReturnValueOnce(pending.promise);

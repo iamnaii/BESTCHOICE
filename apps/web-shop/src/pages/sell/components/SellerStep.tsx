@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Button, Input, Label } from '@/components';
 import { copy } from '@/lib/copy';
 export type SellerDetails = {
@@ -23,16 +23,22 @@ export default function SellerStep({
   value,
   onChange,
   submitting,
+  submitError,
   onSubmit,
   flow,
 }: {
   value: SellerDetails;
   onChange: (value: SellerDetails) => void;
   submitting: boolean;
+  submitError?: string;
   onSubmit: () => void;
   flow: 'BUYBACK' | 'EXCHANGE';
 }) {
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const errorRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (submitError && !submitting) errorRef.current?.focus();
+  }, [submitError, submitting]);
   const errors = sellerErrors(value);
   const invalid = Object.keys(errors).length > 0;
   function submit(event: FormEvent) {
@@ -93,6 +99,11 @@ export default function SellerStep({
       {invalid && (
         <p className="text-sm" id="seller-hint">
           {errors.name ? 'กรอกชื่อ-นามสกุลก่อนส่งข้อมูล' : 'กรอกเบอร์โทรให้ครบ 10 หลัก เริ่มด้วย 0'}
+        </p>
+      )}
+      {submitError && (
+        <p ref={errorRef} role="alert" tabIndex={-1} className="text-destructive">
+          {submitError}
         </p>
       )}
       <Button

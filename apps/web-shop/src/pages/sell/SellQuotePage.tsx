@@ -65,7 +65,7 @@ export default function SellQuotePage() {
   const [storage, setStorage] = useState('');
   const [seriesId, setSeriesId] = useState('');
   const [answers, setAnswers] = useState<Answers>({});
-  const [issues, setIssues] = useState<Record<string, boolean>>({});
+  const [issueDraft, setIssueDraft] = useState<{ key: string; choices: string[] } | null>(null);
   const [eligibility, setEligibility] = useState(false);
   const [quote, setQuote] = useState<BuybackQuoteResult | null>(null);
   const [flow, setFlow] = useState<Flow>('BUYBACK');
@@ -82,10 +82,10 @@ export default function SellQuotePage() {
   const quoteFlight = useRef<number | null>(null);
   const submitting = useRef(false);
   const active = useRef(true);
-  const editing = useRef(false);
   const profile = useRef<string | null>(null);
   const lastStep = useRef(navigation.step.kind);
   const step: SellStep = submitting.current ? { kind: 'seller' } : navigation.step;
+  useLayoutEffect(() => setIssueDraft(null), [location.key]);
   useEffect(() => {
     active.current = true;
     return () => {
@@ -133,9 +133,8 @@ export default function SellQuotePage() {
   function clearProfile() {
     invalidateQuote();
     setAnswers({});
-    setIssues({});
+    setIssueDraft(null);
     setEligibility(false);
-    editing.current = false;
     profile.current = null;
   }
   useEffect(() => {
@@ -254,7 +253,10 @@ export default function SellQuotePage() {
       route(`/sell/${result.id}`);
     },
     onError: (error) => {
-      if (active.current) setSubmitError(message(error, copy.sell.submitError));
+      if (active.current) {
+        navigation.go({ kind: 'seller' });
+        setSubmitError(message(error, copy.sell.submitError));
+      }
     },
     onSettled: () => {
       submitting.current = false;
@@ -270,8 +272,7 @@ export default function SellQuotePage() {
       : 0;
   const question = questions[questionIndex];
   function finishQuestion() {
-    if (editing.current) {
-      editing.current = false;
+    if (step.kind === 'question' && step.review) {
       navigation.advance({ kind: 'review' });
       return;
     }
@@ -293,26 +294,24 @@ export default function SellQuotePage() {
   function none() {
     if (locked || !question) return;
     invalidateQuote();
-    setIssues((old) => ({ ...old, [question.key]: false }));
+    setIssueDraft(null);
     setAnswers((old) => ({ ...old, [question.key]: [] }));
     finishQuestion();
   }
   function toggleIssue(id: string) {
     if (locked || !question) return;
-    invalidateQuote();
-    setAnswers((old) => {
-      const next = { ...old };
-      const selected = (old[question.key] ?? []).includes(id)
-        ? old[question.key].filter((value) => value !== id)
-        : [...(old[question.key] ?? []), id];
-      if (selected.length) next[question.key] = selected;
-      else delete next[question.key];
-      return next;
+    setIssueDraft((old) => {
+      const selected = old?.key === question.key ? old.choices : (answers[question.key] ?? []);
+      return {
+        key: question.key,
+        choices: selected.includes(id)
+          ? selected.filter((value) => value !== id)
+          : [...selected, id],
+      };
     });
   }
   function back() {
     if (submitting.current) return;
-    editing.current = false;
     navigation.back(
       step.kind === 'storage'
         ? { kind: 'device' }
@@ -410,7 +409,6 @@ export default function SellQuotePage() {
             variant="ghost"
             disabled={submitMutation.isPending}
             onClick={() => {
-              editing.current = false;
               navigation.go({ kind: 'device' });
             }}
           >
@@ -465,9 +463,9 @@ export default function SellQuotePage() {
         ) : (
           <QuestionStep
             question={question}
-            answer={answers[question.key]}
+            answer={issueDraft?.key === question.key ? issueDraft.choices : answers[question.key]}
             showIssues={
-              !!issues[question.key] ||
+              issueDraft?.key === question.key ||
               (!!answers[question.key]?.length && question.selectType === 'MULTI')
             }
             disabled={locked}
@@ -476,17 +474,16 @@ export default function SellQuotePage() {
             onToggleIssue={toggleIssue}
             onShowIssues={() => {
               if (locked) return;
-              invalidateQuote();
-              setIssues((old) => ({ ...old, [question.key]: true }));
-              if (!answers[question.key]?.length)
-                setAnswers((old) => {
-                  const next = { ...old };
-                  delete next[question.key];
-                  return next;
-                });
+              setIssueDraft({ key: question.key, choices: answers[question.key] ?? [] });
             }}
             onConfirmIssues={() => {
-              if (!locked && answers[question.key]?.length) finishQuestion();
+              const selected =
+                issueDraft?.key === question.key ? issueDraft.choices : answers[question.key];
+              if (!locked && selected?.length) {
+                invalidateQuote();
+                setAnswers((old) => ({ ...old, [question.key]: selected }));
+                finishQuestion();
+              }
             }}
           />
         ))}
@@ -536,8 +533,7 @@ export default function SellQuotePage() {
               <Button
                 variant="ghost"
                 onClick={() => {
-                  editing.current = true;
-                  navigation.go({ kind: 'question', key: q.key });
+                  navigation.go({ kind: 'question', key: q.key, review: true });
                 }}
                 aria-label={`แก้ ${q.title}`}
               >
@@ -585,22 +581,16 @@ export default function SellQuotePage() {
           </div>
         ))}
       {step.kind === 'seller' && quote && (
-        <>
-          {submitError && (
-            <p role="alert" className="mb-4 text-destructive">
-              {submitError}
-            </p>
-          )}
-          <SellerStep
-            value={seller}
-            onChange={(value) => {
-              if (!submitting.current) setSeller(value);
-            }}
-            submitting={submitMutation.isPending}
-            onSubmit={submit}
-            flow={flow}
-          />
-        </>
+        <SellerStep
+          value={seller}
+          onChange={(value) => {
+            if (!submitting.current) setSeller(value);
+          }}
+          submitting={submitMutation.isPending}
+          submitError={submitError}
+          onSubmit={submit}
+          flow={flow}
+        />
       )}
     </SellFlowLayout>
   );

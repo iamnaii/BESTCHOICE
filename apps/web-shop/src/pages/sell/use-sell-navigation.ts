@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { useLocation, useNavigate, useNavigationType } from 'react-router';
 export type SellStep =
   | { kind: 'device' | 'storage' | 'review' | 'eligibility' | 'result' | 'seller' }
-  | { kind: 'question'; key: string };
+  | { kind: 'question'; key: string; review?: boolean };
 interface Entry {
   session: string;
   index: number;
@@ -56,7 +56,7 @@ export function useSellNavigation(initialStep: SellStep) {
   const back = (fallback: SellStep) => {
     cancelAdvance();
     if ((ownEntry?.index ?? 0) > 0) navigate(-1);
-    else go(fallback);
+    else reset(fallback);
   };
   const reset = (next: SellStep) => {
     cancelAdvance();

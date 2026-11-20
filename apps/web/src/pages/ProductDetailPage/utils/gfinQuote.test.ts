@@ -4,6 +4,7 @@ import {
   defaultCommissionPct,
   gfinCategoryOf,
   gfinMinDownPctFor,
+  resolveGfinQuote,
   type GfinTables,
 } from './gfinQuote';
 import { pickDefaultMonths } from './monthsOptions';
@@ -203,5 +204,37 @@ describe('gfinMinDownPctFor — ดาวน์ขั้นต่ำของเ
       gfinMinDownPctFor(tables30, { brand: 'Samsung', model: 'Galaxy S24', storage: '256GB', category: 'PHONE_USED' }),
     ).toBe(25);
     expect(gfinMinDownPctFor(tables30, { brand: 'Apple', model: 'AirPods', storage: null, category: 'ACCESSORY' })).toBe(25);
+  });
+});
+
+describe('resolveGfinQuote — ตัวเดียวของหน้าสินค้าและแท็บทดลองคำนวณ', () => {
+  const none = { months: null, downPct: null, commissionPct: null };
+
+  it('ไม่ส่งค่าเอง → ดาวน์ขั้นต่ำของรุ่น (ค่ากลาง 25) · งวด = ผ่อนสูงสุดของกติกา (12) · คอมมือถือ 15', () => {
+    const r = resolveGfinQuote(tables, iphone15, 25000, none);
+    expect(r).toMatchObject({ months: 12, downPct: 25, minDownPct: 25, commissionPct: 15 });
+    expect(r.quote.available).toBe(true);
+  });
+
+  it('กติกาของรุ่นตั้งดาวน์ 30 → ดาวน์เริ่ม 30', () => {
+    const t30: GfinTables = { ...tables, rules: [{ ...tables.rules[0], minDownPct: 30 }] };
+    expect(resolveGfinQuote(t30, iphone15, 25000, none)).toMatchObject({ downPct: 30, minDownPct: 30 });
+  });
+
+  it('งวดของราคากลางมาก่อนผ่อนสูงสุดของกติกา · ค่าที่ผู้ใช้เลือกมาก่อนทั้งหมด', () => {
+    expect(resolveGfinQuote(tables, iphone15, 25000, { ...none, templateMonths: 10 }).months).toBe(10);
+    expect(resolveGfinQuote(tables, iphone15, 25000, { ...none, months: 10, templateMonths: 12 }).months).toBe(10);
+  });
+
+  it('งวดที่เลือกไม่มีเรท → ถอยไปงวดที่ใหญ่สุดที่ไม่เกินงวดที่เลือก (pickDefaultMonths) — 13 → 12', () => {
+    const r = resolveGfinQuote(tables, iphone15, 25000, { ...none, months: 13 });
+    expect(r.months).toBe(12);
+    expect(r.quote.available).toBe(true);
+  });
+
+  it('ไม่มีกติกาของรุ่น → no_rule และ months = null', () => {
+    const r = resolveGfinQuote({ ...tables, rules: [] }, iphone15, 25000, none);
+    expect(r.months).toBeNull();
+    expect(r.quote).toMatchObject({ available: false, reason: 'no_rule' });
   });
 });

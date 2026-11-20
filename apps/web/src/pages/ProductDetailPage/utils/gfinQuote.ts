@@ -13,7 +13,7 @@ import {
   type ModelQuoteGfinContext,
   type ProductCategoryForGfin,
 } from '@installment/shared';
-import type { MonthOption } from './monthsOptions';
+import { pickDefaultMonths, type MonthOption } from './monthsOptions';
 
 // ── shapes ของ API ตั้งค่า GFIN (GET /gfin-config/*) ──────────────────────────────
 export interface MaxPriceApi {
@@ -273,4 +273,53 @@ export function hasGfinMapping(
       tables.mappings.map(toMappingRow),
     ) !== null
   );
+}
+
+export interface ResolvedGfin {
+  /** null = ไม่มีงวดให้เลือกเลย (ตารางเรทว่าง / คิดไม่ได้) */
+  months: number | null;
+  downPct: number;
+  /** ดาวน์ขั้นต่ำของรุ่นนี้ (เต็มร้อย) — กติกา OVER ก่อน ไม่มีแล้วค่าตั้ง GFIN · ตัวเลือก % ในการ์ดเริ่มที่ค่านี้ */
+  minDownPct: number;
+  commissionPct: number;
+  quote: GfinQuote;
+}
+
+export interface GfinOverrides {
+  months: number | null;
+  downPct: number | null;
+  commissionPct: number | null;
+  /** งวดเรท 2 ของราคากลาง (หน้าสินค้า) — แท็บทดลองคำนวณส่ง null */
+  templateMonths?: number | null;
+}
+
+/**
+ * ประกอบใบเสนอ GFIN ของเครื่องหนึ่งเครื่อง — ตัวเดียวของหน้าสินค้า (การ์ด · สติกเกอร์ · สรุปส่งลูกค้า) และแท็บทดลองคำนวณ
+ * (สเปก 2026-11-20 §6.4 — ห้ามเรียก buildGfinQuote ตรง เพราะดาวน์/งวดตั้งต้นต้องมาจากกติกาของรุ่น)
+ * ดาวน์ = ที่ผู้ใช้เลือก ไม่งั้นขั้นต่ำของรุ่น · งวด = ที่ผู้ใช้เลือก → งวดเรท 2 ของราคากลาง → ผ่อนสูงสุดของกติกา → 12
+ * งวดที่ได้ไม่มีเรท/เกินเพดาน → ถอยไปงวดใกล้ 12 ที่สุดในตัวเลือกที่มี
+ */
+export function resolveGfinQuote(
+  tables: GfinTables,
+  product: GfinQuoteInput['product'],
+  salePrice: number,
+  overrides: GfinOverrides,
+): ResolvedGfin {
+  const commissionPct = overrides.commissionPct ?? defaultCommissionPct(tables.settings, product.category);
+  const minDownPct = gfinMinDownPctFor(tables, product);
+  const downPct = overrides.downPct ?? minDownPct;
+  const preferred =
+    overrides.months ?? overrides.templateMonths ?? gfinMaxMonthsFor(tables, product) ?? 12;
+  let months: number | null = preferred;
+  let quote = buildGfinQuote(tables, { product, installmentPrice: salePrice, months: preferred, downPct, commissionPct });
+  if (!quote.available && quote.reason === 'no_factor') {
+    months = pickDefaultMonths(
+      quote.monthsOptions.map((o) => o.months),
+      preferred,
+    );
+    if (months != null) {
+      quote = buildGfinQuote(tables, { product, installmentPrice: salePrice, months, downPct, commissionPct });
+    }
+  }
+  return { months: quote.available ? months : null, downPct, minDownPct, commissionPct, quote };
 }

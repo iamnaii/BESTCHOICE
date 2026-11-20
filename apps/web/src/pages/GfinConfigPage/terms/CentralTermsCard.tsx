@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import type { GfinTables } from '@/pages/ProductDetailPage/utils/gfinQuote';
 import { RateFactorsTab } from '../RateFactorsTab';
 import { GFIN_QUERY_KEYS } from '../gfinQueryKeys';
-import { commissionOptions, rateChips, settingsPatch, type CentralForm } from './centralTerms';
+import { commissionOptions, rateChips, settingsPatch, type CentralForm, type SettingsBody } from './centralTerms';
 
 const SheetTag = ({ no }: { no: number }) => (
   <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">ใบข้อ {no}</span>
@@ -32,9 +32,9 @@ export function CentralTermsCard({ tables, canEdit }: { tables: GfinTables; canE
   const fees = [...new Set(tables.factors.filter((f) => f.isActive && f.shopCommissionPct === currentCommission).map((f) => Number(f.feePerInstallment)))];
 
   const save = useMutation({
-    mutationFn: (body: object) => api.patch('/gfin-config/settings', body),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: GFIN_QUERY_KEYS.settings });
+    mutationFn: (body: SettingsBody) => api.patch('/gfin-config/settings', body),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: GFIN_QUERY_KEYS.settings });
       setEdits({});
       toast.success('บันทึกค่ากลางแล้ว');
     },
@@ -42,7 +42,7 @@ export function CentralTermsCard({ tables, canEdit }: { tables: GfinTables; canE
   });
 
   const onSave = () => {
-    const result = settingsPatch(s, form);
+    const result = settingsPatch(s, form, options);
     if (!result.ok) return void toast.error(result.message);
     save.mutate(result.body);
   };
@@ -141,9 +141,11 @@ export function CentralTermsCard({ tables, canEdit }: { tables: GfinTables; canE
             ))}
           </ul>
         )}
-        <p className="text-xs text-muted-foreground leading-snug">
-          ตัวเลขบนสุดคือจำนวนงวด{fees.length === 1 ? ` · รวมค่าธรรมเนียม ${fees[0].toLocaleString('th-TH')} บาท/งวดแล้ว` : ''}
-        </p>
+        {chips.length > 0 && (
+          <p className="text-xs text-muted-foreground leading-snug">
+            ตัวเลขบนสุดคือจำนวนงวด{fees.length === 1 ? ` · รวมค่าธรรมเนียม ${fees[0].toLocaleString('th-TH')} บาท/งวดแล้ว` : ''}
+          </p>
+        )}
       </div>
       <div className="flex flex-wrap gap-2">
         {canEdit && (

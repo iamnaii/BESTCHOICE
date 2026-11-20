@@ -48,14 +48,25 @@ describe('centralTerms helpers', () => {
     expect(sheetVersionText({ ...settings, sheetVersion: null, sheetEffectiveDate: null })).toBe('ยังไม่ได้ระบุเวอร์ชันใบเงื่อนไข');
   });
   it('settingsPatch ส่งเฉพาะช่องที่เปลี่ยน · ไม่ส่งค่าคอม iPad เด็ดขาด', () => {
-    expect(settingsPatch(settings, { minDownPct: '25', commissionPhone: '12', contractFee: '100' })).toEqual({
+    expect(settingsPatch(settings, { minDownPct: '25', commissionPhone: '12', contractFee: '100' }, [12, 15])).toEqual({
       ok: true, body: { commissionPhone: 12 },
     });
-    expect(settingsPatch(settings, { minDownPct: '85', commissionPhone: '15', contractFee: '100' })).toEqual({
+    expect(settingsPatch(settings, { minDownPct: '85', commissionPhone: '15', contractFee: '100' }, [12, 15])).toEqual({
       ok: false, message: 'ดาวน์ขั้นต่ำต้องเป็นจำนวนเต็ม 0–80%',
     });
-    expect(settingsPatch(settings, { minDownPct: '25', commissionPhone: '15', contractFee: '100' })).toEqual({
+    expect(settingsPatch(settings, { minDownPct: '25', commissionPhone: '15', contractFee: '100' }, [12, 15])).toEqual({
       ok: false, message: 'ยังไม่ได้เปลี่ยนอะไร',
+    });
+  });
+  it('settingsPatch ปฏิเสธช่องว่าง · ค่าคอมที่ไม่มีตาราง · ทศนิยมเกิน 2 ตำแหน่ง', () => {
+    const ok = { minDownPct: '25', commissionPhone: '15', contractFee: '100' };
+    expect(settingsPatch(settings, { ...ok, minDownPct: '' }, [12, 15])).toEqual({ ok: false, message: 'กรุณากรอกเงินดาวน์ขั้นต่ำ' });
+    expect(settingsPatch(settings, { ...ok, minDownPct: '  ' }, [12, 15])).toEqual({ ok: false, message: 'กรุณากรอกเงินดาวน์ขั้นต่ำ' });
+    expect(settingsPatch(settings, { ...ok, contractFee: '' }, [12, 15])).toEqual({ ok: false, message: 'กรุณากรอกค่าทำสัญญา' });
+    expect(settingsPatch(settings, { ...ok, commissionPhone: '10' }, [12, 15])).toEqual({ ok: false, message: 'ค่าคอมนี้ยังไม่มีตารางค่างวด' });
+    expect(settingsPatch(settings, { ...ok, commissionPhone: 'x' }, [12, 15])).toEqual({ ok: false, message: 'ค่าคอมนี้ยังไม่มีตารางค่างวด' });
+    expect(settingsPatch(settings, { ...ok, contractFee: '100.123' }, [12, 15])).toEqual({
+      ok: false, message: 'ค่าทำสัญญามีทศนิยมได้ไม่เกิน 2 ตำแหน่ง',
     });
   });
 });
@@ -87,5 +98,11 @@ describe('CentralTermsCard / SheetVersionCard', () => {
     await userEvent.type(v, '6.6');
     await userEvent.click(screen.getByRole('button', { name: 'บันทึกเวอร์ชัน' }));
     expect(apiPatch).toHaveBeenCalledWith('/gfin-config/settings', { sheetVersion: '6.6', sheetEffectiveDate: '2026-10-16' });
+  });
+
+  it('การ์ดเวอร์ชัน: ไม่มีวันที่ = ปุ่มบันทึกถูกปิด', async () => {
+    render(<SheetVersionCard settings={{ ...settings, sheetEffectiveDate: null }} canEdit />, { wrapper: wrap });
+    await userEvent.click(screen.getByRole('button', { name: 'เปลี่ยนเป็นเวอร์ชันใหม่' }));
+    expect(screen.getByRole('button', { name: 'บันทึกเวอร์ชัน' })).toBeDisabled();
   });
 });

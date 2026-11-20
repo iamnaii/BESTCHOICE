@@ -43,13 +43,20 @@ export interface SettingsBody {
 export function settingsPatch(
   s: GfinSettingsApi,
   form: CentralForm,
+  allowedCommissions: number[],
 ): { ok: true; body: SettingsBody } | { ok: false; message: string } {
+  if (!form.minDownPct.trim()) return { ok: false, message: 'กรุณากรอกเงินดาวน์ขั้นต่ำ' };
+  if (!form.contractFee.trim()) return { ok: false, message: 'กรุณากรอกค่าทำสัญญา' };
   const down = Number(form.minDownPct);
   const commission = Number(form.commissionPhone);
   const fee = Number(form.contractFee);
   if (!(Number.isInteger(down) && down >= 0 && down <= 80))
     return { ok: false, message: 'ดาวน์ขั้นต่ำต้องเป็นจำนวนเต็ม 0–80%' };
   if (!Number.isFinite(fee) || fee < 0) return { ok: false, message: 'ค่าทำสัญญาต้องเป็น 0 บาทขึ้นไป' };
+  if (!/^\d+(\.\d{1,2})?$/.test(form.contractFee.trim()))
+    return { ok: false, message: 'ค่าทำสัญญามีทศนิยมได้ไม่เกิน 2 ตำแหน่ง' };
+  if (!Number.isFinite(commission) || (commission !== s.commissionPctByCategory.PHONE && !allowedCommissions.includes(commission)))
+    return { ok: false, message: 'ค่าคอมนี้ยังไม่มีตารางค่างวด' };
   const body: SettingsBody = {};
   if (down !== s.minDownPct) body.minDownPct = down;
   if (commission !== s.commissionPctByCategory.PHONE) body.commissionPhone = commission;

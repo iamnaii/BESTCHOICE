@@ -74,7 +74,7 @@ export function SheetVersionCard({ settings, canEdit }: { settings: GfinSettings
             <Button variant="outline" onClick={() => setOpen(false)} disabled={save.isPending}>
               ยกเลิก
             </Button>
-            <Button variant="primary" onClick={() => save.mutate()} disabled={save.isPending || !version.trim()}>
+            <Button variant="primary" onClick={() => save.mutate()} disabled={save.isPending || !version.trim() || !date}>
               บันทึกเวอร์ชัน
             </Button>
           </DialogFooter>

@@ -218,7 +218,9 @@ export class CannedResponseSenderService {
 
     for (const msg of outbound) {
       try {
-        const result = await this.messageRouter.sendStaffOutbound(roomId, msg, effectiveStaffId);
+        const result = staffId === null
+          ? await this.messageRouter.sendStaffOutbound(roomId, msg, effectiveStaffId, true)
+          : await this.messageRouter.sendStaffOutbound(roomId, msg, effectiveStaffId);
         if (result.success) {
           if (result.droppedReason) {
             dropped++;

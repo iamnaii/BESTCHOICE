@@ -11,12 +11,13 @@ export async function checkServiceCases(page,origin,output,width) {
  const fixtureResponse=await post('preview/service-cases/fixture');assert.equal(fixtureResponse.status(),201,await fixtureResponse.text());const f=await fixtureResponse.json();
  await page.goto(`${origin}/inbox/${f.roomId}?zone=shop`);
  await expect(page.getByRole('textbox',{name:'พิมพ์ข้อความ',exact:true})).toBeVisible();
- if(width<1280)await page.getByRole('button',{name:'ข้อมูลลูกค้า',exact:true}).click();
+ if(width<1280)await page.getByRole('button',{name:/^ข้อมูลลูกค้า/}).filter({visible:true}).first().click();
  await page.getByRole('button',{name:'บริการหลังการขาย',exact:true}).filter({visible:true}).click();
  await page.getByRole('button',{name:'รับเรื่องหลังการขาย',exact:true}).click();
  let dialog=page.getByRole('dialog',{name:'รับเรื่องหลังการขาย',exact:true});
  await dialog.getByLabel('อาการที่ลูกค้าแจ้ง').fill(`หน้าจอสัมผัสไม่ตอบสนอง ${width}`);
- await dialog.getByLabel('ผู้รับผิดชอบ').selectOption(info.previewActors.owner.id);
+ await dialog.getByLabel('ผู้รับผิดชอบ').click();
+ await page.getByRole('option').filter({hasText:info.previewActors.owner.id.slice(-6)}).click();
  await dialog.getByLabel('นัดติดตาม (เวลาไทย)').fill('2026-10-01T10:00');
  await dialog.getByRole('button',{name:'บันทึกรับเรื่อง',exact:true}).click();
  dialog=page.getByRole('dialog',{name:'ติดตามหลังการขาย',exact:true});

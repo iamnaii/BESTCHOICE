@@ -1,3 +1,7 @@
+import { ChatDispatchService } from '../../chat-engine/services/chat-dispatch.service';
+import { RoomManagerService } from '../../chat-engine/services/room-manager.service';
+import { ChatRoomService } from './chat-room.service';
+import { StaffChatGateway } from '../../staff-chat/staff-chat.gateway';
 import { Test } from '@nestjs/testing';
 import { AppModule } from '../../../app.module';
 import { ChatbotFinanceService } from './chatbot-finance.service';
@@ -24,6 +28,12 @@ describe('ChatbotFinanceService — DI ในแอปจริง (Task 44)', (
       };
       expect(svc.messageRouter).toBe(moduleRef.get(MessageRouterService, { strict: false }));
       expect(svc.storage).toBe(moduleRef.get(StorageService, { strict: false }));
+      const dispatch = moduleRef.get(ChatDispatchService, { strict: false });
+      for (const token of [RoomManagerService, MessageRouterService, ChatRoomService]) {
+        const service = moduleRef.get(token, { strict: false }) as unknown as { dispatch: unknown };
+        expect(service.dispatch).toBe(dispatch);
+      }
+      expect((dispatch as unknown as { gateway: unknown }).gateway).toBe(moduleRef.get(StaffChatGateway, { strict: false }));
     } finally {
       await moduleRef.close();
     }

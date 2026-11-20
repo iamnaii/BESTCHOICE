@@ -18,7 +18,8 @@ export async function checkFacebookComments(page, origin, output, width) {
   await page.goto(target);
   const dialog = page.getByRole('dialog', { name: 'คอมเมนต์สาธารณะ', exact: true });
   await expect(dialog).toBeVisible();
-  await dialog.getByLabel('ผู้รับผิดชอบคอมเมนต์').selectOption(info.previewActors.owner.id);
+  await dialog.getByLabel('ผู้รับผิดชอบคอมเมนต์').click();
+  await page.getByRole('option').filter({ hasText: info.previewActors.owner.id.slice(-6) }).click();
   await expect.poll(async () => (await read()).assigneeId).toBe(info.previewActors.owner.id);
   const notifications = await (await page.request.get(`${origin}/api/staff-chat/work-notifications?company=SHOP`)).json();
   assert.ok(notifications.data.some(n => n.targetId === thread.id));

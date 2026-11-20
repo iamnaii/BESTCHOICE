@@ -1,3 +1,4 @@
+import { lockChatDispatch } from '../../chat-engine/services/chat-dispatch.service';
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { CHAT_WORK_FLAGS, ChatWorkActor, WorkScope } from '@installment/shared';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -38,6 +39,7 @@ export class ChatWorkSettingsService {
       throw new ForbiddenException('เฉพาะเจ้าของที่แก้ไขการตั้งค่างานแชทได้');
     return this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('chat-work-settings'))`;
+      await lockChatDispatch(tx);
       const before = await readCurrentSlaPolicy(tx);
       const policy = {
         ...before,
@@ -69,6 +71,10 @@ export class ChatWorkSettingsService {
           create: { key: flag.key, value },
           update: { value, deletedAt: null },
         });
+      }
+      if (input.flags?.some(flag => !flag.enabled && ['chat_round_robin_enabled', 'chat_work_queue_enabled'].includes(flag.key))) {
+        await tx.chatDispatchMember.updateMany({ where: { deletedAt: null }, data: { readyUntil: null } });
+        await tx.chatRoom.updateMany({ where: { dispatchQueuedAt: { not: null } }, data: { dispatchQueuedAt: null } });
       }
       await tx.auditLog.create({
         data: {

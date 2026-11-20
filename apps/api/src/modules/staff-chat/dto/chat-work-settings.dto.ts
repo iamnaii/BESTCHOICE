@@ -21,7 +21,7 @@ export class UpdateChatWorkSettingsDto {
   @IsOptional() @IsInt() @Min(1) @Max(1440) managerMinutes?: number;
   @IsOptional()
   @IsArray()
-  @ArrayMaxSize(8)
+  @ArrayMaxSize(CHAT_WORK_FLAGS.length)
   @ArrayUnique((item: ChatWorkFlagDto) => item.key)
   @ValidateNested({ each: true })
   @Type(() => ChatWorkFlagDto)

@@ -1,3 +1,4 @@
+import { ChatDispatchService, lockChatDispatch } from './chat-dispatch.service';
 import {
   ChatWorkAccessService,
   roomWorkWhere,
@@ -195,6 +196,7 @@ export class RoomManagerService {
     @Optional()
     private merge?: CustomerMergeService,
     @Optional() private responseCycles?: ResponseCycleService,
+    @Optional() private dispatch?: ChatDispatchService,
   ) {}
 
   /**
@@ -813,7 +815,7 @@ export class RoomManagerService {
     silent?: boolean;
     confirmedSentAt?: Date;
   }) {
-    const save = async (db: Prisma.TransactionClient, tracking = false) => {
+    const save = async (db: Prisma.TransactionClient, tracking = false, dispatching = false) => {
       if (tracking) await this.responseCycles!.lock(db, params.roomId);
       const msg = await db.chatMessage.create({
         data: {
@@ -879,6 +881,7 @@ export class RoomManagerService {
             where: { id: params.roomId, waitingSince: null },
             data: { waitingSince: msg.createdAt },
           });
+        if (dispatching) await this.dispatch!.enqueueInTx(db, params.roomId, msg.createdAt);
         // เวลาข้อความ *ล่าสุด* ของลูกค้า (หน้าต่าง 24 ชม. ของ FB นับจากตัวนี้) — เดินหน้าอย่างเดียว
         // ข้อความเก่าที่มาถึงช้า (retry/echo) ต้องไม่ดึงค่าถอยหลัง
         await db.chatRoom.updateMany({
@@ -898,9 +901,23 @@ export class RoomManagerService {
       }
       return msg;
     };
-    if (this.responseCycles && (await this.responseCycles.enabled()))
-      return this.prisma.$transaction((tx) => save(tx, true));
-    return save(this.prisma);
+    const tracking = !!this.responseCycles && await this.responseCycles.enabled();
+    const dispatching = params.role === MessageRole.CUSTOMER && !params.silent && !!this.dispatch && await this.dispatch.enabled();
+    const msg = tracking || dispatching
+      ? await this.prisma.$transaction(async tx => {
+          // Same lock order as settings/dispatch: dispatch before any room locks.
+          if (dispatching) await lockChatDispatch(tx);
+          return save(tx, tracking, dispatching && await this.dispatch!.enabled(tx));
+        })
+      : await save(this.prisma);
+    if (dispatching) {
+      // Delivery is already durable; a transient dispatch failure must not make the provider retry it.
+      try {
+        const room = await this.prisma.chatRoom.findUnique({ where: { id: params.roomId }, select: { channel: true } });
+        if (room) await this.dispatch!.drain(room.channel === 'LINE_FINANCE' ? 'FINANCE' : 'SHOP');
+      } catch (error) { this.logger.error('Queued chat will be retried by dispatch recovery', error); }
+    }
+    return msg;
   }
 
   /** Look up an existing message by its client-generated idempotency token. */

@@ -1,3 +1,4 @@
+import { ChatDispatchService } from './chat-dispatch.service';
 import { Injectable, Logger, Inject, Optional, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ChatChannel, MessageRole, MessageType } from '@prisma/client';
@@ -39,6 +40,7 @@ export class MessageRouterService {
   private readonly domainHandlers: IDomainHandler[] = [];
 
   constructor(
+    @Inject(forwardRef(() => RoomManagerService))
     private roomManager: RoomManagerService,
     private handoffManager: HandoffManagerService,
     private configService: ConfigService,
@@ -59,6 +61,7 @@ export class MessageRouterService {
     @Optional()
     @Inject(forwardRef(() => AssignmentService))
     private assignmentService?: AssignmentService,
+    @Optional() private dispatch?: ChatDispatchService,
   ) {
     // Register adapters by channel (via constructor — only works when ChatEngineModule
     // imports a module that exports CHANNEL_ADAPTER_TOKEN. For the current wiring where
@@ -1121,6 +1124,7 @@ export class MessageRouterService {
       }
     }
 
+    await this.dispatch?.assertMayReply(params.roomId, params.staffId);
     const room = await this.roomManager.findById(params.roomId);
     if (!room) {
       this.logger.error(`Room not found: ${params.roomId}`);
@@ -1264,6 +1268,7 @@ export class MessageRouterService {
    */
   /** ใครตอบก่อนได้เป็นเจ้าของ — ถ้าเพิ่งได้เป็นเจ้าของจริง โพสต์ข้อความระบบให้ทีมรู้ (ครั้งเดียวต่อห้อง) */
   private async noteClaimIfFirst(roomId: string, staffId: string): Promise<void> {
+    if (await this.dispatch?.enabled()) return;
     const claimed = await this.assignmentService?.claimIfUnassigned(roomId, staffId);
     if (!claimed) return;
     try {
@@ -1330,12 +1335,15 @@ export class MessageRouterService {
     roomId: string,
     message: Partial<OutboundMessage>,
     staffId: string,
+    // Internal-only: customer postbacks execute a template as a bot, never as an employee.
+    automated = false,
   ): Promise<{
     success: boolean;
     error?: string;
     externalMessageId?: string;
     droppedReason?: string;
   }> {
+    if (!automated) await this.dispatch?.assertMayReply(roomId, staffId);
     const room = await this.roomManager.findById(roomId);
     if (!room) {
       this.logger.error(`Room not found: ${roomId}`);
@@ -1367,7 +1375,7 @@ export class MessageRouterService {
 
     const saved = await this.roomManager.saveMessage({
       roomId,
-      role: MessageRole.STAFF,
+      role: automated ? MessageRole.BOT : MessageRole.STAFF,
       type,
       text: message.text,
       mediaUrl: message.imageUrl ?? message.videoUrl,
@@ -1390,15 +1398,13 @@ export class MessageRouterService {
       return result;
     }
 
-    // เส้นทางนี้เป็น "คำตอบจากพนักงาน" เต็มตัวเหมือน sendStaffMessage (ปุ่มข้อความสำเร็จรูป
-    // เรียกผ่าน canned-response-sender) จึงต้องปิดท้ายเหมือนกันทุกประการ:
-    // stamp outboundSentAt/externalMessageId + ล้าง "รอตอบ" (สเปก §4.3) แล้วจึงรับเรื่อง (§5)
-    // echo ของ Facebook มากู้ให้ไม่ได้ — webhook ข้าม echo ที่มี FACEBOOK_APP_ID ของเราเอง
+    // Confirm provider delivery. Response cycles distinguish human replies from automated BOT
+    // template postbacks; only human sends may complete the waiting cycle or claim a room.
     await this.roomManager.markOutboundSent(saved.id, result.externalMessageId);
 
     // best-effort: การรับเรื่องล้มต้องไม่ทำให้การส่งที่ถึงลูกค้าแล้วกลายเป็นล้ม
     try {
-      await this.noteClaimIfFirst(roomId, staffId);
+      if (!automated) await this.noteClaimIfFirst(roomId, staffId);
     } catch (err) {
       this.logger.warn(
         `[sendStaffOutbound] claim failed for room ${roomId}: ${err instanceof Error ? err.message : err}`,

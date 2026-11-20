@@ -31,7 +31,7 @@ export async function checkChatTeam(page, origin, output, width) {
     await chooseComposerMode(page, 'chat');
     await expect(chatDraft).toHaveValue('ฉบับร่างถึงลูกค้า');
     await chatDraft.fill('');
-    if (width < 1280) await page.getByRole('button', { name: 'ข้อมูลลูกค้า', exact: true }).click();
+    if (width < 1280) await page.getByRole('button', { name: /^ข้อมูลลูกค้า/ }).filter({ visible: true }).first().click();
     await page.getByRole('button', { name: 'ข้อมูลเพิ่มเติม', exact: true }).filter({ visible: true }).click();
     await page.getByRole('button', { name: 'ส่งงานให้ทีม', exact: true }).filter({ visible: true }).click();
     let dialog = page.getByRole('dialog', { name: 'ส่งงานให้ทีม', exact: true });
@@ -39,8 +39,8 @@ export async function checkChatTeam(page, origin, output, width) {
     await dialog.getByLabel('เรื่องที่ฝาก', { exact: true }).fill(title);
     await dialog.getByLabel('รายละเอียดงาน', { exact: true }).fill('ตรวจสีและสภาพเครื่อง');
     await dialog.getByLabel('วันเวลานัด (เวลาไทย)').fill('2026-11-01T10:30');
-    await expect(dialog.getByLabel('ผู้รับผิดชอบงาน').locator(`option[value="${info.previewActors.receiver.id}"]`)).toHaveCount(1);
-    await dialog.getByLabel('ผู้รับผิดชอบงาน').selectOption(info.previewActors.receiver.id);
+    await dialog.getByLabel('ผู้รับผิดชอบงาน').click();
+    await page.getByRole('option').filter({ hasText: info.previewActors.receiver.id.slice(-6) }).click();
     const creation = page.waitForResponse(r => r.request().method() === 'POST' && r.url().includes(`/rooms/${roomId}/handoffs`));
     await dialog.getByRole('button', { name: 'ส่งงาน', exact: true }).click();
     const created = await creation; assert.equal(created.status(), 201); const task = await created.json();

@@ -19,7 +19,8 @@ describe('InstallmentPreviewService', () => {
       },
       gfinModelMapping: { findMany: jest.fn() },
       gfinOverpriceRule: { findMany: jest.fn() },
-      gfinRateFactor: { findFirst: jest.fn() },
+      gfinRateFactor: { findFirst: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
+      pricingTemplate: { findMany: jest.fn().mockResolvedValue([]) },
       // readBoolFlag('shop_hide_demo_products') reads this — most tests leave it unmocked
       // (undefined → readRawValue catches → default false, matches prod day-1).
       systemConfig: { findFirst: jest.fn() },
@@ -533,6 +534,99 @@ describe('InstallmentPreviewService', () => {
       expect(result.downAmount).toBe(6400);
       expect(result.financedAmount).toBe(13500);
       expect(result.monthlyPayment).toBe(2520);
+    });
+  });
+  // final manual check B2 — งวดของ GFIN มาจากฝั่ง GFIN (เรทที่มี + เพดานงวดของกติกา OVER) ไม่ใช่งวดของตั้งค่าดอกเบี้ย
+  describe('GFIN: งวดที่เลือกได้และงวดตั้งต้น (ตรงกับหน้า "ราคาและเรทผ่อน" / บอท / สติกเกอร์)', () => {
+    const factor = (months: number, factorValue: string) => ({
+      months,
+      shopCommissionPct: 15,
+      factor: new Prisma.Decimal(factorValue),
+      feePerInstallment: new Prisma.Decimal('100'),
+      isActive: true,
+    });
+    const FACTORS = [factor(10, '0.201'), factor(12, '0.17'), factor(15, '0.1467')];
+
+    function mock17Pro(opts: { maxMonths: number | null; templateTerm?: number | null }) {
+      prisma.systemConfig.findFirst.mockResolvedValue(null);
+      prisma.product.findFirst.mockResolvedValue({
+        id: 'p17',
+        installmentPrice: new Prisma.Decimal('39000'),
+        financePrice: new Prisma.Decimal('39000'),
+        prices: [],
+        category: 'PHONE_NEW',
+        brand: 'Apple',
+        model: 'iPhone 17 Pro',
+        storage: '256GB',
+        deviceOrigin: 'THAI',
+        warrantyExpired: null,
+        warrantyExpireDate: null,
+        deletedAt: null,
+      });
+      prisma.gfinModelMapping.findMany.mockResolvedValue([
+        { id: 'm17', gfinSeries: 'iPhone 17 Pro', gfinVariant: null, storage: '256GB', condition: 'HAND_1', maxPrice: new Prisma.Decimal('39900'), modelMatchPattern: 'iPhone 17 Pro', isActive: true },
+      ]);
+      prisma.gfinOverpriceRule.findMany.mockResolvedValue([
+        { id: 'r17', label: 'มือ 1 17', seriesPattern: 'iPhone 17|iPhone 17 Pro', condition: 'HAND_1', allowance: new Prisma.Decimal('2000'), maxMonths: opts.maxMonths, minDownPct: 30, isActive: true },
+      ]);
+      prisma.gfinRateFactor.findMany.mockResolvedValue(FACTORS.map((f) => ({ months: f.months })));
+      prisma.gfinRateFactor.findFirst.mockImplementation(({ where }: { where: { months: number } }) =>
+        Promise.resolve(FACTORS.find((f) => f.months === where.months) ?? null),
+      );
+      prisma.pricingTemplate.findMany.mockResolvedValue(
+        opts.templateTerm === undefined
+          ? []
+          : [
+              {
+                id: 't17', brand: 'Apple', model: 'iPhone 17 Pro', storage: '256GB', category: 'PHONE_NEW',
+                hasWarranty: false, deviceOrigin: 'UNSPECIFIED', installmentBestchoicePrice: new Prisma.Decimal('39000'),
+                rate1TermMonths: 12, rate1DownPayment: new Prisma.Decimal('15000'), rate2TermMonths: opts.templateTerm,
+              },
+            ],
+      );
+    }
+
+    it('งวดที่เลือกได้ = งวดที่มีเรท GFIN ของคอมหมวดนี้ ไม่เกินเพดานกติกา OVER — แนบมากับทุกคำตอบ', async () => {
+      mock17Pro({ maxMonths: 15 });
+      const r = await service.preview({ productId: 'p17', provider: 'GFIN', months: 12 });
+      expect(r.available).toBe(true);
+      expect(r.allowedMonths).toEqual([10, 12, 15]);
+      expect(prisma.gfinRateFactor.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ shopCommissionPct: 15, isActive: true, deletedAt: null }) }),
+      );
+
+      mock17Pro({ maxMonths: 12 });
+      const capped = await service.preview({ productId: 'p17', provider: 'GFIN', months: 15 });
+      expect(capped).toMatchObject({ available: false, reason: 'months_over_max', allowedMonths: [10, 12] });
+    });
+
+    it('ไม่ส่งงวด → ใช้งวดเรท 2 ของราคากลาง ไม่มีแล้วใช้เพดานกติกา OVER (ตัวเดียวกับใบเสนอราคาพนักงาน)', async () => {
+      mock17Pro({ maxMonths: 15 });
+      const byRule = await service.preview({ productId: 'p17', provider: 'GFIN' } as never);
+      expect(byRule).toMatchObject({ available: true, months: 15, defaultMonths: 15, downAmount: 9700, monthlyPayment: 4403 });
+
+      mock17Pro({ maxMonths: 15, templateTerm: 12 });
+      const byTemplate = await service.preview({ productId: 'p17', provider: 'GFIN' } as never);
+      expect(byTemplate).toMatchObject({ available: true, months: 12, defaultMonths: 12 });
+    });
+
+    it('ส่งงวดมาเอง → คิดตามงวดนั้น แต่ยังบอกงวดตั้งต้น', async () => {
+      mock17Pro({ maxMonths: 15 });
+      const r = await service.preview({ productId: 'p17', provider: 'GFIN', months: 10 });
+      expect(r).toMatchObject({ available: true, months: 10, defaultMonths: 15 });
+    });
+
+    it('ไม่ออกตัวเลขภายใน — มีแค่จำนวนงวด', async () => {
+      mock17Pro({ maxMonths: 15 });
+      const r = await service.preview({ productId: 'p17', provider: 'GFIN', months: 15 });
+      const json = JSON.stringify(r);
+      expect(json).not.toMatch(/0\.1467|39900|41900|maxMonths|minDownPct|factor/);
+    });
+
+    it('BC ไม่ส่งงวด → ไม่คิด (เว็บส่งงวดของตั้งค่าดอกเบี้ยเสมอ)', async () => {
+      mock17Pro({ maxMonths: 15 });
+      const r = await service.preview({ productId: 'p17', provider: 'BC' } as never);
+      expect(r).toEqual({ available: false, reason: 'months_required' });
     });
   });
 });

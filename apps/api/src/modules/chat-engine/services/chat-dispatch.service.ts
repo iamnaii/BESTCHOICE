@@ -3,6 +3,8 @@ import { Cron } from '@nestjs/schedule';
 import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import type { ChatDispatchState, ChatWorkActor, WorkScope } from '@installment/shared';
+import { canAccess } from '@installment/shared';
+import { AccessSnapshotService } from '../../employee-access/access-snapshot.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import {
   ChatWorkAccessService,
@@ -59,15 +61,26 @@ export class ChatDispatchService {
       },
       orderBy: [{ position: 'asc' }, { id: 'asc' }],
     });
-    return rows.filter((row) => {
+    const eligible = await Promise.all(rows.map(async (row) => {
       try {
         roomWorkWhere(row.staff, { company });
-        return true;
+        return await this.canReceiveUnassigned(db, row.staffId, company);
       } catch (error) {
         if (error instanceof ForbiddenException) return false;
         throw error;
       }
-    });
+    }));
+    return rows.filter((_, index) => eligible[index]);
+  }
+
+  private async canReceiveUnassigned(db: Prisma.TransactionClient, staffId: string, company: WorkScope['company']) {
+    const snapshot = await new AccessSnapshotService(this.prisma).forUserInTransaction(db, staffId);
+    if (!snapshot.managed || snapshot.isOwner) return true;
+    // Chat source authority is company + existing assignee, not the customer's
+    // branch. All dispatch candidates are unassigned: ASSIGNED cannot authorize
+    // creating one's own ownership, and BRANCHES cannot invent a source branch.
+    const resource = { company, assignedUserIds: [] };
+    return canAccess(snapshot, 'chat.read', resource) && canAccess(snapshot, 'chat.update', resource);
   }
 
   async read(actor: Pick<ChatWorkActor, 'id'>, scope: WorkScope): Promise<ChatDispatchState> {
@@ -90,6 +103,8 @@ export class ChatDispatchService {
     await this.prisma.$transaction(async (db) => {
       await lockChatDispatch(db);
       roomWorkWhere(await this.access.currentActor(actor, db), scope);
+      if (ready && !(await this.canReceiveUnassigned(db, actor.id, scope.company)))
+        throw new ForbiddenException('ไม่มีสิทธิ์รับแชทที่ยังไม่มีผู้ดูแลในบริษัทนี้');
       if (ready && !(await this.enabled(db)))
         throw new ForbiddenException('เจ้าของยังไม่ได้เปิดแจกแชทตามคิว');
       const now = new Date();
@@ -129,6 +144,8 @@ export class ChatDispatchService {
     const renewed = await this.prisma.$transaction(async (db) => {
       await lockChatDispatch(db);
       roomWorkWhere(await this.access.currentActor(actor, db), scope);
+      if (!(await this.canReceiveUnassigned(db, actor.id, scope.company)))
+        throw new ForbiddenException('ไม่มีสิทธิ์รับแชทที่ยังไม่มีผู้ดูแลในบริษัทนี้');
       if (!(await this.enabled(db))) return false;
       const now = new Date();
       const result = await db.chatDispatchMember.updateMany({

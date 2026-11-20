@@ -1,6 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { Reflector } from '@nestjs/core';
+import { AccessPolicyService } from '../src/modules/employee-access/access-policy';
+import { AccessSnapshotService } from '../src/modules/employee-access/access-snapshot.service';
+import { AccessChatDispatchBoundary } from '../src/modules/employee-access/access-chat-dispatch-boundary';
 import request from 'supertest';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { ChatDispatchService } from '../src/modules/chat-engine/services/chat-dispatch.service';
@@ -73,6 +77,7 @@ describe('Durable round-robin dispatch (real PostgreSQL, actual inbound and HTTP
     const module = await Test.createTestingModule({
       controllers: [ChatDispatchController],
       providers: [
+        AccessChatDispatchBoundary,
         ChatDispatchService,
         ChatWorkAccessService,
         ChatWorkSettingsService,
@@ -86,8 +91,14 @@ describe('Durable round-robin dispatch (real PostgreSQL, actual inbound and HTTP
     })
       .overrideGuard(JwtAuthGuard)
       .useValue({
-        canActivate: (context: { switchToHttp(): { getRequest(): { user: unknown } } }) => {
-          context.switchToHttp().getRequest().user = actor;
+        // Only replace token verification. Preserve the production authorization
+        // policy: an unregistered route must fail here just as it does in JWT auth.
+        canActivate: async (context: import('@nestjs/common').ExecutionContext) => {
+          context.switchToHttp().getRequest().user = {
+            ...actor,
+            access: await new AccessSnapshotService(db).forUser(actor.id),
+          };
+          await new AccessPolicyService(new Reflector()).authorize(context);
           return true;
         },
       })
@@ -111,7 +122,7 @@ describe('Durable round-robin dispatch (real PostgreSQL, actual inbound and HTTP
     });
     await db.user.updateMany({
       where: { id: { in: staff.map((s) => s.id) } },
-      data: { isActive: true, accessibleCompanies: ['SHOP'] },
+      data: { isActive: true, accessibleCompanies: ['SHOP'], accessManaged: false },
     });
     for (const key of flags)
       await db.systemConfig.upsert({
@@ -121,6 +132,10 @@ describe('Durable round-robin dispatch (real PostgreSQL, actual inbound and HTTP
       });
   });
   afterEach(async () => {
+    await db.employeeAccessAssignment.updateMany({
+      where: { userId: { in: staff.map(s => s.id) }, deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
     await db.chatRoom.updateMany({
       where: { displayName: fixtureName },
       data: { deletedAt: new Date() },
@@ -144,6 +159,48 @@ describe('Durable round-robin dispatch (real PostgreSQL, actual inbound and HTTP
   const readyAll = async () => {
     for (const member of staff) await service.setReady(member, scope, true);
   };
+  const managedGrant = async (permissions: string[], grantScope: 'COMPANY' | 'BRANCHES' | 'ASSIGNED' = 'COMPANY', companyCode = 'SHOP') => {
+    const company = await db.companyInfo.upsert({ where: { companyCode },
+      create: { companyCode, nameTh: 'Synthetic', taxId: '0000000000000', address: 'Synthetic', directorName: 'Synthetic' }, update: {} });
+    await db.branch.update({ where: { id: otherBranch }, data: { companyId: company.id } });
+    const position = await db.accessPosition.create({ data: { code: randomUUID(), name: 'Dispatch test', permissions } });
+    await db.employeeAccessAssignment.create({ data: { userId: staff[0].id, positionId: position.id, companyCode, scope: grantScope,
+      ...(grantScope === 'BRANCHES' ? { branches: { create: { branchId: otherBranch } } } : {}) } });
+    await db.user.update({ where: { id: staff[0].id }, data: { accessManaged: true } });
+  };
+
+  it('does not acquire unassigned rooms through empty, read-only, assigned-only or mismatched managed grants', async () => {
+    const ready = await service.setReady(staff[0], scope, true);
+    for (const [permissions, grantScope, company] of [
+      [[], 'COMPANY', 'SHOP'], [['chat.read'], 'COMPANY', 'SHOP'],
+      [['chat.read', 'chat.update'], 'ASSIGNED', 'SHOP'],
+      [['chat.read', 'chat.update'], 'BRANCHES', 'SHOP'],
+      [['chat.read', 'chat.update'], 'COMPANY', 'FINANCE'],
+    ] as const) {
+      await db.employeeAccessAssignment.updateMany({ where: { userId: staff[0].id }, data: { deletedAt: new Date() } });
+      await managedGrant([...permissions], grantScope, company);
+      await request(app.getHttpServer()).patch('/staff-chat/dispatch/readiness?company=shop').send({ ready: true }).expect(403);
+      await request(app.getHttpServer()).post('/staff-chat/dispatch/heartbeat?company=shop').send({ generation: ready.generation }).expect(403);
+      const pending = await room(); await inbound(pending.id);
+      await service.drain('SHOP');
+      expect(await assigned(pending.id)).toBeNull();
+    }
+  });
+  it('checks current company grants after joining and keeps managed OWNER usable', async () => {
+    await managedGrant(['chat.read', 'chat.update']);
+    const joined = await request(app.getHttpServer()).patch('/staff-chat/dispatch/readiness?company=shop').send({ ready: true }).expect(200);
+    await request(app.getHttpServer()).post('/staff-chat/dispatch/heartbeat?company=shop').send({ generation: joined.body.generation }).expect(201);
+    const first = await room(); await inbound(first.id); expect(await assigned(first.id)).toBe(staff[0].id);
+    await db.employeeAccessAssignment.updateMany({ where: { userId: staff[0].id }, data: { deletedAt: new Date() } });
+    const next = await room(); await inbound(next.id); expect(await assigned(next.id)).toBeNull();
+    await db.user.update({ where: { id: owner.id }, data: { accessManaged: true } }); actor = owner;
+    try {
+      await request(app.getHttpServer()).get('/staff-chat/dispatch?company=shop').expect(200);
+      const result = await request(app.getHttpServer()).patch('/staff-chat/dispatch/readiness?company=shop').send({ ready: true }).expect(200);
+      await request(app.getHttpServer()).post('/staff-chat/dispatch/heartbeat?company=shop').send({ generation: result.body.generation }).expect(201);
+      expect(await assigned(next.id)).toBe(owner.id);
+    } finally { await db.user.update({ where: { id: owner.id }, data: { accessManaged: false } }); }
+  });
 
   it('rotates A → B → C → A through the real inbound path and keeps an existing owner', async () => {
     await readyAll();
@@ -325,6 +382,7 @@ describe('Durable round-robin dispatch (real PostgreSQL, actual inbound and HTTP
     expect(await assigned(r.id)).toBe(owner.id);
   });
   it('validates HTTP readiness and ignores caller-supplied staff identity', async () => {
+    await request(app.getHttpServer()).get('/staff-chat/dispatch?company=shop').expect(200);
     await request(app.getHttpServer())
       .patch('/staff-chat/dispatch/readiness?company=SHOP')
       .send({ ready: 'true' })
@@ -342,6 +400,11 @@ describe('Durable round-robin dispatch (real PostgreSQL, actual inbound and HTTP
       .send({ ready: true })
       .expect(200);
     expect(response.body.ready).toBe(true);
+    const heartbeat = await request(app.getHttpServer())
+      .post('/staff-chat/dispatch/heartbeat?company=shop')
+      .send({ generation: response.body.generation })
+      .expect(201);
+    expect(heartbeat.body.ready).toBe(true);
     await request(app.getHttpServer())
       .post('/staff-chat/dispatch/heartbeat?company=SHOP')
       .send({ generation: 'invalid' })

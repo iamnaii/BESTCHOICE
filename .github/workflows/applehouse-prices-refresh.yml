@@ -1,0 +1,112 @@
+name: ราคากลางรับซื้อ AppleHouse — ดึงทุก 2 สัปดาห์
+
+# ดึงราคารับซื้อ iPhone เกรด A จาก applehouseth.com ทุก 2 สัปดาห์ แล้วเปิด PR ให้เจ้าของตรวจ
+# (คำสั่งเจ้าของ 2026-11-20 "ตั้งทุก 2 สัปดาห์" — ดึงเอง แต่คนกดยืนยันก่อนเปลี่ยนราคาจริง)
+#
+#   1. ดึงราคา (scripts/collect-applehouse-valuations.cjs) → เทียบกับชุดที่ใช้อยู่ใน main
+#      (scripts/applehouse-price-diff.cjs) → สรุปลงหน้า run
+#   2. ราคาเปลี่ยน → commit ไฟล์ราคาลงสาขา bot/applehouse-prices แล้วเปิด/อัปเดต PR พร้อมตาราง
+#      (มี PR ค้างอยู่ = อัปเดตใบเดิม ไม่เปิดใบใหม่) · ราคาเท่าเดิม = ไม่ทำอะไร
+#   3. เจ้าของกด Merge → deploy ตามปกติ → applehouse-prices-apply.yml นำราคาเข้าระบบจริงหลัง deploy ผ่าน
+#
+# ต้องเปิด Settings › Actions › General › "Allow GitHub Actions to create and approve pull requests"
+# ไม่งั้นขั้นเปิด PR ล้ม (การดึงและสรุปยังทำงาน)
+# PR ที่ GITHUB_TOKEN เปิดไม่ trigger workflow อื่น ⇒ ขั้นสุดท้ายสั่ง deploy-gcp.yml บนสาขานี้ด้วยมือ
+# เพื่อให้ PR มีผล "Lint & Test" (ขั้น build/migrate/deploy ทุกขั้นล็อกไว้เฉพาะ refs/heads/main)
+
+on:
+  schedule:
+    # จันทร์ 09:00 น. เวลาไทยทุกสัปดาห์ — ขั้นแรกกรองให้เหลือสัปดาห์เว้นสัปดาห์
+    - cron: '0 2 * * 1'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/applehouse-prices-refresh.yml
+      - scripts/collect-applehouse-valuations.cjs
+      - scripts/applehouse-price-diff.cjs
+
+concurrency:
+  group: applehouse-prices-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    name: ดึงราคาและเทียบ
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    env:
+      SNAPSHOT: apps/api/prisma/data/applehouse-valuations.json
+      BRANCH: bot/applehouse-prices
+    steps:
+      - name: รอบนี้ต้องดึงไหม (สัปดาห์เว้นสัปดาห์)
+        id: gate
+        run: |
+          # เลขสัปดาห์นับจาก epoch — สัปดาห์คี่ = 30 พ.ย. 69, 14 ธ.ค. 69, … · กดรันเองหรือ PR = รันเสมอ
+          week=$(( $(date -u +%s) / 604800 ))
+          if [ "${{ github.event_name }}" != "schedule" ] || [ $(( week % 2 )) -eq 1 ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "สัปดาห์นี้ไม่ใช่รอบดึง (สัปดาห์ที่ $week)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.run == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.gate.outputs.run == 'true'
+        with:
+          node-version: '24'
+
+      - name: ติดตั้ง Playwright Chromium (แยกจาก workspace — ไม่ต้อง npm ci ทั้ง monorepo)
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          version=$(node -p "require('./package-lock.json').packages['node_modules/playwright'].version")
+          mkdir -p "$RUNNER_TEMP/pw"
+          cd "$RUNNER_TEMP/pw"
+          npm init -y >/dev/null
+          npm install --no-audit --no-fund "playwright@$version"
+          npx playwright install --with-deps chromium
+
+      - name: ดึงราคาจาก AppleHouse
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          cp "$SNAPSHOT" "$RUNNER_TEMP/previous.json"
+          NODE_PATH="$RUNNER_TEMP/pw/node_modules" node scripts/collect-applehouse-valuations.cjs
+
+      - name: เทียบกับราคาที่ใช้อยู่
+        id: diff
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          node scripts/applehouse-price-diff.cjs "$RUNNER_TEMP/previous.json" "$SNAPSHOT" --body "$RUNNER_TEMP/body.md"
+          cat "$RUNNER_TEMP/body.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: เปิดหรืออัปเดต PR
+        if: >-
+          steps.gate.outputs.run == 'true' && steps.diff.outputs.changed == 'true' &&
+          github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: ${{ steps.diff.outputs.title }}
+          DATE: ${{ steps.diff.outputs.date }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -C "$BRANCH"
+          git add "$SNAPSHOT"
+          git commit -m "data: ราคากลางรับซื้อ AppleHouse $DATE"
+          git push --force origin "$BRANCH"
+          pr=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$pr" ]; then
+            gh pr edit "$pr" --title "$TITLE" --body-file "$RUNNER_TEMP/body.md"
+          else
+            gh pr create --base main --head "$BRANCH" --title "$TITLE" --body-file "$RUNNER_TEMP/body.md"
+            pr=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number')
+          fi
+          echo "PR: $(gh pr view "$pr" --json url --jq .url)" >> "$GITHUB_STEP_SUMMARY"
+          # ให้ PR มีผล "Lint & Test" — ขั้น build/migrate/deploy ของ deploy-gcp.yml ล็อกไว้เฉพาะ main
+          gh workflow run deploy-gcp.yml --ref "$BRANCH"

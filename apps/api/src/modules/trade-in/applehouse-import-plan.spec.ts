@@ -1,0 +1,97 @@
+import {
+  APPLEHOUSE_NOTE_PREFIX,
+  AUTO_WITHDRAWN_PREFIX,
+  ExistingValuation,
+  planAppleHouseImport,
+} from '../../../prisma/applehouse-import-plan';
+
+const NOTE = `${APPLEHOUSE_NOTE_PREFIX}2026-11-20 · เครื่องไทย`;
+const OLD_NOTE = `${APPLEHOUSE_NOTE_PREFIX}2026-09-21 · เครื่องไทย`;
+
+const row = (over: Partial<ExistingValuation>): ExistingValuation => ({
+  id: 'r1', model: 'iPhone 15', storage: '128GB', basePrice: 14000, note: OLD_NOTE, deletedAt: null, ...over,
+});
+
+describe('planAppleHouseImport', () => {
+  it('updates an AppleHouse row and creates a model the shop never priced', () => {
+    const plan = planAppleHouseImport([row({})], [
+      { model: 'iPhone 15', storage: '128GB', basePrice: 13500 },
+      { model: 'iPhone 17e', storage: '256GB', basePrice: 15000 },
+    ], NOTE);
+    expect(plan).toEqual([
+      { kind: 'update', id: 'r1', model: 'iPhone 15', storage: '128GB', from: 14000, basePrice: 13500, note: NOTE },
+      { kind: 'create', model: 'iPhone 17e', storage: '256GB', basePrice: 15000, note: NOTE },
+    ]);
+  });
+
+  it('matches model and storage case-insensitively', () => {
+    const plan = planAppleHouseImport([row({ model: 'IPHONE 15', storage: '128gb' })],
+      [{ model: 'iPhone 15', storage: '128GB', basePrice: 13500 }], NOTE);
+    expect(plan[0].kind).toBe('update');
+  });
+
+  it('keeps a price the shop edited, even when the source moved', () => {
+    const plan = planAppleHouseImport(
+      [row({ basePrice: '15000.00', note: `ร้านปรับราคาแล้ว · ข้อมูลอ้างอิงเดิม: ${OLD_NOTE}` })],
+      [{ model: 'iPhone 15', storage: '128GB', basePrice: 13500 }], NOTE);
+    expect(plan).toEqual([{ kind: 'keep-shop-price', id: 'r1', model: 'iPhone 15', storage: '128GB', shopPrice: 15000, sourcePrice: 13500 }]);
+  });
+
+  it('keeps a price staff entered by hand before the source listed the model', () => {
+    const plan = planAppleHouseImport(
+      [row({ basePrice: 16000, note: null }), row({ id: 'r2', model: 'iPhone 16', note: 'ตั้งเองหน้าร้าน' })],
+      [{ model: 'iPhone 15', storage: '128GB', basePrice: 13500 }, { model: 'iPhone 16', storage: '128GB', basePrice: 17000 }], NOTE);
+    expect(plan.map(a => a.kind)).toEqual(['keep-shop-price', 'keep-shop-price']);
+  });
+
+  it('updates rows from the Yellobe and 2026-07-18 market imports', () => {
+    const plan = planAppleHouseImport(
+      [row({ note: 'yellobe 2026-09-08' }), row({ id: 'r2', model: 'iPhone 16', note: 'อ้างอิงราคาตลาด 2026-07-18' })],
+      [{ model: 'iPhone 15', storage: '128GB', basePrice: 13500 }, { model: 'iPhone 16', storage: '128GB', basePrice: 17000 }], NOTE);
+    expect(plan.map(a => a.kind)).toEqual(['update', 'update']);
+  });
+
+  it('withdraws an AppleHouse row the source no longer prices, with a marker', () => {
+    const plan = planAppleHouseImport([row({})], [{ model: 'iPhone 16', storage: '128GB', basePrice: 17000 }], NOTE);
+    expect(plan).toContainEqual({ kind: 'withdraw', id: 'r1', model: 'iPhone 15', storage: '128GB', note: `${AUTO_WITHDRAWN_PREFIX}${OLD_NOTE}` });
+  });
+
+  it('never withdraws a shop-edited or hand-made row', () => {
+    const plan = planAppleHouseImport([
+      row({ id: 'shop', note: `ร้านปรับราคาแล้ว · ข้อมูลอ้างอิงเดิม: ${OLD_NOTE}` }),
+      row({ id: 'manual', model: 'iPhone 12', note: null }),
+    ], [{ model: 'iPhone 16', storage: '128GB', basePrice: 17000 }], NOTE);
+    expect(plan.filter(a => a.kind === 'withdraw')).toEqual([]);
+  });
+
+  it('restores a row the importer withdrew once the source prices it again', () => {
+    const deletedAt = new Date('2026-12-01');
+    const plan = planAppleHouseImport(
+      [row({ note: `${AUTO_WITHDRAWN_PREFIX}${OLD_NOTE}`, deletedAt })],
+      [{ model: 'iPhone 15', storage: '128GB', basePrice: 13000 }], NOTE);
+    expect(plan).toEqual([{ kind: 'restore', id: 'r1', model: 'iPhone 15', storage: '128GB', basePrice: 13000, note: NOTE }]);
+  });
+
+  it('restores rows withdrawn by the 2026-09-21 Yellobe switch (no marker back then)', () => {
+    const deletedAt = new Date('2026-09-20T23:43:47Z');
+    const plan = planAppleHouseImport([
+      row({ id: 'y', model: 'iPhone 17 Pro Max', storage: '1TB', note: 'yellobe 2026-09-08', deletedAt }),
+      row({ id: 'm', model: 'iPhone 12', storage: '64GB', note: 'อ้างอิงราคาตลาด 2026-07-18', deletedAt }),
+    ], [
+      { model: 'iPhone 17 Pro Max', storage: '1TB', basePrice: 41000 },
+      { model: 'iPhone 12', storage: '64GB', basePrice: 5000 },
+    ], NOTE);
+    expect(plan.map(a => a.kind)).toEqual(['restore', 'restore']);
+  });
+
+  it('leaves a row deleted by staff deleted', () => {
+    const plan = planAppleHouseImport([row({ deletedAt: new Date() })],
+      [{ model: 'iPhone 15', storage: '128GB', basePrice: 13500 }], NOTE);
+    expect(plan).toEqual([{ kind: 'skip-deleted', id: 'r1', model: 'iPhone 15', storage: '128GB' }]);
+  });
+
+  it('refuses duplicate rows that normalise to the same model', () => {
+    expect(() => planAppleHouseImport([row({ id: 'a' }), row({ id: 'b', model: 'iphone 15' })], [], NOTE))
+      .toThrow(/Duplicate normalized/);
+  });
+});

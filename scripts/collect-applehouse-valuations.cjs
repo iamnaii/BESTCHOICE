@@ -32,11 +32,19 @@ async function main() {
         publicApiKey = request.headers()['x-api-key'];
       }
     });
-    await page.goto('https://applehouseth.com/', { waitUntil: 'networkidle', timeout: 60000 });
+    // Wait for the data itself, not 'networkidle': the site keeps background
+    // connections open (2026-11-20 runs never went idle and timed out).
+    await page.goto('https://applehouseth.com/', { waitUntil: 'load', timeout: 60000 });
+    await page.waitForFunction(
+      () => Array.isArray(window.__next_f) && window.__next_f.some(x => x[0] === 1 && String(x[1]).includes('"initialSpecs":')),
+      null, { timeout: 60000 });
     const stream = await page.evaluate(() => window.__next_f.filter(x => x[0] === 1).map(x => x[1]).join(''));
     const phones = Object.values(readObject(stream, 'initialSpecs')).flat()
       .filter(p => /^iphone\b/i.test(p.phoneName.trim()));
-    await page.goto('https://sure.applehouseth.com/', { waitUntil: 'networkidle', timeout: 60000 });
+    const optionRequest = page.waitForRequest(
+      request => request.url().startsWith('https://sure-api.applehouseth.com/v1/option/'), { timeout: 60000 });
+    await page.goto('https://sure.applehouseth.com/', { waitUntil: 'load', timeout: 60000 });
+    await optionRequest.catch(() => undefined);
     if (!publicApiKey || !phones.length) throw new Error('Public estimator unavailable');
     const headers = { 'x-api-key': publicApiKey };
     // Validate option meanings on every refresh; never silently use changed codes.

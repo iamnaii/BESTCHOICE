@@ -108,6 +108,24 @@ describe('buildImportTermsReview', () => {
     });
   });
 
+  it('ค่าที่เลือกไม่ถูกต้อง (NaN/ติดลบ/ทศนิยมเกิน/งวดนอก 1–36): คู่ใหม่ = ยังขาด · คู่เดิม = ไม่สนใจ', () => {
+    const review = buildImportTermsReview(
+      [row('iPhone 18 Pro', '256GB', 'มือ 2', 45000), row('iPhone 14 Pro', '128GB', 'มือ 2', 20000)],
+      existing,
+      [rule('iPhone 14 Pro', 'HAND_2', 2000, 15, true)],
+    );
+    const k = 'iPhone 18 Pro|HAND_2';
+    for (const bad of [NaN, -5, 1.234, Infinity]) {
+      expect(resolveTermsPlan(review, { [k]: { allowance: bad, maxMonths: 15 } }).missing).toEqual([k]);
+    }
+    for (const bad of [0, 37, 1.5, NaN]) {
+      expect(resolveTermsPlan(review, { [k]: { allowance: 2000, maxMonths: bad } }).missing).toEqual([k]);
+    }
+    const old = 'iPhone 14 Pro|HAND_2';
+    const plan = resolveTermsPlan(review, { [old]: { allowance: NaN, maxMonths: 99 }, [k]: { allowance: 0, maxMonths: 12 } });
+    expect(plan.changes).toEqual([{ series: 'iPhone 18 Pro', condition: 'HAND_2', allowance: 0, maxMonths: 12 }]);
+  });
+
   it('กติกาที่ปิดใช้ = ยังไม่มีเงื่อนไข (NEW) · ค่าในไฟล์ผิดรูป = คำเตือน ไม่ใช้ค่านั้น', () => {
     const review = buildImportTermsReview(
       [row('iPhone 14 Pro', '128GB', 'มือ 2', 20000, 'abc', 15)],

@@ -223,16 +223,26 @@ export interface RuleChange {
   maxMonths?: number;
 }
 
-const pick = (f: TermField, choice: number | undefined): number | undefined =>
-  choice ?? (f.kind === 'value' ? f.value : f.kind === 'choose' ? f.options[0].value : undefined);
+export const isValidAllowance = (n: number) => Number.isFinite(n) && n >= 0 && Math.abs(n * 100 - Math.round(n * 100)) <= 1e-6;
+export const isValidMaxMonths = (n: number) => Number.isInteger(n) && n >= 1 && n <= 36;
+
+/** ค่าที่ผู้ใช้เลือก/กรอกต้องใช้ได้ ไม่งั้นนับว่ายังไม่เลือก (ตกไปใช้ค่าจากไฟล์ ถ้ามี) */
+const pick = (f: TermField, choice: number | undefined, valid: (n: number) => boolean): number | undefined =>
+  choice !== undefined && valid(choice)
+    ? choice
+    : f.kind === 'value'
+      ? f.value
+      : f.kind === 'choose'
+        ? f.options[0].value
+        : undefined;
 
 /** ค่าที่จะส่ง — คู่เดิมส่งเฉพาะฟิลด์ที่ต่างจากระบบ · คู่ใหม่ต้องมีทั้ง OVER และผ่อนสูงสุด ไม่งั้นอยู่ใน missing */
 export function resolveTermsPlan(review: ImportTermsReview, choices: TermChoices) {
   const changes: RuleChange[] = [];
   const missing: string[] = [];
   for (const pair of review.pairs) {
-    const allowance = pick(pair.allowance, choices[pair.key]?.allowance);
-    const maxMonths = pick(pair.maxMonths, choices[pair.key]?.maxMonths);
+    const allowance = pick(pair.allowance, choices[pair.key]?.allowance, isValidAllowance);
+    const maxMonths = pick(pair.maxMonths, choices[pair.key]?.maxMonths, isValidMaxMonths);
     if (!pair.current) {
       if (allowance === undefined || maxMonths === undefined) missing.push(pair.key);
       else changes.push({ series: pair.series, condition: pair.condition, allowance, maxMonths });

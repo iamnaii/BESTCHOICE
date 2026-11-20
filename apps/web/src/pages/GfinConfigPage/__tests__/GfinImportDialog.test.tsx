@@ -52,4 +52,23 @@ describe('GfinImportDialog', () => {
       changes: [{ series: 'iPhone 18 Pro', condition: 'HAND_2', allowance: 2000, maxMonths: 15 }],
     });
   });
+
+  it('OVER ที่พิมพ์ไม่ถูก (-5 / -) ยืนยันยังกดไม่ได้ และมีข้อความบอก', async () => {
+    setup();
+    const confirm = screen.getByRole('button', { name: 'ยืนยันนำเข้า' });
+    const over = screen.getByLabelText('OVER ของ iPhone 18 Pro มือ 2 (บาท)');
+    await userEvent.click(screen.getByRole('radio', { name: 'iPhone 18 Pro มือ 2 ผ่อนสูงสุด 15 งวด' }));
+    await userEvent.type(over, '-5');
+    expect(confirm).toBeDisabled();
+    expect(screen.getByText('OVER ต้องเป็นตัวเลข 0 ขึ้นไป ทศนิยมไม่เกิน 2 ตำแหน่ง')).toBeInTheDocument();
+    await userEvent.clear(over);
+    await userEvent.type(over, '-');
+    expect(confirm).toBeDisabled();
+  });
+
+  it('คำเตือนรุ่นใหม่ที่ยังไม่กรอก บอกชื่อรุ่น', () => {
+    setup();
+    expect(screen.getByText(/ต้องกรอก OVER และผ่อนสูงสุดในหน้านี้ก่อนกดยืนยัน — ระบบไม่เดาให้/)).toBeInTheDocument();
+    expect(screen.getByText(/ยังไม่กรอก: iPhone 18 Pro มือ 2/)).toBeInTheDocument();
+  });
 });

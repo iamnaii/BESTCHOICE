@@ -5,6 +5,8 @@ import { ImportBatchError, cellText, chunk } from '@/utils/excel-cell.util';
 export const GFIN_IMPORT_HEADERS = ['รุ่น', 'ความจุ', 'มือ 1/มือ 2', 'ราคา'] as const;
 
 /** เซิร์ฟเวอร์รับได้ไม่เกิน 100 รายการต่อคำขอ */
+/** ข้อความของแถวที่ราคาเท่าเดิม — หน้าตรวจใช้นับแยกจากแถวที่ถูกข้าม */
+export const GFIN_SAME_PRICE_DETAIL = 'ราคาเท่าเดิม';
 export const GFIN_IMPORT_BATCH_SIZE = 100;
 
 export interface GfinImportItem {
@@ -124,7 +126,7 @@ export function buildGfinImportReview(
       changes.push(`ราคา ${Number(before.maxPrice).toLocaleString('th-TH')} → ${price.toLocaleString('th-TH')}`);
     if (!before.isActive) changes.push('เปิดใช้อีกครั้ง');
     if (before.modelMatchPattern !== model) changes.push(`คำจับคู่ "${before.modelMatchPattern}" → "${model}"`);
-    if (changes.length === 0) return void skip('ราคาเท่าเดิม');
+    if (changes.length === 0) return void skip(GFIN_SAME_PRICE_DETAIL);
     review.push({ rowNumber, label, action: 'UPDATE', detail: changes.join(' · ') });
     toSend.push(item);
   });

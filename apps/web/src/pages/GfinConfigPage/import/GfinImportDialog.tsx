@@ -4,11 +4,12 @@ import { Button } from '@/components/ui/button';
 import { NumberInput } from '@/components/ui/NumberInput';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import type { GfinImportReview } from '../gfinPriceListImport';
+import { GFIN_SAME_PRICE_DETAIL, type GfinImportReview } from '../gfinPriceListImport';
 import { HAND_LABEL } from '../terms/modelTerms';
 import { MONTH_CHOICES } from '../terms/ruleChange';
 import {
   closeIdsFor,
+  isValidAllowance,
   missingLines,
   resolveTermsPlan,
   ruleChangeText,
@@ -45,8 +46,8 @@ function MissingGroup(props: {
     <div className="space-y-1.5 rounded-lg border border-border p-3">
       <p className="text-sm font-medium leading-snug">{props.title}</p>
       <ul className="text-sm text-muted-foreground leading-snug">
-        {props.lines.map((l) => (
-          <li key={l}>{l}</li>
+        {props.lines.map((l, i) => (
+          <li key={`${i}|${l}`}>{l}</li>
         ))}
       </ul>
       <RadioGroup value={props.close ? 'close' : 'keep'} onValueChange={(v) => props.onChange(v === 'close')} className="flex flex-wrap gap-4">
@@ -95,6 +96,7 @@ function ChooseField(props: {
 export function GfinImportDialog(p: Props) {
   const [closePartial, setClosePartial] = useState(true);
   const [closeAbsent, setCloseAbsent] = useState(false);
+  const [overText, setOverText] = useState<Record<string, string>>({});
   const [choices, setChoices] = useState<TermChoices>({});
   const plan = useMemo(() => resolveTermsPlan(p.terms, choices), [p.terms, choices]);
   const closeIds = closeIdsFor(p.missing, { closePartial, closeAbsent });
@@ -102,11 +104,15 @@ export function GfinImportDialog(p: Props) {
     setChoices((c) => ({ ...c, [key]: { ...c[key], [field]: v } }));
 
   const count = (action: 'ADD' | 'UPDATE') => p.prices.rows.filter((r) => r.action === action).length;
-  const same = p.prices.rows.filter((r) => r.action === 'SKIP' && r.detail === 'ราคาเท่าเดิม').length;
-  const skipped = p.prices.rows.filter((r) => r.action === 'SKIP' && r.detail !== 'ราคาเท่าเดิม');
+  const same = p.prices.rows.filter((r) => r.action === 'SKIP' && r.detail === GFIN_SAME_PRICE_DETAIL).length;
+  const skipped = p.prices.rows.filter((r) => r.action === 'SKIP' && r.detail !== GFIN_SAME_PRICE_DETAIL);
   const pairs = p.terms.pairs;
   const byStatus = (s: TermsPair['status']) => pairs.filter((x) => x.status === s);
   const pairOf = (c: RuleChange) => pairs.find((x) => x.series === c.series && x.condition === c.condition)!;
+  const missingName = (k: string) => {
+    const x = pairs.find((q) => q.key === k);
+    return x ? `${x.series} ${HAND_LABEL[x.condition]}` : k;
+  };
   const nothing = p.prices.toSend.length === 0 && closeIds.length === 0 && plan.changes.length === 0;
   const canConfirm = !p.pending && plan.missing.length === 0 && !nothing;
 
@@ -164,8 +170,8 @@ export function GfinImportDialog(p: Props) {
             ตรงกับระบบ {byStatus('MATCH').length} · จะเปลี่ยน {byStatus('CHANGE').length} · ต้องเลือก {byStatus('CHOOSE').length} ·
             รุ่นใหม่ {byStatus('NEW').length}
           </p>
-          {p.terms.warnings.map((w) => (
-            <p key={w} className="flex items-start gap-1.5 text-sm text-warning-strong leading-snug">
+          {p.terms.warnings.map((w, i) => (
+            <p key={`${i}|${w}`} className="flex items-start gap-1.5 text-sm text-warning-strong leading-snug">
               <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
               {w}
             </p>
@@ -187,18 +193,31 @@ export function GfinImportDialog(p: Props) {
               <div key={pair.key} className="space-y-2 rounded-lg border border-border p-3">
                 <p className="text-sm font-medium leading-snug">รุ่นใหม่ · {name}</p>
                 {pair.allowance.kind === 'none' ? (
-                  <label className="flex items-center gap-2 text-sm">
-                    OVER
-                    <NumberInput
-                      aria-label={`OVER ของ ${name} (บาท)`}
-                      className="w-32"
-                      min="0"
-                      step="0.01"
-                      value={choices[pair.key]?.allowance === undefined ? '' : String(choices[pair.key]?.allowance)}
-                      onChange={(e) => set(pair.key, 'allowance', e.target.value === '' ? undefined : Number(e.target.value))}
-                    />
-                    บาท
-                  </label>
+                  <div className="space-y-1">
+                    <label className="flex items-center gap-2 text-sm">
+                      OVER
+                      <NumberInput
+                        aria-label={`OVER ของ ${name} (บาท)`}
+                        className="w-32"
+                        min="0"
+                        step="0.01"
+                        value={overText[pair.key] ?? ''}
+                        onChange={(e) => {
+                          const text = e.target.value;
+                          setOverText((t) => ({ ...t, [pair.key]: text }));
+                          const n = text.trim() === '' ? NaN : Number(text);
+                          set(pair.key, 'allowance', isValidAllowance(n) ? n : undefined);
+                        }}
+                      />
+                      บาท
+                    </label>
+                    {(overText[pair.key] ?? '').trim() !== '' && choices[pair.key]?.allowance === undefined && (
+                      <p className="flex items-start gap-1.5 text-sm text-warning-strong leading-snug">
+                        <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                        OVER ต้องเป็นตัวเลข 0 ขึ้นไป ทศนิยมไม่เกิน 2 ตำแหน่ง
+                      </p>
+                    )}
+                  </div>
                 ) : pair.allowance.kind === 'value' ? (
                   <p className="text-sm leading-snug">OVER +{fmt(pair.allowance.value)} (จากไฟล์)</p>
                 ) : (
@@ -235,7 +254,10 @@ export function GfinImportDialog(p: Props) {
           {plan.missing.length > 0 && (
             <p className="flex items-start gap-1.5 text-sm text-warning-strong leading-snug">
               <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-              ต้องกรอก OVER และผ่อนสูงสุดของรุ่นใหม่ก่อนกดยืนยัน — ระบบไม่เดาให้
+              <span>
+                ต้องกรอก OVER และผ่อนสูงสุดในหน้านี้ก่อนกดยืนยัน — ระบบไม่เดาให้
+                <span className="block">ยังไม่กรอก: {plan.missing.map((k) => missingName(k)).join(' · ')}</span>
+              </span>
             </p>
           )}
         </section>

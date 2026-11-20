@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { GFIN_QUERY_KEYS } from './gfinQueryKeys';
 import type {
   GfinSettingsApi,
   GfinTables,
@@ -15,22 +16,22 @@ import type {
  */
 export function useGfinTables(enabled = true) {
   const mappings = useQuery({
-    queryKey: ['gfin-max-prices'],
+    queryKey: GFIN_QUERY_KEYS.prices,
     queryFn: () => api.get<MaxPriceApi[]>('/gfin-config/max-prices').then((r) => r.data),
     enabled,
   });
   const rules = useQuery({
-    queryKey: ['gfin-overprice-rules'],
+    queryKey: GFIN_QUERY_KEYS.rules,
     queryFn: () => api.get<OverpriceApi[]>('/gfin-config/overprice-rules').then((r) => r.data),
     enabled,
   });
   const factors = useQuery({
-    queryKey: ['gfin-rate-factors'],
+    queryKey: GFIN_QUERY_KEYS.factors,
     queryFn: () => api.get<RateFactorApi[]>('/gfin-config/rate-factors').then((r) => r.data),
     enabled,
   });
   const settings = useQuery({
-    queryKey: ['gfin-settings'],
+    queryKey: GFIN_QUERY_KEYS.settings,
     queryFn: () => api.get<GfinSettingsApi>('/gfin-config/settings').then((r) => r.data),
     enabled,
   });

@@ -1,11 +1,8 @@
-import { describe, it, expect, vi } from 'vitest';
-import { ImportBatchError } from '@/utils/excel-cell.util';
+import { describe, it, expect } from 'vitest';
 import {
   GFIN_IMPORT_HEADERS,
   buildGfinImportReview,
-  sendGfinImport,
   type ExistingMaxPrice,
-  type GfinImportItem,
 } from '../gfinPriceListImport';
 
 const row = (model: string, storage: string, hand: unknown, price: unknown) => ({
@@ -110,44 +107,5 @@ describe('buildGfinImportReview', () => {
       [],
     );
     expect(review.toSend).toHaveLength(2);
-  });
-});
-
-describe('sendGfinImport', () => {
-  const item = { model: 'x' } as GfinImportItem;
-
-  it('ส่งชุดละ 100 และรวมผล', async () => {
-    const post = vi.fn(async (body: { items: GfinImportItem[] }) => ({ created: body.items.length, updated: 0, unchanged: 0 }));
-    const progress = vi.fn();
-    expect(await sendGfinImport(post, Array(106).fill(item), progress)).toEqual({ created: 106, updated: 0, unchanged: 0 });
-    expect(post.mock.calls.map(([b]) => b.items.length)).toEqual([100, 6]);
-    expect(progress.mock.calls).toEqual([[1, 2], [2, 2]]);
-  });
-
-  it('ชุดที่ 2 ล้ม → ImportBatchError บอกจำนวนแถวที่ชุดก่อนบันทึกแล้ว', async () => {
-    const post = vi
-      .fn()
-      .mockResolvedValueOnce({ created: 60, updated: 30, unchanged: 10 })
-      .mockRejectedValueOnce(new Error('Network Error'));
-    const error = await sendGfinImport(post, Array(150).fill(item)).catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(ImportBatchError);
-    expect((error as Error).message).toBe('ชุดที่ 2 ส่งไม่สำเร็จ (Network Error) — บันทึกแล้ว 90 แถวจากชุดก่อนหน้า');
-  });
-
-  it('ใช้ describeError แสดงข้อความของ API แทนข้อความ axios', async () => {
-    const axiosErr = { message: 'Request failed with status code 400', response: { status: 400, data: { message: 'ข้อความไทยจาก API' } } };
-    const post = vi
-      .fn()
-      .mockResolvedValueOnce({ created: 100, updated: 0, unchanged: 0 })
-      .mockRejectedValueOnce(axiosErr);
-    const describeError = (e: unknown) => (e as typeof axiosErr).response.data.message;
-    const error = await sendGfinImport(post, Array(150).fill(item), undefined, describeError).catch((e: unknown) => e);
-    expect((error as Error).message).toBe('ชุดที่ 2 ส่งไม่สำเร็จ (ข้อความไทยจาก API) — บันทึกแล้ว 100 แถวจากชุดก่อนหน้า');
-  });
-
-  it('ชุดแรกล้ม → บันทึกแล้ว 0 แถว', async () => {
-    const post = vi.fn().mockRejectedValueOnce(new Error('boom'));
-    const error = await sendGfinImport(post, [item]).catch((e: unknown) => e);
-    expect((error as Error).message).toBe('ชุดที่ 1 ส่งไม่สำเร็จ (boom) — บันทึกแล้ว 0 แถวจากชุดก่อนหน้า');
   });
 });

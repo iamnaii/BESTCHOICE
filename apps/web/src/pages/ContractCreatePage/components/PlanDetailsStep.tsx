@@ -150,10 +150,11 @@ export function PlanDetailsStep({
       <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm space-y-4">
         {/* Interest Config Badge */}
         {quoteReady && interestConfig && (
-          <div className="bg-primary/5 border border-primary/30 rounded-lg p-3 flex items-center gap-2">
-            <span className="text-xs text-primary">ใช้ดอกเบี้ยตาม:</span>
-            <span className="text-sm font-medium text-primary">{interestConfig.name}</span>
-            <span className="text-xs leading-snug text-primary">
+          // จอแคบ: รายละเอียดขึ้นบรรทัดของตัวเอง — เดิมสามช่องเรียงแถวเดียว ถูกบีบจนคำหักทีละพยางค์ ("มือ/ถือ/ใหม่")
+          <div className="bg-primary/5 border border-primary/30 rounded-lg p-3 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <span className="text-xs text-primary whitespace-nowrap">ใช้ดอกเบี้ยตาม:</span>
+            <span className="text-sm font-medium text-primary whitespace-nowrap">{interestConfig.name}</span>
+            <span className="basis-full sm:basis-auto min-w-0 text-xs leading-snug text-primary">
               {termRates
                 ? `(ดอกเบี้ย ${formatRatePct(contractRatePct)} ทั้งสัญญา | ดาวน์ขั้นต่ำ ${(minDownPct * 100).toFixed(0)}% | เลือกได้ ${monthOptions.join(', ')} เดือน)`
                 : `(${(interestRate * 100).toFixed(2)}% | ดาวน์ขั้นต่ำ ${(minDownPct * 100).toFixed(0)}% | ${minMonths}-${maxMonths} เดือน)`}

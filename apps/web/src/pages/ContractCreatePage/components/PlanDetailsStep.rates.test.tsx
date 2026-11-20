@@ -67,4 +67,17 @@ describe('PlanDetailsStep — ป้ายดอกเบี้ย', () => {
     expect(screen.getByText('(4.17% | ดาวน์ขั้นต่ำ 15% | 6-12 เดือน)')).toBeInTheDocument();
     expect(screen.getByText('+ ดอกเบี้ย (4.17% × 12 เดือน)')).toBeInTheDocument();
   });
+  // final manual check B5 — จอ 375px: ป้ายต้องไม่ถูกบีบจนคำหักทีละพยางค์ ("มือ/ถือ/ใหม่")
+  it('จอแคบ: ป้ายขึ้นบรรทัดใหม่ได้ · ชื่อตั้งค่าและคำนำไม่ตัดกลางคำ · รายละเอียดขึ้นบรรทัดของตัวเองบนมือถือ', async () => {
+    await act(async () => {
+      render(<PlanDetailsStep {...props(config([10, 12]))} />);
+    });
+    const label = screen.getByText('ใช้ดอกเบี้ยตาม:');
+    const name = screen.getByText('มือถือมือ 1');
+    const detail = screen.getByText('(ดอกเบี้ย 50% ทั้งสัญญา | ดาวน์ขั้นต่ำ 15% | เลือกได้ 10, 12 เดือน)');
+    expect(label.parentElement).toHaveClass('flex-wrap');
+    expect(label).toHaveClass('whitespace-nowrap');
+    expect(name).toHaveClass('whitespace-nowrap');
+    expect(detail).toHaveClass('basis-full', 'sm:basis-auto');
+  });
 });

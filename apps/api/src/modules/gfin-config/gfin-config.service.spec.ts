@@ -39,6 +39,7 @@ describe('GfinConfigService', () => {
         upsert: jest.fn().mockResolvedValue({}),
       },
     };
+    prisma.$transaction = jest.fn(async (fn: (tx: unknown) => unknown) => fn(prisma));
     audit = { log: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -605,6 +606,68 @@ describe('GfinConfigService', () => {
       ).rejects.toThrow(/ซ้ำ/);
       expect(prisma.$transaction).not.toHaveBeenCalled();
       expect(prisma.gfinModelMapping.create).not.toHaveBeenCalled();
+      expect(audit.log).not.toHaveBeenCalled();
+    });
+  });
+  describe('bulkUpsertOverpriceRules', () => {
+    const live = (over: Record<string, unknown> = {}) => ({
+      id: 'r17', label: 'iPhone 17 มือ 2', seriesPattern: 'iPhone 17', condition: 'HAND_2',
+      allowance: new Prisma.Decimal(2000), maxMonths: 15, minDownPct: 30, isActive: true, deletedAt: null, ...over,
+    });
+    beforeEach(() => {
+      prisma.gfinModelMapping.findMany.mockResolvedValue([{ gfinSeries: 'iPhone 17' }, { gfinSeries: 'iPhone 17e' }]);
+      prisma.gfinOverpriceRule.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => live(data));
+      prisma.gfinOverpriceRule.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: 'new', ...data }));
+    });
+
+    it('แก้แถวเดิม: ส่งเฉพาะ minDownPct: null → ตั้งเป็นค่ากลาง ไม่แตะ OVER/งวด · เปิดใช้ · audit ครั้งเดียวหลังบันทึก', async () => {
+      prisma.gfinOverpriceRule.findMany.mockResolvedValue([live()]);
+      const res = await service.bulkUpsertOverpriceRules({ items: [{ series: 'iPhone 17', condition: 'HAND_2' }], minDownPct: null }, 'u1');
+      expect(prisma.gfinOverpriceRule.update).toHaveBeenCalledWith({ where: { id: 'r17' }, data: { minDownPct: null, isActive: true } });
+      expect(res).toMatchObject({ created: 0, updated: 1 });
+      expect(audit.log).toHaveBeenCalledTimes(1);
+      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'GFIN_RULES_BULK_UPSERTED', entity: 'gfin_overprice_rule', entityId: 'bulk' }));
+    });
+
+    it('คู่ที่ยังไม่มีกติกา + ส่ง OVER และผ่อนสูงสุด → สร้าง label "<รุ่น> มือ N" ดาวน์ = ค่ากลาง', async () => {
+      prisma.gfinOverpriceRule.findMany.mockResolvedValue([]);
+      await service.bulkUpsertOverpriceRules({ items: [{ series: 'iPhone 17e', condition: 'HAND_1' }], allowance: 2000, maxMonths: 15 }, 'u1');
+      expect(prisma.gfinOverpriceRule.create).toHaveBeenCalledWith({
+        data: {
+          label: 'iPhone 17e มือ 1', seriesPattern: 'iPhone 17e', condition: 'HAND_1',
+          allowance: new Prisma.Decimal(2000), maxMonths: 15, minDownPct: null, isActive: true,
+        },
+      });
+    });
+
+    it('คู่ที่ยังไม่มีกติกา แต่ไม่ส่งผ่อนสูงสุด → 400 ไม่เขียนอะไร', async () => {
+      prisma.gfinOverpriceRule.findMany.mockResolvedValue([]);
+      await expect(service.bulkUpsertOverpriceRules({ items: [{ series: 'iPhone 17e', condition: 'HAND_1' }], allowance: 2000 }, 'u1'))
+        .rejects.toThrow(new BadRequestException('iPhone 17e มือ 1 ยังไม่มีเงื่อนไข — ต้องระบุ OVER และผ่อนสูงสุด'));
+      expect(prisma.gfinOverpriceRule.create).not.toHaveBeenCalled();
+      expect(audit.log).not.toHaveBeenCalled();
+    });
+
+    it('รุ่นไม่มีในใบราคา → 400', async () => {
+      await expect(service.bulkUpsertOverpriceRules({ items: [{ series: 'iPhone 71', condition: 'HAND_1' }], maxMonths: 12 }, 'u1'))
+        .rejects.toThrow(new BadRequestException('ไม่พบรุ่น iPhone 71 ในใบราคา — นำเข้าใบราคาที่มีรุ่นนี้ก่อน'));
+    });
+
+    it('ไม่ส่งค่าที่จะเปลี่ยนเลย → 400', async () => {
+      await expect(service.bulkUpsertOverpriceRules({ items: [{ series: 'iPhone 17', condition: 'HAND_2' }] }, 'u1'))
+        .rejects.toThrow(new BadRequestException('ไม่มีค่าที่จะเปลี่ยน — เลือก OVER ผ่อนสูงสุด หรือดาวน์อย่างน้อยหนึ่งอย่าง'));
+    });
+
+    it('รุ่น+สภาพซ้ำในคำขอ → 400', async () => {
+      await expect(service.bulkUpsertOverpriceRules({ items: [{ series: 'iPhone 17', condition: 'HAND_2' }, { series: 'iPhone 17', condition: 'HAND_2' }], maxMonths: 12 }, 'u1'))
+        .rejects.toThrow(new BadRequestException('เลือก iPhone 17 มือ 2 ซ้ำ'));
+    });
+
+    it('ชน unique ระหว่างบันทึก (มีคนแก้พร้อมกัน) → 409', async () => {
+      prisma.gfinOverpriceRule.findMany.mockResolvedValue([]);
+      prisma.gfinOverpriceRule.create.mockRejectedValue(new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: 'test' }));
+      await expect(service.bulkUpsertOverpriceRules({ items: [{ series: 'iPhone 17e', condition: 'HAND_1' }], allowance: 0, maxMonths: 12 }, 'u1'))
+        .rejects.toThrow(new ConflictException('มีการแก้เงื่อนไขของรุ่นเดียวกันพร้อมกัน — โหลดหน้าใหม่แล้วลองอีกครั้ง'));
       expect(audit.log).not.toHaveBeenCalled();
     });
   });

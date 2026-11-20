@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, type GfinOverpriceRule } from '@prisma/client';
 import Decimal from 'decimal.js';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -13,6 +13,7 @@ import {
   UpdateRateFactorDto,
   UpdateGfinSettingsDto,
   ImportMaxPricesDto,
+  BulkUpsertOverpriceRulesDto,
 } from './dto';
 import { GFIN_SETTINGS_KEYS, loadGfinSettings, type GfinSettings } from './gfin-settings.util';
 
@@ -269,6 +270,95 @@ export class GfinConfigService {
       oldValue: existing as unknown as Record<string, unknown>,
     });
     return updated;
+  }
+
+  /**
+   * แก้เงื่อนไขหลายรุ่นพร้อมกัน (สเปก 2026-11-20 §5) — ทั้งชุดใน transaction เดียว (พลาดแถวเดียว = ไม่บันทึกเลย)
+   * คู่ที่มีกติกาแล้ว (รวมที่ปิดใช้) = แก้แถวเดิม + เปิดใช้ · คู่ใหม่ต้องมี OVER และผ่อนสูงสุด · audit ครั้งเดียวหลัง commit
+   */
+  async bulkUpsertOverpriceRules(dto: BulkUpsertOverpriceRulesDto, userId: string) {
+    const hand = (c: string) => (c === 'HAND_1' ? 'มือ 1' : 'มือ 2');
+    const items = dto.items.map((i) => ({ series: i.series.trim(), condition: i.condition }));
+    if (dto.allowance === undefined && dto.maxMonths === undefined && dto.minDownPct === undefined) {
+      throw new BadRequestException('ไม่มีค่าที่จะเปลี่ยน — เลือก OVER ผ่อนสูงสุด หรือดาวน์อย่างน้อยหนึ่งอย่าง');
+    }
+    const seen = new Set<string>();
+    for (const i of items) {
+      const key = `${i.series}|${i.condition}`;
+      if (seen.has(key)) throw new BadRequestException(`เลือก ${i.series} ${hand(i.condition)} ซ้ำ`);
+      seen.add(key);
+    }
+    const seriesList = [...new Set(items.map((i) => i.series))];
+
+    type Change = { series: string; condition: string; before: unknown; after: unknown };
+    let result: {
+      created: number;
+      updated: number;
+      rows: GfinOverpriceRule[];
+      changes: Change[];
+    };
+    try {
+      result = await this.prisma.$transaction(async (tx) => {
+        const priced = await tx.gfinModelMapping.findMany({
+          where: { deletedAt: null, gfinVariant: null, gfinSeries: { in: seriesList } },
+          select: { gfinSeries: true },
+        });
+        const pricedSet = new Set(priced.map((p) => p.gfinSeries));
+        const missing = seriesList.find((s) => !pricedSet.has(s));
+        if (missing) throw new BadRequestException(`ไม่พบรุ่น ${missing} ในใบราคา — นำเข้าใบราคาที่มีรุ่นนี้ก่อน`);
+
+        const existing = await tx.gfinOverpriceRule.findMany({
+          where: { deletedAt: null, seriesPattern: { in: seriesList } },
+        });
+        const out = { created: 0, updated: 0, rows: [] as GfinOverpriceRule[], changes: [] as Change[] };
+        for (const i of items) {
+          const ex = existing.find((r) => r.seriesPattern === i.series && r.condition === i.condition);
+          if (ex) {
+            const data: Prisma.GfinOverpriceRuleUpdateInput = {};
+            if (dto.allowance !== undefined) data.allowance = new Prisma.Decimal(dto.allowance);
+            if (dto.maxMonths !== undefined) data.maxMonths = dto.maxMonths;
+            if (dto.minDownPct !== undefined) data.minDownPct = dto.minDownPct;
+            data.isActive = true;
+            const row = await tx.gfinOverpriceRule.update({ where: { id: ex.id }, data });
+            out.updated++;
+            out.rows.push(row);
+            out.changes.push({ series: i.series, condition: i.condition, before: ex, after: row });
+          } else {
+            if (dto.allowance === undefined || dto.maxMonths === undefined) {
+              throw new BadRequestException(`${i.series} ${hand(i.condition)} ยังไม่มีเงื่อนไข — ต้องระบุ OVER และผ่อนสูงสุด`);
+            }
+            const row = await tx.gfinOverpriceRule.create({
+              data: {
+                label: `${i.series} ${hand(i.condition)}`,
+                seriesPattern: i.series,
+                condition: i.condition,
+                allowance: new Prisma.Decimal(dto.allowance),
+                maxMonths: dto.maxMonths,
+                minDownPct: dto.minDownPct ?? null,
+                isActive: true,
+              },
+            });
+            out.created++;
+            out.rows.push(row);
+            out.changes.push({ series: i.series, condition: i.condition, before: null, after: row });
+          }
+        }
+        return out;
+      });
+    } catch (e) {
+      if (isUniqueViolation(e)) {
+        throw new ConflictException('มีการแก้เงื่อนไขของรุ่นเดียวกันพร้อมกัน — โหลดหน้าใหม่แล้วลองอีกครั้ง');
+      }
+      throw e;
+    }
+    await this.auditService.log({
+      action: 'GFIN_RULES_BULK_UPSERTED',
+      entity: 'gfin_overprice_rule',
+      entityId: 'bulk',
+      userId,
+      newValue: { changes: result.changes } as unknown as Record<string, unknown>,
+    });
+    return { created: result.created, updated: result.updated, rows: result.rows };
   }
 
   // ===== Rate Factors =====

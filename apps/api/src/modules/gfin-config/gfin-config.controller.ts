@@ -20,6 +20,7 @@ import {
   CreateMaxPriceDto,
   UpdateMaxPriceDto,
   CreateOverpriceRuleDto,
+  BulkUpsertOverpriceRulesDto,
   UpdateOverpriceRuleDto,
   CreateRateFactorDto,
   UpdateRateFactorDto,
@@ -91,6 +92,12 @@ export class GfinConfigController {
   @Roles('OWNER')
   createOverpriceRule(@Body() dto: CreateOverpriceRuleDto, @Req() req: any) {
     return this.service.createOverpriceRule(dto, req.user.id);
+  }
+
+  @Post('overprice-rules/bulk-upsert')
+  @Roles('OWNER')
+  bulkUpsertOverpriceRules(@Body() dto: BulkUpsertOverpriceRulesDto, @Req() req: { user: { id: string } }) {
+    return this.service.bulkUpsertOverpriceRules(dto, req.user.id);
   }
 
   @Patch('overprice-rules/:id')

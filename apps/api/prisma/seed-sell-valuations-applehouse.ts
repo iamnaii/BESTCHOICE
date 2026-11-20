@@ -2,6 +2,7 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { APPLEHOUSE_NOTE_PREFIX, planAppleHouseImport } from './applehouse-import-plan';
 
 const snapshot = JSON.parse(readFileSync(join(__dirname, 'data/applehouse-valuations.json'), 'utf8')) as {
   source: string; fetchedAt: string; rows: Array<{ model: string; storage: string; basePrice: number }>;
@@ -26,7 +27,7 @@ async function main() {
     return;
   }
   const apply = process.argv.includes('--apply');
-  const note = `อ้างอิง applehouseth.com ${snapshot.fetchedAt.slice(0, 10)} · เครื่องไทย แบต 80–100% มีกล่อง ประกันเหลือ ≥4 เดือน ไม่มีรอย/ตำหนิ · รวมโปรโมชัน ณ วันที่ดึงข้อมูล · เครื่องนอกและสภาพอื่นหักตามเกณฑ์ร้าน`;
+  const note = `${APPLEHOUSE_NOTE_PREFIX}${snapshot.fetchedAt.slice(0, 10)} · เครื่องไทย แบต 80–100% มีกล่อง ประกันเหลือ ≥4 เดือน ไม่มีรอย/ตำหนิ · รวมโปรโมชัน ณ วันที่ดึงข้อมูล · เครื่องนอกและสภาพอื่นหักตามเกณฑ์ร้าน`;
   await prisma.$transaction(async tx => {
     const questions = await tx.buybackQuestion.findMany({
       where: { isActive: true, deletedAt: null },
@@ -45,27 +46,47 @@ async function main() {
     const existing = await tx.tradeInValuation.findMany({ where: {
       brand: { equals: 'Apple', mode: 'insensitive' }, condition: 'A',
     } });
-    const existingKeys = existing.map(row => key(row.model, row.storage));
-    if (new Set(existingKeys).size !== existingKeys.length) throw new Error('Duplicate normalized model/storage rows; reconcile before importing');
-    for (const row of snapshot.rows) {
-      const old = existing.find(x => key(x.model, x.storage) === key(row.model, row.storage));
-      if (old?.deletedAt) { console.log(`SKIP deleted: ${row.model} ${row.storage}`); continue; }
-      console.log(`${old ? 'UPDATE' : 'CREATE'} ${row.model} ${row.storage}: ${old?.basePrice ?? '-'} -> ${row.basePrice}`);
-      if (apply) {
-        const data = { basePrice: new Prisma.Decimal(row.basePrice), note };
-        if (old) await tx.tradeInValuation.update({ where: { id: old.id }, data });
-        else await tx.tradeInValuation.create({ data: { ...data, brand: 'Apple', model: row.model, storage: row.storage, condition: 'A' } });
+    // Rules live in applehouse-import-plan.ts: shop-edited prices are kept, rows the
+    // importer withdrew come back when the source prices them again, rows deleted
+    // any other way stay deleted.
+    const plan = planAppleHouseImport(existing, snapshot.rows, note);
+    const now = new Date();
+    for (const action of plan) {
+      const label = `${action.model} ${action.storage}`;
+      switch (action.kind) {
+        case 'create':
+          console.log(`เพิ่มรุ่น ${label}: ${action.basePrice}`);
+          if (apply) await tx.tradeInValuation.create({ data: {
+            brand: 'Apple', model: action.model, storage: action.storage, condition: 'A',
+            basePrice: new Prisma.Decimal(action.basePrice), note: action.note,
+          } });
+          break;
+        case 'update':
+          console.log(`${action.from === action.basePrice ? 'ราคาเท่าเดิม' : 'ปรับราคา'} ${label}: ${action.from} -> ${action.basePrice}`);
+          if (apply) await tx.tradeInValuation.update({ where: { id: action.id },
+            data: { basePrice: new Prisma.Decimal(action.basePrice), note: action.note } });
+          break;
+        case 'restore':
+          console.log(`เปิดรับซื้อกลับ ${label}: ${action.basePrice}`);
+          if (apply) await tx.tradeInValuation.update({ where: { id: action.id },
+            data: { basePrice: new Prisma.Decimal(action.basePrice), note: action.note, deletedAt: null } });
+          break;
+        case 'keep-shop-price':
+          console.log(`คงราคาที่ร้านปรับเอง ${label}: ร้าน ${action.shopPrice} (AppleHouse ${action.sourcePrice})`);
+          break;
+        case 'skip-deleted':
+          console.log(`ข้าม (ถูกลบในระบบ) ${label}`);
+          break;
+        case 'withdraw':
+          console.log(`ปิดรับซื้อ (AppleHouse ไม่มีราคา) ${label}`);
+          if (apply) await tx.tradeInValuation.update({ where: { id: action.id },
+            data: { note: action.note, deletedAt: now } });
+          break;
       }
     }
-    // Withdraw only recognisable source-managed rows absent from the new source.
-    // Manual rows and soft-deleted rows are never silently resurrected or removed.
-    for (const old of existing) {
-      const sourceManaged = old.note?.includes('yellobe') || old.note === 'อ้างอิงราคาตลาด 2026-07-18' || old.note?.startsWith('อ้างอิง applehouseth.com ');
-      if (!old.deletedAt && sourceManaged && !keys.has(key(old.model, old.storage))) {
-        console.log(`WITHDRAW unavailable source price: ${old.model} ${old.storage}`);
-        if (apply) await tx.tradeInValuation.update({ where: { id: old.id }, data: { deletedAt: new Date() } });
-      }
-    }
+    const count = (kind: (typeof plan)[number]['kind']) => plan.filter(a => a.kind === kind).length;
+    const changed = plan.filter(a => a.kind === 'update' && a.from !== a.basePrice).length;
+    console.log(`สรุป: ปรับราคา ${changed} · เท่าเดิม ${count('update') - changed} · เพิ่ม ${count('create')} · เปิดกลับ ${count('restore')} · คงราคาร้าน ${count('keep-shop-price')} · ปิดรับซื้อ ${count('withdraw')} · ข้ามที่ถูกลบ ${count('skip-deleted')}`);
   }, { timeout: 60000 });
   console.log(apply ? 'AppleHouse benchmark applied.' : 'PREVIEW ONLY — use --apply to write these changes.');
 }

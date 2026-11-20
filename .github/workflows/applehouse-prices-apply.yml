@@ -1,0 +1,149 @@
+name: ราคากลางรับซื้อ AppleHouse — นำเข้าระบบจริง
+
+# นำราคาจาก apps/api/prisma/data/applehouse-valuations.json เข้าตาราง trade_in_valuations บน prod
+# ด้วย apps/api/prisma/seed-sell-valuations-applehouse.ts (Cloud Run Job แบบเดียวกับ backfill-receipts.yml)
+#
+# - อัตโนมัติ: หลัง "Deploy to GCP" บน main สำเร็จ และไฟล์ราคาเปลี่ยนตั้งแต่ deploy สำเร็จครั้งก่อน
+#   (= เจ้าของ merge PR จาก applehouse-prices-refresh.yml) — ใช้ image ของ commit ที่เพิ่ง deploy
+# - กดเอง: ค่าเริ่มต้น = ดูอย่างเดียว (preview ไม่เขียน) · ติ๊ก apply = บันทึกจริง (ใช้ image ของ main ล่าสุด)
+#
+# ตัวนำเข้าคงราคาที่ร้านปรับเอง · เปิดรับซื้อกลับรุ่นที่ตัวเองเคยปิด · ปิดรุ่นที่ AppleHouse ไม่มีราคาแล้ว
+# (กติกาใน apps/api/prisma/applehouse-import-plan.ts) · รันซ้ำด้วยไฟล์เดิม = ได้ผลเดิม
+
+on:
+  workflow_run:
+    workflows: ['Deploy to GCP (Cloud Run + Firebase)']
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'บันทึกราคาลงระบบจริง? ไม่ติ๊ก = ดูอย่างเดียวว่าจะเปลี่ยนอะไร'
+        type: boolean
+        default: false
+
+concurrency:
+  group: applehouse-prices-apply
+  cancel-in-progress: false
+
+env:
+  API_IMAGE: asia-southeast1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/bestchoice/api
+  SNAPSHOT: apps/api/prisma/data/applehouse-valuations.json
+  JOB: bestchoice-applehouse-prices
+
+jobs:
+  apply:
+    name: นำราคาเข้าระบบจริง
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       contains(fromJSON('["push","workflow_dispatch"]'), github.event.workflow_run.event))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          filter: blob:none
+
+      - name: เลือก commit และดูว่าราคาเปลี่ยนไหม
+        id: target
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          WANT_APPLY: ${{ inputs.apply }}
+        run: |
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            if [ "${{ github.ref }}" != "refs/heads/main" ]; then
+              echo "::error::กดรันจาก main เท่านั้น"; exit 1
+            fi
+            sha=$(git rev-parse HEAD)
+            changed=true
+            if [ "$WANT_APPLY" = "true" ]; then mode=apply; else mode=preview; fi
+          else
+            sha="$RUN_SHA"
+            mode=apply
+            # deploy สำเร็จครั้งก่อนบน main — เทียบช่วงนี้ทั้งช่วง (ครอบกรณี run ระหว่างทางถูกยกเลิก)
+            prev=$(gh run list --workflow deploy-gcp.yml --branch main --status success --limit 30 \
+              --json databaseId,headSha,event \
+              --jq "[.[] | select(.databaseId != $RUN_ID) | select(.event == \"push\" or .event == \"workflow_dispatch\")][0].headSha // empty")
+            if [ -n "$prev" ] && git merge-base --is-ancestor "$prev" "$sha"; then
+              if git diff --quiet "$prev" "$sha" -- "$SNAPSHOT"; then changed=false; else changed=true; fi
+            else
+              changed=true  # หา deploy ก่อนหน้าไม่ได้ — นำเข้าซ้ำได้ผลเดิม จึงปลอดภัย
+            fi
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+          if [ "$changed" = "false" ]; then
+            echo "ไฟล์ราคาไม่เปลี่ยนใน deploy นี้ — ไม่ต้องนำเข้า" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Authenticate to GCP
+        if: steps.target.outputs.changed == 'true'
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Setup gcloud CLI
+        if: steps.target.outputs.changed == 'true'
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: สร้างหรืออัปเดต Cloud Run Job
+        if: steps.target.outputs.changed == 'true'
+        env:
+          SHA: ${{ steps.target.outputs.sha }}
+          MODE: ${{ steps.target.outputs.mode }}
+        run: |
+          image="$API_IMAGE:$SHA"
+          if ! gcloud artifacts docker images describe "$image" >/dev/null 2>&1; then
+            echo "::error::ไม่พบ image $image (deploy ของ commit นี้ยังไม่ผ่าน) — รอ deploy เสร็จแล้วกดรัน workflow นี้เอง"
+            exit 1
+          fi
+          args="tsx,apps/api/prisma/seed-sell-valuations-applehouse.ts"
+          if [ "$MODE" = "apply" ]; then args="$args,--apply"; fi
+          ARGS=(
+            --project="${{ secrets.GCP_PROJECT_ID }}"
+            --region="${{ secrets.GCP_REGION || 'asia-southeast1' }}"
+            --image="$image"
+            --set-secrets=DATABASE_URL=DATABASE_URL:latest
+            --set-cloudsql-instances="${{ secrets.CLOUD_SQL_CONNECTION_NAME }}"
+            --command=npx
+            --args="$args"
+            --max-retries=0
+            --task-timeout=300s
+          )
+          gcloud run jobs update "$JOB" "${ARGS[@]}" 2>/dev/null \
+            || gcloud run jobs create "$JOB" "${ARGS[@]}"
+
+      - name: รันนำเข้า (${{ steps.target.outputs.mode }})
+        if: steps.target.outputs.changed == 'true'
+        env:
+          MODE: ${{ steps.target.outputs.mode }}
+        run: |
+          region="${{ secrets.GCP_REGION || 'asia-southeast1' }}"
+          project="${{ secrets.GCP_PROJECT_ID }}"
+          status=0
+          execution=$(gcloud run jobs execute "$JOB" --project="$project" --region="$region" --wait \
+            --format='value(metadata.name)') || status=$?
+          {
+            if [ "$MODE" = "apply" ]; then echo "## นำราคาเข้าระบบจริงแล้ว"; else echo "## ดูอย่างเดียว (ยังไม่บันทึก)"; fi
+            echo ""
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$execution" ]; then
+            sleep 20  # log ของ Cloud Run เข้า Logging ช้ากว่าตัวงานเล็กน้อย
+            gcloud logging read \
+              "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"$JOB\" AND labels.\"run.googleapis.com/execution_name\"=\"$execution\"" \
+              --project="$project" --order=asc --limit=300 --format='value(textPayload)' \
+              >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(อ่าน log ไม่ได้ — ดูใน Cloud Run Job $execution)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          exit $status

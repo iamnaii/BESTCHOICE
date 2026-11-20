@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import type { GfinTables } from '@/pages/ProductDetailPage/utils/gfinQuote';
 import { RateFactorsTab } from '../RateFactorsTab';
-import { GFIN_QUERY_KEYS } from '../gfinQueryKeys';
+import { GFIN_QUERY_KEYS } from '@/pages/ProductDetailPage/hooks/gfinQueryKeys';
 import { commissionOptions, rateChips, settingsPatch, type CentralForm, type SettingsBody } from './centralTerms';
 
 const SheetTag = ({ no }: { no: number }) => (

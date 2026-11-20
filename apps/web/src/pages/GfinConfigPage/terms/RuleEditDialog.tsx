@@ -8,7 +8,7 @@ import { NumberInput } from '@/components/ui/NumberInput';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import type { GfinTables } from '@/pages/ProductDetailPage/utils/gfinQuote';
-import { GFIN_QUERY_KEYS } from '../gfinQueryKeys';
+import { GFIN_QUERY_KEYS } from '@/pages/ProductDetailPage/hooks/gfinQueryKeys';
 import { HAND_LABEL, type ModelTermsRow } from './modelTerms';
 import {
   MONTH_CHOICES,
@@ -21,6 +21,9 @@ import {
   type RuleEdit,
 } from './ruleChange';
 
+/** bulk-upsert ฝั่งเซิร์ฟเวอร์รับไม่เกิน 200 รายการต่อคำขอ */
+const MAX_ROWS = 200;
+
 const fmt = (n: number) => n.toLocaleString('th-TH');
 
 interface Props {
@@ -28,10 +31,12 @@ interface Props {
   tables: GfinTables;
   onRemove: (key: string) => void;
   onClose: () => void;
+  /** เรียกเมื่อบันทึกสำเร็จ (ก่อน onClose) — ยกเลิก/ปิดกล่องไม่เรียก */
+  onSaved?: () => void;
 }
 
 /** กล่องแก้เงื่อนไข 1 แถวหรือหลายแถว (สเปก §6.2 ข้อ 5) — บันทึกทั้งชุดในคำขอเดียว */
-export function RuleEditDialog({ rows, tables, onRemove, onClose }: Props) {
+export function RuleEditDialog({ rows, tables, onRemove, onClose, onSaved }: Props) {
   const qc = useQueryClient();
   const required = needsValues(rows);
   const [allowanceMode, setAllowanceMode] = useState<'keep' | 'set'>(required ? 'set' : 'keep');
@@ -57,6 +62,9 @@ export function RuleEditDialog({ rows, tables, onRemove, onClose }: Props) {
   const now = summarizeCurrent(rows);
   const lines = error ? [] : describeEdit(rows, edit, tables.settings.minDownPct);
   const example = error ? null : previewExample(tables, rows, edit);
+  const tooMany = rows.length > MAX_ROWS;
+  const needAllowance = allowanceMode === 'set' && allowanceValue === '';
+  const needDown = downMode === 'set' && downValue === '';
   const hands = [...new Set(rows.map((r) => HAND_LABEL[r.condition]))].join(' และ ');
 
   const save = useMutation({
@@ -64,6 +72,7 @@ export function RuleEditDialog({ rows, tables, onRemove, onClose }: Props) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: GFIN_QUERY_KEYS.rules });
       toast.success(`บันทึกเงื่อนไข ${rows.length} รุ่นแล้ว`);
+      onSaved?.();
       onClose();
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -123,6 +132,12 @@ export function RuleEditDialog({ rows, tables, onRemove, onClose }: Props) {
                 />
                 บาท
               </label>
+              {needAllowance && (
+                <p className="flex items-start gap-1.5 text-xs text-warning-strong leading-snug">
+                  <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                  กรอกตัวเลขก่อนบันทึก
+                </p>
+              )}
             </RadioGroup>
           </fieldset>
 
@@ -166,6 +181,12 @@ export function RuleEditDialog({ rows, tables, onRemove, onClose }: Props) {
                 />
                 %
               </label>
+              {needDown && (
+                <p className="flex items-start gap-1.5 text-xs text-warning-strong leading-snug">
+                  <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                  กรอกตัวเลขก่อนบันทึก
+                </p>
+              )}
             </RadioGroup>
           </fieldset>
 
@@ -186,6 +207,12 @@ export function RuleEditDialog({ rows, tables, onRemove, onClose }: Props) {
               )}
             </div>
           )}
+          {tooMany && (
+            <p className="flex items-start gap-1.5 text-sm text-warning-strong leading-snug">
+              <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+              <span>เลือกได้ไม่เกิน {MAX_ROWS} แถวต่อครั้ง</span>
+            </p>
+          )}
           {error && error !== 'ยังไม่ได้เปลี่ยนอะไร' && (
             <p className="flex items-start gap-1.5 text-sm text-warning-strong leading-snug">
               <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
@@ -201,7 +228,7 @@ export function RuleEditDialog({ rows, tables, onRemove, onClose }: Props) {
           <Button variant="outline" onClick={onClose} disabled={save.isPending}>
             ยกเลิก
           </Button>
-          <Button variant="primary" onClick={() => save.mutate()} disabled={save.isPending || error !== null}>
+          <Button variant="primary" onClick={() => save.mutate()} disabled={save.isPending || error !== null || tooMany}>
             บันทึก {rows.length} รุ่น
           </Button>
         </DialogFooter>

@@ -23,7 +23,11 @@ export function ModelTermsCards(p: TermsListProps) {
         <section key={fam.family} aria-label={fam.label} className="space-y-2">
           <h3 className="font-semibold leading-snug">{fam.label}</h3>
           {bySeries(fam.rows).map((rows) => (
-            <article key={rows[0].series} aria-label={rows[0].series} className="space-y-2 rounded-lg border border-border bg-card p-3">
+            <article
+              key={rows[0].series}
+              aria-label={rows[0].series}
+              className="space-y-2 rounded-lg border border-border bg-card p-3"
+            >
               <h4 className="font-medium leading-snug">{rows[0].series}</h4>
               {rows.map((row) => (
                 <div key={row.key} className="space-y-1.5 border-t border-border pt-2">
@@ -60,14 +64,27 @@ export function ModelTermsCards(p: TermsListProps) {
                       ))}
                   </ul>
                   {row.rule === null ? (
-                    <p className={`flex items-center gap-1.5 text-sm leading-snug ${row.needsRule ? 'text-warning-strong' : 'text-muted-foreground'}`}>
+                    <p
+                      className={`flex items-center gap-1.5 text-sm leading-snug ${row.needsRule ? 'text-warning-strong' : 'text-muted-foreground'}`}
+                    >
                       {row.needsRule && <TriangleAlert className="size-4" aria-hidden="true" />}
-                      {row.needsRule ? 'ยังไม่ตั้งเงื่อนไข · ยังคิดผ่อนไม่ได้' : 'ยังไม่ตั้งเงื่อนไข'}
+                      {row.needsRule
+                        ? 'ยังไม่ตั้งเงื่อนไข · ยังคิดผ่อนไม่ได้'
+                        : 'ยังไม่ตั้งเงื่อนไข'}
                     </p>
                   ) : (
                     <p className="text-sm leading-snug">
                       <span>{`OVER ${allowanceText(row)} · ผ่อน ${monthsText(row)} · ดาวน์`}</span>{' '}
-                      <span className={row.downSource === 'MODEL' ? 'font-semibold' : 'text-muted-foreground'}>{downText(row)}</span>
+                      <span
+                        className={
+                          row.downSource === 'MODEL' ? 'font-semibold' : 'text-muted-foreground'
+                        }
+                      >
+                        {downText(row)}
+                      </span>
+                      <span className="sr-only">
+                        {row.downSource === 'MODEL' ? '(ตั้งเฉพาะรุ่น)' : '(ค่ากลาง)'}
+                      </span>
                     </p>
                   )}
                 </div>

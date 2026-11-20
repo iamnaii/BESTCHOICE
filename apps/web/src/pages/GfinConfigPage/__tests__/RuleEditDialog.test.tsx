@@ -70,4 +70,23 @@ describe('RuleEditDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: 'เอา iPhone 12 มือ 2 ออก' }));
     expect(onRemove).toHaveBeenCalledWith('iPhone 12|HAND_2');
   });
+
+  it('เลือกเกิน 200 แถว: บันทึกไม่ได้ + บอกเพดานต่อครั้ง', () => {
+    const base = view.rows[0];
+    const many = Array.from({ length: 201 }, (_, i) => ({ ...base, key: `S${i}|HAND_2`, series: `S${i}` }));
+    render(<RuleEditDialog rows={many} tables={tables} onRemove={vi.fn()} onClose={vi.fn()} />, { wrapper: wrap });
+    expect(screen.getByText('เลือกได้ไม่เกิน 200 แถวต่อครั้ง')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'บันทึก 201 รุ่น' })).toBeDisabled();
+  });
+
+  it('เลือก "ตั้งเป็น" / "กำหนดเฉพาะรุ่นพวกนี้" แต่ยังไม่กรอก → มีคำใบ้ใต้ช่อง', async () => {
+    render(<RuleEditDialog rows={[view.rows.find((r) => r.key === 'iPhone 17 Pro Max|HAND_2')!]} tables={tables} onRemove={vi.fn()} onClose={vi.fn()} />, { wrapper: wrap });
+    expect(screen.queryByText('กรอกตัวเลขก่อนบันทึก')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('radio', { name: /ตั้งเป็น/ }));
+    expect(screen.getAllByText('กรอกตัวเลขก่อนบันทึก')).toHaveLength(1);
+    await userEvent.click(screen.getByRole('radio', { name: /กำหนดเฉพาะรุ่นพวกนี้/ }));
+    expect(screen.getAllByText('กรอกตัวเลขก่อนบันทึก')).toHaveLength(2);
+    await userEvent.type(screen.getByLabelText('OVER (บาท)'), '3000');
+    expect(screen.getAllByText('กรอกตัวเลขก่อนบันทึก')).toHaveLength(1);
+  });
 });

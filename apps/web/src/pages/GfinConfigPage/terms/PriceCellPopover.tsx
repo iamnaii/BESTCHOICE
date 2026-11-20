@@ -5,7 +5,7 @@ import api, { getErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { NumberInput } from '@/components/ui/NumberInput';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { GFIN_QUERY_KEYS } from '../gfinQueryKeys';
+import { GFIN_QUERY_KEYS } from '@/pages/ProductDetailPage/hooks/gfinQueryKeys';
 import { parseGfinPrice } from '../gfinPriceListImport';
 import { HAND_LABEL, type ModelTermsRow, type PriceCell } from './modelTerms';
 

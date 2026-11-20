@@ -239,3 +239,19 @@ describe('runGfinImport', () => {
     expect(sender.upsertRules).not.toHaveBeenCalled();
   });
 });
+
+describe('ชื่อรุ่นตอนนำเข้าเป็นชุดเดียวกันทั้งราคาและเงื่อนไข', () => {
+  it('ชื่อตามระบบถ้ามี ไม่งั้นการสะกดของแถวแรก — ราคาที่ส่งกับคู่เงื่อนไขใช้ชื่อเดียวกัน', async () => {
+    const { buildGfinImportReview } = await import('../gfinPriceListImport');
+    const rows = [
+      row('IPHONE 17', '256GB', 'มือ 2', 25000),
+      row('iphone 18', '256GB', 'มือ 2', 30000),
+      row('IPHONE 18', '256GB', 'มือ 1', 33000),
+    ];
+    const existing = [ex('a', 'iPhone 17', '256GB', 'HAND_1', 24000)];
+    const prices = buildGfinImportReview(rows, existing);
+    expect(prices.toSend.map((i) => i.model)).toEqual(['iPhone 17', 'iphone 18', 'iphone 18']);
+    const terms = buildImportTermsReview(rows, existing, []);
+    expect(terms.pairs.map((p) => p.series).sort()).toEqual(['iPhone 17', 'iphone 18', 'iphone 18']);
+  });
+});

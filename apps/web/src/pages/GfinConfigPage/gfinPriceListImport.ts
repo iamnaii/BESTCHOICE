@@ -4,9 +4,9 @@ import { cellText } from '@/utils/excel-cell.util';
 /** หัวคอลัมน์ไฟล์ใบราคา GFIN (สเปคข้อ 7.7) — สคริปต์เตรียมไฟล์จากชีตตรวจเทียบกับรายการนี้ */
 export const GFIN_IMPORT_HEADERS = ['รุ่น', 'ความจุ', 'มือ 1/มือ 2', 'ราคา'] as const;
 
-/** เซิร์ฟเวอร์รับได้ไม่เกิน 100 รายการต่อคำขอ */
 /** ข้อความของแถวที่ราคาเท่าเดิม — หน้าตรวจใช้นับแยกจากแถวที่ถูกข้าม */
 export const GFIN_SAME_PRICE_DETAIL = 'ราคาเท่าเดิม';
+/** เซิร์ฟเวอร์รับได้ไม่เกิน 100 รายการต่อคำขอ */
 export const GFIN_IMPORT_BATCH_SIZE = 100;
 
 export interface GfinImportItem {
@@ -74,6 +74,27 @@ export function trimKeys(row: Record<string, unknown>): Record<string, unknown> 
   return out;
 }
 
+/**
+ * ชื่อรุ่นที่ใช้จริงตอนนำเข้า (ชุดเดียวทั้งราคาและเงื่อนไข): ตัวพิมพ์เล็ก → ชื่อตามระบบถ้ามี (แถวที่ไม่มีรุ่นย่อย)
+ * ไม่งั้นการสะกดของแถวแรกที่ใช้ได้ในไฟล์ — กันราคาใหม่ถูกสร้างเป็น "IPHONE 17" แต่เงื่อนไขไปบันทึกที่ "iPhone 17"
+ */
+export function canonicalSeriesMap(rows: Record<string, unknown>[], existing: ExistingMaxPrice[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const e of existing) if (!e.gfinVariant && e.gfinSeries.trim()) map.set(e.gfinSeries.trim().toLowerCase(), e.gfinSeries.trim());
+  const fromFile = new Set<string>();
+  for (const raw of rows) {
+    const row = trimKeys(raw);
+    const model = cellText(row['รุ่น']).trim();
+    if (!model || !normalizeGfinStorage(cellText(row['ความจุ'])) || !conditionOf(cellText(row['มือ 1/มือ 2']))) continue;
+    if (parseGfinPrice(cellText(row['ราคา'])) === null) continue;
+    const lower = model.toLowerCase();
+    if (map.has(lower) || fromFile.has(lower)) continue;
+    fromFile.add(lower);
+    map.set(lower, model);
+  }
+  return map;
+}
+
 /** หน้าตรวจก่อนยืนยัน — จับคู่แบบเดียวกับเซิร์ฟเวอร์: (ชื่อรุ่น, ความจุ, สภาพ) เฉพาะแถวที่ไม่มีรุ่นย่อย */
 export function buildGfinImportReview(
   rows: Record<string, unknown>[],
@@ -82,6 +103,7 @@ export function buildGfinImportReview(
   const byKey = new Map(
     existing.filter((e) => !e.gfinVariant).map((e) => [keyOf(e.gfinSeries, e.storage, e.condition), e]),
   );
+  const seriesName = canonicalSeriesMap(rows, existing);
   const seen = new Map<string, number>();
   const review: ImportReviewRow[] = [];
   const toSend: GfinImportItem[] = [];
@@ -114,7 +136,8 @@ export function buildGfinImportReview(
     if (duplicateOf !== undefined) return void skip(`ซ้ำกับแถว ${duplicateOf}`);
     seen.set(key, rowNumber);
 
-    const item: GfinImportItem = { model, storage, condition, maxPrice: price };
+    const canonical = seriesName.get(model.trim().toLowerCase()) ?? model.trim();
+    const item: GfinImportItem = { model: canonical, storage, condition, maxPrice: price };
     const before = byKey.get(key);
     if (!before) {
       review.push({ rowNumber, label, action: 'ADD' });
@@ -125,7 +148,7 @@ export function buildGfinImportReview(
     if (Number(before.maxPrice) !== price)
       changes.push(`ราคา ${Number(before.maxPrice).toLocaleString('th-TH')} → ${price.toLocaleString('th-TH')}`);
     if (!before.isActive) changes.push('เปิดใช้อีกครั้ง');
-    if (before.modelMatchPattern !== model) changes.push(`คำจับคู่ "${before.modelMatchPattern}" → "${model}"`);
+    if (before.modelMatchPattern !== canonical) changes.push(`คำจับคู่ "${before.modelMatchPattern}" → "${canonical}"`);
     if (changes.length === 0) return void skip(GFIN_SAME_PRICE_DETAIL);
     review.push({ rowNumber, label, action: 'UPDATE', detail: changes.join(' · ') });
     toSend.push(item);

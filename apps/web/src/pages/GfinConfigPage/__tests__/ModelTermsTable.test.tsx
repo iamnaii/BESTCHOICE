@@ -53,6 +53,19 @@ describe('ModelTermsTable', () => {
     expect(p.onEdit).toHaveBeenCalledWith(['iPhone 12|HAND_2']);
   });
 
+  it('ดาวน์บอกที่มาด้วยข้อความสำหรับโปรแกรมอ่านจอ (ตาราง + การ์ด)', () => {
+    const { container } = render(
+      <>
+        <ModelTermsTable {...props()} />
+        <ModelTermsCards {...props()} />
+      </>,
+      { wrapper: wrap },
+    );
+    const sr = [...container.querySelectorAll('.sr-only')].map((e) => e.textContent);
+    expect(sr.filter((t) => t === '(ตั้งเฉพาะรุ่น)').length).toBeGreaterThanOrEqual(2);
+    expect(sr.filter((t) => t === '(ค่ากลาง)').length).toBeGreaterThanOrEqual(2);
+  });
+
   it('เลือกแถว · เลือกมือ 2 ทั้งตระกูล · พับตระกูล', async () => {
     const p = props();
     render(<ModelTermsTable {...p} />, { wrapper: wrap });

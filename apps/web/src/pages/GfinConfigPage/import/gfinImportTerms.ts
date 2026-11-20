@@ -2,6 +2,7 @@ import { ImportBatchError, cellText, chunk } from '@/utils/excel-cell.util';
 import type { OverpriceApi } from '@/pages/ProductDetailPage/utils/gfinQuote';
 import {
   GFIN_IMPORT_BATCH_SIZE,
+  canonicalSeriesMap,
   conditionOf,
   keyOf,
   normalizeGfinStorage,
@@ -182,9 +183,7 @@ export function buildImportTermsReview(
     const t = trimKeys(r);
     return GFIN_IMPORT_TERM_HEADERS.some((h) => h in t);
   });
-  const seriesName = new Map(
-    existing.filter((e) => !e.gfinVariant).map((e) => [e.gfinSeries.trim().toLowerCase(), e.gfinSeries.trim()]),
-  );
+  const seriesName = canonicalSeriesMap(rows, existing);
   const groups = new Map<string, { series: string; condition: Hand; rows: ParsedRow[] }>();
   for (const p of parsed) {
     // จัดกลุ่มไม่สนตัวพิมพ์ (เหมือน keyOf ของหน้าตรวจราคา) · ชื่อตามระบบถ้ามี ไม่งั้นใช้การสะกดของแถวแรก

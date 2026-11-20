@@ -26,10 +26,20 @@ export interface TermsListProps {
 }
 
 const Tag = ({ children }: { children: string }) => (
-  <span className="ml-1 rounded bg-muted px-1 text-[0.7rem] font-normal text-muted-foreground">{children}</span>
+  <span className="ml-1 rounded bg-muted px-1 text-[0.7rem] font-normal text-muted-foreground">
+    {children}
+  </span>
 );
 
-export function TermsCells({ row, canEdit, onEdit }: { row: ModelTermsRow; canEdit: boolean; onEdit: (keys: string[]) => void }) {
+export function TermsCells({
+  row,
+  canEdit,
+  onEdit,
+}: {
+  row: ModelTermsRow;
+  canEdit: boolean;
+  onEdit: (keys: string[]) => void;
+}) {
   if (row.rule === null) {
     return row.needsRule ? (
       <td colSpan={3} className="bg-warning/10 px-3 py-2 text-sm text-warning-strong">
@@ -60,7 +70,12 @@ export function TermsCells({ row, canEdit, onEdit }: { row: ModelTermsRow; canEd
       <td className="px-3 py-2 text-right tabular-nums">{allowanceText(row)}</td>
       <td className="px-3 py-2 text-right">{monthsText(row)}</td>
       <td className="px-3 py-2 text-right">
-        <span className={row.downSource === 'MODEL' ? 'font-semibold' : 'text-muted-foreground'}>{downText(row)}</span>
+        <span className={row.downSource === 'MODEL' ? 'font-semibold' : 'text-muted-foreground'}>
+          {downText(row)}
+        </span>
+        <span className="sr-only">
+          {row.downSource === 'MODEL' ? '(ตั้งเฉพาะรุ่น)' : '(ค่ากลาง)'}
+        </span>
       </td>
     </>
   );
@@ -76,23 +91,37 @@ export function ModelTermsTable(p: TermsListProps) {
             <th rowSpan={2} className="px-3 py-2 font-medium">
               <span className="sr-only">เลือก</span>
             </th>
-            <th rowSpan={2} className="px-3 py-2 font-medium">รุ่น</th>
-            <th rowSpan={2} className="px-3 py-2 font-medium">สภาพ</th>
+            <th rowSpan={2} className="px-3 py-2 font-medium">
+              รุ่น
+            </th>
+            <th rowSpan={2} className="px-3 py-2 font-medium">
+              สภาพ
+            </th>
             <th colSpan={p.storageColumns.length} className="px-3 py-1 text-center font-medium">
               ราคาสูงสุดที่ GFIN รับ (บาท)
             </th>
-            <th colSpan={3} className="px-3 py-1 text-center font-medium">เงื่อนไข</th>
+            <th colSpan={3} className="px-3 py-1 text-center font-medium">
+              เงื่อนไข
+            </th>
             <th rowSpan={2} className="px-3 py-2 font-medium">
               <span className="sr-only">แก้ไข</span>
             </th>
           </tr>
           <tr>
             {p.storageColumns.map((s) => (
-              <th key={s} className="px-3 py-1 text-right font-medium">{s}</th>
+              <th key={s} className="px-3 py-1 text-right font-medium">
+                {s}
+              </th>
             ))}
-            <th className="px-3 py-1 text-right font-medium">OVER<Tag>ข้อ 7</Tag></th>
-            <th className="px-3 py-1 text-right font-medium">ผ่อนสูงสุด<Tag>ข้อ 4</Tag></th>
-            <th className="px-3 py-1 text-right font-medium">ดาวน์<Tag>ข้อ 2</Tag></th>
+            <th className="px-3 py-1 text-right font-medium">
+              OVER<Tag>ข้อ 7</Tag>
+            </th>
+            <th className="px-3 py-1 text-right font-medium">
+              ผ่อนสูงสุด<Tag>ข้อ 4</Tag>
+            </th>
+            <th className="px-3 py-1 text-right font-medium">
+              ดาวน์<Tag>ข้อ 2</Tag>
+            </th>
           </tr>
         </thead>
         {p.families.map((fam) => {
@@ -110,7 +139,11 @@ export function ModelTermsTable(p: TermsListProps) {
                       aria-expanded={!isCollapsed}
                       onClick={() => p.onToggleFamily(fam.family)}
                     >
-                      {isCollapsed ? <ChevronRight className="size-4" aria-hidden="true" /> : <ChevronDown className="size-4" aria-hidden="true" />}
+                      {isCollapsed ? (
+                        <ChevronRight className="size-4" aria-hidden="true" />
+                      ) : (
+                        <ChevronDown className="size-4" aria-hidden="true" />
+                      )}
                       {fam.label}
                     </button>
                     {p.canEdit &&

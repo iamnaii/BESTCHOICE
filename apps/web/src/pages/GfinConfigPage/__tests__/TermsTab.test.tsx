@@ -7,6 +7,7 @@ import type { ReactNode } from 'react';
 
 const authState = vi.hoisted(() => ({ role: 'OWNER' }));
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { role: authState.role } }) }));
+const empty = vi.hoisted(() => ({ on: false }));
 const data: Record<string, unknown> = {
   '/gfin-config/max-prices': [
     { id: 'a', gfinSeries: 'iPhone 17', gfinVariant: null, storage: '256GB', condition: 'HAND_2', maxPrice: '25000', modelMatchPattern: 'iPhone 17', isActive: true },
@@ -22,7 +23,7 @@ const data: Record<string, unknown> = {
 };
 vi.mock('@/lib/api', () => ({
   __esModule: true,
-  default: { get: (url: string) => Promise.resolve({ data: data[url] }), post: vi.fn(), patch: vi.fn() },
+  default: { get: (url: string) => Promise.resolve({ data: empty.on && url === '/gfin-config/max-prices' ? [] : data[url] }), post: vi.fn(), patch: vi.fn() },
   getErrorMessage: String,
 }));
 
@@ -41,6 +42,7 @@ function renderAt(url = '/settings/finance/gfin?tab=terms') {
 describe('TermsTab', () => {
   beforeEach(() => {
     authState.role = 'OWNER';
+    empty.on = false;
   });
 
   it('แถบส้มบอกแถวที่มีราคาแต่ยังไม่ตั้งเงื่อนไข + ปุ่มกรองเฉพาะแถวที่ต้องดู', async () => {
@@ -64,5 +66,26 @@ describe('TermsTab', () => {
   it('?edit=<แถว> เปิดกล่องแก้ของแถวนั้น', async () => {
     renderAt('/settings/finance/gfin?tab=terms&edit=' + encodeURIComponent('iPhone 12|HAND_2'));
     expect(await screen.findByRole('dialog', { name: /แก้เงื่อนไข · 1 รุ่น · มือ 2/ })).toBeInTheDocument();
+  });
+
+  it('ยกเลิกกล่องแก้พร้อมกัน → ยังคงเลือกไว้ (ล้างเมื่อบันทึกสำเร็จเท่านั้น)', async () => {
+    renderAt();
+    const table = await screen.findByTestId('terms-table');
+    await userEvent.click(within(table).getByRole('button', { name: 'เลือกมือ 2 ทั้งตระกูล iPhone 17' }));
+    await userEvent.click(screen.getByRole('button', { name: 'แก้เงื่อนไขพร้อมกัน' }));
+    await userEvent.click(screen.getByRole('button', { name: 'ยกเลิก' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByText('เลือก 2 แถว · มือ 2')).toBeInTheDocument();
+  });
+
+  it('ยังไม่มีราคาเลย: เจ้าของเห็นคำชวนนำเข้า · คนอื่นเห็นข้อความสั้น', async () => {
+    empty.on = true;
+    const { unmount } = renderAt();
+    expect(await screen.findByText('ยังไม่มีราคาในใบราคา GFIN — กด "นำเข้าใบราคาจาก GFIN (Excel)" เพื่อเริ่ม')).toBeInTheDocument();
+    expect(screen.queryByText('ไม่พบรุ่นที่ตรงกับตัวกรอง')).not.toBeInTheDocument();
+    unmount();
+    authState.role = 'BRANCH_MANAGER';
+    renderAt();
+    expect(await screen.findByText('ยังไม่มีราคาในใบราคา GFIN')).toBeInTheDocument();
   });
 });

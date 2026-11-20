@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import type { GfinSettingsApi } from '@/pages/ProductDetailPage/utils/gfinQuote';
-import { GFIN_QUERY_KEYS } from '../gfinQueryKeys';
+import { GFIN_QUERY_KEYS } from '@/pages/ProductDetailPage/hooks/gfinQueryKeys';
 import { sheetVersionText } from './centralTerms';
 
 export function SheetVersionCard({ settings, canEdit }: { settings: GfinSettingsApi; canEdit: boolean }) {

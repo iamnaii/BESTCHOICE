@@ -43,7 +43,9 @@ export function CalcTab() {
   const handNow: Hand = opt.hands[hand] ? hand : HANDS.find((h) => opt.hands[h])!;
   const storages = opt.hands[handNow]!;
   const storageNow = storage && storages.includes(storage) ? storage : storages[0];
-  const salePrice = sale === '' ? null : Number(sale);
+  const saleNum = sale === '' ? NaN : Number(sale);
+  // ≤ 0 หรือไม่ใช่ตัวเลข = เว้นว่าง (ขายเท่าราคาส่ง)
+  const salePrice = Number.isFinite(saleNum) && saleNum > 0 ? saleNum : null;
   const resolved = gfinQuoteAt(tables, gfinProductOf(opt.series, storageNow, handNow, origin), salePrice);
   const input = { series: opt.series, storage: storageNow, condition: handNow, deviceOrigin: origin };
   const lines = buildCalcLines(input, resolved, tables.settings.minDownPct);
@@ -115,7 +117,7 @@ export function CalcTab() {
               <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
               {reason}
             </p>
-            {q.reason !== 'no_mapping' && (
+            {q.reason === 'no_rule' && (
               <Button variant="outline" size="sm" onClick={goEdit}>
                 แก้รุ่นนี้
               </Button>

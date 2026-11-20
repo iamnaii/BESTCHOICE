@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { importFromExcel } from '@/utils/excel.util';
 import { ImportBatchError } from '@/utils/excel-cell.util';
 import { useGfinTables } from '@/pages/ProductDetailPage/hooks/useGfinTables';
-import { GFIN_QUERY_KEYS } from '../gfinQueryKeys';
+import { GFIN_QUERY_KEYS } from '@/pages/ProductDetailPage/hooks/gfinQueryKeys';
 import { buildGfinImportReview, type GfinImportReview } from '../gfinPriceListImport';
 import {
   buildImportTermsReview,
@@ -255,7 +255,13 @@ export function TermsTab() {
         </div>
 
         {families.length === 0 ? (
-          <p className="text-sm text-muted-foreground leading-snug">ไม่พบรุ่นที่ตรงกับตัวกรอง</p>
+          <p className="text-sm text-muted-foreground leading-snug">
+            {view.rows.length > 0
+              ? 'ไม่พบรุ่นที่ตรงกับตัวกรอง'
+              : canEdit
+                ? 'ยังไม่มีราคาในใบราคา GFIN — กด "นำเข้าใบราคาจาก GFIN (Excel)" เพื่อเริ่ม'
+                : 'ยังไม่มีราคาในใบราคา GFIN'}
+          </p>
         ) : (
           <>
             <div className="hidden md:block" data-testid="terms-table">
@@ -295,10 +301,8 @@ export function TermsTab() {
             if (remaining.length === 0) closeEdit();
             else setEditKeys(remaining);
           }}
-          onClose={() => {
-            closeEdit();
-            setSelected(new Set());
-          }}
+          onClose={closeEdit}
+          onSaved={() => setSelected(new Set())}
         />
       )}
 

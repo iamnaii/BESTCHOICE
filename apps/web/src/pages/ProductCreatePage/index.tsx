@@ -53,7 +53,8 @@ export default function ProductCreatePage() {
   const fieldId = useId();
 
   const [form, setForm] = useState({
-    deviceOrigin: '',
+    // ค่าเริ่มต้นเครื่องไทย (คำสั่งเจ้าของ 2026-11-20) — เครื่องนอกกดเปลี่ยนเอง · "ยังไม่ระบุ" ยังเลือกได้
+    deviceOrigin: 'THAI',
     shopWarrantyDays: '',
     warrantyTerms: '',
     name: '',

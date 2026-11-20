@@ -397,3 +397,24 @@ describe('ProductCreatePage — ประกันร้าน (เลือก 
     expect(screen.queryByLabelText(TERMS_LABEL)).not.toBeInTheDocument();
   });
 });
+
+describe('ProductCreatePage — เครื่องไทย/เครื่องนอก', () => {
+  it('ค่าเริ่มต้นเป็นเครื่องไทย และส่ง THAI โดยไม่ต้องกด · เปลี่ยนเป็นเครื่องนอกได้', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    expect(await screen.findByRole('button', { name: 'เครื่องไทย' })).toHaveAttribute('aria-pressed', 'true');
+    await user.click(screen.getByRole('button', { name: 'เครื่องนอก' }));
+    expect(screen.getByRole('button', { name: 'เครื่องนอก' })).toHaveAttribute('aria-pressed', 'true');
+    await user.click(screen.getByRole('button', { name: 'เครื่องไทย' }));
+    await user.selectOptions(screen.getByLabelText('ยี่ห้อ *'), 'Apple');
+    await pickComboOption(user, 'รุ่น *', 'iPhone 15');
+    await user.click(screen.getByRole('button', { name: '128GB' }));
+    await user.selectOptions(screen.getByLabelText('สาขา *'), 'branch-1');
+    await user.type(screen.getByLabelText('ราคาทุน (บาท) *'), '25800');
+    const save = screen.getByRole('button', { name: 'บันทึกสินค้า' });
+    await waitFor(() => expect(save).toBeEnabled());
+    await user.click(save);
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(api.post).mock.calls[0][1]).toMatchObject({ deviceOrigin: 'THAI' });
+  });
+});

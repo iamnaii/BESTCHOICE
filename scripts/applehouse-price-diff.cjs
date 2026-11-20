@@ -2,6 +2,7 @@
  * Compare two AppleHouse buyback snapshots and write a Thai review summary.
  *
  *   node scripts/applehouse-price-diff.cjs <previous.json> <new.json> [--body <out.md>]
+ *   node scripts/applehouse-price-diff.cjs --check <new.json>     (validate only)
  *
  * Exits 2 when the new snapshot is invalid (same rules as the importer
  * apps/api/prisma/seed-sell-valuations-applehouse.ts), so a broken fetch never
@@ -114,6 +115,16 @@ function render(previous, next, diff) {
 
 function main() {
   const args = process.argv.slice(2);
+  if (args[0] === '--check') {
+    const snapshot = JSON.parse(fs.readFileSync(args[1], 'utf8'));
+    const errors = validate(snapshot);
+    if (errors.length) {
+      console.error(`ข้อมูลราคาที่ดึงมาใช้ไม่ได้:\n- ${errors.join('\n- ')}`);
+      process.exit(2);
+    }
+    console.log(`ข้อมูลราคาใช้ได้: ${snapshot.rows.length} รุ่น ดึงเมื่อ ${snapshot.fetchedAt}`);
+    return;
+  }
   const bodyAt = args.indexOf('--body');
   const bodyPath = bodyAt >= 0 ? args[bodyAt + 1] : null;
   const [previousPath, nextPath] = args.filter((arg, i) => arg !== '--body' && i !== bodyAt + 1);

@@ -1,24 +1,28 @@
 name: ราคากลางรับซื้อ AppleHouse — ดึงทุก 2 สัปดาห์
 
-# ดึงราคารับซื้อ iPhone เกรด A จาก applehouseth.com ทุก 2 สัปดาห์ แล้วเปิด PR ให้เจ้าของตรวจ
-# (คำสั่งเจ้าของ 2026-11-20 "ตั้งทุก 2 สัปดาห์" — ดึงเอง แต่คนกดยืนยันก่อนเปลี่ยนราคาจริง)
+# ดึงราคารับซื้อ iPhone เกรด A จาก applehouseth.com ทุก 2 สัปดาห์ แล้วนำเข้าระบบจริงเอง
+# (คำสั่งเจ้าของ 2026-11-20 "นำเข้าราคาเองทุกรอบ ไม่ต้องรอคนกด" — แทนรอบเดิมที่เปิด PR ให้ merge)
 #
-#   1. ดึงราคา (scripts/collect-applehouse-valuations.cjs) → เทียบกับชุดที่ใช้อยู่ใน main
-#      (scripts/applehouse-price-diff.cjs) → สรุปลงหน้า run
-#   2. ราคาเปลี่ยน → commit ไฟล์ราคาลงสาขา bot/applehouse-prices แล้วเปิด/อัปเดต PR พร้อมตาราง
-#      (มี PR ค้างอยู่ = อัปเดตใบเดิม ไม่เปิดใบใหม่) · ราคาเท่าเดิม = ไม่ทำอะไร
-#   3. เจ้าของกด Merge → deploy ตามปกติ → applehouse-prices-apply.yml นำราคาเข้าระบบจริงหลัง deploy ผ่าน
+#   1. ดึงราคา (scripts/collect-applehouse-valuations.cjs) + ตรวจรูปแบบ (scripts/applehouse-price-diff.cjs --check)
+#   2. ส่งราคาเข้า Cloud Run Job ด้วย image เดียวกับ API ที่รันอยู่ (ตัวแปร APPLEHOUSE_SNAPSHOT_B64 — ไม่ต้อง commit/deploy)
+#   3. ตัวนำเข้า (apps/api/prisma/seed-sell-valuations-applehouse.ts --apply --guard) เทียบกับราคาในฐานจริง:
+#      ด่านตรวจผ่าน = บันทึก · ไม่ผ่าน (ราคาขยับ ≥ 15% หรือรุ่นหาย ≥ 20% — applehouse-import-plan.ts
+#      checkImportGuard) = ไม่บันทึกอะไร run ล้ม (GitHub ส่งอีเมลแจ้ง) ให้คนตรวจในหน้า run แล้วกดรันเองแบบ force
+#   ผลทุกรอบสรุปในหน้า run · ไฟล์ราคาที่ดึงได้เก็บเป็น artifact 90 วัน
 #
-# ต้องเปิด Settings › Actions › General › "Allow GitHub Actions to create and approve pull requests"
-# ไม่งั้นขั้นเปิด PR ล้ม (การดึงและสรุปยังทำงาน)
-# PR ที่ GITHUB_TOKEN เปิดไม่ trigger workflow อื่น ⇒ ขั้นสุดท้ายสั่ง deploy-gcp.yml บนสาขานี้ด้วยมือ
-# เพื่อให้ PR มีผล "Lint & Test" (ขั้น build/migrate/deploy ทุกขั้นล็อกไว้เฉพาะ refs/heads/main)
+# กดรันเอง: auto = เหมือนรอบตั้งเวลา · preview = ดูอย่างเดียว · force = บันทึกโดยข้ามด่านตรวจ (หลังคนตรวจแล้ว)
 
 on:
   schedule:
     # จันทร์ 09:00 น. เวลาไทยทุกสัปดาห์ — ขั้นแรกกรองให้เหลือสัปดาห์เว้นสัปดาห์
     - cron: '0 2 * * 1'
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'auto = บันทึกเมื่อด่านตรวจผ่าน · preview = ดูอย่างเดียว · force = บันทึกโดยข้ามด่านตรวจ'
+        type: choice
+        options: [auto, preview, force]
+        default: auto
   pull_request:
     paths:
       - .github/workflows/applehouse-prices-refresh.yml
@@ -29,30 +33,38 @@ concurrency:
   group: applehouse-prices-refresh
   cancel-in-progress: false
 
+env:
+  SNAPSHOT: apps/api/prisma/data/applehouse-valuations.json
+  JOB: bestchoice-applehouse-prices
+  REGION: ${{ secrets.GCP_REGION || 'asia-southeast1' }}
+
 jobs:
   refresh:
-    name: ดึงราคาและเทียบ
+    name: ดึงราคาและนำเข้า
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
-      contents: write
-      pull-requests: write
-      actions: write
-    env:
-      SNAPSHOT: apps/api/prisma/data/applehouse-valuations.json
-      BRANCH: bot/applehouse-prices
+      contents: read
     steps:
-      - name: รอบนี้ต้องดึงไหม (สัปดาห์เว้นสัปดาห์)
+      - name: รอบนี้ต้องทำไหม
         id: gate
+        env:
+          INPUT_MODE: ${{ inputs.mode }}
         run: |
           # เลขสัปดาห์นับจาก epoch — สัปดาห์คี่ = 30 พ.ย. 69, 14 ธ.ค. 69, … · กดรันเองหรือ PR = รันเสมอ
           week=$(( $(date -u +%s) / 604800 ))
-          if [ "${{ github.event_name }}" != "schedule" ] || [ $(( week % 2 )) -eq 1 ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
+          if [ "${{ github.event_name }}" = "schedule" ] && [ $(( week % 2 )) -eq 0 ]; then
             echo "run=false" >> "$GITHUB_OUTPUT"
             echo "สัปดาห์นี้ไม่ใช่รอบดึง (สัปดาห์ที่ $week)" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
           fi
+          echo "run=true" >> "$GITHUB_OUTPUT"
+          # PR = ทดสอบการดึงอย่างเดียว ไม่แตะระบบจริง
+          if [ "${{ github.event_name }}" = "pull_request" ]; then mode=none; else mode="${INPUT_MODE:-auto}"; fi
+          if [ "$mode" != "none" ] && [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "::error::นำเข้าได้จาก main เท่านั้น"; exit 1
+          fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v4
         if: steps.gate.outputs.run == 'true'
@@ -75,38 +87,80 @@ jobs:
       - name: ดึงราคาจาก AppleHouse
         if: steps.gate.outputs.run == 'true'
         run: |
-          cp "$SNAPSHOT" "$RUNNER_TEMP/previous.json"
           NODE_PATH="$RUNNER_TEMP/pw/node_modules" node scripts/collect-applehouse-valuations.cjs
+          node scripts/applehouse-price-diff.cjs --check "$SNAPSHOT"
 
-      - name: เทียบกับราคาที่ใช้อยู่
-        id: diff
+      - name: เก็บไฟล์ราคาที่ดึงได้
         if: steps.gate.outputs.run == 'true'
-        run: |
-          node scripts/applehouse-price-diff.cjs "$RUNNER_TEMP/previous.json" "$SNAPSHOT" --body "$RUNNER_TEMP/body.md"
-          cat "$RUNNER_TEMP/body.md" >> "$GITHUB_STEP_SUMMARY"
+        uses: actions/upload-artifact@v4
+        with:
+          name: applehouse-valuations-${{ github.run_id }}
+          path: ${{ env.SNAPSHOT }}
+          retention-days: 90
 
-      - name: เปิดหรืออัปเดต PR
-        if: >-
-          steps.gate.outputs.run == 'true' && steps.diff.outputs.changed == 'true' &&
-          github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+      - name: Authenticate to GCP
+        if: steps.gate.outputs.mode != 'none' && steps.gate.outputs.run == 'true'
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Setup gcloud CLI
+        if: steps.gate.outputs.mode != 'none' && steps.gate.outputs.run == 'true'
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: นำเข้าระบบจริง (${{ steps.gate.outputs.mode }})
+        if: steps.gate.outputs.mode != 'none' && steps.gate.outputs.run == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
-          TITLE: ${{ steps.diff.outputs.title }}
-          DATE: ${{ steps.diff.outputs.date }}
+          MODE: ${{ steps.gate.outputs.mode }}
+          PROJECT: ${{ secrets.GCP_PROJECT_ID }}
+          SQL: ${{ secrets.CLOUD_SQL_CONNECTION_NAME }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git switch -C "$BRANCH"
-          git add "$SNAPSHOT"
-          git commit -m "data: ราคากลางรับซื้อ AppleHouse $DATE"
-          git push --force origin "$BRANCH"
-          pr=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
-          if [ -n "$pr" ]; then
-            gh pr edit "$pr" --title "$TITLE" --body-file "$RUNNER_TEMP/body.md"
-          else
-            gh pr create --base main --head "$BRANCH" --title "$TITLE" --body-file "$RUNNER_TEMP/body.md"
-            pr=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number')
+          # image เดียวกับ API ที่รันอยู่ — ตัวนำเข้าเป็นโค้ดชุดเดียวกับระบบจริง
+          image=$(gcloud run services describe bestchoice-api --project="$PROJECT" --region="$REGION" \
+            --format='value(spec.template.spec.containers[0].image)')
+          case "$MODE" in
+            auto) args="tsx,apps/api/prisma/seed-sell-valuations-applehouse.ts,--apply,--guard" ;;
+            force) args="tsx,apps/api/prisma/seed-sell-valuations-applehouse.ts,--apply" ;;
+            *) args="tsx,apps/api/prisma/seed-sell-valuations-applehouse.ts" ;;
+          esac
+          ARGS=(
+            --project="$PROJECT" --region="$REGION" --image="$image"
+            --set-secrets=DATABASE_URL=DATABASE_URL:latest
+            --set-cloudsql-instances="$SQL"
+            --command=npx --args="$args"
+            --max-retries=0 --task-timeout=300s
+          )
+          gcloud run jobs update "$JOB" "${ARGS[@]}" 2>/dev/null || gcloud run jobs create "$JOB" "${ARGS[@]}"
+
+          snapshot_b64=$(node -e "process.stdout.write(Buffer.from(JSON.stringify(require('./$SNAPSHOT'))).toString('base64'))")
+          status=0
+          execution=$(gcloud run jobs execute "$JOB" --project="$PROJECT" --region="$REGION" --wait \
+            --update-env-vars="APPLEHOUSE_SNAPSHOT_B64=$snapshot_b64" \
+            --format='value(metadata.name)') || status=$?
+
+          log="$RUNNER_TEMP/import.log"
+          : > "$log"
+          if [ -n "$execution" ]; then
+            sleep 20  # log ของ Cloud Run เข้า Logging ช้ากว่าตัวงานเล็กน้อย
+            gcloud logging read \
+              "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"$JOB\" AND labels.\"run.googleapis.com/execution_name\"=\"$execution\"" \
+              --project="$PROJECT" --order=asc --limit=300 --format='value(textPayload)' > "$log" 2>/dev/null || true
           fi
-          echo "PR: $(gh pr view "$pr" --json url --jq .url)" >> "$GITHUB_STEP_SUMMARY"
-          # ให้ PR มีผล "Lint & Test" — ขั้น build/migrate/deploy ของ deploy-gcp.yml ล็อกไว้เฉพาะ main
-          gh workflow run deploy-gcp.yml --ref "$BRANCH"
+          {
+            case "$MODE" in
+              auto) echo "## นำเข้าอัตโนมัติ (มีด่านตรวจ)" ;;
+              force) echo "## นำเข้าโดยข้ามด่านตรวจ" ;;
+              *) echo "## ดูอย่างเดียว (ยังไม่บันทึก)" ;;
+            esac
+            echo ""
+            echo '```'
+            # ตัดบรรทัดราคาเท่าเดิมและข้อความของ npm ออกให้สั้น
+            grep -v -e '^ราคาเท่าเดิม' -e '^npm notice' -e '^Container called' -e '^$' "$log" || echo "(อ่าน log ไม่ได้ — ดู Cloud Run Job $execution)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if grep -q 'GUARD_BLOCKED' "$log"; then
+            echo "::error::ด่านตรวจไม่ผ่าน — ยังไม่บันทึกราคา · ดูเหตุผลในสรุปของ run นี้ ถ้าราคาถูกต้องจริงให้กด Run workflow เลือก force"
+            exit 1
+          fi
+          exit $status

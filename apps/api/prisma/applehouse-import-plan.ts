@@ -105,3 +105,30 @@ export function planAppleHouseImport(
   }
   return actions;
 }
+
+/** Unattended imports stop for a person when the source looks wrong. */
+export const GUARD_MAX_PRICE_MOVE = 0.15;
+export const GUARD_MAX_WITHDRAW_SHARE = 0.2;
+
+/**
+ * Reasons an unattended import must not write (empty = safe). Compares against
+ * what is live in the database, not a file: a price moving 15% or more in one
+ * round, or the source dropping 20% or more of the models it used to price,
+ * usually means the source page changed rather than the market.
+ */
+export function checkImportGuard(plan: ImportAction[], existing: ExistingValuation[]): string[] {
+  const reasons: string[] = [];
+  for (const action of plan) {
+    if (action.kind !== 'update' || action.from <= 0) continue;
+    const move = (action.basePrice - action.from) / action.from;
+    if (Math.abs(move) >= GUARD_MAX_PRICE_MOVE) {
+      reasons.push(`${action.model} ${action.storage} ราคาขยับ ${Math.round(move * 100)}% (${action.from} → ${action.basePrice})`);
+    }
+  }
+  const managed = existing.filter(row => !row.deletedAt && isSourceManaged(row.note)).length;
+  const withdrawn = plan.filter(action => action.kind === 'withdraw').length;
+  if (managed > 0 && withdrawn / managed >= GUARD_MAX_WITHDRAW_SHARE) {
+    reasons.push(`รุ่นที่ AppleHouse ไม่มีราคาแล้ว ${withdrawn} จาก ${managed} รุ่น`);
+  }
+  return reasons;
+}

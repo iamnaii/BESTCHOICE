@@ -195,6 +195,47 @@ it('keeps a finance-only QC unit unsellable and refuses to publish the same pric
   expect(hasSellingPrice(p)).toBe(false);
 });
 
+it('keeps installment empty when the selected template has zero cash and a positive installment', async () => {
+  const input = await stockInput(db);
+  const row = input.rows[0];
+  row.model = input.manifest.canonicalSetId;
+  const template = await templateFor(row);
+  await db.pricingTemplate.update({ where: { id: template.id }, data: { cashPrice: '0' } });
+  const d = decision(input);
+  d.pricing = { mode: 'TEMPLATE' };
+  const blocked = await planFor(input);
+  expect(stock(blocked.items[0])).toMatchObject({
+    disposition: 'CONFLICT',
+    reason: 'MISSING_SELLING_PRICE',
+    resolution: {
+      templateId: template.id,
+      cashPrice: null,
+      installmentPrice: null,
+      financePrice: '233.33',
+    },
+  });
+  await expect(applyBatch(db, blocked, write)).rejects.toThrow('IMPORT_PLAN_BLOCKED_OR_CHANGED');
+  expect(await db.product.count({ where: { imeiSerial: row.barcode } })).toBe(0);
+
+  d.desiredStatus = 'QC_PENDING';
+  await applyBatch(db, await planFor(input), write);
+  const product = await db.product.findFirstOrThrow({
+    where: { imeiSerial: row.barcode },
+    include: { prices: true },
+  });
+  expect(product).toMatchObject({
+    status: 'QC_PENDING',
+    cashPrice: null,
+    installmentPrice: null,
+    priceAutofilledAt: null,
+  });
+  expect(product.financePrice?.toFixed(2)).toBe('233.33');
+  expect(product.prices).toHaveLength(1);
+  expect(product.prices[0]).toMatchObject({ label: priceSync.FINANCE_LABEL, isDefault: false });
+  expect(product.prices[0].amount.toFixed(2)).toBe('233.33');
+  expect(hasSellingPrice(product)).toBe(false);
+});
+
 it('creates one accessory per mapped physical unit and replays the same durable receipts', async () => {
   const input = await stockInput(db, 3);
   for (const row of input.rows) {

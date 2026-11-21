@@ -29,7 +29,8 @@ describe('Excel reader', () => {
   it('keeps the legacy string-matrix wrapper', async () => {
     const file = await writeWorkbook((sheet) => {
       sheet.addRow(['a', 'b', 'c']);
-      sheet.addRow(['1', '', '3']);
+      const row = sheet.addRow([1, '', '3']);
+      row.getCell(1).numFmt = '000';
     });
     await expect(readXlsxRows(file)).resolves.toEqual([
       ['a', 'b', 'c'],
@@ -71,7 +72,11 @@ describe('Excel reader', () => {
     ]);
   });
 
-  async function parseStockWorkbook(barcode: ExcelJS.CellValue, numFmt?: string) {
+  async function parseStockWorkbook(
+    barcode: ExcelJS.CellValue,
+    numFmt?: string,
+    costNumFmt?: string,
+  ) {
     const file = await writeWorkbook((sheet) => {
       sheet.addRow(Object.values(STOCK_SNAPSHOT_COLUMNS));
       const row = sheet.addRow([
@@ -87,6 +92,7 @@ describe('Excel reader', () => {
         1,
       ]);
       if (numFmt) row.getCell(1).numFmt = numFmt;
+      if (costNumFmt) row.getCell(9).numFmt = costNumFmt;
     });
     const { sheet, rows } = await readXlsxTable(file);
     return parseStockSnapshot(rows, {
@@ -117,6 +123,14 @@ describe('Excel reader', () => {
     },
   );
 
+  it('preserves the cost when the workbook displays it with leading zeros', async () => {
+    const result = await parseStockWorkbook('012345678901234', undefined, '00000.00');
+    expect(result.issues).toEqual([]);
+    expect(result.rows).toEqual([
+      expect.objectContaining({ barcode: '012345678901234', cost: '8000.00' }),
+    ]);
+  });
+
   it.each<ExcelJS.CellValue>([
     12345678901234,
     { formula: '12345678901234', result: 12345678901234 },
@@ -133,6 +147,37 @@ describe('Excel reader', () => {
       });
     },
   );
+
+  it('finds a reordered barcode column after a physical row gap', async () => {
+    const file = await writeWorkbook((sheet) => {
+      const columns = STOCK_SNAPSHOT_COLUMNS;
+      sheet.addRow([columns.cost, columns.category, columns.name, columns.barcode]);
+      sheet.getCell('A3').value = 8000;
+      sheet.getCell('A3').numFmt = '00000.00';
+      sheet.getCell('D3').value = 12345678901234;
+      sheet.getCell('D3').numFmt = '000000000000000';
+    });
+    await expect(readXlsxTable(file)).rejects.toMatchObject({
+      sheet: 'Worksheet',
+      row: 3,
+      column: 4,
+      code: 'AMBIGUOUS_NUMERIC_VALUE',
+    });
+  });
+
+  it('ends barcode-format validation at the next Tooltify report section', async () => {
+    const file = await writeWorkbook((sheet) => {
+      const columns = STOCK_SNAPSHOT_COLUMNS;
+      sheet.addRow([columns.barcode, columns.category, columns.name]);
+      sheet.addRow(['012345678901234', 'iPhone มือ 1', 'fixture']);
+      sheet.addRow(['รายการจ่ายเครดิต ( 1 )']);
+      sheet.addRow(['ต้นทุนรวม']);
+      const total = sheet.addRow([8000]);
+      total.getCell(1).numFmt = '00000.00';
+    });
+    const { rows } = await readXlsxTable(file);
+    expect(rows[4]).toEqual(['8000']);
+  });
 
   const unsupported: [string, ExcelJS.CellValue, string][] = [
     ['uncached formula', { formula: 'fixture-secret()' }, 'FORMULA_WITHOUT_RESULT'],

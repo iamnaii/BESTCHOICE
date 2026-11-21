@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs';
+import { STOCK_SNAPSHOT_COLUMNS } from './tooltify-stock-parser';
 
 const CELL_ERROR_MESSAGES = {
   FORMULA_WITHOUT_RESULT: 'สูตร Excel ไม่มีผลลัพธ์ที่บันทึกไว้',
@@ -21,12 +22,13 @@ export class XlsxReadError extends Error {
   }
 }
 
-function decodeCell(cell: ExcelJS.Cell, sheet: string, row: number, column: number): string {
+function decodeCell(cell: ExcelJS.Cell, isBarcode: boolean): string {
   // Merged titles occupy only the master cell in the source table.
   if (cell.type === ExcelJS.ValueType.Merge) return '';
 
   const fail = (code: XlsxCellErrorCode): never => {
-    throw new XlsxReadError(code, sheet, row, column);
+    const { sheetName, row, col } = cell.fullAddress;
+    throw new XlsxReadError(code, sheetName, row, col);
   };
 
   const formula = cell.type === ExcelJS.ValueType.Formula;
@@ -41,11 +43,12 @@ function decodeCell(cell: ExcelJS.Cell, sheet: string, row: number, column: numb
     // digits without padding from a number format or guessing lost digits.
     if (!Number.isFinite(value) || Math.abs(value) >= 1e15) return fail('UNSAFE_NUMERIC_VALUE');
     const stored = String(value);
+    if (!isBarcode || value < 0 || !Number.isInteger(value)) return stored;
     // A zero placeholder can change the identifier shown in Excel. Check the
     // positive section's integer width before discarding the number format.
     const integerFormat = /^(?:\[[^\]]*\])*([#0,]+)(?=[.;]|$)/.exec(cell.numFmt?.trim() ?? '')?.[1];
     const minimumDigits = integerFormat?.replace(/[^0]/g, '').length ?? 0;
-    if (value >= 0 && Number.isInteger(value) && minimumDigits > stored.length) {
+    if (minimumDigits > stored.length) {
       return fail('AMBIGUOUS_NUMERIC_VALUE');
     }
     return stored;
@@ -63,13 +66,24 @@ function decodeCell(cell: ExcelJS.Cell, sheet: string, row: number, column: numb
 /** Physical, zero-indexed row and column positions in one Tooltify worksheet. */
 export function decodeXlsxWorksheet(worksheet: ExcelJS.Worksheet): string[][] {
   const rows: string[][] = [];
+  const { barcode, name, category } = STOCK_SNAPSHOT_COLUMNS;
+  let barcodeColumn = 0;
   for (let rowNumber = 1; rowNumber <= worksheet.rowCount; rowNumber++) {
     const row = worksheet.getRow(rowNumber);
     const cells: string[] = [];
     for (let column = 1; column <= row.cellCount; column++) {
-      cells[column - 1] = decodeCell(row.getCell(column), worksheet.name, rowNumber, column);
+      cells[column - 1] = decodeCell(row.getCell(column), column === barcodeColumn);
     }
     rows[rowNumber - 1] = cells;
+    const labels = cells.map((cell) => cell.trim());
+    if (labels.includes(name) && labels.includes(category)) {
+      barcodeColumn = labels.indexOf(barcode) + 1;
+    } else if (
+      /^.+\(\s*[\d,]+\s*\)$/.test(labels[0] ?? '') &&
+      labels.slice(1).every((label) => !label)
+    ) {
+      barcodeColumn = 0;
+    }
   }
   return rows;
 }

@@ -29,8 +29,12 @@ describe('Trade-in payout and product handoff with real PostgreSQL + SHOP journa
   let actor: { id: string; role: string; branchId: string | null; accessibleCompanies: string[] };
   const payment = { sellerName: 'TEST SELLER', sellerPhone: '0000000000', sellerAddress: 'TEST ADDRESS', sellerIdCardNumber: '0000000000001', serialNumber: 'TEST-SN', imeiMissingReason: 'TEST no cellular radio', idCardVerified: true, sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: 'data:image/png;base64,dGVzdA==', paymentMethod: 'CASH' };
   const pdf = jest.spyOn(VoucherPdfRenderer.prototype, 'htmlToPdf').mockResolvedValue(Buffer.from('%PDF-test'));
+  const originalJwtSecret = process.env.JWT_SECRET;
 
   beforeAll(async () => {
+    // This isolated module bypasses application bootstrap/configuration.
+    // Supply its own signing key so public quote tests also work in bare CI.
+    process.env.JWT_SECRET = 'isolated-buyback-e2e-quote-signing-key';
     await db.$connect();
     fixture = await seedTradeInShop(db, 'BUYBACK E2E BRANCH');
     await seedTradeInAppraisal(db);
@@ -48,7 +52,14 @@ describe('Trade-in payout and product handoff with real PostgreSQL + SHOP journa
     // Bind the same IPv4 destination Supertest uses; Darwin permits a different IPv6 server on the same port.
     await app.listen(0, '127.0.0.1');
   });
-  afterAll(async () => { await app?.close(); await db.$disconnect(); pdf.mockRestore(); });
+  afterAll(async () => {
+    try { await app?.close(); await db.$disconnect(); }
+    finally {
+      pdf.mockRestore();
+      if (originalJwtSecret === undefined) delete process.env.JWT_SECRET;
+      else process.env.JWT_SECRET = originalJwtSecret;
+    }
+  });
 
   const buy = (extra: Record<string, unknown> = {}) => request(app.getHttpServer()).post('/trade-ins/quick-buy').send({
     ...payment, requestId: randomUUID(), branchId: fixture.branch.id, sellerContactId: fixture.seller.id,
@@ -208,7 +219,9 @@ describe('Trade-in payout and product handoff with real PostgreSQL + SHOP journa
 
   it('persists the fixed bonus from the final cash value, independent of old percentage config', async () => {
     const valuation = await db.tradeInValuation.findUniqueOrThrow({ where: { brand_model_storage_condition: { brand: 'Apple', model: 'iPhone 15', storage: '128GB', condition: 'A' } } });
+    const origin = await db.buybackQuestion.create({ data: { key: 'device-origin', title: 'เครื่องศูนย์', selectType: 'SINGLE', choices: { create: [{ id: 'public-thai', label: 'เครื่องศูนย์ไทย (TH)', deductType: 'FIXED', deductValue: 0 }] } } });
     const answers = [
+      { questionKey: 'device-origin', choiceIds: ['public-thai'] },
       { questionKey: 'local-screen', choiceIds: ['local-screen-intact'] },
       { questionKey: 'local-battery', choiceIds: ['local-battery-healthy'] },
       { questionKey: 'local-issues', choiceIds: [] },
@@ -220,12 +233,14 @@ describe('Trade-in payout and product handoff with real PostgreSQL + SHOP journa
         const quoted = await request(app.getHttpServer()).post('/shop/buyback/quote').send(payload).expect(201);
         expect(quoted.body).toMatchObject({ cashPrice: cash.toFixed(2), exchangePrice: (cash + bonus).toFixed(2), bonusAmount: bonus.toFixed(2), bonusPct: '0' });
         const submitted = await request(app.getHttpServer()).post('/shop/buyback/submit')
-          .send({ ...payload, sellerName: 'TEST FIXED BONUS', sellerPhone: '0800000000' }).expect(201);
+          .send({ ...payload, quoteToken: quoted.body.quoteToken, sellerName: 'TEST FIXED BONUS', sellerPhone: '0800000000' }).expect(201);
         const stored = await db.tradeIn.findUniqueOrThrow({ where: { id: submitted.body.id } });
         expect(stored.estimatedValue?.toFixed(2)).toBe((cash + bonus).toFixed(2));
         expect(stored.quoteBreakdown).toMatchObject({ cashPrice: cash.toFixed(2), bonusAmount: bonus.toFixed(2), chosenFlow: 'EXCHANGE' });
       }
     } finally {
+      await db.buybackChoice.deleteMany({ where: { questionId: origin.id } });
+      await db.buybackQuestion.delete({ where: { id: origin.id } });
       await db.tradeInValuation.update({ where: { id: valuation.id }, data: { basePrice: valuation.basePrice } });
     }
   });
@@ -236,8 +251,9 @@ describe('Trade-in payout and product handoff with real PostgreSQL + SHOP journa
       profiles: { p: { pricingMode: 'MAX_PERCENT_EXACT', eligibilityRequired: true, eligibilityText: 'เครื่องเปิดได้และไม่มีบัญชีล็อก', questions: [
         { id: 'ref-q1', key: 'warranty', title: 'ประกัน', selectType: 'SINGLE', choices: [{ id: 'ref-expired', label: 'หมดประกัน', deductType: 'FIXED', deductValue: '500' }] },
         { id: 'ref-q2', key: 'body', title: 'ตัวเครื่อง', selectType: 'SINGLE', choices: [{ id: 'ref-body', label: 'มีรอย', deductType: 'PERCENT', deductValue: '15' }] },
+        { id: 'ref-origin', key: 'device-origin', title: 'เครื่องศูนย์', selectType: 'SINGLE', choices: [{ id: 'ref-thai', label: 'เครื่องไทย TH', deductType: 'FIXED', deductValue: '0' }] },
       ] } }, assignments: [{ model: 'iPhone 12', storage: '128GB', profileId: 'p' }] };
-    const answers = [{ questionKey: 'warranty', choiceIds: ['ref-expired'] }, { questionKey: 'body', choiceIds: ['ref-body'] }];
+    const answers = [{ questionKey: 'device-origin', choiceIds: ['ref-thai'] }, { questionKey: 'warranty', choiceIds: ['ref-expired'] }, { questionKey: 'body', choiceIds: ['ref-body'] }];
     const body = { model: 'iPhone 12', storage: '128GB', answers, deviceEligibilityConfirmed: true };
     try {
       await db.tradeInValuation.upsert({ where: { brand_model_storage_condition: { brand: 'Apple', model: 'iPhone 12', storage: '128GB', condition: 'A' } },
@@ -246,7 +262,7 @@ describe('Trade-in payout and product handoff with real PostgreSQL + SHOP journa
         create: { key: REFERENCE_PRICING_CONFIG_KEY, value: JSON.stringify(catalog) } });
       const questions = await request(app.getHttpServer()).get('/shop/buyback/questions').query({ model: 'iPhone 12', storage: '128GB' }).expect(200);
       expect(questions.body).toMatchObject({ profileId: 'p', eligibilityRequired: true });
-      expect(questions.body.questions.map((q: { key: string }) => q.key)).toEqual(['warranty', 'body']);
+      expect(questions.body.questions.map((q: { key: string }) => q.key)).toEqual(['warranty', 'body', 'device-origin']);
       await request(app.getHttpServer()).get('/shop/buyback/questions').query({ model: 'iPhone 12', storage: '512GB' }).expect(400);
       await request(app.getHttpServer()).post('/shop/buyback/quote').send({ ...body, deviceEligibilityConfirmed: false }).expect(400);
       await request(app.getHttpServer()).post('/shop/buyback/submit').send({ ...body, sellerName: 'TEST SELLER', sellerPhone: '0000000000', deviceEligibilityConfirmed: false }).expect(400);
@@ -264,7 +280,7 @@ describe('Trade-in payout and product handoff with real PostgreSQL + SHOP journa
       expect(quickRow.quoteBreakdown).toEqual(quickPreview.body.breakdown);
       expect(quickRow.conditionAnswers).toEqual(expect.arrayContaining([expect.objectContaining({
         questionKey: '__device_eligibility', confirmed: true, source: catalog.source, profileId: 'p', verifiedById: actor.id })]));
-      const submitted = await request(app.getHttpServer()).post('/shop/buyback/submit').send({ ...body, sellerName: 'TEST SELLER', sellerPhone: '0000000000' }).expect(201);
+      const submitted = await request(app.getHttpServer()).post('/shop/buyback/submit').send({ ...body, quoteToken: quote.body.quoteToken, sellerName: 'TEST SELLER', sellerPhone: '0000000000' }).expect(201);
       const online = await db.tradeIn.findUniqueOrThrow({ where: { id: submitted.body.id } });
       expect(online.conditionAnswers).toEqual(expect.arrayContaining([expect.objectContaining({ questionKey: '__device_eligibility', confirmed: true })]));
 

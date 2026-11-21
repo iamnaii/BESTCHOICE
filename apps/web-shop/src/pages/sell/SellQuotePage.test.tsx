@@ -62,6 +62,10 @@ const config: BuybackQuestionsResponse = {
   ],
 };
 const result: BuybackQuoteResult = {
+  assessedAt: '2026-11-21T06:41:00Z',
+  expiresAt: '2026-11-22T06:41:00Z',
+  serverNow: '2026-11-21T06:41:00Z',
+  quoteToken: 'test-window',
   available: true,
   price: '4321.65',
   cashPrice: '4321.65',
@@ -133,9 +137,9 @@ async function click(name: string) {
   fireEvent.click(await screen.findByRole('button', { name }));
 }
 async function device() {
-  await click('ซีรีส์ 12');
-  await click('ไอโฟน 12');
-  await click('64 กิกะไบต์');
+  await click('กลุ่ม iPhone 12');
+  await click('iPhone 12');
+  await click('64 GB');
   await screen.findByRole('heading', { name: 'ตัวเครื่อง', level: 1 });
 }
 async function body() {
@@ -150,7 +154,7 @@ async function quote() {
   await screen.findByRole('heading', { name: 'ยืนยันสถานะเครื่อง', level: 1 });
   fireEvent.click(screen.getByRole('checkbox', { name: eligibility }));
   await click('ดูราคาประเมิน');
-  await screen.findByRole('heading', { name: 'ราคาของเครื่องคุณ', level: 1 });
+  await screen.findByRole('heading', { name: 'สรุปราคาเครื่องของคุณ', level: 1 });
 }
 async function ready() {
   mount();
@@ -159,7 +163,7 @@ async function ready() {
   await quote();
 }
 async function seller() {
-  await click('เลือกขายสด · กรอกข้อมูล');
+  await click('นัดตรวจเครื่องที่ร้าน');
   fireEvent.change(await screen.findByLabelText('ชื่อ-นามสกุล'), {
     target: { value: 'ลูกค้าทดสอบ' },
   });
@@ -188,7 +192,7 @@ describe('sell contact links', () => {
   }
   it('offers add friend, a prepared message and the configured Google Maps destination from the first step', async () => {
     mount();
-    await screen.findByRole('heading', { name: 'คุณใช้ไอโฟนรุ่นไหน?' });
+    await screen.findByRole('heading', { name: 'คุณใช้ iPhone รุ่นไหน?' });
     expect(contact().getByRole('link', { name: 'แอด LINE' })).toHaveAttribute(
       'href',
       shopInfo.lineUrl,
@@ -208,7 +212,7 @@ describe('sell contact links', () => {
     expect(lineMessage()).toContain('เครดิตเทิร์นโดยประมาณ 4,750 บาท');
     expect(lineMessage()).toContain('ไม่จ่ายเป็นเงินสด');
     expect(lineMessage()).not.toContain('4,321.65');
-    await click('ใช้เครดิตเทิร์น · กรอกข้อมูล');
+    await click('นัดตรวจเครื่องที่ร้าน');
     fireEvent.change(await screen.findByLabelText('ชื่อ-นามสกุล'), {
       target: { value: 'ชื่อส่วนตัวทดสอบ' },
     });
@@ -229,7 +233,7 @@ describe('sell contact links', () => {
 describe('guided sell assessment', () => {
   it('renders a focused sell form and only asks questions for the selected device', async () => {
     mount();
-    await screen.findByRole('heading', { name: 'คุณใช้ไอโฟนรุ่นไหน?' });
+    await screen.findByRole('heading', { name: 'คุณใช้ iPhone รุ่นไหน?' });
     expect(screen.getByRole('banner')).toHaveTextContent('เบสท์ช้อยส์');
     expect(mocks.get).toHaveBeenCalledTimes(1);
     await device();
@@ -297,8 +301,8 @@ describe('guided sell assessment', () => {
     await device();
     await body();
     await click('เปลี่ยนเครื่อง');
-    await click('ไอโฟน 12');
-    await click('128 กิกะไบต์');
+    await click('iPhone 12');
+    await click('128 GB');
     expect(await screen.findByRole('button', { name: 'ตัวเครื่องปกติ' })).toHaveAttribute(
       'aria-pressed',
       'false',
@@ -365,15 +369,15 @@ describe('guided sell assessment', () => {
         : Promise.reject(new Error('offline')),
     );
     mount();
-    await click('ซีรีส์ 12');
-    await click('ไอโฟน 12');
-    await click('64 กิกะไบต์');
+    await click('กลุ่ม iPhone 12');
+    await click('iPhone 12');
+    await click('64 GB');
     await screen.findByText('โหลดแบบประเมินไม่สำเร็จ');
     mocks.get.mockResolvedValue({ data: { ...config, questions: [] } });
     await click('โหลดใหม่');
     await screen.findByText('ยังไม่มีแบบประเมินสำหรับรุ่นและความจุนี้ กรุณาสอบถามร้าน');
     await click('เปลี่ยนเครื่อง');
-    expect(await screen.findByRole('button', { name: 'ซีรีส์ 12' })).toBeEnabled();
+    expect(await screen.findByRole('button', { name: 'กลุ่ม iPhone 12' })).toBeEnabled();
     expect(mocks.post).not.toHaveBeenCalled();
   });
   it('accepts legacy configuration without eligibility and supports changing source metadata', async () => {
@@ -402,7 +406,7 @@ describe('guided sell assessment', () => {
   it.each([
     ['?model=iPhone%2012&storage=64GB&utm_source=line', 'ตัวเครื่อง'],
     ['?model=iPhone%2012&storage=bad', 'เครื่องมีความจุเท่าไร?'],
-    ['?model=bad&storage=64GB', 'คุณใช้ไอโฟนรุ่นไหน?'],
+    ['?model=bad&storage=64GB', 'คุณใช้ iPhone รุ่นไหน?'],
   ])('validates device deep links %s', async (search, title) => {
     mount('/sell/quote' + search);
     expect(await screen.findByRole('heading', { level: 1, name: title })).toBeInTheDocument();
@@ -437,9 +441,7 @@ describe('guided sell assessment', () => {
     fireEvent.click(await screen.findByRole('checkbox', { name: eligibility }));
     await click('ดูราคาประเมิน');
     expect(await screen.findByRole('alert')).toHaveTextContent('สอบถามร้าน');
-    expect(
-      screen.queryByRole('button', { name: 'เลือกขายสด · กรอกข้อมูล' }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'นัดตรวจเครื่องที่ร้าน' })).not.toBeInTheDocument();
   });
   it('submits once and locks edits until the response, preserving the existing payload', async () => {
     const pending = deferred<{ data: { id: string; status: string; price: string } }>();
@@ -476,7 +478,7 @@ describe('price review and contact', () => {
     mocks.post.mockResolvedValue({ data: { ...result, bonusPct: '7' } });
     await ready();
     await click('เทิร์นซื้อเครื่อง');
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('ราคาของเครื่องคุณ');
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('สรุปราคาเครื่องของคุณ');
     expect(screen.getByText('4,750 บาท')).toBeInTheDocument();
     expect(screen.queryByText('4,321.65 บาท')).not.toBeInTheDocument();
     expect(screen.getByText(/ไม่จ่ายเป็นเงินสด/)).toBeInTheDocument();
@@ -513,7 +515,7 @@ describe('price review and contact', () => {
   it('normalizes phone spaces/hyphens, submits the chosen credit flow and preserves data after an error', async () => {
     await ready();
     await click('เทิร์นซื้อเครื่อง');
-    await click('ใช้เครดิตเทิร์น · กรอกข้อมูล');
+    await click('นัดตรวจเครื่องที่ร้าน');
     fireEvent.change(await screen.findByLabelText('ชื่อ-นามสกุล'), {
       target: { value: 'ลูกค้าทดสอบ' },
     });
@@ -600,7 +602,7 @@ describe('request and history boundaries', () => {
     await click('ย้อนกลับ');
     await screen.findByRole('heading', { name: 'เครื่องมีความจุเท่าไร?', level: 1 });
     await click('ย้อนกลับ');
-    await screen.findByRole('heading', { name: 'คุณใช้ไอโฟนรุ่นไหน?', level: 1 });
+    await screen.findByRole('heading', { name: 'คุณใช้ iPhone รุ่นไหน?', level: 1 });
     expect(new URLSearchParams(testSearch).get('utm_source')).toBe('line');
   });
   it('locks result controls even when browser Back is pressed during submission', async () => {
@@ -625,7 +627,9 @@ describe('request and history boundaries', () => {
     expect(new URLSearchParams(testSearch).get('utm_source')).toBe('line');
   });
   it('removes price-source disclosure and omits a zero bonus badge', async () => {
-    mocks.post.mockResolvedValue({ data: { ...result, bonusPct: '0', exchangePrice: result.cashPrice } });
+    mocks.post.mockResolvedValue({
+      data: { ...result, bonusPct: '0', exchangePrice: result.cashPrice },
+    });
     await ready();
     expect(screen.queryByText('ดูที่มาของราคา')).not.toBeInTheDocument();
     expect(screen.queryByText(/เงื่อนไขอ้างอิง Yellobe/)).not.toBeInTheDocument();
@@ -652,8 +656,8 @@ describe('catalog availability changes', () => {
     await device();
     await body();
     act(() => client.setQueryData(['buyback-catalog'], { models: [catalog.models[1]] }));
-    await screen.findByRole('heading', { name: 'คุณใช้ไอโฟนรุ่นไหน?', level: 1 });
-    expect(screen.queryByRole('button', { name: 'ซีรีส์ 12' })).not.toBeInTheDocument();
+    await screen.findByRole('heading', { name: 'คุณใช้ iPhone รุ่นไหน?', level: 1 });
+    expect(screen.queryByRole('button', { name: 'กลุ่ม iPhone 12' })).not.toBeInTheDocument();
     expect(mocks.post).not.toHaveBeenCalled();
   });
   it('returns to storage selection when the selected capacity is removed', async () => {
@@ -666,7 +670,7 @@ describe('catalog availability changes', () => {
       }),
     );
     await screen.findByRole('heading', { name: 'เครื่องมีความจุเท่าไร?', level: 1 });
-    expect(screen.queryByRole('button', { name: '64 กิกะไบต์' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '64 GB' })).not.toBeInTheDocument();
     expect(mocks.post).not.toHaveBeenCalled();
   });
 });

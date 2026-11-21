@@ -48,6 +48,8 @@ export interface BuybackBreakdownLine {
 }
 
 export interface BuybackBreakdown extends BuybackReferenceMetadata {
+  assessedAt?: string;
+  expiresAt?: string;
   maxPrice: string;
   fixedTotal: string;
   pctTotal: string;
@@ -62,6 +64,10 @@ export interface BuybackBreakdown extends BuybackReferenceMetadata {
 }
 
 export interface BuybackQuoteResult extends BuybackReferenceMetadata {
+  assessedAt?: string;
+  expiresAt?: string;
+  serverNow?: string;
+  quoteToken?: string;
   available: boolean;
   model?: string;
   storage?: string;

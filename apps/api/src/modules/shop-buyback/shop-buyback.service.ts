@@ -5,9 +5,11 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { LineOaService } from '../line-oa/line-oa.service';
 import type { FlexMessagePayload } from '../line-oa/flex-messages/base-template';
 import { BuybackPricingService, DeductSelection, QuoteComputation } from './buyback-pricing.service';
-import { QuoteAnswerDto, SubmitBuybackDto } from './dto/quote.dto';
+import { BuybackQuoteDto, QuoteAnswerDto, SubmitBuybackDto } from './dto/quote.dto';
+import { issueQuoteWindow, verifyQuoteWindow } from './quote-window';
 import { REFERENCE_PRICING_CONFIG_KEY, ReferencePricingCatalog, ReferencePricingMetadata } from './reference-pricing.types';
 import { parseReferencePricingCatalog, referenceModelKey, referenceStorageKey } from './reference-pricing';
+import { resolveTradeInDeviceOrigin } from '../../utils/trade-in-device-origin.util';
 
 type AvailableBuybackQuote = ReferencePricingMetadata & {
   available: true;
@@ -178,7 +180,7 @@ export class ShopBuybackService {
     storage: string,
     answers: QuoteAnswerDto[],
     flow: 'BUYBACK' | 'EXCHANGE' = 'BUYBACK',
-    options: { requireCompleteQuestionnaire?: boolean; deviceEligibilityConfirmed?: boolean } = {},
+    options: { requireCompleteQuestionnaire?: boolean; deviceEligibilityConfirmed?: boolean; requireThaiOrigin?: boolean } = {},
   ): Promise<BuybackQuote> {
     const reference = await this.referenceFor(model, storage);
     const valuation = await this.prisma.tradeInValuation.findFirst({
@@ -254,6 +256,12 @@ export class ShopBuybackService {
       });
     }
 
+    // Reject against server-owned choice labels, including stale clients that still offer imported devices.
+    if ((options.requireThaiOrigin || questions.some((q) => q.key === 'device-origin')) && resolveTradeInDeviceOrigin(null, conditionAnswers) !== 'THAI') {
+      throw new BadRequestException('ร้านรับซื้อและเทิร์นเฉพาะเครื่องโมเดลไทย ไม่รับเครื่องโมเดลนอก หากไม่แน่ใจกรุณาให้ร้านช่วยตรวจสอบ');
+    }
+
+
     if (reference) conditionAnswers.push({ questionKey: '__device_eligibility', title: reference.profile.eligibilityText,
       selectType: 'SINGLE', choices: [{ choiceId: 'confirmed', label: 'ยืนยันว่าผ่านเงื่อนไขรับซื้อ', deductType: 'FIXED', deductValue: '0' }],
       confirmed: true, source: reference.catalog.source, capturedAt: reference.catalog.capturedAt, profileId: reference.profileId });
@@ -293,7 +301,13 @@ export class ShopBuybackService {
   }
 
   // ─── Submit ───────────────────────────────────────────────────────────
-  async submit(dto: SubmitBuybackDto, customerId: string | undefined) {
+  async publicQuote(dto: BuybackQuoteDto) {
+    const quote = await this.quoteForAnswers(dto.model, dto.storage, dto.answers, 'BUYBACK', { deviceEligibilityConfirmed: dto.deviceEligibilityConfirmed, requireThaiOrigin: true });
+    return quote.available ? { ...quote, ...issueQuoteWindow(dto) } : quote;
+  }
+
+  async submit(dto: SubmitBuybackDto, customerId: string | undefined, requireQuoteWindow = false) {
+    if (requireQuoteWindow) verifyQuoteWindow(dto.quoteToken, dto);
     if (dto.imei) {
       const dup = await this.prisma.tradeIn.findFirst({
         where: {
@@ -307,11 +321,13 @@ export class ShopBuybackService {
     }
 
     const flow = dto.flow ?? 'BUYBACK';
-    const quote = await this.quoteForAnswers(dto.model, dto.storage, dto.answers, flow, { deviceEligibilityConfirmed: dto.deviceEligibilityConfirmed });
+    const quote = await this.quoteForAnswers(dto.model, dto.storage, dto.answers, flow, { deviceEligibilityConfirmed: dto.deviceEligibilityConfirmed, requireThaiOrigin: true });
     if (!quote.available) {
       throw new NotFoundException('รุ่นนี้ยังไม่เปิดรับซื้อออนไลน์');
     }
 
+    // Check again after DB/pricing reads so a request cannot cross the deadline unnoticed.
+    const window = requireQuoteWindow ? verifyQuoteWindow(dto.quoteToken, dto) : {};
     const tradeIn = await this.prisma.tradeIn.create({
       data: {
         submissionSource: 'ONLINE',
@@ -328,7 +344,7 @@ export class ShopBuybackService {
         sellerPhone: dto.sellerPhone,
         estimatedValue: new Prisma.Decimal(quote.price!),
         conditionAnswers: quote.conditionAnswers as Prisma.InputJsonValue,
-        quoteBreakdown: quote.breakdown as unknown as Prisma.InputJsonValue,
+        quoteBreakdown: { ...quote.breakdown, ...window } as unknown as Prisma.InputJsonValue,
         preferredVisitDate: dto.preferredVisitDate ? new Date(dto.preferredVisitDate) : undefined,
         customerId,
         // basePriceAtAppraisal จงใจไม่ set (spec §5.2) — appraise handshake เป็นคน snapshot

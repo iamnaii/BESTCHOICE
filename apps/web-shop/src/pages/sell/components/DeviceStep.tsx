@@ -54,17 +54,23 @@ export default function DeviceStep({
   return (
     <div className="space-y-5">
       <p>
-        เลือกซีรีส์ แล้วแตะรุ่นของคุณ
+        เลือกกลุ่ม iPhone แล้วเลือกรุ่นย่อยของคุณ
         <br />
         <span className="text-sm">ไม่ต้องสมัครสมาชิก ไม่ต้องถ่ายรูปเครื่อง</span>
       </p>
-      <section aria-label="ซีรีส์">
-        <h2 className="mb-3 font-semibold">ซีรีส์</h2>
-        <div className="grid grid-cols-3 gap-2">
+      <p className="rounded-lg bg-secondary px-3 py-2 text-sm font-semibold text-secondary-foreground">
+        รับซื้อและเทิร์นเฉพาะเครื่องโมเดลไทย
+      </p>
+      <section aria-label="กลุ่ม iPhone">
+        <h2 className="font-semibold">1. เลือกกลุ่ม iPhone</h2>
+        <p className="mb-3 mt-1 text-sm text-muted-foreground">
+          เช่น iPhone 13 Pro ให้เลือก iPhone 13
+        </p>
+        <div className="grid grid-cols-2 gap-2 min-[500px]:grid-cols-3">
           {groups.map((item) => (
             <ChoiceButton
               key={item.id}
-              label={`ซีรีส์ ${item.label}`}
+              label={`กลุ่ม ${item.label}`}
               selected={seriesId === item.id}
               onClick={() => onSeries(item.id)}
               disabled={disabled}
@@ -76,7 +82,7 @@ export default function DeviceStep({
       </section>
       {group && (
         <section aria-label="รุ่น">
-          <h2 className="mb-3 font-semibold">เลือกรุ่นในซีรีส์ {group.label}</h2>
+          <h2 className="mb-3 font-semibold">2. เลือกรุ่นย่อยของ {group.label}</h2>
           <div className="grid gap-2 min-[700px]:grid-cols-2">
             {group.models.map((item) => (
               <ChoiceButton

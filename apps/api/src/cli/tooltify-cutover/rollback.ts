@@ -225,15 +225,31 @@ async function requireFreeze(tx: Db, waiting?: Waiting) {
   if (!proof.exclusive) throw Error('ROLLBACK_FREEZE_REQUIRED');
 }
 
-function attestRollbackRevision(reviewed: string) {
-  const running = readCheckoutRevision(
+function rollbackCheckoutRevision() {
+  return readCheckoutRevision(
     true,
     __dirname,
     __filename,
     'apps/api/src/cli/tooltify-cutover/rollback.ts',
   );
-  if (running !== reviewed) throw Error('CODE_REVISION_CHANGED');
-  return running;
+}
+
+// Bind this module instance at evaluation. A checkout can move while Node still
+// holds these functions. An unattested load remains usable for read-only plans.
+const loadedRollbackRevision = (() => {
+  try {
+    return rollbackCheckoutRevision();
+  } catch (error) {
+    return error instanceof Error ? error : Error('ROLLBACK_RUNTIME_UNATTESTED');
+  }
+})();
+
+function attestRollbackRevision(reviewed: string) {
+  if (loadedRollbackRevision instanceof Error) throw loadedRollbackRevision;
+  const current = rollbackCheckoutRevision();
+  if (current !== loadedRollbackRevision || reviewed !== loadedRollbackRevision)
+    throw Error('CODE_REVISION_CHANGED');
+  return loadedRollbackRevision;
 }
 
 export async function applyRollback(

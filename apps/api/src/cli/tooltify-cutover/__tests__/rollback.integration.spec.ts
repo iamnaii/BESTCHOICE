@@ -499,8 +499,14 @@ it('attests the executing rollback module on an unexecuted plan from A, a dirty 
       '-qm',
       message,
     );
-  const load = (file: string): typeof import('../rollback') =>
-    createRequire(__filename)('tsx/cjs/api').require(join(src, file), __filename);
+  // A separate TS loader namespace evaluates a fresh module graph. Keep the
+  // earlier objects alive to exercise long-lived Node callers across revisions.
+  const loaders: { unregister(): void }[] = [];
+  const load = (file: string): typeof import('../rollback') & { fixtureSource: string } => {
+    const loader = createRequire(__filename)('tsx/cjs/api').register({ namespace: randomUUID() });
+    loaders.push(loader);
+    return loader.require(join(src, file), __filename);
+  };
   const state = async () => ({
     product: await db.product.findUniqueOrThrow({
       where: { id: productId },
@@ -513,7 +519,13 @@ it('attests the executing rollback module on an unexecuted plan from A, a dirty 
   });
   try {
     await mkdir(src, { recursive: true });
-    await copyFile(resolve(__dirname, '../rollback.ts'), join(src, 'rollback.ts'));
+    const writerSource = await readFile(resolve(__dirname, '../rollback.ts'), 'utf8');
+    const setSource = (marker: string) =>
+      writeFile(
+        join(src, 'rollback.ts'),
+        writerSource + '\nexport const fixtureSource = ' + JSON.stringify(marker) + ';\n',
+      );
+    await setSource('A');
     await symlink(
       resolve(__dirname, '../../../../../../node_modules'),
       join(dir, 'node_modules'),
@@ -521,22 +533,35 @@ it('attests the executing rollback module on an unexecuted plan from A, a dirty 
     );
     for (const name of ['checkout-revision', 'canonicalize', 'plan', 'rollback-references'])
       await symlink(resolve(__dirname, '../' + name + '.ts'), join(src, name + '.ts'));
-    await writeFile(join(dir, 'revision-marker'), 'A');
     git('init', '-q');
     git('add', '.');
     commit('A');
     const atA = load('rollback.ts');
+    expect(atA.fixtureSource).toBe('A');
     const reviewed = await atA.planRollback(db, plan.batchId);
     const before = await state();
-    await writeFile(join(dir, 'revision-marker'), 'B');
+    await setSource('B');
+    const loadedDirty = load('rollback.ts');
+    expect(loadedDirty.fixtureSource).toBe('B');
     await frozen(async () => {
       await expect(atA.applyRollback(db, reviewed)).rejects.toThrow(
         'CLEAN_REVIEWED_CHECKOUT_REQUIRED',
       );
       expect(await state()).toEqual(before);
-      git('add', 'revision-marker');
+      git('add', '.');
       commit('B');
+      const atB = load('rollback.ts');
+      expect(atB.fixtureSource).toBe('B');
+      expect(atA.fixtureSource).toBe('A');
+      const reviewedB = await atB.planRollback(db, plan.batchId);
+      expect(reviewedB.codeRevision).toBe(git('rev-parse', 'HEAD'));
       await expect(atA.applyRollback(db, reviewed)).rejects.toThrow('CODE_REVISION_CHANGED');
+      expect(await state()).toEqual(before);
+      await expect(atA.applyRollback(db, reviewedB)).rejects.toThrow('CODE_REVISION_CHANGED');
+      expect(await state()).toEqual(before);
+      await expect(loadedDirty.applyRollback(db, reviewedB)).rejects.toThrow(
+        'CLEAN_REVIEWED_CHECKOUT_REQUIRED',
+      );
       expect(await state()).toEqual(before);
       await copyFile(join(src, 'rollback.ts'), join(src, 'untracked.ts'));
       const untracked = load('untracked.ts');
@@ -554,20 +579,25 @@ it('attests the executing rollback module on an unexecuted plan from A, a dirty 
       expect(await state()).toEqual(before);
       await rm(join(src, 'compiled.cjs'));
       await rm(join(src, 'untracked.ts'));
-      const reviewedB = await atA.planRollback(db, plan.batchId);
-      expect(reviewedB.codeRevision).toBe(git('rev-parse', 'HEAD'));
-      expect(await atA.applyRollback(db, reviewedB)).toMatchObject({
+      expect(await atB.applyRollback(db, reviewedB)).toMatchObject({
         products: 1,
         codeRevision: reviewedB.codeRevision,
       });
       const reversed = await state();
-      await writeFile(join(dir, 'revision-marker'), 'C');
-      git('add', 'revision-marker');
-      commit('C');
       await expect(atA.applyRollback(db, reviewedB)).rejects.toThrow('CODE_REVISION_CHANGED');
+      expect(await state()).toEqual(reversed);
+      expect(await atB.applyRollback(db, reviewedB)).toMatchObject({
+        products: 0,
+        codeRevision: reviewedB.codeRevision,
+      });
+      await setSource('C');
+      git('add', '.');
+      commit('C');
+      await expect(atB.applyRollback(db, reviewedB)).rejects.toThrow('CODE_REVISION_CHANGED');
       expect(await state()).toEqual(reversed);
     });
   } finally {
+    for (const loader of loaders.reverse()) loader.unregister();
     await rm(dir, { recursive: true, force: true });
   }
 });

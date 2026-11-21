@@ -2,7 +2,7 @@ import ExcelJS from 'exceljs';
 import { promises as fs } from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { parseThaiDateTime } from '../tooltify-sales-parser';
+import { parseSalesLineItems, parseThaiDateTime } from '../tooltify-sales-parser';
 import { STOCK_SNAPSHOT_COLUMNS } from '../tooltify-stock-parser';
 import { parseStockSnapshot } from '../tooltify-stock-snapshot-parser';
 import { readXlsxRows, readXlsxTable, XlsxReadError } from '../xlsx-reader';
@@ -177,6 +177,78 @@ describe('Excel reader', () => {
     });
     const { rows } = await readXlsxTable(file);
     expect(rows[4]).toEqual(['8000']);
+  });
+
+  async function parseSalesWorkbook(orderNumber: ExcelJS.CellValue) {
+    const file = await writeWorkbook((sheet) => {
+      sheet.addRow(['รายการขาย ( 1 )']);
+      sheet.addRow([
+        'บาร์โค้ดสินค้า',
+        'ชื่อสินค้า',
+        'หมวดหมู่สินค้า',
+        'ผู้ซื้อสินค้า',
+        'ร้านค้า',
+        'คำสั่งซื้อ',
+        'รูปแบบการขาย',
+        'กลุ่มราคาขาย',
+        'ต้นทุนรวม',
+        'ราคาตั้งขาย',
+        'ราคาขาย',
+        'กำไร',
+        'ผู้ขายสินค้า',
+        'วันที่ขายสินค้า',
+      ]);
+      const sale = sheet.addRow([
+        '012345678901234',
+        'fixture iPhone',
+        'iPhone มือ 1',
+        '',
+        '',
+        orderNumber,
+        'ขายแบบเงินสด',
+        'ราคาปลีก',
+        8000,
+        9000,
+        9000,
+        1000,
+        '',
+        '2026-11-21 00:05:01',
+      ]);
+      sale.getCell(6).numFmt = '000000';
+      sale.getCell(9).numFmt = '00000.00';
+    });
+    return parseSalesLineItems(await readXlsxRows(file), { importBatch: 'fixture' });
+  }
+
+  it.each<ExcelJS.CellValue>([1234, { formula: '1234', result: 1234 }])(
+    'blocks the padded numeric order number %j before sales parsing',
+    async (orderNumber) => {
+      await expect(parseSalesWorkbook(orderNumber)).rejects.toMatchObject({
+        name: 'XlsxReadError',
+        sheet: 'Worksheet',
+        row: 3,
+        column: 6,
+        code: 'AMBIGUOUS_NUMERIC_VALUE',
+      });
+    },
+  );
+
+  it('preserves a leading-zero order number stored as text and a formatted numeric cost', async () => {
+    await expect(parseSalesWorkbook('001234')).resolves.toEqual([
+      expect.objectContaining({ orderNumber: '001234', costTotal: '8000' }),
+    ]);
+  });
+
+  it('accepts a formatted order count in the sales summary', async () => {
+    const file = await writeWorkbook((sheet) => {
+      sheet.addRow(['รูปแบบการขาย', 'คำสั่งซื้อ', 'รายการขาย']);
+      const summary = sheet.addRow(['ขายแบบเงินสด', 1, 1]);
+      summary.getCell(2).numFmt = '000000';
+    });
+    await expect(readXlsxRows(file)).resolves.toEqual([
+      ['รูปแบบการขาย', 'คำสั่งซื้อ', 'รายการขาย'],
+      ['ขายแบบเงินสด', '1', '1'],
+    ]);
   });
 
   const unsupported: [string, ExcelJS.CellValue, string][] = [

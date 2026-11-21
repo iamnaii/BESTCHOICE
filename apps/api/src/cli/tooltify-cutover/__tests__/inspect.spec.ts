@@ -635,6 +635,37 @@ describe('Tooltify source inspection', () => {
     expect(report.files[0]).toMatchObject({ kind: 'SALES', sourceRowCount: 1, issues: [] });
   });
 
+  it('reports the Excel position of a padded numeric order number after reordering', async () => {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('fixture-worksheet');
+    worksheet.addRow(['รายการขาย ( 1 )']);
+    const headings = [...SALES_COLUMNS];
+    [headings[5], headings[8]] = [headings[8], headings[5]];
+    worksheet.addRow(headings);
+    const sale = worksheet.addRow(saleRow());
+    sale.getCell(6).value = 8000;
+    sale.getCell(6).numFmt = '00000.00';
+    sale.getCell(9).value = 1234;
+    sale.getCell(9).numFmt = '000000';
+    const path = join(dir, SALE_NAME);
+    await workbook.xlsx.writeFile(path);
+
+    const report = await inspectFiles([path]);
+    const [file] = report.files;
+    expect(file.issues).toEqual([
+      expect.objectContaining({
+        code: 'AMBIGUOUS_NUMERIC_VALUE',
+        source: {
+          fileSha256: file.sha256,
+          sheet: 'worksheet-1',
+          row: 3,
+          storeKey: 'UNRESOLVED',
+        },
+        message: expect.stringContaining('คอลัมน์ 9'),
+      }),
+    ]);
+  });
+
   it('reports an uncached formula at its Excel position without revealing cell or sheet contents', async () => {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('fixture-private-sheet');

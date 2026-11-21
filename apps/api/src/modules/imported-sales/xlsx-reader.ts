@@ -1,6 +1,8 @@
 import ExcelJS from 'exceljs';
 import { STOCK_SNAPSHOT_COLUMNS } from './tooltify-stock-parser';
 
+const IDENTITY_COLUMN_LABELS = new Set<string>([STOCK_SNAPSHOT_COLUMNS.barcode, 'คำสั่งซื้อ']);
+
 const CELL_ERROR_MESSAGES = {
   FORMULA_WITHOUT_RESULT: 'สูตร Excel ไม่มีผลลัพธ์ที่บันทึกไว้',
   UNSUPPORTED_CELL_VALUE: 'ชนิดข้อมูลในเซลล์ Excel ไม่รองรับ',
@@ -22,7 +24,7 @@ export class XlsxReadError extends Error {
   }
 }
 
-function decodeCell(cell: ExcelJS.Cell, isBarcode: boolean): string {
+function decodeCell(cell: ExcelJS.Cell, isIdentity: boolean): string {
   // Merged titles occupy only the master cell in the source table.
   if (cell.type === ExcelJS.ValueType.Merge) return '';
 
@@ -43,7 +45,7 @@ function decodeCell(cell: ExcelJS.Cell, isBarcode: boolean): string {
     // digits without padding from a number format or guessing lost digits.
     if (!Number.isFinite(value) || Math.abs(value) >= 1e15) return fail('UNSAFE_NUMERIC_VALUE');
     const stored = String(value);
-    if (!isBarcode || value < 0 || !Number.isInteger(value)) return stored;
+    if (!isIdentity || value < 0 || !Number.isInteger(value)) return stored;
     // A zero placeholder can change the identifier shown in Excel. Check the
     // positive section's integer width before discarding the number format.
     const integerFormat = /^(?:\[[^\]]*\])*([#0,]+)(?=[.;]|$)/.exec(cell.numFmt?.trim() ?? '')?.[1];
@@ -66,23 +68,24 @@ function decodeCell(cell: ExcelJS.Cell, isBarcode: boolean): string {
 /** Physical, zero-indexed row and column positions in one Tooltify worksheet. */
 export function decodeXlsxWorksheet(worksheet: ExcelJS.Worksheet): string[][] {
   const rows: string[][] = [];
-  const { barcode, name, category } = STOCK_SNAPSHOT_COLUMNS;
-  let barcodeColumn = 0;
+  const { name, category } = STOCK_SNAPSHOT_COLUMNS;
+  let identityColumns: boolean[] = [];
   for (let rowNumber = 1; rowNumber <= worksheet.rowCount; rowNumber++) {
     const row = worksheet.getRow(rowNumber);
     const cells: string[] = [];
     for (let column = 1; column <= row.cellCount; column++) {
-      cells[column - 1] = decodeCell(row.getCell(column), column === barcodeColumn);
+      cells[column - 1] = decodeCell(row.getCell(column), identityColumns[column - 1] ?? false);
     }
     rows[rowNumber - 1] = cells;
     const labels = cells.map((cell) => cell.trim());
+    // The sales summary also uses the order heading for a count.
     if (labels.includes(name) && labels.includes(category)) {
-      barcodeColumn = labels.indexOf(barcode) + 1;
+      identityColumns = labels.map((label) => IDENTITY_COLUMN_LABELS.has(label));
     } else if (
       /^.+\(\s*[\d,]+\s*\)$/.test(labels[0] ?? '') &&
       labels.slice(1).every((label) => !label)
     ) {
-      barcodeColumn = 0;
+      identityColumns = [];
     }
   }
   return rows;

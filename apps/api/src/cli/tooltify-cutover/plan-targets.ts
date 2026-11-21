@@ -331,6 +331,22 @@ export function saleContent(
   };
 }
 
+// Prisma adds binds for the receipt predicates in addition to the IN list.
+const SALE_ORIGIN_ID_BATCH_SIZE = 10_000;
+
+async function readSaleOriginBatches<Row>(
+  ids: string[],
+  findMany: (ids: string[]) => Promise<Row[]>,
+): Promise<Row[]> {
+  const uniqueIds = [...new Set(ids)];
+  const rows: Row[] = [];
+  for (let offset = 0; offset < uniqueIds.length; offset += SALE_ORIGIN_ID_BATCH_SIZE) {
+    const batch = uniqueIds.slice(offset, offset + SALE_ORIGIN_ID_BATCH_SIZE);
+    for (const row of await findMany(batch)) rows.push(row);
+  }
+  return rows;
+}
+
 // ImportedSale has no branch column. Only its original active CREATE receipt and
 // that owner's frozen file map can attribute the historical target.
 export async function readSaleOrigins(
@@ -345,35 +361,47 @@ export async function readSaleOrigins(
 ) {
   const origins = new Map<string, { branchId: string; storeKey: string }>();
   if (!sales.length) return origins;
-  const receipts = await db.tooltifyImportItem.findMany({
-    where: {
-      targetType: 'IMPORTED_SALE',
-      disposition: 'CREATE',
-      targetId: { in: sales.map((s) => s.id) },
-      deletedAt: null,
-      reversedAt: null,
-      batch: { kind: 'SALES', deletedAt: null, status: { not: 'ROLLED_BACK' } },
-    },
-    select: { targetId: true, batchId: true, sourceRefs: true, identityHash: true },
-  });
-  const owners = await db.tooltifyImportBatch.findMany({
-    where: { id: { in: [...new Set(receipts.map((r) => r.batchId))] } },
-    select: { id: true, reconciliationSnapshot: true },
-  });
+  const receipts = await readSaleOriginBatches(
+    sales.map((s) => s.id),
+    (ids) =>
+      db.tooltifyImportItem.findMany({
+        where: {
+          targetType: 'IMPORTED_SALE',
+          disposition: 'CREATE',
+          targetId: { in: ids },
+          deletedAt: null,
+          reversedAt: null,
+          batch: { kind: 'SALES', deletedAt: null, status: { not: 'ROLLED_BACK' } },
+        },
+        select: { targetId: true, batchId: true, sourceRefs: true, identityHash: true },
+      }),
+  );
+  const owners = await readSaleOriginBatches(
+    receipts.map((r) => r.batchId),
+    (ids) =>
+      db.tooltifyImportBatch.findMany({
+        where: { id: { in: ids } },
+        select: { id: true, reconciliationSnapshot: true },
+      }),
+  );
   // Verify once per owning batch in whole-plan and reconciliation reads. The row writer
   // rechecks its reviewed target/owner dependency in each serializable item transaction.
-  const evidence = await db.tooltifyImportItem.findMany({
-    where: { batchId: { in: owners.map((b) => b.id) }, reversedAt: null, deletedAt: null },
-    select: {
-      batchId: true,
-      sourceKey: true,
-      disposition: true,
-      payloadHash: true,
-      identityHash: true,
-      sourceRefs: true,
-      targetId: true,
-    },
-  });
+  const evidence = await readSaleOriginBatches(
+    owners.map((b) => b.id),
+    (ids) =>
+      db.tooltifyImportItem.findMany({
+        where: { batchId: { in: ids }, reversedAt: null, deletedAt: null },
+        select: {
+          batchId: true,
+          sourceKey: true,
+          disposition: true,
+          payloadHash: true,
+          identityHash: true,
+          sourceRefs: true,
+          targetId: true,
+        },
+      }),
+  );
   const byOwner = new Map<string, typeof evidence>();
   for (const receipt of evidence) {
     const rows = byOwner.get(receipt.batchId) ?? [];

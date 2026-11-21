@@ -2,20 +2,11 @@ import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { ImportedSalesService, Bucket } from './imported-sales.service';
+import { ImportedSalesService } from './imported-sales.service';
+import type { ImportedSalesSummaryResult } from './imported-sales.service';
 import { QueryImportedSalesDto } from './dto/query-imported-sales.dto';
 
-// `Bucket` is exported from imported-sales.service.ts (TS4053 fix): an exported
-// class cannot expose a public method whose inferred return type names an
-// unexported type from another module, and this controller's `summary()`
-// method returns whatever shape `ImportedSalesService.summary()` produces.
-export interface ImportedSalesSummaryResult {
-  totals: { count: number; sales: string; profit: string | null; cost: string | null };
-  byMonth: Bucket[];
-  byChannel: Bucket[];
-  bySalesperson: Bucket[];
-  byCategory: Bucket[];
-}
+export type { ImportedSalesSummaryResult } from './imported-sales.service';
 
 @Controller('imported-sales')
 @UseGuards(JwtAuthGuard, RolesGuard)

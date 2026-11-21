@@ -196,17 +196,19 @@ describe('Imported historical SHOP HTTP source and sensitivity boundaries', () =
     expect(response.body.data.map((row: { id: string }) => row.id)).toEqual([trustedId]);
     expect(response.body.data[0]).toMatchObject({ costTotal: null, profit: null });
   });
-  it('summary uses verified sources and UTC month without journals', async () => {
+  it('summary uses verified sources and the Bangkok month without journals', async () => {
     const before = await db.journalEntry.count();
     const response = await http('/imported-sales/summary?company=SHOP').expect(200);
     expect(response.body.totals).toMatchObject({
       count: 1,
+      billCount: 1,
+      lineCount: 1,
       sales: '100',
       cost: null,
       profit: null,
     });
     expect(response.body.byMonth).toEqual([
-      { key: '2026-09', count: 1, sales: '100', profit: null },
+      { key: '2026-10', count: 1, sales: '100', profit: null },
     ]);
     expect(await db.journalEntry.count()).toBe(before);
   });

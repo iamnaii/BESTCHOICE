@@ -466,7 +466,8 @@ export function canonicalizeSales(
   const exclude = (
     line: CanonicalSaleLine,
     reason: CanonicalSalesResult['excluded'][number]['reason'],
-  ) => result.excluded.push({ source: line.source, sourceKey: saleSourceKey(line, 1), reason });
+    sourceKey: string | null,
+  ) => result.excluded.push({ source: line.source, sourceKey, reason });
 
   // Multiple input paths for the same workbook supply the same physical evidence.
   const unique: CanonicalSaleLine[] = [];
@@ -599,7 +600,7 @@ export function canonicalizeSales(
   for (const group of grouped(unique, (r) => saleSourceKey(r, 1)).values()) {
     const byReport = grouped(group, (r) => r.source.fileSha256);
     const versions = [...byReport.values()].map((lines) =>
-      JSON.stringify([...new Set(lines.map((line) => payloadHashes.get(line)!))].sort()),
+      JSON.stringify(lines.map((line) => payloadHashes.get(line)!).sort()),
     );
     if (new Set(versions).size > 1) {
       for (const line of group) {
@@ -653,7 +654,7 @@ export function canonicalizeSales(
         for (const line of active) {
           if (line.source.row === decision.keepRow)
             result.rows.push({ ...line, occurrence: 1, sourceKey: saleSourceKey(line, 1) });
-          else exclude(line, 'REPORT_DUPLICATE');
+          else exclude(line, 'REPORT_DUPLICATE', saleSourceKey(line, 1));
         }
       } else {
         for (const line of active)
@@ -661,14 +662,20 @@ export function canonicalizeSales(
       }
     }
   }
+  // Each payload hash includes the event identity. Re-exports carry no physical
+  // row correspondence, so only a unique selected occurrence proves a key.
+  const canonicalByPayload = grouped(result.rows, salePayloadHash);
   for (const line of excludedRows) {
-    if (!held.has(line))
-      exclude(
-        line,
-        entriesByFile.get(line.source.fileSha256)?.some((e) => e.action === 'EXCLUDE_FILE')
-          ? 'EXCLUDE_FILE'
-          : 'EXCLUDE_ROW',
-      );
+    if (held.has(line)) continue;
+    const matches = canonicalByPayload.get(payloadHashes.get(line)!);
+    const fileExcluded = entriesByFile
+      .get(line.source.fileSha256)
+      ?.some((e) => e.action === 'EXCLUDE_FILE');
+    exclude(
+      line,
+      fileExcluded ? 'EXCLUDE_FILE' : 'EXCLUDE_ROW',
+      matches?.length === 1 ? matches[0].sourceKey : null,
+    );
   }
   for (const entry of duplicateDecisions) {
     issue(

@@ -303,3 +303,99 @@ describe('parseSalesReport', () => {
     }
   });
 });
+
+describe('independent gross evidence', () => {
+  it('reports the available sale price delta beside a malformed detail profit', () => {
+    const bad = [...gift];
+    bad[10] = '100';
+    bad[11] = 'invalid';
+    const result = parseSalesReport(
+      [
+        summary,
+        ['ขายสินค้าทั้งหมด', '1', '1', '70.25', '0', '90', '19.75'],
+        [],
+        detail[0],
+        HEADER,
+        bad,
+      ],
+      context,
+    );
+    expect(result.rows).toEqual([]);
+    expect(result.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'INVALID_SALE_MONEY',
+          message: expect.stringContaining('กำไร'),
+          source: expect.objectContaining({ row: 6 }),
+        }),
+        expect.objectContaining({
+          code: 'SALES_SUMMARY_MISMATCH',
+          message: expect.stringContaining('ราคาขาย -10.00'),
+          source: expect.objectContaining({ row: 2 }),
+        }),
+      ]),
+    );
+    expect(result.gross.detail).toEqual({
+      bills: 1,
+      lines: 1,
+      costTotal: '70.25',
+      listPrice: '0.00',
+      salePrice: '100.00',
+      profit: null,
+    });
+    expect(result.gross.delta).toEqual({
+      bills: 0,
+      lines: 0,
+      costTotal: '0.00',
+      listPrice: '0.00',
+      salePrice: '-10.00',
+      profit: null,
+    });
+  });
+
+  it('keeps a verified physical item count and money when the bill identity is missing', () => {
+    const bad = [...gift];
+    bad[5] = '';
+    const result = parseSalesReport(
+      [summary, ['ขายสินค้าทั้งหมด', '1', '2', ...totals.slice(3)], [], detail[0], HEADER, bad],
+      context,
+    );
+    expect(result.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'MISSING_SOURCE_IDENTITY',
+          source: expect.objectContaining({ row: 6 }),
+        }),
+        expect.objectContaining({
+          code: 'SALES_SUMMARY_MISMATCH',
+          source: expect.objectContaining({ row: 2 }),
+        }),
+      ]),
+    );
+    expect(result.gross.detail).toMatchObject({
+      bills: null,
+      lines: 1,
+      costTotal: '70.25',
+      profit: '-70.25',
+    });
+    expect(result.gross.delta).toMatchObject({
+      bills: null,
+      lines: 1,
+      costTotal: '0.00',
+      profit: '0.00',
+    });
+  });
+
+  it('preserves valid reported fields when a different reported amount is malformed', () => {
+    const result = parseSalesReport(
+      [summary, ['ขายสินค้าทั้งหมด', '1', '1', '70.25', '0', '90', 'invalid'], [], ...detail],
+      context,
+    );
+    expect(result.issues.map((i) => i.code)).toEqual([
+      'INVALID_SALES_SUMMARY',
+      'SALES_SUMMARY_MISMATCH',
+    ]);
+    expect(result.gross.reported).toMatchObject({ salePrice: '90.00', profit: null });
+    expect(result.gross.delta).toMatchObject({ salePrice: '90.00', profit: null });
+  });
+});

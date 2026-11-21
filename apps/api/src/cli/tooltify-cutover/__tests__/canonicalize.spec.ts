@@ -152,7 +152,13 @@ describe('canonicalizeSales', () => {
     });
     expect(result.issues).toEqual([]);
     expect(result.rows.map((row) => [row.source.row, row.occurrence])).toEqual([[4, 1]]);
-    expect(result.excluded).toEqual([expect.objectContaining({ source: accessories[0].source })]);
+    expect(result.excluded).toEqual([
+      {
+        source: accessories[0].source,
+        sourceKey: result.rows[0].sourceKey,
+        reason: 'REPORT_DUPLICATE',
+      },
+    ]);
   });
 
   it('records the correct occurrence for a repeated input copy of the second distinct unit', () => {
@@ -200,5 +206,92 @@ describe('canonicalizeSales', () => {
       expect(result.rows).toHaveLength(0);
       expect(result.issues.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('matching sale occurrences across exports', () => {
+  function exportsWithPrices(
+    selectedPrices: number[],
+    excludedPrices: number[],
+    exclusion: 'EXCLUDE_FILE' | 'EXCLUDE_ROW' = 'EXCLUDE_FILE',
+  ) {
+    const report = (prices: number[], firstRow: number, fileSha256: string) =>
+      prices.map((price, index) => {
+        const row = firstRow + index;
+        return line(row, {
+          barcode: 'TEST-GIFT',
+          category: 'Accessories',
+          salePrice: price.toFixed(2),
+          source: { fileSha256, row, sheet: 'Worksheet', storeKey: 'store-A' },
+        });
+      });
+    const selected = report(selectedPrices, 3, hashA);
+    const excluded = report(excludedPrices, 7, hashB);
+    const selectedRows = selected.map((r) => r.source.row);
+    const entries: SourceDecision[] = [
+      selection(selectedRows),
+      {
+        ...evidence,
+        action: exclusion,
+        fileSha256: hashB,
+        sourceRows: excluded.map((r) => r.source.row),
+      },
+    ];
+    if (selected.length > 1)
+      entries.push({ ...evidence, action: 'DISTINCT_UNITS', sourceRows: selectedRows });
+    return { selected, excluded, decisions: { entries } };
+  }
+
+  it.each([
+    { a: [100, 100, 90], b: [100, 90, 90] },
+    { a: [100], b: [100, 100] },
+  ])('holds every physical row when the frequency changes from $a to $b', ({ a, b }) => {
+    const { selected, excluded, decisions } = exportsWithPrices(a, b);
+    const result = canonicalizeSales([...selected, ...excluded], decisions);
+    expect(result.rows).toEqual([]);
+    expect(result.excluded).toEqual([]);
+    expect(result.issues.filter((i) => i.code === 'SOURCE_CONFLICT').map((i) => i.source)).toEqual(
+      [...selected, ...excluded].map((r) => r.source),
+    );
+  });
+
+  it.each([
+    { b: [100, 90], exclusion: 'EXCLUDE_FILE' },
+    { b: [90, 100], exclusion: 'EXCLUDE_FILE' },
+    { b: [90, 100], exclusion: 'EXCLUDE_ROW' },
+  ] as const)('matches excluded units by payload for $b with $exclusion', ({ b, exclusion }) => {
+    const { selected, excluded, decisions } = exportsWithPrices([100, 90], [...b], exclusion);
+    const result = canonicalizeSales([...selected, ...excluded, ...selected], decisions);
+    expect(result.issues).toEqual([]);
+    expect(result.rows).toHaveLength(2);
+    for (const row of excluded) {
+      const matched = result.rows.find((r) => r.salePrice === row.salePrice)!;
+      expect(result.excluded).toContainEqual({
+        source: row.source,
+        sourceKey: matched.sourceKey,
+        reason: exclusion,
+      });
+    }
+    for (const row of result.rows) {
+      expect(result.excluded).toContainEqual({
+        source: row.source,
+        sourceKey: row.sourceKey,
+        reason: 'IDENTICAL_FILE_COPY',
+      });
+    }
+  });
+
+  it('keeps ambiguous exclusions unlinked while linking unique prices within a reordered multiset', () => {
+    const { selected, excluded, decisions } = exportsWithPrices([100, 100, 90], [90, 100, 100]);
+    const result = canonicalizeSales([...selected, ...excluded], decisions);
+    expect(result.issues).toEqual([]);
+    expect(result.rows).toHaveLength(3);
+    expect(result.excluded).toEqual(
+      excluded.map((r) => ({
+        source: r.source,
+        sourceKey: r.salePrice === '90.00' ? result.rows[2].sourceKey : null,
+        reason: 'EXCLUDE_FILE',
+      })),
+    );
   });
 });

@@ -6,6 +6,7 @@ import type {
   CanonicalSaleLine,
   FileRef,
   GrossSalesTotals,
+  NullableGrossSalesTotals,
   SalesReportResult,
   SourceRef,
 } from '../../cli/tooltify-cutover/types';
@@ -232,42 +233,45 @@ function readGrossSummary(
       continue;
     }
     grossCount++;
-    const { bills, lines, costTotal, listPrice, salePrice, profit } = values;
-    if (
-      bills === null ||
-      lines === null ||
-      costTotal === null ||
-      listPrice === null ||
-      salePrice === null ||
-      profit === null
-    ) {
+    if (Object.values(values).some((value) => value === null)) {
       result.issues.push({
         code: 'INVALID_SALES_SUMMARY',
         source,
         message: 'จำนวนหรือยอดเงินสรุปไม่ถูกต้อง',
       });
-      continue;
     }
-    const reported = { bills, lines, costTotal, listPrice, salePrice, profit };
-    result.gross.reported = reported;
+    result.gross.reported = values;
     const detail = result.gross.detail;
     if (!detail) continue;
-    const delta = { ...reported, bills: bills - detail.bills, lines: lines - detail.lines };
-    for (const key of moneyFields)
-      delta[key] = new Prisma.Decimal(reported[key]).minus(detail[key]).toFixed(2);
+    const delta = { ...values };
+    for (const key of ['bills', 'lines'] as const) {
+      const reported = values[key],
+        observed = detail[key];
+      delta[key] = reported === null || observed === null ? null : reported - observed;
+    }
+    for (const key of moneyFields) {
+      const reported = values[key],
+        observed = detail[key];
+      delta[key] =
+        reported === null || observed === null
+          ? null
+          : new Prisma.Decimal(reported).minus(observed).toFixed(2);
+    }
     result.gross.delta = delta;
-    if (Object.values(delta).some((v) => !new Prisma.Decimal(v).isZero())) {
-      const differences = moneyFields.map((key) => MONEY_COLUMNS[key] + ' ' + delta[key]);
+    if (
+      Object.values(delta).some((value) => value !== null && !new Prisma.Decimal(value).isZero())
+    ) {
+      const differences = [
+        ['บิล', delta.bills],
+        ['รายการ', delta.lines],
+        ...moneyFields.map((key) => [MONEY_COLUMNS[key], delta[key]]),
+      ]
+        .filter(([, value]) => value !== null)
+        .map(([label, value]) => label + ' ' + value);
       result.issues.push({
         code: 'SALES_SUMMARY_MISMATCH',
         source,
-        message:
-          'สรุปลบรายละเอียด: บิล ' +
-          delta.bills +
-          ' รายการ ' +
-          delta.lines +
-          ' ' +
-          differences.join(' '),
+        message: 'สรุปลบรายละเอียด: ' + differences.join(' '),
       });
     }
   }
@@ -348,7 +352,7 @@ export function parseSalesReport(
   }
   const columns = new Map(headings.map((c, i) => [c, i]));
   const bills = new Set<string>();
-  const detail: GrossSalesTotals = {
+  const detail: NullableGrossSalesTotals & { lines: number } = {
     bills: 0,
     lines: 0,
     costTotal: '0.00',
@@ -356,7 +360,6 @@ export function parseSalesReport(
     listPrice: '0.00',
     profit: '0.00',
   };
-  let completeGross = true;
   for (let i = section.headerIndex + 1; i < endOf(section); i++) {
     const cells = rows[i];
     if (!cells.some((c) => c.trim())) continue;
@@ -369,7 +372,7 @@ export function parseSalesReport(
       orderNumber = get('คำสั่งซื้อ'),
       category = get('หมวดหมู่สินค้า');
     if (orderNumber) bills.add(orderNumber);
-    else completeGross = false;
+    else detail.bills = null;
     if (!barcode || !orderNumber) issue('MISSING_SOURCE_IDENTITY', 'ต้องระบุบาร์โค้ดและเลขที่บิล');
     const device =
       ['iPhone มือ 1', 'iPhone มือ 2', 'iPhone มือ 2 (เครื่องนอก)'].includes(category) ||
@@ -390,10 +393,11 @@ export function parseSalesReport(
       const amount = saleMoney(get(column), true);
       if (amount === null) {
         issue('INVALID_SALE_MONEY', 'จำนวนเงินไม่ถูกต้องในคอลัมน์ ' + column);
-        completeGross = false;
+        detail[key] = null;
       } else {
         money[key] = amount;
-        detail[key] = new Prisma.Decimal(detail[key]).plus(amount).toFixed(2);
+        const total = detail[key];
+        if (total !== null) detail[key] = new Prisma.Decimal(total).plus(amount).toFixed(2);
       }
     }
     if (!timestamp || result.issues.length !== before) continue;
@@ -417,8 +421,8 @@ export function parseSalesReport(
       salespersonName: get('ผู้ขายสินค้า'),
     });
   }
-  detail.bills = bills.size;
-  if (completeGross) result.gross.detail = detail;
+  if (detail.bills !== null) detail.bills = bills.size;
+  result.gross.detail = detail;
   if (detail.lines !== section.declaredRowCount)
     result.issues.push({
       code: 'SECTION_COUNT_MISMATCH',

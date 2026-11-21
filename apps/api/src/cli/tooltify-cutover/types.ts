@@ -138,26 +138,31 @@ export type GrossSalesTotals = {
   profit: string;
 };
 
+// null marks an individual count or amount that the source cannot establish.
+export type NullableGrossSalesTotals = {
+  [K in keyof GrossSalesTotals]: GrossSalesTotals[K] | null;
+};
+
 export type SalesReportResult = ParseResult<CanonicalSaleLine> & {
   gross: {
-    reported: GrossSalesTotals | null;
-    detail: GrossSalesTotals | null;
+    reported: NullableGrossSalesTotals | null;
+    detail: NullableGrossSalesTotals | null;
     // Reported minus raw detail, before source decisions.
-    delta: GrossSalesTotals | null;
+    delta: NullableGrossSalesTotals | null;
   };
   adjustments: {
     label: string;
     source: SourceRef;
     declaredRows: number | null;
     detailRows: number[];
-    reported: { [K in keyof GrossSalesTotals]: GrossSalesTotals[K] | null } | null;
+    reported: NullableGrossSalesTotals | null;
   }[];
 };
 
 export type CanonicalSalesResult = ParseResult<CanonicalSaleLine> & {
   excluded: {
     source: SourceRef;
-    // A repeated input may refer to a row that has no resolved occurrence yet.
+    // Absent when the source cannot be linked to one particular canonical occurrence.
     sourceKey: string | null;
     reason: 'IDENTICAL_FILE_COPY' | 'REPORT_DUPLICATE' | 'EXCLUDE_FILE' | 'EXCLUDE_ROW';
   }[];

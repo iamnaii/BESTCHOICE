@@ -7,7 +7,7 @@ import { saleContent } from '../plan-targets';
 import type { Prisma } from '@prisma/client';
 import { afterAll, describe, expect, it } from 'vitest';
 import { applyBatch } from '../batch';
-import { buildImportPlan } from '../plan';
+import { assertImportDatabase, buildImportPlan } from '../plan';
 import { createFixtureTarget, productData, stockInput } from './preflight-fixtures';
 
 const db = new PrismaClient();
@@ -217,6 +217,154 @@ describe('legacy sale uniqueness and attribution', () => {
   });
 });
 
+async function expectBlockedBeforeBatch(input: CanonicalInput) {
+  const plan = await buildImportPlan(db, input);
+  expect(plan.issues.length).toBeGreaterThan(0);
+  await expect(applyBatch(db, plan, createFixtureTarget)).rejects.toThrow(
+    'IMPORT_PLAN_BLOCKED_OR_CHANGED',
+  );
+  expect(await db.tooltifyImportBatch.count({ where: { id: plan.batchId } })).toBe(0);
+}
+describe('source accounting', () => {
+  it.each(['lone copy', 'two primary exclusions', 'copy with a wrong link'] as const)(
+    'rejects %s',
+    async (fault) => {
+      const input: CanonicalInput = await stockInput(db);
+      const row = input.rows[0];
+      if (fault === 'lone copy') input.rows = [];
+      if (fault === 'two primary exclusions') {
+        input.rows = [];
+        input.decisions.entries.push({ ...input.decisions.entries[0], action: 'EXCLUDE_ROW' });
+        input.manifest.decisionsSha256 = hashSourceDecisions(input.decisions);
+        input.excluded.push(
+          ...[1, 2].map(() => ({
+            source: row.source,
+            sourceKey: null,
+            reason: 'EXCLUDE_ROW' as const,
+          })),
+        );
+      } else
+        input.excluded.push({
+          source: row.source,
+          sourceKey: fault === 'lone copy' ? row.sourceKey : 'bad',
+          reason: 'IDENTICAL_FILE_COPY',
+        });
+      await expectBlockedBeforeBatch(input);
+    },
+  );
+  it.each(['keep row excluded', 'wrong canonical link', 'valid duplicate and copies'] as const)(
+    '%s',
+    async (variant) => {
+      const input = await salesInput();
+      const keep = input.rows[0],
+        duplicate = keep.source.row + 1;
+      const selection = input.decisions.entries[0];
+      selection.sourceRows = [keep.source.row, duplicate];
+      input.decisions.entries.push({
+        ...selection,
+        action: 'REPORT_DUPLICATE',
+        keepRow: keep.source.row,
+      });
+      input.manifest.decisionsSha256 = hashSourceDecisions(input.decisions);
+      const excluded = {
+        source: { ...keep.source, row: duplicate },
+        sourceKey: keep.sourceKey,
+        reason: 'REPORT_DUPLICATE' as const,
+      };
+      if (variant === 'keep row excluded') {
+        input.rows[0] = { ...keep, source: excluded.source };
+        input.excluded.push({ ...excluded, source: keep.source });
+      } else
+        input.excluded.push({
+          ...excluded,
+          sourceKey: variant === 'wrong canonical link' ? 'wrong' : keep.sourceKey,
+        });
+      if (variant !== 'valid duplicate and copies') return expectBlockedBeforeBatch(input);
+      input.excluded.push(
+        { ...excluded, reason: 'IDENTICAL_FILE_COPY' },
+        { ...excluded, source: keep.source, reason: 'IDENTICAL_FILE_COPY' },
+      );
+      const plan = await buildImportPlan(db, input);
+      expect(plan.issues).toEqual([]);
+      expect(await applyBatch(db, plan, fixtureSalesWriter)).toMatchObject({
+        created: 1,
+        excluded: 3,
+      });
+    },
+  );
+});
+
+describe('source group evidence', () => {
+  it.each(['missing SKU', 'unexpected device SKU', 'negative units', 'valid accessory'] as const)(
+    'checks %s',
+    async (variant) => {
+      const input: Extract<CanonicalInput, { kind: 'STOCK' }> = await stockInput(db);
+      const totals = { units: variant === 'negative units' ? -1 : 1, cost: '20.00' };
+      input.sourceSummary = {
+        kind: 'STOCK',
+        reported: totals,
+        detail: totals,
+        delta: { units: 0, cost: '0.00' },
+        groups: [
+          {
+            branchId: input.rows[0].branchId,
+            kind: variant === 'unexpected device SKU' ? 'DEVICE' : 'ACCESSORY',
+            skuHash: variant === 'missing SKU' ? null : hashImportValue('sku'),
+            totals,
+          },
+        ],
+        evidenceFileSha256s: [input.rows[0].source.fileSha256],
+      };
+      expect((await buildImportPlan(db, input)).reconciliationSnapshot.cannotVerifySource).toBe(
+        variant !== 'valid accessory',
+      );
+    },
+  );
+  it.each([
+    ['more bills than lines', 4, 2, 2],
+    ['zero bills in a nonempty group', 2, 0, 2],
+    ['below a group count', 1, 2, 1],
+    ['above all grouped bills', 3, 1, 1],
+    ['negative bills', -1, -1, -1],
+    ['overlapping bills', 2, 2, 1],
+  ] as const)('checks %s', async (label, bills, a, b) => {
+    const input = await salesInput();
+    const zero = {
+      bills: 0,
+      lines: 0,
+      costTotal: '0.00',
+      listPrice: '0.00',
+      salePrice: '0.00',
+      profit: '0.00',
+    };
+    const total = { ...zero, bills, lines: 3 };
+    input.sourceSummary = {
+      kind: 'SALES',
+      reported: total,
+      detail: total,
+      delta: zero,
+      groups: [
+        {
+          month: '2026-11',
+          branchId: input.manifest.files[0].branchId!,
+          channel: 'CASH',
+          totals: { ...zero, bills: a, lines: 2 },
+        },
+        {
+          month: '2026-11',
+          branchId: input.manifest.files[0].branchId!,
+          channel: 'OTHER',
+          totals: { ...zero, bills: b, lines: 1 },
+        },
+      ],
+      evidenceFileSha256s: [input.rows[0].source.fileSha256],
+    };
+    expect((await buildImportPlan(db, input)).reconciliationSnapshot.cannotVerifySource).toBe(
+      label !== 'overlapping bills',
+    );
+  });
+});
+
 describe('DB-backed dry-run', () => {
   it('matches_existing_imei_without_legacy_prefix', async () => {
     const input = await stockInput(db);
@@ -364,6 +512,24 @@ describe('DB-backed dry-run', () => {
       ]),
     );
     await expect(applyBatch(db, plan, createFixtureTarget)).rejects.toThrow();
+  });
+  it.each(['indisvalid', 'indisready'])('refuses a matching index with %s=false', async (flag) => {
+    const input = await stockInput(db);
+    // Simulate an interrupted concurrent build without modifying the database's system catalogs.
+    const actualQueries = new Proxy(db, {
+      get(target, prop) {
+        if (prop !== '$queryRaw') return Reflect.get(target, prop);
+        return async (sql: TemplateStringsArray, ...args: unknown[]) => {
+          const rows = await db.$queryRaw<Record<string, unknown>[]>(sql, ...args);
+          return rows.map((r) =>
+            r.indexname === 'product_prices_one_default' ? { ...r, [flag]: false } : r,
+          );
+        };
+      },
+    });
+    await expect(assertImportDatabase(actualQueries, input.expectedDbIdentity)).rejects.toThrow(
+      'IMPORT_SCHEMA_INDEX_MISMATCH',
+    );
   });
   it('retains production partial unique indexes', async () => {
     const indexes = await db.$queryRaw<

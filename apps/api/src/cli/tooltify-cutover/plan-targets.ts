@@ -98,6 +98,7 @@ async function findStockTargets(db: Db, item: PlannedStockItem) {
     where: {
       identityHash: identityHash(item),
       batchId: { not: item.batchId },
+      batch: { deletedAt: null, status: { not: 'ROLLED_BACK' } },
       targetType: 'PRODUCT',
       deletedAt: null,
       reversedAt: null,
@@ -190,10 +191,34 @@ async function evaluateStock(db: Db, item: PlannedStockItem): Promise<PlannedSto
 
   const targets = await findStockTargets(db, item);
   let target: (typeof targets)[number] | undefined = targets[0];
+  let claimedIdentities: string[] = [];
   if (raw.kind === 'ACCESSORY') {
     const assignments = accessoryMapping?.assignments ?? [];
     const assigned = assignments.find((a) => a.row === raw.source.row);
     target = targets.find((p) => p.id === assigned?.targetId);
+    if (target) {
+      // Earlier Tooltify stock writes numbered units within a SKU, including SKUs containing hyphens.
+      const legacySku = /^TTFY-(.+)-[0-9]+$/.exec(target.legacyProductCode ?? '')?.[1];
+      const claims = await db.tooltifyImportItem.findMany({
+        where: {
+          targetId: target.id,
+          targetType: 'PRODUCT',
+          batch: { deletedAt: null, status: { not: 'ROLLED_BACK' } },
+          reversedAt: null,
+          deletedAt: null,
+          disposition: { in: ['CREATE', 'MATCH'] },
+        },
+        distinct: ['identityHash'],
+        select: { identityHash: true },
+        orderBy: { identityHash: 'asc' },
+      });
+      claimedIdentities = claims.map((c) => c.identityHash);
+      if (
+        (legacySku !== undefined && legacySku !== raw.barcode) ||
+        claimedIdentities.some((key) => key !== identityHash(item))
+      )
+        reason = 'ACCESSORY_TARGET_IDENTITY_CONFLICT';
+    }
     if (
       !assigned ||
       (assigned.targetId && !target) ||
@@ -261,7 +286,14 @@ async function evaluateStock(db: Db, item: PlannedStockItem): Promise<PlannedSto
     reason,
     disposition: reason ? 'CONFLICT' : target ? 'MATCH' : 'CREATE',
     targetId: target?.id ?? null,
-    dependencyFingerprint: hash({ branch, template, targets, reason, resolution }),
+    dependencyFingerprint: hash({
+      branch,
+      template,
+      targets,
+      claimedIdentities,
+      reason,
+      resolution,
+    }),
   };
 }
 

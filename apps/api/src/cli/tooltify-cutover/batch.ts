@@ -56,6 +56,11 @@ async function persistItem(tx: Db, item: PlannedItem, applyItem: Writer) {
       ? 'tooltify-bill:' + hash(item.payload.orderNumber)
       : 'tooltify-unit:' + identityHash(item),
   );
+  if (item.kind === 'STOCK' && item.payload.kind === 'ACCESSORY' && item.targetId) {
+    // Distinct SKU/sets can name the same previously unmarked Product. Serialize on its ID and
+    // re-read the indexed receipt predicate inside this serializable transaction before claiming it.
+    await lock(tx, 'tooltify-product-claim:' + item.targetId);
+  }
   // A competing importer may have committed while this SERIALIZABLE transaction waited for
   // the advisory lock. Locking the versioned progress row forces a retry before the callback.
   await tx.$queryRaw`SELECT id FROM tooltify_import_batches WHERE id=${item.batchId} FOR UPDATE`;

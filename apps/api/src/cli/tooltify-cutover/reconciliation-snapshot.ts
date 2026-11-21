@@ -144,6 +144,41 @@ function canonicalGroups(
   return { kind, groups, totals: summarizeStock(stock) };
 }
 
+function feasibleSourceGroups(source: NonNullable<ReconciliationSnapshot['source']>): boolean {
+  if (!source.reported || !source.detail || !source.groups) return false;
+  if (source.kind === 'STOCK') {
+    const validUnits = (total: { units: number | null }) =>
+      total.units !== null && total.units >= 0;
+    return (
+      validUnits(source.reported) &&
+      validUnits(source.detail) &&
+      source.groups.every(
+        (g) =>
+          validUnits(g.totals) &&
+          (g.kind === 'ACCESSORY' ? g.skuHash !== null : g.skuHash === null),
+      )
+    );
+  }
+  const possible = (t: { lines: number | null; bills: number | null }) =>
+    t.lines !== null &&
+    t.bills !== null &&
+    t.lines >= 0 &&
+    t.bills >= 0 &&
+    t.bills <= t.lines &&
+    (t.bills === 0) === (t.lines === 0);
+  if (
+    !possible(source.reported) ||
+    !possible(source.detail) ||
+    !source.groups.every((g) => possible(g.totals))
+  )
+    return false;
+  const counts = source.groups.map((g) => g.totals.bills!);
+  // A distinct bill may appear in several groups. A union contains at least the largest
+  // group and at most their sum. An empty set of groups can only represent zero bills.
+  const overall = source.detail.bills!;
+  return counts.every((n) => n <= overall) && overall <= counts.reduce((sum, n) => sum + n, 0);
+}
+
 export function buildReconciliationSnapshot(
   input: CanonicalInput,
   items: PlannedItem[],
@@ -192,6 +227,7 @@ export function buildReconciliationSnapshot(
       complete(detail) &&
       complete(delta) &&
       groups.every((g) => complete(g.totals)) &&
+      feasibleSourceGroups(source) &&
       dimensions.length === new Set(dimensions).size &&
       balanced
     );

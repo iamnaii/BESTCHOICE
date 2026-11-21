@@ -9521,8 +9521,6 @@ model EquityAttachment {
   @@map("equity_attachments")
 }
 
-/// ยอดขายย้อนหลังที่นำเข้าจากระบบภายนอก (import แรก = Tooltify) — สถิติดูอย่างเดียว
-/// Immutable import snapshot — updatedAt/deletedAt intentionally omitted (reverse = DELETE by importBatch)
 model TooltifyImportBatch {
   id                     String                      @id @default(uuid())
   canonicalSetId         String                      @map("canonical_set_id")
@@ -9581,6 +9579,8 @@ model TooltifyImportStatusEvent {
   @@map("tooltify_import_status_events")
 }
 
+/// ยอดขายย้อนหลังที่นำเข้าจากระบบภายนอก (import แรก = Tooltify) — สถิติดูอย่างเดียว
+/// Immutable import snapshot — updatedAt/deletedAt intentionally omitted (reverse = DELETE by importBatch)
 model ImportedSale {
   id              String   @id @default(uuid())
   /// Server importer must explicitly supply immutable provenance; labels never establish origin.

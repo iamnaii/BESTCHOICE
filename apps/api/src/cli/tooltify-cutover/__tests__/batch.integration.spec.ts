@@ -2,7 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import { afterAll, expect, it, vi } from 'vitest';
 import { applyBatch } from '../batch';
 import { buildImportPlan, stockTargetFingerprint } from '../plan';
-import { hashSourceDecisions } from '../canonicalize';
+import { hashImportValue, hashSourceDecisions } from '../canonicalize';
 import type { CanonicalInput } from '../types';
 import { createFixtureTarget, productData, stockInput } from './preflight-fixtures';
 
@@ -120,6 +120,63 @@ it('persists excluded source evidence once across concurrent apply attempts', as
   expect(exclusion.sourceRefs).toEqual([
     { ...row.source, reason: 'EXCLUDE_ROW', canonicalSourceKey: null },
   ]);
+});
+it('refuses contradictory numbered markers and serializes distinct SKU claims on a single target', async () => {
+  const seed = await stockInput(db);
+  const product = await db.product.create({
+    data: {
+      ...productData(seed.rows[0]),
+      category: 'ACCESSORY',
+      imeiSerial: null,
+      legacyProductCode: 'TTFY-SKU-B-1',
+    },
+  });
+  const inputFor = (sku: string, set: string): CanonicalInput => {
+    const input = structuredClone(seed),
+      row = input.rows[0];
+    input.manifest.canonicalSetId += set;
+    row.kind = 'ACCESSORY';
+    row.category = 'ACCESSORY';
+    row.barcode = sku;
+    row.sourceKey = hashImportValue([
+      input.manifest.canonicalSetId,
+      row.source.fileSha256,
+      row.source.sheet,
+      row.source.row,
+      1,
+    ]);
+    input.decisions.entries.push({
+      ...input.decisions.entries[0],
+      action: 'MAP_ACCESSORY_UNITS',
+      sku,
+      checkedQuantity: 1,
+      assignments: [{ row: row.source.row, targetId: product.id }],
+    });
+    input.manifest.decisionsSha256 = hashSourceDecisions(input.decisions);
+    return input;
+  };
+  const a = inputFor('SKU-A', '-1'),
+    b = inputFor('SKU-B', '-2');
+  expect((await buildImportPlan(db, a)).items[0].disposition).toBe('CONFLICT');
+  expect((await buildImportPlan(db, b)).items[0].disposition).toBe('MATCH');
+  await db.product.update({ where: { id: product.id }, data: { legacyProductCode: null } });
+  const plans = await Promise.all([buildImportPlan(db, a), buildImportPlan(db, b)]);
+  expect(plans.map((p) => p.items[0].disposition)).toEqual(['MATCH', 'MATCH']);
+  const results = await Promise.allSettled(
+    plans.map((p) => applyBatch(db, p, createFixtureTarget)),
+  );
+  expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+  const claimed = await db.tooltifyImportItem.findMany({ where: { targetId: product.id } });
+  expect(claimed).toHaveLength(1);
+  const winner = claimed[0].batchId === plans[0].batchId ? 'SKU-A' : 'SKU-B';
+  const incompatible = await buildImportPlan(
+    db,
+    inputFor(winner === 'SKU-A' ? 'SKU-B' : 'SKU-A', '-3'),
+  );
+  expect(incompatible.items[0].disposition).toBe('CONFLICT');
+  expect(await buildImportPlan(db, inputFor(winner, '-4'))).toMatchObject({
+    items: [{ disposition: 'MATCH' }],
+  });
 });
 it('does not swallow a new conflicting identity', async () => {
   const input = await stockInput(db);

@@ -36,8 +36,13 @@ export async function assertImportDatabase(db: Db, expected: string) {
   const identity = await readImportDatabaseIdentity(db);
   if (!expected || expected !== identity.fingerprint)
     throw Error('IMPORT_DATABASE_IDENTITY_MISMATCH');
-  const indexes = await db.$queryRaw<{ indexname: string; indexdef: string }[]>`
-    SELECT indexname,indexdef FROM pg_indexes WHERE schemaname=current_schema() AND indexname IN
+  const indexes = await db.$queryRaw<
+    { indexname: string; indexdef: string; indisvalid: boolean; indisready: boolean }[]
+  >`
+    SELECT c.relname AS indexname, pg_get_indexdef(c.oid) AS indexdef, i.indisvalid, i.indisready
+    FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class c ON c.oid=i.indexrelid
+    JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+    WHERE n.nspname=current_schema() AND c.relname IN
       ('products_imei_serial_active_unique','product_prices_one_default','imported_sales_source_barcode_order_number_sold_at_key')`;
   const needs: Record<string, string> = {
     products_imei_serial_active_unique:
@@ -51,6 +56,8 @@ export async function assertImportDatabase(db: Db, expected: string) {
     indexes.length !== 3 ||
     indexes.some(
       (i) =>
+        !i.indisvalid ||
+        !i.indisready ||
         !i.indexdef.startsWith('CREATE UNIQUE INDEX ') ||
         !i.indexdef.endsWith('.' + needs[i.indexname]),
     )
@@ -322,30 +329,101 @@ function inputIssues(input: CanonicalInput) {
         issue('ACCESSORY_MAPPING_REQUIRED', row.source);
     }
   }
-  for (const e of input.excluded) {
-    const evidence = decisions.entries.filter(
-      (d) => d.fileSha256 === e.source.fileSha256 && d.sourceRows.includes(e.source.row),
-    );
-    const file = manifest.files.find((f) => f.sha256 === e.source.fileSha256);
-    if (
-      !file ||
-      file.storeKey !== e.source.storeKey ||
-      (e.reason !== 'IDENTICAL_FILE_COPY' && !evidence.some((d) => d.action === e.reason))
-    )
-      issue('UNPROVEN_EXCLUSION', e.source);
-  }
-  // Selected evidence enumerates physical rows. An upstream caller cannot silently omit one.
-  const accounted = new Set(
-    [...input.rows, ...input.excluded].map((r) => hash([r.source.fileSha256, r.source.row])),
+  issues.push(...sourceAccountingIssues(input));
+  return issues;
+}
+
+function sourceAccountingIssues(input: CanonicalInput): ImportPlan['issues'] {
+  const issues: ImportPlan['issues'] = [];
+  type PhysicalEntry = {
+    source: CanonicalStockUnit['source'];
+    sourceKey: string | null;
+    reason?: CanonicalInput['excluded'][number]['reason'];
+  };
+  const physical = (sha: string, row: number) => hash([sha, row]);
+  const primary = new Map<string, PhysicalEntry>();
+  const kind = input.kind === 'STOCK' ? 'STOCK_SNAPSHOT' : 'SALES';
+  const files = new Map(
+    input.manifest.files.filter((f) => f.kind === kind).map((f) => [f.sha256, f]),
   );
-  for (const d of decisions.entries) {
-    const file = manifest.files.find((f) => f.sha256 === d.fileSha256);
-    if (file?.kind !== (input.kind === 'STOCK' ? 'STOCK_SNAPSHOT' : 'SALES')) continue;
+  const issue = (code: string, source: PhysicalEntry['source'] | null) =>
+    issues.push({ code, message: code, source });
+  const retainedStores = new Map<string, string>();
+  for (const r of input.rows) retainedStores.set(r.sourceKey, r.source.storeKey);
+  // Decisions address a physical row in the file. Its worksheet/store must also agree on every copy.
+  for (const entry of [
+    ...input.rows,
+    ...input.excluded.filter((e) => e.reason !== 'IDENTICAL_FILE_COPY'),
+  ]) {
+    const { source } = entry,
+      key = physical(source.fileSha256, source.row);
+    if (primary.has(key)) issue('MULTIPLE_PRIMARY_DISPOSITIONS', source);
+    else primary.set(key, entry);
+  }
+
+  for (const e of input.excluded) {
+    const { source } = e;
+    if (
+      files.get(source.fileSha256)?.storeKey !== source.storeKey ||
+      !source.sheet ||
+      !Number.isSafeInteger(source.row) ||
+      source.row < 1
+    ) {
+      issue('UNPROVEN_EXCLUSION', source);
+      continue;
+    }
+    if (e.reason === 'IDENTICAL_FILE_COPY') {
+      const original = primary.get(physical(source.fileSha256, source.row));
+      if (
+        !original ||
+        original.source.sheet !== source.sheet ||
+        original.source.storeKey !== source.storeKey ||
+        original.sourceKey !== e.sourceKey
+      )
+        issue('UNPROVEN_FILE_COPY', source);
+      continue;
+    }
+    const evidence = input.decisions.entries.filter(
+      (d) =>
+        d.fileSha256 === source.fileSha256 &&
+        d.action === e.reason &&
+        d.sourceRows.includes(source.row),
+    );
+    if (
+      evidence.length !== 1 ||
+      (e.sourceKey !== null && retainedStores.get(e.sourceKey) !== source.storeKey)
+    )
+      issue('UNPROVEN_EXCLUSION', source);
+  }
+
+  for (const d of input.decisions.entries) {
+    if (!files.has(d.fileSha256)) continue;
+    if (d.action === 'REPORT_DUPLICATE') {
+      const keep = primary.get(physical(d.fileSha256, d.keepRow));
+      if (
+        input.kind !== 'SALES' ||
+        !keep ||
+        keep.reason ||
+        !keep.sourceKey ||
+        !d.sourceRows.includes(d.keepRow) ||
+        d.sourceRows.length < 2 ||
+        d.sourceRows.some((row) => {
+          if (row === d.keepRow) return false;
+          const linked = primary.get(physical(d.fileSha256, row));
+          return (
+            linked?.reason !== 'REPORT_DUPLICATE' ||
+            linked.sourceKey !== keep.sourceKey ||
+            linked.source.sheet !== keep.source.sheet
+          );
+        })
+      )
+        issue('INVALID_REPORT_DUPLICATE_LINK', keep?.source ?? null);
+    }
     if (
       ['SELECT_SNAPSHOT', 'SELECT_SALES', 'EXCLUDE_ROW', 'EXCLUDE_FILE'].includes(d.action) &&
-      d.sourceRows.some((r) => !accounted.has(hash([d.fileSha256, r])))
+      d.sourceRows.some((row) => !primary.has(physical(d.fileSha256, row)))
     )
-      issue('UNACCOUNTED_SOURCE_ROW');
+      issue('UNACCOUNTED_SOURCE_ROW', null);
   }
   return issues;
 }

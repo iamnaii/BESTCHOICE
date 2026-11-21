@@ -1,8 +1,19 @@
 import { execFileSync } from 'node:child_process';
-import { copyFile, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import {
+  copyFile,
+  cp,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rename,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
 import { transpileModule, ModuleKind, ScriptTarget } from 'typescript';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { afterAll, expect, it, vi } from 'vitest';
 import { seedShopCoa } from '../../../../prisma/seed-coa-shop';
@@ -479,7 +490,8 @@ it('blocks an already-admitted writer that has read the live product but not com
 
 it('attests the writer and tracked dependencies across process start, static imports, reversal and replay', async () => {
   const { plan, productId } = await imported();
-  const dir = await mkdtemp(join(tmpdir(), 'tooltify-rollback-revision-'));
+  const sandbox = await mkdtemp(join(tmpdir(), 'tooltify-rollback-revision-'));
+  const dir = join(sandbox, 'checkout');
   const src = join(dir, 'apps/api/src/cli/tooltify-cutover');
   const git = (...args: string[]) =>
     execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8' }).trim();
@@ -514,29 +526,34 @@ it('attests the writer and tracked dependencies across process start, static imp
     return JSON.parse(output);
   };
   try {
-    await mkdir(src, { recursive: true });
+    const apiSource = resolve(__dirname, '../../..');
+    // Keep the production writer's relative imports inside its reviewed fixture.
+    for (const name of [
+      'cli/tooltify-cutover',
+      'modules/imported-sales',
+      'modules/products',
+      'utils',
+    ]) {
+      await cp(join(apiSource, name), join(dir, 'apps/api/src', name), {
+        recursive: true,
+        filter: (path) => basename(path) !== '__tests__',
+      });
+    }
     await symlink(
       resolve(__dirname, '../../../../../../node_modules'),
       join(dir, 'node_modules'),
       'dir',
     );
     const writer =
-      (await readFile(resolve(__dirname, '../rollback.ts'), 'utf8')) +
-      "\nexport const fixtureSource = 'A';\n";
+      (await readFile(join(src, 'rollback.ts'), 'utf8')) + "\nexport const fixtureSource = 'A';\n";
     await writeFile(join(src, 'rollback.ts'), writer);
-    await copyFile(
-      resolve(__dirname, '../checkout-revision.ts'),
-      join(src, 'checkout-revision.ts'),
-    );
-    for (const name of ['plan', 'rollback-references'])
-      await symlink(resolve(__dirname, '../' + name + '.ts'), join(src, name + '.ts'));
+    await symlink('rollback.ts', join(src, 'writer-link.ts'));
     // This dependency runs after Node read the writer bytes, before its initializer.
+    const canonicalize = join(src, 'canonicalize.ts');
     await writeFile(
-      join(src, 'canonicalize.ts'),
-      "export const fixtureDependency = 'clean';\n" +
-        'globalThis.tooltifyFixtureImportHook?.();\nexport * from ' +
-        JSON.stringify(resolve(__dirname, '../canonicalize.ts')) +
-        ';\n',
+      canonicalize,
+      (await readFile(canonicalize, 'utf8')) +
+        "\nexport const fixtureDependency = 'clean';\nglobalThis.tooltifyFixtureImportHook?.();\n",
     );
     await writeFile(join(dir, '.gitignore'), 'node_modules\nplans/\ncompiled.cjs\n');
     git('init', '-q');
@@ -559,6 +576,25 @@ it('attests the writer and tracked dependencies across process start, static imp
     const reviewedB = await planRollback(db, plan.batchId, git('rev-parse', 'HEAD'));
     expect(raced.reviewed.planHash).toBe(reviewedB.planHash);
     await writeFile(planB, JSON.stringify(reviewedB));
+    // Restore an entire ancestor during the import. Both trees contain reviewed B
+    // bytes, and the saved tree and its leaves already exist before process start.
+    const sourceTree = join(dir, 'apps/api/src'),
+      saved = join(dir, 'plans', 'reviewed-src'),
+      writerPath = join(src, 'rollback.ts');
+    const original = await stat(writerPath, { bigint: true });
+    await rename(sourceTree, saved);
+    await cp(saved, sourceTree, { recursive: true, verbatimSymlinks: true });
+    expect((await stat(writerPath, { bigint: true })).ino).not.toBe(original.ino);
+    const restored = await run('directory-restore', planB);
+    expect(await stat(writerPath, { bigint: true })).toMatchObject({
+      ino: original.ino,
+      mtimeNs: original.mtimeNs,
+      ctimeNs: original.ctimeNs,
+    });
+    expect(git('rev-parse', 'HEAD')).toBe(reviewedB.codeRevision);
+    expect(git('status', '--porcelain')).toBe('');
+    expect(restored).toMatchObject({ error: 'ROLLBACK_FRESH_PROCESS_REQUIRED' });
+    expect(await state()).toEqual(initial);
     for (const [scenario, error, file] of [
       ['dependency-race', 'ROLLBACK_FRESH_PROCESS_REQUIRED', planB],
       ['loaded-dirty', 'CLEAN_REVIEWED_CHECKOUT_REQUIRED', planB],
@@ -578,7 +614,9 @@ it('attests the writer and tracked dependencies across process start, static imp
       expect(await state()).toEqual(initial);
     }
     await rm(join(src, 'untracked.ts'));
-    expect(await run('fresh', planB)).toMatchObject({
+    const applied = await run('unrelated-sibling', planB);
+    expect(applied.error).toBeUndefined();
+    expect(applied).toMatchObject({
       source: 'B',
       receipt: { products: 1, codeRevision: reviewedB.codeRevision },
     });
@@ -597,10 +635,17 @@ it('attests the writer and tracked dependencies across process start, static imp
     expect(await run('ref-race', planB, linked)).toMatchObject({
       error: 'ROLLBACK_FRESH_PROCESS_REQUIRED',
     });
+    // An external tracked source link cannot be attested by this checkout.
+    await symlink(join(src, 'rollback.ts'), join(linked, 'outside-writer.ts'));
+    git('-C', linked, 'add', 'outside-writer.ts');
+    git('-C', linked, 'commit', '-qm', 'External source link');
+    expect(await run('fresh', planB, linked)).toMatchObject({
+      error: 'ROLLBACK_FRESH_PROCESS_REQUIRED',
+    });
 
     expect(await run('move', planB)).toMatchObject({ error: 'ROLLBACK_FRESH_PROCESS_REQUIRED' });
     expect(await state()).toEqual(reversed);
   } finally {
-    await rm(dir, { recursive: true, force: true });
+    await rm(sandbox, { recursive: true, force: true });
   }
 }, 30000);

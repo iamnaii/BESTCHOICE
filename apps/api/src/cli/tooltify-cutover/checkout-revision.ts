@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
-import { lstatSync, realpathSync, statSync, type Stats } from 'node:fs';
+import { lstatSync, readlinkSync, realpathSync, type Stats } from 'node:fs';
 import { performance } from 'node:perf_hooks';
-import { join } from 'node:path';
+import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 
 // Node reads module bytes before evaluating their imports. A clean HEAD observed
 // during evaluation can therefore postdate the code in memory. A rollback runtime
@@ -15,26 +15,48 @@ function assertRollbackProcessFresh(root: string, git: (...args: string[]) => st
   const restart = () => Error('ROLLBACK_FRESH_PROCESS_REQUIRED');
   try {
     if (!Number.isFinite(before) || before > Date.now()) throw restart();
-    const files = execFileSync('git', ['-C', root, 'ls-files', '-z'], {
+    // The operator keeps these root locations fixed for the process lifetime.
+    // A linked checkout can have a separate administrative and common directory.
+    const roots = [
+      realpathSync(root),
+      realpathSync(git('rev-parse', '--absolute-git-dir')),
+      realpathSync(git('rev-parse', '--path-format=absolute', '--git-common-dir')),
+    ].sort((a, b) => a.length - b.length);
+    const checked = new Set<string>();
+    function checkPath(path: string, required = true): boolean {
+      if (checked.has(path)) return true;
+      const absolute = resolve(path);
+      const owner = roots.find((base) => absolute === base || absolute.startsWith(base + sep));
+      if (!owner) throw restart();
+      // A moved directory can contain entirely old leaves. Check the ancestry
+      // to the outermost owning root, including that root, once per pass.
+      if (path !== owner) checkPath(dirname(path), required);
+      const info = lstatSync(path, { throwIfNoEntry: false });
+      if (!info && !required) return false;
+      if (!info || !predatesProcess(info)) throw restart();
+      checked.add(path);
+      if (info.isSymbolicLink()) {
+        checkPath(realpathSync(path));
+        // Preserve '..' when checking intermediate links in the stored target.
+        const target = readlinkSync(path);
+        checkPath(isAbsolute(target) ? target : dirname(path) + sep + target);
+      }
+      return true;
+    }
+    const files = execFileSync('git', ['--no-optional-locks', '-C', root, 'ls-files', '-z'], {
       encoding: 'utf8',
       maxBuffer: 16 * 1024 * 1024,
     });
     for (const name of files.split('\0')) {
-      if (!name) continue;
-      const path = join(root, name),
-        info = lstatSync(path);
-      if (!predatesProcess(info) || (info.isSymbolicLink() && !predatesProcess(statSync(path))))
-        throw restart();
+      if (name) checkPath(join(root, name));
     }
     const ref = git('rev-parse', '--symbolic-full-name', 'HEAD');
     const metadata = (name: string) =>
       git('rev-parse', '--path-format=absolute', '--git-path', name);
-    if (!predatesProcess(statSync(metadata('HEAD')))) throw restart();
-    const seen = (name: string) => {
-      const info = statSync(metadata(name), { throwIfNoEntry: false });
-      if (info && !predatesProcess(info)) throw restart();
-      return !!info;
-    };
+    checkPath(join(root, '.git'));
+    checkPath(metadata('HEAD'));
+    const seen = (name: string) => checkPath(metadata(name), false);
+    seen('commondir');
     seen('logs/HEAD');
     const packed = seen('packed-refs');
     const reftable = seen('reftable/tables.list');
@@ -56,7 +78,9 @@ export function readCheckoutRevision(
     | 'apps/api/src/cli/tooltify-cutover/rollback.ts' = 'apps/api/src/cli/tooltify-cutover.cli.ts',
 ) {
   const git = (...args: string[]) =>
-    execFileSync('git', ['-C', checkout, ...args], {
+    // A status index refresh creates index.lock and changes the Git directory
+    // that rollback must attest. Keep these read operations free of that lock.
+    execFileSync('git', ['--no-optional-locks', '-C', checkout, ...args], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
     }).trim();

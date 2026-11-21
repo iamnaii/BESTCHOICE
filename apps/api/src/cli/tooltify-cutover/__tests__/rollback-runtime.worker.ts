@@ -1,7 +1,7 @@
 // Child process for the real-checkout fixture. The parent owns the temporary Git
 // repository. Only this worker holds a client in the isolated DB during freeze.
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { frozen, harnessClient } from './rollback-fixtures';
@@ -25,6 +25,15 @@ async function main() {
   const original = readFileSync(dependency, 'utf8');
   const scope = globalThis as typeof globalThis & { tooltifyFixtureImportHook?: () => void };
   if (scenario === 'race') scope.tooltifyFixtureImportHook = () => moveCheckout('B');
+  if (scenario === 'unrelated-sibling')
+    scope.tooltifyFixtureImportHook = () => writeFileSync(join(repo, '..', 'sibling'), 'fixture');
+  if (scenario === 'directory-restore') {
+    scope.tooltifyFixtureImportHook = () => {
+      const sourceTree = join(repo, 'apps/api/src');
+      renameSync(sourceTree, join(repo, 'plans', 'loaded-src'));
+      renameSync(join(repo, 'plans', 'reviewed-src'), sourceTree);
+    };
+  }
   if (scenario === 'ref-race')
     scope.tooltifyFixtureImportHook = () => git('commit', '--allow-empty', '-qm', 'Ref only');
   if (scenario === 'dependency-race') {

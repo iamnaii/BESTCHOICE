@@ -6,7 +6,8 @@ import { hashImportValue as hash, hashSourceDecisions } from './canonicalize';
 import {
   evaluateItem,
   identityHash,
-  readSaleOrigins,
+  readSaleOriginsFor,
+  type SaleOrigins,
   salesTargetFingerprint,
   stockTargetFingerprint,
   sourceRefJson,
@@ -80,6 +81,7 @@ export async function replayItem(
   db: Db,
   item: PlannedItem,
   receipt: TooltifyImportItem,
+  origins?: SaleOrigins,
 ): Promise<PlannedItem> {
   const targetType = item.kind === 'STOCK' ? 'PRODUCT' : 'IMPORTED_SALE';
   if (
@@ -107,11 +109,9 @@ export async function replayItem(
   };
   if (item.kind === 'SALES') {
     if (receipt.disposition === 'MATCH') {
-      const sale = await db.importedSale.findUniqueOrThrow({
-        where: { id: receipt.targetId },
-        select: { id: true, importBatch: true, barcode: true, orderNumber: true, soldAt: true },
-      });
-      const origin = (await readSaleOrigins(db, [sale])).get(sale.id);
+      const origin = (origins ?? (await readSaleOriginsFor(db, { id: receipt.targetId }))).get(
+        receipt.targetId,
+      );
       if (!origin) throw Error('UNPROVEN_SALE_ORIGIN');
       if (origin.branchId !== item.branchId || origin.storeKey !== item.payload.sourceStoreKey)
         throw Error('SALE_ORIGIN_BRANCH_CONFLICT');
@@ -481,6 +481,13 @@ export async function buildImportPlan(
         throw Error('IMPORT_BATCH_INPUT_CHANGED');
       const batchId = batch?.id ?? randomUUID();
       const receipts = new Map(batch?.items.map((r) => [r.sourceKey, r]));
+      const origins =
+        input.kind === 'SALES'
+          ? await readSaleOriginsFor(tx, {
+              source: 'TOOLTIFY',
+              orderNumber: { in: [...new Set(input.rows.map((r) => r.orderNumber))] },
+            })
+          : undefined;
       const items: PlannedItem[] = [];
       for (const row of input.rows) {
         const entries = input.decisions.entries.filter(
@@ -503,26 +510,12 @@ export async function buildImportPlan(
                 reason: null,
               };
         const receipt = receipts.get(row.sourceKey);
-        const item = receipt ? await replayItem(tx, draft, receipt) : await evaluateItem(tx, draft);
+        const item = receipt
+          ? await replayItem(tx, draft, receipt, origins)
+          : await evaluateItem(tx, draft, origins);
         items.push(item);
         if (item.reason)
           issues.push({ source: row.source, code: item.reason, message: item.reason });
-      }
-      const matches = items.filter(
-        (i) => i.kind === 'SALES' && i.disposition === 'MATCH' && i.targetId,
-      );
-      if (matches.length) {
-        const targets = await tx.importedSale.findMany({
-          where: { id: { in: matches.map((i) => i.targetId!) } },
-          select: { id: true, importBatch: true, barcode: true, orderNumber: true, soldAt: true },
-        });
-        const verified = await readSaleOrigins(tx, targets, true);
-        for (const item of matches)
-          if (!verified.has(item.targetId!)) {
-            item.reason = 'UNPROVEN_SALE_ORIGIN';
-            item.disposition = 'CONFLICT';
-            issues.push({ code: item.reason, message: item.reason, source: item.payload.source });
-          }
       }
       const excluded = input.excluded.map((e, index) => ({
         ...e,

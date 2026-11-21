@@ -342,7 +342,6 @@ export async function readSaleOrigins(
     orderNumber: string;
     soldAt: Date;
   }[],
-  verifyFrozen = false,
 ) {
   const origins = new Map<string, { branchId: string; storeKey: string }>();
   if (!sales.length) return origins;
@@ -363,20 +362,18 @@ export async function readSaleOrigins(
   });
   // Verify once per owning batch in whole-plan and reconciliation reads. The row writer
   // rechecks its reviewed target/owner dependency in each serializable item transaction.
-  const evidence = verifyFrozen
-    ? await db.tooltifyImportItem.findMany({
-        where: { batchId: { in: owners.map((b) => b.id) }, reversedAt: null, deletedAt: null },
-        select: {
-          batchId: true,
-          sourceKey: true,
-          disposition: true,
-          payloadHash: true,
-          identityHash: true,
-          sourceRefs: true,
-          targetId: true,
-        },
-      })
-    : [];
+  const evidence = await db.tooltifyImportItem.findMany({
+    where: { batchId: { in: owners.map((b) => b.id) }, reversedAt: null, deletedAt: null },
+    select: {
+      batchId: true,
+      sourceKey: true,
+      disposition: true,
+      payloadHash: true,
+      identityHash: true,
+      sourceRefs: true,
+      targetId: true,
+    },
+  });
   const byOwner = new Map<string, typeof evidence>();
   for (const receipt of evidence) {
     const rows = byOwner.get(receipt.batchId) ?? [];
@@ -393,11 +390,7 @@ export async function readSaleOrigins(
       !Array.isArray(snapshot.files)
     )
       continue;
-    if (
-      verifyFrozen &&
-      receiptDigest(byOwner.get(owner.id) ?? []) !== snapshot.expectedReceiptsHash
-    )
-      continue;
+    if (receiptDigest(byOwner.get(owner.id) ?? []) !== snapshot.expectedReceiptsHash) continue;
     filesByOwner.set(owner.id, snapshot.files);
   }
   const targets = new Map(sales.map((s) => [s.id, s]));
@@ -446,7 +439,23 @@ export async function readSaleOrigins(
   return origins;
 }
 
-async function evaluateSales(db: Db, item: PlannedSalesItem): Promise<PlannedSalesItem> {
+export type SaleOrigins = Awaited<ReturnType<typeof readSaleOrigins>>;
+
+// A bulk check is local to the transaction in which it is read. Item transactions
+// start independently and must establish the complete owning receipt set again.
+export async function readSaleOriginsFor(db: Db, where: Prisma.ImportedSaleWhereInput) {
+  const sales = await db.importedSale.findMany({
+    where,
+    select: { id: true, importBatch: true, barcode: true, orderNumber: true, soldAt: true },
+  });
+  return readSaleOrigins(db, sales);
+}
+
+async function evaluateSales(
+  db: Db,
+  item: PlannedSalesItem,
+  origins?: SaleOrigins,
+): Promise<PlannedSalesItem> {
   const row = item.payload;
   const branch = await readBranch(db, item.branchId);
   const bill = await db.importedSale.findMany({
@@ -477,7 +486,7 @@ async function evaluateSales(db: Db, item: PlannedSalesItem): Promise<PlannedSal
   const target = existing
     ? await db.importedSale.findUniqueOrThrow({ where: { id: existing.id } })
     : null;
-  const origin = target ? (await readSaleOrigins(db, [target])).get(target.id) : null;
+  const origin = target ? (origins ?? (await readSaleOrigins(db, [target]))).get(target.id) : null;
   let reason: string | null = null;
   if (!validBranch(branch)) reason = 'INVALID_SHOP_BRANCH';
   else if (row.occurrence !== 1) reason = 'UNSUPPORTED_SALES_MULTIPLICITY';
@@ -499,6 +508,10 @@ async function evaluateSales(db: Db, item: PlannedSalesItem): Promise<PlannedSal
   };
 }
 
-export function evaluateItem(db: Db, item: PlannedItem): Promise<PlannedItem> {
-  return item.kind === 'STOCK' ? evaluateStock(db, item) : evaluateSales(db, item);
+export function evaluateItem(
+  db: Db,
+  item: PlannedItem,
+  origins?: SaleOrigins,
+): Promise<PlannedItem> {
+  return item.kind === 'STOCK' ? evaluateStock(db, item) : evaluateSales(db, item, origins);
 }

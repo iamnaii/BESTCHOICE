@@ -359,18 +359,36 @@ export function cliDependencies(
           : null;
       if (!selected) throw Error('SOURCE_KIND_REQUIRED_OR_MISSING');
       const plan = await buildImportPlan(client(), selected);
+      // The source loader shares upstream diagnostics across kinds. Keep source-free
+      // upstream issues global and mark genuinely kind-specific planner findings.
+      const shared = new Set(selected.issues);
+      const key = (i: ImportPlan['issues'][number]) =>
+        hashImportValue([i.kind ?? null, i.code, i.source]);
+      const known = new Set<string>();
+      const append = (issue: ImportPlan['issues'][number], kind: SourceKind) => {
+        const scoped = shared.has(issue) || issue.kind ? issue : { ...issue, kind };
+        const id = key(scoped);
+        if (!known.has(id)) {
+          known.add(id);
+          plan.issues.push(scoped);
+        }
+      };
+      const selectedIssues = plan.issues;
+      plan.issues = [];
+      for (const issue of selectedIssues) append(issue, selected.kind);
       for (const other of inputs.filter((i) => i !== selected)) {
         const sibling = await buildImportPlan(client(), other);
         if (sibling.issues.length || !hasVerifiedSource(sibling.reconciliationSnapshot)) {
-          plan.issues.push(
-            ...sibling.issues.map((issue) => ({ ...issue, kind: issue.kind ?? sibling.kind })),
+          for (const issue of sibling.issues) append(issue, sibling.kind);
+          append(
+            {
+              kind: sibling.kind,
+              code: 'COMPANION_SOURCE_BLOCKED',
+              source: null,
+              message: 'COMPANION_SOURCE_BLOCKED',
+            },
+            sibling.kind,
           );
-          plan.issues.push({
-            kind: sibling.kind,
-            code: 'COMPANION_SOURCE_BLOCKED',
-            source: null,
-            message: 'COMPANION_SOURCE_BLOCKED',
-          });
         }
       }
       return plan;

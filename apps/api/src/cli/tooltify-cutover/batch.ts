@@ -3,6 +3,8 @@ import { assertImportDatabase, computePlanHash, replayItem } from './plan';
 import {
   assertCreatedTarget,
   evaluateItem,
+  readSaleOriginsFor,
+  type SaleOrigins,
   identityHash,
   sourceRefJson,
   salesTargetFingerprint,
@@ -39,11 +41,13 @@ async function lockBatch(tx: Db, plan: ImportPlan) {
   return batch;
 }
 
-async function checkItem(tx: Db, item: PlannedItem) {
+async function checkItem(tx: Db, item: PlannedItem, origins?: SaleOrigins) {
   const receipt = await tx.tooltifyImportItem.findUnique({
     where: { batchId_sourceKey: { batchId: item.batchId, sourceKey: item.sourceKey } },
   });
-  const current = receipt ? await replayItem(tx, item, receipt) : await evaluateItem(tx, item);
+  const current = receipt
+    ? await replayItem(tx, item, receipt, origins)
+    : await evaluateItem(tx, item, origins);
   if (current.reason || hash(current) !== hash(item)) throw Error('IMPORT_DEPENDENCY_CHANGED');
   return receipt;
 }
@@ -171,9 +175,19 @@ export async function applyBatch(
     async (tx) => {
       await assertImportDatabase(tx, plan.dbIdentity);
       const existing = await lockBatch(tx, plan);
+      const matchIds = plan.items.flatMap((i) =>
+        i.kind === 'SALES' && i.disposition === 'MATCH' && i.targetId ? [i.targetId] : [],
+      );
+      const origins = matchIds.length
+        ? await readSaleOriginsFor(tx, { id: { in: matchIds } })
+        : undefined;
       // Reject a stale dry-run before allocating a durable batch or writing any targets.
       for (const item of plan.items) {
-        const receipt = await checkItem(tx, { ...item, batchId: existing?.id ?? plan.batchId });
+        const receipt = await checkItem(
+          tx,
+          { ...item, batchId: existing?.id ?? plan.batchId },
+          origins,
+        );
         if (!receipt && (existing?.status === 'APPLIED' || existing?.status === 'VERIFIED'))
           throw Error('IMPORT_ITEM_RECEIPT_MISSING');
       }

@@ -331,7 +331,8 @@ export function buildReconciliationSnapshot(
   return {
     version: 1,
     cannotVerifySource:
-      cannotVerifySource || input.issues.some((i) => i.code === 'STOCK_SUMMARY_MISMATCH'),
+      cannotVerifySource ||
+      (input.kind === 'STOCK' && input.issues.some((i) => i.code === 'STOCK_SUMMARY_MISMATCH')),
     uniquePhysicalRows:
       input.uniquePhysicalRows === undefined
         ? ((source?.kind === 'SALES' ? source.detail?.lines : source?.detail?.units) ?? null)

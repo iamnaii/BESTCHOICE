@@ -847,7 +847,15 @@ it.each([false, true])(
         report: (x: unknown) => messages.push(x),
       };
       expect(await runCutover(['--source-kind', 'sales', '--manifest', path], deps)).toBe(1);
-      const message = messages[0] as { issues: unknown[]; planHash: string };
+      const message = messages[0] as {
+        issues: { code: string }[];
+        planHash: string;
+        sourceVerified: boolean;
+      };
+      expect(message.sourceVerified).toBe(true);
+      expect(message.issues.filter((i) => i.code === 'STOCK_SUMMARY_MISMATCH')).toHaveLength(
+        files.length,
+      );
       expect(message.issues).toContainEqual(
         expect.objectContaining({ kind: 'STOCK', code: 'COMPANION_SOURCE_BLOCKED' }),
       );
@@ -884,5 +892,73 @@ it.each([false, true])(
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  },
+);
+
+it.each(['fresh', 'resume', 'after preflight'] as const)(
+  'rejects a changed original CREATE row before writing a reviewed MATCH and new sale (%s)',
+  async (phase) => {
+    const source = await input(),
+      owner = await buildImportPlan(db, source);
+    await applyBatch(db, owner, writer);
+    const newLine = { ...source.rows[1], orderNumber: randomUUID() };
+    newLine.sourceKey = saleSourceKey(newLine, 1);
+    const mixed = {
+      ...source,
+      rows: [source.rows[0], newLine],
+      manifest: { ...source.manifest, canonicalSetId: randomUUID() },
+    };
+    let reviewed = await buildImportPlan(db, mixed);
+    expect(reviewed.items.map((i) => i.disposition)).toEqual(['MATCH', 'CREATE']);
+    if (phase === 'resume') {
+      await expect(
+        applyBatch(db, reviewed, async () => {
+          throw Error('interrupted after MATCH');
+        }),
+      ).rejects.toThrow('interrupted');
+      reviewed = await buildImportPlan(db, mixed);
+      expect(
+        await db.tooltifyImportItem.count({
+          where: { batchId: reviewed.batchId, disposition: 'MATCH' },
+        }),
+      ).toBe(1);
+    }
+    const tamper = () =>
+      db.tooltifyImportItem.update({
+        where: {
+          batchId_sourceKey: { batchId: owner.batchId, sourceKey: source.rows[0].sourceKey },
+        },
+        data: { sourceRefs: [{ ...source.rows[0].source, row: 101 }] },
+      });
+    let client = db;
+    if (phase === 'after preflight') {
+      // Change only the original receipt between the committed preflight transaction
+      // and the SERIALIZABLE transaction that would accept this MATCH.
+      let first = true;
+      client = new Proxy(db, {
+        get(target, key) {
+          if (key !== '$transaction') return Reflect.get(target, key);
+          return async (
+            fn: Parameters<typeof db.$transaction>[0],
+            opts?: Parameters<typeof db.$transaction>[1],
+          ) => {
+            const result = await target.$transaction(fn, opts);
+            if (first) {
+              first = false;
+              await tamper();
+            }
+            return result;
+          };
+        },
+      });
+    } else await tamper();
+    await expect(applyBatch(client, reviewed, writer)).rejects.toThrow();
+    const batch = await db.tooltifyImportBatch.findUnique({ where: { id: reviewed.batchId } });
+    if (phase === 'fresh') expect(batch).toBeNull();
+    else expect(batch?.status).toBe('FAILED');
+    expect(await db.tooltifyImportItem.count({ where: { batchId: reviewed.batchId } })).toBe(
+      phase === 'resume' ? 1 : 0,
+    );
+    expect(await db.importedSale.count({ where: { orderNumber: newLine.orderNumber } })).toBe(0);
   },
 );

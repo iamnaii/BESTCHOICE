@@ -195,7 +195,7 @@ async function readReconciliation(
     (batch.kind === 'SALES' ? productMap.size : saleMap.size) !== 0
   )
     issues.add('TARGET_SET_MISMATCH');
-  const origins = await readSaleOrigins(tx, sales, true);
+  const origins = await readSaleOrigins(tx, sales);
   const branches = new Map(snapshot.files.map((f) => [f.fileSha256, f.branchId]));
   const stockRows: Parameters<typeof aggregateStock>[0] = [],
     saleRows: Parameters<typeof aggregateSales>[0] = [],

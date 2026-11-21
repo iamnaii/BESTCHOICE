@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs';
 import { spawnSync } from 'node:child_process';
-import { copyFile, mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { inspectFiles } from '../inspect';
@@ -88,7 +88,7 @@ describe('Tooltify source inspection', () => {
     return writeWorkbook(name, [['รายการขาย ( ' + rows.length + ' )'], SALES_COLUMNS, ...rows]);
   }
 
-  it('counts byte-identical renamed copies once and retains both basenames', async () => {
+  it('counts byte-identical renamed copies once and retains both opaque aliases', async () => {
     const original = await writeSales();
     const copy = join(dir, 'renamed-copy.xlsx');
     await copyFile(original, copy);
@@ -96,7 +96,7 @@ describe('Tooltify source inspection', () => {
     const report = await inspectFiles([original, copy]);
     expect(report.files).toHaveLength(1);
     expect(report.files[0]).toMatchObject({
-      fileNames: [SALE_NAME, 'renamed-copy.xlsx'],
+      inputs: [{ alias: 'input-1' }, { alias: 'input-2' }],
       sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
       sourceRowCount: 1,
     });
@@ -149,6 +149,32 @@ describe('Tooltify source inspection', () => {
       }),
     ]);
     expect(JSON.stringify(report)).not.toContain(stockRow[0]);
+  });
+
+  it('counts snapshot detail rows on both sides of an empty Excel row', async () => {
+    const stockRow = [
+      '123456789012345',
+      'fixture-name',
+      'iPhone มือ 1',
+      'fixture-store',
+      '',
+      0,
+      '2026-11-17 10:00:00',
+      'fixture-seller',
+      8000,
+      1,
+    ];
+    const path = await writeWorkbook('report_stock_2026-11-18_first.xlsx', [
+      STOCK_COLUMNS,
+      stockRow,
+      [],
+      stockRow,
+    ]);
+    const report = await inspectFiles([path]);
+
+    expect(report.files[0].sourceRowCount).toBe(2);
+    expect(report.files[0].rows.map(({ row }) => row)).toEqual([2, 4]);
+    expect(report.duplicateRows[0].rows.map(({ row }) => row)).toEqual([2, 4]);
   });
 
   it('reports an identical sales line pair without exposing cell values', async () => {
@@ -285,6 +311,134 @@ describe('Tooltify source inspection', () => {
     );
   });
 
+  it('rejects swapped manifest hashes for equal basenames in two directories', async () => {
+    await mkdir(join(dir, 'left'));
+    await mkdir(join(dir, 'right'));
+    const left = await writeSales('left/' + SALE_NAME);
+    const right = await writeSales('right/' + SALE_NAME, [saleRow('2026-11-18', 'other-bill')]);
+    const report = await inspectFiles([left, right]);
+    const { manifest, decisions } = salesManifest([left, right], report);
+    manifest.files[0].path = right;
+    manifest.files[1].path = left;
+
+    expect(validateManifest(manifest, report, decisions)).toContainEqual(
+      expect.objectContaining({ code: 'FILE_HASH_MISMATCH' }),
+    );
+  });
+
+  it.each(['REPORT_DUPLICATE', 'DISTINCT_UNITS'] as const)(
+    'rejects %s decisions targeting two different bills',
+    async (action) => {
+      const source = await writeSales(SALE_NAME, [saleRow(), saleRow('2026-11-18', 'other-bill')]);
+      const report = await inspectFiles([source]);
+      const { manifest, decisions } = salesManifest([source], report);
+      decisions.entries[0].sourceRows = [3, 4];
+      const evidence = {
+        fileSha256: report.files[0].sha256,
+        sourceRows: [3, 4],
+        reason: 'Synthetic evidence for the decision',
+        evidenceRef: 'fixture-record/bill-quantity',
+      };
+      decisions.entries.push(
+        action === 'REPORT_DUPLICATE'
+          ? { ...evidence, action, keepRow: 3 }
+          : { ...evidence, action },
+      );
+      manifest.decisionsSha256 = hashSourceDecisions(decisions);
+
+      expect(validateManifest(manifest, report, decisions)).toContainEqual(
+        expect.objectContaining({ code: 'UNMATCHED_SALES_DUPLICATE_DECISION' }),
+      );
+    },
+  );
+
+  it('compares an identical selected pair independently of an excluded conflicting export', async () => {
+    const first = await writeSales(SALE_NAME, [saleRow(), saleRow()]);
+    const changedAmount = saleRow();
+    changedAmount[10] = 20;
+    const second = await writeSales('report_export_stock_2026-11-18_to_2026-11-30_other.xlsx', [
+      changedAmount,
+    ]);
+    const report = await inspectFiles([first, second]);
+    const { manifest, decisions } = salesManifest([first, second], report);
+    decisions.entries[0].sourceRows = [3, 4];
+    decisions.entries[1] = {
+      action: 'EXCLUDE_FILE',
+      fileSha256: report.files[1].sha256,
+      sourceRows: [3],
+      reason: 'Fixture canonical selection for the competing export',
+      evidenceRef: 'fixture-record/verified-export',
+    };
+    decisions.entries.push({
+      action: 'REPORT_DUPLICATE',
+      keepRow: 3,
+      fileSha256: report.files[0].sha256,
+      sourceRows: [3, 4],
+      reason: 'Fixture confirms a single item on the source bill',
+      evidenceRef: 'fixture-record/bill-quantity',
+    });
+    manifest.decisionsSha256 = hashSourceDecisions(decisions);
+
+    expect(report.duplicateRows[0].identical).toBe(false);
+    expect(validateManifest(manifest, report, decisions)).toEqual([]);
+  });
+
+  it('keeps identical line keys from separate verified export origins independent', async () => {
+    const first = await writeSales();
+    const second = await writeWorkbook('report_export_stock_2026-11-18_to_2026-11-30_other.xlsx', [
+      ['รายการขาย ( 1 )'],
+      SALES_COLUMNS,
+      [...saleRow().slice(0, 12), 'another-fixture-seller', saleRow()[13]],
+    ]);
+    const report = await inspectFiles([first, second]);
+    const { manifest, decisions } = salesManifest([first, second], report);
+    const secondOrigin = { branchId: 'second-fixture-branch', storeKey: 'second-fixture-store' };
+    Object.assign(manifest.files[1], secondOrigin);
+    manifest.history!.push({ ...manifest.history![0], branchId: secondOrigin.branchId });
+    Object.assign(decisions.entries[1], secondOrigin);
+    manifest.decisionsSha256 = hashSourceDecisions(decisions);
+
+    expect(validateManifest(manifest, report, decisions)).toEqual([]);
+  });
+
+  it.each(['referenced', 'separate same-origin'])(
+    'does not let an excluded sale substantiate a zero day in a %s export',
+    async (evidenceSource) => {
+      const sold = await writeSales();
+      const zeroExport =
+        evidenceSource === 'referenced'
+          ? sold
+          : await writeSales('report_export_stock_2026-11-18_to_2026-11-30_zero.xlsx', []);
+      const paths = [...new Set([sold, zeroExport])];
+      const report = await inspectFiles(paths);
+      const { manifest, decisions } = salesManifest(paths, report);
+      decisions.entries = [
+        {
+          action: 'EXCLUDE_FILE',
+          fileSha256: report.files[0].sha256,
+          sourceRows: [3],
+          reason: 'Exclude the fixture sale',
+          evidenceRef: 'fixture-record/exclusion',
+        },
+        {
+          action: 'ZERO_SALES',
+          fileSha256: report.files[report.files.length - 1].sha256,
+          sourceRows: [],
+          branchId: 'fixture-branch',
+          reportFrom: '2026-11-18',
+          reportTo: '2026-11-18',
+          reason: 'Conflicting synthetic zero day claim',
+          evidenceRef: 'fixture-record/zero-day',
+        },
+      ];
+      manifest.decisionsSha256 = hashSourceDecisions(decisions);
+
+      expect(validateManifest(manifest, report, decisions)).toContainEqual(
+        expect.objectContaining({ code: 'INVALID_ZERO_SALES_PERIOD' }),
+      );
+    },
+  );
+
   it('rejects an unobserved history day without evidence of zero sales', async () => {
     const source = await writeSales();
     const report = await inspectFiles([source]);
@@ -371,13 +525,44 @@ describe('Tooltify source inspection', () => {
     expect(report.files[0]).toMatchObject({ kind: 'SALES', sourceRowCount: 1, issues: [] });
   });
 
+  it('writes diagnostics and exits nonzero for recognized sales with missing columns', async () => {
+    const source = await writeWorkbook(SALE_NAME, [
+      ['รายการขาย ( 1 )'],
+      ['ชื่อสินค้า'],
+      ['fixture-name'],
+    ]);
+    const output = join(dir, 'private-output');
+    const cli = resolve(__dirname, '../../tooltify-cutover.cli.ts');
+    const result = spawnSync(process.execPath, [
+      '--import',
+      'tsx',
+      cli,
+      'inspect',
+      '--out-dir',
+      output,
+      source,
+    ]);
+
+    expect(result.status).toBe(1);
+    const report = JSON.parse(await readFile(join(output, 'inspection.json'), 'utf8'));
+    expect(report.files[0].issues).toContainEqual(
+      expect.objectContaining({ code: 'UNRECOGNIZED_COLUMNS' }),
+    );
+    expect(await readFile(join(output, 'inspection.csv'), 'utf8')).toContain(
+      'section_observed_rows',
+    );
+  });
+
   it('writes private JSON and CSV through the CLI without a database', async () => {
     const source = await writeSales();
+    const privateAliasText = 'fixture-secret-in-a-filename';
+    const alias = join(dir, privateAliasText + '.xlsx');
+    await copyFile(source, alias);
     const output = join(dir, 'private-output');
     const cli = resolve(__dirname, '../../tooltify-cutover.cli.ts');
     const result = spawnSync(
       process.execPath,
-      ['--import', 'tsx', cli, 'inspect', '--out-dir', output, source],
+      ['--import', 'tsx', cli, 'inspect', '--out-dir', output, source, alias],
       { env: { ...process.env, DATABASE_URL: 'postgresql://invalid/database' }, encoding: 'utf8' },
     );
 
@@ -387,9 +572,13 @@ describe('Tooltify source inspection', () => {
       const path = join(output, name);
       const data = await readFile(path, 'utf8');
       expect((await stat(path)).mode & 0o777).toBe(0o600);
-      expect(data).toContain(SALE_NAME);
+      expect(data).toContain('input-1');
+      expect(data).toContain('input-2');
+      expect(data).not.toContain(SALE_NAME);
+      expect(data).not.toContain(dir);
       expect(data).toContain('2026-11-18T16:36:21+07:00');
-      for (const value of PRIVATE_VALUES) expect(data + result.stdout).not.toContain(value);
+      for (const value of [...PRIVATE_VALUES, privateAliasText])
+        expect(data + result.stdout).not.toContain(value);
     }
   });
 });

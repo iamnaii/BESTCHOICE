@@ -1,9 +1,8 @@
 import { createHash } from 'node:crypto';
-import { basename } from 'node:path';
-import { isCalendarDay, overlap } from './inspect';
+import { inputPathSha256, isCalendarDay, overlap } from './inspect';
 import type {
   DateRange,
-  FileInspection,
+  FileRef,
   ImportIssue,
   InputManifest,
   InspectionReport,
@@ -102,7 +101,7 @@ export function validateManifest(
   }
 
   const inspected = new Map(inspection.files.map((file) => [file.sha256, file]));
-  const manifestHashes = new Set<string>();
+  const refsByHash = new Map<string, FileRef>();
   const usableDecisions = new Map<string, SourceDecision[]>();
   for (const decision of decisions.entries) {
     const file = inspected.get(decision.fileSha256);
@@ -137,15 +136,15 @@ export function validateManifest(
   const exclusions = new Map<string, Set<number>>();
   for (const ref of manifest.files) {
     const file = inspected.get(ref.sha256);
-    if (!file || !file.fileNames.includes(basename(ref.path))) {
-      issue('FILE_HASH_MISMATCH', 'ชื่อหรือ checksum ของไฟล์ใน manifest ไม่ตรงกับไฟล์ที่ตรวจ');
+    if (!file || !file.inputs.some(({ pathSha256 }) => pathSha256 === inputPathSha256(ref.path))) {
+      issue('FILE_HASH_MISMATCH', 'พาธหรือ checksum ของไฟล์ใน manifest ไม่ตรงกับไฟล์ที่ตรวจ');
       continue;
     }
-    if (manifestHashes.has(ref.sha256)) {
+    if (refsByHash.has(ref.sha256)) {
       issue('DUPLICATE_MANIFEST_FILE', 'manifest ระบุไฟล์เนื้อหาเดียวกันมากกว่าหนึ่งครั้ง');
       continue;
     }
-    manifestHashes.add(ref.sha256);
+    refsByHash.set(ref.sha256, ref);
     const entries = usableDecisions.get(ref.sha256) ?? [];
     const allRows = file.rows.map(({ row }) => row);
     if (
@@ -270,7 +269,7 @@ export function validateManifest(
       if (!finding.source || !excludeRows.has(finding.source.row)) issues.push(finding);
     }
   }
-  if (manifestHashes.size !== inspection.files.length) {
+  if (refsByHash.size !== inspection.files.length) {
     issue('UNLISTED_SOURCE_FILE', 'มีไฟล์ต้นทางที่ไม่มีขอบเขตใน manifest');
   }
 
@@ -286,33 +285,58 @@ export function validateManifest(
     }
   }
 
+  const matchedDuplicateDecisions = new Set<SourceDecision>();
   for (const duplicate of inspection.duplicateRows) {
-    // Snapshot duplicates must be corrected in the source before any row exclusions.
-    const rows = duplicate.rows.filter((source) =>
-      duplicate.kind === 'STOCK_IMEI'
-        ? selected.has(source.fileSha256)
-        : selected.get(source.fileSha256)?.has(source.row),
-    );
-    if (rows.length < 2) continue;
-    const first = rows[0];
     if (duplicate.kind === 'STOCK_IMEI') {
-      issue('DUPLICATE_SNAPSHOT_IMEI', 'IMEI ซ้ำในชุด snapshot ที่เลือก', first);
+      // Snapshot duplicates must be corrected in the source before any row exclusions.
+      const rows = duplicate.rows.filter(({ fileSha256 }) => selected.has(fileSha256));
+      if (rows.length > 1) {
+        issue('DUPLICATE_SNAPSHOT_IMEI', 'IMEI ซ้ำในชุด snapshot ที่เลือก', rows[0]);
+      }
       continue;
     }
-    const excluded = exclusions.get(first.fileSha256);
-    const matching = (usableDecisions.get(first.fileSha256) ?? []).filter(
-      (entry) =>
-        (entry.action === 'DISTINCT_UNITS' ||
-          (entry.action === 'REPORT_DUPLICATE' &&
-            duplicate.identical &&
-            entry.sourceRows.includes(entry.keepRow))) &&
-        sameRows(
-          entry.sourceRows,
-          rows.map(({ row }) => row),
-        ),
-    );
-    if (!rows.every(({ fileSha256 }) => fileSha256 === first.fileSha256) || matching.length !== 1) {
-      issue('UNRESOLVED_SALES_DUPLICATE', 'ชุดแถวซ้ำต้องเทียบกับบิลและจำนวนต้นทาง', first);
+
+    const byOrigin = new Map<string, SourceRef[]>();
+    for (const source of duplicate.rows) {
+      const ref = refsByHash.get(source.fileSha256);
+      if (!ref || !selected.get(source.fileSha256)?.has(source.row)) continue;
+      const rows = byOrigin.get(ref.storeKey) ?? [];
+      rows.push(source);
+      byOrigin.set(ref.storeKey, rows);
+    }
+    for (const rows of byOrigin.values()) {
+      if (rows.length < 2) continue;
+      const [first] = rows;
+      const hash = first.fileSha256;
+      const numbers = rows.map(({ row }) => row);
+      const excluded = exclusions.get(hash);
+      const matching = rows.every(({ fileSha256 }) => fileSha256 === hash)
+        ? (usableDecisions.get(hash) ?? []).filter((entry) => {
+            if (!sameRows(entry.sourceRows, numbers) || numbers.some((row) => excluded?.has(row))) {
+              return false;
+            }
+            if (entry.action === 'DISTINCT_UNITS') return true;
+            return (
+              entry.action === 'REPORT_DUPLICATE' &&
+              numbers.includes(entry.keepRow) &&
+              duplicate.equalRowGroups.some((equalRows) =>
+                rows.every(({ row }) =>
+                  equalRows.some((ref) => ref.fileSha256 === hash && ref.row === row),
+                ),
+              )
+            );
+          })
+        : [];
+      if (matching.length === 1) matchedDuplicateDecisions.add(matching[0]);
+      else issue('UNRESOLVED_SALES_DUPLICATE', 'ชุดแถวซ้ำต้องเทียบกับบิลและจำนวนต้นทาง', first);
+    }
+  }
+  for (const decision of decisions.entries) {
+    if (
+      (decision.action === 'REPORT_DUPLICATE' || decision.action === 'DISTINCT_UNITS') &&
+      !matchedDuplicateDecisions.has(decision)
+    ) {
+      issue('UNMATCHED_SALES_DUPLICATE_DECISION', 'หลักฐานตัดซ้ำไม่ตรงกับกลุ่มแถวขายที่เลือก');
     }
   }
 
@@ -335,7 +359,6 @@ export function validateManifest(
     coverageByBranch.set(history.branchId, range);
   }
   const zeroRanges = new Map<string, DateRange[]>();
-  const refsByHash = new Map(manifest.files.map((file) => [file.sha256, file]));
   for (const entries of usableDecisions.values()) {
     for (const entry of entries) {
       if (entry.action !== 'ZERO_SALES') continue;
@@ -355,9 +378,22 @@ export function validateManifest(
         source.kind !== 'SALES' ||
         !source.declaredRange ||
         !containsRange(source.declaredRange, range) ||
-        [...sales].some((day) => day >= range.start && day <= range.end)
+        source.issues.some(({ source, code }) => !source || code === 'INVALID_SOURCE_DATE') ||
+        [...sales].some((day) => day >= range.start && day <= range.end) ||
+        inspection.files.some(
+          (other) =>
+            other.kind === 'SALES' &&
+            refsByHash.get(other.sha256)?.storeKey === ref.storeKey &&
+            other.rows.some(({ occurredAt }) => {
+              const day = occurredAt && dateOnly(occurredAt);
+              return day && day >= range.start && day <= range.end;
+            }),
+        )
       ) {
-        issue('INVALID_ZERO_SALES_PERIOD', 'ช่วงยอดขายศูนย์ต้องตรงกับขอบเขตและไม่มีแถวขายที่เลือก');
+        issue(
+          'INVALID_ZERO_SALES_PERIOD',
+          'ช่วงยอดขายศูนย์ต้องตรงกับขอบเขตและไม่มีรายการขายต้นทางที่ขัดกับหลักฐาน',
+        );
         continue;
       }
       const ranges = zeroRanges.get(entry.branchId) ?? [];

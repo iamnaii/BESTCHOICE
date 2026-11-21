@@ -1,7 +1,7 @@
 import ExcelJS from 'exceljs';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { basename, extname } from 'node:path';
+import { basename, extname, resolve } from 'node:path';
 import { Readable } from 'node:stream';
 import { isImeiBarcode } from '../../modules/imported-sales/tooltify-stock-parser';
 import type { DateRange, FileInspection, InspectionReport, SourceRef } from './types';
@@ -171,7 +171,12 @@ function sectionLabel(value: string, nextRow: Cell[]): string | null {
 }
 
 function collectSections(rows: Cell[][]) {
-  const sections: { label: string; headerIndex: number; declaredRowCount: number | null }[] = [];
+  const sections: {
+    label: string;
+    startIndex: number;
+    headerIndex: number;
+    declaredRowCount: number | null;
+  }[] = [];
   rows.forEach((row, index) => {
     const values = row.map(text);
     const first = values[0];
@@ -182,14 +187,29 @@ function collectSections(rows: Cell[][]) {
         headerIndex++;
       const label = sectionLabel(title[1], rows[headerIndex] ?? []);
       if (label) {
-        sections.push({ label, headerIndex, declaredRowCount: Number(title[2].replace(/,/g, '')) });
+        sections.push({
+          label,
+          startIndex: index,
+          headerIndex,
+          declaredRowCount: Number(title[2].replace(/,/g, '')),
+        });
         return;
       }
     }
     if (first === BARCODE && STOCK_COLUMNS.every((column) => values.includes(column))) {
-      sections.push({ label: SNAPSHOT, headerIndex: index, declaredRowCount: null });
+      sections.push({
+        label: SNAPSHOT,
+        startIndex: index,
+        headerIndex: index,
+        declaredRowCount: null,
+      });
     } else if (first === 'ชื่อสินค้า' && index < 5 && values.includes('จำนวน')) {
-      sections.push({ label: STOCK_SUMMARY, headerIndex: index, declaredRowCount: null });
+      sections.push({
+        label: STOCK_SUMMARY,
+        startIndex: index,
+        headerIndex: index,
+        declaredRowCount: null,
+      });
     }
   });
   return sections;
@@ -243,19 +263,14 @@ async function inspectWorkbook(
   const bills = new Set<string>();
   const times: string[] = [];
 
-  for (const section of sections) {
+  for (const [sectionIndex, section] of sections.entries()) {
     const { label, headerIndex, declaredRowCount } = section;
     const headings = (rows[headerIndex] ?? []).map(text);
     const columns = headings.filter((value) => META_COLUMNS.includes(value));
-    const nextHeader =
-      sections.find((other) => other.headerIndex > headerIndex)?.headerIndex ?? rows.length;
+    const endIndex = sections[sectionIndex + 1]?.startIndex ?? rows.length;
     const data: { cells: Cell[]; row: number }[] = [];
-    for (
-      let index = headerIndex + 1;
-      index < nextHeader && rows[index].some((cell) => text(cell));
-      index++
-    ) {
-      data.push({ cells: rows[index], row: index + 1 });
+    for (let index = headerIndex + 1; index < endIndex; index++) {
+      if (rows[index].some((cell) => text(cell))) data.push({ cells: rows[index], row: index + 1 });
     }
     file.sections.push({
       label,
@@ -365,6 +380,11 @@ async function inspectWorkbook(
   }
 }
 
+// Fingerprint the full path so relative and absolute spellings resolve to the same input.
+export function inputPathSha256(path: string): string {
+  return createHash('sha256').update(resolve(path)).digest('hex');
+}
+
 export async function inspectFiles(paths: string[]): Promise<InspectionReport> {
   const report: InspectionReport = {
     version: 1,
@@ -374,22 +394,20 @@ export async function inspectFiles(paths: string[]): Promise<InspectionReport> {
     issues: [],
   };
   const byHash = new Map<string, FileInspection>();
+  const rangesByHash = new Map<string, DateRange[]>();
   const candidates: DuplicateCandidate[] = [];
 
-  for (const path of paths) {
+  for (const [index, path] of paths.entries()) {
+    const alias = 'input-' + (index + 1);
     try {
       if (extname(path).toLowerCase() !== '.xlsx') throw new Error();
       const bytes = await readFile(path);
       const sha256 = createHash('sha256').update(bytes).digest('hex');
-      const name = basename(path);
+      const input = { alias, pathSha256: inputPathSha256(path) };
       const existing = byHash.get(sha256);
-      if (existing) {
-        if (!existing.fileNames.includes(name)) existing.fileNames.push(name);
-        continue;
-      }
-      const file: FileInspection = {
+      const file: FileInspection = existing ?? {
         sha256,
-        fileNames: [name],
+        inputs: [],
         byteSize: bytes.length,
         kind: 'UNKNOWN',
         sheet: '',
@@ -403,28 +421,37 @@ export async function inspectFiles(paths: string[]): Promise<InspectionReport> {
         shopLabelGroups: [],
         issues: [],
       };
-      byHash.set(sha256, file);
-      try {
-        await inspectWorkbook(bytes, file, candidates);
-      } catch {
-        file.issues.push({
-          code: 'INVALID_WORKBOOK',
-          source: null,
-          message: 'อ่านโครงสร้างไฟล์ Excel ไม่ได้',
-        });
+      file.inputs.push(input);
+      if (!existing) {
+        byHash.set(sha256, file);
+        try {
+          await inspectWorkbook(bytes, file, candidates);
+        } catch {
+          file.issues.push({
+            code: 'INVALID_WORKBOOK',
+            source: null,
+            message: 'อ่านโครงสร้างไฟล์ Excel ไม่ได้',
+          });
+        }
+      }
+      const range = filenameRange(basename(path), file.kind);
+      if (range) {
+        const ranges = rangesByHash.get(sha256) ?? [];
+        ranges.push(range);
+        rangesByHash.set(sha256, ranges);
       }
     } catch {
       report.issues.push({
         code: 'UNREADABLE_FILE',
         source: null,
-        message: 'อ่านไฟล์ .xlsx ตามรายการที่ระบุไม่ได้',
+        message: 'อ่านไฟล์ .xlsx ตามรายการที่ระบุไม่ได้ ' + alias,
       });
     }
   }
 
   report.files = [...byHash.values()];
   for (const file of report.files) {
-    const ranges = file.fileNames.map((name) => filenameRange(name, file.kind)).filter(Boolean);
+    const ranges = rangesByHash.get(file.sha256) ?? [];
     const [range] = ranges;
     if (
       range &&
@@ -450,11 +477,19 @@ export async function inspectFiles(paths: string[]): Promise<InspectionReport> {
   for (const group of groups.values()) {
     if (group.length < 2) continue;
     const [first] = group;
-    const row = JSON.stringify(first.cells);
+    // Equal content is represented only by its source coordinates in the report.
+    const matches = new Map<string, SourceRef[]>();
+    for (const { cells, source } of group) {
+      const key = JSON.stringify(cells);
+      const equalRows = matches.get(key) ?? [];
+      equalRows.push(source);
+      matches.set(key, equalRows);
+    }
     report.duplicateRows.push({
       kind: first.kind,
-      identical: group.every((entry) => JSON.stringify(entry.cells) === row),
+      identical: matches.size === 1,
       rows: group.map((entry) => entry.source),
+      equalRowGroups: [...matches.values()].filter((entries) => entries.length > 1),
     });
   }
 

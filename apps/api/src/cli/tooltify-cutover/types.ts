@@ -61,7 +61,7 @@ export type SectionInspection = {
 };
 export type FileInspection = {
   sha256: string;
-  fileNames: string[];
+  inputs: { alias: string; pathSha256: string }[];
   byteSize: number;
   kind: FileRef['kind'] | 'UNKNOWN';
   sheet: string;
@@ -79,7 +79,12 @@ export type FileInspection = {
 export type InspectionReport = {
   version: 1;
   files: FileInspection[];
-  duplicateRows: { kind: 'STOCK_IMEI' | 'SALE_LINE_KEY'; identical: boolean; rows: SourceRef[] }[];
+  duplicateRows: {
+    kind: 'STOCK_IMEI' | 'SALE_LINE_KEY';
+    identical: boolean;
+    rows: SourceRef[];
+    equalRowGroups: SourceRef[][];
+  }[];
   salesOverlaps: {
     fileSha256s: [string, string];
     declaredRange: DateRange | null;

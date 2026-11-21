@@ -17,7 +17,7 @@ function inspectionCsv(report: InspectionReport): string {
   const rows: (string | number | null | undefined)[][] = [
     [
       'sha256',
-      'file_names',
+      'input_aliases',
       'bytes',
       'kind',
       'declared_from',
@@ -36,7 +36,7 @@ function inspectionCsv(report: InspectionReport): string {
   for (const file of report.files) {
     const summary = [
       file.sha256,
-      file.fileNames.join(' | '),
+      file.inputs.map(({ alias }) => alias).join(' | '),
       file.byteSize,
       file.kind,
       file.declaredRange?.start,
@@ -95,7 +95,12 @@ async function main(): Promise<void> {
   console.log(
     `ตรวจ ${report.files.length} ไฟล์ที่ checksum ต่างกัน เขียน inspection.json และ inspection.csv แล้ว`,
   );
-  if (report.issues.length || report.files.some(({ kind }) => kind === 'UNKNOWN')) {
+  if (
+    report.issues.length ||
+    report.files.some(
+      ({ kind, issues }) => kind === 'UNKNOWN' || issues.some(({ source }) => source === null),
+    )
+  ) {
     process.exitCode = 1;
   }
 }

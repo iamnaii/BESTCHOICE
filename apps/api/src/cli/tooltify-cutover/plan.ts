@@ -471,10 +471,10 @@ export async function buildImportPlan(
         include: { items: true },
       });
       const manifestHash = hash(manifest);
+      if (batch?.status === 'ROLLED_BACK') throw Error('ROLLED_BACK_NEW_INSPECTED_RUN_REQUIRED');
       if (
         batch &&
         (batch.deletedAt ||
-          batch.status === 'ROLLED_BACK' ||
           batch.manifestHash !== manifestHash ||
           batch.codeRevision !== codeRevision)
       )

@@ -77,7 +77,7 @@ export function hasVerifiedSource(s: ReconciliationSnapshot) {
     balanced(sourceDeltas(s))
   );
 }
-async function sideEffects(
+export async function scopedFinancialReferences(
   tx: Prisma.TransactionClient,
   batchId: string,
   createdProducts: string[],
@@ -286,7 +286,7 @@ async function readReconciliation(
     canonicalToTarget: subtract(snapshot.canonical, target),
   };
   if (!balanced(deltas.canonicalToTarget)) issues.add('TARGET_TOTALS_MISMATCH');
-  const effects = await sideEffects(
+  const effects = await scopedFinancialReferences(
     tx,
     batch.id,
     products

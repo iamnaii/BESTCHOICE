@@ -1,10 +1,11 @@
-import { mkdir, mkdtemp, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { open, mkdir, mkdtemp, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { realpathSync } from 'node:fs';
+import { constants } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { inspectFiles, inputPathSha256 } from './tooltify-cutover/inspect';
-import { execFileSync } from 'node:child_process';
+import { readCheckoutRevision } from './tooltify-cutover/checkout-revision';
 import { PrismaClient } from '@prisma/client';
+import { applyRollback, planRollback, parseReviewedRollback } from './tooltify-cutover/rollback';
 import { applyBatch } from './tooltify-cutover/batch';
 import { buildImportPlan, readImportDatabaseIdentity } from './tooltify-cutover/plan';
 import {
@@ -20,6 +21,8 @@ import type {
   ApplyReceipt,
   ImportPlan,
   ReconciliationReport,
+  RollbackPlan,
+  RollbackReceipt,
   InspectionReport,
 } from './tooltify-cutover/types';
 
@@ -141,6 +144,9 @@ export type CliDependencies = {
   apply(plan: ImportPlan): Promise<ApplyReceipt>;
   verify(batchId: string, planHash: string): Promise<ReconciliationReport>;
   reconcile(batchId: string, manifest: string): Promise<ReconciliationReport>;
+  rollbackPlan(id: string, manifest: string, write: boolean): Promise<RollbackPlan>;
+  readReviewedRollback(dir: string): Promise<RollbackPlan>;
+  rollback(plan: RollbackPlan, waiting: (state: unknown) => void): Promise<RollbackReceipt>;
   inspect(paths: string[], outDir: string, manifest?: string): Promise<number>;
   report(value: unknown): void;
   save?(dir: string, name: string, value: unknown): Promise<void>;
@@ -225,12 +231,12 @@ export async function runCutover(args: string[], deps: CliDependencies): Promise
         help: { type: 'boolean' },
       },
     });
-    const output = async (name: string, value: unknown) => {
+    const output = async (name: string, value: unknown, summary: unknown = value) => {
       if (v['out-dir']) {
         if (!deps.save) throw Error('PRIVATE_REPORT_WRITER_REQUIRED');
         await deps.save(v['out-dir'], name, value);
       }
-      deps.report(value);
+      deps.report(summary);
     };
     if (v.help) {
       deps.report({
@@ -239,6 +245,8 @@ export async function runCutover(args: string[], deps: CliDependencies): Promise
           '[dry-run|apply] --manifest FILE [--decisions FILE] [--source-kind sales|current-stock-snapshot]',
           'apply also requires --apply --plan-hash HASH, CONFIRM_TOOLTIFY_IMPORT, EXPECTED_DB_NAME and EXPECTED_DB_FINGERPRINT',
           'reconcile --manifest FILE --batch-id UUID',
+          'rollback-dry-run --manifest FILE --batch-id UUID --out-dir PRIVATE_DIR',
+          'rollback --manifest FILE --batch-id UUID --out-dir PRIVATE_DIR --apply --plan-hash ROLLBACK_HASH (requires import write confirmations and an offline PostgreSQL maintenance window)',
         ],
       });
       return 0;
@@ -255,9 +263,9 @@ export async function runCutover(args: string[], deps: CliDependencies): Promise
       return deps.inspect(paths, v['out-dir'], v.manifest);
     }
     if (!v.manifest || paths.length) throw Error('MANIFEST_REQUIRED');
-    if (mode === 'rollback' || mode === 'rollback-dry-run') throw Error('ROLLBACK_HANDLER_PENDING');
-    if (!['dry-run', 'apply', 'reconcile'].includes(mode)) throw Error('UNKNOWN_CUTOVER_MODE');
-    const write = mode === 'apply';
+    if (!['dry-run', 'apply', 'reconcile', 'rollback', 'rollback-dry-run'].includes(mode))
+      throw Error('UNKNOWN_CUTOVER_MODE');
+    const write = mode === 'apply' || mode === 'rollback';
     if (
       write &&
       (!v.apply ||
@@ -272,8 +280,48 @@ export async function runCutover(args: string[], deps: CliDependencies): Promise
     if (v['source-kind'] === 'sales') kind = 'SALES';
     else if (v['source-kind'] === 'current-stock-snapshot') kind = 'STOCK';
     else if (v['source-kind']) throw Error('UNKNOWN_SOURCE_KIND');
+    const reverse = mode === 'rollback' || mode === 'rollback-dry-run';
+    if (reverse && (!v['batch-id'] || !v['out-dir'] || v.decisions))
+      throw Error('ROLLBACK_BATCH_AND_PRIVATE_OUT_DIR_REQUIRED');
     const id = await deps.identity();
     await checkIdentity(id, deps.env, write, deps.verifySocket);
+    if (reverse) {
+      const plan = await deps.rollbackPlan(v['batch-id']!, v.manifest, write);
+      if (kind && plan.kind !== kind) throw Error('BATCH_KIND_MISMATCH');
+      if (plan.dbIdentity !== id.fingerprint) throw Error('EXPECTED_DB_FINGERPRINT_MISMATCH');
+      const reportName = write
+        ? 'rollback-apply-plan.json'
+        : plan.status === 'ROLLED_BACK'
+          ? 'rollback-status.json'
+          : 'rollback-plan.json';
+      await output(reportName, plan, {
+        operation: plan.operation,
+        batchId: plan.batchId,
+        planHash: plan.completedRollback?.planHash ?? plan.planHash,
+        status: plan.status,
+        ownedTargets: plan.targets.length,
+        blockers: plan.blockers,
+      });
+      if (plan.blockers.length) {
+        deps.report({ error: 'MANUAL_RECONCILIATION_REQUIRED', blockers: plan.blockers });
+        return 1;
+      }
+      if (write) {
+        const reviewed = await deps.readReviewedRollback(v['out-dir']!);
+        if (
+          v['plan-hash'] !== reviewed.planHash ||
+          reviewed.batchId !== plan.batchId ||
+          reviewed.dbIdentity !== plan.dbIdentity ||
+          reviewed.manifestHash !== plan.manifestHash ||
+          reviewed.codeRevision !== plan.codeRevision ||
+          (plan.status !== 'ROLLED_BACK' && plan.planHash !== reviewed.planHash)
+        )
+          throw Error('REVIEWED_ROLLBACK_PLAN_CHANGED');
+        const receipt = await deps.rollback(reviewed, (state) => deps.report(state));
+        await output('rollback-receipt.json', receipt);
+      }
+      return 0;
+    }
     if (mode === 'reconcile') {
       if (!v['batch-id']) throw Error('BATCH_ID_REQUIRED');
       const report = await deps.reconcile(v['batch-id'], v.manifest);
@@ -299,6 +347,9 @@ export async function runCutover(args: string[], deps: CliDependencies): Promise
     const message = e instanceof Error ? e.message : '';
     // Third-party exceptions may contain source paths, row payloads or connection strings.
     deps.report({
+      ...(message === 'TARGET_IN_USE' || message === 'TARGET_CHANGED'
+        ? { action: 'MANUAL_RECONCILIATION_REQUIRED' }
+        : {}),
       error: /^[A-Z][A-Z0-9_]{2,75}$/.test(message) ? message : 'CUTOVER_INPUT_OR_DATABASE_ERROR',
     });
     return 1;
@@ -306,23 +357,7 @@ export async function runCutover(args: string[], deps: CliDependencies): Promise
 }
 
 export function checkoutRevision(write: boolean, checkout = __dirname, entry = __filename) {
-  const git = (...args: string[]) =>
-    execFileSync('git', ['-C', checkout, ...args], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    }).trim();
-  if (write) {
-    const sourcePath = 'apps/api/src/cli/tooltify-cutover.cli.ts';
-    const tracked = git('ls-files', '--full-name', '--', ':(top)' + sourcePath);
-    if (
-      tracked !== sourcePath ||
-      realpathSync(entry) !== realpathSync(join(git('rev-parse', '--show-toplevel'), sourcePath))
-    )
-      throw Error('TRACKED_SOURCE_ENTRY_REQUIRED');
-  }
-  const clean = !git('status', '--porcelain', '--untracked-files=normal');
-  if (write && !clean) throw Error('CLEAN_REVIEWED_CHECKOUT_REQUIRED');
-  return git('rev-parse', 'HEAD') + (clean ? '' : '-dirty');
+  return readCheckoutRevision(write, checkout, entry);
 }
 
 export function cliDependencies(
@@ -399,6 +434,30 @@ export function cliDependencies(
         i.kind === 'SALES' ? writeSalesItem(tx, i) : writeStockItem(tx, i),
       );
     },
+    async rollbackPlan(batchId, path, write) {
+      const plan = await planRollback(client(), batchId, revision(write));
+      if (hashImportValue(await loadManifest(path)) !== plan.manifestHash)
+        throw Error('BATCH_MANIFEST_MISMATCH');
+      return plan;
+    },
+    async readReviewedRollback(dir) {
+      if (((await stat(dir)).mode & 0o077) !== 0) throw Error('PRIVATE_OUTPUT_DIRECTORY_REQUIRED');
+      const file = await open(
+        join(dir, 'rollback-plan.json'),
+        constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+      );
+      try {
+        const info = await file.stat();
+        if (!info.isFile() || info.mode & 0o077) throw Error('PRIVATE_REVIEWED_PLAN_REQUIRED');
+        return parseReviewedRollback(JSON.parse(await file.readFile('utf8')));
+      } finally {
+        await file.close();
+      }
+    },
+    rollback(plan, waiting) {
+      if (revision(true) !== plan.codeRevision) throw Error('CODE_REVISION_CHANGED');
+      return applyRollback(client(), plan, waiting);
+    },
     verify: (id, hash) => verifyAppliedBatch(client(), id, hash),
     async reconcile(batchId, path) {
       const batch = await client().tooltifyImportBatch.findUniqueOrThrow({
@@ -417,7 +476,14 @@ export function cliDependencies(
 }
 export async function cutoverMain(args = process.argv.slice(2), legacyKind?: SourceKind) {
   let db: PrismaClient | undefined;
-  const deps = cliDependencies(() => (db ??= new PrismaClient()));
+  const deps = cliDependencies(() => {
+    if (!db && args.includes('rollback')) {
+      const url = new URL(process.env.DATABASE_URL ?? '');
+      url.searchParams.set('connection_limit', '1');
+      db = new PrismaClient({ datasourceUrl: url.toString() });
+    }
+    return (db ??= new PrismaClient());
+  });
   try {
     if (
       legacyKind &&

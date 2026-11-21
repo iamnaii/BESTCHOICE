@@ -351,3 +351,37 @@ export type ReconciliationReport = {
   deltas: { sourceToCanonical: MetricDelta[] | null; canonicalToTarget: MetricDelta[] };
   sideEffects: Record<string, number>;
 };
+
+export type RollbackPlan = {
+  operation: 'ROLLBACK';
+  completedRollback?: { planHash: string; codeRevision: string };
+  batchId: string;
+  kind: 'STOCK' | 'SALES';
+  status: import('@prisma/client').TooltifyImportStatus;
+  manifestHash: string;
+  importPlanHash: string;
+  importRevision: string;
+  codeRevision: string;
+  dbIdentity: string;
+  receiptHash: string;
+  targets: {
+    itemId: string;
+    targetId: string;
+    expectedFingerprint: string;
+    currentFingerprint: string | null;
+  }[];
+  references: Record<string, number>;
+  blockers: string[];
+  planHash: string;
+};
+
+export type RollbackReceipt = Pick<
+  RollbackPlan,
+  'operation' | 'batchId' | 'planHash' | 'importPlanHash' | 'codeRevision' | 'dbIdentity'
+> & {
+  status: 'ROLLED_BACK';
+  products: number;
+  prices: number;
+  importedSales: number;
+  reversedItems: number;
+};

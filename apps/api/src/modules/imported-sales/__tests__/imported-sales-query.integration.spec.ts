@@ -391,6 +391,13 @@ it('requires VERIFIED SALES provenance and all historical SHOP branches for the 
   expect(
     (await read(() => service.summary({ ...q, barcode: '008802' }))).coverage.verifiedThrough,
   ).toBeNull();
-  await db.tooltifyImportBatch.update({ where: { id: owner }, data: { status: 'ROLLED_BACK' } });
+  await db.tooltifyImportBatch.update({
+    where: { id: owner },
+    data: {
+      status: 'ROLLED_BACK',
+      rollbackPlanHash: 'a'.repeat(64),
+      rollbackCodeRevision: 'b'.repeat(40),
+    },
+  });
   expect((await summary()).coverage).toEqual(observed);
 });

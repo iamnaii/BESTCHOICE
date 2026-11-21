@@ -30,12 +30,12 @@ function setKey(plan: ImportPlan) {
 async function lockBatch(tx: Db, plan: ImportPlan) {
   await lock(tx, 'tooltify-set:' + hash(setKey(plan)));
   const batch = await tx.tooltifyImportBatch.findUnique({ where: setKey(plan) });
+  if (batch?.status === 'ROLLED_BACK') throw Error('ROLLED_BACK_NEW_INSPECTED_RUN_REQUIRED');
   if (
     batch &&
     (batch.planHash !== plan.planHash ||
       batch.manifestHash !== plan.manifestHash ||
-      batch.deletedAt ||
-      batch.status === 'ROLLED_BACK')
+      batch.deletedAt)
   )
     throw Error('IMPORT_BATCH_INPUT_CHANGED');
   return batch;

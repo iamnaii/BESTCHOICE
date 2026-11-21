@@ -9536,6 +9536,8 @@ model TooltifyImportBatch {
   deletedAt              DateTime?                   @map("deleted_at")
   items                  TooltifyImportItem[]
   events                 TooltifyImportStatusEvent[]
+  rollbackPlanHash       String?                     @map("rollback_plan_hash")
+  rollbackCodeRevision   String?                     @map("rollback_code_revision")
 
   @@unique([canonicalSetId, kind])
   @@map("tooltify_import_batches")

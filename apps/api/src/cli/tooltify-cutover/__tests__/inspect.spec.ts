@@ -178,7 +178,6 @@ describe('Tooltify source inspection', () => {
         action: 'SELECT_SALES',
         fileSha256: file.sha256,
         sourceRows: [3],
-        sourceStoreGroup: 'row-3',
         storeKey: 'fixture-shop',
         branchId: 'fixture-branch',
         reportFrom: '2026-11-18',
@@ -220,6 +219,32 @@ describe('Tooltify source inspection', () => {
     const source = await writeSales();
     const report = await inspectFiles([source]);
     const { manifest, decisions } = salesManifest([source], report);
+    expect(validateManifest(manifest, report, decisions)).toEqual([]);
+  });
+
+  it('covers one originating store across blank and finance shop labels', async () => {
+    const blankLabel = saleRow('2026-11-18', 'first-fixture-bill');
+    blankLabel[4] = '-';
+    const financeLabel = saleRow('2026-11-19', 'second-fixture-bill');
+    financeLabel[4] = 'GFIN';
+    const source = await writeSales(SALE_NAME, [blankLabel, financeLabel]);
+    const report = await inspectFiles([source]);
+    const { manifest, decisions } = salesManifest([source], report);
+    manifest.cutoverAt = '2026-11-19T18:00:00+07:00';
+    manifest.history![0].reportTo = '2026-11-19';
+    const selection = decisions.entries[0];
+    if (selection.action !== 'SELECT_SALES') throw new Error('Expected a sales selection');
+    selection.sourceRows = [3, 4];
+    selection.reportTo = '2026-11-19';
+    manifest.decisionsSha256 = hashSourceDecisions(decisions);
+
+    expect(report.files[0]).toMatchObject({
+      shopLabelMeaning: 'UNRESOLVED',
+      shopLabelGroups: [
+        { key: 'row-3', rowCount: 1, missingLabel: true },
+        { key: 'row-4', rowCount: 1, missingLabel: false },
+      ],
+    });
     expect(validateManifest(manifest, report, decisions)).toEqual([]);
   });
 
@@ -299,7 +324,6 @@ describe('Tooltify source inspection', () => {
     const selection = decisions.entries[0];
     if (selection.action !== 'SELECT_SALES') throw new Error('Expected a sales selection');
     selection.sourceRows = [7];
-    selection.sourceStoreGroup = 'row-7';
     manifest.decisionsSha256 = hashSourceDecisions(decisions);
 
     expect(validateManifest(manifest, report, decisions)).toContainEqual(

@@ -41,7 +41,6 @@ export type SourceDecision = {
       action: 'SELECT_SALES';
       branchId: string;
       storeKey: string;
-      sourceStoreGroup: string;
       reportFrom: string;
       reportTo: string;
     }
@@ -71,8 +70,9 @@ export type FileInspection = {
   sections: SectionInspection[];
   sourceRowCount: number;
   billCount: number | null;
-  rows: { row: number; occurredAt: string | null; storeGroup: string }[];
-  storeGroups: { key: string; rowCount: number; missingLabel: boolean }[];
+  rows: { row: number; occurredAt: string | null }[];
+  shopLabelMeaning: 'UNRESOLVED' | null;
+  shopLabelGroups: { key: string; rowCount: number; missingLabel: boolean }[];
   issues: ImportIssue[];
 };
 

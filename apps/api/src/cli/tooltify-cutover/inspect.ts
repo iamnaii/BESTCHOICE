@@ -239,7 +239,7 @@ async function inspectWorkbook(
   const detail = detailSections.length === 1 ? detailSections[0] : undefined;
   if (detail) file.kind = detail.label === SALES ? 'SALES' : 'STOCK_SNAPSHOT';
 
-  const groups = new Map<string, FileInspection['storeGroups'][number]>();
+  const shopLabelGroups = new Map<string, FileInspection['shopLabelGroups'][number]>();
   const bills = new Set<string>();
   const times: string[] = [];
 
@@ -297,17 +297,20 @@ async function inspectWorkbook(
 
     for (const { cells, row } of data) {
       const get = (column: string) => cells[headings.indexOf(column)];
-      const rawStore = text(get(STORE));
-      const store = isSales && rawStore !== '-' ? rawStore : '';
-      let group = groups.get(store);
-      if (!group) {
-        group = { key: `row-${row}`, rowCount: 0, missingLabel: !store };
-        groups.set(store, group);
+      if (isSales) {
+        const rawLabel = text(get(STORE));
+        const labelKey = rawLabel === '-' ? '' : rawLabel;
+        let group = shopLabelGroups.get(labelKey);
+        if (!group) {
+          group = { key: `row-${row}`, rowCount: 0, missingLabel: !labelKey };
+          shopLabelGroups.set(labelKey, group);
+        }
+        group.rowCount++;
       }
-      group.rowCount++;
-      const source = { fileSha256: file.sha256, sheet: file.sheet, row, storeKey: group.key };
+      // ร้านค้า is a report line label. Export origin requires separate evidence.
+      const source = { fileSha256: file.sha256, sheet: file.sheet, row, storeKey: 'UNRESOLVED' };
       const occurredAt = sourceTimestamp(get(isSales ? SALE_DATE : STOCK_DATE));
-      file.rows.push({ row, occurredAt, storeGroup: group.key });
+      file.rows.push({ row, occurredAt });
       if (occurredAt) times.push(occurredAt);
       else
         file.issues.push({ code: 'INVALID_SOURCE_DATE', source, message: 'วันที่ในแถวไม่ถูกต้อง' });
@@ -349,10 +352,13 @@ async function inspectWorkbook(
         });
       }
     }
-    if (isSales) file.billCount = bills.size;
+    if (isSales) {
+      file.billCount = bills.size;
+      file.shopLabelMeaning = 'UNRESOLVED';
+    }
   }
 
-  file.storeGroups = [...groups.values()];
+  file.shopLabelGroups = [...shopLabelGroups.values()];
   if (times.length) {
     times.sort((a, b) => Date.parse(a) - Date.parse(b));
     file.actualRange = { start: times[0], end: times[times.length - 1] };
@@ -393,7 +399,8 @@ export async function inspectFiles(paths: string[]): Promise<InspectionReport> {
         sourceRowCount: 0,
         billCount: null,
         rows: [],
-        storeGroups: [],
+        shopLabelMeaning: null,
+        shopLabelGroups: [],
         issues: [],
       };
       byHash.set(sha256, file);

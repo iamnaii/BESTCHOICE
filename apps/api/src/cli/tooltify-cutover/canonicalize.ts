@@ -199,6 +199,7 @@ export function validateManifest(
         !ref.branchId?.trim() ||
         snapshot.branchId !== ref.branchId ||
         !ref.storeKey.trim() ||
+        ref.storeKey === 'UNRESOLVED' ||
         snapshot.storeKey !== ref.storeKey ||
         snapshot.asOf !== manifest.cutoverAt ||
         ref.reportFrom !== cutoverDay ||
@@ -225,11 +226,8 @@ export function validateManifest(
         }
         const range = decisionRange(entry);
         const rows = file.rows.filter(
-          ({ storeGroup, occurredAt }) =>
-            storeGroup === entry.sourceStoreGroup &&
-            occurredAt &&
-            dateOnly(occurredAt) >= range.start &&
-            dateOnly(occurredAt) <= range.end,
+          ({ occurredAt }) =>
+            occurredAt && dateOnly(occurredAt) >= range.start && dateOnly(occurredAt) <= range.end,
         );
         if (
           !validRange(range) ||
@@ -237,8 +235,9 @@ export function validateManifest(
           range.end > cutoverDay ||
           !entry.branchId.trim() ||
           !entry.storeKey.trim() ||
-          (ref.branchId && ref.branchId !== entry.branchId) ||
-          (ref.branchId && ref.storeKey !== entry.storeKey) ||
+          entry.storeKey === 'UNRESOLVED' ||
+          ref.branchId !== entry.branchId ||
+          ref.storeKey !== entry.storeKey ||
           !rows.length ||
           !sameRows(
             entry.sourceRows,
@@ -251,7 +250,7 @@ export function validateManifest(
         ) {
           issue(
             'INVALID_SALES_SELECTION',
-            'หลักฐานเลือกขายต้องตรงกับสาขา กลุ่มร้านค้า ช่วงเวลา และแถวต้นทาง',
+            'หลักฐานเลือกขายต้องตรงกับร้านต้นทางของไฟล์ สาขา ช่วงเวลา และแถวต้นทาง',
           );
           continue;
         }
@@ -336,6 +335,7 @@ export function validateManifest(
     coverageByBranch.set(history.branchId, range);
   }
   const zeroRanges = new Map<string, DateRange[]>();
+  const refsByHash = new Map(manifest.files.map((file) => [file.sha256, file]));
   for (const entries of usableDecisions.values()) {
     for (const entry of entries) {
       if (entry.action !== 'ZERO_SALES') continue;
@@ -343,7 +343,11 @@ export function validateManifest(
       const scope = coverageByBranch.get(entry.branchId);
       const sales = salesDays.get(entry.branchId) ?? new Set<string>();
       const source = inspected.get(entry.fileSha256)!;
+      const ref = refsByHash.get(entry.fileSha256);
       if (
+        !ref?.storeKey.trim() ||
+        ref.storeKey === 'UNRESOLVED' ||
+        ref.branchId !== entry.branchId ||
         !scope ||
         !validRange(range) ||
         !containsRange(scope, range) ||

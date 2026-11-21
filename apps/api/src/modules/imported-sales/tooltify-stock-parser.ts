@@ -26,7 +26,18 @@ export interface ParsedStockImportRow {
   importBatch: string; // source file name
 }
 
-const HEADER_BARCODE_LABEL = 'บาร์โค้ดสินค้า';
+export const STOCK_SNAPSHOT_COLUMNS = {
+  barcode: 'บาร์โค้ดสินค้า',
+  name: 'ชื่อสินค้า',
+  category: 'หมวดหมู่สินค้า',
+  supplier: 'แหล่งที่มา',
+  details: 'รายละเอียดสินค้า',
+  stockCheck: 'เช็คสต๊อก',
+  importedAt: 'วันที่นำเข้า',
+  importedBy: 'ผู้นำเข้า',
+  cost: 'ต้นทุนสินค้า',
+  sequence: 'No.',
+} as const;
 
 /** Reads the single detail table out of a stock-import file (report_import_stock_*.xlsx). */
 export function parseStockImportRows(
@@ -34,7 +45,7 @@ export function parseStockImportRows(
   opts: { importBatch: string },
 ): ParsedStockImportRow[] {
   const cell = (r: string[], i: number) => (r[i] ?? '').trim();
-  const headerIdx = rows.findIndex((r) => cell(r, 0) === HEADER_BARCODE_LABEL);
+  const headerIdx = rows.findIndex((r) => cell(r, 0) === STOCK_SNAPSHOT_COLUMNS.barcode);
   if (headerIdx === -1) return [];
 
   const out: ParsedStockImportRow[] = [];

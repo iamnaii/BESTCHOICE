@@ -152,6 +152,87 @@ describe('Tooltify source inspection', () => {
     expect(JSON.stringify(report)).not.toContain(stockRow[0]);
   });
 
+  it('recognizes a stock snapshot when the barcode column moves', async () => {
+    const stockRow = [
+      '012345678901234',
+      'fixture-name',
+      'iPhone มือ 2 (เครื่องนอก)',
+      '',
+      '',
+      0,
+      '2026-11-17 10:00:00',
+      '',
+      8000,
+      1,
+    ];
+    const path = await writeWorkbook('report_stock_2026-11-19_fixture.xlsx', [
+      [...STOCK_COLUMNS.slice(1), STOCK_COLUMNS[0]],
+      [...stockRow.slice(1), stockRow[0]],
+    ]);
+    const report = await inspectFiles([path]);
+    expect(report.files[0]).toMatchObject({
+      kind: 'STOCK_SNAPSHOT',
+      sourceRowCount: 1,
+      issues: [],
+    });
+  });
+
+  it('rejects the same IMEI in selected snapshots of different branches and stores', async () => {
+    const stockRow = [
+      '012345678901234',
+      'fixture-name',
+      'iPhone มือ 2 (เครื่องนอก)',
+      '',
+      '',
+      0,
+      '2026-11-17 10:00:00',
+      '',
+      8000,
+      1,
+    ];
+    const sources = await Promise.all([
+      writeWorkbook('report_stock_2026-11-19_first.xlsx', [STOCK_COLUMNS, stockRow]),
+      writeWorkbook('report_stock_2026-11-19_second.xlsx', [
+        STOCK_COLUMNS,
+        [...stockRow.slice(0, 8), 8100, 1],
+      ]),
+    ]);
+    const report = await inspectFiles(sources);
+    const cutoverAt = '2026-11-19T18:00:00+07:00';
+    const files: InputManifest['files'] = sources.map((path, index) => ({
+      path,
+      kind: 'STOCK_SNAPSHOT',
+      sha256: report.files[index].sha256,
+      storeKey: 'fixture-store-' + index,
+      branchId: 'fixture-branch-' + index,
+      reportFrom: '2026-11-19',
+      reportTo: '2026-11-19',
+    }));
+    const decisions: SourceDecisions = {
+      entries: files.map((file, index) => ({
+        action: 'SELECT_SNAPSHOT',
+        fileSha256: file.sha256,
+        branchId: 'fixture-branch-' + index,
+        storeKey: file.storeKey,
+        sourceRows: [2],
+        asOf: cutoverAt,
+        reason: 'Fixture snapshot accepted for its branch',
+        evidenceRef: 'fixture-stock-count-' + index,
+      })),
+    };
+    const manifest: InputManifest = {
+      version: 1,
+      companyCode: 'SHOP',
+      cutoverAt,
+      canonicalSetId: 'fixture-cutover',
+      decisionsSha256: hashSourceDecisions(decisions),
+      files,
+    };
+    expect(validateManifest(manifest, report, decisions).map(({ code }) => code)).toEqual([
+      'DUPLICATE_SNAPSHOT_IMEI',
+    ]);
+  });
+
   it('counts snapshot detail rows on both sides of an empty Excel row', async () => {
     const stockRow = [
       '123456789012345',
@@ -552,6 +633,32 @@ describe('Tooltify source inspection', () => {
 
     const report = await inspectFiles([source]);
     expect(report.files[0]).toMatchObject({ kind: 'SALES', sourceRowCount: 1, issues: [] });
+  });
+
+  it('reports an uncached formula at its Excel position without revealing cell or sheet contents', async () => {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('fixture-private-sheet');
+    worksheet.addRow(STOCK_COLUMNS);
+    worksheet.getCell('I4').value = { formula: 'fixturePrivateFunction()' };
+    const path = join(dir, 'report_stock_2026-11-19_fixture.xlsx');
+    await workbook.xlsx.writeFile(path);
+
+    const report = await inspectFiles([path]);
+    const [file] = report.files;
+    expect(file.issues).toEqual([
+      expect.objectContaining({
+        code: 'FORMULA_WITHOUT_RESULT',
+        source: {
+          fileSha256: file.sha256,
+          sheet: 'worksheet-1',
+          row: 4,
+          storeKey: 'UNRESOLVED',
+        },
+        message: expect.stringContaining('9'),
+      }),
+    ]);
+    expect(JSON.stringify(report)).not.toContain('fixturePrivateFunction');
+    expect(JSON.stringify(report)).not.toContain('fixture-private-sheet');
   });
 
   it('writes diagnostics and exits nonzero for recognized sales with missing columns', async () => {

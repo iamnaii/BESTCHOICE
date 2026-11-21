@@ -1,3 +1,6 @@
+import type { DeviceOrigin, ProductStatus } from '@prisma/client';
+import type { StockProductCategory } from '../../modules/imported-sales/tooltify-stock-parser';
+
 export type FileRef = {
   path: string;
   sha256: string;
@@ -91,4 +94,29 @@ export type InspectionReport = {
     actualRange: DateRange | null;
   }[];
   issues: ImportIssue[];
+};
+
+export type ParseResult<T> = { rows: T[]; issues: ImportIssue[] };
+
+export type CanonicalStockUnit = {
+  source: SourceRef;
+  sourceKey: string;
+  kind: 'DEVICE' | 'ACCESSORY';
+  barcode: string;
+  category: StockProductCategory;
+  deviceOrigin: DeviceOrigin | null;
+  name: string;
+  brand: string;
+  model: string;
+  storage: string | null;
+  color: string | null;
+  cost: string;
+  cashPrice: string | null;
+  installmentPrice: string | null;
+  financePrice: string | null;
+  branchId: string;
+  sourceStatus: string | null;
+  desiredStatus: ProductStatus | null;
+  importedAt: string;
+  priceEvidence: string | null;
 };

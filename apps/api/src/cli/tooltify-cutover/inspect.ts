@@ -3,7 +3,11 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { basename, extname, isAbsolute, sep } from 'node:path';
 import { Readable } from 'node:stream';
-import { isImeiBarcode } from '../../modules/imported-sales/tooltify-stock-parser';
+import {
+  isImeiBarcode,
+  STOCK_SNAPSHOT_COLUMNS,
+} from '../../modules/imported-sales/tooltify-stock-parser';
+import { decodeXlsxWorksheet, XlsxReadError } from '../../modules/imported-sales/xlsx-reader';
 import type { DateRange, FileInspection, InspectionReport, SourceRef } from './types';
 
 const SALES = 'รายการขาย';
@@ -82,18 +86,7 @@ const SALES_COLUMNS = [
   'ผู้ขายสินค้า',
   SALE_DATE,
 ];
-const STOCK_COLUMNS = [
-  BARCODE,
-  'ชื่อสินค้า',
-  CATEGORY,
-  'แหล่งที่มา',
-  'รายละเอียดสินค้า',
-  'เช็คสต๊อก',
-  STOCK_DATE,
-  'ผู้นำเข้า',
-  'ต้นทุนสินค้า',
-  'No.',
-];
+const STOCK_COLUMNS = Object.values(STOCK_SNAPSHOT_COLUMNS);
 const SECTION_LABELS = new Set([
   SALES,
   'ขายแบบเงินสด',
@@ -109,12 +102,11 @@ const SECTION_LABELS = new Set([
 const PHONE_CATEGORIES = new Set(['iPhone มือ 1', 'iPhone มือ 2', 'iPhone มือ 2 (เครื่องนอก)']);
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
-type Cell = string | Date;
 type DuplicateCandidate = {
   kind: 'STOCK_IMEI' | 'SALE_LINE_KEY';
   source: SourceRef;
   key: string;
-  cells: Cell[];
+  cells: string[];
 };
 
 export function isCalendarDay(value: string): boolean {
@@ -130,12 +122,12 @@ export function overlap(left: DateRange | null, right: DateRange | null): DateRa
   return start <= end ? { start, end } : null;
 }
 
-function text(cell: Cell | undefined): string {
-  return cell instanceof Date ? cell.toISOString() : (cell ?? '').trim();
+function text(cell: string | undefined): string {
+  return (cell ?? '').trim();
 }
 
 // Excel dates are timezone-free wall times; the export's calendar is Asia/Bangkok.
-function sourceTimestamp(cell: Cell | undefined): string | null {
+function sourceTimestamp(cell: string | undefined): string | null {
   const match =
     /^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2}):(\d{2})(\.\d{1,3})?(Z|[+-]\d{2}:\d{2})?$/.exec(
       text(cell),
@@ -143,9 +135,7 @@ function sourceTimestamp(cell: Cell | undefined): string | null {
   if (!match) return null;
   const [, day, hours, minutes, seconds, fraction = '', offset] = match;
   if (!isCalendarDay(day) || +hours > 23 || +minutes > 59 || +seconds > 59) return null;
-  const date = new Date(
-    `${day}T${hours}:${minutes}:${seconds}${fraction}${cell instanceof Date ? '+07:00' : (offset ?? '+07:00')}`,
-  );
+  const date = new Date(`${day}T${hours}:${minutes}:${seconds}${fraction}${offset ?? '+07:00'}`);
   if (!Number.isFinite(date.getTime())) return null;
   const local = new Date(date.getTime() + 7 * 60 * 60 * 1000).toISOString();
   return local.replace(/(?:\.000)?Z$/, '+07:00');
@@ -162,7 +152,7 @@ function filenameRange(name: string, kind: FileInspection['kind']): DateRange | 
   return isCalendarDay(start) && isCalendarDay(end) && start <= end ? { start, end } : null;
 }
 
-function sectionLabel(value: string, nextRow: Cell[]): string | null {
+function sectionLabel(value: string, nextRow: string[]): string | null {
   if (SECTION_LABELS.has(value)) return value;
   if (/^(?:รายการ|ทำเรื่อง)?(?:คืนสินค้า|รับคืนสินค้า|คืนเงิน)/.test(value)) return 'คืนสินค้า';
   if (/^(?:รายการ|ทำเรื่อง)?ยกเลิก/.test(value)) return 'ยกเลิกการขาย';
@@ -170,7 +160,7 @@ function sectionLabel(value: string, nextRow: Cell[]): string | null {
   return nextRow.length >= 2 ? 'ส่วนรายงานที่ไม่รู้จัก' : null;
 }
 
-function collectSections(rows: Cell[][]) {
+function collectSections(rows: string[][]) {
   const sections: {
     label: string;
     startIndex: number;
@@ -196,7 +186,7 @@ function collectSections(rows: Cell[][]) {
         return;
       }
     }
-    if (first === BARCODE && STOCK_COLUMNS.every((column) => values.includes(column))) {
+    if (STOCK_COLUMNS.every((column) => values.includes(column))) {
       sections.push({
         label: SNAPSHOT,
         startIndex: index,
@@ -233,19 +223,7 @@ async function inspectWorkbook(
   }
   const sheet = workbook.worksheets[0];
   file.sheet = ['Worksheet', 'Sheet1'].includes(sheet.name) ? sheet.name : 'worksheet-1';
-  const rows: Cell[][] = [];
-  sheet.eachRow({ includeEmpty: true }, (row) => {
-    const cells: Cell[] = [];
-    row.eachCell({ includeEmpty: true }, (cell, column) => {
-      cells[column - 1] =
-        cell.isMerged && cell.master.address !== cell.address
-          ? ''
-          : cell.value instanceof Date
-            ? cell.value
-            : cell.text;
-    });
-    rows.push(cells);
-  });
+  const rows = decodeXlsxWorksheet(sheet);
 
   const sections = collectSections(rows);
   const detailSections = sections.filter(({ label }) => label === SALES || label === SNAPSHOT);
@@ -268,7 +246,7 @@ async function inspectWorkbook(
     const headings = (rows[headerIndex] ?? []).map(text);
     const columns = headings.filter((value) => META_COLUMNS.includes(value));
     const endIndex = sections[sectionIndex + 1]?.startIndex ?? rows.length;
-    const data: { cells: Cell[]; row: number }[] = [];
+    const data: { cells: string[]; row: number }[] = [];
     for (let index = headerIndex + 1; index < endIndex; index++) {
       if (rows[index].some((cell) => text(cell))) data.push({ cells: rows[index], row: index + 1 });
     }
@@ -431,12 +409,25 @@ export async function inspectFiles(paths: string[]): Promise<InspectionReport> {
         byHash.set(sha256, file);
         try {
           await inspectWorkbook(bytes, file, candidates);
-        } catch {
-          file.issues.push({
-            code: 'INVALID_WORKBOOK',
-            source: null,
-            message: 'อ่านโครงสร้างไฟล์ Excel ไม่ได้',
-          });
+        } catch (error) {
+          if (error instanceof XlsxReadError) {
+            file.issues.push({
+              code: error.code,
+              source: {
+                fileSha256: file.sha256,
+                sheet: file.sheet,
+                row: error.row,
+                storeKey: 'UNRESOLVED',
+              },
+              message: error.message,
+            });
+          } else {
+            file.issues.push({
+              code: 'INVALID_WORKBOOK',
+              source: null,
+              message: 'อ่านโครงสร้างไฟล์ Excel ไม่ได้',
+            });
+          }
         }
       }
       const range = filenameRange(basename(path), file.kind);

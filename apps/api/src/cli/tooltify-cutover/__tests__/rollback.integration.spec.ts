@@ -1,5 +1,11 @@
+import { execFileSync } from 'node:child_process';
+import { copyFile, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import { transpileModule, ModuleKind, ScriptTarget } from 'typescript';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { afterAll, expect, it } from 'vitest';
+import { afterAll, expect, it, vi } from 'vitest';
 import { seedShopCoa } from '../../../../prisma/seed-coa-shop';
 import { JournalAutoService } from '../../../modules/journal/journal-auto.service';
 import { CompanyResolverService } from '../../../modules/journal/company-resolver.service';
@@ -12,6 +18,10 @@ import { buildImportPlan } from '../plan';
 import { planRollback, applyRollback } from '../rollback';
 import { productData, stockInput } from './preflight-fixtures';
 import { frozen, harnessClient, writer } from './rollback-fixtures';
+
+// Supply the rehearsal revision inside this Vitest module graph only. The Git
+// checkout regression loads the real writer and attester through Node separately.
+vi.mock('../checkout-revision', () => ({ readCheckoutRevision: () => '1'.repeat(40) }));
 
 const db = harnessClient();
 afterAll(() => db.$disconnect());
@@ -390,7 +400,7 @@ it('can reverse only the committed prefix of a failed batch and detects standalo
     await expect(applyRollback(db, clean.rollback)).rejects.toThrow('TARGET_CHANGED');
   });
 });
-it('rejects unbound rollback metadata, replay with a forged revision, and preserves durable recovery evidence', async () => {
+it('rejects unbound rollback metadata, replay with a forged plan, and preserves durable recovery evidence', async () => {
   const { rollback, plan } = await imported();
   await expect(
     db.$executeRaw`UPDATE tooltify_import_batches SET rollback_code_revision='new-revision' WHERE id=${plan.batchId}`,
@@ -412,7 +422,7 @@ it('rejects unbound rollback metadata, replay with a forged revision, and preser
       rollbackCodeRevision: rollback.codeRevision,
     });
     const { hashImportValue } = await import('../canonicalize');
-    const forged = { ...rollback, codeRevision: 'a'.repeat(40) };
+    const forged = { ...rollback, status: 'FAILED' as const };
     forged.planHash = hashImportValue({ ...forged, planHash: undefined });
     await expect(applyRollback(db, forged)).rejects.toThrow('ROLLBACK_REPLAY_PROOF_MISMATCH');
     await applyRollback(db, rollback);
@@ -465,5 +475,99 @@ it('blocks an already-admitted writer that has read the live product but not com
     resume();
     await operation;
     await worker.$disconnect();
+  }
+});
+
+it('attests the executing rollback module on an unexecuted plan from A, a dirty A and a clean B', async () => {
+  const { plan, productId } = await imported();
+  // Load the actual source under a private Git checkout. Keep the process's Prisma
+  // connection pinned so an erroneous reversal really can commit in the isolated DB.
+  const dir = await mkdtemp(join(tmpdir(), 'tooltify-rollback-revision-'));
+  const relative = 'apps/api/src/cli/tooltify-cutover',
+    src = join(dir, relative);
+  const git = (...args: string[]) =>
+    execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8' }).trim();
+  const commit = (message: string) =>
+    git(
+      '-c',
+      'user.name=Fixture',
+      '-c',
+      'user.email=fixture@example.invalid',
+      '-c',
+      'commit.gpgsign=false',
+      'commit',
+      '-qm',
+      message,
+    );
+  const load = (file: string): typeof import('../rollback') =>
+    createRequire(__filename)('tsx/cjs/api').require(join(src, file), __filename);
+  const state = async () => ({
+    product: await db.product.findUniqueOrThrow({
+      where: { id: productId },
+      include: { prices: true },
+    }),
+    batch: await db.tooltifyImportBatch.findUniqueOrThrow({
+      where: { id: plan.batchId },
+      include: { items: true, events: true },
+    }),
+  });
+  try {
+    await mkdir(src, { recursive: true });
+    await copyFile(resolve(__dirname, '../rollback.ts'), join(src, 'rollback.ts'));
+    await symlink(
+      resolve(__dirname, '../../../../../../node_modules'),
+      join(dir, 'node_modules'),
+      'dir',
+    );
+    for (const name of ['checkout-revision', 'canonicalize', 'plan', 'rollback-references'])
+      await symlink(resolve(__dirname, '../' + name + '.ts'), join(src, name + '.ts'));
+    await writeFile(join(dir, 'revision-marker'), 'A');
+    git('init', '-q');
+    git('add', '.');
+    commit('A');
+    const atA = load('rollback.ts');
+    const reviewed = await atA.planRollback(db, plan.batchId);
+    const before = await state();
+    await writeFile(join(dir, 'revision-marker'), 'B');
+    await frozen(async () => {
+      await expect(atA.applyRollback(db, reviewed)).rejects.toThrow(
+        'CLEAN_REVIEWED_CHECKOUT_REQUIRED',
+      );
+      expect(await state()).toEqual(before);
+      git('add', 'revision-marker');
+      commit('B');
+      await expect(atA.applyRollback(db, reviewed)).rejects.toThrow('CODE_REVISION_CHANGED');
+      expect(await state()).toEqual(before);
+      await copyFile(join(src, 'rollback.ts'), join(src, 'untracked.ts'));
+      const untracked = load('untracked.ts');
+      await expect(untracked.applyRollback(db, reviewed)).rejects.toThrow(
+        'TRACKED_SOURCE_ENTRY_REQUIRED',
+      );
+      expect(await state()).toEqual(before);
+      const compiled = transpileModule(await readFile(join(src, 'rollback.ts'), 'utf8'), {
+        compilerOptions: { module: ModuleKind.CommonJS, target: ScriptTarget.ES2021 },
+      });
+      await writeFile(join(src, 'compiled.cjs'), compiled.outputText);
+      await expect(load('compiled.cjs').applyRollback(db, reviewed)).rejects.toThrow(
+        'TRACKED_SOURCE_ENTRY_REQUIRED',
+      );
+      expect(await state()).toEqual(before);
+      await rm(join(src, 'compiled.cjs'));
+      await rm(join(src, 'untracked.ts'));
+      const reviewedB = await atA.planRollback(db, plan.batchId);
+      expect(reviewedB.codeRevision).toBe(git('rev-parse', 'HEAD'));
+      expect(await atA.applyRollback(db, reviewedB)).toMatchObject({
+        products: 1,
+        codeRevision: reviewedB.codeRevision,
+      });
+      const reversed = await state();
+      await writeFile(join(dir, 'revision-marker'), 'C');
+      git('add', 'revision-marker');
+      commit('C');
+      await expect(atA.applyRollback(db, reviewedB)).rejects.toThrow('CODE_REVISION_CHANGED');
+      expect(await state()).toEqual(reversed);
+    });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
   }
 });

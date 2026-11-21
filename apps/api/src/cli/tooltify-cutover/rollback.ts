@@ -225,12 +225,24 @@ async function requireFreeze(tx: Db, waiting?: Waiting) {
   if (!proof.exclusive) throw Error('ROLLBACK_FREEZE_REQUIRED');
 }
 
+function attestRollbackRevision(reviewed: string) {
+  const running = readCheckoutRevision(
+    true,
+    __dirname,
+    __filename,
+    'apps/api/src/cli/tooltify-cutover/rollback.ts',
+  );
+  if (running !== reviewed) throw Error('CODE_REVISION_CHANGED');
+  return running;
+}
+
 export async function applyRollback(
   db: PrismaClient,
   reviewed: RollbackPlan,
   waiting?: Waiting,
 ): Promise<RollbackReceipt> {
   reviewed = parseReviewedRollback(reviewed);
+  const runningRevision = attestRollbackRevision(reviewed.codeRevision);
   return db.$transaction(
     async (tx) => {
       await assertImportDatabase(tx, reviewed.dbIdentity);
@@ -240,7 +252,7 @@ export async function applyRollback(
       // Same order across plans. Table names come only from the two target kinds.
       const table = reviewed.kind === 'STOCK' ? Prisma.sql`products` : Prisma.sql`imported_sales`;
       await tx.$queryRaw`SELECT id FROM ${table} WHERE id = ANY(${ids}::text[]) ORDER BY id FOR UPDATE NOWAIT`;
-      const current = await inspectRollback(tx, reviewed.batchId, reviewed.codeRevision);
+      const current = await inspectRollback(tx, reviewed.batchId, runningRevision);
       if (current.blockers.includes('TARGET_IN_USE')) throw Error('TARGET_IN_USE');
       if (current.blockers.length) throw Error(current.blockers[0]);
       if (
@@ -250,13 +262,15 @@ export async function applyRollback(
         reviewed.kind !== current.kind
       )
         throw Error('REVIEWED_ROLLBACK_PLAN_CHANGED');
+      // The operator handshake and the reference scan can outlast a checkout change.
+      attestRollbackRevision(runningRevision);
       const receipt: RollbackReceipt = {
         operation: 'ROLLBACK',
         batchId: current.batchId,
         planHash: reviewed.planHash,
         importPlanHash: current.importPlanHash,
         dbIdentity: current.dbIdentity,
-        codeRevision: current.codeRevision,
+        codeRevision: runningRevision,
         status: 'ROLLED_BACK',
         products: 0,
         prices: 0,
@@ -267,7 +281,7 @@ export async function applyRollback(
         const proof = current.completedRollback;
         if (
           proof?.planHash !== reviewed.planHash ||
-          proof.codeRevision !== reviewed.codeRevision ||
+          proof.codeRevision !== runningRevision ||
           current.receiptHash !== reviewed.receiptHash
         )
           throw Error('ROLLBACK_REPLAY_PROOF_MISMATCH');
@@ -316,7 +330,7 @@ export async function applyRollback(
         data: {
           status: 'ROLLED_BACK',
           rollbackPlanHash: reviewed.planHash,
-          rollbackCodeRevision: reviewed.codeRevision,
+          rollbackCodeRevision: runningRevision,
         },
       });
       return receipt;

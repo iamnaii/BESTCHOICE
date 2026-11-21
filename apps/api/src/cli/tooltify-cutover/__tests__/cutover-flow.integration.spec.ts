@@ -5,7 +5,7 @@ import { chmod, copyFile, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ExcelJS from 'exceljs';
-import { afterAll, expect, it } from 'vitest';
+import { afterAll, expect, it, vi } from 'vitest';
 import { SALES_COLUMNS } from '../../../modules/imported-sales/tooltify-report-layout';
 import { cliDependencies, runCutover } from '../../tooltify-cutover.cli';
 import { hashSourceDecisions } from '../canonicalize';
@@ -15,6 +15,10 @@ import { readImportDatabaseIdentity, buildImportPlan } from '../plan';
 import { stockInput } from './preflight-fixtures';
 import { frozen, harnessClient, writer } from './rollback-fixtures';
 import type { SourceDecisions } from '../types';
+
+// Supply the rehearsal revision inside this Vitest module graph only. The Git
+// checkout regression loads the real writer and attester through Node separately.
+vi.mock('../checkout-revision', () => ({ readCheckoutRevision: () => '1'.repeat(40) }));
 
 const db = harnessClient();
 afterAll(() => db.$disconnect());

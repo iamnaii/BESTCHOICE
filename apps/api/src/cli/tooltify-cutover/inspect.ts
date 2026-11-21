@@ -1,7 +1,7 @@
 import ExcelJS from 'exceljs';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { basename, extname, resolve } from 'node:path';
+import { basename, extname, isAbsolute, sep } from 'node:path';
 import { Readable } from 'node:stream';
 import { isImeiBarcode } from '../../modules/imported-sales/tooltify-stock-parser';
 import type { DateRange, FileInspection, InspectionReport, SourceRef } from './types';
@@ -380,9 +380,13 @@ async function inspectWorkbook(
   }
 }
 
-// Fingerprint the full path so relative and absolute spellings resolve to the same input.
+function absoluteInputPath(path: string): string {
+  // Keep traversal intact for the filesystem. Collapsing '..' can cross a symlink.
+  return isAbsolute(path) ? path : process.cwd() + sep + path;
+}
+
 export function inputPathSha256(path: string): string {
-  return createHash('sha256').update(resolve(path)).digest('hex');
+  return createHash('sha256').update(absoluteInputPath(path)).digest('hex');
 }
 
 export async function inspectFiles(paths: string[]): Promise<InspectionReport> {
@@ -401,9 +405,10 @@ export async function inspectFiles(paths: string[]): Promise<InspectionReport> {
     const alias = 'input-' + (index + 1);
     try {
       if (extname(path).toLowerCase() !== '.xlsx') throw new Error();
-      const bytes = await readFile(path);
+      const inputPath = absoluteInputPath(path);
+      const bytes = await readFile(inputPath);
       const sha256 = createHash('sha256').update(bytes).digest('hex');
-      const input = { alias, pathSha256: inputPathSha256(path) };
+      const input = { alias, pathSha256: inputPathSha256(inputPath) };
       const existing = byHash.get(sha256);
       const file: FileInspection = existing ?? {
         sha256,

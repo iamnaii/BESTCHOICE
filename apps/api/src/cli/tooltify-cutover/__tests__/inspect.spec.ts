@@ -1,8 +1,9 @@
 import ExcelJS from 'exceljs';
 import { spawnSync } from 'node:child_process';
-import { copyFile, mkdir, mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { copyFile, mkdir, mkdtemp, readFile, rm, stat, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import { inspectFiles } from '../inspect';
 import { hashSourceDecisions, validateManifest } from '../canonicalize';
 import type { InputManifest, InspectionReport, SourceDecisions } from '../types';
@@ -326,6 +327,30 @@ describe('Tooltify source inspection', () => {
     );
   });
 
+  it('binds a path containing a symlink and parent traversal to the bytes it opens', async () => {
+    await mkdir(join(dir, 'left'));
+    const nested = join(dir, 'right', 'nested');
+    await mkdir(nested, { recursive: true });
+    const link = join(dir, 'left', 'link');
+    await symlink(nested, link, 'dir');
+    const left = await writeSales('left/' + SALE_NAME, [saleRow('2026-11-18', 'left-bill')]);
+    const right = await writeSales('right/' + SALE_NAME, [saleRow('2026-11-18', 'right-bill')]);
+    const source = [link, '..', SALE_NAME].join(sep);
+    const report = await inspectFiles([source]);
+    const { manifest, decisions } = salesManifest([source], report);
+
+    expect(report.files[0].sha256).toBe(
+      createHash('sha256')
+        .update(await readFile(right))
+        .digest('hex'),
+    );
+    expect(validateManifest(manifest, report, decisions)).toEqual([]);
+    manifest.files[0].path = left;
+    expect(validateManifest(manifest, report, decisions)).toContainEqual(
+      expect.objectContaining({ code: 'FILE_HASH_MISMATCH' }),
+    );
+  });
+
   it.each(['REPORT_DUPLICATE', 'DISTINCT_UNITS'] as const)(
     'rejects %s decisions targeting two different bills',
     async (action) => {
@@ -401,7 +426,7 @@ describe('Tooltify source inspection', () => {
     expect(validateManifest(manifest, report, decisions)).toEqual([]);
   });
 
-  it.each(['referenced', 'separate same-origin'])(
+  it.each(['referenced', 'separate same-origin', 'separate unresolved-origin'])(
     'does not let an excluded sale substantiate a zero day in a %s export',
     async (evidenceSource) => {
       const sold = await writeSales();
@@ -412,6 +437,10 @@ describe('Tooltify source inspection', () => {
       const paths = [...new Set([sold, zeroExport])];
       const report = await inspectFiles(paths);
       const { manifest, decisions } = salesManifest(paths, report);
+      if (evidenceSource === 'separate unresolved-origin') {
+        manifest.files[0].storeKey = 'UNRESOLVED';
+        manifest.files[0].branchId = null;
+      }
       decisions.entries = [
         {
           action: 'EXCLUDE_FILE',

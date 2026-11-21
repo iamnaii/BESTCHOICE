@@ -369,7 +369,7 @@ export function validateManifest(
       const ref = refsByHash.get(entry.fileSha256);
       if (
         !ref?.storeKey.trim() ||
-        ref.storeKey === 'UNRESOLVED' ||
+        ref.storeKey.trim() === 'UNRESOLVED' ||
         ref.branchId !== entry.branchId ||
         !scope ||
         !validRange(range) ||
@@ -380,15 +380,26 @@ export function validateManifest(
         !containsRange(source.declaredRange, range) ||
         source.issues.some(({ source, code }) => !source || code === 'INVALID_SOURCE_DATE') ||
         [...sales].some((day) => day >= range.start && day <= range.end) ||
-        inspection.files.some(
-          (other) =>
-            other.kind === 'SALES' &&
-            refsByHash.get(other.sha256)?.storeKey === ref.storeKey &&
+        inspection.files.some((other) => {
+          if (other.kind !== 'SALES') return false;
+          const origin = refsByHash.get(other.sha256);
+          const storeKey = origin?.storeKey.trim();
+          const branchId = origin?.branchId?.trim();
+          const differentOrigin =
+            storeKey &&
+            storeKey !== 'UNRESOLVED' &&
+            storeKey !== ref.storeKey.trim() &&
+            branchId &&
+            branchId !== 'UNRESOLVED' &&
+            branchId !== entry.branchId.trim();
+          return (
+            !differentOrigin &&
             other.rows.some(({ occurredAt }) => {
               const day = occurredAt && dateOnly(occurredAt);
               return day && day >= range.start && day <= range.end;
-            }),
-        )
+            })
+          );
+        })
       ) {
         issue(
           'INVALID_ZERO_SALES_PERIOD',

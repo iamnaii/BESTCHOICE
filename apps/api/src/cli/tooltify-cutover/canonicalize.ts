@@ -1,6 +1,9 @@
 import { createHash } from 'node:crypto';
+import { saleSourceKey } from '../../modules/imported-sales/tooltify-sales-parser';
 import { inputPathSha256, isCalendarDay, overlap } from './inspect';
 import type {
+  CanonicalSaleLine,
+  CanonicalSalesResult,
   DateRange,
   FileRef,
   ImportIssue,
@@ -428,4 +431,263 @@ export function validateManifest(
     issue('EMPTY_CANONICAL_SET', 'ไม่มี snapshot หรือประวัติขายที่เลือกใน manifest');
   }
   return issues;
+}
+
+function salePayloadHash(line: CanonicalSaleLine): string {
+  const payload = Object.fromEntries(
+    Object.entries(line).filter(
+      ([key]) => key !== 'source' && key !== 'sourceKey' && key !== 'occurrence',
+    ),
+  );
+  return createHash('sha256')
+    .update(canonicalJson({ ...payload, soldAt: line.soldAt.toISOString() }))
+    .digest('hex');
+}
+
+function grouped<T>(items: T[], key: (item: T) => string): Map<string, T[]> {
+  const groups = new Map<string, T[]>();
+  for (const item of items) {
+    const id = key(item);
+    const existing = groups.get(id);
+    if (existing) existing.push(item);
+    else groups.set(id, [item]);
+  }
+  return groups;
+}
+
+/** validateManifest also checks the complete input inventory, cutoff and zero-sales coverage. */
+export function canonicalizeSales(
+  parsed: CanonicalSaleLine[],
+  decisions: SourceDecisions,
+): CanonicalSalesResult {
+  const result: CanonicalSalesResult = { rows: [], issues: [], excluded: [] };
+  const issue = (code: string, message: string, line: CanonicalSaleLine) =>
+    result.issues.push({ code, message, source: line.source });
+  const exclude = (
+    line: CanonicalSaleLine,
+    reason: CanonicalSalesResult['excluded'][number]['reason'],
+  ) => result.excluded.push({ source: line.source, sourceKey: saleSourceKey(line, 1), reason });
+
+  // Multiple input paths for the same workbook supply the same physical evidence.
+  const unique: CanonicalSaleLine[] = [];
+  const repeatedInputs: CanonicalSaleLine[] = [];
+  const payloadHashes = new Map<CanonicalSaleLine, string>();
+  for (const copies of grouped(parsed, (r) =>
+    JSON.stringify([r.source.fileSha256, r.source.sheet, r.source.row]),
+  ).values()) {
+    const [first, ...rest] = copies;
+    const payloadHash = salePayloadHash(first);
+    if (
+      rest.some(
+        (copy) =>
+          salePayloadHash(copy) !== payloadHash || copy.source.storeKey !== first.source.storeKey,
+      )
+    ) {
+      for (const copy of copies)
+        issue('SOURCE_CONFLICT', 'ข้อมูลแถวเดียวกันของไฟล์เดียวกันขัดแย้งกัน', copy);
+      continue;
+    }
+    unique.push(first);
+    payloadHashes.set(first, payloadHash);
+    repeatedInputs.push(...rest);
+  }
+
+  const byFile = grouped(unique, (r) => r.source.fileSha256);
+  const entriesByFile = grouped(
+    decisions.entries.filter((entry) => byFile.has(entry.fileSha256)),
+    (d) => d.fileSha256,
+  );
+  const selected = new Set<CanonicalSaleLine>();
+  const windows: SalesDecision[] = [];
+  const duplicateDecisions = new Set<SourceDecision>();
+  const excludedRows = new Set<CanonicalSaleLine>();
+  for (const [hash, lines] of byFile) {
+    const entries = entriesByFile.get(hash) ?? [];
+    const invalid = entries.some(
+      (e) =>
+        !e.reason.trim() ||
+        !e.evidenceRef.trim() ||
+        e.action === 'UNRESOLVED' ||
+        new Set(e.sourceRows).size !== e.sourceRows.length,
+    );
+    if (invalid) {
+      for (const line of lines)
+        issue('UNRESOLVED_SOURCE_DECISION', 'หลักฐานเลือกหรือตัดรายการไม่สมบูรณ์', line);
+      continue;
+    }
+    const fileExclusions = entries.filter((e) => e.action === 'EXCLUDE_FILE');
+    const selections = entries.filter((e): e is SalesDecision => e.action === 'SELECT_SALES');
+    if (fileExclusions.length) {
+      if (
+        fileExclusions.length !== 1 ||
+        selections.length ||
+        !lines.every((r) => fileExclusions[0].sourceRows.includes(r.source.row))
+      ) {
+        for (const line of lines)
+          issue('INVALID_FILE_EXCLUSION', 'หลักฐานตัดไฟล์ไม่ครอบคลุมหรือขัดกับหลักฐานเลือก', line);
+      } else for (const line of lines) excludedRows.add(line);
+      continue;
+    }
+    const rowExclusions = new Set(
+      entries.filter((e) => e.action === 'EXCLUDE_ROW').flatMap((e) => e.sourceRows),
+    );
+    const physicalRows = new Set(lines.map((line) => line.source.row));
+    const assignments = new Set<number>();
+    for (const selection of selections) {
+      const range = decisionRange(selection);
+      const belongs = lines.filter((line) => {
+        const day = new Date(line.soldAt.getTime() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        return range.start <= day && day <= range.end;
+      });
+      if (
+        !validRange(range) ||
+        !selection.branchId.trim() ||
+        !selection.storeKey.trim() ||
+        selection.storeKey.trim() === 'UNRESOLVED' ||
+        !belongs.length ||
+        !sameRows(
+          belongs.map((line) => line.source.row),
+          selection.sourceRows.filter((row) => physicalRows.has(row) || !rowExclusions.has(row)),
+        ) ||
+        belongs.some(
+          (r) =>
+            r.source.storeKey !== selection.storeKey ||
+            r.sourceStoreKey !== selection.storeKey ||
+            assignments.has(r.source.row),
+        )
+      ) {
+        issue('INVALID_SALES_SELECTION', 'ช่วงที่เลือกต้องตรงกับแถวและร้านต้นทาง', lines[0]);
+        continue;
+      }
+      windows.push(selection);
+      for (const line of belongs) assignments.add(line.source.row);
+    }
+    for (const entry of entries) {
+      if (entry.action === 'REPORT_DUPLICATE' || entry.action === 'DISTINCT_UNITS')
+        duplicateDecisions.add(entry);
+    }
+    for (const line of lines) {
+      if (rowExclusions.has(line.source.row)) excludedRows.add(line);
+      if (assignments.has(line.source.row)) selected.add(line);
+      else if (!excludedRows.has(line))
+        issue('UNASSIGNED_SALES_ROWS', 'รายการขายไม่มีหลักฐานเลือกหรือตัดออก', line);
+    }
+  }
+
+  const invalidWindows = new Set<SalesDecision>();
+  for (const [i, left] of windows.entries()) {
+    for (const right of windows.slice(i + 1)) {
+      if (left.branchId !== right.branchId || !overlap(decisionRange(left), decisionRange(right)))
+        continue;
+      invalidWindows.add(left);
+      invalidWindows.add(right);
+      issue(
+        'SALES_OVERLAP',
+        'ช่วงขายที่เลือกสำหรับสาขาเดียวกันทับกัน',
+        byFile.get(right.fileSha256)![0],
+      );
+    }
+  }
+  const held = new Set<CanonicalSaleLine>();
+  for (const window of invalidWindows) {
+    const rowNumbers = new Set(window.sourceRows);
+    for (const line of byFile.get(window.fileSha256)!)
+      if (rowNumbers.has(line.source.row)) held.add(line);
+  }
+  // Compare overlapping exports before excluding a file or a row. Changing a
+  // price must remain visible even if a canonical coverage window was chosen.
+  for (const group of grouped(unique, (r) => saleSourceKey(r, 1)).values()) {
+    const byReport = grouped(group, (r) => r.source.fileSha256);
+    const versions = [...byReport.values()].map((lines) =>
+      JSON.stringify([...new Set(lines.map((line) => payloadHashes.get(line)!))].sort()),
+    );
+    if (new Set(versions).size > 1) {
+      for (const line of group) {
+        issue('SOURCE_CONFLICT', 'ข้อมูลรายการขายข้ามรายงานขัดแย้งกัน', line);
+        held.add(line);
+      }
+      continue;
+    }
+    const active = group.filter((line) => selected.has(line) && !held.has(line));
+    if (active.length === 1) {
+      const [line] = active;
+      if (!excludedRows.has(line))
+        result.rows.push({ ...line, sourceKey: saleSourceKey(line, 1), occurrence: 1 });
+    } else if (active.length > 1) {
+      const first = active[0];
+      const rowNumbers = active.map((r) => r.source.row);
+      const matches = [...duplicateDecisions].filter(
+        (d) => d.fileSha256 === first.source.fileSha256 && sameRows(rowNumbers, d.sourceRows),
+      );
+      const [decision] = matches;
+      const sameReport = active.every(
+        (r) => r.source.fileSha256 === first.source.fileSha256 && !excludedRows.has(r),
+      );
+      const equalPayload = active.every(
+        (line) => payloadHashes.get(line) === payloadHashes.get(first),
+      );
+      if (!sameReport || matches.length !== 1) {
+        for (const line of active) {
+          held.add(line);
+          issue(
+            equalPayload ? 'UNRESOLVED_SALES_DUPLICATE' : 'SOURCE_CONFLICT',
+            equalPayload
+              ? 'รอหลักฐานจำนวนสินค้าตามบิลที่ครอบคลุมแถวซ้ำทุกแถว'
+              : 'ข้อมูลของรายการขายขัดแย้งกัน ต้องมีหลักฐานจำนวนและราคาตามบิล',
+            line,
+          );
+        }
+        continue;
+      }
+      duplicateDecisions.delete(decision);
+      if (decision.action === 'DISTINCT_UNITS') {
+        active.sort((a, b) => a.source.row - b.source.row);
+        active.forEach((line, i) =>
+          result.rows.push({ ...line, occurrence: i + 1, sourceKey: saleSourceKey(line, i + 1) }),
+        );
+      } else if (
+        decision.action === 'REPORT_DUPLICATE' &&
+        rowNumbers.includes(decision.keepRow) &&
+        equalPayload
+      ) {
+        for (const line of active) {
+          if (line.source.row === decision.keepRow)
+            result.rows.push({ ...line, occurrence: 1, sourceKey: saleSourceKey(line, 1) });
+          else exclude(line, 'REPORT_DUPLICATE');
+        }
+      } else {
+        for (const line of active)
+          issue('SOURCE_CONFLICT', 'หลักฐานแถวรายงานซ้ำไม่ตรงกับข้อมูลหรือแถวที่ให้เก็บ', line);
+      }
+    }
+  }
+  for (const line of excludedRows) {
+    if (!held.has(line))
+      exclude(
+        line,
+        entriesByFile.get(line.source.fileSha256)?.some((e) => e.action === 'EXCLUDE_FILE')
+          ? 'EXCLUDE_FILE'
+          : 'EXCLUDE_ROW',
+      );
+  }
+  for (const entry of duplicateDecisions) {
+    issue(
+      'UNMATCHED_SALES_DUPLICATE_DECISION',
+      'หลักฐานแถวซ้ำไม่ตรงกับกลุ่มที่เลือก',
+      byFile.get(entry.fileSha256)![0],
+    );
+  }
+  const physicalKey = (source: SourceRef) =>
+    JSON.stringify([source.fileSha256, source.sheet, source.row]);
+  const resolvedKeys = new Map(
+    [...result.rows, ...result.excluded].map((row) => [physicalKey(row.source), row.sourceKey]),
+  );
+  for (const copy of repeatedInputs) {
+    result.excluded.push({
+      source: copy.source,
+      sourceKey: resolvedKeys.get(physicalKey(copy.source)) ?? null,
+      reason: 'IDENTICAL_FILE_COPY',
+    });
+  }
+  return result;
 }

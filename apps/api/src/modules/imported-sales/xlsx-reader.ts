@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs';
+import { publicWorksheetName } from './tooltify-report-layout';
 import { STOCK_SNAPSHOT_COLUMNS } from './tooltify-stock-parser';
 
 const IDENTITY_COLUMN_LABELS = new Set<string>([STOCK_SNAPSHOT_COLUMNS.barcode, 'คำสั่งซื้อ']);
@@ -98,7 +99,7 @@ export async function readXlsxTable(
   await workbook.xlsx.readFile(filePath);
   const worksheet = workbook.worksheets[0];
   if (!worksheet) throw new Error('ไฟล์ Excel ไม่มีเวิร์กชีต');
-  return { sheet: worksheet.name, rows: decodeXlsxWorksheet(worksheet) };
+  return { sheet: publicWorksheetName(worksheet.name), rows: decodeXlsxWorksheet(worksheet) };
 }
 
 export async function readXlsxRows(filePath: string): Promise<string[][]> {

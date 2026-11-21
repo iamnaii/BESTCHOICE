@@ -1,4 +1,5 @@
 import type { DeviceOrigin, ProductStatus } from '@prisma/client';
+import type { ParsedSale } from '../../modules/imported-sales/tooltify-sales-parser';
 import type { StockProductCategory } from '../../modules/imported-sales/tooltify-stock-parser';
 
 export type FileRef = {
@@ -119,4 +120,45 @@ export type CanonicalStockUnit = {
   desiredStatus: ProductStatus | null;
   importedAt: string;
   priceEvidence: string | null;
+};
+
+export type CanonicalSaleLine = Omit<ParsedSale, 'source' | 'importBatch'> & {
+  source: SourceRef;
+  sourceKey: string;
+  sourceStoreKey: string;
+  occurrence: number;
+};
+
+export type GrossSalesTotals = {
+  bills: number;
+  lines: number;
+  costTotal: string;
+  listPrice: string;
+  salePrice: string;
+  profit: string;
+};
+
+export type SalesReportResult = ParseResult<CanonicalSaleLine> & {
+  gross: {
+    reported: GrossSalesTotals | null;
+    detail: GrossSalesTotals | null;
+    // Reported minus raw detail, before source decisions.
+    delta: GrossSalesTotals | null;
+  };
+  adjustments: {
+    label: string;
+    source: SourceRef;
+    declaredRows: number | null;
+    detailRows: number[];
+    reported: { [K in keyof GrossSalesTotals]: GrossSalesTotals[K] | null } | null;
+  }[];
+};
+
+export type CanonicalSalesResult = ParseResult<CanonicalSaleLine> & {
+  excluded: {
+    source: SourceRef;
+    // A repeated input may refer to a row that has no resolved occurrence yet.
+    sourceKey: string | null;
+    reason: 'IDENTICAL_FILE_COPY' | 'REPORT_DUPLICATE' | 'EXCLUDE_FILE' | 'EXCLUDE_ROW';
+  }[];
 };

@@ -10,7 +10,7 @@
  *
  * See docs/superpowers/specs/2026-08-18-tooltify-import-design.md §5.1 + §6.
  */
-import { parseThaiDateTime } from './tooltify-sales-parser';
+import { parseThaiDateTime } from './tooltify-date';
 
 export type StockProductCategory = 'PHONE_NEW' | 'PHONE_USED' | 'TABLET' | 'ACCESSORY';
 

@@ -3,117 +3,35 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { basename, extname, isAbsolute, sep } from 'node:path';
 import { Readable } from 'node:stream';
-import {
-  isImeiBarcode,
-  STOCK_SNAPSHOT_COLUMNS,
-} from '../../modules/imported-sales/tooltify-stock-parser';
+import { isImeiBarcode } from '../../modules/imported-sales/tooltify-stock-parser';
 import { decodeXlsxWorksheet, XlsxReadError } from '../../modules/imported-sales/xlsx-reader';
-import type { DateRange, FileInspection, InspectionReport, SourceRef } from './types';
-
-const SALES = 'รายการขาย';
-const SNAPSHOT = 'รายละเอียดสต๊อก';
-const STOCK_SUMMARY = 'สรุปสต๊อก';
-const BARCODE = 'บาร์โค้ดสินค้า';
-const SALE_DATE = 'วันที่ขายสินค้า';
-const STOCK_DATE = 'วันที่นำเข้า';
-const CATEGORY = 'หมวดหมู่สินค้า';
-const BILL = 'คำสั่งซื้อ';
-const STORE = 'ร้านค้า';
-const META_COLUMNS = [
-  BARCODE,
-  'ชื่อสินค้า',
-  CATEGORY,
-  BILL,
+import {
+  collectSections,
+  META_COLUMNS,
+  SALES,
+  SNAPSHOT,
+  SALES_COLUMNS,
+  STOCK_COLUMNS,
   STORE,
   SALE_DATE,
   STOCK_DATE,
-  'แหล่งที่มา',
-  'รายละเอียดสินค้า',
-  'เช็คสต๊อก',
-  'ผู้นำเข้า',
-  'ต้นทุนสินค้า',
-  'No.',
-  'ผู้ซื้อสินค้า',
-  'รูปแบบการขาย',
-  'กลุ่มราคาขาย',
-  'ต้นทุนรวม',
-  'ราคาตั้งขาย',
-  'ราคาขาย',
-  'กำไร',
-  'ผู้ขายสินค้า',
-  'ราคาปลีก',
-  'ราคา 2',
-  'ราคา 3',
-  'ราคา 4',
-  'ราคาเบิกซ่อม',
-  'จำนวน',
-  'จำนวนสินค้า',
-  'จำนวนคงเหลือ',
-  'เลขที่สัญญา',
-  'ชื่อลูกค้า',
-  'ราคาตัดสต๊อกเพื่อทำสัญญา',
-  'ผู้บันทึก',
-  'วันที่ทำรายการ',
-  'งานซ่อม',
-  'อุปกรณ์',
-  'serial เครื่อง',
-  'ต้นทุนอะไหล่',
-  'ราคาอะไหล่',
-  'ราคาเบิกไป',
-  'ผู้เบิกอะไหล่',
-  'วันที่เบิกอะไหล่',
-  'เพิ่มเงิน',
-  'ผู้เคลมสินค้า',
-  'วันที่เคลม',
-  'เลขที่ออเดอร์',
-  'ยอดรวม',
-  'ยอดขาย',
-  'วันที่',
-];
-const SALES_COLUMNS = [
-  BARCODE,
-  'ชื่อสินค้า',
   CATEGORY,
-  'ผู้ซื้อสินค้า',
-  STORE,
+  BARCODE,
   BILL,
-  'รูปแบบการขาย',
-  'กลุ่มราคาขาย',
-  'ต้นทุนรวม',
-  'ราคาตั้งขาย',
-  'ราคาขาย',
-  'กำไร',
-  'ผู้ขายสินค้า',
-  SALE_DATE,
-];
-const STOCK_COLUMNS = Object.values(STOCK_SNAPSHOT_COLUMNS);
-const SECTION_LABELS = new Set([
-  SALES,
-  'ขายแบบเงินสด',
-  'ขายแบบโอน',
-  'ขายแบบสแกน QR',
-  'ขายแบบเครดิต',
-  'ขายแบบเครดิต / ยอดหนี้',
-  'รายการจ่ายเครดิต',
-  'ตัดสต๊อกทำสัญญาไฟแนนซ์',
-  'เบิกอะไหล่ไปซ่อม',
-  'ทำเรื่องเคลมสินค้า',
-]);
-const PHONE_CATEGORIES = new Set(['iPhone มือ 1', 'iPhone มือ 2', 'iPhone มือ 2 (เครื่องนอก)']);
-const DAY = /^\d{4}-\d{2}-\d{2}$/;
+  publicWorksheetName,
+} from '../../modules/imported-sales/tooltify-report-layout';
+import { sourceTimestamp, isCalendarDay } from '../../modules/imported-sales/tooltify-date';
+import type { DateRange, FileInspection, InspectionReport, SourceRef } from './types';
 
+export { isCalendarDay };
+
+const PHONE_CATEGORIES = new Set(['iPhone มือ 1', 'iPhone มือ 2', 'iPhone มือ 2 (เครื่องนอก)']);
 type DuplicateCandidate = {
   kind: 'STOCK_IMEI' | 'SALE_LINE_KEY';
   source: SourceRef;
   key: string;
   cells: string[];
 };
-
-export function isCalendarDay(value: string): boolean {
-  if (!DAY.test(value)) return false;
-  const date = new Date(value + 'T00:00:00Z');
-  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
-}
 
 export function overlap(left: DateRange | null, right: DateRange | null): DateRange | null {
   if (!left || !right) return null;
@@ -126,21 +44,6 @@ function text(cell: string | undefined): string {
   return (cell ?? '').trim();
 }
 
-// Excel dates are timezone-free wall times; the export's calendar is Asia/Bangkok.
-function sourceTimestamp(cell: string | undefined): string | null {
-  const match =
-    /^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2}):(\d{2})(\.\d{1,3})?(Z|[+-]\d{2}:\d{2})?$/.exec(
-      text(cell),
-    );
-  if (!match) return null;
-  const [, day, hours, minutes, seconds, fraction = '', offset] = match;
-  if (!isCalendarDay(day) || +hours > 23 || +minutes > 59 || +seconds > 59) return null;
-  const date = new Date(`${day}T${hours}:${minutes}:${seconds}${fraction}${offset ?? '+07:00'}`);
-  if (!Number.isFinite(date.getTime())) return null;
-  const local = new Date(date.getTime() + 7 * 60 * 60 * 1000).toISOString();
-  return local.replace(/(?:\.000)?Z$/, '+07:00');
-}
-
 function filenameRange(name: string, kind: FileInspection['kind']): DateRange | null {
   const dates =
     kind === 'SALES'
@@ -150,59 +53,6 @@ function filenameRange(name: string, kind: FileInspection['kind']): DateRange | 
   const start = dates[1];
   const end = dates[2] ?? start;
   return isCalendarDay(start) && isCalendarDay(end) && start <= end ? { start, end } : null;
-}
-
-function sectionLabel(value: string, nextRow: string[]): string | null {
-  if (SECTION_LABELS.has(value)) return value;
-  if (/^(?:รายการ|ทำเรื่อง)?(?:คืนสินค้า|รับคืนสินค้า|คืนเงิน)/.test(value)) return 'คืนสินค้า';
-  if (/^(?:รายการ|ทำเรื่อง)?ยกเลิก/.test(value)) return 'ยกเลิกการขาย';
-  if (!nextRow.some((cell) => META_COLUMNS.includes(text(cell)))) return null;
-  return nextRow.length >= 2 ? 'ส่วนรายงานที่ไม่รู้จัก' : null;
-}
-
-function collectSections(rows: string[][]) {
-  const sections: {
-    label: string;
-    startIndex: number;
-    headerIndex: number;
-    declaredRowCount: number | null;
-  }[] = [];
-  rows.forEach((row, index) => {
-    const values = row.map(text);
-    const first = values[0];
-    const title = /^(.*?)\s*\(\s*([\d,]+)\s*\)$/.exec(first);
-    if (title && values.slice(1).every((value) => !value)) {
-      let headerIndex = index + 1;
-      while (headerIndex < rows.length && rows[headerIndex].every((cell) => !text(cell)))
-        headerIndex++;
-      const label = sectionLabel(title[1], rows[headerIndex] ?? []);
-      if (label) {
-        sections.push({
-          label,
-          startIndex: index,
-          headerIndex,
-          declaredRowCount: Number(title[2].replace(/,/g, '')),
-        });
-        return;
-      }
-    }
-    if (STOCK_COLUMNS.every((column) => values.includes(column))) {
-      sections.push({
-        label: SNAPSHOT,
-        startIndex: index,
-        headerIndex: index,
-        declaredRowCount: null,
-      });
-    } else if (first === 'ชื่อสินค้า' && index < 5 && values.includes('จำนวน')) {
-      sections.push({
-        label: STOCK_SUMMARY,
-        startIndex: index,
-        headerIndex: index,
-        declaredRowCount: null,
-      });
-    }
-  });
-  return sections;
 }
 
 async function inspectWorkbook(
@@ -222,7 +72,7 @@ async function inspectWorkbook(
     return;
   }
   const sheet = workbook.worksheets[0];
-  file.sheet = ['Worksheet', 'Sheet1'].includes(sheet.name) ? sheet.name : 'worksheet-1';
+  file.sheet = publicWorksheetName(sheet.name);
   const rows = decodeXlsxWorksheet(sheet);
 
   const sections = collectSections(rows);

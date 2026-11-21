@@ -1,6 +1,5 @@
 import { execFileSync } from 'node:child_process';
 import { copyFile, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
-import { createRequire } from 'node:module';
 import { transpileModule, ModuleKind, ScriptTarget } from 'typescript';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -478,35 +477,12 @@ it('blocks an already-admitted writer that has read the live product but not com
   }
 });
 
-it('attests the executing rollback module on an unexecuted plan from A, a dirty A and a clean B', async () => {
+it('attests the writer and tracked dependencies across process start, static imports, reversal and replay', async () => {
   const { plan, productId } = await imported();
-  // Load the actual source under a private Git checkout. Keep the process's Prisma
-  // connection pinned so an erroneous reversal really can commit in the isolated DB.
   const dir = await mkdtemp(join(tmpdir(), 'tooltify-rollback-revision-'));
-  const relative = 'apps/api/src/cli/tooltify-cutover',
-    src = join(dir, relative);
+  const src = join(dir, 'apps/api/src/cli/tooltify-cutover');
   const git = (...args: string[]) =>
     execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8' }).trim();
-  const commit = (message: string) =>
-    git(
-      '-c',
-      'user.name=Fixture',
-      '-c',
-      'user.email=fixture@example.invalid',
-      '-c',
-      'commit.gpgsign=false',
-      'commit',
-      '-qm',
-      message,
-    );
-  // A separate TS loader namespace evaluates a fresh module graph. Keep the
-  // earlier objects alive to exercise long-lived Node callers across revisions.
-  const loaders: { unregister(): void }[] = [];
-  const load = (file: string): typeof import('../rollback') & { fixtureSource: string } => {
-    const loader = createRequire(__filename)('tsx/cjs/api').register({ namespace: randomUUID() });
-    loaders.push(loader);
-    return loader.require(join(src, file), __filename);
-  };
   const state = async () => ({
     product: await db.product.findUniqueOrThrow({
       where: { id: productId },
@@ -517,87 +493,114 @@ it('attests the executing rollback module on an unexecuted plan from A, a dirty 
       include: { items: true, events: true },
     }),
   });
+  // Each worker is a fresh OS process. Wait past the filesystem timestamp
+  // second after fixture writes before exercising the production attestation.
+  const run = async (scenario: string, planFile?: string, checkout = dir) => {
+    await db.$disconnect();
+    await new Promise((r) => setTimeout(r, 1005 - (Date.now() % 1000)));
+    const output = execFileSync(
+      process.execPath,
+      [
+        '--import',
+        'tsx',
+        join(__dirname, 'rollback-runtime.worker.ts'),
+        checkout,
+        plan.batchId,
+        scenario,
+        ...(planFile ? [planFile] : []),
+      ],
+      { encoding: 'utf8', timeout: 15000 },
+    );
+    return JSON.parse(output);
+  };
   try {
     await mkdir(src, { recursive: true });
-    const writerSource = await readFile(resolve(__dirname, '../rollback.ts'), 'utf8');
-    const setSource = (marker: string) =>
-      writeFile(
-        join(src, 'rollback.ts'),
-        writerSource + '\nexport const fixtureSource = ' + JSON.stringify(marker) + ';\n',
-      );
-    await setSource('A');
     await symlink(
       resolve(__dirname, '../../../../../../node_modules'),
       join(dir, 'node_modules'),
       'dir',
     );
-    for (const name of ['checkout-revision', 'canonicalize', 'plan', 'rollback-references'])
+    const writer =
+      (await readFile(resolve(__dirname, '../rollback.ts'), 'utf8')) +
+      "\nexport const fixtureSource = 'A';\n";
+    await writeFile(join(src, 'rollback.ts'), writer);
+    await copyFile(
+      resolve(__dirname, '../checkout-revision.ts'),
+      join(src, 'checkout-revision.ts'),
+    );
+    for (const name of ['plan', 'rollback-references'])
       await symlink(resolve(__dirname, '../' + name + '.ts'), join(src, name + '.ts'));
+    // This dependency runs after Node read the writer bytes, before its initializer.
+    await writeFile(
+      join(src, 'canonicalize.ts'),
+      "export const fixtureDependency = 'clean';\n" +
+        'globalThis.tooltifyFixtureImportHook?.();\nexport * from ' +
+        JSON.stringify(resolve(__dirname, '../canonicalize.ts')) +
+        ';\n',
+    );
+    await writeFile(join(dir, '.gitignore'), 'node_modules\nplans/\ncompiled.cjs\n');
     git('init', '-q');
+    git('config', 'user.name', 'Fixture');
+    git('config', 'user.email', 'fixture@example.invalid');
+    git('config', 'commit.gpgsign', 'false');
     git('add', '.');
-    commit('A');
-    const atA = load('rollback.ts');
-    expect(atA.fixtureSource).toBe('A');
-    const reviewed = await atA.planRollback(db, plan.batchId);
-    const before = await state();
-    await setSource('B');
-    const loadedDirty = load('rollback.ts');
-    expect(loadedDirty.fixtureSource).toBe('B');
-    await frozen(async () => {
-      await expect(atA.applyRollback(db, reviewed)).rejects.toThrow(
-        'CLEAN_REVIEWED_CHECKOUT_REQUIRED',
-      );
-      expect(await state()).toEqual(before);
-      git('add', '.');
-      commit('B');
-      const atB = load('rollback.ts');
-      expect(atB.fixtureSource).toBe('B');
-      expect(atA.fixtureSource).toBe('A');
-      const reviewedB = await atB.planRollback(db, plan.batchId);
-      expect(reviewedB.codeRevision).toBe(git('rev-parse', 'HEAD'));
-      await expect(atA.applyRollback(db, reviewed)).rejects.toThrow('CODE_REVISION_CHANGED');
-      expect(await state()).toEqual(before);
-      await expect(atA.applyRollback(db, reviewedB)).rejects.toThrow('CODE_REVISION_CHANGED');
-      expect(await state()).toEqual(before);
-      await expect(loadedDirty.applyRollback(db, reviewedB)).rejects.toThrow(
-        'CLEAN_REVIEWED_CHECKOUT_REQUIRED',
-      );
-      expect(await state()).toEqual(before);
-      await copyFile(join(src, 'rollback.ts'), join(src, 'untracked.ts'));
-      const untracked = load('untracked.ts');
-      await expect(untracked.applyRollback(db, reviewed)).rejects.toThrow(
-        'TRACKED_SOURCE_ENTRY_REQUIRED',
-      );
-      expect(await state()).toEqual(before);
-      const compiled = transpileModule(await readFile(join(src, 'rollback.ts'), 'utf8'), {
-        compilerOptions: { module: ModuleKind.CommonJS, target: ScriptTarget.ES2021 },
-      });
-      await writeFile(join(src, 'compiled.cjs'), compiled.outputText);
-      await expect(load('compiled.cjs').applyRollback(db, reviewed)).rejects.toThrow(
-        'TRACKED_SOURCE_ENTRY_REQUIRED',
-      );
-      expect(await state()).toEqual(before);
-      await rm(join(src, 'compiled.cjs'));
-      await rm(join(src, 'untracked.ts'));
-      expect(await atB.applyRollback(db, reviewedB)).toMatchObject({
-        products: 1,
-        codeRevision: reviewedB.codeRevision,
-      });
-      const reversed = await state();
-      await expect(atA.applyRollback(db, reviewedB)).rejects.toThrow('CODE_REVISION_CHANGED');
-      expect(await state()).toEqual(reversed);
-      expect(await atB.applyRollback(db, reviewedB)).toMatchObject({
-        products: 0,
-        codeRevision: reviewedB.codeRevision,
-      });
-      await setSource('C');
-      git('add', '.');
-      commit('C');
-      await expect(atB.applyRollback(db, reviewedB)).rejects.toThrow('CODE_REVISION_CHANGED');
-      expect(await state()).toEqual(reversed);
+    git('commit', '-qm', 'A');
+    const initial = await state(),
+      reviewedA = await planRollback(db, plan.batchId, git('rev-parse', 'HEAD'));
+    await mkdir(join(dir, 'plans'));
+    const planA = join(dir, 'plans', 'A.json'),
+      planB = join(dir, 'plans', 'B.json');
+    await writeFile(planA, JSON.stringify(reviewedA));
+    const raced = await run('race');
+    expect(raced.source).toBe('A');
+    expect(raced.reviewed.codeRevision).toBe(git('rev-parse', 'HEAD'));
+    expect(raced.error).toBe('ROLLBACK_FRESH_PROCESS_REQUIRED');
+    expect(await state()).toEqual(initial);
+    const reviewedB = await planRollback(db, plan.batchId, git('rev-parse', 'HEAD'));
+    expect(raced.reviewed.planHash).toBe(reviewedB.planHash);
+    await writeFile(planB, JSON.stringify(reviewedB));
+    for (const [scenario, error, file] of [
+      ['dependency-race', 'ROLLBACK_FRESH_PROCESS_REQUIRED', planB],
+      ['loaded-dirty', 'CLEAN_REVIEWED_CHECKOUT_REQUIRED', planB],
+      ['dirty', 'CLEAN_REVIEWED_CHECKOUT_REQUIRED', planB],
+      ['fresh', 'CODE_REVISION_CHANGED', planA],
+    ]) {
+      expect(await run(scenario, file)).toMatchObject({ error });
+      expect(await state()).toEqual(initial);
+    }
+    const compiled = transpileModule(writer, {
+      compilerOptions: { module: ModuleKind.CommonJS, target: ScriptTarget.ES2021 },
     });
+    await writeFile(join(src, 'compiled.cjs'), compiled.outputText);
+    await copyFile(join(src, 'rollback.ts'), join(src, 'untracked.ts'));
+    for (const mode of ['compiled', 'untracked']) {
+      expect(await run(mode, planB)).toMatchObject({ error: 'TRACKED_SOURCE_ENTRY_REQUIRED' });
+      expect(await state()).toEqual(initial);
+    }
+    await rm(join(src, 'untracked.ts'));
+    expect(await run('fresh', planB)).toMatchObject({
+      source: 'B',
+      receipt: { products: 1, codeRevision: reviewedB.codeRevision },
+    });
+    const reversed = await state();
+    // A packed branch ref and a linked, detached checkout are both valid fresh runtimes.
+    git('pack-refs', '--all');
+    expect(await run('fresh', planB)).toMatchObject({ receipt: { products: 0 } });
+    const linked = join(dir, 'plans', 'linked');
+    git('worktree', 'add', '-q', '--detach', linked, 'HEAD');
+    await symlink(
+      resolve(__dirname, '../../../../../../node_modules'),
+      join(linked, 'node_modules'),
+      'dir',
+    );
+    expect(await run('fresh', planB, linked)).toMatchObject({ receipt: { products: 0 } });
+    expect(await run('ref-race', planB, linked)).toMatchObject({
+      error: 'ROLLBACK_FRESH_PROCESS_REQUIRED',
+    });
+
+    expect(await run('move', planB)).toMatchObject({ error: 'ROLLBACK_FRESH_PROCESS_REQUIRED' });
+    expect(await state()).toEqual(reversed);
   } finally {
-    for (const loader of loaders.reverse()) loader.unregister();
     await rm(dir, { recursive: true, force: true });
   }
-});
+}, 30000);

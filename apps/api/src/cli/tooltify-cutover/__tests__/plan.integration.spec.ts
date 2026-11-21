@@ -466,6 +466,23 @@ describe('DB-backed dry-run', () => {
     await expect(applyBatch(db, plan, createFixtureTarget)).rejects.toThrow();
     expect(await db.tooltifyImportItem.count({ where: { batchId: plan.batchId } })).toBe(0);
   });
+  it.each(['unknown category', 'unevidenced reservation'])(
+    'blocks %s before stock apply',
+    async (variant) => {
+      const input = await stockInput(db);
+      if (variant === 'unknown category') {
+        Object.assign(input.rows[0], { category: 'UNKNOWN' });
+      } else {
+        input.rows[0].sourceStatus = 'RESERVED';
+      }
+      const plan = await buildImportPlan(db, input);
+      expect(plan.issues.map((i) => i.code)).toContain('INVALID_CANONICAL_STOCK');
+      await expect(applyBatch(db, plan, createFixtureTarget)).rejects.toThrow(
+        'IMPORT_PLAN_BLOCKED_OR_CHANGED',
+      );
+      expect(await db.tooltifyImportBatch.count({ where: { id: plan.batchId } })).toBe(0);
+    },
+  );
   it('refuses the wrong expected database', async () => {
     const input = await stockInput(db);
     await expect(buildImportPlan(db, { ...input, expectedDbIdentity: 'wrong' })).rejects.toThrow();

@@ -258,6 +258,7 @@ function inputIssues(input: CanonicalInput) {
         row.cashPrice !== null ||
         row.installmentPrice !== null ||
         row.financePrice !== null ||
+        row.sourceStatus !== null ||
         row.desiredStatus !== null ||
         row.priceEvidence !== null ||
         !/^\d{1,10}(\.\d{1,2})?$/.test(row.cost) ||

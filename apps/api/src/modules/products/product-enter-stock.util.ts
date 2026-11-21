@@ -14,6 +14,9 @@ import { CASH_LABEL, FINANCE_LABEL, INSTALLMENT_LABEL } from '../../utils/produc
  * 3. `ProductPhotosService.completePhotos` — ยืนยันรูป 6 มุม `PHOTO_PENDING → IN_STOCK`
  *    (soft gate: ไม่มีราคา = ไม่เลื่อนสถานะ ไม่ใช่ปฏิเสธงานทั้งใบ — ดู Minor 4 รอบ 3)
  *
+ * การนำเข้า Tooltify จาก snapshot ใช้ `hasSellingPrice` กับ Product และแถวราคาที่อ่านซ้ำ
+ * ใน transaction ก่อนเปลี่ยนสินค้าใหม่จาก `QC_PENDING` เป็น `IN_STOCK`
+ *
  * ประตูที่ **ไม่** ผ่าน helper นี้โดยตั้งใจ (ครบทุกจุดที่เขียน `status: 'IN_STOCK'`
  * นอกเหนือจาก 3 ข้อบน — ตรวจซ้ำ 2026-08-22, fix round 4 Minor 3):
  * - `po-receiving` — สายรับ**ของใหม่** อัตโนมัติ (ตั้งราคาในใบเดียวกันอยู่แล้ว)
@@ -26,8 +29,6 @@ import { CASH_LABEL, FINANCE_LABEL, INSTALLMENT_LABEL } from '../../utils/produc
  *   `contract-lifecycle.service.ts` ตอนยกเลิกสัญญาที่ยังจองอยู่) — benign โดยโครงสร้าง:
  *   เครื่องต้องเป็น `IN_STOCK` (มีราคาแล้ว) มาก่อนจึงจะถูกจองได้ การปลดจองคือคืนสภาพเดิม
  *   ไม่ใช่การพาเครื่องใหม่เข้าคลัง
- * - **นำเข้าข้อมูลเก่า** `tooltify-stock-parser.ts` (ใช้โดย `import-tooltify-stock.cli`)
- *   — งาน migration ที่อ่านราคามาจากชีตในแถวเดียวกัน ไม่ใช่ประตูที่คนกดในระบบ
  * - **ยกเลิกใบขาย** (`sale-void.service.ts`) · **ปลดของแถม** (`contract-bundle.util.ts`) — คืนสภาพ
  *   เครื่องที่เคยเป็น `IN_STOCK` ก่อนขาย/จัดชุด (เหตุผลเดียวกับปลดจอง)
  * - **ปลดล็อกใบจอง** `RESERVED → IN_STOCK` (`bookings.service.ts` `unlockBookedDevice` — ยกเลิก/หมดอายุ;

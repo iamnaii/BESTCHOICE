@@ -83,7 +83,7 @@ export async function checkInboxDesign(browser, origin, output) {
         const railBox = await rail.boundingBox();
         const queue = await page.locator('.inbox-conversations').boundingBox();
         assert.equal(railBox.x, 0);
-        assert.equal(railBox.width, largeText ? 110 : 88);
+        assert.equal(railBox.width, largeText ? 290 : 232);
         assert.ok(railBox.height >= height - 1, 'Rail spans the full viewport height');
         assert.equal(queue.x, railBox.x + railBox.width, 'Rail must not cover the conversation list');
         assert.ok(queue.width >= (largeText ? 360 : 288) - 1 && queue.width <= (largeText ? 420 : 336) + 1, 'Queue width adapts without squeezing labels or taking over the conversation');
@@ -93,7 +93,7 @@ export async function checkInboxDesign(browser, origin, output) {
         await expect(rail.getByRole('navigation', { name: 'การสื่อสารและงานทีม' })).toBeVisible();
         await checkInboxNavigationScale(rail.locator('.inbox-work-navigation'));
         await expect(rail.getByRole('button', { name: 'แชทลูกค้า', exact: true })).toBeVisible();
-        await expect(rail.getByRole('button', { name: 'คิวงาน', exact: true })).toBeDisabled();
+        await expect(rail.getByRole('button', { name: 'งานรอทำ', exact: true })).toBeDisabled();
         await expect(rail.getByRole('link', { name: 'ภาพรวมงานแชท', exact: true })).toBeVisible();
         await expect(rail.getByRole('button', { name: 'สลับธีม', exact: true })).toBeVisible();
         await expect(rail.getByRole('button', { name: 'ออกจากระบบ', exact: true })).toBeVisible();
@@ -107,7 +107,7 @@ export async function checkInboxDesign(browser, origin, output) {
         await expect(page.getByRole('button', { name: 'กลับ', exact: true })).toBeVisible();
         assert.equal(await page.locator('.inbox-rail').count(), 0, 'Phones keep the compact header, not the rail');
       }
-      if (width >= 1280) {
+      if (width >= 1440) {
         await expect(page.getByRole('heading', { name: 'ข้อมูลและงาน', exact: true })).toBeVisible();
         const dossier = await page.locator('.inbox-dossier').boundingBox();
         assert.equal(dossier.width, 360);
@@ -120,6 +120,20 @@ export async function checkInboxDesign(browser, origin, output) {
           return { label: element.textContent, overflow: element.scrollWidth - element.clientWidth, left: text.left - box.left, right: box.right - text.right };
         }));
         for (const control of controls) assert.ok(control.overflow <= 1 && control.left >= 0 && control.right >= 0, `Dossier label overlaps at ${width}px: ${JSON.stringify(control)}`);
+      }
+      if (width >= 1024 && width < 1440) {
+        assert.ok((await page.locator('.inbox-chat').boundingBox()).width >= 400, 'Laptop layout must preserve room to read and compose');
+        await page.getByRole('button', { name: 'ข้อมูลลูกค้า', exact: true }).click();
+        await expect(page.locator('.inbox-customer-sheet')).toBeVisible();
+        await expect(page.locator('.inbox-customer-sheet').getByRole('heading', { name: 'ข้อมูลและงาน', exact: true })).toBeVisible();
+        await page.setViewportSize({ width: 1512, height });
+        await expect(page.locator('.inbox-customer-sheet')).toHaveCount(0);
+        await expect(page.locator('[data-slot=sheet-overlay]')).toHaveCount(0);
+        await page.setViewportSize({ width, height });
+        await expect(page.locator('.inbox-customer-sheet')).toHaveCount(0);
+        await page.getByRole('button', { name: 'ข้อมูลลูกค้า', exact: true }).click();
+        await page.locator('.inbox-customer-sheet').getByRole('button', { name: 'ปิดข้อมูลลูกค้า', exact: true }).click();
+        await expect(page.locator('.inbox-customer-sheet')).toBeHidden();
       }
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
       assert.ok(overflow <= 1, `Horizontal overflow at ${width}px: ${overflow}`);

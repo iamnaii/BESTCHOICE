@@ -25,13 +25,14 @@ import {
   Settings2,
   ShoppingCart,
   Sun,
+  Users,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getCompanyScopeRevision, WORK_COMPANY } from '@/lib/company-scope';
 import { getWorkZoneHref, getZoneConfigForRole } from '@/config/menu';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetTitle, SheetDescription, SheetTrigger } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import WorkQueue, { workDate } from './WorkQueue';
 import StaffWorkInbox from './StaffWorkInbox';
@@ -57,6 +58,8 @@ export default function InboxWorkTools({
   // จอใหญ่ = แถบข้างแบบย่อ (เมนูระบบไม่ถูกวาดบน /inbox — ดู MainLayout) · จอเล็ก = แถบหัวแบบย่อเหมือนเดิม
   const isMobile = useIsMobile();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const dispatchTrigger = useRef<HTMLButtonElement>(null);
+  const [dispatchOpen, setDispatchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { resolvedTheme, setTheme } = useTheme();
   const [view, setView] = useState<WorkQueueView>('WAITING');
@@ -77,6 +80,10 @@ export default function InboxWorkTools({
   } | null>(null);
   const [opening, setOpening] = useState(false);
   const work = useChatWork(view, page);
+  const dispatchEnabled = !!work.settings.data?.flags.chat_work_queue_enabled && !!work.settings.data?.flags.chat_round_robin_enabled;
+  // Keep a single heartbeat observer alive even when the mobile queue panel is closed.
+  const dispatch = useChatDispatch(work.company, work.key, dispatchEnabled);
+  const dispatchCard = dispatchEnabled ? <ChatDispatchCard key={work.identity} dispatch={dispatch} /> : null;
   const [params] = useSearchParams();
   const active = selected?.scope === work.identity ? selected : null;
   const targetQuery = useQuery({
@@ -89,6 +96,7 @@ export default function InboxWorkTools({
   const target = targetQuery.isError ? null : targetQuery.data;
   useEffect(() => {
     setPanel(null);
+    setDispatchOpen(false);
     setSettingsOpen(false);
     setSelected(null);
     setEditingTask(null);
@@ -128,8 +136,6 @@ export default function InboxWorkTools({
         ? 'NOTE'
         : 'TODO';
   const flags = work.settings.data?.flags;
-  const dispatchEnabled = !!flags?.chat_round_robin_enabled && work.enabled;
-  const dispatch = useChatDispatch(work.company, work.key, dispatchEnabled);
   const linkEnabled =
     linkedType === 'FACEBOOK_COMMENT'
       ? work.company === 'SHOP' && !!flags?.chat_facebook_comments_enabled
@@ -178,10 +184,6 @@ export default function InboxWorkTools({
   // admin control scale enlarges only buttons, leaving the analytics link smaller.
   const workNavigation = (
     <nav aria-label="การสื่อสารและงานทีม" className="inbox-work-navigation">
-      {dispatchEnabled && <Button variant="outline" className="text-sm" onClick={() => setPanel('queue')}>
-        <span className={`size-2 shrink-0 rounded-full ${dispatch.query.data?.ready && !dispatch.query.isError ? 'bg-success' : 'bg-muted-foreground'}`} aria-hidden="true" />
-        <span>{dispatch.query.isError ? 'ตรวจสอบคิว' : dispatch.query.data?.ready ? `รับแชท · คิว ${dispatch.query.data.position}` : 'พร้อมรับแชท'}</span>
-      </Button>}
       <Button
         variant="ghost"
         aria-current={chatActive ? 'page' : undefined}
@@ -193,25 +195,25 @@ export default function InboxWorkTools({
       </Button>
       <Button
         variant="ghost"
-        aria-label="คิวงาน"
+        aria-label="งานรอทำ"
         disabled={!work.enabled}
         aria-description={
           !work.enabled
-            ? 'คิวงานยังไม่เปิดใช้งาน'
+            ? 'ยังไม่เปิดใช้งานรายการงาน'
             : work.queue.isError
-              ? 'โหลดจำนวนงานไม่ได้ เปิดคิวงานเพื่อลองใหม่'
+              ? 'โหลดจำนวนงานไม่ได้ เปิดรายการงานเพื่อลองใหม่'
               : waitingCount === undefined
                 ? 'กำลังโหลดจำนวนงาน'
                 : `งานรอดำเนินการ ${waitingCount}`
         }
-        title={!work.enabled ? 'คิวงานยังไม่เปิดใช้งาน' : undefined}
+        title={!work.enabled ? 'ยังไม่เปิดใช้งานรายการงาน' : undefined}
         aria-haspopup="dialog"
         aria-expanded={panel === 'queue'}
         className={panel === 'queue' ? 'text-sm inbox-navigation-active' : 'text-sm'}
         onClick={() => setPanel('queue')}
       >
         <ListTodo className="size-4" aria-hidden="true" />
-        <span>คิวงาน</span>
+        <span>งานรอทำ</span>
         {!work.enabled ? (
           <LockKeyhole className="inbox-navigation-lock" aria-hidden="true" />
         ) : (
@@ -296,10 +298,10 @@ export default function InboxWorkTools({
       </Button>
     </div>
   );
-  if (work.settings.isError)
+  if (work.settings.isError && !work.settings.data)
     return isMobile ? (
       <div className="flex items-center gap-3 border-b px-4 py-2 text-xs" role="alert">
-        โหลดเมนูคิวงานไม่ได้
+        โหลดเมนูงานไม่ได้
         <Button variant="ghost" size="sm" onClick={() => work.settings.refetch()}>
           ลองใหม่
         </Button>
@@ -308,7 +310,7 @@ export default function InboxWorkTools({
       <aside className="inbox-rail" aria-label="ศูนย์การสื่อสาร">
         {homeLink}
         <p className="inbox-rail-alert" role="alert">
-          โหลดเมนูคิวงานไม่ได้
+          โหลดเมนูงานไม่ได้
         </p>
         <Button variant="ghost" size="sm" onClick={() => work.settings.refetch()}>
           ลองใหม่
@@ -346,6 +348,7 @@ export default function InboxWorkTools({
       </p>
       <h1 className="sr-only">ศูนย์การสื่อสาร</h1>
       {workNavigation}
+      {dispatchCard}
       <span className="inbox-rail-spacer" aria-hidden="true" />
       {utilities}
       <div className="inbox-rail-user">
@@ -370,16 +373,17 @@ export default function InboxWorkTools({
     <header className="inbox-workspace-header">
       <nav className="inbox-mobile-bottom-nav" aria-label="การสื่อสารและงานทีม">
         <button type="button" aria-current={chatActive ? 'page' : undefined} onClick={() => setPanel(null)}><Inbox aria-hidden="true" className="size-5" /><span>แชท</span></button>
-        <button type="button" aria-label="คิวงาน" disabled={!work.enabled} onClick={() => setPanel('queue')}><ListTodo aria-hidden="true" className="size-5" /><span>{dispatchEnabled && !dispatch.query.data?.ready ? 'เข้าคิว' : 'คิวงาน'}{waitingCount ? ` (${waitingCount > 99 ? '99+' : waitingCount})` : ''}</span></button>
+        <button type="button" aria-label="งานรอทำ" disabled={!work.enabled} onClick={() => setPanel('queue')}><ListTodo aria-hidden="true" className="size-5" /><span>งานรอทำ{waitingCount ? ` (${waitingCount > 99 ? '99+' : waitingCount})` : ''}</span></button>
         {work.company === 'SHOP' && <button type="button" disabled={!flags?.chat_facebook_comments_enabled} onClick={() => setPanel('comments')}><Globe aria-hidden="true" className="size-5" /><span>คอมเมนต์</span></button>}
-        <button type="button" aria-label="เมนูงานแชท" onClick={() => setMobileMenuOpen(true)}><Menu aria-hidden="true" className="size-5" /><span>เมนู</span></button>
+        {dispatchEnabled && <button ref={dispatchTrigger} type="button" aria-label="คิวรับแชท" aria-haspopup="dialog" aria-expanded={dispatchOpen} onClick={() => setDispatchOpen(true)}><Users aria-hidden="true" className="size-5" /><span>คิวรับแชท</span></button>}
+        <SheetTrigger asChild><button type="button" aria-label="เมนูงานแชท"><Menu aria-hidden="true" className="size-5" /><span>เมนู</span></button></SheetTrigger>
       </nav>
     </header>
   );
   return (
     <>
-      {isMobile ? header : rail}
       <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+        {isMobile ? header : rail}
         <SheetContent side="bottom" className="inbox-mobile-sheet">
           <SheetTitle>เมนูงานแชท</SheetTitle>
           <SheetDescription>{identityLabel}</SheetDescription>
@@ -389,6 +393,13 @@ export default function InboxWorkTools({
             {workNavigation}
             {utilities}
           </div>
+        </SheetContent>
+      </Sheet>
+      <Sheet open={isMobile && dispatchOpen} onOpenChange={setDispatchOpen}>
+        <SheetContent onCloseAutoFocus={(event) => { event.preventDefault(); dispatchTrigger.current?.focus(); }} side="left" className="inbox-dispatch-sheet flex w-full max-w-sm flex-col overflow-y-auto">
+          <SheetTitle className="pr-10">คิวรับแชทของทีม</SheetTitle>
+          <SheetDescription className="pr-10">{identityLabel}</SheetDescription>
+          {isMobile && dispatchCard}
         </SheetContent>
       </Sheet>
       {settingsOpen && user?.role === 'OWNER' && (
@@ -403,7 +414,7 @@ export default function InboxWorkTools({
           <div className="border-b px-4 py-5 pr-12">
             <SheetTitle>
               {panel === 'queue'
-                ? 'คิวงานแชท'
+                ? 'งานรอทำ'
                 : panel === 'comments'
                   ? 'คอมเมนต์ Facebook'
                   : 'การแจ้งเตือนของฉัน'}
@@ -419,7 +430,6 @@ export default function InboxWorkTools({
             />
           ) : panel === 'queue' ? (
             <div className="flex min-h-0 flex-1 flex-col [@media(max-height:500px)]:min-h-[420px] [@media(max-height:500px)]:flex-none">
-            {dispatchEnabled && <ChatDispatchCard dispatch={dispatch} />}
             <WorkQueue
               data={work.queue.data}
               loading={work.queue.isLoading}

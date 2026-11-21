@@ -42,7 +42,7 @@ export async function checkChatSetup(browser, origin, output) {
     try {
       const page = await context.newPage();
       await page.goto(new URL('/inbox?zone=shop', origin).href);
-      await expect(page.getByRole('button', { name: 'คิวงาน', exact: true })).toBeDisabled();
+      await expect(page.getByRole('button', { name: 'งานรอทำ', exact: true })).toBeDisabled();
       await (await showWorkControl(page, 'ตั้งค่างานแชท')).click();
       const dialog = page.getByRole('dialog', { name: 'ตั้งค่างานแชท', exact: true });
       await expect(dialog).toBeVisible();
@@ -76,10 +76,10 @@ export async function checkChatSetup(browser, origin, output) {
       await dialog.getByRole('button', { name: 'บันทึกการตั้งค่า', exact: true }).click();
       await expect(dialog).toBeHidden();
       assert.equal(saves, 1);
-      await expect(page.getByRole('button', { name: 'คิวงาน', exact: true })).toBeEnabled();
+      await expect(page.getByRole('button', { name: 'งานรอทำ', exact: true })).toBeEnabled();
       await expect(await showWorkControl(page, 'คอมเมนต์')).toBeEnabled();
-      await (await showWorkControl(page, 'คิวงาน')).click();
-      await expect(page.getByRole('heading', { name: 'คิวงานแชท', exact: true })).toBeVisible();
+      await (await showWorkControl(page, 'งานรอทำ')).click();
+      await expect(page.getByRole('heading', { name: 'งานรอทำ', exact: true })).toBeVisible();
     } finally { await context.unrouteAll({ behavior: 'wait' }); await context.close(); }
   }
 }

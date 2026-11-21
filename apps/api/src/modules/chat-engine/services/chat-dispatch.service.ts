@@ -11,7 +11,7 @@ import {
   roomWorkWhere,
   WORK_CHANNELS,
 } from '../../staff-chat/services/chat-work-access.service';
-import { hasCrossBranchAccess } from '../../auth/branch-access.util';
+import { getBranchScope, hasCrossBranchAccess } from '../../auth/branch-access.util';
 import { CHAT_GATEWAY_TOKEN, IChatGateway } from '../interfaces/chat-gateway.interface';
 
 export const DISPATCH_LEASE_MS = 90_000;
@@ -57,7 +57,7 @@ export class ChatDispatchService {
         staff: { isActive: true, isSystemUser: false, deletedAt: null },
       },
       include: {
-        staff: { select: { id: true, role: true, branchId: true, accessibleCompanies: true } },
+        staff: { select: { id: true, name: true, nickname: true, role: true, branchId: true, accessibleCompanies: true } },
       },
       orderBy: [{ position: 'asc' }, { id: 'asc' }],
     });
@@ -84,7 +84,10 @@ export class ChatDispatchService {
   }
 
   async read(actor: Pick<ChatWorkActor, 'id'>, scope: WorkScope): Promise<ChatDispatchState> {
-    roomWorkWhere(await this.access.currentActor(actor), scope);
+    const currentActor = await this.access.currentActor(actor);
+    roomWorkWhere(currentActor, scope);
+    const branch = getBranchScope(currentActor);
+    const visibleBranch = branch.all ? scope.branchId : branch.branchId;
     const enabled = await this.enabled();
     const rows = enabled ? await this.members(this.prisma, scope.company, new Date()) : [];
     const index = rows.findIndex((row) => row.staffId === actor.id);
@@ -96,6 +99,13 @@ export class ChatDispatchService {
       expiresAt: member?.readyUntil?.toISOString() ?? null,
       position: member ? index + 1 : null,
       readyCount: rows.length,
+      members: rows.map((row, index) => ({
+        position: index + 1,
+        name: row.staffId === actor.id || !visibleBranch || row.staff.branchId === visibleBranch
+          ? row.staff.nickname || row.staff.name
+          : null,
+        isSelf: row.staffId === actor.id,
+      })),
     };
   }
 

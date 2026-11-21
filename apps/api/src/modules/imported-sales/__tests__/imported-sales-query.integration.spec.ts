@@ -83,6 +83,7 @@ async function ownedBatch(
   branchId: string,
   creates: ReturnType<typeof sale>[],
   matches: ReturnType<typeof sale>[] = [],
+  history?: { branchId: string; reportFrom: string; reportTo: string }[],
 ) {
   const batchId = randomUUID();
   const fileSha256 = hashImportValue(storeKey);
@@ -107,6 +108,9 @@ async function ownedBatch(
         manifestHash: fileSha256,
         planHash: hashImportValue(items),
         reconciliationSnapshot: {
+          version: 1,
+          cannotVerifySource: false,
+          ...(history ? { history } : {}),
           files: [{ fileSha256, branchId }],
           expectedReceiptsHash: receiptDigest(items),
         },
@@ -118,6 +122,7 @@ async function ownedBatch(
     db.importedSale.createMany({ data: creates.map((s) => ({ ...s, importBatch: batchId })) }),
     db.tooltifyImportItem.createMany({ data: items }),
   ]);
+  return batchId;
 }
 
 async function query(input: Record<string, string> = {}) {
@@ -284,6 +289,7 @@ it('keeps source restrictions and nullable money on an empty query', async () =>
 it('returns a zero summary when the authorized filters find no rows', async () => {
   const dto = await query({ barcode: '123' });
   expect(await read(() => service.summary(dto))).toEqual({
+    coverage: { firstSoldAt: null, lastSoldAt: null, verifiedThrough: null },
     totals: { billCount: 0, lineCount: 0, count: 0, sales: '0', cost: null, profit: null },
     byMonth: [],
     byChannel: [],
@@ -316,3 +322,75 @@ it('summarizes enough matched rows to exceed one PostgreSQL bind batch', async (
     await db.importedSale.deleteMany({ where: { importBatch: 'scale-fixture' } });
   }
 }, 15_000);
+
+it('requires VERIFIED SALES provenance and all historical SHOP branches for the bounded interval', async () => {
+  const branches = await db.branch.findMany({ where: { company: { companyCode: 'SHOP' } } });
+  const windows = branches.map((branch) => ({
+    branchId: branch.id,
+    reportFrom: '2026-10-01',
+    reportTo: '2026-11-01',
+  }));
+  const barcode = '008801';
+  const covered = sale({ barcode, soldAt: october, orderNumber: 'COVERED' });
+  const owner = await ownedBatch('coverage', branches[0].id, [covered], [], windows);
+  const q = await query({ barcode, startDate: '2026-10-01', endDate: '2026-11-02' });
+  const summary = () => read(() => service.summary(q));
+  const observed = {
+    firstSoldAt: october.toISOString(),
+    lastSoldAt: october.toISOString(),
+    verifiedThrough: null,
+  };
+  await db.tooltifyImportBatch.create({
+    data: {
+      kind: 'STOCK',
+      status: 'VERIFIED',
+      canonicalSetId: randomUUID(),
+      manifestHash: 'synthetic',
+      planHash: 'synthetic',
+      sourceCutoverAt: midnight,
+      reconciliationSnapshot: { cannotVerifySource: false, history: windows },
+      codeRevision: 'synthetic',
+    },
+  });
+  expect((await summary()).coverage).toEqual(observed);
+  for (const status of ['FAILED', 'APPLIED', 'VERIFIED'] as const) {
+    await db.tooltifyImportBatch.update({ where: { id: owner }, data: { status } });
+    expect((await summary()).coverage).toEqual({
+      ...observed,
+      verifiedThrough: status === 'VERIFIED' ? midnight.toISOString() : null,
+    });
+  }
+  for (const startDate of [undefined, '2026-09-30']) {
+    expect(
+      (await read(() => service.summary({ ...q, startDate }))).coverage.verifiedThrough,
+    ).toBeNull();
+  }
+  // The reconciled cutoff is durable evidence, including for filters ending earlier.
+  expect(
+    (await read(() => service.summary({ ...q, endDate: '2026-10-31' }))).coverage.verifiedThrough,
+  ).toBe(midnight.toISOString());
+  const old = await ownedBatch('old', branches[0].id, [
+    sale({ barcode: '008803', orderNumber: 'OLD', soldAt: october }),
+  ]);
+  await db.tooltifyImportBatch.update({ where: { id: old }, data: { status: 'VERIFIED' } });
+  expect(
+    (await read(() => service.summary({ ...q, barcode: '008803' }))).coverage.verifiedThrough,
+  ).toBeNull();
+  const legacy = sale({ barcode, orderNumber: 'UNPROVEN', soldAt: october });
+  await db.importedSale.create({ data: legacy });
+  expect((await summary()).coverage.verifiedThrough).toBeNull();
+  await db.importedSale.delete({ where: { id: legacy.id } });
+  const partial = await ownedBatch(
+    'partial',
+    branches[0].id,
+    [sale({ barcode: '008802', orderNumber: 'PARTIAL', soldAt: october })],
+    [],
+    windows.slice(0, 1),
+  );
+  await db.tooltifyImportBatch.update({ where: { id: partial }, data: { status: 'VERIFIED' } });
+  expect(
+    (await read(() => service.summary({ ...q, barcode: '008802' }))).coverage.verifiedThrough,
+  ).toBeNull();
+  await db.tooltifyImportBatch.update({ where: { id: owner }, data: { status: 'ROLLED_BACK' } });
+  expect((await summary()).coverage).toEqual(observed);
+});

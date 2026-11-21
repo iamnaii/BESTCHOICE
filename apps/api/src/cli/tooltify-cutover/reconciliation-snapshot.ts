@@ -330,6 +330,15 @@ export function buildReconciliationSnapshot(
   for (const e of input.excluded) byReason.set(e.reason, (byReason.get(e.reason) ?? 0) + 1);
   return {
     version: 1,
+    ...(input.kind === 'SALES' && input.validatedHistory?.length
+      ? {
+          history: input.validatedHistory.map(({ branchId, reportFrom, reportTo }) => ({
+            branchId,
+            reportFrom,
+            reportTo,
+          })),
+        }
+      : {}),
     cannotVerifySource:
       cannotVerifySource ||
       (input.kind === 'STOCK' && input.issues.some((i) => i.code === 'STOCK_SUMMARY_MISMATCH')),

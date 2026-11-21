@@ -8,6 +8,7 @@ import {
 } from '../employee-access/access-imported-source';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { importedSalesCoverage, type ImportedSalesCoverage } from './imported-sales-coverage';
 import { readSaleOrigins } from '../../cli/tooltify-cutover/plan-targets';
 import { PrismaService } from '../../prisma/prisma.service';
 import { QueryImportedSalesDto } from './dto/query-imported-sales.dto';
@@ -21,6 +22,7 @@ export interface Bucket {
 }
 
 export interface ImportedSalesSummaryResult {
+  coverage: ImportedSalesCoverage;
   totals: {
     count: number;
     billCount: number;
@@ -107,7 +109,7 @@ export class ImportedSalesService {
   async summary(q: QueryImportedSalesDto): Promise<ImportedSalesSummaryResult> {
     if (currentDomainAccess()) await assertImportedSource();
     const where = this.buildWhere(q);
-    const summarize = (db: Prisma.TransactionClient) => this.summarize(db, where);
+    const summarize = (db: Prisma.TransactionClient) => this.summarize(db, where, q);
     return currentDomainAccess()
       ? summarize(this.prisma)
       : this.basePrisma.$transaction(summarize, {
@@ -118,6 +120,7 @@ export class ImportedSalesService {
   private async summarize(
     db: Prisma.TransactionClient,
     where: Prisma.ImportedSaleWhereInput,
+    q: QueryImportedSalesDto,
   ): Promise<ImportedSalesSummaryResult> {
     const rows = await db.importedSale.findMany({
       where,
@@ -177,6 +180,12 @@ export class ImportedSalesService {
     const monthKey = (r: (typeof rows)[number]) => bkkYearMonth(r.soldAt);
 
     return {
+      coverage: await importedSalesCoverage(
+        db,
+        rows,
+        origins,
+        q.startDate ? reportDayStart(q.startDate) : undefined,
+      ),
       totals: {
         count: rows.length,
         billCount: bills.size,

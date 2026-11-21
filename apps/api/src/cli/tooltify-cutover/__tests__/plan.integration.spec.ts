@@ -170,7 +170,14 @@ describe('legacy sale uniqueness and attribution', () => {
     input.sourceSummary = { ...source, groups: [{ ...group, branchId: 'unmapped' }] };
     await expect(buildImportPlan(db, input)).rejects.toThrow('INVALID_SOURCE_SUMMARY_SCOPE');
     input.sourceSummary = source;
+    const withoutHistory = await buildImportPlan(db, input);
+    const history = { branchId: group.branchId, reportFrom: '2026-11-01', reportTo: '2026-11-18' };
+    const evidence = { ...history, evidenceRef: 'SYNTHETIC-PRIVATE-REF' };
+    input.validatedHistory = [evidence];
     const ready = await buildImportPlan(db, input);
+    expect(ready.planHash).not.toBe(withoutHistory.planHash);
+    expect(ready.reconciliationSnapshot.history).toEqual([history]);
+    expect(JSON.stringify(ready.reconciliationSnapshot)).not.toContain(evidence.evidenceRef);
     expect(ready.planHash).not.toBe(base.planHash);
     expect(ready.reconciliationSnapshot).toMatchObject({
       cannotVerifySource: false,

@@ -233,11 +233,10 @@ const FIN_CLOSE_TAIL_ITEMS: MenuItem[] = [
   { label: 'ทะเบียนปันผล + ภ.ง.ด.2', path: '/finance/dividend-register', icon: Coins },
 ];
 
+const IMPORTED_SALES_ITEM: MenuItem = { label: 'ยอดขายย้อนหลัง (Tooltify)', path: '/imported-sales', icon: History };
 /** รายงาน — ค่าคอมมิชชันต่อท้ายเฉพาะตำแหน่งที่ route อนุญาต (OWNER / FINANCE_MANAGER) */
 const FIN_REPORT_ITEMS: MenuItem[] = [
   { label: 'รายงานรวม', path: '/reports', icon: BarChart3 },
-  // Tooltify import flow B — read-only historical sales dashboard (imported_sales table)
-  { label: 'ยอดขายย้อนหลัง (Tooltify)', path: '/imported-sales', icon: History },
   { label: 'รายงานลูกหนี้และอายุหนี้', path: '/finance/aging-report', icon: AlertTriangle },
   { label: 'รายงานหนี้สูญ', path: '/finance/bad-debt-report', icon: TrendingDown },
   { label: 'รายงานลูกหนี้ระหว่างบริษัท', path: '/finance/intercompany-report', icon: Building2 },
@@ -454,6 +453,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'สรุปเงินรายวัน', path: '/shop/daily-cash', icon: Banknote },
         // เงินสดย่อยหน้าร้าน (ข้อ 20.2 · 2026-10-18) — ผจก.การเงินเติม/คืนได้
         { label: 'เงินสดย่อย', path: '/shop/petty-cash', icon: Wallet },
+        IMPORTED_SALES_ITEM,
         // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
         { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
         { label: 'หลังการขาย', path: '/after-sales', icon: ShieldCheck },
@@ -517,6 +517,7 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         { label: 'งบทดลอง + P&L', path: '/shop/accounting', icon: PieChart },
         { label: 'สรุปเงินรายวัน', path: '/shop/daily-cash', icon: Banknote },
         { label: 'เงินสดย่อย', path: '/shop/petty-cash', icon: Wallet },
+        IMPORTED_SALES_ITEM,
       ],
     },
     {
@@ -712,6 +713,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
         // คำสั่งเจ้าของ 2026-09-28: ย้ายมาจากกลุ่ม "ขาย" — ตำแหน่งเดียวกับเมนูฝ่ายบัญชี (acc-shop-accounting)
         { label: 'สรุปเงินรายวัน', path: '/shop/daily-cash', icon: Banknote },
         { label: 'เงินสดย่อย', path: '/shop/petty-cash', icon: Wallet },
+        IMPORTED_SALES_ITEM,
       ],
     },
   ],

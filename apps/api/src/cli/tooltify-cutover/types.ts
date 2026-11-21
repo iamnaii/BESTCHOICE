@@ -115,7 +115,9 @@ export type StockSourceSummary = { kind: 'STOCK' } & SourceSummary<
   NullableStockTotals,
   StockGroup<NullableStockTotals>
 >;
+type SalesHistoryRange = { branchId: string; reportFrom: string; reportTo: string };
 export type ReconciliationSnapshot = {
+  history?: SalesHistoryRange[];
   version: 1;
   cannotVerifySource: boolean;
   files: { fileSha256: string; branchId: string | null }[];
@@ -148,6 +150,7 @@ export type CanonicalInput = {
     }
   | {
       kind: 'SALES';
+      validatedHistory?: SalesHistoryRange[];
       rows: CanonicalSaleLine[];
       excludedEvidence?: CanonicalSaleLine[];
       sourceSummary?: SalesSourceSummary;

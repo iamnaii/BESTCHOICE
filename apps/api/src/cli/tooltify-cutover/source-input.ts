@@ -237,6 +237,15 @@ export async function loadSourceInputs(
     inputs.push({
       ...common,
       kind: 'SALES',
+      ...(issues.length === 0 && manifest.history?.length
+        ? {
+            validatedHistory: manifest.history.map(({ branchId, reportFrom, reportTo }) => ({
+              branchId,
+              reportFrom,
+              reportTo,
+            })),
+          }
+        : {}),
       uniquePhysicalRows: countPhysical('SALES'),
       rows: canonical.rows,
       excluded: canonical.excluded,

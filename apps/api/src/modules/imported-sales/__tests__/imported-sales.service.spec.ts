@@ -80,6 +80,11 @@ describe('ImportedSalesService', () => {
     ];
     const svc = summaryService(jest.fn().mockResolvedValue(rows));
     const res = await svc.summary(new QueryImportedSalesDto());
+    expect(res.coverage).toEqual({
+      firstSoldAt: rows[0].soldAt.toISOString(),
+      lastSoldAt: rows[1].soldAt.toISOString(),
+      verifiedThrough: null,
+    });
     expect(res.totals).toEqual({
       billCount: 2,
       lineCount: 2,

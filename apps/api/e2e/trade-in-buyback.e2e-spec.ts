@@ -29,8 +29,12 @@ describe('Trade-in payout and product handoff with real PostgreSQL + SHOP journa
   let actor: { id: string; role: string; branchId: string | null; accessibleCompanies: string[] };
   const payment = { sellerName: 'TEST SELLER', sellerPhone: '0000000000', sellerAddress: 'TEST ADDRESS', sellerIdCardNumber: '0000000000001', serialNumber: 'TEST-SN', imeiMissingReason: 'TEST no cellular radio', idCardVerified: true, sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: 'data:image/png;base64,dGVzdA==', paymentMethod: 'CASH' };
   const pdf = jest.spyOn(VoucherPdfRenderer.prototype, 'htmlToPdf').mockResolvedValue(Buffer.from('%PDF-test'));
+  const originalJwtSecret = process.env.JWT_SECRET;
 
   beforeAll(async () => {
+    // This isolated module bypasses application bootstrap/configuration.
+    // Supply its own signing key so public quote tests also work in bare CI.
+    process.env.JWT_SECRET = 'isolated-buyback-e2e-quote-signing-key';
     await db.$connect();
     fixture = await seedTradeInShop(db, 'BUYBACK E2E BRANCH');
     await seedTradeInAppraisal(db);
@@ -48,7 +52,14 @@ describe('Trade-in payout and product handoff with real PostgreSQL + SHOP journa
     // Bind the same IPv4 destination Supertest uses; Darwin permits a different IPv6 server on the same port.
     await app.listen(0, '127.0.0.1');
   });
-  afterAll(async () => { await app?.close(); await db.$disconnect(); pdf.mockRestore(); });
+  afterAll(async () => {
+    try { await app?.close(); await db.$disconnect(); }
+    finally {
+      pdf.mockRestore();
+      if (originalJwtSecret === undefined) delete process.env.JWT_SECRET;
+      else process.env.JWT_SECRET = originalJwtSecret;
+    }
+  });
 
   const buy = (extra: Record<string, unknown> = {}) => request(app.getHttpServer()).post('/trade-ins/quick-buy').send({
     ...payment, requestId: randomUUID(), branchId: fixture.branch.id, sellerContactId: fixture.seller.id,

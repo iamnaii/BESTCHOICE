@@ -1,7 +1,10 @@
-// Stock writes stay disabled until the shared cutover runner can validate the frozen plan.
-console.error(
-  'Tooltify stock import requires a reviewed manifest for current-stock-snapshot. ' +
-    'Inspect the snapshot with npm run import:tooltify-cutover --workspace=@installment/api -- ' +
-    'inspect --out-dir <dir> <snapshot.xlsx>. Stock apply is currently disabled.',
-);
-process.exitCode = 1;
+import { cutoverMain } from './tooltify-cutover.cli';
+
+void cutoverMain(process.argv.slice(2), 'STOCK')
+  .then((code) => {
+    process.exitCode = code;
+  })
+  .catch(() => {
+    console.error('CUTOVER_FAILED');
+    process.exitCode = 1;
+  });

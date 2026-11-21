@@ -21,6 +21,7 @@ export type InputManifest = {
   cutoverAt: string;
   companyCode: 'SHOP';
   files: FileRef[];
+  copies?: { path: string; sha256: string }[];
   decisionsSha256: string;
   canonicalSetId: string;
   history?: { branchId: string; reportFrom: string; reportTo: string; evidenceRef: string }[];
@@ -40,7 +41,13 @@ export type SourceDecision = {
   reason: string;
   evidenceRef: string;
 } & (
-  | { action: 'SELECT_SNAPSHOT'; branchId: string; storeKey: string; asOf: string }
+  | {
+      action: 'SELECT_SNAPSHOT';
+      branchId: string;
+      storeKey: string;
+      asOf: string;
+      summaryCostBasis?: 'EXTENDED' | 'PER_UNIT';
+    }
   | {
       action: 'SELECT_SALES';
       branchId: string;
@@ -63,7 +70,9 @@ export type SourceDecision = {
       assignments: { row: number; targetId: string | null }[];
     }
   | { action: 'REPORT_DUPLICATE'; keepRow: number }
-  | { action: 'DISTINCT_UNITS' | 'EXCLUDE_FILE' | 'EXCLUDE_ROW' | 'UNRESOLVED' }
+  | { action: 'EXCLUDE_FILE'; reportedUnitsPerRow?: 1; summaryCostBasis?: 'PER_UNIT' | 'EXTENDED' }
+  | { action: 'EXCLUDE_ROW'; reportedUnitsPerRow?: 1 }
+  | { action: 'DISTINCT_UNITS' | 'UNRESOLVED' }
 );
 
 export type StockPriceColumns = Pick<
@@ -106,21 +115,37 @@ export type ReconciliationSnapshot = {
   files: { fileSha256: string; branchId: string | null }[];
   source: SalesSourceSummary | StockSourceSummary | null;
   exclusions: { reason: ExcludedSource['reason']; lines: number }[];
-  canonical:
-    | { kind: 'SALES'; totals: GrossSalesTotals; groups: SalesGroup<GrossSalesTotals>[] }
-    | { kind: 'STOCK'; totals: StockTotals; groups: StockGroup<StockTotals>[] };
+  adjustments: EconomicAggregate | null;
+  uniquePhysicalRows: number | null;
+  expectedTargetsHash: string;
+  expectedReceiptsHash: string;
+  canonical: EconomicAggregate;
 };
+export type EconomicAggregate =
+  | { kind: 'SALES'; totals: GrossSalesTotals; groups: SalesGroup<GrossSalesTotals>[] }
+  | { kind: 'STOCK'; totals: StockTotals; groups: StockGroup<StockTotals>[] };
 export type CanonicalInput = {
   manifest: InputManifest;
   decisions: SourceDecisions;
   codeRevision: string;
   expectedDbIdentity: string;
+  uniquePhysicalRows?: number;
   /** Aggregate inspection, validateManifest and parser/canonicalizer issues before planning. */
   issues: ImportIssue[];
   excluded: ExcludedSource[];
 } & (
-  | { kind: 'STOCK'; rows: CanonicalStockUnit[]; sourceSummary?: StockSourceSummary }
-  | { kind: 'SALES'; rows: CanonicalSaleLine[]; sourceSummary?: SalesSourceSummary }
+  | {
+      kind: 'STOCK';
+      rows: CanonicalStockUnit[];
+      excludedEvidence?: CanonicalStockUnit[];
+      sourceSummary?: StockSourceSummary;
+    }
+  | {
+      kind: 'SALES';
+      rows: CanonicalSaleLine[];
+      excludedEvidence?: CanonicalSaleLine[];
+      sourceSummary?: SalesSourceSummary;
+    }
 );
 
 export type StockResolution = StockPriceColumns & {
@@ -290,4 +315,30 @@ export type CanonicalSalesResult = ParseResult<CanonicalSaleLine> & {
     sourceKey: string | null;
     reason: 'IDENTICAL_FILE_COPY' | 'REPORT_DUPLICATE' | 'EXCLUDE_FILE' | 'EXCLUDE_ROW';
   }[];
+};
+
+export type MetricDelta = {
+  dimensions: Record<string, string | null>;
+  values: Record<string, string | number | null>;
+};
+export type ReconciliationReport = {
+  batchId: string;
+  kind: 'SALES' | 'STOCK';
+  status: string;
+  canOpen: boolean;
+  issues: string[];
+  source: ReconciliationSnapshot['source'];
+  adjustments: EconomicAggregate | null;
+  canonical: EconomicAggregate;
+  target: EconomicAggregate;
+  counts: {
+    uniquePhysicalRows: number | null;
+    inputOccurrences: number | null;
+    created: number;
+    matched: number;
+    excluded: number;
+    identicalFileCopies: number;
+  };
+  deltas: { sourceToCanonical: MetricDelta[] | null; canonicalToTarget: MetricDelta[] };
+  sideEffects: Record<string, number>;
 };

@@ -111,6 +111,19 @@ export function validateManifest(
   }
 
   const inspected = new Map(inspection.files.map((file) => [file.sha256, file]));
+  const sourcePaths = new Set(manifest.files.map((f) => inputPathSha256(f.path)));
+  const primaryHashes = new Set(manifest.files.map((f) => f.sha256));
+  for (const copy of manifest.copies ?? []) {
+    const pathHash = inputPathSha256(copy.path);
+    if (
+      sourcePaths.has(pathHash) ||
+      !primaryHashes.has(copy.sha256) ||
+      !inspected.get(copy.sha256)?.inputs.some((i) => i.pathSha256 === pathHash)
+    ) {
+      issue('INVALID_SOURCE_COPY', 'พาธหรือ checksum ของไฟล์สำเนาไม่ตรงกับหลักฐาน');
+    }
+    sourcePaths.add(pathHash);
+  }
   const refsByHash = new Map<string, FileRef>();
   const usableDecisions = new Map<string, SourceDecision[]>();
   for (const decision of decisions.entries) {

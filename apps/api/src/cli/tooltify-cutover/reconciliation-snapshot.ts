@@ -1,17 +1,16 @@
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
-import { identityHash } from './plan-targets';
+import { identityHash, saleContent, sourceRefJson } from './plan-targets';
 import { hashImportValue as hash } from './canonicalize';
 import type {
   CanonicalInput,
   FileRef,
   GrossSalesTotals,
   PlannedItem,
-  PlannedStockItem,
-  PlannedSalesItem,
+  CanonicalSaleLine,
+  CanonicalStockUnit,
+  EconomicAggregate,
   ReconciliationSnapshot,
-  SalesGroup,
-  StockGroup,
   StockTotals,
 } from './types';
 
@@ -79,72 +78,142 @@ const sourceSchema = z.discriminatedUnion('kind', [
     .strict(),
 ]);
 
-function summarizeSales(items: PlannedSalesItem[]): GrossSalesTotals {
-  const result = {
-    bills: 0,
-    lines: items.length,
-    costTotal: '0.00',
-    listPrice: '0.00',
-    salePrice: '0.00',
-    profit: '0.00',
-  };
-  const bills = new Set<string>();
-  for (const { payload } of items) {
-    bills.add(hash([payload.sourceStoreKey, payload.orderNumber]));
-    for (const field of moneyFields)
-      result[field] = new Prisma.Decimal(result[field]).plus(payload[field]).toFixed(2);
-  }
-  return { ...result, bills: bills.size };
-}
-function summarizeStock(items: PlannedStockItem[]): StockTotals {
-  return {
-    units: items.length,
-    cost: items.reduce((s, i) => s.plus(i.payload.cost), new Prisma.Decimal(0)).toFixed(2),
-  };
-}
-function groupTotals<T, D, R>(rows: T[], dimensions: (row: T) => D, aggregate: (rows: T[]) => R) {
+type SaleMeasure = Pick<
+  CanonicalSaleLine,
+  'sourceStoreKey' | 'orderNumber' | 'soldAt' | 'saleChannel' | (typeof moneyFields)[number]
+> & { branchId: string };
+type StockMeasure = {
+  kind: 'DEVICE' | 'ACCESSORY';
+  branchId: string;
+  skuHash: string | null;
+  cost: string;
+};
+
+function groupTotals<T, D, R>(
+  rows: T[],
+  dimensions: (r: T) => D,
+  aggregate: (rows: T[], key: string) => R,
+) {
   const groups = new Map<string, { key: D; rows: T[] }>();
   for (const row of rows) {
     const key = dimensions(row),
-      id = hash(key);
-    const group = groups.get(id) ?? { key, rows: [] };
+      id = hash(key),
+      group = groups.get(id) ?? { key, rows: [] };
     group.rows.push(row);
     groups.set(id, group);
   }
   return [...groups]
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([, group]) => ({ ...group.key, totals: aggregate(group.rows) }));
+    .map(([id, g]) => ({ ...g.key, totals: aggregate(g.rows, id) }));
 }
-function canonicalGroups(
-  kind: CanonicalInput['kind'],
-  items: PlannedItem[],
-): ReconciliationSnapshot['canonical'] {
-  if (kind === 'SALES') {
-    const sales = items.filter((i): i is PlannedSalesItem => i.kind === 'SALES');
-    const groups: SalesGroup<GrossSalesTotals>[] = groupTotals(
-      sales,
-      (i) => ({
-        month: new Date(i.payload.soldAt.getTime() + 7 * 60 * 60 * 1000).toISOString().slice(0, 7),
-        channel: channel.parse(i.payload.saleChannel),
-        branchId: i.branchId,
-      }),
-      summarizeSales,
-    );
-    return { kind, groups, totals: summarizeSales(sales) };
-  }
-  const stock = items.filter((i): i is PlannedStockItem => i.kind === 'STOCK');
-  const groups: StockGroup<StockTotals>[] = groupTotals(
-    stock,
-    (i) => ({
-      branchId: i.branchId,
-      kind: i.payload.kind,
-      skuHash: i.payload.kind === 'ACCESSORY' ? identityHash(i) : null,
-    }),
-    summarizeStock,
+const saleDimensions = (r: SaleMeasure) => ({
+  month: new Date(r.soldAt.getTime() + 7 * 3600000).toISOString().slice(0, 7),
+  channel: channel.safeParse(r.saleChannel).data ?? 'UNKNOWN',
+  branchId: r.branchId,
+});
+const billKey = (r: SaleMeasure) => hash([r.sourceStoreKey, r.orderNumber]);
+export function aggregateSales(
+  rows: SaleMeasure[],
+  retained: SaleMeasure[] = [],
+): Extract<EconomicAggregate, { kind: 'SALES' }> {
+  // A removed line removes a distinct bill only if no retained line keeps it in this scope.
+  const retainedBills = new Set(retained.map(billKey));
+  const retainedGroupBills = new Set(
+    retained.map((r) => hash([hash(saleDimensions(r)), billKey(r)])),
   );
-  return { kind, groups, totals: summarizeStock(stock) };
+  const total = (sales: SaleMeasure[], group?: string): GrossSalesTotals => {
+    const bills = new Set<string>();
+    const result = {
+      bills: 0,
+      lines: sales.length,
+      costTotal: '0.00',
+      listPrice: '0.00',
+      salePrice: '0.00',
+      profit: '0.00',
+    };
+    for (const r of sales) {
+      const key = billKey(r);
+      if (!(group ? retainedGroupBills.has(hash([group, key])) : retainedBills.has(key)))
+        bills.add(key);
+      for (const field of moneyFields)
+        result[field] = new Prisma.Decimal(result[field]).plus(r[field]).toFixed(2);
+    }
+    return { ...result, bills: bills.size };
+  };
+  return { kind: 'SALES', totals: total(rows), groups: groupTotals(rows, saleDimensions, total) };
+}
+export function aggregateStock(
+  rows: StockMeasure[],
+): Extract<EconomicAggregate, { kind: 'STOCK' }> {
+  const total = (rs: StockMeasure[]): StockTotals => ({
+    units: rs.length,
+    cost: rs.reduce((sum, r) => sum.plus(r.cost), new Prisma.Decimal(0)).toFixed(2),
+  });
+  return {
+    kind: 'STOCK',
+    totals: total(rows),
+    groups: groupTotals(
+      rows,
+      ({ kind, branchId, skuHash }) => ({ kind, branchId, skuHash }),
+      total,
+    ),
+  };
+}
+export function stockMeasure(r: CanonicalStockUnit): StockMeasure {
+  return {
+    kind: r.kind,
+    branchId: r.branchId,
+    cost: r.cost,
+    skuHash: r.kind === 'ACCESSORY' ? hash(['ACCESSORY', r.branchId, r.barcode]) : null,
+  };
+}
+function sourceAggregates(input: CanonicalInput, files: FileRef[]) {
+  const ordinary = input.excluded
+    .filter((e) => e.reason !== 'IDENTICAL_FILE_COPY')
+    .map((e) => hash(sourceRefJson(e.source)))
+    .sort();
+  const evidence = input.excludedEvidence ?? [];
+  const complete =
+    hash(ordinary) === hash(evidence.map((r) => hash(sourceRefJson(r.source))).sort());
+  if (input.kind === 'SALES') {
+    const byFile = new Map(files.map((f) => [f.sha256, f.branchId]));
+    const measure = (r: CanonicalSaleLine) => ({
+      ...r,
+      branchId: byFile.get(r.source.fileSha256) ?? '',
+    });
+    const retained = input.rows.map(measure);
+    return {
+      canonical: aggregateSales(retained),
+      adjustments: complete
+        ? aggregateSales((input.excludedEvidence ?? []).map(measure), retained)
+        : null,
+    };
+  }
+  return {
+    canonical: aggregateStock(input.rows.map(stockMeasure)),
+    adjustments: complete ? aggregateStock((input.excludedEvidence ?? []).map(stockMeasure)) : null,
+  };
 }
 
+export function orderedDigest(values: unknown[]) {
+  return hash(values.map(hash).sort());
+}
+export function expectedTarget(item: PlannedItem) {
+  if (item.kind === 'SALES') return [item.sourceKey, saleContent(item.payload)];
+  const r = item.payload;
+  return [
+    item.sourceKey,
+    identityHash(item),
+    r.branchId,
+    r.category,
+    r.desiredStatus,
+    new Prisma.Decimal(r.cost).toFixed(2),
+    ...(['cashPrice', 'installmentPrice', 'financePrice'] as const).map((k) =>
+      r[k] === null ? null : new Prisma.Decimal(r[k]).toFixed(2),
+    ),
+    item.disposition === 'CREATE' ? new Date(r.importedAt) : null,
+  ];
+}
 function feasibleSourceGroups(
   source: NonNullable<ReconciliationSnapshot['source']>,
   files: FileRef[],
@@ -265,9 +334,33 @@ export function buildReconciliationSnapshot(
   return {
     version: 1,
     cannotVerifySource,
+    uniquePhysicalRows:
+      input.uniquePhysicalRows === undefined
+        ? ((source?.kind === 'SALES' ? source.detail?.lines : source?.detail?.units) ?? null)
+        : z.number().int().safe().nonnegative().parse(input.uniquePhysicalRows),
     files: files.map((f) => ({ fileSha256: f.sha256, branchId: f.branchId })),
     source,
-    canonical: canonicalGroups(input.kind, items),
+    ...sourceAggregates(input, files),
+    expectedTargetsHash: orderedDigest(items.map(expectedTarget)),
+    expectedReceiptsHash: orderedDigest([
+      ...items.map((i) => [
+        i.sourceKey,
+        i.disposition,
+        i.payloadHash,
+        identityHash(i),
+        [sourceRefJson(i.payload.source)],
+      ]),
+      ...input.excluded.map((e, index) => {
+        const key = hash(['EXCLUDE', index, e]);
+        return [
+          key,
+          'EXCLUDE',
+          hash(e),
+          key,
+          [{ ...sourceRefJson(e.source), reason: e.reason, canonicalSourceKey: e.sourceKey }],
+        ];
+      }),
+    ]),
     exclusions: [...byReason].map(([reason, lines]) => ({ reason, lines })),
   };
 }

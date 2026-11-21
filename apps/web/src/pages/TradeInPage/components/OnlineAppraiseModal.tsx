@@ -107,7 +107,7 @@ export default function OnlineAppraiseModal({ item, onClose }: Props) {
               <div className="text-xs text-muted-foreground">
                 เงินสด ฿{Number(item.quoteBreakdown.cashPrice).toLocaleString()} · เทิร์น ฿
                 {Number(item.quoteBreakdown.exchangePrice).toLocaleString()} (+
-                {Number(item.quoteBreakdown.bonusPct ?? 0)}%)
+                {Math.max(0, Number(item.quoteBreakdown.exchangePrice) - Number(item.quoteBreakdown.cashPrice)).toLocaleString('th-TH', { maximumFractionDigits: 2 })} บาท)
               </div>
             )}
           </div>

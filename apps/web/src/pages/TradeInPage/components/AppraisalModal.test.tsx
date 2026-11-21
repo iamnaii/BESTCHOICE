@@ -308,7 +308,7 @@ describe('Trade-in questionnaire appraisal', () => {
       );
       expect(within(prices).getByText('เกรดจากผลประเมิน').parentElement).toHaveTextContent('B');
       if (flow === 'EXCHANGE') {
-        expect(within(prices).getByText('ราคาเทิร์นรวมโบนัส 15%').parentElement).toHaveTextContent(
+        expect(within(prices).getByText('ราคาเทิร์นรวมโบนัส').parentElement).toHaveTextContent(
           '฿9,341.97',
         );
         expect(screen.getByText('ราคาเสนอเทิร์นเครื่อง').parentElement).toHaveTextContent(

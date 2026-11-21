@@ -16,24 +16,14 @@ describe('BuybackQuestionAdminService', () => {
     service = new BuybackQuestionAdminService(prisma);
   });
 
-  it('getSellConfig: ไม่มี row → default 10; updateSellConfig upsert พร้อม deletedAt:null', async () => {
-    prisma.systemConfig.findFirst.mockResolvedValue(null);
-    prisma.systemConfig.upsert.mockResolvedValue({});
-
-    expect(await service.getSellConfig()).toEqual({ exchangeBonusPct: 10 });
-
-    const dto: UpdateSellConfigDto = { exchangeBonusPct: 15 };
-    await service.updateSellConfig(dto);
-
-    const call = prisma.systemConfig.upsert.mock.calls[0][0];
-    expect(call.where).toEqual({ key: 'sell_exchange_bonus_pct' });
-    expect(call.update).toEqual({ value: '15', deletedAt: null });
-    expect(call.create.value).toBe('15');
+  it('returns the fixed policy even if a legacy percentage exists', async () => {
+    prisma.systemConfig.findFirst.mockResolvedValue({ value: '42' });
+    expect(await service.getSellConfig()).toEqual({ exchangeBonusPct: 0, mode: 'TIERED_FIXED', threshold: 20000, lowerBonus: 500, upperBonus: 1000 });
   });
 
-  it('getSellConfig: row มี value → คืน parsed value', async () => {
-    prisma.systemConfig.findFirst.mockResolvedValue({ value: '42' });
-
-    expect(await service.getSellConfig()).toEqual({ exchangeBonusPct: 42 });
+  it('rejects obsolete percentage changes without writing configuration', async () => {
+    const dto: UpdateSellConfigDto = { exchangeBonusPct: 15 };
+    await expect(service.updateSellConfig(dto)).rejects.toThrow('ไม่รองรับการตั้งเป็นเปอร์เซ็นต์');
+    expect(prisma.systemConfig.upsert).not.toHaveBeenCalled();
   });
 });

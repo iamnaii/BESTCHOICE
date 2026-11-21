@@ -390,6 +390,30 @@ describe('OnlineAppraisalService', () => {
       expect(data.quoteBreakdown.cashPrice).toBe('12720.00');
     });
 
+    it.each([[20001, '1000.00', '21001.00'], [20000, '500.00', '20500.00']])(
+      'BUYBACK manual cash %s refreshes its fixed-bonus alternative', async (cash, bonus, credit) => {
+        prisma.tradeIn.findFirst.mockResolvedValue({ ...ONLINE_TRADEIN,
+          quoteBreakdown: { ...ONLINE_TRADEIN.quoteBreakdown, bonusPct: '0', bonusAmount: '500.00' } });
+        await service.appraiseOnline('ti-1', manualDto(cash), 'u1', 'OWNER');
+        const data = prisma.tradeIn.updateMany.mock.calls[0][0].data;
+        expect(data.quoteBreakdown).toMatchObject({ cashPrice: cash.toFixed(2), price: cash.toFixed(2), exchangePrice: credit, bonusAmount: bonus });
+      });
+
+    it('EXCHANGE fixed bonus keeps its original amount when the owner revises the offer', async () => {
+      prisma.tradeIn.findFirst.mockResolvedValue({ ...EXCHANGE_TRADEIN,
+        quoteBreakdown: { ...EXCHANGE_TRADEIN.quoteBreakdown, bonusPct: '0', bonusAmount: '500.00' } });
+      await service.appraiseOnline('ti-1', manualDto(14000), 'u1', 'OWNER');
+      const data = prisma.tradeIn.updateMany.mock.calls[0][0].data;
+      expect(data.quoteBreakdown).toMatchObject({ price: '14000.00', exchangePrice: '14000.00', cashPrice: '13500.00', bonusAmount: '500.00' });
+    });
+
+    it('rejects a manual fixed-bonus credit that leaves no device value', async () => {
+      prisma.tradeIn.findFirst.mockResolvedValue({ ...EXCHANGE_TRADEIN,
+        quoteBreakdown: { ...EXCHANGE_TRADEIN.quoteBreakdown, bonusPct: '0', bonusAmount: '500.00' } });
+      await expect(service.appraiseOnline('ti-1', manualDto(500), 'u1', 'OWNER')).rejects.toThrow('ราคาเครดิตต้องมากกว่าโบนัสเทิร์น');
+      expect(prisma.tradeIn.updateMany).not.toHaveBeenCalled();
+    });
+
     it('EXCHANGE record เก่าไม่มี bonusPct → cashPrice = manual ตรงๆ', async () => {
       const legacy = { ...EXCHANGE_TRADEIN, quoteBreakdown: { maxPrice: '14500.00', price: '13660.00', lines: [] } };
       prisma.tradeIn.findFirst.mockResolvedValue(legacy);

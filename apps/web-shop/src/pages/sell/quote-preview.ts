@@ -1,4 +1,5 @@
 import Decimal from 'decimal.js';
+import { sellExchangeBonusAmount } from '@installment/shared';
 import type { BuybackQuestion, BuybackQuestionsResponse } from '@/types/buyback';
 
 export type Answers = Record<string, string[]>;
@@ -9,7 +10,6 @@ export function previewPrice(
   questions: BuybackQuestion[],
   answers: Answers,
   mode: BuybackQuestionsResponse['pricingMode'] = 'SUM_PERCENT_FLOOR10',
-  bonusPct = '10',
 ): { price: number; exchangePrice: number; complete: boolean } {
   let fixed = new Decimal(0);
   let pct = new Decimal(0);
@@ -33,6 +33,6 @@ export function previewPrice(
   const raw = Decimal.max(new Decimal(maxPrice).minus(fixed), 0)
     .mul(new Decimal(100).minus(Decimal.min(pct, 100))).div(100);
   const price = mode === 'MAX_PERCENT_EXACT' ? raw.toDecimalPlaces(2) : raw.div(10).floor().mul(10);
-  const exchangePrice = price.mul(new Decimal(100).plus(bonusPct)).div(100).div(10).floor().mul(10);
+  const exchangePrice = price.plus(sellExchangeBonusAmount(price.toString()));
   return { price: price.toNumber(), exchangePrice: Decimal.max(exchangePrice, 0).toNumber(), complete };
 }

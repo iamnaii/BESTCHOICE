@@ -1,3 +1,4 @@
+import { sellExchangeBonusAmount } from '@installment/shared';
 import { domainAccessClient, currentDomainAccess } from '../../employee-access/access-execution-context';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, TradeIn } from '@prisma/client';
@@ -265,7 +266,15 @@ export class OnlineAppraisalService {
             typeof pctRaw === 'string' || typeof pctRaw === 'number'
               ? new Prisma.Decimal(pctRaw)
               : null;
-          if (bonusPct && bonusPct.gt(0)) {
+          if (oldBreakdown.bonusAmount !== undefined) {
+            // Preserve the promised fixed bonus and require a positive device value.
+            const fixedBonus = Prisma.Decimal.max(new Prisma.Decimal(String(oldBreakdown.bonusAmount)), 0);
+            if (offeredPrice.lte(fixedBonus)) {
+              throw new BadRequestException('ราคาเครดิตต้องมากกว่าโบนัสเทิร์น เพื่อให้มูลค่าเครื่องมากกว่า 0 บาท');
+            }
+            newBreakdown.bonusAmount = fixedBonus.toFixed(2);
+            newBreakdown.cashPrice = offeredPrice.minus(fixedBonus).toFixed(2);
+          } else if (bonusPct && bonusPct.gt(0)) {
             const HUNDRED = new Prisma.Decimal(100);
             const rawCash = offeredPrice.mul(HUNDRED).div(HUNDRED.plus(bonusPct));
             newBreakdown.cashPrice = rawCash.div(10).floor().mul(10).toFixed(2);
@@ -275,6 +284,11 @@ export class OnlineAppraisalService {
           }
         } else {
           newBreakdown.cashPrice = offeredPrice.toFixed(2);
+          if (oldBreakdown.bonusAmount !== undefined) {
+            const bonus = new Prisma.Decimal(sellExchangeBonusAmount(offeredPrice.toString()));
+            newBreakdown.bonusAmount = bonus.toFixed(2);
+            newBreakdown.exchangePrice = offeredPrice.plus(bonus).toFixed(2);
+          }
         }
         extraData = {
           estimatedValue: offeredPrice,

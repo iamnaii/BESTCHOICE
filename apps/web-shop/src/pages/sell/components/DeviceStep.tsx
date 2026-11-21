@@ -29,7 +29,7 @@ export default function DeviceStep({
       <div className="space-y-3">
         <p className="text-secondary-foreground">{modelLabel(model)}</p>
         <p className="text-sm">ดูได้ที่ การตั้งค่า → ทั่วไป → เกี่ยวกับ</p>
-        <div className="grid gap-2">
+        <div className="grid gap-2 min-[700px]:grid-cols-2">
           {storages.map((item) => (
             <ChoiceButton
               key={item.storage}
@@ -77,7 +77,7 @@ export default function DeviceStep({
       {group && (
         <section aria-label="รุ่น">
           <h2 className="mb-3 font-semibold">เลือกรุ่นในซีรีส์ {group.label}</h2>
-          <div className="grid gap-2">
+          <div className="grid gap-2 min-[700px]:grid-cols-2">
             {group.models.map((item) => (
               <ChoiceButton
                 key={item.model}

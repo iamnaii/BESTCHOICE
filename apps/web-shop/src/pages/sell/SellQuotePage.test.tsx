@@ -1,11 +1,12 @@
 import '@testing-library/jest-dom/vitest';
 import type { ReactNode } from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes, useNavigate, useLocation } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BuybackQuestionsResponse, BuybackQuoteResult } from '@/types/buyback';
 import SellQuotePage from './SellQuotePage';
+import { shopInfo } from '@/lib/copy';
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
@@ -173,6 +174,57 @@ beforeEach(() => {
     Promise.resolve({ data: url.endsWith('/catalog') ? catalog : config }),
   );
   mocks.post.mockResolvedValue({ data: result });
+});
+describe('sell contact links', () => {
+  function contact() {
+    return within(screen.getByRole('region', { name: 'ติดต่อร้านเรื่องขายหรือเทิร์น' }));
+  }
+  function lineMessage() {
+    return decodeURIComponent(
+      new URL(contact().getByRole('link', { name: 'ทัก LINE' }).getAttribute('href')!).search.slice(
+        1,
+      ),
+    );
+  }
+  it('offers add friend, a prepared message and the configured Google Maps destination from the first step', async () => {
+    mount();
+    await screen.findByRole('heading', { name: 'คุณใช้ไอโฟนรุ่นไหน?' });
+    expect(contact().getByRole('link', { name: 'แอด LINE' })).toHaveAttribute(
+      'href',
+      shopInfo.lineUrl,
+    );
+    expect(contact().getByRole('link', { name: 'Google Maps' })).toHaveAttribute(
+      'href',
+      shopInfo.mapsUrl,
+    );
+    expect(lineMessage()).toContain('สอบถามเรื่องขายหรือเทิร์น iPhone');
+    expect(mocks.post).not.toHaveBeenCalled();
+  });
+  it('prepares the selected device and authoritative cash/credit estimate without contact details', async () => {
+    await ready();
+    expect(lineMessage()).toContain('iPhone 12 64GB');
+    expect(lineMessage()).toContain('ราคาขายสดโดยประมาณ 4,321.65 บาท');
+    await click('เทิร์นซื้อเครื่อง');
+    expect(lineMessage()).toContain('เครดิตเทิร์นโดยประมาณ 4,750 บาท');
+    expect(lineMessage()).toContain('ไม่จ่ายเป็นเงินสด');
+    expect(lineMessage()).not.toContain('4,321.65');
+    await click('ใช้เครดิตเทิร์น · กรอกข้อมูล');
+    fireEvent.change(await screen.findByLabelText('ชื่อ-นามสกุล'), {
+      target: { value: 'ชื่อส่วนตัวทดสอบ' },
+    });
+    fireEvent.change(screen.getByLabelText('เบอร์โทร (10 หลัก)'), {
+      target: { value: '0812345678' },
+    });
+    expect(lineMessage()).not.toContain('ชื่อส่วนตัวทดสอบ');
+    expect(lineMessage()).not.toContain('0812345678');
+    expect(mocks.post).toHaveBeenCalledTimes(1);
+  });
+  it('drops the old estimate from LINE after returning to review', async () => {
+    await ready();
+    await click('ตรวจหรือแก้คำตอบ');
+    expect(lineMessage()).not.toContain('4,321.65');
+    expect(lineMessage()).toContain('iPhone 12 64GB');
+  });
 });
 describe('guided sell assessment', () => {
   it('renders a focused sell form and only asks questions for the selected device', async () => {
@@ -428,7 +480,7 @@ describe('price review and contact', () => {
     expect(screen.getByText('4,750 บาท')).toBeInTheDocument();
     expect(screen.queryByText('4,321.65 บาท')).not.toBeInTheDocument();
     expect(screen.getByText(/ไม่จ่ายเป็นเงินสด/)).toBeInTheDocument();
-    expect(screen.getByText('โบนัสเทิร์น 7%')).toBeInTheDocument();
+    expect(screen.getByText('โบนัสเทิร์น +428.35 บาท')).toBeInTheDocument();
     expect(mocks.post).toHaveBeenCalledTimes(1);
   });
   it('edits one answer via review and requests a new quote only when reviewing finishes', async () => {
@@ -572,11 +624,11 @@ describe('request and history boundaries', () => {
     await body();
     expect(new URLSearchParams(testSearch).get('utm_source')).toBe('line');
   });
-  it('keeps server source attribution and omits a zero bonus badge', async () => {
-    mocks.post.mockResolvedValue({ data: { ...result, bonusPct: '0' } });
+  it('removes price-source disclosure and omits a zero bonus badge', async () => {
+    mocks.post.mockResolvedValue({ data: { ...result, bonusPct: '0', exchangePrice: result.cashPrice } });
     await ready();
-    fireEvent.click(screen.getByText('ดูที่มาของราคา'));
-    expect(screen.getByText(/เงื่อนไขอ้างอิง Yellobe/)).toHaveTextContent('2569');
+    expect(screen.queryByText('ดูที่มาของราคา')).not.toBeInTheDocument();
+    expect(screen.queryByText(/เงื่อนไขอ้างอิง Yellobe/)).not.toBeInTheDocument();
     await click('เทิร์นซื้อเครื่อง');
     expect(screen.queryByText(/โบนัสเทิร์น/)).not.toBeInTheDocument();
   });

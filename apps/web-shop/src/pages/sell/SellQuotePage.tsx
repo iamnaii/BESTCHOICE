@@ -20,6 +20,7 @@ import SellFlowLayout from './components/SellFlowLayout';
 import DeviceStep from './components/DeviceStep';
 import QuestionStep from './components/QuestionStep';
 import QuoteResultStep from './components/QuoteResultStep';
+import SellContactLinks from './components/SellContactLinks';
 import SellerStep, {
   normalizeSellerPhone,
   sellerErrors,
@@ -120,7 +121,7 @@ export default function SellQuotePage() {
   const questions = data?.questions ?? [];
   const complete =
     !!maxPrice &&
-    previewPrice(maxPrice, questions, answers, data?.pricingMode, data?.bonusPct).complete;
+    previewPrice(maxPrice, questions, answers, data?.pricingMode).complete;
   const eligibilityReady = !data?.eligibilityRequired || eligibility;
   const fingerprint = data ? JSON.stringify([model, storage, data]) : null;
   function invalidateQuote() {
@@ -393,12 +394,21 @@ export default function SellQuotePage() {
       progressText={progressText}
       onBack={step.kind !== 'device' && !submitMutation.isPending ? back : undefined}
       footer={
-        navigation.transitioning ? (
-          <p role="status" className="text-center text-sm">
-            กำลังไปต่อ…
-          </p>
-        ) : undefined
+        <SellContactLinks
+          disabled={submitMutation.isPending}
+          context={{
+            model,
+            storage,
+            flow: quote ? flow : undefined,
+            amount: quote
+              ? flow === 'EXCHANGE'
+                ? quote.exchangePrice
+                : (quote.cashPrice ?? quote.price)
+              : undefined,
+          }}
+        />
       }
+      transitioning={navigation.transitioning}
     >
       {model && !['device', 'storage'].includes(step.kind) && (
         <div className="mb-5 flex flex-wrap items-center justify-between gap-2">

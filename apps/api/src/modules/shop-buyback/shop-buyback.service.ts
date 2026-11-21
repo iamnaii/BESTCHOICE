@@ -4,7 +4,6 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LineOaService } from '../line-oa/line-oa.service';
 import type { FlexMessagePayload } from '../line-oa/flex-messages/base-template';
-import { readNumberFlag } from '../../utils/config.util';
 import { BuybackPricingService, DeductSelection, QuoteComputation } from './buyback-pricing.service';
 import { QuoteAnswerDto, SubmitBuybackDto } from './dto/quote.dto';
 import { REFERENCE_PRICING_CONFIG_KEY, ReferencePricingCatalog, ReferencePricingMetadata } from './reference-pricing.types';
@@ -12,11 +11,11 @@ import { parseReferencePricingCatalog, referenceModelKey, referenceStorageKey } 
 
 type AvailableBuybackQuote = ReferencePricingMetadata & {
   available: true;
-  model: string; storage: string; price: string; cashPrice: string; exchangePrice: string; bonusPct: string; maxPrice: string;
+  model: string; storage: string; price: string; cashPrice: string; exchangePrice: string; bonusPct: string; bonusAmount: string; maxPrice: string;
   grade: 'A' | 'B' | 'C' | 'D';
   breakdown: ReferencePricingMetadata & {
     maxPrice: string; fixedTotal: string; pctTotal: string; price: string; cashPrice: string; exchangePrice: string;
-    bonusPct: string; chosenFlow: 'BUYBACK' | 'EXCHANGE'; lines: QuoteComputation['lines'];
+    bonusPct: string; bonusAmount: string; chosenFlow: 'BUYBACK' | 'EXCHANGE'; lines: QuoteComputation['lines'];
   };
   conditionAnswers: unknown[];
 };
@@ -101,14 +100,13 @@ export class ShopBuybackService {
   async getQuestions(model?: string, storage?: string) {
     const reference = await this.referenceFor(model, storage);
     const questions = reference?.profile.questions ?? await this.loadActiveQuestions();
-    const bonusPct = await this.getBonusPct();
     const valuation = !reference && model && storage ? await this.prisma.tradeInValuation.findFirst({
       where: { brand: { equals: 'Apple', mode: 'insensitive' }, model: { equals: model, mode: 'insensitive' },
         storage: { equals: storage, mode: 'insensitive' }, condition: 'A', deletedAt: null },
       select: { note: true },
     }) : null;
     return {
-      bonusPct: bonusPct.toString(),
+      bonusPct: '0',
       ...this.referenceMetadata(reference, valuation?.note),
       questions: questions.map((q) => ({
         id: q.id,
@@ -157,16 +155,6 @@ export class ShopBuybackService {
       capturedAt: reference.catalog.capturedAt, profileId: reference.profileId,
       eligibilityRequired: reference.profile.eligibilityRequired, eligibilityText: reference.profile.eligibilityText }
       : { pricingMode: 'SUM_PERCENT_FLOOR10' as const, eligibilityRequired: false, ...benchmark };
-  }
-
-  /** โบนัสเทิร์น % จาก SystemConfig — default 10, นอกช่วง 0–100 → 10 (spec /sell §3) */
-  async getBonusPct(): Promise<Prisma.Decimal> {
-    const n = await readNumberFlag(this.prisma, 'sell_exchange_bonus_pct', 10);
-    if (n < 0 || n > 100) {
-      this.logger.warn(`sell_exchange_bonus_pct=${n} นอกช่วง 0–100 — ใช้ default 10`);
-      return new Prisma.Decimal(10);
-    }
-    return new Prisma.Decimal(n);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -272,8 +260,7 @@ export class ShopBuybackService {
 
     const maxPrice = new Prisma.Decimal(valuation.basePrice);
     const comp = this.pricing.compute(maxPrice, selections, reference?.profile.pricingMode);
-    const bonusPct = await this.getBonusPct();
-    const exchangePrice = this.pricing.applyExchangeBonus(comp.price, bonusPct);
+    const exchangePrice = this.pricing.applyExchangeBonus(comp.price);
     const flowPrice = flow === 'EXCHANGE' ? exchangePrice : comp.price;
     return {
       available: true as const,
@@ -282,7 +269,8 @@ export class ShopBuybackService {
       price: flowPrice.toFixed(2),
       cashPrice: comp.price.toFixed(2),
       exchangePrice: exchangePrice.toFixed(2),
-      bonusPct: bonusPct.toString(),
+      bonusAmount: exchangePrice.minus(comp.price).toFixed(2),
+      bonusPct: '0',
       maxPrice: maxPrice.toFixed(2),
       grade: this.pricing.gradeFromPct(comp.pctTotal),
       ...this.referenceMetadata(reference, valuation.note),
@@ -295,7 +283,8 @@ export class ShopBuybackService {
         price: flowPrice.toFixed(2),
         cashPrice: comp.price.toFixed(2),
         exchangePrice: exchangePrice.toFixed(2),
-        bonusPct: bonusPct.toString(),
+      bonusAmount: exchangePrice.minus(comp.price).toFixed(2),
+        bonusPct: '0',
         chosenFlow: flow,
         lines: comp.lines,
       },

@@ -22,6 +22,8 @@
      separation now comes from borders (#DCE7E3) and mint-tint (#E8FAF4)
      section backgrounds, not an off-white page. */
   --color-background: #FFFFFF;
+  /* Sell flow: soft canvas separates the white assessment card. */
+  --color-sell-canvas: #F0F6F3;
   --color-foreground: #2B2B2B;
   --color-muted: #E8FAF4;
   --color-muted-foreground: #6B7370;

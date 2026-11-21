@@ -348,43 +348,45 @@ describe('ShopBuybackService (instant quote)', () => {
       const r = await service.quoteForAnswers('iPhone 15', '128GB', answers);
       expect(r.price).toBe('14000.00'); // cash เดิม
       expect(r.cashPrice).toBe('14000.00');
-      expect(r.exchangePrice).toBe('15400.00'); // 14000×1.1
-      expect(r.bonusPct).toBe('10');
+      expect(r.exchangePrice).toBe('14500.00'); // 14000 + 500
+      expect(r.bonusAmount).toBe('500.00');
+      expect(r.breakdown!.bonusAmount).toBe('500.00');
+      expect(r.bonusPct).toBe('0');
       expect(r.breakdown!.price).toBe('14000.00');
       expect(r.breakdown!.chosenFlow).toBe('BUYBACK');
       expect(r.breakdown!.cashPrice).toBe('14000.00');
-      expect(r.breakdown!.exchangePrice).toBe('15400.00');
+      expect(r.breakdown!.exchangePrice).toBe('14500.00');
     });
 
     it('quote flow=EXCHANGE: price=exchange + invariant breakdown.price', async () => {
       const r = await service.quoteForAnswers('iPhone 15', '128GB', answers, 'EXCHANGE');
-      expect(r.price).toBe('15400.00');
-      expect(r.breakdown!.price).toBe('15400.00');
+      expect(r.price).toBe('14500.00');
+      expect(r.breakdown!.price).toBe('14500.00');
       expect(r.breakdown!.chosenFlow).toBe('EXCHANGE');
       expect(r.cashPrice).toBe('14000.00');
     });
 
-    it('bonus config นอกช่วง → default 10', async () => {
+    it('legacy percentage config cannot change the fixed tier policy', async () => {
       prisma.systemConfig.findFirst.mockImplementation(({ where }) => Promise.resolve(where.key === 'sell_exchange_bonus_pct' ? { value: '250' } : null));
       const r = await service.quoteForAnswers('iPhone 15', '128GB', answers, 'EXCHANGE');
-      expect(r.bonusPct).toBe('10');
+      expect(r.bonusPct).toBe('0');
     });
 
-    it('getQuestions ตอบ bonusPct', async () => {
+    it('getQuestions marks percentage bonus disabled', async () => {
       const r = await service.getQuestions();
-      expect(r.bonusPct).toBe('10');
+      expect(r.bonusPct).toBe('0');
     });
 
     it('submit flow=EXCHANGE: estimatedValue=exchange, TradeIn.flow=EXCHANGE, flex มีราคาเทิร์น+คำว่าเทิร์น', async () => {
       const r = await service.submit({ ...dto, flow: 'EXCHANGE' }, undefined);
-      expect(r.price).toBe('15400.00');
+      expect(r.price).toBe('14500.00');
       const data = prisma.tradeIn.create.mock.calls[0][0].data;
       expect(data.flow).toBe('EXCHANGE');
-      expect(data.estimatedValue.toString()).toBe('15400');
-      expect(data.quoteBreakdown.price).toBe('15400.00');
+      expect(data.estimatedValue.toString()).toBe('14500');
+      expect(data.quoteBreakdown.price).toBe('14500.00');
       expect(data.quoteBreakdown.chosenFlow).toBe('EXCHANGE');
       const flex = JSON.stringify(line.sendFlexMessage.mock.calls[0][1]);
-      expect(flex).toContain('15,400');
+      expect(flex).toContain('14,500');
       expect(flex).toContain('เทิร์น');
     });
 

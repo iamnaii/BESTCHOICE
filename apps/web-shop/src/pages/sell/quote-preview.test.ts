@@ -18,12 +18,12 @@ const questions: BuybackQuestion[] = [
 
 describe('buyback quote preview', () => {
   it('uses the largest percentage across all questions after fixed deductions without rounding cash to tens', () => {
-    expect(previewPrice('5001', questions, { body: ['scratch'], battery: ['low'], functions: ['sound', 'camera'] }, 'MAX_PERCENT_EXACT', '10'))
-      .toEqual({ price: 2205.63, exchangePrice: 2420, complete: true });
+    expect(previewPrice('5001', questions, { body: ['scratch'], battery: ['low'], functions: ['sound', 'camera'] }, 'MAX_PERCENT_EXACT'))
+      .toEqual({ price: 2205.63, exchangePrice: 2705.63, complete: true });
   });
   it('keeps the legacy sum percentage and floor-to-ten calculation by default', () => {
-    expect(previewPrice('5001', questions, { body: ['scratch'], battery: ['low'], functions: ['sound', 'camera'] }, undefined, '10'))
-      .toEqual({ price: 910, exchangePrice: 1000, complete: true });
+    expect(previewPrice('5001', questions, { body: ['scratch'], battery: ['low'], functions: ['sound', 'camera'] }, undefined))
+      .toEqual({ price: 910, exchangePrice: 1410, complete: true });
   });
   it('requires an explicit answer for MULTI but accepts an explicit empty array', () => {
     expect(previewPrice('5000', questions, { body: ['body-good'], battery: ['low'] }).complete).toBe(false);

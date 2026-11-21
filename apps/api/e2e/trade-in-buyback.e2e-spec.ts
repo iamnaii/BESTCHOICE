@@ -199,11 +199,35 @@ describe('Trade-in payout and product handoff with real PostgreSQL + SHOP journa
     it('retains EXCHANGE cash base and bonus separately in the saved appraisal', async () => {
       const row = await pending({ flow: 'EXCHANGE' });
       const result = await preview(row.id).expect(201);
-      expect(result.body).toMatchObject({ cashPrice: '8100.00', exchangePrice: '8910.00', price: '8910.00' });
+      expect(result.body).toMatchObject({ cashPrice: '8100.00', exchangePrice: '8600.00', price: '8600.00', bonusAmount: '500.00' });
       const saved = await request(app.getHttpServer()).patch(`/trade-ins/${row.id}/appraise-online`)
         .send({ mode: 'REVISED', answers, previewToken: result.body.previewToken }).expect(200);
-      expect(saved.body.quoteBreakdown).toMatchObject({ cashPrice: '8100.00', exchangePrice: '8910.00', price: '8910.00', chosenFlow: 'EXCHANGE' });
+      expect(saved.body.quoteBreakdown).toMatchObject({ cashPrice: '8100.00', exchangePrice: '8600.00', price: '8600.00', bonusAmount: '500.00', chosenFlow: 'EXCHANGE' });
     });
+  });
+
+  it('persists the fixed bonus from the final cash value, independent of old percentage config', async () => {
+    const valuation = await db.tradeInValuation.findUniqueOrThrow({ where: { brand_model_storage_condition: { brand: 'Apple', model: 'iPhone 15', storage: '128GB', condition: 'A' } } });
+    const answers = [
+      { questionKey: 'local-screen', choiceIds: ['local-screen-intact'] },
+      { questionKey: 'local-battery', choiceIds: ['local-battery-healthy'] },
+      { questionKey: 'local-issues', choiceIds: [] },
+    ];
+    try {
+      for (const [cash, bonus] of [[9990, 500], [20000, 500], [20010, 1000]]) {
+        await db.tradeInValuation.update({ where: { id: valuation.id }, data: { basePrice: cash } });
+        const payload = { model: 'iPhone 15', storage: '128GB', flow: 'EXCHANGE', answers };
+        const quoted = await request(app.getHttpServer()).post('/shop/buyback/quote').send(payload).expect(201);
+        expect(quoted.body).toMatchObject({ cashPrice: cash.toFixed(2), exchangePrice: (cash + bonus).toFixed(2), bonusAmount: bonus.toFixed(2), bonusPct: '0' });
+        const submitted = await request(app.getHttpServer()).post('/shop/buyback/submit')
+          .send({ ...payload, sellerName: 'TEST FIXED BONUS', sellerPhone: '0800000000' }).expect(201);
+        const stored = await db.tradeIn.findUniqueOrThrow({ where: { id: submitted.body.id } });
+        expect(stored.estimatedValue?.toFixed(2)).toBe((cash + bonus).toFixed(2));
+        expect(stored.quoteBreakdown).toMatchObject({ cashPrice: cash.toFixed(2), bonusAmount: bonus.toFixed(2), chosenFlow: 'EXCHANGE' });
+      }
+    } finally {
+      await db.tradeInValuation.update({ where: { id: valuation.id }, data: { basePrice: valuation.basePrice } });
+    }
   });
 
   it('uses scoped reference profiles through public and staff APIs, keeps eligibility proof and preserves previous snapshots', async () => {

@@ -1,6 +1,99 @@
 import { test, expect, type Page } from '@playwright/test';
 import { installSellApiFixtures, sellData } from './fixtures/sell-api';
 const profile = sellData.profiles['iPhone 17 Pro|256GB'];
+for (const width of [320, 1280])
+  test(`${width}px LINE and map links open the intended destination and preserve the assessment`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await installSellApiFixtures(page);
+    // External destinations are intercepted before navigation; no LINE message or map request is sent.
+    await page
+      .context()
+      .route('https://line.me/**', (route) =>
+        route.fulfill({ contentType: 'text/html', body: '<p>LINE destination intercepted</p>' }),
+      );
+    await page
+      .context()
+      .route('https://www.google.com/maps/**', (route) =>
+        route.fulfill({ contentType: 'text/html', body: '<p>Maps destination intercepted</p>' }),
+      );
+    await start(page);
+    await assess(page);
+    await page.getByRole('button', { name: 'เทิร์นซื้อเครื่อง', exact: true }).click();
+    const contact = page.getByRole('region', { name: 'ติดต่อร้านเรื่องขายหรือเทิร์น' });
+    for (const name of ['ทัก LINE', 'แอด LINE', 'Google Maps']) {
+      const popupPromise = page.waitForEvent('popup');
+      await contact.getByRole('link', { name, exact: true }).click();
+      const popup = await popupPromise;
+      await popup.waitForLoadState('domcontentloaded');
+      const destination = new URL(popup.url());
+      if (name === 'ทัก LINE') {
+        expect(destination.pathname).toBe('/R/oaMessage/%40bestchoice/');
+        const message = decodeURIComponent(destination.search.slice(1));
+        expect(message).toContain('iPhone 17 Pro 256GB');
+        expect(message).toContain('เครดิตเทิร์นโดยประมาณ 28,500 บาท');
+        expect(message).toContain('ไม่จ่ายเป็นเงินสด');
+      } else if (name === 'แอด LINE') expect(destination.pathname).toBe('/R/ti/p/@bestchoice');
+      else
+        expect(destination.searchParams.get('query_place_id')).toBe('ChIJvw20uboBHjERsefpWFx4SPs');
+      await popup.close();
+      await expect(page.getByRole('heading', { level: 1 })).toHaveText('ราคาของเครื่องคุณ');
+    }
+    await noOverflow(page);
+  });
+
+test('desktop shows series and models together; reduced motion keeps the next step still', async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await installSellApiFixtures(page);
+  await page.route('**/api/shop/buyback/catalog', (route) =>
+    route.fulfill({
+      json: {
+        models: [
+          ...sellData.catalog.models,
+          ...['iPhone 17 Pro Max', 'iPhone 17', 'iPhone 15', 'iPhone 14', 'iPhone 13'].map(
+            (model) => ({ ...sellData.catalog.models[0], model }),
+          ),
+        ],
+      },
+    }),
+  );
+  await page.goto('/sell/quote');
+  await page.getByRole('button', { name: 'ซีรีส์ 17', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: 'ไอโฟน 17 โปรแม็กซ์', exact: true }),
+  ).toBeInViewport();
+  await expect(page.getByRole('button', { name: 'ไอโฟน 17', exact: true })).toBeInViewport();
+  await page.screenshot({ path: testInfo.outputPath('desktop-series-models.png'), fullPage: true });
+  await page.getByRole('button', { name: 'ไอโฟน 17 โปร', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('เครื่องมีความจุเท่าไร?');
+  expect(
+    await page.locator('.sell-step-content').evaluate((el) => getComputedStyle(el).animationName),
+  ).toBe('none');
+});
+test('selection feedback keeps its colors and does not insert a jumping footer', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await installSellApiFixtures(page);
+  await page.goto('/sell/quote');
+  await page.getByRole('button', { name: 'ซีรีส์ 17', exact: true }).click();
+  const selected = page.getByRole('button', { name: 'ไอโฟน 17 โปร', exact: true });
+  const other = page.getByRole('button', { name: 'ซีรีส์ 16', exact: true });
+  const before = await other.evaluate((el) => getComputedStyle(el).backgroundColor);
+  await page.clock.pauseAt(new Date());
+  await selected.click();
+  await expect(selected).toHaveAttribute('aria-pressed', 'true');
+  expect(await other.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(before);
+  expect(await selected.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe(before);
+  const status = page.getByText('กำลังไปต่อ…', { exact: true });
+  expect(await status.evaluate((el) => el.getBoundingClientRect().height)).toBeLessThanOrEqual(1);
+  await page.clock.runFor(500);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('เครื่องมีความจุเท่าไร?');
+});
 async function start(page: Page) {
   await page.goto('/sell/quote?utm_source=test');
   await page.getByRole('button', { name: 'ซีรีส์ 17', exact: true }).click();
@@ -61,7 +154,7 @@ for (const [width, height] of [
       expect(new URL(page.url()).searchParams.get('utm_source')).toBe('test');
       if (exchange) {
         await page.getByRole('button', { name: 'เทิร์นซื้อเครื่อง', exact: true }).click();
-        await expect(page.getByText('13,570 บาท', { exact: true })).toBeVisible();
+        await expect(page.getByText('12,840 บาท', { exact: true })).toBeVisible();
         await expect(page.getByText(/ไม่จ่ายเป็นเงินสด/)).toBeVisible();
       } else await expect(page.getByText('27,500 บาท', { exact: true })).toBeVisible();
       await page.screenshot({

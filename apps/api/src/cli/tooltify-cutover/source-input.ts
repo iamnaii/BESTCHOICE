@@ -24,6 +24,7 @@ import type {
   NullableStockTotals,
   SalesReportResult,
   SourceDecisions,
+  SourceRef,
 } from './types';
 
 export async function loadManifest(path: string): Promise<InputManifest> {
@@ -116,7 +117,12 @@ export async function loadSourceInputs(
     excludedStock: CanonicalStockUnit[] = [],
     stockExclusions: ExcludedSource[] = [];
   const summaries: SalesReportResult['gross'][] = [];
-  const stockHeaders: NullableStockTotals[] = [];
+  const stockSources: {
+    header: NullableStockTotals;
+    source: SourceRef | null;
+    rows: CanonicalStockUnit[];
+    complete: boolean;
+  }[] = [];
   for (const file of manifest.files) {
     const evidence = inspection.files.find((f) => f.sha256 === file.sha256);
     if (!evidence || evidence.kind !== file.kind) {
@@ -164,12 +170,19 @@ export async function loadSourceInputs(
       const selection = entries.find(
         (d) => d.action === 'SELECT_SNAPSHOT' || d.action === 'EXCLUDE_FILE',
       );
-      stockHeaders.push(
-        stockHeader(
-          table,
-          selection && 'summaryCostBasis' in selection ? selection.summaryCostBasis : null,
-        ),
+      const header = stockHeader(
+        table,
+        selection && 'summaryCostBasis' in selection ? selection.summaryCostBasis : null,
       );
+      const headerRow = evidence.sections.find((s) => s.label === 'สรุปสต๊อก')?.headerRow;
+      stockSources.push({
+        header,
+        source: headerRow
+          ? { fileSha256: file.sha256, storeKey: file.storeKey, sheet, row: headerRow }
+          : null,
+        rows: parsed.rows,
+        complete: parsed.rows.length === physical.size,
+      });
       for (const row of parsed.rows) {
         physical.delete(row.source.row);
         const exclusion = entries.find(
@@ -243,7 +256,7 @@ export async function loadSourceInputs(
     const raw = aggregateStock([...stock, ...excludedStock].map(stockMeasure));
     const parsedAll =
       raw.totals.units === countPhysical('STOCK_SNAPSHOT') &&
-      stockHeaders.length === stockFiles.length;
+      stockSources.length === stockFiles.length;
     const mappedAccessories = new Map<string, Set<number>>();
     for (const d of decisions.entries) {
       if (
@@ -257,20 +270,39 @@ export async function loadSourceInputs(
         );
       }
     }
-    const verifiedUnits =
-      parsedAll &&
-      excludedStock.every((r) => r.kind !== 'ACCESSORY' || excludedUnitRefs.has(hash(r.source))) &&
-      stock.every(
-        (r) =>
-          r.kind !== 'ACCESSORY' ||
-          mappedAccessories.get(hash([r.source.fileSha256, r.barcode]))?.has(r.source.row),
-      );
-    const detail: NullableStockTotals = {
-      units: verifiedUnits ? raw.totals.units : null,
-      cost: parsedAll ? raw.totals.cost : null,
-    };
+    let verifiedUnits = parsedAll;
     const reported: NullableStockTotals = { units: 0, cost: '0.00' };
-    for (const h of stockHeaders) {
+    const excludedRefs = new Set(excludedStock.map((r) => hash(r.source)));
+    for (const { header: h, source, rows, complete } of stockSources) {
+      const fileUnitsVerified =
+        complete &&
+        rows.every(
+          (r) =>
+            r.kind === 'DEVICE' ||
+            (excludedRefs.has(hash(r.source))
+              ? excludedUnitRefs.has(hash(r.source))
+              : mappedAccessories.get(hash([r.source.fileSha256, r.barcode]))?.has(r.source.row)),
+        );
+      if (!fileUnitsVerified) verifiedUnits = false;
+      const totals = aggregateStock(rows.map(stockMeasure)).totals;
+      const stockDelta = {
+        units: fileUnitsVerified && h.units !== null ? h.units - totals.units : null,
+        cost:
+          complete && h.cost !== null
+            ? new Prisma.Decimal(h.cost).minus(totals.cost).toFixed(2)
+            : null,
+      };
+      if (
+        (stockDelta.units !== null && stockDelta.units !== 0) ||
+        (stockDelta.cost !== null && !new Prisma.Decimal(stockDelta.cost).isZero())
+      ) {
+        issues.push({
+          code: 'STOCK_SUMMARY_MISMATCH',
+          source,
+          message: 'STOCK_SUMMARY_MISMATCH',
+          stockDelta,
+        });
+      }
       reported.units =
         h.units === null || reported.units === null ? null : reported.units + h.units;
       reported.cost =
@@ -278,6 +310,10 @@ export async function loadSourceInputs(
           ? null
           : new Prisma.Decimal(reported.cost).plus(h.cost).toFixed(2);
     }
+    const detail: NullableStockTotals = {
+      units: verifiedUnits ? raw.totals.units : null,
+      cost: parsedAll ? raw.totals.cost : null,
+    };
     inputs.push({
       ...common,
       kind: 'STOCK',
@@ -301,6 +337,12 @@ export async function loadSourceInputs(
         evidenceFileSha256s: stockFiles.map((f) => f.sha256),
       },
     });
+  }
+  const sourceKinds = new Map(manifest.files.map((f) => [f.sha256, f.kind]));
+  for (const issue of issues) {
+    const sourceKind = issue.source && sourceKinds.get(issue.source.fileSha256);
+    if (sourceKind === 'STOCK_SNAPSHOT' || sourceKind === 'SALES')
+      issue.kind = sourceKind === 'SALES' ? 'SALES' : 'STOCK';
   }
   for (const input of inputs) {
     const primaries = [...input.rows, ...input.excluded];

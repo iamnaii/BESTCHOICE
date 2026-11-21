@@ -1,7 +1,7 @@
 import { Prisma, PrismaClient } from '@prisma/client';
-import { hashImportValue as hash } from './canonicalize';
-import { saleContent } from './plan-targets';
-import { aggregateSales, aggregateStock, orderedDigest } from './reconciliation-snapshot';
+import { hashImportValue as hash, orderedDigest, receiptDigest } from './canonicalize';
+import { readSaleOrigins, saleContent } from './plan-targets';
+import { aggregateSales, aggregateStock } from './reconciliation-snapshot';
 import type {
   EconomicAggregate,
   MetricDelta,
@@ -84,24 +84,57 @@ async function sideEffects(
   targetIds: string[],
 ) {
   const productId = { in: createdProducts };
-  const sales = await tx.sale.findMany({ where: { productId }, select: { id: true } });
-  const contracts = await tx.contract.findMany({ where: { productId }, select: { id: true } });
+  const productScope = { OR: [{ productId }, { bundleProductIds: { hasSome: createdProducts } }] };
+  const sales = await tx.sale.findMany({
+    where: { OR: [productScope, { contract: productScope }] },
+    select: { id: true, contractId: true },
+  });
+  const contracts = await tx.contract.findMany({
+    where: {
+      OR: [
+        productScope,
+        { id: { in: sales.flatMap((s) => (s.contractId ? [s.contractId] : [])) } },
+      ],
+    },
+    select: { id: true },
+  });
   const contractId = { in: contracts.map((c) => c.id) },
     saleId = { in: sales.map((s) => s.id) };
   const payments = await tx.payment.findMany({ where: { contractId }, select: { id: true } });
   const refs = {
     in: [batchId, ...targetIds, ...saleId.in, ...contractId.in, ...payments.map((p) => p.id)],
   };
+  const commissions = await tx.salesCommission.findMany({
+    where: { OR: [{ saleId }, { contractId }] },
+    select: { id: true },
+  });
+  const external = await tx.externalFinanceCommission.findMany({
+    where: { saleReferenceId: refs },
+    select: { id: true, journalEntryId: true },
+  });
+  const receiving = await tx.goodsReceivingItem.findMany({
+    where: { productId },
+    select: { id: true, journalEntryId: true, receivingId: true },
+  });
+  const journalLinks = [...external, ...receiving].flatMap((row) =>
+    row.journalEntryId ? [row.journalEntryId] : [],
+  );
+  const referenceIds = [
+    ...refs.in,
+    ...commissions.map((c) => c.id),
+    ...external.map((c) => c.id),
+    ...receiving.flatMap((r) => [r.id, r.receivingId]),
+  ];
   return {
     sales: sales.length,
     contracts: contracts.length,
     payments: payments.length,
-    commissions: await tx.salesCommission.count({ where: { OR: [{ saleId }, { contractId }] } }),
-    externalCommissions: await tx.externalFinanceCommission.count({
-      where: { saleReferenceId: refs },
+    commissions: commissions.length,
+    externalCommissions: external.length,
+    receipts: receiving.length,
+    journalEntries: await tx.journalEntry.count({
+      where: { OR: [{ id: { in: journalLinks } }, { referenceId: { in: referenceIds } }] },
     }),
-    journalEntries: await tx.journalEntry.count({ where: { referenceId: refs } }),
-    receipts: await tx.goodsReceivingItem.count({ where: { productId } }),
   };
 }
 async function readReconciliation(
@@ -140,12 +173,7 @@ async function readReconciliation(
     counts.identicalFileCopies !== copyCount
   )
     issues.add('SOURCE_DISPOSITION_COUNT_MISMATCH');
-  if (
-    orderedDigest(
-      items.map((i) => [i.sourceKey, i.disposition, i.payloadHash, i.identityHash, i.sourceRefs]),
-    ) !== snapshot.expectedReceiptsHash
-  )
-    issues.add('RECEIPT_SET_MISMATCH');
+  if (receiptDigest(items) !== snapshot.expectedReceiptsHash) issues.add('RECEIPT_SET_MISMATCH');
   const ids = live.flatMap((i) => (i.targetId ? [i.targetId] : []));
   if (new Set(ids).size !== live.length) issues.add('AMBIGUOUS_TARGETS');
   const sales = await tx.importedSale.findMany({
@@ -167,6 +195,7 @@ async function readReconciliation(
     (batch.kind === 'SALES' ? productMap.size : saleMap.size) !== 0
   )
     issues.add('TARGET_SET_MISMATCH');
+  const origins = await readSaleOrigins(tx, sales, true);
   const branches = new Map(snapshot.files.map((f) => [f.fileSha256, f.branchId]));
   const stockRows: Parameters<typeof aggregateStock>[0] = [],
     saleRows: Parameters<typeof aggregateSales>[0] = [],
@@ -180,7 +209,14 @@ async function readReconciliation(
         issues.add('MISSING_TARGET');
         continue;
       }
-      const branchId = branches.get(String(ref.fileSha256));
+      const origin = origins.get(id);
+      if (!origin) issues.add('UNPROVEN_SALE_ORIGIN');
+      else if (
+        origin.branchId !== branches.get(String(ref.fileSha256)) ||
+        origin.storeKey !== ref.storeKey
+      )
+        issues.add('SALE_ORIGIN_BRANCH_CONFLICT');
+      const branchId = origin?.branchId;
       if (
         !branchId ||
         typeof ref.storeKey !== 'string' ||
@@ -194,7 +230,7 @@ async function readReconciliation(
       targetValues.push([i.sourceKey, saleContent(s)]);
       saleRows.push({
         ...s,
-        sourceStoreKey: String(ref.storeKey),
+        sourceStoreKey: origin?.storeKey ?? '',
         branchId: branchId ?? '',
         costTotal: s.costTotal.toFixed(2),
         listPrice: s.listPrice.toFixed(2),

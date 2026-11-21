@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { checkoutRevision, runCutover, type CliDependencies } from '../../tooltify-cutover.cli';
@@ -131,8 +131,11 @@ it('rejects changed code at the same HEAD', async () => {
   const git = (...args: string[]) => execFileSync('git', ['-C', dir, ...args], { stdio: 'pipe' });
   try {
     git('init', '-q');
-    await writeFile(join(dir, 'code.ts'), 'export const value=1;');
-    git('add', 'code.ts');
+    const source = join(dir, 'apps/api/src/cli/tooltify-cutover.cli.ts');
+    await mkdir(join(dir, 'apps/api/src/cli'), { recursive: true });
+    await writeFile(source, 'export const value=1;');
+    await writeFile(join(dir, '.gitignore'), 'dist/\n');
+    git('add', '.');
     git(
       '-c',
       'user.name=Fixture',
@@ -144,10 +147,21 @@ it('rejects changed code at the same HEAD', async () => {
       '-qm',
       'fixture',
     );
-    const rev = checkoutRevision(true, dir);
-    await writeFile(join(dir, 'code.ts'), 'export const value=2;');
-    expect(checkoutRevision(false, dir)).toBe(rev + '-dirty');
-    expect(() => checkoutRevision(true, dir)).toThrow('CLEAN_REVIEWED_CHECKOUT_REQUIRED');
+    const rev = checkoutRevision(true, dir, source);
+    const compiled = join(dir, 'dist', 'tooltify-cutover.cli.js');
+    await mkdir(join(dir, 'dist'));
+    await writeFile(compiled, 'module.exports={}');
+    const { deps, calls, plan } = fixture();
+    calls.prepare.mockImplementation(async () => {
+      checkoutRevision(true, dir, compiled);
+      return plan;
+    });
+    expect(await runCutover(args, deps)).toBe(1);
+    expect(calls.report).toHaveBeenCalledWith({ error: 'TRACKED_SOURCE_ENTRY_REQUIRED' });
+    expect(calls.apply).not.toHaveBeenCalled();
+    await writeFile(source, 'export const value=2;');
+    expect(checkoutRevision(false, dir, source)).toBe(rev + '-dirty');
+    expect(() => checkoutRevision(true, dir, source)).toThrow('CLEAN_REVIEWED_CHECKOUT_REQUIRED');
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -173,3 +187,23 @@ it.each(['import-tooltify', 'import-tooltify-stock'])(
     expect(result.stderr.trim()).toBe('MANIFEST_REQUIRED');
   },
 );
+
+it('refuses read-only reconciliation for the other pinned kind', async () => {
+  const { deps, calls } = fixture();
+  calls.reconcile.mockResolvedValue({ kind: 'SALES', canOpen: true });
+  expect(
+    await runCutover(
+      [
+        'reconcile',
+        '--source-kind',
+        'current-stock-snapshot',
+        '--batch-id',
+        'b',
+        '--manifest',
+        'f',
+      ],
+      deps,
+    ),
+  ).toBe(1);
+  expect(calls.report).toHaveBeenCalledWith({ error: 'BATCH_KIND_MISMATCH' });
+});

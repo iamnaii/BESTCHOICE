@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { identityHash, saleContent, sourceRefJson } from './plan-targets';
-import { hashImportValue as hash } from './canonicalize';
+import { hashImportValue as hash, orderedDigest, receiptDigest } from './canonicalize';
 import type {
   CanonicalInput,
   FileRef,
@@ -195,9 +195,6 @@ function sourceAggregates(input: CanonicalInput, files: FileRef[]) {
   };
 }
 
-export function orderedDigest(values: unknown[]) {
-  return hash(values.map(hash).sort());
-}
 export function expectedTarget(item: PlannedItem) {
   if (item.kind === 'SALES') return [item.sourceKey, saleContent(item.payload)];
   const r = item.payload;
@@ -333,7 +330,8 @@ export function buildReconciliationSnapshot(
   for (const e of input.excluded) byReason.set(e.reason, (byReason.get(e.reason) ?? 0) + 1);
   return {
     version: 1,
-    cannotVerifySource,
+    cannotVerifySource:
+      cannotVerifySource || input.issues.some((i) => i.code === 'STOCK_SUMMARY_MISMATCH'),
     uniquePhysicalRows:
       input.uniquePhysicalRows === undefined
         ? ((source?.kind === 'SALES' ? source.detail?.lines : source?.detail?.units) ?? null)
@@ -342,23 +340,27 @@ export function buildReconciliationSnapshot(
     source,
     ...sourceAggregates(input, files),
     expectedTargetsHash: orderedDigest(items.map(expectedTarget)),
-    expectedReceiptsHash: orderedDigest([
-      ...items.map((i) => [
-        i.sourceKey,
-        i.disposition,
-        i.payloadHash,
-        identityHash(i),
-        [sourceRefJson(i.payload.source)],
-      ]),
+    expectedReceiptsHash: receiptDigest([
+      ...items.map((i) => ({
+        sourceKey: i.sourceKey,
+        disposition: i.disposition,
+        payloadHash: i.payloadHash,
+        identityHash: identityHash(i),
+        sourceRefs: [sourceRefJson(i.payload.source)],
+        targetId: i.targetId,
+      })),
       ...input.excluded.map((e, index) => {
         const key = hash(['EXCLUDE', index, e]);
-        return [
-          key,
-          'EXCLUDE',
-          hash(e),
-          key,
-          [{ ...sourceRefJson(e.source), reason: e.reason, canonicalSourceKey: e.sourceKey }],
-        ];
+        return {
+          sourceKey: key,
+          disposition: 'EXCLUDE',
+          payloadHash: hash(e),
+          identityHash: key,
+          targetId: null,
+          sourceRefs: [
+            { ...sourceRefJson(e.source), reason: e.reason, canonicalSourceKey: e.sourceKey },
+          ],
+        };
       }),
     ]),
     exclusions: [...byReason].map(([reason, lines]) => ({ reason, lines })),

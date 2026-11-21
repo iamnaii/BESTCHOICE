@@ -1,5 +1,6 @@
 import { mkdir, mkdtemp, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { realpathSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { inspectFiles, inputPathSha256 } from './tooltify-cutover/inspect';
 import { execFileSync } from 'node:child_process';
@@ -185,7 +186,14 @@ function planReport(p: ImportPlan) {
     adjustments: p.reconciliationSnapshot.adjustments,
     uniquePhysicalRows: p.reconciliationSnapshot.uniquePhysicalRows,
     sourceVerified: hasVerifiedSource(p.reconciliationSnapshot),
-    issues: p.issues.map((i) => ({ code: i.code, source: i.source ? ref(i.source) : null })),
+    issues: p.issues.map((i) => ({
+      kind: i.kind ?? p.kind,
+      code: i.code,
+      source: i.source ? ref(i.source) : null,
+      ...(i.stockDelta
+        ? { stockDelta: { units: i.stockDelta.units, cost: i.stockDelta.cost } }
+        : {}),
+    })),
     items: p.items.map((i) => ({
       source: ref(i.payload.source),
       sourceKey: i.sourceKey,
@@ -269,6 +277,7 @@ export async function runCutover(args: string[], deps: CliDependencies): Promise
     if (mode === 'reconcile') {
       if (!v['batch-id']) throw Error('BATCH_ID_REQUIRED');
       const report = await deps.reconcile(v['batch-id'], v.manifest);
+      if (kind && report.kind !== kind) throw Error('BATCH_KIND_MISMATCH');
       await output('reconciliation.json', report);
       return report.canOpen ? 0 : 1;
     }
@@ -296,12 +305,21 @@ export async function runCutover(args: string[], deps: CliDependencies): Promise
   }
 }
 
-export function checkoutRevision(write: boolean, checkout = __dirname) {
+export function checkoutRevision(write: boolean, checkout = __dirname, entry = __filename) {
   const git = (...args: string[]) =>
     execFileSync('git', ['-C', checkout, ...args], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
     }).trim();
+  if (write) {
+    const sourcePath = 'apps/api/src/cli/tooltify-cutover.cli.ts';
+    const tracked = git('ls-files', '--full-name', '--', ':(top)' + sourcePath);
+    if (
+      tracked !== sourcePath ||
+      realpathSync(entry) !== realpathSync(join(git('rev-parse', '--show-toplevel'), sourcePath))
+    )
+      throw Error('TRACKED_SOURCE_ENTRY_REQUIRED');
+  }
   const clean = !git('status', '--porcelain', '--untracked-files=normal');
   if (write && !clean) throw Error('CLEAN_REVIEWED_CHECKOUT_REQUIRED');
   return git('rev-parse', 'HEAD') + (clean ? '' : '-dirty');
@@ -344,7 +362,11 @@ export function cliDependencies(
       for (const other of inputs.filter((i) => i !== selected)) {
         const sibling = await buildImportPlan(client(), other);
         if (sibling.issues.length || !hasVerifiedSource(sibling.reconciliationSnapshot)) {
+          plan.issues.push(
+            ...sibling.issues.map((issue) => ({ ...issue, kind: issue.kind ?? sibling.kind })),
+          );
           plan.issues.push({
+            kind: sibling.kind,
             code: 'COMPANION_SOURCE_BLOCKED',
             source: null,
             message: 'COMPANION_SOURCE_BLOCKED',

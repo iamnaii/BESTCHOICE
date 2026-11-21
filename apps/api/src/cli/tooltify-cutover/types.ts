@@ -13,7 +13,13 @@ export type FileRef = {
 };
 
 export type SourceRef = { fileSha256: string; sheet: string; row: number; storeKey: string };
-export type ImportIssue = { code: string; source: SourceRef | null; message: string };
+export type ImportIssue = {
+  code: string;
+  source: SourceRef | null;
+  message: string;
+  kind?: 'STOCK' | 'SALES';
+  stockDelta?: NullableStockTotals;
+};
 export type Disposition = 'CREATE' | 'MATCH' | 'CONFLICT' | 'EXCLUDE';
 
 export type InputManifest = {

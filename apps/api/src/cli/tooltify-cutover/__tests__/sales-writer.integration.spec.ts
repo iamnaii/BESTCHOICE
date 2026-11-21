@@ -12,11 +12,12 @@ import type { SourceDecisions } from '../types';
 import { createHash, randomUUID } from 'node:crypto';
 import { afterAll, expect, it } from 'vitest';
 import { PrismaClient } from '@prisma/client';
-import { stockInput } from './preflight-fixtures';
-import { hashSourceDecisions } from '../canonicalize';
+import { productData, stockInput } from './preflight-fixtures';
+import { hashImportValue, hashSourceDecisions } from '../canonicalize';
 import { buildImportPlan } from '../plan';
 import { applyBatch } from '../batch';
 import { reconcileBatch, verifyAppliedBatch } from '../reconcile';
+import { writeStockItem } from '../stock-writer';
 import { writeSalesItem } from '../sales-writer';
 import { saleSourceKey } from '../../../modules/imported-sales/tooltify-sales-parser';
 import type { CanonicalInput, CanonicalSaleLine, PlannedItem } from '../types';
@@ -490,3 +491,398 @@ it('compares independently sourced money and journal references before verificat
   );
   expect(report.canOpen).toBe(false);
 });
+
+it('requires the original sales CREATE branch for planning and again for verification', async () => {
+  const first = await input();
+  const initial = await buildImportPlan(db, first);
+  await applyBatch(db, initial, writer);
+  const second = { ...first, manifest: { ...first.manifest, canonicalSetId: randomUUID() } };
+  const matching = await buildImportPlan(db, second);
+  await applyBatch(db, matching, writer);
+  const other = (await stockInput(db)).rows[0].branchId;
+  const decisions = { entries: second.decisions.entries.map((d) => ({ ...d, branchId: other })) };
+  const conflicting = {
+    ...second,
+    decisions,
+    sourceSummary: undefined,
+    manifest: {
+      ...second.manifest,
+      canonicalSetId: randomUUID(),
+      decisionsSha256: hashSourceDecisions(decisions),
+      files: second.manifest.files.map((f) => ({ ...f, branchId: other })),
+    },
+  };
+  expect((await buildImportPlan(db, conflicting)).issues.map((i) => i.code)).toContain(
+    'SALE_ORIGIN_BRANCH_CONFLICT',
+  );
+  const receipt = await db.tooltifyImportItem.findFirstOrThrow({
+    where: { batchId: initial.batchId },
+  });
+  await db.tooltifyImportItem.update({
+    where: { id: receipt.id },
+    data: { sourceRefs: [{ ...first.rows[0].source, row: 101 }] },
+  });
+  expect(
+    (
+      await buildImportPlan(db, {
+        ...first,
+        manifest: { ...first.manifest, canonicalSetId: randomUUID() },
+      })
+    ).issues.map((i) => i.code),
+  ).toContain('UNPROVEN_SALE_ORIGIN');
+  expect(await verifyAppliedBatch(db, matching.batchId, matching.planHash)).toMatchObject({
+    canOpen: false,
+    status: 'APPLIED',
+    issues: expect.arrayContaining(['UNPROVEN_SALE_ORIGIN']),
+  });
+});
+
+it('keeps swapped physically mapped but otherwise identical accessory MATCH targets APPLIED', async () => {
+  const stock = await stockInput(db, 2),
+    sku = randomUUID();
+  const targets: string[] = [];
+  for (const r of stock.rows) {
+    r.kind = 'ACCESSORY';
+    r.category = 'ACCESSORY';
+    r.barcode = sku;
+    r.sourceKey = hashImportValue([
+      stock.manifest.canonicalSetId,
+      r.source.fileSha256,
+      r.source.sheet,
+      r.source.row,
+      1,
+    ]);
+    const product = await db.product.create({
+      data: {
+        ...productData(r),
+        imeiSerial: null,
+        legacyProductCode: 'TTFY-' + sku + '-' + r.source.row,
+      },
+    });
+    targets.push(product.id);
+  }
+  stock.decisions.entries.push({
+    ...stock.decisions.entries[0],
+    action: 'MAP_ACCESSORY_UNITS',
+    sku,
+    checkedQuantity: 2,
+    assignments: stock.rows.map((r, i) => ({ row: r.source.row, targetId: targets[i] })),
+  });
+  stock.manifest.decisionsSha256 = hashSourceDecisions(stock.decisions);
+  const totals = { units: 2, cost: '200.00' };
+  const plan = await buildImportPlan(db, {
+    ...stock,
+    sourceSummary: {
+      kind: 'STOCK',
+      detail: totals,
+      reported: totals,
+      delta: { units: 0, cost: '0.00' },
+      groups: [
+        {
+          kind: 'ACCESSORY',
+          branchId: stock.rows[0].branchId,
+          skuHash: hashImportValue(['ACCESSORY', stock.rows[0].branchId, sku]),
+          totals,
+        },
+      ],
+      evidenceFileSha256s: [stock.rows[0].source.fileSha256],
+    },
+  });
+  await applyBatch(db, plan, () => {
+    throw Error('unexpected writer');
+  });
+  expect((await reconcileBatch(db, plan.batchId)).canOpen).toBe(true);
+  const [a, b] = await db.tooltifyImportItem.findMany({ where: { batchId: plan.batchId } });
+  await db.$transaction([
+    db.tooltifyImportItem.update({
+      where: { id: a.id },
+      data: { targetId: b.targetId, afterFingerprint: b.afterFingerprint },
+    }),
+    db.tooltifyImportItem.update({
+      where: { id: b.id },
+      data: { targetId: a.targetId, afterFingerprint: a.afterFingerprint },
+    }),
+  ]);
+  expect(await verifyAppliedBatch(db, plan.batchId, plan.planHash)).toMatchObject({
+    canOpen: false,
+    status: 'APPLIED',
+    issues: expect.arrayContaining(['RECEIPT_SET_MISMATCH']),
+  });
+});
+
+it('counts linked bundle-only transactions and leaves unrelated contracts and sales out', async () => {
+  const stock = await stockInput(db),
+    r = stock.rows[0],
+    totals = { units: 1, cost: '100.00' };
+  const plan = await buildImportPlan(db, {
+    ...stock,
+    sourceSummary: {
+      kind: 'STOCK',
+      detail: totals,
+      reported: totals,
+      delta: { units: 0, cost: '0.00' },
+      groups: [{ kind: 'DEVICE', skuHash: null, branchId: r.branchId, totals }],
+      evidenceFileSha256s: [r.source.fileSha256],
+    },
+  });
+  await applyBatch(db, plan, (tx, i) => {
+    if (i.kind !== 'STOCK') throw Error();
+    return writeStockItem(tx, i);
+  });
+  const { targetId } = await db.tooltifyImportItem.findFirstOrThrow({
+    where: { batchId: plan.batchId },
+  });
+  const customer = await db.customer.create({
+    data: { name: 'fixture', phone: randomUUID(), nationalId: randomUUID() },
+  });
+  const user = await db.user.create({
+    data: { name: 'fixture', email: randomUUID() + '@fixture.invalid', password: 'fixture' },
+  });
+  const primary = await db.product.create({ data: { ...productData(r), imeiSerial: null } });
+  const common = {
+    customerId: customer.id,
+    salespersonId: user.id,
+    branchId: r.branchId,
+    productId: primary.id,
+    sellingPrice: 100,
+  };
+  const company = await db.companyInfo.findUniqueOrThrow({ where: { companyCode: 'SHOP' } });
+  for (const related of [false, true]) {
+    const bundleProductIds = related ? [targetId!] : [];
+    const c = await db.contract.create({
+      data: {
+        ...common,
+        bundleProductIds,
+        contractNumber: randomUUID(),
+        planType: 'STORE_WITH_INTEREST',
+        downPayment: 0,
+        financedAmount: 100,
+        interestRate: 0,
+        totalMonths: 1,
+        interestTotal: 0,
+        monthlyPayment: 100,
+      },
+    });
+    const sale = await db.sale.create({
+      data: {
+        ...common,
+        bundleProductIds,
+        saleNumber: randomUUID(),
+        saleType: 'CASH',
+        netAmount: 100,
+      },
+    });
+    const commission = await db.salesCommission.create({
+      data: {
+        salespersonId: user.id,
+        saleId: sale.id,
+        period: '2026-11',
+        saleAmount: 100,
+        commissionRate: '0.01',
+        commissionAmount: 1,
+      },
+    });
+    await db.journalEntry.create({
+      data: {
+        entryNumber: randomUUID(),
+        companyId: company.id,
+        createdById: user.id,
+        entryDate: new Date(),
+        description: 'fixture',
+        referenceId: commission.id,
+      },
+    });
+    await db.payment.create({
+      data: { contractId: c.id, installmentNo: 1, dueDate: new Date(), amountDue: 100 },
+    });
+  }
+  expect(await verifyAppliedBatch(db, plan.batchId, plan.planHash)).toMatchObject({
+    canOpen: false,
+    status: 'APPLIED',
+    sideEffects: { sales: 1, contracts: 1, payments: 1, commissions: 1, journalEntries: 1 },
+  });
+});
+
+it.each([false, true])(
+  'rejects opposing stock header errors by workbook, excluded second source = %s',
+  async (excludeSecond) => {
+    const dir = await mkdtemp(join(tmpdir(), 'tt-sources-'));
+    try {
+      const files: CanonicalInput['manifest']['files'] = [],
+        entries: SourceDecisions['entries'] = [];
+      const seeds = [await stockInput(db), await stockInput(db)];
+      for (const [i, seed] of seeds.entries()) {
+        const f = {
+          ...seed.manifest.files[0],
+          path: join(dir, 'report_stock_2026-11-19_' + i + '.xlsx'),
+        };
+        const wb = new ExcelJS.Workbook(),
+          ws = wb.addWorksheet('Worksheet');
+        ws.addRows([
+          [
+            'ชื่อสินค้า',
+            'หมวดหมู่สินค้า',
+            'แหล่งที่มา',
+            'รายละเอียดสินค้า',
+            'จำนวน',
+            'ต้นทุนสินค้า',
+          ],
+          ['Fixture', 'iPhone มือ 1', '-', '-', i === 0 ? 2 : 0, i === 0 ? 110 : 190],
+          STOCK_COLUMNS,
+          [
+            seed.rows[0].barcode,
+            'Fixture',
+            'iPhone มือ 1',
+            '-',
+            '-',
+            '-',
+            '2026-11-18 00:00:00',
+            'private',
+            i === 0 ? 100 : 200,
+            1,
+          ],
+        ]);
+        await wb.xlsx.writeFile(f.path);
+        f.sha256 = createHash('sha256')
+          .update(await readFile(f.path))
+          .digest('hex');
+        files.push(f);
+        if (excludeSecond && i === 1)
+          entries.push({
+            action: 'EXCLUDE_FILE',
+            fileSha256: f.sha256,
+            sourceRows: [4],
+            reason: 'fixture',
+            evidenceRef: 'fixture',
+            summaryCostBasis: 'EXTENDED',
+          });
+        else
+          for (const d of seed.decisions.entries)
+            entries.push({
+              ...d,
+              fileSha256: f.sha256,
+              sourceRows: [4],
+              ...(d.action === 'SELECT_SNAPSHOT' ? { summaryCostBasis: 'EXTENDED' as const } : {}),
+            });
+      }
+      // Select the sales side of this mixed manifest. The full source check must retain
+      // the exact stock issue/row even when the selected sales report is balanced.
+      const salesSeed = seeds[0].manifest.files[0],
+        date = '2026-11-19';
+      const salesPath = join(dir, 'report_export_stock_2026-11-19_to_2026-11-19.xlsx');
+      const wb = new ExcelJS.Workbook(),
+        ws = wb.addWorksheet('Worksheet');
+      ws.addRows([
+        ['รูปแบบการขาย', 'คำสั่งซื้อ', 'รายการขาย', 'ต้นทุนรวม', 'ราคาตั้งขาย', 'ราคาขาย', 'กำไร'],
+        ['ขายสินค้าทั้งหมด', 1, 1, 1, 2, 2, 1],
+        ['รายการขาย (1)'],
+        SALES_COLUMNS,
+        [
+          '123456789012345',
+          'Fixture',
+          'iPhone มือ 1',
+          'private',
+          '-',
+          randomUUID(),
+          'เงินสด',
+          'ราคาปลีก',
+          1,
+          2,
+          2,
+          1,
+          'private',
+          date + ' 01:00:00',
+        ],
+      ]);
+      await wb.xlsx.writeFile(salesPath);
+      const saleFile = {
+        ...salesSeed,
+        kind: 'SALES' as const,
+        path: salesPath,
+        sha256: createHash('sha256')
+          .update(await readFile(salesPath))
+          .digest('hex'),
+      };
+      const sourceFiles = [...files, saleFile];
+      entries.push({
+        fileSha256: saleFile.sha256,
+        sourceRows: [5],
+        reason: 'fixture',
+        evidenceRef: 'fixture',
+        action: 'SELECT_SALES',
+        storeKey: saleFile.storeKey,
+        branchId: saleFile.branchId,
+        reportFrom: date,
+        reportTo: date,
+      });
+      const manifest = {
+          ...seeds[0].manifest,
+          files: sourceFiles,
+          history: [
+            {
+              branchId: saleFile.branchId,
+              reportFrom: date,
+              reportTo: date,
+              evidenceRef: 'fixture',
+            },
+          ],
+          decisionsSha256: hashSourceDecisions({ entries }),
+        },
+        path = join(dir, 'manifest.json');
+      await writeFile(path, JSON.stringify(manifest));
+      await writeFile(join(dir, 'source-decisions.json'), JSON.stringify({ entries }));
+      const id = await readImportDatabaseIdentity(db),
+        messages: unknown[] = [];
+      const deps = {
+        ...cliDependencies(
+          () => db,
+          {
+            DATABASE_URL: process.env.DATABASE_URL,
+            EXPECTED_DB_NAME: id.database,
+            EXPECTED_DB_FINGERPRINT: id.fingerprint,
+            CONFIRM_TOOLTIFY_IMPORT: 'YES_I_AM_SURE',
+          },
+          () => 'fixture',
+        ),
+        report: (x: unknown) => messages.push(x),
+      };
+      expect(await runCutover(['--source-kind', 'sales', '--manifest', path], deps)).toBe(1);
+      const message = messages[0] as { issues: unknown[]; planHash: string };
+      expect(message.issues).toContainEqual(
+        expect.objectContaining({ kind: 'STOCK', code: 'COMPANION_SOURCE_BLOCKED' }),
+      );
+      expect(message.issues).toEqual(
+        expect.arrayContaining(
+          files.map((f, i) =>
+            expect.objectContaining({
+              kind: 'STOCK',
+              code: 'STOCK_SUMMARY_MISMATCH',
+              source: expect.objectContaining({ fileSha256: f.sha256 }),
+              stockDelta: { units: i === 0 ? 1 : -1, cost: i === 0 ? '10.00' : '-10.00' },
+            }),
+          ),
+        ),
+      );
+      expect(
+        await runCutover(
+          [
+            'apply',
+            '--source-kind',
+            'sales',
+            '--apply',
+            '--plan-hash',
+            message.planHash,
+            '--manifest',
+            path,
+          ],
+          deps,
+        ),
+      ).toBe(1);
+      expect(
+        await db.tooltifyImportBatch.count({ where: { canonicalSetId: manifest.canonicalSetId } }),
+      ).toBe(0);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+);

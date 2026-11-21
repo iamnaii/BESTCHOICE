@@ -9,7 +9,7 @@ import {
   FINANCE_LABEL,
   isInstallmentPriceLabel,
 } from '../../utils/product-price-sync.util';
-import { hashImportValue as hash } from './canonicalize';
+import { hashImportValue as hash, receiptDigest } from './canonicalize';
 import type { CanonicalSaleLine, PlannedItem, PlannedSalesItem, PlannedStockItem } from './types';
 
 type Db = Prisma.TransactionClient;
@@ -331,6 +331,121 @@ export function saleContent(
   };
 }
 
+// ImportedSale has no branch column. Only its original active CREATE receipt and
+// that owner's frozen file map can attribute the historical target.
+export async function readSaleOrigins(
+  db: Db,
+  sales: {
+    id: string;
+    importBatch: string | null;
+    barcode: string;
+    orderNumber: string;
+    soldAt: Date;
+  }[],
+  verifyFrozen = false,
+) {
+  const origins = new Map<string, { branchId: string; storeKey: string }>();
+  if (!sales.length) return origins;
+  const receipts = await db.tooltifyImportItem.findMany({
+    where: {
+      targetType: 'IMPORTED_SALE',
+      disposition: 'CREATE',
+      targetId: { in: sales.map((s) => s.id) },
+      deletedAt: null,
+      reversedAt: null,
+      batch: { kind: 'SALES', deletedAt: null, status: { not: 'ROLLED_BACK' } },
+    },
+    select: { targetId: true, batchId: true, sourceRefs: true, identityHash: true },
+  });
+  const owners = await db.tooltifyImportBatch.findMany({
+    where: { id: { in: [...new Set(receipts.map((r) => r.batchId))] } },
+    select: { id: true, reconciliationSnapshot: true },
+  });
+  // Verify once per owning batch in whole-plan and reconciliation reads. The row writer
+  // rechecks its reviewed target/owner dependency in each serializable item transaction.
+  const evidence = verifyFrozen
+    ? await db.tooltifyImportItem.findMany({
+        where: { batchId: { in: owners.map((b) => b.id) }, reversedAt: null, deletedAt: null },
+        select: {
+          batchId: true,
+          sourceKey: true,
+          disposition: true,
+          payloadHash: true,
+          identityHash: true,
+          sourceRefs: true,
+          targetId: true,
+        },
+      })
+    : [];
+  const byOwner = new Map<string, typeof evidence>();
+  for (const receipt of evidence) {
+    const rows = byOwner.get(receipt.batchId) ?? [];
+    rows.push(receipt);
+    byOwner.set(receipt.batchId, rows);
+  }
+  const filesByOwner = new Map<string, Prisma.JsonArray>();
+  for (const owner of owners) {
+    const snapshot = owner.reconciliationSnapshot;
+    if (
+      !snapshot ||
+      typeof snapshot !== 'object' ||
+      Array.isArray(snapshot) ||
+      !Array.isArray(snapshot.files)
+    )
+      continue;
+    if (
+      verifyFrozen &&
+      receiptDigest(byOwner.get(owner.id) ?? []) !== snapshot.expectedReceiptsHash
+    )
+      continue;
+    filesByOwner.set(owner.id, snapshot.files);
+  }
+  const targets = new Map(sales.map((s) => [s.id, s]));
+  const seen = new Set<string>();
+  for (const r of receipts) {
+    const id = r.targetId!;
+    if (seen.has(id)) {
+      origins.delete(id);
+      continue;
+    }
+    seen.add(id);
+    const target = targets.get(id);
+    if (
+      !target ||
+      target.importBatch !== r.batchId ||
+      r.identityHash !== hash(['TOOLTIFY', target.barcode, target.orderNumber, target.soldAt]) ||
+      !Array.isArray(r.sourceRefs) ||
+      r.sourceRefs.length !== 1
+    )
+      continue;
+    const ref = r.sourceRefs[0];
+    if (
+      !ref ||
+      typeof ref !== 'object' ||
+      Array.isArray(ref) ||
+      typeof ref.storeKey !== 'string' ||
+      !ref.storeKey ||
+      typeof ref.fileSha256 !== 'string'
+    )
+      continue;
+    const files = filesByOwner
+      .get(r.batchId)
+      ?.filter(
+        (f) => f && typeof f === 'object' && !Array.isArray(f) && f.fileSha256 === ref.fileSha256,
+      );
+    const f = files?.length === 1 ? files[0] : null;
+    if (
+      f &&
+      typeof f === 'object' &&
+      !Array.isArray(f) &&
+      typeof f.branchId === 'string' &&
+      f.branchId
+    )
+      origins.set(id, { branchId: f.branchId, storeKey: ref.storeKey });
+  }
+  return origins;
+}
+
 async function evaluateSales(db: Db, item: PlannedSalesItem): Promise<PlannedSalesItem> {
   const row = item.payload;
   const branch = await readBranch(db, item.branchId);
@@ -362,6 +477,7 @@ async function evaluateSales(db: Db, item: PlannedSalesItem): Promise<PlannedSal
   const target = existing
     ? await db.importedSale.findUniqueOrThrow({ where: { id: existing.id } })
     : null;
+  const origin = target ? (await readSaleOrigins(db, [target])).get(target.id) : null;
   let reason: string | null = null;
   if (!validBranch(branch)) reason = 'INVALID_SHOP_BRANCH';
   else if (row.occurrence !== 1) reason = 'UNSUPPORTED_SALES_MULTIPLICITY';
@@ -369,6 +485,8 @@ async function evaluateSales(db: Db, item: PlannedSalesItem): Promise<PlannedSal
     reason = 'UNPROVEN_LEGACY_SALE_STORE';
   else if ([...stores].some((store) => store !== row.sourceStoreKey))
     reason = 'SALES_STORE_COLLISION';
+  else if (target && !origin) reason = 'UNPROVEN_SALE_ORIGIN';
+  else if (origin && origin.branchId !== item.branchId) reason = 'SALE_ORIGIN_BRANCH_CONFLICT';
   else if (target && hash(saleContent(target)) !== hash(saleContent(row)))
     reason = 'SALE_TARGET_CONFLICT';
   // Other lines from this batch can legitimately add the same store to an existing bill.
@@ -377,7 +495,7 @@ async function evaluateSales(db: Db, item: PlannedSalesItem): Promise<PlannedSal
     targetId: target?.id ?? null,
     reason,
     disposition: reason ? 'CONFLICT' : target ? 'MATCH' : 'CREATE',
-    dependencyFingerprint: hash({ branch, target, reason }),
+    dependencyFingerprint: hash({ branch, target, origin, reason }),
   };
 }
 

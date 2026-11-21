@@ -6,6 +6,7 @@ import { hashImportValue as hash, hashSourceDecisions } from './canonicalize';
 import {
   evaluateItem,
   identityHash,
+  readSaleOrigins,
   salesTargetFingerprint,
   stockTargetFingerprint,
   sourceRefJson,
@@ -104,7 +105,19 @@ export async function replayItem(
     dependencyFingerprint: receipt.dependencyFingerprint,
     reason: null,
   };
-  if (item.kind === 'SALES') return { ...item, ...base };
+  if (item.kind === 'SALES') {
+    if (receipt.disposition === 'MATCH') {
+      const sale = await db.importedSale.findUniqueOrThrow({
+        where: { id: receipt.targetId },
+        select: { id: true, importBatch: true, barcode: true, orderNumber: true, soldAt: true },
+      });
+      const origin = (await readSaleOrigins(db, [sale])).get(sale.id);
+      if (!origin) throw Error('UNPROVEN_SALE_ORIGIN');
+      if (origin.branchId !== item.branchId || origin.storeKey !== item.payload.sourceStoreKey)
+        throw Error('SALE_ORIGIN_BRANCH_CONFLICT');
+    }
+    return { ...item, ...base };
+  }
   const stored = receipt.stockResolution as unknown as StockResolution | null;
   if (!stored || !item.decision) throw Error('IMPORT_ITEM_RESOLUTION_MISSING');
   return {
@@ -494,6 +507,22 @@ export async function buildImportPlan(
         items.push(item);
         if (item.reason)
           issues.push({ source: row.source, code: item.reason, message: item.reason });
+      }
+      const matches = items.filter(
+        (i) => i.kind === 'SALES' && i.disposition === 'MATCH' && i.targetId,
+      );
+      if (matches.length) {
+        const targets = await tx.importedSale.findMany({
+          where: { id: { in: matches.map((i) => i.targetId!) } },
+          select: { id: true, importBatch: true, barcode: true, orderNumber: true, soldAt: true },
+        });
+        const verified = await readSaleOrigins(tx, targets, true);
+        for (const item of matches)
+          if (!verified.has(item.targetId!)) {
+            item.reason = 'UNPROVEN_SALE_ORIGIN';
+            item.disposition = 'CONFLICT';
+            issues.push({ code: item.reason, message: item.reason, source: item.payload.source });
+          }
       }
       const excluded = input.excluded.map((e, index) => ({
         ...e,

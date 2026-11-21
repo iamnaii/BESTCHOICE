@@ -43,6 +43,31 @@ export function hashImportValue(value: unknown): string {
     .digest('hex');
 }
 
+export function orderedDigest(values: unknown[]) {
+  return hashImportValue(values.map(hashImportValue).sort());
+}
+export function receiptDigest(
+  receipts: {
+    sourceKey: string;
+    disposition: string;
+    payloadHash: string;
+    identityHash: string;
+    sourceRefs: unknown;
+    targetId: string | null;
+  }[],
+) {
+  return orderedDigest(
+    receipts.map((r) => [
+      r.sourceKey,
+      r.disposition,
+      r.payloadHash,
+      r.identityHash,
+      r.sourceRefs,
+      ...(r.disposition === 'MATCH' ? [r.targetId] : []),
+    ]),
+  );
+}
+
 function decisionRange(value: { reportFrom: string; reportTo: string }): DateRange {
   return { start: value.reportFrom, end: value.reportTo };
 }

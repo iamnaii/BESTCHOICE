@@ -49,11 +49,135 @@ export type SourceDecision = {
       reportTo: string;
     }
   | { action: 'ZERO_SALES'; branchId: string; reportFrom: string; reportTo: string }
+  // Evidence confirms both desiredStatus and that source importedAt is the unit's stockInDate.
+  | {
+      action: 'RESOLVE_STOCK';
+      desiredStatus: 'IN_STOCK' | 'QC_PENDING';
+      deviceOrigin: DeviceOrigin | null;
+      pricing: StockPricingDecision;
+    }
+  | {
+      action: 'MAP_ACCESSORY_UNITS';
+      sku: string;
+      checkedQuantity: number;
+      assignments: { row: number; targetId: string | null }[];
+    }
   | { action: 'REPORT_DUPLICATE'; keepRow: number }
   | { action: 'DISTINCT_UNITS' | 'EXCLUDE_FILE' | 'EXCLUDE_ROW' | 'UNRESOLVED' }
 );
 
+export type StockPriceColumns = Pick<
+  CanonicalStockUnit,
+  'cashPrice' | 'installmentPrice' | 'financePrice'
+>;
+export type StockPricingDecision =
+  | ({ mode: 'EXPLICIT' } & StockPriceColumns)
+  | { mode: 'TEMPLATE' };
 export type SourceDecisions = { entries: SourceDecision[] };
+
+export type ExcludedSource = CanonicalSalesResult['excluded'][number];
+export type StockTotals = { units: number; cost: string };
+export type NullableStockTotals = { units: number | null; cost: string | null };
+export type SalesGroup<T> = { month: string; channel: string; branchId: string; totals: T };
+export type StockGroup<T> = {
+  branchId: string;
+  kind: 'DEVICE' | 'ACCESSORY';
+  skuHash: string | null;
+  totals: T;
+};
+type SourceSummary<T, G> = {
+  reported: T | null;
+  detail: T | null;
+  delta: T | null;
+  groups: G[] | null;
+  evidenceFileSha256s: string[];
+};
+export type SalesSourceSummary = { kind: 'SALES' } & SourceSummary<
+  NullableGrossSalesTotals,
+  SalesGroup<NullableGrossSalesTotals>
+>;
+export type StockSourceSummary = { kind: 'STOCK' } & SourceSummary<
+  NullableStockTotals,
+  StockGroup<NullableStockTotals>
+>;
+export type ReconciliationSnapshot = {
+  version: 1;
+  cannotVerifySource: boolean;
+  files: { fileSha256: string; branchId: string | null }[];
+  source: SalesSourceSummary | StockSourceSummary | null;
+  exclusions: { reason: ExcludedSource['reason']; lines: number }[];
+  canonical:
+    | { kind: 'SALES'; totals: GrossSalesTotals; groups: SalesGroup<GrossSalesTotals>[] }
+    | { kind: 'STOCK'; totals: StockTotals; groups: StockGroup<StockTotals>[] };
+};
+export type CanonicalInput = {
+  manifest: InputManifest;
+  decisions: SourceDecisions;
+  codeRevision: string;
+  expectedDbIdentity: string;
+  /** Aggregate inspection, validateManifest and parser/canonicalizer issues before planning. */
+  issues: ImportIssue[];
+  excluded: ExcludedSource[];
+} & (
+  | { kind: 'STOCK'; rows: CanonicalStockUnit[]; sourceSummary?: StockSourceSummary }
+  | { kind: 'SALES'; rows: CanonicalSaleLine[]; sourceSummary?: SalesSourceSummary }
+);
+
+export type StockResolution = StockPriceColumns & {
+  companyId: string | null;
+  templateId: string | null;
+};
+type PlanItemBase = {
+  batchId: string;
+  sourceKey: string;
+  payloadHash: string;
+  disposition: Disposition;
+  targetId: string | null;
+  reason: string | null;
+  dependencyFingerprint: string;
+  branchId: string;
+};
+export type PlannedStockItem = PlanItemBase & {
+  kind: 'STOCK';
+  original: CanonicalStockUnit;
+  payload: CanonicalStockUnit;
+  resolution: StockResolution;
+  decision: Extract<SourceDecision, { action: 'RESOLVE_STOCK' }> | null;
+  accessoryMapping: Extract<SourceDecision, { action: 'MAP_ACCESSORY_UNITS' }> | null;
+};
+export type PlannedSalesItem = PlanItemBase & { kind: 'SALES'; payload: CanonicalSaleLine };
+export type PlannedItem = PlannedStockItem | PlannedSalesItem;
+export type TargetWriteResult = {
+  targetType: 'PRODUCT' | 'IMPORTED_SALE';
+  targetId: string;
+  created: boolean;
+  afterFingerprint: string;
+};
+export type PlannedExclusion = ExcludedSource & { receiptKey: string; payloadHash: string };
+export type ImportPlan = {
+  batchId: string;
+  canonicalSetId: string;
+  kind: 'STOCK' | 'SALES';
+  sourceCutoverAt: string;
+  codeRevision: string;
+  dbIdentity: string;
+  manifestHash: string;
+  decisionsHash: string;
+  planHash: string;
+  dependencyFingerprint: string;
+  items: PlannedItem[];
+  excluded: PlannedExclusion[];
+  reconciliationSnapshot: ReconciliationSnapshot;
+  totals: {
+    created: number;
+    matched: number;
+    conflicts: number;
+    excluded: number;
+    stockCost: string;
+    sales: GrossSalesTotals | null;
+  };
+  issues: ImportIssue[];
+};
 
 export type DateRange = { start: string; end: string };
 export type SectionInspection = {

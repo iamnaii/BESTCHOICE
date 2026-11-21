@@ -33,7 +33,14 @@ function canonicalJson(value: unknown): string {
 }
 
 export function hashSourceDecisions(decisions: SourceDecisions): string {
-  return createHash('sha256').update(canonicalJson(decisions)).digest('hex');
+  return hashImportValue(decisions);
+}
+
+export function hashImportValue(value: unknown): string {
+  // Normalize Dates and Prisma Decimals to their lossless JSON representations first.
+  return createHash('sha256')
+    .update(canonicalJson(JSON.parse(JSON.stringify(value))))
+    .digest('hex');
 }
 
 function decisionRange(value: { reportFrom: string; reportTo: string }): DateRange {

@@ -291,7 +291,7 @@ export function validateManifest(
       // Snapshot duplicates must be corrected in the source before any row exclusions.
       const rows = duplicate.rows.filter(({ fileSha256 }) => selected.has(fileSha256));
       if (rows.length > 1) {
-        issue('DUPLICATE_SNAPSHOT_IMEI', 'IMEI ซ้ำในชุด snapshot ที่เลือก', rows[0]);
+        issue('DUPLICATE_IMEI', 'IMEI ซ้ำในชุด snapshot ที่เลือก', rows[0]);
       }
       continue;
     }

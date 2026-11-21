@@ -229,7 +229,7 @@ describe('Tooltify source inspection', () => {
       files,
     };
     expect(validateManifest(manifest, report, decisions).map(({ code }) => code)).toEqual([
-      'DUPLICATE_SNAPSHOT_IMEI',
+      'DUPLICATE_IMEI',
     ]);
   });
 

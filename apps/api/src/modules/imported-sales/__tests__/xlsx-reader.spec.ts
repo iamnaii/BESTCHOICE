@@ -3,6 +3,8 @@ import { promises as fs } from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { parseThaiDateTime } from '../tooltify-sales-parser';
+import { STOCK_SNAPSHOT_COLUMNS } from '../tooltify-stock-parser';
+import { parseStockSnapshot } from '../tooltify-stock-snapshot-parser';
 import { readXlsxRows, readXlsxTable, XlsxReadError } from '../xlsx-reader';
 
 describe('Excel reader', () => {
@@ -69,14 +71,68 @@ describe('Excel reader', () => {
     ]);
   });
 
-  it('leaves leading zeros intact in strings and does not pad numeric identifiers', async () => {
+  async function parseStockWorkbook(barcode: ExcelJS.CellValue, numFmt?: string) {
     const file = await writeWorkbook((sheet) => {
-      sheet.getCell('A1').value = '012345678901234';
-      sheet.getCell('B1').value = 12345678901234;
-      sheet.getCell('B1').numFmt = '000000000000000';
+      sheet.addRow(Object.values(STOCK_SNAPSHOT_COLUMNS));
+      const row = sheet.addRow([
+        barcode,
+        'fixture iPhone',
+        'iPhone มือ 1',
+        '',
+        '',
+        0,
+        '2026-11-21 00:05:01',
+        '',
+        8000,
+        1,
+      ]);
+      if (numFmt) row.getCell(1).numFmt = numFmt;
     });
-    await expect(readXlsxRows(file)).resolves.toEqual([['012345678901234', '12345678901234']]);
-  });
+    const { sheet, rows } = await readXlsxTable(file);
+    return parseStockSnapshot(rows, {
+      file: {
+        sha256: 'a'.repeat(64),
+        kind: 'STOCK_SNAPSHOT',
+        path: file,
+        branchId: 'fixture-branch',
+        storeKey: 'fixture-store',
+        reportFrom: null,
+        reportTo: null,
+      },
+      sheet,
+      canonicalSetId: 'fixture-cutover',
+    });
+  }
+
+  it.each([
+    ['012345678901234', '000000000000000', '012345678901234'],
+    [12345678901234, undefined, '12345678901234'],
+    [123456789012345, '000000000000000', '123456789012345'],
+  ])(
+    'preserves exact barcode %s through Excel reading and snapshot parsing',
+    async (barcode, format, expected) => {
+      const result = await parseStockWorkbook(barcode, format);
+      expect(result.issues).toEqual([]);
+      expect(result.rows).toEqual([expect.objectContaining({ barcode: expected })]);
+    },
+  );
+
+  it.each<ExcelJS.CellValue>([
+    12345678901234,
+    { formula: '12345678901234', result: 12345678901234 },
+  ])(
+    'blocks zero-padded numeric IMEI %j before the snapshot parser receives a shortened value',
+    async (barcode) => {
+      const read = parseStockWorkbook(barcode, '000000000000000');
+      await expect(read).rejects.toBeInstanceOf(XlsxReadError);
+      await expect(read).rejects.toMatchObject({
+        sheet: 'Worksheet',
+        row: 2,
+        column: 1,
+        code: 'AMBIGUOUS_NUMERIC_VALUE',
+      });
+    },
+  );
 
   const unsupported: [string, ExcelJS.CellValue, string][] = [
     ['uncached formula', { formula: 'fixture-secret()' }, 'FORMULA_WITHOUT_RESULT'],

@@ -4,6 +4,7 @@ const CELL_ERROR_MESSAGES = {
   FORMULA_WITHOUT_RESULT: 'สูตร Excel ไม่มีผลลัพธ์ที่บันทึกไว้',
   UNSUPPORTED_CELL_VALUE: 'ชนิดข้อมูลในเซลล์ Excel ไม่รองรับ',
   UNSAFE_NUMERIC_VALUE: 'ตัวเลขเกินขอบเขตความแม่นยำของ Excel',
+  AMBIGUOUS_NUMERIC_VALUE: 'รูปแบบตัวเลข Excel เติมศูนย์นำหน้า กรุณาตรวจค่าต้นทาง',
 } as const;
 
 type XlsxCellErrorCode = keyof typeof CELL_ERROR_MESSAGES;
@@ -39,7 +40,15 @@ function decodeCell(cell: ExcelJS.Cell, sheet: string, row: number, column: numb
     // Excel numeric identifiers carry at most 15 decimal digits. Preserve the stored
     // digits without padding from a number format or guessing lost digits.
     if (!Number.isFinite(value) || Math.abs(value) >= 1e15) return fail('UNSAFE_NUMERIC_VALUE');
-    return String(value);
+    const stored = String(value);
+    // A zero placeholder can change the identifier shown in Excel. Check the
+    // positive section's integer width before discarding the number format.
+    const integerFormat = /^(?:\[[^\]]*\])*([#0,]+)(?=[.;]|$)/.exec(cell.numFmt?.trim() ?? '')?.[1];
+    const minimumDigits = integerFormat?.replace(/[^0]/g, '').length ?? 0;
+    if (value >= 0 && Number.isInteger(value) && minimumDigits > stored.length) {
+      return fail('AMBIGUOUS_NUMERIC_VALUE');
+    }
+    return stored;
   }
   if (value instanceof Date) {
     if (!Number.isFinite(value.getTime())) return fail('UNSUPPORTED_CELL_VALUE');

@@ -115,8 +115,15 @@ export function validateManifest(
   decisions: SourceDecisions,
 ): ImportIssue[] {
   const issues = [...inspection.issues];
-  const issue = (code: string, message: string, source: SourceRef | null = null) =>
-    issues.push({ code, message, source });
+  const issueFor =
+    (kind?: InspectionReport['files'][number]['kind']) =>
+    (code: string, message: string, source: SourceRef | null = null) => {
+      const finding: ImportIssue = { code, message, source };
+      if (kind === 'STOCK_SNAPSHOT' || kind === 'SALES')
+        finding.kind = kind === 'SALES' ? 'SALES' : 'STOCK';
+      issues.push(finding);
+    };
+  const issue = issueFor();
 
   const cutoverDay = dateOnly(manifest.cutoverAt);
   if (
@@ -153,12 +160,16 @@ export function validateManifest(
   const usableDecisions = new Map<string, SourceDecision[]>();
   for (const decision of decisions.entries) {
     const file = inspected.get(decision.fileSha256);
+    const fileIssue = issueFor(file?.kind);
     if (!file) {
-      issue('FILE_HASH_MISMATCH', 'checksum ของไฟล์ที่ผูกกับหลักฐานไม่ตรงกับไฟล์ที่ตรวจ');
+      fileIssue('FILE_HASH_MISMATCH', 'checksum ของไฟล์ที่ผูกกับหลักฐานไม่ตรงกับไฟล์ที่ตรวจ');
       continue;
     }
     if (!decision.reason.trim() || !decision.evidenceRef.trim()) {
-      issue('MISSING_DECISION_EVIDENCE', 'การตัดสินใจต้องระบุเหตุผลและหลักฐานที่ตรวจย้อนกลับได้');
+      fileIssue(
+        'MISSING_DECISION_EVIDENCE',
+        'การตัดสินใจต้องระบุเหตุผลและหลักฐานที่ตรวจย้อนกลับได้',
+      );
       continue;
     }
     const availableRows = new Set(file.rows.map(({ row }) => row));
@@ -166,11 +177,11 @@ export function validateManifest(
       decision.sourceRows.some((row) => !availableRows.has(row)) ||
       decision.sourceRows.length !== new Set(decision.sourceRows).size
     ) {
-      issue('INVALID_DECISION_ROWS', 'เลขแถวในหลักฐานไม่ตรงกับตารางรายละเอียดของไฟล์');
+      fileIssue('INVALID_DECISION_ROWS', 'เลขแถวในหลักฐานไม่ตรงกับตารางรายละเอียดของไฟล์');
       continue;
     }
     if (decision.action === 'UNRESOLVED') {
-      issue('UNRESOLVED_SOURCE_DECISION', 'หลักฐานต้นทางยังต้องตรวจสอบ');
+      fileIssue('UNRESOLVED_SOURCE_DECISION', 'หลักฐานต้นทางยังต้องตรวจสอบ');
     }
     const entries = usableDecisions.get(file.sha256) ?? [];
     entries.push(decision);
@@ -184,12 +195,13 @@ export function validateManifest(
   const exclusions = new Map<string, Set<number>>();
   for (const ref of manifest.files) {
     const file = inspected.get(ref.sha256);
+    const fileIssue = issueFor(file?.kind ?? ref.kind);
     if (!file || !file.inputs.some(({ pathSha256 }) => pathSha256 === inputPathSha256(ref.path))) {
-      issue('FILE_HASH_MISMATCH', 'พาธหรือ checksum ของไฟล์ใน manifest ไม่ตรงกับไฟล์ที่ตรวจ');
+      fileIssue('FILE_HASH_MISMATCH', 'พาธหรือ checksum ของไฟล์ใน manifest ไม่ตรงกับไฟล์ที่ตรวจ');
       continue;
     }
     if (refsByHash.has(ref.sha256)) {
-      issue('DUPLICATE_MANIFEST_FILE', 'manifest ระบุไฟล์เนื้อหาเดียวกันมากกว่าหนึ่งครั้ง');
+      fileIssue('DUPLICATE_MANIFEST_FILE', 'manifest ระบุไฟล์เนื้อหาเดียวกันมากกว่าหนึ่งครั้ง');
       continue;
     }
     refsByHash.set(ref.sha256, ref);
@@ -202,7 +214,7 @@ export function validateManifest(
           (sourceRowCount > 0 || (declaredRowCount ?? 0) > 0),
       )
     ) {
-      issue('UNRECONCILED_SALE_EVENTS', 'ต้องตรวจเหตุการณ์ที่อาจเปลี่ยนยอดและผูกกับบิลเดิม');
+      fileIssue('UNRECONCILED_SALE_EVENTS', 'ต้องตรวจเหตุการณ์ที่อาจเปลี่ยนยอดและผูกกับบิลเดิม');
     }
     const excludedFile = entries.filter(({ action }) => action === 'EXCLUDE_FILE');
     const placements = entries.filter(
@@ -214,7 +226,10 @@ export function validateManifest(
         placements.length ||
         !sameRows(excludedFile[0].sourceRows, allRows)
       ) {
-        issue('INVALID_FILE_EXCLUSION', 'หลักฐานตัดไฟล์ต้องระบุทุกแถวและไม่มีการเลือกไฟล์เดียวกัน');
+        fileIssue(
+          'INVALID_FILE_EXCLUSION',
+          'หลักฐานตัดไฟล์ต้องระบุทุกแถวและไม่มีการเลือกไฟล์เดียวกัน',
+        );
       }
       continue;
     }
@@ -225,7 +240,7 @@ export function validateManifest(
       ref.reportFrom !== file.declaredRange.start ||
       ref.reportTo !== file.declaredRange.end
     ) {
-      issue('SOURCE_SCOPE_MISMATCH', 'ชนิดหรือช่วงวันที่ตาม manifest ไม่ตรงกับรายงานต้นทาง');
+      fileIssue('SOURCE_SCOPE_MISMATCH', 'ชนิดหรือช่วงวันที่ตาม manifest ไม่ตรงกับรายงานต้นทาง');
       continue;
     }
     const selectedRows = new Set<number>();
@@ -252,9 +267,9 @@ export function validateManifest(
         ref.reportFrom !== cutoverDay ||
         !sameRows(snapshot.sourceRows, allRows)
       ) {
-        issue('UNPROVEN_SNAPSHOT', 'ต้องมีหลักฐานเลือกหนึ่ง snapshot ที่เวลาตัดระบบต่อสาขา');
+        fileIssue('UNPROVEN_SNAPSHOT', 'ต้องมีหลักฐานเลือกหนึ่ง snapshot ที่เวลาตัดระบบต่อสาขา');
       } else if (snapshots.has(ref.branchId)) {
-        issue('MULTIPLE_STOCK_SNAPSHOTS', 'สาขาหนึ่งเลือก snapshot ได้เพียงไฟล์เดียว');
+        fileIssue('MULTIPLE_STOCK_SNAPSHOTS', 'สาขาหนึ่งเลือก snapshot ได้เพียงไฟล์เดียว');
       } else {
         snapshots.add(ref.branchId);
       }
@@ -264,11 +279,14 @@ export function validateManifest(
         !placements.length &&
         (allRows.length || !entries.some(({ action }) => action === 'ZERO_SALES'))
       ) {
-        issue('UNPROVEN_SALES_SELECTION', 'รายงานขายต้องมีหลักฐานเลือกข้อมูลหรือยืนยันยอดขายศูนย์');
+        fileIssue(
+          'UNPROVEN_SALES_SELECTION',
+          'รายงานขายต้องมีหลักฐานเลือกข้อมูลหรือยืนยันยอดขายศูนย์',
+        );
       }
       for (const entry of placements) {
         if (entry.action !== 'SELECT_SALES') {
-          issue('INVALID_SALES_SELECTION', 'ชนิดหลักฐานไม่ตรงกับรายงานขาย');
+          fileIssue('INVALID_SALES_SELECTION', 'ชนิดหลักฐานไม่ตรงกับรายงานขาย');
           continue;
         }
         const range = decisionRange(entry);
@@ -295,7 +313,7 @@ export function validateManifest(
               selectedRows.has(row) || Date.parse(occurredAt!) > Date.parse(manifest.cutoverAt),
           )
         ) {
-          issue(
+          fileIssue(
             'INVALID_SALES_SELECTION',
             'หลักฐานเลือกขายต้องตรงกับร้านต้นทางของไฟล์ สาขา ช่วงเวลา และแถวต้นทาง',
           );
@@ -310,7 +328,7 @@ export function validateManifest(
         salesDays.set(entry.branchId, days);
       }
       if (allRows.some((row) => !selectedRows.has(row) && !excludeRows.has(row))) {
-        issue('UNASSIGNED_SALES_ROWS', 'ทุกแถวขายต้องมีหลักฐานเลือกสาขาหรือตัดออก');
+        fileIssue('UNASSIGNED_SALES_ROWS', 'ทุกแถวขายต้องมีหลักฐานเลือกสาขาหรือตัดออก');
       }
     }
     for (const finding of file.issues) {
@@ -388,6 +406,7 @@ export function validateManifest(
     }
   }
 
+  const salesIssue = issueFor('SALES');
   const coverageByBranch = new Map<string, DateRange>();
   for (const history of manifest.history ?? []) {
     const range = decisionRange(history);
@@ -398,7 +417,7 @@ export function validateManifest(
       range.end !== cutoverDay ||
       !history.evidenceRef.trim()
     ) {
-      issue(
+      salesIssue(
         'INVALID_HISTORY_SCOPE',
         'ช่วงประวัติของแต่ละสาขาต้องมีหลักฐานและครอบคลุมถึงวันตัดระบบ',
       );
@@ -417,6 +436,7 @@ export function validateManifest(
       const ref = refsByHash.get(entry.fileSha256);
       if (
         !ref?.storeKey.trim() ||
+        !selected.has(entry.fileSha256) ||
         ref.storeKey.trim() === 'UNRESOLVED' ||
         ref.branchId !== entry.branchId ||
         !scope ||
@@ -449,7 +469,7 @@ export function validateManifest(
           );
         })
       ) {
-        issue(
+        salesIssue(
           'INVALID_ZERO_SALES_PERIOD',
           'ช่วงยอดขายศูนย์ต้องตรงกับขอบเขตและไม่มีรายการขายต้นทางที่ขัดกับหลักฐาน',
         );
@@ -463,15 +483,32 @@ export function validateManifest(
   for (const window of salesWindows) {
     const scope = coverageByBranch.get(window.branchId);
     if (!scope || !containsRange(scope, decisionRange(window))) {
-      issue('UNPROVEN_HISTORY_SCOPE', 'ช่วงขายที่เลือกต้องอยู่ในขอบเขตประวัติที่มีหลักฐานของสาขา');
+      salesIssue(
+        'UNPROVEN_HISTORY_SCOPE',
+        'ช่วงขายที่เลือกต้องอยู่ในขอบเขตประวัติที่มีหลักฐานของสาขา',
+      );
     }
   }
   for (const [branchId, scope] of coverageByBranch) {
     const evidence = [...(salesDays.get(branchId) ?? [])].map((day) => ({ start: day, end: day }));
     if (!coversDays(scope, evidence.concat(zeroRanges.get(branchId) ?? []))) {
-      issue('UNPROVEN_SALES_COVERAGE', 'มีวันที่ขาดรายงานขายหรือหลักฐานยืนยันยอดขายศูนย์');
+      salesIssue('UNPROVEN_SALES_COVERAGE', 'มีวันที่ขาดรายงานขายหรือหลักฐานยืนยันยอดขายศูนย์');
     }
   }
+  const missingSource = (kind: 'STOCK' | 'SALES') =>
+    issues.push({
+      kind,
+      code: 'UNPROVEN_IMPORT_SCOPE',
+      message: 'ต้องมีหลักฐานเลือกต้นทางของข้อมูลชนิดนี้',
+      source: null,
+    });
+  if (manifest.files.some((f) => f.kind === 'STOCK_SNAPSHOT') && !snapshots.size)
+    missingSource('STOCK');
+  if (
+    manifest.files.some((f) => f.kind === 'SALES') &&
+    (!coverageByBranch.size || (!salesWindows.length && !zeroRanges.size))
+  )
+    missingSource('SALES');
   if (!selected.size && !coverageByBranch.size) {
     issue('EMPTY_CANONICAL_SET', 'ไม่มี snapshot หรือประวัติขายที่เลือกใน manifest');
   }

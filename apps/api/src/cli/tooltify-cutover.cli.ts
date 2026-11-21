@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { constants } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { inspectFiles, inputPathSha256 } from './tooltify-cutover/inspect';
-import { readCheckoutRevision } from './tooltify-cutover/checkout-revision';
+import { bindWriterRevision, readCheckoutRevision } from './tooltify-cutover/checkout-revision';
 import { PrismaClient } from '@prisma/client';
 import { applyRollback, planRollback, parseReviewedRollback } from './tooltify-cutover/rollback';
 import { applyBatch } from './tooltify-cutover/batch';
@@ -173,7 +173,7 @@ async function checkIdentity(
   if (!isolated && env.ALLOW_PROD_TOOLTIFY_IMPORT !== confirmation)
     throw Error('ALLOW_PROD_TOOLTIFY_IMPORT_REQUIRED');
 }
-function planReport(p: ImportPlan) {
+function planReport(p: ImportPlan, privateReview = false) {
   const ref = (r: ImportPlan['items'][number]['payload']['source']) => ({
     fileSha256: r.fileSha256,
     sheet: r.sheet,
@@ -207,6 +207,19 @@ function planReport(p: ImportPlan) {
       targetId: i.targetId,
       reason: i.reason,
       ...(i.kind === 'STOCK' ? { stockInDate: i.original.importedAt } : {}),
+      ...(privateReview && i.kind === 'STOCK'
+        ? {
+            branchId: i.branchId,
+            kind: i.original.kind,
+            status: i.payload.desiredStatus,
+            cost: i.payload.cost,
+            pricingMode: i.decision?.pricing.mode ?? null,
+            templateId: i.resolution.templateId,
+            cashPrice: i.resolution.cashPrice,
+            installmentPrice: i.resolution.installmentPrice,
+            financePrice: i.resolution.financePrice,
+          }
+        : {}),
     })),
     excluded: p.excluded.map((e) => ({
       source: ref(e.source),
@@ -330,7 +343,12 @@ export async function runCutover(args: string[], deps: CliDependencies): Promise
       return report.canOpen ? 0 : 1;
     }
     const p = await deps.prepare(v.manifest, v.decisions, kind, id.fingerprint, write);
-    await output(write ? 'apply-plan.json' : 'dry-run.json', planReport(p));
+    const summary = planReport(p);
+    await output(
+      write ? 'apply-plan.json' : 'dry-run.json',
+      p.kind === 'STOCK' && v['out-dir'] ? planReport(p, true) : summary,
+      summary,
+    );
     if (p.issues.length || p.totals.conflicts || !hasVerifiedSource(p.reconciliationSnapshot))
       throw Error('SOURCE_OR_PLAN_BLOCKED');
     if (write) {
@@ -360,10 +378,13 @@ export function checkoutRevision(write: boolean, checkout = __dirname, entry = _
   return readCheckoutRevision(write, checkout, entry);
 }
 
+const attestForwardRevision = bindWriterRevision(() => checkoutRevision(true));
+
 export function cliDependencies(
   client: () => PrismaClient,
   env: NodeJS.ProcessEnv = process.env,
-  revision = checkoutRevision,
+  revision: (write: boolean) => string = (write) =>
+    write ? attestForwardRevision() : checkoutRevision(false),
 ): CliDependencies {
   return {
     env,
@@ -413,7 +434,10 @@ export function cliDependencies(
       for (const issue of selectedIssues) append(issue, selected.kind);
       for (const other of inputs.filter((i) => i !== selected)) {
         const sibling = await buildImportPlan(client(), other);
-        if (sibling.issues.length || !hasVerifiedSource(sibling.reconciliationSnapshot)) {
+        const siblingBlocked = sibling.issues.some(
+          (issue) => !issue.kind || issue.kind === sibling.kind,
+        );
+        if (siblingBlocked || !hasVerifiedSource(sibling.reconciliationSnapshot)) {
           for (const issue of sibling.issues) append(issue, sibling.kind);
           append(
             {

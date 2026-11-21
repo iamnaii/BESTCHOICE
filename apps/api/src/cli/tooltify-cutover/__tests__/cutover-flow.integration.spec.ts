@@ -18,7 +18,10 @@ import type { SourceDecisions } from '../types';
 
 // Supply the rehearsal revision inside this Vitest module graph only. The Git
 // checkout regression loads the real writer and attester through Node separately.
-vi.mock('../checkout-revision', () => ({ readCheckoutRevision: () => '1'.repeat(40) }));
+vi.mock('../checkout-revision', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../checkout-revision')>()),
+  readCheckoutRevision: () => '1'.repeat(40),
+}));
 
 const db = harnessClient();
 afterAll(() => db.$disconnect());

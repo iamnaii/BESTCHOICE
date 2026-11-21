@@ -2,6 +2,7 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import { afterAll, expect, it, vi } from 'vitest';
 import { hasSellingPrice } from '../../../modules/products/product-enter-stock.util';
 import * as priceSync from '../../../utils/product-price-sync.util';
+import { reconcileBatch, verifyAppliedBatch } from '../reconcile';
 import { applyBatch } from '../batch';
 import { hashImportValue, hashSourceDecisions } from '../canonicalize';
 import { buildImportPlan, stockTargetFingerprint } from '../plan';
@@ -354,5 +355,115 @@ it.each(['failure', 'unpriced'])(
     expect(await db.product.count({ where: { imeiSerial: input.rows[0].barcode } })).toBe(0);
     expect(await db.productPrice.count()).toBe(before);
     expect(await db.tooltifyImportItem.count({ where: { batchId: plan.batchId } })).toBe(0);
+  },
+);
+
+it('blocks an explicitly mapped accessory used only in a contract bundle', async () => {
+  const input = await stockInput(db);
+  const r = input.rows[0];
+  r.kind = r.category = 'ACCESSORY';
+  r.barcode = input.manifest.canonicalSetId;
+  r.sourceKey = hashImportValue([
+    input.manifest.canonicalSetId,
+    r.source.fileSha256,
+    r.source.sheet,
+    r.source.row,
+    1,
+  ]);
+  const target = await db.product.create({ data: { ...productData(r), imeiSerial: null } });
+  input.decisions.entries.push({
+    ...input.decisions.entries[0],
+    action: 'MAP_ACCESSORY_UNITS',
+    sku: r.barcode,
+    checkedQuantity: 1,
+    assignments: [{ row: r.source.row, targetId: target.id }],
+  });
+  const reviewed = await planFor(input);
+  expect(reviewed.items[0].disposition).toBe('MATCH');
+  const primary = await db.product.create({ data: { ...productData(r), imeiSerial: null } });
+  const user = await db.user.create({
+    data: { name: 'Fixture', email: r.barcode + '@example.invalid', password: 'fixture' },
+  });
+  const customer = await db.customer.create({
+    data: { name: 'Fixture', phone: r.barcode, nationalId: r.barcode },
+  });
+  await db.contract.create({
+    data: {
+      contractNumber: r.barcode,
+      planType: 'STORE_WITH_INTEREST',
+      branchId: r.branchId,
+      customerId: customer.id,
+      salespersonId: user.id,
+      productId: primary.id,
+      bundleProductIds: [target.id],
+      sellingPrice: 200,
+      downPayment: 0,
+      financedAmount: 200,
+      interestRate: 0,
+      totalMonths: 1,
+      interestTotal: 0,
+      monthlyPayment: 200,
+    },
+  });
+  expect((await planFor(input)).items[0]).toMatchObject({
+    disposition: 'CONFLICT',
+    reason: 'REFERENCED_STOCK_TARGET',
+  });
+  await expect(applyBatch(db, reviewed, write)).rejects.toThrow('IMPORT_DEPENDENCY_CHANGED');
+  expect(await db.tooltifyImportBatch.count({ where: { id: reviewed.batchId } })).toBe(0);
+  expect(await db.product.findUnique({ where: { id: target.id } })).toEqual(target);
+});
+
+it.each([false, true])(
+  'rechecks committed stock after a reservation, partial batch = %s',
+  async (partial) => {
+    const input = await stockInput(db, partial ? 2 : 1);
+    const totals = { units: input.rows.length, cost: partial ? '200.00' : '100.00' };
+    const canonical = {
+      ...input,
+      sourceSummary: {
+        kind: 'STOCK' as const,
+        reported: totals,
+        detail: totals,
+        delta: { units: 0, cost: '0.00' },
+        groups: [
+          { branchId: input.rows[0].branchId, kind: 'DEVICE' as const, skuHash: null, totals },
+        ],
+        evidenceFileSha256s: [input.rows[0].source.fileSha256],
+      },
+    };
+    const plan = await buildImportPlan(db, canonical);
+    if (partial) {
+      await expect(
+        applyBatch(db, plan, (tx, item) => {
+          if (item.sourceKey === input.rows[1].sourceKey) throw Error('fixture interruption');
+          return write(tx, item);
+        }),
+      ).rejects.toThrow('fixture interruption');
+    } else {
+      await applyBatch(db, plan, write);
+      expect((await verifyAppliedBatch(db, plan.batchId, plan.planHash)).canOpen).toBe(true);
+    }
+    const receipts = () => db.tooltifyImportItem.findMany({ where: { batchId: plan.batchId } });
+    const originals = await receipts();
+    expect(originals).toHaveLength(1);
+    const productId = originals[0].targetId!;
+    const target = () =>
+      db.product.findUniqueOrThrow({ where: { id: productId }, include: { prices: true } });
+    const original = await target();
+    await db.productReservation.create({
+      data: { productId, sessionId: 'fixture', expiresAt: new Date(Date.now() + 60000) },
+    });
+    const report = await reconcileBatch(db, plan.batchId);
+    expect(report.canOpen).toBe(false);
+    expect(report.issues).toContain('HELD_STOCK_TARGET');
+    expect(Object.values(report.sideEffects).every((n) => n === 0)).toBe(true);
+    await expect(buildImportPlan(db, canonical)).rejects.toThrow('HELD_STOCK_TARGET');
+    await expect(applyBatch(db, plan, write)).rejects.toThrow('HELD_STOCK_TARGET');
+    expect(await target()).toEqual(original);
+    expect(await receipts()).toEqual(originals);
+    expect(
+      await db.product.count({ where: { imeiSerial: { in: input.rows.map((r) => r.barcode) } } }),
+    ).toBe(1);
   },
 );

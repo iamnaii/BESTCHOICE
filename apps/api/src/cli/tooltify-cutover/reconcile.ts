@@ -1,6 +1,6 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import { hashImportValue as hash, orderedDigest, receiptDigest } from './canonicalize';
-import { readSaleOrigins, saleContent } from './plan-targets';
+import { readSaleOrigins, saleContent, stockEligibilityIssue } from './plan-targets';
 import { aggregateSales, aggregateStock } from './reconciliation-snapshot';
 import type {
   EconomicAggregate,
@@ -243,6 +243,8 @@ async function readReconciliation(
         issues.add('MISSING_TARGET');
         continue;
       }
+      const eligibilityIssue = await stockEligibilityIssue(tx, p);
+      if (eligibilityIssue) issues.add(eligibilityIssue);
       const owned = p.legacyProductCode === 'TTFY-CUTOVER:' + batch.id + ':' + i.sourceKey;
       if (
         owned !== (i.disposition === 'CREATE') ||

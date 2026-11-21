@@ -7,6 +7,8 @@ import {
   evaluateItem,
   identityHash,
   readSaleOriginsFor,
+  readStockTarget,
+  stockEligibilityIssue,
   type SaleOrigins,
   salesTargetFingerprint,
   stockTargetFingerprint,
@@ -95,11 +97,13 @@ export async function replayItem(
     !['CREATE', 'MATCH'].includes(receipt.disposition)
   )
     throw Error('IMPORT_ITEM_RECEIPT_MISMATCH');
-  const actual = await (item.kind === 'STOCK' ? stockTargetFingerprint : salesTargetFingerprint)(
-    db,
-    receipt.targetId,
-  );
+  const product = item.kind === 'STOCK' ? await readStockTarget(db, receipt.targetId) : null;
+  const actual = product ? hash(product) : await salesTargetFingerprint(db, receipt.targetId);
   if (actual !== receipt.afterFingerprint) throw Error('IMPORT_ITEM_TARGET_CHANGED');
+  if (product) {
+    const issue = await stockEligibilityIssue(db, product);
+    if (issue) throw Error(issue);
+  }
   // CREATE had no target at dry-run. Its committed target is identified exclusively by the receipt.
   const base = {
     targetId: receipt.disposition === 'MATCH' ? receipt.targetId : null,
@@ -194,8 +198,27 @@ function inputIssues(input: CanonicalInput) {
   const kindFiles = manifest.files.filter(
     (f) => f.kind === (input.kind === 'STOCK' ? 'STOCK_SNAPSHOT' : 'SALES'),
   );
+  const selected = kindFiles.some((file) => {
+    const entries = decisions.entries.filter((d) => d.fileSha256 === file.sha256);
+    if (entries.some((d) => d.action === 'EXCLUDE_FILE')) return false;
+    return entries.some((d) =>
+      input.kind === 'STOCK'
+        ? d.action === 'SELECT_SNAPSHOT' &&
+          d.sourceRows.length > 0 &&
+          d.asOf === manifest.cutoverAt &&
+          d.branchId === file.branchId &&
+          d.storeKey === file.storeKey
+        : ((d.action === 'SELECT_SALES' && d.sourceRows.length > 0) ||
+            (d.action === 'ZERO_SALES' && d.sourceRows.length === 0)) &&
+          d.branchId === file.branchId &&
+          input.validatedHistory?.some(
+            (h) =>
+              h.branchId === d.branchId && h.reportFrom <= d.reportFrom && h.reportTo >= d.reportTo,
+          ),
+    );
+  });
   if (
-    !kindFiles.length ||
+    !selected ||
     kindFiles.some(
       (f) =>
         !decisions.entries.some(
@@ -208,7 +231,12 @@ function inputIssues(input: CanonicalInput) {
         ),
     )
   )
-    issue('UNPROVEN_IMPORT_SCOPE');
+    issues.push({
+      kind: input.kind,
+      code: 'UNPROVEN_IMPORT_SCOPE',
+      message: 'UNPROVEN_IMPORT_SCOPE',
+      source: null,
+    });
   for (const d of decisions.entries) {
     if (
       !d.reason.trim() ||
@@ -523,6 +551,8 @@ export async function buildImportPlan(
         payloadHash: hash(e),
       }));
       const reconciliationSnapshot = buildReconciliationSnapshot(input, items);
+      if (issues.some((i) => i.kind === kind && i.code === 'UNPROVEN_IMPORT_SCOPE'))
+        reconciliationSnapshot.cannotVerifySource = true;
       const plan: ImportPlan = {
         reconciliationSnapshot,
         batchId,

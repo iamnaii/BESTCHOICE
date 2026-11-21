@@ -68,6 +68,7 @@ async function salesInput(): Promise<Extract<CanonicalInput, { kind: 'SALES' }>>
   return {
     ...seed,
     kind: 'SALES',
+    validatedHistory: [{ branchId, reportFrom: '2026-11-18', reportTo: '2026-11-18' }],
     rows: [row],
     decisions,
     manifest: {
@@ -170,7 +171,10 @@ describe('legacy sale uniqueness and attribution', () => {
     input.sourceSummary = { ...source, groups: [{ ...group, branchId: 'unmapped' }] };
     await expect(buildImportPlan(db, input)).rejects.toThrow('INVALID_SOURCE_SUMMARY_SCOPE');
     input.sourceSummary = source;
+    delete input.validatedHistory;
     const withoutHistory = await buildImportPlan(db, input);
+    expect(withoutHistory.issues.map((i) => i.code)).toContain('UNPROVEN_IMPORT_SCOPE');
+    expect(withoutHistory.reconciliationSnapshot.cannotVerifySource).toBe(true);
     const history = { branchId: group.branchId, reportFrom: '2026-11-01', reportTo: '2026-11-18' };
     const evidence = { ...history, evidenceRef: 'SYNTHETIC-PRIVATE-REF' };
     input.validatedHistory = [evidence];

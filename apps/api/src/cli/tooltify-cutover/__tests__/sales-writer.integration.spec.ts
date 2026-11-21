@@ -76,6 +76,9 @@ async function input(): Promise<Extract<CanonicalInput, { kind: 'SALES' }>> {
   return {
     ...seed,
     kind: 'SALES',
+    validatedHistory: [
+      { branchId: file.branchId, reportFrom: file.reportFrom, reportTo: file.reportTo },
+    ],
     rows,
     decisions,
     manifest: { ...seed.manifest, files: [file], decisionsSha256: hashSourceDecisions(decisions) },
@@ -426,7 +429,15 @@ it('requires independent cost basis and evidence for excluded accessory service 
     exclusion.reportedUnitsPerRow = 1;
     await save();
     messages.length = 0;
-    expect(await run([]), JSON.stringify(messages)).toBe(0);
+    expect(await run(['--out-dir', dir]), JSON.stringify(messages)).toBe(0);
+    const privateReview = JSON.parse(await readFile(join(dir, 'dry-run.json'), 'utf8'));
+    expect(privateReview.items[0]).toMatchObject({
+      pricingMode: 'EXPLICIT',
+      templateId: null,
+      cashPrice: '200.00',
+      installmentPrice: null,
+      financePrice: null,
+    });
     expect(
       await run([
         'apply',

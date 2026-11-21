@@ -107,6 +107,10 @@ export async function loadSourceInputs(
           manifest.files.some((ref) => ref.sha256 === f.sha256 && ref.kind === kind),
       )
       .reduce((sum, f) => sum + f.rows.length, 0);
+  for (const file of inspection.files) {
+    if (file.kind === 'STOCK_SNAPSHOT' || file.kind === 'SALES')
+      for (const issue of file.issues) issue.kind = file.kind === 'SALES' ? 'SALES' : 'STOCK';
+  }
   const issues = validateManifest(manifest, inspection, decisions);
   const seenIssues = new Set(issues);
   for (const f of inspection.files)
@@ -159,13 +163,13 @@ export async function loadSourceInputs(
     const physical = new Set(evidence.rows.map((r) => r.row));
     if (file.kind === 'SALES') {
       const parsed = parseSalesReport(table, context);
-      issues.push(...parsed.issues);
+      issues.push(...parsed.issues.map((issue) => ({ ...issue, kind: 'SALES' as const })));
       sales.push(...parsed.rows);
       summaries.push(parsed.gross);
       for (const row of parsed.rows) physical.delete(row.source.row);
     } else {
       const parsed = parseStockSnapshot(table, context);
-      issues.push(...parsed.issues);
+      issues.push(...parsed.issues.map((issue) => ({ ...issue, kind: 'STOCK' as const })));
       const entries = decisions.entries.filter((d) => d.fileSha256 === file.sha256);
       const selection = entries.find(
         (d) => d.action === 'SELECT_SNAPSHOT' || d.action === 'EXCLUDE_FILE',
@@ -205,7 +209,7 @@ export async function loadSourceInputs(
       });
   }
   const canonical = canonicalizeSales(sales, decisions);
-  issues.push(...canonical.issues);
+  issues.push(...canonical.issues.map((issue) => ({ ...issue, kind: 'SALES' as const })));
   const common = { manifest, decisions, codeRevision, expectedDbIdentity, issues };
   const inputs: CanonicalInput[] = [];
   const saleFiles = manifest.files.filter((f) => f.kind === 'SALES');
@@ -237,7 +241,7 @@ export async function loadSourceInputs(
     inputs.push({
       ...common,
       kind: 'SALES',
-      ...(issues.length === 0 && manifest.history?.length
+      ...(issues.every((i) => i.kind === 'STOCK') && manifest.history?.length
         ? {
             validatedHistory: manifest.history.map(({ branchId, reportFrom, reportTo }) => ({
               branchId,
@@ -306,6 +310,7 @@ export async function loadSourceInputs(
         (stockDelta.cost !== null && !new Prisma.Decimal(stockDelta.cost).isZero())
       ) {
         issues.push({
+          kind: 'STOCK',
           code: 'STOCK_SUMMARY_MISMATCH',
           source,
           message: 'STOCK_SUMMARY_MISMATCH',
@@ -349,6 +354,7 @@ export async function loadSourceInputs(
   }
   const sourceKinds = new Map(manifest.files.map((f) => [f.sha256, f.kind]));
   for (const issue of issues) {
+    if (issue.kind) continue;
     const sourceKind = issue.source && sourceKinds.get(issue.source.fileSha256);
     if (sourceKind === 'STOCK_SNAPSHOT' || sourceKind === 'SALES')
       issue.kind = sourceKind === 'SALES' ? 'SALES' : 'STOCK';

@@ -1,7 +1,10 @@
 import { BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { hasSellingPrice } from '../../modules/products/product-enter-stock.util';
-import { assertProductNotHeld } from '../../modules/products/product-hold.util';
+import {
+  assertProductNotHeld,
+  type ProductHoldSubject,
+} from '../../modules/products/product-hold.util';
 import { findPricingTemplate, positiveDecimal } from '../../utils/pricing-template-match.util';
 import { templateKeyOf } from '../../utils/product-finance-price.util';
 import {
@@ -14,9 +17,27 @@ import type { CanonicalSaleLine, PlannedItem, PlannedSalesItem, PlannedStockItem
 
 type Db = Prisma.TransactionClient;
 const stockInclude = { prices: { orderBy: { id: 'asc' as const } } };
+export function readStockTarget(db: Db, id: string) {
+  return db.product.findUniqueOrThrow({ where: { id }, include: stockInclude });
+}
 export async function stockTargetFingerprint(db: Db, id: string) {
-  const target = await db.product.findUniqueOrThrow({ where: { id }, include: stockInclude });
-  return hash(target);
+  return hash(await readStockTarget(db, id));
+}
+// Availability can change without changing a Product or its prices.
+export async function stockEligibilityIssue(db: Db, target: ProductHoldSubject) {
+  if (
+    await db.contract.count({
+      where: { OR: [{ productId: target.id }, { bundleProductIds: { has: target.id } }] },
+    })
+  )
+    return 'REFERENCED_STOCK_TARGET';
+  try {
+    await assertProductNotHeld(db, target, 'STOCK_ADJUST');
+  } catch (error) {
+    if (!(error instanceof BadRequestException)) throw error;
+    return 'HELD_STOCK_TARGET';
+  }
+  return null;
 }
 export async function salesTargetFingerprint(db: Db, id: string) {
   return hash(await db.importedSale.findUniqueOrThrow({ where: { id } }));
@@ -267,17 +288,7 @@ async function evaluateStock(db: Db, item: PlannedStockItem): Promise<PlannedSto
       (payload.desiredStatus === 'IN_STOCK' && !hasSellingPrice(target))
     )
       reason = 'STOCK_TARGET_CONFLICT';
-    if (!reason) {
-      // Even a stale IN_STOCK flag must not release a unit referenced by a contract, reservation or order.
-      if (await db.contract.count({ where: { productId: target.id } }))
-        reason = 'REFERENCED_STOCK_TARGET';
-      try {
-        await assertProductNotHeld(db, target, 'STOCK_ADJUST');
-      } catch (e) {
-        if (!(e instanceof BadRequestException)) throw e;
-        reason = 'HELD_STOCK_TARGET';
-      }
-    }
+    if (!reason) reason = await stockEligibilityIssue(db, target);
   }
   return {
     ...item,

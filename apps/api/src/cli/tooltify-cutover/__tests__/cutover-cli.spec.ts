@@ -147,7 +147,7 @@ it('rejects changed code at the same HEAD', async () => {
       '-qm',
       'fixture',
     );
-    const rev = checkoutRevision(true, dir, source);
+    const rev = checkoutRevision(false, dir, source);
     const compiled = join(dir, 'dist', 'tooltify-cutover.cli.js');
     await mkdir(join(dir, 'dist'));
     await writeFile(compiled, 'module.exports={}');

@@ -60,7 +60,13 @@ it('sends all applied search terms to both endpoints and resets pagination', asy
     data: path.includes('summary') ? summary : { ...empty, total: 51, page: params.page },
   }));
   show();
-  fireEvent.click(await screen.findByRole('button', { name: 'ถัดไป' }));
+  const next = await screen.findByRole('button', { name: 'ถัดไป' });
+  const previous = screen.getByRole('button', { name: 'ก่อนหน้า' });
+  expect(next).toHaveClass('whitespace-nowrap');
+  expect(previous).toHaveClass('whitespace-nowrap');
+  expect(next.parentElement).toBe(previous.parentElement);
+  expect(next.parentElement).toHaveClass('flex-wrap');
+  fireEvent.click(next);
   await waitFor(() =>
     expect(get).toHaveBeenCalledWith('/imported-sales', { params: { limit: 50, page: 2 } }),
   );

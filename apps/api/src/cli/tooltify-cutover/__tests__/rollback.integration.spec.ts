@@ -31,7 +31,10 @@ import { frozen, harnessClient, writer } from './rollback-fixtures';
 
 // Supply the rehearsal revision inside this Vitest module graph only. The Git
 // checkout regression loads the real writer and attester through Node separately.
-vi.mock('../checkout-revision', () => ({ readCheckoutRevision: () => '1'.repeat(40) }));
+vi.mock('../checkout-revision', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../checkout-revision')>()),
+  readCheckoutRevision: () => '1'.repeat(40),
+}));
 
 const db = harnessClient();
 afterAll(() => db.$disconnect());
@@ -530,6 +533,7 @@ it('attests the writer and tracked dependencies across process start, static imp
     // Keep the production writer's relative imports inside its reviewed fixture.
     for (const name of [
       'cli/tooltify-cutover',
+      'cli/tooltify-cutover.cli.ts',
       'modules/imported-sales',
       'modules/products',
       'utils',
@@ -645,7 +649,46 @@ it('attests the writer and tracked dependencies across process start, static imp
 
     expect(await run('move', planB)).toMatchObject({ error: 'ROLLBACK_FRESH_PROCESS_REQUIRED' });
     expect(await state()).toEqual(reversed);
+
+    const forward = await stockInput(db);
+    const inputPath = join(dir, 'plans', 'forward.json');
+    await writeFile(inputPath, JSON.stringify(forward));
+    const forwardWriter = join(src, 'stock-writer.ts');
+    await writeFile(
+      forwardWriter,
+      (await readFile(forwardWriter, 'utf8')) +
+        "\nexport const fixtureSource = 'A';\nglobalThis.tooltifyForwardImportHook?.();\n",
+    );
+    git('commit', '-qam', 'forward A');
+    const batches = () =>
+      db.tooltifyImportBatch.findMany({
+        where: { canonicalSetId: forward.manifest.canonicalSetId },
+      });
+    expect(await run('forward-race', inputPath)).toMatchObject({
+      source: 'A',
+      error: 'CUTOVER_FRESH_PROCESS_REQUIRED',
+    });
+    expect(await batches()).toHaveLength(0);
+    const compiledCli = transpileModule(
+      await readFile(join(src, '../tooltify-cutover.cli.ts'), 'utf8'),
+      {
+        compilerOptions: { module: ModuleKind.CommonJS, target: ScriptTarget.ES2021 },
+      },
+    );
+    await writeFile(join(src, '../compiled.cjs'), compiledCli.outputText);
+    expect(await run('forward-compiled', inputPath)).toMatchObject({
+      source: 'B',
+      error: 'TRACKED_SOURCE_ENTRY_REQUIRED',
+    });
+    expect(await batches()).toHaveLength(0);
+    const revision = git('rev-parse', 'HEAD');
+    expect(await run('forward-fresh', inputPath)).toMatchObject({
+      source: 'B',
+      revision,
+      receipt: { created: 1, status: 'APPLIED' },
+    });
+    expect(await batches()).toEqual([expect.objectContaining({ codeRevision: revision })]);
   } finally {
     await rm(sandbox, { recursive: true, force: true });
   }
-}, 30000);
+}, 45000);

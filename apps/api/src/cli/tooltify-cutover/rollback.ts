@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { readCheckoutRevision } from './checkout-revision';
+import { bindWriterRevision, readCheckoutRevision } from './checkout-revision';
 import { setTimeout as delay } from 'node:timers/promises';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { hashImportValue as hash, receiptDigest } from './canonicalize';
@@ -234,23 +234,7 @@ function rollbackCheckoutRevision() {
   );
 }
 
-// Bind this module instance at evaluation. A checkout can move while Node still
-// holds these functions. An unattested load remains usable for read-only plans.
-const loadedRollbackRevision = (() => {
-  try {
-    return rollbackCheckoutRevision();
-  } catch (error) {
-    return error instanceof Error ? error : Error('ROLLBACK_RUNTIME_UNATTESTED');
-  }
-})();
-
-function attestRollbackRevision(reviewed: string) {
-  if (loadedRollbackRevision instanceof Error) throw loadedRollbackRevision;
-  const current = rollbackCheckoutRevision();
-  if (current !== loadedRollbackRevision || reviewed !== loadedRollbackRevision)
-    throw Error('CODE_REVISION_CHANGED');
-  return loadedRollbackRevision;
-}
+const attestRollbackRevision = bindWriterRevision(rollbackCheckoutRevision);
 
 export async function applyRollback(
   db: PrismaClient,

@@ -5,10 +5,48 @@ import { readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { frozen, harnessClient } from './rollback-fixtures';
-import type { RollbackPlan } from '../types';
+import type { CanonicalInput, RollbackPlan } from '../types';
 
+async function runForward(repo: string, scenario: string, inputPath: string) {
+  const cli = join(repo, 'apps/api/src/cli');
+  const file = join(cli, 'tooltify-cutover/stock-writer.ts');
+  const git = (...args: string[]) =>
+    execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8' }).trim();
+  if (scenario === 'forward-race') {
+    Object.assign(globalThis, {
+      tooltifyForwardImportHook: () => {
+        writeFileSync(
+          file,
+          readFileSync(file, 'utf8').replace("fixtureSource = 'A'", "fixtureSource = 'B'"),
+        );
+        git('commit', '-qam', 'forward B');
+      },
+    });
+  }
+  const load = createRequire(__filename);
+  const { cliDependencies }: typeof import('../../tooltify-cutover.cli') = load(
+    join(cli, scenario === 'forward-compiled' ? 'compiled.cjs' : 'tooltify-cutover.cli.ts'),
+  );
+  const { buildImportPlan }: typeof import('../plan') = load(join(cli, 'tooltify-cutover/plan.ts'));
+  const source = load(file).fixtureSource;
+  const db = harnessClient();
+  try {
+    const input: CanonicalInput = JSON.parse(readFileSync(inputPath, 'utf8'));
+    input.codeRevision = git('rev-parse', 'HEAD');
+    const plan = await buildImportPlan(db, input);
+    const receipt = await cliDependencies(() => db).apply(plan);
+    console.log(JSON.stringify({ source, revision: plan.codeRevision, receipt }));
+  } catch (error) {
+    console.log(
+      JSON.stringify({ source, error: error instanceof Error ? error.message : String(error) }),
+    );
+  } finally {
+    await db.$disconnect();
+  }
+}
 async function main() {
   const [repo, batchId, scenario, planFile] = process.argv.slice(2);
+  if (scenario.startsWith('forward-')) return runForward(repo, scenario, planFile!);
   const src = join(repo, 'apps/api/src/cli/tooltify-cutover');
   const file = join(src, 'rollback.ts'),
     dependency = join(src, 'canonicalize.ts');

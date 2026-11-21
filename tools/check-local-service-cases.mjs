@@ -11,7 +11,7 @@ export async function checkServiceCases(page,origin,output,width) {
  const fixtureResponse=await post('preview/service-cases/fixture');assert.equal(fixtureResponse.status(),201,await fixtureResponse.text());const f=await fixtureResponse.json();
  await page.goto(`${origin}/inbox/${f.roomId}?zone=shop`);
  await expect(page.getByRole('textbox',{name:'พิมพ์ข้อความ',exact:true})).toBeVisible();
- if(width<1280)await page.getByRole('button',{name:/^ข้อมูลลูกค้า/}).filter({visible:true}).first().click();
+ if(width<1440)await page.getByRole('button',{name:/^ข้อมูลลูกค้า/}).filter({visible:true}).first().click();
  await page.getByRole('button',{name:'บริการหลังการขาย',exact:true}).filter({visible:true}).click();
  await page.getByRole('button',{name:'รับเรื่องหลังการขาย',exact:true}).click();
  let dialog=page.getByRole('dialog',{name:'รับเรื่องหลังการขาย',exact:true});

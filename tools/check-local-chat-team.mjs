@@ -31,7 +31,7 @@ export async function checkChatTeam(page, origin, output, width) {
     await chooseComposerMode(page, 'chat');
     await expect(chatDraft).toHaveValue('ฉบับร่างถึงลูกค้า');
     await chatDraft.fill('');
-    if (width < 1280) await page.getByRole('button', { name: /^ข้อมูลลูกค้า/ }).filter({ visible: true }).first().click();
+    if (width < 1440) await page.getByRole('button', { name: /^ข้อมูลลูกค้า/ }).filter({ visible: true }).first().click();
     await page.getByRole('button', { name: 'ข้อมูลเพิ่มเติม', exact: true }).filter({ visible: true }).click();
     await page.getByRole('button', { name: 'ส่งงานให้ทีม', exact: true }).filter({ visible: true }).click();
     let dialog = page.getByRole('dialog', { name: 'ส่งงานให้ทีม', exact: true });

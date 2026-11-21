@@ -9,6 +9,10 @@ const mocks = vi.hoisted(() => ({
   error: vi.fn(),
   enabled: true,
   queueError: false,
+  settingsError: false,
+  ready: false,
+  dispatch: vi.fn(),
+  mutate: vi.fn(),
   role: 'SALES',
   logout: vi.fn(),
   mobile: false,
@@ -30,8 +34,8 @@ vi.mock('../hooks/useChatWork', () => ({
     identity: 'user:SHOP',
     enabled: mocks.enabled,
     settings: {
-      isError: false,
-      data: { flags: { chat_mentions_enabled: true, chat_facebook_comments_enabled: true } },
+      isError: mocks.settingsError,
+      data: { flags: { chat_work_queue_enabled: mocks.enabled, chat_round_robin_enabled: mocks.enabled, chat_mentions_enabled: true, chat_facebook_comments_enabled: true } },
     },
     queue: { data: undefined, isError: mocks.queueError },
     inbox: {
@@ -54,6 +58,16 @@ vi.mock('../hooks/useChatWork', () => ({
     getTarget: mocks.getTarget,
     markRead: mocks.markRead,
   }),
+}));
+vi.mock('../hooks/useChatDispatch', () => ({
+  useChatDispatch: (...args: unknown[]) => {
+    mocks.dispatch(...args);
+    return {
+      query: { data: { ready: mocks.ready, enabled: true, position: 2, readyCount: 2,
+        members: [{ position: 1, name: 'เมย์', isSelf: false }, { position: 2, name: 'ต้น', isSelf: true }] } },
+      readiness: { mutate: mocks.mutate },
+    };
+  },
 }));
 function LocationProbe() {
   const location = useLocation();
@@ -100,16 +114,16 @@ describe('Work notification targets', () => {
     view(select, `/?noteId=${id}`);
     expect(screen.getByRole('button', { name: 'คอมเมนต์' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'การแจ้งเตือนงาน 1' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'คิวงาน' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'คิวงาน' })).toHaveAccessibleDescription('คิวงานยังไม่เปิดใช้งาน');
+    expect(screen.getByRole('button', { name: 'งานรอทำ' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'งานรอทำ' })).toHaveAccessibleDescription('ยังไม่เปิดใช้งานรายการงาน');
     await waitFor(() => expect(select).toHaveBeenCalledWith('room'));
   });
   it.each([false, true])('does not announce an empty queue while its count is unknown (error=%s)', (error) => {
     mocks.queueError = error;
     view(vi.fn());
     expect(screen.getByRole('heading', { name: 'ศูนย์การสื่อสาร' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'คิวงาน' })).toHaveAccessibleDescription(
-      error ? 'โหลดจำนวนงานไม่ได้ เปิดคิวงานเพื่อลองใหม่' : 'กำลังโหลดจำนวนงาน',
+    expect(screen.getByRole('button', { name: 'งานรอทำ' })).toHaveAccessibleDescription(
+      error ? 'โหลดจำนวนงานไม่ได้ เปิดรายการงานเพื่อลองใหม่' : 'กำลังโหลดจำนวนงาน',
     );
   });
   it('refuses navigation and read mutation when target permission is gone', async () => {
@@ -177,7 +191,7 @@ describe('Inbox rail on desktop', () => {
     expect(within(rail).getByRole('link', { name: 'กลับหน้าหลัก' })).toHaveAttribute('href', '/');
     const nav = within(rail).getByRole('navigation', { name: 'การสื่อสารและงานทีม' });
     expect(within(nav).getByRole('button', { name: 'แชทลูกค้า' })).toHaveAttribute('aria-current', 'page');
-    expect(within(nav).getByRole('button', { name: 'คิวงาน' })).toBeEnabled();
+    expect(within(nav).getByRole('button', { name: 'งานรอทำ' })).toBeEnabled();
     expect(within(nav).getByRole('button', { name: 'คอมเมนต์' })).toBeEnabled();
     expect(within(nav).getByRole('link', { name: 'ภาพรวมงานแชท' })).toHaveAttribute('href', '/chat-analytics?zone=shop');
     expect(within(rail).getByRole('button', { name: 'สลับธีม' })).toBeInTheDocument();
@@ -214,9 +228,48 @@ describe('Inbox rail on desktop', () => {
     expect(document.querySelector('.inbox-workspace-header')).not.toBeNull();
     expect(screen.getByRole('navigation', { name: 'การสื่อสารและงานทีม' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'แชท' })).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByRole('button', { name: 'คิวงาน' })).toHaveTextContent('คิวงาน');
+    expect(screen.getByRole('button', { name: 'งานรอทำ' })).toHaveTextContent('งานรอทำ');
     expect(screen.queryByRole('button', { name: 'สลับธีม' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'เมนูงานแชท' }));
     expect(screen.getByRole('button', { name: 'สลับธีม' })).toBeInTheDocument();
+  });
+});
+
+describe('Persistent team queue', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.enabled = true; mocks.settingsError = false; mocks.ready = false;
+    mocks.mobile = false; mocks.role = 'SALES';
+  });
+  it('shows the ordered roster and direct join in the left rail', () => {
+    view(vi.fn());
+    const rail = screen.getByRole('complementary', { name: 'ศูนย์การสื่อสาร' });
+    expect(within(rail).getByRole('list', { name: 'ลำดับคิวรับแชท' })).toHaveTextContent('เมย์รับแชทถัดไป');
+    const rows = within(rail).getAllByRole('listitem');
+    expect(rows[1]).toHaveTextContent('ต้น(คุณ)');
+    fireEvent.click(within(rail).getByRole('button', { name: 'เข้าคิวรับแชท' }));
+    expect(mocks.mutate).toHaveBeenCalledWith(true);
+  });
+  it('keeps readiness and heartbeat eligible when cached settings fail to refresh', () => {
+    mocks.settingsError = true; mocks.ready = true;
+    view(vi.fn());
+    expect(mocks.dispatch).toHaveBeenCalledWith('SHOP', ['chat-work', 'user', 'SHOP'], true);
+    expect(screen.getByText('ลำดับที่ 2 · พร้อมรับ 2 คน')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'พักรับแชท' }));
+    expect(mocks.mutate).toHaveBeenCalledWith(false);
+  });
+  it('keeps the observer outside the closed mobile drawer', () => {
+    mocks.mobile = true;
+    view(vi.fn());
+    expect(mocks.dispatch).toHaveBeenCalledWith('SHOP', ['chat-work', 'user', 'SHOP'], true);
+    expect(screen.queryByRole('list', { name: 'ลำดับคิวรับแชท' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'คิวรับแชท' }));
+    expect(screen.getByRole('list', { name: 'ลำดับคิวรับแชท' })).toBeVisible();
+  });
+  it('hides queue controls and disables the observer when the feature is off', () => {
+    mocks.enabled = false;
+    view(vi.fn());
+    expect(screen.queryByRole('region', { name: 'สถานะรับแชทของฉัน' })).toBeNull();
+    expect(mocks.dispatch).toHaveBeenCalledWith('SHOP', ['chat-work', 'user', 'SHOP'], false);
   });
 });

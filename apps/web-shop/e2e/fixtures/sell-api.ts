@@ -45,7 +45,12 @@ export async function installSellApiFixtures(page: Page): Promise<SellFixtureLog
         body.answers?.find(
           (answer: { questionKey: string }) => answer.questionKey === 'functional-issues',
         )?.choiceIds ?? [];
+      const assessedAt = new Date().toISOString();
       lastQuote = {
+        assessedAt,
+        serverNow: assessedAt,
+        expiresAt: new Date(Date.parse(assessedAt) + 86400000).toISOString(),
+        quoteToken: 'fixture-window',
         available: true,
         price: issues.length ? '12340' : '27500',
         cashPrice: issues.length ? '12340' : '27500',

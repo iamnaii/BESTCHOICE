@@ -29,13 +29,13 @@ export class ShopBuybackController {
   @Post('quote')
   @Throttle({ short: { limit: 60, ttl: 60_000 } })
   quote(@Body() dto: BuybackQuoteDto) {
-    return this.service.quoteForAnswers(dto.model, dto.storage, dto.answers, 'BUYBACK', { deviceEligibilityConfirmed: dto.deviceEligibilityConfirmed });
+    return this.service.publicQuote(dto);
   }
 
   @Post('submit')
   @Throttle({ short: { limit: 5, ttl: 60_000 } })
   submit(@Body() dto: SubmitBuybackDto, @Req() req: Request & { user?: { sub?: string } }) {
-    return this.service.submit(dto, req.user?.sub);
+    return this.service.submit(dto, req.user?.sub, true);
   }
 
   // ⚠️ ต้องอยู่ท้ายสุดเสมอ — ไม่งั้นกลืน catalog/questions

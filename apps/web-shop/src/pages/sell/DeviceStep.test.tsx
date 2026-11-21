@@ -30,9 +30,9 @@ it('filters models in the same screen then preserves the API model value', () =>
     );
   }
   render(<Harness />);
-  expect(screen.queryByRole('button', { name: 'ไอโฟน 17 โปร' })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'ซีรีส์ 17' }));
-  expect(screen.queryByRole('button', { name: 'ไอโฟน แอร์' })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'ไอโฟน 17 โปร' }));
+  expect(screen.queryByRole('button', { name: 'iPhone 17 Pro' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'กลุ่ม iPhone 17' }));
+  expect(screen.queryByRole('button', { name: 'iPhone Air' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'iPhone 17 Pro' }));
   expect(screen.getByRole('status')).toHaveTextContent('iPhone 17 Pro');
 });

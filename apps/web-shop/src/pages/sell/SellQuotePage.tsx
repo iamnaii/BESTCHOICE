@@ -14,11 +14,13 @@ import type {
   BuybackSubmitResponse,
 } from '@/types/buyback';
 import { previewPrice, type Answers } from './quote-preview';
+import { validQuoteWindow } from './quote-window';
 import { groupModels, modelLabel, resolveDevice, storageLabel } from './device-options';
 import { useSellNavigation, type SellStep } from './use-sell-navigation';
 import SellFlowLayout from './components/SellFlowLayout';
 import DeviceStep from './components/DeviceStep';
 import QuestionStep from './components/QuestionStep';
+import DeviceOriginStep, { isThaiOriginLabel } from './components/DeviceOriginStep';
 import QuoteResultStep from './components/QuoteResultStep';
 import SellContactLinks from './components/SellContactLinks';
 import SellerStep, {
@@ -45,6 +47,7 @@ function usableQuote(value: BuybackQuoteResult): boolean {
   const exchange = Number(value.exchangePrice);
   return (
     value.available &&
+    validQuoteWindow(value) &&
     !!value.breakdown &&
     Array.isArray(value.breakdown.lines) &&
     Number.isFinite(Number(value.breakdown.maxPrice)) &&
@@ -69,6 +72,8 @@ export default function SellQuotePage() {
   const [issueDraft, setIssueDraft] = useState<{ key: string; choices: string[] } | null>(null);
   const [eligibility, setEligibility] = useState(false);
   const [quote, setQuote] = useState<BuybackQuoteResult | null>(null);
+  const [expired, setExpired] = useState(false);
+  const quoteClock = useRef<{ server: number; wall: number; monotonic: number } | null>(null);
   const [flow, setFlow] = useState<Flow>('BUYBACK');
   const [quoteError, setQuoteError] = useState('');
   const [submitError, setSubmitError] = useState('');
@@ -84,7 +89,6 @@ export default function SellQuotePage() {
   const submitting = useRef(false);
   const active = useRef(true);
   const profile = useRef<string | null>(null);
-  const lastStep = useRef(navigation.step.kind);
   const step: SellStep = submitting.current ? { kind: 'seller' } : navigation.step;
   useLayoutEffect(() => setIssueDraft(null), [location.key]);
   useEffect(() => {
@@ -121,13 +125,47 @@ export default function SellQuotePage() {
   const questions = data?.questions ?? [];
   const complete =
     !!maxPrice &&
+    questions.every(
+      (q) =>
+        q.key !== 'device-origin' ||
+        q.choices.some(
+          (c) =>
+            isThaiOriginLabel(c.label) &&
+            answers[q.key]?.length === 1 &&
+            answers[q.key][0] === c.id,
+        ),
+    ) &&
     previewPrice(maxPrice, questions, answers, data?.pricingMode).complete;
   const eligibilityReady = !data?.eligibilityRequired || eligibility;
   const fingerprint = data ? JSON.stringify([model, storage, data]) : null;
+  function hasExpiredQuote() {
+    const clock = quoteClock.current;
+    if (!quote || !clock) return true;
+    const elapsed = Math.max(0, Date.now() - clock.wall, performance.now() - clock.monotonic);
+    return clock.server + elapsed >= Date.parse(quote.expiresAt ?? '');
+  }
+  useEffect(() => {
+    if (!quote) return;
+    const check = () => setExpired((previous) => previous || hasExpiredQuote());
+    check();
+    const deadline = Math.max(0, Date.parse(quote.expiresAt!) - Date.parse(quote.serverNow!));
+    const timer = window.setTimeout(check, deadline);
+    const interval = window.setInterval(check, 30_000);
+    window.addEventListener('focus', check);
+    document.addEventListener('visibilitychange', check);
+    return () => {
+      clearTimeout(timer);
+      clearInterval(interval);
+      window.removeEventListener('focus', check);
+      document.removeEventListener('visibilitychange', check);
+    };
+  }, [quote]);
   function invalidateQuote() {
     revision.current += 1;
     quoteFlight.current = null;
     setQuote(null);
+    quoteClock.current = null;
+    setExpired(false);
     setQuoteError('');
     setFlow('BUYBACK');
   }
@@ -191,6 +229,12 @@ export default function SellQuotePage() {
         setQuoteError('ยังไม่สามารถประเมินราคาเครื่องนี้ได้ กรุณาสอบถามร้าน');
         return;
       }
+      quoteClock.current = {
+        server: Date.parse(value.serverNow!),
+        wall: Date.now(),
+        monotonic: performance.now(),
+      };
+      setExpired(false);
       setQuote({
         ...value,
         source: value.source ?? data?.source,
@@ -228,14 +272,7 @@ export default function SellQuotePage() {
     });
   }
   useEffect(() => {
-    const previous = lastStep.current;
-    lastStep.current = step.kind;
     if (submitting.current) return;
-    if (
-      (previous === 'result' || previous === 'seller') &&
-      !['result', 'seller'].includes(step.kind)
-    )
-      invalidateQuote();
     if (step.kind === 'result' && !quote) {
       if (complete && eligibilityReady) requestQuote();
       else navigation.reset({ kind: 'question', key: questions[0]?.key ?? '' });
@@ -255,6 +292,13 @@ export default function SellQuotePage() {
     },
     onError: (error) => {
       if (active.current) {
+        const code = (error as { response?: { data?: { code?: string } } })?.response?.data?.code;
+        if (code === 'QUOTE_EXPIRED' || code === 'QUOTE_INVALID') {
+          setExpired(true);
+          navigation.go({ kind: 'result' });
+          setSubmitError('');
+          return;
+        }
         navigation.go({ kind: 'seller' });
         setSubmitError(message(error, copy.sell.submitError));
       }
@@ -290,6 +334,11 @@ export default function SellQuotePage() {
     if (locked || !question) return;
     invalidateQuote();
     setAnswers((old) => ({ ...old, [question.key]: [id] }));
+    if (
+      question.key === 'device-origin' &&
+      !question.choices.some((c) => c.id === id && isThaiOriginLabel(c.label))
+    )
+      return;
     finishQuestion();
   }
   function none() {
@@ -328,6 +377,11 @@ export default function SellQuotePage() {
       );
   }
   function submit() {
+    if (quote && (expired || hasExpiredQuote())) {
+      setExpired(true);
+      navigation.go({ kind: 'result' });
+      return;
+    }
     if (
       submitting.current ||
       !complete ||
@@ -351,21 +405,25 @@ export default function SellQuotePage() {
       notes: seller.notes || undefined,
       preferredVisitDate: seller.visitDate || undefined,
       flow,
+      quoteToken: quote.quoteToken,
     });
   }
+  const contactQuote = ['result', 'seller'].includes(step.kind) ? quote : null;
   let title =
     step.kind === 'device'
-      ? 'คุณใช้ไอโฟนรุ่นไหน?'
+      ? 'คุณใช้ iPhone รุ่นไหน?'
       : step.kind === 'storage'
         ? 'เครื่องมีความจุเท่าไร?'
         : step.kind === 'question'
-          ? (question?.title ?? 'โหลดแบบประเมิน')
+          ? question?.key === 'device-origin'
+            ? 'เครื่องนี้เป็นโมเดลไทยไหม?'
+            : (question?.title ?? 'โหลดแบบประเมิน')
           : step.kind === 'eligibility'
             ? 'ยืนยันสถานะเครื่อง'
             : step.kind === 'review'
               ? 'ทบทวนคำตอบ'
               : step.kind === 'result'
-                ? 'ราคาของเครื่องคุณ'
+                ? 'สรุปราคาเครื่องของคุณ'
                 : 'ข้อมูลติดต่อ';
   const progressText = ['device', 'storage'].includes(step.kind)
     ? '1 · เลือกเครื่อง'
@@ -391,6 +449,7 @@ export default function SellQuotePage() {
   return (
     <SellFlowLayout
       title={title}
+      wide={step.kind === 'result'}
       progressText={progressText}
       onBack={step.kind !== 'device' && !submitMutation.isPending ? back : undefined}
       footer={
@@ -400,17 +459,20 @@ export default function SellQuotePage() {
             model,
             storage,
             flow: quote ? flow : undefined,
-            amount: quote
+            amount: contactQuote
               ? flow === 'EXCHANGE'
-                ? quote.exchangePrice
-                : (quote.cashPrice ?? quote.price)
+                ? contactQuote.exchangePrice
+                : (contactQuote.cashPrice ?? contactQuote.price)
               : undefined,
+            assessedAt: contactQuote?.assessedAt,
+            expiresAt: contactQuote?.expiresAt,
+            expired,
           }}
         />
       }
       transitioning={navigation.transitioning}
     >
-      {model && !['device', 'storage'].includes(step.kind) && (
+      {model && !['device', 'storage', 'result'].includes(step.kind) && (
         <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm font-semibold text-secondary-foreground">
             {modelLabel(model)} · {storageLabel(storage)}
@@ -470,6 +532,15 @@ export default function SellQuotePage() {
           <ErrorState title="โหลดแบบประเมินไม่สำเร็จ" onRetry={() => void questionsQ.refetch()} />
         ) : !question ? (
           <p>ยังไม่มีแบบประเมินสำหรับรุ่นและความจุนี้ กรุณาสอบถามร้าน</p>
+        ) : question.key === 'device-origin' ? (
+          <DeviceOriginStep
+            question={question}
+            answer={answers[question.key]}
+            disabled={locked}
+            onSelect={pickSingle}
+            model={model}
+            storage={storage}
+          />
         ) : (
           <QuestionStep
             question={question}
@@ -536,7 +607,13 @@ export default function SellQuotePage() {
                   : answers[q.key].length
                     ? q.choices
                         .filter((c) => answers[q.key].includes(c.id))
-                        .map((c) => c.label)
+                        .map((c) =>
+                          q.key === 'device-origin'
+                            ? isThaiOriginLabel(c.label)
+                              ? 'เครื่องโมเดลไทย'
+                              : 'เครื่องโมเดลนอก'
+                            : c.label,
+                        )
                         .join(' · ')
                     : 'ใช้งานได้ปกติทุกอย่าง'}
               </p>
@@ -561,10 +638,34 @@ export default function SellQuotePage() {
         (quote ? (
           <QuoteResultStep
             quote={quote}
+            model={model}
+            storage={storage}
+            expired={expired}
+            conditions={questions.map((q) => ({
+              title: q.title,
+              answer: answers[q.key]?.length
+                ? q.choices
+                    .filter((c) => answers[q.key]?.includes(c.id))
+                    .map((c) =>
+                      q.key === 'device-origin' && isThaiOriginLabel(c.label)
+                        ? 'เครื่องศูนย์ไทย · รหัส M'
+                        : c.label,
+                    )
+                    .join(' · ')
+                : 'ใช้งานได้ปกติทุกอย่าง',
+            }))}
             flow={flow}
             onFlowChange={setFlow}
-            onContinue={() => navigation.go({ kind: 'seller' })}
+            onContinue={() => {
+              if (expired || hasExpiredQuote()) setExpired(true);
+              else navigation.go({ kind: 'seller' });
+            }}
             onReview={() => navigation.go({ kind: 'review' })}
+            onChangeDevice={() => navigation.go({ kind: 'device' })}
+            onReassess={() => {
+              invalidateQuote();
+              requestQuote();
+            }}
           />
         ) : quoteError ? (
           <div className="space-y-4">
@@ -590,18 +691,27 @@ export default function SellQuotePage() {
             <p>กำลังขอราคาประเมิน</p>
           </div>
         ))}
-      {step.kind === 'seller' && quote && (
-        <SellerStep
-          value={seller}
-          onChange={(value) => {
-            if (!submitting.current) setSeller(value);
-          }}
-          submitting={submitMutation.isPending}
-          submitError={submitError}
-          onSubmit={submit}
-          flow={flow}
-        />
-      )}
+      {step.kind === 'seller' &&
+        quote &&
+        (expired ? (
+          <div className="space-y-4">
+            <p role="alert">พ้นช่วงอ้างอิง 24 ชั่วโมงแล้ว กรุณาประเมินราคาใหม่ก่อนส่งข้อมูล</p>
+            <Button fullWidth onClick={() => navigation.go({ kind: 'result' })}>
+              กลับไปดูผลประเมิน
+            </Button>
+          </div>
+        ) : (
+          <SellerStep
+            value={seller}
+            onChange={(value) => {
+              if (!submitting.current) setSeller(value);
+            }}
+            submitting={submitMutation.isPending}
+            submitError={submitError}
+            onSubmit={submit}
+            flow={flow}
+          />
+        ))}
     </SellFlowLayout>
   );
 }

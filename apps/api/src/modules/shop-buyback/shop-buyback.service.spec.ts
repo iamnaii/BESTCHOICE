@@ -8,6 +8,8 @@ const D = (n: number) => new Prisma.Decimal(n);
 
 /** DB fixture: 1 คำถาม SINGLE + 1 คำถาม MULTI + valuation iPhone 15 128GB = 14,500 */
 const QUESTIONS = [
+  { id: 'origin', key: 'device-origin', title: 'เครื่องศูนย์', helpText: null, selectType: 'SINGLE', sortOrder: 2, isActive: true, deletedAt: null,
+    choices: [{ id: 'thai', label: 'เครื่องศูนย์ไทย (TH)', deductType: 'FIXED', deductValue: D(0), sortOrder: 0, isActive: true, deletedAt: null }] },
   {
     id: 'q1',
     key: 'warranty',
@@ -99,6 +101,7 @@ describe('ShopBuybackService (instant quote)', () => {
   });
 
   const answers = [
+    { questionKey: 'device-origin', choiceIds: ['thai'] },
     { questionKey: 'warranty', choiceIds: ['c11'] },
     { questionKey: 'functional-issues', choiceIds: [] },
   ];
@@ -188,6 +191,7 @@ describe('ShopBuybackService (instant quote)', () => {
     model: 'iPhone 15',
     storage: '128GB',
     answers,
+
     sellerName: 'สมชาย',
     sellerPhone: '0812345678',
     imei: '111',
@@ -213,13 +217,14 @@ describe('ShopBuybackService (instant quote)', () => {
       expect(r.price).toBe('14000.00');
       expect(r.maxPrice).toBe('14500.00');
       expect(r.grade).toBe('A');
-      expect(r.breakdown!.lines).toHaveLength(1);
+      expect(r.breakdown!.lines).toHaveLength(2);
     });
 
     it('MULTI เลือกได้ → หัก % และเกรดขยับ', async () => {
       const r = await service.quoteForAnswers('iPhone 15', '128GB', [
         { questionKey: 'warranty', choiceIds: ['c11'] },
         { questionKey: 'functional-issues', choiceIds: ['c20'] },
+        { questionKey: 'device-origin', choiceIds: ['thai'] },
       ]);
       // (14500-500)*(1-0.35) = 9100 → floor10 = 9100
       expect(r.price).toBe('9100.00');
@@ -259,6 +264,7 @@ describe('ShopBuybackService (instant quote)', () => {
       const r = await service.quoteForAnswers('iPhone 15', '128GB', [
         { questionKey: 'warranty', choiceIds: ['c11'] },
         { questionKey: 'functional-issues', choiceIds: ['c20', 'c20'] },
+        { questionKey: 'device-origin', choiceIds: ['thai'] },
       ]);
       // (14500-500)*(1-0.35) = 9100 — ต้องเท่ากับหัก c20 ครั้งเดียว ไม่ใช่ 70%
       expect(r.price).toBe('9100.00');

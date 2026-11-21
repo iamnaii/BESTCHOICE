@@ -23,7 +23,11 @@
      section backgrounds, not an off-white page. */
   --color-background: #FFFFFF;
   /* Sell flow: soft canvas separates the white assessment card. */
-  --color-sell-canvas: #F0F6F3;
+  --color-sell-canvas: #F3F7F5;
+  --color-sell-header-foreground: #244A37;
+  --color-sell-footer: #F7FAF8;
+  --color-sell-price: #EAF6EE;
+  --color-sell-price-border: #ACCFB8;
   --color-foreground: #2B2B2B;
   --color-muted: #E8FAF4;
   --color-muted-foreground: #6B7370;
@@ -171,4 +175,24 @@
   /* Easing */
   --ease-out-quad:     cubic-bezier(0.25, 0.46, 0.45, 0.94);
   --ease-in-out-quint: cubic-bezier(0.86, 0, 0.07, 1);
+}
+
+/* Approved sell/trade-in option A: white/mint. Keep other storefront routes
+   on their existing palette; all sell screens inherit these semantic pairs. */
+.sell-flow {
+  --color-foreground: #172e25;
+  --color-card-foreground: #172e25;
+  --color-primary: #12724f;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #e7f5ec;
+  --color-secondary-foreground: #135c40;
+  --color-accent: #e7f5ec;
+  --color-accent-foreground: #12724f;
+  --color-border: #bbcbc1;
+  --color-muted-foreground: #52655c;
+  --color-promo: #fff0c2;
+  --color-promo-foreground: #71500d;
+  --color-ink: #135c40;
+  --color-ink-foreground: #ffffff;
+  --color-ring: #12724f;
 }

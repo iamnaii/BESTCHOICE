@@ -8,7 +8,7 @@ export async function checkChatSales(page, origin, output, width) {
   const roomId = info.chatWorkRooms.SHOP;
   const expectedConsoleErrors = [];
   await page.goto(new URL(`/inbox/${roomId}?zone=shop`, origin).href);
-  if (width < 1280) await page.getByRole('button', { name: /^ข้อมูลลูกค้า/ }).filter({ visible: true }).first().click();
+  if (width < 1440) await page.getByRole('button', { name: /^ข้อมูลลูกค้า/ }).filter({ visible: true }).first().click();
   const card = page.getByRole('region', { name: 'งานติดตาม', exact: true }).filter({ visible: true });
   await expect(card.getByText('ติดตามลูกค้า SHOP', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'ตั้งนัดติดตาม', exact: true }).filter({ visible: true })).toHaveCount(1);
@@ -58,7 +58,7 @@ export async function checkChatSales(page, origin, output, width) {
   await page.keyboard.press('Escape');
   // A historical evidence link must load that exact analysis, not merely scroll to the newest card.
   await page.goto(info.resultUrl);
-  if (width < 1280) await page.getByRole('button', { name: /^ข้อมูลลูกค้า/ }).filter({ visible: true }).first().click();
+  if (width < 1440) await page.getByRole('button', { name: /^ข้อมูลลูกค้า/ }).filter({ visible: true }).first().click();
   const evidenceCard = page.getByRole('region', { name: 'สถานะการขาย' }).filter({ visible: true });
   await evidenceCard.locator('summary').filter({ hasText: 'รายการที่เกี่ยวข้อง' }).click();
   const response = page.waitForResponse(r => /sales-context\/credit\//.test(r.url()));

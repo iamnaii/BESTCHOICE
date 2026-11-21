@@ -828,7 +828,7 @@ export default function ChatPanel({
                   type="button"
                   title={`${roomAppt.title} — กดเพื่อดูนัดในแผงขวา`}
                   onClick={() => {
-                    if (window.innerWidth < 1280) onShowCustomerInfo?.();
+                    if (window.innerWidth < 1440) onShowCustomerInfo?.();
                     document
                       .getElementById(
                         roomAppt.id === session.storeAppointment?.id
@@ -858,7 +858,7 @@ export default function ChatPanel({
           {onShowCustomerInfo && (
             <button data-ui-control="button" data-ui-icon="true"
               onClick={onShowCustomerInfo}
-              className="xl:hidden size-8 inline-flex items-center justify-center text-muted-foreground hover:text-foreground/70 hover:bg-accent rounded-lg"
+              className="min-[1440px]:hidden size-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground/70 hover:bg-accent rounded-lg"
               title="ข้อมูลลูกค้า"
               aria-label="ข้อมูลลูกค้า"
             >

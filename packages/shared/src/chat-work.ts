@@ -78,4 +78,6 @@ export interface ChatDispatchState {
   expiresAt: string | null;
   position: number | null;
   readyCount: number;
+  /** Company-wide order. Names outside the viewer's branch scope are withheld. */
+  members: Array<{ position: number; name: string | null; isSelf: boolean }>;
 }

@@ -169,6 +169,40 @@ describe('Durable round-robin dispatch (real PostgreSQL, actual inbound and HTTP
     await db.user.update({ where: { id: staff[0].id }, data: { accessManaged: true } });
   };
 
+  it('returns ordered team names, rotates after assignment and removes paused/expired members', async () => {
+    await readyAll();
+    const initial = await request(app.getHttpServer()).get('/staff-chat/dispatch?company=shop').expect(200);
+    expect(initial.body.members).toEqual([
+      { position: 1, name: 'Alice', isSelf: true },
+      { position: 2, name: 'Bob', isSelf: false },
+      { position: 3, name: 'Carol', isSelf: false },
+    ]);
+    const target = await room();
+    await inbound(target.id);
+    await service.drain('SHOP');
+    expect((await service.read(actor, scope)).members.map(m => m.name)).toEqual(['Bob', 'Carol', 'Alice']);
+    await service.setReady(staff[1], scope, false);
+    await db.chatDispatchMember.updateMany({ where: { staffId: staff[2].id }, data: { readyUntil: new Date(0) } });
+    expect((await service.read(actor, scope)).members).toEqual([{ position: 1, name: 'Alice', isSelf: true }]);
+  });
+
+  it('withholds names outside the viewer branch while preserving the true company order', async () => {
+    await readyAll();
+    await db.user.update({ where: { id: staff[1].id }, data: { branchId: otherBranch } });
+    try {
+      const scoped = await request(app.getHttpServer()).get('/staff-chat/dispatch?company=shop').expect(200);
+      expect(scoped.body.members[1]).toEqual({ position: 2, name: null, isSelf: false });
+      expect(scoped.body.members[0].name).toBe('Alice');
+      expect((await service.read(owner, scope)).members[1].name).toBe('Bob');
+      expect((await service.read(owner, { ...scope, branchId: staff[0].branchId! })).members[1].name).toBeNull();
+      await request(app.getHttpServer()).get(`/staff-chat/dispatch?company=shop&branchId=${otherBranch}`).expect(403);
+      await request(app.getHttpServer()).get('/staff-chat/dispatch?company=finance').expect(403);
+      for (const member of scoped.body.members) expect(Object.keys(member).sort()).toEqual(['isSelf', 'name', 'position']);
+    } finally {
+      await db.user.update({ where: { id: staff[1].id }, data: { branchId: staff[1].branchId } });
+    }
+  });
+
   it('does not acquire unassigned rooms through empty, read-only, assigned-only or mismatched managed grants', async () => {
     const ready = await service.setReady(staff[0], scope, true);
     for (const [permissions, grantScope, company] of [

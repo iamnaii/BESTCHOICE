@@ -60,6 +60,17 @@ export default function UnifiedInboxPage() {
     retry: false,
   });
   const [customerPanelOpen, setCustomerPanelOpen] = useState(false);
+  const [dossierDocked, setDossierDocked] = useState(() => window.matchMedia('(min-width: 1440px)').matches);
+  useEffect(() => {
+    const media = window.matchMedia('(min-width: 1440px)');
+    const update = () => {
+      setDossierDocked(media.matches);
+      if (media.matches) setCustomerPanelOpen(false);
+    };
+    media.addEventListener('change', update);
+    update();
+    return () => media.removeEventListener('change', update);
+  }, []);
   const [creditFocus, setCreditFocus] = useState<{ roomId: string; tick: number } | null>(null);
   const activeCreditRoomRef = useRef(activeRoomId);
   activeCreditRoomRef.current = activeRoomId;
@@ -67,12 +78,12 @@ export default function UnifiedInboxPage() {
     const open = () => {
       navigate(`/inbox/${attachedRoomId}`);
       setCreditFocus({ roomId: attachedRoomId, tick: Date.now() });
-      if (window.innerWidth < 1280) setCustomerPanelOpen(true);
+      if (window.innerWidth < 1440) setCustomerPanelOpen(true);
     };
-    if (attachedRoomId === activeCreditRoomRef.current && window.innerWidth >= 1280) {
+    if (attachedRoomId === activeCreditRoomRef.current && window.innerWidth >= 1440) {
       setCreditFocus({ roomId: attachedRoomId, tick: Date.now() });
     }
-    toast.success('แนบไฟล์เพื่อตรวจเครดิตแล้ว', window.innerWidth < 1280 ? { action: { label: 'เปิดแผง', onClick: open } } : undefined);
+    toast.success('แนบไฟล์เพื่อตรวจเครดิตแล้ว', window.innerWidth < 1440 ? { action: { label: 'เปิดแผง', onClick: open } } : undefined);
   });
   const gfin = useFinanceApplication(activeRoomId);
   const [slotPick, setSlotPick] = useState<{ roomId: string; messageId: string } | null>(null);
@@ -93,7 +104,7 @@ export default function UnifiedInboxPage() {
     setSlotPick(null);
     try { await gfin.attachMessage(slotPick.messageId, slot); } catch { return; /* toast จาก hook */ }
     setGfinFocus({ roomId: slotPick.roomId, tick: Date.now() });
-    if (window.innerWidth < 1280) setCustomerPanelOpen(true);
+    if (window.innerWidth < 1440) setCustomerPanelOpen(true);
   };
   // สลับห้องระหว่างที่ picker ยังเปิดค้างอยู่ (เช่น กด GFIN แล้วไม่ทันเลือกช่องก่อนสลับห้อง)
   // ต้องเคลียร์คำขอเดิมทิ้ง ไม่งั้นกลับมาห้องเดิมทีหลัง picker จะโผล่ถามช่องของข้อความเก่าอีกครั้ง
@@ -500,8 +511,8 @@ export default function UnifiedInboxPage() {
         )}
       </div>
 
-      {/* Right panel: RoomDossier (โครง OBI · 3 แท็บ) — always visible on xl+ */}
-      <div className="hidden xl:block">
+      {/* Right panel: RoomDossier (โครง OBI · 3 แท็บ) — visible when the chat has enough horizontal space */}
+      <div className="hidden min-[1440px]:block">
         <RoomDossier
           credit={credit}
           creditFocus={creditFocus}
@@ -515,9 +526,9 @@ export default function UnifiedInboxPage() {
         />
       </div>
 
-      {/* Right panel as Drawer on < xl */}
-      <Sheet open={customerPanelOpen} onOpenChange={setCustomerPanelOpen}>
-        <SheetContent side="right" close={false} className="inbox-customer-sheet w-full max-w-full gap-0 p-0 sm:max-w-md xl:hidden">
+      {/* Right panel as Drawer below 1440px */}
+      <Sheet open={!dossierDocked && customerPanelOpen} onOpenChange={setCustomerPanelOpen}>
+        <SheetContent side="right" close={false} className="inbox-customer-sheet w-full max-w-full gap-0 p-0 sm:max-w-md min-[1440px]:hidden">
           <SheetTitle className="sr-only">ข้อมูลลูกค้า</SheetTitle>
           <RoomDossier
             onClose={() => setCustomerPanelOpen(false)}

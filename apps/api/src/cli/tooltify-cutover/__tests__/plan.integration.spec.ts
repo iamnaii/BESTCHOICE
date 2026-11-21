@@ -295,6 +295,68 @@ describe('source accounting', () => {
 });
 
 describe('source group evidence', () => {
+  it.each([
+    ['two stores, one reported bill', 1, false, true],
+    ['two stores, two reported bills', 2, false, false],
+    ['two possible stores for one branch', 2, true, true],
+  ] as const)('%s', async (_case, reportedBills, ambiguous, cannotVerify) => {
+    const input = await salesInput(),
+      other = await salesInput();
+    const branchA = input.manifest.files[0].branchId!;
+    const branchB = ambiguous ? branchA : other.manifest.files[0].branchId!;
+    const fileB = {
+      ...other.manifest.files[0],
+      path: 'fixture-b.xlsx',
+      sha256: 'b'.repeat(64),
+      branchId: branchB,
+    };
+    input.manifest.files.push(fileB);
+    const rowB = other.rows[0];
+    rowB.source.fileSha256 = fileB.sha256;
+    rowB.saleChannel = 'OTHER';
+    rowB.priceGroup = 'Fixture';
+    input.rows.push(rowB);
+    const selection = other.decisions.entries.find((d) => d.action === 'SELECT_SALES')!;
+    input.decisions.entries.push({ ...selection, fileSha256: fileB.sha256, branchId: branchB });
+    input.manifest.decisionsSha256 = hashSourceDecisions(input.decisions);
+    const unit = {
+      bills: 1,
+      lines: 1,
+      costTotal: '90.00',
+      listPrice: '120.00',
+      salePrice: '119.99',
+      profit: '29.99',
+    };
+    const overall = {
+      bills: reportedBills,
+      lines: 2,
+      costTotal: '180.00',
+      listPrice: '240.00',
+      salePrice: '239.98',
+      profit: '59.98',
+    };
+    input.sourceSummary = {
+      kind: 'SALES',
+      detail: overall,
+      reported: overall,
+      delta: {
+        bills: 0,
+        lines: 0,
+        costTotal: '0.00',
+        listPrice: '0.00',
+        salePrice: '0.00',
+        profit: '0.00',
+      },
+      groups: [
+        { month: '2026-11', branchId: branchA, channel: 'CASH', totals: unit },
+        { month: '2026-11', branchId: branchB, channel: 'OTHER', totals: unit },
+      ],
+      evidenceFileSha256s: input.manifest.files.map((f) => f.sha256),
+    };
+    const plan = await buildImportPlan(db, input);
+    expect(plan.issues).toEqual([]);
+    expect(plan.reconciliationSnapshot.cannotVerifySource).toBe(cannotVerify);
+  });
   it.each(['missing SKU', 'unexpected device SKU', 'negative units', 'valid accessory'] as const)(
     'checks %s',
     async (variant) => {

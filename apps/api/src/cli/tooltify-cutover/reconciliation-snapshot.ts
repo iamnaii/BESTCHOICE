@@ -4,6 +4,7 @@ import { identityHash } from './plan-targets';
 import { hashImportValue as hash } from './canonicalize';
 import type {
   CanonicalInput,
+  FileRef,
   GrossSalesTotals,
   PlannedItem,
   PlannedStockItem,
@@ -144,7 +145,10 @@ function canonicalGroups(
   return { kind, groups, totals: summarizeStock(stock) };
 }
 
-function feasibleSourceGroups(source: NonNullable<ReconciliationSnapshot['source']>): boolean {
+function feasibleSourceGroups(
+  source: NonNullable<ReconciliationSnapshot['source']>,
+  files: FileRef[],
+): boolean {
   if (!source.reported || !source.detail || !source.groups) return false;
   if (source.kind === 'STOCK') {
     const validUnits = (total: { units: number | null }) =>
@@ -172,11 +176,35 @@ function feasibleSourceGroups(source: NonNullable<ReconciliationSnapshot['source
     !source.groups.every((g) => possible(g.totals))
   )
     return false;
-  const counts = source.groups.map((g) => g.totals.bills!);
-  // A distinct bill may appear in several groups. A union contains at least the largest
-  // group and at most their sum. An empty set of groups can only represent zero bills.
-  const overall = source.detail.bills!;
-  return counts.every((n) => n <= overall) && overall <= counts.reduce((sum, n) => sum + n, 0);
+  // Source groups name branches, while a bill's identity includes its source store.
+  // An ambiguous store assignment cannot establish which group counts may overlap.
+  const storeByBranch = new Map<string, string>();
+  for (const { branchId, storeKey } of files) {
+    if (
+      !branchId?.trim() ||
+      branchId === 'UNRESOLVED' ||
+      !storeKey.trim() ||
+      storeKey !== storeKey.trim() ||
+      storeKey === 'UNRESOLVED'
+    )
+      return false;
+    const previous = storeByBranch.get(branchId);
+    if (previous !== undefined && previous !== storeKey) return false;
+    storeByBranch.set(branchId, storeKey);
+  }
+
+  const largestGroupByStore = new Map<string, number>();
+  let upperBound = 0;
+  for (const group of source.groups) {
+    const store = storeByBranch.get(group.branchId);
+    if (!store) return false;
+    const bills = group.totals.bills!;
+    largestGroupByStore.set(store, Math.max(largestGroupByStore.get(store) ?? 0, bills));
+    upperBound += bills;
+  }
+  // Groups within a store may share all their bills. Distinct stores share none.
+  const lowerBound = [...largestGroupByStore.values()].reduce((sum, n) => sum + n, 0);
+  return lowerBound <= source.detail.bills! && source.detail.bills! <= upperBound;
 }
 
 export function buildReconciliationSnapshot(
@@ -227,7 +255,7 @@ export function buildReconciliationSnapshot(
       complete(detail) &&
       complete(delta) &&
       groups.every((g) => complete(g.totals)) &&
-      feasibleSourceGroups(source) &&
+      feasibleSourceGroups(source, files) &&
       dimensions.length === new Set(dimensions).size &&
       balanced
     );

@@ -1,3 +1,4 @@
+import { realpathSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import {
   copyFile,
@@ -524,7 +525,11 @@ it('attests the writer and tracked dependencies across process start, static imp
         scenario,
         ...(planFile ? [planFile] : []),
       ],
-      { encoding: 'utf8', timeout: 15000 },
+      {
+        encoding: 'utf8',
+        timeout: 15000,
+        env: { ...process.env, TSX_TSCONFIG_PATH: realpathSync(join(checkout, 'tsconfig.json')) },
+      },
     );
     return JSON.parse(output);
   };
@@ -534,8 +539,11 @@ it('attests the writer and tracked dependencies across process start, static imp
     for (const name of [
       'cli/tooltify-cutover',
       'cli/tooltify-cutover.cli.ts',
-      'modules/imported-sales',
-      'modules/products',
+      'modules',
+      'prisma',
+      'common',
+      'constants',
+      'decorators',
       'utils',
     ]) {
       await cp(join(apiSource, name), join(dir, 'apps/api/src', name), {
@@ -558,6 +566,12 @@ it('attests the writer and tracked dependencies across process start, static imp
       canonicalize,
       (await readFile(canonicalize, 'utf8')) +
         "\nexport const fixtureDependency = 'clean';\nglobalThis.tooltifyFixtureImportHook?.();\n",
+    );
+    await writeFile(
+      join(dir, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: { experimentalDecorators: true, emitDecoratorMetadata: true },
+      }),
     );
     await writeFile(join(dir, '.gitignore'), 'node_modules\nplans/\ncompiled.cjs\n');
     git('init', '-q');

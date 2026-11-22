@@ -166,7 +166,12 @@ export async function loadSourceInputs(
     const ws = wb.worksheets[0],
       sheet = publicWorksheetName(ws.name),
       table = decodeXlsxWorksheet(ws);
-    const context = { sheet, file, canonicalSetId: manifest.canonicalSetId };
+    const context = {
+      sheet,
+      file,
+      canonicalSetId: manifest.canonicalSetId,
+      decisions: decisions.entries,
+    };
     const physical = new Set(evidence.rows.map((r) => r.row));
     if (file.kind === 'SALES') {
       const parsed = parseSalesReport(table, context);
@@ -214,6 +219,31 @@ export async function loadSourceInputs(
         source: { fileSha256: file.sha256, sheet, storeKey: file.storeKey, row },
         message: 'UNACCOUNTED_PHYSICAL_ROW',
       });
+  }
+  // Inspection remains an immutable raw warning report. Resolve only identity
+  // warnings whose exact source row was independently accepted by the parser.
+  const physicalIdentity = (r: SourceRef) => hash([r.fileSha256, r.sheet, r.row]);
+  const reviewedLegacyRows = new Set(
+    sales.filter((r) => r.legacyIdentityEvidence).map((r) => physicalIdentity(r.source)),
+  );
+  const reviewedStockRows = new Set(
+    stockSources
+      .flatMap((s) => s.rows)
+      .filter((r) => r.sourceMapping)
+      .map((r) => physicalIdentity(r.source)),
+  );
+  for (let index = issues.length - 1; index >= 0; index--) {
+    const issue = issues[index];
+    if (
+      issue.source &&
+      ((issue.kind === 'SALES' &&
+        ['INVALID_PHONE_BARCODE', 'UNKNOWN_SOURCE_CATEGORY'].includes(issue.code) &&
+        reviewedLegacyRows.has(physicalIdentity(issue.source))) ||
+        (issue.kind === 'STOCK' &&
+          issue.code === 'UNKNOWN_SOURCE_CATEGORY' &&
+          reviewedStockRows.has(physicalIdentity(issue.source))))
+    )
+      issues.splice(index, 1);
   }
   const canonical = canonicalizeSales(sales, decisions);
   issues.push(...canonical.issues.map((issue) => ({ ...issue, kind: 'SALES' as const })));

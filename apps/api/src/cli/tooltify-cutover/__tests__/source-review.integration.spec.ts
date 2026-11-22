@@ -28,6 +28,7 @@ type StockSummaryCase = [
 ];
 
 it.each<StockSummaryCase>([
+  ['mapped tablet source', undefined, '13800.00', ['26300.00'], '26300.00', '0.00'],
   ['explicit total and PER_UNIT', 'PER_UNIT', '13800.00', ['26300.00'], '26300.00', '0.00'],
   ['explicit total and EXTENDED', 'EXTENDED', '13800.00', ['26300.00'], '26300.00', '0.00'],
   ['explicit total without basis', undefined, '13800.00', ['26,300.00'], '26300.00', '0.00'],
@@ -94,9 +95,11 @@ it.each<StockSummaryCase>([
           ...summaryRows,
           STOCK_COLUMNS,
           ...['13800.00', '12500.00'].map((cost, index) => [
-            seed.rows[index].barcode,
+            _name === 'mapped tablet source' && index === 0
+              ? 'SYNTHETIC42'
+              : seed.rows[index].barcode,
             precedingGroupTotal && index === 0 ? 'Earlier fixture' : 'Fixture',
-            'iPhone มือ 1',
+            _name === 'mapped tablet source' && index === 0 ? '' : 'iPhone มือ 1',
             '-',
             '-',
             '-',
@@ -114,8 +117,21 @@ it.each<StockSummaryCase>([
         ...entry,
         fileSha256: file.sha256,
         sourceRows: detailRows,
+        ...(entry.action === 'RESOLVE_STOCK' ? { supplier: { mode: 'NO_SUPPLIER' as const } } : {}),
         ...(entry.action === 'SELECT_SNAPSHOT' && basis ? { summaryCostBasis: basis } : {}),
       }));
+      if (_name === 'mapped tablet source')
+        (entries as SourceDecision[]).push({
+          action: 'MAP_STOCK_ITEM',
+          fileSha256: file.sha256,
+          sourceRows: [detailRows[0]],
+          expectedBarcode: 'SYNTHETIC42',
+          expectedName: 'Fixture',
+          expectedCategory: '',
+          category: 'TABLET',
+          reason: 'Exact tablet record',
+          evidenceRef: 'synthetic-source',
+        });
       const path = join(dir, 'manifest.json');
       await writeFile(
         path,
@@ -286,6 +302,7 @@ it.each([
               : {
                   ...stockEvidence,
                   action: 'RESOLVE_STOCK',
+                  supplier: { mode: 'NO_SUPPLIER' },
                   deviceOrigin: null,
                   desiredStatus: 'IN_STOCK',
                   pricing: { mode: 'TEMPLATE' },
@@ -385,6 +402,115 @@ it.each([
     expect(
       await db.tooltifyImportBatch.count({ where: { canonicalSetId: manifest.canonicalSetId } }),
     ).toBe(zero ? 2 : 0);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+it('resolves only inspection identity warnings backed by a successfully parsed exact historical source decision', async () => {
+  const { loadSourceInputs } = await import('../source-input');
+  const seed = await stockInput(db);
+  const dir = await mkdtemp(join(tmpdir(), 'legacy-source-'));
+  try {
+    const wb = new ExcelJS.Workbook(),
+      ws = wb.addWorksheet('source');
+    ws.addRow([
+      'รูปแบบการขาย',
+      'คำสั่งซื้อ',
+      'รายการขาย',
+      'ต้นทุนรวม',
+      'ราคาตั้งขาย',
+      'ราคาขาย',
+      'กำไร',
+    ]);
+    ws.addRow(['ขายสินค้าทั้งหมด', 1, 1, 1, 2, 2, 1]);
+    ws.addRow(['รายการขาย ( 1 )']);
+    ws.addRow(SALES_COLUMNS);
+    ws.addRow([
+      '0001234567890123',
+      'Legacy phone',
+      'iPhone มือ 2',
+      'private',
+      '-',
+      'B-1',
+      'ขายแบบเงินสด',
+      'ราคาปลีก',
+      1,
+      2,
+      2,
+      1,
+      'private',
+      '2026-11-19 01:00:00',
+    ]);
+    const path = join(dir, 'report_export_stock_2026-11-19_to_2026-11-19.xlsx');
+    await wb.xlsx.writeFile(path);
+    const sha = createHash('sha256')
+      .update(await readFile(path))
+      .digest('hex');
+    const file = {
+      ...seed.manifest.files[0],
+      path,
+      sha256: sha,
+      kind: 'SALES' as const,
+      reportFrom: '2026-11-19',
+      reportTo: '2026-11-19',
+    };
+    const proof: SourceDecision = {
+      action: 'RETAIN_LEGACY_SALE',
+      fileSha256: sha,
+      sourceRows: [5],
+      expectedBarcode: '0001234567890123',
+      expectedName: 'Legacy phone',
+      expectedCategory: 'iPhone มือ 2',
+      reason: 'Preserve exact historical source',
+      evidenceRef: 'synthetic-source-record',
+    };
+    const entries: SourceDecision[] = [
+      {
+        action: 'SELECT_SALES',
+        fileSha256: sha,
+        sourceRows: [5],
+        branchId: file.branchId!,
+        storeKey: file.storeKey,
+        reportFrom: file.reportFrom,
+        reportTo: file.reportTo,
+        reason: 'One complete source day',
+        evidenceRef: 'fixture',
+      },
+      proof,
+    ];
+    const save = async () => {
+      await writeFile(
+        join(dir, 'manifest.json'),
+        JSON.stringify({
+          ...seed.manifest,
+          files: [file],
+          history: [
+            {
+              branchId: file.branchId,
+              reportFrom: file.reportFrom,
+              reportTo: file.reportTo,
+              evidenceRef: 'fixture',
+            },
+          ],
+          decisionsSha256: hashSourceDecisions({ entries }),
+        }),
+      );
+      await writeFile(join(dir, 'source-decisions.json'), JSON.stringify({ entries }));
+      return loadSourceInputs(
+        join(dir, 'manifest.json'),
+        undefined,
+        'synthetic',
+        seed.expectedDbIdentity,
+      );
+    };
+    const [accepted] = await save();
+    expect(accepted.rows).toHaveLength(1);
+    expect(accepted.issues).toEqual([]);
+    proof.expectedBarcode = 'different';
+    const [rejected] = await save();
+    expect(rejected.rows).toHaveLength(0);
+    expect(rejected.issues.map((i) => i.code)).toContain('INVALID_PHONE_BARCODE');
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

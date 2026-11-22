@@ -28,6 +28,7 @@ export async function writeStockItem(
   const explicit = decision.pricing.mode === 'EXPLICIT';
   const product = await tx.product.create({
     data: {
+      supplierId: resolution.supplierLink?.targetId ?? null,
       name: payload.name,
       brand: payload.brand,
       model: payload.model,

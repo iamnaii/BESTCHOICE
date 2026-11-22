@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { saleIdentity, saleTargetSnapshot } from './plan-targets';
 import { bindWriterRevision, readCheckoutRevision } from './checkout-revision';
 import { setTimeout as delay } from 'node:timers/promises';
 import { Prisma, PrismaClient } from '@prisma/client';
@@ -64,6 +65,7 @@ async function inspectRollback(
     where: { id: batchId },
     include: { items: { orderBy: { id: 'asc' } } },
   });
+  if (batch.kind !== 'STOCK' && batch.kind !== 'SALES') throw Error('SUPPLIER_COMMAND_REQUIRED');
   if (batch.deletedAt) throw Error('BATCH_DELETED');
   const { items } = batch;
   const dbIdentity = (await readImportDatabaseIdentity(tx)).fingerprint;
@@ -118,17 +120,20 @@ async function inspectRollback(
       const id = item.targetId ?? '';
       const product = productById.get(id),
         sale = saleById.get(id);
-      const entity = product ?? sale;
       if (
         batch.kind === 'STOCK'
           ? !product || product.legacyProductCode !== prefix + item.sourceKey
           : !sale ||
             sale.importBatch !== batch.id ||
             sale.source !== 'TOOLTIFY' ||
-            hash(['TOOLTIFY', sale.barcode, sale.orderNumber, sale.soldAt]) !== item.identityHash
+            saleIdentity(sale, sale.sourceOccurrence) !== item.identityHash
       )
         blockers.add('INVALID_ROLLBACK_PROVENANCE');
-      const currentFingerprint = entity ? hash(entity) : null;
+      const currentFingerprint = product
+        ? hash(product)
+        : sale
+          ? hash(saleTargetSnapshot(sale))
+          : null;
       if (
         !item.afterFingerprint ||
         currentFingerprint !== item.afterFingerprint ||
@@ -183,12 +188,12 @@ export function planRollback(
   });
 }
 
-type Waiting = (state: {
+export type Waiting = (state: {
   event: 'AWAITING_DATABASE_FREEZE';
   backendPid: number;
   waitSeconds: number;
 }) => void;
-async function requireFreeze(tx: Db, waiting?: Waiting) {
+export async function requireFreeze(tx: Db, waiting?: Waiting) {
   const [{ pid, visible, canPin }] = await tx.$queryRaw<
     { pid: number; visible: boolean; canPin: boolean }[]
   >`
@@ -299,7 +304,9 @@ export async function applyRollback(
         receipt.products = (
           await tx.product.updateMany({
             where: { id: { in: ids }, deletedAt: null },
-            data: { deletedAt: reversedAt },
+            // The immutable stock receipt retains the original supplier link.
+            // Release only the owned, fingerprint-verified product's live FK on reversal.
+            data: { deletedAt: reversedAt, supplierId: null },
           })
         ).count;
       } else {

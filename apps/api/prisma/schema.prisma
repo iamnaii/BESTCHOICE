@@ -18,6 +18,7 @@ datasource db {
 enum TooltifyImportKind {
   STOCK
   SALES
+  SUPPLIER
 }
 
 enum TooltifyImportStatus {
@@ -38,6 +39,7 @@ enum TooltifyDisposition {
 enum TooltifyTargetType {
   PRODUCT
   IMPORTED_SALE
+  SUPPLIER
 }
 
 enum ChatOutboundAttemptState {
@@ -9605,7 +9607,9 @@ model ImportedSale {
   importBatch     String   @map("import_batch")
   importedAt      DateTime @default(now()) @map("imported_at")
 
-  @@unique([source, barcode, orderNumber, soldAt])
+  sourceOccurrence Int @default(1) @map("source_occurrence")
+
+  @@unique([source, barcode, orderNumber, soldAt, sourceOccurrence], map: "imported_sales_source_event_occurrence_key")
   @@index([soldAt])
   @@index([saleChannel])
   @@index([salespersonName])

@@ -15,6 +15,7 @@ import { PrismaClient } from '@prisma/client';
 import { productData, stockInput } from './preflight-fixtures';
 import { hashImportValue, hashSourceDecisions } from '../canonicalize';
 import { buildImportPlan } from '../plan';
+import { planRollback } from '../rollback';
 import { applyBatch } from '../batch';
 import { reconcileBatch, verifyAppliedBatch } from '../reconcile';
 import { writeStockItem } from '../stock-writer';
@@ -383,6 +384,7 @@ it('requires independent cost basis and evidence for excluded accessory service 
     for (const d of seed.decisions.entries) {
       d.sourceRows = d.action === 'SELECT_SNAPSHOT' ? [5, 6, 7] : [5];
       d.fileSha256 = file.sha256;
+      if (d.action === 'RESOLVE_STOCK') d.supplier = { mode: 'NO_SUPPLIER' };
     }
     const exclusion: Extract<SourceDecisions['entries'][number], { action: 'EXCLUDE_ROW' }> = {
       action: 'EXCLUDE_ROW',
@@ -973,3 +975,61 @@ it.each(['fresh', 'resume', 'after preflight'] as const)(
     expect(await db.importedSale.count({ where: { orderNumber: newLine.orderNumber } })).toBe(0);
   },
 );
+
+it('preserves evidenced units of one sale event, retries without duplication, and matches overlapping imports', async () => {
+  const data = await input();
+  data.rows[1] = { ...data.rows[0], source: data.rows[1].source, occurrence: 2 };
+  data.rows[1].sourceKey = saleSourceKey(data.rows[1], 2);
+  data.decisions.entries.push({
+    action: 'DISTINCT_UNITS',
+    fileSha256: data.rows[0].source.fileSha256,
+    sourceRows: data.rows.map((r) => r.source.row),
+    reason: 'Bill header quantity and cost prove two units',
+    evidenceRef: 'synthetic-bill-header-quantity-2',
+  });
+  data.manifest.decisionsSha256 = hashSourceDecisions(data.decisions);
+  if (
+    data.sourceSummary?.kind !== 'SALES' ||
+    !data.sourceSummary.reported ||
+    !data.sourceSummary.detail ||
+    !data.sourceSummary.groups
+  )
+    throw Error('expected sales summary');
+  data.sourceSummary.reported.bills = 1;
+  data.sourceSummary.detail.bills = 1;
+  data.sourceSummary.groups[0].totals.bills = 1;
+  const plan = await buildImportPlan(db, data);
+  expect(plan.issues).toEqual([]);
+  expect(plan.items.map((i) => i.reason)).toEqual([null, null]);
+  await applyBatch(db, plan, writer);
+  await applyBatch(db, await buildImportPlan(db, data), writer);
+  const rows = await db.importedSale.findMany({ where: { importBatch: plan.batchId } });
+  expect(rows).toHaveLength(2);
+  expect(rows.map((r) => r.sourceOccurrence).sort()).toEqual([1, 2]);
+  expect((await reconcileBatch(db, plan.batchId)).canOpen).toBe(true);
+  expect((await planRollback(db, plan.batchId)).blockers).toEqual([]);
+  const overlap = await buildImportPlan(db, {
+    ...data,
+    manifest: { ...data.manifest, canonicalSetId: randomUUID() },
+  });
+  expect(overlap.totals.matched).toBe(2);
+  await applyBatch(db, overlap, () => {
+    throw Error('overlap wrote another sale');
+  });
+  expect((await reconcileBatch(db, overlap.batchId)).canOpen).toBe(true);
+  await db.importedSale.update({
+    where: { id: rows.find((r) => r.sourceOccurrence === 2)!.id },
+    data: { sourceOccurrence: 3 },
+  });
+  expect((await reconcileBatch(db, plan.batchId)).canOpen).toBe(false);
+});
+
+it('rejects incomplete or unproven occurrence sets before any writes', async () => {
+  const data = await input();
+  data.rows[1] = { ...data.rows[0], source: data.rows[1].source, occurrence: 2 };
+  data.rows[1].sourceKey = saleSourceKey(data.rows[1], 2);
+  const plan = await buildImportPlan(db, data);
+  expect(plan.issues.map((i) => i.code)).toContain('UNPROVEN_SALES_MULTIPLICITY');
+  await expect(applyBatch(db, plan, writer)).rejects.toThrow();
+  expect(await db.importedSale.count({ where: { importBatch: plan.batchId } })).toBe(0);
+});

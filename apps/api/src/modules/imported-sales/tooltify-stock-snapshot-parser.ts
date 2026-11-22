@@ -1,3 +1,5 @@
+import { validStockSourceMapping } from '../../cli/tooltify-cutover/stock-source-mapping';
+import type { SourceDecision } from '../../cli/tooltify-cutover/types';
 import { Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import type {
@@ -55,7 +57,7 @@ function readImportedAt(raw: string): string | null {
 
 export function parseStockSnapshot(
   rows: string[][],
-  context: { file: FileRef; sheet: string; canonicalSetId: string },
+  context: { file: FileRef; sheet: string; canonicalSetId: string; decisions?: SourceDecision[] },
 ): ParseResult<CanonicalStockUnit> {
   const { file, sheet, canonicalSetId } = context;
   const { sha256: fileSha256, storeKey, branchId } = file;
@@ -107,13 +109,32 @@ export function parseStockSnapshot(
     const issuesBeforeRow = result.issues.length;
     const barcode = get(COLUMNS.barcode);
     const name = get(COLUMNS.name);
-    const category = CATEGORY_MAP.get(get(COLUMNS.category));
+    const mappings = (context.decisions ?? []).filter(
+      (d): d is Extract<SourceDecision, { action: 'MAP_STOCK_ITEM' }> =>
+        d.action === 'MAP_STOCK_ITEM' &&
+        d.fileSha256 === fileSha256 &&
+        d.sourceRows.includes(source.row),
+    );
+    const mapping =
+      mappings.length === 1 &&
+      validStockSourceMapping(mappings[0], source, barcode, name, get(COLUMNS.category))
+        ? mappings[0]
+        : null;
+    if (mappings.length && !mapping)
+      issue('INVALID_STOCK_SOURCE_MAPPING', 'หลักฐานหมวดหมู่ไม่ตรงกับแถวต้นทาง', source);
+    const category = mapping
+      ? {
+          kind: mapping.category === 'TABLET' ? ('DEVICE' as const) : ('ACCESSORY' as const),
+          category: mapping.category,
+          deviceOrigin: null,
+        }
+      : CATEGORY_MAP.get(get(COLUMNS.category));
     const cost = readCost(get(COLUMNS.cost));
     const importedAt = readImportedAt(get(COLUMNS.importedAt));
 
     if (!category) issue('UNKNOWN_SOURCE_CATEGORY', 'หมวดหมู่ต้นทางว่างหรือยังไม่รู้จัก', source);
     if (category?.kind === 'DEVICE') {
-      if (isImeiBarcode(barcode)) {
+      if (isImeiBarcode(barcode) || mapping?.category === 'TABLET') {
         const matches = devicesByBarcode.get(barcode) ?? [];
         matches.push(source);
         devicesByBarcode.set(barcode, matches);
@@ -148,6 +169,8 @@ export function parseStockSnapshot(
 
     result.rows.push({
       source,
+      ...(mapping ? { sourceMapping: mapping } : {}),
+      ...(columnIndices.has(COLUMNS.supplier) ? { supplierLabel: get(COLUMNS.supplier) } : {}),
       sourceKey: createHash('sha256').update(JSON.stringify(identity)).digest('hex'),
       ...category,
       barcode,

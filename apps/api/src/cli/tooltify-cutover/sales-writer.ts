@@ -1,5 +1,5 @@
 import type { Prisma } from '@prisma/client';
-import { saleContent, salesTargetFingerprint } from './plan-targets';
+import { saleContent, salesTargetFingerprint, hasMultiplicityEvidence } from './plan-targets';
 import type { PlannedSalesItem, TargetWriteResult } from './types';
 
 /** applyBatch supplies the transaction and commits the corresponding provenance receipt. */
@@ -11,7 +11,7 @@ export async function writeSalesItem(
   if (item.disposition !== 'CREATE' || item.targetId !== null)
     throw Error('IMPORT_CREATE_REQUIRED');
   const row = item.payload;
-  if (row.occurrence !== 1) throw Error('UNSUPPORTED_SALES_MULTIPLICITY');
+  if (!hasMultiplicityEvidence(item)) throw Error('UNSUPPORTED_SALES_MULTIPLICITY');
   if (!row.orderNumber.trim() || !row.barcode.trim()) throw Error('INVALID_CANONICAL_SALE');
   const sale = await tx.importedSale.create({
     data: {
@@ -21,6 +21,7 @@ export async function writeSalesItem(
       salePrice: row.salePrice,
       profit: row.profit,
       source: 'TOOLTIFY',
+      sourceOccurrence: row.occurrence,
       importBatch: item.batchId,
     },
   });

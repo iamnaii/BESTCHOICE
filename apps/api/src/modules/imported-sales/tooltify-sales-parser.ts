@@ -1,3 +1,5 @@
+import { validLegacySaleEvidence } from '../../cli/tooltify-cutover/legacy-sale-evidence';
+import type { SourceDecision } from '../../cli/tooltify-cutover/types';
 import { Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { collectSections, SALES_COLUMNS, publicWorksheetName } from './tooltify-report-layout';
@@ -285,7 +287,7 @@ function readGrossSummary(
 
 export function parseSalesReport(
   rows: string[][],
-  context: { file: FileRef; sheet: string },
+  context: { file: FileRef; sheet: string; decisions?: SourceDecision[] },
 ): SalesReportResult {
   const { file } = context;
   const sheet = publicWorksheetName(context.sheet);
@@ -377,9 +379,22 @@ export function parseSalesReport(
     const device =
       ['iPhone มือ 1', 'iPhone มือ 2', 'iPhone มือ 2 (เครื่องนอก)'].includes(category) ||
       /^(?:ipad|tablet)\b/i.test(category);
-    if (device && !isImeiBarcode(barcode))
+    const proofs = (context.decisions ?? []).filter(
+      (d): d is Extract<SourceDecision, { action: 'RETAIN_LEGACY_SALE' }> =>
+        d.action === 'RETAIN_LEGACY_SALE' &&
+        d.fileSha256 === file.sha256 &&
+        d.sourceRows.includes(source.row),
+    );
+    const legacy =
+      proofs.length === 1 &&
+      validLegacySaleEvidence(proofs[0], source, barcode, get('ชื่อสินค้า'), category)
+        ? proofs[0]
+        : null;
+    if (proofs.length && !legacy)
+      issue('INVALID_LEGACY_SALE_EVIDENCE', 'หลักฐานรายการย้อนหลังไม่ตรงกับต้นฉบับ');
+    if (device && !isImeiBarcode(barcode) && !legacy)
       issue('INVALID_PHONE_BARCODE', 'บาร์โค้ดเครื่องต้องเป็นเลข 14–15 หลัก');
-    if (!device && category !== 'Accessories')
+    if (!device && category !== 'Accessories' && !legacy)
       issue('UNKNOWN_SOURCE_CATEGORY', 'หมวดหมู่ต้นทางว่างหรือยังไม่รู้จัก');
     if (!file.storeKey.trim() || file.storeKey.trim() === 'UNRESOLVED')
       issue('UNRESOLVED_SOURCE_STORE', 'ต้องยืนยันร้านต้นทางของรายงานขาย');
@@ -407,6 +422,7 @@ export function parseSalesReport(
       priceGroup = get('กลุ่มราคาขาย');
     result.rows.push({
       ...identity,
+      ...(legacy ? { legacyIdentityEvidence: legacy } : {}),
       ...money,
       source,
       sourceKey: saleSourceKey(identity, 1),

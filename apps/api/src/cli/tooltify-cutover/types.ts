@@ -1,3 +1,4 @@
+import type { SupplierLinkDecision, StockSupplierLink } from './supplier-link';
 import type { DeviceOrigin, ProductStatus } from '@prisma/client';
 import type { ParsedSale } from '../../modules/imported-sales/tooltify-sales-parser';
 import type { StockProductCategory } from '../../modules/imported-sales/tooltify-stock-parser';
@@ -65,6 +66,7 @@ export type SourceDecision = {
   // Evidence confirms both desiredStatus and that source importedAt is the unit's stockInDate.
   | {
       action: 'RESOLVE_STOCK';
+      supplier?: SupplierLinkDecision;
       desiredStatus: 'IN_STOCK' | 'QC_PENDING';
       deviceOrigin: DeviceOrigin | null;
       pricing: StockPricingDecision;
@@ -74,6 +76,19 @@ export type SourceDecision = {
       sku: string;
       checkedQuantity: number;
       assignments: { row: number; targetId: string | null }[];
+    }
+  | {
+      action: 'MAP_STOCK_ITEM';
+      expectedBarcode: string;
+      expectedName: string;
+      expectedCategory: '';
+      category: 'TABLET' | 'ACCESSORY';
+    }
+  | {
+      action: 'RETAIN_LEGACY_SALE';
+      expectedBarcode: string;
+      expectedName: string;
+      expectedCategory: string;
     }
   | { action: 'REPORT_DUPLICATE'; keepRow: number }
   | { action: 'EXCLUDE_FILE'; reportedUnitsPerRow?: 1; summaryCostBasis?: 'PER_UNIT' | 'EXTENDED' }
@@ -158,6 +173,7 @@ export type CanonicalInput = {
 );
 
 export type StockResolution = StockPriceColumns & {
+  supplierLink?: StockSupplierLink;
   companyId: string | null;
   templateId: string | null;
 };
@@ -179,7 +195,11 @@ export type PlannedStockItem = PlanItemBase & {
   decision: Extract<SourceDecision, { action: 'RESOLVE_STOCK' }> | null;
   accessoryMapping: Extract<SourceDecision, { action: 'MAP_ACCESSORY_UNITS' }> | null;
 };
-export type PlannedSalesItem = PlanItemBase & { kind: 'SALES'; payload: CanonicalSaleLine };
+export type PlannedSalesItem = PlanItemBase & {
+  kind: 'SALES';
+  payload: CanonicalSaleLine;
+  multiplicityEvidence?: SourceDecision;
+};
 export type PlannedItem = PlannedStockItem | PlannedSalesItem;
 export type TargetWriteResult = {
   targetType: 'PRODUCT' | 'IMPORTED_SALE';
@@ -258,6 +278,8 @@ export type InspectionReport = {
 export type ParseResult<T> = { rows: T[]; issues: ImportIssue[] };
 
 export type CanonicalStockUnit = {
+  sourceMapping?: Extract<SourceDecision, { action: 'MAP_STOCK_ITEM' }>;
+  supplierLabel?: string;
   source: SourceRef;
   sourceKey: string;
   kind: 'DEVICE' | 'ACCESSORY';
@@ -281,6 +303,7 @@ export type CanonicalStockUnit = {
 };
 
 export type CanonicalSaleLine = Omit<ParsedSale, 'source' | 'importBatch'> & {
+  legacyIdentityEvidence?: Extract<SourceDecision, { action: 'RETAIN_LEGACY_SALE' }>;
   source: SourceRef;
   sourceKey: string;
   sourceStoreKey: string;

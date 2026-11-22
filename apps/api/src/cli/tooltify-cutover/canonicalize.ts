@@ -518,7 +518,11 @@ export function validateManifest(
 function salePayloadHash(line: CanonicalSaleLine): string {
   const payload = Object.fromEntries(
     Object.entries(line).filter(
-      ([key]) => key !== 'source' && key !== 'sourceKey' && key !== 'occurrence',
+      ([key]) =>
+        key !== 'source' &&
+        key !== 'sourceKey' &&
+        key !== 'occurrence' &&
+        key !== 'legacyIdentityEvidence',
     ),
   );
   return createHash('sha256')

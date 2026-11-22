@@ -17,6 +17,22 @@ import { loadManifest, loadSourceInputs } from './tooltify-cutover/source-input'
 import { hashImportValue } from './tooltify-cutover/canonicalize';
 import { writeStockItem } from './tooltify-cutover/stock-writer';
 import { writeSalesItem } from './tooltify-cutover/sales-writer';
+import {
+  planSuppliers,
+  type SupplierImportPlan,
+  type SupplierPlanContext,
+} from './tooltify-cutover/supplier-plan';
+import {
+  applySuppliers,
+  verifySuppliers,
+  rollbackSuppliers,
+} from './tooltify-cutover/supplier-writer';
+import type { SupplierInput } from './tooltify-cutover/supplier-types';
+import {
+  assertSupplierWorkbookInput,
+  readSupplierWorkbook,
+  validateSupplierInputs,
+} from './tooltify-cutover/supplier-input';
 import type {
   ApplyReceipt,
   ImportPlan,
@@ -96,6 +112,44 @@ async function privateOutput(outDir: string, reports: { name: string; content: s
     await rm(stage, { recursive: true, force: true });
   }
 }
+async function readPrivateJson(path: string): Promise<unknown> {
+  const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  try {
+    const info = await file.stat();
+    if (!info.isFile() || (info.mode & 0o077) !== 0) throw Error('PRIVATE_REVIEWED_PLAN_REQUIRED');
+    return JSON.parse(await file.readFile('utf8'));
+  } finally {
+    await file.close();
+  }
+}
+async function inspectSuppliers(path: string, outDir: string): Promise<number> {
+  const result = validateSupplierInputs(await readSupplierWorkbook(path));
+  const workbookSha256 = result.rows[0].evidenceRefs[0].workbookSha256;
+  const csv = [
+    ['supplierRef', 'code', 'field', 'sheet', 'row'],
+    ...result.issues.map((i) => [
+      i.supplierRef,
+      i.code,
+      i.field,
+      i.evidenceRef?.sheet ?? '',
+      i.evidenceRef?.row ?? '',
+    ]),
+  ];
+  await privateOutput(outDir, [
+    {
+      name: 'supplier-input.json',
+      content: JSON.stringify({ version: 1, workbookSha256, ...result }, null, 2) + '\n',
+    },
+    {
+      name: 'supplier-issues.csv',
+      content: csv.map((row) => row.map(csvField).join(',')).join('\r\n') + '\r\n',
+    },
+  ]);
+  console.log(
+    JSON.stringify({ suppliers: result.rows.length, issues: result.issues.length, workbookSha256 }),
+  );
+  return result.issues.length ? 1 : 0;
+}
 async function inspect(paths: string[], outDir: string, path?: string): Promise<number> {
   const manifest = path ? await loadManifest(path) : null;
   const sources = manifest ? [...manifest.files, ...(manifest.copies ?? [])] : null;
@@ -148,6 +202,15 @@ export type CliDependencies = {
   readReviewedRollback(dir: string): Promise<RollbackPlan>;
   rollback(plan: RollbackPlan, waiting: (state: unknown) => void): Promise<RollbackReceipt>;
   inspect(paths: string[], outDir: string, manifest?: string): Promise<number>;
+  inspectSuppliers?(path: string, outDir: string): Promise<number>;
+  prepareSuppliers?(input: string, context: string, identity: string): Promise<SupplierImportPlan>;
+  readSupplierPlan?(path: string): Promise<SupplierImportPlan>;
+  executeSuppliers?(
+    mode: 'supplier-apply' | 'supplier-verify' | 'supplier-rollback',
+    plan: SupplierImportPlan,
+    waiting?: (state: unknown) => void,
+  ): Promise<unknown>;
+
   report(value: unknown): void;
   save?(dir: string, name: string, value: unknown): Promise<void>;
 };
@@ -234,6 +297,10 @@ export async function runCutover(args: string[], deps: CliDependencies): Promise
       args,
       allowPositionals: true,
       options: {
+        workbook: { type: 'string' },
+        input: { type: 'string' },
+        context: { type: 'string' },
+        plan: { type: 'string' },
         manifest: { type: 'string' },
         decisions: { type: 'string' },
         'source-kind': { type: 'string' },
@@ -255,6 +322,10 @@ export async function runCutover(args: string[], deps: CliDependencies): Promise
       deps.report({
         usage: [
           USAGE,
+          'supplier-inspect --workbook FILE --out-dir PRIVATE_DIR (read-only; no database)',
+          'supplier-plan --input FILE --context FILE --out-dir PRIVATE_DIR',
+          '[supplier-apply|supplier-rollback] --plan FILE --plan-hash HASH --apply --out-dir PRIVATE_DIR (same database/write confirmations)',
+          'supplier-verify --plan FILE --out-dir PRIVATE_DIR',
           '[dry-run|apply] --manifest FILE [--decisions FILE] [--source-kind sales|current-stock-snapshot]',
           'apply also requires --apply --plan-hash HASH, CONFIRM_TOOLTIFY_IMPORT, EXPECTED_DB_NAME and EXPECTED_DB_FINGERPRINT',
           'reconcile --manifest FILE --batch-id UUID',
@@ -265,6 +336,70 @@ export async function runCutover(args: string[], deps: CliDependencies): Promise
       return 0;
     }
     const [mode = 'dry-run', ...paths] = positionals;
+    if (mode === 'supplier-inspect') {
+      if (
+        !v.workbook ||
+        !v['out-dir'] ||
+        paths.length ||
+        v.apply ||
+        v.manifest ||
+        !deps.inspectSuppliers
+      )
+        throw Error('SUPPLIER_WORKBOOK_AND_OUT_DIR_REQUIRED');
+      return deps.inspectSuppliers(v.workbook, v['out-dir']);
+    }
+    if (
+      ['supplier-plan', 'supplier-apply', 'supplier-verify', 'supplier-rollback'].includes(mode)
+    ) {
+      if (
+        paths.length ||
+        !v['out-dir'] ||
+        !deps.prepareSuppliers ||
+        !deps.readSupplierPlan ||
+        !deps.executeSuppliers
+      )
+        throw Error('SUPPLIER_COMMAND_ARGUMENTS_REQUIRED');
+      const write = mode === 'supplier-apply' || mode === 'supplier-rollback';
+      if (
+        write &&
+        (!v.apply ||
+          !v['plan-hash'] ||
+          deps.env.CONFIRM_TOOLTIFY_IMPORT !== confirmation ||
+          !deps.env.EXPECTED_DB_NAME ||
+          !deps.env.EXPECTED_DB_FINGERPRINT)
+      )
+        throw Error('APPLY_CONFIRMATIONS_REQUIRED');
+      if (!write && (v.apply || v['plan-hash'])) throw Error('UNEXPECTED_WRITE_FLAG');
+      const id = await deps.identity();
+      await checkIdentity(id, deps.env, write, deps.verifySocket);
+      if (mode === 'supplier-plan') {
+        if (!v.input || !v.context || v.plan) throw Error('SUPPLIER_INPUT_AND_CONTEXT_REQUIRED');
+        const plan = await deps.prepareSuppliers(v.input, v.context, id.fingerprint);
+        await output('supplier-plan.json', plan, {
+          kind: plan.kind,
+          planHash: plan.planHash,
+          counts: { suppliers: plan.items.length, issues: plan.issues.length },
+          issues: plan.issues.map((i) => ({
+            supplierRef: i.supplierRef,
+            code: i.code,
+            field: i.field,
+          })),
+        });
+        return plan.issues.length ? 1 : 0;
+      }
+      if (!v.plan || v.input || v.context) throw Error('SUPPLIER_REVIEWED_PLAN_REQUIRED');
+      const plan = await deps.readSupplierPlan(v.plan);
+      if (plan.context.dbIdentity !== id.fingerprint)
+        throw Error('EXPECTED_DB_FINGERPRINT_MISMATCH');
+      if (write && v['plan-hash'] !== plan.planHash) throw Error('REVIEWED_PLAN_CHANGED');
+      const receipt = await deps.executeSuppliers(
+        mode as 'supplier-apply' | 'supplier-verify' | 'supplier-rollback',
+        plan,
+        (state) => deps.report(state),
+      );
+      await output(mode + '.json', receipt);
+      return 0;
+    }
     if (mode === 'inspect') {
       if (
         v.apply ||
@@ -493,6 +628,41 @@ export function cliDependencies(
       return reconcileBatch(client(), batchId);
     },
     inspect,
+    inspectSuppliers,
+    async prepareSuppliers(inputPath, contextPath, identity) {
+      const input = (await readPrivateJson(inputPath)) as {
+        version: number;
+        workbookSha256: string;
+        rows: SupplierInput[];
+      };
+      const context = (await readPrivateJson(contextPath)) as SupplierPlanContext;
+      if (
+        input.version !== 1 ||
+        !Array.isArray(input.rows) ||
+        input.workbookSha256 !== context.workbookSha256
+      )
+        throw Error('SUPPLIER_INPUT_INVALID');
+      await assertSupplierWorkbookInput(context.workbookPath, context.workbookSha256, input.rows);
+      return planSuppliers(client(), input.rows, {
+        ...context,
+        dbIdentity: identity,
+        codeRevision: revision(false),
+      });
+    },
+    readSupplierPlan: async (path) => (await readPrivateJson(path)) as SupplierImportPlan,
+    async executeSuppliers(mode, plan, waiting) {
+      if (mode === 'supplier-verify') return verifySuppliers(client(), plan);
+      if (revision(true) !== plan.context.codeRevision) throw Error('CODE_REVISION_CHANGED');
+      if (mode === 'supplier-apply')
+        await assertSupplierWorkbookInput(
+          plan.context.workbookPath,
+          plan.context.workbookSha256,
+          plan.items.map((i) => i.payload),
+        );
+      return mode === 'supplier-apply'
+        ? applySuppliers(client(), plan)
+        : rollbackSuppliers(client(), plan, waiting);
+    },
     save: (dir, name, value) =>
       privateOutput(dir, [{ name, content: JSON.stringify(value, null, 2) + '\n' }]),
     report: (value) => console.log(JSON.stringify(value)),
@@ -501,7 +671,7 @@ export function cliDependencies(
 export async function cutoverMain(args = process.argv.slice(2), legacyKind?: SourceKind) {
   let db: PrismaClient | undefined;
   const deps = cliDependencies(() => {
-    if (!db && args.includes('rollback')) {
+    if (!db && (args.includes('rollback') || args.includes('supplier-rollback'))) {
       const url = new URL(process.env.DATABASE_URL ?? '');
       url.searchParams.set('connection_limit', '1');
       db = new PrismaClient({ datasourceUrl: url.toString() });

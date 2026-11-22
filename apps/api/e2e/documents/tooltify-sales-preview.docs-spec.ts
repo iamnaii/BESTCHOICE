@@ -1,3 +1,10 @@
+import { supplierFixture } from '../../src/cli/tooltify-cutover/__tests__/supplier-fixtures';
+import { planSuppliers } from '../../src/cli/tooltify-cutover/supplier-plan';
+import { applySuppliers } from '../../src/cli/tooltify-cutover/supplier-writer';
+import { buildImportPlan } from '../../src/cli/tooltify-cutover/plan';
+import { applyBatch } from '../../src/cli/tooltify-cutover/batch';
+import { writeStockItem } from '../../src/cli/tooltify-cutover/stock-writer';
+import { hashSourceDecisions } from '../../src/cli/tooltify-cutover/canonicalize';
 import { fork } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync, writeFileSync } from 'node:fs';
@@ -59,7 +66,7 @@ const enabled = process.env.TOOLTIFY_SALES_PREVIEW === '1';
         data: {
           code: 'HISTORY_READ',
           name: 'ทดสอบอ่านประวัติ',
-          permissions: ['imported-sales.read'],
+          permissions: ['imported-sales.read', 'suppliers.read', 'products.read'],
         },
       });
       await db.employeeAccessAssignment.create({
@@ -85,6 +92,12 @@ const enabled = process.env.TOOLTIFY_SALES_PREVIEW === '1';
       await db.importedSale.createMany({
         data: [
           { ...common, orderNumber: 'TT-TEST-001', soldAt: new Date('2026-11-01T08:00:00+07:00') },
+          {
+            ...common,
+            orderNumber: 'TT-TEST-001',
+            soldAt: new Date('2026-11-01T08:00:00+07:00'),
+            sourceOccurrence: 2,
+          },
           { ...common, orderNumber: 'TT-TEST-002', soldAt: new Date('2026-11-02T08:00:00+07:00') },
           {
             ...common,
@@ -93,6 +106,45 @@ const enabled = process.env.TOOLTIFY_SALES_PREVIEW === '1';
             soldAt: new Date('2026-11-02T08:00:00+07:00'),
           },
         ],
+      });
+      const fixture = await supplierFixture(db);
+      Object.assign(fixture.row, {
+        displayName: 'ผู้ขายทดสอบเครดิต 15 วัน',
+        legalName: 'บริษัท ผู้ขายทดสอบ จำกัด',
+        aliases: ['ผู้ขายทดสอบเครดิต 15 วัน'],
+        hasVat: true,
+        creditTermDays: 15,
+        bankAccounts: [
+          {
+            bankName: 'ธนาคารทดสอบ',
+            bankAccountName: 'ผู้รับโอนทดสอบคนละชื่อ',
+            bankAccountNumber: '0001000000',
+          },
+        ],
+      });
+      const supplierPlan = await planSuppliers(db, [fixture.row], fixture.context);
+      await applySuppliers(db, supplierPlan);
+      const supplierReceipt = await db.tooltifyImportItem.findFirstOrThrow({
+        where: { batchId: supplierPlan.batchId },
+      });
+      fixture.stock.rows[0].supplierLabel = fixture.row.displayName;
+      const stockDecision = fixture.stock.decisions.entries.find(
+        (d) => d.action === 'RESOLVE_STOCK',
+      )!;
+      Object.assign(stockDecision, {
+        supplier: {
+          mode: 'LINK',
+          supplierRef: fixture.row.supplierRef,
+          batchId: supplierPlan.batchId,
+          targetId: supplierReceipt.targetId!,
+        },
+      });
+      fixture.stock.manifest.decisionsSha256 = hashSourceDecisions(fixture.stock.decisions);
+      const stockPlan = await buildImportPlan(db, fixture.stock);
+      expect(stockPlan.issues).toEqual([]);
+      await applyBatch(db, stockPlan, (tx, item) => {
+        if (item.kind !== 'STOCK') throw Error('stock only');
+        return writeStockItem(tx, item);
       });
       writeFileSync(
         join(out, 'preview.json'),
@@ -108,6 +160,8 @@ const enabled = process.env.TOOLTIFY_SALES_PREVIEW === '1';
           email,
           password,
           userId: user.id,
+          supplierId: supplierReceipt.targetId,
+          stockBarcode: fixture.stock.rows[0].barcode,
         }),
         { mode: 0o600 },
       );

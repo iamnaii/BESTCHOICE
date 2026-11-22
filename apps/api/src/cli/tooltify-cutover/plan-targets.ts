@@ -1,3 +1,4 @@
+import { resolveStockSupplier } from './supplier-link';
 import { BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { hasSellingPrice } from '../../modules/products/product-enter-stock.util';
@@ -40,7 +41,39 @@ export async function stockEligibilityIssue(db: Db, target: ProductHoldSubject) 
   return null;
 }
 export async function salesTargetFingerprint(db: Db, id: string) {
-  return hash(await db.importedSale.findUniqueOrThrow({ where: { id } }));
+  return hash(saleTargetSnapshot(await db.importedSale.findUniqueOrThrow({ where: { id } })));
+}
+// Keep occurrence=1 fingerprints compatible with receipts written before this additive migration.
+export function saleTargetSnapshot<T extends { sourceOccurrence?: number }>(row: T): T {
+  if (row.sourceOccurrence !== 1) return row;
+  const { sourceOccurrence: _occurrence, ...legacy } = row;
+  return legacy as T;
+}
+export function saleIdentity(
+  row: { barcode: string; orderNumber: string; soldAt: Date },
+  occurrence = 1,
+) {
+  const identity: unknown[] = ['TOOLTIFY', row.barcode, row.orderNumber, row.soldAt];
+  if (occurrence !== 1) identity.push(occurrence);
+  return hash(identity);
+}
+export function hasMultiplicityEvidence(item: PlannedSalesItem) {
+  const row = item.payload,
+    d = item.multiplicityEvidence;
+  return (
+    Number.isSafeInteger(row.occurrence) &&
+    row.occurrence > 0 &&
+    (row.occurrence === 1 ||
+      !!(
+        d &&
+        d.action === 'DISTINCT_UNITS' &&
+        d.reason.trim() &&
+        d.evidenceRef.trim() &&
+        d.fileSha256 === row.source.fileSha256 &&
+        d.sourceRows.length >= row.occurrence &&
+        d.sourceRows.includes(row.source.row)
+      ))
+  );
 }
 /** Verify the writer returned the target created for this exact canonical item before assigning reversal ownership. */
 export async function assertCreatedTarget(db: Db, item: PlannedItem, id: string) {
@@ -62,6 +95,7 @@ export async function assertCreatedTarget(db: Db, item: PlannedItem, id: string)
   const sale = await db.importedSale.findUniqueOrThrow({ where: { id } });
   if (
     sale.source !== 'TOOLTIFY' ||
+    sale.sourceOccurrence !== item.payload.occurrence ||
     sale.importBatch !== item.batchId ||
     hash(saleContent(sale)) !== hash(saleContent(item.payload))
   )
@@ -69,8 +103,7 @@ export async function assertCreatedTarget(db: Db, item: PlannedItem, id: string)
 }
 
 export function identityHash(item: PlannedItem): string {
-  if (item.kind === 'SALES')
-    return hash(['TOOLTIFY', item.payload.barcode, item.payload.orderNumber, item.payload.soldAt]);
+  if (item.kind === 'SALES') return saleIdentity(item.payload, item.payload.occurrence);
   const row = item.payload;
   return row.kind === 'DEVICE'
     ? hash(['DEVICE', row.barcode])
@@ -173,7 +206,15 @@ async function evaluateStock(db: Db, item: PlannedStockItem): Promise<PlannedSto
   const explicit = decision?.pricing.mode === 'EXPLICIT' ? decision.pricing : null;
   const templateCash = positiveDecimal(template?.cashPrice);
   // autofillProductPriceFromTemplate only writes installment alongside a positive template cash price.
+  let supplierLink;
+  let supplierIssue: string | null = null;
+  try {
+    supplierLink = await resolveStockSupplier(db, raw, decision);
+  } catch (e) {
+    supplierIssue = e instanceof Error ? e.message : 'SUPPLIER_LINK_REQUIRED';
+  }
   const resolution = {
+    ...(supplierLink ? { supplierLink } : {}),
     companyId: branch?.companyId ?? null,
     templateId: template?.id ?? null,
     cashPrice: explicit ? explicit.cashPrice : (templateCash?.toFixed(2) ?? null),
@@ -250,6 +291,7 @@ async function evaluateStock(db: Db, item: PlannedStockItem): Promise<PlannedSto
 
   if (target) {
     if (
+      (supplierLink !== undefined && target.supplierId !== supplierLink.targetId) ||
       target.deletedAt ||
       target.branchId !== raw.branchId ||
       target.status !== payload.desiredStatus ||
@@ -290,6 +332,7 @@ async function evaluateStock(db: Db, item: PlannedStockItem): Promise<PlannedSto
       reason = 'STOCK_TARGET_CONFLICT';
     if (!reason) reason = await stockEligibilityIssue(db, target);
   }
+  if (!reason && supplierIssue) reason = supplierIssue;
   return {
     ...item,
     payload,
@@ -365,6 +408,7 @@ export async function readSaleOrigins(
   sales: {
     id: string;
     importBatch: string | null;
+    sourceOccurrence?: number;
     barcode: string;
     orderNumber: string;
     soldAt: Date;
@@ -445,7 +489,7 @@ export async function readSaleOrigins(
     if (
       !target ||
       target.importBatch !== r.batchId ||
-      r.identityHash !== hash(['TOOLTIFY', target.barcode, target.orderNumber, target.soldAt]) ||
+      r.identityHash !== saleIdentity(target, target.sourceOccurrence ?? 1) ||
       !Array.isArray(r.sourceRefs) ||
       r.sourceRefs.length !== 1
     )
@@ -485,7 +529,14 @@ export type SaleOrigins = Awaited<ReturnType<typeof readSaleOrigins>>;
 export async function readSaleOriginsFor(db: Db, where: Prisma.ImportedSaleWhereInput) {
   const sales = await db.importedSale.findMany({
     where,
-    select: { id: true, importBatch: true, barcode: true, orderNumber: true, soldAt: true },
+    select: {
+      id: true,
+      importBatch: true,
+      barcode: true,
+      orderNumber: true,
+      soldAt: true,
+      sourceOccurrence: true,
+    },
   });
   return readSaleOrigins(db, sales);
 }
@@ -499,7 +550,7 @@ async function evaluateSales(
   const branch = await readBranch(db, item.branchId);
   const bill = await db.importedSale.findMany({
     where: { source: 'TOOLTIFY', orderNumber: row.orderNumber },
-    select: { id: true, barcode: true, soldAt: true },
+    select: { id: true, barcode: true, soldAt: true, sourceOccurrence: true },
   });
   const receipts = await db.tooltifyImportItem.findMany({
     where: {
@@ -520,7 +571,10 @@ async function evaluateSales(
     ),
   );
   const existing = bill.find(
-    (b) => b.barcode === row.barcode && b.soldAt.getTime() === row.soldAt.getTime(),
+    (b) =>
+      b.barcode === row.barcode &&
+      b.soldAt.getTime() === row.soldAt.getTime() &&
+      b.sourceOccurrence === row.occurrence,
   );
   const target = existing
     ? await db.importedSale.findUniqueOrThrow({ where: { id: existing.id } })
@@ -528,7 +582,7 @@ async function evaluateSales(
   const origin = target ? (origins ?? (await readSaleOrigins(db, [target]))).get(target.id) : null;
   let reason: string | null = null;
   if (!validBranch(branch)) reason = 'INVALID_SHOP_BRANCH';
-  else if (row.occurrence !== 1) reason = 'UNSUPPORTED_SALES_MULTIPLICITY';
+  else if (!hasMultiplicityEvidence(item)) reason = 'UNSUPPORTED_SALES_MULTIPLICITY';
   else if (bill.some((line) => !receipts.some((r) => r.targetId === line.id)))
     reason = 'UNPROVEN_LEGACY_SALE_STORE';
   else if ([...stores].some((store) => store !== row.sourceStoreKey))
@@ -543,7 +597,12 @@ async function evaluateSales(
     targetId: target?.id ?? null,
     reason,
     disposition: reason ? 'CONFLICT' : target ? 'MATCH' : 'CREATE',
-    dependencyFingerprint: hash({ branch, target, origin, reason }),
+    dependencyFingerprint: hash({
+      branch,
+      target: target ? saleTargetSnapshot(target) : null,
+      origin,
+      reason,
+    }),
   };
 }
 

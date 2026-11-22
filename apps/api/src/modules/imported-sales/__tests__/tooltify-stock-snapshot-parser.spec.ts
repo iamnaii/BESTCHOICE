@@ -253,3 +253,25 @@ describe('parseStockSnapshot', () => {
     );
   });
 });
+
+it('accepts a blank-category tablet serial only with evidence for that exact source row and preserves the serial', () => {
+  const row = [...DEVICE];
+  row[0] = 'SYNTHETIC42'; row[1] = 'iPad Air 5'; row[2] = '';
+  const decision = { action: 'MAP_STOCK_ITEM', fileSha256: file.sha256, sourceRows: [5],
+    expectedBarcode: row[0], expectedName: row[1], expectedCategory: '', category: 'TABLET',
+    reason: 'Checked tablet source record', evidenceRef: 'synthetic-source-record' };
+  const result = parseStockSnapshot(stockRows(row), { ...context, decisions: [decision] } as any);
+  expect(result.issues).toEqual([]);
+  expect(result.rows[0]).toMatchObject({ barcode: 'SYNTHETIC42', category: 'TABLET', kind: 'DEVICE', sourceMapping: decision });
+  expect(parseStockSnapshot(stockRows(row), context).rows).toEqual([]);
+  expect(parseStockSnapshot(stockRows(row), { ...context, decisions: [{ ...decision, expectedBarcode: 'different' }] } as any).rows).toEqual([]);
+});
+
+it('maps a blank-category accessory without converting its leading-zero barcode to an IMEI', () => {
+  const row = [...DEVICE]; row[0] = '000123456'; row[1] = 'Apple Pencil'; row[2] = '';
+  const result = parseStockSnapshot(stockRows(row), { ...context, decisions: [{
+    action: 'MAP_STOCK_ITEM', fileSha256: file.sha256, sourceRows: [5], expectedBarcode: row[0], expectedName: row[1], expectedCategory: '', category: 'ACCESSORY', reason: 'Checked accessory record', evidenceRef: 'synthetic-source-record',
+  }] } as any);
+  expect(result.issues).toEqual([]);
+  expect(result.rows[0]).toMatchObject({ barcode: '000123456', category: 'ACCESSORY', kind: 'ACCESSORY' });
+});

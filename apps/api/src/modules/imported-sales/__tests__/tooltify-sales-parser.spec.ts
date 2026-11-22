@@ -399,3 +399,16 @@ describe('independent gross evidence', () => {
     expect(result.gross.delta).toMatchObject({ salePrice: '90.00', profit: null });
   });
 });
+
+it('retains a reviewed historical barcode/category verbatim without treating it as a new stock identity', () => {
+  const row = [...gift]; row[0] = '0001234567890123'; row[1] = 'Synthetic historical phone'; row[2] = '-';
+  const table = [summary, totals, [], ['รายการขาย ( 1 )'], HEADER, row];
+  const proof = { action: 'RETAIN_LEGACY_SALE', fileSha256: file.sha256, sourceRows: [6],
+    expectedBarcode: row[0], expectedName: row[1], expectedCategory: row[2],
+    reason: 'Historical source identity is preserved, not corrected', evidenceRef: 'synthetic-original-bill' };
+  expect(parseSalesReport(table, context).rows).toEqual([]);
+  const parsed = parseSalesReport(table, { ...context, decisions: [proof] } as any);
+  expect(parsed.issues).toEqual([]);
+  expect(parsed.rows[0]).toMatchObject({ barcode: row[0], category: '-', legacyIdentityEvidence: proof });
+  expect(parseSalesReport(table, { ...context, decisions: [{ ...proof, expectedBarcode: 'different' }] } as any).rows).toEqual([]);
+});

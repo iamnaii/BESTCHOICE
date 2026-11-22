@@ -143,7 +143,10 @@ async function persistExclusion(tx: Db, batch: TooltifyImportBatch, e: PlannedEx
   });
 }
 
-async function itemTransaction<T>(db: PrismaClient, operation: (tx: Db) => Promise<T>): Promise<T> {
+export async function itemTransaction<T>(
+  db: PrismaClient,
+  operation: (tx: Db) => Promise<T>,
+): Promise<T> {
   // A waiter can take its serializable snapshot before the preceding advisory-lock holder commits.
   // Re-run only database serialization failures; business conflicts and callback errors remain visible.
   for (let attempt = 0; ; attempt++) {

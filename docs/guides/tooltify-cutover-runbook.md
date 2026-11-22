@@ -127,3 +127,53 @@ XLSX สังเคราะห์ 2 ไฟล์ ฐาน SHOP 1 สาขา
 TOOLTIFY_RUN_DIR="$PREVIEW_DIR" BASE_URL="$PREVIEW_ORIGIN" \
   npm run test:e2e --workspace=@installment/web -- e2e/imported-sales-cutover.spec.ts
 ~~~
+
+### Supplier preparation and source exceptions (November 2026)
+
+Use `supplier-inspect --workbook FILE --out-dir PRIVATE_DIR` first. It reads the
+original workbook SHA256 without a database and preserves text identifiers.
+`supplier-plan --input supplier-input.json --context context.json --out-dir PRIVATE_DIR`
+requires SHOP company/branch, workbook SHA256, canonical set, cutover timestamp,
+and explicit `matchTargets` for existing suppliers. Unknown legal type, name,
+phone, VAT or partial bank details block apply. Do not substitute bank holders
+for supplier legal names. The owner-adopted Apple Flagship group profile remains
+traceable to the Shopee invoice; VAT registration does not create historical VAT entries.
+
+`supplier-apply`, `supplier-verify`, and `supplier-rollback` consume the private
+`supplier-plan.json`. Writes require the existing import confirmation, database
+fingerprint, reviewed `--plan-hash`, `--apply`, and a clean fresh writer revision.
+Supplier creation, Contact resolution, payment methods and provenance commit in
+one transaction. Reruns verify existing receipts; they do not create duplicates.
+Rollback archives only owned rows after checking references and preserving MATCH
+and shared Contacts. As with stock/history rollback, close database admission and
+drain other sessions; the supplier rollback waits up to 60 seconds for that freeze.
+Reverse history and stock before suppliers. No purchase order, debt, payment,
+contract, commission or journal is created by supplier/history migration.
+
+Stock `RESOLVE_STOCK.supplier` must explicitly link a verified supplier receipt
+or use `NO_SUPPLIER` for a confirmed blank/self-purchase source. Unknown labels
+block import. Existing products with another supplier are conflicts, not updates.
+`MAP_STOCK_ITEM` is a single-row, checksum-bound exception for blank-category tablet
+serials or accessories; exact original barcode/name/category must match.
+`RETAIN_LEGACY_SALE` preserves malformed historical identity/category strings in
+read-only history with exact original-value evidence; it does not repair IMEIs or
+create stock. Monetary/date/coverage checks remain in force.
+
+The sale occurrence migration retains existing rows as occurrence 1. Multiple
+units with the same barcode, bill and timestamp require `DISTINCT_UNITS` evidence
+covering the entire source group and contiguous occurrences. Repeated IMEIs in
+other sale events remain separate. Existing occurrence-1 receipt fingerprints
+remain compatible. Run the full isolated cutover suite after applying migrations.
+
+An actual-workbook rehearsal can be run through `tools/test-db-vitest.sh` with
+`TOOLTIFY_SUPPLIER_WORKBOOK` and `TOOLTIFY_REHEARSAL_OUT` set to private local paths
+and `supplier-rehearsal.integration.spec.ts` selected. It records all pending rows,
+rehearses only complete rows, verifies replay and reversal, and never connects to
+the application database. Successful preparation is not a final cutover: refresh
+exports at the confirmed freeze and resolve all remaining source/target issues.
+
+### Supplier workbook binding and reversal
+
+The supplier context must include `workbookPath`, pointing to the unchanged original Excel. `supplier-plan` re-parses the file and compares its SHA-256 and every parsed row with the inspection JSON; `supplier-apply` repeats that check. Dropping incomplete suppliers or editing inspected bank details is rejected. Correct the original workbook, inspect, and review a new plan instead. Direct-helper subset rehearsal is restricted to the isolated test harness and reports every pending supplier; it is not a production import plan.
+
+Supplier reversal uses the same closed-admission/sole-backend handshake as stock reversal, with a READ COMMITTED transaction so it observes admission closing after the reported PID. Reverse stock first: an owned, unchanged product may release its original receipt-bound supplier FK when it is archived; the immutable stock receipt retains the supplier association. Unrelated archived/live products and later supplier changes remain blockers. No historical purchase or accounting document is synthesized.

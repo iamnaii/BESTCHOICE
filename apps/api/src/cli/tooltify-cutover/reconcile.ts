@@ -1,6 +1,11 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import { hashImportValue as hash, orderedDigest, receiptDigest } from './canonicalize';
-import { readSaleOrigins, saleContent, stockEligibilityIssue } from './plan-targets';
+import {
+  readSaleOrigins,
+  saleContent,
+  stockEligibilityIssue,
+  saleTargetSnapshot,
+} from './plan-targets';
 import { aggregateSales, aggregateStock } from './reconciliation-snapshot';
 import type {
   EconomicAggregate,
@@ -145,6 +150,7 @@ async function readReconciliation(
     where: { id: batchId },
     include: { items: { where: { deletedAt: null, reversedAt: null } } },
   });
+  if (batch.kind !== 'STOCK' && batch.kind !== 'SALES') throw Error('SUPPLIER_COMMAND_REQUIRED');
   const snapshot = batch.reconciliationSnapshot as unknown as ReconciliationSnapshot;
   const issues = new Set<string>();
   if (batch.deletedAt || !['APPLIED', 'VERIFIED'].includes(batch.status))
@@ -224,7 +230,7 @@ async function readReconciliation(
         s.source !== 'TOOLTIFY' ||
         (s.importBatch === batch.id) !== (i.disposition === 'CREATE') ||
         i.targetType !== 'IMPORTED_SALE' ||
-        hash(s) !== i.afterFingerprint
+        hash(saleTargetSnapshot(s)) !== i.afterFingerprint
       )
         issues.add('SALE_TARGET_MISMATCH');
       targetValues.push([i.sourceKey, saleContent(s)]);

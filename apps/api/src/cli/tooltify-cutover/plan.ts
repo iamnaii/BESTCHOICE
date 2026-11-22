@@ -1,3 +1,6 @@
+import { resolveStockSupplier } from './supplier-link';
+import { validLegacySaleEvidence } from './legacy-sale-evidence';
+import { validStockSourceMapping } from './stock-source-mapping';
 import { Prisma, PrismaClient, type TooltifyImportItem } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { saleSourceKey } from '../../modules/imported-sales/tooltify-sales-parser';
@@ -16,6 +19,7 @@ import {
 } from './plan-targets';
 import type {
   CanonicalInput,
+  CanonicalSaleLine,
   CanonicalStockUnit,
   ImportPlan,
   PlannedItem,
@@ -47,14 +51,14 @@ export async function assertImportDatabase(db: Db, expected: string) {
     FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class c ON c.oid=i.indexrelid
     JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
     WHERE n.nspname=current_schema() AND c.relname IN
-      ('products_imei_serial_active_unique','product_prices_one_default','imported_sales_source_barcode_order_number_sold_at_key')`;
+      ('products_imei_serial_active_unique','product_prices_one_default','imported_sales_source_barcode_order_number_sold_at_key','imported_sales_source_event_occurrence_key')`;
   const needs: Record<string, string> = {
     products_imei_serial_active_unique:
       'products USING btree (imei_serial) WHERE (deleted_at IS NULL)',
     product_prices_one_default:
       'product_prices USING btree (product_id) WHERE (is_default AND (deleted_at IS NULL))',
-    imported_sales_source_barcode_order_number_sold_at_key:
-      'imported_sales USING btree (source, barcode, order_number, sold_at)',
+    imported_sales_source_event_occurrence_key:
+      'imported_sales USING btree (source, barcode, order_number, sold_at, source_occurrence)',
   };
   if (
     indexes.length !== 3 ||
@@ -124,6 +128,13 @@ export async function replayItem(
   }
   const stored = receipt.stockResolution as unknown as StockResolution | null;
   if (!stored || !item.decision) throw Error('IMPORT_ITEM_RESOLUTION_MISSING');
+  try {
+    const current = await resolveStockSupplier(db, item.original, item.decision);
+    if (hash(current ?? null) !== hash(stored.supplierLink ?? null))
+      throw Error('IMPORT_DEPENDENCY_CHANGED');
+  } catch {
+    throw Error('IMPORT_DEPENDENCY_CHANGED');
+  }
   return {
     ...item,
     ...base,
@@ -284,6 +295,17 @@ function inputIssues(input: CanonicalInput) {
     seenKeys.add(row.sourceKey);
     seenPhysical.add(physical);
     if ('desiredStatus' in row) {
+      const mappings = entries.filter((d) => d.action === 'MAP_STOCK_ITEM');
+      const mapping = row.sourceMapping;
+      const validMapping = !!(
+        mapping &&
+        mappings.length === 1 &&
+        hash(mapping) === hash(mappings[0]) &&
+        validStockSourceMapping(mapping, ref, row.barcode, row.name, mapping.expectedCategory) &&
+        row.category === mapping.category &&
+        row.kind === (mapping.category === 'TABLET' ? 'DEVICE' : 'ACCESSORY')
+      );
+      if ((mapping || mappings.length) && !validMapping) issue('INVALID_STOCK_SOURCE_MAPPING', ref);
       const identity =
         row.kind === 'DEVICE'
           ? [ref.storeKey, row.barcode]
@@ -306,7 +328,8 @@ function inputIssues(input: CanonicalInput) {
         !sourceTimestamp(row.importedAt) ||
         new Date(row.importedAt) > new Date(manifest.cutoverAt) ||
         (row.kind === 'DEVICE'
-          ? !/^\d{14,15}$/.test(row.barcode) ||
+          ? (!/^\d{14,15}$/.test(row.barcode) &&
+              !(validMapping && mapping?.category === 'TABLET')) ||
             !['PHONE_NEW', 'PHONE_USED', 'TABLET'].includes(row.category)
           : !row.barcode || row.category !== 'ACCESSORY')
       )
@@ -318,6 +341,18 @@ function inputIssues(input: CanonicalInput) {
       if (entries.filter((e) => e.action === 'RESOLVE_STOCK').length !== 1)
         issue('UNRESOLVED_STOCK_DECISION', ref);
     } else if ('sourceStoreKey' in row) {
+      const legacy = row.legacyIdentityEvidence;
+      const proofs = entries.filter((d) => d.action === 'RETAIN_LEGACY_SALE');
+      if (
+        (legacy || proofs.length) &&
+        !(
+          legacy &&
+          proofs.length === 1 &&
+          hash(legacy) === hash(proofs[0]) &&
+          validLegacySaleEvidence(legacy, ref, row.barcode, row.productName, row.category)
+        )
+      )
+        issue('INVALID_LEGACY_SALE_EVIDENCE', ref);
       const soldDay = new Date(row.soldAt.getTime() + 7 * 60 * 60 * 1000)
         .toISOString()
         .slice(0, 10);
@@ -334,6 +369,36 @@ function inputIssues(input: CanonicalInput) {
       const store = orderStores.get(row.orderNumber);
       if (store && store !== row.sourceStoreKey) issue('SALES_STORE_COLLISION', ref);
       orderStores.set(row.orderNumber, row.sourceStoreKey);
+    }
+  }
+  if (input.kind === 'SALES') {
+    const groups = new Map<string, CanonicalSaleLine[]>();
+    for (const row of input.rows) {
+      const key = saleSourceKey(row, 1);
+      groups.set(key, [...(groups.get(key) ?? []), row]);
+    }
+    for (const group of groups.values()) {
+      const sorted = [...group].sort((a, b) => a.occurrence - b.occurrence);
+      const first = sorted[0];
+      if (sorted.some((r, i) => r.occurrence !== i + 1))
+        issue('UNPROVEN_SALES_MULTIPLICITY', first.source);
+      if (group.length === 1) continue;
+      const proofs = decisions.entries.filter(
+        (d) =>
+          d.action === 'DISTINCT_UNITS' &&
+          d.fileSha256 === first.source.fileSha256 &&
+          hash([...d.sourceRows].sort((a, b) => a - b)) ===
+            hash(group.map((r) => r.source.row).sort((a, b) => a - b)),
+      );
+      if (
+        proofs.length !== 1 ||
+        group.some(
+          (r) =>
+            r.source.fileSha256 !== first.source.fileSha256 ||
+            r.source.sheet !== first.source.sheet,
+        )
+      )
+        issue('UNPROVEN_SALES_MULTIPLICITY', first.source);
     }
   }
   const assignedTargets = new Set<string>();
@@ -526,6 +591,21 @@ export async function buildImportPlan(
             ? stockDraft(row, entries, batchId)
             : {
                 kind: 'SALES',
+                ...(input.decisions.entries.some(
+                  (d) =>
+                    d.action === 'DISTINCT_UNITS' &&
+                    d.fileSha256 === row.source.fileSha256 &&
+                    d.sourceRows.includes(row.source.row),
+                )
+                  ? {
+                      multiplicityEvidence: input.decisions.entries.find(
+                        (d) =>
+                          d.action === 'DISTINCT_UNITS' &&
+                          d.fileSha256 === row.source.fileSha256 &&
+                          d.sourceRows.includes(row.source.row),
+                      ),
+                    }
+                  : {}),
                 payload: row,
                 batchId,
                 sourceKey: row.sourceKey,

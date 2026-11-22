@@ -40,7 +40,12 @@ const predicates: Record<string, string> = {
     "(conditions->'productIds') ?| scope.ids OR (conditions->'accessoryProductIds') ?| scope.ids",
   products:
     contains('id') +
-    ' AND (po_id IS NOT NULL OR inspection_id IS NOT NULL OR supplier_id IS NOT NULL)',
+    ` AND (po_id IS NOT NULL OR inspection_id IS NOT NULL OR (supplier_id IS NOT NULL AND NOT EXISTS (
+      SELECT 1 FROM tooltify_import_items i WHERE i.batch_id = scope.batch_id
+      AND i.target_type = 'PRODUCT' AND i.target_id = products.id AND i.disposition = 'CREATE'
+      AND i.deleted_at IS NULL AND i.reversed_at IS NULL
+      AND i.stock_resolution->'supplierLink'->>'targetId' = products.supplier_id
+    )))`,
   audit_logs: contains('entity_id'),
   journal_entries:
     "(metadata->>'productId') = ANY(scope.ids) OR (metadata->>'acceptedProductId') = ANY(scope.ids) OR (metadata->'productIds') ?| scope.ids",
@@ -61,7 +66,7 @@ export async function rollbackReferences(
         Prisma.sql`SELECT ${table}::text AS name, count(*)::int AS n FROM ${Prisma.raw(table)}, scope WHERE ${Prisma.raw(predicate)}`,
     );
     const rows = await tx.$queryRaw<{ name: string; n: number }[]>`
-      WITH scope AS (SELECT ${productIds}::text[] AS ids) ${Prisma.join(queries, ' UNION ALL ')}`;
+      WITH scope AS (SELECT ${productIds}::text[] AS ids, ${batchId}::text AS batch_id) ${Prisma.join(queries, ' UNION ALL ')}`;
     for (const { name, n } of rows) if (n) refs[name] = n;
   }
   const financial = await scopedFinancialReferences(tx, batchId, productIds, targetIds);

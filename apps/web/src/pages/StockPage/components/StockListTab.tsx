@@ -13,7 +13,8 @@ import { statusLabels } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 import type { StockProduct } from '../types';
 import type { StockView, StockViewCounts } from '../hooks/useStockProducts';
-import { stockTableMinWidth, type StockColumn } from './stockColumns';
+import type { StockColumn } from './stockColumns';
+import './stock-comparison.css';
 import { ChevronLeft, ChevronRight, Package, Search, SlidersHorizontal, X } from 'lucide-react';
 
 export interface StockListTabProps {
@@ -43,7 +44,9 @@ export interface StockListTabProps {
   listError: boolean;
   listErrorObj: unknown;
   listRefetch: () => void;
-  listResult: { data: StockProduct[]; totalUnits?: number; total: number; page: number; totalPages: number } | undefined;
+  listResult:
+    | { data: StockProduct[]; totalUnits?: number; total: number; page: number; totalPages: number }
+    | undefined;
   page: number;
   setPage: (page: number) => void;
   isManager: boolean;
@@ -59,7 +62,7 @@ const quickCategories = [
   { value: 'TABLET', label: 'แท็บเล็ต' },
   { value: 'ACCESSORY', label: 'อุปกรณ์' },
 ];
-const priceKeys = ['costPrice', 'cashPrice', 'downPayment', 'monthlyPayment'];
+const priceKeys = ['costPrice', 'cashPrice', 'downPayment', 'gfin', 'margin'];
 const selectClass =
   'h-11 w-full min-w-0 cursor-pointer rounded-lg border border-input bg-card px-3 text-sm text-foreground shadow-xs transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
@@ -84,13 +87,17 @@ function StockViewSwitch({
     <div
       role="group"
       aria-label="แสดงสินค้า"
-      className={cn('flex min-h-11 gap-1 rounded-lg bg-muted/50 ring-1 ring-inset ring-border/80', className)}
+      className={cn(
+        'flex min-h-11 gap-1 rounded-lg bg-muted/50 ring-1 ring-inset ring-border/80',
+        className,
+      )}
     >
       {VIEW_OPTIONS.map((option) => {
         const on = view === option.key;
         const count = counts ? (option.key === 'ready' ? counts.ready : counts.all) : null;
         return (
-          <button data-ui-control="button"
+          <button
+            data-ui-control="button"
             key={option.key}
             type="button"
             aria-pressed={on}
@@ -128,7 +135,8 @@ export function StockListTab({
   view,
   setView,
   viewCounts,
-  filterDeviceOrigin, setFilterDeviceOrigin,
+  filterDeviceOrigin,
+  setFilterDeviceOrigin,
   search,
   setSearch,
   clearFilters,
@@ -156,10 +164,21 @@ export function StockListTab({
   const id = useId();
   const isMobile = useIsMobile();
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [compact, setCompact] = useState(false);
+  const accessoryView = inventoryScope === 'accessories' || filterCategory === 'ACCESSORY';
   // ตัวกรองสถานะมีเฉพาะมุมมอง "ทั้งหมด" (มุมมองพร้อมขายล็อก IN_STOCK อยู่แล้ว จึงซ่อน select ที่ซ้ำซ้อน)
   const showStatusFilter = view === 'all';
-  const filterCount = [showStatusFilter ? filterStatus : '', filterBranch, filterDeviceOrigin].filter(Boolean).length;
-  const hasAdditionalFilters = !!(search || (showStatusFilter && filterStatus) || filterBranch || filterDeviceOrigin);
+  const filterCount = [
+    showStatusFilter ? filterStatus : '',
+    filterBranch,
+    filterDeviceOrigin,
+  ].filter(Boolean).length;
+  const hasAdditionalFilters = !!(
+    search ||
+    (showStatusFilter && filterStatus) ||
+    filterBranch ||
+    filterDeviceOrigin
+  );
   const hasFilters = hasAdditionalFilters || !!filterCategory;
   const emptyMessage = hasFilters ? 'ไม่พบสินค้าที่ตรงกับตัวกรอง' : 'ยังไม่มีสินค้าในคลัง';
   // ตารางคอมตัดคอลัมน์ที่ยุบเข้าช่องอื่นแล้วออก · การ์ดมือถือตัดคอลัมน์รวมสำหรับคอมออก
@@ -169,6 +188,7 @@ export function StockListTab({
   const specificationColumns = mobileColumns.filter((column) =>
     [
       'productCode',
+      'imeiSerial',
       'category',
       'specifications',
       'accessoryType',
@@ -196,9 +216,10 @@ export function StockListTab({
       ? `พร้อมขาย ${listResult.total.toLocaleString()} รายการ${hiddenOthers > 0 ? ` · อีก ${hiddenOthers.toLocaleString()} รายการอยู่ในสถานะอื่น` : ''}${pageSuffix}`
       : `${hasFilters ? 'พบ' : 'ทั้งหมด'} ${listResult.total.toLocaleString()} รายการ${viewCounts ? ` · พร้อมขาย ${viewCounts.ready.toLocaleString()}` : ''}${pageSuffix}`;
   const unit = inventoryScope === 'devices' ? 'เครื่อง' : 'ชิ้น';
-  const resultSummary = listResult?.totalUnits != null
-    ? `${view === 'ready' ? 'พร้อมขาย' : 'พบ'} ${listResult.totalUnits.toLocaleString()} ${unit} · ${listResult.total.toLocaleString()} รายการ/กลุ่ม${pageSuffix}`
-    : legacyResultSummary;
+  const resultSummary =
+    listResult?.totalUnits != null
+      ? `${view === 'ready' ? 'พร้อมขาย' : 'พบ'} ${listResult.totalUnits.toLocaleString()} ${unit} · ${listResult.total.toLocaleString()} รายการ/กลุ่ม${pageSuffix}`
+      : legacyResultSummary;
   // บรรทัดสรุปเดียวกันทั้งตารางคอมและการ์ดมือถือ — ในมุมมองพร้อมขายมีปุ่มพาไปดูสถานะอื่น
   const summaryNode = (
     <p role="status" className="text-xs text-muted-foreground leading-snug">
@@ -220,27 +241,30 @@ export function StockListTab({
       aria-label="คลังสินค้า"
       className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
     >
-      <div
-        role="group"
-        aria-label="แบ่งประเภทสินค้า"
-        className="grid grid-cols-5 border-b border-border px-2 sm:flex sm:gap-4 sm:px-5"
-      >
-        {quickCategories.filter(c => !c.value || inventoryScope === 'all' || (inventoryScope === 'devices' ? c.value !== 'ACCESSORY' : c.value === 'ACCESSORY')).map((category) => (
-          <button
-            key={category.value}
-            type="button"
-            aria-pressed={filterCategory === category.value}
-            onClick={() => setFilterCategory(category.value)}
-            className={cn(
-              'relative min-h-14 cursor-pointer whitespace-nowrap px-1 text-[13px] leading-snug transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-3 sm:text-sm',
-              filterCategory === category.value
-                ? 'font-semibold text-primary after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-t-full after:bg-primary'
-                : 'font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground',
-            )}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
+        <StockViewSwitch view={view} setView={setView} counts={viewCounts} />
+        {!isMobile && (
+          <div
+            role="group"
+            aria-label="ความกระชับของตาราง"
+            className="flex rounded-lg bg-muted p-1"
           >
-            {category.label}
-          </button>
-        ))}
+            {[false, true].map((value) => (
+              <button
+                key={String(value)}
+                type="button"
+                aria-pressed={compact === value}
+                onClick={() => setCompact(value)}
+                className={cn(
+                  'min-h-9 rounded-md px-3 text-xs focus-visible:ring-2 focus-visible:ring-ring',
+                  compact === value ? 'bg-card shadow-xs' : 'text-muted-foreground',
+                )}
+              >
+                {value ? 'กระชับ' : 'สบายตา'}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div
@@ -249,30 +273,6 @@ export function StockListTab({
         className="border-b border-border bg-background/30 p-4 sm:px-5"
       >
         <div className="flex flex-wrap items-end gap-3">
-          {/* สวิตช์ พร้อมขาย | ทั้งหมด — คอมอยู่หน้าช่องค้นหา มือถือเต็มความกว้างเหนือช่องค้นหา (mockup 54e6c624) */}
-          <div className={isMobile ? 'basis-full' : 'shrink-0'}>
-            {!isMobile && (
-              <span className="mb-2 block text-xs font-medium leading-snug text-foreground/80">
-                แสดง
-              </span>
-            )}
-            <StockViewSwitch view={view} setView={setView} counts={viewCounts} />
-          </div>
-          <div className={isMobile ? 'min-w-0 basis-full' : 'w-40 shrink-0'}>
-            <label
-              htmlFor={`${id}-device-origin`}
-              className="mb-2 block text-xs font-medium leading-snug text-foreground/80"
-            >
-              เครื่องไทย / เครื่องนอก
-            </label>
-            <DeviceOriginFilter
-              id={`${id}-device-origin`}
-              value={filterDeviceOrigin}
-              onChange={setFilterDeviceOrigin}
-              wrapperClassName="mb-0 w-full"
-              className={selectClass}
-            />
-          </div>
           <div className="min-w-0 flex-[1_1_240px]">
             <label
               htmlFor={`${id}-search`}
@@ -288,7 +288,7 @@ export function StockListTab({
                 />
                 <Input
                   id={`${id}-search`}
-                  placeholder="รุ่น / รหัส / IMEI"
+                  placeholder={accessoryView ? 'ชื่อ / รุ่น / SKU' : 'รุ่น / รหัส / IMEI'}
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                   className="h-11 rounded-lg bg-card pl-10 pr-11 text-base shadow-xs lg:text-sm"
@@ -304,7 +304,7 @@ export function StockListTab({
                   </button>
                 )}
               </div>
-              {isMobile && (
+              {(isMobile || !accessoryView) && (
                 <Button
                   variant={filtersOpen || filterCount > 0 ? 'secondary' : 'outline'}
                   className="h-11 shrink-0 rounded-lg px-3"
@@ -330,27 +330,28 @@ export function StockListTab({
             )}
           >
             {showStatusFilter && (
-            <div className="min-w-0">
-              <label
-                htmlFor={`${id}-status`}
-                className="mb-2 block text-xs font-medium leading-snug text-foreground/80"
-              >
-                สถานะ
-              </label>
-              <NativeSelect wrapperClassName="max-w-full w-full min-w-0"
-                id={`${id}-status`}
-                value={filterStatus}
-                onChange={(event) => setFilterStatus(event.target.value)}
-                className={selectClass}
-              >
-                <option value="">ทุกสถานะ</option>
-                {Object.entries(statusLabels).map(([key, value]) => (
-                  <option key={key} value={key}>
-                    {value.label}
-                  </option>
-                ))}
-              </NativeSelect>
-            </div>
+              <div className="min-w-0">
+                <label
+                  htmlFor={`${id}-status`}
+                  className="mb-2 block text-xs font-medium leading-snug text-foreground/80"
+                >
+                  สถานะ
+                </label>
+                <NativeSelect
+                  wrapperClassName="max-w-full w-full min-w-0"
+                  id={`${id}-status`}
+                  value={filterStatus}
+                  onChange={(event) => setFilterStatus(event.target.value)}
+                  className={selectClass}
+                >
+                  <option value="">ทุกสถานะ</option>
+                  {Object.entries(statusLabels).map(([key, value]) => (
+                    <option key={key} value={key}>
+                      {value.label}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </div>
             )}
             <div className="min-w-0">
               <label
@@ -359,7 +360,8 @@ export function StockListTab({
               >
                 สาขา
               </label>
-              <NativeSelect wrapperClassName="max-w-full w-full min-w-0"
+              <NativeSelect
+                wrapperClassName="max-w-full w-full min-w-0"
                 id={`${id}-branch`}
                 value={filterBranch}
                 onChange={(event) => setFilterBranch(event.target.value)}
@@ -386,7 +388,57 @@ export function StockListTab({
             </Button>
           )}
         </div>
+        {!accessoryView && filtersOpen && (
+          <div className="mt-3 border-t border-border pt-3">
+            {' '}
+            <div className="w-full min-w-0 sm:w-48">
+              <label
+                htmlFor={`${id}-device-origin`}
+                className="mb-2 block text-xs font-medium leading-snug text-foreground/80"
+              >
+                เครื่องไทย / เครื่องนอก
+              </label>
+              <DeviceOriginFilter
+                id={`${id}-device-origin`}
+                value={filterDeviceOrigin}
+                onChange={setFilterDeviceOrigin}
+                wrapperClassName="mb-0 w-full"
+                className={selectClass}
+              />
+            </div>
+          </div>
+        )}
         {bulkActions && <div className="mt-4">{bulkActions}</div>}
+      </div>
+
+      <div
+        role="group"
+        aria-label="แบ่งประเภทสินค้า"
+        className="flex flex-wrap gap-2 px-4 pb-3 sm:px-5"
+      >
+        {quickCategories
+          .filter(
+            (c) =>
+              !c.value ||
+              inventoryScope === 'all' ||
+              (inventoryScope === 'devices' ? c.value !== 'ACCESSORY' : c.value === 'ACCESSORY'),
+          )
+          .map((category) => (
+            <button
+              key={category.value}
+              type="button"
+              aria-pressed={filterCategory === category.value}
+              onClick={() => setFilterCategory(category.value)}
+              className={cn(
+                'relative min-h-11 cursor-pointer whitespace-nowrap px-1 text-[13px] leading-snug transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-3 sm:text-sm',
+                filterCategory === category.value
+                  ? 'font-semibold text-primary after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-t-full after:bg-primary'
+                  : 'font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground',
+              )}
+            >
+              {category.label}
+            </button>
+          ))}
       </div>
 
       <QueryBoundary
@@ -407,7 +459,8 @@ export function StockListTab({
                 >
                   เรียงตาม
                 </label>
-                <NativeSelect wrapperClassName="max-w-full w-full min-w-0"
+                <NativeSelect
+                  wrapperClassName="max-w-full w-full min-w-0"
                   id={`${id}-sort`}
                   className={selectClass}
                   value={sort?.key ?? ''}
@@ -418,6 +471,7 @@ export function StockListTab({
                   }
                 >
                   <option value="">ล่าสุด</option>
+                  {!accessoryView && <option value="monthlyPayment">ค่างวด BESTCHOICE</option>}
                   {columns
                     .filter((column) => column.sortable && column.label)
                     .map((column) => (
@@ -509,8 +563,9 @@ export function StockListTab({
                             key={column.key}
                             className={cn(
                               'min-w-0',
-                              ['warrantyExpireDate', 'connectivity'].includes(column.key) &&
-                                'col-span-2',
+                              ['imeiSerial', 'warrantyExpireDate', 'connectivity'].includes(
+                                column.key,
+                              ) && 'col-span-2',
                             )}
                           >
                             <dt className="mb-1 text-xs text-muted-foreground leading-snug">
@@ -581,7 +636,12 @@ export function StockListTab({
           </>
         ) : (
           <DataTable
-            className="rounded-none border-0 shadow-none [&_th]:normal-case [&_th]:tracking-normal [&_th]:text-foreground/75"
+            key={`${inventoryScope}-${filterCategory}`}
+            responsive={false}
+            className={cn(
+              'stock-comparison rounded-none border-0 shadow-none [&_th]:normal-case [&_th]:tracking-normal',
+              compact && 'stock-compact',
+            )}
             maxHeight="max(280px, calc(100dvh - 360px))"
             columns={desktopColumns}
             sort={sort}
@@ -593,8 +653,8 @@ export function StockListTab({
             emptyDescription={hasFilters ? 'ลองเปลี่ยนคำค้นหาหรือล้างตัวกรอง' : undefined}
             columnToggle={desktopColumns.some((column) => column.hideable !== false)}
             density="dense"
-            // ผลรวมความกว้างคอลัมน์จริง (≤ ~1,130px ทุกแท็บ) — พอดีจอ 1280 ไม่ต้องเลื่อนแนวนอน
-            minWidth={`${stockTableMinWidth(desktopColumns)}px`}
+            // Relative widths fit the desktop workspace; mobile uses cards above.
+            minWidth="0"
             toolbar={summaryNode}
             pagination={
               listResult
@@ -610,21 +670,22 @@ export function StockListTab({
         )}
       </QueryBoundary>
       <p className="space-y-1 border-t border-border/60 bg-background/30 px-4 py-3 text-xs text-muted-foreground leading-snug sm:px-5">
-        {['', 'PHONE_NEW', 'PHONE_USED', 'TABLET'].includes(filterCategory) && (
+        {!accessoryView && (
           <span className="block">
             วันที่รับเข้าใช้วันที่เข้าสต็อกพร้อมขายล่าสุด · นับวันเฉพาะสินค้าพร้อมขายและจอง
-            {filterCategory === '' && ' · กลุ่มอุปกรณ์ไม่แสดงวันที่'}
+            {inventoryScope === 'all' && !filterCategory && ' · กลุ่มอุปกรณ์ไม่แสดงวันที่'}
           </span>
         )}
-        {!['PHONE_NEW', 'PHONE_USED', 'TABLET'].includes(filterCategory) && (
+        {(accessoryView || (inventoryScope === 'all' && !filterCategory)) && (
           <span className="block">
             {accessoryGroupId ? 'แสดงอุปกรณ์แยกรายชิ้น' : 'อุปกรณ์รวมตามสินค้า รุ่น สี และสาขา'} ·
             คงเหลือนับเฉพาะชิ้นที่พร้อมขายตามตัวกรอง ไม่รวมสินค้าจองและสถานะอื่น
           </span>
         )}
-        {filterCategory !== 'ACCESSORY' && (
+        {!accessoryView && (
           <span className="block">
-            ดาวน์และค่างวดเริ่มต้นของ BESTCHOICE ตามเงื่อนไขประเภทสินค้าและจำนวนงวดที่แสดง
+            BESTCHOICE / GFIN: บรรทัดบนคือเงินดาวน์ · บรรทัดล่างคือค่างวดต่อเดือน × จำนวนงวด ·
+            ตามเงื่อนไขที่ตั้งไว้
           </span>
         )}
       </p>

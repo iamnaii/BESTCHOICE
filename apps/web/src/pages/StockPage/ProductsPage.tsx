@@ -63,7 +63,8 @@ export default function StockProductsPage() {
     clearFilters,
     filterStatus,
     setFilterStatus,
-    filterDeviceOrigin, setFilterDeviceOrigin,
+    filterDeviceOrigin,
+    setFilterDeviceOrigin,
     filterCategory,
     setFilterCategory,
     accessoryGroupId,
@@ -166,6 +167,7 @@ export default function StockProductsPage() {
         isManager,
         view,
         filterCategory,
+        inventoryScope: products.inventoryScope,
         listProducts,
         selectableProducts,
         selectedIds,
@@ -175,6 +177,7 @@ export default function StockProductsPage() {
         openPriceEdit,
         setAccessoryGroupId,
         installments: installmentPlans.installments,
+        gfinInstallments: installmentPlans.gfinInstallments,
       }),
     [
       isManager,
@@ -189,6 +192,8 @@ export default function StockProductsPage() {
       openPriceEdit,
       setAccessoryGroupId,
       installmentPlans.installments,
+      installmentPlans.gfinInstallments,
+      products.inventoryScope,
     ],
   );
 
@@ -220,7 +225,15 @@ export default function StockProductsPage() {
             <DropdownMenuContent align="end" className="w-60">
               <DropdownMenuItem
                 className="min-h-11 cursor-pointer"
-                onSelect={() => { const params = new URLSearchParams(searchParams); ['view','page','category','status','aging','accessoryGroupId','q'].forEach(key=>params.delete(key)); params.set('inventoryScope', products.inventoryScope); if (filterBranch) params.set('branchId', filterBranch); navigate(`/stock?${params}`); }}
+                onSelect={() => {
+                  const params = new URLSearchParams(searchParams);
+                  ['view', 'page', 'category', 'status', 'aging', 'accessoryGroupId', 'q'].forEach(
+                    (key) => params.delete(key),
+                  );
+                  params.set('inventoryScope', products.inventoryScope);
+                  if (filterBranch) params.set('branchId', filterBranch);
+                  navigate(`/stock?${params}`);
+                }}
               >
                 <BarChart3 aria-hidden="true" />
                 ดูภาพรวมคลัง
@@ -299,7 +312,9 @@ export default function StockProductsPage() {
                 </div>
               )}
             </div>
-            <button data-ui-control="button" data-ui-icon="true"
+            <button
+              data-ui-control="button"
+              data-ui-icon="true"
               type="button"
               onClick={() => setBulkResult(null)}
               aria-label="ปิดสรุป"
@@ -337,8 +352,18 @@ export default function StockProductsPage() {
           </p>
         </div>
       )}
-      <InventoryScopeFilter value={products.inventoryScope} onValueChange={products.setInventoryScope} />
-      {products.aging && <div className="mb-4 flex flex-wrap items-center gap-3 text-sm"><span>กำลังแสดง: ค้างสต๊อกเกิน 90 วัน</span><Button variant="outline" onClick={products.clearAging}>ล้างช่วงอายุ</Button></div>}
+      <InventoryScopeFilter
+        value={products.inventoryScope}
+        onValueChange={products.setInventoryScope}
+      />
+      {products.aging && (
+        <div className="mb-4 flex flex-wrap items-center gap-3 text-sm">
+          <span>กำลังแสดง: ค้างสต๊อกเกิน 90 วัน</span>
+          <Button variant="outline" onClick={products.clearAging}>
+            ล้างช่วงอายุ
+          </Button>
+        </div>
+      )}
       <StockListTab
         inventoryScope={products.inventoryScope}
         filterDeviceOrigin={filterDeviceOrigin}

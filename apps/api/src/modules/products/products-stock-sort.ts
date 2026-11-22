@@ -1,3 +1,5 @@
+import { loadTemplateTerms } from '../../utils/pricing-template-terms.util';
+import { positiveDecimal } from '../../utils/pricing-template-match.util';
 import { Prisma } from '@prisma/client';
 import Decimal from 'decimal.js';
 import {
@@ -10,7 +12,10 @@ import { KNOWN_ACCESSORY_TYPES } from '../../utils/accessory-type.util';
 import { resolveBcConfig } from '../interest-config/resolve-bc-config';
 import { CASH_LABEL, FINANCE_LABEL, INSTALLMENT_LABEL } from '../../utils/product-price-sync.util';
 
-type Candidate = { key: string; category: string; value: string | number | null };
+type Candidate = Parameters<typeof loadTemplateTerms>[1][number] & {
+  key: string;
+  value: string | number | null;
+};
 const collator = new Intl.Collator('th', { numeric: true, sensitivity: 'base' });
 const numericKeys = new Set<StockSortKey>([
   'storage',
@@ -85,22 +90,35 @@ export async function sortedStockPageKeys(
     : Prisma.sql`SELECT * FROM filtered`;
   const candidates = await tx.$queryRaw<Candidate[]>(Prisma.sql`
     WITH filtered AS (${filtered}), priced AS (${priced})
-    SELECT md5(p.group_key) AS key, MIN(p.category::text) AS category,
+    SELECT md5(p.group_key) AS key, md5(p.group_key) AS id, MIN(p.category::text) AS category,
+      MIN(p.brand) AS brand, MIN(p.model) AS model, MIN(p.storage) AS storage,
+      MIN(p.device_origin::text) AS "deviceOrigin", BOOL_OR(p.warranty_expired) AS "warrantyExpired",
+      MIN(p.warranty_expire_date) AS "warrantyExpireDate",
       (${valueExpression(key, grouped)})::text AS value
     FROM priced p LEFT JOIN branches b ON b.id = p.branch_id
     GROUP BY p.group_key
   `);
   const configs = new Map<string, BcConfigJson>();
   if (isQuote) {
+    const terms = await loadTemplateTerms(tx, candidates);
     for (const category of new Set(candidates.map((row) => row.category))) {
       if (['PHONE_NEW', 'PHONE_USED', 'TABLET'].includes(category)) {
         configs.set(category, await resolveBcConfig(tx, category));
       }
     }
     for (const row of candidates) {
+      const template = terms.get(row.key);
+      const price = row.value == null ? null : new Decimal(row.value);
       const quote = computeDefaultBcInstallment(
         row.value == null ? null : new Decimal(row.value).toNumber(),
         configs.get(row.category),
+        {
+          months: template?.rate1TermMonths,
+          downAmount:
+            price && positiveDecimal(template?.bcPrice)?.equals(price)
+              ? positiveDecimal(template?.rate1DownPayment)?.toNumber()
+              : null,
+        },
       );
       row.value = (key === 'downPayment' ? quote?.downAmount : quote?.monthlyPayment) ?? null;
     }

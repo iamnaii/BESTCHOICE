@@ -31,9 +31,16 @@ export function useStockProducts() {
   const [searchParams, updateParams] = useLatestSearchParams();
   const isManager = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
 
-  const { inventoryScope, setInventoryScope } = useStockInventoryScope('all', [searchParams, updateParams]);
+  const { inventoryScope, setInventoryScope } = useStockInventoryScope('all', [
+    searchParams,
+    updateParams,
+  ]);
   const aging = searchParams.get('aging') === 'over90' ? 'over90' : undefined;
-  const clearAging = () => updateParams(next => { next.delete('aging'); next.delete('page'); });
+  const clearAging = () =>
+    updateParams((next) => {
+      next.delete('aging');
+      next.delete('page');
+    });
   const filterBranch = searchParams.get('branchId') ?? '';
   const view: StockView = searchParams.get('view') === 'all' ? 'all' : 'ready';
   // ตัวกรองสถานะมีผลเฉพาะมุมมอง "ทั้งหมด" — ในมุมมองพร้อมขาย สถานะถูกล็อกเป็น IN_STOCK
@@ -84,7 +91,10 @@ export function useStockProducts() {
     },
     [updateParams],
   );
-  const filterDeviceOrigin = searchParams.get('deviceOrigin') ?? '';
+  const filterDeviceOrigin =
+    inventoryScope === 'accessories' || filterCategory === 'ACCESSORY'
+      ? ''
+      : (searchParams.get('deviceOrigin') ?? '');
   const setFilterDeviceOrigin = (value: string) => {
     updateParams((next) => {
       if (value) next.set('deviceOrigin', value);
@@ -122,6 +132,7 @@ export function useStockProducts() {
         next.delete('accessoryGroupId');
         next.delete('sortBy');
         next.delete('sortDirection');
+        if (v === 'ACCESSORY') next.delete('deviceOrigin');
         if (v) next.set('category', v);
         else next.delete('category');
         next.delete('page');
@@ -180,7 +191,8 @@ export function useStockProducts() {
     setSelectedIds(new Set());
   }, [
     view,
-    inventoryScope, aging,
+    inventoryScope,
+    aging,
     filterBranch,
     filterStatus,
     filterCategory,
@@ -232,7 +244,9 @@ export function useStockProducts() {
   }>({
     queryKey: [
       'stock-list',
-      view, inventoryScope, aging,
+      view,
+      inventoryScope,
+      aging,
       sort?.key,
       sort?.direction,
       debouncedSearch,
@@ -448,7 +462,8 @@ export function useStockProducts() {
     setFilterBranch,
     filterStatus,
     setFilterStatus,
-    filterDeviceOrigin, setFilterDeviceOrigin,
+    filterDeviceOrigin,
+    setFilterDeviceOrigin,
     filterCategory,
     setFilterCategory,
     accessoryGroupId,
@@ -465,7 +480,10 @@ export function useStockProducts() {
     view,
     setView,
     viewCounts: listQuery.data?.unitCounts ?? listQuery.data?.viewCounts,
-    inventoryScope, setInventoryScope, aging, clearAging,
+    inventoryScope,
+    setInventoryScope,
+    aging,
+    clearAging,
     listLoading: listQuery.isLoading,
     listError: listQuery.isError,
     listErrorObj: listQuery.error,

@@ -1216,3 +1216,57 @@ describe('ProductsService.remove — เครื่องที่ลงบั�
     expect(prisma.product.update).toHaveBeenCalled();
   });
 });
+
+describe('ProductsService stock list template terms', () => {
+  it('batch-loads per-model terms for the current page without exposing template cost fields', async () => {
+    const row = {
+      id: 'p1',
+      category: 'PHONE_NEW',
+      brand: 'Apple',
+      model: 'iPhone 15',
+      storage: '128GB',
+      deviceOrigin: 'THAI',
+      warrantyExpired: null,
+      warrantyExpireDate: null,
+    };
+    const pricingTemplate = {
+      findMany: jest
+        .fn()
+        .mockResolvedValue([
+          {
+            id: 't',
+            category: 'PHONE_NEW',
+            brand: 'Apple',
+            model: 'iPhone 15',
+            storage: '128GB',
+            deviceOrigin: 'UNSPECIFIED',
+            hasWarranty: false,
+            installmentBestchoicePrice: new Prisma.Decimal(25000),
+            rate1DownPayment: new Prisma.Decimal(5000),
+            rate1TermMonths: 6,
+            rate2TermMonths: 12,
+            costPrice: new Prisma.Decimal(18000),
+          },
+        ]),
+    };
+    const prisma = {
+      product: {
+        findMany: jest.fn().mockResolvedValue([row, { ...row, id: 'p2' }]),
+        count: jest.fn().mockResolvedValue(2),
+      },
+      pricingTemplate,
+    };
+    const service = new ProductsService(prisma as unknown as PrismaService);
+    const result = await service.findAll({ inventoryScope: 'devices' });
+    expect(pricingTemplate.findMany).toHaveBeenCalledTimes(1);
+    expect(result.data.map((p) => p.templateTerms)).toEqual(
+      [1, 2].map(() => ({
+        bcPrice: '25000',
+        rate1DownPayment: '5000',
+        rate1TermMonths: 6,
+        rate2TermMonths: 12,
+      })),
+    );
+    expect(result.data[0].templateTerms).not.toHaveProperty('costPrice');
+  });
+});

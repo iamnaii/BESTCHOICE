@@ -109,6 +109,19 @@ export class ProductsService {
   constructor(private readonly basePrisma: PrismaService) {}
 
   async findAll(filters: StockListFilters) {
+    const result = await this.findAllRows(filters);
+    // One batch per page; use the same model terms as the product detail quote.
+    const terms = await loadTemplateTerms(this.prisma, result.data);
+    return {
+      ...result,
+      data: result.data.map((product) => ({
+        ...product,
+        templateTerms: terms.get(product.id) ?? null,
+      })),
+    };
+  }
+
+  private async findAllRows(filters: StockListFilters) {
     if (filters.compatibleWithProductId && (filters.groupAccessories || filters.accessoryGroupId || filters.sortBy)) {
       throw new BadRequestException('ตัวกรองของแถมใช้กับรายการสินค้าแต่ละชิ้นเท่านั้น');
     }

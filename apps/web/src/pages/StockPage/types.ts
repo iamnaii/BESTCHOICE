@@ -1,4 +1,5 @@
 export interface StockProduct {
+  templateTerms?: import('@/pages/ProductDetailPage/utils/resolveQuotes').TemplateTermsJson | null;
   deviceOrigin?: 'THAI' | 'IMPORTED' | null;
   shopWarrantyDays?: number | null;
   effectiveShopWarrantyDays?: number | null;
@@ -67,10 +68,28 @@ export interface BreakdownItem {
 
 export interface StockDashboard {
   salesAnalytics?: {
-    asOf: string; month: string; startDate: string;
-    nativeIncluded: boolean; importedIncluded: boolean; unattributedCount: number;
-    current: { count: number; nativeCount: number; importedCount: number; giftCount: number; unknownCount: number; revenue: string };
-    previous: { count: number; nativeCount: number; importedCount: number; giftCount: number; unknownCount: number; revenue: string };
+    asOf: string;
+    month: string;
+    startDate: string;
+    nativeIncluded: boolean;
+    importedIncluded: boolean;
+    unattributedCount: number;
+    current: {
+      count: number;
+      nativeCount: number;
+      importedCount: number;
+      giftCount: number;
+      unknownCount: number;
+      revenue: string;
+    };
+    previous: {
+      count: number;
+      nativeCount: number;
+      importedCount: number;
+      giftCount: number;
+      unknownCount: number;
+      revenue: string;
+    };
   };
   stockAging: AgingBucket[];
   actionRequired: {

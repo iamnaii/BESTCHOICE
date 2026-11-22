@@ -141,6 +141,8 @@ export async function replayItem(
     resolution: stored,
     payload: {
       ...item.original,
+      brand: item.decision.accessoryCompatibility?.brand ?? item.original.brand,
+      model: item.decision.accessoryCompatibility?.model ?? item.original.model,
       deviceOrigin: item.decision.deviceOrigin,
       desiredStatus: item.decision.desiredStatus,
       priceEvidence: item.decision.evidenceRef,

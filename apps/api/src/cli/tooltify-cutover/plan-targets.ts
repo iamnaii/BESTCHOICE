@@ -1,3 +1,4 @@
+import { isReviewedZeroPriceGift, validAccessoryCompatibility } from './gift-accessory';
 import { resolveStockSupplier } from './supplier-link';
 import { BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -190,6 +191,8 @@ async function evaluateStock(db: Db, item: PlannedStockItem): Promise<PlannedSto
   const branch = await readBranch(db, raw.branchId);
   const payload = {
     ...raw,
+    brand: decision?.accessoryCompatibility?.brand ?? raw.brand,
+    model: decision?.accessoryCompatibility?.model ?? raw.model,
     desiredStatus: decision?.desiredStatus ?? null,
     deviceOrigin: decision?.deviceOrigin ?? raw.deviceOrigin,
     priceEvidence: decision?.evidenceRef ?? null,
@@ -248,7 +251,14 @@ async function evaluateStock(db: Db, item: PlannedStockItem): Promise<PlannedSto
     (raw.kind === 'ACCESSORY' && decision.deviceOrigin !== null)
   )
     reason = 'INVALID_DEVICE_ORIGIN';
-  else if (payload.desiredStatus === 'IN_STOCK' && !hasSellingPrice(payload))
+  else if (!validAccessoryCompatibility(raw, decision)) reason = 'INVALID_ACCESSORY_COMPATIBILITY';
+  else if (decision.zeroPriceGift !== undefined && !isReviewedZeroPriceGift(raw, decision))
+    reason = 'INVALID_ZERO_PRICE_GIFT';
+  else if (
+    payload.desiredStatus === 'IN_STOCK' &&
+    !hasSellingPrice(payload) &&
+    !isReviewedZeroPriceGift(raw, decision)
+  )
     reason = 'MISSING_SELLING_PRICE';
 
   const observedTargets = await findStockTargets(db, item);
@@ -312,8 +322,8 @@ async function evaluateStock(db: Db, item: PlannedStockItem): Promise<PlannedSto
       target.status !== payload.desiredStatus ||
       (target.ownedByCompanyId !== null && target.ownedByCompanyId !== branch?.companyId) ||
       target.category !== raw.category ||
-      target.brand !== raw.brand ||
-      target.model !== raw.model ||
+      target.brand !== payload.brand ||
+      target.model !== payload.model ||
       target.storage !== raw.storage ||
       target.color !== raw.color ||
       target.deviceOrigin !== payload.deviceOrigin ||
@@ -342,7 +352,9 @@ async function evaluateStock(db: Db, item: PlannedStockItem): Promise<PlannedSto
             (price.isDefault && column === 'financePrice'))
         );
       }) ||
-      (payload.desiredStatus === 'IN_STOCK' && !hasSellingPrice(target))
+      (payload.desiredStatus === 'IN_STOCK' &&
+        !hasSellingPrice(target) &&
+        !isReviewedZeroPriceGift(raw, decision))
     )
       reason = 'STOCK_TARGET_CONFLICT';
     if (!reason) reason = await stockEligibilityIssue(db, target);

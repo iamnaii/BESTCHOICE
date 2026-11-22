@@ -1,3 +1,4 @@
+import { isReviewedZeroPriceGift } from './gift-accessory';
 import type { Prisma } from '@prisma/client';
 import { hasSellingPrice } from '../../modules/products/product-enter-stock.util';
 import { autofillProductPriceFromTemplate } from '../../utils/product-price-autofill.util';
@@ -67,7 +68,11 @@ export async function writeStockItem(
     where: { id: product.id },
     include: { prices: { where: { deletedAt: null } } },
   });
-  if (payload.desiredStatus === 'IN_STOCK' && !hasSellingPrice(priced))
+  if (
+    payload.desiredStatus === 'IN_STOCK' &&
+    !hasSellingPrice(priced) &&
+    !isReviewedZeroPriceGift(payload, decision)
+  )
     throw Error('MISSING_SELLING_PRICE');
   for (const column of ['cashPrice', 'installmentPrice', 'financePrice'] as const) {
     const expected = resolution[column];

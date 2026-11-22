@@ -1,3 +1,4 @@
+import { isAccessoryCompatible } from '@installment/shared';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { afterAll, expect, it, vi } from 'vitest';
 import { hasSellingPrice } from '../../../modules/products/product-enter-stock.util';
@@ -467,3 +468,147 @@ it.each([false, true])(
     ).toBe(1);
   },
 );
+
+it('imports an explicitly reviewed zero-price gift with declared fit and preserves replay', async () => {
+  const input = await stockInput(db);
+  const row = input.rows[0];
+  row.kind = row.category = 'ACCESSORY';
+  row.barcode = input.manifest.canonicalSetId;
+  row.name = 'Film iPhone 14 - iStar';
+  row.brand = 'iStar';
+  row.model = row.name;
+  row.sourceKey = hashImportValue([
+    input.manifest.canonicalSetId,
+    row.source.fileSha256,
+    row.source.sheet,
+    row.source.row,
+    1,
+  ]);
+  Object.assign(decision(input), {
+    zeroPriceGift: true,
+    accessoryCompatibility: { brand: 'Apple', model: 'iPhone 14' },
+    pricing: {
+      mode: 'EXPLICIT',
+      cashPrice: '0.00',
+      installmentPrice: '0.00',
+      financePrice: '0.00',
+    },
+  });
+  input.decisions.entries.push({
+    ...input.decisions.entries[0],
+    action: 'MAP_ACCESSORY_UNITS',
+    sku: row.barcode,
+    checkedQuantity: 1,
+    assignments: [{ row: row.source.row, targetId: null }],
+  });
+  const before = await protectedCounts();
+  const plan = await planFor(input);
+  expect(plan.issues).toEqual([]);
+  const receipt = await applyBatch(db, plan, write);
+  expect(await applyBatch(db, plan, write)).toEqual(receipt);
+  const p = await db.product.findFirstOrThrow({ where: { branchId: row.branchId } });
+  expect(p).toMatchObject({
+    name: row.name,
+    brand: 'Apple',
+    model: 'iPhone 14',
+    status: 'IN_STOCK',
+    imeiSerial: null,
+  });
+  expect([p.cashPrice, p.installmentPrice, p.financePrice].map((v) => v?.toFixed(2))).toEqual([
+    '0.00',
+    '0.00',
+    '0.00',
+  ]);
+  expect(
+    isAccessoryCompatible(p, { brand: 'Apple', model: 'iPhone 14', category: 'PHONE_USED' }),
+  ).toBe(true);
+  expect(
+    isAccessoryCompatible(p, { brand: 'Apple', model: 'iPhone 15', category: 'PHONE_USED' }),
+  ).toBe(false);
+  expect(await protectedCounts()).toEqual(before);
+});
+
+it.each(['DEVICE', 'MISSING_APPROVAL', 'NONZERO', 'TEMPLATE', 'INVALID_FIT'])(
+  'blocks invalid gift exception %s',
+  async (variant) => {
+    const input = await stockInput(db);
+    const row = input.rows[0];
+    if (variant !== 'DEVICE') {
+      row.kind = row.category = 'ACCESSORY';
+      row.barcode = input.manifest.canonicalSetId;
+      row.sourceKey = hashImportValue([
+        input.manifest.canonicalSetId,
+        row.source.fileSha256,
+        row.source.sheet,
+        row.source.row,
+        1,
+      ]);
+      input.decisions.entries.push({
+        ...input.decisions.entries[0],
+        action: 'MAP_ACCESSORY_UNITS',
+        sku: row.barcode,
+        checkedQuantity: 1,
+        assignments: [{ row: row.source.row, targetId: null }],
+      });
+    }
+    Object.assign(decision(input), {
+      ...(variant !== 'MISSING_APPROVAL' ? { zeroPriceGift: true } : {}),
+      ...(variant === 'INVALID_FIT'
+        ? { accessoryCompatibility: { brand: '', model: 'iPhone 14' } }
+        : {}),
+      pricing:
+        variant === 'TEMPLATE'
+          ? { mode: 'TEMPLATE' }
+          : {
+              mode: 'EXPLICIT',
+              cashPrice: variant === 'NONZERO' ? '1.00' : '0.00',
+              installmentPrice: '0.00',
+              financePrice: '0.00',
+            },
+    });
+    const plan = await planFor(input);
+    expect(plan.issues.length).toBeGreaterThan(0);
+    expect(plan.items[0].disposition).toBe('CONFLICT');
+  },
+);
+
+it('never projects unrecognized compatibility properties onto source business fields', async () => {
+  const input = await stockInput(db);
+  const row = input.rows[0];
+  row.kind = row.category = 'ACCESSORY';
+  row.barcode = input.manifest.canonicalSetId;
+  row.sourceKey = hashImportValue([
+    input.manifest.canonicalSetId,
+    row.source.fileSha256,
+    row.source.sheet,
+    row.source.row,
+    1,
+  ]);
+  input.decisions.entries.push({
+    ...input.decisions.entries[0],
+    action: 'MAP_ACCESSORY_UNITS',
+    sku: row.barcode,
+    checkedQuantity: 1,
+    assignments: [{ row: row.source.row, targetId: null }],
+  });
+  Object.assign(decision(input), {
+    accessoryCompatibility: {
+      brand: 'Apple',
+      model: 'iPhone 14',
+      cost: '1.00',
+      name: 'injected',
+      category: 'PHONE_USED',
+      branchId: 'injected',
+      source: { row: 999 },
+    },
+  });
+  const plan = await planFor(input);
+  expect(stock(plan.items[0]).payload).toMatchObject({
+    cost: row.cost,
+    name: row.name,
+    category: row.category,
+    branchId: row.branchId,
+    source: row.source,
+  });
+  expect(plan.issues.map((issue) => issue.code)).toContain('INVALID_ACCESSORY_COMPATIBILITY');
+});

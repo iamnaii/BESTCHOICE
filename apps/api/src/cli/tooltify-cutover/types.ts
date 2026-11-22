@@ -68,6 +68,8 @@ export type SourceDecision = {
   | {
       action: 'RESOLVE_STOCK';
       reviewedArchivedTargetIds?: string[];
+      zeroPriceGift?: true;
+      accessoryCompatibility?: { brand: string; model: string };
       supplier?: SupplierLinkDecision;
       desiredStatus: 'IN_STOCK' | 'QC_PENDING';
       deviceOrigin: DeviceOrigin | null;

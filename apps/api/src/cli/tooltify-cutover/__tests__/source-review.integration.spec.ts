@@ -24,6 +24,7 @@ type StockSummaryCase = [
   explicitTotals: string[],
   reportedCost: string | null,
   delta: string | null,
+  precedingGroupTotal?: string,
 ];
 
 it.each<StockSummaryCase>([
@@ -32,6 +33,15 @@ it.each<StockSummaryCase>([
   ['explicit total without basis', undefined, '13800.00', ['26,300.00'], '26300.00', '0.00'],
   ['blank explicit total', 'EXTENDED', '26300.00', [''], null, null],
   ['malformed explicit total', 'EXTENDED', '26300.00', ['26300.000'], null, null],
+  [
+    'malformed explicit total after a valid group',
+    'EXTENDED',
+    '12500.00',
+    ['12500.000'],
+    null,
+    null,
+    '13800.00',
+  ],
   ['duplicate explicit totals', 'EXTENDED', '26300.00', ['26300.00', '26300.00'], null, null],
   ['incorrect explicit total', 'EXTENDED', '26300.00', ['26300.01'], '26300.01', '0.01'],
   ['displayed cost and PER_UNIT', 'PER_UNIT', '13150.00', [], '26300.00', '0.00'],
@@ -39,7 +49,7 @@ it.each<StockSummaryCase>([
   ['displayed cost without basis', undefined, '26300.00', [], null, null],
 ])(
   'reviews grouped stock costs with %s',
-  async (_name, basis, displayedCost, explicitTotals, reportedCost, delta) => {
+  async (_name, basis, displayedCost, explicitTotals, reportedCost, delta, precedingGroupTotal) => {
     const dir = await mkdtemp(join(tmpdir(), 'tt-stock-summary-'));
     try {
       const seed = await stockInput(db, 2);
@@ -47,6 +57,27 @@ it.each<StockSummaryCase>([
         ...seed.manifest.files[0],
         path: join(dir, 'report_stock_2026-11-19.xlsx'),
       };
+      const summaryRows: (string | number)[][] = [];
+      if (precedingGroupTotal)
+        summaryRows.push([
+          'Earlier fixture',
+          'iPhone มือ 1',
+          '-',
+          '-',
+          1,
+          precedingGroupTotal,
+          precedingGroupTotal,
+        ]);
+      summaryRows.push([
+        'Fixture',
+        'iPhone มือ 1',
+        '-',
+        '-',
+        2 - summaryRows.length,
+        displayedCost,
+        ...explicitTotals,
+      ]);
+      const detailRows = [summaryRows.length + 3, summaryRows.length + 4];
       const workbook = new ExcelJS.Workbook();
       workbook
         .addWorksheet('Worksheet')
@@ -60,11 +91,11 @@ it.each<StockSummaryCase>([
             'ต้นทุนสินค้า',
             ...explicitTotals.map(() => 'รวมต้นทุน'),
           ],
-          ['Fixture', 'iPhone มือ 1', '-', '-', 2, displayedCost, ...explicitTotals],
+          ...summaryRows,
           STOCK_COLUMNS,
           ...['13800.00', '12500.00'].map((cost, index) => [
             seed.rows[index].barcode,
-            'Fixture',
+            precedingGroupTotal && index === 0 ? 'Earlier fixture' : 'Fixture',
             'iPhone มือ 1',
             '-',
             '-',
@@ -82,7 +113,7 @@ it.each<StockSummaryCase>([
       const entries = seed.decisions.entries.map((entry) => ({
         ...entry,
         fileSha256: file.sha256,
-        sourceRows: [4, 5],
+        sourceRows: detailRows,
         ...(entry.action === 'SELECT_SNAPSHOT' && basis ? { summaryCostBasis: basis } : {}),
       }));
       const path = join(dir, 'manifest.json');
@@ -121,11 +152,11 @@ it.each<StockSummaryCase>([
       });
       expect(plan.items).toEqual([
         expect.objectContaining({
-          source: { fileSha256: file.sha256, sheet: 'Worksheet', row: 4 },
+          source: { fileSha256: file.sha256, sheet: 'Worksheet', row: detailRows[0] },
           cost: '13800.00',
         }),
         expect.objectContaining({
-          source: { fileSha256: file.sha256, sheet: 'Worksheet', row: 5 },
+          source: { fileSha256: file.sha256, sheet: 'Worksheet', row: detailRows[1] },
           cost: '12500.00',
         }),
       ]);

@@ -720,6 +720,53 @@ describe('Tooltify source inspection', () => {
     );
   });
 
+  it('lists the extended stock cost heading in both inspection artifacts', async () => {
+    const headings = [
+      'ชื่อสินค้า',
+      'หมวดหมู่สินค้า',
+      'แหล่งที่มา',
+      'รายละเอียดสินค้า',
+      'จำนวน',
+      'ต้นทุนสินค้า',
+      'รวมต้นทุน',
+    ];
+    const source = await writeWorkbook('report_stock_2026-11-19_fixture.xlsx', [
+      headings,
+      ['fixture-name', 'iPhone มือ 1', '-', '-', 1, 8000, 8000],
+      STOCK_COLUMNS,
+      [
+        '012345678901234',
+        'fixture-name',
+        'iPhone มือ 1',
+        '-',
+        '-',
+        '-',
+        '2026-11-18',
+        '-',
+        8000,
+        1,
+      ],
+    ]);
+    const output = join(dir, 'private-output');
+    const cli = resolve(__dirname, '../../tooltify-cutover.cli.ts');
+    const result = spawnSync(process.execPath, [
+      '--import',
+      'tsx',
+      cli,
+      'inspect',
+      '--out-dir',
+      output,
+      source,
+    ]);
+
+    expect(result.status).toBe(0);
+    const report = JSON.parse(await readFile(join(output, 'inspection.json'), 'utf8'));
+    expect(report.files[0].sections).toContainEqual(
+      expect.objectContaining({ label: 'สรุปสต๊อก', columns: headings }),
+    );
+    expect(await readFile(join(output, 'inspection.csv'), 'utf8')).toContain(headings.join(' | '));
+  });
+
   it('writes private JSON and CSV through the CLI without a database', async () => {
     const source = await writeSales();
     const privateAliasText = 'fixture-secret-in-a-filename';

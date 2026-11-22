@@ -15,7 +15,8 @@ import type { StockProduct } from '../types';
 
 /**
  * มุมมองของหน้ารายการสินค้า (คำขอเจ้าของ 2026-09-11 — แบ่ง "สินค้าทั้งหมด" กับ "สินค้าในสต๊อกพร้อมขาย"):
- * `ready` = ค่าเริ่มต้น เห็นเฉพาะ IN_STOCK (ตัวกรองสถานะถูกซ่อน) · `all` = ทุกสถานะ + ตัวกรองสถานะเดิม
+ * `ready` = ค่าเริ่มต้น เห็นเฉพาะ IN_STOCK · `all` = ทุกสถานะหรือสถานะอื่นที่เลือก
+ * UI ใช้ select สถานะเดียว; คง view ใน URL เพื่อรองรับลิงก์เดิม
  * เก็บใน URL `?view=all` ให้แชร์ลิงก์/กดกลับแล้วได้มุมมองเดิม
  */
 export type StockView = 'ready' | 'all';
@@ -118,7 +119,9 @@ export function useStockProducts() {
   const setFilterStatus = useCallback(
     (v: string) => {
       updateParams((next) => {
-        if (v) next.set('status', v);
+        // One visible status control; keep existing ready/all URLs compatible.
+        next.set('view', v === 'IN_STOCK' ? 'ready' : 'all');
+        if (v && v !== 'IN_STOCK') next.set('status', v);
         else next.delete('status');
         next.delete('page');
       });
@@ -147,6 +150,7 @@ export function useStockProducts() {
   const clearFilters = useCallback(() => {
     setSearch('');
     updateParams((next) => {
+      next.set('view', 'all');
       [
         'aging',
         'q',

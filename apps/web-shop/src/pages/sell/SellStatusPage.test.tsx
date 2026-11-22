@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, expect, it, vi } from 'vitest';
@@ -68,6 +68,20 @@ it('describes the instant estimate without confirming a final in-store price', a
   expect(screen.getByText(/ราคายืนยันจริงตอนตรวจเครื่องที่ร้าน/)).toBeInTheDocument();
   expect(screen.queryByText('การหักที่ไม่ได้ใช้')).not.toBeInTheDocument();
   expect(screen.queryByText('ยืนยันราคาแล้ว')).not.toBeInTheDocument();
+});
+it('continues the submitted request in LINE and links to the shop map', async () => {
+  mount();
+  await screen.findByText('มูลค่าเครดิตเทิร์นโดยประมาณ');
+  const contact = within(screen.getByRole('region', { name: 'ติดต่อร้านเรื่องขายหรือเทิร์น' }));
+  const url = new URL(contact.getByRole('link', { name: 'ทัก LINE' }).getAttribute('href')!);
+  expect(url.pathname).toBe('/R/oaMessage/%40bestchoice/');
+  const message = decodeURIComponent(url.search.slice(1));
+  expect(message).toContain('local-re');
+  expect(message).toContain('iPhone 17 Pro 256GB');
+  expect(message).toContain('เครดิตเทิร์นโดยประมาณ 30,250 บาท');
+  expect(contact.getByRole('link', { name: 'Google Maps' }).getAttribute('href')).toContain(
+    'query_place_id=ChIJvw20uboBHjERsefpWFx4SPs',
+  );
 });
 it('preserves offer actions for a non-instant appraisal', async () => {
   mocks.get.mockResolvedValue({

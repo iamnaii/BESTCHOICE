@@ -298,7 +298,7 @@ export default function TradeInDetailDialog({ id, onClose, onVoucher, voucherLoa
                       data.quoteBreakdown.cashPrice &&
                       data.quoteBreakdown.exchangePrice && (
                         <div className="flex justify-between gap-4 wrap-anywhere text-muted-foreground">
-                          <span>โบนัสเทิร์น +{Number(data.quoteBreakdown.bonusPct ?? 0)}%</span>
+                          <span>โบนัสเทิร์น</span>
                           <span>
                             +฿
                             {(

@@ -1,3 +1,5 @@
+import Decimal from 'decimal.js';
+
 export interface BuybackChoice {
   id: string;
   label: string;
@@ -46,6 +48,8 @@ export interface BuybackBreakdownLine {
 }
 
 export interface BuybackBreakdown extends BuybackReferenceMetadata {
+  assessedAt?: string;
+  expiresAt?: string;
   maxPrice: string;
   fixedTotal: string;
   pctTotal: string;
@@ -54,10 +58,16 @@ export interface BuybackBreakdown extends BuybackReferenceMetadata {
   cashPrice?: string;
   exchangePrice?: string;
   bonusPct?: string;
+  /** Fixed baht bonus captured with this quote; absent on legacy percentage snapshots. */
+  bonusAmount?: string;
   chosenFlow?: 'BUYBACK' | 'EXCHANGE';
 }
 
 export interface BuybackQuoteResult extends BuybackReferenceMetadata {
+  assessedAt?: string;
+  expiresAt?: string;
+  serverNow?: string;
+  quoteToken?: string;
   available: boolean;
   model?: string;
   storage?: string;
@@ -68,4 +78,18 @@ export interface BuybackQuoteResult extends BuybackReferenceMetadata {
   cashPrice?: string;
   exchangePrice?: string;
   bonusPct?: string;
+  /** Fixed baht bonus captured with this quote; absent on legacy percentage snapshots. */
+  bonusAmount?: string;
+}
+
+/** Current sell/exchange policy. Existing quote snapshots retain their own amounts. */
+export const SELL_EXCHANGE_BONUS_POLICY = {
+  mode: 'TIERED_FIXED', threshold: 20000, lowerBonus: 500, upperBonus: 1000,
+} as const;
+
+export function sellExchangeBonusAmount(cashPrice: string | number): number {
+  const cash = new Decimal(cashPrice);
+  if (!cash.isFinite() || cash.lte(0)) return 0;
+  return cash.lte(SELL_EXCHANGE_BONUS_POLICY.threshold)
+    ? SELL_EXCHANGE_BONUS_POLICY.lowerBonus : SELL_EXCHANGE_BONUS_POLICY.upperBonus;
 }

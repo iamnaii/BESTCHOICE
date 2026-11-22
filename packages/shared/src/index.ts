@@ -7,7 +7,7 @@ export * from './liff-pay-intent';
 export * from './trade-in-declaration';
 export * from './trade-in-evidence';
 export * from './trade-in-credit';
-export type * from './buyback-questionnaire';
+export * from './buyback-questionnaire';
 export { buybackSourceName } from './buyback-source';
 export {
   calcBcInstallment,
@@ -68,3 +68,4 @@ export * from './sale-receipt';
 
 export * from './customer-blacklist';
 export * from './stock-inventory-scope';
+export * from './sell-device-eligibility';

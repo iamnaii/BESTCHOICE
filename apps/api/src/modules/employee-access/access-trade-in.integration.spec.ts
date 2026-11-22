@@ -300,7 +300,7 @@ it('executes the 38 real HTTP routes, including credit journals and payout, then
     200,
   );
   await http('patch', root + '/buyback-choices/' + ch.id, { label: 'Good screen' }).expect(200);
-  await http('put', root + '/sell-config', { exchangeBonusPct: 10 }).expect(200);
+  await http('put', root + '/sell-config', { exchangeBonusPct: 10 }).expect(400);
   for (const path of [
     '',
     '/valuation?brand=Apple&model=iPhone%2015&storage=128GB&condition=A',

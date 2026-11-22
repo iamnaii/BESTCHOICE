@@ -45,12 +45,18 @@ export async function installSellApiFixtures(page: Page): Promise<SellFixtureLog
         body.answers?.find(
           (answer: { questionKey: string }) => answer.questionKey === 'functional-issues',
         )?.choiceIds ?? [];
+      const assessedAt = new Date().toISOString();
       lastQuote = {
+        assessedAt,
+        serverNow: assessedAt,
+        expiresAt: new Date(Date.parse(assessedAt) + 86400000).toISOString(),
+        quoteToken: 'fixture-window',
         available: true,
         price: issues.length ? '12340' : '27500',
         cashPrice: issues.length ? '12340' : '27500',
-        exchangePrice: issues.length ? '13570' : '30250',
-        bonusPct: '10',
+        exchangePrice: issues.length ? '12840' : '28500',
+        bonusPct: '0',
+        bonusAmount: issues.length ? '500' : '1000',
         grade: 'A',
         source: profile?.source,
         capturedAt: profile?.capturedAt,
@@ -98,7 +104,8 @@ export async function installSellApiFixtures(page: Page): Promise<SellFixtureLog
             body.flow === 'EXCHANGE' ? lastQuote?.exchangePrice : lastQuote?.cashPrice,
           quoteBreakdown: {
             ...lastQuote?.breakdown,
-            bonusPct: '10',
+            bonusPct: '0',
+            bonusAmount: lastQuote?.bonusAmount,
             cashPrice: lastQuote?.cashPrice,
             exchangePrice: lastQuote?.exchangePrice,
             chosenFlow: body.flow,

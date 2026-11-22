@@ -51,6 +51,10 @@ export interface GfinSettingsApi {
   downStepPct: number;
   contractFee: number;
   commissionPctByCategory: { PHONE: number; TABLET: number };
+  /** เวอร์ชันใบเงื่อนไข G Finn เช่น "6.5" — API รุ่นก่อน PR 1 ไม่ส่ง */
+  sheetVersion?: string | null;
+  /** วันเริ่มใช้ใบเงื่อนไข YYYY-MM-DD */
+  sheetEffectiveDate?: string | null;
 }
 export interface GfinTables {
   mappings: MaxPriceApi[];

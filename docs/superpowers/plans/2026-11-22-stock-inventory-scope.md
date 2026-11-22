@@ -17,7 +17,7 @@
 - แยก `inventoryScope` จาก `view=ready|all`; เก็บ branch/zone และการกลับหน้าผ่าน URL
 - ทุกตัวเลขกรองที่ server ก่อน aggregate/group/sort/page; dashboard นับหน่วยจริง
 - ไม่เปลี่ยนข้อมูลนำเข้า ราคา IMEI จำนวนของแถม บัญชี หรือสิทธิ์บริษัท/สาขา; ไม่ต้องมี migration
-- ยอดขายใช้แหล่งเดิมและระบุ “ขายใน BESTCHOICE เดือนนี้” / “ไม่รวมประวัติ Tooltify”
+- ยอดขายรวมเหตุการณ์ BESTCHOICE + ประวัติ Tooltify ตามวันขายเดิม (Asia/Bangkok) ตามข้อแก้ไขจากเจ้าของหลังดู mockup; แยกจำนวนของแถมและที่มาของยอด
 - คง cost redaction และ domainAccessClient/currentProductScopeSql ทุกเส้นทาง
 - ใช้ PostgreSQL isolated harness สำหรับ DB tests; ไม่ใช้ฐานจริงหรือฐาน restore ของการย้ายข้อมูลทดสอบเขียน
 - ส่ง local preview จาก checkout ที่แก้จริงพร้อม local:check และ stock-flow checks; ไม่ deploy/merge อัตโนมัติ
@@ -90,6 +90,24 @@
 - [ ] ส่ง query scalar ผ่าน boundary validation + explicit controller dispatch ให้ครบ รวม request เป็น array/object ต้อง 400 ทั้งทาง controller และ boundary; ไม่ขยาย role หรือเปลี่ยน access manifest เพื่อหลบ check
 - [ ] รัน isolated tests ให้ผ่าน, Jest controller tests และ `node tools/check-access-coverage.mjs`; review diff แล้ว commit Task 2
 
+## Task 2A: รวมประวัติขายที่นำเข้า (ข้อแก้ไขหลังดู mockup)
+
+**Files:**
+- Create `apps/api/src/modules/products/services/stock-sales-analytics.service.ts` และ `services/__tests__/stock-sales-analytics.integration.spec.ts`
+- Modify `services/stock-overview.service.ts`, `products.module.ts` และ tests ของ access boundary / cost redaction ที่เกี่ยวข้อง
+- Inspect/reuse ตัวกรองสิทธิ์และ provenance ใน `apps/api/src/modules/imported-sales/` และ `apps/api/src/modules/employee-access/` ก่อนออกแบบ query
+
+- [ ] ยืนยัน native sale-event source จาก schema จริง ไม่ใช้ Product.updatedAt/status แทนประวัติการขายหลายรอบ; ระบุสถานะสำเร็จ ยกเลิก คืนสินค้า และหน่วยต่อ line ให้ชัดและทดสอบตาม workflow จริง
+- [ ] ทำ mapping หมวดนำเข้าไป devices/accessories; หมวดไม่รู้จักรวมใน all โดยมี unknown count ไม่แอบนับเป็นเครื่อง
+- [ ] ใช้ช่วงเดือน [start, end) ตาม Asia/Bangkok กับวันขายเดิมทั้งสองแหล่ง; sales KPI, เดือนก่อน, ขายดี และกราฟฝั่งขายใช้ event set เดียวกัน
+- [ ] สร้าง read-only aggregate แยก native/imported, quantity/gift quantity/revenue พร้อมช่วงข้อมูล; รักษา fields เดิมที่จำเป็นและเพิ่ม metadata ให้ UI อธิบายยอดได้
+- [ ] ImportedSale ไม่มี branch/company columns: ตรวจ migration batch provenance ที่ผูกสาขาและ enforce company/branch grants ก่อน aggregate; ไม่ JOIN ด้วย IMEI เข้าสต๊อกปัจจุบันเพื่อเดาสาขาหรือหมวด
+- [ ] กำหนด exclusion ของ duplicate cross-source event โดย provenance ที่ตรวจยืนยันได้; ถ้ายังไม่มีหลักฐานเชื่อม event ให้ตรวจ overlap ก่อนเปิดใช้จริง ห้าม dedupe ด้วย IMEI หรือยอดเงินอย่างเดียว
+- [ ] ทดสอบ isolated PostgreSQL: IMEI เดิมขาย 2 ครั้งต้องได้ 2, duplicate import replay ไม่บวกเพิ่ม, same event ข้ามแหล่งนับครั้งเดียวเมื่อมี mapping, timezone boundary, void/return, zero-price gifts, unknown category, denied branch และ cost redaction
+- [ ] ใช้ synthetic November fixture 164 devices + 369 gift units = 533 units / revenue 3275269; October 299 + 631 = 930; ไม่ hardcode baseline ใน product code
+- [ ] Drilldown รายละเอียดต้องรวมทั้งสองแหล่งตาม scope/branch/date เดียวกับ KPI และมี source labels; ไม่ใช้ `/imported-sales` เพียงหน้าเดียวเป็นรายละเอียดของยอดรวมโดยไม่มีบริบท
+- [ ] ไม่มี mutation, stock deduction, payment หรือ accounting event จากการอ่าน analytics; ไม่อนุมานรับเข้าย้อนหลังจากยอดขาย
+
 ## Task 3: ให้รายการปลายทางตรงกับ scope/สถานะ/อายุ และนับหน่วยจริง
 
 **Files:**
@@ -139,7 +157,7 @@
 - [ ] เขียน tests keyboard/accessible label/pressed state; controls เลือกหนึ่งค่าเสมอ; zero-products → “—” สำหรับ age/margin และ empty copy; พนักงานไม่เห็นทุนทั้งใน responsive layout และ loading/error states
 - [ ] เขียน tests QC_PENDING แยกจาก INSPECTION และรวมยอดใน action zone; all มี QC 4, devices 3, accessories 1; title งานแสดงเป็นจำนวนงานที่อาจซ้ำสินค้ากัน ไม่อ้างว่าเป็น unique products
 - [ ] รัน `npm run test --workspace=@installment/web -- src/pages/StockPage/OverviewPage.inventory-scope.test.tsx src/pages/StockPage/components/__tests__/StockDashboardCostRedaction.test.tsx` ให้ fail
-- [ ] ทำ UI ตาม spec: control ก่อน KPI, copy scope/device units/cost basis, sales source note + link `/imported-sales`, movement/top-seller source note, visible error/retry และ stable card dimensions; reuse tokens/Lucide/ToggleGroup เดิม
+- [ ] ทำ UI ตาม spec: control ก่อน KPI, copy scope/device units/cost basis, “ขายเดือนนี้” รวมประวัติ / “จ่ายอุปกรณ์เดือนนี้” / “ขาย / จ่ายเดือนนี้”; รายละเอียดแยก native/imported/gifts พร้อมวันที่และลิงก์ประวัติตามแหล่ง, movement/top-seller source note, visible error/retry และ stable card dimensions; reuse tokens/Lucide/ToggleGroup เดิม
 - [ ] รัน tests ให้ผ่าน; ตรวจ diff ไม่มี hardcoded migration totals, dependency ใหม่ หรือการอ่านฐานจริงใน frontend; commit Task 4
 
 ## Task 5: ตรวจครบเส้นทางและส่ง local preview
@@ -162,5 +180,13 @@
 - Harness audit: access-shop เป็น Jest/EMPLOYEE_ACCESS_TEST_DATABASE_URL ใช้ script เฉพาะ; DB specs ใหม่ใช้ Vitest harness; Playwright config ปกติมี globalSetup จึงแยก config ของงานนี้
 - Spec coverage: scope/default/backward compatibility →1; aggregate/access/warranty/transfers →2; lists/units/aging/QC navigation →3; UX/copy/async/empty →4; responsive + real isolated backend →5
 - ชื่อ query/type/method ใช้ inventoryScope/StockInventoryScope ตรงกันทุก task; status view และ inventory scope เป็นคนละแกน
-- ไม่เพิ่มประวัติ Tooltify ลงยอดขายปัจจุบัน ไม่แตะข้อมูลย้ายสำเร็จหรือแก้สูตร margin
-- แนะนำทำตามลำดับ 1→2→3→4→5 ใน session เดียว เพราะ API และ URL contract พึ่งกัน แล้วใช้ reviewer ตรวจทั้งชุดก่อนส่ง งานรอบนี้ส่งมอบ **แผน** ยังไม่ได้เริ่มเขียน product code
+- รวมประวัติ Tooltify ใน analytics ตามข้อแก้ไขของเจ้าของ โดยไม่สร้างยอดขาย/เงินรับซ้ำ ไม่แตะข้อมูลย้ายสำเร็จหรือแก้สูตร margin
+- แนะนำทำตามลำดับ 1→2→2A→3→4→5 เพราะ API และ URL contract พึ่งกัน แล้วใช้ reviewer ตรวจทั้งชุดก่อนส่ง เจ้าของอนุมัติให้ลงมือแล้ว; implementation และการตรวจสอบอยู่ใน worktree นี้ ยังไม่ได้ deploy
+
+## Implementation notes (22 พ.ย. 2569)
+
+- ใช้ real read services ใน preview ฐานทดสอบ พร้อม fixture ประวัติขายจำลองที่มี receipt provenance; ไม่ใช้ข้อมูลลูกค้าจริงหรือราคาจริงเป็น fixture
+- Regression tests ครอบคลุมยอดหมวด 40/608/648 และ QC 3/1/4, หน่วยจริงก่อน pagination, IMEI ขายซ้ำ, วันขายเดิมกรุงเทพ, draft/void, สาขา, legacy/managed source permissions และ current product name projection
+- ยอดรับเข้ากราฟหมายถึงแถวสินค้าที่สร้างใน BESTCHOICE รวมรอบย้ายคลัง; ไม่อ้างว่าเป็นประวัติรับเข้าทั้งหมดจาก Tooltify
+- หน้าประวัติขายเดิมยังไม่มี URL filters ชุดเดียวกับภาพรวม; ลิงก์ระบุว่าเปิดประวัติทั้งหมดตามสิทธิ์เพื่อไม่ทำให้เข้าใจผิดว่าเป็นยอด drilldown ที่กรองแล้ว
+- คงสูตร margin เดิม แต่ไม่รวมราคาศูนย์/ราคาที่ลบ และแสดงเปอร์เซ็นต์ว่างเมื่อทุนรวมเป็นศูนย์

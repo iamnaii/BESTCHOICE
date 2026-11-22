@@ -93,4 +93,16 @@ describe('useStockProducts — เขียน URL ติดกันก่อ�
       page: '2',
     });
   });
+  it('keeps scope and branch/sort writes in the same render', () => {
+    const { result } = setup('/stock/products?zone=finance');
+    act(() => {
+      result.current.q.setInventoryScope('devices');
+      result.current.q.setFilterBranch('b1');
+      result.current.q.setSort({key:'name',direction:'asc'});
+    });
+    expect(paramsOf(result.current.location.search)).toMatchObject({zone:'finance',inventoryScope:'devices',branchId:'b1',sortBy:'name'});
+    act(() => { result.current.q.setFilterBranch('b2'); result.current.q.setInventoryScope('accessories'); });
+    expect(paramsOf(result.current.location.search)).toMatchObject({inventoryScope:'accessories',branchId:'b2'});
+  });
+
 });

@@ -245,15 +245,15 @@ export class AccessShopBoundaries implements OnModuleInit {
     switch (route) {
       case 'ProductsController.findAll': return products().findAll(pagination, req.user, textFilter(query, 'search'), textFilter(query, 'branchId'), status, textFilter(query, 'category'), textFilter(query, 'brand'), textFilter(query, 'supplierId'), textFilter(query, 'model'), textFilter(query, 'storage'), textFilter(query, 'deviceOrigin'), textFilter(query, 'compatibleWithProductId'));
       case 'ProductsController.getStock': return products().getStock(pagination, req.user, textFilter(query, 'search'), textFilter(query, 'branchId'), textFilter(query, 'status'), textFilter(query, 'category'), textFilter(query, 'brand'));
-      case 'ProductsController.getStockDashboard': return products().getStockDashboard(req.user, textFilter(query, 'branchId'));
+      case 'ProductsController.getStockDashboard': return products().getStockDashboard(req.user, textFilter(query, 'branchId'), pagination);
       case 'ProductsController.getBrands': return products().getBrands();
       case 'ProductsController.findAccessorySkus': return products().findAccessorySkus(req.user, textFilter(query, 'search'), textFilter(query, 'limit'));
       case 'ProductsController.getWarrantyExpiring': {
         if (days !== undefined && (!/^\d+$/.test(days) || Number(days) > 3650)) throw new BadRequestException('จำนวนวันไม่ถูกต้อง');
-        return products().getWarrantyExpiring(days, textFilter(query, 'branchId'));
+        return products().getWarrantyExpiring(days, textFilter(query, 'branchId'), pagination);
       }
       case 'ProductsController.getSupplierPerformance': return products().getSupplierPerformance();
-      case 'ProductsController.getPendingTransfers': return products().getPendingTransfers(textFilter(query, 'branchId'));
+      case 'ProductsController.getPendingTransfers': return products().getPendingTransfers(textFilter(query, 'branchId'), pagination);
       case 'ProductsController.getInTransitTransfers': return products().getInTransitTransfers(textFilter(query, 'branchId'));
       case 'ProductsController.getTransferHistory': return products().getTransferHistory(pagination, textFilter(query, 'branchId'), textFilter(query, 'status'), textFilter(query, 'startDate'), textFilter(query, 'endDate'));
       case 'InspectionsController.findAllInspections': return this.modules.get<InspectionsController>(InspectionsController, { strict: false }).findAllInspections(isCompleted, textFilter(query, 'productId'));

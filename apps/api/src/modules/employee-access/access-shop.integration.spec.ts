@@ -15,6 +15,7 @@ import { AccessPolicyService } from './access-policy';
 import { AccessPolicyInterceptor } from './access-policy.interceptor';
 import { ACCESS_BOUNDARIES } from './access-policy.registry';
 import { ProductsController } from '../products/products.controller';
+import { ProductScanService } from '../products/services/product-scan.service';
 import { ProductsService } from '../products/products.service';
 import { ProductsStockService } from '../products/products-stock.service';
 import { ProductsPricingService } from '../products/products-pricing.service';
@@ -74,7 +75,7 @@ beforeAll(async () => {
   await grant(['sensitive.cost.read'], [branchA]);
   const module = await Test.createTestingModule({
     controllers: [ProductsController, InspectionsController, ProductPhotosController],
-    providers: [ProductsService, ProductsStockService, ProductsPricingService, ProductsOnlineListingService, InspectionsService, ProductPhotosService, AccessResourceService, AccessSensitiveService, AccessShopBoundaries, AccessPolicyService, RolesGuard, BranchGuard,
+    providers: [ProductScanService, ProductsService, ProductsStockService, ProductsPricingService, ProductsOnlineListingService, InspectionsService, ProductPhotosService, AccessResourceService, AccessSensitiveService, AccessShopBoundaries, AccessPolicyService, RolesGuard, BranchGuard,
       { provide: PrismaService, useValue: db }, { provide: AccessSnapshotService, useValue: snapshots },
       { provide: StorageService, useValue: { upload: jest.fn(), getPublicUrl: () => 'https://test.invalid/photo' } },
       { provide: APP_INTERCEPTOR, useClass: AccessPolicyInterceptor }],
@@ -273,6 +274,24 @@ test('scoped pricing authority edits price rows without product creation or dele
     await db.accessPosition.update({ where: { id: managerPosition }, data: { isActive: true } });
     await db.accessPosition.update({ where: { id: position }, data: { isActive: false } });
   }
+});
+
+test('stock scope survives the real access adapter and denies malformed or unrelated branch filters', async () => {
+  const gift = await createProduct(branchA, { category: 'ACCESSORY', cashPrice: 0 });
+  const old = await createProduct(branchA, { stockInDate: new Date(Date.now() - 92 * 86400000) });
+  try {
+    const devices = await get(`/products/stock/dashboard?inventoryScope=devices&branchId=${branchA}`).expect(200);
+    const accessories = await get(`/products/stock/dashboard?inventoryScope=accessories&branchId=${branchA}`).expect(200);
+    expect(devices.body.byCategory.every((row: any) => row.name !== 'ACCESSORY')).toBe(true);
+    expect(accessories.body.stockTurnover.currentStock).toBe(1);
+    const scoped = await get(`/products?groupAccessories=true&inventoryScope=devices&aging=over90&status=IN_STOCK&branchId=${branchA}`).expect(200);
+    expect(scoped.body.data.map((r: any) => r.id)).toContain(old.id);
+    expect(scoped.body.data.map((r: any) => r.id)).not.toContain(gift.id);
+    const outside = await get(`/products/stock/dashboard?inventoryScope=all&branchId=${branchC}`).expect(200);
+    expect(outside.body.stockTurnover.currentStock).toBe(0);
+    for (const q of ['inventoryScope=bad','inventoryScope=devices&inventoryScope=all','inventoryScope[x]=devices','aging=bad']) await get(`/products/stock/dashboard?${q}`).expect(400);
+    expect(devices.body.salesAnalytics.importedIncluded).toBe(false);
+  } finally { await db.product.deleteMany({ where: { id: { in: [gift.id, old.id] } } }); }
 });
 
 test('all collection adapters preserve usable response shapes with scoped underlying queries', async () => {

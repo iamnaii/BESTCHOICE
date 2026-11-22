@@ -1,3 +1,5 @@
+import type { StockSalesActor } from './services/stock-sales-analytics.service';
+import type { StockInventoryScope } from '@installment/shared';
 import { domainAccessClient } from '../employee-access/access-execution-context';
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -29,8 +31,8 @@ export class ProductsStockService {
     return this.transfer_.bulkTransfer(dto, userId);
   }
 
-  getPendingTransfers(branchId?: string) {
-    return this.transfer_.getPendingTransfers(branchId);
+  getPendingTransfers(branchId?: string, inventoryScope: StockInventoryScope = 'all') {
+    return this.transfer_.getPendingTransfers(branchId, inventoryScope);
   }
 
   getTransferHistory(filters: {
@@ -67,6 +69,7 @@ export class ProductsStockService {
   // === Stock Overview ===
 
   getStock(filters: {
+    inventoryScope?: StockInventoryScope;
     search?: string;
     branchId?: string;
     status?: string;
@@ -78,12 +81,12 @@ export class ProductsStockService {
     return this.overview.getStock(filters);
   }
 
-  getStockDashboard(branchId?: string) {
-    return this.overview.getStockDashboard(branchId);
+  getStockDashboard(branchId?: string, inventoryScope: StockInventoryScope = 'all', actor?: StockSalesActor) {
+    return this.overview.getStockDashboard(branchId, inventoryScope, actor);
   }
 
-  getWarrantyExpiring(daysAhead: number = 30, branchId?: string) {
-    return this.overview.getWarrantyExpiring(daysAhead, branchId);
+  getWarrantyExpiring(daysAhead: number = 30, branchId?: string, inventoryScope: StockInventoryScope = 'all') {
+    return this.overview.getWarrantyExpiring(daysAhead, branchId, inventoryScope);
   }
 
   getSupplierPerformance() {

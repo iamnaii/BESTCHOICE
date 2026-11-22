@@ -1,3 +1,5 @@
+import type { StockInventoryScope } from '@installment/shared';
+import { stockInventoryWhere } from '../stock-inventory-filter';
 import { domainAccessClient, currentDomainAccess } from '../../employee-access/access-execution-context';
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger, InternalServerErrorException, HttpException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -201,8 +203,8 @@ export class StockTransferService {
     }
   }
 
-  async getPendingTransfers(branchId?: string) {
-    const where: Record<string, unknown> = { status: 'PENDING', deletedAt: null };
+  async getPendingTransfers(branchId?: string, inventoryScope: StockInventoryScope = 'all') {
+    const where: Record<string, unknown> = { status: 'PENDING', deletedAt: null, product: { deletedAt: null, ...stockInventoryWhere(inventoryScope) } };
     if (branchId) where.toBranchId = branchId;
 
     return this.prisma.stockTransfer.findMany({

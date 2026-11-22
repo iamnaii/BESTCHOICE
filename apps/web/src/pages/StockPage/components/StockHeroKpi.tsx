@@ -1,146 +1,155 @@
-import { Package, Wallet, Clock, TrendingUp, ArrowUpRight, ArrowDownRight } from 'lucide-react';
-import AnimatedCounter from '@/components/ui/animated-counter';
+import { useState, type ReactNode } from 'react';
+import { Package, Smartphone, Wallet, Clock, TrendingUp } from 'lucide-react';
+import type { StockInventoryScope } from '@installment/shared';
 import { StockDashboard } from '../types';
+import { StockSalesSourcesDialog } from './StockSalesSourcesDialog';
 
 export interface StockHeroKpiProps {
-  totalInStock: number;
+  totalInStock: number | null;
   totalValue: number | null;
   dashboard: StockDashboard | undefined;
   isManager: boolean;
+  inventoryScope?: StockInventoryScope;
 }
-
-function MoMTone({ current, previous }: { current: number; previous: number }) {
-  if (previous === 0) {
-    return <span className="text-[11px] text-muted-foreground/80">เริ่มเก็บข้อมูลเดือนนี้</span>;
-  }
-  const delta = ((current - previous) / previous) * 100;
-  const up = delta >= 0;
+function Metric({
+  label,
+  icon,
+  value,
+  unit,
+  children,
+  primary = false,
+}: {
+  label: string;
+  icon: ReactNode;
+  value: ReactNode;
+  unit?: string;
+  children: ReactNode;
+  primary?: boolean;
+}) {
   return (
-    <span
-      className={`inline-flex items-center gap-0.5 text-[11px] font-medium tabular-nums ${
-        up ? 'text-success' : 'text-destructive'
-      }`}
+    <article
+      className={`rounded-xl border p-4 sm:p-5 min-h-44 ${primary ? 'border-primary/25 bg-primary/5' : 'border-border bg-card'}`}
     >
-      {up ? <ArrowUpRight className="size-3" /> : <ArrowDownRight className="size-3" />}
-      {up ? '+' : ''}
-      {delta.toFixed(0)}% เทียบเดือนก่อน
-    </span>
+      <div className="flex items-start justify-between gap-2 min-h-10 text-sm text-muted-foreground">
+        <span>{label}</span>
+        <span className="text-primary shrink-0 [&>svg]:size-5">{icon}</span>
+      </div>
+      <div className="flex items-baseline gap-2 my-3">
+        <strong
+          className={`text-3xl sm:text-4xl font-semibold tabular-nums ${primary ? 'text-primary' : ''}`}
+        >
+          {value}
+        </strong>
+        <span className="text-sm text-muted-foreground">{unit}</span>
+      </div>
+      <div className="text-sm text-muted-foreground leading-snug">{children}</div>
+    </article>
   );
 }
-
-export function StockHeroKpi({ totalInStock, totalValue, dashboard, isManager }: StockHeroKpiProps) {
-  const avgDays = dashboard?.stockTurnover.avgDaysInStock;
-  // marginOverview เป็น null เมื่อ server ตัดต้นทุนออก (SALES)
-  const marginPct = dashboard?.marginOverview?.avgMarginPct;
-  const soldThisMonth = dashboard?.stockTurnover.soldThisMonth ?? 0;
-  const soldLastMonth = dashboard?.stockTurnover.soldLastMonth ?? 0;
-  const totalCost = dashboard?.marginOverview?.totalCost ?? 0;
-  const totalSell = dashboard?.marginOverview?.totalSell ?? 0;
-  const avgDaysAlarm = avgDays != null && avgDays > 90;
-
+export function StockHeroKpi({
+  totalInStock,
+  totalValue,
+  dashboard,
+  isManager,
+  inventoryScope = 'all',
+}: StockHeroKpiProps) {
+  const [sourcesOpen, setSourcesOpen] = useState(false);
+  const unit = inventoryScope === 'devices' ? 'เครื่อง' : 'ชิ้น';
+  const analytics = dashboard?.salesAnalytics;
+  const hasSales = analytics ? analytics.nativeIncluded || analytics.importedIncluded : !!dashboard;
+  const margin = dashboard?.marginOverview;
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-      {/* 1. พร้อมขาย — count + value */}
-      <div className="rounded-xl border border-border/60 bg-card p-4 relative overflow-hidden">
-        <div className="absolute -right-4 -top-4 size-20 rounded-full bg-primary/5" aria-hidden />
-        <div className="relative">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-[10px] font-mono uppercase tracking-[0.16em] text-muted-foreground">
-              พร้อมขาย
-            </span>
-            <Package className="size-4 text-primary" />
-          </div>
-          <div className="flex items-baseline gap-1">
-            <span className="text-3xl font-bold tabular-nums">
-              <AnimatedCounter value={totalInStock} />
-            </span>
-            <span className="text-xs text-muted-foreground">ชิ้น</span>
-          </div>
-          {totalValue != null && (
-            <div className="text-xs text-muted-foreground mt-1 tabular-nums">
-              {totalValue.toLocaleString()} ฿
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* 2. ขายเดือนนี้ + MoM */}
-      <div className="rounded-xl border border-border/60 bg-card p-4 relative overflow-hidden">
-        <div className="absolute -right-4 -top-4 size-20 rounded-full bg-success/5" aria-hidden />
-        <div className="relative">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-[10px] font-mono uppercase tracking-[0.16em] text-muted-foreground">
-              ขายเดือนนี้
-            </span>
-            <TrendingUp className="size-4 text-success" />
-          </div>
-          <div className="flex items-baseline gap-1">
-            <span className="text-3xl font-bold tabular-nums">
-              <AnimatedCounter value={soldThisMonth} />
-            </span>
-            <span className="text-xs text-muted-foreground">ชิ้น</span>
-          </div>
-          <div className="mt-1">
-            <MoMTone current={soldThisMonth} previous={soldLastMonth} />
-          </div>
-        </div>
-      </div>
-
-      {/* 3. อายุเฉลี่ย (alert if > 90) */}
-      <div
-        className={`rounded-xl border p-4 relative overflow-hidden ${
-          avgDaysAlarm
-            ? 'border-warning/50 bg-warning/5'
-            : 'border-border/60 bg-card'
-        }`}
+      <Metric
+        primary
+        label={
+          inventoryScope === 'devices'
+            ? 'เครื่องพร้อมขาย'
+            : inventoryScope === 'accessories'
+              ? 'อุปกรณ์เสริมพร้อมจ่าย'
+              : 'พร้อมขาย'
+        }
+        icon={inventoryScope === 'devices' ? <Smartphone /> : <Package />}
+        value={totalInStock?.toLocaleString() ?? '—'}
+        unit={unit}
       >
-        <div
-          className={`absolute -right-4 -top-4 size-20 rounded-full ${
-            avgDaysAlarm ? 'bg-warning/15' : 'bg-warning/5'
-          }`}
-          aria-hidden
-        />
-        <div className="relative">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-[10px] font-mono uppercase tracking-[0.16em] text-muted-foreground">
-              อายุเฉลี่ย
-            </span>
-            <Clock className={`size-4 ${avgDaysAlarm ? 'text-warning-strong' : 'text-muted-foreground'}`} />
-          </div>
-          <div className="flex items-baseline gap-1">
-            <span className={`text-3xl font-bold tabular-nums ${avgDaysAlarm ? 'text-warning-strong' : ''}`}>
-              {avgDays != null ? <AnimatedCounter value={avgDays} /> : '—'}
-            </span>
-            <span className="text-xs text-muted-foreground">วัน</span>
-          </div>
-          <div className="text-[11px] text-muted-foreground mt-1">
-            {avgDaysAlarm ? 'ต้องเร่งระบาย' : 'หมุนเวียนได้ดี'}
-          </div>
-        </div>
-      </div>
-
-      {/* 4. Margin (manager only) */}
+        {totalValue != null && <>ต้นทุน {totalValue.toLocaleString()} ฿</>}
+        {totalInStock === 0 && <p>ไม่มีสินค้าพร้อมขายในกลุ่มนี้</p>}
+      </Metric>
+      <Metric
+        label={
+          inventoryScope === 'accessories'
+            ? 'จ่ายอุปกรณ์เดือนนี้'
+            : inventoryScope === 'all'
+              ? 'ขาย / จ่ายเดือนนี้'
+              : 'ขายเดือนนี้'
+        }
+        icon={<TrendingUp />}
+        value={hasSales ? (dashboard?.stockTurnover.soldThisMonth ?? 0).toLocaleString() : '—'}
+        unit={unit}
+      >
+        {analytics && hasSales && (
+          <p>ยอดขาย {Number(analytics.current.revenue).toLocaleString()} ฿</p>
+        )}
+        {analytics && analytics.current.giftCount > 0 && (
+          <p>รวมของแถม {analytics.current.giftCount.toLocaleString()} ชิ้น</p>
+        )}
+        {analytics && hasSales ? (
+          <button
+            className="min-h-11 text-primary underline underline-offset-4 text-sm text-left"
+            onClick={() => setSourcesOpen(true)}
+          >
+            {analytics.importedIncluded ? 'รวม Tooltify · ' : ''}ดูที่มาของยอด
+          </button>
+        ) : null}
+        {!hasSales && <p>{dashboard ? 'ไม่มีสิทธิ์ดูยอดขาย' : 'ยังโหลดสถิติขายไม่ได้'}</p>}
+        {analytics && hasSales && (
+          <p className="mt-1">
+            เดือนก่อนเต็มเดือน {analytics.previous.count.toLocaleString()} {unit} ·
+            เดือนนี้ถึงวันนี้
+          </p>
+        )}
+      </Metric>
+      <Metric
+        label={inventoryScope === 'devices' ? 'อายุเครื่องเฉลี่ย' : 'อายุสต๊อกเฉลี่ย'}
+        icon={<Clock />}
+        value={
+          totalInStock != null && totalInStock > 0
+            ? (dashboard?.stockTurnover.avgDaysInStock ?? '—')
+            : '—'
+        }
+        unit="วัน"
+      >
+        เฉพาะสินค้าพร้อมขาย
+      </Metric>
       {isManager && (
-        <div className="rounded-xl border border-border/60 bg-card p-4 relative overflow-hidden">
-          <div className="absolute -right-4 -top-4 size-20 rounded-full bg-primary/5" aria-hidden />
-          <div className="relative">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-[10px] font-mono uppercase tracking-[0.16em] text-muted-foreground">
-                margin เฉลี่ย
-              </span>
-              <Wallet className="size-4 text-primary" />
-            </div>
-            <div className="flex items-baseline gap-1">
-              <span className="text-3xl font-bold tabular-nums">
-                {marginPct != null ? marginPct : '—'}
-              </span>
-              <span className="text-xs text-muted-foreground">%</span>
-            </div>
-            <div className="text-[11px] text-muted-foreground mt-1 tabular-nums">
-              ทุน {totalCost.toLocaleString()} → {totalSell.toLocaleString()} ฿
-            </div>
-          </div>
-        </div>
+        <Metric
+          label="MARGIN เฉลี่ย"
+          icon={<Wallet />}
+          value={margin && margin.itemsWithPrice > 0 ? (margin.avgMarginPct ?? '—') : '—'}
+          unit={
+            margin && margin.itemsWithPrice > 0 && margin.avgMarginPct != null ? '%' : undefined
+          }
+        >
+          {margin && margin.itemsWithPrice > 0 ? (
+            <>
+              {margin.totalCost != null && <>ทุน {margin.totalCost.toLocaleString()} → </>}
+              {margin.totalSell != null && <>ราคาขาย {margin.totalSell.toLocaleString()} ฿</>}
+              <br />
+              เฉพาะรายการที่มีราคาขาย
+            </>
+          ) : (
+            <span>ไม่มีราคาขายสำหรับคำนวณ</span>
+          )}
+        </Metric>
+      )}
+      {analytics && hasSales && (
+        <StockSalesSourcesDialog
+          open={sourcesOpen}
+          onOpenChange={setSourcesOpen}
+          analytics={analytics}
+          unit={unit}
+        />
       )}
     </div>
   );

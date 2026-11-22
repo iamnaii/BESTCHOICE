@@ -1,3 +1,4 @@
+import { useStockInventoryScope } from './useStockInventoryScope';
 import { STOCK_SORT_KEYS } from '@installment/shared';
 import type { TableSort } from '@/components/ui/DataTable';
 import { useState, useEffect, useCallback } from 'react';
@@ -30,6 +31,9 @@ export function useStockProducts() {
   const [searchParams, updateParams] = useLatestSearchParams();
   const isManager = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
 
+  const { inventoryScope, setInventoryScope } = useStockInventoryScope('all', [searchParams, updateParams]);
+  const aging = searchParams.get('aging') === 'over90' ? 'over90' : undefined;
+  const clearAging = () => updateParams(next => { next.delete('aging'); next.delete('page'); });
   const filterBranch = searchParams.get('branchId') ?? '';
   const view: StockView = searchParams.get('view') === 'all' ? 'all' : 'ready';
   // ตัวกรองสถานะมีผลเฉพาะมุมมอง "ทั้งหมด" — ในมุมมองพร้อมขาย สถานะถูกล็อกเป็น IN_STOCK
@@ -133,6 +137,7 @@ export function useStockProducts() {
     setSearch('');
     updateParams((next) => {
       [
+        'aging',
         'q',
         'status',
         'category',
@@ -175,6 +180,7 @@ export function useStockProducts() {
     setSelectedIds(new Set());
   }, [
     view,
+    inventoryScope, aging,
     filterBranch,
     filterStatus,
     filterCategory,
@@ -219,12 +225,14 @@ export function useStockProducts() {
     total: number;
     page: number;
     totalPages: number;
+    totalUnits?: number;
+    unitCounts?: StockViewCounts;
     /** ตัวเลขบนสวิตช์ พร้อมขาย | ทั้งหมด — API นับจากตัวกรองเดียวกันโดยไม่รวมสถานะ */
     viewCounts?: StockViewCounts;
   }>({
     queryKey: [
       'stock-list',
-      view,
+      view, inventoryScope, aging,
       sort?.key,
       sort?.direction,
       debouncedSearch,
@@ -236,7 +244,8 @@ export function useStockProducts() {
       accessoryGroupId,
     ],
     queryFn: async () => {
-      const params: Record<string, string> = {};
+      const params: Record<string, string> = { inventoryScope };
+      if (aging) params.aging = aging;
       if (debouncedSearch) params.search = debouncedSearch;
       if (view === 'ready') params.status = 'IN_STOCK';
       else if (filterStatus) params.status = filterStatus;
@@ -455,7 +464,8 @@ export function useStockProducts() {
     listResult: listQuery.data,
     view,
     setView,
-    viewCounts: listQuery.data?.viewCounts,
+    viewCounts: listQuery.data?.unitCounts ?? listQuery.data?.viewCounts,
+    inventoryScope, setInventoryScope, aging, clearAging,
     listLoading: listQuery.isLoading,
     listError: listQuery.isError,
     listErrorObj: listQuery.error,

@@ -65,7 +65,7 @@ describe('ProductsController — GET /products/stock/dashboard cost visibility',
 
   it('SALES — ทุกตัวเลขที่คิดจาก costPrice ถูกตัดออก แต่ count/วัน/การเคลื่อนไหวยังครบ', async () => {
     const res = await controller.getStockDashboard(sales, 'b-1');
-    expect(stock.getStockDashboard).toHaveBeenCalledWith('b-1');
+    expect(stock.getStockDashboard).toHaveBeenCalledWith('b-1', undefined, expect.objectContaining({role:'SALES'}));
 
     expect(res.stockAging.map((b) => b.value)).toEqual([null, null]);
     expect(res.stockAging.map((b) => b.count)).toEqual([2, 1]);

@@ -196,3 +196,29 @@ it('observes admission closed after the rollback PID announcement', async () => 
     await admin.$disconnect();
   }
 }, 70000);
+
+it('stores an owner-approved blank phone without a fabricated placeholder and can match and replay it', async () => {
+  const { row, context } = await supplierFixture(db);
+  row.phone = null;
+  row.notes = 'เจ้าของยืนยันให้เว้นเบอร์โทรว่าง';
+  const plan = await planSuppliers(db, [row], context);
+  expect(plan.issues).toEqual([]);
+  await applySuppliers(db, plan);
+  const receipt = await db.tooltifyImportItem.findFirstOrThrow({
+    where: { batchId: plan.batchId },
+  });
+  const supplier = await db.supplier.findUniqueOrThrow({
+    where: { id: receipt.targetId! },
+    include: { contact: true },
+  });
+  expect(supplier.phone).toBe('');
+  expect(supplier.contact!.phone ?? '').toBe('');
+  expect((await applySuppliers(db, plan)).verified).toBe(true);
+  const match = await planSuppliers(db, [row], {
+    ...context,
+    canonicalSetId: context.canonicalSetId + '-match',
+    matchTargets: { [row.supplierRef]: receipt.targetId! },
+  });
+  expect(match.items[0].disposition).toBe('MATCH');
+  expect(match.issues).toEqual([]);
+});

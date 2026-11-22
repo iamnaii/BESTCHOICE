@@ -5,7 +5,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { createSupplierInTransaction } from '../../modules/suppliers/create-supplier-in-transaction';
 import { hashImportValue as hash } from './canonicalize';
 import { itemTransaction } from './batch';
-import { validateSupplierInputs } from './supplier-input';
+import { supplierPhone, validateSupplierInputs } from './supplier-input';
 import {
   assertSupplierContext,
   desiredPayments,
@@ -59,7 +59,7 @@ export async function writeSupplierItem(
     {
       type: r.type!,
       name: r.legalName!,
-      phone: r.phone!,
+      phone: supplierPhone(r),
       taxId: r.taxId ?? undefined,
       branchCode: r.branchCode ?? undefined,
       address: r.address ?? undefined,

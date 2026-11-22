@@ -1,7 +1,7 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import { hashImportValue as hash } from './canonicalize';
 import { readImportDatabaseIdentity } from './plan';
-import { normalizeSupplierAlias, validateSupplierInputs } from './supplier-input';
+import { normalizeSupplierAlias, supplierPhone, validateSupplierInputs } from './supplier-input';
 import type { SupplierInput, SupplierIssue } from './supplier-types';
 export type SupplierPlanContext = {
   canonicalSetId: string;
@@ -104,7 +104,7 @@ function matches(target: SupplierTarget, row: SupplierInput, c: SupplierPlanCont
     target.accessBranchId === c.accessBranchId &&
     target.type === row.type &&
     target.name === row.legalName &&
-    target.phone === row.phone &&
+    target.phone === supplierPhone(row) &&
     target.hasVat === row.hasVat &&
     target.taxId === row.taxId &&
     target.branchCode === row.branchCode &&

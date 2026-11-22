@@ -325,3 +325,22 @@ it.each(['drop-row', 'bank-edit'] as const)(
     }
   },
 );
+
+it('accepts an explicitly owner-approved blank phone from the original workbook while other blanks stay pending', async () => {
+  const f = await fixture((w) => {
+    const s = w.getWorksheet('ผู้จัดจำหน่าย')!;
+    s.getCell('I5').value = null;
+    s.getCell('L5').value = 'เจ้าของยืนยันให้เว้นเบอร์โทรว่าง';
+    s.getCell('I6').value = null;
+  });
+  try {
+    const rows = await readSupplierWorkbook(f.path);
+    expect(rows[0].phone).toBeNull();
+    const issues = validateSupplierInputs(rows).issues.filter(
+      (i) => i.code === 'SUPPLIER_PHONE_REQUIRED',
+    );
+    expect(issues.map((i) => i.supplierRef)).toEqual(['SUP002']);
+  } finally {
+    await f.dispose();
+  }
+});

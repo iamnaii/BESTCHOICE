@@ -6,6 +6,13 @@ import { readFile } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import type { SupplierInput, SupplierValidation } from './supplier-types';
 
+// This exact owner decision is retained in the original, hash-bound workbook notes.
+// A missing phone without this decision remains unresolved.
+export const OWNER_BLANK_PHONE_NOTE = 'เจ้าของยืนยันให้เว้นเบอร์โทรว่าง';
+export const supplierPhone = (r: SupplierInput) => r.phone?.trim() ?? '';
+export const ownerApprovedBlankPhone = (r: SupplierInput) =>
+  (r.notes ?? '').split(/\r?\n/).some((line) => line.trim() === OWNER_BLANK_PHONE_NOTE);
+
 export const normalizeSupplierAlias = (s: string) =>
   s.normalize('NFC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('en');
 function text(c: ExcelJS.Cell, identifier = false): string | null {
@@ -186,7 +193,8 @@ export function validateSupplierInputs(rows: SupplierInput[]): SupplierValidatio
     if (!['INDIVIDUAL', 'JURISTIC'].includes(r.type ?? ''))
       add(r, 'SUPPLIER_TYPE_REQUIRED', 'type');
     if (!r.legalName?.trim()) add(r, 'SUPPLIER_NAME_REQUIRED', 'legalName');
-    if (!r.phone?.trim()) add(r, 'SUPPLIER_PHONE_REQUIRED', 'phone');
+    if (!supplierPhone(r) && !ownerApprovedBlankPhone(r))
+      add(r, 'SUPPLIER_PHONE_REQUIRED', 'phone');
     if (typeof r.hasVat !== 'boolean') add(r, 'SUPPLIER_VAT_REQUIRED', 'hasVat');
     if (
       r.creditTermDays === null ||

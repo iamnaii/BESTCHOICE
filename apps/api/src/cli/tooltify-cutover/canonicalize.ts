@@ -174,7 +174,11 @@ export function validateManifest(
     }
     const availableRows = new Set(file.rows.map(({ row }) => row));
     if (
-      decision.sourceRows.some((row) => !availableRows.has(row)) ||
+      decision.sourceRows.some((row) =>
+        decision.action === 'RECONCILE_BILL_COUNT'
+          ? !Number.isSafeInteger(row) || row <= 0
+          : !availableRows.has(row),
+      ) ||
       decision.sourceRows.length !== new Set(decision.sourceRows).size
     ) {
       fileIssue('INVALID_DECISION_ROWS', 'เลขแถวในหลักฐานไม่ตรงกับตารางรายละเอียดของไฟล์');

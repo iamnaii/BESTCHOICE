@@ -53,6 +53,19 @@ const sourceSchema = z.discriminatedUnion('kind', [
         )
         .nullable(),
       evidenceFileSha256s: z.array(sha),
+      billCountBridges: z
+        .array(
+          z
+            .object({
+              fileSha256: sha,
+              reportedBills: z.number().int().safe().nonnegative(),
+              distinctDetailBills: z.number().int().safe().nonnegative(),
+              zeroLineHeaderRows: z.array(z.number().int().positive()),
+              repeatedEventHeaderRows: z.array(z.number().int().positive()),
+            })
+            .strict(),
+        )
+        .optional(),
     })
     .strict(),
   z
@@ -287,6 +300,8 @@ export function buildReconciliationSnapshot(
     source &&
     (source.kind !== input.kind ||
       source.evidenceFileSha256s.some((sha) => !files.some((f) => f.sha256 === sha)) ||
+      (source.kind === 'SALES' &&
+        source.billCountBridges?.some((b) => !files.some((f) => f.sha256 === b.fileSha256))) ||
       source.groups?.some((g) => !files.some((f) => f.branchId === g.branchId)))
   )
     throw Error('INVALID_SOURCE_SUMMARY_SCOPE');

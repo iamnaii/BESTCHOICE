@@ -298,6 +298,13 @@ export async function loadSourceInputs(
         delta,
         groups: raw.groups,
         evidenceFileSha256s: saleFiles.map((f) => f.sha256),
+        ...(summaries.some((s) => s.billCountBridge)
+          ? {
+              billCountBridges: summaries.flatMap((s) =>
+                s.billCountBridge ? [s.billCountBridge] : [],
+              ),
+            }
+          : {}),
       },
     });
   }

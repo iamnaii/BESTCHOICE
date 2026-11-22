@@ -63,9 +63,11 @@ export type SourceDecision = {
       reportTo: string;
     }
   | { action: 'ZERO_SALES'; branchId: string; reportFrom: string; reportTo: string }
+  | ({ action: 'RECONCILE_BILL_COUNT' } & BillCountBridge)
   // Evidence confirms both desiredStatus and that source importedAt is the unit's stockInDate.
   | {
       action: 'RESOLVE_STOCK';
+      reviewedArchivedTargetIds?: string[];
       supplier?: SupplierLinkDecision;
       desiredStatus: 'IN_STOCK' | 'QC_PENDING';
       deviceOrigin: DeviceOrigin | null;
@@ -122,10 +124,17 @@ type SourceSummary<T, G> = {
   groups: G[] | null;
   evidenceFileSha256s: string[];
 };
-export type SalesSourceSummary = { kind: 'SALES' } & SourceSummary<
-  NullableGrossSalesTotals,
-  SalesGroup<NullableGrossSalesTotals>
->;
+export type BillCountBridge = {
+  fileSha256: string;
+  reportedBills: number;
+  distinctDetailBills: number;
+  zeroLineHeaderRows: number[];
+  repeatedEventHeaderRows: number[];
+};
+export type SalesSourceSummary = {
+  kind: 'SALES';
+  billCountBridges?: BillCountBridge[];
+} & SourceSummary<NullableGrossSalesTotals, SalesGroup<NullableGrossSalesTotals>>;
 export type StockSourceSummary = { kind: 'STOCK' } & SourceSummary<
   NullableStockTotals,
   StockGroup<NullableStockTotals>
@@ -326,6 +335,7 @@ export type NullableGrossSalesTotals = {
 
 export type SalesReportResult = ParseResult<CanonicalSaleLine> & {
   gross: {
+    billCountBridge?: BillCountBridge;
     reported: NullableGrossSalesTotals | null;
     detail: NullableGrossSalesTotals | null;
     // Reported minus raw detail, before source decisions.

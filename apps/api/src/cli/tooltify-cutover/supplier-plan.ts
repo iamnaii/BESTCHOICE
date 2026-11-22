@@ -13,6 +13,7 @@ export type SupplierPlanContext = {
   cutoverAt: string;
   dbIdentity: string;
   matchTargets: Record<string, string>;
+  reviewedArchivedTargets?: Record<string, string[]>;
 };
 export type PlannedSupplierItem = {
   supplierRef: string;
@@ -137,7 +138,7 @@ export async function evaluateSupplier(
     row.bankAccounts.flatMap((b) => (b.bankAccountNumber ? [accountKey(b.bankAccountNumber)] : [])),
   );
   const explicit = c.matchTargets[row.supplierRef];
-  const candidates = all.filter(
+  const observedCandidates = all.filter(
     (s) =>
       s.id === explicit ||
       names.has(normalizeSupplierAlias(s.name)) ||
@@ -146,6 +147,14 @@ export async function evaluateSupplier(
         (p) => p.bankAccountNumber && accounts.has(accountKey(p.bankAccountNumber)),
       ),
   );
+  const reviewed = c.reviewedArchivedTargets?.[row.supplierRef] ?? [];
+  const validArchivedReview =
+    Array.isArray(reviewed) &&
+    reviewed.length === new Set(reviewed).size &&
+    reviewed.every(
+      (id) => typeof id === 'string' && observedCandidates.some((s) => s.id === id && s.deletedAt),
+    );
+  const candidates = observedCandidates.filter((s) => !reviewed.includes(s.id) || !s.deletedAt);
   const contacts = row.taxId
     ? await tx.contact.findMany({ where: { taxId: row.taxId }, orderBy: { id: 'asc' } })
     : [];
@@ -153,6 +162,7 @@ export async function evaluateSupplier(
     targetId: string | null = null;
   const bad = validateSupplierInputs([row]).issues;
   if (bad.length) reason = bad[0].code;
+  else if (!validArchivedReview) reason = 'INVALID_ARCHIVED_SUPPLIER_REVIEW';
   else if (
     contacts.some(
       (x) =>
@@ -176,7 +186,7 @@ export async function evaluateSupplier(
     disposition: reason ? 'CONFLICT' : targetId ? 'MATCH' : 'CREATE',
     targetId,
     reason,
-    dependencyFingerprint: hash({ candidates, contacts }),
+    dependencyFingerprint: hash({ candidates: observedCandidates, contacts }),
   };
 }
 export async function planSuppliers(

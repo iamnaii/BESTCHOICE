@@ -1,4 +1,5 @@
 import { validLegacySaleEvidence } from '../../cli/tooltify-cutover/legacy-sale-evidence';
+import { reconcileBillCount } from '../../cli/tooltify-cutover/sales-bill-count-evidence';
 import type { SourceDecision } from '../../cli/tooltify-cutover/types';
 import { Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
@@ -446,5 +447,12 @@ export function parseSalesReport(
       message: 'จำนวนรายการขายต่างจากหัวตาราง',
     });
   readGrossSummary(rows, sections[0].startIndex, result, sourceAt);
+  const bridge = reconcileBillCount(rows, file.sha256, context.decisions ?? [], result);
+  if (bridge) {
+    result.gross.billCountBridge = bridge;
+    result.gross.reported!.bills = bridge.distinctDetailBills;
+    result.gross.delta!.bills = 0;
+    result.issues = result.issues.filter((i) => i.code !== 'SALES_SUMMARY_MISMATCH');
+  }
   return result;
 }

@@ -251,7 +251,22 @@ async function evaluateStock(db: Db, item: PlannedStockItem): Promise<PlannedSto
   else if (payload.desiredStatus === 'IN_STOCK' && !hasSellingPrice(payload))
     reason = 'MISSING_SELLING_PRICE';
 
-  const targets = await findStockTargets(db, item);
+  const observedTargets = await findStockTargets(db, item);
+  const reviewed = decision?.reviewedArchivedTargetIds ?? [];
+  const validArchivedReview =
+    Array.isArray(reviewed) &&
+    reviewed.length === new Set(reviewed).size &&
+    reviewed.every(
+      (id) => typeof id === 'string' && observedTargets.some((p) => p.id === id && p.deletedAt),
+    );
+  if (!validArchivedReview) reason = 'INVALID_ARCHIVED_STOCK_REVIEW';
+  const targets = observedTargets.filter((p) => !reviewed.includes(p.id) || !p.deletedAt);
+  for (const archived of observedTargets.filter((p) => reviewed.includes(p.id) && p.deletedAt)) {
+    // The reviewed tombstone is never restored or modified. Check its status and all
+    // financial/hold references without asking the mutation guard to restore a deleted row.
+    const issue = await stockEligibilityIssue(db, { id: archived.id, status: archived.status });
+    if (issue) reason = issue;
+  }
   let target: (typeof targets)[number] | undefined = targets[0];
   let claimedIdentities: string[] = [];
   if (raw.kind === 'ACCESSORY') {
@@ -343,7 +358,7 @@ async function evaluateStock(db: Db, item: PlannedStockItem): Promise<PlannedSto
     dependencyFingerprint: hash({
       branch,
       template,
-      targets,
+      targets: observedTargets,
       claimedIdentities,
       reason,
       resolution,

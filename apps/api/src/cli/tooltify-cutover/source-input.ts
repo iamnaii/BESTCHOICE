@@ -46,22 +46,29 @@ function stockHeader(rows: string[][], basis: unknown): NullableStockTotals {
     'ต้นทุนสินค้า',
   ];
   if (required.some((h) => headings.filter((s) => s === h).length !== 1)) return unknown;
+  const quantityColumn = headings.indexOf('จำนวน');
+  const totalCostColumn = headings.indexOf('รวมต้นทุน');
+  const hasExplicitTotal = totalCostColumn !== -1;
+  const costColumn = hasExplicitTotal ? totalCostColumn : headings.indexOf('ต้นทุนสินค้า');
+  const costIsKnown = hasExplicitTotal
+    ? totalCostColumn === headings.lastIndexOf('รวมต้นทุน')
+    : basis === 'PER_UNIT' || basis === 'EXTENDED';
+  const multiplyByQuantity = !hasExplicitTotal && basis === 'PER_UNIT';
   const end = sections[sections.indexOf(section) + 1]?.startIndex ?? rows.length;
   let units = 0;
-  let cost: Prisma.Decimal | null =
-    basis === 'PER_UNIT' || basis === 'EXTENDED' ? new Prisma.Decimal(0) : null;
+  let cost = costIsKnown ? new Prisma.Decimal(0) : null;
   const body = rows.slice(section.headerIndex + 1, end).filter((r) => r.some((s) => s.trim()));
   if (!body.length) return unknown;
   for (const r of body) {
-    const qty = r[headings.indexOf('จำนวน')]?.trim(),
-      value = r[headings.indexOf('ต้นทุนสินค้า')]?.trim();
+    const qty = r[quantityColumn]?.trim(),
+      value = r[costColumn]?.trim();
     if (!/^\d+$/.test(qty)) return unknown;
     units += Number(qty);
     if (!Number.isSafeInteger(units)) return unknown;
     if (!/^(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{1,2})?$/.test(value)) cost = null;
     if (cost)
       cost = cost.plus(
-        new Prisma.Decimal(value.replaceAll(',', '')).times(basis === 'PER_UNIT' ? qty : 1),
+        new Prisma.Decimal(value.replaceAll(',', '')).times(multiplyByQuantity ? qty : 1),
       );
   }
   return { units, cost: cost?.toFixed(2) ?? null };

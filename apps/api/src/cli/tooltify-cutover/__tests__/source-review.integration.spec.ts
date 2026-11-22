@@ -17,6 +17,133 @@ import { stockInput } from './preflight-fixtures';
 const db = new PrismaClient();
 afterAll(() => db.$disconnect());
 
+type StockSummaryCase = [
+  description: string,
+  basis: 'PER_UNIT' | 'EXTENDED' | undefined,
+  displayedCost: string,
+  explicitTotals: string[],
+  reportedCost: string | null,
+  delta: string | null,
+];
+
+it.each<StockSummaryCase>([
+  ['explicit total and PER_UNIT', 'PER_UNIT', '13800.00', ['26300.00'], '26300.00', '0.00'],
+  ['explicit total and EXTENDED', 'EXTENDED', '13800.00', ['26300.00'], '26300.00', '0.00'],
+  ['explicit total without basis', undefined, '13800.00', ['26,300.00'], '26300.00', '0.00'],
+  ['blank explicit total', 'EXTENDED', '26300.00', [''], null, null],
+  ['malformed explicit total', 'EXTENDED', '26300.00', ['26300.000'], null, null],
+  ['duplicate explicit totals', 'EXTENDED', '26300.00', ['26300.00', '26300.00'], null, null],
+  ['incorrect explicit total', 'EXTENDED', '26300.00', ['26300.01'], '26300.01', '0.01'],
+  ['displayed cost and PER_UNIT', 'PER_UNIT', '13150.00', [], '26300.00', '0.00'],
+  ['displayed cost and EXTENDED', 'EXTENDED', '26300.00', [], '26300.00', '0.00'],
+  ['displayed cost without basis', undefined, '26300.00', [], null, null],
+])(
+  'reviews grouped stock costs with %s',
+  async (_name, basis, displayedCost, explicitTotals, reportedCost, delta) => {
+    const dir = await mkdtemp(join(tmpdir(), 'tt-stock-summary-'));
+    try {
+      const seed = await stockInput(db, 2);
+      const file = {
+        ...seed.manifest.files[0],
+        path: join(dir, 'report_stock_2026-11-19.xlsx'),
+      };
+      const workbook = new ExcelJS.Workbook();
+      workbook
+        .addWorksheet('Worksheet')
+        .addRows([
+          [
+            'ชื่อสินค้า',
+            'หมวดหมู่สินค้า',
+            'แหล่งที่มา',
+            'รายละเอียดสินค้า',
+            'จำนวน',
+            'ต้นทุนสินค้า',
+            ...explicitTotals.map(() => 'รวมต้นทุน'),
+          ],
+          ['Fixture', 'iPhone มือ 1', '-', '-', 2, displayedCost, ...explicitTotals],
+          STOCK_COLUMNS,
+          ...['13800.00', '12500.00'].map((cost, index) => [
+            seed.rows[index].barcode,
+            'Fixture',
+            'iPhone มือ 1',
+            '-',
+            '-',
+            '-',
+            '2026-11-18 00:00:00',
+            'fixture',
+            cost,
+            1,
+          ]),
+        ]);
+      await workbook.xlsx.writeFile(file.path);
+      file.sha256 = createHash('sha256')
+        .update(await readFile(file.path))
+        .digest('hex');
+      const entries = seed.decisions.entries.map((entry) => ({
+        ...entry,
+        fileSha256: file.sha256,
+        sourceRows: [4, 5],
+        ...(entry.action === 'SELECT_SNAPSHOT' && basis ? { summaryCostBasis: basis } : {}),
+      }));
+      const path = join(dir, 'manifest.json');
+      await writeFile(
+        path,
+        JSON.stringify({
+          ...seed.manifest,
+          files: [file],
+          decisionsSha256: hashSourceDecisions({ entries }),
+        }),
+      );
+      await writeFile(join(dir, 'source-decisions.json'), JSON.stringify({ entries }));
+      const deps = {
+        ...cliDependencies(
+          () => db,
+          {
+            DATABASE_URL: process.env.DATABASE_URL,
+            EXPECTED_DB_NAME: 'bc_vitest_test',
+            EXPECTED_DB_FINGERPRINT: seed.expectedDbIdentity,
+          },
+          () => 'fixture',
+        ),
+        report: () => {},
+      };
+      const result = await runCutover(
+        ['--manifest', path, '--source-kind', 'current-stock-snapshot', '--out-dir', dir],
+        deps,
+      );
+      const saved = await readFile(join(dir, 'dry-run.json'), 'utf8');
+      const plan = JSON.parse(saved);
+      expect(plan.source).toMatchObject({
+        reported: { units: 2, cost: reportedCost },
+        detail: { units: 2, cost: '26300.00' },
+        delta: { units: 0, cost: delta },
+        evidenceFileSha256s: [file.sha256],
+      });
+      expect(plan.items).toEqual([
+        expect.objectContaining({
+          source: { fileSha256: file.sha256, sheet: 'Worksheet', row: 4 },
+          cost: '13800.00',
+        }),
+        expect.objectContaining({
+          source: { fileSha256: file.sha256, sheet: 'Worksheet', row: 5 },
+          cost: '12500.00',
+        }),
+      ]);
+      expect(plan.sourceVerified).toBe(delta === '0.00');
+      expect(result, saved).toBe(delta === '0.00' ? 0 : 1);
+      if (delta === '0.01')
+        expect(plan.issues).toContainEqual({
+          code: 'STOCK_SUMMARY_MISMATCH',
+          kind: 'STOCK',
+          source: { fileSha256: file.sha256, sheet: 'Worksheet', row: 1 },
+          stockDelta: { units: 0, cost: '0.01' },
+        });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+);
+
 it.each([
   'excluded stock',
   'excluded sales',

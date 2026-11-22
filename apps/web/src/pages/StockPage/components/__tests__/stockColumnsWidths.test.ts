@@ -1,16 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { buildStockColumns, stockTableMinWidth } from '../stockColumns';
+import { buildStockColumns } from '../stockColumns';
 
-// Fixed-width sortable headers are nowrap (Task 2): the width must fit text + gap-1 (4) + 14px arrow + px-2 (16).
-// Measured text widths (12px / 600 / uppercase / tracking-wider, Noto Sans Thai):
-// ราคาเต็มจำนวน 84.6 · ยอดผ่อนต่อเดือน 90.8 · คงเหลือ 42.3  → need ≥ text + 34.
-const MIN: Record<string, number> = { cashPrice: 119, monthlyPayment: 125, quantity: 77 };
-
-function columns(filterCategory: string) {
-  return buildStockColumns({
-    isManager: true,
-    view: 'all',
-    filterCategory,
+const columns = (scope: 'devices' | 'accessories' | 'all', isManager = true) =>
+  buildStockColumns({
+    isManager,
+    inventoryScope: scope,
+    view: 'ready',
+    filterCategory: '',
     listProducts: [],
     selectableProducts: [],
     selectedIds: new Set(),
@@ -20,27 +16,42 @@ function columns(filterCategory: string) {
     openPriceEdit: () => {},
     setAccessoryGroupId: () => {},
     installments: new Map(),
-  } as unknown as Parameters<typeof buildStockColumns>[0]);
-}
+  });
 
-describe('stockColumns fixed widths fit nowrap sort headers', () => {
-  const cols = columns('');
-  it.each(Object.entries(MIN))('%s is wide enough for text + arrow', (key, min) => {
-    const col = cols.find((c) => c.key === key);
-    expect(col).toBeDefined();
-    expect(parseInt(col!.width ?? '0', 10)).toBeGreaterThanOrEqual(min);
-  });
-  it('pins the chosen widths', () => {
-    const w = (k: string) => cols.find((c) => c.key === k)?.width;
-    expect([w('cashPrice'), w('monthlyPayment'), w('quantity')]).toEqual(['120px', '128px', '80px']);
-  });
-  it('accessory view keeps the cashPrice column at the same width', () => {
-    expect(columns('ACCESSORY').find((c) => c.key === 'cashPrice')?.width).toBe('120px');
-  });
-  it('table min width still sums the declared widths', () => {
-    const list = columns('').filter((c) => !c.desktopHidden);
-    expect(stockTableMinWidth(columns(''))).toBe(
-      list.reduce((s, c) => s + (c.width ? parseInt(c.width, 10) : 140), 0),
+describe('stock comparison column layouts', () => {
+  it.each(['devices', 'accessories', 'all'] as const)(
+    '%s uses proportional columns instead of forcing a horizontal scroller',
+    (scope) => {
+      const cols = columns(scope);
+      expect(cols.every((c) => c.width?.endsWith('%'))).toBe(true);
+      expect(cols.reduce((total, c) => total + parseFloat(c.width!), 0)).toBeCloseTo(100);
+    },
+  );
+  it('keeps the full IMEI column always visible and combines each provider into one cell', () => {
+    const cols = columns('devices');
+    expect(cols.find((c) => c.key === 'imeiSerial')).toMatchObject({ hideable: false });
+    expect(cols.filter((c) => ['downPayment', 'gfin'].includes(c.key)).map((c) => c.label)).toEqual(
+      ['BESTCHOICE', 'GFIN'],
     );
+    expect(cols.some((c) => c.key === 'monthlyPayment')).toBe(false);
+  });
+  it('uses SKU, available stock and margin for accessories, excluding device and installment fields', () => {
+    const keys = columns('accessories').map((c) => c.key);
+    expect(keys).toEqual(
+      expect.arrayContaining(['productCode', 'quantity', 'costPrice', 'cashPrice', 'margin']),
+    );
+    for (const key of [
+      'imeiSerial',
+      'batteryHealth',
+      'hasBox',
+      'warrantyExpireDate',
+      'downPayment',
+      'gfin',
+    ])
+      expect(keys).not.toContain(key);
+  });
+  it('never sends cost or margin columns to sales staff', () => {
+    expect(columns('accessories', false).map((c) => c.key)).not.toContain('costPrice');
+    expect(columns('accessories', false).map((c) => c.key)).not.toContain('margin');
   });
 });

@@ -1,3 +1,5 @@
+import Decimal from 'decimal.js';
+import { getPositiveDisplayPrices } from '@/utils/getDisplayPrices';
 import { Link } from 'react-router';
 import { DeviceDisclosureSummary } from '@/components/product/DeviceDisclosureSummary';
 import { Check, Copy, MapPin } from 'lucide-react';
@@ -17,12 +19,13 @@ export function StockProductIdentity({
   product,
   onOpen,
   showProductCode = true,
+  showImei = true,
 }: {
   product: StockProduct;
   onOpen: () => void;
   showProductCode?: boolean;
+  showImei?: boolean;
 }) {
-  const { copy, copied } = useCopyToClipboard();
   return (
     <div className="min-w-0">
       <button
@@ -35,30 +38,10 @@ export function StockProductIdentity({
           : product.model || product.name}
       </button>
       {product.category !== 'ACCESSORY' && <DeviceDisclosureSummary product={product} />}
-      {product.imeiSerial ? (
-        <div className="flex min-w-0 items-center gap-1">
-          <span
-            className="min-w-0 truncate font-mono text-xs text-muted-foreground"
-            title={product.imeiSerial}
-          >
-            {product.imeiSerial}
-          </span>
-          <button data-ui-control="button" data-ui-icon="true"
-            type="button"
-            onClick={() => copy(product.imeiSerial!)}
-            aria-label="คัดลอก IMEI/Serial"
-            className="flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:size-7"
-          >
-            {copied ? (
-              <Check aria-hidden="true" className="size-3.5 text-primary" />
-            ) : (
-              <Copy aria-hidden="true" className="size-3.5" />
-            )}
-          </button>
-        </div>
-      ) : product.category !== 'ACCESSORY' ? (
-        <p className="mt-1 text-xs text-muted-foreground leading-snug">ยังไม่ระบุ IMEI / Serial</p>
-      ) : null}
+      {product.category === 'ACCESSORY' && product.model && product.model !== product.name && (
+        <p className="mt-1 text-xs text-muted-foreground leading-snug">{product.model}</p>
+      )}
+      {showImei && product.category !== 'ACCESSORY' && <StockImei product={product} />}
       {product.stockGroup && (
         <p className="mt-1 text-xs text-muted-foreground leading-snug">
           รวม {product.stockGroup.unitCount} ชิ้น
@@ -92,20 +75,6 @@ export function StockProductCategory({ product }: { product: StockProduct }) {
     <span className="whitespace-nowrap text-xs font-medium">
       {categoryLabels[product.category] || product.category}
     </span>
-  );
-}
-
-export function StockProductSpecifications({ product }: { product: StockProduct }) {
-  const specifications = [product.storage, product.color].filter(Boolean);
-  return (
-    <div className="text-sm leading-snug">
-      {specifications.join(' · ') || '—'}
-      {product.category === 'TABLET' && (
-        <div className="mt-1 text-xs text-muted-foreground">
-          <StockTabletConnectivity product={product} />
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -168,18 +137,6 @@ export function StockDownPayment({ plan }: { plan: InstallmentPlan | undefined }
       </span>
     );
   return <StockPriceAmount value={plan?.quote?.downAmount} />;
-}
-
-export function StockMonthlyPayment({ plan }: { plan: InstallmentPlan | undefined }) {
-  if (!plan?.quote) return <span className="text-muted-foreground">—</span>;
-  return (
-    <div className="space-y-1 leading-snug">
-      <StockPriceAmount value={plan.quote.monthlyPayment} accent />
-      <div className="whitespace-nowrap text-xs text-muted-foreground leading-snug">
-        ต่อเดือน · {plan.quote.months} งวด
-      </div>
-    </div>
-  );
 }
 
 export function StockBatteryHealth({ product }: { product: StockProduct }) {
@@ -294,4 +251,91 @@ export function StockProductBranch({ product }: { product: StockProduct }) {
       </span>
     </div>
   );
+}
+
+/** Full identifier is selectable and never truncated; copying does not open the row. */
+export function StockImei({ product }: { product: StockProduct }) {
+  const { copy, copied } = useCopyToClipboard();
+  if (product.category === 'ACCESSORY') return <span className="text-muted-foreground">—</span>;
+  if (!product.imeiSerial) return <span className="text-xs text-muted-foreground">ยังไม่ระบุ</span>;
+  return (
+    <div className="stock-imei flex flex-wrap items-center gap-1">
+      <span className="select-text font-mono text-xs tabular-nums leading-snug">
+        {product.imeiSerial}
+      </span>
+      <button
+        type="button"
+        data-ui-control="button"
+        data-ui-icon="true"
+        aria-label="คัดลอก IMEI/Serial"
+        onClick={() => copy(product.imeiSerial!)}
+        className="flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:size-6"
+      >
+        {copied ? (
+          <Check aria-hidden className="size-3.5 text-primary" />
+        ) : (
+          <Copy aria-hidden className="size-3.5" />
+        )}
+      </button>
+    </div>
+  );
+}
+
+export function StockInstallmentPlan({ plan }: { plan: InstallmentPlan | undefined }) {
+  if (!plan?.quote) return <StockDownPayment plan={plan} />;
+  return (
+    <div className="stock-payment space-y-1.5 leading-snug">
+      <div className="flex flex-wrap items-baseline justify-end gap-x-1.5">
+        <span className="text-xs text-muted-foreground">ดาวน์</span>
+        {plan.quote.downAmount === 0 ? (
+          <strong className="text-primary">ฟรีดาวน์</strong>
+        ) : (
+          <StockPriceAmount value={plan.quote.downAmount} accent />
+        )}
+      </div>
+      <div
+        className="flex flex-wrap justify-end gap-x-1 text-xs tabular-nums text-muted-foreground"
+        aria-label={`ผ่อนเดือนละ ${formatBaht(plan.quote.monthlyPayment)} บาท จำนวน ${plan.quote.months} งวด`}
+      >
+        <span>{formatBaht(plan.quote.monthlyPayment)} ฿</span>
+        <span>× {plan.quote.months} งวด</span>
+      </div>
+    </div>
+  );
+}
+
+/** Aggregated min cost and min price may belong to different units: never subtract those. */
+export function StockAccessoryMargin({ product }: { product: StockProduct }) {
+  const cash = product.stockGroup ? normalizeStockPrice(product.cashPrice) : getStockCash(product);
+  const cost = normalizeStockPrice(product.costPrice);
+  const group = product.stockGroup;
+  if (
+    cash == null ||
+    cost == null ||
+    (group &&
+      (group.cashPriceMissingCount > 0 ||
+        normalizeStockPrice(group.cashPriceMax) !== cash ||
+        normalizeStockPrice(group.costPriceMax) !== cost))
+  ) {
+    return (
+      <span className="text-xs text-muted-foreground">{group ? 'ดูแยกรายชิ้น' : 'ยังไม่ระบุ'}</span>
+    );
+  }
+  const margin = new Decimal(cash).minus(cost).toNumber();
+  return (
+    <span className={cn('tabular-nums text-sm font-medium', margin < 0 && 'text-destructive')}>
+      {formatBaht(margin)} ฿
+    </span>
+  );
+}
+function normalizeStockPrice(value: string | null | undefined) {
+  return value != null &&
+    value.trim() !== '' &&
+    Number.isFinite(Number(value)) &&
+    Number(value) >= 0
+    ? Number(value)
+    : null;
+}
+function getStockCash(product: StockProduct) {
+  return getPositiveDisplayPrices(product).cash ?? null;
 }

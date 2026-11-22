@@ -26,12 +26,23 @@ export interface DefaultInstallment {
 export function computeDefaultBcInstallment(
   installmentPrice: number | null | undefined,
   config: BcConfigJson | null | undefined,
+  preferred?: { months?: number | null; downAmount?: number | null },
 ): DefaultInstallment | null {
   if (installmentPrice == null || !(installmentPrice > 0)) return null;
   if (!config || !config.allowedMonths || config.allowedMonths.length === 0) return null;
 
-  const months = config.allowedMonths.includes(12) ? 12 : config.allowedMonths[0];
-  const downAmount = minDownAmountFromPct(installmentPrice, config.minDownPct);
+  const months =
+    preferred?.months != null && config.allowedMonths.includes(preferred.months)
+      ? preferred.months
+      : config.allowedMonths.includes(12)
+        ? 12
+        : config.allowedMonths[0];
+  const downAmount =
+    preferred?.downAmount != null &&
+    Number.isFinite(preferred.downAmount) &&
+    preferred.downAmount > 0
+      ? preferred.downAmount
+      : minDownAmountFromPct(installmentPrice, config.minDownPct);
 
   const result = calcBcInstallment({
     installmentPrice: new Decimal(installmentPrice),

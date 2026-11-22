@@ -1,0 +1,74 @@
+/* Scoped to stock: keep other shared DataTable screens unchanged. */
+.stock-comparison table {
+  width: 100%;
+  table-layout: fixed;
+}
+.stock-comparison th,
+.stock-comparison td {
+  padding-inline: 6px;
+  overflow-wrap: anywhere;
+}
+.stock-comparison td {
+  padding-block: 16px;
+}
+.stock-comparison time {
+  white-space: normal;
+}
+.stock-comparison th button {
+  white-space: normal;
+  text-align: inherit;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+.stock-comparison th button span {
+  white-space: normal;
+  overflow: visible;
+}
+.stock-comparison .stock-imei span {
+  font-family: inherit;
+  font-size: 12px;
+  letter-spacing: -0.025em;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.stock-comparison .stock-bc-cell {
+  background: hsl(var(--primary) / 0.035);
+}
+.stock-comparison .stock-gfin-cell {
+  background: hsl(var(--info) / 0.035);
+}
+.stock-comparison .stock-gfin-cell .text-primary {
+  color: hsl(var(--foreground));
+}
+.stock-comparison .stock-cash-cell {
+  background: hsl(var(--muted) / 0.2);
+}
+.stock-comparison .stock-payment {
+  min-width: 0;
+}
+.stock-comparison .stock-payment span {
+  max-width: 100%;
+}
+.stock-comparison .stock-payment strong {
+  font-size: 15px;
+}
+@media (max-width: 1279px) {
+  .stock-comparison th,
+  .stock-comparison td {
+    padding-inline: 4px;
+  }
+  .stock-comparison .stock-imei span {
+    font-size: 11px;
+  }
+}
+
+.stock-comparison.stock-compact td {
+  padding-block: 8px;
+}
+
+/* Reserve the narrow utility columns for their controls, including with the sidebar open. */
+.stock-comparison .stock-select-cell,
+.stock-comparison .stock-actions-cell {
+  padding-inline: 0;
+  text-align: center;
+}

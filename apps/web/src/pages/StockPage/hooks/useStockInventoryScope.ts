@@ -17,6 +17,7 @@ export function useStockInventoryScope(
       update(
         (next) => {
           next.set('inventoryScope', value);
+          if (value === 'accessories') next.delete('deviceOrigin');
           ['page', 'category', 'accessoryGroupId'].forEach((key) => next.delete(key));
         },
         { replace: false },

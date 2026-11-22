@@ -447,7 +447,7 @@ describe('All categories and accessory stock views', () => {
       await screen.findByText('เคสใส iPhone 16');
       fireEvent.click(
         within(screen.getByRole('group', { name: 'แบ่งประเภทสินค้า' })).getByRole('button', {
-          name: 'อุปกรณ์',
+          name: 'อุปกรณ์เสริม',
         }),
       );
       await screen.findByText('F1601');
@@ -518,7 +518,7 @@ describe('All categories and accessory stock views', () => {
     await screen.findByText('สายชาร์จ');
     fireEvent.click(
       within(screen.getByRole('group', { name: 'แบ่งประเภทสินค้า' })).getByRole('button', {
-        name: 'อุปกรณ์',
+        name: 'อุปกรณ์เสริม',
       }),
     );
     await screen.findByText('15,900 ฿');
@@ -581,7 +581,6 @@ describe('Stock workspace interactions', () => {
         product({ id: 'tablet', model: 'iPad Air', category: 'TABLET' }),
       ]);
       await screen.findByText('iPhone 13');
-      if (mobile) fireEvent.click(screen.getByRole('button', { name: 'ตัวกรอง' }));
       fireEvent.change(screen.getByRole('combobox', { name: 'สถานะ' }), {
         target: { value: 'IN_STOCK' },
       });
@@ -592,10 +591,10 @@ describe('Stock workspace interactions', () => {
       fireEvent.click(screen.getByRole('checkbox', { name: 'เลือก iPhone 13 123456789012345' }));
       const categories = within(screen.getByRole('group', { name: 'แบ่งประเภทสินค้า' }));
       for (const [category, model, excluded] of [
-        ['มือ 1', 'iPhone 16', ['iPhone 13', 'Charger', 'iPad Air', 'iPhone 16 Reserved']],
-        ['มือ 2', 'iPhone 13', ['iPhone 16', 'Charger', 'iPad Air']],
+        ['มือถือมือ 1', 'iPhone 16', ['iPhone 13', 'Charger', 'iPad Air', 'iPhone 16 Reserved']],
+        ['มือถือมือ 2', 'iPhone 13', ['iPhone 16', 'Charger', 'iPad Air']],
         ['แท็บเล็ต', 'iPad Air', ['iPhone 13', 'iPhone 16', 'Charger']],
-        ['อุปกรณ์', 'Charger', ['iPhone 13', 'iPhone 16', 'iPad Air']],
+        ['อุปกรณ์เสริม', 'Charger', ['iPhone 13', 'iPhone 16', 'iPad Air']],
       ] as const) {
         fireEvent.click(categories.getByRole('button', { name: category }));
         await screen.findByText(model);
@@ -610,7 +609,7 @@ describe('Stock workspace interactions', () => {
           screen.queryByRole('region', { name: 'จัดการสินค้าที่เลือก' }),
         ).not.toBeInTheDocument();
       }
-      fireEvent.click(categories.getByRole('button', { name: 'ทั้งหมด' }));
+      fireEvent.click(categories.getByRole('button', { name: 'ทุกประเภท' }));
       await screen.findByText('iPhone 13');
       expect(screen.getByText('iPhone 16')).toBeInTheDocument();
       expect(screen.getByText('Charger')).toBeInTheDocument();
@@ -620,47 +619,36 @@ describe('Stock workspace interactions', () => {
   );
 
   it.each([false, true])(
-    'offers each filter once and excludes the category tab from the mobile filter count (mobile: %s)',
+    'shows one status selector and removable active filters (mobile: %s)',
     async (mobile) => {
       mocks.mobile = mobile;
       showProducts([product()]);
       await screen.findByText('iPhone 13');
-      fireEvent.click(screen.getByRole('button', { name: 'มือ 2' }));
-      await screen.findByText('iPhone 13');
-      expect(screen.queryByRole('combobox', { name: 'ประเภทสินค้า' })).not.toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /^ลบ ประเภท:/ })).not.toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'ล้างทั้งหมด' })).not.toBeInTheDocument();
-      if (mobile) {
-        const toggle = screen.getByRole('button', { name: 'ตัวกรอง' });
-        expect(toggle).not.toHaveTextContent('1');
-        fireEvent.click(toggle);
-      }
+      fireEvent.click(screen.getByRole('button', { name: 'มือถือมือ 2' }));
       expect(screen.getAllByRole('textbox', { name: 'ค้นหาสินค้า' })).toHaveLength(1);
       expect(screen.getAllByRole('combobox', { name: 'สถานะ' })).toHaveLength(1);
       expect(screen.getAllByRole('combobox', { name: 'สาขา' })).toHaveLength(1);
-      fireEvent.change(screen.getByRole('combobox', { name: 'สถานะ' }), {
-        target: { value: 'IN_STOCK' },
-      });
-      fireEvent.change(screen.getByRole('combobox', { name: 'สาขา' }), {
-        target: { value: 'branch-1' },
-      });
+      expect(screen.queryByRole('button', { name: 'ตัวกรอง' })).not.toBeInTheDocument();
+      fireEvent.change(screen.getByLabelText('สถานะ'), { target: { value: 'IN_STOCK' } });
+      fireEvent.change(screen.getByLabelText('สาขา'), { target: { value: 'branch-1' } });
       await screen.findByText('iPhone 13');
-      expect(screen.queryByRole('button', { name: /^ลบ สถานะ:/ })).not.toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /^ลบ สาขา:/ })).not.toBeInTheDocument();
-      if (mobile) expect(screen.getByRole('button', { name: 'ตัวกรอง' })).toHaveTextContent('2');
-      else
-        expect(screen.getByRole('region', { name: 'เลื่อนตารางรายการสินค้า' })).toHaveAttribute(
-          'tabindex',
-          '0',
-        );
-      fireEvent.click(screen.getByRole('button', { name: 'ล้างทั้งหมด' }));
-      await screen.findByText('iPhone 13');
-      expect(screen.getByRole('button', { name: 'ทั้งหมด' })).toHaveAttribute(
+      const chips = within(screen.getByRole('group', { name: 'ตัวกรองที่ใช้' }));
+      expect(chips.getByRole('button', { name: /^ลบ ประเภท:/ })).toBeVisible();
+      expect(chips.getByRole('button', { name: /^ลบ สถานะ:/ })).toBeVisible();
+      fireEvent.click(chips.getByRole('button', { name: /^ลบ สาขา:/ }));
+      expect(screen.getByLabelText('สาขา')).toHaveValue('');
+      expect(screen.getByLabelText('สถานะ')).toHaveValue('IN_STOCK');
+      expect(screen.getByRole('button', { name: 'มือถือมือ 2' })).toHaveAttribute(
         'aria-pressed',
         'true',
       );
-      expect(screen.getByRole('combobox', { name: 'สถานะ' })).toHaveValue('');
-      expect(screen.getByRole('combobox', { name: 'สาขา' })).toHaveValue('');
+      fireEvent.click(screen.getByRole('button', { name: 'ล้างตัวกรอง' }));
+      expect(screen.getByLabelText('สถานะ')).toHaveValue('');
+      expect(screen.getByRole('button', { name: 'ทุกประเภท' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+      expect(screen.queryByRole('group', { name: 'ตัวกรองที่ใช้' })).not.toBeInTheDocument();
     },
   );
 
@@ -669,15 +657,13 @@ describe('Stock workspace interactions', () => {
     showProducts([product(), product({ id: 'new-1', model: 'iPhone 16', category: 'PHONE_NEW' })]);
     await screen.findByText('iPhone 13');
     expect(screen.queryByRole('combobox', { name: 'ประเภทสินค้า' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'ตัวกรอง' }));
-    fireEvent.click(screen.getByRole('button', { name: 'มือ 2' }));
+    fireEvent.click(screen.getByRole('button', { name: 'มือถือมือ 2' }));
     await screen.findByText('iPhone 13');
     expect(screen.queryByText('iPhone 16')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'ตัวกรอง' })).toHaveAttribute(
-      'aria-expanded',
+    expect(screen.getByRole('button', { name: 'มือถือมือ 2' })).toHaveAttribute(
+      'aria-pressed',
       'true',
     );
-    expect(screen.getByRole('button', { name: 'มือ 2' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('combobox', { name: 'สถานะ' })).toBeVisible();
     const search = screen.getByRole('textbox', { name: 'ค้นหาสินค้า' });
     search.focus();
@@ -698,19 +684,22 @@ describe('Stock workspace interactions', () => {
     fireEvent.change(screen.getByRole('combobox', { name: 'สถานะ' }), {
       target: { value: 'IN_STOCK' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'มือ 2' }));
+    fireEvent.click(screen.getByRole('button', { name: 'มือถือมือ 2' }));
     fireEvent.change(await screen.findByRole('combobox', { name: 'สาขา' }), {
       target: { value: 'branch-1' },
     });
     await screen.findByText('iPhone 13');
-    fireEvent.click(screen.getByRole('button', { name: 'ล้างทั้งหมด' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ล้างตัวกรอง' }));
     await screen.findByText('iPhone 16');
     expect(screen.getByRole('textbox', { name: 'ค้นหาสินค้า' })).toHaveValue('');
     for (const name of ['สถานะ', 'สาขา']) {
       expect(screen.getByRole('combobox', { name })).toHaveValue('');
     }
-    expect(screen.queryByRole('button', { name: 'ล้างทั้งหมด' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'ทั้งหมด' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('button', { name: 'ล้างตัวกรอง' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'ทุกประเภท' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
   });
 
   it.each([false, true])('clears selections on page change (mobile: %s)', async (mobile) => {
@@ -821,7 +810,7 @@ describe('Stock table server sorting', () => {
     await waitFor(() =>
       expect(lastProductQuery()).toMatchObject({ sortBy: 'monthlyPayment', sortDirection: 'desc' }),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'มือ 2' }));
+    fireEvent.click(screen.getByRole('button', { name: 'มือถือมือ 2' }));
     await waitFor(() => expect(screen.getByRole('combobox', { name: 'เรียงตาม' })).toHaveValue(''));
   });
 
@@ -864,8 +853,8 @@ describe('Stock received dates', () => {
   afterEach(() => vi.restoreAllMocks());
   for (const mobile of [false, true]) {
     it.each([
-      ['PHONE_NEW', 'มือ 1'],
-      ['PHONE_USED', 'มือ 2'],
+      ['PHONE_NEW', 'มือถือมือ 1'],
+      ['PHONE_USED', 'มือถือมือ 2'],
       ['TABLET', 'แท็บเล็ต'],
     ])(`shows and sorts received dates for %s (mobile=${mobile})`, async (category, tab) => {
       mocks.mobile = mobile;
@@ -979,8 +968,7 @@ describe('Stock received dates', () => {
   );
 });
 
-// คำขอเจ้าของ 2026-09-11: แบ่ง "สินค้าทั้งหมด" กับ "สินค้าในสต๊อกพร้อมขาย" — mockup canvas 54e6c624 เคาะแล้ว
-describe('Stock view switch — พร้อมขาย | ทั้งหมด', () => {
+describe('Stock unified status filter', () => {
   const ready = () => product();
   const reserved = () =>
     product({
@@ -991,61 +979,47 @@ describe('Stock view switch — พร้อมขาย | ทั้งหมด
     });
   const openDefault = () =>
     showProducts([ready(), reserved()], false, config, undefined, DEFAULT_VIEW_PATH);
-  // แท็บหมวด "ทั้งหมด" ก็เป็นปุ่ม — เจาะจงที่กลุ่มสวิตช์เท่านั้น
-  const viewSwitch = () => within(screen.getByRole('group', { name: 'แสดงสินค้า' }));
 
-  it('opens on the ready view: only IN_STOCK is requested, both counts show, status filter and column are hidden', async () => {
+  it('keeps ready as the default and makes its active status visible', async () => {
     openDefault();
     await screen.findByRole('row', { name: /iPhone 13/ });
     expect(screen.queryByRole('row', { name: /iPhone 14/ })).not.toBeInTheDocument();
-    const listCalls = mocks.get.mock.calls.filter(([url]) => url === '/products');
-    const lastList = listCalls[listCalls.length - 1];
-    expect(lastList?.[1]?.params.status).toBe('IN_STOCK');
-
-    const readyButton = viewSwitch().getByRole('button', { name: /พร้อมขาย/ });
-    const allButton = viewSwitch().getByRole('button', { name: /^ทั้งหมด/ });
-    expect(readyButton).toHaveAttribute('aria-pressed', 'true');
-    expect(allButton).toHaveAttribute('aria-pressed', 'false');
-    expect(readyButton).toHaveTextContent('1');
-    expect(allButton).toHaveTextContent('2');
-
-    expect(screen.queryByLabelText('สถานะ')).not.toBeInTheDocument();
-    expect(screen.queryByRole('columnheader', { name: 'สถานะ' })).not.toBeInTheDocument();
-    expect(screen.getByText(/พร้อมขาย 1 รายการ · อีก 1 รายการอยู่ในสถานะอื่น/)).toBeInTheDocument();
+    expect(screen.getByLabelText('สถานะ')).toHaveValue('IN_STOCK');
+    expect(screen.getByRole('button', { name: 'ลบ สถานะ: พร้อมขาย' })).toBeVisible();
+    expect(screen.queryByRole('group', { name: 'แสดงสินค้า' })).not.toBeInTheDocument();
+    expect(
+      mocks.get.mock.calls.filter(([url]) => url === '/products').at(-1)?.[1]?.params.status,
+    ).toBe('IN_STOCK');
   });
 
-  it('switching to ทั้งหมด drops the status param and brings back the status filter and column', async () => {
+  it('removing the ready chip really includes every status without changing the category', async () => {
     openDefault();
     await screen.findByRole('row', { name: /iPhone 13/ });
-    fireEvent.click(viewSwitch().getByRole('button', { name: /^ทั้งหมด/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'มือถือมือ 2' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ลบ สถานะ: พร้อมขาย' }));
     await screen.findByRole('row', { name: /iPhone 14/ });
-    const listCalls = mocks.get.mock.calls.filter(([url]) => url === '/products');
-    const lastList = listCalls[listCalls.length - 1];
-    expect(lastList?.[1]?.params.status).toBeUndefined();
-    expect(viewSwitch().getByRole('button', { name: /^ทั้งหมด/ })).toHaveAttribute(
+    expect(screen.getByLabelText('สถานะ')).toHaveValue('');
+    expect(screen.getByRole('button', { name: 'มือถือมือ 2' })).toHaveAttribute(
       'aria-pressed',
       'true',
     );
-    expect(screen.getByLabelText('สถานะ')).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: 'สถานะ' })).toBeInTheDocument();
-    expect(screen.getByText(/ทั้งหมด 2 รายการ · พร้อมขาย 1/)).toBeInTheDocument();
+    expect(
+      mocks.get.mock.calls.filter(([url]) => url === '/products').at(-1)?.[1]?.params.status,
+    ).toBeUndefined();
   });
 
-  it('the summary line offers ดูทั้งหมด which switches views, and the status filter narrows only the all view', async () => {
+  it('switches directly between reserved, ready and all without a stale hidden status', async () => {
     openDefault();
     await screen.findByRole('row', { name: /iPhone 13/ });
-    fireEvent.click(screen.getByRole('button', { name: 'ดูทั้งหมด' }));
-    await screen.findByRole('row', { name: /iPhone 14/ });
     fireEvent.change(screen.getByLabelText('สถานะ'), { target: { value: 'RESERVED' } });
-    await waitFor(() =>
-      expect(screen.queryByRole('row', { name: /iPhone 13/ })).not.toBeInTheDocument(),
-    );
-    // กลับไป "พร้อมขาย" แล้วตัวกรองสถานะที่เลือกไว้ต้องถูกล้าง (ไม่งั้นกลับมาโหมด ทั้งหมด จะกรองค้าง)
-    fireEvent.click(viewSwitch().getByRole('button', { name: /พร้อมขาย/ }));
-    await screen.findByRole('row', { name: /iPhone 13/ });
-    fireEvent.click(viewSwitch().getByRole('button', { name: /^ทั้งหมด/ }));
     await screen.findByRole('row', { name: /iPhone 14/ });
-    expect((screen.getByLabelText('สถานะ') as HTMLSelectElement).value).toBe('');
+    expect(screen.queryByRole('row', { name: /iPhone 13/ })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('สถานะ'), { target: { value: 'IN_STOCK' } });
+    await screen.findByRole('row', { name: /iPhone 13/ });
+    expect(screen.queryByRole('row', { name: /iPhone 14/ })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('สถานะ'), { target: { value: '' } });
+    await screen.findByRole('row', { name: /iPhone 14/ });
+    expect(screen.getByRole('row', { name: /iPhone 13/ })).toBeInTheDocument();
   });
 });
 
@@ -1117,7 +1091,7 @@ describe('Accessory-specific comparison behavior', () => {
       else
         fireEvent.click(
           within(screen.getByRole('group', { name: 'แบ่งประเภทสินค้า' })).getByRole('button', {
-            name: 'อุปกรณ์',
+            name: 'อุปกรณ์เสริม',
           }),
         );
       await waitFor(() =>
@@ -1178,4 +1152,20 @@ describe('Accessory-specific comparison behavior', () => {
     await screen.findByText('ดูแยกรายชิ้น');
     expect(screen.queryByText('150 ฿')).not.toBeInTheDocument();
   });
+});
+
+it('keeps an incompatible category from an old accessory link visible and removable', async () => {
+  showProducts(
+    [product({ category: 'ACCESSORY', model: 'Case', name: 'Case' })],
+    false,
+    config,
+    undefined,
+    '/stock/products?zone=shop&inventoryScope=accessories&view=all&category=PHONE_NEW',
+  );
+  const chip = await screen.findByRole('button', { name: 'ลบ ประเภท: มือถือมือ 1' });
+  expect(screen.queryByRole('group', { name: 'แบ่งประเภทสินค้า' })).not.toBeInTheDocument();
+  fireEvent.click(chip);
+  await screen.findByText('Case');
+  expect(screen.getByTestId('stock-location').textContent).not.toContain('category=');
+  expect(screen.getByTestId('stock-location').textContent).toContain('inventoryScope=accessories');
 });

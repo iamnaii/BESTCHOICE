@@ -54,8 +54,6 @@ export default function StockProductsPage() {
   const {
     isManager,
     view,
-    setView,
-    viewCounts,
     sort,
     setSort,
     search,
@@ -373,8 +371,6 @@ export default function StockProductsPage() {
         setSearch={setSearch}
         clearFilters={clearFilters}
         view={view}
-        setView={setView}
-        viewCounts={viewCounts}
         filterStatus={filterStatus}
         setFilterStatus={setFilterStatus}
         filterCategory={filterCategory}

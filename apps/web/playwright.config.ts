@@ -1,9 +1,30 @@
 import { defineConfig, devices } from '@playwright/test';
+import { tooltifyPreview } from './e2e/tooltify-preview';
 
-export default defineConfig({
+const cutoverSpec = 'imported-sales-cutover.spec.ts';
+const useCutover = process.env.TOOLTIFY_RUN_DIR || process.argv.some(arg => arg.endsWith(cutoverSpec));
+const preview = useCutover ? tooltifyPreview() : null;
+
+export default preview ? defineConfig({
+  testDir: './e2e',
+  testMatch: cutoverSpec,
+  workers: 1,
+  retries: 0,
+  timeout: 60_000,
+  outputDir: preview.run + '/playwright-results',
+  reporter: 'list',
+  use: {
+    baseURL: preview.baseURL,
+    launchOptions: { executablePath: preview.chromium },
+  },
+  projects: [
+    { name: 'desktop', use: { ...devices['Desktop Chrome'] } },
+    { name: 'mobile', use: { ...devices['Pixel 7'], defaultBrowserType: 'chromium' } },
+  ],
+}) : defineConfig({
   globalSetup: './e2e/global-setup.ts',
   testDir: './e2e',
-  testIgnore: ['**/load-test-*.spec.ts'],
+  testIgnore: ['**/load-test-*.spec.ts', '**/' + cutoverSpec],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   // CI retries: 2 (handles transient flake); local: 1

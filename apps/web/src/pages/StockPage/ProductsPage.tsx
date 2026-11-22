@@ -1,5 +1,6 @@
+import { InventoryScopeFilter } from './components/InventoryScopeFilter';
 import { useCallback, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useSearchParams, useNavigate } from 'react-router';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -34,6 +35,7 @@ import { PriceManagementModal } from './components/PriceManagementModal';
 export default function StockProductsPage() {
   useDocumentTitle('รายการสินค้า');
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
     message: string;
@@ -218,7 +220,7 @@ export default function StockProductsPage() {
             <DropdownMenuContent align="end" className="w-60">
               <DropdownMenuItem
                 className="min-h-11 cursor-pointer"
-                onSelect={() => navigate('/stock')}
+                onSelect={() => { const params = new URLSearchParams(searchParams); ['view','page','category','status','aging','accessoryGroupId','q'].forEach(key=>params.delete(key)); params.set('inventoryScope', products.inventoryScope); if (filterBranch) params.set('branchId', filterBranch); navigate(`/stock?${params}`); }}
               >
                 <BarChart3 aria-hidden="true" />
                 ดูภาพรวมคลัง
@@ -335,7 +337,10 @@ export default function StockProductsPage() {
           </p>
         </div>
       )}
+      <InventoryScopeFilter value={products.inventoryScope} onValueChange={products.setInventoryScope} />
+      {products.aging && <div className="mb-4 flex flex-wrap items-center gap-3 text-sm"><span>กำลังแสดง: ค้างสต๊อกเกิน 90 วัน</span><Button variant="outline" onClick={products.clearAging}>ล้างช่วงอายุ</Button></div>}
       <StockListTab
+        inventoryScope={products.inventoryScope}
         filterDeviceOrigin={filterDeviceOrigin}
         setFilterDeviceOrigin={setFilterDeviceOrigin}
         accessoryGroupId={accessoryGroupId}

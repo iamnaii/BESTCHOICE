@@ -1,3 +1,4 @@
+import { stockInventoryWhere, stockOver90Where } from './stock-inventory-filter';
 import { purchaseOrderScopeWhere } from '../employee-access/access-procurement-scope';
 import { permissionScopes } from '../employee-access/access-context';
 import { domainAccessClient, currentDomainAccess, currentProductScopeSql, transferScopeWhere } from '../employee-access/access-execution-context';
@@ -120,12 +121,12 @@ export class ProductsService {
       }
       return findStockGroups(this.prisma, filters, productInclude);
     }
-    const where: Record<string, unknown> = { deletedAt: null };
+    const where: Record<string, unknown> = { deletedAt: null, AND: [stockInventoryWhere(filters.inventoryScope), ...(filters.aging === 'over90' ? [stockOver90Where(new Date())] : [])] };
 
     if (filters.accessoryGroupId) {
       const group = await findAccessoryGroupWhere(this.prisma, filters.accessoryGroupId, filters.branchId);
       if (!group) throw new NotFoundException('ไม่พบกลุ่มอุปกรณ์');
-      where.AND = [group];
+      (where.AND as unknown[]).push(group);
     }
     if (filters.deviceOrigin) {
       if (!['THAI', 'IMPORTED', 'UNKNOWN'].includes(filters.deviceOrigin)) throw new BadRequestException('Invalid device origin');

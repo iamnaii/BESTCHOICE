@@ -1,3 +1,4 @@
+import type { StockInventoryScope } from '@installment/shared';
 import { NativeSelect } from '@/components/ui/native-select';
 import { DeviceOriginFilter } from '@/components/product/DeviceOriginFilter';
 import { useId, useState, type ReactNode } from 'react';
@@ -16,6 +17,7 @@ import { stockTableMinWidth, type StockColumn } from './stockColumns';
 import { ChevronLeft, ChevronRight, Package, Search, SlidersHorizontal, X } from 'lucide-react';
 
 export interface StockListTabProps {
+  inventoryScope?: StockInventoryScope;
   sort: TableSort | null;
   onSortChange: (sort: TableSort | null) => void;
   /** มุมมอง พร้อมขาย (ค่าเริ่มต้น) | ทั้งหมด — คำขอเจ้าของ 2026-09-11 */
@@ -41,7 +43,7 @@ export interface StockListTabProps {
   listError: boolean;
   listErrorObj: unknown;
   listRefetch: () => void;
-  listResult: { data: StockProduct[]; total: number; page: number; totalPages: number } | undefined;
+  listResult: { data: StockProduct[]; totalUnits?: number; total: number; page: number; totalPages: number } | undefined;
   page: number;
   setPage: (page: number) => void;
   isManager: boolean;
@@ -119,6 +121,7 @@ function StockViewSwitch({
 }
 
 export function StockListTab({
+  inventoryScope = 'all',
   accessoryGroupId,
   sort,
   onSortChange,
@@ -187,11 +190,15 @@ export function StockListTab({
   const hiddenOthers = viewCounts ? Math.max(0, viewCounts.all - viewCounts.ready) : 0;
   const pageSuffix =
     listResult && listResult.totalPages > 1 ? ` · หน้านี้ ${listProducts.length} รายการ` : '';
-  const resultSummary = !listResult
+  const legacyResultSummary = !listResult
     ? 'กำลังโหลดรายการสินค้า…'
     : view === 'ready'
       ? `พร้อมขาย ${listResult.total.toLocaleString()} รายการ${hiddenOthers > 0 ? ` · อีก ${hiddenOthers.toLocaleString()} รายการอยู่ในสถานะอื่น` : ''}${pageSuffix}`
       : `${hasFilters ? 'พบ' : 'ทั้งหมด'} ${listResult.total.toLocaleString()} รายการ${viewCounts ? ` · พร้อมขาย ${viewCounts.ready.toLocaleString()}` : ''}${pageSuffix}`;
+  const unit = inventoryScope === 'devices' ? 'เครื่อง' : 'ชิ้น';
+  const resultSummary = listResult?.totalUnits != null
+    ? `${view === 'ready' ? 'พร้อมขาย' : 'พบ'} ${listResult.totalUnits.toLocaleString()} ${unit} · ${listResult.total.toLocaleString()} รายการ/กลุ่ม${pageSuffix}`
+    : legacyResultSummary;
   // บรรทัดสรุปเดียวกันทั้งตารางคอมและการ์ดมือถือ — ในมุมมองพร้อมขายมีปุ่มพาไปดูสถานะอื่น
   const summaryNode = (
     <p role="status" className="text-xs text-muted-foreground leading-snug">
@@ -218,7 +225,7 @@ export function StockListTab({
         aria-label="แบ่งประเภทสินค้า"
         className="grid grid-cols-5 border-b border-border px-2 sm:flex sm:gap-4 sm:px-5"
       >
-        {quickCategories.map((category) => (
+        {quickCategories.filter(c => !c.value || inventoryScope === 'all' || (inventoryScope === 'devices' ? c.value !== 'ACCESSORY' : c.value === 'ACCESSORY')).map((category) => (
           <button
             key={category.value}
             type="button"

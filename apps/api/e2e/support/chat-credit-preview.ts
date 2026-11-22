@@ -1,3 +1,5 @@
+import { ImportedSalesService } from '../../src/modules/imported-sales/imported-sales.service';
+import { QueryImportedSalesDto } from '../../src/modules/imported-sales/dto/query-imported-sales.dto';
 import { ChatDispatchService } from '../../src/modules/chat-engine/services/chat-dispatch.service';
 import { previewShopHome } from './preview-shop-home';
 import { ChatDispatchController } from '../../src/modules/staff-chat/chat-dispatch.controller';
@@ -86,6 +88,8 @@ import { TradeInController } from '../../src/modules/trade-in/trade-in.controlle
 import { ContactsController } from '../../src/modules/contacts/contacts.controller';
 import { ProductPhotosController } from '../../src/modules/quality-control/product-photos.controller';
 import { ProductPhotosService } from '../../src/modules/quality-control/product-photos.service';
+import { ProductsStockService } from '../../src/modules/products/products-stock.service';
+import { StockScopeQueryDto } from '../../src/modules/products/dto/stock-scope-query.dto';
 import { ProductsService } from '../../src/modules/products/products.service';
 import { PoQueryService } from '../../src/modules/purchase-orders/services/po-query.service';
 import { UpdateProductDto } from '../../src/modules/products/dto/update-product.dto';
@@ -202,6 +206,8 @@ const transactionalReports = new TransactionalReportService(db, new CompanyResol
 const companies = new CompanyService(db);
 const shopHome = previewShopHome(db);
 const products = new ProductsService(db);
+const stockOverview = new ProductsStockService(db);
+const importedSales = new ImportedSalesService(db);
 const poQuery = new PoQueryService(db);
 const interestConfigs = new InterestConfigService(db);
 const promotions = new PromotionsService(db);
@@ -347,6 +353,18 @@ class PreviewController {
   @Get('products') products(@Query() query: Record<string, string>) {
     return products.findAll({ ...query, groupAccessories: query.groupAccessories === 'true', page: Number(query.page) || 1, limit: Number(query.limit) || 50 });
   }
+  @Get('products/stock') stock(@Query('branchId') branchId: string, @Query() scope: StockScopeQueryDto) {
+    return stockOverview.getStock({branchId,inventoryScope:scope.inventoryScope});
+  }
+  @Get('products/stock/dashboard') stockDashboard(@Query('branchId') branchId: string, @Query() scope: StockScopeQueryDto) {
+    return stockOverview.getStockDashboard(branchId,scope.inventoryScope,actor);
+  }
+  @Get('products/warranty/expiring') stockWarranty(@Query('branchId') branchId: string, @Query() scope: StockScopeQueryDto) {
+    return stockOverview.getWarrantyExpiring(30,branchId,scope.inventoryScope);
+  }
+  @Get('products/transfers/pending') stockPending(@Query('branchId') branchId: string, @Query() scope: StockScopeQueryDto) {
+    return stockOverview.getPendingTransfers(branchId,scope.inventoryScope);
+  }
   @Get('products/:id') product(@Param('id') id: string) { return products.findOne(id); }
   @Patch('products/:id') updateProduct(@Param('id') id: string, @Body() dto: UpdateProductDto) {
     return products.update(id, dto, actor.id);
@@ -369,6 +387,8 @@ class PreviewController {
   @Get('customers/export') customersExport(@Query() query: CustomersListQueryDto) {
     return customerQuery.exportRows(query);
   }
+  @Get('imported-sales/summary') importedSalesSummary(@Query() query: QueryImportedSalesDto) { return importedSales.summary(query); }
+  @Get('imported-sales') importedSalesList(@Query() query: QueryImportedSalesDto) { return importedSales.list(query); }
   @Get('sales/export') salesExport(@Query() query: SalesListQueryDto) { return salesQuery.exportRows(query, actor); }
   @Get('sales/salespersons') salespersons() { return salesQuery.getSalespersons(actor); }
   @Get('sales/top-products') topProducts() { return salesQuery.getTopSellingProducts(actor); }
@@ -705,6 +725,7 @@ async function main() {
     )
       return res.json({ data: [], total: 0 });
     if (
+      (req.method === 'GET' && ['/api/imported-sales', '/api/imported-sales/summary'].includes(path)) ||
       /^\/api\/(store-appointments|store-appointment-links|store-appointments-public)(\/|$)/.test(path) ||
       /^\/api\/(todos|trade-ins|contacts|promotions|gfin-config|documents|preview|auth\/me|credit-checks|ocr\/bank-statement|products|contracts|interest-configs|sales|bookings)/.test(path) || path.startsWith('/api/chat-analytics/v2/') || path.startsWith('/api/staff-chat/facebook-comments') || path.startsWith('/api/staff-chat/service-requests/') || path.startsWith('/api/after-sales') || path === '/api/customers' || path === '/api/users' ||
       /^\/api\/customers\/(search|[^/]+(?:\/credit-check.*|\/blacklist|\/detail|\/journey(?:\/summary)?)?)$/.test(path) ||

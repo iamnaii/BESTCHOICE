@@ -67,4 +67,5 @@ export * from './recurring-bill';
 export * from './sale-receipt';
 
 export * from './customer-blacklist';
+export * from './stock-inventory-scope';
 export * from './sell-device-eligibility';

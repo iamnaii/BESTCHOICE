@@ -1,0 +1,2 @@
+ALTER TYPE "TooltifyImportKind" ADD VALUE 'SUPPLIER';
+ALTER TYPE "TooltifyTargetType" ADD VALUE 'SUPPLIER';

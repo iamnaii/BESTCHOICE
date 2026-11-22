@@ -26,11 +26,11 @@ export function useLatestSearchParams() {
   }, [searchParams]);
 
   const update = useCallback(
-    (mutate: (next: URLSearchParams) => void) => {
+    (mutate: (next: URLSearchParams) => void, options: { replace?: boolean } = { replace: true }) => {
       const next = new URLSearchParams(latest.current);
       mutate(next);
       latest.current = next;
-      setSearchParams(next, { replace: true });
+      setSearchParams(next, options);
     },
     [setSearchParams],
   );

@@ -1,3 +1,4 @@
+import { createSupplierInTransaction } from './create-supplier-in-transaction';
 import { purchaseOrderScopeWhere } from '../employee-access/access-procurement-scope';
 import { domainAccessClient, currentDomainAccess, currentPermissionScope, currentProductReadWhere } from '../employee-access/access-execution-context';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
@@ -90,41 +91,12 @@ export class SuppliersService {
   }
 
   async create(dto: CreateSupplierDto) {
-    const { paymentMethods, ...supplierData } = dto;
-    // Resolve/create the Contact (party master) and link it on the new
-    // supplier in the SAME transaction so the contact row and the supplier
-    // FK are atomic. Suppliers are keyed by taxId (no national id).
     return this.prisma.$transaction(async (tx) => {
-      const contact = await this.contactResolver.findOrCreateByNaturalKey(tx, {
-        name: dto.name,
-        taxId: dto.taxId ?? null,
-        nationalIdHash: null,
-        phone: dto.phone ?? null,
-        role: 'SUPPLIER',
+      const {supplier} = await createSupplierInTransaction(tx, dto, {
+        resolver: this.contactResolver,
+        accessCompanyCode: currentDomainAccess()?.scope.company,
       });
-
-      return tx.supplier.create({
-        data: {
-          ...supplierData,
-          ...(currentDomainAccess() ? { accessCompanyCode: currentDomainAccess()!.scope.company } : {}),
-          contactId: contact.id,
-          paymentMethods: paymentMethods?.length
-            ? {
-                create: paymentMethods.map((pm, index) => ({
-                  paymentMethod: pm.paymentMethod,
-                  bankName: pm.bankName,
-                  bankAccountName: pm.bankAccountName,
-                  bankAccountNumber: pm.bankAccountNumber,
-                  creditTermDays: pm.creditTermDays,
-                  isDefault: pm.isDefault ?? index === 0,
-                })),
-              }
-            : undefined,
-        },
-        include: {
-          paymentMethods: true,
-        },
-      });
+      return supplier;
     });
   }
 

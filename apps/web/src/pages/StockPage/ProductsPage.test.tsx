@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, useLocation } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import StockProductsPage from './ProductsPage';
 import type { StockProduct } from './types';
@@ -58,6 +58,8 @@ function product(overrides: Partial<StockProduct> = {}): StockProduct {
 const ALL_VIEW_PATH = '/stock/products?zone=shop&view=all';
 const DEFAULT_VIEW_PATH = '/stock/products?zone=shop';
 
+function LocationCapture(){return <output data-testid="stock-location">{useLocation().search}</output>;}
+
 function showProducts(
   products: StockProduct[],
   failConfig = false,
@@ -112,7 +114,7 @@ function showProducts(
       client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
     >
       <MemoryRouter initialEntries={[initialPath]}>
-        <StockProductsPage />
+        <LocationCapture /><StockProductsPage />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -1252,4 +1254,24 @@ describe('Stock view switch — พร้อมขาย | ทั้งหมด
     await screen.findByRole('row', { name: /iPhone 14/ });
     expect((screen.getByLabelText('สถานะ') as HTMLSelectElement).value).toBe('');
   });
+});
+
+
+it('preserves inventory scope and aging from the overview, then clears page and category on scope change', async () => {
+  showProducts([product()], false, config, undefined, '/stock/products?zone=shop&view=ready&inventoryScope=devices&aging=over90&category=PHONE_USED&page=2');
+  await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/products', expect.objectContaining({ params: expect.objectContaining({ inventoryScope: 'devices', aging: 'over90', status: 'IN_STOCK' }) })));
+  fireEvent.click(screen.getByRole('radio', { name: 'อุปกรณ์เสริม' }));
+  await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/products', expect.objectContaining({ params: expect.objectContaining({ inventoryScope: 'accessories', page: '1' }) })));
+  const requests = mocks.get.mock.calls.filter(([url]) => url === '/products');
+  expect(requests.at(-1)?.[1].params.category).toBeUndefined();
+});
+
+it('preserves finance zone when returning to the overview',async()=>{
+ showProducts([product()],false,config,undefined,'/stock/products?zone=finance&inventoryScope=devices&branchId=branch-1&view=all');
+ await screen.findByText('iPhone 13');
+ fireEvent.keyDown(screen.getByRole('button',{name:'เครื่องมือ'}),{key:'Enter',code:'Enter'});
+ fireEvent.click(await screen.findByRole('menuitem',{name:'ดูภาพรวมคลัง'}));
+ expect(screen.getByTestId('stock-location')).toHaveTextContent('zone=finance');
+ expect(screen.getByTestId('stock-location')).toHaveTextContent('inventoryScope=devices');
+ expect(screen.getByTestId('stock-location')).toHaveTextContent('branchId=branch-1');
 });

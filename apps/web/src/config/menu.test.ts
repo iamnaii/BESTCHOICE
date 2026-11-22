@@ -61,7 +61,7 @@ describe('getSidebarForRole — populated ZONE_CONFIG', () => {
 
   it('ACCOUNTANT finds SHOP accounting in SHOP', () => {
     // + สรุปเงินหน้าร้านรายวัน (2026-09-20) — บัญชีเห็นทุกสาขา
-    expect(getSidebarForRole('ACCOUNTANT', 'shop').flatMap(s => s.items.map(i => i.path))).toEqual(['/shop/accounting', '/shop/daily-cash', '/shop/petty-cash']);
+    expect(getSidebarForRole('ACCOUNTANT', 'shop').flatMap(s => s.items.map(i => i.path))).toEqual(['/shop/accounting', '/shop/daily-cash', '/shop/petty-cash', '/imported-sales']);
   });
 
   it('ACCOUNTANT + fin returns accounting sections', () => {
@@ -94,7 +94,7 @@ describe('getSidebarForRole — populated ZONE_CONFIG', () => {
     const sections = getSidebarForRole('OWNER', 'shop');
     const accounting = sections.find((s) => s.key === 'owner-shop-accounting');
     const sales = sections.find((s) => s.key === 'owner-sales');
-    expect(accounting?.items.map((i) => i.path)).toEqual(['/shop/accounting', '/shop/daily-cash', '/shop/petty-cash']);
+    expect(accounting?.items.map((i) => i.path)).toEqual(['/shop/accounting', '/shop/daily-cash', '/shop/petty-cash', '/imported-sales']);
     expect(sales?.items.map((i) => i.path)).not.toContain('/shop/daily-cash');
   });
 
@@ -427,4 +427,8 @@ describe('เมนู /repossessions — ป้าย "รับเครื่
       expect(flatItems(role).map((i) => i.label)).not.toContain('ยึดคืนเครื่อง');
     }
   });
+});
+
+it.each(['OWNER','ACCOUNTANT','FINANCE_MANAGER'])('opens Tooltify history in SHOP even from FINANCE for %s', role => {
+  expect(resolveZoneForPath(role, '/imported-sales', 'fin')).toBe('shop');
 });

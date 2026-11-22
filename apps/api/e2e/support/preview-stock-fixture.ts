@@ -1,3 +1,5 @@
+import { hashImportValue, receiptDigest } from '../../src/cli/tooltify-cutover/canonicalize';
+import { saleIdentity } from '../../src/cli/tooltify-cutover/plan-targets';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { isDisposablePreviewDatabase } from './preview-database';
 
@@ -9,6 +11,7 @@ export async function seedPreviewStock(db: PrismaService) {
   const branch = await db.branch.findFirstOrThrow({
     where: { name: 'LOCAL PREVIEW BRANCH', deletedAt: null },
   });
+  await seedPreviewStockHistory(db, branch.id);
   const secondBranch =
     (await db.branch.findFirst({ where: { name: '[ทดสอบระบบ] สาขาอุปกรณ์', deletedAt: null } })) ??
     (await db.branch.create({
@@ -33,6 +36,24 @@ export async function seedPreviewStock(db: PrismaService) {
         cashPrice: index === 1 ? '290' : '250',
         status: index === 2 ? 'RESERVED' : index === 4 ? 'SOLD_CASH' : 'IN_STOCK',
         legacyProductCode: `TEST-LOCAL-ACCESSORY-${index + 1}`,
+      },
+    });
+  }
+  for (const [index, status] of ['QC_PENDING', 'IN_STOCK'].entries()) {
+    const id = `55000000-0000-4000-8000-00000000000${index}`;
+    await db.product.upsert({
+      where: { id },
+      update: {},
+      create: {
+        id,
+        branchId: branch.id,
+        name: '[ทดสอบระบบ] เครื่องตรวจสอบภาพรวม',
+        brand: 'TEST',
+        model: 'Overview',
+        category: 'PHONE_USED',
+        status: status as 'QC_PENDING' | 'IN_STOCK',
+        costPrice: 10000,
+        stockInDate: new Date(Date.now() - 92 * 86400000),
       },
     });
   }
@@ -69,4 +90,64 @@ export async function seedPreviewStock(db: PrismaService) {
       },
     });
   }
+}
+
+/** Synthetic, proven Tooltify events for exercising the real analytics reader. */
+async function seedPreviewStockHistory(db: PrismaService, branchId: string) {
+  const batchId = '53000000-0000-4000-8000-000000000001';
+  if (await db.tooltifyImportBatch.findUnique({ where: { id: batchId } })) return;
+  const soldAt = new Date();
+  const fileSha256 = hashImportValue('preview-stock-history');
+  const rows = Array.from({ length: 3 }, (_, i) => ({
+    id: `54000000-0000-4000-8000-00000000000${i}`,
+    source: 'TOOLTIFY',
+    barcode: i < 2 ? 'TEST-REPEAT-IMEI' : 'TEST-GIFT',
+    orderNumber: 'TEST-HISTORY',
+    productName: i < 2 ? '[ทดสอบระบบ] iPhone ประวัติขาย' : '[ทดสอบระบบ] เคสของแถม',
+    category: i < 2 ? 'iPhone มือ 2' : 'Accessories',
+    buyerLabel: 'ข้อมูลจำลอง',
+    paymentType: 'CASH',
+    priceGroup: 'Retail',
+    saleChannel: 'CASH',
+    salespersonName: 'ข้อมูลจำลอง',
+    soldAt,
+    sourceOccurrence: i === 1 ? 2 : 1,
+    salePrice: i < 2 ? 10000 : 0,
+    listPrice: i < 2 ? 10000 : 0,
+    costTotal: 0,
+    profit: i < 2 ? 10000 : 0,
+    importBatch: batchId,
+  }));
+  const items = rows.map((row, i) => ({
+    batchId,
+    sourceKey: hashImportValue(row.id),
+    disposition: 'CREATE' as const,
+    targetType: 'IMPORTED_SALE' as const,
+    targetId: row.id,
+    identityHash: saleIdentity(row, row.sourceOccurrence),
+    payloadHash: hashImportValue(row),
+    afterFingerprint: hashImportValue(row),
+    dependencyFingerprint: hashImportValue(null),
+    sourceRefs: [{ fileSha256, sheet: 'Synthetic preview', row: i + 1, storeKey: 'preview' }],
+  }));
+  await db.$transaction(async (tx) => {
+    await tx.tooltifyImportBatch.create({
+      data: {
+        id: batchId,
+        canonicalSetId: batchId,
+        kind: 'SALES',
+        manifestHash: fileSha256,
+        planHash: hashImportValue(items),
+        reconciliationSnapshot: {
+          files: [{ fileSha256, branchId }],
+          expectedReceiptsHash: receiptDigest(items),
+        },
+        sourceCutoverAt: soldAt,
+        status: 'APPLIED',
+        codeRevision: 'synthetic-preview',
+      },
+    });
+    await tx.importedSale.createMany({ data: rows });
+    await tx.tooltifyImportItem.createMany({ data: items });
+  });
 }

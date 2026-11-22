@@ -15,6 +15,33 @@ datasource db {
 // ENUMS
 // ============================================================
 
+enum TooltifyImportKind {
+  STOCK
+  SALES
+  SUPPLIER
+}
+
+enum TooltifyImportStatus {
+  APPLYING
+  APPLIED
+  FAILED
+  VERIFIED
+  ROLLED_BACK
+}
+
+enum TooltifyDisposition {
+  CREATE
+  MATCH
+  CONFLICT
+  EXCLUDE
+}
+
+enum TooltifyTargetType {
+  PRODUCT
+  IMPORTED_SALE
+  SUPPLIER
+}
+
 enum ChatOutboundAttemptState {
   SENDING
   FAILED
@@ -9496,6 +9523,66 @@ model EquityAttachment {
   @@map("equity_attachments")
 }
 
+model TooltifyImportBatch {
+  id                     String                      @id @default(uuid())
+  canonicalSetId         String                      @map("canonical_set_id")
+  kind                   TooltifyImportKind
+  manifestHash           String                      @map("manifest_hash")
+  planHash               String                      @map("plan_hash")
+  reconciliationSnapshot Json                        @map("reconciliation_snapshot")
+  sourceCutoverAt        DateTime                    @map("source_cutover_at")
+  status                 TooltifyImportStatus
+  codeRevision           String                      @map("code_revision")
+  createdAt              DateTime                    @default(now()) @map("created_at")
+  updatedAt              DateTime                    @updatedAt @map("updated_at")
+  deletedAt              DateTime?                   @map("deleted_at")
+  items                  TooltifyImportItem[]
+  events                 TooltifyImportStatusEvent[]
+  rollbackPlanHash       String?                     @map("rollback_plan_hash")
+  rollbackCodeRevision   String?                     @map("rollback_code_revision")
+
+  @@unique([canonicalSetId, kind])
+  @@map("tooltify_import_batches")
+}
+
+model TooltifyImportItem {
+  id                    String              @id @default(uuid())
+  batchId               String              @map("batch_id")
+  sourceKey             String              @map("source_key")
+  sourceRefs            Json                @map("source_refs")
+  payloadHash           String              @map("payload_hash")
+  dependencyFingerprint String              @map("dependency_fingerprint")
+  /// Only resolved prices, company and template IDs. Replays the reviewed stock decision after a crash.
+  stockResolution       Json?               @map("stock_resolution")
+  identityHash          String              @map("identity_hash")
+  disposition           TooltifyDisposition
+  targetType            TooltifyTargetType  @map("target_type")
+  targetId              String?             @map("target_id")
+  afterFingerprint      String?             @map("after_fingerprint")
+  reversedAt            DateTime?           @map("reversed_at")
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+  deletedAt             DateTime?           @map("deleted_at")
+  batch                 TooltifyImportBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+
+  @@unique([batchId, sourceKey])
+  @@index([targetType, targetId])
+  @@index([identityHash])
+  @@map("tooltify_import_items")
+}
+
+/// Append-only status history maintained by the batch status trigger.
+model TooltifyImportStatusEvent {
+  id        String               @id @default(uuid())
+  batchId   String               @map("batch_id")
+  status    TooltifyImportStatus
+  createdAt DateTime             @default(now()) @map("created_at")
+  batch     TooltifyImportBatch  @relation(fields: [batchId], references: [id], onDelete: Restrict)
+
+  @@index([batchId, createdAt])
+  @@map("tooltify_import_status_events")
+}
+
 /// ยอดขายย้อนหลังที่นำเข้าจากระบบภายนอก (import แรก = Tooltify) — สถิติดูอย่างเดียว
 /// Immutable import snapshot — updatedAt/deletedAt intentionally omitted (reverse = DELETE by importBatch)
 model ImportedSale {
@@ -9520,7 +9607,9 @@ model ImportedSale {
   importBatch     String   @map("import_batch")
   importedAt      DateTime @default(now()) @map("imported_at")
 
-  @@unique([source, barcode, orderNumber, soldAt])
+  sourceOccurrence Int @default(1) @map("source_occurrence")
+
+  @@unique([source, barcode, orderNumber, soldAt, sourceOccurrence], map: "imported_sales_source_event_occurrence_key")
   @@index([soldAt])
   @@index([saleChannel])
   @@index([salespersonName])

@@ -1,25 +1,107 @@
 import ExcelJS from 'exceljs';
+import { publicWorksheetName } from './tooltify-report-layout';
+import { STOCK_SNAPSHOT_COLUMNS } from './tooltify-stock-parser';
 
-/**
- * อ่านชีตแรกของไฟล์ .xlsx เป็น matrix ของ string.
- * cell ว่าง = ''; Date cell → ISO string (ให้ parseThaiDateTime รับต่อได้).
- */
-export async function readXlsxRows(filePath: string): Promise<string[][]> {
-  const wb = new ExcelJS.Workbook();
-  await wb.xlsx.readFile(filePath);
-  const ws = wb.worksheets[0];
-  const out: string[][] = [];
-  ws.eachRow({ includeEmpty: true }, (row) => {
+const IDENTITY_COLUMN_LABELS = new Set<string>([STOCK_SNAPSHOT_COLUMNS.barcode, 'คำสั่งซื้อ']);
+
+const CELL_ERROR_MESSAGES = {
+  FORMULA_WITHOUT_RESULT: 'สูตร Excel ไม่มีผลลัพธ์ที่บันทึกไว้',
+  UNSUPPORTED_CELL_VALUE: 'ชนิดข้อมูลในเซลล์ Excel ไม่รองรับ',
+  UNSAFE_NUMERIC_VALUE: 'ตัวเลขเกินขอบเขตความแม่นยำของ Excel',
+  AMBIGUOUS_NUMERIC_VALUE: 'รูปแบบตัวเลข Excel เติมศูนย์นำหน้า กรุณาตรวจค่าต้นทาง',
+} as const;
+
+type XlsxCellErrorCode = keyof typeof CELL_ERROR_MESSAGES;
+
+export class XlsxReadError extends Error {
+  constructor(
+    readonly code: XlsxCellErrorCode,
+    readonly sheet: string,
+    readonly row: number,
+    readonly column: number,
+  ) {
+    super(`${CELL_ERROR_MESSAGES[code]} (แถว ${row} คอลัมน์ ${column})`);
+    this.name = 'XlsxReadError';
+  }
+}
+
+function decodeCell(cell: ExcelJS.Cell, isIdentity: boolean): string {
+  // Merged titles occupy only the master cell in the source table.
+  if (cell.type === ExcelJS.ValueType.Merge) return '';
+
+  const fail = (code: XlsxCellErrorCode): never => {
+    const { sheetName, row, col } = cell.fullAddress;
+    throw new XlsxReadError(code, sheetName, row, col);
+  };
+
+  const formula = cell.type === ExcelJS.ValueType.Formula;
+  // ExcelJS's formula object omits falsy results. The result getter retains them.
+  const value = formula ? cell.result : cell.value;
+  if (value == null) return formula ? fail('FORMULA_WITHOUT_RESULT') : '';
+
+  if (typeof value === 'string') return value;
+  if (typeof value === 'boolean') return String(value);
+  if (typeof value === 'number') {
+    // Excel numeric identifiers carry at most 15 decimal digits. Preserve the stored
+    // digits without padding from a number format or guessing lost digits.
+    if (!Number.isFinite(value) || Math.abs(value) >= 1e15) return fail('UNSAFE_NUMERIC_VALUE');
+    const stored = String(value);
+    if (!isIdentity || value < 0 || !Number.isInteger(value)) return stored;
+    // A zero placeholder can change the identifier shown in Excel. Check the
+    // positive section's integer width before discarding the number format.
+    const integerFormat = /^(?:\[[^\]]*\])*([#0,]+)(?=[.;]|$)/.exec(cell.numFmt?.trim() ?? '')?.[1];
+    const minimumDigits = integerFormat?.replace(/[^0]/g, '').length ?? 0;
+    if (minimumDigits > stored.length) {
+      return fail('AMBIGUOUS_NUMERIC_VALUE');
+    }
+    return stored;
+  }
+  if (value instanceof Date) {
+    if (!Number.isFinite(value.getTime())) return fail('UNSUPPORTED_CELL_VALUE');
+    // ExcelJS puts the spreadsheet's timezone-free clock into the Date's UTC fields.
+    return value.toISOString().replace(/(?:\.000)?Z$/, '+07:00');
+  }
+  if ('richText' in value) return value.richText.map(({ text }) => text).join('');
+  if ('hyperlink' in value) return value.text;
+  return fail('UNSUPPORTED_CELL_VALUE');
+}
+
+/** Physical, zero-indexed row and column positions in one Tooltify worksheet. */
+export function decodeXlsxWorksheet(worksheet: ExcelJS.Worksheet): string[][] {
+  const rows: string[][] = [];
+  const { name, category } = STOCK_SNAPSHOT_COLUMNS;
+  let identityColumns: boolean[] = [];
+  for (let rowNumber = 1; rowNumber <= worksheet.rowCount; rowNumber++) {
+    const row = worksheet.getRow(rowNumber);
     const cells: string[] = [];
-    row.eachCell({ includeEmpty: true }, (cell) => {
-      const v = cell.value;
-      if (v == null) cells.push('');
-      else if (v instanceof Date) cells.push(v.toISOString());
-      else if (typeof v === 'object' && 'text' in (v as object))
-        cells.push(String((v as { text: unknown }).text)); // rich text
-      else cells.push(String(v));
-    });
-    out.push(cells);
-  });
-  return out;
+    for (let column = 1; column <= row.cellCount; column++) {
+      cells[column - 1] = decodeCell(row.getCell(column), identityColumns[column - 1] ?? false);
+    }
+    rows[rowNumber - 1] = cells;
+    const labels = cells.map((cell) => cell.trim());
+    // The sales summary also uses the order heading for a count.
+    if (labels.includes(name) && labels.includes(category)) {
+      identityColumns = labels.map((label) => IDENTITY_COLUMN_LABELS.has(label));
+    } else if (
+      /^.+\(\s*[\d,]+\s*\)$/.test(labels[0] ?? '') &&
+      labels.slice(1).every((label) => !label)
+    ) {
+      identityColumns = [];
+    }
+  }
+  return rows;
+}
+
+export async function readXlsxTable(
+  filePath: string,
+): Promise<{ sheet: string; rows: string[][] }> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile(filePath);
+  const worksheet = workbook.worksheets[0];
+  if (!worksheet) throw new Error('ไฟล์ Excel ไม่มีเวิร์กชีต');
+  return { sheet: publicWorksheetName(worksheet.name), rows: decodeXlsxWorksheet(worksheet) };
+}
+
+export async function readXlsxRows(filePath: string): Promise<string[][]> {
+  return (await readXlsxTable(filePath)).rows;
 }

@@ -66,7 +66,7 @@ describe('โซนไฟแนนซ์ — กลุ่มที่สิท�
   });
 
   it('รายงาน: ค่าคอมมิชชันเฉพาะเจ้าของกับผจก.การเงิน', () => {
-    const base = ['/reports', '/imported-sales', '/finance/aging-report', '/finance/bad-debt-report', '/finance/intercompany-report'];
+    const base = ['/reports', '/finance/aging-report', '/finance/bad-debt-report', '/finance/intercompany-report'];
     expect(paths('OWNER', 'owner-reports')).toEqual([...base, '/commissions']);
     expect(paths('FINANCE_MANAGER', 'fm-reports')).toEqual([...base, '/commissions']);
     expect(paths('ACCOUNTANT', 'acc-reports')).toEqual(base);

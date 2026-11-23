@@ -3,7 +3,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { PrismaClient, Prisma } from '@prisma/client';
-import { bcSheetRows } from '../../../../../../packages/shared/src/__fixtures__/bc-sheet-2026-11-23';
+import { bcSheetRows } from '@installment/shared/dist/__fixtures__/bc-sheet-2026-11-23';
 import { ContractQuoteService, contractQuotePayments } from '../services/contract-quote.service';
 import { computeInstallmentBreakdown } from '../../journal/compute-installment-breakdown';
 import { accrual2AInputOf, buildAccrual2ALines, buildAccrual2AReversalLines } from '../../journal/build-accrual-2a-lines';

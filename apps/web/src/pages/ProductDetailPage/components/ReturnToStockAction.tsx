@@ -1,6 +1,6 @@
 import { NumberInput } from '@/components/ui/NumberInput';
 import { useState } from 'react';
-import { PackageCheck } from 'lucide-react';
+import { PackageCheck } from '@/lib/icons';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { CASH_LABEL, FINANCE_LABEL, INSTALLMENT_LABEL } from '@/utils/getDisplayPrices';
 

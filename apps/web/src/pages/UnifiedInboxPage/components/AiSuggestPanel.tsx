@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
-import { Sparkles, Loader2, Banknote, Target, Smartphone, Package, Gift, HelpCircle, Hand, Phone } from 'lucide-react';
+import { Sparkles, Loader2, Banknote, Target, Smartphone, Package, Gift, HelpCircle, Hand, Phone } from '@/lib/icons';
 import { cn } from '@/lib/utils';
-import type { LucideIcon } from 'lucide-react';
+import type { AppIcon } from '@/lib/icons';
 
 interface AiSuggestion {
   text: string;
@@ -50,7 +50,7 @@ export default function AiSuggestPanel({
     return null;
   }
 
-  const intentMeta: Record<string, { icon: LucideIcon; label: string }> = {
+  const intentMeta: Record<string, { icon: AppIcon; label: string }> = {
     answer_price:     { icon: Banknote,    label: 'ตอบราคา' },
     close_sale:       { icon: Target,      label: 'ปิดการขาย' },
     answer_spec:      { icon: Smartphone,  label: 'ตอบสเปค' },

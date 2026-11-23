@@ -25,7 +25,7 @@ import {
 import { formatNumberDecimal, formatDateMedium } from '@/utils/formatters';
 import { Badge } from '@/components/ui/badge';
 import { INPUT_VAT_AGE_WARN_MONTHS } from '@/lib/input-vat';
-import { Calculator, Download } from 'lucide-react';
+import { Calculator, Download } from '@/lib/icons';
 import { exportToExcel } from '@/utils/excel.util';
 import { createExportGuard, ExportError } from '@/lib/fetch-export-pages';
 

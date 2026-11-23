@@ -9,7 +9,7 @@ import ScreenTable from '@/components/ui/ScreenTable';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { Lock, ArrowRight, CheckCircle2, AlertTriangle, Minus } from 'lucide-react';
+import { Lock, ArrowRight, CheckCircle2, AlertTriangle, Minus } from '@/lib/icons';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';

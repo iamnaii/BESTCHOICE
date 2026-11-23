@@ -1,4 +1,4 @@
-import { ArrowUpRight, ChevronRight, Pencil } from 'lucide-react';
+import { ArrowUpRight, ChevronRight, Pencil } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import type { Column } from '@/components/ui/DataTable';

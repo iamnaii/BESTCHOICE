@@ -3,7 +3,7 @@ import InlineHelp from '@/components/ui/InlineHelp';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Play, Database, ShieldAlert } from 'lucide-react';
+import { Play, Database, ShieldAlert } from '@/lib/icons';
 import api, { getErrorMessage } from '@/lib/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';

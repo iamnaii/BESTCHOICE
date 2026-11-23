@@ -1,4 +1,4 @@
-import { Check } from 'lucide-react';
+import { Check } from '@/lib/icons';
 import { JOURNEY_LOST_REASON_LABELS, STAGE_LABELS, type JourneyStep, type JourneySummary } from '@installment/shared';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';

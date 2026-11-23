@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { CheckCircle2, X } from 'lucide-react';
+import { CheckCircle2, X } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';

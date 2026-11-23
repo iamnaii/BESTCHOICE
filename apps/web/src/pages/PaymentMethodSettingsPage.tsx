@@ -2,7 +2,7 @@ import ScreenTable from '@/components/ui/ScreenTable';
 import { useId as useUiFieldId, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Banknote, Building2, QrCode, Plus, Pencil, Trash2, Star } from 'lucide-react';
+import { Banknote, Building2, QrCode, Plus, Pencil, Trash2, Star } from '@/lib/icons';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, MessageCircle, Send, Image as ImageIcon, FileText, Info } from 'lucide-react';
+import { Loader2, MessageCircle, Send, Image as ImageIcon, FileText, Info } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { FINANCE_LINE_SELF_LINK_TEXT } from '@/components/customer/FinanceLineStatusRow';
 import {

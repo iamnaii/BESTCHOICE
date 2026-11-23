@@ -349,7 +349,7 @@ describe('Combobox — open state', () => {
     expect(current).toHaveAttribute('aria-selected', 'true');
     expect(scroll.mock.contexts).toContain(current);
     expect(searchBox()).toHaveAttribute('aria-activedescendant', current.id);
-    expect(current.querySelector('svg.lucide-check')).toHaveClass('text-primary!');
+    expect(current.querySelector('svg.app-icon-check')).toHaveClass('text-primary!');
     // Only selected rows carry a check mark.
     expect(screen.getByRole('option', { name: 'ลาดพร้าว' }).querySelector('svg')).toBeNull();
   });
@@ -382,7 +382,7 @@ describe('Combobox — open state', () => {
     ];
     render(<Harness label="ผู้ติดต่อ" id="contact" options={options} initialValue="สมชาย" />);
     await user.click(trigger('ผู้ติดต่อ'));
-    const marks = screen.getAllByRole('option').map((r) => !!r.querySelector('svg.lucide-check'));
+    const marks = screen.getAllByRole('option').map((r) => !!r.querySelector('svg.app-icon-check'));
     expect(marks).toEqual([true, true, false]);
   });
 

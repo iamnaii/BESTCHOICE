@@ -1,5 +1,5 @@
 import { useId, type ReactNode } from 'react';
-import { CheckCircle2, Circle } from 'lucide-react';
+import { CheckCircle2, Circle } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 
 interface Props {

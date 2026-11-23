@@ -15,7 +15,7 @@ import {
   XCircle,
   Clock,
   Warehouse,
-} from 'lucide-react';
+} from '@/lib/icons';
 import { formatDateMedium } from '@/utils/formatters';
 
 interface ProductDetail {

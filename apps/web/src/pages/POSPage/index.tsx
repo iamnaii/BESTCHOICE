@@ -16,7 +16,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { saleTypeConfig, type SaleType } from '@/lib/constants';
 import PageHeader from '@/components/ui/PageHeader';
 import CashCloseReminderBanner from '@/pages/shop-daily-cash/CashCloseReminderBanner';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight } from '@/lib/icons';
 import { createPortal } from 'react-dom';
 import { tenderMethodsLabel } from '@/components/tender/tender-utils';
 import { posSaleSchema, type PosSaleFormData } from '@/lib/schemas';

@@ -1,6 +1,6 @@
 import ScreenTable from '@/components/ui/ScreenTable';
 import { useState } from 'react';
-import { AlertTriangle, ClipboardList, PackageX, Undo2 } from 'lucide-react';
+import { AlertTriangle, ClipboardList, PackageX, Undo2 } from '@/lib/icons';
 import QueryBoundary from '@/components/QueryBoundary';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';

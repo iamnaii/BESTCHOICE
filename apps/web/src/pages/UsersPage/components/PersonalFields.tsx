@@ -2,7 +2,7 @@ import { useId } from 'react';
 import { formTextareaClass } from '@/components/ui/form-styles';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Camera, X, CreditCard } from 'lucide-react';
+import { Camera, X, CreditCard } from '@/lib/icons';
 import { compressImageForOcr } from '@/lib/compressImage';
 import { checkCardReaderStatus, readSmartCard } from '@/lib/cardReader';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';

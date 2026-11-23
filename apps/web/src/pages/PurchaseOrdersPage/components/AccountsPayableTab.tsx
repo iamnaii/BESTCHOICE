@@ -1,5 +1,5 @@
 import ScreenTable from '@/components/ui/ScreenTable';
-import { BookOpenText, ChevronRight, ExternalLink, Landmark } from 'lucide-react';
+import { BookOpenText, ChevronRight, ExternalLink, Landmark } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import { formatDateShort, formatNumberDecimal } from '@/utils/formatters';
 import { Badge } from '@/components/ui/badge';

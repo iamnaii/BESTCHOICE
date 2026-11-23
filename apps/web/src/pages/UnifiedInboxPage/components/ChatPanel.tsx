@@ -44,7 +44,7 @@ import {
   ChevronDown,
   Sparkles,
   CircleHelp,
-} from 'lucide-react';
+} from '@/lib/icons';
 import { isSameDay } from 'date-fns';
 import { formatDateSeparator, formatChatTimestamp, formatWaitDuration } from '@/lib/chat-time';
 import { useMutation, useQueryClient } from '@tanstack/react-query';

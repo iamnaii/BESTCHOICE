@@ -6,7 +6,7 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Trash2, Type, Image as ImageIcon, Smile, CreditCard, MapPin, Video, Braces } from 'lucide-react';
+import { GripVertical, Trash2, Type, Image as ImageIcon, Smile, CreditCard, MapPin, Video, Braces } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import api from '@/lib/api';

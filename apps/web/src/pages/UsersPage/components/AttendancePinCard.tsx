@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { CircleCheck, KeyRound, Loader2 } from 'lucide-react';
+import { CircleCheck, KeyRound, Loader2 } from '@/lib/icons';
 import { getErrorMessage } from '@/lib/api';
 import { usersApi } from '@/lib/api/users';
 import { Button } from '@/components/ui/button';

@@ -3,7 +3,7 @@ import { useState, useRef, useEffect, useMemo, useId } from 'react';
 import { useNavigate } from 'react-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Loader2 } from 'lucide-react';
+import { Loader2 } from '@/lib/icons';
 import {
   DEFAULT_RECEIPT_WARRANTY_TERMS,
   RECEIPT_WARRANTY_TERMS_KEY,

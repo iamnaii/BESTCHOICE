@@ -17,7 +17,7 @@ import {
   TrendingDown,
   History,
   ReceiptText,
-} from 'lucide-react';
+} from '@/lib/icons';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';

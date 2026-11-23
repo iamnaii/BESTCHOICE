@@ -3,7 +3,7 @@ import { NativeSelect } from '@/components/ui/native-select';
 import { useId as useUiFieldId, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { CheckCircle2, XCircle, Pencil, Trash2 } from 'lucide-react';
+import { CheckCircle2, XCircle, Pencil, Trash2 } from '@/lib/icons';
 import api, { getErrorMessage } from '@/lib/api';
 
 interface NotificationTemplate {

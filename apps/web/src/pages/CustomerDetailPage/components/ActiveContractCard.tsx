@@ -1,4 +1,4 @@
-import { Lock, LockOpen, Phone, ShieldCheck } from 'lucide-react';
+import { Lock, LockOpen, Phone, ShieldCheck } from '@/lib/icons';
 import { useNavigate } from 'react-router';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';

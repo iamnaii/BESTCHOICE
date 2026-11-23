@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import CompanyFilter from '@/components/CompanyFilter';
 import { THAI_MONTHS_FULL } from '@/lib/date';
-import { Calculator, Download, FileText, AlertCircle } from 'lucide-react';
+import { Calculator, Download, FileText, AlertCircle } from '@/lib/icons';
 
 interface PP30LineItemSale {
   date: string | Date | null;

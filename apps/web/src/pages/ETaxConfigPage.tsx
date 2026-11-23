@@ -16,7 +16,7 @@ import {
   Save,
   Plug,
   AlertCircle,
-} from 'lucide-react';
+} from '@/lib/icons';
 
 /**
  * P2-SP5 — e-Tax Invoice configuration for OWNER.

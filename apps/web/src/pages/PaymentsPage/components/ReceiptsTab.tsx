@@ -21,7 +21,7 @@ import { toast } from 'sonner';
 import { formatDateShort } from '@/utils/formatters';
 import QueryBoundary from '@/components/QueryBoundary';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
-import { Download, MoreHorizontal, Send, XCircle } from 'lucide-react';
+import { Download, MoreHorizontal, Send, XCircle } from '@/lib/icons';
 import type { VoidedReceiptInfo } from '../types';
 import { RECEIPT_METHOD_LABELS, RECEIPT_TYPE_LABELS } from '@/lib/receipt-labels';
 import { formControlClass } from '@/components/ui/form-styles';

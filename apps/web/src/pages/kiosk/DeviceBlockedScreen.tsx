@@ -1,4 +1,4 @@
-import { Lock } from 'lucide-react';
+import { Lock } from '@/lib/icons';
 
 interface Props {
   message: string;

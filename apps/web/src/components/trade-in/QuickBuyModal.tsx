@@ -29,7 +29,7 @@ import {
   Check,
   Smartphone,
   X,
-} from 'lucide-react';
+} from '@/lib/icons';
 import InspectionQuestions, { isQuestionAnswered } from './InspectionQuestions';
 import {
   Dialog,

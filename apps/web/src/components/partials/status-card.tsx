@@ -1,13 +1,13 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import type { LucideIcon } from 'lucide-react';
+import type { AppIcon } from '@/lib/icons';
 import type { StatusConfig } from '@/lib/status-badges';
 import { cn } from '@/lib/utils';
 
 interface StatusCardProps {
   title: string;
   value: string | number;
-  icon: LucideIcon;
+  icon: AppIcon;
   status?: StatusConfig;
   trend?: { value: number; label: string };
   className?: string;

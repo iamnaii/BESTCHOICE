@@ -1,3 +1,4 @@
+import { X as InlineXIcon } from '@/lib/icons';
 import { useState, useEffect, FormEvent } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router';
 import { toast } from 'sonner';
@@ -101,9 +102,7 @@ export default function RegisterInvitePage() {
       <AuthLayout>
         <div className="text-center py-8">
           <div className="size-16 rounded-full bg-destructive/10 flex items-center justify-center mx-auto mb-4">
-            <svg className="size-8 text-destructive" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            <InlineXIcon className="size-8 text-destructive" aria-hidden="true" />
           </div>
           <h2 className="text-xl font-bold text-foreground mb-2">ลิงก์หมดอายุหรือถูกใช้งานแล้ว</h2>
           <p className="text-sm text-muted-foreground mb-4">กรุณาติดต่อผู้ดูแลระบบเพื่อขอลิงก์ใหม่</p>

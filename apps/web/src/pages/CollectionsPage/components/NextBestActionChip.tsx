@@ -1,4 +1,4 @@
-import { Lightbulb } from 'lucide-react';
+import { Lightbulb } from '@/lib/icons';
 
 /**
  * Next-Best-Action chip (P3 Task 9 — C2). Renders a single recommendation

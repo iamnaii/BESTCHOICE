@@ -16,7 +16,7 @@ import {
   AlertTriangle,
   ArrowRight,
   Warehouse,
-} from 'lucide-react';
+} from '@/lib/icons';
 
 interface WorkflowProduct {
   id: string;

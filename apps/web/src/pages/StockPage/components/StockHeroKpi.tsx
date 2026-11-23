@@ -1,4 +1,4 @@
-import { Package, Wallet, Clock, TrendingUp, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { Package, Wallet, Clock, TrendingUp, ArrowUpRight, ArrowDownRight } from '@/lib/icons';
 import AnimatedCounter from '@/components/ui/animated-counter';
 import { StockDashboard } from '../types';
 

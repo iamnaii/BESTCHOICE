@@ -1,3 +1,8 @@
+import {
+  Building2 as InlineBuilding2Icon,
+  ChevronLeft as InlineChevronLeftIcon,
+  MapPin as InlineMapPinIcon,
+} from '@/lib/icons';
 import { NumberInput } from '@/components/ui/NumberInput';
 import { formControlClass, formLabelClass } from '@/components/ui/form-styles';
 import { useState } from 'react';
@@ -218,7 +223,7 @@ export default function BranchesPage() {
           <div className="w-full max-w-2xl bg-background rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-4rem)]">
             <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-xs border-b px-6 py-4 flex items-center justify-between shrink-0">
               <button type="button" onClick={closeModal} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                <InlineChevronLeftIcon width="16" height="16" aria-hidden="true" />
                 กลับ
               </button>
               <h2 className="text-lg font-semibold text-foreground">{editingBranch ? 'แก้ไขสาขา' : 'เพิ่มสาขาใหม่'}</h2>
@@ -229,7 +234,7 @@ export default function BranchesPage() {
                 <div className="rounded-xl border border-border bg-card p-5">
                   <div className="flex items-center gap-2.5 mb-4">
                     <div className="flex items-center justify-center size-8 rounded-lg bg-primary/10 text-primary">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>
+                      <InlineBuilding2Icon width="18" height="18" aria-hidden="true" />
                     </div>
                     <div>
                       <h3 className="text-sm font-semibold text-foreground">ข้อมูลสาขา</h3>
@@ -323,7 +328,7 @@ export default function BranchesPage() {
                 <div className="rounded-xl border border-border bg-card p-5">
                   <div className="flex items-center gap-2.5 mb-4">
                     <div className="flex items-center justify-center size-8 rounded-lg bg-warning/10 text-warning-strong">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                      <InlineMapPinIcon width="18" height="18" aria-hidden="true" />
                     </div>
                     <div>
                       <h3 className="text-sm font-semibold text-foreground">ที่ตั้ง</h3>

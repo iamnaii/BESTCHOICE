@@ -1,7 +1,7 @@
 import CardSkeleton from '../components/ContractCardSkeleton';
 import { useContactedTodayRows } from '../hooks/useContactedTodayRows';
 import { useState } from 'react';
-import { AlertTriangle, Calendar, CheckCircle2, Phone, Timer } from 'lucide-react';
+import { AlertTriangle, Calendar, CheckCircle2, Phone, Timer } from '@/lib/icons';
 import { useDebounce } from '@/hooks/useDebounce';
 import { formatThaiDateShort, toBangkokDateString } from '@/lib/date';
 import QueryBoundary from '@/components/QueryBoundary';

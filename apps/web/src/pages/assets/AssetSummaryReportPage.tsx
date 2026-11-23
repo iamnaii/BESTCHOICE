@@ -2,8 +2,8 @@ import { toBangkokDateString } from '@/lib/date';
 import { useId as useUiFieldId, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { BarChart3, ArrowRightLeft, Monitor, Wrench, Sofa, Car, Package } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
+import { BarChart3, ArrowRightLeft, Monitor, Wrench, Sofa, Car, Package } from '@/lib/icons';
+import type { AppIcon } from '@/lib/icons';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -18,7 +18,7 @@ import AssetHubTabs from './components/AssetHubTabs';
 
 const today = () => toBangkokDateString();
 
-const CATEGORY_ICON: Record<AssetCategory, LucideIcon> = {
+const CATEGORY_ICON: Record<AssetCategory, AppIcon> = {
   EQUIPMENT: Monitor,
   IMPROVEMENT: Wrench,
   FURNITURE: Sofa,

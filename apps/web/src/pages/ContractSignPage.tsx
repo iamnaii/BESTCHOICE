@@ -1,3 +1,4 @@
+import { AlertTriangle as InlineAlertTriangleIcon, CirclePlus as InlineCirclePlusIcon } from '@/lib/icons';
 import { useParams, useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -63,9 +64,7 @@ export default function ContractSignPage() {
     return (
       <div className="text-center py-16">
         <div className="size-14 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
-          <svg className="size-7 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-3-3v6M4.5 12a7.5 7.5 0 1015 0 7.5 7.5 0 00-15 0z" />
-          </svg>
+          <InlineCirclePlusIcon className="size-7 text-muted-foreground" aria-hidden="true" />
         </div>
         <p className="text-muted-foreground font-medium">ไม่พบสัญญา</p>
         <button onClick={() => navigate('/contracts')} className="mt-4 text-sm text-primary hover:text-primary/80 font-medium transition-colors">
@@ -90,9 +89,7 @@ export default function ContractSignPage() {
         />
         <div className="bg-warning/10 border border-warning/20 rounded-xl p-5 mt-4 flex items-start gap-3">
           <div className="size-8 rounded-full bg-warning/20 flex items-center justify-center shrink-0 mt-0.5">
-            <svg className="size-4 text-warning-strong" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-            </svg>
+            <InlineAlertTriangleIcon className="size-4 text-warning-strong" aria-hidden="true" />
           </div>
           <div>
             <div className="text-sm font-semibold text-warning-strong">ไม่สามารถลงนามได้</div>

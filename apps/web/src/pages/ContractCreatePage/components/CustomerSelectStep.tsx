@@ -1,6 +1,7 @@
+import { Plus as InlinePlusIcon } from '@/lib/icons';
 import { useState, type ReactNode } from 'react';
 import CustomerTagDialog from '@/pages/CollectionsPage/components/CustomerTagDialog';
-import { AlertTriangle, Loader2, ShieldAlert, ShieldBan } from 'lucide-react';
+import { AlertTriangle, Loader2, ShieldAlert, ShieldBan } from '@/lib/icons';
 import { BLACKLIST_OVERRIDE_REASON_MIN, canOverrideBlacklist, type CustomerBlacklistResult } from '@installment/shared';
 import BlacklistReasonList from '@/components/customer/BlacklistReasonList';
 import { Button } from '@/components/ui/button';
@@ -156,9 +157,7 @@ export function CustomerSelectStep({
         onClick={onOpenCustomerModal}
         className="w-full mb-4 py-3 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-          <path d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" />
-        </svg>
+        <InlinePlusIcon className="h-5 w-5" aria-hidden="true" />
         เพิ่มลูกค้าใหม่
       </button>
 

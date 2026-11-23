@@ -19,7 +19,7 @@ import {
   Clock,
   AlertCircle,
   CheckCheck,
-} from 'lucide-react';
+} from '@/lib/icons';
 import { formatNumber, formatDateMedium, formatDateShortThai } from '@/utils/formatters';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';

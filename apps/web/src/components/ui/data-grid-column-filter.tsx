@@ -14,7 +14,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Separator } from '@/components/ui/separator';
 import { Column } from '@tanstack/react-table';
-import { Check, CirclePlus } from 'lucide-react';
+import { Check, CirclePlus } from '@/lib/icons';
 
 interface DataGridColumnFilterProps<TData, TValue> {
   column?: Column<TData, TValue>;

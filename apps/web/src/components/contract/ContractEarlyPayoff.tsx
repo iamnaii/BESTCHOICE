@@ -1,3 +1,11 @@
+import {
+  Banknote as InlineBanknoteIcon,
+  CheckCircle2 as InlineCheckCircle2Icon,
+  ClipboardList as InlineClipboardListIcon,
+  CreditCard as InlineCreditCardIcon,
+  FileText as InlineFileTextIcon,
+  List as InlineListIcon,
+} from '@/lib/icons';
 import { NumberInput } from '@/components/ui/NumberInput';
 import { ActionEffect as Effect } from '@/components/ActionEffect';
 import { JournalPreviewTable } from '@/components/JournalPreviewTable';
@@ -18,7 +26,7 @@ import {
   Store,
   Upload,
   XCircle,
-} from 'lucide-react';
+} from '@/lib/icons';
 import api, { getErrorMessage } from '@/lib/api';
 import { formatDateShort, formatNumber, formatNumberDecimal } from '@/utils/formatters';
 import { CashAccountSelect, KBANK_ONLY_CODES } from '@/components/CashAccountSelect';
@@ -330,20 +338,7 @@ export function EarlyPayoffOverlay({
         <div className="rounded-xl border border-border bg-card p-5">
           <div className="flex items-center gap-2.5 mb-4">
             <div className="flex items-center justify-center size-8 rounded-lg bg-primary/10 text-primary">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="size-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={1.5}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15"
-                />
-              </svg>
+              <InlineClipboardListIcon className="size-4" aria-hidden="true" />
             </div>
             <div>
               <h3 className="text-sm font-semibold text-foreground">ข้อมูลสัญญา</h3>
@@ -378,20 +373,7 @@ export function EarlyPayoffOverlay({
         <div className="rounded-xl border border-border bg-card p-5">
           <div className="flex items-center gap-2.5 mb-4">
             <div className="flex items-center justify-center size-8 rounded-lg bg-primary/10 text-primary">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="size-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={1.5}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25"
-                />
-              </svg>
+              <InlineBanknoteIcon className="size-4" aria-hidden="true" />
             </div>
             <div>
               <h3 className="text-sm font-semibold text-foreground">คำนวณยอดปิดสัญญา</h3>
@@ -519,20 +501,7 @@ export function EarlyPayoffOverlay({
         <div className="rounded-xl border border-border bg-card p-5">
           <div className="flex items-center gap-2.5 mb-4">
             <div className="flex items-center justify-center size-8 rounded-lg bg-warning/10 text-warning-strong">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="size-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={1.5}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z"
-                />
-              </svg>
+              <InlineCreditCardIcon className="size-4" aria-hidden="true" />
             </div>
             <div>
               <h3 className="text-sm font-semibold text-foreground">รับชำระ</h3>
@@ -878,20 +847,7 @@ export function EarlyPayoffOverlay({
         <div className="rounded-xl border border-border bg-card p-5">
           <div className="flex items-center gap-2.5 mb-4">
             <div className="flex items-center justify-center size-8 rounded-lg bg-primary/10 text-primary">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="size-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={1.5}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
-                />
-              </svg>
+              <InlineFileTextIcon className="size-4" aria-hidden="true" />
             </div>
             <div>
               <h3 className="text-sm font-semibold text-foreground">หมายเหตุ</h3>
@@ -913,20 +869,7 @@ export function EarlyPayoffOverlay({
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2.5">
                 <div className="flex items-center justify-center size-8 rounded-lg bg-primary/10 text-primary">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="size-4"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={1.5}
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z"
-                    />
-                  </svg>
+                  <InlineListIcon className="size-4" aria-hidden="true" />
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-foreground">
@@ -947,20 +890,7 @@ export function EarlyPayoffOverlay({
         <div className="rounded-xl border border-border bg-card p-5">
           <div className="flex items-center gap-2.5 mb-4">
             <div className="flex items-center justify-center size-8 rounded-lg bg-success/10 text-success">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="size-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={1.5}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
+              <InlineCheckCircle2Icon className="size-4" aria-hidden="true" />
             </div>
             <div>
               <h3 className="text-sm font-semibold text-foreground">

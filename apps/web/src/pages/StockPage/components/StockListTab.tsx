@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils';
 import type { StockProduct } from '../types';
 import type { StockView, StockViewCounts } from '../hooks/useStockProducts';
 import { stockTableMinWidth, type StockColumn } from './stockColumns';
-import { ChevronLeft, ChevronRight, Package, Search, SlidersHorizontal, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Package, Search, SlidersHorizontal, X } from '@/lib/icons';
 
 export interface StockListTabProps {
   sort: TableSort | null;

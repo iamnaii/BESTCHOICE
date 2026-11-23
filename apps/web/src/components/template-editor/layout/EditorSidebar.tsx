@@ -1,4 +1,4 @@
-import { Settings, Building2, Shield, User, Users, FolderOpen, MessageCircle, Bell, MapPin, FileText, ArrowLeft } from 'lucide-react';
+import { Settings, Building2, Shield, User, Users, FolderOpen, MessageCircle, Bell, MapPin, FileText, ArrowLeft } from '@/lib/icons';
 
 interface MenuItem {
   id: string;

@@ -6,7 +6,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Brain, Upload, CheckCircle, Database, RefreshCw } from 'lucide-react';
+import { Brain, Upload, CheckCircle, Database, RefreshCw } from '@/lib/icons';
 
 interface TrainingStats {
   totalPairs: number;

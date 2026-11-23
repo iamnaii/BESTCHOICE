@@ -30,7 +30,7 @@ import {
   ChevronRight,
   XCircle,
   CheckCircle2,
-} from 'lucide-react';
+} from '@/lib/icons';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { format, isPast, differenceInDays } from 'date-fns';

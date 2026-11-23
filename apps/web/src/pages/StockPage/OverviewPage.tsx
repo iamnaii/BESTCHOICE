@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import PageHeader from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/button';
-import { Plus, Printer, ListChecks } from 'lucide-react';
+import { Plus, Printer, ListChecks } from '@/lib/icons';
 import { BranchSummaryCards } from './components/BranchSummaryCards';
 import { StockHeroKpi } from './components/StockHeroKpi';
 import { StockActionZone } from './components/StockActionZone';

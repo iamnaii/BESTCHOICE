@@ -1,4 +1,4 @@
-import { CirclePause, Play, RefreshCw } from 'lucide-react';
+import { CirclePause, Play, RefreshCw } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { getErrorMessage } from '@/lib/api';
 import type { useChatDispatch } from '../hooks/useChatDispatch';

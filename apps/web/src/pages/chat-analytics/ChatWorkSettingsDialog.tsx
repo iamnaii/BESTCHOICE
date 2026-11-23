@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { CHAT_WORK_FLAGS, type ChatWorkFlag } from '@installment/shared';
-import { BellRing, Check, Clock3, Info, Settings2 } from 'lucide-react';
+import { BellRing, Check, Clock3, Info, Settings2 } from '@/lib/icons';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';

@@ -15,7 +15,7 @@ import {
   List, ListOrdered, Undo2, Redo2,
   Heading1, Heading2, Heading3, Palette, Highlighter,
   RemoveFormatting, Indent, Outdent, IndentIncrease,
-} from 'lucide-react';
+} from '@/lib/icons';
 
 interface Props {
   value: string;

@@ -20,7 +20,7 @@ import {
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ArrowLeft, AlertCircle, CheckCircle2, Save, Send, X } from 'lucide-react';
+import { ArrowLeft, AlertCircle, CheckCircle2, Save, Send, X } from '@/lib/icons';
 import api, { getErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { formatNumberDecimal } from '@/utils/formatters';

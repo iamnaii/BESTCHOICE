@@ -16,7 +16,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, promotionStatusMap } from '@/lib/status-badges';
 import { useDebounce } from '@/hooks/useDebounce';
-import { Zap, Plus, Pencil, Trash2 } from 'lucide-react';
+import { Zap, Plus, Pencil, Trash2 } from '@/lib/icons';
 import QueryBoundary from '@/components/QueryBoundary';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 

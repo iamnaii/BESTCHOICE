@@ -1,4 +1,4 @@
-import { CheckCircle2, Loader2, Upload, X } from 'lucide-react';
+import { CheckCircle2, Loader2, Upload, X } from '@/lib/icons';
 import { SLIP_MIME_TYPES } from '@/hooks/useSlipUpload';
 import type { useSlipAttachment } from '@/hooks/useSlipAttachment';
 

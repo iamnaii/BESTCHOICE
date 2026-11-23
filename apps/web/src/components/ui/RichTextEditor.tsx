@@ -1,3 +1,18 @@
+import { Bold, Italic, Underline, Strikethrough } from '@/lib/icons';
+
+import {
+  AlignCenter as InlineAlignCenterIcon,
+  AlignLeft as InlineAlignLeftIcon,
+  AlignRight as InlineAlignRightIcon,
+  Indent as InlineIndentIcon,
+  List as InlineListIcon,
+  ListOrdered as InlineListOrderedIcon,
+  Minus as InlineMinusIcon,
+  Outdent as InlineOutdentIcon,
+  Redo2 as InlineRedo2Icon,
+  Table as InlineTableIcon,
+  Undo2 as InlineUndo2Icon,
+} from '@/lib/icons';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useRef, useCallback, useEffect, useState } from 'react';
 import DOMPurify from 'dompurify';
@@ -68,109 +83,56 @@ const TOOLBAR: ToolbarGroup[] = [
 function ToolbarIcon({ icon }: { icon: string }) {
   switch (icon) {
     case 'bold':
-      return <span className="font-bold text-xs">B</span>;
+      return <Bold className="size-3.5" aria-hidden="true" />;
     case 'italic':
-      return <span className="italic text-xs font-serif">I</span>;
+      return <Italic className="size-3.5" aria-hidden="true" />;
     case 'underline':
-      return <span className="underline text-xs">U</span>;
+      return <Underline className="size-3.5" aria-hidden="true" />;
     case 'strikethrough':
-      return <span className="line-through text-xs">S</span>;
+      return <Strikethrough className="size-3.5" aria-hidden="true" />;
     case 'align-left':
       return (
-        <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
-          <rect x="1" y="2" width="14" height="1.5" rx="0.5" />
-          <rect x="1" y="5.5" width="10" height="1.5" rx="0.5" />
-          <rect x="1" y="9" width="14" height="1.5" rx="0.5" />
-          <rect x="1" y="12.5" width="8" height="1.5" rx="0.5" />
-        </svg>
+        <InlineAlignLeftIcon className="w-3.5 h-3.5" aria-hidden="true" />
       );
     case 'align-center':
       return (
-        <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
-          <rect x="1" y="2" width="14" height="1.5" rx="0.5" />
-          <rect x="3" y="5.5" width="10" height="1.5" rx="0.5" />
-          <rect x="1" y="9" width="14" height="1.5" rx="0.5" />
-          <rect x="4" y="12.5" width="8" height="1.5" rx="0.5" />
-        </svg>
+        <InlineAlignCenterIcon className="w-3.5 h-3.5" aria-hidden="true" />
       );
     case 'align-right':
       return (
-        <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
-          <rect x="1" y="2" width="14" height="1.5" rx="0.5" />
-          <rect x="5" y="5.5" width="10" height="1.5" rx="0.5" />
-          <rect x="1" y="9" width="14" height="1.5" rx="0.5" />
-          <rect x="7" y="12.5" width="8" height="1.5" rx="0.5" />
-        </svg>
+        <InlineAlignRightIcon className="w-3.5 h-3.5" aria-hidden="true" />
       );
     case 'list-ul':
       return (
-        <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
-          <circle cx="2.5" cy="3" r="1.2" />
-          <rect x="5" y="2" width="10" height="1.5" rx="0.5" />
-          <circle cx="2.5" cy="8" r="1.2" />
-          <rect x="5" y="7" width="10" height="1.5" rx="0.5" />
-          <circle cx="2.5" cy="13" r="1.2" />
-          <rect x="5" y="12" width="10" height="1.5" rx="0.5" />
-        </svg>
+        <InlineListIcon className="w-3.5 h-3.5" aria-hidden="true" />
       );
     case 'list-ol':
       return (
-        <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
-          <text x="1" y="4.5" fontSize="4.5" fontWeight="bold">1</text>
-          <rect x="5" y="2" width="10" height="1.5" rx="0.5" />
-          <text x="1" y="9.5" fontSize="4.5" fontWeight="bold">2</text>
-          <rect x="5" y="7" width="10" height="1.5" rx="0.5" />
-          <text x="1" y="14.5" fontSize="4.5" fontWeight="bold">3</text>
-          <rect x="5" y="12" width="10" height="1.5" rx="0.5" />
-        </svg>
+        <InlineListOrderedIcon className="w-3.5 h-3.5" aria-hidden="true" />
       );
     case 'indent':
       return (
-        <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
-          <rect x="5" y="2" width="10" height="1.5" rx="0.5" />
-          <rect x="5" y="5.5" width="10" height="1.5" rx="0.5" />
-          <rect x="5" y="9" width="10" height="1.5" rx="0.5" />
-          <polygon points="1,4 1,10 4,7" />
-        </svg>
+        <InlineIndentIcon className="w-3.5 h-3.5" aria-hidden="true" />
       );
     case 'outdent':
       return (
-        <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
-          <rect x="5" y="2" width="10" height="1.5" rx="0.5" />
-          <rect x="5" y="5.5" width="10" height="1.5" rx="0.5" />
-          <rect x="5" y="9" width="10" height="1.5" rx="0.5" />
-          <polygon points="4,4 4,10 1,7" />
-        </svg>
+        <InlineOutdentIcon className="w-3.5 h-3.5" aria-hidden="true" />
       );
     case 'hr':
       return (
-        <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
-          <rect x="1" y="7" width="14" height="2" rx="1" />
-        </svg>
+        <InlineMinusIcon className="w-3.5 h-3.5" aria-hidden="true" />
       );
     case 'table':
       return (
-        <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
-          <rect x="1" y="2" width="14" height="12" rx="1" />
-          <line x1="1" y1="6" x2="15" y2="6" />
-          <line x1="1" y1="10" x2="15" y2="10" />
-          <line x1="6" y1="2" x2="6" y2="14" />
-          <line x1="11" y1="2" x2="11" y2="14" />
-        </svg>
+        <InlineTableIcon className="w-3.5 h-3.5" aria-hidden="true" />
       );
     case 'undo':
       return (
-        <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M4 6l-3 3 3 3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          <path d="M1 9h9a4 4 0 0 1 0 8H8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-        </svg>
+        <InlineUndo2Icon className="w-3.5 h-3.5" aria-hidden="true" />
       );
     case 'redo':
       return (
-        <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M12 6l3 3-3 3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          <path d="M15 9H6a4 4 0 0 0 0 8h2" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-        </svg>
+        <InlineRedo2Icon className="w-3.5 h-3.5" aria-hidden="true" />
       );
     default:
       return <span className="text-xs">{icon}</span>;

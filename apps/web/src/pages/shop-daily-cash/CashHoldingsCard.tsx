@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlertTriangle, CheckCircle2, Lock, Wallet } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Lock, Wallet } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import CashDepositDialog from './CashDepositDialog';
 import { useCashCloseOverview } from './cash-close-overview.query';

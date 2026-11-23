@@ -19,7 +19,7 @@ import {
   ArrowDown,
   CheckCircle2,
   Coins,
-} from 'lucide-react';
+} from '@/lib/icons';
 import { formatDateShort, formatNumber } from '@/utils/formatters';
 import { isToday, formatHHMM } from '../utils/today';
 import {

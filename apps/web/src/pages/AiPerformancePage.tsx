@@ -5,7 +5,7 @@ import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Input } from '@/components/ui/input';
-import { BarChart3, Bot, ThumbsUp, ArrowRightLeft, Database, TrendingUp } from 'lucide-react';
+import { BarChart3, Bot, ThumbsUp, ArrowRightLeft, Database, TrendingUp } from '@/lib/icons';
 
 interface AiMetrics {
   autoReplyRate: number;

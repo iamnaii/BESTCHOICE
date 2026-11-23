@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Download, Loader2, Printer, RotateCcw, X } from 'lucide-react';
+import { Download, Loader2, Printer, RotateCcw, X } from '@/lib/icons';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from '@/components/ui/dialog';
 import { Button, buttonVariants } from '@/components/ui/button';

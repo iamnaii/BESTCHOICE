@@ -12,7 +12,7 @@ import {
   History,
   Circle,
   AlertCircle,
-} from 'lucide-react';
+} from '@/lib/icons';
 import { useUiFlags } from '@/hooks/useUiFlags';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';

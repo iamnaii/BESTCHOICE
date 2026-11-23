@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight } from '@/lib/icons';
 import { homeActionsForRole } from '@/config/work-navigation';
 
 /** ตารางปุ่ม "เริ่มงาน" ตามบทบาท — ใช้ร่วมกันระหว่างหน้าเริ่มงาน (StaffHome) และหน้าหลักหน้าร้าน (SALES) */

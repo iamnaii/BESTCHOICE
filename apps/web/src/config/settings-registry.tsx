@@ -1,6 +1,6 @@
 import { lazy, type ComponentType } from 'react';
-import type { LucideIcon } from 'lucide-react';
-import { Building2, Users, BarChart3, Wallet, Smartphone, MessageSquare, Sparkles, ShieldCheck, Plug } from 'lucide-react';
+import type { NavigationIcon } from '@/config/navigation-icons';
+import { MENU_ICONS } from './navigation-icons';
 
 // Navigation/search read this registry too: defer page code until its item is rendered.
 const CompanySettingsPage = lazy(() => import('@/pages/CompanySettingsPage'));
@@ -91,7 +91,7 @@ export interface SettingsItem {
 export interface SettingsCategory {
   id: string;
   label: string;
-  icon: LucideIcon;
+  icon: NavigationIcon;
   roles: SettingsRole[];
   /** กลุ่มในเมนูซ้าย — ไม่ระบุ = ตกไปกลุ่ม 'system' (กันหมวดใหม่หายจากเมนู) */
   group?: SettingsGroupId;
@@ -102,7 +102,7 @@ const ALL: SettingsRole[] = ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'];
 
 export const settingsRegistry: SettingsCategory[] = [
   {
-    id: 'company', label: 'บริษัท & สาขา', icon: Building2, roles: ['OWNER'], group: 'org',
+    id: 'company', label: 'บริษัท & สาขา', icon: MENU_ICONS['/settings/company'], roles: ['OWNER'], group: 'org',
     items: [
       { id: 'company-info', label: 'ข้อมูลบริษัท', group: 'บริษัท', roles: ['OWNER'], kind: 'inline', component: CompanyTab, keywords: ['ที่อยู่', 'โลโก้', 'ผู้เซ็น', 'tax id'] },
       { id: 'entities', label: 'บริษัทในเครือ', group: 'บริษัท', roles: ['OWNER'], kind: 'route', component: CompanySettingsPage, path: '/settings/company/entities' },
@@ -111,7 +111,7 @@ export const settingsRegistry: SettingsCategory[] = [
     ],
   },
   {
-    id: 'access', label: 'ผู้ใช้ & สิทธิ์', icon: Users, roles: ['OWNER'], group: 'org',
+    id: 'access', label: 'ผู้ใช้ & สิทธิ์', icon: MENU_ICONS['/settings/access'], roles: ['OWNER'], group: 'org',
     items: [
       { id: 'users', label: 'ผู้ใช้ / พนักงาน', group: 'ผู้ใช้', roles: ['OWNER'], kind: 'external', path: '/users' },
       { id: 'account-roles', label: "บัญชีตาม บทบาท", group: 'ผู้ใช้', roles: ['OWNER'], kind: 'route', component: AccountRolesPage, path: '/settings/access/account-roles' },
@@ -124,7 +124,7 @@ export const settingsRegistry: SettingsCategory[] = [
     ],
   },
   {
-    id: 'accounting', label: 'บัญชี & ภาษี', icon: BarChart3, roles: ALL, group: 'money',
+    id: 'accounting', label: 'บัญชี & ภาษี', icon: MENU_ICONS['/settings/accounting'], roles: ALL, group: 'money',
     items: [
       { id: 'vat', label: 'VAT', group: 'ภาษี', roles: ['OWNER'], kind: 'inline', component: VatTab, keywords: ['ภาษี', '7%', 'มูลค่าเพิ่ม'] },
       { id: 'periods', label: 'งวดบัญชี', group: 'บัญชี', roles: ['OWNER'], kind: 'inline', component: PeriodsTab, keywords: ['ปิดงวด', 'period'] },
@@ -135,7 +135,7 @@ export const settingsRegistry: SettingsCategory[] = [
     ],
   },
   {
-    id: 'finance', label: 'การเงิน & สินเชื่อ', icon: Wallet, roles: ['OWNER', 'FINANCE_MANAGER'], group: 'money',
+    id: 'finance', label: 'การเงิน & สินเชื่อ', icon: MENU_ICONS['/settings/finance'], roles: ['OWNER', 'FINANCE_MANAGER'], group: 'money',
     items: [
       { id: 'interest', label: 'ดอกเบี้ย', roles: ['OWNER'], kind: 'route', component: InterestConfigPage, path: '/settings/finance/interest' },
       { id: 'late-fee', label: 'ค่าปรับ & เงื่อนไขผ่อน', roles: ['OWNER'], kind: 'inline', component: LateFeeSettingsCard, keywords: ['ค่าปรับ', 'late fee', 'เบี้ยปรับ', 'ปรับล่าช้า', 'ขั้นบันได', 'bracket', 'งวด', 'overdue', 'ติดตามหนี้', 'ปิดก่อนกำหนด'] },
@@ -144,7 +144,7 @@ export const settingsRegistry: SettingsCategory[] = [
     ],
   },
   {
-    id: 'products', label: 'สินค้า & การขาย', icon: Smartphone, roles: ['OWNER'], group: 'sales',
+    id: 'products', label: 'สินค้า & การขาย', icon: MENU_ICONS['/settings/products'], roles: ['OWNER'], group: 'sales',
     items: [
       { id: 'pricing', label: 'ตั้งราคา', roles: ['OWNER'], kind: 'route', component: PricingTemplatesPage, path: '/settings/products/pricing' },
       { id: 'stickers', label: 'สติกเกอร์ฉลาก', roles: ['OWNER'], kind: 'route', component: StickersSettingsPage, path: '/settings/products/stickers' },
@@ -154,7 +154,7 @@ export const settingsRegistry: SettingsCategory[] = [
     ],
   },
   {
-    id: 'comms', label: 'สื่อสารลูกค้า', icon: MessageSquare, roles: ['OWNER', 'FINANCE_MANAGER'], group: 'sales',
+    id: 'comms', label: 'สื่อสารลูกค้า', icon: MENU_ICONS['/settings/comms'], roles: ['OWNER', 'FINANCE_MANAGER'], group: 'sales',
     items: [
       { id: 'line-oa', label: 'LINE OA', roles: ['OWNER'], kind: 'route', component: LineOaSettingsPage, path: '/settings/comms/line-oa' },
       { id: 'rich-menu', label: 'Rich Menu', roles: ['OWNER'], kind: 'external', path: '/settings/rich-menu' },
@@ -166,7 +166,7 @@ export const settingsRegistry: SettingsCategory[] = [
     ],
   },
   {
-    id: 'ai', label: 'AI', icon: Sparkles, roles: ['OWNER'], group: 'sales',
+    id: 'ai', label: 'AI', icon: MENU_ICONS['/settings/ai'], roles: ['OWNER'], group: 'sales',
     items: [
       { id: 'admin', label: "จัดการ AI", roles: ['OWNER'], kind: 'route', component: AiAdminPage, path: '/settings/ai/admin' },
       { id: 'persona', label: "บุคลิก AI", roles: ['OWNER'], kind: 'route', component: AiPersonaPage, path: '/settings/ai/persona' },
@@ -176,14 +176,14 @@ export const settingsRegistry: SettingsCategory[] = [
     ],
   },
   {
-    id: 'integrations', label: 'เชื่อมต่อ', icon: Plug, roles: ['OWNER', 'ACCOUNTANT'], group: 'system',
+    id: 'integrations', label: 'เชื่อมต่อ', icon: MENU_ICONS['/settings/integrations'], roles: ['OWNER', 'ACCOUNTANT'], group: 'system',
     items: [
       { id: 'hub', label: 'การเชื่อมต่อ', roles: ['OWNER', 'ACCOUNTANT'], kind: 'route', component: IntegrationHubPage, path: '/settings/integrations/hub' },
       { id: 'mdm', label: 'MDM', roles: ['OWNER'], kind: 'route', component: MdmTestPage, path: '/settings/integrations/mdm' },
     ],
   },
   {
-    id: 'system', label: 'ระบบ & ความปลอดภัย', icon: ShieldCheck, roles: ['OWNER'], group: 'system',
+    id: 'system', label: 'ระบบ & ความปลอดภัย', icon: MENU_ICONS['/settings/system'], roles: ['OWNER'], group: 'system',
     items: [
       { id: 'test-mode', label: 'โหมดทดสอบ', group: 'ความปลอดภัย', roles: ['OWNER'], kind: 'inline', component: TestModeToggle, keywords: ['test', 'otp', '2fa', 'เครดิต'] },
       { id: 'pdpa', label: 'PDPA', group: 'ความปลอดภัย', roles: ['OWNER'], kind: 'inline', component: PdpaTab, keywords: ['pdpa', 'ข้อมูลส่วนบุคคล', 'encryption'] },

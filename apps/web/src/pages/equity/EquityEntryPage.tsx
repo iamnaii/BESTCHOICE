@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ArrowLeft, ArrowRight, Check, Landmark, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Landmark, Plus, Trash2 } from '@/lib/icons';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Button } from '@/components/ui/button';

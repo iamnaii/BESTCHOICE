@@ -1,4 +1,4 @@
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight } from '@/lib/icons';
 import ChannelBadge from '@/components/chat/ChannelBadge';
 import LineLinkInvite from '@/components/customer/LineLinkInvite';
 import { Card, CardContent } from '@/components/ui/card';

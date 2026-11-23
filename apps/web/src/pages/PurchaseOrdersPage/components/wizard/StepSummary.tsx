@@ -1,5 +1,5 @@
 import { NumberInput } from '@/components/ui/NumberInput';
-import { Calculator, Pencil, StickyNote } from 'lucide-react';
+import { Calculator, Pencil, StickyNote } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import { formatNumberDecimal, formatDateShort } from '@/utils/formatters';
 import type { ItemForm, PoFormState, SupplierOption } from '../../types';

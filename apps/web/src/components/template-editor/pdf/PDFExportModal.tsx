@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { X, Download, Eye, Loader2, FileText } from 'lucide-react';
+import { X, Download, Eye, Loader2, FileText } from '@/lib/icons';
 import { useTemplateStore } from '@/store/templateStore';
 import { generatePDF } from './pdfGenerator';
 import { toast } from 'sonner';

@@ -1,8 +1,8 @@
-import type { LucideIcon } from 'lucide-react';
+import type { AppIcon } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 
 interface TimelineItemProps {
-  icon: LucideIcon;
+  icon: AppIcon;
   iconClassName?: string;
   title: string;
   description?: string;

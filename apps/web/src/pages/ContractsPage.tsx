@@ -1,3 +1,4 @@
+import { Search as InlineSearchIcon } from '@/lib/icons';
 import { NativeSelect } from '@/components/ui/native-select';
 import { formControlClass } from '@/components/ui/form-styles';
 import { useId as useFieldId } from 'react';
@@ -19,7 +20,7 @@ import WorkflowStatusBadge from '@/components/contract/WorkflowStatusBadge';
 import AnimatedCounter from '@/components/ui/animated-counter';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { Download, Plus, LayoutGrid, List, Calendar, DollarSign, User } from 'lucide-react';
+import { Download, Plus, LayoutGrid, List, Calendar, DollarSign, User } from '@/lib/icons';
 import { KanbanBoard, type KanbanColumn } from '@/components/ui/KanbanBoard';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { DateRangeChips } from '@/components/ui/DateRangeChips';
@@ -389,7 +390,7 @@ export default function ContractsPage() {
       <div className="bg-card rounded-xl border border-border/50 p-4 mb-5 shadow-sm">
         <div className="flex flex-wrap gap-3">
           <div className="relative flex-1 min-w-[200px]">
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <InlineSearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" aria-hidden="true" />
             <input
               type="text"
               aria-label="ค้นหาสัญญา"

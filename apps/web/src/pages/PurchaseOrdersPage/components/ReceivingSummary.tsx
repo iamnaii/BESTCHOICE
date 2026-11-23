@@ -1,6 +1,6 @@
 import ScreenTable from '@/components/ui/ScreenTable';
 import { useState } from 'react';
-import { ArrowLeft, Truck } from 'lucide-react';
+import { ArrowLeft, Truck } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import { formatNumber } from '@/utils/formatters';
 import type { ReceivingUnitForm } from '../types';

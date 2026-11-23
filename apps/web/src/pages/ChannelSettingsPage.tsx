@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { formControlClass, formLabelClass } from '@/components/ui/form-styles';
-import { Save, Eye, EyeOff, CheckCircle, XCircle, Copy, ExternalLink } from 'lucide-react';
+import { Save, Eye, EyeOff, CheckCircle, XCircle, Copy, ExternalLink } from '@/lib/icons';
 
 interface ChannelConfig {
   label: string;

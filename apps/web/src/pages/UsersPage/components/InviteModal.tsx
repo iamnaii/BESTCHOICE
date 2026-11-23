@@ -1,7 +1,8 @@
+import { ChevronLeft as InlineChevronLeftIcon } from '@/lib/icons';
 import { NativeSelect } from '@/components/ui/native-select';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { useRef as useReturnFocusRef } from 'react';
-import { Mail, Copy, Clock } from 'lucide-react';
+import { Mail, Copy, Clock } from '@/lib/icons';
 import { useUiFlags } from '@/hooks/useUiFlags';
 import { roleLabels, inputClass, labelClass } from '../types';
 import { useId as useUiFieldId } from 'react';
@@ -56,19 +57,7 @@ export default function InviteModal({
             onClick={onClose}
             className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="m15 18-6-6 6-6" />
-            </svg>
+            <InlineChevronLeftIcon width="16" height="16" aria-hidden="true" />
             กลับ
           </button>
           <DialogTitle asChild><h2 className="text-lg font-semibold text-foreground">เชิญผู้ใช้ใหม่</h2></DialogTitle>

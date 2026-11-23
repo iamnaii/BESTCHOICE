@@ -13,7 +13,7 @@ import {
   QrCode,
   Smartphone,
   ArrowRight,
-} from 'lucide-react';
+} from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useQuery, useMutation } from '@tanstack/react-query';

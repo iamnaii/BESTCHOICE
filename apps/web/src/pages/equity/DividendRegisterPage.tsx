@@ -5,7 +5,7 @@ import { printDocument } from '@/lib/print-document';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Coins, Download, Printer } from 'lucide-react';
+import { ArrowLeft, Coins, Download, Printer } from '@/lib/icons';
 import { toast } from 'sonner';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';

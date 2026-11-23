@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import QueryBoundary from '@/components/QueryBoundary';
 import NameWords from '@/components/ui/NameWords';

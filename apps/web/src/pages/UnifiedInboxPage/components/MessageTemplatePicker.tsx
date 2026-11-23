@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, Check, ChevronDown, ChevronRight, FileText, Search, Send } from 'lucide-react';
+import { ArrowLeft, Check, ChevronDown, ChevronRight, FileText, Search, Send } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import api from '@/lib/api';

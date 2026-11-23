@@ -1,6 +1,6 @@
 import { Link } from 'react-router';
 import { DeviceDisclosureSummary } from '@/components/product/DeviceDisclosureSummary';
-import { Check, Copy, MapPin } from 'lucide-react';
+import { Check, Copy, MapPin } from '@/lib/icons';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { categoryLabels, statusLabels } from '@/lib/constants';
 import { cn } from '@/lib/utils';

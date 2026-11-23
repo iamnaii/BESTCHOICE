@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent } from '@/components/ui/card';
-import { ShoppingCart, DollarSign, Clock } from 'lucide-react';
+import { ShoppingCart, DollarSign, Clock } from '@/lib/icons';
 
 interface CommissionSummary {
   totalSalesCount: number;

@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Coins, Gem, AlertTriangle, PackagePlus } from 'lucide-react';
+import { Coins, Gem, AlertTriangle, PackagePlus } from '@/lib/icons';
 import { formatNumberDecimal } from '@/utils/formatters';
 import type { AssetEntryFormValues } from '../schema';
 import type { CalculationResult } from '../hooks/useAssetCalculation';

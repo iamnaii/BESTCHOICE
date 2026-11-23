@@ -1,6 +1,6 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Copy, Trash2 } from 'lucide-react';
+import { GripVertical, Copy, Trash2 } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import type { CannedResponse } from './types';
 

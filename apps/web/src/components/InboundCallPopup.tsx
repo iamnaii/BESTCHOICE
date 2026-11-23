@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Phone, X, ExternalLink } from 'lucide-react';
+import { Phone, X, ExternalLink } from '@/lib/icons';
 import { useNavigate } from 'react-router';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';

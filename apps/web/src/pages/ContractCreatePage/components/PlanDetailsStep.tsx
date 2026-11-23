@@ -1,3 +1,4 @@
+import { ChevronRight as InlineChevronRightIcon, Info as InlineInfoIcon } from '@/lib/icons';
 import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useEffect, useId } from 'react';
@@ -22,7 +23,7 @@ function InfoTip({ text }: { text: string }) {
     <TooltipProvider delayDuration={200}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="inline-block ml-1 text-muted-foreground/60 cursor-help hover:text-primary transition-colors"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+          <InlineInfoIcon width="14" height="14" className="inline-block ml-1 text-muted-foreground/60 cursor-help hover:text-primary transition-colors" aria-hidden="true" />
         </TooltipTrigger>
         <TooltipContent side="top" className="max-w-xs text-xs">
           <p>{text}</p>
@@ -321,7 +322,7 @@ export function PlanDetailsStep({
               {/* Internal details — collapsible */}
               <details className="group border-t border-primary/20 pt-2">
                 <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-primary transition-colors select-none flex items-center gap-1">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-open:rotate-90"><polyline points="9 18 15 12 9 6"/></svg>
+                  <InlineChevronRightIcon width="12" height="12" className="transition-transform group-open:rotate-90" aria-hidden="true" />
                   รายละเอียดการคำนวณ (ภายใน)
                 </summary>
                 <div className="mt-2 space-y-1.5 text-sm">

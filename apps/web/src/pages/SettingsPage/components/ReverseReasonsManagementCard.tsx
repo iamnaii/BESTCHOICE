@@ -2,7 +2,7 @@ import ScreenTable from '@/components/ui/ScreenTable';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ChevronUp, Plus, Pencil, Trash2, Lightbulb } from 'lucide-react';
+import { ChevronUp, Plus, Pencil, Trash2, Lightbulb } from '@/lib/icons';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

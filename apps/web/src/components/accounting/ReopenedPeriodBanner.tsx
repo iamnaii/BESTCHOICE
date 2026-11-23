@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle } from '@/lib/icons';
 import { Alert, AlertTitle, AlertDescription, AlertIcon, AlertContent } from '@/components/ui/alert';
 import { accountingApi, type ReopenedPeriod } from '@/lib/accounting';
 import { formatThaiDateTime } from '@/lib/date';

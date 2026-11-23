@@ -1,4 +1,4 @@
-import { AlertTriangle, Banknote, CheckCircle2, Clock, Lock, Minus, type LucideIcon } from 'lucide-react';
+import { AlertTriangle, Banknote, CheckCircle2, Clock, Lock, Minus, type AppIcon } from '@/lib/icons';
 import type { CashClose, CashCloseDayState, CashCloseStatusResponse } from './cash-close';
 
 /**
@@ -63,7 +63,7 @@ export function pickHero(status: CashCloseStatusResponse, isToday: boolean): Her
 
 // ─── สถานะของหนึ่งวัน: ไอคอน + ข้อความเสมอ ไม่บอกด้วยสีอย่างเดียว ───
 
-export const DAY_STATE_ICON: Record<CashCloseDayState, LucideIcon> = {
+export const DAY_STATE_ICON: Record<CashCloseDayState, AppIcon> = {
   REACHED: CheckCircle2,
   AWAITING_CONFIRM: Clock,
   AT_BRANCH: Lock,

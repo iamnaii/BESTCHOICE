@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Bell, Send, Loader2 } from 'lucide-react';
+import { Bell, Send, Loader2 } from '@/lib/icons';
 import { toast } from 'sonner';
 import api from '@/lib/api';
 import { describeNotSent, type LineSendResult, willSendLater } from '../lineSendResult';

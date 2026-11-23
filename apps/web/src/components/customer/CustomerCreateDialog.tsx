@@ -1,3 +1,4 @@
+import { X as InlineXIcon } from '@/lib/icons';
 import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useId as useFieldId } from 'react';
@@ -43,7 +44,7 @@ import {
   Briefcase,
   Users,
   Link2,
-} from 'lucide-react';
+} from '@/lib/icons';
 import type { JourneyHeardFrom } from '@installment/shared';
 import type { OcrResult } from '@/types/ocr';
 
@@ -605,20 +606,7 @@ function CustomerCreateForm({
           onClick={onClose}
           className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M18 6 6 18" />
-            <path d="m6 6 12 12" />
-          </svg>
+          <InlineXIcon width="16" height="16" aria-hidden="true" />
           ปิด
         </button>
         <DialogTitle className="text-lg font-semibold text-foreground">

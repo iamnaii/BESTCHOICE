@@ -15,7 +15,7 @@ import AppointmentAlertBar from './components/AppointmentAlertBar';
 import { apptState, nextAppointment } from './components/appointment';
 import { fetchRoomAppointmentSummaries } from './components/room-appointment-summaries';
 import { toast } from 'sonner';
-import { ArrowLeft, Lock } from 'lucide-react';
+import { ArrowLeft, Lock } from '@/lib/icons';
 import ConversationList, { type InboxFilters } from './components/ConversationList';
 import { describeSendError } from './components/send-error';
 import { buildRoomListParams } from './components/room-query';

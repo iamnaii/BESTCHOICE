@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Camera, X } from 'lucide-react';
+import { Camera, X } from '@/lib/icons';
 import { toast } from 'sonner';
 import { EVIDENCE_IMAGE_ACCEPT, EVIDENCE_IMAGE_MAX_BYTES } from '../shop-daily-cash/cash-close';
 

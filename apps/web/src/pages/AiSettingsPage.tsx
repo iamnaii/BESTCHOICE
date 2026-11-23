@@ -19,7 +19,7 @@ import {
   SelectContent,
   SelectItem,
 } from '@/components/ui/select';
-import { Sparkles, Route, Store } from 'lucide-react';
+import { Sparkles, Route, Store } from '@/lib/icons';
 
 const CHANNELS = [
   {

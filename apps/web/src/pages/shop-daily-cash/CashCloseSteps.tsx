@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { Check } from 'lucide-react';
+import { Check } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { EvidenceImageLink } from './EvidenceImage';
 import {

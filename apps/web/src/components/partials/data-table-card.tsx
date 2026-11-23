@@ -7,7 +7,7 @@ import {
   CardContent,
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Search } from 'lucide-react';
+import { Search } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 
 interface DataTableCardProps {

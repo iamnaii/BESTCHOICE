@@ -3,7 +3,7 @@ import { Combobox } from '@/components/ui/combobox';
 import { useId, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router';
-import { BarChart3, RefreshCw, Settings } from 'lucide-react';
+import { BarChart3, RefreshCw, Settings } from '@/lib/icons';
 import { toast } from 'sonner';
 import type {
   ChatAnalyticsOverview,

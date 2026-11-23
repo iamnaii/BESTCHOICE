@@ -1,6 +1,6 @@
 import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
-import { Copy, X } from 'lucide-react';
+import { Copy, X } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import { formatNumberDecimal } from '@/utils/formatters';
 import { QtyStepper } from './QtyStepper';

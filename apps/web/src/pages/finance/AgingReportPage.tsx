@@ -8,7 +8,7 @@ import api from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle } from '@/lib/icons';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { useUiFlags } from '@/hooks/useUiFlags';
 import { formatDateMedium } from '@/utils/formatters';

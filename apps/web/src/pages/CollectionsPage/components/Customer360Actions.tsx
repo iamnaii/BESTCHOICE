@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Banknote, MessageSquare, Lock, LockOpen, ExternalLink } from 'lucide-react';
+import { Banknote, MessageSquare, Lock, LockOpen, ExternalLink } from '@/lib/icons';
 import { toast } from 'sonner';
 import { getErrorMessage } from '@/lib/api';
 import PaymentRecordDialog from './PaymentRecordDialog';

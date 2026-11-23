@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Camera, Trash2, Upload } from 'lucide-react';
+import { Camera, Trash2, Upload } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { Group } from '../RoomDossier';
 import type { FinanceApplicationModel } from '../../hooks/useFinanceApplication';

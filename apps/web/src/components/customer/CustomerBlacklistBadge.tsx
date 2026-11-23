@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ShieldAlert, ShieldBan } from 'lucide-react';
+import { ShieldAlert, ShieldBan } from '@/lib/icons';
 import type { CustomerBlacklistResult } from '@installment/shared';
 import { Badge, badgeVariants } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';

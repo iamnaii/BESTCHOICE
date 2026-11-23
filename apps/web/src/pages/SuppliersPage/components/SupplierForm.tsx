@@ -1,8 +1,14 @@
+import {
+  ChevronLeft as InlineChevronLeftIcon,
+  CreditCard as InlineCreditCardIcon,
+  FileText as InlineFileTextIcon,
+  MapPin as InlineMapPinIcon,
+} from '@/lib/icons';
 import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useRef as useReturnFocusRef } from 'react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
-import { Building2, User2 } from 'lucide-react';
+import { Building2, User2 } from '@/lib/icons';
 import AddressForm, { AddressData } from '@/components/ui/AddressForm';
 import { formControlClass, formLabelClass } from '@/components/ui/form-styles';
 import { cn } from '@/lib/utils';
@@ -145,19 +151,7 @@ export default function SupplierForm({
             onClick={onClose}
             className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="m15 18-6-6 6-6" />
-            </svg>
+            <InlineChevronLeftIcon width="16" height="16" aria-hidden="true" />
             กลับ
           </button>
           <DialogTitle asChild><h2 className="text-lg font-semibold text-foreground">
@@ -459,20 +453,7 @@ export default function SupplierForm({
               <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                 <div className="flex items-center gap-2.5">
                   <div className="flex items-center justify-center size-8 rounded-lg bg-success/10 text-success">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <rect width="20" height="14" x="2" y="5" rx="2" />
-                      <line x1="2" x2="22" y1="10" y2="10" />
-                    </svg>
+                    <InlineCreditCardIcon width="16" height="16" aria-hidden="true" />
                   </div>
                   <div>
                     <h3 className="text-sm font-semibold text-foreground">ข้อมูลการชำระเงิน</h3>
@@ -604,20 +585,7 @@ export default function SupplierForm({
             <div className="rounded-xl border border-border bg-card p-3 sm:p-5">
               <div className="flex items-center gap-2.5 mb-4">
                 <div className="flex items-center justify-center size-8 rounded-lg bg-primary/10 text-primary">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
-                    <circle cx="12" cy="10" r="3" />
-                  </svg>
+                  <InlineMapPinIcon width="16" height="16" aria-hidden="true" />
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-foreground">
@@ -637,20 +605,7 @@ export default function SupplierForm({
             <div className="rounded-xl border border-border bg-card p-3 sm:p-5">
               <div className="flex items-center gap-2.5 mb-4">
                 <div className="flex items-center justify-center size-8 rounded-lg bg-destructive/10 text-destructive">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                    <polyline points="14 2 14 8 20 8" />
-                  </svg>
+                  <InlineFileTextIcon width="16" height="16" aria-hidden="true" />
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-foreground">หมายเหตุ</h3>

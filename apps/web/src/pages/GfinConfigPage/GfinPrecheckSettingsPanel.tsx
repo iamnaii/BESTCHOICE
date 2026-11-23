@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { AlertTriangle, CheckCircle2, Send } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Send } from '@/lib/icons';
 import { formatPrecheckTemplateErrors, PRECHECK_TEMPLATE_PLACEHOLDERS, validatePrecheckTemplate } from '@installment/shared';
 import api, { getErrorMessage } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';

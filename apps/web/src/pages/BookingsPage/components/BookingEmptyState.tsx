@@ -1,4 +1,4 @@
-import { Banknote, CalendarDays, Clock, Pencil, ShoppingCart } from 'lucide-react';
+import { Banknote, CalendarDays, Clock, Pencil, ShoppingCart } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import InlineHelp from '@/components/ui/InlineHelp';
 

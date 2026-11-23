@@ -37,7 +37,7 @@ import {
   Check,
   CircleAlert,
   Eraser,
-} from 'lucide-react';
+} from '@/lib/icons';
 import { FacebookAppReviewPanel } from '@/components/FacebookAppReviewPanel';
 import {
   ClearSecretDialog,

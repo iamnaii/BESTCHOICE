@@ -6,7 +6,7 @@ import { printDocument } from '@/lib/print-document';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Download, Printer, Info } from 'lucide-react';
+import { ArrowLeft, Download, Printer, Info } from '@/lib/icons';
 import { otherIncomeApi } from '@/lib/otherIncome';
 import QueryBoundary from '@/components/QueryBoundary';
 import { formControlClass } from '@/components/ui/form-styles';

@@ -1,5 +1,5 @@
 import { NumberInput } from '@/components/ui/NumberInput';
-import { Minus, Plus } from 'lucide-react';
+import { Minus, Plus } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 
 interface QtyStepperProps {

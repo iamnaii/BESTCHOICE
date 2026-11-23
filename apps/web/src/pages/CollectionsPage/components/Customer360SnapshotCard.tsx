@@ -10,7 +10,7 @@ import {
   AlertTriangle,
   Loader2,
   X,
-} from 'lucide-react';
+} from '@/lib/icons';
 import { useContractSnapshot } from '../hooks/useContractSnapshot';
 import { formatRelativeTime } from '../utils/cardIndicators';
 import { formatDateShort } from '@/utils/formatters';

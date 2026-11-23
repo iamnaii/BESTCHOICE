@@ -5,7 +5,7 @@ import { standardSchemaResolver } from '@hookform/resolvers/standard-schema';
 import { z } from 'zod';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Loader2, Paperclip, X } from 'lucide-react';
+import { Loader2, Paperclip, X } from '@/lib/icons';
 import api, { getErrorMessage } from '@/lib/api';
 import {
   Dialog,

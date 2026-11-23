@@ -1,4 +1,4 @@
-import { CheckCircle2, PhoneOff, MessageCircle, SkipForward, Clock } from 'lucide-react';
+import { CheckCircle2, PhoneOff, MessageCircle, SkipForward, Clock } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import type { MySession } from '../hooks/useMySession';
 

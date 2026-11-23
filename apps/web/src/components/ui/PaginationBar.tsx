@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Button } from './button';
 import { Input } from './input';
 import { NativeSelect } from './native-select';
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from '@/lib/icons';
 
 type Props = {
   total: number;

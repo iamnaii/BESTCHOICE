@@ -1,3 +1,4 @@
+import { Smartphone as InlineSmartphoneIcon } from '@/lib/icons';
 import { SHOP_BASE_URL } from '@/lib/env';
 
 interface ProductCardProps {
@@ -29,9 +30,7 @@ export default function ProductCard({
       {/* Image Placeholder */}
       <div className="relative h-48 bg-linear-to-br from-muted to-muted/80 flex items-center justify-center overflow-hidden">
         <div className="text-center">
-          <svg className="w-16 h-16 text-muted-foreground/50 mx-auto group-hover:scale-110 transition-transform duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
-          </svg>
+          <InlineSmartphoneIcon className="w-16 h-16 text-muted-foreground/50 mx-auto group-hover:scale-110 transition-transform duration-300" aria-hidden="true" />
           <p className="text-xs text-muted-foreground mt-1">{brand}</p>
         </div>
 

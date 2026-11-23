@@ -12,7 +12,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
-import { FileText, Save } from 'lucide-react';
+import { FileText, Save } from '@/lib/icons';
 import { toast } from 'sonner';
 
 const CONFIG_KEY = 'e_receipt_auto';

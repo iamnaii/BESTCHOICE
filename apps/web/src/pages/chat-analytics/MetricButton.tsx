@@ -1,4 +1,4 @@
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight } from '@/lib/icons';
 import { formatMetric } from './analytics-format';
 export default function MetricButton({
   label,

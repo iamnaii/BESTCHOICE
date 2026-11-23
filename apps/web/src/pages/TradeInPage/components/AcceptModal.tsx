@@ -13,7 +13,7 @@ import SellerPaymentFields from '@/components/trade-in/SellerPaymentFields';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import SignaturePadFull from '@/components/signing/SignaturePadFull';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle } from '@/lib/icons';
 import type { TradeIn, AcceptFormState, AcceptRequest } from '../types';
 
 interface AcceptModalProps {

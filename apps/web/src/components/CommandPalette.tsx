@@ -36,8 +36,8 @@ import {
   Landmark,
   Coins,
   BadgePercent,
-} from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
+} from '@/lib/icons';
+import type { NavigationIcon } from '@/config/navigation-icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useUnionSearch } from '@/pages/CollectionsPage/hooks/useUnionSearch';
@@ -50,7 +50,7 @@ export { quickActions } from '@/config/work-navigation';
 interface NavEntry {
   label: string;
   path: string;
-  icon: LucideIcon;
+  icon: NavigationIcon;
   keywords?: string;
   roles?: string[];
 }

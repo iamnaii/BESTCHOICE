@@ -61,7 +61,7 @@ describe('getSidebarForRole — populated ZONE_CONFIG', () => {
 
   it('ACCOUNTANT finds SHOP accounting in SHOP', () => {
     // + สรุปเงินหน้าร้านรายวัน (2026-09-20) — บัญชีเห็นทุกสาขา
-    expect(getSidebarForRole('ACCOUNTANT', 'shop').flatMap(s => s.items.map(i => i.path))).toEqual(['/shop/accounting', '/shop/daily-cash', '/shop/petty-cash']);
+    expect(getSidebarForRole('ACCOUNTANT', 'shop').flatMap(s => s.items.map(i => i.path))).toEqual(['/shop/daily-cash', '/shop/petty-cash', '/shop/accounting', '/imported-sales']);
   });
 
   it('ACCOUNTANT + fin returns accounting sections', () => {
@@ -79,9 +79,11 @@ describe('getSidebarForRole — populated ZONE_CONFIG', () => {
   it('OWNER shop sections have exact expected keys (regression guard)', () => {
     const keys = getSidebarForRole('OWNER', 'shop').map((s) => s.key);
     expect(keys).toEqual([
-      'owner-inventory',
+      'owner-customers',
       'owner-sales',
+      'owner-inventory',
       'owner-shop-accounting',
+      'owner-personal',
     ]);
   });
 
@@ -94,7 +96,7 @@ describe('getSidebarForRole — populated ZONE_CONFIG', () => {
     const sections = getSidebarForRole('OWNER', 'shop');
     const accounting = sections.find((s) => s.key === 'owner-shop-accounting');
     const sales = sections.find((s) => s.key === 'owner-sales');
-    expect(accounting?.items.map((i) => i.path)).toEqual(['/shop/accounting', '/shop/daily-cash', '/shop/petty-cash']);
+    expect(accounting?.items.map((i) => i.path)).toEqual(['/shop/daily-cash', '/shop/petty-cash', '/shop/accounting', '/imported-sales']);
     expect(sales?.items.map((i) => i.path)).not.toContain('/shop/daily-cash');
   });
 
@@ -184,7 +186,7 @@ describe('VIEWER role (Owner Q4 2026-05-17)', () => {
   });
 
   it('VIEWER finds SHOP accounting in SHOP', () => {
-    expect(getSidebarForRole('VIEWER', 'shop').flatMap(s => s.items.map(i => i.path))).toEqual(['/shop/accounting', '/shop/petty-cash']);
+    expect(getSidebarForRole('VIEWER', 'shop').flatMap(s => s.items.map(i => i.path))).toEqual(['/shop/petty-cash', '/shop/accounting']);
   });
 
   it('VIEWER + settings returns empty (no gear)', () => {

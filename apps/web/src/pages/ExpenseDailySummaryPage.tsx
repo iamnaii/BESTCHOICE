@@ -7,7 +7,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams, useNavigate } from 'react-router';
 import api from '@/lib/api';
-import { ArrowLeft, Printer, FileSpreadsheet } from 'lucide-react';
+import { ArrowLeft, Printer, FileSpreadsheet } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { formatNumberDecimal } from '@/utils/formatters';

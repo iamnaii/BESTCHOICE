@@ -27,7 +27,7 @@ import { CashAccountVisualPicker } from '@/components/expense-form-v4/CashAccoun
 import { CASH_ACCOUNT_CODES, SHOP_CASH_ACCOUNT_CODES } from '@/components/CashAccountSelect';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatNumberDecimal } from '@/utils/formatters';
-import { ShieldCheck, Download, Send } from 'lucide-react';
+import { ShieldCheck, Download, Send } from '@/lib/icons';
 
 /**
  * สปส.1-10 — เงินสมทบประกันสังคมรายเดือน (payroll round 2, 2026-08-06).

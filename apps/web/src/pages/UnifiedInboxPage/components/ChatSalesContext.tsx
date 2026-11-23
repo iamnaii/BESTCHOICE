@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import type { ChatSalesContext as SalesContext } from '@installment/shared';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight } from '@/lib/icons';
 import { toast } from 'sonner';
 import api from '@/lib/api';
 import { getCompanyScopeRevision } from '@/lib/company-scope';

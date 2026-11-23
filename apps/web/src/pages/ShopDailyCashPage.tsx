@@ -3,7 +3,7 @@ import { NativeSelect } from '@/components/ui/native-select';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, Banknote, ChevronLeft, ChevronRight } from 'lucide-react';
+import { AlertTriangle, Banknote, ChevronLeft, ChevronRight } from '@/lib/icons';
 import api from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
 import PageHeader from '@/components/ui/PageHeader';

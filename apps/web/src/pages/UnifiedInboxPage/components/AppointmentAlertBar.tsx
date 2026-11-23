@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { getErrorMessage } from '@/lib/api';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlarmClock, ArrowRight, Check, Clock } from 'lucide-react';
+import { AlarmClock, ArrowRight, Check, Clock } from '@/lib/icons';
 import api from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { apptState } from './appointment';

@@ -3,7 +3,7 @@ import { getReportDateRange } from '@/lib/date';
 import { useId as useUiFieldId, useState } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { Building2, TrendingDown, TrendingUp } from 'lucide-react';
+import { Building2, TrendingDown, TrendingUp } from '@/lib/icons';
 import api from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
 import PageHeader from '@/components/ui/PageHeader';

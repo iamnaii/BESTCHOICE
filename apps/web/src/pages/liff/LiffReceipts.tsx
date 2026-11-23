@@ -3,7 +3,7 @@ import { liffApi } from '@/lib/api';
 import { liffDownloadPath, onLiffDownloadClick } from '@/lib/liff-download';
 import { useQuery } from '@tanstack/react-query';
 import { formatDateMedium } from '@/utils/formatters';
-import { FileText, Download } from 'lucide-react';
+import { FileText, Download } from '@/lib/icons';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';

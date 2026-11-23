@@ -1,6 +1,6 @@
 import { NativeSelect } from '@/components/ui/native-select';
 import { useEffect, useRef, useState } from 'react';
-import { Loader2, Upload, FileText } from 'lucide-react';
+import { Loader2, Upload, FileText } from '@/lib/icons';
 import { toast } from 'sonner';
 import {
   Dialog,

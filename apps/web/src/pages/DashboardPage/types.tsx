@@ -1,5 +1,5 @@
-import type { LucideIcon } from 'lucide-react';
-import { AlertTriangle, Package, FileCheck, ImageIcon, Banknote, CalendarClock } from 'lucide-react';
+import type { AppIcon } from '@/lib/icons';
+import { AlertTriangle, Package, FileCheck, ImageIcon, Banknote, CalendarClock } from '@/lib/icons';
 
 /* ─── Types ─── */
 
@@ -201,7 +201,7 @@ export const pieColors: Record<string, string> = {
 };
 
 /* ─── Alert Icon Map ─── */
-export const alertIconMap: Record<string, LucideIcon> = {
+export const alertIconMap: Record<string, AppIcon> = {
   overdue: AlertTriangle,
   low_stock: Package,
   pending_contracts: FileCheck,

@@ -2,7 +2,7 @@ import { useLiffInit } from '@/hooks/useLiffInit';
 import { liffApi } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
 import { formatDateMedium } from '@/utils/formatters';
-import { ShieldCheck, ShieldAlert, Smartphone, MessageCircle } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, Smartphone, MessageCircle } from '@/lib/icons';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';

@@ -8,7 +8,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { formControlClass, formLabelClass } from '@/components/ui/form-styles';
-import { Store, BarChart3, Wallet, AlertTriangle, ChevronDown } from 'lucide-react';
+import { Store, BarChart3, Wallet, AlertTriangle, ChevronDown } from '@/lib/icons';
 
 /**
  * P3-SP5 — SHOP-side accounting reports.

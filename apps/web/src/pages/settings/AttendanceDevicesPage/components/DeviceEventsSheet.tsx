@@ -1,11 +1,11 @@
-import type { LucideIcon } from 'lucide-react';
-import { AlertTriangle, Ban, KeyRound, MonitorOff, Plus, Unlock } from 'lucide-react';
+import type { AppIcon } from '@/lib/icons';
+import { AlertTriangle, Ban, KeyRound, MonitorOff, Plus, Unlock } from '@/lib/icons';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useAttendanceDeviceEvents, type AttendanceDevice, type AttendanceDeviceEventKind } from '@/hooks/useAttendance';
 import { formatDeviceTime } from '../device.util';
 
-const EVENT_VIEW: Record<AttendanceDeviceEventKind, { label: string; icon: LucideIcon; tone: string }> = {
+const EVENT_VIEW: Record<AttendanceDeviceEventKind, { label: string; icon: AppIcon; tone: string }> = {
   REGISTERED: { label: 'ลงทะเบียนเครื่อง', icon: Plus, tone: 'text-primary' },
   TOKEN_CONFLICT: { label: 'รหัสเครื่องถูกใช้จาก 2 ที่ — ล็อกเครื่อง', icon: AlertTriangle, tone: 'text-destructive' },
   PIN_LOCKOUT: { label: 'กรอกรหัสพนักงานผิด 5 ครั้ง — พักรหัส 15 นาที', icon: KeyRound, tone: 'text-warning-strong' },

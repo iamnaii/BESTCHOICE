@@ -20,7 +20,7 @@ import {
   Upload,
   Image as ImageIcon,
   AlertTriangle,
-} from 'lucide-react';
+} from '@/lib/icons';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import Modal from '@/components/ui/Modal';

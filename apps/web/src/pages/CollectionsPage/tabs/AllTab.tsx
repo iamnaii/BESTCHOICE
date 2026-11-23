@@ -11,7 +11,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { formatDateShort } from '@/utils/formatters';
 import { exportToExcel } from '@/utils/excel.util';
 import { toast } from 'sonner';
-import { Download } from 'lucide-react';
+import { Download } from '@/lib/icons';
 import { formControlClass } from '@/components/ui/form-styles';
 import { cn } from '@/lib/utils';
 

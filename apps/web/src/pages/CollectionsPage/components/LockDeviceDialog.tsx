@@ -10,7 +10,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { AlertTriangle, Lock } from 'lucide-react';
+import { AlertTriangle, Lock } from '@/lib/icons';
 import { toast } from 'sonner';
 import { getErrorMessage } from '@/lib/api';
 import { useLockContract } from '../hooks/useMdmLock';

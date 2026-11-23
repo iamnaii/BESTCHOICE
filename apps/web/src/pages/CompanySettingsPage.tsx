@@ -17,7 +17,7 @@ import {
   DialogBody,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { Building2, Pencil, MapPin, Plus } from 'lucide-react';
+import { Building2, Pencil, MapPin, Plus } from '@/lib/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import AddressForm, {
   type AddressData,

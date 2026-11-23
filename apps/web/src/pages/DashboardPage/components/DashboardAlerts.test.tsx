@@ -20,8 +20,8 @@ describe('DashboardAlerts — การ์ดบิลประจำ (ก้อ
       <MemoryRouter initialEntries={['/dashboard']}><DashboardAlerts alerts={[alert]} /><LocationProbe /></MemoryRouter>,
     );
     const card = screen.getByRole('button', { name: 'บิลประจำ 2 รายการครบกำหนดใน 3 วัน (2 รายการ) — คลิกเพื่อดูรายละเอียด' });
-    expect(container.querySelector('svg.lucide-calendar-clock')).not.toBeNull();
-    expect(container.querySelector('svg.lucide-triangle-alert')).toBeNull();
+    expect(container.querySelector('svg.app-icon-calendar-dots')).not.toBeNull();
+    expect(container.querySelector('svg.app-icon-warning')).toBeNull();
     await userEvent.click(card);
     expect(screen.getByTestId('location')).toHaveTextContent('/expenses/recurring-bills');
   });

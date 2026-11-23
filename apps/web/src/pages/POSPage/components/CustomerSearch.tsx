@@ -4,7 +4,7 @@ import { postHeardFrom } from '@/hooks/customer-journey/journeyEntries';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { UserPlus } from 'lucide-react';
+import { UserPlus } from '@/lib/icons';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import {

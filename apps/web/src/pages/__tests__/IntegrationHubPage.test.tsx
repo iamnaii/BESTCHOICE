@@ -144,8 +144,8 @@ describe('IntegrationHubPage — ทดสอบการเชื่อมต�
     expect(result).toHaveTextContent('PEAK ตอบกลับ HTTP 401');
     expect(result.className).toMatch(/text-destructive/);
     expect(result.className).not.toMatch(/text-success/);
-    expect(result.querySelector('svg.lucide-circle-x')).not.toBeNull();
-    expect(result.querySelector('svg.lucide-circle-check')).toBeNull();
+    expect(result.querySelector('svg.app-icon-xcircle')).not.toBeNull();
+    expect(result.querySelector('svg.app-icon-check-circle')).toBeNull();
   });
 
   it('shows success only when the API says success:true', async () => {
@@ -157,8 +157,8 @@ describe('IntegrationHubPage — ทดสอบการเชื่อมต�
     const result = await within(dialog).findByRole('status');
     expect(result).toHaveTextContent('เชื่อมต่อ PEAK สำเร็จ');
     expect(result.className).toMatch(/text-success/);
-    expect(result.querySelector('svg.lucide-circle-check')).not.toBeNull();
-    expect(result.querySelector('svg.lucide-circle-x')).toBeNull();
+    expect(result.querySelector('svg.app-icon-check-circle')).not.toBeNull();
+    expect(result.querySelector('svg.app-icon-xcircle')).toBeNull();
   });
 
   it('treats a 2xx body without success:true as a failure with the generic message', async () => {
@@ -169,7 +169,7 @@ describe('IntegrationHubPage — ทดสอบการเชื่อมต�
 
     const result = await within(dialog).findByRole('status');
     expect(result).toHaveTextContent('เชื่อมต่อไม่ได้ — กรุณาตรวจสอบการตั้งค่า');
-    expect(result.querySelector('svg.lucide-circle-x')).not.toBeNull();
+    expect(result.querySelector('svg.app-icon-xcircle')).not.toBeNull();
   });
 });
 

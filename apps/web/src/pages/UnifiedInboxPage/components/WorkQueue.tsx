@@ -1,5 +1,5 @@
 import type { ChatWorkItem, ChatWorkPage, WorkQueueView } from '@installment/shared';
-import { Clock3, CalendarDays, ChevronRight } from 'lucide-react';
+import { Clock3, CalendarDays, ChevronRight } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 const labels: Record<WorkQueueView, string> = { WAITING: 'รอตอบ', UNASSIGNED: 'ยังไม่มีผู้ดูแล', TODAY: 'วันนี้', OVERDUE: 'เกินกำหนด', FOR_ME: 'ถึงฉัน' };
 export function workDate(value: string) { return new Intl.DateTimeFormat('th-TH', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Bangkok' }).format(new Date(value)); }

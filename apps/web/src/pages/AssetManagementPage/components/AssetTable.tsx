@@ -1,7 +1,7 @@
 import { NativeSelect } from '@/components/ui/native-select';
 import { useMemo } from 'react';
-import { Eye, Pencil, Trash2 } from 'lucide-react';
-import { Building2 } from 'lucide-react';
+import { Eye, Pencil, Trash2 } from '@/lib/icons';
+import { Building2 } from '@/lib/icons';
 import DataTable from '@/components/ui/DataTable';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Badge } from '@/components/ui/badge';

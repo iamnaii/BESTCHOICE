@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Landmark, Plus, Users, CalendarDays, Coins } from 'lucide-react';
+import { Landmark, Plus, Users, CalendarDays, Coins } from '@/lib/icons';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Button } from '@/components/ui/button';

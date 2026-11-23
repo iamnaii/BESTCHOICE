@@ -24,7 +24,7 @@ import {
 import CompanyFilter from '@/components/CompanyFilter';
 import { formatNumberDecimal, formatDateMedium } from '@/utils/formatters';
 import { fetchAllETaxSubmissions, type ETaxSubmissionsPage } from './etax-submissions';
-import { FileText, Download, RefreshCw } from 'lucide-react';
+import { FileText, Download, RefreshCw } from '@/lib/icons';
 import { toast } from 'sonner';
 
 interface ETaxInvoice {

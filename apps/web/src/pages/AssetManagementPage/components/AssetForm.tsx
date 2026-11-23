@@ -9,7 +9,7 @@ import {
   ChevronDown,
   ChevronUp,
   ArrowLeft,
-} from 'lucide-react';
+} from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Asset, Branch, categoryOptions, inputClass, fmt, AssetForm as AssetFormType } from '../types';

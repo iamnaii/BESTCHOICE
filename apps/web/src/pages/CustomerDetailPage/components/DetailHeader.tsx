@@ -1,4 +1,4 @@
-import { Copy, Pencil, Phone } from 'lucide-react';
+import { Copy, Pencil, Phone } from '@/lib/icons';
 import { Link, useNavigate } from 'react-router';
 import { Fragment, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';

@@ -22,7 +22,7 @@ import {
   Gavel,
   Eye,
   Copy,
-} from 'lucide-react';
+} from '@/lib/icons';
 import type { TradeIn } from '../types';
 
 const rowActionClassName = 'w-28 shrink-0 gap-2 px-3';

@@ -1,5 +1,5 @@
 import { memo, useState } from 'react';
-import { CalendarClock, Pin } from 'lucide-react';
+import { CalendarClock, Pin } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import { formatChatTimestamp, formatWaitDuration } from '@/lib/chat-time';
 import { Badge } from '@/components/ui/badge';

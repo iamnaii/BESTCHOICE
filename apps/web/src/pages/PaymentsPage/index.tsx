@@ -19,7 +19,7 @@ import QueryBoundary from '@/components/QueryBoundary';
 import PaymentHistorySheet from '@/components/payment/PaymentHistorySheet';
 import { toast } from 'sonner';
 import { exportToExcel } from '@/utils/excel.util';
-import { Upload, Camera } from 'lucide-react';
+import { Upload, Camera } from '@/lib/icons';
 import PaymentFilters from './components/PaymentFilters';
 import PaymentTable from './components/PaymentTable';
 import PaymentSummary from './components/PaymentSummary';

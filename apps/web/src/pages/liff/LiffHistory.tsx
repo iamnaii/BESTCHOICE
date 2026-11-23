@@ -14,7 +14,7 @@ import {
   Banknote,
   FileText,
   Download,
-} from 'lucide-react';
+} from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { LIFF_ERRORS } from '@/constants/liff-errors';

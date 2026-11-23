@@ -1,6 +1,6 @@
 import { useId as useUiFieldId, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Webhook, Plus, Trash2, Send, CheckCircle, XCircle, ChevronDown, ChevronRight } from 'lucide-react';
+import { Webhook, Plus, Trash2, Send, CheckCircle, XCircle, ChevronDown, ChevronRight } from '@/lib/icons';
 import { toast } from 'sonner';
 import api from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';

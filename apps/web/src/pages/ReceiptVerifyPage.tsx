@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import MobileReceipt from '@/components/payment/MobileReceipt';
 import type { Receipt } from '@/types/receipt';
-import { CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
+import { CheckCircle2, XCircle, AlertCircle } from '@/lib/icons';
 import { formatDateTime } from '@/utils/formatters';
 
 export default function ReceiptVerifyPage() {

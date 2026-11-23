@@ -2,7 +2,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { getStatusBadgeProps, creditCheckStatusMap } from '@/lib/status-badges';
 import { formatDateShort, formatDateTime } from '@/utils/formatters';
-import { Brain, Pencil, FileText, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Brain, Pencil, FileText, CheckCircle2, AlertTriangle } from '@/lib/icons';
 import type { AiAnalysisData } from './types';
 import { creditHeadline } from '@/pages/UnifiedInboxPage/components/credit-statement';
 import type { CreditApprovalSnapshot } from './CreditAffordabilityForm';

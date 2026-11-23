@@ -1,5 +1,5 @@
-import type { LucideIcon } from 'lucide-react';
-import { Ban, Lock, Wifi, WifiOff } from 'lucide-react';
+import type { AppIcon } from '@/lib/icons';
+import { Ban, Lock, Wifi, WifiOff } from '@/lib/icons';
 import type { AttendanceDevice } from '@/hooks/useAttendance';
 
 /** heartbeat ทุก 10 นาที (KioskPage) ⇒ ติดต่อภายใน 15 นาที = ออนไลน์ */
@@ -34,7 +34,7 @@ export function deviceKind(ua: string | null): string {
 
 export interface DeviceStatusView {
   label: string;
-  icon: LucideIcon;
+  icon: AppIcon;
   className: string;
 }
 

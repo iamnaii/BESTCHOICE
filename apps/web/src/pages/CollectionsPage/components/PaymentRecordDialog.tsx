@@ -1,6 +1,6 @@
 import { NumberInput } from '@/components/ui/NumberInput';
 import { useId as useUiFieldId, useState, useEffect } from 'react';
-import { Banknote, Landmark, QrCode, ImageUp, CircleCheck } from 'lucide-react';
+import { Banknote, Landmark, QrCode, ImageUp, CircleCheck } from '@/lib/icons';
 import { toast } from 'sonner';
 import Modal from '@/components/ui/Modal';
 import api, { getErrorMessage } from '@/lib/api';

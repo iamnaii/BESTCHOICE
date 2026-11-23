@@ -1,5 +1,5 @@
 import { useId } from 'react';
-import { Check } from 'lucide-react';
+import { Check } from '@/lib/icons';
 import type { BuybackQuestion, BuybackQuestionsResponse } from '@installment/shared';
 import { buybackSourceName } from '@installment/shared';
 import { cn } from '@/lib/utils';

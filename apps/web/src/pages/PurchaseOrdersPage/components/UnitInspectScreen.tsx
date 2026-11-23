@@ -2,7 +2,7 @@ import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { DeviceDisclosureFields } from '@/components/product/DeviceDisclosureFields';
 import { useRef, useState } from 'react';
-import { AlertTriangle, Camera, Check, ListChecks, ScanLine, Smartphone, X } from 'lucide-react';
+import { AlertTriangle, Camera, Check, ListChecks, ScanLine, Smartphone, X } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import UsedDeviceDetailsFields from '@/components/product/UsedDeviceDetailsFields';
 import { formatNumber } from '@/utils/formatters';

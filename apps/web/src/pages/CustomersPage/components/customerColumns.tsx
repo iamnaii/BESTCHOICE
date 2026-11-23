@@ -1,4 +1,4 @@
-import { Copy, ExternalLink, FileText, Trash2, User } from 'lucide-react';
+import { Copy, ExternalLink, FileText, Trash2, User } from '@/lib/icons';
 import type { Column } from '@/components/ui/DataTable';
 import CustomerTierBadge from '@/components/customer/CustomerTierBadge';
 import { creditCheckStatusMap } from '@/lib/status-badges';

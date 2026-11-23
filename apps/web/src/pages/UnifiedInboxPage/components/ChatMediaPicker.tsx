@@ -1,4 +1,4 @@
-import { Smile } from 'lucide-react';
+import { Smile } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type { useChatMediaPicker } from '../hooks/useChatMediaPicker';

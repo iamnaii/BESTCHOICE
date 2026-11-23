@@ -1,4 +1,4 @@
-import { FileSignature, MessageSquare, Receipt, Trash2, User } from 'lucide-react';
+import { FileSignature, MessageSquare, Receipt, Trash2, User } from '@/lib/icons';
 import type { Column } from '@/components/ui/DataTable';
 import { customerCreditStatusMap } from '@/lib/status-badges';
 import {

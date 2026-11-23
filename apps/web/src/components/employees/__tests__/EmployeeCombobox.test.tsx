@@ -42,7 +42,7 @@ const EMP2: PickableEmployee = {
 };
 const trigger = () => screen.getByRole('combobox', { name: 'พนักงาน' });
 const searchBox = () => screen.getByPlaceholderText('ค้นหาพนักงาน (ชื่อ / ชื่อเล่น / รหัส)');
-const checkOf = (row: HTMLElement) => row.querySelector('svg.lucide-check');
+const checkOf = (row: HTMLElement) => row.querySelector('svg.app-icon-check');
 
 beforeEach(() => {
   pickable.mockReset();

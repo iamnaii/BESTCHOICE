@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
-import { CalendarDays, ChevronLeft, ChevronRight, Clock, Users } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Clock, Users } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import api, { getErrorMessage } from '@/lib/api';
 import {

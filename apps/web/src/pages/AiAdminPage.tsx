@@ -25,7 +25,7 @@ import {
   FlaskConical,
   GraduationCap,
   Settings as SettingsIcon,
-} from 'lucide-react';
+} from '@/lib/icons';
 import {
   Area,
   AreaChart,

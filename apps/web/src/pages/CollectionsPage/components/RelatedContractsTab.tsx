@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, FileText, ChevronRight } from 'lucide-react';
+import { Loader2, FileText, ChevronRight } from '@/lib/icons';
 import api from '@/lib/api';
 
 interface RelatedContract {

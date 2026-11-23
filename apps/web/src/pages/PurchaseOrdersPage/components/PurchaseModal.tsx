@@ -2,7 +2,7 @@ import { toBangkokDateString } from '@/lib/date';
 import { useEffect, useRef, useState } from 'react';
 import { UseMutationResult } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ChevronLeft, ClipboardCheck, FileText, Info, Package, type LucideIcon } from 'lucide-react';
+import { ChevronLeft, ClipboardCheck, FileText, Info, Package, type AppIcon } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import type { ContactPickResult } from '@/components/contacts/ContactCombobox';
 import { useIsMobile } from '@/hooks/useIsMobile';
@@ -63,7 +63,7 @@ export interface PurchaseModalProps {
   directReceiveMutation: UseMutationResult<unknown, unknown, DirectReceiveInput, unknown>;
 }
 
-const STEP_ICONS: Record<string, LucideIcon> = { 'ผู้ขาย + รายการ': Package, 'ตรวจรับ': ClipboardCheck, 'สรุป + จ่ายเงิน': FileText };
+const STEP_ICONS: Record<string, AppIcon> = { 'ผู้ขาย + รายการ': Package, 'ตรวจรับ': ClipboardCheck, 'สรุป + จ่ายเงิน': FileText };
 const RECEIVE_LABELS = {
   title: 'รายการที่รับเข้า',
   hint: 'ค้นหารุ่นแล้วกดเพิ่ม — สภาพ / ความจุ / สี / จำนวน / ราคาทุน เลือกในตาราง · อุปกรณ์เสริมค้นจากสินค้าเดิมหรือสร้างรายการใหม่',

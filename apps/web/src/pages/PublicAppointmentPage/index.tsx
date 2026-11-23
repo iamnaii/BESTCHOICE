@@ -8,7 +8,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import { CalendarDays, Check, ArrowRight, MapPin, Phone } from 'lucide-react';
+import { CalendarDays, Check, ArrowRight, MapPin, Phone } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { appointmentPublicApi as api, getErrorMessage } from '@/lib/api';
 import { getAppointmentToken } from '@/lib/appointment-token';

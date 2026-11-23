@@ -18,7 +18,7 @@ import {
   Zap,
   Lightbulb,
   XCircle,
-} from 'lucide-react';
+} from '@/lib/icons';
 import Decimal from 'decimal.js';
 import QueryBoundary from '@/components/QueryBoundary';
 import { useAuth } from '@/contexts/AuthContext';

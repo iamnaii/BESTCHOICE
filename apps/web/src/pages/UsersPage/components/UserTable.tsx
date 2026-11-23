@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/select';
 import { getStatusBadgeProps, enabledStatusMap } from '@/lib/status-badges';
 import { formatDateShort, formatDateMedium } from '@/utils/formatters';
-import { MoreVertical, PowerOff, Power, Pencil, UserX, KeyRound, Info } from 'lucide-react';
+import { MoreVertical, PowerOff, Power, Pencil, UserX, KeyRound, Info } from '@/lib/icons';
 import {
   User,
   InviteToken,

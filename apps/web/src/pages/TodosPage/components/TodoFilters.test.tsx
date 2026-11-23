@@ -38,7 +38,7 @@ describe('TodoFilters assignee filter', () => {
     expect(trigger).toHaveAttribute('data-slot', 'combobox-trigger');
     expect(trigger).toHaveTextContent('ผู้รับมอบหมายทั้งหมด');
     // One user icon, drawn by renderValue inside the trigger — none hand-positioned outside it.
-    const icons = container.querySelectorAll('svg.lucide-user');
+    const icons = container.querySelectorAll('svg.app-icon-user');
     expect(icons).toHaveLength(1);
     expect(trigger).toContainElement(icons[0] as HTMLElement);
 

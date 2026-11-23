@@ -11,7 +11,7 @@ import { printDocument } from '@/lib/print-document';
 import { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Printer } from 'lucide-react';
+import { ArrowLeft, Printer } from '@/lib/icons';
 import api from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
 import { formatDateTime } from '@/utils/formatters';

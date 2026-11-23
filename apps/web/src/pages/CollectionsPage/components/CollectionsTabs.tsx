@@ -1,4 +1,4 @@
-import { Phone, Calendar, List, BarChart3, Users } from 'lucide-react';
+import { Phone, Calendar, List, BarChart3, Users } from '@/lib/icons';
 import type { CollectionsTabKey } from '../types';
 
 interface Props {

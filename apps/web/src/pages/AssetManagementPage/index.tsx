@@ -9,7 +9,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import AnimatedCounter from '@/components/ui/animated-counter';
-import { Building2, Plus, Play, Package, TrendingDown, Banknote, Calculator } from 'lucide-react';
+import { Building2, Plus, Play, Package, TrendingDown, Banknote, Calculator } from '@/lib/icons';
 
 import AssetTable from './components/AssetTable';
 import AssetForm from './components/AssetForm';

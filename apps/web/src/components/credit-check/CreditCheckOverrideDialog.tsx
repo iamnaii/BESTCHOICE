@@ -2,7 +2,7 @@ import { NativeSelect } from '@/components/ui/native-select';
 import { useId as useUiFieldId, useMemo, useState } from 'react';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Sparkles, AlertTriangle } from 'lucide-react';
+import { Sparkles, AlertTriangle } from '@/lib/icons';
 import CreditAffordabilityForm, { type CreditApprovalPayload } from './CreditAffordabilityForm';
 
 interface Props {

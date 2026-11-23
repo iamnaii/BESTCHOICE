@@ -101,7 +101,7 @@ async function settled(qc: QueryClient) {
   await waitFor(() => expect(qc.getQueryState(MOUNT_KEY)?.status).not.toBe('pending'));
 }
 const searchBox = () => screen.getByPlaceholderText(SEARCH_PLACEHOLDER);
-const checkOf = (row: HTMLElement) => row.querySelector('svg.lucide-check');
+const checkOf = (row: HTMLElement) => row.querySelector('svg.app-icon-check');
 const rowsNamed = (name: string) =>
   screen.getAllByRole('option').filter((r) => r.textContent?.startsWith(name));
 

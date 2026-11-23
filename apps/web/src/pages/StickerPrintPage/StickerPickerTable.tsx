@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { AlertCircle, Minus, Plus, Trash2 } from 'lucide-react';
+import { AlertCircle, Minus, Plus, Trash2 } from '@/lib/icons';
 import DataTable, { type Column, type TableSort } from '@/components/ui/DataTable';
 import { Button } from '@/components/ui/button';
 import { formatThaiDate } from '@/lib/date';

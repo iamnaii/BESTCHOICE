@@ -1,4 +1,6 @@
-import { BookUser, type LucideIcon } from 'lucide-react';
+import { BookUser } from '@/lib/icons';
+import type { NavigationIcon } from '@/config/navigation-icons';
+import { getMenuIcon } from './navigation-icons';
 import { settingsRegistry, type SettingsRole, type SettingsCategory, type SettingsItem, type SettingsGroupId } from './settings-registry';
 
 export function visibleItems(cat: SettingsCategory, role: SettingsRole): SettingsItem[] {
@@ -52,7 +54,7 @@ export interface SettingsNavEntry {
   id: string;
   label: string;
   path: string;
-  icon: LucideIcon;
+  icon: NavigationIcon;
 }
 
 export interface SettingsNavGroup {
@@ -77,7 +79,7 @@ const CONTACTS_ENTRY: SettingsNavEntry = {
   id: 'contacts',
   label: 'รายชื่อผู้ติดต่อ',
   path: '/contacts',
-  icon: BookUser,
+  icon: getMenuIcon('/contacts', BookUser),
 };
 
 /** เมนูตั้งค่าแบบจัดกลุ่ม (กลุ่มที่ไม่มีรายการจะถูกตัดทิ้ง) */
@@ -99,7 +101,7 @@ export function settingsNavGroups(role: SettingsRole): SettingsNavGroup[] {
       id: c.id,
       label: c.label,
       path: `/settings/${c.id}`,
-      icon: c.icon,
+      icon: getMenuIcon(`/settings/${c.id}`, c.icon),
     });
   }
 

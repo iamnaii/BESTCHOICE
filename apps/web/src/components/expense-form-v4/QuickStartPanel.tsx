@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
-import { Bookmark, FileEdit, Files, Sparkles, X, Star } from 'lucide-react';
+import { Bookmark, FileEdit, Files, Sparkles, X, Star } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import { useUiFlags } from '@/hooks/useUiFlags';
 

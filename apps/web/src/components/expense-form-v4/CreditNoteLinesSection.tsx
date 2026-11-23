@@ -1,7 +1,7 @@
 import { useEffect, useId as useUiFieldId, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
-import { Search, AlertCircle, Link2, FilePlus2 } from 'lucide-react';
+import { Search, AlertCircle, Link2, FilePlus2 } from '@/lib/icons';
 import { ExpenseFormState, ExpenseLineForm } from './types';
 import { ItemLinesSection } from './ItemLinesSection';
 import { FormRow } from './layout/FormRow';

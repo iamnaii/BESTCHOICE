@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Command as CommandPrimitive } from 'cmdk';
-import { Plus, Search, X } from 'lucide-react';
+import { Plus, Search, X } from '@/lib/icons';
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from '@/components/ui/command';
 import { formatNumberDecimal } from '@/utils/formatters';
 import { accessoryTypes } from '../../../constants';

@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 import { cva, VariantProps } from 'class-variance-authority';
-import { Check, Minus } from 'lucide-react';
+import { Check, Minus } from '@/lib/icons';
 import * as CheckboxPrimitive from '@radix-ui/react-checkbox';
 
 const checkboxVariants = cva(

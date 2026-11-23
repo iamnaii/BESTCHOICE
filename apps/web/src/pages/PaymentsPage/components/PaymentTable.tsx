@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { toast } from 'sonner';
-import { Copy } from 'lucide-react';
+import { Copy } from '@/lib/icons';
 import DataTable, { type Column } from '@/components/ui/DataTable';
 import { revealTableControl } from '@/components/ui/table-focus';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';

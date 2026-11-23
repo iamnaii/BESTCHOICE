@@ -6,7 +6,7 @@ import {
   type UseFormRegister,
   type UseFormSetValue,
 } from 'react-hook-form';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2 } from '@/lib/icons';
 import { AccountCombobox } from '@/components/accounting/AccountCombobox';
 import type { OtherIncomeFormValues } from '@/lib/otherIncome.schema';
 

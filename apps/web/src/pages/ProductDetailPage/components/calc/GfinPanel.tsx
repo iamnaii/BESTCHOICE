@@ -1,6 +1,6 @@
 import { NumberInput } from '@/components/ui/NumberInput';
 import { useState, type ReactNode } from 'react';
-import { ChevronDown, Lock } from 'lucide-react';
+import { ChevronDown, Lock } from '@/lib/icons';
 import { gfinDownPctOptions, type GfinDeviceOrigin } from '@installment/shared';
 import { deviceOriginLabel } from '@/components/product/DeviceDisclosureSummary';
 import { Label } from '@/components/ui/label';

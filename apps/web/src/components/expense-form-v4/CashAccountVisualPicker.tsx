@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { CASH_ACCOUNT_CODES } from '@/components/CashAccountSelect';
-import { Banknote, Landmark } from 'lucide-react';
+import { Banknote, Landmark } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import { accountDisplayName } from '@/utils/accountName';
 

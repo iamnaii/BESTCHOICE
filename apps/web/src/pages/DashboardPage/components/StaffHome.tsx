@@ -1,4 +1,4 @@
-import { HelpCircle, Search } from 'lucide-react';
+import { HelpCircle, Search } from '@/lib/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useCommandPalette } from '@/components/CommandPalette';

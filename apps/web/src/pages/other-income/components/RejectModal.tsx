@@ -1,5 +1,5 @@
 import { useId as useUiFieldId, useState } from 'react';
-import { XCircle } from 'lucide-react';
+import { XCircle } from '@/lib/icons';
 
 interface Props {
   docNumber: string;

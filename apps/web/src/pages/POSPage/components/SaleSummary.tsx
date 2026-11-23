@@ -1,5 +1,5 @@
 import { DeviceDisclosureSummary } from '@/components/product/DeviceDisclosureSummary';
-import { Copy } from 'lucide-react';
+import { Copy } from '@/lib/icons';
 import type { AvailableTradeInCredit } from '@installment/shared';
 import { toast } from 'sonner';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';

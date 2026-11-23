@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Check } from 'lucide-react';
+import { Check } from '@/lib/icons';
 import { liffApi } from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';

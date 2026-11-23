@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { FileText, Loader2, Plus, Upload, X } from 'lucide-react';
+import { FileText, Loader2, Plus, Upload, X } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { formatThaiDateTime } from '@/lib/date';
 import type { RoomCreditModel } from '../hooks/useRoomCredit';

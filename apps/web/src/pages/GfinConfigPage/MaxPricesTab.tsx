@@ -28,7 +28,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { Download, Pencil, Trash2, Upload } from 'lucide-react';
+import { Download, Pencil, Trash2, Upload } from '@/lib/icons';
 import { downloadExcelBuffer, importFromExcel } from '@/utils/excel.util';
 import { ImportBatchError } from '@/utils/excel-cell.util';
 import { ImportReviewDialog } from '@/components/import/ImportReviewDialog';

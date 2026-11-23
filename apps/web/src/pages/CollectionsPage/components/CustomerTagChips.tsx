@@ -1,4 +1,4 @@
-import { Crown, AlertTriangle, Sparkles, Heart, Ban, PackageX, Tag } from 'lucide-react';
+import { Crown, AlertTriangle, Sparkles, Heart, Ban, PackageX, Tag } from '@/lib/icons';
 import type { CustomerTagType } from '../hooks/useCustomerTags';
 
 /**

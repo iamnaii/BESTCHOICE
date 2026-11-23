@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Receipt } from 'lucide-react';
+import { Receipt } from '@/lib/icons';
 import {
   Dialog,
   DialogContent,

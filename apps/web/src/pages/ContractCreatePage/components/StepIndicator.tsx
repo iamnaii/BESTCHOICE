@@ -1,4 +1,4 @@
-import { Check, Package, Users, Calculator, FileText } from 'lucide-react';
+import { Check, Package, Users, Calculator, FileText } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 
 export interface StepIndicatorProps {

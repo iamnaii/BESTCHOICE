@@ -1,6 +1,6 @@
 import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
-import { CreditCard, ImagePlus, Paperclip } from 'lucide-react';
+import { CreditCard, ImagePlus, Paperclip } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import { formatNumberDecimal } from '@/utils/formatters';
 import { paymentMethodLabels } from '../../constants';

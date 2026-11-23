@@ -1,5 +1,5 @@
 import { useId as useUiFieldId, useState } from 'react';
-import { X } from 'lucide-react';
+import { X } from '@/lib/icons';
 
 interface Props {
   defaultName: string;

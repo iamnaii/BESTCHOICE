@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Mail } from 'lucide-react';
+import { Mail } from '@/lib/icons';
 import { PaginationBar } from '@/components/ui/PaginationBar';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';

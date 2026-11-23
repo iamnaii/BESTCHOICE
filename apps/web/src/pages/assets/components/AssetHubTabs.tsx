@@ -15,8 +15,8 @@ import {
   TrendingDown,
   Lock,
   ShieldCheck,
-  type LucideIcon,
-} from 'lucide-react';
+  type AppIcon,
+} from '@/lib/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDraftAssetCount } from '@/hooks/useDraftAssetCount';
 import { depreciationApi } from '@/pages/depreciation/api';
@@ -24,7 +24,7 @@ import { depreciationApi } from '@/pages/depreciation/api';
 interface HubTab {
   label: string;
   path: string;
-  icon: LucideIcon;
+  icon: AppIcon;
   /** exact-match highlight (for the /assets root tab) */
   end?: boolean;
   /** roles allowed — omit = all asset roles */

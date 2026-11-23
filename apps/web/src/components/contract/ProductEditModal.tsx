@@ -1,3 +1,9 @@
+import {
+  ChevronLeft as InlineChevronLeftIcon,
+  CreditCard as InlineCreditCardIcon,
+  Package as InlinePackageIcon,
+  Smartphone as InlineSmartphoneIcon,
+} from '@/lib/icons';
 import { NumberInput } from '@/components/ui/NumberInput';
 import { useId as useUiFieldId, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -97,7 +103,7 @@ export default function ProductEditModal({ product, onClose, onSuccess }: Props)
       <div className="w-full max-w-2xl bg-background rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-4rem)]">
         <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-xs border-b px-6 py-4 flex items-center justify-between shrink-0">
           <button type="button" onClick={onClose} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+            <InlineChevronLeftIcon width="16" height="16" aria-hidden="true" />
             กลับ
           </button>
           <h2 className="text-lg font-semibold text-foreground">แก้ไขข้อมูลสินค้า</h2>
@@ -108,7 +114,7 @@ export default function ProductEditModal({ product, onClose, onSuccess }: Props)
         <div className="rounded-xl border border-border bg-card p-5">
           <div className="flex items-center gap-2.5 mb-4">
             <div className="flex items-center justify-center size-8 rounded-lg bg-primary/10 text-primary">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.91 8.84 8.56 2.23a1.93 1.93 0 0 0-1.81 0L3.1 4.13a2.12 2.12 0 0 0-.05 3.69l12.22 6.93a2 2 0 0 0 1.94 0L21 12.51a2.12 2.12 0 0 0-.09-3.67Z"/><path d="m3.09 8.84 12.35-6.61"/><path d="M6 19v-4"/></svg>
+              <InlinePackageIcon width="16" height="16" aria-hidden="true" />
             </div>
             <div>
               <h3 className="text-sm font-semibold text-foreground">ข้อมูลสินค้า</h3>
@@ -157,7 +163,7 @@ export default function ProductEditModal({ product, onClose, onSuccess }: Props)
         <div className="rounded-xl border border-border bg-card p-5">
           <div className="flex items-center gap-2.5 mb-4">
             <div className="flex items-center justify-center size-8 rounded-lg bg-success/10 text-success">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+              <InlineCreditCardIcon width="16" height="16" aria-hidden="true" />
             </div>
             <div>
               <h3 className="text-sm font-semibold text-foreground">หมายเลขเครื่อง & ราคา</h3>
@@ -184,7 +190,7 @@ export default function ProductEditModal({ product, onClose, onSuccess }: Props)
           <div className="rounded-xl border border-border bg-card p-5">
             <div className="flex items-center gap-2.5 mb-4">
               <div className="flex items-center justify-center size-8 rounded-lg bg-warning/10 text-warning-strong">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="16" height="20" x="4" y="2" rx="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/></svg>
+                <InlineSmartphoneIcon width="16" height="16" aria-hidden="true" />
               </div>
               <div>
                 <h3 className="text-sm font-semibold text-foreground">ข้อมูลมือสอง</h3>

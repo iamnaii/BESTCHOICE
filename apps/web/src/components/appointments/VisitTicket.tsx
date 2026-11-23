@@ -1,4 +1,4 @@
-import { CalendarDays, MapPin } from 'lucide-react';
+import { CalendarDays, MapPin } from '@/lib/icons';
 import type { Visit } from './types';
 import { thaiDate, thaiTime } from './types';
 export default function VisitTicket({ visit }: { visit: Visit }) {

@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Upload } from 'lucide-react';
+import { Upload } from '@/lib/icons';
 import api from '@/lib/api';
 import type { CannedResponseBubble } from '../types';
 

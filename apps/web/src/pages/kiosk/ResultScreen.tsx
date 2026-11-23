@@ -1,4 +1,4 @@
-import { Check, Clock, ImageOff, LogOut } from 'lucide-react';
+import { Check, Clock, ImageOff, LogOut } from '@/lib/icons';
 import type { PunchResult } from '@/lib/kiosk-api';
 import { formatHHmm } from './useServerClock';
 

@@ -1,3 +1,4 @@
+import { Check as InlineCheckIcon } from '@/lib/icons';
 import { useState, FormEvent } from 'react';
 import { Link } from 'react-router';
 import { toast } from 'sonner';
@@ -48,9 +49,7 @@ export default function ForgotPasswordPage() {
         {submitted ? (
           <div className="text-center py-4">
             <div className="size-12 rounded-full bg-success/10 flex items-center justify-center mx-auto mb-4">
-              <svg className="size-6 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
+              <InlineCheckIcon className="size-6 text-success" aria-hidden="true" />
             </div>
             <p className="text-sm text-foreground font-medium mb-1">ตรวจสอบอีเมลของคุณ</p>
             <p className="text-xs text-muted-foreground leading-snug">

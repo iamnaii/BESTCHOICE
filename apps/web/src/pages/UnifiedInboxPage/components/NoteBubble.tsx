@@ -1,4 +1,4 @@
-import { Pin, PinOff, StickyNote, Trash2 } from 'lucide-react';
+import { Pin, PinOff, StickyNote, Trash2 } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import type { RoomNote } from './timeline';
 

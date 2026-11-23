@@ -3,7 +3,7 @@ import { formControlClass } from '@/components/ui/form-styles';
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Banknote, CalendarDays, Smartphone } from 'lucide-react';
+import { Banknote, CalendarDays, Smartphone } from '@/lib/icons';
 import api, { getErrorMessage } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { invalidateSalesQueries } from '@/lib/invalidate-sales-queries';

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
-import { PhoneCall } from 'lucide-react';
+import { PhoneCall } from '@/lib/icons';
 import { JOURNEY_EVENT_GROUPS } from '@installment/shared';
 import { formatThaiDateShort } from '@/lib/date';
 import { EventTimeline, type EventTimelineItem } from '../EventTimeline';

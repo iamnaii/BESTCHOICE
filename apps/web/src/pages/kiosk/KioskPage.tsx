@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Building2, LogIn, LogOut, WifiOff } from 'lucide-react';
+import { Building2, LogIn, LogOut, WifiOff } from '@/lib/icons';
 import { KioskApiError, kioskApi, type PunchResult } from '@/lib/kiosk-api';
 import { clearDevice, loadDevice, saveDevice, type KioskDevice } from '@/lib/kiosk-store';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';

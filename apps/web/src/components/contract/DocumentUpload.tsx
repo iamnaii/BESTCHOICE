@@ -7,7 +7,7 @@ import { getProtectedDocument } from '@/lib/document-download';
 import { useAuth } from '@/contexts/AuthContext';
 import { queryErrorMessage } from '@/lib/query-error-message';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, Circle, Plus, Eye, Trash2, Loader2, FileText, Link2 } from 'lucide-react';
+import { CheckCircle2, Circle, Plus, Eye, Trash2, Loader2, FileText, Link2 } from '@/lib/icons';
 import api, { getErrorMessage } from '@/lib/api';
 import { compressImageForOcr } from '@/lib/compressImage';
 import { formatDateShort } from '@/utils/formatters';

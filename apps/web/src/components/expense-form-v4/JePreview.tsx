@@ -1,5 +1,5 @@
 import ScreenTable from '@/components/ui/ScreenTable';
-import { Check, AlertTriangle, Loader2 } from 'lucide-react';
+import { Check, AlertTriangle, Loader2 } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import { JePreviewResponse } from './types';
 import { formatNumberDecimal } from '@/utils/formatters';

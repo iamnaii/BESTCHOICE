@@ -1,12 +1,15 @@
 import { useCallback, useMemo } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
-import { ArrowLeft, Settings } from 'lucide-react';
+import { ArrowLeft } from '@/lib/icons';
+import { MENU_GROUP_ICONS } from '@/config/navigation-icons';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { settingsNavGroups } from '@/config/settings-access';
 import type { SettingsRole } from '@/config/settings-registry';
 import { getWorkZoneHref, getZoneEntryPathForRole, ZONE_LANDING } from '@/config/menu';
 import { useLayout, type NonSettingsZone, type SettingsReturn } from './LayoutContext';
+
+const SettingsIcon = MENU_GROUP_ICONS['settings:ตั้งค่าระบบ'];
 
 const ZONE_LABEL: Record<NonSettingsZone, string> = {
   shop: 'หน้าร้าน',
@@ -115,7 +118,7 @@ export function ExitSettingsBar({ testId = 'exit-settings' }: { testId?: string 
 export function SettingsZoneHeader() {
   return (
     <div className="flex items-center gap-2 px-5 pt-4 pb-2">
-      <Settings className="size-[15px] shrink-0 text-muted-foreground" aria-hidden="true" />
+      <SettingsIcon className="size-[18px] shrink-0 text-muted-foreground" aria-hidden="true" />
       <p className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground leading-snug">
         ตั้งค่าระบบ
       </p>
@@ -170,7 +173,7 @@ export function SettingsNavList({ testIdPrefix = 'settings-nav' }: { testIdPrefi
                           ],
                     )}
                   >
-                    <Icon className="size-[15px] shrink-0" aria-hidden="true" />
+                    <Icon className="size-[18px] shrink-0" aria-hidden="true" data-nav-icon />
                     <span className="truncate">{entry.label}</span>
                   </Link>
                 </li>

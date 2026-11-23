@@ -20,7 +20,7 @@ import {
   Send,
   FileCode,
   Settings as SettingsIcon,
-} from 'lucide-react';
+} from '@/lib/icons';
 
 interface ETaxInvoice {
   paymentId: string;

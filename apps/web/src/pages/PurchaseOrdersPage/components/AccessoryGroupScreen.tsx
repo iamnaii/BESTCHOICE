@@ -1,6 +1,6 @@
 import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
-import { AlertTriangle, Minus, Package, Plus } from 'lucide-react';
+import { AlertTriangle, Minus, Package, Plus } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import type { DefectReasonValue, ReceivingUnitForm } from '../types';
 import { defectReasonOptions } from '../constants';

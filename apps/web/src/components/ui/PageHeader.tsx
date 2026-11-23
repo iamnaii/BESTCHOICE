@@ -1,3 +1,4 @@
+import { ChevronLeft as InlineChevronLeftIcon } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import type { ReactNode } from 'react';
 import InlineHelp from './InlineHelp';
@@ -43,18 +44,7 @@ export default function PageHeader({
               className="flex items-center justify-center size-11 shrink-0 rounded-md hover:bg-accent text-muted-foreground transition-colors"
               aria-label="กลับ"
             >
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.75"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="m15 18-6-6 6-6" />
-              </svg>
+              <InlineChevronLeftIcon width="18" height="18" aria-hidden="true" />
             </button>
           )}
           {icon && (

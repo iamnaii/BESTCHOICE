@@ -7,7 +7,7 @@ import {
   Warehouse,
   ArrowUpRight,
   ArrowDownRight,
-} from 'lucide-react';
+} from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import AnimatedCounter from '@/components/ui/animated-counter';
 import type { KPIs, ComparativePL } from '../types';

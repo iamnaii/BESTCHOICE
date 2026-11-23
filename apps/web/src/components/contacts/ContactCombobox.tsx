@@ -15,7 +15,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Check } from 'lucide-react';
+import { Check } from '@/lib/icons';
 import { Badge } from '@/components/ui/badge';
 import { Combobox, type ComboOption } from '@/components/ui/combobox';
 import { useDebounce } from '@/hooks/useDebounce';

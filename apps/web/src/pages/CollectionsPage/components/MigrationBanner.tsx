@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Info, X } from 'lucide-react';
+import { Info, X } from '@/lib/icons';
 
 const STORAGE_KEY = 'collections-migrated-banner-dismissed';
 // Hardcoded deploy date — banner stops showing 14 days after this date.

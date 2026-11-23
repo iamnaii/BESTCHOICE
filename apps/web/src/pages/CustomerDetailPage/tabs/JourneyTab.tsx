@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown } from '@/lib/icons';
 import type { JourneyEvent, JourneyListResponse, JourneySummary } from '@installment/shared';
 import QueryBoundary from '@/components/QueryBoundary';
 import { EventTimeline, type EventTimelineItem } from '@/components/timeline/EventTimeline';

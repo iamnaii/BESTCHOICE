@@ -15,7 +15,7 @@ import {
   Building2,
   Info,
   Lock,
-} from 'lucide-react';
+} from '@/lib/icons';
 import {
   Dialog,
   DialogContent,

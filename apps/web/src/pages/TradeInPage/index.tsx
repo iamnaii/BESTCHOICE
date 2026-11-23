@@ -10,7 +10,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { RefreshCw, Plus, Search, X } from 'lucide-react';
+import { RefreshCw, Plus, Search, X } from '@/lib/icons';
 import TradeInProductHandoff from '@/components/trade-in/TradeInProductHandoff';
 import Modal from '@/components/ui/Modal';
 import QuickBuyModal from '@/components/trade-in/QuickBuyModal';

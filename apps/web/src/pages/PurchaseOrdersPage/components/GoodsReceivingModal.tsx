@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { UseMutationResult } from '@tanstack/react-query';
-import { X } from 'lucide-react';
+import { X } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';

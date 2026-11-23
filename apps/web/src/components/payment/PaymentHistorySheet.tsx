@@ -2,7 +2,7 @@ import ScreenTable from '@/components/ui/ScreenTable';
 import DocumentDownloadButton from '@/components/DocumentDownloadButton';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { BookOpen, FileText, Lock, X } from 'lucide-react';
+import { BookOpen, FileText, Lock, X } from '@/lib/icons';
 import api from '@/lib/api';
 import {
   Dialog,

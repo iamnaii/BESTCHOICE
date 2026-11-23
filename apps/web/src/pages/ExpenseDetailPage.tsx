@@ -6,7 +6,7 @@ import { canApproveAccountingDoc } from '@installment/shared';
 import { useNavigate, useParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Wallet } from 'lucide-react';
+import { Wallet } from '@/lib/icons';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import {

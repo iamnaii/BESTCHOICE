@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { ChevronRight, Info, TriangleAlert } from 'lucide-react';
+import { ChevronRight, Info, TriangleAlert } from '@/lib/icons';
 import { formatBahtPlain } from '@installment/shared';
 import { cn } from '@/lib/utils';
 

@@ -1,7 +1,7 @@
 import { useId as useUiFieldId, useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { NAV_LABELS } from '@/config/work-navigation';
-import { Landmark, Wallet, Plus, RefreshCw, Loader2 } from 'lucide-react';
+import { Landmark, Wallet, Plus, RefreshCw, Loader2 } from '@/lib/icons';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';

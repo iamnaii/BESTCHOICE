@@ -1,6 +1,6 @@
 import { NumberInput } from '@/components/ui/NumberInput';
 import { useEffect, useId, useMemo, useState } from 'react';
-import { ArrowDownToLine, Paperclip, Plus } from 'lucide-react';
+import { ArrowDownToLine, Paperclip, Plus } from '@/lib/icons';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { NativeSelect } from '@/components/ui/native-select';

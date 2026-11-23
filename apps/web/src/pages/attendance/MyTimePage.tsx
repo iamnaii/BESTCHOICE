@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronLeft, ChevronRight, Clock } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock } from '@/lib/icons';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useAttendanceMe, type MeResult } from '@/hooks/useAttendance';
 import PageHeader from '@/components/ui/PageHeader';

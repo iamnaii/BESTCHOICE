@@ -10,7 +10,7 @@ import {
   type UseFormWatch,
   type UseFormSetValue,
 } from 'react-hook-form';
-import { Plus, Trash2, Lightbulb } from 'lucide-react';
+import { Plus, Trash2, Lightbulb } from '@/lib/icons';
 import { AccountCombobox } from '@/components/accounting/AccountCombobox';
 import { formatNumberDecimal } from '@/utils/formatters';
 import type { OtherIncomeFormValues } from '@/lib/otherIncome.schema';

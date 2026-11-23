@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import api from '@/lib/api';
-import { ImageOff, Send, Smartphone, Tag, BadgePercent } from 'lucide-react';
+import { ImageOff, Send, Smartphone, Tag, BadgePercent } from '@/lib/icons';
 import { Badge } from '@/components/ui/badge';
 
 interface DetectedProduct {

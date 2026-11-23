@@ -1,7 +1,7 @@
 import { NativeSelect } from '@/components/ui/native-select';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, Cloud, FileText, Folder, Loader2, Plus, Upload } from 'lucide-react';
+import { ChevronDown, Cloud, FileText, Folder, Loader2, Plus, Upload } from '@/lib/icons';
 import type { ChatLibraryFile, ChatLibraryFolder, ChatLibraryPage } from '@installment/shared';
 import {
   Dialog,

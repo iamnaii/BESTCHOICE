@@ -22,7 +22,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { ArrowRight, Camera, FileText, Printer, Smartphone, UserRound, X } from 'lucide-react';
+import { ArrowRight, Camera, FileText, Printer, Smartphone, UserRound, X } from '@/lib/icons';
 import type { TradeIn } from '../types';
 
 interface Props {

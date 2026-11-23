@@ -25,8 +25,8 @@ import {
   Sparkles,
   Undo2,
   UserX,
-  type LucideIcon,
-} from 'lucide-react';
+  type AppIcon,
+} from '@/lib/icons';
 import { formControlClass } from '@/components/ui/form-styles';
 import { cn } from '@/lib/utils';
 
@@ -113,7 +113,7 @@ const payrollLinkText = (l: PayrollLink) =>
     : `หักคืนในใบ ${l.documentNumber}`;
 
 /** ไอคอนคู่สถานะ — สถานะห้ามบอกด้วยสีอย่างเดียว */
-const COMMISSION_STATUS_ICON: Record<CommissionStatus, LucideIcon> = {
+const COMMISSION_STATUS_ICON: Record<CommissionStatus, AppIcon> = {
   PENDING: Clock,
   APPROVED: CheckCircle,
   PAID: Banknote,
@@ -218,7 +218,7 @@ function SummaryCard({
   amount,
   note,
 }: {
-  icon: LucideIcon;
+  icon: AppIcon;
   iconClass: string;
   border: string;
   label: string;

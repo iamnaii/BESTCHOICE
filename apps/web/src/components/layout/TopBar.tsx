@@ -18,7 +18,7 @@ import {
   ChevronDown,
   MessageSquareMore,
   UserCircle,
-} from 'lucide-react';
+} from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,

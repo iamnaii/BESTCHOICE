@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Cloud } from 'lucide-react';
+import { Cloud } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { useChatWorkSettings } from '../hooks/useChatWork';
 import { useLibraryDraft } from '../hooks/useLibraryDraft';

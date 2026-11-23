@@ -20,7 +20,7 @@ import {
   TrendingUp,
   AlertTriangle,
   ShieldAlert,
-} from 'lucide-react';
+} from '@/lib/icons';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 

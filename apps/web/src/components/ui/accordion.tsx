@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 import { cva, type VariantProps } from 'class-variance-authority';
-import { ChevronDown, Plus } from 'lucide-react';
+import { ChevronDown, Plus, Minus } from '@/lib/icons';
 import * as AccordionPrimitive from '@radix-ui/react-accordion';
 
 // Variants
@@ -44,7 +44,7 @@ const accordionTriggerVariants = cva(
       },
       indicator: {
         arrow: '',
-        plus: '[&>svg>path:last-child]:origin-center [&>svg>path:last-child]:transition-all [&>svg>path:last-child]:duration-200 [&[data-state=open]>svg>path:last-child]:rotate-90 [&[data-state=open]>svg>path:last-child]:opacity-0 [&[data-state=open]>svg]:rotate-180',
+        plus: '[&[data-state=open]_[data-accordion-plus]]:hidden [&[data-state=closed]_[data-accordion-minus]]:hidden',
         none: '',
       },
     },
@@ -131,9 +131,17 @@ function AccordionTrigger(props: React.ComponentProps<typeof AccordionPrimitive.
         {...rest}
       >
         {children}
-        {indicator === 'plus' && <Plus className="size-4 shrink-0 transition-transform duration-200" strokeWidth={1} />}
+        {indicator === 'plus' && (
+          <span className="size-4 shrink-0" aria-hidden="true">
+            <Plus data-accordion-plus className="size-4" />
+            <Minus data-accordion-minus className="size-4" />
+          </span>
+        )}
         {indicator === 'arrow' && (
-          <ChevronDown className="size-4 shrink-0 transition-transform duration-200" strokeWidth={1} />
+          <ChevronDown
+            className="size-4 shrink-0 transition-transform duration-200"
+            strokeWidth={1}
+          />
         )}
       </AccordionPrimitive.Trigger>
     </AccordionPrimitive.Header>

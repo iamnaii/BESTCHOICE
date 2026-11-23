@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Moon, Clock, Sunrise, CalendarDays, CalendarClock } from 'lucide-react';
+import { Moon, Clock, Sunrise, CalendarDays, CalendarClock } from '@/lib/icons';
 import {
   Dialog,
   DialogContent,

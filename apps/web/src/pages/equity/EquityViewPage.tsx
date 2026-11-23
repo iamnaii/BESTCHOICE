@@ -13,7 +13,7 @@ import {
   Send,
   Trash2,
   Upload,
-} from 'lucide-react';
+} from '@/lib/icons';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Button } from '@/components/ui/button';

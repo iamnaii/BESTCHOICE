@@ -1,6 +1,6 @@
 import { NumberInput } from '@/components/ui/NumberInput';
 import { useEffect, useId, useState } from 'react';
-import { Info } from 'lucide-react';
+import { Info } from '@/lib/icons';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { formControlClass, formLabelClass } from '@/components/ui/form-styles';

@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
-import { Info } from 'lucide-react';
+import { Info } from '@/lib/icons';
 import { MakerCheckerConfirmDialog } from './MakerCheckerConfirmDialog';
 import { otherIncomeApi } from '@/lib/otherIncome';
 

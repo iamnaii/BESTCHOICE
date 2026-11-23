@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { PenLine, CheckCircle2, Undo2, Send, XCircle } from 'lucide-react';
+import { PenLine, CheckCircle2, Undo2, Send, XCircle } from '@/lib/icons';
 import { formatDateTime } from '@/utils/formatters';
 import type { IcabAuditEvent } from './types';
 

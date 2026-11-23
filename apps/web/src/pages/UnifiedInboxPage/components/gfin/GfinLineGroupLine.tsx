@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2 } from '@/lib/icons';
 import { LINE_GROUP_REASON_LABEL, lineGroupLabel, type GfinLineGroupStatus } from './gfin';
 
 /** บรรทัดสถานะกลุ่มไลน์ปลายทาง — สถานะต้องมีไอคอน+ข้อความ ไม่ใช่สีอย่างเดียว (frontend.md) */

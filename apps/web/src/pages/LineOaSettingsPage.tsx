@@ -14,7 +14,7 @@ import {
   Smartphone,
   Receipt,
   MessageSquare,
-} from 'lucide-react';
+} from '@/lib/icons';
 
 interface BotInfo {
   displayName: string;

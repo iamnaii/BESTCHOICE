@@ -1,4 +1,4 @@
-import { Lock } from 'lucide-react';
+import { Lock } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import { formatBaht } from '../utils/buildCustomerSummary';
 

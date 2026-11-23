@@ -11,7 +11,7 @@ import QueryBoundary from '@/components/QueryBoundary';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { getStatusBadgeProps, inspectionStatusMap } from '@/lib/status-badges';
-import { Search } from 'lucide-react';
+import { Search } from '@/lib/icons';
 import { formatDateShort } from '@/utils/formatters';
 
 interface InspectionItem {

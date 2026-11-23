@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Search, Lock, Unlock, Smartphone, Wifi, WifiOff } from 'lucide-react';
+import { Search, Lock, Unlock, Smartphone, Wifi, WifiOff } from '@/lib/icons';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import { Badge } from '@/components/ui/badge';

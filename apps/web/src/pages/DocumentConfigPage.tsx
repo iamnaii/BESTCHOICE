@@ -10,7 +10,7 @@
 
 import { useSearchParams } from 'react-router';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { FileText } from 'lucide-react';
+import { FileText } from '@/lib/icons';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import PageHeader from '@/components/ui/PageHeader';
 import NumberingConfigTab from '@/pages/settings/NumberingConfigTab';

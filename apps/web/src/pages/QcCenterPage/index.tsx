@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Camera, X, Search, Image as ImageIcon } from 'lucide-react';
+import { Camera, X, Search, Image as ImageIcon } from '@/lib/icons';
 import api from '@/lib/api';
 import { cn } from '@/lib/utils';
 import PageHeader from '@/components/ui/PageHeader';

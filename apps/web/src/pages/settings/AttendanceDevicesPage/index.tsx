@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { KeyRound, Plus, Tablet } from 'lucide-react';
+import { KeyRound, Plus, Tablet } from '@/lib/icons';
 import { getErrorMessage } from '@/lib/api';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import PageHeader from '@/components/ui/PageHeader';

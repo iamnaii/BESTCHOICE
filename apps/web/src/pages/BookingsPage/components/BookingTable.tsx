@@ -1,4 +1,4 @@
-import { CalendarDays } from 'lucide-react';
+import { CalendarDays } from '@/lib/icons';
 import DataTable, { type TableSort } from '@/components/ui/DataTable';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { BOOKING_PAGE_LIMIT } from '../hooks/useBookingsQuery';

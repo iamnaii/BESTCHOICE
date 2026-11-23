@@ -1,4 +1,4 @@
-import { ImagePlus, X } from 'lucide-react';
+import { ImagePlus, X } from '@/lib/icons';
 import FormSection from './FormSection';
 
 const MAX_PHOTOS = 10;

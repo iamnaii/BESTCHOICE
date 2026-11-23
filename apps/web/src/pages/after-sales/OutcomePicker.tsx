@@ -1,4 +1,4 @@
-import { ArrowLeftRight, Banknote, Wrench, type LucideIcon } from 'lucide-react';
+import { ArrowLeftRight, Banknote, Wrench, type AppIcon } from '@/lib/icons';
 import {
   OUTCOME_LABEL,
   PAYER_LABEL,
@@ -6,7 +6,7 @@ import {
   type OutcomeOption,
 } from './after-sales';
 
-const OUTCOME_ICON: Record<AfterSalesOutcome, LucideIcon> = {
+const OUTCOME_ICON: Record<AfterSalesOutcome, AppIcon> = {
   REPAIR: Wrench,
   SAME_MODEL_EXCHANGE: ArrowLeftRight,
   CASH_SAME_MODEL_EXCHANGE: ArrowLeftRight,

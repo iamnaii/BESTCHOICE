@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ExternalLink, Download, ZoomIn, ZoomOut, RotateCcw, FileText } from 'lucide-react';
+import { ExternalLink, Download, ZoomIn, ZoomOut, RotateCcw, FileText } from '@/lib/icons';
 import {
   Dialog,
   DialogContent,

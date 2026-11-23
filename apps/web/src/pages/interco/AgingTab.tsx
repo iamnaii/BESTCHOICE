@@ -1,5 +1,5 @@
 import ScreenTable from '@/components/ui/ScreenTable';
-import { CalendarClock, Info } from 'lucide-react';
+import { CalendarClock, Info } from '@/lib/icons';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';

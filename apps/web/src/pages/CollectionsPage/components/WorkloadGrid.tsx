@@ -5,7 +5,7 @@ import {
   Draggable,
   type DropResult,
 } from '@hello-pangea/dnd';
-import { Shuffle, Loader2 } from 'lucide-react';
+import { Shuffle, Loader2 } from '@/lib/icons';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {

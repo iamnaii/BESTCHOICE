@@ -2,7 +2,7 @@ import { DeviceDisclosureSummary } from '@/components/product/DeviceDisclosureSu
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Link } from 'react-router';
-import { AlertCircle, CheckCircle2, ScanLine } from 'lucide-react';
+import { AlertCircle, CheckCircle2, ScanLine } from '@/lib/icons';
 import { DeviceOriginFilter } from '@/components/product/DeviceOriginFilter';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';

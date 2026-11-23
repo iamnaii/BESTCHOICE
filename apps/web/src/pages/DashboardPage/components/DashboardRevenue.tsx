@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardToolbar } from '@/components/ui/card';
 import CompanyFilter from '@/components/CompanyFilter';
-import type { LucideIcon } from 'lucide-react';
+import type { AppIcon } from '@/lib/icons';
 import {
   ShoppingCart,
   FileCheck,
@@ -14,13 +14,13 @@ import {
   Warehouse,
   BarChart3,
   ArrowRight,
-} from 'lucide-react';
+} from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import type { KPIs, MonthlyRevenue, EntityProfit } from '../types';
 import { ErrorBlock } from '../types';
 
 /* ─── Quick Action Shortcut Card ─── */
-function ShortcutCard({ icon: Icon, label, path, color }: { icon: LucideIcon; label: string; path: string; color: string }) {
+function ShortcutCard({ icon: Icon, label, path, color }: { icon: AppIcon; label: string; path: string; color: string }) {
   const navigate = useNavigate();
   return (
     <Card

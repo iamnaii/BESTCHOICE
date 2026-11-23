@@ -199,6 +199,30 @@ test('finds a rotating CSS ring using a partial border shorthand', async (t) => 
   assert.deepEqual(other, []);
 });
 
+test('resolves a direct JSX glyph constant only when destructuring does not shadow it', async (t) => {
+  const root = await fixture(t, {
+    [app]: `
+      const INDICATOR = "!";
+      export const Error = ({ INDICATOR = "Error!" } = {}) => <div role="alert">{INDICATOR}</div>;
+      export function Local({ error }) {
+        const { INDICATOR } = error;
+        return <div role="alert">{INDICATOR}</div>;
+      }
+      export function Nested({ details: [, { message: INDICATOR }] }) {
+        return <div role="alert">{INDICATOR}</div>;
+      }
+      export const Direct = ({ INDICATOR: otherName }) => <div role="alert">{INDICATOR}</div>;
+    `,
+  });
+  assert.deepEqual(await scanIconUsage(root), [
+    {
+      path: app,
+      kind: 'unicode-symbol',
+      context: 'Direct > <div role="alert"> > {INDICATOR} = "!"',
+    },
+  ]);
+});
+
 test('finds extensionless literal JSX image sources without flagging links', async (t) => {
   const root = await fixture(t, {
     [app]: `

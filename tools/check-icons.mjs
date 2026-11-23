@@ -215,27 +215,31 @@ function isAffordance(tag, attributes) {
   );
 }
 
-// Look up direct const declarations within the JSX's enclosing blocks and source file.
+function bindsName(binding, name) {
+  if (ts.isIdentifier(binding)) return binding.text === name;
+  return binding.elements.some(
+    (element) => ts.isBindingElement(element) && bindsName(element.name, name),
+  );
+}
+
+// Only direct const initializers resolve to literals. Destructuring can shadow them.
 function localStringConstant(expression) {
   const { text: name } = expression;
   for (let scope = expression.parent; scope; scope = scope.parent) {
     if (
       ts.isFunctionLike(scope) &&
-      scope.parameters.some(
-        (parameter) => ts.isIdentifier(parameter.name) && parameter.name.text === name,
-      )
+      scope.parameters.some((parameter) => bindsName(parameter.name, name))
     )
       return;
     if (!ts.isBlock(scope) && !ts.isSourceFile(scope)) continue;
     for (const statement of scope.statements) {
       if (!ts.isVariableStatement(statement)) continue;
       const list = statement.declarationList;
-      const declaration = list.declarations.find(
-        (candidate) => ts.isIdentifier(candidate.name) && candidate.name.text === name,
-      );
+      const declaration = list.declarations.find((candidate) => bindsName(candidate.name, name));
       if (!declaration) continue;
       if (
         list.flags & ts.NodeFlags.Const &&
+        ts.isIdentifier(declaration.name) &&
         declaration.initializer &&
         ts.isStringLiteralLike(declaration.initializer)
       ) {

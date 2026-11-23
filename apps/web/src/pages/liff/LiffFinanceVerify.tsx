@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import {
   ArrowLeft,
   Check,
+  CheckCircle2,
   CircleX,
   Clock,
   ExternalLink,
@@ -311,7 +312,7 @@ export default function LiffFinanceVerify() {
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <Card className="max-w-md w-full">
           <CardContent className="text-center py-10">
-            <div className="text-success text-5xl mb-4">&#10003;</div>
+            <CheckCircle2 className="mx-auto mb-4 size-12 text-success" aria-hidden="true" />
             <h2 className="text-lg font-bold mb-2">ยืนยันแล้ว</h2>
             {verifiedName && <p className="text-muted-foreground mb-2">คุณ{verifiedName}</p>}
             <p className="text-muted-foreground text-sm mb-6">

@@ -39,7 +39,8 @@ it('select and cancel are local only; add passes selected references, without a 
   mount(add);
   const tile = await screen.findByRole('checkbox', { name: 'เลือก คู่มือ.pdf' });
   fireEvent.click(tile);
-  expect(tile).toHaveAttribute('aria-checked', 'true');
+  expect(tile).toBeChecked();
+  expect(tile.querySelector('svg.app-icon-check')).toHaveAttribute('aria-hidden', 'true');
   expect(api.post).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'เพิ่มไฟล์ที่เลือก' }));
   expect(add).toHaveBeenCalledWith([file]);

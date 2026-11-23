@@ -1,7 +1,7 @@
 import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { DeviceDisclosureFields } from '@/components/product/DeviceDisclosureFields';
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { AlertTriangle, Camera, Check, ListChecks, ScanLine, Smartphone, X } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import UsedDeviceDetailsFields from '@/components/product/UsedDeviceDetailsFields';
@@ -202,6 +202,7 @@ export function UnitInspectScreen({
   const [checklistOpen, setChecklistOpen] = useState(false);
   const used = isUsedUnit(unit);
   const { title, subtitle } = unitTitle(unit);
+  const checklistId = useId();
   const set = (patch: Partial<ReceivingUnitForm>) => onChange(idx, patch);
 
   const onSerialEnter = () => {
@@ -402,14 +403,22 @@ export function UnitInspectScreen({
                             type="button"
                             aria-pressed={c.passed}
                             aria-label={c.item}
+                            aria-describedby={`${checklistId}-${checkIdx}`}
                             onClick={() => onChecklist(idx, checkIdx, 'passed', !c.passed)}
                             className={cn(
                               'flex size-7 items-center justify-center rounded text-xs font-bold transition-colors',
                               c.passed ? 'bg-success text-success-foreground' : 'bg-destructive text-destructive-foreground',
                             )}
                           >
-                            {c.passed ? '✓' : '✗'}
+                            {c.passed ? (
+                              <Check className="size-4" aria-hidden="true" />
+                            ) : (
+                              <X className="size-4" aria-hidden="true" />
+                            )}
                           </button>
+                          <span id={`${checklistId}-${checkIdx}`} className="sr-only">
+                            {c.passed ? 'ผ่าน' : 'ไม่ผ่าน'}
+                          </span>
                           <span className={cn('flex-1 text-sm leading-snug', c.passed ? 'text-foreground' : 'font-medium text-destructive')}>{c.item}</span>
                           {!c.passed && (
                             <input

@@ -4,7 +4,7 @@ import { FlexPreviewCard } from '@/components/line-message/FlexPreviewCard';
 import { useId as useUiFieldId, useState, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { MessageSquareMore, Save, RotateCcw, MessageSquare, Image as ImageIcon, LayoutTemplate, Plus, Trash2, GripVertical } from '@/lib/icons';
+import { Lightbulb, MessageSquareMore, Save, RotateCcw, MessageSquare, Image as ImageIcon, LayoutTemplate, Plus, Trash2, GripVertical } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
@@ -529,7 +529,7 @@ export default function LineGreetingPage() {
       {/* ─── Tips Card ─── */}
       <div className="rounded-xl bg-info/10 border border-info/20 p-5">
         <div className="flex items-center gap-2 mb-3">
-          <span className="text-lg">💡</span>
+          <Lightbulb className="size-5 shrink-0 text-info" aria-hidden="true" />
           <h3 className="font-semibold text-info text-sm">เคล็ดลับการเขียนข้อความต้อนรับที่ดี</h3>
         </div>
         <ul className="space-y-1.5 text-sm text-info/90">

@@ -5,6 +5,7 @@ import api, { getErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/contexts/AuthContext';
+import { Check, X } from '@/lib/icons';
 import { canCreateCustomer, canFillProspectContact } from '@/lib/constants';
 import { Group } from '../RoomDossier';
 import type { DossierRoom } from '../RoomDossier';
@@ -74,7 +75,17 @@ export default function GfinStepCustomer({ room, gfin, onNext }: { room: Dossier
             <p className="m-0 font-semibold">อ่านบัตรแล้ว (OCR) · ตรวจทานก่อนบันทึก</p>
             <dl className="m-0 mt-1 grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5">
               <dt className="text-muted-foreground">ชื่อ</dt><dd className="m-0">{[ocr.prefix, ocr.firstName, ocr.lastName].filter(Boolean).join(' ') || ocr.fullName || '-'}</dd>
-              <dt className="text-muted-foreground">เลขบัตร</dt><dd className="m-0">{ocr.nationalId ?? '-'} {ocr.nationalId && (ocr.nationalIdValid ? '✓' : '✗ ตรวจอีกครั้ง')}</dd>
+              <dt className="text-muted-foreground">เลขบัตร</dt>
+              <dd className="m-0">
+                {ocr.nationalId ?? '-'}{' '}
+                {ocr.nationalId && (ocr.nationalIdValid ? (
+                  <Check className="inline-block size-4 align-text-bottom" role="img" aria-label="เลขบัตรถูกต้อง" />
+                ) : (
+                  <>
+                    <X className="inline-block size-4 align-text-bottom" aria-hidden="true" /> ตรวจอีกครั้ง
+                  </>
+                ))}
+              </dd>
               <dt className="text-muted-foreground">วันเกิด</dt><dd className="m-0">{ocr.birthDate ? formatThaiDate(ocr.birthDate) : '-'}</dd>
               <dt className="text-muted-foreground">ที่อยู่</dt><dd className="m-0">{ocr.address ?? '-'}</dd>
             </dl>

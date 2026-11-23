@@ -106,3 +106,17 @@ describe('GFIN pick button', () => {
     expect(onGfin).toHaveBeenCalledWith('m1');
   });
 });
+
+it('shows the AI indicator while preserving the emoji in the message body', () => {
+  const text = 'สวัสดีครับ 😊 🤖';
+  const message = { ...imageMessage, role: 'BOT', type: 'TEXT', mediaUrl: null, mediaType: null, text };
+  const { rerender } = render(<MessageBubble message={{ ...message, intent: 'AUTO:test' }} />);
+
+  expect(screen.getByText(text)).toHaveTextContent(text);
+  const indicator = screen.getByRole('img', { name: 'AI ตอบอัตโนมัติ' });
+  expect(indicator.querySelector('svg.app-icon-robot')).toHaveAttribute('aria-hidden', 'true');
+
+  rerender(<MessageBubble message={message} />);
+  expect(screen.getByText(text)).toBeVisible();
+  expect(screen.queryByRole('img', { name: 'AI ตอบอัตโนมัติ' })).not.toBeInTheDocument();
+});

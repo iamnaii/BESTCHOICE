@@ -1,4 +1,4 @@
-import { Smile } from '@/lib/icons';
+import { Package, Smile } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type { useChatMediaPicker } from '../hooks/useChatMediaPicker';
@@ -307,7 +307,8 @@ export function ChatMediaPicker({
                   : 'text-muted-foreground hover:text-foreground',
               )}
             >
-              📦 สติกเกอร์
+              <Package className="size-4 shrink-0" aria-hidden="true" />
+              สติกเกอร์
             </button>
           )}
 

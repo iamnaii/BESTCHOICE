@@ -45,7 +45,10 @@ describe('chat media picker extracted from composer', () => {
     fireEvent.click(screen.getByRole('button', { name: '🙏' }));
     expect(emoji).toHaveBeenCalledWith('🙏');
     expect(screen.queryByRole('button', { name: 'GIF' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /📦 สติกเกอร์/ }));
+    const stickerTab = screen.getByRole('button', { name: 'สติกเกอร์' });
+    expect(stickerTab.querySelector('svg.app-icon-package')).toHaveAttribute('aria-hidden', 'true');
+    fireEvent.click(stickerTab);
+    expect(stickerTab).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(screen.getByTitle('สติกเกอร์ 52002734'));
     expect(sticker).toHaveBeenCalledWith(11537, 52002734);
     expect(fetchGif).not.toHaveBeenCalled();

@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ArrowLeft, ArrowRight, Check, Landmark, Plus, Trash2 } from '@/lib/icons';
+import { ArrowLeft, ArrowRight, Check, Landmark, Plus, Trash2, X } from '@/lib/icons';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Button } from '@/components/ui/button';
@@ -282,7 +282,11 @@ export default function EquityEntryPage() {
                     className={`text-xs px-2 py-1 rounded-full leading-snug ${initPctPaid >= 25 ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive'}`}
                   >
                     ชำระแล้ว {initPctPaid.toFixed(1)}%{' '}
-                    {initPctPaid >= 25 ? '✓ ≥25%' : '✗ ต่ำกว่า 25% (ม.1110)'}
+                    {initPctPaid >= 25 ? (
+                      <><Check className="inline-block size-4 align-text-bottom" aria-hidden="true" /> ≥25%</>
+                    ) : (
+                      <><X className="inline-block size-4 align-text-bottom" aria-hidden="true" /> ต่ำกว่า 25% (ม.1110)</>
+                    )}
                   </span>
                 )}
               </CardHeader>

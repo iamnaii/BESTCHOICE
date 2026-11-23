@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Plus, Trash2 } from '@/lib/icons';
+import { AlertTriangle, GripVertical, Plus, Trash2 } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
@@ -122,7 +122,8 @@ function SortableQuickReplyRow({
               className="text-xs font-mono"
             />
             <p className="text-[11px] text-amber-700 leading-snug">
-              ⚠ ปุ่มลิงก์เปิดเว็บไซต์ได้ใน LINE ส่วน Facebook จะแสดงเป็นข้อความที่ลูกค้าต้องกดส่งเอง
+              <AlertTriangle className="mr-1 inline-block size-4 align-text-bottom" aria-hidden="true" />
+              ปุ่มลิงก์เปิดเว็บไซต์ได้ใน LINE ส่วน Facebook จะแสดงเป็นข้อความที่ลูกค้าต้องกดส่งเอง
             </p>
           </>
         )}

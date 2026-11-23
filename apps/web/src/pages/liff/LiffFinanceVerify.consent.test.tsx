@@ -233,3 +233,13 @@ describe('C3 — ผูก LINE เรียบร้อย', () => {
     expect(screen.getByRole('button', { name: 'กลับไปแชท' })).toBeInTheDocument();
   });
 });
+
+it('shows the already linked state with a decorative icon and a return to LINE', async () => {
+  get.mockResolvedValueOnce({ data: { linked: true, customerName: 'ลูกค้าทดสอบ' } });
+  renderPage();
+
+  const heading = await screen.findByRole('heading', { name: 'ยืนยันแล้ว' });
+  expect(heading.parentElement?.querySelector('svg.app-icon-check-circle')).toHaveAttribute('aria-hidden', 'true');
+  expect(screen.getByText('บัญชี LINE ของคุณได้รับการยืนยันแล้ว')).toBeVisible();
+  expect(screen.getByRole('button', { name: 'กลับไปแชท' })).toBeVisible();
+});

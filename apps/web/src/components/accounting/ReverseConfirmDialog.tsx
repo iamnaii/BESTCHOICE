@@ -149,8 +149,9 @@ export function ReverseConfirmDialog({
 
         <div className="space-y-4 py-2">
           <div className="rounded-md border border-warning/40 bg-warning/10 p-3">
-            <p className="text-xs font-semibold text-warning-strong mb-1.5 leading-snug">
-              ⚠ ผลกระทบ
+            <p className="mb-1.5 flex items-center gap-1 text-xs font-semibold leading-snug text-warning-strong">
+              <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
+              ผลกระทบ
             </p>
             <ul className="space-y-1 text-xs text-muted-foreground leading-snug">
               {notesToShow.map((n, i) => (

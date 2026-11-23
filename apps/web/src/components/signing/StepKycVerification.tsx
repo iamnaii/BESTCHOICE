@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { toast } from 'sonner';
+import { Check, CheckCircle2 } from '@/lib/icons';
 import OtpInput from './OtpInput';
 import IdCardCapture from './IdCardCapture';
 
@@ -128,7 +129,7 @@ export default function StepKycVerification({ contractId, customerName, customer
   if (alreadyVerified) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[50vh] px-4">
-        <div className="text-5xl mb-4">&#10003;</div>
+        <CheckCircle2 className="mb-4 size-12" aria-hidden="true" />
         <h2 className="text-xl font-semibold text-success mb-2">ยืนยันตัวตนเรียบร้อยแล้ว</h2>
         <p className="text-sm text-muted-foreground mb-6">{customerName}</p>
         <button
@@ -222,7 +223,9 @@ export default function StepKycVerification({ contractId, customerName, customer
       {otpVerified && !idCardDone && (
         <div className="w-full space-y-4">
           <div className="flex items-center gap-2 mb-2">
-            <span className="text-success text-sm">&#10003; OTP ยืนยันแล้ว</span>
+            <span className="inline-flex items-center gap-1 text-sm text-success">
+              <Check className="size-4 shrink-0" aria-hidden="true" /> OTP ยืนยันแล้ว
+            </span>
           </div>
           <h3 className="text-sm font-semibold text-foreground">ขั้นตอนที่ 2: ถ่ายรูปบัตรประชาชน</h3>
           <p className="text-xs text-muted-foreground">ถ่ายรูปด้านหน้าบัตรประชาชนของลูกค้าเพื่อยืนยันตัวตน</p>
@@ -239,7 +242,7 @@ export default function StepKycVerification({ contractId, customerName, customer
       {/* Done */}
       {otpVerified && idCardDone && (
         <div className="w-full text-center space-y-4">
-          <div className="text-4xl mb-2">&#10003;</div>
+          <CheckCircle2 className="mx-auto mb-2 size-9" aria-hidden="true" />
           <h3 className="text-lg font-semibold text-success">ยืนยันตัวตนสำเร็จ</h3>
           <button
             onClick={onComplete}

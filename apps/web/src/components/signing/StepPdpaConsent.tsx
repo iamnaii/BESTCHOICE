@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { toast } from 'sonner';
+import { CheckCircle2 } from '@/lib/icons';
 import SignaturePadFull from './SignaturePadFull';
 
 interface StepPdpaConsentProps {
@@ -28,7 +29,7 @@ export default function StepPdpaConsent({ contractId, alreadyConsented, onComple
   if (alreadyConsented) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[50vh] px-4">
-        <div className="text-5xl mb-4 text-success">&#10003;</div>
+        <CheckCircle2 className="mb-4 size-12 text-success" aria-hidden="true" />
         <h2 className="text-xl font-semibold text-success mb-2">ยินยอม PDPA เรียบร้อยแล้ว</h2>
         <button
           onClick={onComplete}

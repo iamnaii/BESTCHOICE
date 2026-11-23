@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { StockReceivedDate } from './StockProductCells';
+import { StockProductIdentity, StockReceivedDate } from './StockProductCells';
 import type { StockProduct } from '../types';
 
 const product: StockProduct = {
@@ -22,6 +22,31 @@ const product: StockProduct = {
   createdAt: '2020-01-01T10:00:00+07:00',
   stockInDate: '2026-08-20T23:00:00+07:00',
 };
+
+describe('Stock product summary', () => {
+  it.each([
+    ['THAI', 'PHONE_NEW', 'เครื่องไทย', 'มือ 1'],
+    ['IMPORTED', 'PHONE_USED', 'เครื่องนอก', 'มือ 2'],
+    [null, 'PHONE_USED', null, 'มือ 2'],
+  ] as const)(
+    'shows only known origin and condition (%s, %s)',
+    (deviceOrigin, category, origin, condition) => {
+      render(
+        <StockProductIdentity
+          product={{ ...product, deviceOrigin, category, shopWarrantyDays: 60 }}
+          onOpen={() => {}}
+          showImei={false}
+        />,
+      );
+      expect(screen.getByText(condition)).toBeInTheDocument();
+      if (origin) expect(screen.getByText(origin)).toBeInTheDocument();
+      else expect(screen.queryByText(/เครื่องไทย|เครื่องนอก/)).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(/ยังไม่ระบุไทย\/นอก|ประกันร้าน|มือถือมือสอง|มือถือใหม่/),
+      ).not.toBeInTheDocument();
+    },
+  );
+});
 
 describe('Stock received date and age', () => {
   beforeEach(() =>

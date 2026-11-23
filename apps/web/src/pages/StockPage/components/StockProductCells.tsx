@@ -1,7 +1,7 @@
 import Decimal from 'decimal.js';
 import { getPositiveDisplayPrices } from '@/utils/getDisplayPrices';
 import { Link } from 'react-router';
-import { DeviceDisclosureSummary } from '@/components/product/DeviceDisclosureSummary';
+import { deviceOriginLabel } from '@/components/product/DeviceDisclosureSummary';
 import { Check, Copy, MapPin } from 'lucide-react';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { categoryLabels, statusLabels } from '@/lib/constants';
@@ -31,13 +31,32 @@ export function StockProductIdentity({
       <button
         type="button"
         onClick={onOpen}
-        className="cursor-pointer rounded text-left text-base font-semibold leading-snug text-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:text-sm"
+        className={cn(
+          'cursor-pointer rounded text-left text-base font-semibold leading-snug text-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:text-sm',
+          product.category !== 'ACCESSORY' && 'stock-device-name',
+        )}
       >
         {product.category === 'ACCESSORY'
           ? product.name || product.model
           : product.model || product.name}
       </button>
-      {product.category !== 'ACCESSORY' && <DeviceDisclosureSummary product={product} />}
+      {product.category !== 'ACCESSORY' && (
+        <p className="mt-1.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground leading-snug">
+          {product.deviceOrigin && (
+            <>
+              <span className="whitespace-nowrap">{deviceOriginLabel(product.deviceOrigin)}</span>
+              <span aria-hidden="true">·</span>
+            </>
+          )}
+          <span className="whitespace-nowrap">
+            {product.category === 'PHONE_NEW'
+              ? 'มือ 1'
+              : product.category === 'PHONE_USED'
+                ? 'มือ 2'
+                : categoryLabels[product.category] || product.category}
+          </span>
+        </p>
+      )}
       {product.category === 'ACCESSORY' && product.model && product.model !== product.name && (
         <p className="mt-1 text-xs text-muted-foreground leading-snug">{product.model}</p>
       )}
@@ -259,7 +278,7 @@ export function StockImei({ product }: { product: StockProduct }) {
   if (product.category === 'ACCESSORY') return <span className="text-muted-foreground">—</span>;
   if (!product.imeiSerial) return <span className="text-xs text-muted-foreground">ยังไม่ระบุ</span>;
   return (
-    <div className="stock-imei flex flex-wrap items-center gap-1">
+    <div className="stock-imei flex items-center gap-1">
       <span className="select-text font-mono text-xs tabular-nums leading-snug">
         {product.imeiSerial}
       </span>

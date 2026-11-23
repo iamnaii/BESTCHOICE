@@ -105,6 +105,8 @@ export function buildStockColumns({
   add(
     {
       key: 'name',
+      className: 'stock-name-cell',
+      headerClassName: 'stock-name-cell',
       label: accessory ? 'สินค้า / รุ่น' : 'รุ่นสินค้า',
       sortable: true,
       hideable: false,
@@ -118,11 +120,11 @@ export function buildStockColumns({
               p.stockGroup ? setAccessoryGroupId(p.stockGroup.key) : navigateToProduct(p.id)
             }
           />
-          {mixed && <StockProductCategory product={p} />}
+          {mixed && p.category === 'ACCESSORY' && <StockProductCategory product={p} />}
         </div>
       ),
     },
-    accessory ? 22 : 14,
+    22,
   );
   if (accessory) {
     add(
@@ -172,7 +174,7 @@ export function buildStockColumns({
   }
   add(
     { key: 'color', label: 'สี', sortable: true, hideable: false, render: (p) => p.color || '—' },
-    accessory ? 8 : 6,
+    8,
   );
   if (!accessory) {
     add(
@@ -184,7 +186,7 @@ export function buildStockColumns({
         render: (p) => <StockImei product={p} />,
         className: 'stock-imei-cell',
       },
-      16,
+      18,
     );
     add(
       {
@@ -332,7 +334,7 @@ export function buildStockColumns({
         align: 'right',
         render: (p) => <StockQuantity product={p} />,
       },
-      9,
+      accessory ? 9 : 7,
     );
   if (view === 'all')
     add(
@@ -400,7 +402,7 @@ export function buildStockColumns({
           </div>
         ),
     },
-    7,
+    4,
   );
   // Percentages include optional columns: CSS table layout redistributes unused space when hidden.
   const total = columns.reduce((sum, col) => sum + parseFloat(col.width!), 0);

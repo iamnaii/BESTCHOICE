@@ -94,3 +94,12 @@ The managed preview, check report and storefront build use source fingerprint `c
 The standalone static origin on port 5292 serves the prerendered pages and built assets. In a fresh browser its catalogue and product API requests returned 404 after hydration. The loopback proxy on 5293 serves identical HTML and JavaScript from that static origin and supplies read-only synthetic storefront responses using the existing test fixture. The browser check used regular HTTP requests without Playwright routing. The proxy blocks third-party subresources and embeds, including the live Maps and Apps Script frames. [Static-only browser results](../../../.tmp/icons/static-preview-browser/responses.json) · [HTTP byte and fixture checks](../../../.tmp/icons/final-fix/previews.json) · [Frame blocking check](../../../.tmp/icons/final-fix/frame-policy.log)
 
 Interactive catalogue and product data, promotions, and illustrative installment values use synthetic records. Customer account, signed-in orders and addresses are exercised through the separate Playwright audit fixtures. Live sign-in, payments and sell submissions require the storefront backend. The public preview disables sign-in and rejects transaction writes. [Fixture proxy source](../../../.tmp/icons/serve-public-storefront.mjs)
+
+
+## Final review disposition
+
+The independent whole-branch review and one scoped fix review completed. Decorative icon accessibility, completed/current step announcements, original leading-plus action regressions, preview freshness, request coverage, blob decoding, loading-icon overrides and both CI path filters are covered by the final evidence above. No current implementation blocker remains.
+
+One **Minor scanner limitation** is retained explicitly: a formula caption split into JSX nodes, such as `<button>ยอดสุทธิ = <strong>เงินต้น</strong> + ดอกเบี้ย</button>`, can produce a candidate for its last `+ ดอกเบี้ย` fragment. The two original add-action cases are correctly detected and the current source scan has 399 approved entries with zero violations. A future legitimate formula may need an exact, reviewed content exception; the scanner never rewrites content. This is a future false-positive cost, not a current UI or data defect.
+
+The complete decision record, including this disposition and its cost, is in [the decision audit](2026-11-23-system-icons-decisions.md). The scoped review was accepted with that documented Minor limitation; this does not assert that every possible static or runtime expression can be classified automatically.

@@ -50,6 +50,7 @@ export interface ReceiptMoneyView {
     interestTotal?: DecimalLike;
     vatAmount?: DecimalLike;
     totalMonths?: number | null;
+    installmentRoundingPolicy?: string | null;
   } | null;
 }
 
@@ -187,6 +188,7 @@ export function legacyReceiptDocumentMoney(view: ReceiptMoneyView): ReceiptDocum
             view.contract.storeCommission != null ? view.contract.storeCommission.toString() : null,
           interestTotal: (view.contract.interestTotal ?? 0).toString(),
           vatAmount: view.contract.vatAmount != null ? view.contract.vatAmount.toString() : null,
+          installmentRoundingPolicy: view.contract.installmentRoundingPolicy,
           totalMonths: view.contract.totalMonths,
           installmentNo: view.installmentNo ?? undefined,
         })

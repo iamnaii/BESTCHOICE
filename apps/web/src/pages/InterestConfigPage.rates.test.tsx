@@ -109,11 +109,11 @@ describe('InterestConfigPage — ตารางดอกเบี้ยรา�
   it('ตัวอย่างคำนวณในการ์ดใช้เครื่องคิดเลขกลาง (12 งวด 50%)', async () => {
     open();
     await screen.findByText('มือ 2');
-    // ดาวน์ 15% ของ 12,900 = 1,935 → ปัดขึ้นร้อย 2,000 · ดอกเบี้ย 5,450 · ค่างวด 1,555.06 (ตัวเลขเดียวกับสัญญา)
+    // ดาวน์ 15% ของ 12,900 = 1,935 → ปัดขึ้นร้อย 2,000 · ดอกเบี้ย 5,438.04 · ค่างวด 1,554 (ตัวเลขเดียวกับสัญญา)
     expect(screen.getByText('ตัวอย่างคำนวณ (ราคา 12,900 บาท / 12 งวด)')).toBeInTheDocument();
     expect(screen.getByText('2,000 ฿')).toBeInTheDocument();
-    expect(screen.getByText('5,450 ฿')).toBeInTheDocument();
-    expect(screen.getByText('1,555.06 ฿')).toBeInTheDocument();
+    expect(screen.getByText('5,438 ฿')).toBeInTheDocument();
+    expect(screen.getByText('1,554.00 ฿')).toBeInTheDocument();
   });
 
   it('ฟอร์ม: ตัวอย่างคำนวณตรงกับการ์ด และแสดงค่าคอมจริง', async () => {
@@ -122,7 +122,7 @@ describe('InterestConfigPage — ตารางดอกเบี้ยรา�
     fireEvent.click(screen.getAllByRole('button', { name: 'แก้ไข' })[1]);
     await screen.findAllByLabelText('จำนวนงวด');
     expect(screen.getByText(/ค่าคอม 10%/)).toBeInTheDocument();
-    expect(screen.getAllByText('1,555.06 ฿').length).toBeGreaterThan(1);
+    expect(screen.getAllByText('1,554.00 ฿').length).toBeGreaterThan(1);
   });
 
   it('+ เพิ่มงวด: ได้งวดว่างตัวเล็กสุดในช่วง ดอกเบี้ย 0 (ต้องกรอกเอง) และบันทึกไม่ได้', async () => {

@@ -91,7 +91,7 @@ describe('InstallmentPreviewService', () => {
     expect(where.AND).toContainEqual({ NOT: { name: { startsWith: '[DEMO]' } } });
   });
 
-  it('BC: returns canonical worked example monthly payment 2,411.06', async () => {
+  it('BC: returns canonical worked example monthly payment 2,409', async () => {
     prisma.product.findFirst.mockResolvedValue({
       id: 'p1',
       installmentPrice: new Prisma.Decimal('19900'),
@@ -116,7 +116,7 @@ describe('InstallmentPreviewService', () => {
     });
     const result = await service.preview({ productId: 'p1', provider: 'BC', months: 12 });
     expect(result.available).toBe(true);
-    expect(result.monthlyPayment).toBeCloseTo(2411.06, 2);
+    expect(result.monthlyPayment).toBeCloseTo(2409, 2);
     expect(result.downAmount).toBeCloseTo(3000, 2);
   });
 
@@ -145,7 +145,7 @@ describe('InstallmentPreviewService', () => {
       ],
     });
     const ok = await service.preview({ productId: 'p1', provider: 'BC', months: 12 });
-    expect(ok).toMatchObject({ available: true, allowedMonths: [10, 12], monthlyPayment: 3138.66 });
+    expect(ok).toMatchObject({ available: true, allowedMonths: [10, 12], monthlyPayment: 3137 });
     const bad = await service.preview({ productId: 'p1', provider: 'BC', months: 6 });
     expect(bad).toMatchObject({ available: false, reason: 'invalid', allowedMonths: [10, 12] });
   });

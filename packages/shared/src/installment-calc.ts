@@ -1,4 +1,5 @@
 import Decimal from 'decimal.js';
+import { bcSheetAmounts } from './bc-sheet-amounts';
 import { downFromPct, roundUpToStep } from './installment-rounding';
 import type {
   BcCalcInput,
@@ -55,6 +56,8 @@ export function calcBcInstallment(input: BcCalcInput): BcCalcOutput {
     ? subtotal.div(months).toDecimalPlaces(2, Decimal.ROUND_DOWN).plus(round2(vatAmount.div(months)))
     : new Decimal(0);
   const financeToShop = round2(financedAmount.add(commissionAmount));
+  const sheet = bcSheetAmounts({ principal: financedAmount, ratePct,
+    commissionPct: config.commissionPct, vatPct: config.vatPct, months });
 
   return {
     sellingPrice: installmentPrice,
@@ -70,6 +73,7 @@ export function calcBcInstallment(input: BcCalcInput): BcCalcOutput {
     totalWithVat,
     monthlyPayment,
     financeToShop,
+    ...sheet,
     isValid: errors.length === 0,
     errors,
   };

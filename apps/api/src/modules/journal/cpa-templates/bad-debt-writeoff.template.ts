@@ -170,6 +170,7 @@ export class BadDebtWriteOffTemplate {
       select: {
         id: true,
         contractNumber: true,
+        installmentRoundingPolicy: true,
         totalMonths: true,
         financedAmount: true,
         storeCommission: true,

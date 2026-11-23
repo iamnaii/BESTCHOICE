@@ -21,6 +21,7 @@ export {
 export type * from './installment-calc.types';
 export * from './gfin-customer-summary';
 export * from './default-bc-installment';
+export { bcSheetAmounts } from './bc-sheet-amounts';
 export * from './installment-rounding';
 export * from './model-quote';
 export * from './stock-sort';

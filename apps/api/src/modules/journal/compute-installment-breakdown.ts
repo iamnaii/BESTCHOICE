@@ -22,6 +22,8 @@ import { resolveStoreCommission } from '../../utils/store-commission.util';
 type DecimalInput = Decimal | string | number;
 
 export interface InstallmentBreakdownInput {
+  /** Explicit persisted policy. NULL/omitted always retains legacy accounting. */
+  installmentRoundingPolicy?: string | null;
   /** ยอดจัด (FINANCE principal base). */
   financedAmount: DecimalInput;
   /** Store commission. null → financedAmount × 10% (ROUND to 2dp). */
@@ -73,6 +75,11 @@ export function computeInstallmentBreakdown(
   let installmentExclVat = grossExclVat.div(total).toDecimalPlaces(2, Decimal.ROUND_DOWN);
   let interestPerInst = interest.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
   let vatPerInst = vat.div(total).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+  if (input.installmentRoundingPolicy === 'SHEET_WHOLE_BAHT') {
+    const monthly = grossExclVat.plus(vat).div(total);
+    if (!monthly.isInteger() || monthly.lte(0)) throw new Error('Invalid whole-baht sheet schedule');
+    installmentExclVat = monthly.minus(vatPerInst);
+  }
   if (input.installmentNo === input.totalMonths) {
     const priorPeriods = total.minus(1);
     installmentExclVat = grossExclVat.minus(installmentExclVat.times(priorPeriods));

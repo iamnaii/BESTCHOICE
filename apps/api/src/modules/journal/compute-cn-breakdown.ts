@@ -83,6 +83,7 @@ export interface CnBreakdown {
 
 export interface CnBreakdownContractInput {
   id: string;
+  installmentRoundingPolicy?: string | null;
   totalMonths: number;
   financedAmount: DecimalInput;
   storeCommission: DecimalInput | null;
@@ -240,6 +241,7 @@ export async function computeInstallmentOutstanding(
     storeCommission: contract.storeCommission,
     interestTotal: contract.interestTotal,
     vatAmount: contract.vatAmount,
+    installmentRoundingPolicy: contract.installmentRoundingPolicy,
     totalMonths: contract.totalMonths,
   } as InstallmentBreakdownInput);
   const { vatPerInst, installmentTotal } = breakdown;
@@ -449,6 +451,7 @@ export async function computeCnBreakdown(
     storeCommission: contract.storeCommission,
     interestTotal: contract.interestTotal,
     vatAmount: contract.vatAmount,
+    installmentRoundingPolicy: contract.installmentRoundingPolicy,
     totalMonths: contract.totalMonths,
   } as InstallmentBreakdownInput);
   const { installmentTotal } = breakdown;

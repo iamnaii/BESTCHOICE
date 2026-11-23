@@ -88,7 +88,7 @@ describe('computeCardQuote — ตัวคำนวณกลางตัวเ�
   it('iPhone 15 128GB มือ 1 เครื่องไทย ทุน 25,800 → ตรงชีตทุกบาท', () => {
     const q = computeCardQuote(INPUT)!;
     expect(q.cash?.profit).toBe(100);
-    expect(q.rate1).toMatchObject({ downAmount: 3900, monthlyDisplay: 3139, months: 12, recordedSalePrice: 28100, profit: 2300 });
+    expect(q.rate1).toMatchObject({ downAmount: 3900, monthlyDisplay: 3137, months: 12, recordedSalePrice: 28100, profit: 2300 });
     expect(q.rate2).toMatchObject({ available: true, downAmount: 6500, monthly: 3403, months: 12, submitPrice: 25900, recordedSalePrice: 28738, profit: 2938, originNote: false });
   });
 

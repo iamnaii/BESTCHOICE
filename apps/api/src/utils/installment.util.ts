@@ -126,6 +126,7 @@ export interface PaymentScheduleItem {
 }
 
 export interface BreakdownTotals {
+  installmentRoundingPolicy?: string | null;
   principal: number;
   interestTotal: number;
   storeCommission: number;
@@ -155,6 +156,7 @@ export function paymentBreakdowns(
 ): PaymentBreakdownRow[] {
   // Match the ledger's separate pre-VAT / VAT rounding; the final row carries residuals.
   const base = computeInstallmentBreakdown({
+    installmentRoundingPolicy: totals.installmentRoundingPolicy,
     financedAmount: totals.principal,
     storeCommission: totals.storeCommission,
     interestTotal: totals.interestTotal,

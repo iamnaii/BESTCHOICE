@@ -34,6 +34,7 @@ export interface Accrual2AContractFields {
   storeCommission: { toString(): string } | null;
   interestTotal: { toString(): string };
   vatAmount: { toString(): string } | null;
+  installmentRoundingPolicy?: string | null;
   totalMonths: number;
 }
 
@@ -51,6 +52,7 @@ export function accrual2AInputOf(
     storeCommission: c.storeCommission != null ? c.storeCommission.toString() : null,
     interestTotal: c.interestTotal.toString(),
     vatAmount: c.vatAmount != null ? c.vatAmount.toString() : null,
+    installmentRoundingPolicy: c.installmentRoundingPolicy,
     totalMonths: c.totalMonths,
     installmentNo,
   };

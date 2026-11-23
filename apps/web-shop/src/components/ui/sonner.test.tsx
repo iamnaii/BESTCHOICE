@@ -24,6 +24,17 @@ describe('storefront Toaster', () => {
     }
   });
 
+  it.each([
+    ['omitted', undefined, 'legacy loader'],
+    ['disabled', false, 'legacy loader'],
+    ['provided', <span>modern loader</span>, 'modern loader'],
+  ] as const)('resolves loadingIcon when icons.loading is %s', async (_case, loading, expected) => {
+    render(<Toaster loadingIcon={<span>legacy loader</span>} icons={{ loading }} />);
+    act(() => { toast.loading('กำลังเตรียมข้อมูล', { duration: Infinity }); });
+    const row = (await screen.findByText('กำลังเตรียมข้อมูล')).closest('li')!;
+    expect(within(row).getByText(expected)).toBeVisible();
+  });
+
   it('keeps action and dismissal behavior with a named close button', async () => {
     const onAction = vi.fn();
     const onDismiss = vi.fn();

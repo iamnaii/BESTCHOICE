@@ -9,6 +9,8 @@ import type { Icon } from '@phosphor-icons/react';
 
 export type AppIconProps = SVGProps<SVGSVGElement> & {
   size?: number | string;
+  alt?: string;
+  title?: string;
   absoluteStrokeWidth?: boolean;
 };
 export type AppIcon = ForwardRefExoticComponent<
@@ -24,6 +26,19 @@ export function createAppIcon(Glyph: Icon, name: string): AppIcon {
     delete svgProps.absoluteStrokeWidth;
     delete svgProps.stroke;
     if (svgProps.fill === 'none') delete svgProps.fill;
+    // Preserve SVG content, accessibility attributes and interaction supplied by the caller.
+    const hasSemantics =
+      svgProps.children != null ||
+      svgProps.alt != null ||
+      svgProps.title != null ||
+      svgProps.role != null ||
+      svgProps.tabIndex != null ||
+      svgProps.focusable === true ||
+      svgProps.focusable === 'true' ||
+      Object.entries(svgProps).some(([key, value]) =>
+        value != null && (key.startsWith('aria-') || /^on[A-Z]/.test(key)),
+      );
+    if (!hasSemantics) svgProps['aria-hidden'] = true;
     return createElement(Glyph, {
       ...svgProps,
       ref,

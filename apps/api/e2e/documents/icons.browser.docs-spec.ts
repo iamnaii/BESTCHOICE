@@ -50,6 +50,9 @@ describe('Icon acceptance across isolated document and LIFF API routes', () => {
         await expectBrowser(
           page.getByText(world.contracts.a.contractNumber, { exact: true }).first(),
         ).toBeVisible({ timeout: 25_000 });
+        const signingStatus = page.getByRole('img', { name: /^(ยังไม่ได้ลงนาม|ลงนามแล้ว)$/ }).first();
+        await expectBrowser(signingStatus).toBeVisible();
+        expect(await signingStatus.ariaSnapshot()).toMatch(/img "(ยังไม่ได้ลงนาม|ลงนามแล้ว)"/);
         const documents = page.waitForResponse((response) =>
           new URL(response.url()).pathname.endsWith('/documents'),
         );
@@ -80,7 +83,18 @@ describe('Icon acceptance across isolated document and LIFF API routes', () => {
         await file.press('Enter');
         expect((await content).status()).toBe(200);
         const dialog = page.getByRole('dialog', { name: `ดูเอกสาร ${filename}` });
-        await expectBrowser(dialog.getByRole('img', { name: filename })).toBeVisible();
+        const image = dialog.getByRole('img', { name: filename });
+        await expectBrowser(image).toBeVisible();
+        const decoded = await image.evaluate(async (node: HTMLImageElement) => {
+          await node.decode();
+          return {
+            complete: node.complete,
+            protocol: new URL(node.currentSrc).protocol,
+            width: node.naturalWidth,
+            height: node.naturalHeight,
+          };
+        });
+        expect(decoded).toEqual({ complete: true, protocol: 'blob:', width: 1, height: 1 });
         const close = dialog.getByRole('button', { name: 'ปิดเอกสาร' });
         await expectBrowser(close).toBeFocused();
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(

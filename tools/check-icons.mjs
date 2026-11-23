@@ -34,6 +34,7 @@ const phosphorLibrary = /^@phosphor-icons\/react(?:\/|@|$)/;
 const pictograph =
   /[\p{Extended_Pictographic}\u2190-\u21ff\u27f0-\u27ff\u2900-\u297f✓✔✕✖✗✘★☆●○◉◌◦▪▫■□☑☐☒▲△▼▽▶▷◀◁⊕⊖☰⋯×♪]/u;
 const asciiGlyph = /^(?:[!+?<>]|<{2}|>{2})$/;
+const leadingPlusCaption = /^\+\s+\p{L}/u;
 const ambiguousGlyph = /^(?:[−–—\-xX]|\.{3}|…)$/;
 const asciiCaption = /(?:^|\s)\([+−-]\)$/;
 const imageExtension = /\.(?:svg|ico|png|apng|webp|avif|gif|jpe?g)(?:[?#][^\s"'<>]*)?$/i;
@@ -81,7 +82,7 @@ function hasGlyph(value, includeAscii, includeAmbiguous = false) {
   return (
     pictograph.test(symbols) ||
     (includeAscii && (asciiGlyph.test(text) || asciiCaption.test(text))) ||
-    (includeAmbiguous && ambiguousGlyph.test(text))
+    (includeAmbiguous && (ambiguousGlyph.test(text) || leadingPlusCaption.test(text)))
   );
 }
 

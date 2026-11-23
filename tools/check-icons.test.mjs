@@ -157,6 +157,25 @@ test('finds pagination, remove, tab and hierarchy glyphs in their controls', asy
   }
 });
 
+test('flags leading plus action captions only in affordances', async (t) => {
+  const root = await fixture(t, {
+    [app]: `
+      export const Controls = () => <>
+        <button>+ เพิ่มสาขา</button><Button size="sm">+ บิลประจำ</Button>
+        <button>+125 บาท</button><button>+ 125 บาท</button>
+        <button>ยอดสุทธิ = เงินต้น + ดอกเบี้ย</button>
+        <button>กด “+ เพิ่มสาขา” เพื่อดำเนินการ</button>
+        <p>+ เพิ่มสาขา</p>
+      </>;
+    `,
+  });
+  const findings = await scanIconUsage(root);
+  assert.equal(findings.length, 2);
+  assert.ok(findings.every(({ kind }) => kind === 'unicode-symbol'));
+  assert.ok(findings.some(({ context }) => context.includes('<button> > + เพิ่มสาขา')));
+  assert.ok(findings.some(({ context }) => context.includes('<Button size="sm"> > + บิลประจำ')));
+});
+
 test('finds nested control marks, standalone status marks and rendered literal constants', async (t) => {
   const root = await fixture(t, {
     [app]: `

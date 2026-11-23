@@ -13,6 +13,15 @@ const statusIcons: NonNullable<ToasterProps['icons']> = {
   close: <X size={16} aria-hidden="true" />,
 };
 
-export function Toaster({ icons, ...props }: ToasterProps) {
-  return <Sonner {...props} icons={{ ...statusIcons, ...icons }} />;
+export function Toaster({ icons, loadingIcon, ...props }: ToasterProps) {
+  return (
+    <Sonner
+      {...props}
+      icons={{
+        ...statusIcons,
+        ...icons,
+        loading: icons?.loading || loadingIcon || statusIcons.loading,
+      }}
+    />
+  );
 }

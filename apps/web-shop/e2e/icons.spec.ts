@@ -91,6 +91,7 @@ for (const width of [390, 1440]) {
       }
       const search = header.getByRole('button', { name: 'ค้นหา', exact: true });
       await glyph(search, 'magnifying-glass', 20);
+      await expect(search).toMatchAriaSnapshot('- button "ค้นหา"');
       await search.press('Enter');
       const searchbox = header.getByRole('searchbox');
       await expect(searchbox).toBeFocused();
@@ -305,6 +306,13 @@ for (const width of [390, 1440]) {
       await save(page, 'auth');
     });
 
+    test('sell status announces the completed step and marks the current step', async ({ page }) => {
+      await page.goto('/sell/icon-acceptance');
+      const completed = page.getByRole('listitem').filter({ hasText: 'ส่งข้อมูลประเมินแล้ว' });
+      await expect(completed).toMatchAriaSnapshot('- listitem: ส่งข้อมูลประเมินแล้ว เสร็จแล้ว');
+      await expect(page.locator('li[aria-current="step"]')).toContainText('เข้าร้านตรวจเครื่อง');
+    });
+
     test('sell model selection and app 404', async ({ page }) => {
       const sell = await installSellApiFixtures(page);
       await page.goto('/sell/quote');
@@ -316,7 +324,6 @@ for (const width of [390, 1440]) {
       await expect(page.getByRole('heading', { name: /ความจุ/ })).toBeVisible();
       await noOverflow(page);
       await save(page, 'sell-model');
-      expect(sell.unmatched, 'Unmatched sell API requests').toEqual([]);
       await page.goto('/icons-test-nonexistent');
       const notFound = page.getByRole('heading', { name: 'ไม่พบหน้านี้' });
       await glyph(notFound.locator('..'), 'compass', 48);
@@ -325,6 +332,7 @@ for (const width of [390, 1440]) {
       ).toHaveAttribute('href', '/products');
       await noOverflow(page);
       await save(page, 'not-found');
+      expect(sell.unmatched, 'Unmatched sell API requests').toEqual([]);
     });
 
     test('stock wrapper keeps the logo, contacts and titled frame', async ({ page }) => {

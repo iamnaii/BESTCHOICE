@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test';
 import { previewStatus } from '../../../tools/local-preview.mjs';
 
 const preview = await previewStatus();
-if (!preview.running || !preview.info.isolated) {
+if (!preview.current || !preview.running || !preview.info.isolated) {
   throw new Error('Run npm run local:preview from this checkout before the admin icon suite.');
 }
 

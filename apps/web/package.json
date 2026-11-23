@@ -21,6 +21,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@hello-pangea/dnd": "^18.0.1",
     "@hookform/resolvers": "^5.2.2",
+    "@installment/icons": "1.0.0",
     "@installment/shared": "^1.0.0",
     "@line/liff": "^2.28.0",
     "@phosphor-icons/react": "2.1.10",

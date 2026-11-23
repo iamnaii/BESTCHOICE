@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { Check } from '@/lib/icons';
+import { ArrowRight, Check } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { EvidenceImageLink } from './EvidenceImage';
 import {
@@ -48,7 +48,7 @@ function ProgressChips({ steps }: { steps: [Tone, string][] }) {
     <ol className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[13px] leading-snug" aria-label="ขั้นตอนการปิดยอด">
       {steps.map(([tone, label], index) => (
         <li key={label} className="flex items-center gap-2">
-          {index > 0 && <span aria-hidden className="text-muted-foreground">→</span>}
+          {index > 0 && <ArrowRight className="size-4 text-muted-foreground" aria-hidden="true" />}
           <span className={`rounded-full border px-3 py-0.5 ${CHIP[tone]}`}>{index + 1} {label}</span>
         </li>
       ))}

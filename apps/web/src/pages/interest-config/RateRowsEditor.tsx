@@ -1,3 +1,4 @@
+import { Plus } from '@/lib/icons';
 import { useId } from 'react';
 import { NumberInput } from '@/components/ui/NumberInput';
 import { formControlClass } from '@/components/ui/form-styles';
@@ -100,7 +101,7 @@ export default function RateRowsEditor({
         onClick={addRow}
         className="mt-3 rounded-lg border border-input px-3 text-sm text-foreground hover:bg-accent"
       >
-        + เพิ่มงวด
+        <Plus className="inline size-4 align-text-bottom" aria-hidden="true" />{' '}เพิ่มงวด
       </button>
       {error && <p className="mt-2 text-xs leading-snug text-destructive">{error}</p>}
     </section>

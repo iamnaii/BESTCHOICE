@@ -217,7 +217,7 @@ describe('หน้าบิลประจำ — เดือนเดีย�
     const u = userEvent.setup();
     mount(emptyView);
     expect(await screen.findByText('ยังไม่มีบิลประจำในเดือนนี้')).toBeInTheDocument();
-    const buttons = screen.getAllByRole('button', { name: '+ บิลประจำ' });
+    const buttons = screen.getAllByRole('button', { name: 'บิลประจำ' });
     await u.click(buttons[buttons.length - 1]);
     expect(screen.getByRole('dialog', { name: 'ตั้งบิลประจำ' })).toHaveTextContent('new');
   });

@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import PageHeader from '@/components/ui/PageHeader';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { exportToExcel } from '@/utils/excel.util';
-import { Download, Camera } from '@/lib/icons';
+import { Plus, Download, Camera } from '@/lib/icons';
 import { Link, useNavigate } from 'react-router';
 import api, { getErrorMessage } from '@/lib/api';
 import { formatDateShort } from '@/utils/formatters';
@@ -207,7 +207,7 @@ export default function PurchaseOrdersPage() {
                 onClick={() => data.setIsCreateModalOpen(true)}
                 className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
               >
-                + ซื้อสินค้า
+                <Plus className="inline size-4 align-text-bottom" aria-hidden="true" />{' '}ซื้อสินค้า
               </button>
             )}
           </div>

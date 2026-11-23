@@ -183,7 +183,9 @@ it('locks conflicting actions and inputs during confirmation and ignores same-ti
   expect(screen.getByLabelText(/ส่วนลดยอดปิด/)).toBeDisabled();
   expect(screen.getByLabelText(/วันที่ลงบัญชี/)).toBeDisabled();
   fireEvent.click(screen.getByRole('button', { name: 'ยกเลิก' }));
-  fireEvent.click(screen.getByRole('button', { name: '← กลับ' }));
+  const back = screen.getByRole('button', { name: 'กลับ' });
+  expect(back.querySelector('svg.app-icon-arrow-left')).toHaveAttribute('aria-hidden', 'true');
+  fireEvent.click(back);
   expect(onClose).not.toHaveBeenCalled();
   await act(async () => {
     resolvePost({ data: { id: 'dr-1', status: 'CONFIRMED' } });

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
-import { CalendarDays, ChevronLeft, ChevronRight, Clock, Users } from '@/lib/icons';
+import { ArrowRight, CalendarDays, ChevronLeft, ChevronRight, Clock, Users } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import api, { getErrorMessage } from '@/lib/api';
 import {
@@ -246,7 +246,7 @@ export default function AppointmentCalendar({
                   <p className="text-xs text-destructive">ต้องจัดพนักงานรับแทน</p>
                 )}
                 <span className="inline-block text-xs font-medium text-primary">
-                  เปิดรายละเอียดนัด →
+                  เปิดรายละเอียดนัด{' '}<ArrowRight className="inline size-4 align-text-bottom" aria-hidden="true" />
                 </span>
               </Link>
             ))}

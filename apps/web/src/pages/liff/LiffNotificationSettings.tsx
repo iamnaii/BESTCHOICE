@@ -2,7 +2,7 @@ import { useLiffInit } from '@/hooks/useLiffInit';
 import { liffApi } from '@/lib/api';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { AlertTriangle, Bell, BellOff, Receipt, Wallet, type AppIcon } from '@/lib/icons';
+import { AlertCircle, ArrowRight, ArrowLeft, AlertTriangle, Bell, BellOff, Receipt, Wallet, type AppIcon } from '@/lib/icons';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -83,7 +83,7 @@ export default function LiffNotificationSettings() {
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <Card className="max-w-md w-full">
           <CardContent className="text-center py-10">
-            <div className="text-destructive text-5xl mb-4">!</div>
+            <AlertCircle size={48} className="mx-auto mb-4 text-destructive" aria-hidden="true" />
             <h2 className="text-lg font-bold mb-2">{LIFF_ERRORS.LOAD_FAILED}</h2>
             <p className="text-muted-foreground text-sm">{error || LIFF_ERRORS.REGISTER_FIRST}</p>
           </CardContent>
@@ -149,12 +149,12 @@ export default function LiffNotificationSettings() {
       <div className="text-center mt-4 space-y-1 flex flex-col items-center">
         <Button variant="ghost" mode="link" className="text-primary" asChild>
           <a href={`/liff/contract${lineId ? `?lineId=${encodeURIComponent(lineId)}` : ''}`}>
-            ดูสัญญาของฉัน →
+            ดูสัญญาของฉัน{' '}<ArrowRight className="inline size-4 align-text-bottom" aria-hidden="true" />
           </a>
         </Button>
         <Button variant="ghost" mode="link" className="text-primary" asChild>
           <a href={`/liff/profile${lineId ? `?lineId=${encodeURIComponent(lineId)}` : ''}`}>
-            ← กลับไปโปรไฟล์
+            <ArrowLeft className="inline size-4 align-text-bottom" aria-hidden="true" />{' '}กลับไปโปรไฟล์
           </a>
         </Button>
       </div>

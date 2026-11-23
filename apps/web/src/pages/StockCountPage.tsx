@@ -1,3 +1,4 @@
+import { Plus } from '@/lib/icons';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -194,7 +195,7 @@ export default function StockCountPage() {
           onClick={() => setIsCreateModalOpen(true)}
           className="min-h-11 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
         >
-          + สร้างรายการตรวจนับ
+          <Plus className="inline size-4 align-text-bottom" aria-hidden="true" />{' '}สร้างรายการตรวจนับ
         </button>
       </div>
 

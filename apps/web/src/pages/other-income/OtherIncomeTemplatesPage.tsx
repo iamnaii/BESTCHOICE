@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Star, Trash2, Edit3, PlayCircle, Search, Inbox } from '@/lib/icons';
+import { Plus, Star, Trash2, Edit3, PlayCircle, Search, Inbox } from '@/lib/icons';
 import { toast } from 'sonner';
 import { useDebounce } from '@/hooks/useDebounce';
 import { otherIncomeApi } from '@/lib/otherIncome';
@@ -60,7 +60,7 @@ export default function OtherIncomeTemplatesPage() {
             onClick={() => navigate('/other-income/new')}
             className="px-3 py-1.5 rounded-md border text-sm hover:bg-accent"
           >
-            + สร้างเอกสารใหม่
+            <Plus className="inline size-4 align-text-bottom" aria-hidden="true" />{' '}สร้างเอกสารใหม่
           </button>
         }
       />

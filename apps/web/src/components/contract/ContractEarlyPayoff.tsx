@@ -1,4 +1,5 @@
 import {
+  ArrowLeft,
   Banknote as InlineBanknoteIcon,
   CheckCircle2 as InlineCheckCircle2Icon,
   ClipboardList as InlineClipboardListIcon,
@@ -327,7 +328,7 @@ export function EarlyPayoffOverlay({
           onClick={onClose}
           className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
-          ← กลับ
+          <ArrowLeft className="inline size-4 align-text-bottom" aria-hidden="true" />{' '}กลับ
         </button>
         <h2 className="text-lg font-semibold text-foreground">ปิดสัญญาก่อนกำหนด</h2>
         <div className="w-16" />

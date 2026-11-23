@@ -1,4 +1,4 @@
-import { CalendarClock, ChevronLeft, ChevronRight } from '@/lib/icons';
+import { Plus, CalendarClock, ChevronLeft, ChevronRight } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { NativeSelect } from '@/components/ui/native-select';
 import { currentMonthKey, monthTitle, shiftMonth } from './labels';
@@ -44,7 +44,10 @@ export function MonthHeader({ month, onMonthChange, branchId, onBranchChange, br
             ))}
           </NativeSelect>
         )}
-        <Button variant="primary" size="sm" onClick={onCreate}>+ บิลประจำ</Button>
+        <Button variant="primary" size="sm" onClick={onCreate}>
+          <Plus className="size-4" aria-hidden="true" />
+          บิลประจำ
+        </Button>
       </div>
     </div>
   );

@@ -1,3 +1,4 @@
+import { Plus } from '@/lib/icons';
 import { useState } from 'react';
 import { useIsMutating, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { CreditApprovalPayload } from '@/components/credit-check/CreditAffordabilityForm';
@@ -85,7 +86,7 @@ export default function CreditTab({ customer, creditChecks, canStartCredit, canR
           <CardTitle>ตรวจสอบเครดิต</CardTitle>
           {canStartCredit && (
             <Button variant="primary" size="sm" onClick={onOpenCreate}>
-              + ตรวจเครดิตใหม่
+              <Plus className="inline size-4 align-text-bottom" aria-hidden="true" />{' '}ตรวจเครดิตใหม่
             </Button>
           )}
         </CardHeader>

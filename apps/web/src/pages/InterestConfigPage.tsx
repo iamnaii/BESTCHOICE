@@ -1,3 +1,4 @@
+import { Plus } from '@/lib/icons';
 import { NumberInput } from '@/components/ui/NumberInput';
 import { formLabelClass } from '@/components/ui/form-styles';
 import { ReadOnlyField } from '@/components/ui/readonly-field';
@@ -342,7 +343,7 @@ export default function InterestConfigPage() {
         subtitle="กำหนดอัตราดอกเบี้ยและเงื่อนไขตามประเภทสินค้า"
         action={
           <button data-ui-control="button" onClick={openCreate} className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90">
-            + สร้าง การตั้งค่า
+            <Plus className="inline size-4 align-text-bottom" aria-hidden="true" />{' '}สร้าง การตั้งค่า
           </button>
         }
       />

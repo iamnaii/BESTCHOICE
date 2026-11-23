@@ -79,7 +79,7 @@ describe('หน้ารายการโปรด — การ์ดบิ�
     await screen.findByRole('article', { name: 'ค่าทำบัญชี' });
     await u.click(within(card('ค่าทำบัญชี')).getByRole('button', { name: 'แก้ไข' }));
     expect(screen.getByRole('dialog', { name: 'ตั้งบิลประจำ' })).toHaveTextContent('tpl-acct');
-    await u.click(screen.getByRole('button', { name: '+ บิลประจำ' }));
+    await u.click(screen.getByRole('button', { name: 'บิลประจำ' }));
     expect(screen.getByRole('dialog', { name: 'ตั้งบิลประจำ' })).toHaveTextContent('new');
     await u.click(screen.getByRole('button', { name: 'บิลประจำเดือนนี้' }));
     expect(screen.getByTestId('location')).toHaveTextContent('/expenses/recurring-bills');

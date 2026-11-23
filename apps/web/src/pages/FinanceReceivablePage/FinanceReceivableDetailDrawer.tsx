@@ -4,7 +4,7 @@ import { Link } from 'react-router';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Phone } from '@/lib/icons';
+import { ArrowRight, Phone } from '@/lib/icons';
 import {
   financeContactApi,
   financeContactKeys,
@@ -87,7 +87,7 @@ export default function FinanceReceivableDetailDrawer({ receivable: initialRecei
                     to={`/external-finance-companies/${receivable.externalFinanceCompanyId}`}
                     className="text-sm text-primary hover:underline"
                   >
-                    ดูข้อมูลบริษัทไฟแนนซ์ →
+                    ดูข้อมูลบริษัทไฟแนนซ์{' '}<ArrowRight className="inline size-4 align-text-bottom" aria-hidden="true" />
                   </Link>
                 )}
               </CardContent>

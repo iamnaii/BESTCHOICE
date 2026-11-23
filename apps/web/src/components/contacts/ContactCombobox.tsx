@@ -167,7 +167,7 @@ export function ContactCombobox({
           setCreateName(t.trim());
           setCreateOpen(true);
         }}
-        createLabel={(t) => `+ สร้างผู้ติดต่อใหม่ "${t.trim()}"`}
+        createLabel={(t) => `สร้างผู้ติดต่อใหม่ "${t.trim()}"`}
         createOnEnter
         pending={ensureRoleMutation.isPending}
         closeOnSelect={false}

@@ -4,6 +4,7 @@ import { liffApi } from '@/lib/api';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
+  AlertCircle,
   ArrowLeft,
   Check,
   CheckCircle2,
@@ -296,7 +297,7 @@ export default function LiffFinanceVerify() {
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <Card className="max-w-md w-full">
           <CardContent className="text-center py-10">
-            <div className="text-destructive text-5xl mb-4">!</div>
+            <AlertCircle size={48} className="mx-auto mb-4 text-destructive" aria-hidden="true" />
             <h2 className="text-lg font-bold mb-2">เกิดข้อผิดพลาด</h2>
             <p className="text-muted-foreground text-sm">
               {error || 'ไม่สามารถเชื่อมต่อ LINE ได้'}

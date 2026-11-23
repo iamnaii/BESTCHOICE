@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { AlertTriangle, Copy, Phone, Wrench } from '@/lib/icons';
+import { ChevronRight, AlertTriangle, Copy, Phone, Wrench } from '@/lib/icons';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -135,7 +135,9 @@ export function ContractHeroCard({ contract, overdueAmount }: { contract: Summar
       )}
       <div className="mt-2.5 flex gap-1.5">
         <Button size="sm" className="flex-1" onClick={() => navigate(`/payments?contractId=${contract.id}`)}>รับชำระ</Button>
-        <Button size="sm" variant="outline" className="flex-1" onClick={() => navigate(`/contracts/${contract.id}`)}>ดูสัญญา ›</Button>
+        <Button size="sm" variant="outline" className="flex-1" onClick={() => navigate(`/contracts/${contract.id}`)}>
+          ดูสัญญา <ChevronRight className="size-4" aria-hidden="true" />
+        </Button>
       </div>
     </div>
   );
@@ -287,7 +289,9 @@ export function DeviceWarrantyCard({ contract }: { contract: SummaryContract }) 
         {canReportIssue && (
           <Button size="sm" className="flex-1" onClick={() => navigate(imei ? `/after-sales/new?imei=${encodeURIComponent(imei)}` : '/after-sales/new')}><Wrench className="mr-1 size-3.5" aria-hidden /> แจ้งปัญหาเครื่อง</Button>
         )}
-        <Button size="sm" variant="outline" className="flex-1" onClick={() => navigate(`/contracts/${contract.id}`)}>ดูสัญญา ›</Button>
+        <Button size="sm" variant="outline" className="flex-1" onClick={() => navigate(`/contracts/${contract.id}`)}>
+          ดูสัญญา <ChevronRight className="size-4" aria-hidden="true" />
+        </Button>
       </div>
     </div>
   );

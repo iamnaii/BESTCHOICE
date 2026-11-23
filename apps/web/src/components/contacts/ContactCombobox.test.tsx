@@ -561,6 +561,6 @@ describe('ContactCombobox — on the shared Combobox (R2-3b)', () => {
     await user.click(screen.getByRole('combobox', { name: 'ผู้จัดจำหน่าย' }));
     await user.type(searchBox(), 'New Co');
     expect(await screen.findByText('ไม่พบผู้ติดต่อที่ตรงกับ "New Co"')).toBeInTheDocument();
-    expect(screen.getByText('+ สร้างผู้ติดต่อใหม่ "New Co"')).toBeInTheDocument();
+    expect(screen.getByText('สร้างผู้ติดต่อใหม่ "New Co"')).toBeInTheDocument();
   });
 });

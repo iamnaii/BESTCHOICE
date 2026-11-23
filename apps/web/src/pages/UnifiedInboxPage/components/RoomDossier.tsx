@@ -3,7 +3,7 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import CloudCreditPicker from './CloudCreditPicker';
 import ChatServiceRequestSection from './ChatServiceRequestSection';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { ArrowLeft, Paperclip } from '@/lib/icons';
+import { ChevronRight, ArrowLeft, Paperclip } from '@/lib/icons';
 import DossierDisclosure from './DossierDisclosure';
 import ChatFollowUpDialog from './ChatFollowUpDialog';
 import ChatHandoffDialog from './ChatHandoffDialog';
@@ -342,7 +342,7 @@ function ChannelsGroup({
             <p className="m-0 truncate font-semibold">{channelLabel[s.channel] ?? s.channel}</p>
             <p className="m-0 truncate text-muted-foreground">{s.messages?.[0]?.text || 'ยังไม่มีข้อความ'}</p>
           </div>
-          <span className="text-muted-foreground">›</span>
+          <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
         </button>
       ))}
       {placeholder && (

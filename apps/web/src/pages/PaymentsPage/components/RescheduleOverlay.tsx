@@ -5,7 +5,7 @@ import { useId as useUiFieldId, useEffect, useMemo, useRef, useState } from 'rea
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import Decimal from 'decimal.js';
-import { CalendarClock, CalendarDays, Layers, Check, Wallet, Banknote, Landmark, Loader2, QrCode } from '@/lib/icons';
+import { ArrowLeft, CalendarClock, CalendarDays, Layers, Check, Wallet, Banknote, Landmark, Loader2, QrCode } from '@/lib/icons';
 import api, { getErrorMessage } from '@/lib/api';
 import { formatThaiDate } from '@/lib/date';
 import { CashAccountSelect } from '@/components/CashAccountSelect';
@@ -284,7 +284,7 @@ export function RescheduleOverlay({
           onClick={onClose}
           className="flex items-center gap-1.5 text-sm leading-snug text-muted-foreground hover:text-foreground transition-colors"
         >
-          ← กลับ
+          <ArrowLeft className="inline size-4 align-text-bottom" aria-hidden="true" />{' '}กลับ
         </button>
         <h2 className="text-lg font-semibold text-foreground leading-snug">
           ปรับดิว — เลื่อนวันครบกำหนด

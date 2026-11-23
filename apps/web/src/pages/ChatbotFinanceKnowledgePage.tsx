@@ -1,3 +1,4 @@
+import { Plus } from '@/lib/icons';
 import { NumberInput } from '@/components/ui/NumberInput';
 import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
@@ -155,7 +156,7 @@ function KnowledgeBaseTab() {
           onClick={startCreate}
           className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm hover:bg-primary/90"
         >
-          + เพิ่ม คำถามที่พบบ่อย
+          <Plus className="inline size-4 align-text-bottom" aria-hidden="true" />{' '}เพิ่ม คำถามที่พบบ่อย
         </button>
       </div>
 

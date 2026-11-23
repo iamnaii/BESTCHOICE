@@ -3,7 +3,7 @@ import { NativeSelect } from '@/components/ui/native-select';
 import { useId as useUiFieldId, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { CheckCircle2, XCircle, Pencil, Trash2 } from '@/lib/icons';
+import { Plus, CheckCircle2, XCircle, Pencil, Trash2 } from '@/lib/icons';
 import api, { getErrorMessage } from '@/lib/api';
 
 interface NotificationTemplate {
@@ -87,7 +87,7 @@ export default function TemplateManager({
           onClick={onCreateTemplate}
           className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90"
         >
-          + สร้างแม่แบบ
+          <Plus className="inline size-4 align-text-bottom" aria-hidden="true" />{' '}สร้างแม่แบบ
         </button>
         <div className="flex items-center gap-2 ml-auto">
           <label htmlFor={`${uiFieldId}-1`} className="text-sm text-muted-foreground">หมวดหมู่:</label>

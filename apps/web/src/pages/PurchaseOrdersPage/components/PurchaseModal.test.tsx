@@ -165,7 +165,7 @@ describe('PurchaseModal — one entry "ซื้อสินค้า" for both 
     expect(Array.from((screen.getByRole('combobox', { name: 'วิธีจ่ายเงิน' }) as HTMLSelectElement).options).map((o) => o.textContent)).not.toContain('เงินสด');
     fireEvent.change(screen.getByRole('combobox', { name: 'วิธีจ่ายเงิน' }), { target: { value: 'BANK_TRANSFER' } });
     fireEvent.change(screen.getByRole('textbox', { name: 'ลิงก์เอกสาร' }), { target: { value: 'https://x/slip.jpg' } });
-    fireEvent.click(screen.getByRole('button', { name: '+ เพิ่ม' }));
+    fireEvent.click(screen.getByRole('button', { name: 'เพิ่ม' }));
     // ข3: ผู้ขายไม่จด VAT → ใบส่งของ / ใบแจ้งหนี้ ไว้ให้ก่อน · ยังไม่กรอกเลขที่/วันที่ = ยืนยันไม่ได้
     expect(screen.getByRole('radio', { name: 'ใบส่งของ / ใบแจ้งหนี้' })).toHaveAttribute('aria-checked', 'true');
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยันรับเข้าตรง 2 ชิ้น' }));

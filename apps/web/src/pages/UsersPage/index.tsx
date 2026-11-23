@@ -8,7 +8,7 @@ import { usersApi, userKeys } from '@/lib/api/users';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import PageHeader from '@/components/ui/PageHeader';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { Mail, Link2, Users, UserCheck, Shield } from '@/lib/icons';
+import { Plus, Mail, Link2, Users, UserCheck, Shield } from '@/lib/icons';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
 import { User, InviteToken } from './types';
@@ -209,7 +209,7 @@ export default function UsersPage() {
               onClick={openCreate}
               className="min-h-11 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
             >
-              + เพิ่มผู้ใช้
+              <Plus className="inline size-4 align-text-bottom" aria-hidden="true" />{' '}เพิ่มผู้ใช้
             </button>
           </div>
         }

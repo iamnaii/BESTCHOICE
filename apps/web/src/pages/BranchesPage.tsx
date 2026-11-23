@@ -1,4 +1,5 @@
 import {
+  Plus,
   Building2 as InlineBuilding2Icon,
   ChevronLeft as InlineChevronLeftIcon,
   MapPin as InlineMapPinIcon,
@@ -200,7 +201,7 @@ export default function BranchesPage() {
               onClick={openCreate}
               className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
             >
-              + เพิ่มสาขา
+              <Plus className="inline size-4 align-text-bottom" aria-hidden="true" />{' '}เพิ่มสาขา
             </button>
           ) : undefined
         }

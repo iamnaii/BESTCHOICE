@@ -8,7 +8,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/button';
 import AnimatedCounter from '@/components/ui/animated-counter';
 import { toast } from 'sonner';
-import { Download } from '@/lib/icons';
+import { AlertCircle, Download } from '@/lib/icons';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { DateRangeChips } from '@/components/ui/DateRangeChips';
 import { toLocalDateString } from '@/lib/date';
@@ -681,7 +681,7 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
   return (
     <div className="bg-card rounded-xl border border-border p-8 text-center">
       <div className="size-10 rounded-xl bg-destructive/10 flex items-center justify-center mx-auto mb-3">
-        <span className="text-destructive text-lg font-bold">!</span>
+        <AlertCircle className="size-5 text-destructive" aria-hidden="true" />
       </div>
       <div className="text-sm text-muted-foreground mb-3">ไม่สามารถโหลดข้อมูลรายงานได้</div>
       <Button variant="destructive" appearance="ghost" size="sm" onClick={onRetry}>

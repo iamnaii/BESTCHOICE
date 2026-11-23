@@ -1,3 +1,4 @@
+import { Plus } from '@/lib/icons';
 import ScreenTable from '@/components/ui/ScreenTable';
 import { useId as useUiFieldId, useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router';
@@ -278,7 +279,7 @@ export default function ChartOfAccountsPage() {
             onClick={openCreate}
             className="min-h-11 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 shadow-sm"
           >
-            + เพิ่มบัญชี ({scope})
+            <Plus className="inline size-4 align-text-bottom" aria-hidden="true" />{' '}เพิ่มบัญชี ({scope})
           </button>
         ) : undefined}
       />

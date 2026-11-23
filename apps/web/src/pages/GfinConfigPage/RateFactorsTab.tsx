@@ -22,7 +22,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { Pencil, Trash2 } from '@/lib/icons';
+import { Plus, Pencil, Trash2 } from '@/lib/icons';
 
 interface RateFactor {
   id: string;
@@ -96,7 +96,7 @@ export function RateFactorsTab() {
           className="max-w-md"
         />
         <Button variant="primary" onClick={() => setCreating(true)}>
-          + เพิ่ม
+          <Plus className="inline size-4 align-text-bottom" aria-hidden="true" />{' '}เพิ่ม
         </Button>
       </div>
       <Table>

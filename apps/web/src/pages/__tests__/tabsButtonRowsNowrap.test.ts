@@ -64,7 +64,7 @@ describe('ChartOfAccountsPage scope tabs', () => {
 });
 
 const buttons: Array<[string, string[]]> = [
-  ['PricingTemplatesPage.tsx', ['ดาวน์โหลดแบบฟอร์ม', "'นำเข้า Excel'", '+ เพิ่มราคาตั้งต้น']],
+  ['PricingTemplatesPage.tsx', ['ดาวน์โหลดแบบฟอร์ม', "'นำเข้า Excel'", "{' '}เพิ่มราคาตั้งต้น"]],
   ['NotificationsPage/index.tsx', ["'ส่งเตือนก่อนครบกำหนด'", "'ส่งทวงหนี้ค้างชำระ'"]],
   ['other-income/OtherIncomeViewPage.tsx', ['คัดลอก\n', 'แก้ไขและ ลงบัญชี']],
   ['other-income/components/TemplatePickerCombobox.tsx', ['ใช้แม่แบบ']],

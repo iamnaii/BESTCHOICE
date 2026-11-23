@@ -16,6 +16,6 @@ describe('PaymentSection — S2-08 ปุ่มเลือกรูป/เพ�
       />,
     );
     expect(screen.getByText('เลือกรูป').closest('label')).toHaveClass('h-11');
-    expect(screen.getByRole('button', { name: '+ เพิ่ม' })).toHaveClass('h-11');
+    expect(screen.getByRole('button', { name: 'เพิ่ม' })).toHaveClass('h-11');
   });
 });

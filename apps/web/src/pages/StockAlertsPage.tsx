@@ -1,4 +1,4 @@
-import { Pencil as InlinePencilIcon, Trash2 as InlineTrash2Icon } from '@/lib/icons';
+import { Plus, Pencil as InlinePencilIcon, Trash2 as InlineTrash2Icon } from '@/lib/icons';
 import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { Combobox } from '@/components/ui/combobox';
@@ -409,7 +409,7 @@ export default function StockAlertsPage() {
                 onClick={() => { resetForm(); setShowCreateModal(true); }}
                 className="min-h-11 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90"
               >
-                + จุดสั่งซื้อซ้ำ
+                <Plus className="inline size-4 align-text-bottom" aria-hidden="true" />{' '}จุดสั่งซื้อซ้ำ
               </button>
             </div>
           ) : undefined

@@ -55,7 +55,13 @@ export async function checkChatLibrary(page,origin,output,width){
  await page.getByRole('button',{name:'ส่งไฟล์ที่เลือก',exact:true}).click();await expect(page.locator('[data-library-staged]')).toContainText('ส่งสำเร็จ');assert.equal(await count(),before+2);
  await expect(page.getByRole('button',{name:'ส่งไฟล์ที่เลือก',exact:true})).toBeDisabled();
  // Existing reply tools remain available after adding the library entry.
- await openComposerTool(page, 'อิโมจิ / สติกเกอร์');await expect(page.getByRole('button',{name:'😊 อีโมจิ',exact:true})).toBeVisible();await page.keyboard.press('Escape');
+ await openComposerTool(page, 'อิโมจิ / สติกเกอร์');
+ const mediaPicker=page.getByRole('dialog',{name:'อีโมจิ สติกเกอร์ และ GIF',exact:true});
+ const emojiTab=mediaPicker.getByRole('button',{name:'อีโมจิ',exact:true});
+ await expect(emojiTab).toBeVisible();
+ await expect(emojiTab).toHaveAttribute('aria-pressed','true');
+ await expect(emojiTab.locator('svg.app-icon-smiley[aria-hidden="true"]')).toHaveAttribute('data-icon-style','duotone');
+ await page.keyboard.press('Escape');
  await openComposerTool(page, 'ส่งข้อมูลสินค้า');await expect(page.getByPlaceholder('ค้นหาชื่อรุ่น / ยี่ห้อ / IMEI')).toBeVisible();await page.getByPlaceholder('ค้นหาชื่อรุ่น / ยี่ห้อ / IMEI').fill('iPhone');await page.keyboard.press('Escape');
  await page.getByRole('button',{name:'ข้อความสำเร็จรูป',exact:true}).click();await page.getByRole('textbox', { name: 'ค้นหาข้อความสำเร็จรูป', exact: true }).fill('ขอบคุณ (ตัวอย่าง)');await page.getByText('ขอบคุณ (ตัวอย่าง)',{exact:true}).click();await page.getByRole('button',{name:'ใส่ข้อความ',exact:true}).click();await expect(page.getByRole('textbox',{name:'พิมพ์ข้อความ',exact:true})).toHaveValue('ขอบคุณที่สนใจ BESTCHOICE ครับ');
  if(width<1440)await page.getByRole('button',{name:/^ข้อมูลลูกค้า/}).filter({visible:true}).first().click();
@@ -71,7 +77,13 @@ export async function checkChatLibrary(page,origin,output,width){
  if(width<1440)await page.keyboard.press('Escape');
  await page.screenshot({path:join(output,`chat-library-staged-${width}.png`),animations:'disabled'});
  await page.goto(`${origin}/inbox/${info.chatWorkRooms.FINANCE}?zone=fin`);
- await openComposerTool(page, 'อิโมจิ / สติกเกอร์');await expect(page.getByRole('button',{name:'📦 สติกเกอร์',exact:true})).toBeVisible();await page.keyboard.press('Escape');
+ await openComposerTool(page, 'อิโมจิ / สติกเกอร์');
+ const stickerTab=mediaPicker.getByRole('button',{name:'สติกเกอร์',exact:true});
+ await expect(stickerTab).toBeVisible();
+ await expect(stickerTab.locator('svg.app-icon-package[aria-hidden="true"]')).toHaveAttribute('data-icon-style','duotone');
+ await stickerTab.press('Enter');
+ await expect(stickerTab).toHaveAttribute('aria-pressed','true');
+ await page.keyboard.press('Escape');
  await page.goto(`${origin}/inbox?zone=shop`);
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){

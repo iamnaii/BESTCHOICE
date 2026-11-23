@@ -159,7 +159,15 @@ describe('GoodsReceivingModal — one device per screen', () => {
     expect(screen.getByTestId('angle-panel')).toHaveTextContent('ถ่ายแล้ว 0/6 มุม');
     expect(screen.getByLabelText('รูปตำหนิ/ความเสียหาย')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'เปิดเช็คลิสต์' }));
-    expect(screen.getByTestId('checklist')).toBeInTheDocument();
+    const checklist = within(screen.getByTestId('checklist'));
+    const item = checklist.getByRole('button', { name: defaultChecklist[0].item });
+    expect(item).toHaveAttribute('aria-pressed', 'true');
+    expect(item).toHaveAccessibleDescription('ผ่าน');
+    expect(item.querySelector('svg.app-icon-check')).toHaveAttribute('data-icon-style', 'duotone');
+    fireEvent.click(item);
+    expect(item).toHaveAttribute('aria-pressed', 'false');
+    expect(item).toHaveAccessibleDescription('ไม่ผ่าน');
+    expect(item.querySelector('svg.app-icon-x')).toHaveAttribute('data-icon-style', 'duotone');
   });
 
   it('an accessory line is counted: lowering the count opens the reason box, the price applies to the line', () => {

@@ -26,7 +26,8 @@ export async function writeStockItem(
   )
     throw Error('UNRESOLVED_STOCK_DECISION');
 
-  const explicit = decision.pricing.mode === 'EXPLICIT';
+  const explicit =
+    decision.pricing.mode === 'EXPLICIT' || decision.pricing.mode === 'MASTER_INSTALLMENTS';
   const product = await tx.product.create({
     data: {
       supplierId: resolution.supplierLink?.targetId ?? null,

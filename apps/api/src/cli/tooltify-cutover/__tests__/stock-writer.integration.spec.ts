@@ -142,6 +142,7 @@ it('creates one verified snapshot unit despite two historical sales of the same 
 
 it('keeps the evidenced installment as the default and explicit cash null even with a matching template', async () => {
   const input = await stockInput(db);
+  decision(input).deviceOrigin = 'THAI';
   const row = input.rows[0];
   row.model = input.manifest.canonicalSetId;
   await templateFor(row);
@@ -180,6 +181,7 @@ it('does_not_publish_an_unpriced_device', async () => {
 
 it('keeps a finance-only QC unit unsellable and refuses to publish the same prices', async () => {
   const input = await stockInput(db);
+  decision(input).deviceOrigin = 'THAI';
   const d = decision(input);
   d.pricing = { mode: 'EXPLICIT', cashPrice: null, installmentPrice: null, financePrice: '150.50' };
   const blocked = await planFor(input);
@@ -199,6 +201,7 @@ it('keeps a finance-only QC unit unsellable and refuses to publish the same pric
 
 it('keeps installment empty when the selected template has zero cash and a positive installment', async () => {
   const input = await stockInput(db);
+  decision(input).deviceOrigin = 'THAI';
   const row = input.rows[0];
   row.model = input.manifest.canonicalSetId;
   const template = await templateFor(row);
@@ -316,6 +319,7 @@ it.each(['deleted', 'sold', 'held'])('keeps a %s target intact', async (variant)
 
 it('requires a fresh plan when the selected template price changes', async () => {
   const input = await stockInput(db);
+  decision(input).deviceOrigin = 'THAI';
   input.rows[0].model = input.manifest.canonicalSetId;
   decision(input).pricing = { mode: 'TEMPLATE' };
   const template = await templateFor(input.rows[0]);

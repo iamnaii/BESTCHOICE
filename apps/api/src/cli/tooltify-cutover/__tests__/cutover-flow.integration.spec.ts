@@ -284,6 +284,7 @@ it('rejects a changed price template after dry-run without allocating a batch', 
     row = input.rows[0];
   row.model = randomUUID();
   const decision = input.decisions.entries.find((d) => d.action === 'RESOLVE_STOCK')!;
+  decision.deviceOrigin = 'THAI';
   decision.pricing = { mode: 'TEMPLATE' };
   input.manifest.decisionsSha256 = hashSourceDecisions(input.decisions);
   const template = await db.pricingTemplate.create({

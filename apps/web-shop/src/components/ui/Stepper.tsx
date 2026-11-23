@@ -1,4 +1,4 @@
-import { Check } from 'lucide-react';
+import { Check } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 
 export interface StepperStep {

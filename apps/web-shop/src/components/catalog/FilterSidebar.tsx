@@ -1,6 +1,6 @@
 import { NativeSelect } from '@/components/ui/native-select';
 import { useEffect, useState } from 'react';
-import { SlidersHorizontal, Sparkles, Smartphone, X } from 'lucide-react';
+import { SlidersHorizontal, Sparkles, Smartphone, X } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import { parseDeviceOrigin, type DeviceOrigin } from '@/lib/device-origin';
 
@@ -232,7 +232,7 @@ export function FilterSidebar({ filters, onChange, models, plan, bare }: Props) 
           }
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors leading-snug"
         >
-          <X className="size-3.5" aria-hidden />
+          <X className="size-4" aria-hidden />
           ล้างตัวกรองทั้งหมด
         </button>
       )}
@@ -245,7 +245,7 @@ export function FilterSidebar({ filters, onChange, models, plan, bare }: Props) 
     <aside className="rounded-[40px] border border-border bg-card shadow-lg">
       <div className="flex items-center gap-2.5 px-4 pt-4">
         <span className="size-7 rounded-xl bg-ink grid place-items-center shrink-0">
-          <SlidersHorizontal className="size-3.5 text-ink-foreground" aria-hidden />
+          <SlidersHorizontal className="size-4 text-ink-foreground" aria-hidden />
         </span>
         <h2 className="text-base font-semibold text-foreground leading-snug">ตัวกรองสินค้า</h2>
       </div>

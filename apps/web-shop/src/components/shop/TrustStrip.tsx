@@ -1,4 +1,4 @@
-import { ShieldCheck, Wallet, MessageCircle, BadgeCheck } from 'lucide-react';
+import { ShieldCheck, Wallet, MessageCircle, BadgeCheck } from '@/lib/icons';
 
 interface Item {
   icon: React.ReactNode;

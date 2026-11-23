@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
-import { ChevronDown, Loader2, LucideIcon } from 'lucide-react';
+import { ChevronDown, Loader2, type AppIcon } from '@/lib/icons';
 import { Slot } from '@radix-ui/react-slot';
 import { cn } from '@/lib/utils';
 
@@ -49,9 +49,9 @@ const buttonVariants = cva(
         dashed: '',
       },
       size: {
-        lg: 'h-12 rounded-xl px-6 text-base gap-2 [&_svg:not([class*=size-])]:size-4.5',
+        lg: 'h-12 rounded-xl px-6 text-base gap-2 [&_svg:not([class*=size-])]:size-5',
         md: 'h-11 rounded-xl px-4 gap-1.5 text-sm [&_svg:not([class*=size-])]:size-4',
-        sm: 'h-11 rounded-md px-3 gap-[5px] text-sm [&_svg:not([class*=size-])]:size-3.5',
+        sm: 'h-11 rounded-md px-3 gap-[5px] text-sm [&_svg:not([class*=size-])]:size-4',
         icon: 'size-11 rounded-md [&_svg:not([class*=size-])]:size-4 shrink-0',
       },
       autoHeight: {
@@ -318,7 +318,7 @@ const buttonVariants = cva(
       {
         size: 'sm',
         mode: 'icon',
-        className: 'w-11 h-11 p-0 [&_svg:not([class*=size-])]:size-3.5',
+        className: 'w-11 h-11 p-0 [&_svg:not([class*=size-])]:size-4',
       },
       {
         size: 'md',
@@ -433,7 +433,7 @@ function Button({
 }
 
 interface ButtonArrowProps extends React.SVGProps<SVGSVGElement> {
-  icon?: LucideIcon;
+  icon?: AppIcon;
 }
 
 function ButtonArrow({ icon: Icon = ChevronDown, className, ...props }: ButtonArrowProps) {

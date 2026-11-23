@@ -1,6 +1,6 @@
 import type { BuybackQuoteResult } from '@/types/buyback';
 import { Button } from '@/components';
-import { Clock3, ShieldCheck } from 'lucide-react';
+import { Clock3, ShieldCheck } from '@/lib/icons';
 import { quoteDate } from '../quote-window';
 import { modelLabel, storageLabel } from '../device-options';
 import ChoiceButton from './ChoiceButton';
@@ -42,7 +42,7 @@ export default function QuoteResultStep({
   return (
     <div className="sell-summary space-y-5">
       <aside className="summary-intake" aria-label="เงื่อนไขรับซื้อและเทิร์น">
-        <ShieldCheck size={26} aria-hidden="true" className="shrink-0" />
+        <ShieldCheck size={24} aria-hidden="true" className="shrink-0" />
         <div>
           <p className="text-xs font-semibold">เงื่อนไขรับซื้อ / เทิร์น</p>
           <h2 className="mt-1 text-lg font-bold text-foreground">

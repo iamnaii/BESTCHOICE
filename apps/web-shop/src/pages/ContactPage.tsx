@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { MessageCircle, Phone, MapPin, Clock, Send } from 'lucide-react';
+import { MessageCircle, Phone, MapPin, Clock, Send } from '@/lib/icons';
 import {
   CategoryHero,
   Container,

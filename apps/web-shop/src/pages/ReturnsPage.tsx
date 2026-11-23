@@ -1,4 +1,4 @@
-import { ShieldCheck, RotateCcw, MessageCircle, Phone } from 'lucide-react';
+import { ShieldCheck, RotateCcw, MessageCircle, Phone } from '@/lib/icons';
 import {
   CategoryHero,
   Container,

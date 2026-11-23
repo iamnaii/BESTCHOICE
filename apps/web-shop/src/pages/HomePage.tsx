@@ -12,8 +12,8 @@ import {
   MapPin,
   Clock,
   Star,
-  Facebook,
-} from 'lucide-react';
+  FacebookLogo,
+} from '@/lib/icons';
 import ShopLayout from '@/components/layout/ShopLayout';
 import PromotionsStrip from '@/components/shop/PromotionsStrip';
 import {
@@ -211,7 +211,7 @@ export default function HomePage() {
                 </p>
                 <Button asChild variant="outline" size="md" className="self-start">
                   <a href={shopInfo.facebookReviewsUrl} target="_blank" rel="noopener noreferrer">
-                    <Facebook className="size-4" aria-hidden="true" />
+                    <FacebookLogo className="size-4" aria-hidden="true" />
                     อ่านรีวิวบน Facebook
                   </a>
                 </Button>

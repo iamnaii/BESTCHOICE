@@ -1,5 +1,5 @@
 import { Link, Navigate } from 'react-router';
-import { BadgeCheck, LogOut, MapPin, Package } from 'lucide-react';
+import { BadgeCheck, LogOut, MapPin, Package } from '@/lib/icons';
 import ShopLayout from '@/components/layout/ShopLayout';
 import { useAuth } from '@/hooks/useAuth';
 import { CategoryHero, Card, CardBody, Container, LoadingState, Stack } from '@/components';

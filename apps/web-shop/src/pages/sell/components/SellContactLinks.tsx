@@ -1,4 +1,4 @@
-import { MapPin, MessageCircle, UserPlus } from 'lucide-react';
+import { MapPin, MessageCircle, UserPlus } from '@/lib/icons';
 import { lineOaMessageUrl, shopInfo } from '@/lib/copy';
 import { quoteDate } from '../quote-window';
 

@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { AxiosError } from 'axios';
-import { MessageCircle, Phone, Share2 } from 'lucide-react';
+import { MessageCircle, Phone, Share2 } from '@/lib/icons';
 import { api } from '@/lib/api';
 import {
   copy,

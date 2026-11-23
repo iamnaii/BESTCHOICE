@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Check } from 'lucide-react';
+import { Check } from '@/lib/icons';
 export default function ChoiceButton({
   selected,
   children,

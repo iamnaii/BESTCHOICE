@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { RotateCw } from 'lucide-react';
+import { RotateCw } from '@/lib/icons';
 
 export function Product360Viewer({ frames, alt }: { frames: string[]; alt: string }) {
   const [frame, setFrame] = useState(0);
@@ -36,7 +36,7 @@ export function Product360Viewer({ frames, alt }: { frames: string[]; alt: strin
         draggable={false}
       />
       <span className="absolute bottom-3 left-1/2 -translate-x-1/2 inline-flex items-center gap-1.5 text-xs bg-background/80 border border-border rounded-full px-3 py-1 leading-snug">
-        <RotateCw className="size-3.5" aria-hidden /> ลากเพื่อหมุน 360°
+        <RotateCw className="size-4" aria-hidden /> ลากเพื่อหมุน 360°
       </span>
     </div>
   );

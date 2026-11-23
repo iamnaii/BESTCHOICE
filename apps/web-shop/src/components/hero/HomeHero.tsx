@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { Link } from 'react-router';
-import { ArrowRight, MessageCircle } from 'lucide-react';
+import { ArrowRight, MessageCircle } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { Container } from '@/components/layout/Container';
 import { gsap, useGSAP } from '@/components/motion/gsap';
@@ -98,7 +98,7 @@ export function HomeHero() {
               {/* The one orange CTA on the page — chat converts (guide rule 2). */}
               <Button asChild size="lg" variant="cta">
                 <a href={shopInfo.lineUrl} target="_blank" rel="noopener noreferrer">
-                  <MessageCircle className="size-4.5" aria-hidden="true" /> ทักแชทเช็คราคา
+                  <MessageCircle className="size-5" aria-hidden="true" /> ทักแชทเช็คราคา
                 </a>
               </Button>
               <Button
@@ -108,7 +108,7 @@ export function HomeHero() {
                 className="border-2 border-primary text-primary hover:bg-accent"
               >
                 <Link to="/products">
-                  ดูรุ่นทั้งหมด <ArrowRight className="size-4.5" aria-hidden="true" />
+                  ดูรุ่นทั้งหมด <ArrowRight className="size-5" aria-hidden="true" />
                 </Link>
               </Button>
             </div>

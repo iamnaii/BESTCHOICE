@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 import { cva, VariantProps } from 'class-variance-authority';
-import { X } from 'lucide-react';
+import { X } from '@/lib/icons';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 
 const dialogContentVariants = cva(
@@ -76,7 +76,7 @@ function DialogContent({
         {children}
         {showCloseButton && (
           <DialogClose className="cursor-pointer outline-hidden absolute end-5 top-5 rounded-sm opacity-60 ring-offset-background transition-opacity hover:opacity-100 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
-            <X className="size-4" />
+            <X className="size-4" aria-hidden="true" />
             <span className="sr-only">ปิด</span>
           </DialogClose>
         )}

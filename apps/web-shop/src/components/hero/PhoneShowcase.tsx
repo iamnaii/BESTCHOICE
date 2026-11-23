@@ -1,4 +1,4 @@
-import { ShieldCheck } from 'lucide-react';
+import { ShieldCheck } from '@/lib/icons';
 import './phone-showcase.css';
 
 /** Lightweight brand illustration; no model, colour or stock availability claim. */

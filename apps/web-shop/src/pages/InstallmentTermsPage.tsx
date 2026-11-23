@@ -9,7 +9,7 @@ import {
   QrCode,
   MessageCircle,
   ShieldCheck,
-} from 'lucide-react';
+} from '@/lib/icons';
 import ShopLayout from '@/components/layout/ShopLayout';
 import { Button, Card, CardBody, Container, Section, Stack } from '@/components';
 import { shopInfo } from '@/lib/copy';

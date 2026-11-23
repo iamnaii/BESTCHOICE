@@ -26,9 +26,11 @@ import { ArrowUpRightIcon as PhosphorArrowUpRight } from '@phosphor-icons/react/
 import { ArrowsClockwiseIcon as PhosphorArrowsClockwise } from '@phosphor-icons/react/dist/csr/ArrowsClockwise';
 import { ArrowsDownUpIcon as PhosphorArrowsDownUp } from '@phosphor-icons/react/dist/csr/ArrowsDownUp';
 import { ArrowsLeftRightIcon as PhosphorArrowsLeftRight } from '@phosphor-icons/react/dist/csr/ArrowsLeftRight';
+import { ArrowsOutIcon as PhosphorArrowsOut } from '@phosphor-icons/react/dist/csr/ArrowsOut';
 import { BackspaceIcon as PhosphorBackspace } from '@phosphor-icons/react/dist/csr/Backspace';
 import { BankIcon as PhosphorBank } from '@phosphor-icons/react/dist/csr/Bank';
 import { BarricadeIcon as PhosphorBarricade } from '@phosphor-icons/react/dist/csr/Barricade';
+import { BatteryChargingIcon as PhosphorBatteryCharging } from '@phosphor-icons/react/dist/csr/BatteryCharging';
 import { BellIcon as PhosphorBell } from '@phosphor-icons/react/dist/csr/Bell';
 import { BellRingingIcon as PhosphorBellRinging } from '@phosphor-icons/react/dist/csr/BellRinging';
 import { BellSlashIcon as PhosphorBellSlash } from '@phosphor-icons/react/dist/csr/BellSlash';
@@ -78,6 +80,7 @@ import { CloudIcon as PhosphorCloud } from '@phosphor-icons/react/dist/csr/Cloud
 import { CoinsIcon as PhosphorCoins } from '@phosphor-icons/react/dist/csr/Coins';
 import { ColumnsIcon as PhosphorColumns } from '@phosphor-icons/react/dist/csr/Columns';
 import { ColumnsPlusRightIcon as PhosphorColumnsPlusRight } from '@phosphor-icons/react/dist/csr/ColumnsPlusRight';
+import { CompassIcon as PhosphorCompass } from '@phosphor-icons/react/dist/csr/Compass';
 import { ConfettiIcon as PhosphorConfetti } from '@phosphor-icons/react/dist/csr/Confetti';
 import { CopyIcon as PhosphorCopy } from '@phosphor-icons/react/dist/csr/Copy';
 import { CopySimpleIcon as PhosphorCopySimple } from '@phosphor-icons/react/dist/csr/CopySimple';
@@ -100,6 +103,7 @@ import { EnvelopeIcon as PhosphorEnvelope } from '@phosphor-icons/react/dist/csr
 import { EraserIcon as PhosphorEraser } from '@phosphor-icons/react/dist/csr/Eraser';
 import { EyeIcon as PhosphorEye } from '@phosphor-icons/react/dist/csr/Eye';
 import { EyeSlashIcon as PhosphorEyeSlash } from '@phosphor-icons/react/dist/csr/EyeSlash';
+import { FacebookLogoIcon as PhosphorFacebookLogo } from '@phosphor-icons/react/dist/csr/FacebookLogo';
 import { FileArrowUpIcon as PhosphorFileArrowUp } from '@phosphor-icons/react/dist/csr/FileArrowUp';
 import { FileCodeIcon as PhosphorFileCode } from '@phosphor-icons/react/dist/csr/FileCode';
 import { FilePlusIcon as PhosphorFilePlus } from '@phosphor-icons/react/dist/csr/FilePlus';
@@ -201,6 +205,7 @@ import { ScalesIcon as PhosphorScales } from '@phosphor-icons/react/dist/csr/Sca
 import { ScanIcon as PhosphorScan } from '@phosphor-icons/react/dist/csr/Scan';
 import { ScrollIcon as PhosphorScroll } from '@phosphor-icons/react/dist/csr/Scroll';
 import { SealPercentIcon as PhosphorSealPercent } from '@phosphor-icons/react/dist/csr/SealPercent';
+import { ShareNetworkIcon as PhosphorShareNetwork } from '@phosphor-icons/react/dist/csr/ShareNetwork';
 import { ShieldIcon as PhosphorShield } from '@phosphor-icons/react/dist/csr/Shield';
 import { ShieldCheckIcon as PhosphorShieldCheck } from '@phosphor-icons/react/dist/csr/ShieldCheck';
 import { ShieldSlashIcon as PhosphorShieldSlash } from '@phosphor-icons/react/dist/csr/ShieldSlash';
@@ -242,6 +247,7 @@ import { TextStrikethroughIcon as PhosphorTextStrikethrough } from '@phosphor-ic
 import { TextTIcon as PhosphorTextT } from '@phosphor-icons/react/dist/csr/TextT';
 import { TextUnderlineIcon as PhosphorTextUnderline } from '@phosphor-icons/react/dist/csr/TextUnderline';
 import { ThumbsUpIcon as PhosphorThumbsUp } from '@phosphor-icons/react/dist/csr/ThumbsUp';
+import { TiktokLogoIcon as PhosphorTiktokLogo } from '@phosphor-icons/react/dist/csr/TiktokLogo';
 import { TimerIcon as PhosphorTimer } from '@phosphor-icons/react/dist/csr/Timer';
 import { ToggleLeftIcon as PhosphorToggleLeft } from '@phosphor-icons/react/dist/csr/ToggleLeft';
 import { ToggleRightIcon as PhosphorToggleRight } from '@phosphor-icons/react/dist/csr/ToggleRight';
@@ -312,9 +318,14 @@ export const ArrowLeftRight = /* @__PURE__ */ createAppIcon(
   'arrows-left-right',
 );
 export const ArrowRightLeft = ArrowLeftRight;
+export const Expand = /* @__PURE__ */ createAppIcon(PhosphorArrowsOut, 'arrows-out');
 export const Delete = /* @__PURE__ */ createAppIcon(PhosphorBackspace, 'backspace');
 export const Landmark = /* @__PURE__ */ createAppIcon(PhosphorBank, 'bank');
 export const Construction = /* @__PURE__ */ createAppIcon(PhosphorBarricade, 'barricade');
+export const BatteryCharging = /* @__PURE__ */ createAppIcon(
+  PhosphorBatteryCharging,
+  'battery-charging',
+);
 export const Bell = /* @__PURE__ */ createAppIcon(PhosphorBell, 'bell');
 export const BellRing = /* @__PURE__ */ createAppIcon(PhosphorBellRinging, 'bell-ringing');
 export const BellOff = /* @__PURE__ */ createAppIcon(PhosphorBellSlash, 'bell-slash');
@@ -390,6 +401,7 @@ export const Columns3 = /* @__PURE__ */ createAppIcon(
   PhosphorColumnsPlusRight,
   'columns-plus-right',
 );
+export const Compass = /* @__PURE__ */ createAppIcon(PhosphorCompass, 'compass');
 export const PartyPopper = /* @__PURE__ */ createAppIcon(PhosphorConfetti, 'confetti');
 export const Copy = /* @__PURE__ */ createAppIcon(PhosphorCopy, 'copy');
 export const CopyPlus = /* @__PURE__ */ createAppIcon(PhosphorCopySimple, 'copy-simple');
@@ -424,12 +436,14 @@ export const Mail = /* @__PURE__ */ createAppIcon(PhosphorEnvelope, 'envelope');
 export const Eraser = /* @__PURE__ */ createAppIcon(PhosphorEraser, 'eraser');
 export const Eye = /* @__PURE__ */ createAppIcon(PhosphorEye, 'eye');
 export const EyeOff = /* @__PURE__ */ createAppIcon(PhosphorEyeSlash, 'eye-slash');
+export const FacebookLogo = /* @__PURE__ */ createAppIcon(PhosphorFacebookLogo, 'facebook-logo');
 export const FileUp = /* @__PURE__ */ createAppIcon(PhosphorFileArrowUp, 'file-arrow-up');
 export const FileCode = /* @__PURE__ */ createAppIcon(PhosphorFileCode, 'file-code');
 export const FilePlus2 = /* @__PURE__ */ createAppIcon(PhosphorFilePlus, 'file-plus');
 export const FileSearch = /* @__PURE__ */ createAppIcon(PhosphorFileMagnifyingGlass, 'file-search');
 export const FileText = /* @__PURE__ */ createAppIcon(PhosphorFileText, 'file-text');
 export const FileCheck = /* @__PURE__ */ createAppIcon(PhosphorSealCheck, 'seal-check');
+export const BadgeCheck = FileCheck;
 export const FileClock = /* @__PURE__ */ createAppIcon(PhosphorClockCountdown, 'clock-countdown');
 export const FileEdit = /* @__PURE__ */ createAppIcon(PhosphorNotePencil, 'note-pencil');
 export const FileWarning = /* @__PURE__ */ createAppIcon(PhosphorWarningDiamond, 'warning-diamond');
@@ -552,6 +566,7 @@ export const Scale = /* @__PURE__ */ createAppIcon(PhosphorScales, 'scales');
 export const ScanLine = /* @__PURE__ */ createAppIcon(PhosphorScan, 'scan');
 export const ScrollText = /* @__PURE__ */ createAppIcon(PhosphorScroll, 'scroll');
 export const BadgePercent = /* @__PURE__ */ createAppIcon(PhosphorSealPercent, 'seal-percent');
+export const Share2 = /* @__PURE__ */ createAppIcon(PhosphorShareNetwork, 'share-network');
 export const Shield = /* @__PURE__ */ createAppIcon(PhosphorShield, 'shield');
 export const ShieldCheck = /* @__PURE__ */ createAppIcon(PhosphorShieldCheck, 'shield-check');
 export const ShieldBan = /* @__PURE__ */ createAppIcon(PhosphorShieldSlash, 'shield-slash');
@@ -611,6 +626,7 @@ export const RemoveFormatting = Eraser;
 export const Type = /* @__PURE__ */ createAppIcon(PhosphorTextT, 'text-t');
 export const Underline = /* @__PURE__ */ createAppIcon(PhosphorTextUnderline, 'text-underline');
 export const ThumbsUp = /* @__PURE__ */ createAppIcon(PhosphorThumbsUp, 'thumbs-up');
+export const TiktokLogo = /* @__PURE__ */ createAppIcon(PhosphorTiktokLogo, 'tiktok-logo');
 export const Timer = /* @__PURE__ */ createAppIcon(PhosphorTimer, 'timer');
 export const ToggleLeft = /* @__PURE__ */ createAppIcon(PhosphorToggleLeft, 'toggle-left');
 export const ToggleRight = /* @__PURE__ */ createAppIcon(PhosphorToggleRight, 'toggle-right');

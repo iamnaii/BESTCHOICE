@@ -1,6 +1,6 @@
 import { LandingFaq } from '@/components/LandingFaq';
 import { Link } from 'react-router';
-import { UserCheck, X, Check } from 'lucide-react';
+import { UserCheck, X, Check } from '@/lib/icons';
 import {
   CategoryHero,
   Container,

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { ImageOff } from 'lucide-react';
+import { ImageOff } from '@/lib/icons';
 import { gsap, useGSAP } from '@/components/motion/gsap';
 import { cn } from '@/lib/utils';
 

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
-import { MessageCircle } from 'lucide-react';
+import { MessageCircle } from '@/lib/icons';
 import ShopLayout from '@/components/layout/ShopLayout';
 import { Button, Card, CardBody, Container, LoadingState, Stack } from '@/components';
 import { api } from '@/lib/api';

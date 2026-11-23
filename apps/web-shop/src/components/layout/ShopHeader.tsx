@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
-import { Menu, Search, User, X } from 'lucide-react';
+import { Menu, Search, User, X } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 
 const NAV_LINKS = [

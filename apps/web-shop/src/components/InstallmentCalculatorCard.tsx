@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useQueries, type UseQueryResult } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { gsap, useGSAP } from '@/components/motion/gsap';
-import { MessageCircle } from 'lucide-react';
+import { MessageCircle } from '@/lib/icons';
 import { Card, CardHeader, CardBody, CardTitle, Button } from '@/components';
 import { displayInstallment, minDownAmountFromPct } from '@installment/shared';
 import { lineOaMessageUrl, productShareUrl } from '@/lib/copy';
